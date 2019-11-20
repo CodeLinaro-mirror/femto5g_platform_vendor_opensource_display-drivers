@@ -17,6 +17,9 @@
 #define DP_VCO_HSCLK_RATE_5400MHZDIV1000	5400000UL
 #define DP_VCO_HSCLK_RATE_8100MHZDIV1000	8100000UL
 
+#define DP_PLL_NUM_CLKS				2
+#define DP_PLL_NAME_MAX_SIZE			32
+
 #define dp_pll_get_base(x) pll->io.x->io.base
 
 #define dp_pll_read(x, offset) ({ \
@@ -61,35 +64,11 @@ struct dp_pll_io {
 struct dp_pll_vco_clk {
 	struct clk_hw hw;
 	void		*priv;
+	struct clk_init_data init_data;
+	char name[DP_PLL_NAME_MAX_SIZE];
 };
 
-struct dp_pll {
-	/* target pll revision information */
-	u32 revision;
-	/* save vco current rate */
-	unsigned long vco_rate;
-	/*
-	 * PLL index if multiple index are available. Eg. in case of
-	 * DSI we have 2 plls.
-	 */
-	uint32_t index;
-
-	bool ssc_en;
-	bool bonding_en;
-
-	void *priv;
-	struct platform_device *pdev;
-	struct dp_parser *parser;
-	struct dp_power *power;
-	struct dp_aux *aux;
-	struct dp_pll_io io;
-	struct clk_onecell_data *clk_data;
-	u32 dp_core_revision;
-
-	int (*pll_cfg)(struct dp_pll *pll, unsigned long rate);
-	int (*pll_prepare)(struct dp_pll *pll);
-	int (*pll_unprepare)(struct dp_pll *pll);
-};
+struct dp_pll;
 
 struct dp_pll_db {
 	struct dp_pll *pll;
@@ -116,6 +95,37 @@ struct dp_pll_db {
 	u32 cmp_code2_mode0;
 	/* PHY vco divider */
 	u32 phy_vco_div;
+};
+
+struct dp_pll {
+	/* target pll revision information */
+	u32 revision;
+	/* save vco current rate */
+	unsigned long vco_rate;
+	/*
+	 * PLL index if multiple index are available. Eg. in case of
+	 * DSI we have 2 plls.
+	 */
+	uint32_t index;
+	const char *name;
+
+	bool ssc_en;
+	bool bonding_en;
+
+	void *priv;
+	struct dp_pll_db pll_db;
+	struct dp_pll_vco_clk pll_clks[DP_PLL_NUM_CLKS];
+	struct platform_device *pdev;
+	struct dp_parser *parser;
+	struct dp_power *power;
+	struct dp_aux *aux;
+	struct dp_pll_io io;
+	struct clk_onecell_data *clk_data;
+	u32 dp_core_revision;
+
+	int (*pll_cfg)(struct dp_pll *pll, unsigned long rate);
+	int (*pll_prepare)(struct dp_pll *pll);
+	int (*pll_unprepare)(struct dp_pll *pll);
 };
 
 static inline struct dp_pll_vco_clk *to_dp_vco_hw(struct clk_hw *hw)
