@@ -200,6 +200,7 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @fec_feature_enable: FEC feature enable status
  * @dsc_continuous_pps: PPS sent every frame by HW
  * @has_widebus: widebus (2PPC) feature eanble status
+ * @force_connect_mode: force dp in connect mode
  * @mst_fixed_port: mst port_num reserved for fixed topology
  * @qos_cpu_mask: CPU mask for QOS
  * @qos_cpu_latency: CPU Latency setting for QOS
@@ -233,6 +234,7 @@ struct dp_parser {
 	bool dsc_continuous_pps;
 	bool has_widebus;
 	bool gpio_aux_switch;
+	bool force_connect_mode;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;
