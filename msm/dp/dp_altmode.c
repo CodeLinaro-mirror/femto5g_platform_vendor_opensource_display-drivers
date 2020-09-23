@@ -7,6 +7,7 @@
 #include <linux/device.h>
 #include <linux/delay.h>
 #include <linux/module.h>
+#include <linux/version.h>
 #include <linux/kthread.h>
 #include <linux/soc/qcom/altmode-glink.h>
 #include <linux/usb/dwc3-msm.h>
@@ -41,7 +42,12 @@ enum dp_altmode_pin_assignment {
 	DPAM_HPD_F,
 };
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 static int dp_altmode_set_usb_dp_mode(struct dp_altmode_private *altmode)
+#else
+static int dp_altmode_release_ss_lanes(struct dp_altmode_private *altmode,
+		bool multi_func)
+#endif
 {
 	int rc = 0;
 	struct device_node *np;
@@ -70,7 +76,11 @@ static int dp_altmode_set_usb_dp_mode(struct dp_altmode_private *altmode)
 	}
 
 	while (timeout) {
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		rc = dwc3_msm_set_dp_mode(&usb_pdev->dev, altmode->connected, altmode->lanes);
+#else
+		rc = dwc3_msm_release_ss_lane(&usb_pdev->dev, multi_func);
+#endif
 		if (rc != -EBUSY && rc != -EAGAIN)
 			break;
 
@@ -188,7 +198,12 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 
 		altmode->dp_altmode.base.orientation = orientation;
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 10, 0)
 		rc = dp_altmode_set_usb_dp_mode(altmode);
+#else
+		rc = dp_altmode_release_ss_lanes(altmode,
+				altmode->dp_altmode.base.multi_func);
+#endif
 		if (rc)
 			goto ack;
 
