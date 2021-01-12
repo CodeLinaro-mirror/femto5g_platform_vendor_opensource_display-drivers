@@ -9,6 +9,9 @@
 #include "dp_reg.h"
 #include "dp_debug.h"
 
+#define MMSS_DP_PIXEL_BASE_V120			(0x1AC)
+#define MMSS_DP_PIXEL1_BASE_V120		(0x1C4)
+
 #define MMSS_DP_PIXEL_BASE_V130			(0x1A8)
 #define MMSS_DP_PIXEL1_BASE_V130		(0x1C0)
 
@@ -193,11 +196,16 @@ static void dp_catalog_panel_config_msa_v420(struct dp_catalog_panel *panel,
 			reg_off = MMSS_DP_PIXEL1_BASE_V140;
 		else
 			reg_off = MMSS_DP_PIXEL_BASE_V140;
-	} else {
+	} else if (version >= 0x10030000) {
 		if (panel->stream_id == DP_STREAM_1)
 			reg_off = MMSS_DP_PIXEL1_BASE_V130;
 		else
 			reg_off = MMSS_DP_PIXEL_BASE_V130;
+	} else {
+		if (panel->stream_id == DP_STREAM_1)
+			reg_off = MMSS_DP_PIXEL1_BASE_V120;
+		else
+			reg_off = MMSS_DP_PIXEL_BASE_V120;
 	}
 
 
