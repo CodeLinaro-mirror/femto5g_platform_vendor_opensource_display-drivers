@@ -2821,6 +2821,10 @@ static int dp_catalog_init(struct device *dev, struct dp_catalog *dp_catalog,
 		dp_catalog->sub = dp_catalog_get_v200(dev, dp_catalog,
 					&catalog->io);
 		break;
+	case DP_PHY_VERSION_5_0_0:
+		dp_catalog->sub = dp_catalog_get_v500(dev, dp_catalog,
+					&catalog->io);
+		break;
 	default:
 		goto end;
 	}
