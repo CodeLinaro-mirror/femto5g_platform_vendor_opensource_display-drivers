@@ -191,7 +191,12 @@ static void dp_catalog_panel_config_msa_v420(struct dp_catalog_panel *panel,
 	version = dp_catalog_get_dp_core_version(dp_catalog);
 	io_data = catalog->io->dp_mmss_cc;
 
-	if (version >= 0x10040000) {
+	if (catalog->dpc->parser->pixel_base_off[0]) {
+		if (panel->stream_id == DP_STREAM_1)
+			reg_off = catalog->dpc->parser->pixel_base_off[1];
+		else
+			reg_off = catalog->dpc->parser->pixel_base_off[0];
+	} else if (version >= 0x10040000) {
 		if (panel->stream_id == DP_STREAM_1)
 			reg_off = MMSS_DP_PIXEL1_BASE_V140;
 		else
