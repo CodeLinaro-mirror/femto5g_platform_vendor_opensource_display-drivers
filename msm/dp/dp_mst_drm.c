@@ -439,7 +439,7 @@ static bool dp_mst_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	bridge_state = dp_mst_get_bridge_atomic_state(crtc_state->state,
 			bridge);
 	if (IS_ERR(bridge_state)) {
-		DP_ERR("invalid bridge state\n");
+		DP_DEBUG("invalid bridge state\n");
 		ret = false;
 		goto end;
 	}
@@ -1016,7 +1016,7 @@ static bool dp_mst_super_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	bridge_state = dp_mst_get_bridge_atomic_state(crtc_state->state,
 				bridge);
 	if (IS_ERR(bridge_state)) {
-		DP_ERR("Invalid bridge state\n");
+		DP_DEBUG("Invalid bridge state\n");
 		ret = false;
 		goto end;
 	}
@@ -1441,6 +1441,11 @@ static bool dp_mst_atomic_find_super_encoder(struct drm_connector *connector,
 	/* check if super connector is already selected */
 	bridge_state = dp_mst_get_bridge_atomic_state(
 			state->state, &mst->mst_bridge[i]);
+	if (IS_ERR(bridge_state)) {
+		DP_DEBUG("Invalid bridge state\n");
+		return true;
+	}
+
 	if (bridge_state->connector) {
 		if (bridge_state->connector == connector) {
 			if (dp_mst_is_tile_mode(&crtc_state->mode)) {
