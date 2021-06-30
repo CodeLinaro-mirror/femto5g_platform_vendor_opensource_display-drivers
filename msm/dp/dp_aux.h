@@ -46,6 +46,8 @@ struct dp_aux {
 	void *ipc_log_context;
 
 	struct drm_dp_aux *drm_aux;
+	struct drm_connector *connector;
+
 	int (*drm_aux_register)(struct dp_aux *aux, struct drm_device *drm_dev);
 	void (*drm_aux_deregister)(struct dp_aux *aux);
 	void (*isr)(struct dp_aux *aux);

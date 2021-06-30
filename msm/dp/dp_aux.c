@@ -655,6 +655,8 @@ static void dp_aux_init(struct dp_aux *dp_aux, struct dp_aux_cfg *aux_cfg)
 	atomic_set(&aux->aborted, 0);
 	aux->retry_cnt = 0;
 	aux->enabled = true;
+
+	drm_dp_cec_register_connector(&aux->drm_aux, dp_aux->connector);
 }
 
 static void dp_aux_deinit(struct dp_aux *dp_aux)
@@ -679,6 +681,7 @@ static void dp_aux_deinit(struct dp_aux *dp_aux)
 	atomic_set(&aux->aborted, 1);
 	aux->catalog->enable(aux->catalog, false);
 	aux->enabled = false;
+	drm_dp_cec_unregister_connector(&aux->drm_aux);
 }
 
 static int dp_aux_register(struct dp_aux *dp_aux, struct drm_device *drm_dev)
