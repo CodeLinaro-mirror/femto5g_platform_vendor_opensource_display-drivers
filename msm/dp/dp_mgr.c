@@ -1978,6 +1978,9 @@ static int dp_mgr_usbpd_attention_cb(void *data)
 
 	mgr = data;
 
+	if (mgr->hpd->hpd_high && mgr->hpd->hpd_irq)
+		drm_dp_cec_irq(mgr->aux->drm_aux);
+
 	DP_DEBUG("hpd_irq:%d, hpd_high:%d, power_on:%d, is_connected:%d\n",
 			mgr->hpd->hpd_irq, mgr->hpd->hpd_high,
 			!!dp_mgr_state_is(DP_STATE_ENABLED),
@@ -2223,6 +2226,7 @@ static int dp_mgr_init_sub_modules(struct dp_mgr_priv *mgr)
 		mgr->aux = NULL;
 		goto error_aux;
 	}
+	mgr->aux->connector = mgr->client.base_connector;
 
 	rc = mgr->aux->drm_aux_register(mgr->aux, mgr->client.drm_dev);
 	if (rc) {
