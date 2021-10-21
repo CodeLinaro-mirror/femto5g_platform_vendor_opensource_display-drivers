@@ -156,6 +156,12 @@ struct dp_mst_encoder_info_cache {
 #define to_dp_mst_bridge_state(x) \
 		to_dp_mst_bridge_priv_state((x)->obj.state)
 
+static void dp_mst_register_connector(struct drm_connector *connector);
+static void dp_mst_destroy_connector(struct drm_connector *connector);
+
+static void dp_mst_register_fixed_connector(struct drm_connector *connector);
+static void dp_mst_destroy_fixed_connector(struct drm_connector *connector);
+
 struct dp_mst_private dp_mst;
 struct dp_mst_encoder_info_cache dp_mst_enc_cache;
 
@@ -1399,6 +1405,8 @@ dp_mst_add_connector(struct drm_dp_mst_topology_mgr *mgr,
 		.pre_destroy = dp_mst_connector_pre_destroy,
 		.update_pps = dp_connector_update_pps,
 		.install_properties = dp_connector_install_properties,
+		.late_register = dp_mst_register_connector,
+		.early_unregister = dp_mst_destroy_connector,
 	};
 	struct dp_mst_private *dp_mst;
 	struct drm_device *dev;
@@ -1468,6 +1476,23 @@ dp_mst_add_connector(struct drm_dp_mst_topology_mgr *mgr,
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, connector->base.id);
 
 	return connector;
+}
+
+static void dp_mst_register_connector(struct drm_connector *connector)
+{
+	DP_MST_DEBUG("enter\n");
+
+	connector->status = connector->funcs->detect(connector, false);
+
+	DP_MST_INFO("register mst connector id:%d\n",
+			connector->base.id);
+}
+
+static void dp_mst_destroy_connector(struct drm_connector *connector)
+{
+	DP_MST_DEBUG("enter\n");
+
+	DP_MST_INFO("destroy mst connector id:%d\n", connector->base.id);
 }
 
 static int
@@ -1577,6 +1602,10 @@ dp_mst_find_fixed_connector(struct dp_mst_private *dp_mst,
 		if (dp_mst->mst_bridge[i].fixed_port_num == port_num) {
 			connector = dp_mst->mst_bridge[i].fixed_connector;
 			c_conn = to_sde_connector(connector);
+
+			/* make sure previous connector is destroyed */
+			flush_work(&dp_mst->mst_mgr.delayed_destroy_work);
+
 			c_conn->mst_port = port;
 			dp_display->mst_connector_update_link_info(dp_display,
 					connector);
@@ -1698,6 +1727,49 @@ static int dp_mst_fixed_connector_set_info_blob(
 	return 0;
 }
 
+static void dp_mst_register_fixed_connector(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn = to_sde_connector(connector);
+	struct dp_display *dp_display = c_conn->display;
+	struct dp_mst_private *dp_mst = dp_display->dp_mst_prv_info;
+	int i;
+
+	DP_MST_DEBUG("enter\n");
+
+	/* skip connector registered for fixed topology ports */
+	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
+		if (dp_mst->mst_bridge[i].fixed_connector == connector) {
+			DP_MST_DEBUG("found fixed connector %d\n",
+					DRMID(connector));
+			return;
+		}
+	}
+
+	dp_mst_register_connector(connector);
+}
+
+static void dp_mst_destroy_fixed_connector(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn = to_sde_connector(connector);
+	struct dp_display *dp_display = c_conn->display;
+	struct dp_mst_private *dp_mst = dp_display->dp_mst_prv_info;
+	int i;
+
+	DP_MST_DEBUG("enter\n");
+
+	/* skip connector destroy for fixed topology ports */
+	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
+		if (dp_mst->mst_bridge[i].fixed_connector == connector) {
+			dp_mst->mst_bridge[i].fixed_port_added = false;
+			DP_MST_DEBUG("destroy fixed connector %d\n",
+					DRMID(connector));
+			return;
+		}
+	}
+
+	dp_mst_destroy_connector(connector);
+}
+
 static struct drm_connector *
 dp_mst_drm_fixed_connector_init(struct dp_display *dp_display,
 			struct drm_encoder *encoder)
@@ -1714,6 +1786,8 @@ dp_mst_drm_fixed_connector_init(struct dp_display *dp_display,
 		.atomic_check = dp_mst_connector_atomic_check,
 		.config_hdr = dp_mst_connector_config_hdr,
 		.pre_destroy = dp_mst_connector_pre_destroy,
+		.late_register = dp_mst_register_fixed_connector,
+		.early_unregister = dp_mst_destroy_fixed_connector,
 	};
 	struct drm_device *dev;
 	struct drm_connector *connector;
