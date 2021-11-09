@@ -8,6 +8,7 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/err.h>
+#include <linux/version.h>
 
 #include "msm_drv.h"
 #include "sde_connector.h"
@@ -6547,12 +6548,21 @@ static int dsi_host_ext_attach(struct mipi_dsi_host *host,
 			panel->video_config.traffic_mode =
 					DSI_VIDEO_TRAFFIC_SYNC_START_EVENTS;
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 		panel->video_config.hsa_lp11_en =
 			dsi->mode_flags & MIPI_DSI_MODE_VIDEO_NO_HSA;
 		panel->video_config.hbp_lp11_en =
 			dsi->mode_flags & MIPI_DSI_MODE_VIDEO_NO_HBP;
 		panel->video_config.hfp_lp11_en =
 			dsi->mode_flags & MIPI_DSI_MODE_VIDEO_NO_HFP;
+#else
+		panel->video_config.hsa_lp11_en =
+			dsi->mode_flags & MIPI_DSI_MODE_VIDEO_HSA;
+		panel->video_config.hbp_lp11_en =
+			dsi->mode_flags & MIPI_DSI_MODE_VIDEO_HBP;
+		panel->video_config.hfp_lp11_en =
+			dsi->mode_flags & MIPI_DSI_MODE_VIDEO_HFP;
+#endif
 		panel->video_config.pulse_mode_hsa_he =
 			dsi->mode_flags & MIPI_DSI_MODE_VIDEO_HSE;
 	} else {
