@@ -26,6 +26,7 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_flip_work.h>
+#include <linux/version.h>
 
 #include "sde_kms.h"
 #include "sde_hw_lm.h"
@@ -3601,8 +3602,13 @@ static void _sde_crtc_clear_all_blend_stages(struct sde_crtc *sde_crtc)
 	}
 }
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static void sde_crtc_atomic_begin(struct drm_crtc *crtc,
+		struct drm_atomic_state *state)
+#else
 static void sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_state)
+#endif
 {
 	struct sde_crtc *sde_crtc;
 	struct drm_encoder *encoder;
@@ -3612,6 +3618,10 @@ static void sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	struct sde_crtc_state *cstate;
 	bool cont_splash_enabled = false;
 	size_t i;
+
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+	struct drm_crtc_state *old_state = drm_atomic_get_new_crtc_state(state, crtc);
+#endif
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -3769,8 +3779,13 @@ static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
 		ctl->ops.hw_fence_trigger_sw_override(ctl);
 }
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static void sde_crtc_atomic_flush(struct drm_crtc *crtc,
+		struct drm_atomic_state *state)
+#else
 static void sde_crtc_atomic_flush(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_crtc_state)
+#endif
 {
 	struct sde_crtc *sde_crtc;
 	struct drm_device *dev;
@@ -4700,8 +4715,13 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	mutex_unlock(&sde_crtc->crtc_lock);
 }
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static void sde_crtc_enable(struct drm_crtc *crtc,
+		struct drm_atomic_state *old_state)
+#else
 static void sde_crtc_enable(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_crtc_state)
+#endif
 {
 	struct sde_crtc *sde_crtc;
 	struct drm_encoder *encoder;
@@ -5517,8 +5537,13 @@ static int _sde_crtc_check_fsc_planes(struct drm_crtc *crtc,
 	return 0;
 }
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static int sde_crtc_atomic_check(struct drm_crtc *crtc,
+		struct drm_atomic_state *atomic_state)
+#else
 static int sde_crtc_atomic_check(struct drm_crtc *crtc,
 		struct drm_crtc_state *state)
+#endif
 {
 	struct drm_device *dev;
 	struct sde_crtc *sde_crtc;
@@ -5529,6 +5554,9 @@ static int sde_crtc_atomic_check(struct drm_crtc *crtc,
 	struct sde_multirect_plane_states *multirect_plane = NULL;
 	struct drm_connector *conn;
 	struct drm_connector_list_iter conn_iter;
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+	struct drm_crtc_state *state = drm_atomic_get_new_crtc_state(atomic_state, crtc);
+#endif
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
