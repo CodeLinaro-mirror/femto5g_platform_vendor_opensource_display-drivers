@@ -4215,6 +4215,10 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 	struct msm_mmu *mmu;
 	int i, ret;
 
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
+	int early_map = 0;
+#endif
+
 	if (!sde_kms || !sde_kms->dev || !sde_kms->dev->dev)
 		return -EINVAL;
 
@@ -4254,12 +4258,22 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 		 * disable early-map which would have been enabled during
 		 * bootup by smmu through the device-tree hint for cont-spash
 		 */
+
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 		ret = mmu->funcs->enable_smmu_translations(mmu);
 		if (ret) {
 			SDE_ERROR("failed to enable_s1_translations ret:%d\n", ret);
 			goto enable_trans_fail;
 		}
-
+#else
+		ret = mmu->funcs->set_attribute(mmu, DOMAIN_ATTR_EARLY_MAP,
+				 &early_map);
+		if (ret) {
+			SDE_ERROR("failed to set_att ret:%d, early_map:%d\n",
+					ret, early_map);
+			goto enable_trans_fail;
+		}
+#endif
 		if (i == MSM_SMMU_DOMAIN_UNSECURE && sde_kms->ipcc_base_addr
 			 && test_bit(SDE_MDP_HAS_HW_FENCE_SUPPORT,
 				&sde_kms->catalog->mdp[0].features)) {

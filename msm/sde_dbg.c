@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2009-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -688,8 +688,13 @@ void sde_mini_dump_add_va_region(const char *name, u32 size, void *virt_addr)
 }
 #endif
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static int _sde_dump_reg_range_cmp(void *priv, const struct list_head *a,
+		const struct list_head *b)
+#else
 static int _sde_dump_reg_range_cmp(void *priv, struct list_head *a,
 		struct list_head *b)
+#endif
 {
 	struct sde_dbg_reg_range *ar, *br;
 
@@ -702,8 +707,13 @@ static int _sde_dump_reg_range_cmp(void *priv, struct list_head *a,
 	return ar->offset.start - br->offset.start;
 }
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static int _sde_dump_blk_phys_addr_cmp(void *priv, const struct list_head *a,
+		const struct list_head *b)
+#else
 static int _sde_dump_blk_phys_addr_cmp(void *priv, struct list_head *a,
 		struct list_head *b)
+#endif
 {
 	struct sde_dbg_reg_base *ar, *br;
 
