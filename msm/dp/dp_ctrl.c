@@ -1278,6 +1278,10 @@ static int dp_ctrl_stream_on(struct dp_ctrl *dp_ctrl, struct dp_panel *panel)
 
 	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
 
+	/* Abort is requested, exit */
+	if (atomic_read(&ctrl->aborted))
+		return -EPERM;
+
 	if (!ctrl->power_on) {
 		DP_DEBUG("controller powered off\n");
 		return -EPERM;
