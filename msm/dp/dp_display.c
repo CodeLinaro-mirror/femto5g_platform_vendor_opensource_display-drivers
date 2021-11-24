@@ -1915,9 +1915,6 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 		return 0;
 	}
 
-	if (dp->debug->psm_enabled && dp_display_state_is(DP_STATE_READY))
-		dp->link->psm_config(dp->link, &dp->panel->link_info, true);
-
 	dp_display_disconnect_sync(dp);
 
 	if (!dp->parser->force_connect_mode) {
