@@ -8,6 +8,7 @@
 #include <linux/completion.h>
 #include <linux/delay.h>
 #include <drm/drm_fixed.h>
+#include <linux/version.h>
 
 #include "dp_ctrl.h"
 #include "dp_debug.h"
@@ -365,7 +366,11 @@ static int dp_ctrl_link_training_1(struct dp_ctrl_private *ctrl)
 		if (ret)
 			break;
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 		drm_dp_link_train_clock_recovery_delay(ctrl->aux->drm_aux, ctrl->panel->dpcd);
+#else
+		drm_dp_link_train_clock_recovery_delay(ctrl->panel->dpcd);
+#endif
 
 		ret = dp_ctrl_read_link_status(ctrl, link_status);
 		if (ret)
@@ -450,7 +455,11 @@ static int dp_ctrl_link_rate_down_shift(struct dp_ctrl_private *ctrl)
 static void dp_ctrl_clear_training_pattern(struct dp_ctrl_private *ctrl)
 {
 	dp_ctrl_update_sink_pattern(ctrl, 0);
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 	drm_dp_link_train_channel_eq_delay(ctrl->aux->drm_aux, ctrl->panel->dpcd);
+#else
+	drm_dp_link_train_channel_eq_delay(ctrl->panel->dpcd);
+#endif
 }
 
 static int dp_ctrl_link_training_2(struct dp_ctrl_private *ctrl)
@@ -496,7 +505,11 @@ static int dp_ctrl_link_training_2(struct dp_ctrl_private *ctrl)
 		if (ret)
 			break;
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 		drm_dp_link_train_channel_eq_delay(ctrl->aux->drm_aux, ctrl->panel->dpcd);
+#else
+		drm_dp_link_train_channel_eq_delay(ctrl->panel->dpcd);
+#endif
 
 		ret = dp_ctrl_read_link_status(ctrl, link_status);
 		if (ret)
