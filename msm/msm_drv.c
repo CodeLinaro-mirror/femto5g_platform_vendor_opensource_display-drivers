@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -48,6 +48,7 @@
 #include <drm/drm_drv.h>
 #include <drm/drm_auth.h>
 #include <drm/drm_probe_helper.h>
+#include <linux/version.h>
 
 #include "msm_drv.h"
 #include "msm_gem.h"
@@ -1739,11 +1740,13 @@ static const struct drm_ioctl_desc msm_ioctls[] = {
 			DRM_UNLOCKED),
 };
 
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 static const struct vm_operations_struct vm_ops = {
 	.fault = msm_gem_fault,
 	.open = drm_gem_vm_open,
 	.close = drm_gem_vm_close,
 };
+#endif
 
 static const struct file_operations fops = {
 	.owner              = THIS_MODULE,
@@ -1765,24 +1768,22 @@ static struct drm_driver msm_driver = {
 	.open               = msm_open,
 	.postclose          = msm_postclose,
 	.lastclose          = msm_lastclose,
-	.irq_handler        = msm_irq,
-	.irq_preinstall     = msm_irq_preinstall,
-	.irq_postinstall    = msm_irq_postinstall,
-	.irq_uninstall      = msm_irq_uninstall,
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 	.gem_free_object_unlocked    = msm_gem_free_object,
 	.gem_vm_ops         = &vm_ops,
+	.gem_prime_export   = drm_gem_prime_export,
+	.gem_prime_pin      = msm_gem_prime_pin,
+	.gem_prime_unpin    = msm_gem_prime_unpin,
+	.gem_prime_get_sg_table = msm_gem_prime_get_sg_table,
+	.gem_prime_vmap     = msm_gem_prime_vmap,
+	.gem_prime_vunmap   = msm_gem_prime_vunmap,
+#endif
 	.dumb_create        = msm_gem_dumb_create,
 	.dumb_map_offset    = msm_gem_dumb_map_offset,
 	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
-	.gem_prime_export   = drm_gem_prime_export,
 	.gem_prime_import   = msm_gem_prime_import,
-	.gem_prime_pin      = msm_gem_prime_pin,
-	.gem_prime_unpin    = msm_gem_prime_unpin,
-	.gem_prime_get_sg_table = msm_gem_prime_get_sg_table,
 	.gem_prime_import_sg_table = msm_gem_prime_import_sg_table,
-	.gem_prime_vmap     = msm_gem_prime_vmap,
-	.gem_prime_vunmap   = msm_gem_prime_vunmap,
 	.gem_prime_mmap     = msm_gem_prime_mmap,
 	.ioctls             = msm_ioctls,
 	.num_ioctls         = ARRAY_SIZE(msm_ioctls),
