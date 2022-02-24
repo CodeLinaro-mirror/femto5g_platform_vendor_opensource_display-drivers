@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DSI_DISPLAY_H_
@@ -111,7 +111,6 @@ struct dsi_display_boot_param {
  * @shadow_cphy_clks:  Used for C-phy clock switch.
  */
 struct dsi_display_clk_info {
-	struct dsi_clk_link_set xo_clks;
 	struct dsi_clk_link_set src_clks;
 	struct dsi_clk_link_set mux_clks;
 	struct dsi_clk_link_set cphy_clks;
@@ -800,13 +799,5 @@ int dsi_display_dump_clks_state(struct dsi_display *display);
  * @display:         Handle to display
  */
 void dsi_display_dfps_update_parent(struct dsi_display *display);
-
-/**
- * dsi_display_unset_clk_src() - reset the clocks source to default
- * @display:         Handle to display
- *
- * Return: Zero on Success
- */
-int dsi_display_unset_clk_src(struct dsi_display *display);
 
 #endif /* _DSI_DISPLAY_H_ */

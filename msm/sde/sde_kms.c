@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -28,7 +29,6 @@
 #include <linux/memblock.h>
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_probe_helper.h>
-#include <linux/suspend.h>
 
 #include "msm_drv.h"
 #include "msm_mmu.h"
@@ -3687,32 +3687,6 @@ void sde_kms_display_early_wakeup(struct drm_device *dev,
 	drm_connector_list_iter_end(&conn_iter);
 }
 
-#ifdef CONFIG_DEEPSLEEP
-static int _sde_kms_pm_suspend_unset_clk_src(struct sde_kms *sde_kms)
-{
-	int i, rc = 0;
-
-	if (mem_sleep_current == PM_SUSPEND_MEM) {
-		SDE_INFO("Entering Deepsleep\n");
-
-		for (i = 0; i < sde_kms->dsi_display_count; i++) {
-			rc = dsi_display_unset_clk_src(sde_kms->dsi_displays[i]);
-			if (rc) {
-				SDE_ERROR("failed to unset clks rc:%d\n", rc);
-				return rc;
-			}
-		}
-	}
-
-	return rc;
-}
-#else
-static inline int _sde_kms_pm_suspend_unset_clk_src(struct sde_kms *sde_kms)
-{
-	return 0;
-}
-#endif
-
 static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	struct device *dev)
 {
@@ -3903,9 +3877,6 @@ unlock:
 	 */
 	pm_runtime_put_sync(dev);
 	pm_runtime_get_noresume(dev);
-
-	/* reset clock source based on PM suspend state */
-	_sde_kms_pm_suspend_unset_clk_src(sde_kms);
 
 	/* dump clock state before entering suspend */
 	if (sde_kms->pm_suspend_clk_dump)
