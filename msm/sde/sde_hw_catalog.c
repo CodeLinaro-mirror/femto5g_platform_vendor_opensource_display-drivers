@@ -2586,13 +2586,15 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 
 		of_property_read_string_index(np,
 			mixer_prop[MIXER_DCWB].prop_name, i, &dcwb_pref);
-		if (dcwb_pref && !strcmp(dcwb_pref, "dcwb")) {
+		if (dcwb_pref && !strcmp(dcwb_pref, "dcwb"))
 			set_bit(SDE_DISP_DCWB_PREF, &mixer->features);
-			if (mixer->base == DUMMY_SDE_BLOCK_BASE) {
-				mixer->base = 0x0;
-				mixer->len = 0;
-				mixer->dummy_mixer = true;
-			}
+
+		if ((mixer->features & BIT(SDE_MIXER_IS_VIRTUAL) ||
+				mixer->features & BIT(SDE_DISP_DCWB_PREF)) &&
+				(mixer->base == DUMMY_SDE_BLOCK_BASE)) {
+			mixer->base = 0x0;
+			mixer->len = 0;
+			mixer->dummy_mixer = true;
 		}
 
 		mixer->pingpong = pp_count > 0 ? pp_idx + PINGPONG_0
