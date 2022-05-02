@@ -1207,7 +1207,8 @@ static void dp_display_host_deinit(struct dp_display_private *dp)
 	DP_INFO("[OK]\n");
 }
 
-static int dp_display_process_hpd_high(struct dp_display_private *dp)
+static int dp_display_process_hpd_high(struct dp_display_private *dp,
+		bool force)
 {
 	int rc = -EINVAL;
 	unsigned long wait_timeout_ms;
@@ -1216,7 +1217,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
 
-	if (dp_display_state_is(DP_STATE_CONNECTED)) {
+	if (dp_display_state_is(DP_STATE_CONNECTED) && !force) {
 		DP_DEBUG("dp already connected, skipping hpd high\n");
 		mutex_unlock(&dp->session_lock);
 		return -EISCONN;
@@ -1677,7 +1678,7 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 
 		dp_display_send_force_connect_event(dp);
 
-		dp_display_process_hpd_high(dp);
+		dp_display_process_hpd_high(dp, false);
 
 		/* If stream isn't running, started here */
 		if (!dp_display_state_is(DP_STATE_ENABLED) && dp->dp_display.base_connector)
@@ -2148,7 +2149,7 @@ static void dp_display_connect_work(struct work_struct *work)
 
 	mutex_unlock(&dp->session_lock);
 
-	rc = dp_display_process_hpd_high(dp);
+	rc = dp_display_process_hpd_high(dp, dp->parser->force_connect_mode);
 
 	if (!rc && dp->panel->video_test)
 		dp->link->send_test_response(dp->link);
@@ -2466,7 +2467,7 @@ skip_node_name:
 		rc = dp_display_host_init(dp);
 		if (rc)
 			DP_ERR("Host init Failed");
-		dp_display_process_hpd_high(dp);
+		dp_display_process_hpd_high(dp, true);
 		dp_display_send_hpd_notification(dp);
 	}
 
