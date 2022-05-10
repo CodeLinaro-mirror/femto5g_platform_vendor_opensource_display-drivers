@@ -210,6 +210,8 @@ static u32 sspp_mapping[SSPP_MAX] = {
 	[SSPP_DMA1] = DMA1,
 	[SSPP_DMA2] = DMA2,
 	[SSPP_DMA3] = DMA3,
+	[SSPP_DMA4] = DMA4,
+	[SSPP_DMA5] = DMA5,
 };
 
 static u32 ltm_mapping[LTM_MAX] = {
@@ -2184,8 +2186,7 @@ static int reg_dma_sspp_check(struct sde_hw_pipe *ctx, void *cfg,
 	if (IS_ERR_OR_NULL(dma_ops))
 		return -EINVAL;
 
-	if (!hw_cfg->ctl || ctx->idx > SSPP_DMA3 || ctx->idx <= SSPP_NONE ||
-		feature >= REG_DMA_FEATURES_MAX) {
+	if (!hw_cfg->ctl || !SDE_SSPP_VALID(ctx->idx) || feature >= REG_DMA_FEATURES_MAX) {
 		DRM_ERROR("invalid ctl %pK sspp idx %d feature %d\n",
 			hw_cfg->ctl, ctx->idx, feature);
 		return -EINVAL;
@@ -4124,9 +4125,9 @@ void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
 		data[j++] = (u16)(lut_cfg->c0[i] << 4);
 		data[j++] = (u16)(lut_cfg->c1[i] << 4);
 	}
-	data[j++] = (4095 << 4);
-	data[j++] = (4095 << 4);
-	data[j++] = (4095 << 4);
+	data[j++] = lut_cfg->c0_last ? (u16)(lut_cfg->c0_last << 4) : (u16)(4095 << 4);
+	data[j++] = lut_cfg->c1_last ? (u16)(lut_cfg->c1_last << 4) : (u16)(4095 << 4);
+	data[j++] = lut_cfg->c2_last ? (u16)(lut_cfg->c2_last << 4) : (u16)(4095 << 4);
 	REG_DMA_SETUP_OPS(dma_write_cfg, 0, (u32 *)data, len,
 			REG_BLK_LUT_WRITE, 0, 0, 0);
 	/* table select is only relevant to SSPP Gamut */
