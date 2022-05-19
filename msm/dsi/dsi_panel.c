@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -3569,6 +3569,8 @@ static int dsi_panel_parse_esd_config(struct dsi_panel *panel)
 				rc = -EINVAL;
 				goto error;
 			}
+		} else if (!strcmp(string, "esd_sw_sim_success")) {
+			esd_config->status_mode = ESD_MODE_SW_SIM_SUCCESS;
 		} else {
 			DSI_ERR("No valid panel-status-check-mode string\n");
 			rc = -EINVAL;
@@ -3592,6 +3594,8 @@ static int dsi_panel_parse_esd_config(struct dsi_panel *panel)
 		esd_mode = "bta_trigger";
 	} else if (panel->esd_config.status_mode ==  ESD_MODE_PANEL_TE) {
 		esd_mode = "te_check";
+	} else if (panel->esd_config.status_mode ==  ESD_MODE_SW_SIM_SUCCESS) {
+		esd_mode = "sim_success";
 	}
 
 	DSI_DEBUG("ESD enabled with mode: %s\n", esd_mode);
