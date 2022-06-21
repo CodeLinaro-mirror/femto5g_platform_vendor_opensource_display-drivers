@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -993,17 +993,21 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 		struct sde_encoder_phys *phys_enc, bool notify)
 {
 	struct sde_encoder_wait_info wait_info = {0};
-	int ret = 0;
+	int ret = 0, new_cnt;
 	u32 event = SDE_ENCODER_FRAME_EVENT_ERROR |
 		SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE |
 		SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE;
 	struct drm_connector *conn;
+	struct sde_hw_ctl *hw_ctl;
+	u32 flush_register = 0xebad;
+	bool timeout = false;
 
-	if (!phys_enc) {
+	if (!phys_enc || !phys_enc->hw_ctl) {
 		pr_err("invalid encoder\n");
 		return -EINVAL;
 	}
 
+	hw_ctl = phys_enc->hw_ctl;
 	conn = phys_enc->connector;
 
 	if (!sde_encoder_is_bridge_enabled(phys_enc->parent)) {
@@ -1021,20 +1025,42 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 			&wait_info);
 
 skip:
-	if (notify && (ret == -ETIMEDOUT) &&
-	    atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0) &&
-	    phys_enc->parent_ops.handle_frame_done) {
-		phys_enc->parent_ops.handle_frame_done(
-			phys_enc->parent, phys_enc, event);
+	if (ret == -ETIMEDOUT) {
+		new_cnt = atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
+		timeout = true;
 
-		if (sde_encoder_recovery_events_enabled(phys_enc->parent))
-			sde_connector_event_notify(conn,
-				DRM_EVENT_SDE_HW_RECOVERY,
-				sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
+		/*
+		 * Reset ret when flush register is consumed. This handles a race condition between
+		 * irq wait timeout handler reading the register status and the actual IRQ handler
+		 */
+		if (hw_ctl->ops.get_flush_register)
+			flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
+		if (!flush_register)
+			ret = 0;
+
+		SDE_EVT32(DRMID(phys_enc->parent), new_cnt, flush_register, ret,
+				SDE_EVTLOG_FUNC_CASE1);
 	}
 
-	SDE_EVT32(DRMID(phys_enc->parent), event, notify, ret,
-			ret ? SDE_EVTLOG_FATAL : 0);
+	if (notify && timeout && atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0)
+			&& phys_enc->parent_ops.handle_frame_done) {
+		phys_enc->parent_ops.handle_frame_done(phys_enc->parent, phys_enc, event);
+
+		if (ret == -ETIMEDOUT) {
+			SDE_INFO("enc%d Wait for vblank timeout %dms\n", DRMID(phys_enc->parent),
+								wait_info.timeout_ms);
+			/* notify only on actual timeout cases */
+			if (sde_encoder_recovery_events_enabled(phys_enc->parent)) {
+				SDE_INFO("enc%d notify hw recovery.\n", DRMID(phys_enc->parent));
+				sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
+					sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
+			}
+		}
+	}
+
+	SDE_EVT32(DRMID(phys_enc->parent), event, notify, timeout, ret,
+			ret ? SDE_EVTLOG_FATAL : 0, SDE_EVTLOG_FUNC_EXIT);
+
 	return ret;
 }
 
