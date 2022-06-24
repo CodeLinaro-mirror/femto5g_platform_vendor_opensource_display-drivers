@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -605,7 +606,7 @@ int sde_wb_get_output_roi(struct sde_wb_device *wb_dev, struct sde_rect *roi)
 	return rc;
 }
 
-u32 sde_wb_get_num_of_displays(void)
+u32 sde_wb_get_num_of_displays(struct drm_device *dev)
 {
 	u32 count = 0;
 	struct sde_wb_device *wb_dev;
@@ -614,14 +615,15 @@ u32 sde_wb_get_num_of_displays(void)
 
 	mutex_lock(&sde_wb_list_lock);
 	list_for_each_entry(wb_dev, &sde_wb_list, wb_list) {
-		count++;
+		if (wb_dev->drm_dev == dev)
+			count++;
 	}
 	mutex_unlock(&sde_wb_list_lock);
 
 	return count;
 }
 
-int wb_display_get_displays(void **display_array, u32 max_display_count)
+int wb_display_get_displays(struct drm_device *dev, void **display_array, u32 max_display_count)
 {
 	struct sde_wb_device *curr;
 	int i = 0;
@@ -638,7 +640,8 @@ int wb_display_get_displays(void **display_array, u32 max_display_count)
 	list_for_each_entry(curr, &sde_wb_list, wb_list) {
 		if (i >= max_display_count)
 			break;
-		display_array[i++] = curr;
+		if (curr->drm_dev == dev)
+			display_array[i++] = curr;
 	}
 	mutex_unlock(&sde_wb_list_lock);
 
