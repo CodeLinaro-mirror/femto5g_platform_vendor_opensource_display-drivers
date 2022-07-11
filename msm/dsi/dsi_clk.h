@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -289,6 +290,16 @@ int dsi_display_link_clk_force_update_ctrl(void *handle);
  * return: error code in case of failure or 0 for success.
  */
 int dsi_display_clk_ctrl(void *handle, u32 clk_type, u32 clk_state);
+
+/**
+ * dsi_display_clk_ctrl_nolock() - set frequencies for link clks
+ * @handle:     Handle of desired DSI clock client.
+ * @clk_type:   Clock which is being controlled.
+ * @clk_state:  Desired state of clock
+ *
+ * return: error code in case of failure or 0 for success.
+ */
+int dsi_display_clk_ctrl_nolock(void *handle, u32 clk_type, u32 clk_state);
 
 /**
  * dsi_clk_set_link_frequencies() - set frequencies for link clks
