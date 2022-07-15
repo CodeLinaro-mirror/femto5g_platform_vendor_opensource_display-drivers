@@ -54,6 +54,7 @@
 #define SDE_HW_VER_830	SDE_HW_VER(8, 3, 0) /* parrot */
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_910	SDE_HW_VER(9, 1, 0) /* neo */
+#define SDE_HW_VER_930	SDE_HW_VER(9, 3, 0) /* anorak */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
 #define IS_SDE_MAJOR_SAME(rev1, rev2)   \
@@ -84,6 +85,7 @@
 #define IS_PARROT_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_830)
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
 #define IS_NEO_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_910)
+#define IS_ANORAK_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_930)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
