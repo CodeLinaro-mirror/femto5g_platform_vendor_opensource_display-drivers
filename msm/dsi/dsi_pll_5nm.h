@@ -222,7 +222,20 @@
 enum {
 	DSI_PLL_0,
 	DSI_PLL_1,
+	DSI_PLL_2,
+	DSI_PLL_3,
 	DSI_PLL_MAX
+};
+
+enum {
+        MDSS_0_DSI0_PLL_BYTECLK,
+        MDSS_0_DSI0_PLL_DSICLK,
+        MDSS_0_DSI1_PLL_BYTECLK,
+        MDSS_0_DSI1_PLL_DSICLK,
+        MDSS_1_DSI0_PLL_BYTECLK,
+        MDSS_1_DSI0_PLL_DSICLK,
+        MDSS_1_DSI1_PLL_BYTECLK,
+        MDSS_1_DSI1_PLL_DSICLK,
 };
 
 struct dsi_pll_div_table pll_5nm_dphy_lb[] = {
