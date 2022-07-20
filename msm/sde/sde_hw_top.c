@@ -148,6 +148,18 @@ static void sde_hw_setup_pp_split(struct sde_hw_mdp *mdp,
 	}
 }
 
+static void sde_hw_setup_dpu_sync_intf_mux(struct sde_hw_mdp *mdp, int intf_idx)
+{
+	struct sde_hw_blk_reg_map *c;
+
+	if (!mdp)
+		return;
+
+	c = &mdp->hw;
+
+	SDE_REG_WRITE(c, MDP_DPU_SYNC_INTF_MUX, intf_idx);
+}
+
 static void sde_hw_setup_cdm_output(struct sde_hw_mdp *mdp,
 		struct cdm_output_cfg *cfg)
 {
@@ -534,6 +546,9 @@ static void _setup_mdp_ops(struct sde_hw_mdp_ops *ops,
 			cap & BIT(SDE_MDP_DHDR_MEMPOOL))
 		ops->set_hdr_plus_metadata = sde_hw_set_hdr_plus_metadata;
 	ops->get_autorefresh_status = sde_hw_get_autorefresh_status;
+
+	if (cap & BIT(SDE_MDP_DUAL_DPU_SYNC))
+		ops->dpu_sync_intf_mux = sde_hw_setup_dpu_sync_intf_mux;
 }
 
 static const struct sde_mdp_cfg *_top_offset(enum sde_mdp mdp,
