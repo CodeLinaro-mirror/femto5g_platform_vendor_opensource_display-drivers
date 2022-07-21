@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -209,4 +210,7 @@ int dsi_pll_init(struct platform_device *pdev,
 
 void dsi_pll_parse_dfps_data(struct platform_device *pdev, struct dsi_pll_resource *pll_res);
 
+int dsi_pll_program_slave(struct dsi_pll_resource *pll_res);
+
+int dsi_pll_5nm_program_slave(struct dsi_pll_resource *pll_res);
 #endif
