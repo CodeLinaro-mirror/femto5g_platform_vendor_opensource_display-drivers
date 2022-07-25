@@ -133,7 +133,7 @@ struct sde_hw_ds *sde_hw_ds_init(enum sde_ds idx,
 	}
 
 	if (cfg->len) {
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name,
 				hw_ds->hw.blk_off + cfg->base,
 				hw_ds->hw.blk_off + cfg->base + cfg->len,
 				hw_ds->hw.xin_id);

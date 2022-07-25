@@ -100,7 +100,7 @@ static void _sde_hw_cwb_ctrl_init(struct sde_mdss_cfg *m,
 		snprintf(name, sizeof(name), "cwb%d", i);
 		blk_off = b->blk_off + (m->cwb_blk_stride * i);
 
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, name,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, name,
 				blk_off, blk_off + b->length, 0xff);
 	}
 }
@@ -125,7 +125,7 @@ static void _sde_hw_dcwb_ctrl_init(struct sde_mdss_cfg *m,
 		snprintf(name, sizeof(name), "dcwb%d", i);
 		blk_off = b->blk_off + (m->cwb_blk_stride * i);
 
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, name,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, name,
 				blk_off, blk_off + b->length, 0xff);
 	}
 }
@@ -622,7 +622,7 @@ struct sde_hw_wb *sde_hw_wb_init(enum sde_wb idx,
 		}
 	}
 
-	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
+	sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);
 
 	if (test_bit(SDE_WB_CWB_CTRL, &cfg->features))

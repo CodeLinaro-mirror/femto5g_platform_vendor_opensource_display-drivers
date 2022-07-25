@@ -2148,7 +2148,6 @@ static int dsi_ctrl_dev_probe(struct platform_device *pdev)
 	}
 
 	item->ctrl = dsi_ctrl;
-	sde_dbg_dsi_ctrl_register(dsi_ctrl->hw.base, dsi_ctrl->name);
 
 	mutex_lock(&dsi_ctrl_list_lock);
 	list_add(&item->list, &dsi_ctrl_list);
@@ -2378,8 +2377,10 @@ int dsi_ctrl_drv_init(struct dsi_ctrl *dsi_ctrl, struct dentry *parent)
 		goto error;
 	}
 
+	sde_dbg_dsi_ctrl_register(dsi_ctrl->drm_dev, dsi_ctrl->hw.base, dsi_ctrl->name);
+
 	snprintf(dbg_name, DSI_DEBUG_NAME_LEN, "dsi%d_ctrl", dsi_ctrl->cell_index);
-	sde_dbg_reg_register_base(dbg_name, dsi_ctrl->hw.base,
+	sde_dbg_reg_register_base(dsi_ctrl->drm_dev, dbg_name, dsi_ctrl->hw.base,
 			msm_iomap_size(dsi_ctrl->pdev, "dsi_ctrl"),
 			msm_get_phys_addr(dsi_ctrl->pdev, "dsi_ctrl"), SDE_DBG_DSI);
 

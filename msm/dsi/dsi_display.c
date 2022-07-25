@@ -5670,6 +5670,8 @@ static int dsi_display_bind(struct device *dev,
 
 	display_for_each_ctrl(i, display) {
 		display_ctrl = &display->ctrl[i];
+		display_ctrl->ctrl->drm_dev = drm;
+
 		rc = dsi_ctrl_drv_init(display_ctrl->ctrl, display->root);
 		if (rc) {
 			DSI_ERR("[%s] failed to initialize ctrl[%d], rc=%d\n",
@@ -5678,6 +5680,7 @@ static int dsi_display_bind(struct device *dev,
 		}
 		display_ctrl->ctrl->horiz_index = i;
 
+		display_ctrl->phy->drm_dev = drm;
 		rc = dsi_phy_drv_init(display_ctrl->phy);
 		if (rc) {
 			DSI_ERR("[%s] Failed to initialize phy[%d], rc=%d\n",
@@ -5787,7 +5790,6 @@ static int dsi_display_bind(struct device *dev,
 		if (!display_ctrl->phy || !display_ctrl->ctrl)
 			continue;
 
-		display_ctrl->ctrl->drm_dev = drm;
 		rc = dsi_phy_set_clk_freq(display_ctrl->phy,
 				&display_ctrl->ctrl->clk_freq);
 		if (rc) {

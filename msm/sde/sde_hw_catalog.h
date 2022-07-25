@@ -1567,6 +1567,7 @@ struct sde_perf_cfg {
  * this HW version. Contains number of instances,
  * register offsets, capabilities of the all MDSS HW sub-blocks.
  *
+ * @dev			drm device handle
  * @trusted_vm_env	set to true, if the driver is executing in
  *			the trusted VM. false, otherwise.
  * @max_trusted_vm_displays	maximum number of concurrent trusted
@@ -1670,6 +1671,7 @@ struct sde_perf_cfg {
  * @dcwb_count          number of dcwb hardware instances
  */
 struct sde_mdss_cfg {
+	struct drm_device *dev;
 	u32 hwversion;
 	bool trusted_vm_env;
 	u32 max_trusted_vm_displays;

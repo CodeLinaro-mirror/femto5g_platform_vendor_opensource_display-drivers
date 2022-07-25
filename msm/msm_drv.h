@@ -921,6 +921,8 @@ struct msm_drm_private {
 
 	struct sde_power_handle phandle;
 
+	void *dbg_handle;
+
 	/* subordinate devices, if present: */
 	struct platform_device *gpu_pdev;
 

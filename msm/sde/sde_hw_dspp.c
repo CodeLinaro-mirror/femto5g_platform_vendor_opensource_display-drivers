@@ -425,12 +425,12 @@ struct sde_hw_dspp *sde_hw_dspp_init(enum sde_dspp idx,
 		goto blk_init_error;
 	}
 
-	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
+	sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name,
 			c->hw.blk_off + DSPP_VALID_START_OFF,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);
 
 	if ((cfg->sblk->ltm.id == SDE_DSPP_LTM) && cfg->sblk->ltm.base) {
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "LTM",
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, "LTM",
 				c->hw.blk_off + cfg->sblk->ltm.base,
 				c->hw.blk_off + cfg->sblk->ltm.base + 0xC4,
 				c->hw.xin_id);
@@ -438,7 +438,7 @@ struct sde_hw_dspp *sde_hw_dspp_init(enum sde_dspp idx,
 
 	if ((cfg->sblk->rc.id == SDE_DSPP_RC) && cfg->sblk->rc.base) {
 		snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "rc", c->idx - DSPP_0);
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, buf,
 				c->hw.blk_off + cfg->sblk->rc.base,
 				c->hw.blk_off + cfg->sblk->rc.base +
 				cfg->sblk->rc.len, c->hw.xin_id);
@@ -446,7 +446,7 @@ struct sde_hw_dspp *sde_hw_dspp_init(enum sde_dspp idx,
 
 	if ((cfg->sblk->spr.id == SDE_DSPP_SPR) && cfg->sblk->spr.base) {
 		snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "spr", c->idx - DSPP_0);
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, buf,
 				c->hw.blk_off + cfg->sblk->spr.base,
 				c->hw.blk_off + cfg->sblk->spr.base +
 				cfg->sblk->spr.len, c->hw.xin_id);
@@ -456,7 +456,7 @@ struct sde_hw_dspp *sde_hw_dspp_init(enum sde_dspp idx,
 			cfg->sblk->demura.base) {
 		snprintf(buf, ARRAY_SIZE(buf), "%s_%d", "demura",
 				c->idx - DSPP_0);
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, buf,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, buf,
 				c->hw.blk_off + cfg->sblk->demura.base,
 				c->hw.blk_off + cfg->sblk->demura.base +
 				cfg->sblk->demura.len, c->hw.xin_id);

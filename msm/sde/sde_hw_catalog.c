@@ -5611,6 +5611,8 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 	if (!sde_cfg)
 		return ERR_PTR(-ENOMEM);
 
+	sde_cfg->dev = dev;
+
 	INIT_LIST_HEAD(&sde_cfg->irq_offset_list);
 
 	rc = sde_hw_ver_parse_dt(dev, np, sde_cfg);

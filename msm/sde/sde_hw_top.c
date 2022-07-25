@@ -701,7 +701,7 @@ struct sde_hw_mdp *sde_hw_mdptop_init(enum sde_mdp idx,
 		goto blk_init_error;
 	}
 
-	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "mdss_hw", 0,
+	sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, "mdss_hw", 0,
 			m->mdss_hw_block_size, 0);
 
 	if (test_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &m->mdp[0].features)) {
@@ -709,17 +709,19 @@ struct sde_hw_mdp *sde_hw_mdptop_init(enum sde_mdp idx,
 
 		snprintf(name, sizeof(name), "%s_1", cfg->name);
 
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, mdp->hw.blk_off,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME,
+				cfg->name, mdp->hw.blk_off,
 				mdp->hw.blk_off + MDP_PERIPH_TOP0, mdp->hw.xin_id);
 
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, name, mdp->hw.blk_off + MDP_SSPP_TOP2,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, name,
+				mdp->hw.blk_off + MDP_SSPP_TOP2,
 				mdp->hw.blk_off +  mdp->hw.length, mdp->hw.xin_id);
 	} else {
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name,
 			mdp->hw.blk_off, mdp->hw.blk_off + mdp->hw.length,
 			mdp->hw.xin_id);
 	}
-	sde_dbg_set_sde_top_offset(mdp->hw.blk_off);
+	sde_dbg_set_sde_top_offset(m->dev, mdp->hw.blk_off);
 
 	return mdp;
 
