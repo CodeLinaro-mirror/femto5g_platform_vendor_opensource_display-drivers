@@ -1648,35 +1648,36 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 	}
 
 	if (!is_virtual_pipe) {
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
+		sde_dbg_reg_register_dump_range(catalog->dev, SDE_DBG_NAME, cfg->name,
 			hw_pipe->hw.blk_off,
 			hw_pipe->hw.blk_off + hw_pipe->hw.length,
 			hw_pipe->hw.xin_id);
 
 		if (test_bit(SDE_SSPP_DGM_CSC, &hw_pipe->cap->features)) {
-			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "CSC_0",
+			sde_dbg_reg_register_dump_range(catalog->dev, SDE_DBG_NAME, "CSC_0",
 				hw_pipe->hw.blk_off + SSPP_DGM_CSC_0,
 				hw_pipe->hw.blk_off + SSPP_DGM_CSC_0 + SSPP_DGM_CSC_SIZE,
 				hw_pipe->hw.xin_id);
-			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "CSC_1",
+			sde_dbg_reg_register_dump_range(catalog->dev, SDE_DBG_NAME, "CSC_1",
 				hw_pipe->hw.blk_off + SSPP_DGM_CSC_1,
 				hw_pipe->hw.blk_off + SSPP_DGM_CSC_1 + SSPP_DGM_CSC_SIZE,
 				hw_pipe->hw.xin_id);
 		}
 
 		if (test_bit(SDE_SSPP_DMA_IGC, &hw_pipe->cap->features)) {
-			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "DGM_0",
+			sde_dbg_reg_register_dump_range(catalog->dev, SDE_DBG_NAME, "DGM_0",
 				hw_pipe->hw.blk_off + SSPP_DGM_0,
 				hw_pipe->hw.blk_off + SSPP_DGM_0 + SSPP_DGM_SIZE,
 				hw_pipe->hw.xin_id);
-			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "DGM_1",
+			sde_dbg_reg_register_dump_range(catalog->dev, SDE_DBG_NAME, "DGM_1",
 				hw_pipe->hw.blk_off + SSPP_DGM_1,
 				hw_pipe->hw.blk_off + SSPP_DGM_1 + SSPP_DGM_SIZE,
 				hw_pipe->hw.xin_id);
 		}
 
 		if (test_bit(SDE_SSPP_VIG_GAMUT, &hw_pipe->cap->features)) {
-			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->sblk->gamut_blk.name,
+			sde_dbg_reg_register_dump_range(catalog->dev, SDE_DBG_NAME,
+				cfg->sblk->gamut_blk.name,
 				hw_pipe->hw.blk_off + cfg->sblk->gamut_blk.base,
 				hw_pipe->hw.blk_off + cfg->sblk->gamut_blk.base + VIG_GAMUT_SIZE,
 				hw_pipe->hw.xin_id);
@@ -1684,7 +1685,7 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 	}
 
 	if (cfg->sblk->scaler_blk.len && !is_virtual_pipe)
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME,
+		sde_dbg_reg_register_dump_range(catalog->dev, SDE_DBG_NAME,
 			cfg->sblk->scaler_blk.name,
 			hw_pipe->hw.blk_off + cfg->sblk->scaler_blk.base,
 			hw_pipe->hw.blk_off + cfg->sblk->scaler_blk.base +

@@ -126,7 +126,7 @@ static struct sde_hw_merge_3d *_sde_pp_merge_3d_init(enum sde_merge_3d idx,
 	_setup_merge_3d_ops(&c->ops, c->caps);
 
 	if (!(merge3d_init_mask & BIT(idx))) {
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name,
 				c->hw.blk_off, c->hw.blk_off + c->hw.length,
 				c->hw.xin_id);
 		merge3d_init_mask |= BIT(idx);
@@ -540,11 +540,11 @@ struct sde_hw_pingpong *sde_hw_pingpong_init(enum sde_pingpong idx,
 		goto blk_init_error;
 	}
 
-	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
+	sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);
 
 	if (cfg->sblk->dither.base && cfg->sblk->dither.len) {
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME,
+		sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME,
 			cfg->sblk->dither.name,
 			c->hw.blk_off + cfg->sblk->dither.base,
 			c->hw.blk_off + cfg->sblk->dither.base +

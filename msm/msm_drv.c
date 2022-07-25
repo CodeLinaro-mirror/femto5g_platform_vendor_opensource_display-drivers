@@ -415,7 +415,7 @@ static int msm_drm_uninit(struct device *dev)
 	if (kms && kms->funcs)
 		kms->funcs->debugfs_destroy(kms);
 
-	sde_dbg_destroy();
+	sde_dbg_destroy(dev);
 	debugfs_remove_recursive(priv->debug_root);
 	drm_mode_config_cleanup(ddev);
 
@@ -794,7 +794,7 @@ static int msm_drm_device_init(struct platform_device *pdev,
 	return ret;
 
 pm_runtime_error:
-	sde_dbg_destroy();
+	sde_dbg_destroy(dev);
 dbg_init_fail:
 	sde_power_resource_deinit(pdev, &priv->phandle);
 power_init_fail:
@@ -935,7 +935,7 @@ fail:
 bind_fail:
 	msm_mdss_destroy(ddev);
 mdss_init_fail:
-	sde_dbg_destroy();
+	sde_dbg_destroy(dev);
 	sde_power_resource_deinit(pdev, &priv->phandle);
 	drm_dev_put(ddev);
 	kfree(priv);

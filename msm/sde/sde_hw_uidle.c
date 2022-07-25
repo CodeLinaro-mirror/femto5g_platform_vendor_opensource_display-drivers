@@ -252,7 +252,7 @@ struct sde_hw_uidle *sde_hw_uidle_init(enum sde_uidle idx,
 	c->cap = cfg;
 	_setup_uidle_ops(&c->ops, c->cap->features);
 
-	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "uidle", c->hw.blk_off,
+	sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, "uidle", c->hw.blk_off,
 		c->hw.blk_off + c->hw.length, 0);
 
 	return c;

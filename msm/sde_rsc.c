@@ -1109,7 +1109,7 @@ end:
 EXPORT_SYMBOL(sde_rsc_client_trigger_vote);
 
 #if defined(CONFIG_DEBUG_FS)
-void sde_rsc_debug_dump(u32 mux_sel)
+void sde_rsc_debug_dump(struct drm_device *dev, u32 mux_sel)
 {
 	struct sde_rsc_priv *rsc;
 
@@ -1650,9 +1650,9 @@ static int sde_rsc_bind(struct device *dev,
 		return -EINVAL;
 	}
 
-	sde_dbg_reg_register_base(SDE_RSC_DRV_DBG_NAME, rsc->drv_io.base,
+	sde_dbg_reg_register_base(drm, SDE_RSC_DRV_DBG_NAME, rsc->drv_io.base,
 			rsc->drv_io.len, msm_get_phys_addr(pdev, "drv"), SDE_DBG_RSC);
-	sde_dbg_reg_register_base(SDE_RSC_WRAPPER_DBG_NAME, rsc->wrapper_io.base,
+	sde_dbg_reg_register_base(drm, SDE_RSC_WRAPPER_DBG_NAME, rsc->wrapper_io.base,
 			rsc->wrapper_io.len, msm_get_phys_addr(pdev, "wrapper"), SDE_DBG_RSC);
 
 	msm_register_vm_event(master, dev, &vm_event_ops, (void *)rsc);
