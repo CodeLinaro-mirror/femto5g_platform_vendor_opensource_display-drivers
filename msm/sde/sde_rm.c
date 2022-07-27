@@ -2481,16 +2481,18 @@ bool sde_rm_topology_is_group(struct sde_rm *rm,
 				conn);
 		if (!conn_state) {
 			SDE_DEBUG("%s invalid connector state\n", conn->name);
-			continue;
+			/* Fallback to CRTC state topology */
+			name = cstate->topology_name;
+		} else {
+			ret = sde_connector_state_get_topology(conn_state, &topology);
+			if (ret) {
+				SDE_DEBUG("%s invalid topology\n", conn->name);
+				continue;
+			}
+
+			name = sde_rm_get_topology_name(rm, topology);
 		}
 
-		ret = sde_connector_state_get_topology(conn_state, &topology);
-		if (ret) {
-			SDE_DEBUG("%s invalid topology\n", conn->name);
-			continue;
-		}
-
-		name = sde_rm_get_topology_name(rm, topology);
 		switch (group) {
 		case SDE_RM_TOPOLOGY_GROUP_SINGLEPIPE:
 			if (TOPOLOGY_SINGLEPIPE_MODE(name))
