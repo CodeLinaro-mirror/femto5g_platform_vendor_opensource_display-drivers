@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -7,7 +8,11 @@
 #define _DP_AUX_H_
 
 #include "dp_catalog.h"
-#include "drm/drm_dp_helper.h"
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+#include <drm/display/drm_dp_helper.h>
+#else
+#include <drm/drm_dp_helper.h>
+#endif
 #include "dp_aux_bridge.h"
 
 #define DP_STATE_NOTIFICATION_SENT          BIT(0)

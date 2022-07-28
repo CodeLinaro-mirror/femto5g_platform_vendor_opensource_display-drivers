@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/debugfs.h>
 #include <linux/slab.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+#include <drm/display/drm_dp_mst_helper.h>
+#else
 #include <drm/drm_dp_mst_helper.h>
+#endif
 #include <drm/drm_probe_helper.h>
 
 #include "dp_power.h"

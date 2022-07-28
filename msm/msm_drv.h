@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -47,7 +47,11 @@
 #include <drm/sde_drm.h>
 #include <drm/drm_file.h>
 #include <drm/drm_gem.h>
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+#include <drm/display/drm_dsc.h>
+#else
 #include <drm/drm_dsc.h>
+#endif
 #include <drm/drm_bridge.h>
 
 #include "sde_power_handle.h"

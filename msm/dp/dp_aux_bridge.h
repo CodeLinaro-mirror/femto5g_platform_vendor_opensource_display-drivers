@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -37,8 +38,13 @@
 #ifndef _DP_AUX_BRIDGE_H_
 #define _DP_AUX_BRIDGE_H_
 
+#include <linux/version.h>
 #include <linux/types.h>
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+#include <drm/display/drm_dp_helper.h>
+#else
 #include <drm/drm_dp_helper.h>
+#endif
 
 /**
  * enum dp_aux_bridge_flag - DP aux bridge capability flag
