@@ -736,7 +736,9 @@ fail:
 static void *get_vaddr(struct drm_gem_object *obj, unsigned madv)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
-#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+	struct iosys_map map;
+#elif (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 	struct dma_buf_map map;
 #endif
 	int ret = 0;
@@ -892,7 +894,9 @@ void msm_gem_purge(struct drm_gem_object *obj, enum msm_gem_lock subclass)
 static void msm_gem_vunmap_locked(struct drm_gem_object *obj)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
-#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+	struct iosys_map map = IOSYS_MAP_INIT_VADDR(msm_obj->vaddr);
+#elif (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 	struct dma_buf_map map = DMA_BUF_MAP_INIT_VADDR(msm_obj->vaddr);
 #endif
 
@@ -1054,7 +1058,9 @@ void msm_gem_free_object(struct drm_gem_object *obj)
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 	struct drm_device *dev = obj->dev;
 	struct msm_drm_private *priv = dev->dev_private;
-#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+	struct iosys_map map = IOSYS_MAP_INIT_VADDR(msm_obj->vaddr);
+#elif (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 	struct dma_buf_map map = DMA_BUF_MAP_INIT_VADDR(msm_obj->vaddr);
 #endif
 
