@@ -5135,7 +5135,9 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	/*
 	 * Support format modifiers for compression etc.
 	 */
+#if (KERNEL_VERSION(5, 19, 0) > LINUX_VERSION_CODE)
 	dev->mode_config.allow_fb_modifiers = true;
+#endif
 
 	/*
 	 * Handle (re)initializations during power enable
