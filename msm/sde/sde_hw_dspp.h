@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -307,6 +308,7 @@ struct sde_hw_dspp_ops {
  * @sb_dma_in_use: hint indicating if sb dma is being used for this dspp
  * @ops: Pointer to operations possible for this DSPP
  * @ltm_checksum_support: flag to check if checksum present
+ * @dpu_idx: dpu index
  */
 struct sde_hw_dspp {
 	struct sde_hw_blk base;
@@ -323,6 +325,8 @@ struct sde_hw_dspp {
 
 	/* Ops */
 	struct sde_hw_dspp_ops ops;
+
+	u32 dpu_idx;
 };
 
 /**
@@ -340,11 +344,14 @@ static inline struct sde_hw_dspp *to_sde_hw_dspp(struct sde_hw_blk *hw)
  * should be called once before accessing every dspp.
  * @idx:  DSPP index for which driver object is required
  * @addr: Mapped register io address of MDP
+ * @m :   pointer to mdss catalog data
+ * @dpu_idx: dpu index
  * @Return: pointer to structure or ERR_PTR
  */
 struct sde_hw_dspp *sde_hw_dspp_init(enum sde_dspp idx,
 			void __iomem *addr,
-			struct sde_mdss_cfg *m);
+			struct sde_mdss_cfg *m,
+			u32 dpu_idx);
 
 /**
  * sde_hw_dspp_destroy(): Destroys DSPP driver context
