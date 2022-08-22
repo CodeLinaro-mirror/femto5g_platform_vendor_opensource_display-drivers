@@ -141,6 +141,7 @@ struct dp_mst_private {
 	struct mutex edid_lock;
 	enum dp_drv_state state;
 	bool mst_session_state;
+	bool first_event;
 };
 
 struct dp_mst_encoder_info_cache {
@@ -1739,8 +1740,8 @@ static void dp_mst_register_fixed_connector(struct drm_connector *connector)
 	/* skip connector registered for fixed topology ports */
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
 		if (dp_mst->mst_bridge[i].fixed_connector == connector) {
-			DP_MST_DEBUG("found fixed connector %d\n",
-					DRMID(connector));
+			DP_MST_DEBUG("found fixed connector %d  crtc %d\n",
+					DRMID(connector), DRMID(connector->state->crtc));
 			return;
 		}
 	}
@@ -1902,7 +1903,12 @@ static void dp_mst_display_hpd(void *dp_display, bool hpd_status)
 	if (!hpd_status)
 		mst->mst_session_state = hpd_status;
 
-	dp_mst_hpd_event_notify(mst, hpd_status);
+	if (mst->first_event || !dp->force_connect_mode) {
+		dp_mst_hpd_event_notify(mst, hpd_status);
+		mst->first_event = false;
+	}
+
+	DP_MST_INFO("mst display hpd:%d\n", hpd_status);
 }
 
 static void dp_mst_display_hpd_irq(void *dp_display)
@@ -2041,6 +2047,7 @@ int dp_mst_init(struct dp_display *dp_display)
 	}
 
 	dp_mst.mst_initialized = true;
+	dp_mst.first_event = true;
 
 	/* create drm_bridges for cached mst encoders and clear cache */
 	for (i = 0; i < dp_mst_enc_cache.cnt; i++) {
