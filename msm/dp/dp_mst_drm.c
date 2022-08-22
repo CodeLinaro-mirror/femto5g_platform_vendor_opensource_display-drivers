@@ -932,6 +932,8 @@ dp_mst_connector_detect(struct drm_connector *connector,
 
 	status = mst->mst_fw_cbs->detect_port_ctx(connector,
 			ctx, &mst->mst_mgr, c_conn->mst_port);
+	if (dp_display->force_connect_mode)
+		status = connector_status_connected;
 
 	DP_MST_INFO("conn:%d status:%d\n", connector->base.id, status);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, connector->base.id, status);
@@ -1757,6 +1759,11 @@ static void dp_mst_destroy_fixed_connector(struct drm_connector *connector)
 	int i;
 
 	DP_MST_DEBUG("enter\n");
+
+	if (dp_mst->dp_display->force_connect_mode) {
+		DP_MST_DEBUG("skipped for force connect mode\n");
+		return;
+	}
 
 	/* skip connector destroy for fixed topology ports */
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
