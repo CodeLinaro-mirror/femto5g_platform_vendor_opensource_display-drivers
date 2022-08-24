@@ -1978,6 +1978,12 @@ static int dp_mgr_usbpd_attention_cb(void *data)
 
 	mgr = data;
 
+<<<<<<< HEAD   (a462be Merge 5aa778400a0e3a45b6c6ce961890b9f5e99bd9c7 on remote bra)
+=======
+	if (mgr->parser->dp_cec_feature && mgr->hpd->hpd_high && mgr->hpd->hpd_irq)
+		drm_dp_cec_irq(mgr->aux->drm_aux);
+
+>>>>>>> CHANGE (4d2d8d msm/dp: conditional support for CEC over DP)
 	DP_DEBUG("hpd_irq:%d, hpd_high:%d, power_on:%d, is_connected:%d\n",
 			mgr->hpd->hpd_irq, mgr->hpd->hpd_high,
 			!!dp_mgr_state_is(DP_STATE_ENABLED),
