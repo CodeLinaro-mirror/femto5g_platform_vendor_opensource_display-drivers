@@ -41,6 +41,7 @@ struct dp_aux {
 	u32 state;
 
 	bool read;
+	bool dp_cec_feature;
 
 	struct mutex *access_lock;
 	void *ipc_log_context;

@@ -210,6 +210,7 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @get_io_buf: function to be called by client to get io buffers.
  * @clear_io_buf: function to be called by client to clear io buffers.
  * @no_audio_support: audio support disable status
+ * @dp_cec_feature: dp cec feature status.
  */
 struct dp_parser {
 	struct platform_device *pdev;
@@ -238,6 +239,7 @@ struct dp_parser {
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;
 	u32 dsc_version;
+	bool dp_cec_feature;
 
 	const char *display_type;
 

@@ -2106,7 +2106,7 @@ static int dp_panel_get_modes(struct dp_panel *dp_panel,
 		return 1;
 	} else if (dp_panel->edid_ctrl->edid) {
 		count =  _sde_edid_update_modes(connector, dp_panel->edid_ctrl);
-		if (count)
+		if (panel->parser->dp_cec_feature && count)
 			drm_dp_cec_set_edid(panel->aux->drm_aux,
 				dp_panel->edid_ctrl->edid);
 		return count;
@@ -2413,7 +2413,7 @@ static int dp_panel_init_panel_info(struct dp_panel *dp_panel)
 	* Control Field" (register 0x600).
 	*/
 	usleep_range(1000, 2000);
-	if (dp_panel->edid_ctrl->edid)
+	if ((panel->parser->dp_cec_feature) && (dp_panel->edid_ctrl->edid))
 		drm_dp_cec_set_edid(panel->aux->drm_aux, dp_panel->edid_ctrl->edid);
 end:
 	return rc;
@@ -2442,8 +2442,9 @@ static int dp_panel_deinit_panel_info(struct dp_panel *dp_panel, u32 flags)
 	shdr_if_sdp = &panel->catalog->shdr_if_sdp;
 	vsc_colorimetry = &panel->catalog->vsc_colorimetry;
 
-	if (panel->aux->drm_aux)
+	if ((panel->parser->dp_cec_feature) && (panel->aux->drm_aux))
 		drm_dp_cec_unset_edid(panel->aux->drm_aux);
+
 	if (dp_panel->edid_ctrl->edid)
 		sde_free_edid((void **)&dp_panel->edid_ctrl);
 
