@@ -1258,7 +1258,7 @@ static int dp_panel_get_modes(struct dp_panel *dp_panel,
 		return 1;
 	} else if (dp_panel->edid_ctrl->edid) {
 		count = _sde_edid_update_modes(connector, dp_panel->edid_ctrl);
-		if (count)
+		if (panel->parser->dp_cec_feature && count)
 			drm_dp_cec_set_edid(panel->aux->drm_aux, dp_panel->edid_ctrl->edid);
 		if (panel->parser->max_fps_mode_en)
 			count = dp_panel_select_max_fps_mode(connector);
@@ -1592,7 +1592,7 @@ static int dp_panel_init_panel_info(struct dp_panel *dp_panel, bool skip_op)
 	* Control Field" (register 0x600).
 	*/
 	usleep_range(1000, 2000);
-	if (dp_panel->edid_ctrl->edid)
+	if (panel->parser->dp_cec_feature && dp_panel->edid_ctrl->edid)
 		drm_dp_cec_set_edid(panel->aux->drm_aux, dp_panel->edid_ctrl->edid);
 end:
 	return rc;
@@ -1624,8 +1624,9 @@ static int dp_panel_deinit_panel_info(struct dp_panel *dp_panel, u32 flags)
 	/*clearing LINK INFO capabilities during disconnect*/
 	dp_panel->link_info.capabilities = 0;
 
-	if (panel->aux->drm_aux)
+	if (panel->parser->dp_cec_feature && panel->aux->drm_aux)
 		drm_dp_cec_unset_edid(panel->aux->drm_aux);
+
 	if (dp_panel->edid_ctrl->edid)
 		sde_free_edid((void **)&dp_panel->edid_ctrl);
 
