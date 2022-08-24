@@ -276,6 +276,7 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @clear_io_buf: function to be called by client to clear io buffers.
  * @mst_fixed_display_type: mst display_type reserved for fixed topology
  * @display_type: display type as defined in device tree.
+ * @dp_cec_feature: dp cec feature status.
  */
 struct dp_parser {
 	struct platform_device *pdev;
@@ -312,6 +313,8 @@ struct dp_parser {
 	unsigned long qos_cpu_latency;
 	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 	const char *mst_fixed_display_type[MAX_DP_MST_STREAMS];
+	bool dp_cec_feature;
+
 	const char *display_type;
 
 	u8 *swing_hbr2_3;
