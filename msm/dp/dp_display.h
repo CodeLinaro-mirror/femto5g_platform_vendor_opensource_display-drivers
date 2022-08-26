@@ -35,6 +35,7 @@ struct dp_mst_drm_cbs {
 	void (*hpd_irq)(void *display, struct dp_mst_hpd_info *info);
 	void (*set_drv_state)(void *dp_display,
 			enum dp_drv_state mst_state);
+	void (*hpd_event_notify)(void *mst, bool hpd_status);
 };
 
 struct dp_mst_drm_install_info {
