@@ -871,6 +871,7 @@ struct sde_sspp_sub_blks {
 	const struct sde_format_extended *format_list;
 	const struct sde_format_extended *virt_format_list;
 	const struct sde_format_extended *in_rot_format_list;
+	const struct sde_format_extended *cac_format_list;
 	u32 in_rot_maxdwnscale_rt_num;
 	u32 in_rot_maxdwnscale_rt_denom;
 	u32 in_rot_maxdwnscale_nrt;
@@ -1824,6 +1825,7 @@ struct sde_mdss_cfg {
 	struct sde_format_extended *virt_vig_formats;
 	struct sde_format_extended *inline_rot_formats;
 	struct sde_format_extended *inline_rot_restricted_formats;
+	struct sde_format_extended *cac_formats;
 
 	struct list_head irq_offset_list;
 };

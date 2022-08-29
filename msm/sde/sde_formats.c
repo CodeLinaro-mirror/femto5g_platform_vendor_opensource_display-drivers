@@ -712,6 +712,52 @@ static const struct sde_format sde_format_map_tp10_ubwc[] = {
 		SDE_FETCH_UBWC, 4, SDE_TILE_HEIGHT_NV12),
 };
 
+/*
+ * Unpack pattern for R, G and B plane is fixed for all input formats
+ * in CAC mode
+ */
+static const struct sde_format sde_format_map_cac_r[] = {
+	INTERLEAVED_RGB_FMT(ABGR8888,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C0_G_Y, C3_ALPHA, C3_ALPHA, C3_ALPHA, 4,
+		true, 4, SDE_FORMAT_FLAG_CAC,
+		SDE_FETCH_LINEAR, 1),
+
+	INTERLEAVED_RGB_FMT(ABGR2101010,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C0_G_Y, C3_ALPHA, C3_ALPHA, C3_ALPHA, 4,
+		true, 4, (SDE_FORMAT_FLAG_DX | SDE_FORMAT_FLAG_CAC),
+		SDE_FETCH_LINEAR, 1),
+};
+
+static const struct sde_format sde_format_map_cac_g[] = {
+	INTERLEAVED_RGB_FMT(ABGR8888,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C3_ALPHA, C0_G_Y, C3_ALPHA, C3_ALPHA, 4,
+		true, 4, SDE_FORMAT_FLAG_CAC,
+		SDE_FETCH_LINEAR, 1),
+
+	INTERLEAVED_RGB_FMT(ABGR2101010,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C3_ALPHA, C0_G_Y, C3_ALPHA, C3_ALPHA, 4,
+		true, 4, (SDE_FORMAT_FLAG_DX | SDE_FORMAT_FLAG_CAC),
+		SDE_FETCH_LINEAR, 1),
+};
+
+static const struct sde_format sde_format_map_cac_b[] = {
+	INTERLEAVED_RGB_FMT(ABGR8888,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C3_ALPHA, C3_ALPHA, C1_B_Cb, C3_ALPHA, 4,
+		true, 4, SDE_FORMAT_FLAG_CAC,
+		SDE_FETCH_LINEAR, 1),
+
+	INTERLEAVED_RGB_FMT(ABGR2101010,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C3_ALPHA, C3_ALPHA, C1_B_Cb, C3_ALPHA, 4,
+		true, 4, (SDE_FORMAT_FLAG_DX | SDE_FORMAT_FLAG_CAC),
+		SDE_FETCH_LINEAR, 1),
+};
+
 bool sde_format_is_tp10_ubwc(const struct sde_format *fmt)
 {
 	if (SDE_FORMAT_IS_YUV(fmt) && SDE_FORMAT_IS_DX(fmt) &&
@@ -1193,6 +1239,9 @@ int sde_format_populate_layout(
 	if (ret)
 		return ret;
 
+	if (aspace == NULL)
+		return 0;
+
 	for (i = 0; i < SDE_MAX_PLANES; ++i)
 		plane_addr[i] = layout->plane_addr[i];
 
@@ -1343,6 +1392,27 @@ const struct sde_format *sde_get_sde_format_ext(
 		map_size = ARRAY_SIZE(sde_format_map_fsc_tile_linear);
 		SDE_DEBUG(
 			"found fsc fmt: %4.4s DRM_FORMAT_MOD_QCOM_FSC_TILE\n",
+				(char *)&format);
+		break;
+	case DRM_FORMAT_MOD_QCOM_CAC_R:
+		map = sde_format_map_cac_r;
+		map_size = ARRAY_SIZE(sde_format_map_cac_r);
+		SDE_DEBUG(
+			"found cac fmt: %4.4s DRM_FORMAT_MOD_QCOM_CAC_R\n",
+				(char *)&format);
+		break;
+	case DRM_FORMAT_MOD_QCOM_CAC_G:
+		map = sde_format_map_cac_g;
+		map_size = ARRAY_SIZE(sde_format_map_cac_g);
+		SDE_DEBUG(
+			"found cac fmt: %4.4s DRM_FORMAT_MOD_QCOM_CAC_G\n",
+				(char *)&format);
+		break;
+	case DRM_FORMAT_MOD_QCOM_CAC_B:
+		map = sde_format_map_cac_b;
+		map_size = ARRAY_SIZE(sde_format_map_cac_b);
+		SDE_DEBUG(
+			"found cac fmt: %4.4s DRM_FORMAT_MOD_QCOM_CAC_B\n",
 				(char *)&format);
 		break;
 	default:
