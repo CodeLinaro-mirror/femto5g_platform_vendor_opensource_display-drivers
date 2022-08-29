@@ -2925,7 +2925,8 @@ static void _sde_plane_map_prop_to_dirty_bits(void)
 	plane_prop_array[PLANE_PROP_INFO] =
 	plane_prop_array[PLANE_PROP_ALPHA] =
 	plane_prop_array[PLANE_PROP_INPUT_FENCE] =
-	plane_prop_array[PLANE_PROP_BLEND_OP] = 0;
+	plane_prop_array[PLANE_PROP_BLEND_OP] =
+	plane_prop_array[PLANE_PROP_BG_ALPHA] = 0;
 
 	plane_prop_array[PLANE_PROP_FB_TRANSLATION_MODE] =
 		SDE_PLANE_DIRTY_FB_TRANSLATION_MODE;
@@ -3940,6 +3941,8 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 	msm_property_install_enum(&psde->property_info, "syscache_type", 0x0,
 		0, e_syscache_type, ARRAY_SIZE(e_syscache_type), 0,
 		PLANE_PROP_SYS_CACHE_TYPE);
+	msm_property_install_range(&psde->property_info, "bg_alpha",
+		0x0, 0, 255, 255, PLANE_PROP_BG_ALPHA);
 
 	if (psde->pipe_hw->ops.setup_solidfill)
 		msm_property_install_range(&psde->property_info, "color_fill",
