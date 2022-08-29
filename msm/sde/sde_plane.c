@@ -5004,3 +5004,18 @@ void sde_plane_add_data_to_minidump_va(struct drm_plane *plane)
 	sde_mini_dump_add_va_region("sde_plane", sizeof(*sde_plane), sde_plane);
 	sde_mini_dump_add_va_region("plane_state", sizeof(*pstate), pstate);
 }
+
+void sde_plane_dump(struct drm_plane *plane)
+{
+	struct sde_plane *psde;
+
+	if (!plane) {
+		SDE_ERROR("invalid plane\n");
+		return;
+	}
+
+	psde = to_sde_plane(plane);
+	if (psde->pipe_hw && psde->pipe_hw->ops.dump)
+		psde->pipe_hw->ops.dump(psde->pipe_hw, is_sde_plane_virtual(plane));
+}
+
