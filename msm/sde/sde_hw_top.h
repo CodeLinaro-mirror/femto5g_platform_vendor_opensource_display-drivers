@@ -209,6 +209,16 @@ struct sde_hw_mdp_ops {
 	 *		INTF_1/INTF_5 are only possible values.
 	 */
 	void (*dpu_sync_intf_mux)(struct sde_hw_mdp *mdp, int intf_idx);
+
+	/**
+	 * setup_hw_fences - configure hw fences top registers
+	 * @mdp:     mdp top context driver
+	 * @protocol_id:    ipcc protocol id
+	 * @ipcc_base_addr: base address for ipcc reg block
+	 * @client_id: ipcc client id
+	 */
+	void (*setup_hw_fences)(struct sde_hw_mdp *mdp, u32 protocol_id,
+			unsigned long ipcc_base_addr, u32 client_id);
 };
 
 struct sde_hw_mdp {

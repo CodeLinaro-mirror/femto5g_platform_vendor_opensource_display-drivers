@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -464,6 +465,37 @@ struct sde_hw_ctl_ops {
 	 * @Return: bitmap of enum sde_sspp pipes found
 	 */
 	u32 (*get_active_pipes)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * get hw fence status
+	 * @ctx         : ctl path ctx pointer
+	 * @Return: fence status
+	 */
+	int (*get_hw_fence_status)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * hw fence control
+	 * @ctx         : ctl path ctx pointer
+	 * @sw_set	: sets fence_ready when fence_ready_sw_override is enabled
+	 * @sw_clear	: clears fence_ready when fence_ready_sw_override is cleared
+	 * @mode	: SW fence/HW fence
+	 */
+	void (*hw_fence_ctrl)(struct sde_hw_ctl *ctx, bool sw_set, bool sw_clear, u32 mode);
+
+	/**
+	 * configure hw input fence on the control path
+	 * @ctx       : ctl path ctx pointer
+	 * @source_id       : source id of the client from which fence signal is received
+	 * @signal       : signal id
+	 * @Return: 0 on success, else error code
+	 */
+	void (*setup_hw_input_fence)(struct sde_hw_ctl *ctx, u32 source_id, u32 signal_id);
+
+	/**
+	 * trigger hw fence-ready sw override
+	 * @ctx         : ctl path ctx pointer
+	 */
+	void (*hw_fence_trigger_sw_override)(struct sde_hw_ctl *ctx);
 };
 
 /**

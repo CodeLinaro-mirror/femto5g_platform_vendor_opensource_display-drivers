@@ -587,6 +587,7 @@ struct sde_mdss_color {
 #define SDE_DBG_MASK_SID      (1 << 15)
 #define SDE_DBG_MASK_QDSS     (1 << 16)
 #define SDE_DBG_MASK_VDC      (1 << 17)
+#define SDE_DBG_MASK_IPCC     (1 << 18)
 
 /**
  * struct sde_hw_cp_cfg: hardware dspp/lm feature payload.

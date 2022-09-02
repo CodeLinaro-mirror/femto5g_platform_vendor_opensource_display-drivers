@@ -1292,7 +1292,8 @@ static int sde_encoder_virt_atomic_check(
 	SDE_EVT32(DRMID(drm_enc), adj_mode->flags,
 		sde_conn_state->msm_mode.private_flags,
 		old_top, drm_mode_vrefresh(adj_mode), adj_mode->hdisplay,
-		adj_mode->vdisplay, adj_mode->htotal, adj_mode->vtotal, ret);
+		adj_mode->vdisplay, adj_mode->htotal, adj_mode->vtotal, ret,
+		drm_enc->dev->primary->index);
 
 	return ret;
 }
@@ -3279,6 +3280,12 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		sde_encoder_virt_reset(drm_enc);
 }
 
+static void _trigger_encoder_hw_fences_override(struct sde_kms *sde_kms, struct sde_hw_ctl *ctl)
+{
+	if (sde_kms_hw_fence_enabled(sde_kms) && ctl->ops.hw_fence_trigger_sw_override)
+		ctl->ops.hw_fence_trigger_sw_override(ctl);
+}
+
 void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
 		struct sde_encoder_phys_wb *wb_enc)
 {
@@ -3350,6 +3357,8 @@ void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
 				ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_DSC, hw_dsc->idx, true);
 		}
 	}
+
+	_trigger_encoder_hw_fences_override(phys_enc->sde_kms, ctl);
 
 	sde_crtc_disable_cp_features(sde_enc->base.crtc);
 	ctl->ops.get_pending_flush(ctl, &cfg);
@@ -3752,7 +3761,7 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0,
 				ctl->idx - CTL_0,
 				pending_flush.pending_flush_mask,
-				pend_ret_fence_cnt);
+				pend_ret_fence_cnt, drm_enc->dev->primary->index);
 	} else {
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0,
 				ctl->idx - CTL_0,
@@ -3978,6 +3987,15 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	}
 
 	_sde_encoder_trigger_start(sde_enc->cur_master);
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	ctl = sde_enc->cur_master->hw_ctl;
+
+	if (sde_kms_hw_fence_enabled(sde_kms) &&
+		sde_kms->hw_ipcc->ops.hw_ipcc_trigger_signal && ctl &&
+			test_bit(SDE_CTL_HW_FENCE, &ctl->caps->features))
+		sde_kms->hw_ipcc->ops.hw_ipcc_trigger_signal(sde_kms->hw_ipcc,
+			sde_kms->catalog->dpu_dst_client_ipc_id,
+			sde_kms->catalog->ipcc_protocol_id, HW_FENCE_IPC_CLIENT_ID_APPS, 0x0);
 
 	if (sde_enc->elevated_ahb_vote) {
 		sde_kms = sde_encoder_get_kms(&sde_enc->base);
@@ -5413,6 +5431,11 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 			SDE_ERROR(
 			"input handler registration failed, rc = %d\n", ret);
 	}
+
+	/*Enable IPCC Signalling in DPU's only when Interface Sync is enabled*/
+	if (sde_enc->dpu_ctl_op_sync && sde_kms->ipcc_base_addr &&
+		test_bit(SDE_MDP_HAS_HW_FENCE_SUPPORT, &sde_kms->catalog->mdp[0].features))
+		sde_kms->catalog->hw_fence_enabled = true;
 
 	mutex_init(&sde_enc->rc_lock);
 	kthread_init_delayed_work(&sde_enc->delayed_off_work,

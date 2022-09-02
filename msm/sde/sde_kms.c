@@ -54,6 +54,7 @@
 #include "sde_reg_dma.h"
 #include "sde_connector.h"
 #include "sde_vm.h"
+#include "sde_hw_ipcc.h"
 
 #include <linux/qcom_scm.h>
 #include <linux/qcom-iommu-util.h>
@@ -779,6 +780,37 @@ static int _sde_kms_release_shared_buffer(unsigned int mem_addr,
 
 }
 
+static int _sde_kms_one2one_mem_map_ipcc_reg(struct sde_kms *sde_kms, u32 buf_size,
+		unsigned long buf_base)
+{
+	struct msm_mmu *mmu = NULL;
+	int ret = 0;
+
+	if (!sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE]
+		|| !sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE]->mmu) {
+		SDE_ERROR("aspace not found for sde kms node\n");
+		return -EINVAL;
+	}
+
+	mmu = sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE]->mmu;
+	if (!mmu) {
+		SDE_ERROR("mmu not found for aspace\n");
+		return -EINVAL;
+	}
+
+	if (!mmu->funcs || !mmu->funcs->one_to_one_map) {
+		SDE_ERROR("invalid input params for map\n");
+		return -EINVAL;
+	}
+
+	ret = mmu->funcs->one_to_one_map(mmu, buf_base, buf_base, buf_size,
+		IOMMU_READ | IOMMU_WRITE);
+	if (ret)
+		SDE_ERROR("one2one memory smmu map failed:%d\n", ret);
+
+	return ret;
+}
+
 static int _sde_kms_splash_mem_get(struct sde_kms *sde_kms,
 		struct sde_splash_mem *splash)
 {
@@ -1142,6 +1174,15 @@ int sde_kms_vm_trusted_prepare_commit(struct sde_kms *sde_kms,
 	sde_dbg_set_hw_ownership_status(true);
 
 	return 0;
+}
+
+bool sde_kms_hw_fence_enabled(struct sde_kms *sde_kms)
+{
+	if (!sde_kms || !sde_kms->catalog || !sde_kms->catalog->hw_fence_enabled ||
+		!sde_kms->hw_ipcc)
+		return false;
+
+	return true;
 }
 
 static void sde_kms_prepare_commit(struct msm_kms *kms,
@@ -4209,6 +4250,20 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 					ret, early_map);
 			goto early_map_fail;
 		}
+
+		if (i == MSM_SMMU_DOMAIN_UNSECURE && sde_kms->ipcc_base_addr
+			 && test_bit(SDE_MDP_HAS_HW_FENCE_SUPPORT,
+				&sde_kms->catalog->mdp[0].features)) {
+			ret = _sde_kms_one2one_mem_map_ipcc_reg(sde_kms, sde_kms->ipcc_len,
+				HW_FENCE_IPCC_PROTOCOLp_CLIENTc(sde_kms->ipcc_base_addr,
+				sde_kms->catalog->ipcc_protocol_id,
+				sde_kms->catalog->dpu_src_client_ipc_id));
+
+			if (ret) {
+				SDE_ERROR("mapping failure, disable hw fences\n");
+				sde_kms->ipcc_base_addr = 0;
+			}
+		}
 	}
 
 	sde_kms->base.aspace = sde_kms->aspace[0];
@@ -4373,6 +4428,29 @@ static void sde_kms_irq_affinity_notify(
 
 static void sde_kms_irq_affinity_release(struct kref *ref) {}
 
+static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
+{
+	if (!sde_kms || !sde_kms->catalog) {
+		SDE_ERROR("invalid kms\n");
+		return;
+	}
+
+	if (!sde_kms->catalog->hw_fence_enabled) {
+		SDE_DEBUG("hw fence support disabled\n");
+		return;
+	}
+
+	if (sde_kms->hw_mdp && sde_kms->hw_mdp->ops.setup_hw_fences)
+		sde_kms->hw_mdp->ops.setup_hw_fences(sde_kms->hw_mdp,
+			sde_kms->catalog->ipcc_protocol_id, sde_kms->ipcc_base_addr,
+				sde_kms->catalog->dpu_src_client_ipc_id);
+
+	if (sde_kms->hw_ipcc && sde_kms->hw_ipcc->ops.hw_ipcc_enable_signaling)
+		sde_kms->hw_ipcc->ops.hw_ipcc_enable_signaling(sde_kms->hw_ipcc,
+			sde_kms->catalog->dpu_src_client_ipc_id,
+			sde_kms->catalog->ipcc_protocol_id, HW_FENCE_IPC_CLIENT_ID_APPS, 0x0);
+}
+
 static void sde_kms_handle_power_event(u32 event_type, void *usr)
 {
 	struct sde_kms *sde_kms = usr;
@@ -4394,6 +4472,7 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 		 * configure it during continuous splash
 		 */
 		sde_kms_init_rot_sid_hw(sde_kms);
+		sde_kms_init_hw_fences(sde_kms);
 		if (sde_kms->splash_data.num_splash_displays ||
 				sde_in_trusted_vm(sde_kms))
 			return;
@@ -4677,6 +4756,21 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 			SDE_ERROR("dbg base register sid failed: %d\n", rc);
 	}
 
+	sde_kms->ipcc = msm_ioremap(platformdev, "ipcc", "ipcc");
+	if (IS_ERR(sde_kms->ipcc)) {
+		SDE_DEBUG("ipcc register space not defined\n");
+		sde_kms->ipcc = NULL;
+	} else {
+		sde_kms->ipcc_len = msm_iomap_size(platformdev, "ipcc");
+		sde_kms->ipcc_base_addr = msm_get_phys_addr(platformdev, "ipcc");
+		rc =  sde_dbg_reg_register_base("ipcc", sde_kms->ipcc,
+			sde_kms->ipcc_len,
+			sde_kms->ipcc_base_addr,
+			SDE_DBG_IPCC);
+		if (rc)
+			SDE_ERROR("dbg base register ipcc failed: %d\n", rc);
+	}
+
 error:
 	return rc;
 }
@@ -4849,6 +4943,17 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 			rc = PTR_ERR(sde_kms->hw_sid);
 			SDE_ERROR("failed to init sid %d\n", rc);
 			sde_kms->hw_sid = NULL;
+			goto power_error;
+		}
+	}
+
+	if (sde_kms->ipcc) {
+		sde_kms->hw_ipcc = sde_hw_ipcc_init(sde_kms->ipcc,
+				sde_kms->ipcc_len, sde_kms->catalog);
+		if (IS_ERR_OR_NULL(sde_kms->hw_ipcc)) {
+			rc = PTR_ERR(sde_kms->hw_ipcc);
+			SDE_ERROR("failed to init ipcc %d\n", rc);
+			sde_kms->hw_ipcc = NULL;
 			goto power_error;
 		}
 	}
