@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -41,6 +42,7 @@
 
 #define DFPS_MAX_NUM_OF_FRAME_RATES 16
 #define MAX_DSI_PLL_EN_SEQS	10
+#define MAX_DSI_PLL_SLAVE_NUM	3
 
 /* Register offsets for 5nm PHY PLL */
 #define MMSS_DSI_PHY_PLL_PLL_CNTRL		(0x0014)
@@ -152,7 +154,7 @@ struct dsi_pll_resource {
 	u32 ssc_freq;
 	u32 ssc_ppm;
 
-	struct dsi_pll_resource *slave;
+	struct dsi_pll_resource *slave[MAX_DSI_PLL_SLAVE_NUM];
 
 	void *priv;
 
@@ -171,6 +173,13 @@ struct dsi_pll_resource {
 	 * DSI PHY type DPHY/CPHY
 	 */
 	enum dsi_phy_type type;
+
+	/*
+	 * PLL enable refcount used in case of sync panels to make sure:
+	 * 1. master PLL does not turn off while slave PLL is on.
+	 * 2. master PLL does not turn on if it is already on.
+	 */
+	u32 refcount;
 };
 
 struct dsi_pll_clk {
@@ -209,4 +218,7 @@ int dsi_pll_init(struct platform_device *pdev,
 
 void dsi_pll_parse_dfps_data(struct platform_device *pdev, struct dsi_pll_resource *pll_res);
 
+int dsi_pll_program_slave(struct dsi_pll_resource *pll_res);
+
+int dsi_pll_5nm_program_slave(struct dsi_pll_resource *pll_res);
 #endif

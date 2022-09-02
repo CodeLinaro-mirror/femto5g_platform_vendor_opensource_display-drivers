@@ -3635,7 +3635,7 @@ static int dp_display_probe(struct platform_device *pdev)
 		goto bail;
 	}
 
-	index = dp_display_get_num_of_displays();
+	index = dp_display_get_num_of_displays(NULL);
 	if (index >= MAX_DP_ACTIVE_DISPLAY) {
 		pr_err("exceeds max dp count\n");
 		rc = -EINVAL;
@@ -3723,7 +3723,7 @@ bail:
 	return rc;
 }
 
-int dp_display_get_displays(void **displays, int count)
+int dp_display_get_displays(struct drm_device *dev, void **displays, int count)
 {
 	int i;
 
@@ -3742,7 +3742,7 @@ int dp_display_get_displays(void **displays, int count)
 	return i;
 }
 
-int dp_display_get_num_of_displays(void)
+int dp_display_get_num_of_displays(struct drm_device *dev)
 {
 	int i;
 
@@ -3753,7 +3753,7 @@ int dp_display_get_num_of_displays(void)
 	return i;
 }
 
-int dp_display_get_num_of_streams(void)
+int dp_display_get_num_of_streams(struct drm_device *dev)
 {
 	struct dp_display_private *dp;
 	int i, count = 0;

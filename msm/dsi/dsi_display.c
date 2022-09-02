@@ -21,6 +21,7 @@
 #include "dsi_pwr.h"
 #include "sde_dbg.h"
 #include "dsi_parser.h"
+#include "dsi_display_manager.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -2388,8 +2389,6 @@ static int dsi_display_ctrl_setup(struct dsi_display *display)
 	return 0;
 }
 
-static int dsi_display_phy_enable(struct dsi_display *display);
-
 /**
  * dsi_display_phy_idle_on() - enable DSI PHY while coming out of idle screen.
  * @dsi_display:         DSI display handle.
@@ -2397,8 +2396,8 @@ static int dsi_display_phy_enable(struct dsi_display *display);
  *
  * Return: error code.
  */
-static int dsi_display_phy_idle_on(struct dsi_display *display,
-		bool mmss_clamp)
+int dsi_display_phy_idle_on(struct dsi_display *display,
+		bool mmss_clamp, enum dsi_phy_pll_source m_src)
 {
 	int rc = 0;
 	int i = 0;
@@ -2411,7 +2410,7 @@ static int dsi_display_phy_idle_on(struct dsi_display *display,
 	}
 
 	if (mmss_clamp && !display->phy_idle_power_off) {
-		dsi_display_phy_enable(display);
+		dsi_display_phy_enable(display, m_src);
 		return 0;
 	}
 
@@ -2443,7 +2442,7 @@ static int dsi_display_phy_idle_on(struct dsi_display *display,
  *
  * Return: error code.
  */
-static int dsi_display_phy_idle_off(struct dsi_display *display)
+int dsi_display_phy_idle_off(struct dsi_display *display)
 {
 	int rc = 0;
 	int i = 0;
@@ -2738,7 +2737,7 @@ error:
 	return rc;
 }
 
-static int dsi_display_set_clk_src(struct dsi_display *display, bool set_xo)
+int dsi_display_set_clk_src(struct dsi_display *display, bool set_xo)
 {
 	int rc = 0;
 	int i;
@@ -2784,61 +2783,10 @@ static int dsi_display_set_clk_src(struct dsi_display *display, bool set_xo)
 	return 0;
 }
 
-static int dsi_display_phy_pll_enable(struct dsi_display *display)
-{
-	int rc = 0;
-	struct dsi_display_ctrl *m_ctrl;
-
-	m_ctrl = &display->ctrl[display->clk_master_idx];
-	if (!m_ctrl->phy) {
-		DSI_ERR("[%s] PHY not found\n", display->name);
-		return -EINVAL;
-	}
-
-	/*
-	 * It is recommended to turn on the PLL before switching parent
-	 * of RCG to PLL because when RCG is on, both the old and new
-	 * sources should be on while switching the RCG parent.
-	 *
-	 * Note: Branch clocks and in turn RCG might not get turned off
-	 * during clock disable sequence if there is a vote from dispcc
-	 * or any of its other consumers.
-	 */
-
-	rc = dsi_phy_pll_toggle(m_ctrl->phy, true);
-	if (rc)
-		return rc;
-
-	return dsi_display_set_clk_src(display, false);
-}
-
-static int dsi_display_phy_pll_disable(struct dsi_display *display)
-{
-	int rc = 0;
-	struct dsi_display_ctrl *m_ctrl;
-
-	/*
-	 * It is recommended to turn off the PLL after switching parent
-	 * of RCG to PLL because when RCG is on, both the old and new
-	 * sources should be on while switching the RCG parent.
-	 */
-
-	rc = dsi_display_set_clk_src(display, true);
-	if (rc)
-		return rc;
-
-	m_ctrl = &display->ctrl[display->clk_master_idx];
-	if (!m_ctrl->phy) {
-		DSI_ERR("[%s] PHY not found\n", display->name);
-		return -EINVAL;
-	}
-
-	return dsi_phy_pll_toggle(m_ctrl->phy, false);
-}
-
-int dsi_display_phy_pll_toggle(void *priv, bool prepare)
+int dsi_display_phy_pll_toggle(void *priv, bool enable)
 {
 	struct dsi_display *display = priv;
+	struct dsi_display_ctrl *m_ctrl;
 
 	if (!display) {
 		DSI_ERR("invalid arguments\n");
@@ -2848,10 +2796,16 @@ int dsi_display_phy_pll_toggle(void *priv, bool prepare)
 	if (is_skip_op_required(display))
 		return 0;
 
-	if (prepare)
-		return dsi_display_phy_pll_enable(display);
+	m_ctrl = &display->ctrl[display->clk_master_idx];
+	if (!m_ctrl->phy) {
+		DSI_ERR("[%s] PHY not found\n", display->name);
+		return -EINVAL;
+	}
+
+	if (enable)
+		return dsi_phy_pll_toggle(m_ctrl->phy, true);
 	else
-		return dsi_display_phy_pll_disable(display);
+		return dsi_phy_pll_toggle(m_ctrl->phy, false);
 }
 
 int dsi_display_phy_configure(void *priv, bool commit)
@@ -3205,17 +3159,14 @@ static int dsi_display_vid_engine_disable(struct dsi_display *display)
 	return rc;
 }
 
-static int dsi_display_phy_enable(struct dsi_display *display)
+int dsi_display_phy_enable(struct dsi_display *display, enum dsi_phy_pll_source m_src)
 {
 	int rc = 0;
 	int i;
 	struct dsi_display_ctrl *m_ctrl, *ctrl;
-	enum dsi_phy_pll_source m_src = DSI_PLL_SOURCE_STANDALONE;
 	bool skip_op = is_skip_op_required(display);
 
 	m_ctrl = &display->ctrl[display->clk_master_idx];
-	if (display->ctrl_count > 1)
-		m_src = DSI_PLL_SOURCE_NATIVE;
 
 	rc = dsi_phy_enable(m_ctrl->phy, &display->config,
 			m_src, true, skip_op);
@@ -3248,7 +3199,7 @@ error:
 	return rc;
 }
 
-static int dsi_display_phy_disable(struct dsi_display *display)
+int dsi_display_phy_disable(struct dsi_display *display)
 {
 	int rc = 0;
 	int i;
@@ -3359,7 +3310,7 @@ error:
 	return rc;
 }
 
-static int dsi_display_phy_sw_reset(struct dsi_display *display)
+int dsi_display_phy_sw_reset(struct dsi_display *display)
 {
 	int rc = 0;
 	int i;
@@ -3746,7 +3697,7 @@ int dsi_pre_clkoff_cb(void *priv,
 		 */
 		if (dsi_panel_initialized(display->panel) ||
 			display->panel->ulps_suspend_enabled) {
-			dsi_display_phy_idle_off(display);
+			dsi_display_mgr_phy_idle_off(display);
 			rc = dsi_display_set_clamp(display, true);
 			if (rc)
 				DSI_ERR("%s: Failed to enable dsi clamps. rc=%d\n",
@@ -3804,7 +3755,7 @@ int dsi_post_clkon_cb(void *priv,
 		 * power collapse with clamps enabled.
 		 */
 		if (display->phy_idle_power_off || mmss_clamp)
-			dsi_display_phy_idle_on(display, mmss_clamp);
+			dsi_display_mgr_phy_idle_on(display);
 
 		if (display->ulps_enabled && mmss_clamp) {
 			/*
@@ -4219,6 +4170,38 @@ static bool dsi_display_validate_panel_resources(struct dsi_display *display)
 	return true;
 }
 
+static void dsi_display_check_sync_mode(struct dsi_display *display)
+{
+	char *dsi_pri_clock_name = "qcom,dsi-select-clocks";
+	char *dsi_sec_clock_name = "qcom,dsi-select-sec-clocks";
+	int num_pri_clk;
+	int num_sec_clk;
+	const char *pri_clk;
+	const char *sec_clk;
+	int i;
+
+	num_pri_clk = dsi_display_get_clocks_count(display, dsi_pri_clock_name);
+	num_sec_clk = dsi_display_get_clocks_count(display, dsi_sec_clock_name);
+
+	if (num_pri_clk != num_sec_clk) {
+		display->panel->ctl_op_sync = false;
+		return;
+	}
+
+	for (i = 0; i < num_pri_clk; i++) {
+		dsi_display_get_clock_name(display, dsi_pri_clock_name, i, &pri_clk);
+		dsi_display_get_clock_name(display, dsi_sec_clock_name, i, &sec_clk);
+		/* Assuming clocks in same order in dtsi for primary and secondary display */
+		if (strcmp(pri_clk, sec_clk)) {
+			display->panel->ctl_op_sync = false;
+			return;
+		}
+	}
+
+	display->panel->ctl_op_sync = true;
+	DSI_INFO("sync mode detected\n");
+}
+
 static int dsi_display_res_init(struct dsi_display *display)
 {
 	int rc = 0;
@@ -4299,6 +4282,8 @@ static int dsi_display_res_init(struct dsi_display *display)
 		goto error_panel_put;
 	}
 
+	dsi_display_check_sync_mode(display);
+
 	/**
 	 * In trusted vm, the connectors will not be enabled
 	 * until the HW resources are assigned and accepted.
@@ -4310,6 +4295,8 @@ static int dsi_display_res_init(struct dsi_display *display)
 		display->is_active = true;
 		display->hw_ownership = true;
 	}
+
+	INIT_LIST_HEAD(&display->list);
 
 	return 0;
 error_panel_put:
@@ -4767,7 +4754,7 @@ static int dsi_display_dynamic_clk_switch_vid(struct dsi_display *display,
 	/* update the phy timings based on new mode */
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
-		dsi_phy_update_phy_timings(ctrl->phy, &display->config);
+		dsi_phy_update_phy_timings(ctrl->phy, &display->config, true);
 	}
 
 	/* back up existing rates to handle failure case */
@@ -5719,8 +5706,8 @@ static int dsi_display_bind(struct device *dev,
 	info.pre_clkon_cb = dsi_pre_clkon_cb;
 	info.post_clkoff_cb = dsi_post_clkoff_cb;
 	info.post_clkon_cb = dsi_post_clkon_cb;
-	info.phy_config_cb = dsi_display_phy_configure;
-	info.phy_pll_toggle_cb = dsi_display_phy_pll_toggle;
+	info.phy_config_cb = dsi_display_mgr_phy_configure;
+	info.phy_pll_toggle_cb = dsi_display_mgr_phy_pll_toggle;
 	info.priv_data = display;
 	info.master_ndx = display->clk_master_idx;
 	info.dsi_ctrl_count = display->ctrl_count;
@@ -5814,6 +5801,9 @@ static int dsi_display_bind(struct device *dev,
 
 	msm_register_vm_event(master, dev, &vm_event_ops, (void *)display);
 
+	if (!rc)
+		dsi_display_manager_register(display);
+
 	goto error;
 
 error_host_deinit:
@@ -5862,6 +5852,9 @@ static void dsi_display_unbind(struct device *dev,
 	}
 
 	mutex_lock(&display->display_lock);
+
+	/* remove the display from the manager list */
+	dsi_display_manager_unregister(display);
 
 	rc = dsi_display_mipi_host_deinit(display);
 	if (rc)
@@ -6123,12 +6116,15 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	return rc;
 }
 
-int dsi_display_get_num_of_displays(void)
+int dsi_display_get_num_of_displays(struct drm_device *dev)
 {
 	int i, count = 0;
 
 	for (i = 0; i < MAX_DSI_ACTIVE_DISPLAY; i++) {
 		struct dsi_display *display = boot_displays[i].disp;
+
+		if (display->drm_dev != dev)
+			continue;
 
 		if ((display && display->panel_node) ||
 					(display && display->fw))
@@ -6138,7 +6134,8 @@ int dsi_display_get_num_of_displays(void)
 	return count;
 }
 
-int dsi_display_get_active_displays(void **display_array, u32 max_display_count)
+int dsi_display_get_active_displays(struct drm_device *dev,
+		void **display_array, u32 max_display_count)
 {
 	int index = 0, count = 0;
 
@@ -6149,6 +6146,9 @@ int dsi_display_get_active_displays(void **display_array, u32 max_display_count)
 
 	for (index = 0; index < MAX_DSI_ACTIVE_DISPLAY; index++) {
 		struct dsi_display *display = boot_displays[index].disp;
+
+		if (display->drm_dev != dev)
+			continue;
 
 		if ((display && display->panel_node) ||
 					(display && display->fw))
@@ -6741,8 +6741,13 @@ int dsi_display_get_info(struct drm_connector *connector,
 	memset(info, 0, sizeof(struct msm_display_info));
 	info->intf_type = DRM_MODE_CONNECTOR_DSI;
 	info->num_of_h_tiles = display->ctrl_count;
-	for (i = 0; i < info->num_of_h_tiles; i++)
-		info->h_tile_instance[i] = display->ctrl[i].ctrl->cell_index;
+	for (i = 0; i < info->num_of_h_tiles; i++) {
+		/* In a dual DPU configuration, the ctrl cell_index for the second DPU can be 2 and 3. */
+		if (display->ctrl[i].ctrl->cell_index > 1)
+			info->h_tile_instance[i] = display->ctrl[i].ctrl->cell_index - 2;
+		else
+			info->h_tile_instance[i] = display->ctrl[i].ctrl->cell_index;
+	}
 
 	info->is_connected = display->is_active;
 
@@ -8190,14 +8195,7 @@ int dsi_display_prepare(struct dsi_display *display)
 	 * is powered on, phy init needs to be done unconditionally.
 	 */
 	if (!display->panel->ulps_suspend_enabled || !display->ulps_enabled) {
-		rc = dsi_display_phy_sw_reset(display);
-		if (rc) {
-			DSI_ERR("[%s] failed to reset phy, rc=%d\n",
-				display->name, rc);
-			goto error_ctrl_clk_off;
-		}
-
-		rc = dsi_display_phy_enable(display);
+		rc = dsi_display_mgr_phy_enable(display);
 		if (rc) {
 			DSI_ERR("[%s] failed to enable DSI PHY, rc=%d\n",
 			       display->name, rc);
@@ -8261,7 +8259,7 @@ error_host_engine_off:
 error_ctrl_deinit:
 	(void)dsi_display_ctrl_deinit(display);
 error_phy_disable:
-	(void)dsi_display_phy_disable(display);
+	(void)dsi_display_mgr_phy_disable(display);
 error_ctrl_clk_off:
 	(void)dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK, DSI_CLK_OFF);
@@ -8960,7 +8958,7 @@ int dsi_display_unprepare(struct dsi_display *display)
 		       display->name, rc);
 
 	if (!display->panel->ulps_suspend_enabled) {
-		rc = dsi_display_phy_disable(display);
+		rc = dsi_display_mgr_phy_disable(display);
 		if (rc)
 			DSI_ERR("[%s] failed to disable DSI PHY, rc=%d\n",
 			       display->name, rc);
