@@ -326,7 +326,7 @@ struct sde_hw_sspp_ops {
 	 * @pe_ext: Pointer to pixel ext settings
 	 */
 	void (*setup_pe)(struct sde_hw_pipe *ctx,
-			struct sde_hw_pixel_ext *pe_ext);
+			struct sde_hw_pixel_ext *pe_ext, bool cac_en);
 
 	/**
 	 * setup_excl_rect - setup pipe exclusion rectangle
@@ -680,6 +680,21 @@ struct sde_hw_sspp_ops {
 	 */
 	void (*setup_fp16_unmult)(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
+
+	/**
+	 * setup_cac_ctrl - set CAC mode for each sspp
+	 * @ctx: Pointer to pipe object
+	 * @cac_mode: cac mode for that particular pipe
+	 */
+	void (*setup_cac_ctrl)(struct sde_hw_pipe *ctx, u32 cac_mode);
+
+	/**
+	 * setup_scaler_cac - set CAC scaler params for each sspp
+	 * @ctx: Pointer to pipe object
+	 * @cac_cfg: cac scaler config for each sspp
+	 */
+	void (*setup_scaler_cac)(struct sde_hw_pipe *ctx,
+		struct sde_hw_cac_cfg *cac_cfg);
 };
 
 /**

@@ -72,6 +72,58 @@ struct sde_hw_scaler3_de_cfg {
 	uint32_t blend;
 };
 
+/**
+ * struct sde_hw_cac_cfg : QSEEDv3 CAC configuration
+ * @cac_mode:              cac mode for current configuration
+ * @uv_filter_cfg:         uv plane filter configuration in CAC mode
+ * @cac_le_phase_init2_x:  LE horizontal initial phase2
+ * @cac_le_phase_init2_y:  LE vertical initial phase2
+ * @cac_re_phase_init2_y:  RE vertical initial phase2
+ * @cac_re_phase_init_y:   RE vertical initial phase
+ * @cac_le_thr_x:          LE horizontal threshold
+ * @cac_le_thr_y:          LE vertical threshold
+ * @cac_re_thr_y:          RE vertical threshold
+ * @cac_re_preload_y:      RE preload value
+ * @cac_dst_uv_w:          uv destination width
+ * @cac_dst_uv_h:          uv destination height
+ * @cac_le_dst_h_offset:   LE destination horizontal offset
+ * @cac_le_dst_v_offset:   LE destination vertical offset
+ * @cac_re_dst_v_offset:   RE destination vertical offset
+ * @cac_phase_inc_first_x: horizontal inc_first control
+ * @cac_phase_inc_first_y: vertical inc_first control
+ * @cac_le_inc_skip_x:     LE horizontal inc_skip control
+ * @cac_le_inc_skip_y:     LE vertical inc_skip control
+ * @cac_re_inc_skip_x:     RE horizontal inc_skip control
+ * @cac_re_inc_skip_y:     RE vertical inc_skip control
+ */
+struct sde_hw_cac_cfg {
+	u32 cac_mode;
+	u32 uv_filter_cfg;
+
+	u32 cac_le_phase_init2_x[SDE_MAX_PLANES];
+	u32 cac_le_phase_init2_y[SDE_MAX_PLANES];
+	u32 cac_re_phase_init2_y[SDE_MAX_PLANES];
+	u32 cac_re_phase_init_y[SDE_MAX_PLANES];
+
+	u32 cac_le_thr_x[SDE_MAX_PLANES];
+	u32 cac_le_thr_y[SDE_MAX_PLANES];
+
+	u32 cac_re_thr_y[SDE_MAX_PLANES];
+	u32 cac_re_preload_y[SDE_MAX_PLANES];
+
+	u32 cac_dst_uv_w;
+	u32 cac_dst_uv_h;
+	u32 cac_le_dst_h_offset;
+	u32 cac_le_dst_v_offset;
+	u32 cac_re_dst_v_offset;
+
+	u16 cac_phase_inc_first_x[SDE_MAX_PLANES];
+	u16 cac_phase_inc_first_y[SDE_MAX_PLANES];
+	u16 cac_le_inc_skip_x[SDE_MAX_PLANES];
+	u16 cac_le_inc_skip_y[SDE_MAX_PLANES];
+	u16 cac_re_inc_skip_x[SDE_MAX_PLANES];
+	u16 cac_re_inc_skip_y[SDE_MAX_PLANES];
+};
 
 /**
  * struct sde_hw_scaler3_cfg : QSEEDv3 configuration
@@ -109,6 +161,7 @@ struct sde_hw_scaler3_de_cfg {
  * @ de: detail enhancer configuration
  * @ dir_weight:   Directional Weight
  * @dyn_exp_disabled:     Dynamic expansion disabled
+ * @cac_cfg:              CAC qseed config
  */
 struct sde_hw_scaler3_cfg {
 	u32 enable;
@@ -151,6 +204,8 @@ struct sde_hw_scaler3_cfg {
 	struct sde_hw_scaler3_de_cfg de;
 	uint32_t dir_weight;
 	uint32_t dyn_exp_disabled;
+
+	struct sde_hw_cac_cfg cac_cfg;
 };
 
 struct sde_hw_scaler3_lut_cfg {
@@ -198,6 +253,9 @@ void sde_set_scaler_v2(struct sde_hw_scaler3_cfg *cfg,
 void sde_hw_setup_scaler3(struct sde_hw_blk_reg_map *c,
 		struct sde_hw_scaler3_cfg *scaler3_cfg, u32 scaler_version,
 		u32 scaler_offset, const struct sde_format *format);
+
+void sde_hw_setup_scaler_cac(struct sde_hw_blk_reg_map *c,
+	u32 sspp_blk_off, struct sde_hw_cac_cfg *cac_cfg);
 
 void sde_hw_csc_matrix_coeff_setup(struct sde_hw_blk_reg_map *c,
 		u32 csc_reg_off, struct sde_csc_cfg *data,
