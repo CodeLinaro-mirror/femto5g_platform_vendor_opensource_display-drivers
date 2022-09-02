@@ -1885,6 +1885,11 @@ static const struct dev_pm_ops msm_pm_ops = {
 	SET_RUNTIME_PM_OPS(msm_runtime_suspend, msm_runtime_resume, NULL)
 };
 
+static const struct dev_pm_ops msm_pm_ops_v2 = {
+	SET_RUNTIME_PM_OPS(msm_runtime_suspend, msm_runtime_resume, NULL)
+};
+#define DEV_PM_OPS (IS_ENABLED(CONFIG_DRM_SDE_SYSTEM_SLEEP_DISABLE) ? &msm_pm_ops_v2 : &msm_pm_ops)
+
 /*
  * Componentized driver support:
  */
@@ -2226,7 +2231,7 @@ static struct platform_driver msm_platform_driver = {
 	.driver     = {
 		.name   = "msm_drm",
 		.of_match_table = dt_match,
-		.pm     = &msm_pm_ops,
+		.pm     = DEV_PM_OPS,
 		.suppress_bind_attrs = true,
 	},
 };
