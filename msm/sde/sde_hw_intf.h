@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -83,6 +84,7 @@ struct intf_avr_params {
  * @setup_vsync_source: Configure vsync source selection for intf
  * @bind_pingpong_blk: enable/disable the connection with pingpong which will
  *                     feed pixels to this interface
+ * @setup_dpu_sync_prog_intf_offset : offset of slave DPU vsync from master DPU vsync
  */
 struct sde_hw_intf_ops {
 	void (*setup_timing_gen)(struct sde_hw_intf *intf,
@@ -233,6 +235,19 @@ struct sde_hw_intf_ops {
 	 * Get the INTF interrupt status
 	 */
 	u32 (*get_intr_status)(struct sde_hw_intf *intf);
+
+	/**
+	 * Setup the Sync programmable INTF offset between two DPU's
+	 */
+	void (*setup_dpu_sync_prog_intf_offset)(struct sde_hw_intf *intf,
+			const struct intf_prog_fetch *fetch);
+
+	/**
+	 * Setup timing engine enablement for slave DPU when enabled in sync mode
+	 */
+
+	void (*enable_dpu_sync_ctrl)(struct sde_hw_intf *intf,
+			u32 timing_en_mux_sel);
 };
 
 struct sde_hw_intf {

@@ -247,6 +247,7 @@ struct sde_intr_irq_offsets {
  * @SDE_MDP_DHDR_MEMPOOL_4K Dynamic HDR mempool is 4k aligned
  * @SDE_MDP_LLCC_DISP_LR   Separate SCID for left and right display
  * @SDE_MDP_PERIPH_TOP_REMOVED Indicates if periph top0 block is removed
+ * @SDE_MDP_DUAL_DPU_SYNC  Indicates if Dpu Sync feature is supported
  * @SDE_MDP_MAX            Maximum value
 
  */
@@ -262,6 +263,7 @@ enum {
 	SDE_MDP_DHDR_MEMPOOL_4K,
 	SDE_MDP_PERIPH_TOP_0_REMOVED,
 	SDE_MDP_LLCC_DISP_LR,
+	SDE_MDP_DUAL_DPU_SYNC,
 	SDE_MDP_MAX
 };
 

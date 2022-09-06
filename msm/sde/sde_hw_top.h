@@ -201,6 +201,14 @@ struct sde_hw_mdp_ops {
 	 */
 	u32 (*get_autorefresh_status)(struct sde_hw_mdp *mdp,
 			u32 intf_idx);
+
+	/**
+	 * dpu_sync_intf_mux - selects the Master INTF which drives the Slave DPU
+	 * @mdp:     mdp top context driver
+	 * @intf_idx:  intf block index which drives the master and Slave DPU
+	 *		INTF_1/INTF_5 are only possible values.
+	 */
+	void (*dpu_sync_intf_mux)(struct sde_hw_mdp *mdp, int intf_idx);
 };
 
 struct sde_hw_mdp {

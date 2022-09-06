@@ -191,6 +191,7 @@ enum sde_enc_rc_states {
  *				next update is triggered.
  * @autorefresh_solver_disable	It tracks if solver state is disabled from this
  *				encoder due to autorefresh concurrency.
+ * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -258,6 +259,7 @@ struct sde_encoder_virt {
 	struct msm_mode_info mode_info;
 	bool delay_kickoff;
 	bool autorefresh_solver_disable;
+	bool dpu_ctl_op_sync;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -678,6 +680,22 @@ static inline bool sde_encoder_is_widebus_enabled(struct drm_encoder *drm_enc)
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	return sde_enc->mode_info.wide_bus_en;
+}
+
+/*
+ * sde_encoder_has_dpu_ctl_op_sync - check if dpu sync is enabled for this encoder
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return: true if DPU Interface sync is enabled
+ */
+static inline bool sde_encoder_has_dpu_ctl_op_sync(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	return sde_enc->dpu_ctl_op_sync;
 }
 
 void sde_encoder_add_data_to_minidump_va(struct drm_encoder *drm_enc);
