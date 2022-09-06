@@ -301,6 +301,7 @@ enum {
  * @SDE_SSPP_FP16_CSC        FP16 CSC color processing block support
  * @SDE_SSPP_FP16_UNMULT     FP16 alpha unmult color processing block support
  * @SDE_SSPP_UBWC_STATS:     Support for ubwc stats
+ * @SDE_SSPP_CAC_V2          CAC v2 support
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -338,6 +339,7 @@ enum {
 	SDE_SSPP_FP16_CSC,
 	SDE_SSPP_FP16_UNMULT,
 	SDE_SSPP_UBWC_STATS,
+	SDE_SSPP_CAC_V2,
 	SDE_SSPP_MAX
 };
 
@@ -825,6 +827,9 @@ enum sde_creq_lut_types {
  * @in_rot_maxheight: max pre rotated height for inline rotation
  * @llcc_scid: scid for the system cache
  * @llcc_slice size: slice size of the system cache
+ * @cac_mode: supported cac mode for each sspp
+ * @cac_parent_rec: parent rec id for each sspp
+ * @cac_lm_pref: preferred lm for each sspp rec
  */
 struct sde_sspp_sub_blks {
 	u32 maxlinewidth;
@@ -874,6 +879,9 @@ struct sde_sspp_sub_blks {
 	u32 in_rot_maxheight;
 	int llcc_scid;
 	size_t llcc_slice_size;
+	int cac_mode;
+	u32 cac_parent_rec[SSPP_SUBBLK_COUNT_MAX];
+	u32 cac_lm_pref[SSPP_SUBBLK_COUNT_MAX];
 };
 
 /**
@@ -1621,6 +1629,7 @@ struct sde_perf_cfg {
  * @demura_supported   Demura pipe support flag(~0x00 - Not supported)
  * @qseed_sw_lib_rev	qseed sw library type supporting the qseed hw
  * @qseed_hw_version   qseed hw version of the target
+ * @cac_version        CAC version supported by the target
  * @sc_cfg: system cache configuration
  * @syscache_supported  Flag to indicate if sys cache support is enabled
  * @uidle_cfg		Settings for uidle feature
@@ -1712,6 +1721,7 @@ struct sde_mdss_cfg {
 	u32 demura_supported[SSPP_MAX][2];
 	u32 qseed_sw_lib_rev;
 	u32 qseed_hw_version;
+	u32 cac_version;
 
 	struct sde_sc_cfg sc_cfg[SDE_SYS_CACHE_MAX];
 	bool syscache_supported;
