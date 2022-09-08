@@ -138,6 +138,8 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_FP16_IGC,
 	PLANE_PROP_FP16_UNMULT,
 	PLANE_PROP_UBWC_STATS_ROI,
+	PLANE_PROP_BG_ALPHA,
+	PLANE_PROP_SRC_IMG_SIZE,
 
 	/* enum/bitmask properties */
 	PLANE_PROP_BLEND_OP,
@@ -145,6 +147,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_FB_TRANSLATION_MODE,
 	PLANE_PROP_MULTIRECT_MODE,
 	PLANE_PROP_SYS_CACHE_TYPE,
+	PLANE_PROP_CAC_TYPE,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
