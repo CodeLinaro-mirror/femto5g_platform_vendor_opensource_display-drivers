@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -15,9 +16,9 @@
  * reg_dmav1_init_dspp_op_v4() - initialize the dspp feature op for sde v4
  *                               using reg dma v1.
  * @feature: dspp feature
- * idx: dspp idx
+ * @ctx: dspp ctx info
  */
-int reg_dmav1_init_dspp_op_v4(int feature, enum sde_dspp idx);
+int reg_dmav1_init_dspp_op_v4(int feature, struct sde_hw_dspp *ctx);
 
 /**
  * reg_dmav1_setup_dspp_vlutv18() - vlut v18 implementation using reg dma v1.
@@ -124,16 +125,16 @@ void reg_dmav1_setup_dspp_memcol_protv17(struct sde_hw_dspp *ctx, void *cfg);
 /**
  * reg_dmav1_deinit_dspp_ops() - deinitialize the dspp feature op for sde v4
  *                               which were initialized.
- * @idx: dspp idx
+ * @ctx: dspp ctx info
  */
-int reg_dmav1_deinit_dspp_ops(enum sde_dspp idx);
+int reg_dmav1_deinit_dspp_ops(struct sde_hw_dspp *ctx);
 
 /**
  * reg_dmav1_init_sspp_op_v4() - initialize the sspp feature op for sde v4
  * @feature: sspp feature
- * @idx: sspp idx
+ * @ctx: sspp ctx info
  */
-int reg_dmav1_init_sspp_op_v4(int feature, enum sde_sspp idx);
+int reg_dmav1_init_sspp_op_v4(int feature, struct sde_hw_pipe *ctx);
 
 /**
  * reg_dmav1_setup_vig_gamutv5() - VIG 3D lut gamut v5 implementation
@@ -202,33 +203,37 @@ void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
  * @buf: defines structure for reg dma ops on the reg dma buffer.
  * @scaler3_cfg: QSEEDv3 configuration
  * @offset: Scaler Offest
+ * @dpu_idx: dpu index
  */
 
 void reg_dmav1_setup_scaler3_lut(struct sde_reg_dma_setup_ops_cfg *buf,
-		struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset);
+		struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset,
+		u32 dpu_idx);
 
 /**reg_dmav1_setup_scaler3lite_lut - Qseed3lite lut coefficient programming
  * @buf: defines structure for reg dma ops on the reg dma buffer.
  * @scaler3_cfg: QSEEDv3 configuration
  * @offset: Scaler Offest
+ * @dpu_idx: dpu index
  */
 
 void reg_dmav1_setup_scaler3lite_lut(struct sde_reg_dma_setup_ops_cfg *buf,
-		struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset);
+		struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset,
+		u32 dpu_idx);
 
 /**
  * reg_dmav1_deinit_sspp_ops() - deinitialize the sspp feature op for sde v4
  *                               which were initialized.
- * @idx: sspp idx
+ * @ctx: sspp ctx info
  */
-int reg_dmav1_deinit_sspp_ops(enum sde_sspp idx);
+int reg_dmav1_deinit_sspp_ops(struct sde_hw_pipe *ctx);
 
 /**
  * reg_dmav1_init_ltm_op_v6() - initialize the ltm feature op for sde v6
  * @feature: ltm feature
- * @idx: dspp idx
+ * @ctx: dspp ctx info
  */
-int reg_dmav1_init_ltm_op_v6(int feature, enum sde_dspp idx);
+int reg_dmav1_init_ltm_op_v6(int feature, struct sde_hw_dspp *ctx);
 
 /**
  * reg_dmav1_setup_ltm_initv1() - LTM INIT v1 implementation using reg dma v1.
@@ -262,17 +267,17 @@ int reg_dmav1_setup_rc_datav1(struct sde_hw_dspp *ctx, void *cfg);
 /**
  * reg_dmav1_deinit_ltm_ops() - deinitialize the ltm feature op for sde v4
  *                               which were initialized.
- * @idx: ltm idx
+ * @ctx: dspp ctx info
  */
-int reg_dmav1_deinit_ltm_ops(enum sde_dspp idx);
+int reg_dmav1_deinit_ltm_ops(struct sde_hw_dspp *ctx);
 
 /**
  * reg_dmav2_init_dspp_op_v4() - initialize the dspp feature op for sde v4
  *                               using reg dma v2.
  * @feature: dspp feature
- * @idx: dspp idx
+ * @ctx: dspp ctx info
  */
-int reg_dmav2_init_dspp_op_v4(int feature, enum sde_dspp idx);
+int reg_dmav2_init_dspp_op_v4(int feature, struct sde_hw_dspp *ctx);
 
 /**
  * reg_dmav2_setup_dspp_igcv4() - igc v4 implementation using reg dma v2.
