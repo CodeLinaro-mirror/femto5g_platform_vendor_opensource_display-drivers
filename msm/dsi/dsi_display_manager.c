@@ -127,11 +127,11 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 	 * display from the list and enable it first.
 	 */
 
-	pm_runtime_get_sync(m_display->ctrl[0].ctrl->drm_dev->dev);
 	if (phy->sync_en_refcount > 0)
 		goto not_first_enable;
 
 	SDE_EVT32(display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
+
 	if (display->is_master) {
 		if (type == DSI_DISPLAY_MGR_PHY_PWR) {
 			ret = dsi_display_phy_sw_reset(display);
@@ -182,23 +182,17 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 				}
 
 				/*
-				 * PHY timings, display host config are updated usually as
-				 * part of display_set_mode. In a use case when the slave PHY
-				 * is turning on before the master, display_set_mode wouldn't
-				 * have been called for the slave display. Therefore it is
-				 * required to explicitly call the update_phy_timings op on
-				 * master controller and update master display host config from
-				 * slave display host config before enabling the master PHY.
+				 * PHY timings are updated usually as part of display_set_mode.
+				 * In a use case when the slave PHY is turning on before the
+				 * master, display_set_mode wouldn't have been called for the
+				 * slave display. Therefore it is required to explicitly
+				 * call the update_phy_timings op on master controller before
+				 * enabling the master PHY.
 				 *
-				 * NOTE: The updated PHY timings may be slightly different from
+				 * NOTE: These updated PHY timings may be slightly different from
 				 * the devicetree as these are calculated within the driver, but
 				 * as the display is not yet on it shouldn't cause any issues.
 				 */
-				memcpy(&m_display->config.common_config,
-					&display->config.common_config, sizeof(display->config.common_config));
-				memcpy(&m_display->config.lane_map,
-					&display->config.lane_map, sizeof(display->config.lane_map));
-
 				display_for_each_ctrl(i, m_display) {
 					display_ctrl = &m_display->ctrl[i];
 					if (!display_ctrl)
@@ -364,8 +358,8 @@ static int dsi_display_mgr_phy_control_disable(struct dsi_display *display,
 			}
 		}
 	}
+
 not_last_disable:
-	pm_runtime_put_sync(m_display->ctrl[0].ctrl->drm_dev->dev);
 	DSI_DEBUG("master: %d phy ref_cnt = %d m_phy ref_cnt = %d\n",
 			display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
 
