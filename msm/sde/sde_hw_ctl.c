@@ -53,6 +53,11 @@
 #define CTL_INTF_MASTER               0x134
 #define CTL_UIDLE_ACTIVE              0x138
 
+#define CTL_HW_FENCE_CTRL		0x250
+#define CTL_FENCE_READY_SW_OVERRIDE	0x254
+#define CTL_INPUT_FENCE_ID		0x258
+#define CTL_HW_FENCE_STATUS		0x278
+
 #define CTL_MIXER_BORDER_OUT            BIT(24)
 #define CTL_FLUSH_MASK_ROT              BIT(27)
 #define CTL_FLUSH_MASK_CTL              BIT(17)
@@ -1278,6 +1283,37 @@ static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 
 }
 
+static inline int sde_hw_ctl_get_hw_fence_status(struct sde_hw_ctl *ctx)
+{
+	return SDE_REG_READ(&ctx->hw, CTL_HW_FENCE_STATUS);
+}
+
+static inline void sde_hw_ctl_hw_fence_ctrl(struct sde_hw_ctl *ctx, bool sw_override_set,
+		bool  sw_override_clear, u32 mode)
+{
+	u32 val;
+
+	val = SDE_REG_READ(&ctx->hw, CTL_HW_FENCE_CTRL);
+	val |= (0x1 & mode) | (sw_override_set ? BIT(5) : 0) | (sw_override_clear ? BIT(4) : 0);
+	SDE_REG_WRITE(&ctx->hw, CTL_HW_FENCE_CTRL, val);
+}
+
+static inline void sde_hw_ctl_update_input_fence(struct sde_hw_ctl *ctx,
+		u32 source_id, u32 signal_id)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 val;
+
+	c = &ctx->hw;
+	val = (source_id << 16) | (signal_id & 0xFF);
+	SDE_REG_WRITE(c, CTL_INPUT_FENCE_ID, val);
+}
+
+static inline void sde_hw_ctl_trigger_sw_override(struct sde_hw_ctl *ctx)
+{
+	SDE_REG_WRITE(&ctx->hw, CTL_FENCE_READY_SW_OVERRIDE, 0x1);
+}
+
 static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		unsigned long cap)
 {
@@ -1324,6 +1360,13 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	ops->update_bitmask_mixer = sde_hw_ctl_update_bitmask_mixer;
 	ops->reg_dma_flush = sde_hw_reg_dma_flush;
 	ops->get_start_state = sde_hw_ctl_get_start_state;
+
+	if (cap & BIT(SDE_CTL_HW_FENCE)) {
+		ops->hw_fence_ctrl = sde_hw_ctl_hw_fence_ctrl;
+		ops->setup_hw_input_fence = sde_hw_ctl_update_input_fence;
+		ops->hw_fence_trigger_sw_override = sde_hw_ctl_trigger_sw_override;
+		ops->get_hw_fence_status = sde_hw_ctl_get_hw_fence_status;
+	}
 
 	if (cap & BIT(SDE_CTL_UNIFIED_DSPP_FLUSH)) {
 		ops->update_bitmask_dspp_subblk =

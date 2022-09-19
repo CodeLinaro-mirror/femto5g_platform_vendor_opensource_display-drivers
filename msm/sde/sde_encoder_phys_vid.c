@@ -513,6 +513,7 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 	int new_cnt = -1, old_cnt = -1;
 	u32 event = 0;
 	int pend_ret_fence_cnt = 0;
+	u32 fence_ready = -1;
 
 	if (!phys_enc)
 		return;
@@ -567,12 +568,16 @@ not_flushed:
 		phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf,
 			&intf_status);
 
+	if (hw_ctl && hw_ctl->ops.get_hw_fence_status)
+		fence_ready = hw_ctl->ops.get_hw_fence_status(hw_ctl);
+
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent), phys_enc->hw_intf->idx - INTF_0,
 			old_cnt, atomic_read(&phys_enc->pending_kickoff_cnt),
 			reset_status ? SDE_EVTLOG_ERROR : 0,
 			flush_register, event,
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
-			intf_status.frame_count, intf_status.line_count);
+			intf_status.frame_count, intf_status.line_count, fence_ready,
+			phys_enc->parent->dev->primary->index);
 
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&phys_enc->pending_kickoff_wq);

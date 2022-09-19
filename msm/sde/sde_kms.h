@@ -42,6 +42,7 @@
 #include "sde_power_handle.h"
 #include "sde_irq.h"
 #include "sde_core_perf.h"
+#include "sde_hw_ipcc.h"
 
 #define DRMID(x) ((x) ? (x)->base.id : -1)
 
@@ -262,8 +263,8 @@ struct sde_kms {
 	struct dentry *debugfs_vbif;
 
 	/* io/register spaces: */
-	void __iomem *mmio, *vbif[VBIF_MAX], *reg_dma, *sid;
-	unsigned long mmio_len, vbif_len[VBIF_MAX], reg_dma_len, sid_len;
+	void __iomem *mmio, *vbif[VBIF_MAX], *reg_dma, *sid, *ipcc;
+	unsigned long mmio_len, vbif_len[VBIF_MAX], reg_dma_len, sid_len, ipcc_len;
 	unsigned long reg_dma_off;
 
 	struct regulator *vdd;
@@ -291,6 +292,9 @@ struct sde_kms {
 	struct sde_hw_mdp *hw_mdp;
 	struct sde_hw_uidle *hw_uidle;
 	struct sde_hw_sid *hw_sid;
+	struct sde_hw_ipcc *hw_ipcc;
+	unsigned long ipcc_base_addr;
+
 	int dsi_display_count;
 	void **dsi_displays;
 	int wb_display_count;
@@ -773,6 +777,14 @@ int sde_kms_vm_trusted_prepare_commit(struct sde_kms *sde_kms,
  */
 int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 					   struct drm_atomic_state *state);
+
+/**
+ * sde_kms_hw_fence_enabled - function to check if hw fence is enabled from
+ *			      the catalog
+ * @sde_kms: pointer to sde_kms
+ * return: true if enabled else false.
+ */
+bool sde_kms_hw_fence_enabled(struct sde_kms *sde_kms);
 
 void sde_kms_add_data_to_minidump_va(struct sde_kms *sde_kms);
 #endif /* __sde_kms_H__ */

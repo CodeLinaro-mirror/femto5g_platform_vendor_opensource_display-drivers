@@ -248,6 +248,7 @@ struct sde_intr_irq_offsets {
  * @SDE_MDP_LLCC_DISP_LR   Separate SCID for left and right display
  * @SDE_MDP_PERIPH_TOP_REMOVED Indicates if periph top0 block is removed
  * @SDE_MDP_DUAL_DPU_SYNC  Indicates if Dpu Sync feature is supported
+ * @SDE_MDP_HAS_HW_FENCE_SUPPORT Indicates HW fence signaling is supported
  * @SDE_MDP_MAX            Maximum value
 
  */
@@ -264,6 +265,7 @@ enum {
 	SDE_MDP_PERIPH_TOP_0_REMOVED,
 	SDE_MDP_LLCC_DISP_LR,
 	SDE_MDP_DUAL_DPU_SYNC,
+	SDE_MDP_HAS_HW_FENCE_SUPPORT,
 	SDE_MDP_MAX
 };
 
@@ -525,6 +527,7 @@ enum {
  * @SDE_CTL_UIDLE               CTL supports uidle
  * @SDE_CTL_UNIFIED_DSPP_FLUSH  CTL supports only one flush bit for DSPP
  * @SDE_CTL_DMA4_DMA5		CTL supports DMA4 & DMA5 pipes
+ * @SDE_CTL_HW_FENCE		CTL supports input and output HW fence
  * @SDE_CTL_MAX
  */
 enum {
@@ -535,6 +538,7 @@ enum {
 	SDE_CTL_UIDLE,
 	SDE_CTL_UNIFIED_DSPP_FLUSH,
 	SDE_CTL_DMA4_DMA5,
+	SDE_CTL_HW_FENCE,
 	SDE_CTL_MAX
 };
 
@@ -1635,6 +1639,10 @@ struct sde_perf_cfg {
  * @cac_version        CAC version supported by the target
  * @sc_cfg: system cache configuration
  * @syscache_supported  Flag to indicate if sys cache support is enabled
+ * @hw_fence_enabled Boolean Flag to indicate if hw fence is enabled from Software
+ * @dpu_src_client_ipc_id	client_ID for which HW IPCC signalling is to be enabled
+ * @dpu_dst_client_ipc_id	client_ID to which IPCC signal is triggered from APPS
+ * @ipcc_protocol_id	Protocol ID for the IPCC communication
  * @uidle_cfg		Settings for uidle feature
  * @sui_misr_supported  indicate if secure-ui-misr is supported
  * @sui_block_xin_mask  mask of all the xin-clients to be blocked during
@@ -1728,6 +1736,11 @@ struct sde_mdss_cfg {
 
 	struct sde_sc_cfg sc_cfg[SDE_SYS_CACHE_MAX];
 	bool syscache_supported;
+
+	bool hw_fence_enabled;
+	u32 dpu_src_client_ipc_id;
+	u32 dpu_dst_client_ipc_id;
+	u32 ipcc_protocol_id;
 
 	bool sui_misr_supported;
 	u32 sui_block_xin_mask;

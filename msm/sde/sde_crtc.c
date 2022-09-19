@@ -3672,6 +3672,40 @@ end:
 	SDE_ATRACE_END("crtc_atomic_begin");
 }
 
+static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_hw_ctl *ctl;
+	struct sde_kms *sde_kms;
+
+	if (!crtc) {
+		SDE_ERROR("invalid crtc\n");
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+	sde_kms = _sde_crtc_get_kms(crtc);
+
+	if (!sde_crtc) {
+		SDE_ERROR("invalid input params\n");
+		return;
+	}
+
+	ctl = sde_crtc->mixers[0].hw_ctl;
+
+	if (!ctl || !ctl->ops.setup_hw_input_fence || !ctl->ops.hw_fence_ctrl ||
+		!ctl->ops.hw_fence_trigger_sw_override) {
+		SDE_DEBUG("ctl ops not defined for hw fence\n");
+		return;
+	}
+
+	ctl->ops.setup_hw_input_fence(ctl, HW_FENCE_IPC_CLIENT_ID_APPS, 0x0);
+	ctl->ops.hw_fence_ctrl(ctl, true, true, 1);
+
+	if (crtc->state->active_changed)
+		ctl->ops.hw_fence_trigger_sw_override(ctl);
+}
+
 static void sde_crtc_atomic_flush(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_crtc_state)
 {
@@ -3755,6 +3789,9 @@ static void sde_crtc_atomic_flush(struct drm_crtc *crtc,
 
 	/* wait for acquire fences before anything else is done */
 	_sde_crtc_wait_for_fences(crtc);
+
+	if (sde_kms->catalog->hw_fence_enabled)
+		_sde_crtc_configure_hw_fence(crtc);
 
 	if (!cstate->rsc_update) {
 		drm_for_each_encoder_mask(encoder, dev,

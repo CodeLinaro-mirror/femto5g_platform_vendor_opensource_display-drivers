@@ -9,6 +9,7 @@
 #include "sde_hw_top.h"
 #include "sde_dbg.h"
 #include "sde_kms.h"
+#include "sde_hw_ipcc.h"
 
 #define SSPP_SPARE                        0x28
 #define UBWC_DEC_HW_VERSION               0x058
@@ -73,6 +74,30 @@
 #define MDP_SID_XIN7			  0x2C
 
 #define ROT_SID_ID_VAL			  0x1c
+/* HW Fences */
+#define MDP_CTL_HW_FENCE_CTRL			0x14000
+#define MDP_CTL_HW_FENCE_ID_START_ADDR		0x14004
+#define MDP_CTL_HW_FENCE_ID_STATUS		0x14008
+#define MDP_CTL_HW_FENCE_ID_TIMESTAMP_CTRL	0x1400c
+#define MDP_CTL_HW_FENCE_INPUT_START_TIMESTAMP0	0x14010
+#define MDP_CTL_HW_FENCE_INPUT_START_TIMESTAMP1	0x14014
+#define MDP_CTL_HW_FENCE_INPUT_END_TIMESTAMP0	0x14018
+#define MDP_CTL_HW_FENCE_INPUT_END_TIMESTAMP1	0x1401c
+#define MDP_CTL_HW_FENCE_QOS			0x14020
+#define MDP_CTL_HW_FENCE_IDn_ISR		0x14050
+#define MDP_CTL_HW_FENCE_IDm_ADDR		0x14054
+#define MDP_CTL_HW_FENCE_IDm_DATA		0x14058
+#define MDP_CTL_HW_FENCE_IDm_MASK		0x1405c
+#define MDP_CTL_HW_FENCE_IDm_ATTR		0x14060
+
+#define MDP_CTL_HW_FENCE_ID_OFFSET_n(base, n) (base + (0x14*n))
+#define MDP_CTL_HW_FENCE_ID_OFFSET_m(base, m) (base + (0x14*m))
+#define MDP_CTL_FENCE_ATTRS(devicetype, size, resp_req) \
+	(((resp_req & 0x1) << 16)  | ((size & 0x7) << 4) | (devicetype & 0xf))
+#define MDP_CTL_FENCE_ISR_OP_CODE(opcode, op0, op1, op2) \
+	(((op2 & 0xff) << 24) | ((op1 & 0xff) << 16) | ((op0 & 0xff) << 8)  | (opcode & 0xff))
+
+
 
 static void sde_hw_setup_split_pipe(struct sde_hw_mdp *mdp,
 		struct split_pipe_cfg *cfg)
@@ -525,6 +550,65 @@ static u32 sde_hw_get_autorefresh_status(struct sde_hw_mdp *mdp, u32 intf_idx)
 	return autorefresh_status;
 }
 
+static void sde_hw_setup_hw_fences_config(struct sde_hw_mdp *mdp, u32 protocol_id,
+		unsigned long ipcc_base_addr, u32 client_id)
+{
+	u32 val, offset;
+	struct sde_hw_blk_reg_map c;
+
+	if (!mdp || !ipcc_base_addr) {
+		SDE_ERROR("invalid input params, won't configure hw-fences\n");
+		return;
+	}
+
+	/* start from the base-address of the mdss */
+	c = mdp->hw;
+	c.blk_off = 0x0;
+
+	SDE_REG_WRITE(&c, MDP_CTL_HW_FENCE_CTRL, protocol_id);
+	val = (HW_FENCE_DPU_OUTPUT_FENCE_START_N << 16) | (HW_FENCE_DPU_INPUT_FENCE_START_N & 0xFF);
+	SDE_REG_WRITE(&c, MDP_CTL_HW_FENCE_ID_START_ADDR, val);
+
+	/* setup input fence isr */
+
+	/* configure the attribs for the isr read_reg op */
+	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(MDP_CTL_HW_FENCE_IDm_ADDR, 0);
+	val = HW_FENCE_IPCC_PROTOCOLp_CLIENTc_RECV_ID(ipcc_base_addr,
+				protocol_id, client_id);
+	SDE_REG_WRITE(&c, offset, val);
+
+	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(MDP_CTL_HW_FENCE_IDm_ATTR, 0);
+	val = MDP_CTL_FENCE_ATTRS(0x1, 0x2, 0x1);
+	SDE_REG_WRITE(&c, offset, val);
+
+	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(MDP_CTL_HW_FENCE_IDm_MASK, 0);
+	SDE_REG_WRITE(&c, offset, 0xFFFFFFFF);
+
+	/* configure the attribs for the write if eq data */
+	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(MDP_CTL_HW_FENCE_IDm_DATA, 1);
+	SDE_REG_WRITE(&c, offset, 0x1);
+
+	/* program input-fence isr ops */
+
+	/* set read_reg op */
+	offset = MDP_CTL_HW_FENCE_ID_OFFSET_n(MDP_CTL_HW_FENCE_IDn_ISR,
+			HW_FENCE_DPU_INPUT_FENCE_START_N);
+	val = MDP_CTL_FENCE_ISR_OP_CODE(0x0, 0x0, 0x0, 0x0);
+	SDE_REG_WRITE(&c, offset, val);
+
+	/* set write if eq op for flush ready */
+	offset = MDP_CTL_HW_FENCE_ID_OFFSET_n(MDP_CTL_HW_FENCE_IDn_ISR,
+			(HW_FENCE_DPU_INPUT_FENCE_START_N + 1));
+	val = MDP_CTL_FENCE_ISR_OP_CODE(0x7, 0x0, 0x1, 0x0);
+	SDE_REG_WRITE(&c, offset, val);
+
+	/* set exit op */
+	offset = MDP_CTL_HW_FENCE_ID_OFFSET_n(MDP_CTL_HW_FENCE_IDn_ISR,
+			(HW_FENCE_DPU_INPUT_FENCE_START_N + 2));
+	val = MDP_CTL_FENCE_ISR_OP_CODE(0xf, 0x0, 0x0, 0x0);
+	SDE_REG_WRITE(&c, offset, val);
+}
+
 static void _setup_mdp_ops(struct sde_hw_mdp_ops *ops,
 		unsigned long cap)
 {
@@ -549,6 +633,9 @@ static void _setup_mdp_ops(struct sde_hw_mdp_ops *ops,
 
 	if (cap & BIT(SDE_MDP_DUAL_DPU_SYNC))
 		ops->dpu_sync_intf_mux = sde_hw_setup_dpu_sync_intf_mux;
+
+	if (cap & BIT(SDE_MDP_HAS_HW_FENCE_SUPPORT))
+		ops->setup_hw_fences = sde_hw_setup_hw_fences_config;
 }
 
 static const struct sde_mdp_cfg *_top_offset(enum sde_mdp mdp,

@@ -222,6 +222,9 @@ enum sde_prop {
 	TRUSTED_VM_ENV,
 	MAX_TRUSTED_VM_DISPLAYS,
 	TVM_INCLUDE_REG,
+	DPU_SRC_CLIENT_IPC_ID,
+	DPU_DST_CLIENT_IPC_ID,
+	IPCC_PROTOCOL_ID,
 	SDE_PROP_MAX,
 };
 
@@ -617,6 +620,9 @@ static struct sde_prop_type sde_prop[] = {
 	{MAX_TRUSTED_VM_DISPLAYS, "qcom,sde-max-trusted-vm-displays", false,
 			PROP_TYPE_U32},
 	{TVM_INCLUDE_REG, "qcom,tvm-include-reg", false, PROP_TYPE_U32_ARRAY},
+	{DPU_SRC_CLIENT_IPC_ID, "qcom,sde-ipcc-src-dpu-client-id", false, PROP_TYPE_U32},
+	{DPU_DST_CLIENT_IPC_ID, "qcom,sde-ipcc-dst-dpu-client-id", false, PROP_TYPE_U32},
+	{IPCC_PROTOCOL_ID, "qcom,sde-ipcc-protocol-id", false, PROP_TYPE_U32},
 };
 
 static struct sde_prop_type sde_perf_prop[] = {
@@ -4103,6 +4109,14 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 						i * 2 + 1);
 		}
 	}
+
+	if (test_bit(SDE_MDP_HAS_HW_FENCE_SUPPORT, &cfg->mdp[0].features)) {
+		cfg->dpu_src_client_ipc_id = PROP_VALUE_ACCESS(props->values,
+							DPU_SRC_CLIENT_IPC_ID, 0);
+		cfg->dpu_dst_client_ipc_id = PROP_VALUE_ACCESS(props->values,
+							DPU_DST_CLIENT_IPC_ID, 0);
+		cfg->ipcc_protocol_id = PROP_VALUE_ACCESS(props->values, IPCC_PROTOCOL_ID, 0);
+	}
 }
 
 static int sde_top_parse_dt(struct device_node *np, struct sde_mdss_cfg *cfg)
@@ -5481,6 +5495,10 @@ static int _sde_hardware_post_caps(struct sde_mdss_cfg *sde_cfg,
 
 	sde_cfg->min_display_height = MIN_DISPLAY_HEIGHT;
 	sde_cfg->min_display_width = MIN_DISPLAY_WIDTH;
+
+	if (test_bit(SDE_MDP_HAS_HW_FENCE_SUPPORT, &sde_cfg->mdp[0].features)
+			&& sde_cfg->ctl_count)
+		set_bit(SDE_CTL_HW_FENCE, &sde_cfg->ctl[0].features);
 
 	return rc;
 }
