@@ -124,7 +124,6 @@ enum ltm_vlut_ops_bitmask {
 	ltm_ops_max = BIT(31),
 };
 
-// TODO: check if this required to be per DPU.
 static u32 ltm_vlut_ops_mask[LTM_MAX][DPU_MAX];
 
 static struct sde_reg_dma_buffer *dspp_buf[REG_DMA_FEATURES_MAX][DSPP_MAX][DPU_MAX];

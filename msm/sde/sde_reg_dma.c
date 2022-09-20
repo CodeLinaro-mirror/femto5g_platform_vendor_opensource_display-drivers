@@ -160,7 +160,7 @@ struct sde_hw_reg_dma_ops *sde_reg_dma_get_ops(u32 dpu_idx)
 		return NULL;
 	}
 
-	return &(reg_dma[dpu_idx].ops);
+	return (reg_dma[dpu_idx].ops.check_support ? &(reg_dma[dpu_idx].ops) : NULL);
 }
 
 void sde_reg_dma_deinit(u32 dpu_idx)
