@@ -1356,7 +1356,7 @@ static u32 sde_encoder_phys_vid_get_underrun_line_count(
 
 	SDE_EVT32(DRMID(phys_enc->parent), underrun_linecount,
 		intf_status.frame_count, intf_status.line_count,
-		intf_intr_status);
+		intf_intr_status, phys_enc->parent->dev->primary->index);
 
 	return underrun_linecount;
 }

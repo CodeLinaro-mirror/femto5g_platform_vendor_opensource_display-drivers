@@ -213,7 +213,9 @@ static void sde_encoder_phys_cmd_pp_tx_done_irq(void *arg, int irq_idx)
 		scheduler_status = ctl->ops.get_scheduler_status(ctl);
 
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent),
-			phys_enc->hw_pp->idx - PINGPONG_0, event, scheduler_status);
+			phys_enc->hw_pp->idx - PINGPONG_0,
+			event, scheduler_status,
+			phys_enc->parent->dev->primary->index);
 
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&phys_enc->pending_kickoff_wq);
@@ -239,7 +241,7 @@ static void sde_encoder_phys_cmd_autorefresh_done_irq(void *arg, int irq_idx)
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent),
 			phys_enc->hw_pp->idx - PINGPONG_0,
 			phys_enc->hw_intf->idx - INTF_0,
-			new_cnt);
+			new_cnt, phys_enc->parent->dev->primary->index);
 
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&cmd_enc->autorefresh.kickoff_wq);
@@ -282,7 +284,7 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 		info[0].wr_ptr_line_count, info[0].intf_frame_count,
 		info[1].pp_idx, info[1].intf_idx,
 		info[1].wr_ptr_line_count, info[1].intf_frame_count,
-		scheduler_status);
+		scheduler_status, phys_enc->parent->dev->primary->index);
 
 	mode = &phys_enc->cached_mode;
 	if (!mode || info[0].wr_ptr_line_count == mode->vdisplay ||
@@ -329,7 +331,8 @@ static void sde_encoder_phys_cmd_wr_ptr_irq(void *arg, int irq_idx)
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent),
 		ctl->idx - CTL_0, event,
 		info[0].pp_idx, info[0].intf_idx, info[0].wr_ptr_line_count,
-		info[1].pp_idx, info[1].intf_idx, info[1].wr_ptr_line_count);
+		info[1].pp_idx, info[1].intf_idx, info[1].wr_ptr_line_count,
+		phys_enc->parent->dev->primary->index);
 
 	/* Signal any waiting wr_ptr start interrupt */
 	wake_up_all(&phys_enc->pending_kickoff_wq);
