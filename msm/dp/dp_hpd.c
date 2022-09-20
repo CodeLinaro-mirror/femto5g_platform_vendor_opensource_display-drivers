@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -56,16 +56,20 @@ struct dp_hpd *dp_hpd_get(struct device *dev, struct dp_parser *parser,
 		}
 	}
 
-	dp_hpd = dp_lphw_hpd_get(dev, parser, catalog, cb);
-	if (!IS_ERR_OR_NULL(dp_hpd)) {
-		dp_hpd->type = DP_HPD_LPHW;
-		goto config;
+	if (parser->no_aux_switch && parser->lphw_hpd) {
+		dp_hpd = dp_lphw_hpd_get(dev, parser, catalog, cb);
+		if (!IS_ERR_OR_NULL(dp_hpd)) {
+			dp_hpd->type = DP_HPD_LPHW;
+			goto config;
+		}
 	}
 
-	dp_hpd = dp_gpio_hpd_get(dev, cb);
-	if (!IS_ERR_OR_NULL(dp_hpd)) {
-		dp_hpd->type = DP_HPD_GPIO;
-		goto config;
+	if (parser->no_aux_switch) {
+		dp_hpd = dp_gpio_hpd_get(dev, cb);
+		if (!IS_ERR_OR_NULL(dp_hpd)) {
+			dp_hpd->type = DP_HPD_GPIO;
+			goto config;
+		}
 	}
 
 	dp_hpd = dp_altmode_get(dev, cb);
