@@ -1262,8 +1262,8 @@ static void _sde_encoder_phys_wb_frame_done_helper(void *arg, bool frame_error)
 		phys_enc->parent_ops.handle_vblank_virt(phys_enc->parent,
 				phys_enc);
 
-	SDE_EVT32_IRQ(DRMID(phys_enc->parent), hw_wb->idx - WB_0, event,
-		frame_error);
+	SDE_EVT32_IRQ(DRMID(phys_enc->parent), hw_wb->idx - WB_0,
+		event, frame_error, phys_enc->parent->dev->primary->index);
 
 complete:
 	wake_up_all(&phys_enc->pending_kickoff_wq);
