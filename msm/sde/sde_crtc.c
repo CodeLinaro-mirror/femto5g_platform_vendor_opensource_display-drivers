@@ -3678,6 +3678,7 @@ static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
 	struct sde_crtc *sde_crtc;
 	struct sde_hw_ctl *ctl;
 	struct sde_kms *sde_kms;
+	struct sde_crtc_state *cstate;
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -3686,6 +3687,7 @@ static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
 
 	sde_crtc = to_sde_crtc(crtc);
 	sde_kms = _sde_crtc_get_kms(crtc);
+	cstate = to_sde_crtc_state(crtc->state);
 
 	if (!sde_crtc) {
 		SDE_ERROR("invalid input params\n");
@@ -3703,7 +3705,8 @@ static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
 	ctl->ops.setup_hw_input_fence(ctl, HW_FENCE_IPC_CLIENT_ID_APPS, 0x0);
 	ctl->ops.hw_fence_ctrl(ctl, true, true, 1);
 
-	if (crtc->state->active_changed)
+	if (crtc->state->active_changed || sde_crtc_get_property(cstate,
+		CRTC_PROP_SW_OVERRIDE_HW_FENCE))
 		ctl->ops.hw_fence_trigger_sw_override(ctl);
 }
 
@@ -5960,6 +5963,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			"output_fence_offset", 0x0, 0, 1, 0,
 			CRTC_PROP_OUTPUT_FENCE_OFFSET);
 
+	if (sde_kms_hw_fence_enabled(sde_kms))
+		msm_property_install_range(&sde_crtc->property_info,
+			"hw_fence_override", 0x0, 0, 1, 0,
+			CRTC_PROP_SW_OVERRIDE_HW_FENCE);
+
 	sde_crtc_install_perf_properties(sde_crtc, sde_kms, catalog, info);
 
 	if (catalog->has_trusted_vm_support) {
@@ -6271,6 +6279,24 @@ void sde_crtc_set_qos_dirty(struct drm_crtc *crtc)
 		pstate->dirty |= SDE_PLANE_DIRTY_QOS;
 	}
 	sde_crtc_update_line_time(crtc);
+}
+
+void sde_crtc_reset_hw_fence(struct drm_crtc *crtc,
+		 struct drm_crtc_state *crtc_state)
+{
+	struct sde_crtc *sde_crtc;
+	struct drm_property *drm_prop;
+
+	if (!crtc || !crtc_state) {
+		SDE_ERROR("invalid params crtc:%d\n", !!crtc);
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+	drm_prop = msm_property_index_to_drm_property(&sde_crtc->property_info,
+			CRTC_PROP_SW_OVERRIDE_HW_FENCE);
+
+	sde_crtc_atomic_set_property(crtc, crtc_state, drm_prop, 1);
 }
 
 /**
