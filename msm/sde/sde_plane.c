@@ -627,7 +627,9 @@ int sde_plane_wait_input_fence(struct drm_plane *plane, uint32_t wait_ms)
 				SDE_ERROR_PLANE(psde, "%ums timeout on %08X fd %lld\n",
 						wait_ms, prefix, sde_plane_get_property(pstate,
 						PLANE_PROP_INPUT_FENCE));
-				psde->is_error = true;
+				if (sde_plane_get_property(pstate, PLANE_PROP_BUFFER_MODE) !=
+						SDE_SINGLE_BUFFER_MODE)
+					psde->is_error = true;
 				sde_kms_timeline_status(plane->dev);
 				ret = -ETIMEDOUT;
 				break;
@@ -659,7 +661,8 @@ int sde_plane_wait_input_fence(struct drm_plane *plane, uint32_t wait_ms)
 			}
 
 			if (ret)
-				SDE_EVT32(DRMID(plane), -ret, prefix, SDE_EVTLOG_ERROR);
+				SDE_EVT32(DRMID(plane), -ret, prefix, psde->is_error,
+							SDE_EVTLOG_ERROR);
 			else
 				SDE_EVT32_VERBOSE(DRMID(plane), -ret, prefix);
 		} else {
@@ -2846,24 +2849,18 @@ static void _sde_plane_sspp_setup_sys_cache(struct sde_plane *psde,
 		pstate->sc_cfg.type = cache_type;
 	}
 
-	if (cache_type == SDE_SYS_CACHE_DISP_LEFT) {
+	if (test_bit(SDE_MDP_LLCC_DISP_LR, &psde->catalog->mdp[0].features)) {
 		pstate->sc_cfg.rd_en = true;
-		pstate->sc_cfg.rd_scid = sc_cfg[SDE_SYS_CACHE_DISP_LEFT].llcc_scid;
 		pstate->sc_cfg.rd_noallocate = true;
+		pstate->sc_cfg.type = cache_type;
+		pstate->sc_cfg.rd_scid = sc_cfg[cache_type].llcc_scid;
 		pstate->sc_cfg.flags = SSPP_SYS_CACHE_EN_FLAG | SSPP_SYS_CACHE_SCID |
 					SSPP_SYS_CACHE_NO_ALLOC;
-		pstate->sc_cfg.type = cache_type;
-		pstate->sc_cfg.rd_op_type = SDE_SYS_CACHE_READ_INVALIDATE;
-		pstate->sc_cfg.flags |= SSPP_SYS_CACHE_OP_TYPE;
-	} else if (cache_type == SDE_SYS_CACHE_DISP_RIGHT) {
-		pstate->sc_cfg.rd_en = true;
-		pstate->sc_cfg.rd_scid = sc_cfg[SDE_SYS_CACHE_DISP_RIGHT].llcc_scid;
-		pstate->sc_cfg.rd_noallocate = true;
-		pstate->sc_cfg.flags = SSPP_SYS_CACHE_EN_FLAG | SSPP_SYS_CACHE_SCID |
-					SSPP_SYS_CACHE_NO_ALLOC;
-		pstate->sc_cfg.type = cache_type;
-		pstate->sc_cfg.rd_op_type = SDE_SYS_CACHE_READ_INVALIDATE;
-		pstate->sc_cfg.flags |= SSPP_SYS_CACHE_OP_TYPE;
+		if (cache_type == SDE_SYS_CACHE_DISP_LEFT ||
+			cache_type == SDE_SYS_CACHE_DISP_RIGHT) {
+			pstate->sc_cfg.rd_op_type = SDE_SYS_CACHE_READ_INVALIDATE;
+			pstate->sc_cfg.flags |= SSPP_SYS_CACHE_OP_TYPE;
+		}
 	}
 
 	if (!pstate->sc_cfg.rd_en && !prev_rd_en)
@@ -3852,6 +3849,12 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		{SDE_SYSCACHE_LLCC_DISP_LEFT, "disp_left"},
 		{SDE_SYSCACHE_LLCC_DISP_RIGHT,  "disp_right"},
 	};
+
+	static const struct drm_prop_enum_list e_buffer_mode[] = {
+		{SDE_INDEPENDENT_BUFFER_MODE, "independent"},
+		{SDE_SINGLE_BUFFER_MODE, "single"},
+	};
+
 	struct sde_kms_info *info;
 	struct sde_plane *psde = to_sde_plane(plane);
 	bool is_master;
@@ -3928,6 +3931,10 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 	msm_property_install_enum(&psde->property_info, "syscache_type", 0x0,
 		0, e_syscache_type, ARRAY_SIZE(e_syscache_type), 0,
 		PLANE_PROP_SYS_CACHE_TYPE);
+
+	msm_property_install_enum(&psde->property_info, "buffer_mode", 0x0,
+		0, e_buffer_mode, ARRAY_SIZE(e_buffer_mode), 0,
+		PLANE_PROP_BUFFER_MODE);
 
 	if (psde->pipe_hw->ops.setup_solidfill)
 		msm_property_install_range(&psde->property_info, "color_fill",
