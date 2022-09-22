@@ -2788,6 +2788,8 @@ static int _sde_plane_check_cac_mode(struct drm_plane *plane,
 		sde_plane_in_cac_fetch_mode(pstate))
 		pstate->scaler_check_state = SDE_PLANE_SCLCHECK_SCALER_V2;
 
+	SDE_DEBUG_PLANE(psde, "cac mode = %d, rec_id = %d, layout = %d\n",
+			cac_mode, rec_id, pstate->layout);
 	return ret;
 }
 
@@ -4474,6 +4476,10 @@ static void _sde_plane_set_img_size(struct sde_plane *psde,
 	pstate->src_img_rec.y = src_img_rec.y1;
 	pstate->src_img_rec.w = src_img_rec.x2 - src_img_rec.x1;
 	pstate->src_img_rec.h = src_img_rec.y2 - src_img_rec.y1;
+
+	SDE_DEBUG_PLANE(psde, "img size: {%d,%d,%d,%d}\n",
+			pstate->src_img_rec.x, pstate->src_img_rec.y,
+			pstate->src_img_rec.w, pstate->src_img_rec.h);
 }
 
 static void _sde_plane_set_ubwc_stats_roi(struct sde_plane *psde,
