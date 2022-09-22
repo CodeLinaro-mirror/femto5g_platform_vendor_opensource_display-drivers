@@ -127,7 +127,6 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 	 * display from the list and enable it first.
 	 */
 
-	pm_runtime_get_sync(m_display->ctrl[0].ctrl->drm_dev->dev);
 	if (phy->sync_en_refcount > 0)
 		goto not_first_enable;
 
@@ -158,28 +157,27 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 		 * If the master has not yet been enabled, enable it
 		 * first. We need to enable the DSI CORE_CLK here to
 		 * satisfy the requirement of phy_sw_reset that controller
-		 * power needs to be enabled before the reset.
+		 * and phy power needs to be enabled before the reset.
+		 * This additional DSI CORE_CLK vote is removed during
+		 * phy disable.
+		 *
+		 * Idle cases are triggered from the display_clk_ctrl context
+		 * calling dsi_display_clk_ctrl() again will result in deadlock.
+		 * Hence use the no-lock version of the API.
 		 */
+		ret = dsi_display_clk_ctrl_nolock(m_display->dsi_clk_handle, DSI_CORE_CLK, DSI_CLK_ON);
+		if (ret) {
+			DSI_ERR("failed to enable core clk on master, rc %d\n", ret);
+			goto error;
+		}
+
 		if (m_display && (m_phy->sync_en_refcount == 0)) {
 			if (m_phy->dsi_phy_state == DSI_PHY_ENGINE_OFF) {
-				/*
-				 * Idle cases are triggered from the display_clk_ctrl context
-				 * calling dsi_display_clk_ctrl() again will result in deadlock.
-				 * Hence use the no-lock version of the API.
-				 */
-				ret = dsi_display_clk_ctrl_nolock(m_display->dsi_clk_handle,
-						DSI_CORE_CLK, DSI_CLK_ON);
-				if (ret) {
-					DSI_ERR("failed to enable core clk on master, rc %d\n", ret);
-					goto error;
-				}
 
 				ret = dsi_display_phy_sw_reset(m_display);
 				if (ret) {
 					DSI_ERR("failed to reset master, rc %d\n", ret);
-					dsi_display_clk_ctrl_nolock(m_display->dsi_clk_handle,
-							DSI_CORE_CLK, DSI_CLK_OFF);
-					goto error;
+					goto error_ctrl_clk_off;
 				}
 
 				/*
@@ -214,13 +212,7 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 					DSI_ERR("failed to enable master, rc %d\n", ret);
 					dsi_display_clk_ctrl_nolock(m_display->dsi_clk_handle,
 							DSI_CORE_CLK, DSI_CLK_OFF);
-					goto error;
-				}
-				ret = dsi_display_clk_ctrl_nolock(m_display->dsi_clk_handle,
-						DSI_CORE_CLK, DSI_CLK_OFF);
-				if (ret) {
-					DSI_ERR("failed to disable core clk on master, rc %d\n", ret);
-					goto error;
+					goto error_ctrl_clk_off;
 				}
 			} else {
 				/*
@@ -232,7 +224,7 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 						display->clamp_enabled, DSI_PLL_SOURCE_NATIVE);
 				if (ret) {
 					DSI_ERR("failed to idle on master, rc %d\n", ret);
-					goto error;
+					goto error_ctrl_clk_off;
 				}
 			}
 		}
@@ -241,19 +233,19 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 			ret = dsi_display_phy_sw_reset(display);
 			if (ret) {
 				DSI_ERR("failed to reset slave, rc %d\n", ret);
-				goto error;
+				goto error_ctrl_clk_off;
 			}
 			ret = dsi_display_phy_enable(display, DSI_PLL_SOURCE_NON_NATIVE);
 			if (ret) {
 				DSI_ERR("failed to enable slave, rc %d\n", ret);
-				goto error;
+				goto error_ctrl_clk_off;
 			}
 		} else if (type == DSI_DISPLAY_MGR_PHY_IDLE) {
 			ret = dsi_display_phy_idle_on(display, display->clamp_enabled,
 					DSI_PLL_SOURCE_NON_NATIVE);
 			if (ret) {
 				DSI_ERR("error phy_idle_on slave phy, rc %d\n", ret);
-				goto error;
+				goto error_ctrl_clk_off;
 			}
 		}
 		/* Program the slave pll when powering up or coming out of idle. */
@@ -264,7 +256,7 @@ static int dsi_display_mgr_phy_control_enable(struct dsi_display *display,
 			ret = dsi_pll_program_slave(display_ctrl->phy->pll);
 			if (ret) {
 				DSI_ERR("failed to program slave %d\n", ret);
-				goto error;
+				goto error_ctrl_clk_off;
 			}
 		}
 	}
@@ -276,6 +268,10 @@ not_first_enable:
 
 	/* Increment the refcount for the current display */
 	phy->sync_en_refcount++;
+	goto error;
+
+error_ctrl_clk_off:
+	(void)dsi_display_clk_ctrl_nolock(m_display->dsi_clk_handle, DSI_CORE_CLK, DSI_CLK_OFF);
 
 error:
 	DSI_DEBUG("master: %d phy ref_cnt = %d m_phy ref_cnt = %d\n",
@@ -351,6 +347,11 @@ static int dsi_display_mgr_phy_control_disable(struct dsi_display *display,
 					DSI_ERR("failed to phy_idle_off master, rc %d\n", ret);
 			}
 		}
+		/* Remove additional DSI CORE_CLK vote for master display */
+		ret = dsi_display_clk_ctrl_nolock(m_display->dsi_clk_handle, DSI_CORE_CLK, DSI_CLK_OFF);
+		if (ret) {
+			DSI_ERR("failed to disable core clk on master, rc %d\n", ret);
+		}
 	} else {
 		/* Disable for the master only if the slave is already disabled. */
 		s_display = display_manager_get_slave();
@@ -369,8 +370,6 @@ static int dsi_display_mgr_phy_control_disable(struct dsi_display *display,
 	}
 
 not_last_disable:
-	pm_runtime_put_sync(m_display->ctrl[0].ctrl->drm_dev->dev);
-
 	DSI_DEBUG("master: %d phy ref_cnt = %d m_phy ref_cnt = %d\n",
 			display->is_master, phy->sync_en_refcount, m_phy->sync_en_refcount);
 
