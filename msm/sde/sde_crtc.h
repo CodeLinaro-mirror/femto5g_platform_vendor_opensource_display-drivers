@@ -1070,4 +1070,10 @@ struct drm_encoder *sde_crtc_get_src_encoder_of_clone(struct drm_crtc *crtc);
  */
 void _sde_crtc_vm_release_notify(struct drm_crtc *crtc);
 
+/*
+ * sde_crtc_reset_hw_fence- SW overrides the HW fence
+ * @crtc: Pointer to DRM crtc object
+ * @cstate: Pointer to DRM crtc object
+ */
+void sde_crtc_reset_hw_fence(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state);
 #endif /* _SDE_CRTC_H_ */

@@ -2499,8 +2499,13 @@ static int sde_kms_set_crtc_for_conn(struct drm_device *dev,
 	struct drm_connector_list_iter conn_iter;
 	struct drm_crtc_state *crtc_state = NULL;
 	struct drm_connector_state *conn_state = NULL;
+	struct sde_kms *sde_kms;
 	int ret = 0;
 
+	if (!dev || !ddev_to_msm_kms(dev))
+		return -EINVAL;
+
+	sde_kms = to_sde_kms(ddev_to_msm_kms(dev));
 	drm_connector_list_iter_begin(dev, &conn_iter);
 	drm_for_each_connector_iter(tmp_conn, &conn_iter) {
 		if (enc == tmp_conn->state->best_encoder) {
@@ -2530,6 +2535,9 @@ static int sde_kms_set_crtc_for_conn(struct drm_device *dev,
 				ret, DRMID(conn));
 		return ret;
 	}
+
+	if (sde_kms_hw_fence_enabled(sde_kms))
+		sde_crtc_reset_hw_fence(crtc_state->crtc, crtc_state);
 
 	crtc_state->active = true;
 	crtc_state->enable = true;
