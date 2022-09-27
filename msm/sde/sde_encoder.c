@@ -70,6 +70,9 @@
 
 #define EVT_TIME_OUT_SPLIT 2
 
+/* MIN Vsync window before programming flush*/
+#define VSYNC_THRESHOLD_WINDOW_NS 1000000
+
 /* worst case poll time for delay_kickoff to be cleared */
 #define DELAY_KICKOFF_POLL_TIMEOUT_US 100000
 
@@ -3678,6 +3681,36 @@ int sde_encoder_idle_request(struct drm_encoder *drm_enc)
 }
 
 /**
+ * sde_encoder_wait_for_vsync_retire - wait for vsync if line cnt falls in VSYNC_THRESHOLD_WINDOW
+ * phys_enc: Pointer to physical encoder structure
+ */
+static void sde_encoder_wait_for_vsync_retire(struct sde_encoder_phys *phys_enc)
+{
+	struct drm_display_mode *mode;
+	u32 threshold_lines, vrefresh, line_time_in_ns, ln_cnt;
+	int ret;
+
+	if (!phys_enc || !phys_enc->hw_intf || !phys_enc->hw_intf->ops.get_line_count) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+	mode = &phys_enc->cached_mode;
+	vrefresh = drm_mode_vrefresh(mode);
+	line_time_in_ns =  DIV_ROUND_UP(1000000000, vrefresh * mode->vtotal);
+	threshold_lines = DIV_ROUND_UP(VSYNC_THRESHOLD_WINDOW_NS, line_time_in_ns);
+
+	ln_cnt = phys_enc->hw_intf->ops.get_line_count(phys_enc->hw_intf);
+
+	if (ln_cnt >= (mode->vtotal - threshold_lines)) {
+		SDE_EVT32(ln_cnt, mode->vtotal, threshold_lines, SDE_EVTLOG_FUNC_ENTRY);
+		sde_encoder_phys_inc_pending(phys_enc);
+		ret = sde_encoder_wait_for_event(phys_enc->parent, MSM_ENC_VBLANK);
+		if (ret)
+			SDE_ERROR("wait for vblank timed out\n");
+	}
+}
+
+/**
  * _sde_encoder_trigger_flush - trigger flush for a physical encoder
  * drm_enc: Pointer to drm encoder structure
  * phys: Pointer to physical encoder structure
@@ -3903,7 +3936,7 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	struct msm_drm_private *priv = NULL;
 	struct sde_kms *sde_kms = NULL;
 	struct sde_crtc_misr_info crtc_misr_info = {false, 0};
-	bool is_regdma_blocking = false, is_vid_mode = false;
+	bool is_regdma_blocking = false, is_vid_mode = false, hw_fence_enabled = false;
 	struct sde_crtc *sde_crtc;
 
 	if (!sde_enc) {
@@ -3912,11 +3945,13 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	}
 
 	sde_crtc = to_sde_crtc(sde_enc->crtc);
-	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
-		is_vid_mode = true;
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
+	hw_fence_enabled = sde_kms_hw_fence_enabled(sde_kms);
+	is_regdma_blocking = (is_vid_mode || _sde_encoder_is_autorefresh_enabled(sde_enc));
 
-	is_regdma_blocking = (is_vid_mode ||
-			_sde_encoder_is_autorefresh_enabled(sde_enc));
+	if (hw_fence_enabled)
+		sde_encoder_wait_for_vsync_retire(sde_enc->cur_master);
 
 	/* don't perform flush/start operations for slave encoders */
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
@@ -3989,10 +4024,9 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	}
 
 	_sde_encoder_trigger_start(sde_enc->cur_master);
-	sde_kms = sde_encoder_get_kms(&sde_enc->base);
 	ctl = sde_enc->cur_master->hw_ctl;
 
-	if (sde_kms_hw_fence_enabled(sde_kms) &&
+	if (hw_fence_enabled &&
 		sde_kms->hw_ipcc->ops.hw_ipcc_trigger_signal && ctl &&
 			test_bit(SDE_CTL_HW_FENCE, &ctl->caps->features))
 		sde_kms->hw_ipcc->ops.hw_ipcc_trigger_signal(sde_kms->hw_ipcc,
