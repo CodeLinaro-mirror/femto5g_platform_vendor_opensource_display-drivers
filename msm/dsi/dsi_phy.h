@@ -58,6 +58,7 @@ enum phy_ulps_return_type {
 /**
  * struct msm_dsi_phy - DSI PHY object
  * @pdev:              Pointer to platform device.
+ * @drm_dev:           Pointer to DRM device.
  * @index:             Instance id.
  * @name:              Name of the PHY instance.
  * @refcount:          Reference count.
@@ -81,6 +82,7 @@ enum phy_ulps_return_type {
  */
 struct msm_dsi_phy {
 	struct platform_device *pdev;
+	struct drm_device *drm_dev;
 	int index;
 	const char *name;
 	u32 refcount;

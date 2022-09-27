@@ -2280,6 +2280,7 @@ static void dp_display_dbg_reister(struct dp_display_private *dp)
 	struct dss_io_data *io;
 	char name[SZ_32];
 	const char *label;
+	struct drm_device *dev = dp->dp_display.drm_dev;
 
 	label = of_get_property(dp->pdev->dev.of_node, "label", NULL);
 	if (!label)
@@ -2288,35 +2289,35 @@ static void dp_display_dbg_reister(struct dp_display_private *dp)
 	io = &parser->get_io(parser, "dp_ahb")->io;
 	if (io) {
 		snprintf(name, sizeof(name), "%s_ahb", label);
-		sde_dbg_reg_register_base(name, io->base, io->len,
+		sde_dbg_reg_register_base(dev, name, io->base, io->len,
 				msm_get_phys_addr(dp->pdev, "dp_ahb"), SDE_DBG_DP);
 	}
 
 	io = &parser->get_io(parser, "dp_aux")->io;
 	if (io) {
 		snprintf(name, sizeof(name), "%s_aux", label);
-		sde_dbg_reg_register_base(name, io->base, io->len,
+		sde_dbg_reg_register_base(dev, name, io->base, io->len,
 				msm_get_phys_addr(dp->pdev, "dp_aux"), SDE_DBG_DP);
 	}
 
 	io = &parser->get_io(parser, "dp_link")->io;
 	if (io) {
 		snprintf(name, sizeof(name), "%s_link", label);
-		sde_dbg_reg_register_base(name, io->base, io->len,
+		sde_dbg_reg_register_base(dev, name, io->base, io->len,
 				msm_get_phys_addr(dp->pdev, "dp_link"), SDE_DBG_DP);
 	}
 
 	io = &parser->get_io(parser, "dp_p0")->io;
 	if (io) {
 		snprintf(name, sizeof(name), "%s_p0", label);
-		sde_dbg_reg_register_base(name, io->base, io->len,
+		sde_dbg_reg_register_base(dev, name, io->base, io->len,
 				msm_get_phys_addr(dp->pdev, "dp_p0"), SDE_DBG_DP);
 	}
 
 	io = &parser->get_io(parser, "hdcp_physical")->io;
 	if (io) {
 		snprintf(name, sizeof(name), "%s_hdcp_physical", label);
-		sde_dbg_reg_register_base(name, io->base, io->len,
+		sde_dbg_reg_register_base(dev, name, io->base, io->len,
 				msm_get_phys_addr(dp->pdev, "hdcp_physical"), SDE_DBG_DP);
 	}
 }

@@ -3954,7 +3954,7 @@ int sde_crtc_reset_hw(struct drm_crtc *crtc, struct drm_crtc_state *old_state,
 	SDE_EVT32(DRMID(crtc), recovery_events, SDE_EVTLOG_FUNC_ENTRY);
 
 	/* optionally generate a panic instead of performing a h/w reset */
-	SDE_DBG_CTRL("stop_ftrace", "reset_hw_panic");
+	SDE_DBG_CTRL(crtc->dev, "stop_ftrace", "reset_hw_panic");
 
 	for (i = 0; i < sde_crtc->num_ctls; ++i) {
 		ctl = sde_crtc->mixers[i].hw_ctl;

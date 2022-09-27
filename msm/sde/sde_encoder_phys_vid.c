@@ -1029,7 +1029,7 @@ static int sde_encoder_phys_vid_prepare_for_kickoff(
 				sde_encoder_helper_unregister_irq(
 					phys_enc, INTR_IDX_VSYNC);
 
-			SDE_DBG_DUMP(SDE_DBG_BUILT_IN_ALL);
+			SDE_DBG_DUMP(phys_enc->sde_kms->dev, SDE_DBG_BUILT_IN_ALL);
 
 			if (irq_enable)
 				sde_encoder_helper_register_irq(
@@ -1046,7 +1046,7 @@ static int sde_encoder_phys_vid_prepare_for_kickoff(
 			sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
 					sizeof(uint8_t), SDE_RECOVERY_CAPTURE);
 		else
-			SDE_DBG_DUMP(0x0, "panic");
+			SDE_DBG_DUMP(phys_enc->sde_kms->dev, 0x0, "panic");
 
 		/* request a ctl reset before the next flush */
 		phys_enc->enable_state = SDE_ENC_ERR_NEEDS_HW_RESET;

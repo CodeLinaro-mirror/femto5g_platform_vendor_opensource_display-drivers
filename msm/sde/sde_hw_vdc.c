@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -427,13 +428,13 @@ struct sde_hw_vdc *sde_hw_vdc_init(enum sde_vdc idx,
 		return ERR_PTR(-EINVAL);
 	}
 
-	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
+	sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 		c->hw.blk_off + c->hw.length, c->hw.xin_id);
 
 	snprintf(blk_name, sizeof(blk_name), "vdc_enc_%u",
 			c->idx - VDC_0);
 
-	sde_dbg_reg_register_dump_range(SDE_DBG_NAME,
+	sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME,
 			blk_name,
 			c->hw.blk_off + c->caps->sblk->enc.base,
 			c->hw.blk_off + c->caps->sblk->enc.base +
@@ -443,7 +444,7 @@ struct sde_hw_vdc *sde_hw_vdc_init(enum sde_vdc idx,
 	snprintf(blk_name, sizeof(blk_name), "vdc_ctl_%u",
 			c->idx - VDC_0);
 
-	sde_dbg_reg_register_dump_range(SDE_DBG_NAME,
+	sde_dbg_reg_register_dump_range(m->dev, SDE_DBG_NAME,
 			blk_name,
 			c->hw.blk_off + c->caps->sblk->ctl.base,
 			c->hw.blk_off + c->caps->sblk->ctl.base +

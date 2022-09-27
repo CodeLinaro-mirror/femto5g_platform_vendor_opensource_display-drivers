@@ -1130,7 +1130,7 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 	/* enable vblank events */
 	drm_crtc_vblank_on(crtc);
 
-	sde_dbg_set_hw_ownership_status(true);
+	sde_dbg_set_hw_ownership_status(ddev, true);
 
 	/* handle non-SDE pre_acquire */
 	if (vm_ops->vm_client_post_acquire)
@@ -1171,7 +1171,7 @@ int sde_kms_vm_trusted_prepare_commit(struct sde_kms *sde_kms,
 
 	sde_hw_set_lutdma_sid(sde_kms->hw_sid, 1);
 
-	sde_dbg_set_hw_ownership_status(true);
+	sde_dbg_set_hw_ownership_status(ddev, true);
 
 	return 0;
 }
@@ -1384,7 +1384,7 @@ int sde_kms_vm_pre_release(struct sde_kms *sde_kms,
 	/* if vm_req is enabled, once CRTC on the commit is guaranteed */
 	sde_kms_wait_for_frame_transfer_complete(&sde_kms->base, crtc);
 
-	sde_dbg_set_hw_ownership_status(false);
+	sde_dbg_set_hw_ownership_status(sde_kms->dev, false);
 
 	sde_kms_cancel_delayed_work(crtc);
 
@@ -4706,7 +4706,7 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 	DRM_INFO("mapped mdp address space @%pK\n", sde_kms->mmio);
 	sde_kms->mmio_len = msm_iomap_size(platformdev, "mdp_phys");
 
-	rc = sde_dbg_reg_register_base(SDE_DBG_NAME, sde_kms->mmio,
+	rc = sde_dbg_reg_register_base(sde_kms->dev, SDE_DBG_NAME, sde_kms->mmio,
 				sde_kms->mmio_len,
 				msm_get_phys_addr(platformdev, "mdp_phys"),
 				SDE_DBG_SDE);
@@ -4721,7 +4721,7 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 		goto error;
 	}
 	sde_kms->vbif_len[VBIF_RT] = msm_iomap_size(platformdev, "vbif_phys");
-	rc = sde_dbg_reg_register_base("vbif_rt", sde_kms->vbif[VBIF_RT],
+	rc = sde_dbg_reg_register_base(sde_kms->dev, "vbif_rt", sde_kms->vbif[VBIF_RT],
 				sde_kms->vbif_len[VBIF_RT],
 				msm_get_phys_addr(platformdev, "vbif_phys"),
 				SDE_DBG_VBIF_RT);
@@ -4744,7 +4744,7 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 		unsigned long mdp_addr = msm_get_phys_addr(platformdev, "mdp_phys");
 		sde_kms->reg_dma_len = msm_iomap_size(platformdev, "regdma_phys");
 		sde_kms->reg_dma_off = msm_get_phys_addr(platformdev, "regdma_phys") - mdp_addr;
-		rc =  sde_dbg_reg_register_base("reg_dma", sde_kms->reg_dma,
+		rc =  sde_dbg_reg_register_base(sde_kms->dev, "reg_dma", sde_kms->reg_dma,
 				sde_kms->reg_dma_len,
 				msm_get_phys_addr(platformdev, "regdma_phys"),
 				SDE_DBG_LUTDMA);
@@ -4758,7 +4758,7 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 		sde_kms->sid = NULL;
 	} else {
 		sde_kms->sid_len = msm_iomap_size(platformdev, "sid_phys");
-		rc =  sde_dbg_reg_register_base("sid", sde_kms->sid,
+		rc =  sde_dbg_reg_register_base(sde_kms->dev, "sid", sde_kms->sid,
 				sde_kms->sid_len,
 				msm_get_phys_addr(platformdev, "sid_phys"),
 				SDE_DBG_SID);
@@ -4773,12 +4773,6 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 	} else {
 		sde_kms->ipcc_len = msm_iomap_size(platformdev, "ipcc");
 		sde_kms->ipcc_base_addr = msm_get_phys_addr(platformdev, "ipcc");
-		rc =  sde_dbg_reg_register_base("ipcc", sde_kms->ipcc,
-			sde_kms->ipcc_len,
-			sde_kms->ipcc_base_addr,
-			SDE_DBG_IPCC);
-		if (rc)
-			SDE_ERROR("dbg base register ipcc failed: %d\n", rc);
 	}
 
 error:
@@ -4860,7 +4854,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto power_error;
 	}
 
-	sde_dbg_init_dbg_buses(sde_kms->core_rev);
+	sde_dbg_init_dbg_buses(dev, sde_kms->core_rev);
 
 	rm = &sde_kms->rm;
 	rc = sde_rm_init(rm, sde_kms->catalog, sde_kms->mmio,
@@ -5154,10 +5148,10 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 
 	if (sde_in_trusted_vm(sde_kms)) {
 		rc = sde_vm_trusted_init(sde_kms);
-		sde_dbg_set_hw_ownership_status(false);
+		sde_dbg_set_hw_ownership_status(dev, false);
 	} else {
 		rc = sde_vm_primary_init(sde_kms);
-		sde_dbg_set_hw_ownership_status(true);
+		sde_dbg_set_hw_ownership_status(dev, true);
 	}
 	if (rc) {
 		SDE_ERROR("failed to initialize VM ops, rc: %d\n", rc);
