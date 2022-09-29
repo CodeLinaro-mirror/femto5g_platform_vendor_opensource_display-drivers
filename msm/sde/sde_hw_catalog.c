@@ -222,6 +222,9 @@ enum sde_prop {
 	TRUSTED_VM_ENV,
 	MAX_TRUSTED_VM_DISPLAYS,
 	TVM_INCLUDE_REG,
+	DPU_SRC_CLIENT_IPC_ID,
+	DPU_DST_CLIENT_IPC_ID,
+	IPCC_PROTOCOL_ID,
 	SDE_PROP_MAX,
 };
 
@@ -278,6 +281,9 @@ enum {
 	SSPP_SMART_DMA,
 	SSPP_MAX_PER_PIPE_BW,
 	SSPP_MAX_PER_PIPE_BW_HIGH,
+	SSPP_CAC_MODE,
+	SSPP_CAC_PARENT_REC,
+	SSPP_CAC_LM_PREF,
 	SSPP_PROP_MAX,
 };
 
@@ -614,6 +620,9 @@ static struct sde_prop_type sde_prop[] = {
 	{MAX_TRUSTED_VM_DISPLAYS, "qcom,sde-max-trusted-vm-displays", false,
 			PROP_TYPE_U32},
 	{TVM_INCLUDE_REG, "qcom,tvm-include-reg", false, PROP_TYPE_U32_ARRAY},
+	{DPU_SRC_CLIENT_IPC_ID, "qcom,sde-ipcc-src-dpu-client-id", false, PROP_TYPE_U32},
+	{DPU_DST_CLIENT_IPC_ID, "qcom,sde-ipcc-dst-dpu-client-id", false, PROP_TYPE_U32},
+	{IPCC_PROTOCOL_ID, "qcom,sde-ipcc-protocol-id", false, PROP_TYPE_U32},
 };
 
 static struct sde_prop_type sde_perf_prop[] = {
@@ -691,6 +700,11 @@ static struct sde_prop_type sspp_prop[] = {
 		PROP_TYPE_U32_ARRAY},
 	{SSPP_MAX_PER_PIPE_BW_HIGH, "qcom,sde-max-per-pipe-bw-high-kbps", false,
 		PROP_TYPE_U32_ARRAY},
+	{SSPP_CAC_MODE, "qcom,sde-sspp-cac-mode", false, PROP_TYPE_U32_ARRAY},
+	{SSPP_CAC_PARENT_REC, "qcom,sde-sspp-parent-rec", false,
+		PROP_TYPE_BIT_OFFSET_ARRAY},
+	{SSPP_CAC_LM_PREF, "qcom,sde-sspp-cac-lm-pref", false,
+		PROP_TYPE_BIT_OFFSET_ARRAY},
 };
 
 static struct sde_prop_type vig_prop[] = {
@@ -1825,6 +1839,9 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 			set_bit(SDE_PERF_SSPP_QOS_8LVL, &sspp->perf_features);
 		dma_count++;
 
+		if (sblk->cac_mode == SDE_CAC_UNPACK)
+			sblk->cac_format_list = sde_cfg->cac_formats;
+
 		/* Obtain sub block top, or maintain backwards compatibility */
 		if (props[0] && props[0]->exists[DMA_TOP_OFF])
 			sblk->top_off = PROP_VALUE_ACCESS(props[0]->values, DMA_TOP_OFF, 0);
@@ -2059,6 +2076,19 @@ static int _sde_sspp_setup_cmn(struct device_node *np,
 					sspp->xin_id, sblk->pixel_ram_size, sspp->clk_ctrl,
 					sde_cfg->mdp[0].clk_ctrls[sspp->clk_ctrl].reg_off,
 					sde_cfg->mdp[0].clk_ctrls[sspp->clk_ctrl].bit_off);
+		}
+
+		if (sde_cfg->cac_version == SDE_SSPP_CAC_V2 &&
+				props->exists[SSPP_CAC_MODE] &&
+				props->exists[SSPP_CAC_PARENT_REC]) {
+			sblk->cac_mode = PROP_VALUE_ACCESS(props->values, SSPP_CAC_MODE, i);
+			for (j = 0; j < SSPP_SUBBLK_COUNT_MAX; j++) {
+				sblk->cac_parent_rec[j] = PROP_BITVALUE_ACCESS(props->values,
+							SSPP_CAC_PARENT_REC, i, j);
+				sblk->cac_lm_pref[j] = PROP_BITVALUE_ACCESS(props->values,
+							SSPP_CAC_LM_PREF, i, j);
+			}
+			set_bit(SDE_SSPP_CAC_V2, &sspp->features);
 		}
 	}
 
@@ -4079,6 +4109,14 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 						i * 2 + 1);
 		}
 	}
+
+	if (test_bit(SDE_MDP_HAS_HW_FENCE_SUPPORT, &cfg->mdp[0].features)) {
+		cfg->dpu_src_client_ipc_id = PROP_VALUE_ACCESS(props->values,
+							DPU_SRC_CLIENT_IPC_ID, 0);
+		cfg->dpu_dst_client_ipc_id = PROP_VALUE_ACCESS(props->values,
+							DPU_DST_CLIENT_IPC_ID, 0);
+		cfg->ipcc_protocol_id = PROP_VALUE_ACCESS(props->values, IPCC_PROTOCOL_ID, 0);
+	}
 }
 
 static int sde_top_parse_dt(struct device_node *np, struct sde_mdss_cfg *cfg)
@@ -4861,7 +4899,23 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 			in_rot_restricted_list_size);
 	}
 
+	if (sde_cfg->cac_version == SDE_SSPP_CAC_V2) {
+		sde_cfg->cac_formats = kcalloc(ARRAY_SIZE(cac_formats),
+			sizeof(struct sde_format_extended), GFP_KERNEL);
+		if (!sde_cfg->cac_formats) {
+			SDE_ERROR("failed to alloc cac format list\n");
+			rc = -ENOMEM;
+			goto free_in_rot_res;
+		}
+
+		index = sde_copy_formats(sde_cfg->cac_formats, ARRAY_SIZE(cac_formats),
+				0, cac_formats, ARRAY_SIZE(cac_formats));
+	}
+
 	return 0;
+
+free_in_rot_res:
+	kfree(sde_cfg->inline_rot_restricted_formats);
 free_in_rot:
 	kfree(sde_cfg->inline_rot_formats);
 free_wb:
@@ -5375,10 +5429,10 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->sspp_multirect_error = true;
 		sde_cfg->has_fp16 = true;
 		set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
-		set_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_cfg->mdp[0].features);
 		sde_cfg->has_precise_vsync_ts = true;
 		sde_cfg->has_ubwc_stats = true;
 		sde_cfg->has_vbif_clk_split = true;
+		sde_cfg->cac_version = SDE_SSPP_CAC_V2;
 	} else {
 		SDE_ERROR("unsupported chipset id:%X\n", hw_rev);
 		sde_cfg->perf.min_prefill_lines = 0xffff;
@@ -5442,6 +5496,10 @@ static int _sde_hardware_post_caps(struct sde_mdss_cfg *sde_cfg,
 	sde_cfg->min_display_height = MIN_DISPLAY_HEIGHT;
 	sde_cfg->min_display_width = MIN_DISPLAY_WIDTH;
 
+	if (test_bit(SDE_MDP_HAS_HW_FENCE_SUPPORT, &sde_cfg->mdp[0].features)
+			&& sde_cfg->ctl_count)
+		set_bit(SDE_CTL_HW_FENCE, &sde_cfg->ctl[0].features);
+
 	return rc;
 }
 
@@ -5494,6 +5552,7 @@ void sde_hw_catalog_deinit(struct sde_mdss_cfg *sde_cfg)
 	kfree(sde_cfg->wb_formats);
 	kfree(sde_cfg->virt_vig_formats);
 	kfree(sde_cfg->inline_rot_formats);
+	kfree(sde_cfg->cac_formats);
 
 	kfree(sde_cfg);
 }

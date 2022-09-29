@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -464,6 +465,37 @@ struct sde_hw_ctl_ops {
 	 * @Return: bitmap of enum sde_sspp pipes found
 	 */
 	u32 (*get_active_pipes)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * get hw fence status
+	 * @ctx         : ctl path ctx pointer
+	 * @Return: fence status
+	 */
+	int (*get_hw_fence_status)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * hw fence control
+	 * @ctx         : ctl path ctx pointer
+	 * @sw_set	: sets fence_ready when fence_ready_sw_override is enabled
+	 * @sw_clear	: clears fence_ready when fence_ready_sw_override is cleared
+	 * @mode	: SW fence/HW fence
+	 */
+	void (*hw_fence_ctrl)(struct sde_hw_ctl *ctx, bool sw_set, bool sw_clear, u32 mode);
+
+	/**
+	 * configure hw input fence on the control path
+	 * @ctx       : ctl path ctx pointer
+	 * @source_id       : source id of the client from which fence signal is received
+	 * @signal       : signal id
+	 * @Return: 0 on success, else error code
+	 */
+	void (*setup_hw_input_fence)(struct sde_hw_ctl *ctx, u32 source_id, u32 signal_id);
+
+	/**
+	 * trigger hw fence-ready sw override
+	 * @ctx         : ctl path ctx pointer
+	 */
+	void (*hw_fence_trigger_sw_override)(struct sde_hw_ctl *ctx);
 };
 
 /**
@@ -476,6 +508,7 @@ struct sde_hw_ctl_ops {
  * @mixer_hw_caps: mixer hardware capabilities
  * @flush: storage for pending ctl_flush managed via ops
  * @ops: operation list
+ * @dpu_idx: dpu index
  */
 struct sde_hw_ctl {
 	struct sde_hw_blk base;
@@ -490,6 +523,8 @@ struct sde_hw_ctl {
 
 	/* ops */
 	struct sde_hw_ctl_ops ops;
+
+	u32 dpu_idx;
 };
 
 /**
@@ -508,10 +543,12 @@ static inline struct sde_hw_ctl *to_sde_hw_ctl(struct sde_hw_blk *hw)
  * @idx:  ctl_path index for which driver object is required
  * @addr: mapped register io address of MDP
  * @m :   pointer to mdss catalog data
+ * @dpu_idx: dpu index
  */
 struct sde_hw_ctl *sde_hw_ctl_init(enum sde_ctl idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m);
+		struct sde_mdss_cfg *m,
+		u32 dpu_idx);
 
 /**
  * sde_hw_ctl_destroy(): Destroys ctl driver context

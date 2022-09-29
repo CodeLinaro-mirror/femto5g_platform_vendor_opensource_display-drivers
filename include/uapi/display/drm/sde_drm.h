@@ -80,6 +80,10 @@ extern "C" {
  */
 #define DRM_FORMAT_MOD_QCOM_FSC_TILE       fourcc_mod_code(QCOM, 0x20)
 
+#define DRM_FORMAT_MOD_QCOM_CAC_R          fourcc_mod_code(QCOM, 0x40)
+#define DRM_FORMAT_MOD_QCOM_CAC_G          fourcc_mod_code(QCOM, 0x80)
+#define DRM_FORMAT_MOD_QCOM_CAC_B          fourcc_mod_code(QCOM, 0x100)
+
 /**
  * Blend operations for "blend_op" property
  *
@@ -117,6 +121,10 @@ extern "C" {
 #define SDE_SYSCACHE_LLCC_DISP		0
 #define SDE_SYSCACHE_LLCC_DISP_LEFT	1
 #define SDE_SYSCACHE_LLCC_DISP_RIGHT	2
+
+#define SDE_CAC_NONE		0
+#define SDE_CAC_UNPACK		1
+#define SDE_CAC_FETCH		2
 
 /**
  * Bit masks for "src_config" property
@@ -273,6 +281,33 @@ struct sde_drm_de_v1 {
 	__s16 adjust_c[SDE_MAX_DE_CURVES];
 };
 
+struct sde_drm_cac {
+	__u32 cac_mode;
+
+	__u32 cac_le_phase_init2_x[SDE_MAX_PLANES];
+	__u32 cac_le_phase_init2_y[SDE_MAX_PLANES];
+	__u32 cac_re_phase_init2_y[SDE_MAX_PLANES];
+	__u32 cac_re_phase_init_y[SDE_MAX_PLANES];
+
+	__u32 cac_le_thr_x[SDE_MAX_PLANES];
+	__u32 cac_le_thr_y[SDE_MAX_PLANES];
+
+	__u32 cac_re_thr_y[SDE_MAX_PLANES];
+	__u32 cac_re_preload_y[SDE_MAX_PLANES];
+
+	__u32 cac_dst_uv_w;
+	__u32 cac_dst_uv_h;
+	__u32 cac_le_dst_h_offset;
+	__u32 cac_le_dst_v_offset;
+	__u32 cac_re_dst_v_offset;
+
+	__u16 cac_phase_inc_first_x[SDE_MAX_PLANES];
+	__u16 cac_phase_inc_first_y[SDE_MAX_PLANES];
+	__u16 cac_le_inc_skip_x[SDE_MAX_PLANES];
+	__u16 cac_le_inc_skip_y[SDE_MAX_PLANES];
+	__u16 cac_re_inc_skip_x[SDE_MAX_PLANES];
+	__u16 cac_re_inc_skip_y[SDE_MAX_PLANES];
+};
 /*
  * Scaler configuration flags
  */
@@ -385,6 +420,8 @@ struct sde_drm_scaler_v2 {
 	__u32 pre_downscale_x_1;
 	__u32 pre_downscale_y_0;
 	__u32 pre_downscale_y_1;
+
+	struct sde_drm_cac cac_cfg;
 };
 
 /* Number of dest scalers supported */

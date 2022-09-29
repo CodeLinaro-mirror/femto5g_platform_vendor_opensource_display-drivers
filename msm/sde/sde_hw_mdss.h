@@ -47,6 +47,7 @@ enum sde_format_flags {
 	SDE_FORMAT_FLAG_ALPHA_SWAP_BIT,
 	SDE_FORMAT_FLAG_FP16_BIT,
 	SDE_FORMAT_FLAG_FSC_BIT,
+	SDE_FORMAT_FLAG_CAC_BIT,
 	SDE_FORMAT_FLAG_BIT_MAX,
 };
 
@@ -56,6 +57,7 @@ enum sde_format_flags {
 #define SDE_FORMAT_FLAG_ALPHA_SWAP	BIT(SDE_FORMAT_FLAG_ALPHA_SWAP_BIT)
 #define SDE_FORMAT_FLAG_FP16		BIT(SDE_FORMAT_FLAG_FP16_BIT)
 #define SDE_FORMAT_FLAG_FSC		BIT(SDE_FORMAT_FLAG_FSC_BIT)
+#define SDE_FORMAT_FLAG_CAC		BIT(SDE_FORMAT_FLAG_CAC_BIT)
 #define SDE_FORMAT_IS_YUV(X)		\
 	(test_bit(SDE_FORMAT_FLAG_YUV_BIT, (X)->flag))
 #define SDE_FORMAT_IS_FSC(X)		\
@@ -73,6 +75,8 @@ enum sde_format_flags {
 	(test_bit(SDE_FORMAT_FLAG_ALPHA_SWAP_BIT, (X)->flag))
 #define SDE_FORMAT_IS_FP16(X) \
 	(test_bit(SDE_FORMAT_FLAG_FP16_BIT, (X)->flag))
+#define SDE_FORMAT_IS_CAC_FETCH(X) \
+	(test_bit(SDE_FORMAT_FLAG_CAC_BIT, (X)->flag))
 
 #define MDP_TICK_COUNT                    16
 #define XO_CLK_RATE                       19200
@@ -169,6 +173,12 @@ enum sde_sspp {
 #define SDE_SSPP_VALID_RGB(x) ((x) >= SSPP_RGB0 && (x) <= SSPP_RGB_MAX)
 #define SDE_SSPP_VALID_DMA(x) ((x) >= SSPP_DMA0 && (x) <= SSPP_DMA_MAX)
 #define SDE_SSPP_VALID_CURSOR(x) ((x) >= SSPP_CURSOR0 && (x) <= SSPP_CURSOR_MAX)
+
+enum sde_dpu {
+	DPU_0,
+	DPU_1,
+	DPU_MAX
+};
 
 enum sde_sspp_type {
 	SSPP_TYPE_VIG,
@@ -587,6 +597,7 @@ struct sde_mdss_color {
 #define SDE_DBG_MASK_SID      (1 << 15)
 #define SDE_DBG_MASK_QDSS     (1 << 16)
 #define SDE_DBG_MASK_VDC      (1 << 17)
+#define SDE_DBG_MASK_IPCC     (1 << 18)
 
 /**
  * struct sde_hw_cp_cfg: hardware dspp/lm feature payload.

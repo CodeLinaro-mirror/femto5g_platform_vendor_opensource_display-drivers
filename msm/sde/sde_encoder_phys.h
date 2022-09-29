@@ -613,6 +613,11 @@ void sde_encoder_helper_get_jitter_bounds_ns(struct drm_encoder *encoder,
 int sde_encoder_helper_switch_vsync(struct drm_encoder *drm_enc,
 		bool watchdog_te);
 
+/**
+ * sde_encoder_phys_has_role_master_dpu_master_intf - check if role of physical
+	 encoder is (MASTER_DPU, MASTER_INTF) when interface synchronization is enabled.
+ * @phys_enc: Pointer to physical encoder structure
+ */
 static inline bool sde_encoder_phys_has_role_master_dpu_master_intf(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -622,6 +627,11 @@ static inline bool sde_encoder_phys_has_role_master_dpu_master_intf(
 	return (phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER) ? true : false;
 }
 
+/**
+ * sde_encoder_phys_has_role_slave_dpu_master_intf - check if role of physical
+	encoder is (SLAVE_DPU, MASTER_INTF) when interface synchronization is enabled.
+ * @phys_enc: Pointer to physical encoder structure
+ */
 static inline bool sde_encoder_phys_has_role_slave_dpu_master_intf(
 		struct sde_encoder_phys *phys_enc)
 {

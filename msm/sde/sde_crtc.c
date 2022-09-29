@@ -605,11 +605,12 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 
 	/* default to opaque blending */
 	fg_alpha = sde_plane_get_property(pstate, PLANE_PROP_ALPHA);
-	bg_alpha = 0xFF - fg_alpha;
+	bg_alpha = sde_plane_get_property(pstate, PLANE_PROP_BG_ALPHA);
 	blend_op = SDE_BLEND_FG_ALPHA_FG_CONST | SDE_BLEND_BG_ALPHA_BG_CONST;
 	blend_type = sde_plane_get_property(pstate, PLANE_PROP_BLEND_OP);
 
-	SDE_DEBUG("blend type:0x%x blend alpha:0x%x\n", blend_type, fg_alpha);
+	SDE_DEBUG("blend type:0x%x blend alpha:0x%x bg_alpha:0x%x\n",
+		blend_type, fg_alpha, bg_alpha);
 
 	switch (blend_type) {
 
@@ -1554,7 +1555,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	int zpos_cnt[MAX_LAYOUTS_PER_CRTC][SDE_STAGE_MAX + 1];
 	int i, mode, cnt = 0;
 	bool bg_alpha_enable = false;
-	u32 blend_type;
+	u32 blend_type, cac_mode;
 	struct sde_cp_crtc_skip_blend_plane skip_blend_plane;
 	DECLARE_BITMAP(fetch_active, SSPP_MAX);
 
@@ -1608,6 +1609,8 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 
 		blend_type = sde_plane_get_property(pstate,
 					PLANE_PROP_BLEND_OP);
+		cac_mode = sde_plane_get_property(pstate,
+					PLANE_PROP_CAC_TYPE);
 
 		if (blend_type == SDE_DRM_BLEND_OP_SKIP) {
 			skip_blend_plane.valid_plane = true;
@@ -1628,7 +1631,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 					state->src_w >> 16, state->src_h >> 16,
 					state->crtc_x, state->crtc_y,
 					state->crtc_w, state->crtc_h,
-					pstate->rotation, mode);
+					pstate->rotation, mode, cac_mode);
 
 			/*
 			 * none or left layout will program to layer mixer
@@ -1666,12 +1669,11 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			}
 		}
 
-		if (cnt >= SDE_PSTATES_MAX)
+		if (cnt >= SDE_PSTATES_MAX || (cac_mode == SDE_CAC_UNPACK))
 			continue;
 
 		pstates[cnt].sde_pstate = pstate;
 		pstates[cnt].drm_pstate = state;
-
 		if (blend_type == SDE_DRM_BLEND_OP_SKIP)
 			pstates[cnt].stage = SKIP_STAGING_PIPE_ZPOS;
 		else
@@ -3671,6 +3673,40 @@ end:
 	SDE_ATRACE_END("crtc_atomic_begin");
 }
 
+static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_hw_ctl *ctl;
+	struct sde_kms *sde_kms;
+
+	if (!crtc) {
+		SDE_ERROR("invalid crtc\n");
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+	sde_kms = _sde_crtc_get_kms(crtc);
+
+	if (!sde_crtc) {
+		SDE_ERROR("invalid input params\n");
+		return;
+	}
+
+	ctl = sde_crtc->mixers[0].hw_ctl;
+
+	if (!ctl || !ctl->ops.setup_hw_input_fence || !ctl->ops.hw_fence_ctrl ||
+		!ctl->ops.hw_fence_trigger_sw_override) {
+		SDE_DEBUG("ctl ops not defined for hw fence\n");
+		return;
+	}
+
+	ctl->ops.setup_hw_input_fence(ctl, HW_FENCE_IPC_CLIENT_ID_APPS, 0x0);
+	ctl->ops.hw_fence_ctrl(ctl, true, true, 1);
+
+	if (crtc->state->active_changed)
+		ctl->ops.hw_fence_trigger_sw_override(ctl);
+}
+
 static void sde_crtc_atomic_flush(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_crtc_state)
 {
@@ -3754,6 +3790,9 @@ static void sde_crtc_atomic_flush(struct drm_crtc *crtc,
 
 	/* wait for acquire fences before anything else is done */
 	_sde_crtc_wait_for_fences(crtc);
+
+	if (sde_kms->catalog->hw_fence_enabled)
+		_sde_crtc_configure_hw_fence(crtc);
 
 	if (!cstate->rsc_update) {
 		drm_for_each_encoder_mask(encoder, dev,
@@ -5315,6 +5354,7 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	struct drm_plane_state *plane_state;
 	struct sde_plane_state *pstate;
 	int layout_split;
+	u32 sspp_cac_mode = 0;
 
 	kms = _sde_crtc_get_kms(crtc);
 
@@ -5335,8 +5375,11 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 
 		pstate = to_sde_plane_state(plane_state);
 		layout_split = crtc_state->mode.hdisplay >> 1;
+		sspp_cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
 
-		if (plane_state->crtc_x >= layout_split) {
+		if (sspp_cac_mode != SDE_CAC_NONE) {
+			pstate->layout_offset = -1;
+		} else if (plane_state->crtc_x >= layout_split) {
 			plane_state->crtc_x -= layout_split;
 			pstate->layout_offset = layout_split;
 			pstate->layout = SDE_LAYOUT_RIGHT;
@@ -5759,6 +5802,9 @@ static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
 		sde_kms_info_add_keystr(info, "qseed_type", "qseed3");
 	if (catalog->qseed_sw_lib_rev == SDE_SSPP_SCALER_QSEED3LITE)
 		sde_kms_info_add_keystr(info, "qseed_type", "qseed3lite");
+
+	if (catalog->cac_version == SDE_SSPP_CAC_V2)
+		sde_kms_info_add_keystr(info, "cac_version", "cac_v2");
 
 	if (catalog->ubwc_version) {
 		sde_kms_info_add_keyint(info, "UBWC version",

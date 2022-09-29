@@ -112,6 +112,7 @@ enum sde_plane_sclcheck_state {
  * @cdp_cfg:	CDP configuration
  * @cont_splash_populated: State was populated as part of cont. splash
  * @ubwc_stats_roi: cached roi for ubwc stats
+ * @src_img_rec: source image rect values
  */
 struct sde_plane_state {
 	struct drm_plane_state base;
@@ -147,6 +148,7 @@ struct sde_plane_state {
 	bool cont_splash_populated;
 
 	struct sde_drm_ubwc_stats_roi ubwc_stats_roi;
+	struct sde_rect src_img_rec;
 };
 
 /**
