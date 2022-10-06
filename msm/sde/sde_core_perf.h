@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -15,6 +16,7 @@
 #include "sde_power_handle.h"
 
 #define SDE_PERF_DEFAULT_MAX_CORE_CLK_RATE	320000000
+#define SDE_PERF_MAX_COMPRESSION_FACTOR	126
 
 /**
  *  uidle performance counters mode

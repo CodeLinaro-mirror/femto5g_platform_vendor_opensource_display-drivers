@@ -1695,14 +1695,8 @@ static int sde_rsc_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct sde_rsc_priv *rsc;
-	static int counter;
 	char  name[MAX_RSC_CLIENT_NAME_LEN];
-
-	if (counter >= MAX_RSC_COUNT) {
-		pr_err("sde rsc supports probe till MAX_RSC_COUNT=%d devices\n",
-			MAX_RSC_COUNT);
-		return -EINVAL;
-	}
+	int index;
 
 	rsc = kzalloc(sizeof(*rsc), GFP_KERNEL);
 	if (!rsc) {
@@ -1714,6 +1708,16 @@ static int sde_rsc_probe(struct platform_device *pdev)
 	rsc->dev = &pdev->dev;
 	of_property_read_u32(pdev->dev.of_node, "qcom,sde-rsc-version",
 								&rsc->version);
+
+	ret = of_property_read_u32(pdev->dev.of_node, "cell-index", &index);
+	if (ret)
+		index = SDE_RSC_INDEX;
+
+	if (index >= MAX_RSC_COUNT) {
+		pr_err("sde rsc supports probe till MAX_RSC_COUNT=%d devices\n",
+			MAX_RSC_COUNT);
+		return -EINVAL;
+	}
 
 	if (rsc->version >= SDE_RSC_REV_2)
 		rsc->single_tcs_execution_time = SINGLE_TCS_EXECUTION_TIME_V2;
@@ -1743,7 +1747,7 @@ static int sde_rsc_probe(struct platform_device *pdev)
 		goto sde_rsc_fail;
 	}
 
-	rsc->rpmh_dev = rpmh_dev[SDE_RSC_INDEX + counter];
+	rsc->rpmh_dev = rpmh_dev[index];
 	if (IS_ERR_OR_NULL(rsc->rpmh_dev)) {
 		ret = !rsc->rpmh_dev ? -EINVAL : PTR_ERR(rsc->rpmh_dev);
 		rsc->rpmh_dev = NULL;
@@ -1805,12 +1809,11 @@ static int sde_rsc_probe(struct platform_device *pdev)
 	atomic_set(&rsc->resource_refcount, 0);
 
 	pr_info("sde rsc index:%d probed successfully\n",
-				SDE_RSC_INDEX + counter);
+				index);
 
-	rsc_prv_list[SDE_RSC_INDEX + counter] = rsc;
-	snprintf(name, MAX_RSC_CLIENT_NAME_LEN, "%s%d", "sde_rsc", counter);
+	rsc_prv_list[index] = rsc;
+	snprintf(name, MAX_RSC_CLIENT_NAME_LEN, "%s%d", "sde_rsc", index);
 	_sde_rsc_init_debugfs(rsc, name);
-	counter++;
 
 	ret = component_add(&pdev->dev, &sde_rsc_comp_ops);
 	if (ret)

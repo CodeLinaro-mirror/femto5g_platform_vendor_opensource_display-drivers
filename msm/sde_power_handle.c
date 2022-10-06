@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -32,6 +33,7 @@ static const char *data_bus_name[SDE_POWER_HANDLE_DBUS_ID_MAX] = {
 	[SDE_POWER_HANDLE_DBUS_ID_MNOC] = "qcom,sde-data-bus",
 	[SDE_POWER_HANDLE_DBUS_ID_LLCC] = "qcom,sde-llcc-bus",
 	[SDE_POWER_HANDLE_DBUS_ID_EBI] = "qcom,sde-ebi-bus",
+	[SDE_POWER_HANDLE_DBUS_ID_DDR_RT] = "qcom,sde-ddr-rt",
 };
 
 const char *sde_power_handle_get_dbus_name(u32 bus_id)
@@ -59,11 +61,11 @@ static int sde_power_event_trigger_locked(struct sde_power_handle *phandle,
 	return ret;
 }
 
-static inline void sde_power_rsc_client_init(struct sde_power_handle *phandle)
+static inline void sde_power_rsc_client_init(struct sde_power_handle *phandle, int dev_idx)
 {
 	/* creates the rsc client */
 	if (!phandle->rsc_client_init) {
-		phandle->rsc_client = sde_rsc_client_create(SDE_RSC_INDEX,
+		phandle->rsc_client = sde_rsc_client_create(dev_idx,
 				"sde_power_handle", SDE_RSC_CLK_CLIENT, 0);
 		if (IS_ERR_OR_NULL(phandle->rsc_client)) {
 			pr_debug("sde rsc client create failed :%ld\n",
@@ -486,12 +488,10 @@ static int sde_power_bus_parse(struct platform_device *pdev,
 
 	ib_quota_count = of_property_count_u32_elems(pdev->dev.of_node, "qcom,sde-ib-bw-vote");
 	if (ib_quota_count > 0) {
-		if (ib_quota_count != SDE_POWER_HANDLE_DBUS_ID_MAX) {
-			pr_err("wrong size for qcom,sde-ib-bw-vote\n");
-			return -EINVAL;
-		}
+		if (ib_quota_count != SDE_POWER_HANDLE_DBUS_ID_MAX)
+			pr_debug("size mismatch in qcom,sde-ib-bw-vote entry\n");
 
-		for (i = 0; i < SDE_POWER_HANDLE_DBUS_ID_MAX; ++i) {
+		for (i = 0; i < ib_quota_count; ++i) {
 			of_property_read_u32_index(pdev->dev.of_node,
 				"qcom,sde-ib-bw-vote", i, &ib_quota[i]);
 			phandle->ib_quota[i] = ib_quota[i]*1000;
@@ -849,7 +849,7 @@ int sde_power_scale_reg_bus(struct sde_power_handle *phandle,
 	return rc;
 }
 
-int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable)
+int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int dev_idx)
 {
 	int rc = 0, i = 0;
 	struct dss_module_power *mp;
@@ -868,7 +868,7 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable)
 	SDE_ATRACE_BEGIN("sde_power_resource_enable");
 
 	/* RSC client init */
-	sde_power_rsc_client_init(phandle);
+	sde_power_rsc_client_init(phandle, dev_idx);
 
 	if (enable) {
 		sde_power_event_trigger_locked(phandle,

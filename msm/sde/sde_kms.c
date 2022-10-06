@@ -4497,7 +4497,7 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 			return;
 
 		_sde_kms_active_override(sde_kms, true);
-		if (!is_sde_rsc_available(SDE_RSC_INDEX))
+		if (!is_sde_rsc_available(sde_kms->dev->primary->index))
 			sde_vbif_axi_halt_request(sde_kms);
 	}
 }
