@@ -215,10 +215,11 @@ void sde_power_resource_deinit(struct platform_device *pdev,
  * sde_power_resource_enable() - enable/disable the power resources
  * @pdata:  power handle containing the resources
  * @enable: boolean request for enable/disable
+ * @dev_idx: device index for the drm device
  *
  * Return: error code.
  */
-int sde_power_resource_enable(struct sde_power_handle *pdata, bool enable);
+int sde_power_resource_enable(struct sde_power_handle *pdata, bool enable, int dev_idx);
 
 /**
  * sde_power_scale_reg_bus() - Scale the registers bus for the specified client

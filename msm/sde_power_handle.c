@@ -61,11 +61,11 @@ static int sde_power_event_trigger_locked(struct sde_power_handle *phandle,
 	return ret;
 }
 
-static inline void sde_power_rsc_client_init(struct sde_power_handle *phandle)
+static inline void sde_power_rsc_client_init(struct sde_power_handle *phandle, int dev_idx)
 {
 	/* creates the rsc client */
 	if (!phandle->rsc_client_init) {
-		phandle->rsc_client = sde_rsc_client_create(SDE_RSC_INDEX,
+		phandle->rsc_client = sde_rsc_client_create(dev_idx,
 				"sde_power_handle", SDE_RSC_CLK_CLIENT, 0);
 		if (IS_ERR_OR_NULL(phandle->rsc_client)) {
 			pr_debug("sde rsc client create failed :%ld\n",
@@ -849,7 +849,7 @@ int sde_power_scale_reg_bus(struct sde_power_handle *phandle,
 	return rc;
 }
 
-int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable)
+int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int dev_idx)
 {
 	int rc = 0, i = 0;
 	struct dss_module_power *mp;
@@ -868,7 +868,7 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable)
 	SDE_ATRACE_BEGIN("sde_power_resource_enable");
 
 	/* RSC client init */
-	sde_power_rsc_client_init(phandle);
+	sde_power_rsc_client_init(phandle, dev_idx);
 
 	if (enable) {
 		sde_power_event_trigger_locked(phandle,
