@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -32,6 +33,7 @@ static const char *data_bus_name[SDE_POWER_HANDLE_DBUS_ID_MAX] = {
 	[SDE_POWER_HANDLE_DBUS_ID_MNOC] = "qcom,sde-data-bus",
 	[SDE_POWER_HANDLE_DBUS_ID_LLCC] = "qcom,sde-llcc-bus",
 	[SDE_POWER_HANDLE_DBUS_ID_EBI] = "qcom,sde-ebi-bus",
+	[SDE_POWER_HANDLE_DBUS_ID_DDR_RT] = "qcom,sde-ddr-rt",
 };
 
 const char *sde_power_handle_get_dbus_name(u32 bus_id)
@@ -486,12 +488,10 @@ static int sde_power_bus_parse(struct platform_device *pdev,
 
 	ib_quota_count = of_property_count_u32_elems(pdev->dev.of_node, "qcom,sde-ib-bw-vote");
 	if (ib_quota_count > 0) {
-		if (ib_quota_count != SDE_POWER_HANDLE_DBUS_ID_MAX) {
-			pr_err("wrong size for qcom,sde-ib-bw-vote\n");
-			return -EINVAL;
-		}
+		if (ib_quota_count != SDE_POWER_HANDLE_DBUS_ID_MAX)
+			pr_debug("size mismatch in qcom,sde-ib-bw-vote entry\n");
 
-		for (i = 0; i < SDE_POWER_HANDLE_DBUS_ID_MAX; ++i) {
+		for (i = 0; i < ib_quota_count; ++i) {
 			of_property_read_u32_index(pdev->dev.of_node,
 				"qcom,sde-ib-bw-vote", i, &ib_quota[i]);
 			phandle->ib_quota[i] = ib_quota[i]*1000;
