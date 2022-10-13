@@ -188,6 +188,7 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @mp: gpio, regulator and clock related data
  * @pinctrl: pin-control related data
  * @disp_data: controller's display related data
+ * @cell_idx: index of the display
  * @l_pnswap: P/N swap status on each lane
  * @max_pclk_khz: maximum pixel clock supported for the platform
  * @max_lclk_khz: maximum link clock supported for the platform
@@ -200,7 +201,12 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @fec_feature_enable: FEC feature enable status
  * @dsc_continuous_pps: PPS sent every frame by HW
  * @has_widebus: widebus (2PPC) feature eanble status
-  *@mst_fixed_port: mst port_num reserved for fixed topology
+ * @no_link_rate_reduction: skip link rate reduction during link training
+ * @no_lane_count_reduction: skip lane count reduction during link training
+ * @force_connect_mode: force dp in connect mode
+ * @mst_fixed_port: mst port_num reserved for fixed topology
+ * @mst_fixed_display_type: mst display_type reserved for fixed topology
+ * @display_type: display type as defined in device tree.
  * @qos_cpu_mask: CPU mask for QOS
  * @qos_cpu_latency: CPU Latency setting for QOS
  * @parse: function to be called by client to parse device tree.
@@ -215,6 +221,7 @@ struct dp_parser {
 	struct dp_pinctrl pinctrl;
 	struct dp_io io;
 	struct dp_display_data disp_data;
+	u32 cell_idx;
 
 	u8 l_map[4];
 	u8 l_pnswap;
@@ -231,10 +238,15 @@ struct dp_parser {
 	bool has_widebus;
 	bool gpio_aux_switch;
 	bool lphw_hpd;
+	bool no_link_rate_reduction;
+	bool no_lane_count_reduction;
+	bool force_connect_mode;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;
+	const char *mst_fixed_display_type[MAX_DP_MST_STREAMS];
+	const char *display_type;
 
 	int (*parse)(struct dp_parser *parser);
 	struct dp_io_data *(*get_io)(struct dp_parser *parser, char *name);
@@ -261,6 +273,7 @@ enum dp_mainlink_lane_num {
  * dp_parser_get() - get the DP's device tree parser module
  *
  * @pdev: platform data of the client
+ * @cell_idx: index of the DP display
  * return: pointer to dp_parser structure.
  *
  * This function provides client capability to parse the
@@ -268,7 +281,7 @@ enum dp_mainlink_lane_num {
  * related to clock, regulators, pin-control and other
  * can be parsed using this module.
  */
-struct dp_parser *dp_parser_get(struct platform_device *pdev);
+struct dp_parser *dp_parser_get(struct platform_device *pdev, u32 cell_idx);
 
 /**
  * dp_parser_put() - cleans the dp_parser module

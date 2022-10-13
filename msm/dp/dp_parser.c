@@ -173,6 +173,20 @@ static int dp_parser_misc(struct dp_parser *parser)
 				&parser->pixel_base_off[i]);
 	}
 
+	parser->display_type = of_get_property(of_node,
+					"qcom,display-type", NULL);
+	if (!parser->display_type)
+		parser->display_type = "unknown";
+
+	parser->no_link_rate_reduction = of_property_read_bool(of_node,
+			"qcom,no-link-rate-reduction");
+
+	parser->no_lane_count_reduction = of_property_read_bool(of_node,
+			"qcom,no-lane-count-reduction");
+
+	parser->force_connect_mode = of_property_read_bool(of_node,
+			"qcom,dp-force-connect-mode");
+
 	return 0;
 }
 
@@ -729,6 +743,14 @@ static int dp_parser_mst(struct dp_parser *parser)
 		of_property_read_u32_index(dev->of_node,
 				"qcom,mst-fixed-topology-ports", i,
 				&parser->mst_fixed_port[i]);
+
+		of_property_read_string_index(
+				dev->of_node,
+				"qcom,mst-fixed-topology-display-types", i,
+				&parser->mst_fixed_display_type[i]);
+
+		if (!parser->mst_fixed_display_type[i])
+			parser->mst_fixed_display_type[i] = "unknown";
 	}
 
 	return 0;
@@ -918,7 +940,7 @@ static void dp_parser_clear_io_buf(struct dp_parser *dp_parser)
 	}
 }
 
-struct dp_parser *dp_parser_get(struct platform_device *pdev)
+struct dp_parser *dp_parser_get(struct platform_device *pdev, u32 cell_idx)
 {
 	struct dp_parser *parser;
 
@@ -931,6 +953,7 @@ struct dp_parser *dp_parser_get(struct platform_device *pdev)
 	parser->get_io_buf = dp_parser_get_io_buf;
 	parser->clear_io_buf = dp_parser_clear_io_buf;
 	parser->pdev = pdev;
+	parser->cell_idx = cell_idx;
 
 	return parser;
 }

@@ -45,6 +45,7 @@ struct dp_aux_private {
 	u32 retry_cnt;
 
 	atomic_t aborted;
+	u32 cell_idx;
 };
 
 #if IS_ENABLED(CONFIG_DYNAMIC_DEBUG)
@@ -58,8 +59,8 @@ static void dp_aux_hex_dump(struct drm_dp_aux *drm_aux,
 	struct dp_aux_private *aux = container_of(drm_aux,
 		struct dp_aux_private, drm_aux);
 
-	snprintf(prefix, sizeof(prefix), "%s %s %4xh(%2zu): ",
-		aux->native ? "NAT" : "I2C",
+	snprintf(prefix, sizeof(prefix), "DP%d %s %s %4xh(%2zu): ",
+		aux->cell_idx, aux->native ? "NAT" : "I2C",
 		aux->read ? "RD" : "WR",
 		msg->address, msg->size);
 
@@ -118,7 +119,7 @@ static u32 dp_aux_write(struct dp_aux_private *aux,
 	 * limit buf length to 128 bytes here
 	 */
 	if (len > aux_cmd_fifo_len) {
-		DP_ERR("buf len error\n");
+		DP_ERR("DP%d buf len error\n", aux->cell_idx);
 		return 0;
 	}
 
@@ -171,20 +172,21 @@ static int dp_aux_cmd_fifo_tx(struct dp_aux_private *aux,
 
 	len = dp_aux_write(aux, msg);
 	if (len == 0) {
-		DP_ERR("DP AUX write failed\n");
+		DP_ERR("DP%d DP AUX write failed\n", aux->cell_idx);
 		return -EINVAL;
 	}
 
 	timeout = wait_for_completion_timeout(&aux->comp, aux_timeout_ms);
 	if (!timeout) {
-		DP_ERR("aux %s timeout\n", (aux->read ? "read" : "write"));
+		DP_ERR("DP%d aux %s timeout\n", aux->cell_idx,
+				(aux->read ? "read" : "write"));
 		return -ETIMEDOUT;
 	}
 
 	if (aux->aux_error_num == DP_AUX_ERR_NONE) {
 		ret = len;
 	} else {
-		pr_err_ratelimited("aux err: %s\n",
+		pr_err_ratelimited("DP%d aux err: %s\n", aux->cell_idx,
 			dp_aux_get_error(aux->aux_error_num));
 
 		ret = -EINVAL;
@@ -221,58 +223,80 @@ static void dp_aux_cmd_fifo_rx(struct dp_aux_private *aux,
 
 		actual_i = (data >> 16) & 0xFF;
 		if (i != actual_i)
-			DP_WARN("Index mismatch: expected %d, found %d\n",
-				i, actual_i);
+			DP_WARN("DP%d Index mismatch: expected %d, found %d\n",
+				aux->cell_idx, i, actual_i);
 	}
 }
 
 static void dp_aux_native_handler(struct dp_aux_private *aux)
 {
 	u32 isr = aux->catalog->isr;
+	bool aux_comp = false;
 
-	if (isr & DP_INTR_AUX_I2C_DONE)
+	if (isr & DP_INTR_AUX_I2C_DONE) {
 		aux->aux_error_num = DP_AUX_ERR_NONE;
-	else if (isr & DP_INTR_WRONG_ADDR)
+		aux_comp = true;
+	} else if (isr & DP_INTR_WRONG_ADDR) {
 		aux->aux_error_num = DP_AUX_ERR_ADDR;
-	else if (isr & DP_INTR_TIMEOUT)
+		aux_comp = true;
+	} else if (isr & DP_INTR_TIMEOUT) {
 		aux->aux_error_num = DP_AUX_ERR_TOUT;
-	if (isr & DP_INTR_NACK_DEFER)
+		aux_comp = true;
+	}
+	if (isr & DP_INTR_NACK_DEFER) {
 		aux->aux_error_num = DP_AUX_ERR_NACK;
+		aux_comp = true;
+	}
 	if (isr & DP_INTR_AUX_ERROR) {
 		aux->aux_error_num = DP_AUX_ERR_PHY;
 		aux->catalog->clear_hw_interrupts(aux->catalog);
+		aux_comp = true;
 	}
 
-	complete(&aux->comp);
+	if (aux_comp)
+		complete(&aux->comp);
 }
 
 static void dp_aux_i2c_handler(struct dp_aux_private *aux)
 {
 	u32 isr = aux->catalog->isr;
+	bool aux_comp = false;
 
 	if (isr & DP_INTR_AUX_I2C_DONE) {
 		if (isr & (DP_INTR_I2C_NACK | DP_INTR_I2C_DEFER))
 			aux->aux_error_num = DP_AUX_ERR_NACK;
 		else
 			aux->aux_error_num = DP_AUX_ERR_NONE;
+		aux_comp = true;
 	} else {
-		if (isr & DP_INTR_WRONG_ADDR)
+		if (isr & DP_INTR_WRONG_ADDR) {
 			aux->aux_error_num = DP_AUX_ERR_ADDR;
-		else if (isr & DP_INTR_TIMEOUT)
+			aux_comp = true;
+		} else if (isr & DP_INTR_TIMEOUT) {
 			aux->aux_error_num = DP_AUX_ERR_TOUT;
-		if (isr & DP_INTR_NACK_DEFER)
+			aux_comp = true;
+		}
+		if (isr & DP_INTR_NACK_DEFER) {
 			aux->aux_error_num = DP_AUX_ERR_NACK_DEFER;
-		if (isr & DP_INTR_I2C_NACK)
+			aux_comp = true;
+		}
+		if (isr & DP_INTR_I2C_NACK) {
 			aux->aux_error_num = DP_AUX_ERR_NACK;
-		if (isr & DP_INTR_I2C_DEFER)
+			aux_comp = true;
+		}
+		if (isr & DP_INTR_I2C_DEFER) {
 			aux->aux_error_num = DP_AUX_ERR_DEFER;
+			aux_comp = true;
+		}
 		if (isr & DP_INTR_AUX_ERROR) {
 			aux->aux_error_num = DP_AUX_ERR_PHY;
 			aux->catalog->clear_hw_interrupts(aux->catalog);
+			aux_comp = true;
 		}
 	}
 
-	complete(&aux->comp);
+	if (aux_comp)
+		complete(&aux->comp);
 }
 
 static void dp_aux_isr(struct dp_aux *dp_aux)
@@ -325,6 +349,9 @@ static void dp_aux_abort_transaction(struct dp_aux *dp_aux, bool abort)
 	aux = container_of(dp_aux, struct dp_aux_private, dp_aux);
 
 	atomic_set(&aux->aborted, abort);
+	/* Terminate the on going AUX operation right away */
+	aux->aux_error_num = DP_AUX_ERR_TOUT;
+	complete(&aux->comp);
 }
 
 static void dp_aux_update_offset_and_segment(struct dp_aux_private *aux,
@@ -445,8 +472,8 @@ static int dp_aux_transfer_ready(struct dp_aux_private *aux,
 	/* msg sanity check */
 	if ((aux->native && (msg->size > aux_cmd_native_max)) ||
 		(msg->size > aux_cmd_i2c_max)) {
-		DP_ERR("%s: invalid msg: size(%zu), request(%x)\n",
-			__func__, msg->size, msg->request);
+		DP_ERR("%s: DP%d invalid msg: size(%zu), request(%x)\n",
+			__func__, aux->cell_idx, msg->size, msg->request);
 		ret = -EINVAL;
 		goto error;
 	}
@@ -658,7 +685,8 @@ static int dp_aux_register(struct dp_aux *dp_aux, struct drm_device *drm_dev)
 	atomic_set(&aux->aborted, 1);
 	ret = drm_dp_aux_register(&aux->drm_aux);
 	if (ret) {
-		DP_ERR("%s: failed to register drm aux: %d\n", __func__, ret);
+		DP_ERR("%s: DP%d failed to register drm aux: %d\n",
+				__func__, aux->cell_idx, ret);
 		goto exit;
 	}
 	dp_aux->drm_aux = &aux->drm_aux;
@@ -727,7 +755,7 @@ static int dp_aux_configure_aux_switch(struct dp_aux *dp_aux,
 	aux = container_of(dp_aux, struct dp_aux_private, dp_aux);
 
 	if (!aux->aux_switch_node) {
-		DP_DEBUG("undefined fsa4480 handle\n");
+		DP_DEBUG("DP%d undefined fsa4480 handle\n", aux->cell_idx);
 		rc = -EINVAL;
 		goto end;
 	}
@@ -741,25 +769,26 @@ static int dp_aux_configure_aux_switch(struct dp_aux *dp_aux,
 			event = FSA_USBC_ORIENTATION_CC2;
 			break;
 		default:
-			DP_ERR("invalid orientation\n");
+			DP_ERR("DP%d invalid orientation\n", aux->cell_idx);
 			rc = -EINVAL;
 			goto end;
 		}
 	}
 
-	DP_DEBUG("enable=%d, orientation=%d, event=%d\n",
+	DP_DEBUG("DP%d enable=%d, orientation=%d, event=%d\n", aux->cell_idx,
 			enable, orientation, event);
 
 	rc = fsa4480_switch_event(aux->aux_switch_node, event);
 	if (rc)
-		DP_ERR("failed to configure fsa4480 i2c device (%d)\n", rc);
+		DP_ERR("DP%d failed to configure fsa4480 i2c device (%d)\n",
+				aux->cell_idx, rc);
 end:
 	return rc;
 }
 
 struct dp_aux *dp_aux_get(struct device *dev, struct dp_catalog_aux *catalog,
 		struct dp_parser *parser, struct device_node *aux_switch,
-		struct dp_aux_bridge *aux_bridge)
+		struct dp_aux_bridge *aux_bridge, u32 cell_idx)
 {
 	int rc = 0;
 	struct dp_aux_private *aux;
@@ -791,6 +820,7 @@ struct dp_aux *dp_aux_get(struct device *dev, struct dp_catalog_aux *catalog,
 	aux->aux_bridge = aux_bridge;
 	dp_aux = &aux->dp_aux;
 	aux->retry_cnt = 0;
+	aux->cell_idx = cell_idx;
 
 	dp_aux->isr     = dp_aux_isr;
 	dp_aux->init    = dp_aux_init;

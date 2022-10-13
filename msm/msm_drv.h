@@ -182,6 +182,7 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_SECURITY_LEVEL,
 	CRTC_PROP_DEST_SCALER,
 	CRTC_PROP_CAPTURE_OUTPUT,
+	CRTC_PROP_ROI_MISR,
 
 	CRTC_PROP_IDLE_PC_STATE,
 	CRTC_PROP_CACHE_STATE,
@@ -1411,6 +1412,18 @@ static inline void __init dp_display_register(void)
 {
 }
 static inline void __exit dp_display_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_MSM_DP */
+
+#if IS_ENABLED(CONFIG_DRM_MSM_DP)
+void __init dp_sim_register(void);
+void __exit dp_sim_unregister(void);
+#else
+static inline void __init dp_sim_register(void)
+{
+}
+static inline void __exit dp_sim_unregister(void)
 {
 }
 #endif /* CONFIG_DRM_MSM_DP */

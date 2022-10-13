@@ -22,6 +22,7 @@
 #include "sde_hw_qdss.h"
 #include "sde_vbif.h"
 #include "sde_hw_dnsc_blur.h"
+#include "sde_hw_roi_misr.h"
 
 #define RESERVED_BY_OTHER(h, r) \
 	(((h)->rsvp && ((h)->rsvp->enc_id != (r)->enc_id)) ||\
@@ -342,12 +343,12 @@ static void _sde_rm_print_rsvps(
 			if (!blk->rsvp && !blk->rsvp_nxt)
 				continue;
 
-			SDE_DEBUG("%d rsvp[s%ue%u->s%ue%u] %d %d\n", stage,
+			SDE_DEBUG("%d rsvp[s%ue%u->s%ue%u] %s %d\n", stage,
 				(blk->rsvp) ? blk->rsvp->seq : 0,
 				(blk->rsvp) ? blk->rsvp->enc_id : 0,
 				(blk->rsvp_nxt) ? blk->rsvp_nxt->seq : 0,
 				(blk->rsvp_nxt) ? blk->rsvp_nxt->enc_id : 0,
-				blk->type, blk->id);
+				sde_hw_blk_type_str[blk->type], blk->id);
 
 			SDE_EVT32(stage,
 				(blk->rsvp) ? blk->rsvp->seq : 0,
@@ -369,12 +370,12 @@ static void _sde_rm_print_rsvps_by_type(
 		if (!blk->rsvp && !blk->rsvp_nxt)
 			continue;
 
-		SDE_ERROR("rsvp[s%ue%u->s%ue%u] %d %d\n",
+		SDE_ERROR("rsvp[s%ue%u->s%ue%u] %s %d\n",
 			(blk->rsvp) ? blk->rsvp->seq : 0,
 			(blk->rsvp) ? blk->rsvp->enc_id : 0,
 			(blk->rsvp_nxt) ? blk->rsvp_nxt->seq : 0,
 			(blk->rsvp_nxt) ? blk->rsvp_nxt->enc_id : 0,
-			blk->type, blk->id);
+			sde_hw_blk_type_str[blk->type], blk->id);
 
 		SDE_EVT32((blk->rsvp) ? blk->rsvp->seq : 0,
 			(blk->rsvp) ? blk->rsvp->enc_id : 0,
@@ -412,6 +413,24 @@ enum sde_rm_topology_name sde_rm_get_topology_name(struct sde_rm *rm,
 	return SDE_RM_TOPOLOGY_NONE;
 }
 
+int sde_rm_get_roi_misr_num(struct sde_rm *rm,
+		enum sde_rm_topology_name topology)
+{
+	int i;
+
+	for (i = 0; i < SDE_RM_TOPOLOGY_MAX; i++)
+		if (rm->topology_tbl[i].top_name == topology) {
+			if (topology == SDE_RM_TOPOLOGY_PPSPLIT)
+				return 0;
+			else if (TOPOLOGY_DSCMERGE_MODE(topology))
+				return rm->topology_tbl[i].num_intf * 2;
+			else
+				return rm->topology_tbl[i].num_intf;
+		}
+
+	return 0;
+}
+
 static bool _sde_rm_get_hw_locked(struct sde_rm *rm, struct sde_rm_hw_iter *i)
 {
 	struct list_head *blk_list;
@@ -435,20 +454,21 @@ static bool _sde_rm_get_hw_locked(struct sde_rm *rm, struct sde_rm_hw_iter *i)
 		struct sde_rm_rsvp *rsvp = i->blk->rsvp;
 
 		if (i->blk->type != i->type) {
-			SDE_ERROR("found incorrect block type %d on %d list\n",
-					i->blk->type, i->type);
+			SDE_ERROR("found incorrect block type %s on %d list\n",
+					sde_hw_blk_type_str[i->blk->type], i->type);
 			return false;
 		}
 
 		if ((i->enc_id == 0) || (rsvp && rsvp->enc_id == i->enc_id)) {
 			i->hw = i->blk->hw;
-			SDE_DEBUG("found type %d id %d for enc %d\n",
-					i->type, i->blk->id, i->enc_id);
+			SDE_DEBUG("found type %s id %d for enc %d\n",
+					sde_hw_blk_type_str[i->type], i->blk->id, i->enc_id);
 			return true;
 		}
 	}
 
-	SDE_DEBUG("no match, type %d for enc %d\n", i->type, i->enc_id);
+	SDE_DEBUG("no match, type %s for enc %d\n",
+			sde_hw_blk_type_str[i->type], i->enc_id);
 
 	return false;
 }
@@ -471,21 +491,22 @@ static bool _sde_rm_request_hw_blk_locked(struct sde_rm *rm,
 
 	list_for_each_entry_continue(blk, blk_list, list) {
 		if (blk->type != hw_blk_info->type) {
-			SDE_ERROR("found incorrect block type %d on %d list\n",
-					blk->type, hw_blk_info->type);
+			SDE_ERROR("found incorrect block type %s on %s list\n",
+					sde_hw_blk_type_str[blk->type],
+					sde_hw_blk_type_str[hw_blk_info->type]);
 			return false;
 		}
 
 		if (blk->id == hw_blk_info->id) {
 			hw_blk_info->hw = blk->hw;
-			SDE_DEBUG("found type %d id %d\n",
-					blk->type, blk->id);
+			SDE_DEBUG("found type %s id %d\n",
+					sde_hw_blk_type_str[blk->type], blk->id);
 			return true;
 		}
 	}
 
-	SDE_DEBUG("no match, type %d id %d\n", hw_blk_info->type,
-			hw_blk_info->id);
+	SDE_DEBUG("no match, type %s id %d\n",
+			sde_hw_blk_type_str[hw_blk_info->type], hw_blk_info->id);
 
 	return false;
 }
@@ -541,6 +562,9 @@ static void _sde_rm_hw_destroy(enum sde_hw_blk_type type, struct sde_hw_blk_reg_
 		break;
 	case SDE_HW_BLK_DSC:
 		sde_hw_dsc_destroy(hw);
+		break;
+	case SDE_HW_BLK_ROI_MISR:
+		sde_hw_roi_misr_destroy(hw);
 		break;
 	case SDE_HW_BLK_VDC:
 		sde_hw_vdc_destroy(hw);
@@ -656,6 +680,9 @@ static int _sde_rm_hw_blk_create(
 	case SDE_HW_BLK_DSC:
 		hw = sde_hw_dsc_init(id, mmio, cat);
 		break;
+	case SDE_HW_BLK_ROI_MISR:
+		hw = sde_hw_roi_misr_init(id, mmio, cat);
+		break;
 	case SDE_HW_BLK_VDC:
 		hw = sde_hw_vdc_init(id, mmio, cat);
 		break;
@@ -676,8 +703,8 @@ static int _sde_rm_hw_blk_create(
 	}
 
 	if (IS_ERR_OR_NULL(hw)) {
-		SDE_ERROR("failed hw object creation: type %d, err %ld\n",
-				type, PTR_ERR(hw));
+		SDE_ERROR("failed hw object creation: type %s, err %ld\n",
+				sde_hw_blk_type_str[type], PTR_ERR(hw));
 		return -EFAULT;
 	}
 
@@ -770,6 +797,15 @@ static int _sde_rm_hw_blk_create_new(struct sde_rm *rm,
 			cat->dsc[i].id, &cat->dsc[i]);
 		if (rc) {
 			SDE_ERROR("failed: dsc hw not available\n");
+			goto fail;
+		}
+	}
+
+	for (i = 0; i < cat->roi_misr_count; i++) {
+		rc = _sde_rm_hw_blk_create(rm, cat, mmio, SDE_HW_BLK_ROI_MISR,
+			cat->roi_misr[i].id, &cat->roi_misr[i]);
+		if (rc) {
+			SDE_ERROR("failed: roi misr hw not available\n");
 			goto fail;
 		}
 	}
@@ -1132,6 +1168,89 @@ static bool _sde_rm_reserve_pp(
 	return true;
 }
 
+static bool _sde_rm_reserve_roi_misr(
+		struct sde_rm *rm,
+		struct sde_rm_rsvp *rsvp,
+		struct sde_rm_requirements *reqs,
+		const struct sde_lm_cfg *lm_cfg,
+		struct sde_rm_hw_blk *lm,
+		struct sde_rm_hw_blk **roi_misr,
+		struct sde_rm_hw_blk **dsc,
+		struct sde_rm_hw_blk *primary_lm)
+{
+	struct sde_rm_hw_iter iter;
+	struct msm_drm_private *priv = rm->dev->dev_private;
+	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
+
+	*roi_misr = NULL;
+	*dsc = NULL;
+
+	if (lm_cfg->roi_misr != ROI_MISR_MAX) {
+		sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_ROI_MISR);
+		while (_sde_rm_get_hw_locked(rm, &iter)) {
+			if (iter.blk->id == lm_cfg->roi_misr) {
+				*roi_misr = iter.blk;
+				break;
+			}
+		}
+
+		if (!*roi_misr) {
+			SDE_ERROR("failed to get roi misr on lm %d\n",
+					lm_cfg->roi_misr);
+			return false;
+		}
+
+		if (RESERVED_BY_OTHER(*roi_misr, rsvp)) {
+			SDE_DEBUG("lm %d roi_misr %d already reserved\n",
+					lm->id, (*roi_misr)->id);
+			return false;
+		}
+
+		/**
+		 * in 3DMux case, we should set the second roi misr to null,
+		 * because it's not in the control path and only first roi
+		 * misr is available.
+		 */
+		if (primary_lm &&
+				TOPOLOGY_3DMUX_MODE(reqs->topology->top_name))
+			*roi_misr = NULL;
+	}
+
+	/**
+	 * if roi misr has been enabled in DT, DSC block
+	 * should be reserved here and skip reserve DSC
+	 * from free pool.
+	 * Due to hardware limitation, DSC block should
+	 * be reserved with roi misr id if both dsc and
+	 * roi misr are enabled.
+	 */
+	if (reqs->topology->num_comp_enc
+		&& sde_kms->catalog->has_roi_misr) {
+		sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DSC);
+		while (_sde_rm_get_hw_locked(rm, &iter)) {
+			if (iter.blk->id == lm_cfg->roi_misr) {
+				*dsc = iter.blk;
+				break;
+			}
+		}
+
+		if (!*dsc) {
+			SDE_ERROR("failed to get dsc on lm %d\n",
+					lm_cfg->roi_misr);
+			return false;
+		}
+
+		if (RESERVED_BY_OTHER(*dsc, rsvp)) {
+			SDE_DEBUG("lm %d dsc %d already reserved\n",
+					lm->id, (*dsc)->id);
+			*roi_misr = NULL;
+			return false;
+		}
+	}
+
+	return true;
+}
+
 /**
  * _sde_rm_check_lm_and_get_connected_blks - check if proposed layer mixer meets
  *	proposed use case requirements, incl. hardwired dependent blocks like
@@ -1142,11 +1261,15 @@ static bool _sde_rm_reserve_pp(
  * @lm: proposed layer mixer, function checks if lm, and all other hardwired
  *      blocks connected to the lm (pp, dspp) are available and appropriate
  * @dspp: output parameter, dspp block attached to the layer mixer.
- *        NULL if dspp was not available, or not matching requirements.
+ *      NULL if dspp was not available, or not matching requirements.
  * @pp: output parameter, pingpong block attached to the layer mixer.
  *      NULL if dspp was not available, or not matching requirements.
+ * @roi_misr: output parameter, roi misr block attached to the layer mixer.
+ *      NULL if misr was not available, or not matching requirements.
+ * @dsc: output parameter, dsc block attached to the layer mixer.
+ *      NULL if dsc was not available, or not matching requirements.
  * @primary_lm: if non-null, this function check if lm is compatible primary_lm
- *              as well as satisfying all other requirements
+ *      as well as satisfying all other requirements
  * @Return: true if lm matches all requirements, false otherwise
  */
 static bool _sde_rm_check_lm_and_get_connected_blks(
@@ -1157,6 +1280,8 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 		struct sde_rm_hw_blk **dspp,
 		struct sde_rm_hw_blk **ds,
 		struct sde_rm_hw_blk **pp,
+		struct sde_rm_hw_blk **roi_misr,
+		struct sde_rm_hw_blk **dsc,
 		struct sde_rm_hw_blk *primary_lm)
 {
 	const struct sde_lm_cfg *lm_cfg = to_sde_hw_mixer(lm->hw)->cap;
@@ -1177,9 +1302,10 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	is_conn_secondary = (reqs->hw_res.display_type ==
 				 SDE_CONNECTOR_SECONDARY) ? true : false;
 
-	SDE_DEBUG("check lm %d: dspp %d ds %d pp %d features %ld disp type %d\n",
-		 lm_cfg->id, lm_cfg->dspp, lm_cfg->ds, lm_cfg->pingpong,
-		 lm_cfg->features, (int)reqs->hw_res.display_type);
+	SDE_DEBUG("check lm %d: dspp %d ds %d pp %d roi_misr %d features %ld disp type %d\n",
+		lm_cfg->id, lm_cfg->dspp, lm_cfg->ds, lm_cfg->pingpong,
+		lm_cfg->roi_misr, lm_cfg->features,
+		(int)reqs->hw_res.display_type);
 
 	/* Check if this layer mixer is a peer of the proposed primary LM */
 	if (primary_lm) {
@@ -1243,6 +1369,10 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	if (!ret)
 		return ret;
 
+	/* Reserve roi misr */
+	ret = _sde_rm_reserve_roi_misr(rm, rsvp, reqs, lm_cfg, lm,
+			roi_misr, dsc, primary_lm);
+
 	return true;
 }
 
@@ -1257,6 +1387,8 @@ static int _sde_rm_reserve_lms(
 	struct sde_rm_hw_blk *dspp[MAX_BLOCKS];
 	struct sde_rm_hw_blk *ds[MAX_BLOCKS];
 	struct sde_rm_hw_blk *pp[MAX_BLOCKS];
+	struct sde_rm_hw_blk *roi_misr[MAX_BLOCKS];
+	struct sde_rm_hw_blk *dsc[MAX_BLOCKS];
 	struct sde_rm_hw_iter iter_i, iter_j;
 	u32 lm_mask = 0;
 	int lm_count = 0;
@@ -1278,6 +1410,8 @@ static int _sde_rm_reserve_lms(
 		dspp[lm_count] = NULL;
 		ds[lm_count] = NULL;
 		pp[lm_count] = NULL;
+		roi_misr[lm_count] = NULL;
+		dsc[lm_count] = NULL;
 
 		SDE_DEBUG("blk id = %d, _lm_ids[%d] = %d\n",
 			iter_i.blk->id,
@@ -1290,7 +1424,8 @@ static int _sde_rm_reserve_lms(
 		if (!_sde_rm_check_lm_and_get_connected_blks(
 				rm, rsvp, reqs, lm[lm_count],
 				&dspp[lm_count], &ds[lm_count],
-				&pp[lm_count], NULL))
+				&pp[lm_count], &roi_misr[lm_count],
+				&dsc[lm_count], NULL))
 			continue;
 
 		lm_mask |= (1 << iter_i.blk->id);
@@ -1315,7 +1450,8 @@ static int _sde_rm_reserve_lms(
 			if (!_sde_rm_check_lm_and_get_connected_blks(
 					rm, rsvp, reqs, iter_j.blk,
 					&dspp[lm_count], &ds[lm_count],
-					&pp[lm_count], iter_i.blk))
+					&pp[lm_count], &roi_misr[lm_count],
+					&dsc[lm_count], iter_i.blk))
 				continue;
 
 			SDE_DEBUG("blk id = %d, _lm_ids[%d] = %d\n",
@@ -1352,9 +1488,17 @@ static int _sde_rm_reserve_lms(
 		if (ds[i])
 			ds[i]->rsvp_nxt = rsvp;
 
+		if (roi_misr[i])
+			roi_misr[i]->rsvp_nxt = rsvp;
+
+		if (dsc[i])
+			dsc[i]->rsvp_nxt = rsvp;
+
 		SDE_EVT32(lm[i]->type, rsvp->enc_id, lm[i]->id, pp[i]->id,
 				dspp[i] ? dspp[i]->id : 0,
-				ds[i] ? ds[i]->id : 0);
+				ds[i] ? ds[i]->id : 0,
+				roi_misr[i] ? roi_misr[i]->id : 0,
+				dsc[i] ? dsc[i]->id : 0);
 	}
 
 	if (reqs->topology->top_name == SDE_RM_TOPOLOGY_PPSPLIT) {
@@ -1536,6 +1680,8 @@ static int _sde_rm_reserve_dsc(
 	struct sde_rm_hw_blk *dsc[MAX_BLOCKS];
 	u32 reserve_mask = 0;
 	struct sde_rm_hw_blk *pp[MAX_BLOCKS];
+	struct msm_drm_private *priv = rm->dev->dev_private;
+	struct sde_kms *sde_kms;
 	int alloc_count = 0;
 	int num_dsc_enc;
 	struct msm_display_dsc_info *dsc_info;
@@ -1548,12 +1694,21 @@ static int _sde_rm_reserve_dsc(
 
 	num_dsc_enc = reqs->topology->num_comp_enc;
 	dsc_info = &reqs->hw_res.comp_info->dsc_info;
+	sde_kms = to_sde_kms(priv->kms);
 
 	if ((!num_dsc_enc) || !dsc_info) {
 		SDE_DEBUG("invalid topoplogy params: %d, %d\n",
 				num_dsc_enc, !(dsc_info == NULL));
 		return 0;
 	}
+
+	/**
+	 * if roi misr has been enabled in DT, DSC block
+	 * should be reserved from lm reservation function
+	 * and skip here.
+	 */
+	if (sde_kms->catalog->has_roi_misr)
+		return 0;
 
 	sde_rm_init_hw_iter(&iter_i, 0, SDE_HW_BLK_DSC);
 	sde_rm_get_rsvp_nxt_hw_blks(rm, rsvp, SDE_HW_BLK_PINGPONG, pp);
@@ -1734,8 +1889,8 @@ static int _sde_rm_reserve_qdss(
 	}
 
 	if (!iter.hw && sde_kms->catalog->qdss_count) {
-		SDE_DEBUG("couldn't reserve qdss for type %d id %d\n",
-						SDE_HW_BLK_QDSS, iter.blk->id);
+		SDE_DEBUG("couldn't reserve qdss for type %s id %d\n",
+						sde_hw_blk_type_str[SDE_HW_BLK_QDSS], iter.blk->id);
 		return -ENAVAIL;
 	}
 
@@ -1799,9 +1954,9 @@ static int _sde_rm_reserve_cdm(
 		else if (type == SDE_HW_BLK_WB && id != WB_MAX)
 			match = test_bit(id, &caps->wb_connect);
 
-		SDE_DEBUG("type %d id %d, cdm intfs %lu wbs %lu match %d\n",
-				type, id, caps->intf_connect, caps->wb_connect,
-				match);
+		SDE_DEBUG("type %s id %d, cdm intfs %lu wbs %lu match %d\n",
+				sde_hw_blk_type_str[type], id,
+				caps->intf_connect, caps->wb_connect, match);
 
 		if (!match)
 			continue;
@@ -1812,7 +1967,8 @@ static int _sde_rm_reserve_cdm(
 	}
 
 	if (!iter.hw) {
-		SDE_ERROR("couldn't reserve cdm for type %d id %d\n", type, id);
+		SDE_ERROR("couldn't reserve cdm for type %s id %d\n",
+				sde_hw_blk_type_str[type], id);
 		return -ENAVAIL;
 	}
 
@@ -1833,7 +1989,8 @@ static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, struct sde_rm_rsvp *rsv
 			continue;
 
 		if (RESERVED_BY_OTHER(iter.blk, rsvp)) {
-			SDE_ERROR("type %d id %d already reserved\n", type, id);
+			SDE_ERROR("type %s id %d already reserved\n",
+					sde_hw_blk_type_str[type], id);
 			return -ENAVAIL;
 		}
 
@@ -1844,7 +2001,7 @@ static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, struct sde_rm_rsvp *rsv
 
 	/* Shouldn't happen since wbs / intfs are fixed at probe */
 	if (!iter.hw) {
-		SDE_ERROR("couldn't find type %d id %d\n", type, id);
+		SDE_ERROR("couldn't find type %s id %d\n", sde_hw_blk_type_str[type], id);
 		return -EINVAL;
 	}
 
@@ -2543,9 +2700,9 @@ static void _sde_rm_release_rsvp(
 		list_for_each_entry(blk, &rm->hw_blks[type], list) {
 			if (blk->rsvp == rsvp) {
 				blk->rsvp = NULL;
-				SDE_DEBUG("rel rsvp %d enc %d %d %d\n",
+				SDE_DEBUG("rel rsvp %d enc %d %s %d\n",
 						rsvp->seq, rsvp->enc_id,
-						blk->type, blk->id);
+						sde_hw_blk_type_str[blk->type], blk->id);
 				_sde_rm_inc_resource_info(rm,
 						&rm->avail_res, blk);
 			}
