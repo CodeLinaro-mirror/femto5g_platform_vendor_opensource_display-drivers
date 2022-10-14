@@ -6124,6 +6124,9 @@ int dsi_display_get_num_of_displays(struct drm_device *dev)
 	for (i = 0; i < MAX_DSI_ACTIVE_DISPLAY; i++) {
 		struct dsi_display *display = boot_displays[i].disp;
 
+		if (!display || !display->drm_dev)
+			continue;
+
 		if (display->drm_dev != dev)
 			continue;
 
@@ -6147,6 +6150,9 @@ int dsi_display_get_active_displays(struct drm_device *dev,
 
 	for (index = 0; index < MAX_DSI_ACTIVE_DISPLAY; index++) {
 		struct dsi_display *display = boot_displays[index].disp;
+
+		if (!display || !display->drm_dev)
+			continue;
 
 		if (display->drm_dev != dev)
 			continue;
