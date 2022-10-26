@@ -2984,7 +2984,9 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	struct dsi_display *dsi_display;
 	int rc;
 	struct drm_connector *connector;
+	struct drm_encoder *encoder;
 	u64 panel_id = ~0x0;
+	bool dpu_ctl_op_sync = false;
 
 	msm_property_install_blob(&c_conn->property_info, "capabilities",
 			DRM_MODE_PROP_IMMUTABLE, CONNECTOR_PROP_SDE_INFO);
@@ -3084,8 +3086,14 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			0x0, 0, AUTOREFRESH_MAX_FRAME_CNT, 0,
 			CONNECTOR_PROP_AUTOREFRESH);
 
+	drm_for_each_encoder(encoder, connector->dev) {
+		if (drm_connector_has_possible_encoder(connector, encoder))
+			dpu_ctl_op_sync = sde_encoder_has_dpu_ctl_op_sync(encoder);
+	}
+
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
-		if (sde_kms->catalog->has_qsync && dsi_display && dsi_display->panel &&
+		if (sde_kms->catalog->has_qsync && !dpu_ctl_op_sync && dsi_display &&
+				dsi_display->panel &&
 				dsi_display->panel->qsync_caps.qsync_support) {
 			msm_property_install_enum(&c_conn->property_info,
 					"qsync_mode", 0, 0, e_qsync_mode,
