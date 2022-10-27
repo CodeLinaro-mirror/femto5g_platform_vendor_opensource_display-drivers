@@ -1271,6 +1271,10 @@ static inline bool sde_hw_ctl_read_active_status(struct sde_hw_ctl *ctx,
 static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 {
 	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (!ops) {
+		SDE_ERROR("dma ops is NULL\n");
+		return -EINVAL;
+	}
 
 	if (!ctx)
 		return -EINVAL;
