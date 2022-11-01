@@ -155,6 +155,12 @@ static void _sde_core_perf_calc_crtc(struct sde_kms *kms,
 						perf->core_clk_rate);
 	}
 
+	perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_DDR_RT] =
+		mult_frac(perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_EBI],
+			SDE_PERF_MAX_COMPRESSION_FACTOR, 100);
+	perf->max_per_pipe_ib[SDE_POWER_HANDLE_DBUS_ID_DDR_RT] =
+		SDE_POWER_HANDLE_DISABLE_BUS_IB_QUOTA;
+
 	SDE_EVT32(DRMID(crtc), perf->core_clk_rate,
 		GET_H32(perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_MNOC]),
 		GET_L32(perf->bw_ctl[SDE_POWER_HANDLE_DBUS_ID_MNOC]),
@@ -717,7 +723,8 @@ static void _sde_core_perf_crtc_update_bus(struct sde_kms *kms,
 	bus_ab_quota = min(bus_ab_quota,
 			kms->catalog->perf.max_bw_high*1000ULL);
 
-	if (kms->catalog->perf.num_ddr_channels && kms->catalog->perf.dram_efficiency) {
+	if (kms->catalog->perf.num_ddr_channels && kms->catalog->perf.dram_efficiency &&
+		(bus_id != SDE_POWER_HANDLE_DBUS_ID_DDR_RT)) {
 		bus_ib_quota = div_u64(div_u64(bus_ab_quota,
 			kms->catalog->perf.num_ddr_channels) * 100,
 			kms->catalog->perf.dram_efficiency);
@@ -945,7 +952,7 @@ static void _sde_core_perf_crtc_update_check(struct drm_crtc *crtc,
 
 		/* display rsc override during solver mode */
 		if (kms->perf.bw_vote_mode == DISP_RSC_MODE &&
-				get_sde_rsc_current_state(SDE_RSC_INDEX) !=
+				get_sde_rsc_current_state(kms->dev->primary->index) !=
 				SDE_RSC_CLK_STATE) {
 			/* update new bandwidth in all cases */
 			if (params_changed && ((new->bw_ctl[i] !=
@@ -1050,9 +1057,9 @@ void sde_core_perf_crtc_update(struct drm_crtc *crtc,
 	}
 
 	if (kms->perf.bw_vote_mode == DISP_RSC_MODE &&
-	    ((get_sde_rsc_current_state(SDE_RSC_INDEX) != SDE_RSC_CLK_STATE
+	    ((get_sde_rsc_current_state(kms->dev->primary->index) != SDE_RSC_CLK_STATE
 	      && params_changed) ||
-	    (get_sde_rsc_current_state(SDE_RSC_INDEX) == SDE_RSC_CLK_STATE)))
+	    (get_sde_rsc_current_state(kms->dev->primary->index) == SDE_RSC_CLK_STATE)))
 		sde_rsc_client_trigger_vote(sde_cstate->rsc_client,
 				update_bus ? true : false);
 
@@ -1431,7 +1438,7 @@ int sde_core_perf_init(struct sde_core_perf *perf,
 	perf->catalog = catalog;
 	perf->phandle = phandle;
 	perf->clk_name = clk_name;
-	perf->sde_rsc_available = is_sde_rsc_available(SDE_RSC_INDEX);
+	perf->sde_rsc_available = is_sde_rsc_available(dev->primary->index);
 	/* set default mode */
 	if (perf->sde_rsc_available)
 		perf->bw_vote_mode = DISP_RSC_MODE;

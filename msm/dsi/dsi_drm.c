@@ -204,7 +204,8 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		return;
 	}
 
-	atomic_set(&c_bridge->display->panel->esd_recovery_pending, 0);
+	if (bridge->encoder->crtc->state->active_changed)
+		atomic_set(&c_bridge->display->panel->esd_recovery_pending, 0);
 
 	/* By this point mode should have been validated through mode_fixup */
 	rc = dsi_display_set_mode(c_bridge->display,
@@ -892,8 +893,10 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 
 	sde_kms_info_add_keyint(info, "bit_depth", bpp);
 
-	if (dsi_display->panel->ctl_op_sync)
+	if (dsi_display->panel->ctl_op_sync) {
 		sde_kms_info_add_keystr(info, "dpu_ctl_op_sync", "true");
+		sde_kms_info_add_keystr(info, "has_disp_in_other_core", "true");
+	}
 
 end:
 	return 0;
