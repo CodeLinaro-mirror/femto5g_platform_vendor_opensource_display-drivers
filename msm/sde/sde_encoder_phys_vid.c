@@ -1067,8 +1067,14 @@ static void sde_encoder_phys_vid_single_vblank_wait(
 {
 	int ret;
 	struct intf_status intf_status = {0};
-	struct sde_encoder_phys_vid *vid_enc
-					= to_sde_encoder_phys_vid(phys_enc);
+	struct sde_encoder_phys_vid *vid_enc;
+
+	if (!phys_enc || !phys_enc->hw_intf) {
+		SDE_ERROR("Invalid physical encoder\n");
+		return;
+	}
+
+	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 
 	/*
 	 * Wait for a vsync so we know the ENABLE=0 latched before
@@ -1091,7 +1097,7 @@ static void sde_encoder_phys_vid_single_vblank_wait(
 		ret = _sde_encoder_phys_vid_wait_for_vblank(phys_enc, false);
 		if (ret) {
 			atomic_set(&phys_enc->pending_kickoff_cnt, 0);
-			if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_status) {
+			if (phys_enc->hw_intf->ops.get_status) {
 				phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf,
 				&intf_status);
 				ret =  (intf_status.is_en) ? ret : 0;

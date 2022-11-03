@@ -5132,7 +5132,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 	struct msm_drm_private *priv;
 	struct sde_kms *kms;
 	enum drm_plane_type type;
-	struct sde_vbif_clk_client clk_client;
+	struct sde_vbif_clk_client clk_client = {0};
 	int ret = -EINVAL;
 
 	if (!dev) {
@@ -5182,7 +5182,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 		psde->pipe_hw = sde_hw_sspp_init(pipe, kms->mmio, kms->catalog, psde->is_virtual,
 				&clk_client, kms->dev->primary->index);
 
-	if (IS_ERR(psde->pipe_hw)) {
+	if (IS_ERR_OR_NULL(psde->pipe_hw)) {
 		SDE_ERROR("[%u]SSPP init failed\n", pipe);
 		ret = PTR_ERR(psde->pipe_hw);
 		goto clean_plane;

@@ -492,7 +492,7 @@ static void _sde_dump_reg(struct device *dev, const char *dump_name, u32 reg_dum
 	char *end_addr;
 	int i;
 
-	if (!len_bytes || !dump_mem)
+	if (!dbg_base || !len_bytes || !dump_mem)
 		return;
 
 	in_log = (reg_dump_flag & (SDE_DBG_DUMP_IN_LOG | SDE_DBG_DUMP_IN_LOG_LIMITED));
@@ -745,14 +745,15 @@ static void _sde_dump_reg_by_ranges(struct sde_dbg_reg_base *dbg, u32 reg_dump_f
 	char *addr;
 	size_t len;
 	struct sde_dbg_reg_range *range_node;
+	struct sde_dbg_base *dbg_base;
 	bool in_log;
-	struct sde_dbg_base *dbg_base = dbg->dbg_base;
 
 	if (!dbg || !(dbg->base || dbg->cb)) {
 		pr_err("dbg base is null!\n");
 		return;
 	}
 
+	dbg_base = dbg->dbg_base;
 	in_log = (reg_dump_flag & (SDE_DBG_DUMP_IN_LOG | SDE_DBG_DUMP_IN_LOG_LIMITED));
 	SDE_DBG_LOG_MARKER(dbg->dbg_base->dev, dbg->name, SDE_DBG_LOG_START, in_log);
 
@@ -2544,6 +2545,11 @@ static void sde_dbg_buses_destroy(struct device *dev)
 	struct drm_device *ddev = platform_get_drvdata(pdev);
 	struct sde_dbg_base *dbg_base = _sde_dbg_get_base(ddev);
 
+	if (!dbg_base) {
+		SDE_ERROR("Invalid dbg_base\n");
+		return;
+	}
+
 	vfree(dbg_base->dbgbus_sde.cmn.dumped_content);
 	vfree(dbg_base->dbgbus_vbif_rt.cmn.dumped_content);
 	vfree(dbg_base->dbgbus_dsi.cmn.dumped_content);
@@ -2560,6 +2566,11 @@ void sde_dbg_destroy(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct drm_device *ddev = platform_get_drvdata(pdev);
 	struct sde_dbg_base *dbg_base = _sde_dbg_get_base(ddev);
+
+	if (!dbg_base) {
+		SDE_ERROR("Invalid dbg_base\n");
+		return;
+	}
 
 	vfree(dbg_base->regbuf.buf);
 	memset(&dbg_base->regbuf, 0, sizeof(dbg_base->regbuf));
