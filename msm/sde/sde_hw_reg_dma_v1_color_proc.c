@@ -516,6 +516,9 @@ void reg_dmav1_setup_dspp_vlutv18(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[VLUT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, VLUT, dspp_buf[VLUT][ctx->idx][ctx->dpu_idx]);
@@ -667,6 +670,9 @@ static void dspp_3d_gamutv4_off(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[GAMUT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, GAMUT, dspp_buf[GAMUT][ctx->idx][ctx->dpu_idx]);
@@ -743,6 +749,9 @@ static void reg_dmav1_setup_dspp_3d_gamutv4_common(struct sde_hw_dspp *ctx,
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[GAMUT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, GAMUT, dspp_buf[GAMUT][ctx->idx][ctx->dpu_idx]);
@@ -907,6 +916,9 @@ void reg_dmav1_setup_dspp_gcv18(struct sde_hw_dspp *ctx, void *cfg)
 
 	lut_cfg = hw_cfg->payload;
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[GC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, GC, dspp_buf[GC][ctx->idx][ctx->dpu_idx]);
@@ -996,6 +1008,9 @@ static void _dspp_igcv31_off(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[IGC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, IGC, dspp_buf[IGC][ctx->idx][ctx->dpu_idx]);
@@ -1076,6 +1091,9 @@ void reg_dmav1_setup_dspp_igcv31(struct sde_hw_dspp *ctx, void *cfg)
 	lut_cfg = hw_cfg->payload;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[IGC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, DSPP_IGC, IGC, dspp_buf[IGC][ctx->idx][ctx->dpu_idx]);
@@ -1184,6 +1202,9 @@ int reg_dmav1_setup_rc_datav1(struct sde_hw_dspp *ctx, void *cfg)
 	abs_offset = ctx->hw.blk_off + ctx->cap->sblk->rc.base + 0x28;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return -ENOTSUPP;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[RC_DATA][ctx->idx][ctx->dpu_idx]);
 	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, RC_DATA,
 		dspp_buf[RC_DATA][ctx->idx][ctx->dpu_idx]);
@@ -1257,6 +1278,9 @@ static void _dspp_pcc_common_off(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[PCC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, PCC, dspp_buf[PCC][ctx->idx][ctx->dpu_idx]);
@@ -1326,6 +1350,9 @@ void reg_dmav1_setup_dspp_pcc_common(struct sde_hw_dspp *ctx, void *cfg)
 
 	pcc_cfg = hw_cfg->payload;
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[PCC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, PCC, dspp_buf[PCC][ctx->idx][ctx->dpu_idx]);
@@ -1492,6 +1519,9 @@ void reg_dmav1_setup_dspp_pa_hsicv17(struct sde_hw_dspp *ctx, void *cfg)
 	hsic_cfg = hw_cfg->payload;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[HSIC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, HSIC, dspp_buf[HSIC][ctx->idx][ctx->dpu_idx]);
@@ -1651,6 +1681,9 @@ void reg_dmav1_setup_dspp_sixzonev17(struct sde_hw_dspp *ctx, void *cfg)
 	sixzone = hw_cfg->payload;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[SIX_ZONE][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, SIX_ZONE,
@@ -1827,6 +1860,9 @@ static void __setup_dspp_memcol(struct sde_hw_dspp *ctx,
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[type][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, type, dspp_buf[type][ctx->idx][ctx->dpu_idx]);
@@ -2093,6 +2129,9 @@ void reg_dmav1_setup_dspp_memcol_protv17(struct sde_hw_dspp *ctx, void *cfg)
 	opcode_mask &= ~(MEMCOL_PROT_MASK);
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[MEMC_PROT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, dspp_mapping[ctx->idx],
@@ -2212,6 +2251,9 @@ static void vig_gamutv5_off(struct sde_hw_pipe *ctx, void *cfg)
 	enum sde_sspp_multirect_index idx = SDE_SSPP_RECT_0;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][GAMUT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], GAMUT,
@@ -2281,6 +2323,9 @@ void reg_dmav1_setup_vig_gamutv5(struct sde_hw_pipe *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][GAMUT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], GAMUT,
@@ -2371,6 +2416,9 @@ static void vig_igcv5_off(struct sde_hw_pipe *ctx, void *cfg)
 	enum sde_sspp_multirect_index idx = SDE_SSPP_RECT_0;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][IGC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], IGC,
@@ -2507,6 +2555,9 @@ void reg_dmav1_setup_vig_igcv5(struct sde_hw_pipe *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][IGC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], IGC,
@@ -2560,6 +2611,9 @@ void reg_dmav1_setup_vig_igcv6(struct sde_hw_pipe *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][IGC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], IGC,
@@ -2609,6 +2663,9 @@ static void dma_igcv5_off(struct sde_hw_pipe *ctx, void *cfg,
 	u32 igc_opmode_off;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][IGC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], IGC,
@@ -2675,6 +2732,9 @@ void reg_dmav1_setup_dma_igcv5(struct sde_hw_pipe *ctx, void *cfg,
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][IGC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], IGC,
@@ -2762,6 +2822,9 @@ static void dma_gcv5_off(struct sde_hw_pipe *ctx, void *cfg,
 	u32 gc_opmode_off;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][GC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], GC,
@@ -2827,6 +2890,9 @@ void reg_dmav1_setup_dma_gcv5(struct sde_hw_pipe *ctx, void *cfg,
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][GC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], GC,
@@ -2923,6 +2989,9 @@ void reg_dmav1_setup_scaler3_lut(struct sde_reg_dma_setup_ops_cfg *buf,
 	};
 
 	dma_ops = sde_reg_dma_get_ops(dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	lut_flags = (unsigned long) scaler3_cfg->lut_flag;
 	if (test_bit(QSEED3_COEF_LUT_DIR_BIT, &lut_flags) &&
 		(scaler3_cfg->dir_len == QSEED3_DIR_LUT_SIZE)) {
@@ -3009,6 +3078,9 @@ void reg_dmav1_setup_scaler3lite_lut(
 		return;
 
 	dma_ops = sde_reg_dma_get_ops(dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	lut_flags = (unsigned long) scaler3_cfg->lut_flag;
 	if (test_bit(QSEED3L_COEF_LUT_Y_SEP_BIT, &lut_flags) &&
 		(scaler3_cfg->y_rgb_sep_lut_idx < QSEED3L_SEPARABLE_LUTS) &&
@@ -3200,6 +3272,9 @@ static int reg_dmav1_setup_scaler3_de(struct sde_reg_dma_setup_ops_cfg *buf,
 	int rc;
 
 	dma_ops = sde_reg_dma_get_ops(dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return -ENOTSUPP;
+
 	de_config[0] = (de_cfg->sharpen_level1 & 0x1FF) |
 		((de_cfg->sharpen_level2 & 0x1FF) << 16);
 
@@ -3269,6 +3344,9 @@ void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 
 	offset = ctx->cap->sblk->scaler_blk.regdma_base;
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][QSEED][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], QSEED,
@@ -3544,6 +3622,9 @@ static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(ltm_buf[LTM_INIT][idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, ltm_mapping[idx], LTM_INIT,
@@ -3638,6 +3719,9 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
 	phase_data[2] = phase.inc_v;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(ltm_buf[LTM_INIT][idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, LTM_INIT, ltm_buf[LTM_INIT][idx][ctx->dpu_idx]);
@@ -3736,6 +3820,9 @@ static void ltm_roiv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(ltm_buf[LTM_ROI][idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, ltm_mapping[idx], LTM_ROI,
@@ -3841,6 +3928,9 @@ void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg)
 			(cfg_param->cfg_param_06 & 0x1FF);
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(ltm_buf[LTM_ROI][idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, LTM_ROI, ltm_buf[LTM_ROI][idx][ctx->dpu_idx]);
@@ -3967,6 +4057,9 @@ void reg_dmav1_setup_ltm_vlutv1(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(ltm_buf[LTM_VLUT][idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, LTM_VLUT, ltm_buf[LTM_VLUT][idx][ctx->dpu_idx]);
@@ -4151,6 +4244,9 @@ static void _dspp_igcv4_off(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[IGC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, IGC, dspp_buf[IGC][ctx->idx][ctx->dpu_idx]);
@@ -4216,6 +4312,9 @@ void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
 	lut_cfg = hw_cfg->payload;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[IGC][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, IGC, dspp_buf[IGC][ctx->idx][ctx->dpu_idx]);
@@ -4303,6 +4402,9 @@ static void dspp_3d_gamutv43_off(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[GAMUT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, GAMUT, dspp_buf[GAMUT][ctx->idx][ctx->dpu_idx]);
@@ -4384,6 +4486,9 @@ void reg_dmav2_setup_dspp_3d_gamutv43(struct sde_hw_dspp *ctx, void *cfg)
 	op_mode |= GAMUT_EN;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[GAMUT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, blk, GAMUT, dspp_buf[GAMUT][ctx->idx][ctx->dpu_idx]);
@@ -4538,6 +4643,9 @@ void reg_dmav2_setup_vig_gamutv61(struct sde_hw_pipe *ctx, void *cfg)
 	op_mode |= GAMUT_EN;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(sspp_buf[idx][GAMUT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, sspp_mapping[ctx->idx], GAMUT,
@@ -4713,6 +4821,9 @@ void reg_dmav1_disable_spr(struct sde_hw_dspp *ctx, void *cfg)
 	int rc = 0;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[SPR_INIT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, SPR_INIT,
@@ -4774,6 +4885,9 @@ void reg_dmav1_setup_spr_init_cfgv1(struct sde_hw_dspp *ctx, void *cfg)
 	payload = hw_cfg->payload;
 	base_off = ctx->hw.blk_off + ctx->cap->sblk->spr.base;
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[SPR_INIT][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, SPR_INIT,
@@ -4933,6 +5047,9 @@ void reg_dmav1_setup_spr_pu_cfgv1(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[SPR_PU_CFG][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, SPR_PU_CFG,
@@ -4979,6 +5096,9 @@ static void reg_dma_demura_off(struct sde_hw_dspp *ctx,
 	int rc;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[DEMURA_CFG][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, DEMURA_CFG,
@@ -5539,6 +5659,9 @@ void reg_dmav1_setup_demurav1(struct sde_hw_dspp *ctx, void *cfx)
 	}
 	dcfg = hw_cfg->payload;
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
 	dma_ops->reset_reg_dma_buf(dspp_buf[DEMURA_CFG][ctx->idx][ctx->dpu_idx]);
 
 	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, DEMURA_CFG,
