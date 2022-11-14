@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_CATALOG_H_
@@ -107,6 +108,7 @@ struct dp_catalog_ctrl {
 struct dp_catalog_hpd {
 	void (*config_hpd)(struct dp_catalog_hpd *hpd, bool en);
 	u32 (*get_interrupt)(struct dp_catalog_hpd *hpd);
+	bool (*wait_for_edp_panel_ready)(struct dp_catalog_hpd *hpd);
 };
 
 #define HEADER_BYTE_2_BIT	 0
