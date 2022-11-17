@@ -361,4 +361,17 @@ void sde_plane_static_img_control(struct drm_plane *plane,
 		enum sde_crtc_cache_state state);
 
 void sde_plane_add_data_to_minidump_va(struct drm_plane *plane);
+
+/**
+ * sde_plane_is_cac_enabled - indicates if cac is enabled for
+ *	the plane
+ * @pstate: Pointer to sde plane state
+ * Returns true if cac is enabled, otherwise false.
+ */
+static inline bool sde_plane_is_cac_enabled(struct sde_plane_state *pstate)
+{
+	return sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE)
+                        != SDE_CAC_NONE;
+}
+
 #endif /* _SDE_PLANE_H_ */
