@@ -8143,7 +8143,7 @@ int dsi_display_prepare(struct dsi_display *display)
 		return -EINVAL;
 	}
 
-	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, display->is_master);
 	mutex_lock(&display->display_lock);
 
 	display->hw_ownership = true;
@@ -8276,7 +8276,7 @@ error_panel_post_unprep:
 	(void)dsi_display_mgr_panel_post_unprepare(display);
 error:
 	mutex_unlock(&display->display_lock);
-	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, display->is_master);
 	return rc;
 }
 
@@ -8560,7 +8560,7 @@ int dsi_display_enable(struct dsi_display *display)
 		DSI_ERR("no valid mode set for the display\n");
 		return -EINVAL;
 	}
-	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, display->is_master);
 
 	/*
 	 * Engine states and panel states are populated during splash
@@ -8653,7 +8653,7 @@ error_disable_panel:
 	(void)dsi_panel_disable(display->panel);
 error:
 	mutex_unlock(&display->display_lock);
-	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, display->is_master);
 	return rc;
 }
 
@@ -8761,7 +8761,7 @@ int dsi_display_disable(struct dsi_display *display)
 		return -EINVAL;
 	}
 
-	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, display->is_master);
 	mutex_lock(&display->display_lock);
 
 	/* cancel delayed work */
@@ -8814,7 +8814,7 @@ int dsi_display_disable(struct dsi_display *display)
 		display->panel->power_mode = SDE_MODE_DPMS_OFF;
 	}
 	mutex_unlock(&display->display_lock);
-	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, display->is_master);
 	return rc;
 }
 
@@ -8936,7 +8936,7 @@ int dsi_display_unprepare(struct dsi_display *display)
 		return -EINVAL;
 	}
 
-	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, display->is_master);
 	mutex_lock(&display->display_lock);
 
 	rc = dsi_display_wake_up(display);
@@ -8995,7 +8995,7 @@ int dsi_display_unprepare(struct dsi_display *display)
 	/* Free up DSI ERROR event callback */
 	dsi_display_unregister_error_handler(display);
 
-	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, display->is_master);
 	return rc;
 }
 
