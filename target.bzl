@@ -125,6 +125,7 @@ def define_neo_la(t, v, lt=None):
             "CONFIG_DSI_PARSER",
             "CONFIG_QCOM_MDSS_PLL",
             "CONFIG_DRM_SDE_RSC",
+            "CONFIG_DRM_SDE_WB",
             "CONFIG_DRM_MSM_REGISTER_LOGGING",
             "CONFIG_DISPLAY_BUILD",
             "CONFIG_THERMAL_OF",
