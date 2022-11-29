@@ -70,6 +70,10 @@ enum dp_display_states {
 	DP_STATE_TUI_ACTIVE             = BIT(11),
 };
 
+struct dp_display_type_info {
+	int display_type;
+};
+
 static char *dp_display_state_name(enum dp_display_states state)
 {
 	static char buf[SZ_1K];
@@ -214,8 +218,19 @@ struct dp_display_private {
 	u32 stream_cnt;
 };
 
+static const struct dp_display_type_info dp_info = {
+	.display_type = DRM_MODE_CONNECTOR_DisplayPort,
+};
+
+static const struct dp_display_type_info edp_info = {
+	.display_type = DRM_MODE_CONNECTOR_eDP,
+};
+
 static const struct of_device_id dp_dt_match[] = {
-	{.compatible = "qcom,dp-display"},
+	{ .compatible = "qcom,dp-display",
+	  .data = &dp_info,},
+	{ .compatible = "qcom,edp-display",
+	  .data = &edp_info,},
 	{}
 };
 
@@ -3668,6 +3683,8 @@ static int dp_display_probe(struct platform_device *pdev)
 	int rc = 0;
 	struct dp_display_private *dp;
 	struct dp_display *dp_display;
+	const struct of_device_id *id;
+	const struct dp_display_type_info *info;
 	int index;
 
 	if (!pdev || !pdev->dev.of_node) {
@@ -3675,6 +3692,12 @@ static int dp_display_probe(struct platform_device *pdev)
 		rc = -ENODEV;
 		goto bail;
 	}
+
+	id = of_match_node(dp_dt_match, pdev->dev.of_node);
+	if (!id)
+		return -ENODEV;
+
+	info = id->data;
 
 	index = dp_display_get_num_of_displays(NULL);
 	if (index >= MAX_DP_ACTIVE_DISPLAY) {
@@ -3753,6 +3776,8 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp_display->get_display_type = dp_display_get_display_type;
 	dp_display->mst_get_fixed_topology_display_type =
 				dp_display_mst_get_fixed_topology_display_type;
+
+	dp_display->is_edp = (info->display_type == DRM_MODE_CONNECTOR_eDP) ? true : false;
 
 	rc = component_add(&pdev->dev, &dp_display_comp_ops);
 	if (rc) {
