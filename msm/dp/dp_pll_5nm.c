@@ -797,8 +797,7 @@ static unsigned long dp_pll_link_clk_recalc_rate(struct clk_hw *hw,
 	pll_link = to_dp_vco_hw(hw);
 	pll = pll_link->priv;
 
-	rate = pll->vco_rate;
-	rate = pll->vco_rate / 10;
+	rate = pll->vco_rate * 100;
 
 	return rate;
 }
@@ -817,7 +816,7 @@ static long dp_pll_link_clk_round(struct clk_hw *hw, unsigned long rate,
 	pll_link = to_dp_vco_hw(hw);
 	pll = pll_link->priv;
 
-	rate = pll->vco_rate / 10;
+	rate = pll->vco_rate * 100;
 
 	return rate;
 }
@@ -825,11 +824,11 @@ static long dp_pll_link_clk_round(struct clk_hw *hw, unsigned long rate,
 static unsigned long dp_pll_vco_div_clk_get_rate(struct dp_pll *pll)
 {
 	if (pll->vco_rate == DP_VCO_HSCLK_RATE_8100MHZDIV1000)
-		return (pll->vco_rate / 6);
+		return (pll->vco_rate / 6 * 1000);
 	else if (pll->vco_rate == DP_VCO_HSCLK_RATE_5400MHZDIV1000)
-		return (pll->vco_rate / 4);
+		return (pll->vco_rate / 4 * 1000);
 	else
-		return (pll->vco_rate / 2);
+		return (pll->vco_rate / 2 * 1000);
 }
 
 static unsigned long dp_pll_vco_div_clk_recalc_rate(struct clk_hw *hw,

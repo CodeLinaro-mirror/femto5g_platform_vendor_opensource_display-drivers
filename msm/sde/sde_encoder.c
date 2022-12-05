@@ -3915,6 +3915,36 @@ void sde_encoder_helper_hw_reset(struct sde_encoder_phys *phys_enc)
 	phys_enc->enable_state = SDE_ENC_ENABLED;
 }
 
+static void _sde_encoder_trigger_ipcc_signal(struct sde_encoder_virt *sde_enc)
+{
+	struct sde_hw_ctl *ctl;
+	struct sde_kms *sde_kms;
+	bool hw_fence_enabled;
+
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid encoder\n");
+		return;
+	}
+
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return;
+	}
+
+	hw_fence_enabled = sde_kms_hw_fence_enabled(sde_kms);
+	ctl = sde_enc->cur_master->hw_ctl;
+
+	if (hw_fence_enabled &&
+		sde_kms->hw_ipcc->ops.hw_ipcc_trigger_signal && ctl &&
+		test_bit(SDE_CTL_HW_FENCE, &ctl->caps->features))
+		sde_kms->hw_ipcc->ops.hw_ipcc_trigger_signal(sde_kms->hw_ipcc,
+			sde_kms->catalog->dpu_dst_client_ipc_id,
+			sde_kms->catalog->ipcc_protocol_id,
+			HW_FENCE_IPC_CLIENT_ID_APPS, 0x0);
+}
+
 /**
  * _sde_encoder_kickoff_phys - handle physical encoder kickoff
  *	Iterate through the physical encoders and perform consolidated flush
@@ -3939,7 +3969,7 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	bool is_regdma_blocking = false, is_vid_mode = false, hw_fence_enabled = false;
 	struct sde_crtc *sde_crtc;
 
-	if (!sde_enc) {
+	if (!sde_enc || !sde_enc->cur_master) {
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
@@ -4024,14 +4054,7 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	}
 
 	_sde_encoder_trigger_start(sde_enc->cur_master);
-	ctl = sde_enc->cur_master->hw_ctl;
-
-	if (hw_fence_enabled &&
-		sde_kms->hw_ipcc->ops.hw_ipcc_trigger_signal && ctl &&
-			test_bit(SDE_CTL_HW_FENCE, &ctl->caps->features))
-		sde_kms->hw_ipcc->ops.hw_ipcc_trigger_signal(sde_kms->hw_ipcc,
-			sde_kms->catalog->dpu_dst_client_ipc_id,
-			sde_kms->catalog->ipcc_protocol_id, HW_FENCE_IPC_CLIENT_ID_APPS, 0x0);
+	_sde_encoder_trigger_ipcc_signal(sde_enc);
 
 	if (sde_enc->elevated_ahb_vote) {
 		sde_kms = sde_encoder_get_kms(&sde_enc->base);

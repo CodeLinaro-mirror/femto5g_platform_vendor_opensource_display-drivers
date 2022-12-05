@@ -5414,6 +5414,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_MDP_LLCC_DISP_LR, &sde_cfg->mdp[0].features);
 	} else if (IS_ANORAK_TARGET(hw_rev)) {
 		sde_cfg->has_wb_ubwc = true;
+		sde_cfg->has_qsync = true;
 		sde_cfg->perf.min_prefill_lines = 60;
 		sde_cfg->vbif_qos_nlvl = 8;
 		sde_cfg->ts_prefill_rev = 2;

@@ -1775,6 +1775,10 @@ static void _flush_sb_dma_hw(int *active_ctls, struct sde_hw_ctl *ctl,
 	//For each CTL send last CD to SB DMA only once.
 	u32 j;
 	struct sde_hw_reg_dma_ops *dma_ops = sde_reg_dma_get_ops(dpu_idx);
+	if (!dma_ops) {
+		SDE_ERROR("dma ops is NULL\n");
+		return;
+	}
 
 	for (j = 0; j < list_size; j++) {
 		if (active_ctls[j] == ctl->idx) {
