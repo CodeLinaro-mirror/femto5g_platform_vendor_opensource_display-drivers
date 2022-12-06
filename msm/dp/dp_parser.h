@@ -315,6 +315,8 @@ struct dp_parser {
 	bool force_connect_mode;
 	bool no_link_rate_reduction;
 	bool no_lane_count_reduction;
+	u32 link_training_min_vlevel;
+	u32 link_training_min_plevel;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
