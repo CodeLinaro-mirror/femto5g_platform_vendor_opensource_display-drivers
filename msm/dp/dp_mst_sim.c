@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -438,6 +438,9 @@ int dp_sim_update_port_edid(struct msm_dp_aux_bridge *bridge,
 {
 	struct dp_sim_device *sim_dev;
 	struct msm_dp_mst_sim_port *sim_port;
+
+	if (!size)
+		return -EINVAL;
 
 	if (!bridge || !(bridge->flag & DP_SIM_BRIDGE_PRIV_FLAG))
 		return -EINVAL;
