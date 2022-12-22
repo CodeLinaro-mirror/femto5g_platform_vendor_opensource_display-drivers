@@ -201,10 +201,6 @@ enum {
 #define SYS_CACHE_OP_TYPE	BIT(3)
 #define SYS_CACHE_NO_ALLOC	BIT(4)
 
-/* default line padding ratio limitation */
-#define MAX_VPADDING_RATIO_M	93
-#define MAX_VPADDING_RATIO_N	45
-
 /**
  * sde_sys_cache_type: Types of system cache supported
  * SDE_SYS_CACHE_DISP: System cache for static display read/write path use case
@@ -232,7 +228,6 @@ enum sde_intr_hwblk_type {
 	SDE_INTR_HWBLK_INTF_TEAR,
 	SDE_INTR_HWBLK_LTM,
 	SDE_INTR_HWBLK_WB,
-	SDE_INTR_HWBLK_ROI_MISR,
 	SDE_INTR_HWBLK_MAX
 };
 
@@ -315,8 +310,8 @@ enum {
  * @SDE_SSPP_FP16_UNMULT     FP16 alpha unmult color processing block support
  * @SDE_SSPP_UBWC_STATS:     Support for ubwc stats
  * @SDE_SSPP_SCALER_DE_LPF_BLEND:     Support for detail enhancer
- * @SDE_SSPP_LINE_INSERTION  Line insertion support
  * @SDE_SSPP_MAX             maximum value
+ * @SDE_SSPP_LINE_INSERTION  Line insertion support
  */
 enum {
 	SDE_SSPP_SRC = 0x1,
@@ -438,7 +433,6 @@ enum {
  * @SDE_DSPP_DEMURA          Demura block
  * @SDE_DSPP_RC              RC block
  * @SDE_DSPP_SB              SB LUT DMA
- * @SDE_DSPP_ROI_MISR_BYPASS ROI MISR bypass block
  * @SDE_DSPP_MAX             maximum value
  */
 enum {
@@ -458,7 +452,6 @@ enum {
 	SDE_DSPP_DEMURA,
 	SDE_DSPP_RC,
 	SDE_DSPP_SB,
-	SDE_DSPP_ROI_MISR_BYPASS,
 	SDE_DSPP_MAX
 };
 
@@ -1063,7 +1056,6 @@ struct sde_dspp_sub_blks {
 	struct sde_pp_blk dither;
 	struct sde_pp_blk hist;
 	struct sde_pp_blk ad;
-	struct sde_pp_blk roi_misr;
 	struct sde_pp_blk ltm;
 	struct sde_pp_blk spr;
 	struct sde_pp_blk vlut;
@@ -1290,7 +1282,6 @@ struct sde_lm_cfg {
 	u32 dspp;
 	u32 pingpong;
 	u32 ds;
-	u32 roi_misr;
 	bool dummy_mixer;
 	unsigned long lm_pair_mask;
 };
@@ -1377,17 +1368,6 @@ struct sde_dsc_cfg {
 	SDE_HW_BLK_INFO;
 	DECLARE_BITMAP(dsc_pair_mask, DSC_MAX);
 	struct sde_dsc_sub_blks *sblk;
-};
-
-/**
- * struct sde_roi_misr_cfg - information of ROI_MISR blocks
- * @id                 enum identifying this block
- * @base               register offset of this block
- * @len                length of hardware block
- * @features           bit mask identifying sub-blocks/features
- */
-struct sde_roi_misr_cfg {
-	SDE_HW_BLK_INFO;
 };
 
 /**
@@ -1857,7 +1837,6 @@ struct sde_perf_cfg {
  * @perf                performance control settings
  * @uidle_cfg           settings for uidle feature
  * @irq_offset_list     list of sde_intr_irq_offsets to initialize irq table
- * @has_line_insertion  line insertion support status
  * @features            bitmap of supported SDE_FEATUREs
  * @dma_formats         supported formats for dma pipe
  * @vig_formats         supported formats for vig pipe
@@ -1884,6 +1863,7 @@ struct sde_mdss_cfg {
 	u32 true_inline_rot_rev;
 	u32 dnsc_blur_rev;
 	u32 hw_fence_rev;
+	bool has_line_insertion;
 
 	/* HW Blocks */
 	u32 mdss_count;
@@ -1906,11 +1886,6 @@ struct sde_mdss_cfg {
 	struct sde_pingpong_cfg pingpong[MAX_BLOCKS];
 	u32 dsc_count;
 	struct sde_dsc_cfg dsc[MAX_BLOCKS];
-
-	u32 roi_misr_count;
-	struct sde_roi_misr_cfg roi_misr[MAX_BLOCKS];
-	bool has_roi_misr;
-
 	u32 vdc_count;
 	struct sde_vdc_cfg vdc[MAX_BLOCKS];
 	u32 cdm_count;
@@ -1979,7 +1954,6 @@ struct sde_mdss_cfg {
 	struct sde_uidle_cfg uidle_cfg;
 	struct list_head irq_offset_list;
 	DECLARE_BITMAP(features, SDE_FEATURE_MAX);
-	bool has_line_insertion;
 
 	/* Supported Pixel Format Lists */
 	struct sde_format_extended *dma_formats;

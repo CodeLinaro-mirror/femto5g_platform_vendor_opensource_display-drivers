@@ -31,7 +31,6 @@
 #include "sde_hw_ds.h"
 #include "sde_color_processing.h"
 #include "sde_encoder.h"
-#include "sde_roi_misr.h"
 
 #define SDE_CRTC_NAME_SIZE	12
 
@@ -106,7 +105,6 @@ struct sde_crtc_retire_event {
  * @hw_ctl:	CTL Path HW driver context
  * @hw_dspp:	DSPP HW driver context
  * @hw_ds:	DS HW driver context
- * @hw_roi_misr:	ROI_MISR HW driver context
  * @encoder:	Encoder attached to this lm & ctl
  * @mixer_op_mode: mixer blending operation mode
  */
@@ -115,7 +113,6 @@ struct sde_crtc_mixer {
 	struct sde_hw_ctl *hw_ctl;
 	struct sde_hw_dspp *hw_dspp;
 	struct sde_hw_ds *hw_ds;
-	struct sde_hw_roi_misr *hw_roi_misr;
 	struct drm_encoder *encoder;
 	u32 mixer_op_mode;
 };
@@ -352,8 +349,6 @@ enum sde_crtc_hw_fence_flags {
  *                          sde_crtc_hw_fence_flags for available fields.
  * @hwfence_out_fences_skip: number of frames to skip before create a new hw-fence, this can be
  *                   used to slow-down creation of output hw-fences for debugging purposes.
- * @post_commit_fence_ctx: post-commit fence context of this crtc
- * @roi_misr_data: roi misr related fence, event and hw config data
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -467,8 +462,7 @@ struct sde_crtc {
 	DECLARE_BITMAP(hwfence_features_mask, HW_FENCE_FEATURES_MAX);
 	u32 hwfence_out_fences_skip;
 
-	struct sde_post_commit_fence_context post_commit_fence_ctx;
-	struct sde_misr_crtc_data roi_misr_data;
+	int base_reset;
 };
 
 enum sde_crtc_dirty_flags {
@@ -481,20 +475,6 @@ enum sde_crtc_dirty_flags {
 #define to_sde_crtc(x) container_of(x, struct sde_crtc, base)
 
 /**
- * struct sde_line_insertion_param - sde line insertion parameters
- * @panel_line_insertion_enable: line insertion support status
- * @padding_height: panel height after line padding
- * @padding_active: active lines in panel stacking pattern
- * @padding_dummy: dummy lines in panel stacking pattern
- */
-struct sde_line_insertion_param {
-	bool panel_line_insertion_enable;
-	u32 padding_height;
-	u32 padding_active;
-	u32 padding_dummy;
-};
-
-/**
  * struct sde_crtc_state - sde container for atomic crtc state
  * @base: Base drm crtc state structure
  * @connectors    : Currently associated drm connectors
@@ -502,7 +482,6 @@ struct sde_line_insertion_param {
  * @rsc_client    : sde rsc client when mode is valid
  * @topology_name : Current topology name
  * @mode_info     : Local copy of msm_mode_info struct
- * @misr_mode_info: Local copy of sde_roi_misr_mode_info struct
  * @num_mixers    : Number of mixers in current topology
  * @is_ppsplit    : Whether current topology requires PPSplit special handling
  * @bw_control    : true if bw/clk controlled by core bw/clk properties
@@ -533,10 +512,10 @@ struct sde_line_insertion_param {
  * @cp_dirty_list: array tracking features that are dirty
  * @cp_range_payload: array storing state user_data passed via range props
  * @cont_splash_populated: State was populated as part of cont. splash
- * @param: sde line insertion parameters
  * @hwfence_in_fences_set: input hw fences are configured for the commit
- * @misr_state: misr config data and current topology state
- * @post_commit_fence_mask: post-commit fence mask for sub-fence creation
+ * @padding_height: panel height after line padding
+ * @padding_active: active lines in panel stacking pattern
+ * @padding_dummy: dummy lines in panel stacking pattern
  */
 struct sde_crtc_state {
 	struct drm_crtc_state base;
@@ -550,7 +529,6 @@ struct sde_crtc_state {
 
 	enum sde_rm_topology_name topology_name;
 	struct msm_mode_info mode_info;
-	struct sde_roi_misr_mode_info misr_mode_info;
 	u32 num_mixers;
 	bool is_ppsplit;
 	struct sde_rect crtc_roi;
@@ -580,11 +558,11 @@ struct sde_crtc_state {
 	struct sde_cp_crtc_range_prop_payload
 		cp_range_payload[SDE_CP_CRTC_MAX_FEATURES];
 	bool cont_splash_populated;
-	struct sde_line_insertion_param line_insertion;
 	bool hwfence_in_fences_set;
 
-	struct sde_misr_state misr_state;
-	uint32_t post_commit_fence_mask;
+	u32 padding_height;
+	u32 padding_active;
+	u32 padding_dummy;
 };
 
 enum sde_crtc_irq_state {
@@ -1152,26 +1130,6 @@ struct drm_encoder *sde_crtc_get_src_encoder_of_clone(struct drm_crtc *crtc);
  */
 void _sde_crtc_vm_release_notify(struct drm_crtc *crtc);
 
-/*
- * sde_crtc_is_line_insertion_supported - get lineinsertion
- * feature bit value from panel
- * @drm_crtc:    Pointer to drm crtc structure
- * @Return: line insertion support status
- */
-bool sde_crtc_is_line_insertion_supported(struct drm_crtc *crtc);
-
-/**
- * sde_crtc_calc_vpadding_param - calculate vpadding parameters
- * @state: Pointer to DRM crtc state object
- * @crtc_y: Plane's CRTC_Y offset
- * @crtc_h: Plane's CRTC_H size
- * @padding_y: Padding Y offset
- * @padding_start: Padding start offset
- * @padding_height: Padding height in total
- */
-void sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, u32 crtc_h,
-				  u32 *padding_y, u32 *padding_start, u32 *padding_height);
-
 /**
  * sde_crtc_state_set_topology_name - set current topology name
  * @state: Pointer to crtc_state
@@ -1209,5 +1167,18 @@ static inline void sde_crtc_state_set_topology_name(
 		break;
 	}
 }
+
+/**
+ * sde_crtc_calc_vpadding_param - calculate vpadding parameters
+ * @state: Pointer to DRM crtc state object
+ * @crtc_y: Plane's CRTC_Y offset
+ * @crtc_h: Plane's CRTC_H size
+ * @padding_y: Padding Y offset
+ * @padding_start: Padding start offset
+ * @padding_height: Padding height in total
+ */
+int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state,
+		uint32_t crtc_y, uint32_t crtc_h, uint32_t *padding_y,
+		uint32_t *padding_start, uint32_t *padding_height);
 
 #endif /* _SDE_CRTC_H_ */

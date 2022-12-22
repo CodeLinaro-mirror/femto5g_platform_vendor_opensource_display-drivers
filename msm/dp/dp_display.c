@@ -217,6 +217,8 @@ struct dp_display_private {
 	u32 intf_idx[DP_STREAM_MAX];
 	u32 phy_idx;
 	u32 stream_cnt;
+
+	struct device *msm_hdcp_dev;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -484,12 +486,6 @@ static int dp_display_hdcp_process_sink_sync(struct dp_display_private *dp)
 			queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ);
 			return -EAGAIN;
 		}
-		/*
-		 * Some sinks need more time to stabilize after synchronization
-		 * and before it can handle an HDCP authentication request.
-		 * Adding the delay for better interoperability.
-		 */
-		msleep(6000);
 	}
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT);
 
@@ -688,6 +684,7 @@ static int dp_display_initialize_hdcp(struct dp_display_private *dp)
 	parser = dp->parser;
 
 	hdcp_init_data.client_id     = HDCP_CLIENT_DP;
+	hdcp_init_data.client_index  = dp->cell_idx;
 	hdcp_init_data.drm_aux       = dp->aux->drm_aux;
 	hdcp_init_data.cb_data       = (void *)dp;
 	hdcp_init_data.workq         = dp->wq;
@@ -700,7 +697,8 @@ static int dp_display_initialize_hdcp(struct dp_display_private *dp)
 	hdcp_init_data.hdcp_io       = &parser->get_io(parser,
 						"hdcp_physical")->io;
 	hdcp_init_data.revision      = &dp->panel->link_info.revision;
-	hdcp_init_data.msm_hdcp_dev  = dp->parser->msm_hdcp_dev;
+	hdcp_init_data.msm_hdcp_dev  = dp->msm_hdcp_dev;
+	hdcp_init_data.forced_encryption = parser->has_force_encryption;
 
 	fd = sde_hdcp_1x_init(&hdcp_init_data);
 	if (IS_ERR_OR_NULL(fd)) {
@@ -897,7 +895,7 @@ static bool dp_display_send_hpd_event(struct dp_display_private *dp)
 	struct drm_connector *connector;
 	char name[HPD_STRING_SIZE], status[HPD_STRING_SIZE],
 		bpp[HPD_STRING_SIZE], pattern[HPD_STRING_SIZE];
-	char *envp[5];
+	char *envp[6];
 	struct dp_display *display;
 	int rc = 0;
 
@@ -942,7 +940,8 @@ static bool dp_display_send_hpd_event(struct dp_display_private *dp)
 	envp[1] = status;
 	envp[2] = bpp;
 	envp[3] = pattern;
-	envp[4] = NULL;
+	envp[4] = "HOTPLUG=1";
+	envp[5] = NULL;
 
 	rc = kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
 	DP_INFO("DP%d uevent %s: %d\n", dp->cell_idx,
@@ -2356,6 +2355,10 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	}
 
 	dp->cached_connector_status = connector_status_disconnected;
+
+	dp->debug->hdcp_wait_sink_sync =
+		dp->parser->hdcp_wait_sink_sync_enabled;
+
 	dp->tot_dsc_blks_in_use = 0;
 
 	dp->debug->hdcp_disabled = hdcp_disabled;
@@ -3403,6 +3406,30 @@ static int dp_display_create_workqueue(struct dp_display_private *dp)
 	return 0;
 }
 
+static int dp_parser_msm_hdcp_dev(struct dp_display_private *dp)
+{
+	struct device_node *node;
+	struct platform_device *pdev;
+
+	node = of_parse_phandle(dp->pdev->dev.of_node, "qcom,msm-hdcp", 0);
+	if (!node) {
+		// This is a non-fatal error, module initialization can proceed
+		pr_warn("couldn't find msm-hdcp node\n");
+		return 0;
+	}
+
+	pdev = of_find_device_by_node(node);
+	if (!pdev) {
+		// defer the  module initialization
+		pr_err("couldn't find msm-hdcp pdev defer probe\n");
+		return -EPROBE_DEFER;
+	}
+
+	dp->msm_hdcp_dev = &pdev->dev;
+
+	return 0;
+}
+
 static int dp_display_bridge_internal_hpd(void *dev, bool hpd, bool hpd_irq)
 {
 	struct dp_display_private *dp = dev;
@@ -3873,6 +3900,10 @@ static int dp_display_probe(struct platform_device *pdev)
 	memset(&dp->mst, 0, sizeof(dp->mst));
 
 	rc = dp_display_get_cell_info(dp);
+	if (rc)
+		goto error;
+
+	rc = dp_parser_msm_hdcp_dev(dp);
 	if (rc)
 		goto error;
 

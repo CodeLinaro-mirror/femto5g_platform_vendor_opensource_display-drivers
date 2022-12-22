@@ -45,7 +45,6 @@
 #include "sde_encoder_dce.h"
 #include "sde_vm.h"
 #include "sde_fence.h"
-#include "sde_roi_misr_helper.h"
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -1071,15 +1070,6 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 		 */
 		if (hweight32(sde_crtc_state->base.encoder_mask) == 1 ||
 				drm_enc->encoder_type != DRM_MODE_ENCODER_VIRTUAL) {
-			ret = sde_roi_misr_get_mode_info(
-					&sde_conn->base,
-					adj_mode,
-					&sde_conn_state->mode_info,
-					&sde_crtc_state->misr_mode_info,
-					sde_conn->display);
-			if (ret)
-				return ret;
-
 			memcpy(&sde_crtc_state->mode_info,
 					&sde_conn_state->mode_info,
 					sizeof(sde_conn_state->mode_info));
@@ -1101,32 +1091,6 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 	}
 
 	return ret;
-}
-
-bool sde_encoder_is_line_insertion_supported(struct drm_encoder *drm_enc)
-{
-	struct sde_connector *sde_conn = NULL;
-	struct sde_kms *sde_kms = NULL;
-	struct drm_connector *conn = NULL;
-
-	if (!drm_enc) {
-		SDE_ERROR("invalid drm encoder\n");
-		return false;
-	}
-
-	sde_kms = sde_encoder_get_kms(drm_enc);
-	if (!sde_kms)
-		return false;
-
-	conn = sde_encoder_get_connector(sde_kms->dev, drm_enc);
-	if (!conn || !conn->state)
-		return false;
-
-	sde_conn = to_sde_connector(conn);
-	if (!sde_conn)
-		return false;
-
-	return sde_connector_is_line_insertion_supported(sde_conn);
 }
 
 static void _sde_encoder_get_qsync_fps_callback(struct drm_encoder *drm_enc,
@@ -3583,26 +3547,6 @@ static void sde_encoder_vblank_callback(struct drm_encoder *drm_enc,
 	SDE_ATRACE_END("encoder_vblank_callback");
 }
 
-static void sde_encoder_roi_misr_callback(struct drm_encoder *drm_enc)
-{
-	struct sde_encoder_virt *sde_enc = NULL;
-	unsigned long lock_flags;
-
-	if (!drm_enc)
-		return;
-
-	SDE_ATRACE_BEGIN("encoder_roi_misr_callback");
-	sde_enc = to_sde_encoder_virt(drm_enc);
-
-	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
-	if (sde_enc->misr_data.crtc_roi_misr_cb)
-		sde_enc->misr_data.crtc_roi_misr_cb(
-			sde_enc->misr_data.crtc_roi_misr_cb_data);
-	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
-
-	SDE_ATRACE_END("encoder_roi_misr_callback");
-}
-
 static void sde_encoder_underrun_callback(struct drm_encoder *drm_enc,
 		struct sde_encoder_phys *phy_enc)
 {
@@ -3661,28 +3605,6 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 			phys->ops.control_vblank_irq(phys, enable);
 	}
 	sde_enc->vblank_enabled = enable;
-}
-
-void sde_encoder_register_roi_misr_callback(struct drm_encoder *drm_enc,
-		void (*roi_misr_cb)(void *), void *roi_misr_data)
-{
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
-	unsigned long lock_flags;
-	bool enable;
-
-	enable = roi_misr_cb ? true : false;
-
-	if (!drm_enc) {
-		SDE_ERROR("invalid encoder\n");
-		return;
-	}
-	SDE_DEBUG_ENC(sde_enc, "\n");
-	SDE_EVT32(DRMID(drm_enc), enable);
-
-	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
-	sde_enc->misr_data.crtc_roi_misr_cb = roi_misr_cb;
-	sde_enc->misr_data.crtc_roi_misr_cb_data = roi_misr_data;
-	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 }
 
 void sde_encoder_register_frame_event_callback(struct drm_encoder *drm_enc,
@@ -5360,7 +5282,6 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	struct sde_encoder_virt_ops parent_ops = {
 		sde_encoder_vblank_callback,
 		sde_encoder_underrun_callback,
-		sde_encoder_roi_misr_callback,
 		sde_encoder_frame_done_callback,
 		_sde_encoder_get_qsync_fps_callback,
 	};
@@ -5437,6 +5358,23 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		SDE_DEBUG("h_tile_instance %d = %d, split_role %d\n",
 				i, controller_id, phys_params.split_role);
 
+		if (sde_enc->ops.phys_init) {
+			struct sde_encoder_phys *enc;
+
+			enc = sde_enc->ops.phys_init(intf_type,
+					controller_id,
+					&phys_params);
+
+			if (enc) {
+				sde_enc->phys_encs[sde_enc->num_phys_encs] =
+					enc;
+				++sde_enc->num_phys_encs;
+			} else {
+				SDE_ERROR_ENC(sde_enc, "failed to add phys encs\n");
+			}
+			continue;
+		}
+
 		if (intf_type == INTF_WB) {
 			phys_params.intf_idx = INTF_MAX;
 			phys_params.wb_idx = sde_encoder_get_wb(
@@ -5511,6 +5449,13 @@ static const struct drm_encoder_funcs sde_encoder_funcs = {
 
 struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_info *disp_info)
 {
+	return sde_encoder_init_with_ops(dev, disp_info, NULL);
+}
+
+struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
+					      struct msm_display_info *disp_info,
+					      const struct sde_encoder_ops *ops)
+{
 	struct msm_drm_private *priv = dev->dev_private;
 	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
 	struct drm_encoder *drm_enc = NULL;
@@ -5525,6 +5470,9 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 		ret = -ENOMEM;
 		goto fail;
 	}
+
+	if (ops)
+		sde_enc->ops = *ops;
 
 	mutex_init(&sde_enc->enc_lock);
 	ret = sde_encoder_setup_display(sde_enc, sde_kms, disp_info,
@@ -5548,15 +5496,20 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 		if (phys->ops.is_master && phys->ops.is_master(phys))
 			intf_index = phys->intf_idx - INTF_0;
 	}
-	snprintf(name, SDE_NAME_SIZE, "rsc_enc%u", drm_enc->base.id);
-	sde_enc->rsc_client = sde_rsc_client_create(SDE_RSC_INDEX, name,
-		(disp_info->display_type == SDE_CONNECTOR_PRIMARY) ?
-		SDE_RSC_PRIMARY_DISP_CLIENT :
-		SDE_RSC_EXTERNAL_DISP_CLIENT, intf_index + 1);
-	if (IS_ERR_OR_NULL(sde_enc->rsc_client)) {
-		SDE_DEBUG("sde rsc client create failed :%ld\n",
-						PTR_ERR(sde_enc->rsc_client));
-		sde_enc->rsc_client = NULL;
+
+	if (!sde_enc->ops.phys_init) {
+		snprintf(name, SDE_NAME_SIZE, "rsc_enc%u", drm_enc->base.id);
+		sde_enc->rsc_client = sde_rsc_client_create(SDE_RSC_INDEX, name,
+							    (disp_info->display_type
+							    == SDE_CONNECTOR_PRIMARY) ?
+							    SDE_RSC_PRIMARY_DISP_CLIENT :
+							    SDE_RSC_EXTERNAL_DISP_CLIENT,
+							    intf_index + 1);
+		if (IS_ERR_OR_NULL(sde_enc->rsc_client)) {
+			SDE_DEBUG("sde rsc client create failed :%ld\n",
+				  PTR_ERR(sde_enc->rsc_client));
+			sde_enc->rsc_client = NULL;
+		}
 	}
 
 	if (disp_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE &&
