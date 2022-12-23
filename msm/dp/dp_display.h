@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -119,6 +119,7 @@ struct dp_display {
 	int (*mst_get_fixed_topology_display_type)(struct dp_display *dp_display,
 			u32 strm_id, const char **display_type);
 	int (*edp_detect)(struct dp_display *dp_display);
+	int (*get_mst_pbn_div)(struct dp_display *dp);
 };
 
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
