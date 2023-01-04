@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -17,14 +18,12 @@
  *
  */
 
-#include <dt-bindings/clock/mdss-5nm-pll-clk.h>
 #include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/err.h>
 #include <linux/iopoll.h>
 #include <linux/kernel.h>
 #include <linux/regmap.h>
-#include "clk-regmap-mux.h"
 #include "dp_hpd.h"
 #include "dp_debug.h"
 #include "dp_pll.h"
