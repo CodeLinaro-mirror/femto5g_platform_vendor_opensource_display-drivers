@@ -280,6 +280,8 @@ struct dsi_panel {
 	bool sync_broadcast_en;
 	u32 dsc_count;
 	u32 lm_count;
+	u8 skewed_vsync_master;
+	u32 skew_offset_line;
 
 	bool ctl_op_sync;
 

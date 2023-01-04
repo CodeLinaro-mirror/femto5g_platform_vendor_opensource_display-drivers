@@ -152,6 +152,25 @@ void sde_encoder_uidle_enable(struct drm_encoder *drm_enc, bool enable)
 	}
 }
 
+bool sde_encoder_helper_get_skewed_vsync_status(struct drm_encoder *drm_enc)
+{
+	struct msm_display_info *disp_info;
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid drm encoder\n");
+		return false;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	disp_info = &sde_enc->disp_info;
+
+	if (disp_info->skewed_vsync_master)
+		return true;
+
+	return false;
+}
+
 ktime_t sde_encoder_calc_last_vsync_timestamp(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc;
@@ -814,6 +833,32 @@ void sde_encoder_helper_update_intf_cfg(
 	if (phys_enc->hw_pp->ops.setup_3d_mode)
 		phys_enc->hw_pp->ops.setup_3d_mode(phys_enc->hw_pp,
 				mode_3d);
+}
+
+void sde_encoder_helper_skewed_vsync_config(
+		struct sde_encoder_phys *phys_enc,
+		struct sde_intf_offset_cfg *cfg)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct msm_display_info *disp_info;
+
+	if (!phys_enc || !phys_enc->parent) {
+		SDE_ERROR("invalid arg(s), encoder %d\n", !!phys_enc);
+		return;
+	}
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	disp_info = &sde_enc->disp_info;
+
+	if (!disp_info->skewed_vsync_master) {
+		SDE_DEBUG_ENC(sde_enc, "Skewed_vsync not enabled\n");
+		return;
+	}
+
+	cfg->skew_intf_offset_en = true;
+	cfg->set_master_intf = disp_info->skewed_vsync_master;
+	cfg->fps = sde_encoder_get_fps(&sde_enc->base);
+	cfg->skew_offset_line = disp_info->skew_offset_line;
 }
 
 void sde_encoder_helper_split_config(
@@ -5371,8 +5416,12 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 
 	sde_enc->idle_pc_enabled = sde_kms->catalog->has_idle_pc;
 
-	if (test_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_kms->catalog->mdp[0].features))
+	if (test_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_kms->catalog->mdp[0].features)) {
 		sde_enc->dpu_ctl_op_sync = disp_info->ctl_op_sync;
+		if (!test_bit(SDE_MDP_SKEWED_VSYNC_SUPPORT,
+				&sde_kms->catalog->mdp[0].features))
+			disp_info->skewed_vsync_master = 0;
+	}
 
 	sde_enc->input_event_enabled = sde_kms->catalog->wakeup_with_touch;
 

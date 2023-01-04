@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -86,6 +86,20 @@ struct sde_vsync_source_cfg {
 	u32 frame_rate;
 	u32 ppnumber[PINGPONG_MAX];
 	u32 vsync_source;
+};
+
+/**
+ * struct sde_intf_offset_cfg: Configure interface offset parameters.
+ * @skew_offset_line: skew offset value in vertical lines
+ * @fps: current FPS of the panel/connector
+ * @set_master_intf: Select master interface
+ * @skew_intf_offset_en: enable interface offset feature.
+ */
+struct sde_intf_offset_cfg {
+	u32 skew_offset_line;
+	u32 fps;
+	bool skew_intf_offset_en;
+	u8 set_master_intf;
 };
 
 /**

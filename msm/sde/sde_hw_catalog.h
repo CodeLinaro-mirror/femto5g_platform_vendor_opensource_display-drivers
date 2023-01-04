@@ -249,6 +249,7 @@ struct sde_intr_irq_offsets {
  * @SDE_MDP_PERIPH_TOP_REMOVED Indicates if periph top0 block is removed
  * @SDE_MDP_DUAL_DPU_SYNC  Indicates if Dpu Sync feature is supported
  * @SDE_MDP_HAS_HW_FENCE_SUPPORT Indicates HW fence signaling is supported
+ * @SDE_MDP_SKEWED_VSYNC_SUPPORT Indicates HW supports skewed vsync
  * @SDE_MDP_MAX            Maximum value
 
  */
@@ -266,6 +267,7 @@ enum {
 	SDE_MDP_LLCC_DISP_LR,
 	SDE_MDP_DUAL_DPU_SYNC,
 	SDE_MDP_HAS_HW_FENCE_SUPPORT,
+	SDE_MDP_SKEWED_VSYNC_SUPPORT,
 	SDE_MDP_MAX
 };
 
@@ -556,6 +558,8 @@ enum {
  * @SDE_INTF_PANEL_VSYNC_TS     INTF block has panel vsync timestamp logged
  * @SDE_INTF_MDP_VSYNC_TS       INTF block has mdp vsync timestamp logged
  * @SDE_INTF_AVR_STATUS         INTF block has AVR_STATUS field in AVR_CONTROL register
+ * @SDE_INTF_DUAL_DPU_SYNC      INTF block has support for DUAL DPU Sync feature
+ * @SDE_INTF_DUAL_DPU_SKEWED_VSYNC INTF block has support for skewed vsync feature
  * @SDE_INTF_MAX
  */
 enum {
@@ -568,6 +572,8 @@ enum {
 	SDE_INTF_PANEL_VSYNC_TS,
 	SDE_INTF_MDP_VSYNC_TS,
 	SDE_INTF_AVR_STATUS,
+	SDE_INTF_DUAL_DPU_SYNC,
+	SDE_INTF_DUAL_DPU_SKEWED_VSYNC,
 	SDE_INTF_MAX
 };
 

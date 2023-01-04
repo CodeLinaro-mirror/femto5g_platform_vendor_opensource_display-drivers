@@ -64,6 +64,8 @@
 
 #define INTF_DPU_SYNC_CTRL              0x190
 #define INTF_DPU_SYNC_PROG_INTF_OFFSET_EN   0x194
+#define INTF_DPU_SYNC_PROG_INTR_CONF	0x198
+#define INTF_DPU_SYNC_PROG_COMPARE_CONF	0x19c
 
 #define INTF_VSYNC_TIMESTAMP_CTRL       0x210
 #define INTF_VSYNC_TIMESTAMP0           0x214
@@ -461,16 +463,6 @@ static void sde_hw_intf_setup_prg_fetch(
 	SDE_REG_WRITE(c, INTF_CONFIG, fetch_enable);
 }
 
-static void sde_hw_intf_setup_dpu_sync_prog_intf_offset(
-		struct sde_hw_intf *intf,
-		const struct intf_prog_fetch *fetch)
-{
-	struct sde_hw_blk_reg_map *c = &intf->hw;
-	u32 fetch_start = fetch->enable ? fetch->fetch_start : 0;
-
-	SDE_REG_WRITE(c, INTF_DPU_SYNC_PROG_INTF_OFFSET_EN, fetch_start);
-}
-
 static void sde_hw_intf_enable_dpu_sync_ctrl(struct sde_hw_intf *intf,
 		u32 timing_en_mux_sel)
 {
@@ -497,6 +489,25 @@ static void sde_hw_intf_enable_dpu_sync_ctrl(struct sde_hw_intf *intf,
 		/* make sure Slave DPU timing engine is disabled */
 		wmb();
 	}
+}
+
+static void sde_hw_intf_setup_dpu_sync_prog_skew_intf_offset(struct sde_hw_intf *intf,
+		const struct sde_intf_offset_cfg *cfg)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+	u32 prog_fetch_enable = 0, fetch_start = 0;
+	u32 intf_offset = 0, hsync_period, vsync_period_f0;
+
+	prog_fetch_enable = SDE_REG_READ(c, INTF_CONFIG);
+	hsync_period = SDE_REG_READ(c, INTF_HSYNC_CTL);
+	hsync_period = ((hsync_period & 0xffff0000) >> 16);
+	vsync_period_f0 = SDE_REG_READ(c, INTF_VSYNC_PERIOD_F0);
+	intf_offset = hsync_period * cfg->skew_offset_line;
+	if (prog_fetch_enable & BIT(31)) {
+		fetch_start = SDE_REG_READ(c, INTF_PROG_FETCH_START);
+		intf_offset = (fetch_start + intf_offset) % (vsync_period_f0);
+	}
+	SDE_REG_WRITE(c, INTF_DPU_SYNC_PROG_INTF_OFFSET_EN, intf_offset);
 }
 
 static void sde_hw_intf_setup_vsync_source(struct sde_hw_intf *intf,
@@ -923,8 +934,7 @@ static void sde_hw_intf_enable_wide_bus(struct sde_hw_intf *intf,
 	SDE_REG_WRITE(c, INTF_CONFIG2, intf_cfg2);
 }
 
-static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
-		unsigned long cap, unsigned long mdss_cap)
+static void _setup_intf_ops(struct sde_hw_intf_ops *ops, unsigned long cap)
 {
 	ops->setup_timing_gen = sde_hw_intf_setup_timing_engine;
 	ops->setup_prg_fetch  = sde_hw_intf_setup_prg_fetch;
@@ -974,10 +984,10 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 	if (cap & (BIT(SDE_INTF_PANEL_VSYNC_TS) | BIT(SDE_INTF_MDP_VSYNC_TS)))
 		ops->get_vsync_timestamp = sde_hw_intf_get_vsync_timestamp;
 
-	if (mdss_cap & BIT(SDE_MDP_DUAL_DPU_SYNC)) {
-		ops->setup_dpu_sync_prog_intf_offset =
-			sde_hw_intf_setup_dpu_sync_prog_intf_offset;
+	if (cap & BIT(SDE_INTF_DUAL_DPU_SYNC)) {
 		ops->enable_dpu_sync_ctrl = sde_hw_intf_enable_dpu_sync_ctrl;
+		ops->setup_dpu_sync_prog_skew_intf_offset =
+			sde_hw_intf_setup_dpu_sync_prog_skew_intf_offset;
 	}
 }
 
@@ -1011,7 +1021,7 @@ struct sde_hw_intf *sde_hw_intf_init(enum sde_intf idx,
 	c->idx = idx;
 	c->cap = cfg;
 	c->mdss = m;
-	_setup_intf_ops(&c->ops, c->cap->features, m->mdp[0].features);
+	_setup_intf_ops(&c->ops, c->cap->features);
 
 	rc = sde_hw_blk_init(&c->base, SDE_HW_BLK_INTF, idx, &sde_hw_ops);
 	if (rc) {

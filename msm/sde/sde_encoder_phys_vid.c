@@ -321,15 +321,53 @@ static void programmable_fetch_config(struct sde_encoder_phys *phys_enc,
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 	phys_enc->hw_intf->ops.setup_prg_fetch(phys_enc->hw_intf, &f);
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+}
+
+static void skewed_vsync_config(struct sde_encoder_phys *phys_enc,
+				      const struct intf_timing_params *timing)
+{
+	struct sde_intf_offset_cfg cfg = { 0 };
+	struct drm_connector *drm_conn;
+	u32 max_skew_offset_line = 0, min_skew_offset_line = 0;
+	u32 vtotal, htotal;
+	struct sde_encoder_phys_vid *vid_enc =
+			to_sde_encoder_phys_vid(phys_enc);
+
+	if (!sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc))
+		return;
+
+	drm_conn = phys_enc->connector;
+	sde_encoder_helper_skewed_vsync_config(phys_enc, &cfg);
+	htotal = get_horizontal_total(timing);
+	vtotal = get_vertical_total(timing);
+	max_skew_offset_line = mult_frac(vtotal, MAX_SKEW_VSYNC_PERCENTAGE, 100);
+	min_skew_offset_line = mult_frac(vtotal, MIN_SKEW_VSYNC_PERCENTAGE, 100);
+
+	if (!cfg.skew_intf_offset_en)
+		goto setup_prog_offset;
+
+	if (!cfg.skew_offset_line) {
+		SDE_DEBUG_VIDENC(vid_enc, "conn_prop: No value set for Skewed_vsync\n");
+		/* Default 50 percentage skew */
+		cfg.skew_offset_line = mult_frac(vtotal, DEFAULT_SKEW_VSYNC_PERCENTAGE, 100);
+	} else if (cfg.skew_offset_line > max_skew_offset_line) {
+		cfg.skew_offset_line = max_skew_offset_line;
+	} else if (cfg.skew_offset_line < min_skew_offset_line) {
+		cfg.skew_offset_line = min_skew_offset_line;
+	}
+
+	SDE_DEBUG_VIDENC(vid_enc,
+		 "skewed_vsync skew_offset_line is set to: %u skew en: %d\n",
+		 cfg.skew_offset_line, cfg.skew_intf_offset_en);
 
 	/**
-	 * In Dual DPU sync mode, prog_intf_offset set in Master DPU
+	 * In Dual DPU sync mode, set prog_intf_offset in Master DPU
 	 * to enable Slave DPU timing engine.
 	 */
-	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
-		sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc) &&
-		phys_enc->hw_intf->ops.setup_dpu_sync_prog_intf_offset)
-		phys_enc->hw_intf->ops.setup_dpu_sync_prog_intf_offset(phys_enc->hw_intf, &f);
+setup_prog_offset:
+	if (phys_enc->hw_intf->ops.setup_dpu_sync_prog_skew_intf_offset)
+		phys_enc->hw_intf->ops.setup_dpu_sync_prog_skew_intf_offset(
+				phys_enc->hw_intf, &cfg);
 }
 
 static bool sde_encoder_phys_vid_mode_fixup(
@@ -491,6 +529,8 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 	if (phys_enc->hw_intf->cap->type == INTF_DSI)
 		programmable_fetch_config(phys_enc, &timing_params);
 
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent))
+		skewed_vsync_config(phys_enc, &timing_params);
 exit:
 	if (phys_enc->parent_ops.get_qsync_fps)
 		phys_enc->parent_ops.get_qsync_fps(

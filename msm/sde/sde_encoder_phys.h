@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -889,5 +889,16 @@ void sde_encoder_helper_setup_misr(struct sde_encoder_phys *phys_enc,
  */
 int sde_encoder_helper_collect_misr(struct sde_encoder_phys *phys_enc,
 		bool nonblock, u32 *misr_value);
+
+/**
+ * sde_encoder_helper_skewed_vsync_config - skewed vsync config helper func
+ *	This helper function may be used by physical encoders to configure
+ *	the skewed_vsync/intf_offset related registers.
+ * @phys_enc: Pointer to physical encoder structure
+ * @cfg: pointer to sde_intf_offset_cfg structure
+ */
+void sde_encoder_helper_skewed_vsync_config(
+		struct sde_encoder_phys *phys_enc,
+		struct sde_intf_offset_cfg *cfg);
 
 #endif /* __sde_encoder_phys_H__ */

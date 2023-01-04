@@ -238,17 +238,16 @@ struct sde_hw_intf_ops {
 	u32 (*get_intr_status)(struct sde_hw_intf *intf);
 
 	/**
-	 * Setup the Sync programmable INTF offset between two DPU's
-	 */
-	void (*setup_dpu_sync_prog_intf_offset)(struct sde_hw_intf *intf,
-			const struct intf_prog_fetch *fetch);
-
-	/**
 	 * Setup timing engine enablement for slave DPU when enabled in sync mode
 	 */
 
 	void (*enable_dpu_sync_ctrl)(struct sde_hw_intf *intf,
 			u32 timing_en_mux_sel);
+	/**
+	 * Setup the Sync programmable INTF offset between two DPU's
+	 */
+	void (*setup_dpu_sync_prog_skew_intf_offset)(struct sde_hw_intf *intf,
+			const struct sde_intf_offset_cfg *cfg);
 };
 
 struct sde_hw_intf {

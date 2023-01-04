@@ -2514,6 +2514,12 @@ static int sde_intf_parse_dt(struct device_node *np,
 
 		if (SDE_HW_MAJOR(sde_cfg->hwversion) >= SDE_HW_MAJOR(SDE_HW_VER_910))
 			set_bit(SDE_INTF_MDP_VSYNC_TS, &intf->features);
+
+		if (sde_cfg->mdp[0].features & BIT(SDE_MDP_DUAL_DPU_SYNC))
+			set_bit(SDE_INTF_DUAL_DPU_SYNC, &intf->features);
+
+		if (sde_cfg->mdp[0].features & BIT(SDE_MDP_SKEWED_VSYNC_SUPPORT))
+			set_bit(SDE_INTF_DUAL_DPU_SKEWED_VSYNC, &intf->features);
 	}
 
 end:
@@ -5438,6 +5444,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 		set_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_cfg->mdp[0].features);
 		set_bit(SDE_MDP_HAS_HW_FENCE_SUPPORT, &sde_cfg->mdp[0].features);
+		set_bit(SDE_MDP_SKEWED_VSYNC_SUPPORT, &sde_cfg->mdp[0].features);
 		sde_cfg->has_precise_vsync_ts = true;
 		sde_cfg->has_ubwc_stats = true;
 		sde_cfg->has_vbif_clk_split = true;
