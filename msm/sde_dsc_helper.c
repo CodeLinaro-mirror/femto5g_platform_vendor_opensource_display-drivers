@@ -429,7 +429,7 @@ int sde_dsc_populate_dsc_private_params(struct msm_display_dsc_info *dsc_info,
 	dsc_info->bytes_per_pkt = bytes_in_slice * slice_per_pkt;
 	dsc_info->pkt_per_line = slice_per_intf / slice_per_pkt;
 
-	bytes_in_dsc_pair = DIV_ROUND_UP(bytes_in_slice * 2, 3);
+	bytes_in_dsc_pair = bytes_in_slice * 2;
 	if (bytes_in_dsc_pair % 8) {
 		dsc_info->dsc_4hsmerge_padding = 8 - (bytes_in_dsc_pair % 8);
 		total_bytes_in_dsc_pair = bytes_in_dsc_pair +
