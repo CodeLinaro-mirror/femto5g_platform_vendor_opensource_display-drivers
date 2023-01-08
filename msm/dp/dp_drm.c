@@ -7,6 +7,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_crtc.h>
+#include <linux/sort.h>
 
 #include "msm_drv.h"
 #include "msm_kms.h"
@@ -43,6 +44,12 @@ struct dp_bond_info {
 	struct dp_bond_mgr *bond_mgr;
 	struct dp_bond_bridge *bond_bridge[DP_BOND_MAX];
 	u32 bond_idx;
+};
+
+struct dp_bond_bridge_sort_state {
+	int intf_idx;
+	int h_tile_idx;
+	int h_tile_norm;
 };
 
 #define to_dp_bridge(x)     container_of((x), struct dp_bridge, base)
@@ -173,7 +180,7 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 	 * set non-bond mode to the display
 	 */
 	if (bridge->base.encoder->crtc != NULL)
-		dp->set_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE);
+		dp->set_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE, NULL);
 
 	/* By this point mode should have been validated through mode_fixup */
 	rc = dp->set_mode(dp, bridge->dp_panel, &bridge->dp_mode);
@@ -422,7 +429,7 @@ static bool dp_bond_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	bool ret = true;
 
 	if (!drm_bridge || !mode || !adjusted_mode) {
-		pr_err("Invalid params\n");
+		DP_ERR("Invalid params\n");
 		ret = false;
 		goto end;
 	}
@@ -432,7 +439,7 @@ static bool dp_bond_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	dp = bridge->display;
 
 	if (!dp->bridge->dp_panel) {
-		pr_err("Invalid dp_panel\n");
+		DP_ERR("Invalid dp_panel\n");
 		ret = false;
 		goto end;
 	}
@@ -453,7 +460,7 @@ static void dp_bond_bridge_pre_enable(struct drm_bridge *drm_bridge)
 	int i;
 
 	if (!drm_bridge) {
-		pr_err("Invalid params\n");
+		DP_ERR("Invalid params\n");
 		return;
 	}
 
@@ -496,7 +503,8 @@ static void dp_bond_bridge_pre_enable(struct drm_bridge *drm_bridge)
 		}
 		if (bridge->bridges[i]->display)
 			bridge->bridges[i]->display->set_phy_bond_mode(
-					bridge->bridges[i]->display, mode);
+					bridge->bridges[i]->display, mode,
+					bridge->display->base_connector);
 	}
 
 	/* In the order of from master PHY to slave PHY */
@@ -510,7 +518,7 @@ static void dp_bond_bridge_enable(struct drm_bridge *drm_bridge)
 	int i;
 
 	if (!drm_bridge) {
-		pr_err("Invalid params\n");
+		DP_ERR("Invalid params\n");
 		return;
 	}
 
@@ -527,7 +535,7 @@ static void dp_bond_bridge_disable(struct drm_bridge *drm_bridge)
 	int i;
 
 	if (!drm_bridge) {
-		pr_err("Invalid params\n");
+		DP_ERR("Invalid params\n");
 		return;
 	}
 
@@ -544,7 +552,7 @@ static void dp_bond_bridge_post_disable(struct drm_bridge *drm_bridge)
 	int i;
 
 	if (!drm_bridge) {
-		pr_err("Invalid params\n");
+		DP_ERR("Invalid params\n");
 		return;
 	}
 
@@ -564,7 +572,7 @@ static void dp_bond_bridge_mode_set(struct drm_bridge *drm_bridge,
 	int i;
 
 	if (!drm_bridge) {
-		pr_err("Invalid params\n");
+		DP_ERR("Invalid params\n");
 		return;
 	}
 
@@ -631,12 +639,95 @@ static void dp_bond_fixup_tile_mode(struct drm_connector *connector)
 	enum dp_bond_type type;
 	struct dp_bond_info *bond_info;
 	struct dp_bond_bridge *bond_bridge;
+	struct dp_bridge *bridge;
+	struct dp_display_mode dp_mode;
+	struct dp_panel *dp_panel, *base_panel;
+	bool preferred_mode = false;
 	int i;
 
 	/* checks supported tiling mode */
 	type = dp_bond_get_bond_type(connector);
 	if (type == DP_BOND_MAX)
 		return;
+
+	base_panel = c_conn->drv_panel;
+	bond_info = dp_display->dp_bond_prv_info;
+	bond_bridge = bond_info->bond_bridge[type];
+
+	/* get common link parameters */
+	for (i = 0; i < bond_bridge->bridge_num; i++) {
+		bridge = bond_bridge->bridges[i];
+
+		if (bridge->connector == connector)
+			continue;
+
+		if (!bridge->display->is_sst_connected) {
+			SDE_DEBUG("bond bridge is not connected\n");
+			return;
+		}
+
+		dp_panel = bridge->dp_panel;
+
+		/* lane num must equal */
+		if (dp_panel->link_info.num_lanes !=
+				base_panel->link_info.num_lanes) {
+			SDE_ERROR("bond lane mismatch %d %d\n",
+				base_panel->link_info.num_lanes,
+				dp_panel->link_info.num_lanes);
+			return;
+		}
+
+		/* update link rate */
+		if (dp_panel->link_info.rate <
+				base_panel->link_info.rate) {
+			SDE_INFO("bond link updated %d => %d\n",
+				base_panel->link_info.rate,
+				dp_panel->link_info.rate);
+			base_panel->link_info.rate =
+				dp_panel->link_info.rate;
+		}
+
+		/* force mode need extra check */
+		if (!dp_display->force_bond_mode)
+			continue;
+
+		list_for_each_entry_safe(mode, newmode,
+				&bridge->connector->probed_modes, head) {
+			list_del(&mode->head);
+			drm_mode_destroy(bridge->base.dev, mode);
+		}
+
+		if (!bridge->display->get_modes(bridge->display,
+				bridge->dp_panel, &dp_mode)) {
+			SDE_ERROR("bond bridge has empty mode\n");
+			return;
+		}
+
+		if (bridge->connector->display_info.bpc <
+				connector->display_info.bpc) {
+			SDE_INFO("bond bpc updated %d => %d\n",
+				connector->display_info.bpc,
+				bridge->connector->display_info.bpc);
+			connector->display_info.bpc =
+				bridge->connector->display_info.bpc;
+		}
+	}
+
+	/* update link parameters */
+	for (i = 0; i < bond_bridge->bridge_num; i++) {
+		bridge = bond_bridge->bridges[i];
+
+		if (bridge->connector == connector)
+			continue;
+
+		dp_panel = bridge->dp_panel;
+
+		dp_panel->link_info.rate =
+				base_panel->link_info.rate;
+
+		bridge->connector->display_info.bpc =
+				connector->display_info.bpc;
+	}
 
 	INIT_LIST_HEAD(&tile_modes);
 
@@ -646,30 +737,76 @@ static void dp_bond_fixup_tile_mode(struct drm_connector *connector)
 			mode->vdisplay != connector->tile_v_size))
 			continue;
 
+		/* force mode need further check */
+		if (dp_display->force_bond_mode) {
+			struct drm_display_mode *sibling_mode;
+			struct drm_connector *sibling_conn;
+			bool match = false;
+
+			for (i = 0; i < bond_bridge->bridge_num; i++) {
+				bridge = bond_bridge->bridges[i];
+
+				if (bridge->connector == connector)
+					continue;
+
+				sibling_conn = bridge->connector;
+				match = false;
+
+				list_for_each_entry(sibling_mode,
+						&sibling_conn->probed_modes,
+						head) {
+					if (drm_mode_equal(mode,
+							sibling_mode)) {
+						match = true;
+						break;
+					}
+				}
+
+				if (!match) {
+					SDE_DEBUG("mode %s not found conn%d\n",
+						mode->name,
+						sibling_conn->base.id);
+					break;
+				}
+			}
+
+			if (!match)
+				continue;
+		}
+
 		newmode = drm_mode_duplicate(connector->dev, mode);
 		if (!newmode)
 			break;
 
 		dp_bond_merge_tile_timing(newmode, connector->num_h_tile);
-		newmode->type |= DRM_MODE_TYPE_PREFERRED;
 		drm_mode_set_name(newmode);
-
 		list_add_tail(&newmode->head, &tile_modes);
+
+		if (mode->type & DRM_MODE_TYPE_PREFERRED)
+			preferred_mode = true;
+	}
+
+	if (list_empty(&tile_modes))
+		return;
+
+	/* remove previous preferred mode */
+	list_for_each_entry(mode, &connector->probed_modes, head) {
+		if (mode->type & DRM_MODE_TYPE_PREFERRED)
+			mode->type &= ~DRM_MODE_TYPE_PREFERRED;
+	}
+
+	/* add preferred mode to tiled mode */
+	if (!preferred_mode) {
+		drm_mode_sort(&tile_modes);
+		list_for_each_entry(mode, &tile_modes, head) {
+			mode->type |= DRM_MODE_TYPE_PREFERRED;
+			break;
+		}
 	}
 
 	list_for_each_entry_safe(mode, newmode, &tile_modes, head) {
 		list_del(&mode->head);
 		list_add_tail(&mode->head, &connector->probed_modes);
-	}
-
-	/* update display info for sibling connectors */
-	bond_info = dp_display->dp_bond_prv_info;
-	bond_bridge = bond_info->bond_bridge[type];
-	for (i = 0; i < bond_bridge->bridge_num; i++) {
-		if (bond_bridge->bridges[i]->connector == connector)
-			continue;
-		bond_bridge->bridges[i]->connector->display_info =
-				connector->display_info;
 	}
 }
 
@@ -716,14 +853,13 @@ static void dp_bond_check_force_mode(struct drm_connector *connector)
 	struct sde_connector *c_conn = to_sde_connector(connector);
 	struct dp_display *dp_display = c_conn->display;
 	enum dp_bond_type type, preferred_type = DP_BOND_MAX;
+	char topology[9] = {0};
 
 	if (!dp_display->dp_bond_prv_info || !dp_display->force_bond_mode)
 		return;
 
 	if (connector->has_tile && connector->tile_group)
 		return;
-
-	connector->has_tile = false;
 
 	for (type = DP_BOND_DUAL_PHY; type < DP_BOND_MAX; type++) {
 		if (!dp_bond_check_connector(connector, type))
@@ -732,12 +868,18 @@ static void dp_bond_check_force_mode(struct drm_connector *connector)
 		preferred_type = type;
 	}
 
-	if (preferred_type == DP_BOND_MAX)
+	if (preferred_type == DP_BOND_MAX) {
+		connector->has_tile = false;
 		return;
+	}
 
-	connector->has_tile = true;
+	if (!connector->tile_group)
+		connector->tile_group = drm_mode_create_tile_group(
+				connector->dev, topology);
+
 	connector->num_h_tile = num_bond_dp[preferred_type];
 	connector->num_v_tile = 1;
+	connector->has_tile = true;
 }
 
 int dp_connector_config_hdr(struct drm_connector *connector, void *display,
@@ -772,7 +914,7 @@ int dp_connector_set_colorspace(struct drm_connector *connector,
 
 	sde_conn = to_sde_connector(connector);
 	if (!sde_conn->drv_panel) {
-		pr_err("invalid dp panel\n");
+		DP_ERR("invalid dp panel\n");
 		return -EINVAL;
 	}
 
@@ -991,7 +1133,6 @@ void dp_connector_post_open(struct drm_connector *connector, void *display)
 		dp->post_open(dp);
 }
 
-
 int dp_drm_bond_bridge_init(void *display,
 	struct drm_encoder *encoder,
 	enum dp_bond_type type,
@@ -1051,7 +1192,7 @@ int dp_drm_bond_bridge_init(void *display,
 
 	bridge = &mgr->bond_bridge[type];
 	if (bridge->display) {
-		pr_err("bond bridge already inited\n");
+		DP_ERR("bond bridge already inited\n");
 		return -EINVAL;
 	}
 
@@ -1072,7 +1213,7 @@ int dp_drm_bond_bridge_init(void *display,
 
 	rc = drm_bridge_attach(encoder, &bridge->base, NULL, 0);
 	if (rc) {
-		pr_err("failed to attach bridge, rc=%d\n", rc);
+		DP_ERR("failed to attach bridge, rc=%d\n", rc);
 		return rc;
 	}
 
@@ -1123,7 +1264,7 @@ struct drm_encoder *dp_connector_atomic_best_encoder(
 		if (bond_state->connector[type] != connector) {
 			if (bond_state->bond_mask[type] &
 					(1 << bond_info->bond_idx)) {
-				pr_debug("single encoder is in use\n");
+				DP_DEBUG("single encoder is in use\n");
 				return NULL;
 			}
 			continue;
@@ -1149,7 +1290,7 @@ struct drm_encoder *dp_connector_atomic_best_encoder(
 
 		bond_bridge = bond_info->bond_bridge[type];
 		if (bond_state->connector_mask & bond_bridge->bond_mask) {
-			pr_debug("bond encoder is in use\n");
+			DP_DEBUG("bond encoder is in use\n");
 			return NULL;
 		}
 
@@ -1206,8 +1347,32 @@ int dp_connector_atomic_check(struct drm_connector *connector,
 
 	crtc_state = drm_atomic_get_new_crtc_state(a_state, old_crtc);
 
-	if (drm_atomic_crtc_needs_modeset(crtc_state) &&
-			!c_state->crtc) {
+	if (drm_atomic_crtc_needs_modeset(crtc_state)) {
+		if (c_state->crtc) {
+			struct dp_display *dp;
+			int i;
+
+			/* no check for single display */
+			if (c_state->best_encoder ==
+					dp_display->bridge->base.encoder)
+				return 0;
+
+			bond_bridge = to_dp_bond_bridge(list_first_entry(
+						&c_state->best_encoder->bridge_chain,
+						struct drm_bridge, chain_node));
+
+			for (i = 0; i < bond_bridge->bridge_num; i++) {
+				dp = bond_bridge->bridges[i]->display;
+				if (!dp->is_sst_connected) {
+					DP_ERR("bond dp %d disconnected\n",
+						DRMID(dp->base_connector));
+					return -EINVAL;
+				}
+			}
+
+			return 0;
+		}
+
 		bond_info = dp_display->dp_bond_prv_info;
 		bond_state = dp_bond_get_mgr_atomic_state(a_state,
 				bond_info->bond_mgr);
@@ -1406,7 +1571,7 @@ enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 			return MODE_BAD;
 
 		if (!dp_bond_check_connector(connector, type)) {
-			pr_debug("mode:%s requires multi ports\n", mode->name);
+			DP_DEBUG("mode:%s requires multi ports\n", mode->name);
 			return MODE_BAD;
 		}
 
@@ -1439,6 +1604,37 @@ int dp_connector_update_pps(struct drm_connector *connector,
 	}
 
 	dp_disp = display;
+
+	if (dp_disp->dp_bond_prv_info) {
+		struct dp_bond_info *bond_info;
+		struct dp_bond_bridge *bond_bridge;
+		int i, ret;
+
+		bond_info = dp_disp->dp_bond_prv_info;
+		for (i = 0; i < DP_BOND_MAX; i++) {
+			bond_bridge = bond_info->bond_bridge[i];
+			if (!bond_bridge)
+				continue;
+			if (connector->encoder == bond_bridge->encoder)
+				break;
+		}
+
+		if (!bond_bridge || i == DP_BOND_MAX)
+			goto out;
+
+		for (i = 0; i < bond_bridge->bridge_num; i++) {
+			ret = bond_bridge->bridges[i]->display->update_pps(
+					bond_bridge->bridges[i]->display,
+					bond_bridge->bridges[i]->connector,
+					pps_cmd);
+			if (ret)
+				return ret;
+		}
+
+		return 0;
+	}
+
+out:
 	return dp_disp->update_pps(dp_disp, connector, pps_cmd);
 }
 
@@ -1469,6 +1665,70 @@ int dp_connector_install_properties(void *display, struct drm_connector *conn)
 	}
 
 	drm_object_attach_property(&conn->base, conn->colorspace_property, 0);
+
+	return 0;
+}
+
+static int dp_connector_intf_cmp(const void *a, const void *b)
+{
+	const struct dp_bond_bridge_sort_state *bridge_a = a;
+	const struct dp_bond_bridge_sort_state *bridge_b = b;
+
+	return bridge_a->intf_idx - bridge_b->intf_idx;
+}
+
+static int dp_connector_tile_cmp(const void *a, const void *b)
+{
+	const struct dp_bond_bridge_sort_state *bridge_a = a;
+	const struct dp_bond_bridge_sort_state *bridge_b = b;
+
+	if (bridge_a->h_tile_idx != bridge_b->h_tile_idx)
+		return bridge_a->h_tile_idx - bridge_b->h_tile_idx;
+	else
+		return bridge_a->intf_idx - bridge_b->intf_idx;
+}
+
+int dp_connector_get_tile_map(struct drm_connector *connector,
+		void *display, int num_tile, int *tile_map)
+{
+	struct dp_bond_bridge *bond_bridge;
+	struct dp_bond_bridge_sort_state bridges[MAX_DP_BOND_NUM];
+	struct dp_display_info disp_info;
+	struct dp_bridge *bridge;
+	int i, ret;
+
+	if (!connector->encoder || num_tile < 2)
+		return -EINVAL;
+
+	bond_bridge = to_dp_bond_bridge(list_first_entry(
+				&connector->encoder->bridge_chain,
+				struct drm_bridge, chain_node));
+
+	if (WARN_ON(num_tile != bond_bridge->bridge_num))
+		return -EINVAL;
+
+	for (i = 0; i < num_tile; i++) {
+		bridge = bond_bridge->bridges[i];
+		ret = dp_display_get_info(bridge->display, &disp_info);
+		if (ret)
+			return ret;
+		bridges[i].intf_idx = disp_info.intf_idx[0];
+		bridges[i].h_tile_idx = bridge->connector->tile_h_loc;
+	}
+
+	sort(bridges, num_tile, sizeof(bridges[0]),
+			dp_connector_tile_cmp, NULL);
+
+	for (i = 0; i < num_tile; i++)
+		bridges[i].h_tile_norm = i;
+
+	sort(bridges, num_tile, sizeof(bridges[0]),
+			dp_connector_intf_cmp, NULL);
+
+	for (i = 0; i < num_tile; i++) {
+		tile_map[i] = bridges[i].h_tile_norm;
+		DP_INFO("tile map: in %d out %d\n", tile_map[i], i);
+	}
 
 	return 0;
 }

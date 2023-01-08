@@ -218,6 +218,7 @@ struct dp_display_private {
 	u32 phy_idx;
 	u32 stream_cnt;
 	enum dp_phy_bond_mode phy_bond_mode;
+	struct drm_connector *bond_primary;
 
 	struct device *msm_hdcp_dev;
 };
@@ -1016,7 +1017,7 @@ static void dp_display_send_force_connect_event(struct dp_display_private *dp)
 	connector = dp->dp_display.base_connector;
 
 	if (!connector) {
-		pr_err("DP%d connector not set\n", dp->cell_idx);
+		DP_ERR("DP%d connector not set\n", dp->cell_idx);
 		return;
 	}
 
@@ -1110,7 +1111,7 @@ static void dp_display_change_phy_bond_mode(struct dp_display_private *dp,
 		enum dp_phy_bond_mode mode)
 {
 	if (dp->phy_bond_mode != mode)
-		pr_info("DP%d  %d -> %d\n", dp->cell_idx,
+		DP_INFO("DP%d  %d -> %d\n", dp->cell_idx,
 				dp->phy_bond_mode, mode);
 
 	dp->phy_bond_mode = mode;
@@ -1152,6 +1153,7 @@ static int dp_display_host_init(struct dp_display_private *dp)
 	enable_irq(dp->irq);
 	dp_display_abort_hdcp(dp, false);
 
+	dp_display_state_remove(DP_STATE_ABORTED);
 	dp_display_state_add(DP_STATE_INITIALIZED);
 
 	/* log this as it results from user action of cable connection */
@@ -1659,7 +1661,7 @@ static void dp_display_clean(struct dp_display_private *dp)
 		dp_panel->deinit(dp_panel, 0);
 	}
 
-	if (!dp->parser->force_connect_mode)
+	if (dp->parser->force_connect_mode)
 		dp_display_state_remove(DP_STATE_ENABLED)
 	else
 		dp_display_state_remove(DP_STATE_ENABLED | DP_STATE_CONNECTED);
@@ -2068,7 +2070,11 @@ static void dp_display_connect_work(struct work_struct *work)
 	 * SST panel in normal mode will reset by the mode change commit.
 	 */
 	if (dp->active_stream_cnt) {
-		if (dp->active_panels[DP_STREAM_0] == dp->panel &&
+		if (IS_BOND_MODE(dp->phy_bond_mode)) {
+			dp->aux->abort(dp->aux, false);
+			dp->ctrl->abort(dp->ctrl, false);
+			reset_connector = dp->bond_primary;
+		} else if (dp->active_panels[DP_STREAM_0] == dp->panel &&
 				!dp->panel->video_test) {
 			dp->aux->abort(dp->aux, false);
 			dp->ctrl->abort(dp->ctrl, false);
@@ -3405,7 +3411,7 @@ static int dp_display_setup_colospace(struct dp_display *dp_display,
 	struct dp_display_private *dp;
 
 	if (!dp_display || !panel) {
-		pr_err("invalid input\n");
+		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
 
@@ -3483,7 +3489,7 @@ static int dp_display_init_aux_bridge(struct dp_display_private *dp)
 	struct device_node *bridge_node;
 
 	if (!dp->pdev->dev.of_node) {
-		pr_err("cannot find dev.of_node\n");
+		DP_ERR("cannot find dev.of_node\n");
 		rc = -ENODEV;
 		goto end;
 	}
@@ -3495,7 +3501,7 @@ static int dp_display_init_aux_bridge(struct dp_display_private *dp)
 
 	dp->aux_bridge = of_dp_aux_find_bridge(bridge_node);
 	if (!dp->aux_bridge) {
-		pr_err("failed to find dp aux bridge\n");
+		DP_ERR("failed to find dp aux bridge\n");
 		rc = -EPROBE_DEFER;
 		goto end;
 	}
@@ -3895,12 +3901,13 @@ static int dp_display_mst_get_fixed_topology_display_type(
 }
 
 static int dp_display_set_phy_bond_mode(struct dp_display *dp_display,
-		enum dp_phy_bond_mode mode)
+		enum dp_phy_bond_mode mode,
+		struct drm_connector *primary_connector)
 {
 	struct dp_display_private *dp;
 
 	if (!dp_display) {
-		pr_err("invalid input\n");
+		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
 
@@ -3923,6 +3930,8 @@ static int dp_display_set_phy_bond_mode(struct dp_display *dp_display,
 		dp_display_change_phy_bond_mode(dp, mode);
 	}
 
+	dp->bond_primary = primary_connector;
+
 	mutex_unlock(&dp->session_lock);
 
 	return 0;
@@ -3943,7 +3952,7 @@ static int dp_display_probe(struct platform_device *pdev)
 
 	index = dp_display_get_num_of_displays(NULL);
 	if (index >= MAX_DP_ACTIVE_DISPLAY) {
-		pr_err("exceeds max dp count\n");
+		DP_ERR("exceeds max dp count\n");
 		rc = -EINVAL;
 		goto bail;
 	}
@@ -3961,6 +3970,8 @@ static int dp_display_probe(struct platform_device *pdev)
 	if (!dp->name)
 		dp->name = "drm_dp";
 
+	dp->cell_idx = -1;
+	dp->phy_idx = -1;
 	memset(&dp->mst, 0, sizeof(dp->mst));
 
 	rc = dp_display_get_cell_info(dp);
@@ -4100,19 +4111,37 @@ int dp_display_get_num_of_bonds(void *dp_display)
 {
 	struct dp_display_private *dp;
 	int i, cnt = 0;
+	struct {
+		const char *name;
+		enum dp_bond_type type;
+	} static const bond_types[] =
+	{
+		{ "qcom,bond-dual-ctrl-phy", DP_BOND_DUAL_PHY },
+		{ "qcom,bond-dual-ctrl-pclk", DP_BOND_DUAL_PCLK },
+		{ "qcom,bond-tri-ctrl-phy", DP_BOND_TRIPLE_PHY },
+		{ "qcom,bond-tri-ctrl-pclk", DP_BOND_TRIPLE_PCLK },
+		/* for backward compatiblity */
+		{ "qcom,bond-dual-ctrl", DP_BOND_DUAL_PHY },
+		{ "qcom,bond-tri-ctrl", DP_BOND_TRIPLE_PCLK },
+	};
 
 	if (!dp_display) {
-		pr_debug("dp display not initialized\n");
+		DP_DEBUG("dp display not initialized\n");
 		return 0;
 	}
 
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
-	if (!dp->parser)
-		return dp->cell_idx ? 0 : DP_BOND_MAX;
-
-	for (i = 0; i < DP_BOND_MAX; i++) {
-		if (dp->parser->bond_cfg[i].enable)
-			cnt++;
+	if (!dp->parser) {
+		for (i = 0; i < ARRAY_SIZE(bond_types); i++) {
+			if (of_property_count_u32_elems(dp->pdev->dev.of_node,
+					bond_types[i].name) == num_bond_dp[bond_types[i].type])
+				cnt++;
+		}
+	} else {
+		for (i = 0; i < DP_BOND_MAX; i++) {
+			if (dp->parser->bond_cfg[i].enable)
+				cnt++;
+		}
 	}
 
 	return cnt;
@@ -4144,15 +4173,15 @@ int dp_display_get_bond_displays(void *dp_display, enum dp_bond_type type,
 		struct dp_display_bond_displays *dp_bond_info)
 {
 	struct dp_display_private *dp;
-	int i, j;
+	int i, j, n = 0;
 
 	if (!dp_display) {
-		pr_debug("dp display not initialized\n");
+		DP_DEBUG("dp display not initialized\n");
 		return -EINVAL;
 	}
 
 	if (type < 0 || type >= DP_BOND_MAX) {
-		pr_debug("invalid bond type\n");
+		DP_DEBUG("invalid bond type\n");
 		return -EINVAL;
 	}
 
@@ -4179,9 +4208,18 @@ int dp_display_get_bond_displays(void *dp_display, enum dp_bond_type type,
 			if (dp->parser->bond_cfg[type].ctrl[j] ==
 					dp_disp->cell_idx) {
 				dp_bond_info->dp_display[j] = display;
+				n++;
 				break;
 			}
 		}
+		if (n == dp_bond_info->dp_display_num)
+			break;
+	}
+
+	if (n < dp_bond_info->dp_display_num) {
+		DP_WARN("no enough dp displays (%d:%d) for bond type %d, disabled\n",
+				n, dp_bond_info->dp_display_num, type);
+		dp_bond_info->dp_display_num = 0;
 	}
 
 	return 0;

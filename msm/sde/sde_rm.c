@@ -99,6 +99,10 @@ static const struct sde_rm_topology_def g_top_table_v1[SDE_RM_TOPOLOGY_MAX] = {
 			MSM_DISPLAY_COMPRESSION_DSC },
 	{   SDE_RM_TOPOLOGY_PPSPLIT,              1, 0, 2, 1, false,
 			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_TRIPLEPIPE,           3, 0, 3, 1, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_TRIPLEPIPE_DSC,       3, 3, 3, 1, false,
+			MSM_DISPLAY_COMPRESSION_DSC },
 	{   SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE,     4, 0, 2, 1, false,
 			MSM_DISPLAY_COMPRESSION_NONE },
 	{   SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC, 4, 3, 2, 1, false,
@@ -106,6 +110,10 @@ static const struct sde_rm_topology_def g_top_table_v1[SDE_RM_TOPOLOGY_MAX] = {
 	{   SDE_RM_TOPOLOGY_QUADPIPE_DSCMERGE,    4, 4, 2, 1, false,
 			MSM_DISPLAY_COMPRESSION_DSC },
 	{   SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE, 4, 4, 1, 1, false,
+			MSM_DISPLAY_COMPRESSION_DSC },
+	{   SDE_RM_TOPOLOGY_SIXPIPE_3DMERGE,	  6, 0, 3, 1, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_SIXPIPE_DSCMERGE,	  6, 6, 3, 1, false,
 			MSM_DISPLAY_COMPRESSION_DSC },
 };
 
@@ -2626,16 +2634,18 @@ bool sde_rm_topology_is_group(struct sde_rm *rm,
 				conn);
 		if (!conn_state) {
 			SDE_DEBUG("%s invalid connector state\n", conn->name);
-			continue;
+			/* Fallback to CRTC state topology */
+			name = cstate->topology_name;
+		} else {
+			ret = sde_connector_state_get_topology(conn_state, &topology);
+			if (ret) {
+				SDE_DEBUG("%s invalid topology\n", conn->name);
+				continue;
+			}
+
+			name = sde_rm_get_topology_name(rm, topology);
 		}
 
-		ret = sde_connector_state_get_topology(conn_state, &topology);
-		if (ret) {
-			SDE_DEBUG("%s invalid topology\n", conn->name);
-			continue;
-		}
-
-		name = sde_rm_get_topology_name(rm, topology);
 		switch (group) {
 		case SDE_RM_TOPOLOGY_GROUP_SINGLEPIPE:
 			if (TOPOLOGY_SINGLEPIPE_MODE(name))
@@ -2645,8 +2655,16 @@ bool sde_rm_topology_is_group(struct sde_rm *rm,
 			if (TOPOLOGY_DUALPIPE_MODE(name))
 				return true;
 			break;
+		case SDE_RM_TOPOLOGY_GROUP_TRIPLEPIPE:
+			if (TOPOLOGY_TRIPLEPIPE_MODE(name))
+				return true;
+			break;
 		case SDE_RM_TOPOLOGY_GROUP_QUADPIPE:
 			if (TOPOLOGY_QUADPIPE_MODE(name))
+				return true;
+			break;
+		case SDE_RM_TOPOLOGY_GROUP_SIXPIPE:
+			if (TOPOLOGY_SIXPIPE_MODE(name))
 				return true;
 			break;
 		case SDE_RM_TOPOLOGY_GROUP_3DMERGE:
