@@ -1566,9 +1566,7 @@ void msm_hyp_framebuffer_destroy(struct drm_framebuffer *framebuffer)
 	if (fb->info && fb->info->destroy)
 		fb->info->destroy(framebuffer);
 
-	drm_gem_object_put(fb->bo);
-	drm_framebuffer_cleanup(&fb->base);
-	kfree(fb);
+	drm_gem_fb_destroy(framebuffer);
 }
 
 static const struct drm_framebuffer_funcs msm_hyp_framebuffer_funcs = {
@@ -1615,67 +1613,127 @@ static int msm_hyp_shmem_sync_sg_for_device(struct drm_gem_object *obj)
 	return 0;
 }
 #endif
-static struct drm_framebuffer *msm_hyp_framebuffer_create(
-		struct drm_device *dev, struct drm_file *file,
-		const struct drm_mode_fb_cmd2 *mode_cmd)
+
+static struct drm_framebuffer *msm_hyp_framebuffer_init(struct drm_device *dev,
+		const struct drm_mode_fb_cmd2 *mode_cmd, struct drm_gem_object **bos)
 {
+	const struct drm_format_info *info = drm_get_format_info(dev, mode_cmd);
 	struct msm_hyp_drm_private *priv = dev->dev_private;
 	struct msm_hyp_kms *kms = priv->kms;
-	struct msm_hyp_framebuffer *fb;
-	struct drm_gem_object *bo;
-	int ret;
+	struct msm_hyp_framebuffer *msm_hyp_fb = NULL;
+	struct drm_framebuffer *fb = NULL;
+	int ret, i, num_planes, width = 0, height = 0, min_size = 0;
 
 	DRM_DEBUG("create framebuffer: dev=%pK, mode_cmd=%pK (%dx%d@%4.4s)",
 			dev, mode_cmd, mode_cmd->width, mode_cmd->height,
 			(char *)&mode_cmd->pixel_format);
-
-	bo = drm_gem_object_lookup(file, mode_cmd->handles[0]);
-	if (IS_ERR_OR_NULL(bo)) {
-		DRM_ERROR("failed to find gem bo %d\n", mode_cmd->handles[0]);
-		return ERR_PTR(-EINVAL);
+	if (!info) {
+		DRM_ERROR("drm format info is not present\n");
+		return NULL;
 	}
 
-	ret = msm_hyp_shmem_sync_sg_for_device(bo);
-	if (ret) {
-		DRM_ERROR("failed to do dumb buffer sync\n");
-		return ERR_PTR(ret);
-	}
+	num_planes = info->num_planes;
 
-	fb = kzalloc(sizeof(*fb), GFP_KERNEL);
-	if (!fb) {
+	msm_hyp_fb = kzalloc(sizeof(*msm_hyp_fb), GFP_KERNEL);
+	if (!msm_hyp_fb) {
 		ret = -ENOMEM;
 		goto fail;
 	}
 
-	drm_helper_mode_fill_fb_struct(dev, &fb->base, mode_cmd);
-	fb->bo = bo;
+	fb = &msm_hyp_fb->base;
 
-	ret = drm_framebuffer_init(dev, &fb->base, &msm_hyp_framebuffer_funcs);
+	if (num_planes > ARRAY_SIZE(fb->obj)) {
+		DRM_ERROR("num of planes is more than array of framebuffer objects");
+		ret = -EINVAL;
+		goto fail;
+	}
+
+	for (i = 0; i < num_planes; i++) {
+		width = mode_cmd->width / (i ? info->hsub : 1);
+		height = mode_cmd->height / (i ? info->vsub : 1);
+
+		min_size = (height - 1) * mode_cmd->pitches[i]
+			 + width * info->cpp[i]
+			 + mode_cmd->offsets[i];
+
+		if (bos[i]->size < min_size) {
+			DRM_ERROR("gem obj bo size is less than min_size\n");
+			ret = -EINVAL;
+			goto fail;
+		}
+
+		msm_hyp_fb->base.obj[i] = bos[i];
+	}
+
+	drm_helper_mode_fill_fb_struct(dev, fb, mode_cmd);
+
+	ret = drm_framebuffer_init(dev, fb, &msm_hyp_framebuffer_funcs);
 	if (ret) {
 		DRM_ERROR("framebuffer init failed: %d\n", ret);
 		goto fail;
 	}
 
-	fb->base.obj[0] = bo;
-
 	if (kms->funcs && kms->funcs->get_framebuffer_info) {
-		ret = kms->funcs->get_framebuffer_info(kms, &fb->base,
-				&fb->info);
+		ret = kms->funcs->get_framebuffer_info(kms, fb,
+				&msm_hyp_fb->info);
 		if (ret) {
 			DRM_ERROR("failed to get framebuffer info\n");
 			goto cleanup;
 		}
 	}
 
-	DRM_DEBUG("create: FB ID: %d (%pK)", fb->base.base.id, fb);
-
-	return &fb->base;
-
+	return fb;
 cleanup:
-	drm_framebuffer_cleanup(&fb->base);
+	drm_framebuffer_cleanup(fb);
 fail:
-	kfree(fb);
-	drm_gem_object_put(bo);
+	kfree(msm_hyp_fb);
+
+	return ERR_PTR(ret);
+}
+
+static struct drm_framebuffer *msm_hyp_framebuffer_create(
+		struct drm_device *dev, struct drm_file *file,
+		const struct drm_mode_fb_cmd2 *mode_cmd)
+{
+	const struct drm_format_info *info = drm_get_format_info(dev, mode_cmd);
+	struct drm_framebuffer *fb;
+	struct drm_gem_object *bos[DRM_FORMAT_MAX_PLANES] = {0};
+	int ret, i, num_planes;
+
+	if (!info) {
+		DRM_ERROR("drm format info is not present\n");
+		return NULL;
+	}
+
+	num_planes = info->num_planes;
+	/* TODO: this part should support multiple handles */
+	for (i = 0; i < num_planes; i++) {
+		bos[i] = drm_gem_object_lookup(file, mode_cmd->handles[i]);
+		if (IS_ERR_OR_NULL(bos[i])) {
+			DRM_ERROR("failed to find gem bo %d\n", mode_cmd->handles[i]);
+			ret = -EINVAL;
+			goto out_unref;
+		}
+
+		ret = msm_hyp_shmem_sync_sg_for_device(bos[i]);
+		if (ret) {
+			DRM_ERROR("failed to do dumb buffer sync\n");
+			goto out_unref;
+		}
+	}
+
+	fb = msm_hyp_framebuffer_init(dev, mode_cmd, bos);
+	if (IS_ERR(fb)) {
+		ret = PTR_ERR(fb);
+		DRM_ERROR("frame buffer init is failed %d\n", ret);
+		goto out_unref;
+	}
+
+	return fb;
+
+out_unref:
+	for (i = 0; i < num_planes; i++)
+		drm_gem_object_put(bos[i]);
 	return ERR_PTR(ret);
 }
 
