@@ -424,6 +424,28 @@ int sde_connector_get_dither_cfg(struct drm_connector *conn,
 	return 0;
 }
 
+bool sde_connector_mode_needs_full_range(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn;
+
+	if (!connector) {
+		SDE_ERROR("invalid argument\n");
+		return false;
+	}
+
+	c_conn = to_sde_connector(connector);
+
+	if (!c_conn->display) {
+		SDE_ERROR("invalid argument\n");
+		return false;
+	}
+
+	if (!c_conn->ops.mode_needs_full_range)
+		return false;
+
+	return c_conn->ops.mode_needs_full_range(c_conn->display);
+}
+
 static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 		struct msm_resource_caps_info *avail_res)
 {
@@ -848,6 +870,27 @@ void sde_connector_set_colorspace(struct sde_connector *c_conn)
 
 }
 
+enum sde_csc_type sde_connector_get_csc_type(struct drm_connector *conn)
+{
+	struct sde_connector *c_conn;
+
+	if (!conn) {
+		SDE_ERROR("invalid argument");
+		return -EINVAL;
+	}
+	c_conn = to_sde_connector(conn);
+
+	if (!c_conn->display) {
+		SDE_ERROR("invalid argument");
+		return -EINVAL;
+	}
+
+	if (!c_conn->ops.get_csc_type)
+		return SDE_CSC_RGB2YUV_601L;
+
+	return c_conn->ops.get_csc_type(conn, c_conn->display);
+}
+
 void sde_connector_set_qsync_params(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
@@ -926,7 +969,8 @@ static int _sde_connector_update_hdr_metadata(struct sde_connector *c_conn,
 }
 
 static int _sde_connector_update_dirty_properties(
-				struct drm_connector *connector)
+				struct drm_connector *connector,
+				bool cspace_dirty)
 {
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
@@ -962,7 +1006,7 @@ static int _sde_connector_update_dirty_properties(
 	mutex_unlock(&c_conn->property_info.property_lock);
 
 	/* if colorspace needs to be updated do it first */
-	if (c_conn->colorspace_updated) {
+	if (c_conn->colorspace_updated && cspace_dirty) {
 		c_conn->colorspace_updated = false;
 		sde_connector_set_colorspace(c_conn);
 	}
@@ -998,6 +1042,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	struct msm_display_kickoff_params params;
 	struct dsi_display *display;
 	int rc;
+	bool cspace_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1019,10 +1064,12 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	 * in pre-kickoff. This flag must be reset at the
 	 * end of display pre-kickoff.
 	 */
-	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
 		display->queue_cmd_waits = true;
+		cspace_dirty = true;
+	}
 
-	rc = _sde_connector_update_dirty_properties(connector);
+	rc = _sde_connector_update_dirty_properties(connector, cspace_dirty);
 	if (rc) {
 		SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
 		goto end;
@@ -1102,7 +1149,7 @@ void sde_connector_helper_bridge_disable(struct drm_connector *connector)
 	}
 
 	if (!poms_pending) {
-		rc = _sde_connector_update_dirty_properties(connector);
+		rc = _sde_connector_update_dirty_properties(connector, true);
 		if (rc) {
 			SDE_ERROR("conn %d final pre kickoff failed %d\n",
 					connector->base.id, rc);

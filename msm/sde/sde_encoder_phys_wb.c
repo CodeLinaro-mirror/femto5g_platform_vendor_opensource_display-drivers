@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -25,8 +25,6 @@
 #define WBID(wb_enc) \
 	((wb_enc && wb_enc->wb_dev) ? wb_enc->wb_dev->wb_idx - WB_0 : -1)
 
-#define TO_S15D16(_x_)	((_x_) << 7)
-
 #define SDE_WB_MAX_LINEWIDTH(fmt, wb_cfg) \
 	((SDE_FORMAT_IS_UBWC(fmt) || SDE_FORMAT_IS_YUV(fmt)) ? wb_cfg->sblk->maxlinewidth : \
 	wb_cfg->sblk->maxlinewidth_linear)
@@ -38,22 +36,6 @@ static const u32 cwb_irq_tbl[PINGPONG_MAX] = {SDE_NONE, INTR_IDX_PP1_OVFL,
 static const u32 dcwb_irq_tbl[PINGPONG_MAX] = {SDE_NONE, SDE_NONE,
 	SDE_NONE, SDE_NONE, SDE_NONE, SDE_NONE,
 	INTR_IDX_PP_CWB_OVFL, SDE_NONE};
-
-/**
- * sde_rgb2yuv_601l - rgb to yuv color space conversion matrix
- *
- */
-static struct sde_csc_cfg sde_encoder_phys_wb_rgb2yuv_601l = {
-	{
-		TO_S15D16(0x0083), TO_S15D16(0x0102), TO_S15D16(0x0032),
-		TO_S15D16(0x1fb5), TO_S15D16(0x1f6c), TO_S15D16(0x00e1),
-		TO_S15D16(0x00e1), TO_S15D16(0x1f45), TO_S15D16(0x1fdc)
-	},
-	{ 0x00, 0x00, 0x00 },
-	{ 0x0040, 0x0200, 0x0200 },
-	{ 0x000, 0x3ff, 0x000, 0x3ff, 0x000, 0x3ff },
-	{ 0x040, 0x3ac, 0x040, 0x3c0, 0x040, 0x3c0 },
-};
 
 /**
  * sde_encoder_phys_wb_is_master - report wb always as master encoder
@@ -223,110 +205,6 @@ static void sde_encoder_phys_wb_set_qos(struct sde_encoder_phys *phys_enc)
 
 	if (hw_wb->ops.setup_qos_lut)
 		hw_wb->ops.setup_qos_lut(hw_wb, &qos_cfg);
-}
-
-/**
- * sde_encoder_phys_setup_cdm - setup chroma down block
- * @phys_enc:	Pointer to physical encoder
- * @fb:		Pointer to output framebuffer
- * @format:	Output format
- */
-void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_framebuffer *fb,
-		const struct sde_format *format, struct sde_rect *wb_roi)
-{
-	struct sde_hw_cdm *hw_cdm;
-	struct sde_hw_cdm_cfg *cdm_cfg;
-	struct sde_hw_pingpong *hw_pp;
-	struct sde_encoder_phys_wb *wb_enc;
-	int ret;
-
-	if (!phys_enc || !format)
-		return;
-
-	wb_enc = to_sde_encoder_phys_wb(phys_enc);
-	cdm_cfg = &phys_enc->cdm_cfg;
-	hw_pp = phys_enc->hw_pp;
-	hw_cdm = phys_enc->hw_cdm;
-	if (!hw_cdm)
-		return;
-
-	if (!SDE_FORMAT_IS_YUV(format)) {
-		SDE_DEBUG("[enc:%d wb:%d] cdm_disable fmt:%x\n", DRMID(phys_enc->parent),
-				WBID(wb_enc), format->base.pixel_format);
-		if (hw_cdm && hw_cdm->ops.disable)
-			hw_cdm->ops.disable(hw_cdm);
-
-		return;
-	}
-
-	memset(cdm_cfg, 0, sizeof(struct sde_hw_cdm_cfg));
-
-	if (!wb_roi)
-		return;
-
-	cdm_cfg->output_width = wb_roi->w;
-	cdm_cfg->output_height = wb_roi->h;
-	cdm_cfg->output_fmt = format;
-	cdm_cfg->output_type = CDM_CDWN_OUTPUT_WB;
-	cdm_cfg->output_bit_depth = SDE_FORMAT_IS_DX(format) ?
-		CDM_CDWN_OUTPUT_10BIT : CDM_CDWN_OUTPUT_8BIT;
-
-	/* enable 10 bit logic */
-	switch (cdm_cfg->output_fmt->chroma_sample) {
-	case SDE_CHROMA_RGB:
-		cdm_cfg->h_cdwn_type = CDM_CDWN_DISABLE;
-		cdm_cfg->v_cdwn_type = CDM_CDWN_DISABLE;
-		break;
-	case SDE_CHROMA_H2V1:
-		cdm_cfg->h_cdwn_type = CDM_CDWN_COSITE;
-		cdm_cfg->v_cdwn_type = CDM_CDWN_DISABLE;
-		break;
-	case SDE_CHROMA_420:
-		cdm_cfg->h_cdwn_type = CDM_CDWN_COSITE;
-		cdm_cfg->v_cdwn_type = CDM_CDWN_OFFSITE;
-		break;
-	case SDE_CHROMA_H1V2:
-	default:
-		SDE_ERROR("[enc:%d wb:%d] unsupported chroma sampling type\n",
-				DRMID(phys_enc->parent), WBID(wb_enc));
-		cdm_cfg->h_cdwn_type = CDM_CDWN_DISABLE;
-		cdm_cfg->v_cdwn_type = CDM_CDWN_DISABLE;
-		break;
-	}
-
-	SDE_DEBUG("[enc:%d wb:%d] cdm_enable:%d,%d,%X,%d,%d,%d,%d]\n",
-		DRMID(phys_enc->parent), WBID(wb_enc), cdm_cfg->output_width,
-		cdm_cfg->output_height, cdm_cfg->output_fmt->base.pixel_format,
-		cdm_cfg->output_type, cdm_cfg->output_bit_depth,
-		cdm_cfg->h_cdwn_type, cdm_cfg->v_cdwn_type);
-
-	if (hw_cdm && hw_cdm->ops.setup_csc_data) {
-		ret = hw_cdm->ops.setup_csc_data(hw_cdm, &sde_encoder_phys_wb_rgb2yuv_601l);
-		if (ret < 0) {
-			SDE_ERROR("[enc:%d wb:%d] failed to setup CSC; ret:%d\n",
-					DRMID(phys_enc->parent), WBID(wb_enc), ret);
-			return;
-		}
-	}
-
-	if (hw_cdm && hw_cdm->ops.setup_cdwn) {
-		ret = hw_cdm->ops.setup_cdwn(hw_cdm, cdm_cfg);
-		if (ret < 0) {
-			SDE_ERROR("[enc:%d wb:%d] failed to setup CDWN; ret:%d\n",
-					DRMID(phys_enc->parent), WBID(wb_enc), ret);
-			return;
-		}
-	}
-
-	if (hw_cdm && hw_pp && hw_cdm->ops.enable) {
-		cdm_cfg->pp_id = hw_pp->idx;
-		ret = hw_cdm->ops.enable(hw_cdm, cdm_cfg);
-		if (ret < 0) {
-			SDE_ERROR("[enc:%d wb:%d] failed to enable CDM; ret:%d\n",
-					DRMID(phys_enc->parent), WBID(wb_enc), ret);
-			return;
-		}
-	}
 }
 
 static void _sde_enc_phys_wb_get_out_resolution(struct drm_crtc_state *crtc_state,
@@ -1532,7 +1410,8 @@ static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 
 	sde_encoder_phys_wb_set_qos(phys_enc);
 
-	sde_encoder_phys_setup_cdm(phys_enc, fb, wb_enc->wb_fmt, wb_roi);
+	sde_encoder_phys_setup_cdm(phys_enc, wb_enc->wb_fmt,
+		CDM_CDWN_OUTPUT_WB, wb_roi);
 
 	sde_encoder_phys_wb_setup_fb(phys_enc, fb, wb_roi, out_width, out_height);
 

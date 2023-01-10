@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -356,6 +356,7 @@ struct sde_encoder_phys {
 	wait_queue_head_t pending_kickoff_wq;
 	u32 kickoff_timeout_ms;
 	struct sde_encoder_irq irq[INTR_IDX_MAX];
+	enum sde_csc_type enc_cdm_csc;
 	bool has_intf_te;
 	bool cont_splash_enabled;
 	bool in_clone_mode;
@@ -374,11 +375,13 @@ static inline int sde_encoder_phys_inc_pending(struct sde_encoder_phys *phys)
  * struct sde_encoder_phys_vid - sub-class of sde_encoder_phys to handle video
  *	mode specific operations
  * @base:	Baseclass physical encoder structure
+ * @hw_intf:    Hardware interface to the intf registers
  * @timing_params: Current timing parameter
  * @error_count: Number of consecutive kickoffs that experienced an error
  */
 struct sde_encoder_phys_vid {
 	struct sde_encoder_phys base;
+	struct sde_hw_intf *hw_intf;
 	struct intf_timing_params timing_params;
 	int error_count;
 };
@@ -548,8 +551,10 @@ struct sde_encoder_phys *sde_encoder_phys_wb_init(
 #endif /* CONFIG_DRM_SDE_WB */
 
 void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc,
-		struct drm_framebuffer *fb, const struct sde_format *format,
-		struct sde_rect *wb_roi);
+		const struct sde_format *format, const u32 output_type,
+		struct sde_rect *roi);
+
+void sde_encoder_phys_destroy_cdm(struct sde_encoder_phys *phys_enc);
 
 /**
  * sde_encoder_helper_get_pp_line_count - pingpong linecount helper function

@@ -1861,6 +1861,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.get_info   = dp_connector_get_info,
 		.get_mode_info  = dp_connector_get_mode_info,
 		.post_open  = dp_connector_post_open,
+		.mode_needs_full_range = dp_connector_mode_needs_full_range,
 		.check_status = NULL,
 		.set_colorspace = dp_connector_set_colorspace,
 		.config_hdr = dp_connector_config_hdr,
@@ -1874,7 +1875,9 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.set_allowed_mode_switch = NULL,
 		.set_dyn_bit_clk = NULL,
 		.update_transfer_time = NULL,
+		.get_csc_type = dp_connector_get_csc_type,
 	};
+
 	struct msm_display_info info;
 	struct drm_encoder *encoder;
 	void *display, *connector;
@@ -2081,6 +2084,8 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			}
 			priv->encoders[priv->num_encoders++] = encoder;
 		}
+
+		sde_kms->cdm_capability = dp_connector_yuv_support(display);
 	}
 
 	return 0;
