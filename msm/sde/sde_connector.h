@@ -86,6 +86,14 @@ struct sde_connector_ops {
 			const struct msm_resource_caps_info *avail_res);
 
 	/**
+	 * mode_needs_full_range - does the mode need full range
+	 * quantization
+	 * @display: Pointer to private display structure
+	 * Returns: true or false based on whether full range is needed
+	 */
+	bool (*mode_needs_full_range)(void *display);
+
+	/**
 	 * update_pps - update pps command for the display panel
 	 * @connector: Pointer to drm connector structure
 	 * @pps_cmd: Pointer to pps command
@@ -218,6 +226,16 @@ struct sde_connector_ops {
 	 * @enable: State of clks
 	 */
 	int (*clk_ctrl)(void *handle, u32 type, u32 state);
+
+	/**
+	 * get_csc_type - returns the CSC type to be used
+	 * by the CDM block based on HDR state
+	 * @connector: Pointer to drm connector structure
+	 * @display: Pointer to private display structure
+	 * Returns: type of CSC matrix to be used
+	 */
+	enum sde_csc_type (*get_csc_type)(struct drm_connector *connector,
+		void *display);
 
 	/**
 	 * set_power - update dpms setting
@@ -534,6 +552,8 @@ struct sde_connector_dyn_hdr_metadata {
  * @cmd_rx_buf: the return buffer of response of command transfer
  * @rx_len: the length of dcs command received buffer
  * @cached_edid: cached edid data for the connector
+ * @bool rgb_qs: Flag to indicate if connector supports quantization select in rgb format
+ * @bool yuv_qs: Flag to indicate if connector supports quantization select in yuv format
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -610,6 +630,9 @@ struct sde_connector {
 	int rx_len;
 
 	struct edid *cached_edid;
+
+	bool rgb_qs;
+	bool yuv_qs;
 };
 
 /**
@@ -749,6 +772,30 @@ static inline uint64_t sde_connector_get_topology_name(
 	return sde_connector_get_property(connector->state,
 			CONNECTOR_PROP_TOPOLOGY_NAME);
 }
+
+/**
+ * sde_connector_mode_needs_full_range - query quantization type
+ * for the connector mode
+ * @connector: pointer to sde connector object
+ * Returns: true or false based on connector mode
+ */
+bool sde_connector_mode_needs_full_range(struct drm_connector *connector);
+
+/**
+ * sde_connector_mode_is_cea_mode - query if this mode is CE or IT
+ * video format
+ * @connector: pointer to drm connector object
+ * Returns: true of false based on CE or IT video format mode
+ */
+bool sde_connector_mode_is_cea_mode(struct drm_connector *connector);
+
+/**
+ * sde_connector_get_csc_type - query csc type
+ * to be used for the connector
+ * @connector: Pointer to drm connector object
+ * Returns: csc type based on connector HDR state
+ */
+enum sde_csc_type sde_connector_get_csc_type(struct drm_connector *conn);
 
 /**
  * sde_connector_get_old_topology_name - helper accessor to retrieve
@@ -1200,6 +1247,7 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector);
  */
 int sde_connector_get_panel_vfp(struct drm_connector *connector,
 	struct drm_display_mode *mode);
+
 /**
  * sde_connector_esd_status - helper function to check te status
  * @connector: Pointer to DRM connector object
@@ -1227,5 +1275,11 @@ void sde_connector_send_switch_cmd(struct drm_connector *connector);
  * @conn: Pointer to drm_connector struct
  */
 void sde_connector_post_switch_cmd(struct drm_connector *connector);
+
+/**
+ * sde_connector_set_colorspace - sets colorspace on the connector
+ * @connector: pointer to SDE connector object
+ */
+void sde_connector_set_colorspace(struct sde_connector *connector);
 
 #endif /* _SDE_CONNECTOR_H_ */

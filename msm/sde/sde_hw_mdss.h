@@ -487,6 +487,22 @@ enum sde_3d_blend_mode {
 	BLEND_3D_MAX
 };
 
+/**
+ * enum sde_csc_type
+ * Color space conversion matrix type
+ */
+enum sde_csc_type {
+	SDE_CSC_RGB2YUV_601L,
+	SDE_CSC_RGB2YUV_601FR,
+	SDE_CSC_RGB2YUV_709L,
+	SDE_CSC_RGB2YUV_709FR,
+	SDE_CSC_RGB2YUV_2020L,
+	SDE_CSC_RGB2YUV_2020FR,
+	SDE_CSC_RGB2RGB_L,
+	SDE_CSC_RGB2RGB_FR,
+	SDE_MAX_CSC
+};
+
 /** struct sde_format - defines the format configuration which
  * allows SDE HW to correctly fetch and decode the format
  * @base: base msm_format struture containing fourcc code
