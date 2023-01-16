@@ -3324,6 +3324,8 @@ static int sde_dsc_parse_dt(struct device_node *np,
 						&dsc->features);
 			if (sde_cfg->has_reduced_ob_max)
 				set_bit(SDE_DSC_REDUCED_OB_MAX, &dsc->features);
+			if (SDE_HW_MAJOR(sde_cfg->hwversion) >= SDE_HW_MAJOR(SDE_HW_VER_910))
+				set_bit(SDE_DSC_4HS, &dsc->features);
 		} else {
 			set_bit(SDE_DSC_HW_REV_1_1, &dsc->features);
 		}
@@ -5413,6 +5415,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->syscache_supported = true;
 		set_bit(SDE_MDP_LLCC_DISP_LR, &sde_cfg->mdp[0].features);
 	} else if (IS_ANORAK_TARGET(hw_rev)) {
+		sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
 		sde_cfg->has_wb_ubwc = true;
 		sde_cfg->has_qsync = true;
 		sde_cfg->perf.min_prefill_lines = 60;

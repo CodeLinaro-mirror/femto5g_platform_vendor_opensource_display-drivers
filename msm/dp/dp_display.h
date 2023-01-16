@@ -11,6 +11,7 @@
 #include <drm/sde_drm.h>
 
 #include "dp_panel.h"
+#include "dp_parser.h"
 
 #define MAX_DP_ACTIVE_DISPLAY	8
 
@@ -53,6 +54,7 @@ struct dp_display {
 	void *base_dp_panel;
 	bool is_sst_connected;
 	bool is_mst_supported;
+	bool is_edp;
 	bool dsc_cont_pps;
 	u32 max_pclk_khz;
 	void *dp_mst_prv_info;
@@ -112,6 +114,11 @@ struct dp_display {
 	int (*get_available_dp_resources)(struct dp_display *dp_display,
 			const struct msm_resource_caps_info *avail_res,
 			struct msm_resource_caps_info *max_dp_avail_res);
+	int (*get_display_type)(struct dp_display *dp_display,
+			const char **display_type);
+	int (*mst_get_fixed_topology_display_type)(struct dp_display *dp_display,
+			u32 strm_id, const char **display_type);
+	int (*edp_detect)(struct dp_display *dp_display);
 };
 
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)

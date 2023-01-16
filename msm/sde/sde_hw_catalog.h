@@ -491,6 +491,7 @@ enum {
  * @SDE_DSC_REDUCED_OB_MAX,	DSC size is limited to 10k
  * @SDE_DSC_ENC,                DSC encoder sub block
  * @SDE_DSC_CTL,                DSC ctl sub block
+ * @SDE_DSC_4HS,                Dedicated DSC 4HS config registers
  * @SDE_DSC_MAX
  */
 enum {
@@ -501,6 +502,7 @@ enum {
 	SDE_DSC_REDUCED_OB_MAX,
 	SDE_DSC_ENC,
 	SDE_DSC_CTL,
+	SDE_DSC_4HS,
 	SDE_DSC_MAX
 };
 
