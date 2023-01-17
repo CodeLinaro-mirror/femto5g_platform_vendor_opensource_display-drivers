@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -680,6 +680,22 @@ static inline bool sde_encoder_is_widebus_enabled(struct drm_encoder *drm_enc)
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	return sde_enc->mode_info.wide_bus_en;
+}
+
+/*
+ * sde_encoder_get_pclk_factor - check the value of pclk_factor for current mode
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return: the value of pclk_factor for current mode
+ */
+static inline u32 sde_encoder_get_pclk_factor(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	return sde_enc->mode_info.pclk_factor;
 }
 
 /*

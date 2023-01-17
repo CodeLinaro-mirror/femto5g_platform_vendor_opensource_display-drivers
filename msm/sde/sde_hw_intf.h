@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -34,6 +34,7 @@ struct intf_timing_params {
 	u32 underflow_clr;
 	u32 hsync_skew;
 	u32 v_front_porch_fixed;
+	u32 pclk_factor;
 	bool wide_bus_en;
 	bool compression_en;
 	u32 extra_dto_cycles;	/* for DP only */

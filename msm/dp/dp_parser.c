@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_gpio.h>
@@ -821,8 +821,12 @@ static void dp_parser_widebus(struct dp_parser *parser)
 	parser->has_widebus = of_property_read_bool(dev->of_node,
 			"qcom,widebus-enable");
 
+	parser->has_4ppc_enabled = of_property_read_bool(dev->of_node, "qcom,4ppc-enable");
+
 	DP_DEBUG("widebus parsing successful. widebus:%d\n",
 			parser->has_widebus);
+
+	DP_DEBUG("4ppc enablement : %d\n", parser->has_4ppc_enabled);
 }
 
 static int dp_parser_parse(struct dp_parser *parser)

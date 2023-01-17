@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 
@@ -1314,8 +1314,7 @@ static void dp_catalog_panel_config_msa(struct dp_catalog_panel *panel,
 
 	DP_DEBUG("rate = %d\n", rate);
 
-	if (panel->widebus_en)
-		mvid <<= 1;
+	mvid = mvid * (panel->pclk_factor);
 
 	if (link_rate_hbr2 == rate)
 		nvid *= 2;

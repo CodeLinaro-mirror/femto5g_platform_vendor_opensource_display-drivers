@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "dp_panel.h"
@@ -206,6 +206,21 @@ struct tu_algo_data {
 	s64 diff_abs_fp;
 	int second_loop_set;
 	s64 ratio;
+};
+
+struct dp_dsc_dto_params {
+	u32 tgt_bpp;
+	u32 src_bpp;
+	u32 num;
+	u32 denom;
+};
+
+const struct dp_dsc_dto_params dp_dsc_num_denom[] = {
+	{12,   24,   1,   2},
+	{15,   30,   5,   8},
+	{8,    24,   1,   3},
+	{8,    30,   1,   3},
+	{10,   30,   5,  12}
 };
 
 /**
@@ -1174,25 +1189,33 @@ static void dp_panel_config_tr_unit(struct dp_panel *dp_panel)
 	catalog->update_transfer_unit(catalog);
 }
 
-static void dp_panel_get_dto_params(u32 src_bpp, u32 tgt_bpp, u32 *num, u32 *denom)
+static void dp_panel_get_dto_params(struct dp_panel *dp_panel, struct dp_dsc_dto_params *dsc_params)
 {
-	if ((tgt_bpp == 12) && (src_bpp == 24)) {
-		*num = 1;
-		*denom = 2;
-	} else if ((tgt_bpp == 15) && (src_bpp == 30)) {
-		*num = 5;
-		*denom = 8;
-	} else if ((tgt_bpp == 8) && ((src_bpp == 24) || (src_bpp == 30))) {
-		*num = 1;
-		*denom = 3;
-	} else if ((tgt_bpp == 10) && (src_bpp == 30)) {
-		*num = 5;
-		*denom = 12;
-	} else {
-		DP_ERR("dto params not found\n");
-		*num = 0;
-		*denom = 1;
+	int i;
+	u32 num = 0, denom = 1;
+	const struct dp_dsc_dto_params *ratio;
+
+	for (i = 0; i < ARRAY_SIZE(dp_dsc_num_denom); i++) {
+		ratio = &dp_dsc_num_denom[i];
+		if ((dsc_params->src_bpp == ratio->src_bpp) &&
+			(dsc_params->tgt_bpp == ratio->tgt_bpp)) {
+			num = ratio->num;
+			denom = ratio->denom;
+			break;
+		}
 	}
+
+	if ((dp_panel->pclk_factor) == 4) {
+		num = num * 2;
+		if(num > denom) {
+			DP_ERR("dto params not supported\n");
+			num = 0;
+			denom = 1;
+		}
+	}
+
+	dsc_params->num = num;
+	dsc_params->denom = denom;
 }
 
 static void dp_panel_dsc_prepare_pps_packet(struct dp_panel *dp_panel)
@@ -1235,7 +1258,8 @@ static void dp_panel_dsc_prepare_pps_packet(struct dp_panel *dp_panel)
 	}
 }
 
-static void _dp_panel_dsc_get_num_extra_pclk(struct msm_compression_info *comp_info)
+static void _dp_panel_dsc_get_num_extra_pclk(struct dp_panel *dp_panel,
+		struct msm_compression_info *comp_info)
 {
 	unsigned int dto_n = 0, dto_d = 0, remainder;
 	int ack_required, last_few_ack_required, accum_ack;
@@ -1243,9 +1267,15 @@ static void _dp_panel_dsc_get_num_extra_pclk(struct msm_compression_info *comp_i
 	struct msm_display_dsc_info *dsc = &comp_info->dsc_info;
 	int start, temp, line_width = dsc->config.pic_width/2;
 	s64 temp1_fp, temp2_fp;
+	struct dp_dsc_dto_params dsc_params;
 
-	dp_panel_get_dto_params(comp_info->src_bpp, comp_info->tgt_bpp, &dto_n, &dto_d);
+	dsc_params.src_bpp = comp_info->src_bpp;
+	dsc_params.tgt_bpp = comp_info->tgt_bpp;
 
+	dp_panel_get_dto_params(dp_panel, &dsc_params);
+
+	dto_n = dsc_params.num;
+	dto_d = dsc_params.denom;
 	ack_required = dsc->pclk_per_line;
 
 	/* number of pclk cycles left outside of the complete DTO set */
@@ -1363,7 +1393,7 @@ static void dp_panel_dsc_pclk_param_calc(struct dp_panel *dp_panel,
 	temp2_fp = drm_fixp_mul(dsc_byte_count_fp, temp1_fp);
 	dsc->pclk_per_line = fixp2int_ceil(temp2_fp);
 
-	_dp_panel_dsc_get_num_extra_pclk(comp_info);
+	_dp_panel_dsc_get_num_extra_pclk(dp_panel, comp_info);
 	dsc->pclk_per_line--;
 
 	_dp_panel_dsc_bw_overhead_calc(dp_panel, dsc, dp_mode, dsc_byte_count);
@@ -1889,6 +1919,13 @@ skip_edid:
 	dp_panel->dsc_feature_enable = panel->parser->dsc_feature_enable;
 	dp_panel->fec_feature_enable = panel->parser->fec_feature_enable;
 
+	if ((dp_panel->widebus_en) && (panel->parser->has_4ppc_enabled))
+		dp_panel->pclk_factor = 4;
+	else if (dp_panel->widebus_en)
+		dp_panel->pclk_factor = 2;
+	else
+		dp_panel->pclk_factor = 1;
+
 	dp_panel->fec_en = false;
 	dp_panel->dsc_en = false;
 
@@ -2239,6 +2276,7 @@ static void dp_panel_config_dsc(struct dp_panel *dp_panel, bool enable)
 	struct dp_panel_info *pinfo;
 	struct msm_compression_info *comp_info;
 	struct dp_dsc_cfg_data *dsc;
+	struct dp_dsc_dto_params dsc_params;
 	int rc;
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
@@ -2247,6 +2285,9 @@ static void dp_panel_config_dsc(struct dp_panel *dp_panel, bool enable)
 	dsc = &catalog->dsc;
 	pinfo = &dp_panel->pinfo;
 	comp_info = &pinfo->comp_info;
+
+	dsc_params.src_bpp = comp_info->src_bpp;
+	dsc_params.tgt_bpp = comp_info->tgt_bpp;
 
 	if (comp_info->comp_type == MSM_DISPLAY_COMPRESSION_DSC && enable) {
 		rc = sde_dsc_create_pps_buf_cmd(&comp_info->dsc_info,
@@ -2267,8 +2308,9 @@ static void dp_panel_config_dsc(struct dp_panel *dp_panel, bool enable)
 		dsc->dsc_en = true;
 		dsc->dto_en = true;
 		dsc->continuous_pps = dp_panel->dsc_continuous_pps;
-		dp_panel_get_dto_params(comp_info->src_bpp, comp_info->tgt_bpp, &dsc->dto_n,
-				&dsc->dto_d);
+		dp_panel_get_dto_params(dp_panel, &dsc_params);
+		dsc->dto_n = dsc_params.num;
+		dsc->dto_d = dsc_params.denom;
 	} else {
 		dsc->dsc_en = false;
 		dsc->dto_en = false;
@@ -2800,6 +2842,7 @@ static void dp_panel_config_msa(struct dp_panel *dp_panel)
 	catalog = panel->catalog;
 
 	catalog->widebus_en = dp_panel->widebus_en;
+	catalog->pclk_factor = dp_panel->pclk_factor;
 
 	rate = drm_dp_bw_code_to_link_rate(panel->link->link_params.bw_code);
 	stream_rate_khz = dp_panel->pinfo.pixel_clk_khz;
@@ -3121,6 +3164,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->read_mst_cap = dp_panel_read_mst_cap;
 	dp_panel->convert_to_dp_mode = dp_panel_convert_to_dp_mode;
 	dp_panel->update_pps = dp_panel_update_pps;
+	dp_panel->pclk_factor = 1;
 
 	sde_conn = to_sde_connector(dp_panel->connector);
 	sde_conn->drv_panel = dp_panel;
