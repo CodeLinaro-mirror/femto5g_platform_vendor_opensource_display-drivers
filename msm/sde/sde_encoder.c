@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -422,6 +422,18 @@ int sde_encoder_in_cont_splash(struct drm_encoder *drm_enc)
 		sde_enc->cur_master->cont_splash_enabled;
 }
 
+static u32 sde_encoder_helper_get_ctl_flush(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_hw_ctl *hw_ctl;
+
+	hw_ctl = phys_enc->hw_ctl;
+
+	if (!hw_ctl || !hw_ctl->ops.get_flush_register)
+		return 0;
+
+	return hw_ctl->ops.get_flush_register(hw_ctl);
+}
+
 void sde_encoder_helper_report_irq_timeout(struct sde_encoder_phys *phys_enc,
 		enum sde_intr_idx intr_idx)
 {
@@ -497,18 +509,20 @@ int sde_encoder_helper_wait_for_irq(struct sde_encoder_phys *phys_enc,
 				irq->irq_idx, true);
 		if (irq_status) {
 			unsigned long flags;
+			u32 flush_register;
 
+			flush_register = sde_encoder_helper_get_ctl_flush(phys_enc);
 			SDE_EVT32(DRMID(phys_enc->parent), intr_idx,
 				irq->hw_idx, irq->irq_idx,
 				phys_enc->hw_pp->idx - PINGPONG_0,
-				atomic_read(wait_info->atomic_cnt));
+				atomic_read(wait_info->atomic_cnt), flush_register);
 			SDE_DEBUG_PHYS(phys_enc,
 					"done but irq %d not triggered\n",
 					irq->irq_idx);
 			local_irq_save(flags);
 			irq->cb.func(phys_enc, irq->irq_idx);
 			local_irq_restore(flags);
-			ret = 0;
+			ret = flush_register ? ret : 0;
 		} else {
 			ret = -ETIMEDOUT;
 			SDE_EVT32(DRMID(phys_enc->parent), intr_idx,

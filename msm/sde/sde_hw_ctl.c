@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1295,6 +1295,11 @@ static inline int sde_hw_ctl_get_hw_fence_status(struct sde_hw_ctl *ctx)
 	return SDE_REG_READ(&ctx->hw, CTL_HW_FENCE_STATUS);
 }
 
+static inline int sde_hw_ctl_get_hw_fence_ctrl(struct sde_hw_ctl *ctx)
+{
+	return SDE_REG_READ(&ctx->hw, CTL_HW_FENCE_CTRL);
+}
+
 static inline void sde_hw_ctl_hw_fence_ctrl(struct sde_hw_ctl *ctx, bool sw_override_set,
 		bool  sw_override_clear, u32 mode)
 {
@@ -1370,6 +1375,7 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 
 	if (cap & BIT(SDE_CTL_HW_FENCE)) {
 		ops->hw_fence_ctrl = sde_hw_ctl_hw_fence_ctrl;
+		ops->get_hw_fence_ctrl = sde_hw_ctl_get_hw_fence_ctrl;
 		ops->setup_hw_input_fence = sde_hw_ctl_update_input_fence;
 		ops->hw_fence_trigger_sw_override = sde_hw_ctl_trigger_sw_override;
 		ops->get_hw_fence_status = sde_hw_ctl_get_hw_fence_status;
