@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -70,7 +70,7 @@
 /* defines for secure channel call */
 #define MEM_PROTECT_SD_CTRL_SWITCH 0x18
 #define MDP_DEVICE_ID            0x1A
-
+#define MDP_MASTER_CORE          0
 #define DEMURA_REGION_NAME_MAX      32
 
 EXPORT_TRACEPOINT_SYMBOL(tracing_mark_write);
@@ -884,7 +884,8 @@ static int _sde_kms_splash_mem_put(struct sde_kms *sde_kms,
 	struct msm_mmu *mmu = NULL;
 	int rc = 0;
 
-	if (!sde_kms || !sde_kms->aspace[0] || !sde_kms->aspace[0]->mmu) {
+	if (!sde_kms || !sde_kms->aspace[0] || !sde_kms->aspace[0]->mmu ||
+		!sde_kms->dev || !sde_kms->dev->primary) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -900,7 +901,7 @@ static int _sde_kms_splash_mem_put(struct sde_kms *sde_kms,
 	SDE_DEBUG("splash base:%lx refcnt:%d\n",
 			splash->splash_buf_base, splash->ref_cnt);
 
-	if (!splash->ref_cnt) {
+	if (!splash->ref_cnt && (sde_kms->dev->primary->index == MDP_MASTER_CORE)) {
 		mmu->funcs->one_to_one_unmap(mmu, splash->splash_buf_base,
 				splash->splash_buf_size);
 		rc = _sde_kms_release_shared_buffer(splash->splash_buf_base,
