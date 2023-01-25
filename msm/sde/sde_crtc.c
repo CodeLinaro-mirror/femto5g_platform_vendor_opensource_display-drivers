@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -3692,6 +3692,9 @@ static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
 	struct sde_hw_ctl *ctl;
 	struct sde_kms *sde_kms;
 	struct sde_crtc_state *cstate;
+	struct sde_splash_display *splash_display;
+	bool cont_splash_enabled = false;
+	int i;
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -3709,6 +3712,13 @@ static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
 
 	ctl = sde_crtc->mixers[0].hw_ctl;
 
+	for (i = 0; i < MAX_DSI_DISPLAYS; i++) {
+		splash_display = &sde_kms->splash_data.splash_display[i];
+		if (splash_display && splash_display->cont_splash_enabled &&
+			crtc == splash_display->encoder->crtc)
+			cont_splash_enabled = true;
+	}
+
 	if (!ctl || !ctl->ops.setup_hw_input_fence || !ctl->ops.hw_fence_ctrl ||
 		!ctl->ops.hw_fence_trigger_sw_override) {
 		SDE_DEBUG("ctl ops not defined for hw fence\n");
@@ -3719,7 +3729,7 @@ static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
 	ctl->ops.hw_fence_ctrl(ctl, true, true, 1);
 
 	if (crtc->state->active_changed || sde_crtc_get_property(cstate,
-		CRTC_PROP_SW_OVERRIDE_HW_FENCE))
+		CRTC_PROP_SW_OVERRIDE_HW_FENCE) || cont_splash_enabled)
 		ctl->ops.hw_fence_trigger_sw_override(ctl);
 }
 
