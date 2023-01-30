@@ -907,6 +907,45 @@ static void sde_encoder_phys_vid_get_hw_resources(
 	hw_res->intfs[phys_enc->intf_idx - INTF_0] = INTF_MODE_VIDEO;
 }
 
+static bool sde_encoder_handle_ipcc_fence_timeout(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_hw_ctl *hw_ctl;
+	u32 flush_register = 0, fence_ready = 0, fence_ctrl = 0;
+	bool ret = false;
+
+	if (!phys_enc || !phys_enc->hw_ctl) {
+		SDE_ERROR("invalid params\n");
+		return ret;
+	}
+
+	hw_ctl = phys_enc->hw_ctl;
+	if (!(sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
+		sde_kms_hw_fence_enabled(phys_enc->sde_kms) &&
+		atomic_read(&phys_enc->pending_kickoff_cnt)))
+		return ret;
+
+	if (hw_ctl->ops.get_flush_register)
+		flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
+
+	if (hw_ctl->ops.get_hw_fence_status)
+		fence_ready = hw_ctl->ops.get_hw_fence_status(hw_ctl);
+
+	if (hw_ctl->ops.get_hw_fence_ctrl)
+		fence_ctrl = hw_ctl->ops.get_hw_fence_ctrl(hw_ctl);
+
+	if (flush_register && (fence_ctrl & BIT(0)) && !fence_ready) {
+		if (hw_ctl->ops.hw_fence_trigger_sw_override) {
+			hw_ctl->ops.hw_fence_trigger_sw_override(hw_ctl);
+			/* CTL Flush needs vsync as well to be picked */
+			ret = true;
+		}
+	}
+
+	SDE_EVT32(flush_register, fence_ctrl, fence_ready, ret);
+
+	return ret;
+}
+
 static int _sde_encoder_phys_vid_wait_for_vblank(
 		struct sde_encoder_phys *phys_enc, bool notify)
 {
@@ -932,16 +971,22 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 	ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC,
 			&wait_info);
 
-	if (notify && (ret == -ETIMEDOUT) &&
-	    atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0) &&
-	    phys_enc->parent_ops.handle_frame_done) {
-		phys_enc->parent_ops.handle_frame_done(
-			phys_enc->parent, phys_enc, event);
+	if (ret == -ETIMEDOUT) {
+		if (sde_encoder_handle_ipcc_fence_timeout(phys_enc))
+			ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC,
+					&wait_info);
 
-		if (sde_encoder_recovery_events_enabled(phys_enc->parent))
-			sde_connector_event_notify(conn,
-				DRM_EVENT_SDE_HW_RECOVERY,
-				sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
+		if (notify && (ret == -ETIMEDOUT) &&
+			atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0) &&
+			phys_enc->parent_ops.handle_frame_done) {
+			phys_enc->parent_ops.handle_frame_done(
+				phys_enc->parent, phys_enc, event);
+
+			if (sde_encoder_recovery_events_enabled(phys_enc->parent))
+				sde_connector_event_notify(conn,
+					DRM_EVENT_SDE_HW_RECOVERY,
+					sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
+		}
 	}
 
 	SDE_EVT32(DRMID(phys_enc->parent), event, notify, ret,
