@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -674,5 +674,44 @@ int dsi_display_mgr_panel_post_unprepare(struct dsi_display *display)
 error_display_get:
 	mutex_unlock(&disp_mgr.disp_mgr_mutex);
 
+	return rc;
+}
+
+int dsi_display_config_mgr_for_cont_splash(struct dsi_display *display)
+{
+	int rc = 0;
+	struct dsi_display *m_display;
+	struct dsi_display_ctrl *m_ctrl;
+	struct dsi_pll_resource *pll_res;
+
+	if (!display) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	if (!display->panel->ctl_op_sync)
+		return 0;
+
+	mutex_lock(&disp_mgr.disp_mgr_mutex);
+
+	m_display = display_manager_get_master();
+	if (!m_display) {
+		rc = -EINVAL;
+		goto error;
+	}
+
+	m_ctrl = &m_display->ctrl[m_display->clk_master_idx];
+	pll_res = m_ctrl->phy->pll;
+	if (!pll_res) {
+		DSI_ERR("[%s] PLL res not found\n", display->name);
+		rc = -EINVAL;
+		goto error;
+	}
+
+	pll_res->refcount++;
+
+	display->panel->powered = true;
+error:
+	mutex_unlock(&disp_mgr.disp_mgr_mutex);
 	return rc;
 }
