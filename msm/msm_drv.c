@@ -2,7 +2,7 @@
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -473,6 +473,35 @@ static int msm_component_bind_all(struct device *dev,
 }
 #endif
 
+static ssize_t init_complete_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct msm_drm_private *priv;
+	struct drm_device *ddev;
+
+	ddev = dev_get_drvdata(dev);
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
+
+	if (priv->init_comp == 1)
+		return snprintf(buf, sizeof(priv->init_comp), "%d\n", priv->init_comp);
+	else
+		return snprintf(buf, sizeof(unsigned int), "0");
+}
+
+static DEVICE_ATTR_RO(init_complete);
+
+static struct attribute *init_complete_fs_attrs[] = {
+	&dev_attr_init_complete.attr,
+	NULL
+};
+
+static struct attribute_group init_complete_attr_group = {
+	.attrs = init_complete_fs_attrs
+};
+
 static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -496,6 +525,8 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 		ret = -ENOMEM;
 		goto priv_alloc_fail;
 	}
+
+	priv->init_comp = 0;
 
 	ddev->dev_private = priv;
 	priv->dev = ddev;
@@ -546,6 +577,11 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 		kms = ERR_PTR(-ENODEV);
 		break;
 	}
+
+	/* Create the init_complete file in the module */
+	ret = sysfs_create_group(&pdev->dev.kobj, &init_complete_attr_group);
+	if (ret)
+		pr_err("Error: Unable to register msm_lease sysfs lease\n");
 
 	if (IS_ERR(kms)) {
 		/*
@@ -740,6 +776,9 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 
 	drm_kms_helper_poll_init(ddev);
 	place_marker("M - DISPLAY Driver Ready");
+
+	/* Set the flag in the init_complete file in msm_drm sysfs to 1 */
+	priv->init_comp = 1;
 
 	return 0;
 
