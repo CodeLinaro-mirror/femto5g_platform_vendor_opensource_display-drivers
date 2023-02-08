@@ -468,7 +468,6 @@ struct sde_crtc {
 	u32 hwfence_out_fences_skip;
 
 	int base_reset;
-
 	struct sde_post_commit_fence_context post_commit_fence_ctx;
 	struct sde_misr_crtc_data roi_misr_data;
 };
@@ -575,7 +574,6 @@ struct sde_crtc_state {
 	u32 padding_height;
 	u32 padding_active;
 	u32 padding_dummy;
-
 	struct sde_misr_state misr_state;
 	uint32_t post_commit_fence_mask;
 };
