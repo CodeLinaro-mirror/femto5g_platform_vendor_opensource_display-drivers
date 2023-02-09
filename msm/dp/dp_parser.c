@@ -859,7 +859,7 @@ static int dp_parser_bond(struct dp_parser *parser)
 {
 	struct device *dev = &parser->pdev->dev;
 	int count, i, j;
-	int rc;
+	int rc = -EINVAL;
 	struct {
 		const char *name;
 		enum dp_bond_type type;

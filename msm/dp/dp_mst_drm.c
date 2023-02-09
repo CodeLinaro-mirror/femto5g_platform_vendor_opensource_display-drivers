@@ -1932,6 +1932,7 @@ static int dp_mst_connector_update_pps(struct drm_connector *connector,
 	struct dp_display *dp_disp;
 	struct dp_mst_bridge *bridge;
 	struct dp_mst_private *mst;
+	struct drm_bridge *drm_bridge;
 	int i, ret;
 
 	if (!display || !connector || !connector->encoder) {
@@ -1939,8 +1940,10 @@ static int dp_mst_connector_update_pps(struct drm_connector *connector,
 		return -EINVAL;
 	}
 
-	bridge = to_dp_mst_bridge(drm_bridge_chain_get_first_bridge(
-			connector->encoder));
+	drm_bridge = drm_bridge_chain_get_first_bridge(connector->encoder);
+	if (WARN_ON(!drm_bridge))
+		return 0;
+	bridge = to_dp_mst_bridge(drm_bridge);
 	dp_disp = display;
 
 	/* update pps on both connectors for super bridge */
@@ -2180,7 +2183,10 @@ dp_mst_fixed_atomic_best_encoder(struct drm_connector *connector,
 	struct sde_connector *conn = to_sde_connector(connector);
 	struct drm_encoder *enc = NULL;
 	struct dp_mst_bridge_state *bridge_state;
-	u32 i;
+	u32 i = 0;
+
+	if (dp_mst_atomic_find_super_encoder(connector, display, state, &enc))
+		goto end;
 
 	if (dp_mst_atomic_find_super_encoder(connector, display, state, &enc))
 		goto end;
