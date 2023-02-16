@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -8579,6 +8579,8 @@ int dsi_display_enable(struct dsi_display *display)
 	if (is_skip_op_required(display)) {
 
 		dsi_display_config_ctrl_for_cont_splash(display);
+
+		dsi_display_config_mgr_for_cont_splash(display);
 
 		rc = dsi_display_splash_res_cleanup(display);
 		if (rc) {

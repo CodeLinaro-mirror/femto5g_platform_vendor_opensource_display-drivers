@@ -1681,6 +1681,14 @@ static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 				panel->vscext_chaining_supported);
 	}
 
+	/*
+	 * Set eDP link rate to 5.4 Gbps if the dpcd[MAX_LINK_RATE] is 0
+	 * TODO: Get eDP link rates from DPCD 0x10h - 0x1Fh
+	 */
+	if (!dpcd[DP_MAX_LINK_RATE])
+		dpcd[DP_MAX_LINK_RATE] = 20;
+
+
 	link_info->revision = dpcd[DP_DPCD_REV];
 	panel->major = (link_info->revision >> 4) & 0x0f;
 	panel->minor = link_info->revision & 0x0f;
@@ -1919,13 +1927,6 @@ skip_edid:
 	dp_panel->dsc_feature_enable = panel->parser->dsc_feature_enable;
 	dp_panel->fec_feature_enable = panel->parser->fec_feature_enable;
 
-	if ((dp_panel->widebus_en) && (panel->parser->has_4ppc_enabled))
-		dp_panel->pclk_factor = 4;
-	else if (dp_panel->widebus_en)
-		dp_panel->pclk_factor = 2;
-	else
-		dp_panel->pclk_factor = 1;
-
 	dp_panel->fec_en = false;
 	dp_panel->dsc_en = false;
 
@@ -1936,6 +1937,14 @@ skip_edid:
 		if (dp_panel->dsc_feature_enable && dp_panel->fec_en)
 			dp_panel_read_sink_dsc_caps(dp_panel);
 	}
+
+	if ((dp_panel->dsc_en) && (dp_panel->widebus_en)
+				&& (panel->parser->has_4ppc_enabled))
+		dp_panel->pclk_factor = 4;
+	else if (dp_panel->widebus_en)
+		dp_panel->pclk_factor = 2;
+	else
+		dp_panel->pclk_factor = 1;
 
 	DP_INFO("fec_en=%d, dsc_en=%d, widebus_en=%d\n", dp_panel->fec_en,
 			dp_panel->dsc_en, dp_panel->widebus_en);

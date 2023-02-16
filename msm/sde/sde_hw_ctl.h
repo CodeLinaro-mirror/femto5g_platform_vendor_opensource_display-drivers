@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -472,6 +472,13 @@ struct sde_hw_ctl_ops {
 	 * @Return: fence status
 	 */
 	int (*get_hw_fence_status)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * get hw fence ctrl
+	 * @ctx         : ctl path ctx pointer
+	 * @Return: hw fence ctrl
+	 */
+	int (*get_hw_fence_ctrl)(struct sde_hw_ctl *ctx);
 
 	/**
 	 * hw fence control
