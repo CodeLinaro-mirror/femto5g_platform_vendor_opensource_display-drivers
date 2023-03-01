@@ -72,7 +72,7 @@ static u8 const dp_pre_emp_hbr_rbr[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
 	{0x00, 0x0D, 0x14, 0x1A}, /* pe0, 0 db */
 	{0x00, 0x0E, 0x15, 0xFF}, /* pe1, 3.5 db */
 	{0x00, 0x0E, 0xFF, 0xFF}, /* pe2, 6.0 db */
-	{0x03, 0xFF, 0xFF, 0xFF}  /* pe3, 9.5 db */
+	{0x02, 0xFF, 0xFF, 0xFF}  /* pe3, 9.5 db */
 };
 
 /* Using Kailua PHY HPG settings based on HW team recommendations */
