@@ -188,9 +188,25 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 			| DP_IRQ_HPD_INT_STATUS)) && !lphw_hpd->hpd)
 			DP_DEBUG("DP%d connect but no interrupt, hpd isr state: 0x%x\n",
 					lphw_hpd->parser->cell_idx, isr);
-		if (isr & DP_HPD_UNPLUG_INT_STATUS)
-			DP_INFO("DP%d missed disconnect interrupt, hpd isr state: 0x%x\n",
-					lphw_hpd->parser->cell_idx, isr);
+		if (isr & DP_HPD_UNPLUG_INT_STATUS) {
+			if (lphw_hpd->base.hpd_high) {
+				DP_INFO("DP%d missed disconnect interrupt, hpd isr state: 0x%x\n",
+						lphw_hpd->parser->cell_idx, isr);
+				lphw_hpd->hpd = false;
+				lphw_hpd->base.hpd_high = false;
+				lphw_hpd->base.alt_mode_cfg_done = false;
+				lphw_hpd->base.hpd_irq = false;
+
+				rc = queue_work(lphw_hpd->connect_wq,
+						&lphw_hpd->disconnect);
+				if (!rc)
+					DP_DEBUG("DP%d disconnect not queued\n",
+							lphw_hpd->parser->cell_idx);
+			} else {
+				DP_INFO("DP%d missed multiple interrupts, hpd isr state: 0x%x\n",
+						lphw_hpd->parser->cell_idx, isr);
+			}
+		}
 		break;
 	case DP_HPD_STATUS_HPD_IO_GLITCH_COUNT:
 		DP_INFO("DP%d hpd io glich counting, hpd isr state: 0x%x\n",
