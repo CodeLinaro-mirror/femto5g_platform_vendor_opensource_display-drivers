@@ -19,6 +19,7 @@
 #include "sde_plane.h"
 #include "shd_drm.h"
 #include "shd_hw.h"
+#include "sde_roi_misr_helper.h"
 
 #define SDE_ERROR_PHYS(phy_enc, fmt, ...) SDE_ERROR("enc%d intf%d " fmt,\
 		(phy_enc) ? (phy_enc)->parent->base.id : -1, \
@@ -39,8 +40,10 @@ struct sde_encoder_phys_shd {
 	struct sde_encoder_phys base;
 	struct sde_hw_mixer *hw_lm[MAX_MIXERS_PER_CRTC];
 	struct sde_hw_ctl *hw_ctl[MAX_MIXERS_PER_CRTC];
+	struct sde_hw_roi_misr *hw_roi_misr[MAX_MIXERS_PER_CRTC];
 	u32 num_mixers;
 	u32 num_ctls;
+	u32 num_roi_misrs;
 };
 
 #define to_sde_encoder_phys_shd(x) \
@@ -128,6 +131,17 @@ not_flushed:
 	SDE_ATRACE_END("vblank_irq");
 }
 
+static void sde_encoder_phys_shd_roi_misr_irq(void *arg, int irq_idx)
+{
+	struct sde_encoder_phys *phys_enc = arg;
+
+	if (!phys_enc || !sde_encoder_phys_shd_is_master(phys_enc))
+		return;
+
+	if (phys_enc->parent_ops.handle_roi_misr_virt)
+		phys_enc->parent_ops.handle_roi_misr_virt(phys_enc->parent);
+}
+
 static int _sde_encoder_phys_shd_register_irq(struct sde_encoder_phys *phys_enc,
 					      enum sde_intr_idx intr_idx, bool enable)
 {
@@ -150,15 +164,46 @@ void _sde_encoder_phys_shd_setup_irq_hw_idx(struct sde_encoder_phys *phys_enc)
 
 	if (irq->irq_idx < 0)
 		irq->hw_idx = phys_enc->intf_idx;
+
+	if (sde_encoder_phys_shd_is_master(phys_enc))
+		sde_roi_misr_setup_irq_hw_idx(phys_enc);
+}
+
+static int sde_encoder_phys_shd_control_roi_misr_irq(
+		struct sde_encoder_phys *phys_enc, bool enable)
+{
+	int base_irq_idx;
+	int hw_idx;
+	int ret;
+	int i, j;
+
+	if (!sde_encoder_phys_shd_is_master(phys_enc))
+		return 0;
+
+	for (i = 0; i < phys_enc->roi_misr_num; i++) {
+		hw_idx = phys_enc->hw_roi_misr[i]->idx;
+		base_irq_idx = MISR_ROI_MISMATCH_BASE_IDX
+				+ SDE_ROI_MISR_GET_INTR_OFFSET(hw_idx)
+				* ROI_MISR_MAX_ROIS_PER_MISR;
+
+		for (j = 0; j < ROI_MISR_MAX_ROIS_PER_MISR; j++) {
+			ret = sde_roi_misr_irq_control(phys_enc,
+					base_irq_idx, j, enable);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
 }
 
 static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
-					    struct drm_atomic_state *state,
-					    struct shd_display *display)
+		struct drm_atomic_state *state,
+		struct shd_display *display)
 {
 	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_rm *rm;
-	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter;
+	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter, roi_misr_iter;
 	struct drm_encoder *encoder;
 	struct drm_connector_state *conn_state;
 	struct sde_shd_hw_ctl *hw_ctl;
@@ -166,7 +211,7 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 	struct sde_hw_pingpong *hw_pp;
 	struct sde_hw_mixer *sde_hw_lm;
 	struct sde_hw_ctl *sde_hw_ctl;
-
+	struct sde_shd_hw_roi_misr *hw_roi_misr;
 	int i, rc = 0;
 	int num_mixers = 0;
 
@@ -191,6 +236,8 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
 	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
 	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
+	sde_rm_init_hw_iter(&roi_misr_iter, DRMID(encoder),
+			SDE_HW_BLK_ROI_MISR);
 
 	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		/* reserve lm */
@@ -230,6 +277,30 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 		}
 	}
 
+	for (i = 0; i < num_mixers; i++) {
+		/* reserve roi_misr */
+		if (!sde_rm_get_hw(rm, &roi_misr_iter))
+			break;
+		hw_roi_misr = container_of(shd_enc->hw_roi_misr[i],
+				struct sde_shd_hw_roi_misr, base);
+		hw_roi_misr->base = *(struct sde_hw_roi_misr *)roi_misr_iter.hw;
+		hw_roi_misr->orig = (struct sde_hw_roi_misr *)roi_misr_iter.hw;
+		hw_roi_misr->roi_mask = display->misr_roi_mask;
+		sde_shd_hw_roi_misr_init_op(&hw_roi_misr->base);
+
+		SDE_DEBUG("reserve ROI_MISR%d from enc %d to %d\n",
+			hw_roi_misr->base.idx,
+			DRMID(encoder),
+			DRMID(phys_enc->parent));
+
+		rc = sde_rm_ext_blk_create_reserve(rm, state,
+			roi_misr_iter.blk, phys_enc->parent, &hw_roi_misr->base.hw);
+		if (rc) {
+			SDE_ERROR("failed to create & reserve roi_misr\n");
+			break;
+		}
+	}
+
 	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		/* reserve ctl */
 		if (!sde_rm_get_hw(rm,  &ctl_iter))
@@ -257,11 +328,11 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 }
 
 static void _sde_encoder_phys_shd_setup(struct sde_encoder_phys *phys_enc,
-					struct shd_display *display)
+		struct shd_display *display)
 {
 	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_rm *rm;
-	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter;
+	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter, roi_misr_iter;
 
 	struct drm_encoder *encoder;
 	int i;
@@ -273,14 +344,23 @@ static void _sde_encoder_phys_shd_setup(struct sde_encoder_phys *phys_enc,
 	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
 	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
 	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
+	sde_rm_init_hw_iter(&roi_misr_iter, DRMID(encoder),
+			SDE_HW_BLK_ROI_MISR);
 
 	shd_enc->num_mixers = 0;
 	shd_enc->num_ctls = 0;
+	shd_enc->num_roi_misrs = 0;
 
 	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		if (!sde_rm_get_hw(rm, &lm_iter))
 			break;
 		shd_enc->num_mixers++;
+	}
+
+	for (i = 0; i < shd_enc->num_mixers; i++) {
+		if (!sde_rm_get_hw(rm, &roi_misr_iter))
+			break;
+		shd_enc->num_roi_misrs++;
 	}
 
 	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
@@ -291,14 +371,15 @@ static void _sde_encoder_phys_shd_setup(struct sde_encoder_phys *phys_enc,
 }
 
 static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
-					  struct drm_display_mode *mode,
-					  struct drm_display_mode *adj_mode, bool *reinit_mixers)
+		struct drm_display_mode *mode,
+		struct drm_display_mode *adj_mode, bool *reinit_mixers)
 {
 	struct drm_connector *connector;
 	struct shd_display *display;
 	struct drm_encoder *encoder;
 	struct sde_rm_hw_iter iter;
 	struct sde_rm *rm;
+	int i;
 
 	SDE_DEBUG("%d\n", phys_enc->parent->base.id);
 
@@ -348,6 +429,19 @@ static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
 
 		phys_enc->hw_pp = NULL;
 		return;
+	}
+	phys_enc->roi_misr_num = 0;
+	if (sde_encoder_phys_shd_is_master(phys_enc)) {
+		sde_rm_init_hw_iter(&iter, DRMID(phys_enc->parent),
+				SDE_HW_BLK_ROI_MISR);
+		for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
+			if (!sde_rm_get_hw(rm, &iter))
+				break;
+
+			phys_enc->hw_roi_misr[i] =
+					(struct sde_hw_roi_misr *)iter.hw;
+			phys_enc->roi_misr_num++;
+		}
 	}
 	_sde_encoder_phys_shd_setup_irq_hw_idx(phys_enc);
 	phys_enc->kickoff_timeout_ms = sde_encoder_helper_get_kickoff_timeout_ms(phys_enc->parent);
@@ -439,7 +533,8 @@ void sde_encoder_phys_shd_trigger_flush(struct sde_encoder_phys *phys_enc)
 
 	SDE_EVT32(phys_enc->intf_idx - INTF_0);
 
-	sde_shd_hw_flush(phys_enc->hw_ctl, shd_enc->hw_lm, shd_enc->num_mixers);
+	sde_shd_hw_flush(phys_enc->hw_ctl, shd_enc->hw_lm, shd_enc->num_mixers,
+			shd_enc->hw_roi_misr, shd_enc->num_roi_misrs);
 }
 
 static int sde_encoder_phys_shd_control_vblank_irq(struct sde_encoder_phys *phys_enc, bool enable)
@@ -557,6 +652,7 @@ static void sde_encoder_phys_shd_disable(struct sde_encoder_phys *phys_enc)
 	}
 
 	shd_enc = to_sde_encoder_phys_shd(phys_enc);
+	sde_roi_misr_hw_reset(phys_enc);
 	sde_encoder_helper_reset_mixers(phys_enc, NULL);
 
 	display = sde_connector_get_display(phys_enc->connector);
@@ -596,6 +692,7 @@ static inline
 void sde_encoder_phys_shd_irq_ctrl(struct sde_encoder_phys *phys_enc, bool enable)
 {
 	sde_encoder_phys_shd_control_vblank_irq(phys_enc, enable);
+	sde_encoder_phys_shd_control_roi_misr_irq(phys_enc, enable);
 }
 
 static inline
@@ -656,6 +753,7 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id, void
 	struct sde_encoder_irq *irq;
 	struct sde_shd_hw_ctl *hw_ctl;
 	struct sde_shd_hw_mixer *hw_lm;
+	struct sde_shd_hw_roi_misr *hw_roi_misr;
 	int ret = 0, i;
 
 	SDE_DEBUG("\n");
@@ -680,6 +778,13 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id, void
 			goto fail_ctl;
 		}
 		shd_enc->hw_lm[i] = &hw_lm->base;
+
+		hw_roi_misr = kzalloc(sizeof(*hw_roi_misr), GFP_KERNEL);
+		if (!hw_roi_misr) {
+			ret = -ENOMEM;
+			goto fail_ctl;
+		}
+		shd_enc->hw_roi_misr[i] = &hw_roi_misr->base;
 	}
 
 	phys_enc = &shd_enc->base;
@@ -708,6 +813,13 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id, void
 		irq->hw_idx = -EINVAL;
 		irq->cb.arg = phys_enc;
 	}
+	for (i = INTR_IDX_MISR_ROI0_MISMATCH; i < INTR_IDX_MAX; i++) {
+		irq = &phys_enc->irq[i];
+		irq->name = "roi_misr_mismatch";
+		irq->intr_type = SDE_IRQ_TYPE_ROI_MISR;
+		irq->intr_idx = i;
+		irq->cb.func = sde_encoder_phys_shd_roi_misr_irq;
+	}
 
 	atomic_set(&phys_enc->vblank_refcount, 0);
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
@@ -724,6 +836,7 @@ fail_ctl:
 	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		kfree(shd_enc->hw_ctl[i]);
 		kfree(shd_enc->hw_lm[i]);
+		kfree(shd_enc->hw_roi_misr[i]);
 	}
 
 	kfree(shd_enc);
