@@ -4064,6 +4064,20 @@ static int dp_pm_prepare(struct device *dev)
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
+	if (dp->parser->force_connect_mode) {
+		u32 sim_mode = 0;
+		mutex_lock(&dp->session_lock);
+		dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
+		DP_INFO("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		if (sim_mode && dp->hpd->hpd_high) {
+			DP_INFO("Suspend to sim mode when HPD is high\n");
+		}
+		// Always assume we will resume with HPD low
+		dp->hpd->hpd_high = false;
+		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
+		DP_INFO("DP Force HPD to be low and switch to sim mode when DP suspend.\n");
+		mutex_unlock(&dp->session_lock);
+	}
 	return 0;
 }
 
@@ -4088,6 +4102,28 @@ static void dp_pm_complete(struct device *dev)
 			!dp_display_state_is(DP_STATE_ENABLED)) {
 		dp->aux->abort(dp->aux, false);
 		dp->ctrl->abort(dp->ctrl, false);
+	}
+
+	if (dp->parser->force_connect_mode) {
+		u32 sim_mode = 0;
+		dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
+		DP_INFO("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		if (sim_mode && dp->hpd->hpd_high) {
+			/*
+			 * We suspend at sim mode, and resume with HPD high,
+			 * restart the session with normal mode.
+			 */
+			DP_INFO("HPD is high, leaving sim mode from 0x%X\n", sim_mode);
+			// Clear sim mode
+			dp_sim_set_sim_mode(dp->aux_bridge, 0);
+			mutex_unlock(&dp->session_lock);
+
+			// Trigger a disconnect->connect transition
+			dp_display_disconnect_sync(dp);
+			mutex_lock(&dp->session_lock);
+			dp_display_host_init(dp);
+			queue_work(dp->wq, &dp->connect_work);
+		}
 	}
 
 	dp_display_state_remove(DP_STATE_SUSPENDED);
