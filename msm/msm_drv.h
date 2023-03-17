@@ -2,7 +2,7 @@
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -688,6 +688,9 @@ struct msm_drm_private {
 
 	/* list of component registered for notification */
 	struct blocking_notifier_head component_notifier_list;
+
+	/* flag for initialization status */
+	unsigned int init_comp;
 };
 
 /* get struct msm_kms * from drm_device * */
