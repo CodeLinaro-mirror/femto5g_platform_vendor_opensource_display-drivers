@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -745,6 +745,12 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 	struct dsi_panel *panel;
 	enum dsi_pixel_format fmt;
 	u32 bpp;
+	enum dms_type dms_type;
+	char *dms_types[DSI_DMS_VID_TYPE_MAX] = {
+		[DSI_DMS_VID_DISABLED] = "dms-vid-disabled",
+		[DSI_DMS_VID_SEAMLESS] = "dms-vid-seamless",
+		[DSI_DMS_VID_NON_SEAMLESS] = "dms-vid-non-seamless"
+	};
 
 	if (!info || !dsi_display)
 		return -EINVAL;
@@ -808,6 +814,9 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 
 	sde_kms_info_add_keystr(info, "dfps support",
 			panel->dfps_caps.dfps_support ? "true" : "false");
+
+	dms_type = panel->dms_caps.type;
+	sde_kms_info_add_keystr(info, "dms_vid support", dms_types[dms_type]);
 
 	if (panel->dfps_caps.dfps_support) {
 		sde_kms_info_add_keyint(info, "min_fps",
@@ -1480,20 +1489,13 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 			common_mode_caps = (panel_dsi_mode->panel_mode_caps &
 					cmp_panel_dsi_mode->panel_mode_caps);
 
-			/*
-			 * FPS switch among video modes, is only supported
-			 * if DFPS or dynamic clocks are specified.
-			 * Reject any mode switches between video mode timing
-			 * nodes if support for those features is not present.
-			 */
 			if (common_mode_caps & DSI_OP_CMD_MODE) {
 				allow_switch = true;
-			} else if ((common_mode_caps & DSI_OP_VIDEO_MODE) &&
-				(panel->dfps_caps.dfps_support ||
-				panel->dyn_clk_caps.dyn_clk_support)) {
-				allow_switch = true;
 			} else {
-				if (is_valid_poms_switch(panel_dsi_mode,
+				if (panel->dms_caps.type ||
+					panel->dfps_caps.dfps_support ||
+					panel->dyn_clk_caps.dyn_clk_support ||
+					is_valid_poms_switch(panel_dsi_mode,
 						cmp_panel_dsi_mode))
 					allow_switch = true;
 			}
