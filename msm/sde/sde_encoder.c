@@ -3701,13 +3701,35 @@ int sde_encoder_idle_request(struct drm_encoder *drm_enc)
 static void sde_encoder_wait_for_vsync_retire(struct sde_encoder_phys *phys_enc)
 {
 	struct drm_display_mode *mode;
-	u32 threshold_lines, vrefresh, line_time_in_ns, ln_cnt;
+	struct sde_hw_ctl *ctl;
+	u32 threshold_lines, vrefresh, line_time_in_ns, ln_cnt, hw_fence_ctrl;
 	int ret;
 
-	if (!phys_enc || !phys_enc->hw_intf || !phys_enc->hw_intf->ops.get_line_count) {
+	if (!phys_enc || !phys_enc->hw_intf || !phys_enc->hw_ctl ||
+			!phys_enc->hw_intf->ops.get_line_count) {
 		SDE_ERROR("invalid params\n");
 		return;
 	}
+
+	ctl = phys_enc->hw_ctl;
+	if (!ctl->ops.get_hw_fence_ctrl) {
+		SDE_DEBUG("hw fence feature not enabled for ctl:%d\n", ctl->idx);
+		return;
+	}
+
+	hw_fence_ctrl = ctl->ops.get_hw_fence_ctrl(ctl);
+	if (!(hw_fence_ctrl & BIT(0))) {
+		SDE_DEBUG("hw fence not enabled for ctl:%d fence ctrl:0x%x\n",
+			ctl->idx, hw_fence_ctrl);
+		return;
+	}
+
+	if (phys_enc->enable_state != SDE_ENC_ENABLED) {
+		SDE_DEBUG("physical encoder is not enabled yet state:%d\n",
+			phys_enc->enable_state);
+		return;
+	}
+
 	mode = &phys_enc->cached_mode;
 	vrefresh = drm_mode_vrefresh(mode);
 	line_time_in_ns =  DIV_ROUND_UP(1000000000, vrefresh * mode->vtotal);
