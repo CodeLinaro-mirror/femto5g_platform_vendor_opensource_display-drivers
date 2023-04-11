@@ -157,6 +157,9 @@ static int dp_parser_misc(struct dp_parser *parser)
 			parser->l_pnswap |= (data[i] & 0x01) << i;
 	}
 
+	parser->yuv422_support = of_property_read_bool(of_node,
+				"qcom,yuv422-supported");
+
 	rc = of_property_read_u32(of_node,
 		"qcom,max-pclk-frequency-khz", &parser->max_pclk_khz);
 	if (rc)

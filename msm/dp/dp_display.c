@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -53,6 +53,8 @@
 #define dp_display_state_remove(x) { \
 	(dp->state &= ~(x)); \
 	dp_display_state_log("remove "#x); }
+
+#define MAX_SUPPORTED_BPP 30
 
 enum dp_display_states {
 	DP_STATE_DISCONNECTED           = 0,
@@ -2123,6 +2125,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 
 	dp->dp_display.is_mst_supported = dp->parser->has_mst;
 	dp->dp_display.dsc_cont_pps = dp->parser->dsc_continuous_pps;
+	dp->dp_display.is_yuv_supported = dp->parser->yuv422_support;
 
 	dp->catalog = dp_catalog_get(dev, dp->parser);
 	if (IS_ERR(dp->catalog)) {
@@ -3109,6 +3112,35 @@ static int dp_display_validate_topology(struct dp_display_private *dp,
 	return 0;
 }
 
+static int dp_display_get_dc_support(struct dp_display *dp,
+		u32 mode_pclk_khz, u32 out_format, bool dc_enable)
+{
+	struct dp_display_private *dp_display;
+	struct drm_dp_link *link_info;
+	u32 mode_rate_khz = 0, supported_rate_khz = 0;
+	u32 default_bpp = 24;
+
+	if (!dp || !mode_pclk_khz || !dp->base_connector) {
+		DP_ERR("invalid input");
+		return -EINVAL;
+	}
+
+	dp_display = container_of(dp, struct dp_display_private, dp_display);
+	link_info = &dp_display->panel->link_info;
+
+	mode_rate_khz = mode_pclk_khz * default_bpp;
+
+	if (dc_enable)
+		mode_rate_khz = mode_pclk_khz * MAX_SUPPORTED_BPP;
+
+	supported_rate_khz = link_info->num_lanes * link_info->rate * 8;
+
+	if (mode_rate_khz > supported_rate_khz)
+		return false;
+
+	return true;
+}
+
 static enum drm_mode_status dp_display_validate_mode(
 		struct dp_display *dp_display,
 		void *panel, struct drm_display_mode *mode,
@@ -3264,6 +3296,7 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 				free_dsc_blks, required_dsc_blks,
 				dp_mode->capabilities);
 
+	dp_mode->flags = drm_mode->flags;
 	dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
 }
 
@@ -3912,6 +3945,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp_display->set_mode      = dp_display_set_mode;
 	dp_display->validate_mode = dp_display_validate_mode;
 	dp_display->get_modes     = dp_display_get_modes;
+	dp_display->get_dc_support = dp_display_get_dc_support;
 	dp_display->prepare       = dp_display_prepare;
 	dp_display->unprepare     = dp_display_unprepare;
 	dp_display->request_irq   = dp_request_irq;
