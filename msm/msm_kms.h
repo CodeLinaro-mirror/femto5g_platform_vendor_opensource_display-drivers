@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -47,6 +47,23 @@
 #define MSM_MODE_FLAG_SEAMLESS_POMS_VID			(1<<6)
 /* Request to switch the panel mode to command */
 #define MSM_MODE_FLAG_SEAMLESS_POMS_CMD			(1<<7)
+
+/*
+ * Since the sink might support different color formats, read by the
+ * source from the Sink's EDID; below flags, DRM_MODE_FLAG_SUPPORTS_RGB/YCBCR,
+ * are used to configure the encoder and connector to select the best display
+ * mode. For example, the best display mode shall be (in order of precedence)
+ * RGB+RGB_DC, YUV+YUV_DC, RGB, YUV; RGB and YUV can't be set together.
+ * Color formats read from EDID are stored in private_flags (drm).
+ */
+/* Enable RGB 36 bit deep color */
+#define MSM_MODE_FLAG_RGB444_DC_ENABLE (1<<31)
+/* Enable YUV422 32 bit deep color */
+#define MSM_MODE_FLAG_YCBCR422_DC_ENABLE (1<<30)
+/* Select RGB444 format to display */
+#define MSM_MODE_FLAG_COLOR_FORMAT_RGB444 (1<<29)
+/* Select YUV422 format to display */
+#define MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422 (1<<28)
 
 /* As there are different display controller blocks depending on the
  * snapdragon version, the kms support is split out and the appropriate

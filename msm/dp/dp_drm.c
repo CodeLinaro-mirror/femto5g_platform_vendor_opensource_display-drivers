@@ -2,6 +2,7 @@
 /*
  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <drm/drm_atomic_helper.h>
@@ -54,9 +55,75 @@ void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
 		flags |= DRM_MODE_FLAG_PVSYNC;
 
 	drm_mode->flags = flags;
+	drm_mode->flags |= (dp_mode->flags & SDE_DRM_MODE_FLAG_FMT_MASK);
 
 	drm_mode->type = 0x48;
 	drm_mode_set_name(drm_mode);
+}
+
+static int get_sink_dc_support(struct dp_display *dp,
+		struct drm_display_mode *mode, struct drm_connector *connector)
+{
+	int dc_format = 0;
+
+	// add check for yuv and rgb color support read from
+	// edid parsing.
+	if ((connector->display_info.color_formats & DRM_COLOR_FORMAT_RGB444)
+		&& (connector->display_info.edid_hdmi_rgb444_dc_modes
+		& DRM_EDID_HDMI_DC_30))
+		if (dp->get_dc_support(dp, mode->clock,
+			MSM_MODE_FLAG_COLOR_FORMAT_RGB444, true))
+			dc_format |= MSM_MODE_FLAG_RGB444_DC_ENABLE;
+
+	if ((connector->display_info.color_formats & DRM_COLOR_FORMAT_YCRCB422)
+		&& (connector->display_info.edid_hdmi_ycbcr444_dc_modes
+		& DRM_EDID_HDMI_DC_30))
+		if (dp->get_dc_support(dp, mode->clock,
+			MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422, false))
+			dc_format |= MSM_MODE_FLAG_YCBCR422_DC_ENABLE;
+
+	return dc_format;
+}
+
+u32 dp_connector_choose_best_format(struct dp_display *dp,
+		struct drm_display_mode *mode)
+{
+	/*
+	 * choose priority:
+	 * 1. RGB + DC
+	 * 2. YUV422 + DC
+	 * 3. RGB
+	 * 4. YUV422
+	 */
+
+	u32 flag;
+	struct drm_connector *connector = dp->base_connector;
+	int dc_format = get_sink_dc_support(dp, mode, connector);
+
+	/* Change ColorSpace to YUV422, manually */
+	if (dp->yuv422_enable)
+		return MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422;
+
+	if (dc_format & MSM_MODE_FLAG_RGB444_DC_ENABLE)
+		flag = (MSM_MODE_FLAG_COLOR_FORMAT_RGB444
+			| MSM_MODE_FLAG_RGB444_DC_ENABLE);
+	else if (dp->is_yuv_supported &&
+		(dc_format & MSM_MODE_FLAG_YCBCR422_DC_ENABLE))
+		flag = (MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422
+			| MSM_MODE_FLAG_YCBCR422_DC_ENABLE);
+	else if (connector->display_info.color_formats &
+		DRM_COLOR_FORMAT_RGB444)
+		flag = MSM_MODE_FLAG_COLOR_FORMAT_RGB444;
+	else if (dp->is_yuv_supported &&
+		(connector->display_info.color_formats &
+		DRM_COLOR_FORMAT_YCRCB422))
+		flag = MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422;
+	else {
+		DP_ERR("Can't get available best display format\n");
+		flag = MSM_MODE_FLAG_COLOR_FORMAT_RGB444;
+	}
+
+	return flag;
 }
 
 static int dp_bridge_attach(struct drm_bridge *dp_bridge,
@@ -291,6 +358,11 @@ static bool dp_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 
 	dp->convert_to_dp_mode(dp, bridge->dp_panel, mode, &dp_mode);
 	convert_to_drm_mode(&dp_mode, adjusted_mode);
+
+	/*Clear the private flags before assigning new one.*/
+	adjusted_mode->flags |=
+		dp_connector_choose_best_format(dp, adjusted_mode);
+	DP_DEBUG("Adjusted mode flags: 0x%x\n",	adjusted_mode->flags);
 end:
 	return ret;
 }
@@ -756,4 +828,75 @@ int dp_connector_install_properties(void *display, struct drm_connector *conn)
 	drm_object_attach_property(&conn->base, conn->colorspace_property, 0);
 
 	return 0;
+}
+
+bool dp_connector_mode_needs_full_range(void *data)
+{
+	struct dp_display *display = data;
+	struct dp_bridge *bridge;
+	struct dp_display_mode *mode;
+	struct dp_panel_info *timing;
+
+	if (!display) {
+		DP_ERR("invalid input");
+		return false;
+	}
+
+	bridge = display->bridge;
+	if (!bridge) {
+		DP_ERR("invalid bridge data");
+		return false;
+	}
+
+	mode = &bridge->dp_mode;
+	timing = &mode->timing;
+
+	if (timing->h_active == 640 &&
+		timing->v_active == 480)
+		return true;
+
+	return false;
+}
+
+enum sde_csc_type dp_connector_get_csc_type(struct drm_connector *conn,
+		void *data)
+{
+	struct sde_connector_state *c_state;
+	struct sde_connector *sde_conn;
+	struct drm_msm_ext_hdr_metadata *hdr_meta;
+
+	if (!data || !conn) {
+		DP_ERR("invalid input");
+		goto error;
+	}
+
+	sde_conn = to_sde_connector(conn);
+	c_state = to_sde_connector_state(conn->state);
+
+	if (!c_state) {
+		DP_ERR("invlaid input");
+		goto error;
+	}
+
+	hdr_meta = &c_state->hdr_meta;
+
+	if ((hdr_meta->hdr_state == HDR_ENABLED) &&
+		(hdr_meta->eotf != 0))
+		return SDE_CSC_RGB2YUV_2020L;
+	else if (dp_connector_mode_needs_full_range(data))// ||
+//			sde_conn->yuv_qs)
+		return SDE_CSC_RGB2YUV_709FR;
+
+error:
+	return  SDE_CSC_RGB2YUV_709L;
+}
+
+bool dp_connector_yuv_support(void *display)
+{
+	struct dp_display *dp_display = display;
+
+	if (!dp_display)
+		return false;
+
+	return dp_display->is_yuv_supported;
 }
