@@ -335,6 +335,7 @@ struct sde_encoder_irq {
  * @cached_mode:	DRM mode cached at mode_set time, acted on in enable
  * @enabled:		Whether the encoder has enabled and running a mode
  * @split_role:		Role to play in a split-panel configuration
+ * @slave_idx:		Index of slave in a split-panel configuration
  * @intf_mode:		Interface mode
  * @intf_idx:		Interface index on sde hardware
  * @intf_cfg:		Interface hardware configuration
@@ -377,6 +378,7 @@ struct sde_encoder_irq {
  * @recovered:			flag set to true when recovered from pp timeout
  * @autorefresh_disable_trans:   flag set to true during autorefresh disable transition
  * @shared:			If a encoder is sharing resource of its parent
+ * @num_of_splits:	Number of horizontal splits in a split-panel config
  */
 struct sde_encoder_phys {
 	struct drm_encoder *parent;
@@ -397,6 +399,7 @@ struct sde_encoder_phys {
 	struct drm_display_mode cached_mode;
 	struct drm_display_mode cached_mode_usr;
 	enum sde_enc_split_role split_role;
+	int slave_idx;
 	enum sde_intf_mode intf_mode;
 	enum sde_intf intf_idx;
 	struct sde_hw_intf_cfg intf_cfg;
@@ -430,6 +433,7 @@ struct sde_encoder_phys {
 	bool recovered;
 	bool autorefresh_disable_trans;
 	bool shared;
+	int num_of_splits;
 };
 
 static inline int sde_encoder_phys_inc_pending(struct sde_encoder_phys *phys)
@@ -548,21 +552,25 @@ struct sde_encoder_phys_wb {
  * @parent:		Pointer to the containing virtual encoder
  * @parent_ops:		Callbacks exposed by the parent to the phys_enc
  * @split_role:		Role to play in a split-panel configuration
+ * @slave_idx:		Index of the slave in a split-panel configuration
  * @intf_idx:		Interface index this phys_enc will control
  * @wb_idx:		Writeback index this phys_enc will control
  * @comp_type:      Type of compression supported
  * @enc_spinlock:	Virtual-Encoder-Wide Spin Lock for IRQ purposes
+ * @num_of_splits:	Number of horizontal splits in a split-panel config
  */
 struct sde_enc_phys_init_params {
 	struct sde_kms *sde_kms;
 	struct drm_encoder *parent;
 	struct sde_encoder_virt_ops parent_ops;
 	enum sde_enc_split_role split_role;
+	int slave_idx;
 	enum sde_intf intf_idx;
 	enum sde_wb wb_idx;
 	enum msm_display_compression_type comp_type;
 	spinlock_t *enc_spinlock;
 	struct mutex *vblank_ctl_lock;
+	int num_of_splits;
 };
 
 /**
