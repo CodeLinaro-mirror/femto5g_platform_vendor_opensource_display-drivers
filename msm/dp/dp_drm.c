@@ -443,12 +443,18 @@ static bool dp_bond_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	struct drm_display_mode tmp;
 	struct dp_display_mode dp_mode;
 	struct dp_display *dp;
+	struct drm_crtc_state *crtc_state;
 	bool ret = true;
 
 	if (!drm_bridge || !mode || !adjusted_mode) {
 		DP_ERR("Invalid params\n");
 		ret = false;
 		goto end;
+	}
+
+	crtc_state = container_of(mode, struct drm_crtc_state, mode);
+	if (!drm_atomic_crtc_needs_modeset(crtc_state)) {
+		return true;
 	}
 
 	bridge = to_dp_bond_bridge(drm_bridge);
