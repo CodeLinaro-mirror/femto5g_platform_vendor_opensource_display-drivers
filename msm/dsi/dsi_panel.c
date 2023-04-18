@@ -237,7 +237,9 @@ static int dsi_panel_vm_trigger_esd_attack(struct dsi_panel *panel)
 
 static int dsi_panel_trigger_esd_attack(struct dsi_panel *panel)
 {
+	struct dsi_parser_utils *utils = &panel->utils;
 	struct dsi_panel_reset_config *r_config;
+	int reset_gpio;
 
 	if (!panel) {
 		DSI_ERR("Invalid panel param\n");
@@ -250,7 +252,13 @@ static int dsi_panel_trigger_esd_attack(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
-	return dsi_panel_trigger_esd_attack_sub(r_config->reset_gpio);
+	reset_gpio = r_config->reset_gpio;
+	if ((!strcmp(panel->type, "secondary")) &&
+			(!gpio_is_valid(reset_gpio)))
+		reset_gpio = utils->get_named_gpio(utils->data,
+				"qcom,platform-reset-gpio", 0);
+
+	return dsi_panel_trigger_esd_attack_sub(reset_gpio);
 }
 
 static int dsi_panel_reset(struct dsi_panel *panel)
@@ -551,6 +559,20 @@ static int dsi_panel_wled_register(struct dsi_panel *panel,
 	return 0;
 }
 
+static int mipi_dsi_dcs_subtype_set_display_brightness(struct mipi_dsi_device *dsi,
+	u32 bl_lvl, u32 bl_dcs_subtype)
+{
+	u16 brightness = (u16)bl_lvl;
+	u8 first_byte = brightness & 0xff;
+	u8 second_byte = brightness >> 8;
+	u8 payload[8] = {second_byte, first_byte,
+		second_byte, first_byte,
+		second_byte, first_byte,
+		second_byte, first_byte};
+
+	return mipi_dsi_dcs_write(dsi, bl_dcs_subtype, payload, sizeof(payload));
+}
+
 static int dsi_panel_update_backlight(struct dsi_panel *panel,
 	u32 bl_lvl)
 {
@@ -572,7 +594,11 @@ static int dsi_panel_update_backlight(struct dsi_panel *panel,
 	if (panel->bl_config.bl_inverted_dbv)
 		bl_lvl = (((bl_lvl & 0xff) << 8) | (bl_lvl >> 8));
 
-	rc = mipi_dsi_dcs_set_display_brightness(dsi, bl_lvl);
+	if (panel->bl_config.bl_dcs_subtype)
+		rc = mipi_dsi_dcs_subtype_set_display_brightness(dsi, bl_lvl, panel->bl_config.bl_dcs_subtype);
+	else
+		rc = mipi_dsi_dcs_set_display_brightness(dsi, bl_lvl);
+
 	if (rc < 0)
 		DSI_ERR("failed to update dcs backlight:%d\n", bl_lvl);
 
@@ -2516,6 +2542,17 @@ static int dsi_panel_parse_bl_config(struct dsi_panel *panel)
 		rc = 0;
 	} else {
 		panel->bl_config.brightness_max_level = val;
+	}
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-bl-ctrl-dcs-subtype",
+		&val);
+	if (rc) {
+		DSI_DEBUG("[%s] bl-ctrl-dcs-subtype, defautling to zero\n",
+			panel->name);
+		panel->bl_config.bl_dcs_subtype = 0;
+		rc = 0;
+	} else {
+		panel->bl_config.bl_dcs_subtype = val;
 	}
 
 	panel->bl_config.bl_inverted_dbv = utils->read_bool(utils->data,
