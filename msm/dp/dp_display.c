@@ -501,6 +501,13 @@ static int dp_display_hdcp_start(struct dp_display_private *dp)
 	dp_display_check_source_hdcp_caps(dp);
 	dp_display_update_hdcp_info(dp);
 
+	if (NULL == dp->msm_hdcp_dev) {
+		/* HDCP is not supported for this DP*/
+		DP_INFO("DP%d : Couldn't find msm-hdcp node.\n",dp->cell_idx);
+		dp_display_update_hdcp_status(dp, true);
+		return 0;
+	}
+
 	if (dp_display_is_hdcp_enabled(dp)) {
 		if (dp->hdcp.ops && dp->hdcp.ops->on &&
 				dp->hdcp.ops->on(dp->hdcp.data)) {
