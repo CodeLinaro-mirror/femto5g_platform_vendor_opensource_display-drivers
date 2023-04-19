@@ -257,6 +257,14 @@ static int dp_parser_pinctrl(struct dp_parser *parser)
 		pinctrl->state_suspend = NULL;
 		DP_DEBUG("failed to get pinctrl suspend state\n");
 	}
+
+	pinctrl->state_bl_pwm = pinctrl_lookup_state(pinctrl->pin,
+					"mdss_edp_bl_pwm");
+	if (IS_ERR_OR_NULL(pinctrl->state_bl_pwm)) {
+		pinctrl->state_bl_pwm = NULL;
+		DP_DEBUG("failed to get pinctrl bl_pwm state\n");
+	}
+
 	return 0;
 }
 

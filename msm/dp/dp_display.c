@@ -14,6 +14,7 @@
 #include <linux/usb/phy.h>
 #include <linux/jiffies.h>
 #include <linux/pm_qos.h>
+#include <linux/pinctrl/consumer.h>
 
 #if __has_include(<soc/qcom/pmic_glink_altmode.h>)
     #include <linux/soc/qcom/pmic_glink_altmode.h>
@@ -2769,10 +2770,30 @@ static int dp_display_set_stream_info(struct dp_display *dp_display,
 	return rc;
 }
 
+static int dp_display_set_pinctrl_state(struct dp_pinctrl *pinctrl,
+		struct pinctrl_state *state)
+{
+	int rc = 0;
+
+	if (pinctrl && !IS_ERR_OR_NULL(state)) {
+		rc = pinctrl_select_state(pinctrl->pin, state);
+		if (rc) {
+			DP_ERR("failed to set pin state, rc=%d\n", rc);
+		}
+	} else {
+		rc = -EINVAL;
+		DP_DEBUG("pinctrl state does not exist\n");
+	}
+
+	return rc;
+}
+
 static int dp_display_enable(struct dp_display *dp_display, void *panel)
 {
 	int rc = 0;
 	struct dp_display_private *dp;
+	struct dp_parser *parser;
+	struct dp_pinctrl *pinctrl;
 
 	if (!dp_display || !panel) {
 		DP_ERR("invalid input\n");
@@ -2808,23 +2829,31 @@ static int dp_display_enable(struct dp_display *dp_display, void *panel)
 	if (rc)
 		goto end;
 
-	if (!dp_display->is_cont_splash_enabled) {
-		/*edp backlight enable and edp pwm enable*/
-		if ((dp_display->is_edp) && (!dp_display->no_backlight_support)) {
-			rc = dp->power->edp_panel_set_gpio(dp->power,
+	/*edp backlight enable and edp pwm enable*/
+	if ((dp_display->is_edp) && (!dp_display->no_backlight_support))  {
+		rc = dp->power->edp_panel_set_gpio(dp->power,
 				DP_GPIO_EDP_BACKLIGHT_PWR, true);
-			if (rc) {
-				DP_ERR("Cannot turn edp backlight power on");
-				goto end;
-			}
+		if (rc) {
+			DP_ERR("Cannot turn edp backlight power on");
+			goto end;
+		}
 
-			usleep_range(99000, 100000);
+		usleep_range(99000, 100000);
 
-			rc = dp->power->edp_panel_set_gpio(dp->power, DP_GPIO_EDP_PWM, true);
-			if (rc) {
-				DP_ERR("Cannot turn edp PWM on ");
-				goto end;
-			}
+		rc = dp->power->edp_panel_set_gpio(dp->power, DP_GPIO_EDP_PWM, true);
+		if (rc) {
+			DP_ERR("Cannot turn edp PWM on ");
+			goto end;
+		}
+
+		parser = dp->parser;
+		if (!parser) {
+			DP_ERR("failed to get parser");
+		} else {
+			pinctrl = &parser->pinctrl;
+			rc = dp_display_set_pinctrl_state(pinctrl, pinctrl->state_bl_pwm);
+			if (rc)
+				DP_DEBUG("failed to set pinctrl, rc=%d\n", rc);
 		}
 	}
 
