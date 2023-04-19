@@ -102,6 +102,7 @@ struct dp_io {
  * @state_active: active state pin control
  * @state_hpd_active: hpd active state pin control
  * @state_suspend: suspend state pin control
+ * @state_bl_pwm: backlight pwm pin control
  */
 struct dp_pinctrl {
 	struct pinctrl *pin;
@@ -110,6 +111,7 @@ struct dp_pinctrl {
 	struct pinctrl_state *state_hpd_tlmm;
 	struct pinctrl_state *state_hpd_ctrl;
 	struct pinctrl_state *state_suspend;
+	struct pinctrl_state *state_bl_pwm;
 };
 
 #define DP_ENUM_STR(x)	#x
