@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -5106,9 +5106,6 @@ static void _sde_crtc_reset(struct drm_crtc *crtc)
 	sde_crtc->num_mixers = 0;
 	sde_crtc->mixers_swapped = false;
 
-	/* disable clk & bw control until clk & bw properties are set */
-	cstate->bw_control = false;
-	cstate->bw_split_vote = false;
 	cstate->hwfence_in_fences_set = false;
 
 	sde_crtc_static_img_control(crtc, CACHE_STATE_DISABLED, false);
