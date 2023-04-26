@@ -718,6 +718,8 @@ static int _msm_hyp_connector_encoder_init(struct drm_device *ddev,
 static void msm_hyp_crtc_atomic_enable(struct drm_crtc *crtc,
 	struct drm_crtc_state *old_state)
 {
+	drm_crtc_vblank_reset(crtc);
+	drm_crtc_set_max_vblank_count(crtc, INT_MAX);
 	drm_crtc_vblank_on(crtc);
 }
 
@@ -875,6 +877,35 @@ static int msm_hyp_crtc_get_property(
 	return ret;
 }
 
+/**
+  * msm_hyp_crtc_get_vblank_timestamp : returns true by updating the
+  * kernel time. This is useful for hardware that doesnt have a hardware
+  * timestamp.
+  */
+ bool msm_hyp_crtc_get_vblank_timestamp(struct drm_device *dev, unsigned int pipe,
+			int *max_error, ktime_t *tvblank, bool in_vblank_irq)
+{
+	/* currently no hardware timestamp supported, relying on kernel time */
+	*tvblank = ktime_get();
+	return true;
+}
+
+/**
+  * msm_hyp_crtc_get_vblank_counter : retrieve the master vblank counter
+  * This is useful for hardware that doesnt have a hardware counter
+  */
+static u32 msm_hyp_crtc_get_vblank_counter (struct drm_crtc *crtc)
+{
+	struct drm_vblank_crtc *vblank;
+	struct drm_device *dev;
+	unsigned int pipe;
+
+	pipe = drm_crtc_index(crtc);
+	dev = crtc->dev;
+	vblank = &dev->vblank[pipe];
+	return vblank->count;
+}
+
 static const struct drm_crtc_funcs msm_hyp_crtc_funcs = {
 	.set_config = drm_atomic_helper_set_config,
 	.destroy = msm_hyp_crtc_destroy,
@@ -884,6 +915,7 @@ static const struct drm_crtc_funcs msm_hyp_crtc_funcs = {
 	.reset = msm_hyp_crtc_reset,
 	.atomic_duplicate_state = msm_hyp_crtc_duplicate_state,
 	.atomic_destroy_state = msm_hyp_crtc_destroy_state,
+	.get_vblank_counter = msm_hyp_crtc_get_vblank_counter,
 };
 
 static int _msm_hyp_crtc_init_caps(struct msm_hyp_crtc *crtc)
@@ -1640,7 +1672,7 @@ void msm_hyp_crtc_commit_done(struct drm_crtc *crtc)
 	drm_connector_list_iter_end(&conn_iter);
 
 	spin_lock(&dev->vblank_time_lock);
-	vblank->last = vblank->time;
+	vblank->last = vblank->count;
 
 	write_seqlock(&vblank->seqlock);
 	vblank->time = ktime_get();
@@ -2122,6 +2154,7 @@ static struct drm_driver msm_hyp_driver = {
 	.lastclose          = msm_hyp_lastclose,
 	.enable_vblank      = msm_hyp_enable_vblank,
 	.disable_vblank     = msm_hyp_disable_vblank,
+	.get_vblank_timestamp = msm_hyp_crtc_get_vblank_timestamp,
 	DRM_GEM_SHMEM_DRIVER_OPS,
 	.gem_open_object    = msm_hyp_gem_open_object,
 	.ioctls             = msm_hyp_ioctls,
