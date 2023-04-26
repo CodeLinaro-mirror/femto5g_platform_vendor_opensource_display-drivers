@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -298,13 +298,16 @@ static void msm_smmu_unmap_dma_buf(struct msm_mmu *mmu, struct sg_table *sgt,
 		return;
 	}
 
-	if (sgt->sgl) {
-		DRM_DEBUG("%pad/0x%x/0x%x\n",
-				&sgt->sgl->dma_address, sgt->sgl->dma_length,
-				dir);
-		SDE_EVT32(sgt->sgl->dma_address, sgt->sgl->dma_length,
-				dir, client->secure, flags);
+	if (!sgt->sgl) {
+		DRM_ERROR("sg list is invalid\n");
+		return;
 	}
+
+	DRM_DEBUG("%pad/0x%x/0x%x\n",
+			&sgt->sgl->dma_address, sgt->sgl->dma_length,
+			dir);
+	SDE_EVT32(sgt->sgl->dma_address, sgt->sgl->dma_length,
+			dir, client->secure, flags);
 
 	if (!(flags & MSM_BO_EXTBUF))
 		dma_unmap_sg(client->dev, sgt->sgl, sgt->nents, dir);
@@ -636,3 +639,6 @@ void __exit msm_smmu_driver_cleanup(void)
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("MSM SMMU driver");
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+MODULE_IMPORT_NS(DMA_BUF);
+#endif

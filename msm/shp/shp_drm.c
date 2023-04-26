@@ -861,9 +861,9 @@ static int sde_shp_bind(struct device *dev, struct device *master,
 {
 	int rc = 0;
 	struct shp_device *shp_dev;
-	struct drm_device *drm;
+	struct drm_device *drm = NULL;
 	struct platform_device *pdev = to_platform_device(dev);
-	struct msm_drm_private *priv;
+	struct msm_drm_private *priv = NULL;
 
 	if (!dev || !pdev || !master) {
 		pr_err("invalid param(s), dev %pK, pdev %pK, master %pK\n",
@@ -924,7 +924,7 @@ end:
 static void sde_shp_unbind(struct device *dev, struct device *master,
 		void *data)
 {
-	struct drm_device *drm;
+	struct drm_device *drm = NULL;
 	struct shp_device *shp_dev;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct msm_drm_private *priv;
@@ -935,6 +935,7 @@ static void sde_shp_unbind(struct device *dev, struct device *master,
 	}
 
 	drm = dev_get_drvdata(master);
+
 	shp_dev = platform_get_drvdata(pdev);
 	if (!drm || !shp_dev) {
 		pr_err("invalid param");

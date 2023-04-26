@@ -750,7 +750,7 @@ no_ops:
 	return 0;
 }
 
-static int _sde_kms_release_shared_buffer(unsigned int mem_addr,
+static int _sde_kms_release_shared_buffer(unsigned long mem_addr,
 					unsigned int splash_buffer_size,
 					unsigned int ramdump_base,
 					unsigned int ramdump_buffer_size)
@@ -773,11 +773,16 @@ static int _sde_kms_release_shared_buffer(unsigned int mem_addr,
 	pfn_start = mem_addr >> PAGE_SHIFT;
 	pfn_end = (mem_addr + splash_buffer_size) >> PAGE_SHIFT;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+	memblock_free((unsigned int*)mem_addr, splash_buffer_size);
+#else
 	ret = memblock_free(mem_addr, splash_buffer_size);
 	if (ret) {
 		SDE_ERROR("continuous splash memory free failed:%d\n", ret);
 		return ret;
 	}
+#endif
+
 	for (pfn_idx = pfn_start; pfn_idx < pfn_end; pfn_idx++)
 		free_reserved_page(pfn_to_page(pfn_idx));
 
@@ -2949,7 +2954,7 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 		enum sde_crtc_vm_req vm_req, bool vm_owns_hw)
 {
 	struct drm_crtc *crtc, *active_crtc = NULL, *global_active_crtc = NULL;
-	struct drm_crtc_state *new_cstate, *old_cstate, *active_cstate;
+	struct drm_crtc_state *new_cstate = NULL, *old_cstate = NULL, *active_cstate = NULL;
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
 	struct drm_connector_state *new_connstate;
@@ -2959,8 +2964,13 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 	struct dsi_display *dsi_display;
 	uint32_t i, commit_crtc_cnt = 0, global_crtc_cnt = 0;
 	uint32_t crtc_encoder_cnt = 0;
-	enum sde_crtc_idle_pc_state idle_pc_state;
+	enum sde_crtc_idle_pc_state idle_pc_state = IDLE_PC_NONE;
 	int rc = 0;
+
+	if (!vm_ops) {
+		SDE_ERROR("vm_ops is null\n");
+		return -EINVAL;
+	}
 
 	for_each_oldnew_crtc_in_state(state, crtc, old_cstate, new_cstate, i) {
 		struct sde_crtc_state *new_state = NULL;
@@ -4583,7 +4593,14 @@ static void _sde_kms_remove_pm_qos_irq_request(struct sde_kms *sde_kms)
 
 void sde_kms_cpu_vote_for_irq(struct sde_kms *sde_kms, bool enable)
 {
-	struct msm_drm_private *priv = sde_kms->dev->dev_private;
+	struct msm_drm_private *priv;
+
+	if (!sde_kms) {
+		SDE_ERROR("sde_kms is NULL\n");
+		return;
+	}
+
+	priv = sde_kms->dev->dev_private;
 
 	mutex_lock(&priv->phandle.phandle_lock);
 
@@ -4981,6 +4998,10 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto power_error;
 	}
 	sde_kms->core_rev = sde_kms->catalog->hw_rev;
+	if (SDE_HW_MAJOR(sde_kms->core_rev) >= SDE_HW_MAJOR(SDE_HW_VER_840))
+		sde_kms->misr_mismatch_irq = false;
+	else
+		sde_kms->misr_mismatch_irq = true;
 
 	pr_info("sde hardware revision:0x%x\n", sde_kms->core_rev);
 
@@ -5258,7 +5279,9 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	/*
 	 * Support format modifiers for compression etc.
 	 */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	dev->mode_config.allow_fb_modifiers = true;
+#endif
 
 	sde_kms->affinity_notify.notify = sde_kms_irq_affinity_notify;
 	sde_kms->affinity_notify.release = sde_kms_irq_affinity_release;

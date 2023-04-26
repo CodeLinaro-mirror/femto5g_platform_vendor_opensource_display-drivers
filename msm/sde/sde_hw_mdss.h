@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -12,6 +12,7 @@
 
 #include <drm/sde_drm.h>
 #include <drm/msm_drm_pp.h>
+#include <drm/drm_fourcc.h>
 
 #include "msm_drv.h"
 
@@ -143,6 +144,7 @@ static const char* sde_hw_blk_type_str[] =
 	"INTF",
 	"WB",
 	"DSC",
+	"MISR",
 	"VDC",
 	"MERGE3D",
 	"QDSS",

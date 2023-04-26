@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -114,6 +114,10 @@ static void sde_encoder_phys_shd_vblank_irq(void *arg, int irq_idx)
 not_flushed:
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
+	if (phys_enc->parent_ops.handle_roi_misr_virt_v2)
+		phys_enc->parent_ops.handle_roi_misr_virt_v2(phys_enc->parent,
+				phys_enc);
+
 	if (event && phys_enc->parent_ops.handle_frame_done)
 		phys_enc->parent_ops.handle_frame_done(phys_enc->parent,
 			phys_enc, event);
@@ -138,12 +142,12 @@ static void sde_encoder_phys_shd_roi_misr_irq(void *arg, int irq_idx)
 	if (!phys_enc || !sde_encoder_phys_shd_is_master(phys_enc))
 		return;
 
-	if (phys_enc->parent_ops.handle_roi_misr_virt)
-		phys_enc->parent_ops.handle_roi_misr_virt(phys_enc->parent);
+	if (phys_enc->parent_ops.handle_roi_misr_virt_v1)
+		phys_enc->parent_ops.handle_roi_misr_virt_v1(phys_enc->parent);
 }
 
 static int _sde_encoder_phys_shd_register_irq(struct sde_encoder_phys *phys_enc,
-					      enum sde_intr_idx intr_idx, bool enable)
+		enum sde_intr_idx intr_idx, bool enable)
 {
 	SDE_DEBUG("%d enable %d\n", DRMID(phys_enc->parent), enable);
 
@@ -537,7 +541,8 @@ void sde_encoder_phys_shd_trigger_flush(struct sde_encoder_phys *phys_enc)
 			shd_enc->hw_roi_misr, shd_enc->num_roi_misrs);
 }
 
-static int sde_encoder_phys_shd_control_vblank_irq(struct sde_encoder_phys *phys_enc, bool enable)
+static int sde_encoder_phys_shd_control_vblank_irq(struct sde_encoder_phys *phys_enc,
+		bool enable)
 {
 	int ret = 0;
 	struct sde_encoder_phys_shd *shd_enc;
@@ -562,6 +567,7 @@ static int sde_encoder_phys_shd_control_vblank_irq(struct sde_encoder_phys *phys
 
 	SDE_EVT32(DRMID(phys_enc->parent), enable, atomic_read(&phys_enc->vblank_refcount));
 
+	mutex_lock(phys_enc->vblank_ctl_lock);
 	if (enable && atomic_inc_return(&phys_enc->vblank_refcount) == 1) {
 		ret = _sde_encoder_phys_shd_register_irq(phys_enc, INTR_IDX_VSYNC, true);
 		if (ret)
@@ -572,6 +578,7 @@ static int sde_encoder_phys_shd_control_vblank_irq(struct sde_encoder_phys *phys
 		if (ret)
 			atomic_inc_return(&phys_enc->vblank_refcount);
 	}
+	mutex_unlock(phys_enc->vblank_ctl_lock);
 
 end:
 	if (ret) {
@@ -702,8 +709,8 @@ int sde_encoder_phys_shd_get_line_count(struct sde_encoder_phys *phys)
 }
 
 static int sde_encoder_phys_shd_atomic_check(struct sde_encoder_phys *phys_enc,
-					     struct drm_crtc_state *crtc_state,
-					     struct drm_connector_state *conn_state)
+		struct drm_crtc_state *crtc_state,
+		struct drm_connector_state *conn_state)
 {
 	struct shd_display *display;
 
@@ -745,11 +752,13 @@ static void sde_encoder_phys_shd_init_ops(struct sde_encoder_phys_ops *ops)
 	ops->atomic_check = sde_encoder_phys_shd_atomic_check;
 }
 
-void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id, void *phys_init_params)
+void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id,
+		void *phys_init_params)
 {
 	struct sde_enc_phys_init_params *p = phys_init_params;
 	struct sde_encoder_phys *phys_enc;
 	struct sde_encoder_phys_shd *shd_enc;
+	struct sde_encoder_virt *sde_enc;
 	struct sde_encoder_irq *irq;
 	struct sde_shd_hw_ctl *hw_ctl;
 	struct sde_shd_hw_mixer *hw_lm;
@@ -796,7 +805,7 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id, void
 	phys_enc->split_role = p->split_role;
 	phys_enc->intf_mode = INTF_MODE_NONE;
 	phys_enc->intf_idx = INTF_0 + controller_id;
-
+	phys_enc->vblank_ctl_lock = p->vblank_ctl_lock;
 	phys_enc->enc_spinlock = p->enc_spinlock;
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
 
@@ -819,6 +828,22 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id, void
 		irq->intr_type = SDE_IRQ_TYPE_ROI_MISR;
 		irq->intr_idx = i;
 		irq->cb.func = sde_encoder_phys_shd_roi_misr_irq;
+	}
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	if (!sde_enc) {
+		ret = -EINVAL;
+		goto fail_alloc;
+	}
+
+	if (sde_enc->misr_mismatch) {
+		for (i = INTR_IDX_MISR_ROI0_MISMATCH; i < INTR_IDX_MAX; i++) {
+			irq = &phys_enc->irq[i];
+			irq->name = "roi_misr_mismatch";
+			irq->intr_type = SDE_IRQ_TYPE_ROI_MISR;
+			irq->intr_idx = i;
+			irq->cb.func = sde_encoder_phys_shd_roi_misr_irq;
+		}
 	}
 
 	atomic_set(&phys_enc->vblank_refcount, 0);

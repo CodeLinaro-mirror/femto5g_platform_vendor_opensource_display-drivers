@@ -17,9 +17,14 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 #include <linux/debugfs.h>
+#include <linux/version.h>
 #include <linux/platform_device.h>
 #include <drm/drm_edid.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+#include <drm/display/drm_dp_helper.h>
+#else
 #include <drm/drm_dp_helper.h>
+#endif
 #include <drm/drm_displayid.h>
 #include "dp_debug.h"
 #include "dp_mst_sim.h"
@@ -452,6 +457,9 @@ int dp_sim_update_port_edid(struct dp_aux_bridge *bridge,
 {
 	struct dp_sim_device *sim_dev;
 	struct dp_mst_sim_port *sim_port;
+
+	if (!size)
+		return -EINVAL;
 
 	if (!bridge || !(bridge->flag & DP_SIM_BRIDGE_PRIV_FLAG))
 		return -EINVAL;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -34,10 +34,18 @@
 
 /* SDE_ROI_MISR_CTL */
 #define ROI_MISR_OP_MODE                 0x00
+#if defined(CONFIG_ARCH_LEMANS)
+#define ROI_MISR_POSITION(i)            (0x40 + 0x4 * (i))
+#define ROI_MISR_SIZE(i)                (0x80 + 0x4 * (i))
+#define ROI_MISR_CTRL(i)                (0xc0 + 0x4 * (i))
+#define ROI_MISR_CAPTURED(i)            (0x100 + 0x4 * (i))
+#define ROI_MISR_EXPECTED(i)            (0x140 + 0x4 * (i))
+#else
 #define ROI_MISR_POSITION(i)            (0x10 + 0x4 * (i))
 #define ROI_MISR_SIZE(i)                (0x20 + 0x4 * (i))
 #define ROI_MISR_CTRL(i)                (0x30 + 0x4 * (i))
 #define ROI_MISR_EXPECTED(i)            (0x50 + 0x4 * (i))
+#endif
 
 /* ROI_MISR_CTRL register */
 #define ROI_MISR_CTRL_ENABLE            BIT(8)
@@ -138,7 +146,8 @@ static u32 _sde_shd_update_active_pipes(struct sde_hw_ctl *ctx)
 	return val;
 }
 
-static void _sde_shd_setup_active_pipes(struct sde_hw_ctl *ctx, unsigned long *fetch_active)
+static void _sde_shd_setup_active_pipes(struct sde_hw_ctl *ctx,
+		unsigned long *fetch_active)
 {
 		int i;
 		struct sde_shd_hw_ctl *shd_hw_ctl;
@@ -237,7 +246,8 @@ exit:
 	hw_ctl->mixer_cfg[lm].mixercfg_skip_sspp_mask[1] = 0;
 }
 
-static int _sde_shd_setup_intf_cfg_v1(struct sde_hw_ctl *ctx, struct sde_hw_intf_cfg_v1 *cfg)
+static int _sde_shd_setup_intf_cfg_v1(struct sde_hw_ctl *ctx,
+		struct sde_hw_intf_cfg_v1 *cfg)
 {
 	return 0;
 }
@@ -277,8 +287,8 @@ static void _sde_shd_flush_cwb_cfg(struct sde_shd_hw_ctl *hw_ctl)
 	hw_ctl->cwb_changed = false;
 }
 
-static int _sde_shd_update_intf_cfg(struct sde_hw_ctl *ctx, struct sde_hw_intf_cfg_v1 *cfg,
-		bool enable)
+static int _sde_shd_update_intf_cfg(struct sde_hw_ctl *ctx,
+		struct sde_hw_intf_cfg_v1 *cfg, bool enable)
 {
 	int i;
 	u32 cwb_active = 0;
@@ -385,8 +395,8 @@ static void _sde_shd_flush_hw_ctl(struct sde_hw_ctl *ctx)
 	_sde_shd_flush_cwb_cfg(hw_ctl);
 }
 
-static void _sde_shd_setup_blend_config(struct sde_hw_mixer *ctx, u32 stage, u32 fg_alpha,
-		u32 bg_alpha, u32 blend_op)
+static void _sde_shd_setup_blend_config(struct sde_hw_mixer *ctx, u32 stage,
+		u32 fg_alpha, u32 bg_alpha, u32 blend_op)
 {
 	struct sde_shd_hw_mixer *hw_lm;
 	struct sde_shd_mixer_cfg *cfg;
@@ -404,7 +414,8 @@ static void _sde_shd_setup_blend_config(struct sde_hw_mixer *ctx, u32 stage, u32
 	cfg->dirty = true;
 }
 
-static void _sde_shd_setup_dim_layer(struct sde_hw_mixer *ctx, struct sde_hw_dim_layer *dim_layer)
+static void _sde_shd_setup_dim_layer(struct sde_hw_mixer *ctx,
+		struct sde_hw_dim_layer *dim_layer)
 {
 	struct sde_shd_hw_mixer *hw_lm;
 	struct sde_hw_dim_layer dim_layer2;
@@ -649,7 +660,8 @@ void sde_shd_hw_roi_misr_init_op(struct sde_hw_roi_misr *ctx)
 			_sde_shd_roi_misr_reset;
 }
 
-void sde_shd_hw_skip_sspp_clear(struct sde_hw_ctl *ctx, enum sde_sspp sspp, int multirect_idx)
+void sde_shd_hw_skip_sspp_clear(struct sde_hw_ctl *ctx, enum sde_sspp sspp,
+		int multirect_idx)
 {
 	struct sde_shd_hw_ctl *hw_ctl;
 	int i;

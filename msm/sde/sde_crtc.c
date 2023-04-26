@@ -28,6 +28,7 @@
 #include <drm/drm_flip_work.h>
 #include <soc/qcom/of_common.h>
 #include <linux/version.h>
+#include <linux/file.h>
 
 #include "sde_kms.h"
 #include "sde_hw_lm.h"
@@ -3004,7 +3005,7 @@ void sde_crtc_opr_event_notify(struct drm_crtc *crtc)
 		rc = sde_dspp_spr_read_opr_value(sde_crtc->mixers[i].hw_dspp,
 			&current_opr_value[i]);
 		if (rc) {
-			SDE_ERROR("failed to collect OPR %d", i, rc);
+			SDE_ERROR("failed to collect OPR idx: %d rc: %d\n", i, rc);
 			continue;
 		}
 
@@ -3106,7 +3107,9 @@ static void sde_crtc_frame_event_work(struct kthread_work *work)
 
 	if (fevent->event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE) {
 		SDE_ATRACE_BEGIN("signal_release_fence");
-		sde_post_commit_signal_fence(&sde_crtc->post_commit_fence_ctx);
+
+		if (sde_kms->misr_mismatch_irq)
+			sde_post_commit_signal_fence(&sde_crtc->post_commit_fence_ctx);
 
 		sde_fence_signal(sde_crtc->output_fence, fevent->ts,
 				(fevent->event & SDE_ENCODER_FRAME_EVENT_ERROR)
