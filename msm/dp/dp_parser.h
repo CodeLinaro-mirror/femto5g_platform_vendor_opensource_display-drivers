@@ -281,6 +281,7 @@ struct dp_parser {
 	bool ext_hpd_en;
 	bool is_edp;
 	bool lphw_hpd;
+	bool panel_notifier_support;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 	const char *mst_fixed_display_type[MAX_DP_MST_STREAMS];

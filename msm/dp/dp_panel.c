@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
 #include "dp_panel.h"
 #include <linux/unistd.h>
+#include <linux/of_platform.h>
 #include <drm/drm_fixed.h>
 #include "dp_debug.h"
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
@@ -3215,6 +3216,28 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 
 	dp_panel_edid_register(panel);
 
+	if (in->is_edp && in->panel_notifier_support) {
+		struct device_node *of_node = of_parse_phandle(in->dev->of_node,
+				"qcom,edp-default-panel", 0);
+
+		if (!of_node) {
+			DP_ERR("phandle for default panel not found\n");
+		} else {
+			struct platform_device *panel_pdev = of_find_device_by_node(of_node);
+
+			if (!panel_pdev) {
+				DP_ERR("panel device not found for of_node\n");
+			} else {
+				/* of_find_device_by_node() took a ref; drop it after registering */
+				drm_panel_init(&dp_panel->drm_panel, &panel_pdev->dev, NULL,
+						DRM_MODE_CONNECTOR_eDP);
+				drm_panel_add(&dp_panel->drm_panel);
+				put_device(&panel_pdev->dev);
+			}
+			of_node_put(of_node);
+		}
+	}
+
 	return dp_panel;
 error:
 	return ERR_PTR(rc);
@@ -3231,6 +3254,10 @@ void dp_panel_put(struct dp_panel *dp_panel)
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 
 	dp_panel_edid_deregister(panel);
+	if (dp_panel->drm_panel.dev) {
+		drm_panel_remove(&dp_panel->drm_panel);
+		dp_panel->drm_panel.dev = NULL;
+	}
 	sde_conn = to_sde_connector(dp_panel->connector);
 	if (sde_conn)
 		sde_conn->drv_panel = NULL;
