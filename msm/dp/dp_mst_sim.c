@@ -385,6 +385,7 @@ int dp_sim_set_sim_mode(struct dp_aux_bridge *bridge, u32 sim_mode)
 	sim_dev = to_dp_sim_dev(bridge);
 
 	sim_dev->sim_mode = sim_mode;
+	sim_dev->aux_timeout_count = 0;
 
 	return 0;
 }
