@@ -1709,3 +1709,7 @@ void wfd_kms_unregister(void)
 {
 	platform_driver_unregister(&wfd_kms_driver);
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+MODULE_IMPORT_NS(DMA_BUF);
+#endif

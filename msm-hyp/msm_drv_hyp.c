@@ -1512,6 +1512,28 @@ static const struct drm_framebuffer_funcs msm_hyp_framebuffer_funcs = {
 	.destroy = msm_hyp_framebuffer_destroy,
 };
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+static int msm_hyp_shmem_sync_sg_for_device(struct drm_gem_object *obj)
+{
+	struct sg_table *sgt;
+	struct drm_gem_shmem_object *shmem = to_drm_gem_shmem_obj(obj);
+
+	if(!shmem)
+		return -EINVAL;
+
+	if (shmem->base.import_attach)
+		return 0;
+
+	sgt = drm_gem_shmem_get_pages_sgt(shmem);
+	if (IS_ERR(sgt))
+		return PTR_ERR(sgt);
+
+	dma_sync_sg_for_device(shmem->base.dev->dev, sgt->sgl,
+		sgt->nents, DMA_BIDIRECTIONAL);
+
+	return 0;
+}
+#else
 static int msm_hyp_shmem_sync_sg_for_device(struct drm_gem_object *obj)
 {
 	struct sg_table *sgt;
@@ -1528,7 +1550,7 @@ static int msm_hyp_shmem_sync_sg_for_device(struct drm_gem_object *obj)
 
 	return 0;
 }
-
+#endif
 static struct drm_framebuffer *msm_hyp_framebuffer_create(
 		struct drm_device *dev, struct drm_file *file,
 		const struct drm_mode_fb_cmd2 *mode_cmd)
@@ -2013,8 +2035,9 @@ static int _msm_hyp_hw_init(struct drm_device *ddev)
 
 	ddev->mode_config.funcs = &msm_hyp_mode_config_funcs;
 
+#if (LINUX_VERSION_CODE <= KERNEL_VERSION(5, 15, 0))
 	ddev->mode_config.allow_fb_modifiers = true;
-
+#endif
 	drm_mode_config_reset(ddev);
 
 fail:
