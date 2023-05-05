@@ -44,9 +44,9 @@
 #endif
 
 #if defined(__linux__)
-#define USER_OS_UTILS_LOG_MODULE_NAME "LV_FE"
+#define USER_OS_UTILS_LOG_MODULE_NAME "[drm] LV_FE"
 #elif defined(__ANDROID__)
-#define USER_OS_UTILS_LOG_MODULE_NAME "LA_FE"
+#define USER_OS_UTILS_LOG_MODULE_NAME "[drm] LA_FE"
 #endif
 
 #define USER_OS_UTILS_LOG_MODULE_ID       10256
