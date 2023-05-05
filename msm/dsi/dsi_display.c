@@ -5903,11 +5903,17 @@ static int dsi_display_init(struct dsi_display *display)
 	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
-	if (rc)
+	if (rc) {
 		DSI_ERR("component add failed, rc=%d\n", rc);
+		goto end;
+	}
 
 	DSI_DEBUG("component add success: %s\n", display->name);
+	return rc;
 end:
+	dsi_pwr_enable_regulator(&display->panel->power_info, false);
+	_dsi_display_dev_deinit(display);
+
 	return rc;
 }
 

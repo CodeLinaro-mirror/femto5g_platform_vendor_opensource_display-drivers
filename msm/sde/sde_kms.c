@@ -1929,13 +1929,14 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 				&wb_ops,
 				DRM_CONNECTOR_POLL_HPD,
 				DRM_MODE_CONNECTOR_VIRTUAL);
-		if (connector) {
+		if (!IS_ERR_OR_NULL(connector)) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;
 		} else {
 			SDE_ERROR("wb %d connector init failed\n", i);
 			sde_wb_drm_deinit(display);
 			sde_encoder_destroy(encoder);
+			continue;
 		}
 	}
 
@@ -1972,7 +1973,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 					&dsi_ops,
 					DRM_CONNECTOR_POLL_HPD,
 					DRM_MODE_CONNECTOR_DSI);
-		if (connector) {
+		if (!IS_ERR_OR_NULL(connector)) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;
 		} else {
@@ -1989,6 +1990,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			dsi_display_drm_bridge_deinit(display);
 			sde_connector_destroy(connector);
 			sde_encoder_destroy(encoder);
+			continue;
 		}
 
 		dsc_count += info.dsc_count;
@@ -2048,13 +2050,14 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 					&dp_ops,
 					DRM_CONNECTOR_POLL_HPD,
 					DRM_MODE_CONNECTOR_DisplayPort);
-		if (connector) {
+		if (!IS_ERR_OR_NULL(connector)) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;
 		} else {
 			SDE_ERROR("dp %d connector init failed\n", i);
 			dp_drm_bridge_deinit(display);
 			sde_encoder_destroy(encoder);
+			continue;
 		}
 
 		/* update display cap to MST_MODE for DP MST encoders */
