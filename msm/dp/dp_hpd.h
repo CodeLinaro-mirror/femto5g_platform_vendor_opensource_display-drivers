@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -42,6 +42,7 @@ struct dp_hpd_cb {
 	int (*configure)(struct device *dev);
 	int (*disconnect)(struct device *dev);
 	int (*attention)(struct device *dev);
+	void *usbpd_handle;
 };
 
 /**
@@ -81,6 +82,8 @@ struct dp_hpd {
 	int (*simulate_attention)(struct dp_hpd *dp_hpd, int vdo);
 	void (*wakeup_phy)(struct dp_hpd *dp_hpd, bool wakeup);
 };
+
+void *dp_hpd_get_handle(struct device *dev);
 
 /**
  * dp_hpd_get() - configure and get the DisplayPlot HPD module data

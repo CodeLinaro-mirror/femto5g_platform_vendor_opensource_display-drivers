@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -39,6 +39,11 @@ static void dp_hpd_host_deinit(struct dp_hpd *dp_hpd,
 
 static void dp_hpd_isr(struct dp_hpd *dp_hpd)
 {
+}
+
+void *dp_hpd_get_handle(struct device *dev)
+{
+	return dp_usbpd_get_handle(dev);
 }
 
 struct dp_hpd *dp_hpd_get(struct device *dev, struct dp_parser *parser,

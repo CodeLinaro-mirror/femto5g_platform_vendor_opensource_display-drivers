@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -61,6 +62,7 @@ struct dp_usbpd {
  */
 struct dp_hpd *dp_usbpd_get(struct device *dev, struct dp_hpd_cb *cb);
 void dp_usbpd_put(struct dp_hpd *pd);
+void *dp_usbpd_get_handle(struct device *dev);
 #else
 static inline struct dp_hpd *dp_usbpd_get(struct device *dev,
 		struct dp_hpd_cb *cb)
@@ -70,6 +72,11 @@ static inline struct dp_hpd *dp_usbpd_get(struct device *dev,
 
 static inline void dp_usbpd_put(struct dp_hpd *pd)
 {
+}
+
+void *dp_usbpd_get_handle(struct device *dev)
+{
+	return NULL;
 }
 #endif /* CONFIG_DRM_MSM_DP_USBPD_LEGACY */
 #endif /* _DP_USBPD_H_ */
