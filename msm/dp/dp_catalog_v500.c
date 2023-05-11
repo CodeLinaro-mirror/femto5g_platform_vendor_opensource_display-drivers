@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "dp_catalog.h"
@@ -151,6 +151,7 @@ struct dp_catalog_private_v500 {
 	struct device *dev;
 	struct dp_catalog_sub sub;
 	struct dp_catalog_io *io;
+	struct dp_parser *parser;
 	struct dp_catalog *dpc;
 
 	struct dp_catalog_ctrl dp_ctrl;
@@ -292,6 +293,10 @@ static void dp_catalog_panel_config_msa_v500(struct dp_catalog_panel *panel,
 		nvid_off = DP1_SOFTWARE_NVID - DP_SOFTWARE_NVID;
 	}
 
+	if (catalog->parser->dsc_passthrough.dsc_passthrough_enable) {
+		mvid = catalog->parser->msa.ovr_sw_mvid;
+		nvid = catalog->parser->msa.ovr_sw_nvid;
+	}
 	DP_DEBUG("pclk=%ld, lclk=%ld, mvid=0x%x, nvid=0x%x\n", stream_rate_khz, rate, mvid, nvid);
 	dp_write(DP_SOFTWARE_MVID + mvid_off, mvid);
 	dp_write(DP_SOFTWARE_NVID + nvid_off, nvid);
@@ -457,7 +462,8 @@ static void dp_catalog_put_v500(struct dp_catalog *catalog)
 }
 
 struct dp_catalog_sub *dp_catalog_get_v500(struct device *dev,
-			struct dp_catalog *catalog, struct dp_catalog_io *io)
+			struct dp_catalog *catalog, struct dp_catalog_io *io,
+			struct dp_parser *parser)
 {
 	struct dp_catalog_private_v500 *catalog_priv;
 
@@ -472,6 +478,7 @@ struct dp_catalog_sub *dp_catalog_get_v500(struct device *dev,
 
 	catalog_priv->dev = dev;
 	catalog_priv->io = io;
+	catalog_priv->parser = parser;
 	catalog_priv->dpc = catalog;
 	catalog_priv->dp_ctrl = catalog->ctrl;
 	catalog_priv->dp_audio = catalog->audio;

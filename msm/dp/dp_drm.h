@@ -188,7 +188,8 @@ int dp_drm_bond_bridge_init(void *display,
  * @drm_mode: Pointer to drm mode
  */
 void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
-				struct drm_display_mode *drm_mode);
+				struct drm_display_mode *drm_mode,
+				struct dp_display *display);
 
 /**
  * dp_connector_update_pps - update pps for given connector
@@ -206,6 +207,16 @@ int dp_connector_update_pps(struct drm_connector *connector,
  */
 int dp_connector_install_properties(void *display,
 		struct drm_connector *conn);
+
+/**
+ * dp_connector_query_mode - dump out current mst topology
+ * @display: Pointer to private display structure
+ * @mode: Pointer to mode structure which needs update
+ * @query: Type of query based on which update is required.
+ */
+int dp_connector_query_mode(struct dp_display *display,
+	void *mode,
+	enum dp_query_mode query);
 
 #else
 static inline int dp_connector_config_hdr(struct drm_connector *connector,
@@ -313,12 +324,25 @@ static inline int dp_drm_bond_bridge_init(void *display,
 }
 
 static inline void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
-				struct drm_display_mode *drm_mode)
+	struct drm_display_mode *drm_mode,
+	struct dp_display *display)
 {
 }
 
 static int dp_connector_install_properties(void *display,
 		struct drm_connector *conn)
+{
+	return 0;
+}
+static inline bool dp_connector_is_usr_mode(struct dp_display *display,
+	enum dp_usr_mode usr_mode)
+{
+	return false;
+}
+static inline int dp_connector_get_usr_mode(struct dp_display *display,
+	struct drm_display_mode *drm_mode,
+	struct dp_display_mode *dp_mode,
+	enum dp_usr_mode usr_mode)
 {
 	return 0;
 }

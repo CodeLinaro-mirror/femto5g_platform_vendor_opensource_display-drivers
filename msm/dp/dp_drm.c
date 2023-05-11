@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -15,6 +15,7 @@
 #include "dp_drm.h"
 #include "dp_mst_drm.h"
 #include "dp_debug.h"
+#include "dp_parser.h"
 
 #define DP_MST_DEBUG(fmt, ...) DP_DEBUG(fmt, ##__VA_ARGS__)
 
@@ -97,11 +98,14 @@ static struct dp_bond_mgr_state *dp_bond_get_mgr_atomic_state(
 }
 
 void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
-				struct drm_display_mode *drm_mode)
+				struct drm_display_mode *drm_mode,
+				struct dp_display *display)
 {
 	u32 flags = 0;
+	struct dp_parser *parser;
 
 	memset(drm_mode, 0, sizeof(*drm_mode));
+	display->get_parser(display, (void **)&parser);
 
 	drm_mode->hdisplay = dp_mode->timing.h_active;
 	drm_mode->hsync_start = drm_mode->hdisplay +
@@ -156,6 +160,7 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 	int rc = 0;
 	struct dp_bridge *bridge;
 	struct dp_display *dp;
+	struct dp_display_mode dp_mode;
 
 	if (!drm_bridge) {
 		DP_ERR("Invalid params\n");
@@ -183,7 +188,9 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 		dp->set_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE, NULL);
 
 	/* By this point mode should have been validated through mode_fixup */
-	rc = dp->set_mode(dp, bridge->dp_panel, &bridge->dp_mode);
+	memcpy(&dp_mode, &bridge->dp_mode, sizeof(struct dp_display_mode));
+	dp_connector_query_mode(dp, (void *)&dp_mode, DSC_PASSTHROUGH_UPDATE_DP_MODE);
+	rc = dp->set_mode(dp, bridge->dp_panel, &dp_mode);
 	if (rc) {
 		DP_ERR("[%d] failed to perform a mode set, rc=%d\n",
 		       bridge->id, rc);
@@ -374,9 +381,19 @@ static bool dp_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	dp = bridge->display;
 
 	dp->convert_to_dp_mode(dp, bridge->dp_panel, mode, &dp_mode);
-	convert_to_drm_mode(&dp_mode, adjusted_mode);
+	convert_to_drm_mode(&dp_mode, adjusted_mode, dp);
 end:
 	return ret;
+}
+
+int dp_connector_query_mode(struct dp_display *display,
+	void *mode,
+	enum dp_query_mode query)
+{
+	struct dp_panel *dp_panel;
+
+	dp_panel = display->bridge->dp_panel;
+	return dp_panel->query_mode(dp_panel, mode, query);
 }
 
 static const struct drm_bridge_funcs dp_bridge_ops = {
@@ -447,7 +464,7 @@ static bool dp_bond_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	tmp = *mode;
 	dp_bond_split_tile_timing(&tmp, dp->base_connector->num_h_tile);
 	dp->convert_to_dp_mode(dp, dp->bridge->dp_panel, &tmp, &dp_mode);
-	convert_to_drm_mode(&dp_mode, adjusted_mode);
+	convert_to_drm_mode(&dp_mode, adjusted_mode, dp);
 	dp_bond_merge_tile_timing(adjusted_mode,
 			dp->base_connector->num_h_tile);
 end:
@@ -1432,7 +1449,7 @@ int dp_connector_get_modes(struct drm_connector *connector,
 
 		if (dp_mode->timing.pixel_clk_khz) { /* valid DP mode */
 			memset(&drm_mode, 0x0, sizeof(drm_mode));
-			convert_to_drm_mode(dp_mode, &drm_mode);
+			convert_to_drm_mode(dp_mode, &drm_mode, dp);
 			m = drm_mode_duplicate(connector->dev, &drm_mode);
 			if (!m) {
 				DP_ERR("failed to add mode %ux%u\n",

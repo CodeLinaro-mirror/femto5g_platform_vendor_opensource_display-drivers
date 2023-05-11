@@ -47,6 +47,7 @@
 #include "sde_vm.h"
 #include "sde_fence.h"
 #include "sde_roi_misr_helper.h"
+#include "dp_drm.h"
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
