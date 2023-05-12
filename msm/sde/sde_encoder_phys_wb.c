@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1146,7 +1146,9 @@ static void _sde_encoder_phys_wb_setup_sys_cache(struct sde_encoder_phys *phys_e
 	 * avoid llcc_active reset for crtc while in clone mode as it will reset it for
 	 * primary display as well
 	 */
-	if (cache_enable || !phys_enc->in_clone_mode) {
+	if (cache_enable || (!phys_enc->in_clone_mode
+			&& cache_wr_type < SDE_SYS_CACHE_MAX
+			&& cache_rd_type < SDE_SYS_CACHE_MAX)) {
 		sde_crtc->new_perf.llcc_active[cache_wr_type] = cache_enable;
 		sde_crtc->new_perf.llcc_active[cache_rd_type] = cache_enable;
 		sde_core_perf_crtc_update_llcc(wb_enc->crtc);
