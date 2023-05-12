@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -24,6 +24,7 @@ struct dp_mst_drm_cbs {
 	void (*set_drv_state)(void *dp_display,
 			enum dp_drv_state mst_state);
 	int (*set_mgr_state)(void *dp_display, bool state);
+	void (*set_mst_mode_params)(void *dp_display, struct dp_display_mode *mode);
 };
 
 struct dp_mst_drm_install_info {

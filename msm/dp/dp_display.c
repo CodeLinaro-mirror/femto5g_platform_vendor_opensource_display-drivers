@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2413,6 +2413,9 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 
 	mode->timing.bpp = dp->panel->get_mode_bpp(dp->panel,
 			mode->timing.bpp, mode->timing.pixel_clk_khz, dsc_en);
+
+	if (dp->mst.mst_active)
+		dp->mst.cbs.set_mst_mode_params(&dp->dp_display, mode);
 
 	dp_panel->pinfo = mode->timing;
 	mutex_unlock(&dp->session_lock);
