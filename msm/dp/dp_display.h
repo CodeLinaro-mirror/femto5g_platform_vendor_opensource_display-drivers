@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -127,6 +127,7 @@ struct dp_display {
 	int (*set_phy_bond_mode)(struct dp_display *dp_display,
 			enum dp_phy_bond_mode mode,
 			struct drm_connector *primary_connector);
+	int (*get_mst_pbn_div)(struct dp_display *dp);
 };
 
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
@@ -151,6 +152,10 @@ static inline int dp_display_get_num_of_streams(struct drm_device *dev)
 {
 	return 0;
 }
+static inline int dp_display_get_num_of_bonds(void *dp_display)
+{
+	return 0;
+}
 static inline int dp_connector_update_pps(struct drm_connector *connector,
 		char *pps_cmd, void *display)
 {
@@ -160,11 +165,7 @@ static inline int dp_display_get_info(void *dp_display, struct dp_display_info *
 {
 	return 0;
 }
-static int dp_display_get_info(void *dp_display, struct dp_display_info *dp_info)
-{
-	return 0;
-}
-static int dp_display_get_bond_displays(void *dp_display, enum dp_bond_type type,
+static inline int dp_display_get_bond_displays(void *dp_display, enum dp_bond_type type,
 		struct dp_display_bond_displays *dp_bond_info)
 {
 	return 0;

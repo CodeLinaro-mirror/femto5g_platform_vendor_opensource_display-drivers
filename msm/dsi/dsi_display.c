@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -662,7 +662,10 @@ static void dsi_display_parse_te_data(struct dsi_display *display)
 		rc = of_property_read_u32(dev->of_node,
 			"qcom,panel-te-source", &val);
 
-	if (rc || (val  > MAX_TE_SOURCE_ID)) {
+	if (rc) {
+		DSI_DEBUG("no vsync source selection\n");
+		val = 0;
+	} else if (val  > MAX_TE_SOURCE_ID) {
 		DSI_ERR("invalid vsync source selection\n");
 		val = 0;
 	}
@@ -5742,12 +5745,14 @@ static int dsi_display_bind(struct device *dev,
 	}
 
 	dsi_display_update_byte_intf_div(display);
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	rc = dsi_display_mipi_host_init(display);
 	if (rc) {
 		DSI_ERR("[%s] failed to initialize mipi host, rc=%d\n",
 		       display->name, rc);
 		goto error_ctrl_deinit;
 	}
+#endif
 
 	rc = dsi_panel_drv_init(display->panel, &display->host);
 	if (rc) {
@@ -5904,6 +5909,15 @@ static int dsi_display_init(struct dsi_display *display)
 		}
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+        rc = dsi_display_mipi_host_init(display);
+        if (rc) {
+                DSI_ERR("[%s] failed to initialize mipi host, rc=%d\n",
+                       display->name, rc);
+                goto end;
+        }
+#endif
+
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
 	if (rc) {
 		DSI_ERR("component add failed, rc=%d\n", rc);
@@ -6031,7 +6045,7 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 
 	if (!dsi_display_validate_res(display)) {
 		rc = -EPROBE_DEFER;
-		DSI_ERR("resources required for display probe not present: rc=%d\n", rc);
+		DSI_INFO("resources required for display probe not present: rc=%d\n", rc);
 		goto end;
 	}
 

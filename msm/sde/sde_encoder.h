@@ -172,6 +172,7 @@ enum sde_enc_rc_states {
  * @disp_info:			local copy of msm_display_info struct
  * @misr_enable:		misr enable/disable status
  * @misr_reconfigure:		boolean entry indicates misr reconfigure status
+ * @misr_mismatch:		boolean to indicate misr callback from mismatch IRQ
  * @misr_frame_count:		misr frame count before start capturing the data
  * @idle_pc_enabled:		indicate if idle power collapse is enabled
  *				currently. This can be controlled by user-mode
@@ -251,6 +252,7 @@ struct sde_encoder_virt {
 	struct msm_display_info disp_info;
 	atomic_t misr_enable;
 	bool misr_reconfigure;
+	bool misr_mismatch;
 	u32 misr_frame_count;
 
 	bool idle_pc_enabled;
