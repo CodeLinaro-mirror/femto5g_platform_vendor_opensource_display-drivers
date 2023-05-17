@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -223,6 +223,20 @@ enum dsi_dfps_type {
 	DSI_DFPS_IMMEDIATE_HFP,
 	DSI_DFPS_IMMEDIATE_VFP,
 	DSI_DFPS_MAX
+};
+
+/**
+ * enum dms_type - video panel mode switch type
+ * @DSI_DMS_VID_DISABLED: video panel mode switch not supported
+ * @DSI_DMS_VID_SEAMLESS: seamless video panel mode switch
+ * @DSI_DMS_VID_NON_SEAMLESS: non-seamless video panel mode switch
+ * @DSI_DMS_VID_TYPE_MAX
+ */
+enum dms_type {
+	DSI_DMS_VID_DISABLED = 0,
+	DSI_DMS_VID_SEAMLESS,
+	DSI_DMS_VID_NON_SEAMLESS,
+	DSI_DMS_VID_TYPE_MAX
 };
 
 /**
