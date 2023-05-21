@@ -559,7 +559,6 @@ enum {
  * @SDE_INTF_MDP_VSYNC_TS       INTF block has mdp vsync timestamp logged
  * @SDE_INTF_AVR_STATUS         INTF block has AVR_STATUS field in AVR_CONTROL register
  * @SDE_INTF_DUAL_DPU_SYNC      INTF block has support for DUAL DPU Sync feature
- * @SDE_INTF_DUAL_DPU_SKEWED_VSYNC INTF block has support for skewed vsync feature
  * @SDE_INTF_MAX
  */
 enum {
@@ -573,7 +572,6 @@ enum {
 	SDE_INTF_MDP_VSYNC_TS,
 	SDE_INTF_AVR_STATUS,
 	SDE_INTF_DUAL_DPU_SYNC,
-	SDE_INTF_DUAL_DPU_SKEWED_VSYNC,
 	SDE_INTF_MAX
 };
 

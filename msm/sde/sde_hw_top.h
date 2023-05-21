@@ -89,20 +89,6 @@ struct sde_vsync_source_cfg {
 };
 
 /**
- * struct sde_intf_offset_cfg: Configure interface offset parameters.
- * @skew_offset_line: skew offset value in vertical lines
- * @fps: current FPS of the panel/connector
- * @set_master_intf: Select master interface
- * @skew_intf_offset_en: enable interface offset feature.
- */
-struct sde_intf_offset_cfg {
-	u32 skew_offset_line;
-	u32 fps;
-	bool skew_intf_offset_en;
-	u8 set_master_intf;
-};
-
-/**
  * struct sde_hw_mdp_ops - interface to the MDP TOP Hw driver functions
  * Assumption is these functions will be called after clocks are enabled.
  * @setup_split_pipe : Programs the pipe control registers

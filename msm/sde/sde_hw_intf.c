@@ -489,10 +489,13 @@ static void sde_hw_intf_enable_dpu_sync_ctrl(struct sde_hw_intf *intf,
 		/* make sure Slave DPU timing engine is disabled */
 		wmb();
 	}
+
+	if (timing_en_mux_sel && (intf->cap->features & (BIT(SDE_INTF_PANEL_VSYNC_TS)
+				| BIT(SDE_INTF_MDP_VSYNC_TS))))
+		SDE_REG_WRITE(c, INTF_VSYNC_TIMESTAMP_CTRL, BIT(0));
 }
 
-static void sde_hw_intf_setup_dpu_sync_prog_skew_intf_offset(struct sde_hw_intf *intf,
-		const struct sde_intf_offset_cfg *cfg)
+static u32 sde_hw_intf_calc_intf_offset(struct sde_hw_intf *intf, u32 curr_skew_offset_line)
 {
 	struct sde_hw_blk_reg_map *c = &intf->hw;
 	u32 prog_fetch_enable = 0, fetch_start = 0;
@@ -502,11 +505,21 @@ static void sde_hw_intf_setup_dpu_sync_prog_skew_intf_offset(struct sde_hw_intf 
 	hsync_period = SDE_REG_READ(c, INTF_HSYNC_CTL);
 	hsync_period = ((hsync_period & 0xffff0000) >> 16);
 	vsync_period_f0 = SDE_REG_READ(c, INTF_VSYNC_PERIOD_F0);
-	intf_offset = hsync_period * cfg->skew_offset_line;
+	intf_offset = hsync_period * curr_skew_offset_line;
 	if (prog_fetch_enable & BIT(31)) {
 		fetch_start = SDE_REG_READ(c, INTF_PROG_FETCH_START);
 		intf_offset = (fetch_start + intf_offset) % (vsync_period_f0);
 	}
+	return intf_offset;
+}
+
+static void sde_hw_intf_setup_dpu_sync_prog_skew_intf_offset(struct sde_hw_intf *intf,
+		u32 curr_skew_offset_line)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+	u32 intf_offset;
+
+	intf_offset = sde_hw_intf_calc_intf_offset(intf, curr_skew_offset_line);
 	SDE_REG_WRITE(c, INTF_DPU_SYNC_PROG_INTF_OFFSET_EN, intf_offset);
 }
 

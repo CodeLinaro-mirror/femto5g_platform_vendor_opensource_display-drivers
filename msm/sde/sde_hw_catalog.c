@@ -2517,9 +2517,6 @@ static int sde_intf_parse_dt(struct device_node *np,
 
 		if (sde_cfg->mdp[0].features & BIT(SDE_MDP_DUAL_DPU_SYNC))
 			set_bit(SDE_INTF_DUAL_DPU_SYNC, &intf->features);
-
-		if (sde_cfg->mdp[0].features & BIT(SDE_MDP_SKEWED_VSYNC_SUPPORT))
-			set_bit(SDE_INTF_DUAL_DPU_SKEWED_VSYNC, &intf->features);
 	}
 
 end:

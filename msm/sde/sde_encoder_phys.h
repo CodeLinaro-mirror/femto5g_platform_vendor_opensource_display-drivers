@@ -277,6 +277,7 @@ struct sde_encoder_irq {
  * @intf_cfg:		Interface hardware configuration
  * @intf_cfg_v1:        Interface hardware configuration to be used if control
  *                      path supports SDE_CTL_ACTIVE_CFG
+ * @cfg:		INTF offset configuration for skew enabled displays
  * @comp_type:      Type of compression supported
  * @comp_ratio:		Compression ratio
  * @dsc_extra_pclk_cycle_cnt: Extra pclk cycle count for DSC over DP
@@ -327,6 +328,7 @@ struct sde_encoder_phys {
 	enum sde_intf intf_idx;
 	struct sde_hw_intf_cfg intf_cfg;
 	struct sde_hw_intf_cfg_v1 intf_cfg_v1;
+	struct sde_intf_offset_cfg cfg;
 	enum msm_display_compression_type comp_type;
 	u32 comp_ratio;
 	u32 dsc_extra_pclk_cycle_cnt;
