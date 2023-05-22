@@ -197,6 +197,7 @@ struct dp_display_private {
 	struct dp_display_mode mode;
 	struct dp_display dp_display;
 	struct msm_drm_private *priv;
+	void *usbpd_handle;
 
 	struct workqueue_struct *wq;
 	struct delayed_work hdcp_cb_work;
@@ -2140,6 +2141,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	cb->configure  = dp_display_usbpd_configure_cb;
 	cb->disconnect = dp_display_usbpd_disconnect_cb;
 	cb->attention  = dp_display_usbpd_attention_cb;
+	cb->usbpd_handle = dp->usbpd_handle;
 
 	dp->hpd = dp_hpd_get(dev, dp->parser, &dp->catalog->hpd,
 			dp->aux_bridge, cb);
@@ -3577,6 +3579,18 @@ static void dp_display_wakeup_phy_layer(struct dp_display *dp_display,
 		hpd->wakeup_phy(hpd, wakeup);
 }
 
+static void *dp_display_usbpd_get_handle(struct dp_display_private *dp)
+{
+	struct device *dev = &dp->pdev->dev;
+
+	if (!dev || !dev->of_node) {
+		DP_ERR("cannot find dev.of_node\n");
+		return ERR_PTR(-ENODEV);
+	}
+
+	return dp_hpd_get_handle(dev);
+}
+
 static int dp_display_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -3605,6 +3619,13 @@ static int dp_display_probe(struct platform_device *pdev)
 	rc = dp_display_init_aux_bridge(dp);
 	if (rc)
 		goto error;
+
+	dp->usbpd_handle = dp_display_usbpd_get_handle(dp);
+	if (IS_ERR(dp->usbpd_handle)) {
+		DP_ERR("Failed to get usbpd handle\n");
+		rc = PTR_ERR(dp->usbpd_handle);
+		goto error;
+	}
 
 	rc = dp_display_create_workqueue(dp);
 	if (rc) {
