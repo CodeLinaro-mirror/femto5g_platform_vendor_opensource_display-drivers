@@ -3646,7 +3646,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	struct dsi_parser_utils *utils;
 	const char *panel_physical_type;
 	int rc = 0, size;
-	char *new_panel_name, *panel_eye_type;
+	char *new_panel_name = NULL, *panel_eye_type;
 	bool is_panel_xr;
 
 	panel = kzalloc(sizeof(*panel), GFP_KERNEL);
@@ -3795,8 +3795,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 
 	return panel;
 error:
-	if (new_panel_name)
-		kfree(new_panel_name);
+	kfree(new_panel_name);
 	kfree(panel);
 	return ERR_PTR(rc);
 }
