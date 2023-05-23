@@ -9,6 +9,7 @@
 #include <linux/clk.h>
 #include <linux/debugfs.h>
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/iommu.h>
 #include <linux/of.h>
