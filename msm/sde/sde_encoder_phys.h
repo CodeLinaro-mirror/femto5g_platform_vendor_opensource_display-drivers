@@ -395,6 +395,7 @@ struct sde_encoder_phys {
 	u32 roi_misr_num;
 	struct sde_kms *sde_kms;
 	struct drm_display_mode cached_mode;
+	struct drm_display_mode cached_mode_usr;
 	enum sde_enc_split_role split_role;
 	enum sde_intf_mode intf_mode;
 	enum sde_intf intf_idx;

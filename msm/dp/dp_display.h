@@ -127,6 +127,7 @@ struct dp_display {
 	int (*set_phy_bond_mode)(struct dp_display *dp_display,
 			enum dp_phy_bond_mode mode,
 			struct drm_connector *primary_connector);
+	int (*get_parser)(struct dp_display *dp_display, void **parser);
 	int (*get_mst_pbn_div)(struct dp_display *dp);
 };
 

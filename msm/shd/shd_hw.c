@@ -327,16 +327,6 @@ static int _sde_shd_update_intf_cfg(struct sde_hw_ctl *ctx,
 	return 0;
 }
 
-static void _sde_shd_flush_hw_dsc_config(struct sde_hw_ctl *ctl_ctx)
-{
-	struct sde_shd_hw_ctl *hw_ctl;
-
-	hw_ctl = container_of(ctl_ctx, struct sde_shd_hw_ctl, base);
-
-	if (hw_ctl->orig && hw_ctl->orig->ops.update_intf_cfg)
-		hw_ctl->orig->ops.update_intf_cfg(ctl_ctx, &hw_ctl->dsc_cfg, true);
-}
-
 static void _sde_shd_flush_hw_pipe_active(struct sde_hw_ctl *ctx)
 {
 	struct sde_shd_hw_ctl *hw_ctl;
@@ -607,8 +597,6 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 
 	for (i = 0; i < misr_num; i++)
 		_sde_shd_flush_hw_roi_misr(misr_ctx[i]);
-
-	_sde_shd_flush_hw_dsc_config(ctl_ctx);
 
 	if (ctl_ctx->ops.trigger_flush)
 		ctl_ctx->ops.trigger_flush(ctl_ctx);
