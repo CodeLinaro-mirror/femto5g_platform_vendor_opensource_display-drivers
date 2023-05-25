@@ -2297,8 +2297,9 @@ static ssize_t edid_mode_show(struct device *dev,
 {
 	struct lt9611 *pdata = dev_get_drvdata(dev);
 
-	return scnprintf(buf, PAGE_SIZE, "%dx%d\n",
-			pdata->curr_mode.hdisplay, pdata->curr_mode.vdisplay);
+	return scnprintf(buf, PAGE_SIZE, "%dx%dx%d\n",
+			pdata->curr_mode.hdisplay, pdata->curr_mode.vdisplay,
+			drm_mode_vrefresh(&pdata->curr_mode));
 }
 
 static ssize_t edid_mode_store(struct device *dev,
