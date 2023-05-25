@@ -100,7 +100,7 @@ static irqreturn_t dp_tlmm_isr(int unused, void *data)
 
 	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
 
-	DP_DEBUG("DP%d lphw_hpd state = %d, new hpd state = %d\n",
+	DP_INFO("DP%d lphw_hpd state = %d, new hpd state = %d\n",
 			lphw_hpd->parser->cell_idx, lphw_hpd->hpd, hpd);
 	if (!lphw_hpd->hpd && hpd) {
 		lphw_hpd->hpd = true;
@@ -114,6 +114,7 @@ static void dp_lphw_hpd_host_init(struct dp_hpd *dp_hpd,
 		struct dp_catalog_hpd *catalog)
 {
 	struct dp_lphw_hpd_private *lphw_hpd;
+	bool hpd;
 
 	if (!dp_hpd) {
 		DP_ERR("invalid input\n");
@@ -122,6 +123,25 @@ static void dp_lphw_hpd_host_init(struct dp_hpd *dp_hpd,
 
 	lphw_hpd = container_of(dp_hpd, struct dp_lphw_hpd_private, base);
 
+	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
+	DP_INFO("DP%d lphw_hpd state = %d, new hpd state = %d\n",
+			lphw_hpd->parser->cell_idx, lphw_hpd->hpd, hpd);
+	if (lphw_hpd->hpd != hpd)
+		DP_INFO("DP%d HPD changes during suspension\n", lphw_hpd->parser->cell_idx);
+
+	/*
+	 * When we init the HPD hardware, the hardware state machine starts from
+	 * disconnected status.
+	 * Update the software cache HPD status to previous status, that will be
+	 * reset to low when going to suspend mode, since the sink device will
+	 * be powered down during suspension time.
+	 * The change of the sw HPD status to the new hardware status will be
+	 * identified as hotplug event, otherwise redundent interrupt shall be
+	 * ignored.
+	 */
+	DP_INFO("DP%d Init HPD state machine, sw status starts from %d\n",
+			lphw_hpd->parser->cell_idx, lphw_hpd->base.hpd_high);
+	lphw_hpd->hpd = lphw_hpd->base.hpd_high;
 	lphw_hpd->catalog->config_hpd(lphw_hpd->catalog, true);
 
 	/*
@@ -186,7 +206,7 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 	case DP_HPD_STATUS_CONNECTED:
 		if (!(isr & (DP_HPD_PLUG_INT_STATUS | DP_HPD_REPLUG_INT_STATUS
 			| DP_IRQ_HPD_INT_STATUS)) && !lphw_hpd->hpd)
-			DP_DEBUG("DP%d connect but no interrupt, hpd isr state: 0x%x\n",
+			DP_INFO("DP%d connect but no interrupt, hpd isr state: 0x%x\n",
 					lphw_hpd->parser->cell_idx, isr);
 		if (isr & DP_HPD_UNPLUG_INT_STATUS) {
 			if (lphw_hpd->base.hpd_high) {

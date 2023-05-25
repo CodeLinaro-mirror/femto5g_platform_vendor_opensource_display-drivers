@@ -4436,7 +4436,7 @@ static int dp_pm_prepare(struct device *dev)
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
-	if (dp->parser->force_connect_mode) {
+	if (dp->parser && dp->parser->force_connect_mode) {
 		u32 sim_mode;
 
 		mutex_lock(&dp->session_lock);
@@ -4444,6 +4444,12 @@ static int dp_pm_prepare(struct device *dev)
 		pr_info("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
 		if (sim_mode && dp->hpd->hpd_high)
 			pr_info("Suspend to sim mode when HPD is high\n");
+
+		// Always assume we will resume with HPD low
+		dp->hpd->hpd_high = false;
+		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
+		pr_info("Force HPD to be low and switch to sim mode for resume\n");
+
 		mutex_unlock(&dp->session_lock);
 	}
 	return 0;
@@ -4476,7 +4482,7 @@ static void dp_pm_complete(struct device *dev)
 		dp->ctrl->abort(dp->ctrl, false);
 	}
 
-	if (dp->parser->force_connect_mode) {
+	if (dp->parser && dp->parser->force_connect_mode) {
 		u32 sim_mode;
 
 		sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
