@@ -1219,6 +1219,14 @@ static int msm_hyp_plane_get_property(
 	return ret;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+static bool msm_hyp_plane_format_mod_supported(struct drm_plane *plane,
+		uint32_t format, uint64_t modifier)
+{
+	return true;
+}
+#endif
+
 static const struct drm_plane_funcs msm_hyp_plane_funcs = {
 		.update_plane = drm_atomic_helper_update_plane,
 		.disable_plane = drm_atomic_helper_disable_plane,
@@ -1228,6 +1236,9 @@ static const struct drm_plane_funcs msm_hyp_plane_funcs = {
 		.reset = msm_hyp_plane_reset,
 		.atomic_duplicate_state = msm_hyp_plane_duplicate_state,
 		.atomic_destroy_state = msm_hyp_plane_destroy_state,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+		.format_mod_supported = msm_hyp_plane_format_mod_supported,
+#endif
 };
 
 const struct drm_plane_helper_funcs msm_hyp_plane_helper = {
