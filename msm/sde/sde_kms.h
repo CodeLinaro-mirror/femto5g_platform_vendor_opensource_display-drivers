@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -298,6 +298,7 @@ struct sde_kms {
 	void **dp_displays;
 	int dp_stream_count;
 	bool dsc_switch_support;
+	bool cdm_capability;
 
 	bool has_danger_ctrl;
 

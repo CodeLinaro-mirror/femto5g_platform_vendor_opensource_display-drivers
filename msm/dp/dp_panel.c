@@ -23,15 +23,6 @@
 #define VSC_EXT_VESA_SDP_SUPPORTED BIT(4)
 #define VSC_EXT_VESA_SDP_CHAINING_SUPPORTED BIT(5)
 
-enum dp_panel_hdr_pixel_encoding {
-	RGB,
-	YCbCr444,
-	YCbCr422,
-	YCbCr420,
-	YONLY,
-	RAW,
-};
-
 enum dp_panel_hdr_rgb_colorimetry {
 	sRGB,
 	RGB_WIDE_GAMUT_FIXED_POINT,
@@ -40,6 +31,17 @@ enum dp_panel_hdr_rgb_colorimetry {
 	DCI_P3,
 	CUSTOM_COLOR_PROFILE,
 	ITU_R_BT_2020_RGB,
+};
+
+enum dp_panel_hdr_yuv_colorimetry {
+	ITU_R_BT_601,
+	ITU_R_BT_709,
+	xvYCC_601,
+	xvYCC_709,
+	sYCC_601,
+	ADOBE_YCC_601,
+	ITU_R_BT_2020_YcCBcCRc,
+	ITU_R_BT_2020_YCBCR,
 };
 
 enum dp_panel_hdr_dynamic_range {
@@ -53,11 +55,6 @@ enum dp_panel_hdr_content_type {
 	PHOTO,
 	VIDEO,
 	GAME,
-};
-
-enum dp_panel_hdr_state {
-	HDR_DISABLED,
-	HDR_ENABLED,
 };
 
 struct dp_panel_private {
@@ -208,6 +205,25 @@ struct tu_algo_data {
 	s64 ratio;
 };
 
+static inline char *get_colorspace_by_name(u32 colorspace)
+{
+	switch (colorspace) {
+	case DRM_MODE_COLORIMETRY_BT2020_RGB:
+		return "BT2020_RGB";
+	case DRM_MODE_COLORIMETRY_DCI_P3_RGB_D65:
+	case DRM_MODE_COLORIMETRY_DCI_P3_RGB_THEATER:
+		return "P3_RGB";
+	case DRM_MODE_COLORIMETRY_BT601_YCC:
+		return "BT601_YCbCr";
+	case DRM_MODE_COLORIMETRY_BT709_YCC:
+		return "BT709_YCbCr";
+	case DRM_MODE_COLORIMETRY_BT2020_YCC:
+		return "BT2020_YCbCr";
+	default:
+		return "Default_RGB";
+	}
+}
+
 /**
  * Mapper function which outputs colorimetry and dynamic range
  * to be used for a given colorspace value when the vsc sdp
@@ -250,6 +266,18 @@ static void get_sdp_colorimetry_range(struct dp_panel_private *panel,
 		*colorimetry = DCI_P3;
 		*dynamic_range = VESA;
 		break;
+	case DRM_MODE_COLORIMETRY_BT601_YCC:
+		*colorimetry = ITU_R_BT_601;
+		*dynamic_range = CEA;
+		break;
+	case DRM_MODE_COLORIMETRY_BT709_YCC:
+		*colorimetry = ITU_R_BT_709;
+		*dynamic_range = CEA;
+		break;
+	case DRM_MODE_COLORIMETRY_BT2020_YCC:
+		*colorimetry = ITU_R_BT_2020_YCBCR;
+		*dynamic_range = CEA;
+		break;
 	default:
 		*colorimetry = sRGB;
 		*dynamic_range = VESA;
@@ -289,6 +317,12 @@ static u8 get_misc_colorimetry_val(struct dp_panel_private *panel,
 		break;
 	case DRM_MODE_COLORIMETRY_OPRGB:
 		colorimetry = 0xc;
+		break;
+	case DRM_MODE_COLORIMETRY_BT709_YCC:
+		colorimetry = 0xd;
+		break;
+	case DRM_MODE_COLORIMETRY_BT601_YCC:
+		colorimetry = 0x5;
 		break;
 	default:
 		colorimetry = 0;
@@ -1112,7 +1146,6 @@ static void dp_panel_calc_tu_parameters(struct dp_panel *dp_panel,
 				pinfo->h_sync_width;
 	in.nlanes = panel->link->link_params.lane_count;
 	in.bpp = pinfo->bpp;
-	in.pixel_enc = 444;
 	in.dsc_en = pinfo->comp_info.enabled;
 	in.async_en = 0;
 	in.fec_en = dp_panel->fec_en;
@@ -1121,6 +1154,20 @@ static void dp_panel_calc_tu_parameters(struct dp_panel *dp_panel,
 	if (pinfo->comp_info.enabled)
 		in.compress_ratio = mult_frac(100, pinfo->comp_info.src_bpp,
 				pinfo->comp_info.tgt_bpp);
+
+	switch (dp_panel->output_format) {
+	case DP_OUTPUT_FORMAT_YCBCR420:
+		in.pixel_enc = 420;
+		break;
+	case DP_OUTPUT_FORMAT_YCBCR422:
+		in.pixel_enc = 422;
+		break;
+	case DP_OUTPUT_FORMAT_RGB:
+	case DP_OUTPUT_FORMAT_YCBCR444:
+	default:
+		in.pixel_enc = 444;
+		break;
+	}
 
 	_dp_panel_calc_tu(&in, tu_table);
 }
@@ -2529,6 +2576,7 @@ static void dp_panel_setup_colorimetry_sdp(struct dp_panel *dp_panel,
 	u8 bpc;
 	u32 colorimetry = 0;
 	u32 dynamic_range = 0;
+	u32 cformat;
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 	hdr_colorimetry = &panel->catalog->vsc_colorimetry;
@@ -2542,27 +2590,65 @@ static void dp_panel_setup_colorimetry_sdp(struct dp_panel *dp_panel,
 		&dynamic_range);
 
 	/* VSC SDP Payload for DB16 */
-	hdr_colorimetry->data[16] = (RGB << 4) | colorimetry;
+	switch (dp_panel->output_format) {
+	case DP_OUTPUT_FORMAT_YCBCR422:
+		cformat = YCbCr422;
+		break;
+	case DP_OUTPUT_FORMAT_RGB:
+	default:
+		cformat = RGB;
+	}
+
+	get_sdp_colorimetry_range(panel, cspace, &colorimetry,
+		&dynamic_range);
+	hdr_colorimetry->data[16] = (cformat << 4)
+		| colorimetry;
 
 	/* VSC SDP Payload for DB17 */
 	hdr_colorimetry->data[17] = (dynamic_range << 7);
 	bpc = (dp_panel->pinfo.bpp / 3);
 
-	switch (bpc) {
-	default:
-	case 10:
-		hdr_colorimetry->data[17] |= BIT(1);
-		break;
-	case 8:
-		hdr_colorimetry->data[17] |= BIT(0);
-		break;
-	case 6:
-		hdr_colorimetry->data[17] |= 0;
-		break;
+	switch (cformat) {
+	case YCbCr422:
+		switch (bpc) {
+		case 16:
+			hdr_colorimetry->data[17] |= BIT(2);
+			break;
+		case 12:
+			hdr_colorimetry->data[17] |= BIT(1) | BIT(0);
+			break;
+		case 10:
+			hdr_colorimetry->data[17] |= BIT(1);
+			break;
+		case 8:
+		default:
+			hdr_colorimetry->data[17] |= BIT(0);
+			break;
+		}
+	case RGB:
+		switch (bpc) {
+		case 10:
+		default:
+			hdr_colorimetry->data[17] |= BIT(1);
+			break;
+		case 8:
+			hdr_colorimetry->data[17] |= BIT(0);
+			break;
+		case 6:
+			hdr_colorimetry->data[17] |= 0;
+			break;
+		}
 	}
 
 	/* VSC SDP Payload for DB18 */
 	hdr_colorimetry->data[18] = GRAPHICS;
+
+	DP_DEBUG("colorformat: %u, colorspace: %s",
+			cformat, get_colorspace_by_name(cspace));
+	DP_DEBUG("VSDP Packets DB[16]: 0x%x, DB[17]: 0x%x, DB[18]: 0x%x",
+			hdr_colorimetry->data[16],
+			hdr_colorimetry->data[17],
+			hdr_colorimetry->data[18]);
 }
 
 static void dp_panel_setup_hdr_if(struct dp_panel_private *panel)
@@ -2602,6 +2688,7 @@ static void dp_panel_setup_misc_colorimetry(struct dp_panel *dp_panel,
 
 	catalog->misc_val |= (get_misc_colorimetry_val(panel,
 		colorspace) << 1);
+	DP_DEBUG("MISC Value: 0x%x", catalog->misc_val);
 }
 
 static int dp_panel_set_colorspace(struct dp_panel *dp_panel,
@@ -2631,7 +2718,8 @@ static int dp_panel_set_colorspace(struct dp_panel *dp_panel,
 	 * shall be used in the dp_panel_hw_cfg
 	 */
 	if (panel->panel_on) {
-		DP_DEBUG("panel is ON programming colorspace\n");
+		DP_DEBUG("panel is ON programming colorspace %s %u\n",
+			get_colorspace_by_name(colorspace), colorspace);
 		rc =  panel->catalog->set_colorspace(panel->catalog,
 			  panel->vsc_supported);
 	}
@@ -2752,6 +2840,15 @@ static void dp_panel_config_ctrl(struct dp_panel *dp_panel)
 
 	config |= (2 << 13); /* Default-> LSCLK DIV: 1/4 LCLK  */
 	config |= (0 << 11); /* RGB */
+
+	switch (dp_panel->output_format) {
+	case DP_OUTPUT_FORMAT_YCBCR422:
+		config |= (2 << 11); /* YUV422 */
+		break;
+	case DP_OUTPUT_FORMAT_RGB:
+	default:
+		config |= (0 << 11);
+	}
 
 	tbd = panel->link->get_test_bits_depth(panel->link,
 			dp_panel->pinfo.bpp);
@@ -3011,6 +3108,11 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 
 	/* As YUV was not supported now, so set the default format to RGB */
 	dp_mode->output_format = DP_OUTPUT_FORMAT_RGB;
+	if (drm_mode->flags & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422) {
+		dp_mode->output_format = DP_OUTPUT_FORMAT_YCBCR422;
+		dp_panel->output_format = DP_OUTPUT_FORMAT_YCBCR422;
+	}
+
 	/*
 	 * If a given videomode can be only supported in YCBCR420, set
 	 * the output format to YUV420. While now our driver did not
@@ -3095,6 +3197,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->spd_enabled = true;
 	dp_panel->link_bw_code = 0;
 	dp_panel->lane_count = 0;
+	dp_panel->output_format = DP_OUTPUT_FORMAT_RGB;
 	memcpy(panel->spd_vendor_name, vendor_name, (sizeof(u8) * 8));
 	memcpy(panel->spd_product_description, product_desc, (sizeof(u8) * 16));
 	dp_panel->connector = in->connector;

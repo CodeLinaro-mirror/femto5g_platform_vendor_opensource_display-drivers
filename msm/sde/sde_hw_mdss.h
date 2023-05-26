@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -500,6 +500,18 @@ enum sde_wb_usage_type {
 	WB_USAGE_WFD,
 	WB_USAGE_CWB,
 	WB_USAGE_OFFLINE_WB,
+};
+
+enum sde_csc_type {
+	SDE_CSC_RGB2YUV_601L,
+	SDE_CSC_RGB2YUV_601FR,
+	SDE_CSC_RGB2YUV_709L,
+	SDE_CSC_RGB2YUV_709FR,
+	SDE_CSC_RGB2YUV_2020L,
+	SDE_CSC_RGB2YUV_2020FR,
+	SDE_CSC_RGB2RGB_L,
+	SDE_CSC_RGB2RGB_FR,
+	SDE_MAX_CSC
 };
 
 /** struct sde_format - defines the format configuration which

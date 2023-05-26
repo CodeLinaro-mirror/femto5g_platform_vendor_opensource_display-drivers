@@ -47,6 +47,8 @@ struct dp_display {
 	bool is_mst_supported;
 	bool dsc_cont_pps;
 	bool is_connected;
+	bool is_yuv_supported;
+	bool yuv422_enable;
 	u32 max_pclk_khz;
 	void *dp_mst_prv_info;
 	u32 max_mixer_count;
@@ -66,6 +68,8 @@ struct dp_display {
 			const struct msm_resource_caps_info *avail_res);
 	int (*get_modes)(struct dp_display *dp_display, void *panel,
 		struct dp_display_mode *dp_mode);
+	int (*get_dc_support)(struct dp_display *dp,
+		u32 mode_pclk_khz, u32 out_format, bool dc_enable);
 	int (*prepare)(struct dp_display *dp_display, void *panel);
 	int (*unprepare)(struct dp_display *dp_display, void *panel);
 	int (*request_irq)(struct dp_display *dp_display);
@@ -118,6 +122,7 @@ int dp_display_get_num_of_displays(void);
 int dp_display_get_displays(void **displays, int count);
 int dp_display_get_num_of_streams(void);
 int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data);
+bool dp_connector_mode_needs_full_range(void *display);
 #else
 static inline int dp_display_get_num_of_displays(void)
 {
