@@ -122,7 +122,6 @@ struct user_os_utils_context {
 	struct mutex hyp_cbchl_lock;
 	struct mutex hyp_bufchl_lock;
 	unsigned long cmdchl_lock_flags[MAX_CHANNELS];
-	struct task_struct *buffer_thread;
 	int client_idx;
 };
 
@@ -131,37 +130,6 @@ struct user_os_utils_context {
  * Private Functions
  * ---------------------------------------------------------------------------
  */
-static int buffer_channel_task(void *arg)
-{
-	struct user_os_utils_context *ctx = arg;
-	int client_idx = ctx->client_idx;
-	int rc = 0;
-
-	if ((channel_map[client_idx][CHANNEL_BUFFERS]) != 0x00) {
-		/* open hab channel for events handling */
-#ifdef USE_HAB
-		rc = habmm_socket_open(
-#else
-		rc = habmm_socket_open_dummy(
-#endif
-					&ctx->hyp_hdl_disp[CHANNEL_BUFFERS],
-					channel_map[client_idx][CHANNEL_BUFFERS],
-					HAB_BUF_CHANNEL_TIMEOUT_VAL,
-					0x00);
-		if (rc) {
-			UTILS_LOG_ERROR("habmm_socket_open(HAB_CHNL_BUFFERS) failed");
-		} else {
-			/* create lock for buffer handling hab channel */
-			mutex_init(&ctx->hyp_bufchl_lock);
-
-			ctx->cmdchl_lock_flags[CHANNEL_BUFFERS] = 0;
-			UTILS_LOG_CRITICAL_INFO("Buffer channel open success, hnd=%d",
-					ctx->hyp_hdl_disp[CHANNEL_BUFFERS]);
-		}
-	}
-
-	return 0;
-}
 static inline int32_t
 get_hab_handle(
 	struct user_os_utils_context *ctx,
@@ -273,20 +241,21 @@ user_os_utils_init(
 		if (rc) {
 			UTILS_LOG_ERROR("habmm_socket_open(HAB_CHNL_OPENWFD) failed");
 			goto fail;
+		} else {
+			/* create lock for openwfd commands hab channel */
+			spin_lock_init(&ctx->hyp_cmdchl_lock);
+			UTILS_LOG_CRITICAL_INFO("OpenWFD channel open successful, handle=%d, client_id=0x%x",
+					ctx->hyp_hdl_disp[CHANNEL_OPENWFD], client_id);
+
+			/* Initialize the flag */
+			ctx->cmdchl_lock_flags[CHANNEL_OPENWFD] = 0;
 		}
 	} else {
 		UTILS_LOG_ERROR("invalid hab channel id");
 		rc = -EINVAL;
 		goto fail;
 	}
-	/* create lock for openwfd commands hab channel */
-	spin_lock_init(&ctx->hyp_cmdchl_lock);
 
-	UTILS_LOG_CRITICAL_INFO("OpenWFD channel open successful, handle=%d",
-			ctx->hyp_hdl_disp[CHANNEL_OPENWFD]);
-
-	/* Initialize the flag */
-	 ctx->cmdchl_lock_flags[CHANNEL_OPENWFD] = 0;
 
 	if ((init_info->enable_event_handling) &&
 		(channel_map[client_idx][CHANNEL_EVENTS]) != 0x00) {
@@ -303,21 +272,49 @@ user_os_utils_init(
 		if (rc) {
 			UTILS_LOG_ERROR("habmm_socket_open(HAB_CHNL_EVENTS) failed");
 			goto fail;
+		} else {
+			/* create lock for events handling hab channel */
+			mutex_init(&ctx->hyp_cbchl_lock);
+			UTILS_LOG_CRITICAL_INFO("Events channel open successful, handle=%d, client_id=0x%x",
+					ctx->hyp_hdl_disp[CHANNEL_EVENTS], client_id);
+
+			/* Initialize the flag */
+			ctx->cmdchl_lock_flags[CHANNEL_EVENTS] = 0;
 		}
-		/* create lock for events handling hab channel */
-		mutex_init(&ctx->hyp_cbchl_lock);
-		UTILS_LOG_CRITICAL_INFO("Events channel open successful, handle=%d",
-			ctx->hyp_hdl_disp[CHANNEL_EVENTS]);
-
-		/* Initialize the flag */
-		ctx->cmdchl_lock_flags[CHANNEL_EVENTS] = 0;
-
+	} else {
+		UTILS_LOG_ERROR("invalid hab channel id");
+		rc = -EINVAL;
+		goto fail;
 	}
 
-	/* create a thread buffer channel */
-	ctx->client_idx = client_idx;
-	ctx->buffer_thread = kthread_run(buffer_channel_task, ctx,
-							"buffer channel task");
+	if ((channel_map[client_idx][CHANNEL_BUFFERS]) != 0x00) {
+	/* open hab channel for buffer handling */
+#ifdef USE_HAB
+		rc = habmm_socket_open(
+#else
+		rc = habmm_socket_open_dummy(
+#endif
+			&ctx->hyp_hdl_disp[CHANNEL_BUFFERS],
+			channel_map[client_idx][CHANNEL_BUFFERS],
+			(uint32_t)HAB_NO_TIMEOUT_VAL,
+			0x00);
+		if (rc) {
+			UTILS_LOG_ERROR("habmm_socket_open(HAB_CHNL_BUFFERS) failed");
+			goto fail;
+		} else {
+			/* create lock for buffer handling hab channel */
+			mutex_init(&ctx->hyp_bufchl_lock);
+			UTILS_LOG_CRITICAL_INFO("Buffer channel open successful, handle=%d, client_id=0x%x",
+					ctx->hyp_hdl_disp[CHANNEL_BUFFERS], client_id);
+
+			/* Initialize the flag */
+			ctx->cmdchl_lock_flags[CHANNEL_BUFFERS] = 0;
+		}
+	} else {
+		UTILS_LOG_ERROR("invalid hab channel id");
+		rc = -EINVAL;
+		goto fail;
+	}
 
 	ctx->client_id = client_id;
 	init_info->context = ctx;
@@ -375,10 +372,6 @@ user_os_utils_deinit(
 		if (rc)
 			UTILS_LOG_ERROR("habmm_socket_close (CHANNEL_BUFFERS) failed");
 	}
-
-	/* stop buffer channel thread */
-	if (ctx->buffer_thread)
-		kthread_stop(ctx->buffer_thread);
 
 	kfree(ctx);
 
