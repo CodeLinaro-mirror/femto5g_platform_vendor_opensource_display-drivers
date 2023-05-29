@@ -1160,12 +1160,11 @@ static void virtio_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	handle = fb_priv->kms->channel[client_id].hab_socket[CHANNEL_BUFFERS];
 
 	pr_debug("virtio : framebuffer destroy: FB ID: %d (%pK) created %d shmem_id%d", fb->base.base.id, fb, fb_priv->created, mem->shmem_id);
-	return;
 
 	virtio_gpu_cmd_resource_detach_backing(fb_priv->kms,
 			fb_priv->hw_res_handle);
 
-	unexport_flags |= HABMM_EXPIMP_FLAGS_DMABUF;//HABMM_EXPIMP_FLAGS_FD;
+	unexport_flags |= HABMM_EXPIMP_FLAGS_FD;
 	rc = habmm_unexport(
 			handle,
 			mem->shmem_id,

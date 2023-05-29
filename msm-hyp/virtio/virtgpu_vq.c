@@ -88,10 +88,11 @@ retry:
 		2500, flags);
 		if (rc && max_retries) {
 			max_retries--;
-			pr_info("virtio : recv timout retry\n");
+			pr_info("virtio : recv timout retry %d\n", max_retries);
 			goto retry;
 		}
 		else if (rc && !max_retries) {
+			size = resp_size;
 			pr_info("virtio : retries done waiting for reply\n");
 			rc = habmm_socket_recv(hab_socket,
 				resp,
@@ -547,7 +548,7 @@ int virtio_gpu_cmd_resource_detach_backing(struct virtio_kms *kms,
 			kms->channel[client_id].hab_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_detach_backing),
-			NULL,
+			resp,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if (rc) {
 		pr_err("send_and_recv failed for RESOURCE_DETACH_BACKING\n", rc);
@@ -594,7 +595,7 @@ int virtio_gpu_cmd_resource_unref(struct virtio_kms *kms,
 			kms->channel[client_id].hab_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_unref),
-			NULL,
+			resp,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if (rc) {
 		pr_err("send_and_recv failed for RESOURCE_UNREF\n", rc);
@@ -1689,7 +1690,7 @@ int virtio_gpu_event_kthread(void *d)
 			enable = le32_to_cpu(buff->scanout[i].enabled);
 			if (!enable)
 				continue;
-			pr_err(" Event received Vsync %d commit %d HPD %d\n",
+			pr_debug(" Event received Vsync %d commit %d HPD %d\n",
 					le32_to_cpu(buff->scanout[i].vsync_count),
 					le32_to_cpu(buff->scanout[i].commit_count),
 					le32_to_cpu(buff->scanout[i].hpd_count));
