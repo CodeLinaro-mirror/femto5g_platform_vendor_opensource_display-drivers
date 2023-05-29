@@ -14,6 +14,9 @@
 
 struct sde_hw_ds;
 
+#define DEST_SCALER_DUAL_PIPE BIT(0)
+#define DEST_SCALER_QUAD_PIPE (BIT(0) | BIT(1))
+
 /* Destination scaler DUAL mode operation bit */
 #define SDE_DS_OP_MODE_DUAL BIT(16)
 

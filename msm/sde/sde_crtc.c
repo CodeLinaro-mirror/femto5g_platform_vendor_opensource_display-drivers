@@ -46,6 +46,7 @@
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
+#define HW_PAIR 2
 
 struct sde_crtc_custom_events {
 	u32 event;
@@ -2322,10 +2323,18 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 			if (cfg->flags & SDE_DRM_DESTSCALER_ENABLE)
 				op_mode |= BIT(hw_ds->idx - DS_0);
 
-			if ((i == count-1) && hw_ds->ops.setup_opmode) {
-				op_mode |= (cstate->num_ds_enabled ==
-					CRTC_DUAL_MIXERS_ONLY) ?
-					SDE_DS_OP_MODE_DUAL : 0;
+			if (hw_ds->ops.setup_opmode) {
+				if (test_bit(SDE_DS_MERGE_CTRL, &hw_ds->scl->features) &&
+					cstate->num_ds_enabled &&
+					(cstate->num_ds_enabled % HW_PAIR == 0)) {
+					op_mode = (cstate->num_ds_enabled > 2) ?
+							DEST_SCALER_QUAD_PIPE :
+							DEST_SCALER_DUAL_PIPE;
+				} else {
+					op_mode |= (cstate->num_ds_enabled ==
+							CRTC_DUAL_MIXERS_ONLY) ?
+							SDE_DS_OP_MODE_DUAL : 0;
+				}
 				hw_ds->ops.setup_opmode(hw_ds, op_mode);
 				SDE_EVT32_VERBOSE(DRMID(crtc), op_mode);
 			}
