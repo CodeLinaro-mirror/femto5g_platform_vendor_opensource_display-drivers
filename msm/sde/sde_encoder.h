@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -175,6 +175,7 @@ enum sde_enc_rc_states {
  * @rsc_state_init:		boolean to indicate rsc config init
  * @disp_info:			local copy of msm_display_info struct
  * @misr_enable:		misr enable/disable status
+ * @vsync_cnt:			Vsync count for the physical encoder
  * @misr_reconfigure:		boolean entry indicates misr reconfigure status
  * @misr_mismatch:		boolean to indicate misr callback from mismatch IRQ
  * @misr_frame_count:		misr frame count before start capturing the data
@@ -259,6 +260,7 @@ struct sde_encoder_virt {
 	bool rsc_state_init;
 	struct msm_display_info disp_info;
 	atomic_t misr_enable;
+	atomic_t vsync_cnt;
 	bool misr_reconfigure;
 	bool misr_mismatch;
 	u32 misr_frame_count;
