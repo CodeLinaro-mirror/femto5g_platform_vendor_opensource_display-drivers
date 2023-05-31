@@ -1312,13 +1312,13 @@ int dsi_message_validate_tx_mode(struct dsi_ctrl *dsi_ctrl,
 static void dsi_configure_command_scheduling(struct dsi_ctrl *dsi_ctrl,
 		struct dsi_ctrl_cmd_dma_info *cmd_mem)
 {
-	u32 line_no = 0, window = 0, sched_line_no = 0;
+	u32 line_no = 0, window = 0, sched_line_no = 0, min_dma_sched_line = 0;
 	struct dsi_ctrl_hw_ops dsi_hw_ops = dsi_ctrl->hw.ops;
 	struct dsi_mode_info *timing = &(dsi_ctrl->host_config.video_timing);
 
 	line_no = dsi_ctrl->host_config.common_config.dma_sched_line;
 	window = dsi_ctrl->host_config.common_config.dma_sched_window;
-
+	min_dma_sched_line = dsi_ctrl->host_config.common_config.min_dma_sched_line;
 	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, line_no, window);
 	/*
 	 * In case of command scheduling in video mode, the line at which
@@ -1339,6 +1339,9 @@ static void dsi_configure_command_scheduling(struct dsi_ctrl *dsi_ctrl,
 			sched_line_no += timing->v_back_porch +
 				timing->v_sync_width + timing->v_active;
 		}
+
+		if (min_dma_sched_line > sched_line_no)
+			sched_line_no = min_dma_sched_line;
 		dsi_hw_ops.schedule_dma_cmd(&dsi_ctrl->hw, sched_line_no);
 	}
 

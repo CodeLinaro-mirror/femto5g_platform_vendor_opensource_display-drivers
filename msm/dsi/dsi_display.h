@@ -198,6 +198,8 @@ struct dsi_display_ext_bridge {
  * @tx_cmd_buf_ndx:   Index to the DSI debugfs TX CMD buffer.
  * @cmd_set:	      Debugfs TX cmd set.
  * @enabled:	      Boolean to indicate display enabled.
+ * @fps_switch_cmd_ready:	Completion signal indicating master display is ready to trigger
+ *				fps switch command in dual DPU DFPS mode switch.
  */
 struct dsi_display {
 	struct platform_device *pdev;
@@ -303,6 +305,7 @@ struct dsi_display {
 	struct dsi_panel_cmd_set cmd_set;
 
 	bool enabled;
+	struct completion fps_switch_cmd_ready;
 };
 
 int dsi_display_dev_probe(struct platform_device *pdev);
@@ -914,4 +917,12 @@ int dsi_display_phy_pll_toggle(void *priv, bool enable);
  * Return: True if continuous splash or trusted vm environment
  */
 bool is_skip_op_required(struct dsi_display *display);
+
+/**
+ * dsi_display_send_fps_switch_cmd() - send fps switch command
+ * @display: Handle to display
+ *
+ * Return: Zero on Success
+ */
+int dsi_display_send_fps_switch_cmd(struct dsi_display *display);
 #endif /* _DSI_DISPLAY_H_ */

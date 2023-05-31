@@ -5906,6 +5906,7 @@ static int dsi_display_init(struct dsi_display *display)
 	struct platform_device *pdev = display->pdev;
 
 	mutex_init(&display->display_lock);
+	init_completion(&display->fps_switch_cmd_ready);
 
 	rc = _dsi_display_dev_init(display);
 	if (rc) {
@@ -8672,6 +8673,23 @@ error_disable_panel:
 error:
 	mutex_unlock(&display->display_lock);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, display->is_master);
+	return rc;
+}
+
+int dsi_display_send_fps_switch_cmd(struct dsi_display *display)
+{
+	int rc = 0;
+
+	if (!display || !display->panel) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	rc = dsi_panel_fps_switch(display->panel);
+	if (rc)
+		DSI_ERR("[%s] failed to send fps switch cmd, rc=%d\n",
+			display->name, rc);
+
 	return rc;
 }
 

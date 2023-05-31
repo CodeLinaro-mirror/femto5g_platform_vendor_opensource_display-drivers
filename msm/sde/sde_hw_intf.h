@@ -79,6 +79,7 @@ struct intf_avr_params {
  * @vtotal: Mode vtotal
  * @flush_sync_window_min: Window min used for CTL flush programming and signal fence
  * @flush_sync_window_max: Window max used for CTL flush programming and signal fence
+ * @flush_sync_window_max_line: Line number corresponding to flush_sync_window_max
  * @skew_intf_offset_en: enable interface offset feature.
  * @set_master_intf: Select master interface
  */
@@ -91,6 +92,7 @@ struct sde_intf_offset_cfg {
 	u32 vtotal;
 	ktime_t flush_sync_window_min;
 	ktime_t flush_sync_window_max;
+	u32 flush_sync_window_max_line;
 	bool skew_intf_offset_en;
 	u8 set_master_intf;
 };

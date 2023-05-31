@@ -4949,14 +4949,18 @@ int dsi_panel_fps_switch(struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
-	mutex_lock(&panel->panel_lock);
+	/**
+	 * In dual DPU sync mode DFPS with fps switch command, command transfer and timing update
+	 * should happen in the same vsync for both DPUs. If panel lock get acquired by
+	 * any other thread, SW synchronization solution does not work. So, the panel lock
+	 * is acquired before starting DFPS operations.
+	 */
 
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_FPS_SWITCH);
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_FPS_SWITCH cmds, rc=%d\n",
 		       panel->name, rc);
 
-	mutex_unlock(&panel->panel_lock);
 	return rc;
 }
 

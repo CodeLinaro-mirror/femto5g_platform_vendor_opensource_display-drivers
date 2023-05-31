@@ -73,6 +73,9 @@
 /* MIN Vsync window before programming flush*/
 #define VSYNC_THRESHOLD_WINDOW_NS 1000000
 
+/* MAX mem latency for command transfer */
+#define MAX_MEM_LATENCY_NS 200000
+
 #define MAX_FLUSH_WINDOW_CHECK 3
 
 /* worst case poll time for delay_kickoff to be cleared */
@@ -160,7 +163,10 @@ static void sde_encoder_set_flush_window_with_skew(struct drm_encoder *drm_enc,
 	struct sde_encoder_virt *sde_enc;
 	struct sde_encoder_phys *phys_enc;
 	struct sde_intf_offset_cfg *cfg;
+	struct msm_display_mode *msm_mode;
+	struct sde_connector_state *c_state;
 	u32 vrefresh, line_time_in_ns, frame_time_in_ns, vtotal;
+	u32 threshold_window_in_ns = VSYNC_THRESHOLD_WINDOW_NS;
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	phys_enc = sde_enc->cur_master;
@@ -174,6 +180,8 @@ static void sde_encoder_set_flush_window_with_skew(struct drm_encoder *drm_enc,
 	vtotal = cfg->vtotal;
 	line_time_in_ns =  DIV_ROUND_UP(1000000000, vrefresh * vtotal);
 	frame_time_in_ns = DIV_ROUND_UP(1000000000, vrefresh);
+	c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
+	msm_mode = &c_state->msm_mode;
 
 	if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc)) {
 		cfg->flush_sync_window_min = ktime_add_ns(tvblank,
@@ -186,15 +194,24 @@ static void sde_encoder_set_flush_window_with_skew(struct drm_encoder *drm_enc,
 				cfg->fixed_skew_offset_line * line_time_in_ns);
 	}
 
+	if (msm_is_mode_seamless_vrr(msm_mode)) {
+		threshold_window_in_ns += MAX_MEM_LATENCY_NS;
+		if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc)) {
+			cfg->flush_sync_window_max_line = frame_time_in_ns - threshold_window_in_ns;
+			do_div(cfg->flush_sync_window_max_line, line_time_in_ns);
+		}
+	}
+
 	if (ktime_compare(ktime_sub_ns(cfg->flush_sync_window_max, cfg->flush_sync_window_min),
-				VSYNC_THRESHOLD_WINDOW_NS))
+				threshold_window_in_ns))
 		cfg->flush_sync_window_max = ktime_sub_ns(cfg->flush_sync_window_max,
-				VSYNC_THRESHOLD_WINDOW_NS);
+				threshold_window_in_ns);
 	spin_unlock(phys_enc->enc_spinlock);
 
 	SDE_EVT32(vrefresh, vtotal, ktime_to_us(cfg->flush_sync_window_min),
 		ktime_to_us(cfg->flush_sync_window_max), ktime_to_us(tvblank),
-		cfg->fixed_skew_offset_line, phys_enc->split_role);
+		cfg->fixed_skew_offset_line, cfg->flush_sync_window_max_line,
+		phys_enc->split_role);
 }
 
 ktime_t sde_encoder_calc_last_vsync_timestamp(struct drm_encoder *drm_enc)
@@ -4162,6 +4179,8 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	struct sde_crtc_misr_info crtc_misr_info = {false, 0};
 	bool is_regdma_blocking = false, is_vid_mode = false, hw_fence_enabled = false;
 	struct sde_crtc *sde_crtc;
+	struct msm_display_mode *msm_mode;
+	struct sde_connector_state *c_state;
 
 	if (!sde_enc || !sde_enc->cur_master) {
 		SDE_ERROR("invalid encoder\n");
@@ -4173,10 +4192,17 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 	hw_fence_enabled = sde_kms_hw_fence_enabled(sde_kms);
 	is_regdma_blocking = (is_vid_mode || _sde_encoder_is_autorefresh_enabled(sde_enc));
+	c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
+	msm_mode = &c_state->msm_mode;
 
 	if (hw_fence_enabled && sde_encoder_is_built_in_display(&sde_enc->base) &&
-			sde_encoder_has_dpu_ctl_op_sync(&sde_enc->base))
+			sde_encoder_has_dpu_ctl_op_sync(&sde_enc->base)) {
+		if (msm_is_mode_seamless_vrr(msm_mode) &&
+				sde_encoder_phys_has_role_slave_dpu_master_intf(
+					sde_enc->cur_master))
+			sde_connector_pre_fps_switch_cmd(sde_enc->cur_master->connector, 0);
 		sde_encoder_phys_in_skewed_flush_window(sde_enc->cur_master);
+	}
 
 	/* don't perform flush/start operations for slave encoders */
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
@@ -4249,6 +4275,19 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	}
 
 	_sde_encoder_trigger_start(sde_enc->cur_master);
+
+	if (hw_fence_enabled && sde_encoder_is_built_in_display(&sde_enc->base) &&
+			sde_encoder_has_dpu_ctl_op_sync(&sde_enc->base) &&
+			msm_is_mode_seamless_vrr(msm_mode)) {
+		if (sde_encoder_phys_has_role_slave_dpu_master_intf(sde_enc->cur_master)) {
+			sde_connector_send_fps_switch_cmd(sde_enc->cur_master->connector);
+			sde_connector_post_fps_switch_cmd(sde_enc->cur_master->connector);
+		} else if (sde_encoder_phys_has_role_master_dpu_master_intf(sde_enc->cur_master)) {
+			sde_connector_pre_fps_switch_cmd(sde_enc->cur_master->connector,
+				sde_enc->cur_master->cfg.flush_sync_window_max_line);
+		}
+	}
+
 	_sde_encoder_trigger_ipcc_signal(sde_enc);
 
 	if (sde_enc->elevated_ahb_vote) {
