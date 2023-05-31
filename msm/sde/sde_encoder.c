@@ -4996,7 +4996,8 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 					phys->enc_cdm_csc,
 					conn_csc);
 			}
-		}
+		} else
+			sde_conn->colorspace_updated = true;
 
 	}
 	if (sde_conn->colorspace_updated && cdm_capable) {

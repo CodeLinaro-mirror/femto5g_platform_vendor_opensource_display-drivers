@@ -3143,12 +3143,12 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 	comp_info->comp_ratio = 1;
 	comp_info->enabled = false;
 
-	/* As YUV was not supported now, so set the default format to RGB */
+	/* Set the default format to RGB and change based on the mode flags */
 	dp_mode->output_format = DP_OUTPUT_FORMAT_RGB;
-	if (drm_mode->flags & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422) {
+	if (drm_mode->flags & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422)
 		dp_mode->output_format = DP_OUTPUT_FORMAT_YCBCR422;
-		dp_panel->output_format = DP_OUTPUT_FORMAT_YCBCR422;
-	}
+	DP_DEBUG("mode: %s output format: %u flags: 0x%x", drm_mode->name,
+			dp_panel->output_format, drm_mode->flags);
 
 	/*
 	 * If a given videomode can be only supported in YCBCR420, set

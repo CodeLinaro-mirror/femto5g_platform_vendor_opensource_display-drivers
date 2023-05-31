@@ -1035,7 +1035,7 @@ static void sde_encoder_phys_vid_get_hw_resources(
 	if (cdm_enable &&
 	(vid_catalog->intf[phys_enc->hw_intf->idx - INTF_0].type == INTF_DP))
 		hw_res->needs_cdm = true;
-	SDE_DEBUG_VIDENC(vid_enc, "[vid] needs_cdm=%d\n", hw_res->needs_cdm);
+	SDE_DEBUG_VIDENC(vid_enc, "needs_cdm=%d\n", hw_res->needs_cdm);
 }
 
 static bool sde_encoder_handle_ipcc_fence_timeout(struct sde_encoder_phys *phys_enc)
