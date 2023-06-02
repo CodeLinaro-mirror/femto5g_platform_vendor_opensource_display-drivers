@@ -1210,6 +1210,9 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	if (fb_priv->secure)
 		modifiers |= SECURE_SOURCE;
 
+	if (fb_priv->compressed)
+		 modifiers |= COMPRESSED_SOURCE;
+
 	ret = virtio_gpu_cmd_set_resource_info(fb_priv->kms,
 			fb_priv->hw_res_handle,
 			modifiers,
@@ -1315,6 +1318,7 @@ static int virtio_kms_get_framebuffer_info(struct msm_hyp_kms *hyp_kms,
 		return -EINVAL;
 	}
 
+
 	fb_priv = kzalloc(sizeof(*fb_priv), GFP_KERNEL);
 	if (!fb_priv)
 		return -ENOMEM;
@@ -1323,6 +1327,10 @@ static int virtio_kms_get_framebuffer_info(struct msm_hyp_kms *hyp_kms,
 	fb_priv->format = format;
 	fb_priv->mem.shmem_id = 0;
 	fb_priv->kms = kms;
+	if ((framebuffer->modifier & DRM_FORMAT_MOD_QTI_COMPRESSED) ==
+			DRM_FORMAT_MOD_QTI_COMPRESSED)
+		fb_priv->compressed = true;
+
 	*fb_info = &fb_priv->base;
 	return 0;
 }

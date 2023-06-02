@@ -102,6 +102,7 @@ struct virtio_framebuffer_priv {
 	struct virtio_mem_info mem;
 	bool created;
 	bool secure;
+	bool compressed;
 };
 
 struct virtio_connector_info_priv {
