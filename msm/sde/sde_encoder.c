@@ -4226,7 +4226,7 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	hw_fence_enabled = sde_kms_hw_fence_enabled(sde_kms);
 	is_regdma_blocking = (is_vid_mode || _sde_encoder_is_autorefresh_enabled(sde_enc));
 
-	if (hw_fence_enabled) {
+	if (hw_fence_enabled && sde_encoder_is_built_in_display(&sde_enc->base)) {
 		if (!sde_encoder_helper_get_skewed_vsync_status(&sde_enc->base))
 			sde_encoder_wait_for_vsync_retire(sde_enc->cur_master);
 		else
