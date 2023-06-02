@@ -21,7 +21,6 @@
 #define HAB_NO_TIMEOUT_VAL		-1
 
 //TODO chck the usage of resp size
-//HABMM_SOCKET_RECV_FLAGS_TIMEOUT
 static int virtio_hab_send_and_recv(uint32_t hab_socket,
 		struct mutex hab_lock,
 		void *req,
@@ -401,10 +400,10 @@ int virtio_gpu_cmd_set_scanout(struct virtio_kms *kms,
 			NULL,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if(rc) {
-		pr_err("send_and_recv failed for SCANOUT_ATTRIBUTE\n", rc);
+		pr_err("send_and_recv failed for SET_SCANOUT\n", rc);
 		goto error;
 	}
-	pr_debug("virtio: resp  VIRTIO_GPU_CMD_RESOURCE_CREATE_2D%s)\n",
+	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_SCANOUT%s)\n",
                           virtio_cmd_type(le32_to_cpu(resp->type)));
 
 error:
@@ -1016,6 +1015,11 @@ static void virtio_get_scanout_attribute(struct virtio_kms *kms,
 	output->attr.connection_status = le32_to_cpu(resp->connection_status);
 	output->attr.width_mm = le32_to_cpu(resp->width_mm);
 	output->attr.height_mm = le32_to_cpu(resp->height_mm);
+	pr_debug("virtio : scanout %d attr <%d %d (%dX%d)>\n",
+			scanout, output->attr.type,
+			output->attr.connection_status,
+			output->attr.width_mm,
+			output->attr.height_mm);
 }
 
 int virtio_gpu_cmd_get_scanout_attributes(struct virtio_kms *kms,

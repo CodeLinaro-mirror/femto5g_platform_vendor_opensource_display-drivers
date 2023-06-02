@@ -211,65 +211,163 @@ static const char* virtio_get_drm_format_string(uint32_t drm_format) {
   }
   return "Unknown";
 }
+static const char* virtio_get_virtio_format_string(uint32_t virtio_format)
+{
+    switch(virtio_format){
+    case VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM:
+        return"B8G8R8A8_UNORM";
+    case VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM:
+        return"B8G8R8X8_UNORM";
+    case VIRTIO_GPU_FORMAT_A8R8G8B8_UNORM:
+        return"A8R8G8B8_UNORM";
+    case VIRTIO_GPU_FORMAT_X8R8G8B8_UNORM:
+        return"X8R8G8B8_UNORM";
+    case VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM:
+        return"R8G8B8A8_UNORM";
+    case VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM:
+        return"X8B8G8R8_UNORM";
+    case VIRTIO_GPU_FORMAT_A8B8G8R8_UNORM:
+        return"A8B8G8R8_UNORM";
+    case VIRTIO_GPU_FORMAT_R8G8B8X8_UNORM:
+        return"R8G8B8X8_UNORM";
+    case VIRTIO_GPU_FORMAT_BYTE:
+        return"VIRTIO_GPU_FORMAT_BYTE";
+    case VIRTIO_GPU_FORMAT_B4G4R4A4:
+        return"VIRTIO_GPU_FORMAT_B4G4R4A4";
+    case VIRTIO_GPU_FORMAT_B4G4R4X4:
+        return"VIRTIO_GPU_FORMAT_B4G4R4X4";
+    case VIRTIO_GPU_FORMAT_B5G5R5A1:
+        return"VIRTIO_GPU_FORMAT_B5G5R5A1";
+    case VIRTIO_GPU_FORMAT_B5G5R5X1:
+        return"VIRTIO_GPU_FORMAT_B5G5R5X1";
+    case VIRTIO_GPU_FORMAT_B10G10R10A2:
+        return"VIRTIO_GPU_FORMAT_B10G10R10A2";
+    case VIRTIO_GPU_FORMAT_B10G10R10X2:
+        return"VIRTIO_GPU_FORMAT_B10G10R10X2";
+    case VIRTIO_GPU_FORMAT_R10G10B10X2:
+        return"VIRTIO_GPU_FORMAT_R10G10B10X2";
+    case VIRTIO_GPU_FORMAT_B5G6R5:
+        return"VIRTIO_GPU_FORMAT_B5G6R5";
+    case VIRTIO_GPU_FORMAT_R5G6B5:
+        return"VIRTIO_GPU_FORMAT_R5G6B5";
+    case VIRTIO_GPU_FORMAT_B8G8R8:
+        return"VIRTIO_GPU_FORMAT_B8G8R8";
+    case VIRTIO_GPU_FORMAT_YVU410:
+        return"VIRTIO_GPU_FORMAT_YVU410";
+    case VIRTIO_GPU_FORMAT_YUV420:
+        return"VIRTIO_GPU_FORMAT_YUV420";
+    case VIRTIO_GPU_FORMAT_NV12:
+        return"VIRTIO_GPU_FORMAT_NV12";
+    case VIRTIO_GPU_FORMAT_P010:
+        return"VIRTIO_GPU_FORMAT_P010";
+    case VIRTIO_GPU_FORMAT_NV12_QC_TP10:
+        return"VIRTIO_GPU_FORMAT_NV12_QC_TP10";
+    case VIRTIO_GPU_FORMAT_YVU420:
+        return"VIRTIO_GPU_FORMAT_YVU420";
+    case VIRTIO_GPU_FORMAT_UYVY:
+        return"VIRTIO_GPU_FORMAT_UYVY";
+    case VIRTIO_GPU_FORMAT_YVYU:
+        return"VIRTIO_GPU_FORMAT_YVYU";
+    case VIRTIO_GPU_FORMAT_YUYV:
+        return"VIRTIO_GPU_FORMAT_YUYV";
+    case VIRTIO_GPU_FORMAT_VYUY:
+        return"VIRTIO_GPU_FORMAT_VYUY";
+    case VIRTIO_GPU_FORMAT_AYUV:
+        return "VIRTIO_GPU_FORMAT_AYUV";
+    default:
+        return "UNKNOWN";
+    }
+}
+
 static const struct {
          uint32_t drm_fmt;
          uint32_t virtio_fmt;
  } drm_virtio_formats[] = {
- #ifdef __BIG_ENDIAN
-         {DRM_FORMAT_XRGB8888, VIRTIO_GPU_FORMAT_X8R8G8B8_UNORM},
-         {DRM_FORMAT_ARGB8888, VIRTIO_GPU_FORMAT_A8R8G8B8_UNORM},
-         {DRM_FORMAT_BGRX8888, VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM},
-         {DRM_FORMAT_BGRA8888, VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM},
-         {DRM_FORMAT_RGBX8888, VIRTIO_GPU_FORMAT_R8G8B8X8_UNORM},
-         {DRM_FORMAT_RGBA8888, VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM},
-         {DRM_FORMAT_XBGR8888, VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM},
-         {DRM_FORMAT_ABGR8888, VIRTIO_GPU_FORMAT_A8B8G8R8_UNORM},
- #else
-         {DRM_FORMAT_XRGB8888, VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM},
-         {DRM_FORMAT_ARGB8888, VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM},
-         {DRM_FORMAT_BGRX8888, VIRTIO_GPU_FORMAT_X8R8G8B8_UNORM},
-         {DRM_FORMAT_BGRA8888, VIRTIO_GPU_FORMAT_A8R8G8B8_UNORM},
-         {DRM_FORMAT_RGBX8888, VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM},
-         {DRM_FORMAT_RGBA8888, VIRTIO_GPU_FORMAT_A8B8G8R8_UNORM},
-         {DRM_FORMAT_XBGR8888, VIRTIO_GPU_FORMAT_R8G8B8X8_UNORM},
-         {DRM_FORMAT_ABGR8888, VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM},
- #endif
-         {0,0}
+	{DRM_FORMAT_C8,       VIRTIO_GPU_FORMAT_BYTE},
+	{DRM_FORMAT_XRGB8888, VIRTIO_GPU_FORMAT_B8G8R8X8_UNORM},
+	{DRM_FORMAT_ARGB8888, VIRTIO_GPU_FORMAT_B8G8R8A8_UNORM},
+	{DRM_FORMAT_BGRX8888, VIRTIO_GPU_FORMAT_X8R8G8B8_UNORM},
+	{DRM_FORMAT_BGRA8888, VIRTIO_GPU_FORMAT_A8R8G8B8_UNORM},
+	{DRM_FORMAT_RGBX8888, VIRTIO_GPU_FORMAT_X8B8G8R8_UNORM},
+	{DRM_FORMAT_RGBA8888, VIRTIO_GPU_FORMAT_A8B8G8R8_UNORM},
+	{DRM_FORMAT_XBGR8888, VIRTIO_GPU_FORMAT_R8G8B8X8_UNORM},
+        {DRM_FORMAT_ABGR8888, VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM},
+	{DRM_FORMAT_ARGB4444, VIRTIO_GPU_FORMAT_B4G4R4A4},
+	{DRM_FORMAT_XRGB4444, VIRTIO_GPU_FORMAT_B4G4R4X4},
+	{DRM_FORMAT_ARGB1555, VIRTIO_GPU_FORMAT_B5G5R5A1},
+	{DRM_FORMAT_XRGB1555, VIRTIO_GPU_FORMAT_B5G5R5X1},
+	{DRM_FORMAT_ARGB2101010, VIRTIO_GPU_FORMAT_B10G10R10A2},
+	{DRM_FORMAT_XRGB2101010, VIRTIO_GPU_FORMAT_B10G10R10X2},
+	{DRM_FORMAT_XBGR2101010, VIRTIO_GPU_FORMAT_R10G10B10X2},
+	{DRM_FORMAT_ABGR2101010, VIRTIO_GPU_FORMAT_R10G10B10A2},
+	{DRM_FORMAT_RGB565,   VIRTIO_GPU_FORMAT_B5G6R5},
+	{DRM_FORMAT_RGB888,   VIRTIO_GPU_FORMAT_B8G8R8},
+	{DRM_FORMAT_BGR565,   VIRTIO_GPU_FORMAT_R5G6B5},
+	{DRM_FORMAT_BGR888,   VIRTIO_GPU_FORMAT_R8G8B8},
+	{DRM_FORMAT_YVU410,   VIRTIO_GPU_FORMAT_YVU410},
+	{DRM_FORMAT_YUV420,   VIRTIO_GPU_FORMAT_YUV420},
+	{DRM_FORMAT_NV12,     VIRTIO_GPU_FORMAT_NV12},
+	{DRM_FORMAT_NV12,     VIRTIO_GPU_FORMAT_P010},
+	{DRM_FORMAT_NV12,     VIRTIO_GPU_FORMAT_NV12_QC_TP10},
+	{DRM_FORMAT_YVU420,   VIRTIO_GPU_FORMAT_YVU420},
+	{DRM_FORMAT_UYVY,     VIRTIO_GPU_FORMAT_UYVY},
+	{DRM_FORMAT_YUYV,     VIRTIO_GPU_FORMAT_YUYV},
+	{DRM_FORMAT_YVYU,     VIRTIO_GPU_FORMAT_YVYU},
+	{DRM_FORMAT_VYUY,     VIRTIO_GPU_FORMAT_VYUY},
+	{DRM_FORMAT_AYUV,     VIRTIO_GPU_FORMAT_AYUV},
+	{0,0}
  };
 
- uint32_t get_drm_format(uint32_t virtio_format)
+uint32_t get_drm_format(uint32_t virtio_format)
 {
-        uint32_t format = 0;
-        int i = 0;
-        while (drm_virtio_formats[i].virtio_fmt || drm_virtio_formats[i].drm_fmt) {
-                if (virtio_format == drm_virtio_formats[i].virtio_fmt) {
-                        format = drm_virtio_formats[i].drm_fmt;
-                        break;
-                }
+	uint32_t format = 0;
+	int i = 0;
+	while (drm_virtio_formats[i].virtio_fmt || drm_virtio_formats[i].drm_fmt) {
+		if (virtio_format == drm_virtio_formats[i].virtio_fmt) {
+			format = drm_virtio_formats[i].drm_fmt;
+			break;
+		}
+		i++;
+	}
+	pr_debug("virtio : virtio format %s to drm format %s\n",
+			virtio_get_virtio_format_string(virtio_format),
+			virtio_get_drm_format_string(format));
+
+	WARN_ON(format == 0);
+	return format;
+}
+
+uint32_t virtio_gpu_translate_format(uint32_t drm_fourcc, uint64_t modifier)
+{
+	uint32_t format = 0;
+	int i = 0;
+
+	while (drm_virtio_formats[i].virtio_fmt || drm_virtio_formats[i].drm_fmt) {
+		if (drm_fourcc == drm_virtio_formats[i].drm_fmt) {
+			format = drm_virtio_formats[i].virtio_fmt;
+			break;
+		}
                 i++;
         }
 
-        WARN_ON(format == 0);
-        return format;
+	if (drm_fourcc == DRM_FORMAT_NV12) {
+		if ((modifier & fourcc_mod_code(QTI, 0x7)) ==
+				fourcc_mod_code(QTI, 0x7))
+			format = VIRTIO_GPU_FORMAT_NV12_QC_TP10;
+		else if ((modifier & fourcc_mod_code(QTI, 0x2)) ==
+				fourcc_mod_code(QTI, 0x2))
+			format = VIRTIO_GPU_FORMAT_P010;
+		else
+			format = VIRTIO_GPU_FORMAT_NV12;
+	}
+	pr_debug("virtio : drm format %s to virtio format %s\n",
+			virtio_get_drm_format_string(drm_fourcc),
+			virtio_get_virtio_format_string(format));
+	WARN_ON(format == 0);
+
+	return format;
 }
 
-uint32_t virtio_gpu_translate_format(uint32_t drm_fourcc)
-{
-        uint32_t format = 0;
-        int i = 0;
-
-        while (drm_virtio_formats[i].virtio_fmt || drm_virtio_formats[i].drm_fmt) {
-                if (drm_fourcc == drm_virtio_formats[i].drm_fmt) {
-                        format = drm_virtio_formats[i].virtio_fmt;
-                        break;
-                }
-                i++;
-        }
-
-        WARN_ON(format == 0);
-
-        return format;
-}
 static int virtio_kms_connector_detect_ctx(struct drm_connector *connector,
 			  struct drm_modeset_acquire_ctx *ctx,
 			  bool force)
@@ -307,7 +405,7 @@ static int virtio_kms_connector_get_modes(struct drm_connector *connector)
 		drm_mode_probed_add(connector, m);
 	}
 
-//	msm_hyp_connector_init_edid(connector, priv->panel_name);
+	msm_hyp_connector_init_edid(connector, priv->panel_name);
 
 	if (c_conn->info->display_info.width_mm > 0 &&
 				c_conn->info->display_info.height_mm > 0) {
@@ -334,10 +432,9 @@ static void virtio_kms_bridge_mode_set(struct drm_bridge *drm_bridge,
 	struct virtio_connector_info_priv *priv;
 	struct virtio_gpu_rect dest_rect = {0,0,0,0};
 	int i, mode_index = 0;
-	uint32_t scanout;// = priv->scanout;
+	uint32_t scanout;
 	int rc = 0;
 
-	pr_debug("virtio_kms_bridge_mode_set called\n");
 	connector = container_of(drm_bridge, struct msm_hyp_connector, bridge);
 	priv = container_of(connector->info, struct virtio_connector_info_priv, base);
 	scanout = priv->scanout;
@@ -378,8 +475,6 @@ static void virtio_kms_bridge_mode_set(struct drm_bridge *drm_bridge,
 		pr_err("scanout set properties for mode failed %d\n",
 				mode_index);
 	}
-
-	pr_debug("virtio_kms_bridge_mode_set done\n");
 }
 
 static void virtio_kms_bridge_enable(struct drm_bridge *drm_bridge)
@@ -443,7 +538,7 @@ static int virtio_kms_connector_get_type(
 	switch (port_type) {
 	case VIRTIO_PORT_TYPE_INTERNAL:
 	case VIRTIO_PORT_TYPE_HDMI:
-		connector_type = DRM_MODE_CONNECTOR_DSI;
+		connector_type = DRM_MODE_CONNECTOR_HDMIA;
 		snprintf(name, PANEL_NAME_LEN, "%s_%d", "HDMI", scanout);
 		break;
 	case VIRTIO_PORT_TYPE_DSI:
@@ -540,14 +635,11 @@ static int virtio_kms_get_connector_infos(struct msm_hyp_kms *hyp_kms,
 			mode->vsync_end = mode->vdisplay;
 			mode->vtotal = mode->vdisplay;
 			mode->vsync_start = mode->vdisplay;
-			//TODO : find a way for teh referesh rate
-			mode->clock = 60 * //mode->vrefresh *
-					mode->vtotal *
-					mode->htotal /
-					1000LL;
+			mode->clock =
+				info[j].refresh * mode->vtotal *
+				mode->htotal / 1000LL;
 
 			drm_mode_set_name(mode);
-
 		}
 		priv->mode_count = kms->outputs[i].num_modes;
 
@@ -802,6 +894,7 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 	int i, j, pipe_cnt = 0;
 	int fmt_idx = 0;
 	uint32_t *formats;
+	uint32_t drm_format;
 	uint32_t num_formats = 0;
 	uint32_t plane_type;
 
@@ -837,7 +930,7 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 
 			if (!num_formats) {
 				pr_err("virtio :formats for plane ID %d\
-						for san out %d failed\n",
+						for scan out %d failed\n",
 						j, i);
 				kfree(priv);
 				return -EINVAL;
@@ -848,13 +941,15 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 				pr_err("virtio : base.format_types Memory allocation failed\n");
 				return -ENOMEM;
 			}
-
+			priv->base.format_count = 0;
 			for (fmt_idx = 0; fmt_idx < num_formats; fmt_idx++) {
-				priv->base.format_types[fmt_idx] =
-					get_drm_format(formats[fmt_idx]);
-				pr_debug("virtio : Format %s\n", virtio_get_drm_format_string(priv->base.format_types[fmt_idx]));
+				drm_format = get_drm_format(formats[fmt_idx]);
+				if(!drm_format)
+					continue;
+				priv->base.format_types[priv->base.format_count] =
+					drm_format;
+				priv->base.format_count++;
 			}
-			priv->base.format_count = num_formats;
 			//TODO : check for the support of scaling and csc
 			priv->base.support_scale = false;
 			priv->base.support_csc = false;
@@ -893,6 +988,7 @@ static void _virtio_kms_set_crtc_limit(struct virtio_kms *kms,
 	}
 */
 	//TODO: Fix the sdma_width for getting the right constraint table index
+	pr_err("virtio : _virtio_kms_set_crtc_limit %d\n",  kms->max_sdma_width);
 	constraints = &constraints_table[2];
 	if (!constraints)
 		return;
@@ -1103,7 +1199,6 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	//TODO : get the fence
 	ret = virtio_gpu_cmd_resource_create_2D(fb_priv->kms,
 			fb_priv->hw_res_handle,
-			//VIRTIO_GPU_FORMAT_R8G8B8A8_UNORM,
 			fb_priv->format,
 			fb->base.width,
 			fb->base.height,
@@ -1214,8 +1309,9 @@ static int virtio_kms_get_framebuffer_info(struct msm_hyp_kms *hyp_kms,
 	uint32_t format;
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
 
-	format = virtio_gpu_translate_format(framebuffer->format->format);
+	format = virtio_gpu_translate_format(framebuffer->format->format, framebuffer->modifier);
 	if (format == 0) {
+		pr_err("virtio: Not valid Virtio format\n");
 		return -EINVAL;
 	}
 
