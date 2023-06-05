@@ -1,6 +1,7 @@
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -3390,7 +3391,7 @@ static int _sde_kms_get_splash_data(struct sde_splash_data *data)
 		return -EINVAL;
 	}
 
-	node1 = of_find_node_by_name(parent, "disp_rdump_region");
+	node1 = of_find_node_by_name(NULL, "disp_rdump_region");
 	if (!node1)
 		SDE_DEBUG("failed to find disp ramdump memory reservation\n");
 

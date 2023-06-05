@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
@@ -501,7 +501,7 @@ static void dp_display_deinitialize_hdcp(struct dp_display_private *dp)
 
 static int dp_display_initialize_hdcp(struct dp_display_private *dp)
 {
-	struct sde_hdcp_init_data hdcp_init_data;
+	struct sde_hdcp_init_data hdcp_init_data = {};
 	struct dp_parser *parser;
 	void *fd;
 	int rc = 0;
