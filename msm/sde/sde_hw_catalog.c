@@ -3233,6 +3233,9 @@ static int sde_ds_parse_dt(struct device_node *np,
 		else if (sde_cfg->qseed_sw_lib_rev ==
 				SDE_SSPP_SCALER_QSEED3LITE)
 			set_bit(SDE_SSPP_SCALER_QSEED3LITE, &ds->features);
+
+		if (SDE_HW_MAJOR(sde_cfg->hwversion) >= SDE_HW_MAJOR(SDE_HW_VER_910))
+			set_bit(SDE_DS_MERGE_CTRL, &ds->features);
 	}
 
 end:

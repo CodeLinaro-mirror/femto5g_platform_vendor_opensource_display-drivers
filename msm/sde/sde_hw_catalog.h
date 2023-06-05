@@ -443,6 +443,16 @@ enum {
 };
 
 /**
+ * Destination scalar features
+ * @SDE_DS_MERGE_CTRL           pipe merge configuration for destination scalar block
+ * @SDE_DS_MAX                  maximum value
+ */
+enum {
+	SDE_DS_MERGE_CTRL = 0x1,
+	SDE_DS_MAX
+};
+
+/**
  * LTM sub-features
  * @SDE_LTM_INIT             LTM INIT feature
  * @SDE_LTM_ROI              LTM ROI feature
