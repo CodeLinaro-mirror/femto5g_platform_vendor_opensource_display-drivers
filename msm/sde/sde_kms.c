@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -3776,18 +3776,29 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			mutex_unlock(&dev->mode_config.mutex);
 			return -EINVAL;
 		}
-		mutex_unlock(&dev->mode_config.mutex);
 
 		crtc->state->encoder_mask = drm_encoder_mask(encoder);
 		crtc->state->connector_mask = drm_connector_mask(connector);
 		connector->state->crtc = crtc;
 
-		drm_mode = _sde_kms_get_splash_mode(sde_kms, connector, state);
+		/* get supported modes in case of external bridge panels*/
+		if (!dsi_display->panel->num_timing_nodes) {
+			connector->funcs->fill_modes(connector,
+					dev->mode_config.max_width,
+					dev->mode_config.max_height);
+
+			drm_mode = list_first_entry(&connector->modes,
+					struct drm_display_mode, head);
+		} else
+			drm_mode = _sde_kms_get_splash_mode(sde_kms, connector, state);
+
+		mutex_unlock(&dev->mode_config.mutex);
 		if (!drm_mode) {
 			SDE_ERROR("drm_mode not found; handoff_type:%d\n",
 					sde_kms->splash_data.type);
 			return -EINVAL;
 		}
+
 		SDE_DEBUG(
 		  "drm_mode->name:%s, type:0x%x, flags:0x%x, handoff_type:%d\n",
 				drm_mode->name, drm_mode->type,
