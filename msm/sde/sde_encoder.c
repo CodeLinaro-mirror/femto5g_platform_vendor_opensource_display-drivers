@@ -832,6 +832,7 @@ void sde_encoder_get_hw_resources(struct drm_encoder *drm_enc,
 		struct drm_connector_state *conn_state)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
+	struct sde_connector *sde_conn = NULL;
 	int ret, i = 0;
 
 	if (!hw_res || !drm_enc || !conn_state || !hw_res->comp_info) {
@@ -842,6 +843,7 @@ void sde_encoder_get_hw_resources(struct drm_encoder *drm_enc,
 	}
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
+	sde_conn = to_sde_connector(conn_state->connector);
 	SDE_DEBUG_ENC(sde_enc, "\n");
 
 	hw_res->display_num_of_h_tiles = sde_enc->display_num_of_h_tiles;
@@ -851,8 +853,11 @@ void sde_encoder_get_hw_resources(struct drm_encoder *drm_enc,
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
-		if (phys && phys->ops.get_hw_resources)
+		if (phys && phys->ops.get_hw_resources) {
+			phys->cdm_capable =
+			sde_conn->ops.get_yuv_support(sde_conn->display);
 			phys->ops.get_hw_resources(phys, hw_res, conn_state);
+		}
 	}
 
 	/*
@@ -994,7 +999,7 @@ void sde_encoder_helper_update_intf_cfg(
 
 	/* setup cdm configuration */
 	if (phys_enc->hw_cdm &&
-		phys_enc->sde_kms->cdm_capability) {
+		phys_enc->cdm_capable) {
 		intf_cfg->cdm_count =
 			phys_enc->sde_kms->catalog->cdm_count;
 
@@ -4923,7 +4928,6 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 	struct drm_connector *conn_mas = NULL;
 	struct sde_connector *sde_conn = NULL;
 	enum sde_csc_type conn_csc;
-	bool cdm_capable = false;
 
 	/* if any phys needs reset, reset all phys, in-order */
 	if (needs_hw_reset)
@@ -4954,8 +4958,7 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 
 		SDE_DEBUG("output required in %s colorspace drm_enc: %s",
 				(is_yuv ? "YUV" : "RGB"), drm_enc->name);
-		cdm_capable = phys->sde_kms->cdm_capability;
-		if (!cdm_capable)
+		if (!phys->cdm_capable)
 			continue;
 		/**
 		 * Check CSC matrix type for which the CDM, CSC
@@ -4968,7 +4971,7 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 		SDE_DEBUG("csc type for CDM CSC matrix: %u drm_enc: %s",
 				conn_csc, drm_enc->name);
 
-		if (phys && is_yuv && cdm_capable) {
+		if (phys && is_yuv && phys->cdm_capable) {
 			conn_mas->state->colorspace =
 				_sde_encoder_get_yuv_colorspace(conn_csc);
 			sde_conn->colorspace_updated =
@@ -5000,7 +5003,7 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 			sde_conn->colorspace_updated = true;
 
 	}
-	if (sde_conn->colorspace_updated && cdm_capable) {
+	if (sde_conn->colorspace_updated && phys->cdm_capable) {
 		sde_connector_set_colorspace(sde_conn);
 		sde_conn->colorspace_updated = false;
 	}

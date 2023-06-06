@@ -303,6 +303,7 @@ struct sde_encoder_irq {
  * @enc_cdm_csc:		Encoder cdm colorspace type
  * @has_intf_te:		Interface TE configuration support
  * @cont_splash_enabled:	Variable to store continuous splash settings.
+ * @cdm_capable:		Variable to store cdm support capability.
  * @in_clone_mode		Indicates if encoder is in clone mode ref@CWB
  * @vfp_cached:			cached vertical front porch to be used for
  *				programming ROT and MDP fetch start
@@ -352,6 +353,7 @@ struct sde_encoder_phys {
 	enum sde_csc_type enc_cdm_csc;
 	bool has_intf_te;
 	bool cont_splash_enabled;
+	bool cdm_capable;
 	bool in_clone_mode;
 	int vfp_cached;
 	enum frame_trigger_mode_type frame_trigger_mode;

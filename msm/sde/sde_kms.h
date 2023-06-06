@@ -303,7 +303,6 @@ struct sde_kms {
 	void **dp_displays;
 	int dp_stream_count;
 	bool dsc_switch_support;
-	bool cdm_capability;
 
 	bool has_danger_ctrl;
 

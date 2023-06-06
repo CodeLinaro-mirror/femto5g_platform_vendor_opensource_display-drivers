@@ -336,6 +336,9 @@ static bool dp_mst_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	convert_to_drm_mode(&dp_mode, adjusted_mode);
 	adjusted_mode->flags |=
 		dp_connector_choose_best_format(dp, adjusted_mode);
+	if (adjusted_mode->flags & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422)
+		dp->yuv422_enable = true;
+
 	DP_MST_DEBUG("mst bridge [%d] mode:%s fixup\n", bridge->id, mode->name);
 end:
 	return ret;
@@ -1004,12 +1007,14 @@ enum drm_mode_status dp_mst_connector_mode_valid(
 	struct dp_mst_bridge_state *dp_bridge_state;
 	int i, vrefresh, slots_in_use = 0, active_enc_cnt = 0;
 	const u32 tot_slots = 63;
+	int rc = MODE_BAD;
 
 	if (!connector || !mode || !display) {
 		DP_ERR("invalid input\n");
 		return 0;
 	}
 
+	DP_DEBUG("+\n");
 	mst = dp_display->dp_mst_prv_info;
 	c_conn = to_sde_connector(connector);
 	mst_port = c_conn->mst_port;
@@ -1058,7 +1063,9 @@ enum drm_mode_status dp_mst_connector_mode_valid(
 		return MODE_BAD;
 	}
 
-	return dp_display->validate_mode(dp_display, dp_panel, mode, avail_res);
+	rc = dp_display->validate_mode(dp_display, dp_panel, mode, avail_res);
+	DP_DEBUG("- ret: %d", rc);
+	return rc;
 }
 
 int dp_mst_connector_get_mode_info(struct drm_connector *connector,

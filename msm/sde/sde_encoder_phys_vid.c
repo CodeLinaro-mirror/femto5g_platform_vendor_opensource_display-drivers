@@ -765,7 +765,7 @@ static void sde_encoder_phys_vid_mode_set(
 		sde_encoder_helper_get_kickoff_timeout_ms(phys_enc->parent);
 
 	/* CDM is optional */
-	if (phys_enc->sde_kms->cdm_capability) {
+	if (phys_enc->cdm_capable) {
 		sde_rm_init_hw_iter(&iter, phys_enc->parent->base.id, SDE_HW_BLK_CDM);
 		for (i = 0; i <= instance; i++) {
 			sde_rm_get_hw(rm, &iter);
@@ -889,7 +889,7 @@ static void sde_encoder_phys_vid_enable(struct sde_encoder_phys *phys_enc)
 		return;
 	}
 
-	cdm_enable = phys_enc->sde_kms->cdm_capability;
+	cdm_enable = phys_enc->cdm_capable;
 
 	priv = phys_enc->parent->dev->dev_private;
 	hw_cdm = phys_enc->hw_cdm;
@@ -1013,7 +1013,7 @@ static void sde_encoder_phys_vid_get_hw_resources(
 		return;
 	}
 
-	cdm_enable = phys_enc->sde_kms->cdm_capability;
+	cdm_enable = phys_enc->cdm_capable;
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	vid_catalog = phys_enc->sde_kms->catalog;
 
@@ -1651,7 +1651,6 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 {
 	struct sde_encoder_phys *phys_enc = NULL;
 	struct sde_encoder_phys_vid *vid_enc = NULL;
-	struct sde_rm_hw_iter iter;
 	struct sde_hw_mdp *hw_mdp;
 	struct sde_encoder_irq *irq;
 	int i, ret = 0;

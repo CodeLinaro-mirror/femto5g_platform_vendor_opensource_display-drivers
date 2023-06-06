@@ -1694,6 +1694,12 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp)
 
 	dp_display_host_unready(dp);
 
+
+	/* clear yuv422_enable flag on each hpd disconnect event
+	 * and let it set based on the required flags on hpd connect.
+	 */
+	dp->dp_display.yuv422_enable = false;
+
 	mutex_unlock(&dp->session_lock);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);

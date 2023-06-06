@@ -65,10 +65,8 @@ static int get_sink_dc_support(struct dp_display *dp,
 {
 	int dc_format = 0;
 
-	/*
-	 * add check for yuv and rgb color support read from
-	 * edid parsing.
-	 */
+	// add check for yuv and rgb color support read from
+	// edid parsing.
 	if ((connector->display_info.color_formats & DRM_COLOR_FORMAT_RGB444)
 		&& (connector->display_info.edid_hdmi_dc_modes
 		& DRM_EDID_HDMI_DC_30))
@@ -102,7 +100,9 @@ u32 dp_connector_choose_best_format(struct dp_display *dp,
 	int dc_format = get_sink_dc_support(dp, mode, connector);
 
 	/* Change ColorSpace to YUV422, manually */
-	if (dp->yuv422_enable)
+	if (dp->yuv422_enable  &&
+		(connector->display_info.color_formats &
+		DRM_COLOR_FORMAT_YCRCB422))
 		return MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422;
 
 	if (dc_format & MSM_MODE_FLAG_RGB444_DC_ENABLE)
@@ -120,7 +120,8 @@ u32 dp_connector_choose_best_format(struct dp_display *dp,
 		DRM_COLOR_FORMAT_YCRCB422))
 		flag = MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422;
 	else {
-		DP_ERR("Can't get available best display format\n");
+		DP_DEBUG("Can't get best color format for mode: %s@%u\n",
+				mode->name, mode->clock);
 		flag = MSM_MODE_FLAG_COLOR_FORMAT_RGB444;
 	}
 
@@ -363,6 +364,9 @@ static bool dp_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	/*Clear the private flags before assigning new one.*/
 	adjusted_mode->flags |=
 		dp_connector_choose_best_format(dp, adjusted_mode);
+	if (adjusted_mode->flags & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422)
+		dp->yuv422_enable = true;
+
 	DP_DEBUG("Adjusted mode flags: 0x%x\n",	adjusted_mode->flags);
 end:
 	return ret;
@@ -904,7 +908,8 @@ enum sde_csc_type dp_connector_get_csc_type(struct drm_connector *conn,
 	if ((hdr_meta->hdr_state == HDR_ENABLED) &&
 		(hdr_meta->eotf != 0))
 		return SDE_CSC_RGB2YUV_2020L;
-	else if (dp_connector_mode_needs_full_range(data))
+	else if (dp_connector_mode_needs_full_range(data))// ||
+//			sde_conn->yuv_qs)
 		return SDE_CSC_RGB2YUV_709FR;
 
 error:
@@ -918,5 +923,6 @@ bool dp_connector_yuv_support(void *display)
 	if (!dp_display)
 		return false;
 
-	return dp_display->is_yuv_supported;
+	return dp_display->is_yuv_supported &&
+		dp_display->yuv422_enable;
 }
