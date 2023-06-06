@@ -89,10 +89,18 @@ struct sde_connector_ops {
 	/**
 	 * mode_needs_full_range - does the mode need full range
 	 * quantization
-	 * @display: Pointer to private display structure
+	 * @display: Pointer to display structure
 	 * Returns: true or false based on whether full range is needed
 	 */
 	bool (*mode_needs_full_range)(void *display);
+
+	/**
+	 * get_yuv_support - is yuv supported for the given sink
+	 * device, based on the requirement
+	 * @display: Pointer to display structure
+	 * Returns: true or false based on the support.
+	 */
+	bool (*get_yuv_support)(void *display);
 
 	/**
 	 * update_pps - update pps command for the display panel

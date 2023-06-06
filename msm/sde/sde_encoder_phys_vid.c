@@ -675,7 +675,7 @@ static void sde_encoder_phys_vid_mode_set(
 		sde_encoder_helper_get_kickoff_timeout_ms(phys_enc->parent);
 
 	/* CDM is optional */
-	if (phys_enc->sde_kms->cdm_capability) {
+	if (phys_enc->cdm_capable) {
 		sde_rm_init_hw_iter(&iter, phys_enc->parent->base.id, SDE_HW_BLK_CDM);
 		for (i = 0; i <= instance; i++) {
 			sde_rm_get_hw(rm, &iter);
@@ -799,7 +799,7 @@ static void sde_encoder_phys_vid_enable(struct sde_encoder_phys *phys_enc)
 		return;
 	}
 
-	cdm_enable = phys_enc->sde_kms->cdm_capability;
+	cdm_enable = phys_enc->cdm_capable;
 
 	priv = phys_enc->parent->dev->dev_private;
 	hw_cdm = phys_enc->hw_cdm;
@@ -924,15 +924,15 @@ static void sde_encoder_phys_vid_get_hw_resources(
 		return;
 	}
 
-	cdm_enable = phys_enc->sde_kms->cdm_capability;
+	cdm_enable = phys_enc->cdm_capable;
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	vid_catalog = phys_enc->sde_kms->catalog;
 
 	if (!cdm_enable) {
 		SDE_DEBUG_VIDENC(vid_enc, "cdm_capable: %d", cdm_enable);
-	} else if (!vid_enc->hw_intf || !vid_catalog) {
+	} else if (!phys_enc->hw_intf || !vid_catalog) {
 		SDE_ERROR("invalid arg(s), hw_intf %d vid_catalog %d\n",
-				vid_enc->hw_intf != NULL, vid_catalog != NULL);
+				phys_enc->hw_intf != NULL, vid_catalog != NULL);
 		return;
 	}
 	SDE_DEBUG_VIDENC(vid_enc, "\n");
@@ -944,7 +944,7 @@ static void sde_encoder_phys_vid_get_hw_resources(
 
 	hw_res->intfs[phys_enc->intf_idx - INTF_0] = INTF_MODE_VIDEO;
 	if (cdm_enable &&
-	(vid_catalog->intf[vid_enc->hw_intf->idx - INTF_0].type == INTF_DP))
+	(vid_catalog->intf[phys_enc->hw_intf->idx - INTF_0].type == INTF_DP))
 		hw_res->needs_cdm = true;
 	SDE_DEBUG_VIDENC(vid_enc, "needs_cdm=%d\n", hw_res->needs_cdm);
 }
@@ -1532,7 +1532,6 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 {
 	struct sde_encoder_phys *phys_enc = NULL;
 	struct sde_encoder_phys_vid *vid_enc = NULL;
-	struct sde_rm_hw_iter iter;
 	struct sde_hw_mdp *hw_mdp;
 	struct sde_encoder_irq *irq;
 	int i, ret = 0;
@@ -1558,27 +1557,6 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 	}
 	phys_enc->hw_mdptop = hw_mdp;
 	phys_enc->intf_idx = p->intf_idx;
-
-
-	/**
-	 * hw_intf resource permanently assigned to this encoder
-	 * Other resources allocated at atomic commit time by use case
-	 */
-	sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_INTF);
-	while (sde_rm_get_hw(&p->sde_kms->rm, &iter)) {
-		struct sde_hw_intf *hw_intf = (struct sde_hw_intf *)iter.hw;
-
-		if (hw_intf->idx == p->intf_idx) {
-			vid_enc->hw_intf = hw_intf;
-			break;
-		}
-	}
-
-	if (!vid_enc->hw_intf) {
-		ret = -EINVAL;
-		SDE_ERROR("failed to get hw_intf\n");
-		goto fail;
-	}
 
 	SDE_DEBUG_VIDENC(vid_enc, "\n");
 

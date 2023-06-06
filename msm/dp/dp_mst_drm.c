@@ -348,6 +348,9 @@ static bool dp_mst_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	convert_to_drm_mode(&dp_mode, adjusted_mode);
 	adjusted_mode->flags |=
 		dp_connector_choose_best_format(dp, adjusted_mode);
+	if (adjusted_mode->flags & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422)
+		dp->yuv422_enable = true;
+
 	DP_MST_DEBUG("mst bridge [%d] mode:%s fixup\n", bridge->id, mode->name);
 end:
 	return ret;
