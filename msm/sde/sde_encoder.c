@@ -726,7 +726,7 @@ void sde_encoder_get_hw_resources(struct drm_encoder *drm_enc,
 		struct drm_connector_state *conn_state)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
-	struct sde_connector *sde_conn = NULL;
+	struct sde_connector *conn = NULL;
 	int ret, i = 0;
 
 	if (!hw_res || !drm_enc || !conn_state || !hw_res->comp_info) {
@@ -737,7 +737,7 @@ void sde_encoder_get_hw_resources(struct drm_encoder *drm_enc,
 	}
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
-	sde_conn = to_sde_connector(conn_state->connector);
+	conn = to_sde_connector(conn_state->connector);
 	SDE_DEBUG_ENC(sde_enc, "\n");
 
 	hw_res->display_num_of_h_tiles = sde_enc->display_num_of_h_tiles;
@@ -747,11 +747,12 @@ void sde_encoder_get_hw_resources(struct drm_encoder *drm_enc,
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
-		if (phys && phys->ops.get_hw_resources) {
+		if (phys && conn->ops.get_yuv_support)
 			phys->cdm_capable =
-			sde_conn->ops.get_yuv_support(sde_conn->display);
+				conn->ops.get_yuv_support(conn->display);
+
+		if (phys && phys->ops.get_hw_resources)
 			phys->ops.get_hw_resources(phys, hw_res, conn_state);
-		}
 	}
 
 	/*
