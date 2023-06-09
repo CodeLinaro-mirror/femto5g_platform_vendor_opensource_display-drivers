@@ -3740,7 +3740,7 @@ static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
 	sde_kms = _sde_crtc_get_kms(crtc);
 	cstate = to_sde_crtc_state(crtc->state);
 
-	if (!sde_crtc) {
+	if (!sde_crtc || !sde_kms) {
 		SDE_ERROR("invalid input params\n");
 		return;
 	}
