@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/of_gpio.h>
 #include <linux/of_platform.h>
+#include <linux/string.h>
 
 #include "dp_parser.h"
 #include "dp_debug.h"
+
+#define REG_MASK(n)                     ((BIT(n)) - 1)
 
 static void dp_parser_unmap_io_resources(struct dp_parser *parser)
 {
@@ -790,6 +793,166 @@ static void dp_parser_dsc(struct dp_parser *parser)
 			parser->dsc_continuous_pps);
 }
 
+static void dp_parser_msa(struct dp_parser *parser)
+{
+	int rc = 0;
+	u32 tmp;
+	struct device *dev = &parser->pdev->dev;
+	struct device_node *msa_node = NULL;
+
+	msa_node = of_get_child_by_name(dev->of_node, "qcom,mdss_dp_ovr_msa");
+
+	if (!msa_node) {
+		pr_err("msa values not defined\n");
+		goto error;
+	}
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_visible_width_in_px", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_visible_width_in_px. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_visible_width_in_px = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_visible_height_in_px", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_visible_height_in_px. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_visible_height_in_px = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_h_back_porch_px", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_h_back_porch_px. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_h_back_porch_px = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_h_front_porch_px", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_h_front_porch_px. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_h_front_porch_px = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_h_sync_pulse_px", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_h_sync_pulse_px. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_h_sync_pulse_px = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_h_sync_skew_px", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_h_sync_skew_px. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_h_sync_skew_px = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_v_back_porch_ln", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_v_back_porch_ln. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_v_back_porch_ln = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_v_front_porch_ln", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_v_front_porch_ln. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_v_front_porch_ln = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_v_sync_pulse_ln", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_v_sync_pulse_ln. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_v_sync_pulse_ln = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_h_left_border_px", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_h_left_border_px. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_h_left_border_px = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_h_right_border_px", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_h_right_border_px. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_h_right_border_px = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_v_top_border_ln", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_v_top_border_ln. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_v_top_border_ln = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_v_bottom_border_ln", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_v_bottom_border_ln. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_v_bottom_border_ln = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_h_sync_active_low", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_h_sync_active_low. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_h_sync_active_low = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_v_sync_active_low", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_v_sync_active_low. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_v_sync_active_low = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_sw_mvid", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_sw_mvid. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_sw_mvid = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_sw_nvid", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_sw_nvid. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_sw_nvid = tmp;
+
+	rc = of_property_read_u32(msa_node, "qcom,ovr_v_refresh_rate", &tmp);
+	if (rc) {
+		pr_err("error reading ovr_v_refresh_rate. rc=%d\n", rc);
+		goto error;
+	}
+	parser->msa.ovr_v_refresh_rate = tmp;
+
+	parser->msa_config = true;
+
+	pr_debug("w=%d, h=%d, hbp=%d, hfp=%d, hsp=%d, hss=%d, vbp=%d, vfp=%d, vsp=%d, lb=%d, rb=%d, tb=%d, bb=%d, hsa=%d, vsa=%d, mvid=%d, nvid=%d, rate=%d\n",
+		parser->msa.ovr_visible_width_in_px,
+		parser->msa.ovr_visible_height_in_px, parser->msa.ovr_h_back_porch_px,
+		parser->msa.ovr_h_front_porch_px, parser->msa.ovr_h_sync_pulse_px,
+		parser->msa.ovr_h_sync_skew_px, parser->msa.ovr_v_back_porch_ln,
+		parser->msa.ovr_v_front_porch_ln, parser->msa.ovr_v_sync_pulse_ln,
+		parser->msa.ovr_h_left_border_px, parser->msa.ovr_h_right_border_px,
+		parser->msa.ovr_v_top_border_ln, parser->msa.ovr_v_bottom_border_ln,
+		parser->msa.ovr_h_sync_active_low, parser->msa.ovr_v_sync_active_low,
+		parser->msa.ovr_sw_mvid, parser->msa.ovr_sw_nvid,
+		parser->msa.ovr_v_refresh_rate);
+
+error:
+	if (!parser->msa_config) {
+		parser->msa_config = false;
+	}
+}
+
 static void dp_parser_qos(struct dp_parser *parser)
 {
 	struct device *dev = &parser->pdev->dev;
@@ -903,6 +1066,375 @@ static int dp_parser_bond(struct dp_parser *parser)
 	return 0;
 }
 
+static u16 swap_u16_endianness(u16 in)
+{
+	return ((*(((char *)&in)) << 8) | (*(((char *)&in)+1)));
+}
+
+static u16 read_u16_from_byte_stream(const char *data, size_t *offset)
+{
+	return swap_u16_endianness((*offset = *offset + 2,
+			*((u16 *)(data + *offset-2))));
+}
+
+static char read_char_from_byte_stream(const char *data, size_t *offset)
+{
+	return ((*offset = *offset + 1), *(data + *offset-1));
+}
+
+static u8 read_n_bits_from_byte_stream(const char *data, size_t *offset,
+		u8 bit_offset, u8 num_bits)
+{
+	return (((bit_offset - (num_bits-1)) == 0) ?
+			((*offset = *offset+1), *(data + *offset-1)
+			& (REG_MASK(num_bits) << (bit_offset - (num_bits-1)))) :
+			*(data + *offset)
+			& (REG_MASK(num_bits) << (bit_offset - (num_bits-1)))
+		) >> (bit_offset - (num_bits-1));
+}
+
+static void skip_n_bits_from_byte_stream(size_t *offset, u8 bit_offset,
+		u8 num_bits)
+{
+	*offset = ((bit_offset - (num_bits-1)) == 0) ? (*offset+1) : *offset;
+}
+
+static void skip_n_bytes_from_byte_stream(size_t *offset, size_t skip_bytes)
+{
+	*offset = *offset + skip_bytes;
+}
+
+static void dp_parser_dsc_passthrough(struct dp_parser *parser)
+{
+	int len = 0;
+	int i = 0;
+	size_t parsed = 0;
+	u8 dsc_version = 0;
+	const char *data = NULL;
+
+	struct device *dev = &parser->pdev->dev;
+	struct device_node *dsc_passthrough_root_node = NULL;
+	struct device_node *child_node = NULL;
+	struct msm_display_dsc_info *dsc_info =
+		&(parser->dsc_passthrough.comp_info.dsc_info);
+
+	memset(&parser->dsc_passthrough, 0x0, sizeof(parser->dsc_passthrough));
+
+	dsc_passthrough_root_node = of_get_child_by_name(dev->of_node,
+			"qcom,dsc-passthrough");
+
+	if (dsc_passthrough_root_node == NULL) {
+		pr_debug("DSC Passthrough not found.\n");
+		goto error;
+	}
+
+	parser->dsc_passthrough.dsc_passthrough_enable =
+			of_property_read_bool(dsc_passthrough_root_node,
+					"qcom,dsc-passthrough-enable");
+
+	if (parser->dsc_passthrough.dsc_passthrough_enable) {
+		data = of_get_property(dsc_passthrough_root_node,
+				"qcom,dsc-out-byte-order",
+				&len);
+		if (!data) {
+			pr_err("Error parsing dsc-out-byte-order\n");
+			goto error;
+		} else {
+			dsc_info->out_byte_order_size = len;
+			dsc_info->out_byte_order =
+					devm_kzalloc(&parser->pdev->dev, (sizeof(char) * len),
+						GFP_KERNEL);
+			if (!dsc_info->out_byte_order) {
+				pr_err("Failed to allocate buffer space for out_byte_order\n");
+				goto error;
+			} else {
+				for (i = 0; i < len; i++)
+					dsc_info->out_byte_order[i] = data[i];
+				print_hex_dump(KERN_DEBUG,
+						"[dp-parser] dsc passthrough:out_byte_order = ",
+						DUMP_PREFIX_NONE, len, 1,
+						dsc_info->out_byte_order, len, false);
+			}
+		}
+	}
+
+	for_each_child_of_node(dsc_passthrough_root_node, child_node) {
+
+		data = of_get_property(child_node, "qcom,pps-values", &len);
+		if (!data) {
+			pr_err("Error parsing pps-values\n");
+			goto error;
+		}
+
+		for (i = 0 ; i < len ; i++)
+			pr_debug("PPS%d : %02x\n", i, data[i]);
+
+		/* Byte [0] [7:4]dsc_version_major & [3:0]dsc_version_minor */
+		dsc_version = read_char_from_byte_stream(data, &parsed);
+		dsc_info->config.dsc_version_major = dsc_version & 0xF0;
+		dsc_info->config.dsc_version_minor = dsc_version & 0x0F;
+
+		/* Byte [1] pps_identifier SKIPPED */
+		skip_n_bytes_from_byte_stream(&parsed, 1);
+
+		/* Byte [2] RESERVED SKIPPED */
+		skip_n_bytes_from_byte_stream(&parsed, 1);
+
+		/* Byte [3] [7:4]bits_per_component */
+		dsc_info->config.bits_per_component =
+				read_n_bits_from_byte_stream(data, &parsed, 7, 4);
+
+		/* Byte [3] [3:0]linebuf_depth */
+		dsc_info->config.line_buf_depth =
+				read_n_bits_from_byte_stream(data, &parsed, 3, 4);
+
+		/* Byte [4] [7:6]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 2);
+
+		/* Byte [4] [5]block_pred_enable */
+		dsc_info->config.block_pred_enable =
+				read_n_bits_from_byte_stream(data, &parsed, 5, 1);
+
+		/* Byte [4] [4]convert_rgb */
+		dsc_info->config.convert_rgb =
+				read_n_bits_from_byte_stream(data, &parsed, 4, 1);
+
+		/* Byte [4] [3]enable_422 */
+		dsc_info->config.simple_422 =
+				read_n_bits_from_byte_stream(data, &parsed, 3, 1);
+
+		/* Byte [4] [2]vbr_enable */
+		dsc_info->config.vbr_enable =
+				read_n_bits_from_byte_stream(data, &parsed, 2, 1);
+
+		/* Bytes [4] [1:0]bits_per_pixel [5] [7:0]bits_per_pixel */
+		dsc_info->config.bits_per_pixel =
+				(read_n_bits_from_byte_stream(data, &parsed, 1, 2) << 8) |
+				(read_char_from_byte_stream(data, &parsed) >> 4);
+				/* 4 Fractional bits */
+
+		/* Bytes [6][7:0]pic_height[1] [7][7:0]pic_height[0] */
+		dsc_info->config.pic_height =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Bytes [8][7:0]pic_height[1] [9][7:0]pic_height[0] */
+		dsc_info->config.pic_width =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Bytes [10][7:0]slice_height[1] [11][7:0]slice_height[0] */
+		dsc_info->config.slice_height =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Bytes [12][7:0]slice_width[1] [13][7:0]slice_width[0] */
+		dsc_info->config.slice_width =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Bytes [14][7:0]chunk_size[1] [15][7:0]chunk_size[0] */
+		dsc_info->config.slice_chunk_size =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Byte [16] [7:2]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 6);
+
+		/* Bytes [16] [1:0]initial_xmit_delay [17] [7:0]initial_xmit_delay */
+		dsc_info->config.initial_xmit_delay =
+				(read_n_bits_from_byte_stream(data, &parsed, 1, 2) << 8) |
+				read_char_from_byte_stream(data, &parsed);
+
+		/* Bytes [18][7:0]initial_dec_delay[1] [19][7:0]initial_dec_delay[0] */
+		dsc_info->config.initial_dec_delay =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Byte [20] [7:0]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 8);
+
+		/* Byte [21] [7:6]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 2);
+
+		/* Byte [21] [5:0]initial_scale_value */
+		dsc_info->config.initial_scale_value =
+				read_n_bits_from_byte_stream(data, &parsed, 5, 6);
+
+		/*
+		 * Bytes [22][7:0]scale_increment_interval[1]
+		 * [23][7:0]scale_increment_interval[0]
+		 */
+		dsc_info->config.scale_increment_interval =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Byte [24] [7:4]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 4);
+
+		/*
+		 * Bytes [24] [3:0]scale_decrement_interval
+		 *	[25] [7:0]scale_decrement_interval
+		 */
+		dsc_info->config.scale_decrement_interval =
+				(read_n_bits_from_byte_stream(data, &parsed, 3, 4) << 8) |
+				read_char_from_byte_stream(data, &parsed);
+
+		/* Byte [26] [7:0]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 8);
+
+		/* Byte [27] [7:5]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 3);
+
+		/* Byte [27][4:0]first_line_bpg_offset */
+		dsc_info->config.first_line_bpg_offset =
+				read_n_bits_from_byte_stream(data, &parsed, 4, 5);
+
+		/* Bytes [28][7:0]nfl_bpg_offset[1] [29][7:0]nfl_bpg_offset[0] */
+		dsc_info->config.nfl_bpg_offset =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Bytes [30][7:0]slice_bpg_offset[1] [31][7:0]slice_bpg_offset[0] */
+		dsc_info->config.slice_bpg_offset =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Bytes [32][7:0]initial_offset[1] [33][7:0]initial_offset[0] */
+		dsc_info->config.initial_offset =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Bytes [34][7:0]final_offset[1] [35][7:0]final_offset[0] */
+		dsc_info->config.final_offset =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Byte [36][7:5]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 3);
+
+		/* Byte [36][4:0]min_qp_flatness */
+		dsc_info->config.flatness_min_qp =
+				read_n_bits_from_byte_stream(data, &parsed, 4, 5);
+
+		/* Byte [37][7:5]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 3);
+
+		/* Byte [37][4:0]max_qp_flatness */
+		dsc_info->config.flatness_max_qp =
+				read_n_bits_from_byte_stream(data, &parsed, 4, 5);
+
+		/* Bytes [38][7:0]rc_model_size[1] [39][7:0]rc_model_size[0] */
+		dsc_info->config.rc_model_size =
+				read_u16_from_byte_stream(data, &parsed);
+
+		/* Byte [40] [7:4]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 4);
+
+		/* Byte [40][3:0]edge_factor */
+		dsc_info->config.rc_edge_factor =
+				read_n_bits_from_byte_stream(data, &parsed, 3, 4);
+
+		/* Byte [41][7:5]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 3);
+
+		/* Byte [41][4:0]quant_incr_limit0 */
+		dsc_info->config.rc_quant_incr_limit0 =
+				read_n_bits_from_byte_stream(data, &parsed, 4, 5);
+
+		/* Byte [42][7:5]RESERVED SKIPPED */
+		skip_n_bits_from_byte_stream(&parsed, 7, 3);
+
+		/* Byte [42][4:0]quant_incr_limit1 */
+		dsc_info->config.rc_quant_incr_limit1 =
+				read_n_bits_from_byte_stream(data, &parsed, 4, 5);
+
+		/* Byte [43][7:4]tgt_offset_hi */
+		dsc_info->config.rc_tgt_offset_high =
+				read_n_bits_from_byte_stream(data, &parsed, 7, 4);
+
+		/* Byte [43][3:0]tgt_offset_lo */
+		dsc_info->config.rc_tgt_offset_low =
+				read_n_bits_from_byte_stream(data, &parsed, 3, 4);
+
+		/* Bytes [44 to 57] are buf_thresh[0] ... [13] */
+		for (i = 0 ; i < 14 ; i++)
+			dsc_info->config.rc_buf_thresh[i] =
+					read_char_from_byte_stream(data, &parsed);
+
+		/*
+		 * Bytes [58 to 87] are [Bytei][7:3]range_min_qp[i] [2:0]range_max_qp[i]
+		 *		[Bytei+1][7:6]range_max_qp[0] [5:0]range_bpg_offset[0]
+		 */
+		for (i = 0 ; i < 15 ; i++) {
+			dsc_info->config.rc_range_params[i].range_min_qp =
+					read_n_bits_from_byte_stream(data, &parsed, 7, 5);
+			dsc_info->config.rc_range_params[i].range_max_qp =
+					(read_n_bits_from_byte_stream(data, &parsed, 2, 3) << 2) |
+					read_n_bits_from_byte_stream(data, &parsed, 7, 2);
+			dsc_info->config.rc_range_params[i].range_bpg_offset =
+					read_n_bits_from_byte_stream(data, &parsed, 5, 6);
+		}
+
+		/* Bytes [88 to 127] RESERVED SKIPPED */
+		skip_n_bytes_from_byte_stream(&parsed, 40);
+	}
+
+	pr_debug("dsc passthrough parsing successful. Parsed = %d bytes enable:%d\n",
+			parsed,
+			parser->dsc_passthrough.dsc_passthrough_enable);
+	pr_debug("out-byte-order-size:%d, dsc-version:%d-%d, pps-bits-per-component:%d\n",
+			dsc_info->out_byte_order_size,
+			dsc_info->config.dsc_version_major,
+			dsc_info->config.dsc_version_minor,
+			dsc_info->config.bits_per_component);
+	pr_debug("pps-line-buf-depth:%d, pps-block-pred-enable:%d, convert_rgb:%d, enable-422:%d\n",
+			dsc_info->config.line_buf_depth,
+			dsc_info->config.block_pred_enable,
+			dsc_info->config.convert_rgb,
+			dsc_info->config.simple_422);
+	pr_debug("vbr-enable:%d, bits-per-pixel:%d, pic-height:%d, pic-width:%d, slice-height:%d\n",
+			dsc_info->config.vbr_enable,
+			dsc_info->config.bits_per_pixel,
+			dsc_info->config.pic_height,
+			dsc_info->config.pic_width,
+			dsc_info->config.slice_height);
+	pr_debug("slice-width:%d, chunk-size:%d, initial-xmit-delay:%d, initial-dec-delay:%d\n",
+			dsc_info->config.slice_width,
+			dsc_info->config.slice_chunk_size,
+			dsc_info->config.initial_xmit_delay,
+			dsc_info->config.initial_dec_delay);
+	pr_debug("initial-scale-value:%d, scale-inc-interval:%d, scale-dec-interval:%d\n",
+			dsc_info->config.initial_scale_value,
+			dsc_info->config.scale_increment_interval,
+			dsc_info->config.scale_decrement_interval);
+	pr_debug("first-line-bpg-offset:%d, nfl-bpg-offset:%d, slice-bpg-offset:%d\n",
+			dsc_info->config.first_line_bpg_offset,
+			dsc_info->config.nfl_bpg_offset,
+			dsc_info->config.slice_bpg_offset);
+	pr_debug("initial-offset:%d, final-offset=%d, flatness-min-qp:%d, flatness-max-qp:%d\n",
+			dsc_info->config.initial_offset,
+			dsc_info->config.final_offset,
+			dsc_info->config.flatness_min_qp,
+			dsc_info->config.flatness_max_qp);
+	pr_debug("rc-model-size:%d, rc-edge-factor:%d, rc-quant-incr-limit0:%d\n",
+			dsc_info->config.rc_model_size,
+			dsc_info->config.rc_edge_factor,
+			dsc_info->config.rc_quant_incr_limit0);
+	pr_debug("rc-quant-incr-limit1:%d, tgt-offset-hi:%d, tgt-offset-lo:%d\n",
+			dsc_info->config.rc_quant_incr_limit1,
+			dsc_info->config.rc_tgt_offset_high,
+			dsc_info->config.rc_tgt_offset_low
+			);
+	print_hex_dump(KERN_DEBUG,
+			"[dp-parser] dsc passthrough:pps-rc-buf-thresh = ",
+			DUMP_PREFIX_NONE, 14, sizeof(u32),
+			dsc_info->config.rc_buf_thresh, 14*sizeof(u32), false);
+	for (i = 0 ; i < 15 ; i++) {
+		pr_debug("[dp-parser] dsc passthrough:range_param[i]:"\
+			 "range_min_qp=%d,range_max_qp=%d,range_bpg_offset=%d =\n",
+			 dsc_info->config.rc_range_params[i].range_min_qp,
+			 dsc_info->config.rc_range_params[i].range_max_qp,
+			 dsc_info->config.rc_range_params[i].range_bpg_offset);
+	}
+
+	parser->dsc_passthrough.comp_info.comp_type = MSM_DISPLAY_COMPRESSION_DSC;
+	parser->dsc_passthrough.comp_info.comp_ratio = 3;
+	return;
+
+error:
+	parser->dsc_passthrough.dsc_passthrough_enable = false;
+}
+
 static int dp_parser_parse(struct dp_parser *parser)
 {
 	int rc = 0;
@@ -959,6 +1491,10 @@ static int dp_parser_parse(struct dp_parser *parser)
 	dp_parser_widebus(parser);
 	dp_parser_qos(parser);
 	dp_parser_force_encryption(parser);
+	dp_parser_dsc_passthrough(parser);
+	/* Parse dsc passthrough before parsing msa */
+	if (parser->dsc_passthrough.dsc_passthrough_enable)
+		dp_parser_msa(parser);
 	dp_parser_sink_sync(parser);
 err:
 	return rc;

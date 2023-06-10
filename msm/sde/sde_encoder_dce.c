@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
  */
 
@@ -28,6 +28,7 @@
 #include "sde_core_irq.h"
 #include "sde_dsc_helper.h"
 #include "sde_vdc_helper.h"
+#include "dp_drm.h"
 
 #define SDE_DEBUG_DCE(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -236,6 +237,8 @@ static void _dce_dsc_pipe_cfg(struct sde_hw_dsc *hw_dsc,
 		return;
 	}
 
+	hw_dsc_pp->out_byte_order = dsc->out_byte_order;
+	hw_dsc_pp->out_byte_order_size = dsc->out_byte_order_size;
 	if (hw_dsc->ops.dsc_config)
 		hw_dsc->ops.dsc_config(hw_dsc, dsc, common_mode, ich_reset);
 
@@ -516,6 +519,7 @@ static int _dce_dsc_setup(struct sde_encoder_virt *sde_enc,
 {
 	struct drm_connector *drm_conn;
 	enum sde_rm_topology_name topology;
+	bool is_dsc_passthrough = false;
 
 	if (!sde_enc || !params || !sde_enc->phys_encs[0] ||
 			!sde_enc->phys_encs[0]->connector)
@@ -542,6 +546,15 @@ static int _dce_dsc_setup(struct sde_encoder_virt *sde_enc,
 			sde_enc->prv_conn_roi.w, sde_enc->prv_conn_roi.h,
 			sde_enc->cur_master->cached_mode.hdisplay,
 			sde_enc->cur_master->cached_mode.vdisplay);
+
+	dp_connector_query_mode(to_sde_connector(drm_conn)->display,
+			&is_dsc_passthrough,
+			DSC_PASSTHROUGH_IS_ENABLED);
+	if (is_dsc_passthrough) {
+		dp_connector_query_mode(to_sde_connector(drm_conn)->display,
+				(void *)&sde_enc->cur_conn_roi.w,
+				DSC_PASSTHROUGH_UPDATE_PIC_WIDTH);
+	}
 
 	return _dce_dsc_setup_helper(sde_enc, params->affected_displays,
 			topology);

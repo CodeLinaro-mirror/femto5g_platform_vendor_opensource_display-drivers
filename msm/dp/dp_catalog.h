@@ -222,7 +222,7 @@ struct dp_catalog_panel {
 	void (*update_transfer_unit)(struct dp_catalog_panel *panel);
 	void (*config_ctrl)(struct dp_catalog_panel *panel, u32 cfg);
 	void (*config_dto)(struct dp_catalog_panel *panel, bool ack);
-	void (*dsc_cfg)(struct dp_catalog_panel *panel);
+	void (*dsc_cfg)(struct dp_catalog_panel *panel, bool dscPassthrough);
 	void (*pps_flush)(struct dp_catalog_panel *panel);
 	void (*dhdr_flush)(struct dp_catalog_panel *panel);
 	bool (*dhdr_busy)(struct dp_catalog_panel *panel);
@@ -339,13 +339,13 @@ struct dp_catalog *dp_catalog_get(struct device *dev, struct dp_parser *parser);
 void dp_catalog_put(struct dp_catalog *catalog);
 
 struct dp_catalog_sub *dp_catalog_get_v420(struct device *dev,
-			struct dp_catalog *catalog, struct dp_catalog_io *io);
+			struct dp_catalog *catalog, struct dp_catalog_io *io, struct dp_parser *parser);
 
 struct dp_catalog_sub *dp_catalog_get_v200(struct device *dev,
 			struct dp_catalog *catalog, struct dp_catalog_io *io);
 
 struct dp_catalog_sub *dp_catalog_get_v500(struct device *dev,
-			struct dp_catalog *catalog, struct dp_catalog_io *io);
+			struct dp_catalog *catalog, struct dp_catalog_io *io, struct dp_parser *parser);
 
 u32 dp_catalog_get_dp_core_version(struct dp_catalog *dp_catalog);
 u32 dp_catalog_get_dp_phy_version(struct dp_catalog *dp_catalog);
