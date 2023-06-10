@@ -522,22 +522,6 @@ retry_recv_packet:
 			payload_type, resp_size, rc);
 		if ((rc == -EAGAIN) && (retry_times < MAX_RECV_PACKET_RETRY))
 		{
-			if (handle) {
-				if (rel_hab_handle(ctx, chl_id, 0x00))
-					UTILS_LOG_ERROR("rel_hab_handle failed");
-			}
-			/*
-			 * Add this msleep to let watch dog thread can be feed
-			 * need release lock first
-			 */
-			msleep(1);
-			handle = get_hab_handle(ctx, &chl_id, 0x00);
-			if (!handle) {
-				UTILS_LOG_ERROR("get_hab_handle failed for chl_id=%d", chl_id);
-				rc = -1;
-				goto end;
-			}
-
 			retry_times++;
 			UTILS_LOG_ERROR("recv packet retry %d", retry_times);
 			goto retry_recv_packet;
@@ -566,11 +550,8 @@ retry_recv_packet:
 		goto end;
 	}
 	if (timestamp > resp->hdr.timestamp) {
-		UTILS_LOG_ERROR("wrong packet timestamp");
-		UTILS_LOG_ERROR("req packet timestamp : %lu\n", timestamp);
-		UTILS_LOG_ERROR("resp packet timestamp : %lu\n",
-					resp->hdr.timestamp);
-
+		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu > resp : %lu\n",
+				timestamp, resp->hdr.timestamp);
 		/*
 		 * Drm fe try 10 times to get the correct packet
 		 */
@@ -581,29 +562,14 @@ retry_recv_packet:
 #endif
 			rc = -1;
 		} else {
-			/*
-			 * Add this msleep to let watch dog thread can be feed
-			 * need release lock first
-			 */
-			if (handle) {
-				if (rel_hab_handle(ctx, chl_id, 0x00))
-					UTILS_LOG_ERROR("rel_hab_handle failed");
-			}
-			msleep(1);
-			handle = get_hab_handle(ctx, &chl_id, 0x00);
-			if (!handle) {
-				UTILS_LOG_ERROR("get_hab_handle failed for chl_id=%d", chl_id);
-				rc = -1;
-				goto end;
-			}
-
 			retry_times++;
 			UTILS_LOG_ERROR("recv packet retry %d", retry_times);
 			goto retry_recv_packet;
 		}
 	}
 	else if (timestamp < resp->hdr.timestamp) {
-		UTILS_LOG_ERROR(" Wrong packet timestamp req : %lu res : %lu \n", timestamp, resp->hdr.timestamp);
+		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu < resp : %lu\n",
+				timestamp, resp->hdr.timestamp);
 		rc = -1;
 		goto end;
 	}

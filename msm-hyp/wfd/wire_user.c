@@ -1006,8 +1006,6 @@ retry:
 				panic("wfdDeviceCommit");
 #endif
 			} else {
-				/* Add this msleep to let watch dog thread can be feed */
-				msleep(1);
 				goto retry;
 			}
 		}
