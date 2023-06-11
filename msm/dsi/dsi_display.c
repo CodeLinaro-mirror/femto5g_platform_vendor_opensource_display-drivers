@@ -48,6 +48,10 @@ static struct dsi_display_boot_param boot_displays[MAX_DSI_ACTIVE_DISPLAY] = {
 
 static void dsi_display_panel_id_notification(struct dsi_display *display);
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+static int dsi_display_component_add_helper(struct dsi_display *display);
+#endif
+
 static const struct of_device_id dsi_display_dt_match[] = {
 	{.compatible = "qcom,dsi-display"},
 	{}
@@ -3372,7 +3376,29 @@ error:
 static int dsi_host_attach(struct mipi_dsi_host *host,
 			   struct mipi_dsi_device *dsi)
 {
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+	struct dsi_display *display;
+	int rc = 0;
+
+	if (!host || !dsi) {
+		DSI_ERR("Invalid param\n");
+		return -EINVAL;
+	}
+	display = to_dsi_display(host);
+	if (!display) {
+		DSI_ERR("Invalid display ptr\n");
+		return -EINVAL;
+	}
+	rc = dsi_display_component_add_helper(display);
+	if (rc) {
+		DSI_ERR("component add failed, rc=%d\n", rc);
+		return rc;
+	}
+	DSI_DEBUG("Component add successful\n");
+	return rc;
+#else
 	return 0;
+#endif
 }
 
 static int dsi_host_detach(struct mipi_dsi_host *host,
@@ -5878,8 +5904,9 @@ static struct platform_driver dsi_display_driver = {
 static int dsi_display_init(struct dsi_display *display)
 {
 	int rc = 0;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	struct platform_device *pdev = display->pdev;
-
+#endif
 	mutex_init(&display->display_lock);
 
 	rc = _dsi_display_dev_init(display);
@@ -5916,19 +5943,32 @@ static int dsi_display_init(struct dsi_display *display)
                        display->name, rc);
                 goto end;
         }
-#endif
-
+#else
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
 	if (rc) {
 		DSI_ERR("component add failed, rc=%d\n", rc);
 		_dsi_display_dev_deinit(display);
 		goto end;
 	}
+#endif
 
 	DSI_DEBUG("component add success: %s\n", display->name);
 end:
 	return rc;
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+static int dsi_display_component_add_helper(struct dsi_display *display)
+{
+	struct platform_device *pdev;
+
+	pdev = display->pdev;
+	if(!pdev){
+		return -EINVAL;
+	}
+	return (component_add(&pdev->dev, &dsi_display_comp_ops));
+}
+#endif
 
 static void dsi_display_firmware_display(const struct firmware *fw,
 				void *context)
