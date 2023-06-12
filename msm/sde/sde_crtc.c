@@ -2325,12 +2325,9 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 
 			if (hw_ds->ops.setup_opmode) {
 				if (test_bit(SDE_DS_MERGE_CTRL, &hw_ds->scl->features) &&
-					cstate->num_ds_enabled &&
-					(cstate->num_ds_enabled % HW_PAIR == 0)) {
-					op_mode = (cstate->num_ds_enabled > 2) ?
-							DEST_SCALER_QUAD_PIPE :
-							DEST_SCALER_DUAL_PIPE;
-				} else {
+					cstate->num_ds_enabled)
+					op_mode = cfg->merge_mode;
+				else {
 					op_mode |= (cstate->num_ds_enabled ==
 							CRTC_DUAL_MIXERS_ONLY) ?
 							SDE_DS_OP_MODE_DUAL : 0;
@@ -3049,6 +3046,7 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 		cstate->ds_cfg[i].flags = ds_cfg_usr->flags;
 		cstate->ds_cfg[i].lm_width = ds_cfg_usr->lm_width;
 		cstate->ds_cfg[i].lm_height = ds_cfg_usr->lm_height;
+		cstate->ds_cfg[i].merge_mode = ds_cfg_usr->merge_mode;
 		memset(&scaler_v2, 0, sizeof(scaler_v2));
 
 		if (ds_cfg_usr->scaler_cfg) {
@@ -3074,12 +3072,13 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 			scaler_v2.src_width[0], scaler_v2.src_height[0],
 			scaler_v2.dst_width, scaler_v2.dst_height);
 
-		SDE_DEBUG("ds cfg[%d]-ndx(%d) flags(%d) lm(%dx%d)\n",
+		SDE_DEBUG("ds cfg[%d]-ndx(%d) flags(%d) lm(%dx%d)\n merge_mode(%d)",
 			i, ds_cfg_usr->index, ds_cfg_usr->flags,
-			ds_cfg_usr->lm_width, ds_cfg_usr->lm_height);
+			ds_cfg_usr->lm_width, ds_cfg_usr->lm_height,
+			ds_cfg_usr->merge_mode);
 		SDE_EVT32_VERBOSE(DRMID(&sde_crtc->base), i, ds_cfg_usr->index,
 			ds_cfg_usr->flags, ds_cfg_usr->lm_width,
-			ds_cfg_usr->lm_height);
+			ds_cfg_usr->lm_height, ds_cfg_usr->merge_mode);
 	}
 
 	cstate->num_ds = count;
