@@ -1979,6 +1979,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.get_info   = dp_connector_get_info,
 		.get_mode_info  = dp_connector_get_mode_info,
 		.post_open  = dp_connector_post_open,
+		.set_backlight = dp_connector_set_backlight,
 		.check_status = NULL,
 		.set_colorspace = dp_connector_set_colorspace,
 		.config_hdr = dp_connector_config_hdr,
@@ -3854,11 +3855,9 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			(intf_type == INTF_EDP) && connector->funcs &&
 			connector->funcs->fill_modes) {
 			sde_irq_update(&sde_kms->base, true);
-			mutex_lock(&dev->mode_config.mutex);
 			connector->funcs->fill_modes(connector,
 				dev->mode_config.max_width,
 				dev->mode_config.max_height);
-			mutex_unlock(&dev->mode_config.mutex);
 			sde_irq_update(&sde_kms->base, false);
 		}
 
@@ -3867,7 +3866,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 		connector->state->crtc = crtc;
 
 		/* get supported modes in case of external bridge panels*/
-		if (!dsi_display->panel->num_timing_nodes) {
+		if ((intf_type == INTF_DSI) && (!dsi_display->panel->num_timing_nodes)) {
 			connector->funcs->fill_modes(connector,
 					dev->mode_config.max_width,
 					dev->mode_config.max_height);
