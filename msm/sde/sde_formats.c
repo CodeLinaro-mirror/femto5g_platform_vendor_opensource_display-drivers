@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1285,6 +1286,36 @@ const struct msm_format *sde_get_msm_format(
 	return NULL;
 }
 
+static bool formats_exist(uint32_t *formats, int count, uint32_t fmt)
+{
+	int i;
+
+	if (formats == NULL)
+		return false;
+
+	for (i = 0; i < count; i++) {
+		if (formats[i] == fmt)
+			return true;
+	}
+
+	return false;
+}
+
+static bool modifiers_exist(uint64_t *modifiers, int count, uint64_t modifier)
+{
+	int i;
+
+	if (modifiers == NULL)
+		return false;
+
+	for (i = 0; i < count; i++) {
+		if (modifiers[i] == modifier)
+			return true;
+	}
+
+	return false;
+}
+
 uint32_t sde_populate_formats(
 		const struct sde_format_extended *format_list,
 		uint32_t *pixel_formats,
@@ -1292,20 +1323,23 @@ uint32_t sde_populate_formats(
 		uint32_t pixel_formats_max)
 {
 	uint32_t i, fourcc_format;
+	uint32_t j = 0;
 
 	if (!format_list || !pixel_formats)
 		return 0;
 
 	for (i = 0, fourcc_format = 0;
-			format_list->fourcc_format && i < pixel_formats_max;
-			++format_list) {
+		format_list->fourcc_format && i < pixel_formats_max;
+		++format_list) {
 		/* verify if listed format is in sde_format_map? */
 
 		/* optionally return modified formats */
 		if (pixel_modifiers) {
-			/* assume same modifier for all fb planes */
-			pixel_formats[i] = format_list->fourcc_format;
-			pixel_modifiers[i++] = format_list->modifier;
+			/* skip duplicated formats, modifiers */
+			if (!formats_exist(pixel_formats, i, format_list->fourcc_format))
+				pixel_formats[i++] = format_list->fourcc_format;
+			if (!modifiers_exist(pixel_modifiers, j, format_list->modifier))
+				pixel_modifiers[j++] = format_list->modifier;
 		} else {
 			/* assume base formats grouped together */
 			if (fourcc_format != format_list->fourcc_format) {
@@ -1314,6 +1348,9 @@ uint32_t sde_populate_formats(
 			}
 		}
 	}
+
+	if (pixel_modifiers)
+		pixel_modifiers[j] = DRM_FORMAT_MOD_INVALID;
 
 	return i;
 }
