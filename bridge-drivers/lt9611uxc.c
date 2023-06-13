@@ -2532,13 +2532,12 @@ static int lt9611_probe(struct i2c_client *client,
 	if (!cont_splash_en)
 		lt9611_reset(pdata, true);
 
+	msleep(200);
 	ret = lt9611_read_device_id(pdata);
 	if (ret) {
 		pr_err("failed to read chip rev\n");
 		goto err_i2c_prog;
 	}
-
-	msleep(200);
 
 	i2c_set_clientdata(client, pdata);
 	dev_set_drvdata(&client->dev, pdata);
