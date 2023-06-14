@@ -562,6 +562,7 @@ struct sde_connector_dyn_hdr_metadata {
  * @cached_edid: cached edid data for the connector
  * @bool rgb_qs: Flag to indicate if connector supports quantization select in rgb format
  * @bool yuv_qs: Flag to indicate if connector supports quantization select in yuv format
+ * @colorspace: store previous colorspace
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -623,6 +624,7 @@ struct sde_connector {
 
 	u32 color_enc_fmt;
 	u32 lm_mask;
+	u32 colorspace;
 
 	u8 hdr_plus_app_ver;
 	u32 qsync_mode;
