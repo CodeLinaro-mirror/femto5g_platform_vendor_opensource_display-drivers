@@ -25,6 +25,7 @@ enum dp_pm_type {
 	DP_STREAM1_PM,
 	DP_LINK_PM,
 	DP_PLL_PM,
+	DP_BOND_PM,
 	DP_MAX_PM
 };
 
@@ -38,6 +39,7 @@ static inline const char *dp_parser_pm_name(enum dp_pm_type module)
 	case DP_STREAM1_PM:	return "DP_STREAM1_PM";
 	case DP_LINK_PM:	return "DP_LINK_PM";
 	case DP_PLL_PM:		return "DP_PLL_PM";
+	case DP_BOND_PM:	return "DP_BOND_PM";
 	default:		return "???";
 	}
 }
