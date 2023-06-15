@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1676,8 +1676,10 @@ static void dp_debug_set_sim_mode(struct dp_debug_private *debug, bool sim)
 		display = sde_conn->display;
 		if (display->base_connector == (*debug->connector)) {
 			panel = sde_conn->drv_panel;
-			panel->mode_override = false;
-			panel->mst_hide = false;
+			if (panel) {
+				panel->mode_override = false;
+				panel->mst_hide = false;
+			}
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
@@ -2207,6 +2209,18 @@ static int dp_debug_init_dsc_fec(struct dp_debug_private *debug,
 	return rc;
 }
 
+static int dp_debug_init_yuv_enable(struct dp_debug_private *debug,
+		struct dentry *dir)
+{
+	int rc = 0;
+
+	if (debug->parser->yuv422_support)
+		debugfs_create_bool("yuv422_enable", 0644, dir,
+				&debug->display->yuv422_enable);
+
+	return rc;
+}
+
 static int dp_debug_init_tpg(struct dp_debug_private *debug, struct dentry *dir)
 {
 	int rc = 0;
@@ -2333,6 +2347,10 @@ static int dp_debug_init(struct dp_debug *dp_debug)
 		goto error_remove_dir;
 
 	rc = dp_debug_init_dsc_fec(debug, dir);
+	if (rc)
+		goto error_remove_dir;
+
+	rc = dp_debug_init_yuv_enable(debug, dir);
 	if (rc)
 		goto error_remove_dir;
 

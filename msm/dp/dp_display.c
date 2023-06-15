@@ -62,6 +62,8 @@
 	(dp->state &= ~(x)); \
 	dp_display_state_log("remove "#x); }
 
+#define MAX_SUPPORTED_BPP 30
+
 enum dp_display_states {
 	DP_STATE_DISCONNECTED           = 0,
 	DP_STATE_CONFIGURED             = BIT(0),
@@ -197,6 +199,7 @@ struct dp_display_private {
 	struct dp_display_mode mode;
 	struct dp_display dp_display;
 	struct msm_drm_private *priv;
+	void *usbpd_handle;
 
 	struct workqueue_struct *wq;
 	struct delayed_work hdcp_cb_work;
@@ -1590,6 +1593,12 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp)
 
 	dp_display_host_unready(dp);
 
+
+	/* clear yuv422_enable flag on each hpd disconnect event
+	 * and let it set based on the required flags on hpd connect.
+	 */
+	dp->dp_display.yuv422_enable = false;
+
 	mutex_unlock(&dp->session_lock);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
@@ -2020,6 +2029,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 
 	g_dp_display->is_mst_supported = dp->parser->has_mst;
 	g_dp_display->dsc_cont_pps = dp->parser->dsc_continuous_pps;
+	g_dp_display->is_yuv_supported = dp->parser->yuv422_support;
 
 	dp->catalog = dp_catalog_get(dev, dp->parser);
 	if (IS_ERR(dp->catalog)) {
@@ -2140,6 +2150,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	cb->configure  = dp_display_usbpd_configure_cb;
 	cb->disconnect = dp_display_usbpd_disconnect_cb;
 	cb->attention  = dp_display_usbpd_attention_cb;
+	cb->usbpd_handle = dp->usbpd_handle;
 
 	dp->hpd = dp_hpd_get(dev, dp->parser, &dp->catalog->hpd,
 			dp->aux_bridge, cb);
@@ -2310,6 +2321,7 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 			mode->timing.bpp, mode->timing.pixel_clk_khz, dsc_en);
 
 	dp_panel->pinfo = mode->timing;
+	dp_panel->output_format = mode->output_format;
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
@@ -2918,6 +2930,35 @@ static int dp_display_validate_topology(struct dp_display_private *dp,
 	return 0;
 }
 
+static int dp_display_get_dc_support(struct dp_display *dp,
+		u32 mode_pclk_khz, u32 out_format, bool dc_enable)
+{
+	struct dp_display_private *dp_display;
+	struct drm_dp_link *link_info;
+	u32 mode_rate_khz = 0, supported_rate_khz = 0;
+	u32 default_bpp = 24;
+
+	if (!dp || !mode_pclk_khz || !dp->base_connector) {
+		DP_ERR("invalid input");
+		return -EINVAL;
+	}
+
+	dp_display = container_of(dp, struct dp_display_private, dp_display);
+	link_info = &dp_display->panel->link_info;
+
+	mode_rate_khz = mode_pclk_khz * default_bpp;
+
+	if (dc_enable)
+		mode_rate_khz = mode_pclk_khz * MAX_SUPPORTED_BPP;
+
+	supported_rate_khz = link_info->num_lanes * link_info->rate * 8;
+
+	if (mode_rate_khz > supported_rate_khz)
+		return false;
+
+	return true;
+}
+
 static enum drm_mode_status dp_display_validate_mode(
 		struct dp_display *dp_display,
 		void *panel, struct drm_display_mode *mode,
@@ -3085,6 +3126,7 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 				free_dsc_blks, required_dsc_blks,
 				dp_mode->capabilities);
 
+	dp_mode->flags = drm_mode->flags;
 	dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
 }
 
@@ -3577,6 +3619,18 @@ static void dp_display_wakeup_phy_layer(struct dp_display *dp_display,
 		hpd->wakeup_phy(hpd, wakeup);
 }
 
+static void *dp_display_usbpd_get_handle(struct dp_display_private *dp)
+{
+	struct device *dev = &dp->pdev->dev;
+
+	if (!dev || !dev->of_node) {
+		DP_ERR("cannot find dev.of_node\n");
+		return ERR_PTR(-ENODEV);
+	}
+
+	return dp_hpd_get_handle(dev);
+}
+
 static int dp_display_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -3606,6 +3660,13 @@ static int dp_display_probe(struct platform_device *pdev)
 	if (rc)
 		goto error;
 
+	dp->usbpd_handle = dp_display_usbpd_get_handle(dp);
+	if (IS_ERR(dp->usbpd_handle)) {
+		DP_ERR("Failed to get usbpd handle\n");
+		rc = PTR_ERR(dp->usbpd_handle);
+		goto error;
+	}
+
 	rc = dp_display_create_workqueue(dp);
 	if (rc) {
 		DP_ERR("Failed to create workqueue\n");
@@ -3627,6 +3688,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	g_dp_display->set_mode      = dp_display_set_mode;
 	g_dp_display->validate_mode = dp_display_validate_mode;
 	g_dp_display->get_modes     = dp_display_get_modes;
+	g_dp_display->get_dc_support = dp_display_get_dc_support;
 	g_dp_display->prepare       = dp_display_prepare;
 	g_dp_display->unprepare     = dp_display_unprepare;
 	g_dp_display->request_irq   = dp_request_irq;

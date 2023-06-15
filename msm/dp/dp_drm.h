@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_DRM_H_
@@ -144,6 +144,14 @@ int dp_connnector_set_info_blob(struct drm_connector *connector,
 		void *info, void *display, struct msm_mode_info *mode_info);
 
 /**
+ * dp_connector_choose_best_format - sets the mode flag with best colorspace
+ * @dp: pointer to public display structure
+ * mode: display mode set for the dispaly
+ */
+u32 dp_connector_choose_best_format(struct dp_display *dp,
+		struct drm_display_mode *mode);
+
+/**
  * dp_drm_bridge_init- drm dp bridge initialize
  * @display: Pointer to private display structure
  * @encoder: encoder for this dp bridge
@@ -179,6 +187,22 @@ int dp_connector_update_pps(struct drm_connector *connector,
  */
 int dp_connector_install_properties(void *display,
 		struct drm_connector *conn);
+
+/**
+ * dp_conn_get_csc_type - get the SDE CSC color type based on HDR mode
+ * @conn: Pointer to connector
+ * @data: Pointer to dp_display structure
+ * Returns: enum value sde_csc_type
+ */
+enum sde_csc_type dp_connector_get_csc_type(struct drm_connector *conn,
+		void *data);
+
+/**
+ * dp_conn_yuv_support - parse yuv support DT prop
+ * @display: Pointer to dp_display
+ * Returns: true if yuv supported
+ */
+bool dp_connector_yuv_support(void *display);
 
 #else
 static inline int dp_connector_config_hdr(struct drm_connector *connector,

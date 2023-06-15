@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -456,9 +456,12 @@ int _sde_edid_update_modes(struct drm_connector *connector,
 {
 	int rc = 0;
 	struct sde_edid_ctrl *edid_ctrl = (struct sde_edid_ctrl *)(input);
+	struct drm_display_info *disp_info;
 
+	disp_info = &connector->display_info;
 	SDE_EDID_DEBUG("%s +", __func__);
 	if (edid_ctrl->edid) {
+		disp_info->bpc = min_t(u32, disp_info->bpc, SDE_MIN_BPC);
 		drm_connector_update_edid_property(connector,
 			edid_ctrl->edid);
 

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -29,6 +29,20 @@
 #define DP_PANEL_SRC_INITIATED_POWER_DOWN BIT(0)
 
 #define DP_EXT_REC_CAP_FIELD BIT(7)
+
+enum dp_panel_hdr_pixel_encoding {
+	RGB,
+	YCbCr444,
+	YCbCr422,
+	YCbCr420,
+	YONLY,
+	RAW,
+};
+
+enum dp_panel_hdr_state {
+	HDR_DISABLED,
+	HDR_ENABLED,
+};
 
 enum dp_lane_count {
 	DP_LANE_COUNT_1	= 1,
@@ -71,6 +85,7 @@ struct dp_display_mode {
 	u32 capabilities;
 	s64 fec_overhead_fp;
 	s64 dsc_overhead_fp;
+	u32 flags;
 	/**
 	 * @output_format:
 	 *
@@ -151,6 +166,7 @@ struct dp_panel {
 	bool widebus_en;
 	bool dsc_continuous_pps;
 	bool mst_state;
+	enum dp_output_format output_format;
 
 	/* override debug option */
 	bool mst_hide;

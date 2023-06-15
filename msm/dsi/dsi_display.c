@@ -693,9 +693,12 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 		 *    tx is used.
 		 */
 		flags = DSI_CTRL_CMD_FETCH_MEMORY;
-		pr_debug("Configure Cmd trasfer mode to DSI_CTRL_CMD_FIFO_STORE\n");
-		flags &= ~DSI_CTRL_CMD_FETCH_MEMORY;
-		flags |= DSI_CTRL_CMD_FIFO_STORE;
+		if (ctrl->ctrl->secure_mode) {
+			flags &= ~DSI_CTRL_CMD_FETCH_MEMORY;
+			flags &= ~DSI_CTRL_CMD_FETCH_MEMORY;
+		} else if (msg->tx_len > DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES) {
+			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
+		}
 
 		/* Set flags needed for broadcast. Read commands are always unicast */
 		if (!(msg->flags & MIPI_DSI_MSG_UNICAST_COMMAND) && (display->ctrl_count > 1))
@@ -5898,15 +5901,25 @@ static int dsi_display_init(struct dsi_display *display)
 		if (rc) {
 			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
 					display->panel->name, rc);
-			return rc;
+			goto vreg_fail;
 		}
 	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
-	if (rc)
+	if (rc) {
 		DSI_ERR("component add failed, rc=%d\n", rc);
+		goto comp_add_fail;
+	}
 
 	DSI_DEBUG("component add success: %s\n", display->name);
+	return rc;
+
+comp_add_fail:
+	if (display->panel)
+		dsi_pwr_enable_regulator(&display->panel->power_info, false);
+vreg_fail:
+	_dsi_display_dev_deinit(display);
+
 end:
 	return rc;
 }
