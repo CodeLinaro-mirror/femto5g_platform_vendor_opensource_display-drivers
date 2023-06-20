@@ -63,6 +63,7 @@ enum {
 	DSI_PLL_4NM,
 	DSI_PLL_5NM,
 	DSI_PLL_10NM,
+	DSI_PLL_14NM,
 	DSI_UNKNOWN_PLL,
 };
 
@@ -202,6 +203,9 @@ static inline struct dsi_pll_clk *to_pll_clk_hw(struct clk_hw *hw)
 {
 	return container_of(hw, struct dsi_pll_clk, hw);
 }
+
+int dsi_pll_clock_register_14nm(struct platform_device *pdev,
+			struct dsi_pll_resource *pll_res);
 
 int dsi_pll_clock_register_5nm(struct platform_device *pdev,
 				  struct dsi_pll_resource *pll_res);
