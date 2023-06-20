@@ -1122,15 +1122,18 @@ static int _sde_encoder_atomic_check_pu_roi(struct sde_encoder_virt *sde_enc,
 	struct sde_connector_state *sde_conn_state,
 	struct sde_crtc_state *sde_crtc_state)
 {
+	struct drm_display_mode *mode = &crtc_state->adjusted_mode;
 	int ret = 0;
 
 	if (crtc_state->mode_changed || crtc_state->active_changed) {
 		struct sde_rect mode_roi, roi;
+		u32 width, height;
 
+		sde_crtc_get_resolution(crtc_state->crtc, crtc_state, mode, &width, &height);
 		mode_roi.x = 0;
 		mode_roi.y = 0;
-		mode_roi.w = crtc_state->adjusted_mode.hdisplay;
-		mode_roi.h = crtc_state->adjusted_mode.vdisplay;
+		mode_roi.w = width;
+		mode_roi.h = height;
 
 		if (sde_conn_state->rois.num_rects) {
 			sde_kms_rect_merge_rectangles(
