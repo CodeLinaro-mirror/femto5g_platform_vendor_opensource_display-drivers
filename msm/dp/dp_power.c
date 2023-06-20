@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -145,7 +145,7 @@ error:
 
 static int dp_power_pinctrl_set(struct dp_power_private *power, bool active)
 {
-	int rc = -EFAULT;
+	int rc = 0;
 	struct pinctrl_state *pin_state;
 	struct dp_parser *parser;
 
@@ -177,10 +177,6 @@ static int dp_power_pinctrl_set(struct dp_power_private *power, bool active)
 			DP_ERR("DP%d can not set %s pins\n", parser->cell_idx,
 			       active ? "dp_active"
 			       : "dp_sleep");
-	} else {
-		DP_ERR("DP%d invalid '%s' pinstate\n", parser->cell_idx,
-		       active ? "dp_active"
-		       : "dp_sleep");
 	}
 
 	return rc;
