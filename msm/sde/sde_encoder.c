@@ -1969,7 +1969,7 @@ void sde_encoder_cancel_delayed_work(struct drm_encoder *encoder)
 static void _sde_encoder_rc_kickoff_delayed(struct sde_encoder_virt *sde_enc,
 	u32 sw_event)
 {
-	if (_sde_encoder_is_autorefresh_enabled(sde_enc))
+	if (!sde_enc->idle_pc_enabled || _sde_encoder_is_autorefresh_enabled(sde_enc))
 		_sde_encoder_rc_cancel_delayed(sde_enc, sw_event);
 	else
 		_sde_encoder_rc_restart_delayed(sde_enc, sw_event);
