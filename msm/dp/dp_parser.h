@@ -17,6 +17,10 @@
 #define MAX_DP_MST_STREAMS	2
 #define MAX_DP_BOND_NUM		3
 
+#define DEFAULT_COMP_RATIO_DSCPT     3
+#define DEFAULT_SRC_BPP_DSCPT        24
+#define DEFAULT_TGT_BPP_DSCPT        8
+
 enum dp_pm_type {
 	DP_CORE_PM,
 	DP_CTRL_PM,
