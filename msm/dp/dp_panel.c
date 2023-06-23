@@ -1822,29 +1822,22 @@ static void dp_panel_overwr_drm_mode_w_dp_msa(
 				msa->ovr_v_back_porch_ln -
 				msa->ovr_v_sync_pulse_ln;
 
-	/* Not setting the vrefresh in drm_mode as it has been nuked.
-	 * vrefresh is based on drm_mode and can be
-	 * read using drm_mode_vrefresh */
-
 	/*
 	 * Calculate the new pixel clock based on the
 	 * msa parameters
 	 */
 	drm_mode->clock = (drm_mode->htotal *
 			  drm_mode->vtotal *
-			  drm_mode_vrefresh(drm_mode))/1000;
-
-	pr_debug("drm_mode->htotal = %d, drm_mode->vtotal = %d, drm_mode->vrefresh= %d\n",
-			drm_mode->htotal, drm_mode->vtotal, drm_mode_vrefresh(drm_mode));
+			  msa->ovr_v_refresh_rate)/1000;
 }
 
-static void dp_panel_read_dsc_passthrough_caps(struct dp_panel *dp_panel,
+static int dp_panel_read_dsc_passthrough_caps(struct dp_panel *dp_panel,
 		struct dp_display_mode *dp_mode, struct msm_compression_info *comp_info)
 {
 	struct dp_panel_private *panel;
 	u32 ppr = dp_mode->timing.pixel_clk_khz/1000;
 	const struct dp_dsc_slices_per_line *rec;
-	int i;
+	int i, rc = 0;
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 
@@ -1862,7 +1855,7 @@ static void dp_panel_read_dsc_passthrough_caps(struct dp_panel *dp_panel,
 	}
 
 	if (comp_info->dsc_info.slice_per_pkt == 0)
-		pr_err("Invalid slice per pkt = 0\n");
+		DP_ERR("Invalid slice per pkt = 0\n");
 
 	comp_info->dsc_info.config.slice_count =
 			DIV_ROUND_UP(dp_mode->timing.h_active,
@@ -1884,9 +1877,13 @@ static void dp_panel_read_dsc_passthrough_caps(struct dp_panel *dp_panel,
 
 	comp_info->dsc_info.det_thresh_flatness = 2 << (comp_info->dsc_info.config.bits_per_pixel - 8);
 
-	dp_panel_dsc_pclk_param_calc(dp_panel,
-			comp_info,
-			dp_mode);
+	rc = sde_dsc_populate_dsc_private_params(&comp_info->dsc_info,
+			dp_mode->timing.h_active);
+
+	if (!rc)
+		dp_panel_dsc_pclk_param_calc(dp_panel, comp_info, dp_mode);
+
+	return rc;
 }
 
 static void dp_panel_read_sink_dsc_caps(struct dp_panel *dp_panel)
@@ -3235,7 +3232,12 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 	if (dp_panel->dsc_en && dsc_cap) {
 		comp_info = &dp_mode->timing.comp_info;
 		if (panel->parser->dsc_passthrough.dsc_passthrough_enable) {
-			dp_panel_read_dsc_passthrough_caps(dp_panel, dp_mode, comp_info);
+			if (dp_panel_read_dsc_passthrough_caps(dp_panel,
+					dp_mode, comp_info)) {
+				DP_DEBUG("reading DSC pass-through "\
+					"params failed\n");
+				return;
+			}
 		} else {
 			if (dp_panel_dsc_prepare_basic_params(comp_info,
 					dp_mode, dp_panel)) {
@@ -3310,7 +3312,7 @@ static int dp_panel_query_mode(
 		dp_mode->timing.v_front_porch = drm_mode.vsync_start -
 						drm_mode.vdisplay;
 
-		dp_mode->timing.refresh_rate = drm_mode_vrefresh(&drm_mode);
+		dp_mode->timing.refresh_rate = panel->parser->msa.ovr_v_refresh_rate;
 
 		dp_mode->timing.pixel_clk_khz = drm_mode.clock;
 
