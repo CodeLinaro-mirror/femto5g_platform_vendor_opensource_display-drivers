@@ -3834,7 +3834,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 		MAX_HW_FENCES);
 
 	/* register the hw-fences for hw-wait */
-	if (num_hw_fences) {
+	if ((num_hw_fences > 0) && (num_hw_fences < MAX_HW_FENCES)) {
 
 		ret = sde_fence_register_hw_fences_wait(hw_ctl, dma_hw_fences, num_hw_fences);
 		if (ret) {
@@ -4107,6 +4107,10 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		if (encoder->crtc != crtc)
 			continue;
+
+		/* update idle pc setting for specific property */
+		if (sde_crtc->disable_idle_pc)
+			sde_encoder_control_idle_pc(encoder, false);
 
 		/* encoder will trigger pending mask now */
 		sde_encoder_trigger_kickoff_pending(encoder);
@@ -6770,6 +6774,8 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 				(void __user *)(uintptr_t)val);
 		if (ret)
 			SDE_ERROR("set roi misr info failed rc:%d\n", ret);
+		else
+			sde_crtc->disable_idle_pc = true;
 		break;
 	default:
 		/* nothing to do */
@@ -7953,6 +7959,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 
 	sde_crtc->enabled = false;
 	sde_crtc->kickoff_in_progress = false;
+	sde_crtc->disable_idle_pc = false;
 
 	/* Below parameters are for fps calculation for sysfs node */
 	sde_crtc->fps_info.fps_periodic_duration = DEFAULT_FPS_PERIOD_1_SEC;

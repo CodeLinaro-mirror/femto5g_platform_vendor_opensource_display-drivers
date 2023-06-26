@@ -118,6 +118,8 @@
  * \author Gareth Hughes <gareth@valinux.com>
  */
 
+#define pr_fmt(fmt)    "[drm] WFD_KMS [%s:%d] " fmt, __func__, __LINE__
+
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_probe_helper.h>
@@ -543,8 +545,10 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 		get_dma_buf(dma_buf);
 	} else {
 		dma_buf = drm_gem_prime_export(fb->bo, 0);
-		if (IS_ERR(dma_buf))
+		if (IS_ERR(dma_buf)) {
+			pr_err("export dma_buf from bo failed\n");
 			return PTR_ERR(dma_buf);
+		}
 	}
 
 	wfd_err = wfdCreateWFDEGLImagesPreAlloc_User(
@@ -561,7 +565,7 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 			fb->base.offsets,
 			0x00);
 	if (wfd_err != WFD_ERROR_NONE) {
-		pr_err("failed to create wfd image\n");
+		pr_err("failed to create wfd image, err = %d\n", wfd_err);
 		ret = -EINVAL;
 	}
 
@@ -1705,3 +1709,7 @@ void wfd_kms_unregister(void)
 {
 	platform_driver_unregister(&wfd_kms_driver);
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+MODULE_IMPORT_NS(DMA_BUF);
+#endif

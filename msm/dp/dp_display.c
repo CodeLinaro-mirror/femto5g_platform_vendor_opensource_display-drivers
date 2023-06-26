@@ -502,6 +502,13 @@ static int dp_display_hdcp_start(struct dp_display_private *dp)
 	dp_display_check_source_hdcp_caps(dp);
 	dp_display_update_hdcp_info(dp);
 
+	if (NULL == dp->msm_hdcp_dev) {
+		/* HDCP is not supported for this DP*/
+		DP_INFO("DP%d : Couldn't find msm-hdcp node.\n",dp->cell_idx);
+		dp_display_update_hdcp_status(dp, true);
+		return 0;
+	}
+
 	if (dp_display_is_hdcp_enabled(dp)) {
 		if (dp->hdcp.ops && dp->hdcp.ops->on &&
 				dp->hdcp.ops->on(dp->hdcp.data)) {
@@ -1764,10 +1771,7 @@ static void dp_display_clean(struct dp_display_private *dp)
 		dp_panel->deinit(dp_panel, 0);
 	}
 
-	if (dp->parser->force_connect_mode)
-		dp_display_state_remove(DP_STATE_ENABLED)
-	else
-		dp_display_state_remove(DP_STATE_ENABLED | DP_STATE_CONNECTED);
+	dp_display_state_remove(DP_STATE_ENABLED);
 
 	dp->ctrl->off(dp->ctrl);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
@@ -4048,6 +4052,21 @@ static int dp_display_set_phy_bond_mode(struct dp_display *dp_display,
 	return 0;
 }
 
+static int dp_display_get_parser(struct dp_display *dp_display, void **parser)
+{
+	struct dp_display_private *dp;
+
+	if (!dp_display || !parser) {
+		pr_err("invalid params\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	*parser = dp->parser;
+
+	return 0;
+}
 static int dp_display_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -4146,6 +4165,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp_display->mst_get_fixed_topology_display_type =
 				dp_display_mst_get_fixed_topology_display_type;
 	dp_display->set_phy_bond_mode = dp_display_set_phy_bond_mode;
+	dp_display->get_parser = dp_display_get_parser;
 	dp_display->get_mst_pbn_div = dp_display_get_mst_pbn_div;
 
 	rc = component_add(&pdev->dev, &dp_display_comp_ops);
