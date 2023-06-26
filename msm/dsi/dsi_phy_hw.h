@@ -30,6 +30,7 @@
 /**
  * enum dsi_phy_version - DSI PHY version enumeration
  * @DSI_PHY_VERSION_UNKNOWN:    Unknown version.
+ * @DSI_PHY_VERSION_2_0:	14nm
  * @DSI_PHY_VERSION_3_0:        10nm
  * @DSI_PHY_VERSION_4_0:        7nm
  * @DSI_PHY_VERSION_4_1:	7nm
@@ -42,6 +43,7 @@
  */
 enum dsi_phy_version {
 	DSI_PHY_VERSION_UNKNOWN,
+	DSI_PHY_VERSION_2_0, /* 14nm */
 	DSI_PHY_VERSION_3_0, /* 10nm */
 	DSI_PHY_VERSION_4_0, /* 7nm  */
 	DSI_PHY_VERSION_4_1, /* 7nm */
