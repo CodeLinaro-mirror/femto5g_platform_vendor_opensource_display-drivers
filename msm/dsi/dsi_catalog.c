@@ -171,6 +171,31 @@ int dsi_catalog_ctrl_setup(struct dsi_ctrl_hw *ctrl,
 }
 
 /**
+ * dsi_catalog_phy_2_0_init() - catalog init for DSI PHY 14nm
+ */
+static void dsi_catalog_phy_2_0_init(struct dsi_phy_hw *phy)
+{
+	phy->ops.regulator_enable[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_regulator_enable;
+	phy->ops.regulator_disable [MSM_DISP_OP_HWIO]= dsi_phy_hw_v2_0_regulator_disable;
+	phy->ops.enable[MSM_DISP_OP_HWIO]= dsi_phy_hw_v2_0_enable;
+	phy->ops.disable[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_disable;
+	phy->ops.calculate_timing_params[MSM_DISP_OP_HWIO] =
+		dsi_phy_hw_calculate_timing_params;
+	phy->ops.phy_idle_on[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_idle_on;
+	phy->ops.phy_idle_off[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_idle_off;
+	phy->ops.phy_timing_val[MSM_DISP_OP_HWIO] = dsi_phy_hw_timing_val_v2_0;
+	phy->ops.clamp_ctrl[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_clamp_ctrl;
+	phy->ops.dyn_refresh_ops.dyn_refresh_config[MSM_DISP_OP_HWIO] =
+		dsi_phy_hw_v2_0_dyn_refresh_config;
+	phy->ops.dyn_refresh_ops.dyn_refresh_pipe_delay[MSM_DISP_OP_HWIO] =
+		dsi_phy_hw_v2_0_dyn_refresh_pipe_delay;
+	phy->ops.dyn_refresh_ops.dyn_refresh_helper[MSM_DISP_OP_HWIO] =
+		dsi_phy_hw_v2_0_dyn_refresh_helper;
+	phy->ops.dyn_refresh_ops.cache_phy_timings[MSM_DISP_OP_HWIO] =
+		dsi_phy_hw_v2_0_cache_phy_timings;
+}
+
+/**
  * dsi_catalog_phy_3_0_init() - catalog init for DSI PHY 10nm
  */
 static void dsi_catalog_phy_3_0_init(struct dsi_phy_hw *phy)
@@ -346,6 +371,9 @@ int dsi_catalog_phy_setup(struct dsi_phy_hw *phy,
 	dsi_phy_timing_calc_init(phy, version);
 
 	switch (version) {
+	case DSI_PHY_VERSION_2_0:
+		dsi_catalog_phy_2_0_init(phy);
+		break;
 	case DSI_PHY_VERSION_3_0:
 		dsi_catalog_phy_3_0_init(phy);
 		break;
