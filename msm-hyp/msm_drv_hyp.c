@@ -724,13 +724,13 @@ static int _msm_hyp_connector_encoder_init(struct drm_device *ddev,
 }
 
 static void msm_hyp_crtc_atomic_enable(struct drm_crtc *crtc,
-	struct drm_atomic_state *old_state)
+		struct drm_atomic_state *old_state)
 {
 	drm_crtc_vblank_on(crtc);
 }
 
 static void msm_hyp_crtc_atomic_disable(struct drm_crtc *crtc,
-	struct drm_atomic_state *old_state)
+		struct drm_atomic_state *old_state)
 {
 	drm_crtc_vblank_off(crtc);
 }
@@ -906,17 +906,16 @@ static void msm_hyp_disable_vblank(struct drm_crtc *crtc)
 }
 
 static const struct drm_crtc_funcs msm_hyp_crtc_funcs = {
-	.set_config             = drm_atomic_helper_set_config,
-	.destroy                = msm_hyp_crtc_destroy,
-	.page_flip              = drm_atomic_helper_page_flip,
-	.atomic_set_property    = msm_hyp_crtc_set_property,
-	.atomic_get_property    = msm_hyp_crtc_get_property,
-	.reset                  = msm_hyp_crtc_reset,
-	.atomic_duplicate_state = msm_hyp_crtc_duplicate_state,
-	.atomic_destroy_state   = msm_hyp_crtc_destroy_state,
-	.enable_vblank          = msm_hyp_enable_vblank,
-	.disable_vblank         = msm_hyp_disable_vblank,
-
+	.set_config               = drm_atomic_helper_set_config,
+	.destroy                  = msm_hyp_crtc_destroy,
+	.page_flip                = drm_atomic_helper_page_flip,
+	.atomic_set_property      = msm_hyp_crtc_set_property,
+	.atomic_get_property      = msm_hyp_crtc_get_property,
+	.reset                    = msm_hyp_crtc_reset,
+	.atomic_duplicate_state   = msm_hyp_crtc_duplicate_state,
+	.atomic_destroy_state     = msm_hyp_crtc_destroy_state,
+	.enable_vblank            = msm_hyp_enable_vblank,
+	.disable_vblank           = msm_hyp_disable_vblank,
 };
 
 static int _msm_hyp_crtc_init_caps(struct msm_hyp_crtc *crtc)
@@ -1995,7 +1994,7 @@ static const struct drm_mode_config_funcs msm_hyp_mode_config_funcs = {
 
 static int _msm_hyp_hw_init(struct drm_device *ddev)
 {
-	int ret;
+	int ret = 0;
 
 	ret = _msm_hyp_mode_create_properties(ddev);
 	if (ret) {
@@ -2020,7 +2019,6 @@ static int _msm_hyp_hw_init(struct drm_device *ddev)
 fail:
 	return ret;
 }
-
 
 static int msm_hyp_open(struct drm_device *dev, struct drm_file *file)
 {
@@ -2334,6 +2332,7 @@ static int __init msm_drm_register(void)
 {
 	DRM_DEBUG("init");
 	wfd_kms_register();
+	virtio_kms_register();
 	return platform_driver_register(&msm_platform_driver);
 }
 
@@ -2342,6 +2341,7 @@ static void __exit msm_drm_unregister(void)
 	DRM_DEBUG("fini");
 	platform_driver_unregister(&msm_platform_driver);
 	wfd_kms_unregister();
+	virtio_kms_unregister();
 }
 
 module_init(msm_drm_register);
