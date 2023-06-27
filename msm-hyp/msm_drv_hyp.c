@@ -1219,11 +1219,70 @@ static int msm_hyp_plane_get_property(
 	return ret;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 static bool msm_hyp_plane_format_mod_supported(struct drm_plane *plane,
 		uint32_t format, uint64_t modifier)
 {
-	return true;
+	bool ret = false;
+
+	if (modifier == DRM_FORMAT_MOD_LINEAR) {
+		/* Linear formats */
+		switch (format) {
+			case DRM_FORMAT_C8:
+			case DRM_FORMAT_ARGB4444:
+			case DRM_FORMAT_XRGB4444:
+			case DRM_FORMAT_ARGB1555:
+			case DRM_FORMAT_XRGB1555:
+			case DRM_FORMAT_RGB565:
+			case DRM_FORMAT_RGB888:
+			case DRM_FORMAT_ARGB8888:
+			case DRM_FORMAT_XRGB8888:
+			case DRM_FORMAT_YVU410:
+			case DRM_FORMAT_YUV420:
+			case DRM_FORMAT_NV12:
+			case DRM_FORMAT_YVU420:
+			case DRM_FORMAT_UYVY:
+			case DRM_FORMAT_YUYV:
+			case DRM_FORMAT_YVYU:
+			case DRM_FORMAT_VYUY:
+			case DRM_FORMAT_AYUV:
+			case DRM_FORMAT_ABGR8888:
+			case DRM_FORMAT_XBGR8888:
+			case DRM_FORMAT_BGR565:
+			case DRM_FORMAT_ARGB2101010:
+			case DRM_FORMAT_XRGB2101010:
+			case DRM_FORMAT_ABGR2101010:
+			case DRM_FORMAT_XBGR2101010:
+			case DRM_FORMAT_BGR888:
+				ret = true;
+				break;
+			default:
+				break;
+		}
+	} else if (modifier == DRM_FORMAT_MOD_QTI_COMPRESSED) {
+		switch (format) {
+			/* UBWC formats */
+			case DRM_FORMAT_BGR565:
+			case DRM_FORMAT_ABGR8888:
+			case DRM_FORMAT_XBGR8888:
+			case DRM_FORMAT_ABGR2101010:
+			case DRM_FORMAT_XBGR2101010:
+			case DRM_FORMAT_NV12:
+				ret = true;
+				break;
+			default:
+				break;
+		}
+	} else if ((modifier ==
+		DRM_FORMAT_MOD_QTI_DX) || (modifier == (DRM_FORMAT_MOD_QTI_COMPRESSED |
+		DRM_FORMAT_MOD_QTI_DX)) || (modifier == (DRM_FORMAT_MOD_QTI_COMPRESSED |
+		DRM_FORMAT_MOD_QTI_DX | DRM_FORMAT_MOD_QTI_TIGHT))) {
+		/* p010, p010 UBWC, TP10 UBWC */
+		if (format == DRM_FORMAT_NV12)
+			ret = true;
+	}
+
+	return ret;
 }
 #endif
 
@@ -1236,7 +1295,7 @@ static const struct drm_plane_funcs msm_hyp_plane_funcs = {
 		.reset = msm_hyp_plane_reset,
 		.atomic_duplicate_state = msm_hyp_plane_duplicate_state,
 		.atomic_destroy_state = msm_hyp_plane_destroy_state,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 		.format_mod_supported = msm_hyp_plane_format_mod_supported,
 #endif
 };
@@ -1309,6 +1368,12 @@ static int _msm_hyp_plane_init(struct drm_device *ddev,
 	struct msm_hyp_plane *plane;
 	int ret;
 
+	uint64_t modifiers[] = {DRM_FORMAT_MOD_LINEAR, DRM_FORMAT_MOD_QTI_COMPRESSED,
+		DRM_FORMAT_MOD_QTI_DX, DRM_FORMAT_MOD_QTI_COMPRESSED |
+		DRM_FORMAT_MOD_QTI_DX, DRM_FORMAT_MOD_QTI_COMPRESSED |
+		DRM_FORMAT_MOD_QTI_DX | DRM_FORMAT_MOD_QTI_TIGHT, DRM_FORMAT_MOD_INVALID};
+
+
 	plane = devm_kzalloc(ddev->dev, sizeof(struct msm_hyp_plane),
 			GFP_KERNEL);
 	if (!plane)
@@ -1322,7 +1387,7 @@ static int _msm_hyp_plane_init(struct drm_device *ddev,
 			&msm_hyp_plane_funcs,
 			plane_info->format_types,
 			plane_info->format_count,
-			NULL, plane_info->plane_type, NULL);
+			modifiers, plane_info->plane_type, NULL);
 	if (ret)
 		return ret;
 
