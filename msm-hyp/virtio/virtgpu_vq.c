@@ -1,8 +1,9 @@
 /*
  * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
-
-
+#include <linux/delay.h>
+#include <linux/kernel.h>
+#include <linux/spinlock.h>
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
 #include <linux/virtio_config.h>
@@ -19,43 +20,79 @@
 #include "virtgpu_vq.h"
 
 #define HAB_NO_TIMEOUT_VAL		-1
+#define MAX_RECV_PACKET_RETRY	        10
 
 //TODO chck the usage of resp size
 static int virtio_hab_send_and_recv(uint32_t hab_socket,
-		struct mutex hab_lock,
+		spinlock_t hab_lock,
 		void *req,
 		uint32_t req_size,
 		void *resp,
 		uint32_t resp_size)
 {
 	int rc = 0;
+	unsigned long delay = jiffies + (HZ / 4);
+	uint32_t size = resp_size;
+	uint32_t retry_times = 0;
+
+	spin_lock(&hab_lock);
 
 //	mutex_lock(&hab_lock);
 	rc = habmm_socket_send(hab_socket, req, req_size, 0x00);
 	if (rc) {
-		pr_err("habmm_socket_send failed <%d>\n", rc);
+		pr_err("virtio :habmm_socket_send failed <%d>\n", rc);
 		rc = -1;
 		goto end;
 	}
 	if (!resp)
 		goto end;
 
+retry_recv_packet:
 	do {
+		size = resp_size;
+		/* TODO: Need handle exit hab_receive during deinit */
 		rc = habmm_socket_recv(hab_socket,
 			resp,
-			&resp_size,
-			(uint32_t)-1, 0);
-			if (rc) {
-				if (-EAGAIN != rc){
-					pr_err("socket_recv failed <%d>\n",
-							rc);
-					break;
-				}
+			&size,
+			(uint32_t)HAB_NO_TIMEOUT_VAL,
+			HABMM_SOCKET_RECV_FLAGS_NON_BLOCKING);
+		if (rc) {
+			if (-ENODEV == rc)
+				pr_err("virtio: channel broken - no device");
+			else if (-EINTR == rc) {
+				/*
+				 * system is closed or suspend a interrupted
+				 * system call is happening on hab channel.
+				 * We should try it again
+				 */
+				pr_err("virtio :habmm_socket_recv - \
+					interrupted system call - retry");
 			}
-	}while ((-EAGAIN == rc) && (resp_size == 0));
+		}
+	} while ((time_before(jiffies, delay)) &&
+			(-EAGAIN == rc) && (size == 0));
 
+	if (rc) {
+		if ((rc == -EAGAIN) && (retry_times < MAX_RECV_PACKET_RETRY))
+		{
+			spin_unlock(&hab_lock);
+			/*
+			 * Add this msleep to let watch dog thread can be feed
+			 * need release lock fisrt
+			 */
+			msleep(1);
+			spin_lock(&hab_lock);
+			retry_times++;
+			pr_debug("virtio : recv packet retry %d", retry_times);
+			goto retry_recv_packet;
+		}
+		rc = -1;
+		goto end;
+	}
+	if (resp_size != size)
+		pr_err("virtio : somethign wrong in the order of req and resp\n");
 end:
-//	mutex_unlock(&hab_lock);
+	spin_unlock(&hab_lock);
 	return rc;
 }
 
@@ -70,10 +107,11 @@ int virtio_hab_send_and_recv_timeout(uint32_t hab_socket,
 	uint32_t flags = HABMM_SOCKET_RECV_FLAGS_TIMEOUT;
 	uint32_t size = resp_size;
 	uint32_t max_retries = 10;
+	mutex_lock(&hab_lock);
 retry:
 	rc = habmm_socket_send(hab_socket, req, req_size, 0x00);
 	if (rc) {
-		pr_err("habmm_socket_send failed <%d>\n", rc);
+		pr_err("virtio :habmm_socket_send failed <%d>\n", rc);
 		rc = -1;
 		goto end;
 	}
@@ -87,20 +125,21 @@ retry:
 		2500, flags);
 		if (rc && max_retries) {
 			max_retries--;
-			pr_info("virtio : recv timout retry %d\n", max_retries);
+			pr_debug("virtio : recv timout retry %d\n", max_retries);
 			goto retry;
 		}
 		else if (rc && !max_retries) {
 			size = resp_size;
-			pr_info("virtio : retries done waiting for reply\n");
+			pr_debug("virtio : retries done waiting for reply\n");
 			rc = habmm_socket_recv(hab_socket,
 				resp,
 				&size,
 				(uint32_t)-1, 0);
 			if (rc)
-				pr_err("socket_recv failed <%d>\n",rc);
+				pr_err("virtio :socket_recv failed <%d>\n",rc);
 		}
 end:
+	mutex_unlock(&hab_lock);
 	return rc;
 }
 
@@ -242,7 +281,7 @@ int virtio_gpu_cmd_set_scanout_pic_adjust(struct virtio_kms *kms,
 	uint32_t error_code = 0;
 
 	if (!req || !resp) {
-		pr_err("memory alloc failed req %p resp %p\n");
+		pr_err("virtio :memory alloc failed req %p resp %p\n");
 		rc = -ENOMEM;
 		goto error;
 	}
@@ -256,23 +295,24 @@ int virtio_gpu_cmd_set_scanout_pic_adjust(struct virtio_kms *kms,
 	req->contrast = cpu_to_le32(contrast);
 	req->brightness = cpu_to_le32(brightness);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			req,
 			sizeof(struct virtio_gpu_set_scanout_pic_adjust),
 			NULL,
 			sizeof(struct virtio_gpu_resp_scanout_pic_adjust));
 	if(rc) {
-		pr_err("virtio_hab_send_and_recv failed\
+		pr_err("virtio :virtio_hab_send_and_recv failed\
 				for SET_SCANOUT_PIC_ADJUST %d\n", rc);
 		goto error;
 	}
+/*
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_PIC_ADJUST <%d> (%s)\n",
 			le32_to_cpu(resp->scanout_id),
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
-
+*/
 	error_code = le32_to_cpu(resp->error_code);
 	if(error_code) {
-		pr_err("SET_SCANOUT_PIC_ADJUST failed scanout %d error %d\n",
+		pr_err("virtio :SET_SCANOUT_PIC_ADJUST failed scanout %d error %d\n",
 				scanout,
 				error_code);
 	}
@@ -303,7 +343,7 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 	uint32_t error_code = 0;
 
 	if (!req || !resp) {
-		pr_err("memory alloc failed req %p resp %p\n");
+		pr_err("virtio :memory alloc failed req %p resp %p\n");
 		rc = -ENOMEM;
 		goto error;
 	}
@@ -325,7 +365,7 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 	req->r.y = cpu_to_le32(dest_rect.y);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			req,
 			sizeof(struct virtio_gpu_set_scanout_properties),
 			NULL,
@@ -335,14 +375,14 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 				for SET_SCANOUT_PROPERTIES %d\n", rc);
 		goto error;
 	}
-
+/*
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_SCANOUT_PROPERTIES <%d> (%s)\n",
 			le32_to_cpu(resp->scanout_id),
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
-
+*/
 	error_code = le32_to_cpu(resp->error_code);
 	if(error_code) {
-		pr_err("SET_SCANOUT_PROPERTIES failed scanout %d error %d\n",
+		pr_err("virtio :SET_SCANOUT_PROPERTIES failed scanout %d error %d\n",
 				scanout,
 				error_code);
 	}
@@ -394,7 +434,7 @@ int virtio_gpu_cmd_set_scanout(struct virtio_kms *kms,
 	req->r.y = cpu_to_le32(dst_rect.y);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			req,
 			sizeof(struct virtio_gpu_set_scanout),
 			NULL,
@@ -403,9 +443,10 @@ int virtio_gpu_cmd_set_scanout(struct virtio_kms *kms,
 		pr_err("send_and_recv failed for SET_SCANOUT\n", rc);
 		goto error;
 	}
+	/*
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_SCANOUT%s)\n",
                           virtio_cmd_type(le32_to_cpu(resp->type)));
-
+*/
 error:
 	if (req)
 		kfree(req);
@@ -448,7 +489,7 @@ int virtio_gpu_cmd_resource_create_2D(struct virtio_kms *kms,
 	cmd_p->height = cpu_to_le32(height);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_create_2d),
 			NULL,
@@ -457,9 +498,10 @@ int virtio_gpu_cmd_resource_create_2D(struct virtio_kms *kms,
 		pr_err("send_and_recv failed for RESOURCE_CREATE_2D\n", rc);
 		goto error;
 	}
-	pr_debug("virtio: resp  VIRTIO_GPU_CMD_RESOURCE_CREATE_2D%s)\n",
+	/*
+	pr_debug("virtio: resp  VIRTIO_GPU_CMD_RESOURCE_CREATE_2D (%s)\n",
                           virtio_cmd_type(le32_to_cpu(resp->type)));
-
+*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -490,15 +532,15 @@ int virtio_gpu_cmd_resource_attach_backing(struct virtio_kms *kms,
 		rc = -ENOMEM;
 		goto error;
 	}
-	pr_debug("virtio: cmd VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING_EXT\
-			<%d> (%d, %d)\n", resource_id, shmem_id, size);
+	pr_info("virtio: cmd VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING_EXT" \
+			"<%d> (%d, %d)\n", resource_id, shmem_id, size);
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING_EXT);
 	cmd_p->resource_id = cpu_to_le32(resource_id);
 	cmd_p->shmem_id = cpu_to_le64(shmem_id);
 	cmd_p->size = cpu_to_le32(size);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_attach_backing_ext),
 			NULL,
@@ -507,9 +549,10 @@ int virtio_gpu_cmd_resource_attach_backing(struct virtio_kms *kms,
 		pr_err("send_and_recv failed for RESOURCE_ATTACH_BACKING\n", rc);
 		goto error;
 	}
-	pr_debug("virtio:resp VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING_EXT %s)\n",
+	/*
+	pr_debug("virtio:resp VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING_EXT (%s)\n",
                           virtio_cmd_type(le32_to_cpu(resp->type)));
-
+*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -538,13 +581,13 @@ int virtio_gpu_cmd_resource_detach_backing(struct virtio_kms *kms,
 		rc = -ENOMEM;
 		goto error;
 	}
-	pr_debug("virtio: cmd VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING <%d>\n",
+	pr_info("virtio: cmd VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING <%d>\n",
 			resource_id);
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING);
 	cmd_p->resource_id = cpu_to_le32(resource_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_detach_backing),
 			resp,
@@ -553,7 +596,8 @@ int virtio_gpu_cmd_resource_detach_backing(struct virtio_kms *kms,
 		pr_err("send_and_recv failed for RESOURCE_DETACH_BACKING\n", rc);
 		goto error;
 	}
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING (%s)\n",
+
+	pr_info("virtio: resp VIRTIO_GPU_CMD_RESOURCE_DETACH_BACKING (%s)\n",
 			virtio_cmd_type(le32_to_cpu(resp->type)));
 
 error:
@@ -584,23 +628,25 @@ int virtio_gpu_cmd_resource_unref(struct virtio_kms *kms,
 		rc = -ENOMEM;
 		goto error;
 	}
-	pr_debug("virtio: cmd VIRTIO_GPU_CMD_RESOURCE_UNREF <%d>\n",
+	pr_info("virtio: cmd VIRTIO_GPU_CMD_RESOURCE_UNREF <%d>\n",
 			resource_id);
 
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_RESOURCE_UNREF);
 	cmd_p->resource_id = cpu_to_le32(resource_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_unref),
 			resp,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if (rc) {
+
 		pr_err("send_and_recv failed for RESOURCE_UNREF\n", rc);
 		goto error;
 	}
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_RESOURCE_UNREF (%s)\n",
+
+	pr_info("virtio: resp VIRTIO_GPU_CMD_RESOURCE_UNREF (%s)\n",
 			virtio_cmd_type(le32_to_cpu(resp->type)));
 error:
 	if (cmd_p)
@@ -639,7 +685,7 @@ int virtio_gpu_cmd_plane_flush(struct virtio_kms *kms,
 	cmd_p->async_mode = cpu_to_le32(sync);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_plane_flush),
 			sync ? resp : NULL,
@@ -685,7 +731,7 @@ int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
-	uint32_t error_code = 0;
+//	uint32_t error_code = 0;
 
 	if (!cmd_p || !resp) {
 		pr_err("memory alloc failed \n");
@@ -699,7 +745,7 @@ int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 	cmd_p->async_mode = cpu_to_le32(sync);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_scanout_flush),
 			NULL,
@@ -709,7 +755,7 @@ int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 				rc);
 		goto error;
 	}
-
+/*
 	if (!sync) {
 		pr_debug("virtio: resp VIRTIO_GPU_CMD_SCANOUT_FLUSH <%d>(%s)\n",
 			le32_to_cpu(resp->scanout_id),
@@ -730,7 +776,7 @@ int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 				scanout,
 				1);
 	}
-
+*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -769,7 +815,7 @@ int virtio_gpu_cmd_event_control(struct virtio_kms *kms,
 	cmd_p->enable = cpu_to_le32(enable);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_event_control),
 			NULL,
@@ -779,9 +825,10 @@ int virtio_gpu_cmd_event_control(struct virtio_kms *kms,
 				rc);
 		goto error;
 	}
+	/*
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_EVENT_CONTROL (%s)\n",
 			virtio_cmd_type(le32_to_cpu(resp->type)));
-
+*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -829,7 +876,7 @@ int virtio_gpu_cmd_get_edid(struct virtio_kms *kms,
 	cmd_p->scanout = cpu_to_le32(scanout);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_cmd_get_edid),
 			resp,
@@ -880,7 +927,7 @@ static void virtio_get_scanout_info(
 				le32_to_cpu(resp->pmodes[i].refresh);
 			output->info[num_modes].flags =
 				le32_to_cpu(resp->pmodes[i].flags);
-			pr_debug("virtio: scanout info <%d> <mode %d>\
+			pr_debug("virtio: scanout info <%d> <mode %d> \
 					(%dx%d+%d+%d@%d, %d)\n",
 					scanout,
 					i,
@@ -937,7 +984,7 @@ int virtio_gpu_cmd_get_display_info(struct virtio_kms *kms)
 	pr_debug("virtio: cmd VIRTIO_GPU_CMD_GET_DISPLAY_INFO\n");
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_ctrl_hdr),
 			resp,
@@ -982,7 +1029,7 @@ int virtio_gpu_cmd_get_display_info_ext(struct virtio_kms *kms,
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_get_display_info_ext),
 			resp,
@@ -1047,7 +1094,7 @@ int virtio_gpu_cmd_get_scanout_attributes(struct virtio_kms *kms,
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_SCANOUT_ATTRIBUTES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_get_scanout_attributes),
 			resp,
@@ -1106,19 +1153,19 @@ int virtio_gpu_cmd_get_scanout_planes(struct virtio_kms *kms,
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_SCANOUT_PLANES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_get_scanout_planes),
 			resp,
 			sizeof(struct virtio_gpu_resp_scanout_planes));
 	if (rc) {
-		pr_err("virtio_hab_send_and_recv failed \
+		pr_err("virtio :virtio_hab_send_and_recv failed \
 				for SCANOUT_PLANES %d\n", rc);
 		goto error;
 	}
 
 	if (scanout != le32_to_cpu(resp->scanout_id)) {
-		pr_err(" Somthing wrong with scanout ID\n");
+		pr_err("virtio :Somthing wrong with scanout ID\n");
 		goto error;
 	}
 
@@ -1157,7 +1204,7 @@ static int virtio_get_planes_caps(struct virtio_kms *kms,
 	}
 
 	if (!plane_caps) {
-		pr_err("Not valid plane caps ID->%d\n", plane_id);
+		pr_err("virtio :Not valid plane caps ID->%d\n", plane_id);
 		return -EINVAL;
 	}
 
@@ -1182,7 +1229,7 @@ static int virtio_get_planes_caps(struct virtio_kms *kms,
 			plane_caps->num_formats);
 
 	for (i = 0; i < plane_caps->num_formats; i++) {
-		pr_err("%d ", plane_caps->formats[i]);
+		pr_debug("%d ", plane_caps->formats[i]);
 	}
 	pr_debug(")\n");
 
@@ -1202,9 +1249,11 @@ int virtio_gpu_cmd_get_plane_caps(struct virtio_kms *kms,
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
+	uint32_t scanout_rep = 0;
+	uint32_t plain_id_rep = 0;
 
 	if (!cmd_p || !resp) {
-		pr_err("Memory allocation failed\n");
+		pr_err("virtio :Memory allocation failed\n");
 		goto error;
 	}
 
@@ -1215,32 +1264,38 @@ int virtio_gpu_cmd_get_plane_caps(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_get_planes_caps),
 			resp,
 			sizeof(struct virtio_gpu_resp_planes_caps));
 	if (rc) {
-		pr_err("virtio_hab_send_and_recv failed \
+		pr_err("virtio : virtio_hab_send_and_recv failed \
 				for PLANE_CAPS %d\n", rc);
 		goto error;
 	}
 
+	scanout_rep = le32_to_cpu(resp->caps.scanout_id);
+	plain_id_rep = le32_to_cpu(resp->caps.plane_id);
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_GET_PLANES_CAPS <%d:%d> (%s)\n",
-			le32_to_cpu(resp->caps.scanout_id),
-			le32_to_cpu(resp->caps.plane_id),
+			scanout_rep, plain_id_rep,
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
 
-	if (scanout != le32_to_cpu(resp->caps.scanout_id) ||
-			plane_id != le32_to_cpu(resp->caps.plane_id)) {
-		rc = -EINVAL;
-		pr_err("something wrong with scanout and plane ID's\n");
-		goto error;
-	}
+	if (scanout != scanout_rep ||
+			plane_id != plain_id_rep) {
+		pr_err("virtio : something wrong with scanout and plane ID's\n");
+		pr_err("virtio :scanout required %d replied %d\n",
+				scanout, scanout_rep);
+		pr_err("virtio : plane Id required %d replied %d\n",
+				plane_id, plain_id_rep);
 
+		rc = -EINVAL;
+//		goto error;
+	}
+//TODO : fix the packer response in BE
 	rc = virtio_get_planes_caps(kms,
-			le32_to_cpu(resp->caps.scanout_id),
-			le32_to_cpu(resp->caps.plane_id),
+			scanout,//scanout_rep,
+			plain_id_rep,
 			resp);
 error:
 	if (cmd_p)
@@ -1271,7 +1326,7 @@ static int virtio_get_plane_properties(struct virtio_kms *kms,
 	}
 
 	if (!plane_caps) {
-		pr_err("Not valid plane caps ID->%d\n", plane_id);
+		pr_err("virtio :Not valid plane caps ID->%d\n", plane_id);
 		return -EINVAL;
 	}
 	plane_caps->zorder = le32_to_cpu(resp->zorder);
@@ -1289,7 +1344,7 @@ static int virtio_gpu_cmd_get_event (struct virtio_kms *kms,
 	int rc = 0;
 
 	if (!cmd_p || !resp) {
-		pr_err("Memory allocation failed\n");
+		pr_err("virtio :Memory allocation failed\n");
 		goto error;
 	}
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_WAIT_EVENTS);
@@ -1299,13 +1354,13 @@ static int virtio_gpu_cmd_get_event (struct virtio_kms *kms,
 			cmd_p->max_num_events);
 	rc = virtio_hab_send_and_recv_timeout(hab_socket,
 //	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_EVENTS],
+			kms->channel[client_id].hyp_cbchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_wait_events),
 			resp,
 			sizeof(struct virtio_gpu_resp_event));
 	if (rc) {
-		pr_err("send_and_recv failed \
+		pr_err("virtio :send_and_recv failed \
 				for VIRTIO_GPU_CMD_WAIT_EVENTS %d\n", rc);
 		goto error;
 	}
@@ -1333,7 +1388,7 @@ int virtio_gpu_cmd_get_plane_properties(struct virtio_kms *kms,
 	int rc = 0;
 
 	if (!cmd_p || !resp) {
-		pr_err("Memory allocation failed\n");
+		pr_err("virtio :Memory allocation failed\n");
 		goto error;
 	}
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_PLANE_PROPERTIES);
@@ -1341,18 +1396,18 @@ int virtio_gpu_cmd_get_plane_properties(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_get_plane_properties),
 			resp,
 			sizeof(struct virtio_gpu_resp_get_plane_properties));
 	if (rc) {
-		pr_err("send_and_recv failed\
+		pr_err("virtio :send_and_recv failed \
 				for PLANE_PROPERTIES %d\n", rc);
 		goto error;
 	}
 
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_GET_PLANE_PROPERTIES\
+	pr_debug("virtio: resp VIRTIO_GPU_CMD_GET_PLANE_PROPERTIES \
 			<%d:%d> (%s)\n",
 			le32_to_cpu(resp->scanout_id),
 			le32_to_cpu(resp->plane_id),
@@ -1361,7 +1416,7 @@ int virtio_gpu_cmd_get_plane_properties(struct virtio_kms *kms,
 	if (scanout != le32_to_cpu(resp->scanout_id) ||
 			plane_id != le32_to_cpu(resp->plane_id)) {
 		rc = -EINVAL;
-		pr_err("something wrong with scanout and plane ID's\n");
+		pr_err("virtio :something wrong with scanout and plane ID's\n");
 		goto error;
 	}
 
@@ -1396,7 +1451,7 @@ int virtio_gpu_cmd_set_resource_info(struct virtio_kms *kms,
 	int rc = 0,i;
 
 	if (!cmd_p || !resp) {
-		pr_err("Memory allocation failed\n");
+		pr_err("virtio :Memory allocation failed\n");
 		goto error;
 	}
 
@@ -1417,18 +1472,18 @@ int virtio_gpu_cmd_set_resource_info(struct virtio_kms *kms,
 	}
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_set_resource_info),
 			NULL,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if (rc)
-		pr_err("send_and_recv failed for PLANE_PROPERTIES %d\n", rc);
-
+		pr_err("virtio :send_and_recv failed for PLANE_PROPERTIES %d\n", rc);
+/*
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_RESOURCE_INFO <%d> (%s)\n",
 			resource_id,
 			virtio_cmd_type(le32_to_cpu(resp->type)));
-
+*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -1451,9 +1506,9 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
-	uint32_t error = 0;
+	//uint32_t error = 0;
 
-	pr_debug("virtio: cmd VIRTIO_GPU_CMD_SET_PLANE <%d:%d> (%d)\n",
+	pr_info("virtio: cmd VIRTIO_GPU_CMD_SET_PLANE <%d:%d> (%d)\n",
 			scanout, plane_id, res_id);
 
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_SET_PLANE);
@@ -1462,26 +1517,27 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 	cmd_p->resource_id = cpu_to_le32(res_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_set_plane),
 			NULL,
 			sizeof(struct virtio_gpu_resp_set_plane));
 	if (rc) {
-		pr_err("send_and_recv failed for PLANE_CAPS %d\n", rc);
+		pr_err("virtio :send_and_recv failed for PLANE_CAPS %d\n", rc);
 		goto error;
 	}
-
+/*
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_PLANE<%d> (%s)\n",
 			le32_to_cpu(resp->scanout_id),
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
 
 	error = le32_to_cpu(resp->error_code);
 	if (error)
-		pr_err("SET_PLANE failed for scanout %d plane %d rc %d\n",
+		pr_err("virtio :SET_PLANE failed for scanout %d plane %d rc %d\n",
 				scanout,
 				plane_id,
 				error);
+				*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -1511,13 +1567,13 @@ int virtio_gpu_cmd_plane_create(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_create_plane),
 			resp,
 			sizeof(struct virtio_gpu_resp_plane_create));
 	if (rc) {
-		pr_err("send_and_recv failed for PLANE_CAPS %d\n", rc);
+		pr_err("virtio :send_and_recv failed for PLANE_CAPS %d\n", rc);
 		goto error;
 	}
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_PLANE_CREATE<%d> (%s)\n",
@@ -1526,7 +1582,8 @@ int virtio_gpu_cmd_plane_create(struct virtio_kms *kms,
 
 	error_code = le32_to_cpu(resp->error_code);
 	if (error_code)
-		pr_err("plane creation failed plane %d %d\n",
+		pr_err("virtio : scanout %dplane creation failed plane %d %d\n",
+				le32_to_cpu(resp->scanout_id),
 				plane_id,
 				error_code);
 error:
@@ -1561,13 +1618,13 @@ int virtio_gpu_cmd_plane_destroy(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_plane_destroy),
 			resp,
 			sizeof(struct virtio_gpu_resp_plane_destroy));
 	if (rc) {
-		pr_err("send_and_recv failed for PLANE_DESTROY %d\n", rc);
+		pr_err("virtio :send_and_recv failed for PLANE_DESTROY %d\n", rc);
 		goto error;
 	}
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_PLANE_DESTROY<%d:%d> (%s)\n",
@@ -1577,7 +1634,7 @@ int virtio_gpu_cmd_plane_destroy(struct virtio_kms *kms,
 
 	error_code = le32_to_cpu(resp->error_code);
 	if (error_code)
-		pr_err("plane destroy failed %d\n", error_code);
+		pr_err("virtio :plane destroy failed %d\n", error_code);
 
 error:
 	if (cmd_p)
@@ -1602,10 +1659,10 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
-	uint32_t error_code = 0;
+	//uint32_t error_code = 0;
 
-	pr_debug("virtio: cmd VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES\
-			<%d:%d> (0x%x)\n",
+	pr_debug("virtio: cmd VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES" \
+			"<%d:%d> (0x%x)\n",
 			scanout, plane_id, prop.mask);
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
@@ -1631,25 +1688,27 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	cmd_p->brightness = cpu_to_le32(prop.brightness);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hab_lock[CHANNEL_CMD],
+			kms->channel[client_id].hyp_cmdchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_set_plane_properties),
 			NULL,
 			sizeof(struct virtio_gpu_resp_plane_properties));
 	if (rc) {
-		pr_err("send_and_recv failed for SET_PLANE_PROPERTIES %d\n",
+		pr_err("virtio :send_and_recv failed for SET_PLANE_PROPERTIES %d\n",
 				rc);
 		goto error;
 	}
+	/*
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES<%d> (%s)\n",
 			le32_to_cpu(resp->scanout_id),
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
 
 	error_code = le32_to_cpu(resp->error_code);
 	if (error_code)
-		pr_err("plane set_properties failed plane %d rc%d\n",
+		pr_err("virtio :plane set_properties failed plane %d rc%d\n",
 				plane_id,
 				error_code);
+				*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -1694,7 +1753,8 @@ int virtio_gpu_event_kthread(void *d)
 			enable = le32_to_cpu(buff->scanout[i].enabled);
 			if (!enable)
 				continue;
-			pr_debug(" Event received Vsync %d commit %d HPD %d\n",
+			pr_debug(" virtio : scanout %d Event received Vsync %d commit %d HPD %d\n",
+					i,
 					le32_to_cpu(buff->scanout[i].vsync_count),
 					le32_to_cpu(buff->scanout[i].commit_count),
 					le32_to_cpu(buff->scanout[i].hpd_count));

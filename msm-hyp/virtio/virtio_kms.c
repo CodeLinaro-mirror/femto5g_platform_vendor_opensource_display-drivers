@@ -645,7 +645,7 @@ static int virtio_kms_get_connector_infos(struct msm_hyp_kms *hyp_kms,
 
 		if (i < ARRAY_SIZE(disp_order_str))
 			priv->base.display_type = disp_order_str[i];
-
+		pr_err("virtio : display(%d) order %s\n",i, priv->base.display_type);
 		priv->base.connector_funcs = &virtio_conn_helper_funcs;
 		priv->base.bridge_funcs = &virtio_bridge_ops;
 		priv->kms = kms;
@@ -1100,7 +1100,7 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 			return -EINVAL;
 		}
 	}
-	pr_debug("virtio : create: FB ID: %d (%pK)", fb->base.base.id, fb);
+	pr_info("virtio : create: FB ID: %d (%pK)", fb->base.base.id, fb);
 
 	fb_priv = container_of(fb->info, struct virtio_framebuffer_priv, base);
 	client_id = fb_priv->kms->client_id;
@@ -1108,7 +1108,7 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	handle =  fb_priv->kms->channel[client_id].hab_socket[CHANNEL_BUFFERS];
 
 	if (fb_priv->created) {
-		pr_debug("virtio : fb already created shmem_id%d\n",  mem->shmem_id);
+		pr_info("virtio : fb already created shmem_id%d\n",  mem->shmem_id);
 #if 0
 		if (mem->buffer) {
 			dma_buf_dump = mem->buffer;
@@ -1171,6 +1171,7 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 				return PTR_ERR(dma_buf);
 		}
 
+		mutex_lock(&fb_priv->kms->channel[client_id].hyp_bufchl_lock);
 		memset((char *)mem, 0x00,
 				sizeof(struct virtio_mem_info));
 		mem->size	= fb->bo->size;
@@ -1185,12 +1186,16 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 
 		if (ret) {
 			pr_err("framebuffer habmm export failed\n");
+
+			mutex_unlock(&fb_priv->kms->channel[client_id].hyp_bufchl_lock);
 			dma_buf_put(dma_buf);
 			goto error;
 		}
 
 		mem->shmem_id = export_id;
-		pr_debug("framebuffer drm_gem_prime_export habmm_export done %d\n", mem->shmem_id);
+
+		mutex_unlock(&fb_priv->kms->channel[client_id].hyp_bufchl_lock);
+		pr_info("virtio :framebuffer drm_gem_prime_export habmm_export done %d\n", mem->shmem_id);
 		dma_buf_put(dma_buf);
 
 
@@ -1231,7 +1236,7 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	if (ret) {
 		pr_err("resource_attach_backing failed\n");
 	}
-	pr_debug("virtio_kms_create_framebuffer done\n");
+	pr_info("virtio :virtio_kms_create_framebuffer done\n");
 
 	fb_priv->created = true;
 error:
@@ -1256,11 +1261,16 @@ static void virtio_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	client_id = fb_priv->kms->client_id;
 	mem = &fb_priv->mem;
 	handle = fb_priv->kms->channel[client_id].hab_socket[CHANNEL_BUFFERS];
+	pr_info("virtio : framebuffer destroy: FB ID: %d (%pK) created %d shmem_id%d", fb->base.base.id, fb, fb_priv->created, mem->shmem_id);
 
-	pr_debug("virtio : framebuffer destroy: FB ID: %d (%pK) created %d shmem_id%d", fb->base.base.id, fb, fb_priv->created, mem->shmem_id);
-
-	virtio_gpu_cmd_resource_detach_backing(fb_priv->kms,
+	rc = virtio_gpu_cmd_resource_detach_backing(fb_priv->kms,
 			fb_priv->hw_res_handle);
+	if (rc) {
+		pr_err("virtio : frame buffer betach backing failed %d\n",
+				fb_priv->hw_res_handle);
+		goto error;
+	}
+	mutex_lock(&fb_priv->kms->channel[client_id].hyp_bufchl_lock);
 
 	unexport_flags |= HABMM_EXPIMP_FLAGS_FD;
 	rc = habmm_unexport(
@@ -1270,9 +1280,13 @@ static void virtio_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	if (rc) {
 		pr_err("framebuffer habmm_unexport failed");
 	}
+	mutex_unlock(&fb_priv->kms->channel[client_id].hyp_bufchl_lock);
 
-	virtio_gpu_cmd_resource_unref(fb_priv->kms,
+	rc = virtio_gpu_cmd_resource_unref(fb_priv->kms,
 			fb_priv->hw_res_handle);
+	if (rc)
+		pr_err("virtio : resource unref failed %d\n",
+				fb_priv->hw_res_handle);
 
         dma_buf = (struct dma_buf *) mem->buffer;
 
@@ -1297,8 +1311,8 @@ static void virtio_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	dma_buf_vunmap(dma_buf, &map);
 	dma_buf_end_cpu_access(dma_buf, DMA_BIDIRECTIONAL);
 	*/
-
-	pr_debug("virtio_kms_destroy_framebuffer done %d\n", fb_priv->hw_res_handle);
+	error:
+	pr_info("virtio :virtio_kms_destroy_framebuffer done %d\n", fb_priv->hw_res_handle);
 	fb_priv->created = false;
 	kfree(fb_priv);
 	fb->info = NULL;
@@ -1557,7 +1571,9 @@ static int virtio_kms_scanout_init(struct virtio_kms *kms, uint32_t scanout)
 				scanout,
 				plane_id);
 		if (rc) {
-			pr_err("virtio : virtio_gpu_cmd_get_plane_caps failed\n");
+			pr_err("virtio :scanout %d \
+				virtio_gpu_cmd_get_plane_caps failed %d\n",
+				scanout, plane_id);
 			goto error;
 		}
 
@@ -1565,7 +1581,9 @@ static int virtio_kms_scanout_init(struct virtio_kms *kms, uint32_t scanout)
 				scanout,
 				plane_id);
 		if (rc) {
-			pr_err("virtio : virtio_gpu_cmd_get_plane_properties failed \n");
+			pr_err("virtio : scanout %d \
+					plane_properties failed %d\n",
+					plane_id);
 			goto error;
 		}
 	}
@@ -1623,7 +1641,7 @@ static int virtio_gpu_hab_open(struct virtio_kms *kms)
 		pr_err("hab open failed mmid %d ret %d\n", kms->mmid_cmd, ret);
 		goto exit;
 	}
-	mutex_init(&kms->channel[client_id].hab_lock[CHANNEL_CMD]);
+	spin_lock_init(&kms->channel[client_id].hyp_cmdchl_lock);
 
 	ret = habmm_socket_open(
 			&kms->channel[client_id].hab_socket[CHANNEL_EVENTS],
@@ -1636,7 +1654,7 @@ static int virtio_gpu_hab_open(struct virtio_kms *kms)
 		pr_err("hab open failed mmid %d ret %d\n", kms->mmid_event, ret);
 	}
 
-	mutex_init(&kms->channel[client_id].hab_lock[CHANNEL_EVENTS]);
+	mutex_init(&kms->channel[client_id].hyp_cbchl_lock);
 
 	ret = habmm_socket_open(
 			&kms->channel[client_id].hab_socket[CHANNEL_BUFFERS],
@@ -1657,7 +1675,7 @@ static int virtio_gpu_hab_open(struct virtio_kms *kms)
 					kms->mmid_buffer, ret);
 
 	}
-	mutex_init(&kms->channel[client_id].hab_lock[CHANNEL_BUFFERS]);
+	mutex_init(&kms->channel[client_id].hyp_bufchl_lock);
 exit:
 	return ret;
 }

@@ -61,7 +61,10 @@ struct virtio_kms_output {
 
 struct channel_map {
 	int32_t hab_socket[MAX_CHANNELS];
-	struct mutex hab_lock[MAX_CHANNELS];
+	spinlock_t hyp_cmdchl_lock;
+	struct mutex hyp_cbchl_lock;
+	struct mutex hyp_bufchl_lock;
+	unsigned long cmdchl_lock_flags[MAX_CHANNELS];
 };
 
 struct virtio_kms {
