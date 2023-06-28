@@ -120,7 +120,8 @@ u32 dp_connector_choose_best_format(struct dp_display *dp,
 		DRM_COLOR_FORMAT_YCRCB422))
 		flag = MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422;
 	else {
-		DP_DEBUG("Can't get best color format for mode: %s@%u\n",
+		if (dp->is_yuv_supported)
+			DP_DEBUG("Can't get best color format for %s@%u\n",
 				mode->name, mode->clock);
 		flag = MSM_MODE_FLAG_COLOR_FORMAT_RGB444;
 	}
