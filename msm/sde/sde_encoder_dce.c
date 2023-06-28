@@ -231,9 +231,9 @@ static void _dce_dsc_pipe_cfg(struct sde_hw_dsc *hw_dsc,
 		return;
 	}
 
-	if (!dsc || !hw_dsc || !hw_pp) {
-		SDE_ERROR("invalid params %d %d %d\n", !dsc, !hw_dsc,
-				!hw_pp);
+	if (!dsc || !hw_dsc || !hw_pp || !hw_dsc_pp) {
+		SDE_ERROR("invalid params %d %d %d %d\n", !dsc, !hw_dsc,
+				!hw_pp, !hw_dsc_pp);
 		return;
 	}
 
@@ -245,7 +245,7 @@ static void _dce_dsc_pipe_cfg(struct sde_hw_dsc *hw_dsc,
 	if (hw_dsc->ops.dsc_config_thresh)
 		hw_dsc->ops.dsc_config_thresh(hw_dsc, dsc);
 
-	if (hw_dsc_pp && hw_dsc_pp->ops.setup_dsc)
+	if (hw_dsc_pp->ops.setup_dsc)
 		hw_dsc_pp->ops.setup_dsc(hw_dsc_pp);
 
 	if (mode_3d && disable_merge_3d && hw_pp->ops.reset_3d_mode) {
@@ -259,7 +259,7 @@ static void _dce_dsc_pipe_cfg(struct sde_hw_dsc *hw_dsc,
 	if (hw_dsc && hw_dsc->ops.bind_pingpong_blk)
 		hw_dsc->ops.bind_pingpong_blk(hw_dsc, true, hw_pp->idx);
 
-	if (hw_dsc_pp && hw_dsc_pp->ops.enable_dsc)
+	if (hw_dsc_pp->ops.enable_dsc)
 		hw_dsc_pp->ops.enable_dsc(hw_dsc_pp);
 }
 
