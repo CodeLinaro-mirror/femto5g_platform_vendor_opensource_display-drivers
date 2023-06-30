@@ -141,6 +141,34 @@ static inline struct sde_kms *_sde_crtc_get_kms(struct drm_crtc *crtc)
 	return to_sde_kms(priv->kms);
 }
 
+void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state,
+		struct drm_display_mode *mode, u32 *width, u32 *height)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_crtc_state *cstate;
+
+	*width = 0;
+	*height = 0;
+
+	if (!crtc || !crtc_state || !mode)
+		goto exit;
+
+	sde_crtc = to_sde_crtc(crtc);
+	cstate = to_sde_crtc_state(crtc_state);
+
+	if (cstate->num_ds_enabled) {
+		*width = cstate->ds_cfg[0].lm_width * cstate->num_ds_enabled;
+		*height = cstate->ds_cfg[0].lm_height;
+	} else {
+		*width = mode->hdisplay;
+		*height = mode->vdisplay;
+	}
+
+exit:
+	WARN_ON(!*width);
+	WARN_ON(!*height);
+}
+
 /**
  * sde_crtc_calc_fps() - Calculates fps value.
  * @sde_crtc   : CRTC structure
@@ -845,6 +873,7 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 	int rc;
 	bool is_crtc_roi_dirty;
 	bool is_conn_roi_dirty;
+	u32 crtc_width, crtc_height;
 
 	if (!crtc || !state)
 		return -EINVAL;
@@ -915,9 +944,10 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 	sde_kms_rect_merge_rectangles(&crtc_state->user_roi_list, crtc_roi);
 
 	/* clear the ROI to null if it matches full screen anyways */
+	sde_crtc_get_resolution(crtc, state, &state->adjusted_mode, &crtc_width, &crtc_height);
 	if (crtc_roi->x == 0 && crtc_roi->y == 0 &&
-			crtc_roi->w == state->adjusted_mode.hdisplay &&
-			crtc_roi->h == state->adjusted_mode.vdisplay)
+			crtc_roi->w == crtc_width &&
+			crtc_roi->h == crtc_height)
 		memset(crtc_roi, 0, sizeof(*crtc_roi));
 
 	SDE_DEBUG("%s: crtc roi (%d,%d,%d,%d)\n", sde_crtc->name,
@@ -4794,21 +4824,25 @@ static int _sde_crtc_excl_dim_layer_check(struct drm_crtc_state *state,
 	const struct drm_plane_state *pstate;
 	struct sde_plane_state *sde_pstate;
 	int rc = 0, i;
+	u32 crtc_width, crtc_height;
+
+	sde_crtc_get_resolution(state->crtc, state, mode, &crtc_width, &crtc_height);
 
 	/* Check dim layer rect bounds and stage */
 	for (i = 0; i < cstate->num_dim_layers; i++) {
 		if ((CHECK_LAYER_BOUNDS(cstate->dim_layer[i].rect.y,
-			cstate->dim_layer[i].rect.h, mode->vdisplay)) ||
+			cstate->dim_layer[i].rect.h, crtc_height)) ||
 		    (CHECK_LAYER_BOUNDS(cstate->dim_layer[i].rect.x,
-			cstate->dim_layer[i].rect.w, mode->hdisplay)) ||
+			cstate->dim_layer[i].rect.w, crtc_width)) ||
 		    (cstate->dim_layer[i].stage >= SDE_STAGE_MAX) ||
 		    (!cstate->dim_layer[i].rect.w) ||
 		    (!cstate->dim_layer[i].rect.h)) {
-			SDE_ERROR("invalid dim_layer:{%d,%d,%d,%d}, stage:%d\n",
+			SDE_ERROR("invalid dim_layer:{%d,%d,%d,%d} crtc:{%d,%d} stage:%d\n",
 					cstate->dim_layer[i].rect.x,
 					cstate->dim_layer[i].rect.y,
 					cstate->dim_layer[i].rect.w,
 					cstate->dim_layer[i].rect.h,
+					crtc_width, crtc_height,
 					cstate->dim_layer[i].stage);
 			SDE_ERROR("display: %dx%d\n", mode->hdisplay,
 					mode->vdisplay);
@@ -5375,8 +5409,10 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	struct drm_plane *plane;
 	struct drm_plane_state *plane_state;
 	struct sde_plane_state *pstate;
+	struct drm_display_mode *mode;
 	int layout_split;
 	enum sde_layout layout;
+	u32 crtc_width, crtc_height;
 
 	kms = _sde_crtc_get_kms(crtc);
 
@@ -5389,6 +5425,9 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 			SDE_RM_TOPOLOGY_GROUP_QUADPIPE))
 		return 0;
 
+	mode = &crtc_state->adjusted_mode;
+	sde_crtc_get_resolution(crtc, crtc_state, mode, &crtc_width, &crtc_height);
+
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
 		plane_state = drm_atomic_get_existing_plane_state(
 				crtc_state->state, plane);
@@ -5396,7 +5435,7 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 			continue;
 
 		pstate = to_sde_plane_state(plane_state);
-		layout_split = crtc_state->mode.hdisplay >> 1;
+		layout_split = crtc_width >> 1;
 
 		if (plane_state->crtc_x >= layout_split) {
 			plane_state->crtc_x -= layout_split;
