@@ -951,8 +951,9 @@ static int _sde_encoder_atomic_check_phys_enc(struct sde_encoder_virt *sde_enc,
 				ret = -EINVAL;
 
 		if (ret) {
-			SDE_ERROR_ENC(sde_enc,
-					"mode unsupported, phys idx %d\n", i);
+			if (ret != -EDEADLK)
+				SDE_ERROR_ENC(sde_enc,
+						"mode unsupported, phys idx %d\n", i);
 			break;
 		}
 	}
