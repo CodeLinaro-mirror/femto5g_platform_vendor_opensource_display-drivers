@@ -312,6 +312,21 @@ static int _wfd_kms_connector_get_type(WFDDevice dev,
 	return connector_type;
 }
 
+static bool formats_exist(uint32_t *formats, int count, uint32_t fmt)
+{
+	int i;
+
+	if (formats == NULL)
+		return false;
+
+	for (i = 0; i < count; i++) {
+		if (formats[i] == fmt)
+			return true;
+	}
+
+	return false;
+}
+
 static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 {
 	int i, j, n, ret = 0;
@@ -365,7 +380,11 @@ static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 		j = 0;
 		while (drm_wfd_formats[j].wfd_fmt || drm_wfd_formats[j].drm_fmt) {
 			if (formats[i] == drm_wfd_formats[j].wfd_fmt) {
-				priv->base.format_types[n++] = drm_wfd_formats[j].drm_fmt;
+				/* skip the duplicated format */
+				if (!formats_exist(priv->base.format_types, n,
+					drm_wfd_formats[j].drm_fmt))
+					priv->base.format_types[n++] = drm_wfd_formats[j].drm_fmt;
+
 				break;
 			}
 			j++;
@@ -1709,3 +1728,7 @@ void wfd_kms_unregister(void)
 {
 	platform_driver_unregister(&wfd_kms_driver);
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+MODULE_IMPORT_NS(DMA_BUF);
+#endif
