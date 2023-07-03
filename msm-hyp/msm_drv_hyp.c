@@ -270,7 +270,6 @@ static int _msm_hyp_mode_create_properties(struct drm_device *ddev)
 	/* special plane properties */
 	prop = drm_property_create_range(ddev, 0,
 				"zpos", 0, 255);
-
 	if (!prop)
 		return -ENOMEM;
 	priv->prop_zpos = prop;
@@ -1295,7 +1294,9 @@ static int _msm_hyp_plane_init(struct drm_device *ddev,
 {
 	struct msm_hyp_drm_private *priv = ddev->dev_private;
 	struct msm_hyp_plane *plane;
-	int ret;
+	unsigned int supported_rotations = DRM_MODE_ROTATE_0 |
+		DRM_MODE_ROTATE_180 | DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y;
+	int ret = 0;
 
 	plane = devm_kzalloc(ddev->dev, sizeof(struct msm_hyp_plane),
 			GFP_KERNEL);
@@ -1335,6 +1336,15 @@ static int _msm_hyp_plane_init(struct drm_device *ddev,
 		plane->primary_plane = drm_plane_from_index(ddev,
 				plane_info->master_plane_index);
 	}
+
+	if (plane->info->support_rotation)
+		supported_rotations |= DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270;
+
+	/* support 180, x flip and y flip by default */
+	ret = drm_plane_create_rotation_property(&plane->base,
+			DRM_MODE_ROTATE_0, supported_rotations);
+	if (ret)
+		return ret;
 
 	drm_object_attach_property(&plane->base.base,
 			priv->prop_blend_op,
@@ -2216,7 +2226,11 @@ static int msm_hyp_bind(struct device *dev)
 		goto fail;
 	}
 
-	dma_coerce_mask_and_coherent(dev, DMA_BIT_MASK(64));
+	/*
+	 * DMA_BIT_MASK encountered compilation error,
+	 * shift-count-overflow on special target
+	 */
+	dma_coerce_mask_and_coherent(dev, ~0ULL);
 
 	ret = drm_dev_register(ddev, 0);
 	if (ret) {

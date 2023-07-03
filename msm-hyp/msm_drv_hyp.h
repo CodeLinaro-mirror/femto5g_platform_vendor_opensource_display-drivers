@@ -40,6 +40,7 @@
 #include <drm/msm_drm.h>
 #include <drm/sde_drm.h>
 #include "msm_hyp_fence.h"
+#include <drm/drm_blend.h>
 #include "msm_drv.h"
 
 #define DRM_DRI_NAME_SIZE 32
@@ -69,6 +70,7 @@ struct msm_hyp_plane_info {
 	bool support_scale;
 	bool support_csc;
 	bool support_multirect;
+	bool support_rotation;
 	int master_plane_index;
 	const char *extra_caps;
 };
