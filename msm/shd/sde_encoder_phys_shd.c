@@ -54,6 +54,7 @@ struct sde_encoder_phys_shd {
 struct sde_enc_shd_state {
 	struct drm_private_state base;
 	struct sde_encoder_phys_shd *shd_enc;
+	struct drm_encoder *base_encoder;
 	struct sde_hw_mixer *hw_lm[MAX_MIXERS_PER_CRTC];
 	struct sde_hw_ctl *hw_ctl[MAX_MIXERS_PER_CRTC];
 	struct sde_hw_roi_misr *hw_roi_misr[MAX_MIXERS_PER_CRTC];
@@ -319,6 +320,7 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 	if (IS_ERR(shd_enc_state))
 		return PTR_ERR(shd_enc_state);
 
+	shd_enc_state->base_encoder = encoder;
 	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
 	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
 	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
@@ -562,6 +564,7 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 {
 	struct sde_encoder_wait_info wait_info;
 	struct sde_encoder_phys_shd *shd_enc;
+	struct sde_enc_shd_state *shd_enc_state;
 	struct shd_display *display;
 	int ret = 0;
 	u32 event = 0;
@@ -595,7 +598,11 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 			goto skip;
 		}
 
-		base_enc = display->base->encoder;
+		shd_enc_state = to_sde_enc_shd_priv_state(shd_enc->obj.state);
+		if (shd_enc_state->base_encoder)
+			base_enc = shd_enc_state->base_encoder;
+		else
+			base_enc = display->base->encoder;
 		if (!sde_encoder_is_enabled(base_enc)) {
 			SDE_INFO("Skipped, base enc%d is already disabled\n",
 					DRMID(base_enc));
