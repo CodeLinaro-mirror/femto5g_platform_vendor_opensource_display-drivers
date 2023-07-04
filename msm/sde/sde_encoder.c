@@ -5114,7 +5114,7 @@ u32 sde_encoder_helper_get_kickoff_timeout_ms(struct drm_encoder *drm_enc)
 	if (!fps || fps >= DEFAULT_TIMEOUT_FPS_THRESHOLD)
 		return DEFAULT_KICKOFF_TIMEOUT_MS;
 	else
-		return (SEC_TO_MILLI_SEC / fps) * 2;
+		return SEC_TO_MILLI_SEC * 2 / fps + KICKOFF_TIMEOUT_MS_TOLERANCE;
 }
 
 int sde_encoder_get_avr_status(struct drm_encoder *drm_enc)
@@ -5997,6 +5997,11 @@ int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	SDE_DEBUG_ENC(sde_enc, "\n");
 
+	if (!sde_enc->bridge_enabled) {
+		SDE_INFO("enc%d bridge not enabled, skip\n", DRMID(drm_enc));
+		return 0;
+	}
+
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
@@ -6572,5 +6577,35 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
 		event.length = sizeof(c_conn->previous_misr_sign);
 		msm_mode_object_event_notify(&connector->base, connector->dev, &event,
 						(u8 *)&c_conn->previous_misr_sign);
+	}
+}
+
+bool sde_encoder_is_bridge_enabled(struct drm_encoder *enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!enc) {
+		SDE_ERROR("invalid drm enc\n");
+		return false;
+	}
+
+	sde_enc = to_sde_encoder_virt(enc);
+	return sde_enc->bridge_enabled;
+}
+
+void sde_encoder_set_bridge_enabled(struct drm_encoder *enc,
+		bool enabled)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!enc) {
+		SDE_ERROR("invalid drm enc\n");
+		return;
+	}
+
+	sde_enc = to_sde_encoder_virt(enc);
+	if (sde_enc->bridge_enabled != enabled) {
+		sde_enc->bridge_enabled = enabled;
+		SDE_INFO("Set enc%d %s\n", DRMID(enc), enabled ? "ENABLED" : "DISABLED");
 	}
 }

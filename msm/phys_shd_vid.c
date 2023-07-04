@@ -664,6 +664,12 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 					DRMID(base_enc));
 			goto skip;
 		}
+
+		if (!sde_encoder_is_bridge_enabled(base_enc)) {
+			SDE_INFO("Skipped, base enc%d bridge is not enabled\n",
+					DRMID(base_enc));
+			goto skip;
+		}
 	}
 
 	wait_info.wq = &phys_enc->pending_kickoff_wq;
@@ -683,6 +689,8 @@ skip:
 	if (notify) {
 		if (ret == -ETIMEDOUT) {
 			event = SDE_ENCODER_FRAME_EVENT_ERROR;
+			SDE_INFO("enc%d Wait for vblank timeout %dms\n", DRMID(phys_enc->parent),
+					wait_info.timeout_ms);
 			if (atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0))
 				event |= event_helper;
 		}

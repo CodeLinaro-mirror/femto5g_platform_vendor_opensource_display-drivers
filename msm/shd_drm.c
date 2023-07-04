@@ -1284,6 +1284,7 @@ static int shd_drm_obj_init(struct shd_display *display)
 		rc = -ENOENT;
 		goto end;
 	}
+	sde_encoder_set_bridge_enabled(encoder, true);
 
 	sde_conn = to_sde_connector(connector);
 	sde_conn->shared = true;

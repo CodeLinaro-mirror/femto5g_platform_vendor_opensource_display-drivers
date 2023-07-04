@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -217,6 +217,7 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
 		       c_bridge->id, rc);
 		SDE_ATRACE_END("dsi_display_prepare");
+		sde_encoder_set_bridge_enabled(bridge->encoder, false);
 		return;
 	}
 	SDE_ATRACE_END("dsi_display_prepare");
@@ -226,7 +227,10 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 	if (rc) {
 		DSI_ERR("[%d] DSI display enable failed, rc=%d\n",
 				c_bridge->id, rc);
+		sde_encoder_set_bridge_enabled(bridge->encoder, false);
 		(void)dsi_display_unprepare(c_bridge->display);
+	} else {
+		sde_encoder_set_bridge_enabled(bridge->encoder, true);
 	}
 	SDE_ATRACE_END("dsi_display_enable");
 
@@ -343,6 +347,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 		SDE_ATRACE_END("dsi_bridge_post_disable");
 		return;
 	}
+	sde_encoder_set_bridge_enabled(bridge->encoder, false);
 	SDE_ATRACE_END("dsi_bridge_post_disable");
 }
 

@@ -203,6 +203,7 @@ enum sde_enc_rc_states {
  * @prv_conn_roi:		previous connector roi to optimize if unchanged
  * @crtc			pointer to drm_crtc
  * @enabled			indicate if the encoder is enabled
+ * @bridge_enabled		indicate if the drm_bridge is enabled
  * @fal10_veto_override:	software override for micro idle fal10 veto
  * @recovery_events_enabled:	status of hw recovery feature enable by client
  * @elevated_ahb_vote:		increase AHB bus speed for the first frame
@@ -288,6 +289,7 @@ struct sde_encoder_virt {
 #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	bool enabled;
 #endif
+	bool bridge_enabled;
 
 	bool fal10_veto_override;
 	bool recovery_events_enabled;
@@ -814,4 +816,20 @@ static inline int sde_encoder_register_misr_event(struct drm_encoder *drm_enc, b
  */
 bool sde_encoder_is_enabled(struct drm_encoder *enc);
 #endif
+
+/**
+ * sde_encoder_is_bridge_enabled - checks if bridge is enabled successfully
+ * @enc:        Pointer to drm encoder structure
+ * @Return:     true for enabled, false for disabled
+ */
+bool sde_encoder_is_bridge_enabled(struct drm_encoder *enc);
+
+/**
+ * sde_encoder_set_bridge_enabled - change enable status of bridge
+ * @enc:        Pointer to drm encoder structure
+ * @enabled:    true for enabled, false for disabled
+ */
+void sde_encoder_set_bridge_enabled(struct drm_encoder *enc,
+		bool enabled);
+
 #endif /* __SDE_ENCODER_H__ */
