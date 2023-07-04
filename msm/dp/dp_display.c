@@ -16,6 +16,7 @@
 #include <linux/pm_qos.h>
 
 #include "sde_connector.h"
+#include "sde_encoder.h"
 
 #include "msm_drv.h"
 #include "dp_hpd.h"
@@ -1727,6 +1728,9 @@ static void dp_display_stream_disable(struct dp_display_private *dp,
 	dp->ctrl->stream_off(dp->ctrl, dp_panel);
 	dp->active_panels[dp_panel->stream_id] = NULL;
 	dp->active_stream_cnt--;
+	if (dp_panel->connector)
+		sde_encoder_set_bridge_enabled(dp_panel->connector->encoder,
+				false);
 }
 
 static void dp_display_clean(struct dp_display_private *dp)
@@ -2865,6 +2869,10 @@ static int dp_display_enable(struct dp_display *dp_display, void *panel)
 		goto end;
 
 	dp_display_state_add(DP_STATE_ENABLED);
+
+	if (dp_display->base_connector)
+		sde_encoder_set_bridge_enabled(dp_display->base_connector->encoder,
+				true);
 end:
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, rc);
@@ -3162,6 +3170,10 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 
 	dp_display_state_remove(DP_STATE_ENABLED);
 	dp->aux->state = DP_STATE_CTRL_POWERED_OFF;
+
+	if (dp_display->base_connector)
+		sde_encoder_set_bridge_enabled(dp_display->base_connector->encoder,
+				false);
 
 	if (dp->parser->force_connect_mode)
 		dp_display_send_force_connect_event(dp);
