@@ -3226,7 +3226,8 @@ end:
 	 * Once the DP driver is turned off, set to non-bond mode.
 	 * If bond mode is required afterwards, call set_phy_bond_mode.
 	 */
-	dp_display_change_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE);
+	if (!dp->parser->force_bond_mode)
+		dp_display_change_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE);
 
 	dp_panel->deinit(dp_panel, flags);
 	mutex_unlock(&dp->session_lock);
