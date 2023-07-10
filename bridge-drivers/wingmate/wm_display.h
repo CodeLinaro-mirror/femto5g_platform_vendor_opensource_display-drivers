@@ -92,6 +92,7 @@ struct wm_dt_props {
 	struct device_node *host_np;
 	unsigned int audio_supported;
 	unsigned int cec_supported;
+	unsigned int edid_single_read;
 };
 
 typedef enum wm_display_reset_reason {
