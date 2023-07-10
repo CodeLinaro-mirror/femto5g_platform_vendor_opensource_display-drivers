@@ -375,7 +375,7 @@ static int hdmi_audio_register_ext_disp(struct lt9611 *pdata)
 
 	ext->codec.type = EXT_DISPLAY_TYPE_HDMI;
 	ext->codec.ctrl_id = 1;
-	ext->codec.stream_id = 1;
+	ext->codec.stream_id = 0;
 	ext->pdev = pdata->audio_pdev;
 	ext->intf_data = pdata;
 
