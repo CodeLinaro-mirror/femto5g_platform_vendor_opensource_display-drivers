@@ -205,6 +205,23 @@ struct tu_algo_data {
 	s64 ratio;
 };
 
+static inline char *get_colorformat_name(enum dp_output_format format)
+{
+	switch (format) {
+	case DP_OUTPUT_FORMAT_YCBCR444:
+		return "YUV444";
+	case DP_OUTPUT_FORMAT_YCBCR422:
+		return "YUV422";
+	case DP_OUTPUT_FORMAT_YCBCR420:
+		return "YUV420";
+	case DP_OUTPUT_FORMAT_INVALID:
+		return "INVALID";
+	case DP_OUTPUT_FORMAT_RGB:
+	default:
+		return "RGB";
+	}
+}
+
 static inline char *get_colorspace_by_name(u32 colorspace)
 {
 	switch (colorspace) {
@@ -1969,7 +1986,7 @@ end:
 }
 
 static u32 dp_panel_get_supported_bpp(struct dp_panel *dp_panel,
-		u32 mode_edid_bpp, u32 mode_pclk_khz, bool dsc_en)
+		u32 mode_edid_bpp, u32 mode_pclk_khz, bool dsc_en, bool yuv422)
 {
 	struct dp_link_params *link_params;
 	struct dp_panel_private *panel;
@@ -1977,8 +1994,10 @@ static u32 dp_panel_get_supported_bpp(struct dp_panel *dp_panel,
 	u32 min_supported_bpp = 18;
 	u32 bpp = 0, link_bitrate = 0, mode_bitrate;
 	s64 rate_fp = 0;
+	int max_tmds_clock;
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
+	max_tmds_clock = dp_panel->connector->display_info.max_tmds_clock;
 
 	if (dsc_en)
 		min_supported_bpp = 24;
@@ -2007,21 +2026,35 @@ static u32 dp_panel_get_supported_bpp(struct dp_panel *dp_panel,
 			mode_bitrate = mode_pclk_khz * bpp;
 		}
 
+		/* As per the HDMI specification 1.4b, bits per pixel (bpp)
+		 * for the YUV422 format would always be 24, irrespective of
+		 * the bpc values.
+		 * Therefore, the following check doesn't hold good for the
+		 * YUV422 format data, as the mode_pclk_khz will always remain
+		 * less than max_tmds_clock.
+		 */
+		if (max_tmds_clock > 0 && !yuv422 &&
+			mult_frac(mode_pclk_khz, bpp, 24) > max_tmds_clock)
+			continue;
+
 		if (mode_bitrate <= link_bitrate)
 			break;
 	}
 
-	if (bpp < min_supported_bpp)
+	if (dp_panel->dsc_en && bpp != 24 && bpp != 30 && bpp != 36)
+		DP_DEBUG("bpp %d is not supported when dsc is enabled\n", bpp);
+
+	if (bpp < min_supported_bpp) {
 		DP_ERR("bpp %d is below minimum supported bpp %d\n", bpp,
 				min_supported_bpp);
-	if (dp_panel->dsc_en && bpp != 24 && bpp != 30 && bpp != 36)
-		DP_ERR("bpp %d is not supported when dsc is enabled\n", bpp);
+		bpp = min_supported_bpp;
+	}
 
 	return bpp;
 }
 
 static u32 dp_panel_get_mode_bpp(struct dp_panel *dp_panel,
-		u32 mode_edid_bpp, u32 mode_pclk_khz, bool dsc_en)
+		u32 mode_edid_bpp, u32 mode_pclk_khz, bool dsc_en, bool yuv422)
 {
 	struct dp_panel_private *panel;
 	u32 bpp = mode_edid_bpp;
@@ -2038,7 +2071,7 @@ static u32 dp_panel_get_mode_bpp(struct dp_panel *dp_panel,
 				panel->link->test_video.test_bit_depth);
 	else
 		bpp = dp_panel_get_supported_bpp(dp_panel, mode_edid_bpp,
-				mode_pclk_khz, dsc_en);
+				mode_pclk_khz, dsc_en, yuv422);
 
 	return bpp;
 }
@@ -2457,6 +2490,7 @@ static int dp_panel_deinit_panel_info(struct dp_panel *dp_panel, u32 flags)
 		sizeof(struct dp_catalog_vsc_sdp_colorimetry));
 
 	panel->panel_on = false;
+	dp_panel->output_format = DP_OUTPUT_FORMAT_RGB;
 
 	connector = dp_panel->connector;
 	sde_conn = to_sde_connector(connector);
@@ -2596,9 +2630,6 @@ static void dp_panel_setup_colorimetry_sdp(struct dp_panel *dp_panel,
 	hdr_colorimetry->header.HB1 = 0x07;
 	hdr_colorimetry->header.HB2 = 0x05;
 	hdr_colorimetry->header.HB3 = 0x13;
-
-	get_sdp_colorimetry_range(panel, cspace, &colorimetry,
-		&dynamic_range);
 
 	/* VSC SDP Payload for DB16 */
 	switch (dp_panel->output_format) {
@@ -2940,14 +2971,15 @@ static void dp_panel_resolution_info(struct dp_panel_private *panel)
 	 * of user initiated action of cable connection
 	 */
 	DP_INFO("DP RESOLUTION: active(back|front|width|low)\n");
-	DP_INFO("%d(%d|%d|%d|%d)x%d(%d|%d|%d|%d)@%dfps %dbpp %dKhz %dLR %dLn\n",
+	DP_INFO("%d(%d|%d|%d|%d)x%d(%d|%d|%d|%d)@%dfps %dbpp %dKhz %dLR %dLn %s\n",
 		pinfo->h_active, pinfo->h_back_porch, pinfo->h_front_porch,
 		pinfo->h_sync_width, pinfo->h_active_low,
 		pinfo->v_active, pinfo->v_back_porch, pinfo->v_front_porch,
 		pinfo->v_sync_width, pinfo->v_active_low,
 		pinfo->refresh_rate, pinfo->bpp, pinfo->pixel_clk_khz,
 		panel->link->link_params.bw_code,
-		panel->link->link_params.lane_count);
+		panel->link->link_params.lane_count,
+		get_colorformat_name(panel->dp_panel.output_format));
 }
 
 static void dp_panel_config_sdp(struct dp_panel *dp_panel,
@@ -3078,6 +3110,7 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 	const u32 num_components = 3, default_bpp = 24;
 	struct msm_compression_info *comp_info;
 	bool dsc_en = (dp_mode->capabilities & DP_PANEL_CAPS_DSC) ? true : false;
+	bool yuv422 = false;
 	int rc;
 
 	dp_mode->timing.h_active = drm_mode->hdisplay;
@@ -3122,8 +3155,10 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 
 	/* Set the default format to RGB and change based on the mode flags */
 	dp_mode->output_format = DP_OUTPUT_FORMAT_RGB;
-	if (drm_mode->flags & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422)
+	if (drm_mode->flags & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422) {
+		get_yuv_config(&dsc_en, &yuv422);
 		dp_mode->output_format = DP_OUTPUT_FORMAT_YCBCR422;
+	}
 	DP_DEBUG("mode: %s output format: %u flags: 0x%x", drm_mode->name,
 			dp_panel->output_format, drm_mode->flags);
 
@@ -3141,7 +3176,8 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 	}
 
 	dp_mode->timing.bpp = dp_panel_get_mode_bpp(dp_panel,
-			dp_mode->timing.bpp, dp_mode->timing.pixel_clk_khz, dsc_en);
+			dp_mode->timing.bpp, dp_mode->timing.pixel_clk_khz,
+			dsc_en, yuv422);
 
 	if (dp_panel->dsc_en && dsc_en) {
 		if (dp_panel_dsc_prepare_basic_params(comp_info,
