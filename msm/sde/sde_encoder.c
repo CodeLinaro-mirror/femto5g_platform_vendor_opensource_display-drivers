@@ -853,6 +853,10 @@ void sde_encoder_get_hw_resources(struct drm_encoder *drm_enc,
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
+		/* Todo: Since only 1 CDM block can be mounted to an INTF at a
+		 * time,this should be controlled using a devicetree property,
+		 * indicating the intf,in future.
+		 */
 		if (phys && conn->ops.get_yuv_support)
 			phys->cdm_capable =
 				conn->ops.get_yuv_support(conn->display);

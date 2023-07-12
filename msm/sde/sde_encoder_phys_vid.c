@@ -1004,8 +1004,6 @@ static void sde_encoder_phys_vid_get_hw_resources(
 		struct drm_connector_state *conn_state)
 {
 	struct sde_encoder_phys_vid *vid_enc;
-	struct sde_mdss_cfg *vid_catalog;
-	bool cdm_enable = false;
 
 	if (!phys_enc || !hw_res) {
 		SDE_ERROR("invalid arg(s), enc %d hw_res %d conn_state %d\n",
@@ -1013,18 +1011,7 @@ static void sde_encoder_phys_vid_get_hw_resources(
 		return;
 	}
 
-	cdm_enable = phys_enc->cdm_capable;
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
-	vid_catalog = phys_enc->sde_kms->catalog;
-
-	if (!cdm_enable) {
-		SDE_DEBUG_VIDENC(vid_enc, "cdm_capable: %d", cdm_enable);
-	} else if (!phys_enc->hw_intf || !vid_catalog) {
-		SDE_ERROR("invalid arg(s), hw_intf %d vid_catalog %d\n",
-				phys_enc->hw_intf != NULL, vid_catalog != NULL);
-		return;
-	}
-	SDE_DEBUG_VIDENC(vid_enc, "\n");
 
 	if ((phys_enc->intf_idx - INTF_0) >= INTF_MAX) {
 		SDE_ERROR("invalid intf idx:%d\n", phys_enc->intf_idx);
@@ -1032,9 +1019,7 @@ static void sde_encoder_phys_vid_get_hw_resources(
 	}
 
 	hw_res->intfs[phys_enc->intf_idx - INTF_0] = INTF_MODE_VIDEO;
-	if (cdm_enable &&
-	(vid_catalog->intf[phys_enc->hw_intf->idx - INTF_0].type == INTF_DP))
-		hw_res->needs_cdm = true;
+	hw_res->needs_cdm = phys_enc->cdm_capable;
 	SDE_DEBUG_VIDENC(vid_enc, "needs_cdm=%d\n", hw_res->needs_cdm);
 }
 

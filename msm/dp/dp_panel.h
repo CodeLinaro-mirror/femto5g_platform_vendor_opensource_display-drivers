@@ -185,7 +185,7 @@ struct dp_panel {
 	int (*read_sink_caps)(struct dp_panel *dp_panel,
 		struct drm_connector *connector, bool multi_func);
 	u32 (*get_mode_bpp)(struct dp_panel *dp_panel, u32 mode_max_bpp,
-			u32 mode_pclk_khz);
+			u32 mode_pclk_khz, bool dsc_en, bool yuv422);
 	int (*get_modes)(struct dp_panel *dp_panel,
 		struct drm_connector *connector, struct dp_display_mode *mode);
 	void (*handle_sink_request)(struct dp_panel *dp_panel);
@@ -265,6 +265,17 @@ static inline bool is_lane_count_valid(u32 lane_count)
 	return (lane_count == DP_LANE_COUNT_1) ||
 		(lane_count == DP_LANE_COUNT_2) ||
 		(lane_count == DP_LANE_COUNT_4);
+}
+
+/**
+ * get_yuv_config - sets the values for yuv422 colorspace
+ * @dsc: dsc supported by the colorspace
+ * @yuv422: is colorspace yuv422
+ */
+static inline void get_yuv_config(bool *dsc, bool *yuv422)
+{
+	*dsc = false;
+	*yuv422 = true;
 }
 
 struct dp_panel *dp_panel_get(struct dp_panel_in *in);

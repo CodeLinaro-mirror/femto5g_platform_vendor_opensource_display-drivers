@@ -2410,6 +2410,8 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 	const u32 num_components = 3, default_bpp = 24;
 	struct dp_display_private *dp;
 	struct dp_panel *dp_panel;
+	bool dsc_en = (mode->capabilities & DP_PANEL_CAPS_DSC) ? true : false;
+	bool yuv422 = false;
 
 	if (!dp_display || !panel) {
 		DP_ERR("invalid input\n");
@@ -2428,16 +2430,24 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 			mode->timing.refresh_rate);
 
 	mutex_lock(&dp->session_lock);
+	dp_panel->output_format = mode->output_format;
+
+	/* Update yuv422 and dsc flags to accurately calculate bpp
+	 * for the mode, based on the selected colorspace.
+	 */
+	if (dp_panel->output_format == DP_OUTPUT_FORMAT_YCBCR422)
+		get_yuv_config(&dsc_en, &yuv422);
+
 	mode->timing.bpp =
 		dp_panel->connector->display_info.bpc * num_components;
 	if (!mode->timing.bpp)
 		mode->timing.bpp = default_bpp;
 
 	mode->timing.bpp = dp->panel->get_mode_bpp(dp->panel,
-			mode->timing.bpp, mode->timing.pixel_clk_khz);
+			mode->timing.bpp, mode->timing.pixel_clk_khz,
+			dsc_en, yuv422);
 
 	dp_panel->pinfo = mode->timing;
-	dp_panel->output_format = mode->output_format;
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
@@ -3119,33 +3129,38 @@ static int dp_display_validate_topology(struct dp_display_private *dp,
 	return 0;
 }
 
-static int dp_display_get_dc_support(struct dp_display *dp,
-		u32 mode_pclk_khz, u32 out_format, bool dc_enable)
+static int dp_display_get_dc_support(struct dp_display *dp_display,
+		struct drm_display_mode *mode, u32 out_format)
 {
-	struct dp_display_private *dp_display;
-	struct drm_dp_link *link_info;
-	u32 mode_rate_khz = 0, supported_rate_khz = 0;
-	u32 default_bpp = 24;
+	struct dp_display_mode dp_mode;
+	struct dp_display_private *dp = NULL;
+	bool dsc_en = false;
+	bool yuv422 = false;
 
-	if (!dp || !mode_pclk_khz || !dp->base_connector) {
+	if (!dp_display || !mode) {
 		DP_ERR("invalid input");
 		return -EINVAL;
 	}
 
-	dp_display = container_of(dp, struct dp_display_private, dp_display);
-	link_info = &dp_display->panel->link_info;
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
 
-	mode_rate_khz = mode_pclk_khz * default_bpp;
+	dp_display->convert_to_dp_mode(dp_display, dp->panel, mode, &dp_mode);
+	dsc_en = (dp_mode.capabilities & DP_PANEL_CAPS_DSC) ? true : false;
 
-	if (dc_enable)
-		mode_rate_khz = mode_pclk_khz * MAX_SUPPORTED_BPP;
+	/* Fill the dsc and yuv422 flags to accurately calculate
+	 * the bpp for respective colorspace.
+	 * YUV422 doesn't require DSC to be enabled.
+	 */
+	if (out_format & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422)
+		get_yuv_config(&dsc_en, &yuv422);
 
-	supported_rate_khz = link_info->num_lanes * link_info->rate * 8;
+	dp_mode.timing.bpp = dp->panel->get_mode_bpp(dp->panel,
+		MAX_SUPPORTED_BPP, dp_mode.timing.pixel_clk_khz, dsc_en, yuv422);
 
-	if (mode_rate_khz > supported_rate_khz)
+	if (dp_mode.timing.bpp == MAX_SUPPORTED_BPP)
+		return true;
+	else
 		return false;
-
-	return true;
 }
 
 static enum drm_mode_status dp_display_validate_mode(
@@ -3270,7 +3285,7 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 	int rc;
 	struct dp_display_private *dp;
 	struct dp_panel *dp_panel;
-	u32 free_dsc_blks = 0, required_dsc_blks = 0;
+	u32 free_dsc_blks = 0, required_dsc_blks = 0, curr_dsc = 0, new_dsc = 0;
 
 	if (!dp_display || !drm_mode || !dp_mode || !panel) {
 		DP_ERR("invalid input\n");
@@ -3293,8 +3308,17 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 		return;
 	}
 
-	if (free_dsc_blks >= required_dsc_blks)
+	curr_dsc = dp_panel->dsc_blks_in_use;
+	dp->tot_dsc_blks_in_use -= dp_panel->dsc_blks_in_use;
+	dp_panel->dsc_blks_in_use = 0;
+
+	if (free_dsc_blks >= required_dsc_blks &&
+			dp_panel->dsc_en) {
 		dp_mode->capabilities |= DP_PANEL_CAPS_DSC;
+		new_dsc = max(curr_dsc, required_dsc_blks);
+		dp_panel->dsc_blks_in_use = new_dsc;
+		dp->tot_dsc_blks_in_use += new_dsc;
+	}
 
 	if (dp_mode->capabilities & DP_PANEL_CAPS_DSC)
 		DP_DEBUG("in_use:%d, max:%d, free:%d, req:%d, caps:0x%x\n",
