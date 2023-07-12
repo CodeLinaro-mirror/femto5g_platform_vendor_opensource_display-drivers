@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DSI_CATALOG_H_
@@ -77,7 +77,7 @@ void dsi_phy_hw_v2_0_regulator_disable(struct dsi_phy_hw *phy);
 void dsi_phy_hw_v2_0_enable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
 void dsi_phy_hw_v2_0_disable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
 void dsi_phy_hw_v2_0_idle_on(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
-void dsi_phy_hw_v2_0_idle_off(struct dsi_phy_hw *phy);
+void dsi_phy_hw_v2_0_idle_off(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
 int dsi_phy_hw_timing_val_v2_0(struct dsi_phy_per_lane_cfgs *timing_cfg,
 		u32 *timing_val, u32 size);
 void dsi_phy_hw_v2_0_clamp_ctrl(struct dsi_phy_hw *phy, bool enable);
@@ -126,7 +126,8 @@ void dsi_phy_hw_v4_0_reset_clk_en_sel(struct dsi_phy_hw *phy);
 void dsi_phy_hw_v4_0_set_continuous_clk(struct dsi_phy_hw *phy, bool enable);
 void dsi_phy_hw_v4_0_commit_phy_timing(struct dsi_phy_hw *phy,
 		struct dsi_phy_per_lane_cfgs *timing);
-void dsi_phy_hw_v4_0_phy_idle_off(struct dsi_phy_hw *phy);
+void dsi_phy_hw_v4_0_phy_idle_off(struct dsi_phy_hw *phy,
+				struct dsi_phy_cfg *cfg);
 
 /* DSI controller common ops */
 u32 dsi_ctrl_hw_cmn_get_interrupt_status(struct dsi_ctrl_hw *ctrl);

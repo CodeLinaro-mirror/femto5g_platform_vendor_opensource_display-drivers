@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/math64.h>
@@ -312,7 +313,7 @@ void dsi_phy_hw_v2_0_idle_on(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg)
  * dsi_phy_hw_v2_0_idle_off() - Disable DSI PHY hardware during idle screen
  * @phy:      Pointer to DSI PHY hardware object.
  */
-void dsi_phy_hw_v2_0_idle_off(struct dsi_phy_hw *phy)
+void dsi_phy_hw_v2_0_idle_off(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg)
 {
 	int i = 0;
 	bool is_split_link = test_bit(DSI_PHY_SPLIT_LINK, phy->feature_map);

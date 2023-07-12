@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DSI_PHY_HW_H_
@@ -272,8 +272,10 @@ struct dsi_phy_hw_ops {
 	/**
 	 * phy_idle_off() - Disable PHY hardware when exiting idle screen
 	 * @phy:      Pointer to DSI PHY hardware object.
+	 * @cfg:      Per lane configurations for timing, strength and lane
+	 *	      configurations.
 	 */
-	void (*phy_idle_off)(struct dsi_phy_hw *phy);
+	void (*phy_idle_off)(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
 
 	/**
 	 * calculate_timing_params() - calculates timing parameters.

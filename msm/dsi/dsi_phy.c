@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_device.h>
@@ -1069,11 +1069,12 @@ int dsi_phy_idle_ctrl(struct msm_dsi_phy *phy, bool enable)
 	} else {
 		phy->dsi_phy_state = DSI_PHY_ENGINE_OFF;
 
-		if (phy->hw.ops.disable)
-			phy->hw.ops.disable(&phy->hw, &phy->cfg);
+		if (dsi_phy_get_version(phy) <= DSI_PHY_VERSION_4_0)
+			if (phy->hw.ops.disable)
+				phy->hw.ops.disable(&phy->hw, &phy->cfg);
 
 		if (phy->hw.ops.phy_idle_off)
-			phy->hw.ops.phy_idle_off(&phy->hw);
+			phy->hw.ops.phy_idle_off(&phy->hw, &phy->cfg);
 	}
 	mutex_unlock(&phy->phy_lock);
 
