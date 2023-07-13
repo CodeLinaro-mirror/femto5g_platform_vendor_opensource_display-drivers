@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /* Copyright (C) 2014 Red Hat
@@ -1213,15 +1213,25 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 			color_space);
 	}
 
-	if (old_pstate->blend_op != new_pstate->blend_op || !priv->committed) {
-		wfdSetPipelineAttribi_User(
-			priv->wfd_device,
-			priv->wfd_pipeline,
-			WFD_PIPELINE_TRANSPARENCY_ENABLE,
-			(new_pstate->blend_op ==
-				SDE_DRM_BLEND_OP_OPAQUE) ?
-				WFD_TRANSPARENCY_GLOBAL_ALPHA :
-				WFD_TRANSPARENCY_SOURCE_ALPHA);
+	if ((old_pstate->blend_op != new_pstate->blend_op) || (!priv->committed) ||
+		(old_pstate->alpha != new_pstate->alpha)) {
+		switch(new_pstate->blend_op) {
+			case SDE_DRM_BLEND_OP_OPAQUE:
+				wfdSetPipelineAttribi_User(
+					priv->wfd_device,
+					priv->wfd_pipeline,
+					WFD_PIPELINE_TRANSPARENCY_ENABLE,
+					WFD_TRANSPARENCY_GLOBAL_ALPHA);
+				break;
+			case SDE_DRM_BLEND_OP_PREMULTIPLIED:
+				wfdSetPipelineAttribi_User(
+					priv->wfd_device,
+					priv->wfd_pipeline,
+					WFD_PIPELINE_TRANSPARENCY_ENABLE,
+					WFD_TRANSPARENCY_SOURCE_ALPHA |
+					WFD_TRANSPARENCY_GLOBAL_ALPHA);
+				break;
+		}
 	}
 
 	priv->committed = true;
