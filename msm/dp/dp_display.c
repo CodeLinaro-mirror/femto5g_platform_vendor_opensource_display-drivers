@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1410,6 +1410,17 @@ static int dp_display_init_aux_switch(struct dp_display_private *dp)
 	       return rc;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
+
+	if (!dp->aux_switch_node) {
+		DP_WARN("cannot find aux_switch_node\n");
+		rc = -ENODEV;
+		return rc;
+	}
+
+	if (strcmp(dp->aux_switch_node->name, "fsa4480")) {
+		DP_DEBUG("Not an fsa4480 aux switch\n");
+		return rc;
+	}
 
 	nb.notifier_call = dp_display_fsa4480_callback;
 	nb.priority = 0;
