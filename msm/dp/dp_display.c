@@ -1420,6 +1420,17 @@ static int dp_display_init_aux_switch(struct dp_display_private *dp)
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 
+	if (!dp->aux_switch_node) {
+		DP_WARN("cannot find aux_switch_node\n");
+		rc = -ENODEV;
+		return rc;
+	}
+
+	if (strcmp(dp->aux_switch_node->name, "fsa4480")) {
+		DP_DEBUG("Not an fsa4480 aux switch\n");
+		return rc;
+	}
+
 	nb.notifier_call = dp_display_fsa4480_callback;
 	nb.priority = 0;
 
