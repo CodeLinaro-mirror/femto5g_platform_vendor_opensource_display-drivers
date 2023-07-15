@@ -437,7 +437,7 @@ static bool dp_mst_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	dp = bridge->display;
 
 	dp->convert_to_dp_mode(dp, bridge_state->dp_panel, mode, &dp_mode);
-	convert_to_drm_mode(&dp_mode, adjusted_mode);
+	convert_to_drm_mode(&dp_mode, adjusted_mode, dp);
 
 	DP_MST_DEBUG("mst bridge [%d] mode:%s fixup\n", bridge->id, mode->name);
 end:
@@ -1015,7 +1015,7 @@ static bool dp_mst_super_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	tmp = *mode;
 	dp_mst_split_tile_timing(&tmp);
 	dp->convert_to_dp_mode(dp, bridge_state->dp_panel, &tmp, &dp_mode);
-	convert_to_drm_mode(&dp_mode, adjusted_mode);
+	convert_to_drm_mode(&dp_mode, adjusted_mode, dp);
 	dp_mst_merge_tile_timing(adjusted_mode);
 
 	DP_MST_DEBUG("mst bridge [%d] mode:%s fixup\n", bridge->id, mode->name);
@@ -2932,5 +2932,22 @@ void dp_mst_deinit(struct dp_display *dp_display)
 	mutex_destroy(&mst->edid_lock);
 
 	DP_MST_INFO("dp drm mst topology manager deinit completed\n");
+}
+
+void dp_mst_dump_topology(struct dp_display *dp_display, struct seq_file *m)
+{
+	struct dp_mst_private *mst;
+
+	if (!dp_display) {
+		pr_err("invalid params\n");
+		return;
+	}
+
+	mst = dp_display->dp_mst_prv_info;
+
+	if (!mst->mst_initialized)
+		return;
+
+	drm_dp_mst_dump_topology(m, &mst->mst_mgr);
 }
 

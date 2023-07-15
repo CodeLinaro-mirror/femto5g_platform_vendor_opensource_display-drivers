@@ -1713,8 +1713,10 @@ static void dp_debug_set_sim_mode(struct dp_debug_private *debug, bool sim)
 		display = sde_conn->display;
 		if (display->base_connector == (*debug->connector)) {
 			panel = sde_conn->drv_panel;
-			panel->mode_override = false;
-			panel->mst_hide = false;
+			if (panel) {
+				panel->mode_override = false;
+				panel->mst_hide = false;
+			}
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
@@ -1854,6 +1856,21 @@ end:
 	return len;
 }
 
+static int dp_debug_mst_topology_show(struct seq_file *m, void *arg)
+{
+	struct dp_debug_private *debug = (struct dp_debug_private *) m->private;
+	struct sde_connector *conn = to_sde_connector(*debug->connector);
+
+	dp_mst_dump_topology(conn->display, m);
+
+	return 0;
+}
+
+static int dp_debug_mst_topology_open(struct inode *inode, struct file *file)
+{
+	return single_open(file, dp_debug_mst_topology_show, inode->i_private);
+}
+
 static const struct file_operations dp_debug_fops = {
 	.open = simple_open,
 	.read = dp_debug_read_info,
@@ -1988,6 +2005,13 @@ static const struct file_operations mmrm_clk_cb_fops = {
 	.write = dp_debug_mmrm_clk_cb_write,
 };
 
+static const struct file_operations mst_topology_fops = {
+	.open = dp_debug_mst_topology_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = single_release,
+};
+
 static int dp_debug_init_mst(struct dp_debug_private *debug, struct dentry *dir)
 {
 	int rc = 0;
@@ -2043,6 +2067,15 @@ static int dp_debug_init_mst(struct dp_debug_private *debug, struct dentry *dir)
 	if (IS_ERR_OR_NULL(file)) {
 		rc = PTR_ERR(file);
 		DP_ERR("[%s] debugfs mst_sideband_mode failed, rc=%d\n",
+		       debug->name, rc);
+		return rc;
+	}
+
+	file = debugfs_create_file("mst_topology", 0644, dir,
+			debug, &mst_topology_fops);
+	if (IS_ERR_OR_NULL(file)) {
+		rc = PTR_ERR(file);
+		DP_ERR("[%s] debugfs mst_topology failed, rc=%d\n",
 		       debug->name, rc);
 		return rc;
 	}

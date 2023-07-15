@@ -483,6 +483,8 @@ struct msm_display_dsc_info {
 	u32 dsc_4hsmerge_padding;
 	u32 dsc_4hsmerge_alignment;
 	bool half_panel_pu;
+	char *out_byte_order;
+	size_t out_byte_order_size;
 };
 
 
