@@ -44,9 +44,9 @@
 #endif
 
 #if defined(__linux__)
-#define USER_OS_UTILS_LOG_MODULE_NAME "LV_FE"
+#define USER_OS_UTILS_LOG_MODULE_NAME "[drm] LV_FE"
 #elif defined(__ANDROID__)
-#define USER_OS_UTILS_LOG_MODULE_NAME "LA_FE"
+#define USER_OS_UTILS_LOG_MODULE_NAME "[drm] LA_FE"
 #endif
 
 #define USER_OS_UTILS_LOG_MODULE_ID       10256
@@ -608,10 +608,12 @@ retry_recv_packet:
 			UTILS_LOG_ERROR("recv packet retry %d", retry_times);
 			goto retry_recv_packet;
 		}
-	} else if (timestamp < resp->hdr.timestamp) {
+	}
+	else if (timestamp < resp->hdr.timestamp) {
 		UTILS_LOG_ERROR(" Wrong packet timestamp req : %lu res : %lu \n", timestamp, resp->hdr.timestamp);
 		rc = -1;
 		goto end;
+
 	}
 	if (payload_type == OPENWFD_CMD) {
 		if (num_of_wfd_cmds != resp->payload.wfd_resp.num_of_cmds) {
@@ -955,3 +957,4 @@ end:
 
 	return rc;
 }
+
