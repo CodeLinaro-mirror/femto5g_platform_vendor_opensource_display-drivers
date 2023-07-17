@@ -25,6 +25,7 @@ struct sde_hw_ds;
  * @flags        : Flag to switch between mode for DS
  * @lm_width     : Layer mixer width configuration
  * @lm_heigh     : Layer mixer height configuration
+ * @merge_mode   : Specify pipe merge mode for each DS block
  * @scl3_cfg     : Configuration data for scaler
  */
 struct sde_hw_ds_cfg {
@@ -32,6 +33,7 @@ struct sde_hw_ds_cfg {
 	int flags;
 	u32 lm_width;
 	u32 lm_height;
+	u32 merge_mode;
 	struct sde_hw_scaler3_cfg scl3_cfg;
 };
 
