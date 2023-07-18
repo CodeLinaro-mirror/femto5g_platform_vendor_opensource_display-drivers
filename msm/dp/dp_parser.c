@@ -1134,35 +1134,6 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 	rc = of_property_read_u32(dsc_passthrough_root_node,
 				"qcom,dsc-compression-ratio",
 				&tmp);
-	if (rc) {
-		pr_debug("compression ratio not specified, "\
-			"defaulting to 1:%d\n", DEFAULT_COMP_RATIO_DSCPT);
-		parser->dsc_passthrough.comp_info.comp_ratio = DEFAULT_COMP_RATIO_DSCPT;
-	} else {
-		parser->dsc_passthrough.comp_info.comp_ratio = tmp;
-	}
-
-	rc = of_property_read_u32(dsc_passthrough_root_node,
-				  "qcom,dsc-src-bpp",
-				  &tmp);
-	if (rc) {
-		pr_debug("source bpp not specified, defaulting to %d\n",
-			DEFAULT_SRC_BPP_DSCPT);
-		parser->dsc_passthrough.comp_info.src_bpp = DEFAULT_SRC_BPP_DSCPT;
-	} else {
-		parser->dsc_passthrough.comp_info.src_bpp = tmp;
-	}
-
-	rc = of_property_read_u32(dsc_passthrough_root_node,
-				  "qcom,dsc-tgt-bpp",
-				  &tmp);
-	if (rc) {
-		pr_debug("target bpp not specified, defaulting to %d\n",
-			DEFAULT_TGT_BPP_DSCPT);
-		parser->dsc_passthrough.comp_info.tgt_bpp = DEFAULT_TGT_BPP_DSCPT;
-	} else {
-		parser->dsc_passthrough.comp_info.tgt_bpp = tmp;
-	}
 
 	if (parser->dsc_passthrough.dsc_passthrough_enable) {
 		data = of_get_property(dsc_passthrough_root_node,
@@ -1188,9 +1159,6 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 						dsc_info->out_byte_order, len, false);
 			}
 		}
-
-		parser->dsc_passthrough.comp_info.comp_type = MSM_DISPLAY_COMPRESSION_DSC;
-		parser->dsc_passthrough.comp_info.enabled = false;
 	}
 
 	for_each_child_of_node(dsc_passthrough_root_node, child_node) {
@@ -1206,7 +1174,7 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 
 		/* Byte [0] [7:4]dsc_version_major & [3:0]dsc_version_minor */
 		dsc_version = read_char_from_byte_stream(data, &parsed);
-		dsc_info->config.dsc_version_major = dsc_version & 0xF0;
+		dsc_info->config.dsc_version_major = (dsc_version & 0xF0) >> 4;
 		dsc_info->config.dsc_version_minor = dsc_version & 0x0F;
 
 		/* Byte [1] pps_identifier SKIPPED */
@@ -1245,7 +1213,7 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 		/* Bytes [4] [1:0]bits_per_pixel [5] [7:0]bits_per_pixel */
 		dsc_info->config.bits_per_pixel =
 				(read_n_bits_from_byte_stream(data, &parsed, 1, 2) << 8) |
-				(read_char_from_byte_stream(data, &parsed) >> 4);
+				(read_char_from_byte_stream(data, &parsed));
 				/* 4 Fractional bits */
 
 		/* Bytes [6][7:0]pic_height[1] [7][7:0]pic_height[0] */
@@ -1403,6 +1371,8 @@ static void dp_parser_dsc_passthrough(struct dp_parser *parser)
 		/* Bytes [88 to 127] RESERVED SKIPPED */
 		skip_n_bytes_from_byte_stream(&parsed, 40);
 	}
+
+	parser->dsc_passthrough.comp_info.tgt_bpp = dsc_info->config.bits_per_pixel >> 4;
 
 	pr_debug("dsc passthrough parsing successful. Parsed = %d bytes enable:%d\n",
 			parsed,
