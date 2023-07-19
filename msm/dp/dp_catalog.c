@@ -1402,7 +1402,13 @@ static void dp_catalog_ctrl_usb_reset(struct dp_catalog_ctrl *ctrl, bool flip)
 	io_data = catalog->io.usb3_dp_com;
 
 	DP_DEBUG("Program PHYMODE to DP only\n");
-	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x0a);
+	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x0F);
+	/*
+	 * USB PHY may interfere DP PHY if the USB PHY isn't reset properly.
+	 * Update the reset sequence per hardware suggestion,
+	 * force USB PHY to sw reset
+	 */
+	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x0E);
 	dp_write(USB3_DP_COM_PHY_MODE_CTRL, 0x02);
 	dp_write(USB3_DP_COM_SW_RESET, 0x01);
 	/* make sure usb3 com phy software reset is done */
