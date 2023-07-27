@@ -423,6 +423,10 @@ int dsi_catalog_phy_pll_setup(struct dsi_phy_hw *phy, u32 pll_ver)
 		phy->ops.configure[MSM_DISP_OP_HWIO] = dsi_pll_3nm_configure;
 		phy->ops.pll_toggle[MSM_DISP_OP_HWIO] = dsi_pll_3nm_toggle;
 		break;
+	case DSI_PLL_VERSION_14NM:
+		phy->ops.configure[MSM_DISP_OP_HWIO] = dsi_pll_14nm_configure;
+		phy->ops.pll_toggle[MSM_DISP_OP_HWIO] = dsi_pll_14nm_toggle;
+		break;
 	default:
 		break;
 	}
