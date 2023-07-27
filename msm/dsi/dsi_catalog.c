@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/errno.h>
@@ -337,6 +337,10 @@ int dsi_catalog_phy_pll_setup(struct dsi_phy_hw *phy, u32 pll_ver)
 	case DSI_PLL_VERSION_4NM:
 		phy->ops.configure = dsi_pll_4nm_configure;
 		phy->ops.pll_toggle = dsi_pll_4nm_toggle;
+		break;
+	case DSI_PLL_VERSION_14NM:
+		phy->ops.configure = dsi_pll_14nm_configure;
+		phy->ops.pll_toggle = dsi_pll_14nm_toggle;
 		break;
 	default:
 		phy->ops.configure = NULL;
