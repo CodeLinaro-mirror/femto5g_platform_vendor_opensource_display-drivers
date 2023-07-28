@@ -181,6 +181,9 @@ static int dp_parser_misc(struct dp_parser *parser)
 	DP_DEBUG("Audio parsing successful. Audio support:%d\n",
 			!parser->no_audio_support);
 
+	parser->dp_cec_feature = of_property_read_bool(of_node,
+		"qcom,dp_cec_feature");
+
 	return 0;
 }
 

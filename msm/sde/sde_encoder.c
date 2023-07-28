@@ -4637,7 +4637,6 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 {
 	int rc, ret = 0;
 	int i, is_yuv;
-	u32 prev_cspace;
 	struct drm_display_mode *mode;
 	struct sde_encoder_phys *phys;
 	struct sde_hw_cdm *hw_cdm;
@@ -4681,7 +4680,6 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 		 * should be updated based on the connector's
 		 * colorspace.
 		 */
-		prev_cspace = conn_mas->state->colorspace;
 		conn_csc = is_yuv ? sde_connector_get_csc_type(conn_mas)
 				: SDE_CSC_RGB2RGB_L;
 		SDE_DEBUG("csc type for CDM CSC matrix: %u drm_enc: %s",
@@ -4691,8 +4689,8 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 			conn_mas->state->colorspace =
 				_sde_encoder_get_yuv_colorspace(conn_csc);
 			sde_conn->colorspace_updated =
-				(prev_cspace == conn_mas->state->colorspace) ?
-				false : true;
+				(sde_conn->colorspace ==
+				conn_mas->state->colorspace) ? false : true;
 
 			SDE_DEBUG_ENC(sde_enc,
 				"connector updated colorspace to: %d",
@@ -4712,13 +4710,12 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 					phys->enc_cdm_csc,
 					conn_csc);
 			}
-		} else
-			sde_conn->colorspace_updated = true;
-
+		}
 	}
-	if (sde_conn->colorspace_updated && phys->cdm_capable) {
+	if (sde_conn->colorspace_updated) {
 		sde_connector_set_colorspace(sde_conn);
 		sde_conn->colorspace_updated = false;
+		sde_conn->colorspace = conn_mas->state->colorspace;
 	}
 
 	if (sde_enc->cur_master &&

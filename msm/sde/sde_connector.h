@@ -581,6 +581,7 @@ struct sde_misr_sign {
  * @cached_edid: cached edid data for the connector
  * @misr_event_notify_enabled: Flag to indicate if misr event notify is enabled or not
  * @previous_misr_sign: store previous misr signature
+ * @colorspace: store previous colorspace
  * @hwfence_wb_retire_fences_enable: enable hw-fences for wb retire-fence
  */
 struct sde_connector {
@@ -642,6 +643,7 @@ struct sde_connector {
 	bool hdr_supported;
 
 	u32 color_enc_fmt;
+	u32 colorspace;
 
 	u8 hdr_plus_app_ver;
 	u32 qsync_mode;

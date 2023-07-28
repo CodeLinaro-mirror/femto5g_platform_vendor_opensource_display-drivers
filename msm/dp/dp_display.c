@@ -1847,6 +1847,9 @@ static int dp_display_usbpd_attention_cb(struct device *dev)
 		return -ENODEV;
 	}
 
+	if (dp->parser->dp_cec_feature && dp->hpd->hpd_high && dp->hpd->hpd_irq)
+		drm_dp_cec_irq(dp->aux->drm_aux);
+
 	DP_DEBUG("hpd_irq:%d, hpd_high:%d, power_on:%d, is_connected:%d\n",
 			dp->hpd->hpd_irq, dp->hpd->hpd_high,
 			!!dp_display_state_is(DP_STATE_ENABLED),
@@ -2055,6 +2058,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 		dp->aux = NULL;
 		goto error_aux;
 	}
+	dp->aux->connector = dp->dp_display.base_connector;
 
 	rc = dp->aux->drm_aux_register(dp->aux, dp->dp_display.drm_dev);
 	if (rc) {

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -9,6 +9,7 @@
 
 #include "dp_catalog.h"
 #include "drm/drm_dp_helper.h"
+#include "drm_dp_cec.h"
 #include "dp_aux_bridge.h"
 
 #define DP_STATE_NOTIFICATION_SENT          BIT(0)
@@ -40,11 +41,14 @@ struct dp_aux {
 	u32 state;
 
 	bool read;
+	bool dp_cec_feature;
 
 	struct mutex *access_lock;
 	void *ipc_log_context;
 
 	struct drm_dp_aux *drm_aux;
+	struct drm_connector *connector;
+
 	int (*drm_aux_register)(struct dp_aux *aux, struct drm_device *drm_dev);
 	void (*drm_aux_deregister)(struct dp_aux *aux);
 	void (*isr)(struct dp_aux *aux);
