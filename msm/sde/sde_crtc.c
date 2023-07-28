@@ -4344,8 +4344,6 @@ static void sde_crtc_destroy_state(struct drm_crtc *crtc,
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
-	struct drm_encoder *enc;
-	struct sde_kms *sde_kms;
 
 	if (!crtc || !state) {
 		SDE_ERROR("invalid argument(s)\n");
@@ -4354,16 +4352,8 @@ static void sde_crtc_destroy_state(struct drm_crtc *crtc,
 
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(state);
-	sde_kms = _sde_crtc_get_kms(crtc);
 
-	if (!sde_kms) {
-		SDE_ERROR("invalid sde_kms\n");
-		return;
-	}
 	SDE_DEBUG("crtc%d\n", crtc->base.id);
-
-	drm_for_each_encoder_mask(enc, crtc->dev, state->encoder_mask)
-		sde_rm_release(&sde_kms->rm, enc, true);
 
 	sde_cp_clear_state_info(state);
 	__drm_atomic_helper_crtc_destroy_state(state);

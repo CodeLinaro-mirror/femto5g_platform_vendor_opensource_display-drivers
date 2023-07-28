@@ -13,6 +13,7 @@
 #include "sde_formats.h"
 #include "sde_hw_top.h"
 #include "sde_hw_interrupts.h"
+#include "sde_hw_dsc.h"
 #include "sde_core_irq.h"
 #include "sde_crtc.h"
 #include "sde_trace.h"
@@ -207,7 +208,7 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 {
 	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_rm *rm;
-	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter, roi_misr_iter;
+	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter, dsc_iter, roi_misr_iter;
 	struct drm_encoder *encoder;
 	struct drm_connector_state *conn_state;
 	struct sde_shd_hw_ctl *hw_ctl;
@@ -215,6 +216,7 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 	struct sde_hw_pingpong *hw_pp;
 	struct sde_hw_mixer *sde_hw_lm;
 	struct sde_hw_ctl *sde_hw_ctl;
+	struct sde_hw_dsc *hw_dsc;
 	struct sde_shd_hw_roi_misr *hw_roi_misr;
 	int i, rc = 0;
 	int num_mixers = 0;
@@ -234,18 +236,19 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 
 	/* skip if resources already exist */
 	sde_rm_init_hw_iter(&ctl_iter, DRMID(phys_enc->parent), SDE_HW_BLK_CTL);
-	if (sde_rm_get_hw(rm, &ctl_iter))
+	if (sde_rm_atomic_get_hw(rm, state, &ctl_iter))
 		return 0;
 
 	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
 	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
 	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
+	sde_rm_init_hw_iter(&dsc_iter, DRMID(encoder), SDE_HW_BLK_DSC);
 	sde_rm_init_hw_iter(&roi_misr_iter, DRMID(encoder),
 			SDE_HW_BLK_ROI_MISR);
 
 	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		/* reserve lm */
-		if (!sde_rm_get_hw(rm,  &lm_iter))
+		if (!(rc = sde_rm_atomic_get_hw(rm, state, &lm_iter)))
 			break;
 
 		hw_lm = container_of(shd_enc->hw_lm[i], struct sde_shd_hw_mixer, base);
@@ -269,7 +272,7 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 
 	for (i = 0; i < num_mixers; i++) {
 		/* reserve pingpong */
-		if (!sde_rm_get_hw(rm,  &pp_iter))
+		if (!(rc = sde_rm_atomic_get_hw(rm, state, &pp_iter)))
 			break;
 		hw_pp = to_sde_hw_pingpong(pp_iter.hw);
 
@@ -282,8 +285,27 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 	}
 
 	for (i = 0; i < num_mixers; i++) {
+		/* reserve dsc */
+		if (!(rc = sde_rm_atomic_get_hw(rm, state, &dsc_iter)))
+			break;
+		hw_dsc = to_sde_hw_dsc(dsc_iter.hw);
+
+		SDE_DEBUG("reserve DSC%d %pK from enc %d to %d\n",
+			hw_dsc->idx, &hw_dsc->hw,
+			DRMID(encoder),
+			DRMID(phys_enc->parent));
+
+		rc = sde_rm_ext_blk_create_reserve(rm, state,
+				dsc_iter.blk, phys_enc->parent, &hw_dsc->hw);
+		if (rc) {
+			SDE_ERROR("failed to create & reserve dsc\n");
+			break;
+		}
+	}
+
+	for (i = 0; i < num_mixers; i++) {
 		/* reserve roi_misr */
-		if (!sde_rm_get_hw(rm, &roi_misr_iter))
+		if (!(rc = sde_rm_atomic_get_hw(rm, state, &roi_misr_iter)))
 			break;
 		hw_roi_misr = container_of(shd_enc->hw_roi_misr[i],
 				struct sde_shd_hw_roi_misr, base);
@@ -307,7 +329,7 @@ static int _sde_encoder_phys_shd_rm_reserve(struct sde_encoder_phys *phys_enc,
 
 	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		/* reserve ctl */
-		if (!sde_rm_get_hw(rm,  &ctl_iter))
+		if (!(rc = sde_rm_atomic_get_hw(rm, state, &ctl_iter)))
 			break;
 
 		hw_ctl = container_of(shd_enc->hw_ctl[i], struct sde_shd_hw_ctl, base);
