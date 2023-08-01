@@ -253,6 +253,7 @@ struct dp_catalog_io {
 	struct dp_io_data *hdcp_physical;
 	struct dp_io_data *dp_p1;
 	struct dp_io_data *dp_tcsr;
+	struct dp_io_data *usb3_pll;
 };
 
 struct dp_catalog {
