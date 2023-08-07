@@ -7754,6 +7754,7 @@ int dsi_display_set_mode(struct dsi_display *display,
 			 u32 flags)
 {
 	int rc = 0;
+	u64 clock_rate_hz = 0;
 	struct dsi_display_mode adj_mode;
 	struct dsi_mode_info timing;
 
@@ -7795,13 +7796,18 @@ int dsi_display_set_mode(struct dsi_display *display,
 		goto error;
 	}
 
+	if (!display->panel->dyn_clk_caps.dyn_clk_support)
+		clock_rate_hz = adj_mode.pixel_clk_khz * display->ctrl_count * 1000;
+	else
+		clock_rate_hz = adj_mode.priv_info->clk_rate_hz;
+
 	DSI_INFO("mdp_transfer_time=%d, hactive=%d, vactive=%d, fps=%d, clk_rate=%llu\n",
 			adj_mode.priv_info->mdp_transfer_time_us,
 			timing.h_active, timing.v_active, timing.refresh_rate,
-			adj_mode.priv_info->clk_rate_hz);
+			clock_rate_hz);
 	SDE_EVT32(adj_mode.priv_info->mdp_transfer_time_us,
 			timing.h_active, timing.v_active, timing.refresh_rate,
-			adj_mode.priv_info->clk_rate_hz);
+			clock_rate_hz);
 
 	memcpy(display->panel->cur_mode, &adj_mode, sizeof(adj_mode));
 error:
