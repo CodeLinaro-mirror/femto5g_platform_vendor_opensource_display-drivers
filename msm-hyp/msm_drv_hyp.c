@@ -1795,7 +1795,6 @@ void msm_hyp_crtc_commit_done(struct drm_crtc *crtc)
 	drm_connector_list_iter_end(&conn_iter);
 
 	spin_lock(&dev->vblank_time_lock);
-	vblank->last = vblank->time;
 
 	write_seqlock(&vblank->seqlock);
 	vblank->time = ktime_get();
@@ -1803,6 +1802,14 @@ void msm_hyp_crtc_commit_done(struct drm_crtc *crtc)
 	write_sequnlock(&vblank->seqlock);
 
 	spin_unlock(&dev->vblank_time_lock);
+
+	/* send vblank event */
+	spin_lock(&dev->event_lock);
+	if (crtc->state->event) {
+		drm_crtc_send_vblank_event(crtc, crtc->state->event);
+		crtc->state->event = NULL;
+	}
+	spin_unlock(&dev->event_lock);
 
 	HYP_ATRACE_END(__func__);
 
@@ -1920,8 +1927,6 @@ static void _msm_hyp_complete_commit(struct msm_hyp_commit *c)
 
 	_msm_hyp_atomic_wait_for_commit_done(dev, old_state);
 
-	drm_atomic_helper_fake_vblank(old_state);
-
 	drm_atomic_helper_cleanup_planes(dev, old_state);
 
 	_msm_hyp_atomic_complete_commit(dev, old_state);
@@ -2008,9 +2013,7 @@ static void _msm_hyp_atomic_commit_dispatch(struct drm_device *dev,
 static int msm_hyp_atomic_helper_check(struct drm_device *dev,
 		struct drm_atomic_state *state)
 {
-	int i = 0, ret = 0;
-	struct drm_crtc *crtc;
-	struct drm_crtc_state *old_crtc_state, *new_crtc_state;
+	int ret = 0;
 
 	ret = drm_atomic_helper_check(dev, state);
 	if (ret)
@@ -2018,9 +2021,6 @@ static int msm_hyp_atomic_helper_check(struct drm_device *dev,
 		DRM_ERROR("drm_atomic_helper_check - failed\n");
 		return ret;
 	}
-
-	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, new_crtc_state, i)
-		new_crtc_state->no_vblank = true;
 
 	return ret;
 }
