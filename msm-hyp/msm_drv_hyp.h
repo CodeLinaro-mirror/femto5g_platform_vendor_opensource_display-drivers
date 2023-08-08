@@ -148,7 +148,6 @@ struct msm_hyp_crtc_state {
 
 struct msm_hyp_framebuffer {
 	struct drm_framebuffer base;
-	struct drm_gem_object *bo;
 	struct msm_hyp_framebuffer_info *info;
 };
 
