@@ -211,16 +211,18 @@ static int dp_ctrl_update_sink_vx_px(struct dp_ctrl_private *ctrl)
 	u8 buf[DP_MAX_LANES];
 	u8 v_level = ctrl->link->phy_params.v_level;
 	u8 p_level = ctrl->link->phy_params.p_level;
+	bool max_v = ctrl->link->phy_params.max_v_level_reached;
+	bool max_p = ctrl->link->phy_params.max_p_level_reached;
 	u8 size = min_t(u8, sizeof(buf), ctrl->link->link_params.lane_count);
 	u32 max_level_reached = 0;
 
-	if (v_level == ctrl->link->phy_params.max_v_level) {
+	if (max_v || v_level == ctrl->link->phy_params.max_v_level) {
 		DP_DEBUG("DP%d max voltage swing level reached %d\n",
 				ctrl->cell_idx, v_level);
 		max_level_reached |= DP_TRAIN_MAX_SWING_REACHED;
 	}
 
-	if (p_level == ctrl->link->phy_params.max_p_level) {
+	if (max_p || p_level == ctrl->link->phy_params.max_p_level) {
 		DP_DEBUG("DP%d max pre-emphasis level reached %d\n",
 				ctrl->cell_idx, p_level);
 		max_level_reached |= DP_TRAIN_MAX_PRE_EMPHASIS_REACHED;
@@ -627,6 +629,8 @@ static int dp_ctrl_link_train(struct dp_ctrl_private *ctrl)
 
 	ctrl->link->phy_params.p_level = ctrl->parser->link_training_min_plevel;
 	ctrl->link->phy_params.v_level = ctrl->parser->link_training_min_vlevel;
+	ctrl->link->phy_params.max_v_level_reached = false;
+	ctrl->link->phy_params.max_p_level_reached = false;
 
 	link_info.num_lanes = ctrl->link->link_params.lane_count;
 	link_info.rate = drm_dp_bw_code_to_link_rate(
@@ -678,6 +682,7 @@ end:
 	wmb();
 
 	dp_ctrl_clear_training_pattern(ctrl);
+
 	return ret;
 }
 
