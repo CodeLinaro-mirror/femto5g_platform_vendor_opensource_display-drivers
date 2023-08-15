@@ -677,7 +677,11 @@ static int dp_ctrl_link_train(struct dp_ctrl_private *ctrl)
 	DP_INFO("DP%d link training #2 successful\n", ctrl->cell_idx);
 
 end:
-	dp_ctrl_state_ctrl(ctrl, 0);
+	if (ret)
+		dp_ctrl_state_ctrl(ctrl, 0x00);
+	else
+		// According to HW, need to set to 0x80 (SEND_VIDEO) as soon as LT is done
+		dp_ctrl_state_ctrl(ctrl, 0x80);
 	/* Make sure to clear the current pattern before starting a new one */
 	wmb();
 
@@ -698,7 +702,8 @@ static int dp_ctrl_setup_main_link(struct dp_ctrl_private *ctrl)
 	 * transitioned to PUSH_IDLE. In order to start transmitting a link
 	 * training pattern, we have to first to a DP software reset.
 	 */
-	ctrl->catalog->reset(ctrl->catalog);
+	// Moved to dp_ctrl_enable_link_clock
+	//ctrl->catalog->reset(ctrl->catalog);
 
 	if (ctrl->fec_mode)
 		drm_dp_dpcd_writeb(ctrl->aux->drm_aux, DP_FEC_CONFIGURATION,
@@ -760,6 +765,12 @@ static int dp_ctrl_enable_link_clock(struct dp_ctrl_private *ctrl)
 	if (ret) {
 		DP_ERR("DP%d Unabled to start link clocks\n", ctrl->cell_idx);
 		ret = -EINVAL;
+	} else {
+		/* Make sure restart the retimer after link clock is enabled */
+		ctrl->catalog->reset_retimer(ctrl->catalog);
+
+		// SW reset controller
+		ctrl->catalog->reset(ctrl->catalog);
 	}
 
 	return ret;
@@ -1006,6 +1017,7 @@ static int dp_ctrl_host_init(struct dp_ctrl *dp_ctrl, bool flip, bool reset)
 	catalog = ctrl->catalog;
 
 	if (reset) {
+		catalog->reset(ctrl->catalog);
 		catalog->usb_reset(ctrl->catalog, flip);
 		catalog->phy_reset(ctrl->catalog);
 	}
@@ -1120,6 +1132,14 @@ static int dp_ctrl_link_maintenance(struct dp_ctrl *dp_ctrl)
 		ret = -EINVAL;
 		goto end;
 	}
+
+	if (ctrl->stream_count)
+		dp_ctrl_push_idle(ctrl, DP_STREAM_0);
+
+	// SW reset
+	ctrl->catalog->mainlink_ctrl(ctrl->catalog, false);
+	udelay(1000);
+	ctrl->catalog->mainlink_ctrl(ctrl->catalog, true);
 
 	do {
 		if (atomic_read(&ctrl->aborted))
