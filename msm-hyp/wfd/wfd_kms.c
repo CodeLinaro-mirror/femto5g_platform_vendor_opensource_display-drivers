@@ -916,6 +916,11 @@ static int wfd_kms_get_connector_infos(struct msm_hyp_kms *kms,
 		priv->wfd_port_id = wfd_kms->port_ids[i];
 		priv->wfd_port_idx = i;
 
+		priv->base.panel_orientation = wfdGetPortAttribi_User(
+				priv->wfd_device,
+				priv->wfd_port,
+				WFD_PORT_ROTATION);
+
 		priv->base.connector_type = _wfd_kms_connector_get_type(
 				priv->wfd_device,
 				priv->wfd_port, priv->wfd_port_id,
