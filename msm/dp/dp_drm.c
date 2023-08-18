@@ -104,6 +104,11 @@ void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
 	u32 flags = 0;
 	struct dp_parser *parser;
 
+	if (!dp_mode) {
+		DP_ERR("Invalid mode\n");
+		return;
+	}
+
 	memset(drm_mode, 0, sizeof(*drm_mode));
 	display->get_parser(display, (void **)&parser);
 
