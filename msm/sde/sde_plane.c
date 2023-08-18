@@ -4811,7 +4811,7 @@ static void sde_plane_early_unregister(struct drm_plane *plane)
 	_sde_plane_destroy_debugfs(plane);
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 static bool sde_plane_format_mod_supported(struct drm_plane *plane,
 		uint32_t format, uint64_t modifier)
 {
@@ -4830,7 +4830,7 @@ static const struct drm_plane_funcs sde_plane_funcs = {
 		.atomic_destroy_state = sde_plane_destroy_state,
 		.late_register = sde_plane_late_register,
 		.early_unregister = sde_plane_early_unregister,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 		.format_mod_supported = sde_plane_format_mod_supported,
 #endif
 };
@@ -4945,7 +4945,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 
 	psde->nformats = sde_populate_formats(format_list,
 				psde->formats,
-				0,
+				psde->modifiers,
 				ARRAY_SIZE(psde->formats));
 
 	if (!psde->nformats) {
@@ -4959,7 +4959,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 		type = DRM_PLANE_TYPE_OVERLAY;
 	ret = drm_universal_plane_init(dev, plane, 0xff, &sde_plane_funcs,
 				psde->formats, psde->nformats,
-				NULL, type, NULL);
+				psde->modifiers, type, NULL);
 	if (ret)
 		goto clean_sspp;
 
