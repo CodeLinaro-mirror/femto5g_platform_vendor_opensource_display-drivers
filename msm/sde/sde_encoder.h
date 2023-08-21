@@ -634,7 +634,8 @@ static inline u32 sde_encoder_get_dfps_maxfps(struct drm_encoder *drm_enc)
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
 
-	return sde_enc->mode_info.dfps_maxfps;
+	return sde_enc->mode_info.dfps_maxfps ? sde_enc->mode_info.dfps_maxfps :
+			sde_enc->mode_info.frame_rate;
 }
 
 /**
