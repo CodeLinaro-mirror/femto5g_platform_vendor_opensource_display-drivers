@@ -5326,7 +5326,7 @@ end:
 	return rc;
 }
 
-static void dsi_display_firmware_display(const struct firmware *fw,
+static void __maybe_unused dsi_display_firmware_display(const struct firmware *fw,
 				void *context)
 {
 	struct dsi_display *display = context;
@@ -5391,6 +5391,12 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 
 	boot_disp = &boot_displays[index];
 	node = pdev->dev.of_node;
+	/*
+	 * Display panel information parsed from device-tree node
+	 * instead of bootloader
+	 */
+	boot_disp->boot_disp_en = false;
+
 	if (boot_disp->boot_disp_en) {
 		mdp_node = of_parse_phandle(node, "qcom,mdp", 0);
 		if (!mdp_node) {
@@ -5404,6 +5410,7 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 		if (!panel_node)
 			DSI_WARN("panel_node %s not found\n", boot_disp->name);
 	} else {
+		pr_info("%s: finding panel from device node\n", __func__);
 		panel_node = of_parse_phandle(node,
 				"qcom,dsi-default-panel", 0);
 		if (!panel_node)
@@ -5420,21 +5427,6 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 	dsi_display_parse_cmdline_topology(display, index);
 
 	platform_set_drvdata(pdev, display);
-
-	/* initialize display in firmware callback */
-	if (!boot_disp->boot_disp_en && IS_ENABLED(CONFIG_DSI_PARSER)) {
-		if (!strcmp(display->display_type, "primary"))
-			firm_req = !request_firmware_nowait(
-				THIS_MODULE, 1, "dsi_prop",
-				&pdev->dev, GFP_KERNEL, display,
-				dsi_display_firmware_display);
-
-		else if (!strcmp(display->display_type, "secondary"))
-			firm_req = !request_firmware_nowait(
-				THIS_MODULE, 1, "dsi_prop_sec",
-				&pdev->dev, GFP_KERNEL, display,
-				dsi_display_firmware_display);
-	}
 
 	if (!firm_req) {
 		rc = dsi_display_init(display);
