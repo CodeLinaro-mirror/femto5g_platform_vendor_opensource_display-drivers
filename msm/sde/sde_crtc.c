@@ -2856,9 +2856,14 @@ void sde_crtc_complete_flip(struct drm_crtc *crtc,
 		struct drm_file *file)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
-	struct drm_device *dev = crtc->dev;
+	struct drm_device *dev;
 	struct drm_pending_vblank_event *event;
 	unsigned long flags;
+
+	if (!crtc)
+		return;
+
+	dev = crtc->dev;
 
 	spin_lock_irqsave(&dev->event_lock, flags);
 	event = sde_crtc->event;
@@ -2875,6 +2880,7 @@ void sde_crtc_complete_flip(struct drm_crtc *crtc,
 		DRM_DEBUG_VBL("%s: send event: %pK\n",
 					sde_crtc->name, event);
 		SDE_EVT32_VERBOSE(DRMID(crtc));
+		drm_crtc_vblank_put(crtc);
 		drm_crtc_send_vblank_event(crtc, event);
 	}
 
@@ -4068,6 +4074,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	struct drm_encoder *encoder;
 	struct drm_device *dev;
 	struct sde_kms *sde_kms;
+	struct drm_pending_vblank_event *event;
 	struct sde_splash_display *splash_display;
 	bool cont_splash_enabled = false;
 	size_t i;
@@ -4092,6 +4099,11 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 
 	sde_crtc = to_sde_crtc(crtc);
 	dev = crtc->dev;
+	event = crtc->state->event;
+
+	/* Get a vblank event refcount to enable page-flip */
+	if (event)
+		WARN_ON(drm_crtc_vblank_get(crtc) != 0);
 
 	if (!sde_crtc->num_mixers) {
 		_sde_crtc_setup_mixers(crtc);
@@ -4344,8 +4356,6 @@ static void sde_crtc_destroy_state(struct drm_crtc *crtc,
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
-	struct drm_encoder *enc;
-	struct sde_kms *sde_kms;
 
 	if (!crtc || !state) {
 		SDE_ERROR("invalid argument(s)\n");
@@ -4354,16 +4364,8 @@ static void sde_crtc_destroy_state(struct drm_crtc *crtc,
 
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(state);
-	sde_kms = _sde_crtc_get_kms(crtc);
 
-	if (!sde_kms) {
-		SDE_ERROR("invalid sde_kms\n");
-		return;
-	}
 	SDE_DEBUG("crtc%d\n", crtc->base.id);
-
-	drm_for_each_encoder_mask(enc, crtc->dev, state->encoder_mask)
-		sde_rm_release(&sde_kms->rm, enc, true);
 
 	sde_cp_clear_state_info(state);
 	__drm_atomic_helper_crtc_destroy_state(state);
@@ -5211,6 +5213,7 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	struct msm_display_mode *msm_mode;
 	enum sde_intf_mode intf_mode;
 	struct sde_kms *kms;
+	struct drm_pending_vblank_event *event;
 
 	if (!crtc || !crtc->dev || !crtc->dev->dev_private) {
 		SDE_ERROR("invalid crtc\n");
@@ -5234,6 +5237,8 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	SDE_EVT32_VERBOSE(DRMID(crtc));
 	sde_crtc = to_sde_crtc(crtc);
 
+	event = crtc->state->event;
+
 	/*
 	 * Avoid drm_crtc_vblank_on during seamless DMS case
 	 * when CRTC is already in enabled state
@@ -5249,6 +5254,9 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 			if (test_bit(SDE_FEATURE_HW_VSYNC_TS, kms->catalog->features))
 				drm_crtc_set_max_vblank_count(crtc, INT_MAX);
 			drm_crtc_vblank_on(crtc);
+			/* Enable vblank event in first commit cycle */
+			if (event)
+				WARN_ON(drm_crtc_vblank_get(crtc) != 0);
 		}
 	}
 
