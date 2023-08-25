@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -49,6 +49,7 @@ enum dp_pll_revision {
 	DP_PLL_4NM_V1_1,
 	EDP_PLL_7NM,
 	EDP_PLL_5NM,
+	DP_PLL_14NM,
 };
 
 enum hsclk_rate {
@@ -83,6 +84,7 @@ static inline const char *dp_pll_get_revision(enum dp_pll_revision rev)
 	case DP_PLL_4NM_V1_1:	return "DP_PLL_4NM_V1_1";
 	case EDP_PLL_7NM:	return "EDP_PLL_7NM";
 	case EDP_PLL_5NM:	return "EDP_PLL_5NM";
+	case DP_PLL_14NM:	return "DP_PLL_14NM";
 	default:		return "???";
 	}
 }
@@ -188,6 +190,8 @@ int dp_pll_clock_register_4nm(struct dp_pll *pll);
 void dp_pll_clock_unregister_4nm(struct dp_pll *pll);
 int edp_pll_clock_register_7nm(struct dp_pll *pll);
 int edp_pll_clock_register_5nm(struct dp_pll *pll);
+int dp_pll_clock_register_14nm(struct dp_pll *pll);
+void dp_pll_clock_unregister_14nm(struct dp_pll *pll);
 
 struct dp_pll_in {
 	struct platform_device *pdev;
