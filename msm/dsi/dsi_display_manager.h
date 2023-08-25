@@ -36,4 +36,7 @@ int dsi_display_mgr_phy_pll_toggle(void *priv, bool enable);
 int dsi_display_mgr_panel_pre_prepare(struct dsi_display *display);
 int dsi_display_mgr_panel_post_unprepare(struct dsi_display *display);
 int dsi_display_config_mgr_for_cont_splash(struct dsi_display *display);
+int dsi_display_mgr_send_fps_switch_cmd(struct dsi_display *display);
+void dsi_display_mgr_pre_fps_switch_cmd(struct dsi_display *display);
+void dsi_display_mgr_post_fps_switch_cmd(struct dsi_display *display);
 #endif /* _DSI_DISPLAY_MANAGER_H_ */

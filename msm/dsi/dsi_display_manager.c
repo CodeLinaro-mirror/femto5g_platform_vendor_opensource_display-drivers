@@ -715,3 +715,122 @@ error:
 	mutex_unlock(&disp_mgr.disp_mgr_mutex);
 	return rc;
 }
+
+void dsi_display_mgr_pre_fps_switch_cmd(struct dsi_display *display)
+{
+	struct dsi_display *m_display;
+	struct dsi_display *s_display;
+	struct dsi_display_ctrl *display_ctrl;
+	int i, rc;
+	u32 timeout_in_ms = 100;
+
+	if (!display) {
+		DSI_ERR("invalid arguments\n");
+		return;
+	}
+
+	if (!display->panel->ctl_op_sync)
+		return;
+
+	mutex_lock(&disp_mgr.disp_mgr_mutex);
+
+	m_display = display_manager_get_master();
+	s_display = display_manager_get_slave();
+	if (!m_display || !s_display)
+		goto error;
+
+	rc = wait_for_completion_timeout(&m_display->fps_switch_cmd_ready,
+		msecs_to_jiffies(timeout_in_ms));
+	if (rc == 0)
+		DSI_ERR("Timeout waiting for master display fps switch cmd ready\n");
+
+	mutex_lock(&m_display->panel->panel_lock);
+	mutex_lock(&s_display->panel->panel_lock);
+
+	display_for_each_ctrl(i, m_display) {
+		display_ctrl = &m_display->ctrl[i];
+		if (!display_ctrl)
+			continue;
+		display_ctrl->ctrl->host_config.common_config.min_dma_sched_line =
+			m_display->panel->host_config.min_dma_sched_line;
+	}
+error:
+	mutex_unlock(&disp_mgr.disp_mgr_mutex);
+}
+
+void dsi_display_mgr_post_fps_switch_cmd(struct dsi_display *display)
+{
+	struct dsi_display *m_display;
+	struct dsi_display *s_display;
+	struct dsi_display_ctrl *display_ctrl;
+	int i;
+
+	if (!display) {
+		DSI_ERR("invalid arguments\n");
+		return;
+	}
+
+	if (!display->panel->ctl_op_sync)
+		return;
+
+	mutex_lock(&disp_mgr.disp_mgr_mutex);
+
+	m_display = display_manager_get_master();
+	s_display = display_manager_get_slave();
+	if (!m_display || !s_display)
+		goto error;
+
+	reinit_completion(&m_display->fps_switch_cmd_ready);
+	m_display->panel->host_config.min_dma_sched_line = 0;
+
+	display_for_each_ctrl(i, m_display) {
+		display_ctrl = &m_display->ctrl[i];
+		if (!display_ctrl)
+			continue;
+		display_ctrl->ctrl->host_config.common_config.min_dma_sched_line = 0;
+	}
+	mutex_unlock(&m_display->panel->panel_lock);
+	mutex_unlock(&s_display->panel->panel_lock);
+error:
+	mutex_unlock(&disp_mgr.disp_mgr_mutex);
+}
+
+int dsi_display_mgr_send_fps_switch_cmd(struct dsi_display *display)
+{
+	int rc = 0;
+	struct dsi_display *m_display;
+	struct dsi_display *s_display;
+
+	if (!display) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	if (!display->panel->ctl_op_sync)
+		return 0;
+
+	mutex_lock(&disp_mgr.disp_mgr_mutex);
+
+	m_display = display_manager_get_master();
+	s_display = display_manager_get_slave();
+	if (!m_display || !s_display) {
+		rc = -EINVAL;
+		goto error;
+	}
+
+	rc = dsi_display_send_fps_switch_cmd(m_display);
+	if (rc) {
+		DSI_ERR("failed to send fps switch cmd for master display\n");
+		goto error;
+	}
+
+	rc = dsi_display_send_fps_switch_cmd(s_display);
+	if (rc) {
+		DSI_ERR("failed to send fps switch cmd for slave display\n");
+		goto error;
+	}
+
+error:
+	mutex_unlock(&disp_mgr.disp_mgr_mutex);
+	return rc;
+}

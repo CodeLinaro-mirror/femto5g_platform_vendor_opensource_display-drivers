@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -16,6 +16,7 @@
 #include <linux/string.h>
 #include "dsi_drm.h"
 #include "dsi_display.h"
+#include "dsi_display_manager.h"
 #include "sde_crtc.h"
 #include "sde_rm.h"
 #include "sde_vm.h"
@@ -1004,6 +1005,80 @@ struct sde_connector_dyn_hdr_metadata *sde_connector_get_dyn_hdr_meta(
 
 	c_state = to_sde_connector_state(connector->state);
 	return &c_state->dyn_hdr_meta;
+}
+
+void sde_connector_pre_fps_switch_cmd(struct drm_connector *connector,
+		u32 flush_sync_window_max_line)
+{
+	struct sde_connector *c_conn;
+	struct dsi_display *display;
+
+	if (!connector) {
+		SDE_ERROR("invalid argument\n");
+		return;
+	}
+
+	c_conn = to_sde_connector(connector);
+	if (!c_conn->display) {
+		SDE_ERROR("invalid connector display\n");
+		return;
+	}
+
+	display = (struct dsi_display *)c_conn->display;
+
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		if (display->is_master) {
+			display->panel->host_config.min_dma_sched_line =
+				flush_sync_window_max_line + 1;
+			complete(&display->fps_switch_cmd_ready);
+		} else {
+			dsi_display_mgr_pre_fps_switch_cmd(display);
+		}
+	}
+}
+
+void sde_connector_send_fps_switch_cmd(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn;
+	struct dsi_display *display;
+
+	if (!connector) {
+		SDE_ERROR("invalid argument\n");
+		return;
+	}
+
+	c_conn = to_sde_connector(connector);
+	if (!c_conn->display) {
+		SDE_ERROR("invalid connector display\n");
+		return;
+	}
+
+	display = (struct dsi_display *)c_conn->display;
+
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+		dsi_display_mgr_send_fps_switch_cmd(display);
+}
+
+void sde_connector_post_fps_switch_cmd(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn;
+	struct dsi_display *display;
+
+	if (!connector) {
+		SDE_ERROR("invalid argument\n");
+		return;
+	}
+
+	c_conn = to_sde_connector(connector);
+	if (!c_conn->display) {
+		SDE_ERROR("invalid connector display\n");
+		return;
+	}
+
+	display = (struct dsi_display *)c_conn->display;
+
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+		dsi_display_mgr_post_fps_switch_cmd(display);
 }
 
 int sde_connector_pre_kickoff(struct drm_connector *connector)

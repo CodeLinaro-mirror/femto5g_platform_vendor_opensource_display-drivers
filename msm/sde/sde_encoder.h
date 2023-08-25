@@ -372,14 +372,6 @@ int sde_encoder_wait_for_event(struct drm_encoder *drm_encoder,
 						enum msm_event_wait event);
 
 /**
- * sde_encoder_helper_get_skewed_vsync_status: Returns whether skewed-vsync
- *			feature is enabled/disabled.
- * @drm_enc:	encoder pointer
- * Returns:	true/false if skew-vsync feature is enabled/disabled.
- */
-bool sde_encoder_helper_get_skewed_vsync_status(struct drm_encoder *drm_enc);
-
-/**
  * sde_encoder_idle_request - request for idle request to avoid 4 vsync cycle
  *                            to turn off the clocks.
  * @encoder:	encoder pointer
