@@ -724,13 +724,13 @@ static int _msm_hyp_connector_encoder_init(struct drm_device *ddev,
 }
 
 static void msm_hyp_crtc_atomic_enable(struct drm_crtc *crtc,
-	struct drm_atomic_state *old_state)
+		struct drm_atomic_state *old_state)
 {
 	drm_crtc_vblank_on(crtc);
 }
 
 static void msm_hyp_crtc_atomic_disable(struct drm_crtc *crtc,
-	struct drm_atomic_state *old_state)
+		struct drm_atomic_state *old_state)
 {
 	drm_crtc_vblank_off(crtc);
 }
@@ -906,17 +906,16 @@ static void msm_hyp_disable_vblank(struct drm_crtc *crtc)
 }
 
 static const struct drm_crtc_funcs msm_hyp_crtc_funcs = {
-	.set_config             = drm_atomic_helper_set_config,
-	.destroy                = msm_hyp_crtc_destroy,
-	.page_flip              = drm_atomic_helper_page_flip,
-	.atomic_set_property    = msm_hyp_crtc_set_property,
-	.atomic_get_property    = msm_hyp_crtc_get_property,
-	.reset                  = msm_hyp_crtc_reset,
-	.atomic_duplicate_state = msm_hyp_crtc_duplicate_state,
-	.atomic_destroy_state   = msm_hyp_crtc_destroy_state,
-	.enable_vblank          = msm_hyp_enable_vblank,
-	.disable_vblank         = msm_hyp_disable_vblank,
-
+	.set_config               = drm_atomic_helper_set_config,
+	.destroy                  = msm_hyp_crtc_destroy,
+	.page_flip                = drm_atomic_helper_page_flip,
+	.atomic_set_property      = msm_hyp_crtc_set_property,
+	.atomic_get_property      = msm_hyp_crtc_get_property,
+	.reset                    = msm_hyp_crtc_reset,
+	.atomic_duplicate_state   = msm_hyp_crtc_duplicate_state,
+	.atomic_destroy_state     = msm_hyp_crtc_destroy_state,
+	.enable_vblank            = msm_hyp_enable_vblank,
+	.disable_vblank           = msm_hyp_disable_vblank,
 };
 
 static int _msm_hyp_crtc_init_caps(struct msm_hyp_crtc *crtc)
@@ -1567,9 +1566,7 @@ void msm_hyp_framebuffer_destroy(struct drm_framebuffer *framebuffer)
 	if (fb->info && fb->info->destroy)
 		fb->info->destroy(framebuffer);
 
-	drm_gem_object_put(fb->bo);
-	drm_framebuffer_cleanup(&fb->base);
-	kfree(fb);
+	drm_gem_fb_destroy(framebuffer);
 }
 
 static const struct drm_framebuffer_funcs msm_hyp_framebuffer_funcs = {
@@ -1616,67 +1613,127 @@ static int msm_hyp_shmem_sync_sg_for_device(struct drm_gem_object *obj)
 	return 0;
 }
 #endif
-static struct drm_framebuffer *msm_hyp_framebuffer_create(
-		struct drm_device *dev, struct drm_file *file,
-		const struct drm_mode_fb_cmd2 *mode_cmd)
+
+static struct drm_framebuffer *msm_hyp_framebuffer_init(struct drm_device *dev,
+		const struct drm_mode_fb_cmd2 *mode_cmd, struct drm_gem_object **bos)
 {
+	const struct drm_format_info *info = drm_get_format_info(dev, mode_cmd);
 	struct msm_hyp_drm_private *priv = dev->dev_private;
 	struct msm_hyp_kms *kms = priv->kms;
-	struct msm_hyp_framebuffer *fb;
-	struct drm_gem_object *bo;
-	int ret;
+	struct msm_hyp_framebuffer *msm_hyp_fb = NULL;
+	struct drm_framebuffer *fb = NULL;
+	int ret, i, num_planes, width = 0, height = 0, min_size = 0;
 
 	DRM_DEBUG("create framebuffer: dev=%pK, mode_cmd=%pK (%dx%d@%4.4s)",
 			dev, mode_cmd, mode_cmd->width, mode_cmd->height,
 			(char *)&mode_cmd->pixel_format);
-
-	bo = drm_gem_object_lookup(file, mode_cmd->handles[0]);
-	if (IS_ERR_OR_NULL(bo)) {
-		DRM_ERROR("failed to find gem bo %d\n", mode_cmd->handles[0]);
-		return ERR_PTR(-EINVAL);
+	if (!info) {
+		DRM_ERROR("drm format info is not present\n");
+		return NULL;
 	}
 
-	ret = msm_hyp_shmem_sync_sg_for_device(bo);
-	if (ret) {
-		DRM_ERROR("failed to do dumb buffer sync\n");
-		return ERR_PTR(ret);
-	}
+	num_planes = info->num_planes;
 
-	fb = kzalloc(sizeof(*fb), GFP_KERNEL);
-	if (!fb) {
+	msm_hyp_fb = kzalloc(sizeof(*msm_hyp_fb), GFP_KERNEL);
+	if (!msm_hyp_fb) {
 		ret = -ENOMEM;
 		goto fail;
 	}
 
-	drm_helper_mode_fill_fb_struct(dev, &fb->base, mode_cmd);
-	fb->bo = bo;
+	fb = &msm_hyp_fb->base;
 
-	ret = drm_framebuffer_init(dev, &fb->base, &msm_hyp_framebuffer_funcs);
+	if (num_planes > ARRAY_SIZE(fb->obj)) {
+		DRM_ERROR("num of planes is more than array of framebuffer objects");
+		ret = -EINVAL;
+		goto fail;
+	}
+
+	for (i = 0; i < num_planes; i++) {
+		width = mode_cmd->width / (i ? info->hsub : 1);
+		height = mode_cmd->height / (i ? info->vsub : 1);
+
+		min_size = (height - 1) * mode_cmd->pitches[i]
+			 + width * info->cpp[i]
+			 + mode_cmd->offsets[i];
+
+		if (bos[i]->size < min_size) {
+			DRM_ERROR("gem obj bo size is less than min_size\n");
+			ret = -EINVAL;
+			goto fail;
+		}
+
+		msm_hyp_fb->base.obj[i] = bos[i];
+	}
+
+	drm_helper_mode_fill_fb_struct(dev, fb, mode_cmd);
+
+	ret = drm_framebuffer_init(dev, fb, &msm_hyp_framebuffer_funcs);
 	if (ret) {
 		DRM_ERROR("framebuffer init failed: %d\n", ret);
 		goto fail;
 	}
 
-	fb->base.obj[0] = bo;
-
 	if (kms->funcs && kms->funcs->get_framebuffer_info) {
-		ret = kms->funcs->get_framebuffer_info(kms, &fb->base,
-				&fb->info);
+		ret = kms->funcs->get_framebuffer_info(kms, fb,
+				&msm_hyp_fb->info);
 		if (ret) {
 			DRM_ERROR("failed to get framebuffer info\n");
 			goto cleanup;
 		}
 	}
 
-	DRM_DEBUG("create: FB ID: %d (%pK)", fb->base.base.id, fb);
-
-	return &fb->base;
-
+	return fb;
 cleanup:
-	drm_framebuffer_cleanup(&fb->base);
+	drm_framebuffer_cleanup(fb);
 fail:
-	kfree(fb);
-	drm_gem_object_put(bo);
+	kfree(msm_hyp_fb);
+
+	return ERR_PTR(ret);
+}
+
+static struct drm_framebuffer *msm_hyp_framebuffer_create(
+		struct drm_device *dev, struct drm_file *file,
+		const struct drm_mode_fb_cmd2 *mode_cmd)
+{
+	const struct drm_format_info *info = drm_get_format_info(dev, mode_cmd);
+	struct drm_framebuffer *fb;
+	struct drm_gem_object *bos[DRM_FORMAT_MAX_PLANES] = {0};
+	int ret, i, num_planes;
+
+	if (!info) {
+		DRM_ERROR("drm format info is not present\n");
+		return NULL;
+	}
+
+	num_planes = info->num_planes;
+	/* TODO: this part should support multiple handles */
+	for (i = 0; i < num_planes; i++) {
+		bos[i] = drm_gem_object_lookup(file, mode_cmd->handles[i]);
+		if (IS_ERR_OR_NULL(bos[i])) {
+			DRM_ERROR("failed to find gem bo %d\n", mode_cmd->handles[i]);
+			ret = -EINVAL;
+			goto out_unref;
+		}
+
+		ret = msm_hyp_shmem_sync_sg_for_device(bos[i]);
+		if (ret) {
+			DRM_ERROR("failed to do dumb buffer sync\n");
+			goto out_unref;
+		}
+	}
+
+	fb = msm_hyp_framebuffer_init(dev, mode_cmd, bos);
+	if (IS_ERR(fb)) {
+		ret = PTR_ERR(fb);
+		DRM_ERROR("frame buffer init is failed %d\n", ret);
+		goto out_unref;
+	}
+
+	return fb;
+
+out_unref:
+	for (i = 0; i < num_planes; i++)
+		drm_gem_object_put(bos[i]);
 	return ERR_PTR(ret);
 }
 
@@ -1796,7 +1853,6 @@ void msm_hyp_crtc_commit_done(struct drm_crtc *crtc)
 	drm_connector_list_iter_end(&conn_iter);
 
 	spin_lock(&dev->vblank_time_lock);
-	vblank->last = vblank->time;
 
 	write_seqlock(&vblank->seqlock);
 	vblank->time = ktime_get();
@@ -1804,6 +1860,14 @@ void msm_hyp_crtc_commit_done(struct drm_crtc *crtc)
 	write_sequnlock(&vblank->seqlock);
 
 	spin_unlock(&dev->vblank_time_lock);
+
+	/* send vblank event */
+	spin_lock(&dev->event_lock);
+	if (crtc->state->event) {
+		drm_crtc_send_vblank_event(crtc, crtc->state->event);
+		crtc->state->event = NULL;
+	}
+	spin_unlock(&dev->event_lock);
 
 	HYP_ATRACE_END(__func__);
 
@@ -1921,8 +1985,6 @@ static void _msm_hyp_complete_commit(struct msm_hyp_commit *c)
 
 	_msm_hyp_atomic_wait_for_commit_done(dev, old_state);
 
-	drm_atomic_helper_fake_vblank(old_state);
-
 	drm_atomic_helper_cleanup_planes(dev, old_state);
 
 	_msm_hyp_atomic_complete_commit(dev, old_state);
@@ -2009,9 +2071,7 @@ static void _msm_hyp_atomic_commit_dispatch(struct drm_device *dev,
 static int msm_hyp_atomic_helper_check(struct drm_device *dev,
 		struct drm_atomic_state *state)
 {
-	int i = 0, ret = 0;
-	struct drm_crtc *crtc;
-	struct drm_crtc_state *old_crtc_state, *new_crtc_state;
+	int ret = 0;
 
 	ret = drm_atomic_helper_check(dev, state);
 	if (ret)
@@ -2019,9 +2079,6 @@ static int msm_hyp_atomic_helper_check(struct drm_device *dev,
 		DRM_ERROR("drm_atomic_helper_check - failed\n");
 		return ret;
 	}
-
-	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state, new_crtc_state, i)
-		new_crtc_state->no_vblank = true;
 
 	return ret;
 }
@@ -2082,7 +2139,7 @@ static const struct drm_mode_config_funcs msm_hyp_mode_config_funcs = {
 
 static int _msm_hyp_hw_init(struct drm_device *ddev)
 {
-	int ret;
+	int ret = 0;
 
 	ret = _msm_hyp_mode_create_properties(ddev);
 	if (ret) {
@@ -2108,7 +2165,6 @@ static int _msm_hyp_hw_init(struct drm_device *ddev)
 fail:
 	return ret;
 }
-
 
 static int msm_hyp_open(struct drm_device *dev, struct drm_file *file)
 {
@@ -2422,6 +2478,7 @@ static int __init msm_drm_register(void)
 {
 	DRM_DEBUG("init");
 	wfd_kms_register();
+	virtio_kms_register();
 	return platform_driver_register(&msm_platform_driver);
 }
 
@@ -2430,6 +2487,7 @@ static void __exit msm_drm_unregister(void)
 	DRM_DEBUG("fini");
 	platform_driver_unregister(&msm_platform_driver);
 	wfd_kms_unregister();
+	virtio_kms_unregister();
 }
 
 module_init(msm_drm_register);

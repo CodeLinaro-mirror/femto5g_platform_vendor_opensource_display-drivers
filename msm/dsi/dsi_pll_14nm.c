@@ -434,6 +434,11 @@ static void dsi_pll_calc_ssc(struct dsi_pll_14nm *pll,
 		return;
 	}
 
+	if (!rsc) {
+		DSI_PLL_DBG(rsc, "rsc is null\n");
+		return;
+	}
+
         ssc_period = config->ssc_freq / 500;
         period = (unsigned long)rsc->vco_ref_clk_rate / 1000;
         ssc_period  = CEIL(period, ssc_period);

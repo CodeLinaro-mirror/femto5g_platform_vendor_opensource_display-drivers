@@ -12,7 +12,6 @@
 #include <linux/slab.h>
 #include <linux/atomic.h>
 #include <linux/kthread.h>
-#include <linux/spinlock.h>
 #include "msm_hyp_trace.h"
 #include "user_os_utils.h"
 #include "wire_user.h"
@@ -27,8 +26,7 @@
 //#define DEBUG_USER_HAB_UTILS
 #define CHANNEL_OPENWFD		0
 #define CHANNEL_EVENTS		1
-#define CHANNEL_BUFFERS		2
-#define MAX_CHANNELS		3
+#define MAX_CHANNELS		2
 #define MAX_RECV_PACKET_RETRY	10
 #define WFD_MAX_NUM_OF_CLIENTS	10
 #define WFD_CLIENT_ID_BASE	WFD_CLIENT_ID_CLUSTER
@@ -37,7 +35,6 @@
 
 #define DO_NOT_LOCK_CHANNEL		0x01
 #define HAB_NO_TIMEOUT_VAL		-1
-#define HAB_BUF_CHANNEL_TIMEOUT_VAL	500
 
 #if !defined(__QNXNTO__) && !defined(__linux__)
 #define CLOCK_MONOTONIC		CLOCK_REALTIME
@@ -92,36 +89,29 @@ static u32 channel_map[WFD_MAX_NUM_OF_CLIENTS][3] = {
 	[WFD_CLIENT_ID_LA_GVM - WFD_CLIENT_ID_BASE] /* LA GVM */
 	{
 		MM_DISP_1,
-		MM_DISP_2,
-		MM_DISP_3
+		MM_DISP_2
 	},
 	[WFD_CLIENT_ID_LV_GVM - WFD_CLIENT_ID_BASE] /* LV GVM */
 	{
 		MM_DISP_1,
-		MM_DISP_2,
-		MM_DISP_3
+		MM_DISP_2
 	},
 	[WFD_CLIENT_ID_LA_CONTAINER - WFD_CLIENT_ID_BASE] /* LA Container */
 	{
 		MM_DISP_1,
-		MM_DISP_2,
-		MM_DISP_3
+		MM_DISP_2
 	},
 	[WFD_CLIENT_ID_LV_CONTAINER - WFD_CLIENT_ID_BASE] /* LV Container */
 	{
 		MM_DISP_1,
-		MM_DISP_2,
-		MM_DISP_3
+		MM_DISP_2
 	},
 };
 
 struct user_os_utils_context {
 	u32 client_id;
 	int32_t hyp_hdl_disp[MAX_CHANNELS];
-	spinlock_t hyp_cmdchl_lock;
-	struct mutex hyp_cbchl_lock;
-	struct mutex hyp_bufchl_lock;
-	unsigned long cmdchl_lock_flags[MAX_CHANNELS];
+	struct mutex hyp_chl_lock[MAX_CHANNELS];
 	int client_idx;
 };
 
@@ -143,23 +133,8 @@ get_hab_handle(
 		client_id = *chl_id;
 
 		if (client_id < MAX_CHANNELS) {
-			/* Check if Buffer channel is created.
-			 * Otherwise use the OPENWFD channel
-			 */
-			if ((client_id == CHANNEL_BUFFERS) &&
-					(!ctx->hyp_hdl_disp[client_id])) {
-				flags = DO_NOT_LOCK_CHANNEL;
-				client_id = CHANNEL_OPENWFD;
-			}
-
 			if (!(DO_NOT_LOCK_CHANNEL & flags)) {
-				if (client_id == CHANNEL_OPENWFD)
-					spin_lock_irqsave(&ctx->hyp_cmdchl_lock,
-						ctx->cmdchl_lock_flags[client_id]);
-				else if (client_id == CHANNEL_EVENTS)
-					mutex_lock(&ctx->hyp_cbchl_lock);
-				else if (client_id == CHANNEL_BUFFERS)
-					mutex_lock(&ctx->hyp_bufchl_lock);
+				mutex_lock(&ctx->hyp_chl_lock[client_id]);
 			}
 			chl_hdl = ctx->hyp_hdl_disp[client_id];
 		}
@@ -176,23 +151,8 @@ rel_hab_handle(
 {
 
 	if (chl_id < MAX_CHANNELS) {
-		/* Check if Buffer channel is created.
-		 * Otherwise use the OPENWFD channel
-		 */
-		if ((chl_id == CHANNEL_BUFFERS) && (!ctx->hyp_hdl_disp[chl_id])) {
-			flags = DO_NOT_LOCK_CHANNEL;
-			chl_id = CHANNEL_OPENWFD;
-		}
-
-		if ((!flags)) {
-			if (chl_id == CHANNEL_OPENWFD)
-				spin_unlock_irqrestore(&ctx->hyp_cmdchl_lock,
-						ctx->cmdchl_lock_flags[chl_id]);
-			else if (chl_id == CHANNEL_EVENTS)
-				mutex_unlock(&ctx->hyp_cbchl_lock);
-			else if (chl_id == CHANNEL_BUFFERS)
-				mutex_unlock(&ctx->hyp_bufchl_lock);
-		}
+		if (!flags)
+			mutex_unlock(&ctx->hyp_chl_lock[chl_id]);
 	}
 
 	return 0;
@@ -243,12 +203,9 @@ user_os_utils_init(
 			goto fail;
 		} else {
 			/* create lock for openwfd commands hab channel */
-			spin_lock_init(&ctx->hyp_cmdchl_lock);
+			mutex_init(&ctx->hyp_chl_lock[CHANNEL_OPENWFD]);
 			UTILS_LOG_CRITICAL_INFO("OpenWFD channel open successful, handle=%d, client_id=0x%x",
 					ctx->hyp_hdl_disp[CHANNEL_OPENWFD], client_id);
-
-			/* Initialize the flag */
-			ctx->cmdchl_lock_flags[CHANNEL_OPENWFD] = 0;
 		}
 	} else {
 		UTILS_LOG_ERROR("invalid hab channel id");
@@ -274,41 +231,9 @@ user_os_utils_init(
 			goto fail;
 		} else {
 			/* create lock for events handling hab channel */
-			mutex_init(&ctx->hyp_cbchl_lock);
+			mutex_init(&ctx->hyp_chl_lock[CHANNEL_EVENTS]);
 			UTILS_LOG_CRITICAL_INFO("Events channel open successful, handle=%d, client_id=0x%x",
 					ctx->hyp_hdl_disp[CHANNEL_EVENTS], client_id);
-
-			/* Initialize the flag */
-			ctx->cmdchl_lock_flags[CHANNEL_EVENTS] = 0;
-		}
-	} else {
-		UTILS_LOG_ERROR("invalid hab channel id");
-		rc = -EINVAL;
-		goto fail;
-	}
-
-	if ((channel_map[client_idx][CHANNEL_BUFFERS]) != 0x00) {
-	/* open hab channel for buffer handling */
-#ifdef USE_HAB
-		rc = habmm_socket_open(
-#else
-		rc = habmm_socket_open_dummy(
-#endif
-			&ctx->hyp_hdl_disp[CHANNEL_BUFFERS],
-			channel_map[client_idx][CHANNEL_BUFFERS],
-			(uint32_t)HAB_NO_TIMEOUT_VAL,
-			0x00);
-		if (rc) {
-			UTILS_LOG_ERROR("habmm_socket_open(HAB_CHNL_BUFFERS) failed");
-			goto fail;
-		} else {
-			/* create lock for buffer handling hab channel */
-			mutex_init(&ctx->hyp_bufchl_lock);
-			UTILS_LOG_CRITICAL_INFO("Buffer channel open successful, handle=%d, client_id=0x%x",
-					ctx->hyp_hdl_disp[CHANNEL_BUFFERS], client_id);
-
-			/* Initialize the flag */
-			ctx->cmdchl_lock_flags[CHANNEL_BUFFERS] = 0;
 		}
 	} else {
 		UTILS_LOG_ERROR("invalid hab channel id");
@@ -338,6 +263,8 @@ user_os_utils_deinit(
 
 	/* close hab channel for openwfd commands */
 	if (ctx->hyp_hdl_disp[CHANNEL_OPENWFD]) {
+		/* destroy lock for openwfd hab channel */
+		mutex_destroy(&ctx->hyp_chl_lock[CHANNEL_OPENWFD]);
 #ifdef USE_HAB
 		rc = habmm_socket_close(ctx->hyp_hdl_disp[CHANNEL_OPENWFD]);
 #else
@@ -350,7 +277,7 @@ user_os_utils_deinit(
 	/* close hab channel for events handling */
 	if (ctx->hyp_hdl_disp[CHANNEL_EVENTS]) {
 		/* destroy lock for events handling hab channel */
-		mutex_destroy(&ctx->hyp_cbchl_lock);
+		mutex_destroy(&ctx->hyp_chl_lock[CHANNEL_EVENTS]);
 #ifdef USE_HAB
 		rc = habmm_socket_close(ctx->hyp_hdl_disp[CHANNEL_EVENTS]);
 #else
@@ -358,19 +285,6 @@ user_os_utils_deinit(
 #endif
 		if (rc)
 			UTILS_LOG_ERROR("habmm_socket_close (CHANNEL_EVENTS) failed");
-	}
-
-	/* close hab channel for buffer handling */
-	if (ctx->hyp_hdl_disp[CHANNEL_BUFFERS]) {
-		/* destroy lock for buffer handling hab channel */
-		mutex_destroy(&ctx->hyp_bufchl_lock);
-#ifdef USE_HAB
-		rc = habmm_socket_close(ctx->hyp_hdl_disp[CHANNEL_BUFFERS]);
-#else
-		rc = habmm_socket_close_dummy(ctx->hyp_hdl_disp[CHANNEL_BUFFERS]);
-#endif
-		if (rc)
-			UTILS_LOG_ERROR("habmm_socket_close (CHANNEL_BUFFERS) failed");
 	}
 
 	kfree(ctx);
@@ -522,22 +436,6 @@ retry_recv_packet:
 			payload_type, resp_size, rc);
 		if ((rc == -EAGAIN) && (retry_times < MAX_RECV_PACKET_RETRY))
 		{
-			if (handle) {
-				if (rel_hab_handle(ctx, chl_id, 0x00))
-					UTILS_LOG_ERROR("rel_hab_handle failed");
-			}
-			/*
-			 * Add this msleep to let watch dog thread can be feed
-			 * need release lock fisrt
-			 */
-			msleep(1);
-			handle = get_hab_handle(ctx, &chl_id, 0x00);
-			if (!handle) {
-				UTILS_LOG_ERROR("get_hab_handle failed for chl_id=%d", chl_id);
-				rc = -1;
-				goto end;
-			}
-
 			retry_times++;
 			UTILS_LOG_ERROR("recv packet retry %d", retry_times);
 			goto retry_recv_packet;
@@ -566,11 +464,8 @@ retry_recv_packet:
 		goto end;
 	}
 	if (timestamp > resp->hdr.timestamp) {
-		UTILS_LOG_ERROR("wrong packet timestamp");
-		UTILS_LOG_ERROR("req packet timestamp : %lu\n", timestamp);
-		UTILS_LOG_ERROR("resp packet timestamp : %lu\n",
-					resp->hdr.timestamp);
-
+		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu > resp : %lu\n",
+				timestamp, resp->hdr.timestamp);
 		/*
 		 * Drm fe try 10 times to get the correct packet
 		 */
@@ -581,29 +476,14 @@ retry_recv_packet:
 #endif
 			rc = -1;
 		} else {
-			if (handle) {
-				if (rel_hab_handle(ctx, chl_id, 0x00))
-					UTILS_LOG_ERROR("rel_hab_handle failed");
-			}
-			/*
-			 * Add this msleep to let the watchdog thread can be feed
-			 * need release lock first
-			 */
-			msleep(1);
-			handle = get_hab_handle(ctx, &chl_id, 0x00);
-			if (!handle) {
-				UTILS_LOG_ERROR("get_hab_handle failed for chl_id=%d", chl_id);
-				rc = -1;
-				goto end;
-			}
-
 			retry_times++;
 			UTILS_LOG_ERROR("recv packet retry %d", retry_times);
 			goto retry_recv_packet;
 		}
 	}
 	else if (timestamp < resp->hdr.timestamp) {
-		UTILS_LOG_ERROR(" Wrong packet timestamp req : %lu res : %lu \n", timestamp, resp->hdr.timestamp);
+		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu < resp : %lu\n",
+				timestamp, resp->hdr.timestamp);
 		rc = -1;
 		goto end;
 
@@ -730,7 +610,7 @@ user_os_utils_shmem_export(
 	struct user_os_utils_context *ctx = context;
 	int32_t rc = 0;
 	int32_t handle = 0;
-	u32 chl_id = CHANNEL_BUFFERS;
+	u32 chl_id = CHANNEL_OPENWFD;
 	u32 export_id = 0;
 	u32 export_flags = 0;
 
@@ -787,7 +667,7 @@ user_os_utils_shmem_import(
 	struct user_os_utils_context *ctx = context;
 	int32_t rc = 0;
 	int32_t handle = 0;
-	u32 chl_id = CHANNEL_BUFFERS;
+	u32 chl_id = CHANNEL_OPENWFD;
 	u32 import_flags = 0;
 
 	if (!mem) {
@@ -847,7 +727,7 @@ user_os_utils_shmem_unexport(
 	struct user_os_utils_context *ctx = context;
 	int32_t rc = 0;
 	int32_t handle = 0;
-	u32 chl_id = CHANNEL_BUFFERS;
+	u32 chl_id = CHANNEL_OPENWFD;
 	u32 unexport_flags = 0;
 
 	if (!mem) {
@@ -902,7 +782,7 @@ user_os_utils_shmem_unimport(
 	struct user_os_utils_context *ctx = context;
 	int32_t rc = 0;
 	int32_t handle = 0;
-	u32 chl_id = CHANNEL_BUFFERS;
+	u32 chl_id = CHANNEL_OPENWFD;
 	u32 unimport_flags = 0;
 
 	if (!mem) {

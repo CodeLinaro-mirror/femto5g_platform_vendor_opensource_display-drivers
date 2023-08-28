@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -47,10 +47,6 @@ static struct dsi_display_boot_param boot_displays[MAX_DSI_ACTIVE_DISPLAY] = {
 };
 
 static void dsi_display_panel_id_notification(struct dsi_display *display);
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
-static int dsi_display_component_add_helper(struct dsi_display *display);
-#endif
 
 static const struct of_device_id dsi_display_dt_match[] = {
 	{.compatible = "qcom,dsi-display"},
@@ -3376,29 +3372,7 @@ error:
 static int dsi_host_attach(struct mipi_dsi_host *host,
 			   struct mipi_dsi_device *dsi)
 {
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
-	struct dsi_display *display;
-	int rc = 0;
-
-	if (!host || !dsi) {
-		DSI_ERR("Invalid param\n");
-		return -EINVAL;
-	}
-	display = to_dsi_display(host);
-	if (!display) {
-		DSI_ERR("Invalid display ptr\n");
-		return -EINVAL;
-	}
-	rc = dsi_display_component_add_helper(display);
-	if (rc) {
-		DSI_ERR("component add failed, rc=%d\n", rc);
-		return rc;
-	}
-	DSI_DEBUG("Component add successful\n");
-	return rc;
-#else
 	return 0;
-#endif
 }
 
 static int dsi_host_detach(struct mipi_dsi_host *host,
@@ -5771,14 +5745,12 @@ static int dsi_display_bind(struct device *dev,
 	}
 
 	dsi_display_update_byte_intf_div(display);
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	rc = dsi_display_mipi_host_init(display);
 	if (rc) {
 		DSI_ERR("[%s] failed to initialize mipi host, rc=%d\n",
 		       display->name, rc);
 		goto error_ctrl_deinit;
 	}
-#endif
 
 	rc = dsi_panel_drv_init(display->panel, &display->host);
 	if (rc) {
@@ -5904,9 +5876,8 @@ static struct platform_driver dsi_display_driver = {
 static int dsi_display_init(struct dsi_display *display)
 {
 	int rc = 0;
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	struct platform_device *pdev = display->pdev;
-#endif
+
 	mutex_init(&display->display_lock);
 
 	rc = _dsi_display_dev_init(display);
@@ -5936,39 +5907,17 @@ static int dsi_display_init(struct dsi_display *display)
 		}
 	}
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
-        rc = dsi_display_mipi_host_init(display);
-        if (rc) {
-                DSI_ERR("[%s] failed to initialize mipi host, rc=%d\n",
-                       display->name, rc);
-                goto end;
-        }
-#else
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
 	if (rc) {
 		DSI_ERR("component add failed, rc=%d\n", rc);
 		_dsi_display_dev_deinit(display);
 		goto end;
 	}
-#endif
 
 	DSI_DEBUG("component add success: %s\n", display->name);
 end:
 	return rc;
 }
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
-static int dsi_display_component_add_helper(struct dsi_display *display)
-{
-	struct platform_device *pdev;
-
-	pdev = display->pdev;
-	if(!pdev){
-		return -EINVAL;
-	}
-	return (component_add(&pdev->dev, &dsi_display_comp_ops));
-}
-#endif
 
 static void dsi_display_firmware_display(const struct firmware *fw,
 				void *context)
