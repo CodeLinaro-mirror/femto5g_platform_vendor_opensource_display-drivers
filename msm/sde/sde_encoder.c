@@ -6258,3 +6258,27 @@ void sde_encoder_add_data_to_minidump_va(struct drm_encoder *drm_enc)
 			phys_enc->ops.add_to_minidump(phys_enc);
 	}
 }
+
+bool sde_encoder_get_intf_status(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *cur_master;
+	struct intf_status intf_status = {0};
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	cur_master = sde_enc->cur_master;
+
+	if (!cur_master || !cur_master->hw_intf)
+		return false;
+
+	if (cur_master->hw_intf->ops.get_status)
+		cur_master->hw_intf->ops.get_status(cur_master->hw_intf, &intf_status);
+
+	if (intf_status.is_en)
+		return true;
+
+	return false;
+}
