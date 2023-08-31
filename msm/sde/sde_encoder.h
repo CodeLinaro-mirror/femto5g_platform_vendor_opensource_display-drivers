@@ -671,6 +671,12 @@ static inline struct sde_kms *sde_encoder_get_kms(struct drm_encoder *drm_enc)
 	return to_sde_kms(priv->kms);
 }
 
+/**
+ * sde_encoder_get_intf_status - retrives timing engine enablement status
+ * @drm_enc:    Pointer to drm encoder structure
+ */
+bool sde_encoder_get_intf_status(struct drm_encoder *enc);
+
 /*
  * sde_encoder_is_widebus_enabled - check if widebus is enabled for current mode
  * @drm_enc:    Pointer to drm encoder structure
