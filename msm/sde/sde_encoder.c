@@ -165,6 +165,7 @@ static void sde_encoder_set_flush_window_with_skew(struct drm_encoder *drm_enc,
 	struct sde_intf_offset_cfg *cfg;
 	struct msm_display_mode *msm_mode;
 	struct sde_connector_state *c_state;
+	unsigned long lock_flags;
 	u32 vrefresh, line_time_in_ns, frame_time_in_ns, vtotal;
 	u32 threshold_window_in_ns = VSYNC_THRESHOLD_WINDOW_NS;
 
@@ -174,7 +175,7 @@ static void sde_encoder_set_flush_window_with_skew(struct drm_encoder *drm_enc,
 	if (!tvblank)
 		tvblank = ktime_get_ns();
 
-	spin_lock(phys_enc->enc_spinlock);
+	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 	cfg = &phys_enc->cfg;
 	vrefresh = cfg->fps;
 	vtotal = cfg->vtotal;
@@ -206,7 +207,7 @@ static void sde_encoder_set_flush_window_with_skew(struct drm_encoder *drm_enc,
 				threshold_window_in_ns))
 		cfg->flush_sync_window_max = ktime_sub_ns(cfg->flush_sync_window_max,
 				threshold_window_in_ns);
-	spin_unlock(phys_enc->enc_spinlock);
+	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
 	SDE_EVT32(vrefresh, vtotal, ktime_to_us(cfg->flush_sync_window_min),
 		ktime_to_us(cfg->flush_sync_window_max), ktime_to_us(tvblank),
@@ -890,6 +891,7 @@ void sde_encoder_helper_skewed_vsync_config(
 	struct msm_display_info *disp_info;
 	struct drm_display_mode *mode;
 	u32 vfront_porch;
+	unsigned long lock_flags;
 
 	if (!phys_enc || !phys_enc->parent) {
 		SDE_ERROR("invalid arg(s), encoder %d\n", !!phys_enc);
@@ -900,7 +902,7 @@ void sde_encoder_helper_skewed_vsync_config(
 	disp_info = &sde_enc->disp_info;
 	mode = &phys_enc->cached_mode;
 
-	spin_lock(phys_enc->enc_spinlock);
+	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 	if (phys_enc->cont_splash_enabled || phys_enc->enable_state == SDE_ENC_DISABLED) {
 		cfg->fixed_fps = sde_encoder_get_dfps_maxfps(phys_enc->parent);
 		cfg->fps = cfg->fixed_fps;
@@ -926,7 +928,7 @@ void sde_encoder_helper_skewed_vsync_config(
 		}
 	}
 end:
-	spin_unlock(phys_enc->enc_spinlock);
+	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 }
 
 void sde_encoder_helper_split_config(
@@ -3829,6 +3831,7 @@ static void sde_encoder_phys_in_skewed_flush_window(struct sde_encoder_phys *phy
 	u32 frame_time_in_ns, vrefresh, sleep_us, i, loop_count, hw_fence_ctrl = 0;
 	int retry_cnt = MAX_FLUSH_WINDOW_CHECK;
 	bool in_skew_flush_window;
+	unsigned long lock_flags;
 
 	if (!phys_enc || !phys_enc->hw_ctl) {
 		SDE_ERROR("invalid params\n");
@@ -3869,11 +3872,11 @@ static void sde_encoder_phys_in_skewed_flush_window(struct sde_encoder_phys *phy
 
 window_check:
 
-	spin_lock(phys_enc->enc_spinlock);
 	cur_time = ktime_get_ns();
+	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 	flush_sync_skew_window_min = cfg->flush_sync_window_min;
 	flush_sync_skew_window_max = cfg->flush_sync_window_max;
-	spin_unlock(phys_enc->enc_spinlock);
+	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
 	in_skew_flush_window = false;
 	/* Calculate time needed to wait to reach flush window min */
