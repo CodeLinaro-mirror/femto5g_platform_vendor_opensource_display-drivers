@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 #include <linux/iopoll.h>
@@ -33,13 +33,48 @@
 #define VBIF_OUT_AXI_AINNERSHARED	0x0174
 #define VBIF_XIN_PND_ERR		0x0190
 #define VBIF_XIN_SRC_ERR		0x0194
+#define VBIF_XIN_ERR_MASK		0x0198
 #define VBIF_XIN_CLR_ERR		0x019C
+#define VBIF_XIN_ERR_INFO		0x01A0
+#define VBIF_XIN_ERR_INFO1		0x01A4
 #define VBIF_XIN_HALT_CTRL0		0x0200
 #define VBIF_XIN_HALT_CTRL1		0x0204
 #define VBIF_AXI_HALT_CTRL0		0x0208
 #define VBIF_AXI_HALT_CTRL1		0x020c
 #define VBIF_XINL_QOS_RP_REMAP_000	0x0550
 #define VBIF_XINL_QOS_LVL_REMAP_000	0x0590
+
+static void sde_hw_dump_error(struct sde_hw_vbif *vbif)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 pnd, src, mask, info, info1;
+	int i;
+
+	if (!vbif)
+		return;
+	c = &vbif->hw;
+
+	pnd = SDE_REG_READ(c, VBIF_XIN_PND_ERR);
+	src = SDE_REG_READ(c, VBIF_XIN_SRC_ERR);
+	DRM_ERROR("VBIF%d PND=0x%X  SRC=0x%X\n", vbif->idx - VBIF_0,
+			pnd, src);
+
+	mask = SDE_REG_READ(c, VBIF_XIN_ERR_MASK);
+	info = SDE_REG_READ(c, VBIF_XIN_ERR_INFO);
+	info1 = SDE_REG_READ(c, VBIF_XIN_ERR_INFO1);
+	DRM_ERROR("VBIF%d mask=0x%X  info=0x%X  UBWC err=0x%X\n", vbif->idx - VBIF_0,
+			mask, info, info1);
+
+	for (i = 0; i < 16; i++) {
+		SDE_REG_WRITE(c, VBIF_XIN_ERR_INFO, i);
+		/* Make sure register write is flushed */
+		wmb();
+		info = SDE_REG_READ(c, VBIF_XIN_ERR_INFO);
+		DRM_ERROR("\tClient %d - 0x%X TID=%d MID=%d AXI_RESP=%d ERR=%d Client=%d\n",
+				i, info, (info >> 18) & 0x1, (info >> 10) & 0xFF,
+				(info >> 7) & 0x7, (info >> 4) & 0x7, (info >> 0) & 0xF);
+	}
+}
 
 static void sde_hw_clear_errors(struct sde_hw_vbif *vbif,
 		u32 *pnd_errors, u32 *src_errors)
@@ -266,6 +301,7 @@ static void _setup_vbif_ops(const struct sde_mdss_cfg *m,
 		ops->set_mem_type = sde_hw_set_mem_type;
 	ops->clear_errors = sde_hw_clear_errors;
 	ops->set_write_gather_en = sde_hw_set_write_gather_en;
+	ops->dump_errors = sde_hw_dump_error;
 }
 
 static const struct sde_vbif_cfg *_top_offset(enum sde_vbif vbif,

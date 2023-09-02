@@ -400,4 +400,11 @@ void sde_plane_static_img_control(struct drm_plane *plane,
 		enum sde_sys_cache_state state, enum sde_sys_cache_type type);
 
 void sde_plane_add_data_to_minidump_va(struct drm_plane *plane);
+
+/*
+ * sde_plane_dump - dump the pipe register
+ * @plane: Pointer to DRM plane object
+ */
+void sde_plane_dump(struct drm_plane *plane);
+
 #endif /* _SDE_PLANE_H_ */

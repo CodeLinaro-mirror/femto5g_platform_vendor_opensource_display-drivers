@@ -31,6 +31,9 @@
 #include "msm_gem.h"
 #include "msm_mmu.h"
 #include "sde_dbg.h"
+#include "sde_vbif.h"
+#include "sde_reg_dma.h"
+#include "sde_plane.h"
 
 struct msm_smmu_client {
 	struct device *dev;
@@ -451,6 +454,46 @@ struct msm_mmu *msm_smmu_new(struct device *dev,
 	return &smmu->base;
 }
 
+static void msm_smmu_fault_dump(struct drm_device *dev)
+{
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
+	struct drm_plane *plane;
+	char buf[SDE_EVTLOG_BUF_MAX];
+	bool update_last_entry = true;
+
+	priv = dev->dev_private;
+	sde_kms = to_sde_kms(priv->kms);
+
+	// VBIF
+	SDE_ERROR("\n============ VBIF DUMP ============\n");
+	sde_vbif_dump_error(sde_kms);
+
+	// SSPP
+	SDE_ERROR("\n============ SSPP DUMP ============\n");
+	drm_for_each_plane(plane, sde_kms->dev) {
+		SDE_ERROR("Pipe %d  %s\n", sde_plane_pipe(plane),
+				is_sde_plane_virtual(plane) ? "Virtual" : "");
+		sde_plane_dump(plane);
+	}
+
+	// LUTDMA
+	SDE_ERROR("\n============ REG DMA DUMP ============\n");
+	sde_reg_dma_get_ops()->dump_regs();
+
+	// SDE event
+	SDE_ERROR("\n============ SDE EVENT DUMP ============\n");
+	if (sde_dbg_base_evtlog) {
+		while (sde_evtlog_dump_to_buffer(sde_dbg_base_evtlog,
+				buf, sizeof(buf), update_last_entry, false)) {
+			pr_err("%s\n", buf);
+			update_last_entry = false;
+		}
+	}
+
+	SDE_ERROR("\n============ END OF DUMP ============\n");
+}
+
 static int msm_smmu_fault_handler(struct iommu_domain *domain,
 		struct device *dev, unsigned long iova,
 		int flags, void *token)
@@ -470,6 +513,8 @@ static int msm_smmu_fault_handler(struct iommu_domain *domain,
 	DRM_ERROR("trigger dump, iova=0x%08lx, flags=0x%x\n", iova, flags);
 	DRM_ERROR("SMMU device:%s", client->dev ? client->dev->kobj.name : "");
 
+	if (client->host_dev)
+		msm_smmu_fault_dump(dev_get_drvdata(client->host_dev));
 	/*
 	 * return -ENOSYS to allow smmu driver to dump out useful
 	 * debug info.
