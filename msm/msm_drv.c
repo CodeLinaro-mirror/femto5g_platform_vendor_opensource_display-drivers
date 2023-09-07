@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -120,7 +120,7 @@ static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
 	 * other real time and normal priority task
 	 */
 	param.sched_priority = 16;
-	/*ret = sched_setscheduler(task, SCHED_FIFO, &param);*/
+	ret = sched_setscheduler(task, SCHED_FIFO, &param);
 	if (ret)
 		pr_warn("pid:%d name:%s priority update failed: %d\n",
 			current->tgid, task->comm, ret);
