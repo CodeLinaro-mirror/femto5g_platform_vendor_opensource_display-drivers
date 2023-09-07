@@ -1403,12 +1403,6 @@ static void dp_catalog_ctrl_usb_reset(struct dp_catalog_ctrl *ctrl, bool flip)
 
 	DP_DEBUG("Program PHYMODE to DP only\n");
 	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x0F);
-	/*
-	 * USB PHY may interfere DP PHY if the USB PHY isn't reset properly.
-	 * Update the reset sequence per hardware suggestion,
-	 * force USB PHY to sw reset
-	 */
-	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x0E);
 	dp_write(USB3_DP_COM_PHY_MODE_CTRL, 0x02);
 	dp_write(USB3_DP_COM_SW_RESET, 0x01);
 	/* make sure usb3 com phy software reset is done */
@@ -1425,8 +1419,18 @@ static void dp_catalog_ctrl_usb_reset(struct dp_catalog_ctrl *ctrl, bool flip)
 	wmb();
 
 	dp_write(USB3_DP_COM_POWER_DOWN_CTRL, 0x01);
-	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x00);
+	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x09);
 	/* make sure phy is brought out of reset */
+	wmb();
+
+	/*
+	 * USB PHY may interfere DP PHY if the USB PHY isn't reset properly.
+	 * Update the reset sequence per hardware suggestion, force USB PLL
+	 * to be disabled.
+	 */
+	io_data = catalog->io.usb3_pll;
+	dp_write(USB3_QSERDES_COM_PLL_EN, 0x02);
+	/* make sure register is written */
 	wmb();
 }
 
@@ -2331,7 +2335,6 @@ static void dp_catalog_ctrl_mainlink_levels(struct dp_catalog_ctrl *ctrl,
 	dp_write(DP_MAINLINK_LEVELS, mainlink_levels);
 }
 
-
 /* panel related catalog functions */
 static int dp_catalog_panel_timing_cfg(struct dp_catalog_panel *panel)
 {
@@ -2773,6 +2776,7 @@ static void dp_catalog_get_io_buf(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io_buf(hdcp_physical);
 	dp_catalog_fill_io_buf(dp_p1);
 	dp_catalog_fill_io_buf(dp_tcsr);
+	dp_catalog_fill_io_buf(usb3_pll);
 }
 
 static void dp_catalog_get_io(struct dp_catalog_private *catalog)
@@ -2793,6 +2797,7 @@ static void dp_catalog_get_io(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io(hdcp_physical);
 	dp_catalog_fill_io(dp_p1);
 	dp_catalog_fill_io(dp_tcsr);
+	dp_catalog_fill_io(usb3_pll);
 }
 
 static void dp_catalog_set_exe_mode(struct dp_catalog *dp_catalog, char *mode)
