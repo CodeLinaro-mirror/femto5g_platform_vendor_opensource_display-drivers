@@ -333,6 +333,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 
 void dsi_panel_put(struct dsi_panel *panel);
 
+void dsi_panel_get_fps_switch_cmd(struct dsi_panel *panel,
+			struct dsi_display_mode *mode, u32 refresh_rate);
+
 int dsi_panel_drv_init(struct dsi_panel *panel, struct mipi_dsi_host *host);
 
 int dsi_panel_drv_deinit(struct dsi_panel *panel);
@@ -403,6 +406,8 @@ int dsi_panel_switch_video_mode_in(struct dsi_panel *panel);
 int dsi_panel_switch(struct dsi_panel *panel);
 
 int dsi_panel_post_switch(struct dsi_panel *panel);
+
+int dsi_panel_fps_switch(struct dsi_panel *panel);
 
 void dsi_dsc_pclk_param_calc(struct msm_display_dsc_info *dsc, int intf_width);
 
