@@ -1263,7 +1263,7 @@ const struct sde_format *sde_get_sde_format_ext(
 	}
 
 	if (fmt == NULL)
-		SDE_ERROR("unsupported fmt: %4.4s modifier 0x%llX\n",
+		SDE_DEBUG("unsupported fmt: %4.4s modifier 0x%llX\n",
 				(char *)&format, modifier);
 	else
 		SDE_DEBUG("fmt %4.4s mod 0x%llX ubwc %d yuv %d\n",
