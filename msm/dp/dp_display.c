@@ -185,6 +185,7 @@ struct dp_display_private {
 	struct dp_ctrl    *ctrl;
 	struct dp_debug   *debug;
 	struct dp_pll     *pll;
+	struct dp_pll     *pclk_bond_pll;
 
 	struct dp_panel *active_panels[DP_STREAM_MAX];
 	struct dp_hdcp hdcp;
@@ -2289,6 +2290,7 @@ static void dp_display_deinit_sub_modules(struct dp_display_private *dp)
 	dp_link_put(dp->link);
 	dp_power_put(dp->power);
 	dp_pll_put(dp->pll);
+	dp_pll_put(dp->pclk_bond_pll);
 	dp_aux_put(dp->aux);
 	dp_catalog_put(dp->catalog);
 	dp_parser_put(dp->parser);
@@ -2371,6 +2373,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	pll_in.aux = dp->aux;
 	pll_in.parser = dp->parser;
 	pll_in.dp_core_revision = dp_core_revision;
+	pll_in.bond = false;
 
 	dp->pll = dp_pll_get(&pll_in);
 	if (IS_ERR(dp->pll)) {
@@ -2380,7 +2383,19 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 		goto error_pll;
 	}
 
-	dp->power = dp_power_get(dp->parser, dp->pll);
+	pll_in.aux = dp->aux;
+	pll_in.parser = dp->parser;
+	pll_in.dp_core_revision = dp_core_revision;
+	pll_in.bond = true;
+
+	dp->pclk_bond_pll = dp_pll_get(&pll_in);
+	if (IS_ERR(dp->pclk_bond_pll)) {
+		rc = PTR_ERR(dp->pclk_bond_pll);
+		DP_INFO("DP%d failed to initialize pclk bond pll, rc = %d\n", dp->cell_idx, rc);
+		dp->pclk_bond_pll = NULL;
+	}
+
+	dp->power = dp_power_get(dp->parser, dp->pll, dp->pclk_bond_pll);
 	if (IS_ERR(dp->power)) {
 		rc = PTR_ERR(dp->power);
 		DP_ERR("DP%d failed to initialize power, rc = %d\n", dp->cell_idx, rc);
@@ -2432,6 +2447,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	ctrl_in.catalog = &dp->catalog->ctrl;
 	ctrl_in.parser = dp->parser;
 	ctrl_in.pll = dp->pll;
+	ctrl_in.pclk_bond_pll = dp->pclk_bond_pll;
 
 	dp->ctrl = dp_ctrl_get(&ctrl_in);
 	if (IS_ERR(dp->ctrl)) {

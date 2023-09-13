@@ -65,6 +65,7 @@ struct dp_ctrl_private {
 	struct dp_parser *parser;
 	struct dp_catalog_ctrl *catalog;
 	struct dp_pll *pll;
+	struct dp_pll *pclk_bond_pll;
 
 	struct completion idle_comp;
 	struct completion video_comp;
@@ -898,6 +899,40 @@ static int dp_ctrl_enable_stream_clocks(struct dp_ctrl_private *ctrl,
 	enum dp_pm_type clk_type;
 	char clk_name[32] = "";
 
+	/* Set the PCLK bond PLL same rate as link clock rate */
+	if (ctrl->pclk_bond_pll &&
+		ctrl->phy_bond_mode == DP_PHY_BOND_MODE_PCLK_MASTER) {
+		u32 rate = ctrl->pll->vco_rate;
+
+		DP_DEBUG("DP%d DP set bond PLL rate %u\n", ctrl->cell_idx, rate);
+		dp_ctrl_set_clock_rate(ctrl, "bond_pixel_clk_src", DP_BOND_PM, rate);
+
+		if (ctrl->pclk_bond_pll->pll_cfg) {
+			ret = ctrl->pclk_bond_pll->pll_cfg(ctrl->pclk_bond_pll,
+					rate, ctrl->phy_bond_mode);
+			if (ret < 0) {
+				DP_ERR("DP%d DP PCLK bond pll cfg failed\n", ctrl->cell_idx);
+				return ret;
+			}
+		}
+
+		if (ctrl->pclk_bond_pll->pll_prepare) {
+			ret = ctrl->pclk_bond_pll->pll_prepare(ctrl->pclk_bond_pll);
+			if (ret < 0) {
+				DP_ERR("DP%d DP PCLK bond pll prepare failed\n",
+						ctrl->cell_idx);
+				return ret;
+			}
+		}
+
+		ret = ctrl->power->clk_enable(ctrl->power, DP_BOND_PM, true);
+		if (ret) {
+			DP_ERR("DP%d Unabled to start PCLK bond PLL clocks\n",
+					ctrl->cell_idx);
+			return -EINVAL;
+		}
+	}
+
 	ret = ctrl->power->set_pixel_clk_parent(ctrl->power,
 			dp_panel->stream_id, ctrl->phy_bond_mode);
 
@@ -1652,6 +1687,7 @@ struct dp_ctrl *dp_ctrl_get(struct dp_ctrl_in *in)
 	ctrl->link     = in->link;
 	ctrl->catalog  = in->catalog;
 	ctrl->pll  = in->pll;
+	ctrl->pclk_bond_pll  = in->pclk_bond_pll;
 	ctrl->dev  = in->dev;
 	ctrl->mst_mode = false;
 	ctrl->fec_mode = false;
