@@ -1479,12 +1479,27 @@ static int dp_panel_dsc_prepare_basic_params(
 	u32 slice_caps_2;
 	u32 dsc_version_major, dsc_version_minor;
 	bool dsc_version_supported = false;
+	struct dp_panel_private *panel = NULL;
+	struct msm_compression_info *dscpt_comp_info = NULL;
+	bool dscpt_en = 0;
 
-	dsc_version_major = dp_panel->sink_dsc_caps.version & 0xF;
-	dsc_version_minor = (dp_panel->sink_dsc_caps.version >> 4) & 0xF;
-	dsc_version_supported = (dsc_version_major == 0x1 &&
-			(dsc_version_minor == 0x1 || dsc_version_minor == 0x2))
-			? true : false;
+	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
+	if (panel && panel->parser) {
+		dscpt_comp_info = &panel->parser->dsc_passthrough.comp_info;
+		dscpt_en = panel->parser->dsc_passthrough.dsc_passthrough_enable;
+	}
+
+	if (panel && dscpt_comp_info && dscpt_en) {
+		dsc_version_major = dscpt_comp_info->dsc_info.config.dsc_version_major;
+		dsc_version_minor = dscpt_comp_info->dsc_info.config.dsc_version_minor;
+		dsc_version_supported = true;
+	} else {
+		dsc_version_major = dp_panel->sink_dsc_caps.version & 0xF;
+		dsc_version_minor = (dp_panel->sink_dsc_caps.version >> 4) & 0xF;
+		dsc_version_supported = (dsc_version_major == 0x1 &&
+				(dsc_version_minor == 0x1 || dsc_version_minor == 0x2))
+				? true : false;
+	}
 
 	DP_DEBUG("DSC version: %d.%d, dpcd value: %x\n",
 			dsc_version_major, dsc_version_minor,
@@ -1513,6 +1528,33 @@ static int dp_panel_dsc_prepare_basic_params(
 
 	if (comp_info->dsc_info.slice_per_pkt == 0)
 		return -EINVAL;
+
+	if (panel && dscpt_comp_info && dscpt_en) {
+		comp_info->dsc_info.config.block_pred_enable =
+			dscpt_comp_info->dsc_info.config.block_pred_enable;
+		comp_info->dsc_info.config.pic_width =
+			dscpt_comp_info->dsc_info.config.pic_width;
+		comp_info->dsc_info.config.pic_height =
+			dscpt_comp_info->dsc_info.config.pic_height;
+		comp_info->dsc_info.config.slice_width =
+			dscpt_comp_info->dsc_info.config.slice_width;
+		comp_info->dsc_info.config.slice_height =
+			dscpt_comp_info->dsc_info.config.slice_height;
+		comp_info->dsc_info.config.bits_per_component =
+			dscpt_comp_info->dsc_info.config.bits_per_component;
+		comp_info->dsc_info.config.bits_per_pixel =
+			dscpt_comp_info->dsc_info.config.bits_per_pixel;
+		comp_info->dsc_info.config.slice_count =
+			dscpt_comp_info->dsc_info.config.slice_count;
+
+		comp_info->src_bpp = dp_mode->timing.bpp;
+		comp_info->tgt_bpp =
+			dscpt_comp_info->dsc_info.config.bits_per_pixel >> 4;
+		comp_info->comp_type = MSM_DISPLAY_COMPRESSION_DSC;
+		comp_info->comp_ratio = comp_info->src_bpp / comp_info->tgt_bpp;
+		comp_info->enabled = true;
+		goto end;
+	}
 
 	ppr_max_index = dp_panel->dsc_dpcd[11] &= 0xf;
 	if (!ppr_max_index || ppr_max_index >= 15) {
@@ -1582,6 +1624,9 @@ static int dp_panel_dsc_prepare_basic_params(
 	comp_info->comp_ratio = dp_mode->timing.bpp / DSC_TGT_BPP;
 	comp_info->enabled = true;
 
+end:
+	DP_DEBUG("DSC prep done: bpp: in=%d,tgt=%d comp_ratio=%d\n",
+	      comp_info->src_bpp, comp_info->tgt_bpp, comp_info->comp_ratio);
 	return 0;
 }
 
@@ -1835,27 +1880,26 @@ static int dp_panel_read_dsc_passthrough_caps(struct dp_panel *dp_panel,
 		struct dp_display_mode *dp_mode, struct msm_compression_info *comp_info)
 {
 	struct dp_panel_private *panel;
-	u32 ppr = dp_mode->timing.pixel_clk_khz/1000;
-	const struct dp_dsc_slices_per_line *rec;
-	int i, rc = 0;
+	int rc = 0;
+
+	int slice_per_pkt = 0, slice_per_intf = 0;
+	int bytes_in_slice = 0, total_bytes_per_intf = 0;
+	u16 bpp = 0;
+	u32 bytes_in_dsc_pair = 0;
+	u32 total_bytes_in_dsc_pair = 0;
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 
-	memcpy(comp_info, &panel->parser->dsc_passthrough.comp_info,
-			sizeof(struct msm_compression_info));
-
-	comp_info->dsc_info.slice_per_pkt = 0;
-	for (i = 0; i < ARRAY_SIZE(slice_per_line_tbl); i++) {
-		rec = &slice_per_line_tbl[i];
-		if ((ppr > rec->min_ppr) && (ppr <= rec->max_ppr)) {
-			comp_info->dsc_info.slice_per_pkt = rec->num_slices;
-			i++;
-			break;
-		}
+	rc = dp_panel_dsc_prepare_basic_params(comp_info, dp_mode, dp_panel);
+	if (rc) {
+		DP_ERR("failed to set basic params, rc = %d\n", rc);
+		return rc;
 	}
 
-	if (comp_info->dsc_info.slice_per_pkt == 0)
-		DP_ERR("Invalid slice per pkt = 0\n");
+	memcpy(&comp_info->dsc_info.config,
+		&panel->parser->dsc_passthrough.comp_info.dsc_info.config,
+		sizeof(struct drm_dsc_config));
+
 
 	comp_info->dsc_info.config.slice_count =
 			DIV_ROUND_UP(dp_mode->timing.h_active,
@@ -1875,13 +1919,49 @@ static int dp_panel_read_dsc_passthrough_caps(struct dp_panel *dp_panel,
 		break;
 	}
 
-	comp_info->dsc_info.det_thresh_flatness = 2 << (comp_info->dsc_info.config.bits_per_pixel - 8);
+	comp_info->dsc_info.det_thresh_flatness =
+			2 << (comp_info->dsc_info.config.bits_per_pixel - 8);
 
-	rc = sde_dsc_populate_dsc_private_params(&comp_info->dsc_info,
-			dp_mode->timing.h_active);
+	rc = sde_dsc_populate_dsc_config(&comp_info->dsc_info.config, 0);
+	if (rc) {
+		DP_ERR("failed to poulate dsc config, rc = %d\n", rc);
+		return rc;
+	}
 
-	if (!rc)
-		dp_panel_dsc_pclk_param_calc(dp_panel, comp_info, dp_mode);
+	slice_per_pkt = comp_info->dsc_info.slice_per_pkt;
+	slice_per_intf = DIV_ROUND_UP(dp_mode->timing.h_active,
+				      comp_info->dsc_info.config.slice_width);
+
+	/*
+	 * If slice_per_pkt is greater than slice_per_intf then default to 1.
+	 * This can happen during partial update.
+	 */
+	if (slice_per_pkt > slice_per_intf)
+		slice_per_pkt = 1;
+
+	/* Tagrget bpp is acquired from the dscpt params */
+	bpp = DSC_BPP(comp_info->dsc_info.config);
+	bytes_in_slice = DIV_ROUND_UP(comp_info->dsc_info.config.slice_width *
+				      bpp, 8);
+	total_bytes_per_intf = bytes_in_slice * slice_per_intf;
+
+	comp_info->dsc_info.eol_byte_num = total_bytes_per_intf % 3;
+	comp_info->dsc_info.pclk_per_line =  DIV_ROUND_UP(total_bytes_per_intf, 3);
+	comp_info->dsc_info.bytes_in_slice = bytes_in_slice;
+	comp_info->dsc_info.bytes_per_pkt = bytes_in_slice * slice_per_pkt;
+	comp_info->dsc_info.pkt_per_line = slice_per_intf / slice_per_pkt;
+
+	bytes_in_dsc_pair = DIV_ROUND_UP(bytes_in_slice * 2, 3);
+	if (bytes_in_dsc_pair % 8) {
+		comp_info->dsc_info.dsc_4hsmerge_padding = 8 - (bytes_in_dsc_pair % 8);
+		total_bytes_in_dsc_pair = bytes_in_dsc_pair +
+					  comp_info->dsc_info.dsc_4hsmerge_padding;
+		if (total_bytes_in_dsc_pair % 16)
+			comp_info->dsc_info.dsc_4hsmerge_alignment =
+					16 - (total_bytes_in_dsc_pair % 16);
+	}
+
+	dp_panel_dsc_pclk_param_calc(dp_panel, comp_info, dp_mode);
 
 	return rc;
 }
