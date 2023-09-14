@@ -44,6 +44,7 @@
 #include <linux/kthread.h>
 #include <uapi/linux/sched/types.h>
 #include <drm/drm_of.h>
+#include <soc/qcom/boot_stats.h>
 
 #include "msm_drv.h"
 #include "msm_kms.h"
@@ -696,6 +697,7 @@ static struct msm_kms *_msm_drm_init_helper(struct msm_drm_private *priv,
 		dev_err(dev, "kms hw init failed: %d\n", ret);
 		return ERR_PTR(ret);
 	}
+	msm_drm_notify_components(ddev, MSM_COMP_OBJECT_CREATED);
 
 	return kms;
 }
@@ -734,6 +736,7 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 
 	priv->wq = alloc_ordered_workqueue("msm_drm", 0);
 	init_waitqueue_head(&priv->pending_crtcs_event);
+	BLOCKING_INIT_NOTIFIER_HEAD(&priv->component_notifier_list);
 
 	INIT_LIST_HEAD(&priv->client_event_list);
 	INIT_LIST_HEAD(&priv->inactive_list);
@@ -830,6 +833,7 @@ static int msm_drm_init(struct device *dev, struct drm_driver *drv)
 
 	drm_kms_helper_poll_init(ddev);
 
+	place_marker("M - DISPLAY Driver Ready");
 	return 0;
 
 fail:
@@ -1041,8 +1045,9 @@ static void msm_lastclose(struct drm_device *dev)
 	flush_workqueue(priv->wq);
 
 	if (priv->fbdev) {
-		drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
-		return;
+		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
+		if (rc)
+			DRM_ERROR("restore FBDEV mode failed: %d\n", rc);
 	}
 
 	drm_modeset_acquire_init(&ctx, 0);
@@ -1462,6 +1467,48 @@ void msm_mode_object_event_notify(struct drm_mode_object *obj,
 		drm_send_event_locked(dev, &notify->base);
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
+}
+
+int msm_drm_register_component(struct drm_device *dev,
+                struct notifier_block *nb)
+{
+        struct msm_drm_private *priv;
+
+        if (!dev)
+                return -EINVAL;
+
+        priv = dev->dev_private;
+
+        return blocking_notifier_chain_register(&priv->component_notifier_list,
+                        nb);
+}
+
+int msm_drm_unregister_component(struct drm_device *dev,
+                struct notifier_block *nb)
+{
+        struct msm_drm_private *priv;
+
+        if (!dev)
+                return -EINVAL;
+
+        priv = dev->dev_private;
+
+        return blocking_notifier_chain_unregister(
+                        &priv->component_notifier_list, nb);
+}
+
+int msm_drm_notify_components(struct drm_device *dev,
+                enum msm_component_event event)
+{
+        struct msm_drm_private *priv;
+
+        if (!dev)
+                return -EINVAL;
+
+        priv = dev->dev_private;
+
+        return blocking_notifier_call_chain(&priv->component_notifier_list,
+                        event, NULL);
 }
 
 static int msm_release(struct inode *inode, struct file *filp)
