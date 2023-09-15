@@ -296,10 +296,12 @@ static int dp_hdcp2p2_register(void *input, bool mst_enabled)
 		cdata.device_type = HDCP_TXMTR_DP_MST + index;
 	else
 		cdata.device_type = HDCP_TXMTR_DP + index;
+
 	//device id  = dpu_index << 16 | DPTx_id
 	cdata.device_type = ctrl->init_data.dpu_index << 16 | cdata.device_type;
 	DP_DEBUG("DPU%d DP%d Device Id = 0x%x\n", ctrl->init_data.dpu_index,
 		ctrl->init_data.client_index, cdata.device_type);
+	cdata.max_hdcp_key_verify_retries = ctrl->init_data.max_hdcp_key_verify_retries;
 	cdata.context = ctrl->lib_ctx;
 	rc = ctrl->lib->wakeup(&cdata);
 
