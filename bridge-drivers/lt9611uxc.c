@@ -1901,6 +1901,8 @@ static int lt9611_get_edid_block(void *data, u8 *buf, unsigned int block,
 	pr_info("get edid block: block=%d, len=%d\n", block, (int)len);
 	memcpy(buf, pdata->edid_buf + block * 128, len);
 
+	print_hex_dump_debug("EDID: ", DUMP_PREFIX_NONE, 16, 1,
+			buf, len, false);
 	return 0;
 }
 
