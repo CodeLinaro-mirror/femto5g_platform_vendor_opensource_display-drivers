@@ -305,11 +305,6 @@ int virtio_gpu_cmd_set_scanout_pic_adjust(struct virtio_kms *kms,
 				for SET_SCANOUT_PIC_ADJUST %d\n", rc);
 		goto error;
 	}
-/*
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_PIC_ADJUST <%d> (%s)\n",
-			le32_to_cpu(resp->scanout_id),
-			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
-*/
 	error_code = le32_to_cpu(resp->error_code);
 	if(error_code) {
 		pr_err("virtio :SET_SCANOUT_PIC_ADJUST failed scanout %d error %d\n",
@@ -375,11 +370,6 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 				for SET_SCANOUT_PROPERTIES %d\n", rc);
 		goto error;
 	}
-/*
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_SCANOUT_PROPERTIES <%d> (%s)\n",
-			le32_to_cpu(resp->scanout_id),
-			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
-*/
 	error_code = le32_to_cpu(resp->error_code);
 	if(error_code) {
 		pr_err("virtio :SET_SCANOUT_PROPERTIES failed scanout %d error %d\n",
@@ -443,10 +433,6 @@ int virtio_gpu_cmd_set_scanout(struct virtio_kms *kms,
 		pr_err("send_and_recv failed for SET_SCANOUT\n", rc);
 		goto error;
 	}
-	/*
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_SCANOUT%s)\n",
-                          virtio_cmd_type(le32_to_cpu(resp->type)));
-*/
 error:
 	if (req)
 		kfree(req);
@@ -499,10 +485,6 @@ int virtio_gpu_cmd_resource_create_2D(struct virtio_kms *kms,
 		pr_err("send_and_recv failed for RESOURCE_CREATE_2D\n", rc);
 		goto error;
 	}
-	/*
-	pr_debug("virtio: resp  VIRTIO_GPU_CMD_RESOURCE_CREATE_2D (%s)\n",
-                          virtio_cmd_type(le32_to_cpu(resp->type)));
-*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -533,7 +515,7 @@ int virtio_gpu_cmd_resource_attach_backing(struct virtio_kms *kms,
 		rc = -ENOMEM;
 		goto error;
 	}
-	pr_debug("virtio: cmd VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING_EXT" \
+	pr_debug("virtio: cmd VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING_EXT"
 			"<%d> (%d, %d)\n", resource_id, shmem_id, size);
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING_EXT);
 	cmd_p->resource_id = cpu_to_le32(resource_id);
@@ -547,13 +529,9 @@ int virtio_gpu_cmd_resource_attach_backing(struct virtio_kms *kms,
 			NULL,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if (rc) {
-		pr_err("send_and_recv failed for RESOURCE_ATTACH_BACKING\n", rc);
+		pr_err("virtio : send_and_recv failed for RESOURCE_ATTACH_BACKING\n", rc);
 		goto error;
 	}
-	/*
-	pr_debug("virtio:resp VIRTIO_GPU_CMD_RESOURCE_ATTACH_BACKING_EXT (%s)\n",
-                          virtio_cmd_type(le32_to_cpu(resp->type)));
-*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -826,10 +804,6 @@ int virtio_gpu_cmd_event_control(struct virtio_kms *kms,
 				rc);
 		goto error;
 	}
-	/*
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_EVENT_CONTROL (%s)\n",
-			virtio_cmd_type(le32_to_cpu(resp->type)));
-*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -928,8 +902,7 @@ static void virtio_get_scanout_info(
 				le32_to_cpu(resp->pmodes[i].refresh);
 			output->info[num_modes].flags =
 				le32_to_cpu(resp->pmodes[i].flags);
-			pr_debug("virtio: scanout info <%d> <mode %d> \
-					(%dx%d+%d+%d@%d, %d)\n",
+			pr_debug("virtio: scanout info <%d> <mode %d> (%dx%d+%d+%d@%d, %d)\n",
 					scanout,
 					i,
 					output->info[num_modes].r.width,
@@ -976,7 +949,7 @@ int virtio_gpu_cmd_get_display_info(struct virtio_kms *kms)
 	int rc = 0;
 
 	if (!cmd_p || !resp) {
-		pr_err("memory alloc failed \n");
+		pr_err("virtio :memory alloc failed\n");
 		rc = -ENOMEM;
 		goto error;
 	}
@@ -991,7 +964,7 @@ int virtio_gpu_cmd_get_display_info(struct virtio_kms *kms)
 			resp,
 			sizeof(struct virtio_gpu_resp_display_info));
 	if (rc) {
-		pr_err("send_and_recv failed for DISPLAY_INFO %d\n",
+		pr_err("virtio send_and_recv failed for DISPLAY_INFO %d\n",
 				rc);
 	}
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_GET_DISPLAY_INFO (%s)\n",
@@ -1035,10 +1008,9 @@ int virtio_gpu_cmd_get_display_info_ext(struct virtio_kms *kms,
 			sizeof(struct virtio_gpu_get_display_info_ext),
 			resp,
 			sizeof(struct virtio_gpu_resp_display_info_ext));
-	if (rc) {
-		pr_err("send_and_recv failed for DISPLAY_INFO_EXT %d\n",
-				rc);
-	}
+	if (rc)
+		pr_err("virtio : send_and_recv failed for DISPLAY_INFO_EXT %d\n", rc);
+
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_GET_DISPLAY_INFO_EXT <%d> (%s)\n",
 			le32_to_cpu(resp->scanout_id),
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
@@ -1100,9 +1072,9 @@ int virtio_gpu_cmd_get_scanout_attributes(struct virtio_kms *kms,
 			sizeof(struct virtio_gpu_get_scanout_attributes),
 			resp,
 			sizeof(struct virtio_gpu_resp_scanout_atttributes));
-	if (rc) {
-		pr_err("send_and_recv failed for SCANOUT_ATTRIBUTE %d\n", rc);
-	}
+	if (rc)
+		pr_err("virtio : send_and_recv failed for SCANOUT_ATTRIBUTE %d\n", rc);
+
 	pr_debug("virtio: resp  VIRTIO_GPU_CMD_GET_SCANOUT_ATTRIBUTE<%d>(%s)\n",
 			le32_to_cpu(resp->scanout_id),
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
@@ -1129,13 +1101,12 @@ static void virtio_get_scanout_planes(struct virtio_kms *kms,
 		pr_err("virtio: To many planes %d\n", output->plane_cnt);
 		output->plane_cnt = VIRTIO_GPU_MAX_PLANES;
 	}
-	pr_debug("virtio: plane scanout <%d> (", scanout);
+	pr_debug("virtio: plane scanout <%d>\n", scanout);
 	for(i = 0; i < output->plane_cnt; i++) {
 		output->plane_caps[i].plane_id =
 			le32_to_cpu(resp->plane_ids[i]);
-		pr_debug("%d,", output->plane_caps[i].plane_id);
+		pr_debug("%d -> %d\n", i, output->plane_caps[i].plane_id);
 	}
-	pr_debug(")\n");
 }
 
 int virtio_gpu_cmd_get_scanout_planes(struct virtio_kms *kms,
@@ -1221,18 +1192,19 @@ static int virtio_get_planes_caps(struct virtio_kms *kms,
 	}
 	plane_caps->max_scale = le32_to_cpu(resp->caps.max_scale);
 	plane_caps->num_formats = num_formats;
-	pr_debug("plane caps <%d:%d> (%d, %d, %d, %d,(",
+	plane_caps->pair_plane_id = le32_to_cpu(resp->caps.pair_plane_id);
+	pr_debug("virtio : plane caps <%d:%d> (%d, %d, %d, %d, %d\n",
 			scanout,
 			plane_id,
 			plane_caps->plane_type,
 			plane_caps->max_width,
 			plane_caps->max_height,
-			plane_caps->num_formats);
+			plane_caps->num_formats,
+			plane_caps->pair_plane_id);
 
 	for (i = 0; i < plane_caps->num_formats; i++) {
-		pr_debug("%d ", plane_caps->formats[i]);
+		pr_debug("%d\n", plane_caps->formats[i]);
 	}
-	pr_debug(")\n");
 
 	return 0;
 }
@@ -1278,7 +1250,7 @@ int virtio_gpu_cmd_get_plane_caps(struct virtio_kms *kms,
 
 	scanout_rep = le32_to_cpu(resp->caps.scanout_id);
 	plain_id_rep = le32_to_cpu(resp->caps.plane_id);
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_GET_PLANES_CAPS <%d:%d> (%s)\n",
+	pr_err("virtio: resp VIRTIO_GPU_CMD_GET_PLANES_CAPS <%d:%d> (%s)\n",
 			scanout_rep, plain_id_rep,
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
 
@@ -1291,11 +1263,10 @@ int virtio_gpu_cmd_get_plane_caps(struct virtio_kms *kms,
 				plane_id, plain_id_rep);
 
 		rc = -EINVAL;
-//		goto error;
+		goto error;
 	}
-//TODO : fix the packer response in BE
 	rc = virtio_get_planes_caps(kms,
-			scanout,//scanout_rep,
+			scanout_rep,
 			plain_id_rep,
 			resp);
 error:
@@ -1354,7 +1325,6 @@ static int virtio_gpu_cmd_get_event (struct virtio_kms *kms,
 	pr_debug("virtio: cmd VIRTIO_GPU_CMD_WAIT_EVENTS (%d)\n",
 			cmd_p->max_num_events);
 	rc = virtio_hab_send_and_recv_timeout(hab_socket,
-//	rc = virtio_hab_send_and_recv(hab_socket,
 			kms->channel[client_id].hyp_cbchl_lock,
 			cmd_p,
 			sizeof(struct virtio_gpu_wait_events),
@@ -1480,11 +1450,6 @@ int virtio_gpu_cmd_set_resource_info(struct virtio_kms *kms,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if (rc)
 		pr_err("virtio :send_and_recv failed for PLANE_PROPERTIES %d\n", rc);
-/*
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_RESOURCE_INFO <%d> (%s)\n",
-			resource_id,
-			virtio_cmd_type(le32_to_cpu(resp->type)));
-*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -1507,7 +1472,6 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
-	//uint32_t error = 0;
 
 	pr_debug("virtio: cmd VIRTIO_GPU_CMD_SET_PLANE <%d:%d> (%d)\n",
 			scanout, plane_id, res_id);
@@ -1527,18 +1491,6 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 		pr_err("virtio :send_and_recv failed for PLANE_CAPS %d\n", rc);
 		goto error;
 	}
-/*
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_PLANE<%d> (%s)\n",
-			le32_to_cpu(resp->scanout_id),
-			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
-
-	error = le32_to_cpu(resp->error_code);
-	if (error)
-		pr_err("virtio :SET_PLANE failed for scanout %d plane %d rc %d\n",
-				scanout,
-				plane_id,
-				error);
-				*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -1660,7 +1612,6 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
-	//uint32_t error_code = 0;
 
 	pr_debug("virtio: cmd VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES" \
 			"<%d:%d> (0x%x)\n",
@@ -1699,17 +1650,6 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 				rc);
 		goto error;
 	}
-	/*
-	pr_debug("virtio: resp VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES<%d> (%s)\n",
-			le32_to_cpu(resp->scanout_id),
-			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
-
-	error_code = le32_to_cpu(resp->error_code);
-	if (error_code)
-		pr_err("virtio :plane set_properties failed plane %d rc%d\n",
-				plane_id,
-				error_code);
-				*/
 error:
 	if (cmd_p)
 		kfree(cmd_p);
