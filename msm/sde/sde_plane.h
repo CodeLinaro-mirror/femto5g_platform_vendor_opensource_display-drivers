@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -60,6 +60,7 @@ struct sde_plane {
 	uint32_t perf_features; /* perf capabilities from catalog */
 	uint32_t nformats;
 	uint32_t formats[64];
+	uint64_t modifiers[64];
 
 	struct sde_hw_pipe *pipe_hw;
 	struct sde_hw_pipe_cfg pipe_cfg;
@@ -399,4 +400,11 @@ void sde_plane_static_img_control(struct drm_plane *plane,
 		enum sde_sys_cache_state state, enum sde_sys_cache_type type);
 
 void sde_plane_add_data_to_minidump_va(struct drm_plane *plane);
+
+/*
+ * sde_plane_dump - dump the pipe register
+ * @plane: Pointer to DRM plane object
+ */
+void sde_plane_dump(struct drm_plane *plane);
+
 #endif /* _SDE_PLANE_H_ */

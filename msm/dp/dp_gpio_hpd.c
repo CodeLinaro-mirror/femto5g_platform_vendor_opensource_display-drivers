@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
  */
 
@@ -252,6 +252,49 @@ error:
 	return rc;
 }
 
+static void dp_gpio_hpd_host_init(struct dp_hpd *dp_hpd,
+		struct dp_catalog_hpd *catalog)
+{
+	struct dp_gpio_hpd_private *gpio_hpd;
+	bool hpd;
+
+	if (!dp_hpd) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	gpio_hpd = container_of(dp_hpd, struct dp_gpio_hpd_private, base);
+
+	hpd = gpio_get_value_cansleep(gpio_hpd->gpio_cfg.gpio);
+	if (gpio_hpd->hpd != hpd) {
+		DP_INFO("DP%d HPD changes during suspension %d->%d\n",
+				gpio_hpd->parser->cell_idx, gpio_hpd->hpd, hpd);
+		gpio_hpd->hpd = hpd;
+	}
+
+	if (gpio_hpd->hpd != gpio_hpd->base.hpd_high) {
+		DP_INFO("DP%d missed HPD %s edge?\n",
+				gpio_hpd->parser->cell_idx,
+				gpio_hpd->hpd ? "raising" : "falling");
+		queue_delayed_work(system_wq, &gpio_hpd->work, 0);
+	}
+}
+
+static void dp_gpio_hpd_host_deinit(struct dp_hpd *dp_hpd,
+		struct dp_catalog_hpd *catalog)
+{
+	struct dp_gpio_hpd_private *gpio_hpd;
+
+	if (!dp_hpd) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	gpio_hpd = container_of(dp_hpd, struct dp_gpio_hpd_private, base);
+
+	// Do nothing
+}
+
 int dp_gpio_hpd_register(struct dp_hpd *dp_hpd)
 {
 	struct dp_gpio_hpd_private *gpio_hpd;
@@ -354,6 +397,8 @@ struct dp_hpd *dp_gpio_hpd_get(struct device *dev,
 	INIT_WORK(&gpio_hpd->disconnect, dp_gpio_hpd_disconnect_work);
 	INIT_WORK(&gpio_hpd->attention, dp_gpio_hpd_attention_work);
 
+	gpio_hpd->base.host_init = dp_gpio_hpd_host_init;
+	gpio_hpd->base.host_deinit = dp_gpio_hpd_host_deinit;
 	gpio_hpd->base.simulate_connect = dp_gpio_hpd_simulate_connect;
 	gpio_hpd->base.simulate_attention = dp_gpio_hpd_simulate_attention;
 	gpio_hpd->base.register_hpd = dp_gpio_hpd_register;
