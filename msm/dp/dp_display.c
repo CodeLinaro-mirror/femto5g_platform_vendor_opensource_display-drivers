@@ -200,6 +200,8 @@ struct dp_display_private {
 	struct delayed_work hdcp_cb_work;
 	struct work_struct connect_work;
 	struct work_struct attention_work;
+	struct work_struct force_connect_work;
+	struct work_struct force_disconnect_work;
 	struct mutex session_lock;
 	bool hdcp_delayed_off;
 
@@ -225,6 +227,8 @@ struct dp_display_private {
 	u32 hdcp_cell_idx;
 	u32 dpu_idx;
 	u32 max_hdcp_key_verify_retries;
+
+	struct timer_list hpd_check_timer;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -1637,6 +1641,12 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 		}
 	}
 
+	if (dp->parser->sec_hpd_check_delay_ms) {
+		DP_DEBUG("DP%d HPD=1 restart HPD check timer\n", dp->cell_idx);
+		mod_timer(&dp->hpd_check_timer, jiffies +
+				msecs_to_jiffies(dp->parser->sec_hpd_check_delay_ms));
+	}
+
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
 	    && !dp->parser->gpio_aux_switch && dp->aux_switch_node && dp->aux->switch_configure) {
 		rc = dp_display_init_aux_switch(dp);
@@ -1916,6 +1926,15 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, dp->state);
 		return 0;
 	}
+
+	if (dp->parser->sec_hpd_check_delay_ms) {
+		DP_DEBUG("DP%d HPD=0 restart HPD check timer\n", dp->cell_idx);
+		mod_timer(&dp->hpd_check_timer, jiffies +
+				msecs_to_jiffies(dp->parser->sec_hpd_check_delay_ms));
+	}
+
+	if (dp->debug->psm_enabled && dp_display_state_is(DP_STATE_READY))
+		dp->link->psm_config(dp->link, &dp->panel->link_info, true);
 
 	dp_display_disconnect_sync(dp);
 
@@ -2248,6 +2267,30 @@ static int dp_display_usb_notifier(struct notifier_block *nb,
 	return NOTIFY_DONE;
 }
 
+static int dp_display_secondary_hpd(struct device *dev, bool connected)
+{
+	struct dp_display_private *dp;
+
+	if (!dev) {
+		pr_err("invalid dev\n");
+		return -EINVAL;
+	}
+
+	dp = dev_get_drvdata(dev);
+	if (!dp) {
+		pr_err("no driver data found\n");
+		return -ENODEV;
+	}
+
+	if (dp->parser->sec_hpd_check_delay_ms) {
+		DP_DEBUG("DP%d sec HPD=%d restart HPD check timer\n", dp->cell_idx, connected);
+		mod_timer(&dp->hpd_check_timer, jiffies +
+				msecs_to_jiffies(dp->parser->sec_hpd_check_delay_ms));
+	}
+
+	return 0;
+}
+
 static void dp_display_register_usb_notifier(struct dp_display_private *dp)
 {
 	int rc = 0;
@@ -2289,6 +2332,73 @@ int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data)
 			dp->cell_idx, dp->state, ret);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, notifier_data->cb_type);
 	return ret;
+}
+
+static void dp_display_force_connect_work(struct work_struct *work)
+{
+	struct dp_display_private *dp = container_of(work,
+			struct dp_display_private, force_connect_work);
+
+	dp_display_disconnect_sync(dp);
+	mutex_lock(&dp->session_lock);
+	dp_display_host_init(dp);
+	mutex_unlock(&dp->session_lock);
+	queue_work(dp->wq, &dp->connect_work);
+}
+
+static void dp_display_force_disconnect_work(struct work_struct *work)
+{
+	struct dp_display_private *dp = container_of(work,
+			struct dp_display_private, force_disconnect_work);
+
+	dp_display_usbpd_disconnect_cb(&dp->pdev->dev);
+}
+
+static void dp_display_hpd_check_cb(struct timer_list *t)
+{
+	struct dp_display_private *dp = from_timer(dp, t, hpd_check_timer);
+	bool hpd, sec_hpd;
+	u32 sim_mode;
+
+	sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
+	hpd = dp->hpd->hpd_high;
+	sec_hpd = dp->hpd->sec_hpd_high;
+
+	if (hpd != sec_hpd) {
+		DP_DEBUG("DP%d Mismatch of the HPD status %d:%d sim %X\n", dp->cell_idx,
+				hpd, sec_hpd, sim_mode);
+		if (sec_hpd) {
+			/*
+			 * DP HPD is low, but GPIO detected HPD is high,
+			 * force trigger a connect event.
+			 */
+			DP_DEBUG("DP%d HPD check mismatch, hpd=%d, force connect event\n",
+						dp->cell_idx, sec_hpd);
+			dp->hpd->hpd_high = sec_hpd;
+			/*
+			 * Trigger a disconnect->connect event, since it's possible
+			 * connect_work is still on going, need to be enqueue to
+			 * another work queue.
+			 */
+			queue_work(system_wq, &dp->force_connect_work);
+		} else {
+			/*
+			 * DP HPD is high, but GPIO detected HPD is low,
+			 * force trigger a disconnect event.
+			 */
+			DP_DEBUG("DP%d HPD check mismatch, hpd=%d, force disconnect event\n",
+						dp->cell_idx, sec_hpd);
+			dp->hpd->hpd_high = sec_hpd;
+			/*
+			 * Trigger a disconnect event, since it's possible connect_work
+			 * is still on going, need to be enqueue to another work queue.
+			 */
+			queue_work(system_wq, &dp->force_disconnect_work);
+		}
+	} else {
+		DP_DEBUG("DP%d Match of the HPD status %d:%d\n", dp->cell_idx,
+				hpd, sec_hpd);
+	}
 }
 
 static void dp_display_deinit_sub_modules(struct dp_display_private *dp)
@@ -2481,7 +2591,11 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	memset(&dp->mst, 0, sizeof(dp->mst));
 	dp->active_stream_cnt = 0;
 
+	if (dp->parser->sec_hpd_check_delay_ms)
+		timer_setup(&dp->hpd_check_timer, dp_display_hpd_check_cb, 0);
+
 	cb->configure  = dp_display_usbpd_configure_cb;
+	cb->secondary_hpd  = dp_display_secondary_hpd;
 	cb->disconnect = dp_display_usbpd_disconnect_cb;
 	cb->attention  = dp_display_usbpd_attention_cb;
 
@@ -3594,6 +3708,8 @@ static int dp_display_create_workqueue(struct dp_display_private *dp)
 	INIT_DELAYED_WORK(&dp->hdcp_cb_work, dp_display_hdcp_cb_work);
 	INIT_WORK(&dp->connect_work, dp_display_connect_work);
 	INIT_WORK(&dp->attention_work, dp_display_attention_work);
+	INIT_WORK(&dp->force_connect_work, dp_display_force_connect_work);
+	INIT_WORK(&dp->force_disconnect_work, dp_display_force_disconnect_work);
 
 	return 0;
 }
@@ -4521,14 +4637,16 @@ static int dp_pm_prepare(struct device *dev)
 
 		mutex_lock(&dp->session_lock);
 		sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
-		pr_info("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		DP_INFO("DP%d sim_mode=0x%X  hpd=%d\n", dp->cell_idx,
+			sim_mode, dp->hpd->hpd_high);
 		if (sim_mode && dp->hpd->hpd_high)
 			pr_info("Suspend to sim mode when HPD is high\n");
 
 		// Always assume we will resume with HPD low
 		dp->hpd->hpd_high = false;
 		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
-		pr_info("Force HPD to be low and switch to sim mode for resume\n");
+		DP_INFO("DP%d Force HPD to be low and switch to sim mode for resume\n",
+				dp->cell_idx);
 
 		mutex_unlock(&dp->session_lock);
 	}
