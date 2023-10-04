@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/math64.h>
@@ -183,7 +184,8 @@ static void dsi_phy_hw_v3_0_lane_settings(struct dsi_phy_hw *phy,
 		 * to the logical data lane 0
 		 */
 		DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(i), 0);
-		DSI_W32(phy, DSIPHY_LNX_PIN_SWAP(i), 0x0);
+		DSI_W32(phy, DSIPHY_LNX_PIN_SWAP(i),
+				(cfg->lane_pnswap >> i) & 0x1);
 		DSI_W32(phy, DSIPHY_LNX_HSTX_STR_CTRL(i), 0x88);
 	}
 	dsi_phy_hw_v3_0_config_lpcdrx(phy, cfg, true);
