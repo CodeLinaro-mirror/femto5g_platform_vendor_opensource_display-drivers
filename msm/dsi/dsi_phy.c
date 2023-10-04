@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_device.h>
@@ -324,6 +324,32 @@ static int dsi_phy_parse_dt_per_lane_cfgs(struct platform_device *pdev,
 	return rc;
 }
 
+static int dsi_phy_parse_dt_per_lane_bits(struct platform_device *pdev,
+					  u8 *bits,
+					  char *property)
+{
+	int rc = 0, i = 0;
+	const u8 *data;
+	u32 len = 0;
+
+	data = of_get_property(pdev->dev.of_node, property, &len);
+	if (!data)
+		return 0;
+
+	if (len != DSI_LANE_MAX) {
+		pr_err("incorrect phy %s settings, exp=%d, act=%d\n",
+		       property, DSI_LANE_MAX, len);
+		return -EINVAL;
+	}
+
+	*bits = 0;
+
+	for (i = DSI_LOGICAL_LANE_0; i < DSI_LANE_MAX; i++)
+		*bits |= (data[i] & 0x01) << i;
+
+	return rc;
+}
+
 static int dsi_phy_settings_init(struct platform_device *pdev,
 				 struct msm_dsi_phy *phy)
 {
@@ -362,6 +388,14 @@ static int dsi_phy_settings_init(struct platform_device *pdev,
 
 	/* Actual timing values are dependent on panel */
 	timing->count_per_lane = phy->ver_info->timing_cfg_count;
+
+	rc = dsi_phy_parse_dt_per_lane_bits(pdev, &phy->cfg.lane_pnswap,
+					    "qcom,platform-lane-pnswap");
+	if (rc) {
+		DSI_PHY_ERR(phy, "failed to parse lane P/N swap map, rc=%d\n",
+				rc);
+		goto err;
+	}
 
 	phy->allow_phy_power_off = of_property_read_bool(pdev->dev.of_node,
 			"qcom,panel-allow-phy-poweroff");
