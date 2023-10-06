@@ -840,7 +840,13 @@ static int sde_encoder_phys_shd_atomic_check(struct sde_encoder_phys *phys_enc,
 		return -EINVAL;
 	}
 
-	if (!drm_atomic_crtc_needs_modeset(crtc_state) || !crtc_state->active)
+	/*
+	 * Only reserve the resources when mode changes and CRTC is active.
+	 * For connectors_change, i.e. CWB case, HW resources should remain
+	 * same, and no modeset will be called to the encoder to update.
+	 */
+	if ((!crtc_state->mode_changed && !crtc_state->active_changed)
+		|| !crtc_state->active)
 		return 0;
 
 	display = sde_connector_get_display(conn_state->connector);
