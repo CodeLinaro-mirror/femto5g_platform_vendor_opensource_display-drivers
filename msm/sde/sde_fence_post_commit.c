@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/slab.h>
@@ -72,7 +72,7 @@ int sde_post_commit_fence_ctx_init(
 
 	return 0;
 }
-EXPORT_SYMBOL(sde_post_commit_fence_ctx_init);
+EXPORT_SYMBOL_GPL(sde_post_commit_fence_ctx_init);
 
 int sde_post_commit_add_sub_fence_ctx(
 		struct sde_post_commit_fence_context *ctx,
@@ -92,7 +92,7 @@ int sde_post_commit_add_sub_fence_ctx(
 
 	return 0;
 }
-EXPORT_SYMBOL(sde_post_commit_add_sub_fence_ctx);
+EXPORT_SYMBOL_GPL(sde_post_commit_add_sub_fence_ctx);
 
 void sde_post_commit_fence_create(
 		struct sde_post_commit_fence_context *ctx,
@@ -137,7 +137,7 @@ void sde_post_commit_fence_create(
 		}
 	}
 }
-EXPORT_SYMBOL(sde_post_commit_fence_create);
+EXPORT_SYMBOL_GPL(sde_post_commit_fence_create);
 
 int sde_post_commit_add_sub_fence(
 		struct sde_sub_fence *sub_fence)
@@ -172,7 +172,7 @@ int sde_post_commit_add_sub_fence(
 
 	return 0;
 }
-EXPORT_SYMBOL(sde_post_commit_add_sub_fence);
+EXPORT_SYMBOL_GPL(sde_post_commit_add_sub_fence);
 
 int sde_post_commit_fence_update(
 		struct sde_post_commit_fence_context *ctx)
@@ -217,7 +217,7 @@ int sde_post_commit_fence_update(
 
 	return 0;
 }
-EXPORT_SYMBOL(sde_post_commit_fence_update);
+EXPORT_SYMBOL_GPL(sde_post_commit_fence_update);
 
 static struct sde_post_commit_fence *sde_post_commit_get_current_locked(
 		struct sde_post_commit_fence_context *ctx)
@@ -285,7 +285,7 @@ void sde_post_commit_signal_fence(struct sde_post_commit_fence_context *ctx)
 	sde_fence_helper_signal(&ctx->base);
 	spin_unlock_irqrestore(&ctx->lock, flags);
 }
-EXPORT_SYMBOL(sde_post_commit_signal_fence);
+EXPORT_SYMBOL_GPL(sde_post_commit_signal_fence);
 
 void sde_post_commit_signal_sub_fence(
 		struct sde_post_commit_fence_context *ctx,
@@ -315,5 +315,5 @@ void sde_post_commit_signal_sub_fence(
 	}
 	spin_unlock_irqrestore(&ctx->lock, flags);
 }
-EXPORT_SYMBOL(sde_post_commit_signal_sub_fence);
+EXPORT_SYMBOL_GPL(sde_post_commit_signal_sub_fence);
 
