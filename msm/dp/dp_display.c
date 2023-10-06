@@ -222,6 +222,7 @@ struct dp_display_private {
 
 	struct device *msm_hdcp_dev;
 	u32 hdcp_cell_idx;
+	u32 dpu_idx;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -695,6 +696,7 @@ static int dp_display_initialize_hdcp(struct dp_display_private *dp)
 
 	hdcp_init_data.client_id     = HDCP_CLIENT_DP;
 	hdcp_init_data.client_index  = dp->hdcp_cell_idx;
+	hdcp_init_data.dpu_index     = dp->dpu_idx;
 	hdcp_init_data.drm_aux       = dp->aux->drm_aux;
 	hdcp_init_data.cb_data       = (void *)dp;
 	hdcp_init_data.workq         = dp->wq;
@@ -3588,7 +3590,14 @@ static int dp_parser_msm_hdcp_dev(struct dp_display_private *dp)
 	ret = of_property_read_u32(node, "cell-index", &dp->hdcp_cell_idx);
 	if (ret < 0) {
 		// This is a non-fatal error, module initialization can proceed
-		pr_warn("couldn't find right hdcp cell-index");
+		pr_warn("couldn't find right hdcp cell-index\n");
+		return 0;
+	}
+
+	ret = of_property_read_u32(node, "dpu-index", &dp->dpu_idx);
+	if (ret < 0) {
+		// This is a non-fatal error, module initialization can proceed
+		pr_warn("couldn't find right hdcp dpu-index\n");
 		return 0;
 	}
 
