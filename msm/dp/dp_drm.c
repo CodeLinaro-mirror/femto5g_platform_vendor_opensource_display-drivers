@@ -71,15 +71,15 @@ static int get_sink_dc_support(struct dp_display *dp,
 	if ((connector->display_info.color_formats & DRM_COLOR_FORMAT_RGB444)
 		&& (connector->display_info.edid_hdmi_rgb444_dc_modes
 		& DRM_EDID_HDMI_DC_30))
-		if (dp->get_dc_support(dp, mode->clock,
-			MSM_MODE_FLAG_COLOR_FORMAT_RGB444, true))
+		if (dp->get_dc_support(dp, mode,
+			MSM_MODE_FLAG_COLOR_FORMAT_RGB444))
 			dc_format |= MSM_MODE_FLAG_RGB444_DC_ENABLE;
 
 	if ((connector->display_info.color_formats & DRM_COLOR_FORMAT_YCRCB422)
 		&& (connector->display_info.edid_hdmi_ycbcr444_dc_modes
 		& DRM_EDID_HDMI_DC_30))
-		if (dp->get_dc_support(dp, mode->clock,
-			MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422, false))
+		if (dp->get_dc_support(dp, mode,
+			MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422))
 			dc_format |= MSM_MODE_FLAG_YCBCR422_DC_ENABLE;
 
 	return dc_format;
@@ -121,7 +121,8 @@ u32 dp_connector_choose_best_format(struct dp_display *dp,
 		DRM_COLOR_FORMAT_YCRCB422))
 		flag = MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422;
 	else {
-		DP_DEBUG("Can't get best color format for mode: %s@%u\n",
+		if (dp->is_yuv_supported)
+			DP_DEBUG("Can't get best color format for %s@%u\n",
 				mode->name, mode->clock);
 		flag = MSM_MODE_FLAG_COLOR_FORMAT_RGB444;
 	}
