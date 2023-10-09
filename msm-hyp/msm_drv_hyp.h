@@ -148,6 +148,9 @@ struct msm_hyp_crtc_state {
 
 struct msm_hyp_framebuffer {
 	struct drm_framebuffer base;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
+	struct drm_gem_object *bo;
+#endif
 	struct msm_hyp_framebuffer_info *info;
 };
 

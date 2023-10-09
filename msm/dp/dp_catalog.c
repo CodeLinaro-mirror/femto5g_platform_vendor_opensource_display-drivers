@@ -1403,12 +1403,6 @@ static void dp_catalog_ctrl_usb_reset(struct dp_catalog_ctrl *ctrl, bool flip)
 
 	DP_DEBUG("Program PHYMODE to DP only\n");
 	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x0F);
-	/*
-	 * USB PHY may interfere DP PHY if the USB PHY isn't reset properly.
-	 * Update the reset sequence per hardware suggestion,
-	 * force USB PHY to sw reset
-	 */
-	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x0E);
 	dp_write(USB3_DP_COM_PHY_MODE_CTRL, 0x02);
 	dp_write(USB3_DP_COM_SW_RESET, 0x01);
 	/* make sure usb3 com phy software reset is done */
@@ -1425,8 +1419,18 @@ static void dp_catalog_ctrl_usb_reset(struct dp_catalog_ctrl *ctrl, bool flip)
 	wmb();
 
 	dp_write(USB3_DP_COM_POWER_DOWN_CTRL, 0x01);
-	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x00);
+	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x09);
 	/* make sure phy is brought out of reset */
+	wmb();
+
+	/*
+	 * USB PHY may interfere DP PHY if the USB PHY isn't reset properly.
+	 * Update the reset sequence per hardware suggestion, force USB PLL
+	 * to be disabled.
+	 */
+	io_data = catalog->io.usb3_pll;
+	dp_write(USB3_QSERDES_COM_PLL_EN, 0x02);
+	/* make sure register is written */
 	wmb();
 }
 
@@ -2331,6 +2335,32 @@ static void dp_catalog_ctrl_mainlink_levels(struct dp_catalog_ctrl *ctrl,
 	dp_write(DP_MAINLINK_LEVELS, mainlink_levels);
 }
 
+static void dp_catalog_ctrl_reset_retimer(struct dp_catalog_ctrl *ctrl)
+{
+	struct dp_catalog_private *catalog;
+	struct dp_io_data *io_data;
+	u32 reg;
+
+	catalog = dp_catalog_get_priv(ctrl);
+	io_data   = catalog->io.dp_phy;
+
+	reg = dp_read(DP_PHY_CFG) & 0xFF;
+
+	/* Toggle RETIMING_ENABLE */
+	reg &= ~BIT(0);
+	dp_write(DP_PHY_CFG, reg);
+	udelay(2000);
+
+	reg |= BIT(0);
+	dp_write(DP_PHY_CFG, reg);
+	/* make sure retimer is reset */
+	wmb();
+
+	do {
+		reg = dp_read(DP_PHY_STATUS);
+		pr_debug("Phy_ready is %d. Status=%x\n", reg & BIT(1), reg);
+	} while (!(reg & BIT(1)));
+}
 
 /* panel related catalog functions */
 static int dp_catalog_panel_timing_cfg(struct dp_catalog_panel *panel)
@@ -2773,6 +2803,7 @@ static void dp_catalog_get_io_buf(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io_buf(hdcp_physical);
 	dp_catalog_fill_io_buf(dp_p1);
 	dp_catalog_fill_io_buf(dp_tcsr);
+	dp_catalog_fill_io_buf(usb3_pll);
 }
 
 static void dp_catalog_get_io(struct dp_catalog_private *catalog)
@@ -2793,6 +2824,7 @@ static void dp_catalog_get_io(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io(hdcp_physical);
 	dp_catalog_fill_io(dp_p1);
 	dp_catalog_fill_io(dp_tcsr);
+	dp_catalog_fill_io(usb3_pll);
 }
 
 static void dp_catalog_set_exe_mode(struct dp_catalog *dp_catalog, char *mode)
@@ -2918,6 +2950,7 @@ struct dp_catalog *dp_catalog_get(struct device *dev, struct dp_parser *parser)
 		.fec_config = dp_catalog_ctrl_fec_config,
 		.mainlink_levels = dp_catalog_ctrl_mainlink_levels,
 		.late_phy_init = dp_catalog_ctrl_late_phy_init,
+		.reset_retimer = dp_catalog_ctrl_reset_retimer,
 	};
 	struct dp_catalog_hpd hpd = {
 		.config_hpd	= dp_catalog_hpd_config_hpd,

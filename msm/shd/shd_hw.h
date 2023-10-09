@@ -66,6 +66,7 @@ struct sde_shd_hw_roi_misr {
 	struct sde_hw_roi_misr base;
 	struct sde_hw_roi_misr *orig;
 	uint32_t roi_mask;
+	uint32_t cur_roi_mask;
 	struct sde_roi_misr_hw_cfg misr_cfg;
 };
 
