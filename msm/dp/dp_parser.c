@@ -185,6 +185,9 @@ static int dp_parser_misc(struct dp_parser *parser)
 	if (rc)
 		parser->shallow_mode_retries = MAX_DP_SHALLOW_MODE_RETRIES;
 
+	parser->no_backlight_support = of_property_read_bool(of_node,
+			"qcom,no-backlight-support");
+
 	return 0;
 }
 
