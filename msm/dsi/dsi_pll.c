@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"%s: " fmt, __func__
@@ -26,6 +26,9 @@ static int dsi_pll_clock_register(struct platform_device *pdev,
 		break;
 	case DSI_PLL_4NM:
 		rc = dsi_pll_clock_register_4nm(pdev, pll_res);
+		break;
+	case DSI_PLL_10NM:
+		rc = dsi_pll_clock_register_10nm(pdev, pll_res);
 		break;
 	default:
 		rc = -EINVAL;
@@ -273,6 +276,8 @@ int dsi_pll_init(struct platform_device *pdev, struct dsi_pll_resource **pll)
 		pll_res->pll_revision = DSI_PLL_4NM;
 	else if (!strcmp(label, "dsi_pll_5nm"))
 		pll_res->pll_revision = DSI_PLL_5NM;
+	else if (!strcmp(label, "dsi_pll_10nm"))
+		pll_res->pll_revision = DSI_PLL_10NM;
 	else
 		return -ENOTSUPP;
 
