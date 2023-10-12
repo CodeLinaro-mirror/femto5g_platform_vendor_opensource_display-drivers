@@ -1074,7 +1074,12 @@ static int msm_drm_component_init(struct device *dev)
 	}
 
 	drm_kms_helper_poll_init(ddev);
+
+#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
 	place_marker("M - DISPLAY Driver Ready");
+#else
+	pr_info("M - DISPLAY Driver Ready\n");
+#endif
 
 	/* Set the flag in the init_complete file in msm_drm sysfs to 1 */
 	priv->init_comp = 1;
@@ -2297,6 +2302,11 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	int ret;
 	struct component_match *match = NULL;
 
+#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
+	place_marker("M - DISPLAY Driver Init");
+#else
+	pr_info("M - DISPLAY Driver Init\n");
+#endif
 	ret = msm_drm_component_dependency_check(&pdev->dev);
 	if (ret)
 		return ret;
