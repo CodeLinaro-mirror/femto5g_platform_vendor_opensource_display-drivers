@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -787,7 +787,7 @@ static void dp_parser_qos(struct dp_parser *parser)
 	parser->qos_cpu_mask = mask;
 	parser->qos_cpu_latency = latency;
 
-	DP_DEBUG("qos parsing successful. mask:%x latency:%ld\n", mask, latency);
+	DP_DEBUG("qos parsing successful. mask:%x latency:%u\n", mask, latency);
 }
 
 static void dp_parser_fec(struct dp_parser *parser)

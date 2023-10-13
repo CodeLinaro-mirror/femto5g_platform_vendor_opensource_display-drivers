@@ -450,7 +450,7 @@ TRACE_EVENT(sde_hw_fence_status,
 			__entry->hw_fence_start_timestamp = hw_fence_start_timestamp;
 			__entry->hw_fence_end_timestamp = hw_fence_end_timestamp;),
 	TP_printk(
-		"crtc:%d %s hw-fence start timestamp:%llu end timestamp:%llu",
+		"crtc:%d %s hw-fence start timestamp:%u end timestamp:%u",
 			__entry->crtc,
 			__entry->fence,
 			__entry->hw_fence_start_timestamp,

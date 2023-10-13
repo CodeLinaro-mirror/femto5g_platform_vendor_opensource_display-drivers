@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -283,7 +283,7 @@ static inline void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
 {
 }
 
-static int dp_connector_install_properties(void *display,
+static inline int dp_connector_install_properties(void *display,
 		struct drm_connector *conn)
 {
 	return 0;
