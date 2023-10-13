@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -149,6 +149,10 @@ static inline int dp_display_mmrm_callback(struct mmrm_client_notifier_data *not
 static inline void dp_display_clear_dsc_resources(struct dp_display *dp_display,
 		struct dp_panel *panel)
 {
+}
+static inline bool dp_connector_mode_needs_full_range(void *display)
+{
+	return false;
 }
 #endif /* CONFIG_DRM_MSM_DP */
 #endif /* _DP_DISPLAY_H_ */
