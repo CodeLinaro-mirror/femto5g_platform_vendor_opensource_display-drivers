@@ -178,6 +178,7 @@ static void lt9611_ctl_disable(struct lt9611 *pdata);
 static int lt9611_read_cec_msg(struct lt9611 *pdata, struct cec_msg *msg);
 
 static int lt9611_write_byte(struct lt9611 *pdata, const u8 reg, u8 value);
+static int lt9611_read(struct lt9611 *pdata, u8 reg, char *buf, u32 size);
 
 static int lt9611_setup_audio_infoframes(struct lt9611 *pdata,
 		struct msm_ext_disp_audio_setup_params *params)
@@ -456,9 +457,29 @@ end:
 	return rc;
 }
 
+int lt9611_read_hpd_status(struct lt9611 *pdata)
+{
+	u8 hpd_status = 0;
+	u8 conn_status = connector_status_disconnected;
+
+	mutex_lock(&pdata->lock);
+	lt9611_ctl_en(pdata);
+	lt9611_write_byte(pdata, 0xFF, 0xB0);
+	if (!lt9611_read(pdata, 0x23, &hpd_status, 1)) {
+		if (hpd_status & BIT(1))
+			conn_status = connector_status_connected;
+	}
+	lt9611_ctl_disable(pdata);
+	mutex_unlock(&pdata->lock);
+
+	return conn_status;
+}
+
 void lt9611_helper_read_edid(struct lt9611 *pdata)
 {
 	struct cec_notifier *notify = pdata->cec_notifier;
+
+	pr_info("Reading edid.\n");
 
 	lt9611_read_edid(pdata);
 	pdata->edid = drm_do_get_edid(&pdata->connector,
@@ -478,8 +499,6 @@ void lt9611_helper_read_edid(struct lt9611 *pdata)
 void lt9611_edid_work(struct work_struct *work)
 {
 	struct lt9611 *pdata = container_of(work, struct lt9611, edid_work);
-
-	pr_info("Reading edid.\n");
 
 	lt9611_helper_read_edid(pdata);
 }
@@ -513,8 +532,8 @@ void lt9611_hpd_work(struct work_struct *work)
 
 	dev = pdata->connector.dev;
 	last_status = pdata->connector.status;
-	pdata->connector.status =
-		pdata->connector.funcs->detect(&pdata->connector, true);
+
+	pdata->connector.status = lt9611_read_hpd_status(pdata);
 
 	if (last_status == pdata->connector.status)
 		return;
@@ -537,6 +556,7 @@ void lt9611_hpd_work(struct work_struct *work)
 		pr_debug("release edid\n");
 		cont_splash_en = 0;
 		pdata->edid_complete = false;
+		pdata->edid_status = false;
 		kfree(pdata->edid);
 		pdata->edid = NULL;
 	}
@@ -1828,7 +1848,10 @@ lt9611_connector_detect(struct drm_connector *connector, bool force)
 		lt9611_ctl_en(pdata);
 		lt9611_write_byte(pdata, 0xFF, 0xB0);
 		if (!lt9611_read(pdata, 0x23, &hpd_status, 1)) {
-			if (hpd_status & BIT(1))
+			/* Set connector status to connected only if both
+			 * HPD and EDID status bits are set.
+			 */
+			if (hpd_status & 0x3)
 				pdata->status = connector_status_connected;
 			pr_debug("hpd status %x\n", hpd_status);
 		} else
