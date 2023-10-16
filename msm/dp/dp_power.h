@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -53,13 +53,15 @@ struct dp_power {
  *
  * @parser: instance of parser module
  * @pll: instance of pll module
+ * @pclk_bond_pll: instance of pll module used to generate the bonding pclk
  * return: pointer to allocated power module data
  *
  * This API will configure the DisplayPort's power module and provides
  * methods to be called by the client to configure the power related
  * modueles.
  */
-struct dp_power *dp_power_get(struct dp_parser *parser, struct dp_pll *pll);
+struct dp_power *dp_power_get(struct dp_parser *parser,
+		struct dp_pll *pll, struct dp_pll *pclk_bond_pll);
 
 /**
  * dp_power_put() - release the power related resources

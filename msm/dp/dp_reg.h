@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_REG_H_
@@ -456,5 +457,8 @@
 #define USB3_DP_COM_SWI_CTRL        (0x0C)
 #define USB3_DP_COM_TYPEC_CTRL      (0x10)
 #define USB3_DP_COM_RESET_OVRD_CTRL (0x1C)
+
+/* USB3 PLL registers */
+#define USB3_QSERDES_COM_PLL_EN			(0x0054)
 
 #endif /* _DP_REG_H_ */

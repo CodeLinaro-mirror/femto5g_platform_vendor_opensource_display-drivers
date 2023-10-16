@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -106,6 +106,12 @@ struct sde_hw_vbif_ops {
 	 * @xin_id: client interface identifier
 	 */
 	void (*set_write_gather_en)(struct sde_hw_vbif *vbif, u32 xin_id);
+
+	/**
+	 * dump_errors - dump vbif errors registers
+	 * @vbif: vbif context driver
+	 */
+	void (*dump_errors)(struct sde_hw_vbif *vbif);
 };
 
 struct sde_hw_vbif {
