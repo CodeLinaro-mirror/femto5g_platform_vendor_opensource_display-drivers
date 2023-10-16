@@ -23,7 +23,7 @@
  * Defines
  * ---------------------------------------------------------------------------
  */
-#define WIRE_USER_LOG_MODULE_NAME		"WireUser"
+#define WIRE_USER_LOG_MODULE_NAME		"[drm] WireUser"
 #define MAX_SEND_RECV_RETRY			6
 
 #define WIRE_LOG_ERROR(fmt, ...)		\
@@ -1006,8 +1006,6 @@ retry:
 				panic("wfdDeviceCommit");
 #endif
 			} else {
-				/* Add this msleep to let watch dog thread can be feed */
-				msleep(1);
 				goto retry;
 			}
 		}
