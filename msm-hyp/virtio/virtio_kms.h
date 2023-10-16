@@ -38,6 +38,8 @@ struct virtio_plane_caps {
 	uint32_t formats[VIRTIO_GPU_MAX_PIXEL_FORMATS];
 	uint32_t max_scale;
 	uint32_t zorder;
+	uint32_t pair_plane_id;
+	int32_t  master_plane_id;
 };
 
 struct virtio_display_modes {

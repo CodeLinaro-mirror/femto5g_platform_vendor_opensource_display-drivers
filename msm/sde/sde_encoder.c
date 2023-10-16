@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
@@ -952,8 +953,9 @@ static int _sde_encoder_atomic_check_phys_enc(struct sde_encoder_virt *sde_enc,
 				ret = -EINVAL;
 
 		if (ret) {
-			SDE_ERROR_ENC(sde_enc,
-					"mode unsupported, phys idx %d\n", i);
+			if (ret != -EDEADLK)
+				SDE_ERROR_ENC(sde_enc,
+						"mode unsupported, phys idx %d\n", i);
 			break;
 		}
 	}
@@ -3149,6 +3151,11 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 	if (!has_master_enc) {
 		sde_enc->cur_master = NULL;
 		SDE_ERROR("virt encoder has no master! num_phys %d\n", i);
+		return;
+	}
+
+	if (!sde_enc->cur_master || !sde_enc->cur_master->connector) {
+		SDE_ERROR("invalid connector\n");
 		return;
 	}
 

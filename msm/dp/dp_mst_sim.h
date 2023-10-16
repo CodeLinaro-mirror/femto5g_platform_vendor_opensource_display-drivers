@@ -1,4 +1,7 @@
-/* Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -31,6 +34,8 @@ int dp_sim_create_bridge(struct device *dev,
 		struct dp_aux_bridge **bridge);
 
 int dp_sim_destroy_bridge(struct dp_aux_bridge *bridge);
+
+u32 dp_sim_get_sim_mode(struct dp_aux_bridge *bridge);
 
 int dp_sim_set_sim_mode(struct dp_aux_bridge *bridge, u32 sim_mode);
 

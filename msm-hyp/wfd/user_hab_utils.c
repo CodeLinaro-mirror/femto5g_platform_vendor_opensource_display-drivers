@@ -12,6 +12,7 @@
 #include <linux/slab.h>
 #include <linux/atomic.h>
 #include <linux/kthread.h>
+#include <linux/spinlock.h>
 #include "msm_hyp_trace.h"
 #include "user_os_utils.h"
 #include "wire_user.h"
@@ -34,6 +35,7 @@
 #define WFD_CLIENT_ID_LV_CONTAINER	0x7819
 
 #define DO_NOT_LOCK_CHANNEL		0x01
+#define SPIN_LOCK_CHANNEL		0x02
 #define HAB_NO_TIMEOUT_VAL		-1
 
 #if !defined(__QNXNTO__) && !defined(__linux__)
@@ -111,6 +113,7 @@ static u32 channel_map[WFD_MAX_NUM_OF_CLIENTS][3] = {
 struct user_os_utils_context {
 	u32 client_id;
 	int32_t hyp_hdl_disp[MAX_CHANNELS];
+	spinlock_t hyp_cmdchl_lock;
 	struct mutex hyp_chl_lock[MAX_CHANNELS];
 	int client_idx;
 };
@@ -133,9 +136,13 @@ get_hab_handle(
 		client_id = *chl_id;
 
 		if (client_id < MAX_CHANNELS) {
-			if (!(DO_NOT_LOCK_CHANNEL & flags)) {
+			/* Make sure do not get messages out of order when multithreaded.
+			 * Otherwise can not use different locks for different requests.
+			 */
+			if (!flags)
 				mutex_lock(&ctx->hyp_chl_lock[client_id]);
-			}
+			else if (SPIN_LOCK_CHANNEL & flags)
+				spin_lock(&ctx->hyp_cmdchl_lock);
 			chl_hdl = ctx->hyp_hdl_disp[client_id];
 		}
 	}
@@ -153,6 +160,8 @@ rel_hab_handle(
 	if (chl_id < MAX_CHANNELS) {
 		if (!flags)
 			mutex_unlock(&ctx->hyp_chl_lock[chl_id]);
+		else if (SPIN_LOCK_CHANNEL & flags)
+			spin_unlock(&ctx->hyp_cmdchl_lock);
 	}
 
 	return 0;
@@ -204,6 +213,7 @@ user_os_utils_init(
 		} else {
 			/* create lock for openwfd commands hab channel */
 			mutex_init(&ctx->hyp_chl_lock[CHANNEL_OPENWFD]);
+			spin_lock_init(&ctx->hyp_cmdchl_lock);
 			UTILS_LOG_CRITICAL_INFO("OpenWFD channel open successful, handle=%d, client_id=0x%x",
 					ctx->hyp_hdl_disp[CHANNEL_OPENWFD], client_id);
 		}
@@ -322,19 +332,12 @@ user_os_utils_send_recv(
 	i64 timestamp = 0;
 	u32 req_flags = 0;
 	int retry_times = 0;
+	u32 lock_flags = 0;
 
 	u32 num_of_wfd_cmds = 0;
 	enum openwfd_cmd_type wfd_cmd_type = OPENWFD_CMD_MAX;
 	char marker_buff[MARKER_BUFF_LENGTH] = {0};
-	/*
-	 * Hold this CPU for 0.25s since here we call spin_lock_irqsave().
-	 * Normally it will be 100us to get reply, 250ms is enough.
-	 *
-	 * Be careful if hoping to increase such duration to be longer
-	 * since actually inside this duration, it is possible that the
-	 * watchdog pet procedure could not move ahead.
-	 */
-	unsigned long delay = jiffies + (HZ / 4);
+	unsigned long delay = 0;
 
 	if (!req || !resp) {
 		UTILS_LOG_ERROR("NULL req(0x%p) or resp(0x%p)",
@@ -355,6 +358,7 @@ user_os_utils_send_recv(
 		chl_id = CHANNEL_OPENWFD;
 	} else if (payload_type == EVENT_REGISTRATION) {
 		chl_id = CHANNEL_OPENWFD;
+		lock_flags = SPIN_LOCK_CHANNEL;
 	} else if (payload_type == EVENT_NOTIFICATION) {
 		chl_id = CHANNEL_EVENTS;
 	} else {
@@ -364,7 +368,7 @@ user_os_utils_send_recv(
 		goto end;
 	}
 
-	handle = get_hab_handle(ctx, &chl_id, 0x00);
+	handle = get_hab_handle(ctx, &chl_id, lock_flags);
 	if (!handle) {
 		UTILS_LOG_ERROR("get_hab_handle failed for chl_id=%d", chl_id);
 		rc = -1;
@@ -401,6 +405,8 @@ user_os_utils_send_recv(
 	HYP_ATRACE_BEGIN(marker_buff);
 
 retry_recv_packet:
+	delay = jiffies + (HZ / 4);
+
 	do {
 		/* TODO: Need handle exit hab_receive during deinit */
 		resp_size = sizeof(struct wire_packet);
@@ -506,7 +512,7 @@ retry_recv_packet:
 
 end:
 	if (handle) {
-		if (rel_hab_handle(ctx, chl_id, 0x00))
+		if (rel_hab_handle(ctx, chl_id, lock_flags))
 			UTILS_LOG_ERROR("rel_hab_handle failed");
 	}
 
@@ -533,6 +539,7 @@ user_os_utils_recv(
 	int32_t handle = 0;
 	u32 chl_id = 0;
 	u32 req_size = 0;
+	u32 lock_flags = 0;
 	enum payload_types payload_type;
 
 	if (!req) {
@@ -547,6 +554,7 @@ user_os_utils_recv(
 		chl_id = CHANNEL_OPENWFD;
 	} else if (payload_type == EVENT_REGISTRATION) {
 		chl_id = CHANNEL_OPENWFD;
+		lock_flags = SPIN_LOCK_CHANNEL;
 	} else if (payload_type == EVENT_NOTIFICATION) {
 		chl_id = CHANNEL_EVENTS;
 	} else {
@@ -556,7 +564,7 @@ user_os_utils_recv(
 		goto end;
 	}
 
-	handle = get_hab_handle(ctx, &chl_id, 0x00);
+	handle = get_hab_handle(ctx, &chl_id, lock_flags);
 	if (!handle) {
 		UTILS_LOG_ERROR("get_hab_handle failed for chl_id=%d", chl_id);
 		rc = -1;
@@ -594,7 +602,7 @@ user_os_utils_recv(
 
 end:
 	if (handle) {
-		if (rel_hab_handle(ctx, chl_id, 0x00))
+		if (rel_hab_handle(ctx, chl_id, lock_flags))
 			UTILS_LOG_ERROR("rel_hab_handle failed");
 	}
 

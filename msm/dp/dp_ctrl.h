@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_CTRL_H_
@@ -52,6 +52,7 @@ struct dp_ctrl_in {
 	struct dp_power *power;
 	struct dp_catalog_ctrl *catalog;
 	struct dp_pll *pll;
+	struct dp_pll *pclk_bond_pll;
 	enum dp_phy_bond_mode phy_bond_mode;
 };
 

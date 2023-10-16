@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_REG_H_
@@ -15,7 +16,9 @@
 #define DP_INTR_STATUS				(0x00000020)
 #define DP_INTR_STATUS2				(0x00000024)
 #define DP_INTR_STATUS3				(0x00000028)
+#define DP_INTR_STATUS4				(0x0000002C)
 #define DP_INTR_STATUS5				(0x00000034)
+#define DP_INTR_STATUS6				(0x00000038)
 
 #define DP_DP_HPD_CTRL				(0x00000000)
 #define DP_DP_HPD_INT_STATUS			(0x00000004)
@@ -315,6 +318,7 @@
 #define MMSS_DP_DSC_DTO				(0x0000007C)
 #define MMSS_DP_DSC_DTO_COUNT			(0x00000084)
 #define MMSS_DP_ASYNC_FIFO_CONFIG		(0x00000088)
+#define MMSS_DP_PCLK_STATUS				(0x00000094)
 
 #define MMSS_DP1_BIST_ENABLE			(0x00000000)
 #define MMSS_DP1_TIMING_ENGINE_EN		(0x00000010)
@@ -456,5 +460,8 @@
 #define USB3_DP_COM_SWI_CTRL        (0x0C)
 #define USB3_DP_COM_TYPEC_CTRL      (0x10)
 #define USB3_DP_COM_RESET_OVRD_CTRL (0x1C)
+
+/* USB3 PLL registers */
+#define USB3_QSERDES_COM_PLL_EN			(0x0054)
 
 #endif /* _DP_REG_H_ */

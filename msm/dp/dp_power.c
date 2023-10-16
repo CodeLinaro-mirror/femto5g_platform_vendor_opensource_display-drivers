@@ -17,6 +17,7 @@
 struct dp_power_private {
 	struct dp_parser *parser;
 	struct dp_pll *pll;
+	struct dp_pll *pclk_bond_pll;
 	struct platform_device *pdev;
 	struct clk *pixel_clk_rcg;
 	struct clk *pixel_parent;
@@ -32,6 +33,7 @@ struct dp_power_private {
 	bool link_clks_on;
 	bool strm0_clks_on;
 	bool strm1_clks_on;
+	bool pclk_bond_pll_clks_on;
 	bool strm0_clks_parked;
 	bool strm1_clks_parked;
 };
@@ -421,6 +423,42 @@ exit:
 	return rc;
 }
 
+static int dp_power_check_clk(struct dp_power_private *power,
+		enum dp_pm_type pm_type)
+{
+	if (pm_type == DP_CORE_PM && power->core_clks_on) {
+		DP_DEBUG("DP%d core clks already enabled\n",
+				power->parser->cell_idx);
+		return 0;
+	}
+
+	if ((pm_type == DP_STREAM0_PM) && (power->strm0_clks_on)) {
+		DP_DEBUG("DP%d strm0 clks already enabled\n",
+				power->parser->cell_idx);
+		return 0;
+	}
+
+	if ((pm_type == DP_STREAM1_PM) && (power->strm1_clks_on)) {
+		DP_DEBUG("DP%d strm1 clks already enabled\n",
+				power->parser->cell_idx);
+		return 0;
+	}
+
+	if (pm_type == DP_BOND_PM && power->pclk_bond_pll_clks_on) {
+		DP_DEBUG("DP%d PCLK bond PLL clks already enabled\n",
+				power->parser->cell_idx);
+		return 0;
+	}
+
+	if (pm_type == DP_LINK_PM && power->link_clks_on) {
+		DP_DEBUG("DP%d links clks already enabled\n",
+				power->parser->cell_idx);
+		return 0;
+	}
+
+	return 1;
+}
+
 static int dp_power_clk_enable(struct dp_power *dp_power,
 		enum dp_pm_type pm_type, bool enable)
 {
@@ -446,23 +484,8 @@ static int dp_power_clk_enable(struct dp_power *dp_power,
 	}
 
 	if (enable) {
-		if (pm_type == DP_CORE_PM && power->core_clks_on) {
-			DP_DEBUG("DP%d core clks already enabled\n",
-					power->parser->cell_idx);
+		if (!dp_power_check_clk(power, pm_type))
 			return 0;
-		}
-
-		if ((pm_type == DP_STREAM0_PM) && (power->strm0_clks_on)) {
-			DP_DEBUG("DP%d strm0 clks already enabled\n",
-					power->parser->cell_idx);
-			return 0;
-		}
-
-		if ((pm_type == DP_STREAM1_PM) && (power->strm1_clks_on)) {
-			DP_DEBUG("DP%d strm1 clks already enabled\n",
-					power->parser->cell_idx);
-			return 0;
-		}
 
 		if ((pm_type == DP_CTRL_PM) && (!power->core_clks_on)) {
 			DP_DEBUG("DP%d Need to enable core clks before link clks\n",
@@ -477,12 +500,6 @@ static int dp_power_clk_enable(struct dp_power *dp_power,
 			} else {
 				power->core_clks_on = true;
 			}
-		}
-
-		if (pm_type == DP_LINK_PM && power->link_clks_on) {
-			DP_DEBUG("DP%d links clks already enabled\n",
-					power->parser->cell_idx);
-			return 0;
 		}
 	} else {
 		if (pm_type == DP_STREAM0_PM || pm_type == DP_STREAM1_PM) {
@@ -523,6 +540,8 @@ static int dp_power_clk_enable(struct dp_power *dp_power,
 		power->strm1_clks_on = enable;
 	else if (pm_type == DP_LINK_PM)
 		power->link_clks_on = enable;
+	if (pm_type == DP_BOND_PM)
+		power->pclk_bond_pll_clks_on = enable;
 
 	if (pm_type == DP_STREAM0_PM)
 		power->strm0_clks_parked = false;
@@ -535,12 +554,13 @@ static int dp_power_clk_enable(struct dp_power *dp_power,
 	 * usecase, it is not going to flood the kernel logs. Also,
 	 * helpful in debugging the NOC issues.
 	 */
-	DP_INFO("DP%d core:%s link:%s strm0:%s strm1:%s\n",
+	DP_INFO("DP%d core:%s link:%s strm0:%s strm1:%s bond:%s\n",
 		power->parser->cell_idx,
 		power->core_clks_on ? "on" : "off",
 		power->link_clks_on ? "on" : "off",
 		power->strm0_clks_on ? "on" : "off",
-		power->strm1_clks_on ? "on" : "off");
+		power->strm1_clks_on ? "on" : "off",
+		power->pclk_bond_pll_clks_on ? "on" : "off");
 error:
 	return rc;
 }
@@ -564,6 +584,8 @@ static bool dp_power_clk_status(struct dp_power *dp_power, enum dp_pm_type pm_ty
 		return power->strm0_clks_on;
 	else if (pm_type == DP_STREAM1_PM)
 		return power->strm1_clks_on;
+	else if (pm_type == DP_BOND_PM)
+		return power->pclk_bond_pll_clks_on;
 	else
 		return false;
 }
@@ -789,15 +811,19 @@ static int dp_power_set_pixel_clk_parent(struct dp_power *dp_power, u32 strm_id,
 
 	if (strm_id == DP_STREAM_0) {
 		if (IS_PCLK_BOND_MODE(bond_mode) && power->pixel_clk_rcg
-			&& power->bond_pixel_parent)
+			&& power->bond_pixel_parent) {
 			rc = clk_set_parent(power->pixel_clk_rcg, power->bond_pixel_parent);
-		else if (power->strm0_clks_on && power->pixel_clk_rcg && power->xo_clk)
+			DP_DEBUG("Set bond pixel parent rc=%d\n", rc);
+		} else if (power->strm0_clks_on && power->pixel_clk_rcg && power->xo_clk) {
 			rc = clk_set_parent(power->pixel_clk_rcg, power->xo_clk);
-		else if (power->pixel_clk_rcg && power->pixel_parent)
+			DP_DEBUG("Set xo parent rc=%d\n", rc);
+		} else if (power->pixel_clk_rcg && power->pixel_parent) {
 			rc = clk_set_parent(power->pixel_clk_rcg, power->pixel_parent);
-		else
+			DP_DEBUG("Set non-bond pixel parent rc=%d\n", rc);
+		} else {
 			DP_WARN("DP%d skipped for strm_id=%d\n",
 					power->parser->cell_idx, strm_id);
+		}
 	} else if (strm_id == DP_STREAM_1) {
 		if (power->strm1_clks_on && power->pixel1_clk_rcg && power->xo_clk)
 			rc = clk_set_parent(power->pixel1_clk_rcg, power->xo_clk);
@@ -925,8 +951,10 @@ static int dp_power_deinit(struct dp_power *dp_power)
 
 	power = container_of(dp_power, struct dp_power_private, dp_power);
 
-	if (power->link_clks_on)
+	if (power->link_clks_on) {
 		dp_power_clk_enable(dp_power, DP_LINK_PM, false);
+		dp_power_clk_enable(dp_power, DP_BOND_PM, false);
+	}
 
 	dp_power_clk_enable(dp_power, DP_CORE_PM, false);
 	pm_runtime_put_sync(dp_power->drm_dev->dev);
@@ -938,7 +966,8 @@ exit:
 	return rc;
 }
 
-struct dp_power *dp_power_get(struct dp_parser *parser, struct dp_pll *pll)
+struct dp_power *dp_power_get(struct dp_parser *parser,
+		struct dp_pll *pll, struct dp_pll *pclk_bond_pll)
 {
 	int rc = 0;
 	struct dp_power_private *power;
@@ -959,6 +988,7 @@ struct dp_power *dp_power_get(struct dp_parser *parser, struct dp_pll *pll)
 
 	power->parser = parser;
 	power->pll = pll;
+	power->pclk_bond_pll = pclk_bond_pll;
 	power->pdev = parser->pdev;
 
 	dp_power = &power->dp_power;
