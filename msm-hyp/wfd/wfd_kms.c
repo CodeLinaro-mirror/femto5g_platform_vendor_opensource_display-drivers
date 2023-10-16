@@ -1064,6 +1064,7 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 	WFDint src_rect[4];
 	WFDint dst_rect[4];
 	WFDint color_space;
+	WFDint trans_val = WFD_TRANSPARENCY_NONE;
 
 	new_pstate = to_msm_hyp_plane_state(plane->state);
 	old_pstate = to_msm_hyp_plane_state(old_state);
@@ -1168,14 +1169,30 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 	}
 
 	if (old_pstate->blend_op != new_pstate->blend_op || !priv->committed) {
+		switch (new_pstate->blend_op) {
+		case SDE_DRM_BLEND_OP_NOT_DEFINED:
+			trans_val = WFD_TRANSPARENCY_NONE;
+			break;
+		case SDE_DRM_BLEND_OP_OPAQUE:
+			trans_val = WFD_TRANSPARENCY_GLOBAL_ALPHA;
+			break;
+		case SDE_DRM_BLEND_OP_PREMULTIPLIED:
+			trans_val = WFD_TRANSPARENCY_SOURCE_ALPHA |
+				WFD_TRANSPARENCY_GLOBAL_ALPHA;
+			break;
+		case SDE_DRM_BLEND_OP_COVERAGE:
+		/* TODO:wfd spec not support, new Attribi to support this */
+		default:
+		/* follow kernel-metal, use opaque as default */
+			trans_val = WFD_TRANSPARENCY_GLOBAL_ALPHA;
+			break;
+		}
+
 		wfdSetPipelineAttribi_User(
 			priv->wfd_device,
 			priv->wfd_pipeline,
 			WFD_PIPELINE_TRANSPARENCY_ENABLE,
-			(new_pstate->blend_op ==
-				SDE_DRM_BLEND_OP_OPAQUE) ?
-				WFD_TRANSPARENCY_GLOBAL_ALPHA :
-				WFD_TRANSPARENCY_SOURCE_ALPHA);
+			trans_val);
 	}
 
 	priv->committed = true;
