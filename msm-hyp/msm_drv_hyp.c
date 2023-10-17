@@ -605,6 +605,7 @@ static int _msm_hyp_connector_init_caps(
 	struct msm_hyp_drm_private *priv = ddev->dev_private;
 	struct msm_hyp_prop_blob_info *info;
 	int ret;
+	char buf[32] = {0};
 
 	info = devm_kzalloc(ddev->dev, sizeof(*info), GFP_KERNEL);
 	if (!info)
@@ -613,6 +614,26 @@ static int _msm_hyp_connector_init_caps(
 	if (connector->info->display_type)
 		msm_hyp_prop_info_add_keystr(info, "display type",
 				connector->info->display_type);
+
+	if (connector->info->panel_orientation) {
+		switch (connector->info->panel_orientation) {
+		case PANEL_ROTATE_NONE:
+			snprintf(buf, sizeof(buf), "%s", "none");
+			break;
+		case PANEL_ROTATE_180:
+			snprintf(buf, sizeof(buf), "%s", "horz & vert flip");
+			break;
+		case PANEL_ROTATE_H_FLIP:
+			snprintf(buf, sizeof(buf), "%s", "horz flip");
+			break;
+		case PANEL_ROTATE_V_FLIP:
+			snprintf(buf, sizeof(buf), "%s", "vert flip");
+			break;
+		default:
+			break;
+		}
+		msm_hyp_prop_info_add_keystr(info, "panel orientation", buf);
+	}
 
 	if (connector->info->extra_caps)
 		msm_hyp_prop_info_append(info, connector->info->extra_caps);
