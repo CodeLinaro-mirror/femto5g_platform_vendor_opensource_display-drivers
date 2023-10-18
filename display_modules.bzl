@@ -183,6 +183,8 @@ module_entry(
       config_deps = {
          "CONFIG_QTI_HW_FENCE" : [
              "//vendor/qcom/opensource/mm-drivers/hw_fence:%b_msm_hw_fence",
+             "//vendor/qcom/opensource/synx-kernel:%b_modules",
+             "//vendor/qcom/opensource/synx-kernel:synx_headers",
         ],
         "CONFIG_QCOM_SPEC_SYNC" : [
             "//vendor/qcom/opensource/mm-drivers/sync_fence:%b_sync_fence",
