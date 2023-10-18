@@ -118,6 +118,8 @@
  * \author Gareth Hughes <gareth@valinux.com>
  */
 
+#define pr_fmt(fmt)    "[drm] WFD_KMS [%s:%d] " fmt, __func__, __LINE__
+
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_probe_helper.h>
@@ -561,7 +563,7 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 			fb->base.offsets,
 			0x00);
 	if (wfd_err != WFD_ERROR_NONE) {
-		pr_err("failed to create wfd image\n");
+		pr_err("failed to create wfd image, err = %d\n", wfd_err);		
 		ret = -EINVAL;
 	}
 
