@@ -6251,10 +6251,12 @@ static enum drm_mode_status dsi_display_drm_ext_mode_valid(
 	struct dsi_display *display = disp;
 	enum drm_mode_status status;
 
-	/* always do internal mode_valid check */
-	status = dsi_conn_mode_valid(connector, mode, disp, avail_res);
-	if (status != MODE_OK)
-		return status;
+	if (display->panel->num_timing_nodes) {
+		/* always do internal mode_valid check */
+		status = dsi_conn_mode_valid(connector, mode, disp, avail_res);
+		if (status != MODE_OK)
+			return status;
+	}
 
 	return display->ext_conn->helper_private->mode_valid(
 			display->ext_conn, mode);
