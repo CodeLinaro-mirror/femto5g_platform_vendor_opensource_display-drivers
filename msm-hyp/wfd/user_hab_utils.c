@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/habmm.h>
+#include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/types.h>
@@ -23,10 +24,12 @@
  * Defines
  * ---------------------------------------------------------------------------
  */
+//#define DEBUG_USER_HAB_UTILS
 #define CHANNEL_OPENWFD		0
 #define CHANNEL_EVENTS		1
 #define CHANNEL_BUFFERS		2
 #define MAX_CHANNELS		3
+#define MAX_RECV_PACKET_RETRY	10
 #define WFD_MAX_NUM_OF_CLIENTS	10
 #define WFD_CLIENT_ID_BASE	WFD_CLIENT_ID_CLUSTER
 #define WFD_CLIENT_ID_LA_CONTAINER	0x7818
@@ -41,9 +44,9 @@
 #endif
 
 #if defined(__linux__)
-#define USER_OS_UTILS_LOG_MODULE_NAME "LV_FE"
+#define USER_OS_UTILS_LOG_MODULE_NAME "[drm] LV_FE"
 #elif defined(__ANDROID__)
-#define USER_OS_UTILS_LOG_MODULE_NAME "LA_FE"
+#define USER_OS_UTILS_LOG_MODULE_NAME "[drm] LA_FE"
 #endif
 
 #define USER_OS_UTILS_LOG_MODULE_ID       10256
@@ -119,7 +122,6 @@ struct user_os_utils_context {
 	struct mutex hyp_cbchl_lock;
 	struct mutex hyp_bufchl_lock;
 	unsigned long cmdchl_lock_flags[MAX_CHANNELS];
-	struct task_struct *buffer_thread;
 	int client_idx;
 };
 
@@ -128,37 +130,6 @@ struct user_os_utils_context {
  * Private Functions
  * ---------------------------------------------------------------------------
  */
-static int buffer_channel_task(void *arg)
-{
-	struct user_os_utils_context *ctx = arg;
-	int client_idx = ctx->client_idx;
-	int rc = 0;
-
-	if ((channel_map[client_idx][CHANNEL_BUFFERS]) != 0x00) {
-		/* open hab channel for events handling */
-#ifdef USE_HAB
-		rc = habmm_socket_open(
-#else
-		rc = habmm_socket_open_dummy(
-#endif
-					&ctx->hyp_hdl_disp[CHANNEL_BUFFERS],
-					channel_map[client_idx][CHANNEL_BUFFERS],
-					HAB_BUF_CHANNEL_TIMEOUT_VAL,
-					0x00);
-		if (rc) {
-			UTILS_LOG_ERROR("habmm_socket_open(HAB_CHNL_BUFFERS) failed");
-		} else {
-			/* create lock for buffer handling hab channel */
-			mutex_init(&ctx->hyp_bufchl_lock);
-
-			ctx->cmdchl_lock_flags[CHANNEL_BUFFERS] = 0;
-			UTILS_LOG_CRITICAL_INFO("Buffer channel open success, hnd=%d",
-					ctx->hyp_hdl_disp[CHANNEL_BUFFERS]);
-		}
-	}
-
-	return 0;
-}
 static inline int32_t
 get_hab_handle(
 	struct user_os_utils_context *ctx,
@@ -270,20 +241,21 @@ user_os_utils_init(
 		if (rc) {
 			UTILS_LOG_ERROR("habmm_socket_open(HAB_CHNL_OPENWFD) failed");
 			goto fail;
+		} else {
+			/* create lock for openwfd commands hab channel */
+			spin_lock_init(&ctx->hyp_cmdchl_lock);
+			UTILS_LOG_CRITICAL_INFO("OpenWFD channel open successful, handle=%d, client_id=0x%x",
+					ctx->hyp_hdl_disp[CHANNEL_OPENWFD], client_id);
+
+			/* Initialize the flag */
+			ctx->cmdchl_lock_flags[CHANNEL_OPENWFD] = 0;
 		}
 	} else {
 		UTILS_LOG_ERROR("invalid hab channel id");
 		rc = -EINVAL;
 		goto fail;
 	}
-	/* create lock for openwfd commands hab channel */
-	spin_lock_init(&ctx->hyp_cmdchl_lock);
 
-	UTILS_LOG_CRITICAL_INFO("OpenWFD channel open successful, handle=%d",
-			ctx->hyp_hdl_disp[CHANNEL_OPENWFD]);
-
-	/* Initialize the flag */
-	 ctx->cmdchl_lock_flags[CHANNEL_OPENWFD] = 0;
 
 	if ((init_info->enable_event_handling) &&
 		(channel_map[client_idx][CHANNEL_EVENTS]) != 0x00) {
@@ -300,21 +272,49 @@ user_os_utils_init(
 		if (rc) {
 			UTILS_LOG_ERROR("habmm_socket_open(HAB_CHNL_EVENTS) failed");
 			goto fail;
+		} else {
+			/* create lock for events handling hab channel */
+			mutex_init(&ctx->hyp_cbchl_lock);
+			UTILS_LOG_CRITICAL_INFO("Events channel open successful, handle=%d, client_id=0x%x",
+					ctx->hyp_hdl_disp[CHANNEL_EVENTS], client_id);
+
+			/* Initialize the flag */
+			ctx->cmdchl_lock_flags[CHANNEL_EVENTS] = 0;
 		}
-		/* create lock for events handling hab channel */
-		mutex_init(&ctx->hyp_cbchl_lock);
-		UTILS_LOG_CRITICAL_INFO("Events channel open successful, handle=%d",
-			ctx->hyp_hdl_disp[CHANNEL_EVENTS]);
-
-		/* Initialize the flag */
-		ctx->cmdchl_lock_flags[CHANNEL_EVENTS] = 0;
-
+	} else {
+		UTILS_LOG_ERROR("invalid hab channel id");
+		rc = -EINVAL;
+		goto fail;
 	}
 
-	/* create a thread buffer channel */
-	ctx->client_idx = client_idx;
-	ctx->buffer_thread = kthread_run(buffer_channel_task, ctx,
-							"buffer channel task");
+	if ((channel_map[client_idx][CHANNEL_BUFFERS]) != 0x00) {
+	/* open hab channel for buffer handling */
+#ifdef USE_HAB
+		rc = habmm_socket_open(
+#else
+		rc = habmm_socket_open_dummy(
+#endif
+			&ctx->hyp_hdl_disp[CHANNEL_BUFFERS],
+			channel_map[client_idx][CHANNEL_BUFFERS],
+			(uint32_t)HAB_NO_TIMEOUT_VAL,
+			0x00);
+		if (rc) {
+			UTILS_LOG_ERROR("habmm_socket_open(HAB_CHNL_BUFFERS) failed");
+			goto fail;
+		} else {
+			/* create lock for buffer handling hab channel */
+			mutex_init(&ctx->hyp_bufchl_lock);
+			UTILS_LOG_CRITICAL_INFO("Buffer channel open successful, handle=%d, client_id=0x%x",
+					ctx->hyp_hdl_disp[CHANNEL_BUFFERS], client_id);
+
+			/* Initialize the flag */
+			ctx->cmdchl_lock_flags[CHANNEL_BUFFERS] = 0;
+		}
+	} else {
+		UTILS_LOG_ERROR("invalid hab channel id");
+		rc = -EINVAL;
+		goto fail;
+	}
 
 	ctx->client_id = client_id;
 	init_info->context = ctx;
@@ -373,10 +373,6 @@ user_os_utils_deinit(
 			UTILS_LOG_ERROR("habmm_socket_close (CHANNEL_BUFFERS) failed");
 	}
 
-	/* stop buffer channel thread */
-	if (ctx->buffer_thread)
-		kthread_stop(ctx->buffer_thread);
-
 	kfree(ctx);
 
 	return 0;
@@ -411,11 +407,20 @@ user_os_utils_send_recv(
 	enum payload_types payload_type;
 	i64 timestamp = 0;
 	u32 req_flags = 0;
+	int retry_times = 0;
 
 	u32 num_of_wfd_cmds = 0;
 	enum openwfd_cmd_type wfd_cmd_type = OPENWFD_CMD_MAX;
 	char marker_buff[MARKER_BUFF_LENGTH] = {0};
-
+	unsigned long delay = 0;
+	/*
+	 * Hold this CPU for 0.25s since here we call spin_lock_irqsave().
+	 * Normally it will be 100us to get reply, 250ms is enough.
+	 *
+	 * Be careful if hoping to increase such duration to be longer
+	 * since actually inside this duration, it is possible that the
+	 * watchdog pet procedure could not move ahead.
+	 */
 	if (!req || !resp) {
 		UTILS_LOG_ERROR("NULL req(0x%p) or resp(0x%p)",
 			req, resp);
@@ -480,6 +485,9 @@ user_os_utils_send_recv(
 	snprintf(marker_buff, sizeof(marker_buff), "hab_recv %d\n", wfd_cmd_type);
 	HYP_ATRACE_BEGIN(marker_buff);
 
+retry_recv_packet:
+	delay = jiffies + (HZ / 4);
+
 	do {
 		/* TODO: Need handle exit hab_receive during deinit */
 		resp_size = sizeof(struct wire_packet);
@@ -506,13 +514,19 @@ user_os_utils_send_recv(
 					"habmm_socket_recv - interrupted system call - retry");
 			}
 		}
-	} while ((-EAGAIN == rc) && (resp_size == 0));
+	} while ((time_before(jiffies, delay)) && (-EAGAIN == rc) && (resp_size == 0));
 
 	HYP_ATRACE_END(marker_buff);
 
 	if (rc) {
-		UTILS_LOG_ERROR("habmm_socket_recv(payload type(%d)) failed",
-			payload_type);
+		UTILS_LOG_ERROR("habmm_socket_recv(payload type(%d)) failed, resp_size=%d, rc=%d",
+			payload_type, resp_size, rc);
+		if ((rc == -EAGAIN) && (retry_times < MAX_RECV_PACKET_RETRY))
+		{
+			retry_times++;
+			UTILS_LOG_ERROR("recv packet retry %d", retry_times);
+			goto retry_recv_packet;
+		}
 		rc = -1;
 		goto end;
 	}
@@ -536,8 +550,27 @@ user_os_utils_send_recv(
 		rc = -1;
 		goto end;
 	}
-	if (timestamp != resp->hdr.timestamp) {
-		UTILS_LOG_ERROR("wrong packet timestamp");
+	if (timestamp > resp->hdr.timestamp) {
+		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu > resp : %lu\n",
+				timestamp, resp->hdr.timestamp);
+		/*
+		 * Drm fe try 10 times to get the correct packet
+		 */
+		if (retry_times > MAX_RECV_PACKET_RETRY) {
+			UTILS_LOG_ERROR("recv packet retry limit exceeded");
+#ifdef DEBUG_USER_HAB_UTILS
+			panic("user_os_utils_send_recv : wrong packet received");
+#endif
+			rc = -1;
+		} else {
+			retry_times++;
+			UTILS_LOG_ERROR("recv packet retry %d", retry_times);
+			goto retry_recv_packet;
+		}
+	}
+	else if (timestamp < resp->hdr.timestamp) {
+		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu < resp : %lu\n",
+				timestamp, resp->hdr.timestamp);
 		rc = -1;
 		goto end;
 	}
@@ -562,6 +595,15 @@ end:
 	if (handle) {
 		if (rel_hab_handle(ctx, chl_id, 0x00))
 			UTILS_LOG_ERROR("rel_hab_handle failed");
+	}
+
+	if (((rc == -1) || (retry_times > 0)) && (req != NULL))
+	{
+		UTILS_LOG_ERROR("packet receive error\n");
+		print_hex_dump(KERN_INFO, "hdr: ", DUMP_PREFIX_NONE, 16, 1,
+				&req->hdr, sizeof(req->hdr), false);
+		print_hex_dump(KERN_INFO, "req: ", DUMP_PREFIX_NONE, 16, 1,
+				&req->payload, req->hdr.payload_size, false);
 	}
 
 	return rc;
