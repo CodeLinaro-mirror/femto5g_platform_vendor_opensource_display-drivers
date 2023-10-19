@@ -2339,10 +2339,16 @@ static void dp_catalog_ctrl_reset_retimer(struct dp_catalog_ctrl *ctrl)
 {
 	struct dp_catalog_private *catalog;
 	struct dp_io_data *io_data;
+	struct dp_parser *parser;
 	u32 reg;
 
 	catalog = dp_catalog_get_priv(ctrl);
 	io_data   = catalog->io.dp_phy;
+	parser = catalog->parser;
+
+	/* TODO: revisit this logic for DP_PHY_VERSION_5_0_0 */
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_5_0_0)
+		return;
 
 	reg = dp_read(DP_PHY_CFG) & 0xFF;
 
