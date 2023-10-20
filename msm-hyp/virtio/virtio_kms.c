@@ -27,6 +27,8 @@
 #define MAX_NUM_LIMIT_PAIRS    16
 #define MAX_MDP_CLK_KHZ        412500
 
+#define VIRTIO_TRANSPARENCY_GLOBAL_ALPHA (1<<1)
+#define VIRTIO_TRANSPARENCY_SOURCE_ALPHA (1<<2)
 //#define VIRTIO_DEBUG 1
 
 struct limit_val_pair {
@@ -765,7 +767,6 @@ static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 	int rc = 0;
 	struct virtio_kms *kms;
 
-	pr_debug("virtio_kms_plane_atomic_update called\n");
 	p = to_msm_hyp_plane(plane);
 	plane_priv = container_of(p->info, struct virtio_plane_info_priv, base);
 	kms = plane_priv ? plane_priv->kms : NULL;
@@ -869,6 +870,17 @@ static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 	if (old_pstate->alpha != new_pstate->alpha || !plane_priv->committed) {
 		prop.global_alpha = new_pstate->alpha;
 		 prop.mask |= GLOBAL_ALPHA;
+	}
+	if (old_pstate->blend_op != new_pstate->blend_op ||
+			!plane_priv->committed) {
+		pr_debug("virtio :%s ALPHA %d\n",
+				__func__,
+				new_pstate->blend_op);
+		prop.blend_mode = (new_pstate->blend_op ==
+				SDE_DRM_BLEND_OP_OPAQUE) ?
+			VIRTIO_TRANSPARENCY_GLOBAL_ALPHA :
+			VIRTIO_TRANSPARENCY_SOURCE_ALPHA;
+		prop.mask |= BLEND_MODE;
 	}
 
 	rc = virtio_gpu_cmd_set_plane_properties(kms,

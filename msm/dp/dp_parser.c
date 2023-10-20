@@ -211,6 +211,16 @@ static int dp_parser_misc(struct dp_parser *parser)
 	parser->force_connect_mode = of_property_read_bool(of_node,
 			"qcom,dp-force-connect-mode");
 
+	rc = of_property_read_u32(of_node,
+			"qcom,lane-training-min-v-level", &parser->link_training_min_vlevel);
+	if (rc)
+		parser->link_training_min_vlevel = 0;
+
+	rc = of_property_read_u32(of_node,
+			"qcom,lane-training-min-p-level", &parser->link_training_min_plevel);
+	if (rc)
+		parser->link_training_min_plevel = 0;
+
 	return 0;
 }
 
