@@ -1599,6 +1599,7 @@ static int virtio_kms_scanout_init(struct virtio_kms *kms, uint32_t scanout)
 				plane_id);
 		if (rc) {
 			pr_err("virtio : scanout %d plane_properties failed %d\n",
+					scanout,
 					plane_id);
 			goto error;
 		}
@@ -1923,3 +1924,7 @@ void virtio_kms_unregister(void)
 {
         platform_driver_unregister(&virtio_kms_driver);
 }
+
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+MODULE_IMPORT_NS(DMA_BUF);
+#endif
