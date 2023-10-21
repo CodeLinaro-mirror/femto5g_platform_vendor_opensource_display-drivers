@@ -523,7 +523,7 @@ static void _sde_shd_reset_hw_roi_misr(struct sde_hw_roi_misr *ctx)
 	roi_misr_c = &ctx->hw;
 
 	for (i = 0; i < ROI_MISR_MAX_ROIS_PER_MISR; ++i) {
-		if (!(hw_roi_misr->roi_mask & BIT(i)))
+		if (!(hw_roi_misr->cur_roi_mask & BIT(i)))
 			continue;
 
 		SDE_REG_WRITE(roi_misr_c, ROI_MISR_POSITION(i), 0x0);
@@ -533,7 +533,7 @@ static void _sde_shd_reset_hw_roi_misr(struct sde_hw_roi_misr *ctx)
 	}
 
 	tmp_hw_mask = SDE_REG_READ(roi_misr_c, ROI_MISR_OP_MODE);
-	tmp_hw_mask &= ~hw_roi_misr->roi_mask;
+	tmp_hw_mask &= ~hw_roi_misr->cur_roi_mask;
 	SDE_REG_WRITE(roi_misr_c, ROI_MISR_OP_MODE, tmp_hw_mask);
 }
 
@@ -580,6 +580,7 @@ static void _sde_shd_flush_hw_roi_misr(struct sde_hw_roi_misr *ctx)
 
 	tmp_hw_mask = SDE_REG_READ(roi_misr_c, ROI_MISR_OP_MODE);
 	tmp_hw_mask |= roi_info->roi_mask;
+	hw_roi_misr->cur_roi_mask = roi_info->roi_mask;
 	roi_info->roi_mask = 0;
 	SDE_REG_WRITE(roi_misr_c, ROI_MISR_OP_MODE, tmp_hw_mask);
 }
