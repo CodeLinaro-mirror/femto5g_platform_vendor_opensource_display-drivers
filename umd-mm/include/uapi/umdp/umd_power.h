@@ -25,9 +25,9 @@ enum umdp_level {
 #define CONVERT_UMD_GROUP(x, y)   ((x) << 8 | (y))
 
 struct umdp_payload {
-	u32 magic;
-	u16 group; /* CONVERT_UMD_GROUP(PRE_GPID_XX, group_id) */
-	u16 level;
+	__u32 magic;
+	__u16 group; /* CONVERT_UMD_GROUP(PRE_GPID_XX, group_id) */
+	__u16 level;
 } __packed;
 
 #define UMDP_GET_STATUS \
