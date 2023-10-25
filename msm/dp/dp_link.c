@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  *
  * Copyright (c) 2009 Keith Packard
@@ -1434,22 +1435,36 @@ static int dp_link_adjust_levels(struct dp_link *dp_link, u8 *link_status)
 	 * Adjust the voltage swing and pre-emphasis level combination to within
 	 * the allowable range.
 	 */
-	if (dp_link->phy_params.v_level > dp_link->phy_params.max_v_level)
+	if (dp_link->phy_params.v_level > dp_link->phy_params.max_v_level) {
 		dp_link->phy_params.v_level = dp_link->phy_params.max_v_level;
+		dp_link->phy_params.max_v_level_reached = true;
+	} else {
+		dp_link->phy_params.max_v_level_reached = false;
+	}
 
-	if (dp_link->phy_params.p_level > dp_link->phy_params.max_p_level)
+	if (dp_link->phy_params.p_level > dp_link->phy_params.max_p_level) {
 		dp_link->phy_params.p_level = dp_link->phy_params.max_p_level;
+		dp_link->phy_params.max_p_level_reached = true;
+	} else {
+		dp_link->phy_params.max_p_level_reached = false;
+	}
 
-	if ((dp_link->phy_params.p_level > DP_LINK_PRE_EMPHASIS_LEVEL_1)
-		&& (dp_link->phy_params.v_level == DP_LINK_VOLTAGE_LEVEL_2))
+	if ((dp_link->phy_params.p_level >= DP_LINK_PRE_EMPHASIS_LEVEL_1)
+		&& (dp_link->phy_params.v_level == DP_LINK_VOLTAGE_LEVEL_2)) {
 		dp_link->phy_params.p_level = DP_LINK_PRE_EMPHASIS_LEVEL_1;
+		dp_link->phy_params.max_p_level_reached = true;
+	}
 
 	if ((dp_link->phy_params.p_level > DP_LINK_PRE_EMPHASIS_LEVEL_2)
-		&& (dp_link->phy_params.v_level == DP_LINK_VOLTAGE_LEVEL_1))
+		&& (dp_link->phy_params.v_level == DP_LINK_VOLTAGE_LEVEL_1)) {
 		dp_link->phy_params.p_level = DP_LINK_PRE_EMPHASIS_LEVEL_2;
+		dp_link->phy_params.max_p_level_reached = true;
+	}
 
-	DP_DEBUG("Set (VxPx): 0x%x, 0x%x\n",
-		dp_link->phy_params.v_level, dp_link->phy_params.p_level);
+	DP_DEBUG("Set (VxPx): 0x%x, 0x%x  max:%d:%d\n",
+		dp_link->phy_params.v_level, dp_link->phy_params.p_level,
+		dp_link->phy_params.max_v_level_reached,
+		dp_link->phy_params.max_p_level_reached);
 
 	return 0;
 }

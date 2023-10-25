@@ -375,6 +375,18 @@ static void dp_sim_host_hpd_irq(void *host_dev)
 		sim_dev->hpd_cb(sim_dev->host_dev, true, true);
 }
 
+u32 dp_sim_get_sim_mode(struct dp_aux_bridge *bridge)
+{
+	struct dp_sim_device *sim_dev;
+
+	if (!bridge || !(bridge->flag & DP_SIM_BRIDGE_PRIV_FLAG))
+		return -EINVAL;
+
+	sim_dev = to_dp_sim_dev(bridge);
+
+	return sim_dev->sim_mode;
+}
+
 int dp_sim_set_sim_mode(struct dp_aux_bridge *bridge, u32 sim_mode)
 {
 	struct dp_sim_device *sim_dev;
@@ -385,6 +397,7 @@ int dp_sim_set_sim_mode(struct dp_aux_bridge *bridge, u32 sim_mode)
 	sim_dev = to_dp_sim_dev(bridge);
 
 	sim_dev->sim_mode = sim_mode;
+	sim_dev->aux_timeout_count = 0;
 
 	return 0;
 }

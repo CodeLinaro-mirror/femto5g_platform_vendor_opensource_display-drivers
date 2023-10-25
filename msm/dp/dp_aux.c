@@ -185,6 +185,7 @@ static int dp_aux_cmd_fifo_tx(struct dp_aux_private *aux,
 	if (!timeout) {
 		DP_ERR("DP%d aux %s timeout @ %X %X\n", aux->cell_idx,
 				(aux->read ? "read" : "write"), msg->address, msg->size);
+		aux->aux_error_num = DP_AUX_ERR_NONE;
 		return -ETIMEDOUT;
 	}
 
@@ -539,10 +540,20 @@ static ssize_t dp_aux_transfer(struct drm_dp_aux *drm_aux,
 	ret = dp_aux_cmd_fifo_tx(aux, msg);
 	if ((ret < 0) && !atomic_read(&aux->aborted)) {
 		aux->retry_cnt++;
-		if (!(aux->retry_cnt % retry_count))
+		if (!(aux->retry_cnt % retry_count) && (aux->cfg[PHY_AUX_CFG1].cfg_cnt > 1)) {
 			aux->catalog->update_aux_cfg(aux->catalog,
 				aux->cfg, PHY_AUX_CFG1);
-		aux->catalog->reset(aux->catalog);
+		}
+		/*
+		 * Error handling. Since HPD and AUX share the sw reset, only do
+		 * AUX reset when is really necessary, for example, AUX TX engine
+		 * stall (AUX host timeout), and PHY error.
+		 * For sink side timeout, NACK, DEFER and wrong address errors,
+		 * do NOT reset the AUX, otherwise we may miss HPD disconnect event.
+		 */
+		if ((ret == -ETIMEDOUT && aux->aux_error_num == DP_AUX_ERR_NONE)
+			|| (aux->aux_error_num == DP_AUX_ERR_PHY))
+			aux->catalog->reset(aux->catalog);
 		goto unlock_exit;
 	} else if (ret < 0) {
 		goto unlock_exit;

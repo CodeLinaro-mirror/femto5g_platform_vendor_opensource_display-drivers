@@ -2335,6 +2335,39 @@ static void dp_catalog_ctrl_mainlink_levels(struct dp_catalog_ctrl *ctrl,
 	dp_write(DP_MAINLINK_LEVELS, mainlink_levels);
 }
 
+static void dp_catalog_ctrl_reset_retimer(struct dp_catalog_ctrl *ctrl)
+{
+	struct dp_catalog_private *catalog;
+	struct dp_io_data *io_data;
+	struct dp_parser *parser;
+	u32 reg;
+
+	catalog = dp_catalog_get_priv(ctrl);
+	io_data   = catalog->io.dp_phy;
+	parser = catalog->parser;
+
+	/* TODO: revisit this logic for DP_PHY_VERSION_5_0_0 */
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_5_0_0)
+		return;
+
+	reg = dp_read(DP_PHY_CFG) & 0xFF;
+
+	/* Toggle RETIMING_ENABLE */
+	reg &= ~BIT(0);
+	dp_write(DP_PHY_CFG, reg);
+	udelay(2000);
+
+	reg |= BIT(0);
+	dp_write(DP_PHY_CFG, reg);
+	/* make sure retimer is reset */
+	wmb();
+
+	do {
+		reg = dp_read(DP_PHY_STATUS);
+		pr_debug("Phy_ready is %d. Status=%x\n", reg & BIT(1), reg);
+	} while (!(reg & BIT(1)));
+}
+
 /* panel related catalog functions */
 static int dp_catalog_panel_timing_cfg(struct dp_catalog_panel *panel)
 {
@@ -2923,6 +2956,7 @@ struct dp_catalog *dp_catalog_get(struct device *dev, struct dp_parser *parser)
 		.fec_config = dp_catalog_ctrl_fec_config,
 		.mainlink_levels = dp_catalog_ctrl_mainlink_levels,
 		.late_phy_init = dp_catalog_ctrl_late_phy_init,
+		.reset_retimer = dp_catalog_ctrl_reset_retimer,
 	};
 	struct dp_catalog_hpd hpd = {
 		.config_hpd	= dp_catalog_hpd_config_hpd,
