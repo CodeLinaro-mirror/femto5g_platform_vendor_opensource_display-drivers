@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2891,6 +2891,7 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 	struct msm_mode_info mode_info;
 	const char *topo_name = NULL;
 	int rc = 0;
+	struct dsi_display *dsi_display;
 
 	sde_kms = sde_connector_get_kms(conn);
 	if (!sde_kms) {
@@ -2922,7 +2923,8 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 		sde_kms_info_add_keyint(info, "bit_clk_rate",
 					mode_info.clk_rate);
 
-		if (c_conn->ops.set_submode_info) {
+		dsi_display = c_conn->display;
+		if (c_conn->ops.set_submode_info && dsi_display->panel->num_timing_nodes) {
 			c_conn->ops.set_submode_info(conn, info, c_conn->display, mode);
 		} else {
 			topo_name = sde_conn_get_topology_name(conn, mode_info.topology);
