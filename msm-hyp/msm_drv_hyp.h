@@ -44,8 +44,19 @@
 
 #define DRM_DRI_NAME_SIZE 32
 
+enum msm_hyp_panel_rotation {
+	PANEL_ROTATE_NONE = 0,
+	PANEL_ROTATE_90,
+	PANEL_ROTATE_180,
+	PANEL_ROTATE_HV_FLIP = PANEL_ROTATE_180,
+	PANEL_ROTATE_270,
+	PANEL_ROTATE_H_FLIP,
+	PANEL_ROTATE_V_FLIP
+};
+
 struct msm_hyp_connector_info {
 	int connector_type;
+	enum msm_hyp_panel_rotation panel_orientation;
 	const struct drm_bridge_funcs *bridge_funcs;
 	const struct drm_connector_helper_funcs *connector_funcs;
 	uint32_t possible_crtcs;
