@@ -1497,9 +1497,18 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 	return 0;
 }
 
-static void dp_display_clear_dsc_resources(struct dp_display_private *dp,
+void dp_display_clear_dsc_resources(struct dp_display *dp_display,
 		struct dp_panel *panel)
 {
+	struct dp_display_private *dp;
+
+	if (!dp_display || !panel) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
 	dp->tot_dsc_blks_in_use -= panel->dsc_blks_in_use;
 	panel->dsc_blks_in_use = 0;
 }
@@ -1533,7 +1542,7 @@ static void dp_display_stream_disable(struct dp_display_private *dp,
 		return;
 	}
 
-	dp_display_clear_dsc_resources(dp, dp_panel);
+	dp_display_clear_dsc_resources(&dp->dp_display, dp_panel);
 
 	DP_DEBUG("stream_id=%d, active_stream_cnt=%d, tot_dsc_blks_in_use=%d\n",
 			dp_panel->stream_id, dp->active_stream_cnt,
