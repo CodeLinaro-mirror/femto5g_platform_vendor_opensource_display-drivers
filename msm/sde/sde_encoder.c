@@ -3184,6 +3184,8 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 
 	_sde_encoder_virt_enable_helper(drm_enc);
 	sde_encoder_control_te(drm_enc, true);
+
+	sde_enc->enabled = true;
 }
 
 void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
@@ -3208,6 +3210,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	 */
 	sde_enc->crtc = NULL;
 	memset(&sde_enc->mode_info, 0, sizeof(sde_enc->mode_info));
+	sde_enc->enabled = false;
 
 	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
 }
@@ -3432,6 +3435,13 @@ void sde_encoder_helper_phys_reset(struct sde_encoder_phys *phys_enc)
 	SDE_EVT32(DRMID(phys_enc->parent), cfg.pending_flush_mask);
 	ctl->ops.trigger_flush(ctl);
 	ctl->ops.trigger_start(ctl);
+}
+
+bool sde_encoder_is_enabled(struct drm_encoder *enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(enc);
+
+	return sde_enc && sde_enc->enabled;
 }
 
 static enum sde_intf sde_encoder_get_intf(struct sde_mdss_cfg *catalog,
