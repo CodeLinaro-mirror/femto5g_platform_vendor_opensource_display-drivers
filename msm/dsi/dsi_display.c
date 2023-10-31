@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -6251,10 +6251,12 @@ static enum drm_mode_status dsi_display_drm_ext_mode_valid(
 	struct dsi_display *display = disp;
 	enum drm_mode_status status;
 
-	/* always do internal mode_valid check */
-	status = dsi_conn_mode_valid(connector, mode, disp, avail_res);
-	if (status != MODE_OK)
-		return status;
+	if (display->panel->num_timing_nodes) {
+		/* always do internal mode_valid check */
+		status = dsi_conn_mode_valid(connector, mode, disp, avail_res);
+		if (status != MODE_OK)
+			return status;
+	}
 
 	return display->ext_conn->helper_private->mode_valid(
 			display->ext_conn, mode);
@@ -6290,6 +6292,9 @@ static int dsi_display_ext_get_info(struct drm_connector *connector,
 		return -EINVAL;
 	}
 
+	if (display->panel->num_timing_nodes)
+		return dsi_display_get_info(connector, info, disp);
+
 	mutex_lock(&display->display_lock);
 
 	memset(info, 0, sizeof(struct msm_display_info));
@@ -6320,18 +6325,22 @@ static int dsi_display_ext_get_mode_info(struct drm_connector *connector,
 	void *display, const struct msm_resource_caps_info *avail_res)
 {
 	struct msm_display_topology *topology;
+	struct dsi_display *ext_display = (struct dsi_display *)display;
 
 	if (!drm_mode || !mode_info ||
 			!avail_res || !avail_res->max_mixer_width)
 		return -EINVAL;
+
+	if (ext_display->panel->num_timing_nodes)
+		return dsi_conn_get_mode_info(connector, drm_mode, sub_mode,
+			mode_info, display, avail_res);
 
 	memset(mode_info, 0, sizeof(*mode_info));
 	mode_info->frame_rate = drm_mode_vrefresh(drm_mode);
 	mode_info->vtotal = drm_mode->vtotal;
 
 	topology = &mode_info->topology;
-	topology->num_lm = (avail_res->max_mixer_width
-			<= drm_mode->hdisplay) ? 2 : 1;
+	topology->num_lm = ext_display->ctrl_count;
 	topology->num_enc = 0;
 	topology->num_intf = topology->num_lm;
 
