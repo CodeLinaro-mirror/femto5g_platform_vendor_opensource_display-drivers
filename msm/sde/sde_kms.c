@@ -1650,11 +1650,11 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 			break;
 		}
 
-		sde_crtc_complete_flip(crtc, NULL);
-
 		if (cwb_disabling)
 			sde_encoder_virt_reset(encoder);
 	}
+
+	sde_crtc_complete_flip(crtc, NULL);
 
 	/* avoid system cache update to set rd-noalloc bit when NSE feature is enabled */
 	if (!test_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_kms->catalog->features))
