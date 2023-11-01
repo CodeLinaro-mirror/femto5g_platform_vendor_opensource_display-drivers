@@ -25,6 +25,8 @@
 
 /* wait for at most 2 vsync for lowest refresh rate (24hz) */
 #define DEFAULT_KICKOFF_TIMEOUT_MS		84
+/* add small buffer for the interrupt delay torlerance */
+#define KICKOFF_TIMEOUT_MS_TOLERANCE	3
 
 #define MAX_TE_PROFILE_COUNT		5
 /**
