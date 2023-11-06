@@ -1917,8 +1917,9 @@ static void dp_mst_hotplug(struct drm_dp_mst_topology_mgr *mgr)
 	DP_MST_INFO_LOG("mst hot plug event\n");
 }
 
-static void dp_mst_hpd_event_notify(struct dp_mst_private *mst, bool hpd_status)
+static void dp_mst_hpd_event_notify(void *_mst, bool hpd_status)
 {
+	struct dp_mst_private *mst = _mst;
 	struct drm_device *dev = mst->dp_display->drm_dev;
 	char event_string[] = "MST_HOTPLUG=1";
 	char status[HPD_STRING_SIZE];
@@ -2062,6 +2063,7 @@ static const struct dp_mst_drm_cbs dp_mst_display_cbs = {
 	.hpd = dp_mst_display_hpd,
 	.hpd_irq = dp_mst_display_hpd_irq,
 	.set_drv_state = dp_mst_set_state,
+	.hpd_event_notify = dp_mst_hpd_event_notify,
 };
 
 static const struct drm_dp_mst_topology_cbs dp_mst_drm_cbs = {
