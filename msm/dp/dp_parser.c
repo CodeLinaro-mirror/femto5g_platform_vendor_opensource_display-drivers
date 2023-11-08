@@ -225,6 +225,24 @@ static int dp_parser_pinctrl(struct dp_parser *parser)
 		goto error;
 	}
 
+	if (parser->lphw_hpd) {
+		pinctrl->state_hpd_tlmm = pinctrl->state_hpd_ctrl = NULL;
+
+		pinctrl->state_hpd_tlmm = pinctrl_lookup_state(pinctrl->pin,
+				"mdss_dp_hpd_tlmm");
+		if (!IS_ERR_OR_NULL(pinctrl->state_hpd_tlmm)) {
+			pinctrl->state_hpd_ctrl = pinctrl_lookup_state(
+					pinctrl->pin, "mdss_dp_hpd_ctrl");
+		}
+
+		if (IS_ERR_OR_NULL(pinctrl->state_hpd_tlmm) ||
+				IS_ERR_OR_NULL(pinctrl->state_hpd_ctrl)) {
+			pinctrl->state_hpd_tlmm = NULL;
+			pinctrl->state_hpd_ctrl = NULL;
+			DP_DEBUG("tlmm or ctrl pinctrl state does not exist\n");
+		}
+	}
+
 	pinctrl->state_active = pinctrl_lookup_state(pinctrl->pin,
 					"mdss_dp_active");
 	if (IS_ERR_OR_NULL(pinctrl->state_active)) {
@@ -259,6 +277,12 @@ static int dp_parser_gpio(struct dp_parser *parser)
 		"qcom,edp-pwm-en-gpio",
 		"qcom,edp-backlight-en-gpio",
 	};
+
+	if (of_find_property(of_node, "qcom,dp-hpd-gpio", NULL)) {
+		parser->lphw_hpd = of_find_property(of_node,
+				"qcom,dp-low-power-hw-hpd", NULL);
+		return 0;
+	}
 
 	if (of_find_property(of_node, "qcom,dp-gpio-aux-switch", NULL))
 		parser->gpio_aux_switch = true;
