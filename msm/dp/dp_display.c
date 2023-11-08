@@ -16,6 +16,7 @@
 #include <linux/pm_qos.h>
 
 #include "sde_connector.h"
+#include "sde_encoder.h"
 
 #include "msm_drv.h"
 #include "dp_hpd.h"
@@ -222,6 +223,7 @@ struct dp_display_private {
 
 	struct device *msm_hdcp_dev;
 	u32 hdcp_cell_idx;
+	u32 dpu_idx;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -695,6 +697,7 @@ static int dp_display_initialize_hdcp(struct dp_display_private *dp)
 
 	hdcp_init_data.client_id     = HDCP_CLIENT_DP;
 	hdcp_init_data.client_index  = dp->hdcp_cell_idx;
+	hdcp_init_data.dpu_index     = dp->dpu_idx;
 	hdcp_init_data.drm_aux       = dp->aux->drm_aux;
 	hdcp_init_data.cb_data       = (void *)dp;
 	hdcp_init_data.workq         = dp->wq;
@@ -1735,6 +1738,16 @@ static void dp_display_stream_disable(struct dp_display_private *dp,
 	dp->ctrl->stream_off(dp->ctrl, dp_panel);
 	dp->active_panels[dp_panel->stream_id] = NULL;
 	dp->active_stream_cnt--;
+
+	if (IS_BOND_MODE(dp->phy_bond_mode)) {
+		if (dp->bond_primary)
+			sde_encoder_set_bridge_enabled(dp->bond_primary->encoder,
+					false);
+	} else {
+		if (dp_panel->connector)
+			sde_encoder_set_bridge_enabled(dp_panel->connector->encoder,
+					false);
+	}
 }
 
 static void dp_display_clean(struct dp_display_private *dp)
@@ -2885,6 +2898,16 @@ static int dp_display_enable(struct dp_display *dp_display, void *panel)
 		goto end;
 
 	dp_display_state_add(DP_STATE_ENABLED);
+
+	if (IS_BOND_MODE(dp->phy_bond_mode)) {
+		if (dp->bond_primary)
+			sde_encoder_set_bridge_enabled(dp->bond_primary->encoder,
+					true);
+	} else {
+		if (dp_display->base_connector)
+			sde_encoder_set_bridge_enabled(dp_display->base_connector->encoder,
+					true);
+	}
 end:
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, rc);
@@ -3183,6 +3206,16 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	dp_display_state_remove(DP_STATE_ENABLED);
 	dp->aux->state = DP_STATE_CTRL_POWERED_OFF;
 
+	if (IS_BOND_MODE(dp->phy_bond_mode)) {
+		if (dp->bond_primary)
+			sde_encoder_set_bridge_enabled(dp->bond_primary->encoder,
+					true);
+	} else {
+		if (dp_display->base_connector)
+			sde_encoder_set_bridge_enabled(dp_display->base_connector->encoder,
+					false);
+	}
+
 	if (dp->parser->force_connect_mode)
 		dp_display_send_force_connect_event(dp);
 
@@ -3193,7 +3226,8 @@ end:
 	 * Once the DP driver is turned off, set to non-bond mode.
 	 * If bond mode is required afterwards, call set_phy_bond_mode.
 	 */
-	dp_display_change_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE);
+	if (!dp->parser->force_bond_mode)
+		dp_display_change_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE);
 
 	dp_panel->deinit(dp_panel, flags);
 	mutex_unlock(&dp->session_lock);
@@ -3588,7 +3622,14 @@ static int dp_parser_msm_hdcp_dev(struct dp_display_private *dp)
 	ret = of_property_read_u32(node, "cell-index", &dp->hdcp_cell_idx);
 	if (ret < 0) {
 		// This is a non-fatal error, module initialization can proceed
-		pr_warn("couldn't find right hdcp cell-index");
+		pr_warn("couldn't find right hdcp cell-index\n");
+		return 0;
+	}
+
+	ret = of_property_read_u32(node, "dpu-index", &dp->dpu_idx);
+	if (ret < 0) {
+		// This is a non-fatal error, module initialization can proceed
+		pr_warn("couldn't find right hdcp dpu-index\n");
 		return 0;
 	}
 
@@ -4436,6 +4477,22 @@ static int dp_pm_prepare(struct device *dev)
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
+	if (dp->parser && dp->parser->force_connect_mode) {
+		u32 sim_mode;
+
+		mutex_lock(&dp->session_lock);
+		sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
+		pr_info("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		if (sim_mode && dp->hpd->hpd_high)
+			pr_info("Suspend to sim mode when HPD is high\n");
+
+		// Always assume we will resume with HPD low
+		dp->hpd->hpd_high = false;
+		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
+		pr_info("Force HPD to be low and switch to sim mode for resume\n");
+
+		mutex_unlock(&dp->session_lock);
+	}
 	return 0;
 }
 
@@ -4464,6 +4521,29 @@ static void dp_pm_complete(struct device *dev)
 			!dp_display_state_is(DP_STATE_ENABLED)) {
 		dp->aux->abort(dp->aux, false);
 		dp->ctrl->abort(dp->ctrl, false);
+	}
+
+	if (dp->parser && dp->parser->force_connect_mode) {
+		u32 sim_mode;
+
+		sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
+		pr_info("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		if (sim_mode && dp->hpd->hpd_high) {
+			/*
+			 * We suspend at sim mode, and resume with HPD high,
+			 * restart the session with normal mode.
+			 */
+			pr_info("HPD is high, leaving sim mode from 0x%X\n", sim_mode);
+			// Clear sim mode
+			dp_sim_set_sim_mode(dp->aux_bridge, 0);
+			mutex_unlock(&dp->session_lock);
+
+			// Trigger a disconnect->connect transition
+			dp_display_disconnect_sync(dp);
+			mutex_lock(&dp->session_lock);
+			dp_display_host_init(dp);
+			queue_work(dp->wq, &dp->connect_work);
+		}
 	}
 
 	dp_display_state_remove(DP_STATE_SUSPENDED);

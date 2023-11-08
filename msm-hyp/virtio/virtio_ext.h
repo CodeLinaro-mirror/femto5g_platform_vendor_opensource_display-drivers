@@ -172,6 +172,7 @@ struct virtio_gpu_resp_planes_caps {
 		__le32 num_formats;
 		__le32 formats[VIRTIO_GPU_MAX_PIXEL_FORMATS];
 		__le32 max_scale;
+		__le32 pair_plane_id;
 	}caps;
 	__le32 padding;
 };
