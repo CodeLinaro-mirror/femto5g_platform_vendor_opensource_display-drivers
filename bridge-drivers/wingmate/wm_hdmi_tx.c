@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/of_irq.h>
 #include <drm/drm_edid.h>
@@ -9,12 +9,33 @@
 #include "wm_debug.h"
 #include "wm_hdmi_tx.h"
 
+#define WM_CEA_EXT 0x02
+#define TAG_CODE 0x07
+#define PHY_PLL_TIMEOUT_MS 100 // Need to confirm this value.
+
 #define spi_read8(reg) \
 	hdmi->display->read_register(hdmi->display, (reg))
 
 #define spi_write8(reg, data) \
 	hdmi->display->update_register_bits(hdmi->display, (reg), \
 			WM_HDMI_REG_MASK, (data))
+
+#define HDMI_MPLL(ds, cur, gmp) \
+	.opmode_pllcfg = (ds), .pllcurrctrl = (cur), .pllgmpctrl = (gmp)
+
+#define _wm_for_each_cea_db(cea, i, start, end) \
+	for ((i) = (start); \
+	(i) < (end) && (i) + _wm_cea_db_payload_len(&(cea)[(i)]) < (end); \
+	(i) += _wm_cea_db_payload_len(&(cea)[(i)]) + 1)
+
+enum pll_groups {
+	GROUP_0,
+	GROUP_1,
+	GROUP_2,
+	GROUP_3,
+	GROUP_4,
+	GROUP_5,
+};
 
 enum wm_hdmi_phy_conf {
 	PDZ = BIT(7),
@@ -45,6 +66,290 @@ enum wm_hdmi_ih_mute {
 	IH_RXSENSE_3 = BIT(5),
 };
 
+enum drm_edid_colorimetry {
+	xvYCC601 = BIT(0),
+	xvYCC709 = BIT(1),
+	sYCC601 = BIT(2),
+	opYCC601 = BIT(3),
+	opRGB = BIT(4),
+	BT2020cYCC = BIT(5),
+	BT2020YCC = BIT(6),
+	BT2020RGB = BIT(7),
+};
+
+
+struct wm_hdmi_tx_mpll {
+	u16 opmode_pllcfg;
+	u16 pllcurrctrl;
+	u16 pllgmpctrl;
+};
+
+/* This list is subject to extension in future,
+ * based on the necessity to parse new
+ * E-EDID extension blocks.
+ */
+enum extended_data_block_types {
+	COLORIMETRY_EXTENDED_DATA_BLOCK = 0x05,
+};
+
+/* MPLL LUT for 8bpc color depth without pixel repetition.
+ *
+ * TODO: Update table and LUT mapper accordingly for Clocks with
+ * Pixel Repetition.
+ */
+static const struct wm_hdmi_tx_mpll divider_list[] = {
+	/* GROUP_0
+	 * PClk: 25175KHz, 27000KHz
+	 */
+	{ HDMI_MPLL(0x00b3, 050, 0b10) },
+
+	/* GROUP_1
+	 * PClk: 54000KHz, 59400KHz, 72000KHz,
+	 * 	 74250KHz, 82500KHz, 90000KHz
+	 */
+	{ HDMI_MPLL(0x0072, 032, 0b10) },
+
+	/* GROUP_2
+	 * PClk: 99000KHz, 108000KHz,
+	 * 	 118800KHz, 148500KHz, 165000KHz
+	 */
+	{ HDMI_MPLL(0x0051, 012, 0b10) },
+
+	/* GROUP_3
+	 * PClk: 186250KHz, 297000KHz
+	 */
+	{ HDMI_MPLL(0x0040, 001, 0b10) },
+
+	/* GROUP_4
+	 * PClk: 198000KHz
+	 */
+	{ HDMI_MPLL(0x0100, 001, 0b10) },
+
+	/* GROUP_5
+	 * PClk: 371250KHz, 396000KHz,
+	 * 	 495000KHz, 594000KHz
+	 */
+	{ HDMI_MPLL(0x1a40, 001, 0b11) },
+};
+
+/* MPLL LUT for 10boc color depth withour pixel repetition.
+ *
+ * TODO: Update table and LUT mapper accordingly for Clocks with
+ * Pixel Repetition.
+ */
+static const struct wm_hdmi_tx_mpll divider_list_dc[] = {
+	/* GROUP_0
+	 * PClk: 25175KHz, 27000KHz
+	 */
+	{ HDMI_MPLL(0x2153, 060, 0b10) },
+
+	/* GROUP_1
+	 * PClk: 54000KHz, 59400KHz, 72000KHz
+	 */
+	{ HDMI_MPLL(0x2142, 032, 0b10) },
+
+	/* GROUP_2
+	 * PClk: 74250KHz, 82500KHz, 90000KHz,
+	 * 	 99000KHz, 108000KHz, 118800KHz
+	 */
+	{ HDMI_MPLL(0x2145, 032, 0b10) },
+
+	/* GROUP_3
+	 * PClk: 148500KHz, 165000KHz,
+	 * 	 186250KHz, 198000KHz
+	 */
+	{ HDMI_MPLL(0x214c, 032, 0b10) },
+
+	/* GROUP_4
+	 * PClk: 297000KHz, 371250KHz,
+	 * 	 396000KHz
+	 */
+	{ HDMI_MPLL(0x3b4c, 061, 0b11) },
+};
+
+static u8 *_wm_find_edid_extension(struct edid *edid, int ext_id)
+{
+	u8 *edid_ext = NULL;
+	int i;
+
+	/* No EDID or EDID extensions */
+	if (!edid || !edid->extensions)
+		return NULL;
+
+	/* Find CEA extension */
+	for (i = 0; i < edid->extensions; i++) {
+		edid_ext = (u8 *)edid + EDID_LENGTH * (i + 1);
+		if (edid_ext[0] == ext_id)
+			break;
+	}
+
+	if (i == edid->extensions)
+		return NULL;
+
+	return edid_ext;
+}
+
+static u8 *_wm_find_cea_extension(struct edid *edid)
+{
+	return _wm_find_edid_extension(edid, WM_CEA_EXT);
+}
+
+static int _wm_cea_db_payload_len(const u8 *db)
+{
+	return db[0] & 0x1f;
+}
+
+static int _wm_cea_db_tag(const u8 *db)
+{
+	return db[0] >> 5;
+}
+
+static int _wm_cea_revision(const u8 *cea)
+{
+	return cea[1];
+}
+
+static int _wm_cea_db_offsets(const u8 *cea, int *start, int *end)
+{
+	/* Data block offset in CEA extension block */
+	*start = 4;
+	*end = cea[2];
+	if (*end == 0)
+		*end = 127;
+	if (*end < 4 || *end > 127)
+		return -ERANGE;
+	return 0;
+}
+
+static void _wm_parse_colorimetry_db(struct wm_hdmi_tx *hdmi, const u8 *db)
+{
+	int i;
+
+	for (i = 0; i < 8; i++)
+		if (BIT(i) & db[2])
+			hdmi->colorimetry |= BIT(i);
+}
+
+static void _wm_edid_parse_ext_blk(struct wm_hdmi_tx *hdmi, struct edid *edid)
+{
+	const u8 *cea = _wm_find_cea_extension(edid);
+	const u8 *db = NULL;
+
+	if (cea && _wm_cea_revision(cea) >= 3) {
+		int i, start, end;
+
+		if (_wm_cea_db_offsets(cea, &start, &end))
+			return;
+
+		_wm_for_each_cea_db(cea, i , start, end) {
+			db = &cea[i];
+
+			if (_wm_cea_db_tag(db) == TAG_CODE) {
+				WM_DEBUG("found ext tag block: 0x%x", db[1]);
+
+				switch (db[1]) {
+				case COLORIMETRY_EXTENDED_DATA_BLOCK:
+					_wm_parse_colorimetry_db(hdmi, db);
+					break;
+				default:
+					break;
+				}
+			}
+		}
+	}
+}
+
+static inline char *_wm_phy_state(enum wm_hdmi_phy_state state)
+{
+	switch (state) {
+		case PHY_I2C_NONE:
+			return "none";
+		case PHY_I2C_PLL:
+			return "phy_pll";
+		case PHY_I2C_TXTM:
+			return "tx_term";
+		case PHY_I2C_VLEC:
+			return "tx_voltage";
+		case PHY_I2C_CKSYM:
+			return "ck_sym";
+		case PHY_I2C_PWR:
+			return "pwr";
+	}
+}
+
+static u8 _wm_hdmi_tx_decode_pclk_dc(int pclk)
+{
+	switch (pclk) {
+		case 297000:
+		case 371250:
+		case 396000:
+			return GROUP_4;
+		case 148500:
+		case 165000:
+		case 186250:
+		case 198000:
+			return GROUP_3;
+		case 74250:
+		case 82500:
+		case 90000:
+		case 99000:
+		case 108000:
+		case 118800:
+			return GROUP_2;
+		case 54000:
+		case 59400:
+		case 72000:
+			return GROUP_1;
+		default:
+		case 25175:
+		case 27000:
+			return GROUP_0;
+	}
+}
+static u8 _wm_hdmi_tx_decode_pclk(int pclk)
+{
+	switch (pclk) {
+		case 371250:
+		case 396000:
+		case 495000:
+		case 594000:
+			return GROUP_5;
+		case 186250:
+		case 297000:
+			return GROUP_3;
+		case 198000:
+			return GROUP_4;
+		case 99000:
+		case 108000:
+		case 118800:
+		case 148500:
+		case 165000:
+			return GROUP_2;
+		case 54000:
+		case 59400:
+		case 72000:
+		case 74250:
+		case 82500:
+		case 90000:
+			return GROUP_1;
+		default:
+		case 25175:
+		case 27000:
+			return GROUP_0;
+	}
+}
+
+static inline struct wm_hdmi_tx_mpll _wm_hdmi_tx_mpll_fill(u32 bpp, u32 pclk)
+{
+	switch (bpp) {
+	default:
+	case 24:
+		return divider_list[_wm_hdmi_tx_decode_pclk(pclk)];
+	case 30:
+		return divider_list_dc[_wm_hdmi_tx_decode_pclk_dc(pclk)];
+	}
+}
+
 static void _wm_hdmi_tx_conf_phy(struct wm_hdmi_tx *hdmi, u8 bits)
 {
 	u8 data;
@@ -54,6 +359,30 @@ static void _wm_hdmi_tx_conf_phy(struct wm_hdmi_tx *hdmi, u8 bits)
 	spi_write8(WM_HDMI_PHY_CONF0, data);
 }
 
+static inline void _wm_hdmi_tx_initiate_phy_i2c(struct wm_hdmi_tx *hdmi,
+				bool write)
+{
+	if (write)
+		spi_write8(WM_HDMI_PHY_I2CM_OPERATION, BIT(4));
+	else
+		spi_write8(WM_HDMI_PHY_I2CM_OPERATION, BIT(0));
+}
+
+static void _wm_hdmi_tx_compose_i2c_frame(struct wm_hdmi_tx *hdmi,
+				u8 addr, u16 data)
+{
+	spi_write8(WM_HDMI_PHY_I2CM_ADDR, addr);
+	spi_write8(WM_HDMI_PHY_I2CM_DATAO_0, data & 0xff);
+	spi_write8(WM_HDMI_PHY_I2CM_DATAO_1, (data >> 8) & 0xff);
+}
+
+/* TODO: Verify the use case with irq handler.
+static void _wm_hdmi_tx_phy_i2c_intr(struct wm_hdmi_tx *hdmi, u8 *data)
+{
+		spi_write8(WM_HDMI_IH_I2CMPHY_STAT0, *data);
+		spi_read8(WM_HDMI_IH_I2CMPHY_STAT0, *data);
+}
+*/
 static void _wm_hdmi_tx_config_edid_param(struct wm_hdmi_tx *hdmi,
 				u8 addr, u8 segptr, bool single_read)
 {
@@ -91,6 +420,37 @@ static void _wm_hdmi_tx_enable_edid_irq(struct wm_hdmi_tx *hdmi, bool en)
 	else
 		/* Unmute DDC Read interrupt. */
 		spi_write8(WM_HDMI_IH_MUTE_I2CM_STAT0, val & 0x4);
+}
+
+static void _wm_hdmi_tx_enable_tx(struct wm_hdmi_tx *hdmi)
+{
+	u8 vsync_width;
+
+	vsync_width = hdmi->display->mode_info.v_sync_width;
+
+	WM_DEBUG("vsync width: %lu", vsync_width);
+
+	spi_write8(WM_HDMI_MC_SWRSTZREQ_1, 0x00);
+	spi_write8(WM_HDMI_FC_VSYNCINWIDTH, vsync_width);
+}
+
+static inline void _wm_hdmi_tx_phy_clear_int(struct wm_hdmi_tx *hdmi, u8 bits)
+{
+	spi_write8(WM_HDMI_IH_PHY_STAT0, bits);
+}
+
+static bool _wm_hdmi_tx_pll_lock_intr(struct wm_hdmi_tx *hdmi)
+{
+	u8 mask, value = 0;
+	bool ret;
+
+	mask = 0x01;
+
+	value = hdmi->intr.phy_itr;
+
+	ret = value & mask ? true : false;
+
+	return ret;
 }
 
 static inline void _wm_hdmi_tx_hpd_status(struct wm_hdmi_tx *hdmi, bool *hpd)
@@ -238,9 +598,10 @@ static inline void _wm_hdmi_tx_process_hpd_high(struct wm_hdmi_tx *hdmi)
 {
 
 	_wm_hdmi_tx_send_hpd_event(hdmi, true);
-	/* Parse extracted E-EDID data to extract discrete information,
+	/* Parse extracted E-EDID data to extract discrete infomration,
 	 * such as Audio, Video, HDR, etc.
 	 */
+	_wm_edid_parse_ext_blk(hdmi, (struct edid*)hdmi->edid);
 }
 
 static int _wm_hdmi_tx_edid_buff_alloc(struct wm_hdmi_tx *hdmi)
@@ -475,6 +836,234 @@ fail:
 	return;
 }
 
+static void _wm_hdmi_tx_config_phy_pll(struct wm_hdmi_tx *hdmi, bool complete)
+{
+	u8 addr;
+	u16 data;
+	struct wm_hdmi_tx_mpll mpll;
+	enum wm_hdmi_phy_pll pll_state;
+	enum wm_hdmi_phy_pll *next_state, *curr_state;
+
+	next_state = &hdmi->phy_next_state;
+	curr_state = &hdmi->phy_curr_state;
+
+	pll_state = complete ? *next_state : *curr_state;
+	mpll = _wm_hdmi_tx_mpll_fill(hdmi->display->mode_info.bpp,
+				hdmi->display->mode_info.pclk_khz);
+
+	switch(pll_state) {
+		case PLLCFG: {
+			addr = WM_HDMI_PHY_OPMODE_PLLCFG;
+			data = mpll.opmode_pllcfg;
+			*next_state = PLLCURR;
+			break;
+		}
+		case PLLCURR: {
+			addr = WM_HDMI_PHY_PLLCURRCTRL;
+			data = mpll.pllcurrctrl;
+			*next_state = PLLGMP;
+			break;
+		}
+		case PLLGMP: {
+			addr = WM_HDMI_PHY_PLLGMPCTRL;
+			data = mpll.pllgmpctrl;
+			hdmi->phy_i2c_next = PHY_I2C_TXTM;
+			*next_state = PLLCFG;
+			break;
+		}
+	}
+	*curr_state = pll_state;
+
+	_wm_hdmi_tx_compose_i2c_frame(hdmi, addr, data);
+}
+
+static void _wm_hdmi_tx_config_phy_txterm(struct wm_hdmi_tx *hdmi)
+{
+	u16 data;
+	u32 pclk;
+
+	pclk = hdmi->display->mode_info.pclk_khz;
+
+	if (pclk < 165000)
+		data = 0x7;
+	else if(pclk >= 165000 && pclk <= 340000)
+		data = 0x4;
+	else
+		data = 0x0;
+
+	_wm_hdmi_tx_compose_i2c_frame(hdmi, WM_HDMI_PHY_TXTERM, data);
+}
+
+static void _wm_hdmi_tx_config_phy_voltage(struct wm_hdmi_tx *hdmi)
+{
+	u32 pclk;
+	u16 data = 0;
+
+	pclk = hdmi->display->mode_info.pclk_khz;
+
+	if (pclk <= 165000) {
+		/* Bits 4:0. */
+		data = 0x14;
+		/* Bits 9:5. */
+		data |= (0x14 << 5);
+	} else if (pclk > 165000 && pclk <= 340000) {
+		/* Bits 4:0. */
+		data = 0x0d;
+		/* Bits 9:5. */
+		data |= (0x0d << 5);
+	} else {
+		/* Values need to be confirmed for
+		 * PCLK > 340MHz, i.e., for HDMI 2.0.
+		 */
+	}
+
+	_wm_hdmi_tx_compose_i2c_frame(hdmi, WM_HDMI_PHY_VLEVCTRL, data);
+}
+
+static inline void _wm_hdmi_tx_config_phy_txctrl(struct wm_hdmi_tx *hdmi)
+{
+	/* TODO: Confirm if the register is only being written over here,
+	 * or should be read first before writing.
+	 * In case of only write, move "compose frame" function to caller's
+	 * case statement.
+	 */
+	_wm_hdmi_tx_compose_i2c_frame(hdmi, WM_HDMI_PHY_CKSYMTXCTRL, 0x0);
+}
+
+static inline void _wm_hdmi_tx_lock_pll_and_enable_hdmi(struct wm_hdmi_tx *hdmi)
+{
+	_wm_hdmi_tx_mask_phy(hdmi, true, TXPHYLOCK);
+	_wm_hdmi_tx_phy_clear_int(hdmi, BIT(1));
+	_wm_hdmi_tx_enable_tx(hdmi);
+	WM_INFO("HDMI TX enabled");
+}
+
+static void wm_hdmi_tx_phy_work(struct work_struct *work)
+{
+	struct wm_hdmi_tx *hdmi;
+	u8 done = 0;
+	bool i2c_comp = false;
+	enum wm_hdmi_phy_state pll_state;
+
+	hdmi = container_of(work, struct wm_hdmi_tx, phy_work);
+	if (!hdmi) {
+		WM_ERR("invalid input");
+		return;
+	}
+
+	mutex_lock(&hdmi->lock);
+
+	/* Check if interrupt is raised for PLL Lock,
+	 *
+	 * if PLL Locked, enable the display and exit.
+	 */
+
+	if (_wm_hdmi_tx_pll_lock_intr(hdmi)) {
+		hdmi->pll_lock = true;
+		wake_up(&hdmi->phy_enable_wq);
+		WM_DEBUG("pll locked");
+		_wm_hdmi_tx_lock_pll_and_enable_hdmi(hdmi);
+		mutex_unlock(&hdmi->lock);
+		return;
+	}
+
+	/* If interrupt is not raised for PLL Lock, then
+	 * find the I2C status and program the HDMI PHY
+	 * according to the below logic -
+	 *
+	 * 1. PHY PLL
+	 * 2. Terminal Resistance
+	 * 3. Electrical Voltage
+	 * 4. Clock Skew
+	 * 5. PHY Power
+	 */
+
+	done = hdmi->intr.phy_i2c_itr;
+
+	pll_state = hdmi->phy_i2c_state;
+
+	if ((i2c_comp = done & BIT(1))) {
+		hdmi->phy_i2c_state = hdmi->phy_i2c_next;
+		hdmi->phy_retry = 0;
+	} else if ((done & BIT(0)) && hdmi->phy_retry < 2) {
+		hdmi->phy_retry++;
+		WM_DEBUG("hdmi phy %s failed retry: %d",
+				_wm_phy_state(pll_state), hdmi->phy_retry);
+	} else {
+		WM_ERR("max retry exceeded for phy config %s",
+				_wm_phy_state(pll_state));
+		goto end;
+	}
+
+	WM_DEBUG("hdmi phy %s state %s", _wm_phy_state(pll_state),
+			i2c_comp ? "success" : "failed");
+
+	switch (hdmi->phy_i2c_state) {
+		case PHY_I2C_PLL:
+			_wm_hdmi_tx_config_phy_pll(hdmi, i2c_comp);
+			break;
+		case PHY_I2C_TXTM:
+			_wm_hdmi_tx_config_phy_txterm(hdmi);
+			hdmi->phy_i2c_next = PHY_I2C_VLEC;
+			break;
+		case PHY_I2C_VLEC:
+			_wm_hdmi_tx_config_phy_voltage(hdmi);
+			hdmi->phy_i2c_next = PHY_I2C_CKSYM;
+			break;
+		case PHY_I2C_CKSYM:
+			_wm_hdmi_tx_config_phy_txctrl(hdmi);
+			hdmi->phy_i2c_next = PHY_I2C_PWR;
+			break;
+		case PHY_I2C_PWR:
+			WM_DEBUG("enabling phy, no further programming");
+			_wm_hdmi_tx_conf_phy(hdmi, TXPWRON);
+			hdmi->phy_i2c_next = PHY_I2C_NONE;
+			goto end;
+		case PHY_I2C_NONE:
+			WM_ERR("no phy i2c triggered");
+			goto end;
+	}
+
+	_wm_hdmi_tx_initiate_phy_i2c(hdmi, true);
+	mutex_unlock(&hdmi->lock);
+	return;
+end:
+	mutex_unlock(&hdmi->lock);
+}
+
+static int wm_hdmi_tx_enable(struct wm_hdmi_tx *hdmi)
+{
+	int ret = 0;
+
+	/* Manadatory/Required Initialization for the
+	 * enable functionality to complete.
+	 */
+	init_waitqueue_head(&hdmi->phy_enable_wq);
+	hdmi->phy_next_state = hdmi->phy_curr_state = PLLCFG;
+	hdmi->phy_i2c_state = hdmi->phy_i2c_next = PHY_I2C_PLL;
+	hdmi->pll_lock = false;
+
+	_wm_hdmi_tx_config_phy_pll(hdmi, false);
+
+	/* Interrupts activation for the HDMI PHY
+	 * FSM configuration.
+	 */
+	_wm_hdmi_tx_toggle_pol(hdmi, false, TXPHYLOCK);
+	_wm_hdmi_tx_mask_phy(hdmi, false, TXPHYLOCK);
+	_wm_hdmi_tx_mute_phy(hdmi, false, TXPHYLOCK);
+	_wm_hdmi_tx_initiate_phy_i2c(hdmi, true);
+
+	if (wait_event_timeout(hdmi->phy_enable_wq, hdmi->pll_lock,
+				msecs_to_jiffies(PHY_PLL_TIMEOUT_MS)))
+		WM_INFO("PLL Lock OK");
+	else {
+		WM_ERR("PLL Lock NOK");
+		ret = -EAGAIN;
+	}
+
+	return ret;
+}
+
 static int wm_hdmi_tx_irq_handler(struct wm_hdmi_tx *hdmi, int irq)
 {
 	if (!hdmi) {
@@ -494,7 +1083,7 @@ static int _wm_hdmi_tx_create_workqueue(struct wm_hdmi_tx *hdmi)
 	}
 
 	INIT_WORK(&hdmi->hpd_work, wm_hdmi_tx_detect_hpd);
-//	INIT_WORK(&hdmi->phy_work, wm_hdmi_tx_phy_config);
+	INIT_WORK(&hdmi->phy_work, wm_hdmi_tx_phy_work);
 	INIT_WORK(&hdmi->edid_work, wm_hdmi_tx_read_sink_edid);
 	return 0;
 }
@@ -521,7 +1110,7 @@ struct wm_hdmi_tx *wm_hdmi_tx_init(struct wm_display_info *info)
 
 	/* assign function pointers. */
 	hdmi_tx->pre_enable = NULL;
-	hdmi_tx->enable = NULL;
+	hdmi_tx->enable = wm_hdmi_tx_enable;
 	hdmi_tx->disable = NULL;
 	hdmi_tx->post_disable = NULL;
 	hdmi_tx->get_modes = NULL;

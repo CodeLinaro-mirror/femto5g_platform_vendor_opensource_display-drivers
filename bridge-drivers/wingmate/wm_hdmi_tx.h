@@ -12,13 +12,22 @@
 /* HDMI_TX Register Offsets */
 #define WM_HDMI_IH_PHY_STAT0	0x104
 #define WM_HDMI_IH_I2CM_STAT0	0x105
+#define WM_HDMI_IH_I2CMPHY_STAT0 	0x108
 #define WM_HDMI_IH_MUTE_PHY_STAT0	0x184
 #define WM_HDMI_IH_MUTE_I2CM_STAT0	0x185
+
+#define WM_HDMI_FC_VSYNCINWIDTH	0x100d
 
 #define WM_HDMI_PHY_CONF0 	0x3000
 #define WM_HDMI_PHY_STAT0 	0x3004
 #define WM_HDMI_PHY_MASK0 	0x3006
 #define WM_HDMI_PHY_POL0 	0x3007
+#define WM_HDMI_PHY_I2CM_ADDR	0x3021
+#define WM_HDMI_PHY_I2CM_DATAO_1	0x3022
+#define WM_HDMI_PHY_I2CM_DATAO_0	0x3023
+#define WM_HDMI_PHY_I2CM_OPERATION	0x3026
+
+#define WM_HDMI_MC_SWRSTZREQ_1	0x4002
 
 #define WM_HDMI_I2CM_SLAVE 	0x7e00
 #define WM_HDMI_I2CM_ADDRESS 	0x7e01
@@ -27,6 +36,29 @@
 #define WM_HDMI_I2CM_SEGADDR 	0x7e08
 #define WM_HDMI_I2CM_SEGPTR 	0x7e0a
 #define WM_HDMI_I2CM_READ_BUFFx	0x7e20
+
+/* HDMI PHY Register Address */
+#define WM_HDMI_PHY_OPMODE_PLLCFG	0x06
+#define WM_HDMI_PHY_CKSYMTXCTRL	0x09
+#define WM_HDMI_PHY_VLEVCTRL	0x0e
+#define WM_HDMI_PHY_PLLCURRCTRL	0x10
+#define WM_HDMI_PHY_PLLGMPCTRL	0x15
+#define WM_HDMI_PHY_TXTERM	0x19
+
+enum wm_hdmi_phy_state {
+	PHY_I2C_NONE,
+	PHY_I2C_PLL,
+	PHY_I2C_TXTM,
+	PHY_I2C_VLEC,
+	PHY_I2C_CKSYM,
+	PHY_I2C_PWR,
+};
+
+enum wm_hdmi_phy_pll {
+	PLLCFG = 1,
+	PLLCURR = 2,
+	PLLGMP = 3,
+};
 
 enum hdmi_tx_output_format
 {
@@ -46,6 +78,7 @@ enum wm_hdmi_tx_state
 struct wm_hdmi_intrs {
 	u8 edid_itr;
 	u8 phy_itr;
+	u8 phy_i2c_itr;
 };
 
 struct edid_ctrl {
@@ -54,21 +87,28 @@ struct edid_ctrl {
 };
 
 struct wm_hdmi_tx {
-	u8 state;
 	struct wm_display *display;
 	struct wm_dt_props *dt_props;
 	struct device *dev;
 
 	/* Sink details */
 	u8 *edid;
+	u8 colorimetry;
 	bool hpd_status;
 	struct wm_hdmi_intrs intr;
 	struct edid_ctrl edid_ctrl;
 
 	// struct wm_hdmi_tx_info hdmi_info;
+	u8 phy_retry;
+	bool pll_lock;
+	enum wm_hdmi_phy_pll phy_curr_state;
+	enum wm_hdmi_phy_pll phy_next_state;
 	enum hdmi_tx_output_format output_format;
 
 	struct mutex lock;
+	enum wm_hdmi_phy_state phy_i2c_state;
+	enum wm_hdmi_phy_state phy_i2c_next;
+	wait_queue_head_t phy_enable_wq;
 
 	struct workqueue_struct *workq;
 	struct work_struct hpd_work;
