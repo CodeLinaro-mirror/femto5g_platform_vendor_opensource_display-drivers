@@ -297,6 +297,7 @@ static int wm_dsi_rx_disable_ctrl(struct wm_dsi_rx *dsi_rx)
 	dsi_reg_write(dsi_rx, DSI_RX_SOFT_RSTN, 0x0);
 	dsi_reg_write(dsi_rx, DSI_RX_DSC_CTRL, 0x0);
 
+	dsi_rx->dsc->enable = false;
 	WM_DEBUG("WM DSI RX disabled\n");
 	return 0;
 }
@@ -348,6 +349,104 @@ static int wm_dsi_rx_enable_ctrl(struct wm_dsi_rx *dsi_rx, bool enable)
 		dsi_reg_write(dsi_rx, DSI_RX_SOFT_RSTN, 0x0);
 
 	return rc;
+}
+
+static void wm_dsc_update_blanking_params(struct wm_dsi_rx *dsi_rx)
+{
+
+	struct wm_display_mode *mode = &dsi_rx->display->mode_info;
+	u32 vsync, vfront, vback;
+	u32 hfront, hsync, htot;
+	int hdly = 4 << 3; /*value from databook*/
+	int hpc = 1 << 2; /*hfront*/
+	int bmod = 1; /*programmed mode*/
+	u32 h_pol, v_pol; /*polarity*/
+	u32 hpad = 1 << 10; /*enable padding"re-visit"*/
+	u32 blk;
+
+	/* DSC_BLK0::htot[31:16] rsvd[15:11]
+	 * 	     hpad[10] pol[9:8] hdly[7:3]
+	 * 	     hpc[2] bmod[1:0] */
+
+	h_pol = (mode->h_active >= 720 ? 0 : 1) << 8;
+	v_pol = (mode->v_active >= 720 ? 0 : 1) << 9;
+	htot = mode->h_active + mode->h_back_porch
+		+ mode->h_sync_width + mode->h_front_porch;
+	blk = htot | hpad | h_pol | v_pol | hdly | hpc | bmod;
+	dsi_reg_write(dsi_rx, DSI_RX_DSC_BLK0, blk);
+
+	/*DSC_BLK1::hfront[31:16] hsync[15:0]*/
+	hsync = mode->h_sync_width;
+	hfront = mode->h_front_porch << 16;
+	dsi_reg_write(dsi_rx, DSI_RX_DSC_BLK1, (hsync | hfront));
+
+	/*DSC_BLK2::vback[31:16] vfnt[15:8] vsyn[8:0]*/
+	vback = mode->v_back_porch << 16;
+	vfront = mode->v_front_porch << 8;
+	vsync = mode->v_sync_width;
+	dsi_reg_write(dsi_rx, DSI_RX_DSC_BLK2, (vback | vfront | vsync));
+
+	WM_DEBUG("DSC blanking params blk0 %lu, blk1 %lu, blk2 %lu \n", blk,
+			(hsync|hfront), (vback|vfront|vsync));
+}
+
+static void wm_dsi_rx_dsc_update_pps(struct wm_dsi_rx *dsi_rx)
+{
+	return;
+}
+/**
+ * wm_dsi_rx_enable_dsc() - API to enable/disable dsc
+ * @wm_dsc - handle for wm_dsc
+ * @enable - bool to enable/disable dsc
+ */
+int wm_dsi_rx_enable_dsc(struct wm_dsi_rx *dsi_rx, bool enable)
+{
+
+	u32 sbo = 0 << 28; /*single burst o/p*/
+	u32 pdm = 1 << 22; /*PDM = 4 [10]*/
+	u32 nslc = 2 << 16;  /*2 slices per line*/
+	u32 xnslc = 0 << 15; /*custom slice*/
+	u32 init = 0 << 8; /*datapath init*/
+	u32 epl = 0 << 7;  /*enable partial bytes*/
+	u32 epb = 0 << 6;  /*enable partial bits*/
+	u32 flal = 0 << 4;
+	u32 rbyt = 0 << 3; /*reverse byte order*/
+	u32 rbit = 0 << 2; /*reverse bit order*/
+	u32 fsel = 1 << 1; /*decoder*/
+	u32 data, data_msb, data_lsb;
+
+	data_msb = sbo | pdm | nslc | xnslc | init;
+
+	data_lsb = epl | epb | flal | rbyt | rbit | fsel;
+
+	data = data_msb | data_lsb;
+
+	if (enable) {
+		data = data | 0x1;
+		dsi_reg_write(dsi_rx, DSI_RX_DSC_CTRL0, data);
+	} else {
+		dsi_reg_write(dsi_rx, DSI_RX_DSC_CTRL0, 0x0);
+		dsi_rx->ctrl_cfg->is_dsc_enabled = false;
+	}
+
+	WM_DEBUG("DSC ctrl enabled with 0x%x \n", data);
+	return 0;
+}
+
+int wm_dsi_rx_configure_dsc(struct wm_dsi_rx *dsi_rx)
+{
+
+	/*update blanking params*/
+	wm_dsc_update_blanking_params(dsi_rx);
+
+	/*enable dsc*/
+	wm_dsi_rx_enable_dsc(dsi_rx, true);
+
+	/*update pps values*/
+	wm_dsi_rx_dsc_update_pps(dsi_rx);
+
+	dsi_rx->dsc->enable = true;
+	return 0;
 }
 
 /**
@@ -434,9 +533,18 @@ static int wm_dsi_rx_mode_set(struct wm_dsi_rx *dsi_rx)
 static int wm_dsi_rx_pre_enable(struct wm_dsi_rx *dsi_rx)
 {
 	int rc = 0;
+	struct wm_display_mode *mode;
 
 	/* check whether argument is necessary or not*/
 	rc = wm_dsi_rx_configure_mipi_rx(dsi_rx);
+
+	mode = &dsi_rx->display->mode_info;
+	if (mode->dsc_enabled)
+	{
+		dsi_rx->ctrl_cfg->is_dsc_enabled = true;
+		wm_dsi_rx_configure_dsc(dsi_rx);
+	}
+
 	/*Wake mipi core*/
 	wm_dsi_rx_enable_ctrl(dsi_rx, true);
 	WM_INFO("DSI RX enabled\n");
@@ -453,6 +561,7 @@ static int wm_dsi_rx_enable(struct wm_dsi_rx *dsi_rx)
  */
 static int wm_dsi_rx_disable(struct wm_dsi_rx *dsi_rx)
 {
+	wm_dsi_rx_enable_dsc(dsi_rx, false);
 	wm_dsi_rx_disable_ctrl(dsi_rx);
 	WM_INFO("DSI RX disabled\n");
 

@@ -43,8 +43,13 @@
 #define DSI_RX_IPI_PG_VFP_LINES		0x0
 #define DSI_RX_IPI_PG_VACTIVE_LINES 	0x0
 
-/*DSC*/
+/*DSC*/ /*TODO*/
 #define DSI_RX_DSC_CTRL			0x0/*TODO*/
+#define DSI_RX_DSC_CTRL0		0x0
+#define DSI_RX_DSC_CTRL1		0x0
+#define DSI_RX_DSC_BLK0			0x0
+#define DSI_RX_DSC_BLK1			0x0
+#define DSI_RX_DSC_BLK2			0x0
 
 /*INT*/
 #define DSI_RX_INT_ST_PHY_FATAL		0x200
@@ -107,10 +112,16 @@ struct dsi_ctrl_cfg {
 	u32 ipi_clk;
 };
 
+struct wm_dsc {
+	struct pps_info *pps;
+	bool enable;
+};
+
 struct wm_dsi_rx {
 	struct dsi_ctrl_cfg *ctrl_cfg;
 	struct dsi_rx_mode_info *mode;
 	struct wm_display *display;
+	struct wm_dsc *dsc;
 	int (*enable)(struct wm_dsi_rx *dsi_rx);
 	int (*pre_enable)(struct wm_dsi_rx *dsi_rx);
 	int (*pre_disable)(struct wm_dsi_rx *dsi_rx);
