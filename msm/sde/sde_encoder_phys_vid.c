@@ -1006,6 +1006,12 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 
 	conn = phys_enc->connector;
 
+	if (!sde_encoder_is_bridge_enabled(phys_enc->parent)) {
+		SDE_INFO("Skipped, enc%d bridge is not enabled\n",
+				DRMID(phys_enc->parent));
+		goto skip;
+	}
+
 	wait_info.wq = &phys_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &phys_enc->pending_kickoff_cnt;
 	wait_info.timeout_ms = phys_enc->kickoff_timeout_ms;
@@ -1014,6 +1020,7 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 	ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC,
 			&wait_info);
 
+skip:
 	if (notify && (ret == -ETIMEDOUT) &&
 	    atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0) &&
 	    phys_enc->parent_ops.handle_frame_done) {

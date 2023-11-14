@@ -1,5 +1,5 @@
 /* Copyright (c) 2016-2018, 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -82,7 +82,7 @@ int sde_fence_helper_ctx_init(
 
 	return 0;
 }
-EXPORT_SYMBOL(sde_fence_helper_ctx_init);
+EXPORT_SYMBOL_GPL(sde_fence_helper_ctx_init);
 
 int sde_fence_helper_init(
 		struct sde_generic_fence_context *ctx,
@@ -115,7 +115,7 @@ int sde_fence_helper_init(
 
 	return 0;
 }
-EXPORT_SYMBOL(sde_fence_helper_init);
+EXPORT_SYMBOL_GPL(sde_fence_helper_init);
 
 void sde_fence_helper_signal(
 		struct sde_generic_fence_context *ctx)
@@ -146,5 +146,5 @@ void sde_fence_helper_signal(
 	}
 	spin_unlock(&ctx->list_lock);
 }
-EXPORT_SYMBOL(sde_fence_helper_signal);
+EXPORT_SYMBOL_GPL(sde_fence_helper_signal);
 

@@ -1,5 +1,5 @@
 /* Copyright (c) 2020 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * Copyright (C) 2012 Google, Inc.
  *
@@ -105,5 +105,5 @@ struct sde_fence_file *sde_fence_file_create(
 
 	return fence_file;
 }
-EXPORT_SYMBOL(sde_fence_file_create);
+EXPORT_SYMBOL_GPL(sde_fence_file_create);
 

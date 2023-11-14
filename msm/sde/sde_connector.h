@@ -456,7 +456,7 @@ struct sde_connector_ops {
 	 * late_register - additional register for the connector
 	 * @connector: Pointer to drm connector structure
 	 */
-	void (*late_register)(struct drm_connector *connector);
+	int (*late_register)(struct drm_connector *connector);
 
 	/**
 	 * late_register - additional unregister for the connector
