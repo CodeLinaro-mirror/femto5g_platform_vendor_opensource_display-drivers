@@ -15,6 +15,7 @@ def define_pineapple():
                 "CONFIG_DRM_MSM_SDE",
                 "CONFIG_SYNC_FILE",
                 "CONFIG_DRM_MSM_DSI",
+                "CONFIG_DRM_SDE_SHD",
                 "CONFIG_DRM_MSM_DP",
                 "CONFIG_DRM_MSM_DP_MST",
                 "CONFIG_DSI_PARSER",

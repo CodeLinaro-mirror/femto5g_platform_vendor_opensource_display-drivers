@@ -139,6 +139,11 @@ module_entry(
             "msm/dsi/dsi_clk_manager.c",
             "msm/dsi/dsi_display_test.c",
          ],
+         "CONFIG_DRM_SDE_SHD": [
+            "msm/shd_drm.c",
+            "msm/shd_hw.c",
+            "msm/phys_shd_vid.c",
+         ],
          "CONFIG_DSI_PARSER" : [
             "msm/dsi/dsi_parser.c",
          ],
