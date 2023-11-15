@@ -281,7 +281,7 @@ int virtio_gpu_cmd_set_scanout_pic_adjust(struct virtio_kms *kms,
 	uint32_t error_code = 0;
 
 	if (!req || !resp) {
-		pr_err("virtio :memory alloc failed req %p resp %p\n");
+		pr_err("virtio :memory alloc failed req %p resp %p\n", req, resp);
 		rc = -ENOMEM;
 		goto error;
 	}
@@ -338,7 +338,7 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 	uint32_t error_code = 0;
 
 	if (!req || !resp) {
-		pr_err("virtio :memory alloc failed req %p resp %p\n");
+		pr_err("virtio :memory alloc failed req %p resp %p\n", req, resp);
 		rc = -ENOMEM;
 		goto error;
 	}
@@ -401,13 +401,13 @@ int virtio_gpu_cmd_set_scanout(struct virtio_kms *kms,
 	int rc = 0;
 
 	if (!req || !resp) {
-		pr_err("memory alloc failed req %p resp %p\n");
+		pr_err("memory alloc failed req %p resp %p\n", req, resp);
 		rc = -ENOMEM;
 		goto error;
 	}
 
 	pr_debug("virtio: VIRTIO_GPU_CMD_SET_SCANOUT scanout <%d> \
-			[%d, %d, %d, %d, %d, %d,%d, %d]\n",
+			[%d, %d, %d, %d, %d,]\n",
 			scanout,
 			res_id,
 			dst_rect.width,
@@ -430,7 +430,7 @@ int virtio_gpu_cmd_set_scanout(struct virtio_kms *kms,
 			NULL,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if(rc) {
-		pr_err("send_and_recv failed for SET_SCANOUT\n", rc);
+		pr_err("send_and_recv failed for SET_SCANOUT rc=%d\n", rc);
 		goto error;
 	}
 error:
@@ -482,7 +482,7 @@ int virtio_gpu_cmd_resource_create_2D(struct virtio_kms *kms,
 			NULL,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if(rc) {
-		pr_err("send_and_recv failed for RESOURCE_CREATE_2D\n", rc);
+		pr_err("send_and_recv failed for RESOURCE_CREATE_2D rc=%d\n", rc);
 		goto error;
 	}
 error:
@@ -511,7 +511,7 @@ int virtio_gpu_cmd_resource_attach_backing(struct virtio_kms *kms,
 	int rc = 0;
 
 	if (!cmd_p || !resp) {
-		pr_err("memory alloc failed req %p resp %p\n");
+		pr_err("memory alloc failed req %p resp %p\n", cmd_p, resp);
 		rc = -ENOMEM;
 		goto error;
 	}
@@ -529,7 +529,7 @@ int virtio_gpu_cmd_resource_attach_backing(struct virtio_kms *kms,
 			NULL,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if (rc) {
-		pr_err("virtio : send_and_recv failed for RESOURCE_ATTACH_BACKING\n", rc);
+		pr_err("virtio : send_and_recv failed for RESOURCE_ATTACH_BACKING %d\n", rc);
 		goto error;
 	}
 error:
@@ -572,7 +572,7 @@ int virtio_gpu_cmd_resource_detach_backing(struct virtio_kms *kms,
 			resp,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if (rc) {
-		pr_err("send_and_recv failed for RESOURCE_DETACH_BACKING\n", rc);
+		pr_err("send_and_recv failed for RESOURCE_DETACH_BACKING rc=%d\n", rc);
 		goto error;
 	}
 
@@ -621,7 +621,7 @@ int virtio_gpu_cmd_resource_unref(struct virtio_kms *kms,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if (rc) {
 
-		pr_err("send_and_recv failed for RESOURCE_UNREF\n", rc);
+		pr_err("send_and_recv failed for RESOURCE_UNREF rc=%d\n", rc);
 		goto error;
 	}
 
@@ -670,8 +670,7 @@ int virtio_gpu_cmd_plane_flush(struct virtio_kms *kms,
 			sync ? resp : NULL,
 			sizeof(struct virtio_gpu_resp_plane_flush));
 	if (rc) {
-		pr_err("send_and_recv failed for PLANE_FLUSH\n",
-				rc);
+		pr_err("send_and_recv failed for PLANE_FLUSH rc=%d\n", rc);
 		goto error;
 	}
 
@@ -730,8 +729,7 @@ int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 			NULL,
 			sizeof(struct virtio_gpu_resp_scanout_flush));
 	if (rc) {
-		pr_err("send_and_recv failed for SCANOUT_FLUSH\n",
-				rc);
+		pr_err("send_and_recv failed for SCANOUT_FLUSH rc=%d\n", rc);
 		goto error;
 	}
 /*
@@ -800,8 +798,7 @@ int virtio_gpu_cmd_event_control(struct virtio_kms *kms,
 			NULL,
 			sizeof(struct virtio_gpu_ctrl_hdr));
 	if (rc) {
-		pr_err("send_and_recv failed for EVENT_CONTROL\n",
-				rc);
+		pr_err("send_and_recv failed for EVENT_CONTROL rc=%d\n", rc);
 		goto error;
 	}
 error:
@@ -857,8 +854,7 @@ int virtio_gpu_cmd_get_edid(struct virtio_kms *kms,
 			resp,
 			sizeof(struct virtio_gpu_resp_edid));
 	if (rc) {
-		pr_err("send_and_recv failed for EVENT_CONTROL\n",
-				rc);
+		pr_err("send_and_recv failed for EVENT_CONTROL rc=%d\n", rc);
 	}
 
 	pr_debug("virtio: resp VIRTIO_GPU_CMD_GET_EDID (%s)\n",
