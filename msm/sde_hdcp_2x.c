@@ -680,11 +680,8 @@ static void sde_hdcp_2x_msg_recvd(struct sde_hdcp_2x_ctrl *hdcp)
 		goto exit;
 	}
 
-	if (hdcp->device_type >= HDCP_TXMTR_DP &&
-			hdcp->device_type < HDCP_TXMTR_MAX) {
-		msg[0] = hdcp->last_msg;
-		message_id_bytes = 1;
-	}
+	msg[0] = hdcp->last_msg;
+	message_id_bytes = 1;
 
 	pr_debug("[sink]: %s\n", sde_hdcp_2x_message_name(msg[0]));
 
@@ -1046,7 +1043,7 @@ static int sde_hdcp_2x_main(void *data)
 	enum sde_hdcp_2x_wakeup_cmd cmd;
 
 	while (1) {
-		wait_event(hdcp->wait_q,
+		wait_event_idle(hdcp->wait_q,
 			!kfifo_is_empty(&hdcp->cmd_q) ||
 			kthread_should_stop() ||
 			kthread_should_park());

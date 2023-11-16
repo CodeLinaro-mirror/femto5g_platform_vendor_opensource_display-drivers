@@ -2856,9 +2856,14 @@ void sde_crtc_complete_flip(struct drm_crtc *crtc,
 		struct drm_file *file)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
-	struct drm_device *dev = crtc->dev;
+	struct drm_device *dev;
 	struct drm_pending_vblank_event *event;
 	unsigned long flags;
+
+	if (!crtc)
+		return;
+
+	dev = crtc->dev;
 
 	spin_lock_irqsave(&dev->event_lock, flags);
 	event = sde_crtc->event;
@@ -2875,6 +2880,7 @@ void sde_crtc_complete_flip(struct drm_crtc *crtc,
 		DRM_DEBUG_VBL("%s: send event: %pK\n",
 					sde_crtc->name, event);
 		SDE_EVT32_VERBOSE(DRMID(crtc));
+		drm_crtc_vblank_put(crtc);
 		drm_crtc_send_vblank_event(crtc, event);
 	}
 
@@ -3834,7 +3840,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 		MAX_HW_FENCES);
 
 	/* register the hw-fences for hw-wait */
-	if (num_hw_fences) {
+	if ((num_hw_fences > 0) && (num_hw_fences < MAX_HW_FENCES)) {
 
 		ret = sde_fence_register_hw_fences_wait(hw_ctl, dma_hw_fences, num_hw_fences);
 		if (ret) {
@@ -4068,6 +4074,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	struct drm_encoder *encoder;
 	struct drm_device *dev;
 	struct sde_kms *sde_kms;
+	struct drm_pending_vblank_event *event;
 	struct sde_splash_display *splash_display;
 	bool cont_splash_enabled = false;
 	size_t i;
@@ -4092,6 +4099,11 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 
 	sde_crtc = to_sde_crtc(crtc);
 	dev = crtc->dev;
+	event = crtc->state->event;
+
+	/* Get a vblank event refcount to enable page-flip */
+	if (event)
+		WARN_ON(drm_crtc_vblank_get(crtc) != 0);
 
 	if (!sde_crtc->num_mixers) {
 		_sde_crtc_setup_mixers(crtc);
@@ -4107,6 +4119,10 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		if (encoder->crtc != crtc)
 			continue;
+
+		/* update idle pc setting for specific property */
+		if (sde_crtc->disable_idle_pc)
+			sde_encoder_control_idle_pc(encoder, false);
 
 		/* encoder will trigger pending mask now */
 		sde_encoder_trigger_kickoff_pending(encoder);
@@ -5197,6 +5213,7 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	struct msm_display_mode *msm_mode;
 	enum sde_intf_mode intf_mode;
 	struct sde_kms *kms;
+	struct drm_pending_vblank_event *event;
 
 	if (!crtc || !crtc->dev || !crtc->dev->dev_private) {
 		SDE_ERROR("invalid crtc\n");
@@ -5220,6 +5237,8 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	SDE_EVT32_VERBOSE(DRMID(crtc));
 	sde_crtc = to_sde_crtc(crtc);
 
+	event = crtc->state->event;
+
 	/*
 	 * Avoid drm_crtc_vblank_on during seamless DMS case
 	 * when CRTC is already in enabled state
@@ -5235,6 +5254,9 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 			if (test_bit(SDE_FEATURE_HW_VSYNC_TS, kms->catalog->features))
 				drm_crtc_set_max_vblank_count(crtc, INT_MAX);
 			drm_crtc_vblank_on(crtc);
+			/* Enable vblank event in first commit cycle */
+			if (event)
+				WARN_ON(drm_crtc_vblank_get(crtc) != 0);
 		}
 	}
 
@@ -6755,6 +6777,8 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 				(void __user *)(uintptr_t)val);
 		if (ret)
 			SDE_ERROR("set roi misr info failed rc:%d\n", ret);
+		else
+			sde_crtc->disable_idle_pc = true;
 		break;
 	default:
 		/* nothing to do */
@@ -7938,6 +7962,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 
 	sde_crtc->enabled = false;
 	sde_crtc->kickoff_in_progress = false;
+	sde_crtc->disable_idle_pc = false;
 
 	/* Below parameters are for fps calculation for sysfs node */
 	sde_crtc->fps_info.fps_periodic_duration = DEFAULT_FPS_PERIOD_1_SEC;

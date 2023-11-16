@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/err.h>
@@ -36,6 +36,43 @@ static int dp_pll_fill_io(struct dp_pll *pll)
 	}
 
 	pll->io.dp_ln_tx1 = parser->get_io(parser, "dp_ln_tx1");
+	if (!pll->io.dp_ln_tx1) {
+		DP_ERR("Invalid dp_ln_tx1 resource\n");
+		return -ENOMEM;
+	}
+
+	pll->io.gdsc = parser->get_io(parser, "gdsc");
+	if (!pll->io.gdsc) {
+		DP_ERR("Invalid gdsc resource\n");
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
+static int dp_bond_pll_fill_io(struct dp_pll *pll)
+{
+	struct dp_parser *parser = pll->parser;
+
+	pll->io.dp_phy = parser->get_io(parser, "dp_bond_phy");
+	if (!pll->io.dp_phy) {
+		DP_ERR("Invalid dp_phy resource\n");
+		return -ENOMEM;
+	}
+
+	pll->io.dp_pll = parser->get_io(parser, "dp_bond_pll");
+	if (!pll->io.dp_pll) {
+		DP_ERR("Invalid dp_pll resource\n");
+		return -ENOMEM;
+	}
+
+	pll->io.dp_ln_tx0 = parser->get_io(parser, "dp_bond_ln_tx0");
+	if (!pll->io.dp_ln_tx0) {
+		DP_ERR("Invalid dp_ln_tx1 resource\n");
+		return -ENOMEM;
+	}
+
+	pll->io.dp_ln_tx1 = parser->get_io(parser, "dp_bond_ln_tx1");
 	if (!pll->io.dp_ln_tx1) {
 		DP_ERR("Invalid dp_ln_tx1 resource\n");
 		return -ENOMEM;
@@ -137,10 +174,18 @@ struct dp_pll *dp_pll_get(struct dp_pll_in *in)
 		return ERR_PTR(-EINVAL);
 	}
 
-	node = of_parse_phandle(in->pdev->dev.of_node, "qcom,dp-pll", 0);
-	if (!node) {
-		DP_ERR("couldn't find dp-pll node\n");
-		return ERR_PTR(-EINVAL);
+	if (!in->bond) {
+		node = of_parse_phandle(in->pdev->dev.of_node, "qcom,dp-pll", 0);
+		if (!node) {
+			DP_ERR("couldn't find dp-pll node\n");
+			return ERR_PTR(-EINVAL);
+		}
+	} else {
+		node = of_parse_phandle(in->pdev->dev.of_node, "qcom,dp-pclk-bond-pll", 0);
+		if (!node) {
+			DP_INFO("couldn't find dp-pclk-bond-pll node\n");
+			return ERR_PTR(-EINVAL);
+		}
 	}
 
 	pdev = of_find_device_by_node(node);
@@ -157,7 +202,10 @@ struct dp_pll *dp_pll_get(struct dp_pll_in *in)
 
 	pll->parser = in->parser;
 	pll->aux = in->aux;
-	rc = dp_pll_fill_io(pll);
+	if (!in->bond)
+		rc = dp_pll_fill_io(pll);
+	else
+		rc = dp_bond_pll_fill_io(pll);
 	if (rc)
 		return ERR_PTR(rc);
 

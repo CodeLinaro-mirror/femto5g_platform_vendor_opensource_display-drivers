@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
@@ -47,6 +48,7 @@
 #include "sde_vm.h"
 #include "sde_fence.h"
 #include "sde_roi_misr_helper.h"
+#include "dp_drm.h"
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -1969,7 +1971,7 @@ void sde_encoder_cancel_delayed_work(struct drm_encoder *encoder)
 static void _sde_encoder_rc_kickoff_delayed(struct sde_encoder_virt *sde_enc,
 	u32 sw_event)
 {
-	if (_sde_encoder_is_autorefresh_enabled(sde_enc))
+	if (!sde_enc->idle_pc_enabled || _sde_encoder_is_autorefresh_enabled(sde_enc))
 		_sde_encoder_rc_cancel_delayed(sde_enc, sw_event);
 	else
 		_sde_encoder_rc_restart_delayed(sde_enc, sw_event);
@@ -3149,6 +3151,11 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 	if (!has_master_enc) {
 		sde_enc->cur_master = NULL;
 		SDE_ERROR("virt encoder has no master! num_phys %d\n", i);
+		return;
+	}
+
+	if (!sde_enc->cur_master || !sde_enc->cur_master->connector) {
+		SDE_ERROR("invalid connector\n");
 		return;
 	}
 
@@ -5419,6 +5426,9 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	phys_params.parent_ops = parent_ops;
 	phys_params.enc_spinlock = &sde_enc->enc_spinlock;
 	phys_params.vblank_ctl_lock = &sde_enc->vblank_ctl_lock;
+	phys_params.num_of_splits =
+			disp_info->capabilities & MSM_DISPLAY_SPLIT_LINK ?
+			2 : disp_info->num_of_h_tiles;
 
 	SDE_DEBUG("\n");
 
@@ -5467,16 +5477,20 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		u32 controller_id = disp_info->h_tile_instance[i];
 
 		if (disp_info->num_of_h_tiles > 1) {
-			if (i == 0)
+			if (i == 0) {
 				phys_params.split_role = ENC_ROLE_MASTER;
-			else
+				phys_params.slave_idx = 0;
+			} else {
 				phys_params.split_role = ENC_ROLE_SLAVE;
+				phys_params.slave_idx  = i - 1;
+			}
 		} else {
 			phys_params.split_role = ENC_ROLE_SOLO;
 		}
 
-		SDE_DEBUG("h_tile_instance %d = %d, split_role %d\n",
-				i, controller_id, phys_params.split_role);
+		SDE_DEBUG("h_tile_instance %d = %d, split_role %d slave_idx %d\n",
+				i, controller_id, phys_params.split_role,
+				phys_params.slave_idx);
 
 		if (sde_enc->ops.phys_init) {
 			struct sde_encoder_phys *enc;
@@ -5511,6 +5525,7 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 			phys_params.intf_idx = sde_encoder_get_intf(
 					sde_kms->catalog, intf_type,
 					controller_id);
+
 			if (phys_params.intf_idx == INTF_MAX) {
 				SDE_ERROR_ENC(sde_enc,
 					"could not get wb: type %d, id %d\n",

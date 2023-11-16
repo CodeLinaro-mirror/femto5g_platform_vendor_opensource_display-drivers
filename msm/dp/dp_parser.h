@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -8,6 +8,7 @@
 #define _DP_PARSER_H_
 
 #include <linux/sde_io_util.h>
+#include <msm_drv.h>
 
 #define DP_LABEL "MDSS DP DISPLAY"
 #define AUX_CFG_LEN	10
@@ -24,6 +25,7 @@ enum dp_pm_type {
 	DP_STREAM1_PM,
 	DP_LINK_PM,
 	DP_PLL_PM,
+	DP_BOND_PM,
 	DP_MAX_PM
 };
 
@@ -37,6 +39,7 @@ static inline const char *dp_parser_pm_name(enum dp_pm_type module)
 	case DP_STREAM1_PM:	return "DP_STREAM1_PM";
 	case DP_LINK_PM:	return "DP_LINK_PM";
 	case DP_PLL_PM:		return "DP_PLL_PM";
+	case DP_BOND_PM:	return "DP_BOND_PM";
 	default:		return "???";
 	}
 }
@@ -114,6 +117,48 @@ struct dp_aux_cfg {
 	u32 lut[DP_AUX_CFG_MAX_VALUE_CNT];
 };
 
+/**
+ * struct dp_msa_param - DP panel's MSA configuration
+ *
+ * @ovr_visible_width_in_px:  width of the image in pixels
+ * @ovr_visible_height_in_px: height of the image in pixels
+ * @ovr_h_back_porch_px: horizontal back porch of the image in pixels
+ * @ovr_h_front_porch_px: horizontal front porch of the image in pixels
+ * @ovr_h_sync_pulse_px: horizontal sync pulse width in pixels
+ * @ovr_h_sync_skew_px: horizontal sync skew in pixels
+ * @ovr_v_back_porch_ln: vertical back porch of the image in lines
+ * @ovr_v_front_porch_ln: vertical front porch of the image in lines
+ * @ovr_v_sync_pulse_ln: vertical sync pulse width in lines
+ * @ovr_h_left_border_px: horizontal left border in pixels
+ * @ovr_h_right_border_px: horizontal right border in pixels
+ * @ovr_v_top_border_ln: vertical top border in lines
+ * @ovr_v_bottom_border_ln: vertical bottom border in lines
+ * @ovr_h_sync_active_low: set to 1 if horizontal sync pulse is active low
+ * @ovr_v_sync_active_low: set to 1 if vertical sync pulse is active low
+ * @ovr_sw_mvid: MVID parameters used by sync device
+ * @ovr_sw_nvid: NVID parameter used by sync device
+ * @ovr_v_refresh_rate: vertical refresh rate in Hz.
+ */
+struct dp_msa_param {
+	u32 ovr_visible_width_in_px;
+	u32 ovr_visible_height_in_px;
+	u32 ovr_h_back_porch_px;
+	u32 ovr_h_front_porch_px;
+	u32 ovr_h_sync_pulse_px;
+	u32 ovr_h_sync_skew_px;
+	u32 ovr_v_back_porch_ln;
+	u32 ovr_v_front_porch_ln;
+	u32 ovr_v_sync_pulse_ln;
+	u32 ovr_h_left_border_px;
+	u32 ovr_h_right_border_px;
+	u32 ovr_v_top_border_ln;
+	u32 ovr_v_bottom_border_ln;
+	u32 ovr_h_sync_active_low;
+	u32 ovr_v_sync_active_low;
+	u32 ovr_sw_mvid;
+	u32 ovr_sw_nvid;
+	u32 ovr_v_refresh_rate;
+};
 /* PHY AUX config registers */
 enum dp_phy_aux_config_type {
 	PHY_AUX_CFG0,
@@ -251,6 +296,18 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
 }
 
 /**
+ * struct dp_dsc_passthrough - data struct to store DSC pass through related data
+ *
+ * @dsc_passthrough_enable: Enables DSC forcefully even if panel doesn't support it.
+ * @dsc_force_fec_enable: Enables FEC forcefully.
+ * @comp_info: DSC compression info including PPS.
+ */
+struct dp_dsc_passthrough {
+	bool dsc_passthrough_enable;
+	struct msm_compression_info comp_info;
+};
+
+/**
  * struct dp_parser - DP parser's data exposed to clients
  *
  * @pdev: platform data of the client
@@ -293,6 +350,8 @@ struct dp_parser {
 	struct dp_display_data disp_data;
 	u32 cell_idx;
 	struct dp_bond_cfg bond_cfg[DP_BOND_MAX];
+	struct dp_dsc_passthrough dsc_passthrough;
+	struct dp_msa_param msa;
 
 	u8 l_map[4];
 	u8 l_pnswap;
@@ -304,6 +363,7 @@ struct dp_parser {
 	bool has_mst_sideband;
 	bool no_aux_switch;
 	bool dsc_feature_enable;
+	bool msa_config;
 	bool fec_feature_enable;
 	bool dsc_continuous_pps;
 	bool has_widebus;

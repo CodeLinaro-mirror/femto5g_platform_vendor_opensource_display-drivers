@@ -220,9 +220,10 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 				rc = queue_work(lphw_hpd->connect_wq,
 						&lphw_hpd->disconnect);
 				if (!rc)
-					DP_DEBUG("DP%d disconnect not queued\n", lphw_hpd->parser->cell_idx);
+					DP_DEBUG("DP%d disconnect not queued\n",
+							lphw_hpd->parser->cell_idx);
 			} else {
-				DP_INFO("DP%d missed multiple disconnect/connect interrupts, hpd isr state: 0x%x\n",
+				DP_INFO("DP%d missed multiple interrupts, hpd isr state: 0x%x\n",
 						lphw_hpd->parser->cell_idx, isr);
 			}
 		}

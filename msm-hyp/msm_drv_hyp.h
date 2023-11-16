@@ -3,6 +3,7 @@
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * Copyright (c) 2017-2018, 2020-2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -15,10 +16,6 @@
  *
  * You should have received a copy of the GNU General Public License along with
  * this program.  If not, see <http://www.gnu.org/licenses/>.
- */
-
-/*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __MSM_DRV_HYP_H__
@@ -44,12 +41,25 @@
 #include <drm/msm_drm.h>
 #include <drm/sde_drm.h>
 #include "msm_hyp_fence.h"
+#include <drm/drm_framebuffer.h>
+#include <drm/drm_blend.h>
 #include "msm_drv.h"
 
 #define DRM_DRI_NAME_SIZE 32
 
+enum msm_hyp_panel_rotation {
+	PANEL_ROTATE_NONE = 0,
+	PANEL_ROTATE_90,
+	PANEL_ROTATE_180,
+	PANEL_ROTATE_HV_FLIP = PANEL_ROTATE_180,
+	PANEL_ROTATE_270,
+	PANEL_ROTATE_H_FLIP,
+	PANEL_ROTATE_V_FLIP
+};
+
 struct msm_hyp_connector_info {
 	int connector_type;
+	enum msm_hyp_panel_rotation panel_orientation;
 	const struct drm_bridge_funcs *bridge_funcs;
 	const struct drm_connector_helper_funcs *connector_funcs;
 	uint32_t possible_crtcs;
@@ -73,6 +83,7 @@ struct msm_hyp_plane_info {
 	bool support_scale;
 	bool support_csc;
 	bool support_multirect;
+	bool support_rotation;
 	int master_plane_index;
 	const char *extra_caps;
 };
@@ -150,7 +161,9 @@ struct msm_hyp_crtc_state {
 
 struct msm_hyp_framebuffer {
 	struct drm_framebuffer base;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
 	struct drm_gem_object *bo;
+#endif
 	struct msm_hyp_framebuffer_info *info;
 };
 
@@ -211,9 +224,8 @@ struct msm_hyp_kms_funcs {
 			struct drm_crtc *crtc);
 	void (*disable_vblank)(struct msm_hyp_kms *kms,
 			struct drm_crtc *crtc);
-
-	void (*free_connector_port_modes)
-			(struct msm_hyp_connector *c_conn);
+	void (*free_connector_port_modes)(
+			struct msm_hyp_connector *c_conn);
 
 };
 
@@ -272,6 +284,18 @@ static inline void __init wfd_kms_register(void)
 static inline void __exit wfd_kms_unregister(void)
 {
 }
-#endif /* CONFIG_DRM_MSM_DSI */
+#endif /* CONFIG_DRM_MSM_HYP_WFD */
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
+void __init virtio_kms_register(void);
+void __exit virtio_kms_unregister(void);
+#else
+static inline void __init virtio_kms_register(void)
+{
+}
+static inline void __exit virtio_kms_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_MSM_HYP_VIRTIO */
 
 #endif /* __MSM_DRV_HYP_H__ */

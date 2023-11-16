@@ -296,7 +296,10 @@ static int dp_hdcp2p2_register(void *input, bool mst_enabled)
 		cdata.device_type = HDCP_TXMTR_DP_MST + index;
 	else
 		cdata.device_type = HDCP_TXMTR_DP + index;
-
+	//device id  = dpu_index << 16 | DPTx_id
+	cdata.device_type = ctrl->init_data.dpu_index << 16 | cdata.device_type;
+	DP_DEBUG("DPU%d DP%d Device Id = 0x%x\n", ctrl->init_data.dpu_index,
+		ctrl->init_data.client_index, cdata.device_type);
 	cdata.context = ctrl->lib_ctx;
 	rc = ctrl->lib->wakeup(&cdata);
 
@@ -921,7 +924,7 @@ static int dp_hdcp2p2_main(void *data)
 	enum hdcp_transport_wakeup_cmd cmd;
 
 	while (1) {
-		wait_event(ctrl->wait_q,
+		wait_event_idle(ctrl->wait_q,
 			!kfifo_is_empty(&ctrl->cmd_q) ||
 			kthread_should_stop() ||
 			kthread_should_park());

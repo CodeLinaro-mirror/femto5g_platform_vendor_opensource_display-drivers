@@ -105,9 +105,14 @@ struct dp_catalog_ctrl {
 			u32 ch, u32 ch_start_timeslot, u32 tot_ch_cnt);
 	void (*fec_config)(struct dp_catalog_ctrl *ctrl, bool enable);
 	void (*mainlink_levels)(struct dp_catalog_ctrl *ctrl, u8 lane_cnt);
-
 	int (*late_phy_init)(struct dp_catalog_ctrl *ctrl,
 					u8 lane_cnt, bool flipped);
+	void (*reset_retimer)(struct dp_catalog_ctrl *ctrl);
+	void (*setup_misr)(struct dp_catalog_ctrl *ctrl,
+			bool enable, u32 frame_count);
+	int (*collect_misr)(struct dp_catalog_ctrl *ctrl, u32 *misr);
+	int (*collect_crc)(struct dp_catalog_ctrl *ctrl,
+			u32 *r, u32 *g, u32 *b, int strm_id);
 };
 
 struct dp_catalog_hpd {
@@ -222,7 +227,7 @@ struct dp_catalog_panel {
 	void (*update_transfer_unit)(struct dp_catalog_panel *panel);
 	void (*config_ctrl)(struct dp_catalog_panel *panel, u32 cfg);
 	void (*config_dto)(struct dp_catalog_panel *panel, bool ack);
-	void (*dsc_cfg)(struct dp_catalog_panel *panel);
+	void (*dsc_cfg)(struct dp_catalog_panel *panel, bool dscPassthrough);
 	void (*pps_flush)(struct dp_catalog_panel *panel);
 	void (*dhdr_flush)(struct dp_catalog_panel *panel);
 	bool (*dhdr_busy)(struct dp_catalog_panel *panel);
@@ -253,6 +258,7 @@ struct dp_catalog_io {
 	struct dp_io_data *hdcp_physical;
 	struct dp_io_data *dp_p1;
 	struct dp_io_data *dp_tcsr;
+	struct dp_io_data *usb3_pll;
 };
 
 struct dp_catalog {
@@ -339,13 +345,13 @@ struct dp_catalog *dp_catalog_get(struct device *dev, struct dp_parser *parser);
 void dp_catalog_put(struct dp_catalog *catalog);
 
 struct dp_catalog_sub *dp_catalog_get_v420(struct device *dev,
-			struct dp_catalog *catalog, struct dp_catalog_io *io);
+			struct dp_catalog *catalog, struct dp_catalog_io *io, struct dp_parser *parser);
 
 struct dp_catalog_sub *dp_catalog_get_v200(struct device *dev,
 			struct dp_catalog *catalog, struct dp_catalog_io *io);
 
 struct dp_catalog_sub *dp_catalog_get_v500(struct device *dev,
-			struct dp_catalog *catalog, struct dp_catalog_io *io);
+			struct dp_catalog *catalog, struct dp_catalog_io *io, struct dp_parser *parser);
 
 u32 dp_catalog_get_dp_core_version(struct dp_catalog *dp_catalog);
 u32 dp_catalog_get_dp_phy_version(struct dp_catalog *dp_catalog);

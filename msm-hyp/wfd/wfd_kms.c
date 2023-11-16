@@ -137,6 +137,21 @@
 #define SSPP_UNITY_SCALE       1
 #define MAX_RECTS_PER_PIPE     2
 #define MAX_NUM_LIMIT_PAIRS    16
+#define MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT	1088
+#define POPULATE_RECT(rect, a, b, c, d, Q16_flag) \
+	do {						\
+		(rect)->x = (Q16_flag) ? (a) >> 16 : (a);    \
+		(rect)->y = (Q16_flag) ? (b) >> 16 : (b);    \
+		(rect)->w = (Q16_flag) ? (c) >> 16 : (c);    \
+		(rect)->h = (Q16_flag) ? (d) >> 16 : (d);    \
+	} while (0)
+
+struct wfd_kms_rect {
+	u16 x;
+	u16 y;
+	u16 w;
+	u16 h;
+};
 
 struct limit_val_pair {
 	const char *str;
@@ -312,6 +327,21 @@ static int _wfd_kms_connector_get_type(WFDDevice dev,
 	return connector_type;
 }
 
+static bool formats_exist(uint32_t *formats, int count, uint32_t fmt)
+{
+	int i;
+
+	if (formats == NULL)
+		return false;
+
+	for (i = 0; i < count; i++) {
+		if (formats[i] == fmt)
+			return true;
+	}
+
+	return false;
+}
+
 static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 {
 	int i, j, n, ret = 0;
@@ -365,7 +395,11 @@ static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 		j = 0;
 		while (drm_wfd_formats[j].wfd_fmt || drm_wfd_formats[j].drm_fmt) {
 			if (formats[i] == drm_wfd_formats[j].wfd_fmt) {
-				priv->base.format_types[n++] = drm_wfd_formats[j].drm_fmt;
+				/* skip the duplicated format */
+				if (!formats_exist(priv->base.format_types, n,
+					drm_wfd_formats[j].drm_fmt))
+					priv->base.format_types[n++] = drm_wfd_formats[j].drm_fmt;
+
 				break;
 			}
 			j++;
@@ -504,7 +538,7 @@ static void wfd_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	struct msm_hyp_framebuffer *fb = to_msm_hyp_fb(framebuffer);
 	struct wfd_framebuffer_priv *fb_priv = container_of(fb->info,
 				struct wfd_framebuffer_priv, base);
-
+	int num_planes = fb->base.format->num_planes;
 	if (!fb->info)
 		return;
 
@@ -515,7 +549,8 @@ static void wfd_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	if (fb_priv->wfd_image != WFD_INVALID_HANDLE)
 		wfdDestroyWFDEGLImages_User(
 			fb_priv->wfd_device,
-			1, &fb_priv->wfd_image, NULL);
+			num_planes,
+			&fb_priv->wfd_image, NULL);
 
 	kfree(fb_priv);
 	fb->info = NULL;
@@ -526,41 +561,43 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 	struct wfd_framebuffer_priv *fb_priv = container_of(fb->info,
 				struct wfd_framebuffer_priv, base);
 	WFDErrorCode wfd_err;
-	struct dma_buf *dma_buf;
-	int ret = 0;
+	struct dma_buf *dma_bufs[DRM_FORMAT_MAX_PLANES] = {0};
+	int ret = 0, i = 0, num_planes = 0;
+
+	num_planes = fb->base.format->num_planes;
 
 	if (fb_priv->wfd_image)
 		return 0;
 
-	if (!fb->bo) {
-		pr_err("no bo attached to fb\n");
-		return -EINVAL;
-	}
+	for (i = 0; i < num_planes; i++) {
+		if (!fb->base.obj[i]) {
+			pr_err("no bo attached to fb\n");
+			return -EINVAL;
+		}
 
-	if (fb->bo->import_attach) {
-		dma_buf = fb->bo->import_attach->dmabuf;
-		get_dma_buf(dma_buf);
-	} else if (fb->bo->dma_buf) {
-		dma_buf = fb->bo->dma_buf;
-		get_dma_buf(dma_buf);
-	} else {
-		dma_buf = drm_gem_prime_export(fb->bo, 0);
-		if (IS_ERR(dma_buf)) {
-			pr_err("export dma_buf from bo failed\n");
-			return PTR_ERR(dma_buf);
+		if (fb->base.obj[i]->import_attach) {
+			dma_bufs[i] = fb->base.obj[i]->import_attach->dmabuf;
+			get_dma_buf(dma_bufs[i]);
+		} else if (fb->base.obj[i]->dma_buf) {
+			dma_bufs[i] = fb->base.obj[i]->dma_buf;
+			get_dma_buf(dma_bufs[i]);
+		} else {
+			dma_bufs[i] = drm_gem_prime_export(fb->base.obj[i], 0);
+			if (IS_ERR(dma_bufs[i]))
+				pr_err("export dma_buf from bo failed\n");
+				return PTR_ERR(dma_bufs[i]);
 		}
 	}
-
 	wfd_err = wfdCreateWFDEGLImagesPreAlloc_User(
 			fb_priv->wfd_device,
 			fb->base.width,
 			fb->base.height,
 			fb_priv->wfd_format,
 			fb_priv->wfd_usage,
-			1,
-			fb->bo->size,
+			num_planes,
+			fb->base.obj[0]->size,
 			&fb_priv->wfd_image,
-			(void **)&dma_buf,
+			(void **)&dma_bufs,
 			fb->base.pitches,
 			fb->base.offsets,
 			0x00);
@@ -568,8 +605,8 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 		pr_err("failed to create wfd image, err = %d\n", wfd_err);
 		ret = -EINVAL;
 	}
-
-	dma_buf_put(dma_buf);
+	for (i = 0; i < num_planes; i++)
+		dma_buf_put(dma_bufs[i]);
 
 	return ret;
 }
@@ -919,6 +956,11 @@ static int wfd_kms_get_connector_infos(struct msm_hyp_kms *kms,
 		priv->wfd_port_id = wfd_kms->port_ids[i];
 		priv->wfd_port_idx = i;
 
+		priv->base.panel_orientation = wfdGetPortAttribi_User(
+				priv->wfd_device,
+				priv->wfd_port,
+				WFD_PORT_ROTATION);
+
 		priv->base.connector_type = _wfd_kms_connector_get_type(
 				priv->wfd_device,
 				priv->wfd_port, priv->wfd_port_id,
@@ -1119,6 +1161,7 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 	WFDint src_rect[4];
 	WFDint dst_rect[4];
 	WFDint color_space;
+	WFDint trans_val = WFD_TRANSPARENCY_NONE;
 
 	old_state = drm_atomic_get_old_plane_state(old_atomic_state, plane);
 	new_pstate = to_msm_hyp_plane_state(plane->state);
@@ -1206,6 +1249,27 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 			dst_rect);
 	}
 
+	if (old_state->rotation != plane->state->rotation || !priv->committed) {
+		wfdSetPipelineAttribi_User(
+			priv->wfd_device,
+			priv->wfd_pipeline,
+			WFD_PIPELINE_ROTATION,
+			ilog2(plane->state->rotation & DRM_MODE_ROTATE_MASK) * 90);
+
+		wfdSetPipelineAttribi_User(
+			priv->wfd_device,
+			priv->wfd_pipeline,
+			WFD_PIPELINE_FLIP,
+			(plane->state->rotation & DRM_MODE_REFLECT_X) ? true : false);
+
+		wfdSetPipelineAttribi_User(
+			priv->wfd_device,
+			priv->wfd_pipeline,
+			WFD_PIPELINE_MIRROR,
+			(plane->state->rotation & DRM_MODE_REFLECT_Y) ? true : false);
+	}
+
+	/* special plane properties */
 	if (old_pstate->alpha != new_pstate->alpha || !priv->committed) {
 		wfdSetPipelineAttribi_User(
 			priv->wfd_device,
@@ -1224,21 +1288,125 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 	}
 
 	if (old_pstate->blend_op != new_pstate->blend_op || !priv->committed) {
+		switch (new_pstate->blend_op) {
+		case SDE_DRM_BLEND_OP_NOT_DEFINED:
+			trans_val = WFD_TRANSPARENCY_NONE;
+			break;
+		case SDE_DRM_BLEND_OP_OPAQUE:
+			trans_val = WFD_TRANSPARENCY_GLOBAL_ALPHA;
+			break;
+		case SDE_DRM_BLEND_OP_PREMULTIPLIED:
+			trans_val = WFD_TRANSPARENCY_SOURCE_ALPHA |
+				WFD_TRANSPARENCY_GLOBAL_ALPHA;
+			break;
+		case SDE_DRM_BLEND_OP_COVERAGE:
+		/* TODO:wfd spec not support, new Attribi to support this */
+		default:
+		/* follow kernel-metal, use opaque as default */
+			trans_val = WFD_TRANSPARENCY_GLOBAL_ALPHA;
+			break;
+		}
+
 		wfdSetPipelineAttribi_User(
 			priv->wfd_device,
 			priv->wfd_pipeline,
 			WFD_PIPELINE_TRANSPARENCY_ENABLE,
-			(new_pstate->blend_op ==
-				SDE_DRM_BLEND_OP_OPAQUE) ?
-				WFD_TRANSPARENCY_GLOBAL_ALPHA :
-				WFD_TRANSPARENCY_SOURCE_ALPHA);
+			trans_val);
 	}
 
 	priv->committed = true;
 }
 
+static bool wfd_kms_plane_enabled(const struct drm_plane_state *state)
+{
+	return state && state->fb && state->crtc;
+}
+
+static int _wfd_kms_plane_rot_atomic_check(struct drm_plane *plane,
+		struct drm_atomic_state *atomic_state)
+{
+	struct drm_plane_state *state = NULL;
+	struct drm_plane *slave_plane = NULL;
+	struct msm_hyp_plane *slave_hyp_plane = NULL;
+	u32 rotation = 0;
+	int ret = 0;
+
+	state = drm_atomic_get_new_plane_state(atomic_state, plane);
+
+	/* check inline rotation and simplify the transform */
+	rotation = drm_rotation_simplify(
+			state->rotation,
+			DRM_MODE_ROTATE_0 | DRM_MODE_ROTATE_90 |
+			DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y);
+
+	if ((rotation & DRM_MODE_ROTATE_180) ||
+		(rotation & DRM_MODE_ROTATE_270)) {
+		pr_err("invalid rotation transform must be simplified 0x%x\n",
+				rotation);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (rotation & DRM_MODE_ROTATE_90) {
+		struct wfd_kms_rect src;
+		bool q16_data = true;
+		/* check if the slave pipline is using */
+		drm_for_each_plane(slave_plane, plane->dev) {
+			slave_hyp_plane = to_msm_hyp_plane(slave_plane);
+
+			if ((plane == slave_hyp_plane->primary_plane)
+					&& wfd_kms_plane_enabled(slave_plane->state)) {
+				pr_err("slave plane %d is using, master plane %d can not do 90 rotation\n",
+						slave_plane->base.id, plane->base.id);
+				goto exit;
+			}
+		}
+
+		POPULATE_RECT(&src, state->src_x, state->src_y,
+				state->src_w, state->src_h, q16_data);
+
+		/* check for valid height */
+		if (src.h > MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT) {
+			pr_err("invalid height for inline rot:%d max:%d\n",
+					src.h, MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT);
+			ret = -EINVAL;
+			goto exit;
+		}
+
+		/* check for valid formats supported by inline rot */
+		//TODO, get this information from QNX
+	}
+
+	state->rotation = rotation;
+exit:
+	return ret;
+}
+
+static int wfd_kms_plane_atomic_check(struct drm_plane *plane,
+		struct drm_atomic_state *atomic_state)
+{
+	struct drm_plane_state *state = NULL;
+	int ret = 0;
+
+	if (!plane || !atomic_state) {
+		pr_err("invalid arg(s), plane %d atomic_state %d\n",
+				!plane, !atomic_state);
+		return -EINVAL;
+	}
+
+	state = drm_atomic_get_new_plane_state(atomic_state, plane);
+	if (!wfd_kms_plane_enabled(state))
+		goto exit;
+
+	ret = _wfd_kms_plane_rot_atomic_check(plane, atomic_state);
+
+exit:
+	return ret;
+}
+
 static const struct drm_plane_helper_funcs wfd_plane_helper_funcs = {
 	.atomic_update = wfd_kms_plane_atomic_update,
+	.atomic_check = wfd_kms_plane_atomic_check,
 };
 
 static int wfd_kms_get_port_plane_infos(struct msm_hyp_kms *kms,
@@ -1251,6 +1419,7 @@ static int wfd_kms_get_port_plane_infos(struct msm_hyp_kms *kms,
 	WFDint val[2] = {0, 0};
 	WFDint val_i[2] = {0, 0};
 	WFDint max_width = wfd_kms->dev->mode_config.max_width;
+	WFDRotationSupport support_rot = WFD_ROTATION_SUPPORT_NONE;
 
 	for (i = 0; i < wfd_kms->pipeline_cnt[port_idx]; i++) {
 		priv = kzalloc(sizeof(*priv), GFP_KERNEL);
@@ -1266,6 +1435,13 @@ static int wfd_kms_get_port_plane_infos(struct msm_hyp_kms *kms,
 				priv->wfd_device,
 				priv->wfd_pipeline,
 				WFD_PIPELINE_TYPE);
+		/* query rotation capability */
+		support_rot = wfdGetPipelineAttribi_User(
+				priv->wfd_device,
+				priv->wfd_pipeline,
+				WFD_PIPELINE_ROTATION_SUPPORT);
+		if (support_rot == WFD_ROTATION_SUPPORT_LIMITED)
+			priv->base.support_rotation = true;
 
 		if (i == 0)
 			priv->base.plane_type = DRM_PLANE_TYPE_PRIMARY;
@@ -1288,21 +1464,30 @@ static int wfd_kms_get_port_plane_infos(struct msm_hyp_kms *kms,
 			priv->base.support_csc = true;
 
 		master_idx = wfd_kms->master_idx[port_idx][i];
+		/* overwrite value for virtual pipeline */
 		if (master_idx >= 0) {
 			priv->base.support_multirect = true;
+			priv->base.support_scale = false;
+			priv->base.support_csc = false;
+			priv->base.support_rotation = false;
 			priv->base.master_plane_index = master_idx + base_idx;
 		}
 
 		priv->base.possible_crtcs = 1 << port_idx;
 
-		wfdGetPipelineAttribiv_User(priv->wfd_device,
-				priv->wfd_pipeline,
-				WFD_PIPELINE_SCALE_RANGE,
-				2,
-				val);
-		if (val[0] > 0 && val[1] > 0) {
-			priv->base.maxdwnscale = (u32)(val[0]);
-			priv->base.maxupscale = (u32)(val[1]);
+		if (priv->base.support_scale) {
+			wfdGetPipelineAttribiv_User(priv->wfd_device,
+					priv->wfd_pipeline,
+					WFD_PIPELINE_SCALE_RANGE,
+					2,
+					val);
+			if (val[0] > 0 && val[1] > 0) {
+				priv->base.maxdwnscale = (u32)(val[0]);
+				priv->base.maxupscale = (u32)(val[1]);
+			} else {
+				priv->base.maxdwnscale = SSPP_UNITY_SCALE;
+				priv->base.maxupscale = SSPP_UNITY_SCALE;
+			}
 		} else {
 			priv->base.maxdwnscale = SSPP_UNITY_SCALE;
 			priv->base.maxupscale = SSPP_UNITY_SCALE;
@@ -1318,6 +1503,7 @@ static int wfd_kms_get_port_plane_infos(struct msm_hyp_kms *kms,
 				val_i);
 
 		priv->base.max_width = (val_i[0] > 0) ? val_i[0] : max_width;
+		/* if could, get the bandwidth from backend */
 		priv->base.max_bandwidth = 4500000000;
 
 		if (!wfd_kms->max_sdma_width && master_idx >= 0)
@@ -1709,3 +1895,7 @@ void wfd_kms_unregister(void)
 {
 	platform_driver_unregister(&wfd_kms_driver);
 }
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+MODULE_IMPORT_NS(DMA_BUF);
+#endif
