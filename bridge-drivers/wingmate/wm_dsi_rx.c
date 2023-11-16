@@ -6,12 +6,18 @@
 #include "wm_dsi_rx.h"
 #include <linux/delay.h>
 #include <linux/bits.h>
+#include <drm/drm_dsc.h>
 
 /*TODO
  * 1. configure mipi interrupts
  * 2. debugfs
  * 3. handle error status
  */
+
+#define WM_DSC_PPS_SIZE				128
+#define WM_DSC_PPS_PARAMETER_SET_ELEMENTS	96
+#define WM_DSC_PPS_WORD_LEN			24
+#define ENABLE_PPS_CALC				0
 
 struct des_en_config_table des_en_config[] = {
 	{0, 12, 0},
@@ -32,6 +38,18 @@ struct op_freq_table op_freq_val[] = {
 	{2050, 2100, 0x40, 359},
 	{2000, 2050, 0xF,  350},
 	{1500, 1550, 0x2C, 438},
+};
+
+static u32 dsc_pps_set[DSC_PPS_TYPE_MAX][WM_DSC_PPS_WORD_LEN] = {
+	/*4k60*/
+	{0xcd000012, 0x10007810, 0x10000010, 0x80070008,
+	0x56052202, 0x1e022000, 0xc001c00,  0xbc016706,
+	0x41110018, 0x20140b,   0x33131306, 0x382a1c0e,
+	0x69625446, 0x7b797770, 0x9807e7d,  0x1c901a5,
+	0xf1ebf9ea, 0xe20cea0c, 0xe24ce22c, 0xda6dda4c,
+	0xd28eda6d, 0xd2d5d2b1, 0,          0},
+	/*4k50*/
+	{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0},
 };
 
 static void wm_dsi_rx_power_init(struct wm_dsi_rx *dsi_rx)
@@ -55,7 +73,8 @@ static int dsi_reg_read(struct wm_dsi_rx *dsi_rx, u32 off)
 
 	display = dsi_rx->display;
 
-	/*TODO: modify the func once regmap info is confirmed*/
+	off += DSI_RX_BASE;
+
 	return display->read_register(display, off);
 }
 
@@ -64,7 +83,8 @@ static int dsi_reg_write(struct wm_dsi_rx *dsi_rx, u32 off, u32 val)
 	struct wm_display *display;
 	display = dsi_rx->display;
 
-	/*TODO: modify the func once regmap info is confirmed*/
+	off += DSI_RX_BASE;
+
 	return display->write_register(display, off, val);
 }
 
@@ -153,7 +173,7 @@ static int wm_dsi_rx_ipi_tx_delay(struct wm_dsi_rx *dsi_rx) {
 	else
 		ipi_tx_delay = frac + 4;
 
-	dsi_reg_write(dsi_rx, IPI_TX_DELAY, ipi_tx_delay);
+	dsi_reg_write(dsi_rx, DSI_RX_IPI_TX_DELAY, ipi_tx_delay);
 	WM_DEBUG(" hact_ipi:%lu, hact_ppi: %lu, ipi_tx_delay:%lu",
 			hact_ipi, hact_ppi, ipi_tx_delay);
 	return rc;
@@ -295,7 +315,7 @@ int wm_dsi_rx_soft_reset(struct wm_dsi_rx *dsi_rx)
 static int wm_dsi_rx_disable_ctrl(struct wm_dsi_rx *dsi_rx)
 {
 	dsi_reg_write(dsi_rx, DSI_RX_SOFT_RSTN, 0x0);
-	dsi_reg_write(dsi_rx, DSI_RX_DSC_CTRL, 0x0);
+	dsi_reg_write(dsi_rx, DSI_RX_DSC_CTRL0, 0x0);
 
 	dsi_rx->dsc->enable = false;
 	WM_DEBUG("WM DSI RX disabled\n");
@@ -351,6 +371,182 @@ static int wm_dsi_rx_enable_ctrl(struct wm_dsi_rx *dsi_rx, bool enable)
 	return rc;
 }
 
+static int _get_pps_table_index(struct wm_dsc *dsc)
+{
+	/** TODO: func will be implemented
+	as per data we get for pps values**/
+	return 0;
+}
+
+#if ENABLE_PPS_CALC
+/**
+ * if we want to get pps values via dsc_config
+ * below is the implementation.
+ */
+static int wm_dsi_rx_dsc_create_pps_buf(wm_dsc dsc_info, u32 len)
+{
+	struct drm_dsc_config *dsc = &dsc_info->config;
+	char *bp = dsc_info->pps;
+	char data;
+	u32 *pps_word;
+	int i, index_4;
+	u32 bpp;
+
+	if (len < WM_DSC_PPS_SIZE)
+		return -EINVAL;
+
+	memset(buf, 0, len);
+	// pps0
+	*bp++ = (dsc->dsc_version_minor |
+			dsc->dsc_version_major << 4);
+	*bp++ = (0 & 0xff);		// pps1 pps_id =0
+	bp++;					// pps2, reserved
+
+	data = dsc->line_buf_depth & 0x0f;
+	data |= ((dsc->bits_per_component & 0xf) << DSC_PPS_BPC_SHIFT);
+	*bp++ = data;				// pps3
+
+	bpp = dsc->bits_per_pixel;
+	if (dsc->native_422 || dsc->native_420)
+		bpp = 2 * bpp;
+	data = (bpp >> DSC_PPS_MSB_SHIFT);
+	data &= 0x03;				// upper two bits
+	data |= ((dsc->block_pred_enable & 0x1) << 5);
+	data |= ((dsc->convert_rgb & 0x1) << 4);
+	data |= ((dsc->simple_422 & 0x1) << 3);
+	data |= ((dsc->vbr_enable & 0x1) << 2);
+	*bp++ = data;				// pps4
+	*bp++ = (bpp & DSC_PPS_LSB_MASK);	// pps5
+
+	*bp++ = ((dsc->pic_height >> 8) & 0xff); // pps6
+	*bp++ = (dsc->pic_height & 0x0ff);	// pps7
+	*bp++ = ((dsc->pic_width >> 8) & 0xff);	// pps8
+	*bp++ = (dsc->pic_width & 0x0ff);	// pps9
+
+	*bp++ = ((dsc->slice_height >> 8) & 0xff);// pps10
+	*bp++ = (dsc->slice_height & 0x0ff);	// pps11
+	*bp++ = ((dsc->slice_width >> 8) & 0xff); // pps12
+	*bp++ = (dsc->slice_width & 0x0ff);	// pps13
+
+	*bp++ = ((dsc->slice_chunk_size >> 8) & 0xff);// pps14
+	*bp++ = (dsc->slice_chunk_size & 0x0ff);	// pps15
+
+	*bp++ = (dsc->initial_xmit_delay >> 8) & 0x3; // pps16
+	*bp++ = (dsc->initial_xmit_delay & 0xff);// pps17
+
+	*bp++ = ((dsc->initial_dec_delay >> 8) & 0xff); // pps18
+	*bp++ = (dsc->initial_dec_delay & 0xff);// pps19
+
+	bp++;				// pps20, reserved
+
+	*bp++ = (dsc->initial_scale_value & 0x3f); // pps21
+
+	*bp++ = ((dsc->scale_increment_interval >> 8) & 0xff); // pps22
+	*bp++ = (dsc->scale_increment_interval & 0xff); // pps23
+
+	*bp++ = ((dsc->scale_decrement_interval >> 8) & 0xf); // pps24
+	*bp++ = (dsc->scale_decrement_interval & 0x0ff);// pps25
+
+	bp++;					// pps26, reserved
+
+	*bp++ = (dsc->first_line_bpg_offset & 0x1f);// pps27
+
+	*bp++ = ((dsc->nfl_bpg_offset >> 8) & 0xff);// pps28
+	*bp++ = (dsc->nfl_bpg_offset & 0x0ff);	// pps29
+	*bp++ = ((dsc->slice_bpg_offset >> 8) & 0xff);// pps30
+	*bp++ = (dsc->slice_bpg_offset & 0x0ff);// pps31
+
+	*bp++ = ((dsc->initial_offset >> 8) & 0xff);// pps32
+	*bp++ = (dsc->initial_offset & 0x0ff);	// pps33
+
+	*bp++ = ((dsc->final_offset >> 8) & 0xff);// pps34
+	*bp++ = (dsc->final_offset & 0x0ff);	// pps35
+
+	*bp++ = (dsc->flatness_min_qp & 0x1f);	// pps36
+	*bp++ = (dsc->flatness_max_qp & 0x1f);	// pps37
+
+	*bp++ = ((dsc->rc_model_size >> 8) & 0xff);// pps38
+	*bp++ = (dsc->rc_model_size & 0x0ff);	// pps39
+
+	*bp++ = (dsc->rc_edge_factor & 0x0f);	// pps40
+
+	*bp++ = (dsc->rc_quant_incr_limit0 & 0x1f);	// pps41
+	*bp++ = (dsc->rc_quant_incr_limit1 & 0x1f);	// pps42
+
+	data = ((dsc->rc_tgt_offset_high & 0xf) << 4);
+	data |= (dsc->rc_tgt_offset_low & 0x0f);
+	*bp++ = data;				// pps43
+
+	for (i = 0; i < DSC_NUM_BUF_RANGES - 1; i++)
+		*bp++ = (dsc->rc_buf_thresh[i] & 0xff); // pps44 - pps57
+
+	for (i = 0; i < DSC_NUM_BUF_RANGES; i++) {
+		// pps58 - pps87
+		data = (dsc->rc_range_params[i].range_min_qp & 0x1f);
+		data <<= 3;
+		data |= ((dsc->rc_range_params[i].range_max_qp >> 2) & 0x07);
+		*bp++ = data;
+		data = (dsc->rc_range_params[i].range_max_qp & 0x03);
+		data <<= 6;
+		data |= (dsc->rc_range_params[i].range_bpg_offset & 0x3f);
+		*bp++ = data;
+	}
+
+	if (dsc->dsc_version_minor == 0x2) {
+		if (dsc->native_422)
+			data = BIT(0);
+		else if (dsc->native_420)
+			data = BIT(1);
+		*bp++ = data;				// pps88
+		*bp++ = dsc->second_line_bpg_offset;	// pps89
+
+		*bp++ = ((dsc->nsl_bpg_offset >> 8) & 0xff);// pps90
+		*bp++ = (dsc->nsl_bpg_offset & 0x0ff);	// pps91
+
+		*bp++ = ((dsc->second_line_offset_adj >> 8) & 0xff); // pps92
+		*bp++ = (dsc->second_line_offset_adj & 0x0ff);	// pps93
+
+		// rest bytes are reserved and set to 0
+	}
+
+	//converting pps values to word
+	pps_word = dsc_info->pps_word;
+	dsc_info->pps_len = WM_DSC_PPS_PARAMETER_SET_ELEMENTS;
+	dsc_info->pps_word_len = dsc->pps_len >> 2;
+
+	for (i = 0; i < dsc_info->pps_word_len; i++) {
+		index_4 = i << 2;
+		pps_word[i] = bp[index_4 + 0] << 0 |
+				bp[index_4 + 1] << 8 |
+				bp[index_4 + 2] << 16 |
+				bp[index_4 + 3] << 24;
+	}
+	return 0;
+}
+#endif
+
+/**
+ * If pps_word is directly taken from lookup table
+ * depending on the mode (4k60 or 4k50) then use below
+ * function.*/
+static int wm_dsi_rx_dsc_create_pps_buf(struct wm_dsc *dsc_info, u32 len)
+{
+	u32 i;
+	int index;
+	int pps_word_len;
+
+	if (len < WM_DSC_PPS_SIZE)
+		return -EINVAL;
+
+	index = _get_pps_table_index(dsc_info);
+	pps_word_len = WM_DSC_PPS_WORD_LEN;
+
+	for (i = 0; i < pps_word_len; i++)
+		dsc_info->pps_word[i] = dsc_pps_set[index][i];
+
+	return 0;
+}
+
 static void wm_dsc_update_blanking_params(struct wm_dsi_rx *dsi_rx)
 {
 
@@ -392,6 +588,35 @@ static void wm_dsc_update_blanking_params(struct wm_dsi_rx *dsi_rx)
 
 static void wm_dsi_rx_dsc_update_pps(struct wm_dsi_rx *dsi_rx)
 {
+	u32 *pps_word;
+	int i;
+	struct wm_dsc *dsc;
+
+	dsc = dsi_rx->dsc;
+
+	/*create pps buffer with values with pps_id as zero*/
+	wm_dsi_rx_dsc_create_pps_buf(dsc, sizeof(dsc->pps));
+
+	pps_word = dsc->pps_word;
+	dsc->pps_len = WM_DSC_PPS_PARAMETER_SET_ELEMENTS;
+	dsc->pps_word_len = dsc->pps_len >> 2;
+
+	/*Moved this part to creat_buf func
+	for (i = 0; i < dsc->pps_word_len; i++) {
+		index_4 = i << 2;
+		pps_word[i] = pps[index_4 + 0] << 0 |
+				pps[index_4 + 1] << 8 |
+				pps[index_4 + 2] << 16 |
+				pps[index_4 + 3] << 24;
+	}*/
+
+	/* write pps values into pps registers*/
+	for (i = 0; i < dsc->pps_word_len; i++) {
+		/* confirm spi_w32 for setting pps regs*/
+		 dsi_reg_write(dsi_rx, DSI_RX_DSC_PPS0_3 + (i << 2), pps_word[i]);
+	}
+
+	WM_DEBUG("WM DSC PPS updated successfully\n");
 	return;
 }
 /**
@@ -433,8 +658,34 @@ int wm_dsi_rx_enable_dsc(struct wm_dsi_rx *dsi_rx, bool enable)
 	return 0;
 }
 
+static int wm_dsi_rx_dsc_set_pps(struct wm_dsi_rx *dsi_rx)
+{
+	u32 data;
+	int i;
+	int retry_count = 10;/*subject to chnage*/
+
+	data = dsi_reg_read(dsi_rx, DSI_RX_DSC_CTRL0);
+	data |= BIT(31);
+
+	/*update PPS_UPD to 1*/
+	dsi_reg_write(dsi_rx, DSI_RX_DSC_CTRL0, data);
+
+	/*poll for PPS_UPD to clear*/
+	for (i = 0; i < retry_count; i++) {
+		data = dsi_reg_read(dsi_rx, DSI_RX_DSC_CTRL0);
+		if (data & BIT(31))
+		       return 0;
+		usleep_range(20, 50);/*subject to  change*/
+	}
+
+	WM_ERR("DSC RX PPS update failed\n");
+	return -1;
+}
+
 int wm_dsi_rx_configure_dsc(struct wm_dsi_rx *dsi_rx)
 {
+
+	int rc = 0;
 
 	/*update blanking params*/
 	wm_dsc_update_blanking_params(dsi_rx);
@@ -445,7 +696,13 @@ int wm_dsi_rx_configure_dsc(struct wm_dsi_rx *dsi_rx)
 	/*update pps values*/
 	wm_dsi_rx_dsc_update_pps(dsi_rx);
 
+	rc = wm_dsi_rx_dsc_set_pps(dsi_rx);
+	/*for now, ignoring return value
+	 * as it expected to be success
+	 * all the time*/
+
 	dsi_rx->dsc->enable = true;
+
 	return 0;
 }
 
