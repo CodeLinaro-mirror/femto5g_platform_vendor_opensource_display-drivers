@@ -622,6 +622,8 @@ user_os_utils_shmem_export(
 	u32 export_id = 0;
 	u32 export_flags = 0;
 
+	HYP_ATRACE_BEGIN(__func__);
+
 	if (!mem) {
 		UTILS_LOG_ERROR("NULL mem");
 		rc = -1;
@@ -663,6 +665,8 @@ end:
 			UTILS_LOG_ERROR("rel_hab_handle failed");
 	}
 
+	HYP_ATRACE_END(__func__);
+
 	return rc;
 }
 
@@ -677,6 +681,8 @@ user_os_utils_shmem_import(
 	int32_t handle = 0;
 	u32 chl_id = CHANNEL_OPENWFD;
 	u32 import_flags = 0;
+
+	HYP_ATRACE_BEGIN(__func__);
 
 	if (!mem) {
 		UTILS_LOG_ERROR("NULL mem");
@@ -723,6 +729,8 @@ end:
 			UTILS_LOG_ERROR("rel_hab_handle failed");
 	}
 
+	HYP_ATRACE_END(__func__);
+
 	return rc;
 }
 
@@ -737,6 +745,8 @@ user_os_utils_shmem_unexport(
 	int32_t handle = 0;
 	u32 chl_id = CHANNEL_OPENWFD;
 	u32 unexport_flags = 0;
+
+	HYP_ATRACE_BEGIN(__func__);
 
 	if (!mem) {
 		UTILS_LOG_ERROR("NULL mem");
@@ -778,6 +788,8 @@ end:
 			UTILS_LOG_ERROR("rel_hab_handle failed");
 	}
 
+	HYP_ATRACE_END(__func__);
+
 	return rc;
 }
 
@@ -792,6 +804,8 @@ user_os_utils_shmem_unimport(
 	int32_t handle = 0;
 	u32 chl_id = CHANNEL_OPENWFD;
 	u32 unimport_flags = 0;
+
+	HYP_ATRACE_BEGIN(__func__);
 
 	if (!mem) {
 		UTILS_LOG_ERROR("NULL mem");
@@ -835,6 +849,8 @@ end:
 		if (rel_hab_handle(ctx, chl_id, 0x00))
 			UTILS_LOG_ERROR("rel_hab_handle failed");
 	}
+
+	HYP_ATRACE_END(__func__);
 
 	return rc;
 }
