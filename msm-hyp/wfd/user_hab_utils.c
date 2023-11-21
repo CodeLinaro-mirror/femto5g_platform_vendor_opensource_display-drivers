@@ -29,7 +29,7 @@
 #define CHANNEL_EVENTS		1
 #define CHANNEL_BUFFERS		2
 #define MAX_CHANNELS		3
-#define MAX_RECV_PACKET_RETRY	10
+#define MAX_RECV_PACKET_RETRY	6
 #define WFD_MAX_NUM_OF_CLIENTS	10
 #define WFD_CLIENT_ID_BASE	WFD_CLIENT_ID_CLUSTER
 #define WFD_CLIENT_ID_LA_CONTAINER	0x7818
@@ -121,7 +121,6 @@ struct user_os_utils_context {
 	spinlock_t hyp_cmdchl_lock;
 	struct mutex hyp_cbchl_lock;
 	struct mutex hyp_bufchl_lock;
-	unsigned long cmdchl_lock_flags[MAX_CHANNELS];
 	int client_idx;
 };
 
@@ -154,8 +153,7 @@ get_hab_handle(
 
 			if (!(DO_NOT_LOCK_CHANNEL & flags)) {
 				if (client_id == CHANNEL_OPENWFD)
-					spin_lock_irqsave(&ctx->hyp_cmdchl_lock,
-						ctx->cmdchl_lock_flags[client_id]);
+					spin_lock(&ctx->hyp_cmdchl_lock);
 				else if (client_id == CHANNEL_EVENTS)
 					mutex_lock(&ctx->hyp_cbchl_lock);
 				else if (client_id == CHANNEL_BUFFERS)
@@ -186,8 +184,7 @@ rel_hab_handle(
 
 		if ((!flags)) {
 			if (chl_id == CHANNEL_OPENWFD)
-				spin_unlock_irqrestore(&ctx->hyp_cmdchl_lock,
-						ctx->cmdchl_lock_flags[chl_id]);
+				spin_unlock(&ctx->hyp_cmdchl_lock);
 			else if (chl_id == CHANNEL_EVENTS)
 				mutex_unlock(&ctx->hyp_cbchl_lock);
 			else if (chl_id == CHANNEL_BUFFERS)
@@ -246,9 +243,6 @@ user_os_utils_init(
 			spin_lock_init(&ctx->hyp_cmdchl_lock);
 			UTILS_LOG_CRITICAL_INFO("OpenWFD channel open successful, handle=%d, client_id=0x%x",
 					ctx->hyp_hdl_disp[CHANNEL_OPENWFD], client_id);
-
-			/* Initialize the flag */
-			ctx->cmdchl_lock_flags[CHANNEL_OPENWFD] = 0;
 		}
 	} else {
 		UTILS_LOG_ERROR("invalid hab channel id");
@@ -277,9 +271,6 @@ user_os_utils_init(
 			mutex_init(&ctx->hyp_cbchl_lock);
 			UTILS_LOG_CRITICAL_INFO("Events channel open successful, handle=%d, client_id=0x%x",
 					ctx->hyp_hdl_disp[CHANNEL_EVENTS], client_id);
-
-			/* Initialize the flag */
-			ctx->cmdchl_lock_flags[CHANNEL_EVENTS] = 0;
 		}
 	} else {
 		UTILS_LOG_ERROR("invalid hab channel id");
@@ -306,9 +297,6 @@ user_os_utils_init(
 			mutex_init(&ctx->hyp_bufchl_lock);
 			UTILS_LOG_CRITICAL_INFO("Buffer channel open successful, handle=%d, client_id=0x%x",
 					ctx->hyp_hdl_disp[CHANNEL_BUFFERS], client_id);
-
-			/* Initialize the flag */
-			ctx->cmdchl_lock_flags[CHANNEL_BUFFERS] = 0;
 		}
 	} else {
 		UTILS_LOG_ERROR("invalid hab channel id");
@@ -521,6 +509,7 @@ retry_recv_packet:
 	if (rc) {
 		UTILS_LOG_ERROR("habmm_socket_recv(payload type(%d)) failed, resp_size=%d, rc=%d",
 			payload_type, resp_size, rc);
+
 		if ((rc == -EAGAIN) && (retry_times < MAX_RECV_PACKET_RETRY))
 		{
 			retry_times++;
