@@ -90,6 +90,7 @@
 #include <drm/drm_gem_framebuffer_helper.h>
 #include <drm/drm_vblank.h>
 #include <drm/drm_drv.h>
+#include <uapi/linux/sched/types.h>
 #include "msm_drv_hyp.h"
 #include "msm_hyp_utils.h"
 #include "msm_hyp_trace.h"
@@ -996,6 +997,7 @@ static int _msm_hyp_crtc_init_caps(struct msm_hyp_crtc *crtc)
 static int _msm_hyp_crtc_init_dispatch_thread(struct msm_hyp_crtc *c)
 {
 	int ret = 0;
+	struct sched_param param;
 
 	kthread_init_worker(&c->worker);
 
@@ -1006,9 +1008,20 @@ static int _msm_hyp_crtc_init_dispatch_thread(struct msm_hyp_crtc *c)
 		DRM_ERROR("failed to create crtc_commit kthread\n");
 		ret = PTR_ERR(c->thread);
 		c->thread = NULL;
+		return ret;
 	}
 
-	return ret;
+	/*
+	 * this priority was found during empiric testing to have appropriate
+	 * realtime scheduling to process display updates and interact with
+	 * other real time and normal priority task
+	 */
+	param.sched_priority = 16;
+	ret = sched_setscheduler(c->thread, SCHED_FIFO, &param);
+	if (ret)
+		DRM_WARN("display thread priority update failed: %d\n", ret);
+
+	return 0;
 }
 
 static int _msm_hyp_crtc_init(struct drm_device *ddev,
