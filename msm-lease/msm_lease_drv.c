@@ -24,14 +24,12 @@
 #include <linux/of_device.h>
 #include <linux/debugfs.h>
 #include <linux/component.h>
-#include <asm/sizes.h>
 #include <drm/drm_of.h>
 #include <drm/drmP.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_encoder.h>
 #include <drm/drm_auth.h>
 #include <drm/drm_ioctl.h>
-#include <drm_internal.h>
 #include <msm_drv.h>
 
 #define MAX_LEASE_OBJECT_COUNT 64
@@ -121,6 +119,26 @@ static inline bool _obj_is_leased(int id,
 	return _find_obj_id(id, object_ids, object_count);
 }
 
+static struct drm_master *msm_lease_master_create(struct drm_device *dev)
+{
+	struct drm_master *master;
+
+	master = kzalloc(sizeof(*master), GFP_KERNEL);
+	if (!master)
+		return NULL;
+
+	kref_init(&master->refcount);
+	idr_init(&master->magic_map);
+	master->dev = dev;
+
+	INIT_LIST_HEAD(&master->lessees);
+	INIT_LIST_HEAD(&master->lessee_list);
+	idr_init(&master->leases);
+	idr_init(&master->lessee_idr);
+
+	return master;
+}
+
 static struct drm_master *msm_lease_get_dev_master(struct drm_device *dev)
 {
 	if (!g_master_ddev_master) {
@@ -130,7 +148,7 @@ static struct drm_master *msm_lease_get_dev_master(struct drm_device *dev)
 			return NULL;
 		}
 
-		g_master_ddev_master = drm_master_create(dev);
+		g_master_ddev_master = msm_lease_master_create(dev);
 		if (!g_master_ddev_master) {
 			DRM_ERROR("failed to create dev master\n");
 			return NULL;
@@ -182,6 +200,53 @@ static const char *msm_lease_get_dev_name(struct drm_file *file)
 	return dev_name;
 }
 
+static int msm_lease_copy_field(const char *src, size_t *len, char __user *dst)
+{
+	u32 name_len;
+
+	name_len = *len;
+
+	if (src)
+		*len = strlen(src);
+	else
+		*len = 0;
+
+	if (*len < name_len)
+		name_len = *len;
+
+	if (dst && name_len)
+		if (copy_to_user(dst, src, name_len))
+			return -EFAULT;
+
+	return 0;
+}
+
+static int msm_lease_get_version(struct drm_file *file,
+		struct drm_version *version)
+{
+	struct drm_device *dev = file->minor->dev;
+	int rc;
+
+	version->version_major = dev->driver->major;
+	version->version_minor = dev->driver->minor;
+	version->version_patchlevel = dev->driver->patchlevel;
+
+	rc = msm_lease_copy_field(msm_lease_get_dev_name(file),
+			&version->name_len, version->name);
+	if (rc)
+		return rc;
+
+	rc = msm_lease_copy_field(dev->driver->date,
+			&version->date_len, version->date);
+	if (rc)
+		return rc;
+
+	rc = msm_lease_copy_field(dev->driver->desc,
+			&version->desc_len, version->desc);
+
+	return rc;
+}
+
 static int msm_lease_open(struct drm_device *dev, struct drm_file *file)
 {
 	struct msm_lease *lease;
@@ -227,7 +292,7 @@ static int msm_lease_open(struct drm_device *dev, struct drm_file *file)
 		}
 
 		/* create lessee master */
-		lessee = drm_master_create(dev);
+		lessee = msm_lease_master_create(dev);
 		if (!lessee) {
 			msm_lease_put_dev_master(dev);
 			DRM_ERROR("drm_master_create failed\n");
@@ -290,6 +355,8 @@ static void msm_lease_postclose(struct drm_device *dev, struct drm_file *file)
 		drm_master_put(&lease->master);
 		msm_lease_put_dev_master(dev);
 	}
+	if (file->master)
+		drm_master_put(&file->master);
 	mutex_unlock(&dev->master_mutex);
 
 out:
@@ -300,33 +367,12 @@ static long msm_lease_ioctl(struct file *filp,
 		unsigned int cmd, unsigned long arg)
 {
 	if (cmd == DRM_IOCTL_VERSION) {
-		const char *dev_name;
 		struct drm_version v;
-		u32 name_len;
-		long err;
-
-		dev_name = msm_lease_get_dev_name(filp->private_data);
-		if (!dev_name)
-			return -EFAULT;
 
 		if (copy_from_user(&v, (void __user *)arg, sizeof(v)))
 			return -EFAULT;
-
-		name_len = v.name_len;
-
-		err = drm_ioctl_kernel(filp, drm_version, &v,
-			DRM_UNLOCKED|DRM_RENDER_ALLOW);
-		if (err)
-			return err;
-
-		/* replace device name with card name */
-		v.name_len = strlen(dev_name);
-		if (v.name_len < name_len)
-			name_len = v.name_len;
-
-		if (v.name && name_len)
-			if (copy_to_user(v.name, dev_name, name_len))
-				return -EFAULT;
+		if (msm_lease_get_version(filp->private_data, &v))
+			return -EFAULT;
 
 		if (copy_to_user((void __user *)arg, &v, sizeof(v)))
 			return -EFAULT;
@@ -343,15 +389,8 @@ static long msm_lease_compat_ioctl(struct file *filp,
 		unsigned int cmd, unsigned long arg)
 {
 	if (DRM_IOCTL_NR(cmd) == DRM_IOCTL_NR(DRM_IOCTL_VERSION)) {
-		const char *dev_name;
 		struct drm_version v;
 		struct drm_v32 v32;
-		u32 name_len;
-		long err;
-
-		dev_name = msm_lease_get_dev_name(filp->private_data);
-		if (!dev_name)
-			return -EFAULT;
 
 		if (copy_from_user(&v32, (void __user *)arg, sizeof(v32)))
 			return -EFAULT;
@@ -363,21 +402,8 @@ static long msm_lease_compat_ioctl(struct file *filp,
 		v.desc_len = v32.desc_len;
 		v.desc = compat_ptr(v32.desc);
 
-		name_len = v.name_len;
-
-		err = drm_ioctl_kernel(filp, drm_version, &v,
-			DRM_UNLOCKED);
-		if (err)
-			return err;
-
-		/* replace device name with card name */
-		v.name_len = strlen(dev_name);
-		if (v.name_len < name_len)
-			name_len = v.name_len;
-
-		if (v.name && name_len)
-			if (copy_to_user(v.name, dev_name, name_len))
-				return -EFAULT;
+		if (msm_lease_get_version(filp->private_data, &v))
+			return -EFAULT;
 
 		v32.version_major = v.version_major;
 		v32.version_minor = v.version_minor;
@@ -385,6 +411,7 @@ static long msm_lease_compat_ioctl(struct file *filp,
 		v32.name_len = v.name_len;
 		v32.date_len = v.date_len;
 		v32.desc_len = v.desc_len;
+
 		if (copy_to_user((void __user *)arg, &v32, sizeof(v32)))
 			return -EFAULT;
 
@@ -538,7 +565,6 @@ static void msm_lease_fixup_crtc_primary(struct drm_device *dev,
 			drm_for_each_crtc(crtc, dev) {
 				if (crtc->primary == planes[i]) {
 					crtc->primary = NULL;
-					planes[i]->crtc = NULL;
 					break;
 				}
 			}
@@ -552,7 +578,6 @@ static void msm_lease_fixup_crtc_primary(struct drm_device *dev,
 			crtcs[i]->primary->type = DRM_PLANE_TYPE_OVERLAY;
 		}
 		crtcs[i]->primary = planes[i];
-		planes[i]->crtc = crtcs[i];
 		planes[i]->type = DRM_PLANE_TYPE_PRIMARY;
 	}
 
@@ -565,7 +590,6 @@ static void msm_lease_fixup_crtc_primary(struct drm_device *dev,
 			if (plane->type == DRM_PLANE_TYPE_OVERLAY) {
 				crtc->primary = plane;
 				plane->type = DRM_PLANE_TYPE_PRIMARY;
-				plane->crtc = crtc;
 				break;
 			}
 		}
@@ -904,14 +928,14 @@ static int msm_lease_notifier(struct notifier_block *nb,
 	ret = drm_dev_register(ddev, 0);
 	if (ret) {
 		dev_err(lease_drv->dev, "failed to register drm device\n");
-		drm_dev_unref(ddev);
+		drm_dev_put(ddev);
 		goto fail;
 	}
 
 	/* unregister temporary driver and keep primary minor */
 	ddev->primary = NULL;
 	drm_dev_unregister(ddev);
-	drm_dev_unref(ddev);
+	drm_dev_put(ddev);
 
 	/* check if there are remaining objs */
 	msm_lease_parse_remain_objs();
