@@ -1799,14 +1799,15 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 
 		sde_enc->elevated_ahb_vote = true;
 		/* enable DSI clks */
-		rc = sde_connector_clk_ctrl(sde_enc->cur_master->connector,
+		if (drm_enc->encoder_type == DRM_MODE_ENCODER_DSI) {
+			rc = sde_connector_clk_ctrl(sde_enc->cur_master->connector,
 				true);
-		if (rc) {
-			SDE_ERROR("failed to enable clk control %d\n", rc);
-			pm_runtime_put_sync(drm_enc->dev->dev);
-			return rc;
+			if (rc) {
+				SDE_ERROR("failed to enable clk control %d\n", rc);
+				pm_runtime_put_sync(drm_enc->dev->dev);
+				return rc;
+			}
 		}
-
 		/* enable all the irq */
 		sde_encoder_irq_control(drm_enc, true);
 
