@@ -861,10 +861,18 @@ static void msm_lease_parse_remain_objs(u32 hw_dev_id)
 	int count, rc, i;
 	int crtc_count;
 	bool found;
+	int loop_count = 0;
 
 	list_for_each_entry(lease, &g_lease_list, head) {
 		if (lease->hw_dev_id != hw_dev_id)
 			continue;
+
+		/* TO-DO: handle lease minor null pointer dereference logic gracefully*/
+		if (hw_dev_id == 0)
+			loop_count++;
+
+		if (loop_count > 3)
+			break;
 
 		if (!lease->minor)
 			return;
