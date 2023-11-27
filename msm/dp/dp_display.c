@@ -4474,6 +4474,22 @@ static int dp_pm_prepare(struct device *dev)
 	}
 
 	dp_display_state_add(DP_STATE_SUSPENDED);
+
+	/*
+	 * If DP is not enabled but powered and suspend state
+	 * is entered, we need to power off the host to disable all
+	 * clocks. This is needed when link training failed.
+	 */
+	if (!dp_display_state_is(DP_STATE_ENABLED) &&
+			dp->aux->state != DP_STATE_CTRL_POWERED_OFF) {
+		dp->ctrl->off(dp->ctrl);
+		dp_display_host_deinit(dp);
+		dp->aux->state = DP_STATE_CTRL_POWERED_OFF;
+
+		if (dp->parser->force_connect_mode)
+			dp_display_send_force_connect_event(dp);
+	}
+
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
