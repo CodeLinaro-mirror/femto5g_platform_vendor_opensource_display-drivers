@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -21,6 +21,8 @@ struct dp_power_private {
 	struct clk *pixel_clk_rcg;
 	struct clk *pixel_parent;
 	struct clk *pixel1_clk_rcg;
+	struct clk *link_clk_rcg;
+	struct clk *link_parent;
 	struct clk *xo_clk;
 
 	struct dp_power dp_power;
@@ -151,6 +153,20 @@ static int dp_power_pinctrl_set(struct dp_power_private *power, bool active)
 	if (IS_ERR_OR_NULL(parser->pinctrl.pin))
 		return 0;
 
+	if (parser->lphw_hpd) {
+		pin_state = active ? parser->pinctrl.state_hpd_ctrl
+			: parser->pinctrl.state_hpd_tlmm;
+		if (!IS_ERR_OR_NULL(pin_state)) {
+			rc = pinctrl_select_state(parser->pinctrl.pin,
+					pin_state);
+			if (rc) {
+				DP_ERR("cannot direct hpd line to %s\n",
+						active ? "ctrl" : "tlmm");
+				return rc;
+			}
+		}
+	}
+
 	pin_state = active ? parser->pinctrl.state_active
 				: parser->pinctrl.state_suspend;
 	if (!IS_ERR_OR_NULL(pin_state)) {
@@ -245,6 +261,24 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 				goto err_pixel1_clk_rcg;
 			}
 		}
+
+		power->link_clk_rcg = clk_get(dev, "link_clk_src");
+		if (IS_ERR(power->link_clk_rcg)) {
+			DP_DEBUG("Unable to get DP link clk RCG: %ld\n",
+					PTR_ERR(power->link_clk_rcg));
+			rc = PTR_ERR(power->link_clk_rcg);
+			power->link_clk_rcg = NULL;
+			goto err_link_clk_rcg;
+		}
+
+		power->link_parent = clk_get(dev, "link_parent");
+		if (IS_ERR(power->link_parent)) {
+			DP_DEBUG("Unable to get DP link parent: %ld\n",
+					PTR_ERR(power->link_parent));
+			rc = PTR_ERR(power->link_parent);
+			power->link_parent = NULL;
+			goto err_link_parent;
+		}
 	} else {
 		if (power->pixel1_clk_rcg)
 			clk_put(power->pixel1_clk_rcg);
@@ -255,10 +289,21 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 		if (power->pixel_clk_rcg)
 			clk_put(power->pixel_clk_rcg);
 
+		if (power->link_parent)
+			clk_put(power->link_parent);
+
+		if (power->link_clk_rcg)
+			clk_put(power->link_clk_rcg);
+
 		dp_power_clk_put(power);
 	}
 
 	return rc;
+
+err_link_parent:
+	clk_put(power->link_clk_rcg);
+err_link_clk_rcg:
+	clk_put(power->pixel1_clk_rcg);
 err_pixel1_clk_rcg:
 	clk_put(power->xo_clk);
 err_xo_clk:
@@ -418,6 +463,14 @@ static int dp_power_clk_enable(struct dp_power *dp_power,
 		if (pm_type == DP_LINK_PM && power->link_clks_on) {
 			DP_DEBUG("links clks already enabled\n");
 			return 0;
+		}
+	}
+
+	if (pm_type == DP_LINK_PM && enable && power->link_parent) {
+		rc = clk_set_parent(power->link_clk_rcg, power->link_parent);
+		if (rc) {
+			DP_ERR("failed to set link parent\n");
+			goto error;
 		}
 	}
 
