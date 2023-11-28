@@ -539,10 +539,6 @@ static int dp_ctrl_link_training_2(struct dp_ctrl_private *ctrl)
 		goto skip_training;
 	}
 
-	dp_ctrl_state_ctrl(ctrl, 0);
-	/* Make sure to clear the current pattern before starting a new one */
-	wmb();
-
 	while (1)  {
 		if (atomic_read(&ctrl->aborted)) {
 			ret = -EINVAL;
