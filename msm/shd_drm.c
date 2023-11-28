@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -791,6 +791,7 @@ static int shd_connector_get_modes(struct drm_connector *connector, void *data,
 	struct drm_display_mode *m, *base_mode = NULL;
 	struct sde_connector *sde_conn;
 	int count;
+	int base_vfresh;
 	int rc;
 	u32 edid_size;
 	struct edid edid;
@@ -912,6 +913,9 @@ static int shd_connector_get_modes(struct drm_connector *connector, void *data,
 	if (!m)
 		return 0;
 
+	/* duplicate refresh rate from base */
+	base_vfresh = drm_mode_vrefresh(m);
+
 	/* update roi size */
 	if (disp->full_screen) {
 		disp->src.w = base_mode->hdisplay;
@@ -927,6 +931,8 @@ static int shd_connector_get_modes(struct drm_connector *connector, void *data,
 		m->vsync_start = m->vdisplay;
 		m->vsync_end = m->vsync_start;
 		m->vtotal = m->vsync_end;
+		/* update shd clock in KHZ */
+		m->clock = m->vtotal * m->htotal * base_vfresh / 1000;
 		drm_mode_set_name(m);
 	}
 
