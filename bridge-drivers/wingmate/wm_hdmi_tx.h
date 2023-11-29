@@ -12,11 +12,28 @@
 /* HDMI_TX Register Offsets */
 #define WM_HDMI_IH_PHY_STAT0	0x104
 #define WM_HDMI_IH_I2CM_STAT0	0x105
-#define WM_HDMI_IH_I2CMPHY_STAT0 	0x108
+#define WM_HDMI_IH_I2CMPHY_STAT0	0x108
 #define WM_HDMI_IH_MUTE_PHY_STAT0	0x184
 #define WM_HDMI_IH_MUTE_I2CM_STAT0	0x185
 
+#define WM_HDMI_FC_INVIDCONF	0x1000
+#define WM_HDMI_FC_INHACTIV0	0x1001
+#define WM_HDMI_FC_INHACTIV1	0x1002
+#define WM_HDMI_FC_INHBLANK0	0x1003
+#define WM_HDMI_FC_INHBLANK1	0x1004
+#define WM_HDMI_FC_INVACTIV0	0x1005
+#define WM_HDMI_FC_INVACTIV1	0x1006
+#define WM_HDMI_FC_INVBLANK0	0x1007
+#define WM_HDMI_FC_HSYNCINDELAY0	0x1008
+#define WM_HDMI_FC_HSYNCINDELAY1	0x1009
+#define WM_HDMI_FC_HSYNCINWIDTH0	0x100a
+#define WM_HDMI_FC_HSYNCINWIDTH1	0x100b
+#define WM_HDMI_FC_VSYNCINDELAY0	0x100c
 #define WM_HDMI_FC_VSYNCINWIDTH	0x100d
+#define WM_HDMI_FC_CTRLDUR	0x1011
+#define WM_HDMI_FC_EXCTRLDUR	0x1012
+#define WM_HDMI_FC_EXCTRLSPAC	0x1013
+#define WM_HDMI_FC_INVBLANK1	0x102e
 
 #define WM_HDMI_PHY_CONF0 	0x3000
 #define WM_HDMI_PHY_STAT0 	0x3004
@@ -27,7 +44,9 @@
 #define WM_HDMI_PHY_I2CM_DATAO_0	0x3023
 #define WM_HDMI_PHY_I2CM_OPERATION	0x3026
 
-#define WM_HDMI_MC_SWRSTZREQ_1	0x4002
+#define WM_HDMI_MC_CLKDIS 0x4001
+#define WM_HDMI_MC_SWRSTZREQ_1 0x4002
+#define WM_HDMI_MC_PHYRSTZ 0x4005
 
 #define WM_HDMI_I2CM_SLAVE 	0x7e00
 #define WM_HDMI_I2CM_ADDRESS 	0x7e01
@@ -82,7 +101,9 @@ struct wm_hdmi_intrs {
 };
 
 struct edid_ctrl {
+	u8 *edid;
 	u8 retry;
+	u8 colorimetry;
 	u32 count, total_ext, curr_ext;
 };
 
@@ -92,8 +113,6 @@ struct wm_hdmi_tx {
 	struct device *dev;
 
 	/* Sink details */
-	u8 *edid;
-	u8 colorimetry;
 	bool hpd_status;
 	struct wm_hdmi_intrs intr;
 	struct edid_ctrl edid_ctrl;

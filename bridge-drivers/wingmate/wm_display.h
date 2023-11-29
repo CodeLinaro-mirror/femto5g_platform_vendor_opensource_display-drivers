@@ -143,6 +143,7 @@ struct wm_display {
 			wm_display_params_t id, void *in_param, void *out_param);
 	void (*enable_irq)(struct wm_display *display,
 			wm_display_interrupts_t irq, bool enable);
+	void (*disable_hdmi_clk) (struct wm_display *display);
 	int (*read_register) (struct wm_display *display, unsigned int reg);
 	int (*write_register) (struct wm_display *display,
 			unsigned int reg, unsigned int val);
