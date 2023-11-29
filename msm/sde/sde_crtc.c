@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -4203,19 +4203,12 @@ static void _sde_crtc_setup_mixers(struct drm_crtc *crtc)
 
 static void _sde_crtc_setup_is_ppsplit(struct drm_crtc_state *state)
 {
-	int i;
 	struct sde_crtc_state *cstate;
 
 	cstate = to_sde_crtc_state(state);
 
-	cstate->is_ppsplit = false;
-	for (i = 0; i < cstate->num_connectors; i++) {
-		struct drm_connector *conn = cstate->connectors[i];
-
-		if (sde_connector_get_topology_name(conn) ==
-				SDE_RM_TOPOLOGY_PPSPLIT)
-			cstate->is_ppsplit = true;
-	}
+	cstate->is_ppsplit = (cstate->topology_name ==
+			SDE_RM_TOPOLOGY_PPSPLIT);
 }
 
 static void _sde_crtc_setup_lm_bounds(struct drm_crtc *crtc, struct drm_crtc_state *state)
@@ -5263,6 +5256,7 @@ static void _sde_crtc_reset(struct drm_crtc *crtc)
 
 	memset(sde_crtc->mixers, 0, sizeof(sde_crtc->mixers));
 	sde_crtc->num_mixers = 0;
+	sde_crtc->base_reset = true;
 	sde_crtc->mixers_swapped = false;
 
 	/* disable clk & bw control until clk & bw properties are set */

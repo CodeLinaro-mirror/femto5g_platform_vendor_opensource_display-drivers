@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -494,6 +494,7 @@ struct sde_crtc {
 
 	DECLARE_BITMAP(hwfence_features_mask, HW_FENCE_FEATURES_MAX);
 	u32 hwfence_out_fences_skip;
+	int base_reset;
 	int input_fence_status;
 	bool handle_fence_error_bw_update;
 
@@ -529,6 +530,7 @@ struct sde_line_insertion_param {
  * @connectors    : Currently associated drm connectors
  * @num_connectors: Number of associated drm connectors
  * @rsc_client    : sde rsc client when mode is valid
+ * @topology_name : Current topology name
  * @is_ppsplit    : Whether current topology requires PPSplit special handling
  * @bw_control    : true if bw/clk controlled by core bw/clk properties
  * @bw_split_vote : true if bw controlled by llcc/dram bw properties
@@ -572,6 +574,8 @@ struct sde_crtc_state {
 	bool bw_control;
 	bool bw_split_vote;
 
+	enum sde_rm_topology_name topology_name;
+	u32 num_mixers;
 	bool is_ppsplit;
 	struct sde_rect crtc_roi;
 	struct sde_rect lm_bounds[MAX_MIXERS_PER_CRTC];
@@ -1205,5 +1209,23 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, u32 c
  * @bl_max: Max backlight value.
  */
 void sde_crtc_backlight_notify(struct drm_crtc *crtc, u32 bl_val, u32 bl_max);
+
+/**
+ * sde_crtc_state_set_topology_name - set current topology name
+ * @state: Pointer to crtc_state
+ */
+static inline void sde_crtc_state_set_topology_name(
+		struct drm_crtc_state *state,
+		enum sde_rm_topology_name topology_name)
+{
+	struct sde_crtc_state *cstate;
+
+	if (!state)
+		return;
+
+	cstate = to_sde_crtc_state(state);
+
+	cstate->topology_name = topology_name;
+}
 
 #endif /* _SDE_CRTC_H_ */

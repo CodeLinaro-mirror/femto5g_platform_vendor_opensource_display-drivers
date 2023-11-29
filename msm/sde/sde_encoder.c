@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1143,6 +1143,10 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 				return ret;
 			}
 		}
+
+		sde_crtc_state_set_topology_name(crtc_state,
+				sde_connector_get_property(conn_state,
+				CONNECTOR_PROP_TOPOLOGY_NAME));
 
 		ret = sde_connector_set_blob_data(conn_state->connector,
 				conn_state,
