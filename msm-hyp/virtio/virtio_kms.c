@@ -105,6 +105,27 @@ static const char * const disp_order_str[] = {
 	"septenary",
 	"octonary",
 };
+
+enum color_space {
+	VIRTIO_COLOR_SPACE_UNCORRECTED = 0x0,
+	VIRTIO_COLOR_SPACE_SRGB        = 0x1,
+	VIRTIO_COLOR_SPACE_LRGB        = 0x2,
+	VIRTIO_COLOR_SPACE_BT601       = 0x3,
+	VIRTIO_COLOR_SPACE_BT601_FULL  = 0x4,
+	VIRTIO_COLOR_SPACE_BT709       = 0x5,
+	VIRTIO_COLOR_SPACE_BT709_FULL  = 0x6,
+};
+
+enum virtio_layer_type {
+	VIRTIO_QDI_LAYER_NONE		= 0,
+	VIRTIO_QDI_LAYER_GRAPHICS,
+	VIRTIO_QDI_LAYER_OVERLAY,
+	VIRTIO_QDI_LAYER_DMA,
+	VIRTIO_QDI_LAYER_CURSOR,
+	VIRTIO_QDI_LAYER_MAX,
+	VIRTIO_QDI_LAYER_FORCE_32BIT	= 0x7FFFFFFF
+};
+
 static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 		struct msm_hyp_framebuffer *fb);
 
@@ -752,6 +773,66 @@ static void virtio_kms_plane_zpos_adj_fe(struct drm_crtc *crtc,
 	}
 }
 
+static bool virtio_kms_plane_is_csc_matrix_changed(
+		struct msm_hyp_plane_state *pre,
+		struct msm_hyp_plane_state *cur,
+		uint32_t *color_space)
+{
+	bool ret = false;
+
+	/*
+	 * The ctm_coeff[4] value is unique for each CSC matrix. We can use
+	 * this to identify the color space associated with each matrix. The
+	 * index of each element corresponds to the associated VIRTIO color space
+	 * enum value.
+	 */
+	static const int64_t msm_hyp_csc_unique_coeffs[] = {
+		0x0,		/* VIRTIO_COLOR_SPACE_UNCORRECTED */
+		0x0,		/* VIRTIO_COLOR_SPACE_SRGB */
+		0x0,		/* VIRTIO_COLOR_SPACE_LRGB */
+		0x7F9B800000,	/* VIRTIO_COLOR_SPACE_BT601 */
+		0x7fa8000000,	/* VIRTIO_COLOR_SPACE_BT601_FULL */
+		0x7fc9800000,	/* VIRTIO_COLOR_SPACE_BT709 */
+		0x7fd0000000	/* VIRTIO_COLOR_SPACE_BT709_FULL */
+	};
+
+	/* ctm_coeff[4] is unique for each matrix */
+	uint32_t unique_coeff_idx = 4;
+
+	if (pre && cur) {
+		/*
+		 * Do not need to compare the entire matrix. It should be
+		 * sufficient to only check the uniqe coefficient.
+		 */
+		if (pre->csc.ctm_coeff[unique_coeff_idx] !=
+			cur->csc.ctm_coeff[unique_coeff_idx])
+			ret = true;
+		pr_debug("virtio : color space %llx %llx\n",
+				pre->csc.ctm_coeff[unique_coeff_idx],
+				cur->csc.ctm_coeff[unique_coeff_idx]);
+	}
+
+	if (color_space && ret) {
+		if (msm_hyp_csc_unique_coeffs[VIRTIO_COLOR_SPACE_BT601] ==
+				cur->csc.ctm_coeff[unique_coeff_idx])
+			*color_space = VIRTIO_COLOR_SPACE_BT601;
+		else if (msm_hyp_csc_unique_coeffs[VIRTIO_COLOR_SPACE_BT601_FULL] ==
+				cur->csc.ctm_coeff[unique_coeff_idx])
+			*color_space = VIRTIO_COLOR_SPACE_BT601_FULL;
+		else if (msm_hyp_csc_unique_coeffs[VIRTIO_COLOR_SPACE_BT709] ==
+				cur->csc.ctm_coeff[unique_coeff_idx])
+			*color_space = VIRTIO_COLOR_SPACE_BT709;
+		else if (msm_hyp_csc_unique_coeffs[VIRTIO_COLOR_SPACE_BT709_FULL] ==
+				cur->csc.ctm_coeff[unique_coeff_idx])
+			*color_space = VIRTIO_COLOR_SPACE_BT709_FULL;
+		else
+			*color_space = VIRTIO_COLOR_SPACE_BT601;
+	}
+
+	pr_debug("virtio : csc_matrix_changed %d\n", *color_space);
+	return ret;
+}
+
 static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 		struct drm_atomic_state *old_atomic_state)
 {
@@ -883,6 +964,10 @@ static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 		prop.mask |= BLEND_MODE;
 	}
 
+	if (virtio_kms_plane_is_csc_matrix_changed(old_pstate, new_pstate, &prop.color_space)) {
+		prop.mask |= COLOR_SPACE;
+	}
+
 	rc = virtio_gpu_cmd_set_plane_properties(kms,
 			crtc_priv->scanout,
 			plane_priv->plane_id,
@@ -976,7 +1061,9 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 
 			//TODO : check for the support of scaling and csc
 			priv->base.support_scale = false;
-			priv->base.support_csc = false;
+
+			if (kms->outputs[i].plane_caps[j].plane_type == VIRTIO_QDI_LAYER_OVERLAY)
+				priv->base.support_csc = true;
 
 			priv->base.possible_crtcs = 1 << i;
 			priv->base.maxdwnscale = SSPP_UNITY_SCALE;
@@ -1599,6 +1686,7 @@ static int virtio_kms_scanout_init(struct virtio_kms *kms, uint32_t scanout)
 				plane_id);
 		if (rc) {
 			pr_err("virtio : scanout %d plane_properties failed %d\n",
+					scanout,
 					plane_id);
 			goto error;
 		}
@@ -1923,3 +2011,7 @@ void virtio_kms_unregister(void)
 {
         platform_driver_unregister(&virtio_kms_driver);
 }
+
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+MODULE_IMPORT_NS(DMA_BUF);
+#endif
