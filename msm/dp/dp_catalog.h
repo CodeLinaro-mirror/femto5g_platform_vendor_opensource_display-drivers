@@ -108,6 +108,11 @@ struct dp_catalog_ctrl {
 	int (*late_phy_init)(struct dp_catalog_ctrl *ctrl,
 					u8 lane_cnt, bool flipped);
 	void (*reset_retimer)(struct dp_catalog_ctrl *ctrl);
+	void (*setup_misr)(struct dp_catalog_ctrl *ctrl,
+			bool enable, u32 frame_count);
+	int (*collect_misr)(struct dp_catalog_ctrl *ctrl, u32 *misr);
+	int (*collect_crc)(struct dp_catalog_ctrl *ctrl,
+			u32 *r, u32 *g, u32 *b, int strm_id);
 };
 
 struct dp_catalog_hpd {

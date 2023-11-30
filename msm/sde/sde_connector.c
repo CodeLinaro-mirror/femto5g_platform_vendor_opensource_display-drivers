@@ -2657,11 +2657,19 @@ static int sde_connector_init_debugfs(struct drm_connector *connector)
 static int sde_connector_late_register(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn = to_sde_connector(connector);
+	int rc = 0;
 
 	if (c_conn->ops.late_register)
-		c_conn->ops.late_register(connector);
+		rc = c_conn->ops.late_register(connector);
 
-	return sde_connector_init_debugfs(connector);
+	if (rc) {
+		SDE_ERROR_CONN(c_conn, "connector %s late register failed ! rc=%d\n",
+			       connector->name, rc);
+	}
+
+	rc = sde_connector_init_debugfs(connector);
+
+	return rc;
 }
 
 static void sde_connector_early_unregister(struct drm_connector *connector)
