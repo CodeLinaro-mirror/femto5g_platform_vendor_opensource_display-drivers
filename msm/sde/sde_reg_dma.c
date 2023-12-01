@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -76,6 +77,7 @@ static int default_last_command_sb(struct sde_hw_ctl *ctl,
 
 static void default_dump_reg(void)
 {
+	DRM_ERROR("not implemented\n");
 }
 
 static void set_default_dma_ops(struct sde_hw_reg_dma *reg_dma)

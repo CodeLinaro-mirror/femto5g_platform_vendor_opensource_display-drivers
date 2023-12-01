@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_CTRL_H_
@@ -41,6 +41,11 @@ struct dp_ctrl {
 	void (*set_sim_mode)(struct dp_ctrl *dp_ctrl, bool en);
 	void (*set_phy_bond_mode)(struct dp_ctrl *dp_ctrl,
 			enum dp_phy_bond_mode mode);
+	void (*setup_misr)(struct dp_ctrl *dp_ctrl,
+			bool enable, u32 frame_count);
+	int (*collect_misr)(struct dp_ctrl *dp_ctrl, u32 *misr);
+	int (*collect_crc)(struct dp_ctrl *dp_ctrl,
+			u32 *r, u32 *g, u32 *b, struct dp_panel *panel);
 };
 
 struct dp_ctrl_in {
@@ -52,6 +57,7 @@ struct dp_ctrl_in {
 	struct dp_power *power;
 	struct dp_catalog_ctrl *catalog;
 	struct dp_pll *pll;
+	struct dp_pll *pclk_bond_pll;
 	enum dp_phy_bond_mode phy_bond_mode;
 };
 

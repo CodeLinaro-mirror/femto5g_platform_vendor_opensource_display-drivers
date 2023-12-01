@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -685,6 +685,35 @@ static int msm_component_bind_all(struct device *dev,
 }
 #endif /* CONFIG_OF */
 
+static ssize_t init_complete_show(struct device *dev, struct device_attribute *attr,
+			char *buf)
+{
+	struct msm_drm_private *priv;
+	struct drm_device *ddev;
+
+	ddev = dev_get_drvdata(dev);
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
+
+	if (priv->init_comp == 1)
+		return scnprintf(buf, sizeof(priv->init_comp), "%d\n", priv->init_comp);
+	else
+		return scnprintf(buf, sizeof(unsigned int), "0");
+}
+
+static DEVICE_ATTR_RO(init_complete);
+
+static struct attribute *init_complete_fs_attrs[] = {
+	&dev_attr_init_complete.attr,
+	NULL
+};
+
+static struct attribute_group init_complete_attr_group = {
+	.attrs = init_complete_fs_attrs
+};
+
 static int msm_drm_display_thread_create(struct msm_drm_private *priv, struct drm_device *ddev,
 	struct device *dev)
 {
@@ -856,6 +885,8 @@ static int msm_drm_device_init(struct platform_device *pdev,
 	ddev->dev_private = priv;
 	priv->dev = ddev;
 
+	priv->init_comp = 0;
+
 	of_property_read_u32(dev->of_node, "cell-index", &instance_id);
 	if (instance_id > MAX_HW_INSTANCES) {
 		pr_err("invalid hardware instance id %d\n", instance_id);
@@ -940,6 +971,11 @@ static int msm_drm_component_init(struct device *dev)
 	ret = msm_init_vram(ddev);
 	if (ret)
 		goto fail;
+
+	/* Create the init_complete file in the module */
+	ret = sysfs_create_group(&pdev->dev.kobj, &init_complete_attr_group);
+	if (ret)
+		DISP_DEV_ERR(dev, "unable to create init_complete sysfs attr\n");
 
 	ddev->mode_config.funcs = &mode_config_funcs;
 	ddev->mode_config.helper_private = &mode_config_helper_funcs;
@@ -1038,7 +1074,15 @@ static int msm_drm_component_init(struct device *dev)
 	}
 
 	drm_kms_helper_poll_init(ddev);
+
+#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
 	place_marker("M - DISPLAY Driver Ready");
+#else
+	pr_info("M - DISPLAY Driver Ready\n");
+#endif
+
+	/* Set the flag in the init_complete file in msm_drm sysfs to 1 */
+	priv->init_comp = 1;
 
 	return 0;
 
@@ -1707,7 +1751,7 @@ int msm_ioctl_rmfb2(struct drm_device *dev, void *data,
 
 	return 0;
 }
-EXPORT_SYMBOL(msm_ioctl_rmfb2);
+EXPORT_SYMBOL_GPL(msm_ioctl_rmfb2);
 
 /**
  * msm_ioctl_power_ctrl - enable/disable power vote on MDSS Hw
@@ -2258,6 +2302,11 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	int ret;
 	struct component_match *match = NULL;
 
+#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
+	place_marker("M - DISPLAY Driver Init");
+#else
+	pr_info("M - DISPLAY Driver Init\n");
+#endif
 	ret = msm_drm_component_dependency_check(&pdev->dev);
 	if (ret)
 		return ret;

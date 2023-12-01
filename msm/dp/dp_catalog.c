@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -46,6 +46,14 @@
 #define DP_INTR_MASK5		(DP_INTERRUPT_STATUS5 << 2)
 #define DP_TPG_PATTERN_MAX	9
 #define DP_TPG_PATTERN_DEFAULT	8
+
+#define MISR_CTRL_IS_ENABLE			BIT(0)
+#define MISR_CTRL_SW_RESET			BIT(1)
+#define MISR_CTRL_ACTIVE_ONLY			BIT(2)
+#define MISR_CTRL_NO_FILLER			BIT(3)
+#define MISR_CTRL_FRAME_COUNT_MASK		0xFF0
+#define MISR_CTRL_FRAME_COUNT_SHIFT		4
+#define MISR_CTRL_MST_FRAME_END_CHECK_POINT	BIT(20)
 
 #define dp_catalog_fill_io(x) { \
 	catalog->io.x = parser->get_io(parser, #x); \
@@ -1331,6 +1339,11 @@ static void dp_catalog_panel_config_msa(struct dp_catalog_panel *panel,
 		nvid_reg_off = DP1_SOFTWARE_NVID - DP_SOFTWARE_NVID;
 	}
 
+	if (catalog->parser->dsc_passthrough.dsc_passthrough_enable) {
+		mvid = catalog->parser->msa.ovr_sw_mvid;
+		nvid = catalog->parser->msa.ovr_sw_nvid;
+	}
+
 	DP_DEBUG("mvid=0x%x, nvid=0x%x\n", mvid, nvid);
 	dp_write(DP_SOFTWARE_MVID + mvid_reg_off, mvid);
 	dp_write(DP_SOFTWARE_NVID + nvid_reg_off, nvid);
@@ -1397,7 +1410,7 @@ static void dp_catalog_ctrl_usb_reset(struct dp_catalog_ctrl *ctrl, bool flip)
 	io_data = catalog->io.usb3_dp_com;
 
 	DP_DEBUG("Program PHYMODE to DP only\n");
-	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x0a);
+	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x0F);
 	dp_write(USB3_DP_COM_PHY_MODE_CTRL, 0x02);
 	dp_write(USB3_DP_COM_SW_RESET, 0x01);
 	/* make sure usb3 com phy software reset is done */
@@ -1414,8 +1427,18 @@ static void dp_catalog_ctrl_usb_reset(struct dp_catalog_ctrl *ctrl, bool flip)
 	wmb();
 
 	dp_write(USB3_DP_COM_POWER_DOWN_CTRL, 0x01);
-	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x00);
+	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x09);
 	/* make sure phy is brought out of reset */
+	wmb();
+
+	/*
+	 * USB PHY may interfere DP PHY if the USB PHY isn't reset properly.
+	 * Update the reset sequence per hardware suggestion, force USB PLL
+	 * to be disabled.
+	 */
+	io_data = catalog->io.usb3_pll;
+	dp_write(USB3_QSERDES_COM_PLL_EN, 0x02);
+	/* make sure register is written */
 	wmb();
 }
 
@@ -1486,7 +1509,7 @@ static void dp_catalog_panel_tpg_cfg(struct dp_catalog_panel *panel, u32 pattern
 	wmb(); /* ensure Timing generator is turned on */
 }
 
-static void dp_catalog_panel_dsc_cfg(struct dp_catalog_panel *panel)
+static void dp_catalog_panel_dsc_cfg(struct dp_catalog_panel *panel, bool dscPassthrough)
 {
 	struct dp_catalog_private *catalog;
 	struct dp_io_data *io_data;
@@ -1512,15 +1535,16 @@ static void dp_catalog_panel_dsc_cfg(struct dp_catalog_panel *panel)
 
 	dp_write(MMSS_DP_DSC_DTO_COUNT, panel->dsc.dto_count);
 
-	reg = dp_read(MMSS_DP_DSC_DTO);
-	if (panel->dsc.dto_en) {
-		reg |= BIT(0);
-		reg |= BIT(3);
-		reg |= (panel->dsc.dto_n << 8);
-		reg |= (panel->dsc.dto_d << 16);
+	if (!dscPassthrough) {
+		reg = dp_read(MMSS_DP_DSC_DTO);
+		if (panel->dsc.dto_en) {
+			reg |= BIT(0);
+			reg |= BIT(3);
+			reg |= (panel->dsc.dto_n << 8);
+			reg |= (panel->dsc.dto_d << 16);
+		}
+		dp_write(MMSS_DP_DSC_DTO, reg);
 	}
-	dp_write(MMSS_DP_DSC_DTO, reg);
-
 	io_data = catalog->io.dp_link;
 
 	if (panel->stream_id == DP_STREAM_0)
@@ -1528,16 +1552,18 @@ static void dp_catalog_panel_dsc_cfg(struct dp_catalog_panel *panel)
 	else
 		offset = DP1_COMPRESSION_MODE_CTRL - DP_COMPRESSION_MODE_CTRL;
 
-	dp_write(DP_PPS_HB_0_3 + offset, 0x7F1000);
-	dp_write(DP_PPS_PB_0_3 + offset, 0xA22300);
+	if (!dscPassthrough) {
+		dp_write(DP_PPS_HB_0_3 + offset, 0x7F1000);
+		dp_write(DP_PPS_PB_0_3 + offset, 0xA22300);
 
-	for (i = 0; i < panel->dsc.parity_word_len; i++)
-		dp_write(DP_PPS_PB_4_7 + (i << 2) + offset,
-				panel->dsc.parity_word[i]);
+		for (i = 0; i < panel->dsc.parity_word_len; i++)
+			dp_write(DP_PPS_PB_4_7 + (i << 2) + offset,
+					panel->dsc.parity_word[i]);
 
-	for (i = 0; i < panel->dsc.pps_word_len; i++)
-		dp_write(DP_PPS_PPS_0_3 + (i << 2) + offset,
-				panel->dsc.pps_word[i]);
+		for (i = 0; i < panel->dsc.pps_word_len; i++)
+			dp_write(DP_PPS_PPS_0_3 + (i << 2) + offset,
+					panel->dsc.pps_word[i]);
+	}
 
 	reg = 0;
 	if (panel->dsc.dsc_en) {
@@ -1545,6 +1571,10 @@ static void dp_catalog_panel_dsc_cfg(struct dp_catalog_panel *panel)
 		reg |= (panel->dsc.eol_byte_num << 3);
 		reg |= (panel->dsc.slice_per_pkt << 5);
 		reg |= (panel->dsc.bytes_per_pkt << 16);
+		reg |= (panel->dsc.be_in_lane << 10);
+	}
+	if (dscPassthrough) {
+		reg = 0;
 		reg |= (panel->dsc.be_in_lane << 10);
 	}
 	dp_write(DP_COMPRESSION_MODE_CTRL + offset, reg);
@@ -2313,6 +2343,38 @@ static void dp_catalog_ctrl_mainlink_levels(struct dp_catalog_ctrl *ctrl,
 	dp_write(DP_MAINLINK_LEVELS, mainlink_levels);
 }
 
+static void dp_catalog_ctrl_reset_retimer(struct dp_catalog_ctrl *ctrl)
+{
+	struct dp_catalog_private *catalog;
+	struct dp_io_data *io_data;
+	struct dp_parser *parser;
+	u32 reg;
+
+	catalog = dp_catalog_get_priv(ctrl);
+	io_data   = catalog->io.dp_phy;
+	parser = catalog->parser;
+
+	/* TODO: revisit this logic for DP_PHY_VERSION_5_0_0 */
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_5_0_0)
+		return;
+
+	reg = dp_read(DP_PHY_CFG) & 0xFF;
+
+	/* Toggle RETIMING_ENABLE */
+	reg &= ~BIT(0);
+	dp_write(DP_PHY_CFG, reg);
+	udelay(2000);
+
+	reg |= BIT(0);
+	dp_write(DP_PHY_CFG, reg);
+	/* make sure retimer is reset */
+	wmb();
+
+	do {
+		reg = dp_read(DP_PHY_STATUS);
+		pr_debug("Phy_ready is %d. Status=%x\n", reg & BIT(1), reg);
+	} while (!(reg & BIT(1)));
+}
 
 /* panel related catalog functions */
 static int dp_catalog_panel_timing_cfg(struct dp_catalog_panel *panel)
@@ -2737,6 +2799,114 @@ static void dp_catalog_panel_config_spd(struct dp_catalog_panel *panel)
 	dp_catalog_panel_sdp_update(panel);
 }
 
+static void dp_catalog_setup_misr(struct dp_catalog_ctrl *ctrl,
+		bool enable, u32 frame_count)
+{
+	struct dp_catalog_private *catalog;
+	struct dp_io_data *io_data;
+	u32 config = 0;
+
+	if (!ctrl) {
+		pr_err("invalid input\n");
+		return;
+	}
+
+	catalog = dp_catalog_get_priv(ctrl);
+	io_data = catalog->io.dp_link;
+
+	if (enable) {
+		io_data = catalog->io.dp_link;
+		config = (frame_count << MISR_CTRL_FRAME_COUNT_SHIFT) &
+				MISR_CTRL_FRAME_COUNT_MASK;
+		config |= MISR_CTRL_IS_ENABLE | MISR_CTRL_ACTIVE_ONLY |
+				MISR_CTRL_NO_FILLER | MISR_CTRL_SW_RESET;
+		dp_write(DP_MISR_CTRL, config);
+		usleep_range(10, 20);
+
+		config &= ~MISR_CTRL_SW_RESET;
+	} else {
+		io_data = catalog->io.dp_link;
+		config = 0;
+	}
+
+	dp_write(DP_MISR_CTRL, config);
+}
+
+static int dp_catalog_collect_misr(struct dp_catalog_ctrl *ctrl,
+		u32 *misr)
+{
+	struct dp_catalog_private *catalog;
+	struct dp_io_data *io_data;
+	u32 cfg;
+	int i;
+
+	if (!ctrl) {
+		pr_err("invalid input\n");
+		return -EINVAL;
+	}
+
+	catalog = dp_catalog_get_priv(ctrl);
+	io_data = catalog->io.dp_link;
+
+	cfg = dp_read(DP_MISR_CTRL);
+	if (!(cfg & MISR_CTRL_IS_ENABLE))
+		return -EPERM;
+
+	for (i = 0; i < DP_MAX_PHY_LN; i++)
+		misr[i] = dp_read(DP_MISR_VALUE_LANE0 +
+				i * 4);
+
+	return DP_MAX_PHY_LN;
+}
+
+static int dp_catalog_collect_crc(struct dp_catalog_ctrl *ctrl,
+		u32 *r, u32 *g, u32 *b, int strm_id)
+{
+	struct dp_catalog_private *catalog;
+	struct dp_io_data *io_data;
+	u32 cfg, rg;
+
+	if (!ctrl) {
+		pr_err("invalid input\n");
+		return -EINVAL;
+	}
+
+	catalog = dp_catalog_get_priv(ctrl);
+
+	if (strm_id == DP_STREAM_0) {
+		io_data = catalog->io.dp_p0;
+		cfg = dp_read(MMSS_DP_TIMING_ENGINE_EN);
+		if (!(cfg & BIT(8))) {
+			cfg |= BIT(8);
+			dp_write(MMSS_DP_TIMING_ENGINE_EN, cfg);
+			return -EAGAIN;
+		}
+
+		io_data = catalog->io.dp_link;
+		rg = dp_read(DP_PSR_CRC_RG);
+		*b = dp_read(DP_PSR_CRC_B);
+	} else if (strm_id == DP_STREAM_1) {
+		io_data = catalog->io.dp_p1;
+		cfg = dp_read(MMSS_DP_TIMING_ENGINE_EN);
+		if (!(cfg & BIT(8))) {
+			cfg |= BIT(8);
+			dp_write(MMSS_DP_TIMING_ENGINE_EN, cfg);
+			return -EAGAIN;
+		}
+
+		io_data = catalog->io.dp_link;
+		rg = dp_read(DP_DP1_CRC_RG);
+		*b = dp_read(DP_DP1_CRC_B);
+	} else {
+		return -EINVAL;
+	}
+
+	*r = rg & 0xFFFF;
+	*g = rg >> 16;
+
+	return 0;
+}
+
 static void dp_catalog_get_io_buf(struct dp_catalog_private *catalog)
 {
 	struct dp_parser *parser = catalog->parser;
@@ -2755,6 +2925,7 @@ static void dp_catalog_get_io_buf(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io_buf(hdcp_physical);
 	dp_catalog_fill_io_buf(dp_p1);
 	dp_catalog_fill_io_buf(dp_tcsr);
+	dp_catalog_fill_io_buf(usb3_pll);
 }
 
 static void dp_catalog_get_io(struct dp_catalog_private *catalog)
@@ -2775,6 +2946,7 @@ static void dp_catalog_get_io(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io(hdcp_physical);
 	dp_catalog_fill_io(dp_p1);
 	dp_catalog_fill_io(dp_tcsr);
+	dp_catalog_fill_io(usb3_pll);
 }
 
 static void dp_catalog_set_exe_mode(struct dp_catalog *dp_catalog, char *mode)
@@ -2820,9 +2992,9 @@ static int dp_catalog_init(struct device *dev, struct dp_catalog *dp_catalog,
 				struct dp_catalog_private, dp_catalog);
 
 	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_5_0_0)
-		dp_catalog->sub = dp_catalog_get_v500(dev, dp_catalog, &catalog->io);
+		dp_catalog->sub = dp_catalog_get_v500(dev, dp_catalog, &catalog->io, parser);
 	else if (parser->hw_cfg.phy_version >= DP_PHY_VERSION_4_2_0)
-		dp_catalog->sub = dp_catalog_get_v420(dev, dp_catalog, &catalog->io);
+		dp_catalog->sub = dp_catalog_get_v420(dev, dp_catalog, &catalog->io, parser);
 	else if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
 		dp_catalog->sub = dp_catalog_get_v200(dev, dp_catalog, &catalog->io);
 	else
@@ -2900,6 +3072,10 @@ struct dp_catalog *dp_catalog_get(struct device *dev, struct dp_parser *parser)
 		.fec_config = dp_catalog_ctrl_fec_config,
 		.mainlink_levels = dp_catalog_ctrl_mainlink_levels,
 		.late_phy_init = dp_catalog_ctrl_late_phy_init,
+		.reset_retimer = dp_catalog_ctrl_reset_retimer,
+		.setup_misr = dp_catalog_setup_misr,
+		.collect_misr = dp_catalog_collect_misr,
+		.collect_crc = dp_catalog_collect_crc,
 	};
 	struct dp_catalog_hpd hpd = {
 		.config_hpd	= dp_catalog_hpd_config_hpd,

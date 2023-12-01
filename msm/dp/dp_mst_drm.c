@@ -75,9 +75,16 @@ struct dp_drm_mst_fw_helper_ops {
 	int (*update_payload_part2)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_atomic_state *state,
 			struct drm_dp_mst_atomic_payload *payload);
+#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
+	void (*reset_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr,
+			struct drm_dp_mst_topology_state *mst_state,
+			const struct drm_dp_mst_atomic_payload *old_payload,
+			struct drm_dp_mst_atomic_payload *new_payload);
+#else
 	void (*reset_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_dp_mst_topology_state *mst_state,
 			struct drm_dp_mst_atomic_payload *payload);
+#endif
 #else
 
 	int (*atomic_find_vcpi_slots)(struct drm_atomic_state *state,
@@ -179,10 +186,10 @@ struct dp_mst_hpd_work {
 #define to_dp_mst_bridge_state(x) \
 		to_dp_mst_bridge_priv_state((x)->obj.state)
 
-static void dp_mst_register_connector(struct drm_connector *connector);
+static int dp_mst_register_connector(struct drm_connector *connector);
 static void dp_mst_destroy_connector(		struct drm_connector *connector);
 
-static void dp_mst_register_fixed_connector(struct drm_connector *connector);
+static int dp_mst_register_fixed_connector(struct drm_connector *connector);
 static void dp_mst_destroy_fixed_connector(		struct drm_connector *connector);
 
 
@@ -430,7 +437,7 @@ static bool dp_mst_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	dp = bridge->display;
 
 	dp->convert_to_dp_mode(dp, bridge_state->dp_panel, mode, &dp_mode);
-	convert_to_drm_mode(&dp_mode, adjusted_mode);
+	convert_to_drm_mode(&dp_mode, adjusted_mode, dp);
 
 	DP_MST_DEBUG("mst bridge [%d] mode:%s fixup\n", bridge->id, mode->name);
 end:
@@ -672,7 +679,11 @@ static void _dp_mst_bridge_pre_disable_part1(struct dp_mst_bridge *dp_bridge)
 #if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	mst_state = to_drm_dp_mst_topology_state(mst->mst_mgr.base.state);
 	payload = drm_atomic_get_mst_payload_state(mst_state, port);
+#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
+	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload, payload);
+#else
 	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload);
+#endif
 #else
 	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, port);
 	_dp_mst_update_timeslots(mst, dp_bridge, port);
@@ -1004,7 +1015,7 @@ static bool dp_mst_super_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	tmp = *mode;
 	dp_mst_split_tile_timing(&tmp);
 	dp->convert_to_dp_mode(dp, bridge_state->dp_panel, &tmp, &dp_mode);
-	convert_to_drm_mode(&dp_mode, adjusted_mode);
+	convert_to_drm_mode(&dp_mode, adjusted_mode, dp);
 	dp_mst_merge_tile_timing(adjusted_mode);
 
 	DP_MST_DEBUG("mst bridge [%d] mode:%s fixup\n", bridge->id, mode->name);
@@ -2280,7 +2291,7 @@ dp_mst_add_connector(struct drm_dp_mst_topology_mgr *mgr,
 	return connector;
 }
 
-static void dp_mst_register_connector(struct drm_connector *connector)
+static int dp_mst_register_connector(struct drm_connector *connector)
 {
 	DP_MST_DEBUG("enter\n");
 
@@ -2288,6 +2299,8 @@ static void dp_mst_register_connector(struct drm_connector *connector)
 
 	DP_MST_INFO("register mst connector id:%d\n",
 			connector->base.id);
+
+	return 0;
 }
 
 static void dp_mst_destroy_connector(struct drm_connector *connector)
@@ -2330,9 +2343,6 @@ dp_mst_fixed_atomic_best_encoder(struct drm_connector *connector,
 	struct drm_encoder *enc = NULL;
 	struct dp_mst_bridge_state *bridge_state;
 	u32 i = 0;
-
-	if (dp_mst_atomic_find_super_encoder(connector, display, state, &enc))
-		goto end;
 
 	if (dp_mst_atomic_find_super_encoder(connector, display, state, &enc))
 		goto end;
@@ -2536,15 +2546,29 @@ static int dp_mst_fixed_connnector_set_info_blob(
 	return 0;
 }
 
-static void dp_mst_register_fixed_connector(struct drm_connector *connector)
+static int dp_mst_register_fixed_connector(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn = to_sde_connector(connector);
 	struct dp_display *dp_display = c_conn->display;
 	struct dp_mst_private *dp_mst = dp_display->dp_mst_prv_info;
 	struct edid *edid;
 	int i;
+	struct drm_dp_mst_port *mst_port = NULL;
 
 	DP_MST_DEBUG("enter\n");
+
+	/*
+	 * Check if the port exists i.e. is not NULL,
+	 * otherwise cannot get edid if the port is not set.
+	 */
+	if (!c_conn->mst_port)
+		return -EINVAL;
+
+	mst_port = c_conn->mst_port;
+
+	/* Check if the port aux ddc line is enabled */
+	if (!mst_port->aux.ddc.algo || !mst_port->aux.ddc.algo_data)
+		return -EINVAL;
 
 	/* skip connector registered for fixed topology ports */
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
@@ -2570,11 +2594,13 @@ static void dp_mst_register_fixed_connector(struct drm_connector *connector)
 			if (connector->state->crtc)
 				sde_connector_helper_mode_change_commit(
 						connector);
-			return;
+			return 0;
 		}
 	}
 
 	dp_mst_register_connector(connector);
+
+	return 0;
 }
 
 static void dp_mst_destroy_fixed_connector(struct drm_connector *connector)
@@ -2924,5 +2950,22 @@ void dp_mst_deinit(struct dp_display *dp_display)
 	mutex_destroy(&mst->edid_lock);
 
 	DP_MST_INFO("dp drm mst topology manager deinit completed\n");
+}
+
+void dp_mst_dump_topology(struct dp_display *dp_display, struct seq_file *m)
+{
+	struct dp_mst_private *mst;
+
+	if (!dp_display) {
+		pr_err("invalid params\n");
+		return;
+	}
+
+	mst = dp_display->dp_mst_prv_info;
+
+	if (!mst->mst_initialized)
+		return;
+
+	drm_dp_mst_dump_topology(m, &mst->mst_mgr);
 }
 

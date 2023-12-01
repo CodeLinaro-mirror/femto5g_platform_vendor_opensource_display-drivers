@@ -483,6 +483,8 @@ struct msm_display_dsc_info {
 	u32 dsc_4hsmerge_padding;
 	u32 dsc_4hsmerge_alignment;
 	bool half_panel_pu;
+	char *out_byte_order;
+	size_t out_byte_order_size;
 };
 
 
@@ -1100,6 +1102,9 @@ struct msm_drm_private {
 	struct list_head vm_client_list;
 	/* list of component registered for notification */
 	struct blocking_notifier_head component_notifier_list;
+
+	/* flag for initialization status */
+	unsigned int init_comp;
 };
 
 /* get struct msm_kms * from drm_device * */

@@ -18,6 +18,7 @@
 
 #define DP_CTRL_INTR_READY_FOR_VIDEO     BIT(0)
 #define DP_CTRL_INTR_IDLE_PATTERN_SENT  BIT(3)
+#define DP_CTRL_INTR_CRC_UPDATED        BIT(9)
 
 #define DP_CTRL_INTR_MST_DP0_VCPF_SENT	BIT(0)
 #define DP_CTRL_INTR_MST_DP1_VCPF_SENT	BIT(3)
@@ -65,6 +66,7 @@ struct dp_ctrl_private {
 	struct dp_parser *parser;
 	struct dp_catalog_ctrl *catalog;
 	struct dp_pll *pll;
+	struct dp_pll *pclk_bond_pll;
 
 	struct completion idle_comp;
 	struct completion video_comp;
@@ -87,6 +89,9 @@ struct dp_ctrl_private {
 	u32 training_2_pattern;
 	struct dp_mst_channel_info mst_ch_info;
 	u32 cell_idx;
+
+	bool misr_enabled;
+	bool misr_updated;
 };
 
 enum notification_status {
@@ -105,6 +110,12 @@ static void dp_ctrl_idle_patterns_sent(struct dp_ctrl_private *ctrl)
 static void dp_ctrl_video_ready(struct dp_ctrl_private *ctrl)
 {
 	complete(&ctrl->video_comp);
+}
+
+static void dp_ctrl_misr_updated(struct dp_ctrl_private *ctrl)
+{
+	DP_DEBUG("DP%d dp_misr_updated\n", ctrl->cell_idx);
+	ctrl->misr_updated = true;
 }
 
 static void dp_ctrl_abort(struct dp_ctrl *dp_ctrl, bool abort)
@@ -210,16 +221,18 @@ static int dp_ctrl_update_sink_vx_px(struct dp_ctrl_private *ctrl)
 	u8 buf[DP_MAX_LANES];
 	u8 v_level = ctrl->link->phy_params.v_level;
 	u8 p_level = ctrl->link->phy_params.p_level;
+	bool max_v = ctrl->link->phy_params.max_v_level_reached;
+	bool max_p = ctrl->link->phy_params.max_p_level_reached;
 	u8 size = min_t(u8, sizeof(buf), ctrl->link->link_params.lane_count);
 	u32 max_level_reached = 0;
 
-	if (v_level == ctrl->link->phy_params.max_v_level) {
+	if (max_v || v_level == ctrl->link->phy_params.max_v_level) {
 		DP_DEBUG("DP%d max voltage swing level reached %d\n",
 				ctrl->cell_idx, v_level);
 		max_level_reached |= DP_TRAIN_MAX_SWING_REACHED;
 	}
 
-	if (p_level == ctrl->link->phy_params.max_p_level) {
+	if (max_p || p_level == ctrl->link->phy_params.max_p_level) {
 		DP_DEBUG("DP%d max pre-emphasis level reached %d\n",
 				ctrl->cell_idx, p_level);
 		max_level_reached |= DP_TRAIN_MAX_PRE_EMPHASIS_REACHED;
@@ -626,6 +639,8 @@ static int dp_ctrl_link_train(struct dp_ctrl_private *ctrl)
 
 	ctrl->link->phy_params.p_level = ctrl->parser->link_training_min_plevel;
 	ctrl->link->phy_params.v_level = ctrl->parser->link_training_min_vlevel;
+	ctrl->link->phy_params.max_v_level_reached = false;
+	ctrl->link->phy_params.max_p_level_reached = false;
 
 	link_info.num_lanes = ctrl->link->link_params.lane_count;
 	link_info.rate = drm_dp_bw_code_to_link_rate(
@@ -672,11 +687,16 @@ static int dp_ctrl_link_train(struct dp_ctrl_private *ctrl)
 	DP_INFO("DP%d link training #2 successful\n", ctrl->cell_idx);
 
 end:
-	dp_ctrl_state_ctrl(ctrl, 0);
+	if (ret)
+		dp_ctrl_state_ctrl(ctrl, 0x00);
+	else
+		// According to HW, need to set to 0x80 (SEND_VIDEO) as soon as LT is done
+		dp_ctrl_state_ctrl(ctrl, 0x80);
 	/* Make sure to clear the current pattern before starting a new one */
 	wmb();
 
 	dp_ctrl_clear_training_pattern(ctrl);
+
 	return ret;
 }
 
@@ -692,7 +712,8 @@ static int dp_ctrl_setup_main_link(struct dp_ctrl_private *ctrl)
 	 * transitioned to PUSH_IDLE. In order to start transmitting a link
 	 * training pattern, we have to first to a DP software reset.
 	 */
-	ctrl->catalog->reset(ctrl->catalog);
+	// Moved to dp_ctrl_enable_link_clock
+	//ctrl->catalog->reset(ctrl->catalog);
 
 	if (ctrl->fec_mode)
 		drm_dp_dpcd_writeb(ctrl->aux->drm_aux, DP_FEC_CONFIGURATION,
@@ -754,6 +775,12 @@ static int dp_ctrl_enable_link_clock(struct dp_ctrl_private *ctrl)
 	if (ret) {
 		DP_ERR("DP%d Unabled to start link clocks\n", ctrl->cell_idx);
 		ret = -EINVAL;
+	} else {
+		/* Make sure restart the retimer after link clock is enabled */
+		ctrl->catalog->reset_retimer(ctrl->catalog);
+
+		// SW reset controller
+		ctrl->catalog->reset(ctrl->catalog);
 	}
 
 	return ret;
@@ -898,6 +925,40 @@ static int dp_ctrl_enable_stream_clocks(struct dp_ctrl_private *ctrl,
 	enum dp_pm_type clk_type;
 	char clk_name[32] = "";
 
+	/* Set the PCLK bond PLL same rate as link clock rate */
+	if (ctrl->pclk_bond_pll &&
+		ctrl->phy_bond_mode == DP_PHY_BOND_MODE_PCLK_MASTER) {
+		u32 rate = ctrl->pll->vco_rate;
+
+		DP_DEBUG("DP%d DP set bond PLL rate %u\n", ctrl->cell_idx, rate);
+		dp_ctrl_set_clock_rate(ctrl, "bond_pixel_clk_src", DP_BOND_PM, rate);
+
+		if (ctrl->pclk_bond_pll->pll_cfg) {
+			ret = ctrl->pclk_bond_pll->pll_cfg(ctrl->pclk_bond_pll,
+					rate, ctrl->phy_bond_mode);
+			if (ret < 0) {
+				DP_ERR("DP%d DP PCLK bond pll cfg failed\n", ctrl->cell_idx);
+				return ret;
+			}
+		}
+
+		if (ctrl->pclk_bond_pll->pll_prepare) {
+			ret = ctrl->pclk_bond_pll->pll_prepare(ctrl->pclk_bond_pll);
+			if (ret < 0) {
+				DP_ERR("DP%d DP PCLK bond pll prepare failed\n",
+						ctrl->cell_idx);
+				return ret;
+			}
+		}
+
+		ret = ctrl->power->clk_enable(ctrl->power, DP_BOND_PM, true);
+		if (ret) {
+			DP_ERR("DP%d Unabled to start PCLK bond PLL clocks\n",
+					ctrl->cell_idx);
+			return -EINVAL;
+		}
+	}
+
 	ret = ctrl->power->set_pixel_clk_parent(ctrl->power,
 			dp_panel->stream_id, ctrl->phy_bond_mode);
 
@@ -966,6 +1027,7 @@ static int dp_ctrl_host_init(struct dp_ctrl *dp_ctrl, bool flip, bool reset)
 	catalog = ctrl->catalog;
 
 	if (reset) {
+		catalog->reset(ctrl->catalog);
 		catalog->usb_reset(ctrl->catalog, flip);
 		catalog->phy_reset(ctrl->catalog);
 	}
@@ -1080,6 +1142,14 @@ static int dp_ctrl_link_maintenance(struct dp_ctrl *dp_ctrl)
 		ret = -EINVAL;
 		goto end;
 	}
+
+	if (ctrl->stream_count)
+		dp_ctrl_push_idle(ctrl, DP_STREAM_0);
+
+	// SW reset
+	ctrl->catalog->mainlink_ctrl(ctrl->catalog, false);
+	udelay(1000);
+	ctrl->catalog->mainlink_ctrl(ctrl->catalog, true);
 
 	do {
 		if (atomic_read(&ctrl->aborted))
@@ -1583,6 +1653,63 @@ static void dp_ctrl_set_phy_bond_mode(struct dp_ctrl *dp_ctrl,
 	ctrl->phy_bond_mode = mode;
 }
 
+static void dp_ctrl_setup_misr(struct dp_ctrl *dp_ctrl,
+				bool enable, u32 frame_count)
+{
+	struct dp_ctrl_private *ctrl;
+
+	if (!dp_ctrl)
+		return;
+
+	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
+
+	if (!ctrl->power_on)
+		return;
+
+	ctrl->misr_updated = false;
+
+	ctrl->catalog->setup_misr(ctrl->catalog, enable, frame_count);
+	ctrl->misr_enabled = enable;
+}
+
+static int dp_ctrl_collect_misr(struct dp_ctrl *dp_ctrl, u32 *misr)
+{
+	struct dp_ctrl_private *ctrl;
+
+	if (!dp_ctrl)
+		return 0;
+
+	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
+
+	if (!ctrl->power_on)
+		return -EINVAL;
+
+	if (!ctrl->misr_enabled)
+		return -EPERM;
+
+	if (!ctrl->misr_updated)	/* CRC is not ready */
+		return -EAGAIN;
+
+	return ctrl->catalog->collect_misr(ctrl->catalog, misr);
+}
+
+static int dp_ctrl_collect_crc(struct dp_ctrl *dp_ctrl,
+		u32 *r, u32 *g, u32 *b, struct dp_panel *panel)
+{
+	struct dp_ctrl_private *ctrl;
+
+	if (!dp_ctrl || !panel)
+		return 0;
+
+	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
+
+	if (!ctrl->power_on)
+		return -EINVAL;
+
+	return ctrl->catalog->collect_crc(ctrl->catalog, r, g, b,
+			panel->stream_id);
+}
+
 static void dp_ctrl_isr(struct dp_ctrl *dp_ctrl)
 {
 	struct dp_ctrl_private *ctrl;
@@ -1601,6 +1728,9 @@ static void dp_ctrl_isr(struct dp_ctrl *dp_ctrl)
 
 	if (ctrl->catalog->isr & DP_CTRL_INTR_IDLE_PATTERN_SENT)
 		dp_ctrl_idle_patterns_sent(ctrl);
+
+	if (ctrl->catalog->isr & DP_CTRL_INTR_CRC_UPDATED)
+		dp_ctrl_misr_updated(ctrl);
 
 	if (ctrl->catalog->isr5 & DP_CTRL_INTR_MST_DP0_VCPF_SENT)
 		dp_ctrl_idle_patterns_sent(ctrl);
@@ -1652,6 +1782,7 @@ struct dp_ctrl *dp_ctrl_get(struct dp_ctrl_in *in)
 	ctrl->link     = in->link;
 	ctrl->catalog  = in->catalog;
 	ctrl->pll  = in->pll;
+	ctrl->pclk_bond_pll  = in->pclk_bond_pll;
 	ctrl->dev  = in->dev;
 	ctrl->mst_mode = false;
 	ctrl->fec_mode = false;
@@ -1674,6 +1805,9 @@ struct dp_ctrl *dp_ctrl_get(struct dp_ctrl_in *in)
 	dp_ctrl->set_mst_channel_info = dp_ctrl_set_mst_channel_info;
 	dp_ctrl->set_sim_mode = dp_ctrl_set_sim_mode;
 	dp_ctrl->set_phy_bond_mode = dp_ctrl_set_phy_bond_mode;
+	dp_ctrl->setup_misr = dp_ctrl_setup_misr;
+	dp_ctrl->collect_misr = dp_ctrl_collect_misr;
+	dp_ctrl->collect_crc = dp_ctrl_collect_crc;
 
 	return dp_ctrl;
 error:

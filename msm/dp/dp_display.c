@@ -186,6 +186,7 @@ struct dp_display_private {
 	struct dp_ctrl    *ctrl;
 	struct dp_debug   *debug;
 	struct dp_pll     *pll;
+	struct dp_pll     *pclk_bond_pll;
 
 	struct dp_panel *active_panels[DP_STREAM_MAX];
 	struct dp_hdcp hdcp;
@@ -222,6 +223,7 @@ struct dp_display_private {
 
 	struct device *msm_hdcp_dev;
 	u32 hdcp_cell_idx;
+	u32 dpu_idx;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -503,6 +505,13 @@ static int dp_display_hdcp_start(struct dp_display_private *dp)
 	dp_display_check_source_hdcp_caps(dp);
 	dp_display_update_hdcp_info(dp);
 
+	if (NULL == dp->msm_hdcp_dev) {
+		/* HDCP is not supported for this DP*/
+		DP_INFO("DP%d : Couldn't find msm-hdcp node.\n",dp->cell_idx);
+		dp_display_update_hdcp_status(dp, true);
+		return 0;
+	}
+
 	if (dp_display_is_hdcp_enabled(dp)) {
 		if (dp->hdcp.ops && dp->hdcp.ops->on &&
 				dp->hdcp.ops->on(dp->hdcp.data)) {
@@ -688,6 +697,7 @@ static int dp_display_initialize_hdcp(struct dp_display_private *dp)
 
 	hdcp_init_data.client_id     = HDCP_CLIENT_DP;
 	hdcp_init_data.client_index  = dp->hdcp_cell_idx;
+	hdcp_init_data.dpu_index     = dp->dpu_idx;
 	hdcp_init_data.drm_aux       = dp->aux->drm_aux;
 	hdcp_init_data.cb_data       = (void *)dp;
 	hdcp_init_data.workq         = dp->wq;
@@ -1775,10 +1785,7 @@ static void dp_display_clean(struct dp_display_private *dp)
 		dp_panel->deinit(dp_panel, 0);
 	}
 
-	if (dp->parser->force_connect_mode)
-		dp_display_state_remove(DP_STATE_ENABLED)
-	else
-		dp_display_state_remove(DP_STATE_ENABLED | DP_STATE_CONNECTED);
+	dp_display_state_remove(DP_STATE_ENABLED);
 
 	dp->ctrl->off(dp->ctrl);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
@@ -2296,6 +2303,7 @@ static void dp_display_deinit_sub_modules(struct dp_display_private *dp)
 	dp_link_put(dp->link);
 	dp_power_put(dp->power);
 	dp_pll_put(dp->pll);
+	dp_pll_put(dp->pclk_bond_pll);
 	dp_aux_put(dp->aux);
 	dp_catalog_put(dp->catalog);
 	dp_parser_put(dp->parser);
@@ -2378,6 +2386,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	pll_in.aux = dp->aux;
 	pll_in.parser = dp->parser;
 	pll_in.dp_core_revision = dp_core_revision;
+	pll_in.bond = false;
 
 	dp->pll = dp_pll_get(&pll_in);
 	if (IS_ERR(dp->pll)) {
@@ -2387,7 +2396,19 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 		goto error_pll;
 	}
 
-	dp->power = dp_power_get(dp->parser, dp->pll);
+	pll_in.aux = dp->aux;
+	pll_in.parser = dp->parser;
+	pll_in.dp_core_revision = dp_core_revision;
+	pll_in.bond = true;
+
+	dp->pclk_bond_pll = dp_pll_get(&pll_in);
+	if (IS_ERR(dp->pclk_bond_pll)) {
+		rc = PTR_ERR(dp->pclk_bond_pll);
+		DP_INFO("DP%d failed to initialize pclk bond pll, rc = %d\n", dp->cell_idx, rc);
+		dp->pclk_bond_pll = NULL;
+	}
+
+	dp->power = dp_power_get(dp->parser, dp->pll, dp->pclk_bond_pll);
 	if (IS_ERR(dp->power)) {
 		rc = PTR_ERR(dp->power);
 		DP_ERR("DP%d failed to initialize power, rc = %d\n", dp->cell_idx, rc);
@@ -2439,6 +2460,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	ctrl_in.catalog = &dp->catalog->ctrl;
 	ctrl_in.parser = dp->parser;
 	ctrl_in.pll = dp->pll;
+	ctrl_in.pclk_bond_pll = dp->pclk_bond_pll;
 
 	dp->ctrl = dp_ctrl_get(&ctrl_in);
 	if (IS_ERR(dp->ctrl)) {
@@ -3204,7 +3226,8 @@ end:
 	 * Once the DP driver is turned off, set to non-bond mode.
 	 * If bond mode is required afterwards, call set_phy_bond_mode.
 	 */
-	dp_display_change_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE);
+	if (!dp->parser->force_bond_mode)
+		dp_display_change_phy_bond_mode(dp, DP_PHY_BOND_MODE_NONE);
 
 	dp_panel->deinit(dp_panel, flags);
 	mutex_unlock(&dp->session_lock);
@@ -3599,7 +3622,14 @@ static int dp_parser_msm_hdcp_dev(struct dp_display_private *dp)
 	ret = of_property_read_u32(node, "cell-index", &dp->hdcp_cell_idx);
 	if (ret < 0) {
 		// This is a non-fatal error, module initialization can proceed
-		pr_warn("couldn't find right hdcp cell-index");
+		pr_warn("couldn't find right hdcp cell-index\n");
+		return 0;
+	}
+
+	ret = of_property_read_u32(node, "dpu-index", &dp->dpu_idx);
+	if (ret < 0) {
+		// This is a non-fatal error, module initialization can proceed
+		pr_warn("couldn't find right hdcp dpu-index\n");
 		return 0;
 	}
 
@@ -4079,6 +4109,21 @@ static int dp_display_set_phy_bond_mode(struct dp_display *dp_display,
 	return 0;
 }
 
+static int dp_display_get_parser(struct dp_display *dp_display, void **parser)
+{
+	struct dp_display_private *dp;
+
+	if (!dp_display || !parser) {
+		pr_err("invalid params\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	*parser = dp->parser;
+
+	return 0;
+}
 static int dp_display_probe(struct platform_device *pdev)
 {
 	int rc = 0;
@@ -4177,6 +4222,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp_display->mst_get_fixed_topology_display_type =
 				dp_display_mst_get_fixed_topology_display_type;
 	dp_display->set_phy_bond_mode = dp_display_set_phy_bond_mode;
+	dp_display->get_parser = dp_display_get_parser;
 	dp_display->get_mst_pbn_div = dp_display_get_mst_pbn_div;
 
 	rc = component_add(&pdev->dev, &dp_display_comp_ops);
@@ -4433,12 +4479,12 @@ static int dp_pm_prepare(struct device *dev)
 
 	if (dp->parser && dp->parser->force_connect_mode) {
 		u32 sim_mode;
+
 		mutex_lock(&dp->session_lock);
 		sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
 		pr_info("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
-		if (sim_mode && dp->hpd->hpd_high) {
+		if (sim_mode && dp->hpd->hpd_high)
 			pr_info("Suspend to sim mode when HPD is high\n");
-		}
 
 		// Always assume we will resume with HPD low
 		dp->hpd->hpd_high = false;
@@ -4479,7 +4525,7 @@ static void dp_pm_complete(struct device *dev)
 
 	if (dp->parser && dp->parser->force_connect_mode) {
 		u32 sim_mode;
-		mutex_lock(&dp->session_lock);
+
 		sim_mode = dp_sim_get_sim_mode(dp->aux_bridge);
 		pr_info("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
 		if (sim_mode && dp->hpd->hpd_high) {
@@ -4498,7 +4544,6 @@ static void dp_pm_complete(struct device *dev)
 			dp_display_host_init(dp);
 			queue_work(dp->wq, &dp->connect_work);
 		}
-		mutex_unlock(&dp->session_lock);
 	}
 
 	dp_display_state_remove(DP_STATE_SUSPENDED);
