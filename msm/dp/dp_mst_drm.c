@@ -1082,6 +1082,7 @@ enum drm_mode_status dp_mst_connector_mode_valid(
 		DP_DEBUG("mode:%s not supported. pbn %d vs %d slots %d vs %d\n",
 				mode->name, required_pbn, full_pbn,
 				required_slots, available_slots);
+		dp_display_clear_dsc_resources(dp_display, dp_panel);
 		return MODE_BAD;
 	}
 

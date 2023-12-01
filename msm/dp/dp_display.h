@@ -123,6 +123,7 @@ int dp_display_get_displays(void **displays, int count);
 int dp_display_get_num_of_streams(void);
 int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data);
 bool dp_connector_mode_needs_full_range(void *display);
+void dp_display_clear_dsc_resources(struct dp_display *dp_display, struct dp_panel *panel);
 #else
 static inline int dp_display_get_num_of_displays(void)
 {
@@ -144,6 +145,10 @@ static inline int dp_connector_update_pps(struct drm_connector *connector,
 static inline int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data)
 {
 	return 0;
+}
+static inline void dp_display_clear_dsc_resources(struct dp_display *dp_display,
+		struct dp_panel *panel)
+{
 }
 #endif /* CONFIG_DRM_MSM_DP */
 #endif /* _DP_DISPLAY_H_ */
