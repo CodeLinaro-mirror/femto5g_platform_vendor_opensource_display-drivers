@@ -2195,7 +2195,11 @@ err_dsi_device:
 
 static void lt9611_bridge_pre_enable(struct drm_bridge *bridge)
 {
+	struct lt9611 *pdata = bridge_to_lt9611(bridge);
+
 	pr_debug("bridge pre_enable\n");
+	if (!cont_splash_en)
+		lt9611_reset(pdata, true);
 }
 
 static bool lt9611_bridge_mode_fixup(struct drm_bridge *bridge,
