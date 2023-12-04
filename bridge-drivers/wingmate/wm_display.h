@@ -10,6 +10,10 @@
 #include <drm/drm_bridge.h>
 #include <linux/regmap.h>
 
+#define REG_WM_DISP_CTRL_STATUS 0x432000
+
+#define WM_DISP_POWER_SETTLE_DELAY 0
+
 typedef enum wm_display_interrupts {
 	WM_DISPLAY_INT_MIN = 31,
 	WM_DISPLAY_INT_WAS_OFL_INT = WM_DISPLAY_INT_MIN,
@@ -68,8 +72,21 @@ typedef enum wm_display_params {
 	WM_DISPLAY_PARAM_MAX
 } wm_display_params_t;
 
+struct wm_display_vreg {
+	struct regulator *vreg; /* vreg handle */
+	char vreg_name[32];
+	int min_voltage;
+	int max_voltage;
+	int enable_load;
+	int disable_load;
+	int pre_on_sleep;
+	int post_on_sleep;
+	int pre_off_sleep;
+	int post_off_sleep;
+};
+
 struct wm_dt_props {
-	struct device_node *ext_disp_np;
+	struct device_node *host_np;
 	unsigned int audio_supported;
 	unsigned int cec_supported;
 };
@@ -99,11 +116,11 @@ struct wm_display {
 			wm_display_params_t id, void *in_param, void *out_param);
 	void (*enable_irq)(struct wm_display *display,
 			wm_display_interrupts_t irq, bool enable);
+	int (*read_register) (struct wm_display *display, unsigned int reg);
 	int (*write_register) (struct wm_display *display,
 			unsigned int reg, unsigned int val);
 	int (*update_register_bits) (struct wm_display *display,
 			unsigned int reg, unsigned int mask, unsigned int val);
-	int (*read_register) (struct wm_display *display, unsigned int reg);
 	int (*reset_video_path) (struct wm_display *display,
 			wm_display_reset_reason_t reason);
 	int (*set_video_clk_rate) (struct wm_display *display, int rate);
