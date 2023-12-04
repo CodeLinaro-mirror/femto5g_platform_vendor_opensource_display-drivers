@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -42,12 +42,10 @@ struct wm_display_private {
 	struct wm_pll *pll;
 	struct wm_vtg *vtg;
 
-	struct drm_display_mode cur_drm_mode;
-
 	struct wmmgr_client_context *wmmgr_ctxt;
 };
 
-static void wm_display_set_mode(struct wm_display *dispaly, struct drm_display_mode *mode)
+static void wm_display_set_mode(struct wm_display *dispaly, const struct drm_display_mode *mode)
 {
 	/** TODO: Store current mode to private structure.
 	 * Check if custom mode structure is required to accommodate additional params if any.
@@ -58,39 +56,100 @@ static void wm_display_pre_enable(struct wm_display *display)
 {
 	struct wm_display_private *display_priv = container_of(display,
 							struct wm_display_private, display);
+	int ret = 0;
 
-	/** TODO: Handle failure cases */
+	ret = display_priv->dsi_rx->pre_enable(display_priv->dsi_rx);
+	if (ret) {
+		pr_err("%s: dsi_rx pre_enable failed, ret %d\n", __func__, ret);
+		return;
+	}
 
-	display_priv->pll->configure_pixel_pll(display_priv->pll);
+	ret = display_priv->vtg->pre_enable(display_priv->vtg);
+	if (ret) {
+		pr_err("%s: vtg pre_enable failed, ret %d\n", __func__, ret);
+		return;
+	}
 
-	display_priv->dsi_rx->configure_mipi_rx(display_priv->dsi_rx);
-
-	display_priv->dsi_rx->configure_video_path(display_priv->dsi_rx);
+	ret = display_priv->hdmi_tx->pre_enable(display_priv->hdmi_tx);
+	if (ret) {
+		pr_err("%s: hdmi_tx pre_enable failed, ret %d\n", __func__, ret);
+		return;
+	}
 }
 
 static void wm_display_enable(struct wm_display *display)
 {
 	struct wm_display_private *display_priv = container_of(display,
 							struct wm_display_private, display);
+	int ret = 0;
 
-	/** TODO: Handle failure cases */
+	ret = display_priv->dsi_rx->enable(display_priv->dsi_rx);
+	if (ret) {
+		pr_err("%s: dsi_rx enable failed, ret %d\n", __func__, ret);
+		return;
+	}
 
-	display_priv->hdcp->configure(display_priv->hdcp);
+	ret = display_priv->vtg->enable(display_priv->vtg);
+	if (ret) {
+		pr_err("%s: vtg enable failed, ret %d\n", __func__, ret);
+		return;
+	}
 
-	display_priv->hdmi_tx->configure_video_mode(display_priv->hdmi_tx,
-							&display_priv->cur_drm_mode);
+	ret = display_priv->hdmi_tx->enable(display_priv->hdmi_tx);
+	if (ret) {
+		pr_err("%s: hdmi_tx enable failed, ret %d\n", __func__, ret);
+		return;
+	}
 
-	display_priv->hdmi_tx->configure_info_frames(display_priv->hdmi_tx);
+	ret = display_priv->audio->enable(display_priv->audio);
+	if (ret) {
+		pr_err("%s: audio register failed, ret %d\n", __func__, ret);
+		return;
+	}
 }
 
 static void wm_display_disable(struct wm_display *display)
 {
-	/** TODO: Define WM disable sequence */
+	struct wm_display_private *display_priv = container_of(display,
+							struct wm_display_private, display);
+
+	display_priv->audio->disable(display_priv->audio);
+
+	display_priv->hdmi_tx->disable(display_priv->hdmi_tx);
+
+	display_priv->vtg->disable(display_priv->vtg);
+
+	display_priv->dsi_rx->disable(display_priv->dsi_rx);
 }
 
 static void wm_display_post_disable(struct wm_display *display)
 {
+	struct wm_display_private *display_priv = container_of(display,
+							struct wm_display_private, display);
 
+	display_priv->hdmi_tx->post_disable(display_priv->hdmi_tx);
+
+	display_priv->dsi_rx->post_disable(display_priv->dsi_rx);
+
+	display_priv->vtg->post_disable(display_priv->vtg);
+}
+
+/**
+ * wm_display_handle_params() - set or get a param from a sub module
+ *
+ * @display: pointer to display public structure
+ * @id: identifier indicating the param
+ * @in_param: pointer to the input value to be passed or NULL
+ * @out_param: pointer to the memory where output value to be stored or NULL
+ *
+ */
+void wm_display_handle_params(struct wm_display *display,
+		wm_display_params_t id, void *in_param, void *out_param)
+{
+	switch (id) {
+		default:
+		break;
+	}
 }
 
 static int wm_display_parse_dt(struct wm_display_private *display_priv)
@@ -157,19 +216,18 @@ static int wm_display_init_modules(struct wm_display_private *display_priv)
 	display->enable = wm_display_enable;
 	display->disable = wm_display_disable;
 	display->post_disable = wm_display_post_disable;
+	display->handle_params = wm_display_handle_params;
 
 	/* Fill info structure to be passed to sub module during init */
 	display_info.display = &display_priv->display;
 	display_info.dev = &display_priv->pdev->dev;
 	display_info.dt_props = &display_priv->dt_props;
-	display_info.wmmgr_ctxt = display_priv->wmmgr_ctxt;
 
 	display_priv->drm = wm_drm_init(&display_info);
 	if (display_priv->drm) {
 		pr_err("failed to init wm_drm\n");
 		goto error;
 	}
-
 
 	display_priv->hdmi_tx = wm_hdmi_tx_init(&display_info);
 	if (display_priv->hdmi_tx) {
