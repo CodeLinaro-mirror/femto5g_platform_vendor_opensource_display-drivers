@@ -3632,7 +3632,6 @@ static int dp_parser_msm_hdcp_dev(struct dp_display_private *dp)
 	if (ret < 0) {
 		// This is a non-fatal error, module initialization can proceed
 		pr_warn("couldn't find right hdcp dpu-index\n");
-		return 0;
 	}
 
 	/*
