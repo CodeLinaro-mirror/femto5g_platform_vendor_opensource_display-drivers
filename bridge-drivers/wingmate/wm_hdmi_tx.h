@@ -13,6 +13,7 @@
 #define WM_HDMI_IH_PHY_STAT0	0x104
 #define WM_HDMI_IH_I2CM_STAT0	0x105
 #define WM_HDMI_IH_I2CMPHY_STAT0	0x108
+#define WM_HDMI_IH_DECODE 0x170
 #define WM_HDMI_IH_MUTE_PHY_STAT0	0x184
 #define WM_HDMI_IH_MUTE_I2CM_STAT0	0x185
 
@@ -95,9 +96,9 @@ enum wm_hdmi_tx_state
 };
 
 struct wm_hdmi_intrs {
-	u8 edid_itr;
-	u8 phy_itr;
-	u8 phy_i2c_itr;
+	u8 edid_intr;
+	u8 phy_intr;
+	u8 phy_i2c_intr;
 };
 
 struct edid_ctrl {

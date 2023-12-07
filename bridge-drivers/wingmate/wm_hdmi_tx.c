@@ -259,6 +259,24 @@ static void _wm_edid_parse_ext_blk(struct wm_hdmi_tx *hdmi, struct edid *edid)
 	}
 }
 
+static inline char *_wm_hdmi_tx_intr_string(u8 intr_event)
+{
+	switch (intr_event) {
+		case 0:
+			return "I2CM_PHY";
+		case 1:
+			return "HPD";
+		case 2:
+			return "PHY_TX_LOCK";
+		case 3:
+			return "EDID";
+		case 4:
+			return "HPD & PHY_TX_LOCK";
+		default:
+			return "FAUX";
+	}
+}
+
 static inline char *_wm_phy_state(enum wm_hdmi_phy_state state)
 {
 	switch (state) {
@@ -439,6 +457,15 @@ static void _wm_hdmi_tx_conf_phy(struct wm_hdmi_tx *hdmi, u8 bits)
 	spi_write8(WM_HDMI_PHY_CONF0, data);
 }
 
+static inline u8 _wm_hdmi_tx_decode_intr(struct wm_hdmi_tx *hdmi)
+{
+	u8 decode = 0;
+
+	decode = spi_read8(WM_HDMI_IH_DECODE);
+
+	return decode;
+}
+
 static inline void _wm_hdmi_tx_initiate_phy_i2c(struct wm_hdmi_tx *hdmi,
 				bool write)
 {
@@ -456,13 +483,12 @@ static void _wm_hdmi_tx_compose_i2c_frame(struct wm_hdmi_tx *hdmi,
 	spi_write8(WM_HDMI_PHY_I2CM_DATAO_1, (data >> 8) & 0xff);
 }
 
-/* TODO: Verify the use case with irq handler.
 static void _wm_hdmi_tx_phy_i2c_intr(struct wm_hdmi_tx *hdmi, u8 *data)
 {
+		*data = spi_read8(WM_HDMI_IH_I2CMPHY_STAT0);
 		spi_write8(WM_HDMI_IH_I2CMPHY_STAT0, *data);
-		spi_read8(WM_HDMI_IH_I2CMPHY_STAT0, *data);
 }
-*/
+
 static void _wm_hdmi_tx_config_edid_param(struct wm_hdmi_tx *hdmi,
 				u8 addr, u8 segptr, bool single_read)
 {
@@ -514,9 +540,12 @@ static void _wm_hdmi_tx_enable_tx(struct wm_hdmi_tx *hdmi)
 	spi_write8(WM_HDMI_FC_VSYNCINWIDTH, vsync_width);
 }
 
-static inline void _wm_hdmi_tx_phy_clear_int(struct wm_hdmi_tx *hdmi, u8 bits)
+static void _wm_hdmi_tx_phy_intr(struct wm_hdmi_tx *hdmi, u8 *val, bool operate)
 {
-	spi_write8(WM_HDMI_IH_PHY_STAT0, bits);
+	if (operate)
+		spi_write8(WM_HDMI_IH_PHY_STAT0, *val);
+	else
+		*val = spi_read8(WM_HDMI_IH_PHY_STAT0);
 }
 
 static bool _wm_hdmi_tx_pll_lock_intr(struct wm_hdmi_tx *hdmi)
@@ -526,7 +555,7 @@ static bool _wm_hdmi_tx_pll_lock_intr(struct wm_hdmi_tx *hdmi)
 
 	mask = 0x01;
 
-	value = hdmi->intr.phy_itr;
+	value = hdmi->intr.phy_intr;
 
 	ret = value & mask ? true : false;
 
@@ -540,7 +569,7 @@ static inline void _wm_hdmi_tx_hpd_status(struct wm_hdmi_tx *hdmi, bool *hpd)
 	/* HPD and RX_SENSE_* status. */
 	mask = 0xf2;
 
-	data = hdmi->intr.phy_itr;
+	data = hdmi->intr.phy_intr;
 
 	if (!((data & mask) ^ mask))
 		*hpd = true;
@@ -715,7 +744,7 @@ static int _wm_hdmi_tx_read_edid(struct wm_hdmi_tx *hdmi, int *done)
 
 	edid = hdmi->edid_ctrl.edid;
 
-	stat = hdmi->intr.edid_itr;
+	stat = hdmi->intr.edid_intr;
 
 	/* Check E-DDC interrupt status.
 	 * 1. if success, fetch the next bytes,
@@ -1014,8 +1043,11 @@ static inline void _wm_hdmi_tx_config_phy_txctrl(struct wm_hdmi_tx *hdmi)
 static inline void _wm_hdmi_tx_lock_pll_and_enable_hdmi(struct wm_hdmi_tx *hdmi)
 {
 	_wm_hdmi_tx_mask_phy(hdmi, true, TXPHYLOCK);
-	_wm_hdmi_tx_phy_clear_int(hdmi, BIT(1));
 	_wm_hdmi_tx_enable_tx(hdmi);
+	/* TODO: Enable infoframes as part of
+	 * Infoframe gerrit.
+	 * _wm_hdmi_tx_enable_infoframe(hdmi);
+	 */
 	WM_INFO("HDMI TX enabled");
 }
 
@@ -1059,7 +1091,7 @@ static void wm_hdmi_tx_phy_work(struct work_struct *work)
 	 * 5. PHY Power
 	 */
 
-	done = hdmi->intr.phy_i2c_itr;
+	done = hdmi->intr.phy_i2c_intr;
 
 	pll_state = hdmi->phy_i2c_state;
 
@@ -1231,13 +1263,85 @@ static int wm_hdmi_tx_disable(struct wm_hdmi_tx *hdmi)
 	return 0;
 }
 
+static bool _wm_hdmi_tx_phy_irq_handler(struct wm_hdmi_tx *hdmi, u8 *intr_event)
+{
+	_wm_hdmi_tx_phy_intr(hdmi, &hdmi->intr.phy_intr, READ);
+
+	/* Note: There exist a corner case, where both HPD
+	 * and PLL interrupt gets activated at the same time.
+	 *
+	 * Although the probability of this is very low, but
+	 * our logic considers this situation in the case 3.
+	 *
+	 * If both interrupts are detected at the same time,
+	 * then prioritize HPD event and ignore Tx PHY Lock.
+	 */
+
+	hdmi->intr.phy_intr &= (IH_HPD | IH_TXPHYLOCK);
+	switch (hdmi->intr.phy_intr) {
+		/* HPD interrupt. */
+		case 1:
+			*intr_event = 1;
+			queue_work(hdmi->workq, &hdmi->hpd_work);
+			break;
+		/* PLL Lock/Unlock interrupt. */
+		case 2:
+			*intr_event = 2;
+			queue_work(hdmi->workq, &hdmi->phy_work);
+			break;
+		/* HPD and PLL interrupt. */
+		case 3:
+			*intr_event = 4;
+			queue_work(hdmi->workq, &hdmi->hpd_work);
+			cancel_work_sync(&hdmi->phy_work);
+			break;
+		/* Faux case. */
+		default:
+			*intr_event = 0xff;
+			return false;
+	}
+
+	_wm_hdmi_tx_phy_intr(hdmi, &hdmi->intr.phy_intr, WRITE);
+	return true;
+}
+
 static int wm_hdmi_tx_irq_handler(struct wm_hdmi_tx *hdmi, int irq)
 {
+	u8 intrp = 0, intr_event = 0xff;
+
 	if (!hdmi) {
-		WM_ERR("invalid input");
+		WM_ERR("invalid data");
 		return IRQ_NONE;
 	}
-	/* TODO: add irq handling. */
+
+	intrp = _wm_hdmi_tx_decode_intr(hdmi);
+
+	if (intrp & BIT(3)) {
+		/* BIT(3) of interrupt register is the parent bit
+		 * for two separate interrupts, namely,
+		 * 1. HDMI PHY Tx & HPD
+		 * 2. HDMI PHY I2C
+		 * Therefore, we should probe into both interrrupt
+		 * sequences if interrupt on this bit is raised.
+		 *
+		 * If there is no interrupt in HDMI PHY Tx & HPD,
+		 * then check for active interrupt in HDMI Phy's i2c.
+		 */
+		if (!_wm_hdmi_tx_phy_irq_handler(hdmi, &intr_event)) {
+			_wm_hdmi_tx_phy_i2c_intr(hdmi, &hdmi->intr.phy_i2c_intr);
+			intr_event = 0;
+		}
+
+	} else if (intrp & BIT(2)) {
+		intr_event = 3;
+		_wm_hdmi_tx_edid_i2c_intr(hdmi, &hdmi->intr.edid_intr);
+		queue_work(hdmi->workq, &hdmi->edid_work);
+	} else {
+		WM_DEBUG("no active interrupt");
+		return IRQ_NONE;
+	}
+	WM_DEBUG("hdmi %s interrupt received", _wm_hdmi_tx_intr_string(intr_event));
+
 	return IRQ_HANDLED;
 }
 
