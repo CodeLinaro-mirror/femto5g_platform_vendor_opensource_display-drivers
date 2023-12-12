@@ -224,6 +224,7 @@ struct dp_display_private {
 	struct device *msm_hdcp_dev;
 	u32 hdcp_cell_idx;
 	u32 dpu_idx;
+	u32 max_hdcp_key_verify_retries;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -712,6 +713,7 @@ static int dp_display_initialize_hdcp(struct dp_display_private *dp)
 	hdcp_init_data.revision      = &dp->panel->link_info.revision;
 	hdcp_init_data.msm_hdcp_dev  = dp->msm_hdcp_dev;
 	hdcp_init_data.forced_encryption = parser->has_force_encryption;
+	hdcp_init_data.max_hdcp_key_verify_retries = dp->max_hdcp_key_verify_retries;
 
 	fd = sde_hdcp_1x_init(&hdcp_init_data);
 	if (IS_ERR_OR_NULL(fd)) {
@@ -3628,6 +3630,17 @@ static int dp_parser_msm_hdcp_dev(struct dp_display_private *dp)
 		// This is a non-fatal error, module initialization can proceed
 		pr_warn("couldn't find right hdcp dpu-index\n");
 		return 0;
+	}
+
+	/*
+	 * max_hdcp_key_verify_retries in case of failure
+	 * due to delayed Qseecomd startup at boot time.
+	 */
+	ret = of_property_read_u32(node, "max_hdcp_key_verify_retries",
+				&dp->max_hdcp_key_verify_retries);
+	if (ret < 0) {
+		// This is a non-fatal error, module initialization can proceed
+		pr_warn("couldn't find right max_hdcp_key_verify_retries\n");
 	}
 
 	dp->msm_hdcp_dev = &pdev->dev;
