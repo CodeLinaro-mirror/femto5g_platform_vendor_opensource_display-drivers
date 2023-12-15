@@ -4464,6 +4464,9 @@ static int dp_pm_prepare(struct device *dev)
 
 	dp = dev_get_drvdata(dev);
 
+	if (!dp->dp_display.base_connector)
+		return 0;
+
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 	mutex_lock(&dp->session_lock);
 	dp_display_set_mst_state(&dp->dp_display, PM_SUSPEND);
@@ -4529,6 +4532,9 @@ static void dp_pm_complete(struct device *dev)
 		return;
 
 	dp = dev_get_drvdata(dev);
+
+	if (!dp->dp_display.base_connector)
+		return;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 	mutex_lock(&dp->session_lock);
