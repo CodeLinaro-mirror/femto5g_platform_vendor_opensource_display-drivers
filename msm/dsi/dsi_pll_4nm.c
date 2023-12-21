@@ -213,7 +213,7 @@ static void dsi_pll_config_slave(struct dsi_pll_resource *rsc)
 	orsc = pll_rsc_db[slave_idx];
 
 	if (!orsc) {
-		DSI_PLL_WARN(rsc, "slave PLL unavilable, assuming standalone config\n");
+		DSI_PLL_DBG(rsc, "slave PLL unavailable, assuming standalone config\n");
 		return;
 	}
 
