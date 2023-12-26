@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012, 2014-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SDE_HDCP_H__
@@ -54,6 +54,11 @@ struct sde_hdcp_stream {
 	bool active;
 };
 
+/*
+ * @max_hdcp_key_verify_retries - Max number of retries by default set to 0 which
+ *                                is equivalent to 0MS. Actual value will be the one
+ *                                from the dtsi file.
+ */
 struct sde_hdcp_init_data {
 	struct device *msm_hdcp_dev;
 	struct dss_io_data *core_io;
@@ -74,7 +79,9 @@ struct sde_hdcp_init_data {
 	bool sec_access;
 	enum sde_hdcp_client_id client_id;
 	u8 client_index;
+	u8 dpu_index;
 	bool forced_encryption;
+	u32 max_hdcp_key_verify_retries;
 };
 
 struct sde_hdcp_ops {

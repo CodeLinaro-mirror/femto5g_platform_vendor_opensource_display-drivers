@@ -845,6 +845,7 @@ static int shd_connector_get_mode_info(struct drm_connector *connector,
 			avail_res);
 
 	mode_info->topology = base_mode_info.topology;
+	mode_info->comp_info = base_mode_info.comp_info;
 
 	if (shd_display->src.h != shd_display->roi.h)
 		mode_info->vpadding = shd_display->roi.h;
@@ -1328,6 +1329,7 @@ static int shd_drm_obj_init(struct shd_display *display)
 		rc = -ENOENT;
 		goto end;
 	}
+	sde_encoder_set_bridge_enabled(encoder, true);
 
 	sde_conn = to_sde_connector(connector);
 	sde_conn->shared = true;

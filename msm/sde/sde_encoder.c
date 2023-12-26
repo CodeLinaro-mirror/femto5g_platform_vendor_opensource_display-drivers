@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
@@ -952,8 +953,9 @@ static int _sde_encoder_atomic_check_phys_enc(struct sde_encoder_virt *sde_enc,
 				ret = -EINVAL;
 
 		if (ret) {
-			SDE_ERROR_ENC(sde_enc,
-					"mode unsupported, phys idx %d\n", i);
+			if (ret != -EDEADLK)
+				SDE_ERROR_ENC(sde_enc,
+						"mode unsupported, phys idx %d\n", i);
 			break;
 		}
 	}
@@ -1797,14 +1799,15 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc,
 
 		sde_enc->elevated_ahb_vote = true;
 		/* enable DSI clks */
-		rc = sde_connector_clk_ctrl(sde_enc->cur_master->connector,
+		if (drm_enc->encoder_type == DRM_MODE_ENCODER_DSI) {
+			rc = sde_connector_clk_ctrl(sde_enc->cur_master->connector,
 				true);
-		if (rc) {
-			SDE_ERROR("failed to enable clk control %d\n", rc);
-			pm_runtime_put_sync(drm_enc->dev->dev);
-			return rc;
+			if (rc) {
+				SDE_ERROR("failed to enable clk control %d\n", rc);
+				pm_runtime_put_sync(drm_enc->dev->dev);
+				return rc;
+			}
 		}
-
 		/* enable all the irq */
 		sde_encoder_irq_control(drm_enc, true);
 
@@ -3152,6 +3155,11 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 		return;
 	}
 
+	if (!sde_enc->cur_master || !sde_enc->cur_master->connector) {
+		SDE_ERROR("invalid connector\n");
+		return;
+	}
+
 	_sde_encoder_input_handler_register(drm_enc);
 	c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
 	if (!c_state) {
@@ -3184,6 +3192,8 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 
 	_sde_encoder_virt_enable_helper(drm_enc);
 	sde_encoder_control_te(drm_enc, true);
+
+	sde_enc->enabled = true;
 }
 
 void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
@@ -3208,6 +3218,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	 */
 	sde_enc->crtc = NULL;
 	memset(&sde_enc->mode_info, 0, sizeof(sde_enc->mode_info));
+	sde_enc->enabled = false;
 
 	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
 }
@@ -3432,6 +3443,13 @@ void sde_encoder_helper_phys_reset(struct sde_encoder_phys *phys_enc)
 	SDE_EVT32(DRMID(phys_enc->parent), cfg.pending_flush_mask);
 	ctl->ops.trigger_flush(ctl);
 	ctl->ops.trigger_start(ctl);
+}
+
+bool sde_encoder_is_enabled(struct drm_encoder *enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(enc);
+
+	return sde_enc && sde_enc->enabled;
 }
 
 static enum sde_intf sde_encoder_get_intf(struct sde_mdss_cfg *catalog,
@@ -4841,7 +4859,7 @@ u32 sde_encoder_helper_get_kickoff_timeout_ms(struct drm_encoder *drm_enc)
 	if (!fps || fps >= DEFAULT_TIMEOUT_FPS_THRESHOLD)
 		return DEFAULT_KICKOFF_TIMEOUT_MS;
 	else
-		return (SEC_TO_MILLI_SEC / fps) * 2;
+		return SEC_TO_MILLI_SEC * 2 / fps + KICKOFF_TIMEOUT_MS_TOLERANCE;
 }
 
 int sde_encoder_get_avr_status(struct drm_encoder *drm_enc)
@@ -5689,6 +5707,11 @@ int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	SDE_DEBUG_ENC(sde_enc, "\n");
 
+	if (!sde_enc->bridge_enabled) {
+		SDE_INFO("enc%d bridge not enabled, skip\n", DRMID(drm_enc));
+		return 0;
+	}
+
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
@@ -6267,5 +6290,35 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
 		event.length = sizeof(c_conn->previous_misr_sign);
 		msm_mode_object_event_notify(&connector->base, connector->dev, &event,
 						(u8 *)&c_conn->previous_misr_sign);
+	}
+}
+
+bool sde_encoder_is_bridge_enabled(struct drm_encoder *enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!enc) {
+		SDE_ERROR("invalid drm enc\n");
+		return false;
+	}
+
+	sde_enc = to_sde_encoder_virt(enc);
+	return sde_enc->bridge_enabled;
+}
+
+void sde_encoder_set_bridge_enabled(struct drm_encoder *enc,
+		bool enabled)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!enc) {
+		SDE_ERROR("invalid drm enc\n");
+		return;
+	}
+
+	sde_enc = to_sde_encoder_virt(enc);
+	if (sde_enc->bridge_enabled != enabled) {
+		sde_enc->bridge_enabled = enabled;
+		SDE_INFO("Set enc%d %s\n", DRMID(enc), enabled ? "ENABLED" : "DISABLED");
 	}
 }

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  *
  * Copyright (c) 2008 Keith Packard
@@ -113,6 +114,8 @@ struct dp_link_phy_params {
 	u8 p_level;
 	u8 max_v_level;
 	u8 max_p_level;
+	bool max_v_level_reached;
+	bool max_p_level_reached;
 };
 
 struct dp_link_params {

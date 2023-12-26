@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -40,6 +40,7 @@ enum dp_pll_revision {
 	DP_PLL_5NM_V1,
 	DP_PLL_5NM_V2,
 	DP_PLL_7NM,
+	DP_PLL_14NM,
 	DP_PLL_4NM_V1,
 	DP_PLL_4NM_V1_1,
 	EDP_PLL_5NM,
@@ -61,6 +62,7 @@ static inline const char *dp_pll_get_revision(enum dp_pll_revision rev)
 	case DP_PLL_5NM_V1:	return "DP_PLL_5NM_V1";
 	case DP_PLL_5NM_V2:	return "DP_PLL_5NM_V2";
 	case DP_PLL_7NM:	return "DP_PLL_7NM";
+	case DP_PLL_14NM:	return "DP_PLL_14NM";
 	case DP_PLL_4NM_V1:	return "DP_PLL_4NM_V1";
 	case DP_PLL_4NM_V1_1:	return "DP_PLL_4NM_V1_1";
 	case EDP_PLL_5NM:	return "EDP_PLL_5NM";
@@ -111,6 +113,8 @@ struct dp_pll_params {
 	u32 core_clk_en;
 	u32 lane_offset_tx;
 	u32 lane_offset_rx;
+	u32 lock_cmp3_mode0;
+	u32 lane_mode_1;
 };
 
 struct dp_pll_db {
@@ -167,6 +171,8 @@ int dp_pll_clock_register_5nm(struct dp_pll *pll);
 void dp_pll_clock_unregister_5nm(struct dp_pll *pll);
 int dp_pll_clock_register_4nm(struct dp_pll *pll);
 void dp_pll_clock_unregister_4nm(struct dp_pll *pll);
+int dp_pll_clock_register_14nm(struct dp_pll *pll);
+void dp_pll_clock_unregister_14nm(struct dp_pll *pll);
 int edp_pll_clock_register_5nm(struct dp_pll *pll);
 void edp_pll_clock_unregister_5nm(struct dp_pll *pll);
 
@@ -175,6 +181,7 @@ struct dp_pll_in {
 	struct dp_aux *aux;
 	struct dp_parser *parser;
 	u32 dp_core_revision;
+	bool bond;
 };
 
 int dp_pll_clock_register_helper(struct dp_pll *pll, struct dp_pll_vco_clk *clks, int num_clks);

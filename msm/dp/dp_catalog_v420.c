@@ -290,15 +290,6 @@ static void dp_catalog_ctrl_update_vx_px_v420(struct dp_catalog_ctrl *ctrl,
 		value1 = vm_pre_emphasis[v_level][p_level];
 	}
 
-	/* program default setting first */
-	io_data = catalog->io->dp_ln_tx0;
-	dp_write(TXn_TX_DRV_LVL_V420, 0x2A);
-	dp_write(TXn_TX_EMP_POST1_LVL, 0x20);
-
-	io_data = catalog->io->dp_ln_tx1;
-	dp_write(TXn_TX_DRV_LVL_V420, 0x2A);
-	dp_write(TXn_TX_EMP_POST1_LVL, 0x20);
-
 	/* Enable MUX to use Cursor values from these registers */
 	value0 |= BIT(5);
 	value1 |= BIT(5);

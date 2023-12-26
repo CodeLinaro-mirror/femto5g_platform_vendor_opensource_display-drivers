@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -32,6 +32,11 @@
 #define SSPP_SRC_UNPACK_PATTERN            0x34
 #define SSPP_SRC_OP_MODE                   0x38
 
+#define SSPP_CUR_SRC0_ADDR                 0xA4
+#define SSPP_CUR_SRC1_ADDR                 0xA8
+#define SSPP_CUR_SRC2_ADDR                 0xAC
+#define SSPP_CUR_SRC3_ADDR                 0xB0
+
 /* SSPP_MULTIRECT*/
 #define SSPP_SRC_SIZE_REC1                 0x16C
 #define SSPP_SRC_XY_REC1                   0x168
@@ -44,6 +49,10 @@
 #define SSPP_SRC_CONSTANT_COLOR_REC1       0x180
 #define SSPP_EXCL_REC_SIZE_REC1            0x184
 #define SSPP_EXCL_REC_XY_REC1              0x188
+#define SSPP_SRC4_ADDR                     0x1D0
+#define SSPP_SRC5_ADDR                     0x1D4
+#define SSPP_SRC6_ADDR                     0x1D8
+#define SSPP_SRC7_ADDR                     0x1DC
 #define SSPP_LINE_INSERTION_CTRL_REC1      0x1E4
 #define SSPP_LINE_INSERTION_OUT_SIZE_REC1  0x1EC
 
@@ -1479,6 +1488,47 @@ static void sde_hw_sspp_setup_line_insertion(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(c, size_off, cfg->dst_h << 16);
 }
 
+static void sde_hw_sspp_dump(struct sde_hw_pipe *ctx, bool is_virtual)
+{
+	u32 idx;
+	u32 addr[4];
+
+	if (!ctx || _sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+		return;
+
+	if (ctx->ctl)
+		SDE_ERROR("\tCtrl %d\n", ctx->ctl->idx);
+
+	if (!is_virtual) {
+		addr[0] = SDE_REG_READ(&ctx->hw, SSPP_SRC0_ADDR + idx);
+		addr[1] = SDE_REG_READ(&ctx->hw, SSPP_SRC1_ADDR + idx);
+		addr[2] = SDE_REG_READ(&ctx->hw, SSPP_SRC2_ADDR + idx);
+		addr[3] = SDE_REG_READ(&ctx->hw, SSPP_SRC3_ADDR + idx);
+		SDE_ERROR("\tRECT 0 SRC = 0x%08lx/0x%08lx/0x%08lx/0x%08lx\n",
+				addr[0], addr[1], addr[2], addr[3]);
+
+		addr[0] = SDE_REG_READ(&ctx->hw, SSPP_CUR_SRC0_ADDR + idx);
+		addr[1] = SDE_REG_READ(&ctx->hw, SSPP_CUR_SRC1_ADDR + idx);
+		addr[2] = SDE_REG_READ(&ctx->hw, SSPP_CUR_SRC2_ADDR + idx);
+		addr[3] = SDE_REG_READ(&ctx->hw, SSPP_CUR_SRC3_ADDR + idx);
+		SDE_ERROR("\tCURR SRC = 0x%08lx/0x%08lx/0x%08lx/0x%08lx\n",
+				addr[0], addr[1], addr[2], addr[3]);
+
+		SDE_ERROR("\tSRC_ADDR_SW_STATUS %8.8X\n",
+				SDE_REG_READ(&ctx->hw, SSPP_SRC_ADDR_SW_STATUS + idx));
+	} else {
+		addr[0] = SDE_REG_READ(&ctx->hw, SSPP_SRC1_ADDR + idx);
+		addr[1] = SDE_REG_READ(&ctx->hw, SSPP_SRC3_ADDR + idx);
+		SDE_ERROR("\tRECT 1 SRC = 0x%08lx/0x%08lx\n",
+				addr[0], addr[1]);
+
+		addr[0] = SDE_REG_READ(&ctx->hw, SSPP_CUR_SRC1_ADDR + idx);
+		addr[1] = SDE_REG_READ(&ctx->hw, SSPP_CUR_SRC3_ADDR + idx);
+		SDE_ERROR("\tCURR SRC = 0x%08lx/0x%08lx\n",
+				addr[0], addr[1]);
+	}
+}
+
 static void _setup_layer_ops(struct sde_hw_pipe *c,
 		unsigned long features, unsigned long perf_features,
 		bool is_virtual_pipe)
@@ -1494,6 +1544,7 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 		c->ops.setup_pe = sde_hw_sspp_setup_pe_config;
 		c->ops.setup_secure_address = sde_hw_sspp_setup_secure;
 		c->ops.set_src_split_order = sde_hw_sspp_set_src_split_order;
+		c->ops.dump = sde_hw_sspp_dump;
 	}
 
 	if (test_bit(SDE_SSPP_EXCL_RECT, &features))
