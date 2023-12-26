@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -105,8 +105,8 @@ static void _sde_shd_hw_ctl_clear_blendstages_in_range(struct sde_shd_hw_ctl *hw
 {
 	struct sde_hw_ctl *ctx = &hw_ctl->base;
 	struct sde_hw_blk_reg_map *c = &ctx->hw;
-	u32 mixercfg[4];
-	u32 mixermask[4] = {0, 0, 0, 0};
+	u32 mixercfg[5];
+	u32 mixermask[5] = {0, 0, 0, 0, 0};
 	u32 start = hw_ctl->range.start + SDE_STAGE_0;
 	u32 end = start + hw_ctl->range.size;
 	int i, j;
@@ -117,12 +117,13 @@ static void _sde_shd_hw_ctl_clear_blendstages_in_range(struct sde_shd_hw_ctl *hw
 	mixercfg[1] = SDE_REG_READ(c, CTL_LAYER_EXT(lm));
 	mixercfg[2] = SDE_REG_READ(c, CTL_LAYER_EXT2(lm));
 	mixercfg[3] = SDE_REG_READ(c, CTL_LAYER_EXT3(lm));
+	mixercfg[4] = SDE_REG_READ(c, CTL_LAYER_EXT4(lm));
 
 	if (!((mixercfg[0] & ~CTL_MIXER_BORDER_OUT) |
-		mixercfg[1] | mixercfg[2] | mixercfg[3]))
+		mixercfg[1] | mixercfg[2] | mixercfg[3] | mixercfg[4]))
 		goto end;
 
-	for (i = 1; i < SSPP_MAX - 2; i++) {
+	for (i = SSPP_VIG0; i < SSPP_MAX; i++) {
 		for (j = 0 ; j < CTL_SSPP_MAX_RECTS; j++) {
 			sspp_cfg = &sspp_reg_cfg_tbl[i][j];
 
@@ -152,6 +153,7 @@ end:
 	hw_ctl->mixer_cfg[lm].mixercfg_ext_mask = mixermask[1];
 	hw_ctl->mixer_cfg[lm].mixercfg_ext2_mask = mixermask[2];
 	hw_ctl->mixer_cfg[lm].mixercfg_ext3_mask = mixermask[3];
+	hw_ctl->mixer_cfg[lm].mixercfg_ext4_mask = mixermask[4];
 }
 
 static inline void _sde_shd_hw_ctl_clear_all_blendstages(struct sde_hw_ctl *ctx)
@@ -226,8 +228,8 @@ static void _sde_shd_hw_ctl_setup_blendstage(struct sde_hw_ctl *ctx, enum sde_lm
 	int pipes_per_stage;
 	u32 pipe_idx, rect_idx;
 	const struct ctl_sspp_stage_reg_map *sspp_cfg;
-	u32 mixercfg[CTL_NUM_EXT] = {CTL_MIXER_BORDER_OUT, 0, 0, 0};
-	u32 mixermask[CTL_NUM_EXT] = {0, 0, 0, 0};
+	u32 mixercfg[CTL_NUM_EXT] = {CTL_MIXER_BORDER_OUT, 0, 0, 0, 0};
+	u32 mixermask[CTL_NUM_EXT] = {0, 0, 0, 0, 0};
 	u32 value, mask, stage_value;
 
 	if (!ctx)
@@ -274,12 +276,14 @@ static void _sde_shd_hw_ctl_setup_blendstage(struct sde_hw_ctl *ctx, enum sde_lm
 	hw_ctl->mixer_cfg[lm].mixercfg_ext_mask |= mixermask[1];
 	hw_ctl->mixer_cfg[lm].mixercfg_ext2_mask |= mixermask[2];
 	hw_ctl->mixer_cfg[lm].mixercfg_ext3_mask |= mixermask[3];
+	hw_ctl->mixer_cfg[lm].mixercfg_ext4_mask |= mixermask[4];
 
 exit:
 	hw_ctl->mixer_cfg[lm].mixercfg = mixercfg[0];
 	hw_ctl->mixer_cfg[lm].mixercfg_ext = mixercfg[1];
 	hw_ctl->mixer_cfg[lm].mixercfg_ext2 = mixercfg[2];
 	hw_ctl->mixer_cfg[lm].mixercfg_ext3 = mixercfg[3];
+	hw_ctl->mixer_cfg[lm].mixercfg_ext4 = mixercfg[4];
 	hw_ctl->mixer_cfg[lm].mixercfg_skip_sspp_mask[0] = 0;
 	hw_ctl->mixer_cfg[lm].mixercfg_skip_sspp_mask[1] = 0;
 }
@@ -404,7 +408,7 @@ static void _sde_shd_flush_hw_ctl(struct sde_hw_ctl *ctx)
 	struct sde_shd_hw_ctl *hw_ctl;
 	struct sde_hw_blk_reg_map *c;
 	u32 mixercfg, mixercfg_ext;
-	u32 mixercfg_ext2, mixercfg_ext3;
+	u32 mixercfg_ext2, mixercfg_ext3, mixercfg_ext4;
 	int i;
 
 	hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
@@ -424,21 +428,25 @@ static void _sde_shd_flush_hw_ctl(struct sde_hw_ctl *ctx)
 		mixercfg_ext = SDE_REG_READ(c, CTL_LAYER_EXT(lm));
 		mixercfg_ext2 = SDE_REG_READ(c, CTL_LAYER_EXT2(lm));
 		mixercfg_ext3 = SDE_REG_READ(c, CTL_LAYER_EXT3(lm));
+		mixercfg_ext4 = SDE_REG_READ(c, CTL_LAYER_EXT4(lm));
 
 		mixercfg &= ~hw_ctl->mixer_cfg[lm].mixercfg_mask;
 		mixercfg_ext &= ~hw_ctl->mixer_cfg[lm].mixercfg_ext_mask;
 		mixercfg_ext2 &= ~hw_ctl->mixer_cfg[lm].mixercfg_ext2_mask;
 		mixercfg_ext3 &= ~hw_ctl->mixer_cfg[lm].mixercfg_ext3_mask;
+		mixercfg_ext4 &= ~hw_ctl->mixer_cfg[lm].mixercfg_ext4_mask;
 
 		mixercfg |= hw_ctl->mixer_cfg[lm].mixercfg;
 		mixercfg_ext |= hw_ctl->mixer_cfg[lm].mixercfg_ext;
 		mixercfg_ext2 |= hw_ctl->mixer_cfg[lm].mixercfg_ext2;
 		mixercfg_ext3 |= hw_ctl->mixer_cfg[lm].mixercfg_ext3;
+		mixercfg_ext4 |= hw_ctl->mixer_cfg[lm].mixercfg_ext4;
 
 		SDE_REG_WRITE(c, CTL_LAYER(lm), mixercfg);
 		SDE_REG_WRITE(c, CTL_LAYER_EXT(lm), mixercfg_ext);
 		SDE_REG_WRITE(c, CTL_LAYER_EXT2(lm), mixercfg_ext2);
 		SDE_REG_WRITE(c, CTL_LAYER_EXT3(lm), mixercfg_ext3);
+		SDE_REG_WRITE(c, CTL_LAYER_EXT4(lm), mixercfg_ext4);
 	}
 #ifdef cwb_dsc
 	_sde_shd_flush_cwb_cfg(hw_ctl);
