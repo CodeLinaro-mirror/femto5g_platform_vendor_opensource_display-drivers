@@ -2695,7 +2695,7 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 		return;
 
 	/* Rfresh dynamic resourece counter */
-	sde_rm_dec_resource_info(&sde_kms->rm);
+	sde_rm_dec_resource_info(&sde_kms->rm, drm_enc);
 
 	/* assign the reserved HW blocks to this encoder */
 	_sde_encoder_virt_populate_hw_res(drm_enc);

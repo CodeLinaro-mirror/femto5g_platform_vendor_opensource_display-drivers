@@ -203,6 +203,8 @@ static void _sde_rm_inc_resource_info_lm(struct sde_rm_state *state,
 		return;
 
 	avail_res->num_lm++;
+	SDE_DEBUG("num_lm available(inc)=%d, blk_id=%d",
+		  avail_res->num_lm, blk->id);
 
 	/* Check for 3d muxes by comparing paired lms */
 	list_for_each_entry(blk2, &state->hw_blks[SDE_HW_BLK_LM], list) {
@@ -233,6 +235,8 @@ static void _sde_rm_dec_resource_info_lm(struct sde_rm_state *state,
 		return;
 
 	avail_res->num_lm--;
+	SDE_DEBUG("num_lm available(dec)=%d, blk_id=%d",
+		 avail_res->num_lm, blk->id);
 
 	/* Check for 3d muxes by comparing paired lms */
 	list_for_each_entry(blk2, &state->hw_blks[SDE_HW_BLK_LM], list) {
@@ -279,17 +283,21 @@ static void _sde_rm_dec_resource_info(struct sde_rm_state *state,
 #define to_sde_rm_priv_state(x) \
 		container_of((x), struct sde_rm_state, base)
 
-void sde_rm_dec_resource_info(struct sde_rm *rm)
+void sde_rm_dec_resource_info(struct sde_rm *rm, struct drm_encoder *drm_enc)
 {
 	struct sde_rm_hw_blk *blk;
 	enum sde_hw_blk_type type;
 	struct sde_rm_state *state;
 
+	if (!drm_enc)
+		return;
+
 	state = to_sde_rm_priv_state(rm->obj.state);
 
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry(blk, &state->hw_blks[type], list) {
-			if (blk->enc_id)
+			if ((drm_enc->base.id < 0) ||
+				(drm_enc->base.id == blk->enc_id))
 				_sde_rm_dec_resource_info(state,
 						&rm->avail_res, blk);
 		}
