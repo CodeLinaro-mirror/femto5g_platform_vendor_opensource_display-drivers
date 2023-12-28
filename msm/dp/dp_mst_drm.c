@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2765,6 +2765,9 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 	struct dp_mst_private *mst = dp->dp_mst_prv_info;
 	struct drm_connector *active_conn[MAX_DP_MST_DRM_BRIDGES];
 	u8 esi[14];
+#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+	u8 ack[8] = {};
+#endif
 	unsigned int esi_res = DP_SINK_COUNT_ESI + 1;
 	bool handled;
 
@@ -2786,17 +2789,31 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 	if (esi[1] & DP_UP_REQ_MSG_RDY)
 		dp_mst_get_active_connectors(mst, active_conn);
 
+#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+	rc = drm_dp_mst_hpd_irq_handle_event(&mst->mst_mgr, esi, ack, &handled);
+#else
 	rc = drm_dp_mst_hpd_irq(&mst->mst_mgr, esi, &handled);
+#endif
 
 	/* ack the request */
 	if (handled) {
+#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+		rc = drm_dp_dpcd_writeb(mst->caps.drm_aux, esi_res, ack[1]);
+#else
 		rc = drm_dp_dpcd_write(mst->caps.drm_aux, esi_res, &esi[1], 3);
-
+#endif
 		if (esi[1] & DP_UP_REQ_MSG_RDY)
 			dp_mst_clear_edid_cache(dp);
 
+#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+		if (rc != 1)
+			DP_ERR("dpcd esi_res failed. rlen=%d\n", rc);
+		else
+			drm_dp_mst_hpd_irq_send_new_request(&mst->mst_mgr);
+#else
 		if (rc != 3)
 			DP_ERR("dpcd esi_res failed. rlen=%d\n", rc);
+#endif
 	}
 
 	if (esi[1] & DP_UP_REQ_MSG_RDY)
