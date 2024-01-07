@@ -51,6 +51,11 @@
 #define RXINFO_LENGTH 2
 #define RECEIVE_ID_OFFSET 21
 
+/*
+ * @max_hdcp_key_verify_retries - Max number of retries by default set to 0 which
+ *                                is equivalent to 0MS. Actual value will be the one
+ *                                from the dtsi file.
+ */
 struct sde_hdcp_2x_ctrl {
 	DECLARE_KFIFO(cmd_q, enum sde_hdcp_2x_wakeup_cmd, 8);
 	wait_queue_head_t wait_q;
@@ -77,6 +82,7 @@ struct sde_hdcp_2x_ctrl {
 	struct list_head stream_handles;
 	u8 stream_count;
 	u8 rx_info[2];
+	u32 max_hdcp_key_verify_retries;
 
 	struct task_struct *thread;
 	struct completion response_completion;
@@ -953,6 +959,7 @@ static int sde_hdcp_2x_wakeup(struct sde_hdcp_2x_wakeup_data *data)
 	case HDCP_2X_CMD_ENABLE:
 		if (!atomic_cmpxchg(&hdcp->enable_pending, 0, 1)) {
 			hdcp->device_type = data->device_type;
+			hdcp->max_hdcp_key_verify_retries = data->max_hdcp_key_verify_retries;
 			kfifo_put(&hdcp->cmd_q, data->cmd);
 			kthread_unpark(hdcp->thread);
 			wake_up(&hdcp->wait_q);
@@ -1026,6 +1033,9 @@ static void sde_hdcp_2x_enable(struct sde_hdcp_2x_ctrl *hdcp)
 	hdcp->hdcp2_ctx = hdcp2_init(hdcp->device_type);
 	if (!hdcp->hdcp2_ctx)
 		pr_err("Unable to acquire HDCP library handle\n");
+	else
+		hdcp2_set_hdcp_key_verify_retries(hdcp->hdcp2_ctx,
+			hdcp->max_hdcp_key_verify_retries);
 }
 
 static void sde_hdcp_2x_disable(struct sde_hdcp_2x_ctrl *hdcp)

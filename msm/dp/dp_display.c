@@ -224,6 +224,7 @@ struct dp_display_private {
 	struct device *msm_hdcp_dev;
 	u32 hdcp_cell_idx;
 	u32 dpu_idx;
+	u32 max_hdcp_key_verify_retries;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -712,6 +713,7 @@ static int dp_display_initialize_hdcp(struct dp_display_private *dp)
 	hdcp_init_data.revision      = &dp->panel->link_info.revision;
 	hdcp_init_data.msm_hdcp_dev  = dp->msm_hdcp_dev;
 	hdcp_init_data.forced_encryption = parser->has_force_encryption;
+	hdcp_init_data.max_hdcp_key_verify_retries = dp->max_hdcp_key_verify_retries;
 
 	fd = sde_hdcp_1x_init(&hdcp_init_data);
 	if (IS_ERR_OR_NULL(fd)) {
@@ -1914,9 +1916,6 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_CASE1, dp->state);
 		return 0;
 	}
-
-	if (dp->debug->psm_enabled && dp_display_state_is(DP_STATE_READY))
-		dp->link->psm_config(dp->link, &dp->panel->link_info, true);
 
 	dp_display_disconnect_sync(dp);
 
@@ -3630,7 +3629,17 @@ static int dp_parser_msm_hdcp_dev(struct dp_display_private *dp)
 	if (ret < 0) {
 		// This is a non-fatal error, module initialization can proceed
 		pr_warn("couldn't find right hdcp dpu-index\n");
-		return 0;
+	}
+
+	/*
+	 * max_hdcp_key_verify_retries in case of failure
+	 * due to delayed Qseecomd startup at boot time.
+	 */
+	ret = of_property_read_u32(node, "max_hdcp_key_verify_retries",
+				&dp->max_hdcp_key_verify_retries);
+	if (ret < 0) {
+		// This is a non-fatal error, module initialization can proceed
+		pr_warn("couldn't find right max_hdcp_key_verify_retries\n");
 	}
 
 	dp->msm_hdcp_dev = &pdev->dev;
@@ -4455,6 +4464,9 @@ static int dp_pm_prepare(struct device *dev)
 
 	dp = dev_get_drvdata(dev);
 
+	if (!dp->dp_display.base_connector)
+		return 0;
+
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 	mutex_lock(&dp->session_lock);
 	dp_display_set_mst_state(&dp->dp_display, PM_SUSPEND);
@@ -4474,6 +4486,22 @@ static int dp_pm_prepare(struct device *dev)
 	}
 
 	dp_display_state_add(DP_STATE_SUSPENDED);
+
+	/*
+	 * If DP is not enabled but powered and suspend state
+	 * is entered, we need to power off the host to disable all
+	 * clocks. This is needed when link training failed.
+	 */
+	if (!dp_display_state_is(DP_STATE_ENABLED) &&
+			dp->aux->state != DP_STATE_CTRL_POWERED_OFF) {
+		dp->ctrl->off(dp->ctrl);
+		dp_display_host_deinit(dp);
+		dp->aux->state = DP_STATE_CTRL_POWERED_OFF;
+
+		if (dp->parser->force_connect_mode)
+			dp_display_send_force_connect_event(dp);
+	}
+
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
@@ -4504,6 +4532,9 @@ static void dp_pm_complete(struct device *dev)
 		return;
 
 	dp = dev_get_drvdata(dev);
+
+	if (!dp->dp_display.base_connector)
+		return;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 	mutex_lock(&dp->session_lock);
