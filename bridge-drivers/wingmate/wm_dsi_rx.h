@@ -94,12 +94,18 @@
 #define DSI_RX_INT_ST_IPI_FATAL		0x264
 #define DSI_RX_INT_ST_IPI		0x270
 #define DSI_RX_INT_ST_FIFO_FATAL 	0x280
+#define DSI_RX_INT_ST_DESKEW_FATAL 	0x290
+
+/*INT MASK*/
+#define DSI_RX_MASK_IPI_FATAL		0x274
+#define DSI_RX_MASK_FIFO_FATAL		0x284
+#define DSI_RX_MASK_DESKEW_FATAL	0x294
 
 /*VTG*/
 #define VTG_MIPI_CLKCFGFREQRANGE 	0x30B0/*0x4830B0*/
 #define VTG_MIPI_HSFREQRANGE	 	0x30B4
 
-#define WM_DEBUG(fmt, ...)      DRM_DEV_DEBUG(NULL, "[msm-dsi-debug]: "fmt, \
+#define WM_DEBUG(fmt, ...)      DRM_DEV_DEBUG(NULL, "[wm-debug]: "fmt, \
 					##__VA_ARGS__)
 #define WM_INFO(fmt, ...)	DRM_DEV_INFO(NULL, "[wm-info]: "fmt, \
 					##__VA_ARGS__)
@@ -173,12 +179,14 @@ struct wm_dsi_rx {
 	struct dsi_rx_mode_info *mode;
 	struct wm_display *display;
 	struct wm_dsc *dsc;
+	struct workqueue_struct *workq;
+	struct work_struct err_work;
 	int (*enable)(struct wm_dsi_rx *dsi_rx);
 	int (*pre_enable)(struct wm_dsi_rx *dsi_rx);
 	int (*pre_disable)(struct wm_dsi_rx *dsi_rx);
 	int (*disable)(struct wm_dsi_rx *dsi_rx);
 	int (*set_mode)(struct wm_dsi_rx *dsi_rx);
-	int (*deinit) (struct wm_display_info *display_info);
+	int (*deinit) (struct wm_dsi_rx *dsi_rx);
 	int (*irq_handler)(struct wm_dsi_rx *dsi_rx, int irq);
 };
 

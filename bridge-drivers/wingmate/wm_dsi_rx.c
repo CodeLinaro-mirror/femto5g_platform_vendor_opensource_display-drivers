@@ -9,9 +9,10 @@
 #include <drm/drm_dsc.h>
 
 /*TODO
- * 1. configure mipi interrupts
- * 2. debugfs
- * 3. handle error status
+ * 1. debugfs
+ * 2. power handling
+ * 3. constant values from DV
+ * 4. ipi tx delay
  */
 
 #define WM_DSC_PPS_SIZE				128
@@ -88,10 +89,67 @@ static int dsi_reg_write(struct wm_dsi_rx *dsi_rx, u32 off, u32 val)
 	return display->write_register(display, off, val);
 }
 
-int wm_dsi_rx_mask_interrupts(struct wm_dsi_rx *dsi_rx)
+void wm_dsi_rx_mask_interrupts(struct wm_dsi_rx *dsi_rx)
 {
-	/*func may split classifying what type of interrupts to be masked*/
+	dsi_reg_write(dsi_rx, DSI_RX_MASK_FIFO_FATAL, 0xFF);
+	dsi_reg_write(dsi_rx, DSI_RX_MASK_IPI_FATAL, 0xFF);
+	dsi_reg_write(dsi_rx, DSI_RX_MASK_DESKEW_FATAL, 0xFF);
+}
+
+/**
+ * wm_dsi_rx_soft_reset()- API to reset RX
+ */
+int wm_dsi_rx_soft_reset(struct wm_dsi_rx *dsi_rx)
+{
+	dsi_reg_write(dsi_rx, DSI_RX_SOFT_RSTN, 0x0);
+	dsi_reg_write(dsi_rx, DSI_RX_SOFT_RSTN, 0x1);
 	return 0;
+}
+
+static void wm_dsi_rx_handle_error_status(struct work_struct *work)
+{
+	struct wm_dsi_rx *dsi_rx;
+
+	dsi_rx = container_of(work, struct wm_dsi_rx, err_work);
+
+	wm_dsi_rx_soft_reset(dsi_rx);
+}
+
+static int wm_dsi_rx_isr(struct wm_dsi_rx *dsi_rx, int irq)
+{
+	u32 status = 0;
+	u32 error = 0;
+
+	if (!dsi_rx) {
+		WM_ERR("invalid data");
+		return IRQ_NONE;
+	}
+	/*check interrupts*/
+	status = dsi_reg_read(dsi_rx, DSI_RX_INT_ST_MAIN);
+
+	if (status & BIT(3)) {
+		/* IPI fatal errors*/
+		error = dsi_reg_read(dsi_rx, DSI_RX_INT_ST_IPI_FATAL);
+		WM_ERR("DSI RX IPI FATAL error: 0x%x\n", error);
+		queue_work(dsi_rx->workq, &dsi_rx->err_work);
+	} else if (status & BIT(4)) {
+		/*FIFO fatal errors*/
+		error = dsi_reg_read(dsi_rx, DSI_RX_INT_ST_FIFO_FATAL);
+		WM_ERR("DSI RX FIFO FATAL error: 0x%x\n", error);
+		queue_work(dsi_rx->workq, &dsi_rx->err_work);
+	} else if (status & BIT(23)) {
+		/*DESKEW fatal errors*/
+		error = dsi_reg_read(dsi_rx, DSI_RX_INT_ST_DESKEW_FATAL);
+		WM_ERR("DSI RX DESKEW FATAL error: 0x%x\n", error);
+		queue_work(dsi_rx->workq, &dsi_rx->err_work);
+	} else {
+		/*ignore other errors*/
+		WM_DEBUG("DSI RX error 0x%x ignored\n", error);
+		return IRQ_NONE;
+	}
+
+	WM_DEBUG("DSI RX interrupt status is 0x%x\n", status);
+	return IRQ_HANDLED;
 }
 
 static int wm_dsi_rx_phy_lanes_status(struct wm_dsi_rx *dsi_rx)
@@ -294,18 +352,6 @@ static void wm_dsi_rx_phy_test_clr(struct wm_dsi_rx *dsi_rx)
 	dsi_reg_write(dsi_rx, DSI_RX_PHY_TST_CTRL0, 0x1);
 	ndelay(15);
 	dsi_reg_write(dsi_rx, DSI_RX_PHY_TST_CTRL0, 0x0);
-}
-
-
-
-/**
- * wm_dsi_rx_soft_reset()- API to reset RX
- */
-int wm_dsi_rx_soft_reset(struct wm_dsi_rx *dsi_rx)
-{
-	dsi_reg_write(dsi_rx, DSI_RX_SOFT_RSTN, 0x0);
-	dsi_reg_write(dsi_rx, DSI_RX_SOFT_RSTN, 0x1);
-	return 0;
 }
 
 /**
@@ -825,16 +871,6 @@ static int wm_dsi_rx_disable(struct wm_dsi_rx *dsi_rx)
 	return 0;
 }
 
-int wm_dsi_rx_get_interrupt_status(struct wm_dsi_rx *dsi_rx)
-{
-	return 0;
-}
-
-int wm_dsi_rx_handle_error_status(struct wm_dsi_rx *dsi_rx)
-{
-	return 0;
-}
-
 static void wm_dsi_rx_configure_tpg_frame(struct wm_dsi_rx *dsi_rx)
 {
 	u32 h_total = 0;
@@ -896,9 +932,27 @@ error:
 	return 0;
 }
 
-static int wm_dsi_rx_deinit(struct wm_display_info *display_info)
+static int wm_dsi_rx_create_workqueue(struct wm_dsi_rx *dsi_rx)
+{
+	dsi_rx->workq = create_singlethread_workqueue("wm_dsi_wq");
+
+	if (IS_ERR_OR_NULL(dsi_rx->workq)) {
+		WM_ERR("DSI RX creating workqueue failed");
+		return -ENOMEM;
+	}
+
+	INIT_WORK(&dsi_rx->err_work, wm_dsi_rx_handle_error_status);
+
+	return 0;
+}
+static int wm_dsi_rx_deinit(struct wm_dsi_rx *dsi_rx)
 {
 	/*minor changes need to be done*/
+
+	if (dsi_rx->workq) {
+		cancel_work_sync(&dsi_rx->err_work);
+		destroy_workqueue(dsi_rx->workq);
+	}
 
 	return 0;
 }
@@ -927,8 +981,14 @@ struct wm_dsi_rx *wm_dsi_rx_init(struct wm_display_info *display_info)
 	dsi_rx->enable = wm_dsi_rx_enable;
 	dsi_rx->disable = wm_dsi_rx_disable;
 	dsi_rx->deinit = wm_dsi_rx_deinit;
+	dsi_rx->irq_handler = wm_dsi_rx_isr;
 
 	wm_dsi_rx_power_init(dsi_rx);
+
+	rc = wm_dsi_rx_create_workqueue(dsi_rx);
+
+	if (rc)
+		goto error;
 
 	wm_dsi_rx_sysfs_init(dsi_rx);
 
