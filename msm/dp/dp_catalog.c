@@ -47,6 +47,14 @@
 #define DP_TPG_PATTERN_MAX	9
 #define DP_TPG_PATTERN_DEFAULT	8
 
+#define MISR_CTRL_IS_ENABLE			BIT(0)
+#define MISR_CTRL_SW_RESET			BIT(1)
+#define MISR_CTRL_ACTIVE_ONLY			BIT(2)
+#define MISR_CTRL_NO_FILLER			BIT(3)
+#define MISR_CTRL_FRAME_COUNT_MASK		0xFF0
+#define MISR_CTRL_FRAME_COUNT_SHIFT		4
+#define MISR_CTRL_MST_FRAME_END_CHECK_POINT	BIT(20)
+
 #define dp_catalog_fill_io(x) { \
 	catalog->io.x = parser->get_io(parser, #x); \
 }
@@ -2339,10 +2347,16 @@ static void dp_catalog_ctrl_reset_retimer(struct dp_catalog_ctrl *ctrl)
 {
 	struct dp_catalog_private *catalog;
 	struct dp_io_data *io_data;
+	struct dp_parser *parser;
 	u32 reg;
 
 	catalog = dp_catalog_get_priv(ctrl);
 	io_data   = catalog->io.dp_phy;
+	parser = catalog->parser;
+
+	/* TODO: revisit this logic for DP_PHY_VERSION_5_0_0 */
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_5_0_0)
+		return;
 
 	reg = dp_read(DP_PHY_CFG) & 0xFF;
 
@@ -2785,6 +2799,114 @@ static void dp_catalog_panel_config_spd(struct dp_catalog_panel *panel)
 	dp_catalog_panel_sdp_update(panel);
 }
 
+static void dp_catalog_setup_misr(struct dp_catalog_ctrl *ctrl,
+		bool enable, u32 frame_count)
+{
+	struct dp_catalog_private *catalog;
+	struct dp_io_data *io_data;
+	u32 config = 0;
+
+	if (!ctrl) {
+		pr_err("invalid input\n");
+		return;
+	}
+
+	catalog = dp_catalog_get_priv(ctrl);
+	io_data = catalog->io.dp_link;
+
+	if (enable) {
+		io_data = catalog->io.dp_link;
+		config = (frame_count << MISR_CTRL_FRAME_COUNT_SHIFT) &
+				MISR_CTRL_FRAME_COUNT_MASK;
+		config |= MISR_CTRL_IS_ENABLE | MISR_CTRL_ACTIVE_ONLY |
+				MISR_CTRL_NO_FILLER | MISR_CTRL_SW_RESET;
+		dp_write(DP_MISR_CTRL, config);
+		usleep_range(10, 20);
+
+		config &= ~MISR_CTRL_SW_RESET;
+	} else {
+		io_data = catalog->io.dp_link;
+		config = 0;
+	}
+
+	dp_write(DP_MISR_CTRL, config);
+}
+
+static int dp_catalog_collect_misr(struct dp_catalog_ctrl *ctrl,
+		u32 *misr)
+{
+	struct dp_catalog_private *catalog;
+	struct dp_io_data *io_data;
+	u32 cfg;
+	int i;
+
+	if (!ctrl) {
+		pr_err("invalid input\n");
+		return -EINVAL;
+	}
+
+	catalog = dp_catalog_get_priv(ctrl);
+	io_data = catalog->io.dp_link;
+
+	cfg = dp_read(DP_MISR_CTRL);
+	if (!(cfg & MISR_CTRL_IS_ENABLE))
+		return -EPERM;
+
+	for (i = 0; i < DP_MAX_PHY_LN; i++)
+		misr[i] = dp_read(DP_MISR_VALUE_LANE0 +
+				i * 4);
+
+	return DP_MAX_PHY_LN;
+}
+
+static int dp_catalog_collect_crc(struct dp_catalog_ctrl *ctrl,
+		u32 *r, u32 *g, u32 *b, int strm_id)
+{
+	struct dp_catalog_private *catalog;
+	struct dp_io_data *io_data;
+	u32 cfg, rg;
+
+	if (!ctrl) {
+		pr_err("invalid input\n");
+		return -EINVAL;
+	}
+
+	catalog = dp_catalog_get_priv(ctrl);
+
+	if (strm_id == DP_STREAM_0) {
+		io_data = catalog->io.dp_p0;
+		cfg = dp_read(MMSS_DP_TIMING_ENGINE_EN);
+		if (!(cfg & BIT(8))) {
+			cfg |= BIT(8);
+			dp_write(MMSS_DP_TIMING_ENGINE_EN, cfg);
+			return -EAGAIN;
+		}
+
+		io_data = catalog->io.dp_link;
+		rg = dp_read(DP_PSR_CRC_RG);
+		*b = dp_read(DP_PSR_CRC_B);
+	} else if (strm_id == DP_STREAM_1) {
+		io_data = catalog->io.dp_p1;
+		cfg = dp_read(MMSS_DP_TIMING_ENGINE_EN);
+		if (!(cfg & BIT(8))) {
+			cfg |= BIT(8);
+			dp_write(MMSS_DP_TIMING_ENGINE_EN, cfg);
+			return -EAGAIN;
+		}
+
+		io_data = catalog->io.dp_link;
+		rg = dp_read(DP_DP1_CRC_RG);
+		*b = dp_read(DP_DP1_CRC_B);
+	} else {
+		return -EINVAL;
+	}
+
+	*r = rg & 0xFFFF;
+	*g = rg >> 16;
+
+	return 0;
+}
+
 static void dp_catalog_get_io_buf(struct dp_catalog_private *catalog)
 {
 	struct dp_parser *parser = catalog->parser;
@@ -2951,6 +3073,9 @@ struct dp_catalog *dp_catalog_get(struct device *dev, struct dp_parser *parser)
 		.mainlink_levels = dp_catalog_ctrl_mainlink_levels,
 		.late_phy_init = dp_catalog_ctrl_late_phy_init,
 		.reset_retimer = dp_catalog_ctrl_reset_retimer,
+		.setup_misr = dp_catalog_setup_misr,
+		.collect_misr = dp_catalog_collect_misr,
+		.collect_crc = dp_catalog_collect_crc,
 	};
 	struct dp_catalog_hpd hpd = {
 		.config_hpd	= dp_catalog_hpd_config_hpd,

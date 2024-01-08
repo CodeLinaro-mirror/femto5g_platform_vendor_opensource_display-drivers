@@ -38,6 +38,7 @@ struct msm_hdcp {
 	void *client_ctx;
 	void (*cb)(void *ctx, u8 data);
 	u32 cell_idx;
+	u32 dpu_idx;
 	u8 min_enc_level;
 	struct msm_hdcp *master_hdcp;
 	struct list_head head;
@@ -427,7 +428,7 @@ static int msm_hdcp_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct msm_hdcp *hdcp;
-	char driver_name[10];
+	char driver_name[12];
 	struct device_node *of_node = pdev->dev.of_node;
 	hdcp = devm_kzalloc(&pdev->dev, sizeof(struct msm_hdcp), GFP_KERNEL);
 	if (!hdcp)
@@ -442,9 +443,21 @@ static int msm_hdcp_probe(struct platform_device *pdev)
 
 	of_property_read_u32(of_node, "cell-index", &hdcp->cell_idx);
 
-	if (hdcp->cell_idx)
-		snprintf(driver_name, sizeof(driver_name), "%s%d",
-				DRIVER_NAME, hdcp->cell_idx);
+	of_property_read_u32(of_node, "dpu-index", &hdcp->dpu_idx);
+
+	/* HDCP Master node will always have
+	 * dpu_idx = 0 and cell_idx = 0.
+	 * In other modules, "msm_hdcp" name
+	 * is being used to set the minimum
+	 * encryption level. Therefore,
+	 * HDCP Master node name should not
+	 * include dpu_idx and cell_idx.
+	 * Only HDCP Slave nodes will
+	 * include dpu_idx and cell_idx.
+	 */
+	if (hdcp->cell_idx || hdcp->dpu_idx)
+		snprintf(driver_name, sizeof(driver_name), "%s%d_%d",
+				DRIVER_NAME, hdcp->dpu_idx, hdcp->cell_idx);
 	else
 		snprintf(driver_name, sizeof(driver_name), "%s", DRIVER_NAME);
 

@@ -41,6 +41,11 @@ struct dp_ctrl {
 	void (*set_sim_mode)(struct dp_ctrl *dp_ctrl, bool en);
 	void (*set_phy_bond_mode)(struct dp_ctrl *dp_ctrl,
 			enum dp_phy_bond_mode mode);
+	void (*setup_misr)(struct dp_ctrl *dp_ctrl,
+			bool enable, u32 frame_count);
+	int (*collect_misr)(struct dp_ctrl *dp_ctrl, u32 *misr);
+	int (*collect_crc)(struct dp_ctrl *dp_ctrl,
+			u32 *r, u32 *g, u32 *b, struct dp_panel *panel);
 };
 
 struct dp_ctrl_in {
