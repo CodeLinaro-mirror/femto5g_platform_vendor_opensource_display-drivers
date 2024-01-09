@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2010-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1608,6 +1608,9 @@ void *sde_hdcp_1x_init(struct sde_hdcp_init_data *init_data)
 	if (!hdcp->hdcp1_handle) {
 		pr_err("Error creating HDCP 1.x handle\n");
 		goto hdcp1_handle_error;
+	} else {
+		hdcp1_set_hdcp_key_verify_retries(hdcp->hdcp1_handle,
+			hdcp->init_data.max_hdcp_key_verify_retries);
 	}
 
 	sde_hdcp_1x_update_client_reg_set(hdcp);

@@ -226,6 +226,7 @@ struct sde_irq_callback {
  * @enable_counts array of IRQ enable counts
  * @cb_lock:      callback lock
  * @debugfs_file: debugfs file for irq statistics
+ * @en_lock_arr : array of IRQ enable locks
  */
 struct sde_irq {
 	u32 total_irqs;
@@ -234,6 +235,7 @@ struct sde_irq {
 	atomic_t *irq_counts;
 	spinlock_t cb_lock;
 	struct dentry *debugfs_file;
+	spinlock_t *en_lock_arr;
 };
 
 /**

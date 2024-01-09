@@ -539,10 +539,6 @@ static int dp_ctrl_link_training_2(struct dp_ctrl_private *ctrl)
 		goto skip_training;
 	}
 
-	dp_ctrl_state_ctrl(ctrl, 0);
-	/* Make sure to clear the current pattern before starting a new one */
-	wmb();
-
 	while (1)  {
 		if (atomic_read(&ctrl->aborted)) {
 			ret = -EINVAL;
@@ -843,7 +839,7 @@ static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
 {
 	int rc = -EINVAL;
 	bool downgrade = false;
-	u32 link_train_max_retries = 100;
+	u32 link_train_max_retries = ctrl->parser->link_training_retries;
 	struct dp_catalog_ctrl *catalog;
 	struct dp_link_params *link_params;
 
@@ -1127,7 +1123,7 @@ static int dp_ctrl_link_maintenance(struct dp_ctrl *dp_ctrl)
 {
 	int ret = 0;
 	struct dp_ctrl_private *ctrl;
-	int retry = 100;
+	int retry;
 
 	if (!dp_ctrl) {
 		DP_ERR("Invalid input data\n");
@@ -1136,6 +1132,7 @@ static int dp_ctrl_link_maintenance(struct dp_ctrl *dp_ctrl)
 
 	ctrl = container_of(dp_ctrl, struct dp_ctrl_private, dp_ctrl);
 
+	retry = ctrl->parser->link_training_retries;
 	ctrl->aux->state &= ~DP_STATE_LINK_MAINTENANCE_COMPLETED;
 	ctrl->aux->state &= ~DP_STATE_LINK_MAINTENANCE_FAILED;
 

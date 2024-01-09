@@ -505,6 +505,6 @@ int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm, struct drm_atomic_state 
 				     struct sde_hw_mixer *sde_hw_lm);
 
 
-void sde_rm_dec_resource_info(struct sde_rm *rm);
+void sde_rm_dec_resource_info(struct sde_rm *rm, struct drm_encoder *drm_enc);
 
 #endif /* __SDE_RM_H__ */
