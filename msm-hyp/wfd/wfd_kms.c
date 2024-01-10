@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /* Copyright (C) 2014 Red Hat
@@ -497,7 +497,9 @@ static int _wfd_kms_format_to_openwfd_format(uint32_t format,
 	int i;
 
 	if ((modifier & DRM_FORMAT_MOD_QTI_COMPRESSED) ==
-			DRM_FORMAT_MOD_QTI_COMPRESSED)
+		DRM_FORMAT_MOD_QTI_COMPRESSED ||
+		(modifier & DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE) ==
+		DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE)
 		*wfd_usage = WFD_USAGE_DISPLAY | WFD_USAGE_COMPRESSION;
 	else
 		*wfd_usage = WFD_USAGE_DISPLAY;
@@ -520,11 +522,21 @@ static int _wfd_kms_format_to_openwfd_format(uint32_t format,
 	}
 
 	if (format == DRM_FORMAT_NV12) {
-		if ((modifier & fourcc_mod_code(QTI, 0x7)) ==
-				fourcc_mod_code(QTI, 0x7))
+		if (((modifier & DRM_FORMAT_MOD_QTI_COMPRESSED) ==
+			DRM_FORMAT_MOD_QTI_COMPRESSED &&
+			(modifier & DRM_FORMAT_MOD_QTI_DX) ==
+			DRM_FORMAT_MOD_QTI_DX &&
+			(modifier & DRM_FORMAT_MOD_QTI_TIGHT) ==
+			DRM_FORMAT_MOD_QTI_TIGHT) ||
+			((modifier & DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE) ==
+			DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE &&
+			(modifier & DRM_FORMAT_MOD_QTI_DX) ==
+			DRM_FORMAT_MOD_QTI_DX &&
+			(modifier & DRM_FORMAT_MOD_QTI_TIGHT) ==
+			DRM_FORMAT_MOD_QTI_TIGHT))
 			*wfd_format = WFD_FORMAT_NV12_QC_TP10;
-		else if ((modifier & fourcc_mod_code(QTI, 0x2)) ==
-				fourcc_mod_code(QTI, 0x2))
+		else if ((modifier & DRM_FORMAT_MOD_QTI_DX) ==
+				DRM_FORMAT_MOD_QTI_DX)
 			*wfd_format = WFD_FORMAT_P010;
 		else
 			*wfd_format = WFD_FORMAT_NV12;
@@ -1205,6 +1217,15 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 					SDE_DRM_FB_SEC) ?
 					WFD_SOURCE_TRANSLATION_SECURED :
 					WFD_SOURCE_TRANSLATION_UNSECURED;
+			if ((plane->state->fb->modifier &
+				DRM_FORMAT_MOD_QTI_SECURE) ==
+				DRM_FORMAT_MOD_QTI_SECURE ||
+				(plane->state->fb->modifier &
+				DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE) ==
+				DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE)
+				attrib_list[1] =
+					WFD_SOURCE_TRANSLATION_SECURED;
+
 			fb_priv->wfd_source = wfdCreateSourceFromImage_User(
 					priv->wfd_device,
 					priv->wfd_pipeline,
