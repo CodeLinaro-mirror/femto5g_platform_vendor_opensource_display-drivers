@@ -6,6 +6,9 @@
 #ifndef _DRIVERS_UMD_POWER_H_
 #define _DRIVERS_UMD_POWER_H_
 
+#include <linux/types.h>
+#include <linux/ioctl.h>
+
 enum umdp_level {
 	UMD_POWER_OFF = 0,
 	UMD_POWER_ON,

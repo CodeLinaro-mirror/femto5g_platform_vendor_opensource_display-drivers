@@ -16,6 +16,7 @@
 #define DP_MAX_LINK_CLK_KHZ	810000
 #define MAX_DP_MST_STREAMS	2
 #define MAX_DP_BOND_NUM		3
+#define MAX_DP_LINK_TRAINING_RETRIES	100
 
 enum dp_pm_type {
 	DP_CORE_PM,
@@ -377,6 +378,7 @@ struct dp_parser {
 	bool no_lane_count_reduction;
 	u32 link_training_min_vlevel;
 	u32 link_training_min_plevel;
+	u32 link_training_retries;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
