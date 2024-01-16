@@ -1208,19 +1208,4 @@ int sde_connector_esd_status(struct drm_connector *connector);
 const char *sde_conn_get_topology_name(struct drm_connector *conn,
 		struct msm_display_topology topology);
 
-/**
-* sde_connector_get_avail_res_info - get available resources
-* @connector: Pointer to drm connector structure
-* @avail_res: Pointer with curr available resources
-*/
-void sde_connector_get_avail_res_info(struct drm_connector *conn,
-		struct msm_resource_caps_info *avail_res);
-/**
-* sde_connector_get_avail_res_info - get available resources
-* @connector: Pointer to drm connector structure
-* @avail_res: Pointer with curr available resources
-*/
-void sde_connector_get_avail_res_info(struct drm_connector *conn,
-		struct msm_resource_caps_info *avail_res);
-
 #endif /* _SDE_CONNECTOR_H_ */

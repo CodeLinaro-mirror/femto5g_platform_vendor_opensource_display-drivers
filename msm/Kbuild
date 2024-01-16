@@ -247,10 +247,6 @@ msm_drm-$(CONFIG_DRM_MSM) += msm_atomic.o \
 			     msm_gem_vma.o \
 			     msm_smmu.o \
 			     msm_prop.o
-msm_drm-$(CONFIG_DRM_SDE_SHD) += shd/sde_encoder_phys_shd.o \
-			   shd/shd_drm.o \
-			   shd/shd_hw.o
-msm_drm-$(CONFIG_DRM_MSM_LEASE) += ../msm-lease/msm_lease_drv.o
 
 CDEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"
 

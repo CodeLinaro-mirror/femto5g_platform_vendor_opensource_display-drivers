@@ -113,22 +113,6 @@ enum sde_enc_rc_states {
 };
 
 /**
-* struct sde_encoder_ops - callback functions for generic sde encoder
-* Individual callbacks documented below.
-*/
-struct sde_encoder_ops {
-	/**
-	* phys_init - phys initialization function
-	* @type: controller type
-	* @controller_id: controller id
-	* @phys_init_params: Pointer of structure sde_enc_phys_init_params
-	* Returns: Pointer of sde_encoder_phys, NULL if failed
-	*/
-	void *(*phys_init)(enum sde_intf_type type,
-			u32 controller_id, void *phys_init_params);
-};
-
-/**
  * struct sde_encoder_virt - virtual encoder. Container of one or more physical
  *	encoders. Virtual encoder manages one "logical" display. Physical
  *	encoders manage one intf block, tied to a specific panel/sub-panel.
@@ -138,7 +122,6 @@ struct sde_encoder_ops {
  * @enc_spin_lock:	Virtual-Encoder-Wide Spin Lock for IRQ purposes
  * @bus_scaling_client:	Client handle to the bus scaling interface
  * @te_source:		vsync source pin information
- * * @ops:		Encoder ops from init function
  * @num_phys_encs:	Actual number of physical encoders contained.
  * @phys_encs:		Container of physical encoders managed.
  * @phys_vid_encs:	Video physical encoders for panel mode switch.
@@ -217,8 +200,6 @@ struct sde_encoder_virt {
 
 	uint32_t display_num_of_h_tiles;
 	uint32_t te_source;
-
-	struct sde_encoder_ops ops;
 
 	unsigned int num_phys_encs;
 	struct sde_encoder_phys *phys_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
@@ -453,18 +434,6 @@ bool sde_encoder_is_dsc_merge(struct drm_encoder *drm_enc);
 bool sde_encoder_check_curr_mode(struct drm_encoder *drm_enc, u32 mode);
 
 /**
-* sde_encoder_init_with_ops - initialize virtual encoder object with init ops
-* @dev:        Pointer to drm device structure
-* @disp_info:  Pointer to display information structure
-* @ops:        Pointer to encoder ops structure
-* Returns:     Pointer to newly created drm encoder
-*/
-struct drm_encoder *sde_encoder_init_with_ops(
-		struct drm_device *dev,
-		struct msm_display_info *disp_info,
-		const struct sde_encoder_ops *ops);
-
-/**
  * sde_encoder_init - initialize virtual encoder object
  * @dev:        Pointer to drm device structure
  * @disp_info:  Pointer to display information structure
@@ -545,14 +514,6 @@ bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
  */
 void sde_encoder_set_clone_mode(struct drm_encoder *drm_enc,
 	 struct drm_crtc_state *crtc_state);
-
-/**
- *sde_encoder_is_topology_ppsplit - checks if the current encoder is in
-	ppsplit topology.
- *@drm_enc:	Pointer to drm encoder structure
- *@Return:	true if the present topology is ppsplit
- */
-bool sde_encoder_is_topology_ppsplit(struct drm_encoder *drm_enc);
 
 /*
  * sde_encoder_is_cwb_disabling - check if cwb encoder disable is pending

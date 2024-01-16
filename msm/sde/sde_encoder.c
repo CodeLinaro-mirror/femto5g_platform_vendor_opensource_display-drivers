@@ -914,24 +914,6 @@ bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
 	return false;
 }
 
-bool sde_encoder_is_topology_ppsplit(struct drm_encoder *drm_enc)
-{
-	struct sde_encoder_virt *sde_enc;
-	struct sde_encoder_phys *master;
-
-	if (!drm_enc)
-		return false;
-
-	sde_enc = to_sde_encoder_virt(drm_enc);
-	master = sde_enc->cur_master;
-
-	if (!master || !master->connector)
-		return false;
-
-	return  (sde_connector_get_topology_name(master->connector)
-			== SDE_RM_TOPOLOGY_PPSPLIT);
-}
-
 void sde_encoder_set_clone_mode(struct drm_encoder *drm_enc,
 	 struct drm_crtc_state *crtc_state)
 {
@@ -1096,10 +1078,6 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 				return ret;
 			}
 		}
-
-		sde_crtc_state_set_topology_name(crtc_state,
-				sde_connector_get_property(conn_state,
-					CONNECTOR_PROP_TOPOLOGY_NAME));
 
 		ret = sde_connector_set_blob_data(conn_state->connector,
 				conn_state,
@@ -2524,7 +2502,6 @@ static void _sde_encoder_virt_populate_hw_res(struct drm_encoder *drm_enc)
 		else
 			sde_enc->hw_dsc_pp[i] = NULL;
 	}
-
 }
 
 static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
@@ -2691,14 +2668,13 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
 		if (phys) {
-			if (!sde_enc->hw_pp[i * num_pp_per_intf] &&
-					sde_enc->mode_info.topology.num_intf) {
+			if (!sde_enc->hw_pp[i * num_pp_per_intf]) {
 				SDE_ERROR_ENC(sde_enc, "invalid phys %d pp_per_intf %d",
 						i, num_pp_per_intf);
 				return;
 			}
 			phys->hw_pp = sde_enc->hw_pp[i * num_pp_per_intf];
-			phys->connector = conn->state->connector;
+			phys->connector = conn;
 			if (phys->ops.mode_set)
 				phys->ops.mode_set(phys, mode, adj_mode,
 				&sde_crtc->reinit_crtc_mixers);
@@ -5295,23 +5271,6 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		SDE_DEBUG("h_tile_instance %d = %d, split_role %d\n",
 				i, controller_id, phys_params.split_role);
 
-		if (sde_enc->ops.phys_init) {
-			struct sde_encoder_phys *enc;
-
-			enc = sde_enc->ops.phys_init(intf_type,
-					controller_id,
-					&phys_params);
-			if (enc) {
-				sde_enc->phys_encs[sde_enc->num_phys_encs] =
-					enc;
-				++sde_enc->num_phys_encs;
-			} else
-				SDE_ERROR_ENC(sde_enc,
-						"failed to add phys encs\n");
-			continue;
-		}
-
-
 		if (intf_type == INTF_WB) {
 			phys_params.intf_idx = INTF_MAX;
 			phys_params.wb_idx = sde_encoder_get_wb(
@@ -5384,11 +5343,7 @@ static const struct drm_encoder_funcs sde_encoder_funcs = {
 		.early_unregister = sde_encoder_early_unregister,
 };
 
-struct drm_encoder *sde_encoder_init_with_ops(
-		struct drm_device *dev,
-		struct msm_display_info *disp_info,
-		const struct sde_encoder_ops *ops)
-
+struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_info *disp_info)
 {
 	struct msm_drm_private *priv = dev->dev_private;
 	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
@@ -5404,9 +5359,6 @@ struct drm_encoder *sde_encoder_init_with_ops(
 		ret = -ENOMEM;
 		goto fail;
 	}
-
-	if (ops)
-		sde_enc->ops = *ops;
 
 	mutex_init(&sde_enc->enc_lock);
 	ret = sde_encoder_setup_display(sde_enc, sde_kms, disp_info,
@@ -5476,12 +5428,6 @@ fail:
 		sde_encoder_destroy(drm_enc);
 
 	return ERR_PTR(ret);
-}
-
-struct drm_encoder *sde_encoder_init(struct drm_device *dev,
-					struct msm_display_info *disp_info)
-{
-	return sde_encoder_init_with_ops(dev, disp_info, NULL);
 }
 
 int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,

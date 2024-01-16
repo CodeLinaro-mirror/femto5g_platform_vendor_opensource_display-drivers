@@ -245,8 +245,6 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 		return -EINVAL;
 	} else if (c_conn->connector_type != DRM_MODE_CONNECTOR_DSI) {
 		return 0;
-	} else if (!c_conn->ops.set_backlight) {
-		return 0;
 	}
 
 	display = (struct dsi_display *) c_conn->display;
@@ -445,7 +443,7 @@ int sde_connector_get_dither_cfg(struct drm_connector *conn,
 	return 0;
 }
 
-void sde_connector_get_avail_res_info(struct drm_connector *conn,
+static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 		struct msm_resource_caps_info *avail_res)
 {
 	struct sde_kms *sde_kms;
