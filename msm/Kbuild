@@ -32,6 +32,11 @@ ifeq ($(CONFIG_ARCH_KHAJE), y)
         LINUX_INC +=    -include $(DISPLAY_ROOT)/config/gki_bengaldispconf.h
 endif
 
+ifeq ($(CONFIG_ARCH_SDM670), y)
+        include $(DISPLAY_ROOT)/config/qcs605disp.conf
+        LINUX_INC +=    -include $(DISPLAY_ROOT)/config/qcs605dispconf.h
+endif
+
 ifeq ($(CONFIG_ARCH_KALAMA), y)
 ifeq ($(CONFIG_ARCH_QTI_VM), y)
         include $(DISPLAY_ROOT)/config/gki_kalamadisptui.conf
