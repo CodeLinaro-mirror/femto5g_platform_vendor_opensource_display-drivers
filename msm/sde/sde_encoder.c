@@ -76,6 +76,11 @@
 /* Maximum number of VSYNC wait attempts for RSC state transition */
 #define MAX_RSC_WAIT	5
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/* Primary panel worst case VSYNC expected to be no less than 30fps */
+#define PRIMARY_VBLANK_WORST_CASE_MS 34
+#endif
+
 /**
  * enum sde_enc_rc_events - events for resource control state machine
  * @SDE_ENC_RC_EVENT_KICKOFF:
@@ -1029,6 +1034,11 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 	int ret = 0;
 	struct drm_display_mode *adj_mode = &crtc_state->adjusted_mode;
 	struct msm_sub_mode sub_mode;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct sde_crtc_state *sde_crtc_state = NULL;
+
+	sde_crtc_state = to_sde_crtc_state(crtc_state);
+#endif
 
 	if (sde_conn && msm_atomic_needs_modeset(crtc_state, conn_state)) {
 		struct msm_display_topology *topology = NULL;
@@ -1055,7 +1065,11 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 
 		/* Reserve dynamic resources, indicating atomic_check phase */
 		ret = sde_rm_reserve(&sde_kms->rm, drm_enc, crtc_state,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+			conn_state);
+#else
 			conn_state, true);
+#endif
 		if (ret) {
 			if (ret != -EAGAIN)
 				SDE_ERROR_ENC(sde_enc,
@@ -1078,6 +1092,25 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 				return ret;
 			}
 		}
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		/**
+		 * There will be two connectors for one CRTC in CWB case,
+		 * and only update mode_info and topology name for primary
+		 * connector if the number of encoder is more then one in
+		 * virtual encoder case.
+		 */
+		if (hweight32(sde_crtc_state->base.encoder_mask) == 1 ||
+				drm_enc->encoder_type != DRM_MODE_ENCODER_VIRTUAL) {
+			memcpy(&sde_crtc_state->mode_info,
+					&sde_conn_state->mode_info,
+					sizeof(sde_conn_state->mode_info));
+
+			sde_crtc_state_set_topology_name(crtc_state,
+					sde_connector_get_property(conn_state,
+					CONNECTOR_PROP_TOPOLOGY_NAME));
+		}
+#endif
 
 		ret = sde_connector_set_blob_data(conn_state->connector,
 				conn_state,
@@ -1196,6 +1229,26 @@ static int _sde_encoder_atomic_check_qsync(struct sde_connector *sde_conn,
 
 	return rc;
 }
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+bool sde_encoder_is_topology_ppsplit(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *master;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	master = sde_enc->cur_master;
+
+	if (!master || !master->connector)
+		return false;
+
+	return  (sde_connector_get_topology_name(master->connector)
+			== SDE_RM_TOPOLOGY_PPSPLIT);
+}
+#endif
 
 static int sde_encoder_virt_atomic_check(
 	struct drm_encoder *drm_enc, struct drm_crtc_state *crtc_state,
@@ -1324,7 +1377,7 @@ static int _sde_encoder_update_roi(struct drm_encoder *drm_enc)
 	struct sde_encoder_virt *sde_enc;
 	struct drm_connector *drm_conn;
 	struct drm_display_mode *adj_mode;
-	struct sde_rect roi;
+	struct sde_rect roi = {0};
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder parameter\n");
@@ -1506,11 +1559,34 @@ static int _sde_encoder_rsc_client_update_vsync_wait(
 				sde_enc->rsc_client))
 			break;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		/*
+		 * if primary is inactive or modeset is needed, we'll wait
+		 * for worst case ms for best effort as we don't know when
+		 * primary display will be committed.
+		 */
+
+		if (crtc->base.id == wait_vblank_crtc_id) {
+#else
 		if (crtc->base.id == wait_vblank_crtc_id)
+#endif
 			ret = sde_encoder_wait_for_event(drm_enc,
 					MSM_ENC_VBLANK);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		} else if (primary_crtc->state->active &&
+				!drm_atomic_crtc_needs_modeset(
+						primary_crtc->state)) {
+#else
 		else
+#endif
 			drm_wait_one_vblank(drm_enc->dev, pipe);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		} else {
+			SDE_EVT32(DRMID(drm_enc),
+					wait_vblank_crtc_id, crtc->base.id);
+			msleep(PRIMARY_VBLANK_WORST_CASE_MS);
+		}
+#endif
 
 		if (ret) {
 			SDE_ERROR_ENC(sde_enc,
@@ -1970,6 +2046,9 @@ static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 				sw_event, sde_enc->rc_state);
 		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
 				SDE_EVTLOG_ERROR);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		ret = -EINVAL;
+#endif
 		goto end;
 	}
 
@@ -2439,6 +2518,9 @@ static void _sde_encoder_virt_populate_hw_res(struct drm_encoder *drm_enc)
 	struct sde_kms *sde_kms = sde_encoder_get_kms(drm_enc);
 	struct sde_rm_hw_iter pp_iter, qdss_iter;
 	struct sde_rm_hw_iter dsc_iter, vdc_iter;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct sde_rm_hw_iter lm_iter;
+#endif
 	struct sde_rm_hw_request request_hw;
 	int i, j;
 
@@ -2465,6 +2547,16 @@ static void _sde_encoder_virt_populate_hw_res(struct drm_encoder *drm_enc)
 			}
 		}
 	}
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	sde_rm_init_hw_iter(&lm_iter, drm_enc->base.id, SDE_HW_BLK_LM);
+	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
+		sde_enc->hw_lm[i] = NULL;
+		if (!sde_rm_get_hw(&sde_kms->rm, &lm_iter))
+			break;
+		sde_enc->hw_lm[i] = (struct sde_hw_mixer *) lm_iter.hw;
+	}
+#endif
 
 	sde_rm_init_hw_iter(&dsc_iter, drm_enc->base.id, SDE_HW_BLK_DSC);
 	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
@@ -2646,12 +2738,17 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	if (ret)
 		return;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	/* Rfresh dynamic resourece counter */
+	sde_rm_dec_resource_info(&sde_kms->rm);
+#else
 	/* reserve dynamic resources now, indicating non test-only */
 	ret = sde_rm_reserve(&sde_kms->rm, drm_enc, drm_enc->crtc->state, conn->state, false);
 	if (ret) {
 		SDE_ERROR_ENC(sde_enc, "failed to reserve hw resources, %d\n", ret);
 		return;
 	}
+#endif
 
 	/* assign the reserved HW blocks to this encoder */
 	_sde_encoder_virt_populate_hw_res(drm_enc);
@@ -3140,7 +3237,9 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	struct sde_kms *sde_kms = sde_encoder_get_kms(drm_enc);
+#endif
 	int i = 0;
 
 	_sde_encoder_control_fal10_veto(drm_enc, false);
@@ -3166,7 +3265,9 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 	SDE_DEBUG_ENC(sde_enc, "encoder disabled\n");
 	SDE_EVT32(DRMID(drm_enc));
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	sde_rm_release(&sde_kms->rm, drm_enc, false);
+#endif
 }
 
 static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
@@ -4689,10 +4790,18 @@ int sde_encoder_get_avr_status(struct drm_encoder *drm_enc)
 int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 		struct drm_framebuffer *fb)
 {
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct sde_encoder_virt *sde_enc;
+#endif
 	struct drm_encoder *drm_enc;
 	struct sde_hw_mixer_cfg mixer;
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	struct sde_rm_hw_iter lm_iter;
+#endif
 	bool lm_valid = false;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	int i;
+#endif
 
 	if (!phys_enc || !phys_enc->parent) {
 		SDE_ERROR("invalid encoder\n");
@@ -4706,12 +4815,22 @@ int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 	if (phys_enc->hw_ctl->ops.clear_all_blendstages)
 		phys_enc->hw_ctl->ops.clear_all_blendstages(phys_enc->hw_ctl);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
+		struct sde_hw_mixer *hw_lm = sde_enc->hw_lm[i];
+#else
 	sde_rm_init_hw_iter(&lm_iter, drm_enc->base.id, SDE_HW_BLK_LM);
 	while (sde_rm_get_hw(&phys_enc->sde_kms->rm, &lm_iter)) {
 		struct sde_hw_mixer *hw_lm = (struct sde_hw_mixer *)lm_iter.hw;
+#endif
 
 		if (!hw_lm)
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+			break;
+#else
 			continue;
+#endif
 
 		/* need to flush LM to remove it */
 		if (phys_enc->hw_ctl->ops.update_bitmask_mixer)
@@ -5271,6 +5390,25 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		SDE_DEBUG("h_tile_instance %d = %d, split_role %d\n",
 				i, controller_id, phys_params.split_role);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		if (sde_enc->ops.phys_init) {
+			struct sde_encoder_phys *enc;
+
+			enc = sde_enc->ops.phys_init(intf_type,
+					controller_id,
+					&phys_params);
+			if (enc) {
+				sde_enc->phys_encs[sde_enc->num_phys_encs] =
+					enc;
+				++sde_enc->num_phys_encs;
+			} else
+				SDE_ERROR_ENC(sde_enc,
+						"failed to add phys encs\n");
+
+			continue;
+		}
+#endif
+
 		if (intf_type == INTF_WB) {
 			phys_params.intf_idx = INTF_MAX;
 			phys_params.wb_idx = sde_encoder_get_wb(
@@ -5343,7 +5481,13 @@ static const struct drm_encoder_funcs sde_encoder_funcs = {
 		.early_unregister = sde_encoder_early_unregister,
 };
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
+		struct msm_display_info *disp_info,
+		const struct sde_encoder_ops *ops)
+#else
 struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_info *disp_info)
+#endif
 {
 	struct msm_drm_private *priv = dev->dev_private;
 	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
@@ -5359,6 +5503,11 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 		ret = -ENOMEM;
 		goto fail;
 	}
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (ops)
+		sde_enc->ops = *ops;
+#endif
 
 	mutex_init(&sde_enc->enc_lock);
 	ret = sde_encoder_setup_display(sde_enc, sde_kms, disp_info,
@@ -5382,6 +5531,24 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 		if (phys->ops.is_master && phys->ops.is_master(phys))
 			intf_index = phys->intf_idx - INTF_0;
 	}
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	/*
+	 * if phy is inited from external, we'll let external drivers to
+	 * create rsc client if needed.
+	 */
+	if (!sde_enc->ops.phys_init) {
+		snprintf(name, SDE_NAME_SIZE, "rsc_enc%u", drm_enc->base.id);
+		sde_enc->rsc_client = sde_rsc_client_create(SDE_RSC_INDEX, name,
+			(disp_info->display_type == SDE_CONNECTOR_PRIMARY) ?
+			SDE_RSC_PRIMARY_DISP_CLIENT :
+			SDE_RSC_EXTERNAL_DISP_CLIENT, intf_index + 1);
+		if (IS_ERR_OR_NULL(sde_enc->rsc_client)) {
+			SDE_DEBUG("sde rsc client create failed :%ld\n",
+							PTR_ERR(sde_enc->rsc_client));
+			sde_enc->rsc_client = NULL;
+		}
+#else
 	snprintf(name, SDE_NAME_SIZE, "rsc_enc%u", drm_enc->base.id);
 	sde_enc->rsc_client = sde_rsc_client_create(SDE_RSC_INDEX, name,
 		(disp_info->display_type == SDE_CONNECTOR_PRIMARY) ?
@@ -5391,6 +5558,7 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 		SDE_DEBUG("sde rsc client create failed :%ld\n",
 						PTR_ERR(sde_enc->rsc_client));
 		sde_enc->rsc_client = NULL;
+#endif
 	}
 
 	if (disp_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE &&
@@ -5429,6 +5597,15 @@ fail:
 
 	return ERR_PTR(ret);
 }
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+struct drm_encoder *sde_encoder_init(
+		struct drm_device *dev,
+		struct msm_display_info *disp_info)
+{
+	return sde_encoder_init_with_ops(dev, disp_info, NULL);
+}
+#endif
 
 int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 	enum msm_event_wait event)
@@ -5739,7 +5916,11 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 	sde_enc->crtc = encoder->crtc;
 
 	ret = sde_rm_reserve(&sde_kms->rm, encoder, encoder->crtc->state,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+			conn->state);
+#else
 			conn->state, false);
+#endif
 	if (ret) {
 		SDE_ERROR_ENC(sde_enc,
 			"failed to reserve hw resources, %d\n", ret);

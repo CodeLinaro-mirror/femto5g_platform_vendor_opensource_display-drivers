@@ -112,6 +112,24 @@ enum sde_enc_rc_states {
 	SDE_ENC_RC_STATE_IDLE
 };
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ * struct sde_encoder_ops - callback functions for generic sde encoder
+ * Individual callbacks documented below.
+ */
+struct sde_encoder_ops {
+	/**
+	 * phys_init - phys initialization function
+	 * @type: controller type
+	 * @controller_id: controller id
+	 * @phys_init_params: Pointer of structure sde_enc_phys_init_params
+	 * Returns: Pointer of sde_encoder_phys, NULL if failed
+	 */
+	void *(*phys_init)(enum sde_intf_type type,
+			u32 controller_id, void *phys_init_params);
+};
+#endif
+
 /**
  * struct sde_encoder_virt - virtual encoder. Container of one or more physical
  *	encoders. Virtual encoder manages one "logical" display. Physical
@@ -122,6 +140,7 @@ enum sde_enc_rc_states {
  * @enc_spin_lock:	Virtual-Encoder-Wide Spin Lock for IRQ purposes
  * @bus_scaling_client:	Client handle to the bus scaling interface
  * @te_source:		vsync source pin information
+ * @ops:»       »       Encoder ops from init function
  * @num_phys_encs:	Actual number of physical encoders contained.
  * @phys_encs:		Container of physical encoders managed.
  * @phys_vid_encs:	Video physical encoders for panel mode switch.
@@ -201,12 +220,19 @@ struct sde_encoder_virt {
 	uint32_t display_num_of_h_tiles;
 	uint32_t te_source;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct sde_encoder_ops ops;
+#endif
+
 	unsigned int num_phys_encs;
 	struct sde_encoder_phys *phys_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *phys_vid_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *phys_cmd_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *cur_master;
 	struct sde_hw_pingpong *hw_pp[MAX_CHANNELS_PER_ENC];
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct sde_hw_mixer *hw_lm[MAX_CHANNELS_PER_ENC];
+#endif
 	struct sde_hw_dsc *hw_dsc[MAX_CHANNELS_PER_ENC];
 	struct sde_hw_vdc *hw_vdc[MAX_CHANNELS_PER_ENC];
 	struct sde_hw_pingpong *hw_dsc_pp[MAX_CHANNELS_PER_ENC];
@@ -443,6 +469,20 @@ struct drm_encoder *sde_encoder_init(
 		struct drm_device *dev,
 		struct msm_display_info *disp_info);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ * sde_encoder_init_with_ops - initialize virtual encoder object with init ops
+ * @dev:        Pointer to drm device structure
+ * @disp_info:  Pointer to display information structure
+ * @ops:        Pointer to encoder ops structure
+ * Returns:     Pointer to newly created drm encoder
+ */
+struct drm_encoder *sde_encoder_init_with_ops(
+		struct drm_device *dev,
+		struct msm_display_info *disp_info,
+		const struct sde_encoder_ops *ops);
+#endif
+
 /**
  * sde_encoder_destroy - destroy previously initialized virtual encoder
  * @drm_enc:    Pointer to previously created drm encoder structure
@@ -523,6 +563,16 @@ void sde_encoder_set_clone_mode(struct drm_encoder *drm_enc,
  */
 bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
 	struct drm_crtc *drm_crtc);
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ *sde_encoder_is_topology_ppsplit - checks if the current encoder is in
+	ppsplit topology.
+ *@drm_enc:	Pointer to drm encoder structure
+ *@Return:	true if the present topology is ppsplit
+ */
+bool sde_encoder_is_topology_ppsplit(struct drm_encoder *drm_enc);
+#endif
 
 /**
  * sde_encoder_is_primary_display - checks if underlying display is primary

@@ -191,9 +191,14 @@ enum sde_lm {
 	LM_3,
 	LM_4,
 	LM_5,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	LM_6,
+#endif
 	LM_DCWB_DUMMY_0,
 	LM_DCWB_DUMMY_1,
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	LM_6,
+#endif
 	LM_MAX
 };
 

@@ -454,6 +454,9 @@ enum sde_crtc_dirty_flags {
  * @connectors    : Currently associated drm connectors
  * @num_connectors: Number of associated drm connectors
  * @rsc_client    : sde rsc client when mode is valid
+ * @topology_name : Current topology name
+ * @mode_info     : Local copy of msm_mode_info struct
+ * @num_mixers    : Number of mixers in current topology
  * @is_ppsplit    : Whether current topology requires PPSplit special handling
  * @bw_control    : true if bw/clk controlled by core bw/clk properties
  * @bw_split_vote : true if bw controlled by llcc/dram bw properties
@@ -483,6 +486,9 @@ enum sde_crtc_dirty_flags {
  * @cp_dirty_list: array tracking features that are dirty
  * @cp_range_payload: array storing state user_data passed via range props
  * @cont_splash_populated: State was populated as part of cont. splash
+ * @padding_height: panel height after line padding
+ * @padding_active: active lines in panel stacking pattern
+ * @padding_dummy: dummy lines in panel stacking pattern
  */
 struct sde_crtc_state {
 	struct drm_crtc_state base;
@@ -494,6 +500,11 @@ struct sde_crtc_state {
 	bool bw_control;
 	bool bw_split_vote;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	enum sde_rm_topology_name topology_name;
+	struct msm_mode_info mode_info;
+	u32 num_mixers;
+#endif
 	bool is_ppsplit;
 	struct sde_rect crtc_roi;
 	struct sde_rect lm_bounds[MAX_MIXERS_PER_CRTC];
@@ -522,6 +533,12 @@ struct sde_crtc_state {
 	struct sde_cp_crtc_range_prop_payload
 		cp_range_payload[SDE_CP_CRTC_MAX_FEATURES];
 	bool cont_splash_populated;
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	u32 padding_height;
+	u32 padding_active;
+	u32 padding_dummy;
+#endif
 };
 
 enum sde_crtc_irq_state {
@@ -574,19 +591,32 @@ bool sde_crtc_is_connector_fsc(struct sde_crtc_state *cstate);
  * Mixer width will be same as panel width(/2 for split)
  * unless destination scaler feature is enabled
  */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+static inline int sde_crtc_get_mixer_width(struct sde_crtc_state *cstate,
+		struct drm_display_mode *mode)
+#else
 static inline int sde_crtc_get_mixer_width(struct sde_crtc *sde_crtc,
 	struct sde_crtc_state *cstate, struct drm_display_mode *mode)
+#endif
 {
 	u32 mixer_width;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (!cstate || !mode)
+#else
 	if (!sde_crtc || !cstate || !mode)
+#endif
 		return 0;
 
 	if (cstate->num_ds_enabled)
 		mixer_width = cstate->ds_cfg[0].lm_width;
 	else
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		mixer_width = GET_MODE_WIDTH(sde_crtc_is_connector_fsc(cstate), mode) / cstate->num_mixers;
+#else
 		mixer_width = GET_MODE_WIDTH(sde_crtc_is_connector_fsc(cstate), mode) /
 				sde_crtc->num_mixers;
+#endif
 
 	return mixer_width;
 }
@@ -596,10 +626,19 @@ static inline int sde_crtc_get_mixer_width(struct sde_crtc *sde_crtc,
  * Mixer height will be same as panel height unless
  * destination scaler feature is enabled
  */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+static inline int sde_crtc_get_mixer_height(struct sde_crtc_state *cstate,
+		struct drm_display_mode *mode)
+#else
 static inline int sde_crtc_get_mixer_height(struct sde_crtc *sde_crtc,
 		struct sde_crtc_state *cstate, struct drm_display_mode *mode)
+#endif
 {
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (!cstate || !mode)
+#else
 	if (!sde_crtc || !cstate || !mode)
+#endif
 		return 0;
 
 	return (cstate->num_ds_enabled ? cstate->ds_cfg[0].lm_height :
@@ -1052,6 +1091,46 @@ void sde_crtc_reset_sw_state(struct drm_crtc *crtc);
 */
 void sde_crtc_disable_cp_features(struct drm_crtc *crtc);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ * sde_crtc_state_set_topology_name - set current topology name
+ * @state: Pointer to crtc_state
+ */
+static inline void sde_crtc_state_set_topology_name(
+		struct drm_crtc_state *state,
+		enum sde_rm_topology_name topology_name)
+{
+	struct sde_crtc_state *cstate;
+
+	if (!state)
+		return;
+
+	cstate = to_sde_crtc_state(state);
+
+	cstate->topology_name = topology_name;
+
+	switch (topology_name) {
+	case SDE_RM_TOPOLOGY_DUALPIPE:
+	case SDE_RM_TOPOLOGY_DUALPIPE_DSC:
+	case SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE:
+	case SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC:
+	case SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_VDC:
+	case SDE_RM_TOPOLOGY_DUALPIPE_DSCMERGE:
+		cstate->num_mixers = 2;
+		break;
+	case SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE:
+	case SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC:
+	case SDE_RM_TOPOLOGY_QUADPIPE_DSCMERGE:
+	case SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE:
+		cstate->num_mixers = 4;
+		break;
+	default:
+		cstate->num_mixers = 1;
+		break;
+	}
+}
+#endif
+
 /*
  * _sde_crtc_clear_dim_layers_v1 - clear all dim layer settings
  * @cstate:      Pointer to drm crtc state
@@ -1081,5 +1160,20 @@ void _sde_crtc_vm_release_notify(struct drm_crtc *crtc);
  * @dev: Pointer to drm device
  */
 void sde_crtc_state_setup_connectors(struct drm_crtc_state *state, struct drm_device *dev);
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ * sde_crtc_calc_vpadding_param - calculate vpadding parameters
+ * @state: Pointer to DRM crtc state object
+ * @crtc_y: Plane's CRTC_Y offset
+ * @crtc_h: Plane's CRTC_H size
+ * @padding_y: Padding Y offset
+ * @padding_start: Padding start offset
+ * @padding_height: Padding height in total
+ */
+int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state,
+		uint32_t crtc_y, uint32_t crtc_h, uint32_t *padding_y,
+		uint32_t *padding_start, uint32_t *padding_height);
+#endif
 
 #endif /* _SDE_CRTC_H_ */

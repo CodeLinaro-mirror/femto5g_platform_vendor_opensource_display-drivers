@@ -301,6 +301,7 @@ enum {
  * @SDE_SSPP_FP16_CSC        FP16 CSC color processing block support
  * @SDE_SSPP_FP16_UNMULT     FP16 alpha unmult color processing block support
  * @SDE_SSPP_UBWC_STATS:     Support for ubwc stats
+ * @SDE_SSPP_LINE_INSERTION  Line insertion support
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -338,6 +339,9 @@ enum {
 	SDE_SSPP_FP16_CSC,
 	SDE_SSPP_FP16_UNMULT,
 	SDE_SSPP_UBWC_STATS,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	SDE_SSPP_LINE_INSERTION,
+#endif
 	SDE_SSPP_MAX
 };
 
@@ -1703,6 +1707,9 @@ struct sde_mdss_cfg {
 	bool delay_prg_fetch_start;
 	bool has_qsync;
 	bool has_3d_merge_reset;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	bool has_line_insertion;
+#endif
 	bool has_decimation;
 	bool has_mixer_combined_alpha;
 	bool vbif_disable_inner_outer_shareable;
