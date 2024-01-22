@@ -24,11 +24,11 @@
 #include "sde_hw_dnsc_blur.h"
 #include <shd_drm.h>
 
-#define RESERVED_BY_OTHER(h, r) \
-	((h)->rsvp && ((h)->rsvp->enc_id != (r)->enc_id))
+#define RESERVED_BY_OTHER(h, e) \
+	((h)->enc_id && ((h)->enc_id != (e)))
 
-#define RESERVED_BY_CURRENT(h, r) \
-	(((h)->rsvp && ((h)->rsvp->enc_id == (r)->enc_id)))
+#define RESERVED_BY_CURRENT(h, e) \
+	((h)->enc_id && ((h)->enc_id == (e)))
 
 #define RM_RQ_LOCK(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_RESERVE_LOCK))
 #define RM_RQ_CLEAR(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_RESERVE_CLEAR))
@@ -142,30 +142,12 @@ struct sde_rm_requirements {
 };
 
 /**
- * struct sde_rm_rsvp - Use Case Reservation tagging structure
- *	Used to tag HW blocks as reserved by a CRTC->Encoder->Connector chain
- *	By using as a tag, rather than lists of pointers to HW blocks used
- *	we can avoid some list management since we don't know how many blocks
- *	of each type a given use case may require.
- * @list:	List head for list of all reservations
- * @seq:	Global RSVP sequence number for debugging, especially for
- *		differentiating differenct allocations for same encoder.
+ * struct sde_rm_hw_blk - hardware block tracking list member
+ * @list:	List head for list of all hardware blocks tracking items
  * @enc_id:	Reservations are tracked by Encoder DRM object ID.
  *		CRTCs may be connected to multiple Encoders.
  *		An encoder or connector id identifies the display path.
- * @topology:	DRM<->HW topology use case
- */
-struct sde_rm_rsvp {
-	struct list_head list;
-	uint32_t seq;
-	uint32_t enc_id;
-	enum sde_rm_topology_name topology;
-};
-
-/**
- * struct sde_rm_hw_blk - hardware block tracking list member
- * @list:	List head for list of all hardware blocks tracking items
- * @rsvp:	Pointer to use case reservation if reserved by a client
+ * @ext_hw:	Flag for external created HW block
  * @type:	Type of hardware block this structure tracks
  * @id:		Hardware ID number, within it's own space, ie. LM_X
  * @catalog:	Pointer to the hardware catalog entry for this block
@@ -173,7 +155,8 @@ struct sde_rm_rsvp {
  */
 struct sde_rm_hw_blk {
 	struct list_head list;
-	struct sde_rm_rsvp *rsvp;
+	uint32_t enc_id;
+	bool ext_hw;
 	enum sde_hw_blk_type type;
 	uint32_t id;
 	struct sde_hw_blk_reg_map *hw;
@@ -183,13 +166,11 @@ struct sde_rm_hw_blk {
  * struct sde_rm_state - SDE dynamic hardware resource manager state
  * @base: private state base
  * @rm: sde_rm handle
- * @rsvps: list of hardware reservations by each crtc->encoder->connector
  * @hw_blks: array of lists of hardware resources present in the system, one
  *	list per type of hardware block
  */
 struct sde_rm_state {
 	struct drm_private_state base;
-	struct list_head rsvps;
 	struct list_head hw_blks[SDE_HW_BLK_MAX];
 };
 
@@ -225,7 +206,9 @@ static void _sde_rm_inc_resource_info_lm(struct sde_rm_state *state,
 		 * set the bit for the 3d mux associated with the lm
 		 * counting these set bits will give an accurate count of available 3dmux
 		 */
-		if ((!blk2->rsvp || (blk->rsvp && blk2->rsvp->enc_id == blk->rsvp->enc_id)) &&
+		if ((!blk2->enc_id || (blk->enc_id &&
+			blk2->enc_id == blk->enc_id
+			&& lm_cfg->id > lm_cfg2->id)) &&
 				test_bit(lm_cfg->id, &lm_cfg2->lm_pair_mask))
 			set_bit(lm_cfg->merge_3d, &avail_res->merge_3d_mask);
 	}
@@ -300,7 +283,7 @@ void sde_rm_dec_resource_info(struct sde_rm *rm)
 
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry(blk, &state->hw_blks[type], list) {
-			if (blk->rsvp)
+			if (blk->enc_id)
 				_sde_rm_dec_resource_info(state,
 						&rm->avail_res, blk);
 		}
@@ -327,7 +310,7 @@ void sde_rm_get_resource_info(struct sde_rm *rm,
 	 * availalbe non-preferred LMs
 	 */
 	if (!drm_enc) {
-		is_built_in = false;
+		return;
 	}
 	else {
 		is_built_in = sde_encoder_is_built_in_display(drm_enc);
@@ -337,10 +320,11 @@ void sde_rm_get_resource_info(struct sde_rm *rm,
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry(blk, &state->hw_blks[type], list) {
 			/* Add back resources allocated to the given encoder */
-			if (blk->rsvp && drm_enc && blk->rsvp->enc_id == drm_enc->base.id) {
+			if (blk->enc_id == drm_enc->base.id) {
 				_sde_rm_inc_resource_info(state, avail_res, blk);
-				if (type == SDE_HW_BLK_LM)
+				if (type == SDE_HW_BLK_LM) {
 					avail_res->num_lm_in_use++;
+				}
 			}
 
 			/**
@@ -351,8 +335,9 @@ void sde_rm_get_resource_info(struct sde_rm *rm,
 				lm_cfg = to_sde_hw_mixer(blk->hw)->cap;
 				is_pref = lm_cfg->features & lm_pref;
 
-				if (!blk->rsvp && !is_built_in && is_pref)
+				if (!blk->enc_id && !is_built_in && is_pref) {
 					_sde_rm_dec_resource_info(state, avail_res, blk);
+				}
 			}
 		}
 	}
@@ -363,31 +348,22 @@ static void _sde_rm_print_rsvps(
 		struct sde_rm_state *state,
 		enum sde_rm_dbg_rsvp_stage stage)
 {
-	struct sde_rm_rsvp *rsvp;
 	struct sde_rm_hw_blk *blk;
 	enum sde_hw_blk_type type;
 
 	SDE_DEBUG("%d state=%pK\n", stage, state);
 
-	list_for_each_entry(rsvp, &state->rsvps, list) {
-		SDE_DEBUG("%d rsvp[s%ue%u] topology %d\n", stage,
-				rsvp->seq, rsvp->enc_id, rsvp->topology);
-		SDE_EVT32(stage, rsvp->seq, rsvp->enc_id, rsvp->topology);
-	}
-
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry(blk, &state->hw_blks[type], list) {
-			if (!blk->rsvp)
+			if (!blk->enc_id)
 				continue;
 
-			SDE_DEBUG("%d rsvp[s%ue%u] %s %d\n", stage,
-				(blk->rsvp) ? blk->rsvp->seq : 0,
-				(blk->rsvp) ? blk->rsvp->enc_id : 0,
+			SDE_DEBUG("%d rsvp[e%u] %s %d\n", stage,
+				blk->enc_id,
 				sde_hw_blk_type_str[blk->type], blk->id);
 
 			SDE_EVT32(stage,
-				(blk->rsvp) ? blk->rsvp->seq : 0,
-				(blk->rsvp) ? blk->rsvp->enc_id : 0,
+				blk->enc_id,
 				blk->type, blk->id);
 		}
 	}
@@ -400,45 +376,24 @@ static void _sde_rm_print_rsvps_by_type(
 	struct sde_rm_hw_blk *blk;
 
 	list_for_each_entry(blk, &state->hw_blks[type], list) {
-		if (!blk->rsvp)
+		if (!blk->enc_id)
 			continue;
 
-		SDE_ERROR("rsvp[s%ue%u] %s %d\n",
-			(blk->rsvp) ? blk->rsvp->seq : 0,
-			(blk->rsvp) ? blk->rsvp->enc_id : 0,
+		SDE_ERROR("rsvp[e%u] %s %d\n",
+			blk->enc_id,
 			sde_hw_blk_type_str[blk->type], blk->id);
 
-		SDE_EVT32((blk->rsvp) ? blk->rsvp->seq : 0,
-			(blk->rsvp) ? blk->rsvp->enc_id : 0,
+		SDE_EVT32(blk->enc_id,
 			blk->type, blk->id);
 	}
-}
-
-static struct sde_rm_rsvp *_sde_rm_get_rsvp(
-		struct sde_rm_state *state,
-		uint32_t enc_id)
-{
-	struct sde_rm_rsvp *i;
-
-	list_for_each_entry(i, &state->rsvps, list) {
-		if (i->enc_id == enc_id)
-			return i;
-	}
-
-	return NULL;
 }
 
 static void sde_rm_destroy_state(struct drm_private_obj *obj,
 		struct drm_private_state *base_state)
 {
 	struct sde_rm_state *state = to_sde_rm_priv_state(base_state);
-	struct sde_rm_rsvp *rsvp, *tmp_rsvp;
 	struct sde_rm_hw_blk *hw_blk, *tmp_hw_blk;
 	int i;
-
-	list_for_each_entry_safe(rsvp, tmp_rsvp, &state->rsvps, list) {
-		kfree(rsvp);
-	}
 
 	for (i = 0; i < SDE_HW_BLK_MAX; i++) {
 		list_for_each_entry_safe(hw_blk, tmp_hw_blk,
@@ -455,7 +410,6 @@ static struct drm_private_state *sde_rm_duplicate_state(
 {
 	struct sde_rm_state *state, *old_state =
 			to_sde_rm_priv_state(obj->state);
-	struct sde_rm_rsvp *rsvp, *old_rsvp;
 	struct sde_rm_hw_blk *hw_blk, *old_hw_blk;
 	int i;
 
@@ -465,28 +419,13 @@ static struct drm_private_state *sde_rm_duplicate_state(
 
 	__drm_atomic_helper_private_obj_duplicate_state(obj, &state->base);
 
-	INIT_LIST_HEAD(&state->rsvps);
-
-	for (i = 0; i < SDE_HW_BLK_MAX; i++)
-		INIT_LIST_HEAD(&state->hw_blks[i]);
-
-	list_for_each_entry(old_rsvp, &old_state->rsvps, list) {
-		rsvp = kmemdup(old_rsvp, sizeof(*rsvp), GFP_KERNEL);
-		if (!rsvp)
-			goto bail;
-		list_add_tail(&rsvp->list, &state->rsvps);
-	}
-
 	for (i = 0; i < SDE_HW_BLK_MAX; i++) {
+		INIT_LIST_HEAD(&state->hw_blks[i]);
 		list_for_each_entry(old_hw_blk, &old_state->hw_blks[i], list) {
 			hw_blk = kmemdup(old_hw_blk, sizeof(*hw_blk),
 					GFP_KERNEL);
 			if (!hw_blk)
 				goto bail;
-
-			if (hw_blk->rsvp)
-				hw_blk->rsvp = _sde_rm_get_rsvp(state,
-						hw_blk->rsvp->enc_id);
 
 			list_add_tail(&hw_blk->list, &state->hw_blks[i]);
 		}
@@ -582,42 +521,40 @@ static bool _sde_rm_get_hw_locked(struct sde_rm *rm,
 
 	if (list_forward) {
 		list_for_each_entry_continue(i->blk, blk_list, list) {
-			struct sde_rm_rsvp *rsvp = i->blk->rsvp;
 
 			if (i->blk->type != i->type) {
 				SDE_ERROR("found incorrect block type %d on %d list\n",
-						i->blk->type, i->type);
+					sde_hw_blk_type_str[i->blk->type], i->type);
 				return false;
 			}
 
-			if ((i->enc_id == 0) || (rsvp && rsvp->enc_id == i->enc_id)) {
+			if ((i->enc_id == 0) || (i->blk->enc_id == i->enc_id)) {
 				i->hw = i->blk->hw;
 				SDE_DEBUG("found type %d id %d for enc %d\n",
-						i->type, i->blk->id, i->enc_id);
+					sde_hw_blk_type_str[i->type], i->blk->id, i->enc_id);
 				return true;
 			}
 		}
 	} else {
 		list_for_each_entry_continue_reverse(i->blk, blk_list, list) {
-			struct sde_rm_rsvp *rsvp = i->blk->rsvp;
 
 			if (i->blk->type != i->type) {
 				SDE_ERROR("found incorrect block type %d on %d list\n",
-						i->blk->type, i->type);
+					sde_hw_blk_type_str[i->blk->type], i->type);
 				return false;
 			}
 
-			if ((i->enc_id == 0) || (rsvp && rsvp->enc_id == i->enc_id)) {
+			if ((i->enc_id == 0) || (i->blk->enc_id == i->enc_id)) {
 				i->hw = i->blk->hw;
 				SDE_DEBUG("found type %d id %d for enc %d\n",
-						i->type, i->blk->id, i->enc_id);
+					sde_hw_blk_type_str[i->type], i->blk->id, i->enc_id);
 				return true;
 			}
 		}
 
 	}
 
-	SDE_DEBUG("no match, type %d for enc %d\n", i->type, i->enc_id);
+	SDE_DEBUG("no match, type %d for enc %d\n", sde_hw_blk_type_str[i->type], i->enc_id);
 
 	return false;
 }
@@ -754,7 +691,6 @@ static void _deinit_hw_fences(struct sde_rm *rm,
 int sde_rm_destroy(struct sde_rm *rm)
 {
 	struct sde_rm_state *state;
-	struct sde_rm_rsvp *rsvp_cur, *rsvp_nxt;
 	struct sde_rm_hw_blk *hw_cur, *hw_nxt;
 	enum sde_hw_blk_type type;
 
@@ -765,11 +701,6 @@ int sde_rm_destroy(struct sde_rm *rm)
 
 	state = to_sde_rm_priv_state(rm->obj.state);
 	_deinit_hw_fences(rm, state);
-
-	list_for_each_entry_safe(rsvp_cur, rsvp_nxt, &state->rsvps, list) {
-		list_del(&rsvp_cur->list);
-		kfree(rsvp_cur);
-	}
 
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry_safe(hw_cur, hw_nxt, &state->hw_blks[type],
@@ -1059,7 +990,7 @@ static int _sde_rm_status_show(struct seq_file *s, void *data)
 		allocated = 0;
 		unallocated = 0;
 		list_for_each_entry(blk, &state->hw_blks[type], list) {
-			if (!blk->rsvp)
+			if (!blk->enc_id)
 				unallocated++;
 			else
 				allocated++;
@@ -1118,8 +1049,6 @@ int sde_rm_init(struct sde_rm *rm)
 				    &rm->obj,
 				    &state->base,
 				    &sde_rm_state_funcs);
-
-	INIT_LIST_HEAD(&state->rsvps);
 
 	for (type = 0; type < SDE_HW_BLK_MAX; type++)
 		INIT_LIST_HEAD(&state->hw_blks[type]);
@@ -1181,7 +1110,7 @@ fail:
 
 static bool _sde_rm_check_lm(
 		struct sde_rm *rm,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		const struct sde_lm_cfg *lm_cfg,
 		struct sde_rm_hw_blk *lm,
@@ -1222,7 +1151,7 @@ static bool _sde_rm_check_lm(
 static bool _sde_rm_reserve_dspp(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		const struct sde_lm_cfg *lm_cfg,
 		struct sde_rm_hw_blk *lm,
 		struct sde_rm_hw_blk **dspp)
@@ -1244,7 +1173,7 @@ static bool _sde_rm_reserve_dspp(
 			return false;
 		}
 
-		if (RESERVED_BY_OTHER(*dspp, rsvp)) {
+		if (RESERVED_BY_OTHER(*dspp, enc_id)) {
 			SDE_DEBUG("lm %d dspp %d already reserved\n",
 					lm->id, (*dspp)->id);
 			return false;
@@ -1258,7 +1187,7 @@ static bool _sde_rm_reserve_dspp(
 static bool _sde_rm_reserve_ds(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		const struct sde_lm_cfg *lm_cfg,
 		struct sde_rm_hw_blk *lm,
 		struct sde_rm_hw_blk **ds)
@@ -1280,7 +1209,7 @@ static bool _sde_rm_reserve_ds(
 			return false;
 		}
 
-		if (RESERVED_BY_OTHER(*ds, rsvp)) {
+		if (RESERVED_BY_OTHER(*ds, enc_id)) {
 			SDE_DEBUG("lm %d ds %d already reserved\n",
 					lm->id, (*ds)->id);
 			return false;
@@ -1293,7 +1222,7 @@ static bool _sde_rm_reserve_ds(
 static bool _sde_rm_reserve_pp(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		const struct sde_lm_cfg *lm_cfg,
 		const struct sde_pingpong_cfg *pp_cfg,
@@ -1317,7 +1246,7 @@ static bool _sde_rm_reserve_pp(
 		return false;
 	}
 
-	if (RESERVED_BY_OTHER(*pp, rsvp)) {
+	if (RESERVED_BY_OTHER(*pp, enc_id)) {
 		SDE_DEBUG("lm %d pp %d already reserved\n", lm->id,
 				(*pp)->id);
 		*dspp = NULL;
@@ -1356,7 +1285,7 @@ static bool _sde_rm_reserve_pp(
 static bool _sde_rm_check_lm_and_get_connected_blks(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		struct sde_rm_hw_blk *lm,
 		struct sde_rm_hw_blk **dspp,
@@ -1402,7 +1331,7 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	/* bypass rest of the checks if LM for primary display is found */
 	if (!lm_primary_pref && !lm_secondary_pref) {
 		/* Check lm for valid requirements */
-		ret = _sde_rm_check_lm(rm, rsvp, reqs, lm_cfg, lm,
+		ret = _sde_rm_check_lm(rm, enc_id, reqs, lm_cfg, lm,
 				dspp, ds, pp);
 		if (!ret)
 			return ret;
@@ -1433,23 +1362,23 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	}
 
 	/* Already reserved? */
-	if (RESERVED_BY_OTHER(lm, rsvp)) {
+	if (RESERVED_BY_OTHER(lm, enc_id)) {
 		SDE_DEBUG("lm %d already reserved\n", lm_cfg->id);
 		return false;
 	}
 
 	/* Reserve dspp */
-	ret = _sde_rm_reserve_dspp(rm, state, rsvp, lm_cfg, lm, dspp);
+	ret = _sde_rm_reserve_dspp(rm, state, enc_id, lm_cfg, lm, dspp);
 	if (!ret)
 		return ret;
 
 	/* Reserve ds */
-	ret = _sde_rm_reserve_ds(rm, state, rsvp, lm_cfg, lm, ds);
+	ret = _sde_rm_reserve_ds(rm, state, enc_id, lm_cfg, lm, ds);
 	if (!ret)
 		return ret;
 
 	/* Reserve pp */
-	ret = _sde_rm_reserve_pp(rm, state, rsvp, reqs, lm_cfg, pp_cfg, lm,
+	ret = _sde_rm_reserve_pp(rm, state, enc_id, reqs, lm_cfg, pp_cfg, lm,
 			dspp, ds, pp);
 	if (!ret)
 		return ret;
@@ -1460,7 +1389,7 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 static int _sde_rm_reserve_lms(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		u8 *_lm_ids)
 
@@ -1502,7 +1431,7 @@ static int _sde_rm_reserve_lms(
 			continue;
 
 		if (!_sde_rm_check_lm_and_get_connected_blks(
-				rm, state, rsvp, reqs, lm[lm_count],
+				rm, state, enc_id, reqs, lm[lm_count],
 				&dspp[lm_count], &ds[lm_count],
 				&pp[lm_count], NULL, conn_lm_mask))
 			continue;
@@ -1530,7 +1459,7 @@ static int _sde_rm_reserve_lms(
 			pp[lm_count] = NULL;
 
 			if (!_sde_rm_check_lm_and_get_connected_blks(
-					rm, state, rsvp, reqs, iter_j.blk,
+					rm, state, enc_id, reqs, iter_j.blk,
 					&dspp[lm_count], &ds[lm_count],
 					&pp[lm_count], iter_i.blk,
 					conn_lm_mask))
@@ -1566,15 +1495,15 @@ static int _sde_rm_reserve_lms(
 	}
 
 	for (i = 0; i < lm_count; i++) {
-		lm[i]->rsvp = rsvp;
-		pp[i]->rsvp = rsvp;
+		lm[i]->enc_id = enc_id;
+		pp[i]->enc_id = enc_id;
 		if (dspp[i])
-			dspp[i]->rsvp = rsvp;
+			dspp[i]->enc_id = enc_id;
 
 		if (ds[i])
-			ds[i]->rsvp = rsvp;
+			ds[i]->enc_id = enc_id;
 
-		SDE_EVT32(lm[i]->type, rsvp->enc_id, lm[i]->id, pp[i]->id,
+		SDE_EVT32(lm[i]->type, enc_id, lm[i]->id, pp[i]->id,
 				dspp[i] ? dspp[i]->id : 0,
 				ds[i] ? ds[i]->id : 0);
 	}
@@ -1590,10 +1519,10 @@ static int _sde_rm_reserve_lms(
 
 			if (!(test_bit(SDE_PINGPONG_SLAVE, &pp_cfg->features)))
 				continue;
-			if (RESERVED_BY_OTHER(iter_i.blk, rsvp))
+			if (RESERVED_BY_OTHER(iter_i.blk, enc_id))
 				continue;
 
-			iter_i.blk->rsvp = rsvp;
+			iter_i.blk->enc_id = enc_id;
 			rc = 0;
 			break;
 		}
@@ -1605,7 +1534,7 @@ static int _sde_rm_reserve_lms(
 static int _sde_rm_reserve_ctls(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		const struct sde_rm_topology_def *top,
 		u8 *_ctl_ids)
@@ -1621,14 +1550,14 @@ static int _sde_rm_reserve_ctls(
 
 	memset(&ctls, 0, sizeof(ctls));
 
-	sde_rm_init_hw_iter(&curr, rsvp->enc_id, SDE_HW_BLK_CTL);
+	sde_rm_init_hw_iter(&curr, enc_id, SDE_HW_BLK_CTL);
 	sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_CTL);
 	while (_sde_rm_get_hw_locked(rm, state, &iter, true)) {
 		const struct sde_hw_ctl *ctl = to_sde_hw_ctl(iter.blk->hw);
 		unsigned long features = ctl->caps->features;
 		bool has_split_display, has_ppsplit, primary_pref;
 
-		if (RESERVED_BY_OTHER(iter.blk, rsvp))
+		if (RESERVED_BY_OTHER(iter.blk, enc_id))
 			continue;
 
 		has_split_display = BIT(SDE_CTL_SPLIT_DISPLAY) & features;
@@ -1681,15 +1610,15 @@ static int _sde_rm_reserve_ctls(
 		return -ENAVAIL;
 
 	for (i = 0; i < ARRAY_SIZE(ctls) && i < top->num_ctl; i++) {
-		ctls[i]->rsvp = rsvp;
-		SDE_EVT32(ctls[i]->type, rsvp->enc_id, ctls[i]->id);
+		ctls[i]->enc_id = enc_id;
+		SDE_EVT32(ctls[i]->type, enc_id, ctls[i]->id);
 	}
 
 	return 0;
 }
 
 static bool _sde_rm_check_dsc(struct sde_rm *rm,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_hw_blk *dsc,
 		struct sde_rm_hw_blk *paired_dsc,
 		struct sde_rm_hw_blk *pp_blk)
@@ -1697,7 +1626,7 @@ static bool _sde_rm_check_dsc(struct sde_rm *rm,
 	const struct sde_dsc_cfg *dsc_cfg = to_sde_hw_dsc(dsc->hw)->caps;
 
 	/* Already reserved? */
-	if (RESERVED_BY_OTHER(dsc, rsvp)) {
+	if (RESERVED_BY_OTHER(dsc, enc_id)) {
 		SDE_DEBUG("dsc %d already reserved\n", dsc_cfg->id);
 		return false;
 	}
@@ -1728,13 +1657,13 @@ static bool _sde_rm_check_dsc(struct sde_rm *rm,
 }
 
 static bool _sde_rm_check_vdc(struct sde_rm *rm,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_hw_blk *vdc)
 {
 	const struct sde_vdc_cfg *vdc_cfg = to_sde_hw_vdc(vdc->hw)->caps;
 
 	/* Already reserved? */
-	if (RESERVED_BY_OTHER(vdc, rsvp)) {
+	if (RESERVED_BY_OTHER(vdc, enc_id)) {
 		SDE_DEBUG("vdc %d already reserved\n", vdc_cfg->id);
 		return false;
 	}
@@ -1745,7 +1674,7 @@ static bool _sde_rm_check_vdc(struct sde_rm *rm,
 static void sde_rm_get_rsvp_hw_blks(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		int type,
 		struct sde_rm_hw_blk **blk_arr, bool list_forward)
 {
@@ -1754,12 +1683,12 @@ static void sde_rm_get_rsvp_hw_blks(
 
 	if (list_forward) {
 		list_for_each_entry(blk, &state->hw_blks[type], list) {
-			if (blk->rsvp)
+			if (blk->enc_id == enc_id)
 				blk_arr[i++] = blk;
 		}
 	} else {
 		list_for_each_entry_reverse(blk, &state->hw_blks[type], list) {
-			if (blk->rsvp)
+			if (blk->enc_id ==  enc_id)
 				blk_arr[i++] = blk;
 		}
 	}
@@ -1768,7 +1697,7 @@ static void sde_rm_get_rsvp_hw_blks(
 static int _sde_rm_reserve_dsc(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		u8 *_dsc_ids)
 {
@@ -1801,11 +1730,11 @@ static int _sde_rm_reserve_dsc(
 
 	drm_for_each_encoder(encoder, rm->dev) {
 		/* backwards allocate DSC modules for non built-in case */
-		if (encoder->base.id == rsvp ->enc_id)
+		if (encoder->base.id == enc_id)
 			list_forward = sde_encoder_is_dsi_display(encoder);
 	}
 
-	sde_rm_get_rsvp_hw_blks(rm, state, rsvp, SDE_HW_BLK_PINGPONG, pp, list_forward);
+	sde_rm_get_rsvp_hw_blks(rm, state, enc_id, SDE_HW_BLK_PINGPONG, pp, list_forward);
 
 	/* Find a first DSC */
 	while (alloc_count != num_dsc_enc &&
@@ -1826,7 +1755,7 @@ static int _sde_rm_reserve_dsc(
 			dsc_info->config.native_420) && !has_422_420_support)
 			continue;
 
-		if (!_sde_rm_check_dsc(rm, rsvp, iter_i.blk, NULL,
+		if (!_sde_rm_check_dsc(rm, enc_id, iter_i.blk, NULL,
 					 pp[alloc_count]))
 			continue;
 
@@ -1860,7 +1789,7 @@ static int _sde_rm_reserve_dsc(
 					_dsc_ids[req_index]))
 				continue;
 
-			if (!_sde_rm_check_dsc(rm, rsvp, iter_j.blk,
+			if (!_sde_rm_check_dsc(rm, enc_id, iter_j.blk,
 					 iter_i.blk, pp[alloc_count]))
 				continue;
 
@@ -1883,7 +1812,7 @@ static int _sde_rm_reserve_dsc(
 
 	if (alloc_count != num_dsc_enc) {
 		SDE_ERROR("couldn't reserve %d dsc blocks for enc id %d\n",
-			num_dsc_enc, rsvp->enc_id);
+			num_dsc_enc, enc_id);
 		return -EINVAL;
 	}
 
@@ -1891,9 +1820,9 @@ static int _sde_rm_reserve_dsc(
 		if (!dsc[i])
 			break;
 
-		dsc[i]->rsvp = rsvp;
+		dsc[i]->enc_id = enc_id;
 
-		SDE_EVT32(dsc[i]->type, rsvp->enc_id, dsc[i]->id);
+		SDE_EVT32(dsc[i]->type, enc_id, dsc[i]->id);
 	}
 
 	return 0;
@@ -1902,7 +1831,7 @@ static int _sde_rm_reserve_dsc(
 static int _sde_rm_reserve_vdc(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		const struct sde_rm_topology_def *top,
 		u8 *_vdc_ids)
@@ -1931,7 +1860,7 @@ static int _sde_rm_reserve_vdc(
 		if (_vdc_ids && (iter_i.blk->id != _vdc_ids[alloc_count]))
 			continue;
 
-		if (!_sde_rm_check_vdc(rm, rsvp, iter_i.blk))
+		if (!_sde_rm_check_vdc(rm, enc_id, iter_i.blk))
 			continue;
 
 		SDE_DEBUG("blk id = %d, _vdc_ids[%d] = %d\n",
@@ -1944,7 +1873,7 @@ static int _sde_rm_reserve_vdc(
 
 	if (alloc_count != num_vdc_enc) {
 		SDE_ERROR("couldn't reserve %d vdc blocks for enc id %d\n",
-			num_vdc_enc, rsvp->enc_id);
+			num_vdc_enc, enc_id);
 		return -EINVAL;
 	}
 
@@ -1952,9 +1881,9 @@ static int _sde_rm_reserve_vdc(
 		if (!vdc[i])
 			break;
 
-		vdc[i]->rsvp = rsvp;
+		vdc[i]->enc_id = enc_id;
 
-		SDE_EVT32(vdc[i]->type, rsvp->enc_id, vdc[i]->id);
+		SDE_EVT32(vdc[i]->type, enc_id, vdc[i]->id);
 	}
 
 	return 0;
@@ -1963,7 +1892,7 @@ static int _sde_rm_reserve_vdc(
 static int _sde_rm_reserve_qdss(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		const struct sde_rm_topology_def *top,
 		u8 *_qdss_ids)
 {
@@ -1980,13 +1909,13 @@ static int _sde_rm_reserve_qdss(
 	sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_QDSS);
 
 	while (_sde_rm_get_hw_locked(rm, state, &iter, true)) {
-		if (RESERVED_BY_OTHER(iter.blk, rsvp))
+		if (RESERVED_BY_OTHER(iter.blk, enc_id))
 			continue;
 
 		SDE_DEBUG("blk id = %d\n", iter.blk->id);
 
-		iter.blk->rsvp = rsvp;
-		SDE_EVT32(iter.blk->type, rsvp->enc_id, iter.blk->id);
+		iter.blk->enc_id = enc_id;
+		SDE_EVT32(iter.blk->type, enc_id, iter.blk->id);
 		return 0;
 	}
 
@@ -2000,7 +1929,7 @@ static int _sde_rm_reserve_qdss(
 }
 
 static int _sde_rm_reserve_dnsc_blur(struct sde_rm *rm,
-		struct sde_rm_state *state, struct sde_rm_rsvp *rsvp,
+		struct sde_rm_state *state, uint32_t enc_id,
 		uint32_t id, enum sde_hw_blk_type type)
 {
 	struct sde_rm_hw_iter iter;
@@ -2010,7 +1939,7 @@ static int _sde_rm_reserve_dnsc_blur(struct sde_rm *rm,
 		struct sde_hw_dnsc_blur *dnsc_blur = to_sde_hw_dnsc_blur(iter.blk->hw);
 		bool match = false;
 
-		if (RESERVED_BY_OTHER(iter.blk, rsvp))
+		if (RESERVED_BY_OTHER(iter.blk, enc_id))
 			continue;
 
 		if ((type == SDE_HW_BLK_WB) && (id != WB_MAX))
@@ -2022,13 +1951,13 @@ static int _sde_rm_reserve_dnsc_blur(struct sde_rm *rm,
 		if (!match)
 			continue;
 
-		iter.blk->rsvp = rsvp;
-		SDE_EVT32(iter.blk->type, rsvp->enc_id, iter.blk->id);
+		iter.blk->enc_id = enc_id;
+		SDE_EVT32(iter.blk->type, enc_id, iter.blk->id);
 		break;
 	}
 
 	if (!iter.hw) {
-		SDE_ERROR("couldn't reserve dnsc_blur for type %d id %d\n", type, id);
+		SDE_ERROR("couldn't reserve dnsc_blur for type %d id %d\n", sde_hw_blk_type_str[type], id);
 		return -ENAVAIL;
 	}
 
@@ -2038,7 +1967,7 @@ static int _sde_rm_reserve_dnsc_blur(struct sde_rm *rm,
 static int _sde_rm_reserve_cdm(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		uint32_t id,
 		enum sde_hw_blk_type type)
 {
@@ -2050,7 +1979,7 @@ static int _sde_rm_reserve_cdm(
 		const struct sde_cdm_cfg *caps = cdm->caps;
 		bool match = false;
 
-		if (RESERVED_BY_OTHER(iter.blk, rsvp))
+		if (RESERVED_BY_OTHER(iter.blk, enc_id))
 			continue;
 
 		if (type == SDE_HW_BLK_INTF && id != INTF_MAX)
@@ -2065,8 +1994,8 @@ static int _sde_rm_reserve_cdm(
 		if (!match)
 			continue;
 
-		iter.blk->rsvp = rsvp;
-		SDE_EVT32(iter.blk->type, rsvp->enc_id, iter.blk->id);
+		iter.blk->enc_id = enc_id;
+		SDE_EVT32(iter.blk->type, enc_id, iter.blk->id);
 		break;
 	}
 
@@ -2079,7 +2008,7 @@ static int _sde_rm_reserve_cdm(
 }
 
 static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, 
-		struct sde_rm_state *state, struct sde_rm_rsvp *rsvp,
+		struct sde_rm_state *state, uint32_t enc_id,
 		uint32_t id, enum sde_hw_blk_type type, struct sde_rm_requirements *reqs)
 {
 	struct sde_encoder_hw_resources *hw_res = &reqs->hw_res;
@@ -2092,13 +2021,13 @@ static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm,
 		if (iter.blk->id != id)
 			continue;
 
-		if (RESERVED_BY_OTHER(iter.blk, rsvp)) {
+		if (RESERVED_BY_OTHER(iter.blk, enc_id)) {
 			SDE_ERROR("type %d id %d already reserved\n", type, id);
 			return -ENAVAIL;
 		}
 
-		iter.blk->rsvp = rsvp;
-		SDE_EVT32(iter.blk->type, rsvp->enc_id, iter.blk->id);
+		iter.blk->enc_id = enc_id;
+		SDE_EVT32(iter.blk->type, enc_id, iter.blk->id);
 		break;
 	}
 
@@ -2110,20 +2039,20 @@ static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm,
 
 	/* Expected only one intf or wb will request cdm */
 	if (hw_res->needs_cdm || RM_RQ_CDM(reqs)) {
-		ret = _sde_rm_reserve_cdm(rm, state, rsvp, id, type);
+		ret = _sde_rm_reserve_cdm(rm, state, enc_id, id, type);
 		if (ret)
 			return ret;
 	}
 
 	if (RM_RQ_DNSC_BLUR(reqs))
-		ret = _sde_rm_reserve_dnsc_blur(rm, state, rsvp, id, type);
+		ret = _sde_rm_reserve_dnsc_blur(rm, state, enc_id, id, type);
 
 	return ret;
 }
 
 static int _sde_rm_reserve_intf_related_hw(struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp, struct sde_rm_requirements *reqs)
+		uint32_t enc_id, struct sde_rm_requirements *reqs)
 {
 	struct sde_encoder_hw_resources *hw_res = &reqs->hw_res;
 	int i, ret = 0;
@@ -2133,7 +2062,8 @@ static int _sde_rm_reserve_intf_related_hw(struct sde_rm *rm,
 		if (hw_res->intfs[i] == INTF_MODE_NONE)
 			continue;
 		id = i + INTF_0;
-		ret = _sde_rm_reserve_intf_or_wb(rm, state, rsvp, id, SDE_HW_BLK_INTF, reqs);
+		ret = _sde_rm_reserve_intf_or_wb(rm, state, enc_id, id,
+				SDE_HW_BLK_INTF, reqs);
 		if (ret)
 			return ret;
 	}
@@ -2142,7 +2072,8 @@ static int _sde_rm_reserve_intf_related_hw(struct sde_rm *rm,
 		if (hw_res->wbs[i] == INTF_MODE_NONE)
 			continue;
 		id = i + WB_0;
-		ret = _sde_rm_reserve_intf_or_wb(rm, state, rsvp, id, SDE_HW_BLK_WB, reqs);
+		ret = _sde_rm_reserve_intf_or_wb(rm, state, enc_id, id, 
+				SDE_HW_BLK_WB, reqs);
 		if (ret)
 			return ret;
 	}
@@ -2167,7 +2098,7 @@ static bool _sde_rm_is_display_in_cont_splash(struct sde_kms *sde_kms,
 
 static int _sde_rm_make_lm_rsvp(struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		struct sde_splash_display *splash_display)
 {
@@ -2189,14 +2120,14 @@ static int _sde_rm_make_lm_rsvp(struct sde_rm *rm,
 	 * Assign LMs and blocks whose usage is tied to them:
 	 * DSPP & Pingpong.
 	 */
-	ret = _sde_rm_reserve_lms(rm, state, rsvp, reqs, hw_ids);
+	ret = _sde_rm_reserve_lms(rm, state, enc_id, reqs, hw_ids);
 
 	return ret;
 }
 
 static int _sde_rm_make_ctl_rsvp(struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		struct sde_splash_display *splash_display)
 {
@@ -2217,12 +2148,12 @@ static int _sde_rm_make_ctl_rsvp(struct sde_rm *rm,
 	 * - Check mixers without Split Display
 	 * - Only then allow to grab from CTLs with split display capability
 	 */
-	ret = _sde_rm_reserve_ctls(rm, state, rsvp, reqs, reqs->topology, hw_ids);
+	ret = _sde_rm_reserve_ctls(rm, state, enc_id, reqs, reqs->topology, hw_ids);
 	if (ret && !reqs->topology->needs_split_display &&
 			reqs->topology->num_ctl > SINGLE_CTL) {
 		memcpy(&topology, reqs->topology, sizeof(topology));
 		topology.needs_split_display = true;
-		ret = _sde_rm_reserve_ctls(rm, state, rsvp, reqs, &topology, hw_ids);
+		ret = _sde_rm_reserve_ctls(rm, state, enc_id, reqs, &topology, hw_ids);
 	}
 
 	return ret;
@@ -2233,7 +2164,7 @@ static int _sde_rm_make_ctl_rsvp(struct sde_rm *rm,
  * Returns 0 if not found  or error
  */
 static int _sde_rm_find_prev_dsc(struct sde_rm *rm,
-		struct sde_rm_state *state, struct sde_rm_rsvp *rsvp,
+		struct sde_rm_state *state, uint32_t enc_id,
 		u8 *prev_dsc, u32 max_cnt)
 {
 	int i = 0;
@@ -2245,7 +2176,7 @@ static int _sde_rm_find_prev_dsc(struct sde_rm *rm,
 	sde_rm_init_hw_iter(&iter_dsc, 0, SDE_HW_BLK_DSC);
 
 	while (_sde_rm_get_hw_locked(rm, state, &iter_dsc, true)) {
-		if (RESERVED_BY_CURRENT(iter_dsc.blk, rsvp))
+		if (RESERVED_BY_CURRENT(iter_dsc.blk, enc_id))
 			prev_dsc[i++] =  iter_dsc.blk->id;
 
 		if (i >= MAX_DATA_PATH_PER_DSIPLAY)
@@ -2256,7 +2187,7 @@ static int _sde_rm_find_prev_dsc(struct sde_rm *rm,
 }
 
 static int _sde_rm_make_dsc_rsvp(struct sde_rm *rm, 
-		struct sde_rm_state *state, struct sde_rm_rsvp *rsvp,
+		struct sde_rm_state *state, uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		struct sde_splash_display *splash_display)
 {
@@ -2281,16 +2212,16 @@ static int _sde_rm_make_dsc_rsvp(struct sde_rm *rm,
 	 * dont have feasible way of decoupling previously owned dsc blocks by resetting
 	 * respective dsc encoders mux control and flush them from commit path
 	 */
-	if (!hw_ids && _sde_rm_find_prev_dsc(rm, state, rsvp, prev_dsc, MAX_DATA_PATH_PER_DSIPLAY))
-		return  _sde_rm_reserve_dsc(rm, state, rsvp, reqs, prev_dsc);
+	if (!hw_ids && _sde_rm_find_prev_dsc(rm, state, enc_id, prev_dsc, MAX_DATA_PATH_PER_DSIPLAY))
+		return  _sde_rm_reserve_dsc(rm, state, enc_id, reqs, prev_dsc);
 	else
-		return  _sde_rm_reserve_dsc(rm, state, rsvp, reqs, hw_ids);
+		return  _sde_rm_reserve_dsc(rm, state, enc_id, reqs, hw_ids);
 
 }
 
 static int _sde_rm_make_vdc_rsvp(struct sde_rm *rm, 
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp,
+		uint32_t enc_id,
 		struct sde_rm_requirements *reqs,
 		struct sde_splash_display *splash_display)
 {
@@ -2305,7 +2236,7 @@ static int _sde_rm_make_vdc_rsvp(struct sde_rm *rm,
 				i, splash_display->vdc_ids[i]);
 	}
 
-	ret = _sde_rm_reserve_vdc(rm, state, rsvp, reqs, reqs->topology, hw_ids);
+	ret = _sde_rm_reserve_vdc(rm, state, enc_id, reqs, reqs->topology, hw_ids);
 
 	return ret;
 }
@@ -2315,13 +2246,13 @@ static int _sde_rm_make_next_rsvp(struct sde_rm *rm,
 		struct drm_encoder *enc,
 		struct drm_crtc_state *crtc_state,
 		struct drm_connector_state *conn_state,
-		struct sde_rm_rsvp *rsvp,
 		struct sde_rm_requirements *reqs)
 {
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	struct sde_splash_display *splash_display = NULL;
 	struct sde_splash_data *splash_data;
+	uint32_t enc_id = enc->base.id;
 	int i, ret;
 
 	priv = enc->dev->dev_private;
@@ -2340,39 +2271,34 @@ static int _sde_rm_make_next_rsvp(struct sde_rm *rm,
 		}
 	}
 
-	/* Create reservation info, tag reserved blocks with it as we go */
-	rsvp->seq = ++rm->rsvp_next_seq;
-	rsvp->enc_id = enc->base.id;
-	rsvp->topology = reqs->topology->top_name;
-	list_add_tail(&rsvp->list, &state->rsvps);
 
-	ret = _sde_rm_make_lm_rsvp(rm, state, rsvp, reqs, splash_display);
+	ret = _sde_rm_make_lm_rsvp(rm, state, enc_id, reqs, splash_display);
 	if (ret) {
 		SDE_ERROR("unable to find appropriate mixers\n");
 		_sde_rm_print_rsvps_by_type(state, SDE_HW_BLK_LM);
 		return ret;
 	}
 
-	ret = _sde_rm_make_ctl_rsvp(rm, state, rsvp, reqs, splash_display);
+	ret = _sde_rm_make_ctl_rsvp(rm, state, enc_id, reqs, splash_display);
 	if (ret) {
 		SDE_ERROR("unable to find appropriate CTL\n");
 		return ret;
 	}
 
 	/* Assign INTFs, WBs, and blks whose usage is tied to them: CTL & CDM */
-	ret = _sde_rm_reserve_intf_related_hw(rm, state, rsvp, reqs);
+	ret = _sde_rm_reserve_intf_related_hw(rm, state, enc_id, reqs);
 	if (ret)
 		return ret;
 
-	ret = _sde_rm_make_dsc_rsvp(rm, state, rsvp, reqs, splash_display);
+	ret = _sde_rm_make_dsc_rsvp(rm, state, enc_id, reqs, splash_display);
 	if (ret)
 		return ret;
 
-	ret = _sde_rm_make_vdc_rsvp(rm, state, rsvp, reqs, splash_display);
+	ret = _sde_rm_make_vdc_rsvp(rm, state, enc_id, reqs, splash_display);
 	if (ret)
 		return ret;
 
-	ret = _sde_rm_reserve_qdss(rm, state, rsvp, reqs->topology, NULL);
+	ret = _sde_rm_reserve_qdss(rm, state, enc_id, reqs->topology, NULL);
 	if (ret)
 		return ret;
 
@@ -2780,50 +2706,50 @@ bool sde_rm_topology_is_group(struct sde_rm *rm,
 /**
  * _sde_rm_release_rsvp - release resources and release a reservation
  * @rm:	KMS handle
- * @rsvp:	RSVP pointer to release and release resources for
+ * @enc_id:	Reservations are tracked by Encoder DRM object ID.
  */
 static void _sde_rm_release_rsvp(
 		struct sde_rm *rm,
 		struct sde_rm_state *state,
-		struct sde_rm_rsvp *rsvp)
+		uint32_t enc_id)
 {
-	struct sde_rm_rsvp *rsvp_c, *rsvp_n;
-	struct sde_rm_hw_blk *blk;
+	struct sde_rm_hw_blk *blk, *p;
 	enum sde_hw_blk_type type;
 
-	if (!rsvp)
-		return;
-
-	SDE_DEBUG("rel rsvp %d enc %d\n", rsvp->seq, rsvp->enc_id);
-
-	list_for_each_entry_safe(rsvp_c, rsvp_n, &state->rsvps, list) {
-		if (rsvp == rsvp_c) {
-			list_del(&rsvp_c->list);
-			break;
-		}
-	}
+	SDE_DEBUG("rel enc %d\n",enc_id);
 
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
-		list_for_each_entry(blk, &state->hw_blks[type], list) {
-			if (blk->rsvp == rsvp) {
-				blk->rsvp = NULL;
-				SDE_DEBUG("rel rsvp %d enc %d %d %d\n",
-						rsvp->seq, rsvp->enc_id,
-						blk->type, blk->id);
+		list_for_each_entry_safe(blk, p, &state->hw_blks[type], list) {
+			if (blk->enc_id == enc_id) {
+				/*
+				 * external block is created at reserve time
+				 * and destroyed at release time.
+				 */
+				if (blk->ext_hw) {
+					SDE_DEBUG("remove enc %d %s %d\n",
+							enc_id,
+							sde_hw_blk_type_str[blk->type], blk->id);
+					list_del(&blk->list);
+					kfree(blk);
+					continue;
+				}
+
+				blk->enc_id = 0;
+				SDE_DEBUG("rel enc %d %s %d\n",
+						enc_id,
+						sde_hw_blk_type_str[blk->type], blk->id);
 				_sde_rm_inc_resource_info(state,
 						&rm->avail_res, blk);
 			}
 		}
 	}
 
-	kfree(rsvp);
 }
 
 int sde_rm_release(struct sde_rm *rm,
 		struct drm_encoder *enc,
 		struct drm_atomic_state *atomic_state)
 {
-	struct sde_rm_rsvp *rsvp;
 	struct sde_rm_state *state;
 	struct drm_connector *conn = NULL;
 	struct msm_drm_private *priv;
@@ -2847,22 +2773,16 @@ int sde_rm_release(struct sde_rm *rm,
 		return PTR_ERR(state);
 
 	_sde_rm_print_rsvps(state, SDE_RM_STAGE_BEGIN);
-	rsvp = _sde_rm_get_rsvp(state, enc->base.id);
-	if (!rsvp)
-		goto end;
 
 	if (_sde_rm_is_display_in_cont_splash(sde_kms, enc)) {
-		_sde_rm_release_rsvp(rm, state, rsvp);
+		_sde_rm_release_rsvp(rm, state, enc->base.id);
 		goto end;
 	}
-
-	if (rsvp->topology == SDE_RM_TOPOLOGY_NONE)
-		goto end;
 
 	conn = _sde_rm_get_connector(enc);
 	if (!conn) {
 		SDE_EVT32(enc->base.id, 0x0, 0xffffffff);
-		_sde_rm_release_rsvp(rm, state, rsvp);
+		_sde_rm_release_rsvp(rm, state, enc->base.id);
 		SDE_DEBUG("failed to get conn for enc %d\n",enc->base.id);
 		goto end;
 	}
@@ -2870,14 +2790,12 @@ int sde_rm_release(struct sde_rm *rm,
 	top_ctrl = sde_connector_get_property(conn->state,
 			CONNECTOR_PROP_TOPOLOGY_CONTROL);
 
-	SDE_EVT32(enc->base.id, conn->base.id, rsvp->seq, top_ctrl);
+	SDE_EVT32(enc->base.id, conn->base.id, top_ctrl);
 	if (top_ctrl & BIT(SDE_RM_TOPCTL_RESERVE_LOCK)) {
-		SDE_DEBUG("rsvp[s%de%d] not releasing locked resources\n",
-				rsvp->seq, rsvp->enc_id);
+		SDE_DEBUG("[e%d] not releasing locked resources\n",enc->base.id);
 	} else {
-		SDE_DEBUG("release rsvp[s%de%d]\n", rsvp->seq,
-				rsvp->enc_id);
-		_sde_rm_release_rsvp(rm, state, rsvp);
+		SDE_DEBUG("release rsvp [e%d]\n",enc->base.id);
+		_sde_rm_release_rsvp(rm, state, enc->base.id);
 		_sde_rm_print_rsvps(state, SDE_RM_STAGE_AFTER_CLEAR);
 	}
 
@@ -2892,7 +2810,6 @@ int sde_rm_reserve(
 		struct drm_connector_state *conn_state)
 {
 	struct sde_rm_state *state;
-	struct sde_rm_rsvp *rsvp_nxt;
 	struct sde_rm_requirements reqs = {0,};
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
@@ -2958,26 +2875,9 @@ int sde_rm_reserve(
 	if (reqs.topology->top_name == SDE_RM_TOPOLOGY_NONE)
 		goto end;
 
-	/*
-	 * We only support one active reservation per-hw-block. But to implement
-	 * transactional semantics for test-only, and for allowing failure while
-	 * modifying your existing reservation, over the course of this
-	 * function we can have two reservations:
-	 * Current: Existing reservation
-	 * Next: Proposed reservation. The proposed reservation may fail, or may
-	 *       be discarded if in test-only mode.
-	 * If reservation is successful, and we're not in test-only, then we
-	 * replace the current with the next.
-	 */
-	rsvp_nxt = kzalloc(sizeof(*rsvp_nxt), GFP_KERNEL);
-	if (!rsvp_nxt) {
-		ret = -ENOMEM;
-		goto end;
-	}
 
 	/* Check the proposed reservation */
-	ret = _sde_rm_make_next_rsvp(rm, state, enc, crtc_state, conn_state,
-			rsvp_nxt, &reqs);
+	ret = _sde_rm_make_next_rsvp(rm, state, enc, crtc_state, conn_state, &reqs);
 
 	_sde_rm_print_rsvps(state, SDE_RM_STAGE_AFTER_RSVPNEXT);
 
@@ -2993,7 +2893,6 @@ int sde_rm_ext_blk_create_reserve(struct sde_rm *rm, struct drm_atomic_state *at
 {
 	struct sde_rm_state *state;
 	struct sde_rm_hw_blk *blk;
-	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 
 	if (!rm || !hw || !enc) {
@@ -3010,21 +2909,6 @@ int sde_rm_ext_blk_create_reserve(struct sde_rm *rm, struct drm_atomic_state *at
 	if (IS_ERR(state))
 		return PTR_ERR(state);
 
-	rsvp = _sde_rm_get_rsvp(state, enc->base.id);
-	if (!rsvp) {
-		rsvp = kzalloc(sizeof(*rsvp), GFP_KERNEL);
-		if (!rsvp) {
-			ret = -ENOMEM;
-			goto end;
-		}
-
-		rsvp->seq = ++rm->rsvp_next_seq;
-		rsvp->enc_id = enc->base.id;
-		list_add_tail(&rsvp->list, &state->rsvps);
-
-		SDE_DEBUG("create rsvp %d for enc %d\n", rsvp->seq, rsvp->enc_id);
-	}
-
 	blk = kzalloc(sizeof(*blk), GFP_KERNEL);
 	if (!blk) {
 		ret = -ENOMEM;
@@ -3034,13 +2918,13 @@ int sde_rm_ext_blk_create_reserve(struct sde_rm *rm, struct drm_atomic_state *at
 	blk->type = hw->type;
 	blk->id = hw->id;
 	blk->hw = pp_shd_hw;
-	blk->rsvp = rsvp;
+	blk->enc_id = enc->base.id;
+	blk->ext_hw = true;
 	list_add_tail(&blk->list, &state->hw_blks[hw->type]);
-	SDE_DEBUG("create blk %d %d for rsvp %d enc %d\n", blk->type, blk->id, rsvp->seq,
-		  rsvp->enc_id);
+	SDE_DEBUG("create blk %s %d for enc %d\n",
+			sde_hw_blk_type_str[blk->type], blk->id, enc->base.id);
 end:
 	if (ret) {
-		kfree(rsvp);
 		kfree(blk);
 	}
 	return ret;
@@ -3052,7 +2936,6 @@ int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm, struct drm_atomic_state 
 {
 	struct sde_rm_state *state;
 	struct sde_rm_hw_blk *blk;
-	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 
 	if (!rm || !hw || !enc || !sde_hw_lm) {
@@ -3069,21 +2952,6 @@ int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm, struct drm_atomic_state 
 	if (IS_ERR(state))
 		return PTR_ERR(state);
 
-	rsvp = _sde_rm_get_rsvp(state, enc->base.id);
-	if (!rsvp) {
-		rsvp = kzalloc(sizeof(*rsvp), GFP_KERNEL);
-		if (!rsvp) {
-			ret = -ENOMEM;
-			goto end;
-		}
-
-		rsvp->seq = ++rm->rsvp_next_seq;
-		rsvp->enc_id = enc->base.id;
-		list_add_tail(&rsvp->list, &state->rsvps);
-
-		SDE_DEBUG("create rsvp %d for enc %d\n", rsvp->seq, rsvp->enc_id);
-	}
-
 	blk = kzalloc(sizeof(*blk), GFP_KERNEL);
 	if (!blk) {
 		ret = -ENOMEM;
@@ -3093,13 +2961,13 @@ int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm, struct drm_atomic_state 
 	blk->type = hw->type;
 	blk->id = hw->id;
 	blk->hw = &sde_hw_lm->hw;
-	blk->rsvp = rsvp;
+	blk->enc_id = enc->base.id;
+	blk->ext_hw = true;
 	list_add_tail(&blk->list, &state->hw_blks[hw->type]);
-	SDE_DEBUG("create blk %d %d for rsvp %d enc %d\n", blk->type, blk->id,
-		  rsvp->seq, rsvp->enc_id);
+	SDE_DEBUG("create blk %s %d for enc %d\n", 
+			sde_hw_blk_type_str[blk->type],blk->id, enc->base.id);
 end:
 	if (ret) {
-		kfree(rsvp);
 		kfree(blk);
 	}
 	return ret;
@@ -3111,7 +2979,6 @@ int sde_rm_ext_blk_create_reserve_ctl(struct sde_rm *rm, struct drm_atomic_state
 {
 	struct sde_rm_state *state;
 	struct sde_rm_hw_blk *blk;
-	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 
 	if (!rm || !hw || !enc || !sde_hw_ctl) {
@@ -3128,21 +2995,6 @@ int sde_rm_ext_blk_create_reserve_ctl(struct sde_rm *rm, struct drm_atomic_state
 	if (IS_ERR(state))
 		return PTR_ERR(state);
 
-	rsvp = _sde_rm_get_rsvp(state, enc->base.id);
-	if (!rsvp) {
-		rsvp = kzalloc(sizeof(*rsvp), GFP_KERNEL);
-		if (!rsvp) {
-			ret = -ENOMEM;
-			goto end;
-		}
-
-		rsvp->seq = ++rm->rsvp_next_seq;
-		rsvp->enc_id = enc->base.id;
-		list_add_tail(&rsvp->list, &state->rsvps);
-
-		SDE_DEBUG("create rsvp %d for enc %d\n", rsvp->seq, rsvp->enc_id);
-	}
-
 	blk = kzalloc(sizeof(*blk), GFP_KERNEL);
 	if (!blk) {
 		ret = -ENOMEM;
@@ -3152,13 +3004,13 @@ int sde_rm_ext_blk_create_reserve_ctl(struct sde_rm *rm, struct drm_atomic_state
 	blk->type = hw->type;
 	blk->id = hw->id;
 	blk->hw = &sde_hw_ctl->hw;
-	blk->rsvp = rsvp;
+	blk->enc_id = enc->base.id;
+	blk->ext_hw = true;
 	list_add_tail(&blk->list, &state->hw_blks[hw->type]);
-	SDE_DEBUG("create blk %d %d for rsvp %d enc %d\n", blk->type, blk->id,
-		  rsvp->seq, rsvp->enc_id);
+	SDE_DEBUG("create blk %d %d for enc %d\n", 
+			sde_hw_blk_type_str[blk->type], blk->id, enc->base.id);
 end:
 	if (ret) {
-		kfree(rsvp);
 		kfree(blk);
 	}
 	return ret;
