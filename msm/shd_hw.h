@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -16,11 +16,13 @@ struct sde_shd_ctl_mixer_cfg {
 	u32 mixercfg_ext;
 	u32 mixercfg_ext2;
 	u32 mixercfg_ext3;
+	u32 mixercfg_ext4;
 
 	u32 mixercfg_mask;
 	u32 mixercfg_ext_mask;
 	u32 mixercfg_ext2_mask;
 	u32 mixercfg_ext3_mask;
+	u32 mixercfg_ext4_mask;
 
 	u32 mixercfg_skip_sspp_mask[2];
 };
