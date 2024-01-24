@@ -2840,7 +2840,7 @@ int dsi_display_phy_configure(void *priv, bool commit)
 	struct dsi_display *display = priv;
 	struct dsi_display_ctrl *m_ctrl;
 	struct dsi_pll_resource *pll_res;
-	struct dsi_ctrl *ctrl;
+	struct link_clk_freq link_freq;
 
 	if (!display) {
 		DSI_ERR("invalid arguments\n");
@@ -2862,9 +2862,15 @@ int dsi_display_phy_configure(void *priv, bool commit)
 		return -EINVAL;
 	}
 
-	ctrl = m_ctrl->ctrl;
-	pll_res->byteclk_rate = ctrl->clk_freq.byte_clk_rate;
-	pll_res->pclk_rate = ctrl->clk_freq.pix_clk_rate;
+	rc = dsi_clk_get_link_frequencies(&link_freq, display->dsi_clk_handle,
+						display->clk_master_idx);
+	if (rc) {
+		DSI_ERR("Failed to get link frequencies\n");
+		return rc;
+	}
+
+	pll_res->byteclk_rate = link_freq.byte_clk_rate;
+	pll_res->pclk_rate = link_freq.pix_clk_rate;
 
 	rc = dsi_phy_configure(m_ctrl->phy, commit);
 
@@ -4481,6 +4487,29 @@ void dsi_display_update_byte_intf_div(struct dsi_display *display)
 	config->byte_intf_clk_div = 2;
 }
 
+static int dsi_display_set_link_frequencies(struct dsi_display *display)
+{
+	int rc = 0, i = 0;
+
+	dsi_clk_acquire_mngr_lock(display->dsi_clk_handle);
+	display_for_each_ctrl(i, display) {
+		struct dsi_display_ctrl *ctrl = &display->ctrl[i];
+
+		rc = dsi_clk_set_link_frequencies(display->dsi_clk_handle,
+							ctrl->ctrl->clk_freq,
+							ctrl->ctrl->cell_index);
+		if (rc) {
+			DSI_ERR("Failed to update link frequencies of ctrl_%d, rc=%d\n",
+							ctrl->ctrl->cell_index, rc);
+			dsi_clk_release_mngr_lock(display->dsi_clk_handle);
+			return rc;
+		}
+	}
+	dsi_clk_release_mngr_lock(display->dsi_clk_handle);
+
+	return rc;
+}
+
 static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 					  u32 bit_clk_rate)
 {
@@ -4563,12 +4592,6 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 		ctrl->clk_freq.byte_clk_rate = byte_clk_rate;
 		ctrl->clk_freq.byte_intf_clk_rate = byte_intf_clk_rate;
 		ctrl->clk_freq.pix_clk_rate = pclk_rate;
-		rc = dsi_clk_set_link_frequencies(display->dsi_clk_handle,
-			ctrl->clk_freq, ctrl->cell_index);
-		if (rc) {
-			DSI_ERR("Failed to update link frequencies\n");
-			goto error;
-		}
 
 		ctrl->host_config.bit_clk_rate_hz = bit_clk_rate;
 error:
@@ -4577,6 +4600,12 @@ error:
 		/* TODO: recover ctrl->clk_freq in case of failure */
 		if (rc)
 			return rc;
+	}
+
+	rc = dsi_display_set_link_frequencies(display);
+	if (rc) {
+		DSI_ERR("Failed to set display link frequencies\n");
+		return rc;
 	}
 
 	return 0;
@@ -5233,6 +5262,15 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 		}
 	}
 
+	if (!(mode->dsi_mode_flags & (DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
+		       DSI_MODE_FLAG_DYN_CLK))) {
+		rc = dsi_display_set_link_frequencies(display);
+		if (rc) {
+			DSI_ERR("Failed to set display link frequencies\n");
+			goto error;
+		}
+	}
+
 	if ((mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) &&
 			(display->panel->panel_mode == DSI_OP_CMD_MODE)) {
 		u64 cur_bitclk = display->panel->cur_mode->timing.clk_rate_hz;
@@ -5246,7 +5284,12 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 		dsi_display_validate_dms_fps(display->panel->cur_mode, mode);
 	}
 
-	if (priv_info->phy_timing_len) {
+	if (priv_info->phy_timing_len &&
+		!atomic_read(&display->clkrate_change_pending)) {
+		/*
+		 * In case of clkrate change, the PHY timing update will happen
+		 * together with the clock update.
+		 */
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 			 rc = dsi_phy_set_timing_params(ctrl->phy,
@@ -7106,6 +7149,11 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		/* Setup widebus support */
 		display_mode.priv_info->widebus_support = ctrl->ctrl->hw.widebus_support;
 
+		if (display->cmdline_timing == display_mode.mode_idx) {
+			topology_override = display->cmdline_topology;
+			is_preferred = true;
+		}
+
 		rc = dsi_panel_get_mode(display->panel, mode_idx,
 						&display_mode,
 						topology_override);
@@ -7116,11 +7164,6 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			display_mode.priv_info = NULL;
 			rc = -EINVAL;
 			return rc;
-		}
-
-		if (display->cmdline_timing == display_mode.mode_idx) {
-			topology_override = display->cmdline_topology;
-			is_preferred = true;
 		}
 
 		support_cmd_mode = display_mode.panel_mode_caps & DSI_OP_CMD_MODE;
@@ -7248,7 +7291,10 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 
 			dsi_display_get_dfps_timing(display, sub_mode,
 					curr_refresh_rate);
-			sub_mode->panel_mode_caps = DSI_OP_VIDEO_MODE;
+
+			/* Avoid override for first sub mode in POMS enabled video mode usecase */
+			if ((i != start) && support_cmd_mode && support_video_mode)
+				sub_mode->panel_mode_caps = DSI_OP_VIDEO_MODE;
 		}
 		end = array_idx;
 
@@ -7461,6 +7507,13 @@ int dsi_display_update_transfer_time(void *display, u32 transfer_time)
 			return rc;
 		}
 	}
+
+	rc = dsi_display_set_link_frequencies(disp);
+	if (rc) {
+		DSI_ERR("Failed to set display link frequencies\n");
+		return rc;
+	}
+
 	atomic_set(&disp->clkrate_change_pending, 1);
 
 	return 0;
@@ -7998,6 +8051,11 @@ static void dsi_display_handle_fifo_underflow(struct work_struct *work)
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
 
 	mutex_unlock(&display->display_lock);
+
+	if (display->is_spurious_interrupt) {
+		dsi_display_report_dead(display);
+		display->is_spurious_interrupt = false;
+	}
 }
 
 static void dsi_display_handle_fifo_overflow(struct work_struct *work)
@@ -8079,6 +8137,11 @@ end:
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
 
 	mutex_unlock(&display->display_lock);
+
+	if (display->is_spurious_interrupt) {
+		dsi_display_report_dead(display);
+		display->is_spurious_interrupt = false;
+	}
 }
 
 static void dsi_display_handle_lp_rx_timeout(struct work_struct *work)
@@ -8553,8 +8616,11 @@ int dsi_display_pre_kickoff(struct drm_connector *connector,
 		struct dsi_display *display,
 		struct msm_display_kickoff_params *params)
 {
+	struct dsi_display_mode *mode;
 	int rc = 0, ret = 0;
 	int i;
+
+	mode = display->panel->cur_mode;
 
 	/* check and setup MISR */
 	if (display->misr_enable)
@@ -8581,6 +8647,24 @@ int dsi_display_pre_kickoff(struct drm_connector *connector,
 			ret = dsi_ctrl_wait_for_cmd_mode_mdp_idle(ctrl);
 			if (ret)
 				goto wait_failure;
+		}
+
+		if (mode->priv_info->phy_timing_len) {
+			display_for_each_ctrl(i, display) {
+				struct dsi_display_ctrl *ctrl;
+				bool commit_phy_timing = false;
+
+				if (mode->dsi_mode_flags & DSI_MODE_FLAG_DMS)
+					commit_phy_timing = true;
+
+				ctrl = &display->ctrl[i];
+				ret = dsi_phy_set_timing_params(ctrl->phy,
+						mode->priv_info->phy_timing_val,
+						mode->priv_info->phy_timing_len,
+						commit_phy_timing);
+				if (ret)
+					DSI_ERR("failed to add DSI PHY timing params\n");
+			}
 		}
 
 		/*

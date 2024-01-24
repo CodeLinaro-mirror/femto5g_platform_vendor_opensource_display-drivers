@@ -203,6 +203,7 @@ enum sde_sim_qsync_event {
  * @rsc_state_init:		boolean to indicate rsc config init
  * @disp_info:			local copy of msm_display_info struct
  * @misr_enable:		misr enable/disable status
+ * @vsync_cnt:			Vsync count for the physical encoder
  * @misr_reconfigure:		boolean entry indicates misr reconfigure status
  * @misr_frame_count:		misr frame count before start capturing the data
  * @idle_pc_enabled:		indicate if idle power collapse is enabled
@@ -246,6 +247,7 @@ enum sde_sim_qsync_event {
  *                              ctl done irq support for the hardware
  * @dynamic_irqs_config         bitmask config to enable encoder dynamic irqs
  * @ops:                        Encoder ops from init function
+ * @vsync_event_wq              Queue to wait for the vsync event complete
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -285,6 +287,7 @@ struct sde_encoder_virt {
 	bool rsc_state_init;
 	struct msm_display_info disp_info;
 	atomic_t misr_enable;
+	atomic_t vsync_cnt;
 	bool misr_reconfigure;
 	u32 misr_frame_count;
 
@@ -321,6 +324,7 @@ struct sde_encoder_virt {
 	unsigned long dynamic_irqs_config;
 
 	struct sde_encoder_ops ops;
+	wait_queue_head_t vsync_event_wq;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -410,6 +414,12 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *encoder,
  */
 void sde_encoder_trigger_kickoff_pending(struct drm_encoder *encoder);
 
+/**
+ * sde_encoder_reset_kickoff_timeout_ms - Reset the kickoff_timout after modeset
+ *        commit for command mode display.
+ * @encoder:	encoder pointer
+ */
+void sde_encoder_reset_kickoff_timeout_ms(struct drm_encoder *encoder);
 /**
  * sde_encoder_kickoff - trigger a double buffer flip of the ctl path
  *	(i.e. ctl flush and start) immediately.

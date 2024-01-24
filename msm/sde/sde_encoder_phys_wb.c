@@ -651,6 +651,11 @@ static void _sde_encoder_phys_wb_setup_cwb(struct sde_encoder_phys *phys_enc, bo
 		if (hw_wb->ops.setup_crop && !enable)
 			hw_wb->ops.setup_crop(hw_wb, wb_cfg, false);
 
+		if (phys_enc->hw_dnsc_blur &&
+		    phys_enc->hw_dnsc_blur->ops.setup_dnsc_blur && !enable)
+			phys_enc->hw_dnsc_blur->ops.setup_dnsc_blur(
+				phys_enc->hw_dnsc_blur, NULL, 0);
+
 		if (hw_ctl->ops.update_intf_cfg) {
 			hw_ctl->ops.update_intf_cfg(hw_ctl, &intf_cfg, enable);
 			SDE_DEBUG("[enc:%d wb:%d] in CWB/DCWB mode on CTL_%d PP-%d merge3d:%d\n",
@@ -1453,7 +1458,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 		src_pp_idx = (enum sde_cwb) (src_pp_idx + i);
 
 		if (test_bit(SDE_WB_DCWB_CTRL, &hw_wb->caps->features)) {
-			dcwb_idx = (enum sde_dcwb) ((hw_pp->idx - (PINGPONG_CWB_0 - 1)) + i);
+			dcwb_idx = hw_pp->dcwb_idx + i;
 			if ((test_bit(SDE_WB_CWB_DITHER_CTRL, &hw_wb->caps->features)) &&
 				hw_wb->ops.program_cwb_dither_ctrl){
 				hw_wb->ops.program_cwb_dither_ctrl(hw_wb,
@@ -1809,11 +1814,13 @@ static void _sde_encoder_phys_wb_frame_done_helper(void *arg, bool frame_error)
 	struct sde_encoder_phys *phys_enc = &wb_enc->base;
 	u32 event = frame_error ? SDE_ENCODER_FRAME_EVENT_ERROR : 0;
 	u32 ubwc_error = 0;
+	unsigned long flags;
 
 	/* don't notify upper layer for internal commit */
 	if (phys_enc->enable_state == SDE_ENC_DISABLING && !phys_enc->in_clone_mode)
 		goto end;
 
+	spin_lock_irqsave(phys_enc->enc_spinlock, flags);
 	if (phys_enc->parent_ops.handle_frame_done &&
 			atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0)) {
 		event |= SDE_ENCODER_FRAME_EVENT_DONE;
@@ -1835,9 +1842,11 @@ static void _sde_encoder_phys_wb_frame_done_helper(void *arg, bool frame_error)
 					| SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE;
 		else
 			event |= SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
-
-		phys_enc->parent_ops.handle_frame_done(phys_enc->parent, phys_enc, event);
 	}
+	spin_unlock_irqrestore(phys_enc->enc_spinlock, flags);
+
+	if (event & SDE_ENCODER_FRAME_EVENT_DONE)
+		phys_enc->parent_ops.handle_frame_done(phys_enc->parent, phys_enc, event);
 
 	if (!phys_enc->in_clone_mode && phys_enc->parent_ops.handle_vblank_virt)
 		phys_enc->parent_ops.handle_vblank_virt(phys_enc->parent, phys_enc);
@@ -2063,6 +2072,8 @@ static bool _sde_encoder_phys_wb_is_idle(struct sde_encoder_phys *phys_enc)
 static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_crtc *sde_crtc;
 
 	phys_enc->enable_state = SDE_ENC_DISABLED;
 
@@ -2073,6 +2084,10 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 		wb_enc->wb_fb = NULL;
 		wb_enc->wb_aspace = NULL;
 	}
+
+	sde_crtc = to_sde_crtc(sde_enc->crtc);
+	if (sde_crtc)
+		sde_crtc->cached_encoder_mask &= ~drm_encoder_mask(phys_enc->parent);
 
 	wb_enc->crtc = NULL;
 	phys_enc->hw_cdm = NULL;
@@ -2240,12 +2255,15 @@ end:
 static int sde_encoder_phys_wb_wait_for_tx_complete(struct sde_encoder_phys *phys_enc)
 {
 	int rc = 0;
+	unsigned long flags;
 
 	if (atomic_read(&phys_enc->pending_kickoff_cnt))
 		rc = _sde_encoder_phys_wb_wait_for_idle(phys_enc, true);
 
 	if ((phys_enc->enable_state == SDE_ENC_DISABLING) && phys_enc->in_clone_mode) {
+		spin_lock_irqsave(phys_enc->enc_spinlock, flags);
 		_sde_encoder_phys_wb_reset_state(phys_enc);
+		spin_unlock_irqrestore(phys_enc->enc_spinlock, flags);
 		sde_encoder_phys_wb_irq_ctrl(phys_enc, false);
 	}
 
