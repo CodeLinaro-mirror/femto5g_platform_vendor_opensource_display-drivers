@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -862,9 +862,14 @@ struct sde_hw_mdp *sde_hw_mdptop_init(enum sde_mdp idx,
 		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, name, mdp->hw.blk_off + MDP_SSPP_TOP2,
 				mdp->hw.blk_off +  mdp->hw.length, mdp->hw.xin_id);
 
-		/* do not use blk_off, following offsets start from  mdp_phys */
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "hw_fence", MDP_CTL_HW_FENCE_CTRL,
-			MDP_CTL_HW_FENCE_ID_OFFSET_m(MDP_CTL_HW_FENCE_IDm_ATTR, 5), mdp->hw.xin_id);
+		if (m->hw_fence_rev) {
+			/* do not use blk_off, following offsets start from  mdp_phys */
+			sde_dbg_reg_register_dump_range(SDE_DBG_NAME,
+				"hw_fence",
+				MDP_CTL_HW_FENCE_CTRL,
+				MDP_CTL_HW_FENCE_ID_OFFSET_m(MDP_CTL_HW_FENCE_IDm_ATTR, 5),
+				mdp->hw.xin_id);
+		}
 	} else {
 		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
 			mdp->hw.blk_off, mdp->hw.blk_off + mdp->hw.length,

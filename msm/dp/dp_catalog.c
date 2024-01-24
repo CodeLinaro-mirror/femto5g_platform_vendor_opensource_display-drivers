@@ -2354,8 +2354,9 @@ static void dp_catalog_ctrl_reset_retimer(struct dp_catalog_ctrl *ctrl)
 	io_data   = catalog->io.dp_phy;
 	parser = catalog->parser;
 
-	/* TODO: revisit this logic for DP_PHY_VERSION_5_0_0 */
-	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_5_0_0)
+	/* TODO: revisit this logic for DP_PHY_VERSION_5_0_0  & DP_PHY_VERSION_2_0_0*/
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_5_0_0 ||
+			parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
 		return;
 
 	reg = dp_read(DP_PHY_CFG) & 0xFF;
