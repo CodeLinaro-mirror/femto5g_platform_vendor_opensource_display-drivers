@@ -1,8 +1,7 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * SPDX-License-Identifier: GPL-2.0-only
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
-
 #ifndef __VIRTIO_KMS_H__
 #define __VIRTIO_KMS_H__
 #include <linux/virtio_gpu.h>
@@ -37,6 +36,7 @@ struct virtio_plane_caps {
 	uint32_t num_formats;
 	uint32_t formats[VIRTIO_GPU_MAX_PIXEL_FORMATS];
 	uint32_t max_scale;
+	uint32_t min_scale;
 	uint32_t zorder;
 	uint32_t pair_plane_id;
 	int32_t  master_plane_id;
