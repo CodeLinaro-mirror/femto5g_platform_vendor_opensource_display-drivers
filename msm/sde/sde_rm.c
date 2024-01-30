@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -23,6 +23,7 @@
 #include "sde_vbif.h"
 #include "sde_hw_dnsc_blur.h"
 #include "sde_hw_roi_misr.h"
+#include "sde_hw_catalog.h"
 
 #define RESERVED_BY_OTHER(h, e) \
 	((h)->enc_id && ((h)->enc_id != (e)))
@@ -288,18 +289,30 @@ void sde_rm_dec_resource_info(struct sde_rm *rm, struct drm_encoder *drm_enc)
 	struct sde_rm_hw_blk *blk;
 	enum sde_hw_blk_type type;
 	struct sde_rm_state *state;
+	struct msm_drm_private *priv = rm->dev->dev_private;
+	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
 
-	if (!drm_enc)
+	/**
+	 * TODO: Revert this change and address the issue seen on gen3
+	 * where all displays are not coming up when the resource leak
+	 * is stopped.
+	 */
+	if (!drm_enc && IS_LEMANS_TARGET(sde_kms->catalog->hw_rev))
 		return;
 
 	state = to_sde_rm_priv_state(rm->obj.state);
 
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry(blk, &state->hw_blks[type], list) {
-			if ((drm_enc->base.id < 0) ||
-				(drm_enc->base.id == blk->enc_id))
-				_sde_rm_dec_resource_info(state,
-						&rm->avail_res, blk);
+			if (IS_LEMANS_TARGET(sde_kms->catalog->hw_rev)) {
+				if (drm_enc->base.id == blk->enc_id)
+					_sde_rm_dec_resource_info(state,
+							&rm->avail_res, blk);
+			} else {
+				if (blk->enc_id)
+					_sde_rm_dec_resource_info(state,
+							&rm->avail_res, blk);
+			}
 		}
 	}
 }
