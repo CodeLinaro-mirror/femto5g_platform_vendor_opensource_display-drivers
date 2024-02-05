@@ -1,8 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * SPDX-License-Identifier: GPL-2.0-only
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
-
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
 #include <linux/virtio_config.h>
@@ -1050,24 +1049,45 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 				priv->base.format_count++;
 			}
 
+			priv->base.support_scale = false;
+			priv->base.support_csc = false;
+			if (kms->outputs[i].plane_caps[j].plane_type == VIRTIO_QDI_LAYER_GRAPHICS
+				|| kms->outputs[i].plane_caps[j].plane_type ==
+				VIRTIO_QDI_LAYER_OVERLAY)
+				priv->base.support_scale = true;
+
+			if (kms->outputs[i].plane_caps[j].plane_type == VIRTIO_QDI_LAYER_OVERLAY)
+				priv->base.support_csc = true;
+
 			master_idx = kms->outputs[i].plane_caps[j].master_plane_id;
 			if (master_idx >= 0) {
 				pr_debug("virtio : Master plane %d master %d\n",
 						kms->outputs[i].plane_caps[j].plane_id,
 						master_idx + pipe_cnt);
 				priv->base.support_multirect = true;
+				priv->base.support_scale = false;
+				priv->base.support_csc = false;
+				priv->base.support_rotation = false;
 				priv->base.master_plane_index = master_idx + pipe_cnt;
 			}
 
-			//TODO : check for the support of scaling and csc
-			priv->base.support_scale = false;
-
-			if (kms->outputs[i].plane_caps[j].plane_type == VIRTIO_QDI_LAYER_OVERLAY)
-				priv->base.support_csc = true;
-
 			priv->base.possible_crtcs = 1 << i;
-			priv->base.maxdwnscale = SSPP_UNITY_SCALE;
-			priv->base.maxupscale = SSPP_UNITY_SCALE;
+			if (priv->base.support_scale) {
+				if (kms->outputs[i].plane_caps[j].max_scale > 0 &&
+					kms->outputs[i].plane_caps[j].min_scale > 0) {
+					priv->base.maxdwnscale =
+						kms->outputs[i].plane_caps[j].min_scale;
+					priv->base.maxupscale =
+						kms->outputs[i].plane_caps[j].max_scale;
+				} else {
+					priv->base.maxdwnscale = SSPP_UNITY_SCALE;
+					priv->base.maxupscale = SSPP_UNITY_SCALE;
+				}
+			} else {
+				priv->base.maxdwnscale = SSPP_UNITY_SCALE;
+				priv->base.maxupscale = SSPP_UNITY_SCALE;
+			}
+
 			priv->base.maxhdeciexp = MAX_HORZ_DECIMATION;
 			priv->base.maxvdeciexp = MAX_VERT_DECIMATION;
 			priv->base.max_width =
