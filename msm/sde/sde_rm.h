@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -171,6 +172,7 @@ struct sde_rm_topology_def {
  * @rsvp_next_seq: sequence number for next reservation for debugging purposes
  * @rm_lock: resource manager mutex
  * @avail_res: Pointer with curr available resources
+ * @is_ctl_rev_supported: control path block version
  */
 struct sde_rm {
 	struct drm_device *dev;
@@ -182,6 +184,7 @@ struct sde_rm {
 	struct mutex rm_lock;
 	const struct sde_rm_topology_def *topology_tbl;
 	struct msm_resource_caps_info avail_res;
+	bool is_ctl_rev_supported;
 };
 
 /**

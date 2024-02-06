@@ -15,10 +15,10 @@ DLKM_DIR := $(TOP)/device/qcom/common/dlkm
 LOCAL_ADDITIONAL_DEPENDENCIES := $(wildcard $(LOCAL_PATH)/**/*) $(wildcard $(LOCAL_PATH)/*)
 
 # List of board platforms for which below driver's API should not be enabled
-NO_MMRM_BOARDS          := kona
-NO_MSM_EXT_DISP_BOARDS  := taro bengal
-NO_SEC_BOARDS           := taro bengal
-NO_HW_FENCE_BOARDS      := taro bengal kona
+NO_MMRM_BOARDS          := kona qcs605
+NO_MSM_EXT_DISP_BOARDS  := taro bengal qcs605
+NO_SEC_BOARDS           := taro bengal qcs605
+NO_HW_FENCE_BOARDS      := taro bengal kona qcs605
 
 # Build display.ko as msm_drm.ko
 ###########################################################

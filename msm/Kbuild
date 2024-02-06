@@ -32,6 +32,11 @@ ifeq ($(CONFIG_ARCH_KHAJE), y)
         LINUX_INC +=    -include $(DISPLAY_ROOT)/config/gki_bengaldispconf.h
 endif
 
+ifeq ($(CONFIG_ARCH_SDM670), y)
+        include $(DISPLAY_ROOT)/config/qcs605disp.conf
+        LINUX_INC +=    -include $(DISPLAY_ROOT)/config/qcs605dispconf.h
+endif
+
 ifeq ($(CONFIG_ARCH_KALAMA), y)
 ifeq ($(CONFIG_ARCH_QTI_VM), y)
         include $(DISPLAY_ROOT)/config/gki_kalamadisptui.conf
@@ -229,6 +234,7 @@ msm_drm-$(CONFIG_DRM_MSM_DSI) += dsi/dsi_phy.o \
 				 dsi/dsi_pll.o \
 				 dsi/dsi_pll_5nm.o \
 				 dsi/dsi_pll_4nm.o \
+				 dsi/dsi_pll_10nm.o \
 				 dsi/dsi_ctrl_hw_cmn.o \
 				 dsi/dsi_ctrl_hw_2_2.o \
 				 dsi/dsi_ctrl.o \
