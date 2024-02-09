@@ -238,12 +238,47 @@ static int wm_display_get_modes(struct wm_display *display,
 							struct wm_display_private, display);
 
 	return display_priv->hdmi_tx->get_modes(display_priv->hdmi_tx, connector);
+
+}
+
+static void _convert_drm_to_wm_mode(struct wm_display *display)
+{
+	struct *wm_mode = display->mode_info;
+	struct *drm_mode = display->drm_mode;
+
+
+	wm_mode->h_active = drm_mode->hdisplay;
+	wm_mode->h_blank = drm_mode->htotal - drm_mode->hdisplay;
+	wm_mode->h_back_porch = drm_mode->htotal - drm_mode->hsync_end;
+	wm_mode->h_front_porch = drm_mode->hsync_start - drm_mode->hdisplay;
+	wm_mode->h_sync_width = drm_mode->htotal -
+			(drm_mode->hsync_start + wm_mode.h_back_porch);
+	wm_mode->v_active = drm_mode->vdisplay;
+	wm_mode->v_blank = drm_mode->vtotal - drm_mode->vdisplay;
+	wm_mode->v_back_porch = drm_mode->vtotal - drm_mode->vsync_end;
+	wm_mode->v_front_porch = drm_mode->vsync_start - drm_mode->vtotal;
+	wm_mode->v_sync_width = drm_mode->vtotal -
+			(drm_mode->vsync_start + wm_mode.v_back_porch);
+	wm_mode->h_active_low = !!(drm_mode->flags & DRM_MODE_FLAG_NHSYNC);
+	wm_mode->v_active_low = !!(drm_mode->flags & DRM_MODE_FLAG_NVSYNC);
+	wm_mode->h_skew = drm_mode->hskew;
+	wm_mode->refresh_rate = drm_mode_vrefresh(drm_mode);
+	wm_mode->pclk_khz = drm_mode->clock;
+	wm_mode->interlace = !!(drm_mode->flags & DRM_MODE_FLAG_INTERLACE);
+	wm_mode->dblclk = !!(drm_mode->flags & DRM_MODE_FLAG_DBCLK);
+	wm_mode->bpp = DEFAULT_BPP;
+	wm_mode->dsc_enabled = (wm_mode.hactive >= 3840 && wm_mode.vactive >= 2160
+				&& wm_mode.refresh_rate > 30);
 }
 
 static void wm_display_set_mode(struct wm_display *display,
 				const struct drm_display_mode *mode)
 {
 	drm_mode_copy(&display->drm_mode, mode);
+
+	/*Convert drm mode to customised wingmate mode*/
+	_convert_drm_to_wm_mode(display);
+
 }
 
 static void wm_display_pre_enable(struct wm_display *display)

@@ -14,6 +14,8 @@
 
 #define WM_DISP_POWER_SETTLE_DELAY 0
 
+#define DEFAULT_BPP 24
+
 typedef enum wm_display_interrupts {
 	WM_DISPLAY_INT_MIN = 31,
 	WM_DISPLAY_INT_WAS_OFL_INT = WM_DISPLAY_INT_MIN,
@@ -97,9 +99,32 @@ typedef enum wm_display_reset_reason {
 	WM_DISPLAY_RESET_REASON_MAX
 } wm_display_reset_reason_t;
 
+
+struct wm_display_mode {
+	u32 h_active;
+	u32 v_active;
+	u32 hblank;
+	u32 vblank;
+	u32 h_back_porch;
+	u32 h_front_porch;
+	u32 h_sync_width;
+	u32 v_back_porch;
+	u32 v_front_porch;
+	u32 v_sync_width;
+	bool h_active_low;
+	bool v_active_low;
+	bool interlace;
+	bool dblclk;
+	u32 refresh_rate;
+	u32 pclk_khz;
+	u32 bpp;
+	bool dsc_enabled;
+};
+
 struct wm_display {
 	struct drm_connector *connector;
 	struct drm_display_mode drm_mode;
+	struct wm_display_mode mode_info;
 
 	bool hpd_status;
 
