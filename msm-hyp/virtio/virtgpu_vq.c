@@ -1,6 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
- * SPDX-License-Identifier: GPL-2.0-only
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/delay.h>
 #include <linux/kernel.h>
@@ -1186,6 +1186,7 @@ static int virtio_get_planes_caps(struct virtio_kms *kms,
 		plane_caps->formats[num_formats] = le32_to_cpu(resp->caps.formats[i]);
 		num_formats++;
 	}
+	plane_caps->min_scale = le32_to_cpu(resp->caps.min_scale);
 	plane_caps->max_scale = le32_to_cpu(resp->caps.max_scale);
 	plane_caps->num_formats = num_formats;
 	plane_caps->pair_plane_id = le32_to_cpu(resp->caps.pair_plane_id);

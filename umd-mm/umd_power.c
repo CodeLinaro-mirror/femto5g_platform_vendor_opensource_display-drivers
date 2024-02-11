@@ -284,6 +284,10 @@ static int umd_power_parse_dt(struct platform_device *pdev, struct umdp_ctrl *um
 	int num_reg = 0;
 
 	pe = devm_kzalloc(dev, sizeof(*pe), GFP_KERNEL);
+	if (!pe)
+		return -ENOMEM;
+
+	dev_set_drvdata(&pdev->dev, pe);
 
 	rc = of_property_read_u32(child, "reg", &pe->gpid);
 
@@ -406,29 +410,28 @@ static int umd_power_parse_dt(struct platform_device *pdev, struct umdp_ctrl *um
 
 static int umd_power_suspend(struct device *dev)
 {
-	struct list_head *list_pe;
 	struct power_entry *pe;
 	int i = 0, ret = 0;
 
-	if (of_device_is_compatible(dev->of_node, "qcom,umd-power-multimedia"))
+	if (of_device_is_compatible(dev->of_node, "qcom,umd-power"))
 		return 0;
 
-	list_for_each(list_pe, &umdp_ctrl->ph) {
-		pe = container_of(list_pe, struct power_entry, node);
+	pe = dev_get_drvdata(dev);
+	if (!pe)
+		return -ENODATA;
 
-		for (i = 0; i < pe->num_clk; i++) {
-			if (pe->clk_config[i].clk)
-				clk_disable_unprepare(pe->clk_config[i].clk);
-		}
+	for (i = 0; i < pe->num_clk; i++) {
+		if (pe->clk_config[i].clk)
+			clk_disable_unprepare(pe->clk_config[i].clk);
+	}
 
-		for (i = 0; i < pe->num_reg; i++) {
-			if (pe->reg_config[i].vreg) {
-				ret = regulator_disable(pe->reg_config[i].vreg);
-				if (ret) {
-					pr_err("%s regulator_disable failed\n",
-							pe->reg_config[i].vreg_name);
-					return ret;
-				}
+	for (i = 0; i < pe->num_reg; i++) {
+		if (pe->reg_config[i].vreg) {
+			ret = regulator_disable(pe->reg_config[i].vreg);
+			if (ret) {
+				pr_err("%s regulator_disable failed\n",
+						pe->reg_config[i].vreg_name);
+				return ret;
 			}
 		}
 	}
@@ -438,38 +441,37 @@ static int umd_power_suspend(struct device *dev)
 
 static int umd_power_resume(struct device *dev)
 {
-	struct list_head *list_pe;
 	struct power_entry *pe;
 	int i = 0, ret = 0;
 
-	if (of_device_is_compatible(dev->of_node, "qcom,umd-power-multimedia"))
+	if (of_device_is_compatible(dev->of_node, "qcom,umd-power"))
 		return 0;
 
-	list_for_each(list_pe, &umdp_ctrl->ph) {
-		pe = container_of(list_pe, struct power_entry, node);
+	pe = dev_get_drvdata(dev);
+	if (!pe)
+		return -ENODATA;
 
-		for (i = 0; i < pe->num_reg; i++) {
-			ret = umd_regulator_enable_level_default(pe->reg_config[i].vreg,
-							pe->reg_config[i].vreg_name,
-							pe->reg_config[i].min_volt[UMD_POWER_ON],
-							pe->reg_config[i].max_volt[UMD_POWER_ON],
-							pe->reg_config[i].load[UMD_POWER_ON]);
-			if (ret) {
-				pr_err("reg %s enable level default failed\n",
-							pe->reg_config[i].vreg_name);
-				return ret;
-			}
+	for (i = 0; i < pe->num_reg; i++) {
+		ret = umd_regulator_enable_level_default(pe->reg_config[i].vreg,
+						pe->reg_config[i].vreg_name,
+						pe->reg_config[i].min_volt[UMD_POWER_ON],
+						pe->reg_config[i].max_volt[UMD_POWER_ON],
+						pe->reg_config[i].load[UMD_POWER_ON]);
+		if (ret) {
+			pr_err("reg %s enable level default failed\n",
+						pe->reg_config[i].vreg_name);
+			return ret;
 		}
+	}
 
-		for (i = 0; i < pe->num_clk; i++) {
-			ret = umd_clock_enable_level_default(pe->clk_config[i].clk,
-							pe->clk_config[i].clk_name,
-							pe->clk_config[i].rate[UMD_POWER_ON]);
-			if (ret) {
-				pr_err("clk %s enable level default failed\n",
-							pe->clk_config[i].clk_name);
-				return ret;
-			}
+	for (i = 0; i < pe->num_clk; i++) {
+		ret = umd_clock_enable_level_default(pe->clk_config[i].clk,
+						pe->clk_config[i].clk_name,
+						pe->clk_config[i].rate[UMD_POWER_ON]);
+		if (ret) {
+			pr_err("clk %s enable level default failed\n",
+						pe->clk_config[i].clk_name);
+			continue;
 		}
 	}
 
