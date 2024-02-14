@@ -65,6 +65,7 @@ typedef enum wm_display_interrupts {
 } wm_display_interrupts_t;
 
 typedef enum wm_display_params {
+	WM_DISPLAY_PARAM_SET_AUD_INFOFRAME,
 	WM_DISPLAY_PARAM_MAX
 } wm_display_params_t;
 
