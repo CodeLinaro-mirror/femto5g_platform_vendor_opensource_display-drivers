@@ -375,6 +375,8 @@ enum sde_crtc_hw_fence_flags {
  *                          sde_crtc_hw_fence_flags for available fields.
  * @hwfence_out_fences_skip: number of frames to skip before create a new hw-fence, this can be
  *                   used to slow-down creation of output hw-fences for debugging purposes.
+ * @base_reset: flag to indicate base reset state.
+ *                   (when CONFIG_DRM_SDE_SHD is enabled)
  * @input_fence_status : input fence status, negative if the fence has been completed with error.
  * @hanle_fence_error_bw_update: bool to indicate if it is fence error and need to avoid bw vote.
  * @back_light: backlight value
@@ -494,7 +496,9 @@ struct sde_crtc {
 
 	DECLARE_BITMAP(hwfence_features_mask, HW_FENCE_FEATURES_MAX);
 	u32 hwfence_out_fences_skip;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	int base_reset;
+#endif
 	int input_fence_status;
 	bool handle_fence_error_bw_update;
 
@@ -514,11 +518,15 @@ enum sde_crtc_dirty_flags {
 
 /**
  * struct sde_line_insertion_param - sde line insertion parameters
+ * @panel_line_insertion_enable: line insertion support status (When CONFIG_DRM_SDE_SHD is disabled)
  * @padding_height: panel height after line padding
  * @padding_active: active lines in panel stacking pattern
  * @padding_dummy: dummy lines in panel stacking pattern
  */
 struct sde_line_insertion_param {
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	bool panel_line_insertion_enable;
+#endif
 	u32 padding_height;
 	u32 padding_active;
 	u32 padding_dummy;
@@ -530,7 +538,9 @@ struct sde_line_insertion_param {
  * @connectors    : Currently associated drm connectors
  * @num_connectors: Number of associated drm connectors
  * @rsc_client    : sde rsc client when mode is valid
- * @topology_name : Current topology name
+ * @topology_name : Current topology name (When CONFIG_DRM_SDE_SHD is enabled)
+ * @num_mixers    : Number of mixers in current topology
+ *                  (When CONFIG_DRM_SDE_SHD is enabled)
  * @is_ppsplit    : Whether current topology requires PPSplit special handling
  * @bw_control    : true if bw/clk controlled by core bw/clk properties
  * @bw_split_vote : true if bw controlled by llcc/dram bw properties
@@ -574,8 +584,11 @@ struct sde_crtc_state {
 	bool bw_control;
 	bool bw_split_vote;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	enum sde_rm_topology_name topology_name;
 	u32 num_mixers;
+#endif
+
 	bool is_ppsplit;
 	struct sde_rect crtc_roi;
 	struct sde_rect lm_bounds[MAX_MIXERS_PER_CRTC];
@@ -1190,6 +1203,16 @@ struct drm_encoder *sde_crtc_get_src_encoder_of_clone(struct drm_crtc *crtc);
  */
 void _sde_crtc_vm_release_notify(struct drm_crtc *crtc);
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/*
+ * sde_crtc_is_line_insertion_supported - get lineinsertion
+ * feature bit value from panel
+ * @drm_crtc:    Pointer to drm crtc structure
+ * @Return: line insertion support status
+ */
+bool sde_crtc_is_line_insertion_supported(struct drm_crtc *crtc);
+#endif
+
 /**
  * sde_crtc_calc_vpadding_param - calculate vpadding parameters
  * @state: Pointer to DRM crtc state object
@@ -1199,8 +1222,14 @@ void _sde_crtc_vm_release_notify(struct drm_crtc *crtc);
  * @padding_start: Padding start offset
  * @padding_height: Padding height in total
  */
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, u32 crtc_h,
 				 u32 *padding_y, u32 *padding_start, u32 *padding_height);
+#else
+void sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, u32 crtc_h,
+				  u32 *padding_y, u32 *padding_start, u32 *padding_height);
+#endif
 
 /**
  * sde_crtc_backlight_notify - notify backlight
@@ -1210,6 +1239,7 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, u32 c
  */
 void sde_crtc_backlight_notify(struct drm_crtc *crtc, u32 bl_val, u32 bl_max);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 /**
  * sde_crtc_state_set_topology_name - set current topology name
  * @state: Pointer to crtc_state
@@ -1227,5 +1257,6 @@ static inline void sde_crtc_state_set_topology_name(
 
 	cstate->topology_name = topology_name;
 }
+#endif
 
 #endif /* _SDE_CRTC_H_ */

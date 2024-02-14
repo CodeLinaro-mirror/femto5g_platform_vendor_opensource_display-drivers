@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -579,6 +579,7 @@ struct sde_misr_sign {
  * @hwfence_wb_retire_fences_enable: enable hw-fences for wb retire-fence
  * @max_mode_width: max width of all available modes
  * @shared: If a connector is sharing resource of its parent
+ *          (Applicable when CONFIG_DRM_SDE_SHD is enabled)
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -661,7 +662,9 @@ struct sde_connector {
 	bool hwfence_wb_retire_fences_enable;
 
 	u32 max_mode_width;
+ #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	bool shared;
+ #endif
 };
 
 /**
@@ -953,7 +956,11 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 		void *display,
 		const struct sde_connector_ops *ops,
 		int connector_poll,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 		int connector_type, bool shared);
+#else
+		int connector_type);
+#endif
 
 /**
  * sde_connector_fence_error_ctx_signal - sde fence error context update for retire fence
@@ -1395,11 +1402,14 @@ bool sde_connector_is_line_insertion_supported(struct sde_connector *sde_conn);
  * @skip_pre_kickoff: boolean to skip pre kickoff
  */
 void sde_connector_report_panel_dead(struct sde_connector *conn, bool skip_pre_kickoff);
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 /**
  * _sde_connector_get_display - get dsi display according to connector
  * @c_conn: Pointer to sde connector struct
  * @Return: pointer to dsi display
  */
 struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn);
+#endif
 
 #endif /* _SDE_CONNECTOR_H_ */

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -212,8 +212,13 @@ enum {
 #define SYS_CACHE_NO_ALLOC	BIT(4)
 
 /* default line padding ratio limitation */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #define MAX_VPADDING_RATIO_M	63
 #define MAX_VPADDING_RATIO_N	15
+#else
+#define MAX_VPADDING_RATIO_M	93
+#define MAX_VPADDING_RATIO_N	45
+#endif
 
 /**
  * sde_sys_cache_type: Types of system cache supported

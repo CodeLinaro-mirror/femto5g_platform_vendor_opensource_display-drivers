@@ -166,18 +166,30 @@ struct sde_rm_topology_def {
 /**
  * struct sde_rm - SDE dynamic hardware resource manager
  * @dev: device handle for event logging purposes
- * @obj: DRM private state object
+ * @rsvps: list of hardware reservations by each crtc->encoder->connector
+ * @hw_blks: array of lists of hardware resources present in the system, one
+ *	list per type of hardware block
+ * @obj: DRM private state object (When CONFIG_DRM_SDE_SHD is enabled)
  * @hw_mdp: hardware object for mdp_top
  * @lm_max_width: cached layer mixer maximum width
  * @rsvp_next_seq: sequence number for next reservation for debugging purposes
+ * @rm_lock: resource manager mutex
  * @avail_res: Pointer with curr available resources
  */
 struct sde_rm {
 	struct drm_device *dev;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	struct drm_private_obj obj;
+#else
+	struct list_head rsvps;
+	struct list_head hw_blks[SDE_HW_BLK_MAX];
+#endif
 	struct sde_hw_mdp *hw_mdp;
 	uint32_t lm_max_width;
 	uint32_t rsvp_next_seq;
+#if !(IS_ENABLED(CONFIG_DRM_SDE_SHD))
+	struct mutex rm_lock;
+#endif
 	const struct sde_rm_topology_def *topology_tbl;
 	struct msm_resource_caps_info avail_res;
 };
@@ -256,24 +268,35 @@ int sde_rm_destroy(struct sde_rm *rm);
  * @drm_enc: DRM Encoder handle
  * @crtc_state: Proposed Atomic DRM CRTC State handle
  * @conn_state: Proposed Atomic DRM Connector State handle
+ * @test_only: Atomic-Test phase, discard results (unless property overrides)
  * @Return: 0 on Success otherwise -ERROR
  */
 int sde_rm_reserve(struct sde_rm *rm,
 		struct drm_encoder *drm_enc,
 		struct drm_crtc_state *crtc_state,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 		struct drm_connector_state *conn_state);
+#else
+		struct drm_connector_state *conn_state,
+		bool test_only);
+#endif
 
 /**
  * sde_rm_release - Given the encoder for the display chain, release any
  *	HW blocks previously reserved for that use case.
  * @rm: SDE Resource Manager handle
  * @enc: DRM Encoder handle
- * @state: Proposed Atomic DRM State handle
+ * @state: Proposed Atomic DRM State handle (when CONFIG_DRM_SDE_SHD is enabled)
+ * @nxt: Choose option to release rsvp_nxt
  * @Return: 0 on Success otherwise -ERROR
  */
-int sde_rm_release(struct sde_rm *rm,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	int sde_rm_release(struct sde_rm *rm,
 		struct drm_encoder *drm_enc,
 		struct drm_atomic_state *state);
+#else
+	void sde_rm_release(struct sde_rm *rm, struct drm_encoder *enc, bool nxt);
+#endif
 
 /**
  * sde_rm_get_mdp - Retrieve HW block for MDP TOP.
@@ -309,6 +332,7 @@ void sde_rm_init_hw_iter(
  */
 bool sde_rm_get_hw(struct sde_rm *rm, struct sde_rm_hw_iter *iter);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 /**
  * sde_rm_atomic_get_hw - atomic version of sde_rm_get_hw
  * @rm: SDE Resource Manager handle
@@ -319,6 +343,7 @@ bool sde_rm_get_hw(struct sde_rm *rm, struct sde_rm_hw_iter *iter);
 bool sde_rm_atomic_get_hw(struct sde_rm *rm,
 		struct drm_atomic_state *state,
 		struct sde_rm_hw_iter *iter);
+#endif
 
 /**
  * sde_rm_request_hw_blk - retrieve the requested hardware block
@@ -420,6 +445,7 @@ void sde_rm_get_resource_info(struct sde_rm *rm,
 		struct drm_encoder *drm_enc,
 		struct msm_resource_caps_info *avail_res);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 /**
  * sde_rm_ext_blk_create_reserve - Create external HW blocks
  *	in resource manager and reserve for specific encoder.
@@ -461,5 +487,6 @@ int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm, struct drm_atomic_state 
 				     struct sde_hw_mixer *sde_hw_lm);
 
 void sde_rm_dec_resource_info(struct sde_rm *rm);
+#endif
 
 #endif /* __SDE_RM_H__ */

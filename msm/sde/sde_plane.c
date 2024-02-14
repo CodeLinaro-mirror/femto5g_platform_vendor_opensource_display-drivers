@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -148,7 +148,9 @@ static void _sde_plane_setup_panel_stacking(struct sde_plane *psde,
 	u32 h_start = 0, h_total = 0, y_start = 0;
 	struct drm_plane_state *dpstate = NULL;
 	struct drm_crtc *drm_crtc = NULL;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	int ret;
+#endif
 
 	if (!psde || !psde->base.state || !psde->base.state->crtc) {
 		SDE_ERROR("Invalid plane psde %p or drm plane state or drm crtc\n", psde);
@@ -159,7 +161,13 @@ static void _sde_plane_setup_panel_stacking(struct sde_plane *psde,
 	drm_crtc = dpstate->crtc;
 	cstate = to_sde_crtc_state(drm_crtc->state);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	if ((!test_bit(SDE_SSPP_LINE_INSERTION, (unsigned long *)&psde->features)))
+#else
+	pstate->lineinsertion_feature = cstate->line_insertion.panel_line_insertion_enable;
+	if ((!test_bit(SDE_SSPP_LINE_INSERTION, (unsigned long *)&psde->features)) ||
+	    !cstate->line_insertion.panel_line_insertion_enable)
+#endif
 		return;
 
 	cfg = &pstate->line_insertion_cfg;
@@ -167,6 +175,7 @@ static void _sde_plane_setup_panel_stacking(struct sde_plane *psde,
 	if (!cstate->line_insertion.padding_height)
 		return;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	ret = sde_crtc_calc_vpadding_param(psde->base.state->crtc->state,
 					   pstate->base.crtc_y, pstate->base.crtc_h,
 					   &y_start, &h_start, &h_total);
@@ -174,6 +183,11 @@ static void _sde_plane_setup_panel_stacking(struct sde_plane *psde,
 		SDE_ERROR("failed to calculate vpadding parameters\n");
 		return;
 	}
+#else
+	sde_crtc_calc_vpadding_param(psde->base.state->crtc->state,
+					   pstate->base.crtc_y, pstate->base.crtc_h,
+					   &y_start, &h_start, &h_total);
+#endif
 
 	cfg->enable = true;
 	cfg->dummy_lines = cstate->line_insertion.padding_dummy;
@@ -3283,7 +3297,12 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 				pstate->multirect_index,
 				pstate->multirect_mode);
 	/* update line insertion */
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	if (psde->pipe_hw->ops.setup_line_insertion)
+#else
+	if (pstate->lineinsertion_feature && psde->pipe_hw->ops.setup_line_insertion)
+#endif
 		psde->pipe_hw->ops.setup_line_insertion(psde->pipe_hw,
 				pstate->multirect_index,
 				&pstate->line_insertion_cfg);

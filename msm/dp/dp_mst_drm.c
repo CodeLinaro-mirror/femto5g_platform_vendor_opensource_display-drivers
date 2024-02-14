@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1690,7 +1690,11 @@ dp_mst_add_connector(struct drm_dp_mst_topology_mgr *mgr,
 				dp_display,
 				&dp_mst_connector_ops,
 				DRM_CONNECTOR_POLL_HPD,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 				DRM_MODE_CONNECTOR_DisplayPort, false);
+#else
+				DRM_MODE_CONNECTOR_DisplayPort);
+#endif
 
 	if (IS_ERR_OR_NULL(connector)) {
 		DP_ERR("mst sde_connector_init failed\n");
@@ -1954,7 +1958,11 @@ dp_mst_drm_fixed_connector_init(struct dp_display *dp_display,
 				dp_display,
 				&dp_mst_connector_ops,
 				DRM_CONNECTOR_POLL_HPD,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 				DRM_MODE_CONNECTOR_DisplayPort, false);
+#else
+				DRM_MODE_CONNECTOR_DisplayPort);
+#endif
 
 	if (IS_ERR_OR_NULL(connector)) {
 		DP_ERR("mst sde_connector_init failed\n");

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -912,7 +912,9 @@ static int msm_drm_component_init(struct device *dev)
 	INIT_LIST_HEAD(&priv->inactive_list);
 	INIT_LIST_HEAD(&priv->vm_client_list);
 	INIT_LIST_HEAD(&priv->fence_error_client_list);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	BLOCKING_INIT_NOTIFIER_HEAD(&priv->component_notifier_list);
+#endif
 	mutex_init(&priv->mm_lock);
 
 	mutex_init(&priv->vm_client_lock);
@@ -940,7 +942,9 @@ static int msm_drm_component_init(struct device *dev)
 		goto fail;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	msm_drm_notify_components(ddev, MSM_COMP_OBJECT_CREATED);
+#endif
 	/* Register rotator platform driver only after genpd init */
 	sde_rotator_register();
 	sde_rotator_smmu_driver_register();
@@ -1551,6 +1555,7 @@ void msm_mode_object_event_notify(struct drm_mode_object *obj,
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 int msm_drm_register_component(struct drm_device *dev, struct notifier_block *nb)
 {
 	struct msm_drm_private *priv;
@@ -1586,6 +1591,7 @@ int msm_drm_notify_components(struct drm_device *dev, enum msm_component_event e
 
 	return blocking_notifier_call_chain(&priv->component_notifier_list, event, NULL);
 }
+#endif
 
 static int msm_release(struct inode *inode, struct file *filp)
 {
@@ -2403,14 +2409,18 @@ static int __init msm_drm_register(void)
 	msm_dsi_register();
 	msm_edp_register();
 	msm_hdmi_register();
+ #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	sde_shd_register();
+ #endif
 	return 0;
 }
 
 static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	sde_shd_unregister();
+#endif
 	sde_wb_unregister();
 	msm_hdmi_unregister();
 	msm_edp_unregister();

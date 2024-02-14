@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -77,7 +77,13 @@ struct msm_gem_vma;
 
 #define NUM_DOMAINS    4    /* one for KMS, then one per gpu core (?) */
 #define MAX_CRTCS      16
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #define MAX_PLANES     32
+#else
+#define MAX_PLANES     20
+#endif
+
 #define MAX_ENCODERS   16
 #define MAX_BRIDGES    16
 #define MAX_CONNECTORS 16
@@ -1160,8 +1166,10 @@ struct msm_drm_private {
 	struct mutex fence_error_client_lock;
 	struct list_head fence_error_client_list;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	/* list of component registered for notification */
 	struct blocking_notifier_head component_notifier_list;
+#endif
 };
 
 /* get struct msm_kms * from drm_device * */
@@ -1629,6 +1637,7 @@ int msm_get_dsc_count(struct msm_drm_private *priv,
 
 int msm_get_src_bpc(int chroma_format, int bpc);
 
+ #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 /**
  * enum msm_component_event - type of component events
  * @MSM_COMP_OBJECT_CREATED - notify when all builtin objects are created
@@ -1662,5 +1671,6 @@ int msm_drm_unregister_component(struct drm_device *dev, struct notifier_block *
  * @event: defined in msm_component_event
  */
 int msm_drm_notify_components(struct drm_device *dev, enum msm_component_event event);
+#endif
 
 #endif /* __MSM_DRV_H__ */

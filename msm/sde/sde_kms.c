@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -2006,7 +2006,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 				display,
 				&wb_ops,
 				DRM_CONNECTOR_POLL_HPD,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 				DRM_MODE_CONNECTOR_VIRTUAL, false);
+#else
+				DRM_MODE_CONNECTOR_VIRTUAL);
+#endif
 		if (connector) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;
@@ -2049,7 +2053,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 					display,
 					&dsi_ops,
 					DRM_CONNECTOR_POLL_HPD,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 					DRM_MODE_CONNECTOR_DSI, false);
+#else
+					DRM_MODE_CONNECTOR_DSI);
+#endif
 		if (connector) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;
@@ -2125,7 +2133,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 					display,
 					&dp_ops,
 					DRM_CONNECTOR_POLL_HPD,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 					DRM_MODE_CONNECTOR_DisplayPort, false);
+#else
+					DRM_MODE_CONNECTOR_DisplayPort);
+#endif
 		if (connector) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;

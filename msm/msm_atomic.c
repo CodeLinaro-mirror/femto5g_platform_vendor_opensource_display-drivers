@@ -19,7 +19,9 @@
 #include <drm/drm_panel.h>
 #include <drm/drm_vblank.h>
 #include <linux/version.h>
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #include <linux/random.h>
+#endif
 
 #include "msm_drv.h"
 #include "msm_gem.h"
@@ -41,6 +43,7 @@ struct msm_commit {
 	struct kthread_work commit_work;
 };
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 /*
  * Defines the time we could try relocking connection_mutex, before bail
  * out and unlocking other commit thread. The DRM framework shall backoff
@@ -175,6 +178,7 @@ retry:
 
 	return ret;
 }
+#endif
 
 static struct drm_connector_state *_msm_get_conn_state(struct drm_crtc_state *crtc_state)
 {
@@ -909,7 +913,9 @@ int msm_atomic_commit(struct drm_device *dev,
 	struct drm_crtc_state *crtc_state;
 	struct drm_plane *plane;
 	struct drm_plane_state *old_plane_state, *new_plane_state;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	struct list_head *entry;
+#endif
 	int i, ret;
 
 	if (!priv || priv->shutdown_in_progress) {
@@ -986,7 +992,21 @@ retry:
 	 * Wait for pending updates on any of the same crtc's and then
 	 * mark our set of crtc's as busy:
 	 */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	ret = start_atomic(dev->dev_private, c->crtc_mask, c->plane_mask, state);
+#else
+	/* Start Atomic */
+	spin_lock(&priv->pending_crtcs_event.lock);
+	ret = wait_event_interruptible_locked(priv->pending_crtcs_event,
+			!(priv->pending_crtcs & c->crtc_mask) &&
+			!(priv->pending_planes & c->plane_mask));
+	if (ret == 0) {
+		DBG("start: %08x", c->crtc_mask);
+		priv->pending_crtcs |= c->crtc_mask;
+		priv->pending_planes |= c->plane_mask;
+	}
+	spin_unlock(&priv->pending_crtcs_event.lock);
+#endif
 	if (ret)
 		goto err_free;
 
@@ -1018,6 +1038,7 @@ retry:
 	 * current layout
 	 */
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	/*
 	 * For blocking commit, since the msm_atomic_commit_dispatch will wait for
 	 * the hardware committing and next vsync to assue the commit is done, and
@@ -1040,6 +1061,7 @@ retry:
 			}
 		}
 	}
+#endif
 
 	drm_atomic_state_get(state);
 	msm_atomic_commit_dispatch(dev, state, c);

@@ -130,6 +130,7 @@ enum sde_hw_blk_type {
 	SDE_HW_BLK_MAX,
 };
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 static const char* sde_hw_blk_type_str[] =
 {
         "TOP",
@@ -150,6 +151,7 @@ static const char* sde_hw_blk_type_str[] =
         "DNSCBLUR",
         "???"
 };
+#endif
 
 enum sde_uidle {
 	UIDLE = 0x1,

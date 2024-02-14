@@ -95,6 +95,7 @@ struct sde_encoder_kickoff_params {
 	enum frame_trigger_mode_type frame_trigger_mode;
 };
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 struct sde_encoder_ops {
 	/**
 	 * phys_init - phys initialization function
@@ -116,6 +117,7 @@ struct sde_encoder_ops {
 struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 					      struct msm_display_info *disp_info,
 					      const struct sde_encoder_ops *ops);
+#endif
 
 /*
  * enum sde_enc_rc_states - states that the resource control maintains
@@ -178,6 +180,8 @@ enum sde_sim_qsync_event {
  *			Only valid after enable. Cleared as disable.
  * @hw_pp		Handle to the pingpong blocks used for the display. No.
  *			pingpong blocks can be different than num_phys_encs.
+ * @hw_lm:		Handle to the LM blocks used for the display
+ *			(When CONFIG_DRM_SDE_SHD is enabled)
  * @hw_dsc:		Array of DSC block handles used for the display.
  * @hw_vdc:		Array of VDC block handles used for the display.
  * @cur_channel_cnt     Number of data channels currently used for the display
@@ -246,7 +250,7 @@ enum sde_sim_qsync_event {
  * @ctl_done_supported          boolean flag to indicate the availability of
  *                              ctl done irq support for the hardware
  * @dynamic_irqs_config         bitmask config to enable encoder dynamic irqs
- * @ops:                        Encoder ops from init function
+ * @ops:                        Encoder ops from init function (Considered when CONFIG_DRM_SDE_SHD enabled )
  * @vsync_event_wq              Queue to wait for the vsync event complete
  */
 struct sde_encoder_virt {
@@ -264,7 +268,10 @@ struct sde_encoder_virt {
 	struct sde_encoder_phys *phys_cmd_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *cur_master;
 	struct sde_hw_pingpong *hw_pp[MAX_CHANNELS_PER_ENC];
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	struct sde_hw_mixer *hw_lm[MAX_CHANNELS_PER_ENC];
+#endif
 	struct sde_hw_dsc *hw_dsc[MAX_CHANNELS_PER_ENC];
 	struct sde_hw_vdc *hw_vdc[MAX_CHANNELS_PER_ENC];
 	struct sde_hw_pingpong *hw_dsc_pp[MAX_CHANNELS_PER_ENC];
@@ -323,7 +330,9 @@ struct sde_encoder_virt {
 
 	unsigned long dynamic_irqs_config;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	struct sde_encoder_ops ops;
+#endif
 	wait_queue_head_t vsync_event_wq;
 };
 
