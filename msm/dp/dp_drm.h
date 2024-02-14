@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_DRM_H_
@@ -292,6 +292,24 @@ static int dp_connector_install_properties(void *display,
 {
 	return 0;
 }
+
+static inline int dp_connnector_set_info_blob(struct drm_connector *connector,
+		void *info, void *display, struct msm_mode_info *mode_info)
+{
+	return 0;
+}
+
+static inline enum sde_csc_type dp_connector_get_csc_type(struct drm_connector *conn,
+		void *data)
+{
+	return 0;
+}
+
+static inline bool dp_connector_yuv_support(void *display)
+{
+	return false;
+}
+
 #endif /* CONFIG_DRM_MSM_DP */
 
 #endif /* _DP_DRM_H_ */
