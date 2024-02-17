@@ -1260,6 +1260,10 @@ static int dsi_panel_parse_misc_host_config(struct dsi_host_common_cfg *host,
 
 	DSI_DEBUG("[%s] DMA scheduling parameters Line: %d Window: %d\n", name,
 			host->dma_sched_line, host->dma_sched_window);
+
+	host->skip_pps_update = utils->read_bool(utils->data,
+					"qcom,mdss-dsi-panel-skip-pps-update");
+
 	return 0;
 }
 

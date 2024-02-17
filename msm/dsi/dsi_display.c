@@ -8626,7 +8626,8 @@ int dsi_display_enable(struct dsi_display *display)
 	/* Block sending pps command if modeset is due to fps difference */
 	if ((mode->priv_info->dsc_enabled ||
 			mode->priv_info->vdc_enabled) &&
-		!(mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_FPS)) {
+		!(mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_FPS) &&
+		!(display->panel->host_config.skip_pps_update)) {
 		rc = dsi_panel_update_pps(display->panel);
 		if (rc) {
 			DSI_ERR("[%s] panel pps cmd update failed, rc=%d\n",

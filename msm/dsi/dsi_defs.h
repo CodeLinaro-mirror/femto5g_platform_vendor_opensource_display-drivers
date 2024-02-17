@@ -519,6 +519,7 @@ struct dsi_split_link_config {
  *			 DSI command will be sent by the HW.
  * @min_dma_sched_line:	 Minimum line at which the dma command should get scheduled.
  *			 It is used when dual DPU dfps feature is enabled.
+ * @skip_pps_update:	 Skip sending pps command.
  */
 struct dsi_host_common_cfg {
 	enum dsi_pixel_format dst_format;
@@ -547,6 +548,7 @@ struct dsi_host_common_cfg {
 	u32 dma_sched_line;
 	u32 dma_sched_window;
 	u32 min_dma_sched_line;
+	bool skip_pps_update;
 };
 
 /**
