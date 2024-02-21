@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef WIRE_USER_H
@@ -52,9 +53,21 @@ enum display_event_types {
 	DISPLAY_EVENT_MAX
 };
 
+struct hotplug_data {
+	int device_id;
+	u32 device;
+	int port_id;
+	int status;
+};
+
+union cb_data {
+	int display_id;
+	struct hotplug_data hotplug_info;
+};
+
 struct display_event {
 	enum display_event_types type;
-	int display_id;
+	union cb_data event_infos;
 };
 
 enum vm_event_types {
@@ -367,6 +380,13 @@ void wfdDestroySource_User(
 		WFDDevice device,
 		WFDSource source);
 
+/* Registration */
+void wfdRegisterHotplugEvent_User(
+		WFDDevice device);
+
+void wfdUnregisterHotplugEvent_User(
+		WFDDevice device);
+
 /* ========== EVENT ========== */
 int wire_user_register_event_listener(
 		WFDDevice device,
@@ -379,4 +399,5 @@ int wire_user_request_cb(
 		enum event_types type,
 		union event_info *info);
 
+WFDDevice wire_user_get_dev_hdl(WFDDevice device);
 #endif /* WIRE_USER_H */
