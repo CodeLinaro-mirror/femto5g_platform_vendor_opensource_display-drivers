@@ -224,12 +224,28 @@ static const struct drm_private_state_funcs dp_mst_bridge_state_funcs = {
 static struct dp_mst_bridge_state *dp_mst_get_bridge_atomic_state(
 		struct drm_atomic_state *state, struct dp_mst_bridge *bridge)
 {
+	int ret = 0;
 	struct drm_device *dev = bridge->base.dev;
+	struct drm_private_state *priv_state;
+
+retry:
 
 	WARN_ON(!drm_modeset_is_locked(&dev->mode_config.connection_mutex));
 
-	return to_dp_mst_bridge_priv_state(
-			drm_atomic_get_private_obj_state(state, &bridge->obj));
+	priv_state = drm_atomic_get_private_obj_state(state, &bridge->obj);
+	if (PTR_ERR(priv_state) == -EDEADLK) {
+		do {
+			drm_modeset_backoff(state->acquire_ctx);
+			ret = drm_modeset_lock_all_ctx(dev, state->acquire_ctx);
+		} while (ret == -EDEADLK);
+
+		if (!ret)
+			goto retry;
+
+		drm_modeset_drop_locks(state->acquire_ctx);
+	}
+
+	return to_dp_mst_bridge_priv_state(priv_state);
 }
 
 static int dp_mst_detect_port(
