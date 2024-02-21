@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _WIRE_FORMAT_H
@@ -184,6 +184,12 @@ enum openwfd_cmd_type {
 	CREATE_SOURCE_FROM_IMAGE,
 	DESTROY_SOURCE,
 	SOURCE_CMD_END = DESTROY_SOURCE,
+
+	/* Registration Commands */
+	REGISTRATION_CMD_START = 47,
+	REGISTER_HOTPLUG_EVENT = REGISTRATION_CMD_START,
+	UNREGISTER_HOTPLUG_EVENT,
+	REGISTRATION_CMD_END = UNREGISTER_HOTPLUG_EVENT,
 
 	OPENWFD_CMD_MAX
 };
@@ -766,6 +772,30 @@ union msg_destroy_source {
 	} resp;
 };
 
+union msg_register_hotplug {
+	struct {
+		u32 dev; /* WFDDevice */
+		int iChid;
+		int iCoid;
+		int pid;
+	} req;
+
+	struct {
+		u32 sts; /* WFDErrorCode */
+	} resp;
+};
+
+union msg_unregister_hotplug {
+	struct {
+		u32 dev; /* WFDDevice */
+		int pid;
+	} req;
+
+	struct {
+		u32 sts; /* WFDErrorCode */
+	} resp;
+};
+
 struct openwfd_cmd {
 	u32 display_id;
 	u32 client_id;
@@ -840,6 +870,10 @@ struct openwfd_cmd {
 		union msg_destroy_egl_images destroy_egl_images;
 		union msg_create_source_from_image create_src_from_img;
 		union msg_destroy_source destroy_src;
+
+		/* Registration Commands */
+		union msg_register_hotplug register_hotplug;
+		union msg_unregister_hotplug unregister_hotplug;
 	} cmd;
 };
 
@@ -879,9 +913,21 @@ enum e_display_types {
 	DISP_RECOVERY,
 	DISP_EVENT_MAX
 };
+
+struct e_hotplug {
+	u32 device;
+	int port_id;
+	int status;
+};
+
+union cb_detail {
+	int display_id;
+	struct e_hotplug hotplug_info;
+};
+
 struct e_display {
 	enum e_display_types type;
-	int display_id;
+	union cb_detail event_infos;
 };
 
 enum e_vm_types {

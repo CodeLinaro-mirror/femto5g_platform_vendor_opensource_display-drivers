@@ -3,7 +3,7 @@
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * Copyright (c) 2017-2018,2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -99,6 +99,7 @@
 #define MSM_HYP_MAX_PLANES          MAX_PLANES
 #define MAX_CONNECTORS              16
 #define MAX_CRTCS                   16
+#define HPD_STRING_SIZE             30
 
 struct msm_hyp_commit {
 	struct drm_device *dev;
@@ -1569,6 +1570,7 @@ static int _msm_hyp_crtcs_init(struct drm_device *ddev)
 static int _msm_hyp_obj_init(struct drm_device *ddev)
 {
 	struct msm_hyp_drm_private *priv = ddev->dev_private;
+	struct msm_hyp_kms *kms = priv->kms;
 	int ret;
 
 	ret = _msm_hyp_connectors_init(ddev);
@@ -1584,6 +1586,9 @@ static int _msm_hyp_obj_init(struct drm_device *ddev)
 		return ret;
 
 	init_waitqueue_head(&priv->pending_crtcs_event);
+	/* Register for WFD events(HPD)*/
+	if (kms->funcs && kms->funcs->register_event)
+		kms->funcs->register_event(kms);
 
 	return 0;
 }
@@ -2372,6 +2377,40 @@ static int msm_hyp_resume(struct device *dev)
 	return ret;
 }
 #endif
+
+/*
+ * Send HPD event to HWC Layer
+ *
+ * dev : drm_device pointer
+ * connector : Connector information
+ */
+void msm_hyp_send_hpd_event(struct drm_device *dev,
+	struct drm_connector* connector)
+{
+	char name[HPD_STRING_SIZE]	= "";
+	char status[HPD_STRING_SIZE]	= "";
+	char bpp[HPD_STRING_SIZE]	= "";
+	char pattern[HPD_STRING_SIZE]	= "";
+	char *envp[6]			= {};
+
+	snprintf(name, HPD_STRING_SIZE, "name=%s", connector->name);
+	snprintf(status, HPD_STRING_SIZE, "status=%s",
+		drm_get_connector_status_name(connector->status));
+	snprintf(bpp, HPD_STRING_SIZE, "bpp=%d", 0);
+	snprintf(pattern, HPD_STRING_SIZE, "pattern=%d", 0);
+
+	DRM_DEBUG("HPDLOG [%s]:[%s] [%s] [%s]\n", name, status,
+		bpp, pattern);
+	envp[0] = name;
+	envp[1] = status;
+	envp[2] = bpp;
+	envp[3] = pattern;
+	envp[4] = "HOTPLUG=1";
+	envp[5] = NULL;
+
+	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE,
+			envp);
+}
 
 static const struct dev_pm_ops msm_hyp_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(msm_hyp_suspend, msm_hyp_resume)
