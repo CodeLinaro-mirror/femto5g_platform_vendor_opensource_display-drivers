@@ -3,7 +3,7 @@
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * Copyright (c) 2017-2018, 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -226,6 +226,7 @@ struct msm_hyp_kms_funcs {
 			struct drm_crtc *crtc);
 	void (*free_connector_port_modes)(
 			struct msm_hyp_connector *c_conn);
+	void (*register_event)(struct msm_hyp_kms *kms);
 
 };
 
@@ -273,6 +274,7 @@ struct msm_hyp_drm_private {
 void msm_hyp_set_kms(struct drm_device *dev, struct msm_hyp_kms *kms);
 void msm_hyp_crtc_commit_done(struct drm_crtc *crtc);
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc);
+void msm_hyp_send_hpd_event(struct drm_device *dev, struct drm_connector* connector);
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP_WFD)
 void __init wfd_kms_register(void);
