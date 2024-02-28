@@ -28,7 +28,7 @@
 #define CHANNEL_OPENWFD		0
 #define CHANNEL_EVENTS		1
 #define MAX_CHANNELS		2
-#define MAX_RECV_PACKET_RETRY	10
+#define MAX_SEND_RECV_PACKET_RETRY	10
 #define WFD_MAX_NUM_OF_CLIENTS	10
 #define WFD_CLIENT_ID_BASE	WFD_CLIENT_ID_CLUSTER
 #define WFD_CLIENT_ID_LA_CONTAINER	0x7818
@@ -379,6 +379,8 @@ user_os_utils_send_recv(
 	HYP_ATRACE_BEGIN(marker_buff);
 
 	req_size = sizeof(struct wire_header) + req->hdr.payload_size;
+
+retry_send_packet:
 #ifdef USE_HAB
 	rc = habmm_socket_send(
 #else
@@ -387,13 +389,19 @@ user_os_utils_send_recv(
 		handle,
 		(void *)req,
 		(uint32_t)req_size,
-		(uint32_t)0x00);
+		(uint32_t)(lock_flags == SPIN_LOCK_CHANNEL ?
+			HABMM_SOCKET_SEND_FLAGS_NON_BLOCKING : 0x00));
 
 	HYP_ATRACE_END(marker_buff);
 
 	if (rc) {
 		UTILS_LOG_ERROR("habmm_socket_send(payload type(%d)) failed",
 			payload_type);
+		if ((rc == -EAGAIN) && (retry_times < MAX_SEND_RECV_PACKET_RETRY)) {
+			retry_times++;
+			UTILS_LOG_ERROR("send packet retry %d", retry_times);
+			goto retry_send_packet;
+		}
 		rc = -1;
 		goto end;
 	}
@@ -401,6 +409,7 @@ user_os_utils_send_recv(
 	if (req_flags & WIRE_RESP_NOACK_FLAG)
 		goto end;
 
+	retry_times = 0;
 	snprintf(marker_buff, sizeof(marker_buff), "hab_recv %d\n", wfd_cmd_type);
 	HYP_ATRACE_BEGIN(marker_buff);
 
@@ -440,8 +449,7 @@ retry_recv_packet:
 	if (rc) {
 		UTILS_LOG_ERROR("habmm_socket_recv(payload type(%d)) failed, resp_size=%d, rc=%d",
 			payload_type, resp_size, rc);
-		if ((rc == -EAGAIN) && (retry_times < MAX_RECV_PACKET_RETRY))
-		{
+		if ((rc == -EAGAIN) && (retry_times < MAX_SEND_RECV_PACKET_RETRY)) {
 			retry_times++;
 			UTILS_LOG_ERROR("recv packet retry %d", retry_times);
 			goto retry_recv_packet;
@@ -472,20 +480,8 @@ retry_recv_packet:
 	if (timestamp > resp->hdr.timestamp) {
 		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu > resp : %lu\n",
 				timestamp, resp->hdr.timestamp);
-		/*
-		 * Drm fe try 10 times to get the correct packet
-		 */
-		if (retry_times > MAX_RECV_PACKET_RETRY) {
-			UTILS_LOG_ERROR("recv packet retry limit exceeded");
-#ifdef DEBUG_USER_HAB_UTILS
-			panic("user_os_utils_send_recv : wrong packet received");
-#endif
-			rc = -1;
-		} else {
-			retry_times++;
-			UTILS_LOG_ERROR("recv packet retry %d", retry_times);
-			goto retry_recv_packet;
-		}
+		rc = -1;
+		goto end;
 	}
 	else if (timestamp < resp->hdr.timestamp) {
 		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu < resp : %lu\n",
