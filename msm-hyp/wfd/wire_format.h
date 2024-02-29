@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _WIRE_FORMAT_H
@@ -115,7 +115,7 @@ enum display_types_bitwise {
 #define MAX_PORT_CNT				8
 #define MAX_CREATE_PORT_ATTRIBS			20
 #define MAX_PORT_MODES_CNT			10
-#define MAX_PORT_ATTRIBS			40
+#define MAX_PORT_ATTRIBS			160
 #define MAX_PIPELINE_CNT			12
 #define MAX_CREATE_PIPELINE_ATTRIBS		20
 #define MAX_PIPELINE_ATTRIBS			30

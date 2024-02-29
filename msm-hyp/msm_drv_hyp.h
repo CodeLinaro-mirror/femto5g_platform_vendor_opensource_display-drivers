@@ -3,7 +3,7 @@
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * Copyright (c) 2017-2018, 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -150,6 +150,38 @@ struct msm_hyp_crtc {
 	struct kthread_worker worker;
 	struct completion commit_done;
 	struct drm_property_blob *blob_caps;
+	struct drm_property_blob *blob_cp_hsic;
+};
+
+#define PA_HSIC_HUE_ENABLE (1 << 0)
+#define PA_HSIC_SAT_ENABLE (1 << 1)
+#define PA_HSIC_VAL_ENABLE (1 << 2)
+#define PA_HSIC_CONT_ENABLE (1 << 3)
+/**
+ * struct msm_hyp_pa_hsic - pa hsic feature structure
+ * @flags: flags for the feature customization, values can be:
+ *         - PA_HSIC_HUE_ENABLE: Enable hue adjustment
+ *         - PA_HSIC_SAT_ENABLE: Enable saturation adjustment
+ *         - PA_HSIC_VAL_ENABLE: Enable value adjustment
+ *         - PA_HSIC_CONT_ENABLE: Enable contrast adjustment
+ *
+ * @hue: hue setting
+ * @saturation: saturation setting
+ * @value: value setting
+ * @contrast: contrast setting
+ */
+struct msm_hyp_pa_hsic {
+	__u64 flags;
+	__u32 hue;
+	__u32 saturation;
+	__u32 value;
+	__u32 contrast;
+};
+
+struct msm_hyp_cp_hsic
+{
+	uint64_t prop_value;
+	struct msm_hyp_pa_hsic pa_hsic;
 };
 
 struct msm_hyp_crtc_state {
@@ -157,6 +189,7 @@ struct msm_hyp_crtc_state {
 	uint32_t input_fence_timeout;
 	uint32_t output_fence_offset;
 	uint64_t __user *output_fence_ptr;
+	struct msm_hyp_cp_hsic cp_hsic;
 };
 
 struct msm_hyp_framebuffer {
@@ -258,6 +291,7 @@ struct msm_hyp_drm_private {
 	struct drm_property *prop_output_fence;
 	struct drm_property *prop_output_fence_offset;
 	struct drm_property *prop_crtc_caps;
+	struct drm_property *prop_crtc_cp_hsic;
 
 	uint32_t pending_crtcs;
 	wait_queue_head_t pending_crtcs_event;

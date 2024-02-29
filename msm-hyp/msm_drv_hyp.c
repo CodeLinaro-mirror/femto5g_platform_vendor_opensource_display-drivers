@@ -3,7 +3,7 @@
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * Copyright (c) 2017-2018,2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -347,6 +347,14 @@ static int _msm_hyp_mode_create_properties(struct drm_device *ddev)
 	if (!prop)
 		return -ENOMEM;
 	priv->prop_crtc_caps = prop;
+
+	/* color process : HSIC property on CRTC */
+	prop = drm_property_create(ddev,
+			DRM_MODE_PROP_BLOB,
+			"SDE_DSPP_PA_HSIC_V1", 0);
+	if (!prop)
+		return -ENOMEM;
+	priv->prop_crtc_cp_hsic = prop;
 
 	return 0;
 }
@@ -767,6 +775,9 @@ static void msm_hyp_crtc_destroy(struct drm_crtc *crtc)
 	if (c->blob_caps)
 		drm_property_blob_put(c->blob_caps);
 
+	if (c->blob_cp_hsic)
+		drm_property_blob_put(c->blob_cp_hsic);
+
 	if (c->thread) {
 		kthread_flush_worker(&c->worker);
 		kthread_stop(c->thread);
@@ -837,6 +848,52 @@ static void msm_hyp_crtc_reset(struct drm_crtc *crtc)
 	c_state->input_fence_timeout = CRTC_INPUT_FENCE_TIMEOUT;
 }
 
+static int msm_hyp_crtc_set_pa_hsic_prop(
+		struct drm_crtc *crtc,
+		struct msm_hyp_crtc_state *c_state,
+		uint64_t val)
+{
+	struct drm_device *ddev = NULL;
+	struct msm_hyp_crtc *msm_crtc = NULL;
+	struct drm_property_blob *blob = NULL;
+
+	if (!crtc || !c_state) {
+		DRM_ERROR("invalid crtc %pK\n", crtc);
+		return -EINVAL;
+	}
+
+	ddev = crtc->dev;
+	msm_crtc = to_msm_hyp_crtc(crtc);
+
+	if (!val) {
+		if (msm_crtc->blob_cp_hsic)
+			drm_property_blob_put(msm_crtc->blob_cp_hsic);
+		/* Disable HSIC on PA, no blob is created for disabled case */
+		msm_crtc->blob_cp_hsic = NULL;
+		memset(&(c_state->cp_hsic.pa_hsic), 0, sizeof(struct msm_hyp_pa_hsic));
+	} else {
+		blob = drm_property_lookup_blob(ddev, val);
+		if (!blob) {
+			DRM_ERROR("invalid blob id %lld for HSIC\n", val);
+			return -EINVAL;
+		}
+
+		if (blob->length != sizeof(struct msm_hyp_pa_hsic)) {
+			DRM_ERROR("invalid blob len %d exp %d\n", blob->length,
+					sizeof(struct msm_hyp_pa_hsic));
+			return -EINVAL;
+		}
+
+		if (msm_crtc->blob_cp_hsic)
+			drm_property_blob_put(msm_crtc->blob_cp_hsic);
+		msm_crtc->blob_cp_hsic = blob;
+
+		memcpy(&(c_state->cp_hsic.pa_hsic), blob->data, blob->length);
+	}
+
+	return 0;
+}
+
 static int msm_hyp_crtc_set_property(
 		struct drm_crtc *crtc,
 		struct drm_crtc_state *state,
@@ -864,6 +921,10 @@ static int msm_hyp_crtc_set_property(
 		c_state->input_fence_timeout = val;
 	else if (property == priv->prop_output_fence_offset)
 		c_state->output_fence_offset = val;
+	else if (property == priv->prop_crtc_cp_hsic) {
+		c_state->cp_hsic.prop_value = val;
+		ret = msm_hyp_crtc_set_pa_hsic_prop(crtc, c_state, val);
+	}
 	else
 		ret = -EINVAL;
 
@@ -897,6 +958,8 @@ static int msm_hyp_crtc_get_property(
 		*val = c_state->input_fence_timeout;
 	else if (property == priv->prop_output_fence_offset)
 		*val = c_state->output_fence_offset;
+	else if (property == priv->prop_crtc_cp_hsic)
+		*val = c_state->cp_hsic.prop_value;
 	else
 		ret = -EINVAL;
 
@@ -1044,6 +1107,9 @@ static int _msm_hyp_crtc_init(struct drm_device *ddev,
 
 	drm_object_attach_property(&crtc->base.base,
 			priv->prop_output_fence_offset, 0);
+
+	drm_object_attach_property(&crtc->base.base,
+			priv->prop_crtc_cp_hsic, 0);
 
 	ret = _msm_hyp_crtc_init_caps(crtc);
 	if (ret)
