@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -22,3 +22,4 @@
 #define CONFIG_HDCP_QSEECOM 1
 #define CONFIG_DRM_SDE_VM 1
 #define CONFIG_QTI_HW_FENCE 1
+#define CONFIG_DRM_DP_CEC 1
