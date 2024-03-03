@@ -105,9 +105,14 @@ struct dp_catalog_ctrl {
 			u32 ch, u32 ch_start_timeslot, u32 tot_ch_cnt);
 	void (*fec_config)(struct dp_catalog_ctrl *ctrl, bool enable);
 	void (*mainlink_levels)(struct dp_catalog_ctrl *ctrl, u8 lane_cnt);
-
 	int (*late_phy_init)(struct dp_catalog_ctrl *ctrl,
 					u8 lane_cnt, bool flipped);
+	void (*reset_retimer)(struct dp_catalog_ctrl *ctrl);
+	void (*setup_misr)(struct dp_catalog_ctrl *ctrl,
+			bool enable, u32 frame_count);
+	int (*collect_misr)(struct dp_catalog_ctrl *ctrl, u32 *misr);
+	int (*collect_crc)(struct dp_catalog_ctrl *ctrl,
+			u32 *r, u32 *g, u32 *b, int strm_id);
 };
 
 struct dp_catalog_hpd {
@@ -253,6 +258,7 @@ struct dp_catalog_io {
 	struct dp_io_data *hdcp_physical;
 	struct dp_io_data *dp_p1;
 	struct dp_io_data *dp_tcsr;
+	struct dp_io_data *usb3_pll;
 };
 
 struct dp_catalog {

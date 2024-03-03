@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -668,7 +668,7 @@ void sde_vbif_clear_errors(struct sde_kms *sde_kms)
 			vbif->ops.clear_errors(vbif, &pnd, &src);
 			if (pnd || src) {
 				SDE_EVT32(i, pnd, src);
-				SDE_DEBUG("VBIF %d: pnd 0x%X, src 0x%X\n",
+				SDE_ERROR("VBIF %d: pnd 0x%X, src 0x%X\n",
 						vbif->idx - VBIF_0, pnd, src);
 			}
 			mutex_unlock(&vbif->mutex);
@@ -773,6 +773,28 @@ int sde_vbif_halt_xin_mask(struct sde_kms *sde_kms, u32 xin_id_mask,
 	}
 
 	return 0;
+}
+
+void sde_vbif_dump_error(struct sde_kms *sde_kms)
+{
+	struct sde_hw_vbif *vbif;
+	u32 i;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid argument\n");
+		return;
+	}
+
+	if (!sde_kms_is_vbif_operation_allowed(sde_kms)) {
+		SDE_DEBUG("vbif operations not permitted\n");
+		return;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(sde_kms->hw_vbif); i++) {
+		vbif = sde_kms->hw_vbif[i];
+		if (vbif && vbif->ops.dump_errors)
+			vbif->ops.dump_errors(vbif);
+	}
 }
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)

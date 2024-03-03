@@ -186,10 +186,10 @@ struct dp_mst_hpd_work {
 #define to_dp_mst_bridge_state(x) \
 		to_dp_mst_bridge_priv_state((x)->obj.state)
 
-static void dp_mst_register_connector(struct drm_connector *connector);
+static int dp_mst_register_connector(struct drm_connector *connector);
 static void dp_mst_destroy_connector(		struct drm_connector *connector);
 
-static void dp_mst_register_fixed_connector(struct drm_connector *connector);
+static int dp_mst_register_fixed_connector(struct drm_connector *connector);
 static void dp_mst_destroy_fixed_connector(		struct drm_connector *connector);
 
 
@@ -2291,7 +2291,7 @@ dp_mst_add_connector(struct drm_dp_mst_topology_mgr *mgr,
 	return connector;
 }
 
-static void dp_mst_register_connector(struct drm_connector *connector)
+static int dp_mst_register_connector(struct drm_connector *connector)
 {
 	DP_MST_DEBUG("enter\n");
 
@@ -2299,6 +2299,8 @@ static void dp_mst_register_connector(struct drm_connector *connector)
 
 	DP_MST_INFO("register mst connector id:%d\n",
 			connector->base.id);
+
+	return 0;
 }
 
 static void dp_mst_destroy_connector(struct drm_connector *connector)
@@ -2544,15 +2546,29 @@ static int dp_mst_fixed_connnector_set_info_blob(
 	return 0;
 }
 
-static void dp_mst_register_fixed_connector(struct drm_connector *connector)
+static int dp_mst_register_fixed_connector(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn = to_sde_connector(connector);
 	struct dp_display *dp_display = c_conn->display;
 	struct dp_mst_private *dp_mst = dp_display->dp_mst_prv_info;
 	struct edid *edid;
 	int i;
+	struct drm_dp_mst_port *mst_port = NULL;
 
 	DP_MST_DEBUG("enter\n");
+
+	/*
+	 * Check if the port exists i.e. is not NULL,
+	 * otherwise cannot get edid if the port is not set.
+	 */
+	if (!c_conn->mst_port)
+		return -EINVAL;
+
+	mst_port = c_conn->mst_port;
+
+	/* Check if the port aux ddc line is enabled */
+	if (!mst_port->aux.ddc.algo || !mst_port->aux.ddc.algo_data)
+		return -EINVAL;
 
 	/* skip connector registered for fixed topology ports */
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
@@ -2578,11 +2594,13 @@ static void dp_mst_register_fixed_connector(struct drm_connector *connector)
 			if (connector->state->crtc)
 				sde_connector_helper_mode_change_commit(
 						connector);
-			return;
+			return 0;
 		}
 	}
 
 	dp_mst_register_connector(connector);
+
+	return 0;
 }
 
 static void dp_mst_destroy_fixed_connector(struct drm_connector *connector)

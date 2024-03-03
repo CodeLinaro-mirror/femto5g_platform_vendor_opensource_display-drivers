@@ -42,12 +42,24 @@
 #include <drm/sde_drm.h>
 #include "msm_hyp_fence.h"
 #include <drm/drm_framebuffer.h>
+#include <drm/drm_blend.h>
 #include "msm_drv.h"
 
 #define DRM_DRI_NAME_SIZE 32
 
+enum msm_hyp_panel_rotation {
+	PANEL_ROTATE_NONE = 0,
+	PANEL_ROTATE_90,
+	PANEL_ROTATE_180,
+	PANEL_ROTATE_HV_FLIP = PANEL_ROTATE_180,
+	PANEL_ROTATE_270,
+	PANEL_ROTATE_H_FLIP,
+	PANEL_ROTATE_V_FLIP
+};
+
 struct msm_hyp_connector_info {
 	int connector_type;
+	enum msm_hyp_panel_rotation panel_orientation;
 	const struct drm_bridge_funcs *bridge_funcs;
 	const struct drm_connector_helper_funcs *connector_funcs;
 	uint32_t possible_crtcs;
@@ -71,6 +83,7 @@ struct msm_hyp_plane_info {
 	bool support_scale;
 	bool support_csc;
 	bool support_multirect;
+	bool support_rotation;
 	int master_plane_index;
 	const char *extra_caps;
 };
@@ -148,6 +161,9 @@ struct msm_hyp_crtc_state {
 
 struct msm_hyp_framebuffer {
 	struct drm_framebuffer base;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
+	struct drm_gem_object *bo;
+#endif
 	struct msm_hyp_framebuffer_info *info;
 };
 

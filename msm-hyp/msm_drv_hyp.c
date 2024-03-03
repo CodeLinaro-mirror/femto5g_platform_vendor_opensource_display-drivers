@@ -272,7 +272,6 @@ static int _msm_hyp_mode_create_properties(struct drm_device *ddev)
 	/* special plane properties */
 	prop = drm_property_create_range(ddev, 0,
 				"zpos", 0, 255);
-
 	if (!prop)
 		return -ENOMEM;
 	priv->prop_zpos = prop;
@@ -606,6 +605,7 @@ static int _msm_hyp_connector_init_caps(
 	struct msm_hyp_drm_private *priv = ddev->dev_private;
 	struct msm_hyp_prop_blob_info *info;
 	int ret;
+	char buf[32] = {0};
 
 	info = devm_kzalloc(ddev->dev, sizeof(*info), GFP_KERNEL);
 	if (!info)
@@ -614,6 +614,26 @@ static int _msm_hyp_connector_init_caps(
 	if (connector->info->display_type)
 		msm_hyp_prop_info_add_keystr(info, "display type",
 				connector->info->display_type);
+
+	if (connector->info->panel_orientation) {
+		switch (connector->info->panel_orientation) {
+		case PANEL_ROTATE_NONE:
+			snprintf(buf, sizeof(buf), "%s", "none");
+			break;
+		case PANEL_ROTATE_180:
+			snprintf(buf, sizeof(buf), "%s", "horz & vert flip");
+			break;
+		case PANEL_ROTATE_H_FLIP:
+			snprintf(buf, sizeof(buf), "%s", "horz flip");
+			break;
+		case PANEL_ROTATE_V_FLIP:
+			snprintf(buf, sizeof(buf), "%s", "vert flip");
+			break;
+		default:
+			break;
+		}
+		msm_hyp_prop_info_add_keystr(info, "panel orientation", buf);
+	}
 
 	if (connector->info->extra_caps)
 		msm_hyp_prop_info_append(info, connector->info->extra_caps);
@@ -1365,7 +1385,9 @@ static int _msm_hyp_plane_init(struct drm_device *ddev,
 {
 	struct msm_hyp_drm_private *priv = ddev->dev_private;
 	struct msm_hyp_plane *plane;
-	int ret;
+	unsigned int supported_rotations = DRM_MODE_ROTATE_0 |
+		DRM_MODE_ROTATE_180 | DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y;
+	int ret = 0;
 
 	uint64_t modifiers[] = {DRM_FORMAT_MOD_LINEAR, DRM_FORMAT_MOD_QTI_COMPRESSED,
 		DRM_FORMAT_MOD_QTI_DX, DRM_FORMAT_MOD_QTI_COMPRESSED |
@@ -1411,6 +1433,15 @@ static int _msm_hyp_plane_init(struct drm_device *ddev,
 		plane->primary_plane = drm_plane_from_index(ddev,
 				plane_info->master_plane_index);
 	}
+
+	if (plane->info->support_rotation)
+		supported_rotations |= DRM_MODE_ROTATE_90 | DRM_MODE_ROTATE_270;
+
+	/* support 180, x flip and y flip by default */
+	ret = drm_plane_create_rotation_property(&plane->base,
+			DRM_MODE_ROTATE_0, supported_rotations);
+	if (ret)
+		return ret;
 
 	drm_object_attach_property(&plane->base.base,
 			priv->prop_blend_op,
@@ -1565,8 +1596,13 @@ void msm_hyp_framebuffer_destroy(struct drm_framebuffer *framebuffer)
 
 	if (fb->info && fb->info->destroy)
 		fb->info->destroy(framebuffer);
-
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
+	drm_gem_object_put(fb->bo);
+	drm_framebuffer_cleanup(&fb->base);
+	kfree(fb);
+#else
 	drm_gem_fb_destroy(framebuffer);
+#endif
 }
 
 static const struct drm_framebuffer_funcs msm_hyp_framebuffer_funcs = {
@@ -1614,6 +1650,71 @@ static int msm_hyp_shmem_sync_sg_for_device(struct drm_gem_object *obj)
 }
 #endif
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
+static struct drm_framebuffer *msm_hyp_framebuffer_create(
+		struct drm_device *dev, struct drm_file *file,
+		const struct drm_mode_fb_cmd2 *mode_cmd)
+{
+	struct msm_hyp_drm_private *priv = dev->dev_private;
+	struct msm_hyp_kms *kms = priv->kms;
+	struct msm_hyp_framebuffer *fb;
+	struct drm_gem_object *bo;
+	int ret;
+
+	DRM_DEBUG("create framebuffer: dev=%pK, mode_cmd=%pK (%dx%d@%4.4s)",
+			dev, mode_cmd, mode_cmd->width, mode_cmd->height,
+			(char *)&mode_cmd->pixel_format);
+
+	bo = drm_gem_object_lookup(file, mode_cmd->handles[0]);
+	if (IS_ERR_OR_NULL(bo)) {
+		DRM_ERROR("failed to find gem bo %d\n", mode_cmd->handles[0]);
+		return ERR_PTR(-EINVAL);
+	}
+
+	ret = msm_hyp_shmem_sync_sg_for_device(bo);
+	if (ret) {
+		DRM_ERROR("failed to do dumb buffer sync\n");
+		return ERR_PTR(ret);
+	}
+
+	fb = kzalloc(sizeof(*fb), GFP_KERNEL);
+	if (!fb) {
+		ret = -ENOMEM;
+		goto fail;
+	}
+
+	drm_helper_mode_fill_fb_struct(dev, &fb->base, mode_cmd);
+	fb->bo = bo;
+
+	ret = drm_framebuffer_init(dev, &fb->base, &msm_hyp_framebuffer_funcs);
+	if (ret) {
+		DRM_ERROR("framebuffer init failed: %d\n", ret);
+		goto fail;
+	}
+
+	fb->base.obj[0] = bo;
+
+	if (kms->funcs && kms->funcs->get_framebuffer_info) {
+		ret = kms->funcs->get_framebuffer_info(kms, &fb->base,
+			&fb->info);
+		if (ret) {
+			DRM_ERROR("failed to get framebuffer info\n");
+			goto cleanup;
+		}
+	}
+
+	DRM_DEBUG("create: FB ID: %d (%pK)", fb->base.base.id, fb);
+
+	return &fb->base;
+
+cleanup:
+		drm_framebuffer_cleanup(&fb->base);
+fail:
+	kfree(fb);
+	drm_gem_object_put(bo);
+	return ERR_PTR(ret);
+}
+#else
 static struct drm_framebuffer *msm_hyp_framebuffer_init(struct drm_device *dev,
 		const struct drm_mode_fb_cmd2 *mode_cmd, struct drm_gem_object **bos)
 {
@@ -1736,6 +1837,7 @@ out_unref:
 		drm_gem_object_put(bos[i]);
 	return ERR_PTR(ret);
 }
+#endif
 
 static int _msm_hyp_start_atomic(struct msm_hyp_drm_private *priv,
 		uint32_t crtc_mask)
@@ -2365,7 +2467,11 @@ static int msm_hyp_bind(struct device *dev)
 		goto fail;
 	}
 
-	dma_coerce_mask_and_coherent(dev, DMA_BIT_MASK(64));
+	/*
+	 * DMA_BIT_MASK encountered compilation error,
+	 * shift-count-overflow on special target
+	 */
+	dma_coerce_mask_and_coherent(dev, ~0ULL);
 
 	ret = drm_dev_register(ddev, 0);
 	if (ret) {

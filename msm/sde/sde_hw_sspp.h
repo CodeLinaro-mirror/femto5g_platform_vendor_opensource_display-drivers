@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -714,6 +714,12 @@ struct sde_hw_sspp_ops {
 		enum sde_sspp_multirect_index index,
 		struct sde_hw_pipe_line_insertion_cfg *cfg);
 
+	/**
+	 * dump - dump the pipe registers
+	 * @ctx: Pointer to pipe context
+	 * @is_virtual: If true for R1 in multirect
+	 */
+	void (*dump)(struct sde_hw_pipe *ctx, bool is_virtual);
 };
 
 /**

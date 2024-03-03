@@ -647,7 +647,7 @@ static inline bool dp_bond_is_primary(struct dp_display *dp_display,
 	struct dp_bond_info *bond_info = dp_display->dp_bond_prv_info;
 	struct dp_bond_bridge *bond_bridge;
 
-	if (!bond_info)
+	if (!bond_info || type >= DP_BOND_MAX)
 		return false;
 
 	bond_bridge = bond_info->bond_bridge[type];
@@ -846,6 +846,9 @@ static bool dp_bond_check_connector(struct drm_connector *connector,
 	struct dp_bond_bridge *bond_bridge;
 	struct drm_connector *p_conn;
 	int i;
+
+	if (type >= DP_BOND_MAX)
+		return false;
 
 	bond_bridge = bond_info->bond_bridge[type];
 	if (!bond_bridge)
@@ -1069,6 +1072,7 @@ int dp_connector_get_info(struct drm_connector *connector,
 		struct msm_display_info *info, void *data)
 {
 	struct dp_display *display = data;
+	const char *display_type = NULL;
 
 	if (!info || !display || !display->drm_dev) {
 		DP_ERR("invalid params\n");
@@ -1077,8 +1081,27 @@ int dp_connector_get_info(struct drm_connector *connector,
 
 	info->intf_type = DRM_MODE_CONNECTOR_DisplayPort;
 
-	info->num_of_h_tiles = 1;
-	info->h_tile_instance[0] = 0;
+	if (!display->bridge) {
+		struct dp_display_info dp_info = {0};
+		int rc, i;
+
+		rc = dp_display_get_info(display, &dp_info);
+		if (rc) {
+			pr_err("failed to get info\n");
+			return rc;
+		}
+
+		info->num_of_h_tiles = 1;
+		for (i = 0; i < DP_STREAM_MAX; i++)
+			info->h_tile_instance[i] = dp_info.intf_idx[i];
+	}
+
+	display->get_display_type(display, &display_type);
+
+	if (display_type && !strcmp(display_type, "primary"))
+		info->display_type = SDE_CONNECTOR_PRIMARY;
+	else
+		info->display_type = SDE_CONNECTOR_SECONDARY;
 	info->is_connected = display->is_sst_connected;
 	info->curr_panel_mode = MSM_DISPLAY_VIDEO_MODE;
 	info->capabilities = MSM_DISPLAY_CAP_VID_MODE | MSM_DISPLAY_CAP_EDID |
@@ -1132,8 +1155,15 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 			return status;
 
 		if (!dp_bond_is_primary(dp_display, type)) {
+			/*
+			 * Try to report secondary tile connector to be disconnected.
+			 * But once mark the connector disconnected, all its EDID
+			 * info will be wiped by DRM framework. Workaround by change
+			 * the connector to unknown status, so supposedly the user
+			 * space shall not consider this connector to be ready.
+			 */
 			if (dp_bond_check_connector(conn, type))
-				status = connector_status_disconnected;
+				status = connector_status_unknown;
 		}
 
 		if (dp_display->force_bond_mode) {
@@ -1304,6 +1334,10 @@ struct drm_encoder *dp_connector_atomic_best_encoder(
 		break;
 	}
 
+	/* DRM frame work overwrite the tile info, check again */
+	if (dp_display->force_bond_mode)
+		dp_bond_check_force_mode(connector);
+
 	/* clear single connector */
 	bond_state->connector_mask &= ~(1 << bond_info->bond_idx);
 
@@ -1472,6 +1506,10 @@ int dp_connector_get_modes(struct drm_connector *connector,
 			m->height_mm = connector->display_info.height_mm;
 			drm_mode_probed_add(connector, m);
 		}
+
+		/* DRM framework may overwrite the tile info, check again */
+		if (dp->force_bond_mode)
+			dp_bond_check_force_mode(connector);
 
 		if (dp->dp_bond_prv_info)
 			dp_bond_fixup_tile_mode(connector);
