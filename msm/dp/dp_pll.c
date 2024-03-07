@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/err.h>
@@ -59,6 +59,9 @@ static int dp_pll_clock_register(struct dp_pll *pll)
 	case DP_PLL_14NM:
 		rc = dp_pll_clock_register_14nm(pll);
 		break;
+	case EDP_PLL_7NM:
+		rc = edp_pll_clock_register_7nm(pll);
+		break;
 	default:
 		rc = -ENOTSUPP;
 		break;
@@ -73,6 +76,7 @@ static void dp_pll_clock_unregister(struct dp_pll *pll)
 	case DP_PLL_5NM_V1:
 	case DP_PLL_5NM_V2:
 	case DP_PLL_7NM:
+	case EDP_PLL_7NM:
 		dp_pll_clock_unregister_5nm(pll);
 		break;
 	case DP_PLL_14NM:
@@ -115,6 +119,8 @@ struct dp_pll *dp_pll_get(struct dp_pll_in *in)
 			pll->revision = DP_PLL_7NM;
 		} else if (!strcmp(label, "14nm")) {
 			pll->revision = DP_PLL_14NM;
+		} else if (!strcmp(label, "edp-7nm")) {
+			pll->revision = EDP_PLL_7NM;
 		} else {
 			DP_ERR("Unsupported pll revision\n");
 			rc = -ENOTSUPP;
@@ -125,6 +131,10 @@ struct dp_pll *dp_pll_get(struct dp_pll_in *in)
 		rc = -EINVAL;
 		goto error;
 	}
+
+	pll->name = of_get_property(pdev->dev.of_node, "label", NULL);
+	if (!pll->name)
+		pll->name = "dp0";
 
 	pll->ssc_en = of_property_read_bool(pdev->dev.of_node,
 						"qcom,ssc-feature-enable");

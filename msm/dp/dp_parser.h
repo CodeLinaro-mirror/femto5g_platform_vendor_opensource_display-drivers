@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_PARSER_H_
@@ -24,6 +24,20 @@ enum dp_pm_type {
 	DP_LINK_PM,
 	DP_PLL_PM,
 	DP_MAX_PM
+};
+
+enum dp_pin_states {
+	DP_GPIO_AUX_ENABLE,
+	DP_GPIO_AUX_SEL,
+	DP_GPIO_USBPLUG_CC,
+	DP_GPIO_CMN_MAX = DP_GPIO_USBPLUG_CC,
+	DP_GPIO_EDP_VCC_EN,
+	DP_GPIO_EDP_MIN = DP_GPIO_EDP_VCC_EN,
+	DP_GPIO_EDP_BACKLIGHT_PWR,
+	DP_GPIO_EDP_PWM,
+	DP_GPIO_EDP_BACKLIGHT_EN,
+	DP_GPIO_EDP_MAX,
+	DP_GPIO_MAX = DP_GPIO_EDP_MAX,
 };
 
 static inline const char *dp_parser_pm_name(enum dp_pm_type module)
@@ -132,13 +146,33 @@ enum dp_phy_aux_config_type {
  * enum dp_phy_version - version of the dp phy
  * @DP_PHY_VERSION_UNKNOWN: Unknown controller version
  * @DP_PHY_VERSION_4_2_0:   DP phy v4.2.0 controller
+ * @DP_PHY_VERSION_5_0_0:   DP phy v5.0.0 controller
  * @DP_PHY_VERSION_MAX:     max version
  */
 enum dp_phy_version {
 	DP_PHY_VERSION_UNKNOWN,
 	DP_PHY_VERSION_2_0_0 = 0x200,
 	DP_PHY_VERSION_4_2_0 = 0x420,
+	DP_PHY_VERSION_5_0_0 = 0x500,
 	DP_PHY_VERSION_MAX
+};
+
+/**
+ * enum dp_phy_mode - mode of the dp phy
+ * @DP_PHY_MODE_UNKNOWN: Unknown PHY mode
+ * @DP_PHY_MODE_DP:      DP PHY mode
+ * @DP_PHY_MODE_MINIDP:  MiniDP PHY mode
+ * @DP_PHY_MODE_EDP:     eDP PHY mode
+ * @DP_PHY_MODE_EDP_HIGH_SWING:   eDP PHY mode, high swing/pre-empahsis
+ * @DP_PHY_MODE_MAX:     max PHY mode
+ */
+enum dp_phy_mode {
+	DP_PHY_MODE_UNKNOWN = 0,
+	DP_PHY_MODE_DP,
+	DP_PHY_MODE_MINIDP,
+	DP_PHY_MODE_EDP,
+	DP_PHY_MODE_EDP_HIGH_SWING,
+	DP_PHY_MODE_MAX
 };
 
 /**
@@ -148,6 +182,7 @@ enum dp_phy_version {
  */
 struct dp_hw_cfg {
 	enum dp_phy_version phy_version;
+	enum dp_phy_mode phy_mode;
 };
 
 static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)

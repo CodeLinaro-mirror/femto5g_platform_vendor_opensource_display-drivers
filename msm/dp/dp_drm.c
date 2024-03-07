@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -457,8 +457,15 @@ int dp_connector_get_info(struct drm_connector *connector,
 	info->num_of_h_tiles = 1;
 	info->h_tile_instance[0] = 0;
 	info->is_connected = display->is_sst_connected;
-	info->capabilities = MSM_DISPLAY_CAP_VID_MODE | MSM_DISPLAY_CAP_EDID |
-		MSM_DISPLAY_CAP_HOT_PLUG;
+	info->curr_panel_mode = MSM_DISPLAY_VIDEO_MODE;
+	info->capabilities = MSM_DISPLAY_CAP_VID_MODE | MSM_DISPLAY_CAP_EDID;
+
+	if (display && display->is_edp) {
+		info->intf_type = DRM_MODE_CONNECTOR_eDP;
+		info->display_type = SDE_CONNECTOR_PRIMARY;
+	} else {
+		info->capabilities |= MSM_DISPLAY_CAP_HOT_PLUG;
+	}
 
 	return 0;
 }
@@ -469,11 +476,13 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 {
 	enum drm_connector_status status = connector_status_unknown;
 	struct msm_display_info info;
+	struct dp_display *dp_disp;
 	int rc;
 
 	if (!conn || !display)
 		return status;
 
+	dp_disp = display;
 	/* get display dp_info */
 	memset(&info, 0x0, sizeof(info));
 	rc = dp_connector_get_info(conn, &info, display);
@@ -482,12 +491,18 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 		return connector_status_disconnected;
 	}
 
-	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG)
+	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG) {
 		status = (info.is_connected ? connector_status_connected :
 					      connector_status_disconnected);
-	else
+	} else {
 		status = connector_status_connected;
 
+		rc = dp_disp->edp_detect(dp_disp);
+		if (rc) {
+			DP_ERR("error in turning on panel power sequence rc:%d\n", rc);
+			return connector_status_unknown;
+		}
+	}
 	conn->display_info.width_mm = info.width_mm;
 	conn->display_info.height_mm = info.height_mm;
 
