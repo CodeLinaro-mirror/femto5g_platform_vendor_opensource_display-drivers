@@ -1252,7 +1252,6 @@ static int dp_display_host_init(struct dp_display_private *dp)
 	enable_irq(dp->irq);
 	dp_display_abort_hdcp(dp, false);
 
-	dp_display_state_remove(DP_STATE_ABORTED);
 	dp_display_state_add(DP_STATE_INITIALIZED);
 
 	/* log this as it results from user action of cable connection */
@@ -1832,6 +1831,7 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp)
 		 */
 		dp->aux->abort(dp->aux, false);
 		dp->ctrl->abort(dp->ctrl, false);
+		dp_display_state_remove(DP_STATE_ABORTED);
 
 		dp_display_send_force_connect_event(dp);
 
@@ -1851,6 +1851,7 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp)
 	/* cancel any pending request */
 	dp->ctrl->abort(dp->ctrl, true);
 	dp->aux->abort(dp->aux, true);
+	dp_display_state_remove(DP_STATE_ABORTED);
 
 	mutex_lock(&dp->session_lock);
 	/**
