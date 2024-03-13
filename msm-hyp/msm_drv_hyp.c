@@ -1257,61 +1257,63 @@ static bool msm_hyp_plane_format_mod_supported(struct drm_plane *plane,
 {
 	bool ret = false;
 
-	if (modifier == DRM_FORMAT_MOD_LINEAR) {
-		/* Linear formats */
-		switch (format) {
-			case DRM_FORMAT_C8:
-			case DRM_FORMAT_ARGB4444:
-			case DRM_FORMAT_XRGB4444:
-			case DRM_FORMAT_ARGB1555:
-			case DRM_FORMAT_XRGB1555:
-			case DRM_FORMAT_RGB565:
-			case DRM_FORMAT_RGB888:
-			case DRM_FORMAT_ARGB8888:
-			case DRM_FORMAT_XRGB8888:
-			case DRM_FORMAT_YVU410:
-			case DRM_FORMAT_YUV420:
-			case DRM_FORMAT_NV12:
-			case DRM_FORMAT_YVU420:
-			case DRM_FORMAT_UYVY:
-			case DRM_FORMAT_YUYV:
-			case DRM_FORMAT_YVYU:
-			case DRM_FORMAT_VYUY:
-			case DRM_FORMAT_AYUV:
-			case DRM_FORMAT_ABGR8888:
-			case DRM_FORMAT_XBGR8888:
-			case DRM_FORMAT_BGR565:
-			case DRM_FORMAT_ARGB2101010:
-			case DRM_FORMAT_XRGB2101010:
-			case DRM_FORMAT_ABGR2101010:
-			case DRM_FORMAT_XBGR2101010:
-			case DRM_FORMAT_BGR888:
-				ret = true;
-				break;
-			default:
-				break;
-		}
-	} else if (modifier == DRM_FORMAT_MOD_QTI_COMPRESSED) {
-		switch (format) {
-			/* UBWC formats */
-			case DRM_FORMAT_BGR565:
-			case DRM_FORMAT_ABGR8888:
-			case DRM_FORMAT_XBGR8888:
-			case DRM_FORMAT_ABGR2101010:
-			case DRM_FORMAT_XBGR2101010:
-			case DRM_FORMAT_NV12:
-				ret = true;
-				break;
-			default:
-				break;
-		}
-	} else if ((modifier ==
-		DRM_FORMAT_MOD_QTI_DX) || (modifier == (DRM_FORMAT_MOD_QTI_COMPRESSED |
-		DRM_FORMAT_MOD_QTI_DX)) || (modifier == (DRM_FORMAT_MOD_QTI_COMPRESSED |
-		DRM_FORMAT_MOD_QTI_DX | DRM_FORMAT_MOD_QTI_TIGHT))) {
-		/* p010, p010 UBWC, TP10 UBWC */
-		if (format == DRM_FORMAT_NV12)
+	if (modifier == DRM_FORMAT_MOD_LINEAR ||
+		modifier == DRM_FORMAT_MOD_QTI_SECURE) {
+		if (format == DRM_FORMAT_C8 ||
+			format == DRM_FORMAT_ARGB4444 ||
+			format == DRM_FORMAT_XRGB4444 ||
+			format == DRM_FORMAT_ARGB1555 ||
+			format == DRM_FORMAT_XRGB1555 ||
+			format == DRM_FORMAT_RGB565 ||
+			format == DRM_FORMAT_RGB888 ||
+			format == DRM_FORMAT_ARGB8888 ||
+			format == DRM_FORMAT_XRGB8888 ||
+			format == DRM_FORMAT_YVU410 ||
+			format == DRM_FORMAT_YUV420 ||
+			format == DRM_FORMAT_NV12 ||
+			format == DRM_FORMAT_YVU420 ||
+			format == DRM_FORMAT_UYVY ||
+			format == DRM_FORMAT_YUYV ||
+			format == DRM_FORMAT_YVYU ||
+			format == DRM_FORMAT_VYUY ||
+			format == DRM_FORMAT_AYUV ||
+			format == DRM_FORMAT_ABGR8888 ||
+			format == DRM_FORMAT_XBGR8888 ||
+			format == DRM_FORMAT_BGR565 ||
+			format == DRM_FORMAT_ARGB2101010 ||
+			format == DRM_FORMAT_XRGB2101010 ||
+			format == DRM_FORMAT_ABGR2101010 ||
+			format == DRM_FORMAT_XBGR2101010 ||
+			format == DRM_FORMAT_BGR888) {
+			/* Linear formats */
 			ret = true;
+		}
+	} else if (modifier == DRM_FORMAT_MOD_QTI_COMPRESSED ||
+				modifier == DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE) {
+		if (format == DRM_FORMAT_BGR565 ||
+			format == DRM_FORMAT_ABGR8888 ||
+			format == DRM_FORMAT_XBGR8888 ||
+			format == DRM_FORMAT_ABGR2101010 ||
+			format == DRM_FORMAT_XBGR2101010 ||
+			format == DRM_FORMAT_NV12) {
+			/* UBWC formats */
+			ret = true;
+		}
+	} else if (format == DRM_FORMAT_NV12) {
+		if (modifier == DRM_FORMAT_MOD_QTI_DX ||
+			modifier == (DRM_FORMAT_MOD_QTI_COMPRESSED |
+			DRM_FORMAT_MOD_QTI_DX) ||
+			modifier == (DRM_FORMAT_MOD_QTI_COMPRESSED |
+			DRM_FORMAT_MOD_QTI_DX | DRM_FORMAT_MOD_QTI_TIGHT) ||
+			modifier == (DRM_FORMAT_MOD_QTI_DX |
+			DRM_FORMAT_MOD_QTI_SECURE) ||
+			modifier == (DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE |
+			DRM_FORMAT_MOD_QTI_DX) ||
+			modifier == (DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE |
+			DRM_FORMAT_MOD_QTI_DX | DRM_FORMAT_MOD_QTI_TIGHT)) {
+			/* P010/TP10 formats */
+			ret = true;
+		}
 	}
 
 	return ret;
@@ -1402,11 +1404,16 @@ static int _msm_hyp_plane_init(struct drm_device *ddev,
 		DRM_MODE_ROTATE_180 | DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y;
 	int ret = 0;
 
-	uint64_t modifiers[] = {DRM_FORMAT_MOD_LINEAR, DRM_FORMAT_MOD_QTI_COMPRESSED,
+	uint64_t modifiers[] = {DRM_FORMAT_MOD_LINEAR,
+		DRM_FORMAT_MOD_QTI_COMPRESSED, DRM_FORMAT_MOD_QTI_SECURE,
+		DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE,
 		DRM_FORMAT_MOD_QTI_DX, DRM_FORMAT_MOD_QTI_COMPRESSED |
 		DRM_FORMAT_MOD_QTI_DX, DRM_FORMAT_MOD_QTI_COMPRESSED |
-		DRM_FORMAT_MOD_QTI_DX | DRM_FORMAT_MOD_QTI_TIGHT, DRM_FORMAT_MOD_INVALID};
-
+		DRM_FORMAT_MOD_QTI_DX | DRM_FORMAT_MOD_QTI_TIGHT,
+		DRM_FORMAT_MOD_QTI_DX | DRM_FORMAT_MOD_QTI_SECURE,
+		DRM_FORMAT_MOD_QTI_DX | DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE,
+		DRM_FORMAT_MOD_QTI_DX | DRM_FORMAT_MOD_QTI_TIGHT |
+		DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE, DRM_FORMAT_MOD_INVALID};
 
 	plane = devm_kzalloc(ddev->dev, sizeof(struct msm_hyp_plane),
 			GFP_KERNEL);
