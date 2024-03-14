@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -3399,16 +3400,10 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 			ctl->ops.update_bitmask) {
 		/* perform peripheral flush on every frame update for dp dsc */
 		if (phys->comp_type == MSM_DISPLAY_COMPRESSION_DSC &&
-				phys->comp_ratio && c_conn->ops.update_pps) {
-			c_conn->ops.update_pps(phys->connector, NULL,
-					c_conn->display);
-			ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_PERIPH,
-					phys->hw_intf->idx, 1);
-		}
+				phys->comp_ratio && c_conn->ops.update_pps)
+			c_conn->ops.update_pps(phys->connector, NULL, c_conn->display);
 
-		if (sde_enc->dynamic_hdr_updated)
-			ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_PERIPH,
-					phys->hw_intf->idx, 1);
+		ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_PERIPH, phys->hw_intf->idx, 1);
 	}
 
 	if ((extra_flush && extra_flush->pending_flush_mask)
@@ -4863,6 +4858,9 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	if (disp_info->intf_type == DRM_MODE_CONNECTOR_DSI) {
 		*drm_enc_mode = DRM_MODE_ENCODER_DSI;
 		intf_type = INTF_DSI;
+	} else if (disp_info->intf_type == DRM_MODE_CONNECTOR_eDP) {
+		*drm_enc_mode = DRM_MODE_ENCODER_TMDS;
+		intf_type = INTF_DP;
 	} else if (disp_info->intf_type == DRM_MODE_CONNECTOR_HDMIA) {
 		*drm_enc_mode = DRM_MODE_ENCODER_TMDS;
 		intf_type = INTF_HDMI;
