@@ -47,6 +47,8 @@
 		WIRE_USER_LOG_MODULE_NAME,	\
 		fmt, ##__VA_ARGS__)
 
+#define COMMIT_PACKAGE_HEADER_SIZE (sizeof(struct wire_header) + sizeof(u32))
+
 /*
  * ---------------------------------------------------------------------------
  * Structure Definitions
@@ -512,7 +514,7 @@ wire_port_send_recv(
 		}
 
 		size = wire_user_cmd_size[type] + sizeof(struct openwfd_batch_cmd);
-		if (commit->size + size >= commit->alloc_size) {
+		if (commit->size + size + COMMIT_PACKAGE_HEADER_SIZE >= commit->alloc_size) {
 			realloc_size = commit->alloc_size + SZ_4K;
 
 			p = krealloc(commit->packet, realloc_size, GFP_KERNEL);
