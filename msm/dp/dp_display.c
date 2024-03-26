@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2970,9 +2970,9 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 		dp_panel->audio->lane_count = dp->link->link_params.lane_count;
 		dp_panel->audio->on(dp_panel->audio);
 	}
-end:
-	dp->aux->state |= DP_STATE_CTRL_POWERED_ON;
 
+	dp->aux->state |= DP_STATE_CTRL_POWERED_ON;
+end:
 	if (dp->parser->force_connect_mode)
 		dp_display_send_force_connect_event(dp);
 
