@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -613,7 +613,8 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 
 	SDE_REG_WRITE(c, CTL_FLUSH_MASK, FLUSH_MASK_ALL);
 
-	_sde_shd_flush_hw_pipe_active(ctl_ctx);
+	if (ctl_ctx->caps->features & BIT(SDE_CTL_PIPE_ACTIVE))
+		_sde_shd_flush_hw_pipe_active(ctl_ctx);
 
 	_sde_shd_flush_hw_ctl(ctl_ctx);
 
@@ -647,8 +648,9 @@ void sde_shd_hw_ctl_init_op(struct sde_hw_ctl *ctx)
 	ctx->ops.update_intf_cfg =
 		_sde_shd_update_intf_cfg;
 
-	ctx->ops.set_active_pipes =
-		_sde_shd_setup_active_pipes;
+	if (ctx->caps->features & BIT(SDE_CTL_PIPE_ACTIVE))
+		ctx->ops.set_active_pipes =
+			_sde_shd_setup_active_pipes;
 }
 
 void sde_shd_hw_lm_init_op(struct sde_hw_mixer *ctx)
