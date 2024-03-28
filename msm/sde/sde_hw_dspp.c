@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -331,6 +331,7 @@ static void dspp_spr(struct sde_hw_dspp *c)
 		return;
 	}
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	c->ops.validate_spr_init_config = NULL;
 	c->ops.validate_spr_udc_config = NULL;
 	c->ops.setup_spr_init_config = NULL;
@@ -368,11 +369,28 @@ static void dspp_spr(struct sde_hw_dspp *c)
 		c->ops.setup_spr_pu_config = reg_dmav1_setup_spr_pu_cfgv2;
 		c->ops.read_spr_opr_value = sde_spr_read_opr_value;
 	}
+#else
+	c->ops.setup_spr_init_config = NULL;
+	c->ops.setup_spr_pu_config = NULL;
+
+	if (c->cap->sblk->spr.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) {
+		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_SPR, c->idx);
+		if (ret) {
+			SDE_ERROR("regdma init failed for spr, ret %d\n", ret);
+			return;
+		}
+
+		c->ops.setup_spr_init_config = reg_dmav1_setup_spr_init_cfgv1;
+		c->ops.setup_spr_pu_config = reg_dmav1_setup_spr_pu_cfgv1;
+		c->ops.read_spr_opr_value = sde_spr_read_opr_value;
+	}
+#endif
 }
 
 static void dspp_demura(struct sde_hw_dspp *c)
 {
 	int ret;
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	c->ops.setup_demura_cfg = NULL;
 	c->ops.setup_demura_backlight_cfg = NULL;
 	c->ops.setup_demura_cfg0_param2 = NULL;
@@ -407,6 +425,21 @@ static void dspp_demura(struct sde_hw_dspp *c)
 			SDE_ERROR("Regdma init dspp op failed for DemuraV2");
 		}
 	}
+#else
+	if (c->cap->sblk->demura.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) {
+		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_DEMURA, c->idx);
+		c->ops.setup_demura_cfg = NULL;
+		c->ops.setup_demura_backlight_cfg = NULL;
+		if (!ret) {
+			c->ops.setup_demura_cfg = reg_dmav1_setup_demurav1;
+			c->ops.setup_demura_backlight_cfg =
+					sde_demura_backlight_cfg;
+			c->ops.demura_read_plane_status =
+					sde_demura_read_plane_status;
+			c->ops.setup_demura_pu_config = sde_demura_pu_cfg;
+		}
+	}
+#endif
 }
 
 static void (*dspp_blocks[SDE_DSPP_MAX])(struct sde_hw_dspp *c);
