@@ -309,11 +309,12 @@ static int _wfd_kms_connector_get_type(WFDDevice dev,
 			WFD_PORT_TYPE);
 
 	switch (port_type) {
-	case WFD_PORT_TYPE_INTERNAL:
 	case WFD_PORT_TYPE_HDMI:
 		connector_type = DRM_MODE_CONNECTOR_HDMIA;
 		snprintf(name, PANEL_NAME_LEN, "%s_%d", "HDMI", port_id);
 		break;
+	/* creates primary display if this is the first internal display */
+	case WFD_PORT_TYPE_INTERNAL:
 	case WFD_PORT_TYPE_DSI:
 		connector_type = DRM_MODE_CONNECTOR_DSI;
 		snprintf(name, PANEL_NAME_LEN, "%s_%d", "DSI", port_id);
