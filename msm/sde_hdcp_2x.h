@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SDE_HDCP_2X_H__
@@ -49,6 +49,7 @@ enum sde_hdcp_2x_wakeup_cmd {
 	HDCP_2X_CMD_MIN_ENC_LEVEL,
 	HDCP_2X_CMD_OPEN_STREAMS,
 	HDCP_2X_CMD_CLOSE_STREAMS,
+	HDCP_2X_CMD_RX_INFO_SUCCESS,
 };
 
 /**
@@ -198,6 +199,8 @@ static inline const char *sde_hdcp_2x_cmd_to_str(
 		return TO_STR(HDCP_2X_CMD_OPEN_STREAMS);
 	case HDCP_2X_CMD_CLOSE_STREAMS:
 		return TO_STR(HDCP_2X_CMD_CLOSE_STREAMS);
+	case HDCP_2X_CMD_RX_INFO_SUCCESS:
+		return TO_STR(HDCP_2X_CMD_RX_INFO_SUCCESS);
 	default:
 		return "UNKNOWN";
 	}
