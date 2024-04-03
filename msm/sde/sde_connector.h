@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1210,22 +1210,22 @@ const char *sde_conn_get_topology_name(struct drm_connector *conn,
 		struct msm_display_topology topology);
 
 /**
- * sde_connector_pre_fps_switch_cmd - pre fps switch cmd transfer operations
+ * sde_connector_pre_switch_cmd - pre switch cmd transfer operations
  * @conn: Pointer to drm_connector struct
  * @flush_sync_window_max_line: flush window max line number
  */
-void sde_connector_pre_fps_switch_cmd(struct drm_connector *connector,
+void sde_connector_pre_switch_cmd(struct drm_connector *connector,
 		u32 flush_sync_window_max_line);
 /**
- * sde_connector_send_fps_switch_cmd - send fps switch command
+ * sde_connector_send_switch_cmd - send switch command
  * @conn: Pointer to drm_connector struct
  */
-void sde_connector_send_fps_switch_cmd(struct drm_connector *connector);
+void sde_connector_send_switch_cmd(struct drm_connector *connector);
 
 /**
- * sde_connector_post_fps_switch_cmd - post fps switch cmd transfer operations
+ * sde_connector_post_switch_cmd - post switch cmd transfer operations
  * @conn: Pointer to drm_connector struct
  */
-void sde_connector_post_fps_switch_cmd(struct drm_connector *connector);
+void sde_connector_post_switch_cmd(struct drm_connector *connector);
 
 #endif /* _SDE_CONNECTOR_H_ */

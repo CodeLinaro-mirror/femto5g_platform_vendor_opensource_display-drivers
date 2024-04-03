@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -96,6 +96,8 @@ static void msm_parse_mode_priv_info(const struct msm_display_mode *msm_mode,
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_POMS_TO_CMD;
 	if (msm_is_mode_seamless_dyn_clk(msm_mode))
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DYN_CLK;
+	if (msm_is_mode_seamless_dms_vid(msm_mode))
+		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS_VID;
 }
 
 void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
@@ -169,6 +171,8 @@ static void dsi_convert_to_msm_mode(const struct dsi_display_mode *dsi_mode,
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_POMS_CMD;
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DYN_CLK;
+	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_VID)
+		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DMS_VID;
 	if (fsc_mode)
 		msm_mode->private_flags |= MSM_MODE_FLAG_FSC_MODE;
 }
@@ -218,7 +222,7 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 
 	if (c_bridge->dsi_mode.dsi_mode_flags &
 		(DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
-		 DSI_MODE_FLAG_DYN_CLK)) {
+		DSI_MODE_FLAG_DMS_VID | DSI_MODE_FLAG_DYN_CLK)) {
 		DSI_DEBUG("[%d] seamless pre-enable\n", c_bridge->id);
 		return;
 	}
@@ -261,7 +265,7 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 
 	if (c_bridge->dsi_mode.dsi_mode_flags &
 			(DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
-			 DSI_MODE_FLAG_DYN_CLK)) {
+			DSI_MODE_FLAG_DMS_VID | DSI_MODE_FLAG_DYN_CLK)) {
 		DSI_DEBUG("[%d] seamless enable\n", c_bridge->id);
 		return;
 	}
@@ -409,6 +413,73 @@ static void dsi_bridge_mode_set(struct drm_bridge *bridge,
 	DSI_DEBUG("clk_rate: %llu\n", c_bridge->dsi_mode.timing.clk_rate_hz);
 }
 
+static int _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
+	struct drm_crtc_state *crtc_state, struct dsi_display *display,
+	struct dsi_display_mode *dsi_mode)
+{
+	int rc = 0;
+	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
+	struct dsi_display_mode cur_dsi_mode;
+	struct sde_connector_state *old_conn_state;
+	struct drm_display_mode *cur_mode;
+
+	if (!bridge->encoder || !bridge->encoder->crtc || !crtc_state->crtc)
+		return 0;
+
+	cur_mode = &crtc_state->crtc->state->mode;
+	old_conn_state = to_sde_connector_state(display->drm_conn->state);
+
+	convert_to_dsi_mode(cur_mode, &cur_dsi_mode, display);
+	msm_parse_mode_priv_info(&old_conn_state->msm_mode, &cur_dsi_mode);
+
+	rc = dsi_display_validate_mode_change(c_bridge->display,
+					&cur_dsi_mode, dsi_mode);
+	if (rc) {
+		DSI_ERR("[%s] seamless mode mismatch failure rc=%d\n",
+			c_bridge->display->name, rc);
+		return rc;
+	}
+
+	/*
+	 * DMS Flag if set during active changed condition cannot be
+	 * treated as seamless. Hence, removing DMS flag in such cases.
+	 */
+	if ((dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) &&
+			crtc_state->active_changed)
+		dsi_mode->dsi_mode_flags &= ~DSI_MODE_FLAG_DMS;
+
+	/* No DMS/VRR when drm pipeline is changing */
+	if (!dsi_display_mode_match(&cur_dsi_mode, dsi_mode,
+		DSI_MODE_MATCH_FULL_TIMINGS) &&
+		(!(dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_VRR)) &&
+		(!(dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) &&
+		(!(dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_VID)) &&
+		(!(dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_CMD)) &&
+		(!crtc_state->active_changed ||
+		 display->is_cont_splash_enabled)) {
+		/* DMS on cmd and video mode use different flag. */
+		if (dsi_mode->panel_mode_caps == DSI_OP_CMD_MODE)
+			dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS;
+		else if (dsi_mode->panel_mode_caps == DSI_OP_VIDEO_MODE)
+			dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS_VID;
+
+		if ((dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_VID) &&
+			(cur_dsi_mode.timing.refresh_rate != dsi_mode->timing.refresh_rate)) {
+			DSI_ERR("[%s] DMS_VID don't support framerate change\n",
+				c_bridge->display->name);
+			return -EINVAL;
+		}
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2,
+			dsi_mode->timing.h_active,
+			dsi_mode->timing.v_active,
+			dsi_mode->timing.refresh_rate,
+			dsi_mode->pixel_clk_khz,
+			dsi_mode->panel_mode_caps);
+	}
+
+	return rc;
+}
+
 static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 				  const struct drm_display_mode *mode,
 				  struct drm_display_mode *adjusted_mode)
@@ -416,10 +487,10 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 	int rc = 0;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 	struct dsi_display *display;
-	struct dsi_display_mode dsi_mode, cur_dsi_mode, *panel_dsi_mode;
+	struct dsi_display_mode dsi_mode, *panel_dsi_mode;
 	struct drm_crtc_state *crtc_state;
 	struct drm_connector_state *drm_conn_state;
-	struct sde_connector_state *conn_state, *old_conn_state;
+	struct sde_connector_state *conn_state;
 	struct msm_sub_mode new_sub_mode;
 
 	crtc_state = container_of(mode, struct drm_crtc_state, mode);
@@ -496,56 +567,16 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 		return false;
 	}
 
-	if (bridge->encoder && bridge->encoder->crtc &&
-			crtc_state->crtc) {
-		const struct drm_display_mode *cur_mode =
-				&crtc_state->crtc->state->mode;
-		old_conn_state = to_sde_connector_state(display->drm_conn->state);
-
-		convert_to_dsi_mode(cur_mode, &cur_dsi_mode, display);
-		msm_parse_mode_priv_info(&old_conn_state->msm_mode, &cur_dsi_mode);
-
-		rc = dsi_display_validate_mode_change(c_bridge->display,
-					&cur_dsi_mode, &dsi_mode);
-		if (rc) {
-			DSI_ERR("[%s] seamless mode mismatch failure rc=%d\n",
-				c_bridge->display->name, rc);
-			return false;
-		}
-
-		/*
-		 * DMS Flag if set during active changed condition cannot be
-		 * treated as seamless. Hence, removing DMS flag in such cases.
-		 */
-		if ((dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DMS) &&
-				crtc_state->active_changed)
-			dsi_mode.dsi_mode_flags &= ~DSI_MODE_FLAG_DMS;
-
-		/* No DMS/VRR when drm pipeline is changing */
-		if (!dsi_display_mode_match(&cur_dsi_mode, &dsi_mode,
-			DSI_MODE_MATCH_FULL_TIMINGS) &&
-			(!(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR)) &&
-			(!(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) &&
-			(!(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_VID)) &&
-			(!(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_CMD)) &&
-			(!crtc_state->active_changed ||
-			 display->is_cont_splash_enabled)) {
-			/* DMS should be enabled on cmd mode panel only. */
-			if (dsi_mode.panel_mode_caps == DSI_OP_CMD_MODE)
-				dsi_mode.dsi_mode_flags |= DSI_MODE_FLAG_DMS;
-
-			SDE_EVT32(SDE_EVTLOG_FUNC_CASE2,
-				dsi_mode.timing.h_active,
-				dsi_mode.timing.v_active,
-				dsi_mode.timing.refresh_rate,
-				dsi_mode.pixel_clk_khz,
-				dsi_mode.panel_mode_caps);
-		}
+	rc = _dsi_bridge_mode_validate_and_fixup(bridge, crtc_state, display, &dsi_mode);
+	if (rc) {
+		DSI_ERR("[%s] failed to validate dsi bridge mode.\n", display->name);
+		return false;
 	}
 
 	/* Reject seamless transition when active changed */
 	if (crtc_state->active_changed &&
 		((dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) ||
+		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DMS_VID) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_VID) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_CMD))) {
@@ -1332,7 +1363,7 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 	display = c_bridge->display;
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 
-	if (adj_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) {
+	if (adj_mode.dsi_mode_flags & (DSI_MODE_FLAG_VRR | DSI_MODE_FLAG_DMS_VID)) {
 		m_ctrl = &display->ctrl[display->clk_master_idx];
 		ctrl_version = m_ctrl->ctrl->version;
 		rc = dsi_ctrl_timing_db_update(m_ctrl->ctrl, false);
@@ -1379,6 +1410,7 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 		}
 
 		c_bridge->dsi_mode.dsi_mode_flags &= ~DSI_MODE_FLAG_VRR;
+		c_bridge->dsi_mode.dsi_mode_flags &= ~DSI_MODE_FLAG_DMS_VID;
 	}
 
 	/* ensure dynamic clk switch flag is reset */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2014 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -81,7 +81,8 @@ static inline bool _msm_seamless_for_crtc(struct drm_atomic_state *state,
 	if (msm_is_mode_seamless(msm_mode) ||
 		msm_is_mode_seamless_vrr(msm_mode) ||
 		msm_is_mode_seamless_poms(msm_mode) ||
-		msm_is_mode_seamless_dyn_clk(msm_mode))
+		msm_is_mode_seamless_dyn_clk(msm_mode) ||
+		msm_is_mode_seamless_dms_vid(msm_mode))
 		return true;
 
 	if (msm_is_mode_seamless_dms(msm_mode) && !enable)
@@ -138,7 +139,8 @@ static inline bool _msm_seamless_for_conn(struct drm_connector *connector,
 	if (msm_is_mode_seamless(msm_mode) ||
 		msm_is_mode_seamless_vrr(msm_mode) ||
 		msm_is_mode_seamless_dyn_clk(msm_mode) ||
-		msm_is_mode_seamless_dms(msm_mode))
+		msm_is_mode_seamless_dms(msm_mode) ||
+		msm_is_mode_seamless_dms_vid(msm_mode))
 		return true;
 
 	return false;
