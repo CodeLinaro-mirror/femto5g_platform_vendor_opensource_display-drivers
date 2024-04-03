@@ -776,9 +776,10 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 			get_dma_buf(dma_bufs[i]);
 		} else {
 			dma_bufs[i] = drm_gem_prime_export(fb->base.obj[i], 0);
-			if (IS_ERR(dma_bufs[i]))
+			if (IS_ERR(dma_bufs[i])) {
 				pr_err("export dma_buf from bo failed\n");
 				return PTR_ERR(dma_bufs[i]);
+			}
 		}
 	}
 	wfd_err = wfdCreateWFDEGLImagesPreAlloc_User(
