@@ -51,6 +51,7 @@
 #include "sde_connector.h"
 #include "dp_drm.h"
 #include "dp_debug.h"
+#include "sde_encoder.h"
 #include "dp_parser.h"
 
 #define DP_MST_DEBUG(fmt, ...) DP_DEBUG(fmt, ##__VA_ARGS__)
@@ -797,6 +798,7 @@ static void dp_mst_bridge_pre_enable(struct drm_bridge *drm_bridge)
 		_dp_mst_bridge_pre_enable_part2(bridge);
 	}
 
+	sde_encoder_set_bridge_enabled(bridge->encoder, true);
 	DP_MST_INFO("conn:%d mode:%s fps:%d dsc:%d vcpi:%d slots:%d to %d\n",
 			DP_MST_CONN_ID(bridge), bridge->drm_mode.name,
 			drm_mode_vrefresh(&bridge->drm_mode),
@@ -915,6 +917,7 @@ static void dp_mst_bridge_post_disable(struct drm_bridge *drm_bridge)
 		DP_MST_INFO("bridge:%d conn:%d display disable failed, rc=%d\n",
 				bridge->id, DP_MST_CONN_ID(bridge), rc);
 
+	sde_encoder_set_bridge_enabled(bridge->encoder, false);
 	rc = dp->unprepare(dp, bridge->dp_panel);
 	if (rc)
 		DP_MST_INFO("bridge:%d conn:%d display unprepare failed, rc=%d\n",
