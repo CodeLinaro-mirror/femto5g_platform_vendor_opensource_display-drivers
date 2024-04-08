@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _MSM_HYP_UTILS_H_
@@ -22,6 +23,12 @@
 #endif
 #ifndef DRM_FORMAT_MOD_QTI_TIGHT
 #define DRM_FORMAT_MOD_QTI_TIGHT fourcc_mod_code(QTI, 4)
+#endif
+#ifndef DRM_FORMAT_MOD_QTI_SECURE
+#define DRM_FORMAT_MOD_QTI_SECURE fourcc_mod_code(QTI, 0x10)
+#endif
+#ifndef DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE
+#define DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE fourcc_mod_code(QTI, 0x20)
 #endif
 
 struct msm_hyp_prop_blob_info {

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/kernel.h>
@@ -270,6 +270,16 @@ static void dsi_pll_calc_dec_frac(struct dsi_pll_5nm *pll,
 	dec = div_u64(dec_multiple, multiplier);
 
 	switch (rsc->pll_revision) {
+	case DSI_PLL_7NM:
+		if (pll_freq > 3020000000ULL)
+			regs->pll_clock_inverters = 0x40;
+		else if (pll_freq > 2500000000ULL)
+			regs->pll_clock_inverters = 0x00;
+		else if (pll_freq > 1100000000ULL)
+			regs->pll_clock_inverters = 0x20;
+		else
+			regs->pll_clock_inverters = 0x28;
+		break;
 	case DSI_PLL_5NM:
 	default:
 		if (pll_freq <= 1000000000ULL)
@@ -369,6 +379,10 @@ static void dsi_pll_config_hzindep_reg(struct dsi_pll_5nm *pll,
 	u64 vco_rate = rsc->vco_current_rate;
 
 	switch (rsc->pll_revision) {
+	case DSI_PLL_7NM:
+		DSI_PLL_REG_W(pll_base, PLL_ANALOG_CONTROLS_FIVE_1, 0x01);
+		DSI_PLL_REG_W(pll_base, PLL_VCO_CONFIG_1, 0x00);
+		break;
 	case DSI_PLL_5NM:
 	default:
 		if (vco_rate < 3100000000ULL)
@@ -410,6 +424,9 @@ static void dsi_pll_config_hzindep_reg(struct dsi_pll_5nm *pll,
 	DSI_PLL_REG_W(pll_base, PLL_IFILT, 0x2a);
 
 	switch (rsc->pll_revision) {
+	case DSI_PLL_7NM:
+		DSI_PLL_REG_W(pll_base, PLL_IFILT, 0x30);
+		break;
 	case DSI_PLL_5NM:
 	default:
 		DSI_PLL_REG_W(pll_base, PLL_IFILT, 0x3F);
@@ -510,7 +527,15 @@ static void dsi_pll_init_val(struct dsi_pll_resource *rsc)
 	DSI_PLL_REG_W(pll_base, PLL_CLOCK_INVERTERS, 0x00000000);
 	DSI_PLL_REG_W(pll_base, PLL_SPARE_AND_JPC_OVERRIDES, 0x00000000);
 
-	DSI_PLL_REG_W(pll_base, PLL_BIAS_CONTROL_1, 0x00000040);
+	switch (rsc->pll_revision) {
+	case DSI_PLL_7NM:
+		DSI_PLL_REG_W(pll_base, PLL_BIAS_CONTROL_1, 0x00000041);
+		break;
+	case DSI_PLL_5NM:
+	default:
+		DSI_PLL_REG_W(pll_base, PLL_BIAS_CONTROL_1, 0x00000040);
+		break;
+	}
 
 	DSI_PLL_REG_W(pll_base, PLL_BIAS_CONTROL_2, 0x00000020);
 	DSI_PLL_REG_W(pll_base, PLL_ALOG_OBSV_BUS_CTRL_1, 0x00000000);

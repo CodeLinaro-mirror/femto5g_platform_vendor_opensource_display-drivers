@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /* Copyright (C) 2014 Red Hat
@@ -138,6 +138,9 @@
 #define MAX_NUM_LIMIT_PAIRS    16
 #define MAX_NUM_STAGES         11
 #define MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT	1088
+#define MAX_IMG_WIDTH 0x3fff
+#define MAX_IMG_HEIGHT 0x3fff
+
 #define POPULATE_RECT(rect, a, b, c, d, Q16_flag) \
 	do {						\
 		(rect)->x = (Q16_flag) ? (a) >> 16 : (a);    \
@@ -145,6 +148,9 @@
 		(rect)->w = (Q16_flag) ? (c) >> 16 : (c);    \
 		(rect)->h = (Q16_flag) ? (d) >> 16 : (d);    \
 	} while (0)
+
+#define CHECK_LAYER_BOUNDS(offset, size, max_size) \
+	(((size) > (max_size)) || ((offset) > ((max_size) - (size))))
 
 struct wfd_kms_rect {
 	u16 x;
@@ -303,11 +309,12 @@ static int _wfd_kms_connector_get_type(WFDDevice dev,
 			WFD_PORT_TYPE);
 
 	switch (port_type) {
-	case WFD_PORT_TYPE_INTERNAL:
 	case WFD_PORT_TYPE_HDMI:
 		connector_type = DRM_MODE_CONNECTOR_HDMIA;
 		snprintf(name, PANEL_NAME_LEN, "%s_%d", "HDMI", port_id);
 		break;
+	/* creates primary display if this is the first internal display */
+	case WFD_PORT_TYPE_INTERNAL:
 	case WFD_PORT_TYPE_DSI:
 		connector_type = DRM_MODE_CONNECTOR_DSI;
 		snprintf(name, PANEL_NAME_LEN, "%s_%d", "DSI", port_id);
@@ -497,7 +504,9 @@ static int _wfd_kms_format_to_openwfd_format(uint32_t format,
 	int i;
 
 	if ((modifier & DRM_FORMAT_MOD_QTI_COMPRESSED) ==
-			DRM_FORMAT_MOD_QTI_COMPRESSED)
+		DRM_FORMAT_MOD_QTI_COMPRESSED ||
+		(modifier & DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE) ==
+		DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE)
 		*wfd_usage = WFD_USAGE_DISPLAY | WFD_USAGE_COMPRESSION;
 	else
 		*wfd_usage = WFD_USAGE_DISPLAY;
@@ -520,11 +529,21 @@ static int _wfd_kms_format_to_openwfd_format(uint32_t format,
 	}
 
 	if (format == DRM_FORMAT_NV12) {
-		if ((modifier & fourcc_mod_code(QTI, 0x7)) ==
-				fourcc_mod_code(QTI, 0x7))
+		if (((modifier & DRM_FORMAT_MOD_QTI_COMPRESSED) ==
+			DRM_FORMAT_MOD_QTI_COMPRESSED &&
+			(modifier & DRM_FORMAT_MOD_QTI_DX) ==
+			DRM_FORMAT_MOD_QTI_DX &&
+			(modifier & DRM_FORMAT_MOD_QTI_TIGHT) ==
+			DRM_FORMAT_MOD_QTI_TIGHT) ||
+			((modifier & DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE) ==
+			DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE &&
+			(modifier & DRM_FORMAT_MOD_QTI_DX) ==
+			DRM_FORMAT_MOD_QTI_DX &&
+			(modifier & DRM_FORMAT_MOD_QTI_TIGHT) ==
+			DRM_FORMAT_MOD_QTI_TIGHT))
 			*wfd_format = WFD_FORMAT_NV12_QC_TP10;
-		else if ((modifier & fourcc_mod_code(QTI, 0x2)) ==
-				fourcc_mod_code(QTI, 0x2))
+		else if ((modifier & DRM_FORMAT_MOD_QTI_DX) ==
+				DRM_FORMAT_MOD_QTI_DX)
 			*wfd_format = WFD_FORMAT_P010;
 		else
 			*wfd_format = WFD_FORMAT_NV12;
@@ -1205,6 +1224,15 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 					SDE_DRM_FB_SEC) ?
 					WFD_SOURCE_TRANSLATION_SECURED :
 					WFD_SOURCE_TRANSLATION_UNSECURED;
+			if ((plane->state->fb->modifier &
+				DRM_FORMAT_MOD_QTI_SECURE) ==
+				DRM_FORMAT_MOD_QTI_SECURE ||
+				(plane->state->fb->modifier &
+				DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE) ==
+				DRM_FORMAT_MOD_QTI_COMPRESSED_SECURE)
+				attrib_list[1] =
+					WFD_SOURCE_TRANSLATION_SECURED;
+
 			fb_priv->wfd_source = wfdCreateSourceFromImage_User(
 					priv->wfd_device,
 					priv->wfd_pipeline,
@@ -1385,6 +1413,61 @@ exit:
 	return ret;
 }
 
+static int _wfd_kms_plane_sspp_atomic_check(struct drm_plane *plane,
+		struct drm_atomic_state *atomic_state)
+{
+	bool q16_data = true;
+	int ret = 0;
+	struct wfd_kms_rect src, dst;
+	struct drm_plane_state *state = NULL;
+	struct drm_framebuffer *fb = NULL;
+	u32 width = 0;
+	u32 height = 0;
+	/* YUV is 2, RGB is 1 */
+	u32 min_src_size = 1;
+
+	state = drm_atomic_get_new_plane_state(atomic_state, plane);
+
+	/* src values are in Q16 fixed point, convert to integer */
+	POPULATE_RECT(&src, state->src_x, state->src_y,
+			state->src_w, state->src_h, q16_data);
+	POPULATE_RECT(&dst, state->crtc_x, state->crtc_y, state->crtc_w,
+			state->crtc_h, !q16_data);
+
+	fb = state->fb;
+	width = fb ? state->fb->width : 0x0;
+	height = fb ? state->fb->height : 0x0;
+
+	pr_debug("plane%d sspp:%x/%dx%d/%4.4s/%llx\n",
+			plane->base.id,
+			state->rotation,
+			width, height,
+			fb ? (char *) &state->fb->format->format : 0x0,
+			fb ? state->fb->modifier : 0x0);
+	pr_debug("src:%dx%d %d,%d crtc:%dx%d+%d+%d\n",
+			state->src_w >> 16, state->src_h >> 16,
+			state->src_x >> 16, state->src_y >> 16,
+			state->crtc_w, state->crtc_h,
+			state->crtc_x, state->crtc_y);
+
+	/* check src bounds */
+	if (width > MAX_IMG_WIDTH || height > MAX_IMG_HEIGHT ||
+			src.w < min_src_size || src.h < min_src_size ||
+			CHECK_LAYER_BOUNDS(src.x, src.w, width) ||
+			CHECK_LAYER_BOUNDS(src.y, src.h, height)) {
+		pr_err("invalid source %u, %u, %ux%u\n",
+			src.x, src.y, src.w, src.h);
+		ret = -EINVAL;
+	/* min dst support */
+	} else if (dst.w < 0x1 || dst.h < 0x1) {
+		pr_err("invalid dest rect %u, %u, %ux%u\n",
+				dst.x, dst.y, dst.w, dst.h);
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
 static int wfd_kms_plane_atomic_check(struct drm_plane *plane,
 		struct drm_atomic_state *atomic_state)
 {
@@ -1402,6 +1485,10 @@ static int wfd_kms_plane_atomic_check(struct drm_plane *plane,
 		goto exit;
 
 	ret = _wfd_kms_plane_rot_atomic_check(plane, atomic_state);
+	if (ret)
+		goto exit;
+
+	ret = _wfd_kms_plane_sspp_atomic_check(plane, atomic_state);
 
 exit:
 	return ret;

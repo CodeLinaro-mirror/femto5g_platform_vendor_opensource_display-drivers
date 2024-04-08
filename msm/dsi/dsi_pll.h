@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __DSI_PLL_H
@@ -62,6 +62,7 @@ struct lpfr_cfg {
 enum {
 	DSI_PLL_4NM,
 	DSI_PLL_5NM,
+	DSI_PLL_7NM,
 	DSI_PLL_10NM,
 	DSI_PLL_14NM,
 	DSI_UNKNOWN_PLL,
