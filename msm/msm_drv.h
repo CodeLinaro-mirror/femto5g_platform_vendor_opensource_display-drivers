@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -40,6 +40,8 @@
 #include <linux/kthread.h>
 #include <linux/version.h>
 #include <linux/delay.h>
+#include <linux/time64.h>
+#include <linux/timekeeping.h>
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
@@ -972,6 +974,18 @@ struct msm_drm_thread {
 	struct kthread_worker worker;
 };
 
+struct msm_drm_init_timestmp {
+	struct timespec64 probe_start;
+	struct timespec64 probe_end;
+	struct timespec64 probe_delta;
+
+	struct timespec64 bind_start;
+	struct timespec64 bind_end;
+	struct timespec64 bind_delta;
+
+	struct timespec64 init_delta;
+};
+
 struct msm_drm_private {
 
 	struct drm_device *dev;
@@ -1105,6 +1119,9 @@ struct msm_drm_private {
 
 	/* flag for initialization status */
 	unsigned int init_comp;
+
+	/* msm drv loading timestamps */
+	struct msm_drm_init_timestmp time_stmp;
 };
 
 /* get struct msm_kms * from drm_device * */

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -559,6 +559,7 @@ enum {
  * @SDE_CTL_UIDLE               CTL supports uidle
  * @SDE_CTL_UNIFIED_DSPP_FLUSH  CTL supports only one flush bit for DSPP
  * @SDE_CTL_HW_FENCE            CTL supports hw fencing
+ * @SDE_CTL_PIPE_ACTIVE         CTL supports fetch pipe resources
  * @SDE_CTL_MAX
  */
 enum {
@@ -569,6 +570,7 @@ enum {
 	SDE_CTL_UIDLE,
 	SDE_CTL_UNIFIED_DSPP_FLUSH,
 	SDE_CTL_HW_FENCE,
+	SDE_CTL_PIPE_ACTIVE,
 	SDE_CTL_MAX
 };
 
