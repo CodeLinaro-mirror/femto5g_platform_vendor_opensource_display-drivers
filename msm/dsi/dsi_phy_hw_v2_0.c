@@ -381,7 +381,7 @@ void dsi_phy_hw_v2_0_clamp_ctrl(struct dsi_phy_hw *phy, bool enable)
 }
 
 void dsi_phy_hw_v2_0_dyn_refresh_config(struct dsi_phy_hw *phy,
-		struct dsi_phy_cfg *cfg, bool is_master, bool is_cphy)
+		struct dsi_phy_cfg *cfg, bool is_master)
 {
 	u32 glbl_tst_cntrl;
 
