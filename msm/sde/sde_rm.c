@@ -297,14 +297,16 @@ void sde_rm_dec_resource_info(struct sde_rm *rm, struct drm_encoder *drm_enc)
 	 * where all displays are not coming up when the resource leak
 	 * is stopped.
 	 */
-	if (!drm_enc && IS_LEMANS_TARGET(sde_kms->catalog->hw_rev))
+	if (!drm_enc && (IS_LEMANS_TARGET(sde_kms->catalog->hw_rev) ||
+		IS_SM8150_TARGET(sde_kms->catalog->hw_rev)))
 		return;
 
 	state = to_sde_rm_priv_state(rm->obj.state);
 
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry(blk, &state->hw_blks[type], list) {
-			if (IS_LEMANS_TARGET(sde_kms->catalog->hw_rev)) {
+			if (IS_LEMANS_TARGET(sde_kms->catalog->hw_rev) ||
+				IS_SM8150_TARGET(sde_kms->catalog->hw_rev)) {
 				if (drm_enc->base.id == blk->enc_id)
 					_sde_rm_dec_resource_info(state,
 							&rm->avail_res, blk);
