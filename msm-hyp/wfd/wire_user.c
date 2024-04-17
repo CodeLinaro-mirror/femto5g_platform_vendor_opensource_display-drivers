@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/habmm.h>
@@ -13,6 +13,7 @@
 #include <linux/atomic.h>
 #include <linux/kthread.h>
 #include <linux/ktime.h>
+#include <uapi/linux/sched/types.h>
 #include "msm_hyp_trace.h"
 #include "wire_user.h"
 #include "wire_format.h"
@@ -45,6 +46,8 @@
 	USER_OS_UTILS_LOG_INFO(			\
 		WIRE_USER_LOG_MODULE_NAME,	\
 		fmt, ##__VA_ARGS__)
+
+#define COMMIT_PACKAGE_HEADER_SIZE (sizeof(struct wire_header) + sizeof(u32))
 
 /*
  * ---------------------------------------------------------------------------
@@ -507,7 +510,7 @@ wire_port_send_recv(
 		}
 
 		size = wire_user_cmd_size[type] + sizeof(struct openwfd_batch_cmd);
-		if (commit->size + size >= commit->alloc_size) {
+		if (commit->size + size + COMMIT_PACKAGE_HEADER_SIZE >= commit->alloc_size) {
 			realloc_size = commit->alloc_size + SZ_4K;
 
 			p = krealloc(commit->packet, realloc_size, GFP_KERNEL);
@@ -555,6 +558,7 @@ wire_user_init(u32 client_id,
 {
 	struct wire_context *ctx;
 	int rc = 0;
+	struct sched_param param;
 
 	wire_user_heap_init();
 
@@ -585,8 +589,28 @@ wire_user_init(u32 client_id,
 		spin_lock_init(&ctx->_event_cb_lock);
 
 		/* create event listener thread */
-		ctx->listener_thread = kthread_run(event_listener, ctx,
+		ctx->listener_thread = kthread_run(event_listener,
+				ctx,
 				"wfd event listener");
+		if (IS_ERR(ctx->listener_thread)) {
+			WIRE_LOG_ERROR("failed to create wfd event listener kthread\n");
+			rc = PTR_ERR(ctx->listener_thread);
+			ctx->listener_thread = NULL;
+			goto fail;
+		}
+
+		/*
+		 * event thread should also run at same priority as commit thread
+		 * because it is handling frame_done events. A lower priority
+		 * event thread and higher priority commit_thread can causes
+		 * frame_pending counters beyond 2. This can lead to commit
+		 * failure at crtc commit level.
+		 */
+		param.sched_priority = 16;
+		rc = sched_setscheduler(ctx->listener_thread, SCHED_FIFO, &param);
+		if (rc)
+			WIRE_LOG_WARNING("wfd event listener thread priority update failed: %d\n",
+				rc);
 
 		INIT_LIST_HEAD(&ctx->_cb_info_ctx);
 	}

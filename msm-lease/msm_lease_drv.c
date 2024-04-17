@@ -855,7 +855,7 @@ static void msm_lease_parse_remain_objs(u32 hw_dev_id)
 	struct drm_connector *connector;
 	struct drm_connector_list_iter conn_iter;
 	struct drm_crtc *crtc;
-	u32 object_ids[MAX_LEASE_OBJECT_COUNT];
+	u32 object_ids[MAX_LEASE_OBJECT_COUNT] = {0};
 	int object_count = 0;
 	const char *name;
 	int count, rc, i;

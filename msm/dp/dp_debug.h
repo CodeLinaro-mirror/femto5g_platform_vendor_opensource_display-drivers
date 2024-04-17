@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -44,7 +44,7 @@
 
 #define DEFAULT_DISCONNECT_DELAY_MS 0
 #define MAX_DISCONNECT_DELAY_MS 10000
-#define DEFAULT_CONNECT_NOTIFICATION_DELAY_MS 150
+#define DEFAULT_CONNECT_NOTIFICATION_DELAY_MS 0
 #define MAX_CONNECT_NOTIFICATION_DELAY_MS 5000
 
 /**

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -897,6 +897,8 @@ static int msm_drm_device_init(struct platform_device *pdev,
 	priv->instance_id = instance_id;
 	pr_debug("sde hardware instance id = %d\n", priv->instance_id);
 
+	ktime_get_ts64(&priv->time_stmp.probe_start);
+
 	ret = sde_power_resource_init(pdev, &priv->phandle);
 	if (ret) {
 		pr_err("sde power resource init failed\n");
@@ -943,6 +945,11 @@ static int msm_drm_component_init(struct device *dev)
 	struct msm_kms *kms = NULL;
 	int ret;
 	struct drm_crtc *crtc;
+  #if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
+	char msg_lt_kpi[128] = {0};
+  #endif
+
+	ktime_get_ts64(&priv->time_stmp.bind_start);
 
 	ret = msm_mdss_init(ddev);
 	if (ret)
@@ -1075,10 +1082,37 @@ static int msm_drm_component_init(struct device *dev)
 
 	drm_kms_helper_poll_init(ddev);
 
+	ktime_get_ts64(&priv->time_stmp.bind_end);
+
+	priv->time_stmp.probe_delta = timespec64_sub(priv->time_stmp.probe_end,
+						priv->time_stmp.probe_start);
+	priv->time_stmp.bind_delta = timespec64_sub(priv->time_stmp.bind_end,
+						priv->time_stmp.bind_start);
+	priv->time_stmp.init_delta = timespec64_sub(priv->time_stmp.bind_end,
+						priv->time_stmp.probe_start);
+
 #if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
 	place_marker("M - DISPLAY Driver Ready");
+	snprintf(msg_lt_kpi, sizeof(msg_lt_kpi), "M - DPU%d probe: %luus",
+		 priv->instance_id,
+		 timespec64_to_ns(&priv->time_stmp.probe_delta) / 1000);
+	place_marker(msg_lt_kpi);
+	snprintf(msg_lt_kpi, sizeof(msg_lt_kpi), "M - DPU%d bind: %luus",
+		 priv->instance_id,
+		 timespec64_to_ns(&priv->time_stmp.bind_delta) / 1000);
+	place_marker(msg_lt_kpi);
+	snprintf(msg_lt_kpi, sizeof(msg_lt_kpi), "M - Display%d done in %lums",
+		 priv->instance_id,
+		 timespec64_to_ns(&priv->time_stmp.init_delta) / 1000000);
+	place_marker(msg_lt_kpi);
 #else
 	pr_info("M - DISPLAY Driver Ready\n");
+	pr_info("M - DPU%d probe: %luus\n", priv->instance_id,
+		 timespec64_to_ns(&priv->time_stmp.probe_delta) / 1000);
+	pr_info("M - DPU%d bind: %luus\n",  priv->instance_id,
+		 timespec64_to_ns(&priv->time_stmp.bind_delta) / 1000);
+	pr_info("M - Display%d done in %lums\n", priv->instance_id,
+		 timespec64_to_ns(&priv->time_stmp.init_delta) / 1000000);
 #endif
 
 	/* Set the flag in the init_complete file in msm_drm sysfs to 1 */
@@ -2114,6 +2148,9 @@ static int add_display_components(struct device *dev,
 	struct device *mdp_dev = NULL;
 	struct device_node *node;
 	int ret;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct drm_device *ddev = platform_get_drvdata(pdev);
+	struct msm_drm_private *priv = ddev->dev_private;
 
 	if (of_device_is_compatible(dev->of_node, "qcom,sde-kms")) {
 		struct device_node *np = dev->of_node;
@@ -2127,7 +2164,8 @@ static int add_display_components(struct device *dev,
 			component_match_add(dev, matchptr, compare_of, node);
 		}
 
-		return 0;
+		ret = 0;
+		goto add_disp_component_end;
 	}
 
 	/*
@@ -2163,6 +2201,9 @@ static int add_display_components(struct device *dev,
 	ret = add_components_mdp(mdp_dev, matchptr);
 	if (ret)
 		of_platform_depopulate(dev);
+
+add_disp_component_end:
+	ktime_get_ts64(&priv->time_stmp.probe_end);
 
 	return ret;
 }

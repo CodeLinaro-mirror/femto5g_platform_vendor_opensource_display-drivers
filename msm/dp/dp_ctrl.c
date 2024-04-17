@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1060,7 +1060,6 @@ static void dp_ctrl_host_deinit(struct dp_ctrl *dp_ctrl)
 
 static void dp_ctrl_send_video(struct dp_ctrl_private *ctrl)
 {
-	reinit_completion(&ctrl->video_comp);
 	ctrl->catalog->state_ctrl(ctrl->catalog, ST_SEND_VIDEO);
 }
 
