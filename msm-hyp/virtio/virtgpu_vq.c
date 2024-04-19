@@ -25,7 +25,7 @@
 
 //TODO chck the usage of resp size
 static int virtio_hab_send_and_recv(uint32_t hab_socket,
-		spinlock_t hab_lock,
+		struct mutex hab_lock,
 		void *req,
 		uint32_t req_size,
 		void *resp,
@@ -36,7 +36,7 @@ static int virtio_hab_send_and_recv(uint32_t hab_socket,
 	uint32_t size = resp_size;
 	uint32_t retry_times = 0;
 
-	spin_lock(&hab_lock);
+	mutex_lock(&hab_lock);
 
 	rc = habmm_socket_send(hab_socket, req, req_size, 0x00);
 	if (rc) {
@@ -75,13 +75,6 @@ retry_recv_packet:
 	if (rc) {
 		if ((rc == -EAGAIN) && (retry_times < MAX_RECV_PACKET_RETRY))
 		{
-			spin_unlock(&hab_lock);
-			/*
-			 * Add this msleep to let watch dog thread can be feed
-			 * need release lock fisrt
-			 */
-			msleep(1);
-			spin_lock(&hab_lock);
 			retry_times++;
 			pr_debug("virtio : recv packet retry %d", retry_times);
 			goto retry_recv_packet;
@@ -92,7 +85,7 @@ retry_recv_packet:
 	if (resp_size != size)
 		pr_err("virtio : somethign wrong in the order of req and resp\n");
 end:
-	spin_unlock(&hab_lock);
+	mutex_unlock(&hab_lock);
 	return rc;
 }
 
@@ -295,7 +288,7 @@ int virtio_gpu_cmd_set_scanout_pic_adjust(struct virtio_kms *kms,
 	req->contrast = cpu_to_le32(contrast);
 	req->brightness = cpu_to_le32(brightness);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			req,
 			sizeof(struct virtio_gpu_set_scanout_pic_adjust),
 			NULL,
@@ -360,7 +353,7 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 	req->r.y = cpu_to_le32(dest_rect.y);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			req,
 			sizeof(struct virtio_gpu_set_scanout_properties),
 			NULL,
@@ -424,7 +417,7 @@ int virtio_gpu_cmd_set_scanout(struct virtio_kms *kms,
 	req->r.y = cpu_to_le32(dst_rect.y);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			req,
 			sizeof(struct virtio_gpu_set_scanout),
 			NULL,
@@ -476,7 +469,7 @@ int virtio_gpu_cmd_resource_create_2D(struct virtio_kms *kms,
 	cmd_p->height = cpu_to_le32(height);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_create_2d),
 			NULL,
@@ -523,7 +516,7 @@ int virtio_gpu_cmd_resource_attach_backing(struct virtio_kms *kms,
 	cmd_p->size = cpu_to_le32(size);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_attach_backing_ext),
 			NULL,
@@ -566,7 +559,7 @@ int virtio_gpu_cmd_resource_detach_backing(struct virtio_kms *kms,
 	cmd_p->resource_id = cpu_to_le32(resource_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_detach_backing),
 			resp,
@@ -614,7 +607,7 @@ int virtio_gpu_cmd_resource_unref(struct virtio_kms *kms,
 	cmd_p->resource_id = cpu_to_le32(resource_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_unref),
 			resp,
@@ -664,7 +657,7 @@ int virtio_gpu_cmd_plane_flush(struct virtio_kms *kms,
 	cmd_p->async_mode = cpu_to_le32(sync);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_plane_flush),
 			sync ? resp : NULL,
@@ -723,7 +716,7 @@ int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 	cmd_p->async_mode = cpu_to_le32(sync);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_scanout_flush),
 			NULL,
@@ -792,7 +785,7 @@ int virtio_gpu_cmd_event_control(struct virtio_kms *kms,
 	cmd_p->enable = cpu_to_le32(enable);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_event_control),
 			NULL,
@@ -848,7 +841,7 @@ int virtio_gpu_cmd_get_edid(struct virtio_kms *kms,
 	cmd_p->scanout = cpu_to_le32(scanout);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_cmd_get_edid),
 			resp,
@@ -954,7 +947,7 @@ int virtio_gpu_cmd_get_display_info(struct virtio_kms *kms)
 	pr_debug("virtio: cmd VIRTIO_GPU_CMD_GET_DISPLAY_INFO\n");
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_ctrl_hdr),
 			resp,
@@ -999,7 +992,7 @@ int virtio_gpu_cmd_get_display_info_ext(struct virtio_kms *kms,
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_display_info_ext),
 			resp,
@@ -1063,7 +1056,7 @@ int virtio_gpu_cmd_get_scanout_attributes(struct virtio_kms *kms,
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_SCANOUT_ATTRIBUTES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_scanout_attributes),
 			resp,
@@ -1121,7 +1114,7 @@ int virtio_gpu_cmd_get_scanout_planes(struct virtio_kms *kms,
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_SCANOUT_PLANES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_scanout_planes),
 			resp,
@@ -1234,7 +1227,7 @@ int virtio_gpu_cmd_get_plane_caps(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_planes_caps),
 			resp,
@@ -1322,7 +1315,7 @@ static int virtio_gpu_cmd_get_event (struct virtio_kms *kms,
 	pr_debug("virtio: cmd VIRTIO_GPU_CMD_WAIT_EVENTS (%d)\n",
 			cmd_p->max_num_events);
 	rc = virtio_hab_send_and_recv_timeout(hab_socket,
-			kms->channel[client_id].hyp_cbchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_EVENTS],
 			cmd_p,
 			sizeof(struct virtio_gpu_wait_events),
 			resp,
@@ -1364,7 +1357,7 @@ int virtio_gpu_cmd_get_plane_properties(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_plane_properties),
 			resp,
@@ -1440,7 +1433,7 @@ int virtio_gpu_cmd_set_resource_info(struct virtio_kms *kms,
 	}
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_set_resource_info),
 			NULL,
@@ -1479,7 +1472,7 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 	cmd_p->resource_id = cpu_to_le32(res_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_set_plane),
 			NULL,
@@ -1517,7 +1510,7 @@ int virtio_gpu_cmd_plane_create(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_create_plane),
 			resp,
@@ -1568,7 +1561,7 @@ int virtio_gpu_cmd_plane_destroy(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_plane_destroy),
 			resp,
@@ -1637,7 +1630,7 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	cmd_p->brightness = cpu_to_le32(prop.brightness);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id].hyp_cmdchl_lock,
+			kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD],
 			cmd_p,
 			sizeof(struct virtio_gpu_set_plane_properties),
 			NULL,
