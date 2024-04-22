@@ -222,6 +222,11 @@ static int wm_display_enable_pixel_pll(struct wm_display_private *display_priv,
 	return 0;
 }
 
+static void wm_display_disable_hdmi_clk(struct wm_display *display)
+{
+	return 0;
+}
+
 static enum drm_mode_status wm_display_mode_valid(struct wm_display *display,
 			const struct drm_display_mode *drm_mode)
 {
@@ -926,6 +931,7 @@ static int wm_display_init_modules(struct wm_display_private *display_priv)
 	display->read_register = wm_display_read_register;
 	display->write_register = wm_display_write_register;
 	display->update_register_bits = wm_display_update_register_bits;
+	display->disable_hdmi_clk = wm_display_disable_hdmi_clk;
 
 	/* Fill the info structure to be passed to sub module during init */
 	display_info.display = &display_priv->display;

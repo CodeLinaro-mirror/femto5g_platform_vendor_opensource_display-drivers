@@ -227,7 +227,7 @@ static void _wm_parse_colorimetry_db(struct wm_hdmi_tx *hdmi, const u8 *db)
 
 	for (i = 0; i < 8; i++)
 		if (BIT(i) & db[2])
-			hdmi->colorimetry |= BIT(i);
+			hdmi->edid_ctrl.colorimetry |= BIT(i);
 }
 
 static void _wm_edid_parse_ext_blk(struct wm_hdmi_tx *hdmi, struct edid *edid)
@@ -306,6 +306,7 @@ static u8 _wm_hdmi_tx_decode_pclk_dc(int pclk)
 			return GROUP_0;
 	}
 }
+
 static u8 _wm_hdmi_tx_decode_pclk(int pclk)
 {
 	switch (pclk) {
@@ -348,6 +349,85 @@ static inline struct wm_hdmi_tx_mpll _wm_hdmi_tx_mpll_fill(u32 bpp, u32 pclk)
 	case 30:
 		return divider_list_dc[_wm_hdmi_tx_decode_pclk_dc(pclk)];
 	}
+}
+
+static inline void _wm_hdmi_tx_phy_rstz(struct wm_hdmi_tx *hdmi)
+{
+       spi_write8(WM_HDMI_MC_PHYRSTZ, BIT(0));
+}
+
+static inline void _wm_hdmi_tx_pause_clk(struct wm_hdmi_tx *hdmi)
+{
+	/** Disable CLK using secure write. */
+	hdmi->display->disable_hdmi_clk(hdmi->display);
+}
+
+static void _wm_hdmi_tx_conf_mode_param(struct wm_hdmi_tx *hdmi)
+{
+	u8 value = BIT(4);
+	struct wm_display_mode *wm_mode;
+
+	wm_mode = &hdmi->display->mode_info;
+
+	if (wm_mode->interlace)
+		value |= 0x3;
+
+	if (wm_mode->h_active_low)
+		value |= BIT(5);
+
+	if (wm_mode->v_active_low)
+		value |= BIT(6);
+
+	if (wm_mode->h_active == 640 &&
+		wm_mode->v_active == 480)
+		value |= BIT(3);
+
+	spi_write8(WM_HDMI_FC_INVIDCONF, value);
+}
+
+static void _wm_hdmi_tx_conf_ctrl_period(struct wm_hdmi_tx *hdmi)
+{
+	spi_write8(WM_HDMI_FC_CTRLDUR, 0x0c);
+	spi_write8(WM_HDMI_FC_EXCTRLDUR, 0x20);
+	spi_write8(WM_HDMI_FC_EXCTRLSPAC, 0x01);
+}
+/* TODO: Check the requirement and configure accordingly
+ * at the later stage of development.
+ * static void _wm_hdmi_tx_conf_mode_param_3d(struct wm_hdmi_tx *hdmi);
+*/
+
+static void _wm_hdmi_tx_set_mode(struct wm_hdmi_tx *hdmi)
+{
+	struct wm_display_mode *mode;
+
+	mode = &hdmi->display->mode_info;
+
+	/* Horizontal Active Pixels. */
+	spi_write8(WM_HDMI_FC_INHACTIV0, mode->h_active & 0xff);
+	spi_write8(WM_HDMI_FC_INHACTIV1, (mode->h_active >> 8) & 0xff);
+	/* Horizontal Blanking,
+	 * H_BLANK = H_FRONT_PORCH + H_SYNC_WIDTH + H_BACK_PORCH
+	 */
+	spi_write8(WM_HDMI_FC_INHBLANK0, mode->hblank & 0xff);
+	spi_write8(WM_HDMI_FC_INHBLANK1, (mode->hblank >> 8) & 0xff);
+	/* Vertical Active Pixels. */
+	spi_write8(WM_HDMI_FC_INVACTIV0, mode->v_active & 0xff);
+	spi_write8(WM_HDMI_FC_INVACTIV1, (mode->v_active >> 8) & 0xff);
+	/* Vertical Blanking,
+	 * V_BLANK = V_FRONT_PORCH + V_SYNC_WIDTH + V_BACK_PORCH
+	 */
+	spi_write8(WM_HDMI_FC_INVBLANK0, mode->vblank & 0xff);
+	spi_write8(WM_HDMI_FC_INVBLANK1, (mode->vblank >> 8) & 0xff);
+	/* Horizontal Front Porch. */
+	spi_write8(WM_HDMI_FC_HSYNCINDELAY0, mode->h_front_porch & 0xff);
+	spi_write8(WM_HDMI_FC_HSYNCINDELAY1, (mode->h_front_porch >> 8) & 0xff);
+	/* Horizontal Sync Width. */
+	spi_write8(WM_HDMI_FC_HSYNCINWIDTH0, mode->h_sync_width & 0xff);
+	spi_write8(WM_HDMI_FC_HSYNCINWIDTH1, (mode->h_sync_width >> 8) & 0xff);
+	/* Vertical Front Porch. */
+	spi_write8(WM_HDMI_FC_VSYNCINDELAY0, mode->v_front_porch & 0xff);
+	/* Vertical Sync Width. */
+	spi_write8(WM_HDMI_FC_VSYNCINWIDTH, mode->v_sync_width & 0xff);
 }
 
 static void _wm_hdmi_tx_conf_phy(struct wm_hdmi_tx *hdmi, u8 bits)
@@ -582,9 +662,8 @@ static int _wm_hdmi_tx_process_hpd_low(struct wm_hdmi_tx *hdmi)
 	 * next HPD HIGH event.
 	 */
 
-	if (hdmi->edid) {
-		kfree(hdmi->edid);
-		hdmi->edid = NULL;
+	if (hdmi->edid_ctrl.edid) {
+		kfree(hdmi->edid_ctrl.edid);
 		_wm_hdmi_tx_reset_edid(hdmi);
 	}
 
@@ -601,7 +680,7 @@ static inline void _wm_hdmi_tx_process_hpd_high(struct wm_hdmi_tx *hdmi)
 	/* Parse extracted E-EDID data to extract discrete infomration,
 	 * such as Audio, Video, HDR, etc.
 	 */
-	_wm_edid_parse_ext_blk(hdmi, (struct edid*)hdmi->edid);
+	_wm_edid_parse_ext_blk(hdmi, (struct edid*)hdmi->edid_ctrl.edid);
 }
 
 static int _wm_hdmi_tx_edid_buff_alloc(struct wm_hdmi_tx *hdmi)
@@ -609,15 +688,15 @@ static int _wm_hdmi_tx_edid_buff_alloc(struct wm_hdmi_tx *hdmi)
 	u8 *new;
 	int num_ext = 0;
 
-	if (hdmi->edid)
-		num_ext = hdmi->edid[0x7e];
+	if (hdmi->edid_ctrl.edid)
+		num_ext = hdmi->edid_ctrl.edid[0x7e];
 
-	new = krealloc(hdmi->edid,
+	new = krealloc(hdmi->edid_ctrl.edid,
 			(num_ext + 1) * EDID_LENGTH,
 			GFP_KERNEL);
 
 	if (new)
-		hdmi->edid = new;
+		hdmi->edid_ctrl.edid = new;
 
 	return num_ext;
 }
@@ -634,7 +713,8 @@ static int _wm_hdmi_tx_read_edid(struct wm_hdmi_tx *hdmi, int *done)
 	count = &hdmi->edid_ctrl.count;
 	retry = &hdmi->edid_ctrl.retry;
 
-	edid = hdmi->edid;
+	edid = hdmi->edid_ctrl.edid;
+
 	stat = hdmi->intr.edid_itr;
 
 	/* Check E-DDC interrupt status.
@@ -705,7 +785,7 @@ static int _wm_hdmi_tx_read_edid(struct wm_hdmi_tx *hdmi, int *done)
 
 error:
 	kfree(edid);
-	hdmi->edid = NULL;
+	hdmi->edid_ctrl.edid = NULL;
 	WM_ERR("Terminating EDID fetch");
 
 	return ret;
@@ -741,21 +821,22 @@ static int _wm_hdmi_tx_init_read_sink_edid(struct wm_hdmi_tx *hdmi)
 {
 	int blk = 0;
 
-	if (!hdmi->edid) {
+	if (!hdmi->edid_ctrl.edid) {
 		goto reserve;
 	} else {
 		/* failsafe to parse fresh E-EDID on each HPD High. */
-		kfree(hdmi->edid);
-		hdmi->edid = NULL;
+		kfree(hdmi->edid_ctrl.edid);
+		hdmi->edid_ctrl.edid = NULL;
 	}
 
 reserve:
 	blk = _wm_hdmi_tx_edid_buff_alloc(hdmi);
-	if (!hdmi->edid) {
+	if (!hdmi->edid_ctrl.edid) {
 		WM_ERR("EDID Memory alloc failed");
 		return -ENOMEM;
 	}
-	memset(hdmi->edid, 0, (blk + 1) * EDID_LENGTH * sizeof(*hdmi->edid));
+	memset(hdmi->edid_ctrl.edid, 0,
+		(blk + 1) * EDID_LENGTH * sizeof(*hdmi->edid_ctrl.edid));
 
 	/* Enable interrupt mask and
 	 * clear any previous edid read recordings.
@@ -1031,6 +1112,87 @@ end:
 	mutex_unlock(&hdmi->lock);
 }
 
+static enum drm_mode_status wm_hdmi_tx_mode_valid(struct wm_hdmi_tx *hdmi,
+				const struct drm_display_mode *drm_mode)
+{
+	/* Only accept modes which satisfy all three below conditions.
+	 *
+	 * Conditions -
+	 * 	1. Not defined in Y420_Video_Data_Block,
+	 * 	2. Progressive Mode,
+	 * 	3. Pixel Clock less than Max. TMDS Clock
+	 *
+	 * and mark rest as invalid.
+	 */
+
+	u8 vic;
+	struct drm_hdmi_info *hdmi_info;
+	struct drm_display_info *info;
+	enum drm_mode_status mode_status = MODE_BAD;
+
+	vic = drm_match_cea_mode(drm_mode);
+	info = &hdmi->display->connector->display_info;
+	hdmi_info = &info->hdmi;
+
+	if ((drm_mode->clock <= info->max_tmds_clock)
+		&& !(drm_mode->flags & DRM_MODE_FLAG_INTERLACE)
+		&& !hdmi_info->y420_vdb_modes[vic])
+		mode_status = MODE_OK;
+
+	WM_DEBUG("[%s] mode is %s", drm_mode->name,
+			(mode_status == MODE_OK) ? "valid" : "invalid");
+
+	return mode_status;
+}
+
+static int wm_hdmi_tx_get_modes(struct wm_hdmi_tx *hdmi,
+			struct drm_connector *connector)
+{
+	int count = 0;
+	struct edid *edid;
+	if (!hdmi || !connector) {
+		WM_ERR("invalid input");
+		return 0;
+	}
+
+	if (!hdmi->edid_ctrl.edid) {
+		WM_ERR("invalid edid");
+		return 0;
+	}
+
+	edid = (struct edid *)(hdmi->edid_ctrl.edid);
+
+	drm_connector_update_edid_property(connector, edid);
+	count = drm_add_edid_modes(connector, edid);
+	_wm_edid_parse_ext_blk(hdmi, edid);
+
+	WM_DEBUG("available hdmi modes: %d", count);
+
+	return count;
+}
+
+static int wm_hdmi_tx_pre_enable(struct wm_hdmi_tx *hdmi)
+{
+	/* Configure the source with required mode
+	 * details.
+	 *
+	 * 1. Configure the Resolution,
+	 * 2. Configure the Mandatory Infoframes,
+	 * 3. (Optional) Configure the Color Space Conversion Matrix.
+	 */
+
+	_wm_hdmi_tx_phy_rstz(hdmi);
+	_wm_hdmi_tx_pause_clk(hdmi);
+	_wm_hdmi_tx_conf_mode_param(hdmi);
+	_wm_hdmi_tx_set_mode(hdmi);
+	_wm_hdmi_tx_conf_ctrl_period(hdmi);
+
+	/* Configure HDMI AVI Infoframe. */
+
+	WM_DEBUG("[OK]");
+	return 0;
+}
+
 static int wm_hdmi_tx_enable(struct wm_hdmi_tx *hdmi)
 {
 	int ret = 0;
@@ -1062,6 +1224,11 @@ static int wm_hdmi_tx_enable(struct wm_hdmi_tx *hdmi)
 	}
 
 	return ret;
+}
+
+static int wm_hdmi_tx_disable(struct wm_hdmi_tx *hdmi)
+{
+	return 0;
 }
 
 static int wm_hdmi_tx_irq_handler(struct wm_hdmi_tx *hdmi, int irq)
@@ -1109,12 +1276,12 @@ struct wm_hdmi_tx *wm_hdmi_tx_init(struct wm_display_info *info)
 	hdmi_tx->dev = info->dev;
 
 	/* assign function pointers. */
-	hdmi_tx->pre_enable = NULL;
+	hdmi_tx->pre_enable = wm_hdmi_tx_pre_enable;
 	hdmi_tx->enable = wm_hdmi_tx_enable;
-	hdmi_tx->disable = NULL;
+	hdmi_tx->disable = wm_hdmi_tx_disable;
 	hdmi_tx->post_disable = NULL;
-	hdmi_tx->get_modes = NULL;
-	hdmi_tx->mode_valid = NULL;
+	hdmi_tx->get_modes = wm_hdmi_tx_get_modes;
+	hdmi_tx->mode_valid = wm_hdmi_tx_mode_valid;
 	hdmi_tx->irq_handler = wm_hdmi_tx_irq_handler;
 
 	mutex_init(&hdmi_tx->lock);
