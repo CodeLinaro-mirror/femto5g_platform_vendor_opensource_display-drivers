@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[sde-hdcp-2x] %s: " fmt, __func__
@@ -34,6 +34,7 @@
 #define LC_SEND_L_PRIME       10
 #define SKE_SEND_EKS          11
 #define REP_SEND_RECV_RX_INFO 12
+#define REP_CONFIG_VERSION    13
 #define REP_SEND_ACK          15
 #define REP_STREAM_MANAGE     16
 #define REP_STREAM_READY      17
@@ -105,6 +106,8 @@ static const char *sde_hdcp_2x_message_name(int msg_id)
 	case SKE_SEND_EKS:          return TO_STR(SKE_SEND_EKS);
 	case REP_SEND_RECV_ID_LIST: return TO_STR(REP_SEND_RECV_ID_LIST);
 	case REP_SEND_RECV_RX_INFO: return TO_STR(REP_SEND_RECV_RX_INFO);
+	case REP_CONFIG_VERSION:    return TO_STR(REP_CONFIG_VERSION);
+	case REP_SEND_ACK:          return TO_STR(REP_SEND_ACK);
 	case REP_STREAM_MANAGE:     return TO_STR(REP_STREAM_MANAGE);
 	case REP_STREAM_READY:      return TO_STR(REP_STREAM_READY);
 	case SKE_SEND_TYPE_ID:      return TO_STR(SKE_SEND_TYPE_ID);
@@ -251,6 +254,9 @@ static void sde_hdcp_2x_wait_for_response(struct sde_hdcp_2x_ctrl *hdcp)
 			hdcp->wait_timeout_ms = HZ * 3;
 		else
 			hdcp->wait_timeout_ms = 0;
+		break;
+	case REP_CONFIG_VERSION:
+		hdcp->wait_timeout_ms = HZ;
 		break;
 	default:
 		hdcp->wait_timeout_ms = 0;
@@ -520,6 +526,8 @@ static void sde_hdcp_2x_send_rx_info(struct sde_hdcp_2x_ctrl *hdcp)
 	cdata.cmd = HDCP_TRANSPORT_CMD_RX_INFO;
 	cdata.buf_len = RXINFO_LENGTH;
 	cdata.buf = hdcp->rx_info;
+
+	hdcp->last_msg = REP_CONFIG_VERSION;
 	sde_hdcp_2x_wakeup_client(hdcp, &cdata);
 }
 
@@ -761,8 +769,10 @@ static void sde_hdcp_2x_msg_recvd(struct sde_hdcp_2x_ctrl *hdcp)
 	if (msg[0] == LC_SEND_L_PRIME && out_msg == LC_INIT)
 		hdcp->resend_lc_init = true;
 
-	if (msg[0] == REP_SEND_RECV_RX_INFO)
+	if (msg[0] == REP_SEND_RECV_RX_INFO) {
 		sde_hdcp_2x_send_rx_info(hdcp);
+		hdcp->last_msg = REP_SEND_RECV_ID_LIST;
+	}
 
 	if (msg[0] == REP_STREAM_READY && out_msg == REP_STREAM_MANAGE)
 		pr_debug("resend %s\n", sde_hdcp_2x_message_name(out_msg));
