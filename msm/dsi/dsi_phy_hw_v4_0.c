@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/math64.h>
@@ -187,7 +187,8 @@ static void dsi_phy_hw_v4_0_lane_settings(struct dsi_phy_hw *phy,
 		 * to the logical data lane 0
 		 */
 		DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(i), 0);
-		DSI_W32(phy, DSIPHY_LNX_PIN_SWAP(i), 0x0);
+		DSI_W32(phy, DSIPHY_LNX_PIN_SWAP(i),
+				(cfg->lane_pnswap >> i) & 0x1);
 	}
 	dsi_phy_hw_v4_0_config_lpcdrx(phy, cfg, true);
 
@@ -206,7 +207,8 @@ static void dsi_phy_hw_v4_0_lane_settings(struct dsi_phy_hw *phy,
 	/* Configure the splitlink clock lane with clk lane settings */
 	if (split_link_enabled) {
 		DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(5), 0x0);
-		DSI_W32(phy, DSIPHY_LNX_PIN_SWAP(5), 0x0);
+		DSI_W32(phy, DSIPHY_LNX_PIN_SWAP(5),
+				(cfg->lane_pnswap >> 5) & 0x1);
 		DSI_W32(phy, DSIPHY_LNX_CFG0(5), cfg->lanecfg.lane[4][0]);
 		DSI_W32(phy, DSIPHY_LNX_CFG1(5), cfg->lanecfg.lane[4][1]);
 		DSI_W32(phy, DSIPHY_LNX_CFG2(5), cfg->lanecfg.lane[4][2]);
