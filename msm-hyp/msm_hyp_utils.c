@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -15,6 +15,7 @@
 #include <drm/drm_plane.h>
 #include <drm/drm_modes.h>
 #include "msm_hyp_utils.h"
+#include "wfd/wfd_kms.h"
 
 void msm_hyp_prop_info_append(
 		struct msm_hyp_prop_blob_info *info,
@@ -240,14 +241,20 @@ static void _msm_hyp_update_edid_name(struct edid *edid, const char *name)
 	uint8_t standard_header[] = {0x00, 0x00, 0x00, 0xFC, 0x00};
 	uint32_t dtd_size = 18;
 	uint32_t header_size = sizeof(standard_header);
+	char edid_name[PANEL_NAME_LEN] = {'\0'};
+
+	if (!name)
+		return;
+
+	snprintf(edid_name, PANEL_NAME_LEN, "%s\n", name);
 
 	/* Fill standard header */
 	memcpy(dtd, standard_header, header_size);
 
 	dtd_size -= header_size;
-	dtd_size = dtd_size < strlen(name) ? dtd_size : strlen(name);
+	dtd_size = min_t(u32, dtd_size, strlen(name));
 
-	memcpy(dtd + header_size, name, dtd_size);
+	memcpy(dtd + header_size, edid_name, dtd_size);
 }
 
 int msm_hyp_connector_init_edid(struct drm_connector *connector,
