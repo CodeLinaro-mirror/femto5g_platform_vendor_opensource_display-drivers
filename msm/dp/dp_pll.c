@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -61,6 +62,7 @@ static int dp_pll_clock_register(struct dp_pll *pll)
 		break;
 	case DP_PLL_4NM_V1:
 		rc = dp_pll_clock_register_4nm(pll);
+		break;
 	case EDP_PLL_5NM:
 		rc = edp_pll_clock_register_5nm(pll);
 		break;

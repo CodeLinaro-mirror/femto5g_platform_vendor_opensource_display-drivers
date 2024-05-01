@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __MMM_COLOR_FMT_INFO_H__
 #define __MMM_COLOR_FMT_INFO_H__
@@ -979,6 +979,7 @@ static inline unsigned int MMM_COLOR_FMT_Y_STRIDE(unsigned int color_fmt,
 	case MMM_COLOR_FMT_P010_512:
 		alignment = 512;
 		stride = MMM_COLOR_FMT_ALIGN(width * 2, alignment);
+		break;
 	default:
 		break;
 	}

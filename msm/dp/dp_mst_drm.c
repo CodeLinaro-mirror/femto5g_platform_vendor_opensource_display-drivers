@@ -654,7 +654,7 @@ static void _dp_mst_bridge_pre_disable_part1(struct dp_mst_bridge *dp_bridge)
 	struct drm_dp_mst_topology_state *mst_state;
 	struct drm_dp_mst_atomic_payload *payload;
 #endif
-	DP_MST_DEBUG_V("enter\n");
+	DP_MST_DEBUG("enter\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, DP_MST_CONN_ID(dp_bridge));
 
 	/* skip mst specific disable operations during suspend */
@@ -2067,16 +2067,16 @@ int dp_mst_init(struct dp_display *dp_display)
  */
 #if ((KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE) && \
 		(KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE))
-	ret = drm_dp_mst_topology_mgr_init(&dp_mst.mst_mgr, dev,
-					dp_mst.caps.drm_aux,
-					dp_mst.caps.max_dpcd_transaction_bytes,
-					dp_mst.caps.max_streams_supported,
+	ret = drm_dp_mst_topology_mgr_init(&dp_mst->mst_mgr, dev,
+					dp_mst->caps.drm_aux,
+					dp_mst->caps.max_dpcd_transaction_bytes,
+					dp_mst->caps.max_streams_supported,
 					4, DP_MAX_LINK_CLK_KHZ, conn_base_id);
 #else
-	ret = drm_dp_mst_topology_mgr_init(&dp_mst.mst_mgr, dev,
-					dp_mst.caps.drm_aux,
-					dp_mst.caps.max_dpcd_transaction_bytes,
-					dp_mst.caps.max_streams_supported,
+	ret = drm_dp_mst_topology_mgr_init(&dp_mst->mst_mgr, dev,
+					dp_mst->caps.drm_aux,
+					dp_mst->caps.max_dpcd_transaction_bytes,
+					dp_mst->caps.max_streams_supported,
 					conn_base_id);
 #endif
 	if (ret) {
