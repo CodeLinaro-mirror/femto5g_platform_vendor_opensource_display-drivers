@@ -4868,7 +4868,8 @@ static int dsi_display_dfps_update(struct dsi_display *display,
 
 	dsi_panel_get_dfps_caps(display->panel, &dfps_caps);
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
-	if (!dfps_caps.dfps_support && !dyn_clk_caps->maintain_const_fps) {
+	if (!dfps_caps.dfps_support && !dyn_clk_caps->maintain_const_fps
+		&& !(dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_VID)) {
 		DSI_ERR("dfps or constant fps not supported\n");
 		return -ENOTSUPP;
 	}
@@ -5152,7 +5153,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 
 	if (mode->dsi_mode_flags &
-			(DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_VRR)) {
+			(DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_VRR
+			| DSI_MODE_FLAG_DMS_VID)) {
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 
@@ -5921,7 +5923,7 @@ static int dsi_display_init(struct dsi_display *display)
 	struct platform_device *pdev = display->pdev;
 
 	mutex_init(&display->display_lock);
-	init_completion(&display->fps_switch_cmd_ready);
+	init_completion(&display->cmd_ready_comp);
 
 	rc = _dsi_display_dev_init(display);
 	if (rc) {
@@ -8698,7 +8700,7 @@ error:
 	return rc;
 }
 
-int dsi_display_send_fps_switch_cmd(struct dsi_display *display)
+int dsi_display_send_switch_cmd(struct dsi_display *display)
 {
 	int rc = 0;
 
@@ -8707,10 +8709,21 @@ int dsi_display_send_fps_switch_cmd(struct dsi_display *display)
 		return -EINVAL;
 	}
 
-	rc = dsi_panel_fps_switch(display->panel);
-	if (rc)
-		DSI_ERR("[%s] failed to send fps switch cmd, rc=%d\n",
-			display->name, rc);
+	if (display->modes->dsi_mode_flags & DSI_MODE_FLAG_VRR) {
+		rc = dsi_panel_fps_switch_nolock(display->panel);
+		if (rc) {
+			DSI_ERR("[%s] failed to send fps switch cmd, rc=%d\n",
+				display->name, rc);
+			return rc;
+		}
+	} else if (display->modes->dsi_mode_flags & DSI_MODE_FLAG_DMS_VID) {
+		rc = dsi_panel_switch_nolock(display->panel);
+		if (rc) {
+			DSI_ERR("[%s] failed to send timing node switch cmd, rc=%d\n",
+				display->name, rc);
+			return rc;
+		}
+	}
 
 	return rc;
 }
