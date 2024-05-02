@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -18,9 +18,12 @@
 #include <linux/delay.h>
 #include <linux/uaccess.h>
 #include <linux/module.h>
+#include <linux/version.h>
 
 #include <soc/qcom/rpmh.h>
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 #include <drm/drm_irq.h>
+#endif
 #include "msm_drv.h"
 #include "sde_rsc_priv.h"
 #include "sde_dbg.h"

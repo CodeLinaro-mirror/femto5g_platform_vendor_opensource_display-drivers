@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -124,7 +124,7 @@ static int _sde_vbif_get_clk_ctrl_status(struct sde_kms *sde_kms, enum sde_clk_c
 	else
 		rc = sde_kms->hw_mdp->ops.get_clk_ctrl_status(sde_kms->hw_mdp, clk_ctrl);
 
-	SDE_DEBUG("split_vbif:%d type:%s status:%d rc:%d\n", has_split_vbif,
+	SDE_DEBUG("split_vbif:%d type:%s rc:%d\n", has_split_vbif,
 			VBIF_CLK_CLIENT_NAME(clk_ctrl), rc);
 
 	return rc;
