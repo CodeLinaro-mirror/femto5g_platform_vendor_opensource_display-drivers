@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -2719,6 +2719,41 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 	return 0;
 }
 
+static void sde_encoder_update_cur_topology_helper(
+			struct sde_encoder_virt *sde_enc, int index)
+{
+	enum sde_enc_split_role new_role = ENC_ROLE_SKIP;
+
+	if (index != 0)
+		return;
+
+	if (sde_enc->mode_info.topology.num_intf !=
+			sde_enc->num_phys_encs) {
+		sde_enc->num_phys_encs =
+			sde_enc->mode_info.topology.num_intf;
+
+		/**
+		 * Update split role when number of intf is changed from 2->1
+		 * or 1->2. Update split_link_en from 2->1 and it's taken care
+		 * in sde_encoder_phys_vid_update_split_role api for 1->2.
+		 */
+		if (sde_enc->num_phys_encs == 1) {
+			new_role = ENC_ROLE_SOLO;
+			sde_enc->phys_encs[index]->hw_intf->cfg.split_link_en = false;
+		} else if (sde_enc->num_phys_encs == 2) {
+			new_role = ENC_ROLE_MASTER;
+			sde_enc->cur_master = sde_enc->phys_encs[index];
+		}
+
+		sde_enc->phys_encs[index]->split_role = new_role;
+
+		SDE_DEBUG_ENC(sde_enc, "hw_intf id %d new_role %d",
+				sde_enc->phys_encs[index]->hw_intf->idx - INTF_0,
+				new_role);
+	} else
+		SDE_DEBUG_ENC(sde_enc, "No update of topo. handling is req'd\n");
+}
+
 static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 				      struct drm_display_mode *mode,
 				      struct drm_display_mode *adj_mode)
@@ -2728,6 +2763,7 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	struct drm_connector *conn;
 	struct sde_connector_state *c_state;
 	struct msm_display_mode *msm_mode;
+	struct sde_encoder_phys *phys = NULL;
 	struct sde_crtc *sde_crtc;
 	int i = 0, ret;
 	int num_lm, num_intf, num_pp_per_intf;
@@ -2809,7 +2845,9 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 
 	/* perform mode_set on phys_encs */
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
-		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+		/* update num_phys_enc and split_role_based on topology info */
+		sde_encoder_update_cur_topology_helper(sde_enc, i);
+		phys = sde_enc->phys_encs[i];
 
 		if (phys) {
 			if (!sde_enc->hw_pp[i * num_pp_per_intf]) {
