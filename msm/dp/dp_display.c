@@ -2366,7 +2366,7 @@ static void dp_display_hpd_check_cb(struct timer_list *t)
 	sec_hpd = dp->hpd->sec_hpd_high;
 
 	if (hpd != sec_hpd) {
-		DP_DEBUG("DP%d Mismatch of the HPD status %d:%d sim %X\n", dp->cell_idx,
+		DP_INFO("DP%d Mismatch of the HPD status %d:%d sim %X\n", dp->cell_idx,
 				hpd, sec_hpd, sim_mode);
 		if (sec_hpd) {
 			/*
