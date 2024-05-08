@@ -4,7 +4,7 @@
  */
 
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
@@ -161,6 +161,7 @@ struct lt9611 {
 	bool bridge_attach;
 	bool pending_edid;
 	bool hpd_trigger;
+	bool notifier_enabled;
 	enum lt9611_fw_upgrade_status fw_status;
 
 	struct msm_ext_disp_audio_edid_blk audio_edid_blk;
@@ -408,11 +409,9 @@ static int hdmi_audio_register_ext_disp(struct lt9611 *pdata)
 		goto end;
 	}
 
-#if defined(CONFIG_MSM_EXT_DISPLAY)
 	rc = msm_ext_disp_register_intf(pdata->ext_pdev, ext);
 	if (rc)
 		pr_err("failed to register ext disp\n");
-#endif
 
 end:
 	return rc;
@@ -447,11 +446,9 @@ static int hdmi_audio_deregister_ext_disp(struct lt9611 *pdata)
 		goto end;
 	}
 
-#if defined(CONFIG_MSM_EXT_DISPLAY)
 	rc = msm_ext_disp_deregister_intf(pdata->ext_pdev, ext);
 	if (rc)
 		pr_err("failed to deregister ext disp\n");
-#endif
 
 end:
 	return rc;
@@ -2080,18 +2077,19 @@ static void lt9611_bridge_enable(struct drm_bridge *bridge)
 	if (pdata->audio_support) {
 		pr_debug("notify audio(%d)\n", EXT_DISPLAY_CABLE_CONNECT);
 		rc = hdmi_audio_register_ext_disp(pdata);
+
 		if (rc) {
 			pr_err("hdmi audio register failed. rc=%d\n", rc);
 			return;
 		}
-#if defined(CONFIG_MSM_EXT_DISPLAY)
+
+		pdata->notifier_enabled = true;
 		pdata->ext_audio_data.intf_ops.audio_config(pdata->ext_pdev,
-				&pdata->ext_audio_data.codec,
-				EXT_DISPLAY_CABLE_CONNECT);
+			&pdata->ext_audio_data.codec,
+			EXT_DISPLAY_CABLE_CONNECT);
 		pdata->ext_audio_data.intf_ops.audio_notify(pdata->ext_pdev,
-				&pdata->ext_audio_data.codec,
-				EXT_DISPLAY_CABLE_CONNECT);
-#endif
+			&pdata->ext_audio_data.codec,
+			EXT_DISPLAY_CABLE_CONNECT);
 	}
 }
 
@@ -2105,15 +2103,21 @@ static void lt9611_bridge_disable(struct drm_bridge *bridge)
 	pr_debug("bridge disable\n");
 
 	pdata = bridge_to_lt9611(bridge);
-	if (pdata->audio_support) {
+	if (pdata->audio_support && pdata->notifier_enabled) {
 		pr_debug("notify audio(%d)\n", EXT_DISPLAY_CABLE_DISCONNECT);
-		pdata->ext_audio_data.intf_ops.audio_notify(pdata->ext_pdev,
-				&pdata->ext_audio_data.codec,
-				EXT_DISPLAY_CABLE_DISCONNECT);
-		pdata->ext_audio_data.intf_ops.audio_config(pdata->ext_pdev,
-				&pdata->ext_audio_data.codec,
-				EXT_DISPLAY_CABLE_DISCONNECT);
+
+		pdata->ext_audio_data.intf_ops.audio_notify(
+			pdata->ext_pdev,
+			&pdata->ext_audio_data.codec,
+			EXT_DISPLAY_CABLE_DISCONNECT);
+
+		pdata->ext_audio_data.intf_ops.audio_config(
+			pdata->ext_pdev,
+			&pdata->ext_audio_data.codec,
+			EXT_DISPLAY_CABLE_DISCONNECT);
+
 		hdmi_audio_deregister_ext_disp(pdata);
+		pdata->notifier_enabled = false;
 	}
 }
 
