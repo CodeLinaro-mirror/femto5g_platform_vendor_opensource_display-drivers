@@ -303,6 +303,7 @@ struct msm_hyp_drm_private {
 	struct blocking_notifier_head component_notifier_list;
 
 	char dev_name_from_dt[DRM_DRI_NAME_SIZE];
+	struct kthread_work commit_thread_priority_work;
 };
 
 void msm_hyp_set_kms(struct drm_device *dev, struct msm_hyp_kms *kms);
