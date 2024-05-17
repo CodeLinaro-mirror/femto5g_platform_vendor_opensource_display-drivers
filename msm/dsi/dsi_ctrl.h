@@ -976,4 +976,11 @@ void dsi_ctrl_transfer_cleanup(struct dsi_ctrl *dsi_ctrl);
  * Return: error code.
  */
 int dsi_ctrl_set_lp2_load(struct dsi_ctrl *dsi_ctrl, bool enable);
+
+/**
+ * dsi_ctrl_flush_cmd_dma_queue() - Wait fot previous command transfer to complete
+ *				and flush any pending post_cmd_transfer works.
+ * @dsi_ctrl:                 DSI controller handle.
+ */
+void dsi_ctrl_flush_cmd_dma_queue(struct dsi_ctrl *dsi_ctrl);
 #endif /* _DSI_CTRL_H_ */
