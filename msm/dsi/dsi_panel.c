@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -4924,6 +4924,30 @@ int dsi_panel_switch(struct dsi_panel *panel)
 	return rc;
 }
 
+int dsi_panel_switch_nolock(struct dsi_panel *panel)
+{
+	int rc = 0;
+
+	if (!panel) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	/**
+	 * In dual DPU sync mode switch with DCS command, command transfer and timing update
+	 * should happen in the same vsync for both DPUs. If panel lock get acquired by
+	 * any other thread, SW synchronization solution does not work. So, the panel lock
+	 * is acquired before starting mode switch operations.
+	 */
+
+	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_TIMING_SWITCH);
+	if (rc)
+		DSI_ERR("[%s] failed to send DSI_CMD_SET_TIMING_SWITCH cmds, rc=%d\n",
+		       panel->name, rc);
+
+	return rc;
+}
+
 int dsi_panel_post_switch(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -4944,7 +4968,7 @@ int dsi_panel_post_switch(struct dsi_panel *panel)
 	return rc;
 }
 
-int dsi_panel_fps_switch(struct dsi_panel *panel)
+int dsi_panel_fps_switch_nolock(struct dsi_panel *panel)
 {
 	int rc = 0;
 

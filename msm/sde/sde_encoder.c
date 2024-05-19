@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -195,7 +195,7 @@ static void sde_encoder_set_flush_window_with_skew(struct drm_encoder *drm_enc,
 				cfg->fixed_skew_offset_line * line_time_in_ns);
 	}
 
-	if (msm_is_mode_seamless_vrr(msm_mode)) {
+	if (msm_is_mode_seamless_vrr(msm_mode) || msm_is_mode_seamless_dms_vid(msm_mode)) {
 		threshold_window_in_ns += MAX_MEM_LATENCY_NS;
 		if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc)) {
 			cfg->flush_sync_window_max_line = frame_time_in_ns - threshold_window_in_ns;
@@ -3259,6 +3259,7 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 	if ((drm_enc->crtc->state->connectors_changed &&
 			sde_encoder_in_clone_mode(drm_enc)) ||
 			!(msm_is_mode_seamless_vrr(msm_mode)
+			|| msm_is_mode_seamless_dms_vid(msm_mode)
 			|| msm_is_mode_seamless_dms(msm_mode)
 			|| msm_is_mode_seamless_dyn_clk(msm_mode)))
 		kthread_init_delayed_work(&sde_enc->delayed_off_work,
@@ -4159,6 +4160,26 @@ static void _sde_encoder_trigger_ipcc_signal(struct sde_encoder_virt *sde_enc)
 			HW_FENCE_IPC_CLIENT_ID_APPS, 0x0);
 }
 
+static void _sde_encoder_dcs_cmd_trigger(struct sde_encoder_virt *sde_enc,
+			bool hw_fence_enabled, struct msm_display_mode *msm_mode)
+{
+	SDE_EVT32(msm_mode->private_flags, SDE_EVTLOG_FUNC_ENTRY);
+	if (hw_fence_enabled && sde_encoder_is_built_in_display(&sde_enc->base) &&
+		sde_encoder_has_dpu_ctl_op_sync(&sde_enc->base) &&
+		(msm_is_mode_seamless_vrr(msm_mode) ||
+		msm_is_mode_seamless_dms_vid(msm_mode))) {
+		if (sde_encoder_phys_has_role_slave_dpu_master_intf(sde_enc->cur_master)) {
+			sde_connector_send_switch_cmd(sde_enc->cur_master->connector);
+			sde_connector_post_switch_cmd(sde_enc->cur_master->connector);
+			SDE_EVT32(msm_mode->private_flags, SDE_EVTLOG_FUNC_CASE1);
+		} else if (sde_encoder_phys_has_role_master_dpu_master_intf(sde_enc->cur_master)) {
+			sde_connector_pre_switch_cmd(sde_enc->cur_master->connector,
+			sde_enc->cur_master->cfg.flush_sync_window_max_line);
+			SDE_EVT32(msm_mode->private_flags, SDE_EVTLOG_FUNC_CASE2);
+		}
+	}
+}
+
 /**
  * _sde_encoder_kickoff_phys - handle physical encoder kickoff
  *	Iterate through the physical encoders and perform consolidated flush
@@ -4200,10 +4221,11 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 
 	if (hw_fence_enabled && sde_encoder_is_built_in_display(&sde_enc->base) &&
 			sde_encoder_has_dpu_ctl_op_sync(&sde_enc->base)) {
-		if (msm_is_mode_seamless_vrr(msm_mode) &&
+		if ((msm_is_mode_seamless_vrr(msm_mode)
+			|| msm_is_mode_seamless_dms_vid(msm_mode)) &&
 				sde_encoder_phys_has_role_slave_dpu_master_intf(
 					sde_enc->cur_master))
-			sde_connector_pre_fps_switch_cmd(sde_enc->cur_master->connector, 0);
+			sde_connector_pre_switch_cmd(sde_enc->cur_master->connector, 0);
 		sde_encoder_phys_in_skewed_flush_window(sde_enc->cur_master);
 	}
 
@@ -4279,17 +4301,9 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 
 	_sde_encoder_trigger_start(sde_enc->cur_master);
 
-	if (hw_fence_enabled && sde_encoder_is_built_in_display(&sde_enc->base) &&
-			sde_encoder_has_dpu_ctl_op_sync(&sde_enc->base) &&
-			msm_is_mode_seamless_vrr(msm_mode)) {
-		if (sde_encoder_phys_has_role_slave_dpu_master_intf(sde_enc->cur_master)) {
-			sde_connector_send_fps_switch_cmd(sde_enc->cur_master->connector);
-			sde_connector_post_fps_switch_cmd(sde_enc->cur_master->connector);
-		} else if (sde_encoder_phys_has_role_master_dpu_master_intf(sde_enc->cur_master)) {
-			sde_connector_pre_fps_switch_cmd(sde_enc->cur_master->connector,
-				sde_enc->cur_master->cfg.flush_sync_window_max_line);
-		}
-	}
+	SDE_ATRACE_BEGIN("mode_switch_dcs_send");
+	_sde_encoder_dcs_cmd_trigger(sde_enc, hw_fence_enabled, msm_mode);
+	SDE_ATRACE_END("mode_switch_dcs_send");
 
 	_sde_encoder_trigger_ipcc_signal(sde_enc);
 

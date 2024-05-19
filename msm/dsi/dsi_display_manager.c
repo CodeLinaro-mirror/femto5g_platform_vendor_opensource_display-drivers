@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -716,7 +716,7 @@ error:
 	return rc;
 }
 
-void dsi_display_mgr_pre_fps_switch_cmd(struct dsi_display *display)
+void dsi_display_mgr_pre_switch_cmd(struct dsi_display *display)
 {
 	struct dsi_display *m_display;
 	struct dsi_display *s_display;
@@ -739,10 +739,10 @@ void dsi_display_mgr_pre_fps_switch_cmd(struct dsi_display *display)
 	if (!m_display || !s_display)
 		goto error;
 
-	rc = wait_for_completion_timeout(&m_display->fps_switch_cmd_ready,
+	rc = wait_for_completion_timeout(&m_display->cmd_ready_comp,
 		msecs_to_jiffies(timeout_in_ms));
 	if (rc == 0)
-		DSI_ERR("Timeout waiting for master display fps switch cmd ready\n");
+		DSI_ERR("Timeout waiting for master display switch cmd ready\n");
 
 	mutex_lock(&m_display->panel->panel_lock);
 	mutex_lock(&s_display->panel->panel_lock);
@@ -758,7 +758,7 @@ error:
 	mutex_unlock(&disp_mgr.disp_mgr_mutex);
 }
 
-void dsi_display_mgr_post_fps_switch_cmd(struct dsi_display *display)
+void dsi_display_mgr_post_switch_cmd(struct dsi_display *display)
 {
 	struct dsi_display *m_display;
 	struct dsi_display *s_display;
@@ -780,7 +780,7 @@ void dsi_display_mgr_post_fps_switch_cmd(struct dsi_display *display)
 	if (!m_display || !s_display)
 		goto error;
 
-	reinit_completion(&m_display->fps_switch_cmd_ready);
+	reinit_completion(&m_display->cmd_ready_comp);
 	m_display->panel->host_config.min_dma_sched_line = 0;
 
 	display_for_each_ctrl(i, m_display) {
@@ -795,7 +795,7 @@ error:
 	mutex_unlock(&disp_mgr.disp_mgr_mutex);
 }
 
-int dsi_display_mgr_send_fps_switch_cmd(struct dsi_display *display)
+int dsi_display_mgr_send_switch_cmd(struct dsi_display *display)
 {
 	int rc = 0;
 	struct dsi_display *m_display;
@@ -818,13 +818,13 @@ int dsi_display_mgr_send_fps_switch_cmd(struct dsi_display *display)
 		goto error;
 	}
 
-	rc = dsi_display_send_fps_switch_cmd(m_display);
+	rc = dsi_display_send_switch_cmd(m_display);
 	if (rc) {
 		DSI_ERR("failed to send fps switch cmd for master display\n");
 		goto error;
 	}
 
-	rc = dsi_display_send_fps_switch_cmd(s_display);
+	rc = dsi_display_send_switch_cmd(s_display);
 	if (rc) {
 		DSI_ERR("failed to send fps switch cmd for slave display\n");
 		goto error;

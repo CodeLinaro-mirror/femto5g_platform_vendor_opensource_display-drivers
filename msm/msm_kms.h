@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -49,6 +49,8 @@
 #define MSM_MODE_FLAG_SEAMLESS_POMS_CMD			(1<<7)
 /* Indicates Field sequential color mode is enabled */
 #define MSM_MODE_FLAG_FSC_MODE				(1<<8)
+/* Request to switch the timing mode on video panel */
+#define MSM_MODE_FLAG_SEAMLESS_DMS_VID			(1<<9)
 
 /* As there are different display controller blocks depending on the
  * snapdragon version, the kms support is split out and the appropriate
@@ -264,6 +266,13 @@ static inline bool msm_is_mode_seamless_dyn_clk(
 					const struct msm_display_mode *mode)
 {
 	return mode ? (mode->private_flags & MSM_MODE_FLAG_SEAMLESS_DYN_CLK)
+		: false;
+}
+
+static inline bool msm_is_mode_seamless_dms_vid(
+					const struct msm_display_mode *mode)
+{
+	return mode ? (mode->private_flags & MSM_MODE_FLAG_SEAMLESS_DMS_VID)
 		: false;
 }
 

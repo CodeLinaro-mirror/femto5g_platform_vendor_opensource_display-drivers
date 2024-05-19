@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DSI_DISPLAY_H_
@@ -198,8 +198,8 @@ struct dsi_display_ext_bridge {
  * @tx_cmd_buf_ndx:   Index to the DSI debugfs TX CMD buffer.
  * @cmd_set:	      Debugfs TX cmd set.
  * @enabled:	      Boolean to indicate display enabled.
- * @fps_switch_cmd_ready:	Completion signal indicating master display is ready to trigger
- *				fps switch command in dual DPU DFPS mode switch.
+ * @cmd_ready_comp:	Completion signal indicating master display is ready to trigger
+ *				mode switch command in dual DPU DFPS mode switch.
  */
 struct dsi_display {
 	struct platform_device *pdev;
@@ -305,7 +305,7 @@ struct dsi_display {
 	struct dsi_panel_cmd_set cmd_set;
 
 	bool enabled;
-	struct completion fps_switch_cmd_ready;
+	struct completion cmd_ready_comp;
 };
 
 int dsi_display_dev_probe(struct platform_device *pdev);
@@ -919,10 +919,10 @@ int dsi_display_phy_pll_toggle(void *priv, bool enable);
 bool is_skip_op_required(struct dsi_display *display);
 
 /**
- * dsi_display_send_fps_switch_cmd() - send fps switch command
+ * dsi_display_send_switch_cmd() - send switch command
  * @display: Handle to display
  *
  * Return: Zero on Success
  */
-int dsi_display_send_fps_switch_cmd(struct dsi_display *display);
+int dsi_display_send_switch_cmd(struct dsi_display *display);
 #endif /* _DSI_DISPLAY_H_ */

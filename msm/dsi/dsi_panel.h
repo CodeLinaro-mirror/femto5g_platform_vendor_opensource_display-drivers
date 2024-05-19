@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -405,9 +405,11 @@ int dsi_panel_switch_video_mode_in(struct dsi_panel *panel);
 
 int dsi_panel_switch(struct dsi_panel *panel);
 
+int dsi_panel_switch_nolock(struct dsi_panel *panel);
+
 int dsi_panel_post_switch(struct dsi_panel *panel);
 
-int dsi_panel_fps_switch(struct dsi_panel *panel);
+int dsi_panel_fps_switch_nolock(struct dsi_panel *panel);
 
 void dsi_dsc_pclk_param_calc(struct msm_display_dsc_info *dsc, int intf_width);
 
