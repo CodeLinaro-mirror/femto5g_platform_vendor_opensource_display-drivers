@@ -1338,10 +1338,10 @@ static void dp_display_host_deinit(struct dp_display_private *dp)
 	}
 
 	dp_display_abort_hdcp(dp, true);
+	disable_irq(dp->irq);
 	dp->ctrl->deinit(dp->ctrl);
 	dp->hpd->host_deinit(dp->hpd, &dp->catalog->hpd);
 	dp->power->deinit(dp->power);
-	disable_irq(dp->irq);
 	dp->aux->state = 0;
 
 	dp_display_state_remove(DP_STATE_INITIALIZED);
