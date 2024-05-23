@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -131,6 +131,23 @@ static void msm_smmu_detach(struct msm_mmu *mmu, const char * const *names,
 	dev_dbg(client->dev, "iommu domain detached\n");
 }
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static int msm_enable_smmu_translations(struct msm_mmu *mmu)
+{
+	struct msm_smmu *smmu = to_msm_smmu(mmu);
+	struct msm_smmu_client *client = msm_smmu_to_client(smmu);
+	int ret = 0;
+
+	if (!client || !client->domain)
+		return -ENODEV;
+
+	ret = qcom_iommu_enable_s1_translation(client->domain);
+	if (ret)
+		DRM_ERROR("enable iommu s1 translations failed:%d\n", ret);
+
+	return ret;
+}
+#else
 static int msm_smmu_set_attribute(struct msm_mmu *mmu,
 		enum iommu_attr attr, void *data)
 {
@@ -147,6 +164,7 @@ static int msm_smmu_set_attribute(struct msm_mmu *mmu,
 
 	return ret;
 }
+#endif
 
 static int msm_smmu_one_to_one_unmap(struct msm_mmu *mmu,
 				uint32_t dest_address, uint32_t size)
@@ -309,7 +327,11 @@ static const struct msm_mmu_funcs funcs = {
 	.unmap_dma_buf = msm_smmu_unmap_dma_buf,
 	.destroy = msm_smmu_destroy,
 	.is_domain_secure = msm_smmu_is_domain_secure,
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+	.enable_smmu_translations = msm_enable_smmu_translations,
+#else
 	.set_attribute = msm_smmu_set_attribute,
+#endif
 	.one_to_one_map = msm_smmu_one_to_one_map,
 	.one_to_one_unmap = msm_smmu_one_to_one_unmap,
 	.get_dev = msm_smmu_get_dev,

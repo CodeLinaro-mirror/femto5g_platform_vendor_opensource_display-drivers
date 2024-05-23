@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -897,8 +898,13 @@ end:
 	return -EINVAL;
 }
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+int dsi_parser_get_named_gpio(const struct device_node *np,
+				const char *propname, int index)
+#else
 int dsi_parser_get_named_gpio(struct device_node *np,
 				const char *propname, int index)
+#endif
 {
 	int gpio = -EINVAL;
 

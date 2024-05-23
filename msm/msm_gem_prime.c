@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -25,8 +26,11 @@
 
 #include <linux/qcom-dma-mapping.h>
 #include <linux/dma-buf.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 #include <linux/ion.h>
 #include <linux/msm_ion.h>
+#endif
 
 struct sg_table *msm_gem_prime_get_sg_table(struct drm_gem_object *obj)
 {
@@ -39,12 +43,24 @@ struct sg_table *msm_gem_prime_get_sg_table(struct drm_gem_object *obj)
 	return drm_prime_pages_to_sg(obj->dev, msm_obj->pages, npages);
 }
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+int msm_gem_prime_vmap(struct drm_gem_object *obj, struct dma_buf_map *map)
+{
+	map->vaddr = msm_gem_get_vaddr(obj);
+	return IS_ERR_OR_NULL(map->vaddr);
+}
+#else
 void *msm_gem_prime_vmap(struct drm_gem_object *obj)
 {
 	return msm_gem_get_vaddr(obj);
 }
+#endif
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+void msm_gem_prime_vunmap(struct drm_gem_object *obj, struct dma_buf_map *map)
+#else
 void msm_gem_prime_vunmap(struct drm_gem_object *obj, void *vaddr)
+#endif
 {
 	msm_gem_put_vaddr(obj);
 }

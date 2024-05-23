@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -8,6 +9,7 @@
 
 #include <linux/of.h>
 #include <linux/of_gpio.h>
+#include <linux/version.h>
 
 #ifdef CONFIG_DSI_PARSER
 void *dsi_parser_get(struct device *dev);
@@ -45,8 +47,13 @@ int dsi_parser_count_strings(const struct device_node *np,
 int dsi_parser_read_string_index(const struct device_node *np,
 				const char *propname,
 				int index, const char **output);
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+int dsi_parser_get_named_gpio(const struct device_node *np,
+				const char *propname, int index);
+#else
 int dsi_parser_get_named_gpio(struct device_node *np,
 				const char *propname, int index);
+#endif
 #else /* CONFIG_DSI_PARSER */
 static inline void *dsi_parser_get(struct device *dev)
 {
@@ -155,11 +162,19 @@ static inline int dsi_parser_read_string_index(const struct device_node *np,
 	return -ENODEV;
 }
 
-static inline int dsi_parser_get_named_gpio(struct device_node *np,
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static inline int dsi_parser_get_named_gpio(const struct device_node *np,
 				const char *propname, int index)
 {
 	return -ENODEV;
 }
+#else
+static inline int dsi_parser_get_named_gpio(struct device_node *np,
+				char *propname, int index)
+{
+	return -ENODEV;
+}
+#endif
 
 #endif /* CONFIG_DSI_PARSER */
 
@@ -201,8 +216,13 @@ struct dsi_parser_utils {
 		const char *propname);
 	int (*count_strings)(const struct device_node *np,
 					const char *propname);
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+	int (*get_named_gpio)(const struct device_node *np,
+				const char *propname, int index);
+#else
 	int (*get_named_gpio)(struct device_node *np,
 				const char *propname, int index);
+#endif
 	int (*get_available_child_count)(const struct device_node *np);
 };
 
