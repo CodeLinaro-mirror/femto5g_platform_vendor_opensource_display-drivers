@@ -39,6 +39,7 @@ enum virtio_gpu_ctrl_type_ext {
 	VIRTIO_GPU_CMD_FULL_FLUSH,
 	VIRTIO_GPU_CMD_EVENT_CONTROL,
 	VIRTIO_GPU_CMD_WAIT_EVENTS,
+	VIRTIO_GPU_CMD_GET_DEVICE_INFO,
 
 	VIRTIO_GPU_RESP_EXTENTION_START = 0x1300,
 	VIRTIO_GPU_RESP_ERR_UNSUPPORTED_COMMAND,
@@ -59,6 +60,7 @@ enum virtio_gpu_ctrl_type_ext {
 	VIRTIO_GPU_RESP_OK_FULL_FLUSH,
 	VIRTIO_GPU_RESP_OK_WAIT_FOR_EVENTS,
 	VIRTIO_GPU_RESP_OK_SET_PIC_ADJUST,
+	VIRTIO_GPU_RESP_OK_DEVICE_INFO,
 	VIRTIO_GPU_RESP_EXTENTION_END
 
 };
@@ -120,6 +122,17 @@ struct virtio_gpu_resp_display_info_ext {
 		__le32 enabled;
 		__le32 flags;
 	} pmodes[VIRTIO_GPU_MAX_MODES];
+	__le32 padding;
+};
+
+struct virtio_gpu_resp_device_info {
+	struct virtio_gpu_ctrl_hdr hdr;
+	struct virtio_gpu_device_info {
+		__le32 qseed_type;
+		__le32 max_mdp_clk;
+		__le32 has_src_split;
+		__le32 device_version;
+	} device_info;
 	__le32 padding;
 };
 
