@@ -1146,6 +1146,13 @@ static const struct drm_gem_object_funcs msm_gem_object_funcs = {
 };
 #endif
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static int msm_gem_new_impl(struct drm_device *dev,
+		uint32_t size, uint32_t flags,
+		struct dma_resv *resv,
+		struct drm_gem_object **obj)
+{
+#else
 static int msm_gem_new_impl(struct drm_device *dev,
 		uint32_t size, uint32_t flags,
 		struct dma_resv *resv,
@@ -1153,6 +1160,7 @@ static int msm_gem_new_impl(struct drm_device *dev,
 		bool struct_mutex_locked)
 {
 	struct msm_drm_private *priv = dev->dev_private;
+#endif
 	struct msm_gem_object *msm_obj;
 
 	switch (flags & MSM_BO_CACHE_MASK) {
@@ -1192,10 +1200,11 @@ static int msm_gem_new_impl(struct drm_device *dev,
 	msm_obj->in_active_list = false;
 	msm_obj->obj_dirty = false;
 
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 	mutex_lock(&priv->mm_lock);
 	list_add_tail(&msm_obj->mm_list, &priv->inactive_list);
 	mutex_unlock(&priv->mm_lock);
-
+#endif
 	*obj = &msm_obj->base;
 #if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 	(*obj)->funcs = &msm_gem_object_funcs;
@@ -1204,10 +1213,15 @@ static int msm_gem_new_impl(struct drm_device *dev,
 	return 0;
 }
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+struct drm_gem_object *msm_gem_new(struct drm_device *dev, uint32_t size, uint32_t flags)
+#else
 static struct drm_gem_object *_msm_gem_new(struct drm_device *dev,
 		uint32_t size, uint32_t flags, bool struct_mutex_locked)
+#endif
 {
 	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_gem_object *msm_obj;
 	struct drm_gem_object *obj = NULL;
 	bool use_vram = false;
 	int ret;
@@ -1228,14 +1242,19 @@ static struct drm_gem_object *_msm_gem_new(struct drm_device *dev,
 	if (size == 0)
 		return ERR_PTR(-EINVAL);
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+	ret = msm_gem_new_impl(dev, size, flags, NULL, &obj);
+#else
 	ret = msm_gem_new_impl(dev, size, flags, NULL, &obj, struct_mutex_locked);
+#endif
 	if (ret)
 		goto fail;
+
+	msm_obj = to_msm_bo(obj);
 
 	if (use_vram) {
 		struct msm_gem_vma *vma;
 		struct page **pages;
-		struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
 		mutex_lock(&msm_obj->lock);
 
@@ -1263,6 +1282,12 @@ static struct drm_gem_object *_msm_gem_new(struct drm_device *dev,
 			goto fail;
 	}
 
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+	mutex_lock(&dev->struct_mutex);
+	list_add_tail(&msm_obj->mm_list, &priv->inactive_list);
+	mutex_unlock(&dev->struct_mutex);
+#endif
+
 	return obj;
 
 fail:
@@ -1270,6 +1295,7 @@ fail:
 	return ERR_PTR(ret);
 }
 
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 struct drm_gem_object *msm_gem_new_locked(struct drm_device *dev,
 		uint32_t size, uint32_t flags)
 {
@@ -1281,6 +1307,7 @@ struct drm_gem_object *msm_gem_new(struct drm_device *dev,
 {
 	return _msm_gem_new(dev, size, flags, false);
 }
+#endif
 
 int msm_gem_delayed_import(struct drm_gem_object *obj)
 {
@@ -1328,6 +1355,9 @@ fail_import:
 struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 		struct dma_buf *dmabuf, struct sg_table *sgt)
 {
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+	struct msm_drm_private *priv = dev->dev_private;
+#endif
 	struct msm_gem_object *msm_obj;
 	struct drm_gem_object *obj = NULL;
 	uint32_t size;
@@ -1336,8 +1366,11 @@ struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 
 	size = PAGE_ALIGN(dmabuf->size);
 
-	ret = msm_gem_new_impl(dev, size, MSM_BO_WC, dmabuf->resv, &obj,
-			false);
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+	ret = msm_gem_new_impl(dev, size, MSM_BO_WC, dmabuf->resv, &obj);
+#else
+	ret = msm_gem_new_impl(dev, size, MSM_BO_WC, dmabuf->resv, &obj, false);
+#endif
 	if (ret)
 		goto fail;
 
@@ -1372,6 +1405,13 @@ struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 	}
 
 	mutex_unlock(&msm_obj->lock);
+
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+	mutex_lock(&dev->struct_mutex);
+	list_add_tail(&msm_obj->mm_list, &priv->inactive_list);
+	mutex_unlock(&dev->struct_mutex);
+#endif
+
 	return obj;
 
 fail:
@@ -1379,6 +1419,7 @@ fail:
 	return ERR_PTR(ret);
 }
 
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 static void *_msm_gem_kernel_new(struct drm_device *dev, uint32_t size,
 		uint32_t flags, struct msm_gem_address_space *aspace,
 		struct drm_gem_object **bo, uint64_t *iova, bool locked)
@@ -1445,6 +1486,7 @@ void msm_gem_kernel_put(struct drm_gem_object *bo,
 	else
 		drm_gem_object_put(bo);
 }
+#endif
 
 void msm_gem_object_set_name(struct drm_gem_object *bo, const char *fmt, ...)
 {
