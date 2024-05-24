@@ -42,13 +42,15 @@
 #include <linux/kthread.h>
 #include <uapi/linux/sched/types.h>
 #include <drm/drm_of.h>
-#include <drm/drm_irq.h>
 #include <drm/drm_ioctl.h>
 #include <drm/drm_vblank.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_auth.h>
 #include <drm/drm_probe_helper.h>
 #include <linux/version.h>
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
+#include <drm/drm_irq.h>
+#endif
 
 #include "msm_drv.h"
 #include "msm_gem.h"
@@ -363,6 +365,88 @@ u32 msm_readl(const void __iomem *addr)
 	return val;
 }
 
+static irqreturn_t msm_irq(int irq, void *arg)
+{
+	struct drm_device *dev = arg;
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_kms *kms = priv->kms;
+
+	BUG_ON(!kms);
+
+	return kms->funcs->irq(kms);
+}
+
+static void msm_irq_preinstall(struct drm_device *dev)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_kms *kms = priv->kms;
+
+	BUG_ON(!kms);
+
+	kms->funcs->irq_preinstall(kms);
+}
+
+static int msm_irq_postinstall(struct drm_device *dev)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_kms *kms = priv->kms;
+
+	BUG_ON(!kms);
+
+	if (kms->funcs->irq_postinstall)
+		return kms->funcs->irq_postinstall(kms);
+
+	return 0;
+}
+
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+static int msm_irq_install(struct drm_device *dev, unsigned int irq)
+{
+	int ret;
+
+	if (irq == IRQ_NOTCONNECTED)
+		return -ENOTCONN;
+
+	msm_irq_preinstall(dev);
+
+	ret = request_irq(irq, msm_irq, 0, dev->driver->name, dev);
+	if (ret)
+		return ret;
+
+	ret = msm_irq_postinstall(dev);
+	if (ret) {
+		free_irq(irq, dev);
+		return ret;
+	}
+
+	return 0;
+}
+
+static void msm_irq_uninstall(struct drm_device *dev)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_kms *kms = priv->kms;
+
+	kms->funcs->irq_uninstall(kms);
+	free_irq(kms->irq, dev);
+}
+#else
+static void msm_irq_uninstall(struct drm_device *dev)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_kms *kms = priv->kms;
+
+	BUG_ON(!kms);
+	kms->funcs->irq_uninstall(kms);
+}
+
+static const struct vm_operations_struct vm_ops = {
+	.fault = msm_gem_fault,
+	.open = drm_gem_vm_open,
+	.close = drm_gem_vm_close,
+};
+#endif
+
 int msm_get_src_bpc(int chroma_format,
 	int bpc)
 {
@@ -430,7 +514,11 @@ static int msm_drm_uninit(struct device *dev)
 		msm_fbdev_free(ddev);
 #endif
 	drm_atomic_helper_shutdown(ddev);
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+	msm_irq_uninstall(ddev);
+#else
 	drm_irq_uninstall(ddev);
+#endif
 
 	if (kms && kms->funcs) {
 		kms->funcs->destroy(kms);
@@ -871,7 +959,11 @@ static int msm_drm_component_init(struct device *dev)
 
 	if (kms) {
 		pm_runtime_get_sync(dev);
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
+		ret = msm_irq_install(ddev, platform_get_irq(pdev, 0));
+#else
 		ret = drm_irq_install(ddev, platform_get_irq(pdev, 0));
+#endif
 		pm_runtime_put_sync(dev);
 		if (ret < 0) {
 			dev_err(dev, "failed to install IRQ handler\n");
@@ -1107,43 +1199,6 @@ static void msm_lastclose(struct drm_device *dev)
 
 	if (kms->funcs && kms->funcs->lastclose)
 		kms->funcs->lastclose(kms);
-}
-
-static irqreturn_t msm_irq(int irq, void *arg)
-{
-	struct drm_device *dev = arg;
-	struct msm_drm_private *priv = dev->dev_private;
-	struct msm_kms *kms = priv->kms;
-	BUG_ON(!kms);
-	return kms->funcs->irq(kms);
-}
-
-static void msm_irq_preinstall(struct drm_device *dev)
-{
-	struct msm_drm_private *priv = dev->dev_private;
-	struct msm_kms *kms = priv->kms;
-	BUG_ON(!kms);
-	kms->funcs->irq_preinstall(kms);
-}
-
-static int msm_irq_postinstall(struct drm_device *dev)
-{
-	struct msm_drm_private *priv = dev->dev_private;
-	struct msm_kms *kms = priv->kms;
-	BUG_ON(!kms);
-
-	if (kms->funcs->irq_postinstall)
-		return kms->funcs->irq_postinstall(kms);
-
-	return 0;
-}
-
-static void msm_irq_uninstall(struct drm_device *dev)
-{
-	struct msm_drm_private *priv = dev->dev_private;
-	struct msm_kms *kms = priv->kms;
-	BUG_ON(!kms);
-	kms->funcs->irq_uninstall(kms);
 }
 
 /*
@@ -1769,6 +1824,10 @@ static struct drm_driver msm_driver = {
 	.postclose          = msm_postclose,
 	.lastclose          = msm_lastclose,
 #if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
+	.irq_handler        = msm_irq,
+	.irq_preinstall     = msm_irq_preinstall,
+	.irq_postinstall    = msm_irq_postinstall,
+	.irq_uninstall      = msm_irq_uninstall,
 	.gem_free_object_unlocked    = msm_gem_free_object,
 	.gem_vm_ops         = &vm_ops,
 	.gem_prime_export   = drm_gem_prime_export,
