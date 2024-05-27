@@ -223,8 +223,12 @@ int msm_gem_mmap_obj(struct drm_gem_object *obj,
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
+#if (KERNEL_VERSION(6, 1, 25) > LINUX_VERSION_CODE)
 	vma->vm_flags &= ~VM_PFNMAP;
 	vma->vm_flags |= VM_MIXEDMAP;
+#else
+	vm_flags_mod(vma, VM_MIXEDMAP, VM_PFNMAP);
+#endif
 
 	if (msm_obj->flags & MSM_BO_WC) {
 		vma->vm_page_prot = pgprot_writecombine(vm_get_page_prot(vma->vm_flags));
@@ -960,6 +964,7 @@ int msm_gem_cpu_fini(struct drm_gem_object *obj)
 }
 
 #ifdef CONFIG_DEBUG_FS
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 static void describe_fence(struct dma_fence *fence, const char *type,
 		struct seq_file *m)
 {
@@ -1050,6 +1055,7 @@ void msm_gem_describe_objects(struct list_head *list, struct seq_file *m)
 
 	seq_printf(m, "Total %d objects, %zu bytes\n", count, size);
 }
+#endif
 #endif
 
 /* don't call directly!  Use drm_gem_object_put() and friends */
@@ -1363,12 +1369,13 @@ struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 {
 #if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 	struct msm_drm_private *priv = dev->dev_private;
+#else
+	unsigned long flags = 0;
 #endif
 	struct msm_gem_object *msm_obj;
 	struct drm_gem_object *obj = NULL;
 	uint32_t size;
 	int ret;
-	unsigned long flags = 0;
 
 	size = PAGE_ALIGN(dmabuf->size);
 
@@ -1397,7 +1404,7 @@ struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 	 *      will be NULL upon gem obj creation.
 	 */
 	msm_obj->flags |= MSM_BO_EXTBUF;
-
+#if (KERNEL_VERSION(5, 10, 0) >= LINUX_VERSION_CODE)
 	/*
 	 * For all uncached buffers, there is no need to perform cache
 	 * maintenance on dma map/unmap time.
@@ -1409,7 +1416,7 @@ struct drm_gem_object *msm_gem_import(struct drm_device *dev,
 		DRM_DEBUG("Buffer is uncached type\n");
 		msm_obj->flags |= MSM_BO_SKIPSYNC;
 	}
-
+#endif
 	mutex_unlock(&msm_obj->lock);
 
 #if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
@@ -1575,3 +1582,7 @@ exit:
 
 	return ret;
 }
+
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+MODULE_IMPORT_NS(DMA_BUF);
+#endif

@@ -3586,7 +3586,7 @@ static int sde_cache_parse_dt(struct device_node *np,
 			sc_cfg[SDE_SYS_CACHE_DISP].llcc_slice_size);
 		llcc_slice_putd(slice);
 	} else {
-		slice = llcc_slice_getd(LLCC_DISLFT);
+		slice = llcc_slice_getd(LLCC_DISPLFT);
 		if (IS_ERR_OR_NULL(slice)) {
 			SDE_ERROR("failed to get disp left system cache %ld\n",
 				PTR_ERR(slice));
@@ -3601,7 +3601,7 @@ static int sde_cache_parse_dt(struct device_node *np,
 			sc_cfg[SDE_SYS_CACHE_DISP_LEFT].llcc_slice_size);
 		llcc_slice_putd(slice);
 
-		slice = llcc_slice_getd(LLCC_DISRGHT);
+		slice = llcc_slice_getd(LLCC_DISPRGHT);
 		if (IS_ERR_OR_NULL(slice)) {
 			SDE_ERROR("failed to get disp right system cache %ld\n",
 				PTR_ERR(slice));

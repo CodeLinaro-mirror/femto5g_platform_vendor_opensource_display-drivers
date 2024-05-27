@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -77,6 +77,14 @@ enum sde_format_flags {
 	(test_bit(SDE_FORMAT_FLAG_FP16_BIT, (X)->flag))
 #define SDE_FORMAT_IS_CAC_FETCH(X) \
 	(test_bit(SDE_FORMAT_FLAG_CAC_BIT, (X)->flag))
+
+#ifdef CONFIG_LLCC_DISP_LR
+	#define LLCC_DISPLFT  LLCC_DISLFT
+	#define LLCC_DISPRGHT LLCC_DISRGHT
+#else
+	#define LLCC_DISPLFT  LLCC_DISP
+	#define LLCC_DISPRGHT LLCC_DISP
+#endif
 
 #define MDP_TICK_COUNT                    16
 #define XO_CLK_RATE                       19200

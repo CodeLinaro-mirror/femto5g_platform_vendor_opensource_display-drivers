@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -39,6 +40,7 @@ static const struct drm_framebuffer_funcs msm_framebuffer_funcs = {
 };
 
 #ifdef CONFIG_DEBUG_FS
+#if (KERNEL_VERSION(5, 15, 0) > LINUX_VERSION_CODE)
 void msm_framebuffer_describe(struct drm_framebuffer *fb, struct seq_file *m)
 {
 	struct msm_framebuffer *msm_fb;
@@ -61,6 +63,7 @@ void msm_framebuffer_describe(struct drm_framebuffer *fb, struct seq_file *m)
 		msm_gem_describe(fb->obj[i], m);
 	}
 }
+#endif
 #endif
 
 void msm_framebuffer_set_keepattrs(struct drm_framebuffer *fb, bool enable)
