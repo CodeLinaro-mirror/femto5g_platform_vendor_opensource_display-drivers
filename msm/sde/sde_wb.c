@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -8,6 +8,7 @@
 
 #include <drm/sde_drm.h>
 #include <drm/drm_probe_helper.h>
+#include <drm/drm_edid.h>
 
 #include "msm_kms.h"
 #include "sde_kms.h"
