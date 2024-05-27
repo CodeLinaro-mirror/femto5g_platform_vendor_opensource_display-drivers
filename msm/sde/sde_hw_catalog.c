@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -10,6 +10,7 @@
 #include <linux/platform_device.h>
 #include <linux/soc/qcom/llcc-qcom.h>
 #include <linux/pm_qos.h>
+#include <soc/qcom/of_common.h>
 
 #include "sde_hw_mdss.h"
 #include "sde_hw_catalog.h"

@@ -28,6 +28,7 @@
 #include <drm/drm_flip_work.h>
 #include <linux/version.h>
 #include <linux/file.h>
+#include <soc/qcom/of_common.h>
 
 #include "sde_kms.h"
 #include "sde_hw_lm.h"

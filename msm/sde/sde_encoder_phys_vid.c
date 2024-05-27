@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -356,7 +356,8 @@ static void skewed_vsync_config(struct sde_encoder_phys *phys_enc,
 
 	SDE_DEBUG_VIDENC(vid_enc,
 		 "skewed_vsync offset_line curr: %d old: %d is set to: %u skew en: %d\n",
-		 cfg->skew_offset_line, cfg->fixed_skew_offset_line, cfg->skew_intf_offset_en);
+		 cfg->skew_offset_line, cfg->fixed_skew_offset_line, cfg->fps,
+		 cfg->skew_intf_offset_en);
 	SDE_EVT32_VERBOSE(cfg->skew_offset_line, cfg->fixed_skew_offset_line,
 			cfg->skew_intf_offset_en,
 			cfg->fps, cfg->vtotal, vtotal);

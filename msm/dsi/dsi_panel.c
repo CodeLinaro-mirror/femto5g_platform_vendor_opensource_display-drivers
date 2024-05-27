@@ -729,7 +729,11 @@ static int dsi_panel_pwm_register(struct dsi_panel *panel)
 	int rc = 0;
 	struct dsi_backlight_config *bl = &panel->bl_config;
 
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+	bl->pwm_bl = devm_pwm_get(panel->parent, NULL);
+#else
 	bl->pwm_bl = devm_of_pwm_get(panel->parent, panel->panel_of_node, NULL);
+#endif
 	if (IS_ERR_OR_NULL(bl->pwm_bl)) {
 		rc = PTR_ERR(bl->pwm_bl);
 		DSI_ERR("[%s] failed to request pwm, rc=%d\n", panel->name,
@@ -826,13 +830,6 @@ error:
 	return rc;
 }
 
-static void dsi_panel_pwm_unregister(struct dsi_panel *panel)
-{
-	struct dsi_backlight_config *bl = &panel->bl_config;
-
-	devm_pwm_put(panel->parent, bl->pwm_bl);
-}
-
 static int dsi_panel_bl_unregister(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -849,7 +846,6 @@ static int dsi_panel_bl_unregister(struct dsi_panel *panel)
 	case DSI_BACKLIGHT_EXTERNAL:
 		break;
 	case DSI_BACKLIGHT_PWM:
-		dsi_panel_pwm_unregister(panel);
 		break;
 	default:
 		DSI_ERR("Backlight type(%d) not supported\n", bl->type);
@@ -1375,7 +1371,7 @@ static int dsi_panel_parse_avr_caps(struct dsi_panel *panel,
 		return rc;
 	} else if (val > 1 && val != panel->dfps_caps.dfps_list_len) {
 		DSI_ERR("[%s] avr step list size %d not same as dfps list %d\n",
-				val, panel->dfps_caps.dfps_list_len);
+				panel->name, val, panel->dfps_caps.dfps_list_len);
 		return -EINVAL;
 	}
 
