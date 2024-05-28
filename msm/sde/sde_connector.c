@@ -1054,10 +1054,12 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		return -EINVAL;
 	}
 
-	display = _sde_connector_get_display(c_conn);
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		display = _sde_connector_get_display(c_conn);
+		if (!display)
+			return -EINVAL;
+	}
 
-	if (!display)
-		return -EINVAL;
 	/*
 	 * During pre kickoff DCS commands have to have an
 	 * asynchronous wait to avoid an unnecessary stall

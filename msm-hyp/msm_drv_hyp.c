@@ -352,6 +352,22 @@ static int _msm_hyp_mode_create_properties(struct drm_device *ddev)
 	return 0;
 }
 
+static int _msm_hyp_object_property_get_prop_value(struct drm_mode_object *obj,
+						struct drm_property *property,
+						uint64_t *val)
+{
+	int i;
+
+	for (i = 0; i < obj->properties->count; i++) {
+		if (obj->properties->properties[i] == property) {
+			*val = obj->properties->values[i];
+			return 0;
+		}
+	}
+
+	return -EINVAL;
+}
+
 static int msm_hyp_backlight_device_update_status(struct backlight_device *bd)
 {
 	return 0;
@@ -1130,17 +1146,38 @@ static void msm_hyp_plane_destroy_state(
 
 static void msm_hyp_plane_reset(struct drm_plane *plane)
 {
+	struct drm_device *ddev;
+	struct msm_hyp_drm_private *priv;
+	uint64_t val;
+
 	struct msm_hyp_plane_state *p_state =
 		kzalloc(sizeof(*p_state), GFP_KERNEL);
 
 	if (!p_state)
 		return;
 
+	ddev = plane->dev;
+	priv = ddev->dev_private;
+
 	if (plane->state)
 		msm_hyp_plane_destroy_state(plane,
 				plane->state);
 
 	__drm_atomic_helper_plane_reset(plane, &p_state->base);
+
+	if (priv->prop_alpha) {
+		if (!_msm_hyp_object_property_get_prop_value(&plane->base,
+								priv->prop_alpha,
+								&val))
+			p_state->alpha = val;
+	}
+
+	if (priv->prop_blend_op) {
+		if (!_msm_hyp_object_property_get_prop_value(&plane->base,
+								priv->prop_blend_op,
+								&val))
+			p_state->blend_op = val;
+	}
 }
 
 static int msm_hyp_plane_set_property(
