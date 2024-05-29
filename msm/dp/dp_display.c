@@ -4494,11 +4494,13 @@ static int dp_pm_prepare(struct device *dev)
 	dp_display_state_add(DP_STATE_SUSPENDED);
 
 	/*
-	 * If DP is not enabled but powered and suspend state
-	 * is entered, we need to power off the host to disable all
+	 * If DP port is connected & DP is not enabled
+	 * but powered and suspend state is entered,
+	 * we need to power off the host to disable all
 	 * clocks. This is needed when link training failed.
 	 */
-	if (!dp_display_state_is(DP_STATE_ENABLED) &&
+	if (dp_display_state_is(DP_STATE_CONNECTED) &&
+			!dp_display_state_is(DP_STATE_ENABLED) &&
 			dp->aux->state != DP_STATE_CTRL_POWERED_OFF) {
 		dp->ctrl->off(dp->ctrl);
 
