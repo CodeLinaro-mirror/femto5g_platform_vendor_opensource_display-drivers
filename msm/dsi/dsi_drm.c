@@ -464,6 +464,14 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 			adj_mode->panel_mode_caps);
 	}
 
+	if (!dsi_display_mode_match(&cur_dsi_mode, adj_mode,
+			DSI_MODE_MATCH_ACTIVE_TIMINGS) &&
+			(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) {
+		adj_mode->dsi_mode_flags &= ~DSI_MODE_FLAG_DYN_CLK;
+		DSI_ERR("DMS and dyn clk not supported in same commit\n");
+		return false;
+	}
+
 	return rc;
 }
 

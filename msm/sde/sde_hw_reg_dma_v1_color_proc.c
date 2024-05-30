@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -33,7 +33,7 @@
  * When disabling INIT property, we don't want to reset those bits since
  * they are needed for both LTM histogram and VLUT.
  */
-#define REG_DMA_LTM_INIT_ENABLE_OP_MASK 0x1100153
+#define REG_DMA_LTM_INIT_ENABLE_OP_MASK 0x1100053
 #define REG_DMA_LTM_INIT_DISABLE_OP_MASK 0xFFFF8CAF
 #define REG_DMA_LTM_ROI_OP_MASK 0xFEFFFFFF
 /**
@@ -134,6 +134,7 @@ enum ltm_vlut_ops_bitmask {
 	ltm_dither = BIT(1),
 	ltm_roi = BIT(2),
 	ltm_vlut = BIT(3),
+	ltm_init = BIT(4),
 	ltm_ops_max = BIT(31),
 };
 
@@ -4085,6 +4086,7 @@ static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 
 		ltm_vlut_ops_mask[dspp_idx[i]] &= ~ltm_dither;
 		ltm_vlut_ops_mask[dspp_idx[i]] &= ~ltm_unsharp;
+		ltm_vlut_ops_mask[dspp_idx[i]] &= ~ltm_init;
 		REG_DMA_SETUP_OPS(dma_write_cfg, 0x04, &opmode, sizeof(opmode),
 			REG_SINGLE_MODIFY, 0, 0,
 			REG_DMA_LTM_INIT_DISABLE_OP_MASK);
@@ -4215,6 +4217,8 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
 			ltm_vlut_ops_mask[dspp_idx[i]] &= ~ltm_unsharp;
 		}
 
+		ltm_vlut_ops_mask[dspp_idx[i]] |= ltm_init;
+
 		/* broadcast feature is not supported with REG_SINGLE_MODIFY */
 		REG_DMA_SETUP_OPS(dma_write_cfg, 0x04, &opmode, sizeof(opmode),
 				REG_SINGLE_MODIFY, 0, 0,
@@ -4299,7 +4303,7 @@ void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg)
 	struct drm_msm_ltm_cfg_param *cfg_param = NULL;
 	enum sde_ltm dspp_idx[LTM_MAX] = {0};
 	enum sde_ltm idx = 0;
-	u32 blk = 0, opmode = 0, i = 0, num_mixers = 0;
+	u32 blk = 0, i = 0, num_mixers = 0;
 	u32 roi_data[3];
 	int rc = 0;
 
@@ -4379,26 +4383,7 @@ void reg_dmav1_setup_ltm_roiv1(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	for (i = 0; i < num_mixers; i++) {
-		/* broadcast feature is not supported with REG_SINGLE_MODIFY */
-		/* reset decode select to unicast */
-		dma_write_cfg.blk = ltm_mapping[dspp_idx[i]];
-		REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0,
-				0, 0);
-		rc = dma_ops->setup_payload(&dma_write_cfg);
-		if (rc) {
-			DRM_ERROR("write decode select failed ret %d\n", rc);
-			return;
-		}
-
 		ltm_vlut_ops_mask[dspp_idx[i]] |= ltm_roi;
-
-		REG_DMA_SETUP_OPS(dma_write_cfg, 0x04, &opmode, sizeof(opmode),
-			REG_SINGLE_MODIFY, 0, 0, REG_DMA_LTM_ROI_OP_MASK);
-		rc = dma_ops->setup_payload(&dma_write_cfg);
-		if (rc) {
-			DRM_ERROR("opmode write failed ret %d\n", rc);
-			return;
-		}
 	}
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, ltm_buf[LTM_ROI][idx],
@@ -4452,6 +4437,13 @@ static int reg_dmav1_setup_ltm_vlutv1_common(struct sde_hw_dspp *ctx, void *cfg,
 	if (rc) {
 		if (rc != -EALREADY)
 			DRM_ERROR("failed to get the blk info\n");
+		return -EINVAL;
+	}
+
+	/* vlut is set before ltm init */
+	if (!(ltm_vlut_ops_mask[dspp_idx[0]] & ltm_init)) {
+		DRM_DEBUG_DRIVER("vlut is set before ltm init\n");
+		SDE_EVT32(ctx->idx, 0x2222);
 		return -EINVAL;
 	}
 
@@ -6489,7 +6481,8 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 	w = 2 * (w / 32);
 	w = w / (hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1);
 
-	if (h != hw_cfg->skip_blend_plane_h || w != hw_cfg->skip_blend_plane_w) {
+	if (h != (hw_cfg->skip_blend_plane_h + hw_cfg->overfetch_lines_on_top) ||
+			w != hw_cfg->skip_blend_plane_w) {
 		DRM_ERROR("invalid hfc cfg exp h %d exp w %d act h %d act w %d\n",
 			h, w, hw_cfg->skip_blend_plane_h, hw_cfg->skip_blend_plane_w);
 		DRM_ERROR("c0_depth %d c1_depth %d c2 depth %d hw_cfg->panel_width %d\n",

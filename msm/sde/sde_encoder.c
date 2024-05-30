@@ -82,6 +82,8 @@
 /* Worst case time required for trigger the frame after the EPT wait */
 #define EPT_BACKOFF_THRESHOLD	(3 * NSEC_PER_MSEC)
 
+#define MAX_EPT_TIMEOUT_US	(10 * USEC_PER_SEC)
+
 #define IS_ROI_UPDATED(a, b) (a.x1 != b.x1 || a.x2 != b.x2 || \
 			a.y1 != b.y1 || a.y2 != b.y2)
 
@@ -776,6 +778,7 @@ void sde_encoder_destroy(struct drm_encoder *drm_enc)
 			phys->ops.destroy(phys);
 			--sde_enc->num_phys_encs;
 			sde_enc->phys_vid_encs[i] = NULL;
+			sde_enc->phys_encs[i] = NULL;
 		}
 
 		phys = sde_enc->phys_cmd_encs[i];
@@ -783,6 +786,7 @@ void sde_encoder_destroy(struct drm_encoder *drm_enc)
 			phys->ops.destroy(phys);
 			--sde_enc->num_phys_encs;
 			sde_enc->phys_cmd_encs[i] = NULL;
+			sde_enc->phys_encs[i] = NULL;
 		}
 
 		phys = sde_enc->phys_encs[i];
@@ -977,6 +981,9 @@ bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
 	if (sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL)
 		return false;
 
+	if (sde_enc->crtc != crtc)
+		return false;
+
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
@@ -1132,6 +1139,14 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 			return ret;
 		}
 
+		/* Skip RM allocation for Primary during CWB usecase */
+		if ((!crtc_state->mode_changed && !crtc_state->active_changed &&
+			crtc_state->connectors_changed &&
+			!msm_is_private_mode_changed(conn_state) && (conn_state->crtc ==
+			conn_state->connector->state->crtc)) ||
+			(crtc_state->active_changed && !crtc_state->active))
+			goto skip_reserve;
+
 		/* Reserve dynamic resources, indicating atomic_check phase */
 		ret = sde_rm_reserve(&sde_kms->rm, drm_enc, crtc_state,
 
@@ -1148,6 +1163,7 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 			return ret;
 		}
 
+skip_reserve:
 		/**
 		 * Update connector state with the topology selected for the
 		 * resource set validated. Reset the topology if we are
@@ -2580,6 +2596,18 @@ static int _sde_encoder_rc_pre_modeset(struct drm_encoder *drm_enc,
 		sde_enc->rc_state = SDE_ENC_RC_STATE_ON;
 	}
 
+	if (sde_encoder_has_dsc_hw_rev_2(sde_enc))
+		goto skip_wait;
+
+	ret = sde_encoder_wait_for_event(drm_enc, MSM_ENC_TX_COMPLETE);
+	if (ret && ret != -EWOULDBLOCK) {
+		SDE_ERROR_ENC(sde_enc, "wait for commit done returned %d\n", ret);
+		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state, ret, SDE_EVTLOG_ERROR);
+		ret = -EINVAL;
+		goto end;
+	}
+
+skip_wait:
 	SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
 		SDE_ENC_RC_STATE_MODESET, SDE_EVTLOG_FUNC_CASE5);
 
@@ -5289,8 +5317,8 @@ void _sde_encoder_delay_kickoff_processing(struct sde_encoder_virt *sde_enc)
 	}
 
 	timeout_us = DIV_ROUND_UP((ept_ts - current_ts), 1000);
-	/* validate timeout is not beyond the min fps */
-	if (timeout_us > DIV_ROUND_UP(USEC_PER_SEC, min_fps)) {
+	/* validate timeout is not beyond 10 seconds */
+	if (timeout_us > MAX_EPT_TIMEOUT_US) {
 		pr_err_ratelimited(
 		"enc:%d, invalid timeout_us:%llu; ept:%llu, ept_ts:%llu, cur_ts:%llu min_fps:%d, fps:%d, qsync_mode:%d, avr_step_fps:%d\n",
 			DRMID(&sde_enc->base), timeout_us, ept, ept_ts, current_ts,
