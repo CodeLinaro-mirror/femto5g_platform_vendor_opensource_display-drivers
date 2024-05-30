@@ -46,7 +46,7 @@
 		WIRE_USER_LOG_MODULE_NAME,	\
 		fmt, ##__VA_ARGS__)
 
-#define COMMIT_PACKAGE_HEADER_SIZE (sizeof(struct wire_header) + sizeof(u32))
+#define COMMIT_PACKAGE_HEADER_SIZE (sizeof(struct wire_batch_packet))
 /* Backend capability about the message size */
 #define COMMIT_PACKAGE_SIZE sizeof(struct wire_packet)
 /*
