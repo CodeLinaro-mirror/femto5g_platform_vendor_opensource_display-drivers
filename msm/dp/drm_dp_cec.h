@@ -29,29 +29,4 @@ void drm_dp_cec_register_connector(struct drm_dp_aux *aux,
 void drm_dp_cec_unregister_connector(struct drm_dp_aux *aux);
 void drm_dp_cec_set_edid(struct drm_dp_aux *aux, const struct edid *edid);
 void drm_dp_cec_unset_edid(struct drm_dp_aux *aux);
-#else
-static inline void drm_dp_cec_irq(struct drm_dp_aux *aux)
-{
-}
-
-static inline void
-drm_dp_cec_register_connector(struct drm_dp_aux *aux,
-			      struct drm_connector *connector)
-{
-}
-
-static inline void drm_dp_cec_unregister_connector(struct drm_dp_aux *aux)
-{
-}
-
-static inline void drm_dp_cec_set_edid(struct drm_dp_aux *aux,
-				       const struct edid *edid)
-{
-}
-
-static inline void drm_dp_cec_unset_edid(struct drm_dp_aux *aux)
-{
-}
-
 #endif
-
