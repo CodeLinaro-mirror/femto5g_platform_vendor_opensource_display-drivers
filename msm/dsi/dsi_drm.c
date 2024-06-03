@@ -126,8 +126,8 @@ void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
 			      dsi_mode->timing.v_sync_width;
 	drm_mode->vtotal = drm_mode->vsync_end + dsi_mode->timing.v_back_porch;
 
-	drm_mode->clock = drm_mode->htotal * drm_mode->vtotal * dsi_mode->timing.refresh_rate;
-	drm_mode->clock /= 1000;
+	drm_mode->clock = (drm_mode->htotal * drm_mode->vtotal * dsi_mode->timing.refresh_rate) /
+				1000;
 
 	if (dsi_mode->timing.h_sync_polarity)
 		drm_mode->flags |= DRM_MODE_FLAG_PHSYNC;
