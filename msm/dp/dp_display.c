@@ -3196,9 +3196,16 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	 * If connector is in MST mode, skip
 	 * powering down host as aux needs to be kept
 	 * alive to handle hot-plug sideband message.
+	 *
+	 * Turn off the clocks when it is called from
+	 * suspend path
 	 */
-	if (dp->active_stream_cnt || dp->mst.mst_active)
+	if (dp->active_stream_cnt ||
+			(dp->mst.mst_active &&
+			!dp_display_state_is(DP_STATE_SUSPENDED))) {
+		DP_INFO("DP-MST setup & is not suspended\n");
 		goto end;
+	}
 
 	dp->link->psm_config(dp->link, &dp->panel->link_info, true);
 	dp->debug->psm_enabled = true;
