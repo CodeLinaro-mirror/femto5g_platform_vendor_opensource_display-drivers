@@ -86,14 +86,22 @@ KBUILD_CPPFLAGS += $(CDEFINES)
 
 ccflags-y += $(LINUX_INC)
 
+ifeq ($(call cc-option-yn, -Wmaybe-uninitialized),y)
+EXTRA_CFLAGS += -Wmaybe-uninitialized
+endif
+
+ifeq ($(CONFIG_HDCP_QSEECOM), y)
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/display-drivers/hdcp/Module.symvers
+endif
+ifeq ($(CONFIG_DRM_MSM), y)
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/display-drivers/msm/Module.symvers
+endif
 
 ifeq ($(call cc-option-yn, -Wheader-guard),y)
 EXTRA_CFLAGS += -Wheader-guard
 endif
 
-ccflags-y +=  -Wno-attribute-warning -Wno-maybe-uninitialized -Wno-int-conversion \
+ccflags-y +=  -Wno-attribute-warning -Wno-int-conversion \
 			-Wno-sequence-point -Wnonnull -Wno-unused -Wno-format \
 			-Wno-implicit-function-declaration -Wmissing-prototypes
 

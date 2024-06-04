@@ -709,7 +709,7 @@ int sde_power_resource_init(struct platform_device *pdev,
 		pr_err("clock get failed rc=%d\n", rc);
 		goto clkget_err;
 	}
-
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 	rc = msm_dss_mmrm_register(&pdev->dev, mp,
 		(void*)sde_power_mmrm_callback, (void *)phandle,
 		&phandle->mmrm_enable);
@@ -717,6 +717,7 @@ int sde_power_resource_init(struct platform_device *pdev,
 		pr_err("mmrm register failed rc=%d\n", rc);
 		goto clkmmrm_err;
 	}
+#endif
 
 	rc = msm_dss_clk_set_rate(mp->clk_config, mp->num_clk, &pdev->dev);
 	if (rc) {
@@ -740,7 +741,9 @@ int sde_power_resource_init(struct platform_device *pdev,
 bus_err:
 	sde_power_bus_unregister(phandle);
 clkset_err:
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 	msm_dss_mmrm_deregister(&pdev->dev, mp);
+#endif
 clkmmrm_err:
 	msm_dss_put_clk(mp->clk_config, mp->num_clk);
 clkget_err:
@@ -781,9 +784,9 @@ void sde_power_resource_deinit(struct platform_device *pdev,
 	mutex_unlock(&phandle->phandle_lock);
 
 	sde_power_bus_unregister(phandle);
-
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 	msm_dss_mmrm_deregister(&pdev->dev, mp);
-
+#endif
 	msm_dss_put_clk(mp->clk_config, mp->num_clk);
 
 	msm_dss_get_vreg(&pdev->dev, mp->vreg_config, mp->num_vreg, 0);
