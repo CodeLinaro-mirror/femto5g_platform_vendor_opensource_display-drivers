@@ -27,9 +27,7 @@ def define_lahaina():
             #"CONFIG_HDCP_QSEECOM",
             #"CONFIG_QCOM_WCD939X_I2C",
             "CONFIG_THERMAL_OF",
-            #"CONFIG_MSM_MMRM",
-            #"CONFIG_QTI_HW_FENCE",
-            "CONFIG_QCOM_SPEC_SYNC",
-            #"CONFIG_MSM_EXT_DISPLAY",
+	    #"CONFIG_MSM_MMRM",
+	    #"CONFIG_MSM_EXT_DISPLAY",
         ],
 )
