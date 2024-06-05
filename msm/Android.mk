@@ -19,7 +19,7 @@ NO_MMRM_BOARDS          := kona qcs605
 NO_MSM_EXT_DISP_BOARDS  := taro bengal qcs605
 NO_SEC_BOARDS           := taro bengal qcs605
 NO_HW_FENCE_BOARDS      := taro bengal kona qcs605
-
+NO_SYNC_FENCE_BOARDS	:= taro bengal kona qcs605
 # Build display.ko as msm_drm.ko
 ###########################################################
 # This is set once per LOCAL_PATH, not per (kernel) module
@@ -41,6 +41,9 @@ KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM
 endif
 ifneq ($(call is-board-platform-in-list, $(NO_HW_FENCE_BOARDS)),true)
 KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
+endif
+ifneq ($(call is-board-platform-in-list, $(NO_SYNC_FENCE_BOARDS)),true)
+KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,sync-fence-module-symvers)/Module.symvers
 endif
 endif
 
@@ -69,6 +72,10 @@ endif
 ifneq ($(call is-board-platform-in-list, $(NO_HW_FENCE_BOARDS)),true)
 LOCAL_REQUIRED_MODULES    += hw-fence-module-symvers
 LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
+endif
+ifneq ($(call is-board-platform-in-list, $(NO_SYNC_FENCE_BOARDS)),true)
+LOCAL_REQUIRED_MODULES    += sync-fence-module-symvers
+LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,sync-fence-module-symvers)/Module.symvers
 endif
 endif
 

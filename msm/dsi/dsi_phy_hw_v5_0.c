@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/math64.h>
@@ -880,10 +880,23 @@ void dsi_phy_hw_v5_0_set_continuous_clk(struct dsi_phy_hw *phy, bool enable)
 	wmb(); /* make sure request is set */
 }
 
-void dsi_phy_hw_v5_0_phy_idle_off(struct dsi_phy_hw *phy)
+void dsi_phy_hw_v5_0_phy_idle_off(struct dsi_phy_hw *phy,
+					struct dsi_phy_cfg *cfg)
 {
+	if (dsi_phy_hw_v5_0_is_pll_on(phy))
+		DSI_PHY_WARN(phy, "Turning OFF PHY while PLL is on\n");
+
 	/* enable clamping of PADS */
 	DSI_W32(phy, DSIPHY_CMN_CTRL_4, 0x1);
 	DSI_W32(phy, DSIPHY_CMN_CTRL_3, 0x0);
 	wmb();
+
+	dsi_phy_hw_v5_0_config_lpcdrx(phy, cfg, false);
+
+	/* Turn off REFGEN Vote */
+	DSI_W32(phy, DSIPHY_CMN_GLBL_DIGTOP_SPARE10, 0x0);
+	/* make sure request is set */
+	wmb();
+	/* Delay to ensure HW removes vote*/
+	udelay(2);
 }

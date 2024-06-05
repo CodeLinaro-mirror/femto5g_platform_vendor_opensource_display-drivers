@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -117,6 +117,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_DMA_GC,
 	PLANE_PROP_FP16_GC,
 	PLANE_PROP_FP16_CSC,
+	PLANE_PROP_UBWC_STATS_ROI,
 
 	/* # of blob properties */
 	PLANE_PROP_BLOBCOUNT,
@@ -140,7 +141,6 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_INVERSE_PMA,
 	PLANE_PROP_FP16_IGC,
 	PLANE_PROP_FP16_UNMULT,
-	PLANE_PROP_UBWC_STATS_ROI,
 
 	/* enum/bitmask properties */
 	PLANE_PROP_BLEND_OP,
@@ -830,6 +830,7 @@ struct msm_mode_info {
 
 /**
  * struct msm_resource_caps_info - defines hw resources
+ * @num_lm_in_use       number of layer mixers allocated to a specified encoder
  * @num_lm              number of layer mixers available
  * @num_dsc             number of dsc available
  * @num_vdc             number of vdc available
@@ -838,6 +839,7 @@ struct msm_mode_info {
  * @max_mixer_width:    max width supported by layer mixer
  */
 struct msm_resource_caps_info {
+	uint32_t num_lm_in_use;
 	uint32_t num_lm;
 	uint32_t num_dsc;
 	uint32_t num_vdc;
@@ -1114,6 +1116,8 @@ void __msm_fence_worker(struct work_struct *work);
 struct drm_atomic_state *msm_atomic_state_alloc(struct drm_device *dev);
 void msm_atomic_state_clear(struct drm_atomic_state *state);
 void msm_atomic_state_free(struct drm_atomic_state *state);
+
+void msm_atomic_flush_display_threads(struct msm_drm_private *priv);
 
 int msm_gem_init_vma(struct msm_gem_address_space *aspace,
 		struct msm_gem_vma *vma, int npages);
