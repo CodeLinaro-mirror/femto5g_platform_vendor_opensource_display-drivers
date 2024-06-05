@@ -118,7 +118,7 @@ enum display_types_bitwise {
 #define MAX_PORT_CNT                       8
 #define MAX_CREATE_PORT_ATTRIBS            20
 #define MAX_PORT_MODES_CNT                 10
-#define MAX_PORT_ATTRIBS                   160
+#define MAX_PORT_ATTRIBS                   320
 #define MAX_PIPELINE_CNT                   12
 #define MAX_CREATE_PIPELINE_ATTRIBS        20
 #define MAX_PIPELINE_ATTRIBS               30
