@@ -10,6 +10,8 @@
 #define PANEL_NAME_LEN 13
 #define VIRTIO_MAX_CLIENTS	10
 #define MARKER_BUFF_LENGTH 256
+#define NO_SPIN_LOCK_CHANNEL 0x00
+#define SPIN_LOCK_CHANNEL 0x01
 
 #define to_virtio_kms(x)\
 		container_of((x), struct virtio_kms, base)
@@ -63,6 +65,7 @@ struct virtio_kms_output {
 
 struct channel_map {
 	int32_t hab_socket[MAX_CHANNELS];
+	spinlock_t hyp_chl_spin_lock;
 	struct mutex hyp_chl_lock[MAX_CHANNELS];
 };
 

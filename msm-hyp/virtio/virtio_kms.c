@@ -1808,6 +1808,7 @@ static int virtio_gpu_hab_open(struct virtio_kms *kms)
 		pr_err("hab open failed mmid %d ret %d\n", kms->mmid_cmd, ret);
 		goto exit;
 	}
+	spin_lock_init(&kms->channel[client_id].hyp_chl_spin_lock);
 	mutex_init(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 
 	ret = habmm_socket_open(
