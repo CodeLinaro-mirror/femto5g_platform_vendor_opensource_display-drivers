@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -8002,6 +8002,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	rc = _sde_crtc_init_events(sde_crtc);
 	if (rc) {
 		drm_crtc_cleanup(crtc);
+		kfree(sde_crtc->fps_info.time_buf);
 		kfree(sde_crtc);
 		return ERR_PTR(rc);
 	}
@@ -8013,6 +8014,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 		rc = PTR_ERR(sde_crtc->output_fence);
 		SDE_ERROR("failed to init fence, %d\n", rc);
 		drm_crtc_cleanup(crtc);
+		kfree(sde_crtc->fps_info.time_buf);
 		kfree(sde_crtc);
 		return ERR_PTR(rc);
 	}
