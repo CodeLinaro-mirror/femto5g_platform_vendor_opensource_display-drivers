@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -901,14 +901,16 @@ static int _sde_kms_splash_mem_put(struct sde_kms *sde_kms,
 	SDE_DEBUG("splash base:%lx refcnt:%d\n",
 			splash->splash_buf_base, splash->ref_cnt);
 
-	if (!splash->ref_cnt && (sde_kms->dev->primary->index == MDP_MASTER_CORE)) {
+	if (!splash->ref_cnt) {
 		mmu->funcs->one_to_one_unmap(mmu, splash->splash_buf_base,
 				splash->splash_buf_size);
-		rc = _sde_kms_release_shared_buffer(splash->splash_buf_base,
+		if (sde_kms->dev->primary->index == MDP_MASTER_CORE) {
+			rc = _sde_kms_release_shared_buffer(splash->splash_buf_base,
 				splash->splash_buf_size, splash->ramdump_base,
 				splash->ramdump_size);
-		splash->splash_buf_base = 0;
-		splash->splash_buf_size = 0;
+			splash->splash_buf_base = 0;
+			splash->splash_buf_size = 0;
+		}
 	}
 
 	return rc;
