@@ -1214,6 +1214,7 @@ dp_mst_connector_detect(struct drm_connector *connector,
 
 void dp_mst_clear_edid_cache(void *dp_display) {
 	struct dp_display *dp = dp_display;
+	struct dp_mst_private *mst;
 	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *conn;
 	struct sde_connector *c_conn;
@@ -1226,16 +1227,18 @@ void dp_mst_clear_edid_cache(void *dp_display) {
 		return;
 	}
 
+	mst = dp->dp_mst_prv_info;
+
 	drm_connector_list_iter_begin(dp->drm_dev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		c_conn = to_sde_connector(conn);
 		if (!c_conn->mst_port)
 			continue;
 
-		mutex_lock(&dp_mst.edid_lock);
+		mutex_lock(&mst->edid_lock);
 		kfree(c_conn->cached_edid);
 		c_conn->cached_edid = NULL;
-		mutex_unlock(&dp_mst.edid_lock);
+		mutex_unlock(&mst->edid_lock);
 	}
 
 	drm_connector_list_iter_end(&conn_iter);
