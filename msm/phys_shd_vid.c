@@ -663,6 +663,11 @@ static void sde_encoder_phys_shd_disable(struct sde_encoder_phys *phys_enc)
 		goto next;
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
+
+	if (phys_enc->hw_ctl->ops.set_active_pipes) {
+		phys_enc->hw_ctl->ops.set_active_pipes(phys_enc->hw_ctl, NULL);
+	}
+
 	sde_encoder_phys_shd_trigger_flush(phys_enc);
 	sde_encoder_phys_inc_pending(phys_enc);
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
