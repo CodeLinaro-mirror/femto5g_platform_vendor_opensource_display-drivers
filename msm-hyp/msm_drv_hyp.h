@@ -3,7 +3,7 @@
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * Copyright (c) 2017-2018, 2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -268,6 +268,7 @@ struct msm_hyp_drm_private {
 	struct blocking_notifier_head component_notifier_list;
 
 	char dev_name_from_dt[DRM_DRI_NAME_SIZE];
+	struct kthread_work commit_thread_priority_work;
 };
 
 void msm_hyp_set_kms(struct drm_device *dev, struct msm_hyp_kms *kms);

@@ -309,11 +309,12 @@ static int _wfd_kms_connector_get_type(WFDDevice dev,
 			WFD_PORT_TYPE);
 
 	switch (port_type) {
-	case WFD_PORT_TYPE_INTERNAL:
 	case WFD_PORT_TYPE_HDMI:
 		connector_type = DRM_MODE_CONNECTOR_HDMIA;
 		snprintf(name, PANEL_NAME_LEN, "%s_%d", "HDMI", port_id);
 		break;
+	/* creates primary display if this is the first internal display */
+	case WFD_PORT_TYPE_INTERNAL:
 	case WFD_PORT_TYPE_DSI:
 		connector_type = DRM_MODE_CONNECTOR_DSI;
 		snprintf(name, PANEL_NAME_LEN, "%s_%d", "DSI", port_id);
@@ -1352,6 +1353,39 @@ static bool wfd_kms_plane_enabled(const struct drm_plane_state *state)
 	return state && state->fb && state->crtc;
 }
 
+static bool is_ubwc_supported_format(uint32_t format)
+{
+	switch (format) {
+	case DRM_FORMAT_RGB565:
+	case DRM_FORMAT_ABGR8888:
+	case DRM_FORMAT_XBGR8888:
+	case DRM_FORMAT_ABGR2101010:
+	case DRM_FORMAT_XBGR2101010:
+	case DRM_FORMAT_ABGR16161616:
+	case DRM_FORMAT_NV12:
+		return true;
+	default:
+		break;
+	}
+
+	return false;
+}
+
+static bool is_inline_rot_supported_format(uint32_t format)
+{
+	switch (format) {
+	case DRM_FORMAT_ABGR8888:
+	case DRM_FORMAT_XBGR8888:
+	case DRM_FORMAT_ABGR16161616:
+	case DRM_FORMAT_NV12:
+		return true;
+	default:
+		break;
+	}
+
+	return false;
+}
+
 static int _wfd_kms_plane_rot_atomic_check(struct drm_plane *plane,
 		struct drm_atomic_state *atomic_state)
 {
@@ -1360,8 +1394,13 @@ static int _wfd_kms_plane_rot_atomic_check(struct drm_plane *plane,
 	struct msm_hyp_plane *slave_hyp_plane = NULL;
 	u32 rotation = 0;
 	int ret = 0;
+	bool format_support = false;
 
 	state = drm_atomic_get_new_plane_state(atomic_state, plane);
+	if (!state) {
+		pr_err("invalid plane state\n");
+		return -EINVAL;
+	}
 
 	/* check inline rotation and simplify the transform */
 	rotation = drm_rotation_simplify(
@@ -1404,7 +1443,17 @@ static int _wfd_kms_plane_rot_atomic_check(struct drm_plane *plane,
 		}
 
 		/* check for valid formats supported by inline rot */
-		//TODO, get this information from QNX
+		//TODO, get this ubwc supported format information from QNX
+		if ((state->fb->modifier & DRM_FORMAT_MOD_QTI_COMPRESSED)
+				&& (is_ubwc_supported_format(state->fb->format->format)))
+			format_support =
+				is_inline_rot_supported_format(state->fb->format->format);
+
+		if (!format_support) {
+			pr_err("invalid format for inline rot\n");
+			ret = -EINVAL;
+			goto exit;
+		}
 	}
 
 	state->rotation = rotation;

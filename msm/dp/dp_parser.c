@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -225,6 +225,22 @@ static int dp_parser_misc(struct dp_parser *parser)
 			"qcom,lane-training-retries", &parser->link_training_retries);
 	if (rc)
 		parser->link_training_retries = MAX_DP_LINK_TRAINING_RETRIES;
+
+	parser->gpio_hpd_high_debounce_ms = 0;
+	parser->gpio_hpd_low_debounce_ms = 0;
+	len = of_property_count_u32_elems(of_node,
+			"qcom,dp-gpio-hpd-debounce-ms");
+	if (len > 0)
+		of_property_read_u32_index(of_node, "qcom,dp-gpio-hpd-debounce-ms",
+				0, &parser->gpio_hpd_high_debounce_ms);
+	if (len > 1)
+		of_property_read_u32_index(of_node, "qcom,dp-gpio-hpd-debounce-ms",
+				1, &parser->gpio_hpd_low_debounce_ms);
+
+	rc = of_property_read_u32(of_node,
+			"qcom,dp-sec-hpd-check-delay-ms", &parser->sec_hpd_check_delay_ms);
+	if (rc)
+		parser->sec_hpd_check_delay_ms = 0;
 
 	return 0;
 }
@@ -1080,7 +1096,7 @@ static int dp_parser_bond(struct dp_parser *parser)
 
 static u16 swap_u16_endianness(u16 in)
 {
-	return (((u16)((in | 0x00FF) << 8)) | ((u16)((in | 0xFF00) >> 8)));
+	return ((u16)((in & 0x00FF) << 8) | (u16)((in & 0xFF00) >> 8));
 }
 
 static u16 read_u16_from_byte_stream(const char *data, size_t *offset)
