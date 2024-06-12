@@ -1498,11 +1498,6 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	vm_ops = sde_vm_get_ops(sde_kms);
 
 	crtc = sde_kms_vm_get_vm_crtc(state);
-
-	if (sde_kms->vm->lastclose_in_progress && !crtc) {
-		sde_dbg_set_hw_ownership_status(false);
-		goto relase_vm;
-	}
 	if (!crtc)
 		return 0;
 
@@ -1512,7 +1507,6 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	if (vm_req != VM_REQ_RELEASE)
 		return 0;
 
-relase_vm:
 	sde_kms_vm_pre_release(sde_kms, state, false);
 	sde_kms_vm_set_sid(sde_kms, 0);
 
@@ -1729,7 +1723,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 		sde_crtc_complete_flip(crtc, NULL);
 	}
 
-	if (cwb_enc)
+	if (cwb_disabling && cwb_enc)
 		sde_encoder_virt_reset(cwb_enc);
 
 	if (drm_atomic_crtc_needs_modeset(crtc->state)) {
@@ -2933,10 +2927,6 @@ static void sde_kms_lastclose(struct msm_kms *kms)
 
 	sde_kms = to_sde_kms(kms);
 	dev = sde_kms->dev;
-
-	if (sde_kms && sde_kms->vm)
-		sde_kms->vm->lastclose_in_progress = true;
-
 	drm_modeset_acquire_init(&ctx, 0);
 
 	state = drm_atomic_state_alloc(dev);
@@ -2971,9 +2961,6 @@ out_ctx:
 		SDE_ERROR("kms lastclose failed: %d\n", ret);
 
 	SDE_EVT32(ret, SDE_EVTLOG_FUNC_EXIT);
-
-	if (sde_kms && sde_kms->vm)
-		sde_kms->vm->lastclose_in_progress = false;
 	return;
 
 backoff:
@@ -3070,11 +3057,8 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 			return rc;
 		}
 
-		if (vm_ops->vm_resource_init) {
+		if (vm_ops->vm_resource_init)
 			rc = vm_ops->vm_resource_init(sde_kms, state);
-			if (rc && vm_ops->vm_release)
-				rc = vm_ops->vm_release(sde_kms);
-		}
 	}
 
 	return rc;
