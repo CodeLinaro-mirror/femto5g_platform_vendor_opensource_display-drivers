@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -192,8 +192,14 @@ static int msm_smmu_one_to_one_map(struct msm_mmu *mmu, uint32_t iova,
 	if (!client || !client->domain)
 		return -ENODEV;
 
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+	ret = iommu_map(client->domain, iova, dest_address,
+			size, prot, GFP_ATOMIC);
+#else
 	ret = iommu_map(client->domain, iova, dest_address,
 			size, prot);
+#endif
+
 	if (ret)
 		pr_err("smmu map failed\n");
 
@@ -208,8 +214,15 @@ static int msm_smmu_map(struct msm_mmu *mmu, uint64_t iova,
 	size_t ret = 0;
 
 	if (sgt && sgt->sgl) {
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+		ret = iommu_map_sg(client->domain, iova, sgt->sgl,
+				sgt->orig_nents, prot, GFP_ATOMIC);
+#else
 		ret = iommu_map_sg(client->domain, iova, sgt->sgl,
 				sgt->orig_nents, prot);
+#endif
+
 		WARN_ON((int)ret < 0);
 		DRM_DEBUG("%pad/0x%x/0x%x/\n", &sgt->sgl->dma_address,
 				sgt->sgl->dma_length, prot);
@@ -547,7 +560,7 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	if (!client->dev->dma_parms)
 		client->dev->dma_parms = devm_kzalloc(client->dev,
 				sizeof(*client->dev->dma_parms), GFP_KERNEL);
-	dma_set_max_seg_size(client->dev, DMA_BIT_MASK(32));
+	dma_set_max_seg_size(client->dev, (unsigned int)DMA_BIT_MASK(32));
 	dma_set_seg_boundary(client->dev, (unsigned long)DMA_BIT_MASK(64));
 
 	iommu_set_fault_handler(client->domain,

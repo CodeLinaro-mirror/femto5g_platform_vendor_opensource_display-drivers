@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/clk.h>
 #include <linux/pm_runtime.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <linux/pinctrl/pinctrl.h>
+#endif
 #include "dp_power.h"
 #include "dp_catalog.h"
 #include "dp_debug.h"
@@ -222,7 +226,7 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 
 		power->pixel_parent = clk_get(dev, "pixel_parent");
 		if (IS_ERR(power->pixel_parent)) {
-			DP_ERR("Unable to get DP pixel RCG parent: %d\n",
+			DP_ERR("Unable to get DP pixel RCG parent: %ld\n",
 					PTR_ERR(power->pixel_parent));
 			rc = PTR_ERR(power->pixel_parent);
 			power->pixel_parent = NULL;
@@ -231,7 +235,7 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 
 		power->xo_clk = clk_get(dev, "rpmh_cxo_clk");
 		if (IS_ERR(power->xo_clk)) {
-			DP_ERR("Unable to get XO clk: %d\n", PTR_ERR(power->xo_clk));
+			DP_ERR("Unable to get XO clk: %ld\n", PTR_ERR(power->xo_clk));
 			rc = PTR_ERR(power->xo_clk);
 			power->xo_clk = NULL;
 			goto err_xo_clk;
@@ -240,7 +244,7 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 		if (power->parser->has_mst) {
 			power->pixel1_clk_rcg = clk_get(dev, "pixel1_clk_rcg");
 			if (IS_ERR(power->pixel1_clk_rcg)) {
-				DP_ERR("Unable to get DP pixel1 clk RCG: %d\n",
+				DP_ERR("Unable to get DP pixel1 clk RCG: %ld\n",
 						PTR_ERR(power->pixel1_clk_rcg));
 				rc = PTR_ERR(power->pixel1_clk_rcg);
 				power->pixel1_clk_rcg = NULL;

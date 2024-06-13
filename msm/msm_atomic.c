@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2014 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -237,7 +237,12 @@ msm_disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 		 * it away), so we won't call disable hooks twice.
 		 */
 		bridge = drm_bridge_chain_get_first_bridge(encoder);
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+		drm_atomic_bridge_chain_disable(bridge, old_state);
+#else
 		drm_bridge_chain_disable(bridge);
+#endif
 
 		/* Right function depends upon target state. */
 		if (connector->state->crtc && funcs->prepare)
@@ -247,7 +252,11 @@ msm_disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 		else
 			funcs->dpms(encoder, DRM_MODE_DPMS_OFF);
 
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+		drm_atomic_bridge_chain_post_disable(bridge, old_state);
+#else
 		drm_bridge_chain_post_disable(bridge);
+#endif
 	}
 
 	for_each_old_crtc_in_state(old_state, crtc, old_crtc_state, i) {
@@ -483,7 +492,13 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 		 * it away), so we won't call enable hooks twice.
 		 */
 		bridge = drm_bridge_chain_get_first_bridge(encoder);
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+		drm_atomic_bridge_chain_pre_enable(bridge, old_state);
+#else
 		drm_bridge_chain_pre_enable(bridge);
+#endif
+
 		++bridge_enable_count;
 
 		if (funcs->enable)
@@ -528,7 +543,12 @@ static void msm_atomic_helper_commit_modeset_enables(struct drm_device *dev,
 				 encoder->base.id, encoder->name);
 
 		bridge = drm_bridge_chain_get_first_bridge(encoder);
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+		drm_atomic_bridge_chain_enable(bridge, old_state);
+#else
 		drm_bridge_chain_enable(bridge);
+#endif
 	}
 	SDE_ATRACE_END("msm_enable");
 }

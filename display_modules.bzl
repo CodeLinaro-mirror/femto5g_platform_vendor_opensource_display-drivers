@@ -176,21 +176,26 @@ module_entry(
                               "rotator/sde_rotator_r3_debug.c"],
             },
       },
+      deps = [
+         "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
+      ],
+
+      # Configs are handled by config_options = []
       config_deps = {
+         "CONFIG_QTI_HW_FENCE" : [
+             "//vendor/qcom/opensource/mm-drivers/hw_fence:%b_msm_hw_fence",
+        ],
+        "CONFIG_QCOM_SPEC_SYNC" : [
+            "//vendor/qcom/opensource/mm-drivers/sync_fence:%b_sync_fence",
+        ],
+        "CONFIG_MSM_EXT_DISPLAY" : [
+            "//vendor/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display",
+        ],
         "CONFIG_HDCP_QSEECOM" : [
             "//vendor/qcom/opensource/securemsm-kernel:%b_hdcp_qseecom_dlkm"
         ],
         "CONFIG_MSM_MMRM" : [
-            "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver"
+            "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver",
         ],
-        "CONFIG_QCOM_SPEC_SYNC" : [
-            "//vendor/qcom/opensource/mm-drivers/sync_fence:%b_sync_fence"
-        ],
-        "CONFIG_QTI_HW_FENCE" : [
-            "//vendor/qcom/opensource/mm-drivers/hw_fence:%b_msm_hw_fence"
-        ],
-        "CONFIG_MSM_EXT_DISPLAY" : [
-            "//vendor/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display"
-        ],
-       }
+      },
 )

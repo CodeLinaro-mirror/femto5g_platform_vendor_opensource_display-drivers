@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -46,6 +46,8 @@
 /* max mixer blend stages */
 #define DEFAULT_SDE_MIXER_BLENDSTAGES 7
 
+/* dummy block base address */
+#define DUMMY_SDE_BLOCK_BASE 0x0f0f
 /*
  * max bank bit for macro tile and ubwc format.
  * this value is left shifted and written to register
@@ -2281,7 +2283,6 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 		const char *disp_pref = NULL;
 		const char *cwb_pref = NULL;
 		const char *dcwb_pref = NULL;
-		u32 dummy_mixer_base = 0x0f0f;
 
 		mixer_base = PROP_VALUE_ACCESS(props->values, MIXER_OFF, i);
 		if (!mixer_base)
@@ -2335,15 +2336,20 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 		if (cwb_pref && !strcmp(cwb_pref, "cwb"))
 			set_bit(SDE_DISP_CWB_PREF, &mixer->features);
 
+		if (BIT(mixer->id - LM_0) & sde_cfg->virtual_mixers_mask)
+			set_bit(SDE_MIXER_IS_VIRTUAL, &mixer->features);
+
 		of_property_read_string_index(np,
 			mixer_prop[MIXER_DCWB].prop_name, i, &dcwb_pref);
-		if (dcwb_pref && !strcmp(dcwb_pref, "dcwb")) {
+		if (dcwb_pref && !strcmp(dcwb_pref, "dcwb"))
 			set_bit(SDE_DISP_DCWB_PREF, &mixer->features);
-			if (mixer->base == dummy_mixer_base) {
-				mixer->base = 0x0;
-				mixer->len = 0;
-				mixer->dummy_mixer = true;
-			}
+
+		if ((mixer->features & BIT(SDE_MIXER_IS_VIRTUAL) ||
+				mixer->features & BIT(SDE_DISP_DCWB_PREF)) &&
+				(mixer->base == DUMMY_SDE_BLOCK_BASE)) {
+			mixer->base = 0x0;
+			mixer->len = 0;
+			mixer->dummy_mixer = true;
 		}
 
 		mixer->pingpong = pp_count > 0 ? pp_idx + PINGPONG_0
@@ -4080,6 +4086,13 @@ static int sde_pp_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 			pp->merge_3d_id = PROP_VALUE_ACCESS(prop_value,
 					PP_MERGE_3D_ID, i) + 1;
 		}
+
+		if (pp->base == DUMMY_SDE_BLOCK_BASE) {
+			pp->base = 0x0;
+			pp->len = 0;
+			sblk->dither.base = 0x0;
+			sblk->dither.len = 0;
+		}
 	}
 
 end:
@@ -4751,6 +4764,11 @@ static int sde_parse_merge_3d_dt(struct device_node *np,
 		snprintf(merge_3d->name, SDE_HW_BLK_NAME_LEN, "merge_3d_%u",
 				merge_3d->id -  MERGE_3D_0);
 		merge_3d->len = PROP_VALUE_ACCESS(prop_value, HW_LEN, 0);
+
+		if (merge_3d->base == DUMMY_SDE_BLOCK_BASE) {
+			merge_3d->base = 0x0;
+			merge_3d->len = 0;
+		}
 	}
 
 end:
@@ -5333,6 +5351,30 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
 		sde_cfg->demura_supported[SSPP_DMA1][0] = 0;
 		sde_cfg->demura_supported[SSPP_DMA1][1] = 1;
+	} else if (IS_PARROT_TARGET(hw_rev)) {
+                set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
+                set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
+                set_bit(SDE_FEATURE_CWB_CROP, sde_cfg->features);
+                set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+                sde_cfg->perf.min_prefill_lines = 40;
+                sde_cfg->has_reduced_ob_max = true;
+                sde_cfg->vbif_qos_nlvl = 8;
+                sde_cfg->ts_prefill_rev = 2;
+                sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+                clear_bit(SDE_FEATURE_SUI_NS_ALLOWED, sde_cfg->features);
+                set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
+                set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+                sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+                sde_cfg->mdss_hw_block_size = 0x158;
+                set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+                set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+                set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+                set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+                set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+                set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+                set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+		set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+		sde_cfg->virtual_mixers_mask = 0x2;
 	} else if (IS_KALAMA_TARGET(hw_rev)) {
 		set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
 		set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
