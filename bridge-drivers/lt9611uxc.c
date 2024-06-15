@@ -124,6 +124,7 @@ struct lt9611 {
 	u32 hdmi_en_gpio;
 	u32 hdmi_3p3_en;
 	u32 hdmi_1p2_en;
+	u32 reset_gpio_flags;
 
 	unsigned int num_vreg;
 	struct lt9611_vreg *vreg_config;
@@ -1077,6 +1078,7 @@ static int lt9611_parse_dt(struct device *dev,
 	struct device_node *np = dev->of_node;
 	struct device_node *end_node;
 	int ret = 0;
+	int rc = 0;
 
 	end_node = of_graph_get_endpoint_by_regs(dev->of_node, 0, 0);
 	if (!end_node) {
@@ -1107,6 +1109,12 @@ static int lt9611_parse_dt(struct device *dev,
 		ret = -EINVAL;
 	}
 	pr_debug("reset_gpio=%d\n", pdata->reset_gpio);
+
+	rc = of_property_read_u32(np, "lt,reset-gpio-flags",
+			&pdata->reset_gpio_flags);
+	if (rc)
+		pdata->reset_gpio_flags = 0;
+	pr_debug("reset_gpio_flags=%d\n", pdata->reset_gpio_flags);
 
 	pdata->hdmi_ps_gpio =
 		of_get_named_gpio(np, "lt,hdmi-ps-gpio", 0);
@@ -1155,6 +1163,7 @@ static int lt9611_parse_dt(struct device *dev,
 static int lt9611_gpio_configure(struct lt9611 *pdata, bool on)
 {
 	int ret = 0;
+	int gpio_default_state = 1;
 
 	if (on) {
 		if (gpio_is_valid(pdata->hdmi_3p3_en)) {
@@ -1195,7 +1204,11 @@ static int lt9611_gpio_configure(struct lt9611 *pdata, bool on)
 			goto hdmi_1p2_en_error;
 		}
 
-		ret = gpio_direction_output(pdata->reset_gpio, 1);
+		if (pdata->reset_gpio_flags)
+			gpio_default_state = 0;
+		ret = gpio_direction_output(pdata->reset_gpio,
+				gpio_default_state);
+
 		if (ret) {
 			pr_err("lt9611 reset gpio direction failed\n");
 			goto reset_error;
@@ -1507,16 +1520,21 @@ static irqreturn_t lt9611_irq_thread_handler(int irq, void *dev_id)
 
 static void lt9611_reset(struct lt9611 *pdata, bool on_off)
 {
+	int gpio_default_state = 1;
+
 	pr_debug("reset: %d\n", on_off);
+	if (pdata->reset_gpio_flags)
+		gpio_default_state = 0;
+
 	if (on_off) {
-		gpio_set_value(pdata->reset_gpio, 1);
+		gpio_set_value(pdata->reset_gpio, gpio_default_state);
 		msleep(20);
-		gpio_set_value(pdata->reset_gpio, 0);
+		gpio_set_value(pdata->reset_gpio, !gpio_default_state);
 		msleep(20);
-		gpio_set_value(pdata->reset_gpio, 1);
+		gpio_set_value(pdata->reset_gpio, gpio_default_state);
 		msleep(300);
 	} else {
-		gpio_set_value(pdata->reset_gpio, 0);
+		gpio_set_value(pdata->reset_gpio, !gpio_default_state);
 	}
 	/* Need longer time to wait LT9611UXC reset finished. */
 	msleep(300);
