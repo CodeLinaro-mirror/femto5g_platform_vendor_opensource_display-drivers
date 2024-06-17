@@ -940,6 +940,9 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 		sde_kms_info_add_keystr(info, "has_disp_in_other_core", "true");
 	}
 
+	sde_kms_info_add_keystr(info, "alpha_passthrough",
+			panel->alpha_passthrough ? "true" : "false");
+
 end:
 	return 0;
 }

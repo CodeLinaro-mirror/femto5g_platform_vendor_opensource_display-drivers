@@ -2301,6 +2301,9 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 		panel->spr_info.enable ?
 		msm_spr_pack_type_str[panel->spr_info.pack_type] : "none");
 
+	panel->alpha_passthrough  = utils->read_bool(utils->data,
+			"qcom,mdss-dsi-panel-alpha-passthrough");
+
 	return 0;
 }
 

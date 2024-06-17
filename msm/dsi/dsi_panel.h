@@ -254,6 +254,7 @@ struct dsi_panel {
 	struct dsi_display_mode *cur_mode;
 	u32 num_timing_nodes;
 	u32 num_display_modes;
+	bool alpha_passthrough;
 
 	char fsc_rgb_order[FSC_MODE_LABEL_SIZE];
 
