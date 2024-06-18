@@ -155,24 +155,36 @@ static void dp_lphw_hpd_secondary_hpd(struct work_struct *work)
 static irqreturn_t dp_lphw_hpd_tlmm_isr(int unused, void *data)
 {
 	struct dp_lphw_hpd_private *lphw_hpd = data;
-	bool hpd;
-	struct irq_data *irqd;
-	int rc;
 
 	if (!lphw_hpd)
 		return IRQ_NONE;
 
 	/* Wake up the handler, setup debounce timer */
 	queue_work(system_highpri_wq, &lphw_hpd->gpio_work);
+	DP_DEBUG("DP%d GPIO isr\n", lphw_hpd->parser->cell_idx);
 
-	hpd = gpio_get_value(lphw_hpd->gpio_cfg.gpio);
-	DP_DEBUG("DP%d GPIO isr hpd %d->%d  state=%d\n",
+	return IRQ_HANDLED;
+}
+
+static void dp_lphw_hpd_tlmm_work(struct work_struct *work)
+{
+	struct dp_lphw_hpd_private *lphw_hpd = container_of(work,
+		struct dp_lphw_hpd_private, gpio_work);
+	bool hpd;
+	struct irq_data *irqd;
+	int rc;
+	ktime_t current_time;
+
+	current_time = ktime_get();
+
+	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
+	DP_DEBUG("DP%d GPIO hpd %d->%d  state=%d\n",
 			lphw_hpd->parser->cell_idx,
 			lphw_hpd->last_gpio_hpd, hpd,
 			lphw_hpd->gpio_check_state);
 
-	irqd = irq_get_irq_data(lphw_hpd->gpio_cfg.gpio);
-	if (irqd->chip && irqd->chip->irq_set_type) {
+	irqd = irq_get_irq_data(lphw_hpd->irq);
+	if (irqd && irqd->chip && irqd->chip->irq_set_type) {
 		/* Hook up next opposite edge interrupt */
 		if (hpd) {
 			/* High level, falling edge */
@@ -191,20 +203,6 @@ static irqreturn_t dp_lphw_hpd_tlmm_isr(int unused, void *data)
 			DP_ERR("DP%d GPIO failed to flip IRQ edge: %d\n",
 					lphw_hpd->parser->cell_idx, rc);
 	}
-
-	return IRQ_HANDLED;
-}
-
-static void dp_lphw_hpd_tlmm_work(struct work_struct *work)
-{
-	struct dp_lphw_hpd_private *lphw_hpd = container_of(work,
-		struct dp_lphw_hpd_private, gpio_work);
-	bool hpd;
-	ktime_t current_time;
-
-	current_time = ktime_get();
-
-	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
 
 repeat:
 	switch (lphw_hpd->gpio_check_state) {
@@ -670,8 +668,6 @@ int dp_lphw_hpd_register(struct dp_hpd *dp_hpd)
 	if (rc)
 		DP_ERR("DP%d GPIO failed to request IRQ: %d\n",
 				lphw_hpd->parser->cell_idx, rc);
-	else
-		enable_irq(lphw_hpd->irq);
 
 	return rc;
 }

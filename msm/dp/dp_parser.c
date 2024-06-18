@@ -240,7 +240,7 @@ static int dp_parser_misc(struct dp_parser *parser)
 	rc = of_property_read_u32(of_node,
 			"qcom,dp-sec-hpd-check-delay-ms", &parser->sec_hpd_check_delay_ms);
 	if (rc)
-		parser->sec_hpd_check_delay_ms = 50;
+		parser->sec_hpd_check_delay_ms = 0;
 
 	return 0;
 }
