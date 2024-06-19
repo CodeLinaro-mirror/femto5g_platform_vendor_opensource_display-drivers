@@ -1024,46 +1024,59 @@ static int dsi_pll_5nm_set_byteclk_div(struct dsi_pll_resource *pll,
 		bool commit)
 {
 
-	int i = 0;
-	int table_size;
+	int i;
 	u32 pll_post_div = 0, phy_post_div = 0;
-	struct dsi_pll_div_table *table;
 	u64 bitclk_rate;
-	u64 const phy_rate_split = 1500000000UL;
+	bool found = false;
 
+	/* Find the optimal combination, vco<=5GHz/6GHz, pll<2.5GHz */
 	if (pll->type == DSI_PHY_TYPE_DPHY) {
+		u64 vco_target = 0;
+		u64 *vco_range;
+		u64 fvco;
+		u64 fpll;
+
 		bitclk_rate = pll->byteclk_rate * 8;
+		if (pll->vco_boost)
+			vco_target = bitclk_rate * pll->vco_boost;
 
-		if (bitclk_rate <= phy_rate_split) {
-			table = pll_5nm_dphy_lb;
-			table_size = ARRAY_SIZE(pll_5nm_dphy_lb);
-		} else {
-			table = pll_5nm_dphy_hb;
-			table_size = ARRAY_SIZE(pll_5nm_dphy_hb);
-		}
-	} else {
-		bitclk_rate = pll->byteclk_rate * 7;
-
-		if (bitclk_rate <= phy_rate_split) {
-			table = pll_5nm_cphy_lb;
-			table_size = ARRAY_SIZE(pll_5nm_cphy_lb);
-		} else {
-			table = pll_5nm_cphy_hb;
-			table_size = ARRAY_SIZE(pll_5nm_cphy_hb);
-		}
-	}
-
-	for (i = 0; i < table_size; i++) {
-		if ((table[i].min_hz <= bitclk_rate) &&
-				(bitclk_rate <= table[i].max_hz)) {
-			pll_post_div = table[i].pll_div;
-			phy_post_div = table[i].phy_div;
+		switch (pll->pll_revision) {
+		case DSI_PLL_7NM:
+			vco_range = dsi_pll_7nm_dphy_vco_limit;
+			break;
+		case DSI_PLL_5NM:
+		default:
+			vco_range = dsi_pll_5nm_dphy_vco_limit;
 			break;
 		}
+
+		DSI_PLL_INFO(pll, "bit %llu, vco target %llu\n", bitclk_rate, vco_target);
+		for (i = 0; i < ARRAY_SIZE(pll_5nm_dphy_div_table); i++) {
+			pll_post_div = pll_5nm_dphy_div_table[i].pll_div;
+			phy_post_div = pll_5nm_dphy_div_table[i].phy_div;
+			fvco = bitclk_rate * phy_post_div * pll_post_div;
+			fpll = bitclk_rate * phy_post_div;
+			if ((!vco_target || fvco <= vco_target) &&
+					fvco >= vco_range[1] && fvco <= vco_range[0]
+					&& fpll < DSI_PLL_5NM_PLL_MAX) {
+				found = true;
+				break;
+			}
+		}
 	}
 
-	DSI_PLL_DBG(pll, "bit clk rate: %llu, pll_post_div: %d, phy_post_div: %d\n",
+	if (!found) {
+		DSI_PLL_ERR(pll, "bit clk rate: %llu, failed to find div\n",
+				bitclk_rate);
+		return -EINVAL;
+	}
+
+	DSI_PLL_INFO(pll, "bit clk rate: %llu, pll_post_div: %d, phy_post_div: %d\n",
 			bitclk_rate, pll_post_div, phy_post_div);
+
+	DSI_PLL_INFO(pll, "vco: %llu, pll: %llu\n",
+			bitclk_rate * pll_post_div * phy_post_div,
+			bitclk_rate * phy_post_div);
 
 	if (commit) {
 		dsi_pll_set_pll_post_div(pll, pll_post_div);
@@ -1107,7 +1120,7 @@ static int dsi_pll_calc_dphy_pclk_div(struct dsi_pll_resource *pll)
 	do_div(pclk_div, 2);
 	do_div(pclk_div, pll->lanes);
 
-	DSI_PLL_DBG(pll, "bpp: %d, lanes: %d, m_val: %u, n_val: %u, pclk_div: %u\n",
+	DSI_PLL_INFO(pll, "bpp: %d, lanes: %d, m_val: %u, n_val: %u, pclk_div: %u\n",
                           pll->bpp, pll->lanes, m_val, n_val, pclk_div);
 
 	return pclk_div;
