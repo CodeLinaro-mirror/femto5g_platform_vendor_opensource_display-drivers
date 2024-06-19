@@ -2376,6 +2376,7 @@ static void dp_display_hpd_check_cb(struct timer_list *t)
 			DP_DEBUG("DP%d HPD check mismatch, hpd=%d, force connect event\n",
 						dp->cell_idx, sec_hpd);
 			dp->hpd->hpd_high = sec_hpd;
+			dp->hpd->alt_mode_cfg_done = true;
 			/*
 			 * Trigger a disconnect->connect event, since it's possible
 			 * connect_work is still on going, need to be enqueue to
@@ -2390,6 +2391,7 @@ static void dp_display_hpd_check_cb(struct timer_list *t)
 			DP_DEBUG("DP%d HPD check mismatch, hpd=%d, force disconnect event\n",
 						dp->cell_idx, sec_hpd);
 			dp->hpd->hpd_high = sec_hpd;
+			dp->hpd->alt_mode_cfg_done = false;
 			/*
 			 * Trigger a disconnect event, since it's possible connect_work
 			 * is still on going, need to be enqueue to another work queue.
