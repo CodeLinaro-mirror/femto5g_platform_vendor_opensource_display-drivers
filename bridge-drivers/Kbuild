@@ -21,4 +21,18 @@ ccflags-y += $(LINUX_INC)
 
 obj-$(CONFIG_DRM_LT9611UXC) += lt9611uxc.o
 
+WINGMATE_OBJS += wingmate/wm_audio.o \
+		 wingmate/wm_cec.o \
+		 wingmate/wm_debug.o \
+		 wingmate/wm_display.o \
+		 wingmate/wm_drm.o \
+		 wingmate/wm_dsi_rx.o \
+		 wingmate/wm_hdcp.o \
+		 wingmate/wm_hdmi_tx.o \
+		 wingmate/wm_pll.o \
+		 wingmate/wm_vtg.o
+
+obj-$(CONFIG_DRM_WINGMATE) += wm_display.o
+wm_display-y := $(WINGMATE_OBJS)
+
 CDEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"
