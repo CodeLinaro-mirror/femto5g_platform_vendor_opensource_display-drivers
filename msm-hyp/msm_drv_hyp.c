@@ -183,6 +183,24 @@ struct msm_hyp_topology {
 	int needs_split_display;
 };
 
+static void msm_hyp_display_thread_priority_worker(struct kthread_work *work)
+{
+	int ret = 0;
+	struct sched_param param = { 0 };
+	struct task_struct *task = current->group_leader;
+
+	/**
+	 * this priority was found during empiric testing to have appropriate
+	 * realtime scheduling to process display updates and interact with
+	 * other real time and normal priority task
+	 */
+	param.sched_priority = 16;
+	ret = sched_setscheduler(task, SCHED_FIFO, &param);
+	if (ret)
+		DRM_WARN("pid:%d name:%s priority update failed: %d\n",
+			current->tgid, task->comm, ret);
+}
+
 static const char *_msm_hyp_get_topology(struct msm_hyp_mode_info *modeinfo)
 {
 	static const struct msm_hyp_topology top_table[] = {
@@ -1009,12 +1027,14 @@ static int _msm_hyp_crtc_init_caps(struct msm_hyp_crtc *crtc)
 	return 0;
 }
 
-static int _msm_hyp_crtc_init_dispatch_thread(struct msm_hyp_crtc *c)
+static int _msm_hyp_crtc_init_dispatch_thread(struct msm_hyp_crtc *c,
+		struct msm_hyp_drm_private *priv)
 {
 	int ret = 0;
-	struct sched_param param;
 
 	kthread_init_worker(&c->worker);
+	kthread_init_work(&priv->commit_thread_priority_work,
+			msm_hyp_display_thread_priority_worker);
 
 	c->thread = kthread_run(kthread_worker_fn,
 			&c->worker,
@@ -1026,15 +1046,8 @@ static int _msm_hyp_crtc_init_dispatch_thread(struct msm_hyp_crtc *c)
 		return ret;
 	}
 
-	/*
-	 * this priority was found during empiric testing to have appropriate
-	 * realtime scheduling to process display updates and interact with
-	 * other real time and normal priority task
-	 */
-	param.sched_priority = 16;
-	ret = sched_setscheduler(c->thread, SCHED_FIFO, &param);
-	if (ret)
-		DRM_WARN("display thread priority update failed: %d\n", ret);
+	kthread_queue_work(&c->worker, &priv->commit_thread_priority_work);
+	kthread_flush_work(&priv->commit_thread_priority_work);
 
 	return 0;
 }
@@ -1082,7 +1095,7 @@ static int _msm_hyp_crtc_init(struct drm_device *ddev,
 	if (IS_ERR_OR_NULL(crtc->output_fence))
 		return PTR_ERR(crtc->output_fence);
 
-	ret = _msm_hyp_crtc_init_dispatch_thread(crtc);
+	ret = _msm_hyp_crtc_init_dispatch_thread(crtc, priv);
 	if (ret)
 		return ret;
 
