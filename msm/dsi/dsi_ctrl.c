@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1945,9 +1945,9 @@ void dsi_ctrl_toggle_error_interrupt_status(struct dsi_ctrl *dsi_ctrl, bool enab
 		if (dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE &&
 				!dsi_ctrl->host_config.u.video_engine.bllp_lp11_en &&
 				!dsi_ctrl->host_config.u.video_engine.eof_bllp_lp11_en)
-			dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw,	0xFF00A0);
+			dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw,	0xFF01A0);
 		else
-			dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw, 0xFF00E0);
+			dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw, 0xFF01E0);
 	}
 }
 
