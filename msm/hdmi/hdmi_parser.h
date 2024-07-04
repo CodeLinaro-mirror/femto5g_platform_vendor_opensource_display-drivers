@@ -109,7 +109,6 @@ struct hdmi_core_clk_info {
 struct hdmi_clk_info {
 	/* Clocks parsed from DT */
 	struct hdmi_core_clk_info core_clks;
-	// TODO: check if any clks pending
 };
 
 struct hdmi_parser {
@@ -117,7 +116,7 @@ struct hdmi_parser {
 	struct device *msm_hdcp_dev;
 	struct dss_module_power mp[HDMI_MAX_PM];
 	struct hdmi_clk_info clk_info;
-	struct hdmi_pinctrl pinctrl;	// TODO not using for now
+	struct hdmi_pinctrl pinctrl;
 	struct hdmi_io io;
 
 	u32 max_pclk_khz;
@@ -128,6 +127,7 @@ struct hdmi_parser {
 	u32 display_topology;
 	bool skip_ddc;
 	u32 num_of_modes;
+	int phy_version;
 
 	/* gpio's: */
 	int ddc_clk_gpio, ddc_data_gpio;

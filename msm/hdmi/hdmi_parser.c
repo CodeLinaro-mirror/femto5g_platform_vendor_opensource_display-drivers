@@ -180,7 +180,6 @@ static void hdmi_parser_clear_io_buf(struct hdmi_parser *parser)
 
 static int hdmi_parser_ddc(struct hdmi_parser *parser)
 {
-	//TODO: remove if not specific entries
 	return 0;
 }
 
@@ -205,6 +204,11 @@ static int hdmi_parser_misc(struct hdmi_parser *parser)
 			"qcom,display-type", NULL);
 	if (!parser->display_type)
 		parser->display_type = "unknown";
+
+	rc = of_property_read_u32(of_node,
+			"qcom,hdmi-phy-snps-4nm", &parser->phy_version);
+	if (rc)
+		parser->phy_version = 0;
 
 	return 0;
 }

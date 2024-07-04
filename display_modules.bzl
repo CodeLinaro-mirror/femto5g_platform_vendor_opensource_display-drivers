@@ -20,6 +20,8 @@ module_entry(
             "msm/hdmi/hdmi_panel.c",
             "msm/hdmi/hdmi_pll.c",
             "msm/hdmi/hdmi_pll_snps.c",
+            "msm/hdmi/hdmi_phy.c",
+            "msm/hdmi/hdmi_phy_snps.c",
         ],
         "CONFIG_HDCP_QSEECOM": [
             "hdcp/msm_hdcp.c",
