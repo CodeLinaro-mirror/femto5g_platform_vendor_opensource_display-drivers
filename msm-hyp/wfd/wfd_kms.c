@@ -269,6 +269,205 @@ static const struct {
 	{ DRM_FORMAT_BGR888, WFD_FORMAT_BGR888, WFD_FORMAT_RGB888 },
 	{ 0, 0, 0 },
 };
+static void *wfd_kms_complete_handler_cb(enum event_types type,
+		union event_info *info, void *params);
+
+static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int port_idx,
+		WFDint port_id, bool status, struct drm_connector *connector)
+{
+	struct drm_device *dev = kms->dev;
+	struct wfd_connector_info_priv *priv;
+	struct msm_hyp_connector *conn;
+	struct drm_display_mode *mode;
+	int m;
+	WFDint physical_size[2];
+	WFDPortMode port_mode[MAX_PORT_MODES_CNT];
+	int num_mode;
+	int ret = 0;
+
+	if (!connector) {
+		pr_err("HPDLOG No connector");
+		ret = -EINVAL;
+		return ret;
+	}
+	conn = to_msm_hyp_connector(connector);
+	if (!conn) {
+		ret = -EINVAL;
+		return ret;
+	}
+	priv = container_of(conn->info, struct wfd_connector_info_priv,
+		base);
+	if (!priv) {
+		ret = -EINVAL;
+		return ret;
+	}
+	pr_debug("HPDLOG port %d name %s connector type id %d, status %d",
+			priv->wfd_port_id,
+			connector->name,
+			connector->connector_type_id,
+			connector->status);
+	if (priv->wfd_device == wfd_dev && priv->wfd_port_id == port_id) {
+		ret = 1;
+		/* Handle HPD connect event*/
+		if (status == WFD_HPD_CONNECT && priv->connector_status ==
+				connector_status_disconnected) {
+			pr_debug("HPDLOG port connect: %x, connector name %s, "
+					"connector id %d, port %d",
+					port_id, connector->name,
+					connector->status,
+					priv->wfd_port);
+			priv->connector_status = connector_status_connected;
+			connector->status = connector_status_connected;
+			priv->base.possible_crtcs = 1 << port_idx;
+			wfdGetPortAttribiv_User(priv->wfd_device,
+				priv->wfd_port,
+				WFD_PORT_PHYSICAL_SIZE,
+				2, physical_size);
+			priv->base.display_info.width_mm =
+				(uint32_t)physical_size[0];
+			priv->base.display_info.height_mm =
+				(uint32_t)physical_size[1];
+
+			num_mode = wfdGetPortModes_User(wfd_dev,
+				priv->wfd_port,
+				0, 0);
+			if (!num_mode) {
+				ret = -EINVAL;
+				return ret;
+			}
+			pr_debug("HPDLOG GetPortMode %d, %d %d %d\n",
+				num_mode, priv->wfd_device,
+				wfd_dev, priv->wfd_port);
+			priv->mode_count = num_mode;
+
+			wfdGetPortModes_User(priv->wfd_device,
+				priv->wfd_port, port_mode,
+				num_mode);
+			if (num_mode > 0) {
+				priv->modes = kcalloc(num_mode,
+					sizeof(struct drm_display_mode),
+					GFP_KERNEL);
+				if (!priv->modes) {
+					ret = -ENOMEM;
+					return ret;
+				}
+			}
+
+			for (m = 0; m < num_mode; m++) {
+				mode = &priv->modes[m];
+				mode->hdisplay =
+					wfdGetPortModeAttribi_User(
+					priv->wfd_device,
+					priv->wfd_port,
+					port_mode[m],
+					WFD_PORT_MODE_WIDTH);
+				mode->vdisplay =
+					wfdGetPortModeAttribi_User(
+					priv->wfd_device,
+					priv->wfd_port,
+					port_mode[m],
+					WFD_PORT_MODE_HEIGHT);
+				priv->port_modes[m] = (int *)port_mode[m];
+				mode->hsync_end = mode->hdisplay;
+				mode->htotal = mode->hdisplay;
+				mode->hsync_start = mode->hdisplay;
+				mode->vsync_end = mode->vdisplay;
+				mode->vtotal = mode->vdisplay;
+				mode->vsync_start = mode->vdisplay;
+				mode->clock = wfdGetPortModeAttribi_User(
+						priv->wfd_device,
+						priv->wfd_port,
+						port_mode[m],
+						WFD_PORT_MODE_REFRESH_RATE) *
+					mode->vtotal *
+					mode->htotal / 1000LL;
+				drm_mode_set_name(mode);
+				pr_debug("HPDLOG information, port[%d] "
+						"hdisplay[%d] vdisplay[%d] clock[%d] "
+						"private[%d] name[%s]",
+						priv->wfd_port_id, mode->hdisplay,
+						mode->vdisplay, mode->clock,
+						priv->port_modes[m], mode->name);
+			}
+			msm_hyp_send_hpd_event(dev, connector);
+		}
+		/* Handle HPD disconnect event*/
+		else if (status == WFD_HPD_DISCONNECT &&
+				priv->connector_status ==
+				connector_status_connected) {
+			pr_debug("HPDLOG port disconnect: %x, "
+					"connector name %s connector id %d",
+					port_id, connector->name, connector->status);
+			priv->connector_status = connector_status_disconnected;
+			connector->status = connector_status_disconnected;
+			msm_hyp_send_hpd_event(dev, connector);
+		}
+		/*Handle repeated event */
+		else {
+			pr_debug("HPDLOG HPD redundant event port %x, status %d, conn status : %d",
+					port_id, status, priv->connector_status);
+		}
+	}
+	return ret;
+}
+
+static void wfd_kms_handle_hpd_event(union event_info *info, void *params)
+{
+	struct wfd_kms *kms = (struct wfd_kms *) params;
+	struct drm_device *dev = NULL;
+	int i, j;
+	struct display_event *disp_event = (struct display_event *)info;
+	struct drm_connector *connector;
+	struct drm_connector_list_iter conn_iter;
+	WFDDevice wfd_dev = WFD_INVALID_HANDLE;
+	int ret = 0;
+
+	if (!kms || !info || !params) {
+		pr_err("HPDLOG Null dev : %p, kms %p, info %p, params %p",
+			dev, kms, info, params);
+		return;
+	}
+	dev = kms->dev;
+	pr_debug("HPDLOG dev : %d, port : %x, status : %d\n",
+			disp_event->event_infos.hotplug_info.device,
+			disp_event->event_infos.hotplug_info.port_id,
+			disp_event->event_infos.hotplug_info.status);
+
+	/* Loop to match device handle */
+	for (i = 0; i < kms->wfd_device_cnt; i++) {
+		wfd_dev = wire_user_get_dev_hdl(kms->wfd_device[i]);
+		pr_debug("HPDLOG dev : %d hdl %d devhdl %d",
+				kms->wfd_device[i],
+				(WFDDevice)(uintptr_t)disp_event->event_infos.hotplug_info.device,
+				wfd_dev);
+		if (wfd_dev == (WFDDevice)(uintptr_t)disp_event->event_infos.hotplug_info.device) {
+			wfd_dev = kms->wfd_device[i];
+			pr_debug("HPDLOG dev : %d, %d", wfd_dev,
+				disp_event->event_infos.hotplug_info.device);
+			/* Loop to match port ID*/
+			for (j = 0; j < kms->port_cnt; j++) {
+				if (disp_event->event_infos.hotplug_info.port_id ==
+						kms->port_ids[j]) {
+					pr_debug("HPDLOG port : %x j %d",
+						disp_event->event_infos.hotplug_info.port_id, j);
+					drm_connector_list_iter_begin(dev, &conn_iter);
+					/* Get connector information */
+					drm_for_each_connector_iter(
+							connector, &conn_iter) {
+						ret = wfd_kms_send_hpd_event(kms,
+								wfd_dev, j,
+								kms->port_ids[j],
+								disp_event->event_infos.hotplug_info.status,
+								connector);
+						if (ret)
+							return;
+					}
+				}
+			}
+			return;
+		}
+	} /* Loop to match device handle */
+}
 
 static int _wfd_kms_parse_dt(struct device_node *node, u32 *client_id)
 {
@@ -1068,6 +1267,16 @@ static int wfd_kms_get_connector_infos(struct msm_hyp_kms *kms,
 					mode->vtotal *
 					mode->htotal / 1000LL;
 			drm_mode_set_name(mode);
+			/* TODO : Need to remove this condition with proper
+			 * fix */
+			if (mode->hdisplay == 0) {
+				pr_err("HPDLOG information, port[%d],"
+					"hdisplay[%d] vdisplay[%d] clock[%d],"
+					"private[%d] name[%s]", priv->wfd_port_id,
+					mode->hdisplay, mode->vdisplay,
+					mode->clock, priv->port_modes[j], mode->name);
+				priv->connector_status = connector_status_disconnected;
+			}
 		}
 
 		if (i < ARRAY_SIZE(disp_order_str))
@@ -1787,6 +1996,9 @@ static void *wfd_kms_complete_handler_cb(enum event_types type,
 		priv = container_of(c->info, struct wfd_crtc_info_priv, base);
 		if (priv->vblank_enable)
 			_wfd_kms_req_vblank(crtc);
+	} else if (disp_event->type == HPD) {
+		pr_debug("HPDLOG event type %d", type);
+		wfd_kms_handle_hpd_event(info, params);
 	}
 
 	return NULL;
@@ -1800,13 +2012,13 @@ static void _wfd_kms_req_vblank(struct drm_crtc *crtc)
 	struct display_event disp_event;
 	struct cb_info cb_info;
 
-	disp_event.display_id = priv->wfd_port_id;
+	disp_event.event_infos.display_id = priv->wfd_port_id;
 	disp_event.type = VSYNC;
 	cb_info.cb = wfd_kms_complete_handler_cb;
 	cb_info.user_data = crtc;
 
 	pr_debug("register vsync event id=%d\n",
-			disp_event.display_id);
+			disp_event.event_infos.display_id);
 
 	wire_user_register_event_listener(priv->wfd_device,
 			DISPLAY_EVENT,
@@ -1848,7 +2060,7 @@ static void wfd_kms_commit(struct msm_hyp_kms *kms,
 			_wfd_kms_plane_zpos_adj_fe(crtc, old_state);
 
 		disp_event.type = COMMIT_COMPLETE;
-		disp_event.display_id = priv->wfd_port_id;
+		disp_event.event_infos.display_id = priv->wfd_port_id;
 		cb_info.cb = wfd_kms_complete_handler_cb;
 		cb_info.user_data = crtc;
 
@@ -1912,6 +2124,28 @@ static void wfd_kms_free_connector_port_modes(struct msm_hyp_connector *c_conn)
 	}
 }
 
+static void wfd_kms_register_event(struct msm_hyp_kms *kms)
+{
+	struct wfd_kms *wfd_kms = to_wfd_kms(kms);
+	struct display_event disp_event;
+	struct cb_info cb_info;
+	int i = 0;
+
+	for (i = 0; i < wfd_kms->wfd_device_cnt; i++) {
+		pr_debug("HPDLOG %s i : %d, dev : %d\n", __func__,
+				i, wfd_kms->wfd_device[i]);
+		disp_event.type = HPD;
+		disp_event.event_infos.display_id = i;
+		cb_info.cb = wfd_kms_complete_handler_cb;
+		cb_info.user_data = wfd_kms;
+		wire_user_register_event_listener(wfd_kms->wfd_device[i],
+				DISPLAY_EVENT,
+				(union event_info *)&disp_event,
+				&cb_info);
+		wfdRegisterHotplugEvent_User(wfd_kms->wfd_device[i]);
+	}
+}
+
 static const struct msm_hyp_kms_funcs wfd_kms_funcs = {
 	.get_connector_infos = wfd_kms_get_connector_infos,
 	.get_plane_infos = wfd_kms_get_plane_infos,
@@ -1922,6 +2156,7 @@ static const struct msm_hyp_kms_funcs wfd_kms_funcs = {
 	.enable_vblank = wfd_kms_enable_vblank,
 	.disable_vblank = wfd_kms_disable_vblank,
 	.free_connector_port_modes = wfd_kms_free_connector_port_modes,
+	.register_event = wfd_kms_register_event,
 };
 
 static int wfd_kms_bind(struct device *dev, struct device *master,
@@ -1996,8 +2231,10 @@ static int wfd_kms_remove(struct platform_device *pdev)
 		wfdDestroyPort_User(kms->port_devs[i], kms->ports[i]);
 	}
 
-	for (i = 0; i < kms->wfd_device_cnt; i++)
+	for (i = 0; i < kms->wfd_device_cnt; i++) {
+		wfdUnregisterHotplugEvent_User(kms->wfd_device[i]);
 		wfdDestroyDevice_User(kms->wfd_device[i]);
+	}
 
 	platform_set_drvdata(pdev, NULL);
 
