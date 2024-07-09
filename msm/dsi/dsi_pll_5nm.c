@@ -419,9 +419,7 @@ static void dsi_pll_config_hzindep_reg(struct dsi_pll_5nm *pll,
 	DSI_PLL_REG_W(pll_base, PLL_PLL_INT_GAIN_IFILT_BAND_1, 0x82);
 	DSI_PLL_REG_W(pll_base, PLL_PLL_FL_INT_GAIN_PFILT_BAND_1, 0x4c);
 	DSI_PLL_REG_W(pll_base, PLL_PLL_LOCK_OVERRIDE, 0x80);
-	DSI_PLL_REG_W(pll_base, PLL_PFILT, 0x29);
 	DSI_PLL_REG_W(pll_base, PLL_PFILT, 0x2f);
-	DSI_PLL_REG_W(pll_base, PLL_IFILT, 0x2a);
 
 	switch (rsc->pll_revision) {
 	case DSI_PLL_7NM:
