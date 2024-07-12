@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -731,6 +731,7 @@ enum sde_handoff_type {
  * @type:                Indicates the type of handoff
  * @num_splash_regions:  Indicates number of splash memory regions from dtsi
  * @num_splash_displays: Indicates count of active displays in continuous splash
+ * @handoff pending:	 Indicates if splash handoff is done on first commit
  * @splash_mem:          Array of all struct sde_splash_mem listed from dtsi
  * @demura_mem:          Array of all demura memory regions listed from dtsi
  * @splash_display:      Array of all struct sde_splash_display
@@ -739,6 +740,7 @@ struct sde_splash_data {
 	enum sde_handoff_type  type;
 	u32 num_splash_regions;
 	u32 num_splash_displays;
+	bool handoff_pending;
 	struct sde_splash_mem splash_mem[MAX_DSI_DISPLAYS];
 	struct sde_splash_mem demura_mem[MAX_DSI_DISPLAYS];
 	struct sde_splash_display splash_display[MAX_DSI_DISPLAYS];
