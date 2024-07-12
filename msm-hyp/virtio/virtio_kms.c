@@ -25,10 +25,16 @@
 #define SSPP_UNITY_SCALE       1
 #define MAX_NUM_LIMIT_PAIRS    16
 #define MAX_MDP_CLK_KHZ        412500
+#define DBG_BUF_COUNT          50
 
 #define VIRTIO_TRANSPARENCY_GLOBAL_ALPHA (1<<1)
 #define VIRTIO_TRANSPARENCY_SOURCE_ALPHA (1<<2)
 //#define VIRTIO_DEBUG 1
+
+#define DUMP_FRAME_CONTENT(start, end, ptr)					\
+	for (int idx = (start); idx < (end); idx++) {				\
+		DRM_DEBUG_KMS("virtio: framebuffer data %x\n", ptr[idx]);	\
+	}
 
 struct limit_val_pair {
 	const char *str;
@@ -1215,12 +1221,35 @@ static void virtio_gpu_resource_id_get(uint32_t *resid)
 	*resid = handle + 1;
 }
 
+static void virtio_check_framebuffer_contents(struct dma_buf *dma_buf_dump)
+{
+	int ret = 0;
+	char *ptr;
+	struct iosys_map map;
+
+	dma_buf_begin_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
+
+	ret =  dma_buf_vmap(dma_buf_dump, &map);
+	if (ret) {
+		DRM_DEBUG_KMS(" virtio : mmap failed for dma_buf_vmap\n");
+	} else {
+		ptr = (char *)map.vaddr;
+		if (!ptr)
+			DRM_DEBUG_KMS(" virtio : no memry map for da buffer\n");
+		else
+			DUMP_FRAME_CONTENT(0, DBG_BUF_COUNT, ptr);
+	}
+
+	DRM_DEBUG_KMS("virtio : framebuffer dma_buf_vmap done %p\n", map.vaddr);
+	dma_buf_vunmap(dma_buf_dump, &map);
+	dma_buf_end_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
+}
+
 static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 		struct msm_hyp_framebuffer *fb)
 {
 	struct virtio_framebuffer_priv *fb_priv;
-	struct dma_buf *dma_buf;
-	//struct dma_buf *dma_buf_dump;
+	struct dma_buf *dma_bufs[DRM_FORMAT_MAX_PLANES] = {0};
 	uint32_t client_id;
 	struct virtio_mem_info *mem;
 	uint32_t export_id = 0;
@@ -1229,123 +1258,71 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	int ret = 0;
 	uint32_t fence = 0;
 	uint32_t modifiers = 0;
-	//struct dma_buf_map map;
-	//char *ptr;
-	//int i, offset = 0;
+	int idx = 0, num_planes = 0;
 
-	if (!fb) {
-		if (!fb->bo) {
-			pr_err("no bo attached to fb\n");
-			return -EINVAL;
-		}
-	}
+	num_planes = fb->base.format->num_planes;
 
 	fb_priv = container_of(fb->info, struct virtio_framebuffer_priv, base);
 	client_id = fb_priv->kms->client_id;
-        mem = &fb_priv->mem;
+	mem = &fb_priv->mem;
 	handle =  fb_priv->kms->channel[client_id].hab_socket[CHANNEL_CMD];
-
 	pr_debug("virtio : create: FB ID: %d (%pK)\n", fb->base.base.id, fb);
+
 	if (fb_priv->created) {
 		pr_debug("virtio : fb already created shmem_id %d\n", mem->shmem_id);
-#if 0
-		if (mem->buffer) {
-			pr_err(" virtio : framebuffer dma_buf_vmap started res %d\n",
-					fb_priv->hw_res_handle);
-			dma_buf_dump = mem->buffer;
-			dma_buf_begin_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
-			ret =  dma_buf_vmap(dma_buf_dump, &map);
-			if (ret)
-				pr_err(" virtio : mmap failed for dma_buf_vmap\n");
-			else {
-				ptr = (char *)map.vaddr;
-				if (!ptr) {
-					pr_err("virtio: no memry map for da buffer\n");
-				}
-				else {
-					for (i = offset; i < offset + 100; ) {
-						pr_err("virtio : framebuffer data %x %x %x %x %x\n",
-								ptr[i],
-								ptr[i+1],
-								ptr[i+2],
-								ptr[i+3],
-								ptr[i+4]);
-						i = i + 5;
-					}
-				}
-			}
-			pr_err("virtio : framebuffer dma_buf_vmap done %p\n", map.vaddr);
-			dma_buf_vunmap(dma_buf_dump, &map);
-			dma_buf_end_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
-		}
-#endif
 		return 0;
 	}
-		if (fb->bo->import_attach) {
-			dma_buf = fb->bo->import_attach->dmabuf;
-			get_dma_buf(dma_buf);
-#if 0
-			pr_err(" virtio : framebuffer dma_buf_vmap started res\n");
-			dma_buf_begin_cpu_access(dma_buf, DMA_BIDIRECTIONAL);
-			ret =  dma_buf_vmap(dma_buf, &map);
-			if (ret)
-				pr_err(" virtio : mmap failed for dma_buf_vmap\n");
-			else {
-				ptr = (char *)map.vaddr;
-				if (!ptr) {
-					pr_err(" virtio : no memry map for da buffer\n");
-				}
-				else {
-					for (i = 0; i < 50; ) {
-						pr_err("virtio: framebuffer data %x %x %x %x %x\n",
-								ptr[i],
-								ptr[i+1],
-								ptr[i+2],
-								ptr[i+3],
-								ptr[i+4]);
-						i = i + 5;
-					}
-				}
-			}
-			pr_err("virtio : framebuffer dma_buf_vmap done %p\n", map.vaddr);
-			dma_buf_vunmap(dma_buf, &map);
-		  	dma_buf_end_cpu_access(dma_buf, DMA_BIDIRECTIONAL);
-#endif
-		} else if (fb->bo->dma_buf) {
-			dma_buf = fb->bo->dma_buf;
-			get_dma_buf(dma_buf);
+
+	for (idx = 0; idx < num_planes; idx++) {
+		if (!fb->base.obj[idx]) {
+			pr_err("no bo attached to fb\n");
+			return -EINVAL;
+		}
+
+		if (fb->base.obj[idx]->import_attach) {
+			dma_bufs[idx] = fb->base.obj[idx]->import_attach->dmabuf;
+			virtio_check_framebuffer_contents(dma_bufs[idx]);
+			get_dma_buf(dma_bufs[idx]);
+		} else if (fb->base.obj[idx]->dma_buf) {
+			dma_bufs[idx] = fb->base.obj[idx]->dma_buf;
+			get_dma_buf(dma_bufs[idx]);
 		} else {
-			dma_buf = drm_gem_prime_export(fb->bo, 0);
-			if (IS_ERR(dma_buf))
-				return PTR_ERR(dma_buf);
+			dma_bufs[idx] = drm_gem_prime_export(fb->base.obj[idx], 0);
+			if (IS_ERR(dma_bufs[idx]))
+				pr_err("export dma_buf from bo failed\n");
+			return PTR_ERR(dma_bufs[idx]);
 		}
+	}
 
-		mutex_lock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
-		memset((char *)mem, 0x00,
-				sizeof(struct virtio_mem_info));
-		mem->size	= fb->bo->size;
-		mem->buffer	= (void *)dma_buf;
-		export_flags |= HABMM_EXPIMP_FLAGS_DMABUF;
-		ret = habmm_export(
-			handle,
-			mem->buffer,
-			(uint32_t)mem->size,
-			&export_id,
-			export_flags);
+	mutex_lock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
+	memset((char *)mem, 0x00,
+		sizeof(struct virtio_mem_info));
+	mem->size = fb->base.obj[0]->size;
+	mem->buffer = (void *)(dma_bufs[0]);
+	export_flags |= HABMM_EXPIMP_FLAGS_DMABUF;
+	ret = habmm_export(
+		handle,
+		mem->buffer,
+		(uint32_t)mem->size,
+		&export_id,
+		export_flags);
 
-		if (ret) {
-			pr_err("virtio :framebuffer habmm export failed\n");
-			mutex_unlock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
-			dma_buf_put(dma_buf);
-			goto error;
-		}
 
-		mem->shmem_id = export_id;
-
+	if (ret) {
+		pr_err("virtio :framebuffer habmm export failed\n");
 		mutex_unlock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
-		pr_debug("virtio :framebuffer habmm_export done %d\n",
-				mem->shmem_id);
-		dma_buf_put(dma_buf);
+		for (idx = 0; idx < num_planes; idx++)
+			dma_buf_put(dma_bufs[idx]);
+		goto error;
+	}
+
+	mem->shmem_id = export_id;
+
+	mutex_unlock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
+	pr_debug("virtio :framebuffer habmm_export done %d\n",
+		mem->shmem_id);
+	for (idx = 0; idx < num_planes; idx++)
+		dma_buf_put(dma_bufs[idx]);
 
 	virtio_gpu_resource_id_get(&fb_priv->hw_res_handle);
 
