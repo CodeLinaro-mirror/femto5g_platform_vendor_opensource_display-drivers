@@ -1948,6 +1948,7 @@ struct sde_perf_cfg {
  * @max_display_height  minimum display height
  * @min_display_width   maximum display width
  * @min_display_height  maximum display height
+ * @in_rot_maxheight    max pre rotated height for inline rotation.
  * @max_sspp_linewidth  max source pipe line width
  * @vig_sspp_linewidth  max vig source pipe line width support
  * @scaling_linewidth   max vig source pipe linewidth for scaling usecases
@@ -2067,6 +2068,7 @@ struct sde_mdss_cfg {
 	u32 max_display_height;
 	u32 min_display_width;
 	u32 min_display_height;
+	u32 in_rot_maxheight;
 	u32 max_sspp_linewidth;
 	u32 vig_sspp_linewidth;
 	u32 scaling_linewidth;

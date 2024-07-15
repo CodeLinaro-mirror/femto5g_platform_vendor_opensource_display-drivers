@@ -1693,8 +1693,8 @@ static int _sde_sspp_setup_vigs(struct device_node *np,
 		if (sde_cfg->true_inline_rot_rev > 0) {
 			set_bit(SDE_SSPP_TRUE_INLINE_ROT, &sspp->features);
 			sblk->in_rot_format_list = sde_cfg->inline_rot_formats;
-			sblk->in_rot_maxheight =
-					MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT;
+			sblk->in_rot_maxheight = sde_cfg->in_rot_maxheight ?
+				sde_cfg->in_rot_maxheight : MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT;
 		}
 
 		if (IS_SDE_INLINE_ROT_REV_200(sde_cfg->true_inline_rot_rev) ||
@@ -5422,6 +5422,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_SUI_BLENDSTAGE, sde_cfg->features);
 		set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
 		sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+		sde_cfg->in_rot_maxheight = 1200;
 		set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
 		set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
 		sde_cfg->mdss_hw_block_size = 0x158;
