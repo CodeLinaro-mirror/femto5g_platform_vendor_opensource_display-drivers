@@ -3572,6 +3572,9 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 	else
 		dsi_clock_name = "qcom,dsi-select-sec-clocks";
 
+	if (display->panel->ctl_op_sync && !strcmp(display->display_type, "secondary"))
+		dsi_clock_name = "qcom,dsi-select-sec-sync-clocks";
+
 	num_clk = dsi_display_get_clocks_count(display, dsi_clock_name);
 
 	for (i = 0; i < num_clk; i++) {
@@ -4278,25 +4281,25 @@ static bool dsi_display_validate_panel_resources(struct dsi_display *display)
 
 static void dsi_display_check_sync_mode(struct dsi_display *display)
 {
-	char *dsi_sec_clock_name = "qcom,dsi-select-sec-clocks";
-	int num_sec_clk;
+	char *dsi_sec_sync_clock_name = "qcom,dsi-select-sec-sync-clocks";
+	int num_sec_sync_clk;
 	const char *m_clk[2] = {"pll_byte_mclk", "pll_dsi_mclk"};
-	const char *sec_clk[2];
+	const char *sec_sync_clk[2];
 	struct device_node *of_node = display->pdev->dev.of_node;
 	struct of_phandle_iterator it;
 	int i, mdp_count;
 
-	num_sec_clk = dsi_display_get_clocks_count(display, dsi_sec_clock_name);
+	num_sec_sync_clk = dsi_display_get_clocks_count(display, dsi_sec_sync_clock_name);
 
-	if (num_sec_clk <= 0) {
+	if (num_sec_sync_clk <= 0) {
 		display->panel->ctl_op_sync = false;
 		return;
 	}
 
-	for (i = 0; i < num_sec_clk; i++) {
-		dsi_display_get_clock_name(display, dsi_sec_clock_name, i, &sec_clk[i]);
+	for (i = 0; i < num_sec_sync_clk; i++) {
+		dsi_display_get_clock_name(display, dsi_sec_sync_clock_name, i, &sec_sync_clk[i]);
 		/* Assuming clocks are present in same order in dtsi */
-		if (strcmp(m_clk[i], sec_clk[i])) {
+		if (strcmp(m_clk[i], sec_sync_clk[i])) {
 			display->panel->ctl_op_sync = false;
 			return;
 		}
