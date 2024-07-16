@@ -376,6 +376,7 @@ struct sde_hw_reg_dma_ops {
  * @caps: LUTDMA hw caps on the platform
  * @ops: reg dma ops supported on the platform
  * @addr: reg dma hw block base address
+ * @vm_based_queue: flag to specify per vm based queue capability of reg dma
  */
 struct sde_hw_reg_dma {
 	struct drm_device *drm_dev;
@@ -383,6 +384,7 @@ struct sde_hw_reg_dma {
 	const struct sde_reg_dma_cfg *caps;
 	struct sde_hw_reg_dma_ops ops;
 	void __iomem *addr;
+	bool vm_based_queue;
 };
 
 /**
