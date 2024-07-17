@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -544,13 +544,13 @@ static ssize_t dp_debug_write_mst_con_id(struct file *file,
 
 	debug->mst_con_id = con_id;
 
-	if (status == connector_status_connected)
-		DP_INFO("plug mst connector %d\n", con_id);
-	else
-		DP_INFO("unplug mst connector %d\n", con_id);
-
 	if (status == connector_status_unknown)
 		goto out;
+
+	if (status == connector_status_connected)
+		DP_INFO("plug mst connector %d\n", con_id);
+	else if (status == connector_status_disconnected)
+		DP_INFO("unplug mst connector %d\n", con_id);
 
 	mst_port = sde_conn->mst_port;
 	dp_panel = sde_conn->drv_panel;

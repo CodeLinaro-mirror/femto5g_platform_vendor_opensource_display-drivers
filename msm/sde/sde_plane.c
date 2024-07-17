@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -650,7 +650,10 @@ int sde_plane_wait_input_fence(struct drm_plane *plane, uint32_t wait_ms)
 				break;
 			}
 
-			SDE_EVT32_VERBOSE(DRMID(plane), -ret, prefix);
+			if (ret)
+				SDE_EVT32(DRMID(plane), -ret, prefix, SDE_EVTLOG_ERROR);
+			else
+				SDE_EVT32_VERBOSE(DRMID(plane), -ret, prefix);
 		} else {
 			ret = 0;
 		}
@@ -3989,8 +3992,8 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 			PLANE_PROP_FB_TRANSLATION_MODE);
 
 	if (psde->pipe_hw->ops.set_ubwc_stats_roi)
-		msm_property_install_range(&psde->property_info, "ubwc_stats_roi",
-				0, 0, 0xFFFFFFFF, 0, PLANE_PROP_UBWC_STATS_ROI);
+		msm_property_install_volatile_range(&psde->property_info, "ubwc_stats_roi",
+				0, 0, ~0, 0, PLANE_PROP_UBWC_STATS_ROI);
 	vfree(info);
 }
 
@@ -4593,7 +4596,7 @@ void sde_plane_get_frame_data(struct drm_plane *plane,
 	if (ubwc_stats->error || ubwc_stats->meta_error) {
 		SDE_EVT32(DRMID(plane),  ubwc_stats->error, ubwc_stats->meta_error,
 				SDE_EVTLOG_ERROR);
-		SDE_DEBUG_PLANE(psde, "plane%d ubwc_error %d meta_error %d\n",
+		SDE_DEBUG_PLANE(psde, "ubwc_error:0x%x meta_error:0x%x\n",
 				ubwc_stats->error, ubwc_stats->meta_error);
 	}
 }

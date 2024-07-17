@@ -1,6 +1,7 @@
 # Android makefile for display kernel modules
 
 LOCAL_PATH := $(call my-dir)
+MY_DIR := $(call my-dir)
 include $(CLEAR_VARS)
 
 DISPLAY_DLKM_ENABLE := true
@@ -12,5 +13,7 @@ endif
 
 ifeq ($(DISPLAY_DLKM_ENABLE),  true)
 	include $(LOCAL_PATH)/msm/Android.mk
-	include $(LOCAL_PATH)/../bridge-drivers/Android.mk
+	LOCAL_PATH := $(MY_DIR)
+	include $(CLEAR_VARS)
+	include $(LOCAL_PATH)/bridge-drivers/Android.mk
 endif

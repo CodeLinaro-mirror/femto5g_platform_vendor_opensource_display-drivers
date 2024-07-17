@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -152,6 +152,7 @@ struct dp_panel {
 	u32 pbn;
 
 	u32 dsc_blks_in_use;
+	u32 max_lm;
 	/* DRM connector assosiated with this panel */
 	struct drm_connector *connector;
 

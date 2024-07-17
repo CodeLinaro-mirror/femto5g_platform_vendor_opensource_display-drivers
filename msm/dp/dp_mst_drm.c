@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -345,6 +345,7 @@ static bool dp_mst_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	dp = bridge->display;
 
 	dp->convert_to_dp_mode(dp, bridge_state->dp_panel, mode, &dp_mode);
+	dp->clear_reservation(dp, bridge_state->dp_panel);
 	convert_to_drm_mode(&dp_mode, adjusted_mode);
 	adjusted_mode->flags |=
 		dp_connector_choose_best_format(dp, adjusted_mode);
@@ -779,6 +780,7 @@ static void dp_mst_bridge_mode_set(struct drm_bridge *drm_bridge,
 	memcpy(&bridge->drm_mode, adjusted_mode, sizeof(bridge->drm_mode));
 	dp->convert_to_dp_mode(dp, bridge->dp_panel, adjusted_mode,
 			&bridge->dp_mode);
+	dp->clear_reservation(dp, dp_bridge_state->dp_panel);
 
 	DP_MST_INFO("mst bridge:%d conn:%d mode set complete %s\n", bridge->id,
 			DP_MST_CONN_ID(bridge), mode->name);

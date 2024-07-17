@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -254,7 +254,8 @@ void sde_encoder_uidle_enable(struct drm_encoder *drm_enc, bool enable)
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
-		if (phys && phys->hw_ctl && phys->hw_ctl->ops.uidle_enable) {
+		if (phys && phys->hw_ctl && phys->hw_ctl->ops.uidle_enable &&
+				phys->split_role != ENC_ROLE_SLAVE) {
 			if (enable)
 				SDE_EVT32(DRMID(drm_enc), enable);
 			phys->hw_ctl->ops.uidle_enable(phys->hw_ctl, enable);
@@ -461,6 +462,7 @@ static int _sde_encoder_wait_timeout(int32_t drm_id, int32_t hw_id,
 	s64 wait_time_jiffies = msecs_to_jiffies(timeout_ms);
 	ktime_t cur_ktime;
 	ktime_t exp_ktime = ktime_add_ms(ktime_get(), timeout_ms);
+	u32 curr_atomic_cnt = atomic_read(info->atomic_cnt);
 
 	do {
 		rc = wait_event_timeout(*(info->wq),
@@ -471,6 +473,14 @@ static int _sde_encoder_wait_timeout(int32_t drm_id, int32_t hw_id,
 		SDE_EVT32(drm_id, hw_id, rc, ktime_to_ms(cur_ktime),
 			timeout_ms, atomic_read(info->atomic_cnt),
 			info->count_check);
+
+		/* Make an early exit if the condition is already satisfied */
+		if ((atomic_read(info->atomic_cnt) < info->count_check) &&
+				(info->count_check < curr_atomic_cnt)) {
+			rc = true;
+			break;
+		}
+
 	/* If we timed out, counter is valid and time is less, wait again */
 	} while ((atomic_read(info->atomic_cnt) != info->count_check) &&
 			(rc == 0) &&
@@ -2667,7 +2677,8 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 			res_switch = !drm_mode_match(old_adj_mode, adj_mode,
 					DRM_MODE_MATCH_TIMINGS);
 
-		if (res_switch && sde_enc->disp_info.is_te_using_watchdog_timer) {
+		if ((res_switch && sde_enc->disp_info.is_te_using_watchdog_timer) ||
+			sde_encoder_is_cwb_disabling(drm_enc, drm_enc->crtc)) {
 			/*
 			 * add tx wait for sim panel to avoid wd timer getting
 			 * updated in middle of frame to avoid early vsync
@@ -2719,6 +2730,41 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 	return 0;
 }
 
+static void sde_encoder_update_cur_topology_helper(
+			struct sde_encoder_virt *sde_enc, int index)
+{
+	enum sde_enc_split_role new_role = ENC_ROLE_SKIP;
+
+	if (index != 0)
+		return;
+
+	if (sde_enc->mode_info.topology.num_intf !=
+			sde_enc->num_phys_encs) {
+		sde_enc->num_phys_encs =
+			sde_enc->mode_info.topology.num_intf;
+
+		/**
+		 * Update split role when number of intf is changed from 2->1
+		 * or 1->2. Update split_link_en from 2->1 and it's taken care
+		 * in sde_encoder_phys_vid_update_split_role api for 1->2.
+		 */
+		if (sde_enc->num_phys_encs == 1) {
+			new_role = ENC_ROLE_SOLO;
+			sde_enc->phys_encs[index]->hw_intf->cfg.split_link_en = false;
+		} else if (sde_enc->num_phys_encs == 2) {
+			new_role = ENC_ROLE_MASTER;
+			sde_enc->cur_master = sde_enc->phys_encs[index];
+		}
+
+		sde_enc->phys_encs[index]->split_role = new_role;
+
+		SDE_DEBUG_ENC(sde_enc, "hw_intf id %d new_role %d",
+				sde_enc->phys_encs[index]->hw_intf->idx - INTF_0,
+				new_role);
+	} else
+		SDE_DEBUG_ENC(sde_enc, "No update of topo. handling is req'd\n");
+}
+
 static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 				      struct drm_display_mode *mode,
 				      struct drm_display_mode *adj_mode)
@@ -2728,6 +2774,7 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	struct drm_connector *conn;
 	struct sde_connector_state *c_state;
 	struct msm_display_mode *msm_mode;
+	struct sde_encoder_phys *phys = NULL;
 	struct sde_crtc *sde_crtc;
 	int i = 0, ret;
 	int num_lm, num_intf, num_pp_per_intf;
@@ -2809,7 +2856,9 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 
 	/* perform mode_set on phys_encs */
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
-		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+		/* update num_phys_enc and split_role_based on topology info */
+		sde_encoder_update_cur_topology_helper(sde_enc, i);
+		phys = sde_enc->phys_encs[i];
 
 		if (phys) {
 			if (!sde_enc->hw_pp[i * num_pp_per_intf]) {
@@ -3300,6 +3349,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 		if (sde_enc->phys_encs[i]) {
 			sde_enc->phys_encs[i]->cont_splash_enabled = false;
 			sde_enc->phys_encs[i]->connector = NULL;
+			sde_enc->phys_encs[i]->hw_ctl = NULL;
 		}
 		atomic_set(&sde_enc->frame_done_cnt[i], 0);
 	}
@@ -3393,6 +3443,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 				phys->ops.disable(phys);
 		}
 	} else {
+		sde_encoder_resource_control(drm_enc, SDE_ENC_RC_EVENT_KICKOFF);
 		for (i = 0; i < sde_enc->num_phys_encs; i++) {
 			struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 

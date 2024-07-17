@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -2142,7 +2142,7 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 
 	u32 sspp_id[MAX_PLANES];
 	u32 master_plane_id[MAX_PLANES];
-	u32 num_virt_planes = 0;
+	u32 num_virt_planes = 0, dummy_mixer_count = 0;
 
 	if (!sde_kms || !sde_kms->dev || !sde_kms->dev->dev) {
 		SDE_ERROR("invalid sde_kms\n");
@@ -2163,7 +2163,11 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 	if (!_sde_kms_get_displays(sde_kms))
 		(void)_sde_kms_setup_displays(dev, priv, sde_kms);
 
-	max_crtc_count = min(catalog->mixer_count, priv->num_encoders);
+	for (i = 0; i < catalog->mixer_count; i++)
+		if (catalog->mixer[i].dummy_mixer)
+			dummy_mixer_count++;
+
+	max_crtc_count = catalog->mixer_count - dummy_mixer_count;
 
 	/* Create the planes */
 	for (i = 0; i < catalog->sspp_count; i++) {
@@ -2663,6 +2667,11 @@ error:
 
 		list_del_init(&fb->filp_head);
 		drm_framebuffer_put(fb);
+	}
+
+	drm_for_each_crtc(crtc, dev) {
+		if (!ret && crtc_mask & drm_crtc_mask(crtc))
+			sde_kms_cancel_delayed_work(crtc);
 	}
 
 end:
@@ -3902,6 +3911,7 @@ static int sde_kms_trigger_null_flush(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
 	struct sde_splash_display *splash_display;
+	struct drm_crtc *crtc;
 	int i, rc = 0;
 
 	if (!kms) {
@@ -3911,28 +3921,42 @@ static int sde_kms_trigger_null_flush(struct msm_kms *kms)
 
 	sde_kms = to_sde_kms(kms);
 
-	if (!sde_kms->splash_data.num_splash_displays ||
-		sde_kms->dsi_display_count == sde_kms->splash_data.num_splash_displays)
-		return rc;
+	/* If splash handoff is done, early return*/
+	if (!sde_kms->splash_data.num_splash_displays)
+		return 0;
 
+	/* If all builtin-displays are having cont splash enabled, ignore lastclose*/
+	if (sde_kms->dsi_display_count == sde_kms->splash_data.num_splash_displays)
+		return -EINVAL;
+
+	/*
+	 * Trigger NULL flush if built-in secondary/primary is stuck in splash
+	 * while the  primary/secondary is running respectively before lastclose.
+	 */
 	for (i = 0; i < MAX_DSI_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
 
 		if (splash_display->cont_splash_enabled && splash_display->encoder) {
+			crtc = splash_display->encoder->crtc;
 			SDE_DEBUG("triggering null commit on enc:%d\n",
 					DRMID(splash_display->encoder));
 			SDE_EVT32(DRMID(splash_display->encoder), SDE_EVTLOG_FUNC_ENTRY);
 			rc = _sde_kms_null_commit(sde_kms->dev, splash_display->encoder);
+
+			if (!rc && crtc)
+				sde_kms_cancel_delayed_work(crtc);
+			if (rc)
+				DRM_ERROR("null flush commit failure during lastclose\n");
 		}
 	}
 
-	return rc;
+	return 0;
 }
 
 static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	struct device *dev)
 {
-	int i, ret, crtc_id = 0;
+	int ret, crtc_id = 0;
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct drm_connector *conn;
 	struct drm_connector_list_iter conn_iter;
@@ -3969,15 +3993,7 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	}
 	drm_connector_list_iter_end(&conn_iter);
 
-	for (i = 0; i < priv->num_crtcs; i++) {
-		if (priv->disp_thread[i].thread)
-			kthread_flush_worker(
-				&priv->disp_thread[i].worker);
-		if (priv->event_thread[i].thread)
-			kthread_flush_worker(
-				&priv->event_thread[i].worker);
-	}
-	kthread_flush_worker(&priv->pp_event_worker);
+	msm_atomic_flush_display_threads(priv);
 }
 
 struct msm_display_mode *sde_kms_get_msm_mode(struct drm_connector_state *conn_state)
@@ -4015,10 +4031,17 @@ static int sde_kms_pm_suspend(struct device *dev)
 	/* disable hot-plug polling */
 	drm_kms_helper_poll_disable(ddev);
 
-	/* if a display stuck in CS trigger a null commit to complete handoff */
+	/* if any built-in display is stuck in CS, skip PM suspend entry to
+	 * avoid driver SW state changes. With speculative fence enabled, HAL depends
+	 * on power_on notification for the first commit to exit the Wait completion
+	 * instead of retire fence signal.
+	 */
 	drm_for_each_encoder(enc, ddev) {
-		if (sde_encoder_in_cont_splash(enc) && enc->crtc)
-			_sde_kms_null_commit(ddev, enc);
+		if (sde_encoder_in_cont_splash(enc) && enc->crtc) {
+			SDE_DEBUG("skip PM suspend, splash is enabled on enc:%d\n", DRMID(enc));
+			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_EXIT);
+			return -EINVAL;
+		}
 	}
 
 	/* acquire modeset lock(s) */
@@ -4149,6 +4172,7 @@ static int sde_kms_pm_resume(struct device *dev)
 {
 	struct drm_device *ddev;
 	struct sde_kms *sde_kms;
+	struct drm_encoder *enc;
 	struct drm_modeset_acquire_ctx ctx;
 	int ret, i;
 
@@ -4162,6 +4186,14 @@ static int sde_kms_pm_resume(struct device *dev)
 	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
 
 	SDE_EVT32(sde_kms->suspend_state != NULL);
+	/* if a display is in cont splash early exit */
+	drm_for_each_encoder(enc, ddev) {
+		if (sde_encoder_in_cont_splash(enc) && enc->crtc) {
+			SDE_DEBUG("skip PM resume entry splash is enabled on enc:%d\n", DRMID(enc));
+			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_EXIT);
+			return -EINVAL;
+		}
+	}
 
 	if (sde_kms->suspend_state)
 		drm_mode_config_reset(ddev);
