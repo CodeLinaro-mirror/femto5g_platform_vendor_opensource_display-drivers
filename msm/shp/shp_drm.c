@@ -935,11 +935,15 @@ static void sde_shp_unbind(struct device *dev, struct device *master,
 	}
 
 	drm = dev_get_drvdata(master);
-	if (drm)
-		priv = drm->dev_private;
 
 	shp_dev = platform_get_drvdata(pdev);
-	if (!drm || !priv || !shp_dev) {
+	if (!drm || !shp_dev) {
+		pr_err("invalid param");
+		return;
+	}
+
+	priv = drm->dev_private;
+	if (!priv) {
 		pr_err("invalid param");
 		return;
 	}

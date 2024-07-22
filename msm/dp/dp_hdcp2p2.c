@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/delay.h>
@@ -237,6 +237,14 @@ static int dp_hdcp2p2_wakeup(struct hdcp_transport_wakeup_data *data)
 		kfifo_put(&ctrl->cmd_q, data->cmd);
 		kthread_park(ctrl->thread);
 		break;
+	case HDCP_TRANSPORT_CMD_RX_INFO:
+		ctrl->response.data = data->buf;
+		ctrl->response.length = data->buf_len;
+		ctrl->request.data = data->buf;
+		ctrl->request.length = ctrl->total_message_length;
+		kfifo_put(&ctrl->cmd_q, data->cmd);
+		wake_up(&ctrl->wait_q);
+		break;
 	default:
 		kfifo_put(&ctrl->cmd_q, data->cmd);
 		wake_up(&ctrl->wait_q);
@@ -270,6 +278,7 @@ static void dp_hdcp2p2_reset(struct dp_hdcp2p2_ctrl *ctrl)
 	}
 
 	ctrl->sink_status = SINK_DISCONNECTED;
+	ctrl->downstream_version = 0;
 	atomic_set(&ctrl->auth_state, HDCP_STATE_INACTIVE);
 }
 
@@ -296,10 +305,12 @@ static int dp_hdcp2p2_register(void *input, bool mst_enabled)
 		cdata.device_type = HDCP_TXMTR_DP_MST + index;
 	else
 		cdata.device_type = HDCP_TXMTR_DP + index;
+
 	//device id  = dpu_index << 16 | DPTx_id
 	cdata.device_type = ctrl->init_data.dpu_index << 16 | cdata.device_type;
 	DP_DEBUG("DPU%d DP%d Device Id = 0x%x\n", ctrl->init_data.dpu_index,
 		ctrl->init_data.client_index, cdata.device_type);
+	cdata.max_hdcp_key_verify_retries = ctrl->init_data.max_hdcp_key_verify_retries;
 	cdata.context = ctrl->lib_ctx;
 	rc = ctrl->lib->wakeup(&cdata);
 
@@ -423,6 +434,14 @@ static void dp_hdcp2p2_min_level_change(void *client_ctx,
 	ctrl->min_enc_level = !!min_enc_level;
 	cdata.context = ctrl->lib_ctx;
 	cdata.min_enc_level = min_enc_level;
+	dp_hdcp2p2_wakeup_lib(ctrl, &cdata);
+}
+
+static void dp_hdcp2p2_rx_info_done(struct dp_hdcp2p2_ctrl *ctrl)
+{
+	struct sde_hdcp_2x_wakeup_data cdata = {HDCP_2X_CMD_RX_INFO_SUCCESS};
+
+	cdata.context = ctrl->lib_ctx;
 	dp_hdcp2p2_wakeup_lib(ctrl, &cdata);
 }
 
@@ -967,7 +986,8 @@ static int dp_hdcp2p2_main(void *data)
 			dp_hdcp2p2_start_auth(ctrl);
 			break;
 		case HDCP_TRANSPORT_CMD_RX_INFO:
-			ctrl->downstream_version = ctrl->response.data[1] & 0x3;
+			ctrl->downstream_version = ctrl->request.data[1] & 0x3;
+			dp_hdcp2p2_rx_info_done(ctrl);
 			break;
 		case HDCP_TRANSPORT_CMD_FORCED_ENCRYPTION:
 			dp_hdcp2p2_send_nofication(ctrl,

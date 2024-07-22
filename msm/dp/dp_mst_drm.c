@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -224,12 +224,28 @@ static const struct drm_private_state_funcs dp_mst_bridge_state_funcs = {
 static struct dp_mst_bridge_state *dp_mst_get_bridge_atomic_state(
 		struct drm_atomic_state *state, struct dp_mst_bridge *bridge)
 {
+	int ret = 0;
 	struct drm_device *dev = bridge->base.dev;
+	struct drm_private_state *priv_state;
+
+retry:
 
 	WARN_ON(!drm_modeset_is_locked(&dev->mode_config.connection_mutex));
 
-	return to_dp_mst_bridge_priv_state(
-			drm_atomic_get_private_obj_state(state, &bridge->obj));
+	priv_state = drm_atomic_get_private_obj_state(state, &bridge->obj);
+	if (PTR_ERR(priv_state) == -EDEADLK) {
+		do {
+			drm_modeset_backoff(state->acquire_ctx);
+			ret = drm_modeset_lock_all_ctx(dev, state->acquire_ctx);
+		} while (ret == -EDEADLK);
+
+		if (!ret)
+			goto retry;
+
+		drm_modeset_drop_locks(state->acquire_ctx);
+	}
+
+	return to_dp_mst_bridge_priv_state(priv_state);
 }
 
 static int dp_mst_detect_port(
@@ -2765,6 +2781,9 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 	struct dp_mst_private *mst = dp->dp_mst_prv_info;
 	struct drm_connector *active_conn[MAX_DP_MST_DRM_BRIDGES];
 	u8 esi[14];
+#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+	u8 ack[8] = {};
+#endif
 	unsigned int esi_res = DP_SINK_COUNT_ESI + 1;
 	bool handled;
 
@@ -2786,17 +2805,31 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 	if (esi[1] & DP_UP_REQ_MSG_RDY)
 		dp_mst_get_active_connectors(mst, active_conn);
 
+#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+	rc = drm_dp_mst_hpd_irq_handle_event(&mst->mst_mgr, esi, ack, &handled);
+#else
 	rc = drm_dp_mst_hpd_irq(&mst->mst_mgr, esi, &handled);
+#endif
 
 	/* ack the request */
 	if (handled) {
+#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+		rc = drm_dp_dpcd_writeb(mst->caps.drm_aux, esi_res, ack[1]);
+#else
 		rc = drm_dp_dpcd_write(mst->caps.drm_aux, esi_res, &esi[1], 3);
-
+#endif
 		if (esi[1] & DP_UP_REQ_MSG_RDY)
 			dp_mst_clear_edid_cache(dp);
 
+#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+		if (rc != 1)
+			DP_ERR("dpcd esi_res failed. rlen=%d\n", rc);
+		else
+			drm_dp_mst_hpd_irq_send_new_request(&mst->mst_mgr);
+#else
 		if (rc != 3)
 			DP_ERR("dpcd esi_res failed. rlen=%d\n", rc);
+#endif
 	}
 
 	if (esi[1] & DP_UP_REQ_MSG_RDY)

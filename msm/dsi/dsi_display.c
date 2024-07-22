@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -5953,7 +5953,7 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 	const char *dsi_type = NULL;
 	int rc = 0, index;
 	bool firm_req = false;
-	struct dsi_display_boot_param *boot_disp;
+	struct dsi_display_boot_param *boot_disp = NULL;
 
 	if (!pdev || !pdev->dev.of_node) {
 		DSI_ERR("pdev not found\n");
@@ -6063,6 +6063,11 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 
 	return 0;
 end:
+	if (boot_disp) {
+		boot_disp->disp = NULL;
+		boot_disp->node = NULL;
+	}
+
 	if (display)
 		devm_kfree(&pdev->dev, display);
 
@@ -6098,6 +6103,11 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	}
 
 	(void)_dsi_display_dev_deinit(display);
+
+	for (i = 0; i < MAX_DSI_ACTIVE_DISPLAY; i++) {
+		boot_displays[i].disp = NULL;
+		boot_displays[i].node = NULL;
+	}
 
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, display);

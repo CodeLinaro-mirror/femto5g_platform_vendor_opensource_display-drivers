@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -16,6 +16,7 @@
 #define DP_MAX_LINK_CLK_KHZ	810000
 #define MAX_DP_MST_STREAMS	2
 #define MAX_DP_BOND_NUM		3
+#define MAX_DP_LINK_TRAINING_RETRIES	100
 
 enum dp_pm_type {
 	DP_CORE_PM,
@@ -377,6 +378,7 @@ struct dp_parser {
 	bool no_lane_count_reduction;
 	u32 link_training_min_vlevel;
 	u32 link_training_min_plevel;
+	u32 link_training_retries;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
@@ -385,6 +387,9 @@ struct dp_parser {
 	const char *display_type;
 	u32 aux_timeout;
 	u32 aux_retry_count;
+	u32 gpio_hpd_high_debounce_ms;
+	u32 gpio_hpd_low_debounce_ms;
+	u32 sec_hpd_check_delay_ms;
 
 	int (*parse)(struct dp_parser *parser);
 	struct dp_io_data *(*get_io)(struct dp_parser *parser, char *name);

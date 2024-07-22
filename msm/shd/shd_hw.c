@@ -328,8 +328,10 @@ static int _sde_shd_update_intf_cfg(struct sde_hw_ctl *ctx,
 		hw_ctl->cwb_changed = true;
 	}
 
-	if (cfg->dsc_count)
+	if (memcmp(&hw_ctl->dsc_cfg, cfg, sizeof(*cfg))) {
 		hw_ctl->dsc_cfg = *cfg;
+		hw_ctl->dsc_cfg_updated = true;
+	}
 
 	return 0;
 }
@@ -582,6 +584,21 @@ static void _sde_shd_flush_hw_roi_misr(struct sde_hw_roi_misr *ctx)
 	SDE_REG_WRITE(roi_misr_c, ROI_MISR_OP_MODE, tmp_hw_mask);
 }
 
+static void _sde_shd_flush_hw_dsc_config(struct sde_hw_ctl *ctl_ctx)
+{
+	struct sde_shd_hw_ctl *hw_ctl;
+
+	if (!ctl_ctx)
+		return;
+
+	hw_ctl = container_of(ctl_ctx, struct sde_shd_hw_ctl, base);
+
+	if (hw_ctl->dsc_cfg_updated && hw_ctl->orig->ops.update_intf_cfg) {
+		hw_ctl->orig->ops.update_intf_cfg(ctl_ctx, &hw_ctl->dsc_cfg, true);
+		hw_ctl->dsc_cfg_updated = false;
+	}
+}
+
 void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 		struct sde_hw_mixer *lm_ctx[MAX_MIXERS_PER_CRTC], int lm_num,
 		struct sde_hw_roi_misr *misr_ctx[MAX_MIXERS_PER_CRTC], int misr_num)
@@ -605,6 +622,8 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 
 	for (i = 0; i < misr_num; i++)
 		_sde_shd_flush_hw_roi_misr(misr_ctx[i]);
+
+	_sde_shd_flush_hw_dsc_config(ctl_ctx);
 
 	if (ctl_ctx->ops.trigger_flush)
 		ctl_ctx->ops.trigger_flush(ctl_ctx);

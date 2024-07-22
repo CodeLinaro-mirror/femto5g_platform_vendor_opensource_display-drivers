@@ -128,7 +128,6 @@
 #include "msm_hyp_utils.h"
 #include "wfd_kms.h"
 
-#define MAX_RECTS_PER_PIPE     2
 #define MASTER_PIPE_IDX        0
 #define CLIENT_ID_LEN_IN_CHARS 5
 #define MAX_MDP_CLK_KHZ        412500
@@ -137,6 +136,7 @@
 #define SSPP_UNITY_SCALE       1
 #define MAX_RECTS_PER_PIPE     2
 #define MAX_NUM_LIMIT_PAIRS    16
+#define MAX_NUM_STAGES         11
 #define MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT	1088
 #define POPULATE_RECT(rect, a, b, c, d, Q16_flag) \
 	do {						\
@@ -583,9 +583,10 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 			get_dma_buf(dma_bufs[i]);
 		} else {
 			dma_bufs[i] = drm_gem_prime_export(fb->base.obj[i], 0);
-			if (IS_ERR(dma_bufs[i]))
+			if (IS_ERR(dma_bufs[i])) {
 				pr_err("export dma_buf from bo failed\n");
 				return PTR_ERR(dma_bufs[i]);
+			}
 		}
 	}
 	wfd_err = wfdCreateWFDEGLImagesPreAlloc_User(
@@ -1100,7 +1101,7 @@ static int wfd_kms_get_crtc_infos(struct msm_hyp_kms *kms,
 	struct wfd_kms *wfd_kms = to_wfd_kms(kms);
 	struct wfd_crtc_info_priv *priv;
 	int pipe_cnt = 0;
-	int i, j, ret;
+	int i, ret;
 
 	if (!kms || !crtc_num)
 		return -EINVAL;
@@ -1122,10 +1123,12 @@ static int wfd_kms_get_crtc_infos(struct msm_hyp_kms *kms,
 		priv->wfd_port_id = wfd_kms->port_ids[i];
 		priv->wfd_port_idx = i;
 
-		priv->base.max_blendstages = 0;
-		for (j = 0; j < wfd_kms->pipeline_cnt[i]; j++) {
-			if (wfd_kms->master_idx[i][j] < 0)
-				++priv->base.max_blendstages;
+		priv->base.max_blendstages = wfd_kms->pipeline_cnt[i];
+
+		if (priv->base.max_blendstages > MAX_NUM_STAGES) {
+			priv->base.max_blendstages = MAX_NUM_STAGES;
+			pr_debug("plane count %d exceeds the maximum blend stage %d of crtc\n",
+					wfd_kms->pipeline_cnt[i], priv->base.max_blendstages);
 		}
 
 		priv->base.primary_plane_index = pipe_cnt;

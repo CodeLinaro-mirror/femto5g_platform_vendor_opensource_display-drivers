@@ -3,7 +3,7 @@
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 // SPDX-License-Identifier: GPL-2.0-or-later
@@ -861,10 +861,22 @@ static void msm_lease_parse_remain_objs(u32 hw_dev_id)
 	int count, rc, i;
 	int crtc_count;
 	bool found;
+#if defined(CONFIG_ARCH_LEMANS)
+	int loop_count = 0;
+#endif
 
 	list_for_each_entry(lease, &g_lease_list, head) {
 		if (lease->hw_dev_id != hw_dev_id)
 			continue;
+
+#if defined(CONFIG_ARCH_LEMANS)
+		/* TO-DO: handle lease minor null pointer dereference logic gracefully*/
+		if (hw_dev_id == 0)
+			loop_count++;
+
+		if (loop_count > 3)
+			break;
+#endif
 
 		if (!lease->minor)
 			return;

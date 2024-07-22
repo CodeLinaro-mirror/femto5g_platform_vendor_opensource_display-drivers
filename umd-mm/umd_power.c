@@ -148,22 +148,12 @@ static const struct file_operations umd_power_fops = {
 	.llseek		= no_llseek,
 };
 
-static int umd_clock_enable_level_default(struct device *dev, const char *clk_name,
-					u32 clk_rate_L0)
+static int umd_clock_enable_level_default(struct clk *clk, const char *clk_name, u32 clk_rate_L0)
 {
 	int rc = 0;
-	struct clk *clk;
-
-	clk = devm_clk_get(dev, clk_name);
-	rc = PTR_ERR_OR_ZERO(clk);
-	if (rc) {
-		pr_err("get clock %s failed. rc=%d, Clock Addr = 0x%x\n", clk_name, rc, clk);
-		return rc;
-	}
 
 	if (clk_rate_L0) {
 		rc = clk_set_rate(clk, clk_rate_L0);
-
 		if (rc) {
 			pr_err("%s set rate %d failed\n", clk_name, clk_rate_L0);
 			return rc;
@@ -179,37 +169,29 @@ static int umd_clock_enable_level_default(struct device *dev, const char *clk_na
 	return rc;
 }
 
-static int umd_regulator_enable_level_default(struct device *dev, const char *rgltr_name,
-			u32 rgltr_min_volt, u32 rgltr_max_volt, u32 rgltr_load)
+static int umd_regulator_enable_level_default(struct regulator *reg, const char *reg_name,
+			u32 reg_min_volt, u32 reg_max_volt, u32 reg_load)
 {
 	int rc = 0;
-	struct regulator *rgltr;
 
-	rgltr = devm_regulator_get(dev, rgltr_name);
-	rc = PTR_ERR_OR_ZERO(rgltr);
-	if (rc) {
-		pr_err("get regulator %s failed. rc=%d\n", rgltr_name, rc);
-		return rc;
-	}
-
-	if (regulator_count_voltages(rgltr) > 0) {
-		rc = regulator_set_voltage(rgltr, rgltr_min_volt, rgltr_max_volt);
+	if (regulator_count_voltages(reg) > 0) {
+		rc = regulator_set_voltage(reg, reg_min_volt, reg_max_volt);
 		if (rc) {
-			pr_err("%s set voltage[%d,%d] failed\n", rgltr_name, rgltr_min_volt,
-								rgltr_max_volt);
+			pr_err("%s set voltage[%d,%d] failed\n", reg_name, reg_min_volt,
+								reg_max_volt);
 			return rc;
 		}
 
-		rc = regulator_set_load(rgltr, rgltr_load);
+		rc = regulator_set_load(reg, reg_load);
 		if (rc) {
-			pr_err("%s set load %d failed\n", rgltr_name, rgltr_load);
+			pr_err("%s set load %d failed\n", reg_name, reg_load);
 			return rc;
 		}
 	}
 
-	rc = regulator_enable(rgltr);
+	rc = regulator_enable(reg);
 	if (rc) {
-		pr_err("%s regulator_enable failed\n", rgltr_name);
+		pr_err("%s regulator_enable failed\n", reg_name);
 		return rc;
 	}
 
@@ -302,6 +284,10 @@ static int umd_power_parse_dt(struct platform_device *pdev, struct umdp_ctrl *um
 	int num_reg = 0;
 
 	pe = devm_kzalloc(dev, sizeof(*pe), GFP_KERNEL);
+	if (!pe)
+		return -ENOMEM;
+
+	dev_set_drvdata(&pdev->dev, pe);
 
 	rc = of_property_read_u32(child, "reg", &pe->gpid);
 
@@ -359,8 +345,15 @@ static int umd_power_parse_dt(struct platform_device *pdev, struct umdp_ctrl *um
 		if (!rc)
 			pe->reg_config[i].load[UMD_POWER_ON] = load_uA;
 
-		rc = umd_regulator_enable_level_default(dev, reg_name, rgltr_min_volt,
-								rgltr_max_volt, load_uA);
+		pe->reg_config[i].vreg = devm_regulator_get(dev, reg_name);
+		rc = PTR_ERR_OR_ZERO(pe->reg_config[i].vreg);
+		if (rc) {
+			pr_err("get regulator %s failed. rc=%d\n", reg_name, rc);
+			return rc;
+		}
+
+		rc = umd_regulator_enable_level_default(pe->reg_config[i].vreg, reg_name,
+					rgltr_min_volt, rgltr_max_volt, load_uA);
 		if (rc) {
 			pr_err("reg %s enable level default failed.\n", reg_name);
 			return rc;
@@ -393,7 +386,15 @@ static int umd_power_parse_dt(struct platform_device *pdev, struct umdp_ctrl *um
 		if (!rc)
 			pe->clk_config[i].rate[UMD_POWER_MAX] = clock_rate;
 
-		rc = umd_clock_enable_level_default(dev, clock_name,
+		pe->clk_config[i].clk = devm_clk_get(dev, clock_name);
+		rc = PTR_ERR_OR_ZERO(pe->clk_config[i].clk);
+		if (rc) {
+			pr_err("get clock %s failed. rc=%d, Clock Addr = 0x%x\n", clock_name,
+							rc, pe->clk_config[i].clk);
+			return rc;
+		}
+
+		rc = umd_clock_enable_level_default(pe->clk_config[i].clk, clock_name,
 							pe->clk_config[i].rate[UMD_POWER_ON]);
 		if (rc) {
 			pr_err("clk %s enable level default failed.\n", clock_name);
@@ -406,6 +407,78 @@ static int umd_power_parse_dt(struct platform_device *pdev, struct umdp_ctrl *um
 
 	return rc;
 }
+
+static int umd_power_suspend(struct device *dev)
+{
+	struct power_entry *pe;
+	int i = 0, ret = 0;
+
+	if (of_device_is_compatible(dev->of_node, "qcom,umd-power"))
+		return 0;
+
+	pe = dev_get_drvdata(dev);
+	if (!pe)
+		return -ENODATA;
+
+	for (i = 0; i < pe->num_clk; i++) {
+		if (pe->clk_config[i].clk)
+			clk_disable_unprepare(pe->clk_config[i].clk);
+	}
+
+	for (i = 0; i < pe->num_reg; i++) {
+		if (pe->reg_config[i].vreg) {
+			ret = regulator_disable(pe->reg_config[i].vreg);
+			if (ret) {
+				pr_err("%s regulator_disable failed\n",
+						pe->reg_config[i].vreg_name);
+				return ret;
+			}
+		}
+	}
+
+	return 0;
+}
+
+static int umd_power_resume(struct device *dev)
+{
+	struct power_entry *pe;
+	int i = 0, ret = 0;
+
+	if (of_device_is_compatible(dev->of_node, "qcom,umd-power"))
+		return 0;
+
+	pe = dev_get_drvdata(dev);
+	if (!pe)
+		return -ENODATA;
+
+	for (i = 0; i < pe->num_reg; i++) {
+		ret = umd_regulator_enable_level_default(pe->reg_config[i].vreg,
+						pe->reg_config[i].vreg_name,
+						pe->reg_config[i].min_volt[UMD_POWER_ON],
+						pe->reg_config[i].max_volt[UMD_POWER_ON],
+						pe->reg_config[i].load[UMD_POWER_ON]);
+		if (ret) {
+			pr_err("reg %s enable level default failed\n",
+						pe->reg_config[i].vreg_name);
+			return ret;
+		}
+	}
+
+	for (i = 0; i < pe->num_clk; i++) {
+		ret = umd_clock_enable_level_default(pe->clk_config[i].clk,
+						pe->clk_config[i].clk_name,
+						pe->clk_config[i].rate[UMD_POWER_ON]);
+		if (ret) {
+			pr_err("clk %s enable level default failed\n",
+						pe->clk_config[i].clk_name);
+			continue;
+		}
+	}
+
+	return 0;
+}
+
+static SIMPLE_DEV_PM_OPS(umd_pm_ops, umd_power_suspend, umd_power_resume);
 
 static const struct of_device_id umdp_match[] = {
 	{ .compatible = "qcom,umd-power", },
@@ -496,6 +569,7 @@ static struct platform_driver umdp_driver = {
 	.driver = {
 		.name		= DEVICE_NAME,
 		.of_match_table = umdp_match,
+		.pm = &umd_pm_ops,
 	},
 	.probe = umd_power_probe,
 	.remove = umd_power_remove,

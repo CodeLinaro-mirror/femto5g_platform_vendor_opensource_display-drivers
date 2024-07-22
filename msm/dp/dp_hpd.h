@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DP_HPD_H_
@@ -48,11 +49,14 @@ enum dp_hpd_type {
  * @configure: called when dp connection is ready.
  * @disconnect: notify the cable disconnect event.
  * @attention: notify any attention message event.
+ * @secondary_hpd: notify any connect/disconnect event from the secondary
+ *                 hot plug detection hw/sw.
  */
 struct dp_hpd_cb {
 	int (*configure)(struct device *dev);
 	int (*disconnect)(struct device *dev);
 	int (*attention)(struct device *dev);
+	int (*secondary_hpd)(struct device *dev, bool connected);
 };
 
 /**
@@ -61,6 +65,7 @@ struct dp_hpd_cb {
  * @type: type of HPD
  * @orientation: plug orientation configuration, USBPD type only.
  * @hpd_high: Hot Plug Detect signal is high.
+ * @sec_hpd_high: Hot Plug Detect signal is high from secondary hw/sw.
  * @hpd_irq: Change in the status since last message
  * @alt_mode_cfg_done: bool to specify alt mode status
  * @multi_func: multi-function preferred, USBPD type only
@@ -78,6 +83,7 @@ struct dp_hpd {
 	enum dp_hpd_type type;
 	u32 orientation;
 	bool hpd_high;
+	bool sec_hpd_high;
 	bool hpd_irq;
 	bool alt_mode_cfg_done;
 	bool multi_func;

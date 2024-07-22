@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SDE_HDCP_2X_H__
@@ -49,6 +49,7 @@ enum sde_hdcp_2x_wakeup_cmd {
 	HDCP_2X_CMD_MIN_ENC_LEVEL,
 	HDCP_2X_CMD_OPEN_STREAMS,
 	HDCP_2X_CMD_CLOSE_STREAMS,
+	HDCP_2X_CMD_RX_INFO_SUCCESS,
 };
 
 /**
@@ -107,6 +108,9 @@ enum sde_hdcp_2x_device_type {
  * @timeout:                   time out value for timed transactions
  * @streams:                   list indicating which streams need adjustment
  * @num_streams:               number of entries in streams
+ * @max_hdcp_key_verify_retries: Max number of retries by default set to 0 which
+ *                               is equivalent to 0MS. Actual value will be the one
+ *                               from the dtsi file.
  */
 struct sde_hdcp_2x_wakeup_data {
 	enum sde_hdcp_2x_wakeup_cmd cmd;
@@ -117,6 +121,7 @@ struct sde_hdcp_2x_wakeup_data {
 	u8 min_enc_level;
 	struct stream_info *streams;
 	u8 num_streams;
+	u32 max_hdcp_key_verify_retries;
 };
 
 /**
@@ -194,6 +199,8 @@ static inline const char *sde_hdcp_2x_cmd_to_str(
 		return TO_STR(HDCP_2X_CMD_OPEN_STREAMS);
 	case HDCP_2X_CMD_CLOSE_STREAMS:
 		return TO_STR(HDCP_2X_CMD_CLOSE_STREAMS);
+	case HDCP_2X_CMD_RX_INFO_SUCCESS:
+		return TO_STR(HDCP_2X_CMD_RX_INFO_SUCCESS);
 	default:
 		return "UNKNOWN";
 	}

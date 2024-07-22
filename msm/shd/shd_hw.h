@@ -42,6 +42,7 @@ struct sde_shd_hw_ctl {
 	struct sde_hw_intf_cfg_v1 dsc_cfg;
 	u32 fetch_active;
 	u32 old_pipe_active;
+	bool dsc_cfg_updated;
 };
 
 struct sde_shd_mixer_cfg {
