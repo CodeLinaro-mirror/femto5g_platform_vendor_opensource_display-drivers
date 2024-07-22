@@ -60,6 +60,16 @@
 
 #define WIRE_RESP_NOACK_FLAG     0x1
 
+#define WFD_IGC_TBL_LEN             256
+#define WFD_GC_TBL_LEN              512
+#define WFD_CSC_MATRIX_COEFF_SIZE   9
+#define WFD_CSC_BIAS_SIZE           6
+#define WFD_CSC_CLAMP_SIZE          3
+#define WFD_3D_SCALE_OFF_TBL_NUM    3
+#define WFD_3D_SCALE_OFF_SZ         16
+#define WFD_GAMUT_3D_TBL_NUM        4
+#define WFD_GAMUT_3D_17_TBL_SZ      1229
+
 #pragma pack(push, 1)
 enum payload_types {
 	OPENWFD_CMD,
