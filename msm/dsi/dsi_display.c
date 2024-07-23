@@ -5611,6 +5611,21 @@ static int dsi_display_pre_acquire(void *data)
 	return 0;
 }
 
+static int dsi_display_get_display_node_count(struct dsi_display *display)
+{
+	int dsi_display_node_count = 0;
+	struct device_node *dsi_display;
+
+	for_each_compatible_node(dsi_display, NULL, "qcom,dsi-display") {
+		if (!of_device_is_available(dsi_display))
+			continue;
+		dsi_display_node_count++;
+	}
+
+	DSI_INFO("qcom,dsi-display node count %d\n", dsi_display_node_count);
+	return dsi_display_node_count;
+}
+
 /**
  * dsi_display_bind - bind dsi device with controlling device
  * @dev:        Pointer to base of platform device
@@ -5636,7 +5651,7 @@ static int dsi_display_bind(struct device *dev,
 		.vm_pre_hw_release = dsi_display_pre_release,
 		.vm_post_hw_acquire = dsi_display_pre_acquire,
 	};
-	int i, rc = 0;
+	int i, rc = 0, display_node_count;
 
 	if (!dev || !pdev || !master) {
 		DSI_ERR("invalid param(s), dev %pK, pdev %pK, master %pK\n",
@@ -5825,6 +5840,15 @@ static int dsi_display_bind(struct device *dev,
 
 	if (!rc)
 		dsi_display_manager_register(display);
+
+	display_node_count = dsi_display_get_display_node_count(display);
+
+	/* If there is only one DSI display, it should be set as the primary display.*/
+	if (!display->panel->ctl_op_sync && (display_node_count == 1)
+			&& !strcmp(display->display_type, "secondary")) {
+		DSI_INFO("changing the display_type from secondary to primary\n");
+		display->display_type = "primary";
+	}
 
 	goto error;
 
