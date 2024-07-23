@@ -760,7 +760,7 @@ static bool _wfd_kms_plane_is_csc_matrix_changed(
 	return ret;
 }
 
-bool _wfd_kms_dma_igc_changed(
+static bool _wfd_kms_dma_igc_changed(
 		bool pre_en, bool cur_en,
 		struct drm_msm_igc_lut *pre_igc,
 		struct drm_msm_igc_lut *cur_igc,
@@ -788,7 +788,7 @@ bool _wfd_kms_dma_igc_changed(
 	return true;
 }
 
-bool _wfd_kms_dma_gc_changed(
+static bool _wfd_kms_dma_gc_changed(
 		bool pre_en, bool cur_en,
 		struct drm_msm_pgc_lut *pre_gc,
 		struct drm_msm_pgc_lut *cur_gc,
@@ -819,7 +819,7 @@ bool _wfd_kms_dma_gc_changed(
 	return true;
 }
 
-bool _wfd_kms_plane_is_3d_gamut_changed(
+static bool _wfd_kms_plane_is_3d_gamut_changed(
 		bool pre_en, bool cur_en,
 		struct drm_msm_3d_gamut *pre_gamut,
 		struct drm_msm_3d_gamut *cur_gamut,
@@ -890,7 +890,7 @@ bool _wfd_kms_plane_is_3d_gamut_changed(
 	return true;
 }
 
-bool _wfd_kms_plane_is_dma_csc_changed(
+static bool _wfd_kms_plane_is_dma_csc_changed(
 		bool pre_en, bool cur_en,
 		struct sde_drm_csc_v1 *pre_csc,
 		struct sde_drm_csc_v1 *cur_csc,
@@ -1153,7 +1153,7 @@ static void _wfd_kms_pipeline_init(struct wfd_kms *kms,
 	WFDint pipe_id;
 	WFDint color_buf[WIRE_HOST_MAX_COLOR_BUFF] = {0};
 	WFDPipeline pipeline, master_pipeline;
-	int i, j, num_pipeline, pipeline_idx;
+	int i, j, num_pipeline, pipeline_idx, k;
 	dma_addr_t dma_handle;
 	int32_t *va = NULL;
 	int buff_len = 32768;
@@ -1216,7 +1216,7 @@ static void _wfd_kms_pipeline_init(struct wfd_kms *kms,
 			color_buf_idx = -1;
 			get_available_color_buff(&color_buf_idx);
 
-			for (i = 0; i < WIRE_HOST_MAX_COLOR_BUFF; i++) {
+			for (k = 0; k < WIRE_HOST_MAX_COLOR_BUFF; k++) {
 
 				va = dma_alloc_coherent(device, buff_len,
 							&dma_handle, GFP_KERNEL);
@@ -1224,7 +1224,7 @@ static void _wfd_kms_pipeline_init(struct wfd_kms *kms,
 					pr_err("Memory allocation failed");
 				} else {
 					pr_debug("VA for buffer allocation is %p", va);
-					memset(va, 0x42, buff_len);
+					memset(va, 0x00, buff_len);
 					mem.size = buff_len;
 					mem.buffer = va;
 					mem.shmem_type = HAB_EXPORT_ID;
@@ -1233,7 +1233,7 @@ static void _wfd_kms_pipeline_init(struct wfd_kms *kms,
 					if (rc) {
 						pr_err("Export failed");
 					} else {
-						color_buf[i] = (i32)mem.shmem_id;
+						color_buf[k] = (i32)mem.shmem_id;
 						pr_debug("Export passed for %d", mem.shmem_id);
 					}
 				}
@@ -1243,10 +1243,10 @@ static void _wfd_kms_pipeline_init(struct wfd_kms *kms,
 					color_buffer[color_buf_idx].valid = 1;
 					color_buffer[color_buf_idx].device = dev;
 					color_buffer[color_buf_idx].pipeline = pipeline;
-					color_buffer[color_buf_idx].buffer_info[i].valid = 1;
-					color_buffer[color_buf_idx].buffer_info[i].va = va;
-					color_buffer[color_buf_idx].buffer_info[i].export_id = color_buf[i];
-					color_buffer[color_buf_idx].buffer_info[i].dmabuf_handle =
+					color_buffer[color_buf_idx].buffer_info[k].valid = 1;
+					color_buffer[color_buf_idx].buffer_info[k].va = va;
+					color_buffer[color_buf_idx].buffer_info[k].export_id = color_buf[k];
+					color_buffer[color_buf_idx].buffer_info[k].dmabuf_handle =
 								&dma_handle;
 				} else {
 					pr_err("Color buffer not available");
@@ -1258,8 +1258,6 @@ static void _wfd_kms_pipeline_init(struct wfd_kms *kms,
 					WFD_PIPELINE_COLOR_CONFIG_BUFFER,
 					WIRE_HOST_MAX_COLOR_BUFF,
 					color_buf);
-			pr_info("export ID for buffer on GVM 0 = %d", color_buf[0]);
-			pr_info("export ID for buffer on GVM 1 = %d", color_buf[1]);
 		}
 	}
 }
@@ -2610,30 +2608,31 @@ static int wfd_kms_remove(struct platform_device *pdev)
 	for (i = 0; i < kms->port_cnt; i++) {
 		for (j = 0; j < kms->pipeline_cnt[i]; j++) {
 			wire_dev = kms->port_devs[i];
-			if (wire_dev)
+			if (wire_dev) {
 				handle = wire_dev->ctx->init_info.context;
-			wfdSetPipelineAttribiv_User(kms->port_devs[i],kms->pipelines[i][j],
-				WFD_PIPELINE_COLOR_CONFIG_CLEAR, 1, &i);
-			wfdDestroyPipeline_User(kms->port_devs[i], kms->pipelines[i][j]);
-			// unexport the buffers
-			mem.shmem_type = HAB_EXPORT_ID;
-			// Get export id
-			_wfd_kms_get_color_buff_idx(kms->port_devs[i], kms->pipelines[i][j], &index);
-			if (index < 0) {
-				pr_err("Unable to find color buffer for this pipe");
-			} else {
-				for (buff_idx = 0; buff_idx < 2; buff_idx++) {
-					if (color_buffer[index].buffer_info[buff_idx].valid) {
-						dmabuf_handle = color_buffer[index].buffer_info[buff_idx].dmabuf_handle;
-						export_id = color_buffer[index].buffer_info[buff_idx].export_id;
+				wfdSetPipelineAttribiv_User(kms->port_devs[i],kms->pipelines[i][j],
+					WFD_PIPELINE_COLOR_CONFIG_CLEAR, 1, &i);
+				wfdDestroyPipeline_User(kms->port_devs[i], kms->pipelines[i][j]);
+				// unexport the buffers
+				mem.shmem_type = HAB_EXPORT_ID;
+				// Get export id
+				_wfd_kms_get_color_buff_idx(kms->port_devs[i], kms->pipelines[i][j], &index);
+				if (index < 0) {
+					pr_err("Unable to find color buffer for this pipe");
+				} else {
+					for (buff_idx = 0; buff_idx < 2; buff_idx++) {
+						if (color_buffer[index].buffer_info[buff_idx].valid) {
+							dmabuf_handle = color_buffer[index].buffer_info[buff_idx].dmabuf_handle;
+							export_id = color_buffer[index].buffer_info[buff_idx].export_id;
+						}
 					}
 				}
-			}
-			mem.shmem_id = export_id;
-			if (user_os_utils_shmem_unexport(handle, &mem, 0)) {
-				pr_err("Failed to unexport shmem buffer");
-			} else {
-				pr_debug("passed to unexport shmem buffer");
+				mem.shmem_id = export_id;
+				if (user_os_utils_shmem_unexport(handle, &mem, 0)) {
+					pr_err("Failed to unexport shmem buffer");
+				} else {
+					pr_debug("passed to unexport shmem buffer");
+				}
 			}
 		}
 		wfdDestroyPort_User(kms->port_devs[i], kms->ports[i]);
