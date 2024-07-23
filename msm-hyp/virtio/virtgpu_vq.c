@@ -1126,11 +1126,13 @@ static void virtio_get_scanout_attribute(struct virtio_kms *kms,
 	output->attr.connection_status = le32_to_cpu(resp->connection_status);
 	output->attr.width_mm = le32_to_cpu(resp->width_mm);
 	output->attr.height_mm = le32_to_cpu(resp->height_mm);
-	pr_debug("virtio : scanout %d attr <%d %d (%dX%d)>\n",
+	output->attr.panel_orientation = le32_to_cpu(resp->panel_orientation);
+	pr_debug("virtio : scanout %d attr <%d %d (%dX%d) panel_orientation %d>\n",
 			scanout, output->attr.type,
 			output->attr.connection_status,
 			output->attr.width_mm,
-			output->attr.height_mm);
+			output->attr.height_mm,
+			output->attr.panel_orientation);
 }
 
 int virtio_gpu_cmd_get_scanout_attributes(struct virtio_kms *kms,
@@ -1287,14 +1289,16 @@ static int virtio_get_planes_caps(struct virtio_kms *kms,
 	plane_caps->max_scale = le32_to_cpu(resp->caps.max_scale);
 	plane_caps->num_formats = num_formats;
 	plane_caps->pair_plane_id = le32_to_cpu(resp->caps.pair_plane_id);
-	pr_debug("virtio : plane caps <%d:%d> (%d, %d, %d, %d, %d\n",
+	plane_caps->support_rotation = le32_to_cpu(resp->caps.support_rotation);
+	pr_debug("virtio : plane caps <%d:%d> (%d, %d, %d, %d, %d %d\n",
 			scanout,
 			plane_id,
 			plane_caps->plane_type,
 			plane_caps->max_width,
 			plane_caps->max_height,
 			plane_caps->num_formats,
-			plane_caps->pair_plane_id);
+			plane_caps->pair_plane_id,
+			plane_caps->support_rotation);
 
 	for (i = 0; i < plane_caps->num_formats; i++) {
 		pr_debug("%d\n", plane_caps->formats[i]);
@@ -1738,6 +1742,7 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	cmd_p->saturation = cpu_to_le32(prop.saturation);
 	cmd_p->contrast = cpu_to_le32(prop.contrast);
 	cmd_p->brightness = cpu_to_le32(prop.brightness);
+	cmd_p->rotation = cpu_to_le32(prop.rotation);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
 			kms->channel[client_id],

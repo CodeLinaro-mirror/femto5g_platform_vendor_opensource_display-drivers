@@ -149,6 +149,7 @@ struct virtio_gpu_resp_scanout_atttributes {
 	__le32 connection_status;
 	__le32 width_mm;
 	__le32 height_mm;
+	__le32 panel_orientation;
 	__le32 padding;
 };
 
@@ -186,6 +187,7 @@ struct virtio_gpu_resp_planes_caps {
 		__le32 max_scale;
 		__le32 min_scale;
 		__le32 pair_plane_id;
+		__le32 support_rotation;
 	}caps;
 	__le32 padding;
 };
@@ -267,6 +269,7 @@ enum plane_property_mask {
 	SATURATION = (1<<9),
 	CONTRAST = (1<<10),
 	BRIGHTNESS = (1<<11),
+	ROTATION = (1<<12),
 };
 
 struct virtio_gpu_set_plane_properties {
@@ -286,6 +289,7 @@ struct virtio_gpu_set_plane_properties {
 	__le32 saturation;
 	__le32 contrast;
 	__le32 brightness;
+	__le32 rotation;
 	__le32 padding;
 };
 

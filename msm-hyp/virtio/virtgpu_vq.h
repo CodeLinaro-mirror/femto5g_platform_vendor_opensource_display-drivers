@@ -20,6 +20,7 @@ struct plane_properties {
 	uint32_t saturation;
 	uint32_t contrast;
 	uint32_t brightness;
+	uint32_t rotation;
 	struct virtio_gpu_rect src_rect;
 	struct virtio_gpu_rect dst_rect;
 };

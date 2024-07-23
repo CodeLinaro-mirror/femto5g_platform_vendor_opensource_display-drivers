@@ -27,6 +27,7 @@
 #define DBG_BUF_COUNT          50
 #define DEFAULT_MAX_MDP_CLK    575
 #define MAX_LAYERS_MULTIPIPE   4
+#define MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT   1088
 
 #define VIRTIO_TRANSPARENCY_GLOBAL_ALPHA (1<<1)
 #define VIRTIO_TRANSPARENCY_SOURCE_ALPHA (1<<2)
@@ -40,6 +41,21 @@
 #ifndef UINT_MAX
 #define UINT_MAX 0xffffffffU  /* define this if limits.h not available */
 #endif
+
+#define POPULATE_RECT(rect, a, b, c, d, Q16_flag) \
+	do {                                            \
+		(rect)->x = (Q16_flag) ? (a) >> 16 : (a);    \
+		(rect)->y = (Q16_flag) ? (b) >> 16 : (b);    \
+		(rect)->w = (Q16_flag) ? (c) >> 16 : (c);    \
+		(rect)->h = (Q16_flag) ? (d) >> 16 : (d);    \
+	} while (0)
+
+struct virtio_kms_rect {
+	u16 x;
+	u16 y;
+	u16 w;
+	u16 h;
+};
 
 struct limit_val_pair {
 	const char *str;
@@ -604,7 +620,7 @@ static int virtio_kms_get_connector_infos(struct msm_hyp_kms *hyp_kms,
 	struct virtio_connector_info_priv *priv;
 	struct virtio_display_modes *info;
 	struct drm_display_mode *mode;
-	struct scanout_sttrib *attr;
+	struct scanout_attrib *attr;
 
 	if (!connector_infos) {
 		*connector_num = kms->num_scanouts;
@@ -636,6 +652,7 @@ static int virtio_kms_get_connector_infos(struct msm_hyp_kms *hyp_kms,
 					priv->panel_name);
 		priv->base.display_info.width_mm = attr->width_mm;
 		priv->base.display_info.height_mm = attr->height_mm;
+		priv->base.panel_orientation = attr->panel_orientation;
 		priv->scanout = i;
 		priv->base.possible_crtcs = 1 << i;
 		if (!kms->outputs[i].num_modes) {
@@ -974,6 +991,11 @@ static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 		prop.mask |= BLEND_MODE;
 	}
 
+	if (old_state->rotation != plane->state->rotation || !plane_priv->committed) {
+		prop.rotation = plane->state->rotation;
+		prop.mask |= ROTATION;
+	}
+
 	if (virtio_kms_plane_is_csc_matrix_changed(old_pstate, new_pstate, &prop.color_space)) {
 		prop.mask |= COLOR_SPACE;
 	}
@@ -989,8 +1011,96 @@ static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 	plane_priv->committed = true;
 }
 
+static bool virtio_kms_plane_enabled(const struct drm_plane_state *state)
+{
+	return state && state->fb && state->crtc;
+}
+
+static int _virtio_kms_plane_rot_atomic_check(struct drm_plane *plane,
+		struct drm_atomic_state *atomic_state)
+{
+	struct drm_plane_state *state = NULL;
+	struct drm_plane *slave_plane = NULL;
+	struct msm_hyp_plane *slave_hyp_plane = NULL;
+	u32 rotation = 0;
+	int ret = 0;
+
+	state = drm_atomic_get_new_plane_state(atomic_state, plane);
+
+	/* check inline rotation and simplify the transform */
+	rotation = drm_rotation_simplify(
+					state->rotation,
+					DRM_MODE_ROTATE_0 | DRM_MODE_ROTATE_90 |
+					DRM_MODE_REFLECT_X | DRM_MODE_REFLECT_Y);
+
+	if ((rotation & DRM_MODE_ROTATE_180) || (rotation & DRM_MODE_ROTATE_270)) {
+		pr_err("invalid rotation transform must be simplified 0x%x\n",
+			rotation);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (rotation & DRM_MODE_ROTATE_90) {
+		struct virtio_kms_rect src;
+		bool q16_data = true;
+		/* check if the slave pipline is using */
+		drm_for_each_plane(slave_plane, plane->dev) {
+			slave_hyp_plane = to_msm_hyp_plane(slave_plane);
+
+			if ((plane == slave_hyp_plane->primary_plane)
+				&& virtio_kms_plane_enabled(slave_plane->state)) {
+				pr_err("slave plane %d is using, master plane %d can not do 90 rotation\n",
+					slave_plane->base.id, plane->base.id);
+				goto exit;
+			}
+		}
+
+		POPULATE_RECT(&src, state->src_x, state->src_y,
+			state->src_w, state->src_h, q16_data);
+
+		/* check for valid height */
+		if (src.h > MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT) {
+			pr_err("invalid height for inline rot:%d max:%d\n",
+				src.h, MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT);
+			ret = -EINVAL;
+			goto exit;
+		}
+
+		/* check for valid formats supported by inline rot */
+		//TODO, get this information from QNX
+	}
+
+	state->rotation = rotation;
+exit:
+	return ret;
+}
+
+static int virtio_kms_plane_atomic_check(struct drm_plane *plane,
+	struct drm_atomic_state *atomic_state)
+{
+	struct drm_plane_state *state = NULL;
+	int ret = 0;
+
+	if (!plane || !atomic_state) {
+		pr_err("invalid arg(s), plane %d atomic_state %d\n",
+			!plane, !atomic_state);
+		return -EINVAL;
+	}
+
+	state = drm_atomic_get_new_plane_state(atomic_state, plane);
+	if (!virtio_kms_plane_enabled(state))
+		goto exit;
+
+	ret = _virtio_kms_plane_rot_atomic_check(plane, atomic_state);
+	if (ret)
+		goto exit;
+exit:
+	return ret;
+}
+
 static const struct drm_plane_helper_funcs virtio_plane_helper_funcs = {
 	.atomic_update = virtio_kms_plane_atomic_update,
+	.atomic_check = virtio_kms_plane_atomic_check,
 };
 
 static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
@@ -1006,6 +1116,7 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 	uint32_t num_formats = 0;
 	uint32_t plane_type;
 	int32_t master_idx = -1;
+	bool support_rotation = false;
 
 	if (!kms || !plane_num)
 		return -EINVAL;
@@ -1034,6 +1145,8 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 			priv->plane_type = plane_type;
 			priv->base.plane_type = plane_type;
 			priv->scanout = i;
+			support_rotation = kms->outputs[i].plane_caps[j].support_rotation;
+			priv->base.support_rotation = support_rotation;
 			num_formats = kms->outputs[i].plane_caps[j].num_formats;
 			formats = kms->outputs[i].plane_caps[j].formats;
 
