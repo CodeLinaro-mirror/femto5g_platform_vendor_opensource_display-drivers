@@ -189,7 +189,7 @@ module_entry(
             },
       },
       deps = [
-         "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
+         "//vendor/qcom/opensource/monaco/mm-drivers:mm_drivers_headers",
       ],
 
       # Configs are handled by config_options = []
