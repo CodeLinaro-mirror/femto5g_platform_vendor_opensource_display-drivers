@@ -25,7 +25,6 @@
  * ---------------------------------------------------------------------------
  */
 #define WIRE_USER_LOG_MODULE_NAME		"[drm] WireUser"
-#define MAX_SEND_RECV_RETRY			6
 
 #define WIRE_LOG_ERROR(fmt, ...)		\
 	USER_OS_UTILS_LOG_ERROR(		\
@@ -47,8 +46,9 @@
 		WIRE_USER_LOG_MODULE_NAME,	\
 		fmt, ##__VA_ARGS__)
 
-#define COMMIT_PACKAGE_HEADER_SIZE (sizeof(struct wire_header) + sizeof(u32))
-
+#define COMMIT_PACKAGE_HEADER_SIZE (sizeof(struct wire_batch_packet))
+/* Backend capability about the message size */
+#define COMMIT_PACKAGE_SIZE sizeof(struct wire_packet)
 /*
  * ---------------------------------------------------------------------------
  * Structure Definitions
@@ -185,6 +185,8 @@ const static u32 wire_user_cmd_size[OPENWFD_CMD_MAX] = {
 	[DESTROY_WFD_EGL_IMAGES] = sizeof(union msg_destroy_egl_images),
 	[CREATE_SOURCE_FROM_IMAGE] = sizeof(union msg_create_source_from_image),
 	[DESTROY_SOURCE]        = sizeof(union msg_destroy_source),
+	[REGISTER_HOTPLUG_EVENT] = sizeof(union msg_register_hotplug),
+	[UNREGISTER_HOTPLUG_EVENT] = sizeof(union msg_register_hotplug),
 };
 
 /*
@@ -194,8 +196,6 @@ const static u32 wire_user_cmd_size[OPENWFD_CMD_MAX] = {
  */
 
 //#define WIRE_USER_DEBUG_BATCH
-
-//#define WIRE_USER_DEBUG_BATCH_SIM
 
 //#define WIRE_USER_PROFILING_ENABLE
 
@@ -245,6 +245,8 @@ const static u32 wire_user_cmd_size[OPENWFD_CMD_MAX] = {
 #define WFD_DESTROY_EGL_IMAGES_PROFILING		42
 #define WFD_CREATE_SOURCE_FROM_IMAGE_PROFILING		43
 #define WFD_DESTROY_SOURCE_PROFILING			44
+#define WFD_REGISTER_HOTPLUG_PROFILING			48
+#define WFD_UNREGISTER_HOTPLUG_PROFILING		49
 
 /*
  * ---------------------------------------------------------------------------
@@ -256,6 +258,7 @@ const static u32 wire_user_cmd_size[OPENWFD_CMD_MAX] = {
 static struct mutex _heap_mutex[PROFILING_MAX + 1];
 static spinlock_t _heap_lock;
 static bool _heap_inited;
+
 static inline void wire_user_heap_init(void)
 {
 	int i;
@@ -484,6 +487,39 @@ prep_batch_hdr(
  * Batch mode
  * ---------------------------------------------------------------------------
  */
+#if ENABLE_BATCH_COMMIT
+static int
+wire_user_batch_cmd_send_recv(
+	struct wire_device *device,
+	struct wire_port *wire_port,
+	struct wire_packet *req,
+	struct wire_packet *resp,
+	u32 flags)
+{
+	int rc = 0;
+
+	if (wire_port && device->ctx->support_batch_mode) {
+		prep_batch_hdr(&wire_port->commit);
+
+#ifdef WIRE_USER_DEBUG_BATCH
+		pr_info("batch size=%d\n", wire_port->commit.size);
+		print_hex_dump(KERN_INFO, "hdr: ", DUMP_PREFIX_NONE, 16, 1,
+			&wire_port->commit.packet->hdr, sizeof(req.hdr), false);
+		print_hex_dump(KERN_INFO, "req: ", DUMP_PREFIX_NONE, 16, 1,
+			&wire_port->commit.packet->wfd_req.num_of_cmds,
+			wire_port->commit.size + sizeof(struct openwfd_batch_req), false);
+#endif
+
+		rc = user_os_utils_send_recv(device->ctx->init_info.context,
+				(struct wire_packet *)wire_port->commit.packet,
+				resp, flags);
+
+		wire_port->commit.size = 0;
+		wire_port->commit.packet->wfd_req.num_of_cmds = 0;
+	}
+	return rc;
+}
+#endif
 
 static int
 wire_port_send_recv(
@@ -499,6 +535,7 @@ wire_port_send_recv(
 	u32 type;
 	u32 size;
 	u32 realloc_size;
+	int rc = 0;
 	u8 *payload;
 
 	if (port && device->ctx->support_batch_mode) {
@@ -510,6 +547,10 @@ wire_port_send_recv(
 		}
 
 		size = wire_user_cmd_size[type] + sizeof(struct openwfd_batch_cmd);
+		if (commit->size + size + COMMIT_PACKAGE_HEADER_SIZE >= COMMIT_PACKAGE_SIZE) {
+			rc = wire_user_batch_cmd_send_recv(device, port, req, resp, flags);
+		}
+
 		if (commit->size + size + COMMIT_PACKAGE_HEADER_SIZE >= commit->alloc_size) {
 			realloc_size = commit->alloc_size + SZ_4K;
 
@@ -537,10 +578,7 @@ wire_port_send_recv(
 		print_hex_dump(KERN_INFO, "req: ", DUMP_PREFIX_NONE, 16, 1,
 			&req->payload, size + sizeof(struct openwfd_batch_req), false);
 #endif
-
-#ifndef WIRE_USER_DEBUG_BATCH_SIM
-		return 0;
-#endif
+		return rc;
 	}
 #endif
 	return user_os_utils_send_recv(device->ctx->init_info.context, req, resp, flags);
@@ -551,6 +589,26 @@ wire_port_send_recv(
  * Wire User APIs
  * ---------------------------------------------------------------------------
  */
+static void
+wire_user_event_listener_thread_priority_set(void)
+{
+	int ret = 0;
+	struct sched_param param = { 0 };
+	struct task_struct *task = current->group_leader;
+
+	/**
+	 * event thread should also run at same priority as commit thread
+	 * because it is handling frame_done events. A lower priority
+	 * event thread and higher priority commit_thread can causes
+	 * frame_pending counters beyond 2. This can lead to commit
+	 * failure at crtc commit level.
+	 */
+	param.sched_priority = 16;
+	ret = sched_setscheduler(task, SCHED_FIFO, &param);
+	if (ret)
+		WIRE_LOG_WARNING("pid:%d name:%s priority update failed: %d\n",
+			current->tgid, task->comm, ret);
+}
 
 int
 wire_user_init(u32 client_id,
@@ -558,7 +616,6 @@ wire_user_init(u32 client_id,
 {
 	struct wire_context *ctx;
 	int rc = 0;
-	struct sched_param param;
 
 	wire_user_heap_init();
 
@@ -598,19 +655,6 @@ wire_user_init(u32 client_id,
 			ctx->listener_thread = NULL;
 			goto fail;
 		}
-
-		/*
-		 * event thread should also run at same priority as commit thread
-		 * because it is handling frame_done events. A lower priority
-		 * event thread and higher priority commit_thread can causes
-		 * frame_pending counters beyond 2. This can lead to commit
-		 * failure at crtc commit level.
-		 */
-		param.sched_priority = 16;
-		rc = sched_setscheduler(ctx->listener_thread, SCHED_FIFO, &param);
-		if (rc)
-			WIRE_LOG_WARNING("wfd event listener thread priority update failed: %d\n",
-				rc);
 
 		INIT_LIST_HEAD(&ctx->_cb_info_ctx);
 	}
@@ -948,7 +992,6 @@ wfdDeviceCommitExt_User(
 	struct wire_device *wire_dev = device;
 	struct wire_port *wire_port = hdl;
 	void *handle = wire_dev->ctx->init_info.context;
-	int retry_times = 0;
 
 	/* Request/Response */
 	WIRE_HEAP struct wire_packet req, resp;
@@ -1000,42 +1043,11 @@ wfdDeviceCommitExt_User(
 	}
 	HYP_ATRACE_END(marker_buff);
 
-retry:
-	/* reset batch commit */
 	if (wire_port->commit.size) {
-		prep_batch_hdr(&wire_port->commit);
-
-#ifdef WIRE_USER_DEBUG_BATCH
-		pr_info("batch size=%d\n", wire_port->commit.size);
-		print_hex_dump(KERN_INFO, "hdr: ", DUMP_PREFIX_NONE, 16, 1,
-			&wire_port->commit.packet->hdr, sizeof(req.hdr), false);
-		print_hex_dump(KERN_INFO, "req: ", DUMP_PREFIX_NONE, 16, 1,
-			&wire_port->commit.packet->wfd_req.num_of_cmds,
-			wire_port->commit.size + sizeof(struct openwfd_batch_req), false);
-#endif
-
-#ifndef WIRE_USER_DEBUG_BATCH_SIM
-		if (user_os_utils_send_recv(handle, (struct wire_packet *)wire_port->commit.packet,
-				&resp, 0x00)) {
+		if (wire_user_batch_cmd_send_recv(wire_dev, wire_port, &req, &resp, 0x00)) {
 			WIRE_LOG_ERROR("RPC call failed");
-
-			retry_times++;
-			if (retry_times >= MAX_SEND_RECV_RETRY) {
-				/*
-				 * Drm fe try 6 times to send message to BE and wait 250ms, but no reply.
-				 * Need catch the system frame buffer to debug.
-				 * Normally, 100us is enough for the reply.
-				 */
-#ifdef WIRE_USER_DEBUG_BATCH
-				panic("wfdDeviceCommit");
-#endif
-			} else {
-				goto retry;
-			}
+			goto end;
 		}
-#endif
-		wire_port->commit.size = 0;
-		wire_port->commit.packet->wfd_req.num_of_cmds = 0;
 	}
 
 	sts = (WFDErrorCode)wfd_resp_cmd->cmd.dev_commit_ext.resp.sts;
@@ -3364,6 +3376,103 @@ end:
 	wire_user_profile_end(WFD_DESTROY_SOURCE_PROFILING, true);
 }
 
+
+/*
+ * wfdRegisterHotplugEvent_User() - WFD Register Hotplug event.
+ *
+ * device : device handle
+ *
+ * Returns none
+ */
+void
+wfdRegisterHotplugEvent_User(
+	WFDDevice device)
+{
+	struct wire_device *wire_dev = device;
+	void *handle = wire_dev->ctx->init_info.context;
+
+	/* Request/Response */
+	WIRE_HEAP struct wire_packet req, resp;
+	struct openwfd_cmd *wfd_req_cmd = &req.payload.wfd_req.reqs[0];
+
+	/* Command specific */
+	union msg_register_hotplug *register_hotplug;
+
+	wire_user_profile_begin(WFD_REGISTER_HOTPLUG_PROFILING);
+
+	memset((char *)&req, 0x00, sizeof(struct wire_packet));
+	memset((char *)&resp, 0x00, sizeof(struct wire_packet));
+
+	if (prep_hdr(OPENWFD_CMD, &req)) {
+		WIRE_LOG_ERROR("prep_hdr failed");
+		goto end;
+	}
+
+	user_os_utils_get_id(handle, &wfd_req_cmd->client_id, 0x00);
+	req.payload.wfd_req.num_of_cmds = 1;
+	wfd_req_cmd->type = REGISTER_HOTPLUG_EVENT;
+
+	register_hotplug = (union msg_register_hotplug *)
+			&wfd_req_cmd->cmd.register_hotplug;
+	register_hotplug->req.dev = (u32)(uintptr_t)wire_dev->device;
+
+	if (user_os_utils_send_recv(handle, &req, &resp, 0x00)) {
+		WIRE_LOG_ERROR("RPC call failed");
+		goto end;
+	}
+
+end:
+	wire_user_profile_end(WFD_REGISTER_HOTPLUG_PROFILING, true);
+}
+
+/*
+ * wfdUnregisterHotplugEvent_User() : WFD Unregister Hotplug event.
+ *
+ * device : device handle
+ *
+ * Returns none
+ */
+void
+wfdUnregisterHotplugEvent_User(
+	WFDDevice device)
+{
+	struct wire_device *wire_dev = device;
+	void *handle = wire_dev->ctx->init_info.context;
+
+	/* Request/Response */
+	WIRE_HEAP struct wire_packet req, resp;
+	struct openwfd_cmd *wfd_req_cmd = &req.payload.wfd_req.reqs[0];
+
+	/* Command specific */
+	union msg_unregister_hotplug *unregister_hotplug;
+
+	wire_user_profile_begin(WFD_UNREGISTER_HOTPLUG_PROFILING);
+
+	memset((char *)&req, 0x00, sizeof(struct wire_packet));
+	memset((char *)&resp, 0x00, sizeof(struct wire_packet));
+
+	if (prep_hdr(OPENWFD_CMD, &req)) {
+		WIRE_LOG_ERROR("prep_hdr failed");
+		goto end;
+	}
+
+	user_os_utils_get_id(handle, &wfd_req_cmd->client_id, 0x00);
+	req.payload.wfd_req.num_of_cmds = 1;
+	wfd_req_cmd->type = UNREGISTER_HOTPLUG_EVENT;
+
+	unregister_hotplug = (union msg_unregister_hotplug *)
+			&wfd_req_cmd->cmd.unregister_hotplug;
+	unregister_hotplug->req.dev = (u32)(uintptr_t)wire_dev->device;
+
+	if (user_os_utils_send_recv(handle, &req, &resp, 0x00)) {
+		WIRE_LOG_ERROR("RPC call failed");
+		goto end;
+	}
+
+end:
+	wire_user_profile_end(WFD_UNREGISTER_HOTPLUG_PROFILING, true);
+}
+
 /* ========== EVENT ========== */
 
 static struct cb_info_node *
@@ -3384,8 +3493,8 @@ find_node_locked(
 
 				if ((tmp->info.disp_event.type ==
 					_disp_event->type) &&
-					(tmp->info.disp_event.display_id ==
-					_disp_event->display_id)) {
+					(tmp->info.disp_event.event_infos.display_id ==
+					_disp_event->event_infos.display_id)) {
 					node = tmp;
 					break;
 				}
@@ -3424,7 +3533,23 @@ event_handler(
 	if (type == DISPLAY_EVENT) {
 		info.disp_event.type = (enum display_event_types)
 					e_req->info.disp_event.type;
-		info.disp_event.display_id = e_req->info.disp_event.display_id;
+		if (info.disp_event.type == HPD) {
+			info.disp_event.event_infos.hotplug_info.device_id = 0;
+			info.disp_event.event_infos.hotplug_info.device =
+				e_req->info.disp_event.event_infos.hotplug_info.device;
+			info.disp_event.event_infos.hotplug_info.port_id =
+				e_req->info.disp_event.event_infos.hotplug_info.port_id;
+			info.disp_event.event_infos.hotplug_info.status =
+				e_req->info.disp_event.event_infos.hotplug_info.status;
+			pr_debug("HPDLOG event type : %d, dev : %x port %d, status %d, %d",
+					type, e_req->info.disp_event.event_infos.hotplug_info.device,
+					e_req->info.disp_event.event_infos.hotplug_info.port_id,
+					e_req->info.disp_event.event_infos.hotplug_info.status,
+					info.disp_event.event_infos.hotplug_info.device_id);
+		} else {
+			info.disp_event.event_infos.display_id =
+				e_req->info.disp_event.event_infos.display_id;
+		}
 	} else if (type == VM_EVENT) {
 		info.vm_event.type = (enum vm_event_types)
 					e_req->info.vm_event.type;
@@ -3449,6 +3574,8 @@ static int event_listener(void *param)
 	req = kzalloc(sizeof(struct wire_packet), GFP_KERNEL);
 	if (!req)
 		return -ENOMEM;
+
+	wire_user_event_listener_thread_priority_set();
 
 	while (ctx->wire_isr_enable) {
 		memset((char *)req, 0x00, sizeof(struct wire_packet));
@@ -3484,7 +3611,7 @@ static int event_listener(void *param)
 			snprintf(marker_buff, sizeof(marker_buff),
 				"Event RECV'D, type=%d disp_id=%d timestamp=%lu",
 				req->payload.ev_req.info.disp_event,
-				req->payload.ev_req.info.disp_event.display_id,
+				req->payload.ev_req.info.disp_event.event_infos.display_id,
 				req->hdr.timestamp);
 
 			HYP_ATRACE_BEGIN(marker_buff);
@@ -3629,15 +3756,15 @@ wire_user_request_cb(
 	snprintf(marker_buff, sizeof(marker_buff),
 		"Event REQ, type=%d disp_id=%d timestamp=%lu",
 		req.payload.ev_req.info.disp_event.type,
-		req.payload.ev_req.info.disp_event.display_id,
+		req.payload.ev_req.info.disp_event.event_infos.display_id,
 		req.hdr.timestamp);
 	HYP_ATRACE_BEGIN(marker_buff);
 
 	if (type == DISPLAY_EVENT) {
 		ev_req->info.disp_event.type = (enum e_display_types)
 						info->disp_event.type;
-		ev_req->info.disp_event.display_id =
-				info->disp_event.display_id;
+		ev_req->info.disp_event.event_infos.display_id =
+				info->disp_event.event_infos.display_id;
 	} else if (type == VM_EVENT) {
 		ev_req->info.vm_event.type = (enum e_vm_types)
 						info->vm_event.type;
@@ -3656,4 +3783,15 @@ end:
 	wire_user_heap_end(WIRE_USER_INIT_PROFILING);
 
 	return rc;
+}
+
+/*
+ * Get wfd device handle.
+ *
+ * device : device handle
+ */
+WFDDevice wire_user_get_dev_hdl(WFDDevice device)
+{
+	struct wire_device *wire_dev = device;
+	return wire_dev->device;
 }
