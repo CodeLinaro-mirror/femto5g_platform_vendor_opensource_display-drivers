@@ -47,6 +47,8 @@
 		WIRE_USER_LOG_MODULE_NAME,	\
 		fmt, ##__VA_ARGS__)
 
+#define COMMIT_PACKAGE_HEADER_SIZE (sizeof(struct wire_header) + sizeof(u32))
+
 /*
  * ---------------------------------------------------------------------------
  * Structure Definitions
@@ -258,6 +260,7 @@ const static u32 wire_user_cmd_size[OPENWFD_CMD_MAX] = {
 static struct mutex _heap_mutex[PROFILING_MAX + 1];
 static spinlock_t _heap_lock;
 static bool _heap_inited;
+
 static inline void wire_user_heap_init(void)
 {
 	int i;
@@ -512,7 +515,7 @@ wire_port_send_recv(
 		}
 
 		size = wire_user_cmd_size[type] + sizeof(struct openwfd_batch_cmd);
-		if (commit->size + size >= commit->alloc_size) {
+		if (commit->size + size + COMMIT_PACKAGE_HEADER_SIZE >= commit->alloc_size) {
 			realloc_size = commit->alloc_size + SZ_4K;
 
 			p = krealloc(commit->packet, realloc_size, GFP_KERNEL);
@@ -553,6 +556,26 @@ wire_port_send_recv(
  * Wire User APIs
  * ---------------------------------------------------------------------------
  */
+static void
+wire_user_event_listener_thread_priority_set(void)
+{
+	int ret = 0;
+	struct sched_param param = { 0 };
+	struct task_struct *task = current->group_leader;
+
+	/**
+	 * event thread should also run at same priority as commit thread
+	 * because it is handling frame_done events. A lower priority
+	 * event thread and higher priority commit_thread can causes
+	 * frame_pending counters beyond 2. This can lead to commit
+	 * failure at crtc commit level.
+	 */
+	param.sched_priority = 16;
+	ret = sched_setscheduler(task, SCHED_FIFO, &param);
+	if (ret)
+		WIRE_LOG_WARNING("pid:%d name:%s priority update failed: %d\n",
+			current->tgid, task->comm, ret);
+}
 
 int
 wire_user_init(u32 client_id,
@@ -600,19 +623,6 @@ wire_user_init(u32 client_id,
 			ctx->listener_thread = NULL;
 			goto fail;
 		}
-
-		/*
-		 * event thread should also run at same priority as commit thread
-		 * because it is handling frame_done events. A lower priority
-		 * event thread and higher priority commit_thread can causes
-		 * frame_pending counters beyond 2. This can lead to commit
-		 * failure at crtc commit level.
-		 */
-		param.sched_priority = 16;
-		rc = sched_setscheduler(ctx->listener_thread, SCHED_FIFO, &param);
-		if (rc)
-			WIRE_LOG_WARNING("wfd event listener thread priority update failed: %d\n",
-				rc);
 
 		INIT_LIST_HEAD(&ctx->_cb_info_ctx);
 	}
@@ -3568,6 +3578,8 @@ static int event_listener(void *param)
 	req = kzalloc(sizeof(struct wire_packet), GFP_KERNEL);
 	if (!req)
 		return -ENOMEM;
+
+	wire_user_event_listener_thread_priority_set();
 
 	while (ctx->wire_isr_enable) {
 		memset((char *)req, 0x00, sizeof(struct wire_packet));

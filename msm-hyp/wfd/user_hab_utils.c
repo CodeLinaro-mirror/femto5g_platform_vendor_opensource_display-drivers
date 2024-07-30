@@ -633,7 +633,10 @@ user_os_utils_shmem_export(
 		goto end;
 	}
 
-	export_flags |= HABMM_EXPIMP_FLAGS_DMABUF;
+	if (flags)
+		export_flags = flags;
+	else
+		export_flags |= HABMM_EXPIMP_FLAGS_DMABUF;
 
 	mem->shmem_type = HAB_EXPORT_ID;
 #ifdef USE_HAB
