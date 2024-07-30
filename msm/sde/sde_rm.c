@@ -553,6 +553,11 @@ static bool _sde_rm_get_hw_locked(struct sde_rm *rm,
 	i->blk = list_prepare_entry(i->blk, blk_list, list);
 
 	list_for_each_entry_continue(i->blk, blk_list, list) {
+		if (i->blk->type >= SDE_HW_BLK_MAX) {
+			SDE_ERROR("found invalid HW block type %d\n", i->blk->type);
+			return false;
+		}
+
 		if (i->blk->type != i->type) {
 			SDE_ERROR("found incorrect block type %s on %d list\n",
 					sde_hw_blk_type_str[i->blk->type], i->type);
