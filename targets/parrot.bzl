@@ -30,5 +30,9 @@ def define_parrot():
             "CONFIG_MSM_EXT_DISPLAY",
             "CONFIG_QCOM_FSA4480_I2C",
             "CONFIG_DYNAMIC_DEBUG",
+            "CONFIG_MSM_SDE_ROTATOR",
+            "CONFIG_MSM_SDE_ROTATOR_EVTLOG_DEBUG",
+            "CONFIG_DEBUG_FS",
+
         ],
 )
