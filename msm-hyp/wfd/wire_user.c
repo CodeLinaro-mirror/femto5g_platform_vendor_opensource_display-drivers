@@ -583,7 +583,6 @@ wire_user_init(u32 client_id,
 {
 	struct wire_context *ctx;
 	int rc = 0;
-	struct sched_param param;
 
 	wire_user_heap_init();
 

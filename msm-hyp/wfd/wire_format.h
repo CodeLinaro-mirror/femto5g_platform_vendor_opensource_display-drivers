@@ -829,30 +829,6 @@ union msg_unregister_hotplug {
 	} resp;
 };
 
-union msg_register_hotplug {
-	struct {
-		u32 dev; /* WFDDevice */
-		int iChid;
-		int iCoid;
-		int pid;
-	} req;
-
-	struct {
-		u32 sts; /* WFDErrorCode */
-	} resp;
-};
-
-union msg_unregister_hotplug {
-	struct {
-		u32 dev; /* WFDDevice */
-		int pid;
-	} req;
-
-	struct {
-		u32 sts; /* WFDErrorCode */
-	} resp;
-};
-
 struct openwfd_cmd {
 	u32 display_id;
 	u32 client_id;
