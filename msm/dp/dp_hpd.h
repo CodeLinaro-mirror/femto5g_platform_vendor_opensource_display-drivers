@@ -73,6 +73,7 @@ struct dp_hpd_cb {
  * @force_multi_func: force multi-function preferred
  * @isr: event interrupt, BUILTIN and LPHW type only
  * @register_hpd: register hardware callback
+ * @unregister_hpd: unregister hardware callback
  * @host_init: source or host side setup for hpd
  * @host_deinit: source or host side de-initializations
  * @simulate_connect: simulate disconnect or connect for debug mode
@@ -92,6 +93,7 @@ struct dp_hpd {
 
 	void (*isr)(struct dp_hpd *dp_hpd);
 	int (*register_hpd)(struct dp_hpd *dp_hpd);
+	void (*unregister_hpd)(struct dp_hpd *dp_hpd);
 	void (*host_init)(struct dp_hpd *hpd, struct dp_catalog_hpd *catalog);
 	void (*host_deinit)(struct dp_hpd *hpd, struct dp_catalog_hpd *catalog);
 	int (*simulate_connect)(struct dp_hpd *dp_hpd, bool hpd);
