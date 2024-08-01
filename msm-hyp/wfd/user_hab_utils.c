@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/habmm.h>
@@ -37,6 +37,7 @@
 #define DO_NOT_LOCK_CHANNEL		0x01
 #define SPIN_LOCK_CHANNEL		0x02
 #define HAB_NO_TIMEOUT_VAL		-1
+#define MAX_RECV_FAIL_COUNT		5
 
 #if !defined(__QNXNTO__) && !defined(__linux__)
 #define CLOCK_MONOTONIC		CLOCK_REALTIME
@@ -338,6 +339,8 @@ user_os_utils_send_recv(
 	enum openwfd_cmd_type wfd_cmd_type = OPENWFD_CMD_MAX;
 	char marker_buff[MARKER_BUFF_LENGTH] = {0};
 	unsigned long delay = 0;
+	static i64 recv_failed_timestamp[MAX_RECV_FAIL_COUNT] = {0};
+	u32 i = 0;
 
 	if (!req || !resp) {
 		UTILS_LOG_ERROR("NULL req(0x%p) or resp(0x%p)",
@@ -478,13 +481,25 @@ retry_recv_packet:
 		goto end;
 	}
 	if (timestamp > resp->hdr.timestamp) {
-		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu > resp : %lu\n",
+		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu > resp : %lu",
 				timestamp, resp->hdr.timestamp);
+
+		for (i = 0; i < MAX_RECV_FAIL_COUNT; i++) {
+			if (recv_failed_timestamp[i] == resp->hdr.timestamp) {
+				recv_failed_timestamp[i] = 0;
+				UTILS_LOG_WARNING("Delayed packet timestamp resp : %lu found, retry recv",
+						resp->hdr.timestamp);
+				goto retry_recv_packet;
+			}
+		}
+
+		UTILS_LOG_ERROR("Unrecognized packet timestamp, retry recv");
+
 		rc = -1;
-		goto end;
+		goto retry_recv_packet;
 	}
 	else if (timestamp < resp->hdr.timestamp) {
-		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu < resp : %lu\n",
+		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu < resp : %lu",
 				timestamp, resp->hdr.timestamp);
 		rc = -1;
 		goto end;
@@ -514,11 +529,23 @@ end:
 
 	if (((rc == -1) || (retry_times > 0)) && (req != NULL))
 	{
-		UTILS_LOG_ERROR("packet receive error\n");
+		UTILS_LOG_ERROR("packet send/receive error\n");
 		print_hex_dump(KERN_INFO, "hdr: ", DUMP_PREFIX_NONE, 16, 1,
 				&req->hdr, sizeof(req->hdr), false);
 		print_hex_dump(KERN_INFO, "req: ", DUMP_PREFIX_NONE, 16, 1,
 				&req->payload, req->hdr.payload_size, false);
+		if (retry_times == MAX_SEND_RECV_PACKET_RETRY) {
+			for (i = 0; i < MAX_RECV_FAIL_COUNT ; i++) {
+				if (recv_failed_timestamp[i] == 0) {
+					recv_failed_timestamp[i] = req->hdr.timestamp;
+					break;
+				}
+			}
+			if (i == MAX_RECV_FAIL_COUNT) {
+				UTILS_LOG_ERROR("recv failed message count over limitation");
+				recv_failed_timestamp[0] = req->hdr.timestamp;
+			}
+		}
 	}
 
 	return rc;
@@ -634,7 +661,10 @@ user_os_utils_shmem_export(
 		goto end;
 	}
 
-	export_flags |= HABMM_EXPIMP_FLAGS_DMABUF;
+	if (flags)
+		export_flags = flags;
+	else
+		export_flags |= HABMM_EXPIMP_FLAGS_DMABUF;
 
 	mem->shmem_type = HAB_EXPORT_ID;
 #ifdef USE_HAB

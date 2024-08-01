@@ -190,6 +190,14 @@ wfdWaitForVSync(WFDDevice device, WFDPort port) WFD_APIEXIT;
 #define WFD_PIPELINE_SATURATION        0x7753
 #endif
 
+#ifndef WFD_pipeline_color_process
+#define WFD_pipeline_color_process 1
+#define WFD_PIPELINE_COLOR_BLOCKS_CONFIG     0x7754
+#define WFD_PIPELINE_COLOR_CONFIG_BUFFER     0x7755
+#define WFD_PIPELINE_COLOR_CONFIG_CLEAR      0x7756
+#define WIRE_HOST_MAX_COLOR_BUFF             2
+#endif
+
 #ifndef WFD_pipeline_color_space
 #define WFD_pipeline_color_space 1
 #define WFD_PIPELINE_COLOR_SPACE       0x77A0
