@@ -3765,7 +3765,7 @@ static void _sde_crtc_configure_hw_fence(struct drm_crtc *crtc)
 	ctl->ops.hw_fence_ctrl(ctl, true, true, 1);
 
 	if (crtc->state->active_changed || sde_crtc_get_property(cstate,
-		CRTC_PROP_SW_OVERRIDE_HW_FENCE) || cont_splash_enabled)
+		CRTC_PROP_SW_OVERRIDE_HW_FENCE))
 		ctl->ops.hw_fence_trigger_sw_override(ctl);
 }
 
@@ -7731,6 +7731,9 @@ void sde_crtc_update_cont_splash_settings(struct drm_crtc *crtc)
 	sde_crtc->cur_perf.core_clk_rate = (rate > 0) ?
 					rate : kms->perf.max_core_clk_rate;
 	sde_crtc->cur_perf.core_clk_rate = kms->perf.max_core_clk_rate;
+
+	if (kms->catalog->hw_fence_enabled)
+		_sde_crtc_configure_hw_fence(crtc);
 }
 
 static void sde_crtc_install_noise_layer_properties(struct sde_crtc *sde_crtc,

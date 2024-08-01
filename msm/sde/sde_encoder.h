@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -726,4 +726,11 @@ static inline bool sde_encoder_has_dpu_ctl_op_sync(struct drm_encoder *drm_enc)
 }
 
 void sde_encoder_add_data_to_minidump_va(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_get_ctl_flush - retrieves ctl flush register value
+ * @drm_enc:    Pointer to drm encoder structure
+ */
+
+u32 sde_encoder_get_ctl_flush(struct drm_encoder *drm_enc);
 #endif /* __SDE_ENCODER_H__ */

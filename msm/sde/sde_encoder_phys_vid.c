@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1082,6 +1082,13 @@ static int sde_encoder_phys_vid_wait_for_commit_done(
 	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
 		phys_enc->enable_state == SDE_ENC_POST_ENABLING) {
 		phys_enc->enable_state = SDE_ENC_ENABLED;
+		return rc;
+	}
+
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
+		sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc) &&
+		phys_enc->cont_splash_enabled) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
 		return rc;
 	}
 

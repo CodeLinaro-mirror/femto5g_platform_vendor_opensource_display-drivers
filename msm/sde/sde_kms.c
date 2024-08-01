@@ -1285,19 +1285,56 @@ static void _sde_kms_free_splash_display_data(struct sde_kms *sde_kms,
 		struct sde_splash_display *splash_display)
 {
 	if (!sde_kms || !splash_display ||
-			!sde_kms->splash_data.num_splash_displays)
+			(!sde_kms->splash_data.num_splash_displays &&
+			!sde_kms->splash_data.handoff_pending))
 		return;
 
-	if (sde_kms->splash_data.num_splash_regions) {
+	/**
+	 * With HW fence enablement for splash handoff commit
+	 * on DPU1, CTL flush will be waiting for signal from Master DPU0
+	 * Hence avoid unmap call.
+	 */
+	if (sde_kms_hw_fence_enabled(sde_kms))
+		sde_kms->splash_data.handoff_pending =
+			sde_encoder_get_ctl_flush(splash_display->encoder);
+
+	if (sde_kms->splash_data.num_splash_regions &&
+			!sde_kms->splash_data.handoff_pending) {
 		_sde_kms_splash_mem_put(sde_kms, splash_display->splash);
 		if (splash_display->demura)
 			_sde_kms_splash_mem_put(sde_kms,
 					splash_display->demura);
 	}
-	sde_kms->splash_data.num_splash_displays--;
-	SDE_DEBUG("cont_splash handoff done, remaining:%d\n",
-				sde_kms->splash_data.num_splash_displays);
-	memset(splash_display, 0x0, sizeof(struct sde_splash_display));
+
+	if (sde_kms->splash_data.num_splash_displays)
+		sde_kms->splash_data.num_splash_displays--;
+
+	splash_display->cont_splash_enabled = false;
+
+	SDE_DEBUG("cont_splash handoff done, remaining:%d pending:%d\n",
+				sde_kms->splash_data.num_splash_displays,
+				sde_kms->splash_data.handoff_pending);
+
+	if (!sde_kms->splash_data.handoff_pending)
+		memset(splash_display, 0x0, sizeof(struct sde_splash_display));
+}
+
+static void sde_kms_helper_free_splash_data(struct sde_kms *sde_kms,
+		struct drm_crtc *crtc)
+{
+	struct sde_splash_display *splash_display;
+	int i;
+
+	for (i = 0; i < MAX_DSI_DISPLAYS; i++) {
+		splash_display = &sde_kms->splash_data.splash_display[i];
+		if (splash_display->encoder &&
+				crtc == splash_display->encoder->crtc)
+			break;
+	}
+	if (i >= MAX_DSI_DISPLAYS)
+		return;
+
+	_sde_kms_free_splash_display_data(sde_kms, splash_display);
 }
 
 static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
@@ -1311,6 +1348,9 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 		return;
 
 	priv = sde_kms->dev->dev_private;
+
+	if (sde_kms->splash_data.handoff_pending)
+		sde_kms_helper_free_splash_data(sde_kms, crtc);
 
 	if (!crtc->state->active || !sde_kms->splash_data.num_splash_displays)
 		return;

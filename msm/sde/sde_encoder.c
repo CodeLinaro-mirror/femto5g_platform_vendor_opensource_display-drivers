@@ -6299,3 +6299,22 @@ bool sde_encoder_get_intf_status(struct drm_encoder *drm_enc)
 
 	return false;
 }
+
+u32 sde_encoder_get_ctl_flush(struct drm_encoder *drm_enc)
+{
+	struct sde_kms *sde_kms;
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *cur_master;
+
+	if (!drm_enc)
+		return 0;
+
+	sde_kms = sde_encoder_get_kms(drm_enc);
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	cur_master = sde_enc->cur_master;
+
+	if (!cur_master)
+		return 0;
+
+	return sde_encoder_helper_get_ctl_flush(sde_enc->cur_master);
+}
