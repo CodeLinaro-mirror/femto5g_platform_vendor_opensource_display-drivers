@@ -1135,7 +1135,6 @@ static int _msm_hyp_crtc_init_dispatch_thread(struct msm_hyp_crtc *c,
 		struct msm_hyp_drm_private *priv)
 {
 	int ret = 0;
-	struct sched_param param;
 
 	kthread_init_worker(&c->worker);
 	kthread_init_work(&priv->commit_thread_priority_work,
