@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1432,6 +1432,7 @@ error:
 	if (rc < 0) {
 		qsync_caps->qsync_min_fps = 0;
 		qsync_caps->qsync_min_fps_list_len = 0;
+		kfree(qsync_caps->qsync_min_fps_list);
 	}
 	return rc;
 }
@@ -1595,6 +1596,7 @@ static int dsi_panel_parse_dfps_caps(struct dsi_panel *panel)
 			dfps_caps->dfps_list_len);
 	if (rc) {
 		DSI_ERR("[%s] dfps refresh rate list parse failed\n", name);
+		kfree(dfps_caps->dfps_list);
 		rc = -EINVAL;
 		goto error;
 	}
@@ -3780,6 +3782,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 
 	return panel;
 error:
+	kfree(panel->dfps_caps.dfps_list);
+	kfree(panel->qsync_caps.qsync_min_fps_list);
+	kfree(panel->avr_caps.avr_step_fps_list);
 	kfree(panel);
 	return ERR_PTR(rc);
 }
@@ -3790,7 +3795,8 @@ void dsi_panel_put(struct dsi_panel *panel)
 
 	/* free resources allocated for ESD check */
 	dsi_panel_esd_config_deinit(&panel->esd_config);
-
+	kfree(panel->dfps_caps.dfps_list);
+	kfree(panel->qsync_caps.qsync_min_fps_list);
 	kfree(panel->avr_caps.avr_step_fps_list);
 	kfree(panel);
 }

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /* Copyright © 2006 Keith Packard
@@ -44,6 +44,11 @@ enum WFD_QDILayerType {
 	WFD_QDI_LAYER_CURSOR,
 	WFD_QDI_LAYER_MAX,
 	WFD_QDI_LAYER_FORCE_32BIT	= 0x7FFFFFFF
+};
+
+enum WFD_HPDConnectStatus {
+	WFD_HPD_DISCONNECT		= 0,
+	WFD_HPD_CONNECT
 };
 
 struct wfd_connector_info_priv {
@@ -113,6 +118,90 @@ struct wfd_kms_port {
 	WFDPort wfd_port;
 	WFDint wfd_port_id;
 };
+
+typedef khronos_uint16_t			 WFDuint16;
+
+#define WFD_CSC_LUT_ENTRIES                                  3
+#define WFD_GAMMA_LUT_ENTRIES                                256
+#define WFD_WGM_MAX_COLOR_COMPONENTS                         3
+#define WFD_WGM_MAX_COMPONENT_TABLES_FINE_COARSE             4
+#define WFD_WGM_TABLE_0_ENTRIES                              1229
+#define WFD_WGM_TABLE_1_ENTRIES                              1228
+#define WFD_WGM_TABLE_2_ENTRIES                              1228
+#define WFD_WGM_TABLE_3_ENTRIES                              1228
+#define WFD_WGM_MAX_NON_UNIFORM_MAP_TABLE_ENTRIES_A          16
+#define WFD_NUM_COLOR_CONFIG_BUFFERS                         2
+
+/*
+ * Color support related definations and variables
+ *
+ */
+#define MAX_PIPELINES_GVM 16
+
+struct buffer_info
+{
+	bool valid;
+	bool in_use;
+	int  export_id;
+	dma_addr_t* dmabuf_handle;
+	int32_t* va;
+};
+
+struct color_buffer
+{
+	bool		 valid;
+	WFDDevice	 device;
+	WFDPipeline  pipeline;
+	struct buffer_info	buffer_info[2];
+};
+
+/*
+ * WFD_PipelineDMAConfigBuffType defines DMA pipe LUT config
+ * this is buffer struture which is passed as input to WFD layer by GVM or wfd_client_gen
+ * This will come as pmem handle to openwfd server in case of QNX
+ */
+typedef struct	__attribute__((__packed__))
+{
+	WFDboolean		 bIGCEnabled;												/* True, if IGC LUT is valid */
+	WFDboolean		 bCSCEnabled;												/* True, if CSC Matirx is valid */
+	WFDboolean		 bGCEnabled;												/* True, if IGC LUT is valid */
+	WFDuint32 		 uCscMatrix[WFD_CSC_LUT_ENTRIES][WFD_CSC_LUT_ENTRIES];	   /* CSC matrix */
+	WFDuint16 		 uGCLut[WFD_GAMMA_LUT_ENTRIES]; 						   /* Gamma LUT data. */
+	WFDuint16 		 uIGCLut[WFD_GAMMA_LUT_ENTRIES];						   /* Inverse Gamma LUT data. */
+} WFD_PipelineDMAConfigBuffType;
+
+/*
+ * WFD_Color_VIGConfigType defines VIG pipe LUT (17*17*17) config
+ * this is buffer struture which is passed as input to WFD layer by GVM or wfd_client_gen
+ * This will come as pmem handle to openwfd server in case of QNX
+ */
+typedef struct	__attribute__((__packed__))
+{
+	WFDboolean   bGamutEn;				/**< Flag to enable/disable gamut mapping.	*/
+	WFDboolean   bGamutMapEn; 			/**< Flag to enable/disable Non uniform map.*/
+	WFDuint16    uGammutTable0Entries[WFD_WGM_MAX_COLOR_COMPONENTS][WFD_WGM_TABLE_0_ENTRIES];
+	WFDuint16    uGammutTable1Entries[WFD_WGM_MAX_COLOR_COMPONENTS][WFD_WGM_TABLE_1_ENTRIES];
+	WFDuint16    uGammutTable2Entries[WFD_WGM_MAX_COLOR_COMPONENTS][WFD_WGM_TABLE_2_ENTRIES];
+	WFDuint16    uGammutTable3Entries[WFD_WGM_MAX_COLOR_COMPONENTS][WFD_WGM_TABLE_3_ENTRIES];
+									/**< 3d gamut mapping tables' entries.
+									   pGammutTableEntries[X][0] should be of size HAL_MDP_WGM_TABLE_0_ENTRIES
+									   pGammutTableEntries[X][1] should be of size HAL_MDP_WGM_TABLE_1_ENTRIES
+									   pGammutTableEntries[X][2] should be of size HAL_MDP_WGM_TABLE_2_ENTRIES
+									   pGammutTableEntries[X][3] should be of size HAL_MDP_WGM_TABLE_3_ENTRIES */
+	WFDuint32    uNonUniformMapTableEntries[WFD_WGM_MAX_COLOR_COMPONENTS][WFD_WGM_MAX_NON_UNIFORM_MAP_TABLE_ENTRIES_A];
+									/**< segment table entries.
+									   pWdNonUniformMapTableEntries[X] should be of size
+									   HAL_MDP_WGM_MAX_NON_UNIFORM_MAP_TABLE_ENTRIES_A */
+} WFD_PipelineVIGConfigBuffType;
+
+/*
+ * WFD_PipelineColorConfigBuffType defines essential parameters for getting the LUT tables for the DMA or VIG pipes
+ */
+typedef union
+{
+	WFD_PipelineDMAConfigBuffType   sDMAConfig;
+	WFD_PipelineVIGConfigBuffType   sVigConfigType;
+} WFD_PipelineColorConfigBuffType;
 
 #define to_wfd_kms(x)\
 	container_of((x), struct wfd_kms, base)

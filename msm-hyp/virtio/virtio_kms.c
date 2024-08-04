@@ -561,19 +561,19 @@ static int virtio_kms_connector_get_type(
 	case VIRTIO_PORT_TYPE_INTERNAL:
 	case VIRTIO_PORT_TYPE_HDMI:
 		connector_type = DRM_MODE_CONNECTOR_HDMIA;
-		snprintf(name, PANEL_NAME_LEN, "%s_%d", "HDMI", scanout);
+		snprintf(name, PANEL_NAME_LEN, "%s_%d\n", "HDMI", scanout);
 		break;
 	case VIRTIO_PORT_TYPE_DSI:
 		connector_type = DRM_MODE_CONNECTOR_DSI;
-		snprintf(name, PANEL_NAME_LEN, "%s_%d", "DSI", scanout);
+		snprintf(name, PANEL_NAME_LEN, "%s_%d\n", "DSI", scanout);
 		break;
 	case VIRTIO_PORT_TYPE_DP:
 		connector_type = DRM_MODE_CONNECTOR_DisplayPort;
-		snprintf(name, PANEL_NAME_LEN, "%s_%d", "DP", scanout);
+		snprintf(name, PANEL_NAME_LEN, "%s_%d\n", "DP", scanout);
 		break;
 	default:
 		connector_type = DRM_MODE_CONNECTOR_Unknown;
-		snprintf(name, PANEL_NAME_LEN, "%s_%d", "Unknown", scanout);
+		snprintf(name, PANEL_NAME_LEN, "%s_%d\n", "Unknown", scanout);
 		break;
 	}
 
