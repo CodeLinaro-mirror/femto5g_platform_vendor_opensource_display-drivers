@@ -386,6 +386,13 @@ void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg);
 void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
+ * reg_dmav2_setup_dspp_igcv51() - igc v5_1 implementation using reg dma v2.
+ * @ctx: dspp ctx info
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav2_setup_dspp_igcv51(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
  * reg_dmav2_setup_3d_gamutv43() - gamut v4_3 implementation using reg dma v2.
  * @ctx: dspp instance
  * @cfg: pointer to struct sde_hw_cp_cfg
