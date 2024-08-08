@@ -1243,7 +1243,7 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	fb_priv = container_of(fb->info, struct virtio_framebuffer_priv, base);
 	client_id = fb_priv->kms->client_id;
         mem = &fb_priv->mem;
-	handle =  fb_priv->kms->channel[client_id].hab_socket[CHANNEL_BUFFERS];
+	handle =  fb_priv->kms->channel[client_id].hab_socket[CHANNEL_CMD];
 
 	pr_debug("virtio : create: FB ID: %d (%pK)\n", fb->base.base.id, fb);
 	if (fb_priv->created) {
@@ -1320,7 +1320,7 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 				return PTR_ERR(dma_buf);
 		}
 
-		mutex_lock(&fb_priv->kms->channel[client_id].hyp_bufchl_lock);
+		mutex_lock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 		memset((char *)mem, 0x00,
 				sizeof(struct virtio_mem_info));
 		mem->size	= fb->bo->size;
@@ -1335,14 +1335,14 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 
 		if (ret) {
 			pr_err("virtio :framebuffer habmm export failed\n");
-			mutex_unlock(&fb_priv->kms->channel[client_id].hyp_bufchl_lock);
+			mutex_unlock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 			dma_buf_put(dma_buf);
 			goto error;
 		}
 
 		mem->shmem_id = export_id;
 
-		mutex_unlock(&fb_priv->kms->channel[client_id].hyp_bufchl_lock);
+		mutex_unlock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 		pr_debug("virtio :framebuffer habmm_export done %d\n",
 				mem->shmem_id);
 		dma_buf_put(dma_buf);
@@ -1409,7 +1409,7 @@ static void virtio_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	fb_priv = container_of(fb->info, struct virtio_framebuffer_priv, base);
 	client_id = fb_priv->kms->client_id;
 	mem = &fb_priv->mem;
-	handle = fb_priv->kms->channel[client_id].hab_socket[CHANNEL_BUFFERS];
+	handle = fb_priv->kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	pr_debug("virtio : framebuffer destroy FB ID: %d (%pK) created %d shmem_id%d\n",
 			fb->base.base.id, fb,
 			fb_priv->created, mem->shmem_id);
@@ -1421,7 +1421,7 @@ static void virtio_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 				fb_priv->hw_res_handle);
 		goto error;
 	}
-	mutex_lock(&fb_priv->kms->channel[client_id].hyp_bufchl_lock);
+	mutex_lock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 
 	unexport_flags |= HABMM_EXPIMP_FLAGS_FD;
 	rc = habmm_unexport(
@@ -1431,7 +1431,7 @@ static void virtio_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	if (rc) {
 		pr_err("framebuffer habmm_unexport failed");
 	}
-	mutex_unlock(&fb_priv->kms->channel[client_id].hyp_bufchl_lock);
+	mutex_unlock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 
 	rc = virtio_gpu_cmd_resource_unref(fb_priv->kms,
 			fb_priv->hw_res_handle);
@@ -1808,7 +1808,8 @@ static int virtio_gpu_hab_open(struct virtio_kms *kms)
 		pr_err("hab open failed mmid %d ret %d\n", kms->mmid_cmd, ret);
 		goto exit;
 	}
-	spin_lock_init(&kms->channel[client_id].hyp_cmdchl_lock);
+	spin_lock_init(&kms->channel[client_id].hyp_chl_spin_lock);
+	mutex_init(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 
 	ret = habmm_socket_open(
 			&kms->channel[client_id].hab_socket[CHANNEL_EVENTS],
@@ -1821,28 +1822,7 @@ static int virtio_gpu_hab_open(struct virtio_kms *kms)
 		pr_err("hab open failed mmid %d ret %d\n", kms->mmid_event, ret);
 	}
 
-	mutex_init(&kms->channel[client_id].hyp_cbchl_lock);
-
-	ret = habmm_socket_open(
-			&kms->channel[client_id].hab_socket[CHANNEL_BUFFERS],
-			kms->mmid_buffer,
-			-1,
-			0);
-	if (!ret) {
-		pr_info("virtio: hab socket open mmid %d OK\n", kms->mmid_buffer);
-
-	} else {
-		pr_err("hab open failed mmid %d ret %d\n",
-				kms->mmid_buffer,
-				ret);
-		ret = habmm_socket_close(
-			kms->channel[client_id].hab_socket[CHANNEL_CMD]);
-		if (ret)
-			pr_err("hab closed failed mmid %d ret %d\n",
-					kms->mmid_buffer, ret);
-
-	}
-	mutex_init(&kms->channel[client_id].hyp_bufchl_lock);
+	mutex_init(&kms->channel[client_id].hyp_chl_lock[CHANNEL_EVENTS]);
 exit:
 	return ret;
 }
@@ -1956,7 +1936,6 @@ static int virtio_kms_probe(struct platform_device *pdev)
 
 	kms->mmid_cmd = MM_DISP_1;
 	kms->mmid_event = MM_DISP_3;
-	kms->mmid_buffer = MM_DISP_2;
 
 //	ret = _virtio_kms_parse_capsets(dev->of_node, &kms->num_capsets);
 //	if (ret)
