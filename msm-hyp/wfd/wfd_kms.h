@@ -167,9 +167,10 @@ struct buffer_info
 
 struct color_buffer
 {
-	bool		 valid;
-	WFDDevice	 device;
-	WFDPipeline  pipeline;
+	bool	valid;
+	WFDDevice	device;
+	WFDPipeline	pipeline;
+	int	curr_buff_in_use;
 	struct buffer_info	buffer_info[2];
 };
 
