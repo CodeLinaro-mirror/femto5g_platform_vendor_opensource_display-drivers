@@ -100,6 +100,7 @@
 #define MSM_HYP_MAX_PLANES          MAX_PLANES
 #define MAX_CONNECTORS              16
 #define MAX_CRTCS                   16
+#define HPD_STRING_SIZE             30
 
 struct msm_hyp_commit {
 	struct drm_device *dev;
@@ -366,6 +367,46 @@ static int _msm_hyp_mode_create_properties(struct drm_device *ddev)
 	if (!prop)
 		return -ENOMEM;
 	priv->prop_crtc_caps = prop;
+
+	prop = drm_property_create_range(ddev, 0,
+				"inverse_pma", 0, 1);
+	if (!prop)
+		return -ENOMEM;
+	priv->prop_inverse_pma = prop;
+
+	prop = drm_property_create_range(ddev, 0,
+				"csc_dma_v1", 0, ~0);
+	if (!prop)
+		return -ENOMEM;
+	priv->prop_dma_csc = prop;
+
+	prop = drm_property_create(ddev,
+			DRM_MODE_PROP_BLOB,
+			"SDE_DGM_1D_LUT_IGC_V5", 1);
+	if (!prop)
+		return -ENOMEM;
+	priv->prop_dma_igc = prop;
+
+	prop = drm_property_create(ddev,
+			DRM_MODE_PROP_BLOB,
+			"SDE_DGM_1D_LUT_GC_V5", 1);
+	if (!prop)
+		return -ENOMEM;
+	priv->prop_dma_gc = prop;
+
+	prop = drm_property_create(ddev,
+			DRM_MODE_PROP_BLOB,
+			"SDE_VIG_1D_LUT_IGC_V5", 1);
+	if (!prop)
+		return -ENOMEM;
+	priv->prop_vig_igc = prop;
+
+	prop = drm_property_create(ddev,
+			DRM_MODE_PROP_BLOB,
+			"SDE_VIG_3D_LUT_GAMUT_V5", 1);
+	if (!prop)
+		return -ENOMEM;
+	priv->prop_vig_gamut = prop;
 
 	return 0;
 }
@@ -1202,7 +1243,8 @@ static int msm_hyp_plane_set_property(
 	struct drm_device *ddev;
 	struct msm_hyp_drm_private *priv;
 	struct msm_hyp_plane_state *p_state;
-	int ret = 0;
+	struct drm_property_blob *blob;
+	int ret = 0, size = 0;
 
 	if (!plane || !state) {
 		DRM_ERROR("invalid plane %pK\n", plane);
@@ -1216,30 +1258,142 @@ static int msm_hyp_plane_set_property(
 
 	if (property == priv->prop_input_fence) {
 		p_state->input_fence = msm_hyp_sync_get(val);
+		p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_INPUT_FENCE;
 	} else if (property == priv->prop_zpos) {
 		p_state->zpos = val;
+		p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_ZPOS;
 	} else if (property == priv->prop_blend_op) {
 		p_state->blend_op = val;
+		p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_BLENDOP;
 	} else if (property == priv->prop_alpha) {
 		p_state->alpha = val;
+		p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_ALPHA;
 	} else if (property == priv->prop_csc) {
 		if (val)
-			ret = copy_from_user(&p_state->csc,
+			size = copy_from_user(&p_state->csc,
 				(void __user *)val,
 				sizeof(p_state->csc));
 		else
 			memset(&p_state->csc,
 				0x00,
 				sizeof(p_state->csc));
+		p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_CSC;
+	} else if (property == priv->prop_inverse_pma) {
+		// TODO: propagate inverse pma  to host?
+	} else if (property == priv->prop_dma_csc) {
+		pr_debug("plane %d CSC %X\n", plane->base.id, val);
+		if (val) {
+			p_state->dma_csc_en = true;
+			size = copy_from_user(&p_state->dma_csc,
+				(void __user *)val,
+				sizeof(p_state->dma_csc));
+		} else {
+			p_state->dma_csc_en = false;
+			memset(&p_state->dma_csc,
+				0x00,
+				sizeof(p_state->dma_csc));
+		}
+		if (!size)
+			p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_DMA_CSC;
+	} else if (property == priv->prop_dma_igc) {
+		pr_debug("plane %d DMA IGC %X\n", plane->base.id, val);
+		priv->prop_dma_igc->values[0] = val;
+		if (val) {
+			blob = drm_property_lookup_blob(ddev, val);
+			if (blob) {
+				pr_debug("plane %d DMA IGC %X  SZ %X\n", plane->base.id,
+						val, blob->length);
+				p_state->dma_igc_en = true;
+				memcpy(&p_state->dma_igc, blob->data,
+					min(blob->length, sizeof(p_state->dma_igc)));
+				p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_DMA_IGC;
+			} else {
+				DRM_WARN("invalid DMA IGC blob id %d\n", val);
+			}
+		} else {
+			p_state->dma_igc_en = false;
+			memset(&p_state->dma_igc,
+				0x00,
+				sizeof(p_state->dma_igc));
+			p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_DMA_IGC;
+		}
+	} else if (property == priv->prop_vig_igc) {
+		pr_debug("plane %d VIG IGC %X\n", plane->base.id, val);
+		priv->prop_vig_igc->values[0] = val;
+		if (val) {
+			blob = drm_property_lookup_blob(ddev, val);
+			if (blob) {
+				pr_debug("plane %d VIG IGC %X  SZ %X\n", plane->base.id,
+						val, blob->length);
+				p_state->vig_igc_en = true;
+				memcpy(&p_state->vig_igc, blob->data,
+					min(blob->length, sizeof(p_state->vig_igc)));
+				p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_VIG_IGC;
+			} else {
+				DRM_WARN("invalid VIG IGC blob id %d\n", val);
+			}
+		} else {
+			p_state->vig_igc_en = false;
+			memset(&p_state->vig_igc,
+				0x00,
+				sizeof(p_state->vig_igc));
+			p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_VIG_IGC;
+		}
+	} else if (property == priv->prop_dma_gc) {
+		pr_debug("plane %d DMA GC %X\n", plane->base.id, val);
+		priv->prop_dma_gc->values[0] = val;
+		if (val) {
+			blob = drm_property_lookup_blob(ddev, val);
+			if (blob) {
+				pr_debug("plane %d DMA GC %X  SZ %X\n", plane->base.id,
+						val, blob->length);
+				p_state->dma_gc_en = true;
+				memcpy(&p_state->dma_gc, blob->data,
+					min(blob->length, sizeof(p_state->dma_gc)));
+				p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_DMA_GC;
+			} else {
+				DRM_WARN("invalid DMA GC blob id %d\n", val);
+			}
+		} else {
+			p_state->dma_gc_en = false;
+			memset(&p_state->dma_gc,
+				0x00,
+				sizeof(p_state->dma_gc));
+			p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_DMA_GC;
+		}
+	} else if (property == priv->prop_vig_gamut) {
+		pr_debug("plane %d VIG GAMUT %X\n", plane->base.id, val);
+		priv->prop_vig_gamut->values[0] = val;
+		if (val) {
+			blob = drm_property_lookup_blob(ddev, val);
+			if (blob) {
+				pr_debug("plane %d VIG GAMUT %X	SZ %X\n", plane->base.id,
+						val, blob->length);
+				p_state->gamut_en = true;
+				memcpy(&p_state->gamut, blob->data,
+					min(blob->length, sizeof(p_state->gamut)));
+				p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_GAMUT;
+			} else {
+				DRM_WARN("invalid VIG GAMUT blob id %d\n", val);
+			}
+		} else {
+			p_state->gamut_en = false;
+			memset(&p_state->gamut,
+				0x00,
+				sizeof(p_state->gamut));
+			p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_GAMUT;
+		}
 	} else if (property == priv->prop_scaler) {
 		if (val)
-			ret = copy_from_user(&p_state->scaler,
+			size = copy_from_user(&p_state->scaler,
 				(void __user *)val,
 				sizeof(p_state->scaler));
 		else
 			memset(&p_state->scaler,
 				0x00,
 				sizeof(p_state->scaler));
+		if (!size)
+			p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_SCALER;
 	} else if (property == priv->prop_multirect_mode) {
 		p_state->multirect_mode = val;
 	} else if (property == priv->prop_fb_translation_mode) {
@@ -1252,6 +1406,9 @@ static int msm_hyp_plane_set_property(
 		DRM_ERROR("invalid prop %s\n", property->name);
 		ret = -EINVAL;
 	}
+
+	if (size)
+		ret = -EINVAL;
 
 	return ret;
 }
@@ -1287,6 +1444,18 @@ static int msm_hyp_plane_get_property(
 		*val = p_state->alpha;
 	} else if (property == priv->prop_csc) {
 		*val = 0;
+	} else if (property == priv->prop_inverse_pma) {
+		*val = 1;
+	} else if (property == priv->prop_dma_csc) {
+		*val = 0;
+	} else if (property == priv->prop_dma_igc) {
+		*val = priv->prop_dma_igc->values[0];
+	} else if (property == priv->prop_dma_gc) {
+		*val = priv->prop_dma_gc->values[0];
+	} else if (property == priv->prop_vig_igc) {
+		*val = priv->prop_vig_igc->values[0];
+	} else if (property == priv->prop_vig_gamut) {
+		*val = priv->prop_vig_gamut->values[0];
 	} else if (property == priv->prop_scaler) {
 		*val = 0;
 	} else if (property == priv->prop_multirect_mode) {
@@ -1492,9 +1661,26 @@ static int _msm_hyp_plane_init(struct drm_device *ddev,
 		drm_object_attach_property(&plane->base.base,
 				priv->prop_scaler, 0);
 
+	drm_object_attach_property(&plane->base.base,
+			priv->prop_inverse_pma, 0);
+
 	if (plane->info->support_csc)
 		drm_object_attach_property(&plane->base.base,
 				priv->prop_csc, 0);
+
+	if (plane->info->vig_pipe) {
+		drm_object_attach_property(&plane->base.base,
+				priv->prop_vig_igc, 0);
+		drm_object_attach_property(&plane->base.base,
+				priv->prop_vig_gamut, 0);
+	} else {
+		drm_object_attach_property(&plane->base.base,
+				priv->prop_dma_igc, 0);
+		drm_object_attach_property(&plane->base.base,
+				priv->prop_dma_gc, 0);
+		drm_object_attach_property(&plane->base.base,
+				priv->prop_dma_csc, 0);
+	}
 
 	if (plane->info->support_multirect) {
 		drm_object_attach_property(&plane->base.base,
@@ -1639,6 +1825,7 @@ static int _msm_hyp_crtcs_init(struct drm_device *ddev)
 static int _msm_hyp_obj_init(struct drm_device *ddev)
 {
 	struct msm_hyp_drm_private *priv = ddev->dev_private;
+	struct msm_hyp_kms *kms = priv->kms;
 	int ret;
 
 	ret = _msm_hyp_connectors_init(ddev);
@@ -1654,6 +1841,9 @@ static int _msm_hyp_obj_init(struct drm_device *ddev)
 		return ret;
 
 	init_waitqueue_head(&priv->pending_crtcs_event);
+	/* Register for WFD events(HPD)*/
+	if (kms->funcs && kms->funcs->register_event)
+		kms->funcs->register_event(kms);
 
 	return 0;
 }
@@ -2442,6 +2632,40 @@ static int msm_hyp_resume(struct device *dev)
 	return ret;
 }
 #endif
+
+/*
+ * Send HPD event to HWC Layer
+ *
+ * dev : drm_device pointer
+ * connector : Connector information
+ */
+void msm_hyp_send_hpd_event(struct drm_device *dev,
+		struct drm_connector *connector)
+{
+	char name[HPD_STRING_SIZE] = "";
+	char status[HPD_STRING_SIZE] = "";
+	char bpp[HPD_STRING_SIZE] = "";
+	char pattern[HPD_STRING_SIZE] = "";
+	char *envp[6] = {};
+
+	snprintf(name, HPD_STRING_SIZE, "name=%s", connector->name);
+	snprintf(status, HPD_STRING_SIZE, "status=%s",
+		drm_get_connector_status_name(connector->status));
+	snprintf(bpp, HPD_STRING_SIZE, "bpp=%d", 0);
+	snprintf(pattern, HPD_STRING_SIZE, "pattern=%d", 0);
+
+	DRM_DEBUG("HPDLOG [%s]:[%s] [%s] [%s]\n", name, status,
+		bpp, pattern);
+	envp[0] = name;
+	envp[1] = status;
+	envp[2] = bpp;
+	envp[3] = pattern;
+	envp[4] = "HOTPLUG=1";
+	envp[5] = NULL;
+
+	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE,
+			envp);
+}
 
 static const struct dev_pm_ops msm_hyp_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(msm_hyp_suspend, msm_hyp_resume)
