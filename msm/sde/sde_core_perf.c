@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -905,9 +905,14 @@ static void _sde_core_perf_crtc_update_check(struct drm_crtc *crtc,
 	struct sde_core_perf_params *old = &sde_crtc->cur_perf;
 	struct sde_core_perf_params *new = &sde_crtc->new_perf;
 	int i;
+	struct msm_drm_private *priv;
+	u32 rsc_index;
 
-	if (!kms)
+	if (!kms || !kms->dev || !kms->dev->dev_private)
 		return;
+
+	priv = kms->dev->dev_private;
+	rsc_index = priv->phandle.rsc_index;
 
 	for (i = 0; i < SDE_POWER_HANDLE_DBUS_ID_MAX; i++) {
 		/*
@@ -950,7 +955,7 @@ static void _sde_core_perf_crtc_update_check(struct drm_crtc *crtc,
 
 		/* display rsc override during solver mode */
 		if (kms->perf.bw_vote_mode == DISP_RSC_MODE &&
-				get_sde_rsc_current_state(kms->dev->primary->index) !=
+				get_sde_rsc_current_state(rsc_index) !=
 				SDE_RSC_CLK_STATE) {
 			/* update new bandwidth in all cases */
 			if (params_changed && ((new->bw_ctl[i] !=
@@ -997,6 +1002,7 @@ void sde_core_perf_crtc_update(struct drm_crtc *crtc,
 	int ret, i;
 	struct msm_drm_private *priv;
 	struct sde_kms *kms;
+	u32 rsc_index;
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -1011,6 +1017,11 @@ void sde_core_perf_crtc_update(struct drm_crtc *crtc,
 	priv = kms->dev->dev_private;
 	sde_crtc = to_sde_crtc(crtc);
 	sde_cstate = to_sde_crtc_state(crtc->state);
+
+	if (!priv)
+		return;
+
+	rsc_index = priv->phandle.rsc_index;
 
 	SDE_DEBUG("crtc:%d stop_req:%d core_clk:%llu\n",
 			crtc->base.id, stop_req, kms->perf.core_clk_rate);
@@ -1055,9 +1066,9 @@ void sde_core_perf_crtc_update(struct drm_crtc *crtc,
 	}
 
 	if (kms->perf.bw_vote_mode == DISP_RSC_MODE &&
-	    ((get_sde_rsc_current_state(kms->dev->primary->index) != SDE_RSC_CLK_STATE
+	    ((get_sde_rsc_current_state(rsc_index) != SDE_RSC_CLK_STATE
 	      && params_changed) ||
-	    (get_sde_rsc_current_state(kms->dev->primary->index) == SDE_RSC_CLK_STATE)))
+	    (get_sde_rsc_current_state(rsc_index) == SDE_RSC_CLK_STATE)))
 		sde_rsc_client_trigger_vote(sde_cstate->rsc_client,
 				update_bus ? true : false);
 
@@ -1436,7 +1447,8 @@ int sde_core_perf_init(struct sde_core_perf *perf,
 	perf->catalog = catalog;
 	perf->phandle = phandle;
 	perf->clk_name = clk_name;
-	perf->sde_rsc_available = is_sde_rsc_available(dev->primary->index);
+	perf->sde_rsc_available = is_sde_rsc_available(phandle->rsc_index);
+
 	/* set default mode */
 	if (perf->sde_rsc_available)
 		perf->bw_vote_mode = DISP_RSC_MODE;
