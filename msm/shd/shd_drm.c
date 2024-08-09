@@ -228,12 +228,16 @@ static int shd_display_init_base_crtc(struct drm_device *dev,
 {
 	struct drm_crtc *crtc = NULL;
 	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
 	struct drm_plane *primary;
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
 	struct drm_connector_list_iter conn_iter;
+	struct sde_mdss_cfg *catalog;
 	int crtc_idx;
 	int i;
+	int max_crtc_count = 0;
+	int possible_crtcs = 0;
 
 	priv = dev->dev_private;
 
@@ -262,8 +266,15 @@ static int shd_display_init_base_crtc(struct drm_device *dev,
 	dev->mode_config.allow_fb_modifiers = false;
 #endif
 
-	/* create dummy primary plane for base crtc */
-	primary = sde_plane_init(dev, SSPP_DMA0, true, 0, 0);
+	/* create primary plane for base crtc */
+	sde_kms = to_sde_kms(priv->kms);
+	catalog = sde_kms->catalog;
+
+	max_crtc_count = min(catalog->mixer_count, priv->num_encoders);
+	possible_crtcs = (1UL << max_crtc_count) - 1;
+
+	primary = sde_plane_init(dev, SSPP_DMA0, true, possible_crtcs, 0);
+
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
 	dev->mode_config.allow_fb_modifiers = true;
 #endif
@@ -276,7 +287,8 @@ static int shd_display_init_base_crtc(struct drm_device *dev,
 	if (primary->funcs->reset)
 		primary->funcs->reset(primary);
 
-	SDE_DEBUG("create dummay plane%d free plane%d\n", DRMID(primary), DRMID(crtc->primary));
+	SDE_DEBUG("create dummay plane%d possible_crtcs=%d  free plane%d\n",
+			DRMID(primary), possible_crtcs, DRMID(crtc->primary));
 
 	crtc->primary = primary;
 
