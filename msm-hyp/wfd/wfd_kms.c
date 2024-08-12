@@ -2012,13 +2012,13 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 			priv->wfd_device,
 			priv->wfd_pipeline,
 			WFD_PIPELINE_FLIP,
-			(plane->state->rotation & DRM_MODE_REFLECT_X) ? true : false);
+			(plane->state->rotation & DRM_MODE_REFLECT_Y) ? true : false);
 
 		wfdSetPipelineAttribi_User(
 			priv->wfd_device,
 			priv->wfd_pipeline,
 			WFD_PIPELINE_MIRROR,
-			(plane->state->rotation & DRM_MODE_REFLECT_Y) ? true : false);
+			(plane->state->rotation & DRM_MODE_REFLECT_X) ? true : false);
 	}
 
 	/* special plane properties */
