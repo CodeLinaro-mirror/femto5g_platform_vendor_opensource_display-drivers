@@ -410,6 +410,11 @@ static int dsi_panel_power_off(struct dsi_panel *panel)
 {
 	int rc = 0;
 
+	if (panel->skip_panel_off) {
+		DSI_DEBUG("skip panel power off\n");
+		return rc;
+	}
+
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio))
 		gpio_set_value(panel->reset_config.disp_en_gpio, 0);
 
@@ -713,7 +718,7 @@ static u32 dsi_panel_get_brightness(struct dsi_backlight_config *bl)
 	switch (bl->type) {
 	case DSI_BACKLIGHT_WLED:
 		/* Try to query the backlight level from the backlight device */
-		if (bd->ops && bd->ops->get_brightness)
+		if (bd && bd->ops && bd->ops->get_brightness)
 			cur_bl_level = bd->ops->get_brightness(bd);
 		break;
 	case DSI_BACKLIGHT_DCS:
@@ -2546,6 +2551,12 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 	panel->reset_gpio_always_on = utils->read_bool(utils->data,
 			"qcom,platform-reset-gpio-always-on");
 
+	panel->event_notification_disabled = utils->read_bool(utils->data,
+			"qcom,event-notification-disabled");
+
+	panel->skip_panel_off = utils->read_bool(utils->data,
+			"qcom,skip-panel-power-off");
+
 	panel->spr_info.enable = false;
 	panel->spr_info.pack_type = MSM_DISPLAY_SPR_TYPE_MAX;
 
@@ -2562,10 +2573,26 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 		}
 	}
 
-	pr_debug("%s source side spr packing, pack-type %s\n",
+	// read pentile pack type if spr type is pentile
+	if (panel->spr_info.pack_type == MSM_DISPLAY_SPR_TYPE_PENTILE) {
+		rc = utils->read_string(utils->data, "qcom,spr-pentile-pack-type", &string);
+		if (!rc) {
+			// find match for pentile type string
+			for (i = 0; i < MSM_DISPLAY_SPR_PACK_TYPE_MODE_MAX; i++) {
+				if (msm_spr_pack_type_mode_str[i] &&
+					(!strcmp(string, msm_spr_pack_type_mode_str[i]))) {
+					panel->spr_info.pack_type_mode = i;
+					break;
+				}
+			}
+		}
+	}
+
+	pr_debug("%s source side spr packing, pack-type %s, pack-type mode %s\n",
 		panel->spr_info.enable ? "enable" : "disable",
 		panel->spr_info.enable ?
-		msm_spr_pack_type_str[panel->spr_info.pack_type] : "none");
+		msm_spr_pack_type_str[panel->spr_info.pack_type] : "none",
+		msm_spr_pack_type_mode_str[panel->spr_info.pack_type_mode]);
 
 	return 0;
 }
@@ -3159,6 +3186,9 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 		rc = -EINVAL;
 		goto error;
 	}
+
+	priv_info->dsc.rc_override_v1 = utils->read_bool(utils->data,
+		"qcom,mdss-dsc-rc-override_v1");
 
 	rc = sde_dsc_populate_dsc_private_params(&priv_info->dsc, intf_width,
 			priv_info->widebus_support);
@@ -4893,6 +4923,29 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 	if (rc)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
 		       panel->name, rc);
+exit:
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+int dsi_panel_set_lp2_load(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+
+	if (!panel) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	if (!panel->panel_initialized)
+		goto exit;
+
+	rc = dsi_pwr_set_lp2_load(&panel->power_info, enable);
+	if (rc)
+		DSI_ERR("[%s] failed to set panel lp2 vreg, rc=%d\n",
+			panel->name, rc);
+
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;

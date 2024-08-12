@@ -206,10 +206,6 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 				display, bl_lvl);
 		if (!rc)
 			sde_dimming_bl_notify(c_conn, &display->panel->bl_config);
-		if (c_conn->base.state && c_conn->base.state->crtc) {
-			sde_crtc_backlight_notify(c_conn->base.state->crtc, brightness,
-						  display->panel->bl_config.brightness_max_level);
-			}
 		c_conn->unset_bl_level = 0;
 	}
 
@@ -889,15 +885,8 @@ static int _sde_connector_update_bl_scale(struct sde_connector *c_conn)
 	rc = c_conn->ops.set_backlight(&c_conn->base,
 			dsi_display, bl_config->bl_level);
 
-	if (!rc) {
+	if (!rc)
 		sde_dimming_bl_notify(c_conn, bl_config);
-		if (c_conn->base.state && c_conn->base.state->crtc) {
-			sde_crtc_backlight_notify(c_conn->base.state->crtc,
-				dsi_display->panel->bl_config.brightness,
-				dsi_display->panel->bl_config.brightness_max_level);
-		}
-	}
-
 	c_conn->unset_bl_level = 0;
 
 	return rc;
@@ -1227,6 +1216,9 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	}
 
 	c_conn = to_sde_connector(connector);
+
+	if (sde_encoder_in_cont_splash(connector->encoder))
+		return 0;
 
 	if (!c_conn->freq_pattern) {
 		SDE_ERROR("frequency pattern is NULL but update is true\n");
@@ -1566,6 +1558,9 @@ void sde_connector_destroy(struct drm_connector *connector)
 	}
 
 	c_conn = to_sde_connector(connector);
+
+	if (c_conn->sysfs_dev)
+		device_unregister(c_conn->sysfs_dev);
 
 	/* cancel if any pending esd work */
 	sde_connector_schedule_status_work(connector, false);
@@ -2534,8 +2529,14 @@ static int _sde_connector_lm_preference(struct sde_connector *sde_conn,
 	return ret;
 }
 
-static void _sde_connector_init_hw_fence(struct sde_connector *c_conn, struct sde_kms *sde_kms)
+static void _sde_connector_init_hw_fence(struct sde_connector *c_conn,
+		struct msm_display_info *display_info, struct sde_kms *sde_kms)
 {
+	/* enable hw-fence override if hw-fencing is disabled but vrr is supported */
+	if (display_info->vrr_caps.video_psr_support || display_info->vrr_caps.arp_support ||
+			sde_kms->catalog->hw_fence_rev)
+		sde_kms->catalog->is_vrr_hw_fence_enable = true;
+
 	/* Enable hw-fences for wb retire-fence */
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL && sde_kms->catalog->hw_fence_rev)
 		c_conn->hwfence_wb_retire_fences_enable = true;
@@ -3349,6 +3350,13 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 			}
 		}
 
+		if (c_conn->vrr_caps.video_psr_support)
+			sde_kms_info_add_keyint(info, "has_vhm_support", 1);
+
+		if (c_conn->vrr_caps.vrr_support)
+			sde_kms_info_add_keyint(info, "early_ept_timeout",
+				IDLE_POWERCOLLAPSE_DURATION);
+
 		sde_kms_info_add_keyint(info, "has_cwb_crop", test_bit(SDE_FEATURE_CWB_CROP,
 								       sde_kms->catalog->features));
 		sde_kms_info_add_keyint(info, "has_dedicated_cwb_support",
@@ -3707,6 +3715,105 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	return 0;
 }
 
+static ssize_t panel_power_state_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+
+	conn = dev_get_drvdata(device);
+	sde_conn = to_sde_connector(conn);
+
+	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->last_panel_power_mode);
+}
+
+static ssize_t twm_enable_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+	struct dsi_display *dsi_display;
+	int rc;
+	int data;
+
+	conn = dev_get_drvdata(device);
+	sde_conn = to_sde_connector(conn);
+	dsi_display = (struct dsi_display *) sde_conn->display;
+	rc = kstrtoint(buf, 10, &data);
+	if (rc) {
+		SDE_ERROR("kstrtoint failed, rc = %d\n", rc);
+		return -EINVAL;
+	}
+	sde_conn->twm_en = data ? true : false;
+	dsi_display->twm_enabled = sde_conn->twm_en;
+	sde_conn->allow_bl_update = data ? false : true;
+
+	SDE_DEBUG("TWM: %s\n", sde_conn->twm_en ? "ENABLED" : "DISABLED");
+	return count;
+}
+
+static ssize_t twm_enable_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+
+	conn = dev_get_drvdata(device);
+	sde_conn = to_sde_connector(conn);
+
+	SDE_DEBUG("TWM: %s\n", sde_conn->twm_en ? "ENABLED" : "DISABLED");
+	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->twm_en);
+}
+
+static DEVICE_ATTR_RO(panel_power_state);
+static DEVICE_ATTR_RW(twm_enable);
+
+static struct attribute *sde_connector_dev_attrs[] = {
+	&dev_attr_panel_power_state.attr,
+	&dev_attr_twm_enable.attr,
+	NULL
+};
+
+static const struct attribute_group sde_connector_attr_group = {
+	.attrs = sde_connector_dev_attrs,
+};
+static const struct attribute_group *sde_connector_attr_groups[] = {
+	&sde_connector_attr_group,
+	NULL,
+};
+
+int sde_connector_post_init(struct drm_device *dev, struct drm_connector *conn)
+{
+	struct sde_connector *c_conn;
+	int rc = 0;
+
+	if (!dev || !dev->primary || !dev->primary->kdev || !conn) {
+		SDE_ERROR("invalid input param(s)\n");
+		rc = -EINVAL;
+		return rc;
+	}
+
+	c_conn =  to_sde_connector(conn);
+
+	if (conn->connector_type != DRM_MODE_CONNECTOR_DSI)
+		return rc;
+
+	c_conn->sysfs_dev =
+		device_create_with_groups(dev->primary->kdev->class,
+			dev->primary->kdev, 0, conn, sde_connector_attr_groups,
+			"sde-conn-%d-%s", conn->index, conn->name);
+	if (IS_ERR_OR_NULL(c_conn->sysfs_dev)) {
+		SDE_ERROR("connector:%u sysfs create failed rc:%ld\n",
+			c_conn->base.index, PTR_ERR(c_conn->sysfs_dev));
+		if (!c_conn->sysfs_dev)
+			rc = -EINVAL;
+		else
+			rc = PTR_ERR(c_conn->sysfs_dev);
+	}
+
+	return rc;
+}
+
 struct drm_connector *sde_connector_init(struct drm_device *dev,
 		struct drm_encoder *encoder,
 		struct drm_panel *panel,
@@ -3759,6 +3866,7 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	c_conn->dpms_mode = DRM_MODE_DPMS_ON;
 	c_conn->lp_mode = 0;
 	c_conn->last_panel_power_mode = SDE_MODE_DPMS_ON;
+	c_conn->twm_en = false;
 
 	sde_kms = to_sde_kms(priv->kms);
 	if (sde_kms->vbif[VBIF_NRT]) {
@@ -3857,7 +3965,7 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	_sde_connector_lm_preference(c_conn, sde_kms,
 			display_info.display_type);
 
-	_sde_connector_init_hw_fence(c_conn, sde_kms);
+	_sde_connector_init_hw_fence(c_conn, &display_info, sde_kms);
 
 	SDE_DEBUG("connector %d attach encoder %d, wb hwfences:%d\n",
 			DRMID(&c_conn->base), DRMID(encoder),

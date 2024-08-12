@@ -814,7 +814,8 @@ static void _sde_crtc_setup_blend_cfg(struct sde_crtc_mixer *mixer,
 
 	bg_alpha = max_alpha - fg_alpha;
 
-	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA)) {
+	if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA) ||
+			sde_plane_is_cac_enabled(pstate)) {
 		bg_alpha = sde_plane_get_property(pstate, PLANE_PROP_BG_ALPHA);
 		/* scale down background alpha */
 		if (test_bit(SDE_MIXER_10_BITS_ALPHA, &lm->cap->features))
@@ -3745,7 +3746,8 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 	struct drm_crtc_state *crtc_state;
 	struct sde_connector_state *c_conn_state;
 	struct sde_crtc *sde_crtc;
-	struct sde_rect roi = {0};
+	struct sde_rect conn_roi = {0};
+	struct sde_rect crtc_roi = {0};
 
 	sde_crtc = to_sde_crtc(crtc);
 	crtc_state = &cstate->base;
@@ -3753,7 +3755,10 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 	c_conn_state = _sde_crtc_get_sde_connector_state(crtc, crtc_state->state);
 
 	if (c_conn_state->rois.num_rects)
-		sde_kms_rect_merge_rectangles(&c_conn_state->rois, &roi);
+		sde_kms_rect_merge_rectangles(&c_conn_state->rois, &conn_roi);
+
+	if (cstate->user_roi_list.num_rects)
+		sde_kms_rect_merge_rectangles(&cstate->user_roi_list, &crtc_roi);
 
 	if (cfg->flags & SDE_DRM_DESTSCALER_SCALE_UPDATE ||
 		cfg->flags & SDE_DRM_DESTSCALER_ENHANCER_UPDATE) {
@@ -3772,31 +3777,36 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 			!cfg->scl3_cfg.src_width[0] ||
 			!cfg->scl3_cfg.dst_width ||
 			(pu_enable && cfg->scl3_cfg.dst_width != hdisplay) ||
-			(pu_enable && roi.h != 0 && cfg->scl3_cfg.dst_height != roi.h) ||
+			(pu_enable && conn_roi.h != 0 && cfg->scl3_cfg.dst_height != conn_roi.h) ||
+			(pu_enable && crtc_roi.h != 0 && cfg->scl3_cfg.src_height[0]
+					!= crtc_roi.h) ||
 			(!pu_enable &&
 			(cfg->scl3_cfg.dst_width != hdisplay ||
 			cfg->scl3_cfg.dst_height != mode->vdisplay))) {
 			SDE_ERROR("crtc%d: ", crtc->base.id);
-			SDE_ERROR("src_w(%d) dst(%dx%d) display(%dx%d)",
+			SDE_ERROR("src_wxh(%dx%d) dst(%dx%d) display(%dx%d)",
 				cfg->scl3_cfg.src_width[0],
+				cfg->scl3_cfg.src_height[0],
 				cfg->scl3_cfg.dst_width,
 				cfg->scl3_cfg.dst_height,
 				hdisplay, mode->vdisplay);
-			SDE_ERROR("num_mixers(%d) flags(%d) ds-%d: roi(%dx%d)\n",
+			SDE_ERROR("num_mixers(%d) flags(%d) ds-%d: conn_roi(%dx%d)\n",
 				sde_crtc->num_mixers, cfg->flags,
-				hw_ds->idx - DS_0, roi.w, roi.h);
-			SDE_ERROR("scale_en = %d, DE_en =%d\n",
+				hw_ds->idx - DS_0, conn_roi.w, conn_roi.h);
+			SDE_ERROR("ds_src(%dx%d) crtc_roi (%dx%d) scale_en = %d, DE_en =%d\n",
+				cfg->lm_width, cfg->lm_height,
+				crtc_roi.w, crtc_roi.h,
 				cfg->scl3_cfg.enable,
 				cfg->scl3_cfg.de.enable);
 
 			SDE_EVT32(DRMID(crtc), cfg->scl3_cfg.enable,
 				cfg->scl3_cfg.de.enable, cfg->flags,
 				max_in_width, max_out_width,
-				cfg->scl3_cfg.src_width[0],
+				cfg->scl3_cfg.src_width[0], cfg->scl3_cfg.src_height[0],
 				cfg->scl3_cfg.dst_width,
 				cfg->scl3_cfg.dst_height, hdisplay,
 				mode->vdisplay, sde_crtc->num_mixers,
-				roi.w, roi.h,
+				conn_roi.w, conn_roi.h,
 				SDE_EVTLOG_ERROR);
 
 			cfg->flags &=
@@ -4273,6 +4283,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	int ret;
 	enum sde_crtc_vm_req vm_req;
 	bool disable_hw_fences = false;
+	bool trigger_sw_override = false;
 
 	SDE_DEBUG("\n");
 
@@ -4284,16 +4295,28 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 
 	SDE_ATRACE_BEGIN("plane_wait_input_fence");
 
+	trigger_sw_override = sde_kms->catalog->is_vrr_hw_fence_enable &&
+		!sde_kms->catalog->hw_fence_rev;
+	if (trigger_sw_override && (!hw_ctl || !hw_ctl->ops.hw_fence_trigger_sw_override ||
+			test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask))) {
+		SDE_ERROR("invalid trigger_sw_override hw_ctl:0x%pK op:0x%pK mask:0x%lx\n", hw_ctl,
+			hw_ctl ? hw_ctl->ops.hw_fence_trigger_sw_override : NULL,
+			*sde_crtc->hwfence_features_mask);
+		return false;
+	}
+
 	/* if this is the last frame on vm transition, disable hw fences */
 	vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc->state), CRTC_PROP_VM_REQ_STATE);
 	if (vm_req == VM_REQ_RELEASE)
 		disable_hw_fences = true;
 
 	/* update ctl hw to wait for ipcc input signal before fetch */
-	if (test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask) &&
-			!sde_fence_update_input_hw_fence_signal(hw_ctl, sde_kms->debugfs_hw_fence,
-			sde_kms->hw_mdp, disable_hw_fences))
-		ipcc_input_signal_wait = true;
+	if (test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
+			trigger_sw_override) {
+		ret = sde_fence_update_input_hw_fence_signal(hw_ctl, sde_kms->debugfs_hw_fence,
+			sde_kms->hw_mdp, disable_hw_fences, trigger_sw_override);
+		ipcc_input_signal_wait = (ret == 0);
+	}
 
 	/* avoid hw-fences in first frame after timing engine enable */
 	input_hw_fences_enable = (ipcc_input_signal_wait && !_is_vid_power_on_frame(crtc));
@@ -4326,8 +4349,11 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 		ipcc_input_signal_wait, num_hw_fences, hw_ctl ? hw_ctl->idx - CTL_0 : -1);
 
 	/* if hw is waiting for ipcc signal and no hw-fences, override signal */
-	if (ipcc_input_signal_wait && !num_hw_fences && hw_ctl->ops.hw_fence_trigger_sw_override &&
-			!test_bit(HW_FENCE_IN_FENCES_NO_OVERRIDE, sde_crtc->hwfence_features_mask))
+	trigger_sw_override |= (ipcc_input_signal_wait && !num_hw_fences &&
+			hw_ctl->ops.hw_fence_trigger_sw_override &&
+			!test_bit(HW_FENCE_IN_FENCES_NO_OVERRIDE, sde_crtc->hwfence_features_mask));
+
+	if (trigger_sw_override)
 		hw_ctl->ops.hw_fence_trigger_sw_override(hw_ctl);
 
 	SDE_ATRACE_END("plane_wait_input_fence");
@@ -4942,6 +4968,7 @@ int sde_crtc_reset_hw(struct drm_crtc *crtc, struct drm_crtc_state *old_state,
 	struct sde_hw_ctl *ctl;
 	signed int i, plane_count;
 	int rc;
+	bool force_hard_reset = false;
 
 	if (!crtc || !crtc->dev || !old_state || !crtc->state)
 		return -EINVAL;
@@ -4970,10 +4997,15 @@ int sde_crtc_reset_hw(struct drm_crtc *crtc, struct drm_crtc_state *old_state,
 
 	/*
 	 * Early out if simple ctl reset succeeded or reset is
-	 * being performed after timeout
+	 * being performed after timeout.
+	 * Force hard reset when cesta is enabled to clear the Cesta SCC.
 	 */
-	if (i == sde_crtc->num_ctls || crtc->state == old_state)
-		return 0;
+	if (i == sde_crtc->num_ctls || crtc->state == old_state) {
+		if (sde_crtc->cesta_client)
+			force_hard_reset = true;
+		else
+			return 0;
+	}
 
 	SDE_DEBUG("crtc%d: issuing hard reset\n", DRMID(crtc));
 
@@ -4983,8 +5015,26 @@ int sde_crtc_reset_hw(struct drm_crtc *crtc, struct drm_crtc_state *old_state,
 		if (!ctl || !ctl->ops.hard_reset)
 			continue;
 
-		SDE_EVT32(DRMID(crtc), ctl->idx - CTL_0);
+		SDE_EVT32(DRMID(crtc), ctl->idx - CTL_0, force_hard_reset);
 		ctl->ops.hard_reset(ctl, true);
+
+		/* reset cesta SCC ctrl */
+		if (sde_crtc->cesta_client) {
+			sde_cesta_reset_ctrl(sde_crtc->cesta_client, true);
+			sde_cesta_reset_ctrl(sde_crtc->cesta_client, false);
+		}
+	}
+
+	if (force_hard_reset) {
+		for (i = 0; i < sde_crtc->num_ctls; ++i) {
+			ctl = sde_crtc->mixers[i].hw_ctl;
+			if (!ctl || !ctl->ops.hard_reset)
+				continue;
+
+			ctl->ops.hard_reset(ctl, false);
+		}
+
+		return 0;
 	}
 
 	plane_count = 0;
@@ -5398,6 +5448,9 @@ void sde_crtc_reset_sw_state(struct drm_crtc *crtc)
 	set_bit(SDE_CRTC_DIRTY_DIM_LAYERS, &sde_crtc->revalidate_mask);
 	if (cstate->num_ds_enabled)
 		set_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
+
+	/* wipe out cached CRTC ROI so PU is seen as dirty next update */
+	memset(&cstate->cached_user_roi_list, 0, sizeof(cstate->cached_user_roi_list));
 }
 
 static void sde_crtc_post_ipc(struct drm_crtc *crtc)
@@ -6404,7 +6457,7 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 			SDE_RM_TOPOLOGY_GROUP_QUADPIPE))
 		return 0;
 
-	mode = &crtc->state->adjusted_mode;
+	mode = &crtc_state->adjusted_mode;
 	sde_crtc_get_resolution(crtc, crtc_state, mode, &crtc_width, &crtc_height);
 
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
@@ -9076,10 +9129,4 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint3
 		  DRMID(cstate->base.crtc), *padding_y, *padding_start, *padding_height);
 	return 0;
 
-}
-
-void sde_crtc_backlight_notify(struct drm_crtc *crtc, u32 bl_val, u32 bl_max)
-{
-	SDE_EVT32(bl_val, bl_max);
-	sde_cp_backlight_notification(crtc, bl_val, bl_max);
 }

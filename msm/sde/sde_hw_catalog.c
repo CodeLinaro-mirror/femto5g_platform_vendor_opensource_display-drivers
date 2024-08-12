@@ -2240,10 +2240,10 @@ static int sde_ctl_parse_dt(struct device_node *np,
 			set_bit(SDE_CTL_UIDLE, &ctl->features);
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_700))
 			set_bit(SDE_CTL_UNIFIED_DSPP_FLUSH, &ctl->features);
-		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00)) {
-			set_bit(SDE_CTL_NO_LAYER_EXT, &ctl->features);
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
 			set_bit(SDE_CTL_CESTA_FLUSH, &ctl->features);
-		}
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_B00))
+			set_bit(SDE_CTL_NO_LAYER_EXT, &ctl->features);
 	}
 
 	sde_put_dt_props(props);
@@ -2416,7 +2416,7 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 			set_bit(SDE_DIM_LAYER, &mixer->features);
 		if (test_bit(SDE_FEATURE_COMBINED_ALPHA, sde_cfg->features))
 			set_bit(SDE_MIXER_COMBINED_ALPHA, &mixer->features);
-		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_B00))
 			set_bit(SDE_MIXER_X_SRC_SEL, &mixer->features);
 		if (test_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features)) {
 			set_bit(SDE_MIXER_10_BITS_ALPHA, &mixer->features);
@@ -2718,7 +2718,7 @@ static int sde_wb_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 			set_bit(SDE_WB_SYS_CACHE, &wb->features);
 		}
 
-		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_B00))
 			set_bit(SDE_WB_FRAME_COUNT, &wb->features);
 
 		rc = _add_to_irq_offset_list(sde_cfg, SDE_INTR_HWBLK_WB, wb->id, wb->base);
@@ -5306,7 +5306,7 @@ out:
 	return rc;
 }
 
-static void _sde_hw_setup_uidle(struct sde_uidle_cfg *uidle_cfg, u32 hw_rev)
+static void _sde_hw_setup_uidle(struct sde_uidle_cfg *uidle_cfg)
 {
 	if (!uidle_cfg->uidle_rev)
 		return;
@@ -5317,7 +5317,7 @@ static void _sde_hw_setup_uidle(struct sde_uidle_cfg *uidle_cfg, u32 hw_rev)
 	uidle_cfg->fal10_target_idle_time = SDE_UIDLE_FAL10_TARGET_IDLE;
 	uidle_cfg->fal1_target_idle_time = SDE_UIDLE_FAL1_TARGET_IDLE;
 	uidle_cfg->max_dwnscale = SDE_UIDLE_MAX_DWNSCALE;
-	uidle_cfg->debugfs_ctrl = IS_SUN_TARGET(hw_rev) ? false : true;
+	uidle_cfg->debugfs_ctrl = true;
 	uidle_cfg->fal1_max_threshold = SDE_UIDLE_FAL1_MAX_THRESHOLD;
 
 	if (IS_SDE_UIDLE_REV_100(uidle_cfg->uidle_rev)) {
@@ -5541,6 +5541,13 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
 		sde_cfg->sui_block_xin_mask = 0x1;
 		clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
+	} else if (IS_MONACO_TARGET(hw_rev)) {
+		set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+		sde_cfg->perf.min_prefill_lines = 24;
+		sde_cfg->vbif_qos_nlvl = 8;
+		sde_cfg->ts_prefill_rev = 2;
+		sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+		sde_cfg->sui_block_xin_mask = 0x1;
 	} else if (IS_LAHAINA_TARGET(hw_rev)) {
 		set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
 		sde_cfg->demura_supported[SSPP_DMA1][0] = 0;
@@ -5822,6 +5829,32 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
 		sde_cfg->has_line_insertion = true;
 		sde_cfg->osc_clk_rate = 38400000;
+	} else if (IS_NIOBE_TARGET(hw_rev)) {
+		set_bit(SDE_FEATURE_WB_UBWC, sde_cfg->features);
+		set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
+		set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+		set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
+		set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+		set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+		set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+		set_bit(SDE_FEATURE_FP16, sde_cfg->features);
+		set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+		set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+		set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+		set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
+		set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
+		set_bit(SDE_FEATURE_MIXER_OP_V1, sde_cfg->features);
+		set_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_cfg->mdp[0].features);
+		sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
+		sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;
+		sde_cfg->perf.min_prefill_lines = 40;
+		sde_cfg->vbif_qos_nlvl = 8;
+		sde_cfg->qos_target_time_ns = 13640;
+		sde_cfg->ts_prefill_rev = 2;
+		sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+		sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+		sde_cfg->mdss_hw_block_size = 0x15C;
+		sde_cfg->cac_version = SDE_SSPP_CAC_V2;
 	} else {
 		SDE_ERROR("unsupported chipset id:%X\n", hw_rev);
 		sde_cfg->perf.min_prefill_lines = 0xffff;
@@ -5831,7 +5864,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 	if (!rc)
 		rc = sde_hardware_format_caps(sde_cfg, hw_rev);
 
-	_sde_hw_setup_uidle(&sde_cfg->uidle_cfg, hw_rev);
+	_sde_hw_setup_uidle(&sde_cfg->uidle_cfg);
 
 	return rc;
 }

@@ -597,13 +597,13 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 	alignment = 0x1; /* COND0 timing engine enable register */
 	if (align_esync) {
 		if (align_avr)
-			alignment = 0x1; /* COND0 HW AVR trigger */
+			alignment = 0x6; /* COND0 HW AVR trigger */
 		alignment |= 0x4 << 4; /* COND1 esync_mdp_vsync */
 
 		intf_cfg2 |= BIT(23);
 	}
 
-	if (ctx->cap->features & BIT(SDE_INTF_PERIPHERAL_FLUSH))
+	if (!dp_intf && ctx->cap->features & BIT(SDE_INTF_PERIPHERAL_FLUSH))
 		intf_cfg2 |= BIT(24);
 
 	if (ctx->cfg.split_link_en)
@@ -998,9 +998,6 @@ static int sde_hw_intf_setup_te_config(struct sde_hw_intf *intf,
 	 */
 	spin_lock(&tearcheck_spinlock);
 	val = te->start_pos + te->sync_threshold_start + 1;
-	if (intf->cap->features & BIT(SDE_INTF_TE_32BIT))
-		SDE_REG_WRITE(c, INTF_TEAR_SYNC_WRCOUNT_EXT, (val >> 16));
-	SDE_REG_WRITE(c, INTF_TEAR_SYNC_WRCOUNT, (val & 0xffff));
 	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
 	wmb(); /* disable vsync counter before updating single buffer registers */
 	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_HEIGHT, te->sync_cfg_height);
@@ -1018,6 +1015,11 @@ static int sde_hw_intf_setup_te_config(struct sde_hw_intf *intf,
 			(te->sync_threshold_start & 0xffff)));
 	cfg |= BIT(19); /* VSYNC_COUNTER_EN */
 	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
+	wmb(); /* ensure vsync_counter_en is written */
+
+	if (intf->cap->features & BIT(SDE_INTF_TE_32BIT))
+		SDE_REG_WRITE(c, INTF_TEAR_SYNC_WRCOUNT_EXT, (val >> 16));
+	SDE_REG_WRITE(c, INTF_TEAR_SYNC_WRCOUNT, (val & 0xffff));
 	spin_unlock(&tearcheck_spinlock);
 
 	return 0;
@@ -1163,6 +1165,29 @@ static int sde_hw_intf_connect_external_te(struct sde_hw_intf *intf,
 	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
 
 	return orig;
+}
+
+static void sde_hw_intf_update_tearcheck_vsync_count(struct sde_hw_intf *intf, u32 val)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+	u32 cfg;
+
+	if (!intf)
+		return;
+
+	c = &intf->hw;
+
+	cfg = SDE_REG_READ(c, INTF_TEAR_SYNC_CONFIG_VSYNC);
+
+	/* disable external TE */
+	cfg &= ~BIT(20);
+	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
+
+	/* update vsync_count and enable back external TE */
+	cfg = (val & 0x7ffff);
+	cfg |= BIT(19) | BIT(20);
+	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
+	wmb(); /* to make sure configs takes effect */
 }
 
 static int sde_hw_intf_get_vsync_info(struct sde_hw_intf *intf,
@@ -1405,6 +1430,7 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->vsync_sel = sde_hw_intf_vsync_sel;
 		ops->check_and_reset_tearcheck = sde_hw_intf_v1_check_and_reset_tearcheck;
 		ops->override_tear_rd_ptr_val = sde_hw_intf_override_tear_rd_ptr_val;
+		ops->update_tearcheck_vsync_count = sde_hw_intf_update_tearcheck_vsync_count;
 
 		if (cap & BIT(SDE_INTF_PANIC_CTRL))
 			ops->setup_te_panic_wakeup = sde_hw_intf_setup_panic_wakeup;

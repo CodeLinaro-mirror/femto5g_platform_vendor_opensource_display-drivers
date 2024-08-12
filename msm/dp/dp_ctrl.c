@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -314,7 +314,7 @@ static u8 dp_ctrl_get_active_lanes(struct dp_ctrl_private *ctrl,
 	u8 lane, count = 0;
 
 	for (lane = 0; lane < ctrl->link->link_params.lane_count; lane++) {
-		if (link_status[lane / 2] & (1 << (lane * 4)))
+		if (link_status[lane / 2] & (1 << ((lane % 2) * 4)))
 			count++;
 		else
 			break;
@@ -820,10 +820,10 @@ static int dp_ctrl_enable_stream_clocks(struct dp_ctrl_private *ctrl,
 
 	if (dp_panel->stream_id == DP_STREAM_0) {
 		clk_type = DP_STREAM0_PM;
-		strlcpy(clk_name, "strm0_pixel_clk", 32);
+		strscpy(clk_name, "strm0_pixel_clk", 32);
 	} else if (dp_panel->stream_id == DP_STREAM_1) {
 		clk_type = DP_STREAM1_PM;
-		strlcpy(clk_name, "strm1_pixel_clk", 32);
+		strscpy(clk_name, "strm1_pixel_clk", 32);
 	} else {
 		DP_ERR("Invalid stream:%d for clk enable\n",
 				dp_panel->stream_id);

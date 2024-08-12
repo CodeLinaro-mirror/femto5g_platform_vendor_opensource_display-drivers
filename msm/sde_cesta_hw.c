@@ -7,9 +7,12 @@
 
 #include <linux/kernel.h>
 #include <linux/debugfs.h>
+#include <linux/iopoll.h>
 
 #include "sde_cesta.h"
 #include "sde_dbg.h"
+
+#define RSCC_SEQ_PWR_CTRL_STATUS	0x2d0
 
 #define RSCC_WRAPPER_CTRL		0x0
 #define RSCC_WRAPPER_DEBUG_BUS		0x10
@@ -35,6 +38,36 @@ void _sde_cesta_hw_init(struct sde_cesta *cesta)
 	}
 }
 
+void _sde_cesta_hw_force_auto_active_db_update(struct sde_cesta *cesta, u32 idx,
+		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode)
+{
+	u32 ctl_val, override_val;
+
+	ctl_val = dss_reg_r(&cesta->scc_io[idx], SCC_CTRL, cesta->debug_mode);
+	override_val = dss_reg_r(&cesta->scc_io[idx], SCC_OVERRIDE_CTRL, cesta->debug_mode);
+
+	if (en_auto_active)
+		ctl_val |= BIT(3); /* set auto-active-on-panic */
+	else
+		ctl_val &= ~BIT(3);
+
+	/* clear & set the pwr_req mode */
+	ctl_val &= ~(BIT(1) | BIT(2));
+	ctl_val |= (req_mode << 1);
+
+	override_val |= BIT(0); /* set override force-db-update */
+
+	dss_reg_w(&cesta->scc_io[idx], SCC_CTRL, ctl_val, cesta->debug_mode);
+	dss_reg_w(&cesta->scc_io[idx], SCC_OVERRIDE_CTRL, override_val, cesta->debug_mode);
+	wmb(); /* for reset to be applied immediately */
+}
+
+void _sde_cesta_hw_reset(struct sde_cesta *cesta, u32 idx, bool en)
+{
+	dss_reg_w(&cesta->scc_io[idx], SCC_OVERRIDE_CTRL, en ? BIT(31) : 0, cesta->debug_mode);
+	wmb(); /* for reset to be applied immediately */
+}
+
 void _sde_cesta_hw_override_ctrl_setup(struct sde_cesta *cesta, u32 idx, u32 force_flags)
 {
 	u32 val = 0;
@@ -47,8 +80,6 @@ void _sde_cesta_hw_override_ctrl_setup(struct sde_cesta *cesta, u32 idx, u32 for
 		val |= BIT(2);
 	if (force_flags & SDE_CESTA_OVERRIDE_FORCE_CHN_UPDATE)
 		val |= BIT(3);
-	if (force_flags & SDE_CESTA_OVERRIDE_RESET)
-		val |= BIT(31);
 
 	dss_reg_w(&cesta->scc_io[idx], SCC_OVERRIDE_CTRL, val, cesta->debug_mode);
 	wmb(); /* for force votes to be applied immediately */
@@ -87,6 +118,18 @@ void _sde_cesta_hw_ctrl_setup(struct sde_cesta *cesta, u32 idx, struct sde_cesta
 	dss_reg_w(&cesta->scc_io[idx], SCC_CTRL, val, cesta->debug_mode);
 }
 
+int _sde_cesta_hw_poll_handshake(struct sde_cesta *cesta, u32 idx)
+{
+	void __iomem *addr = cesta->scc_io[idx].base + SCC_HW_STATE_READBACK;
+	u32 handshake_mask = BIT(4) | BIT(5);
+	u32 handshake_vote_req = 0x1 << 4;
+	u32 val;
+
+	return readl_relaxed_poll_timeout(addr, val,
+			(val & handshake_mask) != handshake_vote_req,
+			100, 1000);
+}
+
 void _sde_cesta_hw_get_status(struct sde_cesta *cesta, u32 idx, struct sde_cesta_scc_status *status)
 {
 	u32 val;
@@ -109,11 +152,20 @@ u32 _sde_cesta_hw_get_pwr_event(struct sde_cesta *cesta)
 	return dss_reg_r(&cesta->wrapper_io, RSCC_PWR_CTRL, cesta->debug_mode);
 }
 
+u32 _sde_get_rscc_pwr_ctrl_status(struct sde_cesta *cesta)
+{
+	return dss_reg_r(&cesta->rscc_io, RSCC_SEQ_PWR_CTRL_STATUS, cesta->debug_mode);
+}
+
 void sde_cesta_hw_init(struct sde_cesta *cesta)
 {
 	cesta->hw_ops.init = _sde_cesta_hw_init;
 	cesta->hw_ops.ctrl_setup = _sde_cesta_hw_ctrl_setup;
+	cesta->hw_ops.poll_handshake = _sde_cesta_hw_poll_handshake;
 	cesta->hw_ops.get_status = _sde_cesta_hw_get_status;
 	cesta->hw_ops.get_pwr_event = _sde_cesta_hw_get_pwr_event;
 	cesta->hw_ops.override_ctrl_setup = _sde_cesta_hw_override_ctrl_setup;
+	cesta->hw_ops.reset_ctrl = _sde_cesta_hw_reset;
+	cesta->hw_ops.force_auto_active_db_update = _sde_cesta_hw_force_auto_active_db_update;
+	cesta->hw_ops.get_rscc_pwr_ctrl_status = _sde_get_rscc_pwr_ctrl_status;
 }

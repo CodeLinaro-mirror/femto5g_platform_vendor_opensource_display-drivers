@@ -101,7 +101,7 @@
 /**
  * List of SSPP bits in CTL_FLUSH
  */
-static const u32 sspp_tbl[SSPP_MAX] = { SDE_NONE, 0, 1, 2, 18, 11, 12, 24, 25, 13, 14};
+static const u32 sspp_tbl[SSPP_MAX] = { SDE_NONE, 0, 1, 2, 18, 3, 4, 5, 19, 11, 12, 24, 25, 13, 14};
 
 /**
  * List of layer mixer bits in CTL_FLUSH
@@ -148,12 +148,14 @@ static const u32 intf_tbl[INTF_MAX] = {SDE_NONE, 31, 30, 29, 28};
 /**
  * List of SSPP bits in CTL_FETCH_PIPE_ACTIVE
  */
-static const u32 fetch_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT, 16, 17, 18, 19, 0, 1, 2, 3, 4, 5};
+static const u32 fetch_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT,
+		16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5};
 
 /**
  * List of SSPP bits in CTL_PIPE_ACTIVE
  */
-static const u32 pipe_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT, 16, 17, 18, 19, 0, 1, 2, 3, 4, 5};
+static const u32 pipe_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT,
+		16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5};
 
 /**
  * List of LM bits in CTL_LM_ACTIVE
@@ -745,6 +747,25 @@ static inline int sde_hw_ctl_update_bitmask_v1(struct sde_hw_ctl *ctx,
 		UPDATE_MASK(ctx->flush.pending_flush_mask, cfg->flush_idx, 0);
 
 	return 0;
+}
+
+static inline bool sde_hw_ctl_bitmask_has_bit_v1(struct sde_hw_ctl *ctx,
+		enum ctl_hw_flush_type type, u32 blk_idx)
+{
+	const struct ctl_hw_flush_cfg *cfg;
+
+	if (!ctx || !(type < SDE_HW_FLUSH_MAX))
+		return false;
+
+	cfg = &ctl_hw_flush_cfg_tbl_v1[type];
+
+	if ((blk_idx <= SDE_NONE) || (blk_idx >= cfg->blk_max)) {
+		SDE_ERROR("Unsupported hw idx, type:%d, blk_idx:%d, blk_max:%d",
+				type, blk_idx, cfg->blk_max);
+		return false;
+	}
+
+	return ctx->flush.pending_flush_mask & cfg->flush_idx;
 }
 
 static inline void sde_hw_ctl_update_dnsc_blur_bitmask(struct sde_hw_ctl *ctx,
@@ -1638,6 +1659,7 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		ops->update_intf_cfg = sde_hw_ctl_update_intf_cfg;
 
 		ops->update_bitmask = sde_hw_ctl_update_bitmask_v1;
+		ops->bitmask_has_bit = sde_hw_ctl_bitmask_has_bit_v1;
 		ops->update_dnsc_blur_bitmask = sde_hw_ctl_update_dnsc_blur_bitmask;
 		ops->get_ctl_intf = sde_hw_ctl_get_intf_v1;
 		ops->update_ctl_top_group = sde_hw_ctl_update_top_group;

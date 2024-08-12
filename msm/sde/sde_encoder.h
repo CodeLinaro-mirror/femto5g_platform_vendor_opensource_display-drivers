@@ -205,6 +205,32 @@ enum sde_sim_qsync_event {
 	SDE_SIM_QSYNC_EVENT_TE_TRIGGER
 };
 
+/*
+ * enum sde_mode_switch - enum to indicate the type of mode switch
+ * @SDE_MODE_SWITCH_NONE: not a switch frame
+ * @SDE_MODE_SWITCH_FPS: FPS switch frame
+ * @SDE_MODE_SWITCH_RES: Resolution switch frame
+ */
+enum sde_mode_switch {
+	SDE_MODE_SWITCH_NONE,
+	SDE_MODE_SWITCH_FPS,
+	SDE_MODE_SWITCH_RES,
+};
+
+/*
+ * enum sde_multi_te_states - enum to indicate the states of multi-TE
+ * @SDE_MULTI_TE_NONE: multi-te not enabled
+ * @SDE_MULTI_TE_ENTER: frame entering multi-te
+ * @SDE_MULTI_TE_SESSION: frames in multi-te session
+ * @SDE_MULTI_TE_EXIT: frame exiting multi-te
+ */
+enum sde_multi_te_states {
+	SDE_MULTI_TE_NONE,
+	SDE_MULTI_TE_ENTER,
+	SDE_MULTI_TE_SESSION,
+	SDE_MULTI_TE_EXIT,
+};
+
 /* Frame rate value to trigger the watchdog TE in 200 us */
 #define SDE_SIM_QSYNC_IMMEDIATE_FPS 5000
 
@@ -251,6 +277,7 @@ enum sde_sim_qsync_event {
  * @rsc_state_init:		boolean to indicate rsc config init
  * @disp_info:			local copy of msm_display_info struct
  * @misr_enable:		misr enable/disable status
+ * @vsync_cnt:			Vsync count for the virtual encoder
  * @misr_reconfigure:		boolean entry indicates misr reconfigure status
  * @misr_frame_count:		misr frame count before start capturing the data
  * @idle_pc_enabled:		indicate if idle power collapse is enabled
@@ -297,13 +324,19 @@ enum sde_sim_qsync_event {
  * @dynamic_irqs_config         bitmask config to enable encoder dynamic irqs
  * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  * @ops:                        Encoder ops from init function
- * @res_switch:                 Boolean to indicate its a resolution switch frame.
+ * @mode_switch:                enum to indicate its a fps/resolution switch frame.
+ * @multi_te_state:             enum to indicate the multi-te states.
+ * @multi_te_fps:               refresh rate of multi-TE.
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
  * @cesta_flush_active:         Boolean indicating cesta override flush_active bit is set
  * @cesta_op_group_req:		Boolean indicating CTL op_group setting is required for the frame.
  *				This is required as a workaround for resolution switch cases.
+ * @cesta_force_auto_active_db_update:	Boolean indicating auto-active-on-panic is set in SCC
+ *					with force-db-update. This is required as a workaround for
+ *					cmd mode when previous frame ctl-done is very close to
+ *					wakeup/panic windows.
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -342,6 +375,7 @@ struct sde_encoder_virt {
 	bool rsc_state_init;
 	struct msm_display_info disp_info;
 	atomic_t misr_enable;
+	atomic_t vsync_cnt;
 	bool misr_reconfigure;
 	u32 misr_frame_count;
 
@@ -381,11 +415,14 @@ struct sde_encoder_virt {
 
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
-	bool res_switch;
+	enum sde_mode_switch mode_switch;
+	enum sde_multi_te_states multi_te_state;
+	u32 multi_te_fps;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
 	bool cesta_force_active;
 	bool cesta_op_group_req;
+	bool cesta_force_auto_active_db_update;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
