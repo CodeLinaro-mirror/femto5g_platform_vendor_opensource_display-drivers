@@ -4606,6 +4606,17 @@ end:
 	return rc;
 }
 
+static void _sde_hw_reg_dma_caps(struct sde_mdss_cfg *sde_cfg)
+{
+	struct sde_ctl_cfg *ctl = NULL;
+	int i;
+
+	for (i = 0; i < sde_cfg->ctl_count; i++) {
+		ctl = sde_cfg->ctl + i;
+		set_bit(SDE_CTL_REG_DMA, &ctl->features);
+	}
+}
+
 static int sde_parse_reg_dma_dt(struct device_node *np,
 		struct sde_mdss_cfg *sde_cfg)
 {
@@ -4676,6 +4687,7 @@ static int sde_parse_reg_dma_dt(struct device_node *np,
 						REG_DMA_CLK_CTRL, 0, 1);
 		}
 	}
+	_sde_hw_reg_dma_caps(sde_cfg);
 end:
 	kvfree(prop_value);
 	/* reg dma is optional feature hence return 0 */
