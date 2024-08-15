@@ -358,21 +358,14 @@ static void _sde_encoder_phys_vid_raw_te_setup(
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
-	if (enable) {
-		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
-			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, true,
-				sde_enc->disp_info.vrr_caps.arp_support);
-		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
-			sde_enc->disp_info.vrr_caps.arp_support)
-			vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
-	} else {
-		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
-			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, false,
-				false);
-		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
-			sde_enc->disp_info.vrr_caps.arp_support)
-			vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
-	}
+
+	if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
+		phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, true,
+			sde_enc->disp_info.vrr_caps.arp_support);
+	if (vid_enc->base.hw_intf->ops.raw_te_setup &&
+		sde_enc->disp_info.vrr_caps.arp_support)
+		vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
+
 }
 
 /* vid_enc timing_params must be configured before calling this function */
@@ -2192,8 +2185,10 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 	if (phys_enc->hw_intf->ops.enable_esync && info->esync_enabled)
 		phys_enc->hw_intf->ops.enable_esync(phys_enc->hw_intf, false);
 
-	if (sde_enc && sde_enc->disp_info.vrr_caps.vrr_support)
+	if (sde_enc && sde_enc->disp_info.vrr_caps.vrr_support) {
 		hrtimer_cancel(&phys_enc->sde_vrr_cfg.freq_step_timer);
+		hrtimer_cancel(&phys_enc->sde_vrr_cfg.backlight_timer);
+	}
 
 	sde_encoder_helper_phys_disable(phys_enc, NULL);
 exit:
@@ -2601,6 +2596,11 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.self_refresh_timer.function =
 		sde_encoder_phys_phys_self_refresh_helper;
+
+	hrtimer_init(&phys_enc->sde_vrr_cfg.backlight_timer,
+		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	phys_enc->sde_vrr_cfg.backlight_timer.function =
+		sde_encoder_phys_backlight_timer_cb;
 
 	SDE_DEBUG_VIDENC(vid_enc, "created intf idx:%d\n", p->intf_idx);
 
