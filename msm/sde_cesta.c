@@ -21,6 +21,8 @@
 #define DATA_BUS_HW_CLIENT_NAME "qcom,sde-data-bus-hw"
 #define DATA_BUS_SW_CLIENT_0_NAME "qcom,sde-data-bus-sw-0"
 
+#define MDP_CLK_LOWSVS_D1	156000000
+
 static struct sde_cesta *cesta_list[MAX_CESTA_COUNT] = {NULL, };
 
 bool sde_cesta_is_enabled(u32 cesta_index)
@@ -79,6 +81,120 @@ static struct clk *_sde_cesta_get_core_clk(struct sde_cesta *cesta)
 	return core_clk;
 }
 
+static void _sde_cesta_log_status(struct sde_cesta *cesta)
+{
+	struct sde_cesta_client *client;
+	struct sde_cesta_scc_status status = {0, };
+	u32 pwr_event, pwr_ctrl_status;
+
+	if (!cesta->hw_ops.get_status || !cesta->hw_ops.get_pwr_event
+			|| !cesta->hw_ops.get_rscc_pwr_ctrl_status)
+		return;
+
+	mutex_lock(&cesta->client_lock);
+	list_for_each_entry(client, &cesta->client_list, list) {
+		cesta->hw_ops.get_status(cesta, client->client_index, &status);
+
+		SDE_DEBUG_CESTA("SCC[%d] status- frame_region:%d scc_hs:%d fsm_st:%d miss_cnt:%d\n",
+				client->client_index, status.frame_region, status.sch_handshake,
+				status.fsm_state, status.flush_missed_counter);
+		SDE_EVT32(client->client_index, status.frame_region, status.sch_handshake,
+				status.fsm_state, status.flush_missed_counter);
+	}
+	mutex_unlock(&cesta->client_lock);
+
+	pwr_event = cesta->hw_ops.get_pwr_event(cesta);
+	pwr_ctrl_status = cesta->hw_ops.get_rscc_pwr_ctrl_status(cesta);
+
+	SDE_DEBUG_CESTA("pwr_event:0x%x, pwr_ctrl_status:0x%x\n", pwr_event, pwr_ctrl_status);
+	SDE_EVT32(pwr_event, pwr_ctrl_status);
+}
+
+static int  _sde_cesta_check_mode2_entry_status(u32 cesta_index)
+{
+	struct sde_cesta *cesta;
+	int pwr_ctrl_status, trial = 0, max_trials = 10;
+
+	cesta = cesta_list[cesta_index];
+
+	if (!cesta->hw_ops.get_rscc_pwr_ctrl_status)
+		return 0;
+
+	while (trial < max_trials) {
+		pwr_ctrl_status = cesta->hw_ops.get_rscc_pwr_ctrl_status(cesta);
+		if (pwr_ctrl_status & BIT(12)) /* GDSC power-collapse success */
+			break;
+		udelay(50);
+		trial++;
+	}
+
+	if (trial == max_trials) {
+		SDE_ERROR_CESTA("cesata:%d mode2 entry failed, trial:%d, status:0x%x\n",
+				cesta_index, trial, pwr_ctrl_status);
+		SDE_EVT32(cesta_index, trial, pwr_ctrl_status, SDE_EVTLOG_ERROR);
+		_sde_cesta_log_status(cesta);
+		return -EBUSY;
+	}
+
+	SDE_EVT32(cesta_index, trial, pwr_ctrl_status);
+	_sde_cesta_log_status(cesta);
+
+	return 0;
+}
+
+void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en_auto_active,
+		enum sde_cesta_ctrl_pwr_req_mode req_mode)
+{
+	struct sde_cesta *cesta;
+
+	if (!client || (client->cesta_index >= MAX_CESTA_COUNT)) {
+		SDE_ERROR_CESTA("invalid param, client:%d, cesta_index:%d\n",
+					!!client, client ? client->cesta_index : -1);
+		return;
+	}
+
+	cesta = cesta_list[client->cesta_index];
+
+	SDE_EVT32(client->client_index, client->scc_index, en_auto_active, req_mode);
+	if (cesta->hw_ops.force_auto_active_db_update)
+		cesta->hw_ops.force_auto_active_db_update(cesta, client->client_index,
+				en_auto_active, req_mode);
+}
+
+void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en)
+{
+	struct sde_cesta *cesta;
+
+	if (!client || (client->cesta_index >= MAX_CESTA_COUNT)) {
+		SDE_ERROR_CESTA("invalid param, client:%d, cesta_index:%d\n",
+					!!client, client ? client->cesta_index : -1);
+		return;
+	}
+
+	cesta = cesta_list[client->cesta_index];
+
+	SDE_EVT32(client->client_index, client->scc_index, en);
+	if (cesta->hw_ops.reset_ctrl)
+		cesta->hw_ops.reset_ctrl(cesta, client->client_index, en);
+}
+
+void sde_cesta_override_ctrl(struct sde_cesta_client *client, u32 force_flags)
+{
+	struct sde_cesta *cesta;
+
+	if (!client || (client->cesta_index >= MAX_CESTA_COUNT)) {
+		SDE_ERROR_CESTA("invalid param, client:%d, cesta_index:%d\n",
+					!!client, client ? client->cesta_index : -1);
+		return;
+	}
+
+	cesta = cesta_list[client->cesta_index];
+
+	SDE_EVT32(client->client_index, client->scc_index, force_flags);
+	if (cesta->hw_ops.override_ctrl_setup)
+		cesta->hw_ops.override_ctrl_setup(cesta, client->client_index, force_flags);
+}
+
 void sde_cesta_splash_release(u32 cesta_index)
 {
 	struct sde_cesta *cesta;
@@ -112,7 +228,8 @@ void sde_cesta_ctrl_setup(struct sde_cesta_client *client, struct sde_cesta_ctrl
 
 	cesta = cesta_list[client->cesta_index];
 
-	cesta->hw_ops.ctrl_setup(cesta, client->client_index, cfg);
+	if (cesta->hw_ops.ctrl_setup)
+		cesta->hw_ops.ctrl_setup(cesta, client->client_index, cfg);
 
 	if (cfg)
 		SDE_EVT32(client->client_index, client->scc_index, cfg->enable, cfg->intf, cfg->wb,
@@ -248,7 +365,7 @@ static void _sde_cesta_clk_bw_vote(struct sde_cesta_client *client, bool pwr_st_
 	struct sde_cesta *cesta = cesta_list[client->cesta_index];
 	struct dss_module_power *mp;
 	struct clk *core_clk = NULL;
-	u64 idle_bw_ab = 0, idle_bw_ib = 0;
+	u64 idle_bw_ab = 0, idle_bw_ib = 0, idle_clk_ab = 0, idle_clk_ib = 0;
 	int i, ret;
 
 	mp = &cesta->phandle.mp;
@@ -278,35 +395,44 @@ static void _sde_cesta_clk_bw_vote(struct sde_cesta_client *client, bool pwr_st_
 	if (pwr_st_override) {
 		idle_bw_ab = bw_ab;
 		idle_bw_ib = bw_ib;
+
+		idle_clk_ab = clk_ab;
+		idle_clk_ib = clk_ib;
+	} else {
+		idle_clk_ab = 0;
+		idle_clk_ib = MDP_CLK_LOWSVS_D1;
 	}
 
 	/* mdp-clk voting */
 	ret = qcom_clk_crmb_set_rate(core_clk, CRM_HW_DRV, client->scc_index,
-			0, CRM_PWR_STATE0, clk_ab, clk_ib);
+			0, CRM_PWR_STATE0, idle_clk_ab, idle_clk_ib);
 	if (ret)
 		SDE_ERROR_CESTA("clk active vote failed - ret:%d\n", ret);
+
 	ret = qcom_clk_crmb_set_rate(core_clk, CRM_HW_DRV, client->scc_index,
 			0, CRM_PWR_STATE1, clk_ab, clk_ib);
 	if (ret)
 		SDE_ERROR_CESTA("clk active vote failed - ret:%d\n", ret);
 
 	/* bw voting */
-	icc_set_tag(cesta->bus_hdl[client->scc_index], QCOM_ICC_TAG_PWR_ST_0);
-	ret = icc_set_bw(cesta->bus_hdl[client->scc_index], Bps_to_icc(bw_ab), Bps_to_icc(bw_ib));
-	if (ret)
-		SDE_ERROR_CESTA("bw active vote failed - ret:%d\n", ret);
-
-	icc_set_tag(cesta->bus_hdl[client->scc_index], QCOM_ICC_TAG_PWR_ST_1);
-	ret = icc_set_bw(cesta->bus_hdl[client->scc_index],
+	icc_set_tag(cesta->bus_hdl_idle[client->scc_index], QCOM_ICC_TAG_PWR_ST_0);
+	ret = icc_set_bw(cesta->bus_hdl_idle[client->scc_index],
 			Bps_to_icc(idle_bw_ab), Bps_to_icc(idle_bw_ib));
 	if (ret)
 		SDE_ERROR_CESTA("bw idle vote failed - ret:%d\n", ret);
+
+	icc_set_tag(cesta->bus_hdl[client->scc_index], QCOM_ICC_TAG_PWR_ST_1);
+	ret = icc_set_bw(cesta->bus_hdl[client->scc_index], Bps_to_icc(bw_ab), Bps_to_icc(bw_ib));
+	if (ret)
+		SDE_ERROR_CESTA("bw active vote failed - ret:%d\n", ret);
 
 	/* pwr_state update for channel switch */
 	ret = crm_write_pwr_states(cesta->crm_dev, client->scc_index);
 	if (ret)
 		SDE_ERROR_CESTA("crm_write_pwr_states failed - ret:%d\n", ret);
 
+	SDE_EVT32(client->scc_index, clk_ab, clk_ib, idle_clk_ab, idle_clk_ib, bw_ab, bw_ib,
+			idle_bw_ab, idle_bw_ib);
 }
 
 void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_params *params)
@@ -314,7 +440,7 @@ void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_p
 	struct sde_cesta *cesta;
 	struct sde_cesta_client *c;
 	struct sde_cesta_client_data *client_data, *hw_data;
-	u64 bw_ab = 0, bw_ib = 0;
+	u64 bw_ab = 0, bw_ib = 0, params_max, client_max;
 
 	enum vote_state {
 		NO_CHANGE,
@@ -357,11 +483,11 @@ void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_p
 		}
 	}
 
-	if ((params->data.core_clk_rate_ab > client_data->core_clk_rate_ab)
-			|| (params->data.core_clk_rate_ib > client_data->core_clk_rate_ib))
+	params_max = max(params->data.core_clk_rate_ab, params->data.core_clk_rate_ib);
+	client_max = max(client_data->core_clk_rate_ab, client_data->core_clk_rate_ib);
+	if (params_max > client_max)
 		clk_vote = UPVOTE;
-	else if ((params->data.core_clk_rate_ab < client_data->core_clk_rate_ab)
-			|| (params->data.core_clk_rate_ib < client_data->core_clk_rate_ib))
+	else if (params_max < client_max)
 		clk_vote = DOWNVOTE;
 
 	bw_ab = params->data.bw_ab;
@@ -382,11 +508,11 @@ void sde_cesta_clk_bw_update(struct sde_cesta_client *client, struct sde_cesta_p
 		params->data.bw_ib = bw_ib;
 	}
 
-	if ((params->data.bw_ab > client_data->bw_ab)
-			|| (params->data.bw_ib > client_data->bw_ib))
+	params_max = max(params->data.bw_ab, params->data.bw_ib);
+	client_max = max(client_data->bw_ab, client_data->bw_ib);
+	if (params_max > client_max)
 		bw_vote = UPVOTE;
-	else if ((params->data.bw_ab < client_data->bw_ab)
-			|| (params->data.bw_ib < client_data->bw_ib))
+	else if (params_max < client_max)
 		bw_vote = DOWNVOTE;
 
 	if (bw_vote == clk_vote)
@@ -449,6 +575,30 @@ end:
 	mutex_unlock(&cesta->client_lock);
 }
 
+void sde_cesta_poll_handshake(struct sde_cesta_client *client)
+{
+	struct sde_cesta *cesta;
+	int rc;
+	ktime_t start, end;
+
+	if (!client || (client->cesta_index >= MAX_CESTA_COUNT)) {
+		SDE_ERROR_CESTA("invalid param - client:%d, cesta_index:%d\n",
+					!!client, client ? client->cesta_index : -1);
+		return;
+	}
+	cesta = cesta_list[client->cesta_index];
+
+	if (!cesta->hw_ops.poll_handshake)
+		return;
+
+	start = ktime_get();
+	rc = cesta->hw_ops.poll_handshake(cesta, client->scc_index);
+	end = ktime_get();
+
+	SDE_EVT32(client->client_index, client->scc_index,
+			rc ? SDE_EVTLOG_ERROR : ktime_us_delta(end, start));
+}
+
 void sde_cesta_get_status(struct sde_cesta_client *client, struct sde_cesta_scc_status *status)
 {
 	struct sde_cesta *cesta;
@@ -485,25 +635,6 @@ int sde_cesta_sw_client_update(u32 cesta_index, struct sde_cesta_sw_client_data 
 
 	mutex_lock(&cesta->client_lock);
 
-	if (flag & SDE_CESTA_SW_CLIENT_CLK_UPDATE) {
-		core_clk = _sde_cesta_get_core_clk(cesta);
-		if (!core_clk) {
-			SDE_ERROR_CESTA("core_clk not found\n");
-			ret = -EINVAL;
-			goto end;
-		}
-
-		ret = qcom_clk_crmb_set_rate(core_clk, CRM_SW_DRV, 0, 0, CRM_PWR_STATE0,
-					data->data.core_clk_rate_ab, data->data.core_clk_rate_ib);
-		if (ret) {
-			SDE_ERROR_CESTA("sw-client-0 Clk vote failed, ab:%llu, ib:%llu, ret:%d\n",
-				data->data.core_clk_rate_ab, data->data.core_clk_rate_ib, ret);
-			goto end;
-		}
-		cesta->sw_client.data.core_clk_rate_ab = data->data.core_clk_rate_ab;
-		cesta->sw_client.data.core_clk_rate_ib = data->data.core_clk_rate_ib;
-	}
-
 	if (flag & SDE_CESTA_SW_CLIENT_BW_UPDATE) {
 		icc_set_tag(cesta->sw_client_bus_hdl, QCOM_ICC_TAG_AMC);
 		ret = icc_set_bw(cesta->sw_client_bus_hdl, Bps_to_icc(data->data.bw_ab),
@@ -530,6 +661,25 @@ int sde_cesta_sw_client_update(u32 cesta_index, struct sde_cesta_sw_client_data 
 			goto end;
 		}
 		cesta->sw_client.aoss_cp_level = data->aoss_cp_level;
+	}
+
+	if (flag & SDE_CESTA_SW_CLIENT_CLK_UPDATE) {
+		core_clk = _sde_cesta_get_core_clk(cesta);
+		if (!core_clk) {
+			SDE_ERROR_CESTA("core_clk not found\n");
+			ret = -EINVAL;
+			goto end;
+		}
+
+		ret = qcom_clk_crmb_set_rate(core_clk, CRM_SW_DRV, 0, 0, CRM_PWR_STATE0,
+					data->data.core_clk_rate_ab, data->data.core_clk_rate_ib);
+		if (ret) {
+			SDE_ERROR_CESTA("sw-client-0 Clk vote failed, ab:%llu, ib:%llu, ret:%d\n",
+				data->data.core_clk_rate_ab, data->data.core_clk_rate_ib, ret);
+			goto end;
+		}
+		cesta->sw_client.data.core_clk_rate_ab = data->data.core_clk_rate_ab;
+		cesta->sw_client.data.core_clk_rate_ib = data->data.core_clk_rate_ib;
 	}
 
 end:
@@ -688,7 +838,7 @@ int sde_cesta_resource_disable(u32 cesta_index)
 	}
 
 	/* remove last minimum vote for GDSC to enter power-collapse */
-	sw_update_flag |= SDE_CESTA_SW_CLIENT_BW_UPDATE | SDE_CESTA_SW_CLIENT_CLK_UPDATE;
+	sw_update_flag |= SDE_CESTA_SW_CLIENT_BW_UPDATE;
 	ret = sde_cesta_sw_client_update(cesta_index, &sw_data, sw_update_flag);
 	if (ret) {
 		SDE_ERROR_CESTA("sw-client voting failed, ret:%d", ret);
@@ -700,6 +850,12 @@ int sde_cesta_resource_disable(u32 cesta_index)
 
 	sde_power_mmrm_reserve(phandle);
 	msm_dss_enable_clk(mp->clk_config, mp->num_clk, false);
+
+	ret = _sde_cesta_check_mode2_entry_status(cesta_index);
+	if (ret) {
+		SDE_ERROR_CESTA("mode2 entry failed ret:%d\n", ret);
+		return ret;
+	}
 
 	return 0;
 }
@@ -873,6 +1029,9 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 		return -EINVAL;
 	}
 
+	sde_dbg_reg_register_base("sde_rsc_rscc", cesta->rscc_io.base,
+			cesta->rscc_io.len, msm_get_phys_addr(pdev, "rscc"), SDE_DBG_RSC);
+
 	sde_dbg_reg_register_base("sde_rsc_wrapper", cesta->wrapper_io.base,
 			cesta->wrapper_io.len, msm_get_phys_addr(pdev, "wrapper"), SDE_DBG_RSC);
 
@@ -923,6 +1082,8 @@ static void sde_cesta_deinit(struct platform_device *pdev, struct sde_cesta *ces
 	for (i = 0; i < cesta->scc_count; i++) {
 		if (cesta->bus_hdl[i])
 			icc_put(cesta->bus_hdl[i]);
+		if (cesta->bus_hdl_idle[i])
+			icc_put(cesta->bus_hdl_idle[i]);
 	}
 
 	if (cesta->sw_client_bus_hdl)
@@ -937,6 +1098,9 @@ static void sde_cesta_deinit(struct platform_device *pdev, struct sde_cesta *ces
 
 	if (cesta->pd_fs)
 		dev_pm_domain_detach(cesta->pd_fs, false);
+
+	if (cesta->rscc_io.base)
+		msm_dss_iounmap(&cesta->rscc_io);
 
 	if (cesta->wrapper_io.base)
 		msm_dss_iounmap(&cesta->wrapper_io);
@@ -979,6 +1143,12 @@ static int sde_cesta_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
+	ret = msm_dss_ioremap_byname(pdev, &cesta->rscc_io, "rscc");
+	if (ret) {
+		SDE_ERROR_CESTA("rscc io data mapping failed, ret:%d\n", ret);
+		goto fail;
+	}
+
 	ret = msm_dss_ioremap_byname(pdev, &cesta->wrapper_io, "wrapper");
 	if (ret) {
 		SDE_ERROR_CESTA("wrapper io data mapping failed, ret:%d\n", ret);
@@ -1018,6 +1188,15 @@ static int sde_cesta_probe(struct platform_device *pdev)
 			goto fail;
 		}
 		cesta->bus_hdl[i] = path;
+
+		path = of_icc_get(&pdev->dev, bus_name);
+		if (IS_ERR_OR_NULL(path)) {
+			SDE_ERROR_CESTA("of_icc_get for idle failed for %s, ret:%ld\n",
+					bus_name, PTR_ERR(path));
+			goto fail;
+		}
+		cesta->bus_hdl_idle[i] = path;
+
 	}
 
 	ret = of_property_match_string(pdev->dev.of_node, "interconnect-names",

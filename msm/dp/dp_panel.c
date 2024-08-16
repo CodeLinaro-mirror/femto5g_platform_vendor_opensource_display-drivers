@@ -1654,6 +1654,14 @@ static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 	print_hex_dump_debug("[drm-dp] SINK DPCD: ",
 		DUMP_PREFIX_NONE, 8, 1, dp_panel->dpcd, rlen, false);
 
+	/* If any LTTPRs in the path, read the LTTPR caps and store in panel struct */
+	if (drm_dp_read_lttpr_common_caps(drm_aux, dp_panel->dpcd, dp_panel->lttpr_common_caps))
+		DP_WARN("dpcd lttpr read fail:%d\n", rc);
+
+	DP_DEBUG("lttpr caps - rev:0x%x, max_lr: 0x%x, phy_rp_cnt: 0x%x, phy_rp_mode: 0x%x",
+		dp_panel->lttpr_common_caps[0],	dp_panel->lttpr_common_caps[1],
+		dp_panel->lttpr_common_caps[2], dp_panel->lttpr_common_caps[3]);
+
 	rlen = drm_dp_dpcd_read(panel->aux->drm_aux,
 		DPRX_FEATURE_ENUMERATION_LIST, &rx_feature, 1);
 	if (rlen != 1) {
@@ -1994,10 +2002,10 @@ static u32 dp_panel_get_supported_bpp(struct dp_panel *dp_panel,
 	}
 
 	if (bpp < min_supported_bpp)
-		DP_ERR("bpp %d is below minimum supported bpp %d\n", bpp,
+		DP_WARN("bpp %d is below minimum supported bpp %d\n", bpp,
 				min_supported_bpp);
 	if (dsc_en && bpp != 24 && bpp != 30 && bpp != 36)
-		DP_ERR("bpp %d is not supported when dsc is enabled\n", bpp);
+		DP_WARN("bpp %d is not supported when dsc is enabled\n", bpp);
 
 	return bpp;
 }
@@ -2090,6 +2098,26 @@ static int dp_panel_get_modes(struct dp_panel *dp_panel,
 	}
 
 	return 0;
+}
+
+static void dp_panel_set_lttpr_mode(struct dp_panel *dp_panel, bool is_transparent)
+{
+	struct dp_panel_private *panel;
+	ssize_t ret = 0;
+	u8 val = is_transparent ? DP_PHY_REPEATER_MODE_TRANSPARENT :
+			DP_PHY_REPEATER_MODE_NON_TRANSPARENT;
+
+	if (!dp_panel) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
+
+	ret = drm_dp_dpcd_writeb(panel->aux->drm_aux, DP_PHY_REPEATER_MODE, val);
+
+	if (ret != 1)
+		DP_WARN("failed to set LTTPR mode\n");
 }
 
 static void dp_panel_handle_sink_request(struct dp_panel *dp_panel)
@@ -2996,14 +3024,14 @@ end:
 	return mst_cap;
 }
 
-static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
+static int dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 		const struct drm_display_mode *drm_mode,
 		struct dp_display_mode *dp_mode)
 {
 	const u32 num_components = 3, default_bpp = 24;
 	struct msm_compression_info *comp_info;
 	bool dsc_en = (dp_mode->capabilities & DP_PANEL_CAPS_DSC) ? true : false;
-	int rc;
+	int rc = 0;
 
 	dp_mode->timing.h_active = drm_mode->hdisplay;
 	dp_mode->timing.h_back_porch = drm_mode->htotal - drm_mode->hsync_end;
@@ -3067,25 +3095,33 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 		if (dp_panel_dsc_prepare_basic_params(comp_info,
 					dp_mode, dp_panel)) {
 			DP_DEBUG("prepare DSC basic params failed\n");
-			return;
+			dp_mode->capabilities &= ~DP_PANEL_CAPS_DSC;
+			comp_info->enabled = false;
+			return -EAGAIN;
 		}
 
 		rc = sde_dsc_populate_dsc_config(&comp_info->dsc_info.config, 0);
 		if (rc) {
 			DP_DEBUG("failed populating dsc params \n");
-			return;
+			dp_mode->capabilities &= ~DP_PANEL_CAPS_DSC;
+			comp_info->enabled = false;
+			return -EAGAIN;
 		}
 
 		rc = sde_dsc_populate_dsc_private_params(&comp_info->dsc_info,
 				dp_mode->timing.h_active, dp_mode->timing.widebus_en);
 		if (rc) {
 			DP_DEBUG("failed populating other dsc params\n");
-			return;
+			dp_mode->capabilities &= ~DP_PANEL_CAPS_DSC;
+			comp_info->enabled = false;
+			return -EAGAIN;
 		}
 
 		dp_panel_dsc_pclk_param_calc(dp_panel, comp_info, dp_mode);
 	}
 	dp_mode->fec_overhead_fp = dp_panel->fec_overhead_fp;
+
+	return rc;
 }
 
 static void dp_panel_update_pps(struct dp_panel *dp_panel, char *pps_cmd)
@@ -3244,6 +3280,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->get_mode_bpp = dp_panel_get_mode_bpp;
 	dp_panel->get_modes = dp_panel_get_modes;
 	dp_panel->handle_sink_request = dp_panel_handle_sink_request;
+	dp_panel->set_lttpr_mode = dp_panel_set_lttpr_mode;
 	dp_panel->tpg_config = dp_panel_tpg_config;
 	dp_panel->spd_config = dp_panel_spd_config;
 	dp_panel->setup_hdr = dp_panel_setup_hdr;

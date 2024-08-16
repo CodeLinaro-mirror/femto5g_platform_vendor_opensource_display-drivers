@@ -20,7 +20,6 @@
 
 #include <linux/sde_io_util.h>
 #include <linux/interconnect.h>
-#include <linux/remoteproc.h>
 #include <dt-bindings/interconnect/qcom,icc.h>
 
 /* event will be triggered before power handler disable */
@@ -156,8 +155,9 @@ struct sde_power_mmrm_reserve {
  * @rsc_client_init: boolean to control rsc client create
  * @mmrm_enable: boolean to indicate if mmrm is enabled
  * @ib_quota: ib quota of the given bus
- * @rproc: soccp rproc needed to set power vote
+ * @hw_fence_enable: boolean to indicate if hw-fence is enabled
  * @mmrm_reserve: mmrm resource reservation
+ * @wakelock_count: wakelock coint to avoid pm suspend
  */
 struct sde_power_handle {
 	struct dss_module_power mp;
@@ -172,9 +172,10 @@ struct sde_power_handle {
 	bool rsc_client_init;
 	bool mmrm_enable;
 	u64 ib_quota[SDE_POWER_HANDLE_DBUS_ID_MAX];
-	struct rproc *rproc;
+	bool hw_fence_enable;
 
 	struct sde_power_mmrm_reserve mmrm_reserve;
+	atomic_t wakelock_count;
 };
 
 /**
@@ -382,5 +383,14 @@ const char *sde_power_handle_get_dbus_name(u32 bus_id);
  * @phandle:	pointer to power handle
  */
 void sde_power_mmrm_reserve(struct sde_power_handle *phandle);
+
+/**
+ * sde_power_wakelock_ctrl - control wakelock
+ * @phandle: power handle containing the resources
+ * @enable: true to enable wakelock
+ *
+ * Return: 0 on success, error code otherwise
+ */
+int sde_power_wakelock_ctrl(struct sde_power_handle *phandle, bool enable);
 
 #endif /* _SDE_POWER_HANDLE_H_ */

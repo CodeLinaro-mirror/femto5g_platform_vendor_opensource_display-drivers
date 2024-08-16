@@ -76,7 +76,11 @@ struct dp_drm_mst_fw_helper_ops {
 	int (*update_payload_part2)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_atomic_state *state,
 			struct drm_dp_mst_atomic_payload *payload);
-#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	void (*reset_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr,
+			struct drm_dp_mst_topology_state *mst_state,
+			struct drm_dp_mst_atomic_payload *new_payload);
+#elif (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
 	void (*reset_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_dp_mst_topology_state *mst_state,
 			const struct drm_dp_mst_atomic_payload *old_payload,
@@ -294,7 +298,11 @@ static int dp_mst_find_vcpi_slots(struct drm_dp_mst_topology_mgr *mgr, int pbn)
 	struct drm_dp_mst_topology_state *state;
 
 	state = to_drm_dp_mst_topology_state(mgr->base.state);
+#if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
+	num_slots = DIV_ROUND_UP(pbn, dfixed_trunc(state->pbn_div));
+#else
 	num_slots = DIV_ROUND_UP(pbn, state->pbn_div);
+#endif
 
 	/* max. time slots - one slot for MTP header */
 	if (num_slots > 63)
@@ -313,7 +321,11 @@ static int dp_mst_calc_pbn_mode(struct dp_display_mode *dp_mode)
 	dsc_en = pinfo->comp_info.enabled;
 	bpp = dsc_en ? DSC_BPP(pinfo->comp_info.dsc_info.config) : pinfo->bpp;
 
-#if (KERNEL_VERSION(6, 6, 17) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
+	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp << 4);
+#elif (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp << 4, false);
+#elif (KERNEL_VERSION(6, 6, 17) <= LINUX_VERSION_CODE)
 	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp << 4);
 #else
 	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp, false);
@@ -337,7 +349,20 @@ static int dp_mst_calc_pbn_mode(struct dp_display_mode *dp_mode)
 }
 
 static const struct dp_drm_mst_fw_helper_ops drm_dp_mst_fw_helper_ops = {
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	.calc_pbn_mode             = dp_mst_calc_pbn_mode,
+	.find_vcpi_slots           = dp_mst_find_vcpi_slots,
+	.atomic_find_time_slots    = drm_dp_atomic_find_time_slots,
+	.update_payload_part1      = drm_dp_add_payload_part1,
+	.check_act_status          = drm_dp_check_act_status,
+	.update_payload_part2      = drm_dp_add_payload_part2,
+	.detect_port_ctx           = dp_mst_detect_port,
+	.get_edid                  = drm_dp_mst_get_edid,
+	.topology_mgr_set_mst      = drm_dp_mst_topology_mgr_set_mst,
+	.get_vcpi_info             = _dp_mst_get_vcpi_info,
+	.atomic_release_time_slots = drm_dp_atomic_release_time_slots,
+	.reset_vcpi_slots          = drm_dp_remove_payload_part1,
+#elif (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	.calc_pbn_mode             = dp_mst_calc_pbn_mode,
 	.find_vcpi_slots           = dp_mst_find_vcpi_slots,
 	.atomic_find_time_slots    = drm_dp_atomic_find_time_slots,
@@ -448,6 +473,9 @@ static int _dp_mst_compute_config(struct drm_atomic_state *state,
 #if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	struct drm_dp_mst_topology_state *mst_state;
 #endif
+#if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
+	int pbn_div;
+#endif
 
 	DP_MST_DEBUG_V("enter\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, connector->base.id);
@@ -457,9 +485,15 @@ static int _dp_mst_compute_config(struct drm_atomic_state *state,
 #if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	mst_state = to_drm_dp_mst_topology_state(mst->mst_mgr.base.state);
 
+#if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
+	if (!dfixed_trunc(mst_state->pbn_div)) {
+		pbn_div = mst->dp_display->get_mst_pbn_div(mst->dp_display);
+		mst_state->pbn_div.full = dfixed_const(pbn_div);
+	}
+#else
 	if (!mst_state->pbn_div)
 		mst_state->pbn_div = mst->dp_display->get_mst_pbn_div(mst->dp_display);
-
+#endif
 	rc = mst->mst_fw_cbs->atomic_find_time_slots(state, &mst->mst_mgr, c_conn->mst_port, pbn);
 	if (rc < 0) {
 		DP_ERR("conn:%d failed to find vcpi slots. pbn:%d, rc:%d\n",
@@ -763,7 +797,9 @@ static void _dp_mst_bridge_pre_disable_part1(struct dp_mst_bridge *dp_bridge)
 		return;
 	}
 
-#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload);
+#elif (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
 	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload, payload);
 #else
 	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload);
@@ -961,7 +997,7 @@ static void dp_mst_bridge_disable(struct drm_bridge *drm_bridge)
 
 static void dp_mst_bridge_post_disable(struct drm_bridge *drm_bridge)
 {
-	int rc = 0;
+	int rc = 0, conn = 0;
 	struct dp_mst_bridge *bridge;
 	struct dp_display *dp;
 	struct dp_mst_private *mst;
@@ -977,8 +1013,10 @@ static void dp_mst_bridge_post_disable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
+	conn = DP_MST_CONN_ID(bridge);
+
 	DP_MST_DEBUG_V("enter\n");
-	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, DP_MST_CONN_ID(bridge));
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, conn);
 
 	dp = bridge->display;
 	mst = dp->dp_mst_prv_info;
@@ -986,19 +1024,19 @@ static void dp_mst_bridge_post_disable(struct drm_bridge *drm_bridge)
 	rc = dp->disable(dp, bridge->dp_panel);
 	if (rc)
 		DP_MST_INFO("bridge:%d conn:%d display disable failed, rc=%d\n",
-				bridge->id, DP_MST_CONN_ID(bridge), rc);
+				bridge->id, conn, rc);
 
 	rc = dp->unprepare(dp, bridge->dp_panel);
 	if (rc)
 		DP_MST_INFO("bridge:%d conn:%d display unprepare failed, rc=%d\n",
-				bridge->id, DP_MST_CONN_ID(bridge), rc);
+				bridge->id, conn, rc);
 
 	bridge->connector = NULL;
 	bridge->dp_panel =  NULL;
 
 	DP_MST_INFO("mst bridge:%d conn:%d post disable complete\n",
-			bridge->id, DP_MST_CONN_ID(bridge));
-	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, DP_MST_CONN_ID(bridge));
+			bridge->id, conn);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, conn);
 }
 
 static void dp_mst_bridge_mode_set(struct drm_bridge *drm_bridge,

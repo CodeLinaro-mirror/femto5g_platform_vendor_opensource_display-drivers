@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -680,7 +680,7 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 			return rc;
 		}
 	}
-
+	mode_info->freq_step_list = &dsi_mode->priv_info->freq_step_list;
 	mode_info->clk_rate = dsi_mode->timing.clk_rate_hz;
 
 	if (dsi_mode->priv_info->dsc_enabled) {
@@ -756,6 +756,25 @@ int dsi_conn_get_avr_step_fps(struct drm_connector_state *conn_state)
 
 	priv_info = (struct dsi_display_mode_priv_info *)(msm_mode->private);
 	return priv_info->avr_step_fps;
+}
+
+int dsi_conn_dcs_cmd_tx(struct drm_connector_state *conn_state, enum dsi_cmd_set_type cmd)
+{
+	struct drm_connector *drm_conn;
+	struct sde_connector *sde_conn;
+	struct dsi_display *display;
+
+	drm_conn = conn_state->connector;
+	sde_conn = to_sde_connector(drm_conn);
+
+	if (!sde_conn)
+		return -EINVAL;
+
+	display = sde_conn->display;
+	if (!display)
+		return -EINVAL;
+
+	return dsi_display_dcs_cmd_tx(display, cmd);
 }
 
 int dsi_conn_set_info_blob(struct drm_connector *connector,
@@ -876,9 +895,13 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 	sde_kms_info_add_keyint(info, "max os brightness", panel->bl_config.brightness_max_level);
 	sde_kms_info_add_keyint(info, "max panel backlight", panel->bl_config.bl_max_level);
 
-	if (panel->spr_info.enable)
+	if (panel->spr_info.enable) {
 		sde_kms_info_add_keystr(info, "spr_pack_type",
 			msm_spr_pack_type_str[panel->spr_info.pack_type]);
+
+		sde_kms_info_add_keystr(info, "spr_pack_type_mode",
+			msm_spr_pack_type_mode_str[panel->spr_info.pack_type_mode]);
+	}
 
 	if (mode_info && mode_info->roi_caps.enabled) {
 		sde_kms_info_add_keyint(info, "partial_update_num_roi",

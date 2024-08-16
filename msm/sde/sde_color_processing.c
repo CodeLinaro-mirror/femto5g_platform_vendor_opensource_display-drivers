@@ -25,9 +25,6 @@
 #include "sde_color_processing_aiqe.h"
 #include "sde_aiqe_common.h"
 
-#define DEMURA_BACKLIGHT_MAX 1024
-#define DEMURA_BACKLIGHT_MIN 64
-
 #define ALIGNED_OFFSET (U32_MAX & ~(LTM_GUARD_BYTES))
 
 static void _dspp_pcc_install_property(struct drm_crtc *crtc);
@@ -89,9 +86,6 @@ static void _sde_cp_notify_ltm_wb_pb(struct drm_crtc *crtc_drm, void *arg);
 static void _sde_cp_crtc_update_ltm_roi(struct sde_crtc *sde_crtc,
 		struct sde_hw_cp_cfg *hw_cfg);
 static int _sde_cp_flush_properties(struct drm_crtc *crtc);
-
-static void _sde_cp_mark_bl_properties(struct sde_crtc *crtc);
-
 static int _sde_cp_crtc_cache_property(struct drm_crtc *crtc,
 				struct sde_crtc_state *cstate,
 				struct sde_cp_node *prop_node,
@@ -1016,27 +1010,12 @@ static int _set_demura_backlight(struct sde_hw_dspp *hw_dspp,
 				   struct sde_crtc *sde_crtc)
 {
 	int ret = 0;
-	u64 val = (DEMURA_BACKLIGHT_MAX << 16) | DEMURA_BACKLIGHT_MAX;
-	u32 brightness, inv;
 
-	if (!hw_dspp || !hw_dspp->ops.setup_demura_backlight_cfg) {
+	if (!hw_dspp) {
 		ret = -EINVAL;
 	} else {
-		if (sde_crtc->back_light && sde_crtc->back_light_max) {
-			brightness = sde_crtc->back_light * ((1 << 10));
-			do_div(brightness, sde_crtc->back_light_max);
-			/* Clip the brightness between 64 (min) and 1024 (max) */
-			brightness = clamp_val(brightness, DEMURA_BACKLIGHT_MIN,
-					       DEMURA_BACKLIGHT_MAX);
-			if (brightness) {
-				inv = (1 << 20);
-				do_div(inv, brightness);
-				inv = (inv < ((1 << 14) - 1)) ? inv : ((1 << 14) - 1);
-				val = (inv << 16) | brightness;
-			}
-			sde_crtc->back_light_pending = false;
-		}
-		hw_dspp->ops.setup_demura_backlight_cfg(hw_dspp, val, hw_cfg);
+		if (hw_dspp->ops.setup_demura_backlight_cfg)
+			hw_dspp->ops.setup_demura_backlight_cfg(hw_dspp, hw_cfg);
 	}
 
 	return ret;
@@ -1055,7 +1034,6 @@ static int _set_demura_feature(struct sde_hw_dspp *hw_dspp,
 			hw_dspp->ops.setup_demura_cfg(hw_dspp, hw_cfg);
 			_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_DEMURA_PU,
 				hw_cfg->payload != NULL);
-			_set_demura_backlight(hw_dspp, hw_cfg, sde_crtc);
 		}
 	}
 
@@ -1083,7 +1061,7 @@ static int _feature_unsupported(struct sde_hw_dspp *hw_dspp,
 				   struct sde_crtc *sde_crtc)
 {
 	if (!hw_dspp || !hw_cfg || !sde_crtc) {
-		DRM_ERROR("invalid argumets\n");
+		DRM_WARN("invalid arguments\n");
 		return -EINVAL;
 	}
 
@@ -1154,6 +1132,7 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_INIT] = _set_spr_init_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_UDC] = _set_spr_udc_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_INIT] = _set_demura_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT] = _set_demura_backlight; \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = _set_demura_cfg0_param2; \
 	wrappers[SDE_CP_CRTC_DSPP_MDNIE] = set_mdnie_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_MDNIE_ART] = set_mdnie_art_feature; \
@@ -1420,9 +1399,6 @@ void sde_cp_crtc_init(struct drm_crtc *crtc)
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_free);
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_busy);
 	sde_crtc->disable_pending_cp = false;
-	sde_crtc->back_light = 0;
-	sde_crtc->back_light_max = 0;
-	sde_crtc->back_light_pending = false;
 	sde_cp_crtc_disable(crtc);
 	sde_crtc->ai_scaler_res.enabled = false;
 	sde_crtc->ai_scaler_res.src_w = 0;
@@ -1892,6 +1868,7 @@ int sde_cp_crtc_check_properties(struct drm_crtc *crtc,
 {
 	struct sde_crtc *sde_crtc = NULL;
 	struct sde_crtc_state *sde_crtc_state = NULL;
+	struct drm_display_mode *old_mode, *new_mode;
 	int i, ret = 0;
 
 	if (!crtc || !crtc->dev || !state) {
@@ -1912,8 +1889,11 @@ int sde_cp_crtc_check_properties(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
-	/* force revalidation of some properties when there is a mode switch */
-	if (state->mode_changed)
+	/* force revalidation of some properties when there is a resolution switch */
+	old_mode = &crtc->state->adjusted_mode;
+	new_mode = &state->adjusted_mode;
+	if ((old_mode->hdisplay != new_mode->hdisplay) ||
+		(old_mode->vdisplay != new_mode->vdisplay))
 		sde_cp_crtc_res_change(crtc);
 
 	mutex_lock(&sde_crtc->crtc_cp_lock);
@@ -2132,7 +2112,7 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 	}
 
 	_sde_cp_flush_properties(crtc);
-	_sde_cp_mark_bl_properties(sde_crtc);
+	_sde_cp_check_mdnie_art_done(crtc);
 	mutex_lock(&sde_crtc->crtc_cp_lock);
 	_sde_clear_ltm_merge_mode(sde_crtc);
 
@@ -3353,7 +3333,7 @@ static void _dspp_demura_install_v1_property(struct drm_crtc *crtc)
 {
 	_sde_cp_crtc_install_range_property(crtc, "SDE_DEMURA_BACKLIGHT_V1",
 		SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT,
-		0, 1024, 0);
+		0, U32_MAX, 0);
 	_sde_cp_crtc_install_bitmask_property(crtc, "SDE_DEMURA_BOOT_PLANE_V1",
 		SDE_CP_CRTC_DSPP_DEMURA_BOOT_PLANE, true,
 		sde_demura_fetch_planes,
@@ -4788,6 +4768,7 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
 	enum aiqe_features feature = AIQE_FEATURE_MAX;
 	struct drm_msm_ssrc_config *data;
+	struct drm_property_blob *blob = NULL;
 
 	prop_val = prop_node->prop_val;
 
@@ -4815,7 +4796,21 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 	if (feature == AIQE_FEATURE_MAX)
 		return;
 
-	if (feature == FEATURE_SSRC) {
+	if (feature == FEATURE_MDNIE_ART) {
+		if (prop_val) {
+			struct drm_msm_mdnie_art *art = NULL;
+
+			blob = prop_node->blob_ptr;
+			if (blob) {
+				art = blob->data;
+				aiqe_register_client(feature, &sde_crtc->aiqe_top_level);
+				get_mdnie_art_frame_count(&sde_crtc->mdnie_art_frame_count,
+							art->param);
+			}
+		} else {
+			aiqe_deregister_client(feature, &sde_crtc->aiqe_top_level);
+		}
+	} else if (feature == FEATURE_SSRC) {
 		data = prop_node->blob_ptr;
 		if (data && prop_node->prop_blob_sz == sizeof(struct drm_msm_ssrc_config) &&
 				data->config[0] & BIT(0))
@@ -5163,43 +5158,6 @@ void _sde_cp_mark_active_dirty_internal(struct sde_crtc *crtc)
 	mutex_unlock(&crtc->crtc_cp_lock);
 }
 
-void sde_cp_backlight_notification(struct drm_crtc *drm_crtc, u32 bl_val, u32 bl_max)
-{
-	struct sde_crtc *crtc;
-
-	crtc = to_sde_crtc(drm_crtc);
-	mutex_lock(&crtc->crtc_cp_lock);
-	if (crtc->back_light != bl_val) {
-		crtc->back_light = bl_val;
-		crtc->back_light_max = bl_max;
-		crtc->back_light_pending = true;
-	}
-	mutex_unlock(&crtc->crtc_cp_lock);
-}
-
-void _sde_cp_mark_bl_properties(struct sde_crtc *crtc)
-{
-	struct sde_cp_node *prop_node;
-
-	mutex_lock(&crtc->crtc_cp_lock);
-	if (!crtc->back_light_pending)
-		goto skip_demura_bl;
-
-	if (_sde_cp_feature_in_dirtylist(SDE_CP_CRTC_DSPP_DEMURA_INIT,
-					&crtc->cp_dirty_list))
-		goto skip_demura_bl;
-
-	prop_node = _sde_cp_feature_getnode_activelist(SDE_CP_CRTC_DSPP_DEMURA_INIT,
-				&crtc->cp_active_list);
-
-	if (prop_node) {
-		_sde_cp_update_list(prop_node, crtc, true);
-		list_del_init(&prop_node->cp_active_list);
-	}
-skip_demura_bl:
-	crtc->back_light_pending = false;
-	mutex_unlock(&crtc->crtc_cp_lock);
-}
 void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc;
@@ -5221,6 +5179,46 @@ void _sde_cp_mark_mdnie_art_property(struct drm_crtc *crtc)
 		prop_node->prop_val = 0;
 		_sde_cp_update_list(prop_node, sde_crtc, true);
 	}
+exit:
+	mutex_unlock(&sde_crtc->crtc_cp_lock);
+}
+
+void _sde_cp_check_mdnie_art_done(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+	u32 num_mixers = 0, i = 0;
+	u32 *mdnie_art_count = NULL;
+	struct sde_hw_dspp *hw_dspp = NULL;
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	mutex_lock(&sde_crtc->crtc_cp_lock);
+	mdnie_art_count = &sde_crtc->mdnie_art_frame_count;
+	if (!mdnie_art_count || *mdnie_art_count == 0)
+		goto exit;
+
+	num_mixers = sde_crtc->num_mixers;
+	if (!num_mixers) {
+		DRM_ERROR("no mixers for this crtc\n");
+		goto exit;
+	}
+
+	if (*mdnie_art_count == 1) {
+		if (sde_crtc->mdnie_art_event_notify_enabled)
+			sde_crtc_mdnie_art_event_notify(crtc);
+
+		for (i = 0; i < num_mixers; i++) {
+			hw_dspp = sde_crtc->mixers[i].hw_dspp;
+			if (!hw_dspp || i >= DSPP_MAX)
+				goto exit;
+			else if (hw_dspp->ops.reset_mdnie_art) {
+				hw_dspp->ops.reset_mdnie_art(hw_dspp);
+				aiqe_deregister_client(FEATURE_MDNIE_ART,
+							&sde_crtc->aiqe_top_level);
+			}
+		}
+	}
+	(*mdnie_art_count)--;
 exit:
 	mutex_unlock(&sde_crtc->crtc_cp_lock);
 }

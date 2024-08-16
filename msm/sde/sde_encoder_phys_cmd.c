@@ -612,6 +612,8 @@ static void sde_encoder_phys_cmd_wr_ptr_irq(void *arg, int irq_idx)
 			!test_bit(SDE_INTF_TE_SINGLE_UPDATE, &phys_enc->hw_intf->cap->features))
 		sde_encoder_override_tearcheck_rd_ptr(phys_enc);
 
+	sde_encoder_handle_frequency_stepping(phys_enc, 1);
+
 	/* Signal any waiting wr_ptr start interrupt */
 	wake_up_all(&phys_enc->pending_kickoff_wq);
 	SDE_ATRACE_END("wr_ptr_irq");
@@ -1360,7 +1362,8 @@ static void _get_tearcheck_cfg(struct sde_encoder_phys *phys_enc,
 		goto exit;
 
 	if (phys_enc->parent_ops.get_qsync_fps)
-		phys_enc->parent_ops.get_qsync_fps(phys_enc->parent, &qsync_min_fps, conn->state);
+		phys_enc->parent_ops.get_qsync_fps(phys_enc->parent, &qsync_min_fps,
+			conn->state, NULL);
 
 	if (!qsync_min_fps || !default_fps || !yres) {
 		SDE_ERROR_CMDENC(cmd_enc, "wrong qsync params %d %d %d\n",
@@ -1450,6 +1453,8 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 	struct intf_panic_wakeup_cfg cfg = { 0 };
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
+	struct sde_encoder_phys_cmd *cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
+	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
 	u32 bw_update_time_lines, prefill_lines, vrefresh, vsync_vtotal, vsync_count, vsync_hz;
 
 	if (!phys_enc->hw_intf || !phys_enc->hw_intf->ops.setup_te_panic_wakeup)
@@ -1461,7 +1466,8 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 
 	priv = sde_kms->dev->dev_private;
 
-	vrefresh = drm_mode_vrefresh(mode);
+	/* update panic/wakeup & vsync_count based on multi_te_fps when its enabled */
+	vrefresh = sde_enc->multi_te_fps ? sde_enc->multi_te_fps : drm_mode_vrefresh(mode);
 	vsync_hz = sde_power_clk_get_rate(&priv->phandle, "vsync_clk");
 	if (!vsync_hz || !mode->vtotal || !vrefresh)
 		return;
@@ -1476,27 +1482,80 @@ static void _sde_encoder_phys_cmd_setup_panic_wakeup(struct sde_encoder_phys *ph
 				DIV_ROUND_UP(info->prefill_lines * vrefresh, DEFAULT_FPS)
 					: info->prefill_lines;
 
-	cfg.wakeup_window = DEFAULT_TEARCHECK_SYNC_THRESH_CONTINUE;
+	cfg.wakeup_window = qsync_en ? cmd_enc->qsync_threshold_lines
+				: DEFAULT_TEARCHECK_SYNC_THRESH_START;
 	cfg.wakeup_start =  mode->vdisplay
 				+ (vsync_vtotal
 					- DIV_ROUND_UP(vsync_vtotal * info->jitter_numer,
 						info->jitter_denom * 100)) - prefill_lines;
 
 	bw_update_time_lines = sde_encoder_helper_get_bw_update_time_lines(sde_enc);
-	cfg.panic_window = bw_update_time_lines + cfg.wakeup_window;
+	cfg.panic_window = bw_update_time_lines + cfg.wakeup_window + 1;
 	cfg.panic_start = cfg.wakeup_start - bw_update_time_lines;
+
+	/* extend the panic/wakeup windows to max to support multi-te */
+	if (sde_enc->multi_te_fps) {
+		cfg.wakeup_window = 0xffffffff;
+		cfg.panic_window = 0xffffffff;
+	}
 
 	phys_enc->hw_intf->ops.setup_te_panic_wakeup(phys_enc->hw_intf, &cfg);
 
 	SDE_EVT32(phys_enc->hw_intf->idx - INTF_0, cfg.wakeup_start, cfg.wakeup_window,
 			cfg.panic_start, cfg.panic_window, mode->vdisplay, bw_update_time_lines,
-			prefill_lines, info->prefill_lines, vrefresh, info->jitter_numer,
-			info->jitter_denom);
+			prefill_lines, info->prefill_lines, vsync_count, vsync_vtotal,
+			vrefresh, info->jitter_numer, info->jitter_denom,
+			sde_enc->multi_te_fps, drm_mode_vrefresh(mode));
+}
+
+static void _sde_encoder_update_multi_te_config(struct sde_encoder_phys *phys_enc, bool override)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct drm_display_mode *mode;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms = phys_enc->sde_kms;
+	u32 vsync_hz, vrefresh, vsync_count;
+
+	if ((override && !sde_enc->multi_te_fps)
+		|| (!override && (sde_enc->multi_te_state != SDE_MULTI_TE_ENTER)
+				&& (sde_enc->multi_te_state != SDE_MULTI_TE_EXIT)))
+		return;
+
+	if (!sde_enc->cesta_client || !sde_encoder_phys_cmd_is_master(phys_enc)
+			|| !sde_kms || !sde_kms->dev || !sde_kms->dev->dev_private)
+		return;
+
+	_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
+	if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.update_bitmask)
+		phys_enc->hw_ctl->ops.update_bitmask(phys_enc->hw_ctl, SDE_HW_FLUSH_INTF,
+				phys_enc->intf_idx, 1);
+
+	mode = &phys_enc->cached_mode;
+	priv = sde_kms->dev->dev_private;
+	vsync_hz = sde_power_clk_get_rate(&priv->phandle, "vsync_clk");
+	vrefresh = sde_enc->multi_te_fps ? sde_enc->multi_te_fps : drm_mode_vrefresh(mode);
+	if (!vsync_hz || !mode->vtotal || !vrefresh) {
+		SDE_DEBUG("invalid params - vsync_hz %u vtot %u vrefresh %u\n",
+				vsync_hz, mode->vtotal, vrefresh);
+		return;
+	}
+
+	vsync_count = vsync_hz / (mode->vtotal * vrefresh);
+
+	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.update_tearcheck_vsync_count)
+		phys_enc->hw_intf->ops.update_tearcheck_vsync_count(phys_enc->hw_intf, vsync_count);
+
+	/* update the voting state, for override vote */
+	if (override)
+		sde_enc->multi_te_state = SDE_MULTI_TE_SESSION;
+	SDE_EVT32(DRMID(phys_enc->parent), sde_enc->multi_te_state, sde_enc->multi_te_fps,
+				vrefresh, mode->vtotal, vsync_count, override);
 }
 
 static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_cmd *cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct sde_hw_tear_check tc_cfg = { 0 };
 	struct drm_display_mode *mode;
 	bool tc_enable = true;
@@ -1607,8 +1666,12 @@ static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_
 				&tc_cfg);
 		phys_enc->hw_intf->ops.enable_tearcheck(phys_enc->hw_intf,
 				tc_enable);
-		if (sde_encoder_get_cesta_client(phys_enc->parent))
-			_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
+		if (sde_encoder_get_cesta_client(phys_enc->parent)) {
+			if (sde_enc->multi_te_fps)
+				_sde_encoder_update_multi_te_config(phys_enc, true);
+			else
+				_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
+		}
 	} else {
 		phys_enc->hw_pp->ops.setup_tearcheck(phys_enc->hw_pp, &tc_cfg);
 		phys_enc->hw_pp->ops.enable_tearcheck(phys_enc->hw_pp,
@@ -1922,14 +1985,6 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 		phys_enc->recovered = false;
 	}
 
-	/* update cesta wakeup/panic window with cont-splash */
-	if (phys_enc->cont_splash_enabled && sde_encoder_phys_cmd_is_master(phys_enc)
-			&& sde_encoder_get_cesta_client(phys_enc->parent) && phys_enc->hw_ctl) {
-		_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
-		phys_enc->hw_ctl->ops.update_bitmask(phys_enc->hw_ctl, SDE_HW_FLUSH_INTF,
-				phys_enc->intf_idx, 1);
-	}
-
 	if (sde_connector_is_qsync_updated(phys_enc->connector)) {
 		u32 threshold, cfg_height, start_pos;
 
@@ -1956,6 +2011,18 @@ static int sde_encoder_phys_cmd_prepare_for_kickoff(
 		SDE_EVT32(DRMID(phys_enc->parent), tc_cfg.sync_threshold_start, tc_cfg.start_pos,
 				qsync_mode, sde_enc->disp_info.is_te_using_watchdog_timer,
 				panel_dead, SDE_EVTLOG_FUNC_CASE3);
+	}
+
+	_sde_encoder_update_multi_te_config(phys_enc, false);
+
+	/* update cesta wakeup/panic window with cont-splash or qsync update */
+	if (sde_enc->cesta_client && sde_encoder_phys_cmd_is_master(phys_enc) &&
+			(phys_enc->cont_splash_enabled ||
+				sde_connector_is_qsync_updated(phys_enc->connector))) {
+		_sde_encoder_phys_cmd_setup_panic_wakeup(phys_enc);
+		if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.update_bitmask)
+			phys_enc->hw_ctl->ops.update_bitmask(phys_enc->hw_ctl, SDE_HW_FLUSH_INTF,
+					phys_enc->intf_idx, 1);
 	}
 
 	if (sde_enc->restore_te_rd_ptr) {
@@ -2061,7 +2128,8 @@ static int _sde_encoder_phys_cmd_wait_for_wr_ptr(
 	 * if hwfencing enabled, try again to wait for up to the extended timeout time in
 	 * increments as long as fence has not been signaled.
 	 */
-	if (ret == -ETIMEDOUT && phys_enc->sde_kms->catalog->hw_fence_rev)
+	if (ret == -ETIMEDOUT && (phys_enc->sde_kms->catalog->hw_fence_rev ||
+			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable))
 		ret = sde_encoder_helper_hw_fence_extended_wait(phys_enc, ctl, &wait_info,
 			INTR_IDX_WRPTR);
 
@@ -2096,7 +2164,8 @@ static int _sde_encoder_phys_cmd_wait_for_wr_ptr(
 		}
 
 		/* if we timeout after the extended wait, reset mixers and do sw override */
-		if (ret && phys_enc->sde_kms->catalog->hw_fence_rev)
+		if (ret && (phys_enc->sde_kms->catalog->hw_fence_rev ||
+				phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable))
 			sde_encoder_helper_hw_fence_sw_override(phys_enc, ctl);
 	}
 
@@ -2192,6 +2261,8 @@ static int _sde_encoder_phys_cmd_handle_wr_ptr_timeout(
 			spin_unlock_irqrestore(phys_enc->enc_spinlock,
 				lock_flags);
 		}
+
+		phys_enc->enable_state = SDE_ENC_ERR_NEEDS_HW_RESET;
 	}
 
 	cmd_enc->wr_ptr_wait_success = (ret == 0) ? true : false;
@@ -2265,8 +2336,6 @@ wait_for_idle:
 			cmd_enc->wr_ptr_wait_success, scheduler_status, rc);
 		SDE_ERROR("pp:%d failed wait_for_idle: %d\n",
 				phys_enc->hw_pp->idx - PINGPONG_0, rc);
-		if (phys_enc->enable_state == SDE_ENC_ERR_NEEDS_HW_RESET)
-			sde_encoder_needs_hw_reset(phys_enc->parent);
 	}
 
 	return rc;
@@ -2605,7 +2674,8 @@ void sde_encoder_phys_cmd_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	cfg->intf = phys_enc->intf_idx - INTF_0;
 	cfg->auto_active_on_panic = autorefresh_en;
 	cfg->req_mode = SDE_CESTA_CTRL_REQ_PANIC_REGION;
-	cfg->hw_sleep_enable = !autorefresh_en;
+	cfg->hw_sleep_enable = !(autorefresh_en
+					|| phys_enc->sde_kms->splash_data.num_splash_displays);
 
 	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)
 			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))
@@ -2807,6 +2877,11 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 	for (i = 0; i < MAX_TE_PROFILE_COUNT; i++)
 		list_add(&cmd_enc->te_timestamp[i].list,
 				&cmd_enc->te_timestamp_list);
+
+	hrtimer_init(&phys_enc->sde_vrr_cfg.self_refresh_timer,
+		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	phys_enc->sde_vrr_cfg.self_refresh_timer.function =
+		sde_encoder_phys_phys_self_refresh_helper;
 
 	SDE_DEBUG_CMDENC(cmd_enc, "created\n");
 

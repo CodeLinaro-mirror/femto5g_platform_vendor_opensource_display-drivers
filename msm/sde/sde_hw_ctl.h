@@ -183,9 +183,15 @@ struct sde_ctl_cesta_cfg {
 struct sde_hw_ctl_ops {
 	/**
 	 * hw fence control
-	 * @ctx         : ctl path ctx pointer
+	 * @ctx            : ctl path ctx pointer
+	 * @sw_set         : sw override to be set
+	 * @sw_clear       : sw override to clear
+	 * @mode           : HW fence enable
+	 * @sw_avr_set     : AVR is enabled
+	 * @sw_arp_set     : ARP mode is enabled
 	 */
-	void (*hw_fence_ctrl)(struct sde_hw_ctl *ctx, bool sw_set, bool sw_clear, u32 mode);
+	void (*hw_fence_ctrl)(struct sde_hw_ctl *ctx, bool sw_set, bool sw_clear, u32 mode,
+		bool sw_avr_set, bool sw_arp_set);
 
 	/**
 	 * override to trigger the signal for the output hw-fence
@@ -485,6 +491,14 @@ struct sde_hw_ctl_ops {
 			enum ctl_hw_flush_type type, u32 blk_idx, bool enable);
 
 	/**
+	 * bitmask_has_bit: checks whether flush mask has given block set to flush
+	 * @type              : blk type to test
+	 * @blk_idx           : blk idx
+	 */
+	bool (*bitmask_has_bit)(struct sde_hw_ctl *ctx,
+			enum ctl_hw_flush_type type, u32 blk_idx);
+
+	/**
 	 * update_dnsc_blur_bitmask: updates dnsc_blur flush mask
 	 * @type              : blk type to flush
 	 * @blk_idx           : blk idx
@@ -498,6 +512,13 @@ struct sde_hw_ctl_ops {
 	 * @return	: bit mask with the active interfaces for the CTL
 	 */
 	u32 (*get_ctl_intf)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * control the group setting in ctl_top.
+	 * @ctx		: ctl path ctx pointer
+	 * @enable	: flag to enable/disable group setting
+	 */
+	void (*update_ctl_top_group)(struct sde_hw_ctl *ctx, bool enable);
 
 	/**
 	 * read CTL layers register value and return
