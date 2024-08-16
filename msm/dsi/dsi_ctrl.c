@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -25,7 +25,7 @@
 
 #define DSI_CTRL_DEFAULT_LABEL "MDSS DSI CTRL"
 
-#define DSI_CTRL_TX_TO_MS     200
+#define DSI_CTRL_TX_TO_MS     1200
 
 #define TO_ON_OFF(x) ((x) ? "ON" : "OFF")
 
@@ -3741,7 +3741,9 @@ error:
  *
  * Return: error code.
  */
-int dsi_ctrl_set_tpg_state(struct dsi_ctrl *dsi_ctrl, bool on)
+int dsi_ctrl_set_tpg_state(struct dsi_ctrl *dsi_ctrl, bool on,
+			enum dsi_test_pattern type, u32 init_val,
+			enum dsi_ctrl_tpg_pattern pattern)
 {
 	int rc = 0;
 
@@ -3760,25 +3762,43 @@ int dsi_ctrl_set_tpg_state(struct dsi_ctrl *dsi_ctrl, bool on)
 	}
 
 	if (on) {
-		if (dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE) {
-			dsi_ctrl->hw.ops.video_test_pattern_setup(&dsi_ctrl->hw,
-							  DSI_TEST_PATTERN_INC,
-							  0xFFFF);
-		} else {
-			dsi_ctrl->hw.ops.cmd_test_pattern_setup(
-							&dsi_ctrl->hw,
-							DSI_TEST_PATTERN_INC,
-							0xFFFF,
-							0x0);
-		}
+		if (dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE)
+			dsi_ctrl->hw.ops.video_test_pattern_setup(&dsi_ctrl->hw, type, init_val);
+		else
+			dsi_ctrl->hw.ops.cmd_test_pattern_setup(&dsi_ctrl->hw, type, init_val, 0x0);
 	}
-	dsi_ctrl->hw.ops.test_pattern_enable(&dsi_ctrl->hw, on);
+	dsi_ctrl->hw.ops.test_pattern_enable(&dsi_ctrl->hw, on, pattern,
+			dsi_ctrl->host_config.panel_mode);
 
 	DSI_CTRL_DEBUG(dsi_ctrl, "Set test pattern state=%d\n", on);
 	dsi_ctrl_update_state(dsi_ctrl, DSI_CTRL_OP_TPG, on);
 error:
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 	return rc;
+}
+
+/**
+ * dsi_ctrl_trigger_test_pattern() - trigger a command mode frame update with test pattern
+ * @dsi_ctrl:           DSI controller handle.
+ *
+ * Trigger a command mode frame update with chosen test pattern.
+ *
+ * Return: error code.
+ */
+int dsi_ctrl_trigger_test_pattern(struct dsi_ctrl *dsi_ctrl)
+{
+	int ret = 0;
+
+	if (!dsi_ctrl) {
+		DSI_CTRL_ERR(dsi_ctrl, "Invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&dsi_ctrl->ctrl_lock);
+	dsi_ctrl->hw.ops.trigger_cmd_test_pattern(&dsi_ctrl->hw, 0);
+	mutex_unlock(&dsi_ctrl->ctrl_lock);
+
+	return ret;
 }
 
 /**

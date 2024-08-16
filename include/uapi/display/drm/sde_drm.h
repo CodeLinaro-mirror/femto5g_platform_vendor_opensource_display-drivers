@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -580,7 +580,7 @@ struct sde_drm_ubwc_stats_data {
  */
 #define SDE_FRAME_DATA_BUFFER_MAX	0x3
 #define SDE_FRAME_DATA_GUARD_BYTES	0xFF
-#define SDE_FRAME_DATA_MAX_PLANES	0x10
+#define SDE_FRAME_DATA_MAX_PLANES	0x14
 
 /**
  * struct sde_drm_frame_data_buffers_ctrl - control frame data buffers

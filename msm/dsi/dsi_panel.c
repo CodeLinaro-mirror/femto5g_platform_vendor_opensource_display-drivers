@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2563,13 +2563,13 @@ static int dsi_panel_parse_bl_config(struct dsi_panel *panel)
 	panel->bl_config.bl_inverted_dbv = utils->read_bool(utils->data,
 		"qcom,mdss-dsi-bl-inverted-dbv");
 
-	state = utils->get_property(utils->data, "qcom,bl-dsc-cmd-state", NULL);
+	state = utils->get_property(utils->data, "qcom,bl-dcs-cmd-state", NULL);
 	if (!state || !strcmp(state, "dsi_hs_mode"))
 		panel->bl_config.lp_mode = false;
 	else if (!strcmp(state, "dsi_lp_mode"))
 		panel->bl_config.lp_mode = true;
 	else
-		DSI_ERR("bl-dsc-cmd-state command state unrecognized-%s\n",
+		DSI_ERR("bl-dcs-cmd-state command state unrecognized-%s\n",
 			state);
 
 	if (panel->bl_config.type == DSI_BACKLIGHT_PWM) {

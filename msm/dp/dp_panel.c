@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2050,6 +2050,9 @@ static u32 dp_panel_get_supported_bpp(struct dp_panel *dp_panel,
 		bpp = min_supported_bpp;
 	}
 
+	if (dsc_en && bpp != 24 && bpp != 30 && bpp != 36)
+		DP_ERR("bpp %d is not supported when dsc is enabled\n", bpp);
+
 	return bpp;
 }
 
@@ -3179,7 +3182,7 @@ static void dp_panel_convert_to_dp_mode(struct dp_panel *dp_panel,
 			dp_mode->timing.bpp, dp_mode->timing.pixel_clk_khz,
 			dsc_en, yuv422);
 
-	if (dp_panel->dsc_en && dsc_en) {
+	if (dsc_en) {
 		if (dp_panel_dsc_prepare_basic_params(comp_info,
 					dp_mode, dp_panel)) {
 			DP_DEBUG("prepare DSC basic params failed\n");
