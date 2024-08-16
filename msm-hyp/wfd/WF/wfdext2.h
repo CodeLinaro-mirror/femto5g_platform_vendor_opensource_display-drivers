@@ -124,6 +124,21 @@ enum WFDPortCBABCMode {
 #define WFD_PORT_COLOR_POINT_WHITE  0x7655
 #endif
 
+#ifndef WFD_port_pa_hsic
+#define WFD_port_pa_hsic 1
+
+struct WFDPortHISCSetType {
+	WFDboolean  enabled;     /* indicates if HSIC is enabled or not */
+	WFDint  hueLevel;        /* Hue level (absolute range defined by device caps) */
+	WFDint  saturationLevel; /* Saturation level (absolute range defined by device caps) */
+	WFDint  intensityLevel;  /* Intensity level (absolute range defined by device caps) */
+	WFDint  contrastLevel;   /* Contrast level from (absolute range defined by device caps) */
+	WFDint  satThreshold;    /* Threshold of saturation */
+};
+
+#define WFD_PORT_PA_HSIC 0x7660
+#endif
+
 #ifndef WFD_port_gamma_curve
 /**
  * WFD_PORT_###_GAMMA_CURVE is a port property for getting/setting gamma curve
@@ -188,6 +203,14 @@ wfdWaitForVSync(WFDDevice device, WFDPort port) WFD_APIEXIT;
 #define WFD_PIPELINE_CONTRAST          0x7751
 #define WFD_PIPELINE_HUE               0x7752
 #define WFD_PIPELINE_SATURATION        0x7753
+#endif
+
+#ifndef WFD_pipeline_color_process
+#define WFD_pipeline_color_process 1
+#define WFD_PIPELINE_COLOR_BLOCKS_CONFIG     0x7754
+#define WFD_PIPELINE_COLOR_CONFIG_BUFFER     0x7755
+#define WFD_PIPELINE_COLOR_CONFIG_CLEAR      0x7756
+#define WIRE_HOST_MAX_COLOR_BUFF             2
 #endif
 
 #ifndef WFD_pipeline_color_space

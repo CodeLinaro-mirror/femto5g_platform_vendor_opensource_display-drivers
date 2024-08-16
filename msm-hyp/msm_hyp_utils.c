@@ -252,7 +252,7 @@ static void _msm_hyp_update_edid_name(struct edid *edid, const char *name)
 	memcpy(dtd, standard_header, header_size);
 
 	dtd_size -= header_size;
-	dtd_size = min_t(u32, dtd_size, strlen(name));
+	dtd_size = min_t(u32, dtd_size, strlen(edid_name));
 
 	memcpy(dtd + header_size, edid_name, dtd_size);
 }

@@ -40,6 +40,7 @@
 #include <drm/drm_client.h>
 #include <drm/msm_drm.h>
 #include <drm/sde_drm.h>
+#include <drm/msm_drm_pp.h>
 #include "msm_hyp_fence.h"
 #include <drm/drm_framebuffer.h>
 #include <drm/drm_blend.h>
@@ -84,6 +85,7 @@ struct msm_hyp_plane_info {
 	bool support_csc;
 	bool support_multirect;
 	bool support_rotation;
+	bool vig_pipe;
 	int master_plane_index;
 	const char *extra_caps;
 };
@@ -130,6 +132,23 @@ struct msm_hyp_plane {
 	struct drm_property_blob *blob_caps;
 };
 
+enum {
+	MSM_HYP_PLANE_DIRTY_NONE 			= 0,
+	MSM_HYP_PLANE_DIRTY_ZPOS 			= 1 << 0,
+	MSM_HYP_PLANE_DIRTY_BLENDOP 		= 1 << 1,
+	MSM_HYP_PLANE_DIRTY_ALPHA 			= 1 << 2,
+	MSM_HYP_PLANE_DIRTY_MULTIRECT 		= 1 << 3,
+	MSM_HYP_PLANE_DIRTY_CSC 			= 1 << 4,
+	MSM_HYP_PLANE_DIRTY_SCALER 			= 1 << 5,
+	MSM_HYP_PLANE_DIRTY_DMA_CSC 		= 1 << 6,
+	MSM_HYP_PLANE_DIRTY_DMA_IGC 		= 1 << 7,
+	MSM_HYP_PLANE_DIRTY_DMA_GC 			= 1 << 8,
+	MSM_HYP_PLANE_DIRTY_VIG_IGC 		= 1 << 9,
+	MSM_HYP_PLANE_DIRTY_GAMUT 			= 1 << 10,
+	MSM_HYP_PLANE_DIRTY_INVERSE_PMA 	= 1 << 11,
+	MSM_HYP_PLANE_DIRTY_INPUT_FENCE 	= 1 << 12,
+};
+
 struct msm_hyp_plane_state {
 	struct drm_plane_state base;
 	struct dma_fence *input_fence;
@@ -140,6 +159,17 @@ struct msm_hyp_plane_state {
 	uint32_t multirect_mode;
 	struct sde_drm_csc_v1 csc;
 	struct sde_drm_scaler_v2 scaler;
+	bool dma_csc_en;
+	struct sde_drm_csc_v1 dma_csc;
+	bool dma_igc_en;
+	struct drm_msm_igc_lut dma_igc;
+	bool dma_gc_en;
+	struct drm_msm_pgc_lut dma_gc;
+	bool vig_igc_en;
+	struct drm_msm_pgc_lut vig_igc;
+	bool gamut_en;
+	struct drm_msm_3d_gamut gamut;
+	uint32_t dirty_flags;
 };
 
 struct msm_hyp_crtc {
@@ -150,6 +180,37 @@ struct msm_hyp_crtc {
 	struct kthread_worker worker;
 	struct completion commit_done;
 	struct drm_property_blob *blob_caps;
+	struct drm_property_blob *blob_cp_hsic;
+};
+
+#define PA_HSIC_HUE_ENABLE (1 << 0)
+#define PA_HSIC_SAT_ENABLE (1 << 1)
+#define PA_HSIC_VAL_ENABLE (1 << 2)
+#define PA_HSIC_CONT_ENABLE (1 << 3)
+/**
+ * struct msm_hyp_pa_hsic - pa hsic feature structure
+ * @flags: flags for the feature customization, values can be:
+ *         - PA_HSIC_HUE_ENABLE: Enable hue adjustment
+ *         - PA_HSIC_SAT_ENABLE: Enable saturation adjustment
+ *         - PA_HSIC_VAL_ENABLE: Enable value adjustment
+ *         - PA_HSIC_CONT_ENABLE: Enable contrast adjustment
+ *
+ * @hue: hue setting
+ * @saturation: saturation setting
+ * @value: value setting
+ * @contrast: contrast setting
+ */
+struct msm_hyp_pa_hsic {
+	__u64 flags;
+	__u32 hue;
+	__u32 saturation;
+	__u32 value;
+	__u32 contrast;
+};
+
+struct msm_hyp_cp_hsic {
+	uint64_t prop_value;
+	struct msm_hyp_pa_hsic pa_hsic;
 };
 
 struct msm_hyp_crtc_state {
@@ -157,6 +218,7 @@ struct msm_hyp_crtc_state {
 	uint32_t input_fence_timeout;
 	uint32_t output_fence_offset;
 	uint64_t __user *output_fence_ptr;
+	struct msm_hyp_cp_hsic cp_hsic;
 };
 
 struct msm_hyp_framebuffer {
@@ -226,6 +288,7 @@ struct msm_hyp_kms_funcs {
 			struct drm_crtc *crtc);
 	void (*free_connector_port_modes)(
 			struct msm_hyp_connector *c_conn);
+	void (*register_event)(struct msm_hyp_kms *kms);
 
 };
 
@@ -258,6 +321,13 @@ struct msm_hyp_drm_private {
 	struct drm_property *prop_output_fence;
 	struct drm_property *prop_output_fence_offset;
 	struct drm_property *prop_crtc_caps;
+	struct drm_property *prop_dma_igc;
+	struct drm_property *prop_dma_gc;
+	struct drm_property *prop_dma_csc;
+	struct drm_property *prop_vig_igc;
+	struct drm_property *prop_vig_gamut;
+	struct drm_property *prop_inverse_pma;
+	struct drm_property *prop_crtc_cp_hsic;
 
 	uint32_t pending_crtcs;
 	wait_queue_head_t pending_crtcs_event;
@@ -274,6 +344,7 @@ struct msm_hyp_drm_private {
 void msm_hyp_set_kms(struct drm_device *dev, struct msm_hyp_kms *kms);
 void msm_hyp_crtc_commit_done(struct drm_crtc *crtc);
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc);
+void msm_hyp_send_hpd_event(struct drm_device *dev, struct drm_connector *connector);
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP_WFD)
 void __init wfd_kms_register(void);

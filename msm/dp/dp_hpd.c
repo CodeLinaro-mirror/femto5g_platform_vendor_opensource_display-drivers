@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -24,7 +24,19 @@ static void dp_hpd_host_init(struct dp_hpd *dp_hpd,
 		DP_ERR("invalid input\n");
 		return;
 	}
-	catalog->config_hpd(catalog, true);
+	/*
+	 * skip config hdp when the hpd type is
+	 * DP_HPD_BRIDGE, this is to avoid getting
+	 * the interrupts related to HPD, as there
+	 * is no ISR registered for these interrupts
+	 * when skip-hpd is enabled.
+	 */
+	if (dp_hpd->type == DP_HPD_BRIDGE) {
+		catalog->config_hpd(catalog, false);
+	}
+	else {
+		catalog->config_hpd(catalog, true);
+	}
 }
 
 static void dp_hpd_host_deinit(struct dp_hpd *dp_hpd,
