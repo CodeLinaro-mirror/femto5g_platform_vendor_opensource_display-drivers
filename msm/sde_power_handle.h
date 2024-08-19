@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -173,6 +173,7 @@ struct sde_power_mmrm_reserve {
  * @mmrm_enable: boolean to indicate if mmrm is enabled
  * @ib_quota: ib quota of the given bus
  * @mmrm_reserve: mmrm resource reservation
+ * @rsc_index: sde rsc index
  */
 struct sde_power_handle {
 	struct dss_module_power mp;
@@ -189,6 +190,7 @@ struct sde_power_handle {
 	u64 ib_quota[SDE_POWER_HANDLE_DBUS_ID_MAX];
 
 	struct sde_power_mmrm_reserve mmrm_reserve;
+	u32 rsc_index;
 };
 
 /**
@@ -215,11 +217,10 @@ void sde_power_resource_deinit(struct platform_device *pdev,
  * sde_power_resource_enable() - enable/disable the power resources
  * @pdata:  power handle containing the resources
  * @enable: boolean request for enable/disable
- * @dev_idx: device index for the drm device
  *
  * Return: error code.
  */
-int sde_power_resource_enable(struct sde_power_handle *pdata, bool enable, int dev_idx);
+int sde_power_resource_enable(struct sde_power_handle *pdata, bool enable);
 
 /**
  * sde_power_scale_reg_bus() - Scale the registers bus for the specified client

@@ -4509,11 +4509,13 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 {
 	struct sde_kms *sde_kms = usr;
 	struct msm_kms *msm_kms;
+	struct msm_drm_private *priv;
 
 	msm_kms = &sde_kms->base;
-	if (!sde_kms)
+	if (!sde_kms || !sde_kms->dev || !sde_kms->dev->dev_private)
 		return;
 
+	priv = sde_kms->dev->dev_private;
 	SDE_DEBUG("event_type:%d\n", event_type);
 	SDE_EVT32_VERBOSE(event_type);
 
@@ -4541,7 +4543,7 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 			return;
 
 		_sde_kms_active_override(sde_kms, true);
-		if (!is_sde_rsc_available(sde_kms->dev->primary->index))
+		if (!is_sde_rsc_available(priv->phandle.rsc_index))
 			sde_vbif_axi_halt_request(sde_kms);
 	}
 }

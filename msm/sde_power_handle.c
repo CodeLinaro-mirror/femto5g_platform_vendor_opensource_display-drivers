@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -61,11 +61,11 @@ static int sde_power_event_trigger_locked(struct sde_power_handle *phandle,
 	return ret;
 }
 
-static inline void sde_power_rsc_client_init(struct sde_power_handle *phandle, int dev_idx)
+static inline void sde_power_rsc_client_init(struct sde_power_handle *phandle)
 {
 	/* creates the rsc client */
 	if (!phandle->rsc_client_init) {
-		phandle->rsc_client = sde_rsc_client_create(dev_idx,
+		phandle->rsc_client = sde_rsc_client_create(phandle->rsc_index,
 				"sde_power_handle", SDE_RSC_CLK_CLIENT, 0);
 		if (IS_ERR_OR_NULL(phandle->rsc_client)) {
 			pr_debug("sde rsc client create failed :%ld\n",
@@ -667,6 +667,37 @@ u64 sde_power_mmrm_get_requested_clk(struct sde_power_handle *phandle,
 	return rate;
 }
 
+u32 sde_get_rsc_index(struct device *dev)
+{
+	struct device_node *node;
+	struct device_node *np = dev->of_node;
+	int ret, i;
+	u32 rsc_index = 0;
+
+	if (!of_device_is_compatible(np, "qcom,sde-kms"))
+		return 0;
+
+	for (i = 0; ; i++) {
+		node = of_parse_phandle(np, "connectors", i);
+		if (!node)
+			break;
+
+		if (of_node_name_eq(node, "qcom,sde_rscc") &&
+				of_device_is_available(node) &&
+				of_node_check_flag(node, OF_POPULATED)) {
+			struct platform_device *pdev =
+					of_find_device_by_node(node);
+			if (platform_get_drvdata(pdev)) {
+				ret = of_property_read_u32(pdev->dev.of_node,
+						"cell-index", &rsc_index);
+				return ret ? 0 : rsc_index;
+			}
+		}
+	}
+
+	return 0;
+}
+
 int sde_power_resource_init(struct platform_device *pdev,
 	struct sde_power_handle *phandle)
 {
@@ -731,6 +762,7 @@ int sde_power_resource_init(struct platform_device *pdev,
 
 	phandle->rsc_client = NULL;
 	phandle->rsc_client_init = false;
+	phandle->rsc_index = sde_get_rsc_index(&pdev->dev);
 
 	mutex_init(&phandle->phandle_lock);
 
@@ -849,7 +881,7 @@ int sde_power_scale_reg_bus(struct sde_power_handle *phandle,
 	return rc;
 }
 
-int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int dev_idx)
+int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable)
 {
 	int rc = 0, i = 0;
 	struct dss_module_power *mp;
@@ -868,7 +900,7 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 	SDE_ATRACE_BEGIN("sde_power_resource_enable");
 
 	/* RSC client init */
-	sde_power_rsc_client_init(phandle, dev_idx);
+	sde_power_rsc_client_init(phandle);
 
 	if (enable) {
 		sde_power_event_trigger_locked(phandle,

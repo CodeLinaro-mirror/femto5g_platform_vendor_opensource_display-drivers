@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1858,7 +1858,7 @@ static int msm_runtime_suspend(struct device *dev)
 	if (priv->mdss)
 		msm_mdss_disable(priv->mdss);
 	else
-		sde_power_resource_enable(&priv->phandle, false, ddev->primary->index);
+		sde_power_resource_enable(&priv->phandle, false);
 
 	return 0;
 }
@@ -1874,7 +1874,7 @@ static int msm_runtime_resume(struct device *dev)
 	if (priv->mdss)
 		ret = msm_mdss_enable(priv->mdss);
 	else
-		ret = sde_power_resource_enable(&priv->phandle, true, ddev->primary->index);
+		ret = sde_power_resource_enable(&priv->phandle, true);
 
 	return ret;
 }
