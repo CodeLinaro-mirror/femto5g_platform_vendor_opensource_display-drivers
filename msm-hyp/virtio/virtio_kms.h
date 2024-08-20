@@ -69,6 +69,12 @@ struct channel_map {
 	struct mutex hyp_chl_lock[MAX_CHANNELS];
 };
 
+struct device_info_type {
+	uint32_t qseed_type;
+	uint32_t max_mdp_clk;
+	uint32_t has_src_split;
+	uint32_t device_version;
+};
 struct virtio_kms {
 	struct msm_hyp_kms base;
 	struct channel_map channel[VIRTIO_MAX_CLIENTS];
@@ -76,8 +82,8 @@ struct virtio_kms {
 	uint32_t mmid_buffer;
 	uint32_t mmid_event;
 	bool stop;
-        struct drm_device *dev;
-        uint32_t client_id;
+	struct drm_device *dev;
+	uint32_t client_id;
 	struct virtio_device *vdev;
 	wait_queue_head_t resp_wq;
 	uint32_t max_sdma_width;
@@ -91,6 +97,7 @@ struct virtio_kms {
 	uint32_t num_scanouts;
 	struct virtio_kms_output outputs[VIRTIO_GPU_MAX_SCANOUTS];
 	bool has_edid;
+	struct device_info_type device_info;
 };
 
 struct virtio_mem_info {
