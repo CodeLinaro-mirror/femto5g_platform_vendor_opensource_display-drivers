@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -76,9 +76,20 @@ struct dp_drm_mst_fw_helper_ops {
 	int (*update_payload_part2)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_atomic_state *state,
 			struct drm_dp_mst_atomic_payload *payload);
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	void (*reset_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr,
+			struct drm_dp_mst_topology_state *mst_state,
+			struct drm_dp_mst_atomic_payload *new_payload);
+#elif (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
+	void (*reset_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr,
+			struct drm_dp_mst_topology_state *mst_state,
+			const struct drm_dp_mst_atomic_payload *old_payload,
+			struct drm_dp_mst_atomic_payload *new_payload);
+#else
 	void (*reset_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_dp_mst_topology_state *mst_state,
 			struct drm_dp_mst_atomic_payload *payload);
+#endif
 #else
 
 	int (*atomic_find_vcpi_slots)(struct drm_atomic_state *state,
@@ -309,14 +320,20 @@ static int dp_mst_calc_pbn_mode(struct dp_display_mode *dp_mode)
 	int pbn, bpp;
 	bool dsc_en;
 	s64 pbn_fp;
+	struct dp_panel_info *pinfo = &dp_mode->timing;
 
-	dsc_en = dp_mode->timing.comp_info.enabled;
-	bpp = dsc_en ?
-		DSC_BPP(dp_mode->timing.comp_info.dsc_info.config)
-		: dp_mode->timing.bpp;
+	dsc_en = pinfo->comp_info.enabled;
+	bpp = dsc_en ? DSC_BPP(pinfo->comp_info.dsc_info.config) : pinfo->bpp;
 
-	pbn = drm_dp_calc_pbn_mode(dp_mode->timing.pixel_clk_khz, bpp, false);
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp << 4, false);
+#elif (KERNEL_VERSION(6, 6, 17) <= LINUX_VERSION_CODE)
+	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp << 4);
+#else
+	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp, false);
+#endif
 	pbn_fp = drm_fixp_from_fraction(pbn, 1);
+
 
 	DP_DEBUG_V("before overhead pbn:%d, bpp:%d\n", pbn, bpp);
 
@@ -333,7 +350,20 @@ static int dp_mst_calc_pbn_mode(struct dp_display_mode *dp_mode)
 }
 
 static const struct dp_drm_mst_fw_helper_ops drm_dp_mst_fw_helper_ops = {
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	.calc_pbn_mode             = dp_mst_calc_pbn_mode,
+	.find_vcpi_slots           = dp_mst_find_vcpi_slots,
+	.atomic_find_time_slots    = drm_dp_atomic_find_time_slots,
+	.update_payload_part1      = drm_dp_add_payload_part1,
+	.check_act_status          = drm_dp_check_act_status,
+	.update_payload_part2      = drm_dp_add_payload_part2,
+	.detect_port_ctx           = dp_mst_detect_port,
+	.get_edid                  = drm_dp_mst_get_edid,
+	.topology_mgr_set_mst      = drm_dp_mst_topology_mgr_set_mst,
+	.get_vcpi_info             = _dp_mst_get_vcpi_info,
+	.atomic_release_time_slots = drm_dp_atomic_release_time_slots,
+	.reset_vcpi_slots          = drm_dp_remove_payload_part1,
+#elif (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	.calc_pbn_mode             = dp_mst_calc_pbn_mode,
 	.find_vcpi_slots           = dp_mst_find_vcpi_slots,
 	.atomic_find_time_slots    = drm_dp_atomic_find_time_slots,
@@ -717,7 +747,20 @@ static void _dp_mst_bridge_pre_disable_part1(struct dp_mst_bridge *dp_bridge)
 #if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	mst_state = to_drm_dp_mst_topology_state(mst->mst_mgr.base.state);
 	payload = drm_atomic_get_mst_payload_state(mst_state, port);
+
+	if (!payload) {
+		DP_ERR("mst bridge [%d] _pre disable part-1 failed, null payload\n",
+				dp_bridge->id);
+		return;
+	}
+
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
 	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload);
+#elif (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
+	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload, payload);
+#else
+	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload);
+#endif
 #else
 	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, port);
 #endif
@@ -1989,8 +2032,10 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 	int rc;
 	struct dp_display *dp = dp_display;
 	struct dp_mst_private *mst = dp->dp_mst_prv_info;
-	u8 esi[14];
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 	u8 ack[8] = {};
+#endif
+	u8 esi[14];
 	unsigned int esi_res = DP_SINK_COUNT_ESI + 1;
 	bool handled;
 
@@ -2009,7 +2054,23 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 	DP_MST_DEBUG("mst irq: esi1[0x%x] esi2[0x%x] esi3[%x]\n",
 			esi[1], esi[2], esi[3]);
 
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 	rc = drm_dp_mst_hpd_irq_handle_event(&mst->mst_mgr, esi, ack, &handled);
+
+	/* ack the request */
+	if (handled) {
+		rc = drm_dp_dpcd_writeb(mst->caps.drm_aux, esi_res, ack[1]);
+
+		if (ack[1] & DP_UP_REQ_MSG_RDY)
+			dp_mst_clear_edid_cache(dp);
+
+		if (rc != 1)
+			DP_ERR("dpcd esi_res failed. rc=%d\n", rc);
+
+		drm_dp_mst_hpd_irq_send_new_request(&mst->mst_mgr);
+	}
+#else
+	rc = drm_dp_mst_hpd_irq(&mst->mst_mgr, esi, &handled);
 
 	/* ack the request */
 	if (handled) {
@@ -2023,6 +2084,7 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 		else
 			drm_dp_mst_hpd_irq_send_new_request(&mst->mst_mgr);
 	}
+#endif
 
 	DP_MST_DEBUG("mst display hpd_irq handled:%d rc:%d\n", handled, rc);
 }

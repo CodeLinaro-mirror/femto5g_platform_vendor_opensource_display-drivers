@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -279,7 +279,7 @@ static int dp_ctrl_read_link_status(struct dp_ctrl_private *ctrl,
 			break;
 		}
 
-		if (!(link_status[offset] & DP_LINK_STATUS_UPDATED))
+		if (link_status[offset] & DP_LINK_STATUS_UPDATED)
 			break;
 	}
 

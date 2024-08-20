@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -745,11 +745,11 @@ static long dp_pll_link_clk_round(struct clk_hw *hw, unsigned long rate,
 static unsigned long dp_pll_vco_div_clk_get_rate(struct dp_pll *pll)
 {
 	if (pll->vco_rate == DP_VCO_HSCLK_RATE_8100MHZDIV1000)
-		return (pll->vco_rate / (6 * pll->clk_factor));
+		return ((pll->vco_rate / 6) * pll->clk_factor);
 	else if (pll->vco_rate == DP_VCO_HSCLK_RATE_5400MHZDIV1000)
-		return (pll->vco_rate / (4 * pll->clk_factor));
+		return ((pll->vco_rate / 4) * pll->clk_factor);
 	else
-		return (pll->vco_rate / (2 * pll->clk_factor));
+		return ((pll->vco_rate / 2) * pll->clk_factor);
 }
 
 static unsigned long dp_pll_vco_div_clk_recalc_rate(struct clk_hw *hw,

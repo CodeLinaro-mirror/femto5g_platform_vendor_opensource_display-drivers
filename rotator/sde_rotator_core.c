@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -8,6 +8,7 @@
 
 #include <linux/platform_device.h>
 #include <linux/module.h>
+#include <linux/version.h>
 #include <linux/fs.h>
 #include <linux/file.h>
 #include <linux/uaccess.h>
@@ -16,7 +17,13 @@
 #include <linux/debugfs.h>
 #include <linux/regulator/consumer.h>
 #include <linux/dma-direction.h>
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <linux/firmware/qcom/qcom_scm.h>
+#else
 #include <linux/qcom_scm.h>
+#endif
+
 #include <soc/qcom/secure_buffer.h>
 #include <asm/cacheflush.h>
 #include <uapi/linux/sched/types.h>
@@ -614,7 +621,7 @@ static int sde_rotator_secure_session_ctrl(bool enable)
 			}
 
 			SDEROT_DBG(
-			  "scm(1) sid0x%x dev0x%llx vmid0x%llx qtee_en%d ret%d\n",
+			  "scm(1) sid0x%x dev0x%x vmid0x%x qtee_en%d ret%d\n",
 				sid_info[0], SDE_ROTATOR_DEVICE, vmid,
 				qtee_en, ret);
 			SDEROT_EVTLOG(1, sid_info, sid_info[0], SDE_ROTATOR_DEVICE,
@@ -634,7 +641,7 @@ static int sde_rotator_secure_session_ctrl(bool enable)
 				SDEROT_ERR("qcom_scm_mem_protect ret=%d\n", ret);
 
 			SDEROT_DBG(
-			  "scm(0) sid0x%x dev0x%llx vmid0x%llx qtee_en%d ret%d\n",
+			  "scm(0) sid0x%x dev0x%x vmid0x%x qtee_en%d ret%d\n",
 				sid_info[0], SDE_ROTATOR_DEVICE, vmid,
 				qtee_en, ret);
 
@@ -2123,6 +2130,46 @@ static int sde_rotator_add_request(struct sde_rot_mgr *mgr,
 	return 0;
 }
 
+static void sde_rotator_complete_hwactive_job(struct sde_rot_mgr *mgr,
+		struct sde_rot_entry_container *req)
+{
+	struct kthread_work *commit_work;
+	struct kthread_work *done_work;
+	struct sde_rot_entry *entry;
+	struct sde_rot_hw_resource *hw;
+	struct sde_rot_queue *queue;
+	int i;
+
+	if (!mgr || !req) {
+		SDEROT_ERR("invalid params\n");
+		return;
+	}
+
+	for (i = 0; i < req->count; i++) {
+		entry = &req->entries[i];
+		if (!entry)
+			continue;
+
+		queue =	entry->commitq;
+		if (!queue || !queue->hw)
+			continue;
+
+		commit_work = &entry->commit_work;
+		done_work = &entry->done_work;
+		hw = queue->hw;
+		SDEROT_EVTLOG(req->count, atomic_read(&req->pending_count),
+			atomic_read(&hw->num_active));
+		if (atomic_read(&hw->num_active)) {
+			sde_rot_mgr_unlock(mgr);
+			kthread_flush_work(commit_work);
+			kthread_flush_work(done_work);
+			sde_rot_mgr_lock(mgr);
+		}
+		SDEROT_EVTLOG(req->count, atomic_read(&req->pending_count),
+			atomic_read(&hw->num_active));
+	}
+}
+
 void sde_rotator_remove_request(struct sde_rot_mgr *mgr,
 	struct sde_rot_file_private *private,
 	struct sde_rot_entry_container *req)
@@ -2146,6 +2193,11 @@ static void sde_rotator_cancel_request(struct sde_rot_mgr *mgr,
 	struct sde_rot_entry *entry;
 	int i;
 
+	/*
+	 * Flush any active works before issuing
+	 * a cancel work.
+	 */
+	sde_rotator_complete_hwactive_job(mgr, req);
 	if (atomic_read(&req->pending_count)) {
 		/*
 		 * To avoid signal the rotation entry output fence in the wrong
@@ -2153,6 +2205,7 @@ static void sde_rotator_cancel_request(struct sde_rot_mgr *mgr,
 		 * canceled first, before signaling the output fence.
 		 */
 		SDEROT_DBG("cancel work start\n");
+		SDEROT_EVTLOG(atomic_read(&req->pending_count));
 		sde_rot_mgr_unlock(mgr);
 		for (i = req->count - 1; i >= 0; i--) {
 			entry = req->entries + i;
@@ -3141,7 +3194,9 @@ int sde_rotator_core_init(struct sde_rot_mgr **pmgr,
 		IS_SDE_MAJOR_SAME(mdata->mdss_version,
 			SDE_MDP_HW_REV_500) ||
 		IS_SDE_MAJOR_SAME(mdata->mdss_version,
-			SDE_MDP_HW_REV_600)) {
+			SDE_MDP_HW_REV_600) ||
+		IS_SDE_MAJOR_SAME(mdata->mdss_version,
+			SDE_MDP_HW_REV_860)) {
 		mgr->ops_hw_init = sde_rotator_r3_init;
 		mgr->min_rot_clk = ROT_MIN_ROT_CLK;
 
@@ -3154,8 +3209,8 @@ int sde_rotator_core_init(struct sde_rot_mgr **pmgr,
 			SDE_MDP_HW_REV_500))
 			mgr->max_rot_clk = ROT_R3_MAX_ROT_CLK;
 
-		if (!IS_SDE_MAJOR_SAME(mdata->mdss_version,
-					SDE_MDP_HW_REV_600) &&
+		if (!(IS_SDE_MAJOR_SAME(mdata->mdss_version,SDE_MDP_HW_REV_600) ||
+                       IS_SDE_MAJOR_SAME(mdata->mdss_version, SDE_MDP_HW_REV_860)) &&
 				!sde_rotator_get_clk(mgr,
 					SDE_ROTATOR_CLK_MDSS_AXI)) {
 			SDEROT_ERR("unable to get mdss_axi_clk\n");
