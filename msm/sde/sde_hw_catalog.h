@@ -1654,6 +1654,7 @@ struct sde_vbif_dynamic_ot_tbl {
 struct sde_vbif_qos_tbl {
 	u32 count;
 	u32 *priority_lvl;
+	u32 npriority_lvl;
 };
 
 /**
@@ -1927,6 +1928,8 @@ struct sde_perf_cfg {
  * @cwb_blk_off         CWB offset address
  * @cwb_blk_stride      offset between each CWB blk
  * @dcwb_count          number of dcwb hardware instances
+ * @ddr_count           number of ddr types supported
+ * @ddr_list_index      Index of supported ddr type
  * @reg_dma_count       number of valid reg dma blocks available
  * @dma_cfg             pointer to config containing reg dma blocks
  * @ad_count            number of AD4 hardware instances
@@ -2003,6 +2006,8 @@ struct sde_mdss_cfg {
 
 	/* HW Blocks */
 	u32 mdss_count;
+	u32 ddr_count;
+	u32 ddr_list_index;
 	struct sde_mdss_base_cfg mdss[MAX_BLOCKS];
 	u32 mdss_hw_block_size;
 	u32 mdp_count;
