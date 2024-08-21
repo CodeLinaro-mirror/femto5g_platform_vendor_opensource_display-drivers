@@ -480,7 +480,8 @@ struct sde_connector_ops {
  * @VRR_CMD_STATE_NONE: no-op
  * @VRR_CMD_POWER_ON: handle vrr commands at power on
  * @VRR_CMD_POWER_OFF: handle vrr commands at power off
- * @VRR_CMD_IDLE_ENTRY: handle vrr commands at idle pc enter
+ * @VRR_CMD_IDLE_ENTRY_START: handle vrr commands at idle pc enter
+ * @VRR_CMD_IDLE_ENTRY_COMPLETE: handle vrr commands after idle pc
  * @VRR_CMD_IDLE_EXIT: handle vrr commands at idle pc exit
  * @VRR_CMD_FIRST_SELF_REFRESH: handle vrr commands at first SR
  */
@@ -488,7 +489,8 @@ enum sde_conn_vrr_cmd_state {
 	VRR_CMD_STATE_NONE,
 	VRR_CMD_POWER_ON,
 	VRR_CMD_POWER_OFF,
-	VRR_CMD_IDLE_ENTRY,
+	VRR_CMD_IDLE_ENTRY_START,
+	VRR_CMD_IDLE_ENTRY_COMPLETE,
 	VRR_CMD_IDLE_EXIT,
 	VRR_CMD_FIRST_SELF_REFRESH
 };
@@ -560,6 +562,26 @@ struct sde_misr_sign {
 };
 
 /**
+ * struct sde_backlight_vrr_update - smooth dimming backlight structure for vrr
+ * @new_brightness : New brightness value
+ * @prev_brightness : Previous brightness value
+ * @new_bl_lvl : New backlight level value
+ * @prev_bl_lvl : Previous backlight level value
+ * @bl_frame_idx : Index value of dimming frame
+ * @bl_update_in_progress : Smooth dimming in progress
+ * @prev_bl_time_ns : Time in ns when previous BL was sent
+ */
+struct sde_backlight_vrr_update {
+	int new_brightness;
+	int prev_brightness;
+	u32 new_bl_lvl;
+	u32 prev_bl_lvl;
+	u32 bl_frame_idx;
+	bool bl_update_in_progress;
+	u64 prev_bl_time_ns;
+};
+
+/**
  * struct sde_connector - local sde connector structure
  * @base: Base drm connector structure
  * @connector_type: Set to one of DRM_MODE_CONNECTOR_ types
@@ -611,6 +633,7 @@ struct sde_misr_sign {
  * @lm_mask: preferred LM mask for connector
  * @allow_bl_update: Flag to indicate if BL update is allowed currently or not
  * @dimming_bl_notify_enabled: Flag to indicate if dimming bl notify is enabled or not
+ * @sde_backlight_vrr_update: Smooth dimming backlight structure for vrr
  * @qsync_mode: Cached Qsync mode, 0=disabled, 1=continuous mode
  * @qsync_updated: Qsync settings were updated
  * @ept_fps: ept fps is updated, 0 means ept_fps is disabled
@@ -621,6 +644,8 @@ struct sde_misr_sign {
  * @freq_pattern_updated: True if frequency pattern is updated
  * @freq_pattern_type_changed: True if frequency pattern type is updated
  * @vrr_cmd_state: Scenario in which VRR cmd is sent
+ * @num_bl_frames: Number of frames needed for incremental dimming
+ * @last_vhm_cmd: Last VHM commands queued to panel
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
  * @hdr_capable: external hdr support present
@@ -685,6 +710,7 @@ struct sde_connector {
 	u32 unset_bl_level;
 	bool allow_bl_update;
 	bool dimming_bl_notify_enabled;
+	struct sde_backlight_vrr_update bl_vrr;
 
 	u32 hdr_eotf;
 	bool hdr_metadata_type_one;
@@ -708,6 +734,8 @@ struct sde_connector {
 	bool freq_pattern_updated;
 	bool freq_pattern_type_changed;
 	enum sde_conn_vrr_cmd_state vrr_cmd_state;
+	u32 num_bl_frames;
+	u64 last_vhm_cmd;
 
 	bool colorspace_updated;
 
@@ -1132,6 +1160,12 @@ void sde_connector_set_vrr_params(struct drm_connector *connector);
  * @connector: pointer to drm connector
  */
 int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector);
+
+/**
+ * sde_connector_trigger_cmd_backlight_update - update backlight
+ * @connector: pointer to drm connector
+ */
+int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector);
 
 /**
  * sde_connector_complete_qsync_commit - callback signalling completion

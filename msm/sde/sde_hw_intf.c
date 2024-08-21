@@ -69,6 +69,7 @@
 #define INTF_MISR_CTRL                  0x180
 #define INTF_MISR_SIGNATURE             0x184
 
+#define INTF_PROG_FLUSH_SNAPSHOT        0x1B0
 #define INTF_WD_TIMER_0_LTJ_CTL         0x200
 #define INTF_WD_TIMER_0_LTJ_CTL1        0x204
 
@@ -594,7 +595,7 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 			&& p->poms_align_vsync)
 		intf_cfg2 |= BIT(16);
 
-	alignment = 0x1; /* COND0 timing engine enable register */
+	alignment = 0x6; /* Default with esync- COND0 HW AVR trigger  */
 	if (align_esync) {
 		if (align_avr)
 			alignment = 0x6; /* COND0 HW AVR trigger */
@@ -626,12 +627,11 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 	SDE_REG_WRITE(c, INTF_FRAME_LINE_COUNT_EN, 0x3);
 	SDE_REG_WRITE(c, INTF_CONFIG, intf_cfg);
 	SDE_REG_WRITE(c, INTF_PANEL_FORMAT, panel_format);
-	SDE_REG_WRITE(c, INTF_CONFIG2, intf_cfg2);
 	SDE_REG_WRITE(c, INTF_DISPLAY_DATA_HCTL, display_data_hctl);
 	SDE_REG_WRITE(c, INTF_ACTIVE_DATA_HCTL, active_data_hctl);
-
 	if (align_esync)
 		SDE_REG_WRITE(c, INTF_TIMING_ENGINE_ALIGN_CTRL, alignment);
+	SDE_REG_WRITE(c, INTF_CONFIG2, intf_cfg2);
 }
 
 static void sde_hw_intf_enable_timing_engine(struct sde_hw_intf *intf, u8 enable)
@@ -1283,6 +1283,26 @@ static void sde_hw_intf_vsync_sel(struct sde_hw_intf *intf,
 	SDE_REG_WRITE(c, INTF_TEAR_MDP_VSYNC_SEL, (vsync_source & 0xf));
 }
 
+static void sde_hw_intf_flush_snapshot_setup(struct sde_hw_intf *intf, u32 value, bool enable)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 intf_cfg;
+
+	if (!intf)
+		return;
+
+	c = &intf->hw;
+	intf_cfg = SDE_REG_READ(c, INTF_CONFIG);
+
+	if (enable)
+		intf_cfg |= BIT(14);
+	else
+		intf_cfg &= BIT(14);
+
+	SDE_REG_WRITE(c, INTF_PROG_FLUSH_SNAPSHOT, value);
+	SDE_REG_WRITE(c, INTF_CONFIG, intf_cfg);
+}
+
 static void sde_hw_intf_enable_compressed_input(struct sde_hw_intf *intf,
 		bool compression_en, bool dsc_4hs_merge)
 {
@@ -1458,6 +1478,9 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 
 	if (cap & BIT(SDE_INTF_WD_LTJ_CTL))
 		ops->get_wd_ltj_status = sde_hw_intf_read_wd_ltj_ctl;
+
+	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
+		ops->setup_flush_snapshot =  sde_hw_intf_flush_snapshot_setup;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,

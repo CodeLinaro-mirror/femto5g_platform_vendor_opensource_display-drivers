@@ -208,13 +208,17 @@ enum sde_sim_qsync_event {
 /*
  * enum sde_mode_switch - enum to indicate the type of mode switch
  * @SDE_MODE_SWITCH_NONE: not a switch frame
- * @SDE_MODE_SWITCH_FPS: FPS switch frame
- * @SDE_MODE_SWITCH_RES: Resolution switch frame
+ * @SDE_MODE_SWITCH_FPS_UP: FPS increase switch frame
+ * @SDE_MODE_SWITCH_FPS_DOWN: FPS decrease switch frame
+ * @SDE_MODE_SWITCH_RES_UP: Resolution up switch frame
+ * @SDE_MODE_SWITCH_RES_DOWN: Resolution down switch frame
  */
 enum sde_mode_switch {
 	SDE_MODE_SWITCH_NONE,
-	SDE_MODE_SWITCH_FPS,
-	SDE_MODE_SWITCH_RES,
+	SDE_MODE_SWITCH_FPS_UP,
+	SDE_MODE_SWITCH_FPS_DOWN,
+	SDE_MODE_SWITCH_RES_UP,
+	SDE_MODE_SWITCH_RES_DOWN,
 };
 
 /*
@@ -293,6 +297,7 @@ enum sde_multi_te_states {
  * @input_event_work:		worker to handle input device touch events
  * @esd_trigger_work:		worker to handle esd trigger
  * @self_refresh_work:		worker to handle self refresh
+ * @self_refresh_work:		worker to handle smooth dimming in vrr
  * @input_handler:			handler for input device events
  * @topology:                   topology of the display
  * @vblank_enabled:		boolean to track userspace vblank vote
@@ -324,6 +329,7 @@ enum sde_multi_te_states {
  * @dynamic_irqs_config         bitmask config to enable encoder dynamic irqs
  * @dpu_ctl_op_sync:		Flag indicating displays attached are enabled in sync mode
  * @ops:                        Encoder ops from init function
+ * @old_vsyc_count:             Intf tearcheck vsync_count for old mode.
  * @mode_switch:                enum to indicate its a fps/resolution switch frame.
  * @multi_te_state:             enum to indicate the multi-te states.
  * @multi_te_fps:               refresh rate of multi-TE.
@@ -331,8 +337,6 @@ enum sde_multi_te_states {
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
  * @cesta_flush_active:         Boolean indicating cesta override flush_active bit is set
- * @cesta_op_group_req:		Boolean indicating CTL op_group setting is required for the frame.
- *				This is required as a workaround for resolution switch cases.
  * @cesta_force_auto_active_db_update:	Boolean indicating auto-active-on-panic is set in SCC
  *					with force-db-update. This is required as a workaround for
  *					cmd mode when previous frame ctl-done is very close to
@@ -388,6 +392,8 @@ struct sde_encoder_virt {
 	struct kthread_work input_event_work;
 	struct kthread_work esd_trigger_work;
 	struct kthread_work self_refresh_work;
+	struct kthread_work backlight_cmd_work;
+
 	struct input_handler *input_handler;
 	bool vblank_enabled;
 	bool idle_pc_restore;
@@ -415,13 +421,13 @@ struct sde_encoder_virt {
 
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
+	u32 old_vsync_count;
 	enum sde_mode_switch mode_switch;
 	enum sde_multi_te_states multi_te_state;
 	u32 multi_te_fps;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
 	bool cesta_force_active;
-	bool cesta_op_group_req;
 	bool cesta_force_auto_active_db_update;
 };
 
@@ -690,6 +696,24 @@ void sde_encoder_enable_recovery_event(struct drm_encoder *encoder);
  */
 bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
 
+/**
+ * sde_encoder_in_video_psr - checks if it is in video psr panel
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true if successful
+ */
+static inline bool sde_encoder_in_video_psr(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return false;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc->disp_info.vrr_caps.video_psr_support;
+}
 /**
  * sde_encoder_set_clone_mode - cwb in wb phys enc is enabled.
  * drm_enc:	Pointer to drm encoder structure
@@ -962,6 +986,20 @@ void sde_encoder_handle_frequency_stepping(struct sde_encoder_phys *phys_enc, u3
 enum hrtimer_restart sde_encoder_phys_phys_self_refresh_helper(struct hrtimer *timer);
 
 /**
+ * sde_encoder_phys_backlight_timer_cb - Handle incremental backlight requirement
+ * @timer: pointer to backlight timer
+ */
+enum hrtimer_restart sde_encoder_phys_backlight_timer_cb(struct hrtimer *timer);
+
+/**
+ * sde_encoder_handle_video_psr_self_refresh - Handle incremental backlight requirement
+ * @sde_enc: Pointer to sde encoder
+ * @send_still_cmd: True if still cmd needs to be sent along with self refresh
+ */
+void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
+		bool send_still_cmd);
+
+/**
  * sde_encoder_get_freq_pattern - Get the frequency pattern for
  *                               given frame interval and usecase
  * @drm_enc: pointer to drm encoder
@@ -983,6 +1021,12 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 int sde_encoder_handle_dma_fence_out_of_order(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_handle_next_backlight_update - handle the consecutive BL update
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_handle_next_backlight_update(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_update_periph_flush - update peripheral flush event

@@ -358,21 +358,14 @@ static void _sde_encoder_phys_vid_raw_te_setup(
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
-	if (enable) {
-		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
-			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, true,
-				sde_enc->disp_info.vrr_caps.arp_support);
-		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
-			sde_enc->disp_info.vrr_caps.arp_support)
-			vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
-	} else {
-		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
-			phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, false,
-				false);
-		if (vid_enc->base.hw_intf->ops.raw_te_setup &&
-			sde_enc->disp_info.vrr_caps.arp_support)
-			vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
-	}
+
+	if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
+		phys_enc->hw_ctl->ops.hw_fence_ctrl(phys_enc->hw_ctl, true, true, 1, true,
+			sde_enc->disp_info.vrr_caps.arp_support);
+	if (vid_enc->base.hw_intf->ops.raw_te_setup &&
+		sde_enc->disp_info.vrr_caps.arp_support)
+		vid_enc->base.hw_intf->ops.raw_te_setup(vid_enc->base.hw_intf, enable);
+
 }
 
 /* vid_enc timing_params must be configured before calling this function */
@@ -472,6 +465,41 @@ static void _sde_encoder_phys_vid_set_num_avr_step(struct sde_encoder_phys *phys
 
 	SDE_EVT32(DRMID(phys_enc->parent), ktime_to_us(ept_ts), ktime_to_us(current_ts),
 			ktime_to_us(delta_ts), info->avr_step_fps, cur_avr_step, num_avr_step);
+}
+
+static void _sde_encoder_phys_flush_snapshot_setup(struct sde_encoder_phys *phys_enc, bool enable)
+{
+	struct sde_mdss_cfg *m;
+	struct intf_timing_params *timing;
+	struct sde_encoder_phys_vid *vid_enc;
+	u32 snapshot_val = 0, vfp_fetch_lines = 0, snapshot_lines = 0;
+	u32 vtotal = 0, htotal = 0;
+
+	m = phys_enc->sde_kms->catalog;
+	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	timing = &vid_enc->timing_params;
+
+	if (!phys_enc->hw_intf->ops.setup_flush_snapshot)
+		return;
+
+	if (phys_enc->hw_intf->cap->type == INTF_DSI) {
+		vfp_fetch_lines = programmable_fetch_get_num_lines(vid_enc, timing);
+		if (vfp_fetch_lines && test_bit(SDE_FEATURE_DELAY_PRG_FETCH, m->features))
+			vfp_fetch_lines = vfp_fetch_lines - 1;
+	}
+
+	vtotal = get_vertical_total(timing);
+	htotal = get_horizontal_total(timing);
+	snapshot_lines = vtotal - vfp_fetch_lines - phys_enc->hw_intf->cap->hw_flush_sync_val;
+
+	if (snapshot_lines <= 0) {
+		SDE_DEBUG("flush snapshot should be set before mdp vsync\n");
+		phys_enc->hw_intf->ops.setup_flush_snapshot(phys_enc->hw_intf,
+					snapshot_val, false);
+	}
+
+	snapshot_val = snapshot_lines * htotal;
+	phys_enc->hw_intf->ops.setup_flush_snapshot(phys_enc->hw_intf, snapshot_val, enable);
 }
 
 static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
@@ -666,6 +694,10 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 	if (phys_enc->hw_intf->cap->type == INTF_DSI)
 		programmable_fetch_config(phys_enc, &timing_params);
+
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
+		sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc))
+		_sde_encoder_phys_flush_snapshot_setup(phys_enc, true);
 
 exit:
 	if (sde_encoder_get_cesta_client(phys_enc->parent)) {
@@ -1559,6 +1591,49 @@ static void sde_encoder_phys_vid_get_hw_resources(
 	hw_res->intfs[phys_enc->intf_idx - INTF_0] = INTF_MODE_VIDEO;
 }
 
+static int _sde_encoder_handle_flush_sync_timeout(
+		struct sde_encoder_phys *phys_enc)
+{
+	struct sde_encoder_wait_info wait_info = {0};
+	struct sde_hw_ctl *hw_ctl;
+	int ret;
+	u32 flush_register;
+
+	if (!phys_enc || !phys_enc->hw_ctl)
+		return -EINVAL;
+	/*
+	 * When flush sync is enabled, flush register will be cleared only once
+	 * flush is successful on both the cores. In those cases, where flush is
+	 * not cleared and HW is in sync mode, add an additional wait to check
+	 * for flush in the second core. If there is still no flush in the
+	 * other core, force async mode for this core and wait for vsync.
+	 */
+	flush_register = sde_encoder_helper_get_ctl_flush(phys_enc);
+
+	if (!flush_register)
+		return 0;
+
+	wait_info.wq = &phys_enc->pending_kickoff_wq;
+	wait_info.atomic_cnt = &phys_enc->pending_kickoff_cnt;
+	wait_info.timeout_ms = phys_enc->kickoff_timeout_ms;
+	hw_ctl = phys_enc->hw_ctl;
+
+	SDE_EVT32(flush_register, SDE_EVTLOG_FUNC_CASE1);
+	ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC, &wait_info);
+	flush_register = sde_encoder_helper_get_ctl_flush(phys_enc);
+	if (!flush_register)
+		return 0;
+
+	SDE_EVT32(ret, flush_register, SDE_EVTLOG_FUNC_CASE2);
+	if (hw_ctl->ops.enable_sync_mode) {
+		hw_ctl->ops.enable_sync_mode(hw_ctl, true);
+		ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC,
+			&wait_info);
+	}
+
+	return ret;
+}
+
 static int _sde_encoder_phys_vid_wait_for_vblank(
 		struct sde_encoder_phys *phys_enc, bool notify)
 {
@@ -1597,6 +1672,11 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 		ret = sde_encoder_helper_hw_fence_extended_wait(phys_enc, phys_enc->hw_ctl,
 			&wait_info, INTR_IDX_VSYNC);
 
+	if (ret == -ETIMEDOUT && sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
+		sde_encoder_helper_flush_in_sync_mode(phys_enc)) {
+		ret = _sde_encoder_handle_flush_sync_timeout(phys_enc);
+	}
+
 	if (ret == -ETIMEDOUT) {
 		new_cnt = atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
 		timeout = true;
@@ -1605,8 +1685,8 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 		 * Reset ret when flush register is consumed. This handles a race condition between
 		 * irq wait timeout handler reading the register status and the actual IRQ handler
 		 */
-		if (hw_ctl->ops.get_flush_register)
-			flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
+		flush_register = sde_encoder_helper_get_ctl_flush(phys_enc);
+
 		if (!flush_register)
 			ret = 0;
 
@@ -2088,11 +2168,27 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 
 	sde_encoder_phys_vid_timing_engine_disable_wait(phys_enc);
 
+	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent)) {
+		if (sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc)) {
+			if (phys_enc->hw_ctl &&
+					phys_enc->hw_ctl->ops.setup_flush_sync)
+				phys_enc->hw_ctl->ops.setup_flush_sync(
+					phys_enc->hw_ctl, true, false);
+		} else if (sde_encoder_phys_has_role_slave_dpu_master_intf(phys_enc)) {
+			if (phys_enc->hw_ctl &&
+				phys_enc->hw_ctl->ops.setup_flush_sync)
+				phys_enc->hw_ctl->ops.setup_flush_sync(
+					phys_enc->hw_ctl, false, false);
+		}
+	}
+
 	if (phys_enc->hw_intf->ops.enable_esync && info->esync_enabled)
 		phys_enc->hw_intf->ops.enable_esync(phys_enc->hw_intf, false);
 
-	if (sde_enc && sde_enc->disp_info.vrr_caps.vrr_support)
+	if (sde_enc && sde_enc->disp_info.vrr_caps.vrr_support) {
 		hrtimer_cancel(&phys_enc->sde_vrr_cfg.freq_step_timer);
+		hrtimer_cancel(&phys_enc->sde_vrr_cfg.backlight_timer);
+	}
 
 	sde_encoder_helper_phys_disable(phys_enc, NULL);
 exit:
@@ -2500,6 +2596,11 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.self_refresh_timer.function =
 		sde_encoder_phys_phys_self_refresh_helper;
+
+	hrtimer_init(&phys_enc->sde_vrr_cfg.backlight_timer,
+		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	phys_enc->sde_vrr_cfg.backlight_timer.function =
+		sde_encoder_phys_backlight_timer_cb;
 
 	SDE_DEBUG_VIDENC(vid_enc, "created intf idx:%d\n", p->intf_idx);
 

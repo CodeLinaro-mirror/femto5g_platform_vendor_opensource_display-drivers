@@ -305,6 +305,11 @@ enum sde_transition_state {
 	ARP_MODE1_IDLE,
 };
 
+enum sde_min_sr_state {
+	SDE_MIN_SR_COMPLETE,
+	SDE_MIN_SR_SCHEDULED,
+};
+
 struct sde_encoder_vrr_cfg {
 	bool arp_mode_hw_te;
 	bool arp_mode_sw_timer_mode;
@@ -321,6 +326,8 @@ struct sde_encoder_vrr_cfg {
 	struct hrtimer freq_step_timer;
 	struct hrtimer arp_transition_timer;
 	struct hrtimer self_refresh_timer;
+	u16 min_sr_state;
+	struct hrtimer backlight_timer;
 };
 
 /**
@@ -737,6 +744,14 @@ int sde_encoder_helper_switch_vsync(struct drm_encoder *drm_enc,
 u32 sde_encoder_helper_get_bw_update_time_lines(struct sde_encoder_virt *sde_enc);
 
 /**
+ * sde_encoder_helper_calc_vsync_count - calculates the vsync_count value
+ * @sde_enc: Pointer to drm encoder structure
+ * @vtotal: vtotal of the mode
+ * @vrefresh: vrefresh of the mode
+ */
+u32 sde_encoder_helper_calc_vsync_count(struct drm_encoder *drm_enc, u32 vtotal, u32 vrefresh);
+
+/**
  * sde_encoder_phys_has_role_master_dpu_master_intf - check if role of physical
 	 encoder is (MASTER_DPU, MASTER_INTF) when interface synchronization is enabled.
  * @phys_enc: Pointer to physical encoder structure
@@ -1039,4 +1054,37 @@ void sde_encoder_helper_setup_misr(struct sde_encoder_phys *phys_enc,
 int sde_encoder_helper_collect_misr(struct sde_encoder_phys *phys_enc,
 		bool nonblock, u32 *misr_value);
 
+/**
+ * sde_encoder_helper_get_ctl_flush - helper function to get flush register value
+ * @phys_enc: Pointer to physical encoder structure
+ * @Return: flush register value
+ */
+static inline u32 sde_encoder_helper_get_ctl_flush(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_hw_ctl *hw_ctl;
+
+	hw_ctl = phys_enc->hw_ctl;
+
+	if (!hw_ctl || !hw_ctl->ops.get_flush_register)
+		return 0;
+
+	return hw_ctl->ops.get_flush_register(hw_ctl);
+}
+
+/**
+ * sde_encoder_helper_flush_in_sync_mode - helper function to get flush sync mode
+ * @phys_enc: Pointer to physical encoder structure
+ * @Return: true for sync mode, false for async
+ */
+static inline bool sde_encoder_helper_flush_in_sync_mode(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_hw_ctl *hw_ctl;
+
+	hw_ctl = phys_enc->hw_ctl;
+
+	if (!hw_ctl || !hw_ctl->ops.get_flush_sync_mode)
+		return false;
+
+	return hw_ctl->ops.get_flush_sync_mode(hw_ctl);
+}
 #endif /* __sde_encoder_phys_H__ */
