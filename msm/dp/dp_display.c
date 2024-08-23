@@ -1367,6 +1367,12 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 		return -EISCONN;
 	}
 
+	if (dp_display_state_is(DP_STATE_SUSPENDED) &&
+			dp_display_state_is(DP_STATE_READY)) {
+		DP_WARN("DP%d hpd high, but dp is in suspended state !\n",
+		       dp->cell_idx);
+	}
+
 	dp_display_state_add(DP_STATE_CONNECTED);
 
 	dp->dp_display.max_pclk_khz = min(dp->parser->max_pclk_khz,
@@ -3190,9 +3196,16 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	 * If connector is in MST mode, skip
 	 * powering down host as aux needs to be kept
 	 * alive to handle hot-plug sideband message.
+	 *
+	 * Turn off the clocks when it is called from
+	 * suspend path
 	 */
-	if (dp->active_stream_cnt || dp->mst.mst_active)
+	if (dp->active_stream_cnt ||
+			(dp->mst.mst_active &&
+			!dp_display_state_is(DP_STATE_SUSPENDED))) {
+		DP_INFO("DP-MST setup & is not suspended\n");
 		goto end;
+	}
 
 	dp->link->psm_config(dp->link, &dp->panel->link_info, true);
 	dp->debug->psm_enabled = true;
@@ -4488,14 +4501,38 @@ static int dp_pm_prepare(struct device *dev)
 	dp_display_state_add(DP_STATE_SUSPENDED);
 
 	/*
-	 * If DP is not enabled but powered and suspend state
-	 * is entered, we need to power off the host to disable all
+	 * If DP port is connected & DP is not enabled
+	 * but powered and suspend state is entered,
+	 * we need to power off the host to disable all
 	 * clocks. This is needed when link training failed.
 	 */
-	if (!dp_display_state_is(DP_STATE_ENABLED) &&
+	if (dp_display_state_is(DP_STATE_CONNECTED) &&
+			!dp_display_state_is(DP_STATE_ENABLED) &&
 			dp->aux->state != DP_STATE_CTRL_POWERED_OFF) {
 		dp->ctrl->off(dp->ctrl);
-		dp_display_host_deinit(dp);
+
+		/* Turn off DP clocks and deinit aux if needed when
+		 * DP stream is not enabled (and possibly not initialized),
+		 * and DP suspend is requested.
+		 */
+		dp_display_host_unready(dp);
+
+		if (!dp_display_state_is(DP_STATE_INITIALIZED)) {
+			dp_display_stream_disable(dp, dp->panel);
+
+			dp_display_state_remove(DP_STATE_READY);
+			dp->aux->deinit(dp->aux);
+
+			dp_display_abort_hdcp(dp, true);
+
+			dp->ctrl->deinit(dp->ctrl);
+			dp->hpd->host_deinit(dp->hpd, &dp->catalog->hpd);
+			dp->power->deinit(dp->power);
+			disable_irq(dp->irq);
+		} else {
+			dp_display_host_deinit(dp);
+		}
+
 		dp->aux->state = DP_STATE_CTRL_POWERED_OFF;
 
 		if (dp->parser->force_connect_mode)
