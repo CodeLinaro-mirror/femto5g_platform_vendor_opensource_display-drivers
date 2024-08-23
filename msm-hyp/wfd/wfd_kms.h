@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /* Copyright © 2006 Keith Packard
@@ -44,11 +44,6 @@ enum WFD_QDILayerType {
 	WFD_QDI_LAYER_CURSOR,
 	WFD_QDI_LAYER_MAX,
 	WFD_QDI_LAYER_FORCE_32BIT	= 0x7FFFFFFF
-};
-
-enum WFD_HPDConnectStatus {
-	WFD_HPD_DISCONNECT		= 0,
-	WFD_HPD_CONNECT
 };
 
 struct wfd_connector_info_priv {

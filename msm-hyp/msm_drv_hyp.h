@@ -256,7 +256,6 @@ struct msm_hyp_kms_funcs {
 			struct drm_crtc *crtc);
 	void (*free_connector_port_modes)(
 			struct msm_hyp_connector *c_conn);
-	void (*register_event)(struct msm_hyp_kms *kms);
 
 };
 
@@ -311,7 +310,6 @@ struct msm_hyp_drm_private {
 void msm_hyp_set_kms(struct drm_device *dev, struct msm_hyp_kms *kms);
 void msm_hyp_crtc_commit_done(struct drm_crtc *crtc);
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc);
-void msm_hyp_send_hpd_event(struct drm_device *dev, struct drm_connector *connector);
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP_WFD)
 void __init wfd_kms_register(void);
