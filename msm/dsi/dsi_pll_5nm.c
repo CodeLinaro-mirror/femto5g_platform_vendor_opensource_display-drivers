@@ -1026,7 +1026,7 @@ static int dsi_pll_5nm_set_byteclk_div(struct dsi_pll_resource *pll,
 
 	int i;
 	u32 pll_post_div = 0, phy_post_div = 0;
-	u64 bitclk_rate;
+	u64 bitclk_rate = 0;
 	bool found = false;
 
 	/* Find the optimal combination, vco<=5GHz/6GHz, pll<2.5GHz */
