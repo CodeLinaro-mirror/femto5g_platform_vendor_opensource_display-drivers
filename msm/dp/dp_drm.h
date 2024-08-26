@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -218,6 +218,12 @@ int dp_connector_query_mode(struct dp_display *display,
 	void *mode,
 	enum dp_query_mode query);
 
+/**
+ * dp_connector_hdcp_auth - trigger hdcp authentication
+ * @connector - Pointer to connector
+ */
+int dp_connector_hdcp_auth(struct drm_connector *connector, bool enable);
+
 #else
 static inline int dp_connector_config_hdr(struct drm_connector *connector,
 		void *display, struct sde_connector_state *c_state)
@@ -346,6 +352,11 @@ static inline int dp_connector_get_usr_mode(struct dp_display *display,
 {
 	return 0;
 }
+static inline int dp_connector_hdcp_auth(struct drm_connector *connector, bool enable)
+{
+	return 0;
+}
+
 #endif /* CONFIG_DRM_MSM_DP */
 
 #endif /* _DP_DRM_H_ */
