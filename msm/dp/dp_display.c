@@ -225,6 +225,7 @@ struct dp_display_private {
 	u32 hdcp_cell_idx;
 	u32 dpu_idx;
 	u32 max_hdcp_key_verify_retries;
+	bool skip_hdcp_auth;
 };
 
 static const struct of_device_id dp_dt_match[] = {
@@ -335,6 +336,33 @@ static void dp_display_qos_request(struct dp_display_private *dp, bool add_vote)
 
 	SDE_EVT32_EXTERNAL(add_vote, mask, latency);
 	dp->pm_qos_requested = add_vote;
+}
+
+static int dp_display_hdcp_auth(struct dp_display *dp_display, bool enable)
+{
+	struct dp_display_private *dp = NULL;
+
+	if (!dp_display) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	if (!dp) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	/* if enable is true, trigger the HDCP authentication */
+	if (enable) {
+		if (!delayed_work_pending(&dp->hdcp_cb_work))
+			queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ);
+	} else {
+		dp->skip_hdcp_auth = true;
+	}
+
+	return 0;
 }
 
 static void dp_display_update_hdcp_status(struct dp_display_private *dp,
@@ -2962,8 +2990,14 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 
 	dp_display_stream_post_enable(dp, dp_panel);
 
-	cancel_delayed_work_sync(&dp->hdcp_cb_work);
-	queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ);
+	/* skip hdcp authentication if the flag is true
+	 * it will be triggered later if requested by
+	 * the connector
+	 */
+	if (!dp->skip_hdcp_auth) {
+		cancel_delayed_work_sync(&dp->hdcp_cb_work);
+		queue_delayed_work(dp->wq, &dp->hdcp_cb_work, HZ);
+	}
 
 	if (dp_panel->audio_supported) {
 		dp_panel->audio->bw_code = dp->link->link_params.bw_code;
@@ -4233,6 +4267,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp_display->set_phy_bond_mode = dp_display_set_phy_bond_mode;
 	dp_display->get_parser = dp_display_get_parser;
 	dp_display->get_mst_pbn_div = dp_display_get_mst_pbn_div;
+	dp_display->hdcp_auth = dp_display_hdcp_auth;
 
 	rc = component_add(&pdev->dev, &dp_display_comp_ops);
 	if (rc) {
