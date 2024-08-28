@@ -1213,8 +1213,10 @@ static int _validate_dt_entry(struct device_node *np,
 				rc = prop_count[i];
 			break;
 		case PROP_TYPE_BIT_OFFSET_ARRAY:
-			of_get_property(np, sde_prop[i].prop_name, &val);
-			prop_count[i] = val / (MAX_BIT_OFFSET * sizeof(u32));
+			if (of_get_property(np, sde_prop[i].prop_name, &val))
+				prop_count[i] = val / (MAX_BIT_OFFSET * sizeof(u32));
+			else
+				prop_count[i] = 0;
 			break;
 		case PROP_TYPE_NODE:
 			snp = of_get_child_by_name(np,
@@ -4606,6 +4608,17 @@ end:
 	return rc;
 }
 
+static void _sde_hw_reg_dma_caps(struct sde_mdss_cfg *sde_cfg)
+{
+	struct sde_ctl_cfg *ctl = NULL;
+	int i;
+
+	for (i = 0; i < sde_cfg->ctl_count; i++) {
+		ctl = sde_cfg->ctl + i;
+		set_bit(SDE_CTL_REG_DMA, &ctl->features);
+	}
+}
+
 static int sde_parse_reg_dma_dt(struct device_node *np,
 		struct sde_mdss_cfg *sde_cfg)
 {
@@ -4676,6 +4689,7 @@ static int sde_parse_reg_dma_dt(struct device_node *np,
 						REG_DMA_CLK_CTRL, 0, 1);
 		}
 	}
+	_sde_hw_reg_dma_caps(sde_cfg);
 end:
 	kvfree(prop_value);
 	/* reg dma is optional feature hence return 0 */
