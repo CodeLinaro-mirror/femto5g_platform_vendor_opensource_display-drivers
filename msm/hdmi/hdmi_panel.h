@@ -7,10 +7,17 @@
 #define _HDMI_PANEL_H_
 
 #include "msm_drv.h"
+#include "hdmi_parser.h"
 
 struct hdmi_panel_info {
+	u32 htotal;
+	u32 vtotal;
 	u32 h_active;
 	u32 v_active;
+	u32 h_start;
+	u32 h_end;
+	u32 v_start;
+	u32 v_end;
 	u32 h_back_porch;
 	u32 h_front_porch;
 	u32 h_sync_width;
@@ -23,7 +30,7 @@ struct hdmi_panel_info {
 	u32 refresh_rate;
 	u32 pixel_clk_khz;
 	u32 bpp;
-	bool widebus_en;
+	bool interlace;
 	struct msm_compression_info comp_info;
 };
 
@@ -39,6 +46,8 @@ struct hdmi_display_mode {
 	 */
 	//enum hdmi_output_format output_format;
 	u32 lm_count;
+
+	bool interlace;
 };
 
 struct hdmi_panel {
@@ -48,6 +57,7 @@ struct hdmi_panel {
 	u32 pclk_factor;
 	u32 max_lm;
 	bool mode_override;
+	bool dc_enable;
 	int hdisplay;
 	int vdisplay;
 	int vrefresh;
@@ -59,10 +69,10 @@ struct hdmi_panel {
 	enum drm_mode_status (*validate_mode)(struct hdmi_panel *hdmi_panel,
 			const struct drm_display_mode *drm_mode);
 	int (*set_mode)(struct hdmi_panel *hdmi_panel,
-			struct drm_display_mode *hdmi_mode);
+			const struct drm_display_mode *mode);
 	int (*get_modes)(struct hdmi_panel *hdmi_panel,
 			struct drm_connector *connector,
-			struct hdmi_display_mode *hdmi_mode);
+			struct hdmi_display_mode *mode);
 	int (*enable)(struct hdmi_panel *hdmi_panel);
 	int (*disable)(struct hdmi_panel *hdmi_panel);
 	int (*get_panel_on)(struct hdmi_panel *hdmi_panel);
@@ -78,7 +88,7 @@ struct hdmi_panel {
 };
 
 struct hdmi_panel *hdmi_panel_get(struct device *dev,
-		struct drm_connector *connector);
+		struct drm_connector *connector, struct hdmi_parser *parser);
 void hdmi_panel_put(struct hdmi_panel *hdmi_panel);
 
 #endif /* _HDMI_PANEL_H_ */
