@@ -129,6 +129,7 @@ def define_neo_la(t, v, lt=None):
             "CONFIG_DRM_MSM_REGISTER_LOGGING",
             "CONFIG_DISPLAY_BUILD",
             "CONFIG_THERMAL_OF",
+            "CONFIG_DEBUG_FS",
         ],
         lunch_target = lt,
 )
