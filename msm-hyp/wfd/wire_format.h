@@ -7,6 +7,10 @@
 #ifndef _WIRE_FORMAT_H
 #define _WIRE_FORMAT_H
 
+#ifndef u8
+#define u8 uint8_t
+#endif
+
 #ifndef u64
 #define u64 uint64_t
 #endif
@@ -27,38 +31,38 @@
 #define uintPtr unsigned long long
 #endif
 
-#define WIRE_FORMAT_MAGIC				\
-	(((unsigned int)'d' << 24) | ((unsigned int)'i'<<16)|	\
-	((unsigned int)'s' << 8) | ((unsigned int)'p'))
+#define WIRE_FORMAT_MAGIC                                 \
+	(((unsigned int)'d'<<24)|((unsigned int)'i'<<16)|  \
+	((unsigned int)'s'<<8)|((unsigned int)'p'))
 
-#define WIRE_FORMAT_VERSION				0x04
+#define WIRE_FORMAT_VERSION                        0x04
 
-#define DISPLAY_SHIM_OPENWFD_CMD_MAJOR_REVISION		0x00000001
-#define DISPLAY_SHIM_OPENWFD_CMD_MINOR_REVISION		0x00000000
-#define DISPLAY_SHIM_OPENWFD_CMD_SUB_REVISION		0x00000000
-#define DISPLAY_SHIM_OPENWFD_CMD_VERSION			\
-	(WIRE_FORMAT_VERSION				<< 24 |	\
-	DISPLAY_SHIM_OPENWFD_CMD_MAJOR_REVISION		<< 16 |	\
-	DISPLAY_SHIM_OPENWFD_CMD_MINOR_REVISION		<<  8 |	\
-	DISPLAY_SHIM_OPENWFD_CMD_SUB_REVISION)
+#define DISPLAY_SHIM_OPENWFD_CMD_MAJOR_REVISION    0x00000001
+#define DISPLAY_SHIM_OPENWFD_CMD_MINOR_REVISION    0x00000000
+#define DISPLAY_SHIM_OPENWFD_CMD_SUB_REVISION      0x00000000
+#define DISPLAY_SHIM_OPENWFD_CMD_VERSION                          \
+	((u32)WIRE_FORMAT_VERSION                        << 24 |  \
+	(u32)DISPLAY_SHIM_OPENWFD_CMD_MAJOR_REVISION     << 16 |  \
+	(u32)DISPLAY_SHIM_OPENWFD_CMD_MINOR_REVISION     <<  8 |  \
+	(u32)DISPLAY_SHIM_OPENWFD_CMD_SUB_REVISION)
 
-#define DISPLAY_SHIM_EVENT_MAJOR_REVISION		0x00000001
-#define DISPLAY_SHIM_EVENT_MINOR_REVISION		0x00000000
-#define DISPLAY_SHIM_EVENT_SUB_REVISION			0x00000000
-#define DISPLAY_SHIM_EVENT_VERSION				\
-	(WIRE_FORMAT_VERSION				<< 24 |	\
-	DISPLAY_SHIM_EVENT_MAJOR_REVISION		<< 16 |	\
-	DISPLAY_SHIM_EVENT_MINOR_REVISION		<<  8 |	\
-	DISPLAY_SHIM_EVENT_SUB_REVISION)
+#define DISPLAY_SHIM_EVENT_MAJOR_REVISION          0x00000001
+#define DISPLAY_SHIM_EVENT_MINOR_REVISION          0x00000000
+#define DISPLAY_SHIM_EVENT_SUB_REVISION            0x00000000
+#define DISPLAY_SHIM_EVENT_VERSION                                \
+	((u32)WIRE_FORMAT_VERSION                        << 24 |  \
+	(u32)DISPLAY_SHIM_EVENT_MAJOR_REVISION           << 16 |  \
+	(u32)DISPLAY_SHIM_EVENT_MINOR_REVISION           <<  8 |  \
+	(u32)DISPLAY_SHIM_EVENT_SUB_REVISION)
 
-#define BIT_SHFT(_x_)	(u32)(1<<(_x_))
+#define BIT_SHFT(_x_)  ((u32)(1<<(_x_)))
 
-#define COMMIT_ASYNC_FLAG        0x1
-#define COMMIT_SEND_EVENT_FLAG   0x2
+#define COMMIT_ASYNC_FLAG           0x1
+#define COMMIT_SEND_EVENT_FLAG      0x2
 
-#define CREATE_IMAGE_FROM_HANDLE 0x1
+#define CREATE_IMAGE_FROM_HANDLE    0x1
 
-#define WIRE_RESP_NOACK_FLAG     0x1
+#define WIRE_RESP_NOACK_FLAG        0x1
 
 #define WFD_IGC_TBL_LEN             256
 #define WFD_GC_TBL_LEN              512
@@ -83,7 +87,7 @@ struct wire_header {
 	enum payload_types payload_type;
 	u32 id;
 	u32 payload_size;
-	i64 timestamp;
+	u64 timestamp;
 	u32 flags;
 };
 
@@ -117,22 +121,23 @@ enum display_types_bitwise {
  * ---------------------------------------------------------------------------
  */
 
-#define MAX_OPENWFD_CMDS			1
-#define MAX_DEVICE_CNT				2
-#define MAX_CREATE_DEVICE_ATTRIBS		5
-#define MAX_DEVICE_ATTRIBS			5
-#define MAX_DISPLAY_COMP_INFO_BUFFER_SIZE	1024
-#define MAX_PORT_CNT				8
-#define MAX_CREATE_PORT_ATTRIBS			20
-#define MAX_PORT_MODES_CNT			10
-#define MAX_PORT_ATTRIBS			40
-#define MAX_PIPELINE_CNT			12
-#define MAX_CREATE_PIPELINE_ATTRIBS		20
-#define MAX_PIPELINE_ATTRIBS			30
-#define MAX_BUFS_CNT				32
-#define MAX_CREATE_SOURCE_ATTRIBS		3
-#define MAX_PLANES_CNT				4
-#define ENABLE_BATCH_COMMIT			1
+#define MAX_OPENWFD_CMDS                   1
+#define MAX_DEVICE_CNT                     2
+#define MAX_CREATE_DEVICE_ATTRIBS          5
+#define MAX_DEVICE_ATTRIBS                 5
+#define MAX_DISPLAY_COMP_INFO_BUFFER_SIZE  1024
+#define MAX_PORT_CNT                       8
+#define MAX_CREATE_PORT_ATTRIBS            20
+#define MAX_PORT_MODES_CNT                 10
+/* 4 x misr is supported in host side which changes it to 320 */
+#define MAX_PORT_ATTRIBS                   320
+#define MAX_PIPELINE_CNT                   12
+#define MAX_CREATE_PIPELINE_ATTRIBS        20
+#define MAX_PIPELINE_ATTRIBS               30
+#define MAX_BUFS_CNT                       32
+#define MAX_CREATE_SOURCE_ATTRIBS          3
+#define MAX_PLANES_CNT                     4
+#define ENABLE_BATCH_COMMIT                1
 
 enum openwfd_cmd_type {
 	/* Device Commands */
@@ -260,6 +265,7 @@ union msg_get_device_attribi {
 
 	struct {
 		i32 val; /* WFDint */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_set_device_attribi {
@@ -270,7 +276,7 @@ union msg_set_device_attribi {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_get_device_attribiv {
@@ -282,6 +288,7 @@ union msg_get_device_attribiv {
 
 	struct {
 		i32 vals[MAX_DEVICE_ATTRIBS]; /* WFDint */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 
@@ -295,6 +302,7 @@ union msg_enumerate_ports {
 	struct {
 		u32 port_ids_cnt;
 		u32 port_ids[MAX_PORT_CNT];
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_create_port {
@@ -305,6 +313,7 @@ union msg_create_port {
 
 	struct {
 		u32 client_port_hdl; /* WFDPort */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_destroy_port {
@@ -314,7 +323,7 @@ union msg_destroy_port {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_get_port_modes {
@@ -327,6 +336,7 @@ union msg_get_port_modes {
 	struct {
 		u32 modes_cnt;
 		u32 modes[MAX_PORT_MODES_CNT]; /* WFDPortMode */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_get_port_mode_attribi {
@@ -339,6 +349,7 @@ union msg_get_port_mode_attribi {
 
 	struct {
 		i32 val; /* WFDint */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #ifdef ENABLE_FLOAT_USAGE
@@ -352,6 +363,7 @@ union msg_get_port_mode_attribf {
 
 	struct {
 		float val; /* WFDfloat */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #endif
@@ -363,7 +375,7 @@ union msg_set_port_mode {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_get_current_port_mode {
@@ -374,6 +386,7 @@ union msg_get_current_port_mode {
 
 	struct {
 		u32 mode; /* WFDPortMode */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_get_port_attribi {
@@ -385,6 +398,7 @@ union msg_get_port_attribi {
 
 	struct {
 		i32 val; /* WFDint */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #ifdef ENABLE_FLOAT_USAGE
@@ -397,6 +411,7 @@ union msg_get_port_attribf {
 
 	struct {
 		float val; /* WFDfloat */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #endif
@@ -410,6 +425,7 @@ union msg_get_port_attribiv {
 
 	struct {
 		i32 vals[MAX_PORT_ATTRIBS]; /* WFDint */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #ifdef ENABLE_FLOAT_USAGE
@@ -423,6 +439,7 @@ union msg_get_port_attribfv {
 
 	struct {
 		float vals[MAX_PORT_ATTRIBS]; /* WFDfloat */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #endif
@@ -435,7 +452,7 @@ union msg_set_port_attribi {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #ifdef ENABLE_FLOAT_USAGE
@@ -448,7 +465,7 @@ union msg_set_port_attribf {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #endif
@@ -462,7 +479,7 @@ union msg_set_port_attribiv {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #ifdef ENABLE_FLOAT_USAGE
@@ -476,7 +493,7 @@ union msg_set_port_attribfv {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #endif
@@ -498,7 +515,7 @@ union msg_bind_pipeline_to_port {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 
@@ -512,6 +529,7 @@ union msg_enumerate_pipelines {
 	struct {
 		u32 pipe_ids_cnt;
 		u32 pipe_ids[MAX_PIPELINE_CNT];
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_create_pipeline {
@@ -522,6 +540,7 @@ union msg_create_pipeline {
 
 	struct {
 		u32 client_pipe_hdl; /* WFDPipeline */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_destroy_pipeline {
@@ -531,7 +550,7 @@ union msg_destroy_pipeline {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_get_pipeline_attribi {
@@ -543,6 +562,7 @@ union msg_get_pipeline_attribi {
 
 	struct {
 		i32 val; /* WFDint */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #ifdef ENABLE_FLOAT_USAGE
@@ -555,6 +575,7 @@ union msg_get_pipeline_attribf {
 
 	struct {
 		float val; /* WFDfloat */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #endif
@@ -568,6 +589,7 @@ union msg_get_pipeline_attribiv {
 
 	struct {
 		i32 vals[MAX_PIPELINE_ATTRIBS]; /* WFDint */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #ifdef ENABLE_FLOAT_USAGE
@@ -581,6 +603,7 @@ union msg_get_pipeline_attribfv {
 
 	struct {
 		float vals[MAX_PIPELINE_ATTRIBS]; /* WFDfloat */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #endif
@@ -593,7 +616,7 @@ union msg_set_pipeline_attribi {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #ifdef ENABLE_FLOAT_USAGE
@@ -606,7 +629,7 @@ union msg_set_pipeline_attribf {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #endif
@@ -620,7 +643,7 @@ union msg_set_pipeline_attribiv {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #ifdef ENABLE_FLOAT_USAGE
@@ -634,7 +657,7 @@ union msg_set_pipeline_attribfv {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 #endif
@@ -654,7 +677,7 @@ union msg_bind_source_to_pipeline {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 union msg_get_pipeline_layer_order {
@@ -666,6 +689,7 @@ union msg_get_pipeline_layer_order {
 
 	struct {
 		i32 order; /* WFDint */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 
@@ -762,6 +786,7 @@ union msg_create_source_from_image {
 
 	struct {
 		u64 source; /* WFDSource */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 
@@ -772,7 +797,7 @@ union msg_destroy_source {
 	} req;
 
 	struct {
-		/* void */
+		u32 sts; /* WFDErrorCode */
 	} resp;
 };
 
