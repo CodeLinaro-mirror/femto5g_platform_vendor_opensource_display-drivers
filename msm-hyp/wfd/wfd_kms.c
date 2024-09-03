@@ -121,12 +121,14 @@
 #define pr_fmt(fmt)    "[drm] WFD_KMS [%s:%d] " fmt, __func__, __LINE__
 
 #include <linux/sort.h>
+#include <linux/habmm.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include "msm_hyp_trace.h"
 #include "msm_hyp_utils.h"
 #include "wfd_kms.h"
+#include "user_os_utils.h"
 
 #define MASTER_PIPE_IDX        0
 #define CLIENT_ID_LEN_IN_CHARS 5
@@ -151,6 +153,22 @@
 
 #define CHECK_LAYER_BOUNDS(offset, size, max_size) \
 	(((size) > (max_size)) || ((offset) > ((max_size) - (size))))
+
+struct color_buffer  color_buffer[MAX_PIPELINES_GVM];
+
+static void get_available_color_buff(int * index)
+{
+	int i;
+
+	for (i = 0; i < MAX_PIPELINES_GVM; i++)
+	{
+		if (!color_buffer[i].valid)
+		{
+			*index = i;
+			break;
+		}
+	}
+}
 
 struct wfd_kms_rect {
 	u16 x;
@@ -221,6 +239,15 @@ static struct limit_constraints constraints_table[] = {
 			{"limit_value",  5120},
 		}
 	},
+};
+
+static struct hsic_parameter_convertion hsic_parameter_tab[PA_HSIC_MAX] = {
+	/* user_min, user_max, reg_min, reg_max, mask, value_max */
+	{-180, 180, -1536, 1536, 0xFFF, 4096}, /* HUE, s12 */
+	{-100, 100, -128, 127, 0xFF, 256}, /* SAT, s8 */
+	{-100, 100, -128, 127, 0xFF, 256}, /* VAL, s8 */
+	{-100, 100, -128, 127, 0xFF, 256}, /* CONT, s8 */
+	{0, 100, 0, 255, 0xFF, 256}, /* SAT_THRESHOLD, u8 (sat_adjust: [15:8]-thres, [7:0]-sat) */
 };
 
 static const char * const disp_order_str[] = {
@@ -469,6 +496,56 @@ static void wfd_kms_handle_hpd_event(union event_info *info, void *params)
 	} /* Loop to match device handle */
 }
 
+
+struct wire_context {
+	struct list_head head;
+	struct user_os_utils_init_info init_info;
+	bool wire_isr_enable;
+	bool wire_isr_stop;
+	struct list_head _cb_info_ctx;
+	spinlock_t _event_cb_lock;
+	struct task_struct *listener_thread;
+	bool support_batch_mode;
+};
+
+struct wire_commit {
+	struct wire_batch_packet *packet;
+	u32 alloc_size;
+	u32 size;
+};
+
+struct wire_device {
+	WFDDevice device;
+	struct wire_context *ctx;
+};
+
+struct wire_port {
+	WFDPort port;
+	struct wire_commit commit;
+};
+
+struct wire_pipeline {
+	WFDPipeline pipeline;
+	struct wire_port *port;
+};
+
+static void _wfd_kms_get_color_buff_idx(
+	WFDDevice	 device,
+	WFDPipeline  pipeline,
+	int*		 index)
+{
+	int i;
+
+	for (i = 0; i < MAX_PIPELINES_GVM; i++) {
+		if ((color_buffer[i].valid) &&
+			(color_buffer[i].device == device) &&
+			(color_buffer[i].pipeline == pipeline))	{
+			*index = i;
+			break;
+		}
+	}
+}
+
 static int _wfd_kms_parse_dt(struct device_node *node, u32 *client_id)
 {
 	int len = 0;
@@ -697,6 +774,246 @@ static bool _wfd_kms_plane_is_csc_matrix_changed(
 	return ret;
 }
 
+bool _wfd_kms_dma_igc_changed(
+		bool pre_en, bool cur_en,
+		struct drm_msm_igc_lut *pre_igc,
+		struct drm_msm_igc_lut *cur_igc,
+		WFD_PipelineDMAConfigBuffType *dma_config)
+{
+	int i = 0;
+	bool changed = false;
+
+	if (pre_en != cur_en)
+		changed = true;
+	else if (memcmp(pre_igc, cur_igc, sizeof(struct drm_msm_igc_lut)))
+		changed = true;
+
+	if (!changed)
+		return false;
+
+	dma_config->bIGCEnabled = cur_en ? WFD_TRUE : WFD_FALSE;
+
+	if (dma_config && cur_en)
+		for (i = 0; i < WFD_GAMMA_LUT_ENTRIES; i++) {
+			dma_config->uIGCLut[i] = cur_igc->c2[i];
+			pr_debug("IGC[%d] = %X -> %X\n", i, cur_igc->c0[i], dma_config->uIGCLut[i]);
+		}
+
+	return true;
+}
+
+bool _wfd_kms_dma_gc_changed(
+		bool pre_en, bool cur_en,
+		struct drm_msm_pgc_lut *pre_gc,
+		struct drm_msm_pgc_lut *cur_gc,
+		WFD_PipelineDMAConfigBuffType *dma_config)
+{
+	int i = 0;
+	int j = 0;
+	bool changed = false;
+
+	if (pre_en != cur_en)
+		changed = true;
+	else if (memcmp(pre_gc, cur_gc, sizeof(struct drm_msm_pgc_lut)))
+		changed = true;
+
+	if (!changed)
+		return false;
+
+	dma_config->bGCEnabled= cur_en ? WFD_TRUE : WFD_FALSE;
+
+	if (dma_config && cur_en)
+		for (i = 0; i < WFD_GAMMA_LUT_ENTRIES; i += 2, j++) {
+			dma_config->uGCLut[i] = (cur_gc->c2[j] & 0xFFFF);
+			dma_config->uGCLut[i+1] = (cur_gc->c2[j] >> 16);
+			pr_debug("GC[%d] = %X -> %X\n", i, cur_gc->c0[j], dma_config->uGCLut[i]);
+			pr_debug("GC[%d] = %X -> %X\n", i+1, cur_gc->c0[j], dma_config->uGCLut[i+1]);
+		}
+
+	return true;
+}
+
+bool _wfd_kms_plane_is_3d_gamut_changed(
+		bool pre_en, bool cur_en,
+		struct drm_msm_3d_gamut *pre_gamut,
+		struct drm_msm_3d_gamut *cur_gamut,
+		WFD_PipelineVIGConfigBuffType* gamut)
+{
+	int i, j;
+	int gamut_3d_sz = GAMUT_3D_MODE17_TBL_SZ;
+	bool changed = false;
+
+	if (pre_en != cur_en)
+		changed = true;
+	else if (memcmp(pre_gamut, cur_gamut, sizeof(struct drm_msm_3d_gamut)))
+		changed = true;
+
+	if (!changed)
+		return false;
+
+	gamut->bGamutEn = cur_en ? WFD_TRUE : WFD_FALSE;
+
+	if (gamut && cur_en) {
+		gamut->bGamutMapEn = cur_gamut->flags & GAMUT_3D_MAP_EN;
+		for (i = 0; i < GAMUT_3D_SCALE_OFF_TBL_NUM; i++) {
+			for (j = 0; j < GAMUT_3D_SCALE_OFF_SZ; j++) {
+				gamut->uNonUniformMapTableEntries[i][j] =
+					(WFDuint32)cur_gamut->scale_off[i][j];
+			}
+		}
+		changed = false;
+
+		if (cur_gamut->mode == GAMUT_3D_MODE_5)
+			gamut_3d_sz = GAMUT_3D_MODE5_TBL_SZ;
+		else if (cur_gamut->mode == GAMUT_3D_MODE_13)
+			gamut_3d_sz = GAMUT_3D_MODE13_TBL_SZ;
+
+		for (i = 0; i < WFD_WGM_TABLE_0_ENTRIES; i++) {
+			gamut->uGammutTable0Entries[0][i] = cur_gamut->col[0][i].c0;
+			gamut->uGammutTable0Entries[2][i] =
+							(cur_gamut->col[0][i].c2_c1) & 0XFFFF;
+			gamut->uGammutTable0Entries[1][i] =
+							(cur_gamut->col[0][i].c2_c1 >> 16);
+		}
+
+		for (i = 0; i < WFD_WGM_TABLE_1_ENTRIES; i++) {
+			gamut->uGammutTable1Entries[0][i] = cur_gamut->col[1][i].c0;
+			gamut->uGammutTable1Entries[2][i] =
+							(cur_gamut->col[1][i].c2_c1) & 0XFFFF;
+			gamut->uGammutTable1Entries[1][i] =
+							(cur_gamut->col[1][i].c2_c1 >> 16);
+		}
+
+		for (i = 0; i < WFD_WGM_TABLE_2_ENTRIES; i++) {
+			gamut->uGammutTable2Entries[0][i] = cur_gamut->col[2][i].c0;
+			gamut->uGammutTable2Entries[2][i] =
+							(cur_gamut->col[2][i].c2_c1) & 0XFFFF;
+			gamut->uGammutTable2Entries[1][i] =
+							(cur_gamut->col[2][i].c2_c1 >> 16);
+		}
+
+		for (i = 0; i < WFD_WGM_TABLE_3_ENTRIES; i++) {
+			gamut->uGammutTable3Entries[0][i] = cur_gamut->col[3][i].c0;
+			gamut->uGammutTable3Entries[2][i] =
+							(cur_gamut->col[3][i].c2_c1) & 0XFFFF;
+			gamut->uGammutTable3Entries[1][i] =
+							(cur_gamut->col[3][i].c2_c1 >> 16);
+		}
+	}
+
+	return true;
+}
+
+bool _wfd_kms_plane_is_dma_csc_changed(
+		bool pre_en, bool cur_en,
+		struct sde_drm_csc_v1 *pre_csc,
+		struct sde_drm_csc_v1 *cur_csc,
+		WFD_PipelineDMAConfigBuffType *dma_config)
+{
+	int i = 0;
+	bool changed = false;
+
+	if (pre_en != cur_en)
+		changed = true;
+	else if (memcmp(pre_csc, cur_csc, sizeof(struct sde_drm_csc_v1)))
+		changed = true;
+
+	if (!changed)
+		return false;
+
+	dma_config->bCSCEnabled = cur_en ? WFD_TRUE : WFD_FALSE;
+	if (dma_config && cur_en)
+		for (i = 0; i < SDE_CSC_MATRIX_COEFF_SIZE; i++) {
+			dma_config->uCscMatrix[i / 3][i % 3] = cur_csc->ctm_coeff[i] >> 16;
+			pr_debug("csc[%d][%d] = %d", i / 3, i % 3, (cur_csc->ctm_coeff[i]) >> 16);
+		}
+
+	return true;
+}
+
+
+void _wfd_kms_plane_is_color_changed(
+		struct msm_hyp_plane_state *pre,
+		struct msm_hyp_plane_state *cur,
+		struct wfd_plane_info_priv* priv)
+{
+	int index = -1;
+	int buff_idx = 0;
+	int export_id = 0;
+	bool gc_changed = false;
+	bool igc_changed = false;
+	bool csc_changed = false;
+	WFD_PipelineVIGConfigBuffType* gamut	   = NULL;
+	WFD_PipelineDMAConfigBuffType* dma_config  = NULL;
+	WFD_PipelineColorConfigBuffType *color_cfg = NULL;
+
+	_wfd_kms_get_color_buff_idx(priv->wfd_device,
+		priv->wfd_pipeline,
+		&index);
+
+	if (index < 0) {
+		pr_err("Unable to find color buffer for this pipe");
+	}
+	else {
+		for (buff_idx = 0; buff_idx < 2; buff_idx++) {
+			if (color_buffer[index].buffer_info[buff_idx].valid) {
+				color_cfg = (WFD_PipelineColorConfigBuffType *)
+						color_buffer[index].buffer_info[buff_idx].va;
+				export_id =
+					color_buffer[index].buffer_info[buff_idx].export_id;
+				break;
+			}
+		}
+	}
+
+	if (!color_cfg) {
+		pr_err("VA of buffer is NULL");
+		return;
+	} else {
+		if (priv->base.vig_pipe) {
+			gamut = &(color_cfg->sVigConfigType);
+			if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_GAMUT &&
+				_wfd_kms_plane_is_3d_gamut_changed(
+					pre->gamut_en, cur->gamut_en,
+					&pre->gamut, &cur->gamut, gamut)) {
+				pr_debug("3D LUT updated");
+				wfdSetPipelineAttribiv_User(
+					priv->wfd_device,
+					priv->wfd_pipeline,
+					WFD_PIPELINE_COLOR_BLOCKS_CONFIG,
+					1,
+					&export_id);
+			}
+		} else {
+			dma_config = &(color_cfg->sDMAConfig);
+			if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_CSC)
+				csc_changed = _wfd_kms_plane_is_dma_csc_changed(
+							pre->dma_csc_en, cur->dma_csc_en,
+							&pre->dma_csc, &cur->dma_csc, dma_config);
+			if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_GC)
+				gc_changed = _wfd_kms_dma_gc_changed(
+							pre->dma_gc_en, cur->dma_gc_en,
+							&pre->dma_gc, &cur->dma_gc, dma_config);
+			if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_IGC)
+				igc_changed = _wfd_kms_dma_igc_changed(
+							pre->dma_igc_en, cur->dma_igc_en,
+							&pre->dma_igc, &cur->dma_igc, dma_config);
+			if (csc_changed || gc_changed || igc_changed) {
+				pr_debug("1bGCEnabled %d", dma_config->bGCEnabled);
+				pr_debug("1bIGCEnabled %d", dma_config->bIGCEnabled);
+				pr_debug("1bCSCEnabled %d", dma_config->bCSCEnabled);
+				wfdSetPipelineAttribiv_User(
+					priv->wfd_device,
+					priv->wfd_pipeline,
+					WFD_PIPELINE_COLOR_BLOCKS_CONFIG,
+					1,
+					&export_id);
+			}
+		}
+	}
+
+}
+
 static int _wfd_kms_format_to_openwfd_format(uint32_t format,
 		uint64_t modifier, WFDint *wfd_format, WFDint *wfd_usage)
 {
@@ -856,12 +1173,21 @@ static int wfd_kms_get_framebuffer_info(struct msm_hyp_kms *kms,
 }
 
 static void _wfd_kms_pipeline_init(struct wfd_kms *kms,
-		WFDDevice dev, WFDPort port, int port_idx)
+		WFDDevice dev, WFDPort port, int port_idx, struct device *device)
 {
 	WFDint pipe_ids[MAX_PIPELINE_ATTRIBS];
 	WFDint pipe_id;
+	WFDint color_buf[WIRE_HOST_MAX_COLOR_BUFF] = {0};
 	WFDPipeline pipeline, master_pipeline;
 	int i, j, num_pipeline, pipeline_idx;
+	dma_addr_t dma_handle;
+	int32_t *va = NULL;
+	int buff_len = 32768;
+	struct user_os_utils_mem_info mem;
+	int rc = 0;
+	struct wire_device *wire_dev = dev;
+	void *wire_ctx = wire_dev->ctx->init_info.context;
+	int color_buf_idx = -1;
 
 	num_pipeline = wfdGetPortAttribi_User(
 			dev,
@@ -909,6 +1235,57 @@ static void _wfd_kms_pipeline_init(struct wfd_kms *kms,
 
 			if (j == MASTER_PIPE_IDX)
 				master_pipeline = pipeline;
+
+			color_buf[0] = 0;
+			color_buf[1] = 0;
+
+			color_buf_idx = -1;
+			get_available_color_buff(&color_buf_idx);
+
+			for (i = 0; i < WIRE_HOST_MAX_COLOR_BUFF; i++) {
+
+				va = dma_alloc_coherent(device, buff_len,
+							&dma_handle, GFP_KERNEL);
+				if (!va) {
+					pr_err("Memory allocation failed");
+				} else {
+					pr_debug("VA for buffer allocation is %p", va);
+					memset(va, 0x42, buff_len);
+					mem.size = buff_len;
+					mem.buffer = va;
+					mem.shmem_type = HAB_EXPORT_ID;
+
+					rc = user_os_utils_shmem_export(wire_ctx, &mem, HABMM_EXP_MEM_TYPE_DMA);
+					if (rc) {
+						pr_err("Export failed");
+					} else {
+						color_buf[i] = (i32)mem.shmem_id;
+						pr_debug("Export passed for %d", mem.shmem_id);
+					}
+				}
+
+				if (color_buf_idx >= 0) {
+					pr_debug("Filling data at location %d", color_buf_idx);
+					color_buffer[color_buf_idx].valid = 1;
+					color_buffer[color_buf_idx].device = dev;
+					color_buffer[color_buf_idx].pipeline = pipeline;
+					color_buffer[color_buf_idx].buffer_info[i].valid = 1;
+					color_buffer[color_buf_idx].buffer_info[i].va = va;
+					color_buffer[color_buf_idx].buffer_info[i].export_id = color_buf[i];
+					color_buffer[color_buf_idx].buffer_info[i].dmabuf_handle =
+								&dma_handle;
+				} else {
+					pr_err("Color buffer not available");
+				}
+			}
+			wfdSetPipelineAttribiv_User(
+					dev,
+					pipeline,
+					WFD_PIPELINE_COLOR_CONFIG_BUFFER,
+					WIRE_HOST_MAX_COLOR_BUFF,
+					color_buf);
+			pr_info("export ID for buffer on GVM 0 = %d", color_buf[0]);
+			pr_info("export ID for buffer on GVM 1 = %d", color_buf[1]);
 		}
 	}
 }
@@ -924,7 +1301,7 @@ static int wfd_kms_port_cmp(const void *a, const void *b)
 	return rc;
 }
 
-static int _wfd_kms_hw_init(struct wfd_kms *kms)
+static int _wfd_kms_hw_init(struct wfd_kms *kms, struct device *dev)
 {
 	WFDint wfd_ids[MAX_DEVICE_CNT];
 	WFDint num_dev = 0;
@@ -1004,7 +1381,7 @@ static int _wfd_kms_hw_init(struct wfd_kms *kms)
 		kms->port_cnt++;
 
 		 _wfd_kms_pipeline_init(kms, kms->port_devs[port_idx],
-				kms->ports[port_idx], port_idx);
+				kms->ports[port_idx], port_idx, dev);
 	}
 
 	return 0;
@@ -1322,6 +1699,140 @@ static void _wfd_kms_set_crtc_limit(struct wfd_kms *wfd_kms,
 	crtc_priv->base.extra_caps = crtc_priv->extra_info.data;
 }
 
+static bool _wfd_kms_crtc_is_hsic_changed(struct msm_hyp_crtc_state *pre,
+		struct msm_hyp_crtc_state *cur)
+{
+	bool ret = false;
+
+	if (pre && cur) {
+		if ((cur->cp_hsic.pa_hsic.flags != pre->cp_hsic.pa_hsic.flags) ||
+			(cur->cp_hsic.pa_hsic.contrast != pre->cp_hsic.pa_hsic.contrast) ||
+			(cur->cp_hsic.pa_hsic.hue != pre->cp_hsic.pa_hsic.hue) ||
+			(cur->cp_hsic.pa_hsic.saturation != pre->cp_hsic.pa_hsic.saturation) ||
+			(cur->cp_hsic.pa_hsic.value != pre->cp_hsic.pa_hsic.value)) {
+			ret = true;
+		}
+	}
+	return ret;
+}
+
+/* It's called by wfd_kms_convert_hsic to round the out_val of HSIC */
+static int hsic_round(int out_val, int temp, u32 hsic_type)
+{
+	int round = 0;
+
+	if (out_val >= 0) {
+		temp = temp * hsic_parameter_tab[hsic_type].user_max * 10 /
+				hsic_parameter_tab[hsic_type].reg_max;
+		if (temp - out_val * 10 >= 5)
+			round = 1;
+	} else {
+		temp = (hsic_parameter_tab[hsic_type].val_max - temp) *
+				hsic_parameter_tab[hsic_type].user_min * 10 /
+				hsic_parameter_tab[hsic_type].reg_min;
+		if (temp + out_val * 10 >= 5)
+			round = 1;
+	}
+
+	return round;
+}
+
+/*
+ * SDM already transfer hsic parameters from user to reg, but pvm host has its
+ * own hsic range from user to reg, then convert the reg range of GVM to user
+ * range of PVM.
+ * Todo, Need to reconsider it if SDM is not used.
+ */
+static int wfd_kms_convert_hsic(u32 input, u32 hsic_type)
+{
+	int out_val = 0;
+	int temp = 0;
+
+	if (hsic_type == PA_HSIC_SATURATION_THRESHOLD) {
+		temp = (input >> 8) & hsic_parameter_tab[PA_HSIC_SATURATION_THRESHOLD].hsic_mask;
+		out_val = temp * hsic_parameter_tab[hsic_type].user_max /
+				hsic_parameter_tab[hsic_type].reg_max;
+		out_val += hsic_round(out_val, temp, hsic_type);
+	} else {
+		temp = input & hsic_parameter_tab[hsic_type].hsic_mask;
+		/* positive */
+		if (temp < hsic_parameter_tab[hsic_type].val_max / 2) {
+			out_val = temp * hsic_parameter_tab[hsic_type].user_max /
+					hsic_parameter_tab[hsic_type].reg_max;
+			out_val += hsic_round(out_val, temp, hsic_type);
+		} else { /* negative */
+			out_val = -((hsic_parameter_tab[hsic_type].val_max - temp) *
+					hsic_parameter_tab[hsic_type].user_min /
+					hsic_parameter_tab[hsic_type].reg_min);
+			out_val -= hsic_round(out_val, temp, hsic_type);
+		}
+	}
+
+	return out_val;
+}
+
+static void wfd_kms_crtc_atomic_begin(struct drm_crtc *crtc,
+		struct drm_atomic_state *atomic_state)
+{
+	struct msm_hyp_crtc *c = to_msm_hyp_crtc(crtc);
+	struct wfd_crtc_info_priv *priv = container_of(c->info, struct wfd_crtc_info_priv, base);
+	struct drm_crtc_state *old_state;
+	struct msm_hyp_crtc_state *old_cstate, *new_cstate;
+	__u64 flags = 0;
+	struct WFDPortHISCSetType hsic;
+
+	/* PP feature, HSIC */
+	memset(&hsic, 0, sizeof(hsic));
+	old_state = drm_atomic_get_old_crtc_state(atomic_state, crtc);
+	old_cstate = to_msm_hyp_crtc_state(old_state);
+	new_cstate = to_msm_hyp_crtc_state(crtc->state);
+
+	if (_wfd_kms_crtc_is_hsic_changed(old_cstate, new_cstate)) {
+		flags = new_cstate->cp_hsic.pa_hsic.flags;
+		if (flags & PA_HSIC_HUE_ENABLE)
+			hsic.hueLevel = wfd_kms_convert_hsic(
+					new_cstate->cp_hsic.pa_hsic.hue,
+					PA_HSIC_HUE);
+		if (flags & PA_HSIC_CONT_ENABLE)
+			hsic.contrastLevel = wfd_kms_convert_hsic(
+					new_cstate->cp_hsic.pa_hsic.contrast,
+					PA_HSIC_CONTRAST);
+		if (flags & PA_HSIC_VAL_ENABLE)
+			hsic.intensityLevel = wfd_kms_convert_hsic(
+					new_cstate->cp_hsic.pa_hsic.value,
+					PA_HSIC_VALUE);
+		if (flags & PA_HSIC_SAT_ENABLE) {
+			hsic.saturationLevel = wfd_kms_convert_hsic(
+					new_cstate->cp_hsic.pa_hsic.saturation,
+					PA_HSIC_SATURATION);
+			hsic.satThreshold = wfd_kms_convert_hsic(
+					new_cstate->cp_hsic.pa_hsic.saturation,
+					PA_HSIC_SATURATION_THRESHOLD);
+		}
+
+		if (flags & (PA_HSIC_HUE_ENABLE |
+			PA_HSIC_SAT_ENABLE |
+			PA_HSIC_VAL_ENABLE |
+			PA_HSIC_CONT_ENABLE))
+			hsic.enabled = true;
+
+		pr_debug("Set HSIC: enable:%d, h:%d, s:%d, v:%d, c:%d, s_t:%d\n",
+			hsic.enabled, hsic.hueLevel, hsic.saturationLevel,
+			hsic.intensityLevel, hsic.contrastLevel, hsic.satThreshold);
+
+		wfdSetPortAttribiv_User(
+			priv->wfd_device,
+			priv->wfd_port,
+			WFD_PORT_PA_HSIC,
+			6,
+			(WFDint *)&hsic);
+	}
+}
+
+static struct drm_crtc_helper_funcs wfd_crtc_helper_funcs = {
+	.atomic_begin = wfd_kms_crtc_atomic_begin,
+};
+
 static int wfd_kms_get_crtc_infos(struct msm_hyp_kms *kms,
 		struct msm_hyp_crtc_info **crtc_infos,
 		int *crtc_num)
@@ -1366,13 +1877,14 @@ static int wfd_kms_get_crtc_infos(struct msm_hyp_kms *kms,
 		priv->base.max_mdp_clk = 412500000LL;
 		priv->base.qseed_type = "qseed3";
 		priv->base.smart_dma_rev = "smart_dma_v2p5";
-		priv->base.has_hdr = false;
+		priv->base.has_hdr = true;
 		priv->base.max_bandwidth_low = 9600000000LL;
 		priv->base.max_bandwidth_high = 9600000000LL;
 		priv->base.has_src_split = true;
 
 		_wfd_kms_set_crtc_limit(wfd_kms, priv);
 
+		priv->base.crtc_funcs = &wfd_crtc_helper_funcs;
 		crtc_infos[i] = &priv->base;
 	}
 
@@ -1527,6 +2039,8 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 			color_space);
 	}
 
+	_wfd_kms_plane_is_color_changed(old_pstate, new_pstate, priv);
+
 	if (old_pstate->blend_op != new_pstate->blend_op || !priv->committed) {
 		switch (new_pstate->blend_op) {
 		case SDE_DRM_BLEND_OP_NOT_DEFINED:
@@ -1553,6 +2067,9 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 			WFD_PIPELINE_TRANSPARENCY_ENABLE,
 			trans_val);
 	}
+
+	// All updates have been sent to host, clear dirty flags
+	new_pstate->dirty_flags = 0;
 
 	priv->committed = true;
 }
@@ -1809,6 +2326,9 @@ static int wfd_kms_get_port_plane_infos(struct msm_hyp_kms *kms,
 
 		if (priv->wfd_type == WFD_QDI_LAYER_OVERLAY)
 			priv->base.support_csc = true;
+
+		if (priv->base.support_csc && priv->base.support_scale)
+			priv->base.vig_pipe = true;
 
 		master_idx = wfd_kms->master_idx[port_idx][i];
 		/* overwrite value for virtual pipeline */
@@ -2199,7 +2719,7 @@ static int wfd_kms_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
-	ret = _wfd_kms_hw_init(kms);
+	ret = _wfd_kms_hw_init(kms, dev);
 	if (ret)
 		return ret;
 
@@ -2224,10 +2744,43 @@ static int wfd_kms_remove(struct platform_device *pdev)
 {
 	struct wfd_kms *kms = platform_get_drvdata(pdev);
 	int i, j;
+	int index = -1;
+	int buff_idx = 0;
+	struct wire_device *wire_dev = NULL;
+	dma_addr_t *dmabuf_handle = NULL;
+	int export_id;
+	void *handle = NULL;
+	struct user_os_utils_mem_info mem = { 0 };
 
 	for (i = 0; i < kms->port_cnt; i++) {
-		for (j = 0; j < kms->pipeline_cnt[i]; j++)
+		for (j = 0; j < kms->pipeline_cnt[i]; j++) {
+			wire_dev = kms->port_devs[i];
+			if (wire_dev)
+				handle = wire_dev->ctx->init_info.context;
+			wfdSetPipelineAttribiv_User(kms->port_devs[i],kms->pipelines[i][j],
+				WFD_PIPELINE_COLOR_CONFIG_CLEAR, 1, &i);
 			wfdDestroyPipeline_User(kms->port_devs[i], kms->pipelines[i][j]);
+			// unexport the buffers
+			mem.shmem_type = HAB_EXPORT_ID;
+			// Get export id
+			_wfd_kms_get_color_buff_idx(kms->port_devs[i], kms->pipelines[i][j], &index);
+			if (index < 0) {
+				pr_err("Unable to find color buffer for this pipe");
+			} else {
+				for (buff_idx = 0; buff_idx < 2; buff_idx++) {
+					if (color_buffer[index].buffer_info[buff_idx].valid) {
+						dmabuf_handle = color_buffer[index].buffer_info[buff_idx].dmabuf_handle;
+						export_id = color_buffer[index].buffer_info[buff_idx].export_id;
+					}
+				}
+			}
+			mem.shmem_id = export_id;
+			if (user_os_utils_shmem_unexport(handle, &mem, 0)) {
+				pr_err("Failed to unexport shmem buffer");
+			} else {
+				pr_debug("passed to unexport shmem buffer");
+			}
+		}
 		wfdDestroyPort_User(kms->port_devs[i], kms->ports[i]);
 	}
 
