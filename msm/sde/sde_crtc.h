@@ -120,6 +120,7 @@ struct sde_crtc_retire_event {
  * @hw_ds:	DS HW driver context
  * @encoder:	Encoder attached to this lm & ctl
  * @mixer_op_mode: mixer blending operation mode
+ * @is_lb_mixer: True for mixers used in cac first pass
  */
 struct sde_crtc_mixer {
 	struct sde_hw_mixer *hw_lm;
@@ -128,6 +129,7 @@ struct sde_crtc_mixer {
 	struct sde_hw_ds *hw_ds;
 	struct drm_encoder *encoder;
 	u32 mixer_op_mode;
+	bool is_lb_mixer;
 };
 
 /**
@@ -568,6 +570,11 @@ struct sde_line_insertion_param {
  * @cont_splash_populated: State was populated as part of cont. splash
  * @param: sde line insertion parameters
  * @hwfence_in_fences_set: input hw fences are configured for the commit
+ * @is_loopback_mode: boolean variable to indicate if crtc is running in loopback mode
+ * @in_loopback_transition: boolean variable to indicate if crtc is transitioning in or out
+				of loopback mode
+ * @cac_mixer_roi: stores the mixer width and height for loopback mixers in crtc
+ * @num_prim_mixers: number of mixers driving the primary display in loopback usecase
  */
 struct sde_crtc_state {
 	struct drm_crtc_state base;
@@ -610,6 +617,10 @@ struct sde_crtc_state {
 	bool cont_splash_populated;
 	struct sde_line_insertion_param line_insertion;
 	bool hwfence_in_fences_set;
+	bool is_loopback_mode;
+	bool in_loopback_transition;
+	struct sde_io_res cac_mixer_roi[MAX_MIXERS_PER_CRTC];
+	uint32_t num_prim_mixers;
 };
 
 enum sde_crtc_irq_state {
@@ -985,6 +996,41 @@ static inline bool sde_crtc_atomic_check_has_modeset(
 	return (crtc_state && drm_atomic_crtc_needs_modeset(crtc_state));
 }
 
+static inline bool sde_crtc_state_in_lb_mode(struct drm_crtc_state *state)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+	struct drm_connector_list_iter conn_iter;
+
+	if (!state || !state->crtc)
+		return false;
+
+	drm_connector_list_iter_begin(state->crtc->dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		if ((state->connector_mask) & drm_connector_mask(conn)) {
+			sde_conn =  to_sde_connector(conn);
+			if (sde_conn->is_lb_conn)
+				return true;
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	return false;
+}
+
+/**
+ * sde_crtc_in_lb_transition - Checks if crtc is transitioning from loopback cac
+ *				to cac disable or vice-versa
+ * @old_state: pointer to old crtc state
+ * @new_state: pointer to new crtc state
+ */
+static inline bool sde_crtc_in_lb_transition(struct drm_crtc_state *old_state,
+		struct drm_crtc_state *new_state)
+{
+	return (sde_crtc_state_in_lb_mode(old_state) !=
+			sde_crtc_state_in_lb_mode(new_state));
+}
+
 static inline bool sde_crtc_state_in_clone_mode(struct drm_encoder *encoder,
 	struct drm_crtc_state *state)
 {
@@ -1241,4 +1287,10 @@ void sde_crtc_mdnie_art_event_notify(struct drm_crtc *crtc);
  * @crtc_state: Pointer to DRM crtc state object
  */
 void sde_crtc_force_async_mode(struct drm_encoder *enc, struct drm_crtc_state *crtc_state);
+
+/**
+ * sde_get_primary_ctl_in_lb - Returns primary ctl for loopback encoder
+ * @crtc_state: Pointer to DRM crtc state object
+ */
+struct sde_hw_ctl *sde_get_primary_ctl_in_lb(struct drm_crtc_state *crtc_state);
 #endif /* _SDE_CRTC_H_ */
