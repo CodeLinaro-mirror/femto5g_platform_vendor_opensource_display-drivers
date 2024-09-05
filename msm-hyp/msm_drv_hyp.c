@@ -826,6 +826,17 @@ static int _msm_hyp_connector_encoder_init(struct drm_device *ddev,
 	return 0;
 }
 
+static void msm_hyp_crtc_atomic_begin(struct drm_crtc *crtc,
+		struct drm_atomic_state *old_state)
+{
+	struct drm_device *dev = crtc->dev;
+	struct msm_hyp_drm_private *priv = dev->dev_private;
+	struct msm_hyp_kms *kms = priv->kms;
+
+	if (kms->funcs && kms->funcs->crtc_atomic_begin)
+		kms->funcs->crtc_atomic_begin(kms, crtc, old_state);
+}
+
 static void msm_hyp_crtc_atomic_enable(struct drm_crtc *crtc,
 		struct drm_atomic_state *old_state)
 {
@@ -839,6 +850,7 @@ static void msm_hyp_crtc_atomic_disable(struct drm_crtc *crtc,
 }
 
 const struct drm_crtc_helper_funcs msm_hyp_crtc_helper = {
+	.atomic_begin = msm_hyp_crtc_atomic_begin,
 	.atomic_enable = msm_hyp_crtc_atomic_enable,
 	.atomic_disable = msm_hyp_crtc_atomic_disable,
 };

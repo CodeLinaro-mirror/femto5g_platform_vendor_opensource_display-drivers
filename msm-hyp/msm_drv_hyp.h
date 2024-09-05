@@ -288,7 +288,9 @@ struct msm_hyp_kms_funcs {
 			struct drm_crtc *crtc);
 	void (*free_connector_port_modes)(
 			struct msm_hyp_connector *c_conn);
-
+	void (*crtc_atomic_begin)(struct msm_hyp_kms *kms,
+			struct drm_crtc *crtc,
+			struct drm_atomic_state *atomic_state);
 };
 
 struct msm_hyp_kms {
