@@ -1745,7 +1745,8 @@ static int wfd_kms_convert_hsic(u32 input, u32 hsic_type)
 	return out_val;
 }
 
-static void wfd_kms_crtc_atomic_begin(struct drm_crtc *crtc,
+static void wfd_kms_crtc_atomic_begin(struct msm_hyp_kms *kms,
+		struct drm_crtc *crtc,
 		struct drm_atomic_state *atomic_state)
 {
 	struct msm_hyp_crtc *c = to_msm_hyp_crtc(crtc);
@@ -1803,10 +1804,6 @@ static void wfd_kms_crtc_atomic_begin(struct drm_crtc *crtc,
 	}
 }
 
-static struct drm_crtc_helper_funcs wfd_crtc_helper_funcs = {
-	.atomic_begin = wfd_kms_crtc_atomic_begin,
-};
-
 static int wfd_kms_get_crtc_infos(struct msm_hyp_kms *kms,
 		struct msm_hyp_crtc_info **crtc_infos,
 		int *crtc_num)
@@ -1858,7 +1855,6 @@ static int wfd_kms_get_crtc_infos(struct msm_hyp_kms *kms,
 
 		_wfd_kms_set_crtc_limit(wfd_kms, priv);
 
-		priv->base.crtc_funcs = &wfd_crtc_helper_funcs;
 		crtc_infos[i] = &priv->base;
 	}
 
@@ -2535,6 +2531,7 @@ static const struct msm_hyp_kms_funcs wfd_kms_funcs = {
 	.disable_vblank = wfd_kms_disable_vblank,
 	.free_connector_port_modes = wfd_kms_free_connector_port_modes,
 	.register_event = wfd_kms_register_event,
+	.crtc_atomic_begin = wfd_kms_crtc_atomic_begin,
 };
 
 static int wfd_kms_bind(struct device *dev, struct device *master,
