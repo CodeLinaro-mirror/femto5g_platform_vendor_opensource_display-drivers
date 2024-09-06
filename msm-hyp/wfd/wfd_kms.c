@@ -343,8 +343,6 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 					port_id, connector->name,
 					connector->status,
 					priv->wfd_port);
-			priv->connector_status = connector_status_connected;
-			connector->status = connector_status_connected;
 			priv->base.possible_crtcs = 1 << port_idx;
 			wfdGetPortAttribiv_User(priv->wfd_device,
 				priv->wfd_port,
@@ -371,6 +369,10 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 				priv->wfd_port, port_mode,
 				num_mode);
 			if (num_mode > 0) {
+				if (priv->modes) {
+					pr_debug("HPDLOG free old priv->modes\n");
+					kfree(priv->modes);
+				}
 				priv->modes = kcalloc(num_mode,
 					sizeof(struct drm_display_mode),
 					GFP_KERNEL);
@@ -416,6 +418,8 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 						mode->vdisplay, mode->clock,
 						priv->port_modes[m], mode->name);
 			}
+			priv->connector_status = connector_status_connected;
+			connector->status = connector_status_connected;
 			msm_hyp_send_hpd_event(dev, connector);
 		}
 		/* Handle HPD disconnect event*/
