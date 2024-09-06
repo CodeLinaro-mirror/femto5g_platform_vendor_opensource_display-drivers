@@ -1281,7 +1281,7 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 	 * So delay backlight update to these panels until the
 	 * first frame commit is received from the HW.
 	 */
-	if (display->panel->bl_config.bl_update ==
+	if (!display->poms_pending && display->panel->bl_config.bl_update ==
 				BL_UPDATE_DELAY_UNTIL_FIRST_FRAME)
 		sde_encoder_wait_for_event(c_conn->encoder,
 				MSM_ENC_TX_COMPLETE);
@@ -3539,6 +3539,15 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			0, 0, e_power_mode,
 			ARRAY_SIZE(e_power_mode), 0,
 			CONNECTOR_PROP_LP);
+
+	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
+		dsi_display = (struct dsi_display *)(display);
+		if (dsi_display && dsi_display->panel) {
+			msm_property_install_range(&c_conn->property_info, "brightness",
+			0x0, 0, 0xFFFF, 0,
+			CONNECTOR_PROP_BRIGHTNESS);
+		}
+	}
 
 	return 0;
 }
