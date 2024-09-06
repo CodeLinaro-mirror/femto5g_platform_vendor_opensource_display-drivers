@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd] %s: " fmt, __func__
@@ -112,7 +112,7 @@ static int shd_display_init_base_connector(struct drm_device *dev,
 	struct drm_connector *connector;
 	struct sde_connector *sde_conn;
 	struct drm_connector_list_iter conn_iter;
-	int rc = 0;
+	int rc = 0, ret = 0;
 
 	if (base->connector)
 		goto next;
@@ -131,6 +131,16 @@ static int shd_display_init_base_connector(struct drm_device *dev,
 	if (!base->connector) {
 		SDE_ERROR("failed to find connector\n");
 		return -ENOENT;
+	}
+
+	/*
+	 * when shared display is enabled on DP connector, skip the
+	 * HDCP authentication
+	 */
+	if (base->connector->connector_type == DRM_MODE_CONNECTOR_DisplayPort) {
+		ret = sde_connector_trigger_hdcp_auth(base->connector, false);
+		if (ret)
+			SDE_ERROR("failed to skip HDCP auth : %d\n", ret);
 	}
 
 	/* set base connector disconnected */
@@ -1582,6 +1592,8 @@ next:
 	display->display_type = of_get_property(of_node, "qcom,display-type", NULL);
 	if (!display->display_type)
 		display->display_type = "unknown";
+
+	display->hdcp_enabled = of_property_read_bool(of_node, "qcom,hdcp-enabled");
 
 	rc = shd_parse_misr_shared_roi(display);
 	if (rc)

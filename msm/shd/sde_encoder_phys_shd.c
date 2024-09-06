@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -492,7 +492,7 @@ static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
 	struct drm_encoder *encoder;
 	struct sde_rm_hw_iter iter;
 	struct sde_rm *rm;
-	int i;
+	int i, ret;
 
 	SDE_DEBUG("%d\n", phys_enc->parent->base.id);
 
@@ -557,6 +557,19 @@ static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
 	}
 
 	_sde_encoder_phys_shd_setup_irq_hw_idx(phys_enc);
+
+	/*
+	 * on mode set of main shared display
+	 * trigger the HDCP authentication
+	 */
+	if (display->hdcp_enabled &&
+		       display->base->connector->connector_type
+					== DRM_MODE_CONNECTOR_DisplayPort) {
+		ret = sde_connector_trigger_hdcp_auth(display->base->connector, true);
+		if (ret)
+			SDE_ERROR("failed to trigger HDCP auth\n");
+	}
+
 	phys_enc->kickoff_timeout_ms = sde_encoder_helper_get_kickoff_timeout_ms(phys_enc->parent);
 }
 
