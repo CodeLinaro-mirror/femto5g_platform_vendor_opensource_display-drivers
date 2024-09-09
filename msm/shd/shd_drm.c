@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1060,12 +1061,22 @@ static void shd_drm_bridge_deinit(void *data)
 
 static int shd_backlight_device_update_status(struct backlight_device *bd)
 {
-	return 0;
+	struct sde_connector *c_conn = bl_get_data(bd);
+	if(c_conn && c_conn->bl_device->ops->update_status) {
+		return c_conn->bl_device->ops->update_status(bd);
+	} else {
+		return 0;
+	}
 }
 
 static int shd_backlight_device_get_brightness(struct backlight_device *bd)
 {
-	return 0;
+	struct sde_connector *c_conn = bl_get_data(bd);
+	if(c_conn && c_conn->bl_device->ops->get_brightness) {
+		return c_conn->bl_device->ops->get_brightness(bd);
+	} else {
+		return 0;
+	}
 }
 
 static const struct backlight_ops shd_backlight_device_ops = {
@@ -1076,6 +1087,8 @@ static const struct backlight_ops shd_backlight_device_ops = {
 static int shd_display_create_backlight(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn = to_sde_connector(connector);
+	struct shd_display *disp = (struct shd_display *) c_conn->display;
+	struct sde_connector *b_conn = to_sde_connector(disp->base->connector);
 	struct backlight_properties props;
 	char bl_node_name[32];
 
@@ -1086,9 +1099,10 @@ static int shd_display_create_backlight(struct drm_connector *connector)
 	props.brightness = 255;
 	snprintf(bl_node_name, sizeof(bl_node_name), "panel%u-backlight",
 			connector->connector_type_id - 1);
+	/* We are passing display base connector data to backlight_device_register. */
 	c_conn->bl_device = backlight_device_register(bl_node_name,
-			connector->dev->dev,
-			c_conn, &shd_backlight_device_ops, &props);
+			disp->base->connector->dev->dev,
+			b_conn, &shd_backlight_device_ops, &props);
 
 	return 0;
 }
