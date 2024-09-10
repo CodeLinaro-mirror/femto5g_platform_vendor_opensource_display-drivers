@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -175,6 +175,7 @@ static int _sde_vbif_wait_for_xin_halt(struct sde_hw_vbif *vbif, u32 xin_id)
 	return rc;
 }
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 static int _sde_vbif_wait_for_axi_halt(struct sde_hw_vbif *vbif)
 {
 	int rc;
@@ -194,6 +195,7 @@ static int _sde_vbif_wait_for_axi_halt(struct sde_hw_vbif *vbif)
 
 	return rc;
 }
+#endif
 
 /**
  * _sde_vbif_apply_dynamic_ot_limit - determine OT based on usecase parameters
@@ -517,6 +519,11 @@ bool sde_vbif_get_xin_status(struct sde_kms *sde_kms,
 void sde_vbif_set_qos_remap(struct sde_kms *sde_kms,
 		struct sde_vbif_set_qos_params *params)
 {
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	/* HW virtualization, VBIF is configured by PVM */
+	return;
+#endif
+
 	struct sde_hw_vbif *vbif = NULL;
 	struct sde_hw_mdp *mdp;
 	bool forced_on = false;
@@ -616,6 +623,7 @@ void sde_vbif_clear_errors(struct sde_kms *sde_kms)
 
 void sde_vbif_init_memtypes(struct sde_kms *sde_kms)
 {
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	struct sde_hw_vbif *vbif;
 	int i, j;
 
@@ -639,10 +647,12 @@ void sde_vbif_init_memtypes(struct sde_kms *sde_kms)
 			mutex_unlock(&vbif->mutex);
 		}
 	}
+#endif
 }
 
 void sde_vbif_axi_halt_request(struct sde_kms *sde_kms)
 {
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	struct sde_hw_vbif *vbif;
 	int i;
 
@@ -668,6 +678,7 @@ void sde_vbif_axi_halt_request(struct sde_kms *sde_kms)
 			mutex_unlock(&vbif->mutex);
 		}
 	}
+#endif
 }
 
 int sde_vbif_halt_xin_mask(struct sde_kms *sde_kms, u32 xin_id_mask,

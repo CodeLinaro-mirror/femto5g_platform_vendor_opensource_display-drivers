@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -612,6 +612,18 @@ struct sde_encoder_phys_wb {
 };
 
 /**
+ * struct sde_encoder_phys_hyp - sub-class of sde_encoder_phys to handle hypervision
+ *	mode specific operations
+ * @base:	Baseclass physical encoder structure
+ * @timing_params: Current timing parameter
+ * @error_count: Number of consecutive kickoffs that experienced an error
+ */
+struct sde_encoder_phys_hyp {
+	struct sde_encoder_phys base;
+	int error_count;
+};
+
+/**
  * struct sde_enc_phys_init_params - initialization parameters for phys encs
  * @sde_kms:		Pointer to the sde_kms top level
  * @parent:		Pointer to the containing virtual encoder
@@ -681,6 +693,22 @@ struct sde_encoder_phys *sde_encoder_phys_wb_init(
 	return NULL;
 }
 #endif /* CONFIG_DRM_SDE_WB */
+
+/**
+ * sde_encoder_phys_hyp_init - Construct a new hypervisor mode virtualization encoder
+ * @p:	Pointer to init params structure
+ * Return: Error code or newly allocated encoder
+ */
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+struct sde_encoder_phys *sde_encoder_phys_hyp_init(
+		struct sde_enc_phys_init_params *p);
+#else
+struct sde_encoder_phys *sde_encoder_phys_hyp_init(
+		struct sde_enc_phys_init_params *p)
+{
+	return NULL;
+}
+#endif
 
 void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc,
 		struct drm_framebuffer *fb, const struct sde_format *format,

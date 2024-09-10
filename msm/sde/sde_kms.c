@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -121,6 +121,12 @@ static bool sdecustom = true;
 module_param(sdecustom, bool, 0400);
 MODULE_PARM_DESC(sdecustom, "Enable customizations for sde clients");
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+struct sde_mdss_cfg *msm_hyp_hw_catalog_init(struct drm_device *dev);
+int msm_hyp_drm_obj_init(struct drm_device *dev);
+#endif
+
+
 static int sde_kms_hw_init(struct msm_kms *kms);
 static int _sde_kms_mmu_destroy(struct sde_kms *sde_kms);
 static int _sde_kms_mmu_init(struct sde_kms *sde_kms);
@@ -206,6 +212,7 @@ static void sde_kms_debugfs_destroy(struct msm_kms *kms)
 
 static int _sde_kms_dump_clks_state(struct sde_kms *sde_kms)
 {
+#if IS_ENABLED(CONFIG_DRM_MSM_DSI)
 	int i;
 	struct device *dev = sde_kms->dev->dev;
 
@@ -213,6 +220,7 @@ static int _sde_kms_dump_clks_state(struct sde_kms *sde_kms)
 
 	for (i = 0; i < sde_kms->dsi_display_count; i++)
 		dsi_display_dump_clks_state(sde_kms->dsi_displays[i]);
+#endif
 
 	return 0;
 }
@@ -1791,6 +1799,7 @@ static void sde_kms_prepare_fence(struct msm_kms *kms,
 	SDE_ATRACE_END("sde_kms_prepare_fence");
 }
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 /**
  * _sde_kms_get_displays - query for underlying display handles and cache them
  * @sde_kms:    Pointer to sde kms structure
@@ -1896,6 +1905,7 @@ exit_deinit_dsi:
 	sde_kms->dsi_displays = NULL;
 	return rc;
 }
+#endif
 
 /**
  * _sde_kms_release_displays - release cache of underlying display handles
@@ -1915,8 +1925,13 @@ static void _sde_kms_release_displays(struct sde_kms *sde_kms)
 	kfree(sde_kms->dsi_displays);
 	sde_kms->dsi_displays = NULL;
 	sde_kms->dsi_display_count = 0;
+
+	kfree(sde_kms->hyp_displays);
+	sde_kms->hyp_displays = NULL;
+	sde_kms->hyp_display_count = 0;
 }
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 /**
  * _sde_kms_setup_displays - create encoders, bridges and connectors
  *                           for underlying displays
@@ -2437,6 +2452,7 @@ fail_irq:
 	sde_core_irq_domain_fini(sde_kms);
 	return ret;
 }
+#endif
 
 /**
  * sde_kms_timeline_status - provides current timeline status
@@ -2514,8 +2530,10 @@ static int sde_kms_postinit(struct msm_kms *kms)
 				SDE_POWER_HANDLE_ENABLE_BUS_AB_QUOTA,
 				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 		sde_cesta_splash_release(DPUID(sde_kms->dev));
 		pm_runtime_put_sync(sde_kms->dev->dev);
+#endif
 	}
 
 	rc = _sde_debugfs_init(sde_kms);
@@ -3595,6 +3613,7 @@ static void _sde_kms_post_open(struct msm_kms *kms, struct drm_file *file)
 
 }
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 static int _sde_kms_update_planes_for_cont_splash(struct sde_kms *sde_kms,
 		struct sde_splash_display *splash_display,
 		struct drm_crtc *crtc)
@@ -3980,6 +3999,7 @@ static bool sde_kms_check_for_splash(struct msm_kms *kms)
 	sde_kms = to_sde_kms(kms);
 	return sde_kms->splash_data.num_splash_displays == 0 ? false : true;
 }
+#endif
 
 static int sde_kms_get_mixer_count(const struct msm_kms *kms,
 		const struct drm_display_mode *mode,
@@ -4572,12 +4592,16 @@ static const struct msm_kms_funcs kms_funcs = {
 	.pm_resume       = sde_kms_pm_resume,
 	.destroy         = sde_kms_destroy,
 	.debugfs_destroy = sde_kms_debugfs_destroy,
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	/* TODO: hypervision cont splash handling */
+#else
 	.cont_splash_config = sde_kms_cont_splash_config,
+	.check_for_splash = sde_kms_check_for_splash,
+#endif
 	.register_events = _sde_kms_register_events,
 	.get_address_space = _sde_kms_get_address_space,
 	.get_address_space_device = _sde_kms_get_address_space_device,
 	.postopen = _sde_kms_post_open,
-	.check_for_splash = sde_kms_check_for_splash,
 	.trigger_null_flush = sde_kms_trigger_null_flush,
 	.get_mixer_count = sde_kms_get_mixer_count,
 	.get_dsc_count = sde_kms_get_dsc_count,
@@ -4720,16 +4744,19 @@ static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
 
 static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
 {
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	if (!sde_kms || !sde_kms->hw_mdp || !sde_kms->catalog)
 		return;
 
 	if (sde_kms->hw_mdp->ops.reset_ubwc)
 		sde_kms->hw_mdp->ops.reset_ubwc(sde_kms->hw_mdp,
 						sde_kms->catalog);
+#endif
 }
 
 static void _sde_kms_set_lutdma_vbif_remap(struct sde_kms *sde_kms)
 {
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	struct sde_vbif_set_qos_params qos_params;
 	struct sde_mdss_cfg *catalog;
 
@@ -4745,10 +4772,12 @@ static void _sde_kms_set_lutdma_vbif_remap(struct sde_kms *sde_kms)
 	qos_params.client_type = VBIF_LUTDMA_CLIENT;
 
 	sde_vbif_set_qos_remap(sde_kms, &qos_params);
+#endif
 }
 
 static int _sde_kms_active_override(struct sde_kms *sde_kms, bool enable)
 {
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	struct sde_hw_uidle *uidle;
 
 	if (!sde_kms) {
@@ -4761,6 +4790,7 @@ static int _sde_kms_active_override(struct sde_kms *sde_kms, bool enable)
 	if (uidle && uidle->ops.active_override_enable)
 		uidle->ops.active_override_enable(uidle, enable);
 
+#endif
 	return 0;
 }
 
@@ -4946,6 +4976,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 
 static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_data *data)
 {
+#if IS_ENABLED(CONFIG_DRM_MSM_DSI)
 	int i = 0;
 	int ret = 0;
 	struct device_node *parent, *node, *node1;
@@ -5029,7 +5060,9 @@ static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_da
 				splash_display->splash->splash_buf_base,
 				splash_display->splash->splash_buf_size);
 	}
-
+#else
+	int ret = 0;
+#endif
 	data->type = SDE_SPLASH_HANDOFF;
 	ret = _sde_kms_get_demura_plane_data(data);
 	return ret;
@@ -5064,6 +5097,7 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 		sde_kms->vbif[VBIF_RT] = NULL;
 		goto error;
 	}
+	DRM_INFO("mapped vbif address space @%pK\n", sde_kms->vbif[VBIF_RT]);
 	sde_kms->vbif_len[VBIF_RT] = msm_iomap_size(platformdev, "vbif_phys");
 	rc = sde_dbg_reg_register_base("vbif_rt", sde_kms->vbif[VBIF_RT],
 				sde_kms->vbif_len[VBIF_RT],
@@ -5079,6 +5113,7 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 	} else {
 		sde_kms->vbif_len[VBIF_NRT] = msm_iomap_size(platformdev, "vbif_nrt_phys");
 	}
+	DRM_INFO("mapped vbif address space @%pK\n", sde_kms->vbif[VBIF_NRT]);
 
 	sde_kms->reg_dma = msm_ioremap(platformdev, "regdma_phys", "regdma_phys");
 	if (IS_ERR(sde_kms->reg_dma)) {
@@ -5095,6 +5130,7 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 		if (rc)
 			SDE_ERROR("dbg base register reg_dma failed: %d\n", rc);
 	}
+	SDE_DEBUG("mapped reg_dma address space @%pK\n", sde_kms->reg_dma);
 
 	sde_kms->sid = msm_ioremap(platformdev, "sid_phys", "sid_phys");
 	if (IS_ERR(sde_kms->sid)) {
@@ -5109,6 +5145,7 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 		if (rc)
 			SDE_ERROR("dbg base register sid failed: %d\n", rc);
 	}
+	DRM_INFO("mapped sid address space @%pK\n", sde_kms->sid);
 
 	sde_kms->sw_fuse = msm_ioremap(platformdev, "swfuse_phys",
 					"swfuse_phys");
@@ -5125,6 +5162,7 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 		if (rc)
 			SDE_ERROR("dbg base register sw_fuse failed: %d\n", rc);
 	}
+	DRM_INFO("mapped sw_fuse address space @%pK\n", sde_kms->sw_fuse);
 error:
 	return rc;
 }
@@ -5167,6 +5205,9 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	struct msm_drm_private *priv)
 {
 	int i, rc = -EINVAL;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	struct sde_mdss_cfg *hyp_cfg;
+#endif
 
 	sde_kms->catalog = sde_hw_catalog_init(dev);
 	if (IS_ERR_OR_NULL(sde_kms->catalog)) {
@@ -5180,6 +5221,15 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	sde_kms->core_rev = sde_kms->catalog->hw_rev;
 
 	pr_info("sde hardware revision:0x%x\n", sde_kms->core_rev);
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	hyp_cfg = msm_hyp_hw_catalog_init(dev);
+	if (hyp_cfg) {
+		sde_kms->org_catalog = sde_kms->catalog;
+		sde_kms->catalog = hyp_cfg;
+		pr_info("created hyp catalog\n");
+	}
+#endif
 
 	/* initialize power domain if defined */
 	rc = _sde_kms_hw_init_power_helper(dev, sde_kms);
@@ -5328,7 +5378,11 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	 * _sde_kms_drm_obj_init should create the DRM related objects
 	 * i.e. CRTCs, planes, encoders, connectors and so forth
 	 */
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	rc = msm_hyp_drm_obj_init(sde_kms->dev);
+#else
 	rc = _sde_kms_drm_obj_init(sde_kms);
+#endif
 	if (rc) {
 		SDE_ERROR("modeset init failed: %d\n", rc);
 		goto drm_obj_init_err;
@@ -5423,7 +5477,10 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	struct msm_drm_private *priv;
 	struct platform_device *platformdev;
 	struct sde_cesta_perf_cfg perf_cfg = {0, };
-	int irq_num, rc = -EINVAL;
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	int irq_num;
+#endif
+	int rc = -EINVAL;
 
 	if (!kms) {
 		SDE_ERROR("invalid kms\n");
@@ -5477,9 +5534,13 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	sde_kms->affinity_notify.notify = sde_kms_irq_affinity_notify;
 	sde_kms->affinity_notify.release = sde_kms_irq_affinity_release;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	// No hardware irq mapped to guest VM
+#else
 	irq_num = platform_get_irq(to_platform_device(sde_kms->dev->dev), 0);
 	SDE_DEBUG("Registering for notification of irq_num: %d\n", irq_num);
 	irq_set_affinity_notifier(irq_num, &sde_kms->affinity_notify);
+#endif
 
 	perf_cfg.min_bw_kbps = sde_kms->catalog->perf.max_bw_low;
 	perf_cfg.max_bw_kbps = sde_kms->catalog->perf.max_bw_high;
@@ -5532,6 +5593,7 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 	return &sde_kms->base;
 }
 
+#if IS_ENABLED(CONFIG_DRM_SDE_VM)
 void sde_kms_vm_trusted_resource_deinit(struct sde_kms *sde_kms)
 {
 	struct dsi_display *display;
@@ -5616,6 +5678,7 @@ int sde_kms_vm_trusted_resource_init(struct sde_kms *sde_kms,
 error:
 	return ret;
 }
+#endif
 
 static int _sde_kms_register_events(struct msm_kms *kms,
 		struct drm_mode_object *obj, u32 event, bool en)

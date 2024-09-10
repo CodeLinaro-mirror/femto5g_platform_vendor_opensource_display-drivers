@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -11,6 +11,8 @@
 
 #include "msm_kms.h"
 #include "sde_hw_top.h"
+#include "sde_hw_ctl.h"
+#include "sde_hw_lm.h"
 
 #define SINGLE_CTL	1
 #define DUAL_CTL	2

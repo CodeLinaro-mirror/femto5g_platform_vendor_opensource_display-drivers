@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1574,22 +1574,30 @@ int sde_core_perf_init(struct sde_core_perf *perf,
 	perf->cesta_phandle = sde_cesta_get_phandle(DPUID(dev));
 	phandle = perf->cesta_phandle ? perf->cesta_phandle : phandle;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	perf->core_clk = NULL;
+#else
 	perf->core_clk = sde_power_clk_get_clk(phandle, clk_name);
 	if (!perf->core_clk) {
 		SDE_ERROR("invalid core clk\n");
 		goto err;
 	}
+#endif
 
-	perf->max_core_clk_rate = sde_power_clk_get_max_rate(phandle, clk_name);
+	if (!perf->max_core_clk_rate)
+		perf->max_core_clk_rate = sde_power_clk_get_max_rate(phandle, clk_name);
 	if (!perf->max_core_clk_rate) {
 		SDE_DEBUG("optional max core clk rate, use default\n");
 		perf->max_core_clk_rate = SDE_PERF_DEFAULT_MAX_CORE_CLK_RATE;
 	}
 	perf->sys_cache_enabled = 0xffffffff;
+	SDE_ERROR("max_core_clk_rate = %d\n", perf->max_core_clk_rate);
 
 	return 0;
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 err:
+#endif
 	sde_core_perf_destroy(perf);
 	return -ENODEV;
 }

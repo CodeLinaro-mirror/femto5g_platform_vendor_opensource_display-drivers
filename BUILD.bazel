@@ -64,8 +64,16 @@ ddk_headers(
 )
 
 ddk_headers(
+    name = "hyp_headers",
+    hdrs = glob([
+      "msm/hyp/*.h",
+    ]),
+    includes = ["msm/hyp"]
+)
+
+ddk_headers(
     name = "display_drivers_headers",
-    hdrs = [ ":linux_includes", ":uapi_headers", ":msm_headers",":dp_headers",":dsi_headers",":sde_headers",":rotator_headers"]
+    hdrs = [ ":linux_includes", ":uapi_headers", ":msm_headers",":dp_headers",":dsi_headers",":sde_headers",":rotator_headers",":hyp_headers"]
 )
 
 load(":targets/sun.bzl", "define_sun")
@@ -79,3 +87,6 @@ define_niobe()
 
 load(":targets/monaco.bzl", "define_monaco")
 define_monaco()
+
+load(":targets/nordau.bzl", "define_nordau")
+define_nordau()

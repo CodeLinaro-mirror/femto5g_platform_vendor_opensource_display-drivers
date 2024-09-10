@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -371,6 +371,7 @@ u32 msm_readl(const void __iomem *addr)
 	return val;
 }
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 static irqreturn_t msm_irq(int irq, void *arg)
 {
 	struct drm_device *dev = arg;
@@ -381,6 +382,7 @@ static irqreturn_t msm_irq(int irq, void *arg)
 
 	return kms->funcs->irq(kms);
 }
+#endif
 
 static void msm_irq_preinstall(struct drm_device *dev)
 {
@@ -415,9 +417,13 @@ static int msm_irq_install(struct drm_device *dev, unsigned int irq)
 
 	msm_irq_preinstall(dev);
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	// No hardware irq mapped to guest VM
+#else
 	ret = request_irq(irq, msm_irq, 0, dev->driver->name, dev);
 	if (ret)
 		return ret;
+#endif
 
 	ret = msm_irq_postinstall(dev);
 	if (ret) {
@@ -575,6 +581,10 @@ static int get_mdp_ver(struct platform_device *pdev)
 	},
 	{
 		.compatible = "qcom,sde-kms",
+		.data	= (void	*)KMS_SDE,
+	},
+	{
+		.compatible = "qcom,sde-kms-virt",
 		.data	= (void	*)KMS_SDE,
 	},
 	{},
@@ -2128,11 +2138,11 @@ static int add_display_components(struct device *dev,
 	struct device *mdp_dev = NULL;
 	struct device_node *node;
 	int ret;
+	struct device_node *np = dev->of_node;
+	unsigned int i;
 
-	if (of_device_is_compatible(dev->of_node, "qcom,sde-kms")) {
-		struct device_node *np = dev->of_node;
-		unsigned int i;
-
+	if (of_device_is_compatible(dev->of_node, "qcom,sde-kms")
+		|| of_device_is_compatible(dev->of_node, "qcom,sde-kms-virt")) {
 		for (i = 0; ; i++) {
 			node = of_parse_phandle(np, "connectors", i);
 			if (!node)
@@ -2377,6 +2387,13 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	int ret;
 	struct component_match *match = NULL;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	if (!msm_hyp_get_kms()) {
+		DRM_DEBUG("Wait for MSM_HYP KMS\n");
+		return -EPROBE_DEFER;
+	}
+#endif
+
 	ret = msm_drm_component_dependency_check(&pdev->dev);
 	if (ret)
 		return ret;
@@ -2435,6 +2452,7 @@ static const struct of_device_id dt_match[] = {
 	{ .compatible = "qcom,mdp4", .data = (void *)KMS_MDP4 },
 	{ .compatible = "qcom,mdss", .data = (void *)KMS_MDP5 },
 	{ .compatible = "qcom,sde-kms", .data = (void *)KMS_SDE },
+	{ .compatible = "qcom,sde-kms-virt", .data = (void *)KMS_SDE },
 	{},
 };
 MODULE_DEVICE_TABLE(of, dt_match);
@@ -2471,6 +2489,7 @@ static int __init msm_drm_register(void)
 	msm_hdmi_register();
 	sde_shd_register();
 	msm_lease_drm_register();
+	msm_hyp_register();
 	return 0;
 }
 
@@ -2491,6 +2510,7 @@ static void __exit msm_drm_unregister(void)
 	sde_cesta_unregister();
 	sde_rsc_unregister();
 	sde_shd_unregister();
+	msm_hyp_unregister();
 	platform_driver_unregister(&msm_platform_driver);
 }
 

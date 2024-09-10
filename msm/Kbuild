@@ -68,8 +68,8 @@ ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8155) $(CONFIG_ARCH_SA6155) $(CONFIG_AR
 endif
 
 ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8797) $(CONFIG_ARCH_LEMANS)))
-	include $(DISPLAY_ROOT)/config/augen3disp.conf
-	LINUX_INC += -include $(DISPLAY_ROOT)/config/augen3dispconf.h
+	include $(DISPLAY_ROOT)/config/augen5disp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/augen5dispconf.h
 endif
 
 LINUX_INC +=	-I$(KERNEL_SRC)/include/linux \
@@ -87,6 +87,18 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(DISPLAY_ROOT)/msm/sde \
 	-I$(DISPLAY_ROOT)/../mm-drivers/hw_fence/include \
 	-I$(DISPLAY_ROOT)/include/uapi/display \
+
+ifeq ($(CONFIG_DRM_MSM_HYP), y)
+	LINUX_INC += -I$(DISPLAY_ROOT)/msm/hyp
+endif
+
+ifeq ($(CONFIG_DRM_MSM_HYP_VIRTIO), y)
+	LINUX_INC += -I$(DISPLAY_ROOT)/msm/hyp/virtio
+endif
+
+ifeq ($(CONFIG_DRM_MSM_HYP_WFD), y)
+	LINUX_INC += -I$(DISPLAY_ROOT)/msm/hyp/wfd -I$(DISPLAY_ROOT)/msm/hyp/wfd/KHR -I$(DISPLAY_ROOT)/msm/hyp/wfd/WF
+endif
 
 CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
 	-DANI_LITTLE_BIT_ENDIAN \
@@ -292,5 +304,17 @@ msm_drm-$(CONFIG_DRM_MSM) += msm_atomic.o \
 			     msm_gem_vma.o \
 			     msm_smmu.o \
 			     msm_prop.o
+
+msm_drm-$(CONFIG_DRM_MSM_HYP) += hyp/msm_drv_hyp.o \
+				hyp/sde_encoder_phys_hyp.o \
+				hyp/msm_hyp_utils.o
+
+msm_drm-$(CONFIG_DRM_MSM_HYP_VIRTIO) += hyp/virtio/virtio_kms.o \
+				hyp/virtio/virtgpu_vq.o
+
+msm_drm-$(CONFIG_DRM_MSM_HYP_WFD) += hyp/wfd/wfd_kms.o \
+				hyp/wfd/wire_user.o \
+				hyp/wfd/user_hab_utils.o
+
 
 CDEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"

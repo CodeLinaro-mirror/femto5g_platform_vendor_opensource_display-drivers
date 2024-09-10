@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d]: " fmt, __func__, __LINE__
@@ -334,6 +334,9 @@ static int _sde_power_data_bus_set_quota(
 	struct sde_power_data_bus_handle *pdbus,
 	u64 in_ab_quota, u64 in_ib_quota)
 {
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	return 0;
+#endif
 	int rc = 0, i = 0;
 	u32 paths = pdbus->data_paths_cnt;
 
@@ -378,6 +381,9 @@ err:
 int sde_power_data_bus_set_quota(struct sde_power_handle *phandle,
 	u32 bus_id, u64 ab_quota, u64 ib_quota)
 {
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	return 0;
+#endif
 	int rc = 0;
 	u32 paths;
 
@@ -938,6 +944,9 @@ int sde_power_scale_reg_bus(struct sde_power_handle *phandle,
 
 int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int dev_idx)
 {
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	return 0;
+#endif
 	int rc = 0, i = 0;
 	struct dss_module_power *mp;
 
@@ -1116,6 +1125,9 @@ int sde_power_clk_reserve_rate(struct sde_power_handle *phandle, char *clock_nam
 int sde_power_clk_set_rate(struct sde_power_handle *phandle, char *clock_name,
 	u64 rate, u32 flags)
 {
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	return 0;
+#endif
 	int i, rc = -EINVAL;
 	struct dss_module_power *mp;
 

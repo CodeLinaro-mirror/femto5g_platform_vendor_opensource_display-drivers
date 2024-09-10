@@ -189,6 +189,18 @@ module_entry(
                               "rotator/sde_rotator_r1_debug.c",
                               "rotator/sde_rotator_r3_debug.c"],
             },
+         "CONFIG_DRM_MSM_HYP" : [
+            "msm/hyp/msm_drv_hyp.c",
+         ],
+         "CONFIG_DRM_MSM_HYP_VITRIO" : [
+            "msm/hyp/virtio/virtgpu_vq.c",
+            "msm/hyp/virtio/virtio_kms.c",
+         ],
+         "CONFIG_DRM_MSM_HYP_WFD" : [
+            "msm/hyp/wfd/wfd_kms.c",
+            "msm/hyp/wfd/wire_user.c",
+            "msm/hyp/wfd/user_hab_utils.c",
+         ],
       },
       deps = [
          "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",

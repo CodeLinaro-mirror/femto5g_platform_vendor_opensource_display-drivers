@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -378,6 +378,7 @@ static const char *msm_spr_pack_type_mode_str[MSM_DISPLAY_SPR_PACK_TYPE_MODE_MAX
  * @MSM_DISPLAY_CAP_MST_MODE:           Display with MST support
  * @MSM_DISPLAY_SPLIT_LINK:             Split Link enabled
  * @MSM_DISPLAY_LOOPBACK_MODE:          Display in loopback mode
+ * @MSM_DISPLAY_HYPERVISOR_MODE:        Display in hypervisor virtualization mode
  */
 enum msm_display_caps {
 	MSM_DISPLAY_CAP_VID_MODE	= BIT(0),
@@ -388,18 +389,21 @@ enum msm_display_caps {
 	MSM_DISPLAY_CAP_MST_MODE	= BIT(5),
 	MSM_DISPLAY_SPLIT_LINK		= BIT(6),
 	MSM_DISPLAY_LOOPBACK_MODE	= BIT(7),
+	MSM_DISPLAY_HYPERVISOR_MODE	= BIT(8),
 };
 
 /**
  * enum panel_mode - panel operation mode
  * @MSM_DISPLAY_VIDEO_MODE: video mode panel
  * @MSM_DISPLAY_CMD_MODE:   Command mode panel
+ * @MSM_DISPLAY_HYP_MODE:   Hypervisor virtualization mode panel
  * @MODE_MAX:
  */
 enum panel_op_mode {
 	MSM_DISPLAY_VIDEO_MODE = BIT(0),
 	MSM_DISPLAY_CMD_MODE = BIT(1),
-	MSM_DISPLAY_MODE_MAX = BIT(2)
+	MSM_DISPLAY_HYP_MODE = BIT(2),
+	MSM_DISPLAY_MODE_MAX = BIT(3)
 };
 
 /**
@@ -1572,6 +1576,11 @@ struct msm_dsi;
 void msm_mode_object_event_notify(struct drm_mode_object *obj,
 		struct drm_device *dev, struct drm_event *event, u8 *payload);
 #if IS_ENABLED(CONFIG_DRM_MSM_DSI)
+void __init msm_dsi_register(void);
+void __exit msm_dsi_unregister(void);
+int msm_dsi_modeset_init(struct msm_dsi *msm_dsi, struct drm_device *dev,
+			 struct drm_encoder *encoder);
+#else
 static inline void __init msm_dsi_register(void)
 {
 }
@@ -1584,11 +1593,6 @@ static inline int msm_dsi_modeset_init(struct msm_dsi *msm_dsi,
 {
 	return -EINVAL;
 }
-#else
-void __init msm_dsi_register(void);
-void __exit msm_dsi_unregister(void);
-int msm_dsi_modeset_init(struct msm_dsi *msm_dsi, struct drm_device *dev,
-			 struct drm_encoder *encoder);
 #endif /* CONFIG_DRM_MSM_DSI */
 
 #if IS_ENABLED(CONFIG_DRM_MSM_MDP5)
@@ -1743,6 +1747,19 @@ static inline void __init msm_lease_drm_register(void)
 }
 
 static inline void __exit msm_lease_drm_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_MSM_LEASE */
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+void __init msm_hyp_register(void);
+void __exit msm_hyp_unregister(void);
+#else
+static inline void __init msm_hyp_register(void)
+{
+}
+
+static inline void __exit msm_hyp_unregister(void)
 {
 }
 #endif /* CONFIG_DRM_MSM_LEASE */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -4415,7 +4415,7 @@ static enum sde_intf sde_encoder_get_intf(struct sde_mdss_cfg *catalog,
 
 	for (i = 0; i < catalog->intf_count; i++) {
 		if (catalog->intf[i].type == type
-		    && catalog->intf[i].controller_id == controller_id) {
+		    && catalog->intf[i].controller_id + INTF_0 == controller_id) {
 			return catalog->intf[i].id;
 		}
 	}
@@ -5304,8 +5304,6 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 
 		if (!phys->ops.needs_single_flush ||
 				!phys->ops.needs_single_flush(phys)) {
-			if (config_changed && ctl->ops.reg_dma_flush)
-				ctl->ops.reg_dma_flush(ctl, is_regdma_blocking);
 			_sde_encoder_trigger_flush(&sde_enc->base, phys, 0x0,
 					config_changed);
 		} else if (ctl->ops.get_pending_flush) {
@@ -5316,8 +5314,6 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	/* for split flush, combine pending flush masks and send to master */
 	if (pending_flush.pending_flush_mask && sde_enc->cur_master) {
 		ctl = sde_enc->cur_master->hw_ctl;
-		if (config_changed && ctl->ops.reg_dma_flush)
-			ctl->ops.reg_dma_flush(ctl, is_regdma_blocking);
 		_sde_encoder_trigger_flush(&sde_enc->base, sde_enc->cur_master,
 						&pending_flush,
 						config_changed);
@@ -7702,6 +7698,18 @@ static int sde_encoder_virt_add_phys_encs(
 		sde_enc->phys_vid_encs[sde_enc->num_phys_encs] = enc;
 	}
 
+	if (display_caps & MSM_DISPLAY_HYPERVISOR_MODE) {
+		enc = sde_encoder_phys_hyp_init(params);
+
+		if (IS_ERR_OR_NULL(enc)) {
+			SDE_ERROR_ENC(sde_enc, "failed to init hyp enc: %ld\n",
+				PTR_ERR(enc));
+			return !enc ? -EINVAL : PTR_ERR(enc);
+		}
+
+		sde_enc->phys_hyp_encs[sde_enc->num_phys_encs] = enc;
+	}
+
 	if (display_caps & MSM_DISPLAY_CAP_CMD_MODE) {
 		enc = sde_encoder_phys_cmd_init(params);
 
@@ -7719,6 +7727,9 @@ static int sde_encoder_virt_add_phys_encs(
 	else if (disp_info->curr_panel_mode == MSM_DISPLAY_CMD_MODE)
 		sde_enc->phys_encs[sde_enc->num_phys_encs] =
 			sde_enc->phys_cmd_encs[sde_enc->num_phys_encs];
+	else if (disp_info->curr_panel_mode == MSM_DISPLAY_HYP_MODE)
+		sde_enc->phys_encs[sde_enc->num_phys_encs] =
+			sde_enc->phys_hyp_encs[sde_enc->num_phys_encs];
 	else
 		sde_enc->phys_encs[sde_enc->num_phys_encs] =
 			sde_enc->phys_lb_encs[sde_enc->num_phys_encs];
@@ -7795,8 +7806,6 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	phys_params.enc_spinlock = &sde_enc->enc_spinlock;
 	phys_params.vblank_ctl_lock = &sde_enc->vblank_ctl_lock;
 	atomic_set(&sde_enc->vsync_cnt, 0);
-
-	SDE_DEBUG("\n");
 
 	if (disp_info->intf_type == DRM_MODE_CONNECTOR_DSI) {
 		*drm_enc_mode = DRM_MODE_ENCODER_DSI;
@@ -8073,6 +8082,7 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 
 	sde_enc = kzalloc(sizeof(*sde_enc), GFP_KERNEL);
 	if (!sde_enc) {
+		SDE_ERROR("Kzalloc failed\n");
 		ret = -ENOMEM;
 		goto fail;
 	}
@@ -8083,8 +8093,10 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 	mutex_init(&sde_enc->enc_lock);
 	ret = sde_encoder_setup_display(sde_enc, sde_kms, disp_info,
 			&drm_enc_mode);
-	if (ret)
+	if (ret) {
+		SDE_ERROR("sde_encoder_setup_display failed, rc = %d\n", ret);
 		goto fail;
+	}
 
 	sde_enc->cur_master = NULL;
 	spin_lock_init(&sde_enc->enc_spinlock);

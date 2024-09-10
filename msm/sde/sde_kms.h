@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -42,6 +42,9 @@
 #include "sde_power_handle.h"
 #include "sde_irq.h"
 #include "sde_core_perf.h"
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+#include "msm_drv_hyp.h"
+#endif
 
 #define DRMID(x) ((x) ? (x)->base.id : -1)
 
@@ -251,6 +254,11 @@ struct sde_kms {
 	struct drm_device *dev;
 	uint32_t core_rev;
 	struct sde_mdss_cfg *catalog;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	/* Hyper vision driver make a backup and update catalog for HW blocks only exist on GVM */
+	struct sde_mdss_cfg *org_catalog;
+	struct msm_hyp_kms *hyp_kms;
+#endif
 
 	struct generic_pm_domain genpd;
 	bool genpd_init;
@@ -302,6 +310,10 @@ struct sde_kms {
 	int dp_stream_count;
 	void **lb_displays;
 	int lb_disp_count;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	void **hyp_displays;
+	int hyp_display_count;
+#endif
 	bool dsc_switch_support;
 
 	bool has_danger_ctrl;
