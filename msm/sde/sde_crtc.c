@@ -2499,6 +2499,13 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 		ctl = mixer[i].hw_ctl;
 		lm = mixer[i].hw_lm;
 
+		/*
+		 * When CAC loopback is enabled, the mixers and the layout to
+		 * be used for pass1 and pass2 are fixed.
+		 */
+		if (sde_crtc_state->is_loopback_mode)
+			lm_layout = (lm->idx - LM_0) / MAX_MIXERS_PER_LAYOUT;
+
 		if (sde_kms_rect_is_null(lm_roi))
 			sde_crtc->mixers[i].mixer_op_mode = 0;
 
