@@ -76,6 +76,7 @@ enum dsi_ctrl_tpg_pattern {
  * @DSI_CTRL_VERSION_2_7:     DSI host v2.7 controller
  * @DSI_CTRL_VERSION_2_8:     DSI host v2.8 controller
  * @DSI_CTRL_VERSION_2_9:     DSI host v2.9 controller
+ * @DSI_CTRL_VERSION_2_10:    DSI host v2.10 controller
  * @DSI_CTRL_VERSION_MAX:     max version
  */
 enum dsi_ctrl_version {
@@ -88,6 +89,7 @@ enum dsi_ctrl_version {
 	DSI_CTRL_VERSION_2_7,
 	DSI_CTRL_VERSION_2_8,
 	DSI_CTRL_VERSION_2_9,
+	DSI_CTRL_VERSION_2_10,
 	DSI_CTRL_VERSION_MAX
 };
 
