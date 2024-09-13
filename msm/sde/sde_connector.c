@@ -3540,15 +3540,6 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			ARRAY_SIZE(e_power_mode), 0,
 			CONNECTOR_PROP_LP);
 
-	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
-		dsi_display = (struct dsi_display *)(display);
-		if (dsi_display && dsi_display->panel) {
-			msm_property_install_range(&c_conn->property_info, "brightness",
-			0x0, 0, 0xFFFF, 0,
-			CONNECTOR_PROP_BRIGHTNESS);
-		}
-	}
-
 	return 0;
 }
 
