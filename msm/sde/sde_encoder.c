@@ -5530,7 +5530,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	if (send_still_cmd) {
 		sde_connector_update_cmd(phys_enc->connector,
 			BIT(DSI_CMD_SET_STICKY_STILL_EN), true);
-		phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_COMPLETE;
+		phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_IN_PROGRESS;
 	}
 
 	if (ctl->ops.update_bitmask) {
@@ -5560,7 +5560,8 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 		return;
 	}
 
-	drm_crtc_wait_one_vblank(crtc);
+	sde_encoder_phys_inc_pending(phys_enc);
+	sde_encoder_wait_for_event(&sde_enc->base, MSM_ENC_VBLANK);
 
 	pf_time_in_us = phys_enc->pf_time_in_us;
 	if (pf_time_in_us > 2000) {
@@ -5571,7 +5572,9 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	/* wait for panel vsync */
 	usleep_range(pf_time_in_us, pf_time_in_us + 10);
 
-	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_COMPLETE;
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, atomic_read(&phys_enc->pending_kickoff_cnt));
 }
 
 static void sde_encoder_handle_self_refresh(struct kthread_work *work)
@@ -6075,6 +6078,10 @@ void sde_encoder_handle_self_refresh_video_psr(struct sde_encoder_phys *phys_enc
 		}
 	}
 
+	if (phys_enc->sde_vrr_cfg.min_sr_state == SDE_MIN_SR_IN_PROGRESS) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
+		return;
+	}
 	phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_SCHEDULED;
 	dpu_min_ns = (SEC_TO_NS/vrr_cfg->curr_freq_pattern->freq_stepping_seq[0])*1000;
 	avr_step_in_ns = SEC_TO_NS/sde_enc->mode_info.avr_step_fps;
