@@ -5459,7 +5459,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->ts_prefill_rev = 2;
 		sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
 		set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
-		set_bit(SDE_FEATURE_HDR_PLUS, sde_cfg->features);
+		clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 		set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
 		set_bit(SDE_MDP_DHDR_MEMPOOL_4K, &sde_cfg->mdp[0].features);
 		set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
@@ -5473,11 +5473,6 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 		set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 		set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
-		set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
-		sde_cfg->demura_supported[SSPP_DMA1][0] = 0;
-		sde_cfg->demura_supported[SSPP_DMA1][1] = 1;
-		sde_cfg->demura_supported[SSPP_DMA3][0] = 0;
-		sde_cfg->demura_supported[SSPP_DMA3][1] = 1;
 		set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
 	} else if (IS_PINEAPPLE_TARGET(hw_rev)) {
 		set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
