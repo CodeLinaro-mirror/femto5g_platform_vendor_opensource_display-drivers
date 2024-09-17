@@ -22,11 +22,12 @@ enum virtio_channel_ids {
 	CHANNEL_EVENTS,
 	MAX_CHANNELS
 };
-struct scanout_sttrib {
+struct scanout_attrib {
 	uint32_t type;
 	uint32_t connection_status;
 	uint32_t width_mm;
 	uint32_t height_mm;
+	uint32_t panel_orientation;
 };
 
 struct virtio_plane_caps {
@@ -41,6 +42,7 @@ struct virtio_plane_caps {
 	uint32_t zorder;
 	uint32_t pair_plane_id;
 	int32_t  master_plane_id;
+	uint32_t support_rotation;
 };
 
 struct virtio_display_modes {
@@ -53,7 +55,7 @@ struct virtio_kms_output {
 	int index;
 	struct virtio_display_modes info[VIRTIO_GPU_MAX_MODES]; //modes
 	uint32_t num_modes;
-	struct scanout_sttrib attr;
+	struct scanout_attrib attr;
 	bool enabled;
 	uint32_t type;
 	struct edid *edid;

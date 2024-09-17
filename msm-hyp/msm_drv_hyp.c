@@ -699,8 +699,7 @@ static int _msm_hyp_connector_init_caps(
 		msm_hyp_prop_info_add_keystr(info, "display type",
 				connector->info->display_type);
 
-	if (connector->info->panel_orientation) {
-		switch (connector->info->panel_orientation) {
+	switch (connector->info->panel_orientation) {
 		case PANEL_ROTATE_NONE:
 			snprintf(buf, sizeof(buf), "%s", "none");
 			break;
@@ -714,10 +713,10 @@ static int _msm_hyp_connector_init_caps(
 			snprintf(buf, sizeof(buf), "%s", "vert flip");
 			break;
 		default:
+			snprintf(buf, sizeof(buf), "%s", "none");
 			break;
-		}
-		msm_hyp_prop_info_add_keystr(info, "panel orientation", buf);
 	}
+	msm_hyp_prop_info_add_keystr(info, "panel orientation", buf);
 
 	if (connector->info->extra_caps)
 		msm_hyp_prop_info_append(info, connector->info->extra_caps);
