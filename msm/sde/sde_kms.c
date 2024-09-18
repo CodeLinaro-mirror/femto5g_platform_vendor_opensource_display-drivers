@@ -1720,7 +1720,6 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 
 		sde_encoder_hw_fence_error_handle(encoder);
 
-		sde_crtc_complete_flip(crtc, NULL);
 	}
 
 	if (cwb_disabling && cwb_enc)
@@ -1731,6 +1730,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 			sde_encoder_reset_kickoff_timeout_ms(encoder);
 	}
 
+	sde_crtc_complete_flip(crtc, NULL);
 	/* avoid system cache update to set rd-noalloc bit when NSE feature is enabled */
 	if (!test_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_kms->catalog->features))
 		sde_crtc_static_cache_read_kickoff(crtc);
