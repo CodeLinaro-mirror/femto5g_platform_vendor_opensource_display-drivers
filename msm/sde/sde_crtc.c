@@ -2452,6 +2452,8 @@ static void _sde_drm_fb_sec_dir_trans(
 		smmu_state->secure_level = secure_level;
 		smmu_state->transition_type = PRE_COMMIT;
 		*ops |= SDE_KMS_OPS_SECURE_STATE_CHANGE;
+		if (old_valid_fb)
+			*ops |= SDE_KMS_OPS_WAIT_FOR_TX_DONE;
 	}
 }
 
@@ -2774,9 +2776,8 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 
 			if (hw_ds->ops.setup_opmode) {
 				op_mode |= (cstate->num_ds_enabled ==
-					CRTC_DUAL_MIXERS_ONLY) ?
-					SDE_DS_OP_MODE_DUAL : 0;
-				hw_ds->ops.setup_opmode(hw_ds, op_mode);
+					CRTC_DUAL_MIXERS_ONLY) ? SDE_DS_OP_MODE_DUAL : 0;
+				hw_ds->ops.setup_opmode(hw_ds, op_mode, cfg->merge_mode);
 				SDE_EVT32_VERBOSE(DRMID(crtc), op_mode);
 			}
 
@@ -3669,6 +3670,7 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 		cstate->ds_cfg[i].flags = ds_cfg_usr->flags;
 		cstate->ds_cfg[i].lm_width = ds_cfg_usr->lm_width;
 		cstate->ds_cfg[i].lm_height = ds_cfg_usr->lm_height;
+		cstate->ds_cfg[i].merge_mode = ds_cfg_usr->merge_mode;
 		memset(&scaler_v2, 0, sizeof(scaler_v2));
 
 		if (ds_cfg_usr->scaler_cfg) {
@@ -3694,12 +3696,13 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 			scaler_v2.src_width[0], scaler_v2.src_height[0],
 			scaler_v2.dst_width, scaler_v2.dst_height);
 
-		SDE_DEBUG("ds cfg[%d]-ndx(%d) flags(%d) lm(%dx%d)\n",
+		SDE_DEBUG("ds cfg[%d]-ndx(%d) flags(%d) lm(%dx%d) merge_mode(%d)\n",
 			i, ds_cfg_usr->index, ds_cfg_usr->flags,
-			ds_cfg_usr->lm_width, ds_cfg_usr->lm_height);
+			ds_cfg_usr->lm_width, ds_cfg_usr->lm_height,
+			ds_cfg_usr->merge_mode);
 		SDE_EVT32_VERBOSE(DRMID(&sde_crtc->base), i, ds_cfg_usr->index,
 			ds_cfg_usr->flags, ds_cfg_usr->lm_width,
-			ds_cfg_usr->lm_height);
+			ds_cfg_usr->lm_height, ds_cfg_usr->merge_mode);
 	}
 
 	cstate->num_ds = count;
@@ -7109,6 +7112,12 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 				SDE_MAX_DIM_LAYERS);
 	}
 
+	if (test_bit(SDE_MDP_HW_FLUSH_SYNC, &catalog->mdp[0].features)) {
+		msm_property_install_range(&sde_crtc->property_info,
+			"flush_sync_en", 0x0, 0, 1, 0,
+				CRTC_PROP_FLUSH_SYNC_EN);
+	}
+
 	if (catalog->mdp[0].has_dest_scaler)
 		sde_crtc_install_dest_scale_properties(sde_crtc, catalog,
 				info);
@@ -7127,11 +7136,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			sde_kms_info_add_keyint(info, "demura_count",
 					catalog->demura_count);
 
-		if (catalog->ai_scaler_count)
+		if ((catalog->ai_scaler_count) && (catalog->ssip_allowed))
 			sde_kms_info_add_keyint(info, "ai_scaler_count",
 					catalog->ai_scaler_count);
 
-		if (catalog->abc_count)
+		if ((catalog->abc_count) && (catalog->ssip_allowed))
 			sde_kms_info_add_keyint(info, "abc_count",
 					catalog->abc_count);
 	}
@@ -7407,6 +7416,37 @@ void sde_crtc_set_qos_dirty(struct drm_crtc *crtc)
 	SDE_EVT32(DRMID(crtc), plane_mask);
 
 	sde_crtc_update_line_time(crtc);
+}
+
+void sde_crtc_force_async_mode(struct drm_encoder *enc,
+		struct drm_crtc_state *crtc_state)
+{
+	struct sde_crtc *sde_crtc;
+	struct drm_property *drm_prop;
+	struct sde_kms *sde_kms;
+
+	if (!enc || !crtc_state || !enc->crtc) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(enc->crtc);
+	sde_kms = _sde_crtc_get_kms(enc->crtc);
+
+	if (!sde_kms || !sde_kms->catalog) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	if (!sde_encoder_has_dpu_ctl_op_sync(enc) ||
+		!test_bit(SDE_MDP_HW_FLUSH_SYNC,
+			&sde_kms->catalog->mdp[0].features))
+		return;
+
+	drm_prop = msm_property_index_to_drm_property(&sde_crtc->property_info,
+			CRTC_PROP_FLUSH_SYNC_EN);
+	sde_crtc_atomic_set_property(enc->crtc, crtc_state, drm_prop, 0);
+	SDE_EVT32(DRMID(enc->crtc), DPUID(enc->crtc->dev));
 }
 
 /**

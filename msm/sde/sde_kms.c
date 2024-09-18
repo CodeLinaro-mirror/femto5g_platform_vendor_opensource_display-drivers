@@ -1281,6 +1281,7 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	struct drm_crtc_state *cstate;
 	struct sde_vm_ops *vm_ops;
 	int i, rc;
+	bool power_on_commit = true;
 
 	if (!kms)
 		return;
@@ -1300,7 +1301,13 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	}
 
 	if (sde_kms->first_kickoff) {
-		sde_power_scale_reg_bus(&priv->phandle, VOTE_INDEX_HIGH, false);
+		/* find if it's power on commit */
+		for_each_new_crtc_in_state(state, crtc, cstate, i) {
+			if (!crtc->state->active || !crtc->state->active_changed)
+				power_on_commit = false;
+		}
+		sde_power_scale_reg_bus(&priv->phandle,
+				power_on_commit ? VOTE_INDEX_LOW : VOTE_INDEX_HIGH, false);
 		sde_kms->first_kickoff = false;
 	}
 
@@ -1925,6 +1932,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.get_num_lm_from_mode = dsi_conn_get_lm_from_mode,
 		.update_transfer_time = dsi_display_update_transfer_time,
 		.get_panel_scan_line = dsi_display_get_panel_scan_line,
+		.check_cmd_defined = dsi_conn_check_cmd_defined,
 	};
 	static const struct sde_connector_ops wb_ops = {
 		.post_init =    sde_wb_connector_post_init,
@@ -2690,6 +2698,7 @@ static int sde_kms_set_crtc_for_conn(struct drm_device *dev,
 		return ret;
 	}
 
+	sde_crtc_force_async_mode(enc, crtc_state);
 	crtc_state->active = true;
 	crtc_state->enable = true;
 	ret = drm_atomic_set_crtc_for_connector(conn_state, enc->crtc);
@@ -3215,6 +3224,7 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 	struct drm_crtc_state *crtc_state;
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	bool sec_session = false, global_sec_session = false;
+	bool fb_sec_session = false, global_fb_sec_session = false;
 	uint32_t fb_ns = 0, fb_sec = 0, fb_sec_dir = 0;
 	int i;
 
@@ -3236,6 +3246,8 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 				&fb_sec, &fb_sec_dir);
 		if (fb_sec_dir)
 			sec_session = true;
+		if (fb_sec)
+			fb_sec_session = true;
 		cur_crtc = crtc;
 	}
 
@@ -3252,8 +3264,18 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 					&fb_sec, &fb_sec_dir);
 			if (fb_sec_dir)
 				global_sec_session = true;
+			if (fb_sec)
+				global_fb_sec_session = true;
 			global_crtc = crtc;
 		}
+	}
+
+	if ((global_sec_session || sec_session) && (fb_sec_session || global_fb_sec_session)) {
+		SDE_ERROR("crtc%d secure check failed sec_dir:%d, g_sec_dir:%d, sec:%d, g_sec:%d\n",
+			       cur_crtc ? cur_crtc->base.id : -1,
+			       sec_session, global_sec_session, fb_sec_session,
+			       global_fb_sec_session);
+		return -EPERM;
 	}
 
 	if (!global_sec_session && !sec_session)
@@ -4286,15 +4308,18 @@ retry:
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		struct drm_crtc_state *crtc_state;
 		uint64_t lp;
+		bool display_mode_active;
 
 		if (!conn->state || !conn->state->crtc ||
 			conn->dpms != DRM_MODE_DPMS_ON ||
 			sde_encoder_in_clone_mode(conn->encoder))
 			continue;
 
+		display_mode_active = sde_encoder_check_curr_mode(conn->encoder,
+			MSM_DISPLAY_VIDEO_MODE) && !sde_encoder_in_video_psr(conn->encoder);
+
 		lp = sde_connector_get_lp(conn);
-		if (lp == SDE_MODE_DPMS_LP1 &&
-			!sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE)) {
+		if (lp == SDE_MODE_DPMS_LP1 && !display_mode_active) {
 			/* transition LP1->LP2 on pm suspend */
 			ret = sde_connector_set_property_for_commit(conn, state,
 					CONNECTOR_PROP_LP, SDE_MODE_DPMS_LP2);
@@ -4306,8 +4331,7 @@ retry:
 			}
 		}
 
-		if (lp != SDE_MODE_DPMS_LP2 ||
-			sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE)) {
+		if (lp != SDE_MODE_DPMS_LP2 || display_mode_active) {
 			/* force CRTC to be inactive */
 			crtc_state = drm_atomic_get_crtc_state(state,
 					conn->state->crtc);
@@ -4319,8 +4343,7 @@ retry:
 				goto unlock;
 			}
 
-			if (lp != SDE_MODE_DPMS_LP1 ||
-				sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE))
+			if (lp != SDE_MODE_DPMS_LP1 || display_mode_active)
 				crtc_state->active = false;
 			++num_crtcs;
 		}

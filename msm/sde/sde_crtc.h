@@ -1028,6 +1028,21 @@ static inline void sde_crtc_get_ds_io_res(struct drm_crtc_state *state, struct s
 }
 
 /**
+ * sde_crtc_no_frame_in_progress - Return false in frame pending/in progress
+ * @crtc: pointer to drm crtc
+ */
+static inline bool sde_crtc_no_frame_in_progress(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc = NULL;
+
+	sde_crtc = to_sde_crtc(crtc);
+	if (sde_crtc && !sde_crtc_frame_pending(crtc) && !sde_crtc->kickoff_in_progress)
+		return true;
+
+	return false;
+}
+
+/**
  * sde_crtc_get_ai_scaler_io_res - populates the AI scaler src/dst w/h
  * @state: pointer to drm crtc state
  */
@@ -1220,4 +1235,10 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, u32 c
  */
 void sde_crtc_mdnie_art_event_notify(struct drm_crtc *crtc);
 
+/**
+ * sde_crtc_force_async_mode - force hw flush sync mode to async
+ * @enc:Pointer to drm_encoder
+ * @crtc_state: Pointer to DRM crtc state object
+ */
+void sde_crtc_force_async_mode(struct drm_encoder *enc, struct drm_crtc_state *crtc_state);
 #endif /* _SDE_CRTC_H_ */
