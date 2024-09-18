@@ -3762,3 +3762,21 @@ int sde_connector_event_notify(struct drm_connector *connector, uint32_t type,
 
 	return ret;
 }
+
+int sde_connector_trigger_hdcp_auth(struct drm_connector *connector, bool enable)
+{
+	struct sde_connector *c_conn = NULL;
+	int ret = 0;
+
+	if (!connector) {
+		SDE_ERROR("Invalid input\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+
+	if (c_conn && c_conn->ops.hdcp_auth)
+		ret = c_conn->ops.hdcp_auth(connector, enable);
+
+	return ret;
+}

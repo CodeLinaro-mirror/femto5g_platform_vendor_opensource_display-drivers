@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1887,6 +1887,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.set_dyn_bit_clk = NULL,
 		.update_transfer_time = NULL,
 		.get_tile_map = dp_connector_get_tile_map,
+		.hdcp_auth = dp_connector_hdcp_auth,
 	};
 	struct msm_display_info info;
 	struct drm_encoder *encoder;
