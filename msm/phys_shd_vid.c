@@ -451,6 +451,8 @@ static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
 static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_enc, bool notify)
 {
 	struct sde_encoder_wait_info wait_info;
+	struct sde_encoder_phys_shd *shd_enc;
+	struct shd_display *display;
 	int ret = 0;
 	u32 event = 0;
 	u32 event_helper = 0;
@@ -464,6 +466,33 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 
 	conn = phys_enc->connector;
 
+	/*
+	 * If base display is already disabled, all clocks including pixel
+	 * clock should have been turned off. So waiting for next VSYNC in
+	 * the SHD encoder will always timeout. Skip the SHD encoder waiting
+	 * if the base CRTC or encoder has been disabled.
+	 */
+	shd_enc = to_sde_encoder_phys_shd(phys_enc);
+	display = sde_connector_get_display(phys_enc->connector);
+	if (display) {
+		struct sde_crtc *sde_crtc;
+		struct drm_encoder *base_enc;
+
+		sde_crtc = to_sde_crtc(display->base->crtc);
+		if (sde_crtc && !sde_crtc->enabled) {
+			SDE_INFO("Skipped, base CRTC%d is already disabled\n",
+					DRMID(&sde_crtc->base));
+			goto skip;
+		}
+
+		base_enc = display->base->encoder;
+		if (!sde_encoder_is_enabled(base_enc)) {
+			SDE_INFO("Skipped, base enc%d is already disabled\n",
+					DRMID(base_enc));
+			goto skip;
+		}
+	}
+
 	wait_info.wq = &phys_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &phys_enc->pending_kickoff_cnt;
 	wait_info.timeout_ms = phys_enc->kickoff_timeout_ms;
@@ -474,6 +503,7 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 	/* Wait for kickoff to complete */
 	ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC, &wait_info);
 
+skip:
 	event_helper = SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE
 			| SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE;
 
