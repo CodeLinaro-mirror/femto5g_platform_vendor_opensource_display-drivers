@@ -351,6 +351,7 @@ struct sde_reg_dma_kickoff_cfg {
  * @last_command: notify control that last command is queued
  * @last_command_sb: notify control that last command for SB LUTDMA is queued
  * @dump_regs: dump reg dma registers
+ * @select_queue_sb: select correct ctl queue for sb lutdma based on version
  */
 struct sde_hw_reg_dma_ops {
 	int (*check_support)(enum sde_reg_dma_features feature,
@@ -367,6 +368,7 @@ struct sde_hw_reg_dma_ops {
 	int (*last_command_sb)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
 	void (*dump_regs)(u32 dpu_idx);
+	enum sde_reg_dma_queue (*select_queue_sb)(void);
 };
 
 /**

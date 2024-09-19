@@ -183,6 +183,9 @@ static int last_cmd_sb_v2(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 static int validate_queue_type_v1_to_3(struct sde_reg_dma_kickoff_cfg *cfg);
 static int validate_queue_type_v4(struct sde_reg_dma_kickoff_cfg *cfg);
 
+static enum sde_reg_dma_queue reg_dma_select_queue_sb_v1_to_3(void);
+static enum sde_reg_dma_queue reg_dma_select_queue_sb_v4(void);
+
 static void reg_dma_read_clear_status_v1_to_v3(struct sde_reg_dma_kickoff_cfg *cfg,
 					struct sde_hw_blk_reg_map *hw);
 static void reg_dma_read_clear_status_v4(struct sde_reg_dma_kickoff_cfg *cfg,
@@ -830,6 +833,16 @@ static int validate_queue_type_v4(struct sde_reg_dma_kickoff_cfg *cfg)
 	return 0;
 }
 
+static enum sde_reg_dma_queue reg_dma_select_queue_sb_v1_to_3(void)
+{
+	return DMA_CTL_QUEUE1;
+}
+
+static enum sde_reg_dma_queue reg_dma_select_queue_sb_v4(void)
+{
+	return DMA_CTL_QUEUE0;
+}
+
 static void reg_dma_read_clear_status_v1_to_v3(struct sde_reg_dma_kickoff_cfg *cfg,
 					struct sde_hw_blk_reg_map *hw)
 {
@@ -978,6 +991,7 @@ int init_v1(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 	reg_dma[dpu_idx]->ops.reset_reg_dma_buf = reset_reg_dma_buffer_v1;
 	reg_dma[dpu_idx]->ops.last_command = last_cmd_v1;
 	reg_dma[dpu_idx]->ops.dump_regs = dump_regs_v1;
+	reg_dma[dpu_idx]->ops.select_queue_sb = reg_dma_select_queue_sb_v1_to_3;
 
 	reg_dma_register_count = 60;
 	reg_dma_decode_sel = 0x180ac060;
@@ -1278,6 +1292,7 @@ int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx)
 		reg_dma_intr_5_clear_offset[i][DMA_CTL_QUEUE1] = 4096 * i + 0x5c;
 	}
 	validate_queue_func = validate_queue_type_v4;
+	reg_dma->ops.select_queue_sb = reg_dma_select_queue_sb_v4;
 	j = 0;
 	for (i = CTL_0; i < CTL_MAX; i++)
 		vm_q_ctl_assigned_mask[i] = BIT(j++);
@@ -1719,7 +1734,7 @@ static int last_cmd_sb_v2(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	kick_off.last_command = 1;
 	kick_off.op = REG_DMA_WRITE;
 	kick_off.dma_type = REG_DMA_TYPE_SB;
-	kick_off.queue_select = DMA_CTL_QUEUE1;
+	kick_off.queue_select = q;
 	kick_off.dma_buf = last_cmd_buf_sb[ctl->idx][ctl->dpu_idx];
 	kick_off.feature = REG_DMA_FEATURES_MAX;
 	rc = kick_off_v1(&kick_off, ctl->dpu_idx);
