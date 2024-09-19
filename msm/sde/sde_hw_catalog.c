@@ -178,6 +178,7 @@
 		(blk_base) - (top_off) : (blk_base))
 
 #define HW_FENCE_DEFAULT_MDP_OFFSET 0x140000
+#define HW_FENCE_DEFAULT_IPCC_PROTOCOL_OFFSET 0x40000
 
 #define DEFAULT_HW_FLUSH_SYNC_VAL 10
 /*************************************************************
@@ -235,6 +236,7 @@ enum sde_prop {
 	LINE_INSERTION,
 	SOCCP_PH,
 	HW_FENCE_MDP_OFFSET,
+	IPCC_PROTOCOL_OFFSET,
 	SDE_PROP_MAX,
 };
 
@@ -678,7 +680,8 @@ static struct sde_prop_type sde_prop[] = {
 	{IPCC_CLIENT_DPU_PHYS_ID, "qcom,sde-ipcc-client-dpu-phys-id", false, PROP_TYPE_U32},
 	{LINE_INSERTION, "qcom,sde-has-line-insertion", false, PROP_TYPE_BOOL},
 	{SOCCP_PH, "qcom,sde-soccp-controller", false, PROP_TYPE_U32},
-	{HW_FENCE_MDP_OFFSET, "qcom,sde-hw-fence-mdp-ctl-offset", false, PROP_TYPE_U32}
+	{HW_FENCE_MDP_OFFSET, "qcom,sde-hw-fence-mdp-ctl-offset", false, PROP_TYPE_U32},
+	{IPCC_PROTOCOL_OFFSET, "qcom,sde-ipcc-protocol-offset", false, PROP_TYPE_U32}
 };
 
 static struct sde_prop_type sde_perf_prop[] = {
@@ -4478,6 +4481,9 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 	cfg->mdp[0].hw_fence_mdp_offset = PROP_VALUE_ACCESS(props->values, HW_FENCE_MDP_OFFSET, 0);
 	if (!cfg->mdp[0].hw_fence_mdp_offset)
 		cfg->mdp[0].hw_fence_mdp_offset = HW_FENCE_DEFAULT_MDP_OFFSET;
+	cfg->ipcc_protocol_offset = PROP_VALUE_ACCESS(props->values, IPCC_PROTOCOL_OFFSET, 0);
+	if (!cfg->ipcc_protocol_offset)
+		cfg->ipcc_protocol_offset = HW_FENCE_DEFAULT_IPCC_PROTOCOL_OFFSET;
 	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id)
 		cfg->hw_fence_rev = 0; /* disable hw fences*/
 

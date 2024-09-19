@@ -4645,12 +4645,13 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 				SDE_DEBUG("failed to get resource ipcc_reg, cannot map ipcc\n");
 				sde_kms->catalog->hw_fence_rev = 0;
 			} else {
-				sde_kms->ipcc_base_addr = res->start;
+				sde_kms->dpu_ipcc_addr = HW_FENCE_IPCC_PROTOCOLp_CLIENTc(res->start,
+					sde_kms->catalog->ipcc_protocol_offset,
+					sde_kms->catalog->ipcc_protocol_id,
+					sde_kms->catalog->ipcc_client_phys_id);
 
 				ret = _sde_kms_one2one_mem_map_ipcc_reg(sde_kms, resource_size(res),
-					HW_FENCE_IPCC_PROTOCOLp_CLIENTc(res->start,
-					sde_kms->catalog->ipcc_protocol_id,
-					sde_kms->catalog->ipcc_client_phys_id));
+					sde_kms->dpu_ipcc_addr);
 				/* if mapping fails disable hw-fences */
 				if (ret)
 					sde_kms->catalog->hw_fence_rev = 0;
@@ -4706,8 +4707,7 @@ static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
 
 	if (sde_kms->hw_mdp->ops.setup_hw_fences)
 		sde_kms->hw_mdp->ops.setup_hw_fences(sde_kms->hw_mdp,
-			sde_kms->catalog->ipcc_protocol_id, sde_kms->catalog->ipcc_client_phys_id,
-			sde_kms->ipcc_base_addr);
+			sde_kms->catalog->ipcc_protocol_id, sde_kms->dpu_ipcc_addr);
 }
 
 static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
