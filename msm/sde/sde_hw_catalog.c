@@ -5900,6 +5900,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_MDP_DUAL_DPU_SYNC, &sde_cfg->mdp[0].features);
 		set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
 		set_bit(SDE_MDP_HW_FLUSH_SYNC, &sde_cfg->mdp[0].features);
+		set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 		sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
 		sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;
 		sde_cfg->perf.min_prefill_lines = 40;
