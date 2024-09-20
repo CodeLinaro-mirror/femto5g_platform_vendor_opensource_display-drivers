@@ -467,6 +467,8 @@ enum {
 	SPR_OFF,
 	SPR_LEN,
 	SPR_VERSION,
+	SPR_DITHER_OFF,
+	SPR_DITHER_VERSION,
 	SPR_PROP_MAX,
 };
 
@@ -915,6 +917,8 @@ static struct sde_prop_type spr_prop[] = {
 	{SPR_OFF, "qcom,sde-dspp-spr-off", false, PROP_TYPE_U32_ARRAY},
 	{SPR_LEN, "qcom,sde-dspp-spr-size", false, PROP_TYPE_U32},
 	{SPR_VERSION, "qcom,sde-dspp-spr-version", false, PROP_TYPE_U32},
+	{SPR_DITHER_OFF, "qcom,sde-dspp-spr-dither-off", false, PROP_TYPE_U32_ARRAY},
+	{SPR_DITHER_VERSION, "qcom,sde-dspp-spr-dither-version", false, PROP_TYPE_U32},
 };
 
 static struct sde_prop_type ds_top_prop[] = {
@@ -3050,6 +3054,17 @@ static int _sde_dspp_spr_parse_dt(struct device_node *np,
 					SPR_VERSION, 0);
 			set_bit(SDE_DSPP_SPR, &dspp->features);
 		}
+
+		sblk->spr_dither.id = SDE_DSPP_SPR;
+		if (props->exists[SPR_DITHER_OFF] && i < off_count) {
+			sblk->spr_dither.base = PROP_VALUE_ACCESS(props->values,
+					SPR_DITHER_OFF, i);
+			sblk->spr_dither.version = PROP_VALUE_ACCESS(props->values,
+					SPR_DITHER_VERSION, 0);
+		}
+
+		if (test_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features))
+			set_bit(SDE_DSPP_SPR_DITHER_LUMA, &dspp->features);
 	}
 
 	sde_put_dt_props(props);

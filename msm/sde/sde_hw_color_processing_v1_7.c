@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2016-2019, 2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.​
+ * Copyright (c) 2016-2019, 2021 The Linux Foundation. All rights reserved.
  */
 
 #include <drm/msm_drm_pp.h>
@@ -137,6 +138,10 @@
 #define PGC_TBL_NUM 3
 #define PGC_LUT_SWAP_OFF 0x1c
 
+#define DITHER_DEPTH_MAP_INDEX 9
+static u32 dither_depth_map[DITHER_DEPTH_MAP_INDEX] = {
+	0, 0, 0, 0, 0, 1, 2, 3, 3
+};
 
 static void __setup_pa_hue(struct sde_hw_blk_reg_map *hw,
 		const struct sde_pp_blk *blk, u32 hue, int loc)
@@ -962,6 +967,56 @@ void sde_lock_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 
 	val = (*(u32 *)cfg) & 0x1;
 	SDE_REG_WRITE(&ctx->hw, offset_ctl, val);
+}
+
+void sde_setup_dspp_spr_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_dither *dither;
+	u32 base = 0, offset = 0, data = 0, i = 0;
+
+	if (!hw_cfg || (hw_cfg->len != sizeof(struct drm_msm_dither) &&
+			hw_cfg->payload)) {
+		DRM_ERROR("hw %pK payload %pK size %d expected sz %zd\n",
+			hw_cfg, ((hw_cfg) ? hw_cfg->payload : NULL),
+			((hw_cfg) ? hw_cfg->len : 0),
+			sizeof(struct drm_msm_dither));
+		return;
+	}
+
+	base = ctx->cap->sblk->spr_dither.base;
+
+	/* Turn off feature */
+	if (!hw_cfg->payload) {
+		DRM_DEBUG_DRIVER("Disable DSPP spr dither feature\n");
+		SDE_REG_WRITE(&ctx->hw, base, 0);
+		return;
+	}
+	DRM_DEBUG_DRIVER("Enable DSPP spr Dither feature\n");
+	dither = hw_cfg->payload;
+
+	offset += 4;
+	data = dither_depth_map[dither->c0_bitdepth] & REG_MASK(2);
+	data |= (dither_depth_map[dither->c1_bitdepth] & REG_MASK(2)) << 2;
+	data |= (dither_depth_map[dither->c2_bitdepth] & REG_MASK(2)) << 4;
+	data |= (dither_depth_map[dither->c3_bitdepth] & REG_MASK(2)) << 6;
+	data |= (dither->temporal_en) ? (1 << 8) : 0;
+	SDE_REG_WRITE(&ctx->hw, base + offset, data);
+
+	for (i = 0; i < DITHER_MATRIX_SZ - 3; i += 4) {
+		offset += 4;
+		data = (dither->matrix[i] & REG_MASK(4)) |
+			((dither->matrix[i + 1] & REG_MASK(4)) << 4) |
+			((dither->matrix[i + 2] & REG_MASK(4)) << 8) |
+			((dither->matrix[i + 3] & REG_MASK(4)) << 12);
+		SDE_REG_WRITE(&ctx->hw, base + offset, data);
+	}
+	if (test_bit(SDE_DSPP_SPR_DITHER_LUMA, &ctx->cap->features)
+				&& (dither->flags & DITHER_LUMA_MODE)) {
+		SDE_REG_WRITE(&ctx->hw, base, 0x11);
+	} else {
+		SDE_REG_WRITE(&ctx->hw, base, 1);
+	}
 }
 
 void sde_setup_dspp_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)

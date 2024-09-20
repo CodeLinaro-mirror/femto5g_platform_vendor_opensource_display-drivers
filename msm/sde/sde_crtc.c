@@ -7386,6 +7386,9 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		sde_kms_info_add_keyint(info, "dspp_count",
 				catalog->dspp_count);
 
+		if (catalog->spr_count)
+			sde_kms_info_add_keyint(info, "spr", catalog->spr_count);
+
 		if (catalog->rc_count) {
 			sde_kms_info_add_keyint(info, "rc_count", catalog->rc_count);
 			sde_kms_info_add_keyint(info, "rc_mem_size",
