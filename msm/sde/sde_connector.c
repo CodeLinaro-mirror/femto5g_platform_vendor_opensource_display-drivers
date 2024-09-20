@@ -583,6 +583,7 @@ static void _sde_connector_install_dither_property(struct drm_device *dev,
 	switch (version) {
 	case 1:
 	case 2:
+	case 3:
 		msm_property_install_blob(&c_conn->property_info, prop_name,
 			DRM_MODE_PROP_BLOB,
 			CONNECTOR_PROP_PP_DITHER);

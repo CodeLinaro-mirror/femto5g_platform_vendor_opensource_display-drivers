@@ -146,6 +146,13 @@ void sde_lock_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg);
 void sde_setup_dspp_spr_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
+ * sde_setup_dspp_spr_dither_v2 - setup DSPP spr dither feature in v2 hardware
+ * @ctx: Pointer to DSPP context
+ * @cfg: Pointer to spr dither data
+ */
+void sde_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
  * sde_setup_dspp_dither_v1_7 - setup DSPP dither feature in v1.7 hardware
  * @ctx: Pointer to DSPP context
  * @cfg: Pointer to dither data

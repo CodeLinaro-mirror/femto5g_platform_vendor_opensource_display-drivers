@@ -969,11 +969,10 @@ void sde_lock_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 	SDE_REG_WRITE(&ctx->hw, offset_ctl, val);
 }
 
-void sde_setup_dspp_spr_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
+static int sde_setup_spr_dither_validate(struct sde_hw_dspp *ctx, void *cfg)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct drm_msm_dither *dither;
-	u32 base = 0, offset = 0, data = 0, i = 0;
 
 	if (!hw_cfg || (hw_cfg->len != sizeof(struct drm_msm_dither) &&
 			hw_cfg->payload)) {
@@ -981,18 +980,29 @@ void sde_setup_dspp_spr_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 			hw_cfg, ((hw_cfg) ? hw_cfg->payload : NULL),
 			((hw_cfg) ? hw_cfg->len : 0),
 			sizeof(struct drm_msm_dither));
-		return;
+		return -EINVAL;
 	}
+
+	dither = hw_cfg->payload;
+
+	if (dither != NULL) {
+		if (dither->c0_bitdepth >= DITHER_DEPTH_MAP_INDEX ||
+			dither->c1_bitdepth >= DITHER_DEPTH_MAP_INDEX ||
+			dither->c2_bitdepth >= DITHER_DEPTH_MAP_INDEX ||
+			dither->c3_bitdepth >= DITHER_DEPTH_MAP_INDEX)
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
+static void sde_setup_dspp_spr_dither_common(struct sde_hw_dspp *ctx, void *cfg, u32 *opmode)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_dither *dither;
+	u32 base = 0, offset = 0, data = 0;
 
 	base = ctx->cap->sblk->spr_dither.base;
-
-	/* Turn off feature */
-	if (!hw_cfg->payload) {
-		DRM_DEBUG_DRIVER("Disable DSPP spr dither feature\n");
-		SDE_REG_WRITE(&ctx->hw, base, 0);
-		return;
-	}
-	DRM_DEBUG_DRIVER("Enable DSPP spr Dither feature\n");
 	dither = hw_cfg->payload;
 
 	offset += 4;
@@ -1003,6 +1013,39 @@ void sde_setup_dspp_spr_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 	data |= (dither->temporal_en) ? (1 << 8) : 0;
 	SDE_REG_WRITE(&ctx->hw, base + offset, data);
 
+	*opmode = BIT(0);
+
+	if (test_bit(SDE_DSPP_SPR_DITHER_LUMA, &ctx->cap->features)
+				&& (dither->flags & DITHER_LUMA_MODE)) {
+		*opmode |= BIT(4);
+	}
+}
+
+void sde_setup_dspp_spr_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_dither *dither;
+	u32 base = 0, offset = 0, data = 0, i = 0;
+	u32 opmode = 0;
+	int ret = 0;
+
+	ret = sde_setup_spr_dither_validate(ctx, cfg);
+	if (ret)
+		return;
+
+	base = ctx->cap->sblk->spr_dither.base;
+
+	/* Turn off feature */
+	if (!hw_cfg->payload) {
+		DRM_DEBUG_DRIVER("Disable DSPP spr dither feature\n");
+		SDE_REG_WRITE(&ctx->hw, base, 0);
+		return;
+	}
+	DRM_DEBUG_DRIVER("Enable DSPP spr Dither feature\n");
+
+	dither = hw_cfg->payload;
+
+	offset += 4;
 	for (i = 0; i < DITHER_MATRIX_SZ - 3; i += 4) {
 		offset += 4;
 		data = (dither->matrix[i] & REG_MASK(4)) |
@@ -1011,12 +1054,95 @@ void sde_setup_dspp_spr_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 			((dither->matrix[i + 3] & REG_MASK(4)) << 12);
 		SDE_REG_WRITE(&ctx->hw, base + offset, data);
 	}
-	if (test_bit(SDE_DSPP_SPR_DITHER_LUMA, &ctx->cap->features)
-				&& (dither->flags & DITHER_LUMA_MODE)) {
-		SDE_REG_WRITE(&ctx->hw, base, 0x11);
-	} else {
-		SDE_REG_WRITE(&ctx->hw, base, 1);
+
+	sde_setup_dspp_spr_dither_common(ctx, cfg, &opmode);
+	SDE_REG_WRITE(&ctx->hw, base, opmode);
+}
+
+void sde_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_dither *dither;
+	u32 base = 0, offset = 0, data = 0, i = 0, row = 0, col = 0;
+	u32 opmode = 0;
+	u16 dither_matrix_reg;
+	u32 matrix_size = 16, stride = 4; // DEFAULT Dither Matrix size 4x4
+	int ret = 0;
+
+	ret = sde_setup_spr_dither_validate(ctx, cfg);
+	if (ret)
+		return;
+
+	base = ctx->cap->sblk->spr_dither.base;
+
+	/* Turn off feature */
+	if (!hw_cfg->payload) {
+		DRM_DEBUG_DRIVER("Disable DSPP spr dither feature\n");
+		SDE_REG_WRITE(&ctx->hw, base, 0);
+		return;
 	}
+	DRM_DEBUG_DRIVER("Enable DSPP spr Dither feature\n");
+
+	dither = hw_cfg->payload;
+
+	// Ensuring valid dither_matrix_select range - [0, 4]
+	if ((dither->dither_matrix_select < DITHER_MATRIX_SELECT_NONE) ||
+		(dither->dither_matrix_select > DITHER_MATRIX_SELECT_16_16)) {
+		DRM_ERROR("Invalid dither_matrix_select: %d\n", dither->dither_matrix_select);
+		return;
+	}
+
+	offset += 4;
+	if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_NONE) {
+		// DITHER_MATRIX_MODE_SELECT is not set, fallback to
+		// legacy mode of matrix values programming
+		for (i = 0; i < DITHER_MATRIX_SZ - 3; i += 4) {
+			offset += 4;
+			data = (dither->matrix[i] & REG_MASK(4)) |
+				((dither->matrix[i + 1] & REG_MASK(4)) << 4) |
+				((dither->matrix[i + 2] & REG_MASK(4)) << 8) |
+				((dither->matrix[i + 3] & REG_MASK(4)) << 12);
+			SDE_REG_WRITE(&ctx->hw, base + offset, data);
+		}
+	} else {
+		// DITHER_MATRIX_MODE_SELECT is set, use new matrix address
+		// and value to set dither matrix values
+		if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_6_6) {
+			matrix_size = 36;
+			stride = 6;
+		} else if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_8_8) {
+			matrix_size = 64;
+			stride = 8;
+		} else if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_16_16) {
+			matrix_size = 256;
+			stride = 16;
+		}
+
+		for (i = 0; i < matrix_size; i++) {
+			row = i / stride;
+			col = i % stride;
+
+			dither_matrix_reg = ((dither->dither_matrix_extended[i] & REG_MASK(6)) |
+								((row * 16 + col) << 8));
+			SDE_REG_WRITE(&ctx->hw, base + 0x20, dither_matrix_reg);
+		}
+	}
+
+	sde_setup_dspp_spr_dither_common(ctx, cfg, &opmode);
+
+	// v2 specific opmode settings
+	opmode |= BIT(1) | BIT(2);
+	opmode |= (dither->flags & DITHER_OFFSET_ENABLE) ? BIT(5) : 0;
+	if (dither->dither_matrix_select != DITHER_MATRIX_SELECT_NONE) {
+		opmode |= BIT(3);
+		if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_6_6)
+			opmode |= (0x1 << 6);
+		else if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_8_8)
+			opmode |= (0x2 << 6);
+		else if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_16_16)
+			opmode |= (0x3 << 6);
+	}
+	SDE_REG_WRITE(&ctx->hw, base, opmode);
 }
 
 void sde_setup_dspp_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)

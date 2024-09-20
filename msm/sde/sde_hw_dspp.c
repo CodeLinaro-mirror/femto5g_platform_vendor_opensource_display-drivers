@@ -402,6 +402,8 @@ static void dspp_spr(struct sde_hw_dspp *c)
 	c->ops.setup_spr_dither = NULL;
 	if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x1, 0x7))
 		c->ops.setup_spr_dither = sde_setup_dspp_spr_dither_v1_7;
+	else if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x2, 0x0))
+		c->ops.setup_spr_dither = sde_setup_dspp_spr_dither_v2;
 }
 
 static void dspp_demura(struct sde_hw_dspp *c)

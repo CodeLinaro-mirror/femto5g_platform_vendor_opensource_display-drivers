@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -589,6 +589,7 @@ static void _sde_wb_connector_install_dither_property(struct sde_wb_device *wb_d
 	snprintf(prop_name, ARRAY_SIZE(prop_name), "%s%d", "SDE_PP_CWB_DITHER_V", version);
 	switch (version) {
 	case 2:
+	case 3:
 		msm_property_install_blob(&c_conn->property_info, prop_name,
 			DRM_MODE_PROP_BLOB, CONNECTOR_PROP_PP_CWB_DITHER);
 		break;
