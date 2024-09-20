@@ -24,7 +24,7 @@ def define_parrot():
             "CONFIG_DRM_MSM_REGISTER_LOGGING",
             "CONFIG_QCOM_MDSS_PLL",
             "CONFIG_HDCP_QSEECOM",
-            #"CONFIG_DRM_SDE_VM",
+            "CONFIG_DRM_SDE_VM",
             "CONFIG_THERMAL_OF",
             #"CONFIG_MSM_MMRM",
             "CONFIG_MSM_EXT_DISPLAY",
