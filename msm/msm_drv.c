@@ -51,7 +51,14 @@
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 #include <drm/drm_irq.h>
 #endif
+
+/* boot_marker is enabled on 6.1 kernel onwards */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(6, 1, 0))
+#include <soc/qcom/boot_marker.h>
+#define USE_BOOT_MARKER
+#else
 #include <soc/qcom/boot_stats.h>
+#endif
 
 #include "msm_drv.h"
 #include "msm_gem.h"
@@ -945,9 +952,9 @@ static int msm_drm_component_init(struct device *dev)
 	struct msm_kms *kms = NULL;
 	int ret;
 	struct drm_crtc *crtc;
-  #if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
+#ifdef USE_BOOT_MARKER
 	char msg_lt_kpi[128] = {0};
-  #endif
+#endif
 
 	ktime_get_ts64(&priv->time_stmp.bind_start);
 
@@ -1091,7 +1098,7 @@ static int msm_drm_component_init(struct device *dev)
 	priv->time_stmp.init_delta = timespec64_sub(priv->time_stmp.bind_end,
 						priv->time_stmp.probe_start);
 
-#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
+#ifdef USE_BOOT_MARKER
 	place_marker("M - DISPLAY Driver Ready");
 	snprintf(msg_lt_kpi, sizeof(msg_lt_kpi), "M - DPU%d probe: %luus",
 		 priv->instance_id,
@@ -2345,7 +2352,7 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	int ret;
 	struct component_match *match = NULL;
 
-#if (KERNEL_VERSION(6, 1, 0) > LINUX_VERSION_CODE)
+#ifdef USE_BOOT_MARKER
 	place_marker("M - DISPLAY Driver Init");
 #else
 	pr_info("M - DISPLAY Driver Init\n");
