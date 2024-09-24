@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2014 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -912,7 +912,10 @@ int msm_atomic_commit(struct drm_device *dev,
 	struct drm_plane *plane;
 	struct drm_plane_state *old_plane_state, *new_plane_state;
 	struct list_head *entry;
-	int i, ret;
+	int i, j, ret;
+	struct drm_gem_object *obj;
+	struct msm_gem_object *msm_obj;
+	struct dma_fence *fence;
 
 	if (!priv || priv->shutdown_in_progress) {
 		DRM_ERROR("priv is null or shutdwon is in-progress\n");
@@ -945,26 +948,26 @@ int msm_atomic_commit(struct drm_device *dev,
 			new_plane_state, i) {
 		if ((new_plane_state->fb != old_plane_state->fb)
 				&& new_plane_state->fb) {
-			struct drm_gem_object *obj =
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
-				msm_framebuffer_bo(new_plane_state->fb, i);
+#if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
+			if (new_plane_state->fb->format) {
+				for (j = 0; j < new_plane_state->fb->format->num_planes; ++j) {
+					obj = msm_framebuffer_bo(new_plane_state->fb, j);
+					msm_obj = to_msm_bo(obj);
+					fence = msm_dma_resv_get_excl(new_plane_state, msm_obj);
+					dma_fence_put(new_plane_state->fence);
+					new_plane_state->fence = fence;
+				}
+			}
 #else
-				msm_framebuffer_bo(new_plane_state->fb, 0);
-#endif
-			struct msm_gem_object *msm_obj = to_msm_bo(obj);
-			struct dma_fence *fence =
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
-				msm_dma_resv_get_excl(new_plane_state, msm_obj);
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+			obj = msm_framebuffer_bo(new_plane_state->fb, 0);
+			msm_obj = to_msm_bo(obj);
+			fence =
+#if (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 				dma_resv_get_excl_unlocked(msm_obj->resv);
 #else
 				dma_resv_get_excl_rcu(msm_obj->resv);
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
-			dma_fence_put(new_plane_state->fence);
-			new_plane_state->fence = fence;
-#else
 			drm_atomic_set_fence_for_plane(new_plane_state, fence);
 #endif
 		}

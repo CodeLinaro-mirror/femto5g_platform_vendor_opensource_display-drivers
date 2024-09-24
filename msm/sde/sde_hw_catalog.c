@@ -4993,6 +4993,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
 		set_bit(SDE_FEATURE_DECIMATION, sde_cfg->features);
 		set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+		set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 	} else if (IS_SDMSHRIKE_TARGET(hw_rev)) {
 		set_bit(SDE_FEATURE_WB_UBWC, sde_cfg->features);
 		sde_cfg->perf.min_prefill_lines = 24;
@@ -5001,6 +5002,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
 		set_bit(SDE_FEATURE_DECIMATION, sde_cfg->features);
 		set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
+		set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 		clear_bit(SDE_FEATURE_SUI_MISR, sde_cfg->features);
 		clear_bit(SDE_FEATURE_SUI_BLENDSTAGE, sde_cfg->features);
 		clear_bit(SDE_FEATURE_SUI_NS_ALLOWED, sde_cfg->features);
@@ -5016,6 +5018,7 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
 		set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
 		set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+		set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 	} else if (IS_SDMMAGPIE_TARGET(hw_rev)) {
 		set_bit(SDE_FEATURE_CWB, sde_cfg->features);
 		set_bit(SDE_FEATURE_WB_UBWC, sde_cfg->features);

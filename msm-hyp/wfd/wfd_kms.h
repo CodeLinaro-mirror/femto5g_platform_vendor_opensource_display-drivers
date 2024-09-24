@@ -203,6 +203,24 @@ typedef union
 	WFD_PipelineVIGConfigBuffType   sVigConfigType;
 } WFD_PipelineColorConfigBuffType;
 
+enum hsic_type {
+	PA_HSIC_HUE = 0,
+	PA_HSIC_SATURATION,
+	PA_HSIC_VALUE,
+	PA_HSIC_CONTRAST,
+	PA_HSIC_SATURATION_THRESHOLD,
+	PA_HSIC_MAX,
+};
+
+struct hsic_parameter_convertion {
+	int user_min;
+	int user_max;
+	int reg_min;
+	int reg_max;
+	int hsic_mask;
+	int val_max;
+};
+
 #define to_wfd_kms(x)\
 	container_of((x), struct wfd_kms, base)
 

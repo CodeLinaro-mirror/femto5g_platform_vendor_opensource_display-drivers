@@ -313,6 +313,14 @@ int dsi_pll_init(struct platform_device *pdev, struct dsi_pll_resource **pll)
 			pll_res->ssc_center = true;
 	}
 
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,dsi-vco-boost",
+			&pll_res->vco_boost);
+	if (rc) {
+		DSI_PLL_DBG(pll_res, "Unable to get vco boost, set default value to 0\n");
+		pll_res->vco_boost = 0;
+	} else {
+		DSI_PLL_INFO(pll_res, "Vco boost, %dx\n", pll_res->vco_boost);
+	}
 
 	if (dsi_pll_get_ioresources(pdev, &pll_res->pll_base, "pll_base")) {
 		DSI_PLL_ERR(pll_res, "Unable to remap pll base resources\n");

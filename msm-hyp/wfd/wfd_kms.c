@@ -241,6 +241,15 @@ static struct limit_constraints constraints_table[] = {
 	},
 };
 
+static struct hsic_parameter_convertion hsic_parameter_tab[PA_HSIC_MAX] = {
+	/* user_min, user_max, reg_min, reg_max, mask, value_max */
+	{-180, 180, -1536, 1536, 0xFFF, 4096}, /* HUE, s12 */
+	{-100, 100, -128, 127, 0xFF, 256}, /* SAT, s8 */
+	{-100, 100, -128, 127, 0xFF, 256}, /* VAL, s8 */
+	{-100, 100, -128, 127, 0xFF, 256}, /* CONT, s8 */
+	{0, 100, 0, 255, 0xFF, 256}, /* SAT_THRESHOLD, u8 (sat_adjust: [15:8]-thres, [7:0]-sat) */
+};
+
 static const char * const disp_order_str[] = {
 	"primary",
 	"secondary",
@@ -334,8 +343,6 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 					port_id, connector->name,
 					connector->status,
 					priv->wfd_port);
-			priv->connector_status = connector_status_connected;
-			connector->status = connector_status_connected;
 			priv->base.possible_crtcs = 1 << port_idx;
 			wfdGetPortAttribiv_User(priv->wfd_device,
 				priv->wfd_port,
@@ -362,6 +369,10 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 				priv->wfd_port, port_mode,
 				num_mode);
 			if (num_mode > 0) {
+				if (priv->modes) {
+					pr_debug("HPDLOG free old priv->modes\n");
+					kfree(priv->modes);
+				}
 				priv->modes = kcalloc(num_mode,
 					sizeof(struct drm_display_mode),
 					GFP_KERNEL);
@@ -407,6 +418,8 @@ static int wfd_kms_send_hpd_event(struct wfd_kms *kms, WFDDevice wfd_dev, int po
 						mode->vdisplay, mode->clock,
 						priv->port_modes[m], mode->name);
 			}
+			priv->connector_status = connector_status_connected;
+			connector->status = connector_status_connected;
 			msm_hyp_send_hpd_event(dev, connector);
 		}
 		/* Handle HPD disconnect event*/
@@ -782,6 +795,9 @@ bool _wfd_kms_dma_igc_changed(
 	if (!changed)
 		return false;
 
+	if (!dma_config)
+		return false;
+
 	dma_config->bIGCEnabled = cur_en ? WFD_TRUE : WFD_FALSE;
 
 	if (dma_config && cur_en)
@@ -809,6 +825,9 @@ bool _wfd_kms_dma_gc_changed(
 		changed = true;
 
 	if (!changed)
+		return false;
+
+	if (!dma_config)
 		return false;
 
 	dma_config->bGCEnabled= cur_en ? WFD_TRUE : WFD_FALSE;
@@ -840,6 +859,9 @@ bool _wfd_kms_plane_is_3d_gamut_changed(
 		changed = true;
 
 	if (!changed)
+		return false;
+
+	if (!gamut)
 		return false;
 
 	gamut->bGamutEn = cur_en ? WFD_TRUE : WFD_FALSE;
@@ -910,6 +932,9 @@ bool _wfd_kms_plane_is_dma_csc_changed(
 		changed = true;
 
 	if (!changed)
+		return false;
+
+	if (!dma_config)
 		return false;
 
 	dma_config->bCSCEnabled = cur_en ? WFD_TRUE : WFD_FALSE;
@@ -1690,6 +1715,137 @@ static void _wfd_kms_set_crtc_limit(struct wfd_kms *wfd_kms,
 	crtc_priv->base.extra_caps = crtc_priv->extra_info.data;
 }
 
+static bool _wfd_kms_crtc_is_hsic_changed(struct msm_hyp_crtc_state *pre,
+		struct msm_hyp_crtc_state *cur)
+{
+	bool ret = false;
+
+	if (pre && cur) {
+		if ((cur->cp_hsic.pa_hsic.flags != pre->cp_hsic.pa_hsic.flags) ||
+			(cur->cp_hsic.pa_hsic.contrast != pre->cp_hsic.pa_hsic.contrast) ||
+			(cur->cp_hsic.pa_hsic.hue != pre->cp_hsic.pa_hsic.hue) ||
+			(cur->cp_hsic.pa_hsic.saturation != pre->cp_hsic.pa_hsic.saturation) ||
+			(cur->cp_hsic.pa_hsic.value != pre->cp_hsic.pa_hsic.value)) {
+			ret = true;
+		}
+	}
+	return ret;
+}
+
+/* It's called by wfd_kms_convert_hsic to round the out_val of HSIC */
+static int hsic_round(int out_val, int temp, u32 hsic_type)
+{
+	int round = 0;
+
+	if (out_val >= 0) {
+		temp = temp * hsic_parameter_tab[hsic_type].user_max * 10 /
+				hsic_parameter_tab[hsic_type].reg_max;
+		if (temp - out_val * 10 >= 5)
+			round = 1;
+	} else {
+		temp = (hsic_parameter_tab[hsic_type].val_max - temp) *
+				hsic_parameter_tab[hsic_type].user_min * 10 /
+				hsic_parameter_tab[hsic_type].reg_min;
+		if (temp + out_val * 10 >= 5)
+			round = 1;
+	}
+
+	return round;
+}
+
+/*
+ * SDM already transfer hsic parameters from user to reg, but pvm host has its
+ * own hsic range from user to reg, then convert the reg range of GVM to user
+ * range of PVM.
+ * Todo, Need to reconsider it if SDM is not used.
+ */
+static int wfd_kms_convert_hsic(u32 input, u32 hsic_type)
+{
+	int out_val = 0;
+	int temp = 0;
+
+	if (hsic_type == PA_HSIC_SATURATION_THRESHOLD) {
+		temp = (input >> 8) & hsic_parameter_tab[PA_HSIC_SATURATION_THRESHOLD].hsic_mask;
+		out_val = temp * hsic_parameter_tab[hsic_type].user_max /
+				hsic_parameter_tab[hsic_type].reg_max;
+		out_val += hsic_round(out_val, temp, hsic_type);
+	} else {
+		temp = input & hsic_parameter_tab[hsic_type].hsic_mask;
+		/* positive */
+		if (temp < hsic_parameter_tab[hsic_type].val_max / 2) {
+			out_val = temp * hsic_parameter_tab[hsic_type].user_max /
+					hsic_parameter_tab[hsic_type].reg_max;
+			out_val += hsic_round(out_val, temp, hsic_type);
+		} else { /* negative */
+			out_val = -((hsic_parameter_tab[hsic_type].val_max - temp) *
+					hsic_parameter_tab[hsic_type].user_min /
+					hsic_parameter_tab[hsic_type].reg_min);
+			out_val -= hsic_round(out_val, temp, hsic_type);
+		}
+	}
+
+	return out_val;
+}
+
+static void wfd_kms_crtc_atomic_begin(struct msm_hyp_kms *kms,
+		struct drm_crtc *crtc,
+		struct drm_atomic_state *atomic_state)
+{
+	struct msm_hyp_crtc *c = to_msm_hyp_crtc(crtc);
+	struct wfd_crtc_info_priv *priv = container_of(c->info, struct wfd_crtc_info_priv, base);
+	struct drm_crtc_state *old_state;
+	struct msm_hyp_crtc_state *old_cstate, *new_cstate;
+	__u64 flags = 0;
+	struct WFDPortHISCSetType hsic;
+
+	/* PP feature, HSIC */
+	memset(&hsic, 0, sizeof(hsic));
+	old_state = drm_atomic_get_old_crtc_state(atomic_state, crtc);
+	old_cstate = to_msm_hyp_crtc_state(old_state);
+	new_cstate = to_msm_hyp_crtc_state(crtc->state);
+
+	if (_wfd_kms_crtc_is_hsic_changed(old_cstate, new_cstate)) {
+		flags = new_cstate->cp_hsic.pa_hsic.flags;
+		if (flags & PA_HSIC_HUE_ENABLE)
+			hsic.hueLevel = wfd_kms_convert_hsic(
+					new_cstate->cp_hsic.pa_hsic.hue,
+					PA_HSIC_HUE);
+		if (flags & PA_HSIC_CONT_ENABLE)
+			hsic.contrastLevel = wfd_kms_convert_hsic(
+					new_cstate->cp_hsic.pa_hsic.contrast,
+					PA_HSIC_CONTRAST);
+		if (flags & PA_HSIC_VAL_ENABLE)
+			hsic.intensityLevel = wfd_kms_convert_hsic(
+					new_cstate->cp_hsic.pa_hsic.value,
+					PA_HSIC_VALUE);
+		if (flags & PA_HSIC_SAT_ENABLE) {
+			hsic.saturationLevel = wfd_kms_convert_hsic(
+					new_cstate->cp_hsic.pa_hsic.saturation,
+					PA_HSIC_SATURATION);
+			hsic.satThreshold = wfd_kms_convert_hsic(
+					new_cstate->cp_hsic.pa_hsic.saturation,
+					PA_HSIC_SATURATION_THRESHOLD);
+		}
+
+		if (flags & (PA_HSIC_HUE_ENABLE |
+			PA_HSIC_SAT_ENABLE |
+			PA_HSIC_VAL_ENABLE |
+			PA_HSIC_CONT_ENABLE))
+			hsic.enabled = true;
+
+		pr_debug("Set HSIC: enable:%d, h:%d, s:%d, v:%d, c:%d, s_t:%d\n",
+			hsic.enabled, hsic.hueLevel, hsic.saturationLevel,
+			hsic.intensityLevel, hsic.contrastLevel, hsic.satThreshold);
+
+		wfdSetPortAttribiv_User(
+			priv->wfd_device,
+			priv->wfd_port,
+			WFD_PORT_PA_HSIC,
+			6,
+			(WFDint *)&hsic);
+	}
+}
+
 static int wfd_kms_get_crtc_infos(struct msm_hyp_kms *kms,
 		struct msm_hyp_crtc_info **crtc_infos,
 		int *crtc_num)
@@ -1868,13 +2024,13 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 			priv->wfd_device,
 			priv->wfd_pipeline,
 			WFD_PIPELINE_FLIP,
-			(plane->state->rotation & DRM_MODE_REFLECT_X) ? true : false);
+			(plane->state->rotation & DRM_MODE_REFLECT_Y) ? true : false);
 
 		wfdSetPipelineAttribi_User(
 			priv->wfd_device,
 			priv->wfd_pipeline,
 			WFD_PIPELINE_MIRROR,
-			(plane->state->rotation & DRM_MODE_REFLECT_Y) ? true : false);
+			(plane->state->rotation & DRM_MODE_REFLECT_X) ? true : false);
 	}
 
 	/* special plane properties */
@@ -2533,6 +2689,7 @@ static const struct msm_hyp_kms_funcs wfd_kms_funcs = {
 	.disable_vblank = wfd_kms_disable_vblank,
 	.free_connector_port_modes = wfd_kms_free_connector_port_modes,
 	.register_event = wfd_kms_register_event,
+	.crtc_atomic_begin = wfd_kms_crtc_atomic_begin,
 };
 
 static int wfd_kms_bind(struct device *dev, struct device *master,
@@ -2604,15 +2761,14 @@ static int wfd_kms_remove(struct platform_device *pdev)
 	int buff_idx = 0;
 	struct wire_device *wire_dev = NULL;
 	dma_addr_t *dmabuf_handle = NULL;
-	int export_id;
+	int export_id = 0;
 	void *handle = NULL;
 	struct user_os_utils_mem_info mem = { 0 };
 
 	for (i = 0; i < kms->port_cnt; i++) {
 		for (j = 0; j < kms->pipeline_cnt[i]; j++) {
 			wire_dev = kms->port_devs[i];
-			if (wire_dev)
-				handle = wire_dev->ctx->init_info.context;
+			handle = wire_dev->ctx->init_info.context;
 			wfdSetPipelineAttribiv_User(kms->port_devs[i],kms->pipelines[i][j],
 				WFD_PIPELINE_COLOR_CONFIG_CLEAR, 1, &i);
 			wfdDestroyPipeline_User(kms->port_devs[i], kms->pipelines[i][j]);

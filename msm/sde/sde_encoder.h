@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -60,6 +60,7 @@
 /* below this fps limit, timeouts are adjusted based on fps */
 #define DEFAULT_TIMEOUT_FPS_THRESHOLD            24
 
+#define DEFAULT_MIN_FPS                          10
 /**
  * Encoder functions and data types
  * @intfs:	Interfaces this encoder is using, INTF_MODE_NONE if unused
@@ -218,6 +219,7 @@ enum sde_enc_rc_states {
  * @ctl_done_supported          boolean flag to indicate the availability of
  *                              ctl done irq support for the hardware
  * @ops:			Encoder ops from init function
+ * @vsync_event_wq              Queue to wait for the vsync event complete
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -293,6 +295,7 @@ struct sde_encoder_virt {
 	bool autorefresh_solver_disable;
 	bool ctl_done_supported;
 	struct sde_encoder_ops ops;
+	wait_queue_head_t vsync_event_wq;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)

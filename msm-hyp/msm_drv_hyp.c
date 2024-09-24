@@ -408,6 +408,14 @@ static int _msm_hyp_mode_create_properties(struct drm_device *ddev)
 		return -ENOMEM;
 	priv->prop_vig_gamut = prop;
 
+	/* color process : HSIC property on CRTC */
+	prop = drm_property_create(ddev,
+			DRM_MODE_PROP_BLOB,
+			"SDE_DSPP_PA_HSIC_V1", 0);
+	if (!prop)
+		return -ENOMEM;
+	priv->prop_crtc_cp_hsic = prop;
+
 	return 0;
 }
 
@@ -691,8 +699,7 @@ static int _msm_hyp_connector_init_caps(
 		msm_hyp_prop_info_add_keystr(info, "display type",
 				connector->info->display_type);
 
-	if (connector->info->panel_orientation) {
-		switch (connector->info->panel_orientation) {
+	switch (connector->info->panel_orientation) {
 		case PANEL_ROTATE_NONE:
 			snprintf(buf, sizeof(buf), "%s", "none");
 			break;
@@ -706,10 +713,10 @@ static int _msm_hyp_connector_init_caps(
 			snprintf(buf, sizeof(buf), "%s", "vert flip");
 			break;
 		default:
+			snprintf(buf, sizeof(buf), "%s", "none");
 			break;
-		}
-		msm_hyp_prop_info_add_keystr(info, "panel orientation", buf);
 	}
+	msm_hyp_prop_info_add_keystr(info, "panel orientation", buf);
 
 	if (connector->info->extra_caps)
 		msm_hyp_prop_info_append(info, connector->info->extra_caps);
@@ -819,6 +826,17 @@ static int _msm_hyp_connector_encoder_init(struct drm_device *ddev,
 	return 0;
 }
 
+static void msm_hyp_crtc_atomic_begin(struct drm_crtc *crtc,
+		struct drm_atomic_state *old_state)
+{
+	struct drm_device *dev = crtc->dev;
+	struct msm_hyp_drm_private *priv = dev->dev_private;
+	struct msm_hyp_kms *kms = priv->kms;
+
+	if (kms->funcs && kms->funcs->crtc_atomic_begin)
+		kms->funcs->crtc_atomic_begin(kms, crtc, old_state);
+}
+
 static void msm_hyp_crtc_atomic_enable(struct drm_crtc *crtc,
 		struct drm_atomic_state *old_state)
 {
@@ -832,6 +850,7 @@ static void msm_hyp_crtc_atomic_disable(struct drm_crtc *crtc,
 }
 
 const struct drm_crtc_helper_funcs msm_hyp_crtc_helper = {
+	.atomic_begin = msm_hyp_crtc_atomic_begin,
 	.atomic_enable = msm_hyp_crtc_atomic_enable,
 	.atomic_disable = msm_hyp_crtc_atomic_disable,
 };
@@ -842,6 +861,9 @@ static void msm_hyp_crtc_destroy(struct drm_crtc *crtc)
 
 	if (c->blob_caps)
 		drm_property_blob_put(c->blob_caps);
+
+	if (c->blob_cp_hsic)
+		drm_property_blob_put(c->blob_cp_hsic);
 
 	if (c->thread) {
 		kthread_flush_worker(&c->worker);
@@ -913,6 +935,52 @@ static void msm_hyp_crtc_reset(struct drm_crtc *crtc)
 	c_state->input_fence_timeout = CRTC_INPUT_FENCE_TIMEOUT;
 }
 
+static int msm_hyp_crtc_set_pa_hsic_prop(
+		struct drm_crtc *crtc,
+		struct msm_hyp_crtc_state *c_state,
+		uint64_t val)
+{
+	struct drm_device *ddev = NULL;
+	struct msm_hyp_crtc *msm_crtc = NULL;
+	struct drm_property_blob *blob = NULL;
+
+	if (!crtc || !c_state) {
+		DRM_ERROR("invalid crtc %pK\n", crtc);
+		return -EINVAL;
+	}
+
+	ddev = crtc->dev;
+	msm_crtc = to_msm_hyp_crtc(crtc);
+
+	if (!val) {
+		if (msm_crtc->blob_cp_hsic)
+			drm_property_blob_put(msm_crtc->blob_cp_hsic);
+		/* Disable HSIC on PA, no blob is created for disabled case */
+		msm_crtc->blob_cp_hsic = NULL;
+		memset(&(c_state->cp_hsic.pa_hsic), 0, sizeof(struct msm_hyp_pa_hsic));
+	} else {
+		blob = drm_property_lookup_blob(ddev, val);
+		if (!blob) {
+			DRM_ERROR("invalid blob id %lld for HSIC\n", val);
+			return -EINVAL;
+		}
+
+		if (blob->length != sizeof(struct msm_hyp_pa_hsic)) {
+			DRM_ERROR("invalid blob len %d exp %d\n", blob->length,
+					sizeof(struct msm_hyp_pa_hsic));
+			return -EINVAL;
+		}
+
+		if (msm_crtc->blob_cp_hsic)
+			drm_property_blob_put(msm_crtc->blob_cp_hsic);
+		msm_crtc->blob_cp_hsic = blob;
+
+		memcpy(&(c_state->cp_hsic.pa_hsic), blob->data, blob->length);
+	}
+
+	return 0;
+}
+
 static int msm_hyp_crtc_set_property(
 		struct drm_crtc *crtc,
 		struct drm_crtc_state *state,
@@ -940,6 +1008,10 @@ static int msm_hyp_crtc_set_property(
 		c_state->input_fence_timeout = val;
 	else if (property == priv->prop_output_fence_offset)
 		c_state->output_fence_offset = val;
+	else if (property == priv->prop_crtc_cp_hsic) {
+		c_state->cp_hsic.prop_value = val;
+		ret = msm_hyp_crtc_set_pa_hsic_prop(crtc, c_state, val);
+	}
 	else
 		ret = -EINVAL;
 
@@ -973,6 +1045,8 @@ static int msm_hyp_crtc_get_property(
 		*val = c_state->input_fence_timeout;
 	else if (property == priv->prop_output_fence_offset)
 		*val = c_state->output_fence_offset;
+	else if (property == priv->prop_crtc_cp_hsic)
+		*val = c_state->cp_hsic.prop_value;
 	else
 		ret = -EINVAL;
 
@@ -1127,6 +1201,9 @@ static int _msm_hyp_crtc_init(struct drm_device *ddev,
 
 	drm_object_attach_property(&crtc->base.base,
 			priv->prop_output_fence_offset, 0);
+
+	drm_object_attach_property(&crtc->base.base,
+			priv->prop_crtc_cp_hsic, 0);
 
 	ret = _msm_hyp_crtc_init_caps(crtc);
 	if (ret)
@@ -1910,71 +1987,6 @@ static int msm_hyp_shmem_sync_sg_for_device(struct drm_gem_object *obj)
 }
 #endif
 
-#if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
-static struct drm_framebuffer *msm_hyp_framebuffer_create(
-		struct drm_device *dev, struct drm_file *file,
-		const struct drm_mode_fb_cmd2 *mode_cmd)
-{
-	struct msm_hyp_drm_private *priv = dev->dev_private;
-	struct msm_hyp_kms *kms = priv->kms;
-	struct msm_hyp_framebuffer *fb;
-	struct drm_gem_object *bo;
-	int ret;
-
-	DRM_DEBUG("create framebuffer: dev=%pK, mode_cmd=%pK (%dx%d@%4.4s)",
-			dev, mode_cmd, mode_cmd->width, mode_cmd->height,
-			(char *)&mode_cmd->pixel_format);
-
-	bo = drm_gem_object_lookup(file, mode_cmd->handles[0]);
-	if (IS_ERR_OR_NULL(bo)) {
-		DRM_ERROR("failed to find gem bo %d\n", mode_cmd->handles[0]);
-		return ERR_PTR(-EINVAL);
-	}
-
-	ret = msm_hyp_shmem_sync_sg_for_device(bo);
-	if (ret) {
-		DRM_ERROR("failed to do dumb buffer sync\n");
-		return ERR_PTR(ret);
-	}
-
-	fb = kzalloc(sizeof(*fb), GFP_KERNEL);
-	if (!fb) {
-		ret = -ENOMEM;
-		goto fail;
-	}
-
-	drm_helper_mode_fill_fb_struct(dev, &fb->base, mode_cmd);
-	fb->bo = bo;
-
-	ret = drm_framebuffer_init(dev, &fb->base, &msm_hyp_framebuffer_funcs);
-	if (ret) {
-		DRM_ERROR("framebuffer init failed: %d\n", ret);
-		goto fail;
-	}
-
-	fb->base.obj[0] = bo;
-
-	if (kms->funcs && kms->funcs->get_framebuffer_info) {
-		ret = kms->funcs->get_framebuffer_info(kms, &fb->base,
-			&fb->info);
-		if (ret) {
-			DRM_ERROR("failed to get framebuffer info\n");
-			goto cleanup;
-		}
-	}
-
-	DRM_DEBUG("create: FB ID: %d (%pK)", fb->base.base.id, fb);
-
-	return &fb->base;
-
-cleanup:
-		drm_framebuffer_cleanup(&fb->base);
-fail:
-	kfree(fb);
-	drm_gem_object_put(bo);
-	return ERR_PTR(ret);
-}
-#else
 static struct drm_framebuffer *msm_hyp_framebuffer_init(struct drm_device *dev,
 		const struct drm_mode_fb_cmd2 *mode_cmd, struct drm_gem_object **bos)
 {
@@ -2097,7 +2109,6 @@ out_unref:
 		drm_gem_object_put(bos[i]);
 	return ERR_PTR(ret);
 }
-#endif
 
 static int _msm_hyp_start_atomic(struct msm_hyp_drm_private *priv,
 		uint32_t crtc_mask)

@@ -3412,6 +3412,10 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 					"qsync_mode", 0, 0, e_qsync_mode,
 					ARRAY_SIZE(e_qsync_mode), 0,
 					CONNECTOR_PROP_QSYNC_MODE);
+			if (test_bit(SDE_FEATURE_EPT, sde_kms->catalog->features))
+				msm_property_install_range(&c_conn->property_info,
+						"EPT", 0x0, 0, U64_MAX, 0,
+						CONNECTOR_PROP_EPT);
 			if (test_bit(SDE_FEATURE_AVR_STEP, sde_kms->catalog->features))
 				msm_property_install_range(&c_conn->property_info,
 						"avr_step", 0x0, 0, U32_MAX, 0,
@@ -3759,6 +3763,24 @@ int sde_connector_event_notify(struct drm_connector *connector, uint32_t type,
 	SDE_EVT32(connector->base.id, type, len, val);
 	SDE_DEBUG("connector:%d hw recovery event(%d) value (%d) notified\n",
 			connector->base.id, type, val);
+
+	return ret;
+}
+
+int sde_connector_trigger_hdcp_auth(struct drm_connector *connector, bool enable)
+{
+	struct sde_connector *c_conn = NULL;
+	int ret = 0;
+
+	if (!connector) {
+		SDE_ERROR("Invalid input\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+
+	if (c_conn && c_conn->ops.hdcp_auth)
+		ret = c_conn->ops.hdcp_auth(connector, enable);
 
 	return ret;
 }

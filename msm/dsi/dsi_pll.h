@@ -138,6 +138,9 @@ struct dsi_pll_resource {
 	/* HW recommended delay during configuration of vco clock rate */
 	u32		vco_delay;
 
+	/* VCO frequency boost times, 1, 2, 4, 8, ... 16 */
+	u32		vco_boost;
+
 
 	/*
 	 * caching the pll trim codes in the case of dynamic refresh
@@ -196,6 +199,11 @@ struct dsi_pll_vco_calc {
 struct dsi_pll_div_table {
 	u64 min_hz;
 	u64 max_hz;
+	int pll_div;
+	int phy_div;
+};
+
+struct dsi_pll_vco_div_table {
 	int pll_div;
 	int phy_div;
 };
