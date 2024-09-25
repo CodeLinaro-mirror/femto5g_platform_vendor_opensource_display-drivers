@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd] %s: " fmt, __func__
@@ -369,14 +369,39 @@ static int shd_crtc_validate_shared_display(struct drm_crtc *crtc,
 static int shd_crtc_atomic_check(struct drm_crtc *crtc,
 		struct drm_atomic_state *atomic_state)
 {
-	struct drm_crtc_state *state = drm_atomic_get_new_crtc_state(atomic_state, crtc);
-	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
-	struct sde_crtc_state *cstate = to_sde_crtc_state(state);
-	struct shd_crtc *shd_crtc = sde_crtc->priv_handle;
+	struct drm_crtc_state *state;
+	struct sde_crtc *sde_crtc;
+	struct sde_crtc_state *cstate;
+	struct shd_crtc *shd_crtc;
 	struct drm_crtc_state *base_drm_crtc_state = NULL;
 	struct sde_crtc_state *base_sde_cstate;
 	struct sde_crtc *base_sde_crtc;
 	int rc;
+
+	if(!crtc || !atomic_state) {
+		SDE_ERROR("invalid arguments, crtc = 0x%pK, atomic_state = 0x%pK.\n",
+				crtc, atomic_state);
+		return -EINVAL;
+	}
+
+	state = drm_atomic_get_new_crtc_state(atomic_state, crtc);
+	if(!state) {
+		SDE_ERROR("invalid state, state = 0x%pK.\n", state);
+		return -EINVAL;
+	}
+	if(!state->state) {
+		SDE_ERROR("invalid atomic state, state = 0x%pK.\n", state->state);
+		return -EINVAL;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+	cstate = to_sde_crtc_state(state);
+	shd_crtc = sde_crtc->priv_handle;
+
+	if(!shd_crtc) {
+		SDE_ERROR("invalid shd_crtc, shd_crtc = 0x%pK.\n", shd_crtc);
+		return -EINVAL;
+	}
 
 	base_drm_crtc_state =
 		drm_atomic_get_existing_crtc_state(state->state,
