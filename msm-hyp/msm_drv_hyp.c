@@ -966,7 +966,7 @@ static int msm_hyp_crtc_set_pa_hsic_prop(
 		}
 
 		if (blob->length != sizeof(struct msm_hyp_pa_hsic)) {
-			DRM_ERROR("invalid blob len %d exp %d\n", blob->length,
+			DRM_ERROR("invalid blob len %zu exp %lu\n", blob->length,
 					sizeof(struct msm_hyp_pa_hsic));
 			return -EINVAL;
 		}
@@ -1358,7 +1358,7 @@ static int msm_hyp_plane_set_property(
 	} else if (property == priv->prop_inverse_pma) {
 		// TODO: propagate inverse pma  to host?
 	} else if (property == priv->prop_dma_csc) {
-		pr_debug("plane %d CSC %X\n", plane->base.id, val);
+		pr_debug("plane %d CSC %llX\n", plane->base.id, val);
 		if (val) {
 			p_state->dma_csc_en = true;
 			size = copy_from_user(&p_state->dma_csc,
@@ -1373,19 +1373,19 @@ static int msm_hyp_plane_set_property(
 		if (!size)
 			p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_DMA_CSC;
 	} else if (property == priv->prop_dma_igc) {
-		pr_debug("plane %d DMA IGC %X\n", plane->base.id, val);
+		pr_debug("plane %d DMA IGC %llX\n", plane->base.id, val);
 		priv->prop_dma_igc->values[0] = val;
 		if (val) {
 			blob = drm_property_lookup_blob(ddev, val);
 			if (blob) {
-				pr_debug("plane %d DMA IGC %X  SZ %X\n", plane->base.id,
+				pr_debug("plane %d DMA IGC %llX  SZ %zX\n", plane->base.id,
 						val, blob->length);
 				p_state->dma_igc_en = true;
 				memcpy(&p_state->dma_igc, blob->data,
 					min(blob->length, sizeof(p_state->dma_igc)));
 				p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_DMA_IGC;
 			} else {
-				DRM_WARN("invalid DMA IGC blob id %d\n", val);
+				DRM_WARN("invalid DMA IGC blob id %llu\n", val);
 			}
 		} else {
 			p_state->dma_igc_en = false;
@@ -1395,19 +1395,19 @@ static int msm_hyp_plane_set_property(
 			p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_DMA_IGC;
 		}
 	} else if (property == priv->prop_vig_igc) {
-		pr_debug("plane %d VIG IGC %X\n", plane->base.id, val);
+		pr_debug("plane %d VIG IGC %llX\n", plane->base.id, val);
 		priv->prop_vig_igc->values[0] = val;
 		if (val) {
 			blob = drm_property_lookup_blob(ddev, val);
 			if (blob) {
-				pr_debug("plane %d VIG IGC %X  SZ %X\n", plane->base.id,
+				pr_debug("plane %d VIG IGC %llX  SZ %zX\n", plane->base.id,
 						val, blob->length);
 				p_state->vig_igc_en = true;
 				memcpy(&p_state->vig_igc, blob->data,
 					min(blob->length, sizeof(p_state->vig_igc)));
 				p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_VIG_IGC;
 			} else {
-				DRM_WARN("invalid VIG IGC blob id %d\n", val);
+				DRM_WARN("invalid VIG IGC blob id %llu\n", val);
 			}
 		} else {
 			p_state->vig_igc_en = false;
@@ -1417,19 +1417,19 @@ static int msm_hyp_plane_set_property(
 			p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_VIG_IGC;
 		}
 	} else if (property == priv->prop_dma_gc) {
-		pr_debug("plane %d DMA GC %X\n", plane->base.id, val);
+		pr_debug("plane %d DMA GC %llX\n", plane->base.id, val);
 		priv->prop_dma_gc->values[0] = val;
 		if (val) {
 			blob = drm_property_lookup_blob(ddev, val);
 			if (blob) {
-				pr_debug("plane %d DMA GC %X  SZ %X\n", plane->base.id,
+				pr_debug("plane %d DMA GC %llX  SZ %zX\n", plane->base.id,
 						val, blob->length);
 				p_state->dma_gc_en = true;
 				memcpy(&p_state->dma_gc, blob->data,
 					min(blob->length, sizeof(p_state->dma_gc)));
 				p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_DMA_GC;
 			} else {
-				DRM_WARN("invalid DMA GC blob id %d\n", val);
+				DRM_WARN("invalid DMA GC blob id %llu\n", val);
 			}
 		} else {
 			p_state->dma_gc_en = false;
@@ -1439,19 +1439,19 @@ static int msm_hyp_plane_set_property(
 			p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_DMA_GC;
 		}
 	} else if (property == priv->prop_vig_gamut) {
-		pr_debug("plane %d VIG GAMUT %X\n", plane->base.id, val);
+		pr_debug("plane %d VIG GAMUT %llX\n", plane->base.id, val);
 		priv->prop_vig_gamut->values[0] = val;
 		if (val) {
 			blob = drm_property_lookup_blob(ddev, val);
 			if (blob) {
-				pr_debug("plane %d VIG GAMUT %X	SZ %X\n", plane->base.id,
+				pr_debug("plane %d VIG GAMUT %llX	SZ %zX\n", plane->base.id,
 						val, blob->length);
 				p_state->gamut_en = true;
 				memcpy(&p_state->gamut, blob->data,
 					min(blob->length, sizeof(p_state->gamut)));
 				p_state->dirty_flags |= MSM_HYP_PLANE_DIRTY_GAMUT;
 			} else {
-				DRM_WARN("invalid VIG GAMUT blob id %d\n", val);
+				DRM_WARN("invalid VIG GAMUT blob id %llu\n", val);
 			}
 		} else {
 			p_state->gamut_en = false;

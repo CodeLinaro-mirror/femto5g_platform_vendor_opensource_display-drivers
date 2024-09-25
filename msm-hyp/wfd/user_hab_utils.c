@@ -481,13 +481,13 @@ retry_recv_packet:
 		goto end;
 	}
 	if (timestamp > resp->hdr.timestamp) {
-		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu > resp : %lu",
+		UTILS_LOG_ERROR("Wrong packet timestamp req : %lld > resp : %llu",
 				timestamp, resp->hdr.timestamp);
 
 		for (i = 0; i < MAX_RECV_FAIL_COUNT; i++) {
 			if (recv_failed_timestamp[i] == resp->hdr.timestamp) {
 				recv_failed_timestamp[i] = 0;
-				UTILS_LOG_WARNING("Delayed packet timestamp resp : %lu found, retry recv",
+				UTILS_LOG_WARNING("Delayed packet timestamp resp : %llu, retry",
 						resp->hdr.timestamp);
 				goto retry_recv_packet;
 			}
@@ -499,7 +499,7 @@ retry_recv_packet:
 		goto retry_recv_packet;
 	}
 	else if (timestamp < resp->hdr.timestamp) {
-		UTILS_LOG_ERROR("Wrong packet timestamp req : %lu < resp : %lu",
+		UTILS_LOG_ERROR("Wrong packet timestamp req : %lld < resp : %llu",
 				timestamp, resp->hdr.timestamp);
 		rc = -1;
 		goto end;
@@ -739,7 +739,7 @@ user_os_utils_shmem_import(
 			(uint32_t)mem->shmem_id,
 			(uint32_t)import_flags);
 		if (rc) {
-			UTILS_LOG_ERROR("habmm_import(id=%lu) failed",
+			UTILS_LOG_ERROR("habmm_import(id=%llu) failed",
 				mem->shmem_id);
 			rc = -1;
 			goto end;
@@ -799,7 +799,7 @@ user_os_utils_shmem_unexport(
 			(uint32_t)mem->shmem_id,
 			(uint32_t)unexport_flags);
 		if (rc) {
-			UTILS_LOG_ERROR("habmm_unexport(id=%lu) failed",
+			UTILS_LOG_ERROR("habmm_unexport(id=%llu) failed",
 				mem->shmem_id);
 			goto end;
 		}
@@ -861,7 +861,7 @@ user_os_utils_shmem_unimport(
 			mem->buffer,
 			(uint32_t)unimport_flags);
 		if (rc) {
-			UTILS_LOG_ERROR("habmm_unimport(id=%lu) failed",
+			UTILS_LOG_ERROR("habmm_unimport(id=%llu) failed",
 				mem->shmem_id);
 			goto end;
 		}
