@@ -218,6 +218,7 @@ enum sde_enc_rc_states {
  * @ctl_done_supported          boolean flag to indicate the availability of
  *                              ctl done irq support for the hardware
  * @ops:			Encoder ops from init function
+ * @vsync_event_wq              Queue to wait for the vsync event complete
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -293,6 +294,7 @@ struct sde_encoder_virt {
 	bool autorefresh_solver_disable;
 	bool ctl_done_supported;
 	struct sde_encoder_ops ops;
+	wait_queue_head_t vsync_event_wq;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
