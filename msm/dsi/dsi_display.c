@@ -43,6 +43,8 @@
 #define MIPI_DCS_SET_ARP_OFF 0x60
 #define MIPI_DCS_SET_ARP_ON 0x61
 
+#define MDP_MAX 2
+
 u8 dbgfs_tx_cmd_buf[SZ_4K];
 static char dsi_display_primary[MAX_CMDLINE_PARAM_LEN];
 static char dsi_display_secondary[MAX_CMDLINE_PARAM_LEN];
@@ -3570,6 +3572,9 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 	else
 		dsi_clock_name = "qcom,dsi-select-sec-clocks";
 
+	if (display->panel->ctl_op_sync && !strcmp(display->display_type, "secondary"))
+		dsi_clock_name = "qcom,dsi-select-sec-sync-clocks";
+
 	num_clk = dsi_display_get_clocks_count(display, dsi_clock_name);
 
 	for (i = 0; i < num_clk; i++) {
@@ -4276,25 +4281,38 @@ static bool dsi_display_validate_panel_resources(struct dsi_display *display)
 
 static void dsi_display_check_sync_mode(struct dsi_display *display)
 {
-	char *dsi_sec_clock_name = "qcom,dsi-select-sec-clocks";
-	int num_sec_clk;
+	char *dsi_sec_sync_clock_name = "qcom,dsi-select-sec-sync-clocks";
+	int num_sec_sync_clk;
 	const char *m_clk[2] = {"pll_byte_mclk", "pll_dsi_mclk"};
-	const char *sec_clk[2];
-	int i;
+	const char *sec_sync_clk[2];
+	struct device_node *of_node = display->pdev->dev.of_node;
+	struct of_phandle_iterator it;
+	int i, mdp_count;
 
-	num_sec_clk = dsi_display_get_clocks_count(display, dsi_sec_clock_name);
+	num_sec_sync_clk = dsi_display_get_clocks_count(display, dsi_sec_sync_clock_name);
 
-	if (num_sec_clk <= 0) {
+	if (num_sec_sync_clk <= 0) {
 		display->panel->ctl_op_sync = false;
 		return;
 	}
 
-	for (i = 0; i < num_sec_clk; i++) {
-		dsi_display_get_clock_name(display, dsi_sec_clock_name, i, &sec_clk[i]);
+	for (i = 0; i < num_sec_sync_clk; i++) {
+		dsi_display_get_clock_name(display, dsi_sec_sync_clock_name, i, &sec_sync_clk[i]);
 		/* Assuming clocks are present in same order in dtsi */
-		if (strcmp(m_clk[i], sec_clk[i])) {
+		if (strcmp(m_clk[i], sec_sync_clk[i])) {
 			display->panel->ctl_op_sync = false;
 			return;
+		}
+	}
+
+	mdp_count = of_property_count_u32_elems(of_node, "qcom,mdp");
+	if (mdp_count == MDP_MAX) {
+		of_phandle_iterator_init(&it, of_node, "qcom,mdp", NULL, 0);
+		while (of_phandle_iterator_next(&it) == 0) {
+			if (!of_device_is_available(it.node)) {
+				display->panel->ctl_op_sync = false;
+				return;
+			}
 		}
 	}
 
@@ -5753,6 +5771,21 @@ static int dsi_display_init_ctrl(struct dsi_display *display)
 	return rc;
 }
 
+static int dsi_display_get_display_node_count(struct dsi_display *display)
+{
+	int dsi_display_node_count = 0;
+	struct device_node *dsi_display;
+
+	for_each_compatible_node(dsi_display, NULL, "qcom,dsi-display") {
+		if (!of_device_is_available(dsi_display))
+			continue;
+		dsi_display_node_count++;
+	}
+
+	DSI_INFO("qcom,dsi-display node count %d\n", dsi_display_node_count);
+	return dsi_display_node_count;
+}
+
 /**
  * dsi_display_bind - bind dsi device with controlling device
  * @dev:        Pointer to base of platform device
@@ -5777,7 +5810,7 @@ static int dsi_display_bind(struct device *dev,
 		.vm_pre_hw_release = dsi_display_pre_release,
 		.vm_post_hw_acquire = dsi_display_pre_acquire,
 	};
-	int i, rc = 0;
+	int i, rc = 0, display_node_count;
 
 	if (!dev || !pdev || !master) {
 		DSI_ERR("invalid param(s), dev %pK, pdev %pK, master %pK\n",
@@ -5951,6 +5984,15 @@ static int dsi_display_bind(struct device *dev,
 	if (!rc)
 		dsi_display_manager_register(display);
 
+	display_node_count = dsi_display_get_display_node_count(display);
+
+	/* If there is only one DSI display, it should be set as the primary display.*/
+	if (!display->panel->ctl_op_sync && (display_node_count == 1)
+			&& !strcmp(display->display_type, "secondary")) {
+		DSI_INFO("changing the display_type from secondary to primary\n");
+		display->display_type = "primary";
+	}
+
 	goto error;
 
 error_host_deinit:
@@ -6119,7 +6161,7 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 {
 	struct dsi_display *display = NULL;
 	struct device_node *node = NULL, *panel_node = NULL, *mdp_node = NULL;
-	int rc = 0, index = DSI_PRIMARY;
+	int rc = 0, index = DSI_PRIMARY, mdp_count;
 	bool firm_req = false;
 	struct dsi_display_boot_param *boot_disp = NULL;
 
@@ -6143,7 +6185,23 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 		goto end;
 	}
 
-	mdp_node = of_parse_phandle(pdev->dev.of_node, "qcom,mdp", 0);
+	/* initialize panel id to UINT64_MAX */
+	display->panel_id = ~0x0;
+
+	display->display_type = of_get_property(pdev->dev.of_node,
+				"label", NULL);
+	if (!display->display_type)
+		display->display_type = "primary";
+
+	if (!strcmp(display->display_type, "secondary"))
+		index = DSI_SECONDARY;
+
+	mdp_count = of_property_count_u32_elems(pdev->dev.of_node, "qcom,mdp");
+	if (mdp_count == MDP_MAX)
+		mdp_node = of_parse_phandle(pdev->dev.of_node, "qcom,mdp", index);
+	else
+		mdp_node = of_parse_phandle(pdev->dev.of_node, "qcom,mdp", 0);
+
 	if (!mdp_node) {
 		DSI_ERR("mdp_node not found\n");
 		rc = -ENODEV;
@@ -6155,16 +6213,6 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 	if (display->trusted_vm_env)
 		DSI_INFO("Display enabled with trusted vm path\n");
 
-	/* initialize panel id to UINT64_MAX */
-	display->panel_id = ~0x0;
-
-	display->display_type = of_get_property(pdev->dev.of_node,
-				"label", NULL);
-	if (!display->display_type)
-		display->display_type = "primary";
-
-	if (!strcmp(display->display_type, "secondary"))
-		index = DSI_SECONDARY;
 
 	boot_disp = &boot_displays[index];
 	node = pdev->dev.of_node;
