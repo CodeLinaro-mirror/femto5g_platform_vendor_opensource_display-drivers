@@ -24,8 +24,9 @@
 #define MAX_VERT_DECIMATION    4
 #define SSPP_UNITY_SCALE       1
 #define MAX_NUM_LIMIT_PAIRS    16
-#define MAX_MDP_CLK_KHZ        412500
 #define DBG_BUF_COUNT          50
+#define DEFAULT_MAX_MDP_CLK    575
+#define MAX_LAYERS_MULTIPIPE   4
 
 #define VIRTIO_TRANSPARENCY_GLOBAL_ALPHA (1<<1)
 #define VIRTIO_TRANSPARENCY_SOURCE_ALPHA (1<<2)
@@ -35,6 +36,10 @@
 	for (int idx = (start); idx < (end); idx++) {				\
 		DRM_DEBUG_KMS("virtio: framebuffer data %x\n", ptr[idx]);	\
 	}
+
+#ifndef UINT_MAX
+#define UINT_MAX 0xffffffffU  /* define this if limits.h not available */
+#endif
 
 struct limit_val_pair {
 	const char *str;
@@ -1120,20 +1125,19 @@ static void _virtio_kms_set_crtc_limit(struct virtio_kms *kms,
 	struct limit_val_pair *pair;
 	char buf[16];
 	int i;
-/*
+
 	for (i = 0; i < ARRAY_SIZE(constraints_table); i++) {
 		if (constraints_table[i].sdma_width == kms->max_sdma_width) {
 			constraints = &constraints_table[i];
 			break;
 		}
 	}
-*/
-	//TODO: Fix the sdma_width for getting the right constraint table index
-	pr_err("virtio : _virtio_kms_set_crtc_limit %d\n",  kms->max_sdma_width);
-	constraints = &constraints_table[2];
+
+	pr_debug("virtio : max_sdma_width: %d\n",  kms->max_sdma_width);
 	if (!constraints)
 		return;
 
+	pr_debug("virtio : set crtc limit\n");
 	for (i = 0; i < MAX_NUM_LIMIT_PAIRS; i++) {
 		pair = &constraints->pairs[i];
 
@@ -1146,6 +1150,34 @@ static void _virtio_kms_set_crtc_limit(struct virtio_kms *kms,
 	}
 
 	crtc_priv->base.extra_caps = crtc_priv->extra_info.data;
+}
+
+uint32_t drm_calc_max_mdp_clk(struct msm_hyp_kms *hyp_kms)
+{
+	uint32_t tmp_max_mdp_clk = 0;
+	uint64_t magnification_times = 1;
+	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
+
+	if (!kms)
+		return 0;
+
+	/* take MAX_LAYERS_MULTIPIPE * max_mdp_clk as max mdp clk to bypass sdm strategy manager */
+	/* when max_sdma_width is not set*/
+	if (!kms->max_sdma_width)
+		magnification_times = MAX_LAYERS_MULTIPIPE;
+
+	if (kms->device_info.max_mdp_clk)
+		tmp_max_mdp_clk = kms->device_info.max_mdp_clk;
+	else
+		tmp_max_mdp_clk = DEFAULT_MAX_MDP_CLK;
+
+	if (UINT_MAX < (uint64_t)tmp_max_mdp_clk  * magnification_times * 1000000) {
+		pr_err("max_mdp_clk overflow\n");
+		tmp_max_mdp_clk = 0;
+	} else
+		tmp_max_mdp_clk = tmp_max_mdp_clk  * magnification_times * 1000000;
+
+	return tmp_max_mdp_clk;
 }
 
 static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
@@ -1180,8 +1212,16 @@ static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
 		priv->base.primary_plane_index = plane_cnt;
 		plane_cnt += kms->outputs[i].plane_cnt;
 
-		/* these values should read from host */
-		priv->base.max_mdp_clk = 412500000LL;
+		priv->base.max_mdp_clk = drm_calc_max_mdp_clk(hyp_kms);
+		if (!priv->base.max_mdp_clk) {
+			pr_err("virtio : calc max mdp clk failed\n");
+			kfree(priv);
+			return -ENOMEM;
+		}
+
+		pr_debug("virtio set crtc limit max_mdp_clk: %u\n", priv->base.max_mdp_clk);
+
+		//TODO these attributes need be set as kms->device_info which got from host
 		priv->base.qseed_type = "qseed3";
 		priv->base.smart_dma_rev = "smart_dma_v2p5";
 		priv->base.has_hdr = false;
@@ -1200,7 +1240,25 @@ static int virtio_kms_get_mode_info(struct msm_hyp_kms *kms,
 		const struct drm_display_mode *mode,
 		struct msm_hyp_mode_info *modeinfo)
 {
-	modeinfo->num_lm = (mode->clock > MAX_MDP_CLK_KHZ) ? 2 : 1;
+	uint32_t max_mdp_clk;
+
+	if (!kms || !mode || !modeinfo)
+		return -EINVAL;
+
+	max_mdp_clk = ((struct virtio_kms *)kms)->device_info.max_mdp_clk * 1000;
+	if (!max_mdp_clk)
+		max_mdp_clk = DEFAULT_MAX_MDP_CLK * 1000;
+
+	/*refine topology to avoid sdm check display pixel clk failure*/
+	if (mode->clock <= max_mdp_clk)
+		modeinfo->num_lm = 1;
+	else if (mode->clock / 2 > max_mdp_clk)
+		modeinfo->num_lm = 4;
+	else
+		modeinfo->num_lm = 2;
+
+	pr_debug("virtio modeinfo->num_lm %d\n", modeinfo->num_lm);
+
 	modeinfo->num_enc = 0;
 	modeinfo->num_intf = 1;
 
@@ -1719,6 +1777,12 @@ static int _virtio_kms_hw_init(struct virtio_kms *kms)
 	spin_lock_init(&kms->display_info_lock);
 
 	//virtio_kms_get_capsets(kms, kms->num_capsets);
+
+	rc = virtio_gpu_cmd_get_device_info(kms);
+	if (rc) {
+		pr_err("get_device_info failed\n");
+		goto error;
+	}
 
 	rc = virtio_gpu_cmd_get_display_info(kms);
 	if (rc) {

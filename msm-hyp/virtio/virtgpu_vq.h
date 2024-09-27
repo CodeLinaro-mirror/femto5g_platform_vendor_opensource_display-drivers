@@ -1,6 +1,6 @@
- /*
-  * SPDX-License-Identifier: GPL-2.0-only
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+/* SPDX-License-Identifier: GPL-2.0-only
+ *
+ * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __VIRTIOGPU_VQ_H__
@@ -93,6 +93,8 @@ int virtio_gpu_cmd_get_display_info(struct virtio_kms *kms);
 
 int virtio_gpu_cmd_get_display_info_ext(struct virtio_kms *kms,
 		uint32_t scanout);
+
+int virtio_gpu_cmd_get_device_info(struct virtio_kms *kms);
 
 int virtio_gpu_cmd_get_scanout_attributes(struct virtio_kms *kms,
 		uint32_t scanout);
