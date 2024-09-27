@@ -102,6 +102,7 @@ struct lt9611 {
 	struct mipi_dsi_device *dsi;
 	struct edid *edid;
 	struct mutex lock;
+	struct mutex writable_lock;
 	struct drm_connector connector;
 
 	/* LT9611UXC CEC support */
@@ -116,15 +117,21 @@ struct lt9611 {
 
 	u8 i2c_addr;
 	int irq;
+	int writable_irq;
 	bool ac_mode;
 
 	u32 irq_gpio;
+	u32 writable_gpio;
 	u32 reset_gpio;
 	u32 hdmi_ps_gpio;
 	u32 hdmi_en_gpio;
 	u32 hdmi_3p3_en;
 	u32 hdmi_1p2_en;
 	u32 reset_gpio_flags;
+
+	wait_queue_head_t writable_wq;
+	bool is_writable;
+	bool is_pending_writable;
 
 	unsigned int num_vreg;
 	struct lt9611_vreg *vreg_config;
@@ -1102,6 +1109,12 @@ static int lt9611_parse_dt(struct device *dev,
 	}
 	pr_debug("irq_gpio=%d\n", pdata->irq_gpio);
 
+	pdata->writable_gpio =
+		of_get_named_gpio(np, "lt,writable-gpio", 0);
+	if (!gpio_is_valid(pdata->writable_gpio))
+		pr_info("writable gpio not specified\n");
+	pr_debug("writable_gpio=%d\n", pdata->writable_gpio);
+
 	pdata->reset_gpio =
 		of_get_named_gpio(np, "lt,reset-gpio", 0);
 	if (!gpio_is_valid(pdata->reset_gpio)) {
@@ -1255,8 +1268,26 @@ static int lt9611_gpio_configure(struct lt9611 *pdata, bool on)
 			pr_err("lt9611 irq gpio direction failed\n");
 			goto irq_error;
 		}
+
+		if (gpio_is_valid(pdata->writable_gpio)) {
+			ret = gpio_request(pdata->writable_gpio,
+				"lt9611-writable-gpio");
+			if (ret) {
+				pr_err("lt9611 writable gpio request failed\n");
+				goto irq_error;
+			}
+
+			ret = gpio_direction_input(pdata->writable_gpio);
+			if (ret) {
+				pr_err("lt9611 writable gpio direction failed\n");
+				goto writable_error;
+			}
+		}
+
 	} else {
 		gpio_free(pdata->irq_gpio);
+		if (gpio_is_valid(pdata->writable_gpio))
+			gpio_free(pdata->writable_gpio);
 		if (gpio_is_valid(pdata->hdmi_ps_gpio))
 			gpio_free(pdata->hdmi_ps_gpio);
 		if (gpio_is_valid(pdata->hdmi_en_gpio))
@@ -1271,6 +1302,9 @@ static int lt9611_gpio_configure(struct lt9611 *pdata, bool on)
 	return ret;
 
 
+writable_error:
+	if (gpio_is_valid(pdata->writable_gpio))
+		gpio_free(pdata->writable_gpio);
 irq_error:
 	gpio_free(pdata->irq_gpio);
 hdmi_ps_error:
@@ -1293,8 +1327,31 @@ error:
 
 static void lt9611_ctl_en(struct lt9611 *pdata)
 {
+	long ret = 0;
+
+	if (gpio_is_valid(pdata->writable_gpio)) {
+		mutex_lock(&pdata->writable_lock);
+		pdata->is_pending_writable = true;
+		pdata->is_writable = false;
+		mutex_unlock(&pdata->writable_lock);
+		enable_irq(pdata->writable_irq);
+		ret = wait_event_timeout(pdata->writable_wq, pdata->is_writable,
+			msecs_to_jiffies(1000));
+		if (!ret)
+			goto timeout;
+		else
+			goto stop_lt9611;
+	}
+
+timeout:
 	lt9611_write_byte(pdata, 0xFF, 0x80);
 	lt9611_write_byte(pdata, 0xEE, 0x01);
+
+stop_lt9611:
+	if (gpio_is_valid(pdata->writable_gpio)) {
+		pr_info("ret = %d\n", ret);
+		disable_irq(pdata->writable_irq);
+	}
 }
 
 static void lt9611_ctl_disable(struct lt9611 *pdata)
@@ -1414,6 +1471,24 @@ static void lt9611_change_to_hdmi(struct lt9611 *pdata)
 	lt9611_ctl_disable(pdata);
 	pdata->cec_support = true;
 	mutex_unlock(&pdata->lock);
+}
+
+static irqreturn_t lt9611_writable_irq_handler(int irq, void *dev_id)
+{
+	struct lt9611 *pdata = (struct lt9611 *)dev_id;
+
+	if (pdata->is_pending_writable) {
+		lt9611_write_byte(pdata, 0xFF, 0x80);
+		lt9611_write_byte(pdata, 0xEE, 0x01);
+		pr_alert("LT9611UXC stopped...\n");
+		mutex_lock(&pdata->writable_lock);
+		pdata->is_pending_writable = false;
+		pdata->is_writable = true;
+		mutex_unlock(&pdata->writable_lock);
+		wake_up_all(&pdata->writable_wq);
+	}
+
+	return IRQ_HANDLED;
 }
 
 static irqreturn_t lt9611_irq_thread_handler(int irq, void *dev_id)
@@ -2548,11 +2623,17 @@ static int lt9611_probe(struct i2c_client *client,
 	if (!pdata)
 		return -ENOMEM;
 
+	pdata->is_writable = false;
+	pdata->is_pending_writable = false;
+
 	ret = lt9611_parse_dt(&client->dev, pdata);
 	if (ret) {
 		pr_err("failed to parse device tree\n");
 		goto err_dt_parse;
 	}
+
+	if (gpio_is_valid(pdata->writable_gpio))
+		init_waitqueue_head(&pdata->writable_wq);
 
 	ret = lt9611_get_dt_supply(&client->dev, pdata);
 	if (ret) {
@@ -2580,6 +2661,20 @@ static int lt9611_probe(struct i2c_client *client,
 		lt9611_reset(pdata, true);
 
 	msleep(200);
+	// Make sure LT9611UXC initialized, then enable writable irq.
+	if (gpio_is_valid(pdata->writable_gpio)) {
+		pdata->writable_irq = gpio_to_irq(pdata->writable_gpio);
+		ret = request_threaded_irq(pdata->writable_irq, NULL,
+				lt9611_writable_irq_handler,
+				IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+				"lt9611_writable_irq", pdata);
+		if (ret) {
+			pr_err("failed to request writable irq\n");
+			goto err_i2c_prog;
+		}
+		disable_irq(pdata->writable_irq);
+	}
+
 	ret = lt9611_read_device_id(pdata);
 	if (ret) {
 		pr_err("failed to read chip rev\n");
@@ -2618,6 +2713,7 @@ static int lt9611_probe(struct i2c_client *client,
 	}
 
 	mutex_init(&pdata->lock);
+	mutex_init(&pdata->writable_lock);
 	init_waitqueue_head(&pdata->edid_wq);
 
 #if IS_ENABLED(CONFIG_OF)
@@ -2672,7 +2768,9 @@ static int lt9611_probe(struct i2c_client *client,
 	return 0;
 
 err_request_irq:
+	disable_irq(pdata->writable_irq);
 	disable_irq(pdata->irq);
+	free_irq(pdata->writable_irq, pdata);
 	free_irq(pdata->irq, pdata);
 err_i2c_prog:
 	lt9611_gpio_configure(pdata, false);
@@ -2699,7 +2797,9 @@ static int lt9611_remove(struct i2c_client *client)
 
 	lt9611_sysfs_remove(&client->dev);
 
+	disable_irq(pdata->writable_irq);
 	disable_irq(pdata->irq);
+	free_irq(pdata->writable_irq, pdata);
 	free_irq(pdata->irq, pdata);
 
 	ret = lt9611_gpio_configure(pdata, false);
