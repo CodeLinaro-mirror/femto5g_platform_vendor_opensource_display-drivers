@@ -238,8 +238,25 @@ static void _sde_rm_inc_resource_info_lm(struct sde_rm *rm,
 	avail_res->num_3dmux = hweight_long(avail_res->merge_3d_mask);
 }
 
-static bool _sde_rm_is_blk_available(struct sde_rm_hw_blk *blk, struct sde_rm_rsvp *rsvp,
-	struct sde_rm_requirements *reqs)
+static bool _sde_rm_reserved_by_cac_enc(struct sde_rm *rm,
+		struct sde_rm_hw_blk *blk, struct sde_rm_rsvp *rsvp)
+{
+	struct drm_encoder *enc;
+
+	if (!blk->rsvp)
+		return false;
+
+	drm_for_each_encoder(enc, rm->dev)
+		if ((enc->base.id == blk->rsvp->enc_id) &&
+			(sde_encoder_is_dsi_display(enc) ||
+			sde_encoder_is_loopback_display(enc)))
+			return true;
+
+	return false;
+}
+
+static bool _sde_rm_is_blk_available(struct sde_rm *rm, struct sde_rm_hw_blk *blk,
+	struct sde_rm_rsvp *rsvp, struct sde_rm_requirements *reqs)
 {
 	/*
 	 * Entry and exit of cac loopback is a seamless commit. So resources
@@ -249,7 +266,8 @@ static bool _sde_rm_is_blk_available(struct sde_rm_hw_blk *blk, struct sde_rm_rs
 	 * it is needed for next commit before failing the reservation.
 	 */
 	if (reqs->is_cac_transition && RESERVED_BY_OTHER(blk, rsvp)) {
-		if (RESERVED_BY_NEXT(blk, rsvp))
+		if (RESERVED_BY_NEXT(blk, rsvp) ||
+			!_sde_rm_reserved_by_cac_enc(rm, blk, rsvp))
 			return false;
 	} else {
 		if (RESERVED_BY_OTHER(blk, rsvp))
@@ -1121,7 +1139,7 @@ static bool _sde_rm_reserve_dspp(
 			return false;
 		}
 
-		if (!_sde_rm_is_blk_available(*dspp, rsvp, reqs)) {
+		if (!_sde_rm_is_blk_available(rm, *dspp, rsvp, reqs)) {
 			SDE_DEBUG("lm %d dspp %d already reserved\n",
 					lm->id, (*dspp)->id);
 			return false;
@@ -1157,7 +1175,7 @@ static bool _sde_rm_reserve_ds(
 			return false;
 		}
 
-		if (!_sde_rm_is_blk_available(*ds, rsvp, reqs)) {
+		if (!_sde_rm_is_blk_available(rm, *ds, rsvp, reqs)) {
 			SDE_DEBUG("lm %d ds %d already reserved\n",
 					lm->id, (*ds)->id);
 			return false;
@@ -1193,7 +1211,7 @@ static bool _sde_rm_reserve_pp(
 		return false;
 	}
 
-	if (!_sde_rm_is_blk_available(*pp, rsvp, reqs)) {
+	if (!_sde_rm_is_blk_available(rm, *pp, rsvp, reqs)) {
 		SDE_DEBUG("lm %d pp %d already reserved\n", lm->id,
 				(*pp)->id);
 		*dspp = NULL;
@@ -1327,7 +1345,7 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	}
 
 	 /* Already reserved? */
-	if (!_sde_rm_is_blk_available(lm, rsvp, reqs)) {
+	if (!_sde_rm_is_blk_available(rm, lm, rsvp, reqs)) {
 		SDE_DEBUG("lm %d already reserved\n", lm_cfg->id);
 		return false;
 	}
@@ -2452,6 +2470,42 @@ static struct drm_connector *_sde_rm_get_connector(
 	return conn;
 }
 
+static void sde_rm_populate_lb_reqs(struct drm_encoder *enc, struct sde_rm *rm,
+	struct drm_crtc_state *crtc_state, struct sde_rm_requirements *reqs)
+{
+	struct drm_crtc_state *old_cstate =  NULL;
+
+	if (crtc_state->state && crtc_state->crtc)
+		old_cstate = drm_atomic_get_old_crtc_state(crtc_state->state,
+					crtc_state->crtc);
+	reqs->is_cac_transition = sde_crtc_in_lb_transition(old_cstate,
+					crtc_state);
+
+	if (!sde_crtc_state_in_lb_mode(crtc_state))
+		return;
+
+	/*
+	 * When CRTC is in loopback mode, RM should only allocate resources
+	 * defined for loopback mode for both first pass(virtual) and second
+	 * pass(primary) encoders. Set preference here so that reservation
+	 * of blocks like LM, INTF, DSPP can be done accordingly.
+	 * When CRTC is in loopback mode, select DSPP and DS only for loopback
+	 * encoder.
+	 */
+	if (sde_encoder_is_loopback_display(enc)) {
+		if (!RM_RQ_DSPP(reqs))
+			reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_DSPP);
+
+		if (!RM_RQ_DS(reqs) && rm->hw_mdp->caps->has_dest_scaler)
+			reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_DS);
+
+		reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_CAC_LB);
+	} else {
+		reqs->top_ctrl &= ~(BIT(SDE_RM_TOPCTL_DSPP) | BIT(SDE_RM_TOPCTL_DS));
+		reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_CAC_PRIMARY);
+	}
+}
+
 static int _sde_rm_populate_requirements(
 		struct sde_rm *rm,
 		struct drm_encoder *enc,
@@ -2463,18 +2517,11 @@ static int _sde_rm_populate_requirements(
 	const struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_encoder *encoder_iter;
 	struct drm_connector *conn;
-	struct drm_crtc_state *old_cstate = NULL;
 	int i, num_lm;
-	bool crtc_in_lb_mode = false;
 
 	reqs->top_ctrl = sde_connector_get_property(conn_state,
 			CONNECTOR_PROP_TOPOLOGY_CONTROL);
 	sde_encoder_get_hw_resources(enc, &reqs->hw_res, conn_state);
-	crtc_in_lb_mode = sde_crtc_state_in_lb_mode(crtc_state);
-	if (crtc_state->state && crtc_state->crtc)
-		old_cstate = drm_atomic_get_old_crtc_state(crtc_state->state, crtc_state->crtc);
-
-	reqs->is_cac_transition = sde_crtc_in_lb_transition(old_cstate, crtc_state);
 
 	for (i = 0; i < SDE_RM_TOPOLOGY_MAX; i++) {
 		if (RM_IS_TOPOLOGY_MATCH(rm->topology_tbl[i],
@@ -2490,35 +2537,19 @@ static int _sde_rm_populate_requirements(
 	}
 
 	/*
-	 * When CRTC is in loopback mode, RM should only allocate resources
-	 * defined for loopback mode for both first pass(virtual) and second
-	 * pass(primary) encoders. Set preference here so that reservation
-	 * of blocks like LM, INTF, DSPP can be done accordingly.
-	 * Loopback display + CWB is not supported currently.
-	 */
-	if (crtc_in_lb_mode && !sde_crtc_state_in_clone_mode(enc, crtc_state)) {
-		reqs->top_ctrl |= sde_encoder_is_loopback_display(enc) ?
-					BIT(SDE_RM_TOPCTL_CAC_LB) :
-					BIT(SDE_RM_TOPCTL_CAC_PRIMARY);
-		reqs->top_ctrl &= ~(BIT(SDE_RM_TOPCTL_DSPP) | BIT(SDE_RM_TOPCTL_DS));
-	}
-
-	/*
-	 * When CRTC is in loopback mode, select DSPP and DS only
-	 * for loopback encoder. When loopback is disabled, select
-	 * dspp HW block for all dsi displays and ds only for
+	 * select dspp HW block for all dsi displays and ds for only
 	 * primary dsi display.
 	 */
-	if ((conn_state->connector->connector_type == DRM_MODE_CONNECTOR_DSI && !crtc_in_lb_mode) ||
-		sde_encoder_is_loopback_display(enc)) {
+	if (conn_state->connector->connector_type == DRM_MODE_CONNECTOR_DSI) {
 		if (!RM_RQ_DSPP(reqs))
 			reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_DSPP);
 
 		if (!RM_RQ_DS(reqs) && rm->hw_mdp->caps->has_dest_scaler &&
-		    (sde_encoder_is_primary_display(enc) ||
-				sde_encoder_is_loopback_display(enc)))
+		    sde_encoder_is_primary_display(enc))
 			reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_DS);
 	}
+
+	sde_rm_populate_lb_reqs(enc, rm, crtc_state, reqs);
 
 	/**
 	 * Set the requirement for LM which has CWB support if CWB is

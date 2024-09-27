@@ -79,6 +79,8 @@
 
 #define IDLE_SHORT_TIMEOUT	1
 
+#define IDLE_TIMEOUT_MAX	150
+
 #define EVT_TIME_OUT_SPLIT 2
 
 #define MAX_FREQ_SEQ_SIZE 5
@@ -1019,7 +1021,8 @@ bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
 		return false;
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
-	if (sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL)
+	if (sde_enc->disp_info.intf_type != DRM_MODE_CONNECTOR_VIRTUAL ||
+			sde_enc->crtc != crtc)
 		return false;
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
@@ -2030,10 +2033,9 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	if (is_cmd && (commit_state == SDE_PERF_BEGIN_COMMIT)) {
 		if (sde_enc->mode_switch || sde_enc->multi_te_state || qsync_en || qsync_updated) {
 			ctrl_cfg.req_mode = SDE_CESTA_CTRL_REQ_IMMEDIATE;
-			ctrl_cfg.hw_sleep_enable = qsync_updated ? false : true;
+			ctrl_cfg.hw_sleep_enable = qsync_updated ? false : ctrl_cfg.hw_sleep_enable;
 		} else {
 			ctrl_cfg.req_mode = SDE_CESTA_CTRL_REQ_PANIC_REGION;
-			ctrl_cfg.hw_sleep_enable = true;
 		}
 
 		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, true,
@@ -2077,8 +2079,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 	else
 		cfg.flags |= SDE_CTL_CESTA_CHN_WAIT;
 
-	if ((commit_state == SDE_PERF_ENABLE_COMMIT) || (commit_state == SDE_PERF_DISABLE_COMMIT)
-			|| req_scc)
+	if ((commit_state == SDE_PERF_ENABLE_COMMIT) || req_scc)
 		cfg.flags |= SDE_CTL_CESTA_SCC_FLUSH;
 
 	if ((cfg.vote_state != SDE_CESTA_BW_CLK_NOCHANGE) || req_flush)
@@ -2626,12 +2627,40 @@ void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
 					SDE_PERF_ENABLE_COMMIT : SDE_PERF_BEGIN_COMMIT);
 }
 
+static unsigned int _sde_encoder_vrr_min_idle_time(struct sde_encoder_virt *sde_enc)
+{
+	unsigned int dpu_min_ms, nominal_vsync_ms, vrr_min_idle_time_ms;
+	struct sde_connector *sde_conn;
+
+	if (!sde_enc || !sde_enc->cur_master || !sde_enc->cur_master->connector) {
+		SDE_ERROR("invalid encoder-connector\n");
+		return 0;
+	}
+
+	sde_conn = to_sde_connector(sde_enc->cur_master->connector);
+
+	if (!sde_conn->freq_pattern || !sde_conn->freq_pattern->needs_ap_refresh)
+		return 0;
+
+	dpu_min_ms = DIV_ROUND_UP(1000000, sde_conn->freq_pattern->freq_stepping_seq[0]);
+	nominal_vsync_ms = DIV_ROUND_UP(1000, sde_enc->mode_info.frame_rate);
+	vrr_min_idle_time_ms = dpu_min_ms + nominal_vsync_ms;
+
+	if (vrr_min_idle_time_ms > IDLE_TIMEOUT_MAX) {
+		vrr_min_idle_time_ms = IDLE_TIMEOUT_MAX;
+		SDE_EVT32(sde_conn->freq_pattern->freq_stepping_seq[0],
+			sde_enc->mode_info.frame_rate, SDE_EVTLOG_ERROR);
+	}
+
+	return vrr_min_idle_time_ms;
+}
+
 static void _sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
 	u32 sw_event)
 {
 	struct drm_encoder *drm_enc = &sde_enc->base;
 	struct msm_drm_private *priv;
-	unsigned int lp, idle_pc_duration;
+	unsigned int lp, idle_pc_duration, vrr_min_idle_time = 0;
 	struct msm_drm_thread *disp_thread;
 
 	/* return early if called from esd thread */
@@ -2650,6 +2679,11 @@ static void _sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
 	else
 		idle_pc_duration = IDLE_POWERCOLLAPSE_DURATION;
 
+	if (sde_enc->disp_info.vrr_caps.video_psr_support) {
+		vrr_min_idle_time = _sde_encoder_vrr_min_idle_time(sde_enc);
+		idle_pc_duration = max(idle_pc_duration, vrr_min_idle_time);
+	}
+
 	priv = drm_enc->dev->dev_private;
 	disp_thread = &priv->disp_thread[sde_enc->crtc->index];
 
@@ -2658,7 +2692,7 @@ static void _sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
 			&sde_enc->delayed_off_work,
 			msecs_to_jiffies(idle_pc_duration));
 	SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
-			idle_pc_duration, SDE_EVTLOG_FUNC_CASE2);
+			idle_pc_duration, vrr_min_idle_time, SDE_EVTLOG_FUNC_CASE2);
 	SDE_DEBUG_ENC(sde_enc, "sw_event:%d, work scheduled\n",
 			sw_event);
 }
@@ -2686,7 +2720,7 @@ static void _sde_encoder_rc_kickoff_delayed(struct sde_encoder_virt *sde_enc,
 	u32 sw_event, struct sde_crtc *sde_crtc)
 {
 	if (_sde_encoder_is_autorefresh_enabled(sde_enc) ||
-			mdnie_art_in_progress(&sde_crtc->aiqe_top_level))
+			(sde_crtc && mdnie_art_in_progress(&sde_crtc->aiqe_top_level)))
 		_sde_encoder_rc_cancel_delayed(sde_enc, sw_event);
 	else
 		_sde_encoder_rc_restart_delayed(sde_enc, sw_event);
@@ -3310,10 +3344,12 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 		if (sde_enc->cesta_client && is_cmd_mode
 				&& sde_enc->crtc && !sde_enc->crtc->state->active_changed
 				&& ((sde_enc->mode_switch == SDE_MODE_SWITCH_RES_DOWN)
-					|| (sde_enc->mode_switch == SDE_MODE_SWITCH_FPS_DOWN)))
+					|| (sde_enc->mode_switch == SDE_MODE_SWITCH_FPS_DOWN)
+					|| sde_enc->multi_te_fps))
 			sde_enc->old_vsync_count =
 				sde_encoder_helper_calc_vsync_count(drm_enc, old_adj_mode->vtotal,
-						drm_mode_vrefresh(old_adj_mode));
+						sde_enc->multi_te_fps ? sde_enc->multi_te_fps
+							: drm_mode_vrefresh(old_adj_mode));
 
 		intf_mode = sde_encoder_get_intf_mode(drm_enc);
 		if (msm_is_mode_seamless_dms(msm_mode) ||
@@ -4741,8 +4777,8 @@ void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
 	struct drm_connector *drm_conn;
 	bool is_vid = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 	struct intf_status intf_status = {0};
-	u32 u_bound, l_bound, line_count, qsync_mode;
-	const u32 porch_margin = 10;
+	u32 u_bound, l_bound, line_count, qsync_mode, trial = 0;
+	const u32 porch_margin = 20, max_trials = 20;
 
 	if ((disp_info->intf_type != DRM_MODE_CONNECTOR_DSI) || !is_vid || !sde_enc->cesta_client
 			|| !cur_master->hw_intf || !cur_master->hw_intf->ops.get_status
@@ -4760,46 +4796,22 @@ void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
 	l_bound = mode_info->vtotal - cur_master->prog_fetch_start - porch_margin;
 	u_bound = mode_info->vtotal;
 
+	line_count = intf_status.line_count;
+	if ((line_count < l_bound) || (line_count > u_bound))
+		return;
+
 	/*
 	 * ctl flush when line-cnt is in prog-fetch region causes issues with cesta idle-vote
-	 * at ext-vfp. As a workaround, override cesta to stay active during this time and remove
-	 * the override at the end of the commit after panel-vsync, but polling the line-count
-	 * for reset.
+	 * at ext-vfp. As a workaround, delay the flush after the prog-fetch region.
 	 */
-	line_count = intf_status.line_count;
-	if ((line_count >= l_bound) && (line_count < u_bound)) {
-		sde_enc->cesta_force_active = true;
-		sde_cesta_override_ctrl(sde_enc->cesta_client, SDE_CESTA_OVERRIDE_FORCE_ACTIVE);
-		SDE_EVT32(line_count, l_bound, u_bound, mode_info->vtotal,
-				cur_master->prog_fetch_start);
-	}
-}
-
-void sde_encoder_poll_intf_line_count_reset(struct drm_encoder *drm_enc)
-{
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
-	struct sde_encoder_phys *cur_master = sde_enc->cur_master;
-	u32 line_count, max_trials = 10;
-	int i;
-
-	if (!sde_enc->cesta_force_active)
-		return;
-
-	if (!cur_master->hw_intf || !cur_master->hw_intf->ops.get_line_count)
-		return;
-
-	for (i = 0; i < max_trials; i++) {
+	do {
+		usleep_range(20, 25);
 		line_count = cur_master->hw_intf->ops.get_line_count(cur_master->hw_intf);
-		if (line_count < 100)
-			break;
+		trial++;
+	} while ((line_count >= l_bound) && (line_count <= u_bound) && (trial < max_trials));
 
-		usleep_range(50, 55);
-	}
-
-	/* remove force active from cesta configs */
-	sde_cesta_override_ctrl(sde_enc->cesta_client, 0);
-	sde_enc->cesta_force_active = false;
-	SDE_EVT32(i, line_count, (i == max_trials) ? SDE_EVTLOG_ERROR : 0);
+	SDE_EVT32(line_count, l_bound, u_bound, mode_info->vtotal, cur_master->prog_fetch_start,
+			(trial == max_trials) ? SDE_EVTLOG_ERROR : trial);
 }
 
 void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
@@ -4808,20 +4820,26 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 	struct sde_encoder_phys *phys_enc = sde_enc->cur_master;
 	struct msm_mode_info *mode_info = &sde_enc->mode_info;
 	u32 vsync_count, vrefresh;
+	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
+	bool req_flush = false, req_scc = false;
+
 
 	SDE_EVT32(DRMID(drm_enc), sde_enc->mode_switch, sde_enc->cesta_force_auto_active_db_update,
-			sde_enc->old_vsync_count, SDE_EVTLOG_FUNC_ENTRY);
+			sde_enc->old_vsync_count, sde_enc->multi_te_fps, SDE_EVTLOG_FUNC_ENTRY);
 
 	if (sde_enc->cesta_client && sde_enc->cesta_force_auto_active_db_update) {
+		if (phys_enc->ops.cesta_ctrl_cfg)
+			phys_enc->ops.cesta_ctrl_cfg(phys_enc, &ctrl_cfg, &req_flush, &req_scc);
 		sde_cesta_force_auto_active_db_update(sde_enc->cesta_client, false,
-				SDE_CESTA_CTRL_REQ_PANIC_REGION, true);
+				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable);
 		sde_enc->cesta_force_auto_active_db_update = false;
 	}
 
 	if (sde_enc->old_vsync_count && phys_enc->hw_intf &&
 			phys_enc->hw_intf->ops.update_tearcheck_vsync_count) {
 
-		vrefresh = sde_encoder_get_fps(&sde_enc->base);
+		vrefresh = sde_enc->multi_te_fps ? sde_enc->multi_te_fps
+				: sde_encoder_get_fps(&sde_enc->base);
 		vsync_count = sde_encoder_helper_calc_vsync_count(drm_enc,
 				mode_info->vtotal, vrefresh);
 		phys_enc->hw_intf->ops.update_tearcheck_vsync_count(phys_enc->hw_intf, vsync_count);
@@ -4831,7 +4849,6 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 	}
 
 	sde_enc->mode_switch = SDE_MODE_SWITCH_NONE;
-	sde_encoder_poll_intf_line_count_reset(drm_enc);
 	_sde_encoder_cesta_update(drm_enc, SDE_PERF_COMPLETE_COMMIT);
 }
 
@@ -4887,9 +4904,6 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	is_dp = phys->hw_intf && phys->hw_intf->cap->type == INTF_DP;
 	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 
-	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
-		sde_encoder_check_prog_fetch_region(drm_enc);
-
 	/*
 	 * Cesta blocks ctl flush in hardware until cesta vote is processed, but
 	 * intf and periph flushes are not similarly blocked. Poll cesta's handshake
@@ -4899,6 +4913,9 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 			ctl->ops.bitmask_has_bit(ctl, SDE_HW_FLUSH_PERIPH, phys->hw_intf->idx) ||
 			ctl->ops.bitmask_has_bit(ctl, SDE_HW_FLUSH_INTF, phys->hw_intf->idx)))
 		sde_cesta_poll_handshake(sde_enc->cesta_client);
+
+	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
+		sde_encoder_check_prog_fetch_region(drm_enc);
 
 	/* update pending counts and trigger kickoff ctl flush atomically */
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
@@ -5552,7 +5569,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	if (send_still_cmd) {
 		sde_connector_update_cmd(phys_enc->connector,
 			BIT(DSI_CMD_SET_STICKY_STILL_EN), true);
-		phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_COMPLETE;
+		phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_IN_PROGRESS;
 	}
 
 	if (ctl->ops.update_bitmask) {
@@ -5582,7 +5599,8 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 		return;
 	}
 
-	drm_crtc_wait_one_vblank(crtc);
+	sde_encoder_phys_inc_pending(phys_enc);
+	sde_encoder_wait_for_event(&sde_enc->base, MSM_ENC_VBLANK);
 
 	pf_time_in_us = phys_enc->pf_time_in_us;
 	if (pf_time_in_us > 2000) {
@@ -5593,7 +5611,9 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	/* wait for panel vsync */
 	usleep_range(pf_time_in_us, pf_time_in_us + 10);
 
-	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT);
+	phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_COMPLETE;
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, atomic_read(&phys_enc->pending_kickoff_cnt));
 }
 
 static void sde_encoder_handle_self_refresh(struct kthread_work *work)
@@ -6097,6 +6117,10 @@ void sde_encoder_handle_self_refresh_video_psr(struct sde_encoder_phys *phys_enc
 		}
 	}
 
+	if (phys_enc->sde_vrr_cfg.min_sr_state == SDE_MIN_SR_IN_PROGRESS) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
+		return;
+	}
 	phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_SCHEDULED;
 	dpu_min_ns = (SEC_TO_NS/vrr_cfg->curr_freq_pattern->freq_stepping_seq[0])*1000;
 	avr_step_in_ns = SEC_TO_NS/sde_enc->mode_info.avr_step_fps;
@@ -7797,6 +7821,21 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	mutex_unlock(&sde_enc->enc_lock);
 
 	return ret;
+}
+
+void sde_encoder_phys_cancel_backlight_timer(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *phys_enc;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc || !sde_enc->cur_master)
+		return;
+	phys_enc = sde_enc->cur_master;
+
+	if (ktime_compare(hrtimer_get_expires(&phys_enc->sde_vrr_cfg.backlight_timer),
+			ktime_get()) > 0)
+		hrtimer_cancel(&phys_enc->sde_vrr_cfg.backlight_timer);
 }
 
 enum hrtimer_restart sde_encoder_phys_backlight_timer_cb(struct hrtimer *timer)

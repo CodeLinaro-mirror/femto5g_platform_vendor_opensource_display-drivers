@@ -1756,7 +1756,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 		sde_crtc_complete_flip(crtc, NULL);
 	}
 
-	if (cwb_disabling && cwb_enc)
+	if (cwb_enc)
 		sde_encoder_virt_reset(cwb_enc);
 
 	/* avoid system cache update to set rd-noalloc bit when NSE feature is enabled */
@@ -3970,7 +3970,7 @@ static bool sde_kms_check_for_splash(struct msm_kms *kms)
 	}
 
 	sde_kms = to_sde_kms(kms);
-	return sde_kms->splash_data.num_splash_displays;
+	return sde_kms->splash_data.num_splash_displays == 0 ? false : true;
 }
 
 static int sde_kms_get_mixer_count(const struct msm_kms *kms,
