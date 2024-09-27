@@ -212,6 +212,7 @@ msm_drm-$(CONFIG_DRM_MSM_SDE) += sde/sde_crtc.o \
 				 sde/sde_hw_lm.o \
 				 sde/sde_hw_ctl.o \
 				 sde/sde_hw_util.o \
+				 sde/sde_hw_sspp_v1.o \
 				 sde/sde_hw_sspp.o \
 				 sde/sde_hw_wb.o \
 				 sde/sde_hw_pingpong.o \
