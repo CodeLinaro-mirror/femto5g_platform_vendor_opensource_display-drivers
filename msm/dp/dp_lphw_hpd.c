@@ -406,7 +406,8 @@ static void dp_lphw_hpd_host_init(struct dp_hpd *dp_hpd,
 	DP_INFO("DP%d lphw_hpd state = %d, new hpd state = %d\n",
 			lphw_hpd->parser->cell_idx, lphw_hpd->hpd, hpd);
 	if (lphw_hpd->hpd != hpd)
-		DP_INFO("DP%d HPD changes during suspension\n", lphw_hpd->parser->cell_idx);
+		DP_INFO("DP%d HPD has changed, lphw_hpd state = %d, gpio hpd state = %d\n",
+			lphw_hpd->parser->cell_idx, lphw_hpd->hpd, hpd);
 
 	/*
 	 * When we init the HPD hardware, the hardware state machine starts from
@@ -672,6 +673,23 @@ int dp_lphw_hpd_register(struct dp_hpd *dp_hpd)
 	return rc;
 }
 
+static void dp_lphw_hpd_unregister(struct dp_hpd *dp_hpd)
+{
+	struct dp_lphw_hpd_private *lphw_hpd;
+
+	if (!dp_hpd) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	lphw_hpd = container_of(dp_hpd, struct dp_lphw_hpd_private, base);
+
+	disable_irq(lphw_hpd->irq);
+	del_timer_sync(&lphw_hpd->gpio_timer);
+	DP_INFO("DP%d disable lphw_hpd irq.\n", lphw_hpd->parser->cell_idx);
+	devm_free_irq(lphw_hpd->dev, lphw_hpd->irq, lphw_hpd);
+}
+
 static void dp_lphw_hpd_deinit(struct dp_lphw_hpd_private *lphw_hpd)
 {
 	struct dp_parser *parser = lphw_hpd->parser;
@@ -807,6 +825,7 @@ struct dp_hpd *dp_lphw_hpd_get(struct device *dev, struct dp_parser *parser,
 	lphw_hpd->base.simulate_connect = dp_lphw_hpd_simulate_connect;
 	lphw_hpd->base.simulate_attention = dp_lphw_hpd_simulate_attention;
 	lphw_hpd->base.register_hpd = dp_lphw_hpd_register;
+	lphw_hpd->base.unregister_hpd = dp_lphw_hpd_unregister;
 
 	dp_lphw_hpd_init(lphw_hpd);
 
