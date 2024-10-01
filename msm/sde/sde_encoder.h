@@ -187,6 +187,61 @@ struct sde_encoder_vrr_info {
 	u32 vhm_cmd_in_progress;
 };
 
+/**
+ * enum sde_enc_rc_events - events for resource control state machine
+ * @SDE_ENC_RC_EVENT_KICKOFF:
+ *	This event happens at NORMAL priority.
+ *	Event that signals the start of the transfer. When this event is
+ *	received, enable MDP/DSI core clocks and request RSC with CMD state.
+ *	Regardless of the previous state, the resource should be in ON state
+ *	at the end of this event. At the end of this event, a delayed work is
+ *	scheduled to go to IDLE_PC state after IDLE_POWERCOLLAPSE_DURATION
+ *	ktime.
+ * @SDE_ENC_RC_EVENT_PRE_STOP:
+ *	This event happens at NORMAL priority.
+ *	This event, when received during the ON state, set RSC to IDLE,
+ *	and leave the RC STATE in the PRE_OFF state.
+ *	It should be followed by the STOP event as part of encoder disable.
+ *	If received during IDLE or OFF states, it will do nothing.
+ * @SDE_ENC_RC_EVENT_STOP:
+ *	This event happens at NORMAL priority.
+ *	When this event is received, disable all the MDP/DSI core clocks, and
+ *	disable IRQs. It should be called from the PRE_OFF or IDLE states.
+ *	IDLE is expected when IDLE_PC has run, and PRE_OFF did nothing.
+ *	PRE_OFF is expected when PRE_STOP was executed during the ON state.
+ *	Resource state should be in OFF at the end of the event.
+ * @SDE_ENC_RC_EVENT_PRE_MODESET:
+ *	This event happens at NORMAL priority from a work item.
+ *	Event signals that there is a seamless mode switch is in prgoress. A
+ *	client needs to leave clocks ON to reduce the mode switch latency.
+ * @SDE_ENC_RC_EVENT_POST_MODESET:
+ *	This event happens at NORMAL priority from a work item.
+ *	Event signals that seamless mode switch is complete and resources are
+ *	acquired. Clients wants to update the rsc with new vtotal and update
+ *	pm_qos vote.
+ * @SDE_ENC_RC_EVENT_ENTER_IDLE:
+ *	This event happens at NORMAL priority from a work item.
+ *	Event signals that there were no frame updates for
+ *	IDLE_POWERCOLLAPSE_DURATION time. This would disable MDP/DSI core clocks
+ *      and request RSC with IDLE state and change the resource state to IDLE.
+ * @SDE_ENC_RC_EVENT_EARLY_WAKEUP:
+ *	This event is triggered from the input event thread when touch event is
+ *	received from the input device. On receiving this event,
+ *      - If the device is in SDE_ENC_RC_STATE_IDLE state, it turns ON the
+	  clocks and enable RSC.
+ *      - If the device is in SDE_ENC_RC_STATE_ON state, it resets the delayed
+ *        off work since a new commit is imminent.
+ */
+enum sde_enc_rc_events {
+	SDE_ENC_RC_EVENT_KICKOFF = 1,
+	SDE_ENC_RC_EVENT_PRE_STOP,
+	SDE_ENC_RC_EVENT_STOP,
+	SDE_ENC_RC_EVENT_PRE_MODESET,
+	SDE_ENC_RC_EVENT_POST_MODESET,
+	SDE_ENC_RC_EVENT_ENTER_IDLE,
+	SDE_ENC_RC_EVENT_EARLY_WAKEUP,
+};
+
 /*
  * enum sde_enc_rc_states - states that the resource control maintains
  * @SDE_ENC_RC_STATE_OFF: Resource is in OFF state
@@ -1060,6 +1115,15 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 void sde_encoder_post_commit_bl_sr_work(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_rc_restart_delayed - FIXME: kshpin
+ *
+ * @sde_enc: pointer to sde encoder
+ * @sw_event: resource controller event
+ */
+void sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
+	enum sde_enc_rc_events sw_event);
 
 /**
  * sde_encoder_get_cesta_client - return the SDE CESTA client

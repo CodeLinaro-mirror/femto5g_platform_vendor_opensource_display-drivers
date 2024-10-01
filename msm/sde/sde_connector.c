@@ -296,6 +296,7 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 	int rc = 0;
 	struct drm_encoder *drm_enc;
 	struct drm_connector *connector;
+	struct sde_encoder_virt *sde_enc;
 
 	connector = &c_conn->base;
 	if (connector->state && connector->state->best_encoder)
@@ -322,6 +323,12 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 	c_conn->bl_vrr.bl_increment_in_progress = true;
 	c_conn->bl_vrr.bl_frame_idx = 0;
 	SDE_EVT32(bl_lvl, brightness);
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (sde_enc && kthread_cancel_delayed_work_sync(&sde_enc->delayed_off_work)) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE3);
+		sde_encoder_rc_restart_delayed(sde_enc, SDE_ENC_RC_EVENT_KICKOFF);
+	}
 
 	sde_encoder_handle_next_backlight_update(drm_enc);
 
