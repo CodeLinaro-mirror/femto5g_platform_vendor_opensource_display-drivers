@@ -41,6 +41,27 @@ struct sde_hw_blk_reg_map {
 };
 
 /**
+ * struct sde_hw_ade_cfg : QSEEDv3 Adaptive DE configuration
+ * @adaptive_de_en:      Enable adaptive DE
+ * @polarity_en:         Enable polarity check
+ * @strength_slope:      Slope(m) in y=mx+c, DG calculation
+ * @strength_const:      Constant(c) in y=mx+c, DG calculation
+ * @strength_coeff_tl:   Low threshold for Dynamic gain(DG)
+ * @strength_coeff_th:   High threshold for Dynamic gain(DG)
+ * @halo_suppress_coeff: Halo Suppress Multiplier
+ */
+struct sde_hw_ade_cfg {
+	u32 adaptive_de_en;
+	u32 polarity_en;
+
+	u32 strength_slope;
+	u32 strength_const;
+	u32 strength_coeff_tl;
+	u32 strength_coeff_th;
+	u32 halo_suppress_coeff;
+};
+
+/**
  * struct sde_hw_scaler3_de_cfg : QSEEDv3 detail enhancer configuration
  * @enable:         detail enhancer enable/disable
  * @sharpen_level1: sharpening strength for noise
@@ -180,6 +201,8 @@ struct sde_hw_cac_cfg {
  * @de_lpf_l:          Detail enhancer lpf blend low
  * @de_lpf_m:          Detail enhancer lpf blend medium
  * @cac_cfg:              CAC qseed config
+ * @edge_bleed_sup_en: Edge bleed supression enable
+ * @ade:               Adaptive DE config structure
  */
 struct sde_hw_scaler3_cfg {
 	u32 enable;
@@ -230,6 +253,9 @@ struct sde_hw_scaler3_cfg {
 	__u32 de_lpf_l;
 	__u32 de_lpf_m;
 	struct sde_hw_cac_cfg cac_cfg;
+
+	u32 edge_bleed_sup_en;
+	struct sde_hw_ade_cfg ade_cfg;
 };
 
 struct sde_hw_scaler3_lut_cfg {
