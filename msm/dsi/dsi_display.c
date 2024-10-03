@@ -3444,6 +3444,17 @@ int dsi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd,
 
 	dsi_display_set_cmd_tx_ctrl_flags(display, cmd);
 
+	/*
+	 * Wait until any previous broadcast commands with ASYNC waits have been scheduled
+	 * and completed on both controllers.
+	 */
+	display_for_each_ctrl(i, display) {
+		ctrl = &display->ctrl[i];
+		if ((ctrl->ctrl->pending_cmd_flags & DSI_CTRL_CMD_BROADCAST) &&
+			ctrl->ctrl->post_tx_queued)
+			dsi_ctrl_flush_cmd_dma_queue(ctrl->ctrl);
+	}
+
 	if (cmd->ctrl_flags & DSI_CTRL_CMD_BROADCAST) {
 		rc = dsi_display_broadcast_cmd(display, cmd, do_peripheral_flush);
 		if (rc) {
