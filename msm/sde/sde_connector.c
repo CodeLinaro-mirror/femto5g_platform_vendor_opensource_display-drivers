@@ -239,7 +239,11 @@ static int sde_connector_apply_incremental_bl(struct sde_connector *c_conn)
 	SDE_EVT32(DRMID(&c_conn->base), new_brightness, prev_brightness, new_bl_lvl, prev_bl_lvl,
 		c_conn->bl_vrr.bl_frame_idx, updated_brightness, updated_bl_lvl, diff_brighness,
 		c_conn->num_bl_frames);
+
+	SDE_ATRACE_BEGIN("smooth_dimming_backlight_update");
 	rc = sde_backlight_set_notify(c_conn, updated_brightness, updated_bl_lvl);
+	SDE_ATRACE_END("smooth_dimming_backlight_update");
+
 	if (rc) {
 		SDE_ERROR("Backlight set notify failed\n");
 		return rc;
@@ -304,6 +308,7 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 	else
 		drm_enc = connector->encoder;
 
+	atomic_set(&c_conn->bl_vrr.new_incremental_bl_update, 1);
 	mutex_lock(&c_conn->bl_vrr.bl_lock);
 	/* first frame after suspend/init */
 	if (c_conn->bl_vrr.prev_brightness == 0 ||
@@ -331,8 +336,9 @@ static int sde_connector_begin_incremental_bl(struct sde_connector *c_conn, int 
 	}
 
 	sde_encoder_handle_next_backlight_update(drm_enc);
-
 	mutex_unlock(&c_conn->bl_vrr.bl_lock);
+	atomic_set(&c_conn->bl_vrr.new_incremental_bl_update, 0);
+
 	return rc;
 
 skip_incremental_update:
@@ -1594,6 +1600,7 @@ int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector)
 int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn = NULL;
+	struct sde_encoder_virt *sde_enc;
 	int rc = 0;
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
@@ -1602,6 +1609,21 @@ int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector)
 		return -EINVAL;
 	}
 	c_conn = to_sde_connector(connector);
+
+	if (atomic_read(&c_conn->bl_vrr.new_incremental_bl_update) == 1) {
+		SDE_EVT32(DRMID(&c_conn->base), SDE_EVTLOG_FUNC_CASE1);
+		return 0;
+	}
+
+	sde_enc = to_sde_encoder_virt(c_conn->encoder);
+	if (!mutex_trylock(&sde_enc->off_work_lock)) {
+		SDE_EVT32(DRMID(&c_conn->base), SDE_EVTLOG_ERROR);
+		if (c_conn->encoder)
+			sde_encoder_handle_next_backlight_update(c_conn->encoder);
+
+		return 0;
+	}
+
 	mutex_lock(&c_conn->bl_vrr.bl_lock);
 	/* apply the incremental backlight */
 	rc = sde_connector_apply_incremental_bl(c_conn);
@@ -1614,6 +1636,7 @@ int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector)
 
 end:
 	mutex_unlock(&c_conn->bl_vrr.bl_lock);
+	mutex_unlock(&sde_enc->off_work_lock);
 	return rc;
 }
 

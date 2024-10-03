@@ -586,6 +586,7 @@ struct sde_misr_sign {
  * @curr_bl_lvl : Current backlight level value
  * @bl_frame_idx : Index value of dimming frame
  * @bl_increment_in_progress : Smooth dimming in progress
+ * @new_incremental_bl_update : Whether new smooth dimming update is scheduled
  * @prev_bl_time_ns : Time in ns when previous BL was sent
  * @bl_lock : Backlight operations lock
  */
@@ -598,6 +599,7 @@ struct sde_backlight_vrr_update {
 	u32 curr_bl_lvl;
 	u32 bl_frame_idx;
 	bool bl_increment_in_progress;
+	atomic_t new_incremental_bl_update;
 	u64 prev_bl_time_ns;
 	struct mutex bl_lock;
 };

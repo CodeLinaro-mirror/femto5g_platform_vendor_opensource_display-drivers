@@ -339,6 +339,7 @@ enum sde_sim_qsync_event {
  * @rc_lock:			resource control mutex lock to protect
  *				virt encoder over various state changes
  * @rc_state:			resource controller state
+ * @off_work_lock:	mutex lock to protect encoder over off work procedure
  * @delayed_off_work:		delayed worker to schedule disabling of
  *				clks and resources after IDLE_TIMEOUT time.
  * @early_wakeup_work:		worker to handle early wakeup event
@@ -431,6 +432,7 @@ struct sde_encoder_virt {
 	bool input_event_enabled;
 	struct mutex rc_lock;
 	enum sde_enc_rc_states rc_state;
+	struct mutex off_work_lock;
 	struct kthread_delayed_work delayed_off_work;
 	struct kthread_work early_wakeup_work;
 	struct kthread_work input_event_work;

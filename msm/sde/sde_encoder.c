@@ -3029,9 +3029,10 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 		_sde_encoder_rc_kickoff_delayed(sde_enc, sw_event, sde_crtc);
 		goto end;
 	} else if (sde_enc->disp_info.vrr_caps.vrr_support &&
-			!sde_conn->apply_vrr) {
+			(!sde_conn->apply_vrr || sde_conn->bl_vrr.bl_increment_in_progress)) {
 		SDE_DEBUG_ENC(sde_enc, "Skip idle entry: apply_vrr set false\n");
-		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state, SDE_EVTLOG_ERROR);
+		SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
+			sde_conn->bl_vrr.bl_increment_in_progress, SDE_EVTLOG_ERROR);
 		goto end;
 	}
 
@@ -4028,7 +4029,9 @@ static void sde_encoder_off_work(struct kthread_work *work)
 	drm_enc = &sde_enc->base;
 
 	SDE_ATRACE_BEGIN("sde_encoder_off_work");
+	mutex_lock(&sde_enc->off_work_lock);
 	sde_encoder_idle_request(drm_enc);
+	mutex_unlock(&sde_enc->off_work_lock);
 	SDE_ATRACE_END("sde_encoder_off_work");
 }
 
@@ -8094,6 +8097,7 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 	if(sde_kms->catalog->dma_cfg.reg_dma_blks[REG_DMA_TYPE_SB].valid)
 		sde_enc->frame_trigger_mode = FRAME_DONE_WAIT_POSTED_START;
 
+	mutex_init(&sde_enc->off_work_lock);
 	mutex_init(&sde_enc->rc_lock);
 	sde_enc->vblank_enabled = false;
 	sde_enc->qdss_status = false;
