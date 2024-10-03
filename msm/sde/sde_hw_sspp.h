@@ -28,6 +28,60 @@ struct sde_hw_pipe;
 #define SDE_SSPP_SOLID_FILL 0x20
 #define SDE_SSPP_RIGHT	 0x40
 
+/* SSPP_QOS_CTRL */
+#define SSPP_QOS_CTRL_VBLANK_EN            BIT(16)
+#define SSPP_QOS_CTRL_DANGER_SAFE_EN       BIT(0)
+#define SSPP_QOS_CTRL_DANGER_VBLANK_MASK   0x3
+#define SSPP_QOS_CTRL_DANGER_VBLANK_OFF    4
+#define SSPP_QOS_CTRL_CREQ_VBLANK_MASK     0x3
+#define SSPP_QOS_CTRL_CREQ_VBLANK_OFF      20
+
+#define SSPP_SYS_CACHE_MODE                0x1BC
+#define SSPP_SBUF_STATUS_PLANE0            0x1C0
+#define SSPP_SBUF_STATUS_PLANE1            0x1C4
+#define SSPP_SBUF_STATUS_PLANE_EMPTY       BIT(16)
+
+/* SDE_SSPP_SCALER_QSEED2 */
+#define SCALE_CONFIG                       0x04
+#define COMP0_3_PHASE_STEP_X               0x10
+#define COMP0_3_PHASE_STEP_Y               0x14
+#define COMP1_2_PHASE_STEP_X               0x18
+#define COMP1_2_PHASE_STEP_Y               0x1c
+#define COMP0_3_INIT_PHASE_X               0x20
+#define COMP0_3_INIT_PHASE_Y               0x24
+#define COMP1_2_INIT_PHASE_X               0x28
+#define COMP1_2_INIT_PHASE_Y               0x2C
+#define VIG_0_QSEED2_SHARP                 0x30
+
+/*
+ * Definitions for ViG op modes
+ */
+#define VIG_OP_CSC_DST_DATAFMT BIT(19)
+#define VIG_OP_CSC_SRC_DATAFMT BIT(18)
+#define VIG_OP_CSC_EN          BIT(17)
+#define VIG_OP_MEM_PROT_CONT   BIT(15)
+#define VIG_OP_MEM_PROT_VAL    BIT(14)
+#define VIG_OP_MEM_PROT_SAT    BIT(13)
+#define VIG_OP_MEM_PROT_HUE    BIT(12)
+#define VIG_OP_HIST            BIT(8)
+#define VIG_OP_SKY_COL         BIT(7)
+#define VIG_OP_FOIL            BIT(6)
+#define VIG_OP_SKIN_COL        BIT(5)
+#define VIG_OP_PA_EN           BIT(4)
+#define VIG_OP_PA_SAT_ZERO_EXP BIT(2)
+#define VIG_OP_MEM_PROT_BLEND  BIT(1)
+
+/*
+ * Definitions for CSC 10 op modes
+ */
+#define VIG_CSC_10_SRC_DATAFMT BIT(1)
+#define VIG_CSC_10_EN          BIT(0)
+#define CSC_10BIT_OFFSET       4
+#define DGM_CSC_MATRIX_SHIFT       0
+
+/* traffic shaper clock in Hz */
+#define TS_CLK			19200000
+
 /**
  * Define all scaler feature bits in catalog
  */
@@ -854,6 +908,145 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
  * @ctx:  Pointer to SSPP driver context returned by sde_hw_sspp_init
  */
 void sde_hw_sspp_destroy(struct sde_hw_pipe *ctx);
+
+/* Shared functions between sde_hw_sspp.c and sde_hw_sspp_v1.c */
+
+/**
+ * sspp_subblk_offset - Calculates the sub-block offset for a given pipe.
+ * determines the offset for a specific sub-block within the SSPP HW pipe.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @s_id: Sub-block ID for which the offset is required
+ * @idx: Pointer to store the calculated offset index
+ */
+int sspp_subblk_offset(struct sde_hw_pipe *ctx,
+		int s_id,
+		u32 *idx);
+
+/**
+ * sde_hw_sspp_setup_scaler3 - Configures the scaler for the SSPP HW pipe.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @sspp: Pointer to the SSPP HW pipe configuration
+ * @pe: Pointer to the pixel extension configuration
+ * @scaler_cfg: Pointer to the scaler configuration data
+ */
+void sde_hw_sspp_setup_scaler3(struct sde_hw_pipe *ctx,
+		struct sde_hw_pipe_cfg *sspp,
+		struct sde_hw_pixel_ext *pe,
+		void *scaler_cfg);
+
+/**
+ * sde_hw_sspp_setup_csc - Configures the color space conversion (CSC)
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @data: Pointer to the CSC configuration data
+ */
+void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx,
+		struct sde_csc_cfg *data);
+/**
+ * sde_hw_sspp_setup_sharpening - Configures the sharpening settings
+ * Sets up the sharpening configuration for the specified SSPP HW pipe.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @cfg: Pointer to the sharpening configuration data
+ */
+void sde_hw_sspp_setup_sharpening(struct sde_hw_pipe *ctx,
+		struct sde_hw_sharp_cfg *cfg);
+
+/**
+ * setup_layer_ops_colorproc - Sets up layer operations for color processing.
+ * This function configures the layer operations related to color processing
+ * for the specified SSPP HW pipe.
+ * @c: Pointer to the SSPP HW pipe context
+ * @features: Bitmask of features to be enabled
+ * @is_virtual_pipe: Indicates if the pipe is a virtual pipe
+ */
+void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
+		unsigned long features, bool is_virtual_pipe);
+
+/**
+ * sde_hw_sspp_setup_scaler - Configures the scaler for the SSPP HW pipe.
+ * Sets up the scaler configuration for the specified SSPP HW pipe
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @sspp: Pointer to the SSPP HW pipe configuration
+ * @pe: Pointer to the pixel extension configuration
+ * @scaler_cfg: Pointer to the scaler configuration data
+ */
+void sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
+		struct sde_hw_pipe_cfg *sspp,
+		struct sde_hw_pixel_ext *pe,
+		void *scaler_cfg);
+
+/**
+ * sde_hw_sspp_setup_dgm_csc - Configures the DGM color space conversion (CSC)
+ * for the SSPP HW pipe.
+ * This function sets up the CSC configuration for the specified SSPP HW
+ * pipe in the DGM block.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @index: Multirect index for the pipe
+ * @data: Pointer to the CSC configuration data
+ */
+void sde_hw_sspp_setup_dgm_csc(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, struct sde_csc_cfg *data);
+
+/**
+ * sde_hw_sspp_setup_dgm_inverse_pma - Configures the DGM inverse PMA for the
+ * SSPP HW pipe.
+ * This function sets up the inverse PMA configuration for the specified SSPP
+ * hardware pipe in the DGM block.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @index: Multirect index for the pipe
+ * @enable: Enable or disable the inverse PMA (1 to enable, 0 to disable)
+ */
+void sde_hw_sspp_setup_dgm_inverse_pma(struct sde_hw_pipe *ctx,
+			enum sde_sspp_multirect_index index, u32 enable);
+
+/**
+ * sde_hw_sspp_setup_inverse_pma - Configures the inverse PMA
+ * Sets up the inverse PMA configuration for the specified SSPP HW pipe.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @index: Multirect index for the pipe
+ * @enable: Enable or disable the inverse PMA (1 to enable, 0 to disable)
+ */
+void sde_hw_sspp_setup_inverse_pma(struct sde_hw_pipe *ctx,
+			enum sde_sspp_multirect_index index, u32 enable);
+
+/**
+ * sde_hw_sspp_setup_scaler_cac - Configures the CAC scaler
+ * Sets up the CAC scaler configuration for the specified SSPP HW pipe.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @cac_cfg: Pointer to the CAC configuration data
+ */
+void sde_hw_sspp_setup_scaler_cac(struct sde_hw_pipe *ctx,
+		struct sde_hw_cac_cfg *cac_cfg);
+
+/**
+ * setup_layer_ops_v1 - Sets up layer operations for v1 of sspp registers
+ * @c: Pointer to the SSPP HW pipe context
+ * @features: Bitmask of features to be enabled
+ * @perf_features: Bitmask of performance features to be enabled
+ * @is_virtual_pipe: Indicates if the pipe is a virtual pipe
+ */
+void setup_layer_ops_v1(struct sde_hw_pipe *c,
+		unsigned long features, unsigned long perf_features,
+		bool is_virtual_pipe);
+
+/**
+ * sde_hw_sspp_setup_clk_force_ctrl_v1 - Configures the clock force control
+ * Sets up the clock force control for the specified SSPP HW block.
+ * @hw: Pointer to the SSPP HW block register map
+ * @clk_ctrl: Clock control type to be configured
+ * @enable: Enable or disable the clock force control
+ */
+bool sde_hw_sspp_setup_clk_force_ctrl_v1(struct sde_hw_blk_reg_map *hw,
+		enum sde_clk_ctrl_type clk_ctrl, bool enable);
+
+/**
+ * sde_hw_sspp_get_clk_ctrl_status_v1 - Retrieves the clock control status
+ * Gets the current status of the clock control for the specified SSPP HW block
+ * @hw: Pointer to the SSPP HW block register map
+ * @clk_ctrl: Clock control type to be checked
+ * @status: Pointer to store the clock control status
+ */
+int sde_hw_sspp_get_clk_ctrl_status_v1(struct sde_hw_blk_reg_map *hw,
+		enum sde_clk_ctrl_type clk_ctrl, bool *status);
 
 #endif /*_SDE_HW_SSPP_H */
 

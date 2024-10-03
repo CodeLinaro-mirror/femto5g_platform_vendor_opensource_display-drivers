@@ -355,6 +355,7 @@ enum {
  * @SDE_SSPP_UCSC_ALPHA_DITHER UCSC alpha dither color processing block support
  * @SDE_SSPP_CAC_V2          CAC v2 support
  * @SDE_SSPP_CAC_LOOPBACK    CAC loopback support
+ * @SDE_SSPP_REC_SWI_SEPARATION SSPP Registers are split into CMN, REC0 and REC1
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -399,6 +400,7 @@ enum {
 	SDE_SSPP_UCSC_ALPHA_DITHER,
 	SDE_SSPP_CAC_V2,
 	SDE_SSPP_CAC_LOOPBACK,
+	SDE_SSPP_REC_SWI_SEPARATION,
 	SDE_SSPP_MAX
 };
 

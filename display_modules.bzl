@@ -88,6 +88,7 @@ module_entry(
             "msm/sde/sde_hw_lm.c",
             "msm/sde/sde_hw_ctl.c",
             "msm/sde/sde_hw_util.c",
+            "msm/sde/sde_hw_sspp_v1.c",
             "msm/sde/sde_hw_sspp.c",
             "msm/sde/sde_hw_wb.c",
             "msm/sde/sde_hw_pingpong.c",
