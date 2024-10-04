@@ -2182,6 +2182,9 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.get_panel_scan_line = dsi_display_get_panel_scan_line,
 		.check_cmd_defined = dsi_conn_check_cmd_defined,
 		.avoid_cmd_transfer = dsi_display_avoid_cmd_transfer,
+		.ctl_init = dsi_display_ctl_init,
+		.ctl_pre_transition = dsi_display_ctl_pre_transition,
+		.ctl_post_transition = dsi_display_ctl_post_transition,
 	};
 	static const struct sde_connector_ops wb_ops = {
 		.post_init =    sde_wb_connector_post_init,

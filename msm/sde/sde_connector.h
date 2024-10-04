@@ -566,6 +566,28 @@ struct sde_connector_ops {
 	 * Returns: error code
 	 */
 	int (*avoid_cmd_transfer)(void *display, bool avoid_transfer);
+
+	/*
+	 * ctl_init -  register with HFI, trigger panel init
+	 * @display: Pointer to private display structure
+	 * @hfi_priv: Pointer to private hfi structure
+	 * Returns: error code
+	 */
+	int (*ctl_init)(void *display, void *hfi_priv);
+
+	/*
+	 * ctl_pre_transition -  switch dsi disp ops to hfi
+	 * @display: Pointer to private display structure
+	 * Returns: error code
+	 */
+	int (*ctl_pre_transition)(void *display);
+
+	/*
+	 * ctl_post_transition -  switch dsi disp ops to hlos
+	 * @display: Pointer to private display structure
+	 * Returns: error code
+	 */
+	int (*ctl_post_transition)(void *display);
 };
 
 /**

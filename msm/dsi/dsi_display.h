@@ -1053,6 +1053,27 @@ int dsi_display_get_clk_rate(void *display, u32 idx, u32 clk_type, u64 *clk_rate
 void dsi_display_set_idle_pc_state(void *display, bool idle_pc);
 
 /**
+ * dsi_display_ctl_init() - setup hfi dependencies
+ * @display:	Handle to display
+ *
+ */
+int dsi_display_ctl_init(void *display, void *hfi_priv);
+
+/**
+ * dsi_display_ctl_pre_transition() - prepare for hfi transition
+ * @display:	Handle to display
+ *
+ */
+int dsi_display_ctl_pre_transition(void *display);
+
+/**
+ * dsi_display_ctl_post_transition() - revert after hfi transition
+ * @display:	Handle to display
+ *
+ */
+int dsi_display_ctl_post_transition(void *display);
+
+/**
  * dsi_display_get_phandle_count() - get phandle count for DT property
  * @display:    Handle to display
  * @propname:   DT property name

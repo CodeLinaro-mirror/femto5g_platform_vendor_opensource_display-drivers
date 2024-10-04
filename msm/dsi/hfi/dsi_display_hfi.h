@@ -109,4 +109,10 @@ int dsi_hfi_packetize_panel_cmd(struct dsi_cmd_desc *cmd_desc, u32 *size_of_indv
  */
 int dsi_hfi_host_alloc_cmd_tx_buffer(struct dsi_display *display);
 
+/**
+ * dsi_display_setup_ops() - setup hlos/hfi display ops
+ * @display: Pointer to dsi_display structure
+ */
+void dsi_display_setup_ops(struct dsi_display *display);
+
 #endif /* _DSI_DISPLAY_HFI_H_ */

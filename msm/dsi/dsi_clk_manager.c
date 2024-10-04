@@ -1872,3 +1872,11 @@ int dsi_display_clk_mngr_deregister(void *clk_mngr)
 	kfree(mngr);
 	return rc;
 }
+
+void dsi_clk_mgr_detach_framework(void *clk_mgr, enum msm_disp_op disp_op)
+{
+
+	struct dsi_clk_mngr *mgr = (struct dsi_clk_mngr *)clk_mgr;
+
+	mgr->disp_op = disp_op;
+}

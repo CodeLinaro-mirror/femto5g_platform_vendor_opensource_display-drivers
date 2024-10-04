@@ -12,6 +12,7 @@
 #include <linux/ktime.h>
 
 #include "msm_drv.h"
+#include "hfi_msm_drv.h"
 #include "sde_connector.h"
 #include "msm_mmu.h"
 #include "dsi_display.h"
@@ -24,6 +25,7 @@
 #include "sde_dbg.h"
 #include "dsi_parser.h"
 #include "dsi_display_manager.h"
+#include "dsi_hfi.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -6076,6 +6078,7 @@ static int dsi_display_bind(struct device *dev,
 		}
 	}
 
+	dsi_display_setup_ops(display);
 
 	msm_register_vm_event(master, dev, &vm_event_ops, (void *)display);
 
@@ -9774,6 +9777,59 @@ int dsi_display_unprepare(struct dsi_display *display)
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, display->is_master);
 	return rc;
+}
+
+int dsi_display_ctl_init(void *display, void *hfi_priv)
+{
+
+	int rc = 0;
+	struct dsi_display *disp = (struct dsi_display *)display;
+	struct msm_drm_hfi_private *hfi_private = (struct msm_drm_hfi_private *)hfi_priv;
+
+	rc = dsi_display_hfi_setup_hfi(disp, hfi_private->hfi_adapter);
+	if (rc) {
+		DSI_ERR("hfi client could not be created for dsi\n");
+		rc = -ENODEV;
+		return rc;
+	}
+
+	rc = dsi_hfi_panel_init(disp, disp->panel);
+	if (rc) {
+		DSI_ERR("failed to send panel init to DCP: %d", rc);
+		return rc;
+	}
+
+	return rc;
+}
+
+int dsi_display_ctl_pre_transition(void *display)
+{
+
+	struct dsi_display *disp = (struct dsi_display *)display;
+
+	sde_connector_schedule_status_work(disp->drm_conn, false);
+
+	disp->ctrl->ctrl->disp_op = MSM_DISP_OP_HFI;
+	disp->ctrl->phy->disp_op = MSM_DISP_OP_HFI;
+
+	dsi_clk_mgr_detach_framework(disp->clk_mngr, disp->ctrl->ctrl->disp_op);
+
+	return 0;
+}
+
+int dsi_display_ctl_post_transition(void *display)
+{
+
+	struct dsi_display *disp = (struct dsi_display *)display;
+
+	sde_connector_schedule_status_work(disp->drm_conn, true);
+
+	disp->ctrl->ctrl->disp_op = MSM_DISP_OP_HWIO;
+	disp->ctrl->phy->disp_op = MSM_DISP_OP_HWIO;
+
+	dsi_clk_mgr_detach_framework(disp->clk_mngr, disp->ctrl->ctrl->disp_op);
+
+	return 0;
 }
 
 void __init dsi_display_register(void)
