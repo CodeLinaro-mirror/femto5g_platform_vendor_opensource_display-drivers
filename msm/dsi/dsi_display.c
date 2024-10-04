@@ -9379,6 +9379,14 @@ static void dsi_display_panel_id_notification(struct dsi_display *display)
 	}
 }
 
+int dsi_display_pinctrl_toggle_te_function(void *display)
+{
+	if (!display)
+		return -EINVAL;
+
+	return dsi_panel_pinctrl_toggle_te_function(((struct dsi_display *) display)->panel);
+}
+
 int dsi_display_enable(struct dsi_display *display)
 {
 	int rc = 0;

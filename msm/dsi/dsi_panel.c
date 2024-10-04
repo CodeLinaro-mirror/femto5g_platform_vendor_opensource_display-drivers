@@ -394,6 +394,39 @@ exit:
 	return rc;
 }
 
+int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel)
+{
+	int rc = 0;
+	struct pinctrl_state *orig_state;
+
+	if (panel->host_config.ext_bridge_mode)
+		return 0;
+
+	if (IS_ERR_OR_NULL(panel->pinctrl.pinctrl) ||
+		IS_ERR_OR_NULL(panel->pinctrl.active_with_esync_without_te))
+		return 0;
+
+	orig_state = panel->pinctrl.cur_state;
+	if (!orig_state && panel->esync_caps.esync_support)
+		orig_state = panel->pinctrl.active_with_esync;
+	else if (!orig_state)
+		orig_state = panel->pinctrl.active;
+
+	rc = pinctrl_select_state(panel->pinctrl.pinctrl,
+			panel->pinctrl.active_with_esync_without_te);
+	if (rc) {
+		DSI_ERR("[%s] failed to toggle TE, rc=%d", panel->name, rc);
+		return rc;
+	}
+
+	usleep_range(1, 2);
+	pinctrl_select_state(panel->pinctrl.pinctrl, orig_state);
+	if (rc)
+		DSI_ERR("[%s] failed to toggle TE back, rc=%d", panel->name, rc);
+
+	return rc;
+}
+
 static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
 {
 	int rc = 0;
@@ -418,6 +451,8 @@ static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
 	if (rc)
 		DSI_ERR("[%s] failed to set pin state, rc=%d\n",
 				panel->name, rc);
+
+	panel->pinctrl.cur_state = state;
 
 	return rc;
 }
@@ -597,6 +632,13 @@ static int dsi_panel_pinctrl_init(struct dsi_panel *panel)
 		DSI_DEBUG("failed to get pinctrl active with esync state\n");
 	}
 
+	panel->pinctrl.active_with_esync_without_te =
+		pinctrl_lookup_state(panel->pinctrl.pinctrl, "panel_active_with_esync_without_te");
+	if (IS_ERR_OR_NULL(panel->pinctrl.active_with_esync_without_te)) {
+		panel->pinctrl.active_with_esync_without_te = NULL;
+		DSI_DEBUG("failed to get pinctrl active with esync without te state\n");
+	}
+
 	panel->pinctrl.suspend =
 		pinctrl_lookup_state(panel->pinctrl.pinctrl, "panel_suspend");
 
@@ -613,6 +655,8 @@ static int dsi_panel_pinctrl_init(struct dsi_panel *panel)
 		panel->pinctrl.pwm_pin = NULL;
 		DSI_DEBUG("failed to get pinctrl pwm_pin");
 	}
+
+	panel->pinctrl.cur_state = NULL;
 
 error:
 	return rc;
@@ -834,6 +878,8 @@ static int dsi_panel_pwm_register(struct dsi_panel *panel)
 			DSI_ERR("[%s] failed to set pwm pinctrl, rc=%d\n",
 				panel->name, rc);
 	}
+
+	panel->pinctrl.cur_state = panel->pinctrl.pwm_pin;
 
 	return 0;
 }

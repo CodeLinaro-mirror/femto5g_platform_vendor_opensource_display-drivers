@@ -122,8 +122,10 @@ struct dsi_dyn_clk_caps {
 
 struct dsi_pinctrl_info {
 	struct pinctrl *pinctrl;
+	struct pinctrl_state *cur_state;
 	struct pinctrl_state *active;
 	struct pinctrl_state *active_with_esync;
+	struct pinctrl_state *active_with_esync_without_te;
 	struct pinctrl_state *suspend;
 	struct pinctrl_state *pwm_pin;
 };
@@ -466,4 +468,6 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 int dsi_panel_power_on(struct dsi_panel *panel);
 
 int dsi_panel_power_off(struct dsi_panel *panel);
+
+int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel);
 #endif /* _DSI_PANEL_H_ */
