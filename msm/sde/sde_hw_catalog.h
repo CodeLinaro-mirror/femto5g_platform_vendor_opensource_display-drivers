@@ -59,6 +59,7 @@
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
+#define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
 #define IS_SDE_MAJOR_SAME(rev1, rev2)   \
@@ -92,6 +93,7 @@
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
+#define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -199,6 +201,7 @@ enum {
 	SDE_HW_UBWC_VER_40 = SDE_HW_UBWC_VER(0x400),
 	SDE_HW_UBWC_VER_43 = SDE_HW_UBWC_VER(0x431),
 	SDE_HW_UBWC_VER_50 = SDE_HW_UBWC_VER(0x501),
+	SDE_HW_UBWC_VER_60 = SDE_HW_UBWC_VER(0X600),
 };
 #define IS_UBWC_10_SUPPORTED(rev) \
 		IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_UBWC_VER_10)
@@ -212,6 +215,8 @@ enum {
 		IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_UBWC_VER_43)
 #define IS_UBWC_50_SUPPORTED(rev) \
 		IS_SDE_MAJOR_SAME((rev), SDE_HW_UBWC_VER_50)
+#define IS_UBWC_60_SUPPORTED(rev) \
+		IS_SDE_MAJOR_SAME((rev), SDE_HW_UBWC_VER_60)
 
 /**
  * Supported system cache settings
@@ -353,6 +358,7 @@ enum {
  * @SDE_SSPP_UCSC_ALPHA_DITHER UCSC alpha dither color processing block support
  * @SDE_SSPP_CAC_V2          CAC v2 support
  * @SDE_SSPP_CAC_LOOPBACK    CAC loopback support
+ * @SDE_SSPP_REC_SWI_SEPARATION SSPP Registers are split into CMN, REC0 and REC1
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -397,6 +403,7 @@ enum {
 	SDE_SSPP_UCSC_ALPHA_DITHER,
 	SDE_SSPP_CAC_V2,
 	SDE_SSPP_CAC_LOOPBACK,
+	SDE_SSPP_REC_SWI_SEPARATION,
 	SDE_SSPP_MAX
 };
 
