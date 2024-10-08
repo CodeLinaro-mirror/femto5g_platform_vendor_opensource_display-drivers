@@ -826,6 +826,13 @@ void sde_encoder_control_idle_pc(struct drm_encoder *enc, bool enable);
 int sde_encoder_in_cont_splash(struct drm_encoder *enc);
 
 /**
+ * sde_encoder_smooth_dimming_in_progress - checks if smooth dimming in progress
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true if smooth dimming in progress
+ */
+bool sde_encoder_smooth_dimming_in_progress(struct drm_encoder *enc);
+
+/**
  * sde_encoder_helper_hw_reset - hw reset helper function
  * @drm_enc:    Pointer to drm encoder structure
  */

@@ -493,6 +493,23 @@ int sde_encoder_in_cont_splash(struct drm_encoder *drm_enc)
 		sde_enc->cur_master->cont_splash_enabled;
 }
 
+bool sde_encoder_smooth_dimming_in_progress(struct drm_encoder *enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(enc);
+	struct sde_connector *sde_conn;
+
+	if (!sde_enc || !sde_enc->cur_master || !sde_enc->cur_master->connector)
+		return false;
+
+	sde_conn = to_sde_connector(sde_enc->cur_master->connector);
+
+	SDE_EVT32(sde_enc->disp_info.vrr_caps.video_psr_support,
+		sde_conn->bl_vrr.bl_increment_in_progress);
+
+	return sde_enc->disp_info.vrr_caps.video_psr_support &&
+			sde_conn->bl_vrr.bl_increment_in_progress;
+}
+
 void sde_encoder_helper_report_irq_timeout(struct sde_encoder_phys *phys_enc,
 		enum sde_intr_idx intr_idx)
 {
