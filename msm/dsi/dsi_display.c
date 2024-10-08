@@ -1034,6 +1034,8 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	} else if (status_mode == ESD_MODE_PANEL_TE) {
 		rc = dsi_display_status_check_te(dsi_display, te_rechecks);
 		te_check_override = false;
+	} else if (status_mode == ESD_MODE_PANEL_RW) {
+		/* noop, check will be performed in SDE */
 	} else {
 		DSI_WARN("Unsupported check status mode: %d\n", status_mode);
 		panel->esd_config.esd_enabled = false;
@@ -7125,6 +7127,9 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->is_te_using_watchdog_timer = is_sim_panel(display);
 	info->event_notification_disabled = display->panel->event_notification_disabled;
 	info->disable_cesta_hw_sleep = display->panel->disable_cesta_hw_sleep;
+	info->disp_te_gpio = display->disp_te_gpio;
+	info->esd_rw_check = display->panel->esd_config.esd_enabled &&
+			display->panel->esd_config.status_mode == ESD_MODE_PANEL_RW;
 
 	switch (display->panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:

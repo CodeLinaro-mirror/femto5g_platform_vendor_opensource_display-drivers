@@ -1239,9 +1239,13 @@ static void sde_encoder_phys_vid_te_irq(void *arg, int irq_idx)
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	drm_conn = sde_enc->cur_master->connector;
 	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);
+
+	atomic_add_unless(&phys_enc->pending_te_deassert_cnt, -1, 0);
+
 	SDE_EVT32(DRMID(phys_enc->parent), irq_idx, qsync_mode,
 		sde_enc->disp_info.vrr_caps.arp_support,
-		phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable);
+		phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable,
+		atomic_read(&phys_enc->pending_te_deassert_cnt));
 
 	if (qsync_mode && sde_enc->disp_info.vrr_caps.arp_support &&
 		!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable) {
@@ -1887,6 +1891,8 @@ static int sde_encoder_phys_vid_wait_for_commit_done(
 		struct sde_encoder_phys *phys_enc)
 {
 	int rc = 0;
+	struct sde_encoder_virt *sde_enc;
+	struct msm_display_info *info;
 
 	/*
 	 * With Interface sync, Master DPU will send signal to enable the Slave DPU Timing engine.
@@ -1899,7 +1905,20 @@ static int sde_encoder_phys_vid_wait_for_commit_done(
 		return rc;
 	}
 
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	info = &sde_enc->disp_info;
+
 	rc =  _sde_encoder_phys_vid_wait_for_vblank(phys_enc, true);
+
+	SDE_EVT32(atomic_read(&phys_enc->pending_te_deassert_cnt), rc);
+	if (!rc && info->esd_rw_check && atomic_read(&phys_enc->pending_te_deassert_cnt) > 2 &&
+			gpio_get_value(info->disp_te_gpio) == 0) {
+		SDE_ERROR("RW possibly low\n");
+		SDE_EVT32(SDE_EVTLOG_ERROR, atomic_read(&phys_enc->pending_te_deassert_cnt));
+
+		atomic_set(&phys_enc->pending_te_deassert_cnt, 0);
+	}
+
 	if (rc)
 		sde_encoder_helper_phys_reset(phys_enc);
 
@@ -2358,6 +2377,7 @@ exit:
 	SDE_EVT32(DRMID(phys_enc->parent),
 		atomic_read(&phys_enc->pending_retire_fence_cnt), phys_enc->split_role);
 	phys_enc->vfp_cached = 0;
+	atomic_set(&phys_enc->pending_te_deassert_cnt, 0);
 	phys_enc->enable_state = SDE_ENC_DISABLED;
 }
 
@@ -2770,6 +2790,7 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 	atomic_set(&phys_enc->vblank_refcount, 0);
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
+	atomic_set(&phys_enc->pending_te_deassert_cnt, 0);
 	init_waitqueue_head(&phys_enc->pending_kickoff_wq);
 
 skip_irq_init:

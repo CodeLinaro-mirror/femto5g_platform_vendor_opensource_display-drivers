@@ -5370,6 +5370,9 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 			SDE_EVT32(pending_kickoff_cnt,
 					pending_flush.pending_flush_mask, SDE_EVTLOG_FUNC_CASE2);
 		}
+
+		atomic_inc_return(&phys->pending_te_deassert_cnt);
+		SDE_EVT32(atomic_read(&phys->pending_te_deassert_cnt));
 	}
 
 	if (atomic_read(&sde_enc->misr_enable))
