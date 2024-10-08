@@ -320,7 +320,7 @@ struct sde_kms {
 
 	struct sde_vm *vm;
 
-	unsigned long ipcc_base_addr;
+	unsigned long dpu_ipcc_addr;
 	u32 debugfs_hw_fence;
 	u32 debugfs_early_ept_handling;
 	atomic_t stay_awake_count;

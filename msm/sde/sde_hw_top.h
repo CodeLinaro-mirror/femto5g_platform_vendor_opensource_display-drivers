@@ -11,7 +11,7 @@
 #include "sde_hw_mdss.h"
 #include "sde_hw_util.h"
 
-#define HW_FENCE_IPCC_PROTOCOLp_CLIENTc(ba, p, c)   (ba + (0x40000*p) + (0x1000*c))
+#define HW_FENCE_IPCC_PROTOCOLp_CLIENTc(ba, off, p, c)   (ba + ((off)*p) + (0x1000*c))
 
 struct sde_hw_mdp;
 struct sde_hw_sid;
@@ -207,13 +207,12 @@ struct sde_hw_mdp_ops {
 
 	/**
 	 * setup_hw_fences - configure hw fences top registers
-	 * @mdp:     mdp top context driver
+	 * @mdp:            mdp top context driver
 	 * @protocol_id:    ipcc protocol id
-	 * @client_phys_id: ipcc client id (physical id if supported)
-	 * @ipcc_base_addr: base address for ipcc reg block
+	 * @dpu_ipcc_addr:  address for the dpu ipcc reg block
 	 */
-	void (*setup_hw_fences)(struct sde_hw_mdp *mdp, u32 protocol_id, u32 client_phys_id,
-			unsigned long ipcc_base_addr);
+	void (*setup_hw_fences)(struct sde_hw_mdp *mdp, u32 protocol_id,
+		unsigned long dpu_ipcc_addr);
 
 	/**
 	 * hw_fence_input_status - get hw_fence input fence timestamps and clear them
