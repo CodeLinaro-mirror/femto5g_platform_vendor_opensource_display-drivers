@@ -1892,6 +1892,7 @@ static int sde_encoder_phys_vid_wait_for_commit_done(
 {
 	int rc = 0;
 	struct sde_encoder_virt *sde_enc;
+	struct sde_connector *sde_conn;
 	struct msm_display_info *info;
 
 	/*
@@ -1917,6 +1918,15 @@ static int sde_encoder_phys_vid_wait_for_commit_done(
 		SDE_EVT32(SDE_EVTLOG_ERROR, atomic_read(&phys_enc->pending_te_deassert_cnt));
 
 		atomic_set(&phys_enc->pending_te_deassert_cnt, 0);
+		if (sde_encoder_recovery_events_enabled(phys_enc->parent)) {
+			sde_connector_event_notify(phys_enc->connector, DRM_EVENT_SDE_HW_RECOVERY,
+				sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
+
+			sde_conn = to_sde_connector(phys_enc->connector);
+			if (sde_conn)
+				sde_conn->panel_dead = true;
+		}
+		rc = -ETIMEDOUT;
 	}
 
 	if (rc)
