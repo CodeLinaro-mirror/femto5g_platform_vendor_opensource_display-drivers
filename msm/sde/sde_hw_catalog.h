@@ -871,6 +871,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_TOUCH_WAKEUP   Early wakeup with touch supported
  * @SDE_FEATURE_SRC_SPLIT      Source split supported
  * @SDE_FEATURE_VIG_P010       P010 ViG pipe format supported
+ * @SDE_FEATURE_VIG_P210       P210 ViG pipe format supported
  * @SDE_FEATURE_FP16           FP16 pipe format supported
  * @SDE_FEATURE_HDR            High Dynamic Range supported
  * @SDE_FEATURE_HDR_PLUS       HDR10+ supported
@@ -923,6 +924,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_TOUCH_WAKEUP,
 	SDE_FEATURE_SRC_SPLIT,
 	SDE_FEATURE_VIG_P010,
+	SDE_FEATURE_VIG_P210,
 	SDE_FEATURE_FP16,
 	SDE_FEATURE_HDR,
 	SDE_FEATURE_HDR_PLUS,
@@ -2289,6 +2291,11 @@ struct sde_mdss_hw_cfg_handler {
 	u32 major;
 	u32 minor;
 	struct sde_mdss_cfg* (*cfg_init)(u32 data);
+};
+
+struct sde_mdss_hw_caps {
+	u32 target_rev;
+	void (*sde_get_target_hw_caps)(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev);
 };
 
 /*

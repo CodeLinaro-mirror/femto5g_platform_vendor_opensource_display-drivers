@@ -57,6 +57,11 @@
 #define P010_UBWC_FMTS	{DRM_FORMAT_NV12, DRM_FORMAT_MOD_QCOM_DX | \
 		DRM_FORMAT_MOD_QCOM_COMPRESSED}
 
+#define P210_FMTS	{DRM_FORMAT_P210, DRM_FORMAT_MOD_QCOM_DX}
+
+#define P210_UBWC_FMTS	{DRM_FORMAT_P210, DRM_FORMAT_MOD_QCOM_DX | \
+		DRM_FORMAT_MOD_QCOM_COMPRESSED}
+
 #define SDE_IS_IN_ROT_RESTRICTED_FMT(catalog, fmt) (catalog ? \
 		(sde_format_validate_fmt(NULL, fmt, \
 		catalog->inline_rot_restricted_formats) == 0) : false)
@@ -83,6 +88,7 @@ static const struct sde_format_extended plane_formats_vig[] = {
 	RGB_10BIT_FMTS,
 	TP10_UBWC_FMTS,
 	P010_FMTS,
+	P210_FMTS,
 
 	{0, 0},
 };
@@ -147,6 +153,10 @@ static const struct sde_format_extended p010_ubwc_formats[] = {
 	P010_UBWC_FMTS,
 };
 
+static const struct sde_format_extended p210_ubwc_formats[] = {
+	P210_UBWC_FMTS,
+};
+
 static const struct sde_format_extended true_inline_rot_v1_fmts[] = {
 	{DRM_FORMAT_NV12, DRM_FORMAT_MOD_QCOM_COMPRESSED},
 	TP10_UBWC_FMTS,
@@ -201,6 +211,19 @@ static const struct sde_format_extended true_inline_rot_v202_fmts[] = {
 	{0, 0},
 };
 
+static const struct sde_format_extended true_inline_rot_v202_ubwc60_fmts[] = {
+	{DRM_FORMAT_NV12, DRM_FORMAT_MOD_QCOM_COMPRESSED},
+	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED},
+	{DRM_FORMAT_ABGR2101010, DRM_FORMAT_MOD_QCOM_COMPRESSED},
+	TP10_UBWC_FMTS,
+	P010_UBWC_FMTS,
+	{DRM_FORMAT_ABGR16161616F, DRM_FORMAT_MOD_QCOM_COMPRESSED},
+	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED | DRM_FORMAT_MOD_QCOM_LOSSY_8_5},
+	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED | DRM_FORMAT_MOD_QCOM_LOSSY_2_1},
+	P210_UBWC_FMTS,
+	{0, 0},
+};
+
 static const struct sde_format_extended true_inline_rot_v202_restricted_fmts[] = {
 	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED},
 	{DRM_FORMAT_ABGR2101010, DRM_FORMAT_MOD_QCOM_COMPRESSED},
@@ -208,6 +231,17 @@ static const struct sde_format_extended true_inline_rot_v202_restricted_fmts[] =
 	{DRM_FORMAT_ABGR16161616F, DRM_FORMAT_MOD_QCOM_COMPRESSED},
 	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED | DRM_FORMAT_MOD_QCOM_LOSSY_8_5},
 	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED | DRM_FORMAT_MOD_QCOM_LOSSY_2_1},
+	{0, 0},
+};
+
+static const struct sde_format_extended true_inline_rot_v202_restricted_ubwc60_fmts[] = {
+	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED},
+	{DRM_FORMAT_ABGR2101010, DRM_FORMAT_MOD_QCOM_COMPRESSED},
+	P010_UBWC_FMTS,
+	{DRM_FORMAT_ABGR16161616F, DRM_FORMAT_MOD_QCOM_COMPRESSED},
+	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED | DRM_FORMAT_MOD_QCOM_LOSSY_8_5},
+	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_COMPRESSED | DRM_FORMAT_MOD_QCOM_LOSSY_2_1},
+	P210_UBWC_FMTS,
 	{0, 0},
 };
 

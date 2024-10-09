@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __UAPI_MSM_SDE_ROTATOR_H__
@@ -129,6 +130,10 @@
 	v4l2_fourcc('Q', '1', '2', 'A') /* UBWC Y/CbCr 4:2:0 TP10 */
 #define SDE_PIX_FMT_Y_CBCR_H2V2_P010_UBWC \
 	v4l2_fourcc('Q', '1', '2', 'B') /* UBWC Y/CbCr 4:2:0 P10 */
+#define SDE_PIX_FMT_Y_CBCR_H2V1_P210 \
+	v4l2_fourcc('P', '2', '1', '0') /* Y/CbCr 4:2:2 P210 */
+#define SDE_PIX_FMT_Y_CBCR_H2V1_P210_UBWC \
+	v4l2_fourcc('Q', '2', '1', 'C') /* UBWC Y/CbCr 4:2:2 P210 */
 
 /*
  * struct msm_sde_rotator_fence - v4l2 buffer fence info
