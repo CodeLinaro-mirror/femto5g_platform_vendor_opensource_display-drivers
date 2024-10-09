@@ -2181,6 +2181,34 @@ void sde_encoder_cancel_vrr_timers(struct drm_encoder *encoder)
 	}
 }
 
+void sde_encoder_vhm_wakelock(struct sde_encoder_virt *sde_enc, bool enable)
+{
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
+	u32 wakelock_state;
+
+	if (!sde_enc->disp_info.vrr_caps.video_psr_support)
+		return;
+
+	priv = sde_enc->base.dev->dev_private;
+	sde_kms = to_sde_kms(priv->kms);
+
+	wakelock_state = atomic_read(&sde_enc->vrr_info.vhm_pm_wake_lock);
+
+	if (sde_kms->suspend_state) {
+		SDE_EVT32(wakelock_state, enable);
+		return;
+	}
+
+	if (enable && wakelock_state == 0) {
+		atomic_set(&sde_enc->vrr_info.vhm_pm_wake_lock, 1);
+		sde_power_wakelock_ctrl(&priv->phandle, true);
+	} else if (!enable && wakelock_state == 1) {
+		sde_power_wakelock_ctrl(&priv->phandle, false);
+		atomic_set(&sde_enc->vrr_info.vhm_pm_wake_lock, 0);
+	}
+}
+
 static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, bool enable)
 {
 	struct sde_kms *sde_kms;
@@ -2283,6 +2311,7 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 			sde_crtc_copr_status_event_notify(drm_crtc);
 			sde_encoder_cancel_vrr_timers(drm_enc);
 			sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
+			sde_encoder_vhm_wakelock(sde_enc, false);
 
 			for (i = 0; i < sde_enc->num_phys_encs; i++) {
 				struct sde_encoder_phys *phys_enc = sde_enc->phys_encs[i];
@@ -4234,6 +4263,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	_sde_encoder_input_handler_unregister(drm_enc);
 
 	sde_encoder_cancel_vrr_timers(drm_enc);
+	sde_encoder_vhm_wakelock(sde_enc, false);
 	if (!sde_encoder_is_loopback_display(drm_enc))
 		flush_delayed_work(&sde_conn->status_work);
 	/*
@@ -5674,6 +5704,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 
 	if (send_still_cmd) {
 		phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_COMPLETE;
+		sde_encoder_vhm_wakelock(sde_enc, false);
 		kthread_cancel_delayed_work_sync(&sde_enc->backlight_sr_work);
 	}
 
@@ -7066,6 +7097,7 @@ int sde_encoder_prepare_commit(struct drm_encoder *drm_enc)
 	if (sde_enc->cur_master) {
 		sde_connector_set_qsync_params(sde_enc->cur_master->connector);
 		sde_connector_set_vrr_params(sde_enc->cur_master->connector);
+		sde_encoder_vhm_wakelock(sde_enc, true);
 	}
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {

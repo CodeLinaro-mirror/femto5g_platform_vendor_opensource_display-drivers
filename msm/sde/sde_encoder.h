@@ -174,6 +174,7 @@ enum sde_enc_periph_cmd_state {
  * @debugfs_freq_array:    Freqency stepping array provided for simulation
  * @debugfs_freq_pattern:  Frequency pattern provided for simulation
  * @vhm_cmd_in_progress:   Whether a VHM related command is currently enqueued
+ * @vhm_pm_wake_lock:   Whether a VHM-specific wakelock is currently engaged
  */
 struct sde_encoder_vrr_info {
 	u32 frame_interval;
@@ -185,6 +186,7 @@ struct sde_encoder_vrr_info {
 	u32 *debugfs_freq_array;
 	struct msm_debugfs_freq_pattern *debugfs_freq_pattern;
 	u32 vhm_cmd_in_progress;
+	atomic_t vhm_pm_wake_lock;
 };
 
 /**

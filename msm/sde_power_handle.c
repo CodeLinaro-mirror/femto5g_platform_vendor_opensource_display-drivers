@@ -1421,11 +1421,6 @@ int sde_power_wakelock_ctrl(struct sde_power_handle *phandle, bool enable)
 		return -EINVAL;
 	}
 
-	if (!phandle->dev->power.can_wakeup || !phandle->dev->power.wakeup) {
-		pr_err("device cannot wakeup");
-		return -EINVAL;
-	}
-
 	if (enable && atomic_inc_return(&phandle->wakelock_count) == 1) {
 		pm_stay_awake(phandle->dev);
 		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
