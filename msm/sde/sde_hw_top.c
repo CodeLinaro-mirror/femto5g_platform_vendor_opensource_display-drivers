@@ -102,8 +102,8 @@
 #define MDP_CTL_HW_FENCE_IDm_MASK		0x5c
 #define MDP_CTL_HW_FENCE_IDm_ATTR		0x60
 
-#define HW_FENCE_IPCC_PROTOCOLp_CLIENTc_SEND(ba, p, c) ((ba+0xc) + (0x40000*p) + (0x1000*c))
-#define HW_FENCE_IPCC_PROTOCOLp_CLIENTc_RECV_ID(ba, p, c) ((ba+0x10) + (0x40000*p) + (0x1000*c))
+#define HW_FENCE_IPCC_SEND(addr) ((addr)+0xc)
+#define HW_FENCE_IPCC_RECV_ID(addr) ((addr)+0x10)
 #define MDP_CTL_HW_FENCE_ID_OFFSET_n(base, n) (base + (0x14*n))
 #define MDP_CTL_HW_FENCE_ID_OFFSET_m(base, m) (base + (0x14*m))
 #define MDP_CTL_FENCE_ATTRS(devicetype, size, resp_req) \
@@ -713,8 +713,8 @@ static void sde_hw_input_hw_fence_status(struct sde_hw_mdp *mdp, u64 *s_val, u64
 	wmb(); /* make sure the timestamps are cleared */
 }
 
-static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phys_id,
-	unsigned long ipcc_base_addr, unsigned long hw_fence_mdp_offset,
+static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id,
+	unsigned long dpu_ipcc_addr, unsigned long hw_fence_mdp_offset,
 	struct sde_hw_blk_reg_map *c, bool has_soccp)
 {
 	u32 val, offset, mask;
@@ -737,8 +737,7 @@ static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phy
 
 	/* configure the attribs for the isr read_reg op */
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ADDR, 0);
-	val = HW_FENCE_IPCC_PROTOCOLp_CLIENTc_RECV_ID(ipcc_base_addr,
-				protocol_id, client_phys_id);
+	val = HW_FENCE_IPCC_RECV_ID(dpu_ipcc_addr);
 	SDE_REG_WRITE(c, offset, val);
 
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ATTR, 0);
@@ -774,7 +773,7 @@ static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phy
 }
 
 static void sde_hw_setup_hw_fences_config(struct sde_hw_mdp *mdp, u32 protocol_id,
-	u32 client_phys_id, unsigned long ipcc_base_addr)
+	unsigned long dpu_ipcc_addr)
 {
 	u32 val, offset;
 	struct sde_hw_blk_reg_map c;
@@ -790,15 +789,14 @@ static void sde_hw_setup_hw_fences_config(struct sde_hw_mdp *mdp, u32 protocol_i
 
 	hw_fence_mdp_offset = mdp->caps->hw_fence_mdp_offset;
 
-	_sde_hw_setup_hw_input_fences_config(protocol_id, client_phys_id, ipcc_base_addr,
+	_sde_hw_setup_hw_input_fences_config(protocol_id, dpu_ipcc_addr,
 			hw_fence_mdp_offset, &c, mdp->caps->has_soccp);
 
 	/*setup output fence isr */
 
 	/* configure the attribs for the isr load_data op */
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ADDR, 4);
-	val =  HW_FENCE_IPCC_PROTOCOLp_CLIENTc_SEND(ipcc_base_addr,
-			protocol_id, client_phys_id);
+	val =  HW_FENCE_IPCC_SEND(dpu_ipcc_addr);
 	SDE_REG_WRITE(&c, offset, val);
 
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ATTR, 4);
@@ -862,7 +860,7 @@ void sde_hw_top_set_ppb_fifo_size(struct sde_hw_mdp *mdp, u32 pp, u32 sz)
 }
 
 static void sde_hw_setup_hw_fences_config_with_dir_write(struct sde_hw_mdp *mdp, u32 protocol_id,
-	u32 client_phys_id, unsigned long ipcc_base_addr)
+	unsigned long dpu_ipcc_addr)
 {
 	u32 val, offset;
 	struct sde_hw_blk_reg_map c;
@@ -878,15 +876,14 @@ static void sde_hw_setup_hw_fences_config_with_dir_write(struct sde_hw_mdp *mdp,
 
 	hw_fence_mdp_offset = mdp->caps->hw_fence_mdp_offset;
 
-	_sde_hw_setup_hw_input_fences_config(protocol_id, client_phys_id, ipcc_base_addr,
+	_sde_hw_setup_hw_input_fences_config(protocol_id, dpu_ipcc_addr,
 			hw_fence_mdp_offset, &c, mdp->caps->has_soccp);
 
 	/*setup output fence isr */
 
 	/* configure the attribs for the isr load_data op */
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ADDR, 4);
-	val =  HW_FENCE_IPCC_PROTOCOLp_CLIENTc_SEND(ipcc_base_addr,
-		protocol_id, client_phys_id);
+	val =  HW_FENCE_IPCC_SEND(dpu_ipcc_addr);
 	SDE_REG_WRITE(&c, offset, val);
 
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ATTR, 4);
