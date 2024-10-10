@@ -227,6 +227,22 @@ wfdWaitForVSync(WFDDevice device, WFDPort port) WFD_APIEXIT;
 #define WFD_COLOR_SPACE_BT709_FULL     0x6
 #endif
 
+#ifndef WFD_pipeline_transparency_ext
+#define WFD_pipeline_transparency_ext
+
+/**
+ * This enumeration is extend to WFDTransparency in wfd.h
+ *
+ * From WFD spec, it thinks all the source pixel is already premultiplied with source alpha.
+ * But in FE, the blend_op could be COVERAGED whose source pixel is not premultiplied.
+ * So extend one new alpha definition to support this case.
+ */
+enum WFDTransparencyExt {
+	WFD_TRANSPARENCY_SOURCE_ALPHA_NONPREMULTIPLIED = (1 << 4),
+	WFD_TRANSPARENCYEXT_FORCE_32BIT                = 0x7FFFFFFF
+};
+#endif
+
 #ifndef WFD_source_translation_mode
 #define WFD_source_translation_mode 1
 #define WFD_SOURCE_TRANSLATION_MODE    0x7900
