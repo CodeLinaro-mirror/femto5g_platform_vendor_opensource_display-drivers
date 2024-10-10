@@ -632,7 +632,7 @@ static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 	int i, j, n, ret = 0;
 	int format_count = 0;
 	WFDint reported_format_count = 0;
-	WFDint formats[MAX_PIPELINE_ATTRIBS];
+	WFDint formats[MAX_PIPELINE_ATTRIBS] = {0};
 
 	reported_format_count = wfdGetPipelineAttribi_User(
 			priv->wfd_device,
@@ -647,7 +647,6 @@ static int _wfd_kms_plane_get_format(struct wfd_plane_info_priv *priv)
 	if (reported_format_count > MAX_PIPELINE_ATTRIBS)
 		reported_format_count = MAX_PIPELINE_ATTRIBS;
 
-	memset(formats, 0, MAX_PIPELINE_ATTRIBS * sizeof(WFDint));
 	wfdGetPipelineAttribiv_User(priv->wfd_device,
 				priv->wfd_pipeline,
 				WFD_PIPELINE_PIXEL_FORMATS,
@@ -1802,10 +1801,9 @@ static void wfd_kms_crtc_atomic_begin(struct msm_hyp_kms *kms,
 	struct drm_crtc_state *old_state;
 	struct msm_hyp_crtc_state *old_cstate, *new_cstate;
 	__u64 flags = 0;
-	struct WFDPortHISCSetType hsic;
+	struct WFDPortHISCSetType hsic = {0};
 
 	/* PP feature, HSIC */
-	memset(&hsic, 0, sizeof(hsic));
 	old_state = drm_atomic_get_old_crtc_state(atomic_state, crtc);
 	old_cstate = to_msm_hyp_crtc_state(old_state);
 	new_cstate = to_msm_hyp_crtc_state(crtc->state);
@@ -2074,18 +2072,20 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 		case SDE_DRM_BLEND_OP_OPAQUE:
 			trans_val = WFD_TRANSPARENCY_GLOBAL_ALPHA;
 			break;
+		/* extend to support coverage by introducing a new alpha definition */
+		case SDE_DRM_BLEND_OP_COVERAGE:
+			trans_val = WFD_TRANSPARENCY_GLOBAL_ALPHA |
+				WFD_TRANSPARENCY_SOURCE_ALPHA_NONPREMULTIPLIED;
+			break;
 		case SDE_DRM_BLEND_OP_PREMULTIPLIED:
 			trans_val = WFD_TRANSPARENCY_SOURCE_ALPHA |
 				WFD_TRANSPARENCY_GLOBAL_ALPHA;
 			break;
-		case SDE_DRM_BLEND_OP_COVERAGE:
-		/* TODO:wfd spec not support, new Attribi to support this */
 		default:
 		/* follow kernel-metal, use opaque as default */
 			trans_val = WFD_TRANSPARENCY_GLOBAL_ALPHA;
 			break;
 		}
-
 		wfdSetPipelineAttribi_User(
 			priv->wfd_device,
 			priv->wfd_pipeline,
