@@ -57,6 +57,7 @@ static const struct drm_prop_enum_list e_topology_control[] = {
 	{SDE_RM_TOPCTL_DSPP,		"dspp"},
 	{SDE_RM_TOPCTL_DS,		"ds"},
 	{SDE_RM_TOPCTL_DNSC_BLUR,	"dnsc_blur"},
+	{SDE_RM_TOPCTL_CDM,		"cdm"},
 };
 static const struct drm_prop_enum_list e_power_mode[] = {
 	{SDE_MODE_DPMS_ON,	"ON"},
@@ -1676,6 +1677,23 @@ static int _sde_connector_set_prop_out_fb(struct drm_connector *connector,
 	return rc;
 }
 
+static struct drm_encoder *
+sde_connector_best_encoder(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn = to_sde_connector(connector);
+
+	if (!connector) {
+		SDE_ERROR("invalid connector\n");
+		return NULL;
+	}
+
+	/*
+	 * This is true for now, revisit this code when multiple encoders are
+	 * supported.
+	 */
+	return c_conn->encoder;
+}
+
 static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 		struct drm_connector_state *state,
 		uint64_t val)
@@ -1711,9 +1729,13 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 		 */
 		offset++;
 
-		/* get hw_ctl for a wb connector */
-		if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
-			hw_ctl = sde_encoder_get_hw_ctl(c_conn);
+		/* get hw_ctl for a wb connector not in cwb mode */
+		if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+			struct drm_encoder *drm_enc = sde_connector_best_encoder(connector);
+
+			if (drm_enc && !sde_encoder_in_clone_mode(drm_enc))
+				hw_ctl = sde_encoder_get_hw_ctl(c_conn);
+		}
 
 		rc = sde_fence_create(c_conn->retire_fence,
 					&fence_user_fd, offset, hw_ctl);
@@ -2691,23 +2713,6 @@ sde_connector_mode_valid(struct drm_connector *connector,
 	return MODE_OK;
 }
 
-static struct drm_encoder *
-sde_connector_best_encoder(struct drm_connector *connector)
-{
-	struct sde_connector *c_conn = to_sde_connector(connector);
-
-	if (!connector) {
-		SDE_ERROR("invalid connector\n");
-		return NULL;
-	}
-
-	/*
-	 * This is true for now, revisit this code when multiple encoders are
-	 * supported.
-	 */
-	return c_conn->encoder;
-}
-
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 static struct drm_encoder *
 sde_connector_atomic_best_encoder(struct drm_connector *connector,
@@ -3517,7 +3522,8 @@ int sde_connector_register_custom_event(struct sde_kms *kms,
 		break;
 	case DRM_EVENT_SDE_HW_RECOVERY:
 		ret = _sde_conn_enable_hw_recovery(conn_drm);
-		sde_dbg_update_dump_mode(val);
+		if (SDE_DBG_DEFAULT_DUMP_MODE != SDE_DBG_DUMP_IN_LOG_LIMITED)
+			sde_dbg_update_dump_mode(val);
 		break;
 	default:
 		break;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -150,6 +150,8 @@ struct msm_kms_funcs {
 	bool (*check_for_splash)(struct msm_kms *kms);
 	/*trigger null flush if stuck in cont splash*/
 	int (*trigger_null_flush)(struct msm_kms *kms);
+	/* get input fence timeout */
+	int (*get_input_fence_timeout)(const struct msm_kms *kms);
 	/* topology lm information */
 	int (*get_mixer_count)(const struct msm_kms *kms,
 			const struct drm_display_mode *mode,

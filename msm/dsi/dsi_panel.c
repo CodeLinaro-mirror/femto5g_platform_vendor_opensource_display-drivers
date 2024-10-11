@@ -790,7 +790,7 @@ static int dsi_panel_parse_timing(struct dsi_mode_info *mode,
 
 	rc = utils->read_u64(utils->data,
 			"qcom,mdss-dsi-panel-clockrate", &tmp64);
-	if (rc == -EOVERFLOW) {
+	if (rc == -EOVERFLOW || rc == -ERANGE) {
 		tmp64 = 0;
 		rc = utils->read_u32(utils->data,
 			"qcom,mdss-dsi-panel-clockrate", (u32 *)&tmp64);
@@ -1108,13 +1108,13 @@ static int dsi_panel_parse_triggers(struct dsi_host_common_cfg *host,
 		} else if (!strcmp(trig, "trigger_sw_te")) {
 			host->dma_cmd_trigger = DSI_TRIGGER_SW_TE;
 		} else {
-			DSI_ERR("[%s] Unrecognized mdp trigger type (%s)\n",
+			DSI_ERR("[%s] Unrecognized cmd dma trigger type (%s)\n",
 			       name, trig);
 			rc = -EINVAL;
 		}
 
 	} else {
-		DSI_DEBUG("[%s] Falling back to default MDP trigger\n", name);
+		DSI_DEBUG("[%s] Falling back to default cmd dma trigger\n", name);
 		host->dma_cmd_trigger = DSI_TRIGGER_SW;
 	}
 
@@ -4027,6 +4027,7 @@ void dsi_panel_calc_dsi_transfer_time(struct dsi_host_common_cfg *config,
 	u32 jitter_numer, jitter_denom, prefill_lines;
 	u32 default_prefill_lines, actual_prefill_lines, vtotal;
 	u32 min_threshold_us, prefill_time_us, max_transfer_us, packet_overhead;
+	u32 bits_per_symbol = 16, num_of_symbols = 7; /* For Cphy */
 	u16 bpp;
 
 	/* Packet overhead in bits,
@@ -4071,6 +4072,11 @@ void dsi_panel_calc_dsi_transfer_time(struct dsi_host_common_cfg *config,
 	}
 
 	timing->min_dsi_clk_hz = min_bitclk_hz;
+
+	if (config->phy_type == DSI_PHY_TYPE_CPHY) {
+		do_div(timing->min_dsi_clk_hz, bits_per_symbol);
+		timing->min_dsi_clk_hz *= num_of_symbols;
+	}
 
 	/*
 	 * Apart from prefill line time, we need to take into account RSCC mode threshold time. In
