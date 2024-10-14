@@ -964,6 +964,15 @@ static int dsi_panel_parse_pixel_format(struct dsi_host_common_cfg *host,
 		fmt = DSI_PIXEL_FORMAT_RGB666;
 		break;
 	case 30:
+		/*
+		 * The destination pixel format (host->dst_format) depends
+		 * upon the compression, and should be RGB888 if the DSC is
+		 * enable.
+		 * The DSC status information is inside the timing modes, that
+		 * is parsed during first dsi_display_get_modes() call.
+		 * The dst_format will be updated there depending upon the
+		 * DSC status.
+		 */
 		fmt = DSI_PIXEL_FORMAT_RGB101010;
 		break;
 	case 24:
@@ -2810,7 +2819,8 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 		goto error;
 	}
 
-	rc = sde_dsc_populate_dsc_private_params(&priv_info->dsc, intf_width);
+	rc = sde_dsc_populate_dsc_private_params(&priv_info->dsc, intf_width,
+			priv_info->widebus_support);
 	if (rc) {
 		DSI_DEBUG("failed populating other dsc params\n");
 		rc = -EINVAL;
@@ -4171,12 +4181,6 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 	mutex_lock(&panel->panel_lock);
 	utils = &panel->utils;
 
-	mode->priv_info = kzalloc(sizeof(*mode->priv_info), GFP_KERNEL);
-	if (!mode->priv_info) {
-		rc = -ENOMEM;
-		goto done;
-	}
-
 	prv_info = mode->priv_info;
 
 	timings_np = utils->get_child_by_name(utils->data,
@@ -4270,12 +4274,8 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 		if (rc)
 			DSI_ERR("failed to partial update caps, rc=%d\n", rc);
 	}
-	goto done;
 
 parse_fail:
-	kfree(mode->priv_info);
-	mode->priv_info = NULL;
-done:
 	utils->data = utils_data;
 	mutex_unlock(&panel->panel_lock);
 	return rc;
