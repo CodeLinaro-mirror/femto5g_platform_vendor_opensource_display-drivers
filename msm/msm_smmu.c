@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -602,7 +602,11 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	return ret;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void msm_smmu_remove(struct platform_device *pdev)
+#else
 static int msm_smmu_remove(struct platform_device *pdev)
+#endif
 {
 	struct msm_smmu_client *client;
 	struct msm_smmu_client *curr, *next;
@@ -619,7 +623,9 @@ static int msm_smmu_remove(struct platform_device *pdev)
 	}
 	mutex_unlock(&smmu_list_lock);
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static struct platform_driver msm_smmu_driver = {

@@ -4207,12 +4207,19 @@ static void dp_display_set_mst_state(void *dp_display,
 		dp->mst.cbs.set_drv_state(dp_display, mst_state);
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void dp_display_remove(struct platform_device *pdev)
+#else
 static int dp_display_remove(struct platform_device *pdev)
+#endif
 {
+	int rc = 0;
 	struct dp_display_private *dp;
 
-	if (!pdev)
-		return -EINVAL;
+	if (!pdev) {
+		rc = -EINVAL;
+		goto end;
+	}
 
 	dp = platform_get_drvdata(pdev);
 
@@ -4234,7 +4241,10 @@ static int dp_display_remove(struct platform_device *pdev)
 		dp->dp_display.dp_aux_ipc_log = NULL;
 	}
 
-	return 0;
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+	return rc;
+#endif
 }
 
 static int dp_pm_prepare(struct device *dev)
