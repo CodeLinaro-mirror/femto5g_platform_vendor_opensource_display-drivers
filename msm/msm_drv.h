@@ -388,6 +388,16 @@ enum msm_event_wait {
 	MSM_ENC_ACTIVE_REGION,
 };
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ * enum msm_component_event - type of component events
+ * @MSM_COMP_OBJECT_CREATED - notify when all builtin objects are created
+ */
+enum msm_component_event {
+	MSM_COMP_OBJECT_CREATED = 0,
+};
+#endif
+
 /**
  * struct msm_roi_alignment - region of interest alignment restrictions
  * @xstart_pix_align: left x offset alignment restriction
@@ -1080,6 +1090,10 @@ struct msm_drm_private {
 
 	struct mutex vm_client_lock;
 	struct list_head vm_client_list;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	/* list of component registered for notification */
+	struct blocking_notifier_head component_notifier_list;
+#endif
 };
 
 /* get struct msm_kms * from drm_device * */
@@ -1378,6 +1392,31 @@ static inline void __exit dsi_display_unregister(void)
 }
 #endif /* CONFIG_DRM_MSM_DSI */
 
+#if IS_ENABLED(CONFIG_DRM_MSM_LEASE)
+void __init msm_lease_drm_register(void);
+void __exit msm_lease_drm_unregister(void);
+#else
+static inline void __init msm_lease_drm_register(void)
+{
+}
+static inline void __exit msm_lease_drm_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_MSM_LEASE */
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+void __init sde_shd_register(void);
+void __exit sde_shd_unregister(void);
+#else
+static inline void __init sde_shd_register(void)
+{
+}
+static inline void __exit sde_shd_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_MSM_LEASE */
+
+
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 void __init msm_hdcp_register(void);
 void __exit msm_hdcp_unregister(void);
@@ -1511,5 +1550,37 @@ int msm_get_dsc_count(struct msm_drm_private *priv,
 		u32 hdisplay, u32 *num_dsc);
 
 int msm_get_src_bpc(int chroma_format, int bpc);
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ * msm_drm_register_component - register a component notifier
+ * @dev: drm device
+ * @nb: notifier block to callback on events
+ *
+ * This function registers a notifier callback function
+ * to msm_drm_component_list, which would be called during probe.
+ */
+int msm_drm_register_component(struct drm_device *dev,
+		struct notifier_block *nb);
+
+
+/**
+ * msm_drm_unregister_component - unregister a component notifier
+ * @dev: drm device
+ * @nb: notifier block to callback on events
+ *
+ * This function registers a notifier callback function
+ * to msm_drm_component_list, which would be called during probe.
+ */
+int msm_drm_unregister_component(struct drm_device *dev,
+		struct notifier_block *nb);
+
+/**
+ * msm_drm_notify_components - notify components of msm_component_event
+ * @event: defined in msm_component_event
+ */
+int msm_drm_notify_components(struct drm_device *dev,
+		enum msm_component_event event);
+#endif
 
 #endif /* __MSM_DRV_H__ */

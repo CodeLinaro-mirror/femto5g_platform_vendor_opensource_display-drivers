@@ -21,6 +21,9 @@
 #include "sde_vm.h"
 #include <drm/drm_probe_helper.h>
 #include <linux/version.h>
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+#include <shd_drm.h>
+#endif
 
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
@@ -219,7 +222,27 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 	struct sde_kms *sde_kms;
 	static int display_count;
 	char bl_node_name[BL_NODE_NAME_SIZE];
+	
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct shd_display *shd_display;
+	static int init_cnt = 0;
 
+	sde_kms = sde_connector_get_kms(&c_conn->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return -EINVAL;
+	} else if (!c_conn->ops.set_backlight) {
+		return 0;
+	}
+
+	if (init_cnt) {
+		shd_display = c_conn->display;
+		display = shd_display->dsi_base;
+	} else {
+		init_cnt ++;
+		display = (struct dsi_display *) c_conn->display;
+	}
+#else
 	sde_kms = sde_connector_get_kms(&c_conn->base);
 	if (!sde_kms) {
 		SDE_ERROR("invalid kms\n");
@@ -229,6 +252,7 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 	}
 
 	display = (struct dsi_display *) c_conn->display;
+#endif
 	bl_config = &display->panel->bl_config;
 
 	if (bl_config->type != DSI_BACKLIGHT_DCS &&
@@ -451,6 +475,14 @@ static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 
 	avail_res->max_mixer_width = sde_kms->catalog->max_mixer_width;
 }
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+void sde_connector_get_avail_res_info_shd(struct drm_connector *conn,
+					  struct msm_resource_caps_info *avail_res)
+{
+	sde_connector_get_avail_res_info(conn, avail_res);
+}
+#endif
 
 int sde_connector_set_msm_mode(struct drm_connector_state *conn_state,
 				struct drm_display_mode *adj_mode)
@@ -1011,7 +1043,15 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		return -EINVAL;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (c_conn->shared){
+		display = ((struct shd_display *)c_conn->display)->dsi_base;
+	} else {
+		display = (struct dsi_display *)c_conn->display;
+	}
+#else
 	display = (struct dsi_display *)c_conn->display;
+#endif
 
 	/*
 	 * During pre kickoff DCS commands have to have an
@@ -1176,7 +1216,15 @@ int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable)
 	}
 
 	c_conn = to_sde_connector(connector);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (c_conn->shared){
+		display = ((struct shd_display *)c_conn->display)->dsi_base;
+	} else {
+		display = (struct dsi_display *)c_conn->display;
+	}
+#else
 	display = (struct dsi_display *) c_conn->display;
+#endif
 
 	if (display && c_conn->ops.clk_ctrl)
 		rc = c_conn->ops.clk_ctrl(display->mdp_clk_handle,
@@ -3058,6 +3106,9 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	struct dsi_display *dsi_display;
 	int rc;
 	struct drm_connector *connector;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	static int initcnt = 0;
+#endif
 	u64 panel_id = ~0x0;
 
 	msm_property_install_blob(&c_conn->property_info, "capabilities",
@@ -3076,7 +3127,11 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	msm_property_install_blob(&c_conn->property_info, "mode_properties",
 			DRM_MODE_PROP_IMMUTABLE, CONNECTOR_PROP_MODE_INFO);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (connector_type == DRM_MODE_CONNECTOR_DSI && !initcnt) {
+#else
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
+#endif
 		dsi_display = (struct dsi_display *)(display);
 		if (dsi_display && dsi_display->panel) {
 			msm_property_install_blob(&c_conn->property_info,
@@ -3160,7 +3215,12 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			0x0, 0, AUTOREFRESH_MAX_FRAME_CNT, 0,
 			CONNECTOR_PROP_AUTOREFRESH);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (connector_type == DRM_MODE_CONNECTOR_DSI && !initcnt) {
+		initcnt ++;
+#else
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
+#endif
 		if (test_bit(SDE_FEATURE_QSYNC, sde_kms->catalog->features) && dsi_display &&
 		    dsi_display->panel && dsi_display->panel->qsync_caps.qsync_support) {
 			msm_property_install_enum(&c_conn->property_info,

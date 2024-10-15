@@ -638,6 +638,9 @@ struct sde_connector {
 	struct sde_misr_sign previous_misr_sign;
 
 	bool hwfence_wb_retire_fences_enable;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	bool shared;
+#endif
 };
 
 /**
