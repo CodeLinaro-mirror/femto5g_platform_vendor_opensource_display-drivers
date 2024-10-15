@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -6148,7 +6148,11 @@ end:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+void dsi_display_dev_remove(struct platform_device *pdev)
+#else
 int dsi_display_dev_remove(struct platform_device *pdev)
+#endif
 {
 	int rc = 0, i = 0;
 	struct dsi_display *display;
@@ -6156,13 +6160,16 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 
 	if (!pdev) {
 		DSI_ERR("Invalid device\n");
-		return -EINVAL;
+		rc = -EINVAL;
+		goto end;
 	}
 
 	display = platform_get_drvdata(pdev);
 	if (!display || !display->panel_node) {
-		DSI_ERR("invalid display\n");
-		return -EINVAL;
+		DSI_ERR("invalid param, display %pK, display panel node %pK\n",
+				display, display ? display->panel_node : NULL);
+		rc = -EINVAL;
+		goto end;
 	}
 
 	/* decrement ref count */
@@ -6184,7 +6191,11 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, display);
+
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return rc;
+#endif
 }
 
 int dsi_display_get_num_of_displays(void)

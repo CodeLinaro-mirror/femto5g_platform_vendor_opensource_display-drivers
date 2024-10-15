@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_device.h>
@@ -483,7 +483,11 @@ fail:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void dsi_phy_driver_remove(struct platform_device *pdev)
+#else
 static int dsi_phy_driver_remove(struct platform_device *pdev)
+#endif
 {
 	int rc = 0;
 	struct msm_dsi_phy *phy = platform_get_drvdata(pdev);
@@ -491,7 +495,8 @@ static int dsi_phy_driver_remove(struct platform_device *pdev)
 
 	if (!pdev || !phy) {
 		DSI_PHY_ERR(phy, "Invalid device\n");
-		return -EINVAL;
+		rc = -EINVAL;
+		goto end;
 	}
 
 	mutex_lock(&dsi_phy_list_lock);
@@ -528,7 +533,10 @@ static int dsi_phy_driver_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 
-	return 0;
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+	return rc;
+#endif
 }
 
 static struct platform_driver dsi_phy_platform_driver = {
