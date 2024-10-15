@@ -350,6 +350,8 @@ skip_incremental_update:
 		c_conn->bl_vrr.bl_frame_idx = 0;
 		c_conn->bl_vrr.prev_brightness = brightness;
 		c_conn->bl_vrr.prev_bl_lvl = bl_lvl;
+		c_conn->bl_vrr.curr_brightness = brightness;
+		c_conn->bl_vrr.curr_bl_lvl = bl_lvl;
 		SDE_EVT32(brightness, bl_lvl);
 	}
 	mutex_unlock(&c_conn->bl_vrr.bl_lock);
