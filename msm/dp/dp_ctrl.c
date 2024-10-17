@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1314,7 +1314,13 @@ static int dp_ctrl_stream_on(struct dp_ctrl *dp_ctrl, struct dp_panel *panel)
 	/* wait for link training completion before fec config as per spec */
 	dp_ctrl_fec_setup(ctrl);
 	dp_ctrl_dsc_setup(ctrl, panel);
-	panel->sink_crc_enable(panel, true);
+
+	/*
+	 * Enabling TEST SINK CRC is causing blank screen on some monitors. This change is
+	 * required only for internal testing, hence disabling for commercial use. To be enabled
+	 * by dev team as required.
+	 * panel->sink_crc_enable(panel, true);
+	 */
 
 	return rc;
 }
