@@ -1749,7 +1749,7 @@ static void _flush_sb_dma_hw(int *active_ctls, struct sde_hw_ctl *ctl,
 			break;
 		} else if (active_ctls[j] == 0) {
 			active_ctls[j] = ctl->idx;
-			dma_ops->last_command_sb(ctl, DMA_CTL_QUEUE1,
+			dma_ops->last_command_sb(ctl, dma_ops->select_queue_sb(),
 					REG_DMA_NOWAIT);
 			break;
 		}

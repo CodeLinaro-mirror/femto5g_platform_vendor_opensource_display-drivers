@@ -5169,7 +5169,7 @@ static void _perform_sbdma_kickoff(struct sde_hw_dspp *ctx,
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			dspp_buf[feature][ctx->idx][ctx->dpu_idx],
-			REG_DMA_WRITE, DMA_CTL_QUEUE1, WRITE_IMMEDIATE,
+			REG_DMA_WRITE, dma_ops->select_queue_sb(), WRITE_IMMEDIATE,
 			feature);
 	kick_off.dma_type = REG_DMA_TYPE_SB;
 	rc = dma_ops->kick_off(&kick_off, ctx->dpu_idx);
