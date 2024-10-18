@@ -526,6 +526,8 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	if (sde_enc->disp_info.vrr_caps.arp_support ||
 		sde_enc->disp_info.vrr_caps.video_psr_support) {
 		avr_step_state = AVR_STEP_ENABLE;
+		if (sde_enc->disp_info.vrr_caps.video_psr_support)
+			avr_params.avr_mode = SDE_RM_QSYNC_CONTINUOUS_MODE;
 		if (avr_params.avr_mode)
 			_sde_encoder_phys_vid_raw_te_setup(phys_enc, true);
 		else

@@ -908,9 +908,18 @@ static int _sde_connector_update_power_locked(struct sde_connector *c_conn)
 		break;
 	}
 
-	SDE_EVT32(connector->base.id, c_conn->dpms_mode, c_conn->lp_mode, mode);
+	SDE_EVT32(connector->base.id, c_conn->dpms_mode, c_conn->lp_mode, mode,
+		c_conn->last_panel_power_mode);
 	SDE_DEBUG("conn %d - dpms %d, lp %d, panel %d\n", connector->base.id,
 			c_conn->dpms_mode, c_conn->lp_mode, mode);
+
+	if (mode == SDE_MODE_DPMS_ON)
+		c_conn->vrr_cmd_state = VRR_CMD_POWER_ON;
+	else if (mode == SDE_MODE_DPMS_OFF)
+		c_conn->vrr_cmd_state = VRR_CMD_POWER_OFF;
+	else if ((c_conn->last_panel_power_mode == SDE_MODE_DPMS_OFF) &&
+		(mode == SDE_MODE_DPMS_LP1))
+		c_conn->vrr_cmd_state = VRR_CMD_POWER_ON;
 
 	if (mode != c_conn->last_panel_power_mode && c_conn->ops.set_power) {
 		display = c_conn->display;
@@ -921,11 +930,6 @@ static int _sde_connector_update_power_locked(struct sde_connector *c_conn)
 		mutex_lock(&c_conn->lock);
 	}
 	c_conn->last_panel_power_mode = mode;
-
-	if (mode == SDE_MODE_DPMS_ON)
-		c_conn->vrr_cmd_state = VRR_CMD_POWER_ON;
-	else if (mode == SDE_MODE_DPMS_OFF)
-		c_conn->vrr_cmd_state = VRR_CMD_POWER_OFF;
 
 	mutex_unlock(&c_conn->lock);
 	if (mode != SDE_MODE_DPMS_ON)
