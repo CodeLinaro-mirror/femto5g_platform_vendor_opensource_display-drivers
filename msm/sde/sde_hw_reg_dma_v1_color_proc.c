@@ -5260,14 +5260,14 @@ static void _dspp_igcv4_off(struct sde_hw_dspp *ctx, void *cfg)
 }
 
 static void reg_dmav2_setup_dspp_igc_common(struct sde_hw_dspp *ctx, void *cfg,
-		u32 len, u16 *data, u32 transfer_size_bytes)
+		u32 len, u16 *data, u32 transfer_size_bytes, u32 dither_clip_mask)
 {
 	struct drm_msm_igc_lut *lut_cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	int rc = 0;
-	u32 reg = 0, num_of_mixers = 0, blk = 0;
+	u32 reg, num_of_mixers = 0, blk = 0;
 
 	rc = reg_dmav1_get_dspp_blk(hw_cfg, ctx->idx, &blk,
 			&num_of_mixers);
@@ -5314,7 +5314,7 @@ static void reg_dmav2_setup_dspp_igc_common(struct sde_hw_dspp *ctx, void *cfg,
 
 	reg = BIT(8);
 	if (lut_cfg->flags & IGC_DITHER_ENABLE) {
-		reg |= BIT(4);
+		reg |= BIT(4) | dither_clip_mask;
 		reg |= (lut_cfg->strength & IGC_DITHER_DATA_MASK);
 	}
 
@@ -5381,11 +5381,12 @@ void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
 	data[j++] = lut_cfg->c0_last ? (u16)(lut_cfg->c0_last << 4) : (4095 << 4);
 	data[j++] = lut_cfg->c1_last ? (u16)(lut_cfg->c1_last << 4) : (4095 << 4);
 
-	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes);
+	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes, 0);
 	kvfree(data);
 }
 
-void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav2_setup_dspp_igc_common_v5(struct sde_hw_dspp *ctx, void *cfg,
+		u32 dither_clip_mask)
 {
 	struct drm_msm_igc_lut *lut_cfg;
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
@@ -5448,8 +5449,18 @@ void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg)
 		}
 	}
 
-	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes);
+	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes, dither_clip_mask);
 	kvfree(data);
+}
+
+void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav2_setup_dspp_igc_common_v5(ctx, cfg, 0);
+}
+
+void reg_dmav2_setup_dspp_igcv51(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav2_setup_dspp_igc_common_v5(ctx, cfg, BIT(5) | BIT(6));
 }
 
 static void dspp_3d_gamutv43_off(struct sde_hw_dspp *ctx, void *cfg)
