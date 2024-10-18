@@ -416,6 +416,10 @@ static void dspp_spr(struct sde_hw_dspp *c)
 		c->ops.setup_spr_pu_config = reg_dmav1_setup_spr_pu_cfgv2;
 		c->ops.read_spr_opr_value = sde_spr_read_opr_value;
 	}
+
+	c->ops.setup_spr_dither = NULL;
+	if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x1, 0x7))
+		c->ops.setup_spr_dither = sde_setup_dspp_spr_dither_v1_7;
 }
 
 static void dspp_demura(struct sde_hw_dspp *c)

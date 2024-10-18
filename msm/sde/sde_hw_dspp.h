@@ -260,6 +260,13 @@ struct sde_hw_dspp_ops {
 	int (*setup_rc_pu_roi)(struct sde_hw_dspp *ctx, void *cfg);
 
 	/**
+	 * setup_spr_dither - update dspp spr dither
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 */
+	void (*setup_spr_dither)(struct sde_hw_dspp *ctx, void *cfg);
+
+	/**
 	 * validate_spr_init_config -  Validate SPR configuration
 	 * @ctx: Pointer to dspp context.
 	 * @cfg: Pointer to configuration.

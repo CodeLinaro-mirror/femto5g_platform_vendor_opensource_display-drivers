@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.​
+ * Copyright (c) 2016-2019 The Linux Foundation. All rights reserved.
  */
 
 #ifndef _SDE_HW_COLOR_PROCESSING_V1_7_H
@@ -136,6 +137,13 @@ void sde_read_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg);
  * @ctx: Pointer to DSPP context
  */
 void sde_lock_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * sde_setup_dspp_spr_dither_v1_7 - setup DSPP spr dither feature in v1.7 hardware
+ * @ctx: Pointer to DSPP context
+ * @cfg: Pointer to spr dither data
+ */
+void sde_setup_dspp_spr_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
  * sde_setup_dspp_dither_v1_7 - setup DSPP dither feature in v1.7 hardware
