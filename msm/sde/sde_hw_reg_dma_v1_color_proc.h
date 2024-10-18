@@ -313,6 +313,14 @@ int reg_dmav1_init_ltm_op_v6(int feature, struct sde_hw_dspp *ctx);
 void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
+ * reg_dmav1_setup_ltm_initv1_4() - LTM INIT v1.4 implementation using reg dma v1.
+ *                                  Same as v1 except clip_high and clip_low setting.
+ * @ctx: dspp instance
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
  * reg_dmav1_setup_ltm_roiv1() - LTM ROI v1 implementation using reg dma v1.
  * @ctx: dspp instance
  * @cfg: pointer to struct sde_hw_cp_cfg
@@ -339,6 +347,14 @@ void reg_dmav1_setup_ltm_vlutv1(struct sde_hw_dspp *ctx, void *cfg);
  * @cfg: pointer to struct sde_hw_cp_cfg
  */
 void reg_dmav1_setup_ltm_vlutv1_2(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * reg_dmav1_setup_ltm_vlutv1_4() - Same as v1_2 except clip_high and clip_low setting
+ *                                  in disable case.
+ * @ctx: dspp instance
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_ltm_vlutv1_4(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
  * reg_dmav1_setup_rc_pu_configv1() - RC PU CFG v1 implementation using reg dma v1.
