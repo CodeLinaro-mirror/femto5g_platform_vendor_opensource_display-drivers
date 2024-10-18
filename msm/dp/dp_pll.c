@@ -256,7 +256,11 @@ error:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void dp_pll_driver_remove(struct platform_device *pdev)
+#else
 static int dp_pll_driver_remove(struct platform_device *pdev)
+#endif
 {
 	struct dp_pll *pll = platform_get_drvdata(pdev);
 
@@ -266,7 +270,9 @@ static int dp_pll_driver_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static struct platform_driver dp_pll_platform_driver = {

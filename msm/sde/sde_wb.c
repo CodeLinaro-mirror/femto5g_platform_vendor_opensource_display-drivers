@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1037,14 +1037,21 @@ static int sde_wb_probe(struct platform_device *pdev)
  * sde_wb_remove - unload writeback module
  * @pdev:	Pointer to platform device
  */
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void sde_wb_remove(struct platform_device *pdev)
+#else
 static int sde_wb_remove(struct platform_device *pdev)
+#endif
 {
+	int rc = 0;
 	struct sde_wb_device *wb_dev;
 	struct sde_wb_device *curr, *next;
 
 	wb_dev = platform_get_drvdata(pdev);
-	if (!wb_dev)
-		return 0;
+	if (!wb_dev) {
+		rc = 0;
+		goto end;
+	}
 
 	SDE_DEBUG("\n");
 
@@ -1065,7 +1072,10 @@ static int sde_wb_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, wb_dev);
 
-	return 0;
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+	return rc;
+#endif
 }
 
 static const struct of_device_id dt_match[] = {
