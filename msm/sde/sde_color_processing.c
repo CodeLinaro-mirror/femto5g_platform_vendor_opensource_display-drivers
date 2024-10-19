@@ -3194,6 +3194,7 @@ static void _dspp_spr_dither_install_property(struct drm_crtc *crtc)
 		"SDE_DSPP_SPR_DITHER_V", version);
 	switch (version) {
 	case 1:
+	case 2:
 		_sde_cp_crtc_install_blob_property(crtc, feature_name,
 			SDE_CP_CRTC_DSPP_SPR_DITHER,
 			sizeof(struct drm_msm_dither));
