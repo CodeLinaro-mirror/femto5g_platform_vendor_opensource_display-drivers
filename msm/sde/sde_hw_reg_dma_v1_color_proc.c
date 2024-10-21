@@ -4382,7 +4382,7 @@ static int reg_dmav1_get_ltm_blk(struct sde_hw_cp_cfg *hw_cfg,
 }
 
 static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
-		u32 num_mixers, enum sde_ltm *dspp_idx)
+		u32 num_mixers, enum sde_ltm *dspp_idx, u32 dither_clip_mask)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
@@ -4422,7 +4422,7 @@ static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 		ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] &= ~ltm_init;
 		REG_DMA_SETUP_OPS(dma_write_cfg, 0x04, &opmode, sizeof(opmode),
 			REG_SINGLE_MODIFY, 0, 0,
-			REG_DMA_LTM_INIT_DISABLE_OP_MASK);
+			REG_DMA_LTM_INIT_DISABLE_OP_MASK & (~dither_clip_mask));
 		rc = dma_ops->setup_payload(&dma_write_cfg);
 		if (rc) {
 			DRM_ERROR("opmode write failed ret %d\n", rc);
@@ -4440,7 +4440,8 @@ static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 	}
 }
 
-void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav1_setup_ltm_initv1_common(struct sde_hw_dspp *ctx, void *cfg,
+		u32 dither_clip_mask)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
@@ -4471,7 +4472,7 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("Disable LTM init feature\n");
 		LOG_FEATURE_OFF;
-		ltm_initv1_disable(ctx, cfg, num_mixers, dspp_idx);
+		ltm_initv1_disable(ctx, cfg, num_mixers, dspp_idx, dither_clip_mask);
 		return;
 	}
 
@@ -4542,6 +4543,7 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
 		if (init_param->init_param_01) {
 			ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] |= ltm_dither;
 			opmode |= ((init_param->init_param_02 & 0x7) << 12);
+			opmode |= dither_clip_mask;
 		} else {
 			ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] &= ~ltm_dither;
 		}
@@ -4574,6 +4576,16 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
 		DRM_ERROR("failed to kick off ret %d\n", rc);
 		return;
 	}
+}
+
+void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav1_setup_ltm_initv1_common(ctx, cfg, 0);
+}
+
+void reg_dmav1_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav1_setup_ltm_initv1_common(ctx, cfg, BIT(10) | BIT(11));
 }
 
 static void ltm_roiv1_disable(struct sde_hw_dspp *ctx, void *cfg,
@@ -4831,7 +4843,7 @@ void reg_dmav1_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
 	reg_dmav1_setup_ltm_roi_v1_common(ctx, cfg, roi_data, reg_count);
 }
 
-static void ltm_vlutv1_disable(struct sde_hw_dspp *ctx, u32 clear)
+static void ltm_vlutv1_disable(struct sde_hw_dspp *ctx, u32 clear, u32 dither_clip_mask)
 {
 	enum sde_ltm idx = 0;
 	u32 opmode = 0, offset = 0;
@@ -4847,7 +4859,7 @@ static void ltm_vlutv1_disable(struct sde_hw_dspp *ctx, u32 clear)
 	opmode = SDE_REG_READ(&ctx->hw, offset);
 	if (opmode & BIT(0))
 		/* disable VLUT/INIT/ROI */
-		opmode &= REG_DMA_LTM_VLUT_DISABLE_OP_MASK;
+		opmode &= (REG_DMA_LTM_VLUT_DISABLE_OP_MASK & (~dither_clip_mask));
 	else
 		opmode &= clear;
 	SDE_REG_WRITE(&ctx->hw, offset, opmode);
@@ -4982,7 +4994,7 @@ void reg_dmav1_setup_ltm_vlutv1(struct sde_hw_dspp *ctx, void *cfg)
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("Disable LTM vlut feature\n");
 		LOG_FEATURE_OFF;
-		ltm_vlutv1_disable(ctx, LTM_CONFIG_MERGE_MODE_ONLY);
+		ltm_vlutv1_disable(ctx, LTM_CONFIG_MERGE_MODE_ONLY, 0);
 		return;
 	}
 
@@ -5033,7 +5045,8 @@ vlut_exit:
 	kvfree(opmode);
 }
 
-void reg_dmav1_setup_ltm_vlutv1_2(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(struct sde_hw_dspp *ctx, void *cfg,
+		u32 dither_clip_mask)
 {
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
@@ -5055,7 +5068,7 @@ void reg_dmav1_setup_ltm_vlutv1_2(struct sde_hw_dspp *ctx, void *cfg)
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("Disable LTM vlut feature\n");
 		LOG_FEATURE_OFF;
-		ltm_vlutv1_disable(ctx, 0x0);
+		ltm_vlutv1_disable(ctx, 0x0, dither_clip_mask);
 		return;
 	}
 
@@ -5114,6 +5127,16 @@ vlut_exit:
 	kvfree(opmode);
 }
 
+void reg_dmav1_setup_ltm_vlutv1_2(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(ctx, cfg, 0);
+}
+
+void reg_dmav1_setup_ltm_vlutv1_4(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(ctx, cfg, BIT(10) | BIT(11));
+}
+
 int reg_dmav2_init_dspp_op_v4(int feature, struct sde_hw_dspp *ctx)
 {
 	int rc = 0;
@@ -5169,7 +5192,7 @@ static void _perform_sbdma_kickoff(struct sde_hw_dspp *ctx,
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			dspp_buf[feature][ctx->idx][ctx->dpu_idx],
-			REG_DMA_WRITE, DMA_CTL_QUEUE1, WRITE_IMMEDIATE,
+			REG_DMA_WRITE, dma_ops->select_queue_sb(), WRITE_IMMEDIATE,
 			feature);
 	kick_off.dma_type = REG_DMA_TYPE_SB;
 	rc = dma_ops->kick_off(&kick_off, ctx->dpu_idx);
@@ -5237,14 +5260,14 @@ static void _dspp_igcv4_off(struct sde_hw_dspp *ctx, void *cfg)
 }
 
 static void reg_dmav2_setup_dspp_igc_common(struct sde_hw_dspp *ctx, void *cfg,
-		u32 len, u16 *data, u32 transfer_size_bytes)
+		u32 len, u16 *data, u32 transfer_size_bytes, u32 dither_clip_mask)
 {
 	struct drm_msm_igc_lut *lut_cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	int rc = 0;
-	u32 reg = 0, num_of_mixers = 0, blk = 0;
+	u32 reg, num_of_mixers = 0, blk = 0;
 
 	rc = reg_dmav1_get_dspp_blk(hw_cfg, ctx->idx, &blk,
 			&num_of_mixers);
@@ -5291,7 +5314,7 @@ static void reg_dmav2_setup_dspp_igc_common(struct sde_hw_dspp *ctx, void *cfg,
 
 	reg = BIT(8);
 	if (lut_cfg->flags & IGC_DITHER_ENABLE) {
-		reg |= BIT(4);
+		reg |= BIT(4) | dither_clip_mask;
 		reg |= (lut_cfg->strength & IGC_DITHER_DATA_MASK);
 	}
 
@@ -5358,11 +5381,12 @@ void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
 	data[j++] = lut_cfg->c0_last ? (u16)(lut_cfg->c0_last << 4) : (4095 << 4);
 	data[j++] = lut_cfg->c1_last ? (u16)(lut_cfg->c1_last << 4) : (4095 << 4);
 
-	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes);
+	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes, 0);
 	kvfree(data);
 }
 
-void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav2_setup_dspp_igc_common_v5(struct sde_hw_dspp *ctx, void *cfg,
+		u32 dither_clip_mask)
 {
 	struct drm_msm_igc_lut *lut_cfg;
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
@@ -5425,8 +5449,18 @@ void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg)
 		}
 	}
 
-	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes);
+	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes, dither_clip_mask);
 	kvfree(data);
+}
+
+void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav2_setup_dspp_igc_common_v5(ctx, cfg, 0);
+}
+
+void reg_dmav2_setup_dspp_igcv51(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav2_setup_dspp_igc_common_v5(ctx, cfg, BIT(5) | BIT(6));
 }
 
 static void dspp_3d_gamutv43_off(struct sde_hw_dspp *ctx, void *cfg)

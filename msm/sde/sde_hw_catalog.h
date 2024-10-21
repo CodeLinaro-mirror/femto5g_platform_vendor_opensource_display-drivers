@@ -144,6 +144,7 @@
 #define SDE_INLINE_ROT_VERSION_1_0_0	0x100
 #define SDE_INLINE_ROT_VERSION_2_0_0	0x200
 #define SDE_INLINE_ROT_VERSION_2_0_1	0x201
+#define SDE_INLINE_ROT_VERSION_2_0_2	0x202
 
 #define IS_SDE_INLINE_ROT_REV_100(rev) \
 	((rev) == SDE_INLINE_ROT_VERSION_1_0_0)
@@ -151,6 +152,8 @@
 	((rev) == SDE_INLINE_ROT_VERSION_2_0_0)
 #define IS_SDE_INLINE_ROT_REV_201(rev) \
 	((rev) == SDE_INLINE_ROT_VERSION_2_0_1)
+#define IS_SDE_INLINE_ROT_REV_202(rev) \
+	((rev) == SDE_INLINE_ROT_VERSION_2_0_2)
 
 /**
  * Downscale Blur supported versions
@@ -498,6 +501,7 @@ enum {
  * @SDE_DSPP_AD              AD block
  * @SDE_DSPP_LTM             LTM block
  * @SDE_DSPP_SPR             SPR block
+ * @SDE_DSPP_SPR_DITHER_LUMA SPR Dither block (Luma supported)
  * @SDE_DSPP_DEMURA          Demura block
  * @SDE_DSPP_RC              RC block (mask)
  * @SDE_DSPP_RC_PU           RC block (pu)
@@ -523,6 +527,7 @@ enum {
 	SDE_DSPP_AD,
 	SDE_DSPP_LTM,
 	SDE_DSPP_SPR,
+	SDE_DSPP_SPR_DITHER_LUMA,
 	SDE_DSPP_DEMURA,
 	SDE_DSPP_RC,
 	SDE_DSPP_RC_PU,
@@ -1290,6 +1295,7 @@ struct sde_dspp_sub_blks {
 	struct sde_pp_blk ad;
 	struct sde_pp_blk ltm;
 	struct sde_pp_blk spr;
+	struct sde_pp_blk spr_dither;
 	struct sde_pp_blk vlut;
 	struct sde_dspp_rc rc;
 	struct sde_pp_blk demura;

@@ -156,6 +156,7 @@ static bool feature_handoff_mask[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_GAMUT] = 1,
 	[SDE_CP_CRTC_DSPP_DITHER] = 1,
 	[SDE_CP_CRTC_DSPP_SPR_INIT] = 1,
+	[SDE_CP_CRTC_DSPP_SPR_DITHER] = 1,
 	[SDE_CP_CRTC_DSPP_DEMURA_INIT] = 1,
 };
 
@@ -799,6 +800,19 @@ static int _check_spr_udc_feature(struct sde_hw_dspp *hw_dspp,
 	return ret;
 }
 
+static int _set_dspp_spr_dither_feature(struct sde_hw_dspp *hw_dspp,
+				  struct sde_hw_cp_cfg *hw_cfg,
+				  struct sde_crtc *hw_crtc)
+{
+	int ret = 0;
+
+	if (!hw_dspp || !hw_dspp->ops.setup_spr_dither)
+		ret = -EINVAL;
+	else
+		hw_dspp->ops.setup_spr_dither(hw_dspp, hw_cfg);
+	return ret;
+}
+
 static int _check_ltm_roi_feature(struct sde_hw_dspp *hw_dspp,
 			      struct sde_hw_cp_cfg *hw_cfg,
 			      struct sde_crtc *sde_crtc)
@@ -1131,6 +1145,7 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_RC_MASK] = _set_rc_mask_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_INIT] = _set_spr_init_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_SPR_UDC] = _set_spr_udc_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_SPR_DITHER] = _set_dspp_spr_dither_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_INIT] = _set_demura_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT] = _set_demura_backlight; \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = _set_demura_cfg0_param2; \
@@ -1717,6 +1732,7 @@ static const int dspp_feature_to_sub_blk_tbl[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_SB] = SDE_DSPP_SB,
 	[SDE_CP_CRTC_DSPP_SPR_INIT] = SDE_DSPP_SPR,
 	[SDE_CP_CRTC_DSPP_SPR_UDC] = SDE_DSPP_SPR,
+	[SDE_CP_CRTC_DSPP_SPR_DITHER] = SDE_DSPP_SPR,
 	[SDE_CP_CRTC_DSPP_RC_MASK] = SDE_DSPP_RC,
 	[SDE_CP_CRTC_DSPP_DEMURA_INIT] = SDE_DSPP_DEMURA,
 	[SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT] = SDE_DSPP_DEMURA,
@@ -1749,7 +1765,7 @@ static void _flush_sb_dma_hw(int *active_ctls, struct sde_hw_ctl *ctl,
 			break;
 		} else if (active_ctls[j] == 0) {
 			active_ctls[j] = ctl->idx;
-			dma_ops->last_command_sb(ctl, DMA_CTL_QUEUE1,
+			dma_ops->last_command_sb(ctl, dma_ops->select_queue_sb(),
 					REG_DMA_NOWAIT);
 			break;
 		}
@@ -2228,6 +2244,8 @@ void sde_cp_reset_unsupported_feature_wrappers(struct sde_mdss_cfg *catalog)
 		check_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_PU] =
 			_feature_unsupported;
 		set_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_INIT] =
+			_feature_unsupported;
+		set_crtc_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_DITHER] =
 			_feature_unsupported;
 		set_crtc_pu_feature_wrappers[SDE_CP_CRTC_DSPP_SPR_PU] =
 			_feature_unsupported;
@@ -3161,6 +3179,32 @@ static void _dspp_rc_install_property(struct drm_crtc *crtc)
 	}
 }
 
+static void _dspp_spr_dither_install_property(struct drm_crtc *crtc)
+{
+	char feature_name[256];
+	struct sde_kms *kms = NULL;
+	struct sde_mdss_cfg *catalog = NULL;
+	u32 version;
+
+	kms = get_kms(crtc);
+	catalog = kms->catalog;
+
+	version = catalog->dspp[0].sblk->spr_dither.version >> 16;
+	snprintf(feature_name, ARRAY_SIZE(feature_name), "%s%d",
+		"SDE_DSPP_SPR_DITHER_V", version);
+	switch (version) {
+	case 1:
+	case 2:
+		_sde_cp_crtc_install_blob_property(crtc, feature_name,
+			SDE_CP_CRTC_DSPP_SPR_DITHER,
+			sizeof(struct drm_msm_dither));
+		break;
+	default:
+		DRM_ERROR("version %d not supported\n", version);
+		break;
+	}
+}
+
 static void _dspp_spr_install_property(struct drm_crtc *crtc)
 {
 	char feature_name[256];
@@ -3198,6 +3242,8 @@ static void _dspp_spr_install_property(struct drm_crtc *crtc)
 		DRM_ERROR("version %d not supported\n", version);
 		break;
 	}
+
+	_dspp_spr_dither_install_property(crtc);
 }
 
 static void _lm_gc_install_property(struct drm_crtc *crtc)

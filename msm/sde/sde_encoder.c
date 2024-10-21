@@ -2956,12 +2956,19 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	struct drm_crtc *crtc = drm_enc->crtc;
-	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct sde_crtc *sde_crtc;
 	struct sde_connector *sde_conn;
 	struct msm_display_info *info = &sde_enc->disp_info;
 	int crtc_id = 0;
 
 	priv = drm_enc->dev->dev_private;
+
+	if (!crtc || !sde_enc->cur_master || !priv->kms) {
+		SDE_ERROR("invalid args crtc:%d master:%d\n", !crtc, !sde_enc->cur_master);
+		return -EINVAL;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
 	sde_kms = to_sde_kms(priv->kms);
 	sde_conn = to_sde_connector(sde_enc->cur_master->connector);
 
@@ -3025,7 +3032,7 @@ static int _sde_encoder_rc_early_wakeup(struct drm_encoder *drm_enc,
 {
 	bool autorefresh_enabled = false;
 	struct msm_drm_thread *disp_thread;
-	int ret = 0;
+	int ret = 0, idle_pc_duration = 0;
 
 	if (!sde_enc->crtc ||
 		sde_enc->crtc->index >= ARRAY_SIZE(priv->disp_thread)) {
@@ -3053,11 +3060,14 @@ static int _sde_encoder_rc_early_wakeup(struct drm_encoder *drm_enc,
 			goto end;
 		}
 
-		if (!sde_crtc_frame_pending(sde_enc->crtc))
+		if (!sde_crtc_frame_pending(sde_enc->crtc)) {
 			kthread_mod_delayed_work(&disp_thread->worker,
 					&sde_enc->delayed_off_work,
 					msecs_to_jiffies(
 					IDLE_POWERCOLLAPSE_DURATION));
+			idle_pc_duration = IDLE_POWERCOLLAPSE_DURATION;
+		}
+
 	} else if (sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE) {
 		/* enable all the clks and resources */
 		ret = _sde_encoder_resource_control_helper(drm_enc,
@@ -3085,12 +3095,13 @@ static int _sde_encoder_rc_early_wakeup(struct drm_encoder *drm_enc,
 				&sde_enc->delayed_off_work,
 				msecs_to_jiffies(
 				IDLE_POWERCOLLAPSE_IN_EARLY_WAKEUP));
+		idle_pc_duration = IDLE_POWERCOLLAPSE_IN_EARLY_WAKEUP;
 
 		sde_enc->rc_state = SDE_ENC_RC_STATE_ON;
 	}
 
-	SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state,
-			SDE_ENC_RC_STATE_ON, SDE_EVTLOG_FUNC_CASE8);
+	SDE_EVT32(DRMID(drm_enc), sw_event, sde_enc->rc_state, SDE_ENC_RC_STATE_ON,
+			idle_pc_duration, SDE_EVTLOG_FUNC_CASE8);
 
 end:
 	mutex_unlock(&sde_enc->rc_lock);
@@ -5557,8 +5568,6 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 			SDE_EVT32(SDE_EVTLOG_FUNC_CASE3);
 			return;
 		}
-
-		_sde_encoder_rc_restart_delayed(sde_enc, SDE_ENC_RC_EVENT_KICKOFF);
 		_sde_encoder_avoid_prog_fetch_region(phys_enc, sde_enc);
 	}
 
@@ -5622,16 +5631,27 @@ static void sde_encoder_handle_self_refresh(struct kthread_work *work)
 				struct sde_encoder_virt, self_refresh_work);
 
 	struct sde_kms *sde_kms;
+	struct sde_connector *c_conn;
+
 	if (!sde_enc || !sde_enc->cur_master) {
 		SDE_ERROR("invalid sde encoder\n");
 		return;
 	}
 	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	c_conn = to_sde_connector(sde_enc->cur_master->connector);
 
-	if (sde_enc->disp_info.vrr_caps.video_psr_support)
+	if (!c_conn) {
+		SDE_ERROR("invalid sde connector\n");
+		return;
+	}
+
+	if (sde_enc->disp_info.vrr_caps.video_psr_support) {
+		sde_connector_backlight_lock(c_conn, true);
 		sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
-	else
+		sde_connector_backlight_lock(c_conn, false);
+	} else {
 		sde_connector_trigger_cmd_self_refresh(sde_enc->cur_master->connector);
+	}
 }
 
 static void sde_encoder_cmd_backlight_update(struct kthread_work *work)
@@ -5644,6 +5664,10 @@ static void sde_encoder_cmd_backlight_update(struct kthread_work *work)
 		return;
 	}
 
+	if (kthread_cancel_delayed_work_sync(&sde_enc->delayed_off_work)) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		_sde_encoder_rc_restart_delayed(sde_enc, SDE_ENC_RC_EVENT_KICKOFF);
+	}
 	sde_connector_trigger_cmd_backlight_update(sde_enc->cur_master->connector);
 }
 
@@ -5652,8 +5676,13 @@ static void sde_encoder_input_event_work_handler(struct kthread_work *work)
 	struct sde_encoder_virt *sde_enc = container_of(work,
 				struct sde_encoder_virt, input_event_work);
 
-	if (!sde_enc) {
-		SDE_ERROR("invalid sde encoder\n");
+	if (!sde_enc || !sde_enc->input_handler) {
+		SDE_ERROR("invalid args sde encoder\n");
+		return;
+	}
+
+	if (!sde_enc->input_handler->private) {
+		SDE_DEBUG_ENC(sde_enc, "input handler is unregistered\n");
 		return;
 	}
 
@@ -5818,6 +5847,10 @@ void sde_encoder_handle_next_backlight_update(struct drm_encoder *drm_enc)
 
 	phys_enc = sde_enc->cur_master;
 	vrr_cfg = &phys_enc->sde_vrr_cfg;
+	if (kthread_cancel_delayed_work_sync(&sde_enc->delayed_off_work)) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		_sde_encoder_rc_restart_delayed(sde_enc, SDE_ENC_RC_EVENT_KICKOFF);
+	}
 
 	if (!vrr_cfg->curr_frame_interval_fps || !sde_enc->mode_info.frame_rate
 			|| !sde_enc->mode_info.avr_step_fps) {

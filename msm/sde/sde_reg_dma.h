@@ -351,6 +351,7 @@ struct sde_reg_dma_kickoff_cfg {
  * @last_command: notify control that last command is queued
  * @last_command_sb: notify control that last command for SB LUTDMA is queued
  * @dump_regs: dump reg dma registers
+ * @select_queue_sb: select correct ctl queue for sb lutdma based on version
  */
 struct sde_hw_reg_dma_ops {
 	int (*check_support)(enum sde_reg_dma_features feature,
@@ -367,6 +368,7 @@ struct sde_hw_reg_dma_ops {
 	int (*last_command_sb)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
 	void (*dump_regs)(u32 dpu_idx);
+	enum sde_reg_dma_queue (*select_queue_sb)(void);
 };
 
 /**
@@ -376,6 +378,7 @@ struct sde_hw_reg_dma_ops {
  * @caps: LUTDMA hw caps on the platform
  * @ops: reg dma ops supported on the platform
  * @addr: reg dma hw block base address
+ * @vm_based_queue: flag to specify per vm based queue capability of reg dma
  */
 struct sde_hw_reg_dma {
 	struct drm_device *drm_dev;
@@ -383,6 +386,7 @@ struct sde_hw_reg_dma {
 	const struct sde_reg_dma_cfg *caps;
 	struct sde_hw_reg_dma_ops ops;
 	void __iomem *addr;
+	bool vm_based_queue;
 };
 
 /**
