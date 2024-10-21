@@ -824,7 +824,9 @@ static struct msm_kms *_msm_drm_component_init_helper(
 		DISP_DEV_ERR(dev, "kms hw init failed: %d\n", ret);
 		return ERR_PTR(ret);
 	}
-
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	msm_drm_notify_components(ddev, MSM_COMP_OBJECT_CREATED);
+#endif
 	return kms;
 }
 
@@ -911,6 +913,9 @@ static int msm_drm_component_init(struct device *dev)
 	INIT_LIST_HEAD(&priv->client_event_list);
 	INIT_LIST_HEAD(&priv->inactive_list);
 	INIT_LIST_HEAD(&priv->vm_client_list);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	BLOCKING_INIT_NOTIFIER_HEAD(&priv->component_notifier_list);
+#endif
 	mutex_init(&priv->mm_lock);
 
 	mutex_init(&priv->vm_client_lock);
@@ -1527,6 +1532,50 @@ void msm_mode_object_event_notify(struct drm_mode_object *obj,
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+int msm_drm_register_component(struct drm_device *dev,
+		struct notifier_block *nb)
+{
+	struct msm_drm_private *priv;
+
+	if (!dev)
+		return -EINVAL;
+
+	priv = dev->dev_private;
+
+	return blocking_notifier_chain_register(&priv->component_notifier_list,
+			nb);
+}
+
+int msm_drm_unregister_component(struct drm_device *dev,
+		struct notifier_block *nb)
+{
+	struct msm_drm_private *priv;
+
+	if (!dev)
+		return -EINVAL;
+
+	priv = dev->dev_private;
+
+	return blocking_notifier_chain_unregister(
+			&priv->component_notifier_list,	nb);
+}
+
+int msm_drm_notify_components(struct drm_device *dev,
+		enum msm_component_event event)
+{
+	struct msm_drm_private *priv;
+
+	if (!dev)
+		return -EINVAL;
+
+	priv = dev->dev_private;
+
+	return blocking_notifier_call_chain(&priv->component_notifier_list,
+			event, NULL);
+}
+#endif
 
 static int msm_release(struct inode *inode, struct file *filp)
 {
@@ -2285,12 +2334,20 @@ static int __init msm_drm_register(void)
 	msm_dsi_register();
 	msm_edp_register();
 	msm_hdmi_register();
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	sde_shd_register();
+	msm_lease_drm_register();
+#endif
 	return 0;
 }
 
 static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	msm_lease_drm_unregister();
+	sde_shd_unregister();
+#endif
 	sde_wb_unregister();
 	msm_hdmi_unregister();
 	msm_edp_unregister();

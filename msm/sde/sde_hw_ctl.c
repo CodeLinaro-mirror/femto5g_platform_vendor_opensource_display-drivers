@@ -12,6 +12,7 @@
 #include "sde_kms.h"
 #include "sde_reg_dma.h"
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #define CTL_LAYER(lm)                 \
 	(((lm) == LM_5) ? (0x024) : (((lm) - LM_0) * 0x004))
 #define CTL_LAYER_EXT(lm)             \
@@ -22,6 +23,7 @@
 	(0xA0 + (((lm) - LM_0) * 0x004))
 #define CTL_LAYER_EXT4(lm)             \
 	(0xB8 + (((lm) - LM_0) * 0x004))
+#endif
 #define CTL_TOP                       0x014
 #define CTL_FLUSH                     0x018
 #define CTL_START                     0x01C
@@ -34,13 +36,19 @@
 #define CTL_ROT_FLUSH                 0x0C4
 #define CTL_ROT_START                 0x0CC
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #define CTL_MERGE_3D_ACTIVE           0x0E4
+#endif
 #define CTL_DSC_ACTIVE                0x0E8
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #define CTL_WB_ACTIVE                 0x0EC
 #define CTL_CWB_ACTIVE                0x0F0
+#endif
 #define CTL_INTF_ACTIVE               0x0F4
 #define CTL_CDM_ACTIVE                0x0F8
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #define CTL_FETCH_PIPE_ACTIVE         0x0FC
+#endif
 
 #define CTL_MERGE_3D_FLUSH           0x100
 #define CTL_DSC_FLUSH                0x104
@@ -67,20 +75,25 @@
 #define CTL_OUTPUT_FENCE_END_TIMESTAMP0 0x270
 #define CTL_OUTPUT_FENCE_END_TIMESTAMP1 0x274
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #define CTL_MIXER_BORDER_OUT            BIT(24)
+#endif
 #define CTL_FLUSH_MASK_ROT              BIT(27)
 #define CTL_FLUSH_MASK_CTL              BIT(17)
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #define CTL_NUM_EXT			5
 #define CTL_SSPP_MAX_RECTS		2
+#endif
 
 #define SDE_REG_RESET_TIMEOUT_US        2000
 #define SDE_REG_WAIT_RESET_TIMEOUT_US        100000
 
 #define UPDATE_MASK(m, idx, en)           \
 	((m) = (en) ? ((m) | BIT((idx))) : ((m) & ~BIT((idx))))
-
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #define CTL_INVALID_BIT                0xffff
+#endif
 
 #define VDC_IDX(i) ((i) +  16)
 
@@ -136,10 +149,12 @@ static const u32 intf_tbl[INTF_MAX] = {SDE_NONE, 31, 30, 29, 28};
  * top level control.
  */
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 /**
  * List of SSPP bits in CTL_FETCH_PIPE_ACTIVE
  */
 static const u32 fetch_tbl[SSPP_MAX] = {CTL_INVALID_BIT, 16, 17, 18, 19, 0, 1, 2, 3, 4, 5};
+#endif
 
 /**
  * list of WB bits in CTL_WB_FLUSH
@@ -204,6 +219,7 @@ static const u32 dspp_sub_blk_flush_tbl[SDE_DSPP_MAX] = {
 	[SDE_DSPP_SB] = 31,
 };
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 /**
  * struct ctl_sspp_stage_reg_map: Describes bit layout for a sspp stage cfg
  * @ext: Index to indicate LAYER_x_EXT id for given sspp
@@ -233,6 +249,7 @@ sspp_reg_cfg_tbl[SSPP_MAX][CTL_SSPP_MAX_RECTS] = {
 	/* SSPP_DMA4 */{ {4, 0, 4, 0}, {4, 8, 4, 0} },
 	/* SSPP_DMA5 */{ {4, 4, 4, 0}, {4, 12, 4, 0} },
 };
+#endif
 
 /**
  * Individual flush bit in CTL_FLUSH
@@ -1221,7 +1238,11 @@ static int sde_hw_ctl_update_intf_cfg(struct sde_hw_ctl *ctx,
 	u32 vdc_active = 0;
 	struct sde_hw_blk_reg_map *c;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (!ctx || !cfg)
+#else
 	if (!ctx)
+#endif
 		return -EINVAL;
 
 	c = &ctx->hw;

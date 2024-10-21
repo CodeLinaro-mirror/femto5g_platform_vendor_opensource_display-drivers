@@ -157,6 +157,14 @@ module_entry(
             "msm/msm_smmu.c",
             "msm/msm_prop.c",
          ],
+         "CONFIG_DRM_SDE_SHD" : [
+            "msm/shd/shd_drm.c",
+	         "msm/shd/shd_hw.c",
+	         "msm/shd/sde_encoder_phys_shd.c",
+         ],
+         "CONFIG_DRM_MSM_LEASE" : [
+	         "msm/msm-lease/msm_lease_drv.c",
+         ],
          "CONFIG_MSM_SDE_ROTATOR":{
             True: [
                "rotator/sde_rotator_dev.c",
