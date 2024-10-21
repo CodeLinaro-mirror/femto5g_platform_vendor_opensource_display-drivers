@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -940,6 +940,18 @@ void dsi_display_toggle_error_interrupt_status(struct dsi_display * display, boo
 		ctrl = &display->ctrl[i];
 		if (!ctrl->ctrl)
 			continue;
+
+		/*
+		 * Make sure not to toggle error status and error interrupts
+		 * while a command transfer is going on.
+		 */
+
+		if (ctrl->ctrl->post_tx_queued) {
+			flush_workqueue(display->post_cmd_tx_workq);
+			cancel_work_sync(&ctrl->ctrl->post_cmd_tx_work);
+			ctrl->ctrl->post_tx_queued = false;
+		}
+
 		dsi_ctrl_toggle_error_interrupt_status(ctrl->ctrl, enable);
 	}
 }
@@ -6086,6 +6098,10 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 	}
 
 	display = platform_get_drvdata(pdev);
+	if (!display || !display->panel_node) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
 
 	/* decrement ref count */
 	of_node_put(display->panel_node);
