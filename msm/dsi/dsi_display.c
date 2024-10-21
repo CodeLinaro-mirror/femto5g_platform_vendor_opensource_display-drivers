@@ -9415,7 +9415,7 @@ int dsi_display_post_enable(struct dsi_display *display)
 			DSI_MODE_FLAG_POMS_TO_VID)
 		dsi_panel_switch_video_mode_in(display->panel);
 	else {
-		rc = dsi_panel_post_enable(display->panel);
+		rc = dsi_display_mgr_panel_post_enable(display);
 		if (rc)
 			DSI_ERR("[%s] panel post-enable failed, rc=%d\n",
 				display->name, rc);

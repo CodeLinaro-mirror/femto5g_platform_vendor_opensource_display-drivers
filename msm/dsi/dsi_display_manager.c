@@ -651,6 +651,49 @@ done:
 	return rc;
 }
 
+int dsi_display_mgr_panel_post_enable(struct dsi_display *display)
+{
+	int rc = 0;
+	struct dsi_display *m_display;
+	struct dsi_display *s_display;
+
+	if (!display || !display->panel) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	if (!display->panel->ctl_op_sync ||
+		!display->panel->need_post_on_supply)
+		return dsi_panel_post_enable(display->panel);
+
+	if (display->is_master) {
+		mutex_lock(&disp_mgr.disp_mgr_mutex);
+
+		m_display = display_manager_get_master();
+		s_display = display_manager_get_slave();
+		if (!m_display || !s_display || !m_display->panel || !s_display->panel) {
+			mutex_unlock(&disp_mgr.disp_mgr_mutex);
+			return -EINVAL;
+		}
+
+		rc = dsi_panel_post_enable(m_display->panel);
+		if (rc) {
+			DSI_ERR("[%s] panel post-enable failed on master, rc=%d\n",
+			       m_display->name, rc);
+		}
+
+		rc = dsi_panel_post_enable(s_display->panel);
+		if (rc) {
+			DSI_ERR("[%s] panel post-enable failed on slave, rc=%d\n",
+			       s_display->name, rc);
+		}
+
+		mutex_unlock(&disp_mgr.disp_mgr_mutex);
+	}
+
+	return rc;
+}
+
 int dsi_display_mgr_panel_post_unprepare(struct dsi_display *display)
 {
 	int rc = 0;
