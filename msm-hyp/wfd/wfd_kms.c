@@ -1915,7 +1915,7 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 	struct msm_hyp_plane *p = to_msm_hyp_plane(plane);
 	struct wfd_plane_info_priv *priv = container_of(p->info,
 			struct wfd_plane_info_priv, base);
-	struct msm_hyp_framebuffer *fb;
+	struct msm_hyp_framebuffer *fb = NULL;
 	struct wfd_framebuffer_priv *fb_priv;
 	struct drm_plane_state *old_state;
 	struct msm_hyp_plane_state *old_pstate, *new_pstate;
@@ -1997,12 +1997,19 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 		src_rect[1] = plane->state->src_y >> 16;
 		src_rect[2] = plane->state->src_w >> 16;
 		src_rect[3] = plane->state->src_h >> 16;
-		wfdSetPipelineAttribiv_User(
-			priv->wfd_device,
-			priv->wfd_pipeline,
-			WFD_PIPELINE_SOURCE_RECTANGLE,
-			4,
-			src_rect);
+
+		fb = to_msm_hyp_fb(plane->state->fb);
+		if (fb != NULL) {
+			/* rect dimension must not be greater than source image dimension */
+			if ((fb->base.width >= src_rect[2]) && (fb->base.height >= src_rect[3])) {
+				wfdSetPipelineAttribiv_User(
+					priv->wfd_device,
+					priv->wfd_pipeline,
+					WFD_PIPELINE_SOURCE_RECTANGLE,
+					4,
+					src_rect);
+			}
+		}
 	}
 
 	if (_wfd_kms_plane_is_rect_changed(
