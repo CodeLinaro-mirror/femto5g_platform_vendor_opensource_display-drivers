@@ -669,6 +669,7 @@ struct sde_backlight_vrr_update {
  * @freq_pattern_type_changed: True if frequency pattern type is updated
  * @vrr_cmd_state: Scenario in which VRR cmd is sent
  * @num_bl_frames: Number of frames needed for incremental dimming
+ * @disable_cont_dimming: Skip smooth dimming during continuous BL updates
  * @last_vhm_cmd: Last VHM commands queued to panel
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
@@ -761,6 +762,7 @@ struct sde_connector {
 	bool freq_pattern_type_changed;
 	enum sde_conn_vrr_cmd_state vrr_cmd_state;
 	u32 num_bl_frames;
+	bool disable_cont_dimming;
 	u64 last_vhm_cmd;
 
 	bool colorspace_updated;
