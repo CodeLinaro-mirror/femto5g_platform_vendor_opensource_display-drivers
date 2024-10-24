@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
 #include <drm/msm_drm_pp.h>
+#include <linux/vmalloc.h>
 #include "sde_reg_dma.h"
 #include "sde_hw_reg_dma_v1_color_proc.h"
 #include "sde_hw_color_proc_common_v4.h"

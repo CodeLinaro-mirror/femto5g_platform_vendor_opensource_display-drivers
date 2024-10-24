@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -354,7 +354,7 @@ static int _sde_kms_scm_call(struct sde_kms *sde_kms, int vmid)
 		SDE_DEBUG("sid_mask[%d]: %d\n", i, sec_sid[i]);
 	}
 
-	ret = dma_coerce_mask_and_coherent(&dummy, DMA_BIT_MASK(64));
+	ret = dma_coerce_mask_and_coherent(&dummy, (u64)DMA_BIT_MASK(64));
 	if (ret) {
 		SDE_ERROR("Failed to set dma mask for dummy dev %d\n", ret);
 		goto map_error;

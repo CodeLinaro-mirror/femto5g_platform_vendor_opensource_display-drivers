@@ -20,6 +20,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 #include <linux/sort.h>
 #include <linux/debugfs.h>
+#include <linux/vmalloc.h>
 #include <linux/ktime.h>
 #include <drm/sde_drm.h>
 #include <drm/drm_mode.h>

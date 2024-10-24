@@ -4214,6 +4214,8 @@ static int dp_display_remove(struct platform_device *pdev)
 end:
 #if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return rc;
+#else
+	return;
 #endif
 }
 

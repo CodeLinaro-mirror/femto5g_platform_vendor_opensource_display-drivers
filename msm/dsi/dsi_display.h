@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -305,7 +305,12 @@ struct dsi_display {
 };
 
 int dsi_display_dev_probe(struct platform_device *pdev);
+
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+void dsi_display_dev_remove(struct platform_device *pdev);
+#else
 int dsi_display_dev_remove(struct platform_device *pdev);
+#endif
 
 /**
  * dsi_display_get_num_of_displays() - returns number of display devices
