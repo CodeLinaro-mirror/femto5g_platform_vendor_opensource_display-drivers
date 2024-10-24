@@ -2338,6 +2338,9 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 			phys_enc->hw_intf->ops.enable_esync(phys_enc->hw_intf, false);
 		if (phys_enc->hw_intf->ops.enable_backup_esync)
 			phys_enc->hw_intf->ops.enable_backup_esync(phys_enc->hw_intf, false);
+
+		if (sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE)
+			sde_connector_osc_clk_ctrl(phys_enc->connector, false);
 	}
 
 	if (sde_enc && sde_enc->disp_info.vrr_caps.vrr_support) {
