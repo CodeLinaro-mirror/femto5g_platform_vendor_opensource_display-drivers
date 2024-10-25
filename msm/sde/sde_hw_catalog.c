@@ -2092,6 +2092,11 @@ static void sde_sspp_set_features(struct sde_mdss_cfg *sde_cfg,
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_900))
 			set_bit(SDE_SSPP_SCALER_DE_LPF_BLEND, &sspp->features);
 
+		if (sde_cfg->qseed_hw_rev >= QSEED_HW_VERSION_3_5) {
+			set_bit(SDE_SSPP_SCALER_QSEED_EBS, &sspp->features);
+			set_bit(SDE_SSPP_SCALER_QSEED_ADE, &sspp->features);
+		}
+
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_D00))
 			set_bit(SDE_SSPP_REC_SWI_SEPARATION, &sspp->features);
 	}
@@ -2665,8 +2670,10 @@ static int sde_intf_parse_dt(struct device_node *np,
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_A00))
 			set_bit(SDE_INTF_PANIC_CTRL, &intf->features);
 
-		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00)) {
 			set_bit(SDE_INTF_ESYNC, &intf->features);
+			set_bit(SDE_INTF_TEAR_TE_LEVEL_MODE, &intf->features);
+		}
 	}
 
 end:

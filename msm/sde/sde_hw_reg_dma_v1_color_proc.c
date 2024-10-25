@@ -122,6 +122,7 @@
 
 #define QSEED5_DE_LPF_OFFSET                   0x64
 #define QSEED5_DEFAULT_DE_LPF_BLEND            0x3FF00000
+#define QSEED7_ADAPTIVE_DE_OFFSET              0xE0
 
 /* SDE_SCALER_QSEED3LITE */
 #define QSEED3L_COEF_LUT_SWAP_BIT          0
@@ -4017,6 +4018,56 @@ skip_cac:
 	return 0;
 }
 
+static int reg_dmav1_setup_scaler3_adaptive_de(
+	struct sde_reg_dma_setup_ops_cfg *dma_write_cfg,
+	struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset, u32 *op_mode,
+	u32 dpu_idx)
+{
+	struct sde_hw_reg_dma_ops *dma_ops;
+	int rc = 0;
+	u32 ade_config[3];
+
+	dma_ops = sde_reg_dma_get_ops(dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return -EOPNOTSUPP;
+
+	if (!dma_write_cfg || !scaler3_cfg || !op_mode) {
+		DRM_ERROR("invalid dma_write_cfg %pK scaler3_cfg %pK op_mode %pK\n",
+				dma_write_cfg, scaler3_cfg, op_mode);
+		return -EINVAL;
+	}
+
+	/* return if ade isn't enabled*/
+	if (!scaler3_cfg->ade_cfg.adaptive_de_en)
+		return 0;
+
+	ade_config[0] = (scaler3_cfg->ade_cfg.strength_coeff_th & 0xFFFF) << 16 |
+				(scaler3_cfg->ade_cfg.strength_coeff_tl & 0xFFFF);
+	ade_config[1] = (scaler3_cfg->ade_cfg.strength_const & 0xFFFF) << 16 |
+				(scaler3_cfg->ade_cfg.strength_slope & 0xFF);
+	ade_config[2] = (scaler3_cfg->ade_cfg.halo_suppress_coeff & 0xFF) << 8;
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + QSEED7_ADAPTIVE_DE_OFFSET,
+		ade_config, sizeof(ade_config), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("ade write failed ret %d\n", rc);
+		return rc;
+	}
+
+	*op_mode |= BIT(9);
+
+	/**
+	 * only enable ploarity check when ade is enabled, CAC mode is off
+	 * and color space is RGB (BIT 12 is 0 of op_mode)
+	 */
+	if (scaler3_cfg->ade_cfg.polarity_en && !(BIT(12) & *op_mode) &&
+		(scaler3_cfg->cac_cfg.cac_mode == 0))
+		*op_mode |= BIT(11);
+
+	return 0;
+}
+
 static int reg_dmav1_setup_scaler3_de(struct sde_reg_dma_setup_ops_cfg *buf,
 	struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset, bool de_lpf,
 	u32 dpu_idx)
@@ -4153,6 +4204,8 @@ void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 	op_mode |= (scaler3_cfg->dir_en && scaler3_cfg->cor_en) ? BIT(5) : 0;
 	op_mode |= (scaler3_cfg->dir_en && scaler3_cfg->dir45_en) ? BIT(6) : 0;
 	op_mode |= (scaler3_cfg->dyn_exp_disabled) ? BIT(13) : 0;
+	if (test_bit(SDE_SSPP_SCALER_QSEED_EBS, &ctx->cap->features))
+		op_mode |= (scaler3_cfg->edge_bleed_sup_en) ? BIT(7) : 0;
 
 	preload =
 		((scaler3_cfg->preload_x[0] & 0x7F) << 0) |
@@ -4174,8 +4227,13 @@ void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 			de_lpf_cap = true;
 		rc = reg_dmav1_setup_scaler3_de(&dma_write_cfg,
 			scaler3_cfg, offset, de_lpf_cap, ctx->dpu_idx);
-		if (!rc)
+		if (!rc) {
 			op_mode |= BIT(8);
+			if (test_bit(SDE_SSPP_SCALER_QSEED_ADE, &ctx->cap->features))
+				reg_dmav1_setup_scaler3_adaptive_de(&dma_write_cfg,
+					scaler3_cfg, offset, &op_mode, ctx->dpu_idx);
+
+		}
 	}
 
 	ctx->ops.setup_scaler_lut(&dma_write_cfg, scaler3_cfg, offset, ctx->dpu_idx);

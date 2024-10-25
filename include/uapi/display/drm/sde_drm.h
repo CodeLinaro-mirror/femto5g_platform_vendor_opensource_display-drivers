@@ -347,6 +347,7 @@ struct sde_drm_cac {
 #define SDE_DRM_QSEED4
 #define SDE_DRM_INLINE_PREDOWNSCALE
 #define SDE_DRM_QSEED6
+#define SDE_DRM_QSEED7
 
 /**
  * struct sde_drm_scaler_v2 - version 2 of struct sde_drm_scaler
@@ -391,6 +392,14 @@ struct sde_drm_cac {
  * @dir45_en:          45/-45 degree direction filtering enable
  * @cor_en:            corner enhancer enable
  * @cac_cfg:           CAC QSEED config
+ * @edge_bleed_sup_en: Enable edge bleed supression
+ * @adaptive_de_en:    Enable adaptive DE
+ * @polarity_en:       Enable polarity check
+ * @strength_slope:    Slope(m) in y=mx+c, DG calculation
+ * @strength_const:    Constant(c) in y=mx+c, DG calculation
+ * @strength_coeff_tl: Low threshold for Dynamic gain(DG)
+ * @strength_coeff_th: High threshold for Dynamic gain(DG)
+ * @halo_suppress_coeff: Halo Suppress Multiplier
  */
 struct sde_drm_scaler_v2 {
 	/*
@@ -465,6 +474,15 @@ struct sde_drm_scaler_v2 {
 	__u32 cor_en;
 
 	struct sde_drm_cac cac_cfg;
+	__u32 edge_bleed_sup_en;
+	__u32 adaptive_de_en;
+	__u32 polarity_en;
+
+	__u32 strength_slope;
+	__u32 strength_const;
+	__u32 strength_coeff_tl;
+	__u32 strength_coeff_th;
+	__u32 halo_suppress_coeff;
 };
 
 /* Number of dest scalers supported */

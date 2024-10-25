@@ -224,6 +224,13 @@ enum {
 		IS_SDE_MAJOR_SAME((rev), SDE_HW_UBWC_VER_60)
 
 /**
+ * QSEED HW versions
+ */
+enum {
+	QSEED_HW_VERSION_3_5 = 0x3005,
+};
+
+/**
  * Supported system cache settings
  */
 #define SYS_CACHE_EN_FLAG	BIT(0)
@@ -364,6 +371,8 @@ enum {
  * @SDE_SSPP_CAC_V2          CAC v2 support
  * @SDE_SSPP_CAC_LOOPBACK    CAC loopback support
  * @SDE_SSPP_REC_SWI_SEPARATION SSPP Registers are split into CMN, REC0 and REC1
+ * @SDE_SSPP_SCALER_QSEED_EBS Edge Bleed Supresison support in QSEED block
+ * @SDE_SSPP_SCALER_QSEED_ADE Adaptive DE support in QSEED block
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -409,6 +418,8 @@ enum {
 	SDE_SSPP_CAC_V2,
 	SDE_SSPP_CAC_LOOPBACK,
 	SDE_SSPP_REC_SWI_SEPARATION,
+	SDE_SSPP_SCALER_QSEED_EBS,
+	SDE_SSPP_SCALER_QSEED_ADE,
 	SDE_SSPP_MAX
 };
 

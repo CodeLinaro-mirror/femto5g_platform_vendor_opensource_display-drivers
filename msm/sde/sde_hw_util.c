@@ -71,6 +71,9 @@ static u32 sde_hw_util_log_mask = SDE_DBG_MASK_NONE;
 #define QSEED4_DEFAULT_PRELOAD_H 0x4
 
 #define QSEED5_DEFAULT_DE_LPF_BLEND 0x3FF00000
+#define QSEED7_ADE_STRENGTH_COEFF   0xE0
+#define QSEED7_ADE_STRENGTH_MAP     0xE4
+#define QSEED7_ADE_HALO_SUPPRESS    0xE8
 
 /* SDE CAC SCALER */
 #define QSEED3_CAC_RE_PRELOAD              0xA0
@@ -268,6 +271,15 @@ void sde_set_scaler_v2(struct sde_hw_scaler3_cfg *cfg,
 	cfg->de_lpf_h = scale_v2->de_lpf_h;
 	cfg->de_lpf_l = scale_v2->de_lpf_l;
 	cfg->de_lpf_m = scale_v2->de_lpf_m;
+
+	cfg->edge_bleed_sup_en = scale_v2->edge_bleed_sup_en;
+	cfg->ade_cfg.adaptive_de_en = scale_v2->adaptive_de_en;
+	cfg->ade_cfg.polarity_en = scale_v2->polarity_en;
+	cfg->ade_cfg.strength_slope = scale_v2->strength_slope;
+	cfg->ade_cfg.strength_const = scale_v2->strength_const;
+	cfg->ade_cfg.strength_coeff_tl = scale_v2->strength_coeff_tl;
+	cfg->ade_cfg.strength_coeff_th = scale_v2->strength_coeff_th;
+	cfg->ade_cfg.halo_suppress_coeff = scale_v2->halo_suppress_coeff;
 
 	for (i = 0; i < SDE_MAX_DE_CURVES; i++) {
 		cfg->de.adjust_a[i] = scale_v2->de.adjust_a[i];
@@ -561,7 +573,7 @@ void sde_hw_setup_scaler3(struct sde_hw_blk_reg_map *c,
 		u32 scaler_offset, const struct sde_format *format, bool de_lpf)
 {
 	u32 op_mode = 0;
-	u32 phase_init, preload, src_y_rgb, src_uv, dst;
+	u32 phase_init, preload, src_y_rgb, src_uv, dst, reg_val = 0;
 	scaler_lut_type setup_lut = NULL;
 	u32 de_lpf_blend = 0;
 
@@ -654,6 +666,34 @@ void sde_hw_setup_scaler3(struct sde_hw_blk_reg_map *c,
 		} else {
 			SDE_REG_WRITE(c, QSEED3_DE_LPF_BLEND + scaler_offset,
 						QSEED5_DEFAULT_DE_LPF_BLEND);
+		}
+	}
+
+
+	if (scaler_version >= 0x3005) {
+		op_mode |= (scaler3_cfg->edge_bleed_sup_en) ? BIT(7) : 0;
+		/*check if de is being enabled*/
+		if ((BIT(8) & op_mode) && (scaler3_cfg->ade_cfg.adaptive_de_en)) {
+			reg_val = (scaler3_cfg->ade_cfg.strength_coeff_th & 0xFFFF) << 16 |
+						(scaler3_cfg->ade_cfg.strength_coeff_tl & 0xFFFF);
+			SDE_REG_WRITE(c, QSEED7_ADE_STRENGTH_COEFF + scaler_offset,
+						  reg_val);
+			reg_val = (scaler3_cfg->ade_cfg.strength_const & 0xFFFF) << 16 |
+						(scaler3_cfg->ade_cfg.strength_slope & 0XFF);
+			SDE_REG_WRITE(c, QSEED7_ADE_STRENGTH_MAP + scaler_offset, reg_val);
+			reg_val = (scaler3_cfg->ade_cfg.halo_suppress_coeff & 0xFF) << 8;
+			SDE_REG_WRITE(c, QSEED7_ADE_HALO_SUPPRESS + scaler_offset,
+						  reg_val);
+
+			op_mode |= BIT(9);
+			/**
+			 * only enable ploarity check when ade is enabled, CAC mode is off
+			 * and color space is RGB (BIT 12 is 0 of op_mode)
+			 */
+			if (scaler3_cfg->ade_cfg.polarity_en &&
+				(scaler3_cfg->cac_cfg.cac_mode == 0) && !(BIT(12) & op_mode)) {
+				op_mode |= BIT(11);
+			}
 		}
 	}
 
