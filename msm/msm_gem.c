@@ -3,6 +3,8 @@
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
+ * Copyright (C) 2015-2018 Etnaviv Project
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
  * the Free Software Foundation.
@@ -883,9 +885,20 @@ void msm_gem_vunmap(struct drm_gem_object *obj, enum msm_gem_lock subclass)
 	mutex_unlock(&msm_obj->lock);
 }
 
+static inline enum dma_data_direction msm_op_to_dma_dir(u32 op)
+{
+	if (op & MSM_PREP_READ)
+		return DMA_FROM_DEVICE;
+	else if (op & MSM_PREP_WRITE)
+		return DMA_TO_DEVICE;
+	else
+		return DMA_BIDIRECTIONAL;
+}
+
 int msm_gem_cpu_prep(struct drm_gem_object *obj, uint32_t op, ktime_t *timeout)
 {
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+	struct drm_device *dev = obj->dev;
 	bool write = !!(op & MSM_PREP_WRITE);
 	unsigned long remain =
 		op & MSM_PREP_NOSYNC ? 0 : timeout_to_jiffies(timeout);
@@ -898,14 +911,29 @@ int msm_gem_cpu_prep(struct drm_gem_object *obj, uint32_t op, ktime_t *timeout)
 	else if (ret < 0)
 		return ret;
 
-	/* TODO cache maintenance */
+	/* cache maintenance */
+	if (msm_obj->flags & MSM_BO_CACHED) {
+		dma_sync_sgtable_for_cpu(dev->dev, msm_obj->sgt,
+					 msm_op_to_dma_dir(op));
+		msm_obj->last_cpu_prep_op = op;
+	}
 
 	return 0;
 }
 
 int msm_gem_cpu_fini(struct drm_gem_object *obj)
 {
-	/* TODO cache maintenance */
+	/* cache maintenance */
+	struct drm_device *dev = obj->dev;
+	struct msm_gem_object *msm_obj = to_msm_bo(obj);
+	if (msm_obj->flags & MSM_BO_CACHED) {
+		/* fini without a prep is almost certainly a userspace error */
+		WARN_ON(msm_obj->last_cpu_prep_op == 0);
+		dma_sync_sgtable_for_device(dev->dev, msm_obj->sgt,
+			msm_op_to_dma_dir(msm_obj->last_cpu_prep_op));
+		msm_obj->last_cpu_prep_op = 0;
+	}
+
 	return 0;
 }
 
