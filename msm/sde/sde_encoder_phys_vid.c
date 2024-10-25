@@ -410,6 +410,8 @@ static void _sde_encoder_phys_vid_setup_avr(
 			return;
 		}
 
+		phys_enc->avr_slow_vtotal = mult_frac(phys_enc->cached_mode.vtotal,
+				default_fps, qsync_min_fps);
 		avr_params.default_fps = default_fps;
 		avr_params.min_fps = qsync_min_fps;
 

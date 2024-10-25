@@ -4869,8 +4869,8 @@ void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
 	struct drm_connector *drm_conn;
 	bool is_vid = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 	struct intf_status intf_status = {0};
-	u32 u_bound, l_bound, line_count, qsync_mode, trial = 0;
-	const u32 porch_margin = 20, max_trials = 20;
+	u32 u_bound, l_bound, u_bound2, l_bound2, line_count, qsync_mode, trial = 0;
+	const u32 porch_margin = 40, max_trials = 20;
 
 	if ((disp_info->intf_type != DRM_MODE_CONNECTOR_DSI) || !is_vid || !sde_enc->cesta_client
 			|| !cur_master->hw_intf || !cur_master->hw_intf->ops.get_status
@@ -4884,12 +4884,22 @@ void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
 	if (!intf_status.is_prog_fetch_en || !qsync_mode)
 		return;
 
-	/* delay flush if it is in the prog-fetch region */
+	line_count = intf_status.line_count;
+
+	/* prog fetch region of the current frame at nominal fps */
 	l_bound = mode_info->vtotal - cur_master->prog_fetch_start - porch_margin;
 	u_bound = mode_info->vtotal;
 
-	line_count = intf_status.line_count;
-	if ((line_count < l_bound) || (line_count > u_bound))
+	/*
+	 * prog fetch region of the current frame at DPU min fps
+	 * if AVR is disabled, avr_slow_total == 0, which will intentionally underflow
+	 * l_bound2, and that condition will never hit
+	 */
+	l_bound2 = cur_master->avr_slow_vtotal - cur_master->prog_fetch_start - porch_margin;
+	u_bound2 = cur_master->avr_slow_vtotal;
+
+	if ((l_bound <= line_count && line_count <= u_bound) ||
+			(l_bound2 <= line_count && line_count <= u_bound2))
 		return;
 
 	/*
@@ -4902,8 +4912,10 @@ void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
 		trial++;
 	} while ((line_count >= l_bound) && (line_count <= u_bound) && (trial < max_trials));
 
-	SDE_EVT32(line_count, l_bound, u_bound, mode_info->vtotal, cur_master->prog_fetch_start,
-			(trial == max_trials) ? SDE_EVTLOG_ERROR : trial);
+	SDE_EVT32(line_count, l_bound, u_bound, l_bound2, u_bound2, mode_info->vtotal,
+		cur_master->avr_slow_vtotal, cur_master->prog_fetch_start,
+		(trial == max_trials) ? SDE_EVTLOG_ERROR : trial);
+
 }
 
 void sde_encoder_post_commit_bl_sr_work(struct drm_encoder *drm_enc)
@@ -4959,6 +4971,7 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	struct sde_connector *c_conn;
 	bool is_dp;
 	bool is_vid_mode;
+	u32 linecount = 0xffff;
 
 	if (!drm_enc || !phys) {
 		SDE_ERROR("invalid argument(s), drm_enc %d, phys_enc %d\n",
@@ -5043,6 +5056,8 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 			&& ctl->ops.update_pending_flush)
 		ctl->ops.update_pending_flush(ctl, extra_flush);
 
+	if (phys->hw_intf && phys->hw_intf->ops.get_line_count)
+		linecount = phys->hw_intf->ops.get_line_count(phys->hw_intf);
 	phys->ops.trigger_flush(phys);
 
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
@@ -5053,7 +5068,7 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		ctl->ops.get_pending_flush(ctl, &pending_flush);
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0, ctl->idx - CTL_0,
 				pending_flush.pending_flush_mask, pend_ret_fence_cnt,
-				DPUID(drm_enc->dev), SDE_EVTLOG_FUNC_CASE1);
+				DPUID(drm_enc->dev), linecount, SDE_EVTLOG_FUNC_CASE1);
 	} else {
 		SDE_EVT32(DRMID(drm_enc), phys->intf_idx - INTF_0, ctl->idx - CTL_0,
 				pend_ret_fence_cnt, DPUID(drm_enc->dev), SDE_EVTLOG_FUNC_CASE2);
