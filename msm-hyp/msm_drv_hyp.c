@@ -699,8 +699,7 @@ static int _msm_hyp_connector_init_caps(
 		msm_hyp_prop_info_add_keystr(info, "display type",
 				connector->info->display_type);
 
-	if (connector->info->panel_orientation) {
-		switch (connector->info->panel_orientation) {
+	switch (connector->info->panel_orientation) {
 		case PANEL_ROTATE_NONE:
 			snprintf(buf, sizeof(buf), "%s", "none");
 			break;
@@ -714,10 +713,10 @@ static int _msm_hyp_connector_init_caps(
 			snprintf(buf, sizeof(buf), "%s", "vert flip");
 			break;
 		default:
+			snprintf(buf, sizeof(buf), "%s", "none");
 			break;
-		}
-		msm_hyp_prop_info_add_keystr(info, "panel orientation", buf);
 	}
+	msm_hyp_prop_info_add_keystr(info, "panel orientation", buf);
 
 	if (connector->info->extra_caps)
 		msm_hyp_prop_info_append(info, connector->info->extra_caps);
@@ -827,6 +826,17 @@ static int _msm_hyp_connector_encoder_init(struct drm_device *ddev,
 	return 0;
 }
 
+static void msm_hyp_crtc_atomic_begin(struct drm_crtc *crtc,
+		struct drm_atomic_state *old_state)
+{
+	struct drm_device *dev = crtc->dev;
+	struct msm_hyp_drm_private *priv = dev->dev_private;
+	struct msm_hyp_kms *kms = priv->kms;
+
+	if (kms->funcs && kms->funcs->crtc_atomic_begin)
+		kms->funcs->crtc_atomic_begin(kms, crtc, old_state);
+}
+
 static void msm_hyp_crtc_atomic_enable(struct drm_crtc *crtc,
 		struct drm_atomic_state *old_state)
 {
@@ -840,6 +850,7 @@ static void msm_hyp_crtc_atomic_disable(struct drm_crtc *crtc,
 }
 
 const struct drm_crtc_helper_funcs msm_hyp_crtc_helper = {
+	.atomic_begin = msm_hyp_crtc_atomic_begin,
 	.atomic_enable = msm_hyp_crtc_atomic_enable,
 	.atomic_disable = msm_hyp_crtc_atomic_disable,
 };
