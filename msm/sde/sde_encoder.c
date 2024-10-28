@@ -5614,6 +5614,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	struct drm_crtc *crtc;
 	struct sde_connector *sde_conn;
 	struct sde_crtc *sde_crtc;
+	ktime_t current_time, sr_timer_expires, diff;
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, send_still_cmd);
 	if (!sde_enc || !sde_enc->cur_master)
@@ -5641,16 +5642,21 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 
 	if (!send_still_cmd) {
 		sde_crtc = to_sde_crtc(crtc);
-		if (ktime_compare(hrtimer_get_expires(
-		  &phys_enc->sde_vrr_cfg.self_refresh_timer), ktime_get()) > 0) {
-			SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
-			return;
-		} else if (!sde_crtc || sde_crtc_frame_pending(sde_enc->crtc) ||
+		current_time = ktime_get();
+		sr_timer_expires = hrtimer_get_expires(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+
+		if (sde_crtc && (sde_crtc_frame_pending(sde_enc->crtc) ||
 				sde_crtc->kickoff_in_progress ||
-				atomic_read(&phys_enc->pending_kickoff_cnt)) {
+				atomic_read(&phys_enc->pending_kickoff_cnt))) {
 			SDE_EVT32(sde_crtc->kickoff_in_progress,
 				atomic_read(&phys_enc->pending_kickoff_cnt), SDE_EVTLOG_FUNC_CASE3);
 			return;
+		} else if (ktime_compare(sr_timer_expires, current_time) > 0) {
+			diff = ktime_sub(sr_timer_expires, current_time);
+			if (ktime_to_ns(diff) < 2 * NSEC_PER_MSEC) {
+				SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, ktime_to_ns(diff));
+				return;
+			}
 		}
 		_sde_encoder_avoid_prog_fetch_region(phys_enc, sde_enc);
 	}
