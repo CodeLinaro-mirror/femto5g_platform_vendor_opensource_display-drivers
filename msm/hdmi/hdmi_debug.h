@@ -94,4 +94,42 @@ struct hdmi_debug {
 	void (*set_mst_con)(struct hdmi_debug *hdmi_debug, int con_id);
 };
 
+/**
+ * struct hdmi_debug_in
+ * @dev: device instance of the caller
+ * @panel: instance of panel module
+ * @connector: double pointer to display connector
+ * @parser: instance of parser module
+ * @ctrl: instance of controller module
+ * @pll: instance of pll module
+ * @display: instance of display module
+ */
+struct hdmi_debug_in {
+	struct device *dev;
+	struct hdmi_panel *panel;
+	struct drm_connector *connector;
+	struct hdmi_parser *parser;
+	struct hdmi_pll *pll;
+	struct hdmi_display *display;
+};
+
+/**
+ * hdmi_debug_get() - configure and get the HDMI debug module data
+ *
+ * @in: input structure containing data to initialize the debug module
+ * return: pointer to allocated debug module data
+ *
+ * This function sets up the debug module and provides a way
+ * for debugfs input to be communicated with existing modules
+ */
+struct hdmi_debug *hdmi_debug_get(struct hdmi_debug_in *in);
+
+/**
+ * hdmi_debug_put()
+ *
+ * Cleans up hdmi_debug instance
+ *
+ * @hdmi_debug: instance of hdmi_debug
+ */
+void hdmi_debug_put(struct hdmi_debug *hdmi_debug);
 #endif /* _HDMI_DEBUG_H_ */
