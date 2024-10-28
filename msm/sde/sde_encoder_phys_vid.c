@@ -2159,6 +2159,7 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 {
 	struct intf_status intf_status = {0};
 	unsigned long lock_flags;
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 
@@ -2185,6 +2186,8 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 	/* Slave DPU timing engine is disabled */
 	phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, false);
 	sde_encoder_phys_inc_pending(phys_enc);
+	if (sde_enc->disp_info.vrr_caps.video_psr_support)
+		phys_enc->hw_intf->ops.avr_enable(phys_enc->hw_intf, false);
 
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
