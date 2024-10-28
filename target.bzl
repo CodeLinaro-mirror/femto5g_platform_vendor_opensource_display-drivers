@@ -109,6 +109,31 @@ def define_volcano(t, v, lt=None):
         lunch_target = lt,
 )
 
+def define_neo_la(t, v, lt=None):
+    define_target_variant_modules(
+        target = t,
+        variant = v,
+        registry = display_driver_modules,
+        modules = [
+            "msm_drm",
+        ],
+         config_options = [
+            "CONFIG_DRM_MSM",
+            "CONFIG_DRM_MSM_SDE",
+            "CONFIG_SYNC_FILE",
+            "CONFIG_DRM_MSM_DSI",
+            "CONFIG_DSI_PARSER",
+            "CONFIG_QCOM_MDSS_PLL",
+            "CONFIG_DRM_SDE_RSC",
+            "CONFIG_DRM_SDE_WB",
+            "CONFIG_DRM_MSM_REGISTER_LOGGING",
+            "CONFIG_DISPLAY_BUILD",
+            "CONFIG_THERMAL_OF",
+            "CONFIG_DEBUG_FS",
+        ],
+        lunch_target = lt,
+)
+
 def define_display_target():
     for (t, v) in get_all_la_variants() + get_all_le_variants() + get_all_lxc_variants():
         if t == "blair":
@@ -117,6 +142,8 @@ def define_display_target():
             define_pitti(t, v)
         if t == "pineapple":
             define_pineapple(t, v)
+        if t == "neo-la":
+            define_neo_la(t, v)
 
     for (lt, t, v) in get_all_lunch_target_base_target_variants():
         print(lt)
