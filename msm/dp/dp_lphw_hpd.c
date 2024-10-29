@@ -178,7 +178,7 @@ static void dp_lphw_hpd_tlmm_work(struct work_struct *work)
 	current_time = ktime_get();
 
 	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
-	DP_DEBUG("DP%d GPIO hpd %d->%d  state=%d\n",
+	DP_INFO("DP%d GPIO hpd %d->%d  state=%d\n",
 			lphw_hpd->parser->cell_idx,
 			lphw_hpd->last_gpio_hpd, hpd,
 			lphw_hpd->gpio_check_state);
@@ -305,11 +305,11 @@ static void dp_lphw_hpd_gpio_timer_callback(struct timer_list *t)
 			queue_work(system_highpri_wq, &lphw_hpd->gpio_work);
 		} else if (time_diff >= lphw_hpd->parser->gpio_hpd_high_debounce_ms
 				- jiffies_to_msecs(1)) {
-			DP_DEBUG("DP%d GPIO HPD goes HIGH %dms\n",
+			DP_INFO("DP%d GPIO HPD goes HIGH %dms\n",
 					lphw_hpd->parser->cell_idx, (int)time_diff);
 			lphw_hpd->last_gpio_hpd = hpd;
 			if (lphw_hpd->base.sec_hpd_high == hpd) {
-				DP_DEBUG("DP%d GPIO HPD goes HIGH->HIGH %dms, ignore glitch\n",
+				DP_INFO("DP%d GPIO HPD goes HIGH->HIGH %dms, ignore glitch\n",
 						lphw_hpd->parser->cell_idx, (int)time_diff);
 				break;
 			}
@@ -332,7 +332,7 @@ static void dp_lphw_hpd_gpio_timer_callback(struct timer_list *t)
 			}
 		} else {
 			/* Should not come here */
-			DP_DEBUG("DP%d GPIO HPD HIGH debounce not reached %dms hpd %d\n",
+			DP_INFO("DP%d GPIO HPD HIGH debounce not reached %dms hpd %d\n",
 					lphw_hpd->parser->cell_idx,
 					(int)time_diff, hpd);
 		}
@@ -352,12 +352,12 @@ static void dp_lphw_hpd_gpio_timer_callback(struct timer_list *t)
 			queue_work(system_highpri_wq, &lphw_hpd->gpio_work);
 		} else if (time_diff >= lphw_hpd->parser->gpio_hpd_low_debounce_ms
 				- jiffies_to_msecs(1)) {
-			DP_DEBUG("DP%d GPIO HPD goes LOW %dms\n",
+			DP_INFO("DP%d GPIO HPD goes LOW %dms\n",
 					lphw_hpd->parser->cell_idx,
 					(int)time_diff);
 			lphw_hpd->last_gpio_hpd = hpd;
 			if (lphw_hpd->base.sec_hpd_high == hpd) {
-				DP_DEBUG("DP%d GPIO HPD goes LOW->LOW %dms, ignore glitch\n",
+				DP_INFO("DP%d GPIO HPD goes LOW->LOW %dms, ignore glitch\n",
 						lphw_hpd->parser->cell_idx,
 						(int)time_diff);
 				break;
@@ -406,7 +406,8 @@ static void dp_lphw_hpd_host_init(struct dp_hpd *dp_hpd,
 	DP_INFO("DP%d lphw_hpd state = %d, new hpd state = %d\n",
 			lphw_hpd->parser->cell_idx, lphw_hpd->hpd, hpd);
 	if (lphw_hpd->hpd != hpd)
-		DP_INFO("DP%d HPD changes during suspension\n", lphw_hpd->parser->cell_idx);
+		DP_INFO("DP%d HPD has changed, lphw_hpd state = %d, gpio hpd state = %d\n",
+			lphw_hpd->parser->cell_idx, lphw_hpd->hpd, hpd);
 
 	/*
 	 * When we init the HPD hardware, the hardware state machine starts from
@@ -547,7 +548,7 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 	} else if ((status == DP_HPD_STATUS_CONNECTED) &&
 			!(isr & DP_IRQ_HPD_INT_STATUS)) { /* connected status */
 		if (!lphw_hpd->base.hpd_high) {
-			DP_DEBUG("DP%d connect interrupt, hpd isr state: 0x%x\n",
+			DP_INFO("DP%d connect interrupt, hpd isr state: 0x%x\n",
 					lphw_hpd->parser->cell_idx, isr);
 			lphw_hpd->hpd = true;
 			rc = queue_work(lphw_hpd->connect_wq,
@@ -556,14 +557,14 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 				DP_DEBUG("DP%d connect not queued\n",
 						lphw_hpd->parser->cell_idx);
 		} else {
-			DP_DEBUG("DP%d redundent connect interrupt, hpd isr state: 0x%x\n",
+			DP_INFO("DP%d redundent connect interrupt, hpd isr state: 0x%x\n",
 					lphw_hpd->parser->cell_idx, isr);
 		}
 
 	} else if ((status == DP_HPD_STATUS_CONNECTED) &&
 			(isr & DP_IRQ_HPD_INT_STATUS)) { /* attention interrupt */
 
-		DP_DEBUG("DP%d hpd_irq interrupt, hpd isr state: 0x%x\n",
+		DP_INFO("DP%d hpd_irq interrupt, hpd isr state: 0x%x\n",
 				lphw_hpd->parser->cell_idx, isr);
 
 		rc = queue_work(lphw_hpd->connect_wq, &lphw_hpd->attention);
@@ -641,7 +642,7 @@ int dp_lphw_hpd_register(struct dp_hpd *dp_hpd)
 	lphw_hpd->hpd = hpd;
 
 	/* Hook up GPIO interrupt, set debouncing mode and timer */
-	DP_DEBUG("DP%d GPIO initial hpd=%d\n", lphw_hpd->parser->cell_idx, hpd);
+	DP_INFO("DP%d GPIO initial hpd=%d\n", lphw_hpd->parser->cell_idx, hpd);
 	if (hpd) {
 		/* Raising edge */
 		rc = devm_request_irq(lphw_hpd->dev, lphw_hpd->irq,
@@ -670,6 +671,23 @@ int dp_lphw_hpd_register(struct dp_hpd *dp_hpd)
 				lphw_hpd->parser->cell_idx, rc);
 
 	return rc;
+}
+
+static void dp_lphw_hpd_unregister(struct dp_hpd *dp_hpd)
+{
+	struct dp_lphw_hpd_private *lphw_hpd;
+
+	if (!dp_hpd) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	lphw_hpd = container_of(dp_hpd, struct dp_lphw_hpd_private, base);
+
+	disable_irq(lphw_hpd->irq);
+	del_timer_sync(&lphw_hpd->gpio_timer);
+	DP_INFO("DP%d disable lphw_hpd irq.\n", lphw_hpd->parser->cell_idx);
+	devm_free_irq(lphw_hpd->dev, lphw_hpd->irq, lphw_hpd);
 }
 
 static void dp_lphw_hpd_deinit(struct dp_lphw_hpd_private *lphw_hpd)
@@ -807,6 +825,7 @@ struct dp_hpd *dp_lphw_hpd_get(struct device *dev, struct dp_parser *parser,
 	lphw_hpd->base.simulate_connect = dp_lphw_hpd_simulate_connect;
 	lphw_hpd->base.simulate_attention = dp_lphw_hpd_simulate_attention;
 	lphw_hpd->base.register_hpd = dp_lphw_hpd_register;
+	lphw_hpd->base.unregister_hpd = dp_lphw_hpd_unregister;
 
 	dp_lphw_hpd_init(lphw_hpd);
 

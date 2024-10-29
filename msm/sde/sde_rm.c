@@ -289,30 +289,24 @@ void sde_rm_dec_resource_info(struct sde_rm *rm, struct drm_encoder *drm_enc)
 	struct sde_rm_hw_blk *blk;
 	enum sde_hw_blk_type type;
 	struct sde_rm_state *state;
-	struct msm_drm_private *priv = rm->dev->dev_private;
-	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
 
-	/**
-	 * TODO: Revert this change and address the issue seen on gen3
-	 * where all displays are not coming up when the resource leak
-	 * is stopped.
-	 */
-	if (!drm_enc && IS_LEMANS_TARGET(sde_kms->catalog->hw_rev))
+	if (!drm_enc) {
+		SDE_ERROR("Invalid DRM encoder object\n");
 		return;
+	}
 
 	state = to_sde_rm_priv_state(rm->obj.state);
 
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry(blk, &state->hw_blks[type], list) {
-			if (IS_LEMANS_TARGET(sde_kms->catalog->hw_rev)) {
-				if (drm_enc->base.id == blk->enc_id)
-					_sde_rm_dec_resource_info(state,
-							&rm->avail_res, blk);
-			} else {
-				if (blk->enc_id)
-					_sde_rm_dec_resource_info(state,
-							&rm->avail_res, blk);
-			}
+			/**
+			 * external block is created at reserve time
+			 * for the shared displays, hence RM does not have to
+			 * provide additional resourced to the SHD
+			 */
+			if (drm_enc->base.id == blk->enc_id && !blk->ext_hw)
+				_sde_rm_dec_resource_info(state,
+						&rm->avail_res, blk);
 		}
 	}
 }
@@ -553,6 +547,11 @@ static bool _sde_rm_get_hw_locked(struct sde_rm *rm,
 	i->blk = list_prepare_entry(i->blk, blk_list, list);
 
 	list_for_each_entry_continue(i->blk, blk_list, list) {
+		if (i->blk->type >= SDE_HW_BLK_MAX) {
+			SDE_ERROR("found invalid HW block type %d\n", i->blk->type);
+			return false;
+		}
+
 		if (i->blk->type != i->type) {
 			SDE_ERROR("found incorrect block type %s on %d list\n",
 					sde_hw_blk_type_str[i->blk->type], i->type);

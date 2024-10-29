@@ -251,7 +251,8 @@ static irqreturn_t dp_display_irq(int irq, void *dev_id)
 	}
 
 	/* DP HPD isr */
-	if (dp->hpd->type ==  DP_HPD_LPHW)
+	if ((dp->hpd->type == DP_HPD_LPHW) &&
+			!dp_display_state_is(DP_STATE_SUSPENDED))
 		dp->hpd->isr(dp->hpd);
 
 	/* DP controller isr */
@@ -1370,6 +1371,12 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 		return -EISCONN;
 	}
 
+	if (dp_display_state_is(DP_STATE_SUSPENDED) &&
+			dp_display_state_is(DP_STATE_READY)) {
+		DP_WARN("DP%d hpd high, but dp is in suspended state !\n",
+		       dp->cell_idx);
+	}
+
 	dp_display_state_add(DP_STATE_CONNECTED);
 
 	dp->dp_display.max_pclk_khz = min(dp->parser->max_pclk_khz,
@@ -2365,16 +2372,22 @@ static void dp_display_hpd_check_cb(struct timer_list *t)
 	hpd = dp->hpd->hpd_high;
 	sec_hpd = dp->hpd->sec_hpd_high;
 
+	if (dp_display_state_is(DP_STATE_SUSPENDED)) {
+		DP_WARN("DP%d in suspended state, skip hpd check and does not update hpd status!\n",
+				dp->cell_idx);
+		return;
+	}
+
 	if (hpd != sec_hpd) {
-		DP_DEBUG("DP%d Mismatch of the HPD status %d:%d sim %X\n", dp->cell_idx,
+		DP_INFO("DP%d Mismatch of the HPD status %d:%d sim %X\n", dp->cell_idx,
 				hpd, sec_hpd, sim_mode);
 		if (sec_hpd) {
 			/*
 			 * DP HPD is low, but GPIO detected HPD is high,
 			 * force trigger a connect event.
 			 */
-			DP_DEBUG("DP%d HPD check mismatch, hpd=%d, force connect event\n",
-						dp->cell_idx, sec_hpd);
+			DP_DEBUG("DP%d update hpd status from %d to %d,force connect event\n",
+					dp->cell_idx, hpd, sec_hpd);
 			dp->hpd->hpd_high = sec_hpd;
 			dp->hpd->alt_mode_cfg_done = true;
 			/*
@@ -2388,8 +2401,8 @@ static void dp_display_hpd_check_cb(struct timer_list *t)
 			 * DP HPD is high, but GPIO detected HPD is low,
 			 * force trigger a disconnect event.
 			 */
-			DP_DEBUG("DP%d HPD check mismatch, hpd=%d, force disconnect event\n",
-						dp->cell_idx, sec_hpd);
+			DP_DEBUG("DP%d update hpd status from %d to %d,force disconnect event\n",
+					dp->cell_idx, hpd, sec_hpd);
 			dp->hpd->hpd_high = sec_hpd;
 			dp->hpd->alt_mode_cfg_done = false;
 			/*
@@ -4618,19 +4631,46 @@ static int dp_pm_prepare(struct device *dev)
 	dp_display_state_add(DP_STATE_SUSPENDED);
 
 	/*
-	 * If DP is not enabled but powered and suspend state
-	 * is entered, we need to power off the host to disable all
+	 * If DP port is connected & DP is not enabled
+	 * but powered and suspend state is entered,
+	 * we need to power off the host to disable all
 	 * clocks. This is needed when link training failed.
 	 */
-	if (!dp_display_state_is(DP_STATE_ENABLED) &&
+	if (dp_display_state_is(DP_STATE_CONNECTED) &&
+			!dp_display_state_is(DP_STATE_ENABLED) &&
 			dp->aux->state != DP_STATE_CTRL_POWERED_OFF) {
 		dp->ctrl->off(dp->ctrl);
-		dp_display_host_deinit(dp);
+
+		/* Turn off DP clocks and deinit aux if needed when
+		 * DP stream is not enabled (and possibly not initialized),
+		 * and DP suspend is requested.
+		 */
+		dp_display_host_unready(dp);
+
+		if (!dp_display_state_is(DP_STATE_INITIALIZED)) {
+			dp_display_stream_disable(dp, dp->panel);
+
+			dp_display_state_remove(DP_STATE_READY);
+			dp->aux->deinit(dp->aux);
+
+			dp_display_abort_hdcp(dp, true);
+
+			disable_irq(dp->irq);
+			dp->ctrl->deinit(dp->ctrl);
+			dp->hpd->host_deinit(dp->hpd, &dp->catalog->hpd);
+			dp->power->deinit(dp->power);
+		} else {
+			dp_display_host_deinit(dp);
+		}
+
 		dp->aux->state = DP_STATE_CTRL_POWERED_OFF;
 
 		if (dp->parser->force_connect_mode)
 			dp_display_send_force_connect_event(dp);
 	}
+
+	if ((dp->hpd->type == DP_HPD_LPHW) && dp->hpd->unregister_hpd)
+		dp->hpd->unregister_hpd(dp->hpd);
 
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
@@ -4648,7 +4688,7 @@ static int dp_pm_prepare(struct device *dev)
 		// Always assume we will resume with HPD low
 		dp->hpd->hpd_high = false;
 		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
-		DP_INFO("DP%d Force HPD to be low and switch to sim mode for resume\n",
+		DP_INFO("DP%d Force HPD to be low and switch to sim mode when DP suspend.\n",
 				dp->cell_idx);
 
 		mutex_unlock(&dp->session_lock);
@@ -4685,6 +4725,9 @@ static void dp_pm_complete(struct device *dev)
 		dp->aux->abort(dp->aux, false);
 		dp->ctrl->abort(dp->ctrl, false);
 	}
+
+	if ((dp->hpd->type == DP_HPD_LPHW) && dp->hpd->register_hpd)
+		dp->hpd->register_hpd(dp->hpd);
 
 	if (dp->parser && dp->parser->force_connect_mode) {
 		u32 sim_mode;
