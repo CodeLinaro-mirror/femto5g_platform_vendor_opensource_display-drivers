@@ -5614,6 +5614,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	struct drm_crtc *crtc;
 	struct sde_connector *sde_conn;
 	struct sde_crtc *sde_crtc;
+	struct intf_status intf_status = {0};
 	ktime_t current_time, sr_timer_expires, diff;
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, send_still_cmd);
@@ -5658,6 +5659,13 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 				return;
 			}
 		}
+
+		phys_enc->hw_intf->ops.get_status(phys_enc->hw_intf, &intf_status);
+		if (!intf_status.is_en) {
+			SDE_EVT32(SDE_EVTLOG_FUNC_CASE4);
+			return;
+		}
+
 		_sde_encoder_avoid_prog_fetch_region(phys_enc, sde_enc);
 	}
 
