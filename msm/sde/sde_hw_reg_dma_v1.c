@@ -984,12 +984,12 @@ int init_v1(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 
 	reg_dma[dpu_idx]->ops.check_support = check_support_v1;
 	reg_dma[dpu_idx]->ops.setup_payload = setup_payload_v1;
-	reg_dma[dpu_idx]->ops.kick_off = kick_off_v1;
+	reg_dma[dpu_idx]->ops.kick_off[MSM_DISP_OP_HWIO] = kick_off_v1;
 	reg_dma[dpu_idx]->ops.reset = reset_v1;
 	reg_dma[dpu_idx]->ops.alloc_reg_dma_buf = alloc_reg_dma_buf_v1;
 	reg_dma[dpu_idx]->ops.dealloc_reg_dma = dealloc_reg_dma_v1;
 	reg_dma[dpu_idx]->ops.reset_reg_dma_buf = reset_reg_dma_buffer_v1;
-	reg_dma[dpu_idx]->ops.last_command = last_cmd_v1;
+	reg_dma[dpu_idx]->ops.last_command[MSM_DISP_OP_HWIO] = last_cmd_v1;
 	reg_dma[dpu_idx]->ops.dump_regs = dump_regs_v1;
 	reg_dma[dpu_idx]->ops.select_queue_sb = reg_dma_select_queue_sb_v1_to_3;
 
@@ -1165,7 +1165,7 @@ int init_v2(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 		snprintf(name, sizeof(name), "REG_DMA_SB");
 		sde_dbg_reg_register_dump_range(LUTDMA_DBG_NAME, name, base,
 				base + BASE_REG_SIZE, cfg->caps->xin_id);
-		reg_dma[dpu_idx]->ops.last_command_sb = last_cmd_sb_v2;
+		reg_dma[dpu_idx]->ops.last_command_sb[MSM_DISP_OP_HWIO] = last_cmd_sb_v2;
 	}
 
 	if (cfg->caps->reg_dma_blks[REG_DMA_TYPE_DB].valid == true) {

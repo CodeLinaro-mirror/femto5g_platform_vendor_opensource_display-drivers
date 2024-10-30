@@ -1689,8 +1689,8 @@ static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 	if (!ctx)
 		return -EINVAL;
 
-	if (ops && ops->last_command)
-		return ops->last_command(ctx, DMA_CTL_QUEUE0,
+	if (ops && ops->last_command[ctx->hw.disp_op])
+		return ops->last_command[ctx->hw.disp_op](ctx, DMA_CTL_QUEUE0,
 		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
 
 	return 0;

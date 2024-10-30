@@ -1242,17 +1242,17 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 	if (test_bit(SDE_SSPP_HSIC, &features)) {
 		if (c->cap->sblk->hsic_blk.version ==
 			(SDE_COLOR_PROCESS_VER(0x1, 0x7))) {
-			c->ops.setup_pa_hue = sde_setup_pipe_pa_hue_v1_7;
-			c->ops.setup_pa_sat = sde_setup_pipe_pa_sat_v1_7;
-			c->ops.setup_pa_val = sde_setup_pipe_pa_val_v1_7;
-			c->ops.setup_pa_cont = sde_setup_pipe_pa_cont_v1_7;
+			c->ops.setup_pa_hue[MSM_DISP_OP_HWIO] = sde_setup_pipe_pa_hue_v1_7;
+			c->ops.setup_pa_sat[MSM_DISP_OP_HWIO] = sde_setup_pipe_pa_sat_v1_7;
+			c->ops.setup_pa_val[MSM_DISP_OP_HWIO] = sde_setup_pipe_pa_val_v1_7;
+			c->ops.setup_pa_cont[MSM_DISP_OP_HWIO] = sde_setup_pipe_pa_cont_v1_7;
 		}
 	}
 
 	if (test_bit(SDE_SSPP_MEMCOLOR, &features)) {
 		if (c->cap->sblk->memcolor_blk.version ==
 			(SDE_COLOR_PROCESS_VER(0x1, 0x7)))
-			c->ops.setup_pa_memcolor =
+			c->ops.setup_pa_memcolor[MSM_DISP_OP_HWIO] =
 				sde_setup_pipe_pa_memcol_v1_7;
 	}
 
@@ -1262,10 +1262,8 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
 							c);
 			if (!ret)
-				c->ops.setup_vig_gamut =
+				c->ops.setup_vig_gamut[MSM_DISP_OP_HWIO] =
 					reg_dmav1_setup_vig_gamutv5;
-			else
-				c->ops.setup_vig_gamut = NULL;
 		}
 
 		if (c->cap->sblk->gamut_blk.version ==
@@ -1273,19 +1271,15 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
 							c);
 			if (!ret)
-				c->ops.setup_vig_gamut =
+				c->ops.setup_vig_gamut[MSM_DISP_OP_HWIO] =
 					reg_dmav1_setup_vig_gamutv6;
-			else
-				c->ops.setup_vig_gamut = NULL;
 		} else if (c->cap->sblk->gamut_blk.version ==
 			(SDE_COLOR_PROCESS_VER(0x6, 0x1))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
 							c);
 			if (!ret)
-				c->ops.setup_vig_gamut =
+				c->ops.setup_vig_gamut[MSM_DISP_OP_HWIO] =
 					reg_dmav2_setup_vig_gamutv61;
-			else
-				c->ops.setup_vig_gamut = NULL;
 		}
 	}
 
@@ -1295,10 +1289,8 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_IGC,
 							c);
 			if (!ret)
-				c->ops.setup_vig_igc =
+				c->ops.setup_vig_igc[MSM_DISP_OP_HWIO] =
 					reg_dmav1_setup_vig_igcv5;
-			else
-				c->ops.setup_vig_igc = NULL;
 		}
 
 		if (c->cap->sblk->igc_blk[0].version ==
@@ -1306,10 +1298,8 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_IGC,
 							c);
 			if (!ret)
-				c->ops.setup_vig_igc =
+				c->ops.setup_vig_igc[MSM_DISP_OP_HWIO] =
 					reg_dmav1_setup_vig_igcv6;
-			else
-				c->ops.setup_vig_igc = NULL;
 		}
 	}
 
@@ -1319,10 +1309,8 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_DMA_IGC,
 							c);
 			if (!ret)
-				c->ops.setup_dma_igc =
+				c->ops.setup_dma_igc[MSM_DISP_OP_HWIO] =
 					reg_dmav1_setup_dma_igcv5;
-			else
-				c->ops.setup_dma_igc = NULL;
 		}
 	}
 
@@ -1332,72 +1320,62 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_DMA_GC,
 							c);
 			if (!ret)
-				c->ops.setup_dma_gc =
+				c->ops.setup_dma_gc[MSM_DISP_OP_HWIO] =
 					reg_dmav1_setup_dma_gcv5;
-			else
-				c->ops.setup_dma_gc = NULL;
 		}
 	}
 
 	if (test_bit(SDE_SSPP_FP16_IGC, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_igc_blk[0].version))
-		c->ops.setup_fp16_igc = sde_setup_fp16_igcv1;
+		c->ops.setup_fp16_igc[MSM_DISP_OP_HWIO] = sde_setup_fp16_igcv1;
 
 	if (test_bit(SDE_SSPP_FP16_GC, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_gc_blk[0].version))
-		c->ops.setup_fp16_gc = sde_setup_fp16_gcv1;
+		c->ops.setup_fp16_gc[MSM_DISP_OP_HWIO] = sde_setup_fp16_gcv1;
 
 	if (test_bit(SDE_SSPP_FP16_CSC, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_csc_blk[0].version))
-		c->ops.setup_fp16_csc = sde_setup_fp16_cscv1;
+		c->ops.setup_fp16_csc[MSM_DISP_OP_HWIO] = sde_setup_fp16_cscv1;
 
 	if (test_bit(SDE_SSPP_FP16_UNMULT, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_unmult_blk[0].version))
-		c->ops.setup_fp16_unmult = sde_setup_fp16_unmultv1;
+		c->ops.setup_fp16_unmult[MSM_DISP_OP_HWIO] = sde_setup_fp16_unmultv1;
 
 	if (test_bit(SDE_SSPP_UCSC_IGC, &features)) {
 		if (c->cap->sblk->ucsc_igc_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1))
-			c->ops.setup_ucsc_igc = sde_setup_ucsc_igcv1_1;
+			c->ops.setup_ucsc_igc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_igcv1_1;
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_igc_blk[0].version))
-			c->ops.setup_ucsc_igc = sde_setup_ucsc_igcv1;
-		else
-			c->ops.setup_ucsc_igc = NULL;
+			c->ops.setup_ucsc_igc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_igcv1;
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_GC, &features)) {
 		if (c->cap->sblk->ucsc_gc_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1))
-			c->ops.setup_ucsc_gc = sde_setup_ucsc_gcv1_1;
+			c->ops.setup_ucsc_gc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_gcv1_1;
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_gc_blk[0].version))
-			c->ops.setup_ucsc_gc = sde_setup_ucsc_gcv1;
-		else
-			c->ops.setup_ucsc_gc = NULL;
+			c->ops.setup_ucsc_gc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_gcv1;
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_CSC, &features)) {
 		if (c->cap->sblk->ucsc_csc_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1))
-			c->ops.setup_ucsc_csc = sde_setup_ucsc_cscv1_1;
+			c->ops.setup_ucsc_csc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_cscv1_1;
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_csc_blk[0].version))
-			c->ops.setup_ucsc_csc = sde_setup_ucsc_cscv1;
-		else
-			c->ops.setup_ucsc_csc = NULL;
+			c->ops.setup_ucsc_csc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_cscv1;
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_UNMULT, &features)) {
 		if (c->cap->sblk->ucsc_unmult_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1))
-			c->ops.setup_ucsc_unmult = sde_setup_ucsc_unmultv1_1;
+			c->ops.setup_ucsc_unmult[MSM_DISP_OP_HWIO] = sde_setup_ucsc_unmultv1_1;
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_unmult_blk[0].version))
-			c->ops.setup_ucsc_unmult = sde_setup_ucsc_unmultv1;
-		else
-			c->ops.setup_ucsc_unmult = NULL;
+			c->ops.setup_ucsc_unmult[MSM_DISP_OP_HWIO] = sde_setup_ucsc_unmultv1;
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_ALPHA_DITHER, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_alpha_dither_blk[0].version))
-		c->ops.setup_ucsc_alpha_dither = sde_setup_ucsc_alpha_ditherv1;
+		c->ops.setup_ucsc_alpha_dither[MSM_DISP_OP_HWIO] = sde_setup_ucsc_alpha_ditherv1;
 }
 
 void sde_hw_sspp_setup_inverse_pma(struct sde_hw_pipe *ctx,
@@ -1600,106 +1578,107 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 	int ret;
 
 	if (test_bit(SDE_SSPP_SRC, &features)) {
-		c->ops.setup_format = sde_hw_sspp_setup_format;
-		c->ops.setup_rects = sde_hw_sspp_setup_rects;
-		c->ops.setup_sourceaddress = sde_hw_sspp_setup_sourceaddress;
-		c->ops.get_sourceaddress = sde_hw_sspp_get_source_addr;
-		c->ops.setup_solidfill = sde_hw_sspp_setup_solidfill;
-		c->ops.setup_pe = sde_hw_sspp_setup_pe_config;
-		c->ops.setup_secure_address = sde_hw_sspp_setup_secure;
-		c->ops.set_src_split_order = sde_hw_sspp_set_src_split_order;
+		c->ops.setup_format[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_format;
+		c->ops.setup_rects[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_rects;
+		c->ops.setup_sourceaddress[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_sourceaddress;
+		c->ops.get_sourceaddress[MSM_DISP_OP_HWIO] = sde_hw_sspp_get_source_addr;
+		c->ops.setup_solidfill[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_solidfill;
+		c->ops.setup_pe[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_pe_config;
+		c->ops.setup_secure_address[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_secure;
+		c->ops.set_src_split_order[MSM_DISP_OP_HWIO] = sde_hw_sspp_set_src_split_order;
 	}
 
 	if (test_bit(SDE_SSPP_EXCL_RECT, &features))
-		c->ops.setup_excl_rect = _sde_hw_sspp_setup_excl_rect;
+		c->ops.setup_excl_rect[MSM_DISP_OP_HWIO] = _sde_hw_sspp_setup_excl_rect;
 
 	if (test_bit(SDE_PERF_SSPP_QOS, &features)) {
-		c->ops.setup_qos_lut =
+		c->ops.setup_qos_lut[MSM_DISP_OP_HWIO] =
 			sde_hw_sspp_setup_qos_lut;
-		c->ops.setup_qos_ctrl = sde_hw_sspp_setup_qos_ctrl;
+		c->ops.setup_qos_ctrl[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_qos_ctrl;
 	}
 
 	if (test_bit(SDE_PERF_SSPP_TS_PREFILL, &perf_features))
-		c->ops.setup_ts_prefill = sde_hw_sspp_setup_ts_prefill;
+		c->ops.setup_ts_prefill[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_ts_prefill;
 
 	if (test_bit(SDE_SSPP_CSC, &features) ||
 		test_bit(SDE_SSPP_CSC_10BIT, &features))
-		c->ops.setup_csc = sde_hw_sspp_setup_csc;
+		c->ops.setup_csc[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_csc;
 
 	if (test_bit(SDE_SSPP_DGM_CSC, &features))
-		c->ops.setup_dgm_csc = sde_hw_sspp_setup_dgm_csc;
+		c->ops.setup_dgm_csc[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_dgm_csc;
 
 	if (test_bit(SDE_SSPP_SCALER_QSEED2, &features)) {
-		c->ops.setup_sharpening = sde_hw_sspp_setup_sharpening;
-		c->ops.setup_scaler = sde_hw_sspp_setup_scaler;
+		c->ops.setup_sharpening[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_sharpening;
+		c->ops.setup_scaler[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_scaler;
 	}
 
 	if (sde_hw_sspp_multirect_enabled(c->cap))
-		c->ops.update_multirect = sde_hw_sspp_update_multirect;
+		c->ops.update_multirect[MSM_DISP_OP_HWIO] = sde_hw_sspp_update_multirect;
 
 	if (test_bit(SDE_SSPP_CAC_V2, &features) ||
 			test_bit(SDE_SSPP_CAC_LOOPBACK, &features)) {
-		c->ops.setup_img_size = sde_hw_sspp_setup_img_size;
-		c->ops.setup_cac_ctrl = sde_hw_sspp_setup_cac;
+		c->ops.setup_img_size[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_img_size;
+		c->ops.setup_cac_ctrl[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_cac;
 	}
 
 	if (test_bit(SDE_SSPP_SCALER_QSEED3, &features) ||
 			test_bit(SDE_SSPP_SCALER_QSEED3LITE, &features)) {
-		c->ops.setup_scaler = sde_hw_sspp_setup_scaler3;
-		c->ops.setup_scaler_lut = is_qseed3_rev_qseed3lite(
+		c->ops.setup_scaler[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_scaler3;
+		c->ops.setup_scaler_lut[MSM_DISP_OP_HWIO] = is_qseed3_rev_qseed3lite(
 				c->catalog) ? reg_dmav1_setup_scaler3lite_lut
 				: reg_dmav1_setup_scaler3_lut;
 		ret = reg_dmav1_init_sspp_op_v4(is_qseed3_rev_qseed3lite(
 					c->catalog) ? SDE_SSPP_SCALER_QSEED3LITE
 					: SDE_SSPP_SCALER_QSEED3, c);
 		if (!ret)
-			c->ops.setup_scaler = reg_dmav1_setup_vig_qseed3;
+			c->ops.setup_scaler[MSM_DISP_OP_HWIO] = reg_dmav1_setup_vig_qseed3;
 		else
-			c->ops.setup_scaler_cac =
+			c->ops.setup_scaler_cac[MSM_DISP_OP_HWIO] =
 				(test_bit(SDE_SSPP_CAC_V2, &features) ||
 				test_bit(SDE_SSPP_CAC_LOOPBACK, &features)) ?
 				sde_hw_sspp_setup_scaler_cac : NULL;
 	}
 
 	if (test_bit(SDE_SSPP_MULTIRECT_ERROR, &features)) {
-		c->ops.get_meta_error = sde_hw_sspp_get_meta_error;
-		c->ops.clear_meta_error = sde_hw_sspp_clear_meta_error;
+		c->ops.get_meta_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_get_meta_error;
+		c->ops.clear_meta_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_clear_meta_error;
 
-		c->ops.get_ubwc_error = sde_hw_sspp_get_ubwc_error_v1;
-		c->ops.clear_ubwc_error = sde_hw_sspp_clear_ubwc_error_v1;
+		c->ops.get_ubwc_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_get_ubwc_error_v1;
+		c->ops.clear_ubwc_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_clear_ubwc_error_v1;
 	} else {
-		c->ops.get_ubwc_error = sde_hw_sspp_get_ubwc_error;
-		c->ops.clear_ubwc_error = sde_hw_sspp_clear_ubwc_error;
+		c->ops.get_ubwc_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_get_ubwc_error;
+		c->ops.clear_ubwc_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_clear_ubwc_error;
 	}
 
 	if (test_bit(SDE_SSPP_PREDOWNSCALE, &features))
-		c->ops.setup_pre_downscale = sde_hw_sspp_setup_pre_downscale;
+		c->ops.setup_pre_downscale[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_pre_downscale;
 
 	if (test_bit(SDE_PERF_SSPP_SYS_CACHE, &perf_features))
-		c->ops.setup_sys_cache = sde_hw_sspp_setup_sys_cache;
+		c->ops.setup_sys_cache[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_sys_cache;
 
 	if (test_bit(SDE_PERF_SSPP_CDP, &perf_features))
-		c->ops.setup_cdp = sde_hw_sspp_setup_cdp;
+		c->ops.setup_cdp[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_cdp;
 
 	if (test_bit(SDE_PERF_SSPP_UIDLE, &perf_features)) {
-		c->ops.setup_uidle = sde_hw_sspp_setup_uidle;
+		c->ops.setup_uidle[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_uidle;
 		if (test_bit(SDE_PERF_SSPP_UIDLE_FILL_LVL_SCALE, &perf_features))
-			c->ops.setup_uidle_fill_scale = sde_hw_sspp_setup_uidle_fill_scale;
+			c->ops.setup_uidle_fill_scale[MSM_DISP_OP_HWIO] =
+					sde_hw_sspp_setup_uidle_fill_scale;
 	}
 
 	setup_layer_ops_colorproc(c, features, is_virtual_pipe);
 
 	if (test_bit(SDE_SSPP_DGM_INVERSE_PMA, &features))
-		c->ops.setup_inverse_pma = sde_hw_sspp_setup_dgm_inverse_pma;
+		c->ops.setup_inverse_pma[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_dgm_inverse_pma;
 	else if (test_bit(SDE_SSPP_INVERSE_PMA, &features))
-		c->ops.setup_inverse_pma = sde_hw_sspp_setup_inverse_pma;
+		c->ops.setup_inverse_pma[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_inverse_pma;
 
 	if (test_bit(SDE_SSPP_UBWC_STATS, &features)) {
-		c->ops.set_ubwc_stats_roi = sde_hw_sspp_ubwc_stats_set_roi;
-		c->ops.get_ubwc_stats_data = sde_hw_sspp_ubwc_stats_get_data;
+		c->ops.set_ubwc_stats_roi[MSM_DISP_OP_HWIO] = sde_hw_sspp_ubwc_stats_set_roi;
+		c->ops.get_ubwc_stats_data[MSM_DISP_OP_HWIO] = sde_hw_sspp_ubwc_stats_get_data;
 	}
 	if (test_bit(SDE_SSPP_LINE_INSERTION, &features))
-		c->ops.setup_line_insertion = sde_hw_sspp_setup_line_insertion;
+		c->ops.setup_line_insertion[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_line_insertion;
 }
 
 static struct sde_sspp_cfg *_sspp_offset(enum sde_sspp sspp,

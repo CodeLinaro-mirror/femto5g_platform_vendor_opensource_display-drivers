@@ -358,14 +358,14 @@ struct sde_hw_reg_dma_ops {
 			     enum sde_reg_dma_blk blk,
 			     bool *is_supported);
 	int (*setup_payload)(struct sde_reg_dma_setup_ops_cfg *cfg);
-	int (*kick_off)(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
+	int (*kick_off[MSM_DISP_OP_MAX])(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
 	int (*reset)(struct sde_hw_ctl *ctl);
 	struct sde_reg_dma_buffer* (*alloc_reg_dma_buf)(u32 size, u32 dpu_idx);
 	int (*dealloc_reg_dma)(struct sde_reg_dma_buffer *lut_buf, u32 dpu_idx);
 	int (*reset_reg_dma_buf)(struct sde_reg_dma_buffer *buf);
-	int (*last_command)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
+	int (*last_command[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
-	int (*last_command_sb)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
+	int (*last_command_sb[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
 	void (*dump_regs)(u32 dpu_idx);
 	enum sde_reg_dma_queue (*select_queue_sb)(void);
