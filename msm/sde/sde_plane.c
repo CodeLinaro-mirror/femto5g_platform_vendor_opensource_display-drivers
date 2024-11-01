@@ -25,7 +25,7 @@
 #include <drm/msm_drm_pp.h>
 #include <linux/version.h>
 #include <drm/drm_blend.h>
-
+#include <linux/vmalloc.h>
 #include "msm_prop.h"
 #include "msm_drv.h"
 

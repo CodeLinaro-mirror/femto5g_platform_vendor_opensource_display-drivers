@@ -14,7 +14,7 @@
 #include <linux/dma-buf.h>
 #include <linux/slab.h>
 #include <linux/sched/clock.h>
-
+#include <linux/vmalloc.h>
 #include "sde_dbg.h"
 #include "sde_trace.h"
 
