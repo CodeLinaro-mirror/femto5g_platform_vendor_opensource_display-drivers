@@ -99,6 +99,7 @@
 #define EPT_BACKOFF_THRESHOLD	(3 * NSEC_PER_MSEC)
 
 #define MAX_EPT_TIMEOUT_US	(10 * USEC_PER_SEC)
+#define BL_HEADS_UP_TIME_US	1500
 
 #define IS_ROI_UPDATED(a, b) (a.x1 != b.x1 || a.x2 != b.x2 || \
 			a.y1 != b.y1 || a.y2 != b.y2)
@@ -6233,7 +6234,7 @@ void sde_encoder_handle_next_backlight_update(struct drm_encoder *drm_enc)
 		ktime_to_us(vrr_cfg->last_commit_ept_in_ns));
 
 	prev_frame_inteval_ts_in_ns = vrr_cfg->last_commit_ept_in_ns;
-	blv_cmd_heads_up = 3 * NSEC_PER_MSEC;
+	blv_cmd_heads_up = BL_HEADS_UP_TIME_US * NSEC_PER_USEC;
 
 	/*
 	 * Get the frame interval boundary where
@@ -6501,18 +6502,41 @@ void sde_encoder_handle_self_refresh_video_psr(struct sde_encoder_phys *phys_enc
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct sde_encoder_vrr_cfg *vrr_cfg = &phys_enc->sde_vrr_cfg;
 	u64 dpu_min_trigger, dpu_min_ns, avr_step_in_ns;
-	struct sde_connector *sde_conn;
+	ktime_t current_time, backlight_sr_timer_expires, diff;
+	struct sde_connector *sde_conn = NULL;
 	enum sde_crtc_vm_req vm_req;
+	u32 nominal_vsync_us = 8333;
+
+	if (sde_enc->cur_master && sde_enc->cur_master->connector)
+		sde_conn = to_sde_connector(sde_enc->cur_master->connector);
+
+	if (sde_conn && sde_conn->bl_vrr.bl_increment_in_progress) {
+		backlight_sr_timer_expires =
+			hrtimer_get_expires(&phys_enc->sde_vrr_cfg.backlight_timer);
+		current_time = ktime_get();
+		/* handle timer delays or frame interval change case */
+		if (ktime_compare(backlight_sr_timer_expires, current_time) > 0) {
+			diff = ktime_sub(backlight_sr_timer_expires, current_time);
+			if (sde_enc->mode_info.frame_rate)
+				nominal_vsync_us = USEC_PER_SEC / sde_enc->mode_info.frame_rate;
+
+			if (ktime_to_ns(diff) < 2 * NSEC_PER_MSEC) {
+				SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, ktime_to_ns(diff),
+					nominal_vsync_us);
+				hrtimer_cancel(&phys_enc->sde_vrr_cfg.backlight_timer);
+				hrtimer_start(&phys_enc->sde_vrr_cfg.backlight_timer,
+				 ns_to_ktime(NSEC_PER_USEC *
+				 (nominal_vsync_us - BL_HEADS_UP_TIME_US)), HRTIMER_MODE_REL);
+			}
+		}
+	}
 
 	if (!new_commit)
 		return;
 
-	if (sde_enc->cur_master && sde_enc->cur_master->connector) {
-		sde_conn = to_sde_connector(sde_enc->cur_master->connector);
-		if (sde_conn->vrr_cmd_state == VRR_CMD_IDLE_ENTRY_START) {
-			SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
-			return;
-		}
+	if (sde_conn && sde_conn->vrr_cmd_state == VRR_CMD_IDLE_ENTRY_START) {
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2);
+		return;
 	}
 
 	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
@@ -6522,7 +6546,7 @@ void sde_encoder_handle_self_refresh_video_psr(struct sde_encoder_phys *phys_enc
 
 	if (!sde_crtc_frame_pending(sde_enc->crtc) ||
 			phys_enc->sde_vrr_cfg.min_sr_state == SDE_MIN_SR_IN_PROGRESS) {
-		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, sde_crtc_frame_pending(sde_enc->crtc));
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE3, sde_crtc_frame_pending(sde_enc->crtc));
 		return;
 	}
 	phys_enc->sde_vrr_cfg.min_sr_state = SDE_MIN_SR_SCHEDULED;
