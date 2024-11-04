@@ -509,31 +509,36 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 		return;
 	}
 
-	if (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) {
+	if ((c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) ||
+		 (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x0))) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_AIQE, c);
-		if (!ret) {
-			if (c->cap->sblk->aiqe.mdnie_supported) {
-				c->ops.setup_mdnie = reg_dmav1_setup_mdnie_v1;
-				c->ops.setup_mdnie_art = sde_setup_mdnie_art_v1;
-				c->ops.reset_mdnie_art = sde_reset_mdnie_art;
-				c->ops.setup_mdnie_psr = sde_setup_mdnie_psr;
-			}
+		if (ret)
+			return;
 
-			if (c->cap->sblk->aiqe.ssrc_supported) {
-				c->ops.validate_aiqe_ssrc_data = sde_validate_aiqe_ssrc_data_v1;
-				c->ops.setup_aiqe_ssrc_config =
-						reg_dmav1_setup_aiqe_ssrc_config_v1;
-				c->ops.setup_aiqe_ssrc_data = reg_dmav1_setup_aiqe_ssrc_data_v1;
-			}
+		if (c->cap->sblk->aiqe.mdnie_supported) {
+			c->ops.setup_mdnie = reg_dmav1_setup_mdnie_v1;
+			c->ops.setup_mdnie_art = sde_setup_mdnie_art_v1;
+			c->ops.reset_mdnie_art = sde_reset_mdnie_art;
+			c->ops.setup_mdnie_psr = sde_setup_mdnie_psr;
 
-			if (c->cap->sblk->aiqe.copr_supported) {
-				c->ops.setup_copr = sde_setup_copr_v1;
-				c->ops.read_copr_status = sde_read_copr_status;
-			}
-
-			if (c->cap->sblk->aiqe.abc_supported)
-				c->ops.setup_aiqe_abc = sde_setup_aiqe_abc_v1;
+			if (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x0))
+				c->ops.setup_mdnie = reg_dmav1_setup_mdnie_v2;
 		}
+
+		if (c->cap->sblk->aiqe.ssrc_supported) {
+			c->ops.validate_aiqe_ssrc_data = sde_validate_aiqe_ssrc_data_v1;
+			c->ops.setup_aiqe_ssrc_config =
+					reg_dmav1_setup_aiqe_ssrc_config_v1;
+			c->ops.setup_aiqe_ssrc_data = reg_dmav1_setup_aiqe_ssrc_data_v1;
+		}
+
+		if (c->cap->sblk->aiqe.copr_supported) {
+			c->ops.setup_copr = sde_setup_copr_v1;
+			c->ops.read_copr_status = sde_read_copr_status;
+		}
+
+		if (c->cap->sblk->aiqe.abc_supported)
+			c->ops.setup_aiqe_abc = sde_setup_aiqe_abc_v1;
 	}
 }
 
