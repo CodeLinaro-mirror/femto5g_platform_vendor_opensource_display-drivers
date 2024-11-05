@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -38,6 +38,8 @@
 #define DITHER_VER_MAJOR_1 1
 /* supports LUMA Dither */
 #define DITHER_VER_MAJOR_2 2
+/* supports 16x16 dither matrix sizes */
+#define DITHER_VER_MAJOR_3 3
 
 #define MERGE_3D_MODE 0x004
 #define MERGE_3D_MUX  0x000
@@ -301,35 +303,39 @@ static int sde_hw_pp_setup_dsc(struct sde_hw_pingpong *pp)
 	return 0;
 }
 
-static int sde_hw_pp_setup_dither(struct sde_hw_pingpong *pp,
+static int sde_hw_pp_setup_dither_validate(struct sde_hw_pingpong *pp,
 					void *cfg, size_t len)
 {
-	struct sde_hw_blk_reg_map *c;
 	struct drm_msm_dither *dither = (struct drm_msm_dither *)cfg;
-	u32 base = 0, offset = 0, data = 0, i = 0;
 
 	if (!pp)
 		return -EINVAL;
 
-	c = &pp->hw;
-	base = pp->caps->sblk->dither.base;
-	if (!dither) {
-		/* dither property disable case */
-		SDE_REG_WRITE(c, base, 0);
-		return 0;
-	}
-
-	if (len != sizeof(struct drm_msm_dither)) {
+	if (dither && (len != sizeof(struct drm_msm_dither))) {
 		DRM_ERROR("input len %zu, expected len %zu\n", len,
 			sizeof(struct drm_msm_dither));
 		return -EINVAL;
 	}
 
-	if (dither->c0_bitdepth >= DITHER_DEPTH_MAP_INDEX ||
-		dither->c1_bitdepth >= DITHER_DEPTH_MAP_INDEX ||
-		dither->c2_bitdepth >= DITHER_DEPTH_MAP_INDEX ||
-		dither->c3_bitdepth >= DITHER_DEPTH_MAP_INDEX)
-		return -EINVAL;
+	if (dither != NULL) {
+		if (dither->c0_bitdepth >= DITHER_DEPTH_MAP_INDEX ||
+			dither->c1_bitdepth >= DITHER_DEPTH_MAP_INDEX ||
+			dither->c2_bitdepth >= DITHER_DEPTH_MAP_INDEX ||
+			dither->c3_bitdepth >= DITHER_DEPTH_MAP_INDEX)
+			return -EINVAL;
+	}
+
+	return 0;
+}
+
+static void sde_hw_pp_setup_dither_common(struct sde_hw_pingpong *pp, void *cfg, u32 *opmode)
+{
+	struct sde_hw_blk_reg_map *c;
+	struct drm_msm_dither *dither = (struct drm_msm_dither *)cfg;
+	u32 base = 0, offset = 0, data = 0;
+
+	c = &pp->hw;
+	base = pp->caps->sblk->dither.base;
 
 	offset += 4;
 	data = dither_depth_map[dither->c0_bitdepth] & REG_MASK(2);
@@ -339,6 +345,37 @@ static int sde_hw_pp_setup_dither(struct sde_hw_pingpong *pp,
 	data |= (dither->temporal_en) ? (1 << 8) : 0;
 	SDE_REG_WRITE(c, base + offset, data);
 
+	*opmode = BIT(0);
+
+	if (test_bit(SDE_PINGPONG_DITHER_LUMA, &pp->caps->features)
+				&& (dither->flags & DITHER_LUMA_MODE)) {
+		*opmode |= BIT(4);
+	}
+}
+
+static int sde_hw_pp_setup_dither(struct sde_hw_pingpong *pp,
+					void *cfg, size_t len)
+{
+	struct sde_hw_blk_reg_map *c;
+	struct drm_msm_dither *dither = (struct drm_msm_dither *)cfg;
+	u32 base = 0, offset = 0, data = 0, i = 0;
+	u32 opmode = 0;
+	int ret = 0;
+
+	ret = sde_hw_pp_setup_dither_validate(pp, cfg, len);
+	if (ret)
+		return ret;
+
+	c = &pp->hw;
+	base = pp->caps->sblk->dither.base;
+
+	if (!dither) {
+		/* dither property disable case */
+		SDE_REG_WRITE(c, base, 0);
+		return 0;
+	}
+
+	offset += 4;
 	for (i = 0; i < DITHER_MATRIX_SZ - 3; i += 4) {
 		offset += 4;
 		data = (dither->matrix[i] & REG_MASK(4)) |
@@ -348,11 +385,94 @@ static int sde_hw_pp_setup_dither(struct sde_hw_pingpong *pp,
 		SDE_REG_WRITE(c, base + offset, data);
 	}
 
-	if (test_bit(SDE_PINGPONG_DITHER_LUMA, &pp->caps->features)
-				&& (dither->flags & DITHER_LUMA_MODE))
-		SDE_REG_WRITE(c, base, 0x11);
-	else
-		SDE_REG_WRITE(c, base, 1);
+	sde_hw_pp_setup_dither_common(pp, cfg, &opmode);
+	SDE_REG_WRITE(c, base, opmode);
+
+	return 0;
+}
+
+static int sde_hw_pp_setup_dither_v3(struct sde_hw_pingpong *pp,
+					void *cfg, size_t len)
+{
+	struct sde_hw_blk_reg_map *c;
+	struct drm_msm_dither *dither = (struct drm_msm_dither *)cfg;
+	u32 base = 0, offset = 0, data = 0, i = 0, row = 0, col = 0;
+	u32 opmode = 0;
+	u16 dither_matrix_reg;
+	u32 matrix_size = 16, stride = 4; // DEFAULT Dither Matrix size 4x4
+	int ret = 0;
+
+	ret = sde_hw_pp_setup_dither_validate(pp, cfg, len);
+	if (ret)
+		return ret;
+
+	c = &pp->hw;
+	base = pp->caps->sblk->dither.base;
+
+	if (!dither) {
+		/* dither property disable case */
+		SDE_REG_WRITE(c, base, 0);
+		return 0;
+	}
+
+	// Ensuring valid dither_matrix_select range - [0, 4]
+	if ((dither->dither_matrix_select < DITHER_MATRIX_SELECT_NONE) ||
+		(dither->dither_matrix_select > DITHER_MATRIX_SELECT_16_16)) {
+		DRM_ERROR("Invalid dither_matrix_select: %d\n", dither->dither_matrix_select);
+		return -EINVAL;
+	}
+
+	offset += 4;
+	if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_NONE) {
+		// DITHER_MATRIX_MODE_SELECT is not set, fallback to
+		// legacy mode of matrixvalues programming
+		for (i = 0; i < DITHER_MATRIX_SZ - 3; i += 4) {
+			offset += 4;
+			data = (dither->matrix[i] & REG_MASK(4)) |
+				((dither->matrix[i + 1] & REG_MASK(4)) << 4) |
+				((dither->matrix[i + 2] & REG_MASK(4)) << 8) |
+				((dither->matrix[i + 3] & REG_MASK(4)) << 12);
+			SDE_REG_WRITE(c, base + offset, data);
+		}
+	} else {
+		// DITHER_MATRIX_MODE_SELECT is set, use new matrix address
+		// and value to set dither matrix values
+		if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_6_6) {
+			matrix_size = 36;
+			stride = 6;
+		} else if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_8_8) {
+			matrix_size = 64;
+			stride = 8;
+		} else if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_16_16) {
+			matrix_size = 256;
+			stride = 16;
+		}
+
+		for (i = 0; i < matrix_size; i++) {
+			row = i / stride;
+			col = i % stride;
+
+			dither_matrix_reg = ((dither->dither_matrix_extended[i] & REG_MASK(6)) |
+								((row * 16 + col) << 8));
+			SDE_REG_WRITE(c, base + 0x20, dither_matrix_reg);
+		}
+	}
+
+	sde_hw_pp_setup_dither_common(pp, cfg, &opmode);
+
+	// v3 specific opmode settings
+	opmode |= BIT(1) | BIT(2);
+	opmode |= (dither->flags & DITHER_OFFSET_ENABLE) ? BIT(5) : 0;
+	if (dither->dither_matrix_select != DITHER_MATRIX_SELECT_NONE) {
+		opmode |= BIT(3);
+		if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_6_6)
+			opmode |= (0x1 << 6);
+		else if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_8_8)
+			opmode |= (0x2 << 6);
+		else if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_16_16)
+			opmode |= (0x3 << 6);
+	}
+	SDE_REG_WRITE(c, base, opmode);
 
 	return 0;
 }
@@ -508,6 +628,9 @@ static void _setup_pingpong_ops(struct sde_hw_pingpong_ops *ops,
 	case DITHER_VER_MAJOR_1:
 	case DITHER_VER_MAJOR_2:
 		ops->setup_dither = sde_hw_pp_setup_dither;
+		break;
+	case DITHER_VER_MAJOR_3:
+		ops->setup_dither = sde_hw_pp_setup_dither_v3;
 		break;
 	default:
 		ops->setup_dither = NULL;

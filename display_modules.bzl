@@ -88,6 +88,7 @@ module_entry(
             "msm/sde/sde_hw_lm.c",
             "msm/sde/sde_hw_ctl.c",
             "msm/sde/sde_hw_util.c",
+            "msm/sde/sde_hw_sspp_v1.c",
             "msm/sde/sde_hw_sspp.c",
             "msm/sde/sde_hw_wb.c",
             "msm/sde/sde_hw_pingpong.c",
@@ -113,6 +114,7 @@ module_entry(
             "msm/sde/sde_color_processing_aiqe.c",
             "msm/sde/sde_hw_color_proc_aiqe_v1.c",
             "msm/sde/sde_aiqe_common.c",
+            "msm/sde/sde_loopback.c",
          ],
          "CONFIG_DRM_SDE_WB" : [
             "msm/sde/sde_wb.c",

@@ -5,6 +5,7 @@
  */
 
 #include <drm/msm_drm_pp.h>
+#include <linux/vmalloc.h>
 #include "sde_reg_dma.h"
 #include "sde_hw_reg_dma_v1_color_proc.h"
 #include "sde_hw_color_proc_common_v4.h"
@@ -122,6 +123,7 @@
 
 #define QSEED5_DE_LPF_OFFSET                   0x64
 #define QSEED5_DEFAULT_DE_LPF_BLEND            0x3FF00000
+#define QSEED7_ADAPTIVE_DE_OFFSET              0xE0
 
 /* SDE_SCALER_QSEED3LITE */
 #define QSEED3L_COEF_LUT_SWAP_BIT          0
@@ -239,6 +241,10 @@ static u32 sspp_mapping[SSPP_MAX] = {
 	[SSPP_VIG1] = VIG1,
 	[SSPP_VIG2] = VIG2,
 	[SSPP_VIG3] = VIG3,
+	[SSPP_VIG4] = VIG4,
+	[SSPP_VIG5] = VIG5,
+	[SSPP_VIG6] = VIG6,
+	[SSPP_VIG7] = VIG7,
 	[SSPP_DMA0] = DMA0,
 	[SSPP_DMA1] = DMA1,
 	[SSPP_DMA2] = DMA2,
@@ -3877,7 +3883,7 @@ static int reg_dmav1_setup_cac(struct sde_hw_pipe *ctx,
 	phase_step_uv_h = scaler3_cfg->phase_step_x[1] & 0xFFFFFF;
 	phase_step_uv_v = scaler3_cfg->phase_step_y[1] & 0xFFFFFF;
 
-	if (cac_cfg->cac_mode == 0)
+	if (!cac_cfg->cac_mode && !cac_cfg->fov_mode)
 		goto skip_cac;
 
 	phase_step_y_h |= (cac_cfg->cac_le_inc_skip_x[0] << 29) |
@@ -3893,6 +3899,7 @@ static int reg_dmav1_setup_cac(struct sde_hw_pipe *ctx,
 
 	op_mode |= (cac_cfg->cac_mode << 1);
 	op_mode |= (cac_cfg->uv_filter_cfg & 0x3) << 24;
+	op_mode |= (cac_cfg->fov_mode & 0x3) << 20;
 
 	preload_re = ((cac_cfg->cac_re_preload_y[1] & 0x7F) << 24) |
 			((cac_cfg->cac_re_preload_y[0] & 0x7F) << 8);
@@ -3957,6 +3964,36 @@ static int reg_dmav1_setup_cac(struct sde_hw_pipe *ctx,
 		return rc;
 	}
 
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x68, &cac_cfg->cac_asym_phase_step_h,
+		sizeof(cac_cfg->cac_asym_phase_step_h), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting cac_asym_phase_step_h failed ret %d\n", rc);
+		return rc;
+	}
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x6C, &cac_cfg->cac_asym_phase_step_v,
+		 sizeof(cac_cfg->cac_asym_phase_step_v),  REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting cac_asym_phase_step_v failed ret %d\n", rc);
+		return rc;
+	}
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x88, &cac_cfg->cac_re_phase_step_v,
+		sizeof(cac_cfg->cac_re_phase_step_v), REG_SINGLE_WRITE, 0, 0, 0);
+	if (rc) {
+		DRM_ERROR("setting cac_re_phase_step_v failed ret %d\n", rc);
+		return rc;
+	}
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x8C, &cac_cfg->cac_re_asym_phase_step_v,
+		sizeof(cac_cfg->cac_re_asym_phase_step_v), REG_SINGLE_WRITE, 0, 0, 0);
+	if (rc) {
+		DRM_ERROR("setting cac_re_asym_phase_step_v failed ret %d\n", rc);
+		return rc;
+	}
+
 skip_cac:
 	cache[0] = phase_step_y_h;
 	cache[1] = phase_step_y_v;
@@ -3978,6 +4015,56 @@ skip_cac:
 		DRM_ERROR("setting opmode failed ret %d\n", rc);
 		return rc;
 	}
+
+	return 0;
+}
+
+static int reg_dmav1_setup_scaler3_adaptive_de(
+	struct sde_reg_dma_setup_ops_cfg *dma_write_cfg,
+	struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset, u32 *op_mode,
+	u32 dpu_idx)
+{
+	struct sde_hw_reg_dma_ops *dma_ops;
+	int rc = 0;
+	u32 ade_config[3];
+
+	dma_ops = sde_reg_dma_get_ops(dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return -EOPNOTSUPP;
+
+	if (!dma_write_cfg || !scaler3_cfg || !op_mode) {
+		DRM_ERROR("invalid dma_write_cfg %pK scaler3_cfg %pK op_mode %pK\n",
+				dma_write_cfg, scaler3_cfg, op_mode);
+		return -EINVAL;
+	}
+
+	/* return if ade isn't enabled*/
+	if (!scaler3_cfg->ade_cfg.adaptive_de_en)
+		return 0;
+
+	ade_config[0] = (scaler3_cfg->ade_cfg.strength_coeff_th & 0xFFFF) << 16 |
+				(scaler3_cfg->ade_cfg.strength_coeff_tl & 0xFFFF);
+	ade_config[1] = (scaler3_cfg->ade_cfg.strength_const & 0xFFFF) << 16 |
+				(scaler3_cfg->ade_cfg.strength_slope & 0xFF);
+	ade_config[2] = (scaler3_cfg->ade_cfg.halo_suppress_coeff & 0xFF) << 8;
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + QSEED7_ADAPTIVE_DE_OFFSET,
+		ade_config, sizeof(ade_config), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("ade write failed ret %d\n", rc);
+		return rc;
+	}
+
+	*op_mode |= BIT(9);
+
+	/**
+	 * only enable ploarity check when ade is enabled, CAC mode is off
+	 * and color space is RGB (BIT 12 is 0 of op_mode)
+	 */
+	if (scaler3_cfg->ade_cfg.polarity_en && !(BIT(12) & *op_mode) &&
+		(scaler3_cfg->cac_cfg.cac_mode == 0))
+		*op_mode |= BIT(11);
 
 	return 0;
 }
@@ -4118,6 +4205,8 @@ void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 	op_mode |= (scaler3_cfg->dir_en && scaler3_cfg->cor_en) ? BIT(5) : 0;
 	op_mode |= (scaler3_cfg->dir_en && scaler3_cfg->dir45_en) ? BIT(6) : 0;
 	op_mode |= (scaler3_cfg->dyn_exp_disabled) ? BIT(13) : 0;
+	if (test_bit(SDE_SSPP_SCALER_QSEED_EBS, &ctx->cap->features))
+		op_mode |= (scaler3_cfg->edge_bleed_sup_en) ? BIT(7) : 0;
 
 	preload =
 		((scaler3_cfg->preload_x[0] & 0x7F) << 0) |
@@ -4139,8 +4228,13 @@ void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 			de_lpf_cap = true;
 		rc = reg_dmav1_setup_scaler3_de(&dma_write_cfg,
 			scaler3_cfg, offset, de_lpf_cap, ctx->dpu_idx);
-		if (!rc)
+		if (!rc) {
 			op_mode |= BIT(8);
+			if (test_bit(SDE_SSPP_SCALER_QSEED_ADE, &ctx->cap->features))
+				reg_dmav1_setup_scaler3_adaptive_de(&dma_write_cfg,
+					scaler3_cfg, offset, &op_mode, ctx->dpu_idx);
+
+		}
 	}
 
 	ctx->ops.setup_scaler_lut(&dma_write_cfg, scaler3_cfg, offset, ctx->dpu_idx);
@@ -4347,7 +4441,7 @@ static int reg_dmav1_get_ltm_blk(struct sde_hw_cp_cfg *hw_cfg,
 }
 
 static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
-		u32 num_mixers, enum sde_ltm *dspp_idx)
+		u32 num_mixers, enum sde_ltm *dspp_idx, u32 dither_clip_mask)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
@@ -4387,7 +4481,7 @@ static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 		ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] &= ~ltm_init;
 		REG_DMA_SETUP_OPS(dma_write_cfg, 0x04, &opmode, sizeof(opmode),
 			REG_SINGLE_MODIFY, 0, 0,
-			REG_DMA_LTM_INIT_DISABLE_OP_MASK);
+			REG_DMA_LTM_INIT_DISABLE_OP_MASK & (~dither_clip_mask));
 		rc = dma_ops->setup_payload(&dma_write_cfg);
 		if (rc) {
 			DRM_ERROR("opmode write failed ret %d\n", rc);
@@ -4405,7 +4499,8 @@ static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 	}
 }
 
-void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav1_setup_ltm_initv1_common(struct sde_hw_dspp *ctx, void *cfg,
+		u32 dither_clip_mask)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
@@ -4436,7 +4531,7 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("Disable LTM init feature\n");
 		LOG_FEATURE_OFF;
-		ltm_initv1_disable(ctx, cfg, num_mixers, dspp_idx);
+		ltm_initv1_disable(ctx, cfg, num_mixers, dspp_idx, dither_clip_mask);
 		return;
 	}
 
@@ -4507,6 +4602,7 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
 		if (init_param->init_param_01) {
 			ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] |= ltm_dither;
 			opmode |= ((init_param->init_param_02 & 0x7) << 12);
+			opmode |= dither_clip_mask;
 		} else {
 			ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] &= ~ltm_dither;
 		}
@@ -4539,6 +4635,16 @@ void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
 		DRM_ERROR("failed to kick off ret %d\n", rc);
 		return;
 	}
+}
+
+void reg_dmav1_setup_ltm_initv1(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav1_setup_ltm_initv1_common(ctx, cfg, 0);
+}
+
+void reg_dmav1_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav1_setup_ltm_initv1_common(ctx, cfg, BIT(10) | BIT(11));
 }
 
 static void ltm_roiv1_disable(struct sde_hw_dspp *ctx, void *cfg,
@@ -4796,7 +4902,7 @@ void reg_dmav1_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
 	reg_dmav1_setup_ltm_roi_v1_common(ctx, cfg, roi_data, reg_count);
 }
 
-static void ltm_vlutv1_disable(struct sde_hw_dspp *ctx, u32 clear)
+static void ltm_vlutv1_disable(struct sde_hw_dspp *ctx, u32 clear, u32 dither_clip_mask)
 {
 	enum sde_ltm idx = 0;
 	u32 opmode = 0, offset = 0;
@@ -4812,7 +4918,7 @@ static void ltm_vlutv1_disable(struct sde_hw_dspp *ctx, u32 clear)
 	opmode = SDE_REG_READ(&ctx->hw, offset);
 	if (opmode & BIT(0))
 		/* disable VLUT/INIT/ROI */
-		opmode &= REG_DMA_LTM_VLUT_DISABLE_OP_MASK;
+		opmode &= (REG_DMA_LTM_VLUT_DISABLE_OP_MASK & (~dither_clip_mask));
 	else
 		opmode &= clear;
 	SDE_REG_WRITE(&ctx->hw, offset, opmode);
@@ -4947,7 +5053,7 @@ void reg_dmav1_setup_ltm_vlutv1(struct sde_hw_dspp *ctx, void *cfg)
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("Disable LTM vlut feature\n");
 		LOG_FEATURE_OFF;
-		ltm_vlutv1_disable(ctx, LTM_CONFIG_MERGE_MODE_ONLY);
+		ltm_vlutv1_disable(ctx, LTM_CONFIG_MERGE_MODE_ONLY, 0);
 		return;
 	}
 
@@ -4998,7 +5104,8 @@ vlut_exit:
 	kvfree(opmode);
 }
 
-void reg_dmav1_setup_ltm_vlutv1_2(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(struct sde_hw_dspp *ctx, void *cfg,
+		u32 dither_clip_mask)
 {
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
@@ -5020,7 +5127,7 @@ void reg_dmav1_setup_ltm_vlutv1_2(struct sde_hw_dspp *ctx, void *cfg)
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("Disable LTM vlut feature\n");
 		LOG_FEATURE_OFF;
-		ltm_vlutv1_disable(ctx, 0x0);
+		ltm_vlutv1_disable(ctx, 0x0, dither_clip_mask);
 		return;
 	}
 
@@ -5079,6 +5186,16 @@ vlut_exit:
 	kvfree(opmode);
 }
 
+void reg_dmav1_setup_ltm_vlutv1_2(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(ctx, cfg, 0);
+}
+
+void reg_dmav1_setup_ltm_vlutv1_4(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(ctx, cfg, BIT(10) | BIT(11));
+}
+
 int reg_dmav2_init_dspp_op_v4(int feature, struct sde_hw_dspp *ctx)
 {
 	int rc = 0;
@@ -5134,7 +5251,7 @@ static void _perform_sbdma_kickoff(struct sde_hw_dspp *ctx,
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			dspp_buf[feature][ctx->idx][ctx->dpu_idx],
-			REG_DMA_WRITE, DMA_CTL_QUEUE1, WRITE_IMMEDIATE,
+			REG_DMA_WRITE, dma_ops->select_queue_sb(), WRITE_IMMEDIATE,
 			feature);
 	kick_off.dma_type = REG_DMA_TYPE_SB;
 	rc = dma_ops->kick_off(&kick_off, ctx->dpu_idx);
@@ -5202,14 +5319,14 @@ static void _dspp_igcv4_off(struct sde_hw_dspp *ctx, void *cfg)
 }
 
 static void reg_dmav2_setup_dspp_igc_common(struct sde_hw_dspp *ctx, void *cfg,
-		u32 len, u16 *data, u32 transfer_size_bytes)
+		u32 len, u16 *data, u32 transfer_size_bytes, u32 dither_clip_mask)
 {
 	struct drm_msm_igc_lut *lut_cfg;
 	struct sde_hw_reg_dma_ops *dma_ops;
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	int rc = 0;
-	u32 reg = 0, num_of_mixers = 0, blk = 0;
+	u32 reg, num_of_mixers = 0, blk = 0;
 
 	rc = reg_dmav1_get_dspp_blk(hw_cfg, ctx->idx, &blk,
 			&num_of_mixers);
@@ -5256,7 +5373,7 @@ static void reg_dmav2_setup_dspp_igc_common(struct sde_hw_dspp *ctx, void *cfg,
 
 	reg = BIT(8);
 	if (lut_cfg->flags & IGC_DITHER_ENABLE) {
-		reg |= BIT(4);
+		reg |= BIT(4) | dither_clip_mask;
 		reg |= (lut_cfg->strength & IGC_DITHER_DATA_MASK);
 	}
 
@@ -5323,11 +5440,12 @@ void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
 	data[j++] = lut_cfg->c0_last ? (u16)(lut_cfg->c0_last << 4) : (4095 << 4);
 	data[j++] = lut_cfg->c1_last ? (u16)(lut_cfg->c1_last << 4) : (4095 << 4);
 
-	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes);
+	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes, 0);
 	kvfree(data);
 }
 
-void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav2_setup_dspp_igc_common_v5(struct sde_hw_dspp *ctx, void *cfg,
+		u32 dither_clip_mask)
 {
 	struct drm_msm_igc_lut *lut_cfg;
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
@@ -5390,8 +5508,18 @@ void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg)
 		}
 	}
 
-	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes);
+	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes, dither_clip_mask);
 	kvfree(data);
+}
+
+void reg_dmav2_setup_dspp_igcv5(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav2_setup_dspp_igc_common_v5(ctx, cfg, 0);
+}
+
+void reg_dmav2_setup_dspp_igcv51(struct sde_hw_dspp *ctx, void *cfg)
+{
+	reg_dmav2_setup_dspp_igc_common_v5(ctx, cfg, BIT(5) | BIT(6));
 }
 
 static void dspp_3d_gamutv43_off(struct sde_hw_dspp *ctx, void *cfg)
@@ -6976,7 +7104,7 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 {
 	u32 h, w, temp;
 	if (!hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
-		DRM_ERROR("HFC plane not set\n");
+		DRM_WARN("HFC plane not set\n");
 		return false;
 	}
 
@@ -6994,7 +7122,8 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 	w = 2 * (w / 32);
 	w = w / (hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1);
 
-	if (h != hw_cfg->skip_planes[SB_PLANE_REAL].plane_h ||
+	if (h != (hw_cfg->skip_planes[SB_PLANE_REAL].plane_h + hw_cfg->overfetch_lines_on_top +
+			hw_cfg->overfetch_lines_on_bottom) ||
 			w != hw_cfg->skip_planes[SB_PLANE_REAL].plane_w) {
 		DRM_ERROR("invalid hfc cfg exp h %d exp w %d act h %d act w %d\n",
 			h, w, hw_cfg->skip_planes[SB_PLANE_REAL].plane_h,

@@ -49,6 +49,7 @@
 #define SDE_HW_VER_650	SDE_HW_VER(6, 5, 0) /* scuba */
 #define SDE_HW_VER_660	SDE_HW_VER(6, 6, 0) /* holi */
 #define SDE_HW_VER_670	SDE_HW_VER(6, 7, 0) /* shima */
+#define SDE_HW_VER_680	SDE_HW_VER(6, 8, 0) /* monaco */
 #define SDE_HW_VER_700	SDE_HW_VER(7, 0, 0) /* lahaina */
 #define SDE_HW_VER_720	SDE_HW_VER(7, 2, 0) /* yupik */
 #define SDE_HW_VER_810	SDE_HW_VER(8, 1, 0) /* waipio */
@@ -56,7 +57,10 @@
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
+#define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
+#define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
+#define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
 #define IS_SDE_MAJOR_SAME(rev1, rev2)   \
@@ -80,6 +84,7 @@
 #define IS_SCUBA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_650)
 #define IS_HOLI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_660)
 #define IS_SHIMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_670)
+#define IS_MONACO_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_680)
 #define IS_LAHAINA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_700)
 #define IS_YUPIK_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_720)
 #define IS_WAIPIO_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_810)
@@ -87,7 +92,10 @@
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
+#define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
+#define IS_TUNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C30)
+#define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -98,9 +106,10 @@
 #define MAX_IMG_HEIGHT 0x3fff
 
 #define CRTC_DUAL_MIXERS_ONLY	2
-#define MAX_MIXERS_PER_CRTC	4
+#define MAX_MIXERS_PER_CRTC	8
 #define MAX_MIXERS_PER_LAYOUT	2
 #define MAX_LAYOUTS_PER_CRTC (MAX_MIXERS_PER_CRTC / MAX_MIXERS_PER_LAYOUT)
+#define MAX_MIXERS_PER_DISPLAY	8
 
 #define SDE_COLOR_PROCESS_VER(MAJOR, MINOR) \
 		((((MAJOR) & 0xFFFF) << 16) | (((MINOR) & 0xFFFF)))
@@ -135,6 +144,7 @@
 #define SDE_INLINE_ROT_VERSION_1_0_0	0x100
 #define SDE_INLINE_ROT_VERSION_2_0_0	0x200
 #define SDE_INLINE_ROT_VERSION_2_0_1	0x201
+#define SDE_INLINE_ROT_VERSION_2_0_2	0x202
 
 #define IS_SDE_INLINE_ROT_REV_100(rev) \
 	((rev) == SDE_INLINE_ROT_VERSION_1_0_0)
@@ -142,6 +152,8 @@
 	((rev) == SDE_INLINE_ROT_VERSION_2_0_0)
 #define IS_SDE_INLINE_ROT_REV_201(rev) \
 	((rev) == SDE_INLINE_ROT_VERSION_2_0_1)
+#define IS_SDE_INLINE_ROT_REV_202(rev) \
+	((rev) == SDE_INLINE_ROT_VERSION_2_0_2)
 
 /**
  * Downscale Blur supported versions
@@ -180,6 +192,10 @@
 #define SDE_HW_UBWC_VER(rev) \
 	SDE_HW_VER((((rev) >> 8) & 0xF), (((rev) >> 4) & 0xF), ((rev) & 0xF))
 
+/* SSPP CAC capabilities */
+#define SDE_CAC_V2_CAP_MASK (SDE_CAC_UNPACK | SDE_CAC_FETCH)
+#define SDE_CAC_LOOPBACK_CAP_MASK (SDE_CAC_LOOPBACK_UNPACK | SDE_CAC_LOOPBACK_FETCH)
+
 /**
  * Supported UBWC feature versions
  */
@@ -190,6 +206,7 @@ enum {
 	SDE_HW_UBWC_VER_40 = SDE_HW_UBWC_VER(0x400),
 	SDE_HW_UBWC_VER_43 = SDE_HW_UBWC_VER(0x431),
 	SDE_HW_UBWC_VER_50 = SDE_HW_UBWC_VER(0x501),
+	SDE_HW_UBWC_VER_60 = SDE_HW_UBWC_VER(0X600),
 };
 #define IS_UBWC_10_SUPPORTED(rev) \
 		IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_UBWC_VER_10)
@@ -203,6 +220,15 @@ enum {
 		IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_UBWC_VER_43)
 #define IS_UBWC_50_SUPPORTED(rev) \
 		IS_SDE_MAJOR_SAME((rev), SDE_HW_UBWC_VER_50)
+#define IS_UBWC_60_SUPPORTED(rev) \
+		IS_SDE_MAJOR_SAME((rev), SDE_HW_UBWC_VER_60)
+
+/**
+ * QSEED HW versions
+ */
+enum {
+	QSEED_HW_VERSION_3_5 = 0x3005,
+};
 
 /**
  * Supported system cache settings
@@ -280,6 +306,7 @@ struct sde_intr_irq_offsets {
  * @SDE_MDP_TOP_PPB_SET_SIZE   Indicates if top block supports ppb size setting
  * @SDE_MDP_HW_FENCE_DIR_WRITE Indicates if hw supports hw-fence dir write
  * @SDE_MDP_DUAL_DPU_SYNC  Indicates if Dpu Sync feature is supported
+ * @SDE_MDP_HW_FLUSH_SYNC  Indicates if HW flush sync feature is supported
  * @SDE_MDP_MAX            Maximum value
  */
 enum {
@@ -296,6 +323,7 @@ enum {
 	SDE_MDP_TOP_PPB_SET_SIZE,
 	SDE_MDP_HW_FENCE_DIR_WRITE,
 	SDE_MDP_DUAL_DPU_SYNC,
+	SDE_MDP_HW_FLUSH_SYNC,
 	SDE_MDP_MAX
 };
 
@@ -341,6 +369,10 @@ enum {
  * @SDE_SSPP_UCSC_UNMULT     UCSC alpha unmult color processing block support
  * @SDE_SSPP_UCSC_ALPHA_DITHER UCSC alpha dither color processing block support
  * @SDE_SSPP_CAC_V2          CAC v2 support
+ * @SDE_SSPP_CAC_LOOPBACK    CAC loopback support
+ * @SDE_SSPP_REC_SWI_SEPARATION SSPP Registers are split into CMN, REC0 and REC1
+ * @SDE_SSPP_SCALER_QSEED_EBS Edge Bleed Supresison support in QSEED block
+ * @SDE_SSPP_SCALER_QSEED_ADE Adaptive DE support in QSEED block
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -384,6 +416,10 @@ enum {
 	SDE_SSPP_UCSC_UNMULT,
 	SDE_SSPP_UCSC_ALPHA_DITHER,
 	SDE_SSPP_CAC_V2,
+	SDE_SSPP_CAC_LOOPBACK,
+	SDE_SSPP_REC_SWI_SEPARATION,
+	SDE_SSPP_SCALER_QSEED_EBS,
+	SDE_SSPP_SCALER_QSEED_ADE,
 	SDE_SSPP_MAX
 };
 
@@ -426,6 +462,8 @@ enum {
  * @SDE_MIXER_X_SRC_SEL       Layer mixer supports source selection programming model
  * @SDE_MIXER_10_BITS_ALPHA   Layer mixer supports 10 bits constant alpha
  * @SDE_MIXER_10_BITS_COLOR   Layer mixer supports 10 bits color border and color fill
+ * @SDE_MIXER_CAC_PRIMARY     Layer mixer preferred for primary during two pass CAC
+ * @SDE_MIXER_CAC_LB          Layer mixer preferred for loopback during two pass CAC
  * @SDE_MIXER_MAX             maximum value
  */
 enum {
@@ -442,6 +480,8 @@ enum {
 	SDE_MIXER_X_SRC_SEL,
 	SDE_MIXER_10_BITS_ALPHA,
 	SDE_MIXER_10_BITS_COLOR,
+	SDE_MIXER_CAC_PRIMARY,
+	SDE_MIXER_CAC_LB,
 	SDE_MIXER_MAX
 };
 
@@ -472,6 +512,7 @@ enum {
  * @SDE_DSPP_AD              AD block
  * @SDE_DSPP_LTM             LTM block
  * @SDE_DSPP_SPR             SPR block
+ * @SDE_DSPP_SPR_DITHER_LUMA SPR Dither block (Luma supported)
  * @SDE_DSPP_DEMURA          Demura block
  * @SDE_DSPP_RC              RC block (mask)
  * @SDE_DSPP_RC_PU           RC block (pu)
@@ -497,6 +538,7 @@ enum {
 	SDE_DSPP_AD,
 	SDE_DSPP_LTM,
 	SDE_DSPP_SPR,
+	SDE_DSPP_SPR_DITHER_LUMA,
 	SDE_DSPP_DEMURA,
 	SDE_DSPP_RC,
 	SDE_DSPP_RC_PU,
@@ -631,6 +673,7 @@ enum {
  * @SDE_CTL_NO_LAYER_EXT        CTL removal of CTL_LAYER_EXTx registers and addition
  *                              of active bits for pipes and layer mixers
  * @SDE_CTL_CESTA_FLUSH         CTL supports display cesta flush programming
+ * @SDE_CTL_REG_DMA             CTL supports REG_DMA block
  * @SDE_CTL_MAX
  */
 enum {
@@ -645,6 +688,7 @@ enum {
 	SDE_CTL_HW_FENCE_DIR_WRITE,
 	SDE_CTL_NO_LAYER_EXT,
 	SDE_CTL_CESTA_FLUSH,
+	SDE_CTL_REG_DMA,
 	SDE_CTL_MAX
 };
 
@@ -673,6 +717,7 @@ enum {
  * @SDE_INTF_NUM_AVR_STEP       INTF block has NUM_AVR_STEP support
  * @SDE_INTF_PANIC_CTRL         INTF block has panic in vid mode & panic/wakup control in cmd mode
  * @SDE_INTF_PERIPHERAL_FLUSH   INTF block has peripheral flush support
+ * @SDE_INTF_PROG_DYNREF        INTF block has programmable dynamic refresh support
  * @SDE_INTF_MAX
  */
 enum {
@@ -698,6 +743,7 @@ enum {
 	SDE_INTF_NUM_AVR_STEP,
 	SDE_INTF_PANIC_CTRL,
 	SDE_INTF_PERIPHERAL_FLUSH,
+	SDE_INTF_PROG_DYNREF,
 	SDE_INTF_MAX
 };
 
@@ -856,6 +902,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_10_BITS_COMPONENTS Support for 10 bits components
  * @SDE_FEATURE_UBWC_LOSSY	Support UBWC Lossy
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
+ * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -907,6 +954,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_10_BITS_COMPONENTS,
 	SDE_FEATURE_UBWC_LOSSY,
 	SDE_FEATURE_DS_PU_SUPPORTED,
+	SDE_FEATURE_MIXER_OP_V1,
 	SDE_FEATURE_MAX
 };
 
@@ -1056,6 +1104,15 @@ enum sde_danger_safe_lut_types {
 };
 
 /**
+ * enum cac_version_types - define possible cac types
+ */
+enum cac_version_types {
+	SDE_CAC_TYPE_V2,
+	SDE_CAC_TYPE_LOOPBACK,
+	SDE_CAC_TYPE_MAX,
+};
+
+/**
  * struct sde_sspp_sub_blks : SSPP sub-blocks
  * @maxlinewidth: max source pipe line width support
  * @scaling_linewidth: max vig source pipe linewidth for scaling usecases
@@ -1183,7 +1240,7 @@ struct sde_sspp_sub_blks {
 	size_t llcc_slice_size;
 	int cac_mode;
 	u32 cac_parent_rec[SSPP_SUBBLK_COUNT_MAX];
-	u32 cac_lm_pref[SSPP_SUBBLK_COUNT_MAX];
+	u32 cac_lm_pref[SDE_CAC_TYPE_MAX][SSPP_SUBBLK_COUNT_MAX];
 };
 
 /**
@@ -1251,6 +1308,7 @@ struct sde_dspp_sub_blks {
 	struct sde_pp_blk ad;
 	struct sde_pp_blk ltm;
 	struct sde_pp_blk spr;
+	struct sde_pp_blk spr_dither;
 	struct sde_pp_blk vlut;
 	struct sde_dspp_rc rc;
 	struct sde_pp_blk demura;
@@ -1314,6 +1372,9 @@ enum sde_clk_ctrl_type {
 	SDE_CLK_CTRL_VIG2,
 	SDE_CLK_CTRL_VIG3,
 	SDE_CLK_CTRL_VIG4,
+	SDE_CLK_CTRL_VIG5,
+	SDE_CLK_CTRL_VIG6,
+	SDE_CLK_CTRL_VIG7,
 	SDE_CLK_CTRL_DMA0,
 	SDE_CLK_CTRL_DMA1,
 	SDE_CLK_CTRL_DMA2,
@@ -1344,6 +1405,9 @@ static const char *sde_clk_ctrl_type_s[SDE_CLK_CTRL_MAX] = {
 	[SDE_CLK_CTRL_VIG2] = "VIG2",
 	[SDE_CLK_CTRL_VIG3] = "VIG3",
 	[SDE_CLK_CTRL_VIG4] = "VIG4",
+	[SDE_CLK_CTRL_VIG5] = "VIG5",
+	[SDE_CLK_CTRL_VIG6] = "VIG6",
+	[SDE_CLK_CTRL_VIG7] = "VIG7",
 	[SDE_CLK_CTRL_DMA0] = "DMA0",
 	[SDE_CLK_CTRL_DMA1] = "DMA1",
 	[SDE_CLK_CTRL_DMA2] = "DMA2",
@@ -1477,6 +1541,7 @@ struct sde_sspp_cfg {
  * @merge_3d:          ID of connected 3d MUX
  * @dummy_mixer:       identifies dcwb mixer is considered dummy
  * @lm_pair_mask:      Bitmask of LMs that can be controlled by same CTL
+ * @parent_mixer_id:   ID of parent mixer, used in dual pass commit
  */
 struct sde_lm_cfg {
 	SDE_HW_BLK_INFO;
@@ -1487,6 +1552,7 @@ struct sde_lm_cfg {
 	u32 merge_3d;
 	bool dummy_mixer;
 	unsigned long lm_pair_mask;
+	u32 parent_mixer_id;
 };
 
 /**
@@ -1652,6 +1718,7 @@ struct sde_dnsc_blur_filter_info {
  * @controller_id:     Controller Instance ID in case of multiple of intf type
  * @prog_fetch_lines_worst_case	Worst case latency num lines needed to prefetch
  * @te_irq_offset:     Register offset for INTF TE IRQ block
+ * @hw_flush_sync_val   flush sync value at which snapshot should be captured
  */
 struct sde_intf_cfg  {
 	SDE_HW_BLK_INFO;
@@ -1659,6 +1726,7 @@ struct sde_intf_cfg  {
 	u32 controller_id;
 	u32 prog_fetch_lines_worst_case;
 	u32 te_irq_offset;
+	u32 hw_flush_sync_val;
 };
 
 /**
@@ -2070,6 +2138,7 @@ struct sde_perf_cfg {
  * @rgb_lossy_formats	supported formats for UBWC lossy
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
+ * @ipcc_protocol_offset offset for ipcc protocol within ipcc register space
  * @soccp_ph            if soccp is supported, soccp phandle needed to get rproc to set power vote
  * @is_vrr_hw_fence_enable        enable hw-fence override configuration
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
@@ -2206,6 +2275,7 @@ struct sde_mdss_cfg {
 
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;
+	u32 ipcc_protocol_offset;
 	phandle soccp_ph;
 	bool is_vrr_hw_fence_enable;
 

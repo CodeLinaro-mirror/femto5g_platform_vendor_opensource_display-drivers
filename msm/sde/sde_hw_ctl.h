@@ -491,6 +491,14 @@ struct sde_hw_ctl_ops {
 			enum ctl_hw_flush_type type, u32 blk_idx, bool enable);
 
 	/**
+	 * bitmask_has_bit: checks whether flush mask has given block set to flush
+	 * @type              : blk type to test
+	 * @blk_idx           : blk idx
+	 */
+	bool (*bitmask_has_bit)(struct sde_hw_ctl *ctx,
+			enum ctl_hw_flush_type type, u32 blk_idx);
+
+	/**
 	 * update_dnsc_blur_bitmask: updates dnsc_blur flush mask
 	 * @type              : blk type to flush
 	 * @blk_idx           : blk idx
@@ -626,6 +634,41 @@ struct sde_hw_ctl_ops {
 	 * @cfg: Cesta flush config settings
 	 */
 	void (*cesta_flush)(struct sde_hw_ctl *ctx, struct sde_ctl_cesta_cfg *cfg);
+
+	/**
+	 * setup flush sync mode for slave and master cores.
+	 * @ctx       : ctl path ctx pointer
+	 * @is_master : true for master, false for slave)
+	 * @enable    : true to enable flush sync, false otherwise
+	 */
+	void (*setup_flush_sync)(struct sde_hw_ctl *ctx, bool is_master,
+			bool enable);
+
+	/**
+	 * program sync or async mode for master and slave cores
+	 * @ctx       : ctl path ctx pointer
+	 * @async_en  : true to enable async, 0 to enable sync mode
+	 */
+	void (*enable_sync_mode)(struct sde_hw_ctl *ctx, bool async_en);
+
+	/**
+	 * get flush sync mode enabled for current commit
+	 * @ctx       : ctl path ctx pointer
+	 */
+	bool (*get_flush_sync_mode)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * Set ctl_path INTF master
+	 * @ctx          : ctl path ctx pointer
+	 * @intf_master  : Master Interface idx
+	 */
+	int (*set_intf_master)(struct sde_hw_ctl *ctx, u32 intf_master);
+
+	/**
+	 * Get ctl_path INTF master
+	 * @ctx   : ctl path ctx pointer
+	 */
+	int (*get_intf_master)(struct sde_hw_ctl *ctx);
 };
 
 /**

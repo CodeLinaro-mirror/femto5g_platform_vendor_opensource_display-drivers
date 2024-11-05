@@ -9,6 +9,6 @@ endif
 
 ifeq ($(DISPLAY_DLKM_ENABLE),  true)
 	PRODUCT_PACKAGES += msm_drm.ko
+	DISPLAY_MODULES_DRIVER := msm_drm.ko
 endif
 
-DISPLAY_MODULES_DRIVER := msm_drm.ko

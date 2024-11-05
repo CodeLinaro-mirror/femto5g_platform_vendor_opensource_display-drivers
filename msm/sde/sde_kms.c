@@ -57,6 +57,7 @@
 #include "sde_vm.h"
 #include "sde_fence.h"
 #include "sde_cesta.h"
+#include "sde_loopback.h"
 
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <linux/firmware/qcom/qcom_scm.h>
@@ -126,6 +127,13 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms);
 static int _sde_kms_register_events(struct msm_kms *kms,
 		struct drm_mode_object *obj, u32 event, bool en);
 static void sde_kms_handle_power_event(u32 event_type, void *usr);
+
+static inline bool sde_kms_in_loopback_mode(struct drm_crtc_state *crtc_state)
+{
+	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
+
+	return cstate->in_loopback_transition;
+}
 
 bool sde_is_custom_client(void)
 {
@@ -350,7 +358,7 @@ static int _sde_kms_scm_call(struct sde_kms *sde_kms, int vmid)
 		SDE_DEBUG("sid_mask[%d]: %d\n", i, sec_sid[i]);
 	}
 
-	ret = dma_coerce_mask_and_coherent(&dummy, DMA_BIT_MASK(64));
+	ret = dma_coerce_mask_and_coherent(&dummy, (u64)DMA_BIT_MASK(64));
 	if (ret) {
 		SDE_ERROR("Failed to set dma mask for dummy dev %d\n", ret);
 		goto map_error;
@@ -1281,6 +1289,7 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	struct drm_crtc_state *cstate;
 	struct sde_vm_ops *vm_ops;
 	int i, rc;
+	bool power_on_commit = true;
 
 	if (!kms)
 		return;
@@ -1300,7 +1309,13 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	}
 
 	if (sde_kms->first_kickoff) {
-		sde_power_scale_reg_bus(&priv->phandle, VOTE_INDEX_HIGH, false);
+		/* find if it's power on commit */
+		for_each_new_crtc_in_state(state, crtc, cstate, i) {
+			if (!crtc->state->active || !crtc->state->active_changed)
+				power_on_commit = false;
+		}
+		sde_power_scale_reg_bus(&priv->phandle,
+				power_on_commit ? VOTE_INDEX_LOW : VOTE_INDEX_HIGH, false);
 		sde_kms->first_kickoff = false;
 	}
 
@@ -1656,6 +1671,8 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 			pr_err("Connector Post kickoff failed rc=%d\n",
 					 rc);
 		}
+		if (connector->encoder && sde_encoder_in_video_psr(connector->encoder))
+			sde_encoder_post_commit_bl_sr_work(connector->encoder);
 	}
 
 	vm_ops = sde_vm_get_ops(sde_kms);
@@ -1741,7 +1758,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 		sde_crtc_complete_flip(crtc, NULL);
 	}
 
-	if (cwb_disabling && cwb_enc)
+	if (cwb_enc)
 		sde_encoder_virt_reset(cwb_enc);
 
 	/* avoid system cache update to set rd-noalloc bit when NSE feature is enabled */
@@ -1781,7 +1798,7 @@ static void sde_kms_prepare_fence(struct msm_kms *kms,
  */
 static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 {
-	int rc = -ENOMEM;
+	int i, rc = -ENOMEM;
 
 	if (!sde_kms) {
 		SDE_ERROR("invalid sde kms\n");
@@ -1837,7 +1854,30 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 
 		sde_kms->dp_stream_count = dp_display_get_num_of_streams(sde_kms->dev);
 	}
+
+	/* cac loopback display */
+	sde_kms->lb_displays = NULL;
+	sde_kms->lb_disp_count =
+		(sde_kms->catalog->cac_version == SDE_SSPP_CAC_LOOPBACK) ?
+			sde_kms->dsi_display_count : 0;
+	if (sde_kms->lb_disp_count) {
+		sde_kms->lb_displays = kcalloc(sde_kms->lb_disp_count,
+				sizeof(void *), GFP_KERNEL);
+		if (!sde_kms->lb_displays) {
+			SDE_ERROR("failed to allocate LB displays\n");
+			goto exit_deinit_lb;
+		}
+
+		for (i = 0; i < sde_kms->lb_disp_count; i++)
+			sde_kms->lb_displays[i] =  sde_kms->dsi_displays[i];
+	}
+
 	return 0;
+
+exit_deinit_lb:
+	kfree(sde_kms->lb_displays);
+	sde_kms->lb_disp_count = 0;
+	sde_kms->lb_displays = NULL;
 
 exit_deinit_dp:
 	kfree(sde_kms->dp_displays);
@@ -1889,6 +1929,13 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		struct msm_drm_private *priv,
 		struct sde_kms *sde_kms)
 {
+	static const struct sde_connector_ops virt_ops = {
+		.set_info_blob = sde_lb_set_info_blob,
+		.detect = sde_lb_detect,
+		.get_modes = sde_lb_connector_get_modes,
+		.get_info = sde_lb_display_get_info,
+		.get_mode_info = sde_lb_get_mode_info,
+	};
 	static const struct sde_connector_ops dsi_ops = {
 		.set_info_blob = dsi_conn_set_info_blob,
 		.detect =     dsi_conn_detect,
@@ -1925,6 +1972,8 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.get_num_lm_from_mode = dsi_conn_get_lm_from_mode,
 		.update_transfer_time = dsi_display_update_transfer_time,
 		.get_panel_scan_line = dsi_display_get_panel_scan_line,
+		.check_cmd_defined = dsi_conn_check_cmd_defined,
+		.avoid_cmd_transfer = dsi_display_avoid_cmd_transfer,
 	};
 	static const struct sde_connector_ops wb_ops = {
 		.post_init =    sde_wb_connector_post_init,
@@ -1988,7 +2037,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 	max_encoders = sde_kms->dsi_display_count + sde_kms->wb_display_count +
 				sde_kms->dp_display_count +
-				sde_kms->dp_stream_count;
+				sde_kms->dp_stream_count + sde_kms->lb_disp_count;
 	if (max_encoders > ARRAY_SIZE(priv->encoders)) {
 		max_encoders = ARRAY_SIZE(priv->encoders);
 		SDE_ERROR("capping number of displays to %d", max_encoders);
@@ -2099,6 +2148,32 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 
 		if (dsi_display_has_dsc_switch_support(display))
 			sde_kms->dsc_switch_support = true;
+	}
+
+	for (i = 0; i < sde_kms->lb_disp_count &&
+		priv->num_encoders < max_encoders; ++i) {
+		display = sde_kms->lb_displays[i];
+		encoder = NULL;
+		memset(&info, 0x0, sizeof(info));
+		rc = sde_lb_display_get_info(NULL, &info, display);
+
+		encoder = sde_encoder_init(dev, &info, NULL);
+		if (IS_ERR_OR_NULL(encoder)) {
+			SDE_ERROR("encoder init failed for loopback %d\n", i);
+			continue;
+		}
+
+		connector = sde_connector_init(dev, encoder, 0, display,
+				&virt_ops, DRM_CONNECTOR_POLL_HPD,
+				DRM_MODE_CONNECTOR_VIRTUAL, false);
+		if (connector) {
+			priv->encoders[priv->num_encoders++] = encoder;
+			priv->connectors[priv->num_connectors++] = connector;
+		} else {
+			SDE_ERROR("lb %d connector init failed\n", i);
+			sde_encoder_destroy(encoder);
+		}
+
 	}
 
 	if (sde_kms->catalog->allowed_dsc_reservation_switch &&
@@ -2407,6 +2482,8 @@ static int sde_kms_postinit(struct msm_kms *kms)
 	struct sde_kms *sde_kms = to_sde_kms(kms);
 	struct drm_device *dev;
 	struct drm_crtc *crtc;
+	struct drm_connector *conn;
+	struct drm_connector_list_iter conn_iter;
 	struct msm_drm_private *priv;
 	int i, rc;
 
@@ -2447,6 +2524,11 @@ static int sde_kms_postinit(struct msm_kms *kms)
 
 	drm_for_each_crtc(crtc, dev)
 		sde_crtc_post_init(dev, crtc);
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter)
+		sde_connector_post_init(dev, conn);
+	drm_connector_list_iter_end(&conn_iter);
 
 	return rc;
 }
@@ -2518,6 +2600,11 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 	if (sde_kms->sid)
 		msm_iounmap(pdev, sde_kms->sid);
 	sde_kms->sid = NULL;
+
+	if (sde_kms->sw_fuse)
+		msm_iounmap(pdev, sde_kms->sw_fuse);
+	sde_hw_sw_fuse_destroy(sde_kms->sw_fuse);
+	sde_kms->sw_fuse = NULL;
 
 	if (sde_kms->reg_dma)
 		msm_iounmap(pdev, sde_kms->reg_dma);
@@ -2683,6 +2770,7 @@ static int sde_kms_set_crtc_for_conn(struct drm_device *dev,
 		return ret;
 	}
 
+	sde_crtc_force_async_mode(enc, crtc_state);
 	crtc_state->active = true;
 	crtc_state->enable = true;
 	ret = drm_atomic_set_crtc_for_connector(conn_state, enc->crtc);
@@ -3208,6 +3296,7 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 	struct drm_crtc_state *crtc_state;
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	bool sec_session = false, global_sec_session = false;
+	bool fb_sec_session = false, global_fb_sec_session = false;
 	uint32_t fb_ns = 0, fb_sec = 0, fb_sec_dir = 0;
 	int i;
 
@@ -3229,6 +3318,8 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 				&fb_sec, &fb_sec_dir);
 		if (fb_sec_dir)
 			sec_session = true;
+		if (fb_sec)
+			fb_sec_session = true;
 		cur_crtc = crtc;
 	}
 
@@ -3245,8 +3336,18 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 					&fb_sec, &fb_sec_dir);
 			if (fb_sec_dir)
 				global_sec_session = true;
+			if (fb_sec)
+				global_fb_sec_session = true;
 			global_crtc = crtc;
 		}
+	}
+
+	if ((global_sec_session || sec_session) && (fb_sec_session || global_fb_sec_session)) {
+		SDE_ERROR("crtc%d secure check failed sec_dir:%d, g_sec_dir:%d, sec:%d, g_sec:%d\n",
+			       cur_crtc ? cur_crtc->base.id : -1,
+			       sec_session, global_sec_session, fb_sec_session,
+			       global_fb_sec_session);
+		return -EPERM;
 	}
 
 	if (!global_sec_session && !sec_session)
@@ -3877,7 +3978,7 @@ static bool sde_kms_check_for_splash(struct msm_kms *kms)
 	}
 
 	sde_kms = to_sde_kms(kms);
-	return sde_kms->splash_data.num_splash_displays;
+	return sde_kms->splash_data.num_splash_displays == 0 ? false : true;
 }
 
 static int sde_kms_get_mixer_count(const struct msm_kms *kms,
@@ -4279,15 +4380,18 @@ retry:
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		struct drm_crtc_state *crtc_state;
 		uint64_t lp;
+		bool display_mode_active;
 
 		if (!conn->state || !conn->state->crtc ||
 			conn->dpms != DRM_MODE_DPMS_ON ||
 			sde_encoder_in_clone_mode(conn->encoder))
 			continue;
 
+		display_mode_active = sde_encoder_check_curr_mode(conn->encoder,
+			MSM_DISPLAY_VIDEO_MODE) && !sde_encoder_in_video_psr(conn->encoder);
+
 		lp = sde_connector_get_lp(conn);
-		if (lp == SDE_MODE_DPMS_LP1 &&
-			!sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE)) {
+		if (lp == SDE_MODE_DPMS_LP1 && !display_mode_active) {
 			/* transition LP1->LP2 on pm suspend */
 			ret = sde_connector_set_property_for_commit(conn, state,
 					CONNECTOR_PROP_LP, SDE_MODE_DPMS_LP2);
@@ -4299,8 +4403,7 @@ retry:
 			}
 		}
 
-		if (lp != SDE_MODE_DPMS_LP2 ||
-			sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE)) {
+		if (lp != SDE_MODE_DPMS_LP2 || display_mode_active) {
 			/* force CRTC to be inactive */
 			crtc_state = drm_atomic_get_crtc_state(state,
 					conn->state->crtc);
@@ -4312,8 +4415,7 @@ retry:
 				goto unlock;
 			}
 
-			if (lp != SDE_MODE_DPMS_LP1 ||
-				sde_encoder_check_curr_mode(conn->encoder, MSM_DISPLAY_VIDEO_MODE))
+			if (lp != SDE_MODE_DPMS_LP1 || display_mode_active)
 				crtc_state->active = false;
 			++num_crtcs;
 		}
@@ -4480,6 +4582,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_mixer_count = sde_kms_get_mixer_count,
 	.get_dsc_count = sde_kms_get_dsc_count,
 	.in_trusted_vm = sde_kms_in_trusted_vm,
+	.in_loopback_mode = sde_kms_in_loopback_mode,
 };
 
 static int _sde_kms_mmu_destroy(struct sde_kms *sde_kms)
@@ -4550,12 +4653,13 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 				SDE_DEBUG("failed to get resource ipcc_reg, cannot map ipcc\n");
 				sde_kms->catalog->hw_fence_rev = 0;
 			} else {
-				sde_kms->ipcc_base_addr = res->start;
+				sde_kms->dpu_ipcc_addr = HW_FENCE_IPCC_PROTOCOLp_CLIENTc(res->start,
+					sde_kms->catalog->ipcc_protocol_offset,
+					sde_kms->catalog->ipcc_protocol_id,
+					sde_kms->catalog->ipcc_client_phys_id);
 
 				ret = _sde_kms_one2one_mem_map_ipcc_reg(sde_kms, resource_size(res),
-					HW_FENCE_IPCC_PROTOCOLp_CLIENTc(res->start,
-					sde_kms->catalog->ipcc_protocol_id,
-					sde_kms->catalog->ipcc_client_phys_id));
+					sde_kms->dpu_ipcc_addr);
 				/* if mapping fails disable hw-fences */
 				if (ret)
 					sde_kms->catalog->hw_fence_rev = 0;
@@ -4611,8 +4715,7 @@ static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
 
 	if (sde_kms->hw_mdp->ops.setup_hw_fences)
 		sde_kms->hw_mdp->ops.setup_hw_fences(sde_kms->hw_mdp,
-			sde_kms->catalog->ipcc_protocol_id, sde_kms->catalog->ipcc_client_phys_id,
-			sde_kms->ipcc_base_addr);
+			sde_kms->catalog->ipcc_protocol_id, sde_kms->dpu_ipcc_addr);
 }
 
 static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
@@ -5007,6 +5110,21 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 			SDE_ERROR("dbg base register sid failed: %d\n", rc);
 	}
 
+	sde_kms->sw_fuse = msm_ioremap(platformdev, "swfuse_phys",
+					"swfuse_phys");
+	if (IS_ERR(sde_kms->sw_fuse)) {
+		sde_kms->sw_fuse = NULL;
+		SDE_DEBUG("sw_fuse is not defined");
+	} else {
+		sde_kms->sw_fuse_len = msm_iomap_size(platformdev,
+							"swfuse_phys");
+		rc =  sde_dbg_reg_register_base("sw_fuse", sde_kms->sw_fuse,
+				sde_kms->sw_fuse_len,
+				msm_get_phys_addr(platformdev, "swfuse_phys"),
+				SDE_DBG_SWFUSE);
+		if (rc)
+			SDE_ERROR("dbg base register sw_fuse failed: %d\n", rc);
+	}
 error:
 	return rc;
 }
@@ -5187,6 +5305,17 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto perf_err;
 	}
 
+	if (sde_kms->sw_fuse) {
+		sde_kms->hw_sw_fuse = sde_hw_sw_fuse_init(sde_kms->sw_fuse,
+				sde_kms->sw_fuse_len, sde_kms->catalog);
+		if (IS_ERR(sde_kms->hw_sw_fuse)) {
+			SDE_ERROR("failed to init sw_fuse %ld\n",
+					PTR_ERR(sde_kms->hw_sw_fuse));
+			sde_kms->hw_sw_fuse = NULL;
+		}
+	} else {
+		sde_kms->hw_sw_fuse = NULL;
+	}
 	/*
 	 * set the disable_immediate flag when driver supports the precise vsync
 	 * timestamp as the DRM hooks for vblank timestamp/counters would be set
@@ -5205,21 +5334,10 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto drm_obj_init_err;
 	}
 
-	/**
-	 * Note: If sde_kms->catalog->hw_fence_rev is true but CONFIG_QTI_HW_FENCE is not enabled,
-	 * the hw_fence_rev field will be set to zero when hw-fence initialization process fails
-	 */
-#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
-	if (sde_kms->catalog->hw_fence_rev) {
-		priv->phandle.rproc = rproc_get_by_phandle(sde_kms->catalog->soccp_ph);
-		if (IS_ERR_OR_NULL(priv->phandle.rproc)) {
-			SDE_ERROR("failed to find rproc for phandle:%u, disabling hw-fencing\n",
-				sde_kms->catalog->soccp_ph);
-			sde_kms->catalog->hw_fence_rev = 0;
-			priv->phandle.rproc = NULL;
-		}
+	if (!priv->phandle.hw_fence_enable) {
+		SDE_DEBUG("power vote failed, disabling hw-fencing\n");
+		sde_kms->catalog->hw_fence_rev = 0;
 	}
-#endif /* CONFIG_QTI_HW_FENCE */
 
 	return 0;
 

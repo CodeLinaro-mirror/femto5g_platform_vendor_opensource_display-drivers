@@ -69,6 +69,7 @@
 #define INTF_MISR_CTRL                  0x180
 #define INTF_MISR_SIGNATURE             0x184
 
+#define INTF_PROG_FLUSH_SNAPSHOT        0x1B0
 #define INTF_WD_TIMER_0_LTJ_CTL         0x200
 #define INTF_WD_TIMER_0_LTJ_CTL1        0x204
 
@@ -110,6 +111,7 @@
 #define INTF_TEAR_LINE_COUNT            0x2B0
 #define INTF_TEAR_AUTOREFRESH_CONFIG    0x2B4
 #define INTF_TEAR_TEAR_DETECT_CTRL      0x2B8
+#define INTF_TEAR_AUTOREFRESH_STATUS    0x2C0
 #define INTF_TEAR_PROG_FETCH_START      0x2C4
 #define INTF_TEAR_DSI_DMA_SCHD_CTRL0    0x2C8
 #define INTF_TEAR_DSI_DMA_SCHD_CTRL1    0x2CC
@@ -130,6 +132,7 @@
 #define INTF_ESYNC_SKEW_CTL             0x414
 #define INTF_ESYNC_EMSYNC_CTL           0x418
 #define INTF_ESYNC_PROG_INIT            0x41C
+#define INTF_PROG_DR_START              0x420
 #define INTF_BKUP_ESYNC_EN              0x470
 #define INTF_BKUP_ESYNC_CTRL            0x474
 #define INTF_BKUP_ESYNC_VSYNC_CTL      0x47C
@@ -305,6 +308,19 @@ static u32 sde_hw_intf_get_cur_num_avr_step(struct sde_hw_intf *ctx)
 	return SDE_REG_READ(c, MDP_INTF_CURRENT_AVR_STEP);
 }
 
+static void _sde_hw_intf_wait_for_esync_disable(struct sde_hw_intf *ctx, bool backup)
+{
+	struct sde_hw_blk_reg_map *c = &ctx->hw;
+	u32 status_bit = backup ? BIT(4) : BIT(3);
+	void __iomem *addr = c->base_off + c->blk_off + INTF_STATUS;
+	u32 val;
+	int rc;
+
+	rc = readl_relaxed_poll_timeout(addr, val, !(val & status_bit), 100, 10000);
+	if (rc)
+		SDE_EVT32(backup, SDE_EVTLOG_ERROR);
+}
+
 static void sde_hw_intf_prepare_esync(struct sde_hw_intf *ctx, struct intf_esync_params *params)
 {
 	struct sde_hw_blk_reg_map *c = &ctx->hw;
@@ -344,6 +360,15 @@ static void sde_hw_intf_enable_esync(struct sde_hw_intf *ctx, bool enable)
 	u32 val = enable ? 0x1 : 0x0;
 
 	SDE_REG_WRITE(c, INTF_ESYNC_EN, val);
+
+	if (enable) {
+		/* enable EM pulse timestamps */
+		SDE_REG_WRITE(c, INTF_ESYNC_TIMESTAMP_CTRL, BIT(0) | BIT(2));
+	} else {
+		SDE_REG_WRITE(c, INTF_ESYNC_SW_RESET, 1);
+		_sde_hw_intf_wait_for_esync_disable(ctx, false);
+		SDE_REG_WRITE(c, INTF_ESYNC_SW_RESET, 0);
+	}
 }
 
 static void sde_hw_intf_prepare_backup_esync(struct sde_hw_intf *ctx,
@@ -377,6 +402,12 @@ static void sde_hw_intf_enable_backup_esync(struct sde_hw_intf *ctx, bool enable
 	u32 val = enable ? 0x1 : 0x0;
 
 	SDE_REG_WRITE(c, INTF_BKUP_ESYNC_EN, val);
+
+	if (!enable) {
+		SDE_REG_WRITE(c, INTF_BKUP_ESYNC_SW_RESET, 1);
+		_sde_hw_intf_wait_for_esync_disable(ctx, true);
+		SDE_REG_WRITE(c, INTF_BKUP_ESYNC_SW_RESET, 0);
+	}
 }
 
 static int sde_hw_intf_wait_for_esync_src_switch(struct sde_hw_intf *ctx, bool backup)
@@ -388,6 +419,20 @@ static int sde_hw_intf_wait_for_esync_src_switch(struct sde_hw_intf *ctx, bool b
 	return readx_poll_timeout(readl_relaxed,
 			c->base_off + c->blk_off + INTF_ESYNC_HYBRID_CTRL,
 			val, val == target, 100, 5000);
+}
+
+static u64 sde_hw_intf_get_esync_timestamp(struct sde_hw_intf *ctx)
+{
+	struct sde_hw_blk_reg_map *c = &ctx->hw;
+	u32 timestamp_lo, timestamp_hi;
+	u64 timestamp_total;
+
+	timestamp_lo = SDE_REG_READ(c, INTF_ESYNC_TIMESTAMP0);
+	timestamp_hi = SDE_REG_READ(c, INTF_ESYNC_TIMESTAMP1);
+
+	timestamp_total = timestamp_hi;
+	timestamp_total = (timestamp_total << 32) | timestamp_lo;
+	return timestamp_total;
 }
 
 static void sde_hw_intf_enable_infinite_vfp(struct sde_hw_intf *ctx, bool enable)
@@ -594,17 +639,30 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 			&& p->poms_align_vsync)
 		intf_cfg2 |= BIT(16);
 
-	alignment = 0x1; /* COND0 timing engine enable register */
 	if (align_esync) {
+		/*
+		 * Display on-
+		 * COND0 1 = TIMING_ENGINE_EN.EN changes from 0 to 1
+		 * COND1 TE level being high
+		 * COND2 esync_mdp_vsync
+		 */
+		alignment = 0x451;
+
+		/* Idle exit-
+		 * COND0 HW AVR trigger
+		 * COND1 esync_mdp_vsync
+		 */
 		if (align_avr)
-			alignment = 0x6; /* COND0 HW AVR trigger */
-		alignment |= 0x4 << 4; /* COND1 esync_mdp_vsync */
+			alignment = 0x46;
 
 		intf_cfg2 |= BIT(23);
 	}
 
 	if (!dp_intf && ctx->cap->features & BIT(SDE_INTF_PERIPHERAL_FLUSH))
 		intf_cfg2 |= BIT(24);
+
+	if (ctx->cap->features & BIT(SDE_INTF_PROG_DYNREF))
+		intf_cfg2 |= BIT(28);
 
 	if (ctx->cfg.split_link_en)
 		SDE_REG_WRITE(c, INTF_REG_SPLIT_LINK, 0x3);
@@ -626,12 +684,11 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 	SDE_REG_WRITE(c, INTF_FRAME_LINE_COUNT_EN, 0x3);
 	SDE_REG_WRITE(c, INTF_CONFIG, intf_cfg);
 	SDE_REG_WRITE(c, INTF_PANEL_FORMAT, panel_format);
-	SDE_REG_WRITE(c, INTF_CONFIG2, intf_cfg2);
 	SDE_REG_WRITE(c, INTF_DISPLAY_DATA_HCTL, display_data_hctl);
 	SDE_REG_WRITE(c, INTF_ACTIVE_DATA_HCTL, active_data_hctl);
-
 	if (align_esync)
 		SDE_REG_WRITE(c, INTF_TIMING_ENGINE_ALIGN_CTRL, alignment);
+	SDE_REG_WRITE(c, INTF_CONFIG2, intf_cfg2);
 }
 
 static void sde_hw_intf_enable_timing_engine(struct sde_hw_intf *intf, u8 enable)
@@ -689,6 +746,13 @@ static void sde_hw_intf_setup_prg_fetch(
 	}
 
 	SDE_REG_WRITE(c, INTF_CONFIG, fetch_enable);
+}
+
+static void sde_hw_intf_setup_prog_dynref(struct sde_hw_intf *intf, u32 prog_dr_start_line)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+
+	SDE_REG_WRITE(c, INTF_PROG_DR_START, prog_dr_start_line);
 }
 
 static void sde_hw_intf_configure_wd_timer_jitter(struct sde_hw_intf *intf,
@@ -1064,6 +1128,17 @@ static int sde_hw_intf_get_autorefresh_config(struct sde_hw_intf *intf,
 	return 0;
 }
 
+static u32 sde_hw_intf_get_autorefresh_status(struct sde_hw_intf *intf)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 val;
+
+	c = &intf->hw;
+	val = SDE_REG_READ(c, INTF_TEAR_AUTOREFRESH_STATUS);
+
+	return val;
+}
+
 static int sde_hw_intf_poll_timeout_wr_ptr(struct sde_hw_intf *intf,
 		u32 timeout_us)
 {
@@ -1167,6 +1242,29 @@ static int sde_hw_intf_connect_external_te(struct sde_hw_intf *intf,
 	return orig;
 }
 
+static void sde_hw_intf_update_tearcheck_vsync_count(struct sde_hw_intf *intf, u32 val)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+	u32 cfg;
+
+	if (!intf)
+		return;
+
+	c = &intf->hw;
+
+	cfg = SDE_REG_READ(c, INTF_TEAR_SYNC_CONFIG_VSYNC);
+
+	/* disable external TE */
+	cfg &= ~BIT(20);
+	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
+
+	/* update vsync_count and enable back external TE */
+	cfg = (val & 0x7ffff);
+	cfg |= BIT(19) | BIT(20);
+	SDE_REG_WRITE(c, INTF_TEAR_SYNC_CONFIG_VSYNC, cfg);
+	wmb(); /* to make sure configs takes effect */
+}
+
 static int sde_hw_intf_get_vsync_info(struct sde_hw_intf *intf,
 		struct sde_hw_pp_vsync_info *info)
 {
@@ -1260,6 +1358,26 @@ static void sde_hw_intf_vsync_sel(struct sde_hw_intf *intf,
 	SDE_REG_WRITE(c, INTF_TEAR_MDP_VSYNC_SEL, (vsync_source & 0xf));
 }
 
+static void sde_hw_intf_flush_snapshot_setup(struct sde_hw_intf *intf, u32 value, bool enable)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 intf_cfg;
+
+	if (!intf)
+		return;
+
+	c = &intf->hw;
+	intf_cfg = SDE_REG_READ(c, INTF_CONFIG);
+
+	if (enable)
+		intf_cfg |= BIT(14);
+	else
+		intf_cfg &= BIT(14);
+
+	SDE_REG_WRITE(c, INTF_PROG_FLUSH_SNAPSHOT, value);
+	SDE_REG_WRITE(c, INTF_CONFIG, intf_cfg);
+}
+
 static void sde_hw_intf_enable_compressed_input(struct sde_hw_intf *intf,
 		bool compression_en, bool dsc_4hs_merge)
 {
@@ -1324,7 +1442,10 @@ static void sde_hw_intf_setup_panic_wakeup(struct sde_hw_intf *intf,
 	SDE_REG_WRITE(c, INTF_TEAR_WAKEUP_WINDOW, cfg->wakeup_window);
 
 	val = SDE_REG_READ(c, INTF_TEAR_TEAR_CHECK_EN);
-	val |= BIT(4) | BIT(5);
+	if (cfg->enable)
+		val |= BIT(4) | BIT(5);
+	else
+		val &= ~(BIT(4) | BIT(5));
 	SDE_REG_WRITE(c, INTF_TEAR_TEAR_CHECK_EN, val);
 }
 
@@ -1393,6 +1514,7 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->enable_backup_esync = sde_hw_intf_enable_backup_esync;
 		ops->wait_for_esync_src_switch = sde_hw_intf_wait_for_esync_src_switch;
 		ops->enable_infinite_vfp = sde_hw_intf_enable_infinite_vfp;
+		ops->get_esync_timestamp = sde_hw_intf_get_esync_timestamp;
 	}
 
 	if (cap & BIT(SDE_INTF_TE)) {
@@ -1403,10 +1525,13 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		ops->get_vsync_info = sde_hw_intf_get_vsync_info;
 		ops->setup_autorefresh = sde_hw_intf_setup_autorefresh_config;
 		ops->get_autorefresh = sde_hw_intf_get_autorefresh_config;
+		ops->get_autorefresh_status =
+			sde_hw_intf_get_autorefresh_status;
 		ops->poll_timeout_wr_ptr = sde_hw_intf_poll_timeout_wr_ptr;
 		ops->vsync_sel = sde_hw_intf_vsync_sel;
 		ops->check_and_reset_tearcheck = sde_hw_intf_v1_check_and_reset_tearcheck;
 		ops->override_tear_rd_ptr_val = sde_hw_intf_override_tear_rd_ptr_val;
+		ops->update_tearcheck_vsync_count = sde_hw_intf_update_tearcheck_vsync_count;
 
 		if (cap & BIT(SDE_INTF_PANIC_CTRL))
 			ops->setup_te_panic_wakeup = sde_hw_intf_setup_panic_wakeup;
@@ -1434,6 +1559,12 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 
 	if (cap & BIT(SDE_INTF_WD_LTJ_CTL))
 		ops->get_wd_ltj_status = sde_hw_intf_read_wd_ltj_ctl;
+
+	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
+		ops->setup_flush_snapshot =  sde_hw_intf_flush_snapshot_setup;
+
+	if (cap & BIT(SDE_INTF_PROG_DYNREF))
+		ops->setup_prog_dynref = sde_hw_intf_setup_prog_dynref;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,

@@ -41,6 +41,27 @@ struct sde_hw_blk_reg_map {
 };
 
 /**
+ * struct sde_hw_ade_cfg : QSEEDv3 Adaptive DE configuration
+ * @adaptive_de_en:      Enable adaptive DE
+ * @polarity_en:         Enable polarity check
+ * @strength_slope:      Slope(m) in y=mx+c, DG calculation
+ * @strength_const:      Constant(c) in y=mx+c, DG calculation
+ * @strength_coeff_tl:   Low threshold for Dynamic gain(DG)
+ * @strength_coeff_th:   High threshold for Dynamic gain(DG)
+ * @halo_suppress_coeff: Halo Suppress Multiplier
+ */
+struct sde_hw_ade_cfg {
+	u32 adaptive_de_en;
+	u32 polarity_en;
+
+	u32 strength_slope;
+	u32 strength_const;
+	u32 strength_coeff_tl;
+	u32 strength_coeff_th;
+	u32 halo_suppress_coeff;
+};
+
+/**
  * struct sde_hw_scaler3_de_cfg : QSEEDv3 detail enhancer configuration
  * @enable:         detail enhancer enable/disable
  * @sharpen_level1: sharpening strength for noise
@@ -77,6 +98,7 @@ struct sde_hw_scaler3_de_cfg {
 /**
  * struct sde_hw_cac_cfg : QSEEDv3 CAC configuration
  * @cac_mode:              cac mode for current configuration
+ * @fov_mode:              Fovea mode for current configuration
  * @uv_filter_cfg:         uv plane filter configuration in CAC mode
  * @cac_le_phase_init2_x:  LE horizontal initial phase2
  * @cac_le_phase_init2_y:  LE vertical initial phase2
@@ -91,6 +113,10 @@ struct sde_hw_scaler3_de_cfg {
  * @cac_le_dst_h_offset:   LE destination horizontal offset
  * @cac_le_dst_v_offset:   LE destination vertical offset
  * @cac_re_dst_v_offset:   RE destination vertical offset
+ * @cac_asym_phase_step_h: Horizontal phase step for fov mode after center region
+ * @cac_asym_phase_step_v: Vertical phase step for fov mode after cener region
+ * @cac_re_phase_step_v:   Right eye vertical phase step for fov mode in beginning region
+ * @cac_re_asym_phase_step_v: Right eye vertical phase step for fov mode in ending region
  * @cac_phase_inc_first_x: horizontal inc_first control
  * @cac_phase_inc_first_y: vertical inc_first control
  * @cac_le_inc_skip_x:     LE horizontal inc_skip control
@@ -100,6 +126,7 @@ struct sde_hw_scaler3_de_cfg {
  */
 struct sde_hw_cac_cfg {
 	u32 cac_mode;
+	u32 fov_mode;
 	u32 uv_filter_cfg;
 
 	u32 cac_le_phase_init2_x[SDE_MAX_PLANES];
@@ -118,6 +145,10 @@ struct sde_hw_cac_cfg {
 	u32 cac_le_dst_h_offset;
 	u32 cac_le_dst_v_offset;
 	u32 cac_re_dst_v_offset;
+	u32 cac_asym_phase_step_h;
+	u32 cac_asym_phase_step_v;
+	u32 cac_re_phase_step_v;
+	u32 cac_re_asym_phase_step_v;
 
 	u16 cac_phase_inc_first_x[SDE_MAX_PLANES];
 	u16 cac_phase_inc_first_y[SDE_MAX_PLANES];
@@ -170,6 +201,8 @@ struct sde_hw_cac_cfg {
  * @de_lpf_l:          Detail enhancer lpf blend low
  * @de_lpf_m:          Detail enhancer lpf blend medium
  * @cac_cfg:              CAC qseed config
+ * @edge_bleed_sup_en: Edge bleed supression enable
+ * @ade:               Adaptive DE config structure
  */
 struct sde_hw_scaler3_cfg {
 	u32 enable;
@@ -220,6 +253,9 @@ struct sde_hw_scaler3_cfg {
 	__u32 de_lpf_l;
 	__u32 de_lpf_m;
 	struct sde_hw_cac_cfg cac_cfg;
+
+	u32 edge_bleed_sup_en;
+	struct sde_hw_ade_cfg ade_cfg;
 };
 
 struct sde_hw_scaler3_lut_cfg {
@@ -316,5 +352,11 @@ static inline bool is_qseed3_rev_qseed3lite(struct sde_mdss_cfg *sde_cfg)
 {
 	return ((sde_cfg->qseed_sw_lib_rev == SDE_SSPP_SCALER_QSEED3LITE) ?
 			true : false);
+}
+
+static inline bool is_cac_supported(struct sde_mdss_cfg *sde_cfg)
+{
+	return ((sde_cfg->cac_version == SDE_SSPP_CAC_V2) ||
+		(sde_cfg->cac_version == SDE_SSPP_CAC_LOOPBACK));
 }
 #endif /* _SDE_HW_UTIL_H */

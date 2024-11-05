@@ -293,6 +293,11 @@ struct sde_drm_de_v1 {
  * @cac_le_inc_skip_y:     LE vertical inc_skip control
  * @cac_re_inc_skip_x:     RE horizontal inc_skip control
  * @cac_re_inc_skip_y:     RE vertical inc_skip control
+ * @fov_mode:              Fovea mode for current configuration
+ * @cac_asym_phase_step_h: Horizontal phase step for fov mode after center region
+ * @cac_asym_phase_step_v: Vertical phase step for fov mode after center region
+ * @cac_re_phase_step_v:   Right eye vertical phase step for fov mode in beginning region
+ * @cac_re_asym_phase_step_v: Right eye vertical phase step for fov mode in ending region
  */
 struct sde_drm_cac {
 	__u32 cac_mode;
@@ -320,6 +325,12 @@ struct sde_drm_cac {
 	__u16 cac_le_inc_skip_y[SDE_MAX_PLANES];
 	__u16 cac_re_inc_skip_x[SDE_MAX_PLANES];
 	__u16 cac_re_inc_skip_y[SDE_MAX_PLANES];
+
+	__u32 fov_mode;
+	__u32 cac_asym_phase_step_h;
+	__u32 cac_asym_phase_step_v;
+	__u32 cac_re_phase_step_v;
+	__u32 cac_re_asym_phase_step_v;
 };
 
 /*
@@ -336,6 +347,7 @@ struct sde_drm_cac {
 #define SDE_DRM_QSEED4
 #define SDE_DRM_INLINE_PREDOWNSCALE
 #define SDE_DRM_QSEED6
+#define SDE_DRM_QSEED7
 
 /**
  * struct sde_drm_scaler_v2 - version 2 of struct sde_drm_scaler
@@ -380,6 +392,14 @@ struct sde_drm_cac {
  * @dir45_en:          45/-45 degree direction filtering enable
  * @cor_en:            corner enhancer enable
  * @cac_cfg:           CAC QSEED config
+ * @edge_bleed_sup_en: Enable edge bleed supression
+ * @adaptive_de_en:    Enable adaptive DE
+ * @polarity_en:       Enable polarity check
+ * @strength_slope:    Slope(m) in y=mx+c, DG calculation
+ * @strength_const:    Constant(c) in y=mx+c, DG calculation
+ * @strength_coeff_tl: Low threshold for Dynamic gain(DG)
+ * @strength_coeff_th: High threshold for Dynamic gain(DG)
+ * @halo_suppress_coeff: Halo Suppress Multiplier
  */
 struct sde_drm_scaler_v2 {
 	/*
@@ -454,6 +474,15 @@ struct sde_drm_scaler_v2 {
 	__u32 cor_en;
 
 	struct sde_drm_cac cac_cfg;
+	__u32 edge_bleed_sup_en;
+	__u32 adaptive_de_en;
+	__u32 polarity_en;
+
+	__u32 strength_slope;
+	__u32 strength_const;
+	__u32 strength_coeff_tl;
+	__u32 strength_coeff_th;
+	__u32 halo_suppress_coeff;
 };
 
 /* Number of dest scalers supported */
@@ -466,6 +495,13 @@ struct sde_drm_scaler_v2 {
 #define SDE_DRM_DESTSCALER_SCALE_UPDATE     0x2
 #define SDE_DRM_DESTSCALER_ENHANCER_UPDATE  0x4
 #define SDE_DRM_DESTSCALER_PU_ENABLE        0x8
+
+/*
+ * Possible merge_mode values for each Destination Scaler block
+ */
+#define DEST_SCALER_SINGLE_PIPE   1
+#define DEST_SCALER_DUAL_PIPE     2
+#define DEST_SCALER_QUAD_PIPE     3
 
 /**
  * struct sde_drm_dest_scaler_cfg - destination scaler config structure

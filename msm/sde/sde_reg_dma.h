@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -197,6 +197,10 @@ enum sde_reg_dma_setup_ops {
  * @DSPP_IGC: select dspp igc block
  * @LTM0: select LTM0 block
  * @LTM1: select LTM1 block
+ * @VIG4: select vig4 block
+ * @VIG5: select vig5 block
+ * @VIG6: select vig6 block
+ * @VIG7: select vig7 block
  * @MDSS: select mdss block
  */
 enum sde_reg_dma_blk {
@@ -224,6 +228,10 @@ enum sde_reg_dma_blk {
 	DMA5  = BIT(21),
 	LTM2 = BIT(22),
 	LTM3 = BIT(23),
+	VIG4 = BIT(24),
+	VIG5 = BIT(25),
+	VIG6 = BIT(26),
+	VIG7 = BIT(27),
 	MDSS  = BIT(31)
 };
 
@@ -343,6 +351,7 @@ struct sde_reg_dma_kickoff_cfg {
  * @last_command: notify control that last command is queued
  * @last_command_sb: notify control that last command for SB LUTDMA is queued
  * @dump_regs: dump reg dma registers
+ * @select_queue_sb: select correct ctl queue for sb lutdma based on version
  */
 struct sde_hw_reg_dma_ops {
 	int (*check_support)(enum sde_reg_dma_features feature,
@@ -359,6 +368,7 @@ struct sde_hw_reg_dma_ops {
 	int (*last_command_sb)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
 	void (*dump_regs)(u32 dpu_idx);
+	enum sde_reg_dma_queue (*select_queue_sb)(void);
 };
 
 /**
@@ -368,6 +378,7 @@ struct sde_hw_reg_dma_ops {
  * @caps: LUTDMA hw caps on the platform
  * @ops: reg dma ops supported on the platform
  * @addr: reg dma hw block base address
+ * @vm_based_queue: flag to specify per vm based queue capability of reg dma
  */
 struct sde_hw_reg_dma {
 	struct drm_device *drm_dev;
@@ -375,6 +386,7 @@ struct sde_hw_reg_dma {
 	const struct sde_reg_dma_cfg *caps;
 	struct sde_hw_reg_dma_ops ops;
 	void __iomem *addr;
+	bool vm_based_queue;
 };
 
 /**

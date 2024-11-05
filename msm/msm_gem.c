@@ -23,6 +23,7 @@
 #include <linux/dma-buf.h>
 #include <linux/pfn_t.h>
 #include <linux/version.h>
+#include <linux/vmalloc.h>
 #include <linux/module.h>
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 #include <linux/ion.h>

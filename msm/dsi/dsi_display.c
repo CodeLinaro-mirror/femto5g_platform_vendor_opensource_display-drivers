@@ -43,6 +43,8 @@
 #define MIPI_DCS_SET_ARP_OFF 0x60
 #define MIPI_DCS_SET_ARP_ON 0x61
 
+#define MDP_MAX 2
+
 u8 dbgfs_tx_cmd_buf[SZ_4K];
 static char dsi_display_primary[MAX_CMDLINE_PARAM_LEN];
 static char dsi_display_secondary[MAX_CMDLINE_PARAM_LEN];
@@ -684,11 +686,27 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 		struct dsi_cmd_desc *cmd)
 {
 	struct dsi_display_ctrl *ctrl, *m_ctrl;
+	struct dsi_mode_info *mode_info;
 	struct mipi_dsi_msg *msg = &cmd->msg;
+	u32 cmd_dma_fifo_size;
 	u32 flags = 0;
 	int i = 0;
 
 	m_ctrl = &display->ctrl[display->clk_master_idx];
+	mode_info = &display->config.video_timing;
+
+	if (!m_ctrl->ctrl)
+		return;
+
+	/*
+	 * DSI embedded mode cmd dma fifo size
+	 * If tx_len > cmd_dma_fifo_size, then transmit it in non-embedded mode.
+	 */
+	if (m_ctrl->ctrl->version >= DSI_CTRL_VERSION_2_9)
+		cmd_dma_fifo_size = DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES;
+	else
+		cmd_dma_fifo_size = DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES_PRE_2P9;
+
 	display_for_each_ctrl(i, display) {
 		ctrl = &display->ctrl[i];
 		if (!ctrl->ctrl)
@@ -706,9 +724,14 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 		if (ctrl->ctrl->secure_mode) {
 			flags &= ~DSI_CTRL_CMD_FETCH_MEMORY;
 			flags |= DSI_CTRL_CMD_FIFO_STORE;
-		} else if (msg->tx_len > DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES) {
+		} else if (msg->tx_len + DSI_LONG_PACKET_HEADER_LENGTH > cmd_dma_fifo_size) {
 			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 		}
+
+		if (mode_info->esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
+			flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
+		else
+			flags &= ~DSI_CTRL_CMD_MULTI_DMA_BURST;
 
 		/* Set flags needed for broadcast. Read commands are always unicast */
 		if (!(msg->flags & MIPI_DSI_MSG_UNICAST_COMMAND) && (display->ctrl_count > 1))
@@ -1362,15 +1385,29 @@ int dsi_display_set_power(struct drm_connector *connector,
 
 	switch (power_mode) {
 	case SDE_MODE_DPMS_LP1:
+		if (display->panel->power_mode == SDE_MODE_DPMS_LP2) {
+			if (dsi_display_set_lp2_load(display, false))
+				DSI_WARN("Failed to remove load of lp2 state\n");
+		}
+
 		rc = dsi_panel_set_lp1(display->panel);
 		break;
 	case SDE_MODE_DPMS_LP2:
 		rc = dsi_panel_set_lp2(display->panel);
+		if (dsi_display_set_lp2_load(display, true))
+			DSI_WARN("Failed to set load for lp2 state\n");
+
 		break;
 	case SDE_MODE_DPMS_ON:
+		if (display->panel->power_mode == SDE_MODE_DPMS_LP2) {
+			if (dsi_display_set_lp2_load(display, false))
+				DSI_WARN("Failed to remove load of lp2 state\n");
+		}
+
 		if ((display->panel->power_mode == SDE_MODE_DPMS_LP1) ||
 			(display->panel->power_mode == SDE_MODE_DPMS_LP2))
 			rc = dsi_panel_set_nolp(display->panel);
+
 		break;
 	case SDE_MODE_DPMS_OFF:
 	default:
@@ -1984,7 +2021,7 @@ static int dsi_display_debugfs_init(struct dsi_display *display)
 	char secondary_panel_str[] = "_secondary";
 	int i;
 
-	strlcpy(panel_name, display->name, SEC_PANEL_NAME_MAX_LEN);
+	strscpy(panel_name, display->name, SEC_PANEL_NAME_MAX_LEN);
 	if (strcmp(display->display_type, "secondary") == 0)
 		strlcat(panel_name, secondary_panel_str, SEC_PANEL_NAME_MAX_LEN);
 
@@ -2644,7 +2681,7 @@ static int dsi_display_parse_boot_display_selection(void)
 	int i, j;
 
 	for (i = 0; i < MAX_DSI_ACTIVE_DISPLAY; i++) {
-		strlcpy(disp_buf, boot_displays[i].boot_param,
+		strscpy(disp_buf, boot_displays[i].boot_param,
 			MAX_CMDLINE_PARAM_LEN);
 
 		pos = strnstr(disp_buf, ":", strlen(disp_buf));
@@ -3414,6 +3451,17 @@ int dsi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd,
 
 	dsi_display_set_cmd_tx_ctrl_flags(display, cmd);
 
+	/*
+	 * Wait until any previous broadcast commands with ASYNC waits have been scheduled
+	 * and completed on both controllers.
+	 */
+	display_for_each_ctrl(i, display) {
+		ctrl = &display->ctrl[i];
+		if ((ctrl->ctrl->pending_cmd_flags & DSI_CTRL_CMD_BROADCAST) &&
+			ctrl->ctrl->post_tx_queued)
+			dsi_ctrl_flush_cmd_dma_queue(ctrl->ctrl);
+	}
+
 	if (cmd->ctrl_flags & DSI_CTRL_CMD_BROADCAST) {
 		rc = dsi_display_broadcast_cmd(display, cmd, do_peripheral_flush);
 		if (rc) {
@@ -3532,6 +3580,7 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 	int i, rc = 0, num_clk = 0;
 	const char *clk_name;
 	const char *pll_byte = "pll_byte", *pll_dsi = "pll_dsi";
+	struct clk *esync_clk_rcg;
 	struct clk *dsi_clk;
 	struct dsi_clk_link_set *pll = &display->clock_info.pll_clks;
 	char *dsi_clock_name;
@@ -3540,6 +3589,9 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 		dsi_clock_name = "qcom,dsi-select-clocks";
 	else
 		dsi_clock_name = "qcom,dsi-select-sec-clocks";
+
+	if (display->panel->ctl_op_sync && !strcmp(display->display_type, "secondary"))
+		dsi_clock_name = "qcom,dsi-select-sec-sync-clocks";
 
 	num_clk = dsi_display_get_clocks_count(display, dsi_clock_name);
 
@@ -3575,6 +3627,21 @@ static int dsi_display_clocks_init(struct dsi_display *display)
 			continue;
 		}
 
+	}
+
+	if (display->panel->esync_caps.esync_support) {
+		esync_clk_rcg = devm_clk_get(&display->pdev->dev, "esync_clk_rcg");
+		if (IS_ERR(esync_clk_rcg)) {
+			rc = PTR_ERR(esync_clk_rcg);
+			DSI_ERR("panel needs esync, but failed to get esync_clk_rcg, rc=%d", rc);
+			goto error;
+		}
+
+		rc = clk_set_parent(esync_clk_rcg, pll->pixel_clk);
+		if (rc) {
+			DSI_ERR("failed to set esync_clk parent, rc=%d", rc);
+			goto error;
+		}
 	}
 
 	return 0;
@@ -3929,6 +3996,44 @@ int dsi_pre_clkon_cb(void *priv,
 	return rc;
 }
 
+int dsi_display_set_lp2_load(struct dsi_display *display, bool enable)
+{
+	int i, rc = 0;
+	struct dsi_display_ctrl *display_ctrl;
+	struct dsi_ctrl *ctrl;
+	struct dsi_panel *panel;
+
+	if (!display) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	display_for_each_ctrl(i, display) {
+		display_ctrl = &display->ctrl[i];
+
+		if (!display_ctrl->ctrl)
+			continue;
+
+		ctrl = display_ctrl->ctrl;
+		rc = dsi_ctrl_set_lp2_load(ctrl, enable);
+
+		if (rc) {
+			DSI_ERR("failed to set lp2 load for dsi ctrl, rc = %d\n", rc);
+			return rc;
+		}
+	}
+
+	panel = display->panel;
+	rc = dsi_panel_set_lp2_load(panel, enable);
+
+	if (rc) {
+		DSI_ERR("failed to set lp2 load for dsi panel, rc = %d\n", rc);
+		return rc;
+	}
+
+	return rc;
+}
+
 static void __set_lane_map_v2(u8 *lane_map_v2,
 	enum dsi_phy_data_lanes lane0,
 	enum dsi_phy_data_lanes lane1,
@@ -4194,25 +4299,38 @@ static bool dsi_display_validate_panel_resources(struct dsi_display *display)
 
 static void dsi_display_check_sync_mode(struct dsi_display *display)
 {
-	char *dsi_sec_clock_name = "qcom,dsi-select-sec-clocks";
-	int num_sec_clk;
+	char *dsi_sec_sync_clock_name = "qcom,dsi-select-sec-sync-clocks";
+	int num_sec_sync_clk;
 	const char *m_clk[2] = {"pll_byte_mclk", "pll_dsi_mclk"};
-	const char *sec_clk[2];
-	int i;
+	const char *sec_sync_clk[2];
+	struct device_node *of_node = display->pdev->dev.of_node;
+	struct of_phandle_iterator it;
+	int i, mdp_count;
 
-	num_sec_clk = dsi_display_get_clocks_count(display, dsi_sec_clock_name);
+	num_sec_sync_clk = dsi_display_get_clocks_count(display, dsi_sec_sync_clock_name);
 
-	if (num_sec_clk <= 0) {
+	if (num_sec_sync_clk <= 0) {
 		display->panel->ctl_op_sync = false;
 		return;
 	}
 
-	for (i = 0; i < num_sec_clk; i++) {
-		dsi_display_get_clock_name(display, dsi_sec_clock_name, i, &sec_clk[i]);
+	for (i = 0; i < num_sec_sync_clk; i++) {
+		dsi_display_get_clock_name(display, dsi_sec_sync_clock_name, i, &sec_sync_clk[i]);
 		/* Assuming clocks are present in same order in dtsi */
-		if (strcmp(m_clk[i], sec_clk[i])) {
+		if (strcmp(m_clk[i], sec_sync_clk[i])) {
 			display->panel->ctl_op_sync = false;
 			return;
+		}
+	}
+
+	mdp_count = of_property_count_u32_elems(of_node, "qcom,mdp");
+	if (mdp_count == MDP_MAX) {
+		of_phandle_iterator_init(&it, of_node, "qcom,mdp", NULL, 0);
+		while (of_phandle_iterator_next(&it) == 0) {
+			if (!of_device_is_available(it.node)) {
+				display->panel->ctl_op_sync = false;
+				return;
+			}
 		}
 	}
 
@@ -4648,6 +4766,68 @@ static void _dsi_display_calc_pipe_delay(struct dsi_display *display,
 	delay->pll_delay = ((delay->pll_delay * esc_clk_rate_hz) / 1000000);
 }
 
+static void _dsi_display_calc_pipe_delay_prog_dr(struct dsi_display *display,
+				    struct dsi_dyn_clk_delay *delay,
+				    struct dsi_display_mode *mode, bool cts)
+{
+	/*
+	 * Units:
+	 * _esc              esc clock cycles
+	 * _pix              pixel clock cycles
+	 * _[unit]_comp      [unit] component of the value, does not represent the whole value
+	 */
+
+	struct dsi_ctrl *dsi_ctrl = display->ctrl[display->clk_master_idx].ctrl;
+	const u64 pix_clk_rate = dsi_ctrl->clk_freq.pix_clk_rate;
+	const u64 esc_clk_rate = dsi_ctrl->clk_freq.esc_clk_rate;
+
+	#define TO_ESC_CLK(val) ((val) * esc_clk_rate / pix_clk_rate)
+
+	bool split = false;
+
+	const u32 line_time_pix = dsi_h_total_dce(&mode->timing);
+	const u32 line_time_esc = TO_ESC_CLK(line_time_pix);
+
+	const u32 pipe_delay_esc = line_time_esc;
+	const u32 pipe_delay2_esc = cts ? 20 : 0;
+	const u32 pipe_delay3_esc = cts ? 20 : 0;
+	const u32 pll_reg_flush_delay_esc = 50;
+	const u32 pll_reg_post_flush_delay_esc = 20;
+	const u32 min_pll_lock_time_esc = 480;
+
+	const u32 delay_start_dr_esc_comp = 3;
+	const u32 delay_start_dr_pix_comp = 1;
+	const u32 mdp_stop_deassertion_esc_comp = 1;
+	const u32 mdp_stop_deassertion_pix_comp = 3;
+	const u32 mask_clkln_fsm_delay_esc = cts ? 0 : 1;
+	const u32 delay_end_dr_pix = split ? 18 + 5 : 12 + 5;
+
+	const u32 min_dr_duration_pix_comp = delay_start_dr_pix_comp + delay_end_dr_pix +
+		mdp_stop_deassertion_pix_comp;
+	const u32 min_dr_duration_esc_comp = delay_start_dr_esc_comp + pll_reg_flush_delay_esc +
+		pll_reg_post_flush_delay_esc + min_pll_lock_time_esc +
+		mdp_stop_deassertion_esc_comp + mask_clkln_fsm_delay_esc +
+		pipe_delay_esc + pipe_delay2_esc + pipe_delay3_esc;
+	const u32 min_dr_duration_esc = min_dr_duration_esc_comp +
+		TO_ESC_CLK(min_dr_duration_pix_comp);
+
+	/*
+	 * HPG does it more mathematically sensibly, but fundamentally it just rounds
+	 * min_dr_duration to the nearest integer multiple of line_time
+	 */
+	const u32 pll_delay_esc = min_dr_duration_esc +
+		(line_time_esc - (min_dr_duration_esc % line_time_esc));
+
+	delay->pipe_delay = pipe_delay_esc - 1;
+	delay->pipe_delay2 = cts ? pipe_delay2_esc - 1 : 0;
+	delay->pipe_delay3 = cts ? pipe_delay3_esc - 1 : 0;
+	delay->pll_reg_flush_delay = pll_reg_flush_delay_esc - 1;
+	delay->pll_reg_post_flush_delay = pll_reg_post_flush_delay_esc - 1;
+	delay->pll_delay = pll_delay_esc - 1;
+
+	#undef TO_ESC_CLK
+}
+
 static int _dsi_display_dyn_update_clks(struct dsi_display *display,
 					struct link_clk_freq *bkp_freq)
 {
@@ -4690,9 +4870,11 @@ static int _dsi_display_dyn_update_clks(struct dsi_display *display,
 		ctrl = &display->ctrl[i];
 		if (ctrl == m_ctrl)
 			continue;
-		dsi_phy_dynamic_refresh_trigger(ctrl->phy, false);
+		dsi_phy_dynamic_refresh_trigger(ctrl->phy, false,
+				display->panel->esync_caps.esync_support);
 	}
-	dsi_phy_dynamic_refresh_trigger(m_ctrl->phy, true);
+	dsi_phy_dynamic_refresh_trigger(m_ctrl->phy, true,
+			display->panel->esync_caps.esync_support);
 
 	/*
 	 * Don't wait for dynamic refresh done for dsi ctrl greater than 2.5
@@ -4788,7 +4970,10 @@ static int dsi_display_dynamic_clk_switch_vid(struct dsi_display *display,
 	}
 
 	/* calculate pipe delays */
-	_dsi_display_calc_pipe_delay(display, &delay, mode);
+	if (display->panel->esync_caps.esync_support)
+		_dsi_display_calc_pipe_delay_prog_dr(display, &delay, mode, false);
+	else
+		_dsi_display_calc_pipe_delay(display, &delay, mode);
 
 	/* configure dynamic refresh ctrl registers */
 	display_for_each_ctrl(i, display) {
@@ -5167,7 +5352,9 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 					true);
 			dsi_phy_dynamic_refresh_clear(ctrl->phy);
 
+			/* Avoid setting trigger selection for 2.9 due to hardware limitation */
 			if ((ctrl->ctrl->version >= DSI_CTRL_VERSION_2_5) &&
+					(ctrl->ctrl->version != DSI_CTRL_VERSION_2_9) &&
 					(dyn_clk_caps->maintain_const_fps)) {
 				dsi_phy_dynamic_refresh_trigger_sel(ctrl->phy,
 						true);
@@ -5251,7 +5438,12 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 		dsi_display_validate_dms_fps(display->panel->cur_mode, mode);
 	}
 
-	if (priv_info->phy_timing_len) {
+	if (priv_info->phy_timing_len &&
+		!atomic_read(&display->clkrate_change_pending)) {
+		/*
+		 * In case of clkrate change, the PHY timing update will happen
+		 * together with the clock update.
+		 */
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 			 rc = dsi_phy_set_timing_params(ctrl->phy,
@@ -5666,6 +5858,21 @@ static int dsi_display_init_ctrl(struct dsi_display *display)
 	return rc;
 }
 
+static int dsi_display_get_display_node_count(struct dsi_display *display)
+{
+	int dsi_display_node_count = 0;
+	struct device_node *dsi_display;
+
+	for_each_compatible_node(dsi_display, NULL, "qcom,dsi-display") {
+		if (!of_device_is_available(dsi_display))
+			continue;
+		dsi_display_node_count++;
+	}
+
+	DSI_INFO("qcom,dsi-display node count %d\n", dsi_display_node_count);
+	return dsi_display_node_count;
+}
+
 /**
  * dsi_display_bind - bind dsi device with controlling device
  * @dev:        Pointer to base of platform device
@@ -5690,7 +5897,7 @@ static int dsi_display_bind(struct device *dev,
 		.vm_pre_hw_release = dsi_display_pre_release,
 		.vm_post_hw_acquire = dsi_display_pre_acquire,
 	};
-	int i, rc = 0;
+	int i, rc = 0, display_node_count;
 
 	if (!dev || !pdev || !master) {
 		DSI_ERR("invalid param(s), dev %pK, pdev %pK, master %pK\n",
@@ -5864,6 +6071,15 @@ static int dsi_display_bind(struct device *dev,
 	if (!rc)
 		dsi_display_manager_register(display);
 
+	display_node_count = dsi_display_get_display_node_count(display);
+
+	/* If there is only one DSI display, it should be set as the primary display.*/
+	if (!display->panel->ctl_op_sync && (display_node_count == 1)
+			&& !strcmp(display->display_type, "secondary")) {
+		DSI_INFO("changing the display_type from secondary to primary\n");
+		display->display_type = "primary";
+	}
+
 	goto error;
 
 error_host_deinit:
@@ -6032,7 +6248,7 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 {
 	struct dsi_display *display = NULL;
 	struct device_node *node = NULL, *panel_node = NULL, *mdp_node = NULL;
-	int rc = 0, index = DSI_PRIMARY;
+	int rc = 0, index = DSI_PRIMARY, mdp_count;
 	bool firm_req = false;
 	struct dsi_display_boot_param *boot_disp = NULL;
 
@@ -6056,7 +6272,23 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 		goto end;
 	}
 
-	mdp_node = of_parse_phandle(pdev->dev.of_node, "qcom,mdp", 0);
+	/* initialize panel id to UINT64_MAX */
+	display->panel_id = ~0x0;
+
+	display->display_type = of_get_property(pdev->dev.of_node,
+				"label", NULL);
+	if (!display->display_type)
+		display->display_type = "primary";
+
+	if (!strcmp(display->display_type, "secondary"))
+		index = DSI_SECONDARY;
+
+	mdp_count = of_property_count_u32_elems(pdev->dev.of_node, "qcom,mdp");
+	if (mdp_count == MDP_MAX)
+		mdp_node = of_parse_phandle(pdev->dev.of_node, "qcom,mdp", index);
+	else
+		mdp_node = of_parse_phandle(pdev->dev.of_node, "qcom,mdp", 0);
+
 	if (!mdp_node) {
 		DSI_ERR("mdp_node not found\n");
 		rc = -ENODEV;
@@ -6068,16 +6300,6 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 	if (display->trusted_vm_env)
 		DSI_INFO("Display enabled with trusted vm path\n");
 
-	/* initialize panel id to UINT64_MAX */
-	display->panel_id = ~0x0;
-
-	display->display_type = of_get_property(pdev->dev.of_node,
-				"label", NULL);
-	if (!display->display_type)
-		display->display_type = "primary";
-
-	if (!strcmp(display->display_type, "secondary"))
-		index = DSI_SECONDARY;
 
 	boot_disp = &boot_displays[index];
 	node = pdev->dev.of_node;
@@ -6147,7 +6369,11 @@ end:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+void dsi_display_dev_remove(struct platform_device *pdev)
+#else
 int dsi_display_dev_remove(struct platform_device *pdev)
+#endif
 {
 	int rc = 0, i = 0;
 	struct dsi_display *display;
@@ -6155,10 +6381,17 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 
 	if (!pdev) {
 		DSI_ERR("Invalid device\n");
-		return -EINVAL;
+		rc = -EINVAL;
+		goto end;
 	}
 
 	display = platform_get_drvdata(pdev);
+	if (!display || !display->panel_node) {
+		DSI_ERR("invalid param, display %pK, display panel node %pK\n",
+				display, display ? display->panel_node : NULL);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	/* decrement ref count */
 	of_node_put(display->panel_node);
@@ -6184,7 +6417,13 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, display);
+
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return rc;
+#else
+	return;
+#endif
 }
 
 int dsi_display_get_num_of_displays(struct drm_device *dev)
@@ -6861,6 +7100,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->max_width = 1920;
 	info->max_height = 1080;
 	info->qsync_min_fps = display->panel->qsync_caps.qsync_min_fps;
+	info->hwfence_sw_override_always = display->panel->qsync_caps.hwfence_sw_override_always;
 	info->has_qsync_min_fps_list = (display->panel->qsync_caps.qsync_min_fps_list_len > 0);
 	info->avr_step_fps = display->panel->avr_caps.avr_step_fps;
 	info->esync_enabled = display->panel->esync_caps.esync_support;
@@ -6874,6 +7114,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->poms_align_vsync = display->panel->poms_align_vsync;
 	info->is_te_using_watchdog_timer = is_sim_panel(display);
 	info->event_notification_disabled = display->panel->event_notification_disabled;
+	info->disable_cesta_hw_sleep = display->panel->disable_cesta_hw_sleep;
 
 	switch (display->panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:
@@ -7521,6 +7762,25 @@ int dsi_display_get_default_lms(void *dsi_display, u32 *num_lm)
 	mutex_unlock(&display->display_lock);
 
 	return rc;
+}
+
+int dsi_display_avoid_cmd_transfer(void *display, bool avoid_transfer)
+{
+	struct dsi_display *dsi_display = display;
+	struct dsi_panel *panel;
+
+	if (dsi_display == NULL || dsi_display->panel == NULL)
+		return -EINVAL;
+
+	panel = dsi_display->panel;
+	SDE_EVT32(avoid_transfer);
+
+	if (avoid_transfer)
+		mutex_lock(&panel->panel_lock);
+	else
+		mutex_unlock(&panel->panel_lock);
+
+	return 0;
 }
 
 int dsi_display_update_transfer_time(void *display, u32 transfer_time)
@@ -8841,8 +9101,11 @@ int dsi_display_pre_kickoff(struct drm_connector *connector,
 		struct dsi_display *display,
 		struct msm_display_kickoff_params *params)
 {
+	struct dsi_display_mode *mode;
 	int rc = 0, ret = 0;
 	int i;
+
+	mode = display->panel->cur_mode;
 
 	/* check and setup MISR */
 	if (display->misr_enable)
@@ -8869,6 +9132,24 @@ int dsi_display_pre_kickoff(struct drm_connector *connector,
 			ret = dsi_ctrl_wait_for_cmd_mode_mdp_idle(ctrl);
 			if (ret)
 				goto wait_failure;
+		}
+
+		if (mode->priv_info->phy_timing_len) {
+			display_for_each_ctrl(i, display) {
+				struct dsi_display_ctrl *ctrl;
+				bool commit_phy_timing = false;
+
+				if (mode->dsi_mode_flags & DSI_MODE_FLAG_DMS)
+					commit_phy_timing = true;
+
+				ctrl = &display->ctrl[i];
+				ret = dsi_phy_set_timing_params(ctrl->phy,
+						mode->priv_info->phy_timing_val,
+						mode->priv_info->phy_timing_len,
+						commit_phy_timing);
+				if (ret)
+					DSI_ERR("failed to add DSI PHY timing params\n");
+			}
 		}
 
 		/*

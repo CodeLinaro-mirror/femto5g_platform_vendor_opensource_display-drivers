@@ -162,7 +162,11 @@ enum sde_sspp {
 	SSPP_VIG1,
 	SSPP_VIG2,
 	SSPP_VIG3,
-	SSPP_VIG_MAX = SSPP_VIG3,
+	SSPP_VIG4,
+	SSPP_VIG5,
+	SSPP_VIG6,
+	SSPP_VIG7,
+	SSPP_VIG_MAX = SSPP_VIG7,
 	SSPP_DMA0,
 	SSPP_DMA1,
 	SSPP_DMA2,
@@ -350,6 +354,7 @@ enum sde_intf_type {
 
 	/* virtual interfaces */
 	INTF_WB = 0x100,
+	INTF_LB = 0x101,
 };
 
 enum sde_intf_mode {
@@ -727,6 +732,8 @@ enum skip_blend_plane_type {
  * @panel_width: width of display panel in pixels.
  * @skip_planes: array of skip blend planes with crtc
  * @num_ds_enabled: Number of destination scalers enabled
+ * @overfetch_lines_on_top: extra lines to over fetch on top
+ * @overfetch_lines_on_top: extra lines to over fetch on bottom
  */
 struct sde_hw_cp_cfg {
 	void *payload;
@@ -743,6 +750,8 @@ struct sde_hw_cp_cfg {
 	u32 panel_width;
 	struct sde_cp_skip_blend_plane skip_planes[SB_PLANE_MAX];
 	u32 num_ds_enabled;
+	u32 overfetch_lines_on_top;
+	u32 overfetch_lines_on_bottom;
 };
 
 /**

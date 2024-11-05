@@ -116,7 +116,7 @@ struct sde_rsc_client *sde_rsc_client_create(u32 rsc_index, char *client_name,
 		return ERR_PTR(-ENOMEM);
 
 	mutex_lock(&rsc->client_lock);
-	strlcpy(client->name, client_name, MAX_RSC_CLIENT_NAME_LEN);
+	strscpy(client->name, client_name, MAX_RSC_CLIENT_NAME_LEN);
 	client->current_state = SDE_RSC_IDLE_STATE;
 	client->rsc_index = rsc_index;
 	client->id = id;
@@ -1876,12 +1876,18 @@ rsc_alloc_fail:
 	return ret;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void sde_rsc_remove(struct platform_device *pdev)
+#else
 static int sde_rsc_remove(struct platform_device *pdev)
+#endif
 {
 	struct sde_rsc_priv *rsc = platform_get_drvdata(pdev);
 
 	sde_rsc_deinit(pdev, rsc);
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static int sde_rsc_rpmh_probe(struct platform_device *pdev)

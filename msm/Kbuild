@@ -47,6 +47,11 @@ else
 endif
 endif
 
+ifeq ($(CONFIG_ARCH_MONACO), y)
+	include $(DISPLAY_ROOT)/config/gki_monacodisp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_monacodispconf.h
+endif
+
 ifeq ($(CONFIG_ARCH_KALAMA), y)
 ifeq ($(CONFIG_ARCH_QTI_VM), y)
         include $(DISPLAY_ROOT)/config/gki_kalamadisptui.conf
@@ -207,6 +212,7 @@ msm_drm-$(CONFIG_DRM_MSM_SDE) += sde/sde_crtc.o \
 				 sde/sde_hw_lm.o \
 				 sde/sde_hw_ctl.o \
 				 sde/sde_hw_util.o \
+				 sde/sde_hw_sspp_v1.o \
 				 sde/sde_hw_sspp.o \
 				 sde/sde_hw_wb.o \
 				 sde/sde_hw_pingpong.o \
@@ -231,7 +237,8 @@ msm_drm-$(CONFIG_DRM_MSM_SDE) += sde/sde_crtc.o \
 				 sde/sde_color_proc_property_helper.o \
 				 sde/sde_color_processing_aiqe.o \
 				 sde/sde_hw_color_proc_aiqe_v1.o \
-				 sde/sde_aiqe_common.o
+				 sde/sde_aiqe_common.o \
+				 sde/sde_loopback.o
 
 msm_drm-$(CONFIG_DRM_SDE_WB) += sde/sde_wb.o \
 				sde/sde_encoder_phys_wb.o

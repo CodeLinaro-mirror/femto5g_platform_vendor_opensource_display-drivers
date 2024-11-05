@@ -2105,6 +2105,17 @@ static void dp_display_disconnect_work(struct work_struct *work)
 	struct dp_display_private *dp = container_of(work,
 			struct dp_display_private, disconnect_work);
 
+	/*
+	 * In DP simulation mode, DP link clock's parent is driven
+	 * by usb pll clock, in case usb is disconnected during
+	 * DP simulation. Accessing HW registers driven by DP link clock
+	 * during this would trigger an exception. Hence, put xo clock as
+	 * DP link clock's parent to keep the registers driven by
+	 * link clock still be accessible.
+	 */
+	if (dp->debug->sim_mode && dp_display_state_is(DP_STATE_ABORTED))
+		dp->power->park_clocks(dp->power);
+
 	dp_display_handle_disconnect(dp, false);
 
 	if (dp->debug->sim_mode && dp_display_state_is(DP_STATE_ABORTED))
@@ -2125,8 +2136,6 @@ static int dp_display_usb_notifier(struct notifier_block *nb,
 		dp_display_state_add(DP_STATE_ABORTED);
 		dp->ctrl->abort(dp->ctrl, true);
 		dp->aux->abort(dp->aux, true);
-
-		dp->power->park_clocks(dp->power);
 
 		queue_work(dp->wq, &dp->disconnect_work);
 	}
@@ -3119,12 +3128,11 @@ static int dp_display_validate_link_clock(struct dp_display_private *dp,
 }
 
 static int dp_display_validate_pixel_clock(struct dp_display_mode dp_mode,
-		u32 max_pclk_khz)
+		u32 max_pclk_khz, u32 pclk_factor)
 {
-	u32 pclk_khz = dp_mode.timing.widebus_en ?
-		(dp_mode.timing.pixel_clk_khz >> 1) :
-		dp_mode.timing.pixel_clk_khz;
+	u32 pclk_khz = dp_mode.timing.pixel_clk_khz;
 
+	pclk_khz = pclk_khz / pclk_factor;
 	if (pclk_khz > max_pclk_khz) {
 		DP_DEBUG("clk: %d kHz, max: %d kHz\n", pclk_khz, max_pclk_khz);
 		return -EPERM;
@@ -3265,7 +3273,8 @@ static enum drm_mode_status dp_display_validate_mode(
 	if (rc)
 		goto end;
 
-	rc = dp_display_validate_pixel_clock(dp_mode, dp_display->max_pclk_khz);
+	rc = dp_display_validate_pixel_clock(dp_mode, dp_display->max_pclk_khz,
+			dp_panel->pclk_factor);
 	if (rc)
 		goto end;
 
@@ -3396,7 +3405,10 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 				dp_mode->capabilities);
 	}
 
-	dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
+	rc = dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
+	if (rc == -EAGAIN) {
+		dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
+	}
 }
 
 static int dp_display_config_hdr(struct dp_display *dp_display, void *panel,
@@ -4195,12 +4207,19 @@ static void dp_display_set_mst_state(void *dp_display,
 		dp->mst.cbs.set_drv_state(dp_display, mst_state);
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void dp_display_remove(struct platform_device *pdev)
+#else
 static int dp_display_remove(struct platform_device *pdev)
+#endif
 {
+	int rc = 0;
 	struct dp_display_private *dp;
 
-	if (!pdev)
-		return -EINVAL;
+	if (!pdev) {
+		rc = -EINVAL;
+		goto end;
+	}
 
 	dp = platform_get_drvdata(pdev);
 
@@ -4222,7 +4241,12 @@ static int dp_display_remove(struct platform_device *pdev)
 		dp->dp_display.dp_aux_ipc_log = NULL;
 	}
 
-	return 0;
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+	return rc;
+#else
+	return;
+#endif
 }
 
 static int dp_pm_prepare(struct device *dev)

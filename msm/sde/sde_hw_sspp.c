@@ -123,65 +123,21 @@
 #define SSPP_LINE_INSERTION_CTRL           0x1E0
 #define SSPP_LINE_INSERTION_OUT_SIZE       0x1E8
 
+/* SSPP_MULTIRECT_EXTN*/
+#define SSPP_OUT_SIZE_REC2                 0x300
+#define SSPP_OUT_XY_REC2                   0x304
+#define SSPP_SRC_XY_REC2                   0x308
+#define SSPP_SRC_SIZE_REC2                 0x30C
+#define SSPP_OUT_SIZE_REC3                 0x310
+#define SSPP_OUT_XY_REC3                   0x314
+#define SSPP_SRC_XY_REC3                   0x318
+#define SSPP_SRC_SIZE_REC3                 0x31C
+
 #define SSPP_CAC_CTRL                      0x328
 #define SSPP_SW_PIX_EXT_C2_LR              0x320
 #define SSPP_SW_PIX_EXT_C2_TB              0x324
 
-/* SSPP_QOS_CTRL */
-#define SSPP_QOS_CTRL_VBLANK_EN            BIT(16)
-#define SSPP_QOS_CTRL_DANGER_SAFE_EN       BIT(0)
-#define SSPP_QOS_CTRL_DANGER_VBLANK_MASK   0x3
-#define SSPP_QOS_CTRL_DANGER_VBLANK_OFF    4
-#define SSPP_QOS_CTRL_CREQ_VBLANK_MASK     0x3
-#define SSPP_QOS_CTRL_CREQ_VBLANK_OFF      20
-
-#define SSPP_SYS_CACHE_MODE                0x1BC
-#define SSPP_SBUF_STATUS_PLANE0            0x1C0
-#define SSPP_SBUF_STATUS_PLANE1            0x1C4
-#define SSPP_SBUF_STATUS_PLANE_EMPTY       BIT(16)
-
-/* SDE_SSPP_SCALER_QSEED2 */
-#define SCALE_CONFIG                       0x04
-#define COMP0_3_PHASE_STEP_X               0x10
-#define COMP0_3_PHASE_STEP_Y               0x14
-#define COMP1_2_PHASE_STEP_X               0x18
-#define COMP1_2_PHASE_STEP_Y               0x1c
-#define COMP0_3_INIT_PHASE_X               0x20
-#define COMP0_3_INIT_PHASE_Y               0x24
-#define COMP1_2_INIT_PHASE_X               0x28
-#define COMP1_2_INIT_PHASE_Y               0x2C
-#define VIG_0_QSEED2_SHARP                 0x30
-
-/*
- * Definitions for ViG op modes
- */
-#define VIG_OP_CSC_DST_DATAFMT BIT(19)
-#define VIG_OP_CSC_SRC_DATAFMT BIT(18)
-#define VIG_OP_CSC_EN          BIT(17)
-#define VIG_OP_MEM_PROT_CONT   BIT(15)
-#define VIG_OP_MEM_PROT_VAL    BIT(14)
-#define VIG_OP_MEM_PROT_SAT    BIT(13)
-#define VIG_OP_MEM_PROT_HUE    BIT(12)
-#define VIG_OP_HIST            BIT(8)
-#define VIG_OP_SKY_COL         BIT(7)
-#define VIG_OP_FOIL            BIT(6)
-#define VIG_OP_SKIN_COL        BIT(5)
-#define VIG_OP_PA_EN           BIT(4)
-#define VIG_OP_PA_SAT_ZERO_EXP BIT(2)
-#define VIG_OP_MEM_PROT_BLEND  BIT(1)
-
-/*
- * Definitions for CSC 10 op modes
- */
-#define VIG_CSC_10_SRC_DATAFMT BIT(1)
-#define VIG_CSC_10_EN          BIT(0)
-#define CSC_10BIT_OFFSET       4
-#define DGM_CSC_MATRIX_SHIFT       0
-
-/* traffic shaper clock in Hz */
-#define TS_CLK			19200000
-
-static inline int _sspp_subblk_offset(struct sde_hw_pipe *ctx,
+int sspp_subblk_offset(struct sde_hw_pipe *ctx,
 		int s_id,
 		u32 *idx)
 {
@@ -228,7 +184,7 @@ static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 	u32 mode_mask;
 	u32 idx;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	if (index == SDE_SSPP_RECT_SOLO) {
@@ -262,7 +218,7 @@ static void _sspp_setup_opmode(struct sde_hw_pipe *ctx,
 	u32 opmode;
 
 	if (!test_bit(SDE_SSPP_SCALER_QSEED2, &ctx->cap->features) ||
-		_sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED2, &idx) ||
+		sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED2, &idx) ||
 		!test_bit(SDE_SSPP_CSC, &ctx->cap->features))
 		return;
 
@@ -282,7 +238,7 @@ static void _sspp_setup_csc10_opmode(struct sde_hw_pipe *ctx,
 	u32 idx;
 	u32 opmode;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_CSC_10BIT, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_CSC_10BIT, &idx))
 		return;
 
 	opmode = SDE_REG_READ(&ctx->hw, SSPP_VIG_CSC_10_OP_MODE + idx);
@@ -300,7 +256,7 @@ static void sde_hw_sspp_set_src_split_order(struct sde_hw_pipe *ctx,
 	struct sde_hw_blk_reg_map *c;
 	u32 opmode, idx, op_mode_off;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	if (rect_mode == SDE_SSPP_RECT_SOLO || rect_mode == SDE_SSPP_RECT_0)
@@ -336,7 +292,9 @@ static void sde_hw_sspp_setup_ubwc(struct sde_hw_pipe *ctx, struct sde_hw_blk_re
 		ubwc_ctrl_off = SSPP_UBWC_STATIC_CTRL_REC1;
 
 	if (SDE_HW_MAJOR(ctx->catalog->ubwc_rev) >= SDE_HW_MAJOR(SDE_HW_UBWC_VER_50)) {
-		ctrl_val |= SDE_FORMAT_IS_YUV(fmt) ? 0 : (BIT(31) | BIT(30));
+		if (!SDE_FORMAT_IS_YUV(fmt))
+			ctrl_val |= (SDE_FORMAT_IS_DX(fmt) || SDE_FORMAT_IS_FP16(fmt)) ?
+					BIT(30) : (BIT(31) | BIT(30));
 		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_2_1(fmt) ? (0x3 << 16) : 0;
 		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_8_5(fmt) ? BIT(16) : 0;
 		SDE_REG_WRITE(c, ubwc_ctrl_off, ctrl_val);
@@ -375,7 +333,7 @@ static void sde_hw_sspp_setup_format(struct sde_hw_pipe *ctx,
 	u32 idx;
 	bool const_color_en = true;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !fmt)
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !fmt)
 		return;
 
 	if (rect_mode == SDE_SSPP_RECT_SOLO || rect_mode == SDE_SSPP_RECT_0) {
@@ -560,7 +518,7 @@ static void sde_hw_sspp_ubwc_stats_set_roi(struct sde_hw_pipe *ctx,
 	u32 idx, ctrl_off, roi_off;
 	u32 ctrl_val = 0, roi_val = 0;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	if (multirect_index == SDE_SSPP_RECT_SOLO || multirect_index == SDE_SSPP_RECT_0) {
@@ -602,7 +560,7 @@ static void sde_hw_sspp_ubwc_stats_get_data(struct sde_hw_pipe *ctx,
 	u32 idx, value = 0;
 	int i;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	if (multirect_index == SDE_SSPP_RECT_SOLO || multirect_index == SDE_SSPP_RECT_0)
@@ -629,7 +587,7 @@ static void sde_hw_sspp_setup_secure(struct sde_hw_pipe *ctx,
 	u32 secure = 0, secure_bit_mask;
 	u32 idx;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	c = &ctx->hw;
@@ -665,7 +623,7 @@ static void sde_hw_sspp_setup_pe_config(struct sde_hw_pipe *ctx,
 	const u32 shortmask = 0xffff;
 	u32 idx;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !pe_ext)
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !pe_ext)
 		return;
 
 	c = &ctx->hw;
@@ -716,7 +674,7 @@ static void sde_hw_sspp_setup_pe_config(struct sde_hw_pipe *ctx,
 	}
 }
 
-static void _sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
+void sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
 		struct sde_hw_pipe_cfg *sspp,
 		struct sde_hw_pixel_ext *pe,
 		void *scaler_cfg)
@@ -728,7 +686,7 @@ static void _sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
 
 	(void)sspp;
 	(void)scaler_cfg;
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED2, &idx) || !pe)
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED2, &idx) || !pe)
 		return;
 
 	c = &ctx->hw;
@@ -774,7 +732,7 @@ static void _sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
 		pe->phase_step_y[SDE_SSPP_COMP_1_2]);
 }
 
-static void _sde_hw_sspp_setup_scaler3(struct sde_hw_pipe *ctx,
+void sde_hw_sspp_setup_scaler3(struct sde_hw_pipe *ctx,
 		struct sde_hw_pipe_cfg *sspp,
 		struct sde_hw_pixel_ext *pe,
 		void *scaler_cfg)
@@ -784,7 +742,7 @@ static void _sde_hw_sspp_setup_scaler3(struct sde_hw_pipe *ctx,
 	struct sde_hw_scaler3_cfg *scaler3_cfg = scaler_cfg;
 
 	(void)pe;
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED3, &idx) || !sspp
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED3, &idx) || !sspp
 		|| !scaler3_cfg || !ctx || !ctx->cap || !ctx->cap->sblk)
 		return;
 
@@ -800,7 +758,7 @@ static void sde_hw_sspp_setup_pre_downscale(struct sde_hw_pipe *ctx,
 {
 	u32 idx, val;
 
-	if (!ctx || !pre_down || _sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (!ctx || !pre_down || sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	val = pre_down->pre_downscale_x_0 |
@@ -821,10 +779,12 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 	struct sde_hw_blk_reg_map *c;
 	u32 src_size, src_xy, dst_size, dst_xy, ystride0, ystride1;
 	u32 src_size_off, src_xy_off, out_size_off, out_xy_off;
+	u32 src_size_ext_off, src_xy_ext_off, out_size_ext_off, out_xy_ext_off;
+	u32 src_extn_size, src_extn_xy, dst_extn_size, dst_extn_xy;
 	u32 decimation = 0;
-	u32 idx;
+	u32 idx, opmode, mask_extn = 0;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !cfg)
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !cfg)
 		return;
 
 	c = &ctx->hw;
@@ -888,6 +848,43 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(c, SSPP_SRC_YSTRIDE0 + idx, ystride0);
 	SDE_REG_WRITE(c, SSPP_SRC_YSTRIDE1 + idx, ystride1);
 	SDE_REG_WRITE(c, SSPP_DECIMATION_CONFIG + idx, decimation);
+
+	if (rect_index == SDE_SSPP_RECT_SOLO)
+		return;
+
+	src_extn_size = (cfg->src_rect_extn.h << 16) | (cfg->src_rect_extn.w);
+	dst_extn_size = (cfg->dst_rect_extn.h << 16) | (cfg->dst_rect_extn.w);
+	src_extn_xy = (cfg->src_rect_extn.y << 16) | (cfg->src_rect_extn.x);
+	dst_extn_xy = (cfg->dst_rect_extn.y << 16) | (cfg->dst_rect_extn.x);
+
+	opmode = SDE_REG_READ(c, SSPP_MULTIRECT_OPMODE + idx);
+
+	if (rect_index == SDE_SSPP_RECT_0) {
+		mask_extn = BIT(8);
+		src_size_ext_off = SSPP_SRC_SIZE_REC2;
+		src_xy_ext_off = SSPP_SRC_XY_REC2;
+		out_size_ext_off = SSPP_OUT_SIZE_REC2;
+		out_xy_ext_off = SSPP_OUT_XY_REC2;
+	} else {
+		mask_extn = BIT(9);
+		src_size_ext_off = SSPP_SRC_SIZE_REC3;
+		src_xy_ext_off = SSPP_SRC_XY_REC3;
+		out_size_ext_off = SSPP_OUT_SIZE_REC3;
+		out_xy_ext_off = SSPP_OUT_XY_REC3;
+	}
+
+	if (!src_extn_size && !dst_extn_size) {
+		opmode &= ~mask_extn;
+		SDE_REG_WRITE(c, SSPP_MULTIRECT_OPMODE + idx, opmode);
+		return;
+	}
+
+	opmode |= mask_extn;
+	SDE_REG_WRITE(c, SSPP_MULTIRECT_OPMODE + idx, opmode);
+	SDE_REG_WRITE(c, src_size_ext_off + idx, src_extn_size);
+	SDE_REG_WRITE(c, src_xy_ext_off + idx, src_extn_xy);
+	SDE_REG_WRITE(c, out_size_ext_off + idx, dst_extn_size);
+	SDE_REG_WRITE(c, out_xy_ext_off + idx, dst_extn_xy);
 }
 
 /**
@@ -906,7 +903,7 @@ static void _sde_hw_sspp_setup_excl_rect(struct sde_hw_pipe *ctx,
 	u32 excl_ctrl = BIT(0);
 	u32 enable_bit;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !excl_rect)
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !excl_rect)
 		return;
 
 	if (rect_index == SDE_SSPP_RECT_0 || rect_index == SDE_SSPP_RECT_SOLO) {
@@ -946,7 +943,7 @@ static void sde_hw_sspp_setup_sourceaddress(struct sde_hw_pipe *ctx,
 	int i;
 	u32 idx;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	if (rect_mode == SDE_SSPP_RECT_SOLO) {
@@ -971,7 +968,7 @@ u32 sde_hw_sspp_get_source_addr(struct sde_hw_pipe *ctx, bool is_virtual)
 	u32 idx;
 	u32 offset = 0;
 
-	if (!ctx || _sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (!ctx || sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return 0;
 
 	offset =  is_virtual ? (SSPP_SRC1_ADDR + idx) : (SSPP_SRC0_ADDR + idx);
@@ -979,13 +976,13 @@ u32 sde_hw_sspp_get_source_addr(struct sde_hw_pipe *ctx, bool is_virtual)
 	return SDE_REG_READ(&ctx->hw, offset);
 }
 
-static void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx,
+void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx,
 		struct sde_csc_cfg *data)
 {
 	u32 idx;
 	bool csc10 = false;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_CSC, &idx) || !data)
+	if (sspp_subblk_offset(ctx, SDE_SSPP_CSC, &idx) || !data)
 		return;
 
 	if (test_bit(SDE_SSPP_CSC_10BIT, &ctx->cap->features)) {
@@ -996,13 +993,13 @@ static void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx,
 	sde_hw_csc_setup(&ctx->hw, idx, data, csc10);
 }
 
-static void sde_hw_sspp_setup_sharpening(struct sde_hw_pipe *ctx,
+void sde_hw_sspp_setup_sharpening(struct sde_hw_pipe *ctx,
 		struct sde_hw_sharp_cfg *cfg)
 {
 	struct sde_hw_blk_reg_map *c;
 	u32 idx;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED2, &idx) || !cfg ||
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED2, &idx) || !cfg ||
 			!test_bit(SDE_SSPP_SCALER_QSEED2, &ctx->cap->features))
 		return;
 
@@ -1019,7 +1016,7 @@ static void sde_hw_sspp_setup_solidfill(struct sde_hw_pipe *ctx, u32 color, enum
 {
 	u32 idx;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	if (rect_index == SDE_SSPP_RECT_SOLO || rect_index == SDE_SSPP_RECT_0)
@@ -1034,7 +1031,7 @@ static void sde_hw_sspp_setup_qos_lut(struct sde_hw_pipe *ctx,
 {
 	u32 idx;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	SDE_REG_WRITE(&ctx->hw, SSPP_DANGER_LUT + idx, cfg->danger_lut);
@@ -1056,7 +1053,7 @@ static void sde_hw_sspp_setup_qos_ctrl(struct sde_hw_pipe *ctx,
 	u32 idx;
 	u32 qos_ctrl = 0;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	if (cfg->vblank_en) {
@@ -1087,7 +1084,7 @@ static void sde_hw_sspp_setup_ts_prefill(struct sde_hw_pipe *ctx,
 	if (!ctx || !cfg || !ctx->cap)
 		return;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	cap = ctx->cap;
@@ -1132,7 +1129,7 @@ static void sde_hw_sspp_setup_cdp(struct sde_hw_pipe *ctx,
 	if (!ctx || !cfg)
 		return;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	if (index == SDE_SSPP_RECT_SOLO || index == SDE_SSPP_RECT_0) {
@@ -1161,7 +1158,7 @@ static void sde_hw_sspp_setup_sys_cache(struct sde_hw_pipe *ctx,
 {
 	u32 idx, val;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	if (!cfg)
@@ -1172,9 +1169,12 @@ static void sde_hw_sspp_setup_sys_cache(struct sde_hw_pipe *ctx,
 	if (cfg->flags & SYS_CACHE_EN_FLAG)
 		val = (val & ~BIT(15)) | ((cfg->rd_en & 0x1) << 15);
 
-	if (cfg->flags & SYS_CACHE_SCID)
-		val = (val & ~0x1F00) | ((cfg->rd_scid & 0x1f) << 8);
-
+	if (cfg->flags & SYS_CACHE_SCID) {
+		if (SDE_HW_MAJOR(ctx->catalog->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
+			val = (val & ~0x3F00) | ((cfg->rd_scid & 0x3f) << 8);
+		else
+			val = (val & ~0x1F00) | ((cfg->rd_scid & 0x1f) << 8);
+	}
 	if (cfg->flags & SYS_CACHE_OP_MODE)
 		val = (val & ~0xC0000) | ((cfg->op_mode & 0x3) << 18);
 
@@ -1192,7 +1192,7 @@ static void sde_hw_sspp_setup_uidle_fill_scale(struct sde_hw_pipe *ctx,
 {
 	u32 idx, fill_lvl;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	/* duplicate the v1 scale values for V2 and fal10 exit */
@@ -1210,7 +1210,7 @@ static void sde_hw_sspp_setup_uidle(struct sde_hw_pipe *ctx,
 	u32 idx, val;
 	u32 offset;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	if (index == SDE_SSPP_RECT_1)
@@ -1228,7 +1228,7 @@ static void sde_hw_sspp_setup_uidle(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(&ctx->hw, offset + idx, val);
 }
 
-static void _setup_layer_ops_colorproc(struct sde_hw_pipe *c,
+void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 		unsigned long features, bool is_virtual_pipe)
 {
 	int ret = 0;
@@ -1400,7 +1400,7 @@ static void _setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 		c->ops.setup_ucsc_alpha_dither = sde_setup_ucsc_alpha_ditherv1;
 }
 
-static void sde_hw_sspp_setup_inverse_pma(struct sde_hw_pipe *ctx,
+void sde_hw_sspp_setup_inverse_pma(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index index, u32 enable)
 {
 	u32 op_mode = 0;
@@ -1417,7 +1417,7 @@ static void sde_hw_sspp_setup_inverse_pma(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(&ctx->hw, offset, op_mode);
 }
 
-static void sde_hw_sspp_setup_dgm_inverse_pma(struct sde_hw_pipe *ctx,
+void sde_hw_sspp_setup_dgm_inverse_pma(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index index, u32 enable)
 {
 	u32 offset;
@@ -1441,7 +1441,7 @@ static void sde_hw_sspp_setup_dgm_inverse_pma(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(&ctx->hw, offset, op_mode);
 }
 
-static void sde_hw_sspp_setup_dgm_csc(struct sde_hw_pipe *ctx,
+void sde_hw_sspp_setup_dgm_csc(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, struct sde_csc_cfg *data)
 {
 	u32 idx = 0;
@@ -1512,7 +1512,7 @@ static void sde_hw_sspp_setup_line_insertion(struct sde_hw_pipe *ctx,
 	u32 ctl_off = 0, size_off = 0, ctl_val = 0;
 	u32 idx;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !cfg)
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !cfg)
 		return;
 
 	c = &ctx->hw;
@@ -1535,31 +1535,46 @@ static void sde_hw_sspp_setup_line_insertion(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(c, size_off, cfg->dst_h << 16);
 }
 
-static void sde_hw_sspp_setup_cac(struct sde_hw_pipe *ctx, u32 cac_mode)
+static void sde_hw_sspp_setup_cac(struct sde_hw_pipe *ctx, u32 cac_mode,
+		bool fov_en, u32 pp_idx)
 {
 	u32 opmode;
 	u32 idx;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
+	opmode = SDE_REG_READ(&ctx->hw, SSPP_CAC_CTRL + idx);
 	if (cac_mode == SDE_CAC_UNPACK)
-		opmode = BIT(8);
+		opmode |= BIT(8);
 	else if (cac_mode == SDE_CAC_FETCH)
-		opmode = BIT(0) | BIT(8);
+		opmode |= BIT(0) | BIT(8);
+	else if (cac_mode == SDE_CAC_LOOPBACK_FETCH) {
+		if (SDE_SSPP_VALID_VIG(ctx->idx)) {
+			opmode &= (pp_idx << 24);
+			opmode |= BIT(0) | BIT(8) | BIT(16);
+		} else
+			opmode |= BIT(0) | BIT(8);
+	} else {
+		opmode |= 0xF << 24;
+		opmode &= ~(BIT(0) | BIT(8) | BIT(16));
+	}
+
+	if (fov_en)
+		opmode |= BIT(12);
 	else
-		opmode = 0;
+		opmode &= ~BIT(12);
 
 	SDE_REG_WRITE(&ctx->hw, SSPP_CAC_CTRL + idx, opmode);
 }
 
-static void sde_hw_sspp_setup_scaler_cac(struct sde_hw_pipe *ctx,
+void sde_hw_sspp_setup_scaler_cac(struct sde_hw_pipe *ctx,
 		struct sde_hw_cac_cfg *cac_cfg)
 {
 	u32 idx;
 
 	if (!ctx || !cac_cfg ||
-		_sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED3, &idx))
+		sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED3, &idx))
 		return;
 
 	sde_hw_setup_scaler_cac(&ctx->hw, idx, cac_cfg);
@@ -1570,7 +1585,7 @@ static void sde_hw_sspp_setup_img_size(struct sde_hw_pipe *ctx,
 {
 	u32 img_size, idx;
 
-	if (_sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
 	img_size = img_rec->h << 16 | img_rec->w;
@@ -1616,20 +1631,21 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 
 	if (test_bit(SDE_SSPP_SCALER_QSEED2, &features)) {
 		c->ops.setup_sharpening = sde_hw_sspp_setup_sharpening;
-		c->ops.setup_scaler = _sde_hw_sspp_setup_scaler;
+		c->ops.setup_scaler = sde_hw_sspp_setup_scaler;
 	}
 
 	if (sde_hw_sspp_multirect_enabled(c->cap))
 		c->ops.update_multirect = sde_hw_sspp_update_multirect;
 
-	if (test_bit(SDE_SSPP_CAC_V2, &features)) {
-		c->ops.setup_cac_ctrl = sde_hw_sspp_setup_cac;
+	if (test_bit(SDE_SSPP_CAC_V2, &features) ||
+			test_bit(SDE_SSPP_CAC_LOOPBACK, &features)) {
 		c->ops.setup_img_size = sde_hw_sspp_setup_img_size;
+		c->ops.setup_cac_ctrl = sde_hw_sspp_setup_cac;
 	}
 
 	if (test_bit(SDE_SSPP_SCALER_QSEED3, &features) ||
 			test_bit(SDE_SSPP_SCALER_QSEED3LITE, &features)) {
-		c->ops.setup_scaler = _sde_hw_sspp_setup_scaler3;
+		c->ops.setup_scaler = sde_hw_sspp_setup_scaler3;
 		c->ops.setup_scaler_lut = is_qseed3_rev_qseed3lite(
 				c->catalog) ? reg_dmav1_setup_scaler3lite_lut
 				: reg_dmav1_setup_scaler3_lut;
@@ -1640,7 +1656,8 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 			c->ops.setup_scaler = reg_dmav1_setup_vig_qseed3;
 		else
 			c->ops.setup_scaler_cac =
-				test_bit(SDE_SSPP_CAC_V2, &features) ?
+				(test_bit(SDE_SSPP_CAC_V2, &features) ||
+				test_bit(SDE_SSPP_CAC_LOOPBACK, &features)) ?
 				sde_hw_sspp_setup_scaler_cac : NULL;
 	}
 
@@ -1670,7 +1687,7 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 			c->ops.setup_uidle_fill_scale = sde_hw_sspp_setup_uidle_fill_scale;
 	}
 
-	_setup_layer_ops_colorproc(c, features, is_virtual_pipe);
+	setup_layer_ops_colorproc(c, features, is_virtual_pipe);
 
 	if (test_bit(SDE_SSPP_DGM_INVERSE_PMA, &features))
 		c->ops.setup_inverse_pma = sde_hw_sspp_setup_dgm_inverse_pma;
@@ -1743,8 +1760,13 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 	hw_pipe->idx = idx;
 	hw_pipe->cap = cfg;
 	hw_pipe->dpu_idx = dpu_idx;
-	_setup_layer_ops(hw_pipe, hw_pipe->cap->features,
-		hw_pipe->cap->perf_features, is_virtual_pipe);
+
+	if (test_bit(SDE_SSPP_REC_SWI_SEPARATION, &hw_pipe->cap->features))
+		setup_layer_ops_v1(hw_pipe, hw_pipe->cap->features,
+			hw_pipe->cap->perf_features, is_virtual_pipe);
+	else
+		_setup_layer_ops(hw_pipe, hw_pipe->cap->features,
+			hw_pipe->cap->perf_features, is_virtual_pipe);
 
 	if (catalog->qseed_hw_rev)
 		sde_init_scaler_blk(&hw_pipe->cap->sblk->scaler_blk,
@@ -1809,8 +1831,14 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 		if (SDE_CLK_CTRL_SSPP_VALID(cfg->clk_ctrl)) {
 			clk_client->hw = &hw_pipe->hw;
 			clk_client->clk_ctrl = cfg->clk_ctrl;
-			clk_client->ops.get_clk_ctrl_status = sde_hw_sspp_get_clk_ctrl_status;
-			clk_client->ops.setup_clk_force_ctrl = sde_hw_sspp_setup_clk_force_ctrl;
+
+			if (test_bit(SDE_SSPP_REC_SWI_SEPARATION, &hw_pipe->cap->features)) {
+				clk_client->ops.get_clk_ctrl_status = sde_hw_sspp_get_clk_ctrl_status_v1;
+				clk_client->ops.setup_clk_force_ctrl = sde_hw_sspp_setup_clk_force_ctrl_v1;
+			} else {
+				clk_client->ops.get_clk_ctrl_status = sde_hw_sspp_get_clk_ctrl_status;
+				clk_client->ops.setup_clk_force_ctrl = sde_hw_sspp_setup_clk_force_ctrl;
+			}
 		} else {
 			SDE_ERROR("invalid sspp clk ctrl type %d\n", cfg->clk_ctrl);
 		}

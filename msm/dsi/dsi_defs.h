@@ -450,6 +450,7 @@ struct dsi_panel_cmd_set {
  * @avr_step_fps:     AVR step fps rate
  * @esync_enabled:    esync enabled
  * @esync_emsync_fps: esync EM pulse rate
+ * @te_pulse_width_us:         Pulse width of TE in microseconds
  */
 struct dsi_mode_info {
 	u32 h_active;
@@ -480,6 +481,7 @@ struct dsi_mode_info {
 	u32 avr_step_fps;
 	bool esync_enabled;
 	u32 esync_emsync_fps;
+	u32 te_pulse_width_us;
 };
 
 /**
@@ -797,6 +799,9 @@ enum dsi_error_status {
 struct dsi_dyn_clk_delay {
 	u32 pipe_delay;
 	u32 pipe_delay2;
+	u32 pipe_delay3;
+	u32 pll_reg_flush_delay;
+	u32 pll_reg_post_flush_delay;
 	u32 pll_delay;
 };
 
@@ -806,6 +811,7 @@ enum dsi_dyn_clk_control_bits {
 	DYN_REFRESH_SYNC_MODE,
 	DYN_REFRESH_SW_TRIGGER,
 	DYN_REFRESH_SWI_CTRL,
+	DYN_REFRESH_PROG_DR,
 };
 
 /* convert dsi pixel format into bits per pixel */

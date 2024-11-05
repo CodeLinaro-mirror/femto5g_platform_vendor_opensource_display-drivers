@@ -59,6 +59,7 @@ static const enum dsi_ctrl_version dsi_ctrl_v2_6 = DSI_CTRL_VERSION_2_6;
 static const enum dsi_ctrl_version dsi_ctrl_v2_7 = DSI_CTRL_VERSION_2_7;
 static const enum dsi_ctrl_version dsi_ctrl_v2_8 = DSI_CTRL_VERSION_2_8;
 static const enum dsi_ctrl_version dsi_ctrl_v2_9 = DSI_CTRL_VERSION_2_9;
+static const enum dsi_ctrl_version dsi_ctrl_v2_10 = DSI_CTRL_VERSION_2_10;
 
 static const struct of_device_id msm_dsi_of_match[] = {
 	{
@@ -92,6 +93,10 @@ static const struct of_device_id msm_dsi_of_match[] = {
 	{
 		.compatible = "qcom,dsi-ctrl-hw-v2.9",
 		.data = &dsi_ctrl_v2_9,
+	},
+	{
+		.compatible = "qcom,dsi-ctrl-hw-v2.10",
+		.data = &dsi_ctrl_v2_10,
 	},
 	{}
 };
@@ -473,7 +478,7 @@ static void dsi_ctrl_post_cmd_transfer_work(struct work_struct *work)
 	dsi_ctrl->post_tx_queued = false;
 }
 
-static void dsi_ctrl_flush_cmd_dma_queue(struct dsi_ctrl *dsi_ctrl)
+void dsi_ctrl_flush_cmd_dma_queue(struct dsi_ctrl *dsi_ctrl)
 {
 	/*
 	 * If a command is triggered right after another command,
@@ -708,6 +713,7 @@ static int dsi_ctrl_init_regmap(struct platform_device *pdev,
 	case DSI_CTRL_VERSION_2_7:
 	case DSI_CTRL_VERSION_2_8:
 	case DSI_CTRL_VERSION_2_9:
+	case DSI_CTRL_VERSION_2_10:
 		ptr = msm_ioremap(pdev, "disp_cc_base", ctrl->name);
 		if (IS_ERR(ptr)) {
 			DSI_CTRL_ERR(ctrl, "disp_cc base address not found for\n");
@@ -788,9 +794,6 @@ static int dsi_ctrl_clocks_init(struct platform_device *pdev,
 	struct dsi_esync_clk_info *esync = &ctrl->clk_info.esync_clk;
 	struct dsi_osc_clk_info *osc = &ctrl->clk_info.osc_clk;
 
-	struct clk *pll_dsi_clk;
-	struct clk *esync_clk_rcg;
-
 	core->mdp_core_clk = devm_clk_get(&pdev->dev, "mdp_core_clk");
 	if (IS_ERR(core->mdp_core_clk)) {
 		core->mdp_core_clk = NULL;
@@ -842,13 +845,6 @@ static int dsi_ctrl_clocks_init(struct platform_device *pdev,
 		DSI_CTRL_DEBUG(ctrl, "can't find esync_clk, rc=%d\n", rc);
 	}
 
-	esync_clk_rcg = devm_clk_get(&pdev->dev, "esync_clk_rcg");
-	if (IS_ERR(esync_clk_rcg)) {
-		rc = PTR_ERR(esync_clk_rcg);
-		esync_clk_rcg = NULL;
-		DSI_CTRL_DEBUG(ctrl, "can't find esync_clk_rcg, rc=%d\n", rc);
-	}
-
 	lp_link->esc_clk = devm_clk_get(&pdev->dev, "esc_clk");
 	if (IS_ERR(lp_link->esc_clk)) {
 		rc = PTR_ERR(lp_link->esc_clk);
@@ -889,21 +885,6 @@ static int dsi_ctrl_clocks_init(struct platform_device *pdev,
 	}
 
 	xo->pixel_clk = xo->byte_clk;
-
-	pll_dsi_clk = devm_clk_get(&pdev->dev, "pll_dsi_clk");
-	if (IS_ERR(pll_dsi_clk)) {
-		rc = PTR_ERR(pll_dsi_clk);
-		pll_dsi_clk = NULL;
-		DSI_CTRL_DEBUG(ctrl, "failed to get pll_dsi_clk, rc=%d\n", rc);
-	}
-
-	if (pll_dsi_clk && esync_clk_rcg) {
-		rc = clk_set_parent(esync_clk_rcg, pll_dsi_clk);
-		if (rc) {
-			DSI_CTRL_ERR(ctrl, "failed to set esync_clk parent, rc=%d\n", rc);
-			goto fail;
-		}
-	}
 
 	return 0;
 fail:
@@ -1530,6 +1511,8 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 
 	if (flags & DSI_CTRL_CMD_LAST_COMMAND)
 		hw_flags |= DSI_CTRL_CMD_LAST_COMMAND;
+	if (flags & DSI_CTRL_CMD_MULTI_DMA_BURST)
+		hw_flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
 
 	if (flags & DSI_CTRL_CMD_DEFER_TRIGGER) {
 		if (flags & DSI_CTRL_CMD_FETCH_MEMORY) {
@@ -2279,7 +2262,11 @@ fail:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void dsi_ctrl_dev_remove(struct platform_device *pdev)
+#else
 static int dsi_ctrl_dev_remove(struct platform_device *pdev)
+#endif
 {
 	int rc = 0;
 	struct dsi_ctrl *dsi_ctrl;
@@ -2321,7 +2308,9 @@ static int dsi_ctrl_dev_remove(struct platform_device *pdev)
 	devm_kfree(&pdev->dev, dsi_ctrl);
 
 	platform_set_drvdata(pdev, NULL);
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static struct platform_driver dsi_ctrl_driver = {
@@ -4378,6 +4367,27 @@ int dsi_ctrl_wait4dynamic_refresh_done(struct dsi_ctrl *ctrl)
 		rc = ctrl->hw.ops.wait4dynamic_refresh_done(&ctrl->hw);
 
 	mutex_unlock(&ctrl->ctrl_lock);
+	return rc;
+}
+
+/**
+ * dsi_ctrl_set_lp2_load() - Add or remove LP2 load on DSI ctrl supplies.
+ */
+int dsi_ctrl_set_lp2_load(struct dsi_ctrl *ctrl, bool enable)
+{
+	int rc = 0;
+
+	if (!ctrl) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	rc = dsi_pwr_set_lp2_load(&ctrl->pwr_info.host_pwr, enable);
+	if (rc) {
+		DSI_ERR("failed to set lp2 load rc = %d\n", rc);
+		return rc;
+	}
+
 	return rc;
 }
 

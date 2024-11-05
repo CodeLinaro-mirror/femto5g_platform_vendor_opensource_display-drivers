@@ -102,8 +102,8 @@
 #define MDP_CTL_HW_FENCE_IDm_MASK		0x5c
 #define MDP_CTL_HW_FENCE_IDm_ATTR		0x60
 
-#define HW_FENCE_IPCC_PROTOCOLp_CLIENTc_SEND(ba, p, c) ((ba+0xc) + (0x40000*p) + (0x1000*c))
-#define HW_FENCE_IPCC_PROTOCOLp_CLIENTc_RECV_ID(ba, p, c) ((ba+0x10) + (0x40000*p) + (0x1000*c))
+#define HW_FENCE_IPCC_SEND(addr) ((addr)+0xc)
+#define HW_FENCE_IPCC_RECV_ID(addr) ((addr)+0x10)
 #define MDP_CTL_HW_FENCE_ID_OFFSET_n(base, n) (base + (0x14*n))
 #define MDP_CTL_HW_FENCE_ID_OFFSET_m(base, m) (base + (0x14*m))
 #define MDP_CTL_FENCE_ATTRS(devicetype, size, resp_req) \
@@ -122,6 +122,8 @@
 
 #define HW_FENCE_INPUT_FENCE_ID_MASK_ALL 0xFFFFFFFF
 #define HW_FENCE_INPUT_FENCE_ID_MASK_SIGNAL 0xFFFF
+
+#define DEMURA_SW_FUSE_OFFSET 0x7C
 
 static int ppb_offset_map[PINGPONG_MAX] = {1, 0, 3, 2, 5, 4, 7, 7, 6, 6, -1, -1};
 
@@ -350,6 +352,18 @@ static void _update_vsync_source(struct sde_hw_mdp *mdp,
 	}
 }
 
+static void sde_hw_setup_flush_sync_intf_mux(struct sde_hw_mdp *mdp, int intf_idx)
+{
+	struct sde_hw_blk_reg_map *c;
+
+	if (!mdp)
+		return;
+
+	c = &mdp->hw;
+
+	SDE_REG_WRITE(c, MDP_FLUSH_SYNC_INTF_MUX, intf_idx);
+}
+
 static void sde_hw_setup_vsync_source(struct sde_hw_mdp *mdp,
 		struct sde_vsync_source_cfg *cfg)
 {
@@ -407,10 +421,13 @@ void sde_hw_reset_ubwc(struct sde_hw_mdp *mdp, struct sde_mdss_cfg *m)
 			((m->mdp[0].highest_bank_bit & 0x7) << 4) |
 			((m->macrotile_mode & 0x1) << 12);
 
-		if (IS_UBWC_50_SUPPORTED(ubwc_dec_version)) {
+		if (IS_UBWC_60_SUPPORTED(ubwc_dec_version)) {
+			ver = 5;
+			mode = 1;
+		} else if (IS_UBWC_50_SUPPORTED(ubwc_dec_version)) {
 			ver = 4;
 			mode = 1;
-		} else if (IS_UBWC_43_SUPPORTED(ubwc_dec_version)) {
+		} else if (IS_UBWC_43_SUPPORTED(ubwc_enc_version)) {
 			ver = 3;
 			mode = 1;
 		} else {
@@ -698,8 +715,8 @@ static void sde_hw_input_hw_fence_status(struct sde_hw_mdp *mdp, u64 *s_val, u64
 	wmb(); /* make sure the timestamps are cleared */
 }
 
-static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phys_id,
-	unsigned long ipcc_base_addr, unsigned long hw_fence_mdp_offset,
+static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id,
+	unsigned long dpu_ipcc_addr, unsigned long hw_fence_mdp_offset,
 	struct sde_hw_blk_reg_map *c, bool has_soccp)
 {
 	u32 val, offset, mask;
@@ -722,8 +739,7 @@ static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phy
 
 	/* configure the attribs for the isr read_reg op */
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ADDR, 0);
-	val = HW_FENCE_IPCC_PROTOCOLp_CLIENTc_RECV_ID(ipcc_base_addr,
-				protocol_id, client_phys_id);
+	val = HW_FENCE_IPCC_RECV_ID(dpu_ipcc_addr);
 	SDE_REG_WRITE(c, offset, val);
 
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ATTR, 0);
@@ -759,7 +775,7 @@ static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phy
 }
 
 static void sde_hw_setup_hw_fences_config(struct sde_hw_mdp *mdp, u32 protocol_id,
-	u32 client_phys_id, unsigned long ipcc_base_addr)
+	unsigned long dpu_ipcc_addr)
 {
 	u32 val, offset;
 	struct sde_hw_blk_reg_map c;
@@ -775,15 +791,14 @@ static void sde_hw_setup_hw_fences_config(struct sde_hw_mdp *mdp, u32 protocol_i
 
 	hw_fence_mdp_offset = mdp->caps->hw_fence_mdp_offset;
 
-	_sde_hw_setup_hw_input_fences_config(protocol_id, client_phys_id, ipcc_base_addr,
+	_sde_hw_setup_hw_input_fences_config(protocol_id, dpu_ipcc_addr,
 			hw_fence_mdp_offset, &c, mdp->caps->has_soccp);
 
 	/*setup output fence isr */
 
 	/* configure the attribs for the isr load_data op */
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ADDR, 4);
-	val =  HW_FENCE_IPCC_PROTOCOLp_CLIENTc_SEND(ipcc_base_addr,
-			protocol_id, client_phys_id);
+	val =  HW_FENCE_IPCC_SEND(dpu_ipcc_addr);
 	SDE_REG_WRITE(&c, offset, val);
 
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ATTR, 4);
@@ -847,7 +862,7 @@ void sde_hw_top_set_ppb_fifo_size(struct sde_hw_mdp *mdp, u32 pp, u32 sz)
 }
 
 static void sde_hw_setup_hw_fences_config_with_dir_write(struct sde_hw_mdp *mdp, u32 protocol_id,
-	u32 client_phys_id, unsigned long ipcc_base_addr)
+	unsigned long dpu_ipcc_addr)
 {
 	u32 val, offset;
 	struct sde_hw_blk_reg_map c;
@@ -863,15 +878,14 @@ static void sde_hw_setup_hw_fences_config_with_dir_write(struct sde_hw_mdp *mdp,
 
 	hw_fence_mdp_offset = mdp->caps->hw_fence_mdp_offset;
 
-	_sde_hw_setup_hw_input_fences_config(protocol_id, client_phys_id, ipcc_base_addr,
+	_sde_hw_setup_hw_input_fences_config(protocol_id, dpu_ipcc_addr,
 			hw_fence_mdp_offset, &c, mdp->caps->has_soccp);
 
 	/*setup output fence isr */
 
 	/* configure the attribs for the isr load_data op */
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ADDR, 4);
-	val =  HW_FENCE_IPCC_PROTOCOLp_CLIENTc_SEND(ipcc_base_addr,
-		protocol_id, client_phys_id);
+	val =  HW_FENCE_IPCC_SEND(dpu_ipcc_addr);
 	SDE_REG_WRITE(&c, offset, val);
 
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ATTR, 4);
@@ -950,6 +964,9 @@ static void _setup_mdp_ops(struct sde_hw_mdp_ops *ops, unsigned long cap, u32 hw
 
 	if (cap & BIT(SDE_MDP_DUAL_DPU_SYNC))
 		ops->dpu_sync_intf_mux = sde_hw_setup_dpu_sync_intf_mux;
+
+	if (cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
+		ops->flush_sync_intf_mux = sde_hw_setup_flush_sync_intf_mux;
 }
 
 static const struct sde_mdp_cfg *_top_offset(enum sde_mdp mdp,
@@ -1038,3 +1055,34 @@ void sde_hw_mdp_destroy(struct sde_hw_mdp *mdp)
 	kfree(mdp);
 }
 
+struct sde_hw_sw_fuse *sde_hw_sw_fuse_init(void __iomem *addr,
+	u32 sw_fuse_len, const struct sde_mdss_cfg *m)
+{
+	struct sde_hw_sw_fuse *c;
+
+	c = kzalloc(sizeof(*c), GFP_KERNEL);
+	if (!c)
+		return ERR_PTR(-ENOMEM);
+
+	c->hw.base_off = addr;
+	c->hw.blk_off = 0;
+	c->hw.length = sw_fuse_len;
+	c->hw.hw_rev = m->hw_rev;
+
+	return c;
+}
+
+void sde_hw_sw_fuse_destroy(struct sde_hw_sw_fuse *sw_fuse)
+{
+	kfree(sw_fuse);
+}
+
+u32 sde_hw_get_demura_sw_fuse_value(struct sde_hw_sw_fuse *sw_fuse)
+{
+	u32 demura_sw_fuse = 0;
+
+	if (sw_fuse)
+		demura_sw_fuse = SDE_REG_READ(&sw_fuse->hw, DEMURA_SW_FUSE_OFFSET);
+
+	return demura_sw_fuse;
+}

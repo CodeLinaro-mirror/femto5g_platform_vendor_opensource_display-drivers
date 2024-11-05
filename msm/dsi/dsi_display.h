@@ -179,6 +179,7 @@ struct dsi_display_ext_bridge {
  * @ulps_enabled:     ulps state.
  * @clamp_enabled:    clamp state.
  * @phy_idle_power_off:   PHY power state.
+ * @twm_enabled:      Boolean to indicate twm enabled.
  * @host:             DRM MIPI DSI Host.
  * @bridge:           Pointer to DRM bridge object.
  * @cmd_engine_refcount:  Reference count enforcing single instance of cmd eng
@@ -255,6 +256,7 @@ struct dsi_display {
 	bool ulps_enabled;
 	bool clamp_enabled;
 	bool phy_idle_power_off;
+	bool twm_enabled;
 	struct drm_gem_object *tx_cmd_buf;
 	u32 cmd_buffer_size;
 	u64 cmd_buffer_iova;
@@ -309,7 +311,12 @@ struct dsi_display {
 };
 
 int dsi_display_dev_probe(struct platform_device *pdev);
+
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+void dsi_display_dev_remove(struct platform_device *pdev);
+#else
 int dsi_display_dev_remove(struct platform_device *pdev);
+#endif
 
 /**
  * dsi_display_get_num_of_displays() - returns number of display devices
@@ -638,7 +645,18 @@ int dsi_display_set_tpg_state(struct dsi_display *display, bool enable,
 		u32 init_val,
 		enum dsi_ctrl_tpg_pattern pattern);
 
+/**
+ * dsi_display_set_lp2_load() - Add or remove LP2 load on DSI display supplies.
+ * @display:		Handle to display.
+ * @enable:		Boolean to control whether to add or remove
+ * the LP2 load.
+ *
+ * Return: error code.
+ */
+int dsi_display_set_lp2_load(struct dsi_display *display, bool enable);
+
 int dsi_display_clock_gate(struct dsi_display *display, bool enable);
+
 int dsi_dispaly_static_frame(struct dsi_display *display, bool enable);
 
 /**
@@ -852,6 +870,15 @@ bool dsi_display_mode_match(const struct dsi_display_mode *mode1,
  * Return: error code
  */
 int dsi_display_update_transfer_time(void *display, u32 transfer_time);
+
+/**
+ * dsi_display_avoid_cmd_transfer() - Avoid DSI command transfer
+ * @display:     handle to display
+ * @avoid_transfer: true to avoid transfer, false to allow transfer
+ *
+ * Return: error code
+ */
+int dsi_display_avoid_cmd_transfer(void *display, bool avoid_transfer);
 
 /**
  * dsi_display_get_panel_scan_line() - get panel scan line

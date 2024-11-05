@@ -117,6 +117,9 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 	int rc = 0;
 	struct dsi_panel_reset_config *r_config = &panel->reset_config;
 
+	if (panel->ctl_op_sync && !strcmp(panel->type, "secondary"))
+		return 0;
+
 	if (gpio_is_valid(r_config->reset_gpio)) {
 		rc = gpio_request(r_config->reset_gpio, "reset_gpio");
 		if (rc) {
@@ -409,6 +412,11 @@ exit:
 static int dsi_panel_power_off(struct dsi_panel *panel)
 {
 	int rc = 0;
+
+	if (panel->skip_panel_off) {
+		DSI_DEBUG("skip panel power off\n");
+		return rc;
+	}
 
 	if (gpio_is_valid(panel->reset_config.disp_en_gpio))
 		gpio_set_value(panel->reset_config.disp_en_gpio, 0);
@@ -974,6 +982,12 @@ static int dsi_panel_parse_timing(struct dsi_mode_info *mode,
 		rc = 0;
 	}
 
+	rc = utils->read_u32(utils->data, "qcom,dsi-mode-te-width-us", &mode->te_pulse_width_us);
+	if (rc) {
+		DSI_DEBUG("mode te-width not defined in timing node\n");
+		rc = 0;
+	}
+
 	DSI_DEBUG("panel vert active:%d front_portch:%d back_porch:%d pulse_width:%d\n",
 		mode->v_active, mode->v_front_porch, mode->v_back_porch,
 		mode->v_sync_width);
@@ -1439,6 +1453,9 @@ static int dsi_panel_parse_qsync_caps(struct dsi_panel *panel,
 	struct dsi_qsync_capabilities *qsync_caps = &panel->qsync_caps;
 	struct dsi_parser_utils *utils = &panel->utils;
 	const char *name = panel->name;
+
+	qsync_caps->hwfence_sw_override_always =
+		utils->read_bool(utils->data, "qcom,hwfence_sw_override_always");
 
 	qsync_caps->qsync_support = utils->read_bool(utils->data, "qcom,qsync-enable");
 	if (!qsync_caps->qsync_support) {
@@ -2548,6 +2565,9 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 
 	panel->event_notification_disabled = utils->read_bool(utils->data,
 			"qcom,event-notification-disabled");
+
+	panel->skip_panel_off = utils->read_bool(utils->data,
+			"qcom,skip-panel-power-off");
 
 	panel->spr_info.enable = false;
 	panel->spr_info.pack_type = MSM_DISPLAY_SPR_TYPE_MAX;
@@ -4085,6 +4105,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 				"qcom,mdss-dsi-panel-physical-type", NULL);
 	if (panel_physical_type && !strcmp(panel_physical_type, "oled"))
 		panel->panel_type = DSI_DISPLAY_PANEL_TYPE_OLED;
+
+	panel->disable_cesta_hw_sleep = utils->read_bool(utils->data,
+				"qcom,mdss-disable-cesta-hw-sleep");
+
 	rc = dsi_panel_parse_host_config(panel);
 	if (rc) {
 		DSI_ERR("failed to parse host configuration, rc=%d\n",
@@ -4920,6 +4944,29 @@ exit:
 	return rc;
 }
 
+int dsi_panel_set_lp2_load(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+
+	if (!panel) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	if (!panel->panel_initialized)
+		goto exit;
+
+	rc = dsi_pwr_set_lp2_load(&panel->power_info, enable);
+	if (rc)
+		DSI_ERR("[%s] failed to set panel lp2 vreg, rc=%d\n",
+			panel->name, rc);
+
+exit:
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
 int dsi_panel_set_nolp(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -5130,6 +5177,8 @@ static int dsi_panel_prepare_cmd(struct dsi_panel *panel,
 		set->cmds[i].last_command = last_command;
 		if (!last_command || (i < (set->count - 1)))
 			set->cmds[i].msg.flags |= MIPI_DSI_MSG_BATCH_COMMAND;
+		else
+			set->cmds[i].msg.flags &= ~(MIPI_DSI_MSG_BATCH_COMMAND);
 	}
 
 	return 0;

@@ -39,6 +39,7 @@
  */
 
 #include <linux/of_address.h>
+#include <linux/of_platform.h>
 #include <linux/kthread.h>
 #include <uapi/linux/sched/types.h>
 #include <drm/drm_of.h>
@@ -76,6 +77,10 @@
 #define MSM_VERSION_PATCHLEVEL	0
 
 #define LASTCLOSE_TIMEOUT_MS	500
+
+#if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
+#define DRM_UNLOCKED 0
+#endif
 
 #define msm_wait_event_timeout(waitq, cond, timeout_ms, ret)		\
 	do {								\
@@ -990,11 +995,6 @@ static int msm_drm_component_init(struct device *dev)
 
 	drm_mode_config_reset(ddev);
 
-	ret = drm_dev_register(ddev, 0);
-	if (ret)
-		goto fail;
-	priv->registered = true;
-
 	if (kms && kms->funcs && kms->funcs->cont_splash_config) {
 		ret = kms->funcs->cont_splash_config(kms, NULL);
 		if (ret) {
@@ -1002,6 +1002,11 @@ static int msm_drm_component_init(struct device *dev)
 			goto fail;
 		}
 	}
+
+	ret = drm_dev_register(ddev, 0);
+	if (ret)
+		goto fail;
+	priv->registered = true;
 
 #if IS_ENABLED(CONFIG_DRM_FBDEV_EMULATION)
 	if (fbdev)
@@ -2390,12 +2395,18 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	return component_master_add_with_match(&pdev->dev, &msm_drm_ops, match);
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void msm_pdev_remove(struct platform_device *pdev)
+#else
 static int msm_pdev_remove(struct platform_device *pdev)
+#endif
 {
 	component_master_del(&pdev->dev, &msm_drm_ops);
 	of_platform_depopulate(&pdev->dev);
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static void msm_pdev_shutdown(struct platform_device *pdev)

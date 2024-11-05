@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/err.h>
 #include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include "dp_debug.h"
 #include "dp_pll.h"
 
@@ -255,7 +256,11 @@ error:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void dp_pll_driver_remove(struct platform_device *pdev)
+#else
 static int dp_pll_driver_remove(struct platform_device *pdev)
+#endif
 {
 	struct dp_pll *pll = platform_get_drvdata(pdev);
 
@@ -265,7 +270,9 @@ static int dp_pll_driver_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static struct platform_driver dp_pll_platform_driver = {

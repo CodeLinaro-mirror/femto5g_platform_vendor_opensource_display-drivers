@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/errno.h>
@@ -77,6 +77,7 @@ static void dsi_catalog_cmn_init(struct dsi_ctrl_hw *ctrl,
 	case DSI_CTRL_VERSION_2_7:
 	case DSI_CTRL_VERSION_2_8:
 	case DSI_CTRL_VERSION_2_9:
+	case DSI_CTRL_VERSION_2_10:
 		ctrl->ops.phy_reset_config = dsi_ctrl_hw_22_phy_reset_config;
 		ctrl->ops.config_clk_gating = dsi_ctrl_hw_22_config_clk_gating;
 		ctrl->ops.setup_lane_map = dsi_ctrl_hw_22_setup_lane_map;
@@ -152,6 +153,7 @@ int dsi_catalog_ctrl_setup(struct dsi_ctrl_hw *ctrl,
 	case DSI_CTRL_VERSION_2_7:
 	case DSI_CTRL_VERSION_2_8:
 	case DSI_CTRL_VERSION_2_9:
+	case DSI_CTRL_VERSION_2_10:
 		ctrl->widebus_support = true;
 		ctrl->phy_pll_bypass = phy_pll_bypass;
 		dsi_catalog_cmn_init(ctrl, version);
@@ -238,7 +240,7 @@ static void dsi_catalog_phy_4_0_init(struct dsi_phy_hw *phy)
 		dsi_phy_hw_v4_0_cache_phy_timings;
 	phy->ops.set_continuous_clk = dsi_phy_hw_v4_0_set_continuous_clk;
 	phy->ops.commit_phy_timing = dsi_phy_hw_v4_0_commit_phy_timing;
-	phy->ops.phy_idle_off = NULL;
+	phy->ops.phy_idle_off = dsi_phy_hw_v4_0_phy_idle_off;
 }
 
 /**

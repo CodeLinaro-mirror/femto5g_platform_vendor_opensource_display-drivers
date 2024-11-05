@@ -162,6 +162,8 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_UCSC_IGC,
 	PLANE_PROP_UCSC_GC,
 	PLANE_PROP_CAC_TYPE,
+	PLANE_PROP_SRC_RECT_EXT,
+	PLANE_PROP_DST_RECT_EXT,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -203,6 +205,7 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_FRAME_DATA_BUF,
 	CRTC_PROP_HANDLE_FENCE_ERROR,
 	CRTC_PROP_UBWC_CLK,
+	CRTC_PROP_FLUSH_SYNC_EN,
 
 	/* total # of properties */
 	CRTC_PROP_COUNT
@@ -374,6 +377,7 @@ static const char *msm_spr_pack_type_mode_str[MSM_DISPLAY_SPR_PACK_TYPE_MODE_MAX
  * @MSM_DISPLAY_ESD_ENABLED:            ESD feature enabled
  * @MSM_DISPLAY_CAP_MST_MODE:           Display with MST support
  * @MSM_DISPLAY_SPLIT_LINK:             Split Link enabled
+ * @MSM_DISPLAY_LOOPBACK_MODE:          Display in loopback mode
  */
 enum msm_display_caps {
 	MSM_DISPLAY_CAP_VID_MODE	= BIT(0),
@@ -383,6 +387,7 @@ enum msm_display_caps {
 	MSM_DISPLAY_ESD_ENABLED		= BIT(4),
 	MSM_DISPLAY_CAP_MST_MODE	= BIT(5),
 	MSM_DISPLAY_SPLIT_LINK		= BIT(6),
+	MSM_DISPLAY_LOOPBACK_MODE	= BIT(7),
 };
 
 /**
@@ -952,6 +957,7 @@ struct msm_display_wd_jitter_config {
  * @avr_step_fps: AVR step fps rate
  * @wd_jitter:         Info for WD jitter.
  * @vpadding:        panel stacking height
+ * @te_pulse_width_ns: pulse width of the TE in microseconds
  */
 struct msm_mode_info {
 	uint32_t frame_rate;
@@ -980,6 +986,7 @@ struct msm_mode_info {
 	u32 avr_step_fps;
 	struct msm_display_wd_jitter_config wd_jitter;
 	u32 vpadding;
+	u32 te_pulse_width_us;
 };
 
 /**
@@ -1028,6 +1035,8 @@ struct msm_resource_caps_info {
  * @has_qsync_min_fps_list True if dsi-supported-qsync-min-fps-list exits
  * @avr_step_fps        AVR step fps supported
  * @vrr_caps            Capabilities of VRR panel
+ * @hwfence_sw_override_always	whether to trigger fence software override every flush (only
+ *				intended for TVM)
  * @esync_enabled:      esync is supported
  * @esync_milli_skew:   esync skew, in 1/1000ths of a line
  * @esync_hsync_milli_pulse_width: esync's hsync pulse width, in 1/1000ths of a line
@@ -1040,6 +1049,7 @@ struct msm_resource_caps_info {
  *			for dsi display)
  * @ctl_op_sync:        Indicates dual display panels are operating in sync mode
  * @is_master:          Flag indicating the Master display which drives the displays in sync mode
+ * @disable_cesta_hw_sleep: Disable cesta hardware sleep & panic/wakeup_en for the display
  */
 struct msm_display_info {
 	int intf_type;
@@ -1066,6 +1076,7 @@ struct msm_display_info {
 	bool has_qsync_min_fps_list;
 	uint32_t avr_step_fps;
 	struct msm_vrr_capabilities vrr_caps;
+	bool hwfence_sw_override_always;
 
 	bool esync_enabled;
 	uint32_t esync_milli_skew;
@@ -1081,6 +1092,7 @@ struct msm_display_info {
 	uint32_t lm_count;
 	bool ctl_op_sync;
 	bool is_master;
+	bool disable_cesta_hw_sleep;
 };
 
 #define MSM_MAX_ROI	4
