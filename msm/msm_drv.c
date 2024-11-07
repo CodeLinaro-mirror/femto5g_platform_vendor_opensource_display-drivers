@@ -1899,6 +1899,9 @@ static const struct file_operations fops = {
 	.owner              = THIS_MODULE,
 	.open               = drm_open,
 	.release            = msm_release,
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+	.fop_flags          = FOP_UNSIGNED_OFFSET,
+#endif
 	.unlocked_ioctl     = drm_ioctl,
 	.compat_ioctl       = drm_compat_ioctl,
 	.poll               = drm_poll,
