@@ -132,6 +132,7 @@
 #define INTF_ESYNC_SKEW_CTL             0x414
 #define INTF_ESYNC_EMSYNC_CTL           0x418
 #define INTF_ESYNC_PROG_INIT            0x41C
+#define INTF_PROG_DR_START              0x420
 #define INTF_BKUP_ESYNC_EN              0x470
 #define INTF_BKUP_ESYNC_CTRL            0x474
 #define INTF_BKUP_ESYNC_VSYNC_CTL      0x47C
@@ -638,17 +639,30 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 			&& p->poms_align_vsync)
 		intf_cfg2 |= BIT(16);
 
-	alignment = 0x6; /* Default with esync- COND0 HW AVR trigger  */
 	if (align_esync) {
+		/*
+		 * Display on-
+		 * COND0 1 = TIMING_ENGINE_EN.EN changes from 0 to 1
+		 * COND1 TE level being high
+		 * COND2 esync_mdp_vsync
+		 */
+		alignment = 0x451;
+
+		/* Idle exit-
+		 * COND0 HW AVR trigger
+		 * COND1 esync_mdp_vsync
+		 */
 		if (align_avr)
-			alignment = 0x6; /* COND0 HW AVR trigger */
-		alignment |= 0x4 << 4; /* COND1 esync_mdp_vsync */
+			alignment = 0x46;
 
 		intf_cfg2 |= BIT(23);
 	}
 
 	if (!dp_intf && ctx->cap->features & BIT(SDE_INTF_PERIPHERAL_FLUSH))
 		intf_cfg2 |= BIT(24);
+
+	if (ctx->cap->features & BIT(SDE_INTF_PROG_DYNREF))
+		intf_cfg2 |= BIT(28);
 
 	if (ctx->cfg.split_link_en)
 		SDE_REG_WRITE(c, INTF_REG_SPLIT_LINK, 0x3);
@@ -732,6 +746,13 @@ static void sde_hw_intf_setup_prg_fetch(
 	}
 
 	SDE_REG_WRITE(c, INTF_CONFIG, fetch_enable);
+}
+
+static void sde_hw_intf_setup_prog_dynref(struct sde_hw_intf *intf, u32 prog_dr_start_line)
+{
+	struct sde_hw_blk_reg_map *c = &intf->hw;
+
+	SDE_REG_WRITE(c, INTF_PROG_DR_START, prog_dr_start_line);
 }
 
 static void sde_hw_intf_configure_wd_timer_jitter(struct sde_hw_intf *intf,
@@ -1541,6 +1562,9 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 
 	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
 		ops->setup_flush_snapshot =  sde_hw_intf_flush_snapshot_setup;
+
+	if (cap & BIT(SDE_INTF_PROG_DYNREF))
+		ops->setup_prog_dynref = sde_hw_intf_setup_prog_dynref;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,

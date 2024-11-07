@@ -2673,6 +2673,7 @@ static int sde_intf_parse_dt(struct device_node *np,
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00)) {
 			set_bit(SDE_INTF_ESYNC, &intf->features);
 			set_bit(SDE_INTF_TEAR_TE_LEVEL_MODE, &intf->features);
+			set_bit(SDE_INTF_PROG_DYNREF, &intf->features);
 		}
 	}
 
@@ -6104,7 +6105,7 @@ static void _sde_hw_fence_caps(struct sde_mdss_cfg *sde_cfg)
 	struct sde_ctl_cfg *ctl;
 	int i;
 
-	if (!sde_cfg->hw_fence_rev)
+	if (SDE_HW_MAJOR(sde_cfg->hw_rev) < SDE_HW_MAJOR(SDE_HW_VER_900))
 		return;
 
 	set_bit(SDE_FEATURE_HW_FENCE_IPCC, sde_cfg->features);
