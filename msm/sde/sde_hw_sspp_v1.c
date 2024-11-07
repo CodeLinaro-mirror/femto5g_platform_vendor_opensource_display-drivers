@@ -279,7 +279,9 @@ static void sde_hw_sspp_setup_ubwc_v1(struct sde_hw_pipe *ctx, struct sde_hw_blk
 	}
 
 	if (SDE_HW_MAJOR(ctx->catalog->ubwc_rev) >= SDE_HW_MAJOR(SDE_HW_UBWC_VER_50)) {
-		ctrl_val |= SDE_FORMAT_IS_YUV(fmt) ? 0 : (BIT(31) | BIT(30));
+		if (!SDE_FORMAT_IS_YUV(fmt))
+			ctrl_val |= (SDE_FORMAT_IS_DX(fmt) || SDE_FORMAT_IS_FP16(fmt)) ?
+					BIT(30) : (BIT(31) | BIT(30));
 		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_2_1(fmt) ? (0x3 << 16) : 0;
 		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_8_5(fmt) ? BIT(16) : 0;
 		SDE_REG_WRITE(c, ubwc_ctrl_off, ctrl_val);
@@ -673,29 +675,8 @@ static void sde_hw_sspp_setup_rects_v1(struct sde_hw_pipe *ctx,
 	dst_xy = (cfg->dst_rect.y << 16) | (cfg->dst_rect.x);
 	dst_size = (cfg->dst_rect.h << 16) | (cfg->dst_rect.w);
 
-	if (rect_index == SDE_SSPP_RECT_SOLO) {
-		ystride0 = (cfg->layout.plane_pitch[0]) |
-			(cfg->layout.plane_pitch[1] << 16);
-		ystride1 = (cfg->layout.plane_pitch[2]) |
-			(cfg->layout.plane_pitch[3] << 16);
-	} else {
-		ystride0 = SDE_REG_READ(c, SSPP_REC_SRC_YSTRIDE0 + idx);
-		ystride1 = SDE_REG_READ(c, SSPP_REC_SRC_YSTRIDE1 + idx);
-
-		if (rect_index == SDE_SSPP_RECT_0) {
-			ystride0 = (ystride0 & 0xFFFF0000) |
-				(cfg->layout.plane_pitch[0] & 0x0000FFFF);
-			ystride1 = (ystride1 & 0xFFFF0000)|
-				(cfg->layout.plane_pitch[2] & 0x0000FFFF);
-		} else {
-			ystride0 = (ystride0 & 0x0000FFFF) |
-				((cfg->layout.plane_pitch[0] << 16) &
-				 0xFFFF0000);
-			ystride1 = (ystride1 & 0x0000FFFF) |
-				((cfg->layout.plane_pitch[2] << 16) &
-				 0xFFFF0000);
-		}
-	}
+	ystride0 = (cfg->layout.plane_pitch[0]) | (cfg->layout.plane_pitch[2] << 16);
+	ystride1 = (cfg->layout.plane_pitch[1]) | (cfg->layout.plane_pitch[3] << 16);
 
 	/* program scaler, phase registers, if pipes supporting scaling */
 	if (ctx->cap->features & SDE_SSPP_SCALER) {
@@ -768,21 +749,9 @@ static void sde_hw_sspp_setup_sourceaddress_v1(struct sde_hw_pipe *ctx,
 
 	idx += _sspp_calculate_rect_off(rect_mode);
 
-	if (rect_mode == SDE_SSPP_RECT_SOLO) {
-		for (i = 0; i < ARRAY_SIZE(cfg->layout.plane_addr); i++)
-			SDE_REG_WRITE(&ctx->hw, SSPP_REC_SRC0_ADDR + idx + i * 0x4,
-					cfg->layout.plane_addr[i]);
-	} else if (rect_mode == SDE_SSPP_RECT_0) {
-		SDE_REG_WRITE(&ctx->hw, SSPP_REC_SRC0_ADDR + idx,
-				cfg->layout.plane_addr[0]);
-		SDE_REG_WRITE(&ctx->hw, SSPP_REC_SRC2_ADDR + idx,
-				cfg->layout.plane_addr[2]);
-	} else {
-		SDE_REG_WRITE(&ctx->hw, SSPP_REC_SRC1_ADDR + idx,
-				cfg->layout.plane_addr[0]);
-		SDE_REG_WRITE(&ctx->hw, SSPP_REC_SRC3_ADDR + idx,
-				cfg->layout.plane_addr[2]);
-	}
+	for (i = 0; i < ARRAY_SIZE(cfg->layout.plane_addr); i++)
+		SDE_REG_WRITE(&ctx->hw, SSPP_REC_SRC0_ADDR + idx + i * 0x4,
+				cfg->layout.plane_addr[i]);
 }
 
 u32 sde_hw_sspp_get_source_addr_v1(struct sde_hw_pipe *ctx, bool is_virtual)
