@@ -2358,6 +2358,16 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 			phys_enc->hw_intf->ops.enable_dpu_sync_ctrl[disp_op])
 		phys_enc->hw_intf->ops.enable_dpu_sync_ctrl[disp_op](phys_enc->hw_intf, 0);
 
+	if (phys_enc->hw_intf->ops.get_status[disp_op])
+		phys_enc->hw_intf->ops.get_status[disp_op](phys_enc->hw_intf,
+			&intf_status);
+
+	if (!intf_status.is_en) {
+		SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FUNC_CASE1, SDE_EVTLOG_ERROR);
+		spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+		return;
+	}
+
 	/* Slave DPU timing engine is disabled */
 	if (phys_enc->hw_intf->ops.enable_timing[disp_op])
 		phys_enc->hw_intf->ops.enable_timing[disp_op](phys_enc->hw_intf, false);
