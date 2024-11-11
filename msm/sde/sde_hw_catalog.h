@@ -21,6 +21,8 @@
  */
 #define MAX_BLOCKS    12
 #define MAX_REG_SIZE_ENTRIES 14
+#define MAX_CWB_BLOCKS    2
+#define MAX_CWB_BLOCKSIZE    2
 
 #define SDE_HW_VER(MAJOR, MINOR, STEP) ((u32)((MAJOR & 0xF) << 28)    |\
 		((MINOR & 0xFFF) << 16)  |\
@@ -53,6 +55,7 @@
 #define SDE_HW_VER_820	SDE_HW_VER(8, 2, 0) /* diwali */
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
+#define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
 #define IS_SDE_MAJOR_SAME(rev1, rev2)   \
@@ -82,6 +85,7 @@
 #define IS_DIWALI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_820)
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
+#define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -618,6 +622,7 @@ enum {
  *                          data arrives.
  * @SDE_WB_HAS_CWB          Writeback block supports concurrent writeback
  * @SDE_WB_HAS_DCWB         Writeback block supports dedicated CWB
+ * @SDE_HW_HAS_DUAL_DCWB    Writeback block supports dual dedicated CWB
  * @SDE_WB_CROP             CWB supports cropping
  * @SDE_WB_SYS_CACHE        Writeback block supports system cache usage
  * @SDE_WB_CWB_CTRL         Separate CWB control is available for configuring
@@ -641,6 +646,7 @@ enum {
 	SDE_WB_INPUT_CTRL,
 	SDE_WB_HAS_CWB,
 	SDE_WB_HAS_DCWB,
+	SDE_HW_HAS_DUAL_DCWB,
 	SDE_WB_CROP,
 	SDE_WB_SYS_CACHE,
 	SDE_WB_CWB_CTRL,
@@ -693,6 +699,7 @@ enum {
  * @SDE_FEATURE_CWB_CROP       CWB Cropping supported
  * @SDE_FEATURE_CWB_DITHER     CWB dither is supported
  * @SDE_FEATURE_DEDICATED_CWB  Dedicated-CWB supported
+ * @SDE_FEATURE_DUAL_DEDICATED_CWB   Dual Dedicated-CWB supported
  * @SDE_FEATURE_IDLE_PC        Idle Power Collapse supported
  * @SDE_FEATURE_3D_MERGE_RESET 3D merge reset supported
  * @SDE_FEATURE_DECIMATION     Decimation supported
@@ -735,6 +742,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_CWB_CROP,
 	SDE_FEATURE_CWB_DITHER,
 	SDE_FEATURE_DEDICATED_CWB,
+	SDE_FEATURE_DUAL_DEDICATED_CWB,
 	SDE_FEATURE_IDLE_PC,
 	SDE_FEATURE_3D_MERGE_RESET,
 	SDE_FEATURE_DECIMATION,
@@ -1833,7 +1841,7 @@ struct sde_perf_cfg {
  * @max_dsc_width       max dsc line width
  * @max_mixer_width     max layer mixer line width
  * @max_mixer_blendstages       max layer mixer blend stages (z orders)
- * @max_cwb             max number of cwb supported
+ * @max_cwb             max number of dcwb/cwb supported
  * @vbif_qos_nlvl       number of vbif QoS priority levels
  * @qos_target_time_ns  normalized qos target time for line-based qos
  * @macrotile_mode      UBWC parameter for macro tile channel distribution
@@ -1910,7 +1918,7 @@ struct sde_mdss_cfg {
 	struct sde_merge_3d_cfg merge_3d[MAX_BLOCKS];
 	u32 qdss_count;
 	struct sde_qdss_cfg qdss[MAX_BLOCKS];
-	u32 cwb_blk_off;
+	u32 cwb_blk_off[MAX_CWB_BLOCKS];
 	u32 cwb_blk_stride;
 	u32 dcwb_count;
 
