@@ -31,12 +31,18 @@ ifeq ($(CONFIG_MSM_MMRM), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
 endif
 ifneq ($(call is-board-platform-in-list, taro monaco), true)
+ifeq ($(CONFIG_QCOM_SPEC_SYNC), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,sync-fence-module-symvers)/Module.symvers
+endif
+ifeq ($(CONFIG_MSM_EXT_DISPLAY), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,msm-ext-disp-module-symvers)/Module.symvers
+endif
+ifeq ($(CONFIG_QTI_HW_FENCE), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
-	ifeq ($(CONFIG_HDCP_QSEECOM), y)
+endif
+ifeq ($(CONFIG_HDCP_QSEECOM), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,sec-module-symvers)/Module.symvers
-	endif
+endif
 endif
 endif
 
@@ -55,18 +61,26 @@ ifeq ($(CONFIG_MSM_MMRM), y)
 	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
 endif
 ifneq ($(call is-board-platform-in-list, taro monaco), true)
+
+ifeq ($(CONFIG_QCOM_SPEC_SYNC), y)
 	LOCAL_REQUIRED_MODULES    += sync-fence-module-symvers
-	LOCAL_REQUIRED_MODULES    += msm-ext-disp-module-symvers
-	LOCAL_REQUIRED_MODULES    += hw-fence-module-symvers
-	ifeq ($(CONFIG_HDCP_QSEECOM), y)
-	LOCAL_REQUIRED_MODULES    += sec-module-symvers
-	endif
 	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,sync-fence-module-symvers)/Module.symvers
+endif
+
+ifeq ($(CONFIG_MSM_EXT_DISPLAY), y)
+	LOCAL_REQUIRED_MODULES    += msm-ext-disp-module-symvers
 	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,msm-ext-disp-module-symvers)/Module.symvers
-	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
-	ifeq ($(CONFIG_HDCP_QSEECOM), y)
+endif
+
+ifeq ($(CONFIG_HDCP_QSEECOM), y)
+	LOCAL_REQUIRED_MODULES    += sec-module-symvers
 	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,sec-module-symvers)/Module.symvers
-	endif
+endif
+
+ifeq ($(CONFIG_QTI_HW_FENCE), y)
+	LOCAL_REQUIRED_MODULES    += hw-fence-module-symvers
+	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
+endif
 endif
 endif
 
