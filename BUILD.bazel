@@ -79,3 +79,6 @@ define_niobe()
 
 load(":targets/monaco.bzl", "define_monaco")
 define_monaco()
+
+load(":targets/canoe.bzl", "define_canoe")
+define_canoe()
