@@ -3881,7 +3881,7 @@ static int reg_dmav1_setup_cac(struct sde_hw_pipe *ctx,
 	phase_step_uv_h = scaler3_cfg->phase_step_x[1] & 0xFFFFFF;
 	phase_step_uv_v = scaler3_cfg->phase_step_y[1] & 0xFFFFFF;
 
-	if (cac_cfg->cac_mode == 0)
+	if (!cac_cfg->cac_mode && !cac_cfg->fov_mode)
 		goto skip_cac;
 
 	phase_step_y_h |= (cac_cfg->cac_le_inc_skip_x[0] << 29) |
@@ -3897,6 +3897,7 @@ static int reg_dmav1_setup_cac(struct sde_hw_pipe *ctx,
 
 	op_mode |= (cac_cfg->cac_mode << 1);
 	op_mode |= (cac_cfg->uv_filter_cfg & 0x3) << 24;
+	op_mode |= (cac_cfg->fov_mode & 0x3) << 20;
 
 	preload_re = ((cac_cfg->cac_re_preload_y[1] & 0x7F) << 24) |
 			((cac_cfg->cac_re_preload_y[0] & 0x7F) << 8);
@@ -3958,6 +3959,36 @@ static int reg_dmav1_setup_cac(struct sde_hw_pipe *ctx,
 	rc = dma_ops->setup_payload(dma_write_cfg);
 	if (rc) {
 		DRM_ERROR("setting dst size failed ret %d\n", rc);
+		return rc;
+	}
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x68, &cac_cfg->cac_asym_phase_step_h,
+		sizeof(cac_cfg->cac_asym_phase_step_h), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting cac_asym_phase_step_h failed ret %d\n", rc);
+		return rc;
+	}
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x6C, &cac_cfg->cac_asym_phase_step_v,
+		 sizeof(cac_cfg->cac_asym_phase_step_v),  REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting cac_asym_phase_step_v failed ret %d\n", rc);
+		return rc;
+	}
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x88, &cac_cfg->cac_re_phase_step_v,
+		sizeof(cac_cfg->cac_re_phase_step_v), REG_SINGLE_WRITE, 0, 0, 0);
+	if (rc) {
+		DRM_ERROR("setting cac_re_phase_step_v failed ret %d\n", rc);
+		return rc;
+	}
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x8C, &cac_cfg->cac_re_asym_phase_step_v,
+		sizeof(cac_cfg->cac_re_asym_phase_step_v), REG_SINGLE_WRITE, 0, 0, 0);
+	if (rc) {
+		DRM_ERROR("setting cac_re_asym_phase_step_v failed ret %d\n", rc);
 		return rc;
 	}
 
@@ -6998,7 +7029,8 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 	w = 2 * (w / 32);
 	w = w / (hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1);
 
-	if (h != hw_cfg->skip_planes[SB_PLANE_REAL].plane_h ||
+	if (h != (hw_cfg->skip_planes[SB_PLANE_REAL].plane_h + hw_cfg->overfetch_lines_on_top +
+			hw_cfg->overfetch_lines_on_bottom) ||
 			w != hw_cfg->skip_planes[SB_PLANE_REAL].plane_w) {
 		DRM_ERROR("invalid hfc cfg exp h %d exp w %d act h %d act w %d\n",
 			h, w, hw_cfg->skip_planes[SB_PLANE_REAL].plane_h,

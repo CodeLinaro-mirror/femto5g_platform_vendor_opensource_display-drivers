@@ -31,6 +31,9 @@
 #define RESERVED_BY_CURRENT(h, r) \
 	(((h)->rsvp && ((h)->rsvp->enc_id == (r)->enc_id)))
 
+#define RESERVED_BY_NEXT(h, r) \
+	((h)->rsvp_nxt && ((h)->rsvp_nxt->enc_id != (r)->enc_id))
+
 #define RM_RQ_LOCK(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_RESERVE_LOCK))
 #define RM_RQ_CLEAR(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_RESERVE_CLEAR))
 #define RM_RQ_DSPP(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_DSPP))
@@ -39,6 +42,8 @@
 #define RM_RQ_DCWB(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_DCWB))
 #define RM_RQ_DNSC_BLUR(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_DNSC_BLUR))
 #define RM_RQ_CDM(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_CDM))
+#define RM_RQ_CAC_LB(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_CAC_LB))
+#define RM_RQ_CAC_PRIMARY(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_CAC_PRIMARY))
 #define RM_IS_TOPOLOGY_MATCH(t, r) ((t).num_lm == (r).num_lm && \
 				(t).num_comp_enc == (r).num_enc && \
 				(t).num_intf == (r).num_intf && \
@@ -108,6 +113,10 @@ static const struct sde_rm_topology_def g_top_table_v1[SDE_RM_TOPOLOGY_MAX] = {
 			MSM_DISPLAY_COMPRESSION_DSC },
 	{   SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE, 4, 4, 1, 1, false,
 			MSM_DISPLAY_COMPRESSION_DSC },
+	{   SDE_RM_TOPOLOGY_DUALPIPE_LOOPBACK,    2, 0, 0, 0, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_QUADPIPE_LOOPBACK,    4, 0, 0, 0, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
 };
 
 char sde_hw_blk_str[SDE_HW_BLK_MAX][SDE_HW_BLK_NAME_LEN] = {
@@ -134,12 +143,15 @@ char sde_hw_blk_str[SDE_HW_BLK_MAX][SDE_HW_BLK_NAME_LEN] = {
  * @top:       selected topology for the display
  * @hw_res:	   Hardware resources required as reported by the encoders
  * @conn_lm_mask:  preferred LM mask of cwb requested display
+ * @is_cac_transition: Boolean variable indicatiing if encoder is transitioning
+			in or out of cac loopback usecases
  */
 struct sde_rm_requirements {
 	uint64_t top_ctrl;
 	const struct sde_rm_topology_def *topology;
 	struct sde_encoder_hw_resources hw_res;
 	u32 conn_lm_mask;
+	bool is_cac_transition;
 };
 
 /**
@@ -224,6 +236,27 @@ static void _sde_rm_inc_resource_info_lm(struct sde_rm *rm,
 	}
 
 	avail_res->num_3dmux = hweight_long(avail_res->merge_3d_mask);
+}
+
+static bool _sde_rm_is_blk_available(struct sde_rm_hw_blk *blk, struct sde_rm_rsvp *rsvp,
+	struct sde_rm_requirements *reqs)
+{
+	/*
+	 * Entry and exit of cac loopback is a seamless commit. So resources
+	 * needed for loopback encoder can be held by primary in the previous
+	 * commit or viceversa. So for transition cases, add a separate condition
+	 * to check if the resource is currently held by another encoder and if
+	 * it is needed for next commit before failing the reservation.
+	 */
+	if (reqs->is_cac_transition && RESERVED_BY_OTHER(blk, rsvp)) {
+		if (RESERVED_BY_NEXT(blk, rsvp))
+			return false;
+	} else {
+		if (RESERVED_BY_OTHER(blk, rsvp))
+			return false;
+	}
+
+	return true;
 }
 
 static void _sde_rm_dec_resource_info_lm(struct sde_rm *rm,
@@ -1068,7 +1101,8 @@ static bool _sde_rm_reserve_dspp(
 		struct sde_rm_rsvp *rsvp,
 		const struct sde_lm_cfg *lm_cfg,
 		struct sde_rm_hw_blk *lm,
-		struct sde_rm_hw_blk **dspp)
+		struct sde_rm_hw_blk **dspp,
+		struct sde_rm_requirements *reqs)
 {
 	struct sde_rm_hw_iter iter;
 
@@ -1087,7 +1121,7 @@ static bool _sde_rm_reserve_dspp(
 			return false;
 		}
 
-		if (RESERVED_BY_OTHER(*dspp, rsvp)) {
+		if (!_sde_rm_is_blk_available(*dspp, rsvp, reqs)) {
 			SDE_DEBUG("lm %d dspp %d already reserved\n",
 					lm->id, (*dspp)->id);
 			return false;
@@ -1103,7 +1137,8 @@ static bool _sde_rm_reserve_ds(
 		struct sde_rm_rsvp *rsvp,
 		const struct sde_lm_cfg *lm_cfg,
 		struct sde_rm_hw_blk *lm,
-		struct sde_rm_hw_blk **ds)
+		struct sde_rm_hw_blk **ds,
+		struct sde_rm_requirements *reqs)
 {
 	struct sde_rm_hw_iter iter;
 
@@ -1122,7 +1157,7 @@ static bool _sde_rm_reserve_ds(
 			return false;
 		}
 
-		if (RESERVED_BY_OTHER(*ds, rsvp)) {
+		if (!_sde_rm_is_blk_available(*ds, rsvp, reqs)) {
 			SDE_DEBUG("lm %d ds %d already reserved\n",
 					lm->id, (*ds)->id);
 			return false;
@@ -1158,7 +1193,7 @@ static bool _sde_rm_reserve_pp(
 		return false;
 	}
 
-	if (RESERVED_BY_OTHER(*pp, rsvp)) {
+	if (!_sde_rm_is_blk_available(*pp, rsvp, reqs)) {
 		SDE_DEBUG("lm %d pp %d already reserved\n", lm->id,
 				(*pp)->id);
 		*dspp = NULL;
@@ -1209,6 +1244,7 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	const struct sde_pingpong_cfg *pp_cfg;
 	bool ret, is_conn_primary, is_conn_secondary;
 	u32 lm_primary_pref, lm_secondary_pref, cwb_pref, dcwb_pref;
+	u32 cac_lb_pref, cac_primary_pref;
 
 	*dspp = NULL;
 	*ds = NULL;
@@ -1222,6 +1258,8 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 				 SDE_CONNECTOR_PRIMARY) ? true : false;
 	is_conn_secondary = (reqs->hw_res.display_type ==
 				 SDE_CONNECTOR_SECONDARY) ? true : false;
+	cac_lb_pref = test_bit(SDE_MIXER_CAC_LB, &lm_cfg->features);
+	cac_primary_pref = test_bit(SDE_MIXER_CAC_PRIMARY, &lm_cfg->features);
 
 	SDE_DEBUG("check lm %d: dspp %d ds %d pp %d features %ld disp type %d\n",
 		 lm_cfg->id, lm_cfg->dspp, lm_cfg->ds, lm_cfg->pingpong,
@@ -1263,28 +1301,44 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 			SDE_DEBUG("fail: dcwb:%d trying to match lm:%d\n",
 					lm_cfg->id, ffs(conn_lm_mask));
 			return false;
+		} else if (RM_RQ_CAC_PRIMARY(reqs) && !cac_primary_pref) {
+			SDE_DEBUG("cac primary preference is not met,cac_prim_pref: %d lm_id: %d\n",
+				cac_primary_pref, lm_cfg->id);
+			return false;
+		} else if (RM_RQ_CAC_LB(reqs) && !cac_lb_pref) {
+			SDE_DEBUG("cac loopback preference is not met,cac_lb_pref: %d lm_id: %d\n",
+				cac_lb_pref, lm_cfg->id);
+			return false;
 		}
-	} else if ((!is_conn_primary && lm_primary_pref) ||
-			(!is_conn_secondary && lm_secondary_pref)) {
+	} else if (!RM_RQ_CAC_LB(reqs) && ((!is_conn_primary && lm_primary_pref) ||
+			(!is_conn_secondary && lm_secondary_pref))) {
 		SDE_DEBUG(
 			"display preference is not met. display_type: %d lm_features: %lx\n",
 			(int)reqs->hw_res.display_type, lm_cfg->features);
 		return false;
+	} else if (RM_RQ_CAC_PRIMARY(reqs) && !cac_primary_pref) {
+		SDE_DEBUG("cac primary preference is not met,cac_prim_pref: %d lm_id: %d\n",
+			cac_primary_pref, lm_cfg->id);
+		return false;
+	} else if (RM_RQ_CAC_LB(reqs) && !cac_lb_pref) {
+		SDE_DEBUG("cac loopback preference is not met,cac_lb_pref: %d lm_id: %d\n",
+			cac_lb_pref, lm_cfg->id);
+		return false;
 	}
 
-	/* Already reserved? */
-	if (RESERVED_BY_OTHER(lm, rsvp)) {
+	 /* Already reserved? */
+	if (!_sde_rm_is_blk_available(lm, rsvp, reqs)) {
 		SDE_DEBUG("lm %d already reserved\n", lm_cfg->id);
 		return false;
 	}
 
 	/* Reserve dspp */
-	ret = _sde_rm_reserve_dspp(rm, rsvp, lm_cfg, lm, dspp);
+	ret = _sde_rm_reserve_dspp(rm, rsvp, lm_cfg, lm, dspp, reqs);
 	if (!ret)
 		return ret;
 
 	/* Reserve ds */
-	ret = _sde_rm_reserve_ds(rm, rsvp, lm_cfg, lm, ds);
+	ret = _sde_rm_reserve_ds(rm, rsvp, lm_cfg, lm, ds, reqs);
 	if (!ret)
 		return ret;
 
@@ -1487,7 +1541,8 @@ static int _sde_rm_reserve_ctls(
 					!has_ppsplit)
 				continue;
 		} else if (!(reqs->hw_res.display_type ==
-				SDE_CONNECTOR_PRIMARY && primary_pref) && !_ctl_ids) {
+				SDE_CONNECTOR_PRIMARY && primary_pref) &&
+				!_ctl_ids && !RM_RQ_CAC_LB(reqs)) {
 			SDE_DEBUG(
 				"display pref not met. display_type: %d primary_pref: %d\n",
 				reqs->hw_res.display_type, primary_pref);
@@ -1530,7 +1585,9 @@ static bool _sde_rm_check_dsc(struct sde_rm *rm,
 		struct sde_rm_rsvp *rsvp,
 		struct sde_rm_hw_blk *dsc,
 		struct sde_rm_hw_blk *paired_dsc,
-		struct sde_rm_hw_blk *pp_blk)
+		struct sde_rm_hw_blk *pp_blk,
+		int num_dsc_enc,
+		uint32_t un_paired_dsc_id)
 {
 	const struct sde_dsc_cfg *dsc_cfg = to_sde_hw_dsc(dsc->hw)->caps;
 
@@ -1558,6 +1615,19 @@ static bool _sde_rm_check_dsc(struct sde_rm *rm,
 		if (!test_bit(dsc_cfg->id, paired_dsc_cfg->dsc_pair_mask)) {
 			SDE_DEBUG("dsc %d not peer of dsc %d\n", dsc_cfg->id,
 					paired_dsc_cfg->id);
+			return false;
+		}
+	} else {
+		/**
+		 * For topologies, where there is a single DSC requirement,
+		 * Try to allocate unpaired DSCs first such that, pairable
+		 * DSCs are available for other displays.
+		 */
+		if (num_dsc_enc == 1 && un_paired_dsc_id > 0 && un_paired_dsc_id != dsc->id &&
+				IS_COMPATIBLE_PP_DSC(pp_blk->id, un_paired_dsc_id)) {
+			SDE_DEBUG("number of dsc %d, dsc %d can't match of pp %d\n",
+					num_dsc_enc, un_paired_dsc_id,
+					pp_blk ? pp_blk->id : -1);
 			return false;
 		}
 	}
@@ -1605,6 +1675,30 @@ static void sde_rm_get_rsvp_nxt_hw_blks(
 	}
 }
 
+static uint32_t _sde_rm_reserve_un_paired_dsc(
+		struct sde_rm_rsvp *rsvp,
+		struct sde_rm_requirements *reqs,
+		struct sde_rm *rm)
+{
+	const struct sde_dsc_cfg *dsc_cfg;
+	struct sde_rm_hw_iter iter_i;
+
+	if (reqs->topology->num_comp_enc != 1)
+		return 0;
+
+	sde_rm_init_hw_iter(&iter_i, 0, SDE_HW_BLK_DSC);
+
+	while (_sde_rm_get_hw_locked(rm, &iter_i, true)) {
+		dsc_cfg = to_sde_hw_dsc(iter_i.blk->hw)->caps;
+		if (RESERVED_BY_OTHER(iter_i.blk, rsvp))
+			continue;
+		if (!dsc_cfg->dsc_pair_mask[0])
+			return iter_i.blk->id;
+	}
+
+	return 0;
+}
+
 static int _sde_rm_reserve_dsc(
 		struct sde_rm *rm,
 		struct sde_rm_rsvp *rsvp,
@@ -1613,7 +1707,7 @@ static int _sde_rm_reserve_dsc(
 {
 	struct sde_rm_hw_iter iter_i, iter_j;
 	struct sde_rm_hw_blk *dsc[MAX_BLOCKS];
-	u32 reserve_mask = 0;
+	u32 reserve_mask = 0, un_paired_dsc_id;
 	struct sde_rm_hw_blk *pp[MAX_BLOCKS];
 	int alloc_count = 0;
 	int num_dsc_enc;
@@ -1644,6 +1738,7 @@ static int _sde_rm_reserve_dsc(
 			list_forward = sde_encoder_is_dsi_display(encoder);
 	}
 
+	un_paired_dsc_id = _sde_rm_reserve_un_paired_dsc(rsvp, reqs, rm);
 	sde_rm_get_rsvp_nxt_hw_blks(rm, rsvp, SDE_HW_BLK_PINGPONG, pp, list_forward);
 
 	/* Find a first DSC */
@@ -1666,7 +1761,7 @@ static int _sde_rm_reserve_dsc(
 			continue;
 
 		if (!_sde_rm_check_dsc(rm, rsvp, iter_i.blk, NULL,
-					 pp[alloc_count]))
+					 pp[alloc_count], num_dsc_enc, un_paired_dsc_id))
 			continue;
 
 		SDE_DEBUG("blk id = %d, _dsc_ids[%d] = %d\n",
@@ -1699,8 +1794,8 @@ static int _sde_rm_reserve_dsc(
 					_dsc_ids[req_index]))
 				continue;
 
-			if (!_sde_rm_check_dsc(rm, rsvp, iter_j.blk,
-					 iter_i.blk, pp[alloc_count]))
+			if (!_sde_rm_check_dsc(rm, rsvp, iter_j.blk, iter_i.blk,
+					 pp[alloc_count], num_dsc_enc, 0))
 				continue;
 
 			SDE_DEBUG("blk id = %d, _dsc_ids[%d] = %d\n",
@@ -2408,11 +2503,18 @@ static int _sde_rm_populate_requirements(
 	const struct drm_display_mode *mode = &crtc_state->mode;
 	struct drm_encoder *encoder_iter;
 	struct drm_connector *conn;
+	struct drm_crtc_state *old_cstate = NULL;
 	int i, num_lm;
+	bool crtc_in_lb_mode = false;
 
 	reqs->top_ctrl = sde_connector_get_property(conn_state,
 			CONNECTOR_PROP_TOPOLOGY_CONTROL);
 	sde_encoder_get_hw_resources(enc, &reqs->hw_res, conn_state);
+	crtc_in_lb_mode = sde_crtc_state_in_lb_mode(crtc_state);
+	if (crtc_state->state && crtc_state->crtc)
+		old_cstate = drm_atomic_get_old_crtc_state(crtc_state->state, crtc_state->crtc);
+
+	reqs->is_cac_transition = sde_crtc_in_lb_transition(old_cstate, crtc_state);
 
 	for (i = 0; i < SDE_RM_TOPOLOGY_MAX; i++) {
 		if (RM_IS_TOPOLOGY_MATCH(rm->topology_tbl[i],
@@ -2428,15 +2530,33 @@ static int _sde_rm_populate_requirements(
 	}
 
 	/*
-	 * select dspp HW block for all dsi displays and ds for only
+	 * When CRTC is in loopback mode, RM should only allocate resources
+	 * defined for loopback mode for both first pass(virtual) and second
+	 * pass(primary) encoders. Set preference here so that reservation
+	 * of blocks like LM, INTF, DSPP can be done accordingly.
+	 * Loopback display + CWB is not supported currently.
+	 */
+	if (crtc_in_lb_mode && !sde_crtc_state_in_clone_mode(enc, crtc_state)) {
+		reqs->top_ctrl |= sde_encoder_is_loopback_display(enc) ?
+					BIT(SDE_RM_TOPCTL_CAC_LB) :
+					BIT(SDE_RM_TOPCTL_CAC_PRIMARY);
+		reqs->top_ctrl &= ~(BIT(SDE_RM_TOPCTL_DSPP) | BIT(SDE_RM_TOPCTL_DS));
+	}
+
+	/*
+	 * When CRTC is in loopback mode, select DSPP and DS only
+	 * for loopback encoder. When loopback is disabled, select
+	 * dspp HW block for all dsi displays and ds only for
 	 * primary dsi display.
 	 */
-	if (conn_state->connector->connector_type == DRM_MODE_CONNECTOR_DSI) {
+	if ((conn_state->connector->connector_type == DRM_MODE_CONNECTOR_DSI && !crtc_in_lb_mode) ||
+		sde_encoder_is_loopback_display(enc)) {
 		if (!RM_RQ_DSPP(reqs))
 			reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_DSPP);
 
 		if (!RM_RQ_DS(reqs) && rm->hw_mdp->caps->has_dest_scaler &&
-		    sde_encoder_is_primary_display(enc))
+		    (sde_encoder_is_primary_display(enc) ||
+				sde_encoder_is_loopback_display(enc)))
 			reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_DS);
 	}
 
@@ -2868,7 +2988,8 @@ int sde_rm_reserve(
 	SDE_DEBUG("reserving hw for conn %d enc %d crtc %d test_only %d\n",
 			conn_state->connector->base.id, enc->base.id,
 			crtc_state->crtc->base.id, test_only);
-	SDE_EVT32(enc->base.id, conn_state->connector->base.id, test_only);
+	SDE_EVT32(enc->base.id, conn_state->connector->base.id, test_only,
+		sde_crtc_state_in_lb_mode(crtc_state), sde_encoder_is_loopback_display(enc));
 
 	mutex_lock(&rm->rm_lock);
 
