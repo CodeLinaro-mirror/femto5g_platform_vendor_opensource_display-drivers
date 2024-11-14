@@ -416,4 +416,11 @@ struct sde_hw_reg_dma_ops *sde_reg_dma_get_ops(u32 dpu_idx);
  * @dpu_idx: dpu index
  */
 void sde_reg_dma_deinit(u32 dpu_idx);
+
+/**
+ * sde_reg_dma_get_last_cmd_buffer() - function to get the LUT DMA last command buffer info.
+ * @dpu_idx: dpu index
+ * @last_cmd_buf: pointer to a pointer of last command buffer
+ */
+int sde_reg_dma_get_last_cmd_buffer(u32 dpu_idx, struct sde_reg_dma_buffer **last_cmd_buf);
 #endif /* _SDE_REG_DMA_H */
