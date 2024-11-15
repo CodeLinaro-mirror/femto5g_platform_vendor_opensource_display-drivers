@@ -846,9 +846,14 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *crtc_state;
 	struct sde_rect *crtc_roi;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct msm_mode_info *mode_info;
+	int i = 0;
+#else
 	struct msm_mode_info mode_info;
 	int i = 0;
 	int rc;
+#endif
 	bool is_crtc_roi_dirty;
 	bool is_conn_roi_dirty;
 
@@ -858,6 +863,9 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 	sde_crtc = to_sde_crtc(crtc);
 	crtc_state = to_sde_crtc_state(state);
 	crtc_roi = &crtc_state->crtc_roi;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	mode_info = &crtc_state->mode_info;
+#endif
 
 	is_crtc_roi_dirty = sde_crtc_is_crtc_roi_dirty(state);
 
@@ -869,11 +877,13 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 		if (!conn_state || conn_state->crtc != crtc)
 			continue;
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 		rc = sde_connector_state_get_mode_info(conn_state, &mode_info);
 		if (rc) {
 			SDE_ERROR("failed to get mode info\n");
 			return -EINVAL;
 		}
+#endif
 
 		sde_conn = to_sde_connector(conn_state->connector);
 		sde_conn_state = to_sde_connector_state(conn_state);
@@ -893,7 +903,11 @@ static int _sde_crtc_set_crtc_roi(struct drm_crtc *crtc,
 			return -EINVAL;
 		}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		if (!mode_info->roi_caps.enabled)
+#else
 		if (!mode_info.roi_caps.enabled)
+#endif
 			continue;
 
 		/*
@@ -1233,6 +1247,58 @@ static int _sde_crtc_check_planes_within_crtc_roi(struct drm_crtc *crtc,
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+static int _sde_crtc_check_rois(struct drm_crtc *crtc,
+		struct drm_crtc_state *state)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_crtc_state *sde_crtc_state;
+	struct msm_mode_info *mode_info;
+	int rc, lm_idx;
+
+	if (!crtc || !state)
+		return -EINVAL;
+
+	sde_crtc = to_sde_crtc(crtc);
+	sde_crtc_state = to_sde_crtc_state(state);
+	mode_info = &sde_crtc_state->mode_info;
+
+	if (!mode_info->roi_caps.enabled)
+		return 0;
+
+	if (sde_crtc_state->user_roi_list.num_rects >
+			mode_info->roi_caps.num_roi) {
+		SDE_ERROR("roi count is exceeding limit, %d > %d\n",
+				sde_crtc_state->user_roi_list.num_rects,
+				mode_info->roi_caps.num_roi);
+		return -E2BIG;
+	}
+
+	rc = _sde_crtc_set_crtc_roi(crtc, state);
+	if (rc)
+		return rc;
+
+	rc = _sde_crtc_check_autorefresh(crtc, state);
+	if (rc)
+		return rc;
+
+	for (lm_idx = 0; lm_idx < sde_crtc_state->num_mixers; lm_idx++) {
+		rc = _sde_crtc_set_lm_roi(crtc, state, lm_idx);
+		if (rc)
+			return rc;
+	}
+
+	rc = _sde_crtc_check_rois_centered_and_symmetric(crtc, state);
+	if (rc)
+		return rc;
+
+	rc = _sde_crtc_check_planes_within_crtc_roi(crtc, state);
+	if (rc)
+		return rc;
+
+	return 0;
+}
+#else
 static int _sde_crtc_check_rois(struct drm_crtc *crtc,
 		struct drm_crtc_state *state)
 {
@@ -1284,11 +1350,7 @@ static int _sde_crtc_check_rois(struct drm_crtc *crtc,
 		if (rc)
 			return rc;
 
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-		for (lm_idx = 0; lm_idx < sde_crtc_state->num_mixers; lm_idx++) {
-#else
 		for (lm_idx = 0; lm_idx < sde_crtc->num_mixers; lm_idx++) {
-#endif
 			rc = _sde_crtc_set_lm_roi(crtc, state, lm_idx);
 			if (rc)
 				return rc;
@@ -1305,6 +1367,7 @@ static int _sde_crtc_check_rois(struct drm_crtc *crtc,
 
 	return 0;
 }
+#endif
 
 static void _sde_crtc_program_lm_output_roi(struct drm_crtc *crtc)
 {

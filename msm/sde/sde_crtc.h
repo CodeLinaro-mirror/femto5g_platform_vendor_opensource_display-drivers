@@ -457,6 +457,7 @@ enum sde_crtc_dirty_flags {
  * @is_ppsplit    : Whether current topology requires PPSplit special handling
  * @bw_control    : true if bw/clk controlled by core bw/clk properties
  * @topology_name : Current topology name
+ * @mode_info     : Local copy of msm_mode_info struct
  * @num_mixers    : Number of mixers in current topology
  * @bw_split_vote : true if bw controlled by llcc/dram bw properties
  * @crtc_roi      : Current CRTC ROI. Possibly sub-rectangle of mode.
@@ -498,6 +499,7 @@ struct sde_crtc_state {
 
 #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	enum sde_rm_topology_name topology_name;
+	struct msm_mode_info mode_info;
 	u32 num_mixers;
 #endif
 	bool is_ppsplit;
