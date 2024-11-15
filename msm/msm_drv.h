@@ -382,16 +382,6 @@ enum msm_event_wait {
 	MSM_ENC_ACTIVE_REGION,
 };
 
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-/**
- * enum msm_component_event - type of component events
- * @MSM_COMP_OBJECT_CREATED - notify when all builtin objects are created
- */
-enum msm_component_event {
-	MSM_COMP_OBJECT_CREATED = 0,
-};
-#endif
-
 /**
  * struct msm_roi_alignment - region of interest alignment restrictions
  * @xstart_pix_align: left x offset alignment restriction
@@ -781,7 +771,6 @@ struct msm_dyn_clk_list {
  * @mdp_transfer_time_us   Specifies the mdp transfer time for command mode
  *                         panels in microseconds.
  * @allowed_mode_switches: bit mask to indicate supported mode switch.
- * @vpadding:        panel stacking height
  * @disable_rsc_solver: Dynamically disable RSC solver for the timing mode due to lower bitclk rate.
  * @dyn_clk_list: List of dynamic clock rates for RFI.
  * @qsync_min_fps: qsync min fps rate
@@ -801,9 +790,6 @@ struct msm_mode_info {
 	u32 panel_mode_caps;
 	u32 mdp_transfer_time_us;
 	u64 allowed_mode_switches;
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-	u32 vpadding;
-#endif
 	bool disable_rsc_solver;
 	struct msm_dyn_clk_list dyn_clk_list;
 	u32 qsync_min_fps;
@@ -1062,10 +1048,6 @@ struct msm_drm_private {
 
 	struct mutex vm_client_lock;
 	struct list_head vm_client_list;
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-	/* list of component registered for notification */
-	struct blocking_notifier_head component_notifier_list;
-#endif
 };
 
 /* get struct msm_kms * from drm_device * */
@@ -1450,18 +1432,6 @@ static inline void sde_rotator_smmu_driver_unregister(void)
 }
 #endif /* CONFIG_MSM_SDE_ROTATOR */
 
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-void __init sde_shd_register(void);
-void __exit sde_shd_unregister(void);
-#else
-static inline void __init sde_shd_register(void)
-{
-}
-static inline void __exit sde_shd_unregister(void)
-{
-}
-#endif /* CONFIG_DRM_SDE_SHD */
-
 struct clk *msm_clk_get(struct platform_device *pdev, const char *name);
 int msm_clk_bulk_get(struct device *dev, struct clk_bulk_data **bulk);
 
@@ -1519,36 +1489,5 @@ int msm_get_dsc_count(struct msm_drm_private *priv,
 		u32 hdisplay, u32 *num_dsc);
 
 int msm_get_src_bpc(int chroma_format, int bpc);
-
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-/**
- * msm_drm_register_component - register a component notifier
- * @dev: drm device
- * @nb: notifier block to callback on events
- *
- * This function registers a notifier callback function
- * to msm_drm_component_list, which would be called during probe.
- */
-int msm_drm_register_component(struct drm_device *dev,
-		struct notifier_block *nb);
-
-/**
- * msm_drm_unregister_component - unregister a component notifier
- * @dev: drm device
- * @nb: notifier block to callback on events
- *
- * This function registers a notifier callback function
- * to msm_drm_component_list, which would be called during probe.
- */
-int msm_drm_unregister_component(struct drm_device *dev,
-		struct notifier_block *nb);
-
-/**
- * msm_drm_notify_components - notify components of msm_component_event
- * @event: defined in msm_component_event
- */
-int msm_drm_notify_components(struct drm_device *dev,
-		enum msm_component_event event);
-#endif
 
 #endif /* __MSM_DRV_H__ */

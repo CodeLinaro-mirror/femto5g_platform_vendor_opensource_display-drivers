@@ -267,26 +267,6 @@ bool is_sde_rsc_available(int rsc_index)
 }
 EXPORT_SYMBOL(is_sde_rsc_available);
 
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-int get_sde_rsc_primary_crtc(int rsc_index)
-{
-	struct sde_rsc_priv *rsc;
-
-	if (rsc_index >= MAX_RSC_COUNT) {
-		pr_err("invalid rsc index:%d\n", rsc_index);
-		return 0;
-	} else if (!rsc_prv_list[rsc_index]) {
-		pr_debug("rsc idx:%d not probed yet or not available\n",
-								rsc_index);
-		return 0;
-	}
-
-	rsc = rsc_prv_list[rsc_index];
-	return rsc->primary_client ? rsc->primary_client->crtc_id : 0;
-}
-EXPORT_SYMBOL(get_sde_rsc_primary_crtc);
-#endif
-
 enum sde_rsc_state get_sde_rsc_current_state(int rsc_index)
 {
 	struct sde_rsc_priv *rsc;

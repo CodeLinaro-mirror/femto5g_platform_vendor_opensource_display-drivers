@@ -823,9 +823,6 @@ static int msm_drm_component_init(struct device *dev)
 	INIT_LIST_HEAD(&priv->client_event_list);
 	INIT_LIST_HEAD(&priv->inactive_list);
 	INIT_LIST_HEAD(&priv->vm_client_list);
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-	BLOCKING_INIT_NOTIFIER_HEAD(&priv->component_notifier_list);
-#endif
 	mutex_init(&priv->mm_lock);
 
 	mutex_init(&priv->vm_client_lock);
@@ -851,10 +848,6 @@ static int msm_drm_component_init(struct device *dev)
 		dev_err(dev, "msm_drm_component_init_helper failed\n");
 		goto fail;
 	}
-
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-	msm_drm_notify_components(ddev, MSM_COMP_OBJECT_CREATED);
-#endif
 
 	/* Register rotator platform driver only after genpd init */
 	sde_rotator_register();
@@ -1493,50 +1486,6 @@ void msm_mode_object_event_notify(struct drm_mode_object *obj,
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
-
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-int msm_drm_register_component(struct drm_device *dev,
-		struct notifier_block *nb)
-{
-	struct msm_drm_private *priv;
-
-	if (!dev)
-		return -EINVAL;
-
-	priv = dev->dev_private;
-
-	return blocking_notifier_chain_register(&priv->component_notifier_list,
-			nb);
-}
-
-int msm_drm_unregister_component(struct drm_device *dev,
-		struct notifier_block *nb)
-{
-	struct msm_drm_private *priv;
-
-	if (!dev)
-		return -EINVAL;
-
-	priv = dev->dev_private;
-
-	return blocking_notifier_chain_unregister(
-			&priv->component_notifier_list, nb);
-}
-
-int msm_drm_notify_components(struct drm_device *dev,
-		enum msm_component_event event)
-{
-	struct msm_drm_private *priv;
-
-	if (!dev)
-		return -EINVAL;
-
-	priv = dev->dev_private;
-
-	return blocking_notifier_call_chain(&priv->component_notifier_list,
-			event, NULL);
-}
-#endif
 
 static int msm_release(struct inode *inode, struct file *filp)
 {
@@ -2299,7 +2248,6 @@ static int __init msm_drm_register(void)
 	sde_rsc_register();
 	msm_smmu_driver_init();
 	sde_wb_register();
-	sde_shd_register();
 	platform_driver_register(&msm_platform_driver);
 	dsi_display_register();
 	msm_hdcp_register();
@@ -2313,7 +2261,6 @@ static int __init msm_drm_register(void)
 static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
-	sde_shd_unregister();
 	sde_wb_unregister();
 	msm_hdmi_unregister();
 	msm_edp_unregister();

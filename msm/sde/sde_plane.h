@@ -113,7 +113,6 @@ enum sde_plane_sclcheck_state {
  * @cdp_cfg:	CDP configuration
  * @cont_splash_populated: State was populated as part of cont. splash
  * @ubwc_stats_roi: cached roi for ubwc stats
- * @line_insertion_cfg: line insertion configuration
  */
 struct sde_plane_state {
 	struct drm_plane_state base;
@@ -145,9 +144,6 @@ struct sde_plane_state {
 	uint32_t static_cache_state;
 
 	struct sde_hw_pipe_cdp_cfg cdp_cfg;
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
-	struct sde_hw_pipe_line_insertion_cfg line_insertion_cfg;
-#endif
 
 	bool cont_splash_populated;
 
