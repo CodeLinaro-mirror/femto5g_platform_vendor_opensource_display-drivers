@@ -128,7 +128,7 @@ static int shd_display_init_base_encoder(struct drm_device *dev,
 {
 	struct drm_encoder *encoder;
 	struct sde_connector *sde_conn;
-	struct sde_encoder_hw_resources hw_res;
+	struct sde_encoder_hw_resources hw_res = {0};
 	struct sde_connector_state *conn_state;
 	bool has_mst;
 	int rc = 0;
