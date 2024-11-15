@@ -2564,7 +2564,11 @@ void sde_crtc_prepare_commit(struct drm_crtc *crtc,
 	struct sde_crtc_state *cstate;
 	struct drm_connector *conn;
 	struct drm_encoder *encoder;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	int i;
+#else
 	struct drm_connector_list_iter conn_iter;
+#endif
 
 	if (!crtc || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
@@ -2578,6 +2582,18 @@ void sde_crtc_prepare_commit(struct drm_crtc *crtc,
 
 	SDE_ATRACE_BEGIN("sde_crtc_prepare_commit");
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	for (i = 0; i < cstate->num_connectors; i++) {
+		conn = cstate->connectors[i];
+		encoder = conn->state->best_encoder;
+		if (encoder)
+			sde_encoder_register_frame_event_callback(
+					encoder,
+					sde_crtc_frame_event_cb,
+					crtc);
+		sde_connector_prepare_fence(conn);
+	}
+#else
 	/* identify connectors attached to this crtc */
 	cstate->num_connectors = 0;
 
@@ -2597,6 +2613,7 @@ void sde_crtc_prepare_commit(struct drm_crtc *crtc,
 			sde_encoder_set_clone_mode(encoder, crtc->state);
 		}
 	drm_connector_list_iter_end(&conn_iter);
+#endif
 
 	/* prepare main output fence */
 	sde_fence_prepare(sde_crtc->output_fence);
