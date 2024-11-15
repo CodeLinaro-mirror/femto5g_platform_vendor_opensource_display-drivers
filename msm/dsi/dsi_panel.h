@@ -140,6 +140,9 @@ struct dsi_backlight_config {
 	u32 bl_min_level;
 	u32 bl_max_level;
 	u32 brightness_max_level;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	u32 brightness_default_level;
+#endif
 	/* current brightness value */
 	u32 brightness;
 	u32 bl_level;
