@@ -2299,6 +2299,9 @@ static int __init msm_drm_register(void)
 	sde_rsc_register();
 	msm_smmu_driver_init();
 	sde_wb_register();
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	sde_shd_register();
+#endif
 	platform_driver_register(&msm_platform_driver);
 	dsi_display_register();
 	msm_hdcp_register();
@@ -2312,6 +2315,9 @@ static int __init msm_drm_register(void)
 static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	sde_shd_unregister();
+#endif
 	sde_wb_unregister();
 	msm_hdmi_unregister();
 	msm_edp_unregister();

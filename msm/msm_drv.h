@@ -1434,6 +1434,18 @@ static inline void sde_rotator_unregister(void)
 }
 #endif /* CONFIG_MSM_SDE_ROTATOR */
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+void __init sde_shd_register(void);
+void __exit sde_shd_unregister(void);
+#else
+static inline void __init sde_shd_register(void)
+{
+}
+static inline void __exit sde_shd_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_SDE_SHD */
+
 #if IS_ENABLED(CONFIG_MSM_SDE_ROTATOR)
 void sde_rotator_smmu_driver_register(void);
 void sde_rotator_smmu_driver_unregister(void);
