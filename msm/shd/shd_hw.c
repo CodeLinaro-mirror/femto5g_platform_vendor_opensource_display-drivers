@@ -243,14 +243,17 @@ static void _sde_shd_hw_ctl_setup_blendstage(struct sde_hw_ctl *ctx,
 	int pipes_per_stage;
 	u32 pipe_idx, rect_idx;
 	const struct ctl_sspp_stage_reg_map *sspp_cfg;
+	struct sde_hw_blk_reg_map *c;
 	u32 mixercfg[CTL_NUM_EXT] = {CTL_MIXER_BORDER_OUT, 0, 0, 0};
 	u32 mixermask[CTL_NUM_EXT] = {0, 0, 0, 0};
-	u32 value, mask, stage_value;
+	u32 value, mask, stage_value, cfg_value;
 
 	if (!ctx)
 		return;
 
 	hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
+
+	c = &ctx->hw;
 
 	if (test_bit(SDE_MIXER_SOURCESPLIT,
 		&ctx->mixer_hw_caps->features))
@@ -259,6 +262,10 @@ static void _sde_shd_hw_ctl_setup_blendstage(struct sde_hw_ctl *ctx,
 		pipes_per_stage = 1;
 
 	_sde_shd_hw_ctl_clear_blendstages_in_range(hw_ctl, lm);
+
+	cfg_value = SDE_REG_READ(c, CTL_LAYER(lm));
+	if (!(cfg_value & ~CTL_MIXER_BORDER_OUT) || disable_border)
+		mixercfg[0] = 0;
 
 	if (!stage_cfg)
 		goto exit;
