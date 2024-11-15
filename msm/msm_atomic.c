@@ -708,6 +708,9 @@ int msm_atomic_commit(struct drm_device *dev,
 	struct drm_crtc_state *crtc_state;
 	struct drm_plane *plane;
 	struct drm_plane_state *old_plane_state, *new_plane_state;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct list_head *entry;
+#endif
 	int i, ret;
 
 	if (!priv || priv->shutdown_in_progress) {
@@ -809,6 +812,30 @@ retry:
 	 * composition of the next frame right after having submitted the
 	 * current layout
 	 */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	/*
+	 * For blocking commit, since the msm_atomic_commit_dispatch will wait for
+	 * the hardware committing and next vsync to assue the commit is done, and
+	 * at the same time might locks the global connection_mutex shared by other
+	 * committing threads, thus blocks other commits for long (up to one frame).
+	 * Drop connection_mutex before dispatch, since it is shared by all CRTCs.
+	 * For non-blocking commit, since the dispatch will only pass the commit
+	 * to the crtc_commit thread and return without waiting for the completion,
+	 * thus there is no benefit of unlocking connection_mutex here.
+	 * Check if connection_mutex is locked in the context before unlocking.
+	 */
+	if (!nonblock) {
+		list_for_each(entry, &state->acquire_ctx->locked) {
+			struct drm_modeset_lock *lock;
+
+			lock = list_entry(entry, struct drm_modeset_lock, head);
+			if (lock == &dev->mode_config.connection_mutex) {
+				drm_modeset_unlock(&dev->mode_config.connection_mutex);
+				break;
+			}
+		}
+	}
+#endif
 
 	drm_atomic_state_get(state);
 	msm_atomic_commit_dispatch(dev, state, c);
