@@ -8242,3 +8242,4 @@ void _sde_crtc_vm_release_notify(struct drm_crtc *crtc)
 
 	sde_crtc_event_notify(crtc, DRM_EVENT_VM_RELEASE, &val, sizeof(uint32_t));
 }
+

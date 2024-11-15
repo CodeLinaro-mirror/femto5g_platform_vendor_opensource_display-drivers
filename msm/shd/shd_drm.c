@@ -722,6 +722,7 @@ static int shd_connector_get_info(struct drm_connector *connector,
 	info->is_connected = true;
 	info->num_of_h_tiles = 1;
 	info->h_tile_instance[0] = display->base->intf_idx;
+	info->curr_panel_mode = MSM_DISPLAY_VIDEO_MODE;
 
 	return 0;
 }
