@@ -194,7 +194,7 @@ module_entry(
             "//vendor/qcom/opensource/securemsm-kernel:%b_hdcp_qseecom_dlkm"
         ],
         "CONFIG_MSM_MMRM" : [
-            "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver",
+            "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_modules",
         ],
       },
 )
