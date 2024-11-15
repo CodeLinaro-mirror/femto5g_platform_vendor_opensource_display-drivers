@@ -53,9 +53,19 @@
 #define   CTL_MERGE_3D_ACTIVE           0x0E4
 #define   CTL_WB_ACTIVE                 0x0EC
 #define   CTL_CWB_ACTIVE                0x0F0
+#define   CTL_FETCH_PIPE_ACTIVE         0x0FC
 
 #define ROI_POSITION_VAL(x, y)          ((x) | ((y) << 16))
 #define ROI_SIZE_VAL(w, h)              ((w) | ((h) << 16))
+
+#define CTL_INVALID_BIT                0xffff
+
+/**
+ * List of SSPP bits in CTL_FETCH_PIPE_ACTIVE
+ */
+static const u32 fetch_tbl[SSPP_MAX] = {CTL_INVALID_BIT, 16, 17, 18, 19,
+	CTL_INVALID_BIT, CTL_INVALID_BIT, CTL_INVALID_BIT, CTL_INVALID_BIT, 0,
+	1, 2, 3, 4, 5, CTL_INVALID_BIT, CTL_INVALID_BIT};
 
 static DEFINE_SPINLOCK(hw_ctl_lock);
 
@@ -164,6 +174,50 @@ void _sde_shd_hw_ctl_clear_all_blendstages(struct sde_hw_ctl *ctx)
 
 		_sde_shd_hw_ctl_clear_blendstages_in_range(hw_ctl, mixer_id);
 	}
+}
+
+static u32 _sde_shd_update_active_pipes(struct sde_hw_ctl *ctx)
+{
+	struct sde_shd_hw_ctl *shd_hw_ctl;
+	u32 fetch_info, other_shd_active, cur_active_pipe;
+
+	shd_hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
+
+	fetch_info = SDE_REG_READ(&ctx->hw, CTL_FETCH_PIPE_ACTIVE);
+
+	/**
+	 * current active pipe = other shared display active pipe +
+	 * current this shared display active pipe
+	 */
+	other_shd_active = fetch_info & (~shd_hw_ctl->old_active_pipe);
+	cur_active_pipe = other_shd_active | shd_hw_ctl->new_active_pipe;
+
+	shd_hw_ctl->old_active_pipe = shd_hw_ctl->new_active_pipe;
+
+	return cur_active_pipe;
+}
+
+static void _sde_shd_setup_active_pipes(struct sde_hw_ctl *ctx,
+		unsigned long *fetch_active)
+{
+	int i;
+	struct sde_shd_hw_ctl *shd_hw_ctl;
+	u32 val = 0;
+
+	shd_hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
+
+	if (!fetch_active) {
+		shd_hw_ctl->new_active_pipe = 0;
+		return;
+	}
+
+	for (i = 0; i < SSPP_MAX; i++) {
+		if (test_bit(i, fetch_active) &&
+				fetch_tbl[i] != CTL_INVALID_BIT)
+			val |= BIT(fetch_tbl[i]);
+	}
+
+	shd_hw_ctl->new_active_pipe = val;
 }
 
 static inline int _stage_offset(struct sde_hw_mixer *ctx, enum sde_stage stage)
@@ -286,6 +340,20 @@ static void _sde_shd_flush_cwb_cfg(struct sde_shd_hw_ctl *hw_ctl)
 	}
 
 	hw_ctl->cwb_changed = false;
+}
+
+static void _sde_shd_flush_hw_pipe_active(struct sde_hw_ctl *ctx)
+{
+	struct sde_shd_hw_ctl *hw_ctl;
+	u32 val = 0;
+
+	if (!ctx)
+		return;
+
+	hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
+	val = _sde_shd_update_active_pipes(ctx);
+
+	SDE_REG_WRITE(&ctx->hw, CTL_FETCH_PIPE_ACTIVE, val);
 }
 
 static void _sde_shd_flush_hw_ctl(struct sde_hw_ctl *ctx)
@@ -447,6 +515,8 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 
 	SDE_REG_WRITE(c, CTL_FLUSH_MASK, FLUSH_MASK_ALL);
 
+	_sde_shd_flush_hw_pipe_active(ctl_ctx);
+
 	_sde_shd_flush_hw_ctl(ctl_ctx);
 
 	for (i = 0; i < lm_num; i++)
@@ -470,6 +540,9 @@ void sde_shd_hw_ctl_init_op(struct sde_hw_ctl *ctx)
 
 	ctx->ops.setup_intf_cfg_v1 =
 		_sde_shd_setup_intf_cfg_v1;
+
+	ctx->ops.set_active_pipes =
+		_sde_shd_setup_active_pipes;
 }
 
 void sde_shd_hw_lm_init_op(struct sde_hw_mixer *ctx)

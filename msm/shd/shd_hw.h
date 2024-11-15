@@ -36,6 +36,8 @@ struct sde_shd_hw_ctl {
 	bool cwb_changed;
 	u32 cwb_active;
 	u32 merge_3d_active;
+	u32 new_active_pipe;
+	u32 old_active_pipe;
 };
 
 struct sde_shd_mixer_cfg {
