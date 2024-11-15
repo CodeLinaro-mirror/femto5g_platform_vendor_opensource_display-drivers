@@ -3284,6 +3284,102 @@ static void _sde_crtc_check_dest_scaler_data_disable(struct drm_crtc *crtc,
  * @crtc  :  Pointer to drm crtc
  * @state :  Pointer to drm crtc state
  */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+static int _sde_crtc_check_dest_scaler_data(struct drm_crtc *crtc,
+				struct drm_crtc_state *state)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_crtc_state *cstate;
+	struct drm_display_mode *mode;
+	struct sde_kms *kms;
+	struct sde_hw_ds *hw_ds = NULL;
+	u32 ret = 0;
+	u32 num_ds_enable = 0, hdisplay = 0;
+	u32 max_in_width = 0, max_out_width = 0;
+
+	if (!crtc || !state)
+		return -EINVAL;
+
+	sde_crtc = to_sde_crtc(crtc);
+	cstate = to_sde_crtc_state(state);
+	kms = _sde_crtc_get_kms(crtc);
+	mode = &state->adjusted_mode;
+
+	SDE_DEBUG("crtc%d\n", crtc->base.id);
+
+	mutex_lock(&sde_crtc->crtc_lock);
+
+	if (!test_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty)) {
+		SDE_DEBUG("dest scaler property not set, skip validation\n");
+		goto end;
+	}
+
+	if (!kms || !kms->catalog) {
+		SDE_ERROR("crtc%d: invalid parameters\n", crtc->base.id);
+		ret = -EINVAL;
+		goto end;
+	}
+
+	if (!kms->catalog->mdp[0].has_dest_scaler) {
+		SDE_DEBUG("dest scaler feature not supported\n");
+		goto end;
+	}
+
+	if (!sde_crtc->num_mixers) {
+		SDE_DEBUG("mixers not allocated\n");
+		goto end;
+	}
+
+	ret = _sde_validate_hw_resources(sde_crtc);
+	if (ret)
+		goto err;
+
+	/**
+	 * No of dest scalers shouldn't exceed hw ds block count and
+	 * also, match the num of mixers unless it is partial update
+	 * left only/right only use case - currently PU + DS is not supported
+	 */
+	if (cstate->num_ds > kms->catalog->ds_count ||
+		((cstate->num_ds != sde_crtc->num_mixers) &&
+		!(cstate->ds_cfg[0].flags & SDE_DRM_DESTSCALER_PU_ENABLE))) {
+		SDE_ERROR("crtc%d: num_ds(%d), hw_ds_cnt(%d) flags(%d)\n",
+			crtc->base.id, cstate->num_ds, kms->catalog->ds_count,
+			cstate->ds_cfg[0].flags);
+		ret = -EINVAL;
+		goto err;
+	}
+
+	/**
+	 * Check if DS needs to be enabled or disabled
+	 * In case of enable, validate the data
+	 */
+	if (!(cstate->ds_cfg[0].flags & SDE_DRM_DESTSCALER_ENABLE)) {
+		SDE_DEBUG("disable dest scaler, num(%d) flags(%d)\n",
+			cstate->num_ds, cstate->ds_cfg[0].flags);
+		goto disable;
+	}
+
+	/* Display resolution */
+	hdisplay = mode->hdisplay/sde_crtc->num_mixers;
+
+	/* Validate the DS data */
+	ret = _sde_crtc_check_dest_scaler_validate_ds(crtc, sde_crtc, cstate,
+			mode, hw_ds, hdisplay, &num_ds_enable,
+			max_in_width, max_out_width);
+	if (ret)
+		goto err;
+
+disable:
+	_sde_crtc_check_dest_scaler_data_disable(crtc, cstate, num_ds_enable);
+	goto end;
+
+err:
+	clear_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
+end:
+	mutex_unlock(&sde_crtc->crtc_lock);
+	return ret;
+}
+#else
 static int _sde_crtc_check_dest_scaler_data(struct drm_crtc *crtc,
 				struct drm_crtc_state *state)
 {
@@ -3373,6 +3469,7 @@ err:
 	clear_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
 	return ret;
 }
+#endif
 
 /**
  * _sde_crtc_wait_for_fences - wait for incoming framebuffer sync fences
@@ -3490,12 +3587,21 @@ static void _sde_crtc_setup_mixers(struct drm_crtc *crtc)
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
 	struct drm_encoder *enc;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	mutex_lock(&sde_crtc->crtc_lock);
+
+	sde_crtc->num_ctls = 0;
+	sde_crtc->num_mixers = 0;
+	sde_crtc->mixers_swapped = false;
+	memset(sde_crtc->mixers, 0, sizeof(sde_crtc->mixers));
+#else
 	sde_crtc->num_ctls = 0;
 	sde_crtc->num_mixers = 0;
 	sde_crtc->mixers_swapped = false;
 	memset(sde_crtc->mixers, 0, sizeof(sde_crtc->mixers));
 
 	mutex_lock(&sde_crtc->crtc_lock);
+#endif
 	/* Check for mixers on all encoders attached to this crtc */
 	list_for_each_entry(enc, &crtc->dev->mode_config.encoder_list, head) {
 		if (enc->crtc != crtc)
