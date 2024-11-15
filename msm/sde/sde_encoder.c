@@ -974,8 +974,14 @@ static int _sde_encoder_atomic_check_phys_enc(struct sde_encoder_virt *sde_enc,
 				ret = -EINVAL;
 
 		if (ret) {
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+			if (ret != -EDEADLK)
+				SDE_ERROR_ENC(sde_enc,
+						"mode unsupported, phys idx %d\n", i);
+#else
 			SDE_ERROR_ENC(sde_enc,
 					"mode unsupported, phys idx %d\n", i);
+#endif
 			break;
 		}
 	}
