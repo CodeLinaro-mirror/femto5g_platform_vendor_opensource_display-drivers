@@ -524,6 +524,16 @@ void sde_encoder_set_clone_mode(struct drm_encoder *drm_enc,
 bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
 	struct drm_crtc *drm_crtc);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ *sde_encoder_is_topology_ppsplit - checks if the current encoder is in
+	ppsplit topology.
+ *@drm_enc:	Pointer to drm encoder structure
+ *@Return:	true if the present topology is ppsplit
+ */
+bool sde_encoder_is_topology_ppsplit(struct drm_encoder *drm_enc);
+#endif
+
 /**
  * sde_encoder_is_primary_display - checks if underlying display is primary
  *     display or not.
