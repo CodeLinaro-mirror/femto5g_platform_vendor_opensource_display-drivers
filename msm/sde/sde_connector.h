@@ -612,7 +612,9 @@ struct sde_connector {
 
 	struct edid *cached_edid;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	bool shared;
+#endif
 };
 
 /**

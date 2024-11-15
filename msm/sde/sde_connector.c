@@ -243,7 +243,11 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 	if (!sde_kms) {
 		SDE_ERROR("invalid kms\n");
 		return -EINVAL;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	} else if (!c_conn->ops.set_backlight) {
+#else
 	} else if (c_conn->connector_type != DRM_MODE_CONNECTOR_DSI) {
+#endif
 		return 0;
 	}
 
