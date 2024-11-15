@@ -5319,6 +5319,25 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		SDE_DEBUG("h_tile_instance %d = %d, split_role %d\n",
 				i, controller_id, phys_params.split_role);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		if (sde_enc->ops.phys_init) {
+			struct sde_encoder_phys *enc;
+
+			enc = sde_enc->ops.phys_init(intf_type,
+					controller_id,
+					&phys_params);
+			if (enc) {
+				sde_enc->phys_encs[sde_enc->num_phys_encs] =
+					enc;
+				++sde_enc->num_phys_encs;
+			} else
+				SDE_ERROR_ENC(sde_enc,
+						"failed to add phys encs\n");
+
+			continue;
+		}
+#endif
+
 		if (intf_type == INTF_WB) {
 			phys_params.intf_idx = INTF_MAX;
 			phys_params.wb_idx = sde_encoder_get_wb(
@@ -5391,7 +5410,13 @@ static const struct drm_encoder_funcs sde_encoder_funcs = {
 		.early_unregister = sde_encoder_early_unregister,
 };
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
+		struct msm_display_info *disp_info,
+		const struct sde_encoder_ops *ops)
+#else
 struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_info *disp_info)
+#endif
 {
 	struct msm_drm_private *priv = dev->dev_private;
 	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
@@ -5407,6 +5432,11 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 		ret = -ENOMEM;
 		goto fail;
 	}
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (ops)
+		sde_enc->ops = *ops;
+#endif
 
 	mutex_init(&sde_enc->enc_lock);
 	ret = sde_encoder_setup_display(sde_enc, sde_kms, disp_info,
@@ -5477,6 +5507,15 @@ fail:
 
 	return ERR_PTR(ret);
 }
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+struct drm_encoder *sde_encoder_init(
+		struct drm_device *dev,
+		struct msm_display_info *disp_info)
+{
+	return sde_encoder_init_with_ops(dev, disp_info, NULL);
+}
+#endif
 
 int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 	enum msm_event_wait event)
