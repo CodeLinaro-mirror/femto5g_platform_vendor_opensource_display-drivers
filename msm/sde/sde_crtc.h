@@ -457,6 +457,7 @@ enum sde_crtc_dirty_flags {
  * @is_ppsplit    : Whether current topology requires PPSplit special handling
  * @bw_control    : true if bw/clk controlled by core bw/clk properties
  * @topology_name : Current topology name
+ * @num_mixers    : Number of mixers in current topology
  * @bw_split_vote : true if bw controlled by llcc/dram bw properties
  * @crtc_roi      : Current CRTC ROI. Possibly sub-rectangle of mode.
  *                  Origin top left of CRTC.
@@ -497,6 +498,7 @@ struct sde_crtc_state {
 
 #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	enum sde_rm_topology_name topology_name;
+	u32 num_mixers;
 #endif
 	bool is_ppsplit;
 	struct sde_rect crtc_roi;
@@ -578,19 +580,32 @@ bool sde_crtc_is_connector_fsc(struct sde_crtc_state *cstate);
  * Mixer width will be same as panel width(/2 for split)
  * unless destination scaler feature is enabled
  */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+static inline int sde_crtc_get_mixer_width(struct sde_crtc_state *cstate,
+		struct drm_display_mode *mode)
+#else
 static inline int sde_crtc_get_mixer_width(struct sde_crtc *sde_crtc,
 	struct sde_crtc_state *cstate, struct drm_display_mode *mode)
+#endif
 {
 	u32 mixer_width;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (!cstate || !mode)
+#else
 	if (!sde_crtc || !cstate || !mode)
+#endif
 		return 0;
 
 	if (cstate->num_ds_enabled)
 		mixer_width = cstate->ds_cfg[0].lm_width;
 	else
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		mixer_width = GET_MODE_WIDTH(sde_crtc_is_connector_fsc(cstate), mode) / cstate->num_mixers;
+#else
 		mixer_width = GET_MODE_WIDTH(sde_crtc_is_connector_fsc(cstate), mode) /
 				sde_crtc->num_mixers;
+#endif
 
 	return mixer_width;
 }
@@ -600,10 +615,19 @@ static inline int sde_crtc_get_mixer_width(struct sde_crtc *sde_crtc,
  * Mixer height will be same as panel height unless
  * destination scaler feature is enabled
  */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+static inline int sde_crtc_get_mixer_height(struct sde_crtc_state *cstate,
+		struct drm_display_mode *mode)
+#else
 static inline int sde_crtc_get_mixer_height(struct sde_crtc *sde_crtc,
 		struct sde_crtc_state *cstate, struct drm_display_mode *mode)
+#endif
 {
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (!cstate || !mode)
+#else
 	if (!sde_crtc || !cstate || !mode)
+#endif
 		return 0;
 
 	return (cstate->num_ds_enabled ? cstate->ds_cfg[0].lm_height :
@@ -1073,6 +1097,26 @@ static inline void sde_crtc_state_set_topology_name(
 	cstate = to_sde_crtc_state(state);
 
 	cstate->topology_name = topology_name;
+
+	switch (topology_name) {
+	case SDE_RM_TOPOLOGY_DUALPIPE:
+	case SDE_RM_TOPOLOGY_DUALPIPE_DSC:
+	case SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE:
+	case SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC:
+	case SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_VDC:
+	case SDE_RM_TOPOLOGY_DUALPIPE_DSCMERGE:
+		cstate->num_mixers = 2;
+		break;
+	case SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE:
+	case SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC:
+	case SDE_RM_TOPOLOGY_QUADPIPE_DSCMERGE:
+	case SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE:
+		cstate->num_mixers = 4;
+		break;
+	default:
+		cstate->num_mixers = 1;
+		break;
+	}
 }
 #endif
 
