@@ -6189,6 +6189,13 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
 	uint32_t offset;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	uint32_t i;
+	struct drm_connector_state *old_conn_state, *new_conn_state;
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn = NULL;
+	struct msm_display_info disp_info;
+#endif
 	bool is_vid = false;
 	struct drm_encoder *encoder;
 
@@ -6202,6 +6209,30 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 		if (is_vid)
 			break;
 	}
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	/*
+	 * encoder_mask of drm_crtc_state will be zero until atomic_check
+	 * phase completes for first commit of dp. Hence, check for video
+	 * mode capability for current commit from new_connector_state.
+	 */
+	if (!state->encoder_mask) {
+		for_each_oldnew_connector_in_state(state->state, conn,
+				 old_conn_state, new_conn_state, i) {
+			if (!new_conn_state || new_conn_state->crtc != crtc)
+				continue;
+
+			sde_conn = to_sde_connector(new_conn_state->connector);
+			if (sde_conn->display && sde_conn->ops.get_info) {
+				sde_conn->ops.get_info(conn, &disp_info,
+							sde_conn->display);
+				is_vid |= disp_info.capabilities &
+						MSM_DISPLAY_CAP_VID_MODE;
+				if (is_vid)
+					break;
+			}
+		}
+	}
+#endif
 
 	offset = sde_crtc_get_property(cstate, CRTC_PROP_OUTPUT_FENCE_OFFSET);
 
@@ -6220,6 +6251,9 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	 * which will be incremented during the prepare commit phase
 	 */
 	offset++;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	SDE_EVT32(DRMID(crtc), is_vid, offset);
+#endif
 
 	return sde_fence_create(sde_crtc->output_fence, val, offset);
 }
