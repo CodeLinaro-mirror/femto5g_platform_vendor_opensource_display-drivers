@@ -3940,6 +3940,31 @@ static void sde_crtc_atomic_flush(struct drm_crtc *crtc,
  * @crtc: drm CRTC
  * @state: CRTC state object to release
  */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+static void sde_crtc_destroy_state(struct drm_crtc *crtc,
+		struct drm_crtc_state *state)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_crtc_state *cstate;
+
+	if (!crtc || !state) {
+		SDE_ERROR("invalid argument(s)\n");
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+	cstate = to_sde_crtc_state(state);
+
+	SDE_DEBUG("crtc%d\n", crtc->base.id);
+
+	sde_cp_clear_state_info(state);
+	__drm_atomic_helper_crtc_destroy_state(state);
+
+	/* destroy value helper */
+	msm_property_destroy_state(&sde_crtc->property_info, cstate,
+			&cstate->property_state);
+}
+#else
 static void sde_crtc_destroy_state(struct drm_crtc *crtc,
 		struct drm_crtc_state *state)
 {
@@ -3977,6 +4002,7 @@ static void sde_crtc_destroy_state(struct drm_crtc *crtc,
 	msm_property_destroy_state(&sde_crtc->property_info, cstate,
 			&cstate->property_state);
 }
+#endif
 
 static int _sde_crtc_flush_frame_events(struct drm_crtc *crtc)
 {
