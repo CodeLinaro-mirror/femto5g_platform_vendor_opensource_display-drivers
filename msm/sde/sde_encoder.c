@@ -76,6 +76,12 @@
 /* Maximum number of VSYNC wait attempts for RSC state transition */
 #define MAX_RSC_WAIT	5
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/* Primary panel worst case VSYNC expected to be no less than 30fps */
+#define PRIMARY_VBLANK_WORST_CASE_MS 34
+#endif
+
+
 /**
  * enum sde_enc_rc_events - events for resource control state machine
  * @SDE_ENC_RC_EVENT_KICKOFF:
@@ -1506,11 +1512,32 @@ static int _sde_encoder_rsc_client_update_vsync_wait(
 				sde_enc->rsc_client))
 			break;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		/*
+		 * if primary is inactive or modeset is needed, we'll wait
+		 * for worst case ms for best effort as we don't know when
+		 * primary display will be committed.
+		 */
+
+		if (crtc->base.id == wait_vblank_crtc_id) {
+			ret = sde_encoder_wait_for_event(drm_enc,
+					MSM_ENC_VBLANK);
+		} else if (primary_crtc->state->active &&
+				!drm_atomic_crtc_needs_modeset(
+						primary_crtc->state)) {
+ 			drm_wait_one_vblank(drm_enc->dev, pipe);
+		} else {
+			SDE_EVT32(DRMID(drm_enc),
+					wait_vblank_crtc_id, crtc->base.id);
+			msleep(PRIMARY_VBLANK_WORST_CASE_MS);
+		}
+#else
 		if (crtc->base.id == wait_vblank_crtc_id)
 			ret = sde_encoder_wait_for_event(drm_enc,
 					MSM_ENC_VBLANK);
 		else
 			drm_wait_one_vblank(drm_enc->dev, pipe);
+#endif
 
 		if (ret) {
 			SDE_ERROR_ENC(sde_enc,
