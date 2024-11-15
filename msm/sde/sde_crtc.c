@@ -3708,11 +3708,19 @@ static void sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		return;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (!crtc->state->active) {
+		SDE_DEBUG("crtc%d -> active %d, skip atomic_begin\n",
+				crtc->base.id, crtc->state->active);
+		return;
+	}
+#else
 	if (!crtc->state->enable) {
 		SDE_DEBUG("crtc%d -> enable %d, skip atomic_begin\n",
 				crtc->base.id, crtc->state->enable);
 		return;
 	}
+#endif
 
 	if (!sde_kms_power_resource_is_enabled(crtc->dev)) {
 		SDE_ERROR("power resource is not enabled\n");
