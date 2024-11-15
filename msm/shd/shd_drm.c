@@ -117,6 +117,13 @@ static int shd_display_init_base_connector(struct drm_device *dev,
 		return -ENOENT;
 	}
 
+	/* set base connector disconnected */
+	base->ops = sde_conn->ops;
+	sde_conn->ops.detect = shd_display_base_detect;
+	sde_conn->ops.set_info_blob = NULL;
+	sde_connector_set_blob_data(&sde_conn->base, NULL,
+			CONNECTOR_PROP_SDE_INFO);
+
 next:
 	SDE_DEBUG("found base connector %d\n", base->connector->base.id);
 
@@ -133,8 +140,9 @@ static int shd_display_init_base_encoder(struct drm_device *dev,
 	bool has_mst;
 	int rc = 0;
 
+	hw_res.comp_info = kzalloc(sizeof(*hw_res.comp_info), GFP_KERNEL);
 	conn_state = kzalloc(sizeof(*conn_state), GFP_KERNEL);
-	if (!conn_state)
+	if (!hw_res.comp_info || !conn_state)
 		return -ENOMEM;
 
 	if (base->connector) {
@@ -159,6 +167,11 @@ static int shd_display_init_base_encoder(struct drm_device *dev,
 	}
 
 next:
+	if (hw_res.comp_info) {
+		kfree(hw_res.comp_info);
+		hw_res.comp_info = NULL;
+	}
+
 	if (!base->encoder) {
 		SDE_ERROR("can't find base encoder for intf %d\n",
 			base->intf_idx);
@@ -950,6 +963,7 @@ static int shd_connector_get_modes(struct drm_connector *connector,
 		m->vsync_start = m->vdisplay;
 		m->vsync_end = m->vsync_start;
 		m->vtotal = m->vsync_end;
+		m->clock = (m->htotal * m->vtotal * drm_mode_vrefresh(base_mode)) / 1000;
 		drm_mode_set_name(m);
 	}
 
@@ -1217,24 +1231,6 @@ end:
 	return rc;
 }
 
-static int shd_drm_postinit(struct msm_kms *kms)
-{
-	struct shd_display_base *base;
-	struct sde_connector *sde_conn;
-
-	/* set base connector disconnected*/
-	list_for_each_entry(base, &g_base_list, head) {
-		sde_conn = to_sde_connector(base->connector);
-		base->ops = sde_conn->ops;
-		sde_conn->ops.detect = shd_display_base_detect;
-		sde_conn->ops.set_info_blob = NULL;
-		sde_connector_set_blob_data(&sde_conn->base, NULL,
-				CONNECTOR_PROP_SDE_INFO);
-	}
-
-	return g_shd_kms->orig_funcs->postinit(kms);
-}
-
 static int shd_drm_base_init(struct drm_device *ddev,
 		struct shd_display_base *base)
 {
@@ -1267,7 +1263,6 @@ static int shd_drm_base_init(struct drm_device *ddev,
 		g_shd_kms->funcs = *priv->kms->funcs;
 		g_shd_kms->orig_funcs = priv->kms->funcs;
 		g_shd_kms->funcs.atomic_check = shd_display_atomic_check;
-		g_shd_kms->funcs.postinit = shd_drm_postinit;
 		priv->kms->funcs = &g_shd_kms->funcs;
 	}
 

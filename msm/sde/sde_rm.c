@@ -2632,6 +2632,7 @@ int sde_rm_reserve(
 	struct sde_rm_requirements reqs;
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
+	struct sde_connector *sde_conn;
 	struct msm_compression_info *comp_info;
 	int ret = 0;
 
@@ -2644,6 +2645,11 @@ int sde_rm_reserve(
 		SDE_ERROR("drm device invalid\n");
 		return -EINVAL;
 	}
+
+	/* shared connector doesn't have resources */
+	sde_conn = to_sde_connector(conn_state->connector);
+	if (sde_conn->shared)
+		return 0;
 
 	if (conn_state->state)
 		state = sde_rm_get_atomic_state(conn_state->state, rm);
