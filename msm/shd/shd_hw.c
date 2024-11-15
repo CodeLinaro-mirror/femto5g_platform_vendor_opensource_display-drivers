@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -52,18 +53,6 @@
 #define   CTL_MERGE_3D_ACTIVE           0x0E4
 #define   CTL_WB_ACTIVE                 0x0EC
 #define   CTL_CWB_ACTIVE                0x0F0
-
-/* SDE_ROI_MISR_CTL */
-#define ROI_MISR_OP_MODE                 0x00
-#define ROI_MISR_POSITION(i)            (0x10 + 0x4 * (i))
-#define ROI_MISR_SIZE(i)                (0x20 + 0x4 * (i))
-#define ROI_MISR_CTRL(i)                (0x30 + 0x4 * (i))
-#define ROI_MISR_EXPECTED(i)            (0x50 + 0x4 * (i))
-
-/* ROI_MISR_CTRL register */
-#define ROI_MISR_CTRL_ENABLE            BIT(8)
-#define ROI_MISR_CTRL_STATUS_CLEAR      BIT(10)
-#define ROI_MISR_CTRL_RUN_MODE          BIT(31)
 
 #define ROI_POSITION_VAL(x, y)          ((x) | ((y) << 16))
 #define ROI_SIZE_VAL(w, h)              ((w) | ((h) << 16))
@@ -193,7 +182,7 @@ static inline int _stage_offset(struct sde_hw_mixer *ctx, enum sde_stage stage)
 }
 
 static void _sde_shd_hw_ctl_setup_blendstage(struct sde_hw_ctl *ctx,
-	enum sde_lm lm, struct sde_hw_stage_cfg *stage_cfg)
+	enum sde_lm lm, struct sde_hw_stage_cfg *stage_cfg, bool disable_border)
 {
 	struct sde_shd_hw_ctl *hw_ctl;
 	int i, j;
@@ -261,40 +250,6 @@ exit:
 static int _sde_shd_setup_intf_cfg_v1(struct sde_hw_ctl *ctx,
 		struct sde_hw_intf_cfg_v1 *cfg)
 {
-	return 0;
-}
-
-static int _sde_shd_update_cwb_cfg(struct sde_hw_ctl *ctx,
-		struct sde_hw_intf_cfg_v1 *cfg, bool enable)
-{
-	int i;
-	u32 cwb_active = 0;
-	u32 merge_3d_active = 0;
-	struct sde_hw_blk_reg_map *c;
-	struct sde_shd_hw_ctl *hw_ctl;
-
-	c = &ctx->hw;
-	hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
-
-	if (enable) {
-		for (i = 0; i < cfg->cwb_count; i++) {
-			if (cfg->cwb[i])
-				cwb_active |= BIT(cfg->cwb[i] - CWB_0);
-		}
-
-		for (i = 0; i < cfg->merge_3d_count; i++) {
-			if (cfg->merge_3d[i])
-				merge_3d_active |=
-					BIT(cfg->merge_3d[i] - MERGE_3D_0);
-		}
-
-		hw_ctl->cwb_active = cwb_active;
-		hw_ctl->merge_3d_active = merge_3d_active;
-	}
-
-	hw_ctl->cwb_enable = enable;
-	hw_ctl->cwb_changed = true;
-
 	return 0;
 }
 
@@ -479,33 +434,8 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 	}
 }
 
-static int _sde_shd_setup_dsc_cfg(struct sde_hw_ctl *ctx,
-		struct sde_ctl_dsc_cfg *cfg)
-{
-	struct sde_shd_hw_ctl *hw_ctl;
-
-	if (!ctx || !cfg)
-		return -EINVAL;
-
-	hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
-	hw_ctl->dsc_cfg = *cfg;
-
-	return 0;
-}
-
-static void _sde_shd_flush_hw_dsc_config(struct sde_hw_ctl *ctl_ctx)
-{
-	struct sde_shd_hw_ctl *hw_ctl;
-
-	hw_ctl = container_of(ctl_ctx, struct sde_shd_hw_ctl, base);
-
-	if (hw_ctl->orig->ops.setup_dsc_cfg)
-		hw_ctl->orig->ops.setup_dsc_cfg(ctl_ctx, &hw_ctl->dsc_cfg);
-}
-
 void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
-	struct sde_hw_mixer *lm_ctx[MAX_MIXERS_PER_CRTC], int lm_num,
-	struct sde_hw_roi_misr *misr_ctx[MAX_MIXERS_PER_CRTC], int misr_num)
+	struct sde_hw_mixer *lm_ctx[MAX_MIXERS_PER_CRTC], int lm_num)
 {
 	struct sde_hw_blk_reg_map *c;
 	unsigned long lock_flags;
@@ -521,11 +451,6 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 
 	for (i = 0; i < lm_num; i++)
 		_sde_shd_flush_hw_lm(lm_ctx[i]);
-
-	for (i = 0; i < misr_num; i++)
-		_sde_shd_flush_hw_roi_misr(misr_ctx[i]);
-
-	_sde_shd_flush_hw_dsc_config(ctl_ctx);
 
 	if (ctl_ctx->ops.trigger_flush)
 		ctl_ctx->ops.trigger_flush(ctl_ctx);
@@ -545,12 +470,6 @@ void sde_shd_hw_ctl_init_op(struct sde_hw_ctl *ctx)
 
 	ctx->ops.setup_intf_cfg_v1 =
 		_sde_shd_setup_intf_cfg_v1;
-
-	ctx->ops.update_cwb_cfg =
-		_sde_shd_update_cwb_cfg;
-
-	ctx->ops.setup_dsc_cfg =
-		_sde_shd_setup_dsc_cfg;
 }
 
 void sde_shd_hw_lm_init_op(struct sde_hw_mixer *ctx)

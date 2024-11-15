@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -132,17 +133,6 @@ not_flushed:
 	SDE_ATRACE_END("vblank_irq");
 }
 
-static void sde_encoder_phys_shd_roi_misr_irq(void *arg, int irq_idx)
-{
-	struct sde_encoder_phys *phys_enc = arg;
-
-	if (!phys_enc || !sde_encoder_phys_shd_is_master(phys_enc))
-		return;
-
-	if (phys_enc->parent_ops.handle_roi_misr_virt)
-		phys_enc->parent_ops.handle_roi_misr_virt(phys_enc->parent);
-}
-
 static int _sde_encoder_phys_shd_register_irq(
 		struct sde_encoder_phys *phys_enc,
 		enum sde_intr_idx intr_idx,
@@ -169,36 +159,6 @@ void _sde_encoder_phys_shd_setup_irq_hw_idx(
 	if (irq->irq_idx < 0)
 		irq->hw_idx = phys_enc->intf_idx;
 
-	if (sde_encoder_phys_shd_is_master(phys_enc))
-		sde_roi_misr_setup_irq_hw_idx(phys_enc);
-}
-
-static int sde_encoder_phys_shd_control_roi_misr_irq(
-		struct sde_encoder_phys *phys_enc, bool enable)
-{
-	int base_irq_idx;
-	int hw_idx;
-	int ret;
-	int i, j;
-
-	if (!sde_encoder_phys_shd_is_master(phys_enc))
-		return 0;
-
-	for (i = 0; i < phys_enc->roi_misr_num; i++) {
-		hw_idx = phys_enc->hw_roi_misr[i]->idx;
-		base_irq_idx = MISR_ROI_MISMATCH_BASE_IDX
-				+ SDE_ROI_MISR_GET_INTR_OFFSET(hw_idx)
-				* ROI_MISR_MAX_ROIS_PER_MISR;
-
-		for (j = 0; j < ROI_MISR_MAX_ROIS_PER_MISR; j++) {
-			ret = sde_roi_misr_irq_control(phys_enc,
-					base_irq_idx, j, enable);
-			if (ret)
-				return ret;
-		}
-	}
-
-	return 0;
 }
 
 static int _sde_encoder_phys_shd_rm_reserve(
@@ -350,14 +310,14 @@ static void _sde_encoder_phys_shd_setup(
 static void sde_encoder_phys_shd_mode_set(
 		struct sde_encoder_phys *phys_enc,
 		struct drm_display_mode *mode,
-		struct drm_display_mode *adj_mode)
+		struct drm_display_mode *adj_mode,
+		bool *reinit_mixers)
 {
 	struct drm_connector *connector;
 	struct shd_display *display;
 	struct drm_encoder *encoder;
 	struct sde_rm_hw_iter iter;
 	struct sde_rm *rm;
-	int i;
 
 	SDE_DEBUG("%d\n", phys_enc->parent->base.id);
 
@@ -379,8 +339,14 @@ static void sde_encoder_phys_shd_mode_set(
 	rm = &phys_enc->sde_kms->rm;
 
 	sde_rm_init_hw_iter(&iter, DRMID(phys_enc->parent), SDE_HW_BLK_CTL);
-	if (sde_rm_get_hw(rm, &iter))
+	if (sde_rm_get_hw(rm, &iter)) {
+		if (phys_enc->hw_ctl && phys_enc->hw_ctl != iter.hw) {
+			*reinit_mixers =  true;
+			SDE_EVT32(phys_enc->hw_ctl->idx,
+					((struct sde_hw_ctl *)iter.hw)->idx);
+		}
 		phys_enc->hw_ctl = (struct sde_hw_ctl *)iter.hw;
+	}
 	if (IS_ERR_OR_NULL(phys_enc->hw_ctl)) {
 		SDE_DEBUG("failed to init ctl, %ld\n",
 				PTR_ERR(phys_enc->hw_ctl));
@@ -426,7 +392,7 @@ static int _sde_encoder_phys_shd_wait_for_vblank(
 
 	wait_info.wq = &phys_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &phys_enc->pending_kickoff_cnt;
-	wait_info.timeout_ms = KICKOFF_TIMEOUT_MS;
+	wait_info.timeout_ms = DEFAULT_KICKOFF_TIMEOUT_MS;
 
 	/* Wait for kickoff to complete */
 	ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC,
@@ -502,8 +468,7 @@ void sde_encoder_phys_shd_trigger_flush(
 	shd_enc = container_of(phys_enc, struct sde_encoder_phys_shd, base);
 
 	sde_shd_hw_flush(phys_enc->hw_ctl,
-			shd_enc->hw_lm, shd_enc->num_mixers,
-			shd_enc->hw_roi_misr, shd_enc->num_roi_misrs);
+			shd_enc->hw_lm, shd_enc->num_mixers);
 }
 
 static int sde_encoder_phys_shd_control_vblank_irq(
@@ -640,8 +605,6 @@ static void sde_encoder_phys_shd_disable(struct sde_encoder_phys *phys_enc)
 	}
 
 	shd_enc = to_sde_encoder_phys_shd(phys_enc);
-
-	sde_roi_misr_hw_reset(phys_enc);
 
 	sde_encoder_helper_reset_mixers(phys_enc, NULL);
 

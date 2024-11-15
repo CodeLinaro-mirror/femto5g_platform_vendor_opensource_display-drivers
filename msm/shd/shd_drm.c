@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd] %s: " fmt, __func__
@@ -58,8 +59,6 @@ struct sde_cp_node_dummy {
 };
 
 static struct shd_kms *g_shd_kms;
-
-static struct dsi_display_mode_priv_info shd_default_priv_info;
 
 static enum drm_connector_status shd_display_base_detect(
 		struct drm_connector *connector,
@@ -130,15 +129,19 @@ static int shd_display_init_base_encoder(struct drm_device *dev,
 	struct drm_encoder *encoder;
 	struct sde_connector *sde_conn;
 	struct sde_encoder_hw_resources hw_res;
-	struct sde_connector_state conn_state = {};
+	struct sde_connector_state *conn_state;
 	bool has_mst;
 	int rc = 0;
+
+	conn_state = kzalloc(sizeof(*conn_state), GFP_KERNEL);
+	if (!conn_state)
+		return -ENOMEM;
 
 	if (base->connector) {
 		sde_conn = to_sde_connector(base->connector);
 		encoder = sde_conn->encoder;
 		sde_encoder_get_hw_resources(encoder,
-				&hw_res, &conn_state.base);
+				&hw_res, &conn_state->base);
 		base->encoder = encoder;
 		base->intf_idx = shd_display_get_enc_intf(&hw_res);
 		goto next;
@@ -146,7 +149,7 @@ static int shd_display_init_base_encoder(struct drm_device *dev,
 
 	drm_for_each_encoder(encoder, dev) {
 		sde_encoder_get_hw_resources(encoder,
-				&hw_res, &conn_state.base);
+				&hw_res, &conn_state->base);
 		has_mst = (encoder->encoder_type == DRM_MODE_ENCODER_DPMST);
 		if (shd_display_check_enc_intf(&hw_res, base->intf_idx) &&
 				base->mst_port == has_mst) {
@@ -222,14 +225,11 @@ static int shd_display_init_base_crtc(struct drm_device *dev,
 		if (connector == base->connector)
 			continue;
 
-		for (i = 0; i < DRM_CONNECTOR_MAX_ENCODER; i++) {
-			if (connector->encoder_ids[i]) {
-				encoder = drm_encoder_find(dev, NULL,
-						connector->encoder_ids[i]);
-				if (encoder)
-					encoder->possible_crtcs &=
-							~(1 << crtc_idx);
-			}
+		for (i = 0; i < connector->possible_encoders; i++) {
+			encoder = connector->encoder;
+			if (encoder)
+				encoder->possible_crtcs &=
+						~(1 << crtc_idx);
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
@@ -358,7 +358,7 @@ static int shd_crtc_atomic_set_property(struct drm_crtc *crtc,
 	}
 
 	/* ignore all the dspp properties */
-	list_for_each_entry(prop_node, &sde_crtc->feature_list, feature_list) {
+	list_for_each_entry(prop_node, &sde_crtc->cp_feature_list, feature_list) {
 		if (property->base.id == prop_node->property_id)
 			return 0;
 	}
@@ -449,10 +449,9 @@ static int shd_display_set_default_clock(struct drm_crtc_state *crtc_state,
 	if (!sde_conn->ops.get_mode_info)
 		return 0;
 
-	ret = sde_conn->ops.get_mode_info(&sde_conn->base, mode,
-			&mode_info,
-			sde_kms->catalog->max_mixer_width,
-			sde_conn->display);
+	ret = sde_connector_get_mode_info(&sde_conn->base, mode, NULL,
+				&mode_info);
+
 	if (ret)
 		return ret;
 
@@ -716,34 +715,37 @@ static int shd_connector_get_info(struct drm_connector *connector,
 
 static int shd_connector_get_mode_info(struct drm_connector *connector,
 		const struct drm_display_mode *drm_mode,
+		struct msm_sub_mode *sub_mode,
 		struct msm_mode_info *mode_info,
-		u32 max_mixer_width, void *display)
+		void *display, const struct msm_resource_caps_info *avail_res)
 {
 	struct shd_display *shd_display = display;
 	struct sde_connector *base_conn;
 	struct msm_mode_info base_mode_info;
 
-	if (!drm_mode || !mode_info || !max_mixer_width || !display) {
+	if (!drm_mode || !mode_info || !avail_res ||
+			!avail_res->max_mixer_width || !display) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
 
 	memset(mode_info, 0, sizeof(*mode_info));
 
-	mode_info->frame_rate = drm_mode->vrefresh;
+	mode_info->frame_rate = drm_mode_vrefresh(drm_mode);
 	mode_info->vtotal = drm_mode->vtotal;
 	mode_info->comp_info.comp_type = MSM_DISPLAY_COMPRESSION_NONE;
 
 	base_conn = to_sde_connector(shd_display->base->connector);
-	base_conn->ops.get_mode_info(shd_display->base->connector,
+
+	sde_connector_get_mode_info(shd_display->base->connector,
 		&shd_display->base->mode,
-		&base_mode_info,
-		max_mixer_width,
-		base_conn->display);
+		NULL,
+		&base_mode_info);
+
 	mode_info->topology = base_mode_info.topology;
 
-	if (shd_display->src.h != shd_display->roi.h)
-		mode_info->vpadding = shd_display->roi.h;
+//	if (shd_display->src.h != shd_display->roi.h)
+//		mode_info->vpadding = shd_display->roi.h;
 
 	return 0;
 }
@@ -807,7 +809,7 @@ static void shd_drm_update_checksum(struct edid *edid)
 }
 
 static int shd_connector_get_modes(struct drm_connector *connector,
-		void *data)
+		void *data, const struct msm_resource_caps_info *avail_res)
 {
 	struct shd_display *disp = data;
 	struct drm_display_mode *m, *base_mode = NULL;
@@ -831,7 +833,7 @@ static int shd_connector_get_modes(struct drm_connector *connector,
 	if (!sde_conn->ops.get_modes)
 		return 0;
 	count = sde_conn->ops.get_modes(disp->base->connector,
-			sde_conn->display);
+			sde_conn->display, avail_res);
 	if (!count) {
 		SDE_DEBUG("no base mode probed\n");
 		return 0;
@@ -849,7 +851,7 @@ static int shd_connector_get_modes(struct drm_connector *connector,
 		if (sde_conn->ops.mode_valid)
 			m->status = sde_conn->ops.mode_valid(
 					disp->base->connector, m,
-					sde_conn->display);
+					sde_conn->display, avail_res);
 	}
 
 	/* prune invalid modes */
@@ -860,10 +862,6 @@ static int shd_connector_get_modes(struct drm_connector *connector,
 		SDE_DEBUG("no valid base mode\n");
 		return 0;
 	}
-
-	/* update vrefresh */
-	list_for_each_entry(m, &disp->base->connector->modes, head)
-		m->vrefresh = drm_mode_vrefresh(m);
 
 	/* sort base mode */
 	drm_mode_sort(&disp->base->connector->modes);
@@ -885,8 +883,7 @@ static int shd_connector_get_modes(struct drm_connector *connector,
 			    disp->base->mode.vsync_start == m->vsync_start &&
 			    disp->base->mode.vsync_end == m->vsync_end &&
 			    disp->base->mode.vtotal == m->vtotal &&
-			    disp->base->mode.clock == m->clock &&
-			    disp->base->mode.vrefresh == m->vrefresh) {
+			    disp->base->mode.clock == m->clock) {
 				drm_mode_copy(&disp->base->mode, m);
 				base_mode = m;
 				break;
@@ -895,7 +892,6 @@ static int shd_connector_get_modes(struct drm_connector *connector,
 		if (!base_mode) {
 			SDE_INFO("directly use base mode in DT\n");
 			base_mode = &disp->base->mode;
-			base_mode->private = (int *)&shd_default_priv_info;
 		}
 
 		/* check display info override */
@@ -976,8 +972,8 @@ static int shd_connector_get_modes(struct drm_connector *connector,
 
 static
 enum drm_mode_status shd_connector_mode_valid(struct drm_connector *connector,
-		struct drm_display_mode *mode,
-		void *display)
+		struct drm_display_mode *mode, void *display,
+		const struct msm_resource_caps_info *avail_res)
 {
 	return MODE_OK;
 }
@@ -1020,7 +1016,7 @@ static int shd_conn_set_property(struct drm_connector *connector,
 		c_conn->bl_scale_dirty = false;
 		c_conn->unset_bl_level = 0;
 		break;
-	case CONNECTOR_PROP_AD_BL_SCALE:
+	case CONNECTOR_PROP_SV_BL_SCALE:
 		c_conn->bl_scale_dirty = false;
 		c_conn->unset_bl_level = 0;
 		break;
@@ -1157,7 +1153,6 @@ static int shd_drm_obj_init(struct shd_display *display)
 		priv->connectors[priv->num_connectors++] = connector;
 	} else {
 		SDE_ERROR("shd connector init failed\n");
-		shd_drm_bridge_deinit(display);
 		sde_encoder_destroy(encoder);
 		rc = -ENOENT;
 		goto end;
@@ -1398,10 +1393,6 @@ next:
 	if (!display->display_type)
 		display->display_type = "unknown";
 
-	rc = shd_parse_misr_shared_roi(display);
-	if (rc)
-		SDE_ERROR("Failed to parse shared ROI range\n");
-
 error:
 	return rc;
 }
@@ -1412,8 +1403,8 @@ static int shd_parse_base(struct drm_device *drm_dev,
 	struct device_node *of_node = base->of_node;
 	struct device_node *node;
 	struct drm_display_mode *mode = &base->mode;
-	u32 h_front_porch, h_pulse_width, h_back_porch;
-	u32 v_front_porch, v_pulse_width, v_back_porch;
+	u32 hdisplay, h_front_porch, h_pulse_width, h_back_porch;
+	u32 vdisplay, v_front_porch, v_pulse_width, v_back_porch;
 	bool h_active_high, v_active_high;
 	bool tile_mode;
 	struct drm_connector *connector;
@@ -1458,7 +1449,7 @@ static int shd_parse_base(struct drm_device *drm_dev,
 	}
 
 	rc = of_property_read_u32(node, "qcom,mode-h-active",
-					&mode->hdisplay);
+					&hdisplay);
 	if (rc) {
 		SDE_ERROR("failed to read h-active, rc=%d\n", rc);
 		goto fail;
@@ -1489,7 +1480,7 @@ static int shd_parse_base(struct drm_device *drm_dev,
 					"qcom,mode-h-active-high");
 
 	rc = of_property_read_u32(node, "qcom,mode-v-active",
-					&mode->vdisplay);
+					&vdisplay);
 	if (rc) {
 		SDE_ERROR("failed to read v-active, rc=%d\n", rc);
 		goto fail;
@@ -1519,13 +1510,6 @@ static int shd_parse_base(struct drm_device *drm_dev,
 	v_active_high = of_property_read_bool(node,
 					"qcom,mode-v-active-high");
 
-	rc = of_property_read_u32(node, "qcom,mode-refresh-rate",
-					&mode->vrefresh);
-	if (rc) {
-		SDE_ERROR("failed to read refresh-rate, rc=%d\n", rc);
-		goto fail;
-	}
-
 	rc = of_property_read_u32(node, "qcom,mode-clock-in-khz",
 					&mode->clock);
 	if (rc) {
@@ -1542,6 +1526,8 @@ static int shd_parse_base(struct drm_device *drm_dev,
 	of_property_read_u32(node, "qcom,mode-height-mm",
 			&base->info.height_mm);
 
+	mode->hdisplay = hdisplay;
+	mode->vdisplay = vdisplay;
 	mode->hsync_start = mode->hdisplay + h_front_porch;
 	mode->hsync_end = mode->hsync_start + h_pulse_width;
 	mode->htotal = mode->hsync_end + h_back_porch;
@@ -1561,11 +1547,11 @@ static int shd_parse_base(struct drm_device *drm_dev,
 	mode->flags = flags;
 	drm_mode_set_name(mode);
 
-	SDE_DEBUG("base mode h[%d,%d,%d,%d] v[%d,%d,%d,%d] %d %x %d\n",
+	SDE_DEBUG("base mode h[%d,%d,%d,%d] v[%d,%d,%d,%d] %x %d\n",
 		mode->hdisplay, mode->hsync_start,
 		mode->hsync_end, mode->htotal, mode->vdisplay,
 		mode->vsync_start, mode->vsync_end, mode->vtotal,
-		mode->vrefresh, mode->flags, mode->clock);
+		mode->flags, mode->clock);
 
 fail:
 	return rc;
