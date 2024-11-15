@@ -456,6 +456,7 @@ enum sde_crtc_dirty_flags {
  * @rsc_client    : sde rsc client when mode is valid
  * @is_ppsplit    : Whether current topology requires PPSplit special handling
  * @bw_control    : true if bw/clk controlled by core bw/clk properties
+ * @topology_name : Current topology name
  * @bw_split_vote : true if bw controlled by llcc/dram bw properties
  * @crtc_roi      : Current CRTC ROI. Possibly sub-rectangle of mode.
  *                  Origin top left of CRTC.
@@ -494,6 +495,9 @@ struct sde_crtc_state {
 	bool bw_control;
 	bool bw_split_vote;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	enum sde_rm_topology_name topology_name;
+#endif
 	bool is_ppsplit;
 	struct sde_rect crtc_roi;
 	struct sde_rect lm_bounds[MAX_MIXERS_PER_CRTC];
@@ -1051,6 +1055,26 @@ void sde_crtc_reset_sw_state(struct drm_crtc *crtc);
  * @crtc: Pointer to DRM crtc object
 */
 void sde_crtc_disable_cp_features(struct drm_crtc *crtc);
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ * sde_crtc_state_set_topology_name - set current topology name
+ * @state: Pointer to crtc_state
+ */
+static inline void sde_crtc_state_set_topology_name(
+		struct drm_crtc_state *state,
+		enum sde_rm_topology_name topology_name)
+{
+	struct sde_crtc_state *cstate;
+
+	if (!state)
+		return;
+
+	cstate = to_sde_crtc_state(state);
+
+	cstate->topology_name = topology_name;
+}
+#endif
 
 /*
  * _sde_crtc_clear_dim_layers_v1 - clear all dim layer settings

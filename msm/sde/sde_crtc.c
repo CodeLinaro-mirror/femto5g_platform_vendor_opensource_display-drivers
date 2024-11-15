@@ -3635,6 +3635,17 @@ static void _sde_crtc_setup_mixers(struct drm_crtc *crtc)
 	_sde_crtc_check_dest_scaler_data(crtc, crtc->state);
 }
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+static void _sde_crtc_setup_is_ppsplit(struct drm_crtc_state *state)
+{
+	struct sde_crtc_state *cstate;
+
+	cstate = to_sde_crtc_state(state);
+
+	cstate->is_ppsplit = (cstate->topology_name ==
+			SDE_RM_TOPOLOGY_PPSPLIT);
+}
+#else
 static void _sde_crtc_setup_is_ppsplit(struct drm_crtc_state *state)
 {
 	int i;
@@ -3651,6 +3662,7 @@ static void _sde_crtc_setup_is_ppsplit(struct drm_crtc_state *state)
 			cstate->is_ppsplit = true;
 	}
 }
+#endif
 
 static void _sde_crtc_setup_lm_bounds(struct drm_crtc *crtc,
 		struct drm_crtc_state *state)
