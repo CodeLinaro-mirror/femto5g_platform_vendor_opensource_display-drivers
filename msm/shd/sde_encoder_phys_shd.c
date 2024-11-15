@@ -500,6 +500,7 @@ static int sde_encoder_phys_shd_control_vblank_irq(
 	SDE_EVT32(DRMID(phys_enc->parent), enable,
 			atomic_read(&phys_enc->vblank_refcount));
 
+	mutex_lock(phys_enc->vblank_ctl_lock);
 	if (enable && atomic_inc_return(&phys_enc->vblank_refcount) == 1) {
 		ret = _sde_encoder_phys_shd_register_irq(phys_enc,
 				INTR_IDX_VSYNC, true);
@@ -512,6 +513,7 @@ static int sde_encoder_phys_shd_control_vblank_irq(
 		if (ret)
 			atomic_inc_return(&phys_enc->vblank_refcount);
 	}
+	mutex_unlock(phys_enc->vblank_ctl_lock);
 
 end:
 	if (ret) {
@@ -745,6 +747,7 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type,
 	phys_enc->split_role = p->split_role;
 	phys_enc->intf_mode = INTF_MODE_NONE;
 	phys_enc->intf_idx = INTF_0 + controller_id;
+	phys_enc->vblank_ctl_lock = p->vblank_ctl_lock;
 	phys_enc->enc_spinlock = p->enc_spinlock;
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
 
