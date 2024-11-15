@@ -26,6 +26,9 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_flip_work.h>
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+#include <linux/sde_rsc.h>
+#endif
 
 #include "sde_kms.h"
 #include "sde_hw_lm.h"
@@ -4486,10 +4489,14 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	struct sde_kms *sde_kms;
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
-	struct drm_encoder *encoder;
+	struct drm_encoder *encoder = NULL;
 	struct msm_drm_private *priv;
 	unsigned long flags;
 	struct sde_crtc_irq_info *node = NULL;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	wait_queue_head_t *vblank_queue;
+	int primary_crtc_id = -1;
+#endif
 	u32 power_on;
 	bool in_cont_splash = false;
 	int ret, i;
@@ -4532,6 +4539,17 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 
 	SDE_EVT32(DRMID(crtc), sde_crtc->enabled, crtc->state->active,
 			crtc->state->enable, sde_crtc->cached_encoder_mask);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	/* check if anyone is waiting for primary vsync */
+	primary_crtc_id = get_sde_rsc_primary_crtc(SDE_RSC_INDEX);
+	if (crtc->base.id == primary_crtc_id) {
+		vblank_queue = drm_crtc_vblank_waitqueue(crtc);
+		if (waitqueue_active(vblank_queue)) {/* check for wait_queue */
+			drm_crtc_handle_vblank(crtc);
+			SDE_EVT32(DRMID(crtc), primary_crtc_id);
+		}
+	}
+#endif
 	sde_crtc->enabled = false;
 	sde_crtc->cached_encoder_mask = 0;
 
