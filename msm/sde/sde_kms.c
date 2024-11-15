@@ -1613,11 +1613,20 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 			break;
 		}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		if (cwb_disabling)
+			sde_encoder_virt_reset(encoder);
+	}
+
+	sde_crtc_complete_flip(crtc, NULL);
+#else
 		sde_crtc_complete_flip(crtc, NULL);
 
 		if (cwb_disabling)
 			sde_encoder_virt_reset(encoder);
 	}
+
+#endif
 
 	sde_crtc_static_cache_read_kickoff(crtc);
 
