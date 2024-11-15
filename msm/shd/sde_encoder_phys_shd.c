@@ -1,19 +1,12 @@
-/* Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
 
 #include <linux/debugfs.h>
-#include <uapi/drm/sde_drm.h>
+#include <drm/sde_drm.h>
 
 #include "sde_encoder_phys.h"
 #include "sde_formats.h"
@@ -47,8 +40,8 @@
  */
 struct sde_encoder_phys_shd {
 	struct sde_encoder_phys base;
-	struct sde_hw_mixer *hw_lm[CRTC_DUAL_MIXERS];
-	struct sde_hw_ctl *hw_ctl[CRTC_DUAL_MIXERS];
+	struct sde_hw_mixer *hw_lm[MAX_MIXERS_PER_CRTC];
+	struct sde_hw_ctl *hw_ctl[MAX_MIXERS_PER_CRTC];
 	u32 num_mixers;
 	u32 num_ctls;
 };
@@ -103,6 +96,15 @@ static void sde_encoder_phys_shd_vblank_irq(void *arg, int irq_idx)
 	if (flush_register & shd_ctl->flush_mask)
 		goto not_flushed;
 
+	/*
+	 * When flush_mask is changed to 0, we need additional vsync
+	 * to make sure the detach flush is done
+	 */
+	if (flush_register && !shd_ctl->flush_mask && shd_ctl->old_mask) {
+		shd_ctl->old_mask = 0;
+		goto not_flushed;
+	}
+
 	new_cnt = atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
 
 	if (atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0))
@@ -130,61 +132,30 @@ not_flushed:
 	SDE_ATRACE_END("vblank_irq");
 }
 
+static void sde_encoder_phys_shd_roi_misr_irq(void *arg, int irq_idx)
+{
+	struct sde_encoder_phys *phys_enc = arg;
+
+	if (!phys_enc || !sde_encoder_phys_shd_is_master(phys_enc))
+		return;
+
+	if (phys_enc->parent_ops.handle_roi_misr_virt)
+		phys_enc->parent_ops.handle_roi_misr_virt(phys_enc->parent);
+}
+
 static int _sde_encoder_phys_shd_register_irq(
 		struct sde_encoder_phys *phys_enc,
 		enum sde_intr_idx intr_idx,
 		bool enable)
 {
-	struct sde_encoder_irq *irq = &phys_enc->irq[intr_idx];
-	int ret = 0;
-
 	SDE_DEBUG("%d enable %d\n", DRMID(phys_enc->parent), enable);
 
-	if (enable) {
-		if (irq->irq_idx >= 0) {
-			SDE_DEBUG_PHYS(phys_enc,
-				"skipping already registered irq %s type %d\n",
-				irq->name, irq->intr_type);
-			return 0;
-		}
-
-		irq->irq_idx = sde_core_irq_idx_lookup(phys_enc->sde_kms,
-				irq->intr_type, irq->hw_idx);
-		if (irq->irq_idx < 0) {
-			SDE_ERROR_PHYS(phys_enc,
-				"failed to lookup IRQ index for %s type:%d\n",
-				irq->name, irq->intr_type);
-			return -EINVAL;
-		}
-
-		ret = sde_core_irq_register_callback(phys_enc->sde_kms,
-				irq->irq_idx, &irq->cb);
-		if (ret) {
-			SDE_ERROR_PHYS(phys_enc,
-				"failed to register IRQ callback for %s\n",
-				irq->name);
-			irq->irq_idx = -EINVAL;
-		}
-	} else {
-		if (irq->irq_idx < 0) {
-			SDE_DEBUG_PHYS(phys_enc,
-				"extra unregister irq, enc%d intr_idx:0x%x\n",
-				DRMID(phys_enc->parent), INTR_IDX_VSYNC);
-			return 0;
-		}
-
-		ret = sde_core_irq_unregister_callback(phys_enc->sde_kms,
-				irq->irq_idx, &irq->cb);
-		if (ret) {
-			SDE_ERROR_PHYS(phys_enc,
-				"failed to unregister IRQ callback for %s\n",
-				irq->name);
-		}
-
-		irq->irq_idx = -EINVAL;
-	}
-
-	return ret;
+	if (enable)
+		return sde_encoder_helper_register_irq(phys_enc,
+				INTR_IDX_VSYNC);
+	else
+		return sde_encoder_helper_unregister_irq(phys_enc,
+				INTR_IDX_VSYNC);
 }
 
 static inline
@@ -197,35 +168,82 @@ void _sde_encoder_phys_shd_setup_irq_hw_idx(
 
 	if (irq->irq_idx < 0)
 		irq->hw_idx = phys_enc->intf_idx;
+
+	if (sde_encoder_phys_shd_is_master(phys_enc))
+		sde_roi_misr_setup_irq_hw_idx(phys_enc);
+}
+
+static int sde_encoder_phys_shd_control_roi_misr_irq(
+		struct sde_encoder_phys *phys_enc, bool enable)
+{
+	int base_irq_idx;
+	int hw_idx;
+	int ret;
+	int i, j;
+
+	if (!sde_encoder_phys_shd_is_master(phys_enc))
+		return 0;
+
+	for (i = 0; i < phys_enc->roi_misr_num; i++) {
+		hw_idx = phys_enc->hw_roi_misr[i]->idx;
+		base_irq_idx = MISR_ROI_MISMATCH_BASE_IDX
+				+ SDE_ROI_MISR_GET_INTR_OFFSET(hw_idx)
+				* ROI_MISR_MAX_ROIS_PER_MISR;
+
+		for (j = 0; j < ROI_MISR_MAX_ROIS_PER_MISR; j++) {
+			ret = sde_roi_misr_irq_control(phys_enc,
+					base_irq_idx, j, enable);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
 }
 
 static int _sde_encoder_phys_shd_rm_reserve(
 		struct sde_encoder_phys *phys_enc,
+		struct drm_atomic_state *state,
 		struct shd_display *display)
 {
 	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_rm *rm;
 	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter;
 	struct drm_encoder *encoder;
+	struct drm_connector_state *conn_state;
 	struct sde_shd_hw_ctl *hw_ctl;
 	struct sde_shd_hw_mixer *hw_lm;
 	struct sde_hw_pingpong *hw_pp;
 	int i, rc = 0;
+	int num_mixers = 0;
 
-	encoder = display->base->encoder;
+	conn_state = drm_atomic_get_new_connector_state(state,
+			display->base->connector);
+	if (conn_state)
+		encoder = conn_state->best_encoder;
+	else
+		encoder = display->base->connector->state->best_encoder;
+
+	if (!encoder) {
+		SDE_ERROR("failed to find base encoder\n");
+		return -EINVAL;
+	}
+
 	rm = &phys_enc->sde_kms->rm;
 	shd_enc = to_sde_encoder_phys_shd(phys_enc);
 
-	sde_rm_init_hw_iter(&ctl_iter, encoder->base.id, SDE_HW_BLK_CTL);
-	sde_rm_init_hw_iter(&lm_iter, encoder->base.id, SDE_HW_BLK_LM);
-	sde_rm_init_hw_iter(&pp_iter, encoder->base.id, SDE_HW_BLK_PINGPONG);
+	/* skip if resources already exist */
+	sde_rm_init_hw_iter(&ctl_iter, DRMID(phys_enc->parent), SDE_HW_BLK_CTL);
+	if (sde_rm_atomic_get_hw(rm, state, &ctl_iter))
+		return 0;
 
-	shd_enc->num_mixers = 0;
-	shd_enc->num_ctls = 0;
+	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
+	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
+	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
 
-	for (i = 0; i < CRTC_DUAL_MIXERS; i++) {
+	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		/* reserve lm */
-		if (!sde_rm_get_hw(rm, &lm_iter))
+		if (!sde_rm_atomic_get_hw(rm, state, &lm_iter))
 			break;
 		hw_lm = container_of(shd_enc->hw_lm[i],
 				struct sde_shd_hw_mixer, base);
@@ -240,16 +258,37 @@ static int _sde_encoder_phys_shd_rm_reserve(
 			DRMID(encoder),
 			DRMID(phys_enc->parent));
 
-		rc = sde_rm_ext_blk_create_reserve(rm,
+		rc = sde_rm_ext_blk_create_reserve(rm, state,
 			&hw_lm->base.base, phys_enc->parent);
 		if (rc) {
 			SDE_ERROR("failed to create & reserve lm\n");
+			return rc;
+		}
+		num_mixers++;
+	}
+
+	for (i = 0; i < num_mixers; i++) {
+		/* reserve pingpong */
+		if (!sde_rm_atomic_get_hw(rm, state, &pp_iter))
+			break;
+		hw_pp = pp_iter.hw;
+
+		SDE_DEBUG("reserve PP%d from enc %d to %d\n",
+			hw_pp->idx,
+			DRMID(encoder),
+			DRMID(phys_enc->parent));
+
+		rc = sde_rm_ext_blk_create_reserve(rm, state,
+			&hw_pp->base, phys_enc->parent);
+		if (rc) {
+			SDE_ERROR("failed to create & reserve pingpong\n");
 			break;
 		}
-		shd_enc->num_mixers++;
-
+	}
+ 
+	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		/* reserve ctl */
-		if (!sde_rm_get_hw(rm, &ctl_iter))
+		if (!sde_rm_atomic_get_hw(rm, state, &ctl_iter))
 			break;
 		hw_ctl = container_of(shd_enc->hw_ctl[i],
 				struct sde_shd_hw_ctl, base);
@@ -263,28 +302,10 @@ static int _sde_encoder_phys_shd_rm_reserve(
 			DRMID(encoder),
 			DRMID(phys_enc->parent));
 
-		rc = sde_rm_ext_blk_create_reserve(rm,
+		rc = sde_rm_ext_blk_create_reserve(rm, state,
 			&hw_ctl->base.base, phys_enc->parent);
 		if (rc) {
 			SDE_ERROR("failed to create & reserve ctl\n");
-			break;
-		}
-		shd_enc->num_ctls++;
-
-		/* reserve pingpong */
-		if (!sde_rm_get_hw(rm, &pp_iter))
-			break;
-		hw_pp = pp_iter.hw;
-
-		SDE_DEBUG("reserve PP%d from enc %d to %d\n",
-			hw_pp->idx,
-			DRMID(encoder),
-			DRMID(phys_enc->parent));
-
-		rc = sde_rm_ext_blk_create_reserve(rm,
-			&hw_pp->base, phys_enc->parent);
-		if (rc) {
-			SDE_ERROR("failed to create & reserve pingpong\n");
 			break;
 		}
 	}
@@ -292,15 +313,38 @@ static int _sde_encoder_phys_shd_rm_reserve(
 	return rc;
 }
 
-static inline void _sde_encoder_phys_shd_rm_release(
+static void _sde_encoder_phys_shd_setup(
 		struct sde_encoder_phys *phys_enc,
 		struct shd_display *display)
 {
+	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_rm *rm;
+	struct sde_rm_hw_iter ctl_iter, lm_iter, pp_iter;
+	struct drm_encoder *encoder;
+	int i;
 
 	rm = &phys_enc->sde_kms->rm;
+	shd_enc = to_sde_encoder_phys_shd(phys_enc);
+	encoder = phys_enc->parent;
 
-	sde_rm_ext_blk_destroy(rm, phys_enc->parent);
+	sde_rm_init_hw_iter(&ctl_iter, DRMID(encoder), SDE_HW_BLK_CTL);
+	sde_rm_init_hw_iter(&lm_iter, DRMID(encoder), SDE_HW_BLK_LM);
+	sde_rm_init_hw_iter(&pp_iter, DRMID(encoder), SDE_HW_BLK_PINGPONG);
+
+	shd_enc->num_mixers = 0;
+	shd_enc->num_ctls = 0;
+
+	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
+		if (!sde_rm_get_hw(rm, &lm_iter))
+			break;
+		shd_enc->num_mixers++;
+	}
+
+	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
+		if (!sde_rm_get_hw(rm, &ctl_iter))
+			break;
+		shd_enc->num_ctls++;
+	}
 }
 
 static void sde_encoder_phys_shd_mode_set(
@@ -309,11 +353,11 @@ static void sde_encoder_phys_shd_mode_set(
 		struct drm_display_mode *adj_mode)
 {
 	struct drm_connector *connector;
-	struct sde_connector *sde_conn;
 	struct shd_display *display;
 	struct drm_encoder *encoder;
 	struct sde_rm_hw_iter iter;
 	struct sde_rm *rm;
+	int i;
 
 	SDE_DEBUG("%d\n", phys_enc->parent->base.id);
 
@@ -325,12 +369,12 @@ static void sde_encoder_phys_shd_mode_set(
 		return;
 	}
 
-	sde_conn = to_sde_connector(connector);
-	display = sde_conn->display;
-	encoder = display->base->encoder;
-
-	if (_sde_encoder_phys_shd_rm_reserve(phys_enc, display))
+	display = sde_connector_get_display(connector);
+	encoder = display->base->connector->encoder;
+	if (!encoder)
 		return;
+
+	_sde_encoder_phys_shd_setup(phys_enc, display);
 
 	rm = &phys_enc->sde_kms->rm;
 
@@ -458,87 +502,8 @@ void sde_encoder_phys_shd_trigger_flush(
 	shd_enc = container_of(phys_enc, struct sde_encoder_phys_shd, base);
 
 	sde_shd_hw_flush(phys_enc->hw_ctl,
-			shd_enc->hw_lm, shd_enc->num_mixers);
-}
-
-static void sde_encoder_phys_shd_enable(struct sde_encoder_phys *phys_enc)
-{
-	struct drm_connector *connector;
-
-	SDE_DEBUG("%d\n", phys_enc->parent->base.id);
-
-	if (!phys_enc->parent || !phys_enc->parent->dev) {
-		SDE_ERROR("invalid drm device\n");
-		return;
-	}
-
-	connector = phys_enc->connector;
-	if (!connector || connector->encoder != phys_enc->parent) {
-		SDE_ERROR("failed to find connector\n");
-		return;
-	}
-
-	if (phys_enc->enable_state == SDE_ENC_DISABLED)
-		phys_enc->enable_state = SDE_ENC_ENABLING;
-
-	SDE_EVT32(DRMID(phys_enc->parent),
-		atomic_read(&phys_enc->pending_retire_fence_cnt));
-}
-
-static void sde_encoder_phys_shd_disable(struct sde_encoder_phys *phys_enc)
-{
-	struct sde_connector *sde_conn;
-	struct shd_display *display;
-
-	SDE_DEBUG("%d\n", phys_enc->parent->base.id);
-
-	if (!phys_enc || !phys_enc->parent || !phys_enc->parent->dev ||
-			!phys_enc->parent->dev->dev_private) {
-		SDE_ERROR("invalid encoder/device\n");
-		return;
-	}
-
-	if (!phys_enc->hw_intf || !phys_enc->hw_ctl) {
-		SDE_ERROR("invalid hw_intf %d hw_ctl %d\n",
-				phys_enc->hw_intf != 0, phys_enc->hw_ctl != 0);
-		return;
-	}
-
-	if (phys_enc->enable_state == SDE_ENC_DISABLED) {
-		SDE_ERROR("already disabled\n");
-		return;
-	}
-
-	sde_encoder_helper_reset_mixers(phys_enc, NULL);
-
-	sde_encoder_phys_shd_trigger_flush(phys_enc);
-
-	sde_encoder_phys_shd_wait_for_vblank_no_notify(phys_enc);
-
-	phys_enc->enable_state = SDE_ENC_DISABLED;
-
-	if (!phys_enc->connector)
-		return;
-
-	sde_conn = to_sde_connector(phys_enc->connector);
-	display = sde_conn->display;
-
-	_sde_encoder_phys_shd_rm_release(phys_enc, display);
-
-	SDE_EVT32(DRMID(phys_enc->parent),
-		atomic_read(&phys_enc->pending_retire_fence_cnt));
-}
-
-static inline
-void sde_encoder_phys_shd_destroy(struct sde_encoder_phys *phys_enc)
-{
-	struct sde_encoder_phys_shd *shd_enc =
-		to_sde_encoder_phys_shd(phys_enc);
-
-	if (!phys_enc)
-		return;
-
-	kfree(shd_enc);
+			shd_enc->hw_lm, shd_enc->num_mixers,
+			shd_enc->hw_roi_misr, shd_enc->num_roi_misrs);
 }
 
 static int sde_encoder_phys_shd_control_vblank_irq(
@@ -594,6 +559,126 @@ end:
 	return ret;
 }
 
+static void sde_encoder_phys_shd_enable(struct sde_encoder_phys *phys_enc)
+{
+	struct drm_connector *connector;
+
+	SDE_DEBUG("%d\n", phys_enc->parent->base.id);
+
+	if (!phys_enc->parent || !phys_enc->parent->dev) {
+		SDE_ERROR("invalid drm device\n");
+		return;
+	}
+
+	connector = phys_enc->connector;
+	if (!connector || connector->encoder != phys_enc->parent) {
+		SDE_ERROR("failed to find connector\n");
+		return;
+	}
+
+	if (phys_enc->enable_state == SDE_ENC_DISABLED)
+		phys_enc->enable_state = SDE_ENC_ENABLING;
+
+	SDE_EVT32(DRMID(phys_enc->parent),
+		atomic_read(&phys_enc->pending_retire_fence_cnt));
+}
+
+static void sde_encoder_phys_shd_single_vblank_wait(
+		struct sde_encoder_phys *phys_enc)
+{
+	int ret;
+
+	ret = sde_encoder_phys_shd_control_vblank_irq(phys_enc, true);
+	if (ret) {
+		SDE_ERROR_PHYS(phys_enc,
+				"failed to enable vblank irq: %d\n",
+				ret);
+		SDE_EVT32(DRMID(phys_enc->parent),
+				phys_enc->hw_intf->idx - INTF_0, ret,
+				SDE_EVTLOG_FUNC_CASE1,
+				SDE_EVTLOG_ERROR);
+	} else {
+		ret = _sde_encoder_phys_shd_wait_for_vblank(phys_enc, false);
+		if (ret) {
+			atomic_set(&phys_enc->pending_kickoff_cnt, 0);
+			SDE_ERROR_PHYS(phys_enc,
+					"failure waiting for disable: %d\n",
+					ret);
+			SDE_EVT32(DRMID(phys_enc->parent),
+					phys_enc->hw_intf->idx - INTF_0, ret,
+					SDE_EVTLOG_FUNC_CASE2,
+					SDE_EVTLOG_ERROR);
+		}
+		sde_encoder_phys_shd_control_vblank_irq(phys_enc, false);
+	}
+}
+
+static void sde_encoder_phys_shd_disable(struct sde_encoder_phys *phys_enc)
+{
+	struct shd_display *display;
+	struct sde_encoder_phys_shd *shd_enc;
+	unsigned long lock_flags;
+
+	SDE_DEBUG("%d\n", phys_enc->parent->base.id);
+
+	if (!phys_enc || !phys_enc->parent || !phys_enc->parent->dev ||
+			!phys_enc->parent->dev->dev_private) {
+		SDE_ERROR("invalid encoder/device\n");
+		return;
+	}
+
+	if (!phys_enc->hw_intf || !phys_enc->hw_ctl) {
+		SDE_ERROR("invalid hw_intf %d hw_ctl %d\n",
+				phys_enc->hw_intf != NULL,
+				phys_enc->hw_ctl != NULL);
+		return;
+	}
+
+	if (phys_enc->enable_state == SDE_ENC_DISABLED) {
+		SDE_ERROR("already disabled\n");
+		return;
+	}
+
+	shd_enc = to_sde_encoder_phys_shd(phys_enc);
+
+	sde_roi_misr_hw_reset(phys_enc);
+
+	sde_encoder_helper_reset_mixers(phys_enc, NULL);
+
+	display = sde_connector_get_display(phys_enc->connector);
+	if (!display)
+		goto next;
+
+	/* if base display is already disabled, skip vsync check */
+	if (!display->base->crtc->state->active)
+		goto next;
+
+	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
+	sde_encoder_phys_shd_trigger_flush(phys_enc);
+	sde_encoder_phys_inc_pending(phys_enc);
+	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
+
+	sde_encoder_phys_shd_single_vblank_wait(phys_enc);
+
+next:
+	phys_enc->enable_state = SDE_ENC_DISABLED;
+
+	SDE_EVT32(DRMID(phys_enc->parent),
+		atomic_read(&phys_enc->pending_retire_fence_cnt));
+}
+
+static inline
+void sde_encoder_phys_shd_destroy(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_encoder_phys_shd *shd_enc =
+		to_sde_encoder_phys_shd(phys_enc);
+
+	if (!phys_enc)
+		return;
+
+	kfree(shd_enc);
+}
+
 static inline
 void sde_encoder_phys_shd_irq_ctrl(
 		struct sde_encoder_phys *phys_enc, bool enable)
@@ -606,6 +691,28 @@ int sde_encoder_phys_shd_get_line_count(
 		struct sde_encoder_phys *phys)
 {
 	return 0;
+}
+
+static int sde_encoder_phys_shd_atomic_check(
+		struct sde_encoder_phys *phys_enc,
+		struct drm_crtc_state *crtc_state,
+		struct drm_connector_state *conn_state)
+{
+	struct shd_display *display;
+
+	if (!phys_enc || !crtc_state || !conn_state || !conn_state->state ||
+			!conn_state->connector) {
+		SDE_ERROR("invalid encoder/device\n");
+		return -EINVAL;
+	}
+
+	if (!drm_atomic_crtc_needs_modeset(crtc_state) || !crtc_state->active)
+		return 0;
+
+	display = sde_connector_get_display(conn_state->connector);
+
+	return _sde_encoder_phys_shd_rm_reserve(phys_enc,
+			conn_state->state, display);
 }
 
 /**
@@ -628,6 +735,7 @@ static void sde_encoder_phys_shd_init_ops(struct sde_encoder_phys_ops *ops)
 	ops->wait_for_tx_complete = sde_encoder_phys_shd_wait_for_vblank;
 	ops->irq_control = sde_encoder_phys_shd_irq_ctrl;
 	ops->get_line_count = sde_encoder_phys_shd_get_line_count;
+	ops->atomic_check = sde_encoder_phys_shd_atomic_check;
 }
 
 void *sde_encoder_phys_shd_init(enum sde_intf_type type,
@@ -649,7 +757,7 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type,
 		goto fail_alloc;
 	}
 
-	for (i = 0; i < CRTC_DUAL_MIXERS; i++) {
+	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		hw_ctl = kzalloc(sizeof(*hw_ctl), GFP_KERNEL);
 		if (!hw_ctl) {
 			ret = -ENOMEM;
@@ -700,7 +808,7 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type,
 	return phys_enc;
 
 fail_ctl:
-	for (i = 0; i < CRTC_DUAL_MIXERS; i++) {
+	for (i = 0; i < MAX_MIXERS_PER_CRTC; i++) {
 		kfree(shd_enc->hw_ctl[i]);
 		kfree(shd_enc->hw_lm[i]);
 	}
