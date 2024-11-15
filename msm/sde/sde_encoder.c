@@ -5623,6 +5623,7 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 			intf_index = phys->intf_idx - INTF_0;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	/*
 	 * if phy is inited from external, we'll let external drivers to
 	 * create rsc client if needed.
@@ -5639,7 +5640,18 @@ struct drm_encoder *sde_encoder_init(struct drm_device *dev, struct msm_display_
 			sde_enc->rsc_client = NULL;
 		}
 	}
-
+#else
+	snprintf(name, SDE_NAME_SIZE, "rsc_enc%u", drm_enc->base.id);
+	sde_enc->rsc_client = sde_rsc_client_create(SDE_RSC_INDEX, name,
+		(disp_info->display_type == SDE_CONNECTOR_PRIMARY) ?
+		SDE_RSC_PRIMARY_DISP_CLIENT :
+	       	SDE_RSC_EXTERNAL_DISP_CLIENT, intf_index + 1);
+	if (IS_ERR_OR_NULL(sde_enc->rsc_client)) {
+		SDE_DEBUG("sde rsc client create failed :%ld\n",
+			 PTR_ERR(sde_enc->rsc_client));
+		sde_enc->rsc_client = NULL;
+	}
+#endif
 	if (disp_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE &&
 		sde_enc->input_event_enabled) {
 		ret = _sde_encoder_input_handler(sde_enc);
