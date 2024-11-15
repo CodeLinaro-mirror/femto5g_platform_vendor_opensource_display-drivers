@@ -624,7 +624,12 @@ void sde_connector_schedule_status_work(struct drm_connector *connector,
 	if (en == c_conn->esd_status_check)
 		return;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (sde_connector_get_info(connector, &info))
+		return;
+#else
 	sde_connector_get_info(connector, &info);
+#endif
 	if (c_conn->ops.check_status &&
 		(info.capabilities & MSM_DISPLAY_ESD_ENABLED)) {
 		if (en) {
@@ -2463,7 +2468,12 @@ static int sde_connector_init_debugfs(struct drm_connector *connector)
 
 	sde_connector = to_sde_connector(connector);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (sde_connector_get_info(connector, &info))
+		return -EINVAL;
+#else
 	sde_connector_get_info(connector, &info);
+#endif
 	if (sde_connector->ops.check_status &&
 		(info.capabilities & MSM_DISPLAY_ESD_ENABLED)) {
 		debugfs_create_u32("esd_status_interval", 0600,

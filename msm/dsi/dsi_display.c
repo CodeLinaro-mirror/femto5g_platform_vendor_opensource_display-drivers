@@ -5022,7 +5022,15 @@ static int dsi_display_get_dfps_timing(struct dsi_display *display,
 	}
 	m_ctrl = display->ctrl[display->clk_master_idx].ctrl;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	rc = dsi_panel_get_dfps_caps(display->panel, &dfps_caps);
+	if (rc) {
+		pr_err("failed to get dfps capabilities\n");
+		return rc;
+	}
+#else
 	dsi_panel_get_dfps_caps(display->panel, &dfps_caps);
+#endif
 	if (!dfps_caps.dfps_support) {
 		DSI_ERR("dfps not supported by panel\n");
 		return -EINVAL;
@@ -8407,7 +8415,7 @@ static int dsi_display_set_roi(struct dsi_display *display,
 
 	display_for_each_ctrl(i, display) {
 		struct dsi_display_ctrl *ctrl = &display->ctrl[i];
-		struct dsi_rect ctrl_roi;
+		struct dsi_rect ctrl_roi = {0};
 		bool changed = false;
 
 		rc = dsi_display_calc_ctrl_roi(display, ctrl, rois, &ctrl_roi);
