@@ -17,6 +17,7 @@
 #define MAX_DP_MST_STREAMS	2
 #define MAX_DP_BOND_NUM		3
 #define MAX_DP_LINK_TRAINING_RETRIES	100
+#define MAX_DP_SHALLOW_MODE_RETRIES	5
 
 enum dp_pm_type {
 	DP_CORE_PM,
@@ -379,6 +380,7 @@ struct dp_parser {
 	u32 link_training_min_vlevel;
 	u32 link_training_min_plevel;
 	u32 link_training_retries;
+	u32 shallow_mode_retries;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 pixel_base_off[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
