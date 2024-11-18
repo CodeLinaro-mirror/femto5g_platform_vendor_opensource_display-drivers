@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -567,6 +567,7 @@ static ssize_t dp_debug_write_hpd(struct file *file,
 	if (*ppos)
 		return 0;
 
+	mutex_lock(&debug->lock);
 	/* Leave room for termination char */
 	len = min_t(size_t, count, SZ_8 - 1);
 	if (copy_from_user(buf, user_buff, len))
@@ -591,6 +592,7 @@ static ssize_t dp_debug_write_hpd(struct file *file,
 
 	debug->hpd->simulate_connect(debug->hpd, debug->hotplug);
 end:
+	mutex_unlock(&debug->lock);
 	return len;
 }
 

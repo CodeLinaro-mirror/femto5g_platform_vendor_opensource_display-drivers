@@ -1033,7 +1033,7 @@ wfdDeviceCommitExt_User(
 	dev_commit_ext->req.flags = (u32)flags;
 
 	snprintf(marker_buff, sizeof(marker_buff),
-		"Commit SEND, dev=%p type=%d hdl=%p timestamp=%lu",
+		"Commit SEND, dev=%p type=%d hdl=%p timestamp=%llu",
 		device, type, hdl, req.hdr.timestamp);
 	HYP_ATRACE_BEGIN(marker_buff);
 
@@ -3105,7 +3105,7 @@ wfdCreateWFDEGLImagesPreAlloc_User(
 		 */
 		wfd_eglimage->dvaddr		= (WFDuint64)wire_eglimage->image_handle;
 
-		WIRE_LOG_INFO("img: 0x%p %dx%d vaddr:0x%lx size:%d usage=0x%x 0x%lx dvaddr=0x%lx",
+		WIRE_LOG_INFO("img:0x%p %dx%d vaddr:0x%llx size:%d usage=0x%x 0x%llx dvaddr=0x%llx",
 			wfd_eglimage, width, height, wfd_eglimage->vaddr,
 			wfd_eglimage->size, wfd_eglimage->usage,
 			wfd_eglimage->image_handle, wfd_eglimage->dvaddr);
@@ -3175,7 +3175,7 @@ wfdDestroyWFDEGLImages_User(
 	for (i = 0; i < count; i++) {
 		wfd_eglimage = (struct WFD_EGLImageType *)images[i];
 
-		WIRE_LOG_INFO("wfd_eglimage=0x%p dvaddr=0x%lx",
+		WIRE_LOG_INFO("wfd_eglimage=0x%p dvaddr=0x%llx",
 				wfd_eglimage, wfd_eglimage->dvaddr);
 
 		/* NOTE:
@@ -3307,7 +3307,7 @@ wfdCreateSourceFromImage_User(
 
 	wfd_eglimage = (struct WFD_EGLImageType *)image;
 
-	WIRE_LOG_INFO("wfd_eglimage=0x%p dvaddr=0x%lx",
+	WIRE_LOG_INFO("wfd_eglimage=0x%p dvaddr=0x%llx",
 		wfd_eglimage, wfd_eglimage->dvaddr);
 
 	/* NOTE:
@@ -3609,8 +3609,8 @@ static int event_listener(void *param)
 
 		if (!rc) {
 			snprintf(marker_buff, sizeof(marker_buff),
-				"Event RECV'D, type=%d disp_id=%d timestamp=%lu",
-				req->payload.ev_req.info.disp_event,
+				"Event RECV'D, type=%d disp_id=%d timestamp=%llu",
+				req->payload.ev_req.info.disp_event.type,
 				req->payload.ev_req.info.disp_event.event_infos.display_id,
 				req->hdr.timestamp);
 
@@ -3754,7 +3754,7 @@ wire_user_request_cb(
 	ev_req->type = (enum e_types)type;
 
 	snprintf(marker_buff, sizeof(marker_buff),
-		"Event REQ, type=%d disp_id=%d timestamp=%lu",
+		"Event REQ, type=%d disp_id=%d timestamp=%llu",
 		req.payload.ev_req.info.disp_event.type,
 		req.payload.ev_req.info.disp_event.event_infos.display_id,
 		req.hdr.timestamp);

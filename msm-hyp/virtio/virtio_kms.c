@@ -1016,6 +1016,39 @@ static bool virtio_kms_plane_enabled(const struct drm_plane_state *state)
 	return state && state->fb && state->crtc;
 }
 
+static bool is_ubwc_supported_format(uint32_t format)
+{
+	switch (format) {
+	case DRM_FORMAT_RGB565:
+	case DRM_FORMAT_ABGR8888:
+	case DRM_FORMAT_XBGR8888:
+	case DRM_FORMAT_ABGR2101010:
+	case DRM_FORMAT_XBGR2101010:
+	case DRM_FORMAT_ABGR16161616:
+	case DRM_FORMAT_NV12:
+		return true;
+	default:
+		break;
+	}
+
+	return false;
+}
+
+static bool is_inline_rot_supported_format(uint32_t format)
+{
+	switch (format) {
+	case DRM_FORMAT_ABGR8888:
+	case DRM_FORMAT_XBGR8888:
+	case DRM_FORMAT_ABGR16161616:
+	case DRM_FORMAT_NV12:
+		return true;
+	default:
+		break;
+	}
+
+	return false;
+}
+
 static int _virtio_kms_plane_rot_atomic_check(struct drm_plane *plane,
 		struct drm_atomic_state *atomic_state)
 {
@@ -1024,8 +1057,13 @@ static int _virtio_kms_plane_rot_atomic_check(struct drm_plane *plane,
 	struct msm_hyp_plane *slave_hyp_plane = NULL;
 	u32 rotation = 0;
 	int ret = 0;
+	bool format_support = false;
 
 	state = drm_atomic_get_new_plane_state(atomic_state, plane);
+	if (!state) {
+		pr_err("invalid plane state\n");
+		return -EINVAL;
+	}
 
 	/* check inline rotation and simplify the transform */
 	rotation = drm_rotation_simplify(
@@ -1038,6 +1076,22 @@ static int _virtio_kms_plane_rot_atomic_check(struct drm_plane *plane,
 			rotation);
 		ret = -EINVAL;
 		goto exit;
+	}
+
+	/* check for valid formats supported by inline rot */
+	//TODO, get this ubwc supported format information from HGY
+	if ((rotation & DRM_MODE_ROTATE_90) || (rotation & DRM_MODE_ROTATE_270)) {
+		if (((state->fb->modifier & DRM_FORMAT_MOD_QTI_COMPRESSED)
+			== DRM_FORMAT_MOD_QTI_COMPRESSED)
+			&& (is_ubwc_supported_format(state->fb->format->format)))
+			format_support =
+				is_inline_rot_supported_format(state->fb->format->format);
+
+		if (!format_support) {
+			pr_err("invalid format for inline rot\n");
+			ret = -EINVAL;
+			goto exit;
+		}
 	}
 
 	if (rotation & DRM_MODE_ROTATE_90) {
@@ -1065,9 +1119,6 @@ static int _virtio_kms_plane_rot_atomic_check(struct drm_plane *plane,
 			ret = -EINVAL;
 			goto exit;
 		}
-
-		/* check for valid formats supported by inline rot */
-		//TODO, get this information from QNX
 	}
 
 	state->rotation = rotation;

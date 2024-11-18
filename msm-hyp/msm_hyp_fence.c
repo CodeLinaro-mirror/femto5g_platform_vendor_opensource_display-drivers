@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -42,7 +42,7 @@ signed long msm_hyp_sync_wait(void *fnc, long timeout_ms)
 			fence->ops->timeline_value_str(fence,
 					timeline_str, TIMELINE_VAL_LENGTH);
 
-		pr_err("%s:%s seqno:0x%x timeline:%s signaled:0x%x\n",
+		pr_err("%s:%s seqno:0x%llx timeline:%s signaled:0x%x\n",
 			fence->ops->get_driver_name(fence),
 			fence->ops->get_timeline_name(fence),
 			fence->seqno, timeline_str,
@@ -109,7 +109,7 @@ static bool msm_hyp_fence_signaled(struct dma_fence *fence)
 	bool status;
 
 	status = (int)(fence->seqno - f->ctx->done_count) <= 0;
-	pr_debug("status:%d fence seq:%d and timeline:%d\n",
+	pr_debug("status:%d fence seq:%llu and timeline:%d\n",
 			status, fence->seqno, f->ctx->done_count);
 	return status;
 }
@@ -130,7 +130,7 @@ static void msm_hyp_fence_value_str(struct dma_fence *fence, char *str, int size
 	if (!fence || !str)
 		return;
 
-	snprintf(str, size, "%d", fence->seqno);
+	snprintf(str, size, "%llu", fence->seqno);
 }
 
 static void msm_hyp_fence_timeline_value_str(struct dma_fence *fence, char *str,
