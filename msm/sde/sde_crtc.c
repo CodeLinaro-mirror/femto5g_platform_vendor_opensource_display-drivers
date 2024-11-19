@@ -491,6 +491,7 @@ void sde_crtc_get_loopback_resolution(struct sde_crtc_state *cstate,
 void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state,
 		struct drm_display_mode *mode, u32 *width, u32 *height)
 {
+	u32 num_ds = 0;
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
@@ -513,8 +514,14 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	 * Since we are returning the crtc width and height of primary path
 	 * here, add proper checks to make sure that correct value is returned.
 	 */
-	if (cstate->num_ds_enabled && !cstate->is_loopback_mode) {
-		*width = cstate->ds_cfg[0].lm_width * cstate->num_ds_enabled;
+	if ((cstate->num_ds_enabled || (cstate->ds_cfg[0].flags & SDE_DRM_DESTSCALER_ENABLE)) &&
+			!cstate->is_loopback_mode) {
+		/*
+		 * num_ds_enabled can be 0 when dest scalar is enabled if mixers aren't allocated.
+		 * Consider total destination scalar blocks used in such cases.
+		 */
+		num_ds = cstate->num_ds_enabled ? cstate->num_ds_enabled : cstate->num_ds;
+		*width = cstate->ds_cfg[0].lm_width * num_ds;
 		*height = cstate->ds_cfg[0].lm_height;
 	} else if (sde_crtc->ai_scaler_res.enabled) {
 		*width = sde_crtc->ai_scaler_res.src_w;
