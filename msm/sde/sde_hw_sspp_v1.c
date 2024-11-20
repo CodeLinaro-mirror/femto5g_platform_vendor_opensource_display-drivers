@@ -347,7 +347,7 @@ static void sde_hw_sspp_setup_format_v1(struct sde_hw_pipe *ctx,
 		(fmt->bits[C1_B_Cb] << 2) | (fmt->bits[C0_G_Y] << 0);
 
 	if (flags & SDE_SSPP_ROT_90)
-		src_format |= BIT(11); /* ROT90 */
+		opmode |= BIT(15); /* ROT90 */
 
 	if (fmt->alpha_enable && fmt->fetch_planes == SDE_PLANE_INTERLEAVED)
 		src_format |= BIT(8); /* SRCC3_EN */
@@ -361,12 +361,8 @@ static void sde_hw_sspp_setup_format_v1(struct sde_hw_pipe *ctx,
 		(fmt->unpack_tight << 17) |
 		(fmt->unpack_align_msb << 18);
 
-	if (SDE_FORMAT_IS_FP16(fmt))
-		src_format |= BIT(16) | BIT(10) | BIT(9);
-	else if (fmt->bpp <= 4)
+	if (fmt->bpp <= 8)
 		src_format |= ((fmt->bpp - 1) << 9);
-	else if (fmt->bpp <= 8)
-		src_format |=  BIT(16) | ((fmt->bpp - 5) << 9);
 
 	if ((flags & SDE_SSPP_ROT_90) && test_bit(SDE_SSPP_INLINE_CONST_CLR,
 			&ctx->cap->features))
