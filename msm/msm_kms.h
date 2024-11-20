@@ -136,8 +136,12 @@ struct msm_kms {
 
 	/* mapper-id used to request GEM buffer mapped for scanout: */
 	struct msm_gem_address_space *aspace;
-};
 
+	/* Commit status tracking */
+	atomic_t commit_failure_counter;
+	atomic_t commit_success_counter;
+	bool commit_failure_reported;
+};
 /**
  * Subclass of drm_atomic_state, to allow kms backend to have driver
  * private global state.  The kms backend can do whatever it wants

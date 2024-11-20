@@ -16,11 +16,15 @@
  * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <drm/drm_panel.h>
+#include <linux/heartbeat.h>
 
 #include "msm_drv.h"
 #include "msm_gem.h"
 #include "msm_kms.h"
 #include "sde_trace.h"
+
+#define MSM_DRM_COMMIT_FAIL_THRESHOLD 5
+#define MSM_DRM_COMMIT_SUCCESS_THRESHOLD 3
 
 #define MULTIPLE_CONN_DETECTED(x) (x > 1)
 
@@ -489,6 +493,35 @@ int msm_atomic_prepare_fb(struct drm_plane *plane,
 	return msm_framebuffer_prepare(new_state->fb, kms->aspace);
 }
 
+void msm_handle_commit_status(struct msm_kms *kms, bool commit_status,
+				char *drv_name, int crtc_id)
+{
+	if (!commit_status) {
+		atomic_set(&kms->commit_success_counter, 0);
+		if (atomic_inc_return(&kms->commit_failure_counter) >=
+					MSM_DRM_COMMIT_FAIL_THRESHOLD &&
+					!kms->commit_failure_reported) {
+			trigger_heartbeat_event(drv_name,
+					DISPLAY_COMMIT_FAILURE);
+			DRM_ERROR("commit failure detected for CRTC %d,"
+				"send code: DISPLAY_COMMIT_FAILURE\n", crtc_id);
+			kms->commit_failure_reported = true;
+		}
+	} else {
+		atomic_set(&kms->commit_failure_counter, 0);
+		if (kms->commit_failure_reported &&
+					atomic_inc_return(
+					&kms->commit_success_counter) >=
+					MSM_DRM_COMMIT_SUCCESS_THRESHOLD) {
+			trigger_heartbeat_event(drv_name, STATUS_OK);
+			DRM_INFO("commit failure recovered for CRTC %d,"
+				"send code: STATUS_OK\n", crtc_id);
+			atomic_set(&kms->commit_success_counter, 0);
+			kms->commit_failure_reported = false;
+		}
+	}
+}
+
 /* The (potentially) asynchronous part of the commit.  At this point
  * nothing can fail short of armageddon.
  */
@@ -654,6 +687,7 @@ int msm_atomic_commit(struct drm_device *dev,
 	struct drm_plane *plane;
 	struct drm_plane_state *old_plane_state, *new_plane_state;
 	int i, ret;
+	char *drv_name = dev->driver->name;
 
 	if (!priv || priv->shutdown_in_progress) {
 		DRM_ERROR("priv is null or shutdwon is in-progress\n");
@@ -760,12 +794,17 @@ retry:
 
 	SDE_ATRACE_END("atomic_commit");
 
+	msm_handle_commit_status(priv->kms, true, drv_name, crtc->base.id);
+
 	return 0;
 err_free:
 	kfree(c);
 error:
 	drm_atomic_helper_cleanup_planes(dev, state);
 	SDE_ATRACE_END("atomic_commit");
+
+	msm_handle_commit_status(priv->kms, false, drv_name, crtc->base.id);
+
 	return ret;
 }
 

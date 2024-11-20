@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -22,6 +22,7 @@
 #include <linux/debugfs.h>
 #include <linux/seq_file.h>
 #include <linux/sde_rsc.h>
+#include <linux/heartbeat.h>
 
 #include "msm_drv.h"
 #include "sde_kms.h"
@@ -58,6 +59,10 @@
 		(p) ? (p)->intf_idx - INTF_0 : -1, \
 		(p) ? ((p)->hw_pp ? (p)->hw_pp->idx - PINGPONG_0 : -1) : -1, \
 		##__VA_ARGS__)
+
+#define SDE_ENC_FAIL_CHECK_THRESHOLD_MS 100 // 100ms
+#define SDE_ENC_FAIL_CHECK_INTERVAL_MS 20 // Check every 20ms
+#define SDE_ENC_SUCCESS_CHECK_THRESHOLD_CNT 3
 
 /*
  * Two to anticipate panels that can do cmd/vid dynamic switching
@@ -235,6 +240,25 @@ enum sde_enc_rc_states {
  * @pm_qos_cpu_req:		pm_qos request for cpu frequency
  * @mode_info:                  stores the current mode and should be used
  *				 only in commit phase
+ * @underrun_monitor_work:	delayed worker to schedule monitoring of
+ * 				underruns
+ * @last_underrun_cnt:		store the last underrun count value
+ * @underrun_counter:		counter to store the number of underruns
+ * 				occurred
+ * @underrun_check_in_progress:	Check to schedule delayed worker for underruns
+ * @underrun_reported:		flag to indicate underrun is reported to HB
+ * @underrun_success_counter:	counter to store the number of recovery
+ *				checks done after recovery from underun
+ * @vsync_monitor_work:		delayed worker to schedule monitoring of
+ * 				vsync miss
+ * @vsync_miss_counter:		counter to store the number of vsync misses
+ * 				occurred
+ * @vsync_miss_reported:	flag to indicate vsync miss is reported to HB
+ * @vsync_check_in_progress:	Check to schedule delayed worker for vsync miss
+ * @vsync_miss_detected:	flag to indicate whether vsyc miss is
+ * 				detected or not
+ * @vsync_success_counter:	counter to store the number of recovery
+ *				checks done after recovery from vsync miss
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -300,6 +324,20 @@ struct sde_encoder_virt {
 	bool elevated_ahb_vote;
 	struct pm_qos_request pm_qos_cpu_req;
 	struct msm_mode_info mode_info;
+
+	struct delayed_work underrun_monitor_work;
+	u32 last_underrun_cnt;
+	int underrun_counter;
+	bool underrun_check_in_progress;
+	bool underrun_reported;
+	int underrun_success_counter;
+
+	struct delayed_work vsync_monitor_work;
+	int vsync_miss_counter;
+	bool vsync_miss_reported;
+	bool vsync_check_in_progress;
+	bool vsync_miss_detected;
+	int vsync_success_counter;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -500,12 +538,18 @@ int sde_encoder_helper_wait_for_irq(struct sde_encoder_phys *phys_enc,
 	struct sde_encoder_irq *irq;
 	u32 irq_status;
 	int ret, i;
+	struct drm_encoder *drm_enc = NULL;
+	struct sde_encoder_virt *sde_enc = NULL;
 
-	if (!phys_enc || !wait_info || intr_idx >= INTR_IDX_MAX) {
+	if (!phys_enc || !phys_enc->parent || !wait_info ||
+			intr_idx >= INTR_IDX_MAX) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
 	irq = &phys_enc->irq[intr_idx];
+
+	drm_enc = phys_enc->parent;
+	sde_enc = to_sde_encoder_virt(drm_enc);
 
 	/* note: do master / slave checking outside */
 
@@ -578,6 +622,18 @@ int sde_encoder_helper_wait_for_irq(struct sde_encoder_phys *phys_enc,
 		SDE_EVT32(DRMID(phys_enc->parent), intr_idx, irq->hw_idx,
 			irq->irq_idx, phys_enc->hw_pp->idx - PINGPONG_0,
 			atomic_read(wait_info->atomic_cnt));
+	}
+
+	if (ret == -ETIMEDOUT) {
+		sde_enc->vsync_miss_detected = true;
+		if (!sde_enc->vsync_check_in_progress) {
+			sde_enc->vsync_check_in_progress = true;
+			schedule_delayed_work(&sde_enc->vsync_monitor_work,
+					msecs_to_jiffies(
+					SDE_ENC_FAIL_CHECK_INTERVAL_MS));
+		}
+	} else {
+		sde_enc->vsync_miss_detected = false;
 	}
 
 	SDE_EVT32_VERBOSE(DRMID(phys_enc->parent), intr_idx, irq->hw_idx,
@@ -741,6 +797,10 @@ void sde_encoder_destroy(struct drm_encoder *drm_enc)
 	SDE_DEBUG_ENC(sde_enc, "\n");
 
 	mutex_lock(&sde_enc->enc_lock);
+
+	cancel_delayed_work_sync(&sde_enc->underrun_monitor_work);
+	cancel_delayed_work_sync(&sde_enc->vsync_monitor_work);
+
 	sde_rsc_client_destroy(sde_enc->rsc_client);
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
@@ -3739,6 +3799,8 @@ static void sde_encoder_vblank_callback(struct drm_encoder *drm_enc,
 static void sde_encoder_underrun_callback(struct drm_encoder *drm_enc,
 		struct sde_encoder_phys *phy_enc)
 {
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
 	if (!phy_enc)
 		return;
 
@@ -3753,6 +3815,13 @@ static void sde_encoder_underrun_callback(struct drm_encoder *drm_enc,
 	SDE_DBG_CTRL("panic_underrun");
 
 	SDE_ATRACE_END("encoder_underrun_callback");
+
+	if (!sde_enc->underrun_check_in_progress) {
+		sde_enc->underrun_check_in_progress = true;
+		schedule_delayed_work(&sde_enc->underrun_monitor_work,
+				msecs_to_jiffies(
+				SDE_ENC_FAIL_CHECK_INTERVAL_MS));
+	}
 }
 
 void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
@@ -4680,6 +4749,105 @@ static void sde_encoder_vsync_event_work_handler(struct kthread_work *work)
 
 exit:
 	pm_runtime_put_sync(drm_enc->dev->dev);
+}
+
+void sde_encoder_vsync_monitor_work_handler(struct work_struct *work)
+{
+	struct sde_encoder_virt *sde_enc = container_of(work,
+					struct sde_encoder_virt,
+					vsync_monitor_work.work);
+	struct drm_encoder *drm_enc = &sde_enc->base;
+	char *drv_name = drm_enc->dev->driver->name;
+
+	if (sde_enc->vsync_miss_detected) {
+		sde_enc->vsync_miss_counter +=
+				SDE_ENC_FAIL_CHECK_INTERVAL_MS;
+		if (sde_enc->vsync_miss_counter >=
+					SDE_ENC_FAIL_CHECK_THRESHOLD_MS &&
+					!sde_enc->vsync_miss_reported) {
+			trigger_heartbeat_event(drv_name,
+					DISPLAY_VSYNC_MISS);
+			SDE_ERROR("vsync miss detected,"
+				"send code: DISPLAY_VSYNC_MISS\n");
+			sde_enc->vsync_miss_reported = true;
+		}
+		sde_enc->vsync_success_counter = 0;
+	} else {
+		sde_enc->vsync_miss_counter = 0;
+		sde_enc->vsync_success_counter++;
+		if (sde_enc->vsync_miss_reported &&
+					sde_enc->vsync_success_counter >=
+					SDE_ENC_SUCCESS_CHECK_THRESHOLD_CNT) {
+			trigger_heartbeat_event(drv_name, STATUS_OK);
+			SDE_INFO("vsync miss recovered, "
+				"send code: STATUS_OK\n");
+			sde_enc->vsync_miss_reported = false;
+			sde_enc->vsync_success_counter = 0;
+		}
+	}
+
+	if (sde_enc->vsync_miss_reported || sde_enc->vsync_miss_detected) {
+		schedule_delayed_work(&sde_enc->vsync_monitor_work,
+				msecs_to_jiffies(
+				SDE_ENC_FAIL_CHECK_INTERVAL_MS));
+	} else {
+		sde_enc->vsync_check_in_progress = false;
+	}
+}
+
+void sde_encoder_underrun_monitor_work_handler(struct work_struct *work)
+{
+	struct sde_encoder_virt *sde_enc = container_of(work,
+					struct sde_encoder_virt,
+					underrun_monitor_work.work);
+	struct sde_encoder_phys *phy_enc = NULL;
+	int i = 0, current_cnt = 0;
+	struct drm_encoder *drm_enc = &sde_enc->base;
+	char *drv_name = drm_enc->dev->driver->name;
+
+	for (i = 0; i < sde_enc->num_phys_encs; i++) {
+		phy_enc = sde_enc->phys_encs[i];
+
+		if (!phy_enc)
+			continue;
+
+		current_cnt = atomic_read(&phy_enc->underrun_cnt);
+		if (current_cnt > sde_enc->last_underrun_cnt) {
+			sde_enc->underrun_counter +=
+					SDE_ENC_FAIL_CHECK_INTERVAL_MS;
+			if (sde_enc->underrun_counter >=
+					SDE_ENC_FAIL_CHECK_THRESHOLD_MS &&
+					!sde_enc->underrun_reported) {
+				trigger_heartbeat_event(drv_name,
+						DISPLAY_UNDERRUN);
+				SDE_ERROR("underrun detected, "
+					"send code: DISPLAY_UNDERRUN\n");
+				sde_enc->underrun_reported = true;
+			}
+			sde_enc->underrun_success_counter = 0;
+		} else if (current_cnt == sde_enc->last_underrun_cnt) {
+			sde_enc->underrun_counter = 0;
+			sde_enc->underrun_success_counter++;
+			if (sde_enc->underrun_reported &&
+					sde_enc->underrun_success_counter >=
+					SDE_ENC_SUCCESS_CHECK_THRESHOLD_CNT) {
+				trigger_heartbeat_event(drv_name, STATUS_OK);
+				SDE_INFO("underrun recovered, "
+					"send code: STATUS_OK\n");
+				sde_enc->underrun_reported = false;
+				sde_enc->underrun_success_counter = 0;
+			}
+		}
+		sde_enc->last_underrun_cnt = current_cnt;
+	}
+
+	if (sde_enc->underrun_reported || sde_enc->underrun_counter > 0) {
+		schedule_delayed_work(&sde_enc->underrun_monitor_work,
+				msecs_to_jiffies(
+				SDE_ENC_FAIL_CHECK_INTERVAL_MS));
+	} else {
+		sde_enc->underrun_check_in_progress = false;
+	}
 }
 
 int sde_encoder_poll_line_counts(struct drm_encoder *drm_enc)
@@ -5836,6 +6004,11 @@ struct drm_encoder *sde_encoder_init_with_ops(
 
 	kthread_init_work(&sde_enc->esd_trigger_work,
 			sde_encoder_esd_trigger_work_handler);
+
+	INIT_DELAYED_WORK(&sde_enc->underrun_monitor_work,
+			sde_encoder_underrun_monitor_work_handler);
+	INIT_DELAYED_WORK(&sde_enc->vsync_monitor_work,
+			sde_encoder_vsync_monitor_work_handler);
 
 	memcpy(&sde_enc->disp_info, disp_info, sizeof(*disp_info));
 

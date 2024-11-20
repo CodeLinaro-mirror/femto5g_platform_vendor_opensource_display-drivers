@@ -728,6 +728,13 @@ void msm_atomic_commit_tail(struct drm_atomic_state *state);
 int msm_atomic_commit(struct drm_device *dev,
 	struct drm_atomic_state *state, bool nonblock);
 
+/**
+ * msm_handle_commit_status: checks and sends commit failure
+ * event to heartbeat driver
+ */
+void msm_handle_commit_status(struct msm_kms *kms, bool status,
+				char *drv_name, int crtc_id);
+
 /* callback from wq once fence has passed: */
 struct msm_fence_cb {
 	struct work_struct work;

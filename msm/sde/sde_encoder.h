@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -398,5 +398,18 @@ static inline struct sde_kms *sde_encoder_get_kms(struct drm_encoder *drm_enc)
 
 	return to_sde_kms(priv->kms);
 }
+
+/**
+ * sde_encoder_vsync_monitor_work_handler - handler to check and send
+ * vsync failure event to heartbeat driver
+ * @work:    Pointer to work_struct structure
+ */
+void sde_encoder_vsync_monitor_work_handler(struct work_struct *work);
+/**
+ * sde_encoder_underrun_monitor_work_handler - handler to check and send
+ * underrun failure event to heartbeat driver
+ * @work:    Pointer to work_struct structure
+ */
+void sde_encoder_underrun_monitor_work_handler(struct work_struct *work);
 
 #endif /* __SDE_ENCODER_H__ */
