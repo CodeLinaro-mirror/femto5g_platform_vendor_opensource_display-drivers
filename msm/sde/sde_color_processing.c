@@ -3752,7 +3752,9 @@ static void _sde_cp_ad_set_prop(struct sde_crtc *sde_crtc,
 
 void sde_cp_crtc_pre_ipc(struct drm_crtc *drm_crtc)
 {
-	struct sde_crtc *sde_crtc;
+	struct sde_kms *kms = NULL;
+	struct sde_crtc *sde_crtc = NULL;
+	struct sde_mdss_cfg *catalog = NULL;
 	struct msm_drm_private *dev_private = NULL;
 	bool aiqe_enable = false;
 
@@ -3775,16 +3777,29 @@ void sde_cp_crtc_pre_ipc(struct drm_crtc *drm_crtc)
 		aiqe_is_client_registered(FEATURE_MDNIE, &sde_crtc->aiqe_top_level) ||
 		aiqe_is_client_registered(FEATURE_SSRC, &sde_crtc->aiqe_top_level);
 
+	kms = get_kms(drm_crtc);
+	if (!kms || !kms->catalog) {
+		DRM_ERROR("invalid sde kms %pK catalog %pK sde_crtc %pK\n",
+		 kms, ((kms) ? kms->catalog : NULL), sde_crtc);
+		return;
+	}
+	catalog = kms->catalog;
+
 	SDE_EVT32(aiqe_enable);
 	if (aiqe_enable) {
 		dev_private = drm_crtc->dev->dev_private;
-		sde_power_set_clk_retention(&dev_private->phandle, "lut_clk", true);
+		if (test_bit(SDE_FEATURE_SSIP_CLK, catalog->features))
+			sde_power_set_clk_retention(&dev_private->phandle, "ssip_clk", true);
+		else
+			sde_power_set_clk_retention(&dev_private->phandle, "lut_clk", true);
 	}
 }
 
 void sde_cp_crtc_post_ipc(struct drm_crtc *drm_crtc)
 {
-	struct sde_crtc *sde_crtc;
+	struct sde_kms *kms = NULL;
+	struct sde_crtc *sde_crtc = NULL;
+	struct sde_mdss_cfg *catalog = NULL;
 	struct msm_drm_private *dev_private = NULL;
 	bool aiqe_enable = false;
 
@@ -3808,10 +3823,21 @@ void sde_cp_crtc_post_ipc(struct drm_crtc *drm_crtc)
 		aiqe_is_client_registered(FEATURE_MDNIE, &sde_crtc->aiqe_top_level) ||
 		aiqe_is_client_registered(FEATURE_SSRC, &sde_crtc->aiqe_top_level);
 
+	kms = get_kms(drm_crtc);
+	if (!kms || !kms->catalog) {
+		DRM_ERROR("invalid sde kms %pK catalog %pK sde_crtc %pK\n",
+		 kms, ((kms) ? kms->catalog : NULL), sde_crtc);
+		return;
+	}
+	catalog = kms->catalog;
+
 	SDE_EVT32(aiqe_enable);
 	if (aiqe_enable) {
 		dev_private = drm_crtc->dev->dev_private;
-		sde_power_set_clk_retention(&dev_private->phandle, "lut_clk", false);
+		if (test_bit(SDE_FEATURE_SSIP_CLK, catalog->features))
+			sde_power_set_clk_retention(&dev_private->phandle, "ssip_clk", false);
+		else
+			sde_power_set_clk_retention(&dev_private->phandle, "lut_clk", false);
 	}
 }
 
