@@ -172,7 +172,7 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 	phys_addr_t queue_pa;
 	void *queue_va;
 	u32 qhdr0_offset, ctl_hfi_iova;
-	int ctl_id, ret;
+	int i, ctl_id, ret;
 	int iommu_flags;
 
 	if (!hw_ctl || !hw_ctl->ops.hw_fence_output_fence_dir_write_init)
@@ -193,6 +193,16 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 			sde_hw_fence_data = hw_fence_data_dpu_client;
 	} else {
 		sde_hw_fence_data = hw_fence_data_no_dpu;
+	}
+
+	/* some targets use physical instead of virtual client IDs; update reg map accordingly */
+	if (sde_kms->catalog->ipcc_client_out_phys_id) {
+		for (i = 0; i < SDE_HW_FENCE_CLIENT_MAX; i++) {
+			sde_hw_fence_data[i].ipcc_out_client =
+				sde_kms->catalog->ipcc_client_out_phys_id;
+			sde_hw_fence_data[i].ipcc_this_client =
+				sde_kms->catalog->ipcc_client_phys_id;
+		}
 	}
 
 	if (sde_hw_fence_data[ctl_id].client_id != ctl_id) {
