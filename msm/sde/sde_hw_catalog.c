@@ -5361,8 +5361,9 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 		if (test_bit(SDE_FEATURE_VIG_P210, sde_cfg->features)) {
 			inline_fmt_tbl = true_inline_rot_v202_ubwc60_fmts;
 			in_rot_list_size = ARRAY_SIZE(true_inline_rot_v202_ubwc60_fmts);
-			inline_restricted_fmt_tbl = true_inline_rot_v202_ubwc60_fmts;
-			in_rot_restricted_list_size = ARRAY_SIZE(true_inline_rot_v202_ubwc60_fmts);
+			inline_restricted_fmt_tbl = true_inline_rot_v202_restricted_ubwc60_fmts;
+			in_rot_restricted_list_size =
+					ARRAY_SIZE(true_inline_rot_v202_restricted_ubwc60_fmts);
 		} else {
 			inline_fmt_tbl = true_inline_rot_v202_fmts;
 			in_rot_list_size = ARRAY_SIZE(true_inline_rot_v202_fmts);
