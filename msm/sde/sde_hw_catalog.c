@@ -187,6 +187,7 @@
 enum {
 	SDE_HW_VERSION,
 	SDE_HW_FENCE_VERSION,
+	SDE_HW_UBWC_VERSION,
 	SDE_HW_PROP_MAX,
 };
 
@@ -208,7 +209,6 @@ enum sde_prop {
 	WB_LINEWIDTH,
 	WB_LINEWIDTH_LINEAR,
 	BANK_BIT,
-	UBWC_VERSION,
 	UBWC_STATIC,
 	UBWC_SWIZZLE,
 	QSEED_SW_LIB_REV,
@@ -633,6 +633,7 @@ struct sde_dt_props {
 static struct sde_prop_type sde_hw_prop[] = {
 	{SDE_HW_VERSION, "qcom,sde-hw-version", false, PROP_TYPE_U32},
 	{SDE_HW_FENCE_VERSION, "qcom,hw-fence-sw-version", false, PROP_TYPE_U32},
+	{SDE_HW_UBWC_VERSION, "qcom,sde-ubwc-version", false, PROP_TYPE_U32},
 };
 
 static struct sde_prop_type sde_prop[] = {
@@ -648,7 +649,6 @@ static struct sde_prop_type sde_prop[] = {
 			false, PROP_TYPE_U32},
 	{BANK_BIT, "qcom,sde-highest-bank-bit", false,
 			PROP_TYPE_BIT_OFFSET_ARRAY},
-	{UBWC_VERSION, "qcom,sde-ubwc-version", false, PROP_TYPE_U32},
 	{UBWC_STATIC, "qcom,sde-ubwc-static", false, PROP_TYPE_U32},
 	{UBWC_SWIZZLE, "qcom,sde-ubwc-swizzle", false, PROP_TYPE_U32},
 	{QSEED_SW_LIB_REV, "qcom,sde-qseed-sw-lib-rev", false,
@@ -4466,10 +4466,6 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 			PROP_VALUE_ACCESS(props->values, MIXER_BLEND, 0) :
 			DEFAULT_SDE_MIXER_BLENDSTAGES;
 
-	cfg->ubwc_rev = props->exists[UBWC_VERSION] ?
-			PROP_VALUE_ACCESS(props->values,
-			UBWC_VERSION, 0) : DEFAULT_SDE_UBWC_NONE;
-
 	cfg->mdp[0].highest_bank_bit = DEFAULT_SDE_HIGHEST_BANK_BIT;
 
 	if (props->exists[BANK_BIT]) {
@@ -6479,6 +6475,11 @@ static int sde_hw_ver_parse_dt(struct drm_device *dev, struct device_node *np,
 		cfg->hw_fence_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_FENCE_VERSION, 0);
 	else
 		cfg->hw_fence_rev = 0; /* disable hw-fences */
+
+	if (prop_exists[SDE_HW_UBWC_VERSION])
+		cfg->ubwc_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_UBWC_VERSION, 0);
+	else
+		cfg->ubwc_rev = DEFAULT_SDE_UBWC_NONE;
 
 end:
 	kvfree(prop_value);
