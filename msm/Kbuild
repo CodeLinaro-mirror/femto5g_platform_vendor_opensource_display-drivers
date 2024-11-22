@@ -67,6 +67,11 @@ ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8155) $(CONFIG_ARCH_SA6155) $(CONFIG_AR
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/augen3dispconf.h
 endif
 
+ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8797) $(CONFIG_ARCH_LEMANS)))
+	include $(DISPLAY_ROOT)/config/augen3disp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/augen3dispconf.h
+endif
+
 LINUX_INC +=	-I$(KERNEL_SRC)/include/linux \
 		-I$(KERNEL_SRC)/include/linux/drm
 
