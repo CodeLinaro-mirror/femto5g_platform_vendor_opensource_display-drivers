@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -566,17 +566,22 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 	struct sde_encoder_phys_shd *shd_enc;
 	struct sde_enc_shd_state *shd_enc_state;
 	struct shd_display *display;
-	int ret = 0;
-	u32 event = 0;
-	u32 event_helper = 0;
+	int ret = 0 , new_cnt = 0;
+	u32 event = SDE_ENCODER_FRAME_EVENT_ERROR |
+		SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE |
+		SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE;
 	enum sde_intr_idx intr_idx;
 	struct drm_connector *conn;
+	struct sde_hw_ctl *hw_ctl;
+	u32 flush_register = 0xebad;
+	bool timeout = false;
 
-	if (!phys_enc) {
+	if (!phys_enc || !phys_enc->hw_ctl) {
 		pr_err("invalid encoder\n");
 		return -EINVAL;
 	}
 
+	hw_ctl = phys_enc->hw_ctl;
 	conn = phys_enc->connector;
 
 	/*
@@ -627,22 +632,32 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 	ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC, &wait_info);
 
 skip:
-	event_helper = SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE
-			| SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE;
+	if (ret == -ETIMEDOUT) {
+		new_cnt = atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
+		timeout = true;
+		/*
+		 * Reset ret when flush register is consumed. This handles a race condition between
+		 * irq wait timeout handler reading the register status and the actual IRQ handler
+		 */
+		if (hw_ctl->ops.get_flush_register)
+			flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
+		if (!flush_register)
+			ret = 0;
+		SDE_EVT32(DRMID(phys_enc->parent), new_cnt, flush_register, ret,
+				SDE_EVTLOG_FUNC_CASE1);
+	}
 
-	if (notify) {
+	if (notify && timeout && atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0)
+			&& phys_enc->parent_ops.handle_frame_done) {
+		phys_enc->parent_ops.handle_frame_done(phys_enc->parent, phys_enc, event);
 		if (ret == -ETIMEDOUT) {
-			event = SDE_ENCODER_FRAME_EVENT_ERROR;
 			SDE_INFO("enc%d Wait for vblank timeout %dms\n", DRMID(phys_enc->parent),
-					wait_info.timeout_ms);
-			if (atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0))
-				event |= event_helper;
+								wait_info.timeout_ms);
 		}
 	}
 
-	SDE_EVT32(DRMID(phys_enc->parent), event, notify, ret, ret ? SDE_EVTLOG_FATAL : 0);
-	if (phys_enc->parent_ops.handle_frame_done && event)
-		phys_enc->parent_ops.handle_frame_done(phys_enc->parent, phys_enc, event);
+	SDE_EVT32(DRMID(phys_enc->parent), event, notify, timeout, ret,
+				ret ? SDE_EVTLOG_FATAL : 0, SDE_EVTLOG_FUNC_EXIT);
 
 	return ret;
 }
