@@ -128,6 +128,7 @@ struct lt9611 {
 	u32 hdmi_3p3_en;
 	u32 hdmi_1p2_en;
 	u32 reset_gpio_flags;
+	u32 dsi_sel_gpio;
 
 	wait_queue_head_t writable_wq;
 	bool is_writable;
@@ -951,6 +952,10 @@ static void lt9611_parse_dt_modes(struct device_node *np,
 	u32 v_front_porch, v_pulse_width, v_back_porch;
 	bool h_active_high, v_active_high;
 	u32 flags = 0;
+	struct lt9611 *pdata = container_of(head, struct lt9611, mode_list);
+
+	if (!pdata)
+		return;
 
 	root_node = of_get_child_by_name(np, "lt,customize-modes");
 	if (!root_node) {
@@ -1038,6 +1043,12 @@ static void lt9611_parse_dt_modes(struct device_node *np,
 			pr_err("failed to read clock, rc=%d\n", rc);
 			goto fail;
 		}
+
+		if (gpio_is_valid(pdata->dsi_sel_gpio) &&
+				!gpio_get_value(pdata->dsi_sel_gpio) &&
+				mode->hdisplay == 3840 && mode->vdisplay == 2160 &&
+				mode->clock > 300000)
+			continue;
 
 		mode->hsync_start = mode->hdisplay + h_front_porch;
 		mode->hsync_end = mode->hsync_start + h_pulse_width;
@@ -1152,6 +1163,11 @@ static int lt9611_parse_dt(struct device *dev,
 		of_get_named_gpio(np, "lt,hdmi-1p2-en", 0);
 	if (!gpio_is_valid(pdata->hdmi_1p2_en))
 		pr_debug("hdmi_1p2_en not specified\n");
+
+	pdata->dsi_sel_gpio =
+		of_get_named_gpio(np, "lt,dsi-sel-gpio", 0);
+	if (!gpio_is_valid(pdata->dsi_sel_gpio))
+		pr_debug("dsi_sel_gpio=%d\n", pdata->dsi_sel_gpio);
 
 	pdata->ac_mode = of_property_read_bool(np, "lt,ac-mode");
 	pr_debug("ac_mode=%d\n", pdata->ac_mode);
@@ -1284,7 +1300,25 @@ static int lt9611_gpio_configure(struct lt9611 *pdata, bool on)
 			}
 		}
 
+		if (gpio_is_valid(pdata->dsi_sel_gpio)) {
+			ret = gpio_request(pdata->dsi_sel_gpio,
+				"lt9611-dsi-sel-gpio");
+			if (ret) {
+				pr_err("lt9611 dsi sel gpio request failed\n");
+				goto writable_error;
+			}
+
+			ret = gpio_direction_input(pdata->dsi_sel_gpio);
+			if (ret) {
+				pr_err("lt9611 dsi sel gpio direction failed\n");
+				goto dsi_sel_error;
+			}
+		}
+
+
 	} else {
+		if (gpio_is_valid(pdata->dsi_sel_gpio))
+			gpio_free(pdata->dsi_sel_gpio);
 		gpio_free(pdata->irq_gpio);
 		if (gpio_is_valid(pdata->writable_gpio))
 			gpio_free(pdata->writable_gpio);
@@ -1301,7 +1335,9 @@ static int lt9611_gpio_configure(struct lt9611 *pdata, bool on)
 
 	return ret;
 
-
+dsi_sel_error:
+	if (gpio_is_valid(pdata->dsi_sel_gpio))
+		gpio_free(pdata->dsi_sel_gpio);
 writable_error:
 	if (gpio_is_valid(pdata->writable_gpio))
 		gpio_free(pdata->writable_gpio);
