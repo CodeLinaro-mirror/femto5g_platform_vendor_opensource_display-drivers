@@ -4220,13 +4220,15 @@ int dsi_ctrl_set_clock_source(struct dsi_ctrl *dsi_ctrl,
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
-	rc = dsi_clk_update_parent(source_clks, &dsi_ctrl->clk_info.rcg_clks);
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "Failed to update link clk parent, rc=%d\n",
-				rc);
-		(void)dsi_clk_update_parent(&dsi_ctrl->clk_info.pll_op_clks,
-					    &dsi_ctrl->clk_info.rcg_clks);
-		goto error;
+	if (dsi_ctrl->disp_op != MSM_DISP_OP_HFI) {
+		rc = dsi_clk_update_parent(source_clks, &dsi_ctrl->clk_info.rcg_clks);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "Failed to update link clk parent, rc=%d\n",
+					rc);
+			(void)dsi_clk_update_parent(&dsi_ctrl->clk_info.pll_op_clks,
+							&dsi_ctrl->clk_info.rcg_clks);
+			goto error;
+		}
 	}
 
 	dsi_ctrl->clk_info.pll_op_clks.byte_clk = source_clks->byte_clk;

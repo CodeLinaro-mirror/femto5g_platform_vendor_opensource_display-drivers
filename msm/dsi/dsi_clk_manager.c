@@ -49,6 +49,8 @@ struct dsi_clk_mngr {
 	u32 esync_clk_state;
 	u32 osc_clk_state;
 
+	enum msm_disp_op disp_op;
+
 	phy_configure_cb phy_config_cb;
 	pll_toggle_cb phy_pll_toggle_cb;
 	pre_clockoff_cb pre_clkoff_cb;
@@ -113,6 +115,9 @@ int dsi_clk_set_link_frequencies(void *client, struct link_clk_freq freq,
 	}
 
 	mngr = c->mngr;
+	if (IS_DISP_OP_HFI(mngr->disp_op))
+		return rc;
+
 	rc = _get_clk_mngr_index(mngr, index, &clk_mngr_index);
 	if (rc) {
 		DSI_ERR("failed to map control index %d\n", index);
@@ -171,6 +176,8 @@ int dsi_clk_set_pixel_clk_rate(void *client, u64 pixel_clk, u32 index)
 	struct dsi_clk_mngr *mngr;
 
 	mngr = c->mngr;
+	if (IS_DISP_OP_HFI(mngr->disp_op))
+		return rc;
 
 	if (mngr->phy_pll_bypass)
 		return 0;
@@ -200,6 +207,8 @@ int dsi_clk_set_byte_clk_rate(void *client, u64 byte_clk,
 	struct dsi_clk_mngr *mngr;
 
 	mngr = c->mngr;
+	if (IS_DISP_OP_HFI(mngr->disp_op))
+		return rc;
 
 	if (mngr->phy_pll_bypass)
 		return 0;
@@ -1382,6 +1391,9 @@ int dsi_clk_req_state(void *client, enum dsi_clk_type clk,
 
 	mngr = c->mngr;
 
+	if (IS_DISP_OP_HFI(mngr->disp_op))
+		return rc;
+
 	if (take_lock)
 		mutex_lock(&mngr->clk_mutex);
 
@@ -1536,6 +1548,10 @@ static int dsi_display_link_clk_force_update(void *client)
 	struct dsi_link_clks *l_clks;
 
 	mngr = c->mngr;
+
+	if (IS_DISP_OP_HFI(mngr->disp_op))
+		return rc;
+
 	mutex_lock(&mngr->clk_mutex);
 
 	l_clks = mngr->link_clks;
@@ -1640,6 +1656,9 @@ int dsi_display_clk_mngr_get_clk_rate(void *handle, u32 idx,
 		return -EINVAL;
 	}
 
+	if (IS_DISP_OP_HFI(mngr->disp_op))
+		return 0;
+
 	if (clk_type == DSI_ESYNC_CLK) {
 		*clk_rate = clk_get_rate(mngr->esync_clks[idx].clks.clk);
 	} else {
@@ -1734,6 +1753,10 @@ void dsi_display_clk_mngr_update_splash_status(void *clk_mgr, bool status)
 	}
 
 	mngr = (struct dsi_clk_mngr *)clk_mgr;
+
+	if (IS_DISP_OP_HFI(mngr->disp_op))
+		return;
+
 	mngr->is_cont_splash_enabled = status;
 }
 
@@ -1748,6 +1771,9 @@ int dsi_display_dump_clk_handle_state(void *client)
 	}
 
 	mngr = c->mngr;
+	if (IS_DISP_OP_HFI(mngr->disp_op))
+		return 0;
+
 	mutex_lock(&mngr->clk_mutex);
 	DSI_INFO("[%s]%s: Core (ref=%d, state=%d), Link (ref=%d, state=%d)\n",
 			mngr->name, c->name, c->core_refcount,

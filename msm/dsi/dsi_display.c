@@ -4855,7 +4855,8 @@ static int _dsi_display_dyn_update_clks(struct dsi_display *display,
 
 	enable_clk = &display->clock_info.pll_clks;
 
-	dsi_clk_prepare_enable(enable_clk);
+	if (display->ctrl->ctrl->disp_op != MSM_DISP_OP_HFI)
+		dsi_clk_prepare_enable(enable_clk);
 
 	dsi_display_phy_configure(display, false);
 
@@ -4918,7 +4919,8 @@ static int _dsi_display_dyn_update_clks(struct dsi_display *display,
 	if (rc)
 		DSI_ERR("could not switch back to src clks %d\n", rc);
 
-	dsi_clk_disable_unprepare(enable_clk);
+	if (display->ctrl->ctrl->disp_op != MSM_DISP_OP_HFI)
+		dsi_clk_disable_unprepare(enable_clk);
 
 	return rc;
 
