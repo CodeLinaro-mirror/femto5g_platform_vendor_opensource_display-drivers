@@ -20,6 +20,7 @@
 #include "sde_crtc.h"
 #include "sde_rm.h"
 #include "sde_vm.h"
+#include "sde_hw_catalog.h"
 #include <drm/drm_probe_helper.h>
 #include <linux/version.h>
 
@@ -3417,6 +3418,8 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	c_conn->base.polled = connector_poll;
 	c_conn->base.interlace_allowed = 0;
 	c_conn->base.doublescan_allowed = 0;
+
+	c_conn->capabilities = sde_kms->catalog->capabilities;
 
 	snprintf(c_conn->name,
 			SDE_CONNECTOR_NAME_SIZE,

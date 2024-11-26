@@ -1992,6 +1992,7 @@ struct sde_perf_cfg {
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
+ * @capabilities	display capabilities of the hardware
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -2118,6 +2119,8 @@ struct sde_mdss_cfg {
 	enum sde_ppb_size_option ppb_sz_program;
 	u32 ppb_buf_max_lines;
 	u32 ddr_list_index;
+
+	u32 capabilities;
 };
 
 struct sde_mdss_hw_cfg_handler {

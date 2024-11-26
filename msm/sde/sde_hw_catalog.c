@@ -19,6 +19,8 @@
 #include "sde_hw_uidle.h"
 #include "sde_connector.h"
 
+#include "msm_drv.h"
+
 /*************************************************************
  * MACRO DEFINITION
  *************************************************************/
@@ -5081,6 +5083,22 @@ static void _sde_hw_setup_uidle(struct sde_uidle_cfg *uidle_cfg)
 	}
 }
 
+static void _sde_get_hw_caps(struct drm_device *dev,
+			struct sde_mdss_cfg *sde_cfg)
+{
+	struct sde_kms *sde_kms;
+
+	if (!ddev_to_msm_kms(dev))
+		return;
+
+	sde_kms = to_sde_kms(ddev_to_msm_kms(dev));
+
+	if (IS_VOLCANO_TARGET(sde_cfg->hw_rev))
+		sde_cfg->capabilities = readl_relaxed(sde_kms->mmio + 0x68);
+	else
+		sde_cfg->capabilities = 0;
+}
+
 static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	int rc = 0, i;
@@ -5854,6 +5872,7 @@ static int sde_hw_ver_parse_dt(struct drm_device *dev, struct device_node *np,
 	else
 		cfg->hw_fence_rev = 0; /* disable hw-fences */
 
+	 _sde_get_hw_caps(dev, cfg);
 end:
 	kfree(prop_value);
 	return rc;
