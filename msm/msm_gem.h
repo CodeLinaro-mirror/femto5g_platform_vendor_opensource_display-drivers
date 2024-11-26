@@ -2,6 +2,8 @@
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
+ * Copyright (C) 2015-2018 Etnaviv Project
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
  * the Free Software Foundation.
@@ -137,6 +139,9 @@ struct msm_gem_object {
 	struct list_head iova_list;
 
 	struct msm_gem_address_space *aspace;
+
+	/* cache maintenance */
+ 	u32 last_cpu_prep_op;
 	bool in_active_list;
 	char name[32]; /* Identifier to print for the debugfs files */
 
