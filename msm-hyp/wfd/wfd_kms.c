@@ -1237,7 +1237,7 @@ static int wfd_kms_color_buf_init(struct device *device,
 				goto fail;
 			}
 			color_buf[k] = (i32)mem.shmem_id;
-			pr_debug("Export color buf passed for %d\n", mem.shmem_id);
+			pr_debug("Export color buf passed for %llu\n", mem.shmem_id);
 
 			/* fill the color buf struct */
 			pr_debug("Filling data at location %d\n", color_buf_idx);
