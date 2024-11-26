@@ -47,6 +47,16 @@ else
 endif
 endif
 
+ifeq ($(CONFIG_ARCH_CANOE), y)
+ifeq ($(CONFIG_ARCH_QTI_VM), y)
+    include $(DISPLAY_ROOT)/config/gki_canoedisptui.conf
+    LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_canoedisptuiconf.h
+else
+	include $(DISPLAY_ROOT)/config/gki_canoedisp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_canoedispconf.h
+endif
+endif
+
 ifeq ($(CONFIG_ARCH_MONACO), y)
 	include $(DISPLAY_ROOT)/config/gki_monacodisp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_monacodispconf.h
