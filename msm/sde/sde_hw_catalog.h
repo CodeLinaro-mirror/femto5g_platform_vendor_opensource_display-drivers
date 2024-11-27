@@ -60,6 +60,7 @@
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
 #define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
+#define SDE_HW_VER_C40	SDE_HW_VER(12, 4, 0) /* kera */
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
@@ -95,6 +96,7 @@
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
 #define IS_TUNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C30)
+#define IS_KERA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C40)
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 
 #define SDE_HW_BLK_NAME_LEN	16
@@ -105,6 +107,7 @@
 #define MAX_IMG_WIDTH 0x3fff
 #define MAX_IMG_HEIGHT 0x3fff
 
+#define CRTC_SINGLE_MIXER_ONLY	1
 #define CRTC_DUAL_MIXERS_ONLY	2
 #define MAX_MIXERS_PER_CRTC	8
 #define MAX_MIXERS_PER_LAYOUT	2
@@ -130,7 +133,7 @@
 #define SDE_CTL_CFG_VERSION_1_0_0       0x100
 #define MAX_INTF_PER_CTL_V1                 2
 #define MAX_DSC_PER_CTL_V1                  4
-#define MAX_CWB_PER_CTL_V1                  2
+#define MAX_CWB_PER_CTL_V1                  4
 #define MAX_MERGE_3D_PER_CTL_V1             2
 #define MAX_WB_PER_CTL_V1                   1
 #define MAX_CDM_PER_CTL_V1                  1
@@ -717,6 +720,7 @@ enum {
  * @SDE_INTF_NUM_AVR_STEP       INTF block has NUM_AVR_STEP support
  * @SDE_INTF_PANIC_CTRL         INTF block has panic in vid mode & panic/wakup control in cmd mode
  * @SDE_INTF_PERIPHERAL_FLUSH   INTF block has peripheral flush support
+ * @SDE_INTF_PROG_DYNREF        INTF block has programmable dynamic refresh support
  * @SDE_INTF_MAX
  */
 enum {
@@ -742,6 +746,7 @@ enum {
 	SDE_INTF_NUM_AVR_STEP,
 	SDE_INTF_PANIC_CTRL,
 	SDE_INTF_PERIPHERAL_FLUSH,
+	SDE_INTF_PROG_DYNREF,
 	SDE_INTF_MAX
 };
 
@@ -869,6 +874,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_TOUCH_WAKEUP   Early wakeup with touch supported
  * @SDE_FEATURE_SRC_SPLIT      Source split supported
  * @SDE_FEATURE_VIG_P010       P010 ViG pipe format supported
+ * @SDE_FEATURE_VIG_P210       P210 ViG pipe format supported
  * @SDE_FEATURE_FP16           FP16 pipe format supported
  * @SDE_FEATURE_HDR            High Dynamic Range supported
  * @SDE_FEATURE_HDR_PLUS       HDR10+ supported
@@ -921,6 +927,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_TOUCH_WAKEUP,
 	SDE_FEATURE_SRC_SPLIT,
 	SDE_FEATURE_VIG_P010,
+	SDE_FEATURE_VIG_P210,
 	SDE_FEATURE_FP16,
 	SDE_FEATURE_HDR,
 	SDE_FEATURE_HDR_PLUS,
@@ -953,6 +960,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_UBWC_LOSSY,
 	SDE_FEATURE_DS_PU_SUPPORTED,
 	SDE_FEATURE_MIXER_OP_V1,
+	SDE_FEATURE_SSIP_CLK,
 	SDE_FEATURE_MAX
 };
 
@@ -2287,6 +2295,11 @@ struct sde_mdss_hw_cfg_handler {
 	u32 major;
 	u32 minor;
 	struct sde_mdss_cfg* (*cfg_init)(u32 data);
+};
+
+struct sde_mdss_hw_caps {
+	u32 target_rev;
+	void (*sde_get_target_hw_caps)(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev);
 };
 
 /*

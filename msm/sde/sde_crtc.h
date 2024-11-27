@@ -381,6 +381,7 @@ enum sde_crtc_hw_fence_flags {
  * @framedone_event_notify_enabled: flag to indicate if framedone notify is enabled or not
  * @mdnie_art_event_notify_enabled: flag to indicate if art done notify is enabled or not
  * @copr_status_event_notify_enabled: flag to indicate if copr status notify is enabled or not
+ * @mdnie_ipc_disabled: flag to indicate if mdnie ipc is disabled or not
  * @aiqe_top_level: aiqe top level mutex and mask
  * @ai_scaler_res: struct stores ai scaler enable flag and resolution
  * @skip_blend_planes: array holding skip blend plane list
@@ -502,6 +503,7 @@ struct sde_crtc {
 	bool framedone_event_notify_enabled;
 	bool mdnie_art_event_notify_enabled;
 	bool copr_status_event_notify_enabled;
+	bool mdnie_ipc_disabled;
 
 	struct sde_aiqe_top_level aiqe_top_level;
 	struct sde_io_res ai_scaler_res;
@@ -1273,4 +1275,18 @@ bool sde_crtc_state_in_lb_mode(struct drm_crtc_state *state);
  */
 bool sde_crtc_in_lb_transition(struct drm_crtc_state *old_state,
 			struct drm_crtc_state *new_state);
+
+/**
+ * sde_crtc_is_power_on_frame - checks whether the current commit is a power on commit
+ * @crtc: pointer to crtc
+ */
+static inline bool sde_crtc_is_power_on_frame(struct drm_crtc *crtc)
+{
+	if (!crtc || !crtc->state)
+		return false;
+
+	SDE_EVT32(crtc->state->active_changed, crtc->state->active);
+	return crtc->state->active_changed && crtc->state->active;
+}
+
 #endif /* _SDE_CRTC_H_ */

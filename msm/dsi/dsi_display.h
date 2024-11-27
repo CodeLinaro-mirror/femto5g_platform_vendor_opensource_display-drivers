@@ -311,7 +311,12 @@ struct dsi_display {
 };
 
 int dsi_display_dev_probe(struct platform_device *pdev);
+
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+void dsi_display_dev_remove(struct platform_device *pdev);
+#else
 int dsi_display_dev_remove(struct platform_device *pdev);
+#endif
 
 /**
  * dsi_display_get_num_of_displays() - returns number of display devices
@@ -865,6 +870,15 @@ bool dsi_display_mode_match(const struct dsi_display_mode *mode1,
  * Return: error code
  */
 int dsi_display_update_transfer_time(void *display, u32 transfer_time);
+
+/**
+ * dsi_display_avoid_cmd_transfer() - Avoid DSI command transfer
+ * @display:     handle to display
+ * @avoid_transfer: true to avoid transfer, false to allow transfer
+ *
+ * Return: error code
+ */
+int dsi_display_avoid_cmd_transfer(void *display, bool avoid_transfer);
 
 /**
  * dsi_display_get_panel_scan_line() - get panel scan line

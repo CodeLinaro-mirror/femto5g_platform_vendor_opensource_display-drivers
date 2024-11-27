@@ -284,6 +284,7 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_STICKY_STILL_DISABLE       Still indiaction disable command
  * @DSI_CMD_SET_STICKY_ON_FLY:             Still indication enable for only one frame
  * @DSI_CMD_SET_TRIGGER_SELF_REFRESH:      Trigger self refresh from Gram
+ * @DSI_CMD_SET_FPS_SWITCH:		   FPS Switch
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -324,6 +325,7 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_STICKY_STILL_DISABLE,
 	DSI_CMD_SET_STICKY_ON_FLY,
 	DSI_CMD_SET_TRIGGER_SELF_REFRESH,
+	DSI_CMD_SET_FPS_SWITCH,
 	DSI_CMD_SET_MAX
 };
 
@@ -799,6 +801,9 @@ enum dsi_error_status {
 struct dsi_dyn_clk_delay {
 	u32 pipe_delay;
 	u32 pipe_delay2;
+	u32 pipe_delay3;
+	u32 pll_reg_flush_delay;
+	u32 pll_reg_post_flush_delay;
 	u32 pll_delay;
 };
 
@@ -808,6 +813,7 @@ enum dsi_dyn_clk_control_bits {
 	DYN_REFRESH_SYNC_MODE,
 	DYN_REFRESH_SW_TRIGGER,
 	DYN_REFRESH_SWI_CTRL,
+	DYN_REFRESH_PROG_DR,
 };
 
 /* convert dsi pixel format into bits per pixel */

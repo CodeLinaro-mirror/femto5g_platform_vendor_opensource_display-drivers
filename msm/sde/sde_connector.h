@@ -480,6 +480,14 @@ struct sde_connector_ops {
 	 * Returns: True if given command is defined
 	 */
 	bool (*check_cmd_defined)(void *display, enum dsi_cmd_set_type type);
+
+	/*
+	 * avoid_cmd_transfer -  avoid DSI command transfer
+	 * @display: Pointer to private display structure
+	 * @avoid_transfer: true to avoid transfer, false to allow transfer
+	 * Returns: error code
+	 */
+	int (*avoid_cmd_transfer)(void *display, bool avoid_transfer);
 };
 
 /**
@@ -572,8 +580,10 @@ struct sde_misr_sign {
  * struct sde_backlight_vrr_update - smooth dimming backlight structure for vrr
  * @new_brightness : New brightness value
  * @prev_brightness : Previous brightness value
+ * @curr_brightness : Current brightness value
  * @new_bl_lvl : New backlight level value
  * @prev_bl_lvl : Previous backlight level value
+ * @curr_bl_lvl : Current backlight level value
  * @bl_frame_idx : Index value of dimming frame
  * @bl_increment_in_progress : Smooth dimming in progress
  * @prev_bl_time_ns : Time in ns when previous BL was sent
@@ -582,8 +592,10 @@ struct sde_misr_sign {
 struct sde_backlight_vrr_update {
 	int new_brightness;
 	int prev_brightness;
+	int curr_brightness;
 	u32 new_bl_lvl;
 	u32 prev_bl_lvl;
+	u32 curr_bl_lvl;
 	u32 bl_frame_idx;
 	bool bl_increment_in_progress;
 	u64 prev_bl_time_ns;
@@ -1179,6 +1191,12 @@ int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector);
  * @connector: pointer to drm connector
  */
 int sde_connector_trigger_cmd_backlight_update(struct drm_connector *connector);
+
+/**
+ * sde_connector_trigger_cmd_backlight_sr - send backlight self refresh command
+ * @connector: pointer to drm connector
+ */
+int sde_connector_trigger_cmd_backlight_sr(struct drm_connector *connector);
 
 /**
  * sde_connector_complete_qsync_commit - callback signalling completion

@@ -7,6 +7,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
 #include <linux/dma-buf.h>
+#include <linux/vmalloc.h>
 #include <linux/string.h>
 #include <drm/msm_drm_pp.h>
 #include <drm/msm_drm_aiqe.h>
@@ -1740,6 +1741,7 @@ static const int dspp_feature_to_sub_blk_tbl[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = SDE_DSPP_DEMURA,
 	[SDE_CP_CRTC_DSPP_MDNIE] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_MDNIE_ART] = SDE_DSPP_AIQE,
+	[SDE_CP_CRTC_DSPP_MDNIE_IPC] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_COPR] = SDE_DSPP_AIQE,
@@ -3750,7 +3752,9 @@ static void _sde_cp_ad_set_prop(struct sde_crtc *sde_crtc,
 
 void sde_cp_crtc_pre_ipc(struct drm_crtc *drm_crtc)
 {
-	struct sde_crtc *sde_crtc;
+	struct sde_kms *kms = NULL;
+	struct sde_crtc *sde_crtc = NULL;
+	struct sde_mdss_cfg *catalog = NULL;
 	struct msm_drm_private *dev_private = NULL;
 	bool aiqe_enable = false;
 
@@ -3773,16 +3777,29 @@ void sde_cp_crtc_pre_ipc(struct drm_crtc *drm_crtc)
 		aiqe_is_client_registered(FEATURE_MDNIE, &sde_crtc->aiqe_top_level) ||
 		aiqe_is_client_registered(FEATURE_SSRC, &sde_crtc->aiqe_top_level);
 
+	kms = get_kms(drm_crtc);
+	if (!kms || !kms->catalog) {
+		DRM_ERROR("invalid sde kms %pK catalog %pK sde_crtc %pK\n",
+		 kms, ((kms) ? kms->catalog : NULL), sde_crtc);
+		return;
+	}
+	catalog = kms->catalog;
+
 	SDE_EVT32(aiqe_enable);
 	if (aiqe_enable) {
 		dev_private = drm_crtc->dev->dev_private;
-		sde_power_set_clk_retention(&dev_private->phandle, "lut_clk", true);
+		if (test_bit(SDE_FEATURE_SSIP_CLK, catalog->features))
+			sde_power_set_clk_retention(&dev_private->phandle, "ssip_clk", true);
+		else
+			sde_power_set_clk_retention(&dev_private->phandle, "lut_clk", true);
 	}
 }
 
 void sde_cp_crtc_post_ipc(struct drm_crtc *drm_crtc)
 {
-	struct sde_crtc *sde_crtc;
+	struct sde_kms *kms = NULL;
+	struct sde_crtc *sde_crtc = NULL;
+	struct sde_mdss_cfg *catalog = NULL;
 	struct msm_drm_private *dev_private = NULL;
 	bool aiqe_enable = false;
 
@@ -3806,10 +3823,21 @@ void sde_cp_crtc_post_ipc(struct drm_crtc *drm_crtc)
 		aiqe_is_client_registered(FEATURE_MDNIE, &sde_crtc->aiqe_top_level) ||
 		aiqe_is_client_registered(FEATURE_SSRC, &sde_crtc->aiqe_top_level);
 
+	kms = get_kms(drm_crtc);
+	if (!kms || !kms->catalog) {
+		DRM_ERROR("invalid sde kms %pK catalog %pK sde_crtc %pK\n",
+		 kms, ((kms) ? kms->catalog : NULL), sde_crtc);
+		return;
+	}
+	catalog = kms->catalog;
+
 	SDE_EVT32(aiqe_enable);
 	if (aiqe_enable) {
 		dev_private = drm_crtc->dev->dev_private;
-		sde_power_set_clk_retention(&dev_private->phandle, "lut_clk", false);
+		if (test_bit(SDE_FEATURE_SSIP_CLK, catalog->features))
+			sde_power_set_clk_retention(&dev_private->phandle, "ssip_clk", false);
+		else
+			sde_power_set_clk_retention(&dev_private->phandle, "lut_clk", false);
 	}
 }
 
@@ -4868,6 +4896,13 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 		break;
 	case SDE_CP_CRTC_DSPP_MDNIE_ART:
 		feature = FEATURE_MDNIE_ART;
+		break;
+	case SDE_CP_CRTC_DSPP_MDNIE_IPC:
+		if (prop_val)
+			sde_crtc->mdnie_ipc_disabled = true;
+		else
+			sde_crtc->mdnie_ipc_disabled = false;
+		SDE_EVT32(prop_node->feature, sde_crtc->mdnie_ipc_disabled);
 		break;
 	case SDE_CP_CRTC_DSPP_COPR:
 		feature = FEATURE_COPR;

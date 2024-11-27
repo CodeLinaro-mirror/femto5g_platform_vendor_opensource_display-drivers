@@ -96,6 +96,7 @@ struct dsi_qsync_capabilities {
 	u32 qsync_min_fps;
 	u32 *qsync_min_fps_list;
 	int qsync_min_fps_list_len;
+	bool hwfence_sw_override_always;
 };
 
 struct dsi_avr_capabilities {
@@ -330,6 +331,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 				bool trusted_vm_env);
 
 void dsi_panel_put(struct dsi_panel *panel);
+
+void dsi_panel_get_fps_switch_cmd(struct dsi_panel *panel,
+			struct dsi_display_mode *mode, u32 refresh_rate);
 
 int dsi_panel_drv_init(struct dsi_panel *panel, struct mipi_dsi_host *host);
 

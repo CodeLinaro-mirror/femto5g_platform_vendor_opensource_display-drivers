@@ -20,6 +20,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 #include <linux/sort.h>
 #include <linux/debugfs.h>
+#include <linux/vmalloc.h>
 #include <linux/ktime.h>
 #include <drm/sde_drm.h>
 #include <drm/drm_mode.h>
@@ -394,7 +395,13 @@ void sde_crtc_get_mixer_resolution(struct drm_crtc *crtc, struct drm_crtc_state 
 	sde_crtc_get_ai_scaler_io_res(crtc_state);
 	num_mixers = sde_crtc_get_num_mixers(cstate, sde_crtc);
 
-	if (cstate->num_ds_enabled) {
+	/*
+	 * When cac loopback is enabled, DS block is enabled in the first pass.
+	 * Since we are returning the width and height of the mixers in the
+	 * primary path here, add necessary checks to make sure that correct
+	 * mixer params are returned.
+	 */
+	if (cstate->num_ds_enabled && !cstate->is_loopback_mode) {
 		*width = cstate->ds_cfg[0].lm_width;
 		*height = cstate->ds_cfg[0].lm_height;
 	} else if (sde_crtc->ai_scaler_res.enabled) {
@@ -437,9 +444,54 @@ int sde_crtc_get_lb_layout_split(struct drm_crtc *crtc, struct drm_crtc_state *c
 	return layout_split;
 }
 
+void sde_crtc_get_loopback_resolution(struct sde_crtc_state *cstate,
+			struct sde_crtc *sde_crtc, u32 *width, u32 *height)
+{
+	struct sde_hw_ds_cfg *cfg;
+	u32 lb_width = 0, lb_height = 0;
+	int i;
+
+	*width = 0;
+	*height = 0;
+
+	if (!cstate->is_loopback_mode)
+		return;
+
+	/*
+	 * When cac loopback and DS are enabled, DS has to be enabled in
+	 * the first pass. LM and DS params will have the overfetch value
+	 * needed by the pass2 pipes. So in those cases, add up the lm
+	 * width of each block to get the complete crtc width for cac +
+	 * DS usecase. If DS is disabled, the crtc width is decided by
+	 * the cac mixer roi of each LM which is set based on the sspp
+	 * out params of the pipes staged on that corresponding LM.
+	 */
+	if (cstate->num_ds_enabled) {
+		for (i = 0; i < cstate->num_ds_enabled; i++) {
+			cfg = &cstate->ds_cfg[i];
+			if (!(cfg->flags & SDE_DRM_DESTSCALER_ENABLE))
+				continue;
+
+			lb_width += cstate->ds_cfg[i].lm_width;
+			lb_height = max(lb_height,
+					cstate->ds_cfg[i].lm_height);
+		}
+	} else {
+		for (i = 0; i < sde_crtc->num_mixers; i++) {
+			lb_width += cstate->cac_mixer_roi[i].src_w;
+			lb_height = max(lb_height,
+					cstate->cac_mixer_roi[i].src_h);
+		}
+	}
+
+	*width = lb_width;
+	*height = lb_height;
+}
+
 void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state,
 		struct drm_display_mode *mode, u32 *width, u32 *height)
 {
+	u32 num_ds = 0;
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
@@ -457,8 +509,19 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	virt_conn_state = _sde_crtc_get_virt_conn_state(crtc, crtc_state);
 	virt_cstate = virt_conn_state ? to_sde_connector_state(virt_conn_state) : NULL;
 
-	if (cstate->num_ds_enabled) {
-		*width = cstate->ds_cfg[0].lm_width * cstate->num_ds_enabled;
+	/*
+	 * When cac loopback is enabled, DS block is enabled in the first pass.
+	 * Since we are returning the crtc width and height of primary path
+	 * here, add proper checks to make sure that correct value is returned.
+	 */
+	if ((cstate->num_ds_enabled || (cstate->ds_cfg[0].flags & SDE_DRM_DESTSCALER_ENABLE)) &&
+			!cstate->is_loopback_mode) {
+		/*
+		 * num_ds_enabled can be 0 when dest scalar is enabled if mixers aren't allocated.
+		 * Consider total destination scalar blocks used in such cases.
+		 */
+		num_ds = cstate->num_ds_enabled ? cstate->num_ds_enabled : cstate->num_ds;
+		*width = cstate->ds_cfg[0].lm_width * num_ds;
 		*height = cstate->ds_cfg[0].lm_height;
 	} else if (sde_crtc->ai_scaler_res.enabled) {
 		*width = sde_crtc->ai_scaler_res.src_w;
@@ -1675,6 +1738,7 @@ static int _sde_crtc_check_rois(struct drm_crtc *crtc,
 
 	/* check cumulative mixer w/h is equal full crtc w/h */
 	if (!sde_crtc_state->is_loopback_mode &&
+		!sde_crtc_state->in_loopback_transition &&
 		num_mixers && (((mixer_width * num_mixers) != crtc_width)
 				|| (mixer_height != crtc_height))) {
 		SDE_ERROR("%s: invalid w/h crtc:%d,%d, mixer:%d,%d, num_mixers:%d\n",
@@ -2920,8 +2984,15 @@ static int _sde_validate_hw_resources(struct sde_crtc *sde_crtc,
 		return -EINVAL;
 	}
 
+	/*
+	 * During cac loopback usecase, the number of mixers won't be equal
+	 * to number of DS blocks as DS blocks are always enabled in the
+	 * first pass only. Avoid failing check in such cases.
+	 */
 	for (i = 0; i < num_mixers; i++) {
-		if (!cstate->is_loopback_mode && (!sde_crtc->mixers[i].hw_lm ||
+		if (!cstate->is_loopback_mode &&
+			!cstate->in_loopback_transition &&
+			(!sde_crtc->mixers[i].hw_lm ||
 			!sde_crtc->mixers[i].hw_ctl ||
 			!sde_crtc->mixers[i].hw_ds)) {
 			SDE_ERROR("%s:insufficient resources for mixer(%d)\n",
@@ -3934,10 +4005,12 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 }
 
 static int _sde_crtc_check_dest_scaler_lm(struct drm_crtc *crtc,
-	struct drm_display_mode *mode, struct sde_hw_ds_cfg *cfg, u32 hdisplay,
+	struct sde_crtc_state *cstate, struct drm_display_mode *mode,
+	struct sde_hw_ds_cfg *cfg, u32 hdisplay,
 	struct sde_hw_ds_cfg *prev_cfg)
 {
-	if (cfg->lm_width > hdisplay || cfg->lm_height > mode->vdisplay
+	if ((!cstate->in_loopback_transition &&
+		(cfg->lm_width > hdisplay || cfg->lm_height > mode->vdisplay))
 		|| !cfg->lm_width || !cfg->lm_height) {
 		SDE_ERROR("crtc%d: lm size[%d,%d] display [%d,%d]\n",
 			crtc->base.id, cfg->lm_width, cfg->lm_height,
@@ -3972,6 +4045,7 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc;
 	struct sde_rect conn_roi = {0};
 	struct sde_rect crtc_roi = {0};
+	bool is_cac_lb = false;
 
 	sde_crtc = to_sde_crtc(crtc);
 	crtc_state = &cstate->base;
@@ -3987,6 +4061,8 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 	if (cstate->user_roi_list.num_rects)
 		sde_kms_rect_merge_rectangles(&cstate->user_roi_list, &crtc_roi);
 
+	is_cac_lb = cstate->is_loopback_mode || cstate->in_loopback_transition;
+
 	if (cfg->flags & SDE_DRM_DESTSCALER_SCALE_UPDATE ||
 		cfg->flags & SDE_DRM_DESTSCALER_ENHANCER_UPDATE) {
 		bool pu_enable = cfg->flags & SDE_DRM_DESTSCALER_PU_ENABLE;
@@ -3998,18 +4074,23 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 		 * dst width and height must match display resolution.
 		 * If there is partial update :
 		 * Only Full width is allowed.
+		 *
+		 * When cac loopback + DS is used, dst width of each DS
+		 * will have the overfetch value needed for the second
+		 * pass and each block can have unequal dst width. Avoid
+		 * failing check in this case.
 		 */
 		if (cfg->scl3_cfg.src_width[0] > max_in_width ||
 			cfg->scl3_cfg.dst_width > max_out_width ||
 			!cfg->scl3_cfg.src_width[0] ||
 			!cfg->scl3_cfg.dst_width ||
 			(pu_enable && cfg->scl3_cfg.dst_width != hdisplay) ||
-			(pu_enable && conn_roi.h != 0 && cfg->scl3_cfg.dst_height != conn_roi.h) ||
-			(pu_enable && crtc_roi.h != 0 && cfg->scl3_cfg.src_height[0]
-					!= crtc_roi.h) ||
-			(!pu_enable &&
-			(cfg->scl3_cfg.dst_width != hdisplay ||
-			cfg->scl3_cfg.dst_height != mode->vdisplay))) {
+			(pu_enable && conn_roi.h != 0 &&
+					cfg->scl3_cfg.dst_height != conn_roi.h) ||
+			(pu_enable && crtc_roi.h != 0 &&
+					cfg->scl3_cfg.src_height[0] != crtc_roi.h) ||
+			(!(pu_enable || is_cac_lb) && (cfg->scl3_cfg.dst_width != hdisplay ||
+				cfg->scl3_cfg.dst_height != mode->vdisplay))) {
 			SDE_ERROR("crtc%d: ", crtc->base.id);
 			SDE_ERROR("src_wxh(%dx%d) dst(%dx%d) display(%dx%d)",
 				cfg->scl3_cfg.src_width[0],
@@ -4085,7 +4166,7 @@ static int _sde_crtc_check_dest_scaler_validate_ds(struct drm_crtc *crtc,
 		}
 
 		/* Check LM width and height */
-		ret = _sde_crtc_check_dest_scaler_lm(crtc, mode, cfg, hdisplay,
+		ret = _sde_crtc_check_dest_scaler_lm(crtc, cstate, mode, cfg, hdisplay,
 				prev_cfg);
 		if (ret)
 			return ret;
@@ -4198,7 +4279,8 @@ static int _sde_crtc_check_dest_scaler_data(struct drm_crtc *crtc,
 	 */
 	if (cstate->num_ds > kms->catalog->ds_count ||
 		((cstate->num_ds != num_mixers) &&
-		 (cstate->ds_cfg[0].flags & SDE_DRM_DESTSCALER_ENABLE))) {
+		 ((cstate->ds_cfg[0].flags & SDE_DRM_DESTSCALER_ENABLE) ||
+		  !cstate->in_loopback_transition))) {
 		SDE_ERROR("crtc%d: num_ds(%d), hw_ds_cnt(%d) flags(%d)\n",
 			crtc->base.id, cstate->num_ds, kms->catalog->ds_count,
 			cstate->ds_cfg[0].flags);
@@ -4487,7 +4569,7 @@ static inline bool _is_vid_power_on_frame(struct drm_crtc *crtc)
 	bool is_vid_mode = sde_encoder_check_curr_mode(sde_crtc->mixers[0].encoder,
 		MSM_DISPLAY_VIDEO_MODE);
 
-	return  is_vid_mode && crtc->state->active_changed && crtc->state->active;
+	return  is_vid_mode && sde_crtc_is_power_on_frame(crtc);
 }
 
 /**
@@ -4681,12 +4763,13 @@ static void _sde_crtc_setup_mixers(struct drm_crtc *crtc)
 	}
 
 	mutex_unlock(&sde_crtc->crtc_lock);
-	_sde_crtc_check_dest_scaler_data(crtc, crtc->state);
 	cstate = to_sde_crtc_state(crtc->state);
 
 	if (cstate->is_loopback_mode)
 		sort(sde_crtc->mixers, sde_crtc->num_mixers,
 			sizeof(sde_crtc->mixers[0]), crtc_cmp, NULL);
+
+	_sde_crtc_check_dest_scaler_data(crtc, crtc->state);
 }
 
 static void _sde_crtc_setup_is_ppsplit(struct drm_crtc_state *state)
@@ -6434,7 +6517,7 @@ static int _sde_crtc_check_get_pstates(struct drm_crtc *crtc,
 	int rc = 0, multirect_count = 0, i, crtc_width, crtc_height;
 	int inc_sde_stage = 0;
 	struct sde_kms *kms;
-	u32 blend_type;
+	u32 blend_type, lb_width = 0, lb_height = 0;
 
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(state);
@@ -6448,6 +6531,7 @@ static int _sde_crtc_check_get_pstates(struct drm_crtc *crtc,
 	memset(pipe_staged, 0, sizeof(pipe_staged));
 
 	sde_crtc_get_resolution(crtc, state, mode, &crtc_width, &crtc_height);
+	sde_crtc_get_loopback_resolution(cstate, sde_crtc, &lb_width, &lb_height);
 
 	drm_atomic_crtc_state_for_each_plane_state(plane, pstate, state) {
 		if (IS_ERR_OR_NULL(pstate)) {
@@ -6505,6 +6589,13 @@ static int _sde_crtc_check_get_pstates(struct drm_crtc *crtc,
 						pstate->crtc_x, pstate->crtc_w, mode->hdisplay);
 				return -E2BIG;
 			}
+		} else if ((sde_plane_get_property(pstates[*cnt].sde_pstate,
+				PLANE_PROP_CAC_TYPE) == SDE_CAC_LOOPBACK_UNPACK) &&
+			(CHECK_LAYER_BOUNDS(pstate->crtc_y, pstate->crtc_h, lb_height) ||
+			CHECK_LAYER_BOUNDS(pstate->crtc_x, pstate->crtc_w, lb_width))) {
+			SDE_ERROR("invalid lb dest - y:%d h:%d crtc_h:%d x:%d w:%d crtc_w:%d\n",
+				pstate->crtc_y, pstate->crtc_h, lb_height,
+				pstate->crtc_x, pstate->crtc_w, lb_width);
 		} else if (CHECK_LAYER_BOUNDS(pstate->crtc_y, pstate->crtc_h, crtc_height) ||
 				CHECK_LAYER_BOUNDS(pstate->crtc_x, pstate->crtc_w, crtc_width)) {
 			SDE_ERROR("invalid dest - y:%d h:%d crtc_h:%d x:%d w:%d crtc_w:%d\n",
