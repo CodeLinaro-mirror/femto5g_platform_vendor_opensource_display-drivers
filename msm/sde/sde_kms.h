@@ -270,10 +270,11 @@ struct sde_kms {
 	struct dentry *debugfs_vbif;
 
 	/* io/register spaces: */
-	void __iomem *mmio, *vbif[VBIF_MAX], *reg_dma, *sid, *sw_fuse;
-	unsigned long mmio_len, vbif_len[VBIF_MAX], reg_dma_len, sid_len;
+	void __iomem *mmio, *vbif[VBIF_MAX], *reg_dma, *sid, *sw_fuse, *va_tran;
+	unsigned long mmio_len, vbif_len[VBIF_MAX], reg_dma_len, sid_len, va_tran_len;
 	unsigned long sw_fuse_len;
 	unsigned long reg_dma_off;
+	unsigned long va_tran_off;
 
 	struct regulator *vdd;
 	struct regulator *mmagic;

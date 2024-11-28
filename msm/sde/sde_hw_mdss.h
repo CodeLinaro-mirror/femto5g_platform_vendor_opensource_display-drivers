@@ -480,6 +480,11 @@ enum sde_roi_crc_roi {
 	ROI_CRC_ROI_MAX
 };
 
+enum sde_vatran {
+	VA_TRAN_0 = 1,
+	VA_TRAN_MAX
+};
+
 /**
  * SDE HW,Component order color map
  */
@@ -728,6 +733,7 @@ struct sde_mdss_color {
 #define SDE_DBG_MASK_QDSS     (1 << 16)
 #define SDE_DBG_MASK_VDC      (1 << 17)
 #define SDE_DBG_MASK_DNSC_BLUR  (1 << 18)
+#define SDE_DBG_MASK_VATRAN   (1 << 19)
 
 /**
  * struct sde_cp_skip_blend_plane: skip blend plane payload

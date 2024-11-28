@@ -9,6 +9,7 @@
 #include "sde_hw_mdss.h"
 #include "sde_hw_ctl.h"
 #include "sde_hw_reg_dma_v1.h"
+#include "sde_hw_vatran.h"
 #include "msm_drv.h"
 #include "msm_mmu.h"
 #include "sde_dbg.h"
@@ -429,6 +430,7 @@ void sde_reg_write_reg_dma(struct sde_hw_blk_reg_map *c,
 		return;
 	}
 	struct sde_reg_dma_buffer *dma_buf = vq_bufs[REG_DMA_MDSS_DB];
+	struct sde_hw_vatran *vatran;
 	u32 map_addr = (u32)-1;
 	u32 *loc = NULL;
 
@@ -442,7 +444,15 @@ void sde_reg_write_reg_dma(struct sde_hw_blk_reg_map *c,
 	if (c->log_mask & sde_hw_util_log_mask)
 		SDE_DEBUG_DRIVER("REG_WRITE [%s:0x%X] <= 0x%X\n",
 				name, c->blk_off + reg_off, val);
-	map_addr = c->blk_off + reg_off;
+
+	vatran = sde_hw_get_vatran(dma_buf->dpu_idx);
+	if (vatran)
+		map_addr = vatran->ops.remap(vatran, dma_buf->vq_idx, c, reg_off);
+	if (map_addr != (u32)-1)
+		/* Register remapped to VA_TRAN space */
+		c = &vatran->hw;
+	else
+		map_addr = c->blk_off + reg_off;
 
 	if ((dma_buf->next_op_allowed & DECODE_SEL_OP) &&
 		!(dma_buf->ops_completed & DECODE_SEL_OP))
@@ -451,7 +461,7 @@ void sde_reg_write_reg_dma(struct sde_hw_blk_reg_map *c,
 	loc =  (u32 *)((u8 *)dma_buf->vaddr +
 			dma_buf->index);
 	loc[0] = SINGLE_REG_WRITE_OPCODE;
-	loc[0] |= ((c->blk_off + reg_off) & MAX_RELATIVE_OFF);
+	loc[0] |= (map_addr & MAX_RELATIVE_OFF);
 	loc[0] |= ABSOLUTE_RANGE;
 	dma_buf->abs_write_cnt++;
 
@@ -660,6 +670,7 @@ void sde_reg_modify_reg_dma(struct sde_hw_blk_reg_map *c,
 		return;
 	}
 	struct sde_reg_dma_buffer *dma_buf = vq_bufs[REG_DMA_MDSS_DB];
+	struct sde_hw_vatran *vatran;
 	u32 map_addr = (u32)-1;
 	u32 *loc = NULL;
 
@@ -673,7 +684,15 @@ void sde_reg_modify_reg_dma(struct sde_hw_blk_reg_map *c,
 	if (c->log_mask & sde_hw_util_log_mask)
 		SDE_DEBUG_DRIVER("REG_WRITE [%s:0x%X] <= (0x%X mask 0x%X)\n",
 				name, c->blk_off + reg_off, val, mask);
-	map_addr = c->blk_off + reg_off;
+
+	vatran = sde_hw_get_vatran(dma_buf->dpu_idx);
+	if (vatran)
+		map_addr = vatran->ops.remap(vatran, dma_buf->vq_idx, c, reg_off);
+	if (map_addr != (u32)-1)
+		/* Register remapped to VA_TRAN space */
+		c = &vatran->hw;
+	else
+		map_addr = c->blk_off + reg_off;
 
 	if ((dma_buf->next_op_allowed & DECODE_SEL_OP) &&
 		!(dma_buf->ops_completed & DECODE_SEL_OP))
@@ -1391,11 +1410,13 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 	SDE_DEBUG("===============================\n");
 }
 
-inline u32 reg_dma_readback(u32 addr, struct sde_hw_ctl *ctl)
+inline u32 reg_dma_readback(u32 addr, struct sde_hw_ctl *ctl, struct sde_hw_vatran *vatran)
 {
 	struct sde_hw_blk_reg_map hw;
 
-	if (addr >= reg_dma[ctl->dpu_idx]->caps->base_off) {
+	if (addr >= vatran->caps->base_off) {
+		return SDE_REG_READ(&vatran->hw, addr - vatran->caps->base_off);
+	} else if (addr >= reg_dma[ctl->dpu_idx]->caps->base_off) {
 		SET_UP_REG_DMA_VQ_REG(hw, reg_dma[ctl->dpu_idx], REG_DMA_TYPE_DB, 1);
 		hw.blk_off = 0;
 		return SDE_REG_READ(&hw, addr - reg_dma[ctl->dpu_idx]->caps->base_off);
@@ -1411,6 +1432,9 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 	u32 addr, mask, len, wrap, inc, tbl, blk, data;
 	int i, j;
 	char str[1024], *pstr, *end = str + sizeof(str) - 1;
+	struct sde_hw_vatran *vatran;
+
+	vatran = sde_hw_get_vatran(cfg->ctl->dpu_idx);
 
 	SDE_DEBUG("VQ%d CTL%d payload readback sz 0x%X  %pK\n",
 			cfg->dma_buf->vq_idx, cfg->ctl->idx, size, p);
@@ -1425,7 +1449,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 		case SINGLE_REG_WRITE_OPCODE:
 			addr = *p & ADDR_MASK;
 			p++;
-			data = reg_dma_readback(addr, cfg->ctl);
+			data = reg_dma_readback(addr, cfg->ctl, vatran);
 			SDE_DEBUG("WRITE @0x%6.6X %8.8X : [%8.8X]%s\n",
 					addr, *p, data, (*p == data) ? "" : " ***");
 			p++;
@@ -1435,7 +1459,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			addr = *p & ADDR_MASK;
 			p++;
 			mask = *p++;
-			data = reg_dma_readback(addr, cfg->ctl);
+			data = reg_dma_readback(addr, cfg->ctl, vatran);
 			SDE_DEBUG("WRITE @0x%6.6X  mask %8.8X  val %8.8X : [%8.8X]%s\n",
 					addr, ~mask, *p, data, (*p == (data & ~mask)) ? "" : " ***");
 			p++;
@@ -1453,7 +1477,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 					pstr = str;
 					pstr += snprintf(pstr, sizeof(str), "\t");
 				}
-				data = reg_dma_readback(addr, cfg->ctl);
+				data = reg_dma_readback(addr, cfg->ctl, vatran);
 				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X : [%8.8X]%s",
 						*p, data, (*p == data) ? "" : " ***");
 				p++;
@@ -1473,7 +1497,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 					pstr = str;
 					pstr += snprintf(pstr, sizeof(str), "\t");
 				}
-				data = reg_dma_readback(addr, cfg->ctl);
+				data = reg_dma_readback(addr, cfg->ctl, vatran);
 				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X : [%8.8X]%s",
 						*p, data, (*p == data) ? "" : " ***");
 				addr += 4;
@@ -1498,7 +1522,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 				if (!inc)
 					addr += (wrap * 2 - 1) * sizeof(u32);
 				for (j = 0; j < wrap; j++) {
-					data = reg_dma_readback(addr, cfg->ctl);
+					data = reg_dma_readback(addr, cfg->ctl, vatran);
 					pstr += snprintf(pstr, (int)(end - pstr), " %8.8X : [%8.8X]%s",
 							*p, data, (*p == data) ? "" : " ***");
 					addr += inc ? sizeof(u32) : -sizeof(u32);
@@ -2658,6 +2682,8 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 	u32 cmd1, val = 0;
 	struct sde_hw_blk_reg_map hw;
 	int vq_idx;
+	struct sde_hw_vatran *vatran;
+	u32 map_addr = (u32)-1;
 
 	if (dpu_idx >= DPU_MAX) {
 		DRM_ERROR("invalid dpu idx %d\n", dpu_idx);
@@ -2665,6 +2691,9 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 	}
 
 	vq_idx = reg_dma_ctl_to_vq_map[dpu_idx][cfg->ctl->idx];
+
+	vatran = sde_hw_get_vatran(dpu_idx);
+	vatran->ops.check_violation(vatran);
 
 	reg_dma_dump_payload(cfg);
 
@@ -2730,8 +2759,24 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 		 * flush as its trigger event.
 		 */
 		if (cfg->dma_type == REG_DMA_TYPE_DB) {
-			SDE_REG_WRITE_CPU(&cfg->ctl->hw, reg_dma_ctl_trigger_offset,
-					ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx][cfg->queue_select]);
+			/* Check if the trigger register is remapped */
+			vatran = sde_hw_get_vatran(dpu_idx);
+			if (vatran)
+				map_addr = vatran->ops.remap(vatran, vq_idx, &cfg->ctl->hw, reg_dma_ctl_trigger_offset);
+			if (map_addr != (u32)-1) {
+				/* Register remapped to VA_TRAN space, for CPU access need remove the base_off */
+				SDE_REG_WRITE_CPU(&vatran->hw, map_addr - vatran->caps->base_off,
+						ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx][cfg->queue_select]);
+				wmb();
+			} else {
+				SDE_ERROR("Fail to remap the CTL_LUT_DMA_VQ_TRIGGER register for reg %X ctl %d dpu %d vq %d\n",
+						reg_dma_ctl_trigger_offset, cfg->ctl->idx, dpu_idx, vq_idx);
+				vatran->ops.check_remap(vatran, vq_idx, &cfg->ctl->hw, reg_dma_ctl_trigger_offset);
+#if 0 /* full MDP region is RO, can't write */
+				SDE_REG_WRITE_CPU(&cfg->ctl->hw, reg_dma_ctl_trigger_offset,
+						ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx][cfg->queue_select]);
+#endif
+			}
 		}
 	}
 

@@ -1954,6 +1954,8 @@ struct sde_reg_dma_cfg {
 	u32 vbif_idx;
 	u32 base_off;
 	enum sde_clk_ctrl_type clk_ctrl;
+	u32 vq_num;
+	u32 vq_off;
 };
 
 /**
@@ -1989,6 +1991,25 @@ struct sde_sc_cfg {
 	int llcc_uid;
 	int llcc_scid;
 	size_t llcc_slice_size;
+};
+
+/**
+ * struct sde_vatran_cfg - information of VA_TRAN blocks
+ * @id                 enum identifying this block
+ * @base               register offset of this block
+ * @len:               length of hardware block
+ * @features           bit mask identifying sub-blocks/features
+ * @base_off           Base offset of VA_TRAN from the MDSS root
+ * @num_vm             number of VMs
+ * @vm0_slots          number of slots for VM0
+ * @vmx_slots          number of slots for reset VMs
+ */
+struct sde_vatran_cfg {
+	SDE_HW_BLK_INFO;
+	u32 base_off;
+	u32 num_vm;
+	u32 vm0_slots;
+	u32 vmx_slots;
 };
 
 /**
@@ -2262,6 +2283,8 @@ struct sde_mdss_cfg {
 
 	u32 reg_dma_count;
 	struct sde_reg_dma_cfg dma_cfg;
+	u32 vatran_count;
+	struct sde_vatran_cfg vatran;
 	u32 ad_count;
 	u32 ltm_count;
 	u32 rc_count;

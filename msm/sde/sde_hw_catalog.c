@@ -150,6 +150,9 @@
 #define DEFAULT_CPU_DMA_LATENCY			PM_QOS_DEFAULT_VALUE
 #define DEFAULT_PPB_BUF_MAX_LINES		4
 #define DEFAULT_BW_UPVOTE_THRESHOLD_NS		600000
+#define DEFAULT_VA_TRAN_VMS				16
+#define DEFAULT_VA_TRAN_VQ0_SLOTS		64
+#define DEFAULT_VA_TRAN_VQX_SLOTS		8
 
 /* Uidle values */
 #define SDE_UIDLE_FAL10_EXIT_CNT 128
@@ -548,6 +551,8 @@ enum {
 	REG_DMA_BROADCAST_DISABLED,
 	REG_DMA_XIN_ID,
 	REG_DMA_CLK_CTRL,
+	REG_DMA_VQ_NUM,
+	REG_DMA_VQ_OFF,
 	REG_DMA_PROP_MAX
 };
 
@@ -580,6 +585,14 @@ enum {
 	AI_SCALER_LEN,
 	AI_SCALER,
 	AI_SCALER_PROP_MAX,
+};
+
+enum {
+	VA_TRAN_OFF,
+	VA_TRAN_NUM_VM,
+	VA_TRAN_VM0_SLOTS,
+	VA_TRAN_VMX_SLOTS,
+	VA_TRAN_PROP_MAX
 };
 
 /*************************************************************
@@ -1055,6 +1068,10 @@ static struct sde_prop_type reg_dma_prop[REG_DMA_PROP_MAX] = {
 		"qcom,sde-reg-dma-xin-id", false, PROP_TYPE_U32},
 	[REG_DMA_CLK_CTRL] = {REG_DMA_CLK_CTRL,
 		"qcom,sde-reg-dma-clk-ctrl", false, PROP_TYPE_BIT_OFFSET_ARRAY},
+	[REG_DMA_VQ_NUM] =  {REG_DMA_VQ_NUM, "qcom,sde-reg-dma-vq-num", false,
+		PROP_TYPE_U32},
+	[REG_DMA_VQ_OFF] =  {REG_DMA_VQ_OFF, "qcom,sde-reg-dma-vq-off", false,
+		PROP_TYPE_U32},
 };
 
 static struct sde_prop_type merge_3d_prop[] = {
@@ -1110,6 +1127,17 @@ static struct sde_prop_type ai_scaler_prop[] = {
 	{AI_SCALER_VERSION, "qcom,sde-dspp-aiqe-aiscaler-version", false, PROP_TYPE_U32},
 	{AI_SCALER_LEN, "qcom,sde-dspp-aiqe-aiscaler-size", false, PROP_TYPE_U32},
 	{AI_SCALER, "qcom,sde-aiqe-has-feature-aiscaler", false, PROP_TYPE_BOOL},
+};
+
+static struct sde_prop_type va_tran_prop[VA_TRAN_PROP_MAX] = {
+	[VA_TRAN_OFF] =  {VA_TRAN_OFF, "qcom,sde-va-tran-off", true,
+		PROP_TYPE_U32_ARRAY},
+	[VA_TRAN_NUM_VM] =  {VA_TRAN_NUM_VM, "qcom,sde-va-tran-num-vm", false,
+		PROP_TYPE_U32_ARRAY},
+	[VA_TRAN_VM0_SLOTS] = {VA_TRAN_VM0_SLOTS, "qcom,sde-va-tran-vm0-slots",
+		false, PROP_TYPE_U32},
+	[VA_TRAN_VMX_SLOTS] = {VA_TRAN_VMX_SLOTS, "qcom,sde-va-tran-vmx-slots", false,
+		PROP_TYPE_U32},
 };
 
 /*************************************************************
@@ -5272,6 +5300,55 @@ end:
 	return rc;
 }
 
+static int sde_parse_va_tran_dt(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	int rc = 0, i, prop_count[VA_TRAN_PROP_MAX];
+	struct sde_prop_value *prop_value = NULL;
+	u32 off_count;
+	bool prop_exists[VA_TRAN_PROP_MAX];
+
+	prop_value = kvcalloc(VA_TRAN_PROP_MAX,
+			sizeof(struct sde_prop_value), GFP_KERNEL);
+	if (!prop_value) {
+		rc = -ENOMEM;
+		goto end;
+	}
+
+	rc = _validate_dt_entry(np, va_tran_prop, ARRAY_SIZE(va_tran_prop),
+			prop_count, &off_count);
+	if (rc || !off_count)
+		goto end;
+
+	rc = _read_dt_entry(np, va_tran_prop, ARRAY_SIZE(va_tran_prop),
+			prop_count, prop_exists, prop_value);
+	if (rc)
+		goto end;
+
+	sde_cfg->vatran_count = off_count;
+	for (i = 0; i < off_count; i++)
+		sde_cfg->vatran.base =
+				PROP_VALUE_ACCESS(prop_value, VA_TRAN_OFF, i);
+
+	sde_cfg->vatran.num_vm = PROP_VALUE_ACCESS(prop_value,
+						VA_TRAN_NUM_VM, 0);
+	if (!sde_cfg->vatran.num_vm)
+		sde_cfg->vatran.num_vm = DEFAULT_VA_TRAN_VMS;
+	sde_cfg->vatran.vm0_slots = PROP_VALUE_ACCESS(prop_value,
+						VA_TRAN_VM0_SLOTS, 0);
+	if (!sde_cfg->vatran.vm0_slots)
+		sde_cfg->vatran.vm0_slots = DEFAULT_VA_TRAN_VQ0_SLOTS;
+	sde_cfg->vatran.vmx_slots = PROP_VALUE_ACCESS(prop_value,
+						VA_TRAN_VMX_SLOTS, 0);
+	if (!sde_cfg->vatran.vmx_slots)
+		sde_cfg->vatran.vmx_slots = DEFAULT_VA_TRAN_VQX_SLOTS;
+
+end:
+	kvfree(prop_value);
+	/* va tran is optional feature hence return 0 */
+	return 0;
+}
+
 static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 	uint32_t hw_rev)
 {
@@ -6585,6 +6662,10 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 		goto end;
 
 	rc = sde_qdss_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = sde_parse_va_tran_dt(np, sde_cfg);
 	if (rc)
 		goto end;
 

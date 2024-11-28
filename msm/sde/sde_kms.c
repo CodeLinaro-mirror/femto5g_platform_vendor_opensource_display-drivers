@@ -53,6 +53,7 @@
 #include "sde_crtc.h"
 #include "sde_color_processing.h"
 #include "sde_reg_dma.h"
+#include "sde_hw_vatran.h"
 #include "sde_connector.h"
 #include "sde_vm.h"
 #include "sde_fence.h"
@@ -2655,8 +2656,10 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		msm_iounmap(pdev, sde_kms->mmio);
 	sde_kms->mmio = NULL;
 
-	if (sde_kms->dev->primary)
+	if (sde_kms->dev->primary) {
 		sde_reg_dma_deinit(sde_kms->dev->primary->index);
+		sde_hw_vatran_deinit(sde_kms->dev->primary->index);
+	}
 
 	_sde_kms_mmu_destroy(sde_kms);
 }
@@ -5193,6 +5196,23 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 			SDE_ERROR("dbg base register sw_fuse failed: %d\n", rc);
 	}
 	DRM_INFO("mapped sw_fuse address space @%pK\n", sde_kms->sw_fuse);
+
+	sde_kms->va_tran = msm_ioremap(platformdev, "vatran_phys", "vatran_phys");
+	if (IS_ERR(sde_kms->va_tran)) {
+		sde_kms->va_tran = NULL;
+		SDE_DEBUG("VA_TRAN is not defined");
+	} else {
+		unsigned long mdp_addr = msm_get_phys_addr(platformdev, "mdp_phys");
+		sde_kms->va_tran_len = msm_iomap_size(platformdev, "vatran_phys");
+		sde_kms->va_tran_off = msm_get_phys_addr(platformdev, "vatran_phys") - mdp_addr;
+		rc =  sde_dbg_reg_register_base(LUTDMA_DBG_NAME, sde_kms->va_tran,
+				sde_kms->va_tran_len,
+				msm_get_phys_addr(platformdev, "vatran_phys"),
+				SDE_DBG_LUTDMA);
+		if (rc)
+			SDE_ERROR("dbg base register va_tran failed: %d\n", rc);
+	}
+	DRM_INFO("mapped va_tran address space @%pK\n", sde_kms->va_tran);
 error:
 	return rc;
 }
@@ -5272,6 +5292,17 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (rc) {
 		SDE_ERROR("sde_kms_mmu_init failed: %d\n", rc);
 		goto power_error;
+	}
+
+	/* Initialize va tran block which is a singleton */
+	if (sde_kms->catalog->vatran_count) {
+		sde_kms->catalog->vatran.base_off = sde_kms->va_tran_off;
+		rc = sde_hw_vatran_init(sde_kms->va_tran, sde_kms->catalog,
+				sde_kms->dev);
+		if (rc) {
+			SDE_ERROR("failed: va tran init failed\n");
+			goto power_error;
+		}
 	}
 
 	/* Initialize reg dma block which is a singleton */
