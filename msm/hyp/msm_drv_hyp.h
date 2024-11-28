@@ -338,6 +338,7 @@ struct msm_hyp_kms {
 	const struct msm_hyp_kms_funcs *funcs;
 	uint32_t num_sde_kms;
 	struct sde_kms *sde_kms[MAX_NUM_DPU_CORE];
+	struct msm_hyp_irq_controller *hyp_irq[MAX_NUM_DPU_CORE];
 };
 
 struct msm_hyp_drm_private {
