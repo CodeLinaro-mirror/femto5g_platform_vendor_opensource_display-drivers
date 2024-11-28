@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -52,6 +52,7 @@ static struct sde_dnsc_blur_cfg *_dnsc_blur_offset(enum sde_dnsc_blur idx,
 			b->length = m->dnsc_blur[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_DNSC_BLUR;
+			b->virtual = m->dnsc_blur[i].virtual;
 			return &m->dnsc_blur[i];
 		}
 	}
@@ -259,6 +260,9 @@ struct sde_hw_blk_reg_map *sde_hw_dnsc_blur_init(enum sde_dnsc_blur idx,
 
 	c->idx = idx;
 	c->caps = cfg;
+	if (c->hw.virtual)
+		goto done;
+
 	_setup_dnsc_blur_ops(&c->ops, c->caps->features);
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
@@ -276,6 +280,7 @@ struct sde_hw_blk_reg_map *sde_hw_dnsc_blur_init(enum sde_dnsc_blur idx,
 				c->hw.blk_off + cfg->sblk->dither.base +
 					cfg->sblk->dither.len, c->hw.xin_id);
 
+done:
 	return &c->hw;
 }
 

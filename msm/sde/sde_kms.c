@@ -2388,8 +2388,12 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 		if (primary_planes_idx >= max_crtc_count)
 			primary = false;
 
-		plane = sde_plane_init(dev, catalog->sspp[i].id, primary,
-				(1UL << max_crtc_count) - 1, 0);
+		if (sde_hw_sspp_multirect_rec1_only(&catalog->sspp[i]))
+			plane = sde_plane_init(dev, catalog->sspp[i].id, primary,
+					(1UL << max_crtc_count) - 1, (u32)-1);
+		else
+			plane = sde_plane_init(dev, catalog->sspp[i].id, primary,
+					(1UL << max_crtc_count) - 1, 0);
 		if (IS_ERR(plane)) {
 			SDE_ERROR("sde_plane_init failed\n");
 			ret = PTR_ERR(plane);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  *
  */
@@ -63,6 +63,7 @@ static const struct sde_uidle_cfg *_top_offset(enum sde_uidle uidle,
 		b->length = m->uidle_cfg.len;
 		b->hw_rev = m->hw_rev;
 		b->log_mask = SDE_DBG_MASK_UIDLE;
+		b->virtual = m->uidle_cfg.virtual;
 		SDE_DEBUG("base:0x%p blk_off:0x%x length:%d hw_rev:0x%x\n",
 			  b->base_off, b->blk_off, b->length, b->hw_rev);
 		return &m->uidle_cfg;
@@ -280,11 +281,15 @@ struct sde_hw_uidle *sde_hw_uidle_init(enum sde_uidle idx,
 	 */
 	c->idx = idx;
 	c->cap = cfg;
+	if (c->hw.virtual)
+		goto done;
+
 	_setup_uidle_ops(&c->ops, c->cap->features);
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "uidle", c->hw.blk_off,
 		c->hw.blk_off + c->hw.length, 0);
 
+done:
 	return c;
 }
 

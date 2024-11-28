@@ -327,6 +327,13 @@ void sde_rm_init_hw_iter(
 bool sde_rm_get_hw(struct sde_rm *rm, struct sde_rm_hw_iter *iter);
 
 /**
+ * sde_rm_get_hw_iter_id - retrieve iterator HW object id.
+ * @iter: iterator object
+ * @Return: HW object id
+ */
+uint32_t sde_rm_get_hw_iter_id(struct sde_rm_hw_iter *i);
+
+/**
  * sde_rm_request_hw_blk - retrieve the requested hardware block
  * @rm: SDE Resource Manager handle
  * @hw: holds the input and output information of the requested hw block

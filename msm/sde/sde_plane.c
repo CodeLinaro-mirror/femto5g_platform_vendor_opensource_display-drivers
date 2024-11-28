@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -5689,7 +5689,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 	/* initialize underlying h/w driver */
 	if (kms->dev->primary)
 		psde->pipe_hw = sde_hw_sspp_init(pipe, kms->mmio, kms->catalog, psde->is_virtual,
-				&clk_client, kms->dev->primary->index);
+				&clk_client, kms->dev->primary->index, kms);
 
 	if (IS_ERR(psde->pipe_hw)) {
 		SDE_ERROR("[%u]SSPP init failed\n", pipe);

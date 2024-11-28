@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -79,6 +80,7 @@ static struct sde_cdm_cfg *_cdm_offset(enum sde_cdm cdm,
 			b->length = m->cdm[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_CDM;
+			b->virtual = m->cdm[i].virtual;
 			return &m->cdm[i];
 		}
 	}
@@ -319,8 +321,12 @@ struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 
 	c->idx = idx;
 	c->caps = cfg;
-	_setup_cdm_ops(&c->ops, c->caps->features);
 	c->hw_mdp = hw_mdp;
+
+	if (c->hw.virtual)
+		goto done;
+
+	_setup_cdm_ops(&c->ops, c->caps->features);
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);
@@ -332,6 +338,7 @@ struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 	if (!m->trusted_vm_env)
 		sde_hw_cdm_setup_csc_10bit(c, &rgb2yuv_cfg);
 
+done:
 	return &c->hw;
 }
 

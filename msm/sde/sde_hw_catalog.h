@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -420,6 +420,8 @@ enum {
 	SDE_SSPP_REC_SWI_SEPARATION,
 	SDE_SSPP_SCALER_QSEED_EBS,
 	SDE_SSPP_SCALER_QSEED_ADE,
+	SDE_SSPP_SMART_DMA_REC0_ONLY,
+	SDE_SSPP_SMART_DMA_REC1_ONLY,
 	SDE_SSPP_MAX
 };
 
@@ -902,7 +904,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_10_BITS_COMPONENTS Support for 10 bits components
  * @SDE_FEATURE_UBWC_LOSSY	Support UBWC Lossy
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
- * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
+ * @SDE_FEATURE_HW_VIRTUAL       Multi-VM HW virtualization supported
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -955,6 +957,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_UBWC_LOSSY,
 	SDE_FEATURE_DS_PU_SUPPORTED,
 	SDE_FEATURE_MIXER_OP_V1,
+	SDE_FEATURE_HW_VIRTUAL,
 	SDE_FEATURE_MAX
 };
 
@@ -966,6 +969,8 @@ enum sde_mdss_features {
  * @len:               length of hardware block
  * @features           bit mask identifying sub-blocks/features
  * @perf_features   bit mask identifying performance sub-blocks/features
+ * @virtual            para-virtualized hardware, managed by master VM
+ * @fixed_ctl_id       Fixed controller id, for HW virtualization
  */
 #define SDE_HW_BLK_INFO \
 	char name[SDE_HW_BLK_NAME_LEN]; \
@@ -976,7 +981,9 @@ enum sde_mdss_features {
 		unsigned long features; \
 		u64 features_ext; \
 	}; \
-	unsigned long perf_features
+	unsigned long perf_features; \
+	bool virtual; \
+	u32 fixed_ctl_id
 
 /**
  * MACRO SDE_HW_SUBBLK_INFO - information of HW sub-block inside SDE
@@ -1250,6 +1257,7 @@ struct sde_sspp_sub_blks {
  * @blendstage_base:        Blend-stage register base offset
  * @gc: gamma correction block
  * @nlayer: noise layer block
+ * @zpos_off:               Z-order offset
  */
 struct sde_lm_sub_blks {
 	u32 maxwidth;
@@ -1257,6 +1265,7 @@ struct sde_lm_sub_blks {
 	u32 blendstage_base[MAX_BLOCKS];
 	struct sde_pp_blk gc;
 	struct sde_pp_blk nlayer;
+	u32 zpos_off;
 };
 
 /**
@@ -1506,9 +1515,13 @@ struct sde_uidle_cfg {
  * @id:                index identifying this block
  * @base:              register base offset to mdss
  * @features           bit mask identifying sub-blocks/features
+ * @fixed_enc_id:      ID of encoder for fixed resource reservation, used in HW virtualzation
+ * @vq_idx:            LUTDMA VQ index
  */
 struct sde_ctl_cfg {
 	SDE_HW_BLK_INFO;
+	int fixed_enc_id;
+	int vq_idx;
 };
 
 /**
@@ -1520,6 +1533,7 @@ struct sde_ctl_cfg {
  * @xin_id:            bus client identifier
  * @clk_ctrl           clock control identifier
  * @type               sspp type identifier
+ * @possible_crtc               sspp type identifier
  */
 struct sde_sspp_cfg {
 	SDE_HW_BLK_INFO;
@@ -1527,6 +1541,9 @@ struct sde_sspp_cfg {
 	u32 xin_id;
 	enum sde_clk_ctrl_type clk_ctrl;
 	u32 type;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	u32 possible_crtc;
+#endif
 };
 
 /**
@@ -1542,6 +1559,7 @@ struct sde_sspp_cfg {
  * @dummy_mixer:       identifies dcwb mixer is considered dummy
  * @lm_pair_mask:      Bitmask of LMs that can be controlled by same CTL
  * @parent_mixer_id:   ID of parent mixer, used in dual pass commit
+ * @fixed_enc_id:      ID of encoder for fixed resource reservation, used in HW virtualzation
  */
 struct sde_lm_cfg {
 	SDE_HW_BLK_INFO;
@@ -1553,6 +1571,7 @@ struct sde_lm_cfg {
 	bool dummy_mixer;
 	unsigned long lm_pair_mask;
 	u32 parent_mixer_id;
+	int fixed_enc_id;
 };
 
 /**
@@ -2362,4 +2381,23 @@ static inline bool sde_hw_sspp_multirect_enabled(const struct sde_sspp_cfg *cfg)
 			 test_bit(SDE_SSPP_SMART_DMA_V2, &cfg->features) ||
 			 test_bit(SDE_SSPP_SMART_DMA_V2p5, &cfg->features);
 }
+
+/**
+ * sde_hw_sspp_multirect_rec0_only - check multirect only REC0 enabled for the sspp
+ * @cfg:          pointer to sspp cfg
+ */
+static inline bool sde_hw_sspp_multirect_rec0_only(const struct sde_sspp_cfg *cfg)
+{
+	return test_bit(SDE_SSPP_SMART_DMA_REC0_ONLY, &cfg->features);
+}
+
+/**
+ * sde_hw_sspp_multirect_rec1_only - check multirect only REC1 enabled for the sspp
+ * @cfg:          pointer to sspp cfg
+ */
+static inline bool sde_hw_sspp_multirect_rec1_only(const struct sde_sspp_cfg *cfg)
+{
+	return test_bit(SDE_SSPP_SMART_DMA_REC1_ONLY, &cfg->features);
+}
+
 #endif /* _SDE_HW_CATALOG_H */

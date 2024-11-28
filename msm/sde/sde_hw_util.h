@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -30,6 +30,7 @@ struct sde_format_extended;
  * @length        length of register block offset
  * @xin_id        xin id
  * @hw_rev     mdss hw revision
+ * @virtual     HW is virtualized by host VM, GVM should not touch
  */
 struct sde_hw_blk_reg_map {
 	void __iomem *base_off;
@@ -38,6 +39,7 @@ struct sde_hw_blk_reg_map {
 	u32 xin_id;
 	u32 hw_rev;
 	u32 log_mask;
+	bool virtual;
 };
 
 /**

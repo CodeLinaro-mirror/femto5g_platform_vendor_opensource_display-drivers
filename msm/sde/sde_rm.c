@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -187,6 +187,7 @@ struct sde_rm_rsvp {
  * @id:		Hardware ID number, within it's own space, ie. LM_X
  * @catalog:	Pointer to the hardware catalog entry for this block
  * @hw:		Pointer to the hardware register access object for this block
+ * @virtual:	Indicator of hw block is virtualized, not programmable from GVM
  */
 struct sde_rm_hw_blk {
 	struct list_head list;
@@ -195,6 +196,7 @@ struct sde_rm_hw_blk {
 	enum sde_hw_blk_type type;
 	uint32_t id;
 	struct sde_hw_blk_reg_map *hw;
+	bool virtual;
 };
 
 /**
@@ -580,6 +582,11 @@ bool sde_rm_get_hw(struct sde_rm *rm, struct sde_rm_hw_iter *i)
 	mutex_unlock(&rm->rm_lock);
 
 	return ret;
+}
+
+uint32_t sde_rm_get_hw_iter_id(struct sde_rm_hw_iter *i)
+{
+	return i->blk->id;
 }
 
 #define to_sde_rm_priv_state(x) \
@@ -1268,6 +1275,10 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	*ds = NULL;
 	*pp = NULL;
 
+	/* Check for fixe resource reservation */
+	if (lm_cfg->fixed_enc_id && rsvp->enc_id != lm_cfg->fixed_enc_id)
+		return false;
+
 	lm_primary_pref = lm_cfg->features & BIT(SDE_DISP_PRIMARY_PREF);
 	lm_secondary_pref = lm_cfg->features & BIT(SDE_DISP_SECONDARY_PREF);
 	cwb_pref = lm_cfg->features & BIT(SDE_DISP_CWB_PREF);
@@ -1539,6 +1550,10 @@ static int _sde_rm_reserve_ctls(
 		bool has_split_display, has_ppsplit, primary_pref;
 
 		if (RESERVED_BY_OTHER(iter.blk, rsvp))
+			continue;
+
+		/* Check for fixed resource reservation */
+		if (ctl->caps->fixed_enc_id && rsvp->enc_id != ctl->caps->fixed_enc_id)
 			continue;
 
 		has_split_display = BIT(SDE_CTL_SPLIT_DISPLAY) & features;
