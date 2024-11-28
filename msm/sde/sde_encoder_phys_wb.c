@@ -1569,7 +1569,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush(struct sde_encoder_phys *phys_
 	if (test_bit(SDE_WB_CWB_CTRL, &hw_wb->caps->features) ||
 			test_bit(SDE_WB_DCWB_CTRL, &hw_wb->caps->features)) {
 		_sde_encoder_phys_wb_update_cwb_flush_helper(phys_enc, enable);
-	} else {
+	} else if (phys_enc->hw_mdptop->ops.set_cwb_ppb_cntl) {
 		phys_enc->hw_mdptop->ops.set_cwb_ppb_cntl(phys_enc->hw_mdptop,
 				need_merge, dspp_out);
 	}

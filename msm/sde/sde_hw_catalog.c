@@ -198,6 +198,7 @@ enum {
 };
 
 enum sde_prop {
+	SDE_INDEX,
 	SDE_OFF,
 	SDE_LEN,
 	SSPP_LINEWIDTH,
@@ -636,6 +637,7 @@ static struct sde_prop_type sde_hw_prop[] = {
 };
 
 static struct sde_prop_type sde_prop[] = {
+	{SDE_INDEX, "cell-index", false, PROP_TYPE_U32},
 	{SDE_OFF, "qcom,sde-off", true, PROP_TYPE_U32},
 	{SDE_LEN, "qcom,sde-len", false, PROP_TYPE_U32},
 	{SSPP_LINEWIDTH, "qcom,sde-sspp-linewidth", false, PROP_TYPE_U32},
@@ -2099,6 +2101,10 @@ static void sde_sspp_set_features(struct sde_mdss_cfg *sde_cfg,
 
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_D00))
 			set_bit(SDE_SSPP_REC_SWI_SEPARATION, &sspp->features);
+
+		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features)) {
+			set_bit(SDE_SSPP_LOCAL_FLUSH, &sspp->features);
+		}
 	}
 }
 
@@ -2280,6 +2286,8 @@ static int sde_ctl_parse_dt(struct device_node *np,
 			set_bit(SDE_CTL_CESTA_FLUSH, &ctl->features);
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_B00))
 			set_bit(SDE_CTL_NO_LAYER_EXT, &ctl->features);
+		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+			set_bit(SDE_CTL_LOCAL_FLUSH, &ctl->features);
 	}
 
 	sde_put_dt_props(props);
@@ -2458,6 +2466,8 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 			set_bit(SDE_MIXER_10_BITS_ALPHA, &mixer->features);
 			set_bit(SDE_MIXER_10_BITS_COLOR, &mixer->features);
 		}
+		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+			set_bit(SDE_MIXER_LOCAL_FLUSH, &mixer->features);
 
 		of_property_read_string_index(np,
 			mixer_prop[MIXER_DISP].prop_name, i, &disp_pref);
@@ -4582,12 +4592,13 @@ static int sde_top_parse_dt(struct device_node *np, struct sde_mdss_cfg *cfg)
 
 	cfg->mdss_count = 1;
 	cfg->mdss[0].base = MDSS_BASE_OFFSET;
-	cfg->mdss[0].id = MDP_TOP;
+	cfg->mdss[0].id = props->exists[SDE_INDEX] ? PROP_VALUE_ACCESS(props->values, SDE_INDEX, 0) : 0
+						+ MDP_TOP;
 	snprintf(cfg->mdss[0].name, SDE_HW_BLK_NAME_LEN, "mdss_%u",
 			cfg->mdss[0].id - MDP_TOP);
 
 	cfg->mdp_count = 1;
-	cfg->mdp[0].id = MDP_TOP;
+	cfg->mdp[0].id = cfg->mdss[0].id;
 	snprintf(cfg->mdp[0].name, SDE_HW_BLK_NAME_LEN, "top_%u",
 			cfg->mdp[0].id - MDP_TOP);
 	cfg->mdp[0].base = PROP_VALUE_ACCESS(props->values, SDE_OFF, 0);
@@ -4683,7 +4694,10 @@ static void _sde_hw_reg_dma_caps(struct sde_mdss_cfg *sde_cfg)
 
 	for (i = 0; i < sde_cfg->ctl_count; i++) {
 		ctl = sde_cfg->ctl + i;
-		set_bit(SDE_CTL_REG_DMA, &ctl->features);
+		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+			set_bit(SDE_CTL_REG_DMA_VQ, &ctl->features);
+		else
+			set_bit(SDE_CTL_REG_DMA, &ctl->features);
 	}
 }
 
@@ -4757,6 +4771,10 @@ static int sde_parse_reg_dma_dt(struct device_node *np,
 						REG_DMA_CLK_CTRL, 0, 1);
 		}
 	}
+	if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+		sde_cfg->dma_cfg.vq_supported = true;
+	else
+		sde_cfg->dma_cfg.vq_supported = false;
 	_sde_hw_reg_dma_caps(sde_cfg);
 end:
 	kvfree(prop_value);
@@ -6052,6 +6070,59 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
 		sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
 		sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
+		sde_cfg->has_line_insertion = true;
+		sde_cfg->osc_clk_rate = 38400000;
+	} else if (IS_NORD_TARGET(hw_rev)) {
+		set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
+		set_bit(SDE_FEATURE_DUAL_DEDICATED_CWB, sde_cfg->features);
+		set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
+		set_bit(SDE_FEATURE_WB_UBWC, sde_cfg->features);
+		set_bit(SDE_FEATURE_CWB_CROP, sde_cfg->features);
+		set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+		set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
+		set_bit(SDE_FEATURE_HDR_PLUS, sde_cfg->features);
+		set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+		set_bit(SDE_MDP_DHDR_MEMPOOL_4K, &sde_cfg->mdp[0].features);
+		set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
+		set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+		set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+		set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+		set_bit(SDE_FEATURE_FP16, sde_cfg->features);
+		set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
+		set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+		//set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
+		set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+		set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+		set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+		set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
+		//set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+		set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
+		set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
+		set_bit(SDE_SYS_CACHE_DISP_WB, sde_cfg->sde_sys_cache_type_map);
+		set_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_cfg->features);
+		set_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features);
+		set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
+		set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+		set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
+		set_bit(SDE_FEATURE_DS_PU_SUPPORTED, sde_cfg->features);
+		set_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features);
+		sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
+		sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
+		sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;
+		sde_cfg->perf.min_prefill_lines = 40;
+		sde_cfg->vbif_qos_nlvl = 8;
+		sde_cfg->qos_target_time_ns = 11160;
+		sde_cfg->ts_prefill_rev = 2;
+		sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+		sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+		sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_4;
+		sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
+		sde_cfg->mdss_hw_block_size = 0x15c;
+		sde_cfg->max_bw_upvote_threshold_ns = DEFAULT_BW_UPVOTE_THRESHOLD_NS;
+		//sde_cfg->demura_supported[SSPP_DMA1][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
+		//sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
+		//sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
+		//sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
 		sde_cfg->has_line_insertion = true;
 		sde_cfg->osc_clk_rate = 38400000;
 	} else {

@@ -520,10 +520,15 @@ static inline int sde_hw_ctl_clear_flush_mask(struct sde_hw_ctl *ctx, bool clear
 
 static inline int sde_hw_ctl_clear_pending_flush(struct sde_hw_ctl *ctx)
 {
+	u32 global_flush_mask;
+
 	if (!ctx)
 		return -EINVAL;
 
+	global_flush_mask = ctx->flush.global_flush_mask;
 	memset(&ctx->flush, 0, sizeof(ctx->flush));
+	ctx->flush.global_flush_mask = global_flush_mask;
+
 	return 0;
 }
 
@@ -983,6 +988,31 @@ static inline void _sde_hw_ctl_write_dspp_flushes(struct sde_hw_ctl *ctx) {
 	}
 }
 
+static inline int sde_hw_ctl_trigger_flush_hyp_v1(struct sde_hw_ctl *ctx)
+{
+	int i = 0;
+
+	const struct ctl_hw_flush_cfg *cfg = &ctl_hw_flush_cfg_tbl_v1[0];
+
+	if (!ctx)
+		return -EINVAL;
+
+	for (i = 0; i < SDE_HW_FLUSH_MAX; i++)
+		if (cfg[i].flush_reg &&
+				ctx->flush.pending_flush_mask &
+				BIT(cfg[i].flush_idx))
+			SDE_REG_WRITE(&ctx->hw,
+					cfg[i].flush_reg,
+					ctx->flush.pending_hw_flush_mask[i]);
+
+	SDE_REG_WRITE(&ctx->hw, CTL_FLUSH, ctx->flush.pending_flush_mask);
+
+	/* ensure all register writes are written without re-ordering*/
+	wmb();
+
+	return 0;
+}
+
 static inline int sde_hw_ctl_trigger_flush_v1(struct sde_hw_ctl *ctx)
 {
 	int i = 0;
@@ -1007,6 +1037,23 @@ static inline int sde_hw_ctl_trigger_flush_v1(struct sde_hw_ctl *ctx)
 
 	/* ensure all register writes are written without re-ordering*/
 	wmb();
+
+	return 0;
+}
+
+static inline int sde_hw_ctl_trigger_flush_global_v1(struct sde_hw_ctl *ctx)
+{
+	u32 flush_mask = ctx->flush.pending_flush_mask & ctx->flush.global_flush_mask;
+
+	/* Skip empty global flush (no SSPP/LM flush) */
+	if (flush_mask && flush_mask != CTL_FLUSH_MASK_CTL
+			&& flush_mask != ctx->flush.previous_flush_mask) {
+		SDE_REG_WRITE(&ctx->hw, CTL_FLUSH, flush_mask);
+		ctx->flush.previous_flush_mask = flush_mask;
+
+		/* ensure all register writes are written without re-ordering*/
+		wmb();
+	}
 
 	return 0;
 }
@@ -1117,6 +1164,16 @@ static int sde_hw_ctl_reset_control(struct sde_hw_ctl *ctx)
 	SDE_REG_WRITE(c, CTL_SW_RESET, 0x1);
 	if (sde_hw_ctl_poll_reset_status(ctx, SDE_REG_RESET_TIMEOUT_US))
 		return -EINVAL;
+
+	return 0;
+}
+
+static int sde_hw_ctl_reset_control_virt(struct sde_hw_ctl *ctx)
+{
+	if (!ctx)
+		return 0;
+
+	ctx->flush.previous_flush_mask = 0;
 
 	return 0;
 }
@@ -1734,24 +1791,35 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		unsigned long cap, unsigned long mdss_cap)
 {
 	if (cap & BIT(SDE_CTL_ACTIVE_CFG)) {
-		ops->update_pending_flush =
-			sde_hw_ctl_update_pending_flush_v1;
-		ops->trigger_flush = sde_hw_ctl_trigger_flush_v1;
+		if (cap & BIT(SDE_CTL_LOCAL_FLUSH)) {
+			ops->update_pending_flush = sde_hw_ctl_update_pending_flush;
+			ops->trigger_flush = sde_hw_ctl_trigger_flush_global_v1;
 
+			ops->update_bitmask = sde_hw_ctl_update_bitmask;
+			ops->get_ctl_intf = sde_hw_ctl_get_intf;
+
+			ops->get_active_fetch_pipes = sde_hw_ctl_get_active_fetch_pipes;
+		} else {
+			ops->update_pending_flush =
+				sde_hw_ctl_update_pending_flush_v1;
+			ops->trigger_flush = sde_hw_ctl_trigger_flush_v1;
+
+			ops->update_bitmask = sde_hw_ctl_update_bitmask_v1;
+			ops->get_ctl_intf = sde_hw_ctl_get_intf_v1;
+
+			ops->set_active_fetch_pipes = sde_hw_ctl_set_active_fetch_pipes;
+			ops->get_active_fetch_pipes = sde_hw_ctl_get_active_fetch_pipes;
+		}
 		ops->setup_intf_cfg_v1 = sde_hw_ctl_intf_cfg_v1;
 		ops->update_intf_cfg = sde_hw_ctl_update_intf_cfg;
 
-		ops->update_bitmask = sde_hw_ctl_update_bitmask_v1;
 		ops->bitmask_has_bit = sde_hw_ctl_bitmask_has_bit_v1;
 		ops->update_dnsc_blur_bitmask = sde_hw_ctl_update_dnsc_blur_bitmask;
-		ops->get_ctl_intf = sde_hw_ctl_get_intf_v1;
 		ops->update_ctl_top_group = sde_hw_ctl_update_top_group;
 
 		ops->reset_post_disable = sde_hw_ctl_reset_post_disable;
 		ops->get_scheduler_status = sde_hw_ctl_get_scheduler_status;
 		ops->read_active_status = sde_hw_ctl_read_active_status;
-		ops->set_active_fetch_pipes = sde_hw_ctl_set_active_fetch_pipes;
-		ops->get_active_fetch_pipes = sde_hw_ctl_get_active_fetch_pipes;
 		ops->set_intf_master = sde_hw_ctl_set_intf_master;
 		ops->get_intf_master = sde_hw_ctl_get_intf_master;
 	} else {
@@ -1776,8 +1844,12 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	ops->hard_reset = sde_hw_ctl_hard_reset;
 	ops->wait_reset_status = sde_hw_ctl_wait_reset_status;
 	if (cap & BIT(SDE_CTL_NO_LAYER_EXT)) {
-		ops->set_active_pipes = sde_hw_ctl_set_active_pipes;
-		ops->get_active_pipes = sde_hw_ctl_get_active_pipes;
+		if (cap & BIT(SDE_CTL_LOCAL_FLUSH)) {
+			ops->get_active_pipes = sde_hw_ctl_get_active_pipes;
+		} else {
+			ops->set_active_pipes = sde_hw_ctl_set_active_pipes;
+			ops->get_active_pipes = sde_hw_ctl_get_active_pipes;
+		}
 		ops->set_active_lms = sde_hw_ctl_set_active_lms;
 		ops->get_active_lms = sde_hw_ctl_get_active_lms;
 	} else {
@@ -1787,8 +1859,10 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	}
 	ops->update_bitmask_sspp = sde_hw_ctl_update_bitmask_sspp;
 	ops->update_bitmask_mixer = sde_hw_ctl_update_bitmask_mixer;
-	if  (cap & BIT(SDE_CTL_REG_DMA))
+	if (cap & BIT(SDE_CTL_REG_DMA))
 		ops->reg_dma_flush = sde_hw_reg_dma_flush;
+	else if (cap & BIT(SDE_CTL_REG_DMA_VQ))
+		ops->reg_dma_flush = sde_hw_reg_dma_flush_vq;
 
 	ops->get_start_state = sde_hw_ctl_get_start_state;
 
@@ -1836,19 +1910,29 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 		unsigned long cap, unsigned long mdss_cap)
 {
 	if (cap & BIT(SDE_CTL_ACTIVE_CFG)) {
-		ops->update_pending_flush =
-			sde_hw_ctl_update_pending_flush_v1;
-		ops->trigger_flush = sde_hw_ctl_trigger_flush_v1;
+		if (cap & BIT(SDE_CTL_LOCAL_FLUSH)) {
+			ops->update_pending_flush = sde_hw_ctl_update_pending_flush;
+			ops->trigger_flush = sde_hw_ctl_trigger_flush_global_v1;
 
-		ops->update_bitmask = sde_hw_ctl_update_bitmask_v1;
+			ops->update_bitmask = sde_hw_ctl_update_bitmask;
+			ops->get_ctl_intf = sde_hw_ctl_get_intf;
+
+			ops->get_active_fetch_pipes = sde_hw_ctl_get_active_fetch_pipes;
+		} else {
+			ops->trigger_flush = sde_hw_ctl_trigger_flush_hyp_v1;
+
+			ops->update_bitmask = sde_hw_ctl_update_bitmask_v1;
+			ops->get_ctl_intf = sde_hw_ctl_get_intf_v1;
+		}
+
 		ops->bitmask_has_bit = sde_hw_ctl_bitmask_has_bit_v1;
-		ops->get_ctl_intf = sde_hw_ctl_get_intf_v1;
 
 		ops->get_scheduler_status = sde_hw_ctl_get_scheduler_status;
 		ops->read_active_status = sde_hw_ctl_read_active_status;
 	} else {
-		ops->update_pending_flush = sde_hw_ctl_update_pending_flush;
-		ops->trigger_flush = sde_hw_ctl_trigger_flush_v1;
+		ops->trigger_flush = sde_hw_ctl_trigger_flush;
+
+		ops->setup_intf_cfg = sde_hw_ctl_intf_cfg;
 
 		ops->update_bitmask = sde_hw_ctl_update_bitmask;
 		ops->get_ctl_intf = sde_hw_ctl_get_intf;
@@ -1857,8 +1941,9 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 	ops->get_pending_flush = sde_hw_ctl_get_pending_flush;
 	ops->get_flush_register = sde_hw_ctl_get_flush_register;
 	ops->read_ctl_layers = sde_hw_ctl_read_ctl_layers;
-	ops->reset = sde_hw_ctl_reset_control;
+	ops->reset = sde_hw_ctl_reset_control_virt;
 	if (cap & BIT(SDE_CTL_NO_LAYER_EXT)) {
+		ops->get_active_pipes = sde_hw_ctl_get_active_pipes;
 		ops->get_active_lms = sde_hw_ctl_get_active_lms;
 	} else {
 		ops->clear_all_blendstages = sde_hw_ctl_clear_all_blendstages;
@@ -1868,8 +1953,10 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 	// TODO: HW virtualization
 	ops->update_bitmask_sspp = sde_hw_ctl_update_bitmask_sspp;
 	ops->update_bitmask_mixer = sde_hw_ctl_update_bitmask_mixer;
-	if  (cap & BIT(SDE_CTL_REG_DMA))
+	if (cap & BIT(SDE_CTL_REG_DMA))
 		ops->reg_dma_flush = sde_hw_reg_dma_flush;
+	else if (cap & BIT(SDE_CTL_REG_DMA_VQ))
+		ops->reg_dma_flush = sde_hw_reg_dma_flush_vq;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
@@ -1879,6 +1966,7 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 {
 	struct sde_hw_ctl *c;
 	struct sde_ctl_cfg *cfg;
+	int i;
 
 	c = kzalloc(sizeof(*c), GFP_KERNEL);
 	if (!c)
@@ -1896,10 +1984,20 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 	c->mixer_count = m->mixer_count;
 	c->mixer_hw_caps = m->mixer;
 	c->dpu_idx = dpu_idx;
-	if (c->hw.virtual)
-		_setup_virtual_ctl_ops(&c->ops, c->caps->features, m->mdp[0].features);
-	else
+	if (!c->hw.virtual) {
 		_setup_ctl_ops(&c->ops, c->caps->features, m->mdp[0].features);
+		c->flush.global_flush_mask = 0xFFFFFFFF;
+	} else {
+		_setup_virtual_ctl_ops(&c->ops, c->caps->features, m->mdp[0].features);
+
+		/* Shared display shall only configure layer mixer stages and SSPP */
+		c->flush.global_flush_mask = CTL_FLUSH_MASK_CTL;
+		for (i = 0; i < LM_MAX; i ++)
+			c->flush.global_flush_mask |= BIT(mixer_tbl[i]);
+		for (i = 0; i < SSPP_MAX; i ++)
+			c->flush.global_flush_mask |= BIT(sspp_tbl[i]);
+	}
+	c->flush.previous_flush_mask = 0;
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);

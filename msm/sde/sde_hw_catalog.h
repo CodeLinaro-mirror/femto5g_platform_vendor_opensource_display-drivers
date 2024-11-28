@@ -59,6 +59,7 @@
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
+#define SDE_HW_VER_C01	SDE_HW_VER(12, 1, 0) /* nord */
 #define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 
@@ -94,6 +95,7 @@
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
+#define IS_NORD_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C01)
 #define IS_TUNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C30)
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 
@@ -373,6 +375,7 @@ enum {
  * @SDE_SSPP_REC_SWI_SEPARATION SSPP Registers are split into CMN, REC0 and REC1
  * @SDE_SSPP_SCALER_QSEED_EBS Edge Bleed Supresison support in QSEED block
  * @SDE_SSPP_SCALER_QSEED_ADE Adaptive DE support in QSEED block
+ * @SDE_SSPP_LOCAL_FLUSH     Local flush support for each RECT
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -420,6 +423,7 @@ enum {
 	SDE_SSPP_REC_SWI_SEPARATION,
 	SDE_SSPP_SCALER_QSEED_EBS,
 	SDE_SSPP_SCALER_QSEED_ADE,
+	SDE_SSPP_LOCAL_FLUSH,
 	SDE_SSPP_SMART_DMA_REC0_ONLY,
 	SDE_SSPP_SMART_DMA_REC1_ONLY,
 	SDE_SSPP_MAX
@@ -466,6 +470,7 @@ enum {
  * @SDE_MIXER_10_BITS_COLOR   Layer mixer supports 10 bits color border and color fill
  * @SDE_MIXER_CAC_PRIMARY     Layer mixer preferred for primary during two pass CAC
  * @SDE_MIXER_CAC_LB          Layer mixer preferred for loopback during two pass CAC
+ * @SDE_MIXER_LOCAL_FLUSH     Layer mixer supports per blend stage local flush
  * @SDE_MIXER_MAX             maximum value
  */
 enum {
@@ -484,6 +489,7 @@ enum {
 	SDE_MIXER_10_BITS_COLOR,
 	SDE_MIXER_CAC_PRIMARY,
 	SDE_MIXER_CAC_LB,
+	SDE_MIXER_LOCAL_FLUSH,
 	SDE_MIXER_MAX
 };
 
@@ -676,6 +682,8 @@ enum {
  *                              of active bits for pipes and layer mixers
  * @SDE_CTL_CESTA_FLUSH         CTL supports display cesta flush programming
  * @SDE_CTL_REG_DMA             CTL supports REG_DMA block
+ * @SDE_CTL_REG_DMA_VQ          CTL supports REG_DMA virtual queue block for HW virtualization
+ * @SDE_CTL_LOCAL_FLUSH         CTL supports LM/SSPP/MISR local flush
  * @SDE_CTL_MAX
  */
 enum {
@@ -691,6 +699,8 @@ enum {
 	SDE_CTL_NO_LAYER_EXT,
 	SDE_CTL_CESTA_FLUSH,
 	SDE_CTL_REG_DMA,
+	SDE_CTL_REG_DMA_VQ,
+	SDE_CTL_LOCAL_FLUSH,
 	SDE_CTL_MAX
 };
 
@@ -1896,12 +1906,36 @@ struct sde_reg_dma_blk_info {
 };
 
 /**
+ * enum sde_reg_dma_vq - defines reg dma VQ ID
+ */
+enum sde_reg_dma_vq {
+	REG_DMA_VQ_0 = 0,
+	REG_DMA_VQ_1,
+	REG_DMA_VQ_2,
+	REG_DMA_VQ_3,
+	REG_DMA_VQ_4,
+	REG_DMA_VQ_5,
+	REG_DMA_VQ_6,
+	REG_DMA_VQ_7,
+	REG_DMA_VQ_8,
+	REG_DMA_VQ_9,
+	REG_DMA_VQ_10,
+	REG_DMA_VQ_11,
+	REG_DMA_VQ_12,
+	REG_DMA_VQ_13,
+	REG_DMA_VQ_14,
+	REG_DMA_VQ_15,
+	REG_DMA_VQ_MAX,
+};
+
+/**
  * struct sde_reg_dma_cfg - overall config struct of lut dma blocks.
  * @reg_dma_blks       Reg DMA blk info for each possible block type
  * @version            version of lutdma hw blocks
  * @trigger_sel_off    offset to trigger select registers of lutdma
  * @broadcast_disabled flag indicating if broadcast usage should be avoided
  * @split_vbif_supported indicates if VBIF clock split is supported
+ * @vq_supported       indicates if VQ is supported
  * @xin_id             VBIF xin client-id for LUTDMA
  * @vbif_idx           VBIF id (RT/NRT)
  * @base_off           Base offset of LUTDMA from the MDSS root
@@ -1913,6 +1947,7 @@ struct sde_reg_dma_cfg {
 	u32 trigger_sel_off;
 	u32 broadcast_disabled;
 	u32 split_vbif_supported;
+	u32 vq_supported;
 	u32 xin_id;
 	u32 vbif_idx;
 	u32 base_off;

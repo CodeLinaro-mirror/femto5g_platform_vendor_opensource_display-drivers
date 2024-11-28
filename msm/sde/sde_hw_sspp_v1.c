@@ -155,6 +155,27 @@
 #define SSPP_REC1_OFFSET_FROM_SSPP_CMN 0x3000
 #define SDE_SSPP_CMN SDE_SSPP_SRC
 
+/*
+ * Definitions for RECT register separation
+ */
+#define SSPP_MULTIRECT_OPMODE_ALT			0x344
+
+#define SSPP_FLUSH_CTRL						0x36c
+#define SSPP_FETCH_PIPE_ACTIVE_CTRL			0x370
+#define SSPP_SRC_ADDR_SW_STATUS_ALT			0x374
+#define SSPP_LINE_INSERTION_CTRL_ALT		0x378
+#define SSPP_LINE_INSERTION_OUT_SIZE_ALT	0x37C
+
+#define SSPP_FLUSH_CTRL_REC1				0x348
+#define SSPP_FETCH_PIPE_ACTIVE_CTRL_REC1	0x34C
+#define SSPP_SRC1_ADDR_REC1					0x350
+#define SSPP_SRC3_ADDR_REC1					0x354
+#define SSPP_SRC_YSTRIDE0_REC1				0x358
+#define SSPP_SRC_YSTRIDE1_REC1				0x35C
+#define SSPP_SRC_ADDR_SW_STATUS_REC1		0x360
+#define SSPP_LINE_INSERTION_CTRL_ALT_REC1		0x364
+#define SSPP_LINE_INSERTION_OUT_SIZE_ALT_REC1	0x368
+
 static inline int _sspp_calculate_rect_off(enum sde_sspp_multirect_index rect_index)
 {
 	return (rect_index == SDE_SSPP_RECT_SOLO || rect_index == SDE_SSPP_RECT_0) ?
@@ -1123,6 +1144,66 @@ static void sde_hw_sspp_setup_img_size_v1(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(&ctx->hw, SSPP_REC_SRC_IMG_SIZE + idx, img_size);
 }
 
+static void sde_hw_sspp_set_active_pipe_v1(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, bool active)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 active_off = 0;
+	u32 idx;
+
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+		return;
+
+	c = &ctx->hw;
+
+	if (index == SDE_SSPP_RECT_SOLO || index == SDE_SSPP_RECT_0)
+		active_off = SSPP_FETCH_PIPE_ACTIVE_CTRL;
+	else
+		active_off = SSPP_FETCH_PIPE_ACTIVE_CTRL_REC1;
+
+	SDE_REG_MODIFY(c, active_off, BIT(1), active ? BIT(1) : 0);
+}
+
+static void sde_hw_sspp_set_active_fetch_pipe_v1(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, bool active)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 active_off = 0;
+	u32 idx;
+
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+		return;
+
+	c = &ctx->hw;
+
+	if (index == SDE_SSPP_RECT_SOLO || index == SDE_SSPP_RECT_0)
+		active_off = SSPP_FETCH_PIPE_ACTIVE_CTRL;
+	else
+		active_off = SSPP_FETCH_PIPE_ACTIVE_CTRL_REC1;
+
+	SDE_REG_MODIFY(c, active_off, BIT(0), active ? BIT(0) : 0);
+}
+
+static void sde_hw_sspp_local_flush_v1(struct sde_hw_pipe *ctx,
+	enum sde_sspp_multirect_index index)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 flush_ctl_off = 0;
+	u32 idx;
+
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+		return;
+
+	c = &ctx->hw;
+
+	if (index == SDE_SSPP_RECT_SOLO || index == SDE_SSPP_RECT_0)
+		flush_ctl_off = SSPP_FLUSH_CTRL;
+	else
+		flush_ctl_off = SSPP_FLUSH_CTRL_REC1;
+
+	SDE_REG_WRITE(c, flush_ctl_off, 0x03);
+}
+
 void setup_layer_ops_v1(struct sde_hw_pipe *c,
 		unsigned long features, unsigned long perf_features,
 		bool is_virtual_pipe)
@@ -1228,4 +1309,9 @@ void setup_layer_ops_v1(struct sde_hw_pipe *c,
 	}
 	if (test_bit(SDE_SSPP_LINE_INSERTION, &features))
 		c->ops.setup_line_insertion = sde_hw_sspp_setup_line_insertion_v1;
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &features)) {
+		c->ops.set_active_pipe = sde_hw_sspp_set_active_pipe_v1;
+		c->ops.set_active_fetch_pipe = sde_hw_sspp_set_active_fetch_pipe_v1;
+		c->ops.local_flush = sde_hw_sspp_local_flush_v1;
+	}
 }

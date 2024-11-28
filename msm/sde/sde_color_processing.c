@@ -3602,8 +3602,9 @@ static void _sde_cp_notify_ad_event(struct drm_crtc *crtc_drm, void *arg)
 		return;
 	}
 
-	hw_dspp->ops.ad_read_intr_resp(hw_dspp, AD4_IN_OUT_BACKLIGHT,
-			&input_bl, &output_bl);
+	if (hw_dspp->ops.ad_read_intr_resp)
+		hw_dspp->ops.ad_read_intr_resp(hw_dspp, AD4_IN_OUT_BACKLIGHT,
+				&input_bl, &output_bl);
 
 	pm_runtime_put_sync(kms->dev->dev);
 	if (!input_bl || input_bl < output_bl)
@@ -4300,7 +4301,8 @@ static void _sde_cp_crtc_queue_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
 				DRM_ERROR("invalid dspp for mixer %d\n", i);
 				break;
 			}
-			hw_dspp->ops.setup_ltm_hist_buffer(hw_dspp, addr);
+			if (hw_dspp->ops.setup_ltm_hist_buffer)
+				hw_dspp->ops.setup_ltm_hist_buffer(hw_dspp, addr);
 		}
 	}
 	spin_unlock_irqrestore(&sde_crtc->ltm_lock, irq_flags);
@@ -4370,8 +4372,9 @@ static void _sde_cp_crtc_enable_ltm_hist(struct sde_crtc *sde_crtc,
 	if (!ret) {
 		if (!hw_lm->cfg.right_mixer)
 			sde_crtc->ltm_hist_en = true;
-		hw_dspp->ops.setup_ltm_hist_ctrl(hw_dspp, hw_cfg,
-			true, addr);
+		if (hw_dspp->ops.setup_ltm_hist_ctrl)
+			hw_dspp->ops.setup_ltm_hist_ctrl(hw_dspp, hw_cfg,
+				true, addr);
 		SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
 	}
 	spin_unlock_irqrestore(&sde_crtc->ltm_lock, irq_flags);
@@ -4395,8 +4398,9 @@ static void _sde_cp_crtc_disable_ltm_hist(struct sde_crtc *sde_crtc,
 	for (i = 0; i < sde_crtc->ltm_buffer_cnt; i++)
 		list_add(&sde_crtc->ltm_buffers[i]->node,
 			&sde_crtc->ltm_buf_free);
-	hw_dspp->ops.setup_ltm_hist_ctrl(hw_dspp, NULL,
-			false, 0);
+	if (hw_dspp->ops.setup_ltm_hist_ctrl)
+		hw_dspp->ops.setup_ltm_hist_ctrl(hw_dspp, NULL,
+				false, 0);
 	spin_unlock_irqrestore(&sde_crtc->ltm_lock, irq_flags);
 	event.type = DRM_EVENT_LTM_OFF;
 	event.length = sizeof(hist_off);
@@ -4438,11 +4442,13 @@ static void _sde_cp_ltm_hist_interrupt_cb(void *arg, int irq_idx)
 			DRM_ERROR("invalid dspp for mixer %d\n", i);
 			return;
 		}
-		hw_dspp->ops.ltm_read_intr_status(hw_dspp, &status);
-		if (status & LTM_STATS_SAT)
-			ltm_hist_status |= LTM_STATS_SAT;
-		if (status & LTM_STATS_MERGE_SAT)
-			ltm_hist_status |= LTM_STATS_MERGE_SAT;
+		if (hw_dspp->ops.ltm_read_intr_status) {
+			hw_dspp->ops.ltm_read_intr_status(hw_dspp, &status);
+			if (status & LTM_STATS_SAT)
+				ltm_hist_status |= LTM_STATS_SAT;
+			if (status & LTM_STATS_MERGE_SAT)
+				ltm_hist_status |= LTM_STATS_MERGE_SAT;
+		}
 	}
 
 	spin_lock_irqsave(&sde_crtc->ltm_lock, irq_flags);
@@ -4458,8 +4464,9 @@ static void _sde_cp_ltm_hist_interrupt_cb(void *arg, int irq_idx)
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
 			if (!hw_dspp || i >= DSPP_MAX)
 				continue;
-			hw_dspp->ops.setup_ltm_hist_ctrl(hw_dspp, NULL, false,
-				0);
+			if (hw_dspp->ops.setup_ltm_hist_ctrl)
+				hw_dspp->ops.setup_ltm_hist_ctrl(hw_dspp, NULL, false,
+					0);
 		}
 		sde_crtc->ltm_merge_clear_pending = true;
 		SDE_EVT32(DRMID(&sde_crtc->base), sde_crtc->ltm_merge_clear_pending);
@@ -4500,7 +4507,8 @@ static void _sde_cp_ltm_hist_interrupt_cb(void *arg, int irq_idx)
 			DRM_ERROR("invalid dspp for mixer %d\n", i);
 			return;
 		}
-		hw_dspp->ops.setup_ltm_hist_buffer(hw_dspp, addr);
+		if (hw_dspp->ops.setup_ltm_hist_buffer)
+			hw_dspp->ops.setup_ltm_hist_buffer(hw_dspp, addr);
 	}
 
 	list_del_init(&busy_buf->node);

@@ -137,6 +137,27 @@
 #define SSPP_SW_PIX_EXT_C2_LR              0x320
 #define SSPP_SW_PIX_EXT_C2_TB              0x324
 
+/*
+ * Definitions for RECT register separation
+ */
+#define SSPP_MULTIRECT_OPMODE_ALT			0x344
+
+#define SSPP_FLUSH_CTRL						0x36c
+#define SSPP_FETCH_PIPE_ACTIVE_CTRL			0x370
+#define SSPP_SRC_ADDR_SW_STATUS_ALT			0x374
+#define SSPP_LINE_INSERTION_CTRL_ALT		0x378
+#define SSPP_LINE_INSERTION_OUT_SIZE_ALT	0x37C
+
+#define SSPP_FLUSH_CTRL_REC1				0x348
+#define SSPP_FETCH_PIPE_ACTIVE_CTRL_REC1	0x34C
+#define SSPP_SRC1_ADDR_REC1					0x350
+#define SSPP_SRC3_ADDR_REC1					0x354
+#define SSPP_SRC_YSTRIDE0_REC1				0x358
+#define SSPP_SRC_YSTRIDE1_REC1				0x35C
+#define SSPP_SRC_ADDR_SW_STATUS_REC1		0x360
+#define SSPP_LINE_INSERTION_CTRL_ALT_REC1		0x364
+#define SSPP_LINE_INSERTION_OUT_SIZE_ALT_REC1	0x368
+
 int sspp_subblk_offset(struct sde_hw_pipe *ctx,
 		int s_id,
 		u32 *idx)
@@ -187,28 +208,43 @@ static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
-	if (index == SDE_SSPP_RECT_SOLO) {
-		/**
-		 * if rect index is RECT_SOLO, we cannot expect a
-		 * virtual plane sharing the same SSPP id. So we go
-		 * and disable multirect
-		 */
-		mode_mask = 0;
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		if (index == SDE_SSPP_RECT_SOLO)
+			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
+					BIT(2) | BIT(1) | BIT(0),
+					0x00);
+		else if (index == SDE_SSPP_RECT_0)
+			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
+					BIT(2) | BIT(0),
+					(enable ? BIT(0) : 0) | ((mode == SDE_SSPP_MULTIRECT_TIME_MX) ? BIT(2) : 0));
+		else
+			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
+					BIT(2) | BIT(1),
+					(enable ? BIT(1) : 0) | ((mode == SDE_SSPP_MULTIRECT_TIME_MX) ? BIT(2) : 0));
 	} else {
-		mode_mask = SDE_REG_READ(&ctx->hw, SSPP_MULTIRECT_OPMODE + idx);
+		if (index == SDE_SSPP_RECT_SOLO) {
+			/**
+			 * if rect index is RECT_SOLO, we cannot expect a
+			 * virtual plane sharing the same SSPP id. So we go
+			 * and disable multirect
+			 */
+			mode_mask = 0;
+		} else {
+			mode_mask = SDE_REG_READ(&ctx->hw, SSPP_MULTIRECT_OPMODE + idx);
 
-		if (enable)
-			mode_mask |= index;
-		else
-			mode_mask &= ~index;
+			if (enable)
+				mode_mask |= index;
+			else
+				mode_mask &= ~index;
 
-		if (enable && (mode == SDE_SSPP_MULTIRECT_TIME_MX))
-			mode_mask |= BIT(2);
-		else
-			mode_mask &= ~BIT(2);
+			if (enable && (mode == SDE_SSPP_MULTIRECT_TIME_MX))
+				mode_mask |= BIT(2);
+			else
+				mode_mask &= ~BIT(2);
+		}
+
+		SDE_REG_WRITE(&ctx->hw, SSPP_MULTIRECT_OPMODE + idx, mode_mask);
 	}
-
-	SDE_REG_WRITE(&ctx->hw, SSPP_MULTIRECT_OPMODE + idx, mode_mask);
 }
 
 static void _sspp_setup_opmode(struct sde_hw_pipe *ctx,
@@ -279,11 +315,15 @@ static void sde_hw_sspp_setup_ubwc(struct sde_hw_pipe *ctx, struct sde_hw_blk_re
 		const struct sde_format *fmt, bool const_alpha_en, bool const_color_en,
 		enum sde_sspp_multirect_index rect_mode)
 {
-	u32 alpha_en_mask = 0, color_en_mask = 0, ubwc_ctrl_off, ctrl_val = 0;
+	u32 fetch_cfg = 0, alpha_en_mask = 0, color_en_mask = 0, ubwc_ctrl_off, ctrl_val = 0;
 
-	SDE_REG_WRITE(c, SSPP_FETCH_CONFIG,
-		SDE_FETCH_CONFIG_RESET_VALUE |
-		ctx->mdp->highest_bank_bit << 18);
+	fetch_cfg = SDE_FETCH_CONFIG_RESET_VALUE | ctx->mdp->highest_bank_bit << 18;
+
+	/* Auto mode */
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+		fetch_cfg |= BIT(10);
+
+	SDE_REG_WRITE(c, SSPP_FETCH_CONFIG, fetch_cfg);
 
 	if ((rect_mode == SDE_SSPP_RECT_SOLO || rect_mode == SDE_SSPP_RECT_0) ||
 			!test_bit(SDE_SSPP_UBWC_STATS, &ctx->cap->features))
@@ -599,14 +639,28 @@ static void sde_hw_sspp_setup_secure(struct sde_hw_pipe *ctx,
 	else
 		secure_bit_mask = 0xA;
 
-	secure = SDE_REG_READ(c, SSPP_SRC_ADDR_SW_STATUS + idx);
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		if (rect_mode == SDE_SSPP_RECT_1)
+			secure = SDE_REG_READ(c, SSPP_SRC_ADDR_SW_STATUS_REC1 + idx);
+		else
+			secure = SDE_REG_READ(c, SSPP_SRC_ADDR_SW_STATUS_ALT + idx);
+	} else {
+		secure = SDE_REG_READ(c, SSPP_SRC_ADDR_SW_STATUS + idx);
+	}
 
 	if (enable)
 		secure |= secure_bit_mask;
 	else
 		secure &= ~secure_bit_mask;
 
-	SDE_REG_WRITE(c, SSPP_SRC_ADDR_SW_STATUS + idx, secure);
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		if (rect_mode == SDE_SSPP_RECT_1)
+			SDE_REG_WRITE(c, SSPP_SRC_ADDR_SW_STATUS_REC1 + idx, secure);
+		else
+			SDE_REG_WRITE(c, SSPP_SRC_ADDR_SW_STATUS_ALT + idx, secure);
+	} else {
+		SDE_REG_WRITE(c, SSPP_SRC_ADDR_SW_STATUS + idx, secure);
+	}
 
 	/* multiple planes share same sw_status register */
 	wmb();
@@ -801,7 +855,6 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 		out_xy_off = SSPP_OUT_XY_REC1;
 	}
 
-
 	/* src and dest rect programming */
 	src_xy = (cfg->src_rect.y << 16) | (cfg->src_rect.x);
 	src_size = (cfg->src_rect.h << 16) | (cfg->src_rect.w);
@@ -813,6 +866,17 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 			(cfg->layout.plane_pitch[1] << 16);
 		ystride1 = (cfg->layout.plane_pitch[2]) |
 			(cfg->layout.plane_pitch[3] << 16);
+	} else if (rect_index == SDE_SSPP_RECT_1
+			&& test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		ystride0 = SDE_REG_READ(c, SSPP_SRC_YSTRIDE0_REC1 + idx);
+		ystride1 = SDE_REG_READ(c, SSPP_SRC_YSTRIDE1_REC1 + idx);
+
+		ystride0 = (ystride0 & 0x0000FFFF) |
+			((cfg->layout.plane_pitch[0] << 16) &
+			 0xFFFF0000);
+		ystride1 = (ystride1 & 0x0000FFFF) |
+			((cfg->layout.plane_pitch[2] << 16) &
+			 0xFFFF0000);
 	} else {
 		ystride0 = SDE_REG_READ(c, SSPP_SRC_YSTRIDE0 + idx);
 		ystride1 = SDE_REG_READ(c, SSPP_SRC_YSTRIDE1 + idx);
@@ -845,9 +909,15 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(c, out_size_off + idx, dst_size);
 	SDE_REG_WRITE(c, out_xy_off + idx, dst_xy);
 
-	SDE_REG_WRITE(c, SSPP_SRC_YSTRIDE0 + idx, ystride0);
-	SDE_REG_WRITE(c, SSPP_SRC_YSTRIDE1 + idx, ystride1);
-	SDE_REG_WRITE(c, SSPP_DECIMATION_CONFIG + idx, decimation);
+	if (rect_index == SDE_SSPP_RECT_1
+		&& test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		SDE_REG_WRITE(c, SSPP_SRC_YSTRIDE0_REC1 + idx, ystride0);
+		SDE_REG_WRITE(c, SSPP_SRC_YSTRIDE1_REC1 + idx, ystride1);
+	} else {
+		SDE_REG_WRITE(c, SSPP_SRC_YSTRIDE0 + idx, ystride0);
+		SDE_REG_WRITE(c, SSPP_SRC_YSTRIDE1 + idx, ystride1);
+		SDE_REG_WRITE(c, SSPP_DECIMATION_CONFIG + idx, decimation);
+	}
 
 	if (rect_index == SDE_SSPP_RECT_SOLO)
 		return;
@@ -955,6 +1025,12 @@ static void sde_hw_sspp_setup_sourceaddress(struct sde_hw_pipe *ctx,
 				cfg->layout.plane_addr[0]);
 		SDE_REG_WRITE(&ctx->hw, SSPP_SRC2_ADDR + idx,
 				cfg->layout.plane_addr[2]);
+	} else if ((rect_mode == SDE_SSPP_RECT_1)
+		&& test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		SDE_REG_WRITE(&ctx->hw, SSPP_SRC1_ADDR_REC1 + idx,
+				cfg->layout.plane_addr[0]);
+		SDE_REG_WRITE(&ctx->hw, SSPP_SRC3_ADDR_REC1 + idx,
+				cfg->layout.plane_addr[2]);
 	} else {
 		SDE_REG_WRITE(&ctx->hw, SSPP_SRC1_ADDR + idx,
 				cfg->layout.plane_addr[0]);
@@ -971,7 +1047,10 @@ u32 sde_hw_sspp_get_source_addr(struct sde_hw_pipe *ctx, bool is_virtual)
 	if (!ctx || sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return 0;
 
-	offset =  is_virtual ? (SSPP_SRC1_ADDR + idx) : (SSPP_SRC0_ADDR + idx);
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+		offset =  is_virtual ? (SSPP_SRC1_ADDR_REC1 + idx) : (SSPP_SRC0_ADDR + idx);
+	else
+		offset =  is_virtual ? (SSPP_SRC1_ADDR + idx) : (SSPP_SRC0_ADDR + idx);
 
 	return SDE_REG_READ(&ctx->hw, offset);
 }
@@ -1233,6 +1312,9 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 {
 	int ret = 0;
 
+	pr_err("Enter %s  idx %d  %s%d\n", __func__, c->idx,
+			(c->idx > SSPP_VIG_MAX) ? "DMA" : "VIG",
+			(c->idx > SSPP_VIG_MAX) ? (c->idx - SSPP_DMA0) : (c->idx - SSPP_VIG0));
 	if (is_virtual_pipe) {
 		features &=
 			~(BIT(SDE_SSPP_VIG_IGC) | BIT(SDE_SSPP_VIG_GAMUT));
@@ -1242,6 +1324,7 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 	if (test_bit(SDE_SSPP_HSIC, &features)) {
 		if (c->cap->sblk->hsic_blk.version ==
 			(SDE_COLOR_PROCESS_VER(0x1, 0x7))) {
+			pr_err("Set HISC v1.7\n");
 			c->ops.setup_pa_hue = sde_setup_pipe_pa_hue_v1_7;
 			c->ops.setup_pa_sat = sde_setup_pipe_pa_sat_v1_7;
 			c->ops.setup_pa_val = sde_setup_pipe_pa_val_v1_7;
@@ -1251,41 +1334,55 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 
 	if (test_bit(SDE_SSPP_MEMCOLOR, &features)) {
 		if (c->cap->sblk->memcolor_blk.version ==
-			(SDE_COLOR_PROCESS_VER(0x1, 0x7)))
+			(SDE_COLOR_PROCESS_VER(0x1, 0x7))) {
 			c->ops.setup_pa_memcolor =
 				sde_setup_pipe_pa_memcol_v1_7;
+				pr_err("Set PA v1.7\n");
+			}
 	}
 
 	if (test_bit(SDE_SSPP_VIG_GAMUT, &features)) {
 		if (c->cap->sblk->gamut_blk.version ==
 			(SDE_COLOR_PROCESS_VER(0x5, 0x0))) {
+			pr_err("Setup LUTDMA SSPP v4\n");
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
 							c);
-			if (!ret)
+			if (!ret) {
 				c->ops.setup_vig_gamut =
 					reg_dmav1_setup_vig_gamutv5;
-			else
+				pr_err("Set VIG GAMUT V5\n");
+			} else {
 				c->ops.setup_vig_gamut = NULL;
+				pr_err("Set VIG GAMUT NULL\n");
+			}
 		}
 
 		if (c->cap->sblk->gamut_blk.version ==
 			(SDE_COLOR_PROCESS_VER(0x6, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
 							c);
-			if (!ret)
+			pr_err("Setup LUTDMA SSPP v4\n");
+			if (!ret) {
 				c->ops.setup_vig_gamut =
 					reg_dmav1_setup_vig_gamutv6;
-			else
+				pr_err("Set VIG GAMUT V6\n");
+			} else {
 				c->ops.setup_vig_gamut = NULL;
+				pr_err("Set VIG GAMUT NULL\n");
+			}
 		} else if (c->cap->sblk->gamut_blk.version ==
 			(SDE_COLOR_PROCESS_VER(0x6, 0x1))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
 							c);
-			if (!ret)
+			pr_err("Setup LUTDMA SSPP v4\n");
+			if (!ret) {
 				c->ops.setup_vig_gamut =
 					reg_dmav2_setup_vig_gamutv61;
-			else
+				pr_err("Set VIG GAMUT V61\n");
+			} else {
 				c->ops.setup_vig_gamut = NULL;
+				pr_err("Set VIG GAMUT NULL\n");
+			}
 		}
 	}
 
@@ -1294,22 +1391,30 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x5, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_IGC,
 							c);
-			if (!ret)
+			pr_err("Setup LUTDMA SSPP v4\n");
+			if (!ret) {
 				c->ops.setup_vig_igc =
 					reg_dmav1_setup_vig_igcv5;
-			else
+				pr_err("Set VIG IGC V5\n");
+			} else {
 				c->ops.setup_vig_igc = NULL;
+				pr_err("Set VIG IGC NULL\n");
+			}
 		}
 
 		if (c->cap->sblk->igc_blk[0].version ==
 			(SDE_COLOR_PROCESS_VER(0x6, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_IGC,
 							c);
-			if (!ret)
+			pr_err("Setup LUTDMA SSPP v4\n");
+			if (!ret) {
 				c->ops.setup_vig_igc =
 					reg_dmav1_setup_vig_igcv6;
-			else
+				pr_err("Set VIG IGC V6\n");
+			} else {
 				c->ops.setup_vig_igc = NULL;
+				pr_err("Set VIG IGC NULL\n");
+			}
 		}
 	}
 
@@ -1318,11 +1423,15 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x5, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_DMA_IGC,
 							c);
-			if (!ret)
+			pr_err("Setup LUTDMA SSPP v4\n");
+			if (!ret) {
 				c->ops.setup_dma_igc =
 					reg_dmav1_setup_dma_igcv5;
-			else
+				pr_err("Set DMA IGC V5\n");
+			} else {
 				c->ops.setup_dma_igc = NULL;
+				pr_err("Set DMA IGC NULL\n");
+			}
 		}
 	}
 
@@ -1331,73 +1440,104 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x5, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_DMA_GC,
 							c);
-			if (!ret)
+			pr_err("Setup LUTDMA SSPP v4\n");
+			if (!ret) {
 				c->ops.setup_dma_gc =
 					reg_dmav1_setup_dma_gcv5;
-			else
+				pr_err("Set DMA GC V5\n");
+			} else {
 				c->ops.setup_dma_gc = NULL;
+				pr_err("Set DMA GC NULL\n");
+			}
 		}
 	}
 
 	if (test_bit(SDE_SSPP_FP16_IGC, &features) &&
-			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_igc_blk[0].version))
+			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_igc_blk[0].version)) {
 		c->ops.setup_fp16_igc = sde_setup_fp16_igcv1;
+		pr_err("Set FP16 IGC V1\n");
+	}
 
 	if (test_bit(SDE_SSPP_FP16_GC, &features) &&
-			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_gc_blk[0].version))
+			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_gc_blk[0].version)) {
 		c->ops.setup_fp16_gc = sde_setup_fp16_gcv1;
+		pr_err("Set FP16 GC V1\n");
+	}
 
 	if (test_bit(SDE_SSPP_FP16_CSC, &features) &&
-			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_csc_blk[0].version))
+			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_csc_blk[0].version)) {
 		c->ops.setup_fp16_csc = sde_setup_fp16_cscv1;
+		pr_err("Set FP16 CSC V1\n");
+	}
 
 	if (test_bit(SDE_SSPP_FP16_UNMULT, &features) &&
-			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_unmult_blk[0].version))
+			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_unmult_blk[0].version)) {
 		c->ops.setup_fp16_unmult = sde_setup_fp16_unmultv1;
+		pr_err("Set FP16 UNMULT V1\n");
+	}
 
 	if (test_bit(SDE_SSPP_UCSC_IGC, &features)) {
 		if (c->cap->sblk->ucsc_igc_blk[0].version ==
-			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_igc = sde_setup_ucsc_igcv1_1;
-		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_igc_blk[0].version))
+			pr_err("Set UCSC IGC V1.1\n");
+		} else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_igc_blk[0].version)) {
 			c->ops.setup_ucsc_igc = sde_setup_ucsc_igcv1;
-		else
+			pr_err("Set UCSC IGC V1\n");
+		} else {
 			c->ops.setup_ucsc_igc = NULL;
+			pr_err("Set UCSC IGC NULL\n");
+		}
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_GC, &features)) {
 		if (c->cap->sblk->ucsc_gc_blk[0].version ==
-			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_gc = sde_setup_ucsc_gcv1_1;
-		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_gc_blk[0].version))
+			pr_err("Set UCSC IGC V1.1\n");
+		} else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_gc_blk[0].version)) {
 			c->ops.setup_ucsc_gc = sde_setup_ucsc_gcv1;
-		else
+			pr_err("Set UCSC GC V1\n");
+		} else {
 			c->ops.setup_ucsc_gc = NULL;
+			pr_err("Set UCSC GC NULL\n");
+		}
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_CSC, &features)) {
 		if (c->cap->sblk->ucsc_csc_blk[0].version ==
-			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_csc = sde_setup_ucsc_cscv1_1;
-		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_csc_blk[0].version))
+			pr_err("Set UCSC CSC V1.1\n");
+		} else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_csc_blk[0].version)) {
 			c->ops.setup_ucsc_csc = sde_setup_ucsc_cscv1;
-		else
+			pr_err("Set UCSC CSC V1\n");
+		} else {
 			c->ops.setup_ucsc_csc = NULL;
+			pr_err("Set UCSC CSC NULL\n");
+		}
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_UNMULT, &features)) {
 		if (c->cap->sblk->ucsc_unmult_blk[0].version ==
-			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_unmult = sde_setup_ucsc_unmultv1_1;
-		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_unmult_blk[0].version))
+			pr_err("Set UCSC UNMULT V1.1\n");
+		} else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_unmult_blk[0].version)) {
 			c->ops.setup_ucsc_unmult = sde_setup_ucsc_unmultv1;
-		else
+			pr_err("Set UCSC UNMULT V1\n");
+		} else {
 			c->ops.setup_ucsc_unmult = NULL;
+			pr_err("Set UCSC UNMULT NULL\n");
+		}
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_ALPHA_DITHER, &features) &&
-			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_alpha_dither_blk[0].version))
+			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_alpha_dither_blk[0].version)) {
 		c->ops.setup_ucsc_alpha_dither = sde_setup_ucsc_alpha_ditherv1;
+		pr_err("Set UCSC ALPHA DITHER V1\n");
+	}
+	pr_err("Exit %s\n", __func__);
 }
 
 void sde_hw_sspp_setup_inverse_pma(struct sde_hw_pipe *ctx,
@@ -1517,12 +1657,22 @@ static void sde_hw_sspp_setup_line_insertion(struct sde_hw_pipe *ctx,
 
 	c = &ctx->hw;
 
-	if (rect_index == SDE_SSPP_RECT_SOLO || rect_index == SDE_SSPP_RECT_0) {
-		ctl_off = SSPP_LINE_INSERTION_CTRL;
-		size_off = SSPP_LINE_INSERTION_OUT_SIZE;
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		if (rect_index == SDE_SSPP_RECT_SOLO || rect_index == SDE_SSPP_RECT_0) {
+			ctl_off = SSPP_LINE_INSERTION_CTRL_ALT;
+			size_off = SSPP_LINE_INSERTION_OUT_SIZE_ALT;
+		} else {
+			ctl_off = SSPP_LINE_INSERTION_CTRL_ALT_REC1;
+			size_off = SSPP_LINE_INSERTION_OUT_SIZE_ALT_REC1;
+		}
 	} else {
-		ctl_off = SSPP_LINE_INSERTION_CTRL_REC1;
-		size_off = SSPP_LINE_INSERTION_OUT_SIZE_REC1;
+		if (rect_index == SDE_SSPP_RECT_SOLO || rect_index == SDE_SSPP_RECT_0) {
+			ctl_off = SSPP_LINE_INSERTION_CTRL;
+			size_off = SSPP_LINE_INSERTION_OUT_SIZE;
+		} else {
+			ctl_off = SSPP_LINE_INSERTION_CTRL_REC1;
+			size_off = SSPP_LINE_INSERTION_OUT_SIZE_REC1;
+		}
 	}
 
 	if (cfg->enable)
@@ -1591,6 +1741,76 @@ static void sde_hw_sspp_setup_img_size(struct sde_hw_pipe *ctx,
 	img_size = img_rec->h << 16 | img_rec->w;
 
 	SDE_REG_WRITE(&ctx->hw, SSPP_SRC_IMG_SIZE + idx, img_size);
+}
+
+static void sde_hw_sspp_set_active_pipe(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, bool active)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 active_off = 0;
+	u32 idx;
+
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+		return;
+
+	c = &ctx->hw;
+
+	if (index == SDE_SSPP_RECT_SOLO || index == SDE_SSPP_RECT_0)
+		active_off = SSPP_FETCH_PIPE_ACTIVE_CTRL;
+	else
+		active_off = SSPP_FETCH_PIPE_ACTIVE_CTRL_REC1;
+
+	SDE_REG_MODIFY(c, active_off, BIT(1), active ? BIT(1) : 0);
+}
+
+static void sde_hw_sspp_set_active_fetch_pipe(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, bool active)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 active_off = 0;
+	u32 idx;
+
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+		return;
+
+	c = &ctx->hw;
+
+	if (index == SDE_SSPP_RECT_SOLO || index == SDE_SSPP_RECT_0)
+		active_off = SSPP_FETCH_PIPE_ACTIVE_CTRL;
+	else
+		active_off = SSPP_FETCH_PIPE_ACTIVE_CTRL_REC1;
+
+	SDE_REG_MODIFY(c, active_off, BIT(0), active ? BIT(0) : 0);
+}
+
+static void sde_hw_sspp_local_flush(struct sde_hw_pipe *ctx,
+	enum sde_sspp_multirect_index index)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 flush_ctl_off = 0;
+	u32 idx;
+
+	if (ctx->global_flush) {
+		ctx->global_flush = false;
+		return;
+	}
+
+	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
+		return;
+
+	c = &ctx->hw;
+
+	if (index == SDE_SSPP_RECT_SOLO || index == SDE_SSPP_RECT_0)
+		flush_ctl_off = SSPP_FLUSH_CTRL;
+	else
+		flush_ctl_off = SSPP_FLUSH_CTRL_REC1;
+
+	SDE_REG_WRITE(c, flush_ctl_off, 0x03);
+}
+
+void sde_hw_sspp_set_flush_type(struct sde_hw_pipe *ctx, bool global)
+{
+	ctx->global_flush = global;
 }
 
 static void _setup_layer_ops(struct sde_hw_pipe *c,
@@ -1700,6 +1920,12 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 	}
 	if (test_bit(SDE_SSPP_LINE_INSERTION, &features))
 		c->ops.setup_line_insertion = sde_hw_sspp_setup_line_insertion;
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &features)) {
+		c->ops.set_active_pipe = sde_hw_sspp_set_active_pipe;
+		c->ops.set_active_fetch_pipe = sde_hw_sspp_set_active_fetch_pipe;
+		c->ops.local_flush = sde_hw_sspp_local_flush;
+		c->ops.set_flush_type = sde_hw_sspp_set_flush_type;
+	}
 }
 
 static struct sde_sspp_cfg *_sspp_offset(enum sde_sspp sspp,
@@ -1741,6 +1967,7 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 	struct sde_hw_pipe *hw_pipe;
 	struct sde_sspp_cfg *cfg;
 
+	pr_err("Enter %s\n", __func__);
 	if (!addr || !catalog)
 		return ERR_PTR(-EINVAL);
 
@@ -1761,6 +1988,7 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 	hw_pipe->cap = cfg;
 	hw_pipe->dpu_idx = dpu_idx;
 	hw_pipe->sde_kms = sde_kms;
+	hw_pipe->global_flush = true;	// Next commit should be global flush
 
 	if (test_bit(SDE_SSPP_REC_SWI_SEPARATION, &hw_pipe->cap->features))
 		setup_layer_ops_v1(hw_pipe, hw_pipe->cap->features,
@@ -1841,10 +2069,13 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 				clk_client->ops.setup_clk_force_ctrl = sde_hw_sspp_setup_clk_force_ctrl;
 			}
 		} else {
-			SDE_ERROR("invalid sspp clk ctrl type %d\n", cfg->clk_ctrl);
+			pr_err("invalid sspp clk ctrl type %d\n", cfg->clk_ctrl);
 		}
 	}
 
+	pr_err("Exit %s  idx=%d  %s%d\n", __func__, hw_pipe->idx,
+			(hw_pipe->idx > SSPP_VIG_MAX) ? "DMA" : "VIG",
+			(hw_pipe->idx > SSPP_VIG_MAX) ? (hw_pipe->idx - SSPP_DMA0) : (hw_pipe->idx - SSPP_VIG0));
 	return hw_pipe;
 }
 

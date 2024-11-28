@@ -237,6 +237,10 @@ enum sde_dspp {
 	DSPP_1,
 	DSPP_2,
 	DSPP_3,
+	DSPP_4,
+	DSPP_5,
+	DSPP_6,
+	DSPP_7,
 	DSPP_MAX
 };
 
@@ -280,6 +284,8 @@ enum sde_ctl {
 	CTL_3,
 	CTL_4,
 	CTL_5,
+	CTL_6,
+	CTL_7,
 	CTL_MAX
 };
 
@@ -341,6 +347,8 @@ enum sde_intf {
 	INTF_6,
 	INTF_7,
 	INTF_8,
+	INTF_9,
+	INTF_10,
 	INTF_MAX
 };
 
@@ -441,6 +449,35 @@ enum sde_merge_3d {
 enum sde_qdss {
 	QDSS_0,
 	QDSS_MAX
+};
+
+enum sde_roi_crc {
+	ROI_CRC_0 = 1,
+	ROI_CRC_1,
+	ROI_CRC_2,
+	ROI_CRC_3,
+	ROI_CRC_4,
+	ROI_CRC_5,
+	ROI_CRC_6,
+	ROI_CRC_7,
+	ROI_CRC_MAX
+};
+
+enum sde_roi_crc_engine {
+	ROI_CRC_ENGINE_0 = 1,
+	ROI_CRC_ENGINE_1,
+	ROI_CRC_ENGINE_2,
+	ROI_CRC_ENGINE_3,
+	ROI_CRC_ENGINE_4,
+	ROI_CRC_ENGINE_MAX
+};
+
+enum sde_roi_crc_roi {
+	ROI_CRC_ROI_0 = 1,
+	ROI_CRC_ROI_1,
+	ROI_CRC_ROI_2,
+	ROI_CRC_ROI_3,
+	ROI_CRC_ROI_MAX
 };
 
 /**

@@ -47,6 +47,9 @@
 #define LM_BLEND0_FG_COLOR_FILL_XY_V1           0x18
 #define LM_BLEND0_FG_SRC_SEL_V1                 0x04
 
+/* HW virtualization Register Set */
+#define LM_BLEND0_FLUSH_CTRL					0x1C
+
 #define LM_SRC_SEL_RESET_VALUE 0x0000C0C0
 
 static struct sde_lm_cfg *_lm_offset(enum sde_lm mixer,
@@ -85,7 +88,7 @@ static inline int _stage_offset(struct sde_hw_mixer *ctx, enum sde_stage stage)
 	if (stage == SDE_STAGE_BASE)
 		rc = -EINVAL;
 	else if (stage <= sblk->maxblendstages)
-		rc = sblk->blendstage_base[stage - SDE_STAGE_0];
+		rc = sblk->blendstage_base[stage + sblk->zpos_off - SDE_STAGE_0];
 	else
 		rc = -EINVAL;
 
@@ -573,6 +576,7 @@ static int sde_hw_lm_setup_noise_layer(struct sde_hw_mixer *ctx,
 		val |= BIT(1);
 	val |= ((cfg->strength & 0x7) << 8);
 	SDE_REG_WRITE(c, LM_NOISE_LAYER, val);
+
 	return 0;
 }
 
@@ -645,6 +649,7 @@ static int sde_hw_lm_setup_noise_layer_v1(struct sde_hw_mixer *ctx,
 		val |= BIT(1);
 	val |= ((cfg->strength & 0x7) << 8);
 	SDE_REG_WRITE(c, LM_NOISE_LAYER, val);
+
 	return 0;
 }
 
@@ -717,6 +722,7 @@ static int sde_hw_lm_setup_noise_layer_10_bits(struct sde_hw_mixer *ctx,
 		val |= BIT(1);
 	val |= ((cfg->strength & 0x7) << 8);
 	SDE_REG_WRITE(c, LM_NOISE_LAYER, val);
+
 	return 0;
 }
 
@@ -919,6 +925,49 @@ static int sde_hw_lm_clear_all_blendstages(struct sde_hw_mixer *ctx)
 	return 0;
 }
 
+static void sde_hw_lm_local_flush(struct sde_hw_mixer *ctx, struct sde_hw_stage_cfg *stage_cfg)
+{
+	struct sde_hw_blk_reg_map *c = &ctx->hw;
+	int i, stage_off, stages, pipes_per_stage, ret;
+	u32 value;
+
+	if (!ctx)
+		return;
+
+	stages = ctx->cap->sblk->maxblendstages;
+	if (stages <= SDE_STAGE_BASE)
+		return;
+
+	if (ctx->global_flush) {
+		/* When making global flush, should skip local flush */
+		ctx->global_flush = false;
+		return;
+	}
+
+	if (test_bit(SDE_MIXER_SOURCESPLIT, &ctx->cap->features))
+		pipes_per_stage = PIPES_PER_STAGE;
+	else
+		pipes_per_stage = 1;
+
+	for (i = SDE_STAGE_0; i <= stages; i++) {
+		stage_off = _stage_offset(ctx, i);
+		if (stage_off < 0)
+			return;
+
+		ret = _set_staged_sspp(i, stage_cfg, pipes_per_stage, &value);
+		if (ret)
+			return;
+
+		SDE_REG_WRITE(c, LM_BLEND0_FLUSH_CTRL + stage_off, 0x3);
+	}
+}
+
+
+static void sde_hw_lm_set_flush_type(struct sde_hw_mixer *ctx, bool global)
+{
+	ctx->global_flush = global;
+}
+
 static void _setup_mixer_ops(struct sde_mdss_cfg *m,
 		struct sde_hw_lm_ops *ops,
 		unsigned long features)
@@ -982,7 +1031,6 @@ static void _setup_virtual_mixer_ops(struct sde_mdss_cfg *m,
 		struct sde_hw_lm_ops *ops,
 		unsigned long features)
 {
-	ops->setup_mixer_out = sde_hw_lm_setup_out;
 	if (test_bit(SDE_MIXER_COMBINED_ALPHA, &features)) {
 		if (test_bit(SDE_MIXER_10_BITS_ALPHA, &features))
 			ops->setup_blend_config =
@@ -1024,6 +1072,11 @@ static void _setup_virtual_mixer_ops(struct sde_mdss_cfg *m,
 		else
 			ops->setup_noise_layer = sde_hw_lm_setup_noise_layer;
 	}
+
+	if (test_bit(SDE_MIXER_LOCAL_FLUSH, &features)) {
+		ops->local_flush = sde_hw_lm_local_flush;
+		ops->set_flush_type = sde_hw_lm_set_flush_type;
+	}
 };
 
 struct sde_hw_blk_reg_map *sde_hw_lm_init(enum sde_lm idx,
@@ -1046,6 +1099,7 @@ struct sde_hw_blk_reg_map *sde_hw_lm_init(enum sde_lm idx,
 	/* Assign ops */
 	c->idx = idx;
 	c->cap = cfg;
+	c->global_flush = true;
 
 	/* Dummy mixers should not setup ops nor add to dump ranges */
 	if (cfg->dummy_mixer)

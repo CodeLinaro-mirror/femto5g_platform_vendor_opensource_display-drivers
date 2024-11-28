@@ -3185,6 +3185,9 @@ void sde_plane_flush(struct drm_plane *plane)
 	else if (psde->pipe_hw && pstate->csc_ptr && psde->pipe_hw->ops.setup_csc)
 		psde->pipe_hw->ops.setup_csc(psde->pipe_hw, pstate->csc_ptr);
 
+	if (psde->pipe_hw->ops.local_flush)
+		psde->pipe_hw->ops.local_flush(psde->pipe_hw, pstate->multirect_index);
+
 	/* flag h/w flush complete */
 	if (plane->state)
 		pstate->pending = false;
@@ -3721,6 +3724,30 @@ static void _sde_plane_update_sharpening(struct sde_plane *psde)
 			&psde->sharp_cfg);
 }
 
+static void _sde_plane_set_active(struct sde_plane *psde,
+	struct sde_plane_state *pstate, bool active)
+{
+	if (psde->pipe_hw->ops.set_active_pipe)
+		psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
+				pstate->multirect_index, active);
+}
+
+static void _sde_plane_set_active_fetch(struct sde_plane *psde,
+	struct sde_plane_state *pstate, bool active)
+{
+	if (psde->pipe_hw->ops.set_active_fetch_pipe)
+		psde->pipe_hw->ops.set_active_fetch_pipe(psde->pipe_hw,
+				pstate->multirect_index, active);
+}
+
+static void _sde_plane_local_flush(struct sde_plane *psde,
+	struct sde_plane_state *pstate)
+{
+	if (psde->pipe_hw->ops.local_flush)
+		psde->pipe_hw->ops.local_flush(psde->pipe_hw,
+				pstate->multirect_index);
+}
+
 static void _sde_plane_update_properties(struct drm_plane *plane,
 	struct drm_crtc *crtc, struct drm_framebuffer *fb)
 {
@@ -3789,6 +3816,10 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 		sde_vbif_setup_clk_force_ctrl(sde_kms, psde->pipe_hw->cap->clk_ctrl, true);
 		SDE_EVT32(psde->pipe_hw->cap->clk_ctrl, true);
 	}
+
+	_sde_plane_set_active(psde, pstate, true);
+	_sde_plane_set_active_fetch(psde, pstate, true);
+	_sde_plane_local_flush(psde, pstate);
 
 	/* clear dirty */
 	pstate->dirty = 0x0;
@@ -3975,6 +4006,10 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	if (psde->pipe_hw && psde->pipe_hw->ops.update_multirect)
 		psde->pipe_hw->ops.update_multirect(psde->pipe_hw, false,
 				multirect_index, SDE_SSPP_MULTIRECT_TIME_MX);
+
+	_sde_plane_set_active(psde, pstate, false);
+	_sde_plane_set_active_fetch(psde, pstate, false);
+	_sde_plane_local_flush(psde, pstate);
 
 	/* On disabling CAC, need to reset CAC control programming to ensure
 	 * proper CAC to non-CAC transition
