@@ -10,9 +10,10 @@
 #include "sde_kms.h"
 #include "sde_hw_mdss.h"
 #include "sde_hw_util.h"
+#include "sde_reg_dma.h"
 
 /* using a file static variables for debugfs access */
-static u32 sde_hw_util_log_mask = SDE_DBG_MASK_NONE;
+u32 sde_hw_util_log_mask = SDE_DBG_MASK_NONE;
 
 /* SDE_SCALER_QSEED3 */
 #define QSEED3_HW_VERSION                  0x00
@@ -180,26 +181,99 @@ void sde_qtimer_stop(struct sde_qtimer *sde_qtimer)
 	SDE_EVT32(0);
 }
 
-void sde_reg_write(struct sde_hw_blk_reg_map *c,
+inline void sde_reg_write_cpu(struct sde_hw_blk_reg_map *c,
 		u32 reg_off,
 		u32 val,
 		const char *name)
 {
 	/* don't need to mutex protect this */
 	if (c->log_mask & sde_hw_util_log_mask)
-		SDE_DEBUG_DRIVER("[%s:0x%X] <= 0x%X\n",
+		SDE_DEBUG_DRIVER("REG_WRITE [%s:0x%X] <= 0x%X\n",
 				name, c->blk_off + reg_off, val);
 	writel_relaxed(val, c->base_off + c->blk_off + reg_off);
 	SDE_REG_LOG(c->log_mask ? ilog2(c->log_mask)+1 : 0,
 			val, c->blk_off + reg_off);
 }
 
-int sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off)
+void sde_reg_write(struct sde_hw_blk_reg_map *c,
+		u32 reg_off,
+		u32 val,
+		const char *name)
 {
-	return readl_relaxed(c->base_off + c->blk_off + reg_off);
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	sde_reg_write_reg_dma(c, reg_off, val, name);
+#else
+	sde_reg_write_cpu(c, reg_off, val, name);
+#endif
 }
 
-void sde_reg_modify(struct sde_hw_blk_reg_map *c,
+void sde_reg_write_inc(struct sde_hw_blk_reg_map *c,
+		u32 reg_off,
+		u32 *data, u32 size,
+		const char *name)
+{
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	sde_reg_write_reg_dma_inc(c, reg_off, data, size, name);
+#else
+	while (size--) {
+		sde_reg_write_cpu(c, reg_off, *data++, name);
+		reg_off += sizeof(u32);
+	}
+#endif
+}
+
+void sde_reg_write_single(struct sde_hw_blk_reg_map *c,
+		u32 reg_off,
+		u32 *data, u32 size,
+		const char *name)
+{
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	sde_reg_write_reg_dma_single(c, reg_off, data, size, name);
+#else
+	while (size--)
+		sde_reg_write_cpu(c, reg_off, *data++, name);
+#endif
+}
+
+void sde_reg_write_multiple(struct sde_hw_blk_reg_map *c,
+		u32 reg_off,
+		u32 *data, u32 size,
+		bool inc, u32 wrap,
+		const char *name)
+{
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	sde_reg_write_reg_dma_multiple(c, reg_off, data, size, inc, wrap, name);
+#else
+	int i = 0;
+	if (inc) {
+		while (size--) {
+			sde_reg_write_cpu(c, reg_off, *data++, name);
+			reg_off += sizeof(u32);
+		}
+	} else {
+		reg_off -= wrap * sizeof(u32);
+		while (size--) {
+			if (i % wrap == 0)
+				reg_off += (wrap * 2 - 1) * sizeof(u32);
+			sde_reg_write_cpu(c, reg_off, *data++, name);
+			reg_off -= sizeof(u32);
+			i ++;
+		}
+	}
+#endif
+}
+
+int sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off, const char *name)
+{
+	u32 val = 0;
+	val = readl_relaxed(c->base_off + c->blk_off + reg_off);
+	if (c->log_mask & sde_hw_util_log_mask)
+		SDE_DEBUG_DRIVER("REG_READ [%s:0x%X] = 0x%X\n",
+				name, c->blk_off + reg_off, val);
+	return val;
+}
+
+inline void sde_reg_modify_cpu(struct sde_hw_blk_reg_map *c,
 		u32 reg_off,
 		u32 mask,
 		u32 val,
@@ -210,11 +284,24 @@ void sde_reg_modify(struct sde_hw_blk_reg_map *c,
 	new_val = (data & ~mask) | val;
 	/* don't need to mutex protect this */
 	if (c->log_mask & sde_hw_util_log_mask)
-		SDE_DEBUG_DRIVER("[%s:0x%X] <= 0x%X (0x%X | 0x%X mask 0x%X)\n",
-				name, c->blk_off + reg_off, new_val, val, data, mask);
+		SDE_DEBUG_DRIVER("REG_MODIFY [%s:0x%X] <= 0x%X (0x%X | 0x%X mask 0x%X)\n",
+				name, c->blk_off + reg_off,  new_val, val, data, mask);
 	writel_relaxed(new_val, c->base_off + c->blk_off + reg_off);
 	SDE_REG_LOG(c->log_mask ? ilog2(c->log_mask)+1 : 0,
 			new_val, c->blk_off + reg_off);
+}
+
+void sde_reg_modify(struct sde_hw_blk_reg_map *c,
+		u32 reg_off,
+		u32 mask,
+		u32 val,
+		const char *name)
+{
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	sde_reg_modify_reg_dma(c, reg_off, mask, val, name);
+#else
+	sde_reg_modify_cpu(c, reg_off, mask, val, name);
+#endif
 }
 
 u32 *sde_hw_util_get_log_mask_ptr(void)

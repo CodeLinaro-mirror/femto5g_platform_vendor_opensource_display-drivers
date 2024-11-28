@@ -12,8 +12,10 @@
 #include <drm/drm_atomic_helper.h>
 #include <sde_connector.h>
 #include <sde_encoder.h>
+#include <sde_plane.h>
 #include <sde_encoder_phys.h>
 #include <sde_rm.h>
+#include <sde_hw_pingpong.h>
 #include "msm_hyp_trace.h"
 #include "msm_hyp_utils.h"
 #include "virtio_kms.h"
@@ -1589,6 +1591,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 
 int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 {
+	struct msm_drm_private *priv = sde_kms->dev->dev_private;
 	struct msm_hyp_kms *hyp_kms = sde_kms->hyp_kms;
 	struct sde_mdss_cfg *sde_cfg = sde_kms->catalog;
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
@@ -1597,12 +1600,15 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 	struct drm_connector_list_iter conn_iter;
 	struct sde_connector *sde_conn;
 	struct sde_encoder_virt *sde_enc;
+	struct sde_plane *plane;
+	struct sde_hw_pingpong *pingpong;
+	struct sde_rm_hw_iter iter;
 	int enc_id;
 	int ctl_id;
 	int dpu_id;
 	u32 lm_mask;
 	u32 intf_mask;
-	int i, j;
+	int i, j, k;
 
 	if (!sde_cfg)
 		return -EINVAL;
@@ -1642,9 +1648,15 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 
 		/* CTL */
 		for (j = 0; j < sde_cfg->ctl_count; j++) {
-			if (ctl_id == sde_cfg->ctl[j].id - CTL_0) {
+			if (ctl_id == sde_cfg->ctl[j].id) {
 				sde_cfg->ctl[j].fixed_enc_id = enc_id;
-				break;
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_CTL);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == ctl_id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
 			}
 		}
 
@@ -1652,8 +1664,179 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 		for (j = 0; j < sde_cfg->mixer_count; j++) {
 			if (lm_mask & (1 << (sde_cfg->mixer[j].id - LM_0))) {
 				sde_cfg->mixer[j].fixed_enc_id = enc_id;
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_LM);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->mixer[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
 			}
 		}
+
+		/* SSPP */
+		for (j = 0; j < priv->num_planes; j++) {
+			for (k = 0; k < output->plane_cnt; k++) {
+				plane = to_sde_plane(priv->planes[j]);
+				if (plane->pipe == output->plane_caps[k].sspp_id) {
+					plane->pipe_hw->hw.vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+					break;
+				}
+			}
+		}
+
+		/* DSPP */
+		for (j = 0; j < sde_cfg->dspp_count; j++) {
+			if (output->hw_assign.dspp_mask & (1 << (sde_cfg->dspp[j].id - DSPP_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DSPP);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->dspp[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* DS */
+		for (j = 0; j < sde_cfg->ds_count; j++) {
+			if (output->hw_assign.ds_mask & (1 << (sde_cfg->ds[j].id - DS_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DS);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->ds[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* Pingpong */
+		for (j = 0; j < sde_cfg->pingpong_count; j++) {
+			if (output->hw_assign.pingpong_mask & (1 << (sde_cfg->pingpong[j].id - DS_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->ds[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* DSC */
+		for (j = 0; j < sde_cfg->dsc_count; j++) {
+			if (output->hw_assign.dsc_mask & (1 << (sde_cfg->dsc[j].id - DSC_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DSC);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->dsc[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* VDC */
+		for (j = 0; j < sde_cfg->vdc_count; j++) {
+			if (output->hw_assign.vdc_mask & (1 << (sde_cfg->vdc[j].id - VDC_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_VDC);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->vdc[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* CDM */
+		for (j = 0; j < sde_cfg->cdm_count; j++) {
+			if (output->hw_assign.cdm_mask & (1 << (sde_cfg->cdm[j].id - CDM_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_CDM);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->cdm[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* DNSC_BLUR */
+		for (j = 0; j < sde_cfg->dnsc_blur_count; j++) {
+			if (output->hw_assign.dnsc_blur_mask & (1 << (sde_cfg->dnsc_blur[j].id - DNSC_BLUR_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DNSC_BLUR);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->dnsc_blur[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* Pingpong */
+		for (j = 0; j < sde_cfg->pingpong_count; j++) {
+			if (output->hw_assign.pingpong_mask & (1 << (sde_cfg->pingpong[j].id - INTF_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->pingpong[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* INTF */
+		for (j = 0; j < sde_cfg->intf_count; j++) {
+			if (output->hw_assign.intf_mask & (1 << (sde_cfg->intf[j].id - INTF_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_INTF);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->intf[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* WB */
+		for (j = 0; j < sde_cfg->wb_count; j++) {
+			if (output->hw_assign.wb_mask & (1 << (sde_cfg->wb[j].id - WB_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_WB);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->wb[j].id) {
+						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* MERGE 3D */
+		for (j = 0; j < sde_cfg->merge_3d_count; j++) {
+			if (output->hw_assign.merge3d_mask & (1 << (sde_cfg->merge_3d[j].id - MERGE_3D_0))) {
+				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
+				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+					pingpong = to_sde_hw_pingpong(iter.hw);
+					if (!pingpong->merge_3d)
+						continue;
+					if (pingpong->merge_3d->idx == sde_cfg->merge_3d[j].id) {
+						pingpong->merge_3d->hw.vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
+						break;
+					}
+				}
+			}
+		}
+
+		/* CWB */
+		for (j = 0; j < sde_cfg->dcwb_count; j++) {
+			// TODO
+		}
+
+		/* TODO: other HW blocks */
 	}
 
 	return 0;

@@ -1745,6 +1745,35 @@ static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 
 }
 
+static int sde_hw_reg_dma_flush_vq(struct sde_hw_ctl *ctx, bool blocking)
+{
+	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	int ret;
+
+	if (!ops) {
+		SDE_ERROR("dma ops is NULL\n");
+		return -EINVAL;
+	}
+
+	if (!ctx)
+		return -EINVAL;
+
+	if (ops && ops->last_command) {
+		ret = ops->last_command(ctx, DMA_CTL_QUEUE0,
+		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
+		if (ret)
+			return ret;
+	} else if (ops && ops->last_command_sb) {
+		ret = ops->last_command_sb(ctx, DMA_CTL_QUEUE0,
+		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+
+}
+
 static void sde_hw_ctl_cesta_flush(struct sde_hw_ctl *ctx, struct sde_ctl_cesta_cfg *cfg)
 {
 	struct sde_hw_blk_reg_map *c;

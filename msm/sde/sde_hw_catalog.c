@@ -4704,7 +4704,7 @@ static void _sde_hw_reg_dma_caps(struct sde_mdss_cfg *sde_cfg)
 static int sde_parse_reg_dma_dt(struct device_node *np,
 		struct sde_mdss_cfg *sde_cfg)
 {
-	int rc = 0, i, prop_count[REG_DMA_PROP_MAX];
+	int rc = 0, i, j, prop_count[REG_DMA_PROP_MAX];
 	struct sde_prop_value *prop_value = NULL;
 	u32 off_count;
 	bool prop_exists[REG_DMA_PROP_MAX];
@@ -4718,63 +4718,112 @@ static int sde_parse_reg_dma_dt(struct device_node *np,
 		goto end;
 	}
 
-	rc = _validate_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
-			prop_count, &off_count);
-	if (rc || !off_count)
-		goto end;
-
-	rc = _read_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
-			prop_count, prop_exists, prop_value);
-	if (rc)
-		goto end;
-
-	sde_cfg->reg_dma_count = 0;
-	memset(&dma_type_exists, 0, sizeof(dma_type_exists));
-	for (i = 0; i < off_count; i++) {
-		dma_type = PROP_VALUE_ACCESS(prop_value, REG_DMA_ID, i);
-		if (dma_type >= REG_DMA_TYPE_MAX) {
-			SDE_ERROR("Invalid DMA type %d\n", dma_type);
-			goto end;
-		} else if (dma_type_exists[dma_type]) {
-			SDE_ERROR("DMA type ID %d exists more than once\n",
-					dma_type);
-			goto end;
-		}
-
-		dma_type_exists[dma_type] = true;
-		sde_cfg->dma_cfg.reg_dma_blks[dma_type].base =
-				PROP_VALUE_ACCESS(prop_value, REG_DMA_OFF, i);
-		sde_cfg->dma_cfg.reg_dma_blks[dma_type].valid = true;
-		sde_cfg->reg_dma_count++;
-	}
-
-	sde_cfg->dma_cfg.version = PROP_VALUE_ACCESS(prop_value,
-						REG_DMA_VERSION, 0);
-	sde_cfg->dma_cfg.trigger_sel_off = PROP_VALUE_ACCESS(prop_value,
-						REG_DMA_TRIGGER_OFF, 0);
-	sde_cfg->dma_cfg.broadcast_disabled = PROP_VALUE_ACCESS(prop_value,
-						REG_DMA_BROADCAST_DISABLED, 0);
-	sde_cfg->dma_cfg.xin_id = PROP_VALUE_ACCESS(prop_value,
-						REG_DMA_XIN_ID, 0);
-	sde_cfg->dma_cfg.clk_ctrl = SDE_CLK_CTRL_LUTDMA;
-	sde_cfg->dma_cfg.vbif_idx = VBIF_RT;
-
-	if (test_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features)) {
-		sde_cfg->dma_cfg.split_vbif_supported = true;
-	} else {
-		for (i = 0; i < sde_cfg->mdp_count; i++) {
-			sde_cfg->mdp[i].clk_ctrls[sde_cfg->dma_cfg.clk_ctrl].reg_off =
-				PROP_BITVALUE_ACCESS(prop_value,
-						REG_DMA_CLK_CTRL, 0, 0);
-			sde_cfg->mdp[i].clk_ctrls[sde_cfg->dma_cfg.clk_ctrl].bit_off =
-				PROP_BITVALUE_ACCESS(prop_value,
-						REG_DMA_CLK_CTRL, 0, 1);
-		}
-	}
-	if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+	if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features)) {
 		sde_cfg->dma_cfg.vq_supported = true;
-	else
+
+		rc = _validate_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
+				prop_count, &off_count);
+		if (rc || !off_count) {
+			SDE_ERROR("no regdma off\n");
+			goto end;
+		}
+
+		rc = _read_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
+				prop_count, prop_exists, prop_value);
+		if (rc) {
+			SDE_ERROR("read regdma dt failed\n");
+			goto end;
+		}
+
+		sde_cfg->dma_cfg.vq_num = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_VQ_NUM, 0);
+		sde_cfg->dma_cfg.vq_off = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_VQ_OFF, 0);
+
+		for (i = 0; i < off_count; i++) {
+			dma_type = PROP_VALUE_ACCESS(prop_value, REG_DMA_ID, i);
+
+			for (j = 0; j < sde_cfg->dma_cfg.vq_num; j++) {
+				sde_cfg->dma_cfg.reg_dma_vq_blks[j + REG_DMA_VQ_0][dma_type].base =
+						PROP_VALUE_ACCESS(prop_value, REG_DMA_OFF, i)
+						+ sde_cfg->dma_cfg.vq_off * j;
+				sde_cfg->dma_cfg.reg_dma_vq_blks[j + REG_DMA_VQ_0][dma_type].valid = true;
+				SDE_DEBUG("type %d  vq %d  base %X\n", dma_type, j + REG_DMA_VQ_0,
+						sde_cfg->dma_cfg.reg_dma_vq_blks[j + REG_DMA_VQ_0][dma_type].base);
+			}
+		}
+		sde_cfg->reg_dma_count = 1;
+
+		sde_cfg->dma_cfg.version = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_VERSION, 0);
+		sde_cfg->dma_cfg.broadcast_disabled = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_BROADCAST_DISABLED, 0);
+		sde_cfg->dma_cfg.xin_id = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_XIN_ID, 0);
+		sde_cfg->dma_cfg.clk_ctrl = SDE_CLK_CTRL_LUTDMA;
+		sde_cfg->dma_cfg.vbif_idx = VBIF_RT;
+	} else {
 		sde_cfg->dma_cfg.vq_supported = false;
+
+		rc = _validate_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
+				prop_count, &off_count);
+		if (rc || !off_count) {
+			SDE_ERROR("no regdma off\n");
+			goto end;
+		}
+
+		rc = _read_dt_entry(np, reg_dma_prop, ARRAY_SIZE(reg_dma_prop),
+				prop_count, prop_exists, prop_value);
+		if (rc) {
+			SDE_ERROR("read regdma dt failed\n");
+			goto end;
+		}
+
+		sde_cfg->reg_dma_count = 0;
+		memset(&dma_type_exists, 0, sizeof(dma_type_exists));
+		for (i = 0; i < off_count; i++) {
+			dma_type = PROP_VALUE_ACCESS(prop_value, REG_DMA_ID, i);
+			if (dma_type >= REG_DMA_TYPE_MAX) {
+				SDE_ERROR("Invalid DMA type %d\n", dma_type);
+				goto end;
+			} else if (dma_type_exists[dma_type]) {
+				SDE_ERROR("DMA type ID %d exists more than once\n",
+						dma_type);
+				goto end;
+			}
+
+			dma_type_exists[dma_type] = true;
+			sde_cfg->dma_cfg.reg_dma_blks[dma_type].base =
+					PROP_VALUE_ACCESS(prop_value, REG_DMA_OFF, i);
+			sde_cfg->dma_cfg.reg_dma_blks[dma_type].valid = true;
+			sde_cfg->reg_dma_count++;
+		}
+
+		sde_cfg->dma_cfg.version = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_VERSION, 0);
+		sde_cfg->dma_cfg.trigger_sel_off = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_TRIGGER_OFF, 0);
+		sde_cfg->dma_cfg.broadcast_disabled = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_BROADCAST_DISABLED, 0);
+		sde_cfg->dma_cfg.xin_id = PROP_VALUE_ACCESS(prop_value,
+							REG_DMA_XIN_ID, 0);
+		sde_cfg->dma_cfg.clk_ctrl = SDE_CLK_CTRL_LUTDMA;
+		sde_cfg->dma_cfg.vbif_idx = VBIF_RT;
+
+		if (test_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features)) {
+			sde_cfg->dma_cfg.split_vbif_supported = true;
+		} else {
+			for (i = 0; i < sde_cfg->mdp_count; i++) {
+				sde_cfg->mdp[i].clk_ctrls[sde_cfg->dma_cfg.clk_ctrl].reg_off =
+					PROP_BITVALUE_ACCESS(prop_value,
+							REG_DMA_CLK_CTRL, 0, 0);
+				sde_cfg->mdp[i].clk_ctrls[sde_cfg->dma_cfg.clk_ctrl].bit_off =
+					PROP_BITVALUE_ACCESS(prop_value,
+							REG_DMA_CLK_CTRL, 0, 1);
+			}
+		}
+	}
+
 	_sde_hw_reg_dma_caps(sde_cfg);
 end:
 	kvfree(prop_value);
