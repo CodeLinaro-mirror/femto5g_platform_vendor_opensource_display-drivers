@@ -77,6 +77,7 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(DISPLAY_ROOT)/msm/sde \
 	-I$(DISPLAY_ROOT)/msm/shd \
 	-I$(DISPLAY_ROOT)/msm/msm-lease \
+	-I$(DISPLAY_ROOT)/msm/shp \
 	-I$(DISPLAY_ROOT)/include/uapi/display \
 
 CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
@@ -265,6 +266,9 @@ msm_drm-$(CONFIG_DRM_SDE_SHD) += shd/shd_drm.o \
 	shd/sde_encoder_phys_shd.o
 
 msm_drm-$(CONFIG_DRM_MSM_LEASE) += msm-lease/msm_lease_drv.o
+
+msm_drm-$(CONFIG_DRM_SDE_SHP) += shp/shp_drm.o
+
 msm_drm-$(CONFIG_DSI_PARSER) += dsi/dsi_parser.o
 
 msm_drm-$(CONFIG_THERMAL_OF) += msm_cooling_device.o

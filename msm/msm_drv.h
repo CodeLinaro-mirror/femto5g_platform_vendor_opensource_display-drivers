@@ -76,6 +76,10 @@ struct msm_gem_vma;
 #define MAX_BRIDGES    16
 #define MAX_CONNECTORS 16
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHP)
+#define MAX_HW_INSTANCES 2
+#endif
+
 #define MSM_RGB 0x0
 #define MSM_YUV 0x1
 
@@ -1023,6 +1027,10 @@ struct msm_drm_private {
 	uint32_t pending_planes;
 	wait_queue_head_t pending_crtcs_event;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHP)
+	uint32_t instance_id;
+#endif
+
 	unsigned int num_planes;
 	struct drm_plane *planes[MAX_PLANES];
 
@@ -1416,6 +1424,17 @@ static inline void __exit sde_shd_unregister(void)
 }
 #endif /* CONFIG_DRM_MSM_LEASE */
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHP)
+void __init sde_shp_register(void);
+void __exit sde_shp_unregister(void);
+#else
+static inline void __init sde_shp_register(void)
+{
+}
+static inline void __exit sde_shp_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_SDE_SHP */
 
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 void __init msm_hdcp_register(void);

@@ -2338,12 +2338,18 @@ static int __init msm_drm_register(void)
 	sde_shd_register();
 	msm_lease_drm_register();
 #endif
+#if IS_ENABLED(CONFIG_DRM_SDE_SHP)
+	sde_shp_register();
+#endif
 	return 0;
 }
 
 static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
+#if IS_ENABLED(CONFIG_DRM_SDE_SHP)
+	sde_shp_unregister();
+#endif
 #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	msm_lease_drm_unregister();
 	sde_shd_unregister();
