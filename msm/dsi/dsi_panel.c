@@ -790,7 +790,7 @@ static int dsi_panel_parse_timing(struct dsi_mode_info *mode,
 
 	rc = utils->read_u64(utils->data,
 			"qcom,mdss-dsi-panel-clockrate", &tmp64);
-	if (rc == -EOVERFLOW) {
+	if (rc == -EOVERFLOW || rc == -ERANGE) {
 		tmp64 = 0;
 		rc = utils->read_u32(utils->data,
 			"qcom,mdss-dsi-panel-clockrate", (u32 *)&tmp64);
@@ -964,6 +964,15 @@ static int dsi_panel_parse_pixel_format(struct dsi_host_common_cfg *host,
 		fmt = DSI_PIXEL_FORMAT_RGB666;
 		break;
 	case 30:
+		/*
+		 * The destination pixel format (host->dst_format) depends
+		 * upon the compression, and should be RGB888 if the DSC is
+		 * enable.
+		 * The DSC status information is inside the timing modes, that
+		 * is parsed during first dsi_display_get_modes() call.
+		 * The dst_format will be updated there depending upon the
+		 * DSC status.
+		 */
 		fmt = DSI_PIXEL_FORMAT_RGB101010;
 		break;
 	case 24:
@@ -1108,13 +1117,13 @@ static int dsi_panel_parse_triggers(struct dsi_host_common_cfg *host,
 		} else if (!strcmp(trig, "trigger_sw_te")) {
 			host->dma_cmd_trigger = DSI_TRIGGER_SW_TE;
 		} else {
-			DSI_ERR("[%s] Unrecognized mdp trigger type (%s)\n",
+			DSI_ERR("[%s] Unrecognized cmd dma trigger type (%s)\n",
 			       name, trig);
 			rc = -EINVAL;
 		}
 
 	} else {
-		DSI_DEBUG("[%s] Falling back to default MDP trigger\n", name);
+		DSI_DEBUG("[%s] Falling back to default cmd dma trigger\n", name);
 		host->dma_cmd_trigger = DSI_TRIGGER_SW;
 	}
 
@@ -2810,7 +2819,8 @@ static int dsi_panel_parse_dsc_params(struct dsi_display_mode *mode,
 		goto error;
 	}
 
-	rc = sde_dsc_populate_dsc_private_params(&priv_info->dsc, intf_width);
+	rc = sde_dsc_populate_dsc_private_params(&priv_info->dsc, intf_width,
+			priv_info->widebus_support);
 	if (rc) {
 		DSI_DEBUG("failed populating other dsc params\n");
 		rc = -EINVAL;
@@ -4027,6 +4037,7 @@ void dsi_panel_calc_dsi_transfer_time(struct dsi_host_common_cfg *config,
 	u32 jitter_numer, jitter_denom, prefill_lines;
 	u32 default_prefill_lines, actual_prefill_lines, vtotal;
 	u32 min_threshold_us, prefill_time_us, max_transfer_us, packet_overhead;
+	u32 bits_per_symbol = 16, num_of_symbols = 7; /* For Cphy */
 	u16 bpp;
 
 	/* Packet overhead in bits,
@@ -4071,6 +4082,11 @@ void dsi_panel_calc_dsi_transfer_time(struct dsi_host_common_cfg *config,
 	}
 
 	timing->min_dsi_clk_hz = min_bitclk_hz;
+
+	if (config->phy_type == DSI_PHY_TYPE_CPHY) {
+		do_div(timing->min_dsi_clk_hz, bits_per_symbol);
+		timing->min_dsi_clk_hz *= num_of_symbols;
+	}
 
 	/*
 	 * Apart from prefill line time, we need to take into account RSCC mode threshold time. In
@@ -4165,12 +4181,6 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 	mutex_lock(&panel->panel_lock);
 	utils = &panel->utils;
 
-	mode->priv_info = kzalloc(sizeof(*mode->priv_info), GFP_KERNEL);
-	if (!mode->priv_info) {
-		rc = -ENOMEM;
-		goto done;
-	}
-
 	prv_info = mode->priv_info;
 
 	timings_np = utils->get_child_by_name(utils->data,
@@ -4264,12 +4274,8 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 		if (rc)
 			DSI_ERR("failed to partial update caps, rc=%d\n", rc);
 	}
-	goto done;
 
 parse_fail:
-	kfree(mode->priv_info);
-	mode->priv_info = NULL;
-done:
 	utils->data = utils_data;
 	mutex_unlock(&panel->panel_lock);
 	return rc;

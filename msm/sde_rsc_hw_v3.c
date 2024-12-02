@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -428,6 +428,11 @@ static int sde_rsc_state_update_v3(struct sde_rsc_priv *rsc,
 		dss_reg_w(&rsc->wrapper_io, SDE_RSCC_WRAPPER_OVERRIDE_CTRL,
 							reg, rsc->debug_mode);
 		wmb(); /* make sure that solver is enabled */
+
+		if (rsc->hw_ops.bwi_status) {
+			rsc->bwi_update = BW_NO_CHANGE;
+			rsc->hw_ops.bwi_status(rsc);
+		}
 
 		break;
 

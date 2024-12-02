@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -93,6 +93,7 @@
 #define MAX_IMG_WIDTH 0x3fff
 #define MAX_IMG_HEIGHT 0x3fff
 
+#define CRTC_SINGLE_MIXER_ONLY	1
 #define CRTC_DUAL_MIXERS_ONLY	2
 #define MAX_MIXERS_PER_CRTC	4
 #define MAX_MIXERS_PER_LAYOUT	2
@@ -1279,6 +1280,7 @@ struct sde_sspp_cfg {
  * @dspp:              ID of connected DSPP, DSPP_MAX if unsupported
  * @pingpong:          ID of connected PingPong, PINGPONG_MAX if unsupported
  * @ds:                ID of connected DS, DS_MAX if unsupported
+ * @merge_3d:          ID of connected 3d MUX
  * @dummy_mixer:       identifies dcwb mixer is considered dummy
  * @lm_pair_mask:      Bitmask of LMs that can be controlled by same CTL
  */
@@ -1288,6 +1290,7 @@ struct sde_lm_cfg {
 	u32 dspp;
 	u32 pingpong;
 	u32 ds;
+	u32 merge_3d;
 	bool dummy_mixer;
 	unsigned long lm_pair_mask;
 };
@@ -1834,6 +1837,7 @@ struct sde_perf_cfg {
  * @max_mixer_width     max layer mixer line width
  * @max_mixer_blendstages       max layer mixer blend stages (z orders)
  * @max_cwb             max number of cwb supported
+ * @ddr_list_index      index of supported ddr type
  * @vbif_qos_nlvl       number of vbif QoS priority levels
  * @qos_target_time_ns  normalized qos target time for line-based qos
  * @macrotile_mode      UBWC parameter for macro tile channel distribution
@@ -1856,6 +1860,7 @@ struct sde_perf_cfg {
  * @dnsc_blur_filters        supported filters for downscale blur
  * @dnsc_blur_filter_count   supported filter count for downscale blur
  * @ipcc_protocol_id    ipcc protocol id for the hw
+ * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -1975,6 +1980,8 @@ struct sde_mdss_cfg {
 	u32 dnsc_blur_filter_count;
 
 	u32 ipcc_protocol_id;
+	u32 ipcc_client_phys_id;
+	u32 ddr_list_index;
 };
 
 struct sde_mdss_hw_cfg_handler {

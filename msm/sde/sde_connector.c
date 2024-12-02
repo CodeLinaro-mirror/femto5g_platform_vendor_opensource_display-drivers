@@ -57,6 +57,7 @@ static const struct drm_prop_enum_list e_topology_control[] = {
 	{SDE_RM_TOPCTL_DSPP,		"dspp"},
 	{SDE_RM_TOPCTL_DS,		"ds"},
 	{SDE_RM_TOPCTL_DNSC_BLUR,	"dnsc_blur"},
+	{SDE_RM_TOPCTL_CDM,		"cdm"},
 };
 static const struct drm_prop_enum_list e_power_mode[] = {
 	{SDE_MODE_DPMS_ON,	"ON"},
@@ -1181,6 +1182,7 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 	struct sde_connector *c_conn = NULL;
 	struct dsi_display *display;
 	struct sde_kms *sde_kms;
+	struct drm_crtc *crtc;
 
 	sde_kms = sde_connector_get_kms(connector);
 	if (!sde_kms) {
@@ -1190,15 +1192,17 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 
 	c_conn = to_sde_connector(connector);
 	display = (struct dsi_display *) c_conn->display;
+	crtc = connector->state->crtc;
 
 	/*
 	 * Special handling for some panels which need atleast
 	 * one frame to be transferred to GRAM before enabling backlight.
 	 * So delay backlight update to these panels until the
-	 * first frame commit is received from the HW.
+	 * first frame commit is received from the HW only during power on.
 	 */
-	if (display->panel->bl_config.bl_update ==
-				BL_UPDATE_DELAY_UNTIL_FIRST_FRAME)
+	if ((display->panel->bl_config.bl_update ==
+		BL_UPDATE_DELAY_UNTIL_FIRST_FRAME) &&
+		crtc && crtc->state->active_changed)
 		sde_encoder_wait_for_event(c_conn->encoder,
 				MSM_ENC_TX_COMPLETE);
 	c_conn->allow_bl_update = true;
@@ -1676,6 +1680,23 @@ static int _sde_connector_set_prop_out_fb(struct drm_connector *connector,
 	return rc;
 }
 
+static struct drm_encoder *
+sde_connector_best_encoder(struct drm_connector *connector)
+{
+	struct sde_connector *c_conn = to_sde_connector(connector);
+
+	if (!connector) {
+		SDE_ERROR("invalid connector\n");
+		return NULL;
+	}
+
+	/*
+	 * This is true for now, revisit this code when multiple encoders are
+	 * supported.
+	 */
+	return c_conn->encoder;
+}
+
 static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 		struct drm_connector_state *state,
 		uint64_t val)
@@ -1711,9 +1732,13 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 		 */
 		offset++;
 
-		/* get hw_ctl for a wb connector */
-		if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
-			hw_ctl = sde_encoder_get_hw_ctl(c_conn);
+		/* get hw_ctl for a wb connector not in cwb mode */
+		if (c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+			struct drm_encoder *drm_enc = sde_connector_best_encoder(connector);
+
+			if (drm_enc && !sde_encoder_in_clone_mode(drm_enc))
+				hw_ctl = sde_encoder_get_hw_ctl(c_conn);
+		}
 
 		rc = sde_fence_create(c_conn->retire_fence,
 					&fence_user_fd, offset, hw_ctl);
@@ -1751,6 +1776,20 @@ static int _sde_connector_set_prop_dyn_transfer_time(struct sde_connector *c_con
 		SDE_ERROR_CONN(c_conn, "updating transfer time failed, val: %u, rc %d\n", val, rc);
 
 	return rc;
+}
+
+static void _sde_connector_handle_dpms_off(struct sde_connector *c_conn, uint64_t val)
+{
+	/* suspend case: clear stale MISR */
+	if (val == SDE_MODE_DPMS_OFF) {
+		memset(&c_conn->previous_misr_sign, 0, sizeof(struct sde_misr_sign));
+
+		/* reset backlight scale of LTM */
+		if (c_conn->bl_scale_sv != MAX_SV_BL_SCALE_LEVEL) {
+			c_conn->bl_scale_sv = MAX_SV_BL_SCALE_LEVEL;
+			c_conn->bl_scale_dirty = true;
+		}
+	}
 }
 
 static int sde_connector_atomic_set_property(struct drm_connector *connector,
@@ -1848,9 +1887,7 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 		_sde_connector_set_prop_dyn_transfer_time(c_conn, val);
 		break;
 	case CONNECTOR_PROP_LP:
-		/* suspend case: clear stale MISR */
-		if (val == SDE_MODE_DPMS_OFF)
-			memset(&c_conn->previous_misr_sign, 0, sizeof(struct sde_misr_sign));
+		_sde_connector_handle_dpms_off(c_conn, val);
 		break;
 	default:
 		break;
@@ -2691,23 +2728,6 @@ sde_connector_mode_valid(struct drm_connector *connector,
 	return MODE_OK;
 }
 
-static struct drm_encoder *
-sde_connector_best_encoder(struct drm_connector *connector)
-{
-	struct sde_connector *c_conn = to_sde_connector(connector);
-
-	if (!connector) {
-		SDE_ERROR("invalid connector\n");
-		return NULL;
-	}
-
-	/*
-	 * This is true for now, revisit this code when multiple encoders are
-	 * supported.
-	 */
-	return c_conn->encoder;
-}
-
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 static struct drm_encoder *
 sde_connector_atomic_best_encoder(struct drm_connector *connector,
@@ -3517,7 +3537,8 @@ int sde_connector_register_custom_event(struct sde_kms *kms,
 		break;
 	case DRM_EVENT_SDE_HW_RECOVERY:
 		ret = _sde_conn_enable_hw_recovery(conn_drm);
-		sde_dbg_update_dump_mode(val);
+		if (SDE_DBG_DEFAULT_DUMP_MODE != SDE_DBG_DUMP_IN_LOG_LIMITED)
+			sde_dbg_update_dump_mode(val);
 		break;
 	default:
 		break;

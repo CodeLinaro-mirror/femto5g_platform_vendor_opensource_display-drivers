@@ -114,11 +114,23 @@ static inline bool _msm_seamless_for_conn(struct drm_connector *connector,
 	if (!old_conn_state || !old_conn_state->crtc)
 		return false;
 
+	if (!priv || !priv->kms || !priv->kms->funcs->get_msm_mode)
+		return false;
+
+	msm_mode = priv->kms->funcs->get_msm_mode(
+			_msm_get_conn_state(old_conn_state->crtc->state));
+	if (!msm_mode)
+		return false;
+
 	if (!old_conn_state->crtc->state->mode_changed &&
 			!old_conn_state->crtc->state->active_changed &&
 			old_conn_state->crtc->state->connectors_changed) {
-		if (old_conn_state->crtc == connector->state->crtc)
+		if (old_conn_state->crtc == connector->state->crtc) {
+			if (enable && msm_is_private_mode_changed(
+				_msm_get_conn_state(old_conn_state->crtc->state)))
+				return false;
 			return true;
+		}
 	}
 
 	if (enable)
@@ -126,14 +138,6 @@ static inline bool _msm_seamless_for_conn(struct drm_connector *connector,
 
 	if (!connector->state->crtc &&
 		old_conn_state->crtc->state->connectors_changed)
-		return false;
-
-	if (!priv || !priv->kms || !priv->kms->funcs->get_msm_mode)
-		return false;
-
-	msm_mode = priv->kms->funcs->get_msm_mode(
-			_msm_get_conn_state(old_conn_state->crtc->state));
-	if (!msm_mode)
 		return false;
 
 	if (msm_is_mode_seamless(msm_mode) ||
@@ -326,7 +330,7 @@ msm_crtc_set_mode(struct drm_device *dev, struct drm_atomic_state *old_state)
 		if (!new_crtc_state->mode_changed &&
 				new_crtc_state->connectors_changed) {
 			if (_msm_seamless_for_conn(connector,
-					old_conn_state, false))
+					old_conn_state, true))
 				continue;
 		} else if (!new_crtc_state->mode_changed) {
 			if (!msm_is_private_mode_changed(

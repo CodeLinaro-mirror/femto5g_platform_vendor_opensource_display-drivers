@@ -270,8 +270,11 @@ enum msm_display_wd_jitter_type {
 	MSM_DISPLAY_WD_LTJ_JITTER = BIT(2),
 };
 
-#define MSM_DISPLAY_COMPRESSION_RATIO_NONE 1
-#define MSM_DISPLAY_COMPRESSION_RATIO_MAX 5
+/**
+ * Scale macros so that compression ratio is a factor of 100 everywhere
+ */
+#define MSM_DISPLAY_COMPRESSION_RATIO_NONE 100
+#define MSM_DISPLAY_COMPRESSION_RATIO_MAX 500
 
 /**
  * enum msm_display_spr_pack_type - sub pixel rendering pack patterns supported
@@ -704,10 +707,16 @@ struct msm_display_vdc_info {
 #define DSC_BPP(config) ((config).bits_per_pixel >> 4)
 
 /**
+ * Bits/component
+ * returns the integer bpc value from the drm_dsc_config struct
+ */
+#define DSC_BPC(config) ((config).bits_per_component)
+
+/**
  * struct msm_compression_info - defined panel compression
  * @enabled:          enabled/disabled
  * @comp_type:        type of compression supported
- * @comp_ratio:       compression ratio
+ * @comp_ratio:       compression ratio multiplied by 100
  * @src_bpp:          bits per pixel before compression
  * @tgt_bpp:          bits per pixel after compression
  * @dsc_info:         dsc configuration if the compression
@@ -837,6 +846,7 @@ struct msm_mode_info {
  * @num_ctl             number of ctl available
  * @num_3dmux           number of 3d mux available
  * @max_mixer_width:    max width supported by layer mixer
+ * @merge_3d_mask:      bitmap of available 3d mux resource
  */
 struct msm_resource_caps_info {
 	uint32_t num_lm_in_use;
@@ -846,6 +856,7 @@ struct msm_resource_caps_info {
 	uint32_t num_ctl;
 	uint32_t num_3dmux;
 	uint32_t max_mixer_width;
+	unsigned long merge_3d_mask;
 };
 
 /**
@@ -1270,6 +1281,9 @@ int msm_framebuffer_set_cache_hint(struct drm_framebuffer *fb,
 		u32 flags, u32 rd_type, u32 wr_type);
 int msm_framebuffer_get_cache_hint(struct drm_framebuffer *fb,
 		u32 *flags, u32 *rd_type, u32 *wr_type);
+
+int msm_fb_obj_get_attrs(struct drm_gem_object *obj,
+		int *fb_ns, int *fb_sec, int *fb_sec_dir);
 
 struct drm_fb_helper *msm_fbdev_init(struct drm_device *dev);
 void msm_fbdev_free(struct drm_device *dev);

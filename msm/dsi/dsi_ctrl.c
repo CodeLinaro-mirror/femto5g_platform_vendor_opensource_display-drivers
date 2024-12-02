@@ -25,7 +25,7 @@
 
 #define DSI_CTRL_DEFAULT_LABEL "MDSS DSI CTRL"
 
-#define DSI_CTRL_TX_TO_MS     1200
+#define DSI_CTRL_TX_TO_MS     200
 
 #define TO_ON_OFF(x) ((x) ? "ON" : "OFF")
 
@@ -338,6 +338,13 @@ static int dsi_ctrl_debugfs_deinit(struct dsi_ctrl *dsi_ctrl)
 #else
 static int dsi_ctrl_debugfs_init(struct dsi_ctrl *dsi_ctrl, struct dentry *parent)
 {
+	char dbg_name[DSI_DEBUG_NAME_LEN];
+
+	snprintf(dbg_name, DSI_DEBUG_NAME_LEN, "dsi%d_ctrl",
+						dsi_ctrl->cell_index);
+	sde_dbg_reg_register_base(dbg_name,
+				dsi_ctrl->hw.base,
+				msm_iomap_size(dsi_ctrl->pdev, "dsi_ctrl"));
 	return 0;
 }
 static int dsi_ctrl_debugfs_deinit(struct dsi_ctrl *dsi_ctrl)
@@ -407,22 +414,20 @@ static void dsi_ctrl_clear_dma_status(struct dsi_ctrl *dsi_ctrl)
 
 	dsi_hw_ops = dsi_ctrl->hw.ops;
 
+	mutex_lock(&dsi_ctrl->ctrl_lock);
+
 	status = dsi_hw_ops.poll_dma_status(&dsi_ctrl->hw);
 	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, status);
 
 	status |= (DSI_CMD_MODE_DMA_DONE | DSI_BTA_DONE);
 	dsi_hw_ops.clear_interrupt_status(&dsi_ctrl->hw, status);
 
+	mutex_unlock(&dsi_ctrl->ctrl_lock);
 }
 
 static void dsi_ctrl_post_cmd_transfer(struct dsi_ctrl *dsi_ctrl)
 {
-	int rc = 0;
 	struct dsi_ctrl_hw_ops dsi_hw_ops = dsi_ctrl->hw.ops;
-	struct dsi_clk_ctrl_info clk_info;
-	u32 mask = BIT(DSI_FIFO_OVERFLOW);
-
-	mutex_lock(&dsi_ctrl->ctrl_lock);
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, dsi_ctrl->cell_index, dsi_ctrl->pending_cmd_flags);
 
@@ -435,30 +440,15 @@ static void dsi_ctrl_post_cmd_transfer(struct dsi_ctrl *dsi_ctrl)
 		dsi_ctrl_dma_cmd_wait_for_done(dsi_ctrl);
 	}
 
+	mutex_lock(&dsi_ctrl->ctrl_lock);
+
 	if (dsi_ctrl->hw.reset_trig_ctrl)
 		dsi_hw_ops.reset_trig_ctrl(&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config);
 
-	/* Command engine disable, unmask overflow, remove vote on clocks and gdsc */
-	rc = dsi_ctrl_set_cmd_engine_state(dsi_ctrl, DSI_CTRL_ENGINE_OFF, false);
-	if (rc)
-		DSI_CTRL_ERR(dsi_ctrl, "failed to disable command engine\n");
-
-	if (!(dsi_ctrl->pending_cmd_flags & DSI_CTRL_CMD_READ))
-		dsi_ctrl_mask_error_status_interrupts(dsi_ctrl, mask, false);
-
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 
-	clk_info.client = DSI_CLK_REQ_DSI_CLIENT;
-	clk_info.clk_type = DSI_ALL_CLKS;
-	clk_info.clk_state = DSI_CLK_OFF;
-
-	rc = dsi_ctrl->clk_cb.dsi_clk_cb(dsi_ctrl->clk_cb.priv, clk_info);
-	if (rc)
-		DSI_CTRL_ERR(dsi_ctrl, "failed to disable clocks\n");
-
-	(void)pm_runtime_put_sync(dsi_ctrl->drm_dev->dev);
-
+	dsi_ctrl_transfer_cleanup(dsi_ctrl);
 }
 
 static void dsi_ctrl_post_cmd_transfer_work(struct work_struct *work)
@@ -1063,6 +1053,10 @@ static int dsi_ctrl_update_link_freqs(struct dsi_ctrl *dsi_ctrl,
 		}
 	} else if (config->panel_mode == DSI_OP_CMD_MODE) {
 		/* Calculate the bit rate needed to match dsi transfer time */
+		if (host_cfg->phy_type == DSI_PHY_TYPE_CPHY) {
+			min_dsi_clk_hz *= bits_per_symbol;
+			do_div(min_dsi_clk_hz, num_of_symbols);
+		}
 		bit_rate = min_dsi_clk_hz * frame_time_us;
 		do_div(bit_rate, dsi_transfer_time_us);
 		bit_rate = bit_rate * num_of_lanes;
@@ -1112,11 +1106,6 @@ static int dsi_ctrl_update_link_freqs(struct dsi_ctrl *dsi_ctrl,
 	dsi_ctrl->clk_freq.byte_intf_clk_rate = byte_intf_clk_rate;
 	dsi_ctrl->clk_freq.pix_clk_rate = pclk_rate;
 	dsi_ctrl->clk_freq.esc_clk_rate = config->esc_clk_rate_hz;
-
-	rc = dsi_clk_set_link_frequencies(clk_handle, dsi_ctrl->clk_freq,
-					dsi_ctrl->cell_index);
-	if (rc)
-		DSI_CTRL_ERR(dsi_ctrl, "Failed to update link frequencies\n");
 
 	return rc;
 }
@@ -1382,6 +1371,10 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 	if (dsi_hw_ops.splitlink_cmd_setup && split_link->enabled)
 		dsi_hw_ops.splitlink_cmd_setup(&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config, flags);
+
+	if (dsi_hw_ops.init_cmddma_trig_ctrl)
+		dsi_hw_ops.init_cmddma_trig_ctrl(&dsi_ctrl->hw,
+				&dsi_ctrl->host_config.common_config);
 
 	/*
 	 * Always enable DMA scheduling for video mode panel.
@@ -3326,8 +3319,8 @@ int dsi_ctrl_update_host_config(struct dsi_ctrl *ctrl,
 	if (!(flags & (DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
 		       DSI_MODE_FLAG_DYN_CLK))) {
 		/*
-		 * for dynamic clk switch case link frequence would
-		 * be updated dsi_display_dynamic_clk_switch().
+		 * for dynamic clk switch case link frequencies would
+		 * be updated in dsi_display_update_dsi_bitrate().
 		 */
 		rc = dsi_ctrl_update_link_freqs(ctrl, config, clk_handle,
 				mode);
@@ -3490,6 +3483,37 @@ int dsi_ctrl_cmd_transfer(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd)
 	return rc;
 }
 
+void dsi_ctrl_transfer_cleanup(struct dsi_ctrl *dsi_ctrl)
+{
+	int rc = 0;
+	struct dsi_clk_ctrl_info clk_info;
+	u32 mask = BIT(DSI_FIFO_OVERFLOW);
+
+	mutex_lock(&dsi_ctrl->ctrl_lock);
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, dsi_ctrl->cell_index, dsi_ctrl->pending_cmd_flags);
+
+	/* Command engine disable, unmask overflow, remove vote on clocks and gdsc */
+	rc = dsi_ctrl_set_cmd_engine_state(dsi_ctrl, DSI_CTRL_ENGINE_OFF, false);
+	if (rc)
+		DSI_CTRL_ERR(dsi_ctrl, "failed to disable command engine\n");
+
+	if (!(dsi_ctrl->pending_cmd_flags & DSI_CTRL_CMD_READ))
+		dsi_ctrl_mask_error_status_interrupts(dsi_ctrl, mask, false);
+
+	mutex_unlock(&dsi_ctrl->ctrl_lock);
+
+	clk_info.client = DSI_CLK_REQ_DSI_CLIENT;
+	clk_info.clk_type = DSI_ALL_CLKS;
+	clk_info.clk_state = DSI_CLK_OFF;
+
+	rc = dsi_ctrl->clk_cb.dsi_clk_cb(dsi_ctrl->clk_cb.priv, clk_info);
+	if (rc)
+		DSI_CTRL_ERR(dsi_ctrl, "failed to disable clocks\n");
+
+	(void)pm_runtime_put_sync(dsi_ctrl->drm_dev->dev);
+}
+
 /**
  * dsi_ctrl_transfer_unprepare() - Clean up post a command transfer
  * @dsi_ctrl:                 DSI controller handle.
@@ -3506,12 +3530,12 @@ void dsi_ctrl_transfer_unprepare(struct dsi_ctrl *dsi_ctrl, u32 flags)
 	if (!dsi_ctrl)
 		return;
 
+	dsi_ctrl->pending_cmd_flags = flags;
+
 	if (!(flags & DSI_CTRL_CMD_LAST_COMMAND))
 		return;
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, dsi_ctrl->cell_index, flags);
-
-	dsi_ctrl->pending_cmd_flags = flags;
 
 	if (flags & DSI_CTRL_CMD_ASYNC_WAIT) {
 		dsi_ctrl->post_tx_queued = true;
