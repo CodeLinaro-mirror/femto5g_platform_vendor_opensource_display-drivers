@@ -431,6 +431,7 @@ enum {
 	DSPP_OFF,
 	DSPP_SIZE,
 	DSPP_BLOCKS,
+	DSPP_LITE,
 	DSPP_PROP_MAX,
 };
 
@@ -896,6 +897,7 @@ static struct sde_prop_type dspp_prop[] = {
 	{DSPP_OFF, "qcom,sde-dspp-off", true, PROP_TYPE_U32_ARRAY},
 	{DSPP_SIZE, "qcom,sde-dspp-size", false, PROP_TYPE_U32},
 	{DSPP_BLOCKS, "qcom,sde-dspp-blocks", false, PROP_TYPE_NODE},
+	{DSPP_LITE, "qcom,sde-dspp-lite", false, PROP_TYPE_U32_ARRAY},
 };
 
 static struct sde_prop_type dspp_blocks_prop[] = {
@@ -3407,26 +3409,28 @@ static int _sde_dspp_sblks_parse_dt(struct device_node *np,
 		_sde_init_dspp_sblk(dspp, &sblk->gc, SDE_DSPP_GC,
 				DSPP_GC_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->gamut, SDE_DSPP_GAMUT,
-				DSPP_GAMUT_PROP, props);
+		if (!(dspp->features & BIT(SDE_DSPP_LITE))) {
+			_sde_init_dspp_sblk(dspp, &sblk->gamut, SDE_DSPP_GAMUT,
+					DSPP_GAMUT_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->dither, SDE_DSPP_DITHER,
-				DSPP_DITHER_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->dither, SDE_DSPP_DITHER,
+					DSPP_DITHER_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->hist, SDE_DSPP_HIST,
-				DSPP_HIST_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->hist, SDE_DSPP_HIST,
+					DSPP_HIST_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->hsic, SDE_DSPP_HSIC,
-				DSPP_HSIC_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->hsic, SDE_DSPP_HSIC,
+					DSPP_HSIC_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->memcolor, SDE_DSPP_MEMCOLOR,
-				DSPP_MEMCOLOR_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->memcolor, SDE_DSPP_MEMCOLOR,
+					DSPP_MEMCOLOR_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->sixzone, SDE_DSPP_SIXZONE,
-				DSPP_SIXZONE_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->sixzone, SDE_DSPP_SIXZONE,
+					DSPP_SIXZONE_PROP, props);
 
-		_sde_init_dspp_sblk(dspp, &sblk->vlut, SDE_DSPP_VLUT,
-				DSPP_VLUT_PROP, props);
+			_sde_init_dspp_sblk(dspp, &sblk->vlut, SDE_DSPP_VLUT,
+					DSPP_VLUT_PROP, props);
+		}
 	}
 
 	sde_put_dt_props(props);
@@ -3458,6 +3462,9 @@ static int _sde_dspp_cmn_parse_dt(struct device_node *np,
 				DSPP_OFF, i);
 		sde_cfg->dspp[i].len = PROP_VALUE_ACCESS(props->values,
 				DSPP_SIZE, 0);
+		if (i < props->counts[DSPP_LITE] && PROP_VALUE_ACCESS(props->values, DSPP_LITE, i))
+			sde_cfg->dspp[i].features |= BIT(SDE_DSPP_LITE);
+
 		sde_cfg->dspp[i].id = DSPP_0 + i;
 		snprintf(sde_cfg->dspp[i].name, SDE_HW_BLK_NAME_LEN, "dspp_%d",
 				i);

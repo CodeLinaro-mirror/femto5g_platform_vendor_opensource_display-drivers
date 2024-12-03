@@ -530,6 +530,7 @@ enum {
  * @SDE_DSPP_AIQE_DITHER     AIQE Dither Block
  * @SDE_DSPP_AIQE_WRAPPER    AIQE Wrapper Block
  * @SDE_DSPP_AI_SCALER       AI Scaler block
+ * @SDE_DSPP_LITE            DSPP-Lite, stripe down version
  * @SDE_DSPP_MAX             maximum value
  */
 enum {
@@ -556,6 +557,7 @@ enum {
 	SDE_DSPP_AIQE_DITHER,
 	SDE_DSPP_AIQE_WRAPPER,
 	SDE_DSPP_AI_SCALER,
+	SDE_DSPP_LITE,
 	SDE_DSPP_MAX
 };
 
