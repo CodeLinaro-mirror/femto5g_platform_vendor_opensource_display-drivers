@@ -5933,6 +5933,13 @@ static void dsi_display_unbind(struct device *dev,
 		       display->name,
 		       rc);
 
+	if (display->panel) {
+		rc = display->panel->panel_ops.gpio_release(display->panel);
+		if (rc)
+			DSI_ERR("[%s] failed to release gpios, rc=%d\n", display->panel->name,
+			       rc);
+	}
+
 	display_for_each_ctrl(i, display) {
 		display_ctrl = &display->ctrl[i];
 
