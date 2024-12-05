@@ -1121,6 +1121,9 @@ static int _wfd_kms_create_image(struct msm_hyp_framebuffer *fb)
 			if (IS_ERR(dma_bufs[i])) {
 				pr_err("export dma_buf from bo failed\n");
 				return PTR_ERR(dma_bufs[i]);
+			} else {
+				fb->base.obj[i]->dma_buf = dma_bufs[i];
+				get_dma_buf(dma_bufs[i]);
 			}
 		}
 	}
