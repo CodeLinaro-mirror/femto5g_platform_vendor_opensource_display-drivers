@@ -43,6 +43,9 @@ endif
 ifeq ($(CONFIG_HDCP_QSEECOM), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,sec-module-symvers)/Module.symvers
 endif
+ifeq ($(CONFIG_SMMU_PROXY), y)
+	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,smmu-proxy-module-symvers)/Module.symvers
+endif
 endif
 endif
 
