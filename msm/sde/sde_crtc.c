@@ -58,6 +58,7 @@
 #include "sde_vm.h"
 #include "sde_color_processing_aiqe.h"
 #include "sde_cesta.h"
+#include "hfi_crtc.h"
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
@@ -9017,6 +9018,12 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	if (!sde_crtc)
 		return ERR_PTR(-ENOMEM);
 
+	rc = hfi_crtc_init(sde_crtc);
+	if (rc) {
+		kfree(sde_crtc);
+		return ERR_PTR(rc);
+	}
+
 	crtc = &sde_crtc->base;
 	crtc->dev = dev;
 
@@ -9075,6 +9082,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	rc = _sde_crtc_init_events(sde_crtc);
 	if (rc) {
 		drm_crtc_cleanup(crtc);
+		kfree(sde_crtc->hfi_crtc);
 		kfree(sde_crtc);
 		return ERR_PTR(rc);
 	}

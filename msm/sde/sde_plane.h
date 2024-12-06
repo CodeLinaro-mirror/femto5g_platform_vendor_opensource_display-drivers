@@ -171,6 +171,7 @@ struct sde_plane {
 	struct dentry *debugfs_root;
 	bool debugfs_default_scale;
 
+	struct hfi_plane *hfi_plane;
 	struct sde_plane_hal_funcs hal_ops;
 };
 

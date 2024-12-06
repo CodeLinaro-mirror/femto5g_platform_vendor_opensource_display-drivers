@@ -543,7 +543,7 @@ static int _hfi_dbg_reg_base_register(struct hfi_msm_dbg *dbg)
 		return -EINVAL;
 	}
 
-	reg_base = kzalloc(sizeof(*reg_base), GFP_KERNEL);
+	reg_base = kvzalloc(sizeof(*reg_base), GFP_KERNEL);
 	if (!reg_base)
 		return -ENOMEM;
 
@@ -1088,7 +1088,7 @@ int hfi_msm_dbg_init(struct device *dev, struct dentry *debugfs_root)
 
 	priv->debug_root = debugfs_root;
 
-	hfi_dbg = kzalloc(sizeof(struct hfi_msm_dbg), GFP_KERNEL);
+	hfi_dbg = kvzalloc(sizeof(struct hfi_msm_dbg), GFP_KERNEL);
 	if (!hfi_dbg) {
 		SDE_ERROR("failed to allocate hfi_dbg\n");
 		return -EINVAL;

@@ -760,6 +760,7 @@ struct sde_backlight_vrr_update {
  * @max_mode_width: max width of all available modes
  * @shared: If a connector is sharing resource of its parent
  * @is_lb_conn: Indicates if this connector is a loopback connector
+ * @hfi_conn: Pointer to hfi connector struct
  * @hal_ops: hal ops for hfi communication
  */
 struct sde_connector {
@@ -862,6 +863,7 @@ struct sde_connector {
 	bool shared;
 	bool is_lb_conn;
 
+	struct hfi_connector *hfi_conn;
 	struct sde_connector_hal_funcs hal_ops;
 };
 

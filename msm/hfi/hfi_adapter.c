@@ -363,7 +363,7 @@ int hfi_adapter_client_register(struct hfi_adapter_t *host, struct hfi_client_t 
 {
 	if (!ctx->process_cmd_buf) {
 		HFI_AD_ERROR("invalid client callback function pointer\n");
-		return -HFI_ERROR;
+		return -EINVAL;
 	}
 
 	if (!host) {
@@ -526,7 +526,7 @@ int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 obje
 
 	if (!cmd_buf) {
 		HFI_AD_ERROR("invalid command buffer\n");
-		return -HFI_ERROR;
+		return -EINVAL;
 	}
 
 	mutex_lock(&hfi_adapter_cmd_buf_list_lock);
@@ -540,7 +540,7 @@ int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 obje
 	if (hfi_payload_type != HFI_PAYLOAD_TYPE_NONE) {
 		if (!payload) {
 			HFI_AD_ERROR("payload not provided\n");
-			return -HFI_ERROR;
+			return -EINVAL;
 		}
 
 		packet_size += size;
@@ -600,7 +600,7 @@ int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
 
 	if (!cmd_buf) {
 		HFI_AD_ERROR("invalid command buffer\n");
-		return -HFI_ERROR;
+		return -EINVAL;
 	}
 
 	mutex_lock(&hfi_adapter_cmd_buf_list_lock);
@@ -614,7 +614,7 @@ int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
 	if (hfi_payload_type != HFI_PAYLOAD_TYPE_NONE) {
 		if (!payload) {
 			HFI_AD_ERROR("payload not provided\n");
-			return -HFI_ERROR;
+			return -EINVAL;
 		}
 
 		packet_size += size;
@@ -658,7 +658,7 @@ int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
 	ctx = cmd_buf->ctx;
 	if (!ctx) {
 		HFI_AD_ERROR("could not obtain client context from command buffer\n");
-		return -HFI_ERROR;
+		return -EINVAL;
 	}
 
 	/* Create new listener_list structure to insert. */
@@ -688,12 +688,12 @@ int hfi_adapter_add_prop_array(struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
 
 	if (!cmd_buf || !payload) {
 		HFI_AD_ERROR("invalid buffer or payload\n");
-		return -HFI_ERROR;
+		return -EINVAL;
 	}
 
 	if (payload_type == HFI_PAYLOAD_TYPE_NONE || !size || !cnt) {
 		HFI_AD_ERROR("invalid payload parameters\n");
-		return -HFI_ERROR;
+		return -EINVAL;
 	}
 
 	mutex_lock(&hfi_adapter_cmd_buf_list_lock);

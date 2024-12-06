@@ -55,6 +55,7 @@
 #include "sde_fence.h"
 #include "sde_aiqe_common.h"
 #include "dsi_display.h"
+#include "hfi_encoder.h"
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -8279,6 +8280,10 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 		ret = -ENOMEM;
 		goto fail;
 	}
+
+	ret = hfi_encoder_init(dev, sde_enc);
+	if (ret)
+		goto fail;
 
 	if (ops)
 		sde_enc->ops = *ops;

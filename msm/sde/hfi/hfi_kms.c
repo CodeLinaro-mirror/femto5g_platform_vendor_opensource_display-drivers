@@ -269,39 +269,48 @@ struct hfi_cmdbuf_t *hfi_kms_get_cmd_buf(struct hfi_kms *hfi_kms,
 	return ret_buf;
 }
 
-struct sde_kms *hfi_kms_init(struct drm_device *dev)
+int hfi_kms_reg_client(struct drm_device *dev)
 {
 	int ret;
-	struct hfi_kms *hfi_kms;
 	struct msm_drm_hfi_private *hfi_drv_priv;
+	struct sde_kms *sde_kms;
+	struct msm_drm_private *priv;
 
 	if (!dev || !dev->dev_private)
-		return NULL;
+		return -EINVAL;
 
-	hfi_drv_priv = dev->dev_private;
+	priv = dev->dev_private;
+	hfi_drv_priv = priv->hfi_priv;
+	sde_kms = to_sde_kms(priv->kms);
 
-	hfi_kms = kzalloc(sizeof(*hfi_kms), GFP_KERNEL);
-	if (!hfi_kms) {
-		SDE_ERROR("failed to allocate hfi_kms\n");
-		return ERR_PTR(-ENOMEM);
-	}
-
-	atomic_set(&hfi_kms->cat_init_done, 0);
-	hfi_kms->base.hal_ops = hfi_hal_funcs;
-
-	ret = _hfi_kms_setup_hfi(hfi_drv_priv->hfi_adapter, hfi_kms);
+	ret = _hfi_kms_setup_hfi(hfi_drv_priv->hfi_adapter, sde_kms->hfi_kms);
 	if (ret) {
 		SDE_ERROR("failed to setup HFI client ret=%d\n", ret);
-		goto free_kms;
+		return -HFI_ERROR;
 	}
 
-	return &hfi_kms->base;
+	return 0;
 
-free_kms:
-	kfree(hfi_kms);
+}
 
-	return NULL;
+int hfi_kms_init(struct sde_kms *sde_kms)
+{
+	struct hfi_kms *hfi_kms;
 
+	if (!sde_kms)
+		return -EINVAL;
+
+	hfi_kms = kvzalloc(sizeof(*hfi_kms), GFP_KERNEL);
+	if (!hfi_kms) {
+		SDE_ERROR("failed to allocate hfi_kms\n");
+		return -ENOMEM;
+	}
+
+	sde_kms->hfi_kms = hfi_kms;
+	sde_kms->hal_ops = hfi_hal_funcs;
+	hfi_kms->base = sde_kms;
+
+	return 0;
 }
 
 void hfi_kms_resource_vote_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, u32 size,
@@ -324,7 +333,7 @@ void hfi_kms_resource_vote_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *paylo
 
 	hfi_kms = container_of(resource_vote_listener, struct hfi_kms, resource_vote_listener);
 
-	sde_kms = &hfi_kms->base;
+	sde_kms = hfi_kms->base;
 	priv = sde_kms->dev->dev_private;
 	phandle = &priv->phandle;
 	mp = &phandle->mp;

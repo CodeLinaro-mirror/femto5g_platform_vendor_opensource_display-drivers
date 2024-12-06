@@ -529,6 +529,7 @@ struct sde_encoder_hal_funcs {
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
  * @cesta_scc_override:	        Boolean indicating SCC CTRL settings have been overridden.
+ * @hfi_enc:		        Pointer to hfi encoder struct
  * @hal_ops:			Encoder ops from init function
  */
 struct sde_encoder_virt {
@@ -619,6 +620,7 @@ struct sde_encoder_virt {
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
 	bool cesta_scc_override;
+	struct hfi_encoder *hfi_encoder;
 	struct sde_encoder_hal_funcs hal_ops;
 };
 

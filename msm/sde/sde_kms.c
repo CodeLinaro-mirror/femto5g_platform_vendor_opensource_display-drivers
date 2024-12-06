@@ -60,6 +60,7 @@
 #include "sde_fence.h"
 #include "sde_cesta.h"
 #include "sde_loopback.h"
+#include "hfi_kms.h"
 
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <linux/firmware/qcom/qcom_scm.h>
@@ -213,6 +214,8 @@ static int _sde_debugfs_init(struct sde_kms *sde_kms)
 			(u32 *)&sde_kms->debugfs_hw_fence);
 	debugfs_create_u32("disable_early_EPT_handling", 0600, debugfs_root,
 			(u32 *)&sde_kms->debugfs_early_ept_handling);
+	debugfs_create_u32("display_ctl", 0600, debugfs_root, &sde_kms->debugfs_display_op);
+
 	return 0;
 }
 
@@ -3653,6 +3656,28 @@ static int sde_kms_check_cwb_concurreny(struct msm_kms *kms,
 	return 0;
 }
 
+int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
+{
+	int rc = 0;
+
+	if (!priv || !dev) {
+		SDE_ERROR("invalid arg");
+		return -EINVAL;
+	}
+
+	rc = hfi_msm_drv_hfi_init(priv);
+	if (rc)
+		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
+
+	rc = hfi_kms_reg_client(dev);
+	if (rc) {
+		SDE_ERROR("error with hfi_kms_reg_client rc: %d\n", rc);
+		kfree(priv->hfi_priv);
+	}
+
+	return rc;
+}
+
 static int sde_kms_atomic_check(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -3667,6 +3692,18 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	dev = sde_kms->dev;
 
 	SDE_ATRACE_BEGIN("atomic_check");
+	struct msm_drm_private *priv = dev->dev_private;
+
+	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features) &&
+		IS_DISP_OP_HFI(sde_kms->debugfs_display_op) && sde_kms->hfi_session_start) {
+
+		ret = sde_kms_setup_hfi(priv, dev);
+		if (ret)
+			SDE_ERROR("error with sde_kms_setup_hfi rc: %d\n", ret);
+		else
+			sde_kms->hfi_session_start = false;
+	}
+
 	if (sde_kms_is_suspend_blocked(dev)) {
 		SDE_DEBUG("suspended, skip atomic_check\n");
 		ret = -EBUSY;
@@ -5754,6 +5791,9 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		goto error;
 	}
 
+	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features))
+		sde_kms->hfi_session_start = true;
+
 	return 0;
 error:
 	_sde_kms_hw_destroy(sde_kms, platformdev);
@@ -5765,6 +5805,7 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 {
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
+	int rc;
 
 	if (!dev || !dev->dev_private) {
 		SDE_ERROR("drm device node invalid\n");
@@ -5777,6 +5818,12 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 	if (!sde_kms) {
 		SDE_ERROR("failed to allocate sde kms\n");
 		return ERR_PTR(-ENOMEM);
+	}
+
+	rc = hfi_kms_init(sde_kms);
+	if (rc) {
+		kfree(sde_kms);
+		return ERR_PTR(rc);
 	}
 
 	msm_kms_init(&sde_kms->base, &kms_funcs);

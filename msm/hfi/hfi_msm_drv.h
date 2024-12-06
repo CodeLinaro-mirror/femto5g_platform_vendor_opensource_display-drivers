@@ -30,7 +30,7 @@ static const u32 bw_resources_hfi_props[MAX_NUM_HFI_RESOURCES] = {
 };
 
 struct msm_drm_hfi_private {
-	struct msm_drm_private base;
+	struct msm_drm_private *base;
 	struct hfi_adapter_t *hfi_adapter;
 	struct hfi_client_t *msm_drv_hfi_client;
 };
@@ -48,7 +48,7 @@ int hfi_msm_drv_hfi_init(struct msm_drm_private *priv);
 /**
  * hfi_msm_drv_init
  */
-struct msm_drm_private *hfi_msm_drv_init(struct drm_device *dev);
+int hfi_msm_drv_init(struct drm_device *dev);
 
 /**
  * msm_drv_client_cmdbuf_handler

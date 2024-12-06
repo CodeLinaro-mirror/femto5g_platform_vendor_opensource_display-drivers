@@ -889,7 +889,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		}
 	}
 
-	buff_desc = kzalloc(sizeof(struct hfi_core_cmds_buf_desc), GFP_KERNEL);
+	buff_desc = kvzalloc(sizeof(struct hfi_core_cmds_buf_desc), GFP_KERNEL);
 	if (!buff_desc) {
 		DSI_ERR("failed to allocate hfi mapped buffer");
 		return -EINVAL;

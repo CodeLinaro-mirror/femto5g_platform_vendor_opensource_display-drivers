@@ -516,6 +516,7 @@ struct sde_crtc_hal_funcs {
  * @skip_blend_planes: array holding skip blend plane list
  * @sde_cesta_client: Pointer to sde_cesta client for the encoder.
  * @mdnie_art_frame_count: number of frames required for mdnie art to converge.
+ * @hfi_crtc: Pointer to hfi crtc struct
  * @hal_ops: Local callback hal function pointer table
  */
 struct sde_crtc {
@@ -643,6 +644,7 @@ struct sde_crtc {
 	struct sde_cesta_client *cesta_client;
 	u32 mdnie_art_frame_count;
 
+	struct hfi_crtc *hfi_crtc;
 	struct sde_crtc_hal_funcs hal_ops;
 };
 

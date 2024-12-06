@@ -505,7 +505,10 @@ struct sde_kms {
 	atomic_t stay_awake_count;
 	struct sde_qtimer sde_qtimer;
 
+	struct hfi_kms *hfi_kms;
 	struct sde_kms_hal_funcs hal_ops;
+	bool hfi_session_start;
+	enum msm_disp_op debugfs_display_op;
 };
 
 struct vsync_info {

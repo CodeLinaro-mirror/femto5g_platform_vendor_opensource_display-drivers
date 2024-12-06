@@ -13,7 +13,7 @@
 
 /**
  * struct hfi_kms - virtualized hfi kms structure
- * @base: Base sde kms structure
+ * @base: Pointer to base sde kms structure
  * @hfi_client: hfi client structure
  * @hfi_adapter: hfi adapter structure
  * @device_init_listener: HFI listener object for catalog parsing
@@ -21,7 +21,7 @@
  * @cat_init_done: atomic variable tracking catalog parse status
  */
 struct hfi_kms {
-	struct sde_kms base;
+	struct sde_kms *base;
 	struct hfi_client_t hfi_client;
 	struct hfi_adapter_t *hfi_adapter;
 	struct hfi_prop_listener device_init_listener;
@@ -43,13 +43,24 @@ struct kms_hfi_cb {
 
 #if IS_ENABLED(CONFIG_MDSS_HFI)
 /**
- * hfi_kms_init - initialize virtual hfi kms object
+ * hfi_kms_reg_client - Register SDE as a client with HFI
  * @dev:        Pointer to drm device structure
- * Returns:     Pointer to newly created sde kms
+ * Returns:     0 on success, or error code on failure
  */
-struct sde_kms *hfi_kms_init(struct drm_device *dev);
+int hfi_kms_reg_client(struct drm_device *dev);
 #else
-struct sde_kms *hfi_kms_init(struct drm_device *dev);
+int hfi_kms_reg_client(struct drm_device *dev);
+#endif // IS_ENABLED(CONFIG_MDSS_HFI)
+
+#if IS_ENABLED(CONFIG_MDSS_HFI)
+/**
+ * hfi_kms_init - initialize virtual hfi kms object
+ * @sde_kms:        Pointer to sde kms structure
+ * Returns:     0 on success, or error code on failure
+ */
+int hfi_kms_init(struct sde_kms *sde_kms);
+#else
+int hfi_kms_init(struct sde_kms *sde_kms);
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
 
 /**
@@ -69,7 +80,7 @@ void hfi_kms_resource_vote_hfi_prop_handler(u32 UNIQUE_DISP_OR_OBJ_ID, u32 CMD_I
  * @X: Pointer to sde_kms structure
  * Returns: Pointer to hfi_kms structure
  */
-#define to_hfi_kms(x) container_of(x, struct hfi_kms, base)
+#define to_hfi_kms(x) x->hfi_kms
 
 /**
  * hfi_kms_get_cmd_buf - retrieve a command buffer for a specific display and cmd_type

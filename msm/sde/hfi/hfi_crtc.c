@@ -12,7 +12,7 @@
 #include "hfi_props.h"
 #include "hfi_adapter.h"
 
-#define HFI_CRTC_ID(c) ((c)->sde_base.base.base.id)
+#define HFI_CRTC_ID(c) ((c)->sde_base->base.base.id)
 
 #define HFI_DEBUG_CRTC(c, fmt, ...) SDE_DEBUG("crtc%d " fmt,\
 		(c) ? HFI_CRTC_ID(c) : -1, ##__VA_ARGS__)
@@ -20,8 +20,7 @@
 #define HFI_ERROR_CRTC(c, fmt, ...) SDE_ERROR("crtc%d " fmt,\
 		(c) ? HFI_CRTC_ID(c) : -1, ##__VA_ARGS__)
 
-#define to_hfi_crtc(x) container_of(x, struct hfi_crtc, sde_base)
-#define to_hfi_crtc_state(x) container_of(x, struct hfi_crtc_state, sde_base)
+#define to_hfi_crtc(x) x->hfi_crtc
 
 #define HFI_CRTC_MAX_PROPS 128
 #define HFI_CRTC_BASE_PROP_MAX_SIZE 1024
@@ -244,7 +243,6 @@ void _hfi_crtc_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_crt
 {
 	int ret;
 	struct hfi_crtc *crtc_hfi;
-	struct hfi_crtc_state *hfi_cstate;
 
 	if (!crtc || !cstate) {
 		SDE_ERROR("invalid crtc args\n");
@@ -252,7 +250,6 @@ void _hfi_crtc_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_crt
 	}
 
 	crtc_hfi = to_hfi_crtc(crtc);
-	hfi_cstate =  to_hfi_crtc_state(cstate);
 
 	mutex_lock(&crtc_hfi->hfi_lock);
 
@@ -320,48 +317,6 @@ void hfi_crtc_destroy(struct sde_crtc *crtc)
 	mutex_destroy(&crtc_hfi->hfi_lock);
 
 	kfree(crtc_hfi);
-}
-
-struct sde_crtc_state *hfi_crtc_duplicate_state(struct sde_crtc *crtc)
-{
-	struct hfi_crtc_state *cstate, *old_cstate;
-	struct sde_crtc_state *sde_state;
-
-	if (!crtc || !crtc->base.state) {
-		SDE_ERROR("invalid argument(s)\n");
-		return NULL;
-	}
-
-	sde_state = to_sde_crtc_state(crtc->base.state);
-	old_cstate = to_hfi_crtc_state(sde_state);
-
-	cstate = msm_property_alloc_state(&crtc->property_info);
-	if (!cstate) {
-		SDE_ERROR("failed to allocate memory for hfi crtc state\n");
-		return NULL;
-	}
-	msm_property_duplicate_state(&crtc->property_info,
-					old_cstate, cstate,
-					&cstate->sde_base.property_state,
-					cstate->sde_base.property_values);
-
-	__drm_atomic_helper_crtc_duplicate_state(&crtc->base, &cstate->sde_base.base);
-
-	return &cstate->sde_base;
-}
-
-int hfi_crtc_destroy_state(struct sde_crtc *crtc, struct sde_crtc_state *state)
-{
-	int ret = 0;
-
-	if (!crtc || !state)
-		return -EINVAL;
-
-	__drm_atomic_helper_crtc_destroy_state(&state->base);
-
-	msm_property_destroy_state(&crtc->property_info, state, &state->property_state);
-
-	return ret;
 }
 
 static int hfi_crtc_add_hfi_cmds(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
@@ -548,7 +503,7 @@ void hfi_crtc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload,
 
 	SDE_DEBUG("About to read MISR values from %s\n", __func__);
 
-	misr_read_values = &hfi_crtc->sde_base.misr_vals;
+	misr_read_values = &hfi_crtc->sde_base->misr_vals;
 	misr_data = (struct misr_read_data_ret *)payload;
 
 	max_count = misr_data->num_misr;
@@ -636,8 +591,6 @@ int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 	}
 
 	crtc->hal_ops.destroy = hfi_crtc_destroy;
-	crtc->hal_ops.atomic_duplicate_state = hfi_crtc_duplicate_state;
-	crtc->hal_ops.atomic_destroy_state = hfi_crtc_destroy_state;
 	crtc->hal_ops.atomic_check = hfi_crtc_atomic_check;
 	crtc->hal_ops.atomic_begin = hfi_crtc_atomic_begin;
 	crtc->hal_ops.debugfs_misr_setup = hfi_crtc_debugfs_misr_setup;
@@ -646,26 +599,21 @@ int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 	return 0;
 }
 
-struct sde_crtc *hfi_crtc_init(struct drm_device *dev)
+int hfi_crtc_init(struct sde_crtc *sde_crtc)
 {
 	struct hfi_crtc *crtc = NULL;
-	struct sde_crtc *sde_crtc = NULL;
-	struct msm_drm_private *priv = NULL;
 	int ret;
 
-	if (!dev)
-		return ERR_PTR(-EINVAL);
+	if (!sde_crtc)
+		return -EINVAL;
 
-	crtc = kzalloc(sizeof(*crtc), GFP_KERNEL);
+	crtc = kvzalloc(sizeof(*crtc), GFP_KERNEL);
 	if (!crtc) {
 		SDE_ERROR("failed to allocate memory for hfi crtc\n");
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 	}
 
-	_sde_crtc_hal_funcs_install(&crtc->sde_base);
-
-	sde_crtc = &crtc->sde_base;
-	priv = dev->dev_private;
+	_sde_crtc_hal_funcs_install(sde_crtc);
 
 	mutex_init(&crtc->hfi_lock);
 
@@ -673,18 +621,20 @@ struct sde_crtc *hfi_crtc_init(struct drm_device *dev)
 	crtc->kv_props = hfi_util_kv_helper_alloc(HFI_CRTC_MAX_PROPS);
 	if (IS_ERR(crtc->kv_props)) {
 		SDE_ERROR("failed to allocate memory for kv prop collector\n");
-		ret = PTR_ERR(crtc->kv_props);
+		ret = -ENOMEM;
 		goto free_crtc;
 	}
 
 	crtc->base_props = hfi_util_u32_prop_helper_alloc(HFI_CRTC_BASE_PROP_MAX_SIZE);
 	if (IS_ERR(crtc->base_props)) {
 		SDE_ERROR("failed to allocate memory for base prop collector\n");
-		ret = PTR_ERR(crtc->base_props);
+		ret = -ENOMEM;
 		goto free_kv;
 	}
 
-	return &crtc->sde_base;
+	crtc->sde_base = sde_crtc;
+	sde_crtc->hfi_crtc = crtc;
+	return 0;
 
 free_kv:
 	kfree(crtc->base_props);
@@ -693,5 +643,5 @@ free_crtc:
 	mutex_destroy(&crtc->hfi_lock);
 	kfree(crtc);
 
-	return ERR_PTR(-ENOMEM);
+	return -ENOMEM;
 }

@@ -12,13 +12,13 @@
 
 /**
  * struct hfi_connector - local sde connector hfi structure
- * @sde_base: Base sde connector structure
+ * @sde_base: Pointer to base sde connector structure
  * @hfi_lock: Mutex to protect hfi specific data
  * @base_props: prop helper object for intermediate property collection
  * @kv_props: kv pair helper object for intermediate property collection
  */
 struct hfi_connector {
-	struct sde_connector sde_base;
+	struct sde_connector *sde_base;
 	struct mutex hfi_lock;
 	struct hfi_util_u32_prop_helper *base_props;
 	struct hfi_util_kv_helper *kv_props;
@@ -26,22 +26,20 @@ struct hfi_connector {
 
 /**
  * struct hfi_connector_state - private hfi connector status structure
- * @sde_base: Base sde connector structure
+ * @sde_base: Pointer to base sde connector structure
  */
 struct hfi_connector_state {
-	struct sde_connector_state sde_base;
+	struct sde_connector_state *sde_base;
 };
 
 #if IS_ENABLED(CONFIG_MDSS_HFI)
 /**
  * hfi_connector_init - create hfi connector object for a given display
  * @connector_type: Set to appropriate DRM_MODE_CONNECTOR_ type
- * @dev: Pointer to drm device struct
- * @encoder: Pointer to associated encoder
- * Returns: Pointer to newly created sde connector struct
+ * @c_conn: Pointer to sde connector struct
+ * @Returns: 0 on success, or error code on failure
  */
-struct sde_connector *hfi_connector_init(int connector_type,
-		struct drm_device *dev, struct drm_encoder *encoder);
+int hfi_connector_init(int connector_type, struct sde_connector *c_conn);
 
 /**
  * hfi_connector_get_cmd_buf - retrieve a cmd_buffr for DRM connector of cmd_type
@@ -57,10 +55,9 @@ void sde_connector_add_roi_v1(u32 hfi_prop, struct sde_connector *conn,
 	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf);
 
 #else
-struct sde_connector *hfi_connector_init(int connector_type,
-		struct drm_device *dev, struct drm_encoder *encoder)
+int hfi_connector_init(int connector_type, struct sde_connector *c_conn);
 {
-	return NULL;
+	return -HFI_ERROR;
 }
 
 struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,

@@ -8,7 +8,7 @@
 #include "hfi_crtc.h"
 #include "hfi_props.h"
 
-#define HFI_CONNECTOR_ID(c) ((c)->sde_base.base.base.id)
+#define HFI_CONNECTOR_ID(c) ((c)->sde_base->base.base.id)
 
 #define HFI_DEBUG_CONN(c, fmt, ...) SDE_DEBUG("conn%d " fmt,\
 		(c) ? HFI_CONNECTOR_ID(c) : -1, ##__VA_ARGS__)
@@ -16,7 +16,7 @@
 #define HFI_ERROR_CONN(c, fmt, ...) SDE_ERROR("conn%d " fmt,\
 		(c) ? HFI_CONNECTOR_ID(c) : -1, ##__VA_ARGS__)
 
-#define to_hfi_connector(x) container_of(x, struct hfi_connector, sde_base)
+#define to_hfi_connector(x) x->hfi_conn
 
 #define HFI_CONNECTOR_MAX_PROPS 128
 #define HFI_CONNECTOR_BASE_PROP_MAX_SIZE 1024
@@ -281,44 +281,6 @@ void hfi_connector_destroy(struct sde_connector *conn)
 	kfree(conn_hfi);
 }
 
-struct sde_connector_state *hfi_connector_atomic_duplicate_state(struct sde_connector *conn)
-{
-	struct hfi_connector_state *c_state = NULL;
-	struct sde_connector_state *c_oldstate;
-
-	if (!conn) {
-		SDE_ERROR("invalid connector\n");
-		return NULL;
-	}
-
-	c_oldstate = to_sde_connector_state(conn->base.state);
-
-	c_state = msm_property_alloc_state(&conn->property_info);
-	if (!c_state) {
-		SDE_ERROR("failed to allocate memory for hfi connector state\n");
-		return NULL;
-	}
-
-	msm_property_duplicate_state(&conn->property_info,
-			c_oldstate, c_state,
-			&c_state->sde_base.property_state,
-			c_state->sde_base.property_values);
-
-	__drm_atomic_helper_connector_duplicate_state(&conn->base,
-			&c_state->sde_base.base);
-
-	return &c_state->sde_base;
-}
-
-void hfi_connector_atomic_destroy_state(struct sde_connector *conn,
-		struct sde_connector_state *c_state)
-{
-	if (!conn || !c_state)
-		return;
-
-	msm_property_destroy_state(&conn->property_info, c_state, &c_state->property_state);
-}
-
 static int hfi_conn_add_hfi_cmds(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 		struct sde_connector *conn, struct sde_connector_state *cstate)
 {
@@ -376,8 +338,6 @@ static void _sde_connector_hal_funcs_install(struct sde_connector *conn)
 	}
 
 	conn->hal_ops.destroy = hfi_connector_destroy;
-	conn->hal_ops.atomic_duplicate_state = hfi_connector_atomic_duplicate_state;
-	conn->hal_ops.atomic_destroy_state = hfi_connector_atomic_destroy_state;
 	conn->hal_ops.prepare_commit = hfi_connector_prepare_commit;
 }
 
@@ -398,25 +358,19 @@ struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
 	return hfi_kms_get_cmd_buf(hfi_kms, sde_conn->conn_id, cmd_buf_type);
 }
 
-struct sde_connector *hfi_connector_init(int connector_type, struct drm_device *dev,
-		struct drm_encoder *encoder)
+int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 {
 	struct hfi_connector *hfi_conn = NULL;
-	struct sde_connector *c_conn = NULL;
-	struct msm_drm_private *priv;
 
-	hfi_conn = kzalloc(sizeof(*hfi_conn), GFP_KERNEL);
+	hfi_conn = kvzalloc(sizeof(*hfi_conn), GFP_KERNEL);
 	if (!hfi_conn) {
 		SDE_ERROR("[%u] failed to allocate memory for hfi connector\n", connector_type);
-		return NULL;
+		return -ENOMEM;
 	}
-
-	c_conn = &hfi_conn->sde_base;
-	priv = dev->dev_private;
 
 	mutex_init(&hfi_conn->hfi_lock);
 
-	_sde_connector_hal_funcs_install(&hfi_conn->sde_base);
+	_sde_connector_hal_funcs_install(c_conn);
 
 	hfi_conn->kv_props = hfi_util_kv_helper_alloc(HFI_CONNECTOR_MAX_PROPS);
 	if (IS_ERR(hfi_conn->kv_props)) {
@@ -430,7 +384,9 @@ struct sde_connector *hfi_connector_init(int connector_type, struct drm_device *
 		goto free_kv;
 	}
 
-	return &hfi_conn->sde_base;
+	hfi_conn->sde_base = c_conn;
+	c_conn->hfi_conn = hfi_conn;
+	return 0;
 
 free_kv:
 	kfree(hfi_conn->base_props);
@@ -438,5 +394,5 @@ free_conn:
 	mutex_destroy(&hfi_conn->hfi_lock);
 	kfree(hfi_conn);
 
-	return NULL;
+	return -ENOMEM;
 }

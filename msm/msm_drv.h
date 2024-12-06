@@ -92,6 +92,8 @@ struct msm_gem_vma;
 
 #define TEARDOWN_DEADLOCK_RETRY_MAX 5
 
+#define IS_DISP_OP_HFI(disp_op)		((disp_op) == MSM_DISP_OP_HFI)
+
 #define DISP_DEV_ERR(dev, fmt, ...) dev_err(dev, "[%s:%d] " fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 struct msm_file_private {
@@ -1333,6 +1335,7 @@ struct msm_drm_private {
 	struct blocking_notifier_head component_notifier_list;
 
 	enum msm_disp_op disp_op;
+	struct msm_drm_hfi_private *hfi_priv;
 };
 
 /* get struct msm_kms * from drm_device * */

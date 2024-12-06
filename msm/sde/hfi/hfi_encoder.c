@@ -12,7 +12,6 @@
 #include "sde_kms.h"
 #include "hfi_msm_dbg.h"
 
-#define to_hfi_encoder(x) container_of(x, struct hfi_encoder, sde_base)
 #define TIMEOUT_MAX	80
 
 static ktime_t hfi_enc_unpack_event_data(void *payload, u32 *idx, struct sde_encoder_virt *sde_enc)
@@ -75,7 +74,7 @@ static void hfi_encoder_vblank_callback(struct hfi_encoder *hfi_enc, void *paylo
 	if (!hfi_enc || !payload)
 		return;
 
-	sde_enc = &hfi_enc->sde_base;
+	sde_enc = hfi_enc->sde_base;
 	ts = hfi_enc_unpack_event_data(payload, NULL, sde_enc);
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
@@ -89,7 +88,7 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 {
 	struct hfi_encoder *hfi_enc = container_of(listener,
 			struct hfi_encoder, hfi_cb_obj);
-	struct sde_encoder_virt *sde_enc = &hfi_enc->sde_base;
+	struct sde_encoder_virt *sde_enc = hfi_enc->sde_base;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
 	u32 event = 0;
@@ -104,12 +103,12 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 	switch (cmd_id) {
 	case HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_START:
 		event = SDE_ENCODER_FRAME_EVENT_DONE;
-		hfi_encoder_frame_event_callback(&hfi_enc->sde_base,
+		hfi_encoder_frame_event_callback(hfi_enc->sde_base,
 				payload, event);
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_COMPLETE:
 		event = SDE_ENCODER_FRAME_EVENT_DONE;
-		hfi_encoder_frame_event_callback(&hfi_enc->sde_base,
+		hfi_encoder_frame_event_callback(hfi_enc->sde_base,
 				payload, event);
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_VSYNC:
@@ -230,7 +229,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 {
 	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
 	struct hfi_kms *hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
-	struct sde_encoder_virt *sde_enc = &hfi_enc->sde_base;
+	struct sde_encoder_virt *sde_enc = hfi_enc->sde_base;
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
@@ -358,7 +357,7 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	struct sde_encoder_wait_info wait_info = {0};
 	struct sde_encoder_virt *sde_enc;
 
-	sde_enc = &hfi_enc->sde_base;
+	sde_enc = hfi_enc->sde_base;
 
 	wait_info.wq = &hfi_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &sde_enc->pending_commit_cnt;
@@ -527,7 +526,7 @@ void hfi_enc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, 
 
 	SDE_DEBUG("About to read MISR values from %s\n", __func__);
 
-	misr_read_values = &hfi_enc->sde_base.misr_vals;
+	misr_read_values = &hfi_enc->sde_base->misr_vals;
 	misr_data = (struct misr_read_data_ret *)payload;
 
 	max_count = misr_data->num_misr;
@@ -637,20 +636,22 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 	sde_enc->hal_ops.debugfs_dump_status = hfi_enc_debugfs_dump_status;
 }
 
-struct sde_encoder_virt *hfi_encoder_init(struct drm_device *dev,
-		struct msm_display_info *info, struct sde_encoder_event_ops *ops)
+int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
 {
 	struct hfi_encoder *hfi_enc;
 
-	hfi_enc = kzalloc(sizeof(*hfi_enc), GFP_KERNEL);
+	hfi_enc = kvzalloc(sizeof(*hfi_enc), GFP_KERNEL);
 	if (!hfi_enc) {
 		SDE_ERROR("failed to allocate memory for hfi encoder\n");
-		return NULL;
+		return -ENOMEM;
 	}
 
-	_hfi_encoder_setup_ops(&hfi_enc->sde_base);
+	_hfi_encoder_setup_ops(sde_enc);
 	hfi_enc->hfi_cb_obj.hfi_prop_handler = hfi_enc_hfi_prop_handler;
 	init_waitqueue_head(&hfi_enc->pending_kickoff_wq);
 
-	return &hfi_enc->sde_base;
+	sde_enc->hfi_encoder = hfi_enc;
+	hfi_enc->sde_base = sde_enc;
+
+	return 0;
 }

@@ -39,6 +39,7 @@
 #include "sde_vbif.h"
 #include "sde_plane.h"
 #include "sde_color_processing.h"
+#include "hfi_plane.h"
 
 #define SDE_DEBUG_PLANE(pl, fmt, ...) SDE_DEBUG("plane%d " fmt,\
 		(pl) ? (pl)->base.base.id : -1, ##__VA_ARGS__)
@@ -5725,6 +5726,10 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 		ret = -ENOMEM;
 		goto exit;
 	}
+
+	ret = hfi_plane_init(pipe, psde);
+	if (ret)
+		goto clean_plane;
 
 	/* cache local stuff for later */
 	plane = &psde->base;

@@ -60,6 +60,7 @@
 #include "msm_mmu.h"
 #include "sde_wb.h"
 #include "sde_dbg.h"
+#include "hfi_msm_drv.h"
 
 /*
  * MSM driver version:
@@ -862,6 +863,10 @@ static int msm_drm_device_init(struct platform_device *pdev,
 	ddev->dev_private = priv;
 	priv->dev = ddev;
 
+	ret = hfi_msm_drv_init(ddev);
+	if (ret)
+		goto priv_alloc_fail;
+
 	ret = sde_power_resource_init(pdev, &priv->phandle);
 	if (ret) {
 		pr_err("sde power resource init failed\n");
@@ -903,6 +908,7 @@ dbg_init_fail:
 	sde_power_resource_deinit(pdev, &priv->phandle);
 power_init_fail:
 priv_alloc_fail:
+	kfree(priv->hfi_priv);
 	drm_dev_put(ddev);
 	return ret;
 }

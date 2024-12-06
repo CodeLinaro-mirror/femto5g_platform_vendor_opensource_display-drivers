@@ -13,7 +13,7 @@
 #include "hfi_plane.h"
 #include "hfi_catalog.h"
 
-#define HFI_PLANE_ID(pl) ((pl)->sde_base.base.base.id)
+#define HFI_PLANE_ID(pl) ((pl)->sde_base->base.base.id)
 
 #define HFI_DEBUG_PLANE(pl, fmt, ...) SDE_DEBUG("plane%d " fmt,\
 				(pl) ? HFI_PLANE_ID(pl) : -1, ##__VA_ARGS__)
@@ -22,8 +22,7 @@
 				(pl) ? HFI_PLANE_ID(pl) : -1, ##__VA_ARGS__)
 
 
-#define to_hfi_plane(x) container_of(x, struct hfi_plane, sde_base)
-#define to_hfi_plane_state(x) container_of(x, struct hfi_plane_state, sde_base)
+#define to_hfi_plane(x) x->hfi_plane
 
 #define HFI_PLANE_MAX_PROPS 128
 #define HFI_PLANE_BASE_PROP_MAX_SIZE 1024
@@ -224,7 +223,6 @@ static int _hfi_plane_set_props_base(struct sde_plane *plane, u32 disp_id,
 	u32 drm_prop;
 	int i, ret = 0;
 	struct hfi_plane *phfi;
-	struct hfi_plane_state *hfi_pstate;
 
 	if (!plane || !pstate) {
 		SDE_ERROR("invalid plane\n");
@@ -232,7 +230,6 @@ static int _hfi_plane_set_props_base(struct sde_plane *plane, u32 disp_id,
 	}
 
 	phfi = to_hfi_plane(plane);
-	hfi_pstate = to_hfi_plane_state(pstate);
 
 	mutex_lock(&phfi->hfi_lock);
 	hfi_util_u32_prop_helper_reset(phfi->base_props);
@@ -365,7 +362,6 @@ void _hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_pl
 	u32 prop_id;
 	int ret;
 	struct hfi_plane *phfi;
-	struct hfi_plane_state *hfi_pstate;
 
 	if (!plane || !pstate) {
 		SDE_ERROR("invalid plane args\n");
@@ -373,7 +369,6 @@ void _hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_pl
 	}
 
 	phfi = to_hfi_plane(plane);
-	hfi_pstate =  to_hfi_plane_state(pstate);
 
 	mutex_lock(&phfi->hfi_lock);
 
@@ -381,7 +376,7 @@ void _hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_pl
 
 	prop_id = HFI_PROPERTY_DISPLAY_DETACH_LAYER;
 	hfi_util_u32_prop_helper_add_prop(phfi->base_props, prop_id, HFI_VAL_U32_ARRAY,
-			&phfi->sde_base.pipe, sizeof(u32));
+			&phfi->sde_base->pipe, sizeof(u32));
 
 	ret = hfi_adapter_add_set_property(cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
@@ -417,34 +412,6 @@ static void hfi_plane_destroy(struct sde_plane *plane)
 	mutex_destroy(&phfi->hfi_lock);
 
 	kfree(phfi);
-}
-
-static struct sde_plane_state *hfi_plane_duplicate_state(struct sde_plane *plane)
-{
-	struct hfi_plane_state *dps = NULL;
-
-	if (!plane)
-		return NULL;
-
-	dps = msm_property_alloc_state(&plane->property_info);
-	if (!dps) {
-		SDE_ERROR("failed to allocate memory for hfi plane state\n");
-		return NULL;
-	}
-
-	return &dps->sde_base;
-}
-
-static int hfi_plane_destroy_state(struct sde_plane *plane, struct sde_plane_state *pstate)
-{
-	int ret = 0;
-
-	if (!plane || !pstate)
-		return -EINVAL;
-
-	msm_property_destroy_state(&plane->property_info, pstate, &pstate->property_state);
-
-	return ret;
 }
 
 static int hfi_plane_add_hfi_cmds(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
@@ -524,33 +491,26 @@ static void _sde_plane_hal_funcs_install(struct sde_plane *plane)
 	}
 
 	plane->hal_ops.destroy = hfi_plane_destroy;
-	plane->hal_ops.atomic_duplicate_state = hfi_plane_duplicate_state;
-	plane->hal_ops.atomic_destroy_state = hfi_plane_destroy_state;
 	plane->hal_ops.atomic_update = hfi_plane_atomic_update;
 }
 
-struct sde_plane *hfi_plane_init(uint32_t pipe_id, struct sde_kms *kms)
+int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)
 {
 	struct hfi_plane *plane = NULL;
-	struct sde_plane *psde = NULL;
-	struct msm_drm_private *priv;
 	int ret;
 
-	if (!kms) {
-		SDE_ERROR("invalid kms arg\n");
-		return NULL;
+	if (!pdpu) {
+		SDE_ERROR("invalid plane arg\n");
+		return -EINVAL;
 	}
 
-	plane = kzalloc(sizeof(*plane), GFP_KERNEL);
+	plane = kvzalloc(sizeof(*plane), GFP_KERNEL);
 	if (!plane) {
 		SDE_ERROR("failed to allocate memory for hfi plane\n");
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 	}
 
-	_sde_plane_hal_funcs_install(&plane->sde_base);
-
-	psde = &plane->sde_base;
-	priv = kms->dev->dev_private;
+	_sde_plane_hal_funcs_install(pdpu);
 
 	mutex_init(&plane->hfi_lock);
 
@@ -558,18 +518,20 @@ struct sde_plane *hfi_plane_init(uint32_t pipe_id, struct sde_kms *kms)
 	plane->kv_props = hfi_util_kv_helper_alloc(HFI_PLANE_MAX_PROPS);
 	if (IS_ERR(plane->kv_props)) {
 		SDE_ERROR("failed to ate memory for kv prop collctr\n");
-		ret = PTR_ERR(plane->kv_props);
+		ret = -ENOMEM;
 		goto free_plane;
 	}
 
 	plane->base_props = hfi_util_u32_prop_helper_alloc(HFI_PLANE_BASE_PROP_MAX_SIZE);
 	if (IS_ERR(plane->base_props)) {
 		SDE_ERROR("failed to allocate memory for base prop collector\n");
-		ret = PTR_ERR(plane->base_props);
+		ret = -ENOMEM;
 		goto free_kv;
 	}
 
-	return &plane->sde_base;
+	plane->sde_base = pdpu;
+	pdpu->hfi_plane = plane;
+	return 0;
 
 free_kv:
 	kfree(plane->base_props);
@@ -577,5 +539,5 @@ free_plane:
 	mutex_destroy(&plane->hfi_lock);
 	kfree(plane);
 
-	return ERR_PTR(-ENOMEM);
+	return -ENOMEM;
 }

@@ -83,7 +83,7 @@ static int dsi_display_hfi_set_mode(struct dsi_display *display, struct dsi_disp
 
 	hfi_client = &hfi_kms->hfi_client;
 
-	hfi_mode_info = kzalloc(sizeof(struct hfi_display_mode_info), GFP_KERNEL);
+	hfi_mode_info = kvzalloc(sizeof(struct hfi_display_mode_info), GFP_KERNEL);
 	if (!hfi_mode_info)
 		return -ENOMEM;
 

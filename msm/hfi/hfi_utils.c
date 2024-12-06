@@ -20,7 +20,7 @@ struct hfi_util_kv_helper *hfi_util_kv_helper_alloc(u32 count)
 		size = HFI_UTIL_MAX_ALLOC;
 	}
 
-	kv_helper = kzalloc(size, GFP_KERNEL);
+	kv_helper = kvzalloc(size, GFP_KERNEL);
 	if (!kv_helper) {
 		SDE_ERROR("error in alloc\n");
 		return ERR_PTR(-ENOMEM);
@@ -161,7 +161,7 @@ struct hfi_util_u32_prop_helper *hfi_util_u32_prop_helper_alloc(u32 size)
 
 	sz = min(sz, max_sz);
 
-	prop_helper = kzalloc(sz, GFP_KERNEL);
+	prop_helper = kvzalloc(sz, GFP_KERNEL);
 	if (!prop_helper) {
 		SDE_ERROR("error in alloc\n");
 		return ERR_PTR(-ENOMEM);

@@ -23,6 +23,7 @@
 #include <linux/version.h>
 #include <shd_drm.h>
 #include "sde_trace.h"
+#include "hfi_connector.h"
 
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
@@ -4240,6 +4241,12 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 		SDE_ERROR("failed to alloc sde connector\n");
 		return ERR_PTR(-ENOMEM);
 	}
+
+	c_conn->conn_id = 0;
+
+	rc = hfi_connector_init(connector_type, c_conn);
+	if (rc)
+		goto error_free_conn;
 
 	memset(&display_info, 0, sizeof(display_info));
 
