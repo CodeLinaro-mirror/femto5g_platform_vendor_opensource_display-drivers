@@ -515,6 +515,7 @@ enum {
  * @SDE_DSPP_AD              AD block
  * @SDE_DSPP_LTM             LTM block
  * @SDE_DSPP_SPR             SPR block
+ * @SDE_DSPP_SPR_DITHER      SPR Dither block
  * @SDE_DSPP_SPR_DITHER_LUMA SPR Dither block (Luma supported)
  * @SDE_DSPP_DEMURA          Demura block
  * @SDE_DSPP_RC              RC block (mask)
@@ -541,6 +542,7 @@ enum {
 	SDE_DSPP_AD,
 	SDE_DSPP_LTM,
 	SDE_DSPP_SPR,
+	SDE_DSPP_SPR_DITHER,
 	SDE_DSPP_SPR_DITHER_LUMA,
 	SDE_DSPP_DEMURA,
 	SDE_DSPP_RC,

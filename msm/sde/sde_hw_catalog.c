@@ -3082,6 +3082,7 @@ static int _sde_dspp_spr_parse_dt(struct device_node *np,
 					SPR_DITHER_OFF, i);
 			sblk->spr_dither.version = PROP_VALUE_ACCESS(props->values,
 					SPR_DITHER_VERSION, 0);
+			set_bit(SDE_DSPP_SPR_DITHER, &dspp->features);
 		}
 
 		if (test_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features))
