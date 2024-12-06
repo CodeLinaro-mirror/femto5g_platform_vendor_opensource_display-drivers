@@ -200,7 +200,7 @@ static int sde_hw_get_axi_halt_status(struct sde_hw_vbif *vbif)
 {
 	struct sde_hw_blk_reg_map *c = &vbif->hw;
 	int ctrl = 0, ret = 0;
-	u32 val;
+	u32 val, mask = BIT(4) | BIT(5);
 
 	ret = read_poll_timeout(sde_reg_read, ctrl, (ctrl & BIT(0)),
 			100, 4000, false, c, VBIF_AXI_HALT_CTRL1);
@@ -208,7 +208,9 @@ static int sde_hw_get_axi_halt_status(struct sde_hw_vbif *vbif)
 	/* check AXI port 0 & 1 status on error */
 	if (ret) {
 		val = SDE_REG_READ(c, VBIF_AXI_HALT_CTRL1);
-		ret = (val & (BIT(4) | BIT(5))) ? 0 : ret;
+		ret = ((val & mask) == mask) ? 0 : ret;
+		if (ret)
+			pr_err("vbif axi halt failed, ret:%d, val:0x%x\n", ret, val);
 	}
 
 	return ret;

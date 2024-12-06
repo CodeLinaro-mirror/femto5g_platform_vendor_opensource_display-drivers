@@ -4808,14 +4808,17 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 {
 	struct sde_kms *sde_kms = usr;
 	struct msm_kms *msm_kms;
+	struct drm_device *dev;
+	int ret = 0;
 
 	msm_kms = &sde_kms->base;
-	if (!sde_kms)
+	if (!sde_kms || !sde_kms->dev)
 		return;
 
 	SDE_DEBUG("event_type:%d\n", event_type);
 	SDE_EVT32_VERBOSE(event_type);
 
+	dev = sde_kms->dev;
 	if (event_type == SDE_POWER_EVENT_POST_ENABLE) {
 		sde_irq_update(msm_kms, true);
 		sde_kms->first_kickoff = true;
@@ -4840,7 +4843,12 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 			return;
 
 		_sde_kms_active_override(sde_kms, true);
-		sde_vbif_axi_halt_request(sde_kms);
+		ret = sde_vbif_axi_halt_request(sde_kms);
+		if (ret) {
+			SDE_ERROR("VBIF axi halt request failed, ret:%d\n", ret);
+			SDE_EVT32(ret, SDE_EVTLOG_ERROR);
+			SDE_DBG_DUMP_CLK_EN(SDE_DBG_BUILT_IN_ALL);
+		}
 	}
 }
 
