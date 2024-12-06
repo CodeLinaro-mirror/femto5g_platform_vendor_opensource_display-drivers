@@ -337,8 +337,8 @@ static void _sde_connector_hal_funcs_install(struct sde_connector *conn)
 		return;
 	}
 
-	conn->hal_ops.destroy = hfi_connector_destroy;
-	conn->hal_ops.prepare_commit = hfi_connector_prepare_commit;
+	conn->hal_ops.destroy[MSM_DISP_OP_HFI] = hfi_connector_destroy;
+	conn->hal_ops.prepare_commit[MSM_DISP_OP_HFI] = hfi_connector_prepare_commit;
 }
 
 struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,

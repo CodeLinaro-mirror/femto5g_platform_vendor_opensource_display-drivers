@@ -4150,6 +4150,7 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 	struct sde_connector_state *c_state;
 	struct drm_display_mode *cur_mode = NULL;
 	struct msm_display_mode *msm_mode;
+	enum msm_disp_op disp_op;
 
 	if (!drm_enc || !drm_enc->crtc) {
 		SDE_ERROR("invalid encoder\n");
@@ -4158,7 +4159,7 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 	sde_enc = to_sde_encoder_virt(drm_enc);
 
 	if (!sde_kms_power_resource_is_enabled(drm_enc->dev)) {
-		SDE_ERROR("power resource is not enabled\n");
+		SDE_ERROR_ENC(sde_enc, "power resource is not enabled\n");
 		return;
 	}
 
@@ -4183,14 +4184,23 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 
 	if (!has_master_enc) {
 		sde_enc->cur_master = NULL;
-		SDE_ERROR("virt encoder has no master! num_phys %d\n", i);
+		SDE_ERROR_ENC(sde_enc, "virt encoder has no master! num_phys %d\n", i);
 		return;
 	}
 
 	_sde_encoder_input_handler_register(drm_enc);
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.encoder_enable[disp_op]) {
+		ret = sde_enc->hal_ops.encoder_enable[disp_op](sde_enc);
+		if (ret)
+			SDE_ERROR_ENC(sde_enc, "encoder enable failure\n");
+	}
+
+
 	c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
 	if (!c_state) {
-		SDE_ERROR("invalid connector state\n");
+		SDE_ERROR_ENC(sde_enc, "invalid connector state\n");
 		return;
 	}
 
@@ -4287,16 +4297,11 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	enum sde_intf_mode intf_mode;
 	struct drm_crtc *drm_crtc;
 	struct msm_drm_private *priv;
+	enum msm_disp_op disp_op;
 	int ret, i = 0;
 
-	if (!drm_enc) {
-		SDE_ERROR("invalid encoder\n");
-		return;
-	} else if (!drm_enc->dev) {
-		SDE_ERROR("invalid dev\n");
-		return;
-	} else if (!drm_enc->dev->dev_private) {
-		SDE_ERROR("invalid dev_private\n");
+	if (!drm_enc || !drm_enc->dev || !drm_enc->dev->dev_private) {
+		SDE_ERROR("invalid arg\n");
 		return;
 	}
 
@@ -4307,7 +4312,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	if (!sde_enc->cur_master) {
-		SDE_ERROR("Invalid cur_master\n");
+		SDE_ERROR_ENC(sde_enc, "Invalid cur_master\n");
 		return;
 	}
 	sde_conn = to_sde_connector(sde_enc->cur_master->connector);
@@ -4333,6 +4338,13 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	_sde_encoder_helper_virt_disable(drm_enc);
 
 	_sde_encoder_input_handler_unregister(drm_enc);
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.encoder_disable[disp_op]) {
+		ret = sde_enc->hal_ops.encoder_disable[disp_op](sde_enc);
+		if (ret)
+			SDE_ERROR_ENC(sde_enc, "encoder disable failure\n");
+	}
 
 	sde_encoder_cancel_vrr_timers(drm_enc);
 
@@ -4780,7 +4792,7 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 	enable = vbl_cb ? true : false;
 
 	if (!drm_enc) {
-		SDE_ERROR("invalid encoder\n");
+		SDE_ERROR_ENC(sde_enc, "invalid encoder\n");
 		return;
 	}
 
@@ -4816,11 +4828,13 @@ void sde_encoder_register_frame_event_callback(struct drm_encoder *drm_enc,
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	unsigned long lock_flags;
 	bool enable;
+	enum msm_disp_op disp_op;
+	int ret;
 
 	enable = frame_event_cb ? true : false;
 
 	if (!drm_enc) {
-		SDE_ERROR("invalid encoder\n");
+		SDE_ERROR_ENC(sde_enc, "invalid encoder\n");
 		return;
 	}
 	SDE_DEBUG_ENC(sde_enc, "\n");
@@ -4830,6 +4844,15 @@ void sde_encoder_register_frame_event_callback(struct drm_encoder *drm_enc,
 	sde_enc->crtc_frame_event_cb = frame_event_cb;
 	sde_enc->crtc_frame_event_cb_data.crtc = crtc;
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.enable_hw_event[disp_op]) {
+		ret = sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+				MSM_ENC_COMMIT_DONE, frame_event_cb ? true : false);
+		if (ret)
+			SDE_ERROR("failed to enable hw event\n");
+	}
+
 }
 
 static void sde_encoder_frame_done_callback(
@@ -4845,7 +4868,7 @@ static void sde_encoder_frame_done_callback(
 	ktime_t ts = 0;
 
 	if (!sde_kms || !sde_enc->cur_master) {
-		SDE_ERROR("invalid param: sde_kms %pK, cur_master %pK\n",
+		SDE_ERROR_ENC(sde_enc, "invalid param: sde_kms %pK, cur_master %pK\n",
 				sde_kms, sde_enc->cur_master);
 		return;
 	}
@@ -7549,6 +7572,8 @@ static ssize_t _sde_encoder_misr_setup(struct file *file,
 	u32 frame_count, enable;
 	struct sde_kms *sde_kms = NULL;
 	struct drm_encoder *drm_enc;
+	enum msm_disp_op disp_op;
+	int ret = 0;
 
 	if (!file || !file->private_data)
 		return -EINVAL;
@@ -7580,6 +7605,13 @@ static ssize_t _sde_encoder_misr_setup(struct file *file,
 	atomic_set(&sde_enc->misr_enable, enable);
 	sde_enc->misr_reconfigure = true;
 	sde_enc->misr_frame_count = frame_count;
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.debugfs_misr_setup[disp_op]) {
+		ret = sde_enc->hal_ops.debugfs_misr_setup[disp_op](sde_enc);
+		if (ret)
+			SDE_ERROR("misr setup failure\n");
+	}
 	return count;
 }
 
@@ -7658,6 +7690,8 @@ static ssize_t _sde_encoder_misr_read(struct file *file,
 	int i = 0, len = 0;
 	char buf[MISR_BUFF_SIZE + 1] = {'\0'};
 	int rc;
+	enum msm_disp_op disp_op;
+	int ret = 0;
 
 	if (*ppos)
 		return 0;
@@ -7675,6 +7709,14 @@ static ssize_t _sde_encoder_misr_read(struct file *file,
 		return -ENOTSUPP;
 	}
 	drm_enc = &sde_enc->base;
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.debugfs_misr_read[disp_op]) {
+		ret = sde_enc->hal_ops.debugfs_misr_read[disp_op](
+				sde_enc);
+		if (ret)
+			SDE_ERROR("misr read failure\n");
+	}
 
 	rc = pm_runtime_resume_and_get(drm_enc->dev->dev);
 	if (rc < 0) {
@@ -8392,6 +8434,7 @@ int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 	struct sde_encoder_virt *sde_enc = NULL;
 	int i, ret = 0;
 	char atrace_buf[32];
+	enum msm_disp_op disp_op;
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
@@ -8399,6 +8442,15 @@ int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 	}
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	SDE_DEBUG_ENC(sde_enc, "\n");
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.wait_for_event[disp_op]) {
+		ret = sde_enc->hal_ops.wait_for_event[disp_op](sde_enc,
+				event);
+		if (ret) {
+			SDE_ERROR("wait for event failure\n");
+		}
+	}
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];

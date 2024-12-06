@@ -313,28 +313,28 @@ struct sde_encoder_hal_funcs {
 	 * @enc: Pointer to sde encoder structure
 	 * Returns: Zero on success
 	 */
-	int (*post_init)(struct sde_encoder_virt *enc);
+	int (*post_init[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * destroy - Clean up encoder resources
 	 * @enc: Pointer to sde encoder structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	void (*destroy)(struct sde_encoder_virt *enc);
+	void (*destroy[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * debugfs_init - perform debugfs node initialization
 	 * @enc: Pointer to sde encoder structure
 	 * Returns: Zero on success
 	 */
-	int (*debugfs_init)(struct sde_encoder_virt *enc);
+	int (*debugfs_init[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * debugfs_destroy - handle destroy operations for debugfs
 	 * @enc: Pointer to sde encoder structure
 	 * Returns: Zero on success
 	 */
-	void (*debugfs_destroy)(struct sde_encoder_virt *enc);
+	void (*debugfs_destroy[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * mode_set - perform set mode operations
@@ -342,8 +342,8 @@ struct sde_encoder_hal_funcs {
 	 * @mode: Pointer to drm mode structure
 	 * @mdj_ode: Pointer to adjusted drm mode structure
 	 */
-	void (*mode_set)(struct sde_encoder_virt *enc, struct drm_display_mode *mode,
-			struct drm_display_mode *adj_mode);
+	void (*mode_set[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+			struct drm_display_mode *mode, struct drm_display_mode *adj_mode);
 
 	/**
 	 * atomic_check - atomic check handling for encoder
@@ -352,29 +352,29 @@ struct sde_encoder_hal_funcs {
 	 * @conn_state:Pointer to sde connector state
 	 * Returns: Zero on success
 	 */
-	int (*atomic_check)(struct sde_encoder_virt *enc, struct sde_crtc_state *crtc_state,
-			struct sde_connector_state *conn_state);
+	int (*atomic_check[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+			struct sde_crtc_state *crtc_state, struct sde_connector_state *conn_state);
 
 	/**
 	 * encoder_enable - function for encoder enable
 	 * @enc: Pointer to sde encoder structure
 	 * Returns: Zero on success
 	 */
-	int (*encoder_enable)(struct sde_encoder_virt *enc);
+	int (*encoder_enable[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * encoder_disable - function for encoder disable
 	 * @enc: Pointer to sde encoder structure
 	 * Returns: Zero on success
 	 */
-	int (*encoder_disable)(struct sde_encoder_virt *enc);
+	int (*encoder_disable[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * prepare_commit - start of atomic commit sequence
 	 * @enc: Pointer to sde encoder structure
 	 * Returns: Zero on success
 	 */
-	int (*prepare_commit)(struct sde_encoder_virt *enc);
+	int (*prepare_commit[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * @prepare_for_kickoff: Do any work necessary prior to a kickoff
@@ -382,7 +382,7 @@ struct sde_encoder_hal_funcs {
 	 * @params: info encoder requires at kickoff
 	 * Returns: Zero on success
 	 */
-	int (*prepare_for_kickoff)(struct sde_encoder_virt *enc);
+	int (*prepare_for_kickoff[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * @kickoff: kickoff processing for the encoder
@@ -390,7 +390,7 @@ struct sde_encoder_hal_funcs {
 	 * @cfg_changed: config change boolean
 	 * Returns: Zero on success
 	 */
-	int (*kickoff)(struct sde_encoder_virt *enc, bool cfg_changed);
+	int (*kickoff[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc, bool cfg_changed);
 
 	/**
 	 * wait_for_event - Wait for hardware event
@@ -398,7 +398,7 @@ struct sde_encoder_hal_funcs {
 	 * @event: event for which response is needed
 	 * Returns: Zero on success
 	 */
-	int (*wait_for_event)(struct sde_encoder_virt *enc, u32 event);
+	int (*wait_for_event[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc, u32 event);
 
 	/**
 	 * enable_hw_event - Notify display of event registration/unregistration
@@ -406,26 +406,28 @@ struct sde_encoder_hal_funcs {
 	 * @event: encoder event for which response is needed
 	 * @enable: Whether the event is being enabled/disabled
 	 */
-	int (*enable_hw_event)(struct sde_encoder_virt *enc, u32 event, bool enable);
+	int (*enable_hw_event[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+		u32 event, bool enable);
 
 	/**
 	 * debugfs_misr_setup - Enable MISR for specified module and display
 	 * @enc: Pointer to sde encoder structure
 	 */
-	int (*debugfs_misr_setup)(struct sde_encoder_virt *enc);
+	int (*debugfs_misr_setup[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * debugfs_misr_read - Read MISR value for specified module and display
 	 * @enc: Pointer to sde encoder structure
 	 */
-	int (*debugfs_misr_read)(struct sde_encoder_virt *enc);
+	int (*debugfs_misr_read[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * debugfs_dump_status - Read dump status for specified module and display
 	 * @enc: Pointer to dpu encoder structure
 	 * @s: used to writing on debugfs node
 	 */
-	int (*debugfs_dump_status)(struct sde_encoder_virt *enc, struct seq_file *s);
+	int (*debugfs_dump_status[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+			struct seq_file *s);
 };
 
 /**

@@ -1358,7 +1358,8 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *cstate;
 	struct sde_vm_ops *vm_ops;
-	int i, rc;
+	enum msm_disp_op disp_op;
+	int i, rc, ret = 0;
 	bool power_on_commit = true;
 
 	if (!kms)
@@ -1387,6 +1388,14 @@ static void sde_kms_prepare_commit(struct msm_kms *kms,
 		sde_power_scale_reg_bus(&priv->phandle,
 				power_on_commit ? VOTE_INDEX_LOW : VOTE_INDEX_HIGH, false);
 		sde_kms->first_kickoff = false;
+	}
+
+	disp_op = sde_kms_get_disp_op(sde_kms);
+	if (sde_kms->hal_ops.prepare_commit[disp_op]) {
+		ret = sde_kms->hal_ops.prepare_commit[disp_op](sde_kms, state);
+		if (ret) {
+			SDE_ERROR("failure prepare commit\n");
+		}
 	}
 
 	for_each_new_crtc_in_state(state, crtc, cstate, i) {
@@ -1426,7 +1435,8 @@ static void sde_kms_commit(struct msm_kms *kms,
 	struct sde_kms *sde_kms;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *old_crtc_state;
-	int i;
+	int i, ret = 0;
+	enum msm_disp_op disp_op;
 
 	if (!kms || !old_state)
 		return;
@@ -1443,6 +1453,14 @@ static void sde_kms_commit(struct msm_kms *kms,
 			SDE_EVT32(DRMID(crtc), old_state);
 			sde_crtc_commit_kickoff(crtc, old_crtc_state);
 		}
+	}
+
+	disp_op = sde_kms_get_disp_op(sde_kms);
+	if (sde_kms->hal_ops.trigger_commit[disp_op]) {
+		ret = sde_kms->hal_ops.trigger_commit[disp_op](sde_kms,
+				old_state);
+		if (ret)
+			SDE_ERROR("fail to trigger commit\n");
 	}
 
 	SDE_ATRACE_END("sde_kms_commit");
@@ -3683,6 +3701,7 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 {
 	struct sde_kms *sde_kms;
 	struct drm_device *dev;
+	enum msm_disp_op disp_op;
 	int ret;
 
 	if (!kms || !state)
@@ -3734,6 +3753,13 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	ret = sde_kms_check_cwb_concurreny(kms, state);
 	if (ret)
 		goto vm_clean_up;
+
+	disp_op = sde_kms_get_disp_op(sde_kms);
+	if (sde_kms->hal_ops.atomic_check[disp_op]) {
+		ret = sde_kms->hal_ops.atomic_check[disp_op](sde_kms, state);
+		if (ret)
+			SDE_ERROR("failed atomic check err:%d\n", ret);
+	}
 
 	goto end;
 

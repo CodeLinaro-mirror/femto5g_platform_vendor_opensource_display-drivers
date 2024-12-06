@@ -35,35 +35,36 @@ struct sde_connector_hal_funcs {
 	 * @conn: Pointer to sde connector structure
 	 * Returns: Zero on success
 	 */
-	int (*post_init)(struct sde_connector *conn);
+	int (*post_init[MSM_DISP_OP_MAX])(struct sde_connector *conn);
 
 	/**
 	 * destroy - Clean up connector resources
 	 * @conn: Pointer to sde connector structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	void (*destroy)(struct sde_connector *conn);
+	void (*destroy[MSM_DISP_OP_MAX])(struct sde_connector *conn);
 
 	/**
 	 * debugfs_init - perform debugfs node initialization
 	 * @conn: Pointer to sde connector structure
 	 * Returns: Zero on success
 	 */
-	int (*debugfs_init)(struct sde_connector *conn);
+	int (*debugfs_init[MSM_DISP_OP_MAX])(struct sde_connector *conn);
 
 	/**
 	 * debugfs_destroy - handle destroy operations for debugfs
 	 * @conn: Pointer to sde connector structure
 	 * Returns: Zero on success
 	 */
-	void (*debugfs_destroy)(struct sde_connector *conn);
+	void (*debugfs_destroy[MSM_DISP_OP_MAX])(struct sde_connector *conn);
 
 	/**
 	 * atomic_duplicate_state - Duplicate the current atomic state for the connector
 	 * @conn: Pointer to sde connector structure
 	 * Returns: Duplicated atomic state or NULL when the allocation failed.
 	 */
-	struct sde_connector_state* (*atomic_duplicate_state)(struct sde_connector *conn);
+	struct sde_connector_state* (*atomic_duplicate_state[MSM_DISP_OP_MAX])
+			(struct sde_connector *conn);
 
 	/**
 	 * atomic_destroy_state - Destroy a state duplicated with @atomic_duplicate_state
@@ -72,7 +73,7 @@ struct sde_connector_hal_funcs {
 	 * @state: Pointer to sde connector state structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	void (*atomic_destroy_state)(struct sde_connector *conn,
+	void (*atomic_destroy_state[MSM_DISP_OP_MAX])(struct sde_connector *conn,
 		struct sde_connector_state *state);
 
 	/**
@@ -81,7 +82,7 @@ struct sde_connector_hal_funcs {
 	 * @event_idx: sde connector event index
 	 * @enable: Whether the event is being enabled/disabled
 	 */
-	int (*enable_hw_event)(struct sde_connector *conn,
+	int (*enable_hw_event[MSM_DISP_OP_MAX])(struct sde_connector *conn,
 			uint32_t event_idx, bool enable);
 
 	/**
@@ -90,14 +91,15 @@ struct sde_connector_hal_funcs {
 	 * @sde_kms: Pointer to sde kms structure
 	 * @disp_type: Connector display types
 	 */
-	int (*connector_lm_preference)(struct sde_connector *conn,
+	int (*connector_lm_preference[MSM_DISP_OP_MAX])(struct sde_connector *conn,
 		struct sde_kms *sde_kms, uint32_t disp_type);
 
 	/**
 	 * prepare_commit - Updates LM preference for the display type
 	 * @conn: Pointer to sde connector structure
 	 */
-	int (*prepare_commit)(struct drm_connector *conn, struct sde_connector_state *cstate);
+	int (*prepare_commit[MSM_DISP_OP_MAX])(struct drm_connector *conn,
+				struct sde_connector_state *cstate);
 
 };
 

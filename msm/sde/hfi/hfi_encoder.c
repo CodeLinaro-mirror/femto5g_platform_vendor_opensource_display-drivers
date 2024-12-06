@@ -417,19 +417,6 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 	return ret;
 }
 
-static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct seq_file *s)
-{
-	if (!s || !s->private || !sde_enc || (sde_enc != s->private))
-		return -EINVAL;
-
-	seq_printf(s, "intf:%d    vsync:%8d     underrun:%8d    ",
-			1, atomic_read(sde_enc->frame_done_cnt), 0);
-
-	seq_puts(s, "mode: video\n");
-
-	return 0;
-}
-
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 {
@@ -627,13 +614,12 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder *enc)
 
 static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 {
-	sde_enc->hal_ops.encoder_enable = hfi_enc_encoder_enable;
-	sde_enc->hal_ops.encoder_disable = hfi_enc_encoder_disable;
-	sde_enc->hal_ops.wait_for_event = hfi_enc_wait_for_event;
-	sde_enc->hal_ops.enable_hw_event = hfi_enc_enable_hw_event;
-	sde_enc->hal_ops.debugfs_misr_setup = hfi_enc_debugfs_misr_setup;
-	sde_enc->hal_ops.debugfs_misr_read = hfi_enc_debugfs_misr_read;
-	sde_enc->hal_ops.debugfs_dump_status = hfi_enc_debugfs_dump_status;
+	sde_enc->hal_ops.encoder_enable[MSM_DISP_OP_HFI] = hfi_enc_encoder_enable;
+	sde_enc->hal_ops.encoder_disable[MSM_DISP_OP_HFI] = hfi_enc_encoder_disable;
+	sde_enc->hal_ops.wait_for_event[MSM_DISP_OP_HFI] = hfi_enc_wait_for_event;
+	sde_enc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI] = hfi_enc_enable_hw_event;
+	sde_enc->hal_ops.debugfs_misr_setup[MSM_DISP_OP_HFI] = hfi_enc_debugfs_misr_setup;
+	sde_enc->hal_ops.debugfs_misr_read[MSM_DISP_OP_HFI] = hfi_enc_debugfs_misr_read;
 }
 
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)

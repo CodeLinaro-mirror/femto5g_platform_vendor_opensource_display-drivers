@@ -69,35 +69,35 @@ struct sde_plane_hal_funcs {
 	 * @plane: Pointer to sde plane structure
 	 * Returns: Zero on success
 	 */
-	int (*post_init)(struct sde_plane *plane);
+	int (*post_init[MSM_DISP_OP_MAX])(struct sde_plane *plane);
 
 	/**
 	 * destroy - Clean up plane resources
 	 * @plane: Pointer to sde plane structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	void (*destroy)(struct sde_plane *plane);
+	void (*destroy[MSM_DISP_OP_MAX])(struct sde_plane *plane);
 
 	/**
 	 * debugfs_init - perform debugfs node initialization
 	 * @plane: Pointer to sde plane structure
 	 * Returns: Zero on success
 	 */
-	int (*debugfs_init)(struct sde_plane *plane);
+	int (*debugfs_init[MSM_DISP_OP_MAX])(struct sde_plane *plane);
 
 	/**
 	 * debugfs_destroy - handle destroy operations for debugfs
 	 * @plane: Pointer to sde plane structure
 	 * Returns: Zero on success
 	 */
-	void (*debugfs_destroy)(struct sde_plane *plane);
+	void (*debugfs_destroy[MSM_DISP_OP_MAX])(struct sde_plane *plane);
 
 	/**
 	 * atomic_duplicate_state - Duplicate the current atomic state for plane
 	 * @plane: Pointer to sde plane structure
 	 * Returns: Duplicated atomic state or NULL when the allocation failed.
 	 */
-	struct sde_plane_state *(*atomic_duplicate_state)(struct sde_plane *plane);
+	struct sde_plane_state *(*atomic_duplicate_state[MSM_DISP_OP_MAX])(struct sde_plane *plane);
 
 	/**
 	 * atomic_destroy_state - Destroy a state duplicated with @atomic_duplicate_state
@@ -106,27 +106,30 @@ struct sde_plane_hal_funcs {
 	 * @state: Pointer to sde plane state structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	int (*atomic_destroy_state)(struct sde_plane *plane, struct sde_plane_state *state);
+	int (*atomic_destroy_state[MSM_DISP_OP_MAX])(struct sde_plane *plane,
+			struct sde_plane_state *state);
 
 	/**
 	 * atomic_check - atomic check handling for plane
 	 * @plane: Pointer to sde plane structure
 	 * @state: Pointer to drm atomic state
 	 */
-	int (*atomic_check)(struct sde_plane *plane, struct sde_plane_state *state);
+	int (*atomic_check[MSM_DISP_OP_MAX])(struct sde_plane *plane,
+			struct sde_plane_state *state);
 
 	/**
 	 * atomic_update - atomic update handling for plane
 	 * @plane: Pointer to sde plane structure
 	 * @state: Pointer to drm atomic state
 	 */
-	int (*atomic_update)(struct sde_plane *plane, struct sde_plane_state *state);
+	int (*atomic_update[MSM_DISP_OP_MAX])(struct sde_plane *plane,
+			struct sde_plane_state *state);
 
 	/**
 	 * plane_flush - Process flush event on plane
 	 * @plane: Pointer to sde plane structure
 	 */
-	void (*plane_flush)(struct sde_plane *plane);
+	void (*plane_flush[MSM_DISP_OP_MAX])(struct sde_plane *plane);
 };
 
 struct sde_plane {

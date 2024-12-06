@@ -900,6 +900,8 @@ static void sde_crtc_event_notify(struct drm_crtc *crtc, uint32_t type, void *pa
 static void sde_crtc_destroy(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct msm_drm_private *priv;
+	enum msm_disp_op disp_op;
 
 	SDE_DEBUG("\n");
 
@@ -920,6 +922,13 @@ static void sde_crtc_destroy(struct drm_crtc *crtc)
 
 	sde_fence_deinit(sde_crtc->output_fence);
 	_sde_crtc_deinit_events(sde_crtc);
+
+	disp_op = sde_crtc_get_disp_op(crtc);
+	if (crtc->dev && crtc->dev->dev_private) {
+		priv = crtc->dev->dev_private;
+		if (sde_crtc->hal_ops.destroy[disp_op])
+			sde_crtc->hal_ops.destroy[disp_op](sde_crtc);
+	}
 
 	drm_crtc_cleanup(crtc);
 	mutex_destroy(&sde_crtc->crtc_lock);
@@ -4947,6 +4956,8 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	struct sde_crtc_state *cstate;
 	bool cont_splash_enabled = false;
 	size_t i;
+	int ret = 0;
+	enum msm_disp_op disp_op;
 
 	if (!crtc->state->enable) {
 		SDE_DEBUG("crtc%d -> enable %d, skip atomic_begin\n",
@@ -5052,6 +5063,14 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 
 	if (sde_kms_is_cp_operation_allowed(sde_kms))
 		sde_cp_crtc_apply_properties(crtc);
+
+	disp_op = sde_crtc_get_disp_op(crtc);
+	if (sde_crtc->hal_ops.atomic_begin[disp_op]) {
+		ret = sde_crtc->hal_ops.atomic_begin[disp_op](sde_crtc,
+				cstate);
+		if (ret)
+			SDE_ERROR("atomic_begin HAL op fail, ret: %d\n", ret);
+	}
 
 	/*
 	 * PP_DONE irq is only used by command mode for now.
@@ -6959,6 +6978,7 @@ static int _sde_crtc_atomic_check(struct drm_crtc *crtc,
 	struct sde_multirect_plane_states *multirect_plane = NULL;
 	struct drm_connector *conn;
 	struct drm_connector_list_iter conn_iter;
+	enum msm_disp_op disp_op;
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -7062,6 +7082,14 @@ static int _sde_crtc_atomic_check(struct drm_crtc *crtc,
 			  crtc->base.id, rc);
 		goto end;
 	}
+
+	disp_op = sde_crtc_get_disp_op(crtc);
+	if (sde_crtc->hal_ops.atomic_check[disp_op]) {
+		rc = sde_crtc->hal_ops.atomic_check[disp_op](sde_crtc, cstate);
+		if (rc)
+			SDE_ERROR("atomic_check HAL op failed, ret: %d\n", rc);
+	}
+
 end:
 	kfree(pstates);
 	kfree(multirect_plane);
@@ -8280,6 +8308,8 @@ static ssize_t _sde_crtc_misr_setup(struct file *file,
 	u32 frame_count, enable;
 	size_t buff_copy;
 	struct sde_kms *sde_kms;
+	enum msm_disp_op disp_op;
+	int ret = 0;
 
 	if (!file || !file->private_data)
 		return -EINVAL;
@@ -8314,6 +8344,14 @@ static ssize_t _sde_crtc_misr_setup(struct file *file,
 	sde_crtc->misr_frame_count = frame_count;
 	sde_crtc->misr_reconfigure = true;
 
+	disp_op = sde_crtc_get_disp_op(crtc);
+	if (sde_crtc->hal_ops.debugfs_misr_setup[disp_op]) {
+		ret = sde_crtc->hal_ops.debugfs_misr_setup[disp_op](
+				sde_crtc);
+		if (ret)
+			SDE_ERROR("Failed to setup MISR\n");
+	}
+
 	return count;
 }
 
@@ -8341,6 +8379,13 @@ static ssize_t _sde_crtc_misr_read(struct file *file,
 	sde_kms = _sde_crtc_get_kms(crtc);
 	if (!sde_kms)
 		return -EINVAL;
+
+	if (sde_crtc->hal_ops.debugfs_misr_read[disp_op]) {
+		rc = sde_crtc->hal_ops.debugfs_misr_read[disp_op](
+				sde_crtc);
+		if (rc)
+			SDE_ERROR("debugfs_misr_read failed, rc: %d\n", rc);
+	}
 
 	rc = pm_runtime_resume_and_get(crtc->dev->dev);
 	if (rc < 0) {

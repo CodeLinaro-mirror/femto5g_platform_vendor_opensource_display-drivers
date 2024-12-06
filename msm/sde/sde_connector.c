@@ -1545,7 +1545,8 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	struct msm_display_conn_params params;
 	struct drm_encoder *drm_enc;
 	struct dsi_display *display;
-	int rc;
+	enum msm_disp_op disp_op;
+	int rc = 0;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1589,6 +1590,12 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	SDE_EVT32(connector->base.id, params.qsync_mode,
 		  params.qsync_update, rc);
 
+	disp_op = sde_connector_get_disp_op(connector);
+	if (c_conn->hal_ops.prepare_commit[disp_op]) {
+		rc = c_conn->hal_ops.prepare_commit[disp_op](connector, c_state);
+		if (rc)
+			SDE_ERROR("prepare_commit HAL op failed, rc: %d\n", rc);
+	}
 	return rc;
 }
 
@@ -1927,6 +1934,8 @@ int sde_connector_clk_get_rate_esync(struct drm_connector *connector,
 void sde_connector_destroy(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
+	struct msm_drm_private *priv;
+	enum msm_disp_op disp_op;
 
 	if (!connector) {
 		SDE_ERROR("invalid connector\n");
@@ -1964,6 +1973,13 @@ void sde_connector_destroy(struct drm_connector *connector)
 	sde_fence_deinit(c_conn->retire_fence);
 	drm_connector_cleanup(connector);
 	msm_property_destroy(&c_conn->property_info);
+
+	disp_op = sde_connector_get_disp_op(connector);
+	if (connector->dev && connector->dev->dev_private) {
+		priv = connector->dev->dev_private;
+		if (c_conn->hal_ops.destroy[disp_op])
+			c_conn->hal_ops.destroy[disp_op](c_conn);
+	}
 	kfree(c_conn);
 }
 

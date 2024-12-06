@@ -490,8 +490,8 @@ static void _sde_plane_hal_funcs_install(struct sde_plane *plane)
 		return;
 	}
 
-	plane->hal_ops.destroy = hfi_plane_destroy;
-	plane->hal_ops.atomic_update = hfi_plane_atomic_update;
+	plane->hal_ops.destroy[MSM_DISP_OP_HFI] = hfi_plane_destroy;
+	plane->hal_ops.atomic_update[MSM_DISP_OP_HFI] = hfi_plane_atomic_update;
 }
 
 int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)

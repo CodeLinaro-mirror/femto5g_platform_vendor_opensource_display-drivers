@@ -3167,6 +3167,7 @@ static int _sde_plane_atomic_check(struct drm_plane *plane,
 	int ret = 0;
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
+	enum msm_disp_op disp_op;
 
 	psde = to_sde_plane(plane);
 	pstate = to_sde_plane_state(state);
@@ -3179,6 +3180,14 @@ static int _sde_plane_atomic_check(struct drm_plane *plane,
 
 	ret = sde_plane_sspp_atomic_check(plane, state);
 
+	disp_op = sde_plane_get_disp_op(plane);
+	if (psde->hal_ops.atomic_check[disp_op]) {
+		ret = psde->hal_ops.atomic_check[disp_op](psde, pstate);
+		if (ret) {
+			SDE_ERROR_PLANE(psde, "failed in HAL op atomic check ret:%d\n",
+					ret);
+		}
+	}
 exit:
 	return ret;
 }
@@ -4050,6 +4059,8 @@ static void sde_plane_atomic_update(struct drm_plane *plane,
 {
 	struct sde_plane *psde;
 	struct drm_plane_state *state;
+	enum msm_disp_op disp_op;
+	int ret = 0;
 
 	if (!plane) {
 		SDE_ERROR("invalid plane\n");
@@ -4068,11 +4079,19 @@ static void sde_plane_atomic_update(struct drm_plane *plane,
 	if (!sde_plane_enabled(state)) {
 		_sde_plane_atomic_disable(plane, old_state);
 	} else {
-		int ret;
-
 		ret = sde_plane_sspp_atomic_update(plane, old_state);
 		/* atomic_check should have ensured that this doesn't fail */
 		WARN_ON(ret < 0);
+
+		disp_op = sde_plane_get_disp_op(plane);
+		if (psde->hal_ops.atomic_update[disp_op]) {
+			ret = psde->hal_ops.atomic_update[disp_op](psde,
+					to_sde_plane_state(old_state));
+			if (ret) {
+				SDE_ERROR_PLANE(psde,
+					"failed in HAL op atomic update ret:%d\n", ret);
+			}
+		}
 	}
 }
 
@@ -5203,6 +5222,7 @@ int sde_plane_helper_reset_custom_properties(struct drm_plane *plane,
 static void sde_plane_destroy(struct drm_plane *plane)
 {
 	struct sde_plane *psde = plane ? to_sde_plane(plane) : NULL;
+	enum msm_disp_op disp_op;
 
 	SDE_DEBUG_PLANE(psde, "\n");
 
@@ -5220,6 +5240,9 @@ static void sde_plane_destroy(struct drm_plane *plane)
 		if (psde->pipe_hw)
 			sde_hw_sspp_destroy(psde->pipe_hw);
 
+		disp_op = sde_plane_get_disp_op(plane);
+		if (psde->hal_ops.destroy[disp_op])
+			psde->hal_ops.destroy[disp_op](psde);
 		kfree(psde);
 	}
 }
@@ -5695,7 +5718,8 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 	struct sde_kms *kms;
 	enum drm_plane_type type;
 	struct sde_vbif_clk_client clk_client;
-	int ret = -EINVAL;
+	enum msm_disp_op disp_op;
+	int ret = 0;
 
 	if (!dev) {
 		SDE_ERROR("[%u]device is NULL\n", pipe);
@@ -5826,6 +5850,9 @@ clean_sspp:
 	if (psde && psde->pipe_hw)
 		sde_hw_sspp_destroy(psde->pipe_hw);
 clean_plane:
+	disp_op = sde_plane_get_disp_op(plane);
+	if (psde->hal_ops.destroy[disp_op])
+		psde->hal_ops.destroy[disp_op](psde);
 	kfree(psde);
 exit:
 	return ERR_PTR(ret);

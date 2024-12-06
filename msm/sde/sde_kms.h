@@ -280,98 +280,99 @@ struct sde_kms_hal_funcs {
 	 * @kms: Pointer to sde kms structure
 	 * Returns: Zero on success
 	 */
-	int (*post_init)(struct sde_kms *kms);
+	int (*post_init[MSM_DISP_OP_MAX])(struct sde_kms *kms);
 
 	/**
 	 * destroy - Clean up kms resources
 	 * @kms: Pointer to sde kms structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	void (*destroy)(struct sde_kms *kms);
+	void (*destroy[MSM_DISP_OP_MAX])(struct sde_kms *kms);
 
 	/**
 	 * debugfs_init - perform debugfs node initialization
 	 * @kms: Pointer to sde kms structure
 	 * Returns: Zero on success
 	 */
-	int (*debugfs_init)(struct sde_kms *kms);
+	int (*debugfs_init[MSM_DISP_OP_MAX])(struct sde_kms *kms);
 
 	/**
 	 * debugfs_destroy - handle destroy operations for debugfs
 	 * @kms: Pointer to sde kms structure
 	 * Returns: Zero on success
 	 */
-	void (*debugfs_destroy)(struct sde_kms *kms);
+	void (*debugfs_destroy[MSM_DISP_OP_MAX])(struct sde_kms *kms);
 
 	/**
 	 * irq_preinstall - perform pre-setup for kms IRQ register
 	 * @kms: Pointer to sde kms structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	void (*irq_preinstall)(struct sde_kms *kms);
+	void (*irq_preinstall[MSM_DISP_OP_MAX])(struct sde_kms *kms);
 
 	/**
 	 * irq_postinstall - perform post setup for kms IRQ register
 	 * @kms: Pointer to sde kms structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	int (*irq_postinstall)(struct sde_kms *kms);
+	int (*irq_postinstall[MSM_DISP_OP_MAX])(struct sde_kms *kms);
 
 	/**
 	 * irq_uninstall - perform kms IRQ unregister
 	 * @kms: Pointer to sde kms structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	void (*irq_uninstall)(struct sde_kms *kms);
+	void (*irq_uninstall[MSM_DISP_OP_MAX])(struct sde_kms *kms);
 
 	/**
 	 * irq_uninstall - handle kms IRQ
 	 * @kms: Pointer to sde kms structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	irqreturn_t (*irq)(struct sde_kms *kms);
+	irqreturn_t (*irq[MSM_DISP_OP_MAX])(struct sde_kms *kms);
 
 	/**
 	 * hw_init - sets up the hw state
 	 * @kms: Pointer to sde kms structure
 	 * Returns: Zero on success, negative error code for failures
 	 */
-	int (*hw_init)(struct sde_kms *kms);
+	int (*hw_init[MSM_DISP_OP_MAX])(struct sde_kms *kms);
 
 	/**
 	 * atomic_check - atomic check handling for kms
 	 * @kms: Pointer to sde kms structure
 	 * @state: Pointer to drm atomic state
 	 */
-	int (*atomic_check)(struct sde_kms *kms, struct drm_atomic_state *state);
+	int (*atomic_check[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_atomic_state *state);
 
 	/**
 	 * prepare_commit - start of atomic commit sequence
 	 * @kms: Pointer to sde kms structure
 	 * @state: Pointer to drm atomic state
 	 */
-	int (*prepare_commit)(struct sde_kms *kms, struct drm_atomic_state *state);
+	int (*prepare_commit[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_atomic_state *state);
 
 	/**
 	 * complete_commit - callback signalling completion of current commit
 	 * @kms: Pointer to sde kms structure
 	 * @state: Pointer to drm atomic state
 	 */
-	int (*complete_commit)(struct sde_kms *kms, struct drm_atomic_state *state);
+	int (*complete_commit[MSM_DISP_OP_MAX])(struct sde_kms *kms,
+			struct drm_atomic_state *state);
 
 	/**
 	 * commit - process the commit manager routines
 	 * @kms: Pointer to sde kms structure
 	 * @state: Pointer to drm atomic state
 	 */
-	int (*commit)(struct sde_kms *kms, struct drm_atomic_state *state);
+	int (*commit[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_atomic_state *state);
 
 	/**
 	 * trigger_commit - callback triggering current commit on to HW
 	 * @kms: Pointer to sde kms structure
 	 * @state: Pointer to drm atomic state
 	 */
-	int (*trigger_commit)(struct sde_kms *kms, struct drm_atomic_state *state);
+	int (*trigger_commit[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_atomic_state *state);
 
 	/**
 	 * wait_for_commit_done - Wait for hardware to have flushed the
@@ -379,7 +380,7 @@ struct sde_kms_hal_funcs {
 	 * @kms: Pointer to sde kms structure
 	 * @crtc: Pointer to drm crtc structure
 	 */
-	int (*wait_for_commit_done)(struct sde_kms *kms, struct drm_crtc *crtc);
+	int (*wait_for_commit_done[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_crtc *crtc);
 
 	/**
 	 * wait_for_tx_complete - Wait for hardware to transfer the pixels
@@ -387,19 +388,19 @@ struct sde_kms_hal_funcs {
 	 * @kms: Pointer to sde kms structure
 	 * @crtc: Pointer to drm crtc structure
 	 */
-	int (*wait_for_tx_complete)(struct sde_kms *kms, struct drm_crtc *crtc);
+	int (*wait_for_tx_complete[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_crtc *crtc);
 
 	/**
 	 * pm_suspend - process suspending the system.
 	 * @dev: Pointer to device structure
 	 */
-	int (*pm_suspend)(struct device *dev);
+	int (*pm_suspend[MSM_DISP_OP_MAX])(struct device *dev);
 
 	/**
 	 * pm_resume - process resuming the system.
 	 * @dev: Pointer to device structure
 	 */
-	int (*pm_resume)(struct device *dev);
+	int (*pm_resume[MSM_DISP_OP_MAX])(struct device *dev);
 
 	/**
 	 * get_mixer_count - get topology mixer count information
@@ -408,7 +409,8 @@ struct sde_kms_hal_funcs {
 	 * @resource_caps: Pointer to resource capabilities information structure
 	 * @num_lm: Number of LMs attached
 	 */
-	int (*get_mixer_count)(struct sde_kms *kms, const struct drm_display_mode *display_mode,
+	int (*get_mixer_count[MSM_DISP_OP_MAX])(struct sde_kms *kms,
+			const struct drm_display_mode *display_mode,
 			const struct msm_resource_caps_info *resource_caps, u32 *num_lm);
 
 	/**
@@ -417,7 +419,7 @@ struct sde_kms_hal_funcs {
 	 * @hdisplay: horizontal display timing
 	 * @num_dsc: Number of DSCs attached
 	 */
-	void (*get_dsc_count)(struct sde_kms *kms, u32 hdisplay, u32 *num_dsc);
+	void (*get_dsc_count[MSM_DISP_OP_MAX])(struct sde_kms *kms, u32 hdisplay, u32 *num_dsc);
 };
 
 struct sde_kms {

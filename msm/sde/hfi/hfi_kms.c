@@ -220,10 +220,10 @@ static int hfi_kms_process_cmd_buf(struct hfi_client_t *client, struct hfi_cmdbu
 }
 
 static const struct sde_kms_hal_funcs hfi_hal_funcs = {
-	.atomic_check = hfi_kms_atomic_check,
-	.prepare_commit = hfi_kms_prepare_commit,
-	.commit = hfi_kms_commit,
-	.trigger_commit = hfi_kms_trigger_commit,
+	.atomic_check[MSM_DISP_OP_HFI] = hfi_kms_atomic_check,
+	.prepare_commit[MSM_DISP_OP_HFI] = hfi_kms_prepare_commit,
+	.commit[MSM_DISP_OP_HFI] = hfi_kms_commit,
+	.trigger_commit[MSM_DISP_OP_HFI] = hfi_kms_trigger_commit,
 };
 
 static int _hfi_kms_setup_hfi(struct hfi_adapter_t *adapter, struct hfi_kms *hfi_kms)
