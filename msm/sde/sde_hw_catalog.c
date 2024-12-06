@@ -237,6 +237,7 @@ enum sde_prop {
 	SOCCP_PH,
 	HW_FENCE_MDP_OFFSET,
 	IPCC_PROTOCOL_OFFSET,
+	IPCC_CLIENT_OUT_PHYS_ID,
 	SDE_PROP_MAX,
 };
 
@@ -683,7 +684,8 @@ static struct sde_prop_type sde_prop[] = {
 	{LINE_INSERTION, "qcom,sde-has-line-insertion", false, PROP_TYPE_BOOL},
 	{SOCCP_PH, "qcom,sde-soccp-controller", false, PROP_TYPE_U32},
 	{HW_FENCE_MDP_OFFSET, "qcom,sde-hw-fence-mdp-ctl-offset", false, PROP_TYPE_U32},
-	{IPCC_PROTOCOL_OFFSET, "qcom,sde-ipcc-protocol-offset", false, PROP_TYPE_U32}
+	{IPCC_PROTOCOL_OFFSET, "qcom,sde-ipcc-protocol-offset", false, PROP_TYPE_U32},
+	{IPCC_CLIENT_OUT_PHYS_ID, "qcom,sde-ipcc-client-out-phys-id", false, PROP_TYPE_U32}
 };
 
 static struct sde_prop_type sde_perf_prop[] = {
@@ -2789,7 +2791,11 @@ static int sde_wb_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 				set_bit(SDE_HW_HAS_DUAL_DCWB, &wb->features);
 			if (IS_SDE_CTL_REV_100(sde_cfg->ctl_rev))
 				set_bit(SDE_WB_DCWB_CTRL, &wb->features);
-			if (major_version >= SDE_HW_MAJOR(SDE_HW_VER_A00)) {
+			if (major_version >= SDE_HW_MAJOR(SDE_HW_VER_D00)) {
+				sde_cfg->cwb_blk_off[0] = 0x16A200;
+				sde_cfg->cwb_blk_off[1] = 0x16B200;
+				sde_cfg->cwb_blk_stride = 0x400;
+			} else if (major_version >= SDE_HW_MAJOR(SDE_HW_VER_A00)) {
 				sde_cfg->cwb_blk_off[0] = 0x67200;
 				sde_cfg->cwb_blk_off[1] = 0x7F200;
 				sde_cfg->cwb_blk_stride = 0x400;
@@ -4513,6 +4519,7 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 		cfg->ipcc_protocol_offset = HW_FENCE_DEFAULT_IPCC_PROTOCOL_OFFSET;
 	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id)
 		cfg->hw_fence_rev = 0; /* disable hw fences*/
+	cfg->ipcc_client_out_phys_id = PROP_VALUE_ACCESS(props->values, IPCC_CLIENT_OUT_PHYS_ID, 0);
 
 	cfg->soccp_ph = PROP_VALUE_ACCESS(props->values, SOCCP_PH, 0);
 	cfg->mdp[0].has_soccp = (cfg->soccp_ph != 0);

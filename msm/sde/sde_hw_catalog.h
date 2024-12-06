@@ -2144,6 +2144,7 @@ struct sde_perf_cfg {
  * @rgb_lossy_formats	supported formats for UBWC lossy
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
+ * @ipcc_client_out_phys_id ipcc client id that dpu outputs ipcc to, nonzero if supported
  * @ipcc_protocol_offset offset for ipcc protocol within ipcc register space
  * @soccp_ph            if soccp is supported, soccp phandle needed to get rproc to set power vote
  * @is_vrr_hw_fence_enable        enable hw-fence override configuration
@@ -2281,6 +2282,7 @@ struct sde_mdss_cfg {
 
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;
+	u32 ipcc_client_out_phys_id;
 	u32 ipcc_protocol_offset;
 	phandle soccp_ph;
 	bool is_vrr_hw_fence_enable;
