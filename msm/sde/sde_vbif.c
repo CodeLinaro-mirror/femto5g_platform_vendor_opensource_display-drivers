@@ -186,8 +186,8 @@ static int _sde_vbif_wait_for_axi_halt(struct sde_hw_vbif *vbif)
 
 	rc = vbif->ops.get_axi_halt_status(vbif);
 	if (rc)
-		SDE_ERROR("VBIF %d AXI port(s) not halting. TIMEDOUT.\n",
-				vbif->idx - VBIF_0);
+		SDE_ERROR("VBIF %d AXI port(s) not halting. TIMEDOUT. rc:%d\n",
+				vbif->idx - VBIF_0, rc);
 	else
 		SDE_DEBUG("VBIF %d AXI port(s) halted\n",
 				vbif->idx - VBIF_0);
@@ -641,33 +641,35 @@ void sde_vbif_init_memtypes(struct sde_kms *sde_kms)
 	}
 }
 
-void sde_vbif_axi_halt_request(struct sde_kms *sde_kms)
+int sde_vbif_axi_halt_request(struct sde_kms *sde_kms)
 {
 	struct sde_hw_vbif *vbif;
-	int i;
+	int i, rc = 0;
 
 	if (!sde_kms) {
 		SDE_ERROR("invalid argument\n");
-		return;
+		return 0;
 	}
 
 	if (!sde_kms_is_vbif_operation_allowed(sde_kms)) {
 		SDE_DEBUG("vbif operations not permitted\n");
-		return;
+		return 0;
 	}
 
 	if (test_bit(SDE_FEATURE_EMULATED_ENV, sde_kms->catalog->features))
-		return;
+		return 0;
 
 	for (i = 0; i < ARRAY_SIZE(sde_kms->hw_vbif); i++) {
 		vbif = sde_kms->hw_vbif[i];
 		if (vbif && vbif->cap && vbif->ops.set_axi_halt) {
 			mutex_lock(&vbif->mutex);
 			vbif->ops.set_axi_halt(vbif);
-			_sde_vbif_wait_for_axi_halt(vbif);
+			rc = _sde_vbif_wait_for_axi_halt(vbif);
 			mutex_unlock(&vbif->mutex);
 		}
 	}
+
+	return rc;
 }
 
 int sde_vbif_halt_xin_mask(struct sde_kms *sde_kms, u32 xin_id_mask,

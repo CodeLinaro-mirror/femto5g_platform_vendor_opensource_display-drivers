@@ -3936,9 +3936,6 @@ static int sde_uidle_parse_dt(struct device_node *np,
 		return -EINVAL;
 	}
 
-	if (!sde_cfg->uidle_cfg.uidle_rev)
-		return 0;
-
 	prop_value = kvcalloc(UIDLE_PROP_MAX,
 		sizeof(struct sde_prop_value), GFP_KERNEL);
 	if (!prop_value)
@@ -5916,7 +5913,6 @@ static void _sde_get_hw_caps_for_kalama(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
-	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_cfg->features);
@@ -5966,7 +5962,6 @@ static void _sde_get_hw_caps_for_pineapple(struct sde_mdss_cfg *sde_cfg, uint32_
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
-	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_cfg->features);
@@ -6017,7 +6012,6 @@ static void _sde_get_hw_caps_for_sun(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
-	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
@@ -6073,7 +6067,6 @@ static void _sde_get_hw_caps_for_tuna(struct sde_mdss_cfg *sde_cfg, uint32_t hw_
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
-	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
@@ -6209,7 +6202,6 @@ static void _sde_get_hw_caps_for_canoe(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
-	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
