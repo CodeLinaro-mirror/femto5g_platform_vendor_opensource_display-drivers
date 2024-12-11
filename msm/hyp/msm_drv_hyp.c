@@ -261,6 +261,8 @@ static int _msm_hyp_planes_init(struct drm_device *ddev)
 	if (ret)
 		return ret;
 
+	pr_debug("hyp kms get_planes_infos num: %d\n", num);
+
 	if (num >= MAX_PLANES)
 		return -EINVAL;
 
@@ -334,15 +336,21 @@ static int _msm_hyp_crtcs_init(struct drm_device *ddev)
 		return -EINVAL;
 
 	ret = hyp_kms->funcs->get_crtc_infos(sde_kms, NULL, &num);
-	if (ret)
+	if (ret) {
+		pr_err("hyp kms get_crtc_infos failed: %d\n", ret);
 		return ret;
+	}
+
+	pr_debug("crtc number: %d\n", num);
 
 	if (num >= MAX_CRTCS)
 		return -EINVAL;
 
 	ret = hyp_kms->funcs->get_crtc_infos(sde_kms, crtc_infos, &num);
-	if (ret)
+	if (ret) {
+		pr_err("hyp kms get_crtc_infos failed, ret: %d\n", ret);
 		return ret;
+	}
 
 	for (i = 0; i < num; i++) {
 		crtc = sde_crtc_init(ddev,
@@ -367,12 +375,16 @@ static int _msm_hyp_obj_init(struct drm_device *ddev)
 	int ret;
 
 	ret = _msm_hyp_planes_init(ddev);
-	if (ret)
+	if (ret) {
+		pr_err("_msm_hyp_planes_init failed: %d\n", ret);
 		return ret;
+	}
 
 	ret = _msm_hyp_crtcs_init(ddev);
-	if (ret)
+	if (ret) {
+		pr_err("_msm_hyp_crtcs_init failed: %d\n", ret);
 		return ret;
+	}
 
 	/* Register for WFD events(HPD)*/
 	if (hyp_kms->funcs && hyp_kms->funcs->register_event)
@@ -408,6 +420,7 @@ static int _msm_hyp_setup_displays(struct drm_device *ddev)
 	if (ret)
 		return ret;
 
+	pr_debug("hyp display count: %d\n", sde_kms->hyp_display_count);
 	if (sde_kms->hyp_display_count >= MAX_CONNECTORS)
 		return -EINVAL;
 
