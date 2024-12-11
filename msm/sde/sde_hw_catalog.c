@@ -187,6 +187,7 @@
 enum {
 	SDE_HW_VERSION,
 	SDE_HW_FENCE_VERSION,
+	SDE_HW_UBWC_VERSION,
 	SDE_HW_PROP_MAX,
 };
 
@@ -208,7 +209,6 @@ enum sde_prop {
 	WB_LINEWIDTH,
 	WB_LINEWIDTH_LINEAR,
 	BANK_BIT,
-	UBWC_VERSION,
 	UBWC_STATIC,
 	UBWC_SWIZZLE,
 	QSEED_SW_LIB_REV,
@@ -634,6 +634,7 @@ struct sde_dt_props {
 static struct sde_prop_type sde_hw_prop[] = {
 	{SDE_HW_VERSION, "qcom,sde-hw-version", false, PROP_TYPE_U32},
 	{SDE_HW_FENCE_VERSION, "qcom,hw-fence-sw-version", false, PROP_TYPE_U32},
+	{SDE_HW_UBWC_VERSION, "qcom,sde-ubwc-version", false, PROP_TYPE_U32},
 };
 
 static struct sde_prop_type sde_prop[] = {
@@ -649,7 +650,6 @@ static struct sde_prop_type sde_prop[] = {
 			false, PROP_TYPE_U32},
 	{BANK_BIT, "qcom,sde-highest-bank-bit", false,
 			PROP_TYPE_BIT_OFFSET_ARRAY},
-	{UBWC_VERSION, "qcom,sde-ubwc-version", false, PROP_TYPE_U32},
 	{UBWC_STATIC, "qcom,sde-ubwc-static", false, PROP_TYPE_U32},
 	{UBWC_SWIZZLE, "qcom,sde-ubwc-swizzle", false, PROP_TYPE_U32},
 	{QSEED_SW_LIB_REV, "qcom,sde-qseed-sw-lib-rev", false,
@@ -4470,10 +4470,6 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 			PROP_VALUE_ACCESS(props->values, MIXER_BLEND, 0) :
 			DEFAULT_SDE_MIXER_BLENDSTAGES;
 
-	cfg->ubwc_rev = props->exists[UBWC_VERSION] ?
-			PROP_VALUE_ACCESS(props->values,
-			UBWC_VERSION, 0) : DEFAULT_SDE_UBWC_NONE;
-
 	cfg->mdp[0].highest_bank_bit = DEFAULT_SDE_HIGHEST_BANK_BIT;
 
 	if (props->exists[BANK_BIT]) {
@@ -5366,8 +5362,9 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 		if (test_bit(SDE_FEATURE_VIG_P210, sde_cfg->features)) {
 			inline_fmt_tbl = true_inline_rot_v202_ubwc60_fmts;
 			in_rot_list_size = ARRAY_SIZE(true_inline_rot_v202_ubwc60_fmts);
-			inline_restricted_fmt_tbl = true_inline_rot_v202_ubwc60_fmts;
-			in_rot_restricted_list_size = ARRAY_SIZE(true_inline_rot_v202_ubwc60_fmts);
+			inline_restricted_fmt_tbl = true_inline_rot_v202_restricted_ubwc60_fmts;
+			in_rot_restricted_list_size =
+					ARRAY_SIZE(true_inline_rot_v202_restricted_ubwc60_fmts);
 		} else {
 			inline_fmt_tbl = true_inline_rot_v202_fmts;
 			in_rot_list_size = ARRAY_SIZE(true_inline_rot_v202_fmts);
@@ -6221,7 +6218,7 @@ static void _sde_get_hw_caps_for_canoe(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	sde_cfg->qos_target_time_ns = 11160;
 	sde_cfg->ts_prefill_rev = 2;
 	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
-	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_2;
 	sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_4;
 	sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
 	sde_cfg->mdss_hw_block_size = 0x15c;
@@ -6530,6 +6527,11 @@ static int sde_hw_ver_parse_dt(struct drm_device *dev, struct device_node *np,
 		cfg->hw_fence_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_FENCE_VERSION, 0);
 	else
 		cfg->hw_fence_rev = 0; /* disable hw-fences */
+
+	if (prop_exists[SDE_HW_UBWC_VERSION])
+		cfg->ubwc_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_UBWC_VERSION, 0);
+	else
+		cfg->ubwc_rev = DEFAULT_SDE_UBWC_NONE;
 
 end:
 	kvfree(prop_value);
