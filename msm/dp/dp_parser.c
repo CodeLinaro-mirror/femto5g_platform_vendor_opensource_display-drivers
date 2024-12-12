@@ -226,6 +226,11 @@ static int dp_parser_misc(struct dp_parser *parser)
 	if (rc)
 		parser->link_training_retries = MAX_DP_LINK_TRAINING_RETRIES;
 
+	rc = of_property_read_u32(of_node,
+			"qcom,shallow-mode-retries", &parser->shallow_mode_retries);
+	if (rc)
+		parser->shallow_mode_retries = MAX_DP_SHALLOW_MODE_RETRIES;
+
 	parser->gpio_hpd_high_debounce_ms = 0;
 	parser->gpio_hpd_low_debounce_ms = 0;
 	len = of_property_count_u32_elems(of_node,
