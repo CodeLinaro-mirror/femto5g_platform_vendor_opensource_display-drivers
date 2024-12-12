@@ -139,6 +139,7 @@
 #define MDSS_MDP_OP_FLIP_LR                BIT(13)
 #define MDSS_MDP_OP_SPLIT_ORDER            BIT(4)
 #define MDSS_MDP_OP_BWC_EN                 BIT(0)
+#define MDSS_MDP_OP_ROT_90                 BIT(15)
 #define MDSS_MDP_OP_PE_OVERRIDE            BIT(31)
 #define MDSS_MDP_OP_BWC_LOSSLESS           (0 << 1)
 #define MDSS_MDP_OP_BWC_Q_HIGH             (1 << 1)
@@ -327,12 +328,15 @@ static void sde_hw_sspp_setup_format_v1(struct sde_hw_pipe *ctx,
 	c = &ctx->hw;
 	opmode = SDE_REG_READ(c, SSPP_REC_SRC_OP_MODE + idx);
 	opmode &= ~(MDSS_MDP_OP_FLIP_LR | MDSS_MDP_OP_FLIP_UD |
-			MDSS_MDP_OP_BWC_EN | MDSS_MDP_OP_PE_OVERRIDE);
+			MDSS_MDP_OP_BWC_EN | MDSS_MDP_OP_PE_OVERRIDE
+			| MDSS_MDP_OP_ROT_90);
 
 	if (flags & SDE_SSPP_FLIP_LR)
 		opmode |= MDSS_MDP_OP_FLIP_LR;
 	if (flags & SDE_SSPP_FLIP_UD)
 		opmode |= MDSS_MDP_OP_FLIP_UD;
+	if (flags & SDE_SSPP_ROT_90)
+		opmode |= MDSS_MDP_OP_ROT_90; /* ROT90 */
 
 	chroma_samp = fmt->chroma_sample;
 	if (flags & SDE_SSPP_SOURCE_ROTATED_90) {
@@ -345,9 +349,6 @@ static void sde_hw_sspp_setup_format_v1(struct sde_hw_pipe *ctx,
 	src_format = (chroma_samp << 23) | (fmt->fetch_planes << 19) |
 		(fmt->bits[C3_ALPHA] << 6) | (fmt->bits[C2_R_Cr] << 4) |
 		(fmt->bits[C1_B_Cb] << 2) | (fmt->bits[C0_G_Y] << 0);
-
-	if (flags & SDE_SSPP_ROT_90)
-		opmode |= BIT(15); /* ROT90 */
 
 	if (fmt->alpha_enable && fmt->fetch_planes == SDE_PLANE_INTERLEAVED)
 		src_format |= BIT(8); /* SRCC3_EN */
