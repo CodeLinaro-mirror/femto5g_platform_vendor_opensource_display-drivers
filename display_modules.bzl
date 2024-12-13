@@ -198,7 +198,7 @@ module_entry(
       config_deps = {
          "CONFIG_QTI_HW_FENCE" : [
              "//vendor/qcom/opensource/mm-drivers/hw_fence:%b_msm_hw_fence",
-             "//vendor/qcom/opensource/synx-kernel:%b_synx_modules",
+             "//vendor/qcom/opensource/synx-kernel:%b_modules",
              "//vendor/qcom/opensource/synx-kernel:synx_headers",
         ],
         "CONFIG_QCOM_SPEC_SYNC" : [
@@ -211,7 +211,7 @@ module_entry(
             "//vendor/qcom/opensource/securemsm-kernel:%b_hdcp_qseecom_dlkm"
         ],
         "CONFIG_MSM_MMRM" : [
-            "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_modules",
+            "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver",
         ],
         "CONFIG_SMMU_PROXY" : [
             "//vendor/qcom/opensource/securemsm-kernel:%b_smmu_proxy_dlkm",
