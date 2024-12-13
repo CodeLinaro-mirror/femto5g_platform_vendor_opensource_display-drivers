@@ -2280,7 +2280,7 @@ static ssize_t sde_dbg_reg_base_offset_write(struct file *file,
 
 	buf[count] = 0;	/* end of string */
 
-	if (sscanf(buf, "%5x %x", &off, &cnt) != 2)
+	if (sscanf(buf, "%6x %x", &off, &cnt) != 2)
 		return -EFAULT;
 
 	if (off > dbg->max_offset)
