@@ -71,6 +71,12 @@ ddk_headers(
 load(":targets/sun.bzl", "define_sun")
 define_sun()
 
+load(":targets/sunvm.bzl", "define_sunvm")
+define_sunvm()
+
+load(":targets/canoevm.bzl", "define_canoevm")
+define_canoevm()
+
 load(":targets/pineapple.bzl", "define_pineapple")
 define_pineapple()
 
