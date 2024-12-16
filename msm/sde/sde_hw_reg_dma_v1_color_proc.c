@@ -145,6 +145,9 @@
 #define DEMURA_MASK_BITS_22 22
 #define DEMURA_MASK_BITS_26 26
 
+/* Offsets from base register */
+#define REG_DMA_SSPP_REC0_OFFSET_FROM_SSPP_CMN 0x1000
+
 enum ltm_vlut_ops_bitmask {
 	ltm_unsharp = BIT(0),
 	ltm_dither = BIT(1),
@@ -4431,9 +4434,148 @@ static int reg_dmav1_setup_scaler3_de(struct sde_reg_dma_setup_ops_cfg *buf,
 	return 0;
 }
 
+int reg_dmav1_setup_pre_downscale(struct sde_reg_dma_setup_ops_cfg *buf,
+	struct sde_hw_pipe *ctx, struct sde_hw_inline_pre_downscale_cfg *pre_down)
+{
+	u32 offset, val;
+	int rc = 0;
+	const struct sde_sspp_sub_blks *sblk;
+	struct sde_hw_reg_dma_ops *dma_ops;
+
+	if (!ctx || !pre_down)
+		return -EINVAL;
+
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (!dma_ops) {
+		SDE_ERROR("invalid dma ops\n");
+		return -EINVAL;
+	}
+
+	sblk = ctx->cap->sblk;
+	offset = sblk->src_blk.base;
+
+	val = pre_down->pre_downscale_x_0 | (pre_down->pre_downscale_x_1 << 4) |
+		(pre_down->pre_downscale_y_0 << 8) | (pre_down->pre_downscale_y_1 << 12);
+
+	REG_DMA_SETUP_OPS(*buf, ctx->hw.blk_off + offset +
+				REG_DMA_SSPP_REC0_OFFSET_FROM_SSPP_CMN + 0x48, &val, sizeof(u32),
+				REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(buf);
+	if (rc) {
+		SDE_ERROR("write pre down scale failed ret %d\n", rc);
+		return  -EINVAL;
+	}
+
+	return 0;
+}
+
+int reg_dmav1_setup_pe_config(
+			struct sde_reg_dma_setup_ops_cfg *buf,
+			struct sde_hw_pipe *ctx,
+			struct sde_hw_pixel_ext *pe_ext)
+{
+	u8 color;
+	u32 offset, lr_pe[4], tb_pe[4], tot_req_pixels[4], cache[2];
+	const u32 bytemask = 0xff;
+	const u32 shortmask = 0xffff;
+	const struct sde_sspp_sub_blks *sblk;
+	struct sde_hw_reg_dma_ops *dma_ops;
+	int rc = 0;
+
+	if (!pe_ext)
+		return -EINVAL;
+
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (!dma_ops) {
+		SDE_ERROR("invalid dma ops\n");
+		return -EINVAL;
+	}
+
+	sblk = ctx->cap->sblk;
+	offset = sblk->src_blk.base;
+
+	/* program SW pixel extension override for all pipes*/
+	for (color = 0; color < SDE_MAX_PLANES; color++) {
+		/* color 2 has the same set of registers as color 1 */
+
+		lr_pe[color] = ((pe_ext->right_ftch[color] & bytemask) << 24)|
+			((pe_ext->right_rpt[color] & bytemask) << 16)|
+			((pe_ext->left_ftch[color] & bytemask) << 8)|
+			(pe_ext->left_rpt[color] & bytemask);
+
+		tb_pe[color] = ((pe_ext->btm_ftch[color] & bytemask) << 24)|
+			((pe_ext->btm_rpt[color] & bytemask) << 16)|
+			((pe_ext->top_ftch[color] & bytemask) << 8)|
+			(pe_ext->top_rpt[color] & bytemask);
+
+		tot_req_pixels[color] = (((pe_ext->roi_h[color] +
+			pe_ext->num_ext_pxls_top[color] +
+			pe_ext->num_ext_pxls_btm[color]) & shortmask) << 16) |
+			((pe_ext->roi_w[color] +
+			pe_ext->num_ext_pxls_left[color] +
+			pe_ext->num_ext_pxls_right[color]) & shortmask);
+	}
+
+	/* Use rec 0 */
+	offset += REG_DMA_SSPP_REC0_OFFSET_FROM_SSPP_CMN;
+
+	/* color 0 */
+	cache[0] = lr_pe[0];
+	cache[1] = tb_pe[0];
+	REG_DMA_SETUP_OPS(*buf,
+		ctx->hw.blk_off + offset + 0x24, cache, sizeof(cache),
+		REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(buf);
+	if (rc) {
+		SDE_ERROR("setting pixel ext failed ret %d\n", rc);
+		return rc;
+	}
+
+	/* color 1 and color 2 */
+	cache[0] = lr_pe[1];
+	cache[1] = tb_pe[1];
+	REG_DMA_SETUP_OPS(*buf,
+		ctx->hw.blk_off + offset + 0x40, cache, sizeof(cache),
+		REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(buf);
+	if (rc) {
+		SDE_ERROR("setting pixel ext failed ret %d\n", rc);
+		return rc;
+	}
+
+	return 0;
+}
+
+static int _reg_dmav1_setup_pe_pre_downscale(struct sde_hw_pipe *ctx,
+	struct sde_reg_dma_setup_ops_cfg *dma_write_cfg,
+	struct sde_hw_pixel_ext *pe, struct sde_hw_inline_pre_downscale_cfg *pre_down)
+{
+	int rc = 0;
+
+	// make cfg block as MDSS for pre down scaler and pixel extension reg dma writes
+	dma_write_cfg->blk = MDSS;
+	if (ctx->ops.reg_dma_setup_pre_downscale[ctx->hw.disp_op]) {
+		rc = ctx->ops.reg_dma_setup_pre_downscale[ctx->hw.disp_op](dma_write_cfg,
+						ctx, pre_down);
+		if (rc) {
+			DRM_ERROR("setting pre downscale params failed ret %d\n", rc);
+			return rc;
+		}
+	}
+
+	if (ctx->ops.reg_dma_setup_pe[ctx->hw.disp_op]) {
+		rc = ctx->ops.reg_dma_setup_pe[ctx->hw.disp_op](dma_write_cfg, ctx, pe);
+		if (rc) {
+			DRM_ERROR("setting pre downscale params failed ret %d\n", rc);
+			return rc;
+		}
+	}
+	return rc;
+}
+
 void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 	struct sde_hw_pipe_cfg *sspp, struct sde_hw_pixel_ext *pe,
-	void *scaler_cfg)
+	void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down)
 {
 	struct sde_hw_scaler3_cfg *scaler3_cfg = scaler_cfg;
 	int rc;
@@ -4604,6 +4746,12 @@ end:
 	rc = reg_dmav1_setup_cac(ctx, &dma_write_cfg, scaler3_cfg, offset, op_mode);
 	if (rc) {
 		DRM_ERROR("setting cac params failed ret %d\n", rc);
+		return;
+	}
+
+	rc = _reg_dmav1_setup_pe_pre_downscale(ctx, &dma_write_cfg, pe, pre_down);
+	if (rc) {
+		DRM_ERROR("failed to set up pe and pre_downscale rc %d\n", rc);
 		return;
 	}
 

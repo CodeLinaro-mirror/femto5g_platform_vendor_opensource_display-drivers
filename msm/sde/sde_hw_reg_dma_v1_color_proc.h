@@ -273,16 +273,41 @@ void reg_dmav1_setup_dma_gcv5(struct sde_hw_pipe *ctx, void *cfg,
 			enum sde_sspp_multirect_index idx);
 
 /**
+ * reg_dmav1_setup_pre_downscale - Qseed3 lut coefficient programming
+ * @buf: defines structure for reg dma ops on the reg dma buffer.
+ * @ctx: sspp instance
+ * @pre_down: Pointer to pre-downscaler configuration
+ * @returns: 0 if success, non-zero otherwise
+ */
+int reg_dmav1_setup_pre_downscale(
+			struct sde_reg_dma_setup_ops_cfg *buf,
+			struct sde_hw_pipe *ctx,
+			struct sde_hw_inline_pre_downscale_cfg *pre_down);
+
+/**
+ * reg_dmav1_setup_pe_config - Qseed3 lut coefficient programming
+ * @buf: defines structure for reg dma ops on the reg dma buffer.
+ * @ctx: sspp instance
+ * @pe_ext: Pointer to pixel ext settings
+ * @returns: 0 if success, non-zero otherwise
+ */
+int reg_dmav1_setup_pe_config(
+			struct sde_reg_dma_setup_ops_cfg *buf,
+			struct sde_hw_pipe *ctx,
+			struct sde_hw_pixel_ext *pe_ext);
+
+/**
  * reg_dmav1_setup_vig_qseed3 - Qseed3 implementation using reg dma v1.
  * @ctx: sspp instance
  * @sspp: pointer to sspp hw config
  * @pe: pointer to pixel extension config
  * @scaler_cfg: pointer to scaler config
+ * @pre_down: Pointer to pre-downscaler configuration
  */
 
 void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 	struct sde_hw_pipe_cfg *sspp, struct sde_hw_pixel_ext *pe,
-	void *scaler_cfg);
+	void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down);
 
 /**reg_dmav1_setup_scaler3_lut - Qseed3 lut coefficient programming
  * @buf: defines structure for reg dma ops on the reg dma buffer.

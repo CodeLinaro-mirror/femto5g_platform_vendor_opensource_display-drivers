@@ -409,6 +409,18 @@ struct sde_hw_sspp_ops {
 			enum sde_sspp_multirect_index index);
 
 	/**
+	 * reg_dma_setup_pe - setup pipe pixel extension
+	 * @buf: defines structure for reg dma ops on the reg dma buffer.
+	 * @ctx: sspp instance
+	 * @pe_ext: Pointer to pixel ext settings
+	 * @returns: 0 if success, non-zero otherwise
+	 */
+	int (*reg_dma_setup_pe[MSM_DISP_OP_MAX])(
+			struct sde_reg_dma_setup_ops_cfg *buf,
+			struct sde_hw_pipe *ctx,
+			struct sde_hw_pixel_ext *pe_ext);
+
+	/**
 	 * setup_pe - setup pipe pixel extension
 	 * @ctx: Pointer to pipe context
 	 * @pe_ext: Pointer to pixel ext settings
@@ -584,11 +596,12 @@ struct sde_hw_sspp_ops {
 	 * @pipe_cfg: Pointer to pipe configuration
 	 * @pe_cfg: Pointer to pixel extension configuration
 	 * @scaler_cfg: Pointer to scaler configuration
+	 * @pre_down: Pointer to pre-downscaler configuration
 	 */
 	void (*setup_scaler[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		struct sde_hw_pipe_cfg *pipe_cfg,
 		struct sde_hw_pixel_ext *pe_cfg,
-		void *scaler_cfg);
+		void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down);
 
 	/**
 	 * setup_scaler_lut - setup scaler lut
@@ -600,6 +613,18 @@ struct sde_hw_sspp_ops {
 	void (*setup_scaler_lut[MSM_DISP_OP_MAX])(struct sde_reg_dma_setup_ops_cfg *buf,
 			struct sde_hw_scaler3_cfg *scaler3_cfg,
 			u32 offset, u32 dpu_idx);
+
+	/**
+	 * reg_dma_setup_pre_downscale - setup pre-downscaler for inline rotation
+	 * @buf: defines structure for reg dma ops on the reg dma buffer.
+	 * @ctx: sspp instance
+	 * @pre_down: Pointer to pre-downscaler configuration
+	 * @returns: 0 if success, non-zero otherwise
+	 */
+	int (*reg_dma_setup_pre_downscale[MSM_DISP_OP_MAX])(
+			struct sde_reg_dma_setup_ops_cfg *buf,
+			struct sde_hw_pipe *ctx,
+			struct sde_hw_inline_pre_downscale_cfg *pre_down);
 
 	/**
 	 * setup_pre_downscale - setup pre-downscaler for inline rotation
@@ -933,11 +958,12 @@ int sspp_subblk_offset(struct sde_hw_pipe *ctx,
  * @sspp: Pointer to the SSPP HW pipe configuration
  * @pe: Pointer to the pixel extension configuration
  * @scaler_cfg: Pointer to the scaler configuration data
+ * @pre_down: Pointer to pre-downscaler configuration
  */
 void sde_hw_sspp_setup_scaler3(struct sde_hw_pipe *ctx,
 		struct sde_hw_pipe_cfg *sspp,
 		struct sde_hw_pixel_ext *pe,
-		void *scaler_cfg);
+		void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down);
 
 /**
  * sde_hw_sspp_setup_csc - Configures the color space conversion (CSC)
@@ -973,11 +999,12 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
  * @sspp: Pointer to the SSPP HW pipe configuration
  * @pe: Pointer to the pixel extension configuration
  * @scaler_cfg: Pointer to the scaler configuration data
+ * @pre_down: Pointer to pre-downscaler configuration
  */
 void sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
 		struct sde_hw_pipe_cfg *sspp,
 		struct sde_hw_pixel_ext *pe,
-		void *scaler_cfg);
+		void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down);
 
 /**
  * sde_hw_sspp_setup_dgm_csc - Configures the DGM color space conversion (CSC)

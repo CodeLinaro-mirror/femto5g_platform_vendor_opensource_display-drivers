@@ -1147,7 +1147,7 @@ int init_v11(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 	v1_supported[MEMC_SKY] = GRP_DSPP_HW_BLK_SELECT;
 	v1_supported[MEMC_FOLIAGE] = GRP_DSPP_HW_BLK_SELECT;
 	v1_supported[MEMC_PROT] = GRP_DSPP_HW_BLK_SELECT;
-	v1_supported[QSEED] = GRP_VIG_HW_BLK_SELECT;
+	v1_supported[QSEED] = GRP_VIG_HW_BLK_SELECT | GRP_MDSS_HW_BLK_SELECT;
 
 	ret = write_last_cmd_buffer(dpu_idx);
 	if (ret) {

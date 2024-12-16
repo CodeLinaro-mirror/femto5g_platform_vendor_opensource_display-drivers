@@ -1784,7 +1784,7 @@ static int _sde_plane_color_fill(struct sde_plane *psde,
 			psde->pipe_hw->ctl = _sde_plane_get_hw_ctl(plane, NULL);
 			psde->pipe_hw->ops.setup_scaler[disp_op](psde->pipe_hw,
 					&psde->pipe_cfg, &psde->pixel_ext,
-					&psde->scaler3_cfg);
+					&psde->scaler3_cfg, &pstate->pre_down);
 		}
 
 		if (psde->pipe_hw->ops.setup_scaler_cac[disp_op] && !psde->is_virtual &&
@@ -3712,7 +3712,7 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 		psde->pipe_hw->ctl = _sde_plane_get_hw_ctl(plane, NULL);
 		psde->pipe_hw->ops.setup_scaler[disp_op](psde->pipe_hw,
 				&psde->pipe_cfg, &psde->pixel_ext,
-				&psde->scaler3_cfg);
+				&psde->scaler3_cfg, &pstate->pre_down);
 	}
 
 	/* update excl rect */

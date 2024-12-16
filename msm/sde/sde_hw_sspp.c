@@ -678,7 +678,7 @@ static void sde_hw_sspp_setup_pe_config(struct sde_hw_pipe *ctx,
 void sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
 		struct sde_hw_pipe_cfg *sspp,
 		struct sde_hw_pixel_ext *pe,
-		void *scaler_cfg)
+		void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down)
 {
 	struct sde_hw_blk_reg_map *c;
 	int config_h = 0x0;
@@ -736,7 +736,7 @@ void sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
 void sde_hw_sspp_setup_scaler3(struct sde_hw_pipe *ctx,
 		struct sde_hw_pipe_cfg *sspp,
 		struct sde_hw_pixel_ext *pe,
-		void *scaler_cfg)
+		void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down)
 {
 	u32 idx;
 	bool de_lpf_en = false;
