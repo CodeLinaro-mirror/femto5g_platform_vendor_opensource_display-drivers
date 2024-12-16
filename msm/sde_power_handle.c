@@ -20,6 +20,8 @@
 #include <linux/sde_io_util.h>
 #include <linux/sde_rsc.h>
 #include <linux/version.h>
+#include <linux/pm_runtime.h>
+#include <linux/pm_domain.h>
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 #include <synx_api.h>
 #endif /* CONFIG_QTI_HW_FENCE */
@@ -712,6 +714,85 @@ static int sde_power_parse_dt_hwfence_soccp(struct platform_device *pdev,
 	return rc;
 }
 
+/**
+ * @brief Manages the power domain of a device.
+ *
+ * This function enables or disables the specified power domain of a device.
+ *
+ * @param phandle A pointer to the power handle structure.
+ * @param pm_domain_name String of the power domain to be managed.
+ * @param enable Boolean to enable (true) or disable (false) the power domain.
+ * @return int 0 on success, negative error code on failure.
+ *
+ * @details
+ * - **Single Power Domain:** If the device has only one power domain,
+ *		it is automatically managed by the core framework.
+ *		No need to attach it manually.
+ *- **Multiple Power Domains:** If the device has multiple power domains,
+ *		each must be attached and managed individually.
+ */
+static int sde_power_enable_power_domain(struct sde_power_handle *phandle,
+	const char *pm_domain_name, bool enable)
+{
+	int ret;
+	struct device *pd;
+
+	/* Only proceed on multiple power domains */
+	if (phandle->num_power_domains <= 1)
+		return 0;
+
+	pd = dev_pm_domain_attach_by_name(phandle->dev, pm_domain_name);
+	if (IS_ERR_OR_NULL(pd)) {
+		ret = PTR_ERR(pd);
+		if (ret != -EEXIST) {
+			pr_err("failed to attach %s: %d\n", pm_domain_name, ret);
+			return ret;
+		}
+	}
+
+	if (enable) {
+		if (ret != -EEXIST) {
+			ret = pm_runtime_get_sync(pd); /* Enables pd if it exists */
+			if (ret < 0 && ret != -EEXIST) {
+				pr_err("failed to enable runtime PM for %s: %d\n",
+					pm_domain_name, ret);
+				return ret;
+			}
+		}
+	} else {
+		ret = pm_runtime_put_sync(pd); /* Disables pd */
+		if (ret < 0 && ret != -EEXIST) {
+			pr_err("failed to disable runtime PM for %s: %d\n",
+				pm_domain_name, ret);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+static int sde_power_update_power_domains_count(struct sde_power_handle *phandle)
+{
+	int num_power_domains;
+
+	num_power_domains = of_count_phandle_with_args(phandle->dev->of_node,
+		"power-domains", "#power-domain-cells");
+	if (num_power_domains < 0) {
+		if (num_power_domains == -ENOENT) {
+			pr_debug("no power domains found in the device tree\n");
+			phandle->num_power_domains = 0;
+			return 0;
+		}
+
+		pr_err("failed to count power domains: %d\n", num_power_domains);
+		return num_power_domains;
+	}
+
+	phandle->num_power_domains = num_power_domains;
+
+	return 0;
+}
+
 int sde_power_resource_init(struct platform_device *pdev,
 	struct sde_power_handle *phandle)
 {
@@ -746,6 +827,12 @@ int sde_power_resource_init(struct platform_device *pdev,
 	if (rc) {
 		pr_err("get config failed rc=%d\n", rc);
 		goto vreg_err;
+	}
+
+	rc = sde_power_update_power_domains_count(phandle);
+	if (rc) {
+		pr_err("count powerdomains failed rc=%d\n", rc);
+		goto pd_err;
 	}
 
 	rc = msm_dss_get_clk(&pdev->dev, mp->clk_config, mp->num_clk);
@@ -795,6 +882,8 @@ clkmmrm_err:
 	msm_dss_put_clk(mp->clk_config, mp->num_clk);
 clkget_err:
 	msm_dss_get_vreg(&pdev->dev, mp->vreg_config, mp->num_vreg, 0);
+pd_err:
+	phandle->num_power_domains = 0;
 vreg_err:
 	if (mp->vreg_config)
 		devm_kfree(&pdev->dev, mp->vreg_config);
@@ -846,6 +935,10 @@ void sde_power_resource_deinit(struct platform_device *pdev,
 
 	mp->num_vreg = 0;
 	mp->num_clk = 0;
+
+	sde_power_enable_power_domain(phandle, "core_int2_gdsc", false);
+
+	sde_power_enable_power_domain(phandle, "core_gdsc", false);
 
 	if (phandle->rsc_client)
 		sde_rsc_client_destroy(phandle->rsc_client);
@@ -946,10 +1039,22 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 			goto bus_err;
 		}
 
+		rc = sde_power_enable_power_domain(phandle, "core_gdsc", true);
+		if (rc) {
+			pr_err("failed to enable core_gdsc rc=%d\n", rc);
+			goto core_gdsc_err;
+		}
+
 		rc = sde_cesta_resource_enable(SDE_CESTA_INDEX);
 		if (rc) {
 			pr_err("failed to enable sde cesta\n");
 			goto cesta_err;
+		}
+
+		rc = sde_power_enable_power_domain(phandle, "core_int2_gdsc", true);
+		if (rc) {
+			pr_err("failed to enable core_int2_gdsc rc=%d\n", rc);
+			goto core_int2_gdsc_err;
 		}
 
 		rc = sde_power_scale_reg_bus(phandle, VOTE_INDEX_LOW, true);
@@ -1006,7 +1111,11 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 
 		sde_power_scale_reg_bus(phandle, VOTE_INDEX_DISABLE, true);
 
+		sde_power_enable_power_domain(phandle, "core_int2_gdsc", false);
+
 		sde_cesta_resource_disable(SDE_CESTA_INDEX);
+
+		sde_power_enable_power_domain(phandle, "core_gdsc", false);
 
 		msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, enable);
 
@@ -1032,8 +1141,12 @@ rsc_err:
 	sde_power_scale_reg_bus(phandle, VOTE_INDEX_DISABLE, true);
 reg_bus_hdl_err:
 	sde_cesta_resource_disable(SDE_CESTA_INDEX);
+core_int2_gdsc_err:
+	sde_power_enable_power_domain(phandle, "core_int2_gdsc", false);
 cesta_err:
 	msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, 0);
+core_gdsc_err:
+	sde_power_enable_power_domain(phandle, "core_gdsc", false);
 bus_err:
 	for (i-- ; i >= 0 && phandle->data_bus_handle[i].data_paths_cnt > 0; i--)
 		_sde_power_data_bus_set_quota(
