@@ -27,6 +27,7 @@ def define_canoe():
                     "CONFIG_THERMAL_OF",
                     "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_MSM_EXT_DISPLAY",
-                    "CONFIG_DRM_SDE_CESTA"
+                    "CONFIG_DRM_SDE_CESTA",
+                    "CONFIG_QTI_HW_FENCE"
                 ],
             )
