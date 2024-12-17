@@ -1790,6 +1790,10 @@ static int _sde_cp_crtc_checkfeature(u32 feature,
 	for (i = 0; i < num_mixers && !ret; i++) {
 		hw_lm = sde_crtc->mixers[i].hw_lm;
 		hw_dspp = sde_crtc->mixers[i].hw_dspp;
+
+		if (!hw_dspp)
+			continue;
+
 		if (!hw_lm) {
 			ret = -EINVAL;
 			continue;
