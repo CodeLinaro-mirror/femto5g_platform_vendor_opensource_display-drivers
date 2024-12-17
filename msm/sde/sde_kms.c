@@ -3582,6 +3582,31 @@ static void sde_kms_set_hw_blks_disp_op(enum msm_disp_op disp_op, struct sde_kms
 	}
 }
 
+static int _sde_kms_send_reg_dma_last_cmd_hfi(struct sde_kms *sde_kms)
+{
+	struct hfi_kms *hfi_kms;
+	struct sde_reg_dma_buffer *last_cmd_buf = NULL;
+	int ret;
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!sde_kms->hw_ctl_0)
+		return -EINVAL;
+
+	ret = sde_reg_dma_get_last_cmd_buffer(sde_kms->hw_ctl_0->dpu_idx, &last_cmd_buf);
+	if (ret) {
+		SDE_ERROR("Failed to get LUT DMA last command buffer, ret: %d\n", ret);
+		return -EINVAL;
+	}
+
+	ret = hfi_kms_set_reg_dma_buffer(hfi_kms, last_cmd_buf);
+	if (ret) {
+		SDE_ERROR("failed to set reg_dma_buffer to FW\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -3684,6 +3709,11 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 
 			drm_for_each_plane(plane, dev)
 				sde_plane_post_init(plane);
+
+			/* send LUT DMA last_cmd buffer */
+			ret = _sde_kms_send_reg_dma_last_cmd_hfi(sde_kms);
+			if (ret)
+				SDE_ERROR("failed to send last command LUT DMA buffer to HFI\n");
 
 			sde_kms->hfi_session_start = false;
 		}

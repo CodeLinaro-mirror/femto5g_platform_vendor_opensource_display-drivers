@@ -548,6 +548,42 @@ int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
+int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffer *buffer)
+{
+	int ret;
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_buff_dpu hfi_cfg = {};
+
+	if (!hfi_kms || !buffer)
+		return -EINVAL;
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_DEVICE_INFO);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	hfi_cfg.iova = buffer->iova;
+	hfi_cfg.len = buffer->index;
+
+	ret = hfi_adapter_add_set_property(cmd_buf, HFI_COMMAND_DEVICE_LUT_DMA_LAST_CMD,
+			MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_U32_ARRAY, &hfi_cfg, sizeof(hfi_cfg),
+			HFI_HOST_FLAGS_NONE);
+	if (ret) {
+		SDE_ERROR("failed to set hfi property for last command buffer\n");
+		return -EINVAL;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(cmd_buf);
+	if (ret) {
+		SDE_ERROR("failed to send DEVICE_REG_DMA_LAST_CMD\n");
+		return ret;
+	}
+
+	return ret;
+}
+
 int hfi_kms_init(struct sde_kms *sde_kms)
 {
 	struct hfi_kms *hfi_kms;

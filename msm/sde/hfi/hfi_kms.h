@@ -171,4 +171,12 @@ int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms);
 int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe, uint32_t pipe_idx,
 		bool rect1, uint32_t *hfi_pipe_id);
 
+/**
+ * hfi_kms_set_reg_dma_buffer - send LUT DMA last command buffer to FW
+ * @hfi_kms: Pointer to hfi_kms structure
+ * @buffer: Pointer to LUT DMA last command buffer
+ * Returns: 0 on success, or error code on failure
+ */
+int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffer *buffer);
+
 #endif // _HFI_KMS_H_
