@@ -1960,7 +1960,8 @@ int dsi_panel_create_cmd_packets(const char *data,
 		cmd[i].msg.type = data[0];
 		cmd[i].msg.channel = data[2];
 		cmd[i].msg.flags |= data[3];
-		cmd[i].ctrl = 0;
+		/* Use the two MSBs of data[1] to specify the DSI ctrl index */
+		cmd[i].ctrl = data[1] >> 6;
 		cmd[i].post_wait_ms = data[4];
 		cmd[i].msg.tx_len = ((data[5] << 8) | (data[6]));
 

@@ -2353,6 +2353,8 @@ static int dp_display_post_init(struct dp_display *dp_display)
 {
 	int rc = 0;
 	struct dp_display_private *dp;
+	struct drm_connector *connector;
+	struct sde_connector *sde_conn;
 
 	if (!dp_display) {
 		DP_ERR("invalid input\n");
@@ -2366,6 +2368,12 @@ static int dp_display_post_init(struct dp_display *dp_display)
 		rc = -EINVAL;
 		goto end;
 	}
+
+	connector = dp_display->base_connector;
+	sde_conn = to_sde_connector(connector);
+
+	if (sde_conn->capabilities & BIT(8))
+		goto end;
 
 	rc = dp_init_sub_modules(dp);
 	if (rc)
