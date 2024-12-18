@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012, 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __SDE_IO_UTIL_H__
@@ -98,8 +97,6 @@ struct dss_module_power {
 	struct dss_gpio *gpio_config;
 	unsigned int num_clk;
 	struct dss_clk *clk_config;
-	unsigned int num_post_vreg;
-	struct dss_vreg *post_vreg_config;
 };
 
 int msm_dss_ioremap_byname(struct platform_device *pdev,

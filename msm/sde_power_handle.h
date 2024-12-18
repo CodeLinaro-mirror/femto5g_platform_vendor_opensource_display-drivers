@@ -160,6 +160,7 @@ struct sde_power_mmrm_reserve {
  * @hw_fence_enable: boolean to indicate if hw-fence is enabled
  * @mmrm_reserve: mmrm resource reservation
  * @wakelock_count: wakelock coint to avoid pm suspend
+ * @num_power_domains: number of powerdomains
  */
 struct sde_power_handle {
 	struct dss_module_power mp;
@@ -178,6 +179,8 @@ struct sde_power_handle {
 
 	struct sde_power_mmrm_reserve mmrm_reserve;
 	atomic_t wakelock_count;
+
+	u32 num_power_domains;
 };
 
 /**
