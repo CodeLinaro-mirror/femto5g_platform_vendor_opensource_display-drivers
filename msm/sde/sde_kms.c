@@ -2563,7 +2563,10 @@ static int sde_kms_postinit(struct msm_kms *kms)
 				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
 
 		sde_cesta_splash_release(DPUID(sde_kms->dev));
-		pm_runtime_put_sync(sde_kms->dev->dev);
+
+		/* Temporary change to avoid power-collapse for canoe target */
+		if (SDE_HW_MAJOR(sde_kms->catalog->hw_rev) < SDE_HW_MAJOR(SDE_HW_VER_D00))
+			pm_runtime_put_sync(sde_kms->dev->dev);
 	}
 
 	rc = _sde_debugfs_init(sde_kms);
