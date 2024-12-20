@@ -736,6 +736,7 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 	u32 hblank;
 	u32 active_compressed;
 	u32 hsync_period_cycles;
+	u32 prog_fetch_start;
 
 	if (!info->esync_enabled)
 		goto exit;
@@ -745,7 +746,9 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 		return -EINVAL;
 	}
 
-	if (phys_enc->prog_fetch_start <= 0) {
+	prog_fetch_start = programmable_fetch_get_num_lines(vid_enc, &vid_enc->timing_params);
+
+	if (prog_fetch_start <= 0) {
 		SDE_ERROR("esync enabled but programmable fetch <= 0\n");
 		return -EINVAL;
 	}
@@ -765,7 +768,7 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 	esync_params.hsync_period_cycles = hsync_period_cycles;
 	esync_params.skew = mult_frac(phys_enc->cached_mode.htotal, info->esync_milli_skew, 1000);
 	esync_params.prog_fetch_start =
-			(phys_enc->cached_mode.vtotal - phys_enc->prog_fetch_start + 1)
+			(phys_enc->cached_mode.vtotal - prog_fetch_start + 1)
 			% esync_params.avr_step_lines;
 	esync_params.hw_fence_enabled = phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable;
 	esync_params.align_backup = exit_idle;
