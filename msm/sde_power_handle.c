@@ -720,7 +720,7 @@ static int sde_power_parse_dt_hwfence_soccp(struct platform_device *pdev,
  * This function enables or disables the specified power domain of a device.
  *
  * @param phandle A pointer to the power handle structure.
- * @param pm_domain_name String of the power domain to be managed.
+ * @param power_domain_id ID of the power domain to be managed.
  * @param enable Boolean to enable (true) or disable (false) the power domain.
  * @return int 0 on success, negative error code on failure.
  *
@@ -732,40 +732,77 @@ static int sde_power_parse_dt_hwfence_soccp(struct platform_device *pdev,
  *		each must be attached and managed individually.
  */
 static int sde_power_enable_power_domain(struct sde_power_handle *phandle,
-	const char *pm_domain_name, bool enable)
+	enum sde_power_domain_id power_domain_id, bool enable)
 {
 	int ret;
 	struct device *pd;
+	struct sde_power_domain_handle *pd_handle;
+	char *pm_domain_name;
 
 	/* Only proceed on multiple power domains */
 	if (phandle->num_power_domains <= 1)
 		return 0;
 
-	pd = dev_pm_domain_attach_by_name(phandle->dev, pm_domain_name);
-	if (IS_ERR_OR_NULL(pd)) {
-		ret = PTR_ERR(pd);
-		if (ret != -EEXIST) {
-			pr_err("failed to attach %s: %d\n", pm_domain_name, ret);
-			return ret;
-		}
+	switch (power_domain_id) {
+	case SDE_POWER_PD_ID_GDSC:
+		pm_domain_name = "core_gdsc";
+		break;
+	case SDE_POWER_PD_ID_INT2_GDSC:
+		pm_domain_name = "core_int2_gdsc";
+		break;
+	default:
+		pr_err("invalid power domain id\n");
+		return -EINVAL;
 	}
 
-	if (enable) {
-		if (ret != -EEXIST) {
-			ret = pm_runtime_get_sync(pd); /* Enables pd if it exists */
-			if (ret < 0 && ret != -EEXIST) {
-				pr_err("failed to enable runtime PM for %s: %d\n",
-					pm_domain_name, ret);
+	pd_handle = &(phandle->power_domain_handles[power_domain_id]);
+
+	/* Attaching if not attached */
+	if (atomic_read(&pd_handle->attached) == 0) {
+		if (!enable) {
+			atomic_set(&pd_handle->enabled, 0);
+			return 0;
+		}
+
+		pd_handle->dev = dev_pm_domain_attach_by_name(phandle->dev, pm_domain_name);
+		if (IS_ERR_OR_NULL(pd_handle->dev)) {
+			ret = PTR_ERR(pd_handle->dev);
+			if (ret != -EEXIST) {
+				pr_err("failed to attach %s: %d\n", pm_domain_name, ret);
 				return ret;
 			}
 		}
+
+		atomic_set(&pd_handle->attached, 1);
+	}
+
+	pd = pd_handle->dev;
+
+	/* Enable or disable */
+	if (enable) {
+		if (atomic_read(&pd_handle->enabled) == 1)
+			return 0;
+
+		ret = pm_runtime_get_sync(pd); /* Enables pd if it exists */
+		if (ret < 0) {
+			pr_err("failed to enable runtime PM for %s: %d\n",
+				pm_domain_name, ret);
+			return ret;
+		}
+
+		atomic_set(&pd_handle->enabled, 1);
 	} else {
+		if (atomic_read(&pd_handle->enabled) == 0)
+			return 0;
+
 		ret = pm_runtime_put_sync(pd); /* Disables pd */
 		if (ret < 0 && ret != -EEXIST) {
 			pr_err("failed to disable runtime PM for %s: %d\n",
 				pm_domain_name, ret);
 			return ret;
 		}
+
+		atomic_set(&pd_handle->enabled, 0);
 	}
 
 	return 0;
@@ -936,9 +973,9 @@ void sde_power_resource_deinit(struct platform_device *pdev,
 	mp->num_vreg = 0;
 	mp->num_clk = 0;
 
-	sde_power_enable_power_domain(phandle, "core_int2_gdsc", false);
+	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
 
-	sde_power_enable_power_domain(phandle, "core_gdsc", false);
+	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_GDSC, false);
 
 	if (phandle->rsc_client)
 		sde_rsc_client_destroy(phandle->rsc_client);
@@ -1039,7 +1076,7 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 			goto bus_err;
 		}
 
-		rc = sde_power_enable_power_domain(phandle, "core_gdsc", true);
+		rc = sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_GDSC, true);
 		if (rc) {
 			pr_err("failed to enable core_gdsc rc=%d\n", rc);
 			goto core_gdsc_err;
@@ -1051,7 +1088,7 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 			goto cesta_err;
 		}
 
-		rc = sde_power_enable_power_domain(phandle, "core_int2_gdsc", true);
+		rc = sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, true);
 		if (rc) {
 			pr_err("failed to enable core_int2_gdsc rc=%d\n", rc);
 			goto core_int2_gdsc_err;
@@ -1111,11 +1148,11 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 
 		sde_power_scale_reg_bus(phandle, VOTE_INDEX_DISABLE, true);
 
-		sde_power_enable_power_domain(phandle, "core_int2_gdsc", false);
+		sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
 
 		sde_cesta_resource_disable(SDE_CESTA_INDEX);
 
-		sde_power_enable_power_domain(phandle, "core_gdsc", false);
+		sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_GDSC, false);
 
 		msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, enable);
 
@@ -1142,11 +1179,11 @@ rsc_err:
 reg_bus_hdl_err:
 	sde_cesta_resource_disable(SDE_CESTA_INDEX);
 core_int2_gdsc_err:
-	sde_power_enable_power_domain(phandle, "core_int2_gdsc", false);
+	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
 cesta_err:
 	msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, 0);
 core_gdsc_err:
-	sde_power_enable_power_domain(phandle, "core_gdsc", false);
+	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_GDSC, false);
 bus_err:
 	for (i-- ; i >= 0 && phandle->data_bus_handle[i].data_paths_cnt > 0; i--)
 		_sde_power_data_bus_set_quota(
