@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -37,6 +37,7 @@
 #define RM_RQ_CWB(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_CWB))
 #define RM_RQ_DCWB(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_DCWB))
 #define RM_RQ_DNSC_BLUR(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_DNSC_BLUR))
+#define RM_RQ_CDM(r) ((r)->top_ctrl & BIT(SDE_RM_TOPCTL_CDM))
 #define RM_IS_TOPOLOGY_MATCH(t, r) ((t).num_lm == (r).num_lm && \
 				(t).num_comp_enc == (r).num_enc && \
 				(t).num_intf == (r).num_intf && \
@@ -212,23 +213,23 @@ static void _sde_rm_inc_resource_info_lm(struct sde_rm *rm,
 	list_for_each_entry(blk2, &rm->hw_blks[SDE_HW_BLK_LM], list) {
 		lm_cfg2 = to_sde_hw_mixer(blk2->hw)->cap;
 		/*
-		 * If lm2 is free, or
-		 * lm1 & lm2 reserved by same enc, check mask
+		 * If the paired lm is free, or is reserved by the same encoder
+		 * set the bit for the 3d mux associated with the lm
+		 * counting these set bits will give an accurate count of available 3dmux
 		 */
-		if ((!blk2->rsvp || (blk->rsvp &&
-				blk2->rsvp->enc_id == blk->rsvp->enc_id
-				&& lm_cfg->id > lm_cfg2->id)) &&
+		if ((!blk2->rsvp || (blk->rsvp && blk2->rsvp->enc_id == blk->rsvp->enc_id)) &&
 				test_bit(lm_cfg->id, &lm_cfg2->lm_pair_mask))
-			avail_res->num_3dmux++;
+			set_bit(lm_cfg->merge_3d, &avail_res->merge_3d_mask);
 	}
+
+	avail_res->num_3dmux = hweight_long(avail_res->merge_3d_mask);
 }
 
 static void _sde_rm_dec_resource_info_lm(struct sde_rm *rm,
 	struct msm_resource_caps_info *avail_res,
 	struct sde_rm_hw_blk *blk)
 {
-	struct sde_rm_hw_blk *blk2;
-	const struct sde_lm_cfg *lm_cfg, *lm_cfg2;
+	const struct sde_lm_cfg *lm_cfg;
 
 	lm_cfg = to_sde_hw_mixer(blk->hw)->cap;
 
@@ -238,14 +239,12 @@ static void _sde_rm_dec_resource_info_lm(struct sde_rm *rm,
 
 	avail_res->num_lm--;
 
-	/* Check for 3d muxes by comparing paired lms */
-	list_for_each_entry(blk2, &rm->hw_blks[SDE_HW_BLK_LM], list) {
-		lm_cfg2 = to_sde_hw_mixer(blk2->hw)->cap;
-		/* If lm2 is free and lm1 is now being reserved */
-		if (!blk2->rsvp &&
-				test_bit(lm_cfg->id, &lm_cfg2->lm_pair_mask))
-			avail_res->num_3dmux--;
-	}
+	/*
+	 * Clear the bit for the 3d mux associated with the lm
+	 * counting these set bits will give an accurate count of available 3dmux
+	 */
+	clear_bit(lm_cfg->merge_3d, &avail_res->merge_3d_mask);
+	avail_res->num_3dmux = hweight_long(avail_res->merge_3d_mask);
 }
 
 static void _sde_rm_inc_resource_info(struct sde_rm *rm,
@@ -1885,8 +1884,11 @@ static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, struct sde_rm_rsvp *rsv
 	}
 
 	/* Expected only one intf or wb will request cdm */
-	if (hw_res->needs_cdm)
+	if (hw_res->needs_cdm || RM_RQ_CDM(reqs)) {
 		ret = _sde_rm_reserve_cdm(rm, rsvp, id, type);
+		if (ret)
+			return ret;
+	}
 
 	if (RM_RQ_DNSC_BLUR(reqs))
 		ret = _sde_rm_reserve_dnsc_blur(rm, rsvp, id, type);
@@ -2256,7 +2258,7 @@ int sde_rm_cont_splash_res_init(struct msm_drm_private *priv,
 				struct sde_mdss_cfg *cat)
 {
 	struct sde_rm_hw_iter iter_c;
-	int index = 0, ctl_top_cnt;
+	int index = 0, ctl_top_cnt, splash_disp_count = 0;
 	struct sde_kms *sde_kms = NULL;
 	struct sde_hw_mdp *hw_mdp;
 	struct sde_splash_display *splash_display;
@@ -2284,7 +2286,7 @@ int sde_rm_cont_splash_res_init(struct msm_drm_private *priv,
 
 	sde_rm_init_hw_iter(&iter_c, 0, SDE_HW_BLK_CTL);
 	while (_sde_rm_get_hw_locked(rm, &iter_c)
-			&& (index < splash_data->num_splash_displays)) {
+			&& (splash_disp_count < splash_data->num_splash_displays)) {
 		struct sde_hw_ctl *ctl = to_sde_hw_ctl(iter_c.blk->hw);
 
 		if (!ctl->ops.get_ctl_intf) {
@@ -2294,7 +2296,8 @@ int sde_rm_cont_splash_res_init(struct msm_drm_private *priv,
 
 		intf_sel = ctl->ops.get_ctl_intf(ctl);
 		if (intf_sel) {
-			splash_display =  &splash_data->splash_display[index];
+			splash_display =
+				&splash_data->splash_display[index ? 1 : 0];
 			SDE_DEBUG("finding resources for display=%d ctl=%d\n",
 					index, iter_c.blk->id - CTL_0);
 
@@ -2303,9 +2306,11 @@ int sde_rm_cont_splash_res_init(struct msm_drm_private *priv,
 			splash_display->cont_splash_enabled = true;
 			splash_display->ctl_ids[splash_display->ctl_cnt++] =
 				iter_c.blk->id;
+
 			if (!(rm->is_ctl_rev_supported))
 				splash_display->ctl_ids[splash_display->ctl_cnt++] =
 					iter_c.blk->id + CTL_0;
+			splash_disp_count++;
 		}
 		index++;
 	}

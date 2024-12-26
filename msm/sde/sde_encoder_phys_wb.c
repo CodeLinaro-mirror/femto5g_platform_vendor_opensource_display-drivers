@@ -33,10 +33,6 @@ static const u32 cwb_irq_tbl[PINGPONG_MAX] = {SDE_NONE, INTR_IDX_PP1_OVFL,
 	INTR_IDX_PP2_OVFL, INTR_IDX_PP3_OVFL, INTR_IDX_PP4_OVFL,
 	INTR_IDX_PP5_OVFL, SDE_NONE, SDE_NONE};
 
-static const u32 dcwb_irq_tbl[PINGPONG_MAX] = {SDE_NONE, SDE_NONE,
-	SDE_NONE, SDE_NONE, SDE_NONE, SDE_NONE,
-	INTR_IDX_PP_CWB_OVFL, SDE_NONE};
-
 /**
  * sde_encoder_phys_wb_is_master - report wb always as master encoder
  */
@@ -285,6 +281,8 @@ static void _sde_encoder_phys_wb_setup_roi(struct sde_encoder_phys *phys_enc,
 				wb_cfg->crop.x = wb_cfg->crop.x - pu_roi.x;
 				wb_cfg->crop.y = wb_cfg->crop.y - pu_roi.y;
 				hw_wb->ops.setup_crop(hw_wb, wb_cfg, true);
+			} else {
+				hw_wb->ops.setup_crop(hw_wb, wb_cfg, false);
 			}
 		} else if ((wb_cfg->roi.w != out_width) || (wb_cfg->roi.h != out_height)) {
 			hw_wb->ops.setup_crop(hw_wb, wb_cfg, true);
@@ -423,6 +421,35 @@ static void sde_encoder_phys_wb_setup_fb(struct sde_encoder_phys *phys_enc,
 
 }
 
+static inline bool _sde_encoder_is_single_lm_partial_update(struct sde_encoder_phys_wb *wb_enc)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_crtc_state *cstate;
+	bool lr_only_pu = false;
+
+	if (!wb_enc || !wb_enc->crtc || !wb_enc->crtc->state) {
+		SDE_ERROR("invalid parameter(s)\n");
+		return true;
+	}
+
+	sde_crtc = to_sde_crtc(wb_enc->crtc);
+	cstate = to_sde_crtc_state(wb_enc->crtc->state);
+
+	/**
+	 * partial update logic and CWB is currently supported only
+	 * upto dual pipe configurations.
+	 */
+	if (sde_crtc->num_mixers != CRTC_DUAL_MIXERS_ONLY)
+		return true;
+
+	lr_only_pu =  (!sde_kms_rect_is_null(&cstate->lm_roi[0]) &&
+				sde_kms_rect_is_null(&cstate->lm_roi[1])) ||
+				(sde_kms_rect_is_null(&cstate->lm_roi[0]) &&
+				!sde_kms_rect_is_null(&cstate->lm_roi[1]));
+
+	return lr_only_pu;
+}
+
 static void _sde_encoder_phys_wb_setup_cwb(struct sde_encoder_phys *phys_enc, bool enable)
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
@@ -432,9 +459,9 @@ static void _sde_encoder_phys_wb_setup_cwb(struct sde_encoder_phys *phys_enc, bo
 	struct sde_crtc *crtc = to_sde_crtc(wb_enc->crtc);
 	struct sde_hw_pingpong *hw_pp = phys_enc->hw_pp;
 	struct sde_hw_dnsc_blur *hw_dnsc_blur = phys_enc->hw_dnsc_blur;
-	bool need_merge = (crtc->num_mixers > 1);
+	bool need_merge = false;
 	enum sde_dcwb;
-	int i = 0;
+	int i = 0, num_mixers = 0;
 	const int num_wb = 1;
 
 	if (!phys_enc->in_clone_mode) {
@@ -449,6 +476,26 @@ static void _sde_encoder_phys_wb_setup_cwb(struct sde_encoder_phys *phys_enc, bo
 		return;
 	}
 
+	if (crtc->num_mixers > MAX_CWB_PER_CTL_V1) {
+		SDE_ERROR("[enc:%d wb:%d] %d LM %d CWB case not supported\n",
+				DRMID(phys_enc->parent), WBID(wb_enc),
+				crtc->num_mixers, MAX_CWB_PER_CTL_V1);
+		return;
+	}
+
+	/**
+	 * 3d_merge active or cwb active for cwb path has to be set based upon
+	 * LMs in a CTL path. On cwb disable commit both 3d_merge active and cwb
+	 * active for a particular CTL path has to be disabled.
+	 */
+	if (enable) {
+		need_merge = !(_sde_encoder_is_single_lm_partial_update(wb_enc));
+		num_mixers = need_merge ? crtc->num_mixers : CRTC_SINGLE_MIXER_ONLY;
+	} else {
+		need_merge = (crtc->num_mixers > CRTC_SINGLE_MIXER_ONLY) ? true : false;
+		num_mixers = crtc->num_mixers;
+	}
+
 	hw_ctl = crtc->mixers[0].hw_ctl;
 	if (hw_ctl && hw_ctl->ops.setup_intf_cfg_v1 &&
 			(test_bit(SDE_WB_CWB_CTRL, &hw_wb->caps->features) ||
@@ -458,7 +505,7 @@ static void _sde_encoder_phys_wb_setup_cwb(struct sde_encoder_phys *phys_enc, bo
 		intf_cfg.wb_count = num_wb;
 		intf_cfg.wb[0] = hw_wb->idx;
 
-		for (i = 0; i < crtc->num_mixers; i++) {
+		for (i = 0; i < num_mixers; i++) {
 			if (test_bit(SDE_WB_DCWB_CTRL, &hw_wb->caps->features))
 				intf_cfg.cwb[intf_cfg.cwb_count++] =
 						(enum sde_cwb)(hw_pp->dcwb_idx + i);
@@ -519,6 +566,7 @@ static void _sde_encoder_phys_wb_setup_ctl(struct sde_encoder_phys *phys_enc,
 	struct sde_hw_dnsc_blur *hw_dnsc_blur;
 	struct sde_hw_ctl *ctl;
 	const int num_wb = 1;
+	bool need_merge = false;
 
 	if (!phys_enc) {
 		SDE_ERROR("invalid encoder\n");
@@ -536,6 +584,7 @@ static void _sde_encoder_phys_wb_setup_ctl(struct sde_encoder_phys *phys_enc,
 	hw_cdm = phys_enc->hw_cdm;
 	hw_dnsc_blur = phys_enc->hw_dnsc_blur;
 	ctl = phys_enc->hw_ctl;
+	need_merge = !(_sde_encoder_is_single_lm_partial_update(wb_enc));
 
 	if (test_bit(SDE_CTL_ACTIVE_CFG, &ctl->caps->features) &&
 			(phys_enc->hw_ctl && phys_enc->hw_ctl->ops.setup_intf_cfg_v1)) {
@@ -559,12 +608,12 @@ static void _sde_encoder_phys_wb_setup_ctl(struct sde_encoder_phys *phys_enc,
 			intf_cfg_v1->dnsc_blur[0] = hw_dnsc_blur->idx;
 		}
 
-		if (mode_3d && hw_pp && hw_pp->merge_3d &&
+		if (mode_3d && need_merge && hw_pp && hw_pp->merge_3d &&
 			intf_cfg_v1->merge_3d_count < MAX_MERGE_3D_PER_CTL_V1)
 			intf_cfg_v1->merge_3d[intf_cfg_v1->merge_3d_count++] = hw_pp->merge_3d->idx;
 
 		if (hw_pp && hw_pp->ops.setup_3d_mode)
-			hw_pp->ops.setup_3d_mode(hw_pp, mode_3d);
+			hw_pp->ops.setup_3d_mode(hw_pp, need_merge ? mode_3d : 0);
 
 		/* setup which pp blk will connect to this wb */
 		if (hw_pp && hw_wb->ops.bind_pingpong_blk)
@@ -747,12 +796,18 @@ static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
 	struct sde_rect wb_roi = {0,}, pu_roi = {0,};
 	u32  out_width = 0, out_height = 0;
 	const struct sde_format *fmt;
-	int prog_line, ret = 0;
+	int num_lm, prog_line, ret = 0;
 
 	fb = sde_wb_connector_state_get_output_fb(conn_state);
 	if (!fb) {
 		SDE_DEBUG("no output framebuffer\n");
 		return 0;
+	}
+
+	num_lm = sde_crtc_get_num_datapath(crtc_state->crtc, conn_state->connector, crtc_state);
+	if (num_lm > MAX_CWB_PER_CTL_V1) {
+		SDE_ERROR("%d LM %d CWB case not supported\n", num_lm, MAX_CWB_PER_CTL_V1);
+		return -EINVAL;
 	}
 
 	fmt = sde_get_sde_format_ext(fb->format->format, fb->modifier);
@@ -865,6 +920,7 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 	const struct drm_display_mode *mode = &crtc_state->mode;
 	int rc;
 	bool clone_mode_curr = false;
+	bool cwb_disable_pending = false;
 
 	SDE_DEBUG("[enc:%d wb:%d] atomic_check:\"%s\",%d,%d]\n", DRMID(phys_enc->parent),
 			WBID(wb_enc), mode->name, mode->hdisplay, mode->vdisplay);
@@ -881,12 +937,13 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 
 	sde_conn_state = to_sde_connector_state(conn_state);
 	clone_mode_curr = phys_enc->in_clone_mode;
+	cwb_disable_pending = phys_enc->cwb_disable_pending;
 
 	_sde_enc_phys_wb_detect_cwb(phys_enc, crtc_state);
 
-	if (clone_mode_curr && !cstate->cwb_enc_mask) {
-		SDE_ERROR("[enc:%d wb:%d] WB commit before CWB disable\n",
-				DRMID(phys_enc->parent), WBID(wb_enc));
+	if ((clone_mode_curr || cwb_disable_pending) && !cstate->cwb_enc_mask) {
+		SDE_ERROR("[enc:%d wb:%d] WB commit before CWB disable, Clone mode %d %d\n",
+		 DRMID(phys_enc->parent), WBID(wb_enc), clone_mode_curr, cwb_disable_pending);
 		return -EINVAL;
 	}
 
@@ -1083,7 +1140,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
 	struct sde_crtc_state *crtc_state;
 	struct sde_crtc *crtc;
-	int i = 0;
+	int i = 0, num_mixers;
 	int cwb_capture_mode = 0;
 	bool need_merge = false;
 	bool dspp_out = false;
@@ -1104,9 +1161,16 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 		return;
 	}
 
+	if (enable) {
+		need_merge = !(_sde_encoder_is_single_lm_partial_update(wb_enc));
+		num_mixers = need_merge ? crtc->num_mixers : CRTC_SINGLE_MIXER_ONLY;
+	} else {
+		need_merge = (crtc->num_mixers > CRTC_SINGLE_MIXER_ONLY) ? true : false;
+		num_mixers = crtc->num_mixers;
+	}
+
 	crtc_state = to_sde_crtc_state(wb_enc->crtc->state);
 	cwb_capture_mode = sde_crtc_get_property(crtc_state, CRTC_PROP_CAPTURE_OUTPUT);
-	need_merge = (crtc->num_mixers > 1) ? true : false;
 	dspp_out = (cwb_capture_mode == CAPTURE_DSPP_OUT);
 	cwb_idx = (enum sde_cwb)hw_pp->idx;
 	src_pp_idx = (enum sde_cwb)crtc->mixers[0].hw_lm->idx;
@@ -1125,7 +1189,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 		}
 	}
 
-	for (i = 0; i < crtc->num_mixers; i++) {
+	for (i = 0; i < num_mixers; i++) {
 		src_pp_idx = (enum sde_cwb) (src_pp_idx + i);
 
 		if (test_bit(SDE_WB_DCWB_CTRL, &hw_wb->caps->features)) {
@@ -1202,7 +1266,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush(struct sde_encoder_phys *phys_
 	src_pp_idx = (enum sde_cwb)crtc->mixers[0].hw_lm->idx;
 	cwb_idx = (enum sde_cwb)hw_pp->idx;
 	dspp_out = (cwb_capture_mode == CAPTURE_DSPP_OUT);
-	need_merge = (crtc->num_mixers > 1) ? true : false;
+	need_merge = !(_sde_encoder_is_single_lm_partial_update(wb_enc));
 
 	if (test_bit(SDE_WB_DCWB_CTRL, &hw_wb->caps->features)) {
 		dcwb_idx = hw_pp->dcwb_idx;
@@ -1594,6 +1658,7 @@ static void sde_encoder_phys_wb_irq_ctrl(struct sde_encoder_phys *phys, bool ena
 	int index = 0, pp = 0;
 	u32 max_num_of_irqs = 0;
 	const u32 *irq_table = NULL;
+	enum sde_intr_idx intr_idx;
 
 	if (!wb_enc)
 		return;
@@ -1612,7 +1677,6 @@ static void sde_encoder_phys_wb_irq_ctrl(struct sde_encoder_phys *phys, bool ena
 	wb_cfg = wb_enc->hw_wb->caps;
 	if (wb_cfg->features & BIT(SDE_WB_HAS_DCWB)) {
 		max_num_of_irqs = 1;
-		irq_table = dcwb_irq_tbl;
 	} else {
 		max_num_of_irqs = CRTC_DUAL_MIXERS_ONLY;
 		irq_table = cwb_irq_tbl;
@@ -1625,9 +1689,11 @@ static void sde_encoder_phys_wb_irq_ctrl(struct sde_encoder_phys *phys, bool ena
 		if (test_bit(SDE_WB_PROG_LINE, &wb_cfg->features))
 			sde_encoder_helper_register_irq(phys, INTR_IDX_WB_LINEPTR);
 
-		for (index = 0; index < max_num_of_irqs; index++)
-			if (irq_table[index + pp] != SDE_NONE)
-				sde_encoder_helper_register_irq(phys, irq_table[index + pp]);
+		for (index = 0; index < max_num_of_irqs; index++) {
+			intr_idx = irq_table ? irq_table[index + pp] : INTR_IDX_PP_CWB_OVFL;
+			if (intr_idx != SDE_NONE)
+				sde_encoder_helper_register_irq(phys, intr_idx);
+		}
 	} else if (!enable && atomic_dec_return(&phys->wbirq_refcount) == 0) {
 		sde_encoder_helper_unregister_irq(phys, INTR_IDX_WB_DONE);
 		sde_encoder_helper_unregister_irq(phys, INTR_IDX_CTL_START);
@@ -1635,9 +1701,11 @@ static void sde_encoder_phys_wb_irq_ctrl(struct sde_encoder_phys *phys, bool ena
 		if (test_bit(SDE_WB_PROG_LINE, &wb_cfg->features))
 			sde_encoder_helper_unregister_irq(phys, INTR_IDX_WB_LINEPTR);
 
-		for (index = 0; index < max_num_of_irqs; index++)
-			if (irq_table[index + pp] != SDE_NONE)
-				sde_encoder_helper_unregister_irq(phys, irq_table[index + pp]);
+		for (index = 0; index < max_num_of_irqs; index++) {
+			intr_idx = irq_table ? irq_table[index + pp] : INTR_IDX_PP_CWB_OVFL;
+			if (intr_idx != SDE_NONE)
+				sde_encoder_helper_unregister_irq(phys, intr_idx);
+		}
 	}
 }
 
@@ -1740,6 +1808,9 @@ static bool _sde_encoder_phys_wb_is_idle(struct sde_encoder_phys *phys_enc)
 static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_wb_device *wb_dev = wb_enc->wb_dev;
+	struct sde_crtc *sde_crtc;
 
 	phys_enc->enable_state = SDE_ENC_DISABLED;
 
@@ -1751,6 +1822,10 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 		wb_enc->wb_aspace = NULL;
 	}
 
+	sde_crtc = to_sde_crtc(sde_enc->crtc);
+	if (sde_crtc)
+		sde_crtc->cached_encoder_mask &= ~drm_encoder_mask(phys_enc->parent);
+
 	wb_enc->crtc = NULL;
 	phys_enc->hw_cdm = NULL;
 	phys_enc->hw_ctl = NULL;
@@ -1758,6 +1833,11 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
 	atomic_set(&phys_enc->pending_ctl_start_cnt, 0);
+	mutex_lock(&wb_dev->wb_lock);
+	kfree(wb_dev->modes);
+	wb_dev->modes = NULL;
+	wb_dev->count_modes = 0;
+	mutex_unlock(&wb_dev->wb_lock);
 }
 
 static int _sde_encoder_phys_wb_wait_for_idle(struct sde_encoder_phys *phys_enc, bool force_wait)
@@ -1823,6 +1903,7 @@ static int _sde_encoder_phys_wb_wait_for_ctl_start(struct sde_encoder_phys *phys
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
 	struct sde_encoder_wait_info wait_info = {0};
+	struct sde_hw_ctl *hw_ctl = phys_enc->hw_ctl;
 	int rc = 0;
 
 	if (!atomic_read(&phys_enc->pending_ctl_start_cnt))
@@ -1838,8 +1919,22 @@ static int _sde_encoder_phys_wb_wait_for_ctl_start(struct sde_encoder_phys *phys
 	wait_info.timeout_ms = max_t(u32, wb_enc->wbdone_timeout, phys_enc->kickoff_timeout_ms);
 
 	rc = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_CTL_START, &wait_info);
+
+	/*
+	 * if hwfencing enabled, try again to wait for up to the extended timeout time in
+	 * increments as long as fence has not been signaled.
+	 */
+	if (rc == -ETIMEDOUT && phys_enc->sde_kms->catalog->hw_fence_rev && hw_ctl)
+		rc = sde_encoder_helper_hw_fence_extended_wait(phys_enc, hw_ctl,
+			&wait_info, INTR_IDX_CTL_START);
+
 	if (rc == -ETIMEDOUT) {
 		atomic_add_unless(&phys_enc->pending_ctl_start_cnt, -1, 0);
+
+		/* if we timeout after the extended wait, reset mixers and do sw override */
+		if (phys_enc->sde_kms->catalog->hw_fence_rev)
+			sde_encoder_helper_hw_fence_sw_override(phys_enc, hw_ctl);
+
 		SDE_ERROR("[enc:%d wb:%d] ctl_start timed out\n",
 				DRMID(phys_enc->parent), WBID(wb_enc));
 		SDE_EVT32(DRMID(phys_enc->parent), WBID(wb_enc), SDE_EVTLOG_ERROR);

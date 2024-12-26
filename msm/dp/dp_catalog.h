@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -44,6 +44,11 @@ enum dp_stream_id {
 struct dp_catalog_vsc_sdp_colorimetry {
 	struct dp_sdp_header header;
 	u8 data[32];
+};
+
+struct dp_misr40_data {
+	u32 ctrl_misr[8];
+	u32 phy_misr[8];
 };
 
 struct dp_catalog_aux {
@@ -103,6 +108,8 @@ struct dp_catalog_ctrl {
 
 	int (*late_phy_init)(struct dp_catalog_ctrl *ctrl,
 					u8 lane_cnt, bool flipped);
+	int (*setup_misr)(struct dp_catalog_ctrl *ctrl);
+	int (*read_misr)(struct dp_catalog_ctrl *ctrl, struct dp_misr40_data *data);
 };
 
 struct dp_catalog_hpd {
@@ -221,6 +228,7 @@ struct dp_catalog_panel {
 	void (*pps_flush)(struct dp_catalog_panel *panel);
 	void (*dhdr_flush)(struct dp_catalog_panel *panel);
 	bool (*dhdr_busy)(struct dp_catalog_panel *panel);
+	int (*get_src_crc)(struct dp_catalog_panel *panel, u16 *crc);
 };
 
 struct dp_catalog;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -11,6 +11,7 @@
 #include "sde_formats.h"
 #include "dsi_display.h"
 #include "sde_trace.h"
+#include <drm/drm_fixed.h>
 
 #define SDE_DEBUG_VIDENC(e, fmt, ...) SDE_DEBUG("enc%d intf%d " fmt, \
 		(e) && (e)->base.parent ? \
@@ -48,6 +49,7 @@ static void drm_mode_to_intf_timing_params(
 		struct intf_timing_params *timing)
 {
 	const struct sde_encoder_phys *phys_enc = &vid_enc->base;
+	s64 comp_ratio, width;
 
 	memset(timing, 0, sizeof(*timing));
 
@@ -124,7 +126,7 @@ static void drm_mode_to_intf_timing_params(
 	 */
 	if (phys_enc->hw_intf->cap->type == INTF_DP &&
 			(timing->wide_bus_en ||
-			(vid_enc->base.comp_ratio > 1))) {
+			(vid_enc->base.comp_ratio > MSM_DISPLAY_COMPRESSION_RATIO_NONE))) {
 		timing->width = timing->width >> 1;
 		timing->xres = timing->xres >> 1;
 		timing->h_back_porch = timing->h_back_porch >> 1;
@@ -132,7 +134,7 @@ static void drm_mode_to_intf_timing_params(
 		timing->hsync_pulse_width = timing->hsync_pulse_width >> 1;
 
 		if (vid_enc->base.comp_type == MSM_DISPLAY_COMPRESSION_DSC &&
-				(vid_enc->base.comp_ratio > 1)) {
+				(vid_enc->base.comp_ratio > MSM_DISPLAY_COMPRESSION_RATIO_NONE)) {
 			timing->extra_dto_cycles =
 				vid_enc->base.dsc_extra_pclk_cycle_cnt;
 			timing->width += vid_enc->base.dsc_extra_disp_width;
@@ -151,10 +153,11 @@ static void drm_mode_to_intf_timing_params(
 			(vid_enc->base.comp_type ==
 			MSM_DISPLAY_COMPRESSION_VDC))) {
 		// adjust active dimensions
-		timing->width = DIV_ROUND_UP(timing->width,
-			vid_enc->base.comp_ratio);
-		timing->xres = DIV_ROUND_UP(timing->xres,
-			vid_enc->base.comp_ratio);
+		width = drm_fixp_from_fraction(timing->width, 1);
+		comp_ratio = drm_fixp_from_fraction(vid_enc->base.comp_ratio, 100);
+		width = drm_fixp_div(width, comp_ratio);
+		timing->width = drm_fixp2int_ceil(width);
+		timing->xres = timing->width;
 	}
 
 	/*
@@ -963,6 +966,14 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 	ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC,
 			&wait_info);
 
+	/*
+	 * if hwfencing enabled, try again to wait for up to the extended timeout time in
+	 * increments as long as fence has not been signaled.
+	 */
+	if (ret == -ETIMEDOUT && phys_enc->sde_kms->catalog->hw_fence_rev)
+		ret = sde_encoder_helper_hw_fence_extended_wait(phys_enc, phys_enc->hw_ctl,
+			&wait_info, INTR_IDX_VSYNC);
+
 	if (ret == -ETIMEDOUT) {
 		new_cnt = atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
 		timeout = true;
@@ -975,6 +986,10 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 			flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
 		if (!flush_register)
 			ret = 0;
+
+		/* if we timeout after the extended wait, reset mixers and do sw override */
+		if (ret && phys_enc->sde_kms->catalog->hw_fence_rev)
+			sde_encoder_helper_hw_fence_sw_override(phys_enc, hw_ctl);
 
 		SDE_EVT32(DRMID(phys_enc->parent), new_cnt, flush_register, ret,
 				SDE_EVTLOG_FUNC_CASE1);
@@ -1013,7 +1028,6 @@ static void sde_encoder_phys_vid_update_txq(struct sde_encoder_phys *phys_enc)
 	if (!sde_enc)
 		return;
 
-	SDE_EVT32(DRMID(phys_enc->parent));
 	sde_encoder_helper_update_out_fence_txq(sde_enc, true);
 }
 
