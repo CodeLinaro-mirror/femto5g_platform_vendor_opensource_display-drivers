@@ -13,6 +13,7 @@ def define_monaco():
             "CONFIG_SYNC_FILE",
             "CONFIG_DRM_MSM_DSI",
             "CONFIG_DRM_SDE_SHD",
+            "CONFIG_DRM_SDE_SHP",
             "CONFIG_DRM_MSM_LEASE",
             "CONFIG_DRM_MSM_REGISTER_LOGGING",
             "CONFIG_QCOM_MDSS_PLL",

@@ -162,6 +162,9 @@ module_entry(
 	         "msm/shd/shd_hw.c",
 	         "msm/shd/sde_encoder_phys_shd.c",
          ],
+         "CONFIG_DRM_SDE_SHP" : [
+            "msm/shp/shp_drm.c",
+         ],
          "CONFIG_DRM_MSM_LEASE" : [
 	         "msm/msm-lease/msm_lease_drv.c",
          ],
