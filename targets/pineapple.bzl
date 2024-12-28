@@ -1,9 +1,9 @@
 load(":display_modules.bzl", "display_driver_modules")
 load(":display_driver_build.bzl", "define_target_variant_modules")
-load("//msm-kernel:target_variants.bzl", "get_all_la_variants")
+load("//soc-repo:target_variants.bzl", "all_target_variants")
 
 def define_pineapple():
-    for (t, v) in get_all_la_variants():
+    for (t, v) in all_target_variants():
         if t == "pineapple":
             define_target_variant_modules(
                 target = t,
