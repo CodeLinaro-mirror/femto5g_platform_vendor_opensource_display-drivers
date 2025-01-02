@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -6550,7 +6550,7 @@ static int sde_hw_parse_fuse_configuration(struct platform_device *pdev, const c
 	rc = PTR_ERR_OR_ZERO(cell);
 	if (rc) {
 		if (rc == -ENOENT)
-			return 0;
+			SDE_INFO("ssip_config entry not found in nvmem_cells");
 		return rc;
 	}
 
@@ -6585,8 +6585,16 @@ static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *s
 		return 0;
 	}
 
-	disable = (fuse & BIT(1)) >> 1;
-	polarity = fuse & BIT(0);
+	if (IS_SUN_TARGET(sde_cfg->hw_rev)) {
+		disable = (fuse & BIT(1)) >> 1;
+		polarity = fuse & BIT(0);
+	} else if (IS_CANOE_TARGET(sde_cfg->hw_rev)) {
+		disable = (fuse & BIT(2)) >> 2;
+		polarity = (fuse & BIT(0));
+	} else {
+		sde_cfg->ssip_allowed = false;
+		return 0;
+	}
 
 	SDE_INFO("ssip: disable = %d polarity = %d\n", disable, polarity);
 	if ((disable && polarity) || (!disable && !polarity))
