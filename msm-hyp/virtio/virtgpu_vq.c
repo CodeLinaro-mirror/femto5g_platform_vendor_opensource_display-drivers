@@ -871,18 +871,15 @@ static int virtio_get_edid_block(struct virtio_kms *kms, uint32_t scanout,
 int virtio_gpu_cmd_get_edid(struct virtio_kms *kms,
 		uint32_t scanout)
 {
-	struct virtio_gpu_cmd_get_edid *cmd_p =
-			kzalloc(sizeof(struct virtio_gpu_cmd_get_edid),
-				GFP_KERNEL);
-	struct virtio_gpu_resp_edid *resp =
-		kzalloc(sizeof(struct virtio_gpu_resp_edid),
-				GFP_KERNEL);
+	struct virtio_gpu_cmd_get_edid *cmd_p;
+	struct virtio_gpu_resp_edid *resp;
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
+	cmd_p = kzalloc(sizeof(struct virtio_gpu_cmd_get_edid), GFP_KERNEL);
+	resp = kzalloc(sizeof(struct virtio_gpu_resp_edid), GFP_KERNEL);
 
-	if (!cmd_p) {
-		pr_err("memory alloc failed \n");
+	if (!cmd_p || !resp) {
 		rc = -ENOMEM;
 		goto error;
 	}
@@ -910,10 +907,8 @@ int virtio_gpu_cmd_get_edid(struct virtio_kms *kms,
 			le32_to_cpu(resp->size));
 
 error:
-	if (cmd_p)
-		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
+	kfree(cmd_p);
+	kfree(resp);
 	return rc;
 }
 
@@ -1225,6 +1220,10 @@ int virtio_gpu_cmd_get_scanout_planes(struct virtio_kms *kms,
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_SCANOUT_PLANES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	rc = virtio_hab_send_and_recv(hab_socket,
@@ -1252,10 +1251,8 @@ int virtio_gpu_cmd_get_scanout_planes(struct virtio_kms *kms,
 	virtio_get_scanout_planes(kms, scanout, resp);
 
 error:
-	if (cmd_p)
-		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
+	kfree(cmd_p);
+	kfree(resp);
 	return rc;
 }
 
@@ -1583,6 +1580,10 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	pr_debug("virtio: cmd VIRTIO_GPU_CMD_SET_PLANE <%d:%d> (%d)\n",
 			scanout, plane_id, res_id);
 
@@ -1603,10 +1604,8 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 		goto error;
 	}
 error:
-	if (cmd_p)
-		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
+	kfree(cmd_p);
+	kfree(resp);
 
 	return rc;
 }
@@ -1626,6 +1625,10 @@ int virtio_gpu_cmd_plane_create(struct virtio_kms *kms,
 	int rc = 0;
 	uint32_t error_code = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_PLANE_CREATE);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	cmd_p->plane_id = cpu_to_le32(plane_id);
@@ -1652,10 +1655,8 @@ int virtio_gpu_cmd_plane_create(struct virtio_kms *kms,
 				plane_id,
 				error_code);
 error:
-	if (cmd_p)
-		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
+	kfree(cmd_p);
+	kfree(resp);
 
 	return rc;
 }
@@ -1675,6 +1676,10 @@ int virtio_gpu_cmd_plane_destroy(struct virtio_kms *kms,
 	int rc = 0;
 	uint32_t error_code = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	pr_debug("virtio: cmd VIRTIO_GPU_CMD_PLANE_DESTROY <%d : %d>\n",
 			scanout, plane_id);
 
@@ -1703,10 +1708,8 @@ int virtio_gpu_cmd_plane_destroy(struct virtio_kms *kms,
 		pr_err("virtio :plane destroy failed %d\n", error_code);
 
 error:
-	if (cmd_p)
-		kfree(cmd_p);
-	if (resp)
-		kfree(resp);
+	kfree(cmd_p);
+	kfree(resp);
 
 	return rc;
 }
@@ -1726,6 +1729,10 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
 
+	if (!cmd_p || !resp) {
+		rc = -ENOMEM;
+		goto error;
+	}
 	pr_debug("virtio: cmd VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES" \
 			"<%d:%d> (0x%x)\n",
 			scanout, plane_id, prop.mask);
@@ -1784,11 +1791,18 @@ int virtio_gpu_event_kthread(void *d)
 	uint32_t client_id = kms->client_id;
 	uint32_t num_events;
 	uint32_t i = 0;
+	int rc = 0;
 	bool enable;
 	struct mutex hyp_cbchl_lock;
 	mutex_init(&hyp_cbchl_lock);
 
 	buff = kzalloc(sizeof(struct virtio_gpu_resp_event), GFP_KERNEL);
+
+	if (!buff) {
+		rc = -ENOMEM;
+		goto error;
+	}
+
 	while (!kms->stop) {
 
 		memset(buff, 0x00, sizeof(struct virtio_gpu_resp_event));
@@ -1830,9 +1844,9 @@ int virtio_gpu_event_kthread(void *d)
 		}
 	}
 
-	if (buff)
-		kfree(buff);
+error:
+	kfree(buff);
 	ret = habmm_socket_close(kms->channel[client_id].hab_socket[CHANNEL_EVENTS]);
 	pr_debug("virtio: exit event kthread mmid %d\n", kms->mmid_event);
-	return 0;
+	return rc;
 }
