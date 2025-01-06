@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #ifndef __VIRTIO_KMS_H__
 #define __VIRTIO_KMS_H__
@@ -22,6 +22,12 @@ enum virtio_channel_ids {
 	CHANNEL_EVENTS,
 	MAX_CHANNELS
 };
+
+enum virtio_hpd_connection_status {
+	VIRTIO_HPD_DISCONNECT = 1,
+	VIRTIO_HPD_CONNECT
+};
+
 struct scanout_attrib {
 	uint32_t type;
 	uint32_t connection_status;
