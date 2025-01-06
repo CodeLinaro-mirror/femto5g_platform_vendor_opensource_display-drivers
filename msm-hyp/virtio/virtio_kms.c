@@ -1482,6 +1482,17 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	uint32_t modifiers = 0;
 	int idx = 0, num_planes = 0;
 
+	if (fb) {
+		if (!fb->bo) {
+			pr_err("virtio : no bo attached to fb\n");
+			ret = -EINVAL;
+			goto error;
+		}
+	} else {
+		pr_err("virtio : fb NULL\n");
+		ret = -EINVAL;
+		goto error;
+	}
 	num_planes = fb->base.format->num_planes;
 
 	fb_priv = container_of(fb->info, struct virtio_framebuffer_priv, base);
@@ -1998,9 +2009,15 @@ static int _virtio_kms_parse_client_id(struct device_node *node,
 static int virtio_gpu_hab_open(struct virtio_kms *kms)
 {
 	int ret = 0;
-	uint32_t client_id = kms->client_id;
-	if (!kms)
-		pr_err("kms NULL\n");
+	uint32_t client_id = 0;
+
+	if (!kms) {
+		pr_err("virtio : kms NULL\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+	client_id = kms->client_id;
+
 	ret = habmm_socket_open(
 			&kms->channel[client_id].hab_socket[CHANNEL_CMD],
 			kms->mmid_cmd,
