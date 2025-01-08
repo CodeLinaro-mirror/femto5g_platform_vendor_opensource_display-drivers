@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1222,12 +1222,13 @@ static void sde_encoder_phys_vid_te_irq(void *arg, int irq_idx)
 	struct sde_encoder_phys *phys_enc = arg;
 	struct sde_encoder_phys_vid *vid_enc;
 	struct drm_connector *drm_conn;
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_virt *sde_enc;
 	u32 qsync_mode;
 
-	if (!phys_enc)
+	if (!phys_enc || !phys_enc->parent)
 		return;
 
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	drm_conn = sde_enc->cur_master->connector;
 	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);
 	SDE_EVT32(DRMID(phys_enc->parent), irq_idx, qsync_mode,
