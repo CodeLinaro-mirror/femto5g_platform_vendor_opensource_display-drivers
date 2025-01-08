@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -2134,7 +2134,8 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 	/* when reserving a SCC, enable clk gating and do a force-db update */
 	if (sde_enc->cesta_enable_frame) {
-		sde_cesta_force_db_update(sde_enc->cesta_client, false, 0, false, true);
+		sde_cesta_force_db_update(sde_enc->cesta_client, false, 0,
+					false, false, is_cmd);
 		sde_enc->cesta_scc_override = true;
 
 		if (ctl->ops.cesta_scc_reserve)
@@ -2154,7 +2155,7 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 		sde_cesta_force_db_update(sde_enc->cesta_client,
 				ctrl_cfg.auto_active_on_panic,
-				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable, true);
+				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable, false, is_cmd);
 		sde_enc->cesta_scc_override = true;
 	}
 
@@ -4927,15 +4928,15 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	struct sde_encoder_phys *phys_enc = sde_enc->cur_master;
 	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
-	bool req_flush = false, req_scc = false;
+	bool req_flush = false, req_scc = false, is_cmd;
 
-
+	is_cmd = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE);
 	SDE_EVT32(DRMID(drm_enc), sde_enc->cesta_scc_override, SDE_EVTLOG_FUNC_ENTRY);
 
 	if (sde_enc->cesta_client && sde_enc->cesta_scc_override && phys_enc->ops.cesta_ctrl_cfg) {
 		phys_enc->ops.cesta_ctrl_cfg(phys_enc, &ctrl_cfg, &req_flush, &req_scc);
 		sde_cesta_force_db_update(sde_enc->cesta_client, ctrl_cfg.auto_active_on_panic,
-				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable, true);
+				ctrl_cfg.req_mode, ctrl_cfg.hw_sleep_enable, true, is_cmd);
 		sde_enc->cesta_scc_override = false;
 	}
 
