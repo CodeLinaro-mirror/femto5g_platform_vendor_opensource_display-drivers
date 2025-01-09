@@ -953,7 +953,7 @@ static int dsi_pll_read_stored_trim_codes(struct dsi_pll_resource *pll_res,
 	int i;
 	bool found = false;
 
-	if (!pll_res->dfps)
+	if (!pll_res || !pll_res->dfps)
 		return -EINVAL;
 
 	for (i = 0; i < pll_res->dfps->vco_rate_cnt; i++) {
