@@ -473,7 +473,7 @@ enum sde_rm_topology_name sde_rm_get_topology_name(struct sde_rm *rm,
 	return SDE_RM_TOPOLOGY_NONE;
 }
 
-void sde_rm_set_disp_op(struct sde_rm *rm, u32 enc_id, enum msm_disp_op disp_op_idx)
+void sde_rm_set_disp_op(struct sde_rm *rm, enum msm_disp_op disp_op_idx)
 {
 	struct list_head *blk_list;
 	struct sde_rm_hw_blk *blk;
@@ -500,10 +500,8 @@ void sde_rm_set_disp_op(struct sde_rm *rm, u32 enc_id, enum msm_disp_op disp_op_
 				SDE_ERROR("invalid hw blk\n");
 				continue;
 			}
-			struct sde_rm_rsvp *rsvp = blk->rsvp;
 
-			if ((rsvp && rsvp->enc_id == enc_id))
-				blk->hw->disp_op = disp_op_idx;
+			blk->hw->disp_op = disp_op_idx;
 		}
 	}
 	mutex_unlock(&rm->rm_lock);

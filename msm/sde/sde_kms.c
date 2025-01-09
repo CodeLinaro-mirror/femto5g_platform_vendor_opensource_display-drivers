@@ -1457,8 +1457,7 @@ static void sde_kms_commit(struct msm_kms *kms,
 
 	disp_op = sde_kms_get_disp_op(sde_kms);
 	if (sde_kms->hal_ops.trigger_commit[disp_op]) {
-		ret = sde_kms->hal_ops.trigger_commit[disp_op](sde_kms,
-				old_state);
+		ret = sde_kms->hal_ops.trigger_commit[disp_op](sde_kms, old_state);
 		if (ret)
 			SDE_ERROR("fail to trigger commit\n");
 	}
@@ -3512,6 +3511,200 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 	return rc;
 }
 
+static void _sde_kms_idle_helper(struct sde_kms *sde_kms, struct drm_device *dev)
+{
+	int ret, crtc_id = 0;
+	struct drm_connector *conn;
+	struct drm_connector_list_iter conn_iter;
+	struct msm_drm_private *priv = sde_kms->dev->dev_private;
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		if (!conn->state || !conn->state->crtc)
+			continue;
+
+		crtc_id = drm_crtc_index(conn->state->crtc);
+		if (priv->disp_thread[crtc_id].thread)
+			kthread_flush_worker(
+				&priv->disp_thread[crtc_id].worker);
+
+		ret = sde_encoder_wait_for_event(conn->encoder,
+						MSM_ENC_TX_COMPLETE);
+		if (ret && ret != -EWOULDBLOCK) {
+			SDE_ERROR(
+				"[conn: %d] wait for commit done returned %d\n",
+				conn->base.id, ret);
+		} else if (!ret) {
+			if (priv->event_thread[crtc_id].thread)
+				kthread_flush_worker(
+					&priv->event_thread[crtc_id].worker);
+			sde_encoder_idle_request(conn->encoder);
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	msm_atomic_flush_display_threads(priv);
+}
+
+static void sde_kms_set_hw_blks_disp_ctrl(enum msm_disp_op disp_op, struct sde_kms *sde_kms)
+{
+	int itr;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid arguments\n");
+		return;
+	}
+
+	sde_kms->hw_intr->hw.disp_op = disp_op;
+	sde_kms->hw_mdp->hw.disp_op = disp_op;
+	sde_kms->hw_uidle->hw.disp_op = disp_op;
+	for (itr = 0; itr < ARRAY_SIZE(sde_kms->hw_vbif); itr++) {
+		if (sde_kms->hw_vbif[itr])
+			sde_kms->hw_vbif[itr]->hw.disp_op = disp_op;
+	}
+}
+
+int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
+{
+	int rc = 0;
+
+	if (!priv || !dev) {
+		SDE_ERROR("invalid arg");
+		return -EINVAL;
+	}
+
+	rc = hfi_msm_drv_hfi_init(priv);
+	if (rc)
+		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
+
+	rc = hfi_kms_reg_client(dev);
+	if (rc) {
+		SDE_ERROR("error with hfi_kms_reg_client rc: %d\n", rc);
+		kfree(priv->hfi_priv);
+	}
+
+	return rc;
+}
+
+static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
+		struct drm_atomic_state *state)
+{
+	struct sde_kms *sde_kms;
+	struct drm_device *dev;
+	struct msm_drm_private *priv;
+	struct drm_crtc *crtc;
+	struct drm_crtc *cur_crtc = NULL;
+	struct drm_connector *conn;
+	struct drm_connector *cur_conn = NULL;
+	struct drm_connector_list_iter conn_iter;
+	struct sde_connector *c_conn;
+	struct drm_crtc_state *crtc_state;
+	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
+	int i, ret;
+	u32 frame_trigger;
+
+	if (!kms || !state) {
+		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	sde_kms = to_sde_kms(kms);
+	dev = sde_kms->dev;
+	priv = dev->dev_private;
+
+	/* iterate state object for active secure/non-secure crtc */
+	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
+		if (!crtc_state->active)
+			continue;
+		drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+		drm_for_each_connector_iter(conn, &conn_iter) {
+			if (!conn->state || (conn->state->crtc != crtc))
+				continue;
+			if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+				continue;
+
+			cur_conn = conn;
+		}
+		frame_trigger = sde_crtc_get_property(to_sde_crtc_state(crtc->state),
+				CRTC_PROP_DISPLAY_OP);
+		active_crtc_cnt++;
+		cur_crtc = crtc;
+	}
+
+	if (!active_crtc_cnt || !cur_conn) {
+		SDE_DEBUG("No active crtc/connector found: active_crtc_cnt = %d, conn = 0x%pK\n",
+				active_crtc_cnt, conn);
+		goto end;
+	}
+
+	/* If no change in transition then exit early */
+	if (!IS_DISP_OP_HFI(frame_trigger) && !IS_DISP_OP_HFI(sde_kms->frame_trigger_state))
+		goto end;
+
+	/* iterate global list for active and secure/non-secure crtc */
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+		if (!crtc->state->active)
+			continue;
+
+		global_active_crtc_cnt++;
+	}
+
+	/*
+	 * - fail crtc commit, if secure-camera/secure-ui session is
+	 *   in-progress in any other display
+	 * - fail secure-camera/secure-ui crtc commit, if any other display
+	 *   session is in-progress
+	 * - fail crtc commit, if write-back is enabled
+	 */
+	if ((global_active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_HFI) ||
+		    (active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_HFI)) {
+		SDE_ERROR(
+		    "crtc%d secure check failed global_active:%d active:%d\n",
+				cur_crtc ? cur_crtc->base.id : -1,
+				global_active_crtc_cnt, active_crtc_cnt);
+		return -EPERM;
+	}
+
+	/* If no change in transition then exit early */
+	if (IS_DISP_OP_HFI(frame_trigger) && IS_DISP_OP_HFI(sde_kms->frame_trigger_state))
+		goto end;
+
+	c_conn = to_sde_connector(cur_conn);
+	/* Transition from HWIO to HFI */
+	if (!IS_DISP_OP_HFI(sde_kms->frame_trigger_state)) {
+		sde_kms->frame_trigger_state = MSM_DISP_OP_HFI;
+
+		if (sde_kms->hfi_session_start) {
+			ret = sde_kms_setup_hfi(priv, dev);
+			if (ret) {
+				SDE_ERROR("HFI setup failed\n");
+				return -EINVAL;
+			}
+			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
+			sde_kms->hfi_session_start = false;
+		}
+
+		/* Make sure everything goes to idle */
+		_sde_kms_idle_helper(sde_kms, dev);
+		sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
+		sde_kms_set_hw_blks_disp_ctrl(sde_kms->frame_trigger_state, sde_kms);
+		sde_rm_set_disp_op(&sde_kms->rm, sde_kms->frame_trigger_state);
+		c_conn->ops.ctl_pre_transition(c_conn->display);
+
+	/* Transition from HFI to HWIO */
+	} else if (IS_DISP_OP_HFI(sde_kms->frame_trigger_state)) {
+		sde_kms->frame_trigger_state = MSM_DISP_OP_HWIO;
+		_sde_kms_idle_helper(sde_kms, dev);
+		sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
+		sde_kms_set_hw_blks_disp_ctrl(sde_kms->frame_trigger_state, sde_kms);
+		sde_rm_set_disp_op(&sde_kms->rm, sde_kms->frame_trigger_state);
+		c_conn->ops.ctl_post_transition(c_conn->display);
+	}
+
+end:
+	return 0;
+}
+
 static int sde_kms_check_secure_transition(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -3527,8 +3720,8 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 	int i;
 
 	if (!kms || !state) {
-		return -EINVAL;
 		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
 	}
 
 	sde_kms = to_sde_kms(kms);
@@ -3677,28 +3870,6 @@ static int sde_kms_check_cwb_concurreny(struct msm_kms *kms,
 	return 0;
 }
 
-int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
-{
-	int rc = 0;
-
-	if (!priv || !dev) {
-		SDE_ERROR("invalid arg");
-		return -EINVAL;
-	}
-
-	rc = hfi_msm_drv_hfi_init(priv);
-	if (rc)
-		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
-
-	rc = hfi_kms_reg_client(dev);
-	if (rc) {
-		SDE_ERROR("error with hfi_kms_reg_client rc: %d\n", rc);
-		kfree(priv->hfi_priv);
-	}
-
-	return rc;
-}
-
 static int sde_kms_atomic_check(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -3714,17 +3885,6 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	dev = sde_kms->dev;
 
 	SDE_ATRACE_BEGIN("atomic_check");
-	struct msm_drm_private *priv = dev->dev_private;
-
-	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features) &&
-		IS_DISP_OP_HFI(sde_kms->debugfs_display_op) && sde_kms->hfi_session_start) {
-
-		ret = sde_kms_setup_hfi(priv, dev);
-		if (ret)
-			SDE_ERROR("error with sde_kms_setup_hfi rc: %d\n", ret);
-		else
-			sde_kms->hfi_session_start = false;
-	}
 
 	if (sde_kms_is_suspend_blocked(dev)) {
 		SDE_DEBUG("suspended, skip atomic_check\n");
@@ -3752,6 +3912,18 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	if (ret)
 		goto vm_clean_up;
 
+	/*
+	 * Check if any secure transition(moving CRTC between secure and
+	 * non-secure state and vice-versa) is allowed or not. when moving
+	 * to secure state, planes with fb_mode set to dir_translated only can
+	 * be staged on the CRTC, and only one CRTC can be active during
+	 * Secure state
+	 */
+	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features)) {
+		ret = sde_kms_check_frame_trigger_transition(kms, state);
+		if (ret)
+			goto vm_clean_up;
+	}
 
 	ret = sde_kms_check_cwb_concurreny(kms, state);
 	if (ret)
@@ -5849,6 +6021,7 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 		return ERR_PTR(-ENOMEM);
 	}
 
+	sde_kms->hfi_session_start = true;
 	rc = hfi_kms_init(sde_kms);
 	if (rc) {
 		kfree(sde_kms);

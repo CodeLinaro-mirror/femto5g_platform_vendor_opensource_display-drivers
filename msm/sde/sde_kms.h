@@ -119,6 +119,9 @@
 /* max active crtc when secure client is active */
 #define MAX_ALLOWED_CRTC_CNT_DURING_SECURE	1
 
+/* max active crtc when HFI client is active */
+#define MAX_ALLOWED_CRTC_CNT_DURING_HFI	1
+
 /* max virtual encoders per secure crtc */
 #define MAX_ALLOWED_ENCODER_CNT_PER_SECURE_CRTC	1
 
@@ -511,6 +514,7 @@ struct sde_kms {
 	struct sde_kms_hal_funcs hal_ops;
 	bool hfi_session_start;
 	enum msm_disp_op debugfs_display_op;
+	enum msm_disp_op frame_trigger_state;
 };
 
 struct vsync_info {

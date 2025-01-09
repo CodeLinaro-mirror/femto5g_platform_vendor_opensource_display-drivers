@@ -208,6 +208,7 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_HANDLE_FENCE_ERROR,
 	CRTC_PROP_UBWC_CLK,
 	CRTC_PROP_FLUSH_SYNC_EN,
+	CRTC_PROP_DISPLAY_OP,
 
 	/* total # of properties */
 	CRTC_PROP_COUNT

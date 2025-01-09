@@ -900,7 +900,6 @@ static void sde_crtc_event_notify(struct drm_crtc *crtc, uint32_t type, void *pa
 static void sde_crtc_destroy(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
-	struct msm_drm_private *priv;
 	enum msm_disp_op disp_op;
 
 	SDE_DEBUG("\n");
@@ -924,11 +923,8 @@ static void sde_crtc_destroy(struct drm_crtc *crtc)
 	_sde_crtc_deinit_events(sde_crtc);
 
 	disp_op = sde_crtc_get_disp_op(crtc);
-	if (crtc->dev && crtc->dev->dev_private) {
-		priv = crtc->dev->dev_private;
-		if (sde_crtc->hal_ops.destroy[disp_op])
-			sde_crtc->hal_ops.destroy[disp_op](sde_crtc);
-	}
+	if (sde_crtc->hal_ops.destroy[disp_op])
+		sde_crtc->hal_ops.destroy[disp_op](sde_crtc);
 
 	drm_crtc_cleanup(crtc);
 	mutex_destroy(&sde_crtc->crtc_lock);
@@ -5066,8 +5062,8 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 
 	disp_op = sde_crtc_get_disp_op(crtc);
 	if (sde_crtc->hal_ops.atomic_begin[disp_op]) {
-		ret = sde_crtc->hal_ops.atomic_begin[disp_op](sde_crtc,
-				cstate);
+		ret = sde_crtc->hal_ops.atomic_begin[disp_op](sde_crtc, cstate);
+
 		if (ret)
 			SDE_ERROR("atomic_begin HAL op fail, ret: %d\n", ret);
 	}
@@ -7505,6 +7501,12 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		{VM_REQ_ACQUIRE, "vm_req_acquire"},
 	};
 
+	static const struct drm_prop_enum_list e_display_op_idx[] = {
+		{MSM_DISP_OP_HWIO, "disp_op_hwio"},
+		{MSM_DISP_OP_HFI, "disp_op_hfi"},
+		{MSM_DISP_OP_HYP, "disp_op_hyp"},
+	};
+
 	SDE_DEBUG("\n");
 
 	if (!crtc || !catalog) {
@@ -7648,6 +7650,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 	if (test_bit(SDE_FEATURE_UBWC_STATS, catalog->features))
 		msm_property_install_range(&sde_crtc->property_info, "frame_data",
 				0x0, 0, ~0, 0, CRTC_PROP_FRAME_DATA_BUF);
+
+	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features))
+		msm_property_install_enum(&sde_crtc->property_info,
+			"display_op_idx", 0, 0, e_display_op_idx, ARRAY_SIZE(e_display_op_idx), 0,
+			CRTC_PROP_DISPLAY_OP);
 
 	vfree(info);
 }
@@ -8346,8 +8353,8 @@ static ssize_t _sde_crtc_misr_setup(struct file *file,
 
 	disp_op = sde_crtc_get_disp_op(crtc);
 	if (sde_crtc->hal_ops.debugfs_misr_setup[disp_op]) {
-		ret = sde_crtc->hal_ops.debugfs_misr_setup[disp_op](
-				sde_crtc);
+		ret = sde_crtc->hal_ops.debugfs_misr_setup[disp_op](sde_crtc);
+
 		if (ret)
 			SDE_ERROR("Failed to setup MISR\n");
 	}
@@ -8375,14 +8382,14 @@ static ssize_t _sde_crtc_misr_read(struct file *file,
 
 	sde_crtc = file->private_data;
 	crtc = &sde_crtc->base;
-	disp_op = sde_crtc_get_disp_op(crtc);
 	sde_kms = _sde_crtc_get_kms(crtc);
 	if (!sde_kms)
 		return -EINVAL;
 
+	disp_op = sde_crtc_get_disp_op(crtc);
 	if (sde_crtc->hal_ops.debugfs_misr_read[disp_op]) {
-		rc = sde_crtc->hal_ops.debugfs_misr_read[disp_op](
-				sde_crtc);
+		rc = sde_crtc->hal_ops.debugfs_misr_read[disp_op](sde_crtc);
+
 		if (rc)
 			SDE_ERROR("debugfs_misr_read failed, rc: %d\n", rc);
 	}

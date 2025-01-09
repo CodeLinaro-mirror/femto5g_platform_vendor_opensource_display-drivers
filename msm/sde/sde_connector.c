@@ -1934,7 +1934,6 @@ int sde_connector_clk_get_rate_esync(struct drm_connector *connector,
 void sde_connector_destroy(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
-	struct msm_drm_private *priv;
 	enum msm_disp_op disp_op;
 
 	if (!connector) {
@@ -1975,11 +1974,8 @@ void sde_connector_destroy(struct drm_connector *connector)
 	msm_property_destroy(&c_conn->property_info);
 
 	disp_op = sde_connector_get_disp_op(connector);
-	if (connector->dev && connector->dev->dev_private) {
-		priv = connector->dev->dev_private;
-		if (c_conn->hal_ops.destroy[disp_op])
-			c_conn->hal_ops.destroy[disp_op](c_conn);
-	}
+	if (c_conn->hal_ops.destroy[disp_op])
+		c_conn->hal_ops.destroy[disp_op](c_conn);
 	kfree(c_conn);
 }
 

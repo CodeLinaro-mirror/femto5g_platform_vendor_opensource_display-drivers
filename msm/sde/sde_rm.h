@@ -241,10 +241,9 @@ enum sde_rm_topology_name sde_rm_get_topology_name(struct sde_rm *rm,
 /**
  * sde_rm_set_disp_op - set display control op index for all the hw blocks accessible through rm
  * @rm: SDE resource manager handle
- * @enc_id: DRM ID of Encoder client wishes to search for
  * @disp_op_idx: value of display control op index after transition
  */
-void sde_rm_set_disp_op(struct sde_rm *rm, uint32_t enc_id, enum msm_disp_op disp_op_idx);
+void sde_rm_set_disp_op(struct sde_rm *rm, enum msm_disp_op disp_op_idx);
 
 /**
  * sde_rm_debugfs_init - setup debugfs node for rm module
