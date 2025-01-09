@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -4011,6 +4011,84 @@ error:
 	return rc;
 }
 
+static int dsi_panel_parse_name(struct dsi_panel *panel,
+				  struct dsi_parser_utils *utils)
+{
+	int rc = 0, size;
+	char *panel_type;
+	bool is_panel_xr;
+	char *new_panel_name = NULL;
+
+	panel->name = utils->get_property(utils->data, "qcom,mdss-dsi-panel-name", &size);
+	is_panel_xr = utils->read_bool(utils->data, "qcom,mdss-dsi-panel-xr");
+
+	if (is_panel_xr) {
+		panel_type = (!strcmp(panel->type, "primary") ? " left" : " right");
+
+		size += strlen(panel_type);
+
+		new_panel_name = devm_kzalloc(panel->parent, size, GFP_KERNEL);
+		if (!new_panel_name) {
+			rc = -ENOMEM;
+			return rc;
+		}
+
+		strscpy(new_panel_name, panel->name, size);
+		strlcat(new_panel_name, panel_type, size);
+		panel->name = new_panel_name;
+	} else if (!strcmp(panel->type, "secondary")) {
+		panel_type = "_secondary";
+
+		size += strlen(panel_type);
+
+		new_panel_name = devm_kzalloc(panel->parent, size, GFP_KERNEL);
+		if (!new_panel_name) {
+			rc = -ENOMEM;
+			return rc;
+		}
+
+		strscpy(new_panel_name, panel->name, size);
+		strlcat(new_panel_name, panel_type, size);
+		panel->name = new_panel_name;
+	}
+
+	if (!panel->name)
+		panel->name = DSI_PANEL_DEFAULT_LABEL;
+	return rc;
+}
+
+static int dsi_panel_parse_caps(struct dsi_panel *panel,
+				struct device_node *of_node)
+{
+	int rc = 0;
+
+	rc = dsi_panel_parse_dfps_caps(panel);
+	if (rc)
+		DSI_ERR("failed to parse dfps configuration, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_qsync_caps(panel, of_node);
+	if (rc)
+		DSI_DEBUG("failed to parse qsync features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_avr_caps(panel, of_node);
+	if (rc)
+		DSI_ERR("failed to parse AVR features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_esync_caps(panel, of_node);
+	if (rc)
+		DSI_ERR("failed to parse esync features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_vrr_caps(panel, of_node);
+	if (rc)
+		DSI_DEBUG("failed to parse VRR features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_dyn_clk_caps(panel);
+	if (rc)
+		DSI_ERR("failed to parse dynamic clk config, rc=%d\n", rc);
+
+	return rc;
+}
+
 static void dsi_panel_update_util(struct dsi_panel *panel,
 				  struct device_node *parser_node)
 {
@@ -4071,9 +4149,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	struct dsi_panel *panel;
 	struct dsi_parser_utils *utils;
 	const char *panel_physical_type;
-	int rc = 0, size;
-	char *new_panel_name = NULL, *panel_type;
-	bool is_panel_xr;
+	int rc = 0;
 
 	panel = kzalloc(sizeof(*panel), GFP_KERNEL);
 	if (!panel)
@@ -4088,42 +4164,12 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	dsi_panel_update_util(panel, parser_node);
 	utils = &panel->utils;
 
-	panel->name = utils->get_property(utils->data, "qcom,mdss-dsi-panel-name", &size);
-
-	is_panel_xr = utils->read_bool(utils->data, "qcom,mdss-dsi-panel-xr");
-
-	if (is_panel_xr) {
-		panel_type = (!strcmp(panel->type, "primary") ? " left" : " right");
-
-		size += strlen(panel_type);
-
-		new_panel_name = kzalloc(size, GFP_KERNEL);
-		if (!new_panel_name) {
-			rc = -ENOMEM;
-			goto error;
-		}
-
-		strscpy(new_panel_name, panel->name, size);
-		strlcat(new_panel_name, panel_type, size);
-		panel->name = new_panel_name;
-	} else if (!strcmp(panel->type, "secondary")) {
-		panel_type = "_secondary";
-
-		size += strlen(panel_type);
-
-		new_panel_name = kzalloc(size, GFP_KERNEL);
-		if (!new_panel_name) {
-			rc = -ENOMEM;
-			goto error;
-		}
-
-		strscpy(new_panel_name, panel->name, size);
-		strlcat(new_panel_name, panel_type, size);
-		panel->name = new_panel_name;
+	rc = dsi_panel_parse_name(panel, utils);
+	if (rc) {
+		DSI_ERR("failed to parse panel name, rc=%d\n",
+				rc);
+		goto error;
 	}
-
-	if (!panel->name)
-		panel->name = DSI_PANEL_DEFAULT_LABEL;
 
 	/*
 	 * Set panel type to LCD as default.
@@ -4151,29 +4197,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 		goto error;
 	}
 
-	rc = dsi_panel_parse_dfps_caps(panel);
+	rc = dsi_panel_parse_caps(panel, of_node);
 	if (rc)
-		DSI_ERR("failed to parse dfps configuration, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_qsync_caps(panel, of_node);
-	if (rc)
-		DSI_DEBUG("failed to parse qsync features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_avr_caps(panel, of_node);
-	if (rc)
-		DSI_ERR("failed to parse AVR features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_esync_caps(panel, of_node);
-	if (rc)
-		DSI_ERR("failed to parse esync features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_vrr_caps(panel, of_node);
-	if (rc)
-		DSI_DEBUG("failed to parse VRR features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_dyn_clk_caps(panel);
-	if (rc)
-		DSI_ERR("failed to parse dynamic clk config, rc=%d\n", rc);
+		DSI_ERR("failed to parse panel caps, rc=%d\n", rc);
 
 	rc = dsi_panel_parse_phy_props(panel);
 	if (rc) {
@@ -4239,7 +4265,6 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 
 	return panel;
 error:
-	kfree(new_panel_name);
 	kfree(panel);
 	return ERR_PTR(rc);
 }
