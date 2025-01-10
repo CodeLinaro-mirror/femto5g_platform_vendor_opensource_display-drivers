@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
@@ -1482,13 +1482,7 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	uint32_t modifiers = 0;
 	int idx = 0, num_planes = 0;
 
-	if (fb) {
-		if (!fb->bo) {
-			pr_err("virtio : no bo attached to fb\n");
-			ret = -EINVAL;
-			goto error;
-		}
-	} else {
+	if (!fb) {
 		pr_err("virtio : fb NULL\n");
 		ret = -EINVAL;
 		goto error;
