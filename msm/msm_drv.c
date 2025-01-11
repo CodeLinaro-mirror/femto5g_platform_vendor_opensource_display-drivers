@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -99,6 +99,7 @@
 
 static DEFINE_MUTEX(msm_release_lock);
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 static void msm_fb_output_poll_changed(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = NULL;
@@ -113,6 +114,7 @@ static void msm_fb_output_poll_changed(struct drm_device *dev)
 	if (priv->fbdev)
 		drm_fb_helper_hotplug_event(priv->fbdev);
 }
+#endif
 
 static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
 {
@@ -163,7 +165,9 @@ int msm_atomic_check(struct drm_device *dev,
 
 static const struct drm_mode_config_funcs mode_config_funcs = {
 	.fb_create = msm_framebuffer_create,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.output_poll_changed = msm_fb_output_poll_changed,
+#endif
 	.atomic_check = msm_atomic_check,
 	.atomic_commit = msm_atomic_commit,
 	.atomic_state_alloc = msm_atomic_state_alloc,
@@ -1131,33 +1135,6 @@ static void msm_preclose(struct drm_device *dev, struct drm_file *file)
 		kms->funcs->preclose(kms, file);
 }
 
-static void msm_postclose(struct drm_device *dev, struct drm_file *file)
-{
-	struct msm_drm_private *priv = dev->dev_private;
-	struct msm_file_private *ctx = file->driver_priv;
-	struct msm_kms *kms = priv->kms;
-
-	if (!kms)
-		return;
-
-	if (kms->funcs && kms->funcs->postclose)
-		kms->funcs->postclose(kms, file);
-
-	mutex_lock(&dev->struct_mutex);
-	if (ctx == priv->lastctx)
-		priv->lastctx = NULL;
-	mutex_unlock(&dev->struct_mutex);
-
-	mutex_lock(&ctx->power_lock);
-	if (ctx->enable_refcnt) {
-		SDE_EVT32(ctx->enable_refcnt);
-		pm_runtime_put_sync(dev->dev);
-	}
-	mutex_unlock(&ctx->power_lock);
-
-	context_close(ctx);
-}
-
 static void msm_lastclose(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
@@ -1228,6 +1205,39 @@ static void msm_lastclose(struct drm_device *dev)
 
 	if (kms->funcs && kms->funcs->lastclose)
 		kms->funcs->lastclose(kms);
+}
+
+static void msm_postclose(struct drm_device *dev, struct drm_file *file)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_file_private *ctx = file->driver_priv;
+	struct msm_kms *kms = priv->kms;
+
+	if (!kms)
+		return;
+
+	if (kms->funcs && kms->funcs->postclose)
+		kms->funcs->postclose(kms, file);
+
+	mutex_lock(&dev->struct_mutex);
+	if (ctx == priv->lastctx)
+		priv->lastctx = NULL;
+	mutex_unlock(&dev->struct_mutex);
+
+	mutex_lock(&ctx->power_lock);
+	if (ctx->enable_refcnt) {
+		SDE_EVT32(ctx->enable_refcnt);
+		pm_runtime_put_sync(dev->dev);
+	}
+	mutex_unlock(&ctx->power_lock);
+
+	context_close(ctx);
+
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	if (atomic_read(&dev->open_count) == 1)
+		msm_lastclose(dev);
+#endif
+
 }
 
 /*
@@ -1906,7 +1916,9 @@ static const struct file_operations fops = {
 	.compat_ioctl       = drm_compat_ioctl,
 	.poll               = drm_poll,
 	.read               = drm_read,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.llseek             = no_llseek,
+#endif
 	.mmap               = msm_gem_mmap,
 };
 
@@ -1917,7 +1929,9 @@ static struct drm_driver msm_driver = {
 				DRIVER_MODESET,
 	.open               = msm_open,
 	.postclose          = msm_postclose,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.lastclose          = msm_lastclose,
+#endif
 	.release	    = msm_drm_release,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	.irq_handler        = msm_irq,
