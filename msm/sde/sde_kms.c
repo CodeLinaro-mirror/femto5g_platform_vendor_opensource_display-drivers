@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -2563,10 +2563,7 @@ static int sde_kms_postinit(struct msm_kms *kms)
 				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
 
 		sde_cesta_splash_release(DPUID(sde_kms->dev));
-
-		/* Temporary change to avoid power-collapse for canoe target */
-		if (SDE_HW_MAJOR(sde_kms->catalog->hw_rev) < SDE_HW_MAJOR(SDE_HW_VER_D00))
-			pm_runtime_put_sync(sde_kms->dev->dev);
+		pm_runtime_put_sync(sde_kms->dev->dev);
 	}
 
 	rc = _sde_debugfs_init(sde_kms);
