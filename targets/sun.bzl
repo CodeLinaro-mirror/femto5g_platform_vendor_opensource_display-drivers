@@ -1,9 +1,9 @@
 load(":display_modules.bzl", "display_driver_modules")
 load(":display_driver_build.bzl", "define_target_variant_modules")
-load("//msm-kernel:target_variants.bzl", "get_all_la_variants")
+load(":target_variants.bzl", "get_all_variants")
 
 def define_sun():
-    for (t, v) in get_all_la_variants():
+    for (t, v) in get_all_variants():
         if t == "sun":
             define_target_variant_modules(
                 target = t,
@@ -30,6 +30,6 @@ def define_sun():
                     "CONFIG_QTI_HW_FENCE",
                     "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_MSM_EXT_DISPLAY",
-                    "CONFIG_DRM_SDE_CESTA"
+                    "CONFIG_DRM_SDE_CESTA",
                 ],
             )

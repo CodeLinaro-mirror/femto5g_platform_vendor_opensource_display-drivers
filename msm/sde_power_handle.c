@@ -20,6 +20,8 @@
 #include <linux/sde_io_util.h>
 #include <linux/sde_rsc.h>
 #include <linux/version.h>
+#include <linux/pm_runtime.h>
+#include <linux/pm_domain.h>
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 #include <synx_api.h>
 #endif /* CONFIG_QTI_HW_FENCE */
@@ -36,11 +38,6 @@
 #define SDE_MMRM_CB_TIMEOUT_MS		2000
 #define SDE_MMRM_CB_TIMEOUT_JIFFIES  msecs_to_jiffies( \
 		SDE_MMRM_CB_TIMEOUT_MS)
-
-enum supply_vreg_type {
-	PRE_CORE_ENABLE_VREG  = 0,
-	POST_CORE_ENABLE_VREG,
-};
 
 static const char *data_bus_name[SDE_POWER_HANDLE_DBUS_ID_MAX] = {
 	[SDE_POWER_HANDLE_DBUS_ID_MNOC] = "qcom,sde-data-bus",
@@ -104,55 +101,40 @@ static int sde_power_rsc_update(struct sde_power_handle *phandle, bool enable)
 }
 
 static int sde_power_parse_dt_supply(struct platform_device *pdev,
-				struct dss_module_power *mp, enum supply_vreg_type vreg_type)
+				struct dss_module_power *mp)
 {
 	int i = 0, rc = 0;
 	u32 tmp = 0;
 	struct device_node *of_node = NULL, *supply_root_node = NULL;
 	struct device_node *supply_node = NULL;
-	unsigned int *supply_num_vreg;
-	struct dss_vreg **supply_vreg_config;
-	const char *supply_name;
 
 	if (!pdev || !mp) {
 		pr_err("invalid input param pdev:%pK mp:%pK\n", pdev, mp);
 		return -EINVAL;
 	}
 
-	if (vreg_type == PRE_CORE_ENABLE_VREG) {
-		supply_num_vreg = &(mp->num_vreg);
-		supply_vreg_config = &(mp->vreg_config);
-		supply_name = "qcom,platform-supply-entries";
-	} else if (vreg_type == POST_CORE_ENABLE_VREG) {
-		supply_num_vreg = &(mp->num_post_vreg);
-		supply_vreg_config = &(mp->post_vreg_config);
-		supply_name = "qcom,platform-post-core-supply-entries";
-	} else {
-		pr_err("invalid supply type\n");
-		return -EINVAL;
-	}
-
 	of_node = pdev->dev.of_node;
 
-	(*supply_num_vreg) = 0;
-	supply_root_node = of_get_child_by_name(of_node, supply_name);
+	mp->num_vreg = 0;
+	supply_root_node = of_get_child_by_name(of_node,
+						"qcom,platform-supply-entries");
 	if (!supply_root_node) {
-		pr_debug("%s not present\n", supply_name);
+		pr_debug("no supply entry present\n");
 		return rc;
 	}
 
 	for_each_child_of_node(supply_root_node, supply_node)
-		(*supply_num_vreg)++;
+		mp->num_vreg++;
 
-	if ((*supply_num_vreg) == 0) {
+	if (mp->num_vreg == 0) {
 		pr_debug("no vreg\n");
 		return rc;
 	}
 
-	pr_debug("vreg found. count=%d\n", (*supply_num_vreg));
-	(*supply_vreg_config) = devm_kzalloc(&pdev->dev, sizeof(struct dss_vreg) *
-						(*supply_num_vreg), GFP_KERNEL);
-	if (!(*supply_vreg_config)) {
+	pr_debug("vreg found. count=%d\n", mp->num_vreg);
+	mp->vreg_config = devm_kzalloc(&pdev->dev, sizeof(struct dss_vreg) *
+						mp->num_vreg, GFP_KERNEL);
+	if (!mp->vreg_config) {
 		rc = -ENOMEM;
 		return rc;
 	}
@@ -168,8 +150,8 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			goto error;
 		}
 
-		strscpy((*supply_vreg_config)[i].vreg_name, st,
-					sizeof((*supply_vreg_config)[i].vreg_name));
+		strscpy(mp->vreg_config[i].vreg_name, st,
+					sizeof(mp->vreg_config[i].vreg_name));
 
 		rc = of_property_read_u32(supply_node,
 					"qcom,supply-min-voltage", &tmp);
@@ -177,7 +159,7 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			pr_err("error reading min volt. rc=%d\n", rc);
 			goto error;
 		}
-		(*supply_vreg_config)[i].min_voltage = tmp;
+		mp->vreg_config[i].min_voltage = tmp;
 
 		rc = of_property_read_u32(supply_node,
 					"qcom,supply-max-voltage", &tmp);
@@ -185,7 +167,7 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			pr_err("error reading max volt. rc=%d\n", rc);
 			goto error;
 		}
-		(*supply_vreg_config)[i].max_voltage = tmp;
+		mp->vreg_config[i].max_voltage = tmp;
 
 		rc = of_property_read_u32(supply_node,
 					"qcom,supply-enable-load", &tmp);
@@ -193,7 +175,7 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			pr_err("error reading enable load. rc=%d\n", rc);
 			goto error;
 		}
-		(*supply_vreg_config)[i].enable_load = tmp;
+		mp->vreg_config[i].enable_load = tmp;
 
 		rc = of_property_read_u32(supply_node,
 					"qcom,supply-disable-load", &tmp);
@@ -201,7 +183,7 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			pr_err("error reading disable load. rc=%d\n", rc);
 			goto error;
 		}
-		(*supply_vreg_config)[i].disable_load = tmp;
+		mp->vreg_config[i].disable_load = tmp;
 
 		rc = of_property_read_u32(supply_node,
 					"qcom,supply-pre-on-sleep", &tmp);
@@ -209,7 +191,7 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			pr_debug("error reading supply pre sleep value. rc=%d\n",
 							rc);
 
-		(*supply_vreg_config)[i].pre_on_sleep = (!rc ? tmp : 0);
+		mp->vreg_config[i].pre_on_sleep = (!rc ? tmp : 0);
 
 		rc = of_property_read_u32(supply_node,
 					"qcom,supply-pre-off-sleep", &tmp);
@@ -217,7 +199,7 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			pr_debug("error reading supply pre sleep value. rc=%d\n",
 							rc);
 
-		(*supply_vreg_config)[i].pre_off_sleep = (!rc ? tmp : 0);
+		mp->vreg_config[i].pre_off_sleep = (!rc ? tmp : 0);
 
 		rc = of_property_read_u32(supply_node,
 					"qcom,supply-post-on-sleep", &tmp);
@@ -225,7 +207,7 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			pr_debug("error reading supply post sleep value. rc=%d\n",
 							rc);
 
-		(*supply_vreg_config)[i].post_on_sleep = (!rc ? tmp : 0);
+		mp->vreg_config[i].post_on_sleep = (!rc ? tmp : 0);
 
 		rc = of_property_read_u32(supply_node,
 					"qcom,supply-post-off-sleep", &tmp);
@@ -233,18 +215,18 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			pr_debug("error reading supply post sleep value. rc=%d\n",
 							rc);
 
-		(*supply_vreg_config)[i].post_off_sleep = (!rc ? tmp : 0);
+		mp->vreg_config[i].post_off_sleep = (!rc ? tmp : 0);
 
 		pr_debug("%s min=%d, max=%d, enable=%d, disable=%d, preonsleep=%d, postonsleep=%d, preoffsleep=%d, postoffsleep=%d\n",
-					(*supply_vreg_config)[i].vreg_name,
-					(*supply_vreg_config)[i].min_voltage,
-					(*supply_vreg_config)[i].max_voltage,
-					(*supply_vreg_config)[i].enable_load,
-					(*supply_vreg_config)[i].disable_load,
-					(*supply_vreg_config)[i].pre_on_sleep,
-					(*supply_vreg_config)[i].post_on_sleep,
-					(*supply_vreg_config)[i].pre_off_sleep,
-					(*supply_vreg_config)[i].post_off_sleep);
+					mp->vreg_config[i].vreg_name,
+					mp->vreg_config[i].min_voltage,
+					mp->vreg_config[i].max_voltage,
+					mp->vreg_config[i].enable_load,
+					mp->vreg_config[i].disable_load,
+					mp->vreg_config[i].pre_on_sleep,
+					mp->vreg_config[i].post_on_sleep,
+					mp->vreg_config[i].pre_off_sleep,
+					mp->vreg_config[i].post_off_sleep);
 		++i;
 
 		rc = 0;
@@ -253,7 +235,11 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 	return rc;
 
 error:
-	(*supply_num_vreg) = 0;
+	if (mp->vreg_config) {
+		mp->vreg_config = NULL;
+		mp->num_vreg = 0;
+	}
+
 	return rc;
 }
 
@@ -728,6 +714,122 @@ static int sde_power_parse_dt_hwfence_soccp(struct platform_device *pdev,
 	return rc;
 }
 
+/**
+ * @brief Manages the power domain of a device.
+ *
+ * This function enables or disables the specified power domain of a device.
+ *
+ * @param phandle A pointer to the power handle structure.
+ * @param power_domain_id ID of the power domain to be managed.
+ * @param enable Boolean to enable (true) or disable (false) the power domain.
+ * @return int 0 on success, negative error code on failure.
+ *
+ * @details
+ * - **Single Power Domain:** If the device has only one power domain,
+ *		it is automatically managed by the core framework.
+ *		No need to attach it manually.
+ *- **Multiple Power Domains:** If the device has multiple power domains,
+ *		each must be attached and managed individually.
+ */
+static int sde_power_enable_power_domain(struct sde_power_handle *phandle,
+	enum sde_power_domain_id power_domain_id, bool enable)
+{
+	int ret;
+	struct device *pd;
+	struct sde_power_domain_handle *pd_handle;
+	char *pm_domain_name;
+
+	/* Only proceed on multiple power domains */
+	if (phandle->num_power_domains <= 1)
+		return 0;
+
+	switch (power_domain_id) {
+	case SDE_POWER_PD_ID_GDSC:
+		pm_domain_name = "core_gdsc";
+		break;
+	case SDE_POWER_PD_ID_INT2_GDSC:
+		pm_domain_name = "core_int2_gdsc";
+		break;
+	default:
+		pr_err("invalid power domain id\n");
+		return -EINVAL;
+	}
+
+	pd_handle = &(phandle->power_domain_handles[power_domain_id]);
+
+	/* Attaching if not attached */
+	if (atomic_read(&pd_handle->attached) == 0) {
+		if (!enable) {
+			atomic_set(&pd_handle->enabled, 0);
+			return 0;
+		}
+
+		pd_handle->dev = dev_pm_domain_attach_by_name(phandle->dev, pm_domain_name);
+		if (IS_ERR_OR_NULL(pd_handle->dev)) {
+			ret = PTR_ERR(pd_handle->dev);
+			if (ret != -EEXIST) {
+				pr_err("failed to attach %s: %d\n", pm_domain_name, ret);
+				return ret;
+			}
+		}
+
+		atomic_set(&pd_handle->attached, 1);
+	}
+
+	pd = pd_handle->dev;
+
+	/* Enable or disable */
+	if (enable) {
+		if (atomic_read(&pd_handle->enabled) == 1)
+			return 0;
+
+		ret = pm_runtime_get_sync(pd); /* Enables pd if it exists */
+		if (ret < 0) {
+			pr_err("failed to enable runtime PM for %s: %d\n",
+				pm_domain_name, ret);
+			return ret;
+		}
+
+		atomic_set(&pd_handle->enabled, 1);
+	} else {
+		if (atomic_read(&pd_handle->enabled) == 0)
+			return 0;
+
+		ret = pm_runtime_put_sync(pd); /* Disables pd */
+		if (ret < 0 && ret != -EEXIST) {
+			pr_err("failed to disable runtime PM for %s: %d\n",
+				pm_domain_name, ret);
+			return ret;
+		}
+
+		atomic_set(&pd_handle->enabled, 0);
+	}
+
+	return 0;
+}
+
+static int sde_power_update_power_domains_count(struct sde_power_handle *phandle)
+{
+	int num_power_domains;
+
+	num_power_domains = of_count_phandle_with_args(phandle->dev->of_node,
+		"power-domains", "#power-domain-cells");
+	if (num_power_domains < 0) {
+		if (num_power_domains == -ENOENT) {
+			pr_debug("no power domains found in the device tree\n");
+			phandle->num_power_domains = 0;
+			return 0;
+		}
+
+		pr_err("failed to count power domains: %d\n", num_power_domains);
+		return num_power_domains;
+	}
+
+	phandle->num_power_domains = num_power_domains;
+
+	return 0;
+}
+
 int sde_power_resource_init(struct platform_device *pdev,
 	struct sde_power_handle *phandle)
 {
@@ -751,7 +853,7 @@ int sde_power_resource_init(struct platform_device *pdev,
 		goto end;
 	}
 
-	rc = sde_power_parse_dt_supply(pdev, mp, PRE_CORE_ENABLE_VREG);
+	rc = sde_power_parse_dt_supply(pdev, mp);
 	if (rc) {
 		pr_err("device vreg supply parsing failed\n");
 		goto parse_vreg_err;
@@ -764,17 +866,10 @@ int sde_power_resource_init(struct platform_device *pdev,
 		goto vreg_err;
 	}
 
-	/* Post core vregs */
-	rc = sde_power_parse_dt_supply(pdev, mp, POST_CORE_ENABLE_VREG);
+	rc = sde_power_update_power_domains_count(phandle);
 	if (rc) {
-		pr_err("device post vreg supply parsing failed\n");
-		goto parse_post_vreg_err;
-	}
-
-	rc = msm_dss_get_vreg(&pdev->dev, mp->post_vreg_config, mp->num_post_vreg, 1);
-	if (rc) {
-		pr_err("get config failed rc=%d\n", rc);
-		goto post_vreg_err;
+		pr_err("count powerdomains failed rc=%d\n", rc);
+		goto pd_err;
 	}
 
 	rc = msm_dss_get_clk(&pdev->dev, mp->clk_config, mp->num_clk);
@@ -823,11 +918,9 @@ clkset_err:
 clkmmrm_err:
 	msm_dss_put_clk(mp->clk_config, mp->num_clk);
 clkget_err:
-	msm_dss_get_vreg(&pdev->dev, mp->post_vreg_config, mp->num_post_vreg, 0);
-post_vreg_err:
-	mp->num_post_vreg = 0;
-parse_post_vreg_err:
 	msm_dss_get_vreg(&pdev->dev, mp->vreg_config, mp->num_vreg, 0);
+pd_err:
+	phandle->num_power_domains = 0;
 vreg_err:
 	if (mp->vreg_config)
 		devm_kfree(&pdev->dev, mp->vreg_config);
@@ -869,8 +962,6 @@ void sde_power_resource_deinit(struct platform_device *pdev,
 
 	msm_dss_put_clk(mp->clk_config, mp->num_clk);
 
-	msm_dss_get_vreg(&pdev->dev, mp->post_vreg_config, mp->num_post_vreg, 0);
-
 	msm_dss_get_vreg(&pdev->dev, mp->vreg_config, mp->num_vreg, 0);
 
 	if (mp->clk_config)
@@ -881,7 +972,10 @@ void sde_power_resource_deinit(struct platform_device *pdev,
 
 	mp->num_vreg = 0;
 	mp->num_clk = 0;
-	mp->num_post_vreg = 0;
+
+	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
+
+	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_GDSC, false);
 
 	if (phandle->rsc_client)
 		sde_rsc_client_destroy(phandle->rsc_client);
@@ -982,18 +1076,22 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 			goto bus_err;
 		}
 
+		rc = sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_GDSC, true);
+		if (rc) {
+			pr_err("failed to enable core_gdsc rc=%d\n", rc);
+			goto core_gdsc_err;
+		}
+
 		rc = sde_cesta_resource_enable(SDE_CESTA_INDEX);
 		if (rc) {
 			pr_err("failed to enable sde cesta\n");
 			goto cesta_err;
 		}
 
-		/* Post core vregs */
-		rc = msm_dss_enable_vreg(mp->post_vreg_config, mp->num_post_vreg,
-				enable);
+		rc = sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, true);
 		if (rc) {
-			pr_err("failed to enable post vregs rc=%d\n", rc);
-			goto post_vreg_err;
+			pr_err("failed to enable core_int2_gdsc rc=%d\n", rc);
+			goto core_int2_gdsc_err;
 		}
 
 		rc = sde_power_scale_reg_bus(phandle, VOTE_INDEX_LOW, true);
@@ -1050,9 +1148,11 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 
 		sde_power_scale_reg_bus(phandle, VOTE_INDEX_DISABLE, true);
 
-		msm_dss_enable_vreg(mp->post_vreg_config, mp->num_post_vreg, enable);
+		sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
 
 		sde_cesta_resource_disable(SDE_CESTA_INDEX);
+
+		sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_GDSC, false);
 
 		msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, enable);
 
@@ -1077,11 +1177,13 @@ clk_err:
 rsc_err:
 	sde_power_scale_reg_bus(phandle, VOTE_INDEX_DISABLE, true);
 reg_bus_hdl_err:
-	msm_dss_enable_vreg(mp->post_vreg_config, mp->num_post_vreg, 0);
-post_vreg_err:
 	sde_cesta_resource_disable(SDE_CESTA_INDEX);
+core_int2_gdsc_err:
+	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
 cesta_err:
 	msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, 0);
+core_gdsc_err:
+	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_GDSC, false);
 bus_err:
 	for (i-- ; i >= 0 && phandle->data_bus_handle[i].data_paths_cnt > 0; i--)
 		_sde_power_data_bus_set_quota(

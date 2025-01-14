@@ -1,9 +1,9 @@
 load(":display_modules.bzl", "display_driver_modules")
 load(":display_driver_build.bzl", "define_target_variant_modules")
-load("//msm-kernel:target_variants.bzl", "get_all_la_variants")
+load(":target_variants.bzl", "get_all_variants")
 
 def define_canoe():
-    for (t, v) in get_all_la_variants():
+    for (t, v) in get_all_variants():
         if t == "canoe":
             define_target_variant_modules(
                 target = t,
@@ -16,6 +16,8 @@ def define_canoe():
                     "CONFIG_DRM_MSM_SDE",
                     "CONFIG_SYNC_FILE",
                     "CONFIG_DRM_MSM_DSI",
+                    "CONFIG_DRM_MSM_DP",
+                    "CONFIG_DRM_MSM_DP_MST",
                     "CONFIG_DSI_PARSER",
                     "CONFIG_DRM_SDE_WB",
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",
@@ -25,6 +27,7 @@ def define_canoe():
                     "CONFIG_THERMAL_OF",
                     "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_MSM_EXT_DISPLAY",
-                    "CONFIG_DRM_SDE_CESTA"
+                    "CONFIG_DRM_SDE_CESTA",
+                    "CONFIG_QTI_HW_FENCE"
                 ],
             )

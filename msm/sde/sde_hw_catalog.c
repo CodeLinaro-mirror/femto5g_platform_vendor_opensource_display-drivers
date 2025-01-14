@@ -187,6 +187,7 @@
 enum {
 	SDE_HW_VERSION,
 	SDE_HW_FENCE_VERSION,
+	SDE_HW_UBWC_VERSION,
 	SDE_HW_PROP_MAX,
 };
 
@@ -208,7 +209,6 @@ enum sde_prop {
 	WB_LINEWIDTH,
 	WB_LINEWIDTH_LINEAR,
 	BANK_BIT,
-	UBWC_VERSION,
 	UBWC_STATIC,
 	UBWC_SWIZZLE,
 	QSEED_SW_LIB_REV,
@@ -237,6 +237,7 @@ enum sde_prop {
 	SOCCP_PH,
 	HW_FENCE_MDP_OFFSET,
 	IPCC_PROTOCOL_OFFSET,
+	IPCC_CLIENT_OUT_PHYS_ID,
 	SDE_PROP_MAX,
 };
 
@@ -633,6 +634,7 @@ struct sde_dt_props {
 static struct sde_prop_type sde_hw_prop[] = {
 	{SDE_HW_VERSION, "qcom,sde-hw-version", false, PROP_TYPE_U32},
 	{SDE_HW_FENCE_VERSION, "qcom,hw-fence-sw-version", false, PROP_TYPE_U32},
+	{SDE_HW_UBWC_VERSION, "qcom,sde-ubwc-version", false, PROP_TYPE_U32},
 };
 
 static struct sde_prop_type sde_prop[] = {
@@ -648,7 +650,6 @@ static struct sde_prop_type sde_prop[] = {
 			false, PROP_TYPE_U32},
 	{BANK_BIT, "qcom,sde-highest-bank-bit", false,
 			PROP_TYPE_BIT_OFFSET_ARRAY},
-	{UBWC_VERSION, "qcom,sde-ubwc-version", false, PROP_TYPE_U32},
 	{UBWC_STATIC, "qcom,sde-ubwc-static", false, PROP_TYPE_U32},
 	{UBWC_SWIZZLE, "qcom,sde-ubwc-swizzle", false, PROP_TYPE_U32},
 	{QSEED_SW_LIB_REV, "qcom,sde-qseed-sw-lib-rev", false,
@@ -683,7 +684,8 @@ static struct sde_prop_type sde_prop[] = {
 	{LINE_INSERTION, "qcom,sde-has-line-insertion", false, PROP_TYPE_BOOL},
 	{SOCCP_PH, "qcom,sde-soccp-controller", false, PROP_TYPE_U32},
 	{HW_FENCE_MDP_OFFSET, "qcom,sde-hw-fence-mdp-ctl-offset", false, PROP_TYPE_U32},
-	{IPCC_PROTOCOL_OFFSET, "qcom,sde-ipcc-protocol-offset", false, PROP_TYPE_U32}
+	{IPCC_PROTOCOL_OFFSET, "qcom,sde-ipcc-protocol-offset", false, PROP_TYPE_U32},
+	{IPCC_CLIENT_OUT_PHYS_ID, "qcom,sde-ipcc-client-out-phys-id", false, PROP_TYPE_U32}
 };
 
 static struct sde_prop_type sde_perf_prop[] = {
@@ -2789,7 +2791,11 @@ static int sde_wb_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 				set_bit(SDE_HW_HAS_DUAL_DCWB, &wb->features);
 			if (IS_SDE_CTL_REV_100(sde_cfg->ctl_rev))
 				set_bit(SDE_WB_DCWB_CTRL, &wb->features);
-			if (major_version >= SDE_HW_MAJOR(SDE_HW_VER_A00)) {
+			if (major_version >= SDE_HW_MAJOR(SDE_HW_VER_D00)) {
+				sde_cfg->cwb_blk_off[0] = 0x16A200;
+				sde_cfg->cwb_blk_off[1] = 0x16B200;
+				sde_cfg->cwb_blk_stride = 0x400;
+			} else if (major_version >= SDE_HW_MAJOR(SDE_HW_VER_A00)) {
 				sde_cfg->cwb_blk_off[0] = 0x67200;
 				sde_cfg->cwb_blk_off[1] = 0x7F200;
 				sde_cfg->cwb_blk_stride = 0x400;
@@ -3076,6 +3082,7 @@ static int _sde_dspp_spr_parse_dt(struct device_node *np,
 					SPR_DITHER_OFF, i);
 			sblk->spr_dither.version = PROP_VALUE_ACCESS(props->values,
 					SPR_DITHER_VERSION, 0);
+			set_bit(SDE_DSPP_SPR_DITHER, &dspp->features);
 		}
 
 		if (test_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features))
@@ -3929,9 +3936,6 @@ static int sde_uidle_parse_dt(struct device_node *np,
 		return -EINVAL;
 	}
 
-	if (!sde_cfg->uidle_cfg.uidle_rev)
-		return 0;
-
 	prop_value = kvcalloc(UIDLE_PROP_MAX,
 		sizeof(struct sde_prop_value), GFP_KERNEL);
 	if (!prop_value)
@@ -4466,10 +4470,6 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 			PROP_VALUE_ACCESS(props->values, MIXER_BLEND, 0) :
 			DEFAULT_SDE_MIXER_BLENDSTAGES;
 
-	cfg->ubwc_rev = props->exists[UBWC_VERSION] ?
-			PROP_VALUE_ACCESS(props->values,
-			UBWC_VERSION, 0) : DEFAULT_SDE_UBWC_NONE;
-
 	cfg->mdp[0].highest_bank_bit = DEFAULT_SDE_HIGHEST_BANK_BIT;
 
 	if (props->exists[BANK_BIT]) {
@@ -4513,6 +4513,7 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 		cfg->ipcc_protocol_offset = HW_FENCE_DEFAULT_IPCC_PROTOCOL_OFFSET;
 	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id)
 		cfg->hw_fence_rev = 0; /* disable hw fences*/
+	cfg->ipcc_client_out_phys_id = PROP_VALUE_ACCESS(props->values, IPCC_CLIENT_OUT_PHYS_ID, 0);
 
 	cfg->soccp_ph = PROP_VALUE_ACCESS(props->values, SOCCP_PH, 0);
 	cfg->mdp[0].has_soccp = (cfg->soccp_ph != 0);
@@ -5361,8 +5362,9 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 		if (test_bit(SDE_FEATURE_VIG_P210, sde_cfg->features)) {
 			inline_fmt_tbl = true_inline_rot_v202_ubwc60_fmts;
 			in_rot_list_size = ARRAY_SIZE(true_inline_rot_v202_ubwc60_fmts);
-			inline_restricted_fmt_tbl = true_inline_rot_v202_ubwc60_fmts;
-			in_rot_restricted_list_size = ARRAY_SIZE(true_inline_rot_v202_ubwc60_fmts);
+			inline_restricted_fmt_tbl = true_inline_rot_v202_restricted_ubwc60_fmts;
+			in_rot_restricted_list_size =
+					ARRAY_SIZE(true_inline_rot_v202_restricted_ubwc60_fmts);
 		} else {
 			inline_fmt_tbl = true_inline_rot_v202_fmts;
 			in_rot_list_size = ARRAY_SIZE(true_inline_rot_v202_fmts);
@@ -5908,7 +5910,6 @@ static void _sde_get_hw_caps_for_kalama(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
-	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_cfg->features);
@@ -5958,7 +5959,6 @@ static void _sde_get_hw_caps_for_pineapple(struct sde_mdss_cfg *sde_cfg, uint32_
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
-	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_cfg->features);
@@ -6009,7 +6009,6 @@ static void _sde_get_hw_caps_for_sun(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
-	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
@@ -6065,7 +6064,6 @@ static void _sde_get_hw_caps_for_tuna(struct sde_mdss_cfg *sde_cfg, uint32_t hw_
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
-	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
@@ -6201,7 +6199,6 @@ static void _sde_get_hw_caps_for_canoe(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
-	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
 	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
 	set_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map);
@@ -6221,7 +6218,7 @@ static void _sde_get_hw_caps_for_canoe(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	sde_cfg->qos_target_time_ns = 11160;
 	sde_cfg->ts_prefill_rev = 2;
 	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
-	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_2;
 	sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_4;
 	sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
 	sde_cfg->mdss_hw_block_size = 0x15c;
@@ -6530,6 +6527,11 @@ static int sde_hw_ver_parse_dt(struct drm_device *dev, struct device_node *np,
 		cfg->hw_fence_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_FENCE_VERSION, 0);
 	else
 		cfg->hw_fence_rev = 0; /* disable hw-fences */
+
+	if (prop_exists[SDE_HW_UBWC_VERSION])
+		cfg->ubwc_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_UBWC_VERSION, 0);
+	else
+		cfg->ubwc_rev = DEFAULT_SDE_UBWC_NONE;
 
 end:
 	kvfree(prop_value);

@@ -1755,7 +1755,7 @@ error:
 }
 
 static int dsi_panel_parse_dyn_clk_list(struct dsi_display_mode *mode,
-		struct dsi_parser_utils *utils)
+		struct dsi_parser_utils *utils, enum dsi_dyn_clk_feature_type type)
 {
 	int i, rc = 0;
 	struct msm_dyn_clk_list *bit_clk_list;
@@ -1801,8 +1801,27 @@ static int dsi_panel_parse_dyn_clk_list(struct dsi_display_mode *mode,
 		goto error;
 	}
 
+	if (type == DSI_DYN_CLK_TYPE_ADJUST_HFP) {
+		rc = utils->read_u32_array(utils->data, "qcom,dsi-dyn-clk-hfp-list",
+			bit_clk_list->front_porches, bit_clk_list->count);
+		if (rc) {
+			DSI_ERR("failed to parse hfp list values, rc = %d\n", rc);
+			goto error;
+		}
+	}
+
+	if (type == DSI_DYN_CLK_TYPE_ADJUST_VFP) {
+		rc = utils->read_u32_array(utils->data, "qcom,dsi-dyn-clk-vfp-list",
+			bit_clk_list->front_porches, bit_clk_list->count);
+		if (rc) {
+			DSI_ERR("failed to parse vfp list values, rc = %d\n", rc);
+			goto error;
+		}
+	}
+
 	for (i = 0; i < bit_clk_list->count; i++)
-		DSI_DEBUG("bit clk rate[%d]:%d\n", i, bit_clk_list->rates[i]);
+		DSI_DEBUG("bit clk rate[%d]:%d, front porch[%d]:%d\n", i, bit_clk_list->rates[i],
+				i, bit_clk_list->front_porches[i]);
 
 	return 0;
 
@@ -1844,6 +1863,12 @@ static int dsi_panel_parse_dyn_clk_caps(struct dsi_panel *panel)
 		dyn_clk_caps->maintain_const_fps = true;
 	} else if (!strcmp(type, "constant-fps-adjust-vfp")) {
 		dyn_clk_caps->type = DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_VFP;
+		dyn_clk_caps->maintain_const_fps = true;
+	} else if (!strcmp(type, "adjust-hfp")) {
+		dyn_clk_caps->type = DSI_DYN_CLK_TYPE_ADJUST_HFP;
+		dyn_clk_caps->maintain_const_fps = true;
+	} else if (!strcmp(type, "adjust-vfp")) {
+		dyn_clk_caps->type = DSI_DYN_CLK_TYPE_ADJUST_VFP;
 		dyn_clk_caps->maintain_const_fps = true;
 	} else {
 		dyn_clk_caps->type = DSI_DYN_CLK_TYPE_LEGACY;
@@ -2302,7 +2327,8 @@ int dsi_panel_create_cmd_packets(const char *data,
 		cmd[i].msg.type = data[0];
 		cmd[i].msg.channel = data[2];
 		cmd[i].msg.flags |= data[3];
-		cmd[i].ctrl = 0;
+		/* Use the two MSBs of data[1] to specify the DSI ctrl index */
+		cmd[i].ctrl = data[1] >> 6;
 		cmd[i].post_wait_ms = data[4];
 		cmd[i].msg.tx_len = ((data[5] << 8) | (data[6]));
 
@@ -4712,7 +4738,7 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 		}
 
 		if (panel->dyn_clk_caps.dyn_clk_support) {
-			rc = dsi_panel_parse_dyn_clk_list(mode, utils);
+			rc = dsi_panel_parse_dyn_clk_list(mode, utils, panel->dyn_clk_caps.type);
 			if (rc)
 				DSI_ERR("failed to parse dynamic clk rates, rc=%d\n", rc);
 		}

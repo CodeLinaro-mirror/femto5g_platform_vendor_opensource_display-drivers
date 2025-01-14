@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
-KDIR := $(TOP)/kernel_platform/msm-kernel
+#TODO: check with Techteam PoC on why we need it here
+#KDIR := $(TOP)/kernel_platform/soc-repo
 
 ifeq ($(CONFIG_ARCH_WAIPIO), y)
 ifeq ($(CONFIG_ARCH_QTI_VM), y)

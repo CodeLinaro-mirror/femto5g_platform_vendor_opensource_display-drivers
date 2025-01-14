@@ -74,6 +74,14 @@
 #define CREATE_TRACE_POINTS
 #include "sde_trace.h"
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+#include <smmu-proxy/include/uapi/linux/qti-smmu-proxy.h>
+#include <smmu-proxy/linux/qti-smmu-proxy.h>
+#endif
+
+#define CSF_2_5_ARCH_VER	2
+#define CSF_2_5_MAX_VER		5
+
 /* defines for secure channel call */
 #define MEM_PROTECT_SD_CTRL_SWITCH 0x18
 #define MDP_DEVICE_ID            0x1A
@@ -456,7 +464,10 @@ scm_error:
 
 static int _sde_kms_detach_sec_cb(struct sde_kms *sde_kms, int vmid)
 {
-	u32 ret;
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	struct csf_version csf_ver = {};
+#endif
+	int ret;
 
 	if (atomic_inc_return(&sde_kms->detach_sec_cb) > 1)
 		return 0;
@@ -474,6 +485,23 @@ static int _sde_kms_detach_sec_cb(struct sde_kms *sde_kms, int vmid)
 		goto scm_error;
 	}
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	ret = smmu_proxy_get_csf_version(&csf_ver);
+	if (ret) {
+		SDE_ERROR("error in getting csf version, ret:%d\n", ret);
+		goto scm_error;
+	}
+
+	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) && (csf_ver.max_ver == CSF_2_5_MAX_VER)) {
+		ret = smmu_proxy_switch_sid(sde_kms->dev->dev, SMMU_PROXY_SWITCH_OP_ACQUIRE_SID);
+		if (ret) {
+			SDE_ERROR("smmu proxy switch sid failed, ret:%d\n", ret);
+			goto scm_error;
+		}
+	}
+
+	SDE_EVT32(vmid, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, ret);
+#endif
 	return 0;
 
 scm_error:
@@ -486,15 +514,35 @@ mmu_error:
 static int _sde_kms_attach_sec_cb(struct sde_kms *sde_kms, u32 vmid,
 		u32 old_vmid)
 {
-	u32 ret;
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	struct csf_version csf_ver = {};
+#endif
+	int ret;
 
 	if (atomic_dec_return(&sde_kms->detach_sec_cb) != 0)
 		return 0;
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	ret = smmu_proxy_get_csf_version(&csf_ver);
+	if (ret) {
+		SDE_ERROR("error in getting csf version, ret:%d\n", ret);
+		goto scm_error;
+	}
+
+	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) && (csf_ver.max_ver == CSF_2_5_MAX_VER)) {
+		ret = smmu_proxy_switch_sid(sde_kms->dev->dev, SMMU_PROXY_SWITCH_OP_RELEASE_SID);
+		if (ret) {
+			SDE_ERROR("smmu proxy switch sid failed, rc:%d\n", ret);
+			goto scm_error;
+		}
+	}
+
+	SDE_EVT32(vmid, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, ret);
+#endif
 	ret = _sde_kms_scm_call(sde_kms, vmid);
 	if (ret) {
-		goto scm_error;
 		SDE_ERROR("scm call failed for vmid:%d\n", vmid);
+		goto scm_error;
 	}
 
 	ret = sde_kms_mmu_attach(sde_kms, true);
@@ -2515,7 +2563,10 @@ static int sde_kms_postinit(struct msm_kms *kms)
 				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
 
 		sde_cesta_splash_release(DPUID(sde_kms->dev));
-		pm_runtime_put_sync(sde_kms->dev->dev);
+
+		/* Temporary change to avoid power-collapse for canoe target */
+		if (SDE_HW_MAJOR(sde_kms->catalog->hw_rev) < SDE_HW_MAJOR(SDE_HW_VER_D00))
+			pm_runtime_put_sync(sde_kms->dev->dev);
 	}
 
 	rc = _sde_debugfs_init(sde_kms);
@@ -4808,14 +4859,17 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 {
 	struct sde_kms *sde_kms = usr;
 	struct msm_kms *msm_kms;
+	struct drm_device *dev;
+	int ret = 0;
 
 	msm_kms = &sde_kms->base;
-	if (!sde_kms)
+	if (!sde_kms || !sde_kms->dev)
 		return;
 
 	SDE_DEBUG("event_type:%d\n", event_type);
 	SDE_EVT32_VERBOSE(event_type);
 
+	dev = sde_kms->dev;
 	if (event_type == SDE_POWER_EVENT_POST_ENABLE) {
 		sde_irq_update(msm_kms, true);
 		sde_kms->first_kickoff = true;
@@ -4840,7 +4894,12 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 			return;
 
 		_sde_kms_active_override(sde_kms, true);
-		sde_vbif_axi_halt_request(sde_kms);
+		ret = sde_vbif_axi_halt_request(sde_kms);
+		if (ret) {
+			SDE_ERROR("VBIF axi halt request failed, ret:%d\n", ret);
+			SDE_EVT32(ret, SDE_EVTLOG_ERROR);
+			SDE_DBG_DUMP_CLK_EN(SDE_DBG_BUILT_IN_ALL);
+		}
 	}
 }
 
@@ -5271,7 +5330,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		}
 	}
 
-	if (sde_kms->catalog->uidle_cfg.uidle_rev) {
+	if (sde_kms->catalog->uidle_cfg.base) {
 		sde_kms->hw_uidle = sde_hw_uidle_init(UIDLE, sde_kms->mmio,
 			sde_kms->mmio_len, sde_kms->catalog);
 		if (IS_ERR_OR_NULL(sde_kms->hw_uidle)) {

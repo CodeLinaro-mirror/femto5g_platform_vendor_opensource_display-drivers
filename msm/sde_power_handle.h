@@ -83,6 +83,29 @@ enum SDE_POWER_HANDLE_DBUS_ID {
 };
 
 /**
+ * @SDE_POWER_PD_ID_GDSC: gdsc power domain
+ * @SDE_POWER_PD_ID_INT2_GDSC: gdsc2 power domain
+ * @SDE_POWER_PD_ID_MAX: maximum number of power domains
+ */
+enum sde_power_domain_id {
+	SDE_POWER_PD_ID_GDSC,
+	SDE_POWER_PD_ID_INT2_GDSC,
+	SDE_POWER_PD_ID_MAX
+};
+
+/**
+ * @ struct sde_power_domain_handle: struct for handling power domains
+ * @enabled: state of the power domain
+ * @attached: state of the attachment of a power domain
+ * @dev: pointer to the power domain device
+ */
+struct sde_power_domain_handle {
+	atomic_t enabled;
+	atomic_t attached;
+	struct device *dev;
+};
+
+/**
  * struct sde_power_bus_scaling_data: struct for bus setting
  * @ab: average bandwidth in bytes per second
  * @ib: peak bandwidth in bytes per second
@@ -160,6 +183,7 @@ struct sde_power_mmrm_reserve {
  * @hw_fence_enable: boolean to indicate if hw-fence is enabled
  * @mmrm_reserve: mmrm resource reservation
  * @wakelock_count: wakelock coint to avoid pm suspend
+ * @num_power_domains: number of powerdomains
  */
 struct sde_power_handle {
 	struct dss_module_power mp;
@@ -178,6 +202,9 @@ struct sde_power_handle {
 
 	struct sde_power_mmrm_reserve mmrm_reserve;
 	atomic_t wakelock_count;
+
+	u32 num_power_domains;
+	struct sde_power_domain_handle power_domain_handles[SDE_POWER_PD_ID_MAX];
 };
 
 /**
