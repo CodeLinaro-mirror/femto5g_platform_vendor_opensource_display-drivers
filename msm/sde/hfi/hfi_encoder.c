@@ -20,14 +20,20 @@ static ktime_t hfi_enc_unpack_event_data(void *payload, u32 *idx, struct sde_enc
 	u64 ts_high, ts_low;
 	ktime_t ts = 0;
 	u32 *data = payload;
+	struct hfi_encoder *hfi_enc;
 
 	if (!payload) {
 		SDE_ERROR("No payload specified\n");
 		return 0;
 	}
 
+	hfi_enc = to_hfi_encoder(sde_enc);
+	if (!hfi_enc)
+		return -EINVAL;
+
 	ts_low =  data[read++];
 	ts_high =  data[read++];
+	atomic_set(&hfi_enc->hfi_frame_done_cnt, (u32) data[read++]);
 
 	if (idx)
 		*idx = data[read++];
@@ -52,11 +58,19 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 		return;
 	}
 
+	if (!sde_enc->cur_master) {
+		SDE_ERROR("invalid param: sde_enc\n");
+		return;
+	}
+
 	ts = hfi_enc_unpack_event_data(payload, NULL, sde_enc);
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 	new_cnt = atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
+
+	SDE_EVT32(sde_enc->pending_commit_cnt);
+	sde_enc->crtc_frame_event_cb_data.connector = sde_enc->cur_master->connector;
 
 	if (sde_enc->crtc_frame_event_cb)
 		sde_enc->crtc_frame_event_cb(&sde_enc->crtc_frame_event_cb_data, event, ts);
@@ -67,7 +81,6 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 
 static void hfi_encoder_vblank_callback(struct hfi_encoder *hfi_enc, void *payload)
 {
-	unsigned long lock_flags;
 	struct sde_encoder_virt *sde_enc;
 	ktime_t ts = 0;
 
@@ -75,12 +88,11 @@ static void hfi_encoder_vblank_callback(struct hfi_encoder *hfi_enc, void *paylo
 		return;
 
 	sde_enc = hfi_enc->sde_base;
+
 	ts = hfi_enc_unpack_event_data(payload, NULL, sde_enc);
 
-	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 	if (sde_enc->crtc_vblank_cb)
 		sde_enc->crtc_vblank_cb(sde_enc->crtc_vblank_cb_data, ts);
-	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 }
 
 static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
@@ -209,13 +221,11 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 			enable, defer_to_commit);
 		break;
 	case MSM_ENC_TX_COMPLETE:
-		// _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_FRAME_SCAN_COMPLETE,
-		//		enable, defer_to_commit);
+		SDE_ERROR("unsupported tx complete wait %d\n", event);
 		break;
 	case MSM_ENC_VBLANK:
-		// _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_VSYNC,
-		//		enable, defer_to_commit);
-		SDE_ERROR("unsupported hw VSYNC event config %d\n", event);
+		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_VSYNC,
+				enable, defer_to_commit);
 		break;
 	default:
 		SDE_ERROR("Invalid SDE event %d\n", event);
@@ -281,42 +291,6 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	}
 
 	return ret;
-}
-
-static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
-{
-	int ret;
-
-	if (!enc) {
-		SDE_ERROR("Invalid params\n");
-		return -EINVAL;
-	}
-
-	ret = hfi_enc_set_panic_events(enc, true);
-	if (ret) {
-		SDE_ERROR("failed to send debug-init command\n");
-		return ret;
-	}
-
-	return 0;
-}
-
-static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
-{
-	int ret;
-
-	if (!enc) {
-		SDE_ERROR("Invalid params\n");
-		return -EINVAL;
-	}
-
-	ret = hfi_enc_set_panic_events(enc, false);
-	if (ret) {
-		SDE_ERROR("failed to send debug-init command\n");
-		return ret;
-	}
-
-	return 0;
 }
 
 static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
@@ -401,7 +375,7 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 	if (!hfi_enc || event >= MSM_ENC_EVENT_MAX)
 		return -EINVAL;
 
-	if (event == MSM_ENC_VBLANK) {
+	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE) {
 		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("failed to send VSYNC register\n");
@@ -417,7 +391,74 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 	return ret;
 }
 
+static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
+{
+	int ret;
+
+	if (!enc) {
+		SDE_ERROR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	ret = hfi_enc_set_panic_events(enc, true);
+	if (ret) {
+		SDE_ERROR("failed to send debug-init command\n");
+		return ret;
+	}
+
+	ret = hfi_enc_enable_hw_event(enc, MSM_ENC_COMMIT_DONE, true);
+	if (ret) {
+		SDE_ERROR("failed to send commit wait command\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
+{
+	int ret;
+
+	if (!enc) {
+		SDE_ERROR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	ret = hfi_enc_enable_hw_event(enc, MSM_ENC_COMMIT_DONE, false);
+	if (ret) {
+		SDE_ERROR("failed to send commit wait command\n");
+		return ret;
+	}
+
+	ret = hfi_enc_set_panic_events(enc, false);
+	if (ret) {
+		SDE_ERROR("failed to send debug-init command\n");
+		return ret;
+	}
+
+	return 0;
+}
+
 #if IS_ENABLED(CONFIG_DEBUG_FS)
+static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct seq_file *s)
+{
+	struct hfi_encoder *hfi_enc;
+
+	if (!s || !s->private || !sde_enc || (sde_enc != s->private))
+		return -EINVAL;
+
+	hfi_enc = to_hfi_encoder(sde_enc);
+	if (!hfi_enc)
+		return -EINVAL;
+
+	seq_printf(s, "intf:%d  vsync:%8d underrun:%8d",
+		1,  atomic_read(&hfi_enc->hfi_frame_done_cnt), 0);
+
+	seq_puts(s, "mode: video\n");
+
+	return 0;
+}
+
 static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 {
 	int rc = 0;
@@ -600,6 +641,10 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	return rc;
 }
 #else
+static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct seq_file *s)
+{
+	return 0;
+}
 static int hfi_enc_debugfs_misr_setup(struct sde_encoder *enc)
 {
 	return 0;
@@ -620,6 +665,7 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 	sde_enc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI] = hfi_enc_enable_hw_event;
 	sde_enc->hal_ops.debugfs_misr_setup[MSM_DISP_OP_HFI] = hfi_enc_debugfs_misr_setup;
 	sde_enc->hal_ops.debugfs_misr_read[MSM_DISP_OP_HFI] = hfi_enc_debugfs_misr_read;
+	sde_enc->hal_ops.debugfs_dump_status[MSM_DISP_OP_HFI] = hfi_enc_debugfs_dump_status;
 }
 
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)

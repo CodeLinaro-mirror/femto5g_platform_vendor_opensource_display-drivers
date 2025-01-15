@@ -4786,6 +4786,7 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	unsigned long lock_flags;
+	enum msm_disp_op disp_op;
 	bool enable;
 	int i;
 
@@ -4810,6 +4811,13 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 		if (!phys)
 			continue;
 
+		disp_op = sde_encoder_get_disp_op(drm_enc);
+		if (sde_enc->hal_ops.enable_hw_event[disp_op]) {
+			sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+					MSM_ENC_VBLANK, vbl_cb ? true : false);
+			goto exit;
+		}
+
 		if (sde_enc->disp_info.vrr_caps.vrr_support) {
 			if (phys->ops.control_empulse_irq)
 				phys->ops.control_empulse_irq(phys, enable);
@@ -4818,6 +4826,7 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 				phys->ops.control_vblank_irq(phys, enable);
 		}
 	}
+exit:
 	sde_enc->vblank_enabled = enable;
 }
 
@@ -4828,8 +4837,6 @@ void sde_encoder_register_frame_event_callback(struct drm_encoder *drm_enc,
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	unsigned long lock_flags;
 	bool enable;
-	enum msm_disp_op disp_op;
-	int ret;
 
 	enable = frame_event_cb ? true : false;
 
@@ -4844,15 +4851,6 @@ void sde_encoder_register_frame_event_callback(struct drm_encoder *drm_enc,
 	sde_enc->crtc_frame_event_cb = frame_event_cb;
 	sde_enc->crtc_frame_event_cb_data.crtc = crtc;
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
-
-	disp_op = sde_encoder_get_disp_op(drm_enc);
-	if (sde_enc->hal_ops.enable_hw_event[disp_op]) {
-		ret = sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
-				MSM_ENC_COMMIT_DONE, frame_event_cb ? true : false);
-		if (ret)
-			SDE_ERROR("failed to enable hw event\n");
-	}
-
 }
 
 static void sde_encoder_frame_done_callback(
@@ -7373,7 +7371,8 @@ int sde_encoder_helper_inc_pending(struct drm_encoder *drm_enc)
 static int _sde_encoder_status_show(struct seq_file *s, void *data)
 {
 	struct sde_encoder_virt *sde_enc;
-	int i;
+	enum msm_disp_op disp_op;
+	int i, rc = 0;
 
 	if (!s || !s->private)
 		return -EINVAL;
@@ -7386,6 +7385,15 @@ static int _sde_encoder_status_show(struct seq_file *s, void *data)
 
 		if (!phys)
 			continue;
+		disp_op = sde_encoder_get_disp_op(phys->parent);
+		if (sde_enc->hal_ops.debugfs_dump_status[disp_op]) {
+			rc = sde_enc->hal_ops.debugfs_dump_status[disp_op](sde_enc, s);
+			if (rc) {
+				SDE_DEBUG_ENC(sde_enc,
+					"failed to dump debugfs status with error:%d\n", rc);
+				return rc;
+			}
+		}
 
 		seq_printf(s, "intf:%d    vsync:%8d     underrun:%8d    ",
 				phys->intf_idx - INTF_0,

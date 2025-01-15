@@ -1440,6 +1440,13 @@ void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc);
 inline enum msm_disp_op sde_crtc_get_disp_op(struct drm_crtc *crtc);
 
 /**
+ * sde_crtc_transition_handle_events - register for event at HFI transition
+ * @crtc: Pointer to drm_crtc.
+ * @enable: the event is enabled/disabled
+ */
+void sde_crtc_transition_handle_events(struct drm_crtc *crtc, bool enable);
+
+/**
  * sde_crtc_property_is_dirty - Returns true if DRM property is dirty
  * @cstate: pointer to sde_crtc_state
  * @property_idx: property index

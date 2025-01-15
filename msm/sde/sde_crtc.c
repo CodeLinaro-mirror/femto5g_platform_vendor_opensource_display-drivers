@@ -6182,6 +6182,26 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	mutex_unlock(&sde_crtc->crtc_lock);
 }
 
+void sde_crtc_transition_handle_events(struct drm_crtc *crtc, bool enable)
+{
+	struct drm_encoder *encoder;
+	struct sde_encoder_virt *sde_enc;
+
+	if (!crtc || !crtc->dev || !crtc->dev->dev_private) {
+		SDE_ERROR("invalid crtc\n");
+		return;
+	}
+
+	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+		if (sde_encoder_in_clone_mode(encoder))
+			continue;
+
+		sde_enc = to_sde_encoder_virt(encoder);
+		if (!enable && sde_enc->vblank_enabled)
+			sde_encoder_register_vblank_callback(encoder, NULL, NULL);
+	}
+}
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 static void sde_crtc_enable(struct drm_crtc *crtc,
 		struct drm_atomic_state *old_state)

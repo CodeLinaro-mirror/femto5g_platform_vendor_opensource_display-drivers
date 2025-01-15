@@ -22,11 +22,17 @@ struct hw_event_state {
  * struct hfi_encoder - hfi implementation extension of sde_encoder object
  * @sde_base: Pointer to sde encoder base structure
  * @event_cbs: event ops for sde encoder
+ * @hfi_frame_done_cnt: Atomic counter for tracking which enc is
+ *				done with frame processing
+ * @hw_events_state: maintains state of HW events
+ * @pending_kickoff_wq: Wait queue for blocking until kickoff completes
  * @hfi_cb_obj: hfi listener call back object
+ * @misr_read_listener: hfi listener call back object for MISR
  */
 struct hfi_encoder {
 	struct sde_encoder_virt *sde_base;
 	struct sde_encoder_event_ops event_cbs;
+	atomic_t hfi_frame_done_cnt;
 	struct hw_event_state hw_events_state[MSM_ENC_EVENT_MAX];
 	wait_queue_head_t pending_kickoff_wq;
 

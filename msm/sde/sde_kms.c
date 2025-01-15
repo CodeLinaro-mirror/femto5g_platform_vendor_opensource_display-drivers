@@ -3693,6 +3693,12 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 
 	/* Transition from HFI to HWIO */
 	} else if (IS_DISP_OP_HFI(sde_kms->frame_trigger_state)) {
+		list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
+			if (!crtc->state->active)
+				continue;
+			sde_crtc_transition_handle_events(crtc, false);
+		}
+
 		sde_kms->frame_trigger_state = MSM_DISP_OP_HWIO;
 		_sde_kms_idle_helper(sde_kms, dev);
 		sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
