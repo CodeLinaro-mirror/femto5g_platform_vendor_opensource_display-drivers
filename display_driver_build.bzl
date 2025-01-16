@@ -102,11 +102,10 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
         ],
         "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
         })
-    if target == "sun":
-            deps += select({
-                  "//build/kernel/kleaf:socrepo_true": ["//soc-repo:{}/drivers/soc/qcom/qcom_va_minidump".format(kernel_build_tv)],
-                  "//build/kernel/kleaf:socrepo_false": [],
-        })
+    deps += select({
+       "//build/kernel/kleaf:socrepo_true": ["//soc-repo:{}/drivers/soc/qcom/qcom_va_minidump".format(kernel_build_tv)],
+       "//build/kernel/kleaf:socrepo_false": [],
+    })
 
     kernel_build = select({
         "//build/kernel/kleaf:socrepo_true": "//soc-repo:{}_base_kernel".format(kernel_build_tv),
