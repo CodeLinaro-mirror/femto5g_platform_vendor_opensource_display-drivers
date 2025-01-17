@@ -42,6 +42,8 @@
 #define DSI_CTRL_WARN(c, fmt, ...)	DRM_WARN("[msm-dsi-warn]: %s: " fmt,\
 		c ? c->name : "inv", ##__VA_ARGS__)
 
+int  overflow_occurred = 0;
+
 struct dsi_ctrl_list_item {
 	struct dsi_ctrl *ctrl;
 	struct list_head list;
@@ -1942,12 +1944,21 @@ void dsi_ctrl_toggle_error_interrupt_status(struct dsi_ctrl *dsi_ctrl, bool enab
 	if (!enable) {
 		dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw, 0);
 	} else {
-		if (dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE &&
-				!dsi_ctrl->host_config.u.video_engine.bllp_lp11_en &&
-				!dsi_ctrl->host_config.u.video_engine.eof_bllp_lp11_en)
-			dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw,	0xFF01A0);
-		else
-			dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw, 0xFF01E0);
+		if (overflow_occurred) {
+			if (dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE &&
+					!dsi_ctrl->host_config.u.video_engine.bllp_lp11_en &&
+					!dsi_ctrl->host_config.u.video_engine.eof_bllp_lp11_en)
+				dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw,	0xF001A0);
+			else
+				dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw, 0xF001E0);
+		} else {
+			if (dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE &&
+					!dsi_ctrl->host_config.u.video_engine.bllp_lp11_en &&
+					!dsi_ctrl->host_config.u.video_engine.eof_bllp_lp11_en)
+				dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw,	0xFF01A0);
+			else
+				dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw, 0xFF01E0);
+		}
 	}
 }
 
@@ -2763,7 +2774,8 @@ static void dsi_ctrl_handle_error_status(struct dsi_ctrl *dsi_ctrl,
 	/* TX timeout error */
 	if (error & 0xE0) {
 		if (error & 0xA0) {
-			if (cb_info.event_cb) {
+			if (cb_info.event_cb && !overflow_occurred) {
+				DSI_CTRL_ERR(dsi_ctrl, "TX timeout error: 0x%lx\n", error);
 				cb_info.event_idx = DSI_LP_Rx_TIMEOUT;
 				(void)cb_info.event_cb(cb_info.event_usr_ptr,
 							cb_info.event_idx,
@@ -2780,7 +2792,11 @@ static void dsi_ctrl_handle_error_status(struct dsi_ctrl *dsi_ctrl,
 		if (dsi_ctrl->hw.ops.get_error_mask)
 			mask = dsi_ctrl->hw.ops.get_error_mask(&dsi_ctrl->hw);
 		/* no need to report FIFO overflow if already masked */
-		if (cb_info.event_cb && !(mask & 0xf0000)) {
+		overflow_occurred = 1;
+		/* if overflow occurred unmask the error interrupt for overflow error */
+		dsi_ctrl_toggle_error_interrupt_status(dsi_ctrl, true);
+		if (cb_info.event_cb && !(mask & 0xf0000) && !overflow_occurred) {
+			DSI_CTRL_ERR(dsi_ctrl, "FIFO overflow error: 0x%lx\n", error);
 			cb_info.event_idx = DSI_FIFO_OVERFLOW;
 			(void)cb_info.event_cb(cb_info.event_usr_ptr,
 						cb_info.event_idx,
@@ -2791,7 +2807,8 @@ static void dsi_ctrl_handle_error_status(struct dsi_ctrl *dsi_ctrl,
 
 	/* DSI FIFO UNDERFLOW error */
 	if (error & 0xF00000) {
-		if (cb_info.event_cb) {
+		if (cb_info.event_cb && !overflow_occurred) {
+			DSI_CTRL_ERR(dsi_ctrl, "FIFO underflow error: 0x%lx\n", error);
 			cb_info.event_idx = DSI_FIFO_UNDERFLOW;
 			(void)cb_info.event_cb(cb_info.event_usr_ptr,
 						cb_info.event_idx,
