@@ -1505,6 +1505,11 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	vm_ops = sde_vm_get_ops(sde_kms);
 
 	crtc = sde_kms_vm_get_vm_crtc(state);
+
+	if (sde_kms->vm->lastclose_in_progress && !crtc) {
+		sde_dbg_set_hw_ownership_status(false);
+		goto relase_vm;
+	}
 	if (!crtc)
 		return 0;
 
@@ -1514,6 +1519,7 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	if (vm_req != VM_REQ_RELEASE)
 		return 0;
 
+relase_vm:
 	sde_kms_vm_pre_release(sde_kms, state, false);
 	sde_kms_vm_set_sid(sde_kms, 0);
 
@@ -2448,7 +2454,8 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 	_sde_kms_unmap_all_splash_regions(sde_kms);
 
 	if (sde_kms->catalog) {
-		for (i = 0; i < sde_kms->catalog->vbif_count; i++) {
+		for (i = 0; i < sde_kms->catalog->vbif_count &&
+			i < MAX_BLOCKS; i++) {
 			u32 vbif_idx = sde_kms->catalog->vbif[i].id;
 
 			if ((vbif_idx < VBIF_MAX) && sde_kms->hw_vbif[vbif_idx])
@@ -2918,6 +2925,10 @@ static void sde_kms_lastclose(struct msm_kms *kms)
 
 	sde_kms = to_sde_kms(kms);
 	dev = sde_kms->dev;
+
+	if (sde_kms && sde_kms->vm)
+		sde_kms->vm->lastclose_in_progress = true;
+
 	drm_modeset_acquire_init(&ctx, 0);
 
 	state = drm_atomic_state_alloc(dev);
@@ -2952,6 +2963,9 @@ out_ctx:
 		SDE_ERROR("kms lastclose failed: %d\n", ret);
 
 	SDE_EVT32(ret, SDE_EVTLOG_FUNC_EXIT);
+
+	if (sde_kms && sde_kms->vm)
+		sde_kms->vm->lastclose_in_progress = false;
 	return;
 
 backoff:
