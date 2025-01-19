@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
@@ -1514,7 +1514,8 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 
 		if (fb->base.obj[idx]->import_attach) {
 			dma_bufs[idx] = fb->base.obj[idx]->import_attach->dmabuf;
-			virtio_check_framebuffer_contents(dma_bufs[idx]);
+			if (!fb_priv->secure)
+				virtio_check_framebuffer_contents(dma_bufs[idx]);
 			get_dma_buf(dma_bufs[idx]);
 		} else if (fb->base.obj[idx]->dma_buf) {
 			dma_bufs[idx] = fb->base.obj[idx]->dma_buf;
