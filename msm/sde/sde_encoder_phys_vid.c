@@ -730,6 +730,10 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 
 	_sde_encoder_update_timing_poms_pending(phys_enc, &timing_params);
 
+	/* align TG to display on/resume case*/
+	if (sde_enc->rc_state == SDE_ENC_RC_STATE_ON)
+		avr_enabled = false;
+
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 	phys_enc->hw_intf->ops.setup_timing_gen[disp_op](phys_enc->hw_intf,
 			&timing_params, fmt, info->esync_enabled, avr_enabled);
@@ -2457,6 +2461,9 @@ void sde_encoder_phys_vid_idle_pc_enter(struct sde_encoder_phys *phys_enc)
 	}
 
 	sde_connector_esync_clk_ctrl(drm_conn, false);
+
+	if (sde_enc->disp_info.vrr_caps.video_psr_support)
+		c_conn->qsync_mode = SDE_RM_QSYNC_DISABLED;
 }
 
 void sde_encoder_phys_vid_idle_pc_exit(struct sde_encoder_phys *phys_enc)
@@ -2507,6 +2514,7 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 {
 	struct msm_drm_private *priv;
 	struct sde_encoder_phys_vid *vid_enc;
+	struct sde_connector *c_conn;
 	struct sde_encoder_virt *sde_enc;
 	struct msm_display_info *info;
 	enum msm_disp_op disp_op;
@@ -2565,6 +2573,10 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 		hrtimer_cancel(&phys_enc->sde_vrr_cfg.freq_step_timer);
 		hrtimer_cancel(&phys_enc->sde_vrr_cfg.backlight_timer);
 	}
+
+	c_conn = to_sde_connector(sde_enc->cur_master->connector);
+	if (sde_enc->disp_info.vrr_caps.video_psr_support)
+		c_conn->qsync_mode = SDE_RM_QSYNC_DISABLED;
 
 	sde_encoder_helper_phys_disable(phys_enc, NULL);
 exit:
