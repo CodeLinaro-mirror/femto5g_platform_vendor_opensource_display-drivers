@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -371,7 +371,11 @@ int dp_sim_update_port_num(struct dp_aux_bridge *bridge, u32 port_num)
 
 		for (i = sim_dev->port_num; i < port_num; i++) {
 			memcpy(&ports[i], &output_port, sizeof(*ports));
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 			ports[i].peer_guid[0] = i;
+#else
+			ports[i].peer_guid.b[0] = i;
+#endif
 		}
 	}
 
@@ -669,7 +673,11 @@ static int dp_sim_parse_edid_from_node(struct dp_sim_device *sim_dev,
 
 	port = &sim_dev->ports[index];
 	memcpy(port, &output_port, sizeof(*port));
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	port->peer_guid[0] = index;
+#else
+	port->peer_guid.b[0] = index;
+#endif
 
 	if (port->edid)
 		devm_kfree(sim_dev->dev, (u8 *)port->edid);
@@ -695,7 +703,11 @@ static int dp_sim_parse_edid_from_data(struct dp_sim_device *sim_dev,
 
 	port = &sim_dev->ports[index];
 	memcpy(port, &output_port, sizeof(*port));
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	port->peer_guid[0] = index;
+#else
+	port->peer_guid.b[0] = index;
+#endif
 
 	if (port->edid)
 		devm_kfree(sim_dev->dev, (u8 *)port->edid);
