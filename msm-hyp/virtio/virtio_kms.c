@@ -1508,7 +1508,8 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 
 		if (fb->base.obj[idx]->import_attach) {
 			dma_bufs[idx] = fb->base.obj[idx]->import_attach->dmabuf;
-			virtio_check_framebuffer_contents(dma_bufs[idx]);
+			if (!fb_priv->secure)
+				virtio_check_framebuffer_contents(dma_bufs[idx]);
 			get_dma_buf(dma_bufs[idx]);
 		} else if (fb->base.obj[idx]->dma_buf) {
 			dma_bufs[idx] = fb->base.obj[idx]->dma_buf;
