@@ -6147,8 +6147,9 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	}
 
 	if (sde_crtc->power_event) {
-		sde_power_handle_unregister_event(&priv->phandle,
-				sde_crtc->power_event);
+		if (IS_DISP_OP_HFI(priv->disp_op))
+			sde_power_handle_unregister_event(&priv->phandle,
+					sde_crtc->power_event);
 		sde_crtc->power_event = NULL;
 	}
 
@@ -6314,11 +6315,12 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	}
 	spin_unlock_irqrestore(&sde_crtc->spin_lock, flags);
 
-	sde_crtc->power_event = sde_power_handle_register_event(
-		&priv->phandle,
-		SDE_POWER_EVENT_POST_ENABLE | SDE_POWER_EVENT_POST_DISABLE |
-		SDE_POWER_EVENT_PRE_DISABLE | SDE_POWER_EVENT_MMRM_CALLBACK,
-		sde_crtc_handle_power_event, crtc, sde_crtc->name);
+	if (IS_DISP_OP_HWIO(priv->disp_op))
+		sde_crtc->power_event = sde_power_handle_register_event(
+			&priv->phandle,
+			SDE_POWER_EVENT_POST_ENABLE | SDE_POWER_EVENT_POST_DISABLE |
+			SDE_POWER_EVENT_PRE_DISABLE | SDE_POWER_EVENT_MMRM_CALLBACK,
+			sde_crtc_handle_power_event, crtc, sde_crtc->name);
 
 	/* Enable ESD thread */
 	for (i = 0; i < cstate->num_connectors; i++) {
@@ -7482,6 +7484,7 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc;
 	struct sde_kms_info *info;
 	struct sde_kms *sde_kms;
+	struct msm_drm_private *priv;
 
 	static const struct drm_prop_enum_list e_secure_level[] = {
 		{SDE_DRM_SEC_NON_SEC, "sec_and_non_sec"},
@@ -7671,9 +7674,12 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		msm_property_install_range(&sde_crtc->property_info, "frame_data",
 				0x0, 0, ~0, 0, CRTC_PROP_FRAME_DATA_BUF);
 
+	priv = sde_kms->dev->dev_private;
 	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features))
 		msm_property_install_enum(&sde_crtc->property_info,
-			"display_op_idx", 0, 0, e_display_op_idx, ARRAY_SIZE(e_display_op_idx), 0,
+			"display_op_idx", 0, 0, e_display_op_idx,
+			ARRAY_SIZE(e_display_op_idx),
+			IS_DISP_OP_HFI(priv->disp_op) ? 1 : 0,
 			CRTC_PROP_DISPLAY_OP);
 
 	vfree(info);

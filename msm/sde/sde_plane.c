@@ -3225,6 +3225,7 @@ void sde_plane_flush(struct drm_plane *plane)
 {
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
+	struct msm_drm_private *priv;
 
 	if (!plane || !plane->state) {
 		SDE_ERROR("invalid plane\n");
@@ -3233,6 +3234,7 @@ void sde_plane_flush(struct drm_plane *plane)
 
 	psde = to_sde_plane(plane);
 	pstate = to_sde_plane_state(plane->state);
+	priv = plane->dev->dev_private;
 
 	/*
 	 * These updates have to be done immediately before the plane flush
@@ -3245,7 +3247,7 @@ void sde_plane_flush(struct drm_plane *plane)
 		/* force 100% alpha */
 		_sde_plane_color_fill(psde, psde->color_fill, 0xFF);
 	else if (psde->pipe_hw && pstate->csc_ptr && psde->pipe_hw->ops.setup_csc)
-		psde->pipe_hw->ops.setup_csc(psde->pipe_hw, pstate->csc_ptr);
+		psde->pipe_hw->ops.setup_csc(psde->pipe_hw, pstate->csc_ptr, priv->disp_op);
 
 	/* flag h/w flush complete */
 	if (plane->state)

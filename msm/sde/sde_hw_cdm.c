@@ -88,19 +88,22 @@ static struct sde_cdm_cfg *_cdm_offset(enum sde_cdm cdm,
 }
 
 static int sde_hw_cdm_setup_csc_10bit(struct sde_hw_cdm *ctx,
-		struct sde_csc_cfg *data)
+		struct sde_csc_cfg *data, enum msm_disp_op disp_op)
 {
-	sde_hw_csc_setup(&ctx->hw, CDM_CSC_10_MATRIX_COEFF_0, data, true);
+	sde_hw_csc_setup(&ctx->hw, CDM_CSC_10_MATRIX_COEFF_0, data, true, disp_op);
 
 	return 0;
 }
 
 static int sde_hw_cdm_setup_cdwn(struct sde_hw_cdm *ctx,
-		struct sde_hw_cdm_cfg *cfg)
+		struct sde_hw_cdm_cfg *cfg, enum msm_disp_op disp_op)
 {
 	struct sde_hw_blk_reg_map *c = &ctx->hw;
 	u32 opmode = 0;
 	u32 out_size = 0;
+
+	if (IS_DISP_OP_HFI(disp_op))
+		return 0;
 
 	if (cfg->output_bit_depth == CDM_CDWN_OUTPUT_10BIT)
 		opmode &= ~BIT(7);
@@ -307,7 +310,8 @@ static void _setup_cdm_ops(struct sde_hw_cdm_ops *ops,
 struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
-		struct sde_hw_mdp *hw_mdp)
+		struct sde_hw_mdp *hw_mdp,
+		enum msm_disp_op disp_op)
 {
 	struct sde_hw_cdm *c;
 	struct sde_cdm_cfg *cfg;
@@ -335,7 +339,7 @@ struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 	 * @setup default csc coefficients
 	 */
 	if (!m->trusted_vm_env)
-		sde_hw_cdm_setup_csc_10bit(c, &rgb2yuv_cfg);
+		sde_hw_cdm_setup_csc_10bit(c, &rgb2yuv_cfg, disp_op);
 
 	return &c->hw;
 }

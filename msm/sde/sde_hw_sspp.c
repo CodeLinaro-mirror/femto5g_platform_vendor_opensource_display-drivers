@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -977,7 +977,7 @@ u32 sde_hw_sspp_get_source_addr(struct sde_hw_pipe *ctx, bool is_virtual)
 }
 
 void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx,
-		struct sde_csc_cfg *data)
+		struct sde_csc_cfg *data, enum msm_disp_op disp_op)
 {
 	u32 idx;
 	bool csc10 = false;
@@ -990,7 +990,7 @@ void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx,
 		csc10 = true;
 	}
 
-	sde_hw_csc_setup(&ctx->hw, idx, data, csc10);
+	sde_hw_csc_setup(&ctx->hw, idx, data, csc10, disp_op);
 }
 
 void sde_hw_sspp_setup_sharpening(struct sde_hw_pipe *ctx,

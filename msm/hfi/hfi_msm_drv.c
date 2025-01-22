@@ -21,6 +21,7 @@ int hfi_msm_drv_hfi_init(struct msm_drm_private *priv)
 		DRM_ERROR("failed to initialize HFI adapter: %d\n", rc);
 		return rc;
 	}
+	DRM_DEBUG("success to initialize HFI adapter: %d\n", rc);
 
 	return rc;
 }

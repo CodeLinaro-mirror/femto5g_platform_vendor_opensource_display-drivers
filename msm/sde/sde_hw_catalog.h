@@ -1653,6 +1653,16 @@ struct sde_pingpong_cfg  {
 };
 
 /**
+ * struct sde_hfi_cfg - information of HFI mode
+ * @perf_sys_cache_enable:  system cache enable for perf
+ * @perf_max_core_clk_rate: max clock rate
+ */
+struct sde_hfi_cfg  {
+	u32 perf_sys_cache_enable;
+	u32 perf_max_core_clk_rate;
+};
+
+/**
  * struct sde_dsc_cfg - information of DSC blocks
  * @id                 enum identifying this block
  * @base               register offset of this block
@@ -2247,6 +2257,7 @@ struct sde_mdss_cfg {
 	u32 qdss_count;
 	struct sde_qdss_cfg qdss[MAX_BLOCKS];
 	u32 cwb_blk_off[MAX_CWB_BLOCKS];
+	struct sde_hfi_cfg hfi_cfg;
 	u32 cwb_blk_stride;
 	u32 dcwb_count;
 	void *qultivate_cfg;

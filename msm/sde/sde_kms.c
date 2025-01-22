@@ -1520,11 +1520,13 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 
 	/* remove the votes if all displays are done with splash */
 	if (!sde_kms->splash_data.num_splash_displays) {
-		for (i = 0; i < SDE_POWER_HANDLE_DBUS_ID_MAX; i++)
-			sde_power_data_bus_set_quota(&priv->phandle, i,
-				SDE_POWER_HANDLE_ENABLE_BUS_AB_QUOTA,
-				priv->phandle.ib_quota[i] ? priv->phandle.ib_quota[i] :
-				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
+		for (i = 0; i < SDE_POWER_HANDLE_DBUS_ID_MAX; i++) {
+			if (IS_DISP_OP_HWIO(priv->disp_op))
+				sde_power_data_bus_set_quota(&priv->phandle, i,
+					SDE_POWER_HANDLE_ENABLE_BUS_AB_QUOTA,
+					priv->phandle.ib_quota[i] ? priv->phandle.ib_quota[i] :
+					SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
+		}
 
 		sde_cesta_splash_release(DPUID(sde_kms->dev));
 		pm_runtime_put_sync(sde_kms->dev->dev);
@@ -2405,40 +2407,36 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			SDE_DP_DSC_RESERVATION_SWITCH)
 		max_dp_dsc_count = sde_kms->catalog->dsc_count;
 	/* dp */
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		goto skip_dp;
+
 	for (i = 0; i < sde_kms->dp_display_count &&
 			priv->num_encoders < max_encoders; ++i) {
 		int idx;
 		struct dp_display_info dp_info = {0};
 		struct sde_cesta_client *sst_cesta_client;
-
 		display = sde_kms->dp_displays[i];
 		encoder = NULL;
-
 		memset(&info, 0x0, sizeof(info));
 		rc = dp_connector_get_info(NULL, &info, display);
 		if (rc) {
 			SDE_ERROR("dp get_info %d failed\n", i);
 			continue;
 		}
-
 		rc = dp_display_get_info(display, &dp_info);
 		if (rc) {
 			SDE_ERROR("failed to read dp info, %d\n", rc);
 			continue;
 		}
-
 		info.h_tile_instance[0] = dp_info.intf_idx[0];
-
 		snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u", i);
 		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
 		sst_cesta_client = cesta_client;
-
 		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
 			SDE_ERROR("dp encoder init failed %d\n", i);
 			continue;
 		}
-
 		rc = dp_drm_bridge_init(display, encoder,
 				max_dp_mixer_count, max_dp_dsc_count);
 		if (rc) {
@@ -2446,7 +2444,6 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			sde_encoder_destroy(encoder);
 			continue;
 		}
-
 		connector = sde_connector_init(dev,
 					encoder,
 					NULL,
@@ -2463,14 +2460,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			sde_encoder_destroy(encoder);
 			continue;
 		}
-
 		/* update display cap to MST_MODE for DP MST encoders */
 		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
-
 		for (idx = 0; idx < dp_info.stream_cnt &&
 				priv->num_encoders < max_encoders; idx++) {
 			info.h_tile_instance[0] = dp_info.intf_idx[idx];
-
 			/*
 			 * use same sst cesta client for first mst encoder as sst/mst are
 			 * mutually exclusive and can use the same cesta client
@@ -2483,13 +2477,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 				cesta_client = sde_cesta_create_client(DPUID(dev),
 						cesta_client_name);
 			}
-
 			encoder = sde_encoder_init(dev, &info, cesta_client);
 			if (IS_ERR_OR_NULL(encoder)) {
 				SDE_ERROR("dp mst encoder init failed %d\n", i);
 				continue;
 			}
-
 			rc = dp_mst_drm_bridge_init(display, encoder);
 			if (rc) {
 				SDE_ERROR("dp mst bridge %d init failed, %d\n",
@@ -2501,6 +2493,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		}
 	}
 
+skip_dp:
 	setup_hdmi_displays(dev, priv, sde_kms, max_encoders,
 				max_dp_mixer_count, max_dp_dsc_count);
 
@@ -2723,10 +2716,11 @@ static int sde_kms_postinit(struct msm_kms *kms)
 	 * event call has to be after drm_irq_install to handle irq update.
 	 */
 	sde_kms_handle_power_event(SDE_POWER_EVENT_POST_ENABLE, sde_kms);
-	sde_kms->power_event = sde_power_handle_register_event(&priv->phandle,
-			SDE_POWER_EVENT_POST_ENABLE |
-			SDE_POWER_EVENT_PRE_DISABLE,
-			sde_kms_handle_power_event, sde_kms, "kms");
+	if (IS_DISP_OP_HWIO(priv->disp_op))
+		sde_kms->power_event = sde_power_handle_register_event(&priv->phandle,
+				SDE_POWER_EVENT_POST_ENABLE |
+				SDE_POWER_EVENT_PRE_DISABLE,
+				sde_kms_handle_power_event, sde_kms, "kms");
 
 	if (sde_kms->splash_data.num_splash_displays) {
 		SDE_DEBUG("Skipping MDP Resources disable\n");
@@ -2794,7 +2788,7 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		sde_hw_intr_destroy(sde_kms->hw_intr);
 	sde_kms->hw_intr = NULL;
 
-	if (sde_kms->power_event)
+	if (sde_kms->power_event && IS_DISP_OP_HWIO(priv->disp_op))
 		sde_power_handle_unregister_event(
 				&priv->phandle, sde_kms->power_event);
 
@@ -3511,6 +3505,28 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 	return rc;
 }
 
+int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
+{
+	int rc = 0;
+
+	if (!priv || !dev) {
+		SDE_ERROR("invalid arg");
+		return -EINVAL;
+	}
+
+	rc = hfi_msm_drv_hfi_init(priv);
+	if (rc)
+		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
+
+	rc = hfi_kms_reg_client(dev);
+	if (rc) {
+		SDE_ERROR("error with hfi_kms_reg_client rc: %d\n", rc);
+		kfree(priv->hfi_priv);
+	}
+
+	return rc;
+}
+
 static void _sde_kms_idle_helper(struct sde_kms *sde_kms, struct drm_device *dev)
 {
 	int ret, crtc_id = 0;
@@ -3546,7 +3562,7 @@ static void _sde_kms_idle_helper(struct sde_kms *sde_kms, struct drm_device *dev
 	msm_atomic_flush_display_threads(priv);
 }
 
-static void sde_kms_set_hw_blks_disp_ctrl(enum msm_disp_op disp_op, struct sde_kms *sde_kms)
+static void sde_kms_set_hw_blks_disp_op(enum msm_disp_op disp_op, struct sde_kms *sde_kms)
 {
 	int itr;
 
@@ -3564,28 +3580,6 @@ static void sde_kms_set_hw_blks_disp_ctrl(enum msm_disp_op disp_op, struct sde_k
 	}
 }
 
-int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
-{
-	int rc = 0;
-
-	if (!priv || !dev) {
-		SDE_ERROR("invalid arg");
-		return -EINVAL;
-	}
-
-	rc = hfi_msm_drv_hfi_init(priv);
-	if (rc)
-		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
-
-	rc = hfi_kms_reg_client(dev);
-	if (rc) {
-		SDE_ERROR("error with hfi_kms_reg_client rc: %d\n", rc);
-		kfree(priv->hfi_priv);
-	}
-
-	return rc;
-}
-
 static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -3596,9 +3590,9 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 	struct drm_crtc *cur_crtc = NULL;
 	struct drm_connector *conn;
 	struct drm_connector *cur_conn = NULL;
-	struct drm_connector_list_iter conn_iter;
 	struct sde_connector *c_conn;
 	struct drm_crtc_state *crtc_state;
+	struct drm_connector_state *conn_state;
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	int i, ret;
 	u32 frame_trigger;
@@ -3616,29 +3610,30 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
 		if (!crtc_state->active)
 			continue;
-		drm_connector_list_iter_begin(crtc->dev, &conn_iter);
-		drm_for_each_connector_iter(conn, &conn_iter) {
-			if (!conn->state || (conn->state->crtc != crtc))
-				continue;
-			if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
-				continue;
-
-			cur_conn = conn;
-		}
 		frame_trigger = sde_crtc_get_property(to_sde_crtc_state(crtc->state),
 				CRTC_PROP_DISPLAY_OP);
 		active_crtc_cnt++;
 		cur_crtc = crtc;
 	}
 
+	for_each_new_connector_in_state(state, conn, conn_state, i) {
+		if (!conn)
+			continue;
+
+		if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+			continue;
+
+		cur_conn = conn;
+	}
+
 	if (!active_crtc_cnt || !cur_conn) {
-		SDE_DEBUG("No active crtc/connector found: active_crtc_cnt = %d, conn = 0x%pK\n",
-				active_crtc_cnt, conn);
+		SDE_DEBUG("No active crtc found: active_crtc_cnt = %d\n",
+				active_crtc_cnt);
 		goto end;
 	}
 
 	/* If no change in transition then exit early */
-	if (!IS_DISP_OP_HFI(frame_trigger) && !IS_DISP_OP_HFI(sde_kms->frame_trigger_state))
+	if (IS_DISP_OP_HWIO(frame_trigger) && IS_DISP_OP_HWIO(sde_kms->frame_trigger_state))
 		goto end;
 
 	/* iterate global list for active and secure/non-secure crtc */
@@ -3671,7 +3666,7 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 
 	c_conn = to_sde_connector(cur_conn);
 	/* Transition from HWIO to HFI */
-	if (!IS_DISP_OP_HFI(sde_kms->frame_trigger_state)) {
+	if (IS_DISP_OP_HWIO(sde_kms->frame_trigger_state)) {
 		sde_kms->frame_trigger_state = MSM_DISP_OP_HFI;
 
 		if (sde_kms->hfi_session_start) {
@@ -3680,6 +3675,7 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 				SDE_ERROR("HFI setup failed\n");
 				return -EINVAL;
 			}
+
 			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
 			sde_kms->hfi_session_start = false;
 		}
@@ -3687,7 +3683,7 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 		/* Make sure everything goes to idle */
 		_sde_kms_idle_helper(sde_kms, dev);
 		sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
-		sde_kms_set_hw_blks_disp_ctrl(sde_kms->frame_trigger_state, sde_kms);
+		sde_kms_set_hw_blks_disp_op(sde_kms->frame_trigger_state, sde_kms);
 		sde_rm_set_disp_op(&sde_kms->rm, sde_kms->frame_trigger_state);
 		c_conn->ops.ctl_pre_transition(c_conn->display);
 
@@ -3702,11 +3698,10 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 		sde_kms->frame_trigger_state = MSM_DISP_OP_HWIO;
 		_sde_kms_idle_helper(sde_kms, dev);
 		sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
-		sde_kms_set_hw_blks_disp_ctrl(sde_kms->frame_trigger_state, sde_kms);
+		sde_kms_set_hw_blks_disp_op(sde_kms->frame_trigger_state, sde_kms);
 		sde_rm_set_disp_op(&sde_kms->rm, sde_kms->frame_trigger_state);
 		c_conn->ops.ctl_post_transition(c_conn->display);
 	}
-
 end:
 	return 0;
 }
@@ -3881,7 +3876,6 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 {
 	struct sde_kms *sde_kms;
 	struct drm_device *dev;
-	enum msm_disp_op disp_op;
 	int ret;
 
 	if (!kms || !state)
@@ -3934,13 +3928,6 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	ret = sde_kms_check_cwb_concurreny(kms, state);
 	if (ret)
 		goto vm_clean_up;
-
-	disp_op = sde_kms_get_disp_op(sde_kms);
-	if (sde_kms->hal_ops.atomic_check[disp_op]) {
-		ret = sde_kms->hal_ops.atomic_check[disp_op](sde_kms, state);
-		if (ret)
-			SDE_ERROR("failed atomic check err:%d\n", ret);
-	}
 
 	goto end;
 
@@ -5619,6 +5606,8 @@ static int _sde_kms_hw_init_rm(struct sde_kms *sde_kms, struct msm_drm_private *
 	}
 
 	sde_kms->rm_init = true;
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		sde_rm_set_disp_op(&sde_kms->rm, priv->disp_op);
 
 	sde_kms->hw_intr = sde_hw_intr_init(sde_kms->mmio, sde_kms->catalog);
 	if (IS_ERR_OR_NULL(sde_kms->hw_intr)) {
@@ -6001,6 +5990,9 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features))
 		sde_kms->hfi_session_start = true;
 
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		sde_kms_set_hw_blks_disp_op(priv->disp_op, sde_kms);
+
 	return 0;
 error:
 	_sde_kms_hw_destroy(sde_kms, platformdev);
@@ -6020,6 +6012,10 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 	}
 
 	priv = dev->dev_private;
+	if (!priv) {
+		SDE_ERROR("priv not valid\n");
+		return ERR_PTR(-EINVAL);
+	}
 
 	sde_kms = kzalloc(sizeof(*sde_kms), GFP_KERNEL);
 	if (!sde_kms) {
@@ -6027,7 +6023,6 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	sde_kms->hfi_session_start = true;
 	rc = hfi_kms_init(sde_kms);
 	if (rc) {
 		kfree(sde_kms);

@@ -102,7 +102,7 @@ struct sde_hw_wb_sc_cfg {
  */
 struct sde_hw_wb_ops {
 	void (*setup_csc_data[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
-			struct sde_csc_cfg *data);
+			struct sde_csc_cfg *data, enum msm_disp_op disp_op);
 
 	void (*setup_outaddress[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 		struct sde_hw_wb_cfg *wb);

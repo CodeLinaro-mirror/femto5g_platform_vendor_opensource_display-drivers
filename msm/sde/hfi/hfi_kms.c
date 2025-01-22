@@ -31,53 +31,6 @@
  */
 #define MIN_BYTES_FOR_PIPE_CAPS(x) DWORDS_TO_BYTES(1 + x[0] +  1)
 
-static int hfi_kms_atomic_check(struct sde_kms *kms, struct drm_atomic_state *state)
-{
-	struct drm_connector *conn;
-	struct drm_connector_state *conn_state;
-	struct hfi_cmdbuf_t *cmd_buf;
-	struct hfi_kms *hfi_kms;
-	int check_status;
-	u32 disp_id;
-	int i, ret;
-
-	if (!kms)
-		return -EINVAL;
-
-	hfi_kms = to_hfi_kms(kms);
-
-	SDE_DEBUG("invoking atomic check helper\n");
-	check_status = drm_atomic_helper_check(kms->dev, state);
-	/* if atomic check failed return */
-	if (check_status) {
-		SDE_ERROR("failed DRM atomic check\n");
-		return check_status;
-	}
-
-	for_each_new_connector_in_state(state, conn, conn_state, i) {
-		if (!conn_state->crtc && !conn->state->crtc)
-			continue;
-
-		disp_id = sde_conn_get_display_obj_id(conn_state->connector);
-		SDE_DEBUG("after atomic_check for disp_id:%d\n", disp_id);
-
-		cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_CHECK);
-		if (!cmd_buf) {
-			SDE_ERROR("failed to get cmd_buf for conn:%d disp_id:%d\n",
-					DRMID(conn), disp_id);
-			return -EINVAL;
-		}
-
-		ret = hfi_adapter_set_cmd_buf(cmd_buf);
-		if (ret) {
-			SDE_ERROR("failed to send atomic check\n");
-			return ret;
-		}
-	}
-
-	return check_status ? check_status : ret;
-}
-
 static int hfi_kms_prepare_commit(struct sde_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -220,7 +173,6 @@ static int hfi_kms_process_cmd_buf(struct hfi_client_t *client, struct hfi_cmdbu
 }
 
 static const struct sde_kms_hal_funcs hfi_hal_funcs = {
-	.atomic_check[MSM_DISP_OP_HFI] = hfi_kms_atomic_check,
 	.prepare_commit[MSM_DISP_OP_HFI] = hfi_kms_prepare_commit,
 	.commit[MSM_DISP_OP_HFI] = hfi_kms_commit,
 	.trigger_commit[MSM_DISP_OP_HFI] = hfi_kms_trigger_commit,
@@ -280,8 +232,22 @@ int hfi_kms_reg_client(struct drm_device *dev)
 		return -EINVAL;
 
 	priv = dev->dev_private;
+	if (!priv || !priv->hfi_priv) {
+		SDE_ERROR("Invalid priv");
+		return -HFI_ERROR;
+	}
+
 	hfi_drv_priv = priv->hfi_priv;
+	if (!hfi_drv_priv || !hfi_drv_priv->hfi_adapter) {
+		SDE_ERROR("Invalid hfi_drv_priv");
+		return -HFI_ERROR;
+	}
+
 	sde_kms = to_sde_kms(priv->kms);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms");
+		return -HFI_ERROR;
+	}
 
 	ret = _hfi_kms_setup_hfi(hfi_drv_priv->hfi_adapter, sde_kms->hfi_kms);
 	if (ret) {

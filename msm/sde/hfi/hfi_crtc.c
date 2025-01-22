@@ -591,7 +591,6 @@ int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 	}
 
 	crtc->hal_ops.destroy[MSM_DISP_OP_HFI] = hfi_crtc_destroy;
-	crtc->hal_ops.atomic_check[MSM_DISP_OP_HFI] = hfi_crtc_atomic_check;
 	crtc->hal_ops.atomic_begin[MSM_DISP_OP_HFI] = hfi_crtc_atomic_begin;
 	crtc->hal_ops.debugfs_misr_setup[MSM_DISP_OP_HFI] = hfi_crtc_debugfs_misr_setup;
 	crtc->hal_ops.debugfs_misr_read[MSM_DISP_OP_HFI] = hfi_crtc_debugfs_misr_read;

@@ -761,7 +761,7 @@ static int _sde_rm_hw_blk_create(
 					&sde_kms->hw_ctl_0);
 		break;
 	case SDE_HW_BLK_CDM:
-		hw = sde_hw_cdm_init(id, mmio, cat, hw_mdp);
+		hw = sde_hw_cdm_init(id, mmio, cat, hw_mdp, rm->disp_op);
 		break;
 	case SDE_HW_BLK_PINGPONG:
 		hw = sde_hw_pingpong_init(id, mmio, cat);
@@ -1037,6 +1037,7 @@ int sde_rm_init(struct sde_rm *rm)
 	struct sde_mdss_cfg *cat = sde_kms->catalog;
 	void __iomem *mmio = sde_kms->mmio;
 	struct drm_device *dev = sde_kms->dev;
+	struct msm_drm_private *priv;
 	int i, rc = 0;
 	enum sde_hw_blk_type type;
 
@@ -1055,6 +1056,8 @@ int sde_rm_init(struct sde_rm *rm)
 		INIT_LIST_HEAD(&rm->hw_blks[type]);
 
 	rm->dev = dev;
+	priv = dev->dev_private;
+	rm->disp_op = priv->disp_op;
 
 	if (IS_SDE_CTL_REV_100(cat->ctl_rev))
 		rm->topology_tbl = g_top_table_v1;

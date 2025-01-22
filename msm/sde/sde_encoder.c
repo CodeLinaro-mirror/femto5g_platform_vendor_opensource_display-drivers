@@ -651,7 +651,12 @@ int sde_encoder_helper_register_irq(struct sde_encoder_phys *phys_enc,
 		enum sde_intr_idx intr_idx)
 {
 	struct sde_encoder_irq *irq;
+	struct msm_drm_private *priv;
 	int ret = 0;
+
+	priv = phys_enc->sde_kms->dev->dev_private;
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		return 0;
 
 	if (!phys_enc || intr_idx >= INTR_IDX_MAX) {
 		SDE_ERROR("invalid params\n");
@@ -711,12 +716,17 @@ int sde_encoder_helper_unregister_irq(struct sde_encoder_phys *phys_enc,
 		enum sde_intr_idx intr_idx)
 {
 	struct sde_encoder_irq *irq;
+	struct msm_drm_private *priv;
 	int ret;
 
 	if (!phys_enc) {
 		SDE_ERROR("invalid encoder\n");
 		return -EINVAL;
 	}
+
+	priv = phys_enc->sde_kms->dev->dev_private;
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		return 0;
 	irq = &phys_enc->irq[intr_idx];
 
 	/* silently skip irqs that weren't registered */
@@ -1930,6 +1940,7 @@ void sde_encoder_irq_control(struct drm_encoder *drm_enc, bool enable)
 {
 	struct sde_encoder_virt *sde_enc;
 	struct sde_kms *sde_kms = NULL;
+	struct msm_drm_private *priv;
 	int i;
 
 	if (!drm_enc) {
@@ -1955,7 +1966,10 @@ void sde_encoder_irq_control(struct drm_encoder *drm_enc, bool enable)
 		if (phys && phys->ops.dynamic_irq_control)
 			phys->ops.dynamic_irq_control(phys, enable);
 	}
-	sde_kms_cpu_vote_for_irq(sde_kms, enable);
+
+	priv = sde_kms->dev->dev_private;
+	if (IS_DISP_OP_HWIO(priv->disp_op))
+		sde_kms_cpu_vote_for_irq(sde_kms, enable);
 
 }
 

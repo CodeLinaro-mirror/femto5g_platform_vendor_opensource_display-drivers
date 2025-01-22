@@ -97,6 +97,8 @@
 #define LINE_MODE_WB_OFFSET		2
 
 #define QULTIV_DISP_GDSC2_DISABLED	0x7
+#define SDE_PERF_MAX_CORE_CLK_RATE      650000000
+#define SDE_PERF_SYS_CACHE_ENABLE       0xffffffff
 
 /**
  * these configurations are decided based on max mdp clock. It accounts
@@ -6797,6 +6799,7 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 	int rc;
 	struct sde_mdss_cfg *sde_cfg;
 	struct device_node *np = dev->dev->of_node;
+	struct msm_drm_private *priv = dev->dev_private;
 
 	if (!np)
 		return ERR_PTR(-EINVAL);
@@ -6804,6 +6807,11 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 	sde_cfg = kvzalloc(sizeof(*sde_cfg), GFP_KERNEL);
 	if (!sde_cfg)
 		return ERR_PTR(-ENOMEM);
+
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		sde_cfg->hfi_cfg.perf_sys_cache_enable = SDE_PERF_SYS_CACHE_ENABLE;
+		sde_cfg->hfi_cfg.perf_max_core_clk_rate = SDE_PERF_MAX_CORE_CLK_RATE;
+	}
 
 	INIT_LIST_HEAD(&sde_cfg->irq_offset_list);
 

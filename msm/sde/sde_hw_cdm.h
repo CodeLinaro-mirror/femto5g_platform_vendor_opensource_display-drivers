@@ -65,14 +65,14 @@ struct sde_hw_cdm_ops {
 	 * return:        0 if success; error code otherwise
 	 */
 	int (*setup_csc_data[MSM_DISP_OP_MAX])(struct sde_hw_cdm *cdm,
-			struct sde_csc_cfg *data);
+			struct sde_csc_cfg *data, enum msm_disp_op disp_op);
 
 	/**
 	 * Programs the Chroma downsample part.
 	 * @cdm         Pointer to chroma down context
 	 */
 	int (*setup_cdwn[MSM_DISP_OP_MAX])(struct sde_hw_cdm *cdm,
-	struct sde_hw_cdm_cfg *cfg);
+	struct sde_hw_cdm_cfg *cfg, enum msm_disp_op disp_op);
 
 	/**
 	 * Enable the CDM module
@@ -133,7 +133,8 @@ static inline struct sde_hw_cdm *to_sde_hw_cdm(struct sde_hw_blk_reg_map *hw)
 struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
-		struct sde_hw_mdp *hw_mdp);
+		struct sde_hw_mdp *hw_mdp,
+		enum msm_disp_op disp_op);
 
 /**
  * sde_hw_cdm_destroy - destroys CDM driver context

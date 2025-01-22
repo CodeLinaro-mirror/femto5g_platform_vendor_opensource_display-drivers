@@ -315,7 +315,8 @@ void sde_hw_csc_matrix_coeff_setup(struct sde_hw_blk_reg_map *c,
 
 void sde_hw_csc_setup(struct sde_hw_blk_reg_map  *c,
 		u32 csc_reg_off,
-		struct sde_csc_cfg *data, bool csc10);
+		struct sde_csc_cfg *data, bool csc10,
+		enum msm_disp_op disp_op);
 
 uint32_t sde_copy_formats(
 		struct sde_format_extended *dst_list,

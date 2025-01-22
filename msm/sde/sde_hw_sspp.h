@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -448,7 +448,8 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @data: Pointer to config structure
 	 */
-	void (*setup_csc)(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data);
+	void (*setup_csc)(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
+			enum msm_disp_op disp_op);
 
 	/**
 	 * setup_solidfill - enable/disable colorfill
@@ -940,7 +941,7 @@ void sde_hw_sspp_setup_scaler3(struct sde_hw_pipe *ctx,
  * @data: Pointer to the CSC configuration data
  */
 void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx,
-		struct sde_csc_cfg *data);
+		struct sde_csc_cfg *data, enum msm_disp_op disp_op);
 /**
  * sde_hw_sspp_setup_sharpening - Configures the sharpening settings
  * Sets up the sharpening configuration for the specified SSPP HW pipe.

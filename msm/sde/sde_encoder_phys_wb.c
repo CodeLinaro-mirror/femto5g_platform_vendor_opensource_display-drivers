@@ -321,7 +321,7 @@ void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_fr
 
 	if (hw_cdm && hw_cdm->ops.setup_csc_data[disp_op]) {
 		ret = hw_cdm->ops.setup_csc_data[disp_op](hw_cdm,
-			&sde_encoder_phys_wb_rgb2yuv_601l);
+			&sde_encoder_phys_wb_rgb2yuv_601l, disp_op);
 		if (ret < 0) {
 			SDE_ERROR("[enc:%d wb:%d] failed to setup CSC; ret:%d\n",
 					DRMID(phys_enc->parent), WBID(wb_enc), ret);
@@ -330,7 +330,7 @@ void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_fr
 	}
 
 	if (hw_cdm && hw_cdm->ops.setup_cdwn[disp_op]) {
-		ret = hw_cdm->ops.setup_cdwn[disp_op](hw_cdm, cdm_cfg);
+		ret = hw_cdm->ops.setup_cdwn[disp_op](hw_cdm, cdm_cfg, disp_op);
 		if (ret < 0) {
 			SDE_ERROR("[enc:%d wb:%d] failed to setup CDWN; ret:%d\n",
 					DRMID(phys_enc->parent), WBID(wb_enc), ret);
