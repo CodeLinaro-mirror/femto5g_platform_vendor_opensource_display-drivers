@@ -850,7 +850,7 @@ void lt9611_config(struct lt9611 *pdata)
 	lt9611_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-u8 lt9611_get_version(struct lt9611 *pdata)
+u16 lt9611_get_version(struct lt9611 *pdata)
 {
 	u8 revison = 0;
 	u8 subversion = 0;
@@ -872,7 +872,7 @@ u8 lt9611_get_version(struct lt9611 *pdata)
 	lt9611_write_byte(pdata, 0xEE, 0x00);
 	msleep(50);
 
-	return revison;
+	return (revison<<8)|subversion;
 }
 
 void lt9611_flash_write_en(struct lt9611 *pdata)
@@ -1020,6 +1020,26 @@ void lt9611_firmware_write(struct lt9611 *pdata, const u8 *f_data,
 
 	pr_info("LT9611 FW write over, total size: %d, page: %d, reset: %d\n",
 		size, total_page, rest_data);
+}
+
+static ssize_t get_fw_version_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	u32 fw_version;
+	struct lt9611 *pdata = dev_get_drvdata(dev);
+
+	if (!pdata) {
+		pr_err("pdata is NULL\n");
+		return -EINVAL;
+	}
+	if (pdata->fw_status == UPDATE_RUNNING) {
+		pr_err("can't check firmware while upgrading bridge\n");
+		return -EINVAL;
+	}
+
+	fw_version = lt9611_get_version(pdata);
+	return scnprintf(buf, PAGE_SIZE, "%#x\n", fw_version);
 }
 
 void lt9611_firmware_upgrade(struct lt9611 *pdata,
@@ -2692,12 +2712,14 @@ err:
 }
 
 static DEVICE_ATTR_WO(dump_info);
+static DEVICE_ATTR_RO(get_fw_version);
 static DEVICE_ATTR_RW(firmware_upgrade);
 static DEVICE_ATTR_RO(get_hpd_stat);
 static DEVICE_ATTR_RW(edid_mode);
 
 static struct attribute *lt9611_sysfs_attrs[] = {
 	&dev_attr_dump_info.attr,
+	&dev_attr_get_fw_version.attr,
 	&dev_attr_firmware_upgrade.attr,
 	&dev_attr_get_hpd_stat.attr,
 	&dev_attr_edid_mode.attr,
