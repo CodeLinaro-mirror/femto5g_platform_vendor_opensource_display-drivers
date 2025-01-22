@@ -97,6 +97,14 @@ static const struct dsi_ver_spec_info dsi_phy_v7_2 = {
 	.timing_cfg_count = 14,
 };
 
+static const struct dsi_ver_spec_info dsi_phy_v7_2_hfi = {
+	.version = DSI_PHY_VERSION_7_2_HFI,
+	.lane_cfg_count = 4,
+	.strength_cfg_count = 2,
+	.regulator_cfg_count = 0,
+	.timing_cfg_count = 14,
+};
+
 static const struct of_device_id msm_dsi_phy_of_match[] = {
 	{ .compatible = "qcom,dsi-phy-v3.0",
 	  .data = &dsi_phy_v3_0,},
@@ -114,6 +122,8 @@ static const struct of_device_id msm_dsi_phy_of_match[] = {
 	  .data = &dsi_phy_v5_2,},
 	{ .compatible = "qcom,dsi-phy-v7.2",
 	  .data = &dsi_phy_v7_2,},
+	{ .compatible = "qcom,dsi-hfi-phy-v7.2",
+	  .data = &dsi_phy_v7_2_hfi,},
 	{}
 };
 
@@ -448,18 +458,28 @@ static int dsi_phy_driver_probe(struct platform_device *pdev)
 
 	dsi_phy->ver_info = ver_info;
 
-	rc = dsi_phy_regmap_init(pdev, dsi_phy);
-	if (rc) {
-		DSI_PHY_ERR(dsi_phy, "Failed to parse register information, rc=%d\n",
-				rc);
-		goto fail;
+	if (dsi_phy->ver_info->version == DSI_PHY_VERSION_7_2_HFI) {
+		dsi_phy->disp_op = MSM_DISP_OP_HFI;
+		dsi_phy->ver_info = &dsi_phy_v7_2;
+		dsi_phy->hw.phy_pll_bypass = true;
+	} else {
+		dsi_phy->disp_op = MSM_DISP_OP_HWIO;
 	}
 
-	rc = dsi_phy_supplies_init(pdev, dsi_phy);
-	if (rc) {
-		DSI_PHY_ERR(dsi_phy, "failed to parse voltage supplies, rc = %d\n",
-				rc);
-		goto fail_regmap;
+	if (dsi_phy->ver_info->version == DSI_PHY_VERSION_7_2) {
+		rc = dsi_phy_regmap_init(pdev, dsi_phy);
+		if (rc) {
+			DSI_PHY_ERR(dsi_phy, "Failed to parse register information, rc=%d\n",
+					rc);
+			goto fail;
+		}
+
+		rc = dsi_phy_supplies_init(pdev, dsi_phy);
+		if (rc) {
+			DSI_PHY_ERR(dsi_phy, "failed to parse voltage supplies, rc = %d\n",
+					rc);
+			goto fail_regmap;
+		}
 	}
 
 	rc = dsi_catalog_phy_setup(&dsi_phy->hw, ver_info->version,

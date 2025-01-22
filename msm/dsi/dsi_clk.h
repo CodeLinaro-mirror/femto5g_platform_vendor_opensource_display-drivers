@@ -274,8 +274,9 @@ void dsi_display_clk_mngr_update_splash_status(void *clk_mgr, bool status);
 /**
  * dsi_display_clk_mgr_register() - Register DSI clock manager
  * @info:     Structure containing DSI clock information
+ * @disp_op:  Indicates whether to use HLOS or HFI path
  */
-void *dsi_display_clk_mngr_register(struct dsi_clk_info *info);
+void *dsi_display_clk_mngr_register(struct dsi_clk_info *info, enum msm_disp_op disp_op);
 
 /**
  * dsi_display_clk_mngr_deregister() - Deregister DSI clock manager

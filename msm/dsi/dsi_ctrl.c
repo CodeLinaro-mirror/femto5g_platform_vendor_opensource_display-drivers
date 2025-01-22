@@ -60,6 +60,7 @@ static const enum dsi_ctrl_version dsi_ctrl_v2_7 = DSI_CTRL_VERSION_2_7;
 static const enum dsi_ctrl_version dsi_ctrl_v2_8 = DSI_CTRL_VERSION_2_8;
 static const enum dsi_ctrl_version dsi_ctrl_v2_9 = DSI_CTRL_VERSION_2_9;
 static const enum dsi_ctrl_version dsi_ctrl_v2_10 = DSI_CTRL_VERSION_2_10;
+static const enum dsi_ctrl_version dsi_ctrl_v2_10_hfi = DSI_CTRL_VERSION_2_10_HFI;
 
 static const struct of_device_id msm_dsi_of_match[] = {
 	{
@@ -97,6 +98,10 @@ static const struct of_device_id msm_dsi_of_match[] = {
 	{
 		.compatible = "qcom,dsi-ctrl-hw-v2.10",
 		.data = &dsi_ctrl_v2_10,
+	},
+	{
+		.compatible = "qcom,dsi-ctrl-hfi-hw-v2.10",
+		.data = &dsi_ctrl_v2_10_hfi,
 	},
 	{}
 };
@@ -512,6 +517,9 @@ static int dsi_ctrl_check_state(struct dsi_ctrl *dsi_ctrl,
 	bool esync_enabled = false;
 	struct dsi_mode_info *host_mode;
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
+
 	host_mode = &dsi_ctrl->host_config.video_timing;
 
 	if (host_mode)
@@ -692,6 +700,9 @@ static int dsi_ctrl_init_regmap(struct platform_device *pdev,
 {
 	int rc = 0;
 	void __iomem *ptr;
+
+	if (ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
 
 	ptr = msm_ioremap(pdev, "dsi_ctrl", ctrl->name);
 	if (IS_ERR(ptr)) {
@@ -2186,6 +2197,15 @@ static int dsi_ctrl_dev_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	dsi_ctrl->version = version;
+	if (dsi_ctrl->version == DSI_CTRL_VERSION_2_10_HFI) {
+		dsi_ctrl->disp_op = MSM_DISP_OP_HFI;
+		dsi_ctrl->version = DSI_CTRL_VERSION_2_10;
+		// Turn on HFI flag, then switch back HWIO flags
+		//so its not disturbed before catalog init.
+	} else {
+		dsi_ctrl->disp_op = MSM_DISP_OP_HWIO;
+	}
+
 	dsi_ctrl->irq_info.irq_num = -1;
 	dsi_ctrl->irq_info.irq_stat_mask = 0x0;
 
@@ -2200,25 +2220,29 @@ static int dsi_ctrl_dev_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	rc = dsi_ctrl_init_regmap(pdev, dsi_ctrl);
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "Failed to parse register information, rc = %d\n",
-				rc);
-		goto fail;
-	}
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HWIO) {
 
-	rc = dsi_ctrl_supplies_init(pdev, dsi_ctrl);
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "Failed to parse voltage supplies, rc = %d\n",
-				rc);
-		goto fail;
-	}
+		rc = dsi_ctrl_init_regmap(pdev, dsi_ctrl);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "Failed to parse register information, rc = %d\n",
+					rc);
+			goto fail;
+		}
 
-	rc = dsi_ctrl_clocks_init(pdev, dsi_ctrl);
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "Failed to parse clock information, rc = %d\n",
-				rc);
-		goto fail_supplies;
+		rc = dsi_ctrl_supplies_init(pdev, dsi_ctrl);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "Failed to parse voltage supplies, rc = %d\n",
+					rc);
+			goto fail;
+		}
+
+		rc = dsi_ctrl_clocks_init(pdev, dsi_ctrl);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "Failed to parse clock information, rc = %d\n",
+					rc);
+			goto fail_supplies;
+		}
+
 	}
 
 	rc = dsi_catalog_ctrl_setup(&dsi_ctrl->hw, dsi_ctrl->version,
@@ -2545,6 +2569,9 @@ int dsi_ctrl_phy_sw_reset(struct dsi_ctrl *dsi_ctrl)
 		return -EINVAL;
 	}
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_PHY_SW_RESET, 0x0);
 	if (rc) {
@@ -2582,6 +2609,9 @@ int dsi_ctrl_async_timing_update(struct dsi_ctrl *dsi_ctrl,
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid params\n");
 		return -EINVAL;
 	}
+
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
@@ -2622,6 +2652,9 @@ int dsi_ctrl_timing_db_update(struct dsi_ctrl *dsi_ctrl,
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid dsi_ctrl\n");
 		return -EINVAL;
 	}
+
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
@@ -3177,8 +3210,9 @@ int dsi_ctrl_update_host_state(struct dsi_ctrl *dsi_ctrl,
 	int rc = 0;
 	u32 state = enable ? 0x1 : 0x0;
 
-	if (!dsi_ctrl)
+	if (!dsi_ctrl || dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
 		return rc;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 	rc = dsi_ctrl_check_state(dsi_ctrl, op, state);
 	if (rc) {
@@ -3214,6 +3248,9 @@ int dsi_ctrl_host_init(struct dsi_ctrl *dsi_ctrl, bool skip_op)
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid params\n");
 		return -EINVAL;
 	}
+
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_HOST_INIT, 0x1);
@@ -3852,6 +3889,9 @@ int dsi_ctrl_set_power_state(struct dsi_ctrl *dsi_ctrl,
 		return -EINVAL;
 	}
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_POWER_STATE_CHANGE,
@@ -3905,6 +3945,9 @@ int dsi_ctrl_set_tpg_state(struct dsi_ctrl *dsi_ctrl, bool on,
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid params\n");
 		return -EINVAL;
 	}
+
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
@@ -3979,6 +4022,9 @@ int dsi_ctrl_set_host_engine_state(struct dsi_ctrl *dsi_ctrl,
 		return -EINVAL;
 	}
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_HOST_ENGINE, state);
@@ -4024,6 +4070,9 @@ int dsi_ctrl_set_cmd_engine_state(struct dsi_ctrl *dsi_ctrl,
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid params\n");
 		return -EINVAL;
 	}
+
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
 
 	if (state == DSI_CTRL_ENGINE_ON) {
 		if (dsi_ctrl->cmd_engine_refcount > 0) {
@@ -4087,6 +4136,9 @@ int dsi_ctrl_set_vid_engine_state(struct dsi_ctrl *dsi_ctrl,
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid params\n");
 		return -EINVAL;
 	}
+
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 

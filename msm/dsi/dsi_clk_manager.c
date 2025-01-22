@@ -1784,7 +1784,7 @@ int dsi_display_dump_clk_handle_state(void *client)
 	return 0;
 }
 
-void *dsi_display_clk_mngr_register(struct dsi_clk_info *info)
+void *dsi_display_clk_mngr_register(struct dsi_clk_info *info, enum msm_disp_op disp_op)
 {
 	struct dsi_clk_mngr *mngr;
 	int i = 0;
@@ -1803,6 +1803,13 @@ void *dsi_display_clk_mngr_register(struct dsi_clk_info *info)
 	mutex_init(&mngr->clk_mutex);
 	mngr->dsi_ctrl_count = info->dsi_ctrl_count;
 	mngr->master_ndx = info->master_ndx;
+
+	if (disp_op == MSM_DISP_OP_HFI) {
+		mngr->disp_op = disp_op;
+		return mngr;
+	}
+
+	mngr->disp_op = disp_op;
 
 	if (mngr->dsi_ctrl_count > MAX_DSI_CTRL) {
 		kfree(mngr);

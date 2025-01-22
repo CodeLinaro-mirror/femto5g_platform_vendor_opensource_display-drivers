@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __DSI_PLL_H
@@ -59,6 +59,7 @@ struct lpfr_cfg {
 
 enum {
 	DSI_PLL_3NM,
+	DSI_PLL_3NM_HFI,
 	DSI_PLL_4NM,
 	DSI_PLL_5NM,
 	DSI_PLL_10NM,
@@ -161,6 +162,8 @@ struct dsi_pll_resource {
 	 * dynamic refresh pll codes stored in this structure
 	 */
 	struct dfps_info *dfps;
+
+	enum msm_disp_op disp_op;
 
 	/*
 	 * DSI pixel depth and lane information

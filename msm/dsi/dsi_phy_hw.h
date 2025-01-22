@@ -50,6 +50,7 @@ enum dsi_phy_version {
 	DSI_PHY_VERSION_4_3_2, /* 4nm */
 	DSI_PHY_VERSION_5_2, /* 4nm */
 	DSI_PHY_VERSION_7_2, /* 3nm */
+	DSI_PHY_VERSION_7_2_HFI,
 	DSI_PHY_VERSION_MAX
 };
 
@@ -62,6 +63,7 @@ enum dsi_phy_version {
  */
 enum dsi_pll_version {
 	DSI_PLL_VERSION_3NM,
+	DSI_PLL_VERSION_3NM_HFI,
 	DSI_PLL_VERSION_4NM,
 	DSI_PLL_VERSION_5NM,
 	DSI_PLL_VERSION_10NM,

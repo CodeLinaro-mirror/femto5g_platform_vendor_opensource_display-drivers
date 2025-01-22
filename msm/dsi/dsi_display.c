@@ -4428,10 +4428,12 @@ static int dsi_display_res_init(struct dsi_display *display)
 		goto error_panel_put;
 	}
 
-	rc = dsi_display_clocks_init(display);
-	if (rc) {
-		DSI_ERR("Failed to parse clock data, rc=%d\n", rc);
-		goto error_panel_put;
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) {
+		rc = dsi_display_clocks_init(display);
+		if (rc) {
+			DSI_ERR("Failed to parse clock data, rc=%d\n", rc);
+			goto error_panel_put;
+		}
 	}
 
 	/**
@@ -5918,6 +5920,7 @@ static int dsi_display_bind(struct device *dev,
 	struct platform_device *pdev = to_platform_device(dev);
 	char *client1 = "dsi_clk_client";
 	char *client2 = "mdp_event_client";
+	bool detach_clks;
 	struct msm_vm_ops vm_event_ops = {
 		.vm_get_io_resources = dsi_display_get_io_resources,
 		.vm_pre_hw_release = dsi_display_pre_release,
@@ -6025,7 +6028,10 @@ static int dsi_display_bind(struct device *dev,
 	snprintf(info.name, MAX_STRING_LEN,
 			"DSI_MNGR-%s", display->name);
 
-	display->clk_mngr = dsi_display_clk_mngr_register(&info);
+	detach_clks = (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI);
+	display->panel->disp_op = display->ctrl[0].ctrl->disp_op;
+
+	display->clk_mngr = dsi_display_clk_mngr_register(&info, display->ctrl[0].ctrl->disp_op);
 	if (IS_ERR_OR_NULL(display->clk_mngr)) {
 		rc = PTR_ERR(display->clk_mngr);
 		display->clk_mngr = NULL;
@@ -6033,24 +6039,28 @@ static int dsi_display_bind(struct device *dev,
 		goto error_ctrl_deinit;
 	}
 
-	handle = dsi_register_clk_handle(display->clk_mngr, client1);
-	if (IS_ERR_OR_NULL(handle)) {
-		rc = PTR_ERR(handle);
-		DSI_ERR("failed to register %s client, rc = %d\n",
-		       client1, rc);
-		goto error_clk_deinit;
-	} else {
-		display->dsi_clk_handle = handle;
-	}
+	if (!detach_clks) {
 
-	handle = dsi_register_clk_handle(display->clk_mngr, client2);
-	if (IS_ERR_OR_NULL(handle)) {
-		rc = PTR_ERR(handle);
-		DSI_ERR("failed to register %s client, rc = %d\n",
-		       client2, rc);
-		goto error_clk_client_deinit;
-	} else {
-		display->mdp_clk_handle = handle;
+		handle = dsi_register_clk_handle(display->clk_mngr, client1);
+		if (IS_ERR_OR_NULL(handle)) {
+			rc = PTR_ERR(handle);
+			DSI_ERR("failed to register %s client, rc = %d\n",
+				client1, rc);
+			goto error_clk_deinit;
+		} else {
+			display->dsi_clk_handle = handle;
+		}
+
+		handle = dsi_register_clk_handle(display->clk_mngr, client2);
+		if (IS_ERR_OR_NULL(handle)) {
+			rc = PTR_ERR(handle);
+			DSI_ERR("failed to register %s client, rc = %d\n",
+				client2, rc);
+			goto error_clk_client_deinit;
+		} else {
+			display->mdp_clk_handle = handle;
+		}
+
 	}
 
 	dsi_display_update_byte_intf_div(display);
@@ -7906,8 +7916,16 @@ int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state)
 {
 	struct dsi_display *disp = (struct dsi_display *)display;
 
-	if (!disp || !disp->mdp_clk_handle) {
-		DSI_ERR("Invalid arg\n");
+	if (!disp) {
+		DSI_ERR("invalid arg\n");
+		return -EINVAL;
+	}
+
+	if (disp->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
+
+	if (!disp->mdp_clk_handle) {
+		DSI_ERR("invalid arg\n");
 		return -EINVAL;
 	}
 

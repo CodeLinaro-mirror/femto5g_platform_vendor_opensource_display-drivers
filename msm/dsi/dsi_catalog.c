@@ -78,6 +78,7 @@ static void dsi_catalog_cmn_init(struct dsi_ctrl_hw *ctrl,
 	case DSI_CTRL_VERSION_2_8:
 	case DSI_CTRL_VERSION_2_9:
 	case DSI_CTRL_VERSION_2_10:
+	case DSI_CTRL_VERSION_2_10_HFI:
 		ctrl->ops.phy_reset_config[MSM_DISP_OP_HWIO] = dsi_ctrl_hw_22_phy_reset_config;
 		ctrl->ops.config_clk_gating[MSM_DISP_OP_HWIO] = dsi_ctrl_hw_22_config_clk_gating;
 		ctrl->ops.setup_lane_map[MSM_DISP_OP_HWIO] = dsi_ctrl_hw_22_setup_lane_map;
@@ -155,6 +156,7 @@ int dsi_catalog_ctrl_setup(struct dsi_ctrl_hw *ctrl,
 	case DSI_CTRL_VERSION_2_8:
 	case DSI_CTRL_VERSION_2_9:
 	case DSI_CTRL_VERSION_2_10:
+	case DSI_CTRL_VERSION_2_10_HFI:
 		ctrl->widebus_support = true;
 		ctrl->phy_pll_bypass = phy_pll_bypass;
 		dsi_catalog_cmn_init(ctrl, version);
@@ -356,6 +358,7 @@ int dsi_catalog_phy_setup(struct dsi_phy_hw *phy,
 		dsi_catalog_phy_5_0_init(phy);
 		break;
 	case DSI_PHY_VERSION_7_2:
+	case DSI_PHY_VERSION_7_2_HFI:
 		dsi_catalog_phy_7_2_init(phy);
 		break;
 	default:
@@ -386,6 +389,7 @@ int dsi_catalog_phy_pll_setup(struct dsi_phy_hw *phy, u32 pll_ver)
 		phy->ops.pll_toggle[MSM_DISP_OP_HWIO] = dsi_pll_4nm_toggle;
 		break;
 	case DSI_PLL_VERSION_3NM:
+	case DSI_PLL_VERSION_3NM_HFI:
 		phy->ops.configure[MSM_DISP_OP_HWIO] = dsi_pll_3nm_configure;
 		phy->ops.pll_toggle[MSM_DISP_OP_HWIO] = dsi_pll_3nm_toggle;
 		break;
