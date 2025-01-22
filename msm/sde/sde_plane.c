@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023,2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -4811,7 +4811,7 @@ static void sde_plane_early_unregister(struct drm_plane *plane)
 	_sde_plane_destroy_debugfs(plane);
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
 static bool sde_plane_format_mod_supported(struct drm_plane *plane,
 		uint32_t format, uint64_t modifier)
 {
@@ -4830,7 +4830,7 @@ static const struct drm_plane_funcs sde_plane_funcs = {
 		.atomic_destroy_state = sde_plane_destroy_state,
 		.late_register = sde_plane_late_register,
 		.early_unregister = sde_plane_early_unregister,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
 		.format_mod_supported = sde_plane_format_mod_supported,
 #endif
 };

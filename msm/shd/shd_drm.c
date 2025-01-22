@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd] %s: " fmt, __func__
@@ -258,13 +258,13 @@ static int shd_display_init_base_crtc(struct drm_device *dev,
 	if (priv->num_planes >= MAX_PLANES)
 		return -ENOENT;
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
 	dev->mode_config.allow_fb_modifiers = false;
 #endif
 
 	/* create dummy primary plane for base crtc */
 	primary = sde_plane_init(dev, SSPP_DMA0, true, 0, 0);
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
 	dev->mode_config.allow_fb_modifiers = true;
 #endif
 
