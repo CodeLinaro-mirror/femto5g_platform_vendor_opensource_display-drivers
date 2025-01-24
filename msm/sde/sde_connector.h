@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -474,6 +474,14 @@ struct sde_connector_ops {
 	 */
 	int (*get_tile_map)(struct drm_connector *connector,
 			void *display, int num_tile, int *tile_map);
+
+	/**
+	 * hdcp_auth - trigger HDCP authentication
+	 * @connector: Pointer to drm connector structure
+	 * @enable : flag to indicate the trigger enable/disable
+	 * Returns: Zero on success
+	 */
+	int (*hdcp_auth)(struct drm_connector *connector, bool enable);
 };
 
 /**
@@ -1350,5 +1358,13 @@ const char *sde_conn_get_topology_name(struct drm_connector *conn,
  */
 int sde_connector_get_tile_map(struct drm_connector *connector,
 		int num_tile, int *tile_map);
+
+/**
+ * hdcp_auth - trigger HDCP authentication
+ * @connector: Pointer to drm connector structure
+ * @enable : flag to indicate the trigger enable/disable
+ * Returns: Zero on success
+ */
+int sde_connector_trigger_hdcp_auth(struct drm_connector *connector, bool trigger);
 
 #endif /* _SDE_CONNECTOR_H_ */
