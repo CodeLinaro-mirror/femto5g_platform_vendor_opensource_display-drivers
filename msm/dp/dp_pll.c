@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/err.h>
@@ -66,6 +66,9 @@ static int dp_pll_clock_register(struct dp_pll *pll)
 		break;
 	case DP_PLL_3NM_V1:
 		rc = dp_pll_clock_register_3nm(pll);
+		break;
+	case EDP_PLL_5NM:
+		rc = edp_pll_clock_register_5nm(pll);
 		break;
 	default:
 		rc = -ENOTSUPP;

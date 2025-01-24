@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023,2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -163,6 +163,7 @@ static inline bool is_gdsc_disabled(struct dp_pll *pll)
 }
 
 int dp_pll_clock_register_5nm(struct dp_pll *pll);
+int edp_pll_clock_register_5nm(struct dp_pll *pll);
 void dp_pll_clock_unregister_5nm(struct dp_pll *pll);
 int dp_pll_clock_register_4nm(struct dp_pll *pll);
 void dp_pll_clock_unregister_4nm(struct dp_pll *pll);
