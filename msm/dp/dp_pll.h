@@ -41,6 +41,7 @@ enum dp_pll_revision {
 	DP_PLL_5NM_V2,
 	DP_PLL_4NM_V1,
 	DP_PLL_4NM_V1_1,
+	EDP_PLL_4NM,
 	EDP_PLL_5NM,
 	DP_PLL_3NM_V1,
 };
@@ -61,6 +62,7 @@ static inline const char *dp_pll_get_revision(enum dp_pll_revision rev)
 	case DP_PLL_5NM_V2:	return "DP_PLL_5NM_V2";
 	case DP_PLL_4NM_V1:	return "DP_PLL_4NM_V1";
 	case DP_PLL_4NM_V1_1:	return "DP_PLL_4NM_V1_1";
+	case EDP_PLL_4NM:       return "EDP_PLL_4NM";
 	case EDP_PLL_5NM:	return "EDP_PLL_5NM";
 	case DP_PLL_3NM_V1:	return "DP_PLL_3NM_V1";
 	default:		return "???";
@@ -165,6 +167,7 @@ static inline bool is_gdsc_disabled(struct dp_pll *pll)
 int dp_pll_clock_register_5nm(struct dp_pll *pll);
 int edp_pll_clock_register_5nm(struct dp_pll *pll);
 void dp_pll_clock_unregister_5nm(struct dp_pll *pll);
+int edp_pll_clock_register_4nm(struct dp_pll *pll);
 int dp_pll_clock_register_4nm(struct dp_pll *pll);
 void dp_pll_clock_unregister_4nm(struct dp_pll *pll);
 int dp_pll_clock_register_3nm(struct dp_pll *pll);

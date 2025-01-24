@@ -67,6 +67,9 @@ static int dp_pll_clock_register(struct dp_pll *pll)
 	case DP_PLL_3NM_V1:
 		rc = dp_pll_clock_register_3nm(pll);
 		break;
+	case EDP_PLL_4NM:
+		rc = edp_pll_clock_register_4nm(pll);
+		break;
 	case EDP_PLL_5NM:
 		rc = edp_pll_clock_register_5nm(pll);
 		break;
@@ -88,6 +91,7 @@ static void dp_pll_clock_unregister(struct dp_pll *pll)
 		break;
 	case DP_PLL_4NM_V1:
 	case DP_PLL_4NM_V1_1:
+	case EDP_PLL_4NM:
 		dp_pll_clock_unregister_4nm(pll);
 		break;
 	case DP_PLL_3NM_V1:
@@ -186,6 +190,10 @@ static const struct dp_pll_ver_spec_info dp_pll_4nm_v1_1 = {
 	.revision = DP_PLL_4NM_V1_1,
 };
 
+static const struct dp_pll_ver_spec_info edp_pll_4nm = {
+	.revision = EDP_PLL_4NM,
+};
+
 static const struct dp_pll_ver_spec_info edp_pll_5nm = {
 	.revision = EDP_PLL_5NM,
 };
@@ -203,6 +211,8 @@ static const struct of_device_id dp_pll_of_match[] = {
 	  .data = &dp_pll_4nm_v1,},
 	{ .compatible = "qcom,dp-pll-4nm-v1.1",
 	  .data = &dp_pll_4nm_v1_1,},
+	{ .compatible = "qcom,edp-pll-4nm",
+	  .data = &edp_pll_4nm,},
 	{ .compatible = "qcom,edp-pll-5nm",
 	  .data = &edp_pll_5nm,},
 	{ .compatible = "qcom,dp-pll-3nm-v1",
