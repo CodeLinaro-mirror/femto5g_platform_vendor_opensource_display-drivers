@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1888,8 +1888,9 @@ static void sde_encoder_phys_wb_setup(struct sde_encoder_phys *phys_enc)
 		DRMID(phys_enc->parent), WBID(wb_enc), fb->base.id, fb->width, fb->height,
 		fb->format->format, fb->modifier, wb_roi->x, wb_roi->y, wb_roi->w, wb_roi->h);
 
-	SDE_EVT32(DRMID(phys_enc->parent), WBID(wb_enc), wb_roi->x, wb_roi->y, wb_roi->w, wb_roi->h,
-			out_width, out_height, fb->width, fb->height, mode.hdisplay, mode.vdisplay,
+	SDE_EVT32(DRMID(phys_enc->parent), WBID(wb_enc), fb->format->format,
+			wb_roi->x, wb_roi->y, wb_roi->w, wb_roi->h, out_width, out_height,
+			fb->width, fb->height, mode.hdisplay, mode.vdisplay,
 			DPUID(phys_enc->parent->dev));
 
 	sde_encoder_phys_wb_set_ot_limit(phys_enc);
