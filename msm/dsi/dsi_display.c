@@ -4693,6 +4693,16 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 			goto error;
 		}
 
+		if (display->config.video_timing.esync_enabled) {
+			ctrl->esync_clk_freq = pclk_rate;
+			rc = dsi_clk_set_esync_frequency(display->dsi_clk_handle,
+					ctrl->esync_clk_freq, ctrl->cell_index);
+			if (rc) {
+				DSI_ERR("Failed to update esync frequency\n");
+				goto error;
+			}
+		}
+
 		ctrl->host_config.bit_clk_rate_hz = bit_clk_rate;
 error:
 		mutex_unlock(&ctrl->ctrl_lock);
@@ -9415,7 +9425,7 @@ int dsi_display_post_enable(struct dsi_display *display)
 			DSI_MODE_FLAG_POMS_TO_VID)
 		dsi_panel_switch_video_mode_in(display->panel);
 	else {
-		rc = dsi_panel_post_enable(display->panel);
+		rc = dsi_display_mgr_panel_post_enable(display);
 		if (rc)
 			DSI_ERR("[%s] panel post-enable failed, rc=%d\n",
 				display->name, rc);

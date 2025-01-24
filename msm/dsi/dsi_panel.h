@@ -178,6 +178,7 @@ struct dsi_panel_reset_config {
 
 	int reset_gpio;
 	int disp_en_gpio;
+	int oled_en_gpio;
 	int lcd_mode_sel_gpio;
 	u32 mode_sel_state;
 };
@@ -253,6 +254,7 @@ struct dsi_panel {
 	u32 num_display_modes;
 
 	struct dsi_regulator_info power_info;
+	struct dsi_regulator_info post_power_info;
 	struct dsi_backlight_config bl_config;
 	struct dsi_panel_reset_config reset_config;
 	struct dsi_pinctrl_info pinctrl;
@@ -294,6 +296,7 @@ struct dsi_panel {
 	int power_mode;
 	bool powered;
 	enum dsi_panel_physical_type panel_type;
+	bool need_post_on_supply;
 
 	struct dsi_panel_ops panel_ops;
 };
