@@ -8449,12 +8449,28 @@ fail:
 	return ERR_PTR(ret);
 }
 
+int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc)
+{
+	struct sde_encoder_phys *phys_enc;
+
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	phys_enc = sde_enc->cur_master;
+	atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
+	atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0);
+
+	return 0;
+}
+
 int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 	enum msm_event_wait event)
 {
 	int (*fn_wait)(struct sde_encoder_phys *phys_enc) = NULL;
 	struct sde_encoder_virt *sde_enc = NULL;
-	int i, ret = 0;
+	int i, ret = 0, count = 0;
 	char atrace_buf[32];
 	enum msm_disp_op disp_op;
 
@@ -8467,11 +8483,13 @@ int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 
 	disp_op = sde_encoder_get_disp_op(drm_enc);
 	if (sde_enc->hal_ops.wait_for_event[disp_op]) {
-		ret = sde_enc->hal_ops.wait_for_event[disp_op](sde_enc,
-				event);
-		if (ret) {
+		count = sde_enc->hal_ops.wait_for_event[disp_op](sde_enc, event);
+		if (count <= 0) {
+			ret = -ETIMEDOUT;
 			SDE_ERROR("wait for event failure\n");
 		}
+
+		return ret;
 	}
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {

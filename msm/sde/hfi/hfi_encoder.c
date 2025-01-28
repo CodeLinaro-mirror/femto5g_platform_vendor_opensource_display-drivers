@@ -114,7 +114,10 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 
 	switch (cmd_id) {
 	case HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_START:
-		event = SDE_ENCODER_FRAME_EVENT_DONE;
+		event = SDE_ENCODER_FRAME_EVENT_DONE |
+			SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
+			SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
+		sde_encoder_update_pending_kickoff_cnt(hfi_enc->sde_base);
 		hfi_encoder_frame_event_callback(hfi_enc->sde_base,
 				payload, event);
 		break;
@@ -338,8 +341,6 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	wait_info.timeout_ms = TIMEOUT_MAX;
 
 	ret = hfi_encoder_helper_wait_for_event(hfi_enc, &wait_info, HFI_EVENT_FRAME_SCAN_START);
-
-	atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
 	return ret;
 }
 
