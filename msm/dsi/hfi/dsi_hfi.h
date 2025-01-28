@@ -21,6 +21,7 @@
 #define NUM_PANEL_CMD_TYPES_SUPPORTED 3
 #define CLK_RATE_SIZE 2
 #define JITTER_SIZE 2
+#define NUM_VARIABLE_DPHY_TIMINGS 14
 
 /**
  * struct dsi_value_to_prop_lookup - contains map with hfi properties and
@@ -98,6 +99,17 @@ struct dsi_hfi_topology_payload {
 };
 
 /**
+ * struct dsi_hfi_phy_timings_payload - payload with DSI PHY Panel Timings from DT
+ *
+ * @count:                          count
+ * @dphy_timings:                   DSI PHY Panel Timings
+ */
+struct dsi_hfi_phy_timings_payload {
+	u32 count;
+	u32 dphy_timings[NUM_VARIABLE_DPHY_TIMINGS];
+};
+
+/**
  * struct dsi_panel_timing_caps - contains properties to be sent as part of
  * HFI_COMMAND_PANEL_INIT_TIMING_CAPS
  * @panel_index:                    HFI_PROPERTY_PANEL_INDEX
@@ -111,6 +123,7 @@ struct dsi_hfi_topology_payload {
  * top_index:                       index of default topology
  * running_hfi_offset:              offset of pointer in hfi mapped buffer
  * payload:                         panel cmd information
+ * phy_timings_payload:             DSI PHY panel tmgs info
  */
 struct dsi_panel_timing_caps {
 	u32 panel_index;
@@ -124,6 +137,7 @@ struct dsi_panel_timing_caps {
 	u32 top_index;
 	u32 running_hfi_offset;
 	struct dsi_hfi_per_cmd_type_payload payload;
+	struct dsi_hfi_phy_timings_payload phy_timings_payload;
 };
 
 /**

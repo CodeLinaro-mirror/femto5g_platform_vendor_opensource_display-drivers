@@ -629,6 +629,8 @@ static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
 					struct dsi_panel_timing_caps *panel_timing_caps,
 					void *sde_vaddr, void *hfi_vaddr)
 {
+	int i;
+
 	panel_timing_caps->panel_index = mode->mode_idx;
 	panel_timing_caps->clockrate[0] = HFI_VAL_L32(mode->timing.clk_rate_hz);
 	panel_timing_caps->clockrate[1] = HFI_VAL_H32(mode->timing.clk_rate_hz);
@@ -644,6 +646,10 @@ static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
 	panel_timing_caps->topology.hfi_topology.display_count = mode->priv_info->topology.num_intf;
 	panel_timing_caps->top_index = 0;
 	hfi_panel_fill_dcs_cmds(display, mode->priv_info, panel_timing_caps, sde_vaddr, hfi_vaddr);
+	panel_timing_caps->phy_timings_payload.count = mode->priv_info->phy_timing_len;
+	for (i = 0; i < NUM_VARIABLE_DPHY_TIMINGS; i++)
+		panel_timing_caps->phy_timings_payload.dphy_timings[i] =
+			mode->priv_info->phy_timing_val[i];
 }
 
 static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
@@ -894,6 +900,12 @@ static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
 				(sizeof(timing_caps_array[i].payload) / sizeof(u32))),
 				(void *)&timing_caps_array[i].payload);
 		kv_size += sizeof(timing_caps_array[i].payload);
+
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_DPHY_TIMINGS, 0,
+				(sizeof(timing_caps_array[i].phy_timings_payload) / sizeof(u32))),
+				(void *)&timing_caps_array[i].phy_timings_payload);
+		kv_size += sizeof(timing_caps_array[i].phy_timings_payload);
 
 		kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
 

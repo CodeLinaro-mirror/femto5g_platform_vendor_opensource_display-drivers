@@ -577,6 +577,21 @@
 #define HFI_PROPERTY_PANEL_DCP_ADDRESS                              0x00040026
 
 /*
+ * HFI_PROPERTY_PANEL_DPHY_TIMINGS    - Provides phy timing values needed
+ *                                     for DPHY timing params configurations
+ *                                     This property is sent to DCP as part of
+ *                                     HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS
+ *                                     command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DPHY_TIMINGS
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DPHY_TIMINGS |
+ *                               (version=0 << 20) | (dsize = n+1 << 24 )
+ *   (u32_value) payload[1]       : count
+ *   (u32_value) payload[2..n]    : property_array_u32[count]
+ */
+#define HFI_PROPERTY_PANEL_DPHY_TIMINGS                              0x00040027
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF
