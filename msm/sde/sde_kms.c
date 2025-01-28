@@ -3587,6 +3587,7 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 	struct drm_device *dev;
 	struct msm_drm_private *priv;
 	struct drm_crtc *crtc;
+	struct drm_plane *plane;
 	struct drm_crtc *cur_crtc = NULL;
 	struct drm_connector *conn;
 	struct drm_connector *cur_conn = NULL;
@@ -3677,6 +3678,11 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 			}
 
 			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
+			hfi_kms_get_catalog_data(sde_kms->hfi_kms);
+
+			drm_for_each_plane(plane, dev)
+				sde_plane_post_init(plane);
+
 			sde_kms->hfi_session_start = false;
 		}
 
@@ -5270,6 +5276,10 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 	SDE_EVT32_VERBOSE(event_type);
 
 	dev = sde_kms->dev;
+
+	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)))
+		return;
+
 	if (event_type == SDE_POWER_EVENT_POST_ENABLE) {
 		sde_irq_update(msm_kms, true);
 		sde_kms->first_kickoff = true;

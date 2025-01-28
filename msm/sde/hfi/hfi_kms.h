@@ -11,6 +11,64 @@
 #include "hfi_msm_drv.h"
 #include "linux/completion.h"
 
+#define SDE_MAX_SSPP_COUNT  16
+
+#define REC_ID(x)  ((x & 0xFF000000) >> 24)
+
+/*
+ * hfi_catalog_base - base struct for sde HW information
+ *
+ * @hw_rev	    HW version
+ * @dcp_hw_rev  dcp HW version
+ * @fw_rev		FW version
+ * @vig_count		Number of VIG layers
+ * @vig_indices		VIG layer indices
+ * @dma_count		Number of DMA layers
+ * @dma_indices		DMA layer indices
+ * @max_display_count	Max display count
+ * @wb_count		Number of writeback blocks
+ * @wb_indices		Writeback block indices
+ * @max_wb_linear_resolution	Max writeback linear resolution
+ * @max_wb_ubwc_resolution	Max writeback UBWC resolution
+ * @dsi_count		Number of DSI blocks
+ * @dsi_indices		DSI block indices
+ * @max_dsi_resolution	DSI maximum resolution
+ * @max_cwb		Number of WB that support CWB concurrently
+ * @dp_count		Number of DP blocks
+ * @dp_indices		DP block indices
+ * @max_dp_resolution	DP maximum resolution
+ * @ds_count		count of destination scaler blocks
+ * @ds_indices		DS block indices
+ * @max_ds_resolution	Max resolution support of DS
+ */
+struct hfi_catalog_base {
+	u32 dcp_hw_rev;
+	u32 hw_rev;
+	u32 fw_rev;
+	u32 vig_count;
+	u32 vig_indices[SDE_MAX_SSPP_COUNT];
+	u32 virt_vig_count;
+	u32 vig_r1_indices[SDE_MAX_SSPP_COUNT];
+	u32 dma_count;
+	u32 dma_indices[SDE_MAX_SSPP_COUNT];
+	u32 virt_dma_count;
+	u32 dma_r1_indices[SDE_MAX_SSPP_COUNT];
+	u32 max_display_count;
+	u32 wb_count;
+	u32 wb_indices[MAX_BLOCKS];
+	u32 max_wb_linear_resolution;
+	u32 max_wb_ubwc_resolution;
+	u32 dsi_count;
+	u32 dsi_indices[MAX_BLOCKS];
+	u32 max_dsi_resolution;
+	u32 dp_count;
+	u32 dp_indices[MAX_BLOCKS];
+	u32 max_dp_resolution;
+	u32 ds_count;
+	u32 ds_indices[MAX_BLOCKS];
+	u32 max_ds_resolution;
+};
+
 /**
  * struct hfi_kms - virtualized hfi kms structure
  * @base: Pointer to base sde kms structure
@@ -27,6 +85,7 @@ struct hfi_kms {
 	struct hfi_prop_listener device_init_listener;
 	struct hfi_prop_listener resource_vote_listener;
 	atomic_t cat_init_done;
+	struct hfi_catalog_base *catalog;
 };
 
 /**
@@ -92,4 +151,24 @@ void hfi_kms_resource_vote_hfi_prop_handler(u32 UNIQUE_DISP_OR_OBJ_ID, u32 CMD_I
  */
 struct hfi_cmdbuf_t *hfi_kms_get_cmd_buf(struct hfi_kms *hfi_kms,
 		u16 display_id, u32 cmd_type);
+
+/**
+ * hfi_kms_get_catalog_data - get hfi catalog data
+ * @hfi_kms: Pointer to hfi_kms structure
+ * Returns: 0 on success, or error code on failure
+ */
+int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms);
+
+/**
+ * hfi_kms_get_plane_indices - get hfi plane indices
+ * @hfi_kms: Pointer to hfi_kms structure
+ * @vig_pipe: True if VIG pipe
+ * @pipe_idx: sde pipe id
+ * @rect1: true if rect1
+ * @hfi_pipe_id: func updates hfi pipe idx for pipe_idx
+ * Returns: 0 on success, or error code on failure
+ */
+int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe, uint32_t pipe_idx,
+		bool rect1, uint32_t *hfi_pipe_id);
+
 #endif // _HFI_KMS_H_

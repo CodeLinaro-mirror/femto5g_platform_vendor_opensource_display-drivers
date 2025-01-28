@@ -576,4 +576,9 @@ static inline bool sde_plane_enabled(const struct drm_plane_state *state)
 {
 	return state && state->fb && state->crtc;
 }
+
+/** sde_plane_post_init - plane post init
+ * @plane: pointer to drm_plane
+ */
+int sde_plane_post_init(struct drm_plane *plane);
 #endif /* _SDE_PLANE_H_ */

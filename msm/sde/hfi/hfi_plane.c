@@ -112,30 +112,30 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 
 	prop_id = HFI_PROPERTY_LAYER_SRC_ROI;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-			plane->pipe, HFI_VAL_U32_ARRAY, &src, sizeof(struct hfi_display_roi));
+			phfi->hfi_pipe_id, HFI_VAL_U32_ARRAY, &src, sizeof(struct hfi_display_roi));
 
 	prop_id = HFI_PROPERTY_LAYER_DEST_ROI;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-			plane->pipe, HFI_VAL_U32_ARRAY, &dst, sizeof(struct hfi_display_roi));
+			phfi->hfi_pipe_id, HFI_VAL_U32_ARRAY, &dst, sizeof(struct hfi_display_roi));
 
 	prop_id = HFI_PROPERTY_DISPLAY_ATTACH_LAYER;
 	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id, HFI_VAL_U32,
-			&plane->pipe, sizeof(u32));
+			&phfi->hfi_pipe_id, sizeof(u32));
 
 	sde_plane_get_scanout_info(plane, pstate,  fb, &plane->pipe_cfg);
 	prop_id = HFI_PROPERTY_LAYER_SRC_ADDR;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, plane->pipe,
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &plane->pipe_cfg.layout.plane_addr[0],
 			(sizeof(u32) * SDE_MAX_PLANES));
 
 	prop_id = HFI_PROPERTY_LAYER_STRIDE;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, plane->pipe,
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &plane->pipe_cfg.layout.plane_pitch[0],
 			(sizeof(u32) * SDE_MAX_PLANES));
 
 	hfi_format = hfi_catalog_get_hfi_format(&fmt);
 	prop_id = HFI_PROPERTY_LAYER_SRC_FORMAT;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, plane->pipe,
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &hfi_format, sizeof(u32));
 
 	HFI_DEBUG_PLANE(phfi, "done adding drm props\n");
@@ -161,25 +161,25 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	case HFI_PROPERTY_LAYER_ZPOS:
 		prop_id = HFI_PROPERTY_LAYER_ZPOS;
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-				plane->pipe, HFI_VAL_U32, &state->stage, sizeof(u32));
+				phfi->hfi_pipe_id, HFI_VAL_U32, &state->stage, sizeof(u32));
 	case HFI_PROPERTY_LAYER_ALPHA:
 		prop_id = HFI_PROPERTY_LAYER_ALPHA;
 		temp_val =  sde_plane_get_property(state, PLANE_PROP_ALPHA);
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-				plane->pipe, HFI_VAL_U32, &temp_val, sizeof(u32));
+				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	case HFI_PROPERTY_LAYER_BG_ALPHA:
 		prop_id = HFI_PROPERTY_LAYER_BG_ALPHA;
 		temp_val =  sde_plane_get_property(state, PLANE_PROP_BG_ALPHA);
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-				plane->pipe, HFI_VAL_U32, &temp_val, sizeof(u32));
+				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	case HFI_PROPERTY_LAYER_SRC_IMG_SIZE_W:
 		prop_id = HFI_PROPERTY_LAYER_SRC_IMG_SIZE_W;
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-				plane->pipe, HFI_VAL_U32, &state->src_img_rec.w, sizeof(u32));
+				phfi->hfi_pipe_id, HFI_VAL_U32, &state->src_img_rec.w, sizeof(u32));
 	case HFI_PROPERTY_LAYER_SRC_IMG_SIZE_H:
 		prop_id = HFI_PROPERTY_LAYER_SRC_IMG_SIZE_H;
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-				plane->pipe, HFI_VAL_U32, &state->src_img_rec.h, sizeof(u32));
+				phfi->hfi_pipe_id, HFI_VAL_U32, &state->src_img_rec.h, sizeof(u32));
 	case HFI_PROPERTY_LAYER_BLEND_TYPE:
 		temp_val = sde_plane_get_property(pstate, PLANE_PROP_BLEND_OP);
 		if (temp_val >= ARRAY_SIZE(hfi_plane_blend_ops_map)) {
@@ -189,7 +189,7 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		temp_val = hfi_plane_blend_ops_map[temp_val];
 		prop_id = HFI_PROPERTY_LAYER_BLEND_TYPE;
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-				plane->pipe, HFI_VAL_U32, &temp_val, sizeof(u32));
+				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	case HFI_PROPERTY_LAYER_MULTIRECT_MODE:
 		temp_val = sde_plane_get_property(pstate, PLANE_PROP_MULTIRECT_MODE);
 		if (temp_val == SDE_SSPP_MULTIRECT_NONE)
@@ -204,7 +204,7 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		prop_id = HFI_PROPERTY_LAYER_MULTIRECT_MODE;
 
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-				plane->pipe, HFI_VAL_U32, &temp_val, sizeof(u32));
+				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	default:
 		HFI_ERROR_PLANE(phfi, "unsupported HFI property\n");
 		return -EINVAL;
@@ -483,6 +483,27 @@ static int hfi_plane_atomic_update(struct sde_plane *plane, struct sde_plane_sta
 	return ret;
 }
 
+static int hfi_plane_post_init(struct sde_plane *plane)
+{
+	int pipe;
+	struct hfi_plane *phfi = to_hfi_plane(plane);
+	struct hfi_kms *hfi_kms;
+
+	hfi_kms = sde_plane_get_kms(plane);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	if (SDE_SSPP_VALID_VIG(plane->pipe))
+		pipe = plane->pipe - SSPP_VIG0;
+	else if (SDE_SSPP_VALID_DMA(plane->pipe))
+		pipe = plane->pipe - SSPP_DMA0;
+	else
+		return -EINVAL;
+
+	return hfi_kms_get_plane_indices(hfi_kms, SDE_SSPP_VALID_VIG(plane->pipe),
+				pipe, plane->is_virtual, &(phfi->hfi_pipe_id));
+}
+
 static void _sde_plane_hal_funcs_install(struct sde_plane *plane)
 {
 	if (!plane) {
@@ -492,6 +513,7 @@ static void _sde_plane_hal_funcs_install(struct sde_plane *plane)
 
 	plane->hal_ops.destroy[MSM_DISP_OP_HFI] = hfi_plane_destroy;
 	plane->hal_ops.atomic_update[MSM_DISP_OP_HFI] = hfi_plane_atomic_update;
+	plane->hal_ops.post_init[MSM_DISP_OP_HFI] = hfi_plane_post_init;
 }
 
 int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)

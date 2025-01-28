@@ -5708,6 +5708,29 @@ bool is_sde_plane_virtual(struct drm_plane *plane)
 	return plane ? to_sde_plane(plane)->is_virtual : false;
 }
 
+int sde_plane_post_init(struct drm_plane *plane)
+{
+	int ret = 0;
+	struct sde_plane *psde;
+	enum msm_disp_op disp_op;
+
+	if (!plane)
+		return -EINVAL;
+
+	psde = to_sde_plane(plane);
+
+	disp_op = sde_plane_get_disp_op(plane);
+	if (psde->hal_ops.post_init[disp_op]) {
+		ret = psde->hal_ops.post_init[disp_op](psde);
+		if (ret) {
+			SDE_ERROR_PLANE(psde,
+				"failed in HAL op atomic update ret:%d\n", ret);
+		}
+	}
+
+	return ret;
+}
+
 /* initialize plane */
 struct drm_plane *sde_plane_init(struct drm_device *dev,
 		uint32_t pipe, bool primary_plane,
