@@ -25,7 +25,7 @@ struct hw_event_state {
  * @hfi_cb_obj: hfi listener call back object
  */
 struct hfi_encoder {
-	struct sde_encoder sde_base;
+	struct sde_encoder_virt sde_base;
 	struct sde_encoder_event_ops event_cbs;
 	struct hw_event_state hw_events_state[MSM_ENC_EVENT_MAX];
 	wait_queue_head_t pending_kickoff_wq;
@@ -42,10 +42,10 @@ struct hfi_encoder {
  * @ops:	Pointer to hfi encoder event ops
  * Returns:     Pointer to newly created drm encoder
  */
-struct sde_encoder *hfi_encoder_init(struct drm_device *dev, struct msm_display_info *info,
+struct sde_encoder_virt *hfi_encoder_init(struct drm_device *dev, struct msm_display_info *info,
 		struct sde_encoder_event_ops *ops);
 #else
-struct sde_encoder *hfi_encoder_init(struct drm_device *dev, struct msm_display_info *info,
+struct sde_encoder_virt *hfi_encoder_init(struct drm_device *dev, struct msm_display_info *info,
 		struct sde_encoder_event_ops *ops)
 {
 	return NULL;

@@ -16,8 +16,8 @@
 #define HFI_CMD_BUFF_DEVICE 0
 
 struct hfi_bw_config {
-	u64	ab_vote[MSM_POWER_HANDLE_DBUS_ID_MAX];
-	u64	ib_vote[MSM_POWER_HANDLE_DBUS_ID_MAX];
+	u64	ab_vote[SDE_POWER_HANDLE_DBUS_ID_MAX];
+	u64	ib_vote[SDE_POWER_HANDLE_DBUS_ID_MAX];
 };
 
 static const u32 bw_resources_hfi_props[MAX_NUM_HFI_RESOURCES] = {
@@ -29,7 +29,6 @@ static const u32 bw_resources_hfi_props[MAX_NUM_HFI_RESOURCES] = {
 	HFI_PROPERTY_DEVICE_DRAM_AB,
 };
 
-
 struct msm_drm_hfi_private {
 	struct msm_drm_private base;
 	struct hfi_adapter_t *hfi_adapter;
@@ -40,26 +39,6 @@ struct hfi_resources_register {
 	u32 num_of_resources;
 	u32 resource_property_id[MAX_NUM_HFI_RESOURCES];
 };
-
-/**
- * hfi_msm_runtime_suspend
- */
-int hfi_msm_runtime_suspend(struct device *dev);
-
-/**
- * hfi_msm_runtime_resume
- */
-int hfi_msm_runtime_resume(struct device *dev);
-
-/**
- * hfi_msm_runtime_enable
- */
-int hfi_msm_runtime_enable(struct device *dev);
-
-/**
- * hfi_msm_install_irq
- */
-int hfi_msm_install_irq(struct device *dev);
 
 /**
  * hfi_msm_drv_hfi_init

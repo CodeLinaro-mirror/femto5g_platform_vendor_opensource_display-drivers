@@ -67,6 +67,24 @@ module_entry(
          "CONFIG_DRM_MSM_DP_USBPD_LEGACY" : [
             "msm/dp/dp_usbpd.c",
          ],
+         "CONFIG_MDSS_HFI_ADAPTER" : [
+            "msm/hfi/hfi_adapter.c",
+            "msm/hfi/hfi_packer.c",
+            "msm/hfi/hfi_unpacker.c",
+         ],
+         "CONFIG_MDSS_HFI" : [
+            "msm/hfi/hfi_utils.c",
+            "msm/hfi/hfi_msm_drv.c",
+            "msm/sde/hfi/hfi_catalog.c",
+            "msm/sde/hfi/hfi_connector.c",
+            "msm/sde/hfi/hfi_crtc.c",
+            "msm/sde/hfi/hfi_encoder.c",
+            "msm/sde/hfi/hfi_kms.c",
+            "msm/sde/hfi/hfi_msm_dbg.c",
+            "msm/sde/hfi/hfi_plane.c",
+            "msm/dsi/hfi/dsi_display_hfi.c",
+            "msm/dsi/hfi/dsi_hfi.c",
+         ],
          "CONFIG_DRM_MSM_SDE" : [
             "msm/sde/sde_crtc.c",
             "msm/sde/sde_encoder.c",
@@ -224,6 +242,9 @@ module_entry(
         "CONFIG_SMMU_PROXY" : [
             "//vendor/qcom/opensource/securemsm-kernel:%b_smmu_proxy_dlkm",
              "//vendor/qcom/opensource/securemsm-kernel:smmu_proxy_headers",
+      ],
+        "CONFIG_QTI_HFI_CORE" : [
+            "//vendor/qcom/opensource/mm-drivers/hfi_core:%b_msm_hfi_core",
         ],
       },
 )

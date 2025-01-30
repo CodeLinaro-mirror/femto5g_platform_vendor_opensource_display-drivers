@@ -3,6 +3,7 @@
  * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#include <linux/types.h>
 #include "hfi_catalog.h"
 
 static const struct hfi_format_map sde_linear_fmt_map[] = {
@@ -137,12 +138,12 @@ static inline u32 hfi_format_lookup(struct sde_format_extended *sde_fmt,
 		}
 	}
 
-	return UINT32_MAX;
+	return U32_MAX;
 }
 
 u32 hfi_catalog_get_hfi_format(struct sde_format_extended *sde_fmt)
 {
-	u32 hfi_fmt = UINT32_MAX;
+	u32 hfi_fmt = U32_MAX;
 
 	if (!sde_fmt) {
 		SDE_ERROR("No valid SDE format for given HFI format");
@@ -160,7 +161,7 @@ u32 hfi_catalog_get_hfi_format(struct sde_format_extended *sde_fmt)
 					ARRAY_SIZE(sde_non_linear_fmt_map));
 	}
 
-	if (hfi_fmt == UINT32_MAX)
+	if (hfi_fmt == U32_MAX)
 		SDE_ERROR("No valid HFI format for given SDE format");
 
 	return hfi_fmt;

@@ -6,7 +6,6 @@
 #include <linux/errno.h>
 
 #include "hfi_utils.h"
-#include "msm_dbg.h"
 #include "sde_kms.h"
 
 #define HFI_PACK_PROP_SIZE(x, y) (x | ((y/(sizeof(uint32_t))) << 24))

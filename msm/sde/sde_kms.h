@@ -23,6 +23,7 @@
 #include <linux/pm_domain.h>
 #include <linux/pm_qos.h>
 #include <drm/drm_framebuffer.h>
+#include <linux/types.h>
 
 #include "msm_drv.h"
 #include "msm_kms.h"
@@ -129,6 +130,9 @@
 
 /* ESD status check interval in miliseconds */
 #define STATUS_CHECK_INTERVAL_MS 5000
+
+#define MISR_BUFF_SIZE          256
+#define MAX_MISR_MODULES        4
 
 /**
  * enum sde_kms_smmu_state:	smmu state
@@ -246,6 +250,176 @@ struct sde_kms_frame_event_cb_data {
 	struct drm_connector *connector;
 };
 
+/*
+ * struct sde_misr_values -	Cached MISR values
+ * @count:			number of modules
+ * @misr_values:		MISR values obtained
+ */
+struct sde_misr_values {
+	u32 count;
+	u32 misr_values[MAX_MISR_MODULES];
+};
+
+/*
+ * struct misr_read_data_ret -	MISR read information
+ * @count:			number of modules
+ * @misr_values:		MISR values obtained
+ */
+struct misr_read_data_ret {
+	u32 module_type;
+	u32 num_misr;
+	u32 *misr_value;
+};
+
+/**
+ * struct sde_kms_hal_funcs - interface api for sde kms hal
+ */
+struct sde_kms_hal_funcs {
+	/**
+	 * post_init - perform additional initialization steps
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success
+	 */
+	int (*post_init)(struct sde_kms *kms);
+
+	/**
+	 * destroy - Clean up kms resources
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*destroy)(struct sde_kms *kms);
+
+	/**
+	 * debugfs_init - perform debugfs node initialization
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success
+	 */
+	int (*debugfs_init)(struct sde_kms *kms);
+
+	/**
+	 * debugfs_destroy - handle destroy operations for debugfs
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success
+	 */
+	void (*debugfs_destroy)(struct sde_kms *kms);
+
+	/**
+	 * irq_preinstall - perform pre-setup for kms IRQ register
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*irq_preinstall)(struct sde_kms *kms);
+
+	/**
+	 * irq_postinstall - perform post setup for kms IRQ register
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	int (*irq_postinstall)(struct sde_kms *kms);
+
+	/**
+	 * irq_uninstall - perform kms IRQ unregister
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*irq_uninstall)(struct sde_kms *kms);
+
+	/**
+	 * irq_uninstall - handle kms IRQ
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	irqreturn_t (*irq)(struct sde_kms *kms);
+
+	/**
+	 * hw_init - sets up the hw state
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	int (*hw_init)(struct sde_kms *kms);
+
+	/**
+	 * atomic_check - atomic check handling for kms
+	 * @kms: Pointer to sde kms structure
+	 * @state: Pointer to drm atomic state
+	 */
+	int (*atomic_check)(struct sde_kms *kms, struct drm_atomic_state *state);
+
+	/**
+	 * prepare_commit - start of atomic commit sequence
+	 * @kms: Pointer to sde kms structure
+	 * @state: Pointer to drm atomic state
+	 */
+	int (*prepare_commit)(struct sde_kms *kms, struct drm_atomic_state *state);
+
+	/**
+	 * complete_commit - callback signalling completion of current commit
+	 * @kms: Pointer to sde kms structure
+	 * @state: Pointer to drm atomic state
+	 */
+	int (*complete_commit)(struct sde_kms *kms, struct drm_atomic_state *state);
+
+	/**
+	 * commit - process the commit manager routines
+	 * @kms: Pointer to sde kms structure
+	 * @state: Pointer to drm atomic state
+	 */
+	int (*commit)(struct sde_kms *kms, struct drm_atomic_state *state);
+
+	/**
+	 * trigger_commit - callback triggering current commit on to HW
+	 * @kms: Pointer to sde kms structure
+	 * @state: Pointer to drm atomic state
+	 */
+	int (*trigger_commit)(struct sde_kms *kms, struct drm_atomic_state *state);
+
+	/**
+	 * wait_for_commit_done - Wait for hardware to have flushed the
+	 *		current pending frames to hardware
+	 * @kms: Pointer to sde kms structure
+	 * @crtc: Pointer to drm crtc structure
+	 */
+	int (*wait_for_commit_done)(struct sde_kms *kms, struct drm_crtc *crtc);
+
+	/**
+	 * wait_for_tx_complete - Wait for hardware to transfer the pixels
+	 *		to the panel
+	 * @kms: Pointer to sde kms structure
+	 * @crtc: Pointer to drm crtc structure
+	 */
+	int (*wait_for_tx_complete)(struct sde_kms *kms, struct drm_crtc *crtc);
+
+	/**
+	 * pm_suspend - process suspending the system.
+	 * @dev: Pointer to device structure
+	 */
+	int (*pm_suspend)(struct device *dev);
+
+	/**
+	 * pm_resume - process resuming the system.
+	 * @dev: Pointer to device structure
+	 */
+	int (*pm_resume)(struct device *dev);
+
+	/**
+	 * get_mixer_count - get topology mixer count information
+	 * @kms: Pointer to sde kms structure
+	 * @display_mode: Pointer to drm display mode structure
+	 * @resource_caps: Pointer to resource capabilities information structure
+	 * @num_lm: Number of LMs attached
+	 */
+	int (*get_mixer_count)(struct sde_kms *kms, const struct drm_display_mode *display_mode,
+			const struct msm_resource_caps_info *resource_caps, u32 *num_lm);
+
+	/**
+	 * get_dsc_count - get topology DSC count information
+	 * @kms: Pointer to sde kms structure
+	 * @hdisplay: horizontal display timing
+	 * @num_dsc: Number of DSCs attached
+	 */
+	void (*get_dsc_count)(struct sde_kms *kms, u32 hdisplay, u32 *num_dsc);
+};
+
 struct sde_kms {
 	struct msm_kms base;
 	struct drm_device *dev;
@@ -330,6 +504,8 @@ struct sde_kms {
 	u32 debugfs_early_ept_handling;
 	atomic_t stay_awake_count;
 	struct sde_qtimer sde_qtimer;
+
+	struct sde_kms_hal_funcs hal_ops;
 };
 
 struct vsync_info {

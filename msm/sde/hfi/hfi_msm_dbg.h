@@ -5,7 +5,7 @@
 #ifndef _HFI_MSM_DBG_H_
 #define _HFI_MSM_DBG_H_
 
-#include "msm_dbg.h"
+#include "sde_dbg.h"
 #include "sde_trace.h"
 #include "hfi_kms.h"
 #include "hfi_adapter.h"
@@ -20,15 +20,15 @@
  *		Including the special name "panic" will trigger a panic after
  *		the dumping work has completed.
  */
-#define MDSS_DBG_DUMP(dump_blk_mask, ...) hfi_dbg_dump(MDSS_DBG_DUMP_IN_LOG, __func__, \
-		dump_blk_mask, ##__VA_ARGS__, MSM_EVTLOG_DATA_LIMITER)
+#define MDSS_DBG_DUMP(dump_blk_mask, ...) hfi_dbg_dump(SDE_DBG_DUMP_IN_LOG, __func__, \
+		dump_blk_mask, ##__VA_ARGS__, SDE_EVTLOG_DATA_LIMITER)
 
 /**
- * SDE_DBG_EVT_CTRL - trigger a different driver events
+ * MDSS_DBG_EVT_CTRL - trigger a different driver events
  * event: event that trigger different behavior in the driver
  */
 #define MDSS_DBG_CTRL(...) hfi_dbg_ctrl(__func__, ##__VA_ARGS__, \
-		MDSS_DBG_DUMP_DATA_LIMITER)
+		SDE_DBG_DUMP_DATA_LIMITER)
 
 /**
  * struct msm_dbg_buf_data -  msm debug buffer data base structure
@@ -76,7 +76,7 @@ struct msm_dbg_reg_base {
 struct hfi_msm_dbg {
 	struct device *dev;
 	struct dentry *debugfs_root;
-	struct msm_dbg_evtlog *evtlog;
+	struct sde_dbg_evtlog *evtlog;
 	char *read_buf;
 
 	struct drm_printer *msm_dbg_printer;
@@ -106,7 +106,7 @@ struct hfi_msm_dbg {
  *		the dumping work has completed.
  * Returns:	none
  */
-void hfi_dbg_dump(enum msm_dbg_dump_flag mode, const char *name, u64 dump_blk_mask, ...);
+void hfi_dbg_dump(enum sde_dbg_dump_flag mode, const char *name, u64 dump_blk_mask, ...);
 
 /**
  * hfi_dbg_ctrl - trigger specific actions for the driver with debugging

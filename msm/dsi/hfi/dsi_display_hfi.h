@@ -22,8 +22,8 @@
 struct dsi_display_hfi {
 	struct dsi_display dsi_display;
 
-	struct dsi_power_info ctrl_pwr_info;
-	struct dsi_power_info phy_pwr_info;
+	struct dsi_ctrl_power_info ctrl_pwr_info;
+	struct dsi_phy_power_info phy_pwr_info;
 
 	struct hfi_prop_listener hfi_cb_obj;
 	struct hfi_prop_listener misr_read_listener;
@@ -35,33 +35,6 @@ struct dsi_display_hfi {
 
 	bool mode_valid;
 };
-
-struct dsi_hfi_panel_cmd_info {
-	u32 cmd_offset;
-	u32 size;
-	u32 delay;
-	u32 ctrl_flags;
-	u32 mode;
-	u32 reserved1;
-	u32 reserved2;
-};
-
-struct dsi_hfi_panel_per_cmd_type {
-	u32 sde_buff_type_offset;
-	enum hfi_panel_dcs_command_type cmd_type;
-	u32 count_cmds;
-	u32 hfi_buff_struct_offset;
-	u32 reserved_key;
-};
-
-/**
- * dsi_display_hfi_set_mode() - send info to HFI containing mode info,
- *							HFI will set mode and update dfps + bpp
- * @display: Pointer to dsi_display structure
- * @mode: contains selected mode info
- * Return: error code (0 on success)
- */
-int dsi_display_hfi_set_mode(struct dsi_display *display, struct dsi_display_mode *mode);
 
 /**
  * dsi_display_hfi_prepare() - enable clocks, send panel pre on commands, panel power on
@@ -111,14 +84,6 @@ int dsi_display_hfi_disable(struct dsi_display *display);
  * Return: error code (0 on success)
  */
 int dsi_display_hfi_unprepare(struct dsi_display *display);
-
-/**
- * dsi_display_hfi_mode_fixup() - send adjusted mode to HFI for validation and necessary operations
- * @display: Pointer to dsi_display structure
- * @mode: current mode
- * Return: true on success, else false
- */
-bool dsi_display_hfi_mode_fixup(struct dsi_display *display, struct dsi_display_mode *mode);
 
 /**
  * dsi_display_hfi_panel_enable_supplies() - control panel power supplies

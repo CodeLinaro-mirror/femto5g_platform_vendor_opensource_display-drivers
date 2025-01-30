@@ -9635,3 +9635,12 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint3
 	return 0;
 
 }
+
+bool sde_crtc_property_is_dirty(struct sde_crtc_state *cstate,
+		uint32_t property_idx)
+{
+	struct sde_crtc *crtc = to_sde_crtc(cstate->base.crtc);
+
+	return msm_property_is_dirty(&crtc->property_info,
+			&cstate->property_state, property_idx);
+}

@@ -202,11 +202,6 @@ static void _sde_plane_setup_panel_stacking(struct sde_plane *psde,
 	psde->pipe_cfg.dst_rect.y += y_start - pstate->base.crtc_y;
 }
 
-static bool sde_plane_enabled(const struct drm_plane_state *state)
-{
-	return state && state->fb && state->crtc;
-}
-
 bool sde_plane_is_sec_ui_allowed(struct drm_plane *plane)
 {
 	struct sde_plane *psde;
@@ -831,27 +826,24 @@ static int _sde_plane_get_aspace(
 	return 0;
 }
 
-static inline void _sde_plane_set_scanout(struct drm_plane *plane,
+/*
+ * helper function to get scan_out configuration.
+ * hal ops can use it during hw program or hfi
+ */
+int sde_plane_get_scanout_info(struct sde_plane *psde,
 		struct sde_plane_state *pstate,
-		struct sde_hw_pipe_cfg *pipe_cfg,
-		struct drm_framebuffer *fb)
+		struct drm_framebuffer *fb,
+		struct sde_hw_pipe_cfg *pipe_cfg)
 {
-	struct sde_plane *psde;
 	struct msm_gem_address_space *aspace = NULL;
 	int ret, mode;
 	bool secure = false;
 
-	if (!plane || !pstate || !pipe_cfg || !fb) {
+	if (!psde || !pstate || !pipe_cfg || !fb) {
 		SDE_ERROR(
 			"invalid arg(s), plane %d state %d cfg %d fb %d\n",
-			!plane, !pstate, !pipe_cfg, !fb);
-		return;
-	}
-
-	psde = to_sde_plane(plane);
-	if (!psde->pipe_hw) {
-		SDE_ERROR_PLANE(psde, "invalid pipe_hw\n");
-		return;
+			!psde, !pstate, !pipe_cfg, !fb);
+		return -EINVAL;
 	}
 
 	/*
@@ -861,15 +853,16 @@ static inline void _sde_plane_set_scanout(struct drm_plane *plane,
 	 */
 	if (sde_plane_in_cac_fetch_mode(pstate)) {
 		ret = sde_format_populate_layout(NULL, fb, &pipe_cfg->layout);
-		if (ret)
+		if (ret) {
 			SDE_ERROR_PLANE(psde, "format populate layout failed\n");
-		return;
+			return ret;
+		}
 	}
 
 	ret = _sde_plane_get_aspace(psde, pstate, &aspace);
 	if (ret) {
 		SDE_ERROR_PLANE(psde, "Failed to get aspace %d\n", ret);
-		return;
+		return ret;
 	}
 
 	/*
@@ -879,12 +872,12 @@ static inline void _sde_plane_set_scanout(struct drm_plane *plane,
 	 * expected for one or two frames during the transition.
 	 */
 	if (aspace && pstate->defer_prepare_fb) {
-		SDE_EVT32(DRMID(plane), psde->pipe, aspace->domain_attached);
+		SDE_EVT32(DRMID(&psde->base), psde->pipe, aspace->domain_attached);
 		ret = msm_framebuffer_prepare(fb, pstate->aspace);
 		if (ret) {
 			SDE_ERROR_PLANE(psde,
-				"failed to prepare framebuffer %d\n", ret);
-			return;
+					"failed to prepare framebuffer %d\n", ret);
+			return ret;
 		}
 		pstate->defer_prepare_fb = false;
 	}
@@ -903,7 +896,49 @@ static inline void _sde_plane_set_scanout(struct drm_plane *plane,
 		 * smmu faults during secure session transition.
 		 */
 		psde->is_error = true;
+	}
+
+	return ret;
+}
+
+static inline void _sde_plane_set_scanout(struct drm_plane *plane,
+		struct sde_plane_state *pstate,
+		struct sde_hw_pipe_cfg *pipe_cfg,
+		struct drm_framebuffer *fb)
+{
+	struct sde_plane *psde;
+	int ret;
+
+	if (!plane || !pstate || !pipe_cfg || !fb) {
+		SDE_ERROR(
+			"invalid arg(s), plane %d state %d cfg %d fb %d\n",
+			!plane, !pstate, !pipe_cfg, !fb);
+		return;
+	}
+
+	psde = to_sde_plane(plane);
+	if (!psde) {
+		SDE_ERROR_PLANE(psde, "invalid pipe\n");
+		return;
+	}
+
+	ret = sde_plane_get_scanout_info(psde, pstate, fb, pipe_cfg);
+	if (ret == -EAGAIN)
+		SDE_DEBUG_PLANE(psde, "not updating same src addrs\n");
+	else if (ret) {
+		SDE_ERROR_PLANE(psde, "failed to get format layout, %d\n", ret);
+
+		/*
+		 * Force solid fill color on error. This is to prevent
+		 * smmu faults during secure session transition.
+		 */
+		psde->is_error = true;
 	} else if (psde->pipe_hw->ops.setup_sourceaddress) {
+		if (!psde->pipe_hw) {
+			SDE_ERROR_PLANE(psde, "invalid pipe_hw\n");
+			return;
+		}
+
 		SDE_EVT32_VERBOSE(psde->pipe_hw->idx,
 				pipe_cfg->layout.width,
 				pipe_cfg->layout.height,
@@ -915,8 +950,7 @@ static inline void _sde_plane_set_scanout(struct drm_plane *plane,
 				pipe_cfg->layout.plane_size[2],
 				pipe_cfg->layout.plane_addr[3],
 				pipe_cfg->layout.plane_size[3],
-				pstate->multirect_index,
-				secure);
+				pstate->multirect_index);
 		psde->pipe_hw->ops.setup_sourceaddress(psde->pipe_hw, pipe_cfg,
 						pstate->multirect_index);
 	}
@@ -5812,3 +5846,4 @@ bool sde_plane_property_is_dirty(struct drm_plane_state *plane_state,
 	return msm_property_is_dirty(&psde->property_info,
 			&pstate->property_state, property_idx);
 }
+

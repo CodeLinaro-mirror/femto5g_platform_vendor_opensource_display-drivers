@@ -263,9 +263,16 @@ ktime_t sde_encoder_calc_last_empulse_timestamp(struct drm_encoder *drm_enc)
 static void _sde_encoder_control_fal10_veto(struct drm_encoder *drm_enc, bool veto)
 {
 	bool clone_mode;
-	struct sde_kms *sde_kms = sde_encoder_get_kms(drm_enc);
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
-	enum msm_disp_op disp_op = sde_encoder_get_disp_op(drm_enc);
+	struct sde_kms *sde_kms;
+	struct sde_encoder_virt *sde_enc;
+	enum msm_disp_op disp_op;
+
+	if (!drm_enc)
+		return;
+
+	sde_kms = sde_encoder_get_kms(drm_enc);
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	disp_op = sde_encoder_get_disp_op(drm_enc);
 
 	if (!sde_kms || !sde_kms->hw_uidle ||
 		!sde_kms->hw_uidle->ops.uidle_fal10_override[disp_op])
@@ -7318,6 +7325,24 @@ int sde_encoder_helper_collect_misr(struct sde_encoder_phys *phys_enc,
 	return phys_enc->hw_intf && phys_enc->hw_intf->ops.collect_misr[disp_op] ?
 			phys_enc->hw_intf->ops.collect_misr[disp_op](phys_enc->hw_intf,
 			nonblock, misr_value) : -ENOTSUPP;
+}
+
+int sde_encoder_helper_inc_pending(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+	unsigned long lock_flags;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
+	atomic_inc(&sde_enc->pending_commit_cnt);
+	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
+
+	return atomic_read(&sde_enc->pending_commit_cnt);
 }
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)

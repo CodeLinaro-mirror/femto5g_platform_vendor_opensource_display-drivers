@@ -110,7 +110,7 @@ static void hfi_dbg_property_handler(u32 display_id, u32 cmd_id,
 
 void _hfi_dump_dbg_bus(void)
 {
-	char buf[MSM_EVTLOG_BUF_MAX];
+	char buf[SDE_EVTLOG_BUF_MAX];
 	bool in_mem, in_dump, in_log;
 	char *dump_addr = NULL;
 	int i;
@@ -127,9 +127,9 @@ void _hfi_dump_dbg_bus(void)
 		return;
 	}
 
-	in_mem = (hfi_dbg->dump_option & MDSS_DBG_DUMP_IN_MEM);
-	in_dump = (hfi_dbg->dump_option & MDSS_DBG_DUMP_IN_COREDUMP);
-	in_log = (hfi_dbg->dump_option & (MDSS_DBG_DUMP_IN_LOG | MDSS_DBG_DUMP_IN_LOG_LIMITED));
+	in_mem = (hfi_dbg->dump_option & SDE_DBG_DUMP_IN_MEM);
+	in_dump = (hfi_dbg->dump_option & SDE_DBG_DUMP_IN_COREDUMP);
+	in_log = (hfi_dbg->dump_option & (SDE_DBG_DUMP_IN_LOG | SDE_DBG_DUMP_IN_LOG_LIMITED));
 
 	if (!in_log && !in_mem && !in_dump)
 		return;
@@ -138,8 +138,8 @@ void _hfi_dump_dbg_bus(void)
 		drm_printf(hfi_dbg->msm_dbg_printer,
 			"===================dgb_bus================\n");
 		mutex_lock(&hfi_dbg->mutex);
-		for (i = 0; i < dump_size; i += MSM_EVTLOG_BUF_MAX) {
-			sz_read = (dump_size - i > MSM_EVTLOG_BUF_MAX) ? MSM_EVTLOG_BUF_MAX :
+		for (i = 0; i < dump_size; i += SDE_EVTLOG_BUF_MAX) {
+			sz_read = (dump_size - i > SDE_EVTLOG_BUF_MAX) ? SDE_EVTLOG_BUF_MAX :
 					dump_size - i;
 			memcpy(buf, dump_addr + i, sz_read);
 			drm_printf(hfi_dbg->msm_dbg_printer, "%s", buf);
@@ -151,8 +151,8 @@ void _hfi_dump_dbg_bus(void)
 	if (in_log) {
 		pr_info("===================dgb_bus================\n");
 		mutex_lock(&hfi_dbg->mutex);
-		for (i = 0; i < dump_size; i += MSM_EVTLOG_BUF_MAX) {
-			sz_read = (dump_size - i > MSM_EVTLOG_BUF_MAX) ? MSM_EVTLOG_BUF_MAX :
+		for (i = 0; i < dump_size; i += SDE_EVTLOG_BUF_MAX) {
+			sz_read = (dump_size - i > SDE_EVTLOG_BUF_MAX) ? SDE_EVTLOG_BUF_MAX :
 					dump_size - i;
 			memcpy(buf, dump_addr + i, sz_read);
 			pr_info("%s\n", buf);
@@ -168,7 +168,7 @@ void _hfi_dump_reg_all(void)
 	u32 in_log, in_mem, in_dump, sz_read;
 	u32 *dump_addr = NULL;
 	int i, dump_size;
-	char buf[MSM_EVTLOG_BUF_MAX];
+	char buf[SDE_EVTLOG_BUF_MAX];
 
 	if (!hfi_dbg->buff_map.reg_addr.local_addr || !hfi_dbg->buff_map.reg_addr.size)
 		return;
@@ -176,9 +176,9 @@ void _hfi_dump_reg_all(void)
 	dump_addr = hfi_dbg->buff_map.reg_addr.local_addr;
 	dump_size = hfi_dbg->buff_map.reg_addr.size;
 
-	in_log = (hfi_dbg->dump_option & (MDSS_DBG_DUMP_IN_LOG | MDSS_DBG_DUMP_IN_LOG_LIMITED));
-	in_mem = (hfi_dbg->dump_option & MDSS_DBG_DUMP_IN_MEM);
-	in_dump = (hfi_dbg->dump_option & MDSS_DBG_DUMP_IN_COREDUMP);
+	in_log = (hfi_dbg->dump_option & (SDE_DBG_DUMP_IN_LOG | SDE_DBG_DUMP_IN_LOG_LIMITED));
+	in_mem = (hfi_dbg->dump_option & SDE_DBG_DUMP_IN_MEM);
+	in_dump = (hfi_dbg->dump_option & SDE_DBG_DUMP_IN_COREDUMP);
 
 	pr_debug("reg_dump_flag=%d in_log=%d in_mem=%d\n",
 		hfi_dbg->dump_option, in_log, in_mem);
@@ -190,8 +190,8 @@ void _hfi_dump_reg_all(void)
 		drm_printf(hfi_dbg->msm_dbg_printer,
 			"===================reg_dump================\n");
 		mutex_lock(&hfi_dbg->mutex);
-		for (i = 0; i < dump_size; i += MSM_EVTLOG_BUF_MAX) {
-			sz_read = (dump_size - i > MSM_EVTLOG_BUF_MAX) ? MSM_EVTLOG_BUF_MAX :
+		for (i = 0; i < dump_size; i += SDE_EVTLOG_BUF_MAX) {
+			sz_read = (dump_size - i > SDE_EVTLOG_BUF_MAX) ? SDE_EVTLOG_BUF_MAX :
 						dump_size - i;
 			memcpy(buf, dump_addr + i, sz_read);
 			drm_printf(hfi_dbg->msm_dbg_printer, "%s", buf);
@@ -203,8 +203,8 @@ void _hfi_dump_reg_all(void)
 	if (in_log) {
 		pr_info("===================reg_dump================\n");
 		mutex_lock(&hfi_dbg->mutex);
-		for (i = 0; i < dump_size; i += MSM_EVTLOG_BUF_MAX) {
-			sz_read = (dump_size - i > MSM_EVTLOG_BUF_MAX) ? MSM_EVTLOG_BUF_MAX :
+		for (i = 0; i < dump_size; i += SDE_EVTLOG_BUF_MAX) {
+			sz_read = (dump_size - i > SDE_EVTLOG_BUF_MAX) ? SDE_EVTLOG_BUF_MAX :
 						dump_size - i;
 			memcpy(buf, dump_addr + i, sz_read);
 			pr_info("%s\n", buf);
@@ -215,9 +215,9 @@ void _hfi_dump_reg_all(void)
 
 }
 
-void hfi_evtlog_dump_all(struct msm_dbg_evtlog *evtlog)
+void hfi_evtlog_dump_all(struct sde_dbg_evtlog *evtlog)
 {
-	char buf[MSM_EVTLOG_BUF_MAX];
+	char buf[SDE_EVTLOG_BUF_MAX];
 	bool update_last_entry = true;
 	u32 in_log, in_mem, in_dump, sz_read;
 	char *dump_addr = NULL;
@@ -226,9 +226,9 @@ void hfi_evtlog_dump_all(struct msm_dbg_evtlog *evtlog)
 	if (!evtlog->dumped_evtlog || !evtlog->log_size)
 		return;
 
-	in_log = evtlog->dump_mode & (MDSS_DBG_DUMP_IN_LOG | MDSS_DBG_DUMP_IN_LOG_LIMITED);
-	in_mem = evtlog->dump_mode & MDSS_DBG_DUMP_IN_MEM;
-	in_dump = evtlog->dump_mode & MDSS_DBG_DUMP_IN_COREDUMP;
+	in_log = evtlog->dump_mode & (SDE_DBG_DUMP_IN_LOG | SDE_DBG_DUMP_IN_LOG_LIMITED);
+	in_mem = evtlog->dump_mode & SDE_DBG_DUMP_IN_MEM;
+	in_dump = evtlog->dump_mode & SDE_DBG_DUMP_IN_COREDUMP;
 
 	if (!in_log && !in_mem && !in_dump)
 		return;
@@ -238,9 +238,9 @@ void hfi_evtlog_dump_all(struct msm_dbg_evtlog *evtlog)
 	if (in_dump && dump_addr) {
 		drm_printf(hfi_dbg->msm_dbg_printer, "===================evtlog================\n");
 		mutex_lock(&hfi_dbg->mutex);
-		for (i = 0; i < evtlog->log_size; i += MSM_EVTLOG_BUF_MAX) {
-			sz_read = (evtlog->log_size - i > MSM_EVTLOG_BUF_MAX) ?
-				MSM_EVTLOG_BUF_MAX : evtlog->log_size - i;
+		for (i = 0; i < evtlog->log_size; i += SDE_EVTLOG_BUF_MAX) {
+			sz_read = (evtlog->log_size - i > SDE_EVTLOG_BUF_MAX) ?
+				SDE_EVTLOG_BUF_MAX : evtlog->log_size - i;
 			memcpy(buf, dump_addr + i, sz_read);
 			drm_printf(hfi_dbg->msm_dbg_printer, "%s", buf);
 		}
@@ -251,9 +251,9 @@ void hfi_evtlog_dump_all(struct msm_dbg_evtlog *evtlog)
 	if (in_log) {
 		pr_info("===================evtlog================\n");
 		mutex_lock(&hfi_dbg->mutex);
-		for (i = 0; i < evtlog->log_size; i += MSM_EVTLOG_BUF_MAX) {
-			sz_read = (evtlog->log_size - i > MSM_EVTLOG_BUF_MAX) ?
-				MSM_EVTLOG_BUF_MAX : evtlog->log_size - i;
+		for (i = 0; i < evtlog->log_size; i += SDE_EVTLOG_BUF_MAX) {
+			sz_read = (evtlog->log_size - i > SDE_EVTLOG_BUF_MAX) ?
+				SDE_EVTLOG_BUF_MAX : evtlog->log_size - i;
 			memcpy(buf, dump_addr + i, sz_read);
 			pr_info("%s\n", buf);
 			update_last_entry = false;
@@ -276,7 +276,7 @@ static void _hfi_dump_all(bool do_panic, const char *name, bool dump_secure,
 	ktime_t start, end;
 	u32 in_dump = 0;
 
-	if ((hfi_dbg->evtlog->enable & MSM_EVTLOG_ALWAYS))
+	if ((hfi_dbg->evtlog->enable & SDE_EVTLOG_ALWAYS))
 		hfi_evtlog_dump_all(hfi_dbg->evtlog);
 
 	in_dump = (hfi_dbg->dump_option);
@@ -301,7 +301,7 @@ static void _hfi_dump_all(bool do_panic, const char *name, bool dump_secure,
 		panic(name);
 }
 
-void hfi_dbg_dump(enum msm_dbg_dump_flag dump_mode, const char *name, u64 dump_blk_mask, ...)
+void hfi_dbg_dump(enum sde_dbg_dump_flag dump_mode, const char *name, u64 dump_blk_mask, ...)
 {
 	bool do_panic = false;
 
@@ -320,7 +320,7 @@ void hfi_dbg_dump(enum msm_dbg_dump_flag dump_mode, const char *name, u64 dump_b
 
 	hfi_dbg->msm_dbg_printer = &p;
 
-	if (!(hfi_dbg->evtlog->enable & MSM_EVTLOG_ALWAYS))
+	if (!(hfi_dbg->evtlog->enable & SDE_EVTLOG_ALWAYS))
 		return;
 
 	hfi_dbg->evtlog->dump_mode = dump_mode;
@@ -963,7 +963,7 @@ void hfi_dbg_ctrl(const char *name, ...)
 	va_start(args, name);
 
 	while ((blk_name = va_arg(args, char*))) {
-		if (i++ >= MSM_EVTLOG_MAX_DATA) {
+		if (i++ >= SDE_EVTLOG_MAX_DATA) {
 			SDE_ERROR("could not parse all dbg arguments\n");
 			break;
 		}
@@ -980,7 +980,7 @@ void hfi_dbg_ctrl(const char *name, ...)
 		if (!strcmp(blk_name, "panic_underrun") &&
 				hfi_dbg->debugfs_ctrl & DBG_CTRL_PANIC_UNDERRUN) {
 			SDE_ERROR("panic underrun\n");
-			MDSS_DBG_DUMP(MSM_DBG_BUILT_IN_ALL, "panic");
+			MDSS_DBG_DUMP(SDE_DBG_BUILT_IN_ALL, "panic");
 		}
 
 	}
@@ -1100,7 +1100,7 @@ int hfi_msm_dbg_init(struct device *dev, struct dentry *debugfs_root)
 			SDE_ERROR("failed to allocated dump buffer\n");
 	}
 
-	hfi_dbg->evtlog = msm_evtlog_init();
+	hfi_dbg->evtlog = sde_evtlog_init();
 
 	hfi_dbg->dev = dev;
 	hfi_dbg->debugfs_root = debugfs_root;
@@ -1111,9 +1111,9 @@ int hfi_msm_dbg_init(struct device *dev, struct dentry *debugfs_root)
 	hfi_dbg->buff_map.dbg_bus_addr.size = 0;
 	hfi_dbg->buff_map.device_state_addr.size = 0;
 	hfi_dbg->panic_on_err = DEFAULT_PANIC;
-	hfi_dbg->dump_option = MDSS_DBG_DEFAULT_DUMP_MODE;
-	hfi_dbg->evtlog->enable = MSM_EVTLOG_DEFAULT_ENABLE;
-	hfi_dbg->evtlog->dump_mode = MDSS_DBG_DEFAULT_DUMP_MODE;
+	hfi_dbg->dump_option = SDE_DBG_DEFAULT_DUMP_MODE;
+	hfi_dbg->evtlog->enable = SDE_EVTLOG_DEFAULT_ENABLE;
+	hfi_dbg->evtlog->dump_mode = SDE_DBG_DEFAULT_DUMP_MODE;
 
 	hfi_dbg->base_props = hfi_util_u32_prop_helper_alloc(HFI_DBG_BASE_PROP_MAX_SIZE);
 	if (IS_ERR(hfi_dbg->base_props)) {

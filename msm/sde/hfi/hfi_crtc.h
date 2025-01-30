@@ -5,9 +5,8 @@
 
 #ifndef _HFI_CRTC_H_
 #define _HFI_CRTC_H_
+#include <linux/types.h>
 
-#include "sde_hw_ctl.h"
-#include "sde_hw_top.h"
 #include "sde_crtc.h"
 #include "hfi_utils.h"
 #include "hfi_adapter.h"
@@ -58,7 +57,7 @@ struct sde_crtc *hfi_crtc_init(struct drm_device *dev)
 
 u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
 {
-	return UINT32_MAX;
+	return U32_MAX;
 }
 
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)

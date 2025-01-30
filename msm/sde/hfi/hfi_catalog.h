@@ -9,25 +9,6 @@
 #include "sde_kms.h"
 #include "sde_formats.h"
 #include "hfi_defs_common.h"
-/**
- * to_hfi_catalog - convert sde_catalog_base pointer to sde_kms_hfi pointer
- * @X: Pointer to sde_catalog_base structure
- * Returns: Pointer to hfi_catalog structure
- */
-#define to_hfi_catalog(x) container_of(x, struct hfi_catalog, base)
-
-/*
- * hfi_catalog - catalog for HFI HW information
- *
- * @base		SDE HW catalog base
- * @hw_rev		HFI HW version
- * @fw_rev		HFI Firmware version
- */
-struct hfi_catalog {
-	struct sde_catalog_base base;
-	u32 hw_rev;
-	u32 fw_rev;
-};
 
 /*
  * hfi_format_map - maps for drm format to hfi format

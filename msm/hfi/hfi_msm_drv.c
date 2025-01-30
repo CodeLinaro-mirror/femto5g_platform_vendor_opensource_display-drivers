@@ -41,9 +41,6 @@ struct msm_drm_private *hfi_msm_drv_init(struct drm_device *ddev)
 	priv = &hfi_priv->base;
 	ddev->dev_private = priv;
 	priv->dev = ddev;
-	priv->sw_arch = MSM_DRM_DRV_SW_ARCH_HFI;
-
-	msm_drv_init_drv_ops(&priv->drv_ops);
 
 	return priv;
 }

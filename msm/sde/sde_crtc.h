@@ -41,6 +41,9 @@
 /* Expand it to 2x for handling atleast 2 connectors safely */
 #define SDE_CRTC_EVENT_SIZE	(4 * 2)
 
+struct sde_crtc;
+struct sde_crtc_state;
+
 /**
  * enum sde_crtc_client_type: crtc client type
  * @RT_CLIENT:	RealTime client like video/cmd mode display
@@ -288,6 +291,131 @@ enum sde_crtc_hw_fence_flags {
 };
 
 /**
+ * struct sde_crtc_hal_funcs - interface api for sde crtc hal
+ */
+struct sde_crtc_hal_funcs {
+	/**
+	 * post_init - perform additional initialization steps
+	 * @crtc: Pointer to sde crtc structure
+	 * Returns: Zero on success
+	 */
+	int (*post_init)(struct sde_crtc *crtc);
+
+	/**
+	 * destroy - Clean up crtc resources
+	 * @crtc: Pointer to sde crtc structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*destroy)(struct sde_crtc *crtc);
+
+	/**
+	 * debugfs_init - perform debugfs node initialization
+	 * @crtc: Pointer to sde crtc structure
+	 * Returns: Zero on success
+	 */
+	int (*debugfs_init)(struct sde_crtc *crtc);
+
+	/**
+	 * debugfs_destroy - handle destroy operations for debugfs
+	 * @crtc: Pointer to sde crtc structure
+	 * @debugfs_root: Pointer to parent of debugfs node
+	 * Returns: Zero on success
+	 */
+	void (*debugfs_destroy)(struct sde_crtc *crtc);
+
+	/**
+	 * atomic_duplicate_state - Duplicate the current atomic state for the crtc
+	 * @crtc: Pointer to sde crtc structure
+	 * Returns: Duplicated atomic state or NULL when the allocation failed.
+	 */
+	struct sde_crtc_state *(*atomic_duplicate_state)(struct sde_crtc *crtc);
+
+	/**
+	 * atomic_destroy_state - Destroy a state duplicated with @atomic_duplicate_state
+	 * and release or unreference all resources it references
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	int (*atomic_destroy_state)(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * prepare_commit - start of atomic commit sequence
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*prepare_commit)(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * complete_commit - callback signalling completion of current commit
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to crtc old state
+	 */
+	int (*complete_commit)(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * atomic_check - atomic check handling for crtc
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*atomic_check)(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * atomic_begin - atomic begin handle for crtc
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*atomic_begin)(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * atomic_flush - Process flush event on crtc
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*atomic_flush)(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * crtc_enable - function for crtc enable
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*crtc_enable)(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * crtc_disable - function for crtc disable
+	 * @crtc: Pointer to sde crtc structure
+	 */
+	int (*crtc_disable)(struct sde_crtc *crtc);
+
+	/**
+	 * control_vblank - Register/Deregister for VBLANK or vsync notification
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*control_vblank)(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * enable_hw_event - Notify display of event registration/unregistration
+	 * @crtc: Pointer to sde crtc structure
+	 * @event_idx: sde crtc event index
+	 * @enable: Whether the event is being enabled/disabled
+	 */
+	int (*enable_hw_event)(struct sde_crtc *crtc, u32 event, bool enable);
+
+	/**
+	 * debugfs_misr_setup - Enable MISR for specified module and display
+	 * @crtc: Pointer to sde crtc structure
+	 */
+	int (*debugfs_misr_setup)(struct sde_crtc *crtc);
+
+	/**
+	 * debugfs_misr_read - Read MISR value for specified module and display
+	 * @crtc: Pointer to sde crtc structure
+	 */
+	int (*debugfs_misr_read)(struct sde_crtc *crtc);
+};
+
+/**
  * struct sde_crtc - virtualized CRTC data structure
  * @base          : Base drm crtc structure
  * @name          : ASCII description of this crtc
@@ -344,6 +472,7 @@ enum sde_crtc_hw_fence_flags {
  * @misr_reconfigure : boolean entry indicates misr reconfigure status
  * @misr_frame_count  : misr frame count provided by client
  * @misr_data     : store misr data before turning off the clocks.
+ * @misr_vals: Cached misr read values
  * @power_event   : registered power event handle
  * @cur_perf      : current performance committed to clock/bandwidth driver
  * @plane_mask_old: keeps track of the planes used in the previous commit
@@ -387,6 +516,7 @@ enum sde_crtc_hw_fence_flags {
  * @skip_blend_planes: array holding skip blend plane list
  * @sde_cesta_client: Pointer to sde_cesta client for the encoder.
  * @mdnie_art_frame_count: number of frames required for mdnie art to converge.
+ * @hal_ops: Local callback hal function pointer table
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -450,6 +580,7 @@ struct sde_crtc {
 	bool misr_enable_debugfs;
 	bool misr_reconfigure;
 	u32 misr_frame_count;
+	struct sde_misr_values misr_vals;
 
 	struct sde_power_event *power_event;
 
@@ -511,6 +642,8 @@ struct sde_crtc {
 
 	struct sde_cesta_client *cesta_client;
 	u32 mdnie_art_frame_count;
+
+	struct sde_crtc_hal_funcs hal_ops;
 };
 
 enum sde_crtc_dirty_flags {
@@ -1300,4 +1433,13 @@ void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc);
  * @crtc: pointer to drm_crtc
  */
 inline enum msm_disp_op sde_crtc_get_disp_op(struct drm_crtc *crtc);
+
+/**
+ * sde_crtc_property_is_dirty - Returns true if DRM property is dirty
+ * @cstate: pointer to sde_crtc_state
+ * @property_idx: property index
+ */
+bool sde_crtc_property_is_dirty(struct sde_crtc_state *cstate,
+		uint32_t property_idx);
+
 #endif /* _SDE_CRTC_H_ */

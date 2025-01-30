@@ -10,6 +10,14 @@
 #include "sde_plane.h"
 #include "hfi_utils.h"
 
+#define HFI_POPULATE_RECT(rect, a, b, c, d, Q16_flag) \
+	do {						\
+		(rect)->x_pos = (Q16_flag) ? (a) >> 16 : (a);    \
+		(rect)->y_pos = (Q16_flag) ? (b) >> 16 : (b);    \
+		(rect)->width = (Q16_flag) ? (c) >> 16 : (c);    \
+		(rect)->height = (Q16_flag) ? (d) >> 16 : (d);    \
+	} while (0)
+
 /**
  * struct hfi_plane - hfi extension of sde plane structure
  * @sde_base: Base sde plane object

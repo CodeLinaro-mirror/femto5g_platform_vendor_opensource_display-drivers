@@ -5,6 +5,8 @@
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
+#include <linux/types.h>
+
 #include "hfi_crtc.h"
 #include "hfi_kms.h"
 #include "hfi_props.h"
@@ -274,14 +276,14 @@ end:
 
 u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
 {
-	u32 disp_id = UINT32_MAX;
+	u32 disp_id = U32_MAX;
 	struct drm_connector *conn;
 	struct drm_encoder *enc;
 	struct drm_encoder *main_enc = NULL;
 	struct drm_connector_list_iter iter;
 
 	if (!crtc || !crtc_state)
-		return UINT32_MAX;
+		return U32_MAX;
 
 	drm_for_each_encoder_mask(enc, crtc->dev, crtc_state->encoder_mask) {
 		if (sde_encoder_in_clone_mode(enc))
@@ -399,7 +401,7 @@ int hfi_crtc_atomic_check(struct sde_crtc *crtc, struct sde_crtc_state *state)
 		return -EINVAL;
 
 	disp_id = hfi_crtc_get_display_id(&crtc->base, crtc_state);
-	if (disp_id == UINT32_MAX) {
+	if (disp_id == U32_MAX) {
 		SDE_ERROR("invalid display id\n");
 		return -EINVAL;
 	}
@@ -445,7 +447,7 @@ int hfi_crtc_atomic_begin(struct sde_crtc *sde_crtc, struct sde_crtc_state *csta
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
 	disp_id = 0;
-	if (disp_id == UINT32_MAX) {
+	if (disp_id == U32_MAX) {
 		SDE_ERROR("invalid display id\n");
 		return -EINVAL;
 	}
@@ -488,7 +490,7 @@ int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 	crtc = &sde_crtc->base;
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
-	if (disp_id == UINT32_MAX) {
+	if (disp_id == U32_MAX) {
 		SDE_ERROR("invalid display id\n");
 		return -EINVAL;
 	}
@@ -584,7 +586,7 @@ int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 		return -EINVAL;
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
-	if (disp_id == UINT32_MAX) {
+	if (disp_id == U32_MAX) {
 		SDE_ERROR("invalid display id\n");
 		return -EINVAL;
 	}

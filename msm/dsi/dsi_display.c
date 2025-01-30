@@ -4201,7 +4201,7 @@ static bool dsi_display_validate_res(struct dsi_display *display)
 	return (ctrl_avail & phy_avail);
 }
 
-static int dsi_display_get_phandle_count(struct dsi_display *display,
+int dsi_display_get_phandle_count(struct dsi_display *display,
 			const char *propname)
 {
 	if (display->fw)

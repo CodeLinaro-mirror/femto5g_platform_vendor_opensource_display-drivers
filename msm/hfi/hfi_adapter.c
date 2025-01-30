@@ -691,7 +691,7 @@ int hfi_adapter_add_prop_array(struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
 		return -HFI_ERROR;
 	}
 
-	if (payload_type == HFI_PAYLOAD_NONE || !size || !cnt) {
+	if (payload_type == HFI_PAYLOAD_TYPE_NONE || !size || !cnt) {
 		HFI_AD_ERROR("invalid payload parameters\n");
 		return -HFI_ERROR;
 	}

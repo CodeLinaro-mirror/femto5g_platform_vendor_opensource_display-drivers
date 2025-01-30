@@ -6,6 +6,7 @@
 #include "hfi_encoder.h"
 #include "hfi_props.h"
 #include "sde_crtc.h"
+#include "sde_encoder_phys.h"
 #include "hfi_crtc.h"
 #include "hfi_kms.h"
 #include "sde_kms.h"
@@ -14,7 +15,7 @@
 #define to_hfi_encoder(x) container_of(x, struct hfi_encoder, sde_base)
 #define TIMEOUT_MAX	80
 
-static ktime_t hfi_enc_unpack_event_data(void *payload, u32 *idx, struct sde_encoder *sde_enc)
+static ktime_t hfi_enc_unpack_event_data(void *payload, u32 *idx, struct sde_encoder_virt *sde_enc)
 {
 	u32 read = 0;
 	u64 ts_high, ts_low;
@@ -28,7 +29,7 @@ static ktime_t hfi_enc_unpack_event_data(void *payload, u32 *idx, struct sde_enc
 
 	ts_low =  data[read++];
 	ts_high =  data[read++];
-	sde_enc->frame_done_cnt = (u32) data[read++];
+
 	if (idx)
 		*idx = data[read++];
 
@@ -38,7 +39,7 @@ static ktime_t hfi_enc_unpack_event_data(void *payload, u32 *idx, struct sde_enc
 	return ts;
 }
 
-static void hfi_encoder_frame_event_callback(struct sde_encoder *sde_enc,
+static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 		void *payload, u32 event)
 {
 	struct sde_kms *sde_kms = sde_encoder_get_kms(&sde_enc->base);
@@ -68,7 +69,7 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder *sde_enc,
 static void hfi_encoder_vblank_callback(struct hfi_encoder *hfi_enc, void *payload)
 {
 	unsigned long lock_flags;
-	struct sde_encoder *sde_enc;
+	struct sde_encoder_virt *sde_enc;
 	ktime_t ts = 0;
 
 	if (!hfi_enc || !payload)
@@ -88,7 +89,7 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 {
 	struct hfi_encoder *hfi_enc = container_of(listener,
 			struct hfi_encoder, hfi_cb_obj);
-	struct sde_encoder *sde_enc = &hfi_enc->sde_base;
+	struct sde_encoder_virt *sde_enc = &hfi_enc->sde_base;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
 	u32 event = 0;
@@ -148,7 +149,7 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 	}
 }
 
-static int _hfi_enc_hw_event_set_buff(struct sde_encoder *enc, u32 payload,
+static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 		bool enable, bool defer_to_commit)
 {
 	struct drm_connector *conn;
@@ -198,7 +199,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder *enc, u32 payload,
 	return 0;
 }
 
-static int _hfi_enc_register_hw_event(struct sde_encoder *enc,
+static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 		u32 event, bool enable, bool defer_to_commit)
 {
 	int ret = 0;
@@ -225,11 +226,11 @@ static int _hfi_enc_register_hw_event(struct sde_encoder *enc,
 	return ret;
 }
 
-static int hfi_enc_set_panic_events(struct sde_encoder *enc, bool enable)
+static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 {
 	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
 	struct hfi_kms *hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
-	struct sde_encoder *sde_enc = &hfi_enc->sde_base;
+	struct sde_encoder_virt *sde_enc = &hfi_enc->sde_base;
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
@@ -283,7 +284,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder *enc, bool enable)
 	return ret;
 }
 
-static int hfi_enc_encoder_enable(struct sde_encoder *enc)
+static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 {
 	int ret;
 
@@ -301,7 +302,7 @@ static int hfi_enc_encoder_enable(struct sde_encoder *enc)
 	return 0;
 }
 
-static int hfi_enc_encoder_disable(struct sde_encoder *enc)
+static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 {
 	int ret;
 
@@ -335,7 +336,7 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 				wait_time_jiffies);
 		cur_ktime = ktime_get();
 
-		MSM_EVT32(rc, ktime_to_ms(cur_ktime), timeout_ms, event,
+		SDE_EVT32(rc, ktime_to_ms(cur_ktime), timeout_ms, event,
 				atomic_read(info->atomic_cnt), info->count_check);
 
 		/* Make an early exit if the condition is already satisfied */
@@ -355,7 +356,7 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 {
 	int ret;
 	struct sde_encoder_wait_info wait_info = {0};
-	struct sde_encoder *sde_enc;
+	struct sde_encoder_virt *sde_enc;
 
 	sde_enc = &hfi_enc->sde_base;
 
@@ -369,7 +370,7 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	return ret;
 }
 
-static int hfi_enc_wait_for_event(struct sde_encoder *enc, u32 event)
+static int hfi_enc_wait_for_event(struct sde_encoder_virt *enc, u32 event)
 {
 	int (*fn_wait)(struct hfi_encoder *hfi_enc) = NULL;
 	int ret = 0;
@@ -393,7 +394,7 @@ static int hfi_enc_wait_for_event(struct sde_encoder *enc, u32 event)
 	return ret;
 }
 
-static int hfi_enc_enable_hw_event(struct sde_encoder *enc, u32 event, bool enable)
+static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool enable)
 {
 	int ret = 0;
 	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
@@ -417,13 +418,13 @@ static int hfi_enc_enable_hw_event(struct sde_encoder *enc, u32 event, bool enab
 	return ret;
 }
 
-static int hfi_enc_debugfs_dump_status(struct sde_encoder *sde_enc, struct seq_file *s)
+static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct seq_file *s)
 {
 	if (!s || !s->private || !sde_enc || (sde_enc != s->private))
 		return -EINVAL;
 
 	seq_printf(s, "intf:%d    vsync:%8d     underrun:%8d    ",
-			1, sde_enc->frame_done_cnt, 0);
+			1, atomic_read(sde_enc->frame_done_cnt), 0);
 
 	seq_puts(s, "mode: video\n");
 
@@ -431,7 +432,7 @@ static int hfi_enc_debugfs_dump_status(struct sde_encoder *sde_enc, struct seq_f
 }
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
-static int hfi_enc_debugfs_misr_setup(struct sde_encoder *enc)
+static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 {
 	int rc = 0;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
@@ -467,7 +468,7 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder *enc)
 	}
 
 	disp_id = sde_conn_get_display_obj_id(drm_connector);
-	if (disp_id == UINT32_MAX) {
+	if (disp_id == U32_MAX) {
 		SDE_ERROR("invalid display id\n");
 		return -EINVAL;
 	}
@@ -543,7 +544,7 @@ void hfi_enc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, 
 
 }
 
-static int hfi_enc_debugfs_misr_read(struct sde_encoder *enc)
+static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 {
 	int rc = 0;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
@@ -585,7 +586,7 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder *enc)
 	}
 
 	disp_id = sde_conn_get_display_obj_id(drm_connector);
-	if (disp_id == UINT32_MAX) {
+	if (disp_id == U32_MAX) {
 		SDE_ERROR("invalid display id\n");
 		return -EINVAL;
 	}
@@ -625,7 +626,7 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder *enc)
 
 #endif /* CONFIG_DEBUG_FS */
 
-static void _hfi_encoder_setup_ops(struct sde_encoder *sde_enc)
+static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 {
 	sde_enc->hal_ops.encoder_enable = hfi_enc_encoder_enable;
 	sde_enc->hal_ops.encoder_disable = hfi_enc_encoder_disable;
@@ -636,7 +637,7 @@ static void _hfi_encoder_setup_ops(struct sde_encoder *sde_enc)
 	sde_enc->hal_ops.debugfs_dump_status = hfi_enc_debugfs_dump_status;
 }
 
-struct sde_encoder *hfi_encoder_init(struct drm_device *dev,
+struct sde_encoder_virt *hfi_encoder_init(struct drm_device *dev,
 		struct msm_display_info *info, struct sde_encoder_event_ops *ops)
 {
 	struct hfi_encoder *hfi_enc;

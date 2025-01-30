@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -22,11 +22,13 @@
 #include "dsi_ctrl.h"
 #include "dsi_phy.h"
 #include "dsi_panel.h"
+#include "hfi_adapter.h"
 
 #define MAX_DSI_CTRLS_PER_DISPLAY             2
 #define DSI_CLIENT_NAME_SIZE		20
 #define MAX_CMDLINE_PARAM_LEN	 512
 #define MAX_CMD_PAYLOAD_SIZE	256
+#define MAX_MISR_MODULES        4
 
 #define DSI_MODE_MATCH_ACTIVE_TIMINGS (1 << 0)
 #define DSI_MODE_MATCH_PORCH_TIMINGS (1 << 1)
@@ -136,6 +138,51 @@ struct dsi_display_ext_bridge {
 	struct drm_bridge_funcs bridge_funcs;
 };
 
+struct dsi_display;
+
+/**
+ * struct dsi_misr_values - Cached MISR values
+ * @count: number of modules
+ * @misr_values: MISR values obtained
+ */
+struct dsi_misr_values {
+	u32 count;
+	u32 misr_values[MAX_MISR_MODULES];
+};
+
+/**
+ * struct dsi_display_ops - dsi display ops for dcp/hwio
+ * @set_mode:                   Set a given mode
+ * @display_prepare:                Prepare Display
+ * @display_enable:             Enable Display
+ * @post_enable:                Post Enable Display
+ * @pre_disable:                Pre Disable Display
+ * @display_disable:                Disable Display
+ * @display_unprepare:              Unprepare Display
+ * @get_modes:                  Get supported modes from panel devicetree
+ * @register_dpu_conn_ops:          Register DPU connector Ops
+ */
+struct dsi_display_ops {
+	int(*set_mode[MSM_DISP_OP_MAX]) (struct dsi_display *display,
+			struct dsi_display_mode *mode);
+	int(*display_prepare[MSM_DISP_OP_MAX]) (struct dsi_display *display);
+	int(*display_enable[MSM_DISP_OP_MAX]) (struct dsi_display *display);
+	int(*post_enable[MSM_DISP_OP_MAX]) (struct dsi_display *display);
+	int(*pre_disable[MSM_DISP_OP_MAX]) (struct dsi_display *display);
+	int(*display_disable[MSM_DISP_OP_MAX]) (struct dsi_display *display);
+	int(*display_unprepare[MSM_DISP_OP_MAX]) (struct dsi_display *display);
+};
+
+struct dsi_display_hfi_info {
+
+	struct hfi_prop_listener hfi_cb_obj;
+	struct hfi_adapter_t *hfi_adapter;
+	struct hfi_client_t *hfi_client;
+	struct hfi_util_kv_helper *kv_props;
+
+	struct kthread_worker cmd_buf_worker;
+};
+
 /**
  * struct dsi_display - dsi display information
  * @pdev:             Pointer to platform device.
@@ -189,6 +236,7 @@ struct dsi_display_ext_bridge {
  * @root:             Debugfs root directory
  * @misr_enable       Frame MISR enable/disable
  * @misr_frame_count  Number of frames to accumulate the MISR value
+ * @misr_vals         MISR values
  * @esd_trigger       field indicating ESD trigger through debugfs
  * @poms_te_work      POMS delayed work for disabling panel TE
  * @te_source         vsync source pin information
@@ -201,6 +249,8 @@ struct dsi_display_ext_bridge {
  * @hw_ownership:     Indicates if VM owns the hardware resources.
  * @tx_cmd_buf_ndx:   Index to the DSI debugfs TX CMD buffer.
  * @cmd_set:	      Debugfs TX cmd set.
+ * @dsi_hfi_info:         HFI adapter information
+ * @display_ops:          HWIO/HFI display ops
  * @enabled:	      Boolean to indicate display enabled.
  */
 struct dsi_display {
@@ -276,6 +326,7 @@ struct dsi_display {
 
 	bool misr_enable;
 	u32 misr_frame_count;
+	struct dsi_misr_values misr_vals;
 	u32 esd_trigger;
 	/* multiple dsi error handlers */
 	struct workqueue_struct *err_workq;
@@ -306,6 +357,10 @@ struct dsi_display {
 
 	int tx_cmd_buf_ndx;
 	struct dsi_panel_cmd_set cmd_set;
+
+	struct dsi_display_hfi_info *dsi_hfi_info;
+
+	struct dsi_display_ops display_ops;
 
 	bool enabled;
 };
@@ -466,8 +521,8 @@ int dsi_display_find_mode(struct dsi_display *display,
  * Return: 0 if supported or error code.
  */
 int dsi_display_validate_mode(struct dsi_display *display,
-			      struct dsi_display_mode *mode,
-			      u32 flags);
+				  struct dsi_display_mode *mode,
+				  u32 flags);
 
 /**
  * dsi_display_validate_mode_change() - validates mode if variable refresh case
@@ -731,7 +786,7 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
  * @ts:                 Command time stamp in nano-seconds.
  */
 int dsi_display_cmd_receive(void *display, const char *cmd_buf,
-			    u32 cmd_buf_len, u8 *recv_buf, u32 recv_buf_len, ktime_t *ts);
+				u32 cmd_buf_len, u8 *recv_buf, u32 recv_buf_len, ktime_t *ts);
 
 /**
  * dsi_display_soft_reset() - perform a soft reset on DSI controller
@@ -996,5 +1051,15 @@ int dsi_display_get_clk_rate(void *display, u32 idx, u32 clk_type, u64 *clk_rate
  * @idle_pc:    Idle power collapse status
  */
 void dsi_display_set_idle_pc_state(void *display, bool idle_pc);
+
+/**
+ * dsi_display_get_phandle_count() - get phandle count for DT property
+ * @display:    Handle to display
+ * @propname:   DT property name
+ *
+ * return: error code in case of failure or 0 for success.
+ */
+int dsi_display_get_phandle_count(struct dsi_display *display,
+			const char *propname);
 
 #endif /* _DSI_DISPLAY_H_ */

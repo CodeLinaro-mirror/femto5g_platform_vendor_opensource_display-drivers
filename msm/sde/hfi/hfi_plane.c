@@ -18,8 +18,6 @@
 #define HFI_DEBUG_PLANE(pl, fmt, ...) SDE_DEBUG("plane%d " fmt,\
 				(pl) ? HFI_PLANE_ID(pl) : -1, ##__VA_ARGS__)
 
-#define HFI_ERROR(fmt, ...) SDE_ERROR(fmt, ##__VA_ARGS__)
-
 #define HFI_ERROR_PLANE(pl, fmt, ...) SDE_ERROR("plane%d " fmt,\
 				(pl) ? HFI_PLANE_ID(pl) : -1, ##__VA_ARGS__)
 
@@ -110,8 +108,8 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	fmt.fourcc_format = fb->format->format;
 	fmt.modifier = fb->modifier;
 
-	POPULATE_RECT(&src, state->src_x, state->src_y,	state->src_w, state->src_h, true);
-	POPULATE_RECT(&dst, state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h, false);
+	HFI_POPULATE_RECT(&src, state->src_x, state->src_y,	state->src_w, state->src_h, true);
+	HFI_POPULATE_RECT(&dst, state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h, false);
 
 	prop_id = HFI_PROPERTY_LAYER_SRC_ROI;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
@@ -125,15 +123,15 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id, HFI_VAL_U32,
 			&plane->pipe, sizeof(u32));
 
-	sde_plane_get_scanout_info(plane, pstate,  fb, &plane->sspp_cfg);
+	sde_plane_get_scanout_info(plane, pstate,  fb, &plane->pipe_cfg);
 	prop_id = HFI_PROPERTY_LAYER_SRC_ADDR;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, plane->pipe,
-			HFI_VAL_U32_ARRAY, &plane->sspp_cfg.layout.plane_addr[0],
+			HFI_VAL_U32_ARRAY, &plane->pipe_cfg.layout.plane_addr[0],
 			(sizeof(u32) * SDE_MAX_PLANES));
 
 	prop_id = HFI_PROPERTY_LAYER_STRIDE;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, plane->pipe,
-			HFI_VAL_U32_ARRAY, &plane->sspp_cfg.layout.plane_pitch[0],
+			HFI_VAL_U32_ARRAY, &plane->pipe_cfg.layout.plane_pitch[0],
 			(sizeof(u32) * SDE_MAX_PLANES));
 
 	hfi_format = hfi_catalog_get_hfi_format(&fmt);
@@ -303,7 +301,7 @@ int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u32 disp_
 
 	for (i = 0; i < ARRAY_SIZE(hfi_plane_custom_kv_props_map); i++) {
 		setter = &hfi_plane_custom_kv_props_map[i];
-		if (!sde_plane_property_is_dirty(pstate, setter->drm_prop))
+		if (!sde_plane_property_is_dirty(&pstate->base, setter->drm_prop))
 			continue;
 
 		if (setter->add_hfi_prop)
@@ -497,7 +495,7 @@ static int hfi_plane_atomic_update(struct sde_plane *plane, struct sde_plane_sta
 		return -EINVAL;
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
-	if (disp_id == UINT32_MAX) {
+	if (disp_id == U32_MAX) {
 		SDE_ERROR("invalid display id\n");
 		return -EINVAL;
 	}

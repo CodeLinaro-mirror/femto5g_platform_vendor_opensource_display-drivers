@@ -43,6 +43,39 @@ struct dsi_panel_init_caps {
 };
 
 /**
+ * struct dsi_hfi_panel_cmd_info - contains information per command
+ * @cmd_offset:         offset in dpu mapped buffer
+ * @size:               size of command
+ * @delay:              delay for command
+ * @ctrl_flags:         panel ctrl flags
+ * @mode:               panel sending mode (LP/HS)
+ */
+struct dsi_hfi_panel_cmd_info {
+	u32 cmd_offset;
+	u32 size;
+	u32 delay;
+	u32 ctrl_flags;
+	u32 mode;
+	u32 reserved1;
+	u32 reserved2;
+};
+
+/**
+ * struct dsi_hfi_panel_per_cmd_type - contains information per command type
+ * @cmd_offset:              offset in dpu mapped buffer for commands
+ * @cmd_type:                type of command
+ * @count_cmds:              count of command
+ * @hfi_buff_struct_offset:  offset in dcp mapped buffer for structs
+ */
+struct dsi_hfi_panel_per_cmd_type {
+	u32 sde_buff_type_offset;
+	enum hfi_panel_dcs_command_type cmd_type;
+	u32 count_cmds;
+	u32 hfi_buff_struct_offset;
+	u32 reserved_key;
+};
+
+/**
  * struct dsi_hfi_per_cmd_type_payload - payload with all DCS command types
  *
  * @count:                         count
@@ -52,7 +85,6 @@ struct dsi_hfi_per_cmd_type_payload  {
 	u32 count;
 	struct dsi_hfi_panel_per_cmd_type hfi_per_type_array[NUM_PANEL_CMD_TYPES_SUPPORTED];
 };
-
 
 /**
  * struct dsi_hfi_topology_payload - payload with topology info

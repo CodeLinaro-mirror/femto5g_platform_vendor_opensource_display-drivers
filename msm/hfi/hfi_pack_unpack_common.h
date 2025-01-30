@@ -6,10 +6,8 @@
 #ifndef __H_HFI_PACK_UNPACK_COMMON_H__
 #define __H_HFI_PACK_UNPACK_COMMON_H__
 
-#include <string.h>
+#include <linux/string.h>
 #include <linux/kernel.h>
-//#include <stdio.h>
-//#include <stdint.h> Must use linux defines.. linux/types.h
 #include "hfi_packet.h"
 
 #ifndef u8

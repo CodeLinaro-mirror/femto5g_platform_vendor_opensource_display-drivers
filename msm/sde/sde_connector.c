@@ -4500,3 +4500,12 @@ int sde_connector_event_notify(struct drm_connector *connector, uint32_t type,
 
 	return ret;
 }
+
+bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
+		uint32_t property_idx)
+{
+	struct sde_connector *conn = to_sde_connector(cstate->base.connector);
+
+	return msm_property_is_dirty(&conn->property_info,
+			&cstate->property_state, property_idx);
+}

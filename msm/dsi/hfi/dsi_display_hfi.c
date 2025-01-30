@@ -64,7 +64,7 @@ error:
 	return rc;
 }
 
-int dsi_display_hfi_set_mode(struct dsi_display *display, struct dsi_display_mode *mode)
+static int dsi_display_hfi_set_mode(struct dsi_display *display, struct dsi_display_mode *mode)
 {
 	struct sde_kms *sde_kms;
 	struct hfi_kms *hfi_kms;
@@ -267,11 +267,6 @@ int dsi_display_hfi_unprepare(struct dsi_display *display)
 end:
 	DSI_DEBUG("%s: DSI core power, enable=%d\n", __func__, hfi_power_enable);
 	return rc;
-}
-
-bool dsi_display_hfi_mode_fixup(struct dsi_display *display, struct dsi_display_mode *mode)
-{
-	return true;
 }
 
 static int dsi_hfi_copy_and_pad_cmd(const struct mipi_dsi_packet *packet,
