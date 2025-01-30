@@ -75,47 +75,37 @@ def display_module_entry(hdrs = []):
         module_map = module_map,
     )
 
-def define_target_variant_modules(target, variant, registry, modules, config_options = [], vm_target = False):
+def define_target_variant_modules(target, variant, registry, modules, config_options = []):
     kernel_build_tv = "{}_{}".format(target, variant)
     deps = select({
             "//build/kernel/kleaf:socrepo_true": [
             "//soc-repo:all_headers",
+            "//soc-repo:{}/drivers/gpu/drm/display/drm_display_helper".format(kernel_build_tv),
             "//soc-repo:{}/drivers/firmware/qcom/qcom-scm".format(kernel_build_tv),
             "//soc-repo:{}/drivers/pinctrl/qcom/pinctrl-msm".format(kernel_build_tv),
             "//soc-repo:{}/drivers/clk/qcom/clk-qcom".format(kernel_build_tv),
             "//soc-repo:{}/drivers/iommu/qcom_iommu_util".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/soc/qcom/crm-v2".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/soc/qcom/llcc-qcom".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/soc/qcom/altmode-glink".format(kernel_build_tv),
+            "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(kernel_build_tv),
             "//soc-repo:{}/drivers/virt/gunyah/gh_irq_lend".format(kernel_build_tv),
             "//soc-repo:{}/drivers/virt/gunyah/gh_rm_drv".format(kernel_build_tv),
             "//soc-repo:{}/drivers/virt/gunyah/gh_mem_notifier".format(kernel_build_tv),
             "//soc-repo:{}/drivers/virt/gunyah/gh_msgq".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/usb/dwc3/dwc3-msm".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/soc/qcom/wcd_usbss_i2c".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/soc/qcom/panel_event_notifier".format(kernel_build_tv),
             "//soc-repo:{}/drivers/spmi/spmi-pmic-arb".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/mem_buf/mem_buf_dev".format(kernel_build_tv),
             "//soc-repo:{}/drivers/iommu/msm_dma_iommu_mapping".format(kernel_build_tv),
         ],
         "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
         })
-    if not vm_target:
-        deps += [
-            "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
-			]
-        deps += select({
-            "//build/kernel/kleaf:socrepo_true": [
-                "//soc-repo:{}/drivers/gpu/drm/display/drm_display_helper".format(kernel_build_tv),
-                "//soc-repo:{}/drivers/soc/qcom/crm-v2".format(kernel_build_tv),
-                "//soc-repo:{}/drivers/soc/qcom/llcc-qcom".format(kernel_build_tv),
-                "//soc-repo:{}/drivers/soc/qcom/altmode-glink".format(kernel_build_tv),
-                "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(kernel_build_tv),
-                "//soc-repo:{}/drivers/usb/dwc3/dwc3-msm".format(kernel_build_tv),
-                "//soc-repo:{}/drivers/soc/qcom/wcd_usbss_i2c".format(kernel_build_tv),
-                "//soc-repo:{}/drivers/soc/qcom/panel_event_notifier".format(kernel_build_tv),
-            ],
-            "//build/kernel/kleaf:socrepo_false": [],
-        })
-
     if target == "sun":
-        deps += select({
-            "//build/kernel/kleaf:socrepo_true": ["//soc-repo:{}/drivers/soc/qcom/qcom_va_minidump".format(kernel_build_tv)],
-            "//build/kernel/kleaf:socrepo_false": [],
+            deps += select({
+                  "//build/kernel/kleaf:socrepo_true": ["//soc-repo:{}/drivers/soc/qcom/qcom_va_minidump".format(kernel_build_tv)],
+                  "//build/kernel/kleaf:socrepo_false": [],
         })
 
     kernel_build = select({
@@ -126,6 +116,8 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
     options = _get_kernel_build_options(modules, config_options)
     build_print = lambda message: print("{}: {}".format(kernel_build_tv, message))
     formatter = lambda s: s.replace("%b", kernel_build_tv).replace("%t", target)
+    dep = [
+    ]
 
     headers = deps + registry.hdrs
     all_module_rules = []
