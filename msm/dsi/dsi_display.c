@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -4693,6 +4693,16 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 			goto error;
 		}
 
+		if (display->config.video_timing.esync_enabled) {
+			ctrl->esync_clk_freq = pclk_rate;
+			rc = dsi_clk_set_esync_frequency(display->dsi_clk_handle,
+					ctrl->esync_clk_freq, ctrl->cell_index);
+			if (rc) {
+				DSI_ERR("Failed to update esync frequency\n");
+				goto error;
+			}
+		}
+
 		ctrl->host_config.bit_clk_rate_hz = bit_clk_rate;
 error:
 		mutex_unlock(&ctrl->ctrl_lock);
@@ -7466,6 +7476,11 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		/* Setup widebus support */
 		display_mode.priv_info->widebus_support = ctrl->ctrl->hw.widebus_support;
 
+		if (display->cmdline_timing == display_mode.mode_idx) {
+			topology_override = display->cmdline_topology;
+			is_preferred = true;
+		}
+
 		rc = dsi_panel_get_mode(display->panel, mode_idx,
 						&display_mode,
 						topology_override);
@@ -7476,11 +7491,6 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			display_mode.priv_info = NULL;
 			rc = -EINVAL;
 			return rc;
-		}
-
-		if (display->cmdline_timing == display_mode.mode_idx) {
-			topology_override = display->cmdline_topology;
-			is_preferred = true;
 		}
 
 		support_cmd_mode = display_mode.panel_mode_caps & DSI_OP_CMD_MODE;
@@ -9415,7 +9425,7 @@ int dsi_display_post_enable(struct dsi_display *display)
 			DSI_MODE_FLAG_POMS_TO_VID)
 		dsi_panel_switch_video_mode_in(display->panel);
 	else {
-		rc = dsi_panel_post_enable(display->panel);
+		rc = dsi_display_mgr_panel_post_enable(display);
 		if (rc)
 			DSI_ERR("[%s] panel post-enable failed, rc=%d\n",
 				display->name, rc);

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -54,6 +54,14 @@
 #define DP_MST_DEBUG_V(fmt, ...) DP_DEBUG_V(fmt, ##__VA_ARGS__)
 #define DP_MST_INFO_V(fmt, ...) DP_INFO_V(fmt, ##__VA_ARGS__)
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
+#define DP_EXPORT_GUID(a, b) memcpy(a, b, 16)
+#define DP_GUID_COPY(a, b) memcpy(a, b, 16)
+#else
+#define DP_EXPORT_GUID(a, b) export_guid(a, &b)
+#define DP_GUID_COPY(a, b) guid_copy(&a, &b)
+#endif
+
 #define DDC_SEGMENT_ADDR 0x30
 
 struct dp_mst_sim_context {
@@ -74,7 +82,11 @@ struct dp_mst_sim_context {
 	int reset_cnt;
 
 	u8 esi[16];
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	u8 guid[16];
+#else
+	guid_t guid;
+#endif
 	u8 dpcd[1024];
 };
 
@@ -339,7 +351,7 @@ static int dp_sideband_build_nak_rep(
 	buf[idx] = msg->msg[0] | 0x80;
 	idx++;
 
-	memcpy(&buf[idx], ctx->guid, 16);
+	DP_EXPORT_GUID(&buf[idx], ctx->guid);
 	idx += 16;
 
 	buf[idx] = 0x4;
@@ -363,7 +375,7 @@ static int dp_sideband_build_link_address_rep(
 	buf[idx] = DP_LINK_ADDRESS;
 	idx++;
 
-	memcpy(&buf[idx], ctx->guid, 16);
+	DP_EXPORT_GUID(&buf[idx], ctx->guid);
 	idx += 16;
 
 	buf[idx] = ctx->port_num;
@@ -400,7 +412,7 @@ static int dp_sideband_build_link_address_rep(
 		buf[idx] = port->dpcd_rev;
 		idx++;
 
-		memcpy(&buf[idx], port->peer_guid, 16);
+		DP_EXPORT_GUID(&buf[idx], port->peer_guid);
 		idx += 16;
 
 		buf[idx] = (port->num_sdp_streams << 4) |
@@ -662,7 +674,7 @@ static int dp_sideband_build_connection_notify_req(
 	buf[idx] = port_idx << 4;
 	idx++;
 
-	memcpy(&buf[idx], &port->peer_guid, 16);
+	DP_EXPORT_GUID(&buf[idx], port->peer_guid);
 	idx += 16;
 
 	buf[idx] = (port->ldps << 6) |
@@ -1158,7 +1170,7 @@ int dp_mst_sim_create(const struct dp_mst_sim_cfg *cfg,
 	ctx->host_dev = cfg->host_dev;
 	ctx->host_hpd_irq = cfg->host_hpd_irq;
 	ctx->host_req = cfg->host_req;
-	memcpy(ctx->guid, cfg->guid, 16);
+	DP_GUID_COPY(ctx->guid, cfg->guid);
 
 	mutex_init(&ctx->session_lock);
 	init_completion(&ctx->session_comp);

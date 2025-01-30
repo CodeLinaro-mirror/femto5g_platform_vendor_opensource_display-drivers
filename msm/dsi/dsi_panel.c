@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -112,6 +112,26 @@ static int dsi_panel_vreg_put(struct dsi_panel *panel)
 	return rc;
 }
 
+static int dsi_panel_post_vreg_get(struct dsi_panel *panel)
+{
+	int rc = 0;
+	int i;
+	struct regulator *vreg = NULL;
+
+	for (i = 0; i < panel->post_power_info.count; i++) {
+		vreg = devm_regulator_get(panel->parent,
+					  panel->post_power_info.vregs[i].vreg_name);
+		rc = PTR_ERR_OR_ZERO(vreg);
+		if (rc) {
+			DSI_ERR("failed to get %s post regulator\n",
+			       panel->post_power_info.vregs[i].vreg_name);
+		}
+		panel->post_power_info.vregs[i].vreg = vreg;
+	}
+
+	return rc;
+}
+
 static int dsi_panel_gpio_request(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -136,11 +156,21 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 		}
 	}
 
+	if (panel->need_post_on_supply) {
+		if (gpio_is_valid(r_config->oled_en_gpio)) {
+			rc = gpio_request_one(r_config->oled_en_gpio, GPIOF_IN, "oled_en_gpio");
+			if (rc) {
+				DSI_ERR("request for oled_en_gpio failed, rc=%d\n", rc);
+				goto error_release_disp_en;
+			}
+		}
+	}
+
 	if (gpio_is_valid(panel->bl_config.en_gpio)) {
 		rc = gpio_request(panel->bl_config.en_gpio, "bklt_en_gpio");
 		if (rc) {
 			DSI_ERR("request for bklt_en_gpio failed, rc=%d\n", rc);
-			goto error_release_disp_en;
+			goto error_release_oled_en;
 		}
 	}
 
@@ -166,6 +196,9 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 error_release_mode_sel:
 	if (gpio_is_valid(panel->bl_config.en_gpio))
 		gpio_free(panel->bl_config.en_gpio);
+error_release_oled_en:
+	if (panel->need_post_on_supply && gpio_is_valid(r_config->oled_en_gpio))
+		gpio_free(r_config->oled_en_gpio);
 error_release_disp_en:
 	if (gpio_is_valid(r_config->disp_en_gpio))
 		gpio_free(r_config->disp_en_gpio);
@@ -186,6 +219,9 @@ static int dsi_panel_gpio_release(struct dsi_panel *panel)
 
 	if (gpio_is_valid(r_config->disp_en_gpio))
 		gpio_free(r_config->disp_en_gpio);
+
+	if (panel->need_post_on_supply && gpio_is_valid(r_config->oled_en_gpio))
+		gpio_free(r_config->oled_en_gpio);
 
 	if (gpio_is_valid(panel->bl_config.en_gpio))
 		gpio_free(panel->bl_config.en_gpio);
@@ -2739,24 +2775,102 @@ static int dsi_panel_parse_jitter_config(
 	return 0;
 }
 
+/**
+ * poll_status_timeout - Periodically poll a condition until it is
+ *			met or a timeout occurs
+ * @cond: Break condition
+ * @sleep_us: Maximum time to sleep between polls in us (0
+ *            tight-loops).  Should be less than ~20ms since usleep_range
+ *            is used (see Documentation/timers/timers-howto.rst).
+ * @timeout_us: Timeout in us, 0 means never timeout
+ *
+ * Returns 0 on success and -ETIMEDOUT upon a timeout.
+ */
+
+#define poll_status_timeout(cond, sleep_us, timeout_us) \
+({ \
+	u64 __timeout_us = (timeout_us); \
+	unsigned long __sleep_us = (sleep_us); \
+	ktime_t __timeout = ktime_add_us(ktime_get(), __timeout_us); \
+	might_sleep_if((__sleep_us) != 0); \
+	for (;;) { \
+		if (cond) \
+			break; \
+		if (__timeout_us && \
+		    ktime_compare(ktime_get(), __timeout) > 0) { \
+			break; \
+		} \
+		if (__sleep_us) \
+			usleep_range((__sleep_us >> 2) + 1, __sleep_us); \
+		cpu_relax(); \
+	} \
+	(cond) ? 0 : -ETIMEDOUT; \
+})
+
+static int dsi_panel_post_pwr_ctrl(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+	struct dsi_panel_reset_config *r_config;
+	u32 const sleep_us = 5000;
+	u32 const timeout_us = 150000;
+
+	if (!panel) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	r_config = &panel->reset_config;
+	if (gpio_is_valid(r_config->oled_en_gpio)) {
+		if (enable) {
+			rc = poll_status_timeout((gpio_get_value(r_config->oled_en_gpio) == 1),
+				sleep_us, timeout_us);
+		} else {
+			rc = poll_status_timeout((gpio_get_value(r_config->oled_en_gpio) == 0),
+				sleep_us, timeout_us);
+		}
+	}
+
+	if (rc)
+		DSI_WARN("[%s] wait for oled en status failed,enable=%d rc=%d\n",
+					panel->name, enable, rc);
+
+	rc = dsi_pwr_enable_regulator(&panel->post_power_info, enable);
+	if (rc)
+		DSI_ERR("[%s] failed to set post power vregs status, enable=%d rc=%d\n",
+				panel->name, enable, rc);
+
+	return 0;
+}
+
 static int dsi_panel_parse_power_cfg(struct dsi_panel *panel)
 {
 	int rc = 0;
-	char *supply_name;
+	char *supply_name, *post_supply_name;
 
 	if (panel->host_config.ext_bridge_mode)
 		return 0;
 
-	if (!strcmp(panel->type, "primary"))
+	if (!strcmp(panel->type, "primary")) {
 		supply_name = "qcom,panel-supply-entries";
-	else
+		post_supply_name = "qcom,panel-post-supply-entries";
+	} else {
 		supply_name = "qcom,panel-sec-supply-entries";
+		post_supply_name = "qcom,panel-sec-post-supply-entries";
+	}
 
 	rc = dsi_pwr_of_get_vreg_data(&panel->utils,
 			&panel->power_info, supply_name);
 	if (rc) {
 		DSI_ERR("[%s] failed to parse vregs\n", panel->name);
 		goto error;
+	}
+
+	if (panel->need_post_on_supply) {
+		rc = dsi_pwr_of_get_vreg_data(&panel->utils,
+				&panel->post_power_info, post_supply_name);
+		if (rc)
+			DSI_ERR("[%s] failed to parse post vregs\n", panel->name);
+
 	}
 
 error:
@@ -2790,14 +2904,16 @@ static int dsi_panel_parse_gpios(struct dsi_panel *panel)
 	int rc = 0;
 	const char *data;
 	struct dsi_parser_utils *utils = &panel->utils;
-	char *reset_gpio_name, *mode_set_gpio_name;
+	char *reset_gpio_name, *mode_set_gpio_name, *oled_en_gpio_name;
 
 	if (!strcmp(panel->type, "primary")) {
 		reset_gpio_name = "qcom,platform-reset-gpio";
 		mode_set_gpio_name = "qcom,panel-mode-gpio";
+		oled_en_gpio_name = "qcom,platform-oled-en-gpio";
 	} else {
 		reset_gpio_name = "qcom,platform-sec-reset-gpio";
 		mode_set_gpio_name = "qcom,panel-sec-mode-gpio";
+		oled_en_gpio_name = "qcom,platform-sec-oled-en-gpio";
 	}
 
 	panel->reset_config.reset_gpio = utils->get_named_gpio(utils->data,
@@ -2821,6 +2937,13 @@ static int dsi_panel_parse_gpios(struct dsi_panel *panel)
 			DSI_DEBUG("[%s] platform-en-gpio is not set, rc=%d\n",
 				 panel->name, rc);
 		}
+	}
+
+	if (panel->need_post_on_supply) {
+		panel->reset_config.oled_en_gpio = panel->utils.get_named_gpio(panel->utils.data,
+							oled_en_gpio_name, 0);
+		if (!gpio_is_valid(panel->reset_config.oled_en_gpio))
+			DSI_DEBUG("[%s] oled-en-gpio is not set\n", panel->name);
 	}
 
 	panel->reset_config.lcd_mode_sel_gpio = utils->get_named_gpio(
@@ -3550,6 +3673,7 @@ static int dsi_panel_parse_topology(
 		goto parse_fail;
 	}
 
+parse_done:
 	if (!(priv_info->dsc_enabled || priv_info->vdc_enabled) !=
 			!topology[top_sel].num_enc) {
 		DSI_ERR("topology and compression info mismatch dsc:%d vdc:%d num_enc:%d\n",
@@ -3568,7 +3692,6 @@ static int dsi_panel_parse_topology(
 		topology[top_sel].num_enc,
 		topology[top_sel].num_intf);
 
-parse_done:
 	memcpy(&priv_info->topology, &topology[top_sel],
 		sizeof(struct msm_display_topology));
 parse_fail:
@@ -4011,6 +4134,84 @@ error:
 	return rc;
 }
 
+static int dsi_panel_parse_name(struct dsi_panel *panel,
+				  struct dsi_parser_utils *utils)
+{
+	int rc = 0, size;
+	char *panel_type;
+	bool is_panel_xr;
+	char *new_panel_name = NULL;
+
+	panel->name = utils->get_property(utils->data, "qcom,mdss-dsi-panel-name", &size);
+	is_panel_xr = utils->read_bool(utils->data, "qcom,mdss-dsi-panel-xr");
+
+	if (is_panel_xr) {
+		panel_type = (!strcmp(panel->type, "primary") ? " left" : " right");
+
+		size += strlen(panel_type);
+
+		new_panel_name = devm_kzalloc(panel->parent, size, GFP_KERNEL);
+		if (!new_panel_name) {
+			rc = -ENOMEM;
+			return rc;
+		}
+
+		strscpy(new_panel_name, panel->name, size);
+		strlcat(new_panel_name, panel_type, size);
+		panel->name = new_panel_name;
+	} else if (!strcmp(panel->type, "secondary")) {
+		panel_type = "_secondary";
+
+		size += strlen(panel_type);
+
+		new_panel_name = devm_kzalloc(panel->parent, size, GFP_KERNEL);
+		if (!new_panel_name) {
+			rc = -ENOMEM;
+			return rc;
+		}
+
+		strscpy(new_panel_name, panel->name, size);
+		strlcat(new_panel_name, panel_type, size);
+		panel->name = new_panel_name;
+	}
+
+	if (!panel->name)
+		panel->name = DSI_PANEL_DEFAULT_LABEL;
+	return rc;
+}
+
+static int dsi_panel_parse_caps(struct dsi_panel *panel,
+				struct device_node *of_node)
+{
+	int rc = 0;
+
+	rc = dsi_panel_parse_dfps_caps(panel);
+	if (rc)
+		DSI_ERR("failed to parse dfps configuration, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_qsync_caps(panel, of_node);
+	if (rc)
+		DSI_DEBUG("failed to parse qsync features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_avr_caps(panel, of_node);
+	if (rc)
+		DSI_ERR("failed to parse AVR features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_esync_caps(panel, of_node);
+	if (rc)
+		DSI_ERR("failed to parse esync features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_vrr_caps(panel, of_node);
+	if (rc)
+		DSI_DEBUG("failed to parse VRR features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_dyn_clk_caps(panel);
+	if (rc)
+		DSI_ERR("failed to parse dynamic clk config, rc=%d\n", rc);
+
+	return rc;
+}
+
 static void dsi_panel_update_util(struct dsi_panel *panel,
 				  struct device_node *parser_node)
 {
@@ -4071,9 +4272,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	struct dsi_panel *panel;
 	struct dsi_parser_utils *utils;
 	const char *panel_physical_type;
-	int rc = 0, size;
-	char *new_panel_name = NULL, *panel_type;
-	bool is_panel_xr;
+	int rc = 0;
 
 	panel = kzalloc(sizeof(*panel), GFP_KERNEL);
 	if (!panel)
@@ -4088,42 +4287,15 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	dsi_panel_update_util(panel, parser_node);
 	utils = &panel->utils;
 
-	panel->name = utils->get_property(utils->data, "qcom,mdss-dsi-panel-name", &size);
-
-	is_panel_xr = utils->read_bool(utils->data, "qcom,mdss-dsi-panel-xr");
-
-	if (is_panel_xr) {
-		panel_type = (!strcmp(panel->type, "primary") ? " left" : " right");
-
-		size += strlen(panel_type);
-
-		new_panel_name = kzalloc(size, GFP_KERNEL);
-		if (!new_panel_name) {
-			rc = -ENOMEM;
-			goto error;
-		}
-
-		strscpy(new_panel_name, panel->name, size);
-		strlcat(new_panel_name, panel_type, size);
-		panel->name = new_panel_name;
-	} else if (!strcmp(panel->type, "secondary")) {
-		panel_type = "_secondary";
-
-		size += strlen(panel_type);
-
-		new_panel_name = kzalloc(size, GFP_KERNEL);
-		if (!new_panel_name) {
-			rc = -ENOMEM;
-			goto error;
-		}
-
-		strscpy(new_panel_name, panel->name, size);
-		strlcat(new_panel_name, panel_type, size);
-		panel->name = new_panel_name;
+	rc = dsi_panel_parse_name(panel, utils);
+	if (rc) {
+		DSI_ERR("failed to parse panel name, rc=%d\n",
+				rc);
+		goto error;
 	}
 
-	if (!panel->name)
-		panel->name = DSI_PANEL_DEFAULT_LABEL;
+	panel->need_post_on_supply =
+		utils->read_bool(utils->data, "qcom,mdss-panel-need-post-on-supply");
 
 	/*
 	 * Set panel type to LCD as default.
@@ -4151,29 +4323,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 		goto error;
 	}
 
-	rc = dsi_panel_parse_dfps_caps(panel);
+	rc = dsi_panel_parse_caps(panel, of_node);
 	if (rc)
-		DSI_ERR("failed to parse dfps configuration, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_qsync_caps(panel, of_node);
-	if (rc)
-		DSI_DEBUG("failed to parse qsync features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_avr_caps(panel, of_node);
-	if (rc)
-		DSI_ERR("failed to parse AVR features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_esync_caps(panel, of_node);
-	if (rc)
-		DSI_ERR("failed to parse esync features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_vrr_caps(panel, of_node);
-	if (rc)
-		DSI_DEBUG("failed to parse VRR features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_dyn_clk_caps(panel);
-	if (rc)
-		DSI_ERR("failed to parse dynamic clk config, rc=%d\n", rc);
+		DSI_ERR("failed to parse panel caps, rc=%d\n", rc);
 
 	rc = dsi_panel_parse_phy_props(panel);
 	if (rc) {
@@ -4228,6 +4380,15 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 		goto error;
 	}
 
+	if (panel->need_post_on_supply) {
+		rc = dsi_panel_post_vreg_get(panel);
+		if (rc) {
+			DSI_ERR("[%s] failed to get panel post regulators, rc=%d\n",
+				panel->name, rc);
+			goto error;
+		}
+	}
+
 	panel->power_mode = SDE_MODE_DPMS_OFF;
 	drm_panel_init(&panel->drm_panel, &panel->mipi_device.dev,
 			NULL, DRM_MODE_CONNECTOR_DSI);
@@ -4239,7 +4400,6 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 
 	return panel;
 error:
-	kfree(new_panel_name);
 	kfree(panel);
 	return ERR_PTR(rc);
 }
@@ -5554,6 +5714,15 @@ int dsi_panel_post_enable(struct dsi_panel *panel)
 
 	mutex_lock(&panel->panel_lock);
 
+	if (panel->need_post_on_supply) {
+		rc = dsi_panel_post_pwr_ctrl(panel, true);
+		if (rc) {
+			DSI_ERR("[%s] power on post vregs failed, rc=%d\n",
+					panel->name, rc);
+			goto error;
+		}
+	}
+
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_ON, false);
 	if (rc) {
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_POST_ON cmds, rc=%d\n",
@@ -5649,6 +5818,14 @@ int dsi_panel_unprepare(struct dsi_panel *panel)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_POST_OFF cmds, rc=%d\n",
 		       panel->name, rc);
 		goto error;
+	}
+
+	if (panel->need_post_on_supply) {
+		rc = dsi_panel_post_pwr_ctrl(panel, false);
+		if (rc) {
+			DSI_ERR("[%s] panel power off post vregs failed, rc=%d\n",
+						panel->name, rc);
+		}
 	}
 
 error:
