@@ -777,6 +777,12 @@ static int dsi_ctrl_clocks_init(struct platform_device *pdev,
 		DSI_CTRL_DEBUG(ctrl, "failed to get iface_clk, rc=%d\n", rc);
 	}
 
+	core->ahb_swi_clk = devm_clk_get(&pdev->dev, "ahb_swi_clk");
+	if (IS_ERR(core->ahb_swi_clk)) {
+		core->ahb_swi_clk = NULL;
+		DSI_CTRL_DEBUG(ctrl, "failed to get ahb_swi_clk, rc=%d\n", rc);
+	}
+
 	core->core_mmss_clk = devm_clk_get(&pdev->dev, "core_mmss_clk");
 	if (IS_ERR(core->core_mmss_clk)) {
 		core->core_mmss_clk = NULL;
