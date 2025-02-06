@@ -985,6 +985,9 @@ static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
 		return;
 	}
 
+	if (mode->mode_idx != 0)
+		return;
+
 	panel_timing_caps->panel_index = mode->mode_idx;
 	panel_timing_caps->clockrate[0] = HFI_VAL_L32(mode->timing.clk_rate_hz);
 	panel_timing_caps->clockrate[1] = HFI_VAL_H32(mode->timing.clk_rate_hz);
@@ -1231,7 +1234,7 @@ static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
 	if (!display_hfi)
 		return -EINVAL;
 
-	for (i = 0; i < display->panel->num_timing_nodes; i++) {
+	for (i = 0; i < 1; i++) {
 		u32 kv_count;
 		u32 kv_size = 0;
 		u32 payload_size = 0;
@@ -1398,7 +1401,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 
 	dsi_hfi_populate_panel_generic_caps(display, panel, &panel_generic_caps);
 
-	for (i = 0; i < panel_init_caps.num_timing_modes; i++)
+	for (i = 0; i < 1; i++)
 		dsi_hfi_populate_panel_timing_caps(display,
 								&display->modes[i],
 								&timing_caps_array[i],
