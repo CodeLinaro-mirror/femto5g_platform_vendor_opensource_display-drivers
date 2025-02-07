@@ -2190,7 +2190,8 @@ void sde_plane_ctl_flush(struct drm_plane *plane, struct sde_hw_ctl *ctl,
 	disp_op = sde_plane_get_disp_op(plane);
 
 	if (!ctl->ops.update_bitmask_sspp[disp_op]) {
-		SDE_ERROR("invalid ops\n");
+		if (IS_DISP_OP_HWIO(disp_op))
+			SDE_ERROR("invalid ops\n");
 		return;
 	}
 

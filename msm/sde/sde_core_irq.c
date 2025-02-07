@@ -80,9 +80,10 @@ static void sde_core_irq_callback_handler(void *arg, int irq_idx)
 int sde_core_irq_idx_lookup(struct sde_kms *sde_kms,
 		enum sde_intr_type intr_type, u32 instance_idx)
 {
-	if (!sde_kms || !sde_kms->hw_intr ||
-			!sde_kms->hw_intr->ops.irq_idx_lookup[sde_kms->hw_intr->hw.disp_op])
+	if (!sde_kms || !sde_kms->hw_intr)
 		return -EINVAL;
+	if (!sde_kms->hw_intr->ops.irq_idx_lookup[sde_kms->hw_intr->hw.disp_op])
+		return IS_DISP_OP_HFI(sde_kms->hw_intr->hw.disp_op) ? 0 : -EINVAL;
 
 	return sde_kms->hw_intr->ops.irq_idx_lookup[sde_kms->hw_intr->hw.disp_op](
 			sde_kms->hw_intr, intr_type,

@@ -1499,13 +1499,15 @@ static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_
 	if (phys_enc->has_intf_te) {
 		if (!phys_enc->hw_intf->ops.setup_tearcheck[disp_op] ||
 			!phys_enc->hw_intf->ops.enable_tearcheck[disp_op]) {
-			SDE_DEBUG_CMDENC(cmd_enc, "tearcheck not supported\n");
+			if (IS_DISP_OP_HWIO(disp_op))
+				SDE_DEBUG_CMDENC(cmd_enc, "tearcheck not supported\n");
 			return;
 		}
 	} else {
 		if (!phys_enc->hw_pp->ops.setup_tearcheck[disp_op] ||
 			!phys_enc->hw_pp->ops.enable_tearcheck[disp_op]) {
-			SDE_DEBUG_CMDENC(cmd_enc, "tearcheck not supported\n");
+			if (IS_DISP_OP_HWIO(disp_op))
+				SDE_DEBUG_CMDENC(cmd_enc, "tearcheck not supported\n");
 			return;
 		}
 	}
@@ -1773,13 +1775,13 @@ static int sde_encoder_phys_cmd_te_get_line_count(
 	if (phys_enc->has_intf_te) {
 		hw_intf = phys_enc->hw_intf;
 		if (!hw_intf->ops.get_line_count[disp_op])
-			return -EINVAL;
+			return IS_DISP_OP_HFI(disp_op) ? 0 : -EINVAL;
 
 		line_count = hw_intf->ops.get_line_count[disp_op](hw_intf);
 	} else {
 		hw_pp = phys_enc->hw_pp;
 		if (!hw_pp->ops.get_line_count[disp_op])
-			return -EINVAL;
+			return IS_DISP_OP_HFI(disp_op) ? 0 : -EINVAL;
 
 		line_count = hw_pp->ops.get_line_count[disp_op](hw_pp);
 	}
@@ -1872,9 +1874,13 @@ static void _sde_encoder_phys_wait_for_vsync_on_autorefresh_busy(struct sde_enco
 	int ret = 0;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
-	if (!phys_enc || !phys_enc->hw_intf ||
-		!phys_enc->hw_intf->ops.get_autorefresh_status[disp_op]) {
+	if (!phys_enc || !phys_enc->hw_intf) {
 		SDE_ERROR("invalid params\n");
+		return;
+	}
+	if (!phys_enc->hw_intf->ops.get_autorefresh_status[disp_op]) {
+		if (IS_DISP_OP_HWIO(disp_op))
+			SDE_ERROR("undefined get_autorefresh_status hw_intf op\n");
 		return;
 	}
 
@@ -2405,8 +2411,9 @@ static void _sde_encoder_autorefresh_disable_seq2(
 
 	if (!hw_mdp->ops.get_autorefresh_status[disp_op] ||
 			!hw_intf->ops.check_and_reset_tearcheck[disp_op]) {
-		SDE_DEBUG_CMDENC(cmd_enc,
-			"autofresh disable seq2 not supported\n");
+		if (IS_DISP_OP_HWIO(disp_op))
+			SDE_DEBUG_CMDENC(cmd_enc,
+				"autofresh disable seq2 not supported\n");
 		return;
 	}
 

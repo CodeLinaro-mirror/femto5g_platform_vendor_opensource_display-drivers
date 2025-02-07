@@ -652,7 +652,8 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	info = &sde_enc->disp_info;
 	if (!phys_enc->hw_intf->ops.setup_timing_gen[disp_op]) {
-		SDE_ERROR("timing engine setup is not supported\n");
+		if (IS_DISP_OP_HWIO(disp_op))
+			SDE_ERROR("timing engine setup is not supported\n");
 		return;
 	}
 
@@ -760,8 +761,10 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 		goto exit;
 
 	if (!phys_enc->hw_intf->ops.prepare_esync[disp_op]) {
-		SDE_ERROR("esync enabled but hw functions not defined\n");
-		return -EINVAL;
+		if (IS_DISP_OP_HWIO(disp_op))
+			SDE_ERROR("esync enabled but hw functions not defined\n");
+			return -EINVAL;
+		return 0;
 	}
 
 	prog_fetch_start = programmable_fetch_get_num_lines(vid_enc, &vid_enc->timing_params);
@@ -819,8 +822,10 @@ static int sde_encoder_phys_vid_setup_backup_esync_engine(
 		goto exit;
 
 	if (!phys_enc->hw_intf->ops.prepare_backup_esync[disp_op]) {
-		SDE_ERROR("esync enabled but hw functions not defined\n");
-		return -EINVAL;
+		if (IS_DISP_OP_HWIO(disp_op))
+			SDE_ERROR("esync enabled but hw functions not defined\n");
+			return -EINVAL;
+		return 0;
 	}
 
 	sde_kms = phys_enc->sde_kms;
@@ -1678,7 +1683,8 @@ static void sde_encoder_phys_vid_enable(struct sde_encoder_phys *phys_enc)
 		return;
 	}
 	if (!ctl->ops.update_bitmask[disp_op]) {
-		SDE_ERROR("invalid hw_ctl ops %d\n", ctl->idx);
+		if (IS_DISP_OP_HWIO(disp_op))
+			SDE_ERROR("invalid hw_ctl ops %d\n", ctl->idx);
 		return;
 	}
 
@@ -2452,8 +2458,10 @@ static int sde_encoder_phys_vid_poll_for_active_region(struct sde_encoder_phys *
 	u32 line_cnt, v_inactive, poll_time_us, trial = 0;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
-	if (!phys_enc || !phys_enc->hw_intf || !phys_enc->hw_intf->ops.get_line_count[disp_op])
+	if (!phys_enc || !phys_enc->hw_intf)
 		return -EINVAL;
+	if (!phys_enc->hw_intf->ops.get_line_count[disp_op])
+		return IS_DISP_OP_HFI(disp_op) ? 0 : -EINVAL;
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	timing = &vid_enc->timing_params;
@@ -2629,8 +2637,10 @@ static int sde_encoder_phys_vid_get_line_count(
 	if (!sde_encoder_phys_vid_is_master(phys_enc))
 		return -EINVAL;
 
-	if (!phys_enc->hw_intf || !phys_enc->hw_intf->ops.get_line_count[disp_op])
+	if (!phys_enc->hw_intf)
 		return -EINVAL;
+	if (!phys_enc->hw_intf->ops.get_line_count[disp_op])
+		return IS_DISP_OP_HFI(disp_op) ? 0 : -EINVAL;
 
 	return phys_enc->hw_intf->ops.get_line_count[disp_op](phys_enc->hw_intf);
 }
@@ -2681,9 +2691,14 @@ static int sde_encoder_phys_vid_wait_for_active(
 
 	vid_enc =  to_sde_encoder_phys_vid(phys_enc);
 
-	if (!phys_enc->hw_intf || !phys_enc->hw_intf->ops.get_line_count[disp_op]) {
-		SDE_ERROR_VIDENC(vid_enc, "invalid vid_enc params\n");
+	if (!phys_enc->hw_intf)
 		return -EINVAL;
+	if (!phys_enc->hw_intf->ops.get_line_count[disp_op]) {
+		if (IS_DISP_OP_HWIO(disp_op)) {
+			SDE_ERROR_VIDENC(vid_enc, "invalid vid_enc params\n");
+			return -EINVAL;
+		}
+		return 0;
 	}
 
 	mode = phys_enc->cached_mode;

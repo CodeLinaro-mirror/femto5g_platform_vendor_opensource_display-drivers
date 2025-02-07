@@ -566,7 +566,7 @@ static int _set_lm_gc_feature(struct sde_hw_dspp *hw_dspp,
 	struct sde_hw_mixer *hw_lm = (struct sde_hw_mixer *)hw_cfg->mixer_info;
 
 	if (!hw_lm->ops.setup_gc[disp_op])
-		ret = -EINVAL;
+		ret = IS_DISP_OP_HFI(disp_op) ? 0 : -EINVAL;
 	else
 		hw_lm->ops.setup_gc[disp_op](hw_lm, hw_cfg);
 	return ret;

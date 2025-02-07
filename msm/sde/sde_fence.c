@@ -175,9 +175,10 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 	int i, ctl_id, ret;
 	int iommu_flags;
 
-	if (!hw_ctl ||
-		!hw_ctl->ops.hw_fence_output_fence_dir_write_init[hw_ctl->hw.disp_op])
+	if (!hw_ctl)
 		return -EINVAL;
+	if (!hw_ctl->ops.hw_fence_output_fence_dir_write_init[hw_ctl->hw.disp_op])
+		return IS_DISP_OP_HFI(hw_ctl->hw.disp_op) ? 0 : -EINVAL;
 
 	ctl_id = hw_ctl->idx - CTL_0;
 	if (ctl_id >= SDE_HW_FENCE_CLIENT_MAX || ctl_id < 0) {
@@ -516,10 +517,15 @@ static int _arm_output_hw_fence(struct sde_hw_ctl *hw_ctl, bool vid_mode, u32 li
 	u32 ipcc_out_signal;
 	int ctl_id;
 
-	if (!hw_ctl || !hw_ctl->ops.hw_fence_trigger_output_fence[hw_ctl->hw.disp_op] ||
-			!hw_ctl->ops.hw_fence_update_output_fence[hw_ctl->hw.disp_op]) {
-		SDE_ERROR("missing ctl/trigger or update fence %d\n", !hw_ctl);
+	if (!hw_ctl)
 		return -EINVAL;
+	if (!hw_ctl->ops.hw_fence_trigger_output_fence[hw_ctl->hw.disp_op] ||
+			!hw_ctl->ops.hw_fence_update_output_fence[hw_ctl->hw.disp_op]) {
+		if (IS_DISP_OP_HWIO(hw_ctl->hw.disp_op)) {
+			SDE_ERROR("missing ctl/trigger or update fence %d\n", !hw_ctl);
+			return -EINVAL;
+		}
+		return 0;
 	}
 
 	ctl_id = hw_ctl->idx - CTL_0;
@@ -763,12 +769,15 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 	int ctl_id;
 	u64 qtime;
 
-	/* we must support sw_override as well, so check both functions */
-	if (!hw_mdp || !hw_ctl ||
-		!hw_ctl->ops.hw_fence_update_input_fence[hw_ctl->hw.disp_op] ||
-		!hw_ctl->ops.hw_fence_trigger_sw_override[hw_ctl->hw.disp_op]) {
-		SDE_ERROR("missing ctl/override/update fence %d\n", !hw_ctl);
+	if (!hw_mdp || !hw_ctl)
 		return -EINVAL;
+	/* we must support sw_override as well, so check both functions */
+	if (!hw_ctl->ops.hw_fence_update_input_fence[hw_ctl->hw.disp_op] ||
+			!hw_ctl->ops.hw_fence_trigger_sw_override[hw_ctl->hw.disp_op]) {
+		if (IS_DISP_OP_HWIO(hw_ctl->hw.disp_op))
+			SDE_ERROR("missing ctl/override/update fence %d\n", !hw_ctl);
+			return -EINVAL;
+		return 0;
 	}
 
 	ctl_id = hw_ctl->idx - CTL_0;

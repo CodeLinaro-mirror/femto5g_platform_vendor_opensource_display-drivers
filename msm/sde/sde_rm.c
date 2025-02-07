@@ -2508,8 +2508,11 @@ int sde_rm_cont_splash_res_init(struct msm_drm_private *priv,
 		struct sde_hw_ctl *ctl = to_sde_hw_ctl(iter_c.blk->hw);
 
 		if (!ctl->ops.get_ctl_intf[ctl->hw.disp_op]) {
-			SDE_ERROR("get_ctl_intf not initialized\n");
-			return -EINVAL;
+			if (IS_DISP_OP_HWIO(ctl->hw.disp_op)) {
+				SDE_ERROR("get_ctl_intf not initialized\n");
+				return -EINVAL;
+			}
+			return 0;
 		}
 
 		intf_sel = ctl->ops.get_ctl_intf[ctl->hw.disp_op](ctl);

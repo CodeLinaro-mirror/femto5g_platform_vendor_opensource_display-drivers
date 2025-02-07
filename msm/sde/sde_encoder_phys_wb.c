@@ -1418,7 +1418,8 @@ static void _sde_encoder_phys_wb_setup_sys_cache(struct sde_encoder_phys *phys_e
 	}
 
 	if (!hw_wb || !hw_wb->ops.setup_sys_cache[disp_op]) {
-		SDE_DEBUG("unsupported ops: setup_sys_cache WB %d\n", WBID(wb_enc));
+		if (IS_DISP_OP_HWIO(disp_op))
+			SDE_DEBUG("unsupported ops: setup_sys_cache WB %d\n", WBID(wb_enc));
 		return;
 	}
 
@@ -1778,8 +1779,10 @@ static void _sde_encoder_phys_wb_setup_dnsc_blur(struct sde_encoder_phys *phys_e
 
 	if (sde_conn_state->dnsc_blur_count
 			&& (!hw_dnsc_blur || !hw_dnsc_blur->ops.setup_dnsc_blur[disp_op])) {
-		SDE_ERROR("[enc:%d wb:%d] invalid config - dnsc_blur block not reserved\n",
-			DRMID(phys_enc->parent), WBID(wb_enc));
+		if (IS_DISP_OP_HWIO(disp_op))
+			SDE_ERROR(
+				"[enc:%d wb:%d] invalid config - dnsc_blur block not reserved\n",
+				DRMID(phys_enc->parent), WBID(wb_enc));
 		return;
 	}
 

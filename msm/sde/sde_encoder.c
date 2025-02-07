@@ -455,8 +455,13 @@ int sde_encoder_helper_hw_fence_extended_wait(struct sde_encoder_phys *phys_enc,
 		/* if dma_fence is signaled, avoid extended wait */
 		if (sde_crtc_is_fence_signaled(phys_enc->parent->crtc)) {
 			/* timed-out waiting and no sw-override support for hw-fences */
-			if (!ctl || !ctl->ops.hw_fence_trigger_sw_override[disp_op]) {
+			if (!ctl) {
 				SDE_ERROR("invalid argument(s)\n");
+				break;
+			}
+			if (!ctl->ops.hw_fence_trigger_sw_override[disp_op]) {
+				if (IS_DISP_OP_HWIO(disp_op))
+					SDE_ERROR("undefined hw_fence_trigger_sw_override op\n");
 				break;
 			}
 
@@ -1580,7 +1585,7 @@ static void _sde_encoder_update_ppb_size(struct drm_encoder *drm_enc)
 					SDE_EVTLOG_FUNC_CASE2);
 			SDE_DEBUG_ENC(sde_enc, "hw-pp i:%d pp_cnt:%d pixels_per_pp:%d\n",
 					i, num_lm_or_pp, pixels_per_pp);
-		} else {
+		} else if (IS_DISP_OP_HWIO(disp_op)) {
 			SDE_ERROR_ENC(sde_enc, "invalid - ppb fifo size support is partial\n");
 		}
 	}
@@ -7153,7 +7158,7 @@ int sde_encoder_get_avr_status(struct drm_encoder *drm_enc)
 		return -ENODATA;
 
 	if (!master->hw_intf->ops.get_avr_status[disp_op])
-		return -EOPNOTSUPP;
+		return IS_DISP_OP_HFI(disp_op) ? 0 : -EOPNOTSUPP;
 
 	return master->hw_intf->ops.get_avr_status[disp_op](master->hw_intf);
 }

@@ -149,9 +149,16 @@ static int _sde_vbif_wait_for_xin_halt(struct sde_hw_vbif *vbif, u32 xin_id)
 	bool status;
 	int rc;
 
-	if (!vbif || !vbif->cap || !vbif->ops.get_xin_halt_status[vbif->hw.disp_op]) {
+	if (!vbif || !vbif->cap) {
 		SDE_ERROR("invalid arguments vbif %d\n", !vbif);
 		return -EINVAL;
+	}
+	if (!vbif->ops.get_xin_halt_status[vbif->hw.disp_op]) {
+		if (IS_DISP_OP_HWIO(vbif->hw.disp_op)) {
+			SDE_ERROR("undefined get_xin_halt_status vbif op\n");
+			return -EINVAL;
+		}
+		return 0;
 	}
 
 	timeout = ktime_add_us(ktime_get(), vbif->cap->xin_halt_timeout);
@@ -184,9 +191,16 @@ static int _sde_vbif_wait_for_axi_halt(struct sde_hw_vbif *vbif)
 {
 	int rc;
 
-	if (!vbif || !vbif->cap || !vbif->ops.get_axi_halt_status[vbif->hw.disp_op]) {
+	if (!vbif || !vbif->cap) {
 		SDE_ERROR("invalid arguments vbif %d\n", !vbif);
 		return -EINVAL;
+	}
+	if (!vbif->ops.get_axi_halt_status[vbif->hw.disp_op]) {
+		if (IS_DISP_OP_HWIO(vbif->hw.disp_op)) {
+			SDE_ERROR("undefined get_axi_halt_status vbif op\n");
+			return -EINVAL;
+		}
+		return 0;
 	}
 
 	rc = vbif->ops.get_axi_halt_status[vbif->hw.disp_op](vbif);
@@ -557,7 +571,8 @@ void sde_vbif_set_qos_remap(struct sde_kms *sde_kms,
 
 	if (!vbif->ops.set_qos_remap[vbif->hw.disp_op] ||
 		!_sde_vbif_setup_clk_supported(sde_kms, params->clk_ctrl)) {
-		SDE_DEBUG("qos remap not supported\n");
+		if (IS_DISP_OP_HWIO(vbif->hw.disp_op))
+			SDE_DEBUG("qos remap not supported\n");
 		return;
 	}
 
