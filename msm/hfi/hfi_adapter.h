@@ -11,6 +11,7 @@
 #include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/kthread.h>
+#include <linux/spinlock.h>
 #if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
 #include "hfi_pack_unpack_common.h"
 #include "hfi_interface.h"
@@ -38,6 +39,8 @@
  * @cb_worker_thread: Callback worker thread
  * @client_ids: ID allocation for client ID's
  * @pool: Pointer to hfi_buffer_pool struct
+ * @packet_id_lock: Lock for packet id
+ * @hfi_adapter_cmd_buf_list_lock:Lock for cmd_buf list
  */
 struct hfi_adapter_t {
 	u32  sde_or_vm_instance;
@@ -51,6 +54,8 @@ struct hfi_adapter_t {
 	struct task_struct *cb_worker_thread;
 	struct idr client_ids;
 	struct hfi_buffer_pool *pool;
+	spinlock_t packet_id_lock;
+	struct mutex hfi_adapter_cmd_buf_list_lock;
 };
 
 /**

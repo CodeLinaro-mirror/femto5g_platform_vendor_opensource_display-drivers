@@ -59,6 +59,10 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 
 		drm_for_each_encoder_mask(encoder, kms->dev, encoder_mask) {
 			disp_id = hfi_crtc_get_display_id(crtc, cstate);
+			if (disp_id == U32_MAX) {
+				SDE_DEBUG("no display for encoder%p\n", encoder);
+				continue;
+			}
 			SDE_DEBUG("creating cmd buffer for disp_id:%d\n", disp_id);
 
 			cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
@@ -98,6 +102,10 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
 		if (crtc->state->active || crtc_state->active || crtc_state->active_changed) {
 			disp_id = hfi_crtc_get_display_id(crtc, crtc_state);
+			if (disp_id == U32_MAX) {
+				SDE_DEBUG("no valid display for crtc:%d\n", DRMID(crtc));
+				continue;
+			}
 			SDE_DEBUG("getting cmd buffer for disp_id:%d\n", disp_id);
 
 			cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id,
