@@ -2649,9 +2649,12 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		msm_iounmap(pdev, sde_kms->sid);
 	sde_kms->sid = NULL;
 
+	if (sde_kms->hw_sw_fuse)
+		sde_hw_sw_fuse_destroy(sde_kms->hw_sw_fuse);
+	sde_kms->hw_sw_fuse = NULL;
+
 	if (sde_kms->sw_fuse)
 		msm_iounmap(pdev, sde_kms->sw_fuse);
-	sde_hw_sw_fuse_destroy(sde_kms->sw_fuse);
 	sde_kms->sw_fuse = NULL;
 
 	if (sde_kms->reg_dma)

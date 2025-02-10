@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2019, 2021 The Linux Foundation. All rights reserved.
  */
 
@@ -131,7 +131,6 @@ static const struct sde_format_extended wb2_formats[] = {
 	{DRM_FORMAT_BGRX4444, 0},
 	{DRM_FORMAT_XBGR4444, 0},
 
-	{DRM_FORMAT_YUV420, 0},
 	{DRM_FORMAT_NV12, 0},
 	{DRM_FORMAT_NV12, DRM_FORMAT_MOD_QCOM_COMPRESSED},
 

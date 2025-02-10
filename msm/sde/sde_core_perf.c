@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -301,6 +301,9 @@ int sde_core_perf_crtc_check(struct drm_crtc *crtc,
 
 	for (i = SDE_POWER_HANDLE_DBUS_ID_MNOC;
 			i < SDE_POWER_HANDLE_DBUS_ID_MAX; i++) {
+		if (!priv->phandle.data_bus_handle[i].data_paths_cnt)
+			continue; /* Only check if path is enabled */
+
 		bw_sum_of_intfs = sde_cstate->new_perf.bw_ctl[i];
 		curr_client_type = sde_crtc_get_client_type(crtc);
 
