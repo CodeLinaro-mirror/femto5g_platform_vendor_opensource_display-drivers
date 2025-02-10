@@ -628,9 +628,12 @@ static int _hfi_enc_send_display_ctrl_cmd(struct sde_encoder_virt *enc, bool ena
 	struct hfi_kms *hfi_kms;
 	struct hfi_encoder *hfi_enc;
 	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+	struct hfi_connector *hfi_conn;
 	struct hfi_cmdbuf_t *cmd_buf;
 	u32 display_id, hfi_cmd;
 	int ret = 0;
+	u32 flags = 0;
 
 	if (!enc)
 		return -EINVAL;
@@ -644,6 +647,8 @@ static int _hfi_enc_send_display_ctrl_cmd(struct sde_encoder_virt *enc, bool ena
 		return -EINVAL;
 	}
 
+	sde_conn = to_sde_connector(conn);
+	hfi_conn = sde_conn->hfi_conn;
 	display_id = sde_conn_get_display_obj_id(conn);
 	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, display_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
 	if (!cmd_buf) {
@@ -652,8 +657,13 @@ static int _hfi_enc_send_display_ctrl_cmd(struct sde_encoder_virt *enc, bool ena
 	}
 
 	hfi_cmd = enable ? HFI_COMMAND_DISPLAY_ENABLE : HFI_COMMAND_DISPLAY_DISABLE;
+	flags = HFI_HOST_FLAGS_NON_DISCARDABLE;
+	if (sde_conn->reproj_conn)
+		ret = hfi_conn_send_lsr_display_ctrl_cmd(hfi_kms, hfi_conn, cmd_buf,
+				&flags, enable);
+
 	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf, hfi_cmd, display_id,
-			HFI_PAYLOAD_TYPE_NONE, NULL, 0, HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_PAYLOAD_TYPE_NONE, NULL, 0, flags);
 
 	return ret;
 }

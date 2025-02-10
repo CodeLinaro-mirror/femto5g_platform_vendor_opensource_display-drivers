@@ -275,6 +275,52 @@ enum sde_wb_usage_type sde_crtc_get_wb_usage_type(struct drm_crtc *crtc)
 	return usage_type;
 }
 
+int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc)
+{
+	struct drm_connector *conn;
+	struct drm_connector_list_iter conn_iter;
+	struct sde_connector *sde_conn = NULL;
+
+	drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		sde_conn = to_sde_connector(conn);
+		if (conn->state && (conn->state->crtc == crtc))
+			return sde_conn->reproj_conn ? sde_conn->reproj_conn->type : 0;
+	}
+	drm_connector_list_iter_end(&conn_iter);
+	return 0;
+}
+
+int sde_crtc_update_lsr_perf(struct drm_crtc *crtc)
+{
+	struct drm_connector *conn;
+	struct sde_connector *c_conn = NULL;
+	struct drm_connector_list_iter conn_iter;
+	struct sde_lsr_perf perf = {0};
+	bool is_lsr = false;
+	struct sde_crtc_state *sde_cstate = NULL;
+
+	drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		if (conn->state && (conn->state->crtc == crtc)) {
+			c_conn = to_sde_connector(conn);
+			is_lsr = c_conn->reproj_conn ? true : false;
+			break;
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	if (is_lsr && crtc->state) {
+		sde_cstate = to_sde_crtc_state(crtc->state);
+		perf.bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_DRAM_AB);
+		perf.clk_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_CORE_CLK);
+		sde_wb_update_lsr_perf(conn, c_conn->display, perf);
+	}
+
+	return 0;
+}
+
+
 static void _sde_crtc_check_loopback_pstates(struct drm_crtc_state *crtc_state)
 {
 	struct drm_plane *plane;

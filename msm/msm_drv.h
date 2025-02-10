@@ -1693,6 +1693,18 @@ int msm_dsi_modeset_init(struct msm_dsi *msm_dsi, struct drm_device *dev,
 			 struct drm_encoder *encoder);
 #endif /* CONFIG_DRM_MSM_DSI */
 
+#if IS_ENABLED(CONFIG_DRM_SDE_LSR)
+void __init msm_lsr_init(void);
+void __exit msm_lsr_exit(void);
+#else
+static inline void __init msm_lsr_init(void)
+{
+}
+static inline void __exit msm_lsr_exit(void)
+{
+}
+#endif /* CONFIG_DRM_SDE_LSR */
+
 #if IS_ENABLED(CONFIG_DRM_MSM_MDP5)
 void __init msm_mdp_register(void);
 void __exit msm_mdp_unregister(void);

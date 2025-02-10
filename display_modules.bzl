@@ -157,6 +157,16 @@ module_entry(
         "CONFIG_DRM_SDE_LSR": [
             "msm/sde/sde_wb_lsr.c",
             "msm/sde/hfi/hfi_wb_lsr.c",
+            "lsr/lsr.c",
+            "lsr/lsr_core.c",
+            "lsr/lsr_hfi.c",
+            "lsr/lsr_smem.c",
+            "lsr/msm_lsr_clocks.c",
+            "lsr/msm_lsr_core.c",
+            "lsr/msm_lsr_debug.c",
+            "lsr/msm_lsr_platform.c",
+            "lsr/msm_lsr_res_parse.c",
+            "lsr/lsr_main.c",
         ],
         "CONFIG_DRM_SDE_WB": [
             "msm/sde/sde_wb.c",
