@@ -4,7 +4,7 @@
  */
 
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
@@ -36,6 +36,12 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_crtc_helper.h>
 #include <linux/string.h>
+
+/* those header for ALSA and DAI use */
+#include <sound/soc.h>
+#include <sound/pcm.h>
+#include <sound/initval.h>
+#include <sound/tlv.h>
 
 #include <drm/drm_bridge.h>
 #include <drm/drm_probe_helper.h>
@@ -175,6 +181,8 @@ struct lt9611 {
 
 	struct msm_ext_disp_audio_edid_blk audio_edid_blk;
 	u8 raw_sad[MAX_NUMBER_ADB * MAX_AUDIO_DATA_BLOCK_SIZE];
+
+	int mute;
 };
 
 static int cont_splash_en;
@@ -699,6 +707,133 @@ static int lt9611_read(struct lt9611 *pdata, u8 reg, char *buf, u32 size)
 
 	return 0;
 }
+
+
+static void lt9611_i2c_mute(struct lt9611 *pdata, int mute)
+{
+	mutex_lock(&pdata->lock);
+	lt9611_ctl_en(pdata);
+
+	// mute C907 -> 00
+	if (mute) {
+		lt9611_write_byte(pdata, 0xFF, 0xC9);
+		lt9611_write_byte(pdata, 0x07, 0x00);
+		pr_debug("set mute mode\n");
+	} else {
+		lt9611_write_byte(pdata, 0xFF, 0xC9);
+		lt9611_write_byte(pdata, 0x07, 0x10);
+		pr_debug("set unmute mode\n");
+	}
+
+	lt9611_ctl_disable(pdata);
+	mutex_unlock(&pdata->lock);
+}
+
+static int lt9611_mute_info(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_info *uinfo)
+{
+	uinfo->type   = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->access = (SNDRV_CTL_ELEM_ACCESS_TLV_READ |
+			SNDRV_CTL_ELEM_ACCESS_READWRITE);
+	uinfo->count  = 1;
+
+	uinfo->value.integer.min  = 0;
+	uinfo->value.integer.max  = 1;
+	uinfo->value.integer.step = 1;
+
+	return 0;
+}
+
+static int lt9611_get_mute(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *uinfo)
+{
+	struct snd_soc_component *component =
+		snd_soc_kcontrol_component(kcontrol);
+	struct lt9611 *priv = snd_soc_component_get_drvdata(component);
+
+	pr_debug("in %s %d\n", __func__, priv->mute);
+	return 0;
+}
+
+static int lt9611_put_mute(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component =
+		snd_soc_kcontrol_component(kcontrol);
+	struct lt9611 *priv = snd_soc_component_get_drvdata(component);
+
+	lt9611_i2c_mute(priv, ucontrol->value.integer.value[0]);
+	priv->mute = ucontrol->value.integer.value[0];
+	pr_debug("in %s %d\n", __func__, priv->mute);
+	return 0;
+}
+
+static const struct snd_kcontrol_new lt9611_snd_mute[] = {
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.name  = "HDMI out mute",
+		.info  = lt9611_mute_info,
+		.get   = lt9611_get_mute,
+		.put   = lt9611_put_mute,
+	},
+};
+
+static int lt9611_snd_probe(struct snd_soc_component *component)
+{
+	int ret = 0;
+
+	ret = snd_soc_add_component_controls(component, lt9611_snd_mute, 1);
+	if (ret != 0) {
+		pr_err("fail add mute ctl, error: %d\n", ret);
+		return ret;
+	}
+
+	pr_err("%s is OK!\n", __func__);
+	return 0;
+}
+
+static const struct snd_soc_component_driver soc_component_lt9611 = {
+	.probe = lt9611_snd_probe,
+};
+
+static int lt9611_prepare(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *dai)
+{
+	return 0;
+}
+
+static int lt9611_mute(struct snd_soc_dai *dai, int mute, int stream)
+{
+	struct snd_soc_component *component = dai->component;
+	struct lt9611 *priv = snd_soc_component_get_drvdata(component);
+
+	lt9611_i2c_mute(priv, mute);
+	pr_debug("in %s function\n", __func__);
+	return 0;
+}
+
+static const struct snd_soc_dai_ops lt9611_dai_ops = {
+	.mute_stream    = lt9611_mute,
+	.prepare = lt9611_prepare,
+};
+
+static struct snd_soc_dai_driver lt9611_dai = {
+	.name           = "lt9611",
+	.playback       = {
+		.stream_name    = "Playback",
+		.channels_min   = 2,
+		.channels_max   = 2,
+		.rates          = SNDRV_PCM_RATE_44100 |
+				SNDRV_PCM_RATE_48000 |
+				SNDRV_PCM_RATE_88200 |
+				SNDRV_PCM_RATE_96000,
+		.formats        = SNDRV_PCM_FMTBIT_S16_LE |
+				SNDRV_PCM_FMTBIT_S20_LE |
+				SNDRV_PCM_FMTBIT_S24_LE |
+				SNDRV_PCM_FMTBIT_S32_LE,
+	},
+	.ops = &lt9611_dai_ops,
+};
 
 void lt9611_config(struct lt9611 *pdata)
 {
@@ -2859,6 +2994,14 @@ static int lt9611_probe(struct i2c_client *client,
 	}
 
 	if (pdata->audio_support) {
+		ret = snd_soc_register_component(&client->dev,
+			&soc_component_lt9611, &lt9611_dai, 1);
+		if (ret) {
+			pr_err("Failed to register CODEC: %s, %d\n",
+					lt9611_dai.name, ret);
+			return ret;
+		}
+
 		pdata->audio_pdev =
 			platform_device_register_simple("lt9611", -1, NULL, 0);
 		if (IS_ERR(pdata->audio_pdev)) {
@@ -2912,6 +3055,8 @@ static int lt9611_remove(struct i2c_client *client)
 		list_del(&mode->head);
 		kfree(mode);
 	}
+
+	snd_soc_unregister_component(&client->dev);
 
 	devm_kfree(&client->dev, pdata);
 	if (pdata->wq)
