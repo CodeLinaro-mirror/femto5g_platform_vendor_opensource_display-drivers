@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <drm/drm_encoder.h>
@@ -626,15 +626,29 @@ void sde_roi_misr_hw_reset(struct sde_encoder_phys *phys_enc)
 	struct sde_hw_roi_misr *hw_roi_misr;
 	int i;
 
+	if (!phys_enc) {
+		SDE_ERROR("invalid parameters\n");
+		return;
+	}
+
+	if (phys_enc->roi_misr_num > MAX_CHANNELS_PER_ENC) {
+		SDE_ERROR("invalid roi_misr_num %d\n", phys_enc->roi_misr_num);
+		return;
+	}
+
 	for (i = 0; i < phys_enc->roi_misr_num; i++) {
 		hw_roi_misr = phys_enc->hw_roi_misr[i];
-		if (!hw_roi_misr->ops.reset_roi_misr)
-			continue;
+		if (hw_roi_misr) {
+			if (!hw_roi_misr->ops.reset_roi_misr)
+				continue;
 
-		hw_roi_misr->ops.reset_roi_misr(hw_roi_misr);
-		phys_enc->hw_ctl->ops.update_bitmask(
-				phys_enc->hw_ctl, SDE_HW_FLUSH_DSC,
-				hw_roi_misr->idx, true);
+			hw_roi_misr->ops.reset_roi_misr(hw_roi_misr);
+			phys_enc->hw_ctl->ops.update_bitmask(
+					phys_enc->hw_ctl, SDE_HW_FLUSH_DSC,
+					hw_roi_misr->idx, true);
+		} else {
+			SDE_INFO("hw roi misr (%d) is null\n", i);
+		}
 	}
 }
 
@@ -645,17 +659,31 @@ void sde_roi_misr_setup_irq_hw_idx(struct sde_encoder_phys *phys_enc)
 	int mismatch_idx, intr_offset;
 	int i, j;
 
+	if (!phys_enc) {
+		SDE_ERROR("invalid parameters\n");
+		return;
+	}
+
+	if (phys_enc->roi_misr_num > MAX_CHANNELS_PER_ENC) {
+		SDE_ERROR("invalid roi_misr_num %d\n", phys_enc->roi_misr_num);
+		return;
+	}
+
 	for (i = 0; i < phys_enc->roi_misr_num; i++) {
 		hw_roi_misr = phys_enc->hw_roi_misr[i];
-		intr_offset = SDE_ROI_MISR_GET_INTR_OFFSET(hw_roi_misr->idx);
+		if (hw_roi_misr) {
+			intr_offset = SDE_ROI_MISR_GET_INTR_OFFSET(hw_roi_misr->idx);
 
-		for (j = 0; j < ROI_MISR_MAX_ROIS_PER_MISR; j++) {
-			mismatch_idx = MISR_ROI_MISMATCH_BASE_IDX
-				+ intr_offset * ROI_MISR_MAX_ROIS_PER_MISR + j;
+			for (j = 0; j < ROI_MISR_MAX_ROIS_PER_MISR; j++) {
+				mismatch_idx = MISR_ROI_MISMATCH_BASE_IDX
+					+ intr_offset * ROI_MISR_MAX_ROIS_PER_MISR + j;
 
-			irq = &phys_enc->irq[mismatch_idx];
-			if (irq->irq_idx < 0)
-				irq->hw_idx = hw_roi_misr->idx;
+				irq = &phys_enc->irq[mismatch_idx];
+				if (irq->irq_idx < 0)
+					irq->hw_idx = hw_roi_misr->idx;
+			}
+		} else {
+			SDE_INFO("hw roi misr (%d) is null\n", i);
 		}
 	}
 }
