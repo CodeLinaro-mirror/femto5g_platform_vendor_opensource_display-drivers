@@ -777,7 +777,7 @@ static inline bool sde_hw_ctl_bitmask_has_bit_v1(struct sde_hw_ctl *ctx,
 		return false;
 	}
 
-	return ctx->flush.pending_flush_mask & cfg->flush_idx;
+	return ctx->flush.pending_flush_mask & BIT(cfg->flush_idx);
 }
 
 static inline void sde_hw_ctl_update_dnsc_blur_bitmask(struct sde_hw_ctl *ctx,

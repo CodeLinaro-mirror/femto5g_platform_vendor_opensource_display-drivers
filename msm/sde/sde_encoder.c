@@ -5034,6 +5034,7 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	struct sde_encoder_phys *phys_enc = sde_enc->cur_master;
 	struct sde_cesta_ctrl_cfg ctrl_cfg = {0,};
+	struct intf_timestamps intf_ts = {0,};
 	bool req_flush = false, req_scc = false, is_cmd;
 
 	is_cmd = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE);
@@ -5048,6 +5049,57 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc)
 
 	sde_enc->mode_switch = SDE_MODE_SWITCH_NONE;
 	_sde_encoder_cesta_update(drm_enc, SDE_PERF_COMPLETE_COMMIT);
+
+	if (sde_enc->disp_info.vrr_caps.video_psr_support &&
+		phys_enc->ops.get_intf_ts)
+		phys_enc->ops.get_intf_ts(phys_enc, &intf_ts);
+}
+
+
+static inline void _sde_encoder_trigger_flush_helper(struct drm_encoder *drm_enc,
+		struct sde_encoder_phys *phys, struct sde_hw_ctl *ctl,
+		struct sde_connector *c_conn,
+		bool is_vid_mode, bool is_dp)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (((sde_enc->disp_info.vrr_caps.video_psr_support &&
+			!phys->sde_kms->catalog->hw_fence_rev) ||
+			sde_enc->disp_info.hwfence_sw_override_always) &&
+			ctl->ops.hw_fence_trigger_sw_override)
+		ctl->ops.hw_fence_trigger_sw_override(ctl);
+
+	/* matching unblock in sde_encoder_phys_vid_handle_post_kickoff */
+	if (sde_enc->disp_info.vrr_caps.video_psr_support &&
+		phys->esync_pc_exit && !sde_enc->vrr_info.vhm_cmd_in_progress &&
+		c_conn->ops.avoid_cmd_transfer)
+		c_conn->ops.avoid_cmd_transfer(c_conn->display, true);
+
+	/*
+	 * Cesta blocks ctl flush in hardware until cesta vote is processed, but
+	 * intf and periph flushes are not similarly blocked. Poll cesta's handshake
+	 * status until the vote is processed, in case of intf or periph flush
+	 */
+	if (sde_enc->cesta_client && phys->hw_intf && is_vid_mode &&
+		ctl->ops.bitmask_has_bit && (is_dp ||
+		ctl->ops.bitmask_has_bit(ctl, SDE_HW_FLUSH_PERIPH, phys->hw_intf->idx) ||
+		ctl->ops.bitmask_has_bit(ctl, SDE_HW_FLUSH_INTF, phys->hw_intf->idx)))
+		sde_cesta_poll_handshake(sde_enc->cesta_client);
+
+	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
+		sde_encoder_check_prog_fetch_region(drm_enc);
+
+	if (sde_enc->disp_info.vrr_caps.video_psr_support && phys->wait_esync_vsync_irq) {
+		if (phys->ops.control_esync_vsync_irq)
+			phys->ops.control_esync_vsync_irq(phys, true);
+
+		sde_encoder_phys_vid_wait_for_esync_vsync(phys);
+
+		if (phys->ops.control_esync_vsync_irq)
+			phys->ops.control_esync_vsync_irq(phys, false);
+	}
 }
 
 /**
@@ -5102,28 +5154,8 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	is_dp = phys->hw_intf && phys->hw_intf->cap->type == INTF_DP;
 	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 
-	if ((sde_enc->disp_info.vrr_caps.video_psr_support &&
-			!phys->sde_kms->catalog->hw_fence_rev) ||
-			sde_enc->disp_info.hwfence_sw_override_always)
-		ctl->ops.hw_fence_trigger_sw_override(ctl);
-
-	/* matching unblock in sde_encoder_phys_vid_handle_post_kickoff */
-	if (sde_enc->disp_info.vrr_caps.video_psr_support && phys->esync_pc_exit &&
-			!sde_enc->vrr_info.vhm_cmd_in_progress && c_conn->ops.avoid_cmd_transfer)
-		c_conn->ops.avoid_cmd_transfer(c_conn->display, true);
-
-	/*
-	 * Cesta blocks ctl flush in hardware until cesta vote is processed, but
-	 * intf and periph flushes are not similarly blocked. Poll cesta's handshake
-	 * status until the vote is processed, in case of intf or periph flush
-	 */
-	if (sde_enc->cesta_client && phys->hw_intf && is_vid_mode && (is_dp ||
-			ctl->ops.bitmask_has_bit(ctl, SDE_HW_FLUSH_PERIPH, phys->hw_intf->idx) ||
-			ctl->ops.bitmask_has_bit(ctl, SDE_HW_FLUSH_INTF, phys->hw_intf->idx)))
-		sde_cesta_poll_handshake(sde_enc->cesta_client);
-
-	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
-		sde_encoder_check_prog_fetch_region(drm_enc);
+	_sde_encoder_trigger_flush_helper(drm_enc, phys, ctl, c_conn,
+			is_vid_mode, is_dp);
 
 	/* update pending counts and trigger kickoff ctl flush atomically */
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
