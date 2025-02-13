@@ -33,6 +33,18 @@ bool sde_cesta_is_enabled(u32 cesta_index)
 	return cesta_list[cesta_index] ? true : false;
 }
 
+bool sde_cesta_is_aoss_supported(u32 cesta_index)
+{
+	struct sde_cesta *cesta;
+
+	if (!sde_cesta_is_enabled(cesta_index))
+		return false;
+
+	cesta = cesta_list[cesta_index];
+
+	return (cesta->hw_drv_ver < (SDE_CESTA_HW_MAJOR_MINOR_STEP(4, 3, 0)));
+}
+
 struct sde_power_handle *sde_cesta_get_phandle(u32 cesta_index)
 {
 	struct sde_cesta *cesta;
@@ -654,7 +666,8 @@ int sde_cesta_sw_client_update(u32 cesta_index, struct sde_cesta_sw_client_data 
 		cesta->sw_client.data.bw_ib = data->data.bw_ib;
 	}
 
-	if (flag & SDE_CESTA_SW_CLIENT_AOSS_UPDATE) {
+	if (cesta->hw_drv_ver < (SDE_CESTA_HW_MAJOR_MINOR_STEP(4, 3, 0))
+			&& (flag & SDE_CESTA_SW_CLIENT_AOSS_UPDATE)) {
 		cmd.data = data->aoss_cp_level;
 		cmd.resource_idx = 0;
 		cmd.wait = true;
@@ -705,6 +718,11 @@ int sde_cesta_aoss_update(struct sde_cesta_client *client, enum sde_cesta_aoss_c
 		return -EINVAL;
 	}
 	cesta = cesta_list[client->cesta_index];
+
+	if (cesta->hw_drv_ver >= (SDE_CESTA_HW_MAJOR_MINOR_STEP(4, 3, 0))) {
+		SDE_ERROR_CESTA("AOSS VCD not supported in cesta drv: 0x%x\n", cesta->hw_drv_ver);
+		return -EOPNOTSUPP;
+	}
 
 	cmd.data = cp_level;
 	cmd.resource_idx = 0;
@@ -1288,7 +1306,8 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	snprintf(name, MAX_CESTA_CLIENT_NAME_LEN, "%s%d", "sde_cesta_", index);
 	_sde_cesta_init_debugfs(cesta, name);
 
-	pr_info("sde cesta index:%d probed successfully\n", index);
+	pr_info("sde cesta index:%d, hw_drv_ver:0x%x probed successfully\n",
+			index, cesta->hw_drv_ver);
 
 	ret = component_add(&pdev->dev, &sde_cesta_comp_ops);
 	if (ret) {

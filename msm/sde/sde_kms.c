@@ -2282,7 +2282,9 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
-		rc = dsi_display_drm_bridge_init(display, encoder, cesta_client);
+		/* avoid passing cesta client to DSI bridge if AOSS VCD is not supported by cesta */
+		rc = dsi_display_drm_bridge_init(display, encoder,
+				sde_cesta_is_aoss_supported(DPUID(dev)) ? cesta_client : NULL);
 		if (rc) {
 			SDE_ERROR("dsi bridge %d init failed, %d\n", i, rc);
 			sde_encoder_destroy(encoder);
