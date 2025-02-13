@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -493,7 +493,7 @@ struct dsi_split_link_config {
  * @ext_bridge_hpd_en:   Enable hpd for external bridge.
  * @ext_bridge_dynamic_mode_set: Enable dynamic mode set for external bridge.
  * @ext_bridge_custom_topology: Apply custom topology for external bridge.
- * @ext_bridge_always_dual_intf: Enable dual dsi interface of external bridge.
+ * @ext_bridge_fixed_layer_mixer: Enable fixed layer mixer of external bridge.
  * @force_hs_clk_lane:   Send continuous clock to the panel.
  * @phy_type:            DPHY/CPHY is enabled for this panel.
  * @dsi_split_link_config:  Split Link Configuration.
@@ -529,7 +529,7 @@ struct dsi_host_common_cfg {
 	bool ext_bridge_hpd_en;
 	bool ext_bridge_dynamic_mode_set;
 	bool ext_bridge_custom_topology;
-	bool ext_bridge_always_dual_intf;
+	bool ext_bridge_fixed_layer_mixer;
 	bool force_hs_clk_lane;
 	enum dsi_phy_type phy_type;
 	struct dsi_split_link_config split_link;
