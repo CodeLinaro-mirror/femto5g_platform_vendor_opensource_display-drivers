@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <drm/msm_drm_aiqe.h>
@@ -249,9 +249,11 @@ int sde_dspp_copr_read_status(struct sde_hw_dspp *hw_dspp,
 {
 	int rc;
 
-	if (!copr_status || !hw_dspp || !hw_dspp->ops.read_copr_status[hw_dspp->hw.disp_op])
+	if (!copr_status || !hw_dspp)
 		return -EINVAL;
 
+	if (!hw_dspp->ops.read_copr_status[hw_dspp->hw.disp_op])
+		return IS_DISP_OP_HFI(hw_dspp->hw.disp_op) ? 0 : -EINVAL;
 	rc = hw_dspp->ops.read_copr_status[hw_dspp->hw.disp_op](hw_dspp, copr_status);
 	if (rc)
 		SDE_ERROR("invalid status read %d", rc);
