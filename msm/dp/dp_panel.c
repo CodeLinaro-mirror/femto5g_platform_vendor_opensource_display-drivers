@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2008,7 +2008,10 @@ static u32 dp_panel_get_supported_bpp(struct dp_panel *dp_panel,
 	if (dsc_en)
 		min_supported_bpp = 24;
 
-	bpp = min_t(u32, mode_edid_bpp, max_supported_bpp);
+	if ((dsc_en) && (dp_panel->dsc_24bpp_support))
+		bpp = min_t(u32, mode_edid_bpp, min_supported_bpp);
+	else
+		bpp = min_t(u32, mode_edid_bpp, max_supported_bpp);
 
 	link_params = &panel->link->link_params;
 
@@ -3328,6 +3331,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->dsc_feature_enable = panel->parser->dsc_feature_enable;
 	dp_panel->fec_feature_enable = panel->parser->fec_feature_enable;
 	dp_panel->dsc_continuous_pps = panel->parser->dsc_continuous_pps;
+	dp_panel->dsc_24bpp_support = panel->parser->dsc_24bpp_support;
 
 	if (in->base_panel) {
 		memcpy(dp_panel->dpcd, in->base_panel->dpcd,
