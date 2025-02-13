@@ -3080,6 +3080,9 @@ static int dp_panel_update_edid(struct dp_panel *dp_panel, struct edid *edid)
 	sde_parse_edid(dp_panel->edid_ctrl);
 
 	rc = _sde_edid_update_modes(dp_panel->connector, dp_panel->edid_ctrl);
+	if (panel->parser->dp_cec_feature && rc)
+		drm_dp_cec_set_edid(panel->aux->drm_aux,
+				dp_panel->edid_ctrl->edid);
 	dp_panel->audio_supported = drm_detect_monitor_audio(edid) &&
 					!panel->parser->no_audio_support;
 
