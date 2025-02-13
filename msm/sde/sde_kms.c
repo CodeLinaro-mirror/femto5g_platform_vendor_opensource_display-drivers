@@ -5101,7 +5101,13 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 
 		mem = &data->demura_mem[i];
 		mem->splash_buf_base = (unsigned long)r.start;
-		mem->splash_buf_size = (r.end - r.start) + 1;
+
+		// Start and end are both 0, size is expected to be 0, dummy splash mem.
+		if (!r.start && !r.end) {
+			mem->splash_buf_size = 0;
+		} else {
+			mem->splash_buf_size = (r.end - r.start) + 1;
+		}
 
 		if (!mem->splash_buf_base && !mem->splash_buf_size) {
 			SDE_DEBUG("dummy splash mem for disp %d. Skipping\n",
