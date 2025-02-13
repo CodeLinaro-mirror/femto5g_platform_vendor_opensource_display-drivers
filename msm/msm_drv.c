@@ -2483,9 +2483,9 @@ static int __init msm_drm_register(void)
 	dsi_display_register();
 	msm_hdcp_register();
 	dp_display_register();
+	hdmi_display_register();
 	msm_dsi_register();
 	msm_edp_register();
-	msm_hdmi_register();
 	sde_shd_register();
 	msm_lease_drm_register();
 	return 0;
@@ -2496,13 +2496,13 @@ static void __exit msm_drm_unregister(void)
 	DBG("fini");
 	msm_lease_drm_unregister();
 	sde_wb_unregister();
-	msm_hdmi_unregister();
 	msm_edp_unregister();
 	msm_dsi_unregister();
 	sde_rotator_smmu_driver_unregister();
 	sde_rotator_unregister();
 	msm_smmu_driver_cleanup();
 	msm_hdcp_unregister();
+	hdmi_display_unregister();
 	dp_display_unregister();
 	dsi_display_unregister();
 	sde_cesta_unregister();
