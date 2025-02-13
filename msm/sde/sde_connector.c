@@ -1171,7 +1171,6 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 		drm_enc = connector->encoder;
 
 	if (c_conn->vrr_caps.video_mrr_support &&
-			msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
 			!drm_mode_vrefresh(c_state->msm_mode.base))
 		frame_interval_ns =
 			NSEC_PER_SEC/drm_mode_vrefresh(c_state->msm_mode.base);
