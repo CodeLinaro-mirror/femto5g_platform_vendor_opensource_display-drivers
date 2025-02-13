@@ -36,19 +36,21 @@
  *			for this command is asynchronous and must be queued.
  * @DSI_CTRL_CMD_SUBLINK0: Send the command in splitlink sublink0 only.
  * @DSI_CTRL_CMD_SUBLINK1: Send the command in splitlink sublink1 only.
+ * @DSI_CTRL_CMD_MULTI_DMA_BURST: Send multiple commands in one HS burst.
  */
-#define DSI_CTRL_CMD_READ             0x1
-#define DSI_CTRL_CMD_BROADCAST        0x2
-#define DSI_CTRL_CMD_BROADCAST_MASTER 0x4
-#define DSI_CTRL_CMD_DEFER_TRIGGER    0x8
-#define DSI_CTRL_CMD_FIFO_STORE       0x10
-#define DSI_CTRL_CMD_FETCH_MEMORY     0x20
-#define DSI_CTRL_CMD_LAST_COMMAND     0x40
-#define DSI_CTRL_CMD_NON_EMBEDDED_MODE 0x80
-#define DSI_CTRL_CMD_CUSTOM_DMA_SCHED  0x100
-#define DSI_CTRL_CMD_ASYNC_WAIT 0x200
-#define DSI_CTRL_CMD_SUBLINK0 0x400
-#define DSI_CTRL_CMD_SUBLINK1 0x800
+#define DSI_CTRL_CMD_READ              BIT(0)
+#define DSI_CTRL_CMD_BROADCAST         BIT(1)
+#define DSI_CTRL_CMD_BROADCAST_MASTER  BIT(2)
+#define DSI_CTRL_CMD_DEFER_TRIGGER     BIT(3)
+#define DSI_CTRL_CMD_FIFO_STORE        BIT(4)
+#define DSI_CTRL_CMD_FETCH_MEMORY      BIT(5)
+#define DSI_CTRL_CMD_LAST_COMMAND      BIT(6)
+#define DSI_CTRL_CMD_NON_EMBEDDED_MODE BIT(7)
+#define DSI_CTRL_CMD_CUSTOM_DMA_SCHED  BIT(8)
+#define DSI_CTRL_CMD_ASYNC_WAIT        BIT(9)
+#define DSI_CTRL_CMD_SUBLINK0          BIT(10)
+#define DSI_CTRL_CMD_SUBLINK1          BIT(11)
+#define DSI_CTRL_CMD_MULTI_DMA_BURST   BIT(12)
 
 /* DSI embedded mode fifo size
  * If the command is greater than the maximum size in bytes it is sent in non-embedded mode.
@@ -58,6 +60,8 @@
  */
 #define DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES_PRE_2P9 256
 #define DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES 1024
+
+#define DSI_LONG_PACKET_HEADER_LENGTH 4
 
 /* max size supported for dsi cmd transfer using TPG */
 #define DSI_CTRL_MAX_CMD_FIFO_STORE_SIZE 64
@@ -217,6 +221,7 @@ struct dsi_ctrl_interrupts {
  * @panel_id_cb:         Callback for reporting panel id.
  * @clk_info:            Clock information.
  * @clk_freq:            DSi Link clock frequency information.
+ * @esync_clk_freq:	 Esync clock frequency information in Hz.
  * @pwr_info:            Power information.
  * cesta_client:         Cesta client pointer for the display
  * @host_config:         Current host configuration.
@@ -291,6 +296,7 @@ struct dsi_ctrl {
 	/* Clock and power states */
 	struct dsi_ctrl_clk_info clk_info;
 	struct link_clk_freq clk_freq;
+	u64 esync_clk_freq;
 	struct dsi_ctrl_power_info pwr_info;
 	struct sde_cesta_client *cesta_client;
 

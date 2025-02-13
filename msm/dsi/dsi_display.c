@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -684,12 +684,14 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 		struct dsi_cmd_desc *cmd)
 {
 	struct dsi_display_ctrl *ctrl, *m_ctrl;
+	struct dsi_mode_info *mode_info;
 	struct mipi_dsi_msg *msg = &cmd->msg;
 	u32 cmd_dma_fifo_size;
 	u32 flags = 0;
 	int i = 0;
 
 	m_ctrl = &display->ctrl[display->clk_master_idx];
+	mode_info = &display->config.video_timing;
 
 	if (!m_ctrl->ctrl)
 		return;
@@ -720,9 +722,14 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 		if (ctrl->ctrl->secure_mode) {
 			flags &= ~DSI_CTRL_CMD_FETCH_MEMORY;
 			flags |= DSI_CTRL_CMD_FIFO_STORE;
-		} else if (msg->tx_len > cmd_dma_fifo_size) {
+		} else if (msg->tx_len + DSI_LONG_PACKET_HEADER_LENGTH > cmd_dma_fifo_size) {
 			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 		}
+
+		if (mode_info->esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
+			flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
+		else
+			flags &= ~DSI_CTRL_CMD_MULTI_DMA_BURST;
 
 		/* Set flags needed for broadcast. Read commands are always unicast */
 		if (!(msg->flags & MIPI_DSI_MSG_UNICAST_COMMAND) && (display->ctrl_count > 1))
@@ -4657,6 +4664,16 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 			goto error;
 		}
 
+		if (display->config.video_timing.esync_enabled) {
+			ctrl->esync_clk_freq = pclk_rate;
+			rc = dsi_clk_set_esync_frequency(display->dsi_clk_handle,
+					ctrl->esync_clk_freq, ctrl->cell_index);
+			if (rc) {
+				DSI_ERR("Failed to update esync frequency\n");
+				goto error;
+			}
+		}
+
 		ctrl->host_config.bit_clk_rate_hz = bit_clk_rate;
 error:
 		mutex_unlock(&ctrl->ctrl_lock);
@@ -4730,6 +4747,68 @@ static void _dsi_display_calc_pipe_delay(struct dsi_display *display,
 	delay->pll_delay = ((delay->pll_delay * esc_clk_rate_hz) / 1000000);
 }
 
+static void _dsi_display_calc_pipe_delay_prog_dr(struct dsi_display *display,
+				    struct dsi_dyn_clk_delay *delay,
+				    struct dsi_display_mode *mode, bool cts)
+{
+	/*
+	 * Units:
+	 * _esc              esc clock cycles
+	 * _pix              pixel clock cycles
+	 * _[unit]_comp      [unit] component of the value, does not represent the whole value
+	 */
+
+	struct dsi_ctrl *dsi_ctrl = display->ctrl[display->clk_master_idx].ctrl;
+	const u64 pix_clk_rate = dsi_ctrl->clk_freq.pix_clk_rate;
+	const u64 esc_clk_rate = dsi_ctrl->clk_freq.esc_clk_rate;
+
+	#define TO_ESC_CLK(val) ((val) * esc_clk_rate / pix_clk_rate)
+
+	bool split = false;
+
+	const u32 line_time_pix = dsi_h_total_dce(&mode->timing);
+	const u32 line_time_esc = TO_ESC_CLK(line_time_pix);
+
+	const u32 pipe_delay_esc = line_time_esc;
+	const u32 pipe_delay2_esc = cts ? 20 : 0;
+	const u32 pipe_delay3_esc = cts ? 20 : 0;
+	const u32 pll_reg_flush_delay_esc = 50;
+	const u32 pll_reg_post_flush_delay_esc = 20;
+	const u32 min_pll_lock_time_esc = 480;
+
+	const u32 delay_start_dr_esc_comp = 3;
+	const u32 delay_start_dr_pix_comp = 1;
+	const u32 mdp_stop_deassertion_esc_comp = 1;
+	const u32 mdp_stop_deassertion_pix_comp = 3;
+	const u32 mask_clkln_fsm_delay_esc = cts ? 0 : 1;
+	const u32 delay_end_dr_pix = split ? 18 + 5 : 12 + 5;
+
+	const u32 min_dr_duration_pix_comp = delay_start_dr_pix_comp + delay_end_dr_pix +
+		mdp_stop_deassertion_pix_comp;
+	const u32 min_dr_duration_esc_comp = delay_start_dr_esc_comp + pll_reg_flush_delay_esc +
+		pll_reg_post_flush_delay_esc + min_pll_lock_time_esc +
+		mdp_stop_deassertion_esc_comp + mask_clkln_fsm_delay_esc +
+		pipe_delay_esc + pipe_delay2_esc + pipe_delay3_esc;
+	const u32 min_dr_duration_esc = min_dr_duration_esc_comp +
+		TO_ESC_CLK(min_dr_duration_pix_comp);
+
+	/*
+	 * HPG does it more mathematically sensibly, but fundamentally it just rounds
+	 * min_dr_duration to the nearest integer multiple of line_time
+	 */
+	const u32 pll_delay_esc = min_dr_duration_esc +
+		(line_time_esc - (min_dr_duration_esc % line_time_esc));
+
+	delay->pipe_delay = pipe_delay_esc - 1;
+	delay->pipe_delay2 = cts ? pipe_delay2_esc - 1 : 0;
+	delay->pipe_delay3 = cts ? pipe_delay3_esc - 1 : 0;
+	delay->pll_reg_flush_delay = pll_reg_flush_delay_esc - 1;
+	delay->pll_reg_post_flush_delay = pll_reg_post_flush_delay_esc - 1;
+	delay->pll_delay = pll_delay_esc - 1;
+
+	#undef TO_ESC_CLK
+}
+
 static int _dsi_display_dyn_update_clks(struct dsi_display *display,
 					struct link_clk_freq *bkp_freq)
 {
@@ -4772,9 +4851,11 @@ static int _dsi_display_dyn_update_clks(struct dsi_display *display,
 		ctrl = &display->ctrl[i];
 		if (ctrl == m_ctrl)
 			continue;
-		dsi_phy_dynamic_refresh_trigger(ctrl->phy, false);
+		dsi_phy_dynamic_refresh_trigger(ctrl->phy, false,
+				display->panel->esync_caps.esync_support);
 	}
-	dsi_phy_dynamic_refresh_trigger(m_ctrl->phy, true);
+	dsi_phy_dynamic_refresh_trigger(m_ctrl->phy, true,
+			display->panel->esync_caps.esync_support);
 
 	/*
 	 * Don't wait for dynamic refresh done for dsi ctrl greater than 2.5
@@ -4870,7 +4951,10 @@ static int dsi_display_dynamic_clk_switch_vid(struct dsi_display *display,
 	}
 
 	/* calculate pipe delays */
-	_dsi_display_calc_pipe_delay(display, &delay, mode);
+	if (display->panel->esync_caps.esync_support)
+		_dsi_display_calc_pipe_delay_prog_dr(display, &delay, mode, false);
+	else
+		_dsi_display_calc_pipe_delay(display, &delay, mode);
 
 	/* configure dynamic refresh ctrl registers */
 	display_for_each_ctrl(i, display) {
@@ -5249,7 +5333,9 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 					true);
 			dsi_phy_dynamic_refresh_clear(ctrl->phy);
 
+			/* Avoid setting trigger selection for 2.9 due to hardware limitation */
 			if ((ctrl->ctrl->version >= DSI_CTRL_VERSION_2_5) &&
+					(ctrl->ctrl->version != DSI_CTRL_VERSION_2_9) &&
 					(dyn_clk_caps->maintain_const_fps)) {
 				dsi_phy_dynamic_refresh_trigger_sel(ctrl->phy,
 						true);
@@ -6953,6 +7039,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->max_width = 1920;
 	info->max_height = 1080;
 	info->qsync_min_fps = display->panel->qsync_caps.qsync_min_fps;
+	info->hwfence_sw_override_always = display->panel->qsync_caps.hwfence_sw_override_always;
 	info->has_qsync_min_fps_list = (display->panel->qsync_caps.qsync_min_fps_list_len > 0);
 	info->avr_step_fps = display->panel->avr_caps.avr_step_fps;
 	info->esync_enabled = display->panel->esync_caps.esync_support;
@@ -6966,6 +7053,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->poms_align_vsync = display->panel->poms_align_vsync;
 	info->is_te_using_watchdog_timer = is_sim_panel(display);
 	info->event_notification_disabled = display->panel->event_notification_disabled;
+	info->disable_cesta_hw_sleep = display->panel->disable_cesta_hw_sleep;
 
 	switch (display->panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:
@@ -7027,6 +7115,7 @@ void dsi_display_adjust_mode_timing(struct dsi_display *display,
 	u64 new_htotal, new_vtotal, htotal, vtotal, old_htotal, div;
 	struct dsi_dyn_clk_caps *dyn_clk_caps;
 	u32 bits_per_symbol = 16, num_of_symbols = 7; /* For Cphy */
+	int i = 0;
 
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 
@@ -7036,6 +7125,7 @@ void dsi_display_adjust_mode_timing(struct dsi_display *display,
 
 	if (!dyn_clk_caps->maintain_const_fps)
 		return;
+
 	/*
 	 * When there is a dynamic clock switch, there is small change
 	 * in FPS. To compensate for this difference in FPS, hfp or vfp
@@ -7077,6 +7167,22 @@ void dsi_display_adjust_mode_timing(struct dsi_display *display,
 				dsi_mode->timing.v_back_porch -
 				dsi_mode->timing.v_sync_width -
 				dsi_mode->timing.v_active;
+		break;
+
+	case DSI_DYN_CLK_TYPE_ADJUST_HFP:
+		for (i = 0; i < dsi_mode->priv_info->bit_clk_list.count; i++)
+			if (dsi_mode->timing.clk_rate_hz ==
+					dsi_mode->priv_info->bit_clk_list.rates[i])
+				dsi_mode->timing.h_front_porch =
+					dsi_mode->priv_info->bit_clk_list.front_porches[i];
+		break;
+
+	case DSI_DYN_CLK_TYPE_ADJUST_VFP:
+		for (i = 0; i < dsi_mode->priv_info->bit_clk_list.count; i++)
+			if (dsi_mode->timing.clk_rate_hz ==
+					dsi_mode->priv_info->bit_clk_list.rates[i])
+				dsi_mode->timing.v_front_porch =
+					dsi_mode->priv_info->bit_clk_list.front_porches[i];
 		break;
 
 	default:
@@ -7189,6 +7295,9 @@ static int dsi_display_mode_dyn_clk_cpy(struct dsi_display *display,
 	memcpy(bit_clk_list->rates, src->priv_info->bit_clk_list.rates,
 			count*sizeof(u32));
 
+	memcpy(bit_clk_list->front_porches, src->priv_info->bit_clk_list.front_porches,
+			count*sizeof(u32));
+
 	bit_clk_list->pixel_clks_khz =
 			kcalloc(count, sizeof(u32), GFP_KERNEL);
 	if (!bit_clk_list->pixel_clks_khz) {
@@ -7240,9 +7349,11 @@ int dsi_display_restore_bit_clk(struct dsi_display *display, struct dsi_display_
 		if (!display->dyn_bit_clk_pending && display->dyn_bit_clk) {
 			switch (display->panel->dyn_clk_caps.type) {
 			case DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_HFP:
+			case DSI_DYN_CLK_TYPE_ADJUST_HFP:
 				mode->timing.h_front_porch = front_porch;
 				break;
 			case DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_VFP:
+			case DSI_DYN_CLK_TYPE_ADJUST_VFP:
 				mode->timing.v_front_porch = front_porch;
 				break;
 			default:
@@ -7294,6 +7405,11 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		/* Setup widebus support */
 		display_mode.priv_info->widebus_support = ctrl->ctrl->hw.widebus_support;
 
+		if (display->cmdline_timing == display_mode.mode_idx) {
+			topology_override = display->cmdline_topology;
+			is_preferred = true;
+		}
+
 		rc = dsi_panel_get_mode(display->panel, mode_idx,
 						&display_mode,
 						topology_override);
@@ -7304,11 +7420,6 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			display_mode.priv_info = NULL;
 			rc = -EINVAL;
 			return rc;
-		}
-
-		if (display->cmdline_timing == display_mode.mode_idx) {
-			topology_override = display->cmdline_topology;
-			is_preferred = true;
 		}
 
 		support_cmd_mode = display_mode.panel_mode_caps & DSI_OP_CMD_MODE;
@@ -7437,6 +7548,8 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 
 			dsi_display_get_dfps_timing(display, sub_mode,
 					curr_refresh_rate);
+			dsi_panel_get_fps_switch_cmd(display->panel, sub_mode,
+					sub_mode->timing.refresh_rate);
 			sub_mode->panel_mode_caps = DSI_OP_VIDEO_MODE;
 		}
 		end = array_idx;
@@ -7613,6 +7726,25 @@ int dsi_display_get_default_lms(void *dsi_display, u32 *num_lm)
 	mutex_unlock(&display->display_lock);
 
 	return rc;
+}
+
+int dsi_display_avoid_cmd_transfer(void *display, bool avoid_transfer)
+{
+	struct dsi_display *dsi_display = display;
+	struct dsi_panel *panel;
+
+	if (dsi_display == NULL || dsi_display->panel == NULL)
+		return -EINVAL;
+
+	panel = dsi_display->panel;
+	SDE_EVT32(avoid_transfer);
+
+	if (avoid_transfer)
+		mutex_lock(&panel->panel_lock);
+	else
+		mutex_unlock(&panel->panel_lock);
+
+	return 0;
 }
 
 int dsi_display_update_transfer_time(void *display, u32 transfer_time)

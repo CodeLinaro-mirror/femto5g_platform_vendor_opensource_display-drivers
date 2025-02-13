@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -440,6 +440,7 @@ int sde_crtc_get_lb_layout_split(struct drm_crtc *crtc, struct drm_crtc_state *c
 void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state,
 		struct drm_display_mode *mode, u32 *width, u32 *height)
 {
+	u32 num_ds = 0;
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
 	struct drm_connector_state *virt_conn_state;
@@ -457,8 +458,13 @@ void sde_crtc_get_resolution(struct drm_crtc *crtc, struct drm_crtc_state *crtc_
 	virt_conn_state = _sde_crtc_get_virt_conn_state(crtc, crtc_state);
 	virt_cstate = virt_conn_state ? to_sde_connector_state(virt_conn_state) : NULL;
 
-	if (cstate->num_ds_enabled) {
-		*width = cstate->ds_cfg[0].lm_width * cstate->num_ds_enabled;
+	if (cstate->num_ds_enabled || (cstate->ds_cfg[0].flags & SDE_DRM_DESTSCALER_ENABLE)) {
+		/*
+		 * num_ds_enabled can be 0 when dest scalar is enabled if mixers aren't allocated.
+		 * Consider total destination scalar blocks used in such cases.
+		 */
+		num_ds = cstate->num_ds_enabled ? cstate->num_ds_enabled : cstate->num_ds;
+		*width = cstate->ds_cfg[0].lm_width * num_ds;
 		*height = cstate->ds_cfg[0].lm_height;
 	} else if (sde_crtc->ai_scaler_res.enabled) {
 		*width = sde_crtc->ai_scaler_res.src_w;
@@ -2111,10 +2117,17 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 				(cac_mode == SDE_CAC_LOOPBACK_FETCH))
 			layout_idx = cur_sde_pstate->layout;
 
+		if (layout_idx >= MAX_LAYOUTS_PER_CRTC) {
+			SDE_ERROR("layout_idx: %d is more than max layouts per crtc",
+				layout_idx);
+			continue;
+		}
+
 		stage_cfg = &sde_crtc->stage_cfg[layout_idx];
 		stage = cur_sde_pstate->stage;
 
-		if (cur_sde_pstate->pipe_order_flags & SDE_SSPP_RIGHT) {
+		if ((cur_sde_pstate->pipe_order_flags & SDE_SSPP_RIGHT) &&
+								stage < SDE_STAGE_MAX) {
 			for (j = 0; j < PIPES_PER_STAGE; j++) {
 				if ((stage_cfg->stage[stage][j] == sde_plane_pipe(plane))
 						&& (stage_cfg->multirect_index[stage][j]
@@ -2989,9 +3002,8 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 
 			if (hw_ds->ops.setup_opmode) {
 				op_mode |= (cstate->num_ds_enabled ==
-					CRTC_DUAL_MIXERS_ONLY) ?
-					SDE_DS_OP_MODE_DUAL : 0;
-				hw_ds->ops.setup_opmode(hw_ds, op_mode);
+					CRTC_DUAL_MIXERS_ONLY) ? SDE_DS_OP_MODE_DUAL : 0;
+				hw_ds->ops.setup_opmode(hw_ds, op_mode, cfg->merge_mode);
 				SDE_EVT32_VERBOSE(DRMID(crtc), op_mode);
 			}
 
@@ -3531,6 +3543,9 @@ void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc)
 
 	sde_crtc = to_sde_crtc(crtc);
 
+	if (!sde_crtc->copr_status_event_notify_enabled)
+		return;
+
 	rc = sde_dspp_copr_read_status(sde_crtc->mixers[0].hw_dspp, &copr_status);
 	if (rc) {
 		SDE_ERROR("failed to collect COPR STATUS rc: %d\n", rc);
@@ -3549,6 +3564,7 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_connector *sde_conn;
+	struct drm_encoder *encoder;
 	u32 frame_done = 1;
 
 	sde_crtc = to_sde_crtc(crtc);
@@ -3562,8 +3578,12 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 	if (sde_crtc->framedone_event_notify_enabled)
 		sde_crtc_event_notify(crtc, DRM_EVENT_FRAME_DONE, &frame_done, sizeof(u32));
 
-	if (sde_crtc->copr_status_event_notify_enabled)
-		sde_crtc_copr_status_event_notify(crtc);
+	drm_for_each_encoder(encoder, crtc->dev) {
+		if (encoder->crtc == crtc) {
+			if (sde_encoder_copr_allow_notify(encoder))
+				sde_crtc_copr_status_event_notify(crtc);
+		}
+	}
 }
 
 static void sde_crtc_frame_event_work(struct kthread_work *work)
@@ -3885,6 +3905,7 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 		cstate->ds_cfg[i].flags = ds_cfg_usr->flags;
 		cstate->ds_cfg[i].lm_width = ds_cfg_usr->lm_width;
 		cstate->ds_cfg[i].lm_height = ds_cfg_usr->lm_height;
+		cstate->ds_cfg[i].merge_mode = ds_cfg_usr->merge_mode;
 		memset(&scaler_v2, 0, sizeof(scaler_v2));
 
 		if (ds_cfg_usr->scaler_cfg) {
@@ -3910,12 +3931,13 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 			scaler_v2.src_width[0], scaler_v2.src_height[0],
 			scaler_v2.dst_width, scaler_v2.dst_height);
 
-		SDE_DEBUG("ds cfg[%d]-ndx(%d) flags(%d) lm(%dx%d)\n",
+		SDE_DEBUG("ds cfg[%d]-ndx(%d) flags(%d) lm(%dx%d) merge_mode(%d)\n",
 			i, ds_cfg_usr->index, ds_cfg_usr->flags,
-			ds_cfg_usr->lm_width, ds_cfg_usr->lm_height);
+			ds_cfg_usr->lm_width, ds_cfg_usr->lm_height,
+			ds_cfg_usr->merge_mode);
 		SDE_EVT32_VERBOSE(DRMID(&sde_crtc->base), i, ds_cfg_usr->index,
 			ds_cfg_usr->flags, ds_cfg_usr->lm_width,
-			ds_cfg_usr->lm_height);
+			ds_cfg_usr->lm_height, ds_cfg_usr->merge_mode);
 	}
 
 	cstate->num_ds = count;
@@ -4479,7 +4501,7 @@ static inline bool _is_vid_power_on_frame(struct drm_crtc *crtc)
 	bool is_vid_mode = sde_encoder_check_curr_mode(sde_crtc->mixers[0].encoder,
 		MSM_DISPLAY_VIDEO_MODE);
 
-	return  is_vid_mode && crtc->state->active_changed && crtc->state->active;
+	return  is_vid_mode && sde_crtc_is_power_on_frame(crtc);
 }
 
 /**
@@ -5372,7 +5394,7 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 
 	sde_crtc->kickoff_in_progress = true;
 	sde_crtc->handle_fence_error_bw_update = false;
-	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+	list_for_each_entry_reverse(encoder, &dev->mode_config.encoder_list, head) {
 		if (encoder->crtc != crtc)
 			continue;
 

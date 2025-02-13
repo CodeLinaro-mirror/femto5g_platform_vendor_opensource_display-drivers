@@ -1724,6 +1724,7 @@ static const int dspp_feature_to_sub_blk_tbl[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = SDE_DSPP_DEMURA,
 	[SDE_CP_CRTC_DSPP_MDNIE] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_MDNIE_ART] = SDE_DSPP_AIQE,
+	[SDE_CP_CRTC_DSPP_MDNIE_IPC] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = SDE_DSPP_AIQE,
 	[SDE_CP_CRTC_DSPP_COPR] = SDE_DSPP_AIQE,
@@ -2103,6 +2104,8 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 	bool need_flush = false;
 	struct sde_crtc_state *cstate;
 	bool disable_pending_cp = false;
+	struct sde_kms *kms = NULL;
+	u32 demura_sw_fuse = 0;
 
 	if (!crtc || !crtc->dev) {
 		DRM_ERROR("invalid crtc %pK dev %pK\n", crtc,
@@ -2124,8 +2127,20 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 
 	num_mixers = _sde_cp_get_num_dspp_mixers(sde_crtc);
 	if (!num_mixers) {
-		DRM_ERROR("no mixers for this crtc\n");
+		DRM_DEBUG_DRIVER("no mixers for this crtc\n");
 		return;
+	}
+
+	kms = get_kms(crtc);
+	if (!kms) {
+		DRM_DEBUG_DRIVER("!kms = %d\n", !kms);
+	} else {
+		if (sde_in_trusted_vm(kms)) {
+			demura_sw_fuse = SW_FUSE_ENABLE;
+		} else if (kms->hw_sw_fuse) {
+			demura_sw_fuse = sde_hw_get_demura_sw_fuse_value(kms->hw_sw_fuse);
+			DRM_DEBUG_DRIVER("demura_sw_fuse value: 0x%x\n", demura_sw_fuse);
+		}
 	}
 
 	_sde_cp_flush_properties(crtc);
@@ -2145,13 +2160,20 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 
 	list_for_each_entry_safe(prop_node, n, &sde_crtc->cp_dirty_list,
 			cp_dirty_list) {
-		_sde_cp_crtc_commit_feature(prop_node, sde_crtc);
-		_sde_cp_dspp_flush_helper(sde_crtc, prop_node->feature);
-		if (prop_node->is_dspp_feature &&
-				!prop_node->lm_flush_override)
-			set_dspp_flush = true;
-		else
-			set_lm_flush = true;
+		if ((prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_INIT ||
+			prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT ||
+			prop_node->feature == SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2) &&
+			demura_sw_fuse != SW_FUSE_ENABLE) {
+			DRM_DEBUG_DRIVER("demura_sw_fuse is not enabled: 0x%x\n", demura_sw_fuse);
+		} else {
+			_sde_cp_crtc_commit_feature(prop_node, sde_crtc);
+			_sde_cp_dspp_flush_helper(sde_crtc, prop_node->feature);
+			if (prop_node->is_dspp_feature &&
+					!prop_node->lm_flush_override)
+				set_dspp_flush = true;
+			else
+				set_lm_flush = true;
+		}
 	}
 
 	rc = _sde_cp_crtc_update_pu_features(crtc, &need_flush);
@@ -4802,6 +4824,13 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 	case SDE_CP_CRTC_DSPP_MDNIE_ART:
 		feature = FEATURE_MDNIE_ART;
 		break;
+	case SDE_CP_CRTC_DSPP_MDNIE_IPC:
+		if (prop_val)
+			sde_crtc->mdnie_ipc_disabled = true;
+		else
+			sde_crtc->mdnie_ipc_disabled = false;
+		SDE_EVT32(prop_node->feature, sde_crtc->mdnie_ipc_disabled);
+		break;
 	case SDE_CP_CRTC_DSPP_COPR:
 		feature = FEATURE_COPR;
 		break;
@@ -4826,6 +4855,13 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 			blob = prop_node->blob_ptr;
 			if (blob) {
 				art = blob->data;
+				if (sde_crtc->mdnie_ipc_disabled == false) {
+					/* disable ART in params */
+					art->param = 0;
+					/* set frame count as 1 to trigger ART done event */
+					sde_crtc->mdnie_art_frame_count = 1;
+					return;
+				}
 				aiqe_register_client(feature, &sde_crtc->aiqe_top_level);
 				get_mdnie_art_frame_count(&sde_crtc->mdnie_art_frame_count,
 							art->param);

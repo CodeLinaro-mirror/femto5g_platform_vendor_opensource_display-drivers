@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1451,6 +1451,9 @@ static int dsi_panel_parse_qsync_caps(struct dsi_panel *panel,
 	struct dsi_parser_utils *utils = &panel->utils;
 	const char *name = panel->name;
 
+	qsync_caps->hwfence_sw_override_always =
+		utils->read_bool(utils->data, "qcom,hwfence_sw_override_always");
+
 	qsync_caps->qsync_support = utils->read_bool(utils->data, "qcom,qsync-enable");
 	if (!qsync_caps->qsync_support) {
 		DSI_DEBUG("qsync feature not enabled\n");
@@ -1749,7 +1752,7 @@ error:
 }
 
 static int dsi_panel_parse_dyn_clk_list(struct dsi_display_mode *mode,
-		struct dsi_parser_utils *utils)
+		struct dsi_parser_utils *utils, enum dsi_dyn_clk_feature_type type)
 {
 	int i, rc = 0;
 	struct msm_dyn_clk_list *bit_clk_list;
@@ -1795,8 +1798,27 @@ static int dsi_panel_parse_dyn_clk_list(struct dsi_display_mode *mode,
 		goto error;
 	}
 
+	if (type == DSI_DYN_CLK_TYPE_ADJUST_HFP) {
+		rc = utils->read_u32_array(utils->data, "qcom,dsi-dyn-clk-hfp-list",
+			bit_clk_list->front_porches, bit_clk_list->count);
+		if (rc) {
+			DSI_ERR("failed to parse hfp list values, rc = %d\n", rc);
+			goto error;
+		}
+	}
+
+	if (type == DSI_DYN_CLK_TYPE_ADJUST_VFP) {
+		rc = utils->read_u32_array(utils->data, "qcom,dsi-dyn-clk-vfp-list",
+			bit_clk_list->front_porches, bit_clk_list->count);
+		if (rc) {
+			DSI_ERR("failed to parse vfp list values, rc = %d\n", rc);
+			goto error;
+		}
+	}
+
 	for (i = 0; i < bit_clk_list->count; i++)
-		DSI_DEBUG("bit clk rate[%d]:%d\n", i, bit_clk_list->rates[i]);
+		DSI_DEBUG("bit clk rate[%d]:%d, front porch[%d]:%d\n", i, bit_clk_list->rates[i],
+				i, bit_clk_list->front_porches[i]);
 
 	return 0;
 
@@ -1838,6 +1860,12 @@ static int dsi_panel_parse_dyn_clk_caps(struct dsi_panel *panel)
 		dyn_clk_caps->maintain_const_fps = true;
 	} else if (!strcmp(type, "constant-fps-adjust-vfp")) {
 		dyn_clk_caps->type = DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_VFP;
+		dyn_clk_caps->maintain_const_fps = true;
+	} else if (!strcmp(type, "adjust-hfp")) {
+		dyn_clk_caps->type = DSI_DYN_CLK_TYPE_ADJUST_HFP;
+		dyn_clk_caps->maintain_const_fps = true;
+	} else if (!strcmp(type, "adjust-vfp")) {
+		dyn_clk_caps->type = DSI_DYN_CLK_TYPE_ADJUST_VFP;
 		dyn_clk_caps->maintain_const_fps = true;
 	} else {
 		dyn_clk_caps->type = DSI_DYN_CLK_TYPE_LEGACY;
@@ -2213,6 +2241,7 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-sticky_still_disable-command",
 	"qcom,mdss-dsi-sticky_on_fly-command",
 	"qcom,mdss-dsi-trigger_self_refresh-command",
+	"qcom,mdss-dsi-fps-switch-command",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -2253,6 +2282,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-sticky_still_disable-command-state",
 	"qcom,mdss-dsi-sticky_on_fly-command-state",
 	"qcom,mdss-dsi-trigger_self_refresh-command-state",
+	"qcom,mdss-dsi-fps-switch-command-state",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -3516,6 +3546,7 @@ static int dsi_panel_parse_topology(
 		goto parse_fail;
 	}
 
+parse_done:
 	if (!(priv_info->dsc_enabled || priv_info->vdc_enabled) !=
 			!topology[top_sel].num_enc) {
 		DSI_ERR("topology and compression info mismatch dsc:%d vdc:%d num_enc:%d\n",
@@ -3534,7 +3565,6 @@ static int dsi_panel_parse_topology(
 		topology[top_sel].num_enc,
 		topology[top_sel].num_intf);
 
-parse_done:
 	memcpy(&priv_info->topology, &topology[top_sel],
 		sizeof(struct msm_display_topology));
 parse_fail:
@@ -4099,6 +4129,10 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 				"qcom,mdss-dsi-panel-physical-type", NULL);
 	if (panel_physical_type && !strcmp(panel_physical_type, "oled"))
 		panel->panel_type = DSI_DISPLAY_PANEL_TYPE_OLED;
+
+	panel->disable_cesta_hw_sleep = utils->read_bool(utils->data,
+				"qcom,mdss-disable-cesta-hw-sleep");
+
 	rc = dsi_panel_parse_host_config(panel);
 	if (rc) {
 		DSI_ERR("failed to parse host configuration, rc=%d\n",
@@ -4700,7 +4734,7 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 		}
 
 		if (panel->dyn_clk_caps.dyn_clk_support) {
-			rc = dsi_panel_parse_dyn_clk_list(mode, utils);
+			rc = dsi_panel_parse_dyn_clk_list(mode, utils, panel->dyn_clk_caps.type);
 			if (rc)
 				DSI_ERR("failed to parse dynamic clk rates, rc=%d\n", rc);
 		}
@@ -4757,6 +4791,84 @@ parse_fail:
 	utils->data = utils_data;
 	mutex_unlock(&panel->panel_lock);
 	return rc;
+}
+
+void dsi_panel_get_fps_switch_cmd(struct dsi_panel *panel,
+		struct dsi_display_mode *mode, u32 refresh_rate)
+{
+	struct device_node *fps_np, *timing_np, *child_np, *sub_child_np;
+	struct dsi_parser_utils *utils;
+	u32 fps = 0;
+	int rc = 0;
+	void *utils_data = NULL;
+	struct dsi_panel_cmd_set *set;
+	struct dsi_display_mode_priv_info *prv_info;
+
+	if (!panel || !mode) {
+		DSI_ERR("invalid params\n");
+		return;
+	}
+
+	mutex_lock(&panel->panel_lock);
+	utils = &panel->utils;
+	prv_info = mode->priv_info;
+	utils_data = utils->data;
+
+	timing_np = utils->get_child_by_name(utils->data,
+			 "qcom,mdss-dsi-display-timings");
+
+	if (!timing_np) {
+		DSI_ERR("no display timing_np nodes defined\n");
+		goto error;
+	}
+
+	dsi_for_each_child_node(timing_np, child_np) {
+		utils->data = child_np;
+		fps_np = utils->get_child_by_name(utils->data,
+				"qcom,mdss-dsi-dfps-commands");
+
+		if (!fps_np) {
+			DSI_DEBUG("no display fps nodes defined\n");
+			goto error;
+		}
+
+		dsi_for_each_child_node(fps_np, sub_child_np) {
+			utils->data = sub_child_np;
+			rc = utils->read_u32(utils->data, "qcom,dsi-fps-value", &fps);
+
+			if (rc) {
+				DSI_ERR("failed to read qcom,dsi-fps-value, rc=%d\n",
+						rc);
+				goto error;
+			}
+
+			if (fps != refresh_rate)
+				continue;
+
+			set = &prv_info->cmd_sets[DSI_CMD_SET_FPS_SWITCH];
+			rc = dsi_panel_parse_cmd_sets_sub(set,
+					DSI_CMD_SET_FPS_SWITCH, utils);
+
+			if (rc)
+				DSI_DEBUG("failed to parse fps switch command %d\n",
+					     rc);
+			/*
+			 * If suspend / resume happens after fps switch, on command of
+			 * default fps is sent which leads to flicker as fps switch command
+			 * is not part of on command. To avoid this, fps switch command is
+			 * sent as part of post panel on command.
+			 */
+			set = &prv_info->cmd_sets[DSI_CMD_SET_POST_ON];
+			rc = dsi_panel_parse_cmd_sets_sub(set, DSI_CMD_SET_POST_ON, utils);
+
+			if (rc)
+				DSI_DEBUG("failed to parse post panel on command %d\n", rc);
+		}
+	}
+
+error:
+	   utils->data = utils_data;
+	   mutex_unlock(&panel->panel_lock);
 }
 
 int dsi_panel_get_host_cfg_for_mode(struct dsi_panel *panel,

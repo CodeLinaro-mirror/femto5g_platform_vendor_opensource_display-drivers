@@ -59,6 +59,9 @@
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
+#define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
+#define SDE_HW_VER_C40	SDE_HW_VER(12, 4, 0) /* kera */
+#define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
 #define IS_SDE_MAJOR_SAME(rev1, rev2)   \
@@ -92,6 +95,9 @@
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
+#define IS_TUNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C30)
+#define IS_KERA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C40)
+#define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -101,6 +107,7 @@
 #define MAX_IMG_WIDTH 0x3fff
 #define MAX_IMG_HEIGHT 0x3fff
 
+#define CRTC_SINGLE_MIXER_ONLY	1
 #define CRTC_DUAL_MIXERS_ONLY	2
 #define MAX_MIXERS_PER_CRTC	8
 #define MAX_MIXERS_PER_LAYOUT	2
@@ -126,7 +133,7 @@
 #define SDE_CTL_CFG_VERSION_1_0_0       0x100
 #define MAX_INTF_PER_CTL_V1                 2
 #define MAX_DSC_PER_CTL_V1                  4
-#define MAX_CWB_PER_CTL_V1                  2
+#define MAX_CWB_PER_CTL_V1                  4
 #define MAX_MERGE_3D_PER_CTL_V1             2
 #define MAX_WB_PER_CTL_V1                   1
 #define MAX_CDM_PER_CTL_V1                  1
@@ -140,6 +147,7 @@
 #define SDE_INLINE_ROT_VERSION_1_0_0	0x100
 #define SDE_INLINE_ROT_VERSION_2_0_0	0x200
 #define SDE_INLINE_ROT_VERSION_2_0_1	0x201
+#define SDE_INLINE_ROT_VERSION_2_0_2	0x202
 
 #define IS_SDE_INLINE_ROT_REV_100(rev) \
 	((rev) == SDE_INLINE_ROT_VERSION_1_0_0)
@@ -147,6 +155,8 @@
 	((rev) == SDE_INLINE_ROT_VERSION_2_0_0)
 #define IS_SDE_INLINE_ROT_REV_201(rev) \
 	((rev) == SDE_INLINE_ROT_VERSION_2_0_1)
+#define IS_SDE_INLINE_ROT_REV_202(rev) \
+	((rev) == SDE_INLINE_ROT_VERSION_2_0_2)
 
 /**
  * Downscale Blur supported versions
@@ -692,6 +702,7 @@ enum {
  * @SDE_INTF_NUM_AVR_STEP       INTF block has NUM_AVR_STEP support
  * @SDE_INTF_PANIC_CTRL         INTF block has panic in vid mode & panic/wakup control in cmd mode
  * @SDE_INTF_PERIPHERAL_FLUSH   INTF block has peripheral flush support
+ * @SDE_INTF_PROG_DYNREF        INTF block has programmable dynamic refresh support
  * @SDE_INTF_MAX
  */
 enum {
@@ -717,6 +728,7 @@ enum {
 	SDE_INTF_NUM_AVR_STEP,
 	SDE_INTF_PANIC_CTRL,
 	SDE_INTF_PERIPHERAL_FLUSH,
+	SDE_INTF_PROG_DYNREF,
 	SDE_INTF_MAX
 };
 

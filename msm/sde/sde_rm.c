@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2345,7 +2345,7 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 	struct sde_rm_hw_iter iter_lm, iter_dsc;
 	struct sde_kms *sde_kms;
 	struct sde_hw_mixer *mixer;
-	size_t pipes_per_lm;
+	size_t pipes_per_lm, pipe_count;
 
 	if (!rm || !ctl || !splash_display) {
 		SDE_ERROR("invalid input parameters\n");
@@ -2369,13 +2369,13 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 				pipes_per_lm = ctl->ops.get_staged_sspp(ctl, iter_lm.blk->id,
 					&splash_display->pipe_info);
 
-			if (mixer->ops.get_staged_sspp)
-				pipes_per_lm = mixer->ops.get_staged_sspp(mixer, iter_lm.blk->id,
-						&splash_display->pipe_info);
-
-			if (ctl->ops.get_active_lms)
+			if (mixer->ops.get_staged_sspp && ctl->ops.get_active_lms) {
 				pipes_per_lm =
 					BIT(iter_lm.blk->id - LM_0) & ctl->ops.get_active_lms(ctl);
+				if (pipes_per_lm)
+					pipe_count = mixer->ops.get_staged_sspp(mixer,
+						iter_lm.blk->id, &splash_display->pipe_info);
+			}
 
 			if (pipes_per_lm || splash_display->pipe_info.bordercolor) {
 				splash_display->lm_ids[splash_display->lm_cnt++] = iter_lm.blk->id;
@@ -3103,7 +3103,7 @@ int sde_rm_ext_blk_create_reserve(struct sde_rm *rm,
 				  struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
 				  struct sde_hw_blk_reg_map *pp_shd_hw)
 {
-	struct sde_rm_hw_blk *blk;
+	struct sde_rm_hw_blk *blk = NULL;
 	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 
@@ -3160,7 +3160,7 @@ int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm,
 				     struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
 				     struct sde_hw_mixer *sde_hw_lm)
 {
-	struct sde_rm_hw_blk *blk;
+	struct sde_rm_hw_blk *blk = NULL;
 	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 
@@ -3217,7 +3217,7 @@ int sde_rm_ext_blk_create_reserve_ctl(struct sde_rm *rm,
 				      struct sde_rm_hw_blk *hw, struct drm_encoder *enc,
 				      struct sde_hw_ctl *sde_hw_ctl)
 {
-	struct sde_rm_hw_blk *blk;
+	struct sde_rm_hw_blk *blk = NULL;
 	struct sde_rm_rsvp *rsvp;
 	int ret = 0;
 

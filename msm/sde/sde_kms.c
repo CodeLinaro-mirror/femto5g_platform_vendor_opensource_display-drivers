@@ -74,6 +74,14 @@
 #define CREATE_TRACE_POINTS
 #include "sde_trace.h"
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+#include <smmu-proxy/include/uapi/linux/qti-smmu-proxy.h>
+#include <smmu-proxy/linux/qti-smmu-proxy.h>
+#endif
+
+#define CSF_2_5_ARCH_VER	2
+#define CSF_2_5_MAX_VER		5
+
 /* defines for secure channel call */
 #define MEM_PROTECT_SD_CTRL_SWITCH 0x18
 #define MDP_DEVICE_ID            0x1A
@@ -456,7 +464,10 @@ scm_error:
 
 static int _sde_kms_detach_sec_cb(struct sde_kms *sde_kms, int vmid)
 {
-	u32 ret;
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	struct csf_version csf_ver = {};
+#endif
+	int ret;
 
 	if (atomic_inc_return(&sde_kms->detach_sec_cb) > 1)
 		return 0;
@@ -474,6 +485,23 @@ static int _sde_kms_detach_sec_cb(struct sde_kms *sde_kms, int vmid)
 		goto scm_error;
 	}
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	ret = smmu_proxy_get_csf_version(&csf_ver);
+	if (ret) {
+		SDE_ERROR("error in getting csf version, ret:%d\n", ret);
+		goto scm_error;
+	}
+
+	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) && (csf_ver.max_ver == CSF_2_5_MAX_VER)) {
+		ret = smmu_proxy_switch_sid(sde_kms->dev->dev, SMMU_PROXY_SWITCH_OP_ACQUIRE_SID);
+		if (ret) {
+			SDE_ERROR("smmu proxy switch sid failed, ret:%d\n", ret);
+			goto scm_error;
+		}
+	}
+
+	SDE_EVT32(vmid, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, ret);
+#endif
 	return 0;
 
 scm_error:
@@ -486,15 +514,35 @@ mmu_error:
 static int _sde_kms_attach_sec_cb(struct sde_kms *sde_kms, u32 vmid,
 		u32 old_vmid)
 {
-	u32 ret;
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	struct csf_version csf_ver = {};
+#endif
+	int ret;
 
 	if (atomic_dec_return(&sde_kms->detach_sec_cb) != 0)
 		return 0;
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	ret = smmu_proxy_get_csf_version(&csf_ver);
+	if (ret) {
+		SDE_ERROR("error in getting csf version, ret:%d\n", ret);
+		goto scm_error;
+	}
+
+	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) && (csf_ver.max_ver == CSF_2_5_MAX_VER)) {
+		ret = smmu_proxy_switch_sid(sde_kms->dev->dev, SMMU_PROXY_SWITCH_OP_RELEASE_SID);
+		if (ret) {
+			SDE_ERROR("smmu proxy switch sid failed, rc:%d\n", ret);
+			goto scm_error;
+		}
+	}
+
+	SDE_EVT32(vmid, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, ret);
+#endif
 	ret = _sde_kms_scm_call(sde_kms, vmid);
 	if (ret) {
-		goto scm_error;
 		SDE_ERROR("scm call failed for vmid:%d\n", vmid);
+		goto scm_error;
 	}
 
 	ret = sde_kms_mmu_attach(sde_kms, true);
@@ -1671,6 +1719,8 @@ static void sde_kms_complete_commit(struct msm_kms *kms,
 			pr_err("Connector Post kickoff failed rc=%d\n",
 					 rc);
 		}
+		if (connector->encoder && sde_encoder_in_video_psr(connector->encoder))
+			sde_encoder_post_commit_bl_sr_work(connector->encoder);
 	}
 
 	vm_ops = sde_vm_get_ops(sde_kms);
@@ -1971,6 +2021,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.update_transfer_time = dsi_display_update_transfer_time,
 		.get_panel_scan_line = dsi_display_get_panel_scan_line,
 		.check_cmd_defined = dsi_conn_check_cmd_defined,
+		.avoid_cmd_transfer = dsi_display_avoid_cmd_transfer,
 	};
 	static const struct sde_connector_ops wb_ops = {
 		.post_init =    sde_wb_connector_post_init,
@@ -2597,6 +2648,11 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 	if (sde_kms->sid)
 		msm_iounmap(pdev, sde_kms->sid);
 	sde_kms->sid = NULL;
+
+	if (sde_kms->sw_fuse)
+		msm_iounmap(pdev, sde_kms->sw_fuse);
+	sde_hw_sw_fuse_destroy(sde_kms->sw_fuse);
+	sde_kms->sw_fuse = NULL;
 
 	if (sde_kms->reg_dma)
 		msm_iounmap(pdev, sde_kms->reg_dma);
@@ -5102,6 +5158,21 @@ static int _sde_kms_hw_init_ioremap(struct sde_kms *sde_kms,
 			SDE_ERROR("dbg base register sid failed: %d\n", rc);
 	}
 
+	sde_kms->sw_fuse = msm_ioremap(platformdev, "swfuse_phys",
+					"swfuse_phys");
+	if (IS_ERR(sde_kms->sw_fuse)) {
+		sde_kms->sw_fuse = NULL;
+		SDE_DEBUG("sw_fuse is not defined");
+	} else {
+		sde_kms->sw_fuse_len = msm_iomap_size(platformdev,
+							"swfuse_phys");
+		rc =  sde_dbg_reg_register_base("sw_fuse", sde_kms->sw_fuse,
+				sde_kms->sw_fuse_len,
+				msm_get_phys_addr(platformdev, "swfuse_phys"),
+				SDE_DBG_SWFUSE);
+		if (rc)
+			SDE_ERROR("dbg base register sw_fuse failed: %d\n", rc);
+	}
 error:
 	return rc;
 }
@@ -5248,7 +5319,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		}
 	}
 
-	if (sde_kms->catalog->uidle_cfg.uidle_rev) {
+	if (sde_kms->catalog->uidle_cfg.base) {
 		sde_kms->hw_uidle = sde_hw_uidle_init(UIDLE, sde_kms->mmio,
 			sde_kms->mmio_len, sde_kms->catalog);
 		if (IS_ERR_OR_NULL(sde_kms->hw_uidle)) {
@@ -5282,6 +5353,17 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto perf_err;
 	}
 
+	if (sde_kms->sw_fuse) {
+		sde_kms->hw_sw_fuse = sde_hw_sw_fuse_init(sde_kms->sw_fuse,
+				sde_kms->sw_fuse_len, sde_kms->catalog);
+		if (IS_ERR(sde_kms->hw_sw_fuse)) {
+			SDE_ERROR("failed to init sw_fuse %ld\n",
+					PTR_ERR(sde_kms->hw_sw_fuse));
+			sde_kms->hw_sw_fuse = NULL;
+		}
+	} else {
+		sde_kms->hw_sw_fuse = NULL;
+	}
 	/*
 	 * set the disable_immediate flag when driver supports the precise vsync
 	 * timestamp as the DRM hooks for vblank timestamp/counters would be set

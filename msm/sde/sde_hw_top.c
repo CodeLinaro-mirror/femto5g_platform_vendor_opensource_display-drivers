@@ -1053,3 +1053,43 @@ void sde_hw_mdp_destroy(struct sde_hw_mdp *mdp)
 	kfree(mdp);
 }
 
+struct sde_hw_sw_fuse *sde_hw_sw_fuse_init(void __iomem *addr,
+	u32 sw_fuse_len, const struct sde_mdss_cfg *m)
+{
+	struct sde_hw_sw_fuse *c;
+
+	c = kzalloc(sizeof(*c), GFP_KERNEL);
+	if (!c)
+		return ERR_PTR(-ENOMEM);
+
+	c->hw.base_off = addr;
+	c->hw.blk_off = 0;
+	c->hw.length = sw_fuse_len;
+	c->hw.hw_rev = m->hw_rev;
+
+	if (IS_TUNA_TARGET(c->hw.hw_rev) || IS_KERA_TARGET(c->hw.hw_rev))
+		c->demura_sw_fuse_offset = 0x88;
+	else if (IS_SUN_TARGET(c->hw.hw_rev))
+		c->demura_sw_fuse_offset = 0x7c;
+	else if (IS_CANOE_TARGET(c->hw.hw_rev))
+		c->demura_sw_fuse_offset = 0x84;
+	else
+		c->demura_sw_fuse_offset = 0;
+
+	return c;
+}
+
+void sde_hw_sw_fuse_destroy(struct sde_hw_sw_fuse *sw_fuse)
+{
+	kfree(sw_fuse);
+}
+
+u32 sde_hw_get_demura_sw_fuse_value(struct sde_hw_sw_fuse *sw_fuse)
+{
+	u32 demura_sw_fuse = 0;
+
+	if (sw_fuse && sw_fuse->demura_sw_fuse_offset)
+		demura_sw_fuse = SDE_REG_READ(&sw_fuse->hw, sw_fuse->demura_sw_fuse_offset);
+
+	return demura_sw_fuse;
+}

@@ -1149,9 +1149,22 @@ static int dsi_ctrl_update_link_freqs(struct dsi_ctrl *dsi_ctrl,
 
 	rc = dsi_clk_set_link_frequencies(clk_handle, dsi_ctrl->clk_freq,
 					dsi_ctrl->cell_index);
-	if (rc)
+	if (rc) {
 		DSI_CTRL_ERR(dsi_ctrl, "Failed to update link frequencies\n");
+		goto error;
+	}
 
+	if (config->video_timing.esync_enabled) {
+		dsi_ctrl->esync_clk_freq = pclk_rate;
+		rc = dsi_clk_set_esync_frequency(clk_handle, dsi_ctrl->esync_clk_freq,
+						dsi_ctrl->cell_index);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "Failed to update esync frequency\n");
+			goto error;
+		}
+	}
+
+error:
 	return rc;
 }
 
@@ -1505,6 +1518,8 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 
 	if (flags & DSI_CTRL_CMD_LAST_COMMAND)
 		hw_flags |= DSI_CTRL_CMD_LAST_COMMAND;
+	if (flags & DSI_CTRL_CMD_MULTI_DMA_BURST)
+		hw_flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
 
 	if (flags & DSI_CTRL_CMD_DEFER_TRIGGER) {
 		if (flags & DSI_CTRL_CMD_FETCH_MEMORY) {
