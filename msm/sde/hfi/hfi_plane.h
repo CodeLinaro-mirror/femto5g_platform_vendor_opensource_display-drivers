@@ -24,6 +24,7 @@
  * @hfi_pipe_id: pipe id from hfi catalog data
  * @hfi_lock: Mutex to protect hfi plane specific data
  * @base_props: prop helper object for intermediate property collection
+ * @color_props: color prop helper object for intermediate property collection
  * @kv_props: kv pair helper object for intermediate property collection
  */
 struct hfi_plane {
@@ -32,6 +33,7 @@ struct hfi_plane {
 	uint32_t hfi_pipe_id;
 	struct mutex hfi_lock;
 	struct hfi_util_u32_prop_helper *base_props;
+	struct hfi_util_u32_prop_helper *color_props;
 	struct hfi_util_kv_helper *kv_props;
 };
 

@@ -871,6 +871,8 @@ struct sde_hw_sspp_ops {
  * @cap: pointer to layer_cfg
  * @ops: pointer to operations possible for this pipe
  * @dpu_idx: dpu index
+ * @prop_helper: prop_helper for color processing features
+ * @obj_id: HFI layer id
  */
 struct sde_hw_pipe {
 	struct sde_hw_blk_reg_map hw;
@@ -886,6 +888,8 @@ struct sde_hw_pipe {
 	struct sde_hw_ctl *ctl;
 
 	u32 dpu_idx;
+	struct hfi_util_u32_prop_helper *prop_helper;
+	u32 obj_id;
 };
 
 /**

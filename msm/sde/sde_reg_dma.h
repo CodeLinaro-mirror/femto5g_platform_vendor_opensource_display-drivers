@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -12,6 +12,7 @@
 #include "sde_hw_mdss.h"
 #include "sde_hw_top.h"
 #include "sde_hw_util.h"
+#include "hfi_utils.h"
 
 /**
  * enum sde_reg_dma_op - defines operations supported by reg dma
@@ -322,6 +323,13 @@ struct sde_reg_dma_setup_ops_cfg {
  * @dma_type: DB or SB LUT DMA block selection
  * @feature: feature the provided kickoff buffer belongs to
  * @last_command: last command for this vsync
+ * @prop_helper: common property helper used to add hfi properties
+ * @prop_id: hfi property id of the regdma feature
+ * @obj_id: pipe index as object id added in hfi property
+ * @flags: flag indicating feature's enable/disable/broadcast settings
+ * @num_of_mixers: number of mixers
+ * @dspp_start_idx: starting index of dspp block
+ * @dspp_idx: current dspp's index
  */
 struct sde_reg_dma_kickoff_cfg {
 	struct sde_hw_ctl *ctl;
@@ -333,6 +341,13 @@ struct sde_reg_dma_kickoff_cfg {
 	enum sde_reg_dma_type dma_type;
 	enum sde_reg_dma_features feature;
 	u32 last_command;
+	struct hfi_util_u32_prop_helper *prop_helper;
+	u32 prop_id;
+	u32 obj_id;
+	u32 flags;
+	u32 num_of_mixers;
+	u32 dspp_start_idx;
+	u32 dspp_idx;
 };
 
 /**

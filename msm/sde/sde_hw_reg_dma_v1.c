@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -12,6 +12,8 @@
 #include "msm_mmu.h"
 #include "sde_dbg.h"
 #include "sde_vbif.h"
+#include "hfi_defs_display.h"
+#include "hfi_properties_display.h"
 
 #define GUARD_BYTES (BIT(8) - 1)
 #define ALIGNED_OFFSET (U32_MAX & ~(GUARD_BYTES))
@@ -39,7 +41,6 @@
 
 #define SIZE_DWORD(x) ((x) / (sizeof(u32)))
 #define NOT_WORD_ALIGNED(x) ((x) & 0x3)
-
 
 #define GRP_VIG_HW_BLK_SELECT (VIG0 | VIG1 | VIG2 | VIG3 | VIG4 | VIG5 | VIG6 | VIG7)
 #define GRP_DMA_HW_BLK_SELECT (DMA0 | DMA1 | DMA2 | DMA3 | DMA4 | DMA5)
@@ -70,6 +71,8 @@
 
 #define PMU_CLK_CTRL  0x1F0
 #define VM_Q_SZ 16
+
+#define PROP_ID_MASK(x) ((x) & 0x000F0FFF)
 
 static uint32_t reg_dma_register_count;
 static uint32_t reg_dma_decode_sel;
@@ -171,6 +174,7 @@ static int check_support_v1(enum sde_reg_dma_features feature,
 		enum sde_reg_dma_blk blk, bool *is_supported);
 static int setup_payload_v1(struct sde_reg_dma_setup_ops_cfg *cfg);
 static int kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
+static int hfi_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
 static int reset_v1(struct sde_hw_ctl *ctl);
 static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode);
@@ -202,6 +206,8 @@ static void reg_dma_submit_queue_v4(struct sde_reg_dma_kickoff_cfg *cfg,
 					struct sde_hw_blk_reg_map *hw, u32 cmd);
 
 static int write_last_cmd_buffer(u32 dpu_idx);
+static int hfi_last_cmd_null_impl(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
+		enum sde_reg_dma_last_cmd_mode mode);
 
 static reg_dma_internal_ops write_dma_op_params[REG_DMA_SETUP_OPS_MAX] = {
 	[HW_BLK_SELECT] = write_decode_sel,
@@ -224,6 +230,7 @@ static reg_dma_internal_ops validate_dma_op_params[REG_DMA_SETUP_OPS_MAX] = {
 };
 
 static struct sde_reg_dma_buffer *last_cmd_buf[DPU_MAX];
+static struct hfi_buff_dpu hfi_cfg_cached[DSPP_MAX] = {};
 
 static void get_decode_sel(unsigned long blk, u32 *decode_sel)
 {
@@ -732,6 +739,80 @@ static int validate_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx
 	return 0;
 }
 
+static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
+{
+	struct hfi_buff_dpu hfi_cfg = {};
+	int ret = 0;
+
+	if (!cfg || dpu_idx >= DPU_MAX) {
+		DRM_ERROR("invalid params cfg - %p, dpu idx %d\n", cfg, dpu_idx);
+		return -EINVAL;
+	}
+
+	if ((PROP_ID_MASK(cfg->prop_id) > HFI_PROPERTY_LAYER_COLOR_BEGIN) &&
+		(PROP_ID_MASK(cfg->prop_id) < HFI_PROPERTY_LAYER_COLOR_END)) {
+		/* broadcast doesn't apply to SSPP features */
+		hfi_cfg.flags = cfg->flags;
+		hfi_cfg.iova = cfg->dma_buf->iova;
+		hfi_cfg.len = cfg->dma_buf->index;
+		ret  = hfi_util_u32_prop_helper_add_prop_by_obj(cfg->prop_helper,
+				cfg->prop_id, cfg->obj_id, HFI_VAL_U32_ARRAY,
+				&hfi_cfg, sizeof(struct hfi_buff_dpu));
+		if (ret)
+			DRM_ERROR("error adding hfi property: %d error: %d\n", cfg->prop_id, ret);
+		else
+			DRM_DEBUG("successfully added SSPP feature: 0x%x flag %u iova %x len %x\n",
+				cfg->prop_id, cfg->flags, hfi_cfg.iova, hfi_cfg.len);
+		return ret;
+	} else if ((PROP_ID_MASK(cfg->prop_id) > HFI_PROPERTY_DISPLAY_COLOR_BEGIN) &&
+			(PROP_ID_MASK(cfg->prop_id) < HFI_PROPERTY_DISPLAY_COLOR_END)) {
+		DRM_DEBUG("DSPP feature 0x%x flag %u dspp_idx %d start_idx %d num_mixers %d\n",
+				cfg->prop_id, cfg->flags, cfg->dspp_idx, cfg->dspp_start_idx,
+				cfg->num_of_mixers);
+		if (cfg->flags & HFI_BUFF_FEATURE_BROADCAST) {
+			/* broadcast feature */
+			hfi_cfg.flags = cfg->flags;
+			hfi_cfg.iova = cfg->dma_buf->iova;
+			hfi_cfg.len = cfg->dma_buf->index;
+
+			ret = hfi_util_u32_prop_helper_add_prop(cfg->prop_helper, cfg->prop_id,
+				HFI_VAL_U32_ARRAY, &hfi_cfg, sizeof(struct hfi_buff_dpu));
+			if (ret)
+				DRM_ERROR("Failed to add hfi prop %d ret %d\n", cfg->prop_id, ret);
+			else
+				DRM_DEBUG("broadcast feature: added to prop_helper\n");
+			return ret;
+		} else if (cfg->dspp_idx != (cfg->dspp_start_idx + cfg->num_of_mixers - 1)) {
+			/* non-broadcast and it is not the last dspp idx */
+			hfi_cfg_cached[cfg->dspp_idx].flags = cfg->flags;
+			hfi_cfg_cached[cfg->dspp_idx].iova = cfg->dma_buf->iova;
+			hfi_cfg_cached[cfg->dspp_idx].len = cfg->dma_buf->index;
+			DRM_DEBUG("non-broadcast feature: copied to hfi_cfg_cached\n");
+			return 0;
+		} else if (cfg->dspp_idx == (cfg->dspp_start_idx + cfg->num_of_mixers - 1)) {
+			/* non-broadcast and it is the last dspp idx */
+			hfi_cfg_cached[cfg->dspp_idx].flags = cfg->flags;
+			hfi_cfg_cached[cfg->dspp_idx].iova = cfg->dma_buf->iova;
+			hfi_cfg_cached[cfg->dspp_idx].len = cfg->dma_buf->index;
+			ret = hfi_util_u32_prop_helper_add_prop(cfg->prop_helper, cfg->prop_id,
+				HFI_VAL_U32_ARRAY, &hfi_cfg_cached[cfg->dspp_start_idx],
+				sizeof(struct hfi_buff_dpu) * cfg->num_of_mixers);
+			if (ret)
+				DRM_ERROR("Failed to add hfi prop %d ret %d\n", cfg->prop_id, ret);
+			else
+				DRM_DEBUG("non-broadcast feature: submitted to prop_helper\n");
+			/* reset the cached struct after submitting to FW */
+			memset(&hfi_cfg_cached[0], 0, sizeof(hfi_cfg_cached));
+			return ret;
+		}
+	} else {
+		DRM_ERROR("unsupported prop_id %d\n", cfg->prop_id);
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
 static int write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 {
 	u32 cmd1;
@@ -977,11 +1058,13 @@ int init_v1(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 	reg_dma[dpu_idx]->ops.check_support = check_support_v1;
 	reg_dma[dpu_idx]->ops.setup_payload = setup_payload_v1;
 	reg_dma[dpu_idx]->ops.kick_off[MSM_DISP_OP_HWIO] = kick_off_v1;
+	reg_dma[dpu_idx]->ops.kick_off[MSM_DISP_OP_HFI] = hfi_kick_off_v1;
 	reg_dma[dpu_idx]->ops.reset = reset_v1;
 	reg_dma[dpu_idx]->ops.alloc_reg_dma_buf = alloc_reg_dma_buf_v1;
 	reg_dma[dpu_idx]->ops.dealloc_reg_dma = dealloc_reg_dma_v1;
 	reg_dma[dpu_idx]->ops.reset_reg_dma_buf = reset_reg_dma_buffer_v1;
 	reg_dma[dpu_idx]->ops.last_command[MSM_DISP_OP_HWIO] = last_cmd_v1;
+	reg_dma[dpu_idx]->ops.last_command[MSM_DISP_OP_HFI] = hfi_last_cmd_null_impl;
 	reg_dma[dpu_idx]->ops.dump_regs = dump_regs_v1;
 	reg_dma[dpu_idx]->ops.select_queue_sb = reg_dma_select_queue_sb_v1_to_3;
 
@@ -1179,6 +1262,7 @@ int init_v2(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 		sde_dbg_reg_register_dump_range(LUTDMA_DBG_NAME, name, base,
 				base + BASE_REG_SIZE, cfg->caps->xin_id);
 		reg_dma[dpu_idx]->ops.last_command_sb[MSM_DISP_OP_HWIO] = last_cmd_sb_v2;
+		reg_dma[dpu_idx]->ops.last_command_sb[MSM_DISP_OP_HFI] = hfi_last_cmd_null_impl;
 	}
 
 	if (cfg->caps->reg_dma_blks[REG_DMA_TYPE_DB].valid == true) {
@@ -1373,7 +1457,6 @@ static int setup_payload_v1(struct sde_reg_dma_setup_ops_cfg *cfg)
 	return rc;
 }
 
-
 static int kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 {
 	int rc = 0;
@@ -1383,6 +1466,18 @@ static int kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 		return rc;
 
 	rc = write_kick_off_v1(cfg, dpu_idx);
+	return rc;
+}
+
+static int hfi_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
+{
+	int rc = 0;
+
+	rc = validate_kick_off_v1(cfg, dpu_idx);
+	if (rc)
+		return rc;
+
+	rc = hfi_write_kick_off_v1(cfg, dpu_idx);
 	return rc;
 }
 
@@ -1676,6 +1771,12 @@ static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	}
 
 	return rc;
+}
+
+static int hfi_last_cmd_null_impl(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
+		enum sde_reg_dma_last_cmd_mode mode)
+{
+	return 0;
 }
 
 void deinit_v1(u32 dpu_idx)

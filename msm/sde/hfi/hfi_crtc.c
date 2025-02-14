@@ -312,6 +312,7 @@ void hfi_crtc_destroy(struct sde_crtc *crtc)
 	crtc_hfi = to_hfi_crtc(crtc);
 
 	kfree(crtc_hfi->base_props);
+	kfree(crtc_hfi->color_props);
 	kfree(crtc_hfi->kv_props);
 
 	mutex_destroy(&crtc_hfi->hfi_lock);
@@ -627,6 +628,13 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc)
 	crtc->base_props = hfi_util_u32_prop_helper_alloc(HFI_CRTC_BASE_PROP_MAX_SIZE);
 	if (IS_ERR(crtc->base_props)) {
 		SDE_ERROR("failed to allocate memory for base prop collector\n");
+		ret = -ENOMEM;
+		goto free_kv;
+	}
+
+	crtc->color_props = hfi_util_u32_prop_helper_alloc(HFI_CRTC_BASE_PROP_MAX_SIZE);
+	if (IS_ERR(crtc->color_props)) {
+		SDE_ERROR("failed to allocate memory for color prop collector\n");
 		ret = -ENOMEM;
 		goto free_kv;
 	}

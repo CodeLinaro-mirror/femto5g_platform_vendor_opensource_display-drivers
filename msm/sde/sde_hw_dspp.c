@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -67,8 +67,10 @@ static void dspp_igc(struct sde_hw_dspp *c)
 	} else if (c->cap->sblk->igc.version ==
 			SDE_COLOR_PROCESS_VER(0x5, 0x1)) {
 		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_IGC, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_igc[MSM_DISP_OP_HWIO] = reg_dmav2_setup_dspp_igcv51;
+			c->ops.setup_igc[MSM_DISP_OP_HFI] = reg_dmav2_setup_dspp_igcv51;
+		}
 	}
 }
 
@@ -90,8 +92,10 @@ static void dspp_pcc(struct sde_hw_dspp *c)
 			c->cap->sblk->pcc.version ==
 			SDE_COLOR_PROCESS_VER(0x6, 0x0)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_PCC, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_pcc[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_pccv5;
+			c->ops.setup_pcc[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_pccv6;
+		}
 	}
 }
 
@@ -111,8 +115,10 @@ static void dspp_gc(struct sde_hw_dspp *c)
 			c->ops.setup_gc[MSM_DISP_OP_HWIO] = sde_setup_dspp_gc_v1_7;
 	} else if (c->cap->sblk->gc.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_GC, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_gc[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_gcv2;
+			c->ops.setup_gc[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_gcv2;
+		}
 	}
 }
 
@@ -200,8 +206,10 @@ static void dspp_gamut(struct sde_hw_dspp *c)
 	} else if (c->cap->sblk->gamut.version ==
 			SDE_COLOR_PROCESS_VER(0x4, 3)) {
 		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_GAMUT, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_gamut[MSM_DISP_OP_HWIO] = reg_dmav2_setup_dspp_3d_gamutv43;
+			c->ops.setup_gamut[MSM_DISP_OP_HFI] = reg_dmav2_setup_dspp_3d_gamutv43;
+		}
 	}
 }
 
@@ -297,7 +305,7 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 				c->ops.validate_ltm_roi[MSM_DISP_OP_HWIO] =
 						sde_validate_ltm_roiv1_3;
 			} else {
-				c->ops.setup_ltm_roi[MSM_DISP_OP_HWIO]  = reg_dmav1_setup_ltm_roiv1;
+				c->ops.setup_ltm_roi[MSM_DISP_OP_HWIO] = reg_dmav1_setup_ltm_roiv1;
 			}
 
 			if (c->cap->sblk->ltm.version ==
@@ -349,7 +357,7 @@ static void dspp_rc(struct sde_hw_dspp *c)
 		if (!ret) {
 			c->ops.setup_rc_mask[MSM_DISP_OP_HWIO] = reg_dmav1_setup_rc_mask_configv1;
 			c->ops.setup_rc_pu_roi[MSM_DISP_OP_HWIO] = reg_dmav1_setup_rc_pu_configv1;
-
+			c->ops.setup_rc_mask[MSM_DISP_OP_HFI] = reg_dmav1_setup_rc_mask_configv1;
 		} else {
 			c->ops.setup_rc_mask[MSM_DISP_OP_HWIO] = sde_hw_rc_setup_mask;
 			c->ops.setup_rc_pu_roi[MSM_DISP_OP_HWIO] = sde_hw_rc_setup_pu_roi;
@@ -357,6 +365,7 @@ static void dspp_rc(struct sde_hw_dspp *c)
 
 		c->ops.validate_rc_mask[MSM_DISP_OP_HWIO] = sde_hw_rc_check_mask;
 		c->ops.validate_rc_pu_roi[MSM_DISP_OP_HWIO] = sde_hw_rc_check_pu_roi;
+		c->ops.validate_rc_mask[MSM_DISP_OP_HFI] = sde_hw_rc_check_mask;
 	}
 }
 

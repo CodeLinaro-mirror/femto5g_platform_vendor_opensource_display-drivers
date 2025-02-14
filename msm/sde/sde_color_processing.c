@@ -25,6 +25,8 @@
 #include "sde_color_proc_property_helper.h"
 #include "sde_color_processing_aiqe.h"
 #include "sde_aiqe_common.h"
+#include "hfi_properties_display.h"
+#include "hfi_crtc.h"
 
 #define ALIGNED_OFFSET (U32_MAX & ~(LTM_GUARD_BYTES))
 
@@ -160,6 +162,24 @@ static bool feature_handoff_mask[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_SPR_DITHER] = 1,
 	[SDE_CP_CRTC_DSPP_DEMURA_INIT] = 1,
 };
+
+#ifdef HFI_PROPERTY_DISPLAY_COLOR_BEGIN
+static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
+	[SDE_CP_CRTC_DSPP_IGC] = HFI_PROPERTY_DISPLAY_COLOR_IGC,
+	[SDE_CP_CRTC_DSPP_DITHER] = HFI_PROPERTY_DISPLAY_COLOR_DITHER,
+	[SDE_CP_CRTC_DSPP_PCC] = HFI_PROPERTY_DISPLAY_COLOR_PCC,
+	[SDE_CP_CRTC_DSPP_GC] = HFI_PROPERTY_DISPLAY_COLOR_GC,
+	[SDE_CP_CRTC_DSPP_HSIC] = HFI_PROPERTY_DISPLAY_COLOR_HSIC,
+	[SDE_CP_CRTC_DSPP_MEMCOL_SKIN] = HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKIN,
+	[SDE_CP_CRTC_DSPP_MEMCOL_SKY] = HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKY,
+	[SDE_CP_CRTC_DSPP_MEMCOL_FOLIAGE] = HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_FOLIAGE,
+	[SDE_CP_CRTC_DSPP_MEMCOL_PROT] = HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_PROT,
+	[SDE_CP_CRTC_DSPP_SIXZONE] = HFI_PROPERTY_DISPLAY_COLOR_SIXZONE,
+	[SDE_CP_CRTC_DSPP_VLUT] = HFI_PROPERTY_DISPLAY_COLOR_VLUT,
+	[SDE_CP_CRTC_DSPP_RC_MASK] = HFI_PROPERTY_DISPLAY_COLOR_RC,
+	[SDE_CP_CRTC_DSPP_GAMUT] = HFI_PROPERTY_DISPLAY_COLOR_3D_LUT,
+};
+#endif
 
 typedef void (*dspp_cap_update_func_t)(struct sde_crtc *crtc,
 		struct sde_kms_info *info);
@@ -1661,10 +1681,11 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 	struct sde_hw_mixer *hw_lm;
 	struct sde_hw_dspp *hw_dspp;
 	u32 num_mixers;
-	int i = 0, ret = 0;
+	int i = 0, j = 0, ret = 0;
 	bool feature_enabled = false;
 	struct sde_mdss_cfg *catalog = NULL;
 	struct sde_crtc_state *sde_crtc_state;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(&sde_crtc->base);
 
 	sde_crtc_state = to_sde_crtc_state(sde_crtc->base.state);
 	if (!sde_crtc_state) {
@@ -1694,6 +1715,10 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 		if (!hw_dspp || i >= DSPP_MAX)
 			continue;
 		hw_cfg.dspp[i] = hw_dspp;
+		if (j == 0) {
+			hw_cfg.dspp_start_idx = hw_dspp->idx;
+			j++;
+		}
 	}
 
 	if ((prop_node->feature >= SDE_CP_CRTC_MAX_FEATURES) ||
@@ -1712,11 +1737,17 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 				ret = -EINVAL;
 				continue;
 			}
+
+			hw_cfg.dspp_idx = hw_dspp->idx;
 			hw_cfg.ctl = sde_crtc->mixers[i].hw_ctl;
 			hw_cfg.mixer_info = hw_lm;
 			hw_cfg.displayh = num_mixers * hw_lm->cfg.out_width;
 			hw_cfg.displayv = hw_lm->cfg.out_height;
-
+			if (sde_crtc->hfi_crtc)
+				hw_cfg.prop_helper = sde_crtc->hfi_crtc->color_props;
+#ifdef HFI_PROPERTY_DISPLAY_COLOR_BEGIN
+			hw_cfg.prop_id = sde_cp_crtc_feat_to_hfi_prop_id[prop_node->feature];
+#endif
 			ret = commit_feature(hw_dspp, &hw_cfg, sde_crtc);
 			if (ret)
 				break;
@@ -1730,14 +1761,16 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 		}
 	}
 
-	if (feature_enabled) {
-		DRM_DEBUG_DRIVER("Add feature to active list %d\n",
-				 prop_node->property_id);
-		_sde_cp_update_list(prop_node, sde_crtc, false);
-	} else {
-		DRM_DEBUG_DRIVER("remove feature from active list %d\n",
-			 prop_node->property_id);
-		list_del_init(&prop_node->cp_active_list);
+	if (!IS_DISP_OP_HFI(disp_op)) {
+		if (feature_enabled) {
+			DRM_DEBUG_DRIVER("Add feature to active list %d\n",
+					prop_node->property_id);
+			_sde_cp_update_list(prop_node, sde_crtc, false);
+		} else {
+			DRM_DEBUG_DRIVER("remove feature from active list %d\n",
+				prop_node->property_id);
+			list_del_init(&prop_node->cp_active_list);
+		}
 	}
 	/* Programming of feature done remove from dirty list */
 	list_del_init(&prop_node->cp_dirty_list);
@@ -2240,6 +2273,10 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 		}
 	}
 
+	if (sde_crtc->prev_disp_op != disp_op) {
+		sde_crtc->prev_disp_op = disp_op;
+		sde_cp_crtc_mark_features_dirty(crtc);
+	}
 	_sde_cp_flush_properties(crtc);
 	_sde_cp_check_mdnie_art_done(crtc);
 	mutex_lock(&sde_crtc->crtc_cp_lock);
@@ -2900,6 +2937,11 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 			hw_cfg.displayv = hw_lm->cfg.out_height;
 			hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
 			hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
+			if (sde_crtc->hfi_crtc)
+				hw_cfg.prop_helper = sde_crtc->hfi_crtc->color_props;
+#ifdef HFI_PROPERTY_DISPLAY_COLOR_BEGIN
+			hw_cfg.prop_id = sde_cp_crtc_feat_to_hfi_prop_id[features[n]];
+#endif
 			ret = set_feature(hw_dspp, &hw_cfg, sde_crtc);
 			if (ret)
 				break;
