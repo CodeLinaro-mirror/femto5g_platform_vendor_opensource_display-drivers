@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _DSI_CLK_H_
@@ -70,6 +70,7 @@ struct clk_ctrl_cb {
  * struct dsi_core_clk_info - Core clock information for DSI hardware
  * @mdp_core_clk:        Handle to MDP core clock.
  * @iface_clk:           Handle to MDP interface clock.
+ * @ahb_swi_clk:           Handle to AHB SWI clock.
  * @core_mmss_clk:       Handle to MMSS core clock.
  * @bus_clk:             Handle to bus clock.
  * @mnoc_clk:            Handle to MMSS NOC clock.
@@ -78,6 +79,7 @@ struct clk_ctrl_cb {
 struct dsi_core_clk_info {
 	struct clk *mdp_core_clk;
 	struct clk *iface_clk;
+	struct clk *ahb_swi_clk;
 	struct clk *core_mmss_clk;
 	struct clk *bus_clk;
 	struct clk *mnoc_clk;
