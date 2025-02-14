@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -3090,7 +3090,9 @@ static void _dspp_ltm_install_property(struct drm_crtc *crtc)
 	kms = get_kms(crtc);
 	catalog = kms->catalog;
 	if (catalog->dspp[0].sblk->ltm.version ==
-				SDE_COLOR_PROCESS_VER(0x1, 0x3))
+				SDE_COLOR_PROCESS_VER(0x1, 0x3) ||
+	    catalog->dspp[0].sblk->ltm.version ==
+				SDE_COLOR_PROCESS_VER(0x1, 0x4))
 		version = 2;
 	else
 		version = catalog->dspp[0].sblk->ltm.version >> 16;

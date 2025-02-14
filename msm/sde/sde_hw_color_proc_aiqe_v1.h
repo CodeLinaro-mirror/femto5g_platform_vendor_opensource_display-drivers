@@ -66,6 +66,14 @@ void sde_setup_mdnie_psr(struct sde_hw_dspp *ctx);
 void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
 
 /**
+ * reg_dmav1_setup_mdnie_v2 - api to setup mdnie programming
+ * @ctx: pointer to dspp object.
+ * @cfg: Pointer to sde_hw_cp_cfg.
+ * @aiqe_top: Pointer to aiqe top level structure
+ */
+void reg_dmav1_setup_mdnie_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
+
+/**
  * sde_check_ai_scaler_v1 - api to check ai scaler config
  * @ctx: pointer to dspp object.
  * @cfg: Pointer to sde_hw_cp_cfg.
