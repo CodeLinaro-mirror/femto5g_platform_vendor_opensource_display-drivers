@@ -2140,15 +2140,16 @@ static enum drm_mode_status lt9611_connector_mode_valid(
 	struct lt9611 *pdata = connector_to_lt9611(connector);
 	struct drm_display_mode *mode, *n;
 
-	pr_debug("mode valid h=%d v=%d\n", drm_mode->hdisplay,
-		drm_mode->vdisplay);
+	pr_debug("mode valid h=%d v=%d\n",
+			drm_mode->hdisplay, drm_mode->vdisplay);
 
 	list_for_each_entry_safe(mode, n, &pdata->mode_list, head) {
-                if (drm_mode->vdisplay == mode->vdisplay &&
-                        drm_mode->vtotal == mode->vtotal &&
-                        drm_mode->hdisplay == mode->hdisplay &&
-                        drm_mode->htotal == mode->htotal &&
-                        drm_mode_vrefresh(drm_mode) == drm_mode_vrefresh(mode))
+		if (drm_mode->vdisplay == mode->vdisplay &&
+			drm_mode->vtotal == mode->vtotal &&
+			drm_mode->hdisplay == mode->hdisplay &&
+			drm_mode->htotal == mode->htotal &&
+			drm_mode_vrefresh(drm_mode) ==
+				drm_mode_vrefresh(mode))
 			return MODE_OK;
 	}
 
@@ -2214,6 +2215,65 @@ static void lt9611_bridge_disable(struct drm_bridge *bridge)
 	}
 }
 
+static void lt9611_video_setup(struct lt9611 *pdata,
+				const struct drm_display_mode *mode)
+{
+	u32 h_total, hactive, hsync_len, hfront_porch;
+	u32 v_total, vactive, vsync_len, vfront_porch;
+	u8 reg_val = 0;
+
+	h_total = mode->htotal;
+	v_total = mode->vtotal;
+
+	hactive = mode->hdisplay;
+	hsync_len = mode->hsync_end - mode->hsync_start;
+	hfront_porch = mode->hsync_start - mode->hdisplay;
+
+	vactive = mode->vdisplay;
+	vsync_len = mode->vsync_end - mode->vsync_start;
+	vfront_porch = mode->vsync_start - mode->vdisplay;
+
+	/* Switch to bank 0xD0 for reading IRQ type. */
+	lt9611_write_byte(pdata, 0xFF, 0xD0);
+
+	lt9611_write_byte(pdata, 0x0d, (v_total / 256));
+	lt9611_write_byte(pdata, 0x0e, (v_total % 256));
+
+	lt9611_write_byte(pdata, 0x0f, (vactive / 256));
+	lt9611_write_byte(pdata, 0x10, (vactive % 256));
+
+	lt9611_write_byte(pdata, 0x11, (h_total / 256));
+	lt9611_write_byte(pdata, 0x12, (h_total % 256));
+
+	lt9611_write_byte(pdata, 0x13, (hactive / 256));
+	lt9611_write_byte(pdata, 0x14, (hactive % 256));
+
+	lt9611_write_byte(pdata, 0x15, (vsync_len % 256));
+
+	reg_val = 0xf & (hsync_len / 256);
+	lt9611_write_byte(pdata, 0x16, reg_val);
+
+	lt9611_write_byte(pdata, 0x17, (u8)(hsync_len % 256));
+
+	reg_val  = 0xf & (vfront_porch / 256);
+	lt9611_write_byte(pdata, 0x18, reg_val);
+
+	lt9611_write_byte(pdata, 0x19, (u8)(vfront_porch % 256));
+
+	reg_val = 0xf & (hfront_porch / 256);
+	lt9611_write_byte(pdata, 0x1a, reg_val);
+
+	lt9611_write_byte(pdata, 0x1b, (u8)(hfront_porch % 256));
+
+	/* Switch to bank 0xB0. */
+	lt9611_write_byte(pdata, 0xFF, 0xB0);
+
+	/* set bit 7 = 1 to inform LT9611UXC for new timings */
+	lt9611_read(pdata, 0x28, &reg_val, 1);
+	reg_val |= 0x80;
+	lt9611_write_byte(pdata, 0x28, reg_val);
+}
+
 static void lt9611_bridge_mode_set(struct drm_bridge *bridge,
 				    const struct drm_display_mode *mode,
 				    const struct drm_display_mode *adj_mode)
@@ -2223,6 +2283,12 @@ static void lt9611_bridge_mode_set(struct drm_bridge *bridge,
 	pr_debug(" hdisplay=%d, vdisplay=%d, clock=%d\n",
 		adj_mode->hdisplay, adj_mode->vdisplay,
 		adj_mode->clock);
+
+	mutex_lock(&pdata->lock);
+	lt9611_ctl_en(pdata);
+	lt9611_video_setup(pdata, adj_mode);
+	lt9611_ctl_disable(pdata);
+	mutex_unlock(&pdata->lock);
 
 	drm_mode_copy(&pdata->curr_mode, adj_mode);
 }
