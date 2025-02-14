@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012, 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -125,7 +125,7 @@ int msm_dss_enable_vreg(struct dss_vreg *in_vreg, int num_vreg,	int enable);
 
 int msm_dss_get_clk(struct device *dev, struct dss_clk *clk_arry, int num_clk);
 int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
-	int (*cb_fnc)(void *data), void *phandle,
+	int (*cb_fnc)(struct mmrm_client_notifier_data *data), void *phandle,
 	bool *mmrm_enable);
 void msm_dss_mmrm_deregister(struct device *dev, struct dss_module_power *mp);
 void msm_dss_put_clk(struct dss_clk *clk_arry, int num_clk);

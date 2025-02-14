@@ -24,7 +24,7 @@
 #include <linux/version.h>
 
 #include "sde_dbg.h"
-
+#include <linux/pm_opp.h>
 #define MAX_I2C_CMDS  16
 void dss_reg_w(struct dss_io_data *io, u32 offset, u32 value, u32 debug)
 {
@@ -587,7 +587,7 @@ error:
 EXPORT_SYMBOL_GPL(msm_dss_get_clk);
 
 int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
-	int (*cb_fnc)(void *data), void *phandle,
+	int (*cb_fnc)(struct mmrm_client_notifier_data *data), void *phandle,
 	bool *mmrm_enable)
 {
 	int i, rc = 0;

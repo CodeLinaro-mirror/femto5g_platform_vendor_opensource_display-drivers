@@ -32,7 +32,6 @@
 #else
 #include "qcom_display_internal.h"
 #endif
-
 #include <linux/version.h>
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <qcom_sync_file.h>
@@ -646,23 +645,6 @@ static void sde_crtc_destroy(struct drm_crtc *crtc)
 	drm_crtc_cleanup(crtc);
 	mutex_destroy(&sde_crtc->crtc_lock);
 	kfree(sde_crtc);
-}
-
-static struct sde_connector_state *_sde_crtc_get_sde_connector_state(struct drm_crtc *crtc,
-		struct drm_atomic_state *state)
-{
-	struct drm_connector *conn;
-	struct drm_connector_state *conn_state;
-	int i;
-
-	for_each_new_connector_in_state(state, conn, conn_state, i) {
-		if (!conn_state || conn_state->crtc != crtc)
-			continue;
-
-		return to_sde_connector_state(conn_state);
-	}
-
-	return NULL;
 }
 
 struct msm_display_mode *sde_crtc_get_msm_mode(struct drm_crtc_state *c_state)
