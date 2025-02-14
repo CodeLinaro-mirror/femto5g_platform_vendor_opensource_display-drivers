@@ -52,6 +52,16 @@ enum sde_cesta_vote_state {
 };
 
 /**
+ * Client indices
+ * SDE_CESTA_SW_CLIENT0 is assigned to DCP
+ * SDE_CESTA_SW_CLIENT1 is assigned to HLOS
+ */
+enum sde_cesta_client_index {
+	SDE_CESTA_SW_CLIENT0,
+	SDE_CESTA_SW_CLIENT1
+};
+
+/**
  * sde_cesta_client_data - sde cesta resource voting values
  * @bw_ab: CRMB_PT bandwidth AB in bytes
  * @bw_ib: CRMB_PT bandwidth IB in bytes

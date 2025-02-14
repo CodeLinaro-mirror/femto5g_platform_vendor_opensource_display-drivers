@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d]: " fmt, __func__, __LINE__
@@ -714,45 +714,38 @@ static int sde_power_parse_dt_hwfence_soccp(struct platform_device *pdev,
 	return rc;
 }
 
-/**
- * @brief Manages the power domain of a device.
- *
- * This function enables or disables the specified power domain of a device.
- *
- * @param phandle A pointer to the power handle structure.
- * @param power_domain_id ID of the power domain to be managed.
- * @param enable Boolean to enable (true) or disable (false) the power domain.
- * @return int 0 on success, negative error code on failure.
- *
- * @details
- * - **Single Power Domain:** If the device has only one power domain,
- *		it is automatically managed by the core framework.
- *		No need to attach it manually.
- *- **Multiple Power Domains:** If the device has multiple power domains,
- *		each must be attached and managed individually.
- */
-static int sde_power_enable_power_domain(struct sde_power_handle *phandle,
+static int sde_power_get_pm_domain_name(int power_domain_id, const char **pm_domain_name)
+{
+	switch (power_domain_id) {
+	case SDE_POWER_PD_ID_GDSC:
+		*pm_domain_name = "core_gdsc";
+		break;
+	case SDE_POWER_PD_ID_INT2_GDSC:
+		*pm_domain_name = "core_int2_gdsc";
+		break;
+	default:
+		pr_err("invalid power domain id\n");
+		return -EINVAL;
+	}
+	return 0;
+}
+
+int sde_power_enable_power_domain(struct sde_power_handle *phandle,
 	enum sde_power_domain_id power_domain_id, bool enable)
 {
 	int ret;
 	struct device *pd;
 	struct sde_power_domain_handle *pd_handle;
-	char *pm_domain_name;
+	const char *pm_domain_name;
 
 	/* Only proceed on multiple power domains */
 	if (phandle->num_power_domains <= 1)
 		return 0;
 
-	switch (power_domain_id) {
-	case SDE_POWER_PD_ID_GDSC:
-		pm_domain_name = "core_gdsc";
-		break;
-	case SDE_POWER_PD_ID_INT2_GDSC:
-		pm_domain_name = "core_int2_gdsc";
-		break;
-	default:
-		pr_err("invalid power domain id\n");
-		return -EINVAL;
+	ret = sde_power_get_pm_domain_name(power_domain_id, &pm_domain_name);
+	if (ret) {
+		pr_err("failed to get pm domain name\n");
+		return ret;
 	}
 
 	pd_handle = &(phandle->power_domain_handles[power_domain_id]);
@@ -803,6 +796,34 @@ static int sde_power_enable_power_domain(struct sde_power_handle *phandle,
 		}
 
 		atomic_set(&pd_handle->enabled, 0);
+	}
+
+	return 0;
+}
+
+int sde_power_detach_power_domain(struct sde_power_handle *phandle,
+	enum sde_power_domain_id power_domain_id)
+{
+	int ret;
+	struct sde_power_domain_handle *pd_handle;
+	const char *pm_domain_name;
+
+	/* Only proceed on multiple power domains */
+	if (phandle->num_power_domains <= 1)
+		return 0;
+
+	ret = sde_power_get_pm_domain_name(power_domain_id, &pm_domain_name);
+	if (ret) {
+		pr_err("failed to get pm domain name\n");
+		return ret;
+	}
+
+	pd_handle = &(phandle->power_domain_handles[power_domain_id]);
+
+	/* Detach if attached */
+	if (atomic_read(&pd_handle->attached) == 1) {
+		dev_pm_domain_detach(pd_handle->dev, false);
+		atomic_set(&pd_handle->attached, 0);
 	}
 
 	return 0;
