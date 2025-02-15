@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <linux/err.h>
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
@@ -381,7 +382,8 @@ static int dsi_phy_driver_probe(struct platform_device *pdev)
 	struct dsi_phy_list_item *item;
 	const struct of_device_id *id;
 	const struct dsi_ver_spec_info *ver_info;
-	int rc = 0;
+	struct device_node *node;
+	int i, rc = 0;
 	u32 index = 0;
 
 	if (!pdev || !pdev->dev.of_node) {
@@ -392,6 +394,27 @@ static int dsi_phy_driver_probe(struct platform_device *pdev)
 	id = of_match_node(msm_dsi_phy_of_match, pdev->dev.of_node);
 	if (!id)
 		return -ENODEV;
+
+	for (i = 0; ; i++) {
+		node = of_parse_phandle(pdev->dev.of_node, "qcom,mdp", i);
+		if (!node) {
+			DSI_INFO("%s no qcom,mdp node\n", __func__);
+			break;
+		}
+
+		if (of_node_name_eq(node, "qcom,mdss_mdp")
+				&& of_device_is_available(node)
+				&& of_node_check_flag(node, OF_POPULATED)) {
+			struct platform_device *pdev = of_find_device_by_node(node);
+
+			if (!platform_get_drvdata(pdev)) {
+				DSI_WARN("qcom,mdss_mdp not probed yet\n");
+				return -EPROBE_DEFER;
+			}
+
+			break;
+		}
+	}
 
 	ver_info = id->data;
 
