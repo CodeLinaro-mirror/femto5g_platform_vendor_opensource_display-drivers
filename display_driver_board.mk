@@ -1,7 +1,7 @@
 #SPDX-License-Identifier: GPL-2.0-only
 
 ifneq ($(TARGET_DISABLE_DISPLAY_DLKM),true)
-ifeq ($(call is-board-platform-in-list,$(TARGET_BOARD_PLATFORM)),true)
+ifneq (,$(call is-board-platform-in-list2,$(TARGET_BOARD_PLATFORM)))
     ifeq ($(ENABLE_HYP),true)
         BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/msm_hyp.ko
         BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/msm_hyp.ko
