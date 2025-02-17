@@ -3,7 +3,7 @@
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * Copyright (c) 2017-2018,2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -1933,13 +1933,7 @@ void msm_hyp_framebuffer_destroy(struct drm_framebuffer *framebuffer)
 
 	if (fb->info && fb->info->destroy)
 		fb->info->destroy(framebuffer);
-#if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
-	drm_gem_object_put(fb->bo);
-	drm_framebuffer_cleanup(&fb->base);
-	kfree(fb);
-#else
 	drm_gem_fb_destroy(framebuffer);
-#endif
 }
 
 static const struct drm_framebuffer_funcs msm_hyp_framebuffer_funcs = {

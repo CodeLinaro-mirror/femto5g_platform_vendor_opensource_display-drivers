@@ -76,7 +76,7 @@ static void dp_aux_hex_dump(struct drm_dp_aux *drm_aux,
 		hex_dump_to_buffer(msg->buffer + i, linelen, rowsize, 1,
 			linebuf, sizeof(linebuf), false);
 
-		DP_INFO("%s%s\n", prefix, linebuf);
+		DP_DEBUG("%s%s\n", prefix, linebuf);
 	}
 }
 #else
