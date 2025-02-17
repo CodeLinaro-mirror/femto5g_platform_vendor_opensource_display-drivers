@@ -5681,7 +5681,10 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	_trigger_encoder_hw_fences_override(phys_enc->sde_kms, phys_enc->hw_ctl);
 	ctl->ops.get_pending_flush(ctl, &cfg);
 	ctl->flush.pending_flush_mask |= BIT(17);
-	sde_cesta_poll_handshake(sde_enc->cesta_client);
+
+	if (sde_enc->cesta_client)
+		sde_cesta_poll_handshake(sde_enc->cesta_client);
+
 	ctl->ops.trigger_flush(ctl);
 	ctl->ops.clear_pending_flush(ctl);
 
