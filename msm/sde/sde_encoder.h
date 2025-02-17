@@ -89,6 +89,30 @@ struct sde_encoder_kickoff_params {
 	enum frame_trigger_mode_type frame_trigger_mode;
 };
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+struct sde_encoder_ops {
+	/**
+	 * phys_init - phys initialization function
+	 * @type: controller type
+	 * @controller_id: controller id
+	 * @phys_init_params: Pointer of structure sde_enc_phys_init_params
+	 * Returns: Pointer of sde_encoder_phys, NULL if failed
+	 */
+	void *(*phys_init)(enum sde_intf_type type, u32 controller_id, void *phys_init_params);
+};
+
+/**
+ * sde_encoder_init_with_ops - initialize virtual encoder object with init ops
+ * @dev:        Pointer to drm device structure
+ * @disp_info:  Pointer to display information structure
+ * @ops:        Pointer to encoder ops structure
+ * Returns:     Pointer to newly created drm encoder
+ */
+struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
+					      struct msm_display_info *disp_info,
+					      const struct sde_encoder_ops *ops);
+#endif
+
 /*
  * enum sde_enc_rc_states - states that the resource control maintains
  * @SDE_ENC_RC_STATE_OFF: Resource is in OFF state
@@ -171,6 +195,7 @@ enum sde_enc_rc_states {
  * @cur_conn_roi:		current connector roi
  * @prv_conn_roi:		previous connector roi to optimize if unchanged
  * @crtc			pointer to drm_crtc
+ * @enabled			indicate if the encoder is enabled
  * @fal10_veto_override:	software override for micro idle fal10 veto
  * @recovery_events_enabled:	status of hw recovery feature enable by client
  * @elevated_ahb_vote:		increase AHB bus speed for the first frame
@@ -187,7 +212,7 @@ enum sde_enc_rc_states {
  *				encoder due to autorefresh concurrency.
  * @ctl_done_supported          boolean flag to indicate the availability of
  *                              ctl done irq support for the hardware
- * @vsync_event_wq              Queue to wait for the vsync event complete
+ * @ops:                        Encoder ops from init function
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -204,6 +229,9 @@ struct sde_encoder_virt {
 	struct sde_encoder_phys *phys_cmd_encs[MAX_PHYS_ENCODERS_PER_VIRTUAL];
 	struct sde_encoder_phys *cur_master;
 	struct sde_hw_pingpong *hw_pp[MAX_CHANNELS_PER_ENC];
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct sde_hw_mixer *hw_lm[MAX_CHANNELS_PER_ENC];
+#endif
 	struct sde_hw_dsc *hw_dsc[MAX_CHANNELS_PER_ENC];
 	struct sde_hw_vdc *hw_vdc[MAX_CHANNELS_PER_ENC];
 	struct sde_hw_pingpong *hw_dsc_pp[MAX_CHANNELS_PER_ENC];
@@ -247,6 +275,9 @@ struct sde_encoder_virt {
 	struct sde_rect cur_conn_roi;
 	struct sde_rect prv_conn_roi;
 	struct drm_crtc *crtc;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	bool enabled;
+#endif
 
 	bool fal10_veto_override;
 	bool recovery_events_enabled;
@@ -258,6 +289,9 @@ struct sde_encoder_virt {
 	bool autorefresh_solver_disable;
 	bool ctl_done_supported;
 	wait_queue_head_t vsync_event_wq;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct sde_encoder_ops ops;
+#endif
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -751,4 +785,13 @@ static inline int sde_encoder_register_misr_event(struct drm_encoder *drm_enc, b
 
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ * sde_encoder_is_enabled - checks if encoder is enabled
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true for enabled, false for disabled
+ */
+bool sde_encoder_is_enabled(struct drm_encoder *enc);
+#endif
 #endif /* __SDE_ENCODER_H__ */

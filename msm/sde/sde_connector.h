@@ -557,6 +557,7 @@ struct sde_misr_sign {
  * @misr_event_notify_enabled: Flag to indicate if misr event notify is enabled or not
  * @previous_misr_sign: store previous misr signature
  * @hwfence_wb_retire_fences_enable: enable hw-fences for wb retire-fence
+ * @shared: If a connector is sharing resource of its parent
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -637,6 +638,9 @@ struct sde_connector {
 	struct sde_misr_sign previous_misr_sign;
 
 	bool hwfence_wb_retire_fences_enable;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	bool shared;
+#endif
 };
 
 /**
@@ -926,6 +930,7 @@ int sde_connector_set_property_for_commit(struct drm_connector *connector,
  * @ops: Pointer to callback operations function table
  * @connector_poll: Set to appropriate DRM_CONNECTOR_POLL_ setting
  * @connector_type: Set to appropriate DRM_MODE_CONNECTOR_ type
+ * @shared: Flag to identify if a connector is sharing resource of its parent in SHD
  * Returns: Pointer to newly created drm connector struct
  */
 struct drm_connector *sde_connector_init(struct drm_device *dev,
@@ -934,7 +939,11 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 		void *display,
 		const struct sde_connector_ops *ops,
 		int connector_poll,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		int connector_type, bool shared);
+#else
 		int connector_type);
+#endif
 
 /**
  * sde_connector_prepare_fence - prepare fence support for current commit
@@ -1342,5 +1351,14 @@ const char *sde_conn_get_topology_name(struct drm_connector *conn,
  * @Return: line insertion support status
  */
 bool sde_connector_is_line_insertion_supported(struct sde_connector *sde_conn);
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+/**
+ * _sde_connector_get_display - get dsi display according to connector
+ * @c_conn: Pointer to sde connector struct
+ * @Return: pointer to dsi display
+ */
+struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn);
+#endif
 
 #endif /* _SDE_CONNECTOR_H_ */

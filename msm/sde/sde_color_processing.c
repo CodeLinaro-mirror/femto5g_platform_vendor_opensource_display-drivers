@@ -1354,6 +1354,11 @@ void sde_cp_crtc_init(struct drm_crtc *crtc)
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_free);
 	INIT_LIST_HEAD(&sde_crtc->ltm_buf_busy);
 	sde_crtc->disable_pending_cp = false;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	sde_crtc->back_light = 0;
+	sde_crtc->back_light_max = 0;
+	sde_crtc->back_light_pending = false;
+#endif
 	sde_cp_crtc_disable(crtc);
 }
 
@@ -5122,3 +5127,20 @@ void _sde_cp_mark_active_dirty_internal(struct sde_crtc *crtc)
 	}
 	mutex_unlock(&crtc->crtc_cp_lock);
 }
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+void sde_cp_backlight_notification(struct drm_crtc *drm_crtc, u32 bl_val, u32 bl_max)
+{
+	struct sde_crtc *crtc;
+
+	crtc = to_sde_crtc(drm_crtc);
+	mutex_lock(&crtc->crtc_cp_lock);
+	if (crtc->back_light != bl_val) {
+		crtc->back_light = bl_val;
+		crtc->back_light_max = bl_max;
+		crtc->back_light_pending = true;
+	}
+	mutex_unlock(&crtc->crtc_cp_lock);
+}
+#endif
+

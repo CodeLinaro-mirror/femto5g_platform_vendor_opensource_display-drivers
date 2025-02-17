@@ -71,7 +71,11 @@ struct msm_gem_vma;
 
 #define NUM_DOMAINS    4    /* one for KMS, then one per gpu core (?) */
 #define MAX_CRTCS      16
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+#define MAX_PLANES     32
+#else
 #define MAX_PLANES     20
+#endif
 #define MAX_ENCODERS   16
 #define MAX_BRIDGES    16
 #define MAX_CONNECTORS 16
@@ -1400,7 +1404,18 @@ static inline void __exit dsi_display_unregister(void)
 {
 }
 #endif /* CONFIG_DRM_MSM_DSI */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+void __init sde_shd_register(void);
+void __exit sde_shd_unregister(void);
+#else
+static inline void __init sde_shd_register(void)
+{
+}
 
+static inline void __exit sde_shd_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_SDE_SHD */
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 void __init msm_hdcp_register(void);
 void __exit msm_hdcp_unregister(void);

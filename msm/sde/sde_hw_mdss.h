@@ -129,6 +129,29 @@ enum sde_hw_blk_type {
 	SDE_HW_BLK_MAX,
 };
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+static const char* sde_hw_blk_type_str[] =
+{
+        "TOP",
+        "SSPP",
+        "LM",
+        "DSPP",
+        "DS",
+        "CTL",
+        "CDM",
+        "PP",
+        "INTF",
+        "WB",
+        "DSC",
+        "MISR",
+        "VDC",
+        "MERGE3D",
+        "QDSS",
+        "DNSCBLUR",
+        "???"
+};
+#endif
+
 enum sde_uidle {
 	UIDLE = 0x1,
 	UIDLE_MAX,

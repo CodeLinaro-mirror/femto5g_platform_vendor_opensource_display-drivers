@@ -2376,6 +2376,9 @@ static int __init msm_drm_register(void)
 	msm_dsi_register();
 	msm_edp_register();
 	msm_hdmi_register();
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	sde_shd_register();
+#endif
 	msm_lease_drm_register();
 	return 0;
 }
@@ -2384,6 +2387,9 @@ static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
 	msm_lease_drm_unregister();
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	sde_shd_unregister();
+#endif
 	sde_wb_unregister();
 	msm_hdmi_unregister();
 	msm_edp_unregister();
