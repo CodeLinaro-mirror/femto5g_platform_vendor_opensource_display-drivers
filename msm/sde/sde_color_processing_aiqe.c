@@ -39,6 +39,7 @@ void _aiqe_caps_update(struct sde_crtc *crtc, struct sde_kms_info *info)
 
 void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 {
+	char aiqe_mdnie_prop[256];
 	struct sde_crtc *sde_crtc = NULL;
 	struct sde_kms *kms = NULL;
 	struct sde_mdss_cfg *catalog = NULL;
@@ -55,8 +56,11 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 	major_version = version >> 16;
 	switch (major_version) {
 	case 1:
+	case 2:
 		if (catalog->dspp[0].sblk->aiqe.mdnie_supported) {
-			_sde_cp_crtc_install_range_property(crtc, "SDE_DSPP_AIQE_MDNIE_V1",
+			snprintf(aiqe_mdnie_prop, ARRAY_SIZE(aiqe_mdnie_prop),
+				 "%s%d", "SDE_DSPP_AIQE_MDNIE_V", major_version);
+			_sde_cp_crtc_install_range_property(crtc, aiqe_mdnie_prop,
 				SDE_CP_CRTC_DSPP_MDNIE, 0, U64_MAX, 0);
 			_sde_cp_create_local_blob(crtc, SDE_CP_CRTC_DSPP_MDNIE,
 				sizeof(struct drm_msm_mdnie));

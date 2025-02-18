@@ -235,7 +235,107 @@ static void _mdnie_disable_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 		LOG_FEATURE_OFF;
 }
 
+static int _reg_dmav1_setup_mdnie_common(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top,
+		struct sde_hw_reg_dma_ops *dma_ops,
+		struct sde_reg_dma_setup_ops_cfg *dma_write_cfg)
+{
+	struct drm_msm_mdnie *mdnie_data;
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	int rc = 0;
+	u32 aiqe_base = 0;
+
+	if (!ctx->cap->sblk->aiqe.base) {
+		DRM_DEBUG_DRIVER("AIQE not supported on DSPP idx %d", ctx->idx);
+		return -EINVAL;
+	}
+
+	rc = reg_dma_dspp_check(ctx, cfg, AIQE_MDNIE);
+	if (rc)
+		return -EINVAL;
+
+	aiqe_base = ctx->hw.blk_off + ctx->cap->sblk->aiqe.base;
+
+	mdnie_data = hw_cfg->payload;
+	if (mdnie_data && hw_cfg->len != sizeof(struct drm_msm_mdnie)) {
+		DRM_ERROR("invalid sz of payload len %d exp %zd\n",
+				hw_cfg->len, sizeof(struct drm_msm_mdnie));
+		return -EINVAL;
+	}
+
+	if (!mdnie_data || !(mdnie_data->param[0] & BIT(0))) {
+		DRM_DEBUG_DRIVER("Disable MDNIE feature\n");
+		_mdnie_disable_v1(dma_write_cfg, ctx, hw_cfg, dma_ops, aiqe_top);
+		return 0;
+	}
+
+	rc = _reg_dmav1_aiqe_write_top_level_v1(dma_write_cfg, ctx, hw_cfg, dma_ops, aiqe_top);
+	if (rc)
+		return -EINVAL;
+
+	REG_DMA_SETUP_OPS((*dma_write_cfg), aiqe_base + 0x104, mdnie_data->param,
+			AIQE_MDNIE_PARAM_LEN * sizeof(u32), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		SDE_ERROR("mdnie dma write failed ret %d\n", rc);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
+{
+	struct drm_msm_mdnie *mdnie_data;
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct sde_hw_reg_dma_ops *dma_ops;
+	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
+	struct sde_reg_dma_kickoff_cfg kick_off;
+	int rc = 0;
+
+	if (!ctx || !cfg || !aiqe_top) {
+		DRM_ERROR("invalid parameters ctx %pK cfg %pK aiqe top %pK\n",
+			ctx, cfg, aiqe_top);
+		return;
+	}
+
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	dma_ops->reset_reg_dma_buf(dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx]);
+	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, AIQE_MDNIE,
+			dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx]);
+	REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("write decode select failed ret %d\n", rc);
+		return;
+	}
+
+	rc = _reg_dmav1_setup_mdnie_common(ctx, cfg, aiqe_top, dma_ops, &dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("Setup of common mdnie feature failed");
+		return;
+	}
+	mdnie_data = hw_cfg->payload;
+
+	// Check if mdnie is disabled
+	if (!mdnie_data || !(mdnie_data->param[0] & BIT(0)))
+		return;
+
+	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
+			dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx],
+			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
+			AIQE_MDNIE);
+
+	rc = dma_ops->kick_off(&kick_off, ctx->dpu_idx);
+	if (rc) {
+		DRM_ERROR("failed to kick off ret %d\n", rc);
+		return;
+	}
+
+	LOG_FEATURE_ON;
+}
+
+void reg_dmav1_setup_mdnie_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 {
 	struct drm_msm_mdnie *mdnie_data;
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
@@ -245,25 +345,16 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 	int rc = 0;
 	u32 aiqe_base = 0;
 
-	if (!ctx || !cfg) {
-		DRM_ERROR("invalid parameters ctx %pK cfg %pK\n", ctx, cfg);
+	if (!ctx || !cfg || !aiqe_top) {
+		DRM_ERROR("invalid parameters ctx %pK cfg %pK aiqe top %pK\n",
+			ctx, cfg, aiqe_top);
 		return;
 	}
 
-	if (!ctx->cap->sblk->aiqe.base) {
-		DRM_DEBUG_DRIVER("AIQE not supported on DSPP idx %d", ctx->idx);
-		return;
-	}
-
-	rc = reg_dma_dspp_check(ctx, cfg, AIQE_MDNIE);
-	if (rc)
-		return;
-
-	aiqe_base = ctx->hw.blk_off + ctx->cap->sblk->aiqe.base;
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	dma_ops->reset_reg_dma_buf(dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx]);
 	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, AIQE_MDNIE,
-		dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx]);
+			dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx]);
 	REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
 	rc = dma_ops->setup_payload(&dma_write_cfg);
 	if (rc) {
@@ -271,29 +362,37 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 		return;
 	}
 
-	mdnie_data = hw_cfg->payload;
-	if (mdnie_data && hw_cfg->len != sizeof(struct drm_msm_mdnie)) {
-		DRM_ERROR("invalid sz of payload len %d exp %zd\n",
-				hw_cfg->len, sizeof(struct drm_msm_mdnie));
-		return;
-	}
-
-	if (!mdnie_data || !(mdnie_data->param[0] & BIT(0))) {
-		DRM_DEBUG_DRIVER("Disable MDNIE feature\n");
-		_mdnie_disable_v1(&dma_write_cfg, ctx, hw_cfg, dma_ops, aiqe_top);
-		return;
-	}
-
-	rc = _reg_dmav1_aiqe_write_top_level_v1(&dma_write_cfg, ctx, hw_cfg, dma_ops, aiqe_top);
-	if (rc)
-		return;
-
-	REG_DMA_SETUP_OPS(dma_write_cfg, aiqe_base + 0x104, mdnie_data->param,
-			AIQE_MDNIE_PARAM_LEN * sizeof(u32), REG_BLK_WRITE_SINGLE, 0, 0, 0);
-	rc = dma_ops->setup_payload(&dma_write_cfg);
+	rc = _reg_dmav1_setup_mdnie_common(ctx, cfg, aiqe_top, dma_ops, &dma_write_cfg);
 	if (rc) {
-		SDE_ERROR("mdnie dma write failed ret %d\n", rc);
+		DRM_ERROR("Setup of common mdnie feature failed");
 		return;
+	}
+
+	aiqe_base = ctx->hw.blk_off + ctx->cap->sblk->aiqe.base;
+	mdnie_data = hw_cfg->payload;
+
+	// Check if mdnie is disabled
+	if (!mdnie_data || !(mdnie_data->param[0] & BIT(0)))
+		return;
+
+	if (mdnie_data->flags & AIQE_MDNIE_PARAM_A_EXT_FLAG) {
+		REG_DMA_SETUP_OPS(dma_write_cfg, aiqe_base + 0x420, mdnie_data->param_a_ext,
+			AIQE_MDNIE_PARAM_A_EXT_LEN * sizeof(u32), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+		rc = dma_ops->setup_payload(&dma_write_cfg);
+		if (rc) {
+			SDE_ERROR("mdnie feature a extension dma write failed ret %d\n", rc);
+			return;
+		}
+	}
+
+	if (mdnie_data->flags & AIQE_MDNIE_PARAM_E_FLAG) {
+		REG_DMA_SETUP_OPS(dma_write_cfg, aiqe_base + 0x428, mdnie_data->param_e,
+			AIQE_MDNIE_PARAM_E_LEN * sizeof(u32), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+		rc = dma_ops->setup_payload(&dma_write_cfg);
+		if (rc) {
+			SDE_ERROR("mdnie feature e dma write failed ret %d\n", rc);
+			return;
+		}
 	}
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,

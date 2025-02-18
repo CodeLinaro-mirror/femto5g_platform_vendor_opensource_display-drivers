@@ -10,6 +10,14 @@ module_entry(
       config_option = "CONFIG_DRM_MSM",
       path = None,
       config_srcs = {
+         "CONFIG_DRM_MSM_HDMI" : [
+            "msm/hdmi/hdmi_debug.c",
+            "msm/hdmi/hdmi_display.c",
+            "msm/hdmi/hdmi_parser.c",
+            "msm/hdmi/hdmi_power.c",
+            "msm/hdmi/hdmi_drm.c",
+            "msm/hdmi/hdmi_util.c",
+         ],
          "CONFIG_HDCP_QSEECOM": [
             "hdcp/msm_hdcp.c",
             "msm/dp/dp_hdcp2p2.c",
@@ -208,7 +216,7 @@ module_entry(
             "//vendor/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display",
         ],
         "CONFIG_HDCP_QSEECOM" : [
-            "//vendor/qcom/opensource/securemsm-kernel:%b_hdcp_qseecom_dlkm"
+            "//vendor/qcom/opensource/securemsm-kernel:%b_hdcp_qseecom_dlkm",
         ],
         "CONFIG_MSM_MMRM" : [
             "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver",

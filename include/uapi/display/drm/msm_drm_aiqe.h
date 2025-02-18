@@ -9,14 +9,23 @@
 
 #define AIQE_MDNIE_SUPPORTED
 #define AIQE_MDNIE_PARAM_LEN 118
+#define AIQE_MDNIE_PARAM_A_EXT_LEN 2
+#define AIQE_MDNIE_PARAM_E_LEN 19
+
+#define AIQE_MDNIE_PARAM_A_EXT_FLAG (1 << 0)
+#define AIQE_MDNIE_PARAM_E_FLAG (1 << 1)
 /**
  * struct drm_msm_mdnie - mDNIe feature structure
  * @flags - Setting flags for mDNIe feature
  * @param - Parameters for mDNIe feature
+ * @param_a_ext - Extended feature A parameters for mDNIe feature
+ * @param_e - Extended feature E parameters for mDNIe feature
  */
 struct drm_msm_mdnie {
 	__u64 flags;
 	__u32 param[AIQE_MDNIE_PARAM_LEN];
+	__u32 param_a_ext[AIQE_MDNIE_PARAM_A_EXT_LEN];
+	__u32 param_e[AIQE_MDNIE_PARAM_E_LEN];
 };
 
 /**
