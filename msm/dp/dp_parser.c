@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -731,6 +731,9 @@ static void dp_parser_dsc(struct dp_parser *parser)
 
 	parser->dsc_continuous_pps = of_property_read_bool(dev->of_node,
 			"qcom,dsc-continuous-pps");
+
+	parser->dsc_24bpp_support = of_property_read_bool(dev->of_node,
+			"qcom,dp-dsc-24bpp-supported");
 
 	rc = of_property_read_u32(dev->of_node,
 			"qcom,dsc-version", &version);
