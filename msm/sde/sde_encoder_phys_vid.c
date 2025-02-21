@@ -653,6 +653,9 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 		return;
 	}
 
+	if (sde_in_trusted_vm(phys_enc->sde_kms))
+		return;
+
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	mode = phys_enc->cached_mode;
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);

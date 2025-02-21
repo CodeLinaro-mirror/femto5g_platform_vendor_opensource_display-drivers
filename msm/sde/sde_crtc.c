@@ -4674,6 +4674,7 @@ static inline bool _is_vid_power_on_frame(struct drm_crtc *crtc)
 static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct drm_encoder *encoder = NULL;
 	bool ipcc_input_signal_wait = false;
 	struct dma_fence *dma_hw_fences[MAX_HW_FENCES] = {0};
 	int num_hw_fences = 0;
@@ -4685,6 +4686,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	bool disable_hw_fences = false;
 	bool trigger_sw_override = false;
 	enum msm_disp_op disp_op;
+	bool video_psr_support = false;
 
 	SDE_DEBUG("\n");
 
@@ -4708,10 +4710,23 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 		return false;
 	}
 
+	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+		if (sde_encoder_in_clone_mode(encoder))
+			continue;
+
+		if (sde_encoder_is_built_in_display(encoder)) {
+			video_psr_support = sde_encoder_is_psr_supported(encoder);
+			break;
+		}
+	}
+
 	/* if this is the last frame on vm transition, disable hw fences */
-	vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc->state), CRTC_PROP_VM_REQ_STATE);
-	if (vm_req == VM_REQ_RELEASE)
-		disable_hw_fences = true;
+	if (!video_psr_support) {
+		vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc->state),
+				CRTC_PROP_VM_REQ_STATE);
+		if (vm_req == VM_REQ_RELEASE)
+			disable_hw_fences = true;
+	}
 
 	/* update ctl hw to wait for ipcc input signal before fetch */
 	if (test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||

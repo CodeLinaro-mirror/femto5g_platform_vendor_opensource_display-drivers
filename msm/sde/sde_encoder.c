@@ -118,6 +118,54 @@ inline enum msm_disp_op sde_encoder_get_disp_op(struct drm_encoder *drm_enc)
 	return disp_op;
 }
 
+void sde_encoder_vhm_trusted_vm_prepare(struct drm_encoder *drm_enc,
+		enum sde_crtc_vm_req vm_req)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_kms *sde_kms;
+	struct sde_hw_intf *hw_intf;
+	struct sde_hw_ctl *ctl;
+	u64 cmd_bit_mask = 0;
+	enum msm_disp_op disp_op;
+	bool enable;
+	int rc;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (sde_in_trusted_vm(sde_kms))
+		return;
+
+	if (!(sde_encoder_is_built_in_display(drm_enc) &&
+			sde_encoder_is_psr_supported(drm_enc)))
+		return;
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	enable = (vm_req == VM_REQ_RELEASE) ? true : false;
+	hw_intf = sde_enc->cur_master->hw_intf;
+	ctl = sde_enc->cur_master->hw_ctl;
+
+	if (hw_intf && hw_intf->ops.enable_infinite_vfp[disp_op])
+		hw_intf->ops.enable_infinite_vfp[disp_op](hw_intf, enable);
+	if (ctl && ctl->ops.update_bitmask[disp_op])
+		ctl->ops.update_bitmask[disp_op](ctl, SDE_HW_FLUSH_INTF,
+			hw_intf->idx, true);
+
+	if (enable)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
+	else
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
+
+	rc = sde_connector_update_cmd(sde_enc->cur_master->connector,
+			cmd_bit_mask, true);
+	if (rc)
+		SDE_EVT32(cmd_bit_mask >> 32, cmd_bit_mask, enable, 0xebad);
+}
+
 void sde_encoder_uidle_enable(struct drm_encoder *drm_enc, bool enable)
 {
 	struct sde_encoder_virt *sde_enc;
@@ -549,6 +597,14 @@ bool sde_encoder_smooth_dimming_in_progress(struct drm_encoder *enc)
 
 	return sde_enc->disp_info.vrr_caps.video_psr_support &&
 			sde_conn->bl_vrr.bl_increment_in_progress;
+}
+
+bool sde_encoder_is_psr_supported(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc &&
+		sde_enc->disp_info.vrr_caps.video_psr_support;
 }
 
 void sde_encoder_helper_report_irq_timeout(struct sde_encoder_phys *phys_enc,

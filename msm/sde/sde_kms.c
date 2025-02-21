@@ -1260,6 +1260,16 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+	if (vm_req != VM_REQ_NONE) {
+		drm_for_each_encoder_mask(encoder, crtc->dev,
+						crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			sde_encoder_vhm_trusted_vm_prepare(encoder, vm_req);
+		}
+	}
+
 	if (vm_req != VM_REQ_ACQUIRE)
 		return 0;
 
