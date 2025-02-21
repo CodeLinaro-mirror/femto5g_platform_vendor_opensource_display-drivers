@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -155,6 +155,52 @@ enum sde_enc_rc_events {
 	SDE_ENC_RC_EVENT_ENTER_IDLE,
 	SDE_ENC_RC_EVENT_EARLY_WAKEUP,
 };
+
+void sde_encoder_vhm_trusted_vm_prepare(struct drm_encoder *drm_enc,
+		enum sde_crtc_vm_req vm_req)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_kms *sde_kms;
+	struct sde_hw_intf *hw_intf;
+	struct sde_hw_ctl *ctl;
+	u64 cmd_bit_mask = 0;
+	bool enable;
+	int rc;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (sde_in_trusted_vm(sde_kms))
+		return;
+
+	if(!(sde_encoder_is_built_in_display(drm_enc) &&
+			sde_encoder_is_psr_supported(drm_enc)))
+		return;
+
+	enable = (vm_req == VM_REQ_RELEASE) ? true : false;
+	hw_intf = sde_enc->cur_master->hw_intf;
+	ctl = sde_enc->cur_master->hw_ctl;
+
+	if (hw_intf && hw_intf->ops.enable_infinite_vfp)
+		hw_intf->ops.enable_infinite_vfp(hw_intf, enable);
+	if (ctl && ctl->ops.update_bitmask)
+		ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_INTF,
+			hw_intf->idx, true);
+
+	if (enable)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
+	else
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
+
+	rc = sde_connector_update_cmd(sde_enc->cur_master->connector,
+			cmd_bit_mask, true);
+	if (rc)
+		SDE_EVT32(cmd_bit_mask >> 32, cmd_bit_mask, enable, 0xebad);
+}
 
 void sde_encoder_uidle_enable(struct drm_encoder *drm_enc, bool enable)
 {
@@ -545,6 +591,14 @@ int sde_encoder_in_cont_splash(struct drm_encoder *drm_enc)
 
 	return sde_enc && sde_enc->cur_master &&
 		sde_enc->cur_master->cont_splash_enabled;
+}
+
+bool sde_encoder_is_psr_supported(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc &&
+		sde_enc->disp_info.vrr_caps.video_psr_support;
 }
 
 void sde_encoder_helper_report_irq_timeout(struct sde_encoder_phys *phys_enc,

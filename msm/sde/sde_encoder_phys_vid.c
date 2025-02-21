@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -636,6 +636,9 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 		SDE_ERROR("invalid encoder %d\n", !phys_enc);
 		return;
 	}
+
+	if (sde_in_trusted_vm(phys_enc->sde_kms))
+		return;
 
 	mode = phys_enc->cached_mode;
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
