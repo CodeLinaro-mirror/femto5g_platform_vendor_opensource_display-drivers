@@ -18,8 +18,8 @@
 #define HFI_AD_DEBUG(fmt, ...)  \
 	pr_debug("[hfi_ad_debug] %s:%d " fmt, __func__, __LINE__, ##__VA_ARGS__)
 
-#define HFI_APADTER_STEP_US 1000
-#define MAX_TRY_COUNT 300
+#define HFI_APADTER_STEP_US 10000
+#define MAX_TRY_COUNT 200
 #define MAX_BUFFERS 10
 #define MAX_U32 0xFFFFFFFF
 #define MAX_POOL_SIZE 8
@@ -572,7 +572,7 @@ int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 obje
 	memset(&packet_info, 0, sizeof(struct hfi_packet_info));
 	packet_info.cmd = cmd;
 	packet_info.id = object_id;
-	packet_info.flags = HFI_HOST_FLAGS_NON_DISCARDABLE;
+	packet_info.flags = flags;
 	spin_lock_irqsave(&cmd_buf->ctx->host->packet_id_lock, lock_flags);
 	packet_info.packet_id = _generate_sequential_packet_id();
 	spin_unlock_irqrestore(&cmd_buf->ctx->host->packet_id_lock, lock_flags);
@@ -649,7 +649,7 @@ int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
 	memset(&packet_info, 0, sizeof(struct hfi_packet_info));
 	packet_info.cmd = cmd_id;
 	packet_info.id = obj_id;
-	packet_info.flags = HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE;
+	packet_info.flags = flags;
 	spin_lock_irqsave(&cmd_buf->ctx->host->packet_id_lock, lock_flags);
 	packet_info.packet_id = _generate_sequential_packet_id();
 	spin_unlock_irqrestore(&cmd_buf->ctx->host->packet_id_lock, lock_flags);

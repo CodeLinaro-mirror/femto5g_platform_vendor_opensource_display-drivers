@@ -191,22 +191,31 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 		return -ENODEV;
 	}
 
-	if (hfi_cmd == HFI_COMMAND_DISPLAY_MODE_VALIDATE)
-		rc = hfi_adapter_add_set_property(cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
-				payload, payload_size, HFI_HOST_FLAGS_NONE);
-	else if (hfi_cmd == HFI_COMMAND_DISPLAY_DISABLE)
-		rc = hfi_adapter_add_set_property(cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
-				payload, payload_size, HFI_HOST_FLAGS_RESPONSE_REQUIRED);
-	else
-		rc = hfi_adapter_add_set_property(cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
-						  payload, payload_size, flags);
-	if (rc)
-		DSI_ERR("Could not set hfi_cmd=%x\n", hfi_cmd);
+	switch (hfi_cmd) {
+	case HFI_COMMAND_DISPLAY_MODE_VALIDATE:
+		flags = HFI_HOST_FLAGS_NONE;
+		break;
+	case HFI_COMMAND_DISPLAY_DISABLE:
+	case HFI_COMMAND_DISPLAY_POST_ENABLE:
+		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+		break;
+	default:
+		break;
+	}
 
-	if (hfi_cmd == HFI_COMMAND_DISPLAY_DISABLE)
+	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED) {
+		rc = hfi_adapter_add_get_property(cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
+			payload, payload_size, &display_hfi->hfi_cb_obj, flags);
+		if (rc)
+			DSI_ERR("could not set property for hfi_cmd=%x\n", hfi_cmd);
 		rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
-	else
+	} else {
+		rc = hfi_adapter_add_set_property(cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
+			payload, payload_size, flags);
+		if (rc)
+			DSI_ERR("could not set property for hfi_cmd=%x\n", hfi_cmd);
 		rc = hfi_adapter_set_cmd_buf(cmd_buf);
+	}
 
 	if (rc) {
 		SDE_ERROR("failed to send hfi_cmd=%x\n", hfi_cmd);

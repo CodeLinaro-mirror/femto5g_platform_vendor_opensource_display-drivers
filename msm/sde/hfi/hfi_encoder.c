@@ -195,7 +195,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	cmd = enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER : HFI_COMMAND_DISPLAY_EVENT_DEREGISTER;
 	ret = hfi_adapter_add_get_property(cmd_buf, cmd, display_id, HFI_PAYLOAD_TYPE_U32,
 			&payload, sizeof(payload), &hfi_enc->hfi_cb_obj,
-			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
+			(HFI_HOST_FLAGS_NON_DISCARDABLE));
 	if (ret) {
 		SDE_ERROR("failed to update event: 0x%x\n", payload);
 		return ret;
