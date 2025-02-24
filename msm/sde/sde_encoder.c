@@ -7030,7 +7030,9 @@ void sde_encoder_kickoff(struct drm_encoder *drm_enc, bool config_changed)
 	struct sde_encoder_virt *sde_enc;
 	struct sde_encoder_phys *phys;
 	struct sde_kms *sde_kms;
+	enum msm_disp_op disp_op;
 	unsigned int i;
+	int ret;
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
@@ -7040,6 +7042,15 @@ void sde_encoder_kickoff(struct drm_encoder *drm_enc, bool config_changed)
 	sde_enc = to_sde_encoder_virt(drm_enc);
 
 	SDE_DEBUG_ENC(sde_enc, "\n");
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.kickoff[disp_op]) {
+		ret = sde_enc->hal_ops.kickoff[disp_op](sde_enc, config_changed);
+		if (ret)
+			SDE_ERROR("kickoff halop failed ret:%d\n", ret);
+
+		return;
+	}
 
 	if (sde_enc->delay_kickoff) {
 		u32 loop_count = 20;

@@ -43,6 +43,8 @@ static ktime_t hfi_enc_unpack_event_data(void *payload, u32 *idx, struct sde_enc
 	ts = (ts_high << 32);
 	ts =  ts | (ts_low);
 
+	SDE_EVT32(atomic_read(&hfi_enc->hfi_commit_cnt), atomic_read(&hfi_enc->hfi_frame_done_cnt));
+
 	return ts;
 }
 
@@ -401,6 +403,63 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 	return ret;
 }
 
+static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
+{
+	int ret;
+	u32 display_id;
+	struct hfi_encoder *hfi_enc;
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct drm_connector *conn;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	u32 scan_id_prop[3] = {0,};
+	u32 num_props = 1;
+
+	if (!enc)
+		return -EINVAL;
+
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("Failed to get hfi_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_enc = to_hfi_encoder(enc);
+	conn = sde_encoder_get_connector(enc->base.dev, &enc->base);
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	display_id = sde_conn_get_display_obj_id(conn);
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, display_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to find command buf for display_id:%d\n", display_id);
+		return -EINVAL;
+	}
+
+	scan_id_prop[0] = num_props;
+	scan_id_prop[1] = HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID;
+	scan_id_prop[2] = atomic_inc_return(&hfi_enc->hfi_commit_cnt);
+
+	ret = hfi_adapter_add_set_property(cmd_buf,
+			HFI_COMMAND_DISPLAY_SET_PROPERTY,
+			display_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			&scan_id_prop,
+			sizeof(scan_id_prop),
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		SDE_ERROR("failed to send scan id HFI property\n");
+		return ret;
+	}
+
+	SDE_EVT32(atomic_read(&hfi_enc->hfi_commit_cnt));
+
+	return ret;
+}
+
 static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 {
 	int ret;
@@ -699,6 +758,7 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder *enc)
 
 static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 {
+	sde_enc->hal_ops.kickoff[MSM_DISP_OP_HFI] = hfi_enc_kickoff;
 	sde_enc->hal_ops.encoder_enable[MSM_DISP_OP_HFI] = hfi_enc_encoder_enable;
 	sde_enc->hal_ops.encoder_disable[MSM_DISP_OP_HFI] = hfi_enc_encoder_disable;
 	sde_enc->hal_ops.wait_for_event[MSM_DISP_OP_HFI] = hfi_enc_wait_for_event;
