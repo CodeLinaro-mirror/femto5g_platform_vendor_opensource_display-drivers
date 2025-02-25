@@ -391,12 +391,8 @@ static inline void sde_hw_ctl_output_fence_dir_wr_init(struct sde_hw_ctl *ctx, u
 	u32 size, u32 mask)
 {
 	uintptr_t ptr_val = (uintptr_t)addr;
-	u32 attr = SDE_REG_READ(&ctx->hw, CTL_OUTPUT_FENCE_DIR_ATTR);
 
-	attr &= ~(0x7 << 4);
-	attr |= ((size & 0x7) << 4);
-
-	SDE_REG_WRITE(&ctx->hw, CTL_OUTPUT_FENCE_DIR_ATTR, attr);
+	SDE_REG_MODIFY(&ctx->hw, CTL_OUTPUT_FENCE_DIR_ATTR, 0x7 << 4, (size & 0x7) << 4);
 	SDE_REG_WRITE(&ctx->hw, CTL_OUTPUT_FENCE_DIR_MASK, mask);
 	SDE_REG_WRITE(&ctx->hw, CTL_OUTPUT_FENCE_DIR_ADDR, ptr_val);
 }
@@ -582,15 +578,10 @@ static inline u32 sde_hw_ctl_get_flush_register(struct sde_hw_ctl *ctx)
 
 static inline void sde_hw_ctl_uidle_enable(struct sde_hw_ctl *ctx, bool enable)
 {
-	u32 val;
-
 	if (!ctx)
 		return;
 
-	val = SDE_REG_READ(&ctx->hw, CTL_UIDLE_ACTIVE);
-	val = (val & ~BIT(0)) | (enable ? BIT(0) : 0);
-
-	SDE_REG_WRITE(&ctx->hw, CTL_UIDLE_ACTIVE, val);
+	SDE_REG_MODIFY(&ctx->hw, CTL_UIDLE_ACTIVE, BIT(0), enable ? BIT(0) : 0);
 }
 
 
@@ -1602,20 +1593,13 @@ static void sde_hw_ctl_setup_flush_sync(struct sde_hw_ctl *ctx, bool is_master,
 static void sde_hw_ctl_enable_sync_mode(struct sde_hw_ctl *ctx, bool async_en)
 {
 	struct sde_hw_blk_reg_map *c;
-	u32 value = 0;
 
 	if (!ctx)
 		return;
 
 	c = &ctx->hw;
-	value = SDE_REG_READ(c, CTL_FLUSH_SYNC_MODE);
 
-	if (async_en)
-		value |= BIT(0);
-	else
-		value &= ~BIT(0);
-
-	SDE_REG_WRITE(c, CTL_FLUSH_SYNC_MODE, value);
+	SDE_REG_MODIFY(c, CTL_FLUSH_SYNC_MODE, BIT(0), async_en ? BIT(0) : 0);
 }
 
 static int sde_hw_ctl_intf_cfg(struct sde_hw_ctl *ctx,
@@ -1660,18 +1644,11 @@ static void sde_hw_ctl_update_wb_cfg(struct sde_hw_ctl *ctx,
 		struct sde_hw_intf_cfg *cfg, bool enable)
 {
 	struct sde_hw_blk_reg_map *c = &ctx->hw;
-	u32 intf_cfg = 0;
 
 	if (!cfg->wb)
 		return;
 
-	intf_cfg = SDE_REG_READ(c, CTL_TOP);
-	if (enable)
-		intf_cfg |= (cfg->wb & 0x3) + 2;
-	else
-		intf_cfg &= ~((cfg->wb & 0x3) + 2);
-
-	SDE_REG_WRITE(c, CTL_TOP, intf_cfg);
+	SDE_REG_MODIFY(c, CTL_TOP, (cfg->wb & 0x3) + 2, enable ? ((cfg->wb & 0x3) + 2) : 0);
 }
 
 static inline u32 sde_hw_ctl_read_ctl_layers(struct sde_hw_ctl *ctx, int index)

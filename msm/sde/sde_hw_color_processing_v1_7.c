@@ -151,23 +151,25 @@ static void __setup_pa_hue(struct sde_hw_blk_reg_map *hw,
 	u32 op_hue_en = (loc == DSPP) ? DSPP_OP_PA_HUE_EN : VIG_OP_PA_HUE_EN;
 	u32 op_pa_en = (loc == DSPP) ? DSPP_OP_PA_EN : VIG_OP_PA_EN;
 	u32 disable_req;
-	u32 opmode;
+	u32 opmode, mask;
 
-	opmode = SDE_REG_READ(hw, base);
+	mask = 0;
+	opmode = 0;
 	SDE_REG_WRITE(hw, base + offset, hue & PA_HUE_MASK);
 
 	if (!hue) {
-		opmode &= ~op_hue_en;
+		mask |= op_hue_en;
 		disable_req = (loc == DSPP) ?
 			PA_DSPP_DISABLE_REQUIRED(opmode) :
 			PA_VIG_DISABLE_REQUIRED(opmode);
 		if (disable_req)
-			opmode &= ~op_pa_en;
+			mask |= op_pa_en;
 	} else {
+		mask |= (op_hue_en | op_pa_en);
 		opmode |= (op_hue_en | op_pa_en);
 	}
 
-	SDE_REG_WRITE(hw, base, opmode);
+	SDE_REG_MODIFY(hw, base, mask, opmode);
 }
 
 void sde_setup_pipe_pa_hue_v1_7(struct sde_hw_pipe *ctx, void *cfg)
@@ -185,23 +187,25 @@ static void __setup_pa_sat(struct sde_hw_blk_reg_map *hw,
 	u32 op_sat_en = (loc == DSPP) ? DSPP_OP_PA_SAT_EN : VIG_OP_PA_SAT_EN;
 	u32 op_pa_en = (loc == DSPP) ? DSPP_OP_PA_EN : VIG_OP_PA_EN;
 	u32 disable_req;
-	u32 opmode;
+	u32 opmode, mask;
 
-	opmode = SDE_REG_READ(hw, base);
+	mask = 0;
+	opmode = 0;
 	SDE_REG_WRITE(hw, base + offset, sat & PA_SAT_MASK);
 
 	if (!sat) {
-		opmode &= ~op_sat_en;
+		mask |= op_sat_en;
 		disable_req = (loc == DSPP) ?
 			PA_DSPP_DISABLE_REQUIRED(opmode) :
 			PA_VIG_DISABLE_REQUIRED(opmode);
 		if (disable_req)
-			opmode &= ~op_pa_en;
+			mask |= ~op_pa_en;
 	} else {
+		mask |= (op_sat_en | op_pa_en);
 		opmode |= (op_sat_en | op_pa_en);
 	}
 
-	SDE_REG_WRITE(hw, base, opmode);
+	SDE_REG_MODIFY(hw, base, mask, opmode);
 }
 
 void sde_setup_pipe_pa_sat_v1_7(struct sde_hw_pipe *ctx, void *cfg)
@@ -219,23 +223,25 @@ static void __setup_pa_val(struct sde_hw_blk_reg_map *hw,
 	u32 op_val_en = (loc == DSPP) ? DSPP_OP_PA_VAL_EN : VIG_OP_PA_VAL_EN;
 	u32 op_pa_en = (loc == DSPP) ? DSPP_OP_PA_EN : VIG_OP_PA_EN;
 	u32 disable_req;
-	u32 opmode;
+	u32 opmode, mask;
 
-	opmode = SDE_REG_READ(hw, base);
+	mask = 0;
+	opmode = 0;
 	SDE_REG_WRITE(hw, base + offset, value & PA_VAL_MASK);
 
 	if (!value) {
-		opmode &= ~op_val_en;
+		mask |= op_val_en;
 		disable_req = (loc == DSPP) ?
 			PA_DSPP_DISABLE_REQUIRED(opmode) :
 			PA_VIG_DISABLE_REQUIRED(opmode);
 		if (disable_req)
-			opmode &= ~op_pa_en;
+			mask |= op_pa_en;
 	} else {
+		mask |= (op_val_en | op_pa_en);
 		opmode |= (op_val_en | op_pa_en);
 	}
 
-	SDE_REG_WRITE(hw, base, opmode);
+	SDE_REG_MODIFY(hw, base, mask, opmode);
 }
 
 void sde_setup_pipe_pa_val_v1_7(struct sde_hw_pipe *ctx, void *cfg)
@@ -254,23 +260,24 @@ static void __setup_pa_cont(struct sde_hw_blk_reg_map *hw,
 		DSPP_OP_PA_CONT_EN : VIG_OP_PA_CONT_EN;
 	u32 op_pa_en = (loc == DSPP) ? DSPP_OP_PA_EN : VIG_OP_PA_EN;
 	u32 disable_req;
-	u32 opmode;
+	u32 opmode, mask = 0;
 
 	opmode = SDE_REG_READ(hw, base);
 	SDE_REG_WRITE(hw, base + offset, contrast & PA_CONT_MASK);
 
 	if (!contrast) {
-		opmode &= ~op_cont_en;
+		mask |= op_cont_en;
 		disable_req = (loc == DSPP) ?
 			PA_DSPP_DISABLE_REQUIRED(opmode) :
 			PA_VIG_DISABLE_REQUIRED(opmode);
 		if (disable_req)
-			opmode &= ~op_pa_en;
+			mask |= op_pa_en;
 	} else {
+		mask |= (op_cont_en | op_pa_en);
 		opmode |= (op_cont_en | op_pa_en);
 	}
 
-	SDE_REG_WRITE(hw, base, opmode);
+	SDE_REG_MODIFY(hw, base, mask, opmode);
 }
 
 void sde_setup_pipe_pa_cont_v1_7(struct sde_hw_pipe *ctx, void *cfg)
@@ -325,7 +332,7 @@ void sde_setup_dspp_sixzone_v17(struct sde_hw_dspp *ctx, void *cfg)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct drm_msm_sixzone *sixzone;
-	u32 opcode = 0, local_opcode = 0;
+	u32 opcode = 0, local_opcode = 0, mask;
 	u32 reg = 0, hold = 0, local_hold = 0;
 	u32 addr = 0;
 	int i = 0;
@@ -335,15 +342,16 @@ void sde_setup_dspp_sixzone_v17(struct sde_hw_dspp *ctx, void *cfg)
 		return;
 	}
 
-	opcode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->hsic.base);
+	mask = 0;
+	opcode = 0;
 
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("disable sixzone feature\n");
-		opcode &= ~(DSPP_OP_SZ_HUE_EN | DSPP_OP_SZ_SAT_EN |
+		mask |= (DSPP_OP_SZ_HUE_EN | DSPP_OP_SZ_SAT_EN |
 			DSPP_OP_SZ_VAL_EN);
 		if (PA_DSPP_DISABLE_REQUIRED(opcode))
-			opcode &= ~DSPP_OP_PA_EN;
-		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->hsic.base, opcode);
+			mask |= DSPP_OP_PA_EN;
+		SDE_REG_MODIFY(&ctx->hw, ctx->cap->sblk->hsic.base, mask, opcode);
 		return;
 	}
 
@@ -369,15 +377,13 @@ void sde_setup_dspp_sixzone_v17(struct sde_hw_dspp *ctx, void *cfg)
 	SDE_REG_WRITE(&ctx->hw, (addr + 4), sixzone->adjust_p0);
 	SDE_REG_WRITE(&ctx->hw, (addr + 8), sixzone->adjust_p1);
 
-	hold = SDE_REG_READ(&ctx->hw,
-		(ctx->cap->sblk->hsic.base + DSPP_PA_PWL_HOLD_OFF));
 	local_hold = ((sixzone->sat_hold & REG_MASK(2)) << 12);
 	local_hold |= ((sixzone->val_hold & REG_MASK(2)) << 14);
-	hold &= ~REG_MASK_SHIFT(4, 12);
-	hold |= local_hold;
-	SDE_REG_WRITE(&ctx->hw,
+	mask = REG_MASK_SHIFT(4, 12);
+	hold = local_hold;
+	SDE_REG_MODIFY(&ctx->hw,
 		(ctx->cap->sblk->hsic.base + DSPP_PA_PWL_HOLD_OFF),
-		hold);
+		mask, hold);
 
 	if (sixzone->flags & SIXZONE_HUE_ENABLE)
 		local_opcode |= DSPP_OP_SZ_HUE_EN;
@@ -389,9 +395,9 @@ void sde_setup_dspp_sixzone_v17(struct sde_hw_dspp *ctx, void *cfg)
 	if (local_opcode)
 		local_opcode |= DSPP_OP_PA_EN;
 
-	opcode &= ~REG_MASK_SHIFT(3, 29);
-	opcode |= local_opcode;
-	SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->hsic.base, opcode);
+	mask = REG_MASK_SHIFT(3, 29);
+	opcode = local_opcode;
+	SDE_REG_MODIFY(&ctx->hw, ctx->cap->sblk->hsic.base, mask, opcode);
 }
 
 void sde_setup_pipe_pa_memcol_v1_7(struct sde_hw_pipe *ctx,

@@ -989,7 +989,7 @@ static int sde_hw_intf_collect_misr(struct sde_hw_intf *intf, bool nonblock,
 	if (!nonblock) {
 		if (ctrl & MISR_CTRL_ENABLE) {
 			rc = read_poll_timeout(sde_reg_read, ctrl, (ctrl & MISR_CTRL_STATUS) > 0,
-					500, false, 84000, c, INTF_MISR_CTRL);
+					500, false, 84000, c, INTF_MISR_CTRL, "INTF_MISR_CTRL");
 			if (rc)
 				return rc;
 		} else {
@@ -1156,7 +1156,7 @@ static int sde_hw_intf_poll_timeout_wr_ptr(struct sde_hw_intf *intf,
 
 	c = &intf->hw;
 	return read_poll_timeout(sde_reg_read, val, (val & mask) >= 1, 10, false, timeout_us,
-			c, INTF_TEAR_LINE_COUNT);
+			c, INTF_TEAR_LINE_COUNT, "INTF_TEAR_LINE_COUNT");
 }
 
 static int sde_hw_intf_enable_te(struct sde_hw_intf *intf, bool enable)

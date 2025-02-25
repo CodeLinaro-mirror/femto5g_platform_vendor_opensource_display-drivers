@@ -203,7 +203,7 @@ static int sde_hw_get_axi_halt_status(struct sde_hw_vbif *vbif)
 	u32 val;
 
 	ret = read_poll_timeout(sde_reg_read, ctrl, (ctrl & BIT(0)),
-			100, 4000, false, c, VBIF_AXI_HALT_CTRL1);
+			100, 4000, false, c, VBIF_AXI_HALT_CTRL1, "VBIF_AXI_HALT_CTRL1");
 
 	/* check AXI port 0 & 1 status on error */
 	if (ret) {

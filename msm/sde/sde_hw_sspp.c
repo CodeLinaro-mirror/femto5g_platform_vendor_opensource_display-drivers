@@ -251,46 +251,31 @@ static void _sspp_setup_opmode(struct sde_hw_pipe *ctx,
 		u32 mask, u8 en)
 {
 	u32 idx;
-	u32 opmode;
 
 	if (!test_bit(SDE_SSPP_SCALER_QSEED2, &ctx->cap->features) ||
 		sspp_subblk_offset(ctx, SDE_SSPP_SCALER_QSEED2, &idx) ||
 		!test_bit(SDE_SSPP_CSC, &ctx->cap->features))
 		return;
 
-	opmode = SDE_REG_READ(&ctx->hw, SSPP_VIG_OP_MODE + idx);
-
-	if (en)
-		opmode |= mask;
-	else
-		opmode &= ~mask;
-
-	SDE_REG_WRITE(&ctx->hw, SSPP_VIG_OP_MODE + idx, opmode);
+	SDE_REG_MODIFY(&ctx->hw, SSPP_VIG_OP_MODE + idx, mask, en ? mask : 0);
 }
 
 static void _sspp_setup_csc10_opmode(struct sde_hw_pipe *ctx,
 		u32 mask, u8 en)
 {
 	u32 idx;
-	u32 opmode;
 
 	if (sspp_subblk_offset(ctx, SDE_SSPP_CSC_10BIT, &idx))
 		return;
 
-	opmode = SDE_REG_READ(&ctx->hw, SSPP_VIG_CSC_10_OP_MODE + idx);
-	if (en)
-		opmode |= mask;
-	else
-		opmode &= ~mask;
-
-	SDE_REG_WRITE(&ctx->hw, SSPP_VIG_CSC_10_OP_MODE + idx, opmode);
+	SDE_REG_MODIFY(&ctx->hw, SSPP_VIG_CSC_10_OP_MODE + idx, mask, en ? mask : 0);
 }
 
 static void sde_hw_sspp_set_src_split_order(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index rect_mode, bool enable)
 {
 	struct sde_hw_blk_reg_map *c;
-	u32 opmode, idx, op_mode_off;
+	u32 idx, op_mode_off;
 
 	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
@@ -301,14 +286,8 @@ static void sde_hw_sspp_set_src_split_order(struct sde_hw_pipe *ctx,
 		op_mode_off = SSPP_SRC_OP_MODE_REC1;
 
 	c = &ctx->hw;
-	opmode = SDE_REG_READ(c, op_mode_off + idx);
 
-	if (enable)
-		opmode |= MDSS_MDP_OP_SPLIT_ORDER;
-	else
-		opmode &= ~MDSS_MDP_OP_SPLIT_ORDER;
-
-	SDE_REG_WRITE(c, op_mode_off + idx, opmode);
+	SDE_REG_MODIFY(c, op_mode_off + idx, MDSS_MDP_OP_SPLIT_ORDER, enable ? MDSS_MDP_OP_SPLIT_ORDER : 0);
 }
 
 static void sde_hw_sspp_setup_ubwc(struct sde_hw_pipe *ctx, struct sde_hw_blk_reg_map *c,
@@ -387,6 +366,13 @@ static void sde_hw_sspp_setup_format(struct sde_hw_pipe *ctx,
 	}
 
 	c = &ctx->hw;
+
+	/* Auto mode */
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+		SDE_REG_MODIFY(c, SSPP_FETCH_CONFIG, BIT(10), BIT(10));
+	else
+		SDE_REG_MODIFY(c, SSPP_FETCH_CONFIG, BIT(10), 0);
+
 	opmode = SDE_REG_READ(c, op_mode_off + idx);
 	opmode &= ~(MDSS_MDP_OP_FLIP_LR | MDSS_MDP_OP_FLIP_UD |
 			MDSS_MDP_OP_BWC_EN | MDSS_MDP_OP_PE_OVERRIDE);
@@ -1016,6 +1002,12 @@ static void sde_hw_sspp_setup_sourceaddress(struct sde_hw_pipe *ctx,
 	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
+	/* Auto mode */
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+		SDE_REG_MODIFY(&ctx->hw, SSPP_FETCH_CONFIG, BIT(10), BIT(10));
+	else
+		SDE_REG_MODIFY(&ctx->hw, SSPP_FETCH_CONFIG, BIT(10), 0);
+
 	if (rect_mode == SDE_SSPP_RECT_SOLO) {
 		for (i = 0; i < ARRAY_SIZE(cfg->layout.plane_addr); i++)
 			SDE_REG_WRITE(&ctx->hw, SSPP_SRC0_ADDR + idx + i * 0x4,
@@ -1561,7 +1553,6 @@ void sde_hw_sspp_setup_dgm_inverse_pma(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index index, u32 enable)
 {
 	u32 offset;
-	u32 op_mode = 0;
 
 	if (!ctx)
 		return;
@@ -1571,14 +1562,7 @@ void sde_hw_sspp_setup_dgm_inverse_pma(struct sde_hw_pipe *ctx,
 	else
 		offset = ctx->cap->sblk->unmult_offset[0];
 
-	op_mode = SDE_REG_READ(&ctx->hw, offset);
-
-	if (enable)
-		op_mode |= BIT(0);
-	else
-		op_mode &= ~BIT(0);
-
-	SDE_REG_WRITE(&ctx->hw, offset, op_mode);
+	SDE_REG_MODIFY(&ctx->hw, offset, BIT(0), enable ? BIT(0) : 0);
 }
 
 void sde_hw_sspp_setup_dgm_csc(struct sde_hw_pipe *ctx,

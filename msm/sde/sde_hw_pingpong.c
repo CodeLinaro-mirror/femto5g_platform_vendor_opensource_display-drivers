@@ -262,7 +262,7 @@ static int sde_hw_pp_poll_timeout_wr_ptr(struct sde_hw_pingpong *pp,
 
 	c = &pp->hw;
 	return read_poll_timeout(sde_reg_read, val, (val & 0xffff) >= 1,
-					10, false, timeout_us, c, PP_LINE_COUNT);
+					10, false, timeout_us, c, PP_LINE_COUNT, "PP_LINE_COUNT");
 }
 
 static void sde_hw_pp_dsc_enable(struct sde_hw_pingpong *pp)

@@ -353,23 +353,15 @@ static void _sde_shd_flush_cwb_cfg(struct sde_shd_hw_ctl *hw_ctl)
 	if (hw_ctl->cwb_enable) {
 		SDE_REG_WRITE(c, CTL_WB_ACTIVE, BIT(2));
 
-		tmp = SDE_REG_READ(c, CTL_MERGE_3D_ACTIVE);
-		tmp |= hw_ctl->merge_3d_active;
-		SDE_REG_WRITE(c, CTL_MERGE_3D_ACTIVE, tmp);
+		SDE_REG_MODIFY(c, CTL_MERGE_3D_ACTIVE, hw_ctl->merge_3d_active, hw_ctl->merge_3d_active);
 
-		tmp = SDE_REG_READ(c, CTL_CWB_ACTIVE);
-		tmp |= hw_ctl->cwb_active;
-		SDE_REG_WRITE(c, CTL_CWB_ACTIVE, tmp);
+		SDE_REG_MODIFY(c, CTL_CWB_ACTIVE, hw_ctl->cwb_active, hw_ctl->cwb_active);
 	} else {
 		SDE_REG_WRITE(c, CTL_WB_ACTIVE, 0x0);
 
-		tmp = SDE_REG_READ(c, CTL_MERGE_3D_ACTIVE);
-		tmp &= ~hw_ctl->merge_3d_active;
-		SDE_REG_WRITE(c, CTL_MERGE_3D_ACTIVE, tmp);
+		SDE_REG_MODIFY(c, CTL_MERGE_3D_ACTIVE, hw_ctl->merge_3d_active, 0);
 
-		tmp = SDE_REG_READ(c, CTL_CWB_ACTIVE);
-		tmp &= ~hw_ctl->cwb_active;
-		SDE_REG_WRITE(c, CTL_CWB_ACTIVE, tmp);
+		SDE_REG_MODIFY(c, CTL_CWB_ACTIVE, hw_ctl->cwb_active, 0);
 	}
 
 	hw_ctl->cwb_changed = false;
@@ -507,7 +499,7 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 	struct sde_shd_hw_mixer *hw_lm;
 	struct sde_hw_blk_reg_map *c = &ctx->hw;
 	int stage_off, i;
-	u32 reset = BIT(16), val;
+	u32 val;
 	int start, end;
 
 	if (!ctx)
@@ -517,7 +509,6 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 
 	start = SDE_STAGE_0 + hw_lm->range.start;
 	end = start + hw_lm->range.size;
-	reset = ~reset;
 
 	for (i = start; i < end; i++) {
 		stage_off = _stage_offset(ctx, i);
@@ -529,9 +520,7 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 				hw_lm->orig->ops.setup_dim_layer(ctx,
 					&hw_lm->cfg[i].dim_layer);
 		} else {
-			val = SDE_REG_READ(c, LM_BLEND0_OP + stage_off);
-			val &= reset;
-			SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+			SDE_REG_MODIFY(c, LM_BLEND0_OP + stage_off, BIT(16), 0);
 		}
 
 		if (hw_lm->cfg[i].dirty) {
