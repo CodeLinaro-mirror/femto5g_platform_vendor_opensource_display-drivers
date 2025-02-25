@@ -2232,7 +2232,7 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 	if (!kms) {
 		DRM_DEBUG_DRIVER("!kms = %d\n", !kms);
 	} else {
-		if (sde_in_trusted_vm(kms)) {
+		if (sde_in_trusted_vm(kms) || IS_DISP_OP_HFI(disp_op)) {
 			demura_sw_fuse = SW_FUSE_ENABLE;
 		} else if (kms->hw_sw_fuse) {
 			demura_sw_fuse = sde_hw_get_demura_sw_fuse_value(kms->hw_sw_fuse);
