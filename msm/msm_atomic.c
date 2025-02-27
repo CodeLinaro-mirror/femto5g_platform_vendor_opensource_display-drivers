@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2014 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -571,7 +571,7 @@ struct dma_fence *msm_dma_resv_get_excl(struct drm_plane_state *new_plane_state,
 	struct dma_fence *new;
 	int ret;
 
-	if (!msm_obj)
+	if (!msm_obj || (msm_obj->resv != NULL && msm_obj->resv->fences == NULL))
 		return NULL;
 
 	fence = dma_fence_get(new_plane_state->fence);
