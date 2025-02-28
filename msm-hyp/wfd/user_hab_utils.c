@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/habmm.h>
@@ -339,6 +339,7 @@ user_os_utils_send_recv(
 	u32 num_of_wfd_cmds = 0;
 	enum openwfd_cmd_type wfd_cmd_type = OPENWFD_CMD_MAX;
 	char marker_buff[MARKER_BUFF_LENGTH] = {0};
+	unsigned long delay = 0;
 	static i64 recv_failed_timestamp[MAX_RECV_FAIL_COUNT] = {0};
 	u32 i = 0;
 
@@ -417,19 +418,20 @@ retry_send_packet:
 	HYP_ATRACE_BEGIN(marker_buff);
 
 retry_recv_packet:
-
-	/* TODO: Need handle exit hab_receive during deinit */
-	resp_size = sizeof(struct wire_packet);
+	delay = jiffies + (HZ / 4);
+	do {
+		resp_size = sizeof(struct wire_packet);
 #ifdef USE_HAB
-	rc = habmm_socket_recv(
+		rc = habmm_socket_recv(
 #else
-	rc = habmm_socket_recv_dummy(
+		rc = habmm_socket_recv_dummy(
 #endif
-		handle,
-		(void *)resp,
-		(uint32_t *)&resp_size,
-		(uint32_t)HAB_TIMEOUT_VAL,
-		HABMM_SOCKET_RECV_FLAGS_TIMEOUT);
+			handle,
+			(void *)resp,
+			(uint32_t *)&resp_size,
+			(uint32_t)HAB_TIMEOUT_VAL,
+			HABMM_SOCKET_RECV_FLAGS_TIMEOUT);
+	} while ((time_before(jiffies, delay)) && (-EINTR == rc) && (resp_size == 0));
 
 	HYP_ATRACE_END(marker_buff);
 
@@ -442,11 +444,9 @@ retry_recv_packet:
 			/*
 			 * system is closed or suspend a interrupted
 			 * system call is happening on hab channel.
-			 * We should try it again
 			 */
-			UTILS_LOG_CRITICAL_INFO(
-				"habmm_socket_recv - interrupted system call - retry");
-			rc = -EAGAIN;
+			UTILS_LOG_CRITICAL_INFO("channel broken interrupted system call");
+			goto end;
 		}
 
 		if (((rc == -EAGAIN) || (rc == -ETIMEDOUT)) &&
@@ -525,13 +525,15 @@ end:
 			UTILS_LOG_ERROR("rel_hab_handle failed");
 	}
 
-	if (((rc == -1) || (retry_times > 0)) && (req != NULL))
-	{
-		UTILS_LOG_ERROR("packet send/receive error\n");
-		print_hex_dump(KERN_INFO, "hdr: ", DUMP_PREFIX_NONE, 16, 1,
-				&req->hdr, sizeof(req->hdr), false);
-		print_hex_dump(KERN_INFO, "req: ", DUMP_PREFIX_NONE, 16, 1,
-				&req->payload, req->hdr.payload_size, false);
+	if (((rc == -1) || (retry_times > 0)) && (req != NULL)) {
+		if (rc == -1) {
+			UTILS_LOG_ERROR("packet send/receive error\n");
+			print_hex_dump(KERN_INFO, "hdr: ", DUMP_PREFIX_NONE, 16, 1,
+					&req->hdr, sizeof(req->hdr), false);
+			print_hex_dump(KERN_INFO, "req: ", DUMP_PREFIX_NONE, 16, 1,
+					&req->payload, req->hdr.payload_size, false);
+		}
+
 		if (retry_times == MAX_SEND_RECV_PACKET_RETRY) {
 			for (i = 0; i < MAX_RECV_FAIL_COUNT ; i++) {
 				if (recv_failed_timestamp[i] == 0) {
@@ -611,7 +613,7 @@ user_os_utils_recv(
 			} else if (rc == -EINTR) {
 				/*
 				 * system is closed or suspend a interrupted system call is
-				 * happening on hab channel. we should try it again
+				 * happening on hab channel.
 				 */
 				UTILS_LOG_CRITICAL_INFO("channel broken interrupted system call");
 			} else {
