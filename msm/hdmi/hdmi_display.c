@@ -12,6 +12,7 @@
 #include "msm_drv.h"
 #include "sde_connector.h"
 #include "hdmi_display.h"
+#include "hdmi_audio.h"
 #include "hdmi_parser.h"
 #include "hdmi_power.h"
 #include "hdmi_debug.h"
@@ -22,6 +23,7 @@
 #include "hdmi_util.h"
 #include "sde_edid_parser.h"
 
+#define HDMI_KHZ_TO_HZ 1000
 #define hdmi_display_state_show(x) { \
 	HDMI_ERR("%s: state (0x%x): %s\n", x, hdmi->state, \
 		hdmi_display_state_name(hdmi->state)); \
@@ -169,6 +171,7 @@ struct hdmi_display_private {
 	struct hdmi_pll     *pll;
 	struct hdmi_phy     *phy;
 	struct hdmi_ddc     *ddc;
+	struct hdmi_audio   *audio;
 	//struct hdmi_cec     *cec;
 	struct hdmi_io_data *io_data;
 
@@ -477,8 +480,19 @@ static int hdmi_init_sub_modules(struct hdmi_display_private *hdmi)
 	//TODO: only hpd is enabled here. what about others
 	/* enable hdmi irq*/
 	enable_irq(hdmi->irq);
+	hdmi->audio = hdmi_audio_get(hdmi->pdev, hdmi->panel, hdmi->parser);
+	if (IS_ERR(hdmi->audio)) {
+		rc = PTR_ERR(hdmi->audio);
+		HDMI_ERR("failed to initialize audio, rc = %d\n", rc);
+		hdmi->audio = NULL;
+		goto error_audio;
+	}
 
+	hdmi->audio->display = &hdmi->hdmi_display;
 	return 0;
+
+error_audio:
+	hdmi_audio_put(hdmi->audio);
 error_debug:
 	hdmi_debug_put(hdmi->debug);
 error_phy:
@@ -501,6 +515,7 @@ static void hdmi_display_deinit_sub_modules(struct hdmi_display_private *hdmi)
 {
 	disable_irq(hdmi->irq);
 	hdmi_hpd_disable(hdmi);
+	hdmi_audio_put(hdmi->audio);
 	hdmi_debug_put(hdmi->debug);
 	hdmi_phy_put(hdmi->phy);
 	sde_edid_deinit((void **)&hdmi->panel->edid_ctrl);
@@ -562,6 +577,7 @@ static void hdmi_display_hotplug_work(struct work_struct *work)
 		container_of(work, struct hdmi_display_private, hpd_work);
 	struct drm_connector *connector;
 	u32 hdmi_ctrl;
+	int rc = 0;
 
 	if (!hdmi) {
 		HDMI_ERR("Invalid param\n");
@@ -583,12 +599,22 @@ static void hdmi_display_hotplug_work(struct work_struct *work)
 
 		//cec_notifier_set_phys_addr_from_edid(hdmi->cec->notifier,
 		//		hdmi->edid_ctrl->edid);
+		//Enable Audio post HPD connect
+		rc = hdmi->audio->on(hdmi->audio);
+		if (rc)
+			HDMI_ERR("HDMI audio On failed status %d\n", rc);
+
 		hdmi_display_state_add(HDMI_STATE_CONNECTED);
 		hdmi_display_state_remove(HDMI_STATE_DISCONNECTED);
 	} else {
 		sde_free_edid((void **)&hdmi->panel->edid_ctrl);
 		//cec_notifier_set_phys_addr_from_edid(hdmi->cec->notifier,
 		//		NULL);
+		//Disable Audio post HPD disconnect
+		rc = hdmi->audio->off(hdmi->audio, 0);
+		if (rc)
+			HDMI_ERR("HDMI audio Off failed status %d\n", rc);
+
 		hdmi_display_state_add(HDMI_STATE_DISCONNECTED);
 		hdmi_display_state_remove(HDMI_STATE_CONNECTED);
 	}
@@ -980,6 +1006,8 @@ static int hdmi_display_prepare(struct hdmi_display *hdmi_display, void *panel)
 		HDMI_ERR("pclk enable failed, rc=%d\n", rc);
 		return rc;
 	}
+
+	hdmi_display->pixclk = rate * HDMI_KHZ_TO_HZ;
 
 	rc = hdmi->phy->pre_enable(hdmi->phy);
 	if (rc) {
