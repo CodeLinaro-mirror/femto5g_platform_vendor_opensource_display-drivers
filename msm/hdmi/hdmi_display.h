@@ -24,6 +24,7 @@ struct hdmi_display {
 	bool non_pluggable;
 	bool dsc_cont_pps;
 	bool connected;
+	u32 pixclk;
 	u32 max_pclk_khz;
 	u32 max_mixer_count;
 	u32 max_dsc_count;
