@@ -291,6 +291,8 @@ struct dsi_panel {
 	u32 dsc_count;
 	u32 lm_count;
 
+	enum msm_disp_op disp_op;
+
 	bool ctl_op_sync;
 
 	int panel_test_gpio;

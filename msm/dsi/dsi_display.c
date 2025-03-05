@@ -1248,7 +1248,7 @@ static void _dsi_display_continuous_clk_ctrl(struct dsi_display *display,
 		 * DSI PHY to force clk lane to HS mode always whereas
 		 * for other phy ver chipsets, configure DSI controller only.
 		 */
-		if (ctrl->phy->hw.ops.set_continuous_clk) {
+		if (ctrl->phy->hw.ops.set_continuous_clk[ctrl->ctrl->disp_op]) {
 			dsi_ctrl_hs_req_sel(ctrl->ctrl, true);
 			dsi_ctrl_set_continuous_clk(ctrl->ctrl, enable);
 			dsi_phy_set_continuous_clk(ctrl->phy, enable);
@@ -3087,7 +3087,7 @@ static int dsi_display_ctrl_host_disable(struct dsi_display *display)
 	 * and return early.
 	 */
 	if (display->panel->ulps_suspend_enabled &&
-			!m_ctrl->phy->hw.ops.ulps_ops.ulps_request) {
+			!m_ctrl->phy->hw.ops.ulps_ops.ulps_request[m_ctrl->ctrl->disp_op]) {
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 			rc = dsi_ctrl_update_host_state(ctrl->ctrl,
@@ -5360,7 +5360,7 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			if (!ctrl->ctrl || (ctrl != mctrl))
 				continue;
 
-			ctrl->ctrl->hw.ops.set_timing_db(&ctrl->ctrl->hw,
+			ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op](&ctrl->ctrl->hw,
 					true);
 			dsi_phy_dynamic_refresh_clear(ctrl->phy);
 
@@ -9142,6 +9142,9 @@ int dsi_display_pre_kickoff(struct drm_connector *connector,
 	int i;
 
 	mode = display->panel->cur_mode;
+
+	if (display->panel->disp_op == MSM_DISP_OP_HFI)
+		return 0;
 
 	/* check and setup MISR */
 	if (display->misr_enable)
