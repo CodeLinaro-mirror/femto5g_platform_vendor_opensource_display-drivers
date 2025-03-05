@@ -656,6 +656,8 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 	struct dsi_display_hfi *display_hfi;
 	u32 kv_count;
 	u32 reserved_key = 0;
+	u32 kv_size = 0;
+	u32 payload_size = 0;
 	u32 sde_addr[3];
 	u32 hfi_addr[3];
 
@@ -677,16 +679,26 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 	hfi_util_kv_helper_reset(display_hfi->kv_props);
 
 	hfi_util_kv_helper_add(display_hfi->kv_props,
-					HFI_PACKKEY(HFI_PROPERTY_PANEL_TIMING_MODE_COUNT, 0, 1),
-					(void *)&panel_init_caps.num_timing_modes);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_TIMING_MODE_COUNT, 0,
+			(sizeof(panel_init_caps.num_timing_modes) / sizeof(u32))),
+			(void *)&panel_init_caps.num_timing_modes);
+	kv_size += sizeof(panel_init_caps.num_timing_modes);
+
 	hfi_util_kv_helper_add(display_hfi->kv_props,
-					HFI_PACKKEY(HFI_PROPERTY_PANEL_DPU_ADDRESS, 0, 3),
-					(void *)sde_addr);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DPU_ADDRESS, 0,
+			((ARRAY_SIZE(sde_addr) * sizeof(sde_addr[0])) / sizeof(u32))),
+			(void *)sde_addr);
+	kv_size += sizeof(sde_addr);
+
 	hfi_util_kv_helper_add(display_hfi->kv_props,
-					HFI_PACKKEY(HFI_PROPERTY_PANEL_DCP_ADDRESS, 0, 3),
-					(void *)hfi_addr);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DCP_ADDRESS, 0,
+			((ARRAY_SIZE(hfi_addr) * sizeof(hfi_addr[0])) / sizeof(u32))),
+			(void *)hfi_addr);
+	kv_size += sizeof(hfi_addr);
 
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
+
+	payload_size = (kv_count * sizeof(u32)) + kv_size;
 
 	rc = hfi_adapter_add_prop_array(buffer,
 				HFI_COMMAND_PANEL_INIT_PANEL_CAPS,
@@ -694,7 +706,7 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 				HFI_PAYLOAD_TYPE_U32,
 				hfi_util_kv_helper_get_payload_addr(display_hfi->kv_props),
 				kv_count,
-				40);
+				payload_size);
 	if (rc)
 		DSI_ERR("Failed to add caps to buffer, rc = %d", rc);
 
@@ -707,8 +719,9 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 {
 	int rc = 0;
 	int i = 0;
-	int j = MIN_NUM_OF_GEN_CAPS;
 	u32 kv_count;
+	u32 kv_size = 0;
+	u32 payload_size = 0;
 	u32 object_id = 0x0;
 	int num_caps = panel_generic_caps.valid_gen_caps_cnt;
 	struct dsi_display_hfi *display_hfi;
@@ -750,33 +763,45 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	};
 
 	/* Populate properties that will take on a default value, even if not present */
-	for (i = 0; i < MIN_NUM_OF_GEN_CAPS; i++)
+	for (i = 0; i < MIN_NUM_OF_GEN_CAPS; i++) {
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-					HFI_PACKKEY(dsi_hfi_gen_props_map[i].hfi_prop, 0, 1),
+					HFI_PACKKEY(dsi_hfi_gen_props_map[i].hfi_prop, 0,
+					(sizeof(dsi_hfi_gen_props_map[i].value) / sizeof(u32))),
 					(void *)&dsi_hfi_gen_props_map[i].value);
+		kv_size += sizeof(dsi_hfi_gen_props_map[i].value);
+	}
 
 	/* Populate properties that need to be checked for presence */
 	for (i = MIN_NUM_OF_GEN_CAPS; i < (num_caps-2); i++) {
 		if (dsi_hfi_gen_props_map[i].value) {
 			hfi_util_kv_helper_add(display_hfi->kv_props,
-					HFI_PACKKEY(dsi_hfi_gen_props_map[j].hfi_prop, 0, 1),
-					(void *)&dsi_hfi_gen_props_map[j].value);
-			j++;
+					HFI_PACKKEY(dsi_hfi_gen_props_map[i].hfi_prop, 0,
+					(sizeof(dsi_hfi_gen_props_map[i].value) / sizeof(u32))),
+					(void *)&dsi_hfi_gen_props_map[i].value);
+			kv_size += sizeof(dsi_hfi_gen_props_map[i].value);
 		}
 	}
 
 	/* Special case */
-	if (panel_generic_caps.ctrl_nums[0])
+	if (panel_generic_caps.ctrl_nums[0]) {
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-						HFI_PACKKEY(HFI_PROPERTY_PANEL_CTRL_NUM, 0, 2),
-						(void *)&panel_generic_caps.ctrl_nums);
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_CTRL_NUM, 0,
+					(sizeof(panel_generic_caps.ctrl_nums) / sizeof(u32))),
+					(void *)&panel_generic_caps.ctrl_nums);
+		kv_size += sizeof(panel_generic_caps.ctrl_nums);
+	}
 
-	if (panel_generic_caps.phy_nums[0])
+	if (panel_generic_caps.phy_nums[0]) {
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-						HFI_PACKKEY(HFI_PROPERTY_PANEL_PHY_NUM, 0, 2),
-						(void *)&panel_generic_caps.phy_nums);
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_PHY_NUM, 0,
+					(sizeof(panel_generic_caps.phy_nums) / sizeof(u32))),
+					(void *)&panel_generic_caps.phy_nums);
+		kv_size += sizeof(panel_generic_caps.phy_nums);
+	}
 
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
+
+	payload_size = (kv_count * sizeof(u32)) + kv_size;
 
 	rc = hfi_adapter_add_prop_array(buffer,
 				HFI_COMMAND_PANEL_INIT_GENERIC_CAPS,
@@ -784,7 +809,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,
 				hfi_util_kv_helper_get_payload_addr(display_hfi->kv_props),
 				kv_count,
-				(184));
+				payload_size);
 
 	if (rc)
 		DSI_ERR("Failed to add caps to buffer, rc = %d", rc);
@@ -811,38 +836,68 @@ static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
 
 	for (i = 0; i < display->panel->num_timing_nodes; i++) {
 		u32 kv_count;
+		u32 kv_size = 0;
+		u32 payload_size = 0;
 
 		hfi_util_kv_helper_reset(display_hfi->kv_props);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_INDEX, 0, 1),
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_INDEX, 0,
+				(sizeof(timing_caps_array[i].panel_index) / sizeof(u32))),
 				(void *)&timing_caps_array[i].panel_index);
+		kv_size += sizeof(timing_caps_array[i].panel_index);
+
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_CLOCKRATE, 0, 2),
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_CLOCKRATE, 0,
+				(sizeof(timing_caps_array[i].clockrate) / sizeof(u32))),
 				(void *)&timing_caps_array[i].clockrate);
+		kv_size += sizeof(timing_caps_array[i].clockrate);
+
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_FRAMERATE, 0, 1),
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_FRAMERATE, 0,
+				(sizeof(timing_caps_array[i].framerate) / sizeof(u32))),
 				(void *)&timing_caps_array[i].framerate);
+		kv_size += sizeof(timing_caps_array[i].framerate);
+
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_JITTER, 0, 2),
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_JITTER, 0,
+				(sizeof(timing_caps_array[i].panel_jitter) / sizeof(u32))),
 				(void *)&timing_caps_array[i].panel_jitter);
+		kv_size += sizeof(timing_caps_array[i].panel_jitter);
+
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_RESOLUTION_DATA, 0, 14),
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_RESOLUTION_DATA, 0,
+				(sizeof(timing_caps_array[i].res_data) / sizeof(u32))),
 				(void *)&timing_caps_array[i].res_data);
+		kv_size += sizeof(timing_caps_array[i].res_data);
+
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_DATA, 0, 12),
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_DATA, 0,
+				(sizeof(timing_caps_array[i].compression_params) / sizeof(u32))),
 				(void *)&timing_caps_array[i].compression_params);
+		kv_size += sizeof(timing_caps_array[i].compression_params);
+
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_DISPLAY_TOPOLOGY, 0, 5),
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_DISPLAY_TOPOLOGY, 0,
+				(sizeof(timing_caps_array[i].topology) / sizeof(u32))),
 				(void *)&timing_caps_array[i].topology);
+		kv_size += sizeof(timing_caps_array[i].topology);
+
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_DEFAULT_TOPOLOGY_INDEX, 0, 1),
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_DEFAULT_TOPOLOGY_INDEX, 0,
+				(sizeof(timing_caps_array[i].top_index) / sizeof(u32))),
 				(void *)&timing_caps_array[i].top_index);
+		kv_size += sizeof(timing_caps_array[i].top_index);
+
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_DCS_CMD_INFO, 0, 11),
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_DCS_CMD_INFO, 0,
+				(sizeof(timing_caps_array[i].payload) / sizeof(u32))),
 				(void *)&timing_caps_array[i].payload);
+		kv_size += sizeof(timing_caps_array[i].payload);
 
 		kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
+
+		payload_size = (kv_count * sizeof(u32)) + kv_size;
 
 		rc = hfi_adapter_add_prop_array(buffer,
 				HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS,
@@ -850,7 +905,7 @@ static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,
 				hfi_util_kv_helper_get_payload_addr(display_hfi->kv_props),
 				kv_count,
-				(232));
+				payload_size);
 
 		if (rc)
 			DSI_ERR("Failed to add caps for timing node:%d, rc = %d",
