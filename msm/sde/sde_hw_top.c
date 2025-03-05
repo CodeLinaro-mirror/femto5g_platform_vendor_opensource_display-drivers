@@ -461,7 +461,7 @@ static void sde_hw_intf_audio_select(struct sde_hw_mdp *mdp)
 
 	c = &mdp->hw;
 
-	SDE_REG_WRITE(c, HDMI_DP_CORE_SELECT, 0x1);
+	SDE_REG_WRITE(c, HDMI_DP_CORE_SELECT, 0x0);
 }
 
 static void sde_hw_mdp_events(struct sde_hw_mdp *mdp, bool enable)

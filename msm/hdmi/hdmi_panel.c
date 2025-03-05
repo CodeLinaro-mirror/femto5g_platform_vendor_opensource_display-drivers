@@ -9,6 +9,7 @@
 #include "hdmi_debug.h"
 #include "sde_edid_parser.h"
 #include "sde_connector.h"
+#include "hdmi_regs.h"
 
 #define FULL_COLORIMETRY_MASK           0x1FF
 #define NORMAL_COLORIMETRY_MASK         0x3
@@ -62,24 +63,6 @@ static const u32 hdmi_panel_colorimetry_val[] = {
 #define HDMI_DEFAULT_PRODUCT_NAME	"msm"
 #define HDMI_DEFAULT_VENDOR_NAME	"unknown"
 
-#define REG_HDMI_TOTAL			0x000002c0
-#define REG_HDMI_ACTIVE_HSYNC		0x000002b4
-#define REG_HDMI_ACTIVE_VSYNC		0x000002b8
-#define REG_HDMI_VSYNC_ACTIVE_F2	0x000002bc
-#define REG_HDMI_VSYNC_TOTAL_F2		0x000002c4
-#define REG_HDMI_FRAME_CTRL		0x000002c8
-
-#define REG_HDMI_CTRL			0x00000000
-#define REG_HDMI_VBI_PKT_CTRL		0x00000028
-#define REG_HDMI_INFOFRAME_CTRL0	0x0000002c
-#define REG_HDMI_INFOFRAME_CTRL1	0x00000030
-#define REG_HDMI_GEN_PKT_CTRL		0x00000034
-#define REG_HDMI_AVI_INFO_0		0x0000006c
-#define REG_HDMI_GENERIC0_HDR		0x00000084
-#define REG_HDMI_GENERIC_0		0x00000088
-#define REG_HDMI_GENERIC1_HDR		0x000000a4
-#define REG_HDMI_GENERIC_1		0x000000a8
-#define REG_HDMI_VENSPEC_INFO0		0x0000016c
 
 #define	MAX_REG_HDMI_GENERIC1_INDEX	6
 
@@ -90,14 +73,6 @@ static const u32 hdmi_panel_colorimetry_val[] = {
 #define hdmi_write(off, value) ({ \
 	writel_relaxed(value, panel->io_data->io.base + off); \
 })
-
-enum {
-	HDMI_FRAME_CTRL_INTERLACED_EN	= 0x0,
-	HDMI_CTRL_ENABLE	= 0x1,
-	HDMI_CTRL_HDMI		= 0x2,
-	HDMI_FRAME_CTRL_VSYNC_LOW = 0x10000000,
-	HDMI_FRAME_CTRL_HSYNC_LOW = 0x20000000,
-};
 
 enum {
 	HDMI_AVI_IFRAME_LINE_NUMBER	= 0x1,
@@ -120,20 +95,6 @@ struct hdmi_panel_private {
 	struct drm_connector *connector;
 };
 
-static inline u32 REG_HDMI_AVI_INFO(u32 i0)
-{
-	return REG_HDMI_AVI_INFO_0 + 0x4*i0;
-}
-
-static inline u32 REG_HDMI_GENERIC0(u32 i0)
-{
-	return REG_HDMI_GENERIC_0 + 0x4*i0;
-}
-
-static inline u32 REG_HDMI_GENERIC1(u32 i0)
-{
-	return REG_HDMI_GENERIC_1 + 0x4*i0;
-}
 
 /* Add these register definitions to support the latest chipsets. These
  * are going to be replaced by a chipset-based mask approach.
@@ -210,6 +171,21 @@ static inline u32 HDMI_VSYNC_TOTAL_F2_V_TOTAL(u32 val)
 		HDMI_VSYNC_TOTAL_F2_V_TOTAL__MASK;
 }
 
+static inline u32 HDMI_AVI_INFO(u32 i0)
+{
+	return HDMI_AVI_INFO_0 + 0x4*i0;
+}
+
+static inline u32 HDMI_GENERIC0(u32 i0)
+{
+	return HDMI_GENERIC0_0 + 0x4*i0;
+}
+
+static inline u32 HDMI_GENERIC1(u32 i0)
+{
+	return HDMI_GENERIC1_0 + 0x4*i0;
+}
+
 static inline void hdmi_panel_update_pps(
 		struct hdmi_panel *hdmi_panel, char *pps_cmd)
 {
@@ -217,14 +193,6 @@ static inline void hdmi_panel_update_pps(
 
 static inline int hdmi_panel_set_colorspace(
 		struct hdmi_panel *hdmi_panel, u32 colorspace)
-{
-	return 0;
-}
-
-static inline int hdmi_panel_convert_to_hdmi_mode(
-		struct hdmi_panel *hdmi_panel,
-		const struct drm_display_mode *drm_mode,
-		struct hdmi_display_mode *hdmi_mode)
 {
 	return 0;
 }
@@ -273,24 +241,24 @@ static void _hdmi_panel_config_avi_iframe(
 		LEFT_SHIFT_BYTE(avi_frame[0]) |
 		LEFT_SHIFT_WORD(avi_frame[1]) |
 		LEFT_SHIFT_24BITS(avi_frame[2]);
-	hdmi_write(REG_HDMI_AVI_INFO(0), reg_val);
+	hdmi_write(HDMI_AVI_INFO(0), reg_val);
 
 	reg_val = avi_frame[3] |
 		LEFT_SHIFT_BYTE(avi_frame[4]) |
 		LEFT_SHIFT_WORD(avi_frame[5]) |
 		LEFT_SHIFT_24BITS(avi_frame[6]);
-	hdmi_write(REG_HDMI_AVI_INFO(1), reg_val);
+	hdmi_write(HDMI_AVI_INFO(1), reg_val);
 
 	reg_val = avi_frame[7] |
 		LEFT_SHIFT_BYTE(avi_frame[8]) |
 		LEFT_SHIFT_WORD(avi_frame[9]) |
 		LEFT_SHIFT_24BITS(avi_frame[10]);
-	hdmi_write(REG_HDMI_AVI_INFO(2), reg_val);
+	hdmi_write(HDMI_AVI_INFO(2), reg_val);
 
 	reg_val = avi_frame[11] |
 		LEFT_SHIFT_BYTE(avi_frame[12]) |
 		LEFT_SHIFT_24BITS(buffer[1]);
-	hdmi_write(REG_HDMI_AVI_INFO(3), reg_val);
+	hdmi_write(HDMI_AVI_INFO(3), reg_val);
 }
 
 static void _hdmi_panel_config_vs_iframe(
@@ -304,7 +272,7 @@ static void _hdmi_panel_config_vs_iframe(
 		LEFT_SHIFT_WORD(frame->vic) |
 		LEFT_SHIFT_BYTE(buffer[3]) |
 		(buffer[7] << 5) | buffer[2];
-	hdmi_write(REG_HDMI_VENSPEC_INFO0, reg_val);
+	hdmi_write(HDMI_VENSPEC_INFO0, reg_val);
 }
 
 static void _hdmi_panel_config_spd_iframe(
@@ -316,19 +284,19 @@ static void _hdmi_panel_config_spd_iframe(
 	packet_header = buffer[0]
 			| LEFT_SHIFT_BYTE(buffer[1] & 0x7f)
 			| LEFT_SHIFT_WORD(buffer[2] & 0x7f);
-	hdmi_write(REG_HDMI_GENERIC1_HDR, packet_header);
+	hdmi_write(HDMI_GENERIC1_HDR, packet_header);
 
 	for (i = 0; i < MAX_REG_HDMI_GENERIC1_INDEX; i++) {
 		packet_payload = buffer[3 + i * 4]
 			| LEFT_SHIFT_BYTE(buffer[4 + i * 4] & 0x7f)
 			| LEFT_SHIFT_WORD(buffer[5 + i * 4] & 0x7f)
 			| LEFT_SHIFT_24BITS(buffer[6 + i * 4] & 0x7f);
-		hdmi_write(REG_HDMI_GENERIC1(i), packet_payload);
+		hdmi_write(HDMI_GENERIC1(i), packet_payload);
 	}
 
 	packet_payload = (buffer[27] & 0x7f)
 			| LEFT_SHIFT_BYTE(buffer[28] & 0x7f);
-	hdmi_write(REG_HDMI_GENERIC1(MAX_REG_HDMI_GENERIC1_INDEX),
+	hdmi_write(HDMI_GENERIC1(MAX_REG_HDMI_GENERIC1_INDEX),
 			packet_payload);
 }
 
@@ -340,41 +308,42 @@ static void _hdmi_panel_config_mode(struct hdmi_panel_private *panel)
 	/* TODO: Confirm the register configuration.
 	 * is -1 really required, if so, WHY?
 	 */
-	hdmi_write(REG_HDMI_TOTAL,
+	hdmi_write(HDMI_TOTAL,
 			HDMI_TOTAL_H_TOTAL(pinfo->htotal - 1) |
 			HDMI_TOTAL_V_TOTAL(pinfo->vtotal - 1));
 
-	hdmi_write(REG_HDMI_ACTIVE_HSYNC,
+	hdmi_write(HDMI_ACTIVE_HSYNC,
 			HDMI_ACTIVE_HSYNC_START(pinfo->h_start) |
 			HDMI_ACTIVE_HSYNC_END(pinfo->h_end));
 
-	hdmi_write(REG_HDMI_ACTIVE_VSYNC,
+	hdmi_write(HDMI_ACTIVE_VSYNC,
 			HDMI_ACTIVE_VSYNC_START(pinfo->v_start) |
 			HDMI_ACTIVE_VSYNC_END(pinfo->v_end));
 
 	if (pinfo->interlace) {
-		hdmi_write(REG_HDMI_VSYNC_TOTAL_F2,
+		hdmi_write(HDMI_VSYNC_TOTAL_F2,
 			HDMI_VSYNC_TOTAL_F2_V_TOTAL(pinfo->vtotal));
-		hdmi_write(REG_HDMI_VSYNC_ACTIVE_F2,
+		hdmi_write(HDMI_VSYNC_ACTIVE_F2,
 			HDMI_VSYNC_ACTIVE_F2_START(pinfo->v_start + 1) |
 			HDMI_VSYNC_ACTIVE_F2_END(pinfo->v_end + 1));
 	} else {
-		hdmi_write(REG_HDMI_VSYNC_TOTAL_F2,
+		hdmi_write(HDMI_VSYNC_TOTAL_F2,
 			HDMI_VSYNC_TOTAL_F2_V_TOTAL(0));
-		hdmi_write(REG_HDMI_VSYNC_ACTIVE_F2,
+		hdmi_write(HDMI_VSYNC_ACTIVE_F2,
 			HDMI_VSYNC_ACTIVE_F2_START(0) |
 			HDMI_VSYNC_ACTIVE_F2_END(0));
 	}
 
-	if (pinfo->h_active_low)
+/*	if (pinfo->h_active_low)
 		frame_ctrl |= HDMI_FRAME_CTRL_HSYNC_LOW;
 	if (pinfo->v_active_low)
 		frame_ctrl |= HDMI_FRAME_CTRL_VSYNC_LOW;
+*/
 	if (pinfo->interlace)
 		frame_ctrl |= HDMI_FRAME_CTRL_INTERLACED_EN;
 
 	HDMI_DEBUG("frame_ctrl=0x%08x", frame_ctrl);
-	hdmi_write(REG_HDMI_FRAME_CTRL, frame_ctrl);
+	hdmi_write(HDMI_FRAME_CTRL, frame_ctrl);
 }
 
 static void _hdmi_panel_manage_deep_color(
@@ -386,7 +355,7 @@ static void _hdmi_panel_manage_deep_color(
 	HDMI_DEBUG("Deep Color: %s", deep_color_en ? "On" : "Off");
 
 	if (deep_color_en) {
-		hdmi_ctrl_reg = hdmi_read(REG_HDMI_CTRL);
+		hdmi_ctrl_reg = hdmi_read(HDMI_CTRL);
 
 		/* GC CD override */
 		hdmi_ctrl_reg |= BIT(27);
@@ -399,7 +368,7 @@ static void _hdmi_panel_manage_deep_color(
 		 * 2. RGB888/YUV444/YUV420 36 bits
 		 */
 		hdmi_ctrl_reg |= BIT(24);
-		hdmi_write(REG_HDMI_CTRL, hdmi_ctrl_reg);
+		hdmi_write(HDMI_CTRL, hdmi_ctrl_reg);
 		/* Enable GC_CONT and GC_SEND in General Control Packet
 		 * (GCP) register so that deep color data is transmitted
 		 * to the sink on every frame, allowing the sink to decode
@@ -408,23 +377,23 @@ static void _hdmi_panel_manage_deep_color(
 		 * GC_CONT: 0x1 - Send GCP on every frame
 		 * GC_SEND: 0x1 - Enable GCP Transmission
 		 */
-		vbi_pkt_reg = hdmi_read(REG_HDMI_VBI_PKT_CTRL);
+		vbi_pkt_reg = hdmi_read(HDMI_VBI_PKT_CTRL);
 		vbi_pkt_reg |= BIT(5) | BIT(4);
-		hdmi_write(REG_HDMI_VBI_PKT_CTRL, vbi_pkt_reg);
+		hdmi_write(HDMI_VBI_PKT_CTRL, vbi_pkt_reg);
 	} else {
-		hdmi_ctrl_reg = hdmi_read(REG_HDMI_CTRL);
+		hdmi_ctrl_reg = hdmi_read(HDMI_CTRL);
 
 		/* disable GC CD override */
 		hdmi_ctrl_reg &= ~BIT(27);
 
 		/* enable deep color for RGB888/YUV444/YUV420 30 bits */
 		hdmi_ctrl_reg &= ~BIT(24);
-		hdmi_write(REG_HDMI_CTRL, hdmi_ctrl_reg);
+		hdmi_write(HDMI_CTRL, hdmi_ctrl_reg);
 
 		/* disable the GC packet sending */
-		vbi_pkt_reg = hdmi_read(REG_HDMI_VBI_PKT_CTRL);
+		vbi_pkt_reg = hdmi_read(HDMI_VBI_PKT_CTRL);
 		vbi_pkt_reg &= ~(BIT(5) | BIT(4));
-		hdmi_write(REG_HDMI_VBI_PKT_CTRL, vbi_pkt_reg);
+		hdmi_write(HDMI_VBI_PKT_CTRL, vbi_pkt_reg);
 	}
 }
 
@@ -525,20 +494,20 @@ static void _hdmi_panel_config_hdr_iframe(struct hdmi_panel_private *panel,
 	connector = panel->connector;
 
 	/* Setup the line number to send the packet on */
-	packet_control = hdmi_read(REG_HDMI_GEN_PKT_CTRL);
+	packet_control = hdmi_read(HDMI_GEN_PKT_CTRL);
 	packet_control |= BIT(16);
-	hdmi_write(REG_HDMI_GEN_PKT_CTRL, packet_control);
+	hdmi_write(HDMI_GEN_PKT_CTRL, packet_control);
 
 	/* Setup the packet to be sent every frame */
-	packet_control = hdmi_read(REG_HDMI_GEN_PKT_CTRL);
+	packet_control = hdmi_read(HDMI_GEN_PKT_CTRL);
 	packet_control |= BIT(1);
-	hdmi_write(REG_HDMI_GEN_PKT_CTRL, packet_control);
+	hdmi_write(HDMI_GEN_PKT_CTRL, packet_control);
 
 	/* Setup packet header and payload */
 	packet_header = type_code
 		| LEFT_SHIFT_BYTE(version)
 		| LEFT_SHIFT_WORD(length);
-	hdmi_write(REG_HDMI_GENERIC0_HDR, packet_header);
+	hdmi_write(HDMI_GENERIC0_HDR, packet_header);
 
 	/**
 	 * Checksum is not a mandatory field for
@@ -565,41 +534,41 @@ static void _hdmi_panel_config_hdr_iframe(struct hdmi_panel_private *panel,
 	| LEFT_SHIFT_BYTE(HDMI_GET_LSB(meta->display_primaries_y[0]))
 	| LEFT_SHIFT_WORD(HDMI_GET_MSB(meta->display_primaries_y[0]))
 	| LEFT_SHIFT_24BITS(HDMI_GET_LSB(meta->display_primaries_x[1]));
-	hdmi_write(REG_HDMI_GENERIC0(1), packet_payload);
+	hdmi_write(HDMI_GENERIC0(1), packet_payload);
 
 	packet_payload =
 	HDMI_GET_MSB(meta->display_primaries_x[1])
 	| LEFT_SHIFT_BYTE(HDMI_GET_LSB(meta->display_primaries_y[1]))
 	| LEFT_SHIFT_WORD(HDMI_GET_MSB(meta->display_primaries_y[1]))
 	| LEFT_SHIFT_24BITS(HDMI_GET_LSB(meta->display_primaries_x[2]));
-	hdmi_write(REG_HDMI_GENERIC0(2), packet_payload);
+	hdmi_write(HDMI_GENERIC0(2), packet_payload);
 
 	packet_payload =
 	HDMI_GET_MSB(meta->display_primaries_x[2])
 	| LEFT_SHIFT_BYTE(HDMI_GET_LSB(meta->display_primaries_y[2]))
 	| LEFT_SHIFT_WORD(HDMI_GET_MSB(meta->display_primaries_y[2]))
 	| LEFT_SHIFT_24BITS(HDMI_GET_LSB(meta->white_point_x));
-	hdmi_write(REG_HDMI_GENERIC0(3), packet_payload);
+	hdmi_write(HDMI_GENERIC0(3), packet_payload);
 
 	packet_payload =
 	HDMI_GET_MSB(meta->white_point_x)
 	| LEFT_SHIFT_BYTE(HDMI_GET_LSB(meta->white_point_y))
 	| LEFT_SHIFT_WORD(HDMI_GET_MSB(meta->white_point_y))
 	| LEFT_SHIFT_24BITS(HDMI_GET_LSB(meta->max_luminance));
-	hdmi_write(REG_HDMI_GENERIC0(4), packet_payload);
+	hdmi_write(HDMI_GENERIC0(4), packet_payload);
 
 	packet_payload =
 	HDMI_GET_MSB(meta->max_luminance)
 	| LEFT_SHIFT_BYTE(HDMI_GET_LSB(meta->min_luminance))
 	| LEFT_SHIFT_WORD(HDMI_GET_MSB(meta->min_luminance))
 	| LEFT_SHIFT_24BITS(HDMI_GET_LSB(meta->max_content_light_level));
-	hdmi_write(REG_HDMI_GENERIC0(5), packet_payload);
+	hdmi_write(HDMI_GENERIC0(5), packet_payload);
 
 	packet_payload =
 	HDMI_GET_MSB(meta->max_content_light_level)
 	| LEFT_SHIFT_BYTE(HDMI_GET_LSB(meta->max_average_light_level))
 	| LEFT_SHIFT_WORD(HDMI_GET_MSB(meta->max_average_light_level));
-	hdmi_write(REG_HDMI_GENERIC0(6), packet_payload);
+	hdmi_write(HDMI_GENERIC0(6), packet_payload);
 
 }
 
@@ -608,19 +577,19 @@ static void _hdmi_panel_flush_hdr_iframe(struct hdmi_panel_private *panel)
 	u32 packet_control;
 
 	/* Flush the contents to the register. */
-	packet_control = hdmi_read(REG_HDMI_GEN_PKT_CTRL);
+	packet_control = hdmi_read(HDMI_GEN_PKT_CTRL);
 	packet_control |= BIT(2);
-	hdmi_write(REG_HDMI_GEN_PKT_CTRL, packet_control);
+	hdmi_write(HDMI_GEN_PKT_CTRL, packet_control);
 
 	/* Clear the flush bit of the register. */
-	packet_control = hdmi_read(REG_HDMI_GEN_PKT_CTRL);
+	packet_control = hdmi_read(HDMI_GEN_PKT_CTRL);
 	packet_control &= ~BIT(2);
-	hdmi_write(REG_HDMI_GEN_PKT_CTRL, packet_control);
+	hdmi_write(HDMI_GEN_PKT_CTRL, packet_control);
 
 	/* Start sending the packets. */
-	packet_control = hdmi_read(REG_HDMI_GEN_PKT_CTRL);
+	packet_control = hdmi_read(HDMI_GEN_PKT_CTRL);
 	packet_control |= BIT(0);
-	hdmi_write(REG_HDMI_GEN_PKT_CTRL, packet_control);
+	hdmi_write(HDMI_GEN_PKT_CTRL, packet_control);
 
 	HDMI_DEBUG("OK");
 }
@@ -635,23 +604,23 @@ static void _hdmi_panel_manage_iframe(struct hdmi_panel_private *panel)
 	 * Enable this packet to transmit every frame
 	 * Enable HDMI TX engine to transmit VS and AVI packet
 	 */
-	reg_val = hdmi_read(REG_HDMI_INFOFRAME_CTRL0);
+	reg_val = hdmi_read(HDMI_INFOFRAME_CTRL0);
 	reg_val |= (BIT(13) | BIT(12) | BIT(1) | BIT(0));
-	hdmi_write(REG_HDMI_INFOFRAME_CTRL0, reg_val);
-	reg_val = hdmi_read(REG_HDMI_INFOFRAME_CTRL1);
+	hdmi_write(HDMI_INFOFRAME_CTRL0, reg_val);
+	reg_val = hdmi_read(HDMI_INFOFRAME_CTRL1);
 	reg_val &= ~(LEFT_SHIFT_24BITS(0x3F) | 0x3F);
 	reg_val |= HDMI_AVI_IFRAME_LINE_NUMBER |
 		LEFT_SHIFT_24BITS(HDMI_VENDOR_IFRAME_LINE_NUMBER);
-	hdmi_write(REG_HDMI_INFOFRAME_CTRL1, reg_val);
+	hdmi_write(HDMI_INFOFRAME_CTRL1, reg_val);
 	/*
 	 * GENERIC1_LINE | GENERIC1_CONT | GENERIC1_SEND
 	 * Setup HDMI TX generic packet control
 	 * Enable this packet to transmit every frame
 	 * Enable HDMI TX engine to transmit Generic packet 1
 	 */
-	reg_val = hdmi_read(REG_HDMI_GEN_PKT_CTRL);
+	reg_val = hdmi_read(HDMI_GEN_PKT_CTRL);
 	reg_val |= (LEFT_SHIFT_24BITS(0x1) | (1 << 5) | (1 << 4));
-	hdmi_write(REG_HDMI_GEN_PKT_CTRL, reg_val);
+	hdmi_write(HDMI_GEN_PKT_CTRL, reg_val);
 }
 
 static void _hdmi_panel_manage_ctrl(struct hdmi_panel_private *panel, bool en)
@@ -665,7 +634,7 @@ static void _hdmi_panel_manage_ctrl(struct hdmi_panel_private *panel, bool en)
 	 * 4. SPD IF
 	 */
 
-	reg_val = hdmi_read(REG_HDMI_CTRL);
+	reg_val = hdmi_read(HDMI_CTRL);
 
 	if (en) {
 		/* Enable HDMI TX controller */
@@ -674,7 +643,7 @@ static void _hdmi_panel_manage_ctrl(struct hdmi_panel_private *panel, bool en)
 		if (!panel->is_hdmi_mode) {
 			/* TODO: Understand why are we setting HDMI_CTRL_HDMI */
 			reg_val |= HDMI_CTRL_HDMI;
-			hdmi_write(REG_HDMI_CTRL, reg_val);
+			hdmi_write(HDMI_CTRL, reg_val);
 			reg_val &= ~HDMI_CTRL_HDMI;
 		} else {
 			_hdmi_panel_manage_iframe(panel);
@@ -687,7 +656,7 @@ static void _hdmi_panel_manage_ctrl(struct hdmi_panel_private *panel, bool en)
 		 */
 		reg_val &= ~HDMI_CTRL_ENABLE;
 	}
-	hdmi_write(REG_HDMI_CTRL, reg_val);
+	hdmi_write(HDMI_CTRL, reg_val);
 	HDMI_DEBUG("HDMI Core: %s, HDMI_CTRL=0x%08x\n",
 			en ? "Enable" : "Disable", reg_val);
 }
@@ -701,8 +670,7 @@ static bool hdmi_panel_check_mode_hdmi(struct hdmi_panel_info *pinfo)
 }
 
 static int hdmi_panel_get_modes(struct hdmi_panel *hdmi_panel,
-		struct drm_connector *connector,
-		struct hdmi_display_mode *mode)
+		struct drm_connector *connector)
 {
 	int rc = 0;
 
@@ -717,6 +685,7 @@ static int hdmi_panel_get_modes(struct hdmi_panel *hdmi_panel,
 	}
 
 	return rc;
+
 }
 
 static void hdmi_panel_set_avi_infoframe(
@@ -751,7 +720,7 @@ static void hdmi_panel_set_avi_infoframe(
 				HDMI_QUANTIZATION_RANGE_LIMITED);
 
 	ret = hdmi_infoframe_pack(&frame, buffer, sizeof(buffer));
-	if (ret) {
+	if (ret < 0) {
 		HDMI_ERR("failed to pack AVI infoframe: %i", ret);
 		return;
 	}
@@ -788,7 +757,7 @@ static void hdmi_panel_set_vs_infoframe(
 	}
 
 	ret = hdmi_vendor_infoframe_pack(&frame, buffer, sizeof(buffer));
-	if (ret) {
+	if (ret < 0) {
 		HDMI_ERR("failed to pack Vendor infoframe: %i", ret);
 		return;
 	}
@@ -890,8 +859,8 @@ static void hdmi_panel_save_mode(struct hdmi_panel_info *pinfo,
 	pinfo->v_back_porch =
 		mode->vtotal - mode->vsync_end;
 
-	pinfo->v_start = mode->vtotal - mode->vsync_start;
-	pinfo->v_end = mode->vtotal - mode->vsync_start + mode->vdisplay;
+	pinfo->v_start = mode->vtotal - mode->vsync_start - 1;
+	pinfo->v_end = mode->vtotal - mode->vsync_start + mode->vdisplay - 1;
 
 	pinfo->v_sync_width = pinfo->vtotal - (pinfo->v_active +
 			pinfo->v_front_porch + pinfo->v_back_porch);
@@ -1074,7 +1043,6 @@ struct hdmi_panel *hdmi_panel_get(struct device *dev,
 	hdmi_panel->get_panel_on = hdmi_pabel_get_panel_on;
 	hdmi_panel->validate_mode = hdmi_panel_validate_mode;
 	hdmi_panel->set_colorspace = hdmi_panel_set_colorspace;
-	hdmi_panel->convert_to_hdmi_mode = hdmi_panel_convert_to_hdmi_mode;
 	hdmi_panel->pclk_factor = 1;
 
 	return hdmi_panel;

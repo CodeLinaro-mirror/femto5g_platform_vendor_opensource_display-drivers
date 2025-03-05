@@ -15,7 +15,8 @@ enum hdmi_pm_type {
 	HDMI_CTRL_PM,
 	HDMI_PHY_PM,
 	HDMI_PLL_PM,
-	HDMI_LINK_PM,
+	HDMI_HPD_PM,
+	HDMI_PCLK_PM,
 	HDMI_MAX_PM
 };
 
@@ -27,6 +28,7 @@ enum hdmi_pin_states {
 	HDMI_GPIO_MUX_SEL,
 	HDMI_GPIO_MUX_LPM,
 	HDMI_GPIO_HPD5V,
+	HDMI_GPIO_CEC,
 	HDMI_GPIO_MAX,
 };
 
@@ -148,6 +150,8 @@ static inline const char *hdmi_parser_pm_name(enum hdmi_pm_type module)
 	case HDMI_CTRL_PM:	return "HDMI_CTRL_PM";
 	case HDMI_PHY_PM:	return "HDMI_PHY_PM";
 	case HDMI_PLL_PM:	return "HDMI_PLL_PM";
+	case HDMI_HPD_PM:	return "HDMI_HPD_PM";
+	case HDMI_PCLK_PM:	return "HDMI_PCLK_PM";
 	default:		return "???";
 	}
 }
