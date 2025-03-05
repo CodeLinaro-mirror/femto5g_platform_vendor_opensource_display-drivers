@@ -1,0 +1,51 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+
+#ifndef _HFI_PLANE_H_
+#define _HFI_PLANE_H_
+
+#include "hfi_adapter.h"
+#include "sde_plane.h"
+#include "hfi_utils.h"
+
+/**
+ * struct hfi_plane - hfi extension of sde plane structure
+ * @sde_base: Base sde plane object
+ * @hfi_lock: Mutex to protect hfi plane specific data
+ * @base_props: prop helper object for intermediate property collection
+ * @kv_props: kv pair helper object for intermediate property collection
+ */
+struct hfi_plane {
+	struct sde_plane sde_base;
+
+	struct mutex hfi_lock;
+	struct hfi_util_u32_prop_helper *base_props;
+	struct hfi_util_kv_helper *kv_props;
+};
+
+/**
+ * struct hfi_plane_state - hfi extension of sde plane state object
+ * @sde_base: base sde plane state object
+ */
+struct hfi_plane_state {
+	struct sde_plane_state sde_base;
+};
+
+#if IS_ENABLED(CONFIG_MDSS_HFI)
+/**
+ * hfi_plane_init - create hfi plane object
+ * @pipe_id:  sde hardware pipe identifier
+ * @kms: Pointer to sde kms struct
+ * Returns: Pointer to newly created sde plane struct
+ */
+struct sde_plane *hfi_plane_init(uint32_t pipe_id, struct sde_kms *kms);
+#else
+struct sde_plane *hfi_plane_init(uint32_t pipe_id, struct sde_kms *kms)
+{
+	return NULL;
+}
+#endif // CONFIG_MDSS_HFI
+
+#endif  // _SDE_PLANE_HFI_H_

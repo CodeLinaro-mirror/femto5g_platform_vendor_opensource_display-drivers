@@ -1,0 +1,583 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ */
+
+#define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
+
+#include "msm_drv.h"
+#include "hfi_props.h"
+#include "hfi_adapter.h"
+#include "hfi_kms.h"
+#include "hfi_crtc.h"
+#include "hfi_plane.h"
+#include "hfi_catalog.h"
+
+#define HFI_PLANE_ID(pl) ((pl)->sde_base.base.base.id)
+
+#define HFI_DEBUG_PLANE(pl, fmt, ...) SDE_DEBUG("plane%d " fmt,\
+				(pl) ? HFI_PLANE_ID(pl) : -1, ##__VA_ARGS__)
+
+#define HFI_ERROR(fmt, ...) SDE_ERROR(fmt, ##__VA_ARGS__)
+
+#define HFI_ERROR_PLANE(pl, fmt, ...) SDE_ERROR("plane%d " fmt,\
+				(pl) ? HFI_PLANE_ID(pl) : -1, ##__VA_ARGS__)
+
+
+#define to_hfi_plane(x) container_of(x, struct hfi_plane, sde_base)
+#define to_hfi_plane_state(x) container_of(x, struct hfi_plane_state, sde_base)
+
+#define HFI_PLANE_MAX_PROPS 128
+#define HFI_PLANE_BASE_PROP_MAX_SIZE 1024
+
+#define DWORD_SIZE(x) (x/sizeof(u32))
+
+/*
+ * struct base_prop_lookup: tuple of drm property ID to HFI property ID
+ */
+struct base_prop_lookup {
+	u32 drm_prop;
+	u32 hfi_prop;
+};
+
+static struct base_prop_lookup hfi_plane_base_props_map[] = {
+	{PLANE_PROP_ZPOS, HFI_PROPERTY_LAYER_ZPOS},
+	{PLANE_PROP_ALPHA, HFI_PROPERTY_LAYER_ALPHA},
+	{PLANE_PROP_BLEND_OP, HFI_PROPERTY_LAYER_BLEND_TYPE},
+	{PLANE_PROP_SRC_IMG_SIZE, HFI_PROPERTY_LAYER_SRC_IMG_SIZE_H},
+	{PLANE_PROP_SRC_IMG_SIZE, HFI_PROPERTY_LAYER_SRC_IMG_SIZE_W},
+	{PLANE_PROP_MULTIRECT_MODE, HFI_PROPERTY_LAYER_MULTIRECT_MODE},
+	{PLANE_PROP_BG_ALPHA, HFI_PROPERTY_LAYER_BG_ALPHA},
+};
+
+static u32 hfi_plane_blend_ops_map[] = {
+	[SDE_DRM_BLEND_OP_NOT_DEFINED] = HFI_BLEND_OP_NOT_DEFINED,
+	[SDE_DRM_BLEND_OP_OPAQUE] = HFI_BLEND_OP_OPAQUE,
+	[SDE_DRM_BLEND_OP_PREMULTIPLIED] = HFI_BLEND_OP_PREMULTIPLIED,
+	[SDE_DRM_BLEND_OP_COVERAGE] = HFI_BLEND_OP_COVERAGE,
+	[SDE_DRM_BLEND_OP_MAX] = HFI_BLEND_OP_MAX,
+	[SDE_DRM_BLEND_OP_SKIP] = HFI_BLEND_OP_SKIP,
+};
+
+static u32 hfi_plane_multirect_mode_map[] = {
+	[SDE_SSPP_MULTIRECT_PARALLEL] = HFI_PARALLEL_FETCH,
+	[SDE_SSPP_MULTIRECT_TIME_MX] = HFI_TIME_MULTIPLEX_FETCH,
+};
+
+struct kv_prop_lookup {
+	u32 drm_prop;
+	u32 hfi_prop;
+	void (*add_hfi_prop)(u32 hfi_prop, struct sde_plane *plane,
+			struct sde_plane_state *old_state, struct hfi_cmdbuf_t *cmd_buf);
+};
+
+struct kv_prop_lookup hfi_plane_custom_kv_props_map[] = {
+//	{PLANE_PROP_CSC, HFI_PROPERTY_LAYER_CSC_CFG, set_csc},
+};
+
+static struct hfi_kms *sde_plane_get_kms(struct sde_plane *plane)
+{
+	struct msm_drm_private *priv;
+
+	if (plane && plane->base.dev && plane->base.dev->dev_private) {
+		priv = plane->base.dev->dev_private;
+		return ((priv && priv->kms) ?
+				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
+	}
+
+	return NULL;
+}
+
+static int _hfi_plane_add_drm_props(struct sde_plane *plane,
+		struct sde_plane_state *pstate,
+		struct hfi_util_u32_prop_helper *prop_collector)
+{
+	u32 prop_id;
+	u32 hfi_format;
+	struct hfi_display_roi src, dst;
+	struct drm_plane_state *state;
+	struct hfi_plane *phfi;
+	struct drm_framebuffer *fb;
+	struct sde_format_extended fmt = {0,};
+
+	if (!plane || !prop_collector || !pstate)
+		return -EINVAL;
+
+	state = &pstate->base;
+	phfi = to_hfi_plane(plane);
+
+	fb = state->fb;
+	fmt.fourcc_format = fb->format->format;
+	fmt.modifier = fb->modifier;
+
+	POPULATE_RECT(&src, state->src_x, state->src_y,	state->src_w, state->src_h, true);
+	POPULATE_RECT(&dst, state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h, false);
+
+	prop_id = HFI_PROPERTY_LAYER_SRC_ROI;
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+			plane->pipe, HFI_VAL_U32_ARRAY, &src, sizeof(struct hfi_display_roi));
+
+	prop_id = HFI_PROPERTY_LAYER_DEST_ROI;
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+			plane->pipe, HFI_VAL_U32_ARRAY, &dst, sizeof(struct hfi_display_roi));
+
+	prop_id = HFI_PROPERTY_DISPLAY_ATTACH_LAYER;
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id, HFI_VAL_U32,
+			&plane->pipe, sizeof(u32));
+
+	sde_plane_get_scanout_info(plane, pstate,  fb, &plane->sspp_cfg);
+	prop_id = HFI_PROPERTY_LAYER_SRC_ADDR;
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, plane->pipe,
+			HFI_VAL_U32_ARRAY, &plane->sspp_cfg.layout.plane_addr[0],
+			(sizeof(u32) * SDE_MAX_PLANES));
+
+	prop_id = HFI_PROPERTY_LAYER_STRIDE;
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, plane->pipe,
+			HFI_VAL_U32_ARRAY, &plane->sspp_cfg.layout.plane_pitch[0],
+			(sizeof(u32) * SDE_MAX_PLANES));
+
+	hfi_format = hfi_catalog_get_hfi_format(&fmt);
+	prop_id = HFI_PROPERTY_LAYER_SRC_FORMAT;
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, plane->pipe,
+			HFI_VAL_U32_ARRAY, &hfi_format, sizeof(u32));
+
+	HFI_DEBUG_PLANE(phfi, "done adding drm props\n");
+
+	return 0;
+}
+
+int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+		struct sde_plane_state *pstate,
+		struct hfi_util_u32_prop_helper *prop_collector)
+{
+	u32 prop_id, temp_val;
+	struct sde_plane_state *state;
+	struct hfi_plane *phfi;
+
+	if (!plane || !prop_collector || !plane->base.state)
+		return -EINVAL;
+
+	phfi = to_hfi_plane(plane);
+	state = (struct sde_plane_state *)plane->base.state;
+
+	switch (hfi_prop) {
+	case HFI_PROPERTY_LAYER_ZPOS:
+		prop_id = HFI_PROPERTY_LAYER_ZPOS;
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+				plane->pipe, HFI_VAL_U32, &state->stage, sizeof(u32));
+	case HFI_PROPERTY_LAYER_ALPHA:
+		prop_id = HFI_PROPERTY_LAYER_ALPHA;
+		temp_val =  sde_plane_get_property(state, PLANE_PROP_ALPHA);
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+				plane->pipe, HFI_VAL_U32, &temp_val, sizeof(u32));
+	case HFI_PROPERTY_LAYER_BG_ALPHA:
+		prop_id = HFI_PROPERTY_LAYER_BG_ALPHA;
+		temp_val =  sde_plane_get_property(state, PLANE_PROP_BG_ALPHA);
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+				plane->pipe, HFI_VAL_U32, &temp_val, sizeof(u32));
+	case HFI_PROPERTY_LAYER_SRC_IMG_SIZE_W:
+		prop_id = HFI_PROPERTY_LAYER_SRC_IMG_SIZE_W;
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+				plane->pipe, HFI_VAL_U32, &state->src_img_rec.w, sizeof(u32));
+	case HFI_PROPERTY_LAYER_SRC_IMG_SIZE_H:
+		prop_id = HFI_PROPERTY_LAYER_SRC_IMG_SIZE_H;
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+				plane->pipe, HFI_VAL_U32, &state->src_img_rec.h, sizeof(u32));
+	case HFI_PROPERTY_LAYER_BLEND_TYPE:
+		temp_val = sde_plane_get_property(pstate, PLANE_PROP_BLEND_OP);
+		if (temp_val >= ARRAY_SIZE(hfi_plane_blend_ops_map)) {
+			HFI_ERROR_PLANE(phfi, "unsupported blendop %d\n", temp_val);
+			return -EINVAL;
+		}
+		temp_val = hfi_plane_blend_ops_map[temp_val];
+		prop_id = HFI_PROPERTY_LAYER_BLEND_TYPE;
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+				plane->pipe, HFI_VAL_U32, &temp_val, sizeof(u32));
+	case HFI_PROPERTY_LAYER_MULTIRECT_MODE:
+		temp_val = sde_plane_get_property(pstate, PLANE_PROP_MULTIRECT_MODE);
+		if (temp_val == SDE_SSPP_MULTIRECT_NONE)
+			break;
+
+		if (temp_val >= ARRAY_SIZE(hfi_plane_multirect_mode_map)) {
+			HFI_ERROR_PLANE(phfi, "unsupported blendop %d\n", temp_val);
+			return -EINVAL;
+		}
+
+		temp_val = hfi_plane_multirect_mode_map[temp_val];
+		prop_id = HFI_PROPERTY_LAYER_MULTIRECT_MODE;
+
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+				plane->pipe, HFI_VAL_U32, &temp_val, sizeof(u32));
+	default:
+		HFI_ERROR_PLANE(phfi, "unsupported HFI property\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+/**
+ * hfi_plane_populate_custom_kv_setter_props:  this is for all basic payloads.
+ * Collects all listed props into a linear memory and voids memcopy of value by value at adapeter
+ */
+static int _hfi_plane_set_props_base(struct sde_plane *plane, u32 disp_id,
+		struct sde_plane_state *pstate, struct hfi_cmdbuf_t *cmd_buf)
+{
+	u32 drm_prop;
+	int i, ret = 0;
+	struct hfi_plane *phfi;
+	struct hfi_plane_state *hfi_pstate;
+
+	if (!plane || !pstate) {
+		SDE_ERROR("invalid plane\n");
+		return -EINVAL;
+	}
+
+	phfi = to_hfi_plane(plane);
+	hfi_pstate = to_hfi_plane_state(pstate);
+
+	mutex_lock(&phfi->hfi_lock);
+	hfi_util_u32_prop_helper_reset(phfi->base_props);
+
+	ret = _hfi_plane_add_drm_props(plane, pstate, phfi->base_props);
+	if (ret) {
+		HFI_ERROR_PLANE(phfi, "failed to add drm-prop HFI properties\n");
+		goto end;
+	}
+
+	/* append msm properties */
+	for (i = 0; i < ARRAY_SIZE(hfi_plane_base_props_map); i++) {
+		drm_prop = hfi_plane_base_props_map[i].drm_prop;
+
+		 _sde_hfi_add_base_prop_helper(hfi_plane_base_props_map[i].hfi_prop,
+				 plane, pstate, phfi->base_props);
+	}
+
+	if (!hfi_util_u32_prop_helper_prop_count(phfi->base_props))
+		goto end;
+
+	/*
+	 * Once all the key value pairs of properties are collected invoke adapter api
+	 * to add all these property array as a single HFI Packet
+	 */
+	ret = hfi_adapter_add_set_property(cmd_buf,
+			HFI_COMMAND_DISPLAY_SET_PROPERTY,
+			disp_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			hfi_util_u32_prop_helper_get_payload_addr(phfi->base_props),
+			hfi_util_u32_prop_helper_get_size(phfi->base_props),
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		HFI_ERROR_PLANE(phfi, "failed to send HFI commands\n");
+		goto end;
+	}
+
+	HFI_DEBUG_PLANE(phfi, "done adding all base props\n");
+end:
+	mutex_unlock(&phfi->hfi_lock);
+
+	return ret;
+}
+
+/**
+ * hfi_plane_populate_custom_kv_setter_props:  this is for large payloads.
+ * Collects all listed props to provide as key-value pairs and adapter does memcopy
+ */
+int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u32 disp_id,
+		struct sde_plane_state *pstate, struct hfi_cmdbuf_t *cmd_buf)
+{
+	int i, ret = 0;
+	struct kv_prop_lookup *setter;
+	struct hfi_plane *phfi;
+	u32 kv_count;
+
+	if (!plane) {
+		SDE_ERROR("invalid plane\n");
+		return -EINVAL;
+	}
+
+	phfi = to_hfi_plane(plane);
+
+	mutex_lock(&phfi->hfi_lock);
+	hfi_util_kv_helper_reset(phfi->kv_props);
+
+	for (i = 0; i < ARRAY_SIZE(hfi_plane_custom_kv_props_map); i++) {
+		setter = &hfi_plane_custom_kv_props_map[i];
+		if (!sde_plane_property_is_dirty(pstate, setter->drm_prop))
+			continue;
+
+		if (setter->add_hfi_prop)
+			setter->add_hfi_prop(setter->hfi_prop, plane, pstate, cmd_buf);
+	}
+
+	kv_count = hfi_util_kv_helper_get_count(phfi->kv_props);
+	if (!kv_count)
+		goto end;
+
+	ret = hfi_adapter_add_prop_array(cmd_buf,
+			HFI_COMMAND_DISPLAY_SET_PROPERTY,
+			disp_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			hfi_util_kv_helper_get_payload_addr(phfi->kv_props),
+			kv_count * sizeof(struct hfi_kv_pairs),
+			kv_count);
+	if (ret) {
+		HFI_ERROR_PLANE(phfi, "failed to send HFI commands\n");
+		goto end;
+	}
+end:
+	HFI_DEBUG_PLANE(phfi, "adding kv-props count%d\n", kv_count);
+
+	mutex_unlock(&phfi->hfi_lock);
+
+	return ret;
+}
+
+int _hfi_plane_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
+		struct sde_plane *plane, struct sde_plane_state *pstate)
+{
+	int ret = 0;
+	struct hfi_plane *phfi;
+
+	if (!plane) {
+		SDE_ERROR("invalid plane\n");
+		return -EINVAL;
+	}
+
+	phfi = to_hfi_plane(plane);
+
+	ret = _hfi_plane_set_props_base(plane, disp_id, pstate, cmd_buf);
+	if (ret) {
+		HFI_ERROR_PLANE(phfi, "failed to add base props packet\n");
+		return ret;
+	}
+
+	ret = hfi_plane_populate_custom_kv_setter_props(plane, disp_id, pstate, cmd_buf);
+	if (ret) {
+		HFI_ERROR_PLANE(phfi, "failed to add kv props packet\n");
+		return ret;
+	}
+
+	return ret;
+}
+
+void _hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
+		struct sde_plane_state *pstate)
+{
+	u32 prop_id;
+	int ret;
+	struct hfi_plane *phfi;
+	struct hfi_plane_state *hfi_pstate;
+
+	if (!plane || !pstate) {
+		SDE_ERROR("invalid plane args\n");
+		return;
+	}
+
+	phfi = to_hfi_plane(plane);
+	hfi_pstate =  to_hfi_plane_state(pstate);
+
+	mutex_lock(&phfi->hfi_lock);
+
+	hfi_util_u32_prop_helper_reset(phfi->base_props);
+
+	prop_id = HFI_PROPERTY_DISPLAY_DETACH_LAYER;
+	hfi_util_u32_prop_helper_add_prop(phfi->base_props, prop_id, HFI_VAL_U32_ARRAY,
+			&phfi->sde_base.pipe, sizeof(u32));
+
+	ret = hfi_adapter_add_set_property(cmd_buf,
+			HFI_COMMAND_DISPLAY_SET_PROPERTY,
+			disp_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			hfi_util_u32_prop_helper_get_payload_addr(phfi->base_props),
+			hfi_util_u32_prop_helper_get_size(phfi->base_props),
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		HFI_ERROR_PLANE(phfi, "failed to send HFI commands\n");
+		goto end;
+	}
+
+	HFI_DEBUG_PLANE(phfi, "adding detatch layer\n");
+end:
+	mutex_unlock(&phfi->hfi_lock);
+}
+
+static void hfi_plane_destroy(struct sde_plane *plane)
+{
+	struct hfi_plane *phfi;
+
+	if (!plane) {
+		SDE_ERROR("invalid plane\n");
+		return;
+	}
+
+	phfi = to_hfi_plane(plane);
+
+	kfree(phfi->base_props);
+	kfree(phfi->kv_props);
+
+	mutex_destroy(&phfi->hfi_lock);
+
+	kfree(phfi);
+}
+
+static struct sde_plane_state *hfi_plane_duplicate_state(struct sde_plane *plane)
+{
+	struct hfi_plane_state *dps = NULL;
+
+	if (!plane)
+		return NULL;
+
+	dps = msm_property_alloc_state(&plane->property_info);
+	if (!dps) {
+		SDE_ERROR("failed to allocate memory for hfi plane state\n");
+		return NULL;
+	}
+
+	return &dps->sde_base;
+}
+
+static int hfi_plane_destroy_state(struct sde_plane *plane, struct sde_plane_state *pstate)
+{
+	int ret = 0;
+
+	if (!plane || !pstate)
+		return -EINVAL;
+
+	msm_property_destroy_state(&plane->property_info, pstate, &pstate->property_state);
+
+	return ret;
+}
+
+static int hfi_plane_add_hfi_cmds(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
+		struct sde_plane *plane, struct sde_plane_state *pstate)
+{
+	int ret = 0;
+
+	if (!plane || !cmd_buf) {
+		SDE_ERROR("invalid args\n");
+		return -EINVAL;
+	}
+
+	if (!sde_plane_enabled(&pstate->base))
+		_hfi_plane_disable(cmd_buf, disp_id, plane, pstate);
+	else
+		_hfi_plane_populate_props(cmd_buf, disp_id, plane, pstate);
+
+	return ret;
+}
+
+static int hfi_plane_atomic_update(struct sde_plane *plane, struct sde_plane_state *old_pstate)
+{
+	int ret = 0;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_plane *phfi = NULL;
+	struct sde_plane_state *pstate;
+	struct hfi_kms *hfi_kms;
+	struct drm_crtc *crtc = NULL;
+	u32 disp_id;
+
+	if (!plane || !(plane->base.state))  {
+		SDE_ERROR("invalid args\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = sde_plane_get_kms(plane);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	phfi = to_hfi_plane(plane);
+	pstate = to_sde_plane_state(plane->base.state);
+
+	if (sde_plane_enabled(&pstate->base))
+		crtc = plane->base.state->crtc;
+	else if (old_pstate && sde_plane_enabled(&old_pstate->base))
+		crtc = old_pstate->base.crtc;
+	else
+		return -EINVAL;
+
+	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+	if (disp_id == UINT32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return -EINVAL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get cmd_buf for crtc:%d disp_id:%d\n",
+				DRMID(crtc), disp_id);
+		return -EINVAL;
+	}
+
+	ret = hfi_plane_add_hfi_cmds(cmd_buf, disp_id, plane, pstate);
+	if (ret) {
+		SDE_ERROR("failed to add hfi cmds\n");
+		return ret;
+	}
+
+	return ret;
+}
+
+static void _sde_plane_hal_funcs_install(struct sde_plane *plane)
+{
+	if (!plane) {
+		SDE_ERROR("invalid args\n");
+		return;
+	}
+
+	plane->hal_ops.destroy = hfi_plane_destroy;
+	plane->hal_ops.atomic_duplicate_state = hfi_plane_duplicate_state;
+	plane->hal_ops.atomic_destroy_state = hfi_plane_destroy_state;
+	plane->hal_ops.atomic_update = hfi_plane_atomic_update;
+}
+
+struct sde_plane *hfi_plane_init(uint32_t pipe_id, struct sde_kms *kms)
+{
+	struct hfi_plane *plane = NULL;
+	struct sde_plane *psde = NULL;
+	struct msm_drm_private *priv;
+	int ret;
+
+	if (!kms) {
+		SDE_ERROR("invalid kms arg\n");
+		return NULL;
+	}
+
+	plane = kzalloc(sizeof(*plane), GFP_KERNEL);
+	if (!plane) {
+		SDE_ERROR("failed to allocate memory for hfi plane\n");
+		return ERR_PTR(-ENOMEM);
+	}
+
+	_sde_plane_hal_funcs_install(&plane->sde_base);
+
+	psde = &plane->sde_base;
+	priv = kms->dev->dev_private;
+
+	mutex_init(&plane->hfi_lock);
+
+	/* alloc util storage handlers for hfi props */
+	plane->kv_props = hfi_util_kv_helper_alloc(HFI_PLANE_MAX_PROPS);
+	if (IS_ERR(plane->kv_props)) {
+		SDE_ERROR("failed to ate memory for kv prop collctr\n");
+		ret = PTR_ERR(plane->kv_props);
+		goto free_plane;
+	}
+
+	plane->base_props = hfi_util_u32_prop_helper_alloc(HFI_PLANE_BASE_PROP_MAX_SIZE);
+	if (IS_ERR(plane->base_props)) {
+		SDE_ERROR("failed to allocate memory for base prop collector\n");
+		ret = PTR_ERR(plane->base_props);
+		goto free_kv;
+	}
+
+	return &plane->sde_base;
+
+free_kv:
+	kfree(plane->base_props);
+free_plane:
+	mutex_destroy(&plane->hfi_lock);
+	kfree(plane);
+
+	return ERR_PTR(-ENOMEM);
+}
