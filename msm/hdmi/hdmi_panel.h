@@ -71,14 +71,10 @@ struct hdmi_panel {
 	int (*set_mode)(struct hdmi_panel *hdmi_panel,
 			const struct drm_display_mode *mode);
 	int (*get_modes)(struct hdmi_panel *hdmi_panel,
-			struct drm_connector *connector,
-			struct hdmi_display_mode *mode);
+			struct drm_connector *connector);
 	int (*enable)(struct hdmi_panel *hdmi_panel);
 	int (*disable)(struct hdmi_panel *hdmi_panel);
 	int (*get_panel_on)(struct hdmi_panel *hdmi_panel);
-	int (*convert_to_hdmi_mode)(struct hdmi_panel *hdmi_panel,
-		const struct drm_display_mode *drm_mode,
-		struct hdmi_display_mode *hdmi_mode);
 	int (*setup_hdr)(struct hdmi_panel *hdmi_panel,
 		struct drm_msm_ext_hdr_metadata *hdr_meta,
 		bool dhdr_update, u64 core_clk_rate, bool flush);

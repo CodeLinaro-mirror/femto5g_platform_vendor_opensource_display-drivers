@@ -6,6 +6,8 @@
 #include <linux/of.h>
 #include <linux/of_gpio.h>
 #include <linux/of_irq.h>
+#include <linux/version.h>
+#include <drm/drm_probe_helper.h>
 
 #include "msm_drv.h"
 #include "sde_connector.h"
@@ -14,7 +16,11 @@
 #include "hdmi_power.h"
 #include "hdmi_debug.h"
 #include "hdmi_pll.h"
+#include "hdmi_phy.h"
+//#include "hdmi_cec.h"
 #include "sde_hdcp.h"
+#include "hdmi_util.h"
+#include "sde_edid_parser.h"
 
 #define hdmi_display_state_show(x) { \
 	HDMI_ERR("%s: state (0x%x): %s\n", x, hdmi->state, \
@@ -38,6 +44,18 @@
 #define hdmi_display_state_remove(x) { \
 	(hdmi->state &= ~(x)); \
 	hdmi_display_state_log("remove "#x); }
+
+#define hdmi_read(x, off) \
+	readl_relaxed((x)->io_data->io.base + (off))
+
+#define hdmi_write(x, off, value)  \
+	writel_relaxed(value, (x)->io_data->io.base + (off))
+
+static inline uint32_t HDMI_HPD_CTRL_TIMEOUT(uint32_t val)
+{
+	return ((val) << HDMI_HPD_CTRL_TIMEOUT__SHIFT) &
+		HDMI_HPD_CTRL_TIMEOUT__MASK;
+}
 
 #define HPD_STRING_SIZE 30
 
@@ -149,6 +167,12 @@ struct hdmi_display_private {
 	struct hdmi_panel   *panel;
 	struct hdmi_debug   *debug;
 	struct hdmi_pll     *pll;
+	struct hdmi_phy     *phy;
+	struct hdmi_ddc     *ddc;
+	//struct hdmi_cec     *cec;
+	struct hdmi_io_data *io_data;
+
+	bool hdmi_mode;
 
 	struct hdmi_hdcp hdcp;
 
@@ -171,14 +195,186 @@ struct hdmi_display_private {
 
 	u32 cell_idx;
 	u32 phy_idx;
+	/*
+	 * spinlock to protect registers shared by different execution
+	 * HDMI_CTRL
+	 * HDMI_DDC_ARBITRATION
+	 * HDMI_HDCP_INT_CTRL
+	 * HDMI_HPD_CTRL
+	 */
+	spinlock_t reg_lock;
+
 };
+
+/* hdmi ctrl helper functions */
+static void hdmi_phy_reset(struct hdmi_display_private *hdmi)
+{
+	unsigned int val;
+
+	val = hdmi_read(hdmi, HDMI_PHY_CTRL);
+
+	if (val & HDMI_PHY_CTRL_SW_RESET_LOW) {
+		/* pull low */
+		hdmi_write(hdmi, HDMI_PHY_CTRL,
+				val & ~HDMI_PHY_CTRL_SW_RESET);
+	} else {
+		/* pull high */
+		hdmi_write(hdmi, HDMI_PHY_CTRL,
+				val | HDMI_PHY_CTRL_SW_RESET);
+	}
+
+	if (val & HDMI_PHY_CTRL_SW_RESET_PLL_LOW) {
+		/* pull low */
+		hdmi_write(hdmi, HDMI_PHY_CTRL,
+				val & ~HDMI_PHY_CTRL_SW_RESET_PLL);
+	} else {
+		/* pull high */
+		hdmi_write(hdmi, HDMI_PHY_CTRL,
+				val | HDMI_PHY_CTRL_SW_RESET_PLL);
+	}
+
+	msleep(100);
+
+	if (val & HDMI_PHY_CTRL_SW_RESET_LOW) {
+		/* pull high */
+		hdmi_write(hdmi, HDMI_PHY_CTRL,
+				val | HDMI_PHY_CTRL_SW_RESET);
+	} else {
+		/* pull low */
+		hdmi_write(hdmi, HDMI_PHY_CTRL,
+				val & ~HDMI_PHY_CTRL_SW_RESET);
+	}
+
+	if (val & HDMI_PHY_CTRL_SW_RESET_PLL_LOW) {
+		/* pull high */
+		hdmi_write(hdmi, HDMI_PHY_CTRL,
+				val | HDMI_PHY_CTRL_SW_RESET_PLL);
+	} else {
+		/* pull low */
+		hdmi_write(hdmi, HDMI_PHY_CTRL,
+				val & ~HDMI_PHY_CTRL_SW_RESET_PLL);
+	}
+}
+
+static void hdmi_set_mode(struct hdmi_display_private *hdmi, bool power_on)
+{
+	uint32_t ctrl = 0;
+	unsigned long flags;
+
+	spin_lock_irqsave(&hdmi->reg_lock, flags);
+	if (power_on) {
+		ctrl |= HDMI_CTRL_ENABLE;
+		if (!hdmi->hdmi_mode) {
+			ctrl |= HDMI_CTRL_HDMI;
+			hdmi_write(hdmi, HDMI_CTRL, ctrl);
+			ctrl &= ~HDMI_CTRL_HDMI;
+		} else {
+			ctrl |= HDMI_CTRL_HDMI;
+		}
+	} else {
+		ctrl = HDMI_CTRL_HDMI;
+	}
+
+	hdmi_write(hdmi, HDMI_CTRL, ctrl);
+	spin_unlock_irqrestore(&hdmi->reg_lock, flags);
+	HDMI_DEBUG("HDMI Core: %s, HDMI_CTRL=0x%08x",
+			power_on ? "Enable" : "Disable", ctrl);
+}
+
+static int hdmi_hpd_enable(struct hdmi_display_private *hdmi)
+{
+	unsigned long flags;
+	uint32_t hpd_ctrl;
+
+	//TODO: check the seq in power->init
+	hdmi->power->init(hdmi->power);
+
+	hdmi_set_mode(hdmi, false);
+	hdmi_phy_reset(hdmi);
+	hdmi_set_mode(hdmi, true);
+
+	hdmi_write(hdmi, HDMI_USEC_REFTIMER, 0x00010013);
+
+
+	/* enable HPD events: */
+	hdmi_write(hdmi, HDMI_HPD_INT_CTRL,
+			HDMI_HPD_INT_CTRL_INT_CONNECT |
+			HDMI_HPD_INT_CTRL_INT_EN);
+
+	/* set timeout to 4.1ms (max) for hardware debounce */
+	spin_lock_irqsave(&hdmi->reg_lock, flags);
+	hpd_ctrl = hdmi_read(hdmi, HDMI_HPD_CTRL);
+	hpd_ctrl |= HDMI_HPD_CTRL_TIMEOUT(0x09C4);
+
+	/* Toggle HPD circuit to trigger HPD sense */
+	hdmi_write(hdmi, HDMI_HPD_CTRL,
+			~HDMI_HPD_CTRL_ENABLE & hpd_ctrl);
+	hdmi_write(hdmi, HDMI_HPD_CTRL,
+			HDMI_HPD_CTRL_ENABLE | hpd_ctrl);
+	spin_unlock_irqrestore(&hdmi->reg_lock, flags);
+
+	hdmi_display_state_add(HDMI_STATE_CONFIGURED);
+
+	return 0;
+}
+
+static void hdmi_hpd_disable(struct hdmi_display_private *hdmi)
+{
+
+	hdmi_display_state_remove(HDMI_STATE_CONFIGURED);
+	/* Disable HPD interrupt */
+	hdmi_write(hdmi, HDMI_HPD_INT_CTRL, 0);
+
+	hdmi_set_mode(hdmi, false);
+
+	//TODO: check the seq in power->init
+	hdmi->power->deinit(hdmi->power);
+}
+
+static void hdmi_display_isr(struct hdmi_display_private *hdmi)
+{
+	u32 hpd_int_status, hpd_int_ctrl;
+
+	/* Process HPD: */
+	hpd_int_status = hdmi_read(hdmi, HDMI_HPD_INT_STATUS);
+	hpd_int_ctrl = hdmi_read(hdmi, HDMI_HPD_INT_CTRL);
+
+	if ((hpd_int_ctrl & HDMI_HPD_INT_CTRL_INT_EN) &&
+		(hpd_int_status & HDMI_HPD_INT_STATUS_INT)) {
+		hdmi->hdmi_display.connected = !!(hpd_int_status &
+					HDMI_HPD_INT_STATUS_CABLE_DETECTED);
+		/* ack & disable (temporarily) HPD events: */
+		hdmi_write(hdmi, HDMI_HPD_INT_CTRL,
+			HDMI_HPD_INT_CTRL_INT_ACK);
+
+		HDMI_DEBUG("status=%04x, ctrl=%04x",
+			hpd_int_status, hpd_int_ctrl);
+
+		/* detect disconnect if we are connected or vice versa */
+		hpd_int_ctrl = HDMI_HPD_INT_CTRL_INT_EN;
+		if (!hdmi->hdmi_display.connected)
+			hpd_int_ctrl |= HDMI_HPD_INT_CTRL_INT_CONNECT;
+		hdmi_write(hdmi, HDMI_HPD_INT_CTRL, hpd_int_ctrl);
+
+		queue_work(hdmi->wq, &hdmi->hpd_work);
+	}
+}
 
 static int hdmi_init_sub_modules(struct hdmi_display_private *hdmi)
 {
 	int rc = 0;
+	struct hdmi_parser *parser;
+	struct drm_connector *connector;
+	struct device *dev = &hdmi->pdev->dev;
+	struct hdmi_debug_in debug_in = {
+		.dev = dev,
+	};
 
 	mutex_init(&hdmi->session_lock);
 	mutex_init(&hdmi->accounting_lock);
+
+	connector = hdmi->hdmi_display.base_connector;
+	dev = &hdmi->pdev->dev;
 
 	hdmi->parser = hdmi_parser_get(hdmi->pdev);
 	if (IS_ERR(hdmi->parser)) {
@@ -188,18 +384,132 @@ static int hdmi_init_sub_modules(struct hdmi_display_private *hdmi)
 		goto error;
 	}
 
-	rc = hdmi->parser->parse(hdmi->parser);
+	parser = hdmi->parser;
+	rc = parser->parse(parser);
 	if (rc) {
 		HDMI_ERR("device tree parsing failed\n");
 		goto error_parser;
 	}
 
-	return 0;
+	hdmi->io_data = parser->get_io(parser, "hdmi_ctrl");
+	if (!hdmi->io_data) {
+		HDMI_ERR("get io for hdmi_ctrl init failed\n");
+		rc = -EINVAL;
+		goto error_parser;
+	}
 
+	hdmi->ddc = hdmi_ddc_get(dev, parser);
+	if (IS_ERR(hdmi->ddc)) {
+		rc = PTR_ERR(hdmi->ddc);
+		HDMI_ERR("ddc get failed, rc = %d\n", rc);
+		goto error_ddc;
+	}
+
+	hdmi->pll = hdmi_pll_get(hdmi->pdev, parser);
+	if (IS_ERR(hdmi->pll)) {
+		rc = PTR_ERR(hdmi->pll);
+		HDMI_ERR("pll get failed, rc = %d\n", rc);
+		goto error_ddc;
+	}
+
+	hdmi->power = hdmi_power_get(parser, hdmi->pll);
+	if (IS_ERR(hdmi->power)) {
+		rc = PTR_ERR(hdmi->power);
+		HDMI_ERR("power get failed, rc = %d\n", rc);
+		goto error_power;
+	}
+
+	rc = hdmi->power->power_client_init(hdmi->power, &hdmi->priv->phandle,
+			hdmi->hdmi_display.drm_dev);
+	if (rc) {
+		HDMI_ERR("Power client create failed\n");
+		goto error_power;
+	}
+
+	hdmi->panel = hdmi_panel_get(dev, connector, hdmi->parser);
+	if (IS_ERR(hdmi->panel)) {
+		rc = PTR_ERR(hdmi->panel);
+		HDMI_ERR("failed to initialize panel, rc = %d\n", rc);
+		hdmi->panel = NULL;
+		goto error_panel;
+	}
+
+	hdmi->panel->edid_ctrl = sde_edid_init();
+	if (!hdmi->panel->edid_ctrl) {
+		HDMI_ERR("sde edid init failed\n");
+		rc = -ENOMEM;
+		goto error_edid;
+	}
+
+	hdmi->phy = hdmi_phy_get(hdmi->pdev, hdmi->parser);
+	if (IS_ERR(hdmi->phy)) {
+		rc = PTR_ERR(hdmi->phy);
+		HDMI_ERR("failed to initialize phy, rc = %d\n", rc);
+		hdmi->phy = NULL;
+		goto error_phy;
+	}
+
+	//hdmi->cec = hdmi_cec_get(hdmi->pdev, hdmi->parser);
+	//if (IS_ERR(hdmi->cec)) {
+	//	rc = PTR_ERR(hdmi->cec);
+	//	HDMI_ERR("failed to initialize cec, rc = %d\n", rc);
+	//	hdmi->cec = NULL;
+	//	goto error_phy;
+	//}
+
+	debug_in.panel = hdmi->panel;
+	debug_in.connector = connector;
+	debug_in.parser = hdmi->parser;
+	debug_in.pll = hdmi->pll;
+	debug_in.display = &hdmi->hdmi_display;
+
+	hdmi->debug = hdmi_debug_get(&debug_in);
+	if (IS_ERR(hdmi->debug)) {
+		rc = PTR_ERR(hdmi->debug);
+		HDMI_ERR("failed to initialize debug, rc = %d\n", rc);
+		hdmi->debug = NULL;
+		goto error_debug;
+	}
+
+	/* configure hpd */
+	hdmi_hpd_enable(hdmi);
+
+	//TODO: only hpd is enabled here. what about others
+	/* enable hdmi irq*/
+	enable_irq(hdmi->irq);
+
+	return 0;
+error_debug:
+	hdmi_debug_put(hdmi->debug);
+error_phy:
+	hdmi_phy_put(hdmi->phy);
+error_edid:
+	sde_edid_deinit((void **)&hdmi->panel->edid_ctrl);
+error_panel:
+	hdmi_panel_put(hdmi->panel);
+error_power:
+	hdmi_power_put(hdmi->power);
+error_ddc:
+	hdmi_ddc_put(hdmi->ddc);
 error_parser:
-	hdmi_parser_put(hdmi->parser);
+	hdmi_parser_put(parser);
 error:
 	return rc;
+}
+
+static void hdmi_display_deinit_sub_modules(struct hdmi_display_private *hdmi)
+{
+	disable_irq(hdmi->irq);
+	hdmi_hpd_disable(hdmi);
+	hdmi_debug_put(hdmi->debug);
+	hdmi_phy_put(hdmi->phy);
+	sde_edid_deinit((void **)&hdmi->panel->edid_ctrl);
+	//TODO:hdmi_cec_put(hdmi->cec);
+	hdmi_panel_put(hdmi->panel);
+	hdmi_power_put(hdmi->power);
+	hdmi_ddc_put(hdmi->ddc);
+	hdmi_parser_put(hdmi->parser);
+	mutex_destroy(&hdmi->session_lock);
 }
 
 int hdmi_display_get_num_of_displays(struct drm_device *dev)
@@ -246,6 +556,47 @@ end:
 	return rc;
 }
 
+static void hdmi_display_hotplug_work(struct work_struct *work)
+{
+	struct hdmi_display_private *hdmi =
+		container_of(work, struct hdmi_display_private, hpd_work);
+	struct drm_connector *connector;
+	u32 hdmi_ctrl;
+
+	if (!hdmi) {
+		HDMI_ERR("Invalid param\n");
+		return;
+	}
+
+	connector = hdmi->hdmi_display.base_connector;
+
+	if (hdmi->hdmi_display.connected) {
+		hdmi_ctrl = hdmi_read(hdmi, HDMI_CTRL);
+		hdmi_write(hdmi, HDMI_CTRL, hdmi_ctrl | HDMI_CTRL_ENABLE);
+
+		sde_get_edid(connector, hdmi->ddc->i2c,
+				(void **)&hdmi->panel->edid_ctrl);
+
+		hdmi_write(hdmi, HDMI_CTRL, hdmi_ctrl);
+		hdmi->hdmi_mode = sde_detect_hdmi_monitor(hdmi->panel->edid_ctrl);
+		//TODO: default value of hdmi_mode must be set to true
+
+		//cec_notifier_set_phys_addr_from_edid(hdmi->cec->notifier,
+		//		hdmi->edid_ctrl->edid);
+		hdmi_display_state_add(HDMI_STATE_CONNECTED);
+		hdmi_display_state_remove(HDMI_STATE_DISCONNECTED);
+	} else {
+		sde_free_edid((void **)&hdmi->panel->edid_ctrl);
+		//cec_notifier_set_phys_addr_from_edid(hdmi->cec->notifier,
+		//		NULL);
+		hdmi_display_state_add(HDMI_STATE_DISCONNECTED);
+		hdmi_display_state_remove(HDMI_STATE_CONNECTED);
+	}
+
+	//TODO: check hotplug notification
+	drm_helper_hpd_irq_event(connector->dev);
+}
+
 static int hdmi_display_create_workqueue(struct hdmi_display_private *hdmi)
 {
 	hdmi->wq = create_singlethread_workqueue("drm_hdmi");
@@ -254,11 +605,8 @@ static int hdmi_display_create_workqueue(struct hdmi_display_private *hdmi)
 		return -EPERM;
 	}
 
+	INIT_WORK(&hdmi->hpd_work, hdmi_display_hotplug_work);
 	return 0;
-}
-
-static void _hdmi_ctrl_irq(struct hdmi_display_private *hdmi)
-{
 }
 
 static irqreturn_t hdmi_display_irq(int irq, void *dev_id)
@@ -271,7 +619,17 @@ static irqreturn_t hdmi_display_irq(int irq, void *dev_id)
 	}
 
 	/* Process HPD: */
-	_hdmi_ctrl_irq(hdmi);
+	hdmi_display_isr(hdmi);
+
+	 //Process Scrambling: ISR
+	hdmi->ddc->scrambling_isr((void *)hdmi->ddc);
+
+	//sde_hdmi_ddc_hdcp2p2_isr
+
+	hdmi->ddc->isr(hdmi->ddc->i2c);
+
+	/* Process CEC: */
+	//hdmi->cec->isr(hdmi->cec);
 
 	return IRQ_HANDLED;
 }
@@ -280,9 +638,17 @@ static int hdmi_display_enable(struct hdmi_display *hdmi_display, void *panel)
 {
 	int rc = 0;
 	struct hdmi_display_private *hdmi;
+	struct hdmi_panel *hdmi_panel;
+	enum hdmi_pm_type type = HDMI_PCLK_PM;
 
 	if (!hdmi_display || !panel) {
 		HDMI_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	hdmi_panel = panel;
+	if (!hdmi_panel->connector) {
+		HDMI_ERR("invalid connector input\n");
 		return -EINVAL;
 	}
 
@@ -312,6 +678,31 @@ static int hdmi_display_enable(struct hdmi_display *hdmi_display, void *panel)
 	if (hdmi_display_state_is(HDMI_STATE_ABORTED))
 		hdmi_display_state_log("[aborted, but continue on]");
 
+	if (hdmi->pll->prepare) {
+		rc = hdmi->pll->prepare(hdmi->pll);
+		if (rc < 0) {
+			HDMI_ERR("HDMI pll prepare failed\n");
+			goto end;
+		}
+	}
+
+	rc = hdmi->power->clk_enable(hdmi->power, type, true);
+	if (rc) {
+		HDMI_ERR("Unabled to start link clocks, rc=%d\n", rc);
+		goto end;
+	}
+
+
+	rc = hdmi->phy->enable(hdmi->phy);
+	if (rc) {
+		HDMI_ERR("phy enable failed, rc=%d\n", rc);
+		goto end;
+	}
+
+	rc = hdmi_panel->enable(hdmi_panel);
+	if (rc)
+		HDMI_ERR("panel enable failed, rc=%d\n", rc);
+
 	hdmi_display_state_add(HDMI_STATE_ENABLED);
 end:
 	mutex_unlock(&hdmi->session_lock);
@@ -319,18 +710,122 @@ end:
 	return rc;
 }
 
-static int hdmi_display_post_enable(struct hdmi_display *hdmi_display, void *panel)
+static int hdmi_display_post_enable(struct hdmi_display *hdmi_display,
+				void *panel)
 {
+	struct hdmi_display_private *hdmi;
+	struct hdmi_panel *hdmi_panel;
+
+	if (!hdmi_display || !panel) {
+		HDMI_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	hdmi = container_of(hdmi_display,
+			struct hdmi_display_private, hdmi_display);
+	hdmi_panel = panel;
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, hdmi->state);
+	mutex_lock(&hdmi->session_lock);
+
+	/*
+	 * If HDMI_STATE_READY is not set, we should not do any HW
+	 * programming.
+	 */
+	if (!hdmi_display_state_is(HDMI_STATE_ENABLED)) {
+		hdmi_display_state_show("[not enabled]");
+		goto end;
+	}
+
+	/*
+	 * If the physical connection to the sink is already lost by the time
+	 * we try to set up the connection, we can just skip all the steps
+	 * here safely.
+	 */
+	if (hdmi_display_state_is(HDMI_STATE_ABORTED)) {
+		hdmi_display_state_log("[aborted]");
+		goto end;
+	}
+
+	HDMI_DEBUG("display post enable complete. state: 0x%x\n", hdmi->state);
+end:
+	mutex_unlock(&hdmi->session_lock);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hdmi->state);
+
 	return 0;
 }
 
-static int hdmi_display_pre_disable(struct hdmi_display *hdmi_display, void *panel)
+static int hdmi_display_pre_disable(struct hdmi_display *hdmi_display,
+				void *panel)
 {
-	return 0;
+	struct hdmi_display_private *hdmi;
+	struct hdmi_panel *hdmi_panel;
+	int rc = 0;
+
+	if (!hdmi_display || !panel) {
+		HDMI_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	hdmi_panel = panel;
+
+	hdmi = container_of(hdmi_display,
+			struct hdmi_display_private, hdmi_display);
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, hdmi->state);
+	mutex_lock(&hdmi->session_lock);
+
+	if (!hdmi_display_state_is(HDMI_STATE_ENABLED)) {
+		hdmi_display_state_show("[not enabled]");
+		goto end;
+	}
+
+	rc = hdmi->phy->pre_disable(hdmi->phy);
+	if (rc) {
+		HDMI_ERR("phy pre disable failed, rc=%d\n", rc);
+		goto end;
+	}
+
+end:
+	mutex_unlock(&hdmi->session_lock);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hdmi->state);
+
+	return rc;
 }
 
 static int hdmi_display_disable(struct hdmi_display *hdmi_display, void *panel)
 {
+	struct hdmi_display_private *hdmi = NULL;
+	struct hdmi_panel *hdmi_panel = NULL;
+
+	if (!hdmi_display || !panel) {
+		HDMI_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	hdmi = container_of(hdmi_display,
+			struct hdmi_display_private, hdmi_display);
+	hdmi_panel = panel;
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, hdmi->state);
+	mutex_lock(&hdmi->session_lock);
+
+	if (!hdmi_display_state_is(HDMI_STATE_ENABLED)) {
+		hdmi_display_state_show("[not enabled]");
+		goto end;
+	}
+
+	if (!hdmi_display_state_is(HDMI_STATE_READY)) {
+		hdmi_display_state_show("[not ready]");
+		goto end;
+	}
+
+	hdmi_display_state_remove(HDMI_STATE_HDCP_ABORTED);
+	hdmi_display_state_remove(HDMI_STATE_ENABLED);
+end:
+
+	mutex_unlock(&hdmi->session_lock);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hdmi->state);
 	return 0;
 }
 
@@ -353,8 +848,8 @@ static int hdmi_display_get_display_type(struct hdmi_display *hdmi_display,
 	return 0;
 }
 
-static int hdmi_display_get_modes(struct hdmi_display *hdmi_display, void *panel,
-	struct hdmi_display_mode *hdmi_mode)
+static int hdmi_display_get_modes(struct hdmi_display *hdmi_display,
+			void *panel)
 {
 	struct hdmi_display_private *hdmi;
 	struct hdmi_panel *hdmi_panel;
@@ -375,32 +870,188 @@ static int hdmi_display_get_modes(struct hdmi_display *hdmi_display, void *panel
 			struct hdmi_display_private, hdmi_display);
 
 	ret = hdmi_panel->get_modes(hdmi_panel,
-			hdmi_panel->connector, hdmi_mode);
+			hdmi_panel->connector);
 
-	if (hdmi_mode->timing.pixel_clk_khz)
-		hdmi_display->max_pclk_khz = hdmi_mode->timing.pixel_clk_khz;
+	hdmi_display->max_pclk_khz = hdmi->parser->max_pclk_khz;
 
 	return ret;
 }
 
+static void hdmi_set_clock_rate(struct hdmi_display_private *hdmi,
+		char *name, enum hdmi_pm_type clk_type, u32 rate)
+{
+	u32 num = hdmi->parser->mp[clk_type].num_clk;
+	struct dss_clk *cfg = hdmi->parser->mp[clk_type].clk_config;
+
+	/* convert to HZ for byte2 ops */
+	rate *= hdmi->pll->clk_factor;
+
+	while (num && strcmp(cfg->clk_name, name)) {
+		num--;
+		cfg++;
+	}
+
+	HDMI_DEBUG("setting rate=%d on clk=%s\n", rate, name);
+
+	if (num)
+		cfg->rate = rate;
+	else
+		HDMI_ERR("%s clk couldn't be set with rate %d\n", name, rate);
+}
+
+static int hdmi_display_config_pclk(struct hdmi_display_private *hdmi,
+				u32 rate, u32 bpp)
+{
+	int rc = 0;
+	enum hdmi_pm_type type = HDMI_PCLK_PM;
+
+	HDMI_DEBUG("rate=%d\n", rate);
+
+
+	rc = hdmi->power->set_pixel_clk_parent(hdmi->power);
+	if (rc) {
+		HDMI_ERR("set parent failed for pixel clk, rc=%d\n", rc);
+		return rc;
+	}
+
+	hdmi_set_clock_rate(hdmi, "pixel_clk_rcg", type, rate);
+	hdmi_set_clock_rate(hdmi, "pixel_clk", type, rate);
+
+	/* intf_clk = pclk/2 */
+	hdmi_set_clock_rate(hdmi, "pixel_iface_clk", type, rate/2);
+	hdmi_set_clock_rate(hdmi, "pixel_iface_clk_rcg", type, rate/2);
+
+	if (hdmi->pll->config) {
+		rc = hdmi->pll->config(hdmi->pll, rate, bpp);
+		if (rc < 0) {
+			HDMI_ERR("HDMI pll cfg failed\n");
+			return rc;
+		}
+	}
+
+	return rc;
+}
+
+static void hdmi_display_disable_pclk(struct hdmi_display_private *hdmi)
+{
+	int rc = 0;
+
+	hdmi->power->clk_enable(hdmi->power, HDMI_PCLK_PM, false);
+	if (hdmi->pll->unprepare) {
+		rc = hdmi->pll->unprepare(hdmi->pll);
+		if (rc < 0)
+			HDMI_ERR("pll unprepare failed\n");
+	}
+}
 
 static int hdmi_display_prepare(struct hdmi_display *hdmi_display, void *panel)
 {
-	//TODO
+	struct hdmi_display_private *hdmi;
+	struct hdmi_panel *hdmi_panel;
+	int rc;
+	u32 rate, bpp;
+
+	if (!hdmi_display || !panel) {
+		HDMI_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	hdmi_panel = panel;
+	if (!hdmi_panel->connector) {
+		HDMI_ERR("invalid connector input\n");
+		return -EINVAL;
+	}
+
+	hdmi = container_of(hdmi_display,
+			struct hdmi_display_private, hdmi_display);
+
+	rate = hdmi_panel->pinfo.pixel_clk_khz;
+	bpp = hdmi_panel->pinfo.bpp;
+
+	rc = hdmi->phy->config(hdmi->phy, rate);
+	if (rc) {
+		HDMI_ERR("phy pre enable failed, rc=%d\n", rc);
+		return rc;
+	}
+
+	/* enable pclks */
+	rc = hdmi_display_config_pclk(hdmi, rate, bpp);
+	if (rc) {
+		HDMI_ERR("pclk enable failed, rc=%d\n", rc);
+		return rc;
+	}
+
+	rc = hdmi->phy->pre_enable(hdmi->phy);
+	if (rc) {
+		HDMI_ERR("phy enable failed, rc=%d\n", rc);
+		return rc;
+	}
+
+	hdmi_display_state_add(HDMI_STATE_READY);
+
 	return 0;
 }
 
-static int hdmi_display_unprepare(struct hdmi_display *hdmi_display, void *panel)
+static int hdmi_display_unprepare(struct hdmi_display *hdmi_display,
+				void *panel)
 {
-	//TODO
-	return 0;
+	struct hdmi_display_private *hdmi;
+	int rc = 0;
+
+	hdmi = container_of(hdmi_display,
+			struct hdmi_display_private, hdmi_display);
+
+	hdmi_display_disable_pclk(hdmi);
+
+	rc = hdmi->phy->disable(hdmi->phy);
+	if (rc) {
+		HDMI_ERR("panel disable failed, rc=%d\n", rc);
+		goto end;
+	}
+
+	hdmi_display_state_remove(HDMI_STATE_READY);
+	hdmi_display_state_remove(HDMI_STATE_ENABLED);
+
+end:
+	return rc;
 }
 
-static int hdmi_display_set_mode(struct hdmi_display *hdmi_display, void *panel,
-		struct hdmi_display_mode *mode)
+static int hdmi_display_set_mode(struct hdmi_display *hdmi_display,
+			void *panel, const struct drm_display_mode *mode)
 {
-	//TODO
-	return 0;
+	struct hdmi_display_private *hdmi;
+	struct hdmi_panel *hdmi_panel;
+	int rc;
+
+	if (!hdmi_display || !panel) {
+		HDMI_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	hdmi_panel = panel;
+	if (!hdmi_panel->connector) {
+		HDMI_ERR("invalid connector input\n");
+		return -EINVAL;
+	}
+
+	hdmi = container_of(hdmi_display,
+			struct hdmi_display_private, hdmi_display);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, hdmi->state,
+			mode->hdisplay, mode->vdisplay,
+			drm_mode_vrefresh(mode));
+
+	mutex_lock(&hdmi->session_lock);
+
+	rc = hdmi_panel->set_mode(hdmi_panel, mode);
+	if (rc)
+		HDMI_ERR("panel set mode failed, rc=%d\n", rc);
+
+	mutex_unlock(&hdmi->session_lock);
+
+	//TODO: check anything pending
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hdmi->state);
+	return rc;
 }
 
 static struct hdmi_debug *hdmi_get_debug(struct hdmi_display *hdmi_display)
@@ -436,6 +1087,7 @@ static int hdmi_display_get_available_hdmi_resources(
 	max_hdmi_avail_res->num_dsc = min(avail_res->num_dsc,
 			hdmi_display->max_dsc_count);
 
+
 	HDMI_DEBUG_V("max_lm:%d, avail_lm:%d, hdmi_avail_lm:%d\n",
 			hdmi_display->max_mixer_count, avail_res->num_lm,
 			max_hdmi_avail_res->num_lm);
@@ -447,14 +1099,15 @@ static int hdmi_display_get_available_hdmi_resources(
 	return 0;
 }
 
-static int hdmi_display_validate_pixel_clock(struct hdmi_display_mode hdmi_mode,
+static int hdmi_display_validate_pixel_clock(struct drm_display_mode *mode,
 		u32 max_pclk_khz, u32 pclk_factor)
 {
-	u32 pclk_khz = hdmi_mode.timing.pixel_clk_khz;
+	u32 pclk_khz = mode->clock;
 
 	pclk_khz = pclk_khz / pclk_factor;
 	if (pclk_khz > max_pclk_khz) {
-		HDMI_DEBUG("clk: %d kHz, max: %d kHz\n", pclk_khz, max_pclk_khz);
+		HDMI_DEBUG("clk: %d kHz, max: %d kHz\n",
+				pclk_khz, max_pclk_khz);
 		return -EPERM;
 	}
 
@@ -470,7 +1123,6 @@ static enum drm_mode_status hdmi_display_validate_mode(
 	struct hdmi_panel *hdmi_panel;
 	struct hdmi_debug *debug;
 	enum drm_mode_status mode_status = MODE_BAD;
-	struct hdmi_display_mode hdmi_mode;
 	int rc = 0;
 
 	if (!hdmi_display || !mode || !panel ||
@@ -479,7 +1131,8 @@ static enum drm_mode_status hdmi_display_validate_mode(
 		return mode_status;
 	}
 
-	hdmi = container_of(hdmi_display, struct hdmi_display_private, hdmi_display);
+	hdmi = container_of(hdmi_display,
+			struct hdmi_display_private, hdmi_display);
 
 	mutex_lock(&hdmi->session_lock);
 
@@ -493,18 +1146,20 @@ static enum drm_mode_status hdmi_display_validate_mode(
 	if (!debug)
 		goto end;
 
-	hdmi_display->convert_to_hdmi_mode(hdmi_display, panel, mode, &hdmi_mode);
-
 	/* As per spec, 640x480 mode should always be present as fail-safe */
-	if ((hdmi_mode.timing.h_active == 640) &&
-			(hdmi_mode.timing.v_active == 480) &&
-			(hdmi_mode.timing.pixel_clk_khz == 25175)) {
+	if ((mode->hdisplay == 640) &&
+			(mode->vdisplay == 480) &&
+			(mode->clock == 25175)) {
 		goto skip_validation;
 	}
 
-	rc = hdmi_display_validate_pixel_clock(hdmi_mode,
+	rc = hdmi_display_validate_pixel_clock(mode,
 			hdmi_display->max_pclk_khz,
 			hdmi_panel->pclk_factor);
+	if (rc)
+		goto end;
+
+	rc = hdmi_panel->validate_mode(hdmi_panel, mode);
 	if (rc)
 		goto end;
 
@@ -514,7 +1169,6 @@ skip_validation:
 	if (!avail_res->num_lm_in_use) {
 		mutex_lock(&hdmi->accounting_lock);
 		hdmi->tot_lm_blks_in_use -= hdmi_panel->max_lm;
-		hdmi_panel->max_lm = max(hdmi_panel->max_lm, hdmi_mode.lm_count);
 		hdmi->tot_lm_blks_in_use += hdmi_panel->max_lm;
 		mutex_unlock(&hdmi->accounting_lock);
 	}
@@ -526,30 +1180,6 @@ end:
 			(mode_status == MODE_OK) ? "valid" : "invalid");
 
 	return mode_status;
-}
-
-static void hdmi_display_convert_to_hdmi_mode(struct hdmi_display *hdmi_display,
-		void *panel,
-		const struct drm_display_mode *drm_mode,
-		struct hdmi_display_mode *hdmi_mode)
-{
-	int rc;
-	struct hdmi_display_private *hdmi;
-	struct hdmi_panel *hdmi_panel;
-
-	if (!hdmi_display || !drm_mode || !hdmi_mode || !panel) {
-		HDMI_ERR("invalid input\n");
-		return;
-	}
-
-	hdmi = container_of(hdmi_display, struct hdmi_display_private, hdmi_display);
-	hdmi_panel = panel;
-
-	memset(hdmi_mode, 0, sizeof(*hdmi_mode));
-
-	rc = hdmi_panel->convert_to_hdmi_mode(hdmi_panel, drm_mode, hdmi_mode);
-	if (rc == -EAGAIN)
-		hdmi_panel->convert_to_hdmi_mode(hdmi_panel, drm_mode, hdmi_mode);
 }
 
 static int hdmi_display_setup_colospace(struct hdmi_display *hdmi_display,
@@ -666,7 +1296,8 @@ static int hdmi_request_irq(struct hdmi_display *hdmi_display)
 		return -EINVAL;
 	}
 
-	hdmi = container_of(hdmi_display, struct hdmi_display_private, hdmi_display);
+	hdmi = container_of(hdmi_display,
+			struct hdmi_display_private, hdmi_display);
 
 	hdmi->irq = irq_of_parse_and_map(hdmi->pdev->dev.of_node, 0);
 	if (hdmi->irq < 0) {
@@ -676,7 +1307,7 @@ static int hdmi_request_irq(struct hdmi_display *hdmi_display)
 	}
 
 	rc = devm_request_irq(&hdmi->pdev->dev, hdmi->irq, hdmi_display_irq,
-	IRQF_TRIGGER_HIGH, "hdmi_display_isr", hdmi);
+				IRQF_TRIGGER_HIGH, "hdmi_display_isr", hdmi);
 	if (rc < 0) {
 		HDMI_ERR("failed to request IRQ%u: %d\n",
 					hdmi->irq, rc);
@@ -711,12 +1342,6 @@ int hdmi_display_get_displays(struct drm_device *dev, void **displays,
 	}
 
 	return j;
-}
-
-static void hdmi_display_deinit_sub_modules(struct hdmi_display_private *hdmi)
-{
-	hdmi_parser_put(hdmi->parser);
-	mutex_destroy(&hdmi->session_lock);
 }
 
 static int hdmi_display_bind(struct device *dev, struct device *master,
@@ -795,6 +1420,7 @@ static int hdmi_display_probe(struct platform_device *pdev)
 		goto bail;
 	}
 
+
 	id = of_match_node(hdmi_dt_match, pdev->dev.of_node);
 	if (!id)
 		return -ENODEV;
@@ -842,11 +1468,12 @@ static int hdmi_display_probe(struct platform_device *pdev)
 	hdmi_display->config_hdr    = hdmi_display_config_hdr;
 	hdmi_display->update_pps = hdmi_display_update_pps;
 
-	hdmi_display->convert_to_hdmi_mode = hdmi_display_convert_to_hdmi_mode;
 	hdmi_display->set_colorspace = hdmi_display_setup_colospace;
 	hdmi_display->get_available_hdmi_resources =
 				hdmi_display_get_available_hdmi_resources;
 	hdmi_display->get_display_type = hdmi_display_get_display_type;
+
+	spin_lock_init(&hdmi->reg_lock);
 
 	rc = component_add(&pdev->dev, &hdmi_display_comp_ops);
 	if (rc) {
@@ -854,6 +1481,7 @@ static int hdmi_display_probe(struct platform_device *pdev)
 		goto error;
 	}
 
+	HDMI_DEBUG("success");
 	return 0;
 error:
 	g_hdmi_display[index] = NULL;
@@ -861,12 +1489,20 @@ bail:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+static void hdmi_display_remove(struct platform_device *pdev)
+#else
 static int hdmi_display_remove(struct platform_device *pdev)
+#endif
 {
+	int rc = 0;
 	struct hdmi_display_private *hdmi;
 
-	if (!pdev)
-		return -EINVAL;
+	if (!pdev) {
+		rc = -EINVAL;
+		HDMI_ERR("invalid param\n");
+		goto end;
+	}
 
 	hdmi = platform_get_drvdata(pdev);
 
@@ -877,8 +1513,12 @@ static int hdmi_display_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 	kfree(hdmi);
-
-	return 0;
+end:
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
+	return rc;
+#else
+	return;
+#endif
 }
 
 
@@ -909,9 +1549,11 @@ static struct platform_driver hdmi_display_driver = {
 };
 void __init hdmi_display_register(void)
 {
+	hdmi_pll_drv_register();
 	platform_driver_register(&hdmi_display_driver);
 }
 void __exit hdmi_display_unregister(void)
 {
 	platform_driver_unregister(&hdmi_display_driver);
+	hdmi_pll_drv_unregister();
 }

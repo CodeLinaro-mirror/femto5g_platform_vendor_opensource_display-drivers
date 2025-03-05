@@ -5125,7 +5125,7 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	struct sde_encoder_virt *sde_enc;
 	int pend_ret_fence_cnt;
 	struct sde_connector *c_conn;
-	bool is_dp;
+	bool is_dp, is_hdmi;
 	bool is_vid_mode;
 	u32 linecount = 0xffff;
 	enum msm_disp_op disp_op;
@@ -5160,6 +5160,7 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	}
 
 	is_dp = phys->hw_intf && phys->hw_intf->cap->type == INTF_DP;
+	is_hdmi = phys->hw_intf && phys->hw_intf->cap->type == INTF_HDMI;
 	is_vid_mode = sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE);
 
 	if (((sde_enc->disp_info.vrr_caps.video_psr_support &&
@@ -5197,7 +5198,7 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 
 	pend_ret_fence_cnt = atomic_read(&phys->pending_retire_fence_cnt);
 
-	if (is_dp && ctl->ops.update_bitmask[disp_op]) {
+	if ((is_dp || is_hdmi) && ctl->ops.update_bitmask[disp_op]) {
 		/* perform peripheral flush on every frame update for dp dsc */
 		if (phys->comp_type == MSM_DISPLAY_COMPRESSION_DSC &&
 				phys->comp_ratio && c_conn->ops.update_pps)
