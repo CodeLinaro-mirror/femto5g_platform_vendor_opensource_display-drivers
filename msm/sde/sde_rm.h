@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -237,6 +237,14 @@ struct sde_rm_hw_request {
  */
 enum sde_rm_topology_name sde_rm_get_topology_name(struct sde_rm *rm,
 		struct msm_display_topology topology);
+
+/**
+ * sde_rm_set_disp_op - set display control op index for all the hw blocks accessible through rm
+ * @rm: SDE resource manager handle
+ * @enc_id: DRM ID of Encoder client wishes to search for
+ * @disp_op_idx: value of display control op index after transition
+ */
+void sde_rm_set_disp_op(struct sde_rm *rm, uint32_t enc_id, enum msm_disp_op disp_op_idx);
 
 /**
  * sde_rm_debugfs_init - setup debugfs node for rm module

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -101,8 +101,8 @@ static void sde_hw_merge_3d_reset_blend_mode(struct sde_hw_merge_3d *ctx)
 static void _setup_merge_3d_ops(struct sde_hw_merge_3d_ops *ops,
 	const struct sde_merge_3d_cfg *hw_cap)
 {
-	ops->setup_blend_mode = _sde_hw_merge_3d_setup_blend_mode;
-	ops->reset_blend_mode = sde_hw_merge_3d_reset_blend_mode;
+	ops->setup_blend_mode[MSM_DISP_OP_HWIO] = _sde_hw_merge_3d_setup_blend_mode;
+	ops->reset_blend_mode[MSM_DISP_OP_HWIO] = sde_hw_merge_3d_reset_blend_mode;
 }
 
 static struct sde_hw_merge_3d *_sde_pp_merge_3d_init(enum sde_merge_3d idx,
@@ -581,14 +581,14 @@ static void sde_hw_pp_set_ppb_fifo_size(struct sde_hw_pingpong *pp, u32 pixels)
 static void sde_hw_pp_setup_3d_merge_mode(struct sde_hw_pingpong *pp,
 					enum sde_3d_blend_mode cfg)
 {
-	if (pp->merge_3d && pp->merge_3d->ops.setup_blend_mode)
-		pp->merge_3d->ops.setup_blend_mode(pp->merge_3d, cfg);
+	if (pp->merge_3d && pp->merge_3d->ops.setup_blend_mode[pp->hw.disp_op])
+		pp->merge_3d->ops.setup_blend_mode[pp->hw.disp_op](pp->merge_3d, cfg);
 }
 
 static void sde_hw_pp_reset_3d_merge_mode(struct sde_hw_pingpong *pp)
 {
-	if (pp->merge_3d && pp->merge_3d->ops.reset_blend_mode)
-		pp->merge_3d->ops.reset_blend_mode(pp->merge_3d);
+	if (pp->merge_3d && pp->merge_3d->ops.reset_blend_mode[pp->hw.disp_op])
+		pp->merge_3d->ops.reset_blend_mode[pp->hw.disp_op](pp->merge_3d);
 }
 
 static unsigned long sde_hw_pp_get_caps(struct sde_hw_pingpong *pp)
@@ -601,44 +601,44 @@ static void _setup_pingpong_ops(struct sde_hw_pingpong_ops *ops,
 {
 	u32 version = 0;
 
-	ops->get_hw_caps = sde_hw_pp_get_caps;
+	ops->get_hw_caps[MSM_DISP_OP_HWIO] = sde_hw_pp_get_caps;
 	if (hw_cap->features & BIT(SDE_PINGPONG_TE)) {
-		ops->setup_tearcheck = sde_hw_pp_setup_te_config;
-		ops->enable_tearcheck = sde_hw_pp_enable_te;
-		ops->update_tearcheck = sde_hw_pp_update_te;
-		ops->connect_external_te = sde_hw_pp_connect_external_te;
-		ops->get_vsync_info = sde_hw_pp_get_vsync_info;
-		ops->setup_autorefresh = sde_hw_pp_setup_autorefresh_config;
-		ops->get_autorefresh = sde_hw_pp_get_autorefresh_config;
-		ops->poll_timeout_wr_ptr = sde_hw_pp_poll_timeout_wr_ptr;
-		ops->get_line_count = sde_hw_pp_get_line_count;
+		ops->setup_tearcheck[MSM_DISP_OP_HWIO] = sde_hw_pp_setup_te_config;
+		ops->enable_tearcheck[MSM_DISP_OP_HWIO] = sde_hw_pp_enable_te;
+		ops->update_tearcheck[MSM_DISP_OP_HWIO] = sde_hw_pp_update_te;
+		ops->connect_external_te[MSM_DISP_OP_HWIO] = sde_hw_pp_connect_external_te;
+		ops->get_vsync_info[MSM_DISP_OP_HWIO] = sde_hw_pp_get_vsync_info;
+		ops->setup_autorefresh[MSM_DISP_OP_HWIO] = sde_hw_pp_setup_autorefresh_config;
+		ops->get_autorefresh[MSM_DISP_OP_HWIO] = sde_hw_pp_get_autorefresh_config;
+		ops->poll_timeout_wr_ptr[MSM_DISP_OP_HWIO] = sde_hw_pp_poll_timeout_wr_ptr;
+		ops->get_line_count[MSM_DISP_OP_HWIO] = sde_hw_pp_get_line_count;
 	} else if (hw_cap->features & BIT(SDE_PINGPONG_SET_SIZE)) {
 		/* PPB_FIFO_CFG offset conflicts with legacy PP Tear registers */
-		ops->set_ppb_fifo_size = sde_hw_pp_set_ppb_fifo_size;
+		ops->set_ppb_fifo_size[MSM_DISP_OP_HWIO] = sde_hw_pp_set_ppb_fifo_size;
 	}
 
 	if (hw_cap->features & BIT(SDE_PINGPONG_DSC)) {
-		ops->setup_dsc = sde_hw_pp_setup_dsc;
-		ops->enable_dsc = sde_hw_pp_dsc_enable;
-		ops->disable_dsc = sde_hw_pp_dsc_disable;
+		ops->setup_dsc[MSM_DISP_OP_HWIO] = sde_hw_pp_setup_dsc;
+		ops->enable_dsc[MSM_DISP_OP_HWIO] = sde_hw_pp_dsc_enable;
+		ops->disable_dsc[MSM_DISP_OP_HWIO] = sde_hw_pp_dsc_disable;
 	}
 
 	version = SDE_COLOR_PROCESS_MAJOR(hw_cap->sblk->dither.version);
 	switch (version) {
 	case DITHER_VER_MAJOR_1:
 	case DITHER_VER_MAJOR_2:
-		ops->setup_dither = sde_hw_pp_setup_dither;
+		ops->setup_dither[MSM_DISP_OP_HWIO] = sde_hw_pp_setup_dither;
 		break;
 	case DITHER_VER_MAJOR_3:
-		ops->setup_dither = sde_hw_pp_setup_dither_v3;
+		ops->setup_dither[MSM_DISP_OP_HWIO] = sde_hw_pp_setup_dither_v3;
 		break;
 	default:
-		ops->setup_dither = NULL;
+		ops->setup_dither[MSM_DISP_OP_HWIO] = NULL;
 		break;
 	}
 	if (test_bit(SDE_PINGPONG_MERGE_3D, &hw_cap->features)) {
-		ops->setup_3d_mode = sde_hw_pp_setup_3d_merge_mode;
-		ops->reset_3d_mode = sde_hw_pp_reset_3d_merge_mode;
+		ops->setup_3d_mode[MSM_DISP_OP_HWIO] = sde_hw_pp_setup_3d_merge_mode;
+		ops->reset_3d_mode[MSM_DISP_OP_HWIO] = sde_hw_pp_reset_3d_merge_mode;
 	}
 };
 

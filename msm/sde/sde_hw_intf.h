@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -153,29 +153,29 @@ struct intf_esync_params {
  * @get_autorefresh_status: Check the status of autorefresh is busy or idle
  */
 struct sde_hw_intf_ops {
-	void (*setup_timing_gen)(struct sde_hw_intf *intf,
+	void (*setup_timing_gen[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			const struct intf_timing_params *p,
 			const struct sde_format *fmt, bool align_esync, bool align_avr);
 
-	void (*setup_prg_fetch)(struct sde_hw_intf *intf,
+	void (*setup_prg_fetch[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			const struct intf_prog_fetch *fetch);
 
-	void (*setup_prog_dynref)(struct sde_hw_intf *intf,
+	void (*setup_prog_dynref[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			const u32 prog_dr_start_line);
 
-	void (*setup_rot_start)(struct sde_hw_intf *intf,
+	void (*setup_rot_start[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			const struct intf_prog_fetch *fetch);
 
-	void (*enable_timing)(struct sde_hw_intf *intf,
+	void (*enable_timing[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			u8 enable);
 
-	void (*get_status)(struct sde_hw_intf *intf,
+	void (*get_status[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct intf_status *status);
 
-	void (*setup_misr)(struct sde_hw_intf *intf,
+	void (*setup_misr[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			bool enable, u32 frame_count);
 
-	int (*collect_misr)(struct sde_hw_intf *intf,
+	int (*collect_misr[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			bool nonblock, u32 *misr_value);
 
 	/**
@@ -183,239 +183,242 @@ struct sde_hw_intf_ops {
 	 * video mode panels use get_line_count whereas get_vsync_info
 	 * is used for command mode panels
 	 */
-	u32 (*get_line_count)(struct sde_hw_intf *intf);
-	u32 (*get_underrun_line_count)(struct sde_hw_intf *intf);
+	u32 (*get_line_count[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf);
+	u32 (*get_underrun_line_count[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf);
 
-	void (*setup_vsync_source)(struct sde_hw_intf *intf, u32 frame_rate);
-	void (*configure_wd_jitter)(struct sde_hw_intf *intf,
+	void (*setup_vsync_source[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, u32 frame_rate);
+	void (*configure_wd_jitter[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct intf_wd_jitter_params *wd_jitter);
-	void (*write_wd_ltj)(struct sde_hw_intf *intf,
+	void (*write_wd_ltj[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct intf_wd_jitter_params *wd_jitter);
-	void (*get_wd_ltj_status)(struct sde_hw_intf *intf,
+	void (*get_wd_ltj_status[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct intf_wd_jitter_params *wd_jitter);
 
-	void (*bind_pingpong_blk)(struct sde_hw_intf *intf,
+	void (*bind_pingpong_blk[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			bool enable,
 			const enum sde_pingpong pp);
-	u32 (*get_autorefresh_status)(struct sde_hw_intf *intf);
+	u32 (*get_autorefresh_status[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf);
 
 	/**
 	 * enables vysnc generation and sets up init value of
 	 * read pointer and programs the tear check cofiguration
 	 */
-	int (*setup_tearcheck)(struct sde_hw_intf *intf,
+	int (*setup_tearcheck[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct sde_hw_tear_check *cfg);
 
 	/**
 	 * enables tear check block
 	 */
-	int (*enable_tearcheck)(struct sde_hw_intf *intf, bool enable);
+	int (*enable_tearcheck[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, bool enable);
 
 	/**
 	 * updates tearcheck configuration
 	 */
-	void (*update_tearcheck)(struct sde_hw_intf *intf,
+	void (*update_tearcheck[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct sde_hw_tear_check *cfg);
 
 	/**
 	 * read, modify, write to either set or clear listening to external TE
 	 * @Return: 1 if TE was originally connected, 0 if not, or -ERROR
 	 */
-	int (*connect_external_te)(struct sde_hw_intf *intf,
+	int (*connect_external_te[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			bool enable_external_te);
 
 	/**
 	 * provides the programmed and current
 	 * line_count
 	 */
-	int (*get_vsync_info)(struct sde_hw_intf *intf,
+	int (*get_vsync_info[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct sde_hw_pp_vsync_info  *info);
 
 	/**
 	 * configure and enable the autorefresh config
 	 */
-	int (*setup_autorefresh)(struct sde_hw_intf *intf,
+	int (*setup_autorefresh[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct sde_hw_autorefresh *cfg);
 
 	/**
 	 * retrieve autorefresh config from hardware
 	 */
-	int (*get_autorefresh)(struct sde_hw_intf *intf,
+	int (*get_autorefresh[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct sde_hw_autorefresh *cfg);
 
 	/**
 	 * poll until write pointer transmission starts
 	 * @Return: 0 on success, -ETIMEDOUT on timeout
 	 */
-	int (*poll_timeout_wr_ptr)(struct sde_hw_intf *intf, u32 timeout_us);
+	int (*poll_timeout_wr_ptr[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, u32 timeout_us);
 
 	/**
 	 * Select vsync signal for tear-effect configuration
 	 */
-	void (*vsync_sel)(struct sde_hw_intf *intf, u32 vsync_source);
+	void (*vsync_sel[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, u32 vsync_source);
 
 	/**
 	 * Program the AVR_TOTAL for min fps rate
 	 */
-	int (*avr_setup)(struct sde_hw_intf *intf,
+	int (*avr_setup[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			const struct intf_timing_params *params,
 			const struct intf_avr_params *avr_params);
 
 	/**
 	 * Signal the trigger on each commit for AVR
 	 */
-	void (*avr_trigger)(struct sde_hw_intf *ctx);
+	void (*avr_trigger[MSM_DISP_OP_MAX])(struct sde_hw_intf *ctx);
 
 	/**
 	 * Program DPU RSCC panic logic to listen to TE
 	 */
-	void (*raw_te_setup)(struct sde_hw_intf *ctx, bool enabled);
+	void (*raw_te_setup[MSM_DISP_OP_MAX])(struct sde_hw_intf *ctx, bool enabled);
 
 	/**
 	 * Enable AVR and select the mode
 	 */
-	void (*avr_ctrl)(struct sde_hw_intf *intf,
+	void (*avr_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			const struct intf_avr_params *avr_params);
 
 	/**
 	 * Enable AVR
 	 */
-	void (*avr_enable)(struct sde_hw_intf *intf, bool enable);
+	void (*avr_enable[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, bool enable);
 
 	/**
 	 * Enable trigger based on TE level
 	 */
-	void (*enable_te_level_trigger)(struct sde_hw_intf *intf, bool enable);
+	void (*enable_te_level_trigger[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, bool enable);
 
 	/**
 	 * Indicates the AVR armed status
 	 *
 	 * @return: false if a trigger is pending, else true while AVR is enabled
 	 */
-	u32 (*get_avr_status)(struct sde_hw_intf *intf);
+	u32 (*get_avr_status[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf);
 
 	/**
 	 * Indicates the number of AVR armed
 	 */
-	void (*set_num_avr_step)(struct sde_hw_intf *intf, u32 num_avr_step);
+	void (*set_num_avr_step[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, u32 num_avr_step);
 
 	/**
 	 * Indicates the current AVR step number
 	 */
-	u32 (*get_cur_num_avr_step)(struct sde_hw_intf *intf);
+	u32 (*get_cur_num_avr_step[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf);
 
 	/**
 	 * Configure esync generator to prepare for enablement
 	 */
-	void (*prepare_esync)(struct sde_hw_intf *intf, struct intf_esync_params *params);
+	void (*prepare_esync[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
+		struct intf_esync_params *params);
 
 	/**
 	 * Enable esync generator
 	 */
-	void (*enable_esync)(struct sde_hw_intf *intf, bool enable);
+	void (*enable_esync[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, bool enable);
 
 	/**
 	 * Configure backup esync generator to prepare for enablement
 	 */
-	void (*prepare_backup_esync)(struct sde_hw_intf *intf, struct intf_esync_params *params);
+	void (*prepare_backup_esync[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
+		struct intf_esync_params *params);
 
 	/**
 	 * Enable backup esync generator
 	 */
-	void (*enable_backup_esync)(struct sde_hw_intf *intf, bool enable);
+	void (*enable_backup_esync[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, bool enable);
 
 	/**
 	 * Blocks until backup esync generator is enabled
 	 */
-	int (*wait_for_esync_src_switch)(struct sde_hw_intf *intf, bool main);
+	int (*wait_for_esync_src_switch[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, bool main);
 
 	/**
 	 * Allow timing generator to extend VFP infinitely
 	 */
-	void (*enable_infinite_vfp)(struct sde_hw_intf *intf, bool enable);
+	void (*enable_infinite_vfp[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, bool enable);
 
 	/**
 	 * Get the HW esync timestamp value
 	 */
-	u64 (*get_esync_timestamp)(struct sde_hw_intf *intf);
+	u64 (*get_esync_timestamp[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf);
 
 	/**
 	 * Enable/disable 64 bit compressed data input to interface block
 	 */
-	void (*enable_compressed_input)(struct sde_hw_intf *intf,
+	void (*enable_compressed_input[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 		bool compression_en, bool dsc_4hs_merge);
 
 	/**
 	 * Check the intf tear check status and reset it to start_pos
 	 */
-	int (*check_and_reset_tearcheck)(struct sde_hw_intf *intf,
+	int (*check_and_reset_tearcheck[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct intf_tear_status *status);
 
 	/**
 	 * Reset the interface frame & line counter
 	 */
-	void (*reset_counter)(struct sde_hw_intf *intf);
+	void (*reset_counter[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf);
 
 	/**
 	 * Get the HW vsync timestamp counter
 	 */
-	u64 (*get_vsync_timestamp)(struct sde_hw_intf *intf, bool is_vid);
+	u64 (*get_vsync_timestamp[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, bool is_vid);
 
 	/**
 	 * Enable processing of 2 pixels per clock
 	 */
-	void (*enable_wide_bus)(struct sde_hw_intf *intf, bool enable);
+	void (*enable_wide_bus[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, bool enable);
 
 	/**
 	 * Get the INTF interrupt status
 	 */
-	u32 (*get_intr_status)(struct sde_hw_intf *intf);
+	u32 (*get_intr_status[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf);
 
 	/**
 	 * Override tear check rd_ptr_val with adjusted_linecnt
 	 * when qsync is enabled.
 	 */
-	void (*override_tear_rd_ptr_val)(struct sde_hw_intf *intf,
+	void (*override_tear_rd_ptr_val[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			u32 adjusted_linecnt);
 
 	/**
 	 * Check if intf supports 32-bit registers for TE
 	 */
-	bool (*is_te_32bit_supported)(struct sde_hw_intf *intf);
+	bool (*is_te_32bit_supported[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf);
 
 	/**
 	 * Setup the Sync programmable INTF offset between two DPU's
 	 */
-	void (*setup_dpu_sync_prog_intf_offset)(struct sde_hw_intf *intf,
+	void (*setup_dpu_sync_prog_intf_offset[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			const struct intf_prog_fetch *fetch);
 
 	/**
 	 * Setup timing engine enablement for slave DPU when enabled in sync mode
 	 */
-	void (*enable_dpu_sync_ctrl)(struct sde_hw_intf *intf,
+	void (*enable_dpu_sync_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			u32 timing_en_mux_sel);
 
 	/**
 	 * Setup the panic & wakup window for cmd-mode CESTA HW clients.
 	 */
-	void (*setup_te_panic_wakeup)(struct sde_hw_intf *intf,
+	void (*setup_te_panic_wakeup[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct intf_panic_wakeup_cfg *cfg);
 
 	/**
 	 * Setup the panic ctrl/level for vid-mode CESTA HW clients.
 	 */
-	void (*setup_intf_panic_ctrl)(struct sde_hw_intf *intf,
+	void (*setup_intf_panic_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf,
 			struct intf_panic_ctrl_cfg *cfg);
 
 	/**
 	 * Update the vsync_count for interface tear check
 	 */
-	void (*update_tearcheck_vsync_count)(struct sde_hw_intf *intf, u32 val);
+	void (*update_tearcheck_vsync_count[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, u32 val);
 
 	/**
 	 * Setup flush snapshot value for HW flush synchronisation
 	 */
-	void (*setup_flush_snapshot)(struct sde_hw_intf *intf, u32 snapshot_val, bool enable);
+	void (*setup_flush_snapshot[MSM_DISP_OP_MAX])(struct sde_hw_intf *intf, u32 snapshot_val,
+		bool enable);
 };
 
 struct sde_hw_intf {

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1104,13 +1104,14 @@ int sde_encoder_helper_collect_misr(struct sde_encoder_phys *phys_enc,
 static inline u32 sde_encoder_helper_get_ctl_flush(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_hw_ctl *hw_ctl;
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
 	hw_ctl = phys_enc->hw_ctl;
 
-	if (!hw_ctl || !hw_ctl->ops.get_flush_register)
+	if (!hw_ctl || !hw_ctl->ops.get_flush_register[disp_op])
 		return 0;
 
-	return hw_ctl->ops.get_flush_register(hw_ctl);
+	return hw_ctl->ops.get_flush_register[disp_op](hw_ctl);
 }
 
 /**
@@ -1121,12 +1122,13 @@ static inline u32 sde_encoder_helper_get_ctl_flush(struct sde_encoder_phys *phys
 static inline bool sde_encoder_helper_flush_in_sync_mode(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_hw_ctl *hw_ctl;
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
 	hw_ctl = phys_enc->hw_ctl;
 
-	if (!hw_ctl || !hw_ctl->ops.get_flush_sync_mode)
+	if (!hw_ctl || !hw_ctl->ops.get_flush_sync_mode[disp_op])
 		return false;
 
-	return hw_ctl->ops.get_flush_sync_mode(hw_ctl);
+	return hw_ctl->ops.get_flush_sync_mode[disp_op](hw_ctl);
 }
 #endif /* __sde_encoder_phys_H__ */

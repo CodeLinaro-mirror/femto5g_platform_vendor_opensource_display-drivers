@@ -473,6 +473,42 @@ enum sde_rm_topology_name sde_rm_get_topology_name(struct sde_rm *rm,
 	return SDE_RM_TOPOLOGY_NONE;
 }
 
+void sde_rm_set_disp_op(struct sde_rm *rm, u32 enc_id, enum msm_disp_op disp_op_idx)
+{
+	struct list_head *blk_list;
+	struct sde_rm_hw_blk *blk;
+	enum sde_hw_blk_type type;
+
+	if (!rm) {
+		SDE_ERROR("invalid rm\n");
+		return;
+	}
+
+	mutex_lock(&rm->rm_lock);
+	/* Top is a singleton, not managed in hw_blks list */
+	/* SSPPs are not managed by the resource manager */
+	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
+		blk_list = &rm->hw_blks[type];
+
+		if (!blk_list) {
+			SDE_ERROR("invalid blk list for type: %d\n", type);
+			continue;
+		}
+
+		list_for_each_entry(blk, blk_list, list) {
+			if (!blk || !blk->hw) {
+				SDE_ERROR("invalid hw blk\n");
+				continue;
+			}
+			struct sde_rm_rsvp *rsvp = blk->rsvp;
+
+			if ((rsvp && rsvp->enc_id == enc_id))
+				blk->hw->disp_op = disp_op_idx;
+		}
+	}
+	mutex_unlock(&rm->rm_lock);
+}
+
 static bool _sde_rm_get_hw_locked(struct sde_rm *rm, struct sde_rm_hw_iter *i,
 		bool list_forward)
 {
@@ -2380,19 +2416,23 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 			break;
 
 		mixer = to_sde_hw_mixer(iter_lm.blk->hw);
-		if (ctl->ops.get_staged_sspp || mixer->ops.get_staged_sspp) {
+		if (ctl->ops.get_staged_sspp[ctl->hw.disp_op] ||
+			mixer->ops.get_staged_sspp[mixer->hw.disp_op]) {
 			// reset bordercolor from previous LM
 			splash_display->pipe_info.bordercolor = false;
 
-			if (ctl->ops.get_staged_sspp)
-				pipes_per_lm = ctl->ops.get_staged_sspp(ctl, iter_lm.blk->id,
-					&splash_display->pipe_info);
+			if (ctl->ops.get_staged_sspp[ctl->hw.disp_op])
+				pipes_per_lm = ctl->ops.get_staged_sspp[ctl->hw.disp_op](
+					ctl, iter_lm.blk->id, &splash_display->pipe_info);
 
-			if (mixer->ops.get_staged_sspp && ctl->ops.get_active_lms) {
+			if (mixer->ops.get_staged_sspp[mixer->hw.disp_op] &&
+				ctl->ops.get_active_lms[ctl->hw.disp_op]) {
 				pipes_per_lm =
-					BIT(iter_lm.blk->id - LM_0) & ctl->ops.get_active_lms(ctl);
+					BIT(iter_lm.blk->id - LM_0) &
+					ctl->ops.get_active_lms[ctl->hw.disp_op](ctl);
 				if (pipes_per_lm)
-					pipe_count = mixer->ops.get_staged_sspp(mixer,
+					pipe_count = mixer->ops.get_staged_sspp[
+						mixer->hw.disp_op](mixer,
 						iter_lm.blk->id, &splash_display->pipe_info);
 			}
 
@@ -2406,15 +2446,15 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 		}
 	}
 
-	if (ctl->ops.get_active_pipes)
-		active_pipes_mask = ctl->ops.get_active_pipes(ctl);
+	if (ctl->ops.get_active_pipes[ctl->hw.disp_op])
+		active_pipes_mask = ctl->ops.get_active_pipes[ctl->hw.disp_op](ctl);
 
 	if (_sde_rm_update_active_only_pipes(splash_display, active_pipes_mask))
 		return 0;
 
 	while (_sde_rm_get_hw_locked(rm, &iter_dsc, true)) {
-		if (ctl->ops.read_active_status &&
-				!(ctl->ops.read_active_status(ctl,
+		if (ctl->ops.read_active_status[ctl->hw.disp_op] &&
+				!(ctl->ops.read_active_status[ctl->hw.disp_op](ctl,
 					SDE_HW_BLK_DSC,
 					iter_dsc.blk->id)))
 			continue;
@@ -2466,12 +2506,12 @@ int sde_rm_cont_splash_res_init(struct msm_drm_private *priv,
 			&& (splash_disp_count < splash_data->num_splash_displays)) {
 		struct sde_hw_ctl *ctl = to_sde_hw_ctl(iter_c.blk->hw);
 
-		if (!ctl->ops.get_ctl_intf) {
+		if (!ctl->ops.get_ctl_intf[ctl->hw.disp_op]) {
 			SDE_ERROR("get_ctl_intf not initialized\n");
 			return -EINVAL;
 		}
 
-		intf_sel = ctl->ops.get_ctl_intf(ctl);
+		intf_sel = ctl->ops.get_ctl_intf[ctl->hw.disp_op](ctl);
 		if (intf_sel) {
 			splash_display =
 				&splash_data->splash_display[index ? 1 : 0];

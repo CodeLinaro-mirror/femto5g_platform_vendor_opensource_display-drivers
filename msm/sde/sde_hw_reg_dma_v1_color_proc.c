@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -806,12 +806,12 @@ void reg_dmav1_setup_dspp_vlutv18(struct sde_hw_dspp *ctx, void *cfg)
 exit:
 	kvfree(data);
 	/* update flush bit */
-	if (!rc && ctl && ctl->ops.update_bitmask_dspp_pavlut) {
+	if (!rc && ctl && ctl->ops.update_bitmask_dspp_pavlut[ctl->hw.disp_op]) {
 		int dspp_idx;
 
 		for (index = 0; index < num_of_mixers; index++) {
 			dspp_idx = dspp_list[index]->idx;
-			ctl->ops.update_bitmask_dspp_pavlut(ctl, dspp_idx,
+			ctl->ops.update_bitmask_dspp_pavlut[ctl->hw.disp_op](ctl, dspp_idx,
 				true);
 		}
 	}

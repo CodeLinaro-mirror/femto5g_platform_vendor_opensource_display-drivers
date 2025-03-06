@@ -138,6 +138,19 @@ static int _sde_kms_register_events(struct msm_kms *kms,
 		struct drm_mode_object *obj, u32 event, bool en);
 static void sde_kms_handle_power_event(u32 event_type, void *usr);
 
+inline enum msm_disp_op sde_kms_get_disp_op(struct sde_kms *sde_kms)
+{
+	struct msm_drm_private *priv;
+
+	if (!sde_kms || !sde_kms->dev->dev_private) {
+		SDE_ERROR("invalid sde_kms\n");
+		return MSM_DISP_OP_HWIO;
+	}
+	priv = sde_kms->dev->dev_private;
+
+	return priv->disp_op;
+}
+
 static inline bool sde_kms_in_loopback_mode(struct drm_crtc_state *crtc_state)
 {
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
@@ -1228,6 +1241,7 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 	struct drm_connector_list_iter iter;
 	enum sde_crtc_vm_req vm_req;
 	int rc = 0;
+	enum msm_disp_op disp_op;
 
 	ddev = sde_kms->dev;
 
@@ -1239,6 +1253,7 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 	if (!crtc)
 		return 0;
 
+	disp_op = sde_kms_get_disp_op(sde_kms);
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
@@ -1249,8 +1264,8 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 	sde_irq_update(&sde_kms->base, true);
 
 	/* clear the stale IRQ status bits */
-	if (sde_kms->hw_intr && sde_kms->hw_intr->ops.clear_all_irqs)
-		sde_kms->hw_intr->ops.clear_all_irqs(sde_kms->hw_intr);
+	if (sde_kms->hw_intr && sde_kms->hw_intr->ops.clear_all_irqs[disp_op])
+		sde_kms->hw_intr->ops.clear_all_irqs[disp_op](sde_kms->hw_intr);
 
 	_sde_kms_remove_pm_qos_irq_request(sde_kms, &CPU_MASK_ALL);
 
@@ -1305,11 +1320,13 @@ int sde_kms_vm_trusted_prepare_commit(struct sde_kms *sde_kms,
 	struct drm_crtc_state *new_cstate;
 	struct sde_crtc_state *cstate;
 	enum sde_crtc_vm_req vm_req;
+	enum msm_disp_op disp_op;
 
 	crtc = sde_kms_vm_get_vm_crtc(state);
 	if (!crtc)
 		return 0;
 
+	disp_op = sde_kms_get_disp_op(sde_kms);
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
@@ -1317,8 +1334,8 @@ int sde_kms_vm_trusted_prepare_commit(struct sde_kms *sde_kms,
 		return 0;
 
 	/* Clear the stale IRQ status bits */
-	if (sde_kms->hw_intr && sde_kms->hw_intr->ops.clear_all_irqs)
-		sde_kms->hw_intr->ops.clear_all_irqs(sde_kms->hw_intr);
+	if (sde_kms->hw_intr && sde_kms->hw_intr->ops.clear_all_irqs[disp_op])
+		sde_kms->hw_intr->ops.clear_all_irqs[disp_op](sde_kms->hw_intr);
 
 	/* Program the SID's for the trusted VM */
 	sde_kms_vm_set_sid(sde_kms, 1);
@@ -4905,9 +4922,10 @@ static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
 	if (!sde_kms || !sde_kms->hw_mdp)
 		return;
 
-	if (sde_kms->hw_mdp->ops.setup_hw_fences)
-		sde_kms->hw_mdp->ops.setup_hw_fences(sde_kms->hw_mdp,
-			sde_kms->catalog->ipcc_protocol_id, sde_kms->dpu_ipcc_addr);
+	if (sde_kms->hw_mdp->ops.setup_hw_fences[sde_kms->hw_mdp->hw.disp_op])
+		sde_kms->hw_mdp->ops.setup_hw_fences[sde_kms->hw_mdp->hw.disp_op](
+			sde_kms->hw_mdp, sde_kms->catalog->ipcc_protocol_id,
+			sde_kms->dpu_ipcc_addr);
 }
 
 static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
@@ -4915,9 +4933,9 @@ static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
 	if (!sde_kms || !sde_kms->hw_mdp || !sde_kms->catalog)
 		return;
 
-	if (sde_kms->hw_mdp->ops.reset_ubwc)
-		sde_kms->hw_mdp->ops.reset_ubwc(sde_kms->hw_mdp,
-						sde_kms->catalog);
+	if (sde_kms->hw_mdp->ops.reset_ubwc[sde_kms->hw_mdp->hw.disp_op])
+		sde_kms->hw_mdp->ops.reset_ubwc[sde_kms->hw_mdp->hw.disp_op](
+			sde_kms->hw_mdp, sde_kms->catalog);
 }
 
 static void sde_kms_reset_cesta_resource(struct sde_kms *sde_kms)
@@ -4960,8 +4978,8 @@ static int _sde_kms_active_override(struct sde_kms *sde_kms, bool enable)
 
 	uidle = sde_kms->hw_uidle;
 
-	if (uidle && uidle->ops.active_override_enable)
-		uidle->ops.active_override_enable(uidle, enable);
+	if (uidle && uidle->ops.active_override_enable[uidle->hw.disp_op])
+		uidle->ops.active_override_enable[uidle->hw.disp_op](uidle, enable);
 
 	return 0;
 }

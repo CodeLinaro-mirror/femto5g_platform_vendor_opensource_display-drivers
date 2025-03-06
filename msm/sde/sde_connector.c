@@ -95,6 +95,14 @@ static const struct drm_prop_enum_list e_bpp_mode[] = {
 	{MSM_DISPLAY_PIXEL_FORMAT_RGB101010, "dsi_30bpp"},
 };
 
+static inline enum msm_disp_op sde_connector_get_disp_op(struct drm_connector *conn)
+{
+	if (!conn || !conn->state || !conn->state->crtc)
+		return MSM_DISP_OP_HWIO;
+
+	return sde_crtc_get_disp_op(conn->state->crtc);
+}
+
 struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn)
 {
 	struct dsi_display *display = NULL;

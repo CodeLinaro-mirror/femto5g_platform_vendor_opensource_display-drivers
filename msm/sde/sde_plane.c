@@ -93,6 +93,20 @@ static struct sde_kms *_sde_plane_get_kms(struct drm_plane *plane)
 	return to_sde_kms(priv->kms);
 }
 
+enum msm_disp_op sde_plane_get_disp_op(struct drm_plane *plane)
+{
+	struct msm_drm_private *priv;
+
+	if (!plane || !plane->dev)
+		return MSM_DISP_OP_HWIO;
+
+	priv = plane->dev->dev_private;
+	if (!priv)
+		return MSM_DISP_OP_HWIO;
+
+	return priv->disp_op;
+}
+
 static struct sde_hw_ctl *_sde_plane_get_hw_ctl(const struct drm_plane *plane,
 		struct drm_plane_state *old_state)
 {
@@ -2123,17 +2137,19 @@ int sde_plane_validate_multirect_v2(struct sde_multirect_plane_states *plane)
 void sde_plane_ctl_flush(struct drm_plane *plane, struct sde_hw_ctl *ctl,
 		bool set)
 {
+	enum msm_disp_op disp_op;
 	if (!plane || !ctl) {
 		SDE_ERROR("invalid parameters\n");
 		return;
 	}
+	disp_op = sde_plane_get_disp_op(plane);
 
-	if (!ctl->ops.update_bitmask_sspp) {
+	if (!ctl->ops.update_bitmask_sspp[disp_op]) {
 		SDE_ERROR("invalid ops\n");
 		return;
 	}
 
-	ctl->ops.update_bitmask_sspp(ctl, sde_plane_pipe(plane), set);
+	ctl->ops.update_bitmask_sspp[disp_op](ctl, sde_plane_pipe(plane), set);
 }
 
 static int sde_plane_prepare_fb(struct drm_plane *plane,

@@ -1183,6 +1183,20 @@ struct msm_fence_error_client_entry {
 	struct list_head list;
 };
 
+/**
+ * enum msm_disp_op: type of operation path
+ * @MSM_DISP_OP_HWIO: Display operation in HWIO path
+ * @MSM_DISP_OP_HFI: Display operation in HFI path.
+ * @MSM_DISP_OP_HYP: Display operation in Hypervisor
+ * @MSM_DISP_OP_MAX: Max value.
+ */
+enum msm_disp_op {
+	MSM_DISP_OP_HWIO,
+	MSM_DISP_OP_HFI,
+	MSM_DISP_OP_HYP,
+	MSM_DISP_OP_MAX,
+};
+
 struct msm_drm_private {
 
 	struct drm_device *dev;
@@ -1315,6 +1329,8 @@ struct msm_drm_private {
 
 	/* list of component registered for notification */
 	struct blocking_notifier_head component_notifier_list;
+
+	enum msm_disp_op disp_op;
 };
 
 /* get struct msm_kms * from drm_device * */

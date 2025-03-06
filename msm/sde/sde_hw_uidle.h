@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  *
  */
@@ -85,7 +85,7 @@ struct sde_hw_uidle_ops {
 	 * @uidle: uidle context driver
 	 * @cfg: uidle global config
 	 */
-	void (*set_uidle_ctl)(struct sde_hw_uidle *uidle,
+	void (*set_uidle_ctl[MSM_DISP_OP_MAX])(struct sde_hw_uidle *uidle,
 		struct sde_uidle_ctl_cfg *cfg);
 
 	/**
@@ -93,7 +93,7 @@ struct sde_hw_uidle_ops {
 	 * @uidle: uidle context driver
 	 * @cfg: uidle wd timer config
 	 */
-	void (*setup_wd_timer)(struct sde_hw_uidle *uidle,
+	void (*setup_wd_timer[MSM_DISP_OP_MAX])(struct sde_hw_uidle *uidle,
 		struct sde_uidle_wd_cfg *cfg);
 
 	/**
@@ -101,7 +101,7 @@ struct sde_hw_uidle_ops {
 	 * @uidle: uidle context driver
 	 * @enable: true to enable the counters
 	 */
-	void (*uidle_setup_cntr)(struct sde_hw_uidle *uidle,
+	void (*uidle_setup_cntr[MSM_DISP_OP_MAX])(struct sde_hw_uidle *uidle,
 		bool enable);
 
 	/**
@@ -109,7 +109,7 @@ struct sde_hw_uidle_ops {
 	 * @uidle: uidle context driver
 	 * @cntr: pointer to return the counters
 	 */
-	void (*uidle_get_cntr)(struct sde_hw_uidle *uidle,
+	void (*uidle_get_cntr[MSM_DISP_OP_MAX])(struct sde_hw_uidle *uidle,
 		struct sde_uidle_cntr *cntr);
 
 	/**
@@ -117,7 +117,7 @@ struct sde_hw_uidle_ops {
 	 * @uidle: uidle context driver
 	 * @status: pointer to return the status of uidle
 	 */
-	void (*uidle_get_status)(struct sde_hw_uidle *uidle,
+	void (*uidle_get_status[MSM_DISP_OP_MAX])(struct sde_hw_uidle *uidle,
 		struct sde_uidle_status *status);
 
 	/**
@@ -125,7 +125,7 @@ struct sde_hw_uidle_ops {
 	 * @uidle: uidle context driver
 	 * @status: pointer to return the status of uidle
 	 */
-	void (*uidle_get_status_ext1)(struct sde_hw_uidle *uidle,
+	void (*uidle_get_status_ext1[MSM_DISP_OP_MAX])(struct sde_hw_uidle *uidle,
 		struct sde_uidle_status *status);
 
 	/**
@@ -133,14 +133,14 @@ struct sde_hw_uidle_ops {
 	 * @uidle: uidle context driver
 	 * @enable: enable/disable
 	 */
-	void (*active_override_enable)(struct sde_hw_uidle *uidle,
+	void (*active_override_enable[MSM_DISP_OP_MAX])(struct sde_hw_uidle *uidle,
 			bool enable);
 	/**
 	 * uidle_fal10_overrride - enable/disable fal10 override
 	 * @uidle: uidle context driver
 	 * @enable: enable/disable
 	 */
-	void (*uidle_fal10_override)(struct sde_hw_uidle *uidle, bool enable);
+	void (*uidle_fal10_override[MSM_DISP_OP_MAX])(struct sde_hw_uidle *uidle, bool enable);
 };
 
 struct sde_hw_uidle {

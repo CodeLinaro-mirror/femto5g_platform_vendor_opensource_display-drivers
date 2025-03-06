@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -104,14 +104,14 @@ struct sde_hw_mdp_ops {
 	 * @mdp  : mdp top context driver
 	 * @cfg  : upper and lower part of pipe configuration
 	 */
-	void (*setup_split_pipe)(struct sde_hw_mdp *mdp,
+	void (*setup_split_pipe[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp,
 			struct split_pipe_cfg *p);
 
 	/** setup_pp_split() : Configure pp split related registers
 	 * @mdp  : mdp top context driver
 	 * @cfg  : upper and lower part of pipe configuration
 	 */
-	void (*setup_pp_split)(struct sde_hw_mdp *mdp,
+	void (*setup_pp_split[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp,
 			struct split_pipe_cfg *cfg);
 
 	/**
@@ -119,7 +119,7 @@ struct sde_hw_mdp_ops {
 	 * @mdp  : mdp top context driver
 	 * @cfg  : cdm output configuration
 	 */
-	void (*setup_cdm_output)(struct sde_hw_mdp *mdp,
+	void (*setup_cdm_output[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp,
 			struct cdm_output_cfg *cfg);
 
 	/**
@@ -127,7 +127,7 @@ struct sde_hw_mdp_ops {
 	 * @mdp  : mdp top context driver
 	 * @cfg  : traffic shaper configuration
 	 */
-	void (*setup_traffic_shaper)(struct sde_hw_mdp *mdp,
+	void (*setup_traffic_shaper[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp,
 			struct traffic_shaper_cfg *cfg);
 
 	/**
@@ -137,7 +137,7 @@ struct sde_hw_mdp_ops {
 	 * @enable: force on enable
 	 * @return: if the clock is forced-on by this function
 	 */
-	bool (*setup_clk_force_ctrl)(struct sde_hw_mdp *mdp,
+	bool (*setup_clk_force_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp,
 			enum sde_clk_ctrl_type clk_ctrl, bool enable);
 
 	/**
@@ -147,7 +147,7 @@ struct sde_hw_mdp_ops {
 	 * @status: returns true if clock is on
 	 * @return: 0 if success, otherwise return code
 	 */
-	int (*get_clk_ctrl_status)(struct sde_hw_mdp *mdp,
+	int (*get_clk_ctrl_status[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp,
 			enum sde_clk_ctrl_type clk_ctrl, bool *status);
 
 	/**
@@ -155,7 +155,7 @@ struct sde_hw_mdp_ops {
 	 * @mdp: mdp top context driver
 	 * @cfg: vsync source selection configuration
 	 */
-	void (*setup_vsync_source)(struct sde_hw_mdp *mdp,
+	void (*setup_vsync_source[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp,
 				struct sde_vsync_source_cfg *cfg);
 
 	/**
@@ -163,20 +163,20 @@ struct sde_hw_mdp_ops {
 	 * @mdp: mdp top context driver
 	 * @m: pointer to mdss catalog data
 	 */
-	void (*reset_ubwc)(struct sde_hw_mdp *mdp, struct sde_mdss_cfg *m);
+	void (*reset_ubwc[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp, struct sde_mdss_cfg *m);
 
 	/**
 	 * intf_audio_select - select the external interface for audio
 	 * @mdp: mdp top context driver
 	 */
-	void (*intf_audio_select)(struct sde_hw_mdp *mdp);
+	void (*intf_audio_select[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp);
 
 	/**
 	 * set_mdp_hw_events - enable qdss hardware events for mdp
 	 * @mdp: mdp top context driver
 	 * @enable: enable/disable hw events
 	 */
-	void (*set_mdp_hw_events)(struct sde_hw_mdp *mdp, bool enable);
+	void (*set_mdp_hw_events[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp, bool enable);
 
 	/**
 	 * set_cwb_ppb_cntl - select the data point for CWB
@@ -184,7 +184,7 @@ struct sde_hw_mdp_ops {
 	 * @dual: indicates if dual pipe line needs to be programmed
 	 * @dspp_out : true if dspp output required. LM is default tap point
 	 */
-	void (*set_cwb_ppb_cntl)(struct sde_hw_mdp *mdp,
+	void (*set_cwb_ppb_cntl[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp,
 			bool dual, bool dspp_out);
 
 	/**
@@ -194,7 +194,7 @@ struct sde_hw_mdp_ops {
 	 * @len:     size of the valid data within payload
 	 * @stream_id: stream ID for MST (0 or 1)
 	 */
-	void (*set_hdr_plus_metadata)(struct sde_hw_mdp *mdp,
+	void (*set_hdr_plus_metadata[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp,
 			u8 *payload, u32 len, u32 stream_id);
 
 	/**
@@ -202,7 +202,7 @@ struct sde_hw_mdp_ops {
 	 * @mdp:     mdp top context driver
 	 * @intf_idx:  intf block index for relative information
 	 */
-	u32 (*get_autorefresh_status)(struct sde_hw_mdp *mdp,
+	u32 (*get_autorefresh_status[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp,
 			u32 intf_idx);
 
 	/**
@@ -211,7 +211,7 @@ struct sde_hw_mdp_ops {
 	 * @protocol_id:    ipcc protocol id
 	 * @dpu_ipcc_addr:  address for the dpu ipcc reg block
 	 */
-	void (*setup_hw_fences)(struct sde_hw_mdp *mdp, u32 protocol_id,
+	void (*setup_hw_fences[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp, u32 protocol_id,
 		unsigned long dpu_ipcc_addr);
 
 	/**
@@ -220,7 +220,8 @@ struct sde_hw_mdp_ops {
 	 * @s_val:     pointer to start timestamp value to populate
 	 * @e_val:     pointer to end timestamp value to populate
 	 */
-	void (*hw_fence_input_status)(struct sde_hw_mdp *mdp, u64 *s_val, u64 *e_val);
+	void (*hw_fence_input_status[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp, u64 *s_val,
+		u64 *e_val);
 
 	/**
 	 * hw_fence_input_timestamp_ctrl - enable or clear input fence timestamps
@@ -228,7 +229,8 @@ struct sde_hw_mdp_ops {
 	 * @enable:    indicates if timestamps should be enabled
 	 * @enable:    indicates if timestamps should be cleared
 	 */
-	void (*hw_fence_input_timestamp_ctrl)(struct sde_hw_mdp *mdp, bool enable, bool clear);
+	void (*hw_fence_input_timestamp_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp, bool enable,
+		bool clear);
 
 	/**
 	 * set_ppb_fifo_size - set ppb latency buffer size to a fixed value
@@ -236,7 +238,7 @@ struct sde_hw_mdp_ops {
 	 * @pp:       indicates pingpong block id
 	 * @sz:       indicates size of the ppb in terms of pixels
 	 */
-	void (*set_ppb_fifo_size)(struct sde_hw_mdp *mdp, u32 pp, u32 sz);
+	void (*set_ppb_fifo_size[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp, u32 pp, u32 sz);
 
 	/**
 	 * dpu_sync_intf_mux - selects the Master INTF which drives the Slave DPU
@@ -244,7 +246,7 @@ struct sde_hw_mdp_ops {
 	 * @intf_idx:  intf block index which drives the master and Slave DPU
 	 *		INTF_1/INTF_5 are only possible values.
 	 */
-	void (*dpu_sync_intf_mux)(struct sde_hw_mdp *mdp, int intf_idx);
+	void (*dpu_sync_intf_mux[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp, int intf_idx);
 
 	/**
 	 * flush_sync_intf_mux - selects the intf that decides the snapshot signal
@@ -252,7 +254,7 @@ struct sde_hw_mdp_ops {
 	 * @intf_idx:   intf(INTF_1/INTF_5) which decides the snapshot signal for
 	 *		flush sync logic
 	 */
-	void (*flush_sync_intf_mux)(struct sde_hw_mdp *mdp, int intf_idx);
+	void (*flush_sync_intf_mux[MSM_DISP_OP_MAX])(struct sde_hw_mdp *mdp, int intf_idx);
 };
 
 struct sde_hw_mdp {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  *
  */
@@ -254,22 +254,22 @@ static inline void _setup_uidle_ops(struct sde_hw_uidle_ops *ops,
 
 	if (!cfg->uidle_rev) {
 		/* required for mode2 */
-		ops->active_override_enable = sde_hw_uidle_active_override;
+		ops->active_override_enable[MSM_DISP_OP_HWIO] = sde_hw_uidle_active_override;
 		return;
 	}
 
-	ops->set_uidle_ctl = sde_hw_uidle_setup_ctl;
-	ops->setup_wd_timer = sde_hw_uidle_setup_wd_timer;
-	ops->uidle_setup_cntr = sde_hw_uidle_setup_cntr;
-	ops->uidle_get_cntr = sde_hw_uidle_get_cntr;
-	ops->uidle_get_status = sde_hw_uidle_get_status;
+	ops->set_uidle_ctl[MSM_DISP_OP_HWIO] = sde_hw_uidle_setup_ctl;
+	ops->setup_wd_timer[MSM_DISP_OP_HWIO] = sde_hw_uidle_setup_wd_timer;
+	ops->uidle_setup_cntr[MSM_DISP_OP_HWIO] = sde_hw_uidle_setup_cntr;
+	ops->uidle_get_cntr[MSM_DISP_OP_HWIO] = sde_hw_uidle_get_cntr;
+	ops->uidle_get_status[MSM_DISP_OP_HWIO] = sde_hw_uidle_get_status;
 
 	if (cap & BIT(SDE_UIDLE_STATUS_EXT1))
-		ops->uidle_get_status_ext1 = sde_hw_uidle_get_status_ext1;
+		ops->uidle_get_status_ext1[MSM_DISP_OP_HWIO] = sde_hw_uidle_get_status_ext1;
 
 	if (cap & BIT(SDE_UIDLE_QACTIVE_OVERRIDE))
-		ops->active_override_enable = sde_hw_uidle_active_override;
-	ops->uidle_fal10_override = sde_hw_uidle_fal10_override;
+		ops->active_override_enable[MSM_DISP_OP_HWIO] = sde_hw_uidle_active_override;
+	ops->uidle_fal10_override[MSM_DISP_OP_HWIO] = sde_hw_uidle_fal10_override;
 }
 
 struct sde_hw_uidle *sde_hw_uidle_init(enum sde_uidle idx,

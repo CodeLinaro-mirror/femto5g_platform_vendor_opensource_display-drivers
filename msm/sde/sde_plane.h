@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -472,5 +472,11 @@ static inline bool sde_plane_is_cac_enabled(struct sde_plane_state *pstate)
 	return sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE)
 			!= SDE_CAC_NONE;
 }
+
+/**
+ * sde_plane_get_disp_op - Returns the display control index - default: MSM_DISP_OP_HWIO
+ * @plane: pointer to drm_plane
+ */
+enum msm_disp_op sde_plane_get_disp_op(struct drm_plane *plane);
 
 #endif /* _SDE_PLANE_H_ */

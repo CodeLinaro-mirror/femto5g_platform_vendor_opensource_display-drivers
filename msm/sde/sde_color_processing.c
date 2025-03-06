@@ -561,12 +561,13 @@ static int _set_lm_gc_feature(struct sde_hw_dspp *hw_dspp,
 			     struct sde_crtc *hw_crtc)
 {
 	int ret = 0;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(&hw_crtc->base);
 	struct sde_hw_mixer *hw_lm = (struct sde_hw_mixer *)hw_cfg->mixer_info;
 
-	if (!hw_lm->ops.setup_gc)
+	if (!hw_lm->ops.setup_gc[disp_op])
 		ret = -EINVAL;
 	else
-		hw_lm->ops.setup_gc(hw_lm, hw_cfg);
+		hw_lm->ops.setup_gc[disp_op](hw_lm, hw_cfg);
 	return ret;
 }
 
@@ -1780,6 +1781,7 @@ static void _sde_cp_dspp_flush_helper(struct sde_crtc *sde_crtc, u32 feature)
 	struct sde_hw_dspp *dspp;
 	struct sde_hw_ctl *ctl;
 	int active_ctls[CTL_MAX - CTL_0];
+	enum msm_disp_op disp_op;
 
 	if (!sde_crtc || feature >= SDE_CP_CRTC_MAX_FEATURES) {
 		SDE_ERROR("invalid args: sde_crtc %s for feature %d",
@@ -1787,6 +1789,7 @@ static void _sde_cp_dspp_flush_helper(struct sde_crtc *sde_crtc, u32 feature)
 		return;
 	}
 
+	disp_op = sde_crtc_get_disp_op(&sde_crtc->base);
 	num_mixers = _sde_cp_get_num_dspp_mixers(sde_crtc);
 	sub_blk = dspp_feature_to_sub_blk_tbl[feature];
 	memset(&active_ctls, 0, sizeof(active_ctls));
@@ -1794,7 +1797,7 @@ static void _sde_cp_dspp_flush_helper(struct sde_crtc *sde_crtc, u32 feature)
 	for (i = 0; i < num_mixers; i++) {
 		ctl = sde_crtc->mixers[i].hw_ctl;
 		dspp = sde_crtc->mixers[i].hw_dspp;
-		if (ctl && dspp && ctl->ops.update_bitmask_dspp_subblk) {
+		if (ctl && dspp && ctl->ops.update_bitmask_dspp_subblk[disp_op]) {
 			if (feature == SDE_CP_CRTC_DSPP_SB) {
 				if (!dspp->sb_dma_in_use)
 					continue;
@@ -1802,13 +1805,13 @@ static void _sde_cp_dspp_flush_helper(struct sde_crtc *sde_crtc, u32 feature)
 
 				_flush_sb_dma_hw(active_ctls, ctl,
 						ARRAY_SIZE(active_ctls), dspp->dpu_idx);
-				ctl->ops.update_bitmask_dspp_subblk(ctl,
+				ctl->ops.update_bitmask_dspp_subblk[disp_op](ctl,
 						dspp->idx, sub_blk, true);
 			} else {
-				ctl->ops.update_bitmask_dspp_subblk(ctl,
+				ctl->ops.update_bitmask_dspp_subblk[disp_op](ctl,
 						dspp->idx, sub_blk, true);
 				if (feature == SDE_CP_CRTC_DSPP_AIQE_ABC)
-					ctl->ops.update_bitmask_dspp_subblk(ctl,
+					ctl->ops.update_bitmask_dspp_subblk[disp_op](ctl,
 						dspp->idx, SDE_DSPP_AIQE_WRAPPER, true);
 			}
 		}
@@ -2080,6 +2083,7 @@ static void _sde_clear_ltm_merge_mode(struct sde_crtc *sde_crtc)
 	struct sde_hw_ctl *ctl = NULL;
 	struct sde_hw_dspp *hw_dspp = NULL;
 	unsigned long irq_flags;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(&sde_crtc->base);
 
 	num_mixers = _sde_cp_get_num_dspp_mixers(sde_crtc);
 	if (!num_mixers) {
@@ -2101,8 +2105,8 @@ static void _sde_clear_ltm_merge_mode(struct sde_crtc *sde_crtc)
 			continue;
 		if (hw_dspp->ops.clear_ltm_merge_mode)
 			hw_dspp->ops.clear_ltm_merge_mode(hw_dspp);
-		if (ctl->ops.update_bitmask_dspp)
-			ctl->ops.update_bitmask_dspp(ctl, hw_dspp->idx, 1);
+		if (ctl->ops.update_bitmask_dspp[disp_op])
+			ctl->ops.update_bitmask_dspp[disp_op](ctl, hw_dspp->idx, 1);
 	}
 
 	sde_crtc->ltm_merge_clear_pending = false;
@@ -2123,6 +2127,7 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 	bool disable_pending_cp = false;
 	struct sde_kms *kms = NULL;
 	u32 demura_sw_fuse = 0;
+	enum msm_disp_op disp_op;
 
 	if (!crtc || !crtc->dev) {
 		DRM_ERROR("invalid crtc %pK dev %pK\n", crtc,
@@ -2130,6 +2135,7 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 		return;
 	}
 
+	disp_op = sde_crtc_get_disp_op(crtc);
 	sde_crtc = to_sde_crtc(crtc);
 	if (!sde_crtc) {
 		DRM_ERROR("invalid sde_crtc %pK\n", sde_crtc);
@@ -2219,14 +2225,14 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 		ctl = sde_crtc->mixers[i].hw_ctl;
 		if (!ctl)
 			continue;
-		if (set_dspp_flush && ctl->ops.update_bitmask_dspp
+		if (set_dspp_flush && ctl->ops.update_bitmask_dspp[disp_op]
 				&& sde_crtc->mixers[i].hw_dspp) {
-			ctl->ops.update_bitmask_dspp(ctl,
+			ctl->ops.update_bitmask_dspp[disp_op](ctl,
 					sde_crtc->mixers[i].hw_dspp->idx, 1);
 		}
-		if (set_lm_flush && ctl->ops.update_bitmask_mixer
+		if (set_lm_flush && ctl->ops.update_bitmask_mixer[disp_op]
 				&& sde_crtc->mixers[i].hw_lm) {
-			ctl->ops.update_bitmask_mixer(ctl,
+			ctl->ops.update_bitmask_mixer[disp_op](ctl,
 					sde_crtc->mixers[i].hw_lm->idx, 1);
 		}
 	}

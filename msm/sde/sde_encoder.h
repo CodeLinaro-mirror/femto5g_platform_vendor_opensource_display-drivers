@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1185,4 +1185,10 @@ static inline int sde_encoder_register_misr_event(struct drm_encoder *drm_enc, b
  * @Return: true if copr notify is allowed
  */
 bool sde_encoder_copr_allow_notify(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_get_disp_op - Returns the display control index - default: MSM_DISP_OP_HWIO
+ * @drm_enc: pointer to drm_encoder
+ */
+inline enum msm_disp_op sde_encoder_get_disp_op(struct drm_encoder *drm_enc);
 #endif /* __SDE_ENCODER_H__ */

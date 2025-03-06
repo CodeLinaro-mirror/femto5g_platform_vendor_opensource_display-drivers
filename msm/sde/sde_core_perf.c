@@ -595,8 +595,8 @@ static void _sde_core_uidle_setup_wd(struct sde_kms *kms,
 	wd.heart_beat = SDE_UIDLE_WD_HEART_BEAT;
 	wd.load_value = SDE_UIDLE_WD_LOAD_VAL;
 
-	if (uidle->ops.setup_wd_timer)
-		uidle->ops.setup_wd_timer(uidle, &wd);
+	if (uidle->ops.setup_wd_timer[uidle->hw.disp_op])
+		uidle->ops.setup_wd_timer[uidle->hw.disp_op](uidle, &wd);
 }
 
 static void _sde_core_uidle_setup_cfg(struct sde_kms *kms,
@@ -619,8 +619,8 @@ static void _sde_core_uidle_setup_cfg(struct sde_kms *kms,
 	SDE_EVT32(state, cfg.fal10_danger, cfg.fal10_exit_cnt,
 		cfg.fal10_exit_danger);
 
-	if (uidle->ops.set_uidle_ctl)
-		uidle->ops.set_uidle_ctl(uidle, &cfg);
+	if (uidle->ops.set_uidle_ctl[uidle->hw.disp_op])
+		uidle->ops.set_uidle_ctl[uidle->hw.disp_op](uidle, &cfg);
 }
 
 void sde_core_perf_uidle_setup_ctl(struct drm_crtc *crtc,
@@ -696,8 +696,8 @@ static void _sde_core_perf_uidle_setup_cntr(struct sde_kms *sde_kms,
 	uidle = sde_kms->hw_uidle;
 
 	SDE_EVT32(enable);
-	if (uidle->ops.uidle_setup_cntr) {
-		uidle->ops.uidle_setup_cntr(uidle, enable);
+	if (uidle->ops.uidle_setup_cntr[uidle->hw.disp_op]) {
+		uidle->ops.uidle_setup_cntr[uidle->hw.disp_op](uidle, enable);
 		sde_kms->catalog->uidle_cfg.perf_cntr_en = enable;
 	}
 }

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1418,8 +1418,8 @@ static int sde_hw_ctl_reset_post_disable(struct sde_hw_ctl *ctx,
 		SDE_REG_WRITE(c, CTL_MERGE_3D_ACTIVE, merge_3d_active);
 	}
 
-	if (ctx->ops.clear_all_blendstages)
-		ctx->ops.clear_all_blendstages(ctx);
+	if (ctx->ops.clear_all_blendstages[ctx->hw.disp_op])
+		ctx->ops.clear_all_blendstages[ctx->hw.disp_op](ctx);
 
 	if (cfg->intf_count) {
 		ctx->flush.pending_hw_flush_mask[SDE_HW_FLUSH_INTF] =
@@ -1774,96 +1774,103 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		unsigned long cap, unsigned long mdss_cap)
 {
 	if (cap & BIT(SDE_CTL_ACTIVE_CFG)) {
-		ops->update_pending_flush =
+		ops->update_pending_flush[MSM_DISP_OP_HWIO] =
 			sde_hw_ctl_update_pending_flush_v1;
-		ops->trigger_flush = sde_hw_ctl_trigger_flush_v1;
+		ops->trigger_flush[MSM_DISP_OP_HWIO] = sde_hw_ctl_trigger_flush_v1;
 
-		ops->setup_intf_cfg_v1 = sde_hw_ctl_intf_cfg_v1;
-		ops->update_intf_cfg = sde_hw_ctl_update_intf_cfg;
+		ops->setup_intf_cfg_v1[MSM_DISP_OP_HWIO] = sde_hw_ctl_intf_cfg_v1;
+		ops->update_intf_cfg[MSM_DISP_OP_HWIO] = sde_hw_ctl_update_intf_cfg;
 
-		ops->update_bitmask = sde_hw_ctl_update_bitmask_v1;
-		ops->bitmask_has_bit = sde_hw_ctl_bitmask_has_bit_v1;
-		ops->update_dnsc_blur_bitmask = sde_hw_ctl_update_dnsc_blur_bitmask;
-		ops->get_ctl_intf = sde_hw_ctl_get_intf_v1;
-		ops->update_ctl_top_group = sde_hw_ctl_update_top_group;
+		ops->update_bitmask[MSM_DISP_OP_HWIO] = sde_hw_ctl_update_bitmask_v1;
+		ops->bitmask_has_bit[MSM_DISP_OP_HWIO] = sde_hw_ctl_bitmask_has_bit_v1;
+		ops->update_dnsc_blur_bitmask[MSM_DISP_OP_HWIO] =
+				sde_hw_ctl_update_dnsc_blur_bitmask;
+		ops->get_ctl_intf[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_intf_v1;
+		ops->update_ctl_top_group[MSM_DISP_OP_HWIO] = sde_hw_ctl_update_top_group;
 
-		ops->reset_post_disable = sde_hw_ctl_reset_post_disable;
-		ops->get_scheduler_status = sde_hw_ctl_get_scheduler_status;
-		ops->read_active_status = sde_hw_ctl_read_active_status;
-		ops->set_active_fetch_pipes = sde_hw_ctl_set_active_fetch_pipes;
-		ops->get_active_fetch_pipes = sde_hw_ctl_get_active_fetch_pipes;
-		ops->set_intf_master = sde_hw_ctl_set_intf_master;
-		ops->get_intf_master = sde_hw_ctl_get_intf_master;
+		ops->reset_post_disable[MSM_DISP_OP_HWIO] = sde_hw_ctl_reset_post_disable;
+		ops->get_scheduler_status[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_scheduler_status;
+		ops->read_active_status[MSM_DISP_OP_HWIO] = sde_hw_ctl_read_active_status;
+		ops->set_active_fetch_pipes[MSM_DISP_OP_HWIO] = sde_hw_ctl_set_active_fetch_pipes;
+		ops->get_active_fetch_pipes[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_active_fetch_pipes;
+		ops->set_intf_master[MSM_DISP_OP_HWIO] = sde_hw_ctl_set_intf_master;
+		ops->get_intf_master[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_intf_master;
 	} else {
-		ops->update_pending_flush = sde_hw_ctl_update_pending_flush;
-		ops->trigger_flush = sde_hw_ctl_trigger_flush;
+		ops->update_pending_flush[MSM_DISP_OP_HWIO] = sde_hw_ctl_update_pending_flush;
+		ops->trigger_flush[MSM_DISP_OP_HWIO] = sde_hw_ctl_trigger_flush;
 
-		ops->setup_intf_cfg = sde_hw_ctl_intf_cfg;
+		ops->setup_intf_cfg[MSM_DISP_OP_HWIO] = sde_hw_ctl_intf_cfg;
 
-		ops->update_bitmask = sde_hw_ctl_update_bitmask;
-		ops->get_ctl_intf = sde_hw_ctl_get_intf;
+		ops->update_bitmask[MSM_DISP_OP_HWIO] = sde_hw_ctl_update_bitmask;
+		ops->get_ctl_intf[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_intf;
 	}
-	ops->clear_flush_mask = sde_hw_ctl_clear_flush_mask;
-	ops->clear_pending_flush = sde_hw_ctl_clear_pending_flush;
-	ops->get_pending_flush = sde_hw_ctl_get_pending_flush;
-	ops->get_flush_register = sde_hw_ctl_get_flush_register;
-	ops->trigger_start = sde_hw_ctl_trigger_start;
-	ops->trigger_pending = sde_hw_ctl_trigger_pending;
-	ops->read_ctl_layers = sde_hw_ctl_read_ctl_layers;
-	ops->update_wb_cfg = sde_hw_ctl_update_wb_cfg;
-	ops->reset = sde_hw_ctl_reset_control;
-	ops->get_reset = sde_hw_ctl_get_reset_status;
-	ops->hard_reset = sde_hw_ctl_hard_reset;
-	ops->wait_reset_status = sde_hw_ctl_wait_reset_status;
+	ops->clear_flush_mask[MSM_DISP_OP_HWIO] = sde_hw_ctl_clear_flush_mask;
+	ops->clear_pending_flush[MSM_DISP_OP_HWIO] = sde_hw_ctl_clear_pending_flush;
+	ops->get_pending_flush[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_pending_flush;
+	ops->get_flush_register[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_flush_register;
+	ops->trigger_start[MSM_DISP_OP_HWIO] = sde_hw_ctl_trigger_start;
+	ops->trigger_pending[MSM_DISP_OP_HWIO] = sde_hw_ctl_trigger_pending;
+	ops->read_ctl_layers[MSM_DISP_OP_HWIO] = sde_hw_ctl_read_ctl_layers;
+	ops->update_wb_cfg[MSM_DISP_OP_HWIO] = sde_hw_ctl_update_wb_cfg;
+	ops->reset[MSM_DISP_OP_HWIO] = sde_hw_ctl_reset_control;
+	ops->get_reset[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_reset_status;
+	ops->hard_reset[MSM_DISP_OP_HWIO] = sde_hw_ctl_hard_reset;
+	ops->wait_reset_status[MSM_DISP_OP_HWIO] = sde_hw_ctl_wait_reset_status;
 	if (cap & BIT(SDE_CTL_NO_LAYER_EXT)) {
-		ops->set_active_pipes = sde_hw_ctl_set_active_pipes;
-		ops->get_active_pipes = sde_hw_ctl_get_active_pipes;
-		ops->set_active_lms = sde_hw_ctl_set_active_lms;
-		ops->get_active_lms = sde_hw_ctl_get_active_lms;
+		ops->set_active_pipes[MSM_DISP_OP_HWIO] = sde_hw_ctl_set_active_pipes;
+		ops->get_active_pipes[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_active_pipes;
+		ops->set_active_lms[MSM_DISP_OP_HWIO] = sde_hw_ctl_set_active_lms;
+		ops->get_active_lms[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_active_lms;
 	} else {
-		ops->clear_all_blendstages = sde_hw_ctl_clear_all_blendstages;
-		ops->setup_blendstage = sde_hw_ctl_setup_blendstage;
-		ops->get_staged_sspp = sde_hw_ctl_get_staged_sspp;
+		ops->clear_all_blendstages[MSM_DISP_OP_HWIO] = sde_hw_ctl_clear_all_blendstages;
+		ops->setup_blendstage[MSM_DISP_OP_HWIO] = sde_hw_ctl_setup_blendstage;
+		ops->get_staged_sspp[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_staged_sspp;
 	}
-	ops->update_bitmask_sspp = sde_hw_ctl_update_bitmask_sspp;
-	ops->update_bitmask_mixer = sde_hw_ctl_update_bitmask_mixer;
+	ops->update_bitmask_sspp[MSM_DISP_OP_HWIO] = sde_hw_ctl_update_bitmask_sspp;
+	ops->update_bitmask_mixer[MSM_DISP_OP_HWIO] = sde_hw_ctl_update_bitmask_mixer;
 	if  (cap & BIT(SDE_CTL_REG_DMA))
-		ops->reg_dma_flush = sde_hw_reg_dma_flush;
+		ops->reg_dma_flush[MSM_DISP_OP_HWIO] = sde_hw_reg_dma_flush;
 
-	ops->get_start_state = sde_hw_ctl_get_start_state;
+	ops->get_start_state[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_start_state;
 
 	if (cap & BIT(SDE_CTL_CESTA_FLUSH))
-		ops->cesta_flush = sde_hw_ctl_cesta_flush;
+		ops->cesta_flush[MSM_DISP_OP_HWIO] = sde_hw_ctl_cesta_flush;
 
 	if (cap & BIT(SDE_CTL_UNIFIED_DSPP_FLUSH)) {
-		ops->update_bitmask_dspp_subblk =
+		ops->update_bitmask_dspp_subblk[MSM_DISP_OP_HWIO] =
 				sde_hw_ctl_update_bitmask_dspp_subblk;
 	} else {
-		ops->update_bitmask_dspp = sde_hw_ctl_update_bitmask_dspp;
-		ops->update_bitmask_dspp_pavlut =
+		ops->update_bitmask_dspp[MSM_DISP_OP_HWIO] = sde_hw_ctl_update_bitmask_dspp;
+		ops->update_bitmask_dspp_pavlut[MSM_DISP_OP_HWIO] =
 				sde_hw_ctl_update_bitmask_dspp_pavlut;
 	}
 
 	if (cap & BIT(SDE_CTL_HW_FENCE)) {
-		ops->hw_fence_update_input_fence = sde_hw_ctl_update_input_fence;
-		ops->hw_fence_update_output_fence = sde_hw_ctl_update_output_fence;
-		ops->hw_fence_trigger_output_fence = sde_hw_ctl_trigger_output_fence;
-		ops->hw_fence_ctrl = sde_hw_ctl_hw_fence_ctrl;
-		ops->hw_fence_trigger_sw_override = sde_hw_ctl_trigger_sw_override;
-		ops->get_hw_fence_status = sde_hw_ctl_get_hw_fence_status;
-		ops->trigger_output_fence_override = sde_hw_ctl_trigger_output_fence_override;
-		ops->hw_fence_output_status = sde_hw_ctl_output_fence_timestamps;
-		ops->hw_fence_output_timestamp_ctrl = sde_hw_ctl_fence_timestamp_ctrl;
+		ops->hw_fence_update_input_fence[MSM_DISP_OP_HWIO] = sde_hw_ctl_update_input_fence;
+		ops->hw_fence_update_output_fence[MSM_DISP_OP_HWIO] =
+				sde_hw_ctl_update_output_fence;
+		ops->hw_fence_trigger_output_fence[MSM_DISP_OP_HWIO] =
+				sde_hw_ctl_trigger_output_fence;
+		ops->hw_fence_ctrl[MSM_DISP_OP_HWIO] = sde_hw_ctl_hw_fence_ctrl;
+		ops->hw_fence_trigger_sw_override[MSM_DISP_OP_HWIO] =
+				sde_hw_ctl_trigger_sw_override;
+		ops->get_hw_fence_status[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_hw_fence_status;
+		ops->trigger_output_fence_override[MSM_DISP_OP_HWIO] =
+				sde_hw_ctl_trigger_output_fence_override;
+		ops->hw_fence_output_status[MSM_DISP_OP_HWIO] =
+				sde_hw_ctl_output_fence_timestamps;
+		ops->hw_fence_output_timestamp_ctrl[MSM_DISP_OP_HWIO] =
+				sde_hw_ctl_fence_timestamp_ctrl;
 		if (cap & BIT(SDE_CTL_HW_FENCE_DIR_WRITE)) {
-			ops->hw_fence_output_fence_dir_write_init =
+			ops->hw_fence_output_fence_dir_write_init[MSM_DISP_OP_HWIO] =
 				sde_hw_ctl_output_fence_dir_wr_init;
-			ops->hw_fence_output_fence_dir_write_data =
+			ops->hw_fence_output_fence_dir_write_data[MSM_DISP_OP_HWIO] =
 				sde_hw_ctl_output_fence_dir_wr_data;
 		}
 	}
 
 	if (cap & BIT(SDE_CTL_UIDLE))
-		ops->uidle_enable = sde_hw_ctl_uidle_enable;
+		ops->uidle_enable[MSM_DISP_OP_HWIO] = sde_hw_ctl_uidle_enable;
 
 	if (cap & BIT(SDE_CTL_HYP_CTL_RESERVE)) {
 		ops->cesta_scc_reserve = sde_hw_hyp_ctl_cesta_reserve;
@@ -1871,9 +1878,9 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	}
 
 	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC)) {
-		ops->setup_flush_sync = sde_hw_ctl_setup_flush_sync;
-		ops->enable_sync_mode = sde_hw_ctl_enable_sync_mode;
-		ops->get_flush_sync_mode = sde_hw_ctl_get_flush_sync_mode;
+		ops->setup_flush_sync[MSM_DISP_OP_HWIO] = sde_hw_ctl_setup_flush_sync;
+		ops->enable_sync_mode[MSM_DISP_OP_HWIO] = sde_hw_ctl_enable_sync_mode;
+		ops->get_flush_sync_mode[MSM_DISP_OP_HWIO] = sde_hw_ctl_get_flush_sync_mode;
 	}
 }
 

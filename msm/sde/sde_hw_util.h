@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -25,11 +25,12 @@ struct sde_format_extended;
  * This is the common struct maintained by each sub block
  * for mapping the register offsets in this block to the
  * absoulute IO address
- * @base_off:     mdp register mapped offset
- * @blk_off:      pipe offset relative to mdss offset
- * @length        length of register block offset
- * @xin_id        xin id
- * @hw_rev     mdss hw revision
+ * @base_off:        mdp register mapped offset
+ * @blk_off:         pipe offset relative to mdss offset
+ * @length           length of register block offset
+ * @xin_id           xin id
+ * @hw_rev           mdss hw revision
+ * @disp_op: display control op index
  */
 struct sde_hw_blk_reg_map {
 	void __iomem *base_off;
@@ -38,6 +39,7 @@ struct sde_hw_blk_reg_map {
 	u32 xin_id;
 	u32 hw_rev;
 	u32 log_mask;
+	enum msm_disp_op disp_op;
 };
 
 /**

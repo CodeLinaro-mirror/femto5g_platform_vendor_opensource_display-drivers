@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1294,4 +1294,10 @@ static inline bool sde_crtc_is_power_on_frame(struct drm_crtc *crtc)
  * @crtc: Pointer to drm_crtc.
  */
 void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc);
+
+/**
+ * sde_crtc_get_disp_op - Returns the display op index - default: MSM_DISP_OP_HWIO
+ * @crtc: pointer to drm_crtc
+ */
+inline enum msm_disp_op sde_crtc_get_disp_op(struct drm_crtc *crtc);
 #endif /* _SDE_CRTC_H_ */

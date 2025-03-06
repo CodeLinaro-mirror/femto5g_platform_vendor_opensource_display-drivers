@@ -801,4 +801,30 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 					   struct drm_atomic_state *state);
 
 void sde_kms_add_data_to_minidump_va(struct sde_kms *sde_kms);
+
+/**
+ * sde_kms_get_disp_op - Returns the display op index - default: MSM_DISP_OP_HWIO
+ * @sde_kms: pointer to sde_kms
+ */
+inline enum msm_disp_op sde_kms_get_disp_op(struct sde_kms *sde_kms);
+
+/**
+ * sde_kms_set_disp_op - Sets the display op index
+ * @sde_kms: pointer to sde_kms
+ * @disp_op: type of operation path
+ */
+static inline int sde_kms_set_disp_op(struct sde_kms *sde_kms, enum msm_disp_op disp_op)
+{
+	struct msm_drm_private *priv;
+
+	if (!sde_kms || !sde_kms->dev->dev_private) {
+		SDE_ERROR("invalid sde_kms\n");
+		return MSM_DISP_OP_HWIO;
+	}
+	priv = sde_kms->dev->dev_private;
+	priv->disp_op = disp_op;
+
+	return 0;
+}
+
 #endif /* __sde_kms_H__ */

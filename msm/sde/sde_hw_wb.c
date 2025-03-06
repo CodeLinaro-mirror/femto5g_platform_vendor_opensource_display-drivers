@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -777,49 +777,51 @@ static void _setup_wb_ops(struct sde_hw_wb_ops *ops,
 {
 	u32 version = 0;
 
-	ops->setup_outaddress = sde_hw_wb_setup_outaddress;
-	ops->setup_outformat = sde_hw_wb_setup_format;
-	ops->setup_qos_lut = sde_hw_wb_setup_qos_lut;
-	ops->setup_roi = sde_hw_wb_roi;
-	ops->get_ubwc_error = sde_hw_wb_get_ubwc_error;
-	ops->clear_ubwc_error = sde_hw_wb_clear_ubwc_error;
+	ops->setup_outaddress[MSM_DISP_OP_HWIO] = sde_hw_wb_setup_outaddress;
+	ops->setup_outformat[MSM_DISP_OP_HWIO] = sde_hw_wb_setup_format;
+	ops->setup_qos_lut[MSM_DISP_OP_HWIO] = sde_hw_wb_setup_qos_lut;
+	ops->setup_roi[MSM_DISP_OP_HWIO] = sde_hw_wb_roi;
+	ops->get_ubwc_error[MSM_DISP_OP_HWIO] = sde_hw_wb_get_ubwc_error;
+	ops->clear_ubwc_error[MSM_DISP_OP_HWIO] = sde_hw_wb_clear_ubwc_error;
 
 	if (test_bit(SDE_WB_CROP, &features))
-		ops->setup_crop = sde_hw_wb_crop;
+		ops->setup_crop[MSM_DISP_OP_HWIO] = sde_hw_wb_crop;
 
 	if (test_bit(SDE_WB_CDP, &features))
-		ops->setup_cdp = sde_hw_wb_setup_cdp;
+		ops->setup_cdp[MSM_DISP_OP_HWIO] = sde_hw_wb_setup_cdp;
 
 	if (test_bit(SDE_WB_INPUT_CTRL, &features))
-		ops->bind_pingpong_blk = sde_hw_wb_bind_pingpong_blk;
+		ops->bind_pingpong_blk[MSM_DISP_OP_HWIO] = sde_hw_wb_bind_pingpong_blk;
 
 	if (test_bit(SDE_WB_CWB_CTRL, &features))
-		ops->program_cwb_ctrl = sde_hw_wb_program_cwb_ctrl;
+		ops->program_cwb_ctrl[MSM_DISP_OP_HWIO] = sde_hw_wb_program_cwb_ctrl;
 
 	if (test_bit(SDE_WB_DCWB_CTRL, &features)) {
-		ops->program_dcwb_ctrl = sde_hw_wb_program_dcwb_ctrl;
-		ops->bind_dcwb_pp_blk = sde_hw_wb_bind_dcwb_pp_blk;
+		ops->program_dcwb_ctrl[MSM_DISP_OP_HWIO] = sde_hw_wb_program_dcwb_ctrl;
+		ops->bind_dcwb_pp_blk[MSM_DISP_OP_HWIO] = sde_hw_wb_bind_dcwb_pp_blk;
 	}
 
 	if (test_bit(SDE_WB_SYS_CACHE, &features))
-		ops->setup_sys_cache = sde_hw_wb_setup_sys_cache;
+		ops->setup_sys_cache[MSM_DISP_OP_HWIO] = sde_hw_wb_setup_sys_cache;
 
 	if (test_bit(SDE_WB_CWB_DITHER_CTRL, &features)) {
 		version = catalog->pingpong[0].sblk->dither.version;
 		if (version == SDE_COLOR_PROCESS_VER(0x3, 0x0)) {
-			ops->program_cwb_dither_ctrl = sde_hw_wb_program_cwb_dither_ctrl_v3;
+			ops->program_cwb_dither_ctrl[MSM_DISP_OP_HWIO] =
+				sde_hw_wb_program_cwb_dither_ctrl_v3;
 		} else if (version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
-			ops->program_cwb_dither_ctrl = sde_hw_wb_program_cwb_dither_ctrl;
+			ops->program_cwb_dither_ctrl[MSM_DISP_OP_HWIO] =
+				sde_hw_wb_program_cwb_dither_ctrl;
 		}
 	}
 
 	if (test_bit(SDE_WB_PROG_LINE, &features)) {
-		ops->get_line_count = sde_hw_wb_get_line_count;
-		ops->set_prog_line_count = sde_hw_wb_set_prog_line_count;
+		ops->get_line_count[MSM_DISP_OP_HWIO] = sde_hw_wb_get_line_count;
+		ops->set_prog_line_count[MSM_DISP_OP_HWIO] = sde_hw_wb_set_prog_line_count;
 	}
 
 	if (test_bit(SDE_WB_FRAME_COUNT, &features))
-		ops->get_frame_count = sde_hw_wb_get_frame_count;
+		ops->get_frame_count[MSM_DISP_OP_HWIO] = sde_hw_wb_get_frame_count;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_wb_init(enum sde_wb idx,

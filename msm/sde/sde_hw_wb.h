@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -101,31 +101,31 @@ struct sde_hw_wb_sc_cfg {
  *  Assumption is these functions will be called after clocks are enabled
  */
 struct sde_hw_wb_ops {
-	void (*setup_csc_data)(struct sde_hw_wb *ctx,
+	void (*setup_csc_data[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 			struct sde_csc_cfg *data);
 
-	void (*setup_outaddress)(struct sde_hw_wb *ctx,
+	void (*setup_outaddress[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 		struct sde_hw_wb_cfg *wb);
 
-	void (*setup_outformat)(struct sde_hw_wb *ctx,
+	void (*setup_outformat[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 		struct sde_hw_wb_cfg *wb);
 
-	void (*setup_rotator)(struct sde_hw_wb *ctx,
+	void (*setup_rotator[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 		struct sde_hw_wb_cfg *wb);
 
-	void (*setup_dither)(struct sde_hw_wb *ctx,
+	void (*setup_dither[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 		struct sde_hw_wb_cfg *wb);
 
-	void (*setup_cdwn)(struct sde_hw_wb *ctx,
+	void (*setup_cdwn[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 		struct sde_hw_wb_cfg *wb);
 
-	void (*setup_trafficshaper)(struct sde_hw_wb *ctx,
+	void (*setup_trafficshaper[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 		struct sde_hw_wb_cfg *wb);
 
-	void (*setup_roi)(struct sde_hw_wb *ctx,
+	void (*setup_roi[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 		struct sde_hw_wb_cfg *wb);
 
-	void (*setup_crop)(struct sde_hw_wb *ctx,
+	void (*setup_crop[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 		struct sde_hw_wb_cfg *wb, bool crop);
 
 	/**
@@ -133,7 +133,7 @@ struct sde_hw_wb_ops {
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to pipe QoS configuration
 	 */
-	void (*setup_qos_lut)(struct sde_hw_wb *ctx,
+	void (*setup_qos_lut[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 			struct sde_hw_wb_qos_cfg *cfg);
 
 	/**
@@ -141,7 +141,7 @@ struct sde_hw_wb_ops {
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to pipe CDP configuration
 	 */
-	void (*setup_cdp)(struct sde_hw_wb *ctx,
+	void (*setup_cdp[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 			struct sde_hw_wb_cdp_cfg *cfg);
 
 	/**
@@ -150,7 +150,7 @@ struct sde_hw_wb_ops {
 	 * @enable: enable/disable connection
 	 * @pp: pingpong blk id
 	 */
-	void (*bind_pingpong_blk)(struct sde_hw_wb *ctx,
+	void (*bind_pingpong_blk[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 			bool enable,
 			const enum sde_pingpong pp);
 
@@ -160,7 +160,7 @@ struct sde_hw_wb_ops {
 	 * @enable: enable/disable connection
 	 * @pp: pingpong blk id
 	 */
-	void (*bind_dcwb_pp_blk)(struct sde_hw_wb *ctx,
+	void (*bind_dcwb_pp_blk[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 			bool enable,
 			const enum sde_pingpong pp);
 
@@ -172,7 +172,7 @@ struct sde_hw_wb_ops {
 	 * @dspp_out: Tap dspp output or default LM output
 	 * @enable: enable or disable the CWB path to tap the output
 	 */
-	void (*program_cwb_ctrl)(struct sde_hw_wb *ctx, const enum sde_cwb cwb,
+	void (*program_cwb_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx, const enum sde_cwb cwb,
 		const enum sde_cwb data_src, bool dspp_out, bool enable);
 
 	/**
@@ -183,7 +183,7 @@ struct sde_hw_wb_ops {
 	 * @tap_location: Tap LM output, dspp output or Demura output
 	 * @enable: enable or disable the CWB path to tap the output
 	 */
-	void (*program_dcwb_ctrl)(struct sde_hw_wb *ctx, const enum sde_dcwb cwb,
+	void (*program_dcwb_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx, const enum sde_dcwb cwb,
 		const enum sde_cwb data_src, int tap_location, bool enable);
 
 	/**
@@ -191,7 +191,8 @@ struct sde_hw_wb_ops {
 	 * @ctx: Pointer to wb context
 	 * @cfg: Pointer to wb system cache configuration
 	 */
-	void (*setup_sys_cache)(struct sde_hw_wb *ctx, struct sde_hw_wb_sc_cfg *cfg);
+	void (*setup_sys_cache[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
+		struct sde_hw_wb_sc_cfg *cfg);
 
 	/**
 	 * program_cwb_dither_ctrl - program cwb dither block config
@@ -201,39 +202,39 @@ struct sde_hw_wb_ops {
 	 * @len: the size of cwb dither data
 	 * @enable: enable or disable the cwb dither
 	 */
-	void (*program_cwb_dither_ctrl)(struct sde_hw_wb *ctx,
+	void (*program_cwb_dither_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx,
 		const enum sde_dcwb dcwb_idx, void *cfg, size_t len, bool enable);
 
 	/**
 	 * get_line_count - get current wb output linecount
 	 * @ctx: Pointer to wb context
 	 */
-	u32 (*get_line_count)(struct sde_hw_wb *ctx);
+	u32 (*get_line_count[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx);
 
 	/**
 	 * set_prog_line_count - set wb programmable line
 	 * @ctx: Pointer to wb context
 	 * @line_count: programmable line-count value
 	 */
-	void (*set_prog_line_count)(struct sde_hw_wb *ctx, u32 line_count);
+	void (*set_prog_line_count[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx, u32 line_count);
 
 	/**
 	 * get_ubwc_error - get ubwc error status
 	 * @ctx: Pointer to wb context
 	 */
-	u32 (*get_ubwc_error)(struct sde_hw_wb *ctx);
+	u32 (*get_ubwc_error[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx);
 
 	/**
 	 * clear_ubwc_error - clear ubwc error status
 	 * @ctx: Pointer to wb context
 	 */
-	void (*clear_ubwc_error)(struct sde_hw_wb *ctx);
+	void (*clear_ubwc_error[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx);
 
 	/**
 	 * get_frame_count - get wb frame count
 	 * @ctx: pointer to wb context
 	 */
-	u32 (*get_frame_count)(struct sde_hw_wb *ctx);
+	u32 (*get_frame_count[MSM_DISP_OP_MAX])(struct sde_hw_wb *ctx);
 };
 
 /**
