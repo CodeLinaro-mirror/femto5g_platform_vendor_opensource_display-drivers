@@ -471,6 +471,17 @@ int sde_encoder_helper_hw_fence_extended_wait(struct sde_encoder_phys *phys_enc,
 	int ret = -ETIMEDOUT;
 	s64 standard_kickoff_timeout_ms = wait_info->timeout_ms;
 	int timeout_iters = EXTENDED_KICKOFF_TIMEOUT_ITERS;
+	u32 fence_ready = 0;
+
+	if (!ctl || !ctl->ops.get_hw_fence_status) {
+		SDE_ERROR("invalid argument(s)\n");
+		return ret;
+	}
+
+	/* if fence_ready is high (bit zero) then skip extended wait */
+	fence_ready = ctl->ops.get_hw_fence_status(ctl) & 0x1;
+	if (fence_ready)
+		return ret;
 
 	wait_info->timeout_ms = EXTENDED_KICKOFF_TIMEOUT_MS;
 
