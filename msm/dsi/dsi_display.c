@@ -26,6 +26,8 @@
 #include "dsi_parser.h"
 #include "dsi_display_manager.h"
 #include "dsi_hfi.h"
+#include "dsi_display_hfi.h"
+#include "hfi_defs_display.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -1424,6 +1426,14 @@ int dsi_display_set_power(struct drm_connector *connector,
 			rc ? "failed" : "successful");
 	if (!rc)
 		display->panel->power_mode = power_mode;
+
+	if (display->panel->disp_op == MSM_DISP_OP_HFI) {
+		enum hfi_display_power_mode hfi_lps = display->panel->power_mode;
+
+		rc = dsi_hfi_transition(display, hfi_lps);
+		if (rc)
+			DSI_ERR("failed to send hfi transition cmd, rc=%d\n", rc);
+	}
 
 	return rc;
 }

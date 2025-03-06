@@ -470,3 +470,24 @@ free_gem:
 error:
 	return rc;
 }
+
+int dsi_hfi_transition(struct dsi_display *display, enum hfi_display_power_mode lpm_state)
+{
+	int rc = 0;
+
+	if (!lpm_state)
+		return rc;
+
+	rc = dsi_display_hfi_send_cmd_buf(display,
+			display->dsi_hfi_info->hfi_client,
+			HFI_COMMAND_DISPLAY_LP_STATE_REQ,
+			display->display_type,
+			HFI_PAYLOAD_TYPE_U32,
+			(void *) lpm_state,
+			sizeof(enum hfi_display_power_mode),
+			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
+	if (rc)
+		DSI_ERR("could not send hfi command, rc=%d\n", rc);
+
+	return rc;
+}

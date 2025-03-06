@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -186,6 +186,8 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 {
 	int rc = 0;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
+	struct dsi_display *display;
+	enum msm_disp_op disp_op;
 
 	if (!bridge) {
 		DSI_ERR("Invalid params\n");
@@ -196,6 +198,8 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		DSI_ERR("Incorrect bridge details\n");
 		return;
 	}
+
+	display = c_bridge->display;
 
 	if (bridge->encoder->crtc->state->active_changed)
 		atomic_set(&c_bridge->display->panel->esd_recovery_pending, 0);
@@ -216,8 +220,9 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		return;
 	}
 
+	disp_op = display->ctrl[0].ctrl->disp_op;
 	SDE_ATRACE_BEGIN("dsi_display_prepare");
-	rc = dsi_display_prepare(c_bridge->display);
+	rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
 		       c_bridge->id, rc);
@@ -227,11 +232,11 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 	SDE_ATRACE_END("dsi_display_prepare");
 
 	SDE_ATRACE_BEGIN("dsi_display_enable");
-	rc = dsi_display_enable(c_bridge->display);
+	rc = display->display_ops.display_enable[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display enable failed, rc=%d\n",
 				c_bridge->id, rc);
-		(void)dsi_display_unprepare(c_bridge->display);
+		(void)display->display_ops.display_unprepare[disp_op](c_bridge->display);
 	}
 	SDE_ATRACE_END("dsi_display_enable");
 
@@ -260,7 +265,7 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 	}
 	display = c_bridge->display;
 
-	rc = dsi_display_post_enable(display);
+	rc = display->display_ops.post_enable[display->ctrl[0].ctrl->disp_op](c_bridge->display);
 	if (rc)
 		DSI_ERR("[%d] DSI display post enabled failed, rc=%d\n",
 		       c_bridge->id, rc);
@@ -307,7 +312,7 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 		sde_connector_helper_bridge_disable(display->drm_conn);
 	}
 
-	rc = dsi_display_pre_disable(c_bridge->display);
+	rc = display->display_ops.pre_disable[display->ctrl[0].ctrl->disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display pre disable failed, rc=%d\n",
 		       c_bridge->id, rc);
@@ -319,6 +324,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	int rc = 0;
 	struct dsi_display *display;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
+	enum msm_disp_op disp_op;
 
 	if (!bridge) {
 		DSI_ERR("Invalid params\n");
@@ -329,7 +335,9 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 
 	SDE_ATRACE_BEGIN("dsi_bridge_post_disable");
 	SDE_ATRACE_BEGIN("dsi_display_disable");
-	rc = dsi_display_disable(c_bridge->display);
+	disp_op = display->ctrl[0].ctrl->disp_op;
+
+	rc = display->display_ops.display_disable[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display disable failed, rc=%d\n",
 		       c_bridge->id, rc);
@@ -341,7 +349,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	if (display && display->drm_conn)
 		sde_connector_helper_bridge_post_disable(display->drm_conn);
 
-	rc = dsi_display_unprepare(c_bridge->display);
+	rc = display->display_ops.display_unprepare[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display unprepare failed, rc=%d\n",
 		       c_bridge->id, rc);
