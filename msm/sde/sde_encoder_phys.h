@@ -405,6 +405,8 @@ struct sde_encoder_vrr_cfg {
  *                              used to release commit thread. Currently managed
  *                              only for writeback encoder and the counter keeps
  *                              increasing for other type of encoders.
+ * @pending_te_deassert_cnt:    Atomic counter tracking the pending TE deasserts
+ *                              for ESD detection.
  * @pending_kickoff_wq:		Wait queue for blocking until kickoff completes
  * @empulse_backup_timer: Timer to simulate EM pulse IRQ when idle
  * @empulse_notification_sim: whether the last enabled EM pulse notification
@@ -418,6 +420,7 @@ struct sde_encoder_vrr_cfg {
  * @quad_cwb_roi		Indicates ROI's for cwb in quad pipe
  * @vfp_cached:			cached vertical front porch to be used for
  *				programming ROT and MDP fetch start
+ * @avr_slow_vtotal		AVR slow fps vtotal
  * @pf_time_in_us:		Programmable fetch time in micro-seconds
  * @sde_hw_fence_error_status:	Hw fence error handing flag controled by userspace
  *				that if handing fence error in driver
@@ -476,6 +479,7 @@ struct sde_encoder_phys {
 	atomic_t pending_kickoff_cnt;
 	atomic_t pending_retire_fence_cnt;
 	atomic_t pending_ctl_start_cnt;
+	atomic_t pending_te_deassert_cnt;
 	wait_queue_head_t pending_kickoff_wq;
 	struct hrtimer empulse_backup_timer;
 	bool empulse_notification_sim;
@@ -487,6 +491,7 @@ struct sde_encoder_phys {
 	bool in_clone_mode;
 	enum quad_pipe_cwb_roi quad_cwb_roi;
 	int vfp_cached;
+	u32 avr_slow_vtotal;
 	u32 pf_time_in_us;
 	bool sde_hw_fence_error_status;
 	int sde_hw_fence_error_value;

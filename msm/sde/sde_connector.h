@@ -586,6 +586,7 @@ struct sde_misr_sign {
  * @curr_bl_lvl : Current backlight level value
  * @bl_frame_idx : Index value of dimming frame
  * @bl_increment_in_progress : Smooth dimming in progress
+ * @new_incremental_bl_update : Whether new smooth dimming update is scheduled
  * @prev_bl_time_ns : Time in ns when previous BL was sent
  * @bl_lock : Backlight operations lock
  */
@@ -598,6 +599,7 @@ struct sde_backlight_vrr_update {
 	u32 curr_bl_lvl;
 	u32 bl_frame_idx;
 	bool bl_increment_in_progress;
+	atomic_t new_incremental_bl_update;
 	u64 prev_bl_time_ns;
 	struct mutex bl_lock;
 };
@@ -667,6 +669,7 @@ struct sde_backlight_vrr_update {
  * @freq_pattern_type_changed: True if frequency pattern type is updated
  * @vrr_cmd_state: Scenario in which VRR cmd is sent
  * @num_bl_frames: Number of frames needed for incremental dimming
+ * @disable_cont_dimming: Skip smooth dimming during continuous BL updates
  * @last_vhm_cmd: Last VHM commands queued to panel
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
@@ -759,6 +762,7 @@ struct sde_connector {
 	bool freq_pattern_type_changed;
 	enum sde_conn_vrr_cmd_state vrr_cmd_state;
 	u32 num_bl_frames;
+	bool disable_cont_dimming;
 	u64 last_vhm_cmd;
 
 	bool colorspace_updated;
