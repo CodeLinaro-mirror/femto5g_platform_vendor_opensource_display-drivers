@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -182,6 +182,21 @@ enum dp_phy_mode {
 };
 
 /**
+ * enum dp_phy_revision - revision of the dp phy
+ * @DP_PHY_REVISION_UNKNOWN:Unknown PHY revision
+ * @DP_PHY_REVISION_V1:		DP PHY ver1
+ * @DP_PHY_REVISION_V2:		DP PHY ver2
+ * @DP_PHY_REVISION_MAX:	max PHY revision
+ */
+
+enum dp_phy_revision {
+	DP_PHY_REVISION_UNKNOWN = 0,
+	DP_PHY_REVISION_V1,
+	DP_PHY_REVISION_V2,
+	DP_PHY_REVISION_MAX
+};
+
+/**
  * struct dp_hw_cfg - DP HW specific configuration
  *
  * @phy_version: DP PHY HW version
@@ -189,6 +204,7 @@ enum dp_phy_mode {
 struct dp_hw_cfg {
 	enum dp_phy_version phy_version;
 	enum dp_phy_mode phy_mode;
+	enum dp_phy_revision phy_revision;
 };
 
 static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
