@@ -4524,6 +4524,13 @@ static int sde_kms_pm_suspend(struct device *dev)
 			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_EXIT);
 			return -EINVAL;
 		}
+
+		if (sde_encoder_smooth_dimming_in_progress(enc)) {
+			SDE_DEBUG("skip PM suspend, smooth dimming in progress enc:%d\n",
+					DRMID(enc));
+			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_CASE1, SDE_EVTLOG_FUNC_EXIT);
+			return -EINVAL;
+		}
 	}
 
 	/* acquire modeset lock(s) */

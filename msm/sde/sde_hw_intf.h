@@ -278,6 +278,11 @@ struct sde_hw_intf_ops {
 			const struct intf_avr_params *avr_params);
 
 	/**
+	 * Enable AVR
+	 */
+	void (*avr_enable)(struct sde_hw_intf *intf, bool enable);
+
+	/**
 	 * Enable trigger based on TE level
 	 */
 	void (*enable_te_level_trigger)(struct sde_hw_intf *intf, bool enable);

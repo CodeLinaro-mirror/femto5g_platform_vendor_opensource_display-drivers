@@ -887,14 +887,12 @@ static int msm_drm_device_init(struct platform_device *pdev,
 			SDE_POWER_HANDLE_CONT_SPLASH_BUS_AB_QUOTA,
 			SDE_POWER_HANDLE_CONT_SPLASH_BUS_IB_QUOTA);
 
-	if (of_property_read_bool(dev->of_node, "wake_up_capable")) {
-		device_set_wakeup_capable(dev, true);
-		ret = device_set_wakeup_enable(dev, true);
-		if (ret < 0) {
-			DISP_DEV_ERR(dev, "failed to enable wakeup on device  %d\n", ret);
-			device_set_wakeup_capable(dev, false);
-			ret = 0;
-		}
+	device_set_wakeup_capable(dev, true);
+	ret = device_set_wakeup_enable(dev, true);
+	if (ret < 0) {
+		DISP_DEV_ERR(dev, "failed to enable wakeup on device  %d\n", ret);
+		device_set_wakeup_capable(dev, false);
+		ret = 0;
 	}
 
 	return ret;

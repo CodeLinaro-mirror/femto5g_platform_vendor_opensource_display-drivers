@@ -1043,6 +1043,8 @@ struct msm_resource_caps_info {
  * @esync_emsync_fps:   esync's EM pulse rate in Hz
  * @esync_emsync_milli_pulse_width: esync's EM pulse width, in 1/1000ths of a line
  * @te_source		vsync source pin information
+ * @disp_te_gpio:       TE GPIO identifier
+ * @esd_rw_check:       whether ESD should be checked using the RW window (through TE)
  * @dsc_count:		max dsc hw blocks used by display (only available
  *			for dsi display)
  * @lm_count:		max layer mixer blocks used by display (only available
@@ -1087,6 +1089,8 @@ struct msm_display_info {
 	bool event_notification_disabled;
 
 	uint32_t te_source;
+	int disp_te_gpio;
+	bool esd_rw_check;
 
 	uint32_t dsc_count;
 	uint32_t lm_count;
