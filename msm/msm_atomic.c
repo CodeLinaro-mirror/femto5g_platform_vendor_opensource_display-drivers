@@ -682,7 +682,7 @@ int msm_atomic_commit(struct drm_device *dev,
 {
 	struct msm_drm_private *priv = dev->dev_private;
 	struct msm_commit *c;
-	struct drm_crtc *crtc;
+	struct drm_crtc *crtc = NULL;
 	struct drm_crtc_state *crtc_state;
 	struct drm_plane *plane;
 	struct drm_plane_state *old_plane_state, *new_plane_state;
@@ -794,8 +794,10 @@ retry:
 
 	SDE_ATRACE_END("atomic_commit");
 
-	msm_handle_commit_status(priv->kms, true, drv_name, crtc->base.id);
-
+	if (priv && priv->kms && crtc) {
+		msm_handle_commit_status(priv->kms, true, drv_name,
+				crtc->base.id);
+	}
 	return 0;
 err_free:
 	kfree(c);
@@ -803,8 +805,10 @@ error:
 	drm_atomic_helper_cleanup_planes(dev, state);
 	SDE_ATRACE_END("atomic_commit");
 
-	msm_handle_commit_status(priv->kms, false, drv_name, crtc->base.id);
-
+	if (priv && priv->kms && crtc) {
+		msm_handle_commit_status(priv->kms, false, drv_name,
+				crtc->base.id);
+	}
 	return ret;
 }
 
