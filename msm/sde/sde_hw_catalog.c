@@ -96,7 +96,7 @@
 #define LINE_LM_OFFSET			5
 #define LINE_MODE_WB_OFFSET		2
 
-#define QULTIV_DISP_GDSC2_DISABLED	2
+#define QULTIV_DISP_GDSC2_DISABLED	0x7
 
 /**
  * these configurations are decided based on max mdp clock. It accounts
