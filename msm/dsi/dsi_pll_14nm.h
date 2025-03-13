@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "dsi_pll.h"
@@ -142,8 +142,7 @@ struct dsi_pll_div_table pll_14nm_dphy_lb[] = {
 	{120000000, 150000000, 1, 5},
 	{150000000, 200000000, 4, 1},
 	{200000000, 300000000, 1, 3},
-	{300000000, 600000000, 2, 1},
-	{600000000, 1500000000, 1, 2}
+	{300000000, 1500000000, 1, 2}
 };
 
 struct dsi_pll_div_table pll_14nm_dphy_hb[] = {
