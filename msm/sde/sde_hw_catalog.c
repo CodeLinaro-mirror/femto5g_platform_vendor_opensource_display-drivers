@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -6186,7 +6186,7 @@ static void _sde_get_hw_caps_for_canoe(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
 	set_bit(SDE_FEATURE_HDR_PLUS, sde_cfg->features);
 	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
-	set_bit(SDE_MDP_DHDR_MEMPOOL_4K, &sde_cfg->mdp[0].features);
+	set_bit(SDE_MDP_DHDR_MEMPOOL_4K_EXT, &sde_cfg->mdp[0].features);
 	set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
 	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);

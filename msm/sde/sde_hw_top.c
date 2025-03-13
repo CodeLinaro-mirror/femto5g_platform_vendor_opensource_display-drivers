@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -598,6 +598,8 @@ static void sde_hw_set_hdr_plus_metadata(struct sde_hw_mdp *mdp,
 	const u32 dword_size = sizeof(u32);
 	bool is_4k_aligned = mdp->caps->features &
 			BIT(SDE_MDP_DHDR_MEMPOOL_4K);
+	bool is_4k_aligned_ext = mdp->caps->features &
+			BIT(SDE_MDP_DHDR_MEMPOOL_4K_EXT);
 
 	if (!payload || !len) {
 		SDE_ERROR("invalid payload with length: %d\n", len);
@@ -608,6 +610,9 @@ static void sde_hw_set_hdr_plus_metadata(struct sde_hw_mdp *mdp,
 		if (is_4k_aligned) {
 			d_offset = DP_DHDR_MEM_POOL_1_DATA_4K;
 			nb_offset = DP_DHDR_MEM_POOL_1_NUM_BYTES_4K;
+		} else if (is_4k_aligned_ext) {
+			d_offset = DP_DHDR_MEM_POOL_1_DATA_4K_EXT;
+			nb_offset = DP_DHDR_MEM_POOL_1_NUM_BYTES_4K_EXT;
 		} else {
 			d_offset = DP_DHDR_MEM_POOL_1_DATA;
 			nb_offset = DP_DHDR_MEM_POOL_1_NUM_BYTES;
@@ -616,6 +621,9 @@ static void sde_hw_set_hdr_plus_metadata(struct sde_hw_mdp *mdp,
 		if (is_4k_aligned) {
 			d_offset = DP_DHDR_MEM_POOL_0_DATA_4K;
 			nb_offset = DP_DHDR_MEM_POOL_0_NUM_BYTES_4K;
+		} else if (is_4k_aligned_ext) {
+			d_offset = DP_DHDR_MEM_POOL_0_DATA_4K_EXT;
+			nb_offset = DP_DHDR_MEM_POOL_0_NUM_BYTES_4K_EXT;
 		} else {
 			d_offset = DP_DHDR_MEM_POOL_0_DATA;
 			nb_offset = DP_DHDR_MEM_POOL_0_NUM_BYTES;
@@ -943,6 +951,7 @@ static void _setup_mdp_ops(struct sde_hw_mdp_ops *ops, unsigned long cap, u32 hw
 		ops->setup_vsync_source = sde_hw_setup_vsync_source_v1;
 
 	if (cap & BIT(SDE_MDP_DHDR_MEMPOOL_4K) ||
+			cap & BIT(SDE_MDP_DHDR_MEMPOOL_4K_EXT) ||
 			cap & BIT(SDE_MDP_DHDR_MEMPOOL))
 		ops->set_hdr_plus_metadata = sde_hw_set_hdr_plus_metadata;
 	ops->get_autorefresh_status = sde_hw_get_autorefresh_status;
