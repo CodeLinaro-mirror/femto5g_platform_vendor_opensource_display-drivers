@@ -1693,7 +1693,9 @@ static int _sde_crtc_check_planes_within_crtc_roi(struct drm_crtc *crtc,
 	struct sde_crtc_state *crtc_state;
 	const struct sde_rect *crtc_roi;
 	const struct drm_plane_state *pstate;
+	struct sde_plane_state *plane_state;
 	struct drm_plane *plane;
+	u32 blend_type;
 
 	if (!crtc || !state)
 		return -EINVAL;
@@ -1721,6 +1723,11 @@ static int _sde_crtc_check_planes_within_crtc_roi(struct drm_crtc *crtc,
 					sde_crtc->name, plane->base.id, rc);
 			return rc;
 		}
+
+		plane_state = to_sde_plane_state(pstate);
+		blend_type = sde_plane_get_property(plane_state, PLANE_PROP_BLEND_OP);
+		if (blend_type == SDE_DRM_BLEND_OP_SKIP)
+			continue;
 
 		plane_roi.x = pstate->crtc_x;
 		plane_roi.y = pstate->crtc_y;
@@ -2290,6 +2297,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	struct sde_hw_ctl *ctl;
 	struct sde_hw_mixer *lm;
 	struct sde_hw_stage_cfg *stage_cfg;
+	const struct sde_rect *crtc_roi;
 	struct sde_rect plane_crtc_roi;
 	uint32_t stage_idx, lm_idx, layout_idx;
 	int zpos_cnt[MAX_LAYOUTS_PER_CRTC][SDE_STAGE_MAX + 1];
@@ -2310,6 +2318,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	lm = mixer->hw_lm;
 	cstate = to_sde_crtc_state(crtc->state);
 	disp_op = sde_crtc_get_disp_op(crtc);
+	crtc_roi = &cstate->crtc_roi;
 	pstates = kcalloc(SDE_PSTATES_MAX,
 			sizeof(struct plane_state), GFP_KERNEL);
 	if (!pstates)
@@ -2362,6 +2371,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 		if (blend_type == SDE_DRM_BLEND_OP_SKIP) {
 			skip_blend_plane.valid_plane = true;
 			skip_blend_plane.plane = sde_plane_pipe(plane);
+			skip_blend_plane.y_offset = crtc_roi->y;
 			skip_blend_plane.height = plane_crtc_roi.h;
 			skip_blend_plane.width = plane_crtc_roi.w;
 			skip_blend_plane.is_virtual = is_sde_plane_virtual(plane);

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -456,6 +456,22 @@ static void dspp_demura(struct sde_hw_dspp *c)
 					reg_dmav1_setup_demura_cfg0_param2;
 		} else {
 			SDE_ERROR("Regdma init dspp op failed for Demura v3\n");
+		}
+	} else if (c->cap->sblk->demura.version == SDE_COLOR_PROCESS_VER(0x4, 0x0)) {
+		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_DEMURA, c);
+		if (!ret)
+			ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_DEMURA_CFG0_PARAM2, c);
+		if (!ret) {
+			c->ops.setup_demura_cfg[MSM_DISP_OP_HWIO] = reg_dmav1_setup_demurav4;
+			c->ops.setup_demura_backlight_cfg[MSM_DISP_OP_HWIO] =
+					sde_demura_backlight_cfg;
+			c->ops.demura_read_plane_status[MSM_DISP_OP_HWIO] =
+					sde_demura_read_plane_status_v3;
+			c->ops.setup_demura_pu_config[MSM_DISP_OP_HWIO] = sde_demura_pu_cfg;
+			c->ops.setup_demura_cfg0_param2[MSM_DISP_OP_HWIO] =
+					reg_dmav1_setup_demura_cfg0_param2_v4;
+		} else {
+			SDE_ERROR("Regdma init dspp op failed for Demura v4\n");
 		}
 	}
 }
