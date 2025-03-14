@@ -1521,6 +1521,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	struct sde_connector_state *c_state;
 	struct msm_display_kickoff_params params;
 	struct dsi_display *display;
+	enum msm_disp_op disp_op;
 	int rc;
 
 	if (!connector) {
@@ -1569,6 +1570,15 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
 	}
 
+	disp_op = sde_connector_get_disp_op(connector);
+	if (c_conn->hal_ops.prepare_commit[disp_op]) {
+		rc = c_conn->hal_ops.prepare_commit[disp_op](connector, c_state);
+		if (rc) {
+			SDE_ERROR("prepare_commit HAL op failed, rc: %d\n", rc);
+			return rc;
+		}
+	}
+
 	if (!c_conn->ops.pre_kickoff)
 		return 0;
 
@@ -1593,7 +1603,6 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	struct msm_display_conn_params params;
 	struct drm_encoder *drm_enc;
 	struct dsi_display *display;
-	enum msm_disp_op disp_op;
 	int rc = 0;
 
 	if (!connector) {
@@ -1626,12 +1635,6 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	SDE_EVT32(connector->base.id, params.qsync_mode,
 		  params.qsync_update, rc);
 
-	disp_op = sde_connector_get_disp_op(connector);
-	if (c_conn->hal_ops.prepare_commit[disp_op]) {
-		rc = c_conn->hal_ops.prepare_commit[disp_op](connector, c_state);
-		if (rc)
-			SDE_ERROR("prepare_commit HAL op failed, rc: %d\n", rc);
-	}
 	return rc;
 }
 
