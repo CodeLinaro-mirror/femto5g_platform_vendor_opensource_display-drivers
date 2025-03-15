@@ -6,6 +6,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
 #include "hfi_encoder.h"
+#include "hfi_connector.h"
 #include "hfi_props.h"
 #include "sde_crtc.h"
 #include "sde_encoder_phys.h"
@@ -728,6 +729,12 @@ static int hfi_encoder_mode_set(struct sde_encoder_virt *enc, struct drm_display
 	if (!conn) {
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
+	}
+
+	ret = hfi_conn_send_panel_init(conn);
+	if (ret) {
+		SDE_ERROR("failed to send panel init commands :%d\n", ret);
+		return ret;
 	}
 
 	display_id = sde_conn_get_display_obj_id(conn);
