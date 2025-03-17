@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -1679,6 +1679,8 @@ static void dp_display_clean(struct dp_display_private *dp)
 static int dp_display_handle_disconnect(struct dp_display_private *dp)
 {
 	int rc;
+	struct drm_connector *connector;
+	struct sde_connector *sde_conn;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	rc = dp_display_process_hpd_low(dp);
@@ -1699,9 +1701,12 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp)
 	 * and let it set based on the required flags on hpd connect.
 	 */
 	dp->dp_display.yuv422_enable = false;
-
+	connector = dp->dp_display.base_connector;
+	sde_conn = to_sde_connector(connector);
+	connector->state->colorspace = DRM_MODE_COLORIMETRY_DEFAULT;
+	sde_conn->colorspace = DRM_MODE_COLORIMETRY_DEFAULT;
 	mutex_unlock(&dp->session_lock);
-
+	DP_INFO("Display disconnect! Connector %d\n", sde_conn->base.base.id);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 	return rc;
 }
