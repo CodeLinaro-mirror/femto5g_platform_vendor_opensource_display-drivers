@@ -198,6 +198,9 @@ module_entry(
                               "rotator/sde_rotator_r3_debug.c"],
             },
       },
+      deps = [
+         "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
+      ],
 
       # Configs are handled by config_options = []
       config_deps = {
