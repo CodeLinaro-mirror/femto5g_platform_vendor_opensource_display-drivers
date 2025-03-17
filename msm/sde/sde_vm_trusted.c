@@ -33,9 +33,6 @@ int _sde_vm_validate_sgl(struct gh_sgl_desc *expected,
 {
 	u32 idx;
 
-	SDE_DEBUG("Workaround in _sde_vm_validate_sgl");
-		return 0;
-
 	/*
 	 * fragmented address spaces are not supported.
 	 * So the number of sgl entries is expected to be the same.
