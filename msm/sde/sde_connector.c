@@ -1416,7 +1416,8 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 		return 0;
 
 	if (!c_conn->freq_pattern) {
-		SDE_ERROR("frequency pattern is NULL but update is true\n");
+		SDE_INFO("frequency pattern is NULL but update is true\n");
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE3, SDE_EVTLOG_ERROR);
 		return -EINVAL;
 	}
 
