@@ -5925,6 +5925,9 @@ static int dsi_display_bind(struct device *dev,
 	if (!display->panel_node && !display->fw)
 		return 0;
 
+	if (!display->fw)
+		display->name = display->panel_node->name;
+
 	/* defer bind if ext bridge driver is not loaded */
 	if (display->panel && display->panel->host_config.ext_bridge_mode) {
 		for (i = 0; i < display->ext_bridge_cnt; i++) {
@@ -6181,69 +6184,10 @@ static struct platform_driver dsi_display_driver = {
 	},
 };
 
-static int dsi_display_prepare_dt_parser(struct dsi_display *display)
-{
-	struct dsi_display_boot_param *boot_disp = display->boot_disp;
-	struct device_node *node = display->pdev->dev.of_node;
-	struct device_node *panel_node = NULL;
-	char *dsi_prop_file_name_prim = "dsi_prop";
-	char *dsi_prop_file_name_sec = "dsi_prop_sec";
-	char *display_name_firmware_prim = "dsi_firmware_display";
-	char *display_name_firmware_sec  = "dsi_firmware_display_secondary";
-	bool prim = !strcmp(display->display_type, "primary");
-	int rc = 0;
-
-	if (boot_disp->boot_disp_en) {
-		if (!strcmp(boot_disp->name, "qcom,dsi_prop")) {
-			/* use DSI firmware instead of device tree */
-			if (IS_ENABLED(CONFIG_DSI_PARSER)) {
-				char *dsi_prop_file_name = prim ?
-					dsi_prop_file_name_prim : dsi_prop_file_name_sec;
-				char *display_name = prim ?
-					display_name_firmware_prim : display_name_firmware_sec;
-
-				rc = request_firmware(&display->fw, dsi_prop_file_name, &display->pdev->dev);
-				if (rc) {
-					DSI_ERR("failed to load firmware, rc: %d\n", rc);
-					return rc;
-				}
-
-				display->name = display_name;
-			} else {
-				DSI_WARN("DSI prop selected, but not supported\n");
-				return -EINVAL;
-			}
-		} else {
-			/* The panel name should be same as UEFI name index */
-			panel_node = of_find_node_by_name(NULL, boot_disp->name);
-			if (!panel_node)
-				DSI_WARN("%s panel_node %s not found\n", display->display_type,
-						boot_disp->name);
-		}
-	} else {
-		panel_node = of_parse_phandle(node,
-				"qcom,dsi-default-panel", 0);
-		if (!panel_node)
-			DSI_INFO("%s default panel not found\n", display->display_type);
-	}
-
-	display->panel_node = panel_node;
-	if (panel_node)
-		display->name = panel_node->name;
-
-	return rc;
-}
-
 static int dsi_display_init(struct dsi_display *display)
 {
 	int rc = 0;
 	struct platform_device *pdev = display->pdev;
-
-	rc = dsi_display_prepare_dt_parser(display);
-	if (rc) {
-		DSI_ERR("failed to prepare for device tree parsing\n");
-		goto end;
-	}
 
 	mutex_init(&display->display_lock);
 
@@ -6283,11 +6227,39 @@ end:
 	return rc;
 }
 
+static void dsi_display_firmware_display(const struct firmware *fw,
+				void *context)
+{
+	struct dsi_display *display = context;
+
+	if (fw) {
+		DSI_INFO("reading data from firmware, size=%zd\n",
+			fw->size);
+
+		display->fw = fw;
+
+		if (!strcmp(display->display_type, "primary"))
+			display->name = "dsi_firmware_display";
+
+		else if (!strcmp(display->display_type, "secondary"))
+			display->name = "dsi_firmware_display_secondary";
+
+	} else {
+		DSI_INFO("no firmware available, fallback to device node\n");
+	}
+
+	if (dsi_display_init(display))
+		return;
+
+	DSI_DEBUG("success\n");
+}
+
 int dsi_display_dev_probe(struct platform_device *pdev)
 {
 	struct dsi_display *display = NULL;
-	struct device_node *mdp_node = NULL;
+	struct device_node *node = NULL, *panel_node = NULL, *mdp_node = NULL;
 	int rc = 0, index = DSI_PRIMARY, mdp_count;
+	bool firm_req = false;
 	struct dsi_display_boot_param *boot_disp = NULL;
 
 	if (!pdev || !pdev->dev.of_node) {
@@ -6340,10 +6312,24 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 
 
 	boot_disp = &boot_displays[index];
+	node = pdev->dev.of_node;
+	if (boot_disp->boot_disp_en) {
+		/* The panel name should be same as UEFI name index */
+		panel_node = of_find_node_by_name(NULL, boot_disp->name);
+		if (!panel_node)
+			DSI_WARN("%s panel_node %s not found\n", display->display_type,
+					boot_disp->name);
+	} else {
+		panel_node = of_parse_phandle(node,
+				"qcom,dsi-default-panel", 0);
+		if (!panel_node)
+			DSI_INFO("%s default panel not found\n", display->display_type);
+	}
 
 	boot_disp->node = pdev->dev.of_node;
 	boot_disp->disp = display;
 
+	display->panel_node = panel_node;
 	display->pdev = pdev;
 	display->boot_disp = boot_disp;
 
@@ -6357,9 +6343,28 @@ int dsi_display_dev_probe(struct platform_device *pdev)
 		goto end;
 	}
 
-	rc = dsi_display_init(display);
-	if (rc)
-		goto end;
+	/* initialize display in firmware callback */
+	if (!(boot_displays[DSI_PRIMARY].boot_disp_en ||
+			boot_displays[DSI_SECONDARY].boot_disp_en) &&
+			IS_ENABLED(CONFIG_DSI_PARSER)) {
+		if (!strcmp(display->display_type, "primary"))
+			firm_req = !request_firmware_nowait(
+				THIS_MODULE, 1, "dsi_prop",
+				&pdev->dev, GFP_KERNEL, display,
+				dsi_display_firmware_display);
+
+		else if (!strcmp(display->display_type, "secondary"))
+			firm_req = !request_firmware_nowait(
+				THIS_MODULE, 1, "dsi_prop_sec",
+				&pdev->dev, GFP_KERNEL, display,
+				dsi_display_firmware_display);
+	}
+
+	if (!firm_req) {
+		rc = dsi_display_init(display);
+		if (rc)
+			goto end;
+	}
 
 	return 0;
 end:
