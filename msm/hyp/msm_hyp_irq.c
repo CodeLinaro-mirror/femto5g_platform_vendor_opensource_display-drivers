@@ -382,7 +382,7 @@ void msm_hyp_irq_preinstall(struct msm_kms *kms)
 	sde_core_irq_preinstall(sde_kms);
 
 	/* Borrow ire_num to store DPU id */
-	sde_kms->irq_num = DPUID(sde_kms->dev);
+	sde_kms->irq_num = DPUID(sde_kms);
 
 	/* disable irq until power event enables it */
 	if (!sde_kms->irq_enabled) {

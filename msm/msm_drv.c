@@ -2017,13 +2017,17 @@ static int msm_runtime_suspend(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct msm_drm_private *priv = ddev->dev_private;
+	int dpu_idx = ddev->primary->index;
 
 	DBG("");
+
+	if (priv->kms)
+		dpu_idx = DPUID(to_sde_kms(priv->kms));
 
 	if (priv->mdss)
 		msm_mdss_disable(priv->mdss);
 	else
-		sde_power_resource_enable(&priv->phandle, false, DPUID(ddev));
+		sde_power_resource_enable(&priv->phandle, false, dpu_idx);
 
 	return 0;
 }
@@ -2032,14 +2036,18 @@ static int msm_runtime_resume(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct msm_drm_private *priv = ddev->dev_private;
+	int dpu_idx = ddev->primary->index;
 	int ret;
 
 	DBG("");
 
+	if (priv->kms)
+		dpu_idx = DPUID(to_sde_kms(priv->kms));
+
 	if (priv->mdss)
 		ret = msm_mdss_enable(priv->mdss);
 	else
-		ret = sde_power_resource_enable(&priv->phandle, true, DPUID(ddev));
+		ret = sde_power_resource_enable(&priv->phandle, true, dpu_idx);
 
 	return ret;
 }

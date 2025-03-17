@@ -808,22 +808,22 @@ static int virtio_kms_connector_get_type(
 	case VIRTIO_PORT_TYPE_HDMI:
 		connector_type = DRM_MODE_CONNECTOR_HDMIA;
 		if (name)
-			snprintf(name, PANEL_NAME_LEN, "%s_%d\n", "HDMI", scanout);
+			snprintf(name, PANEL_NAME_LEN, "%s_%d", "HDMI", scanout);
 		break;
 	case VIRTIO_PORT_TYPE_DSI:
 		connector_type = DRM_MODE_CONNECTOR_DSI;
 		if (name)
-			snprintf(name, PANEL_NAME_LEN, "%s_%d\n", "DSI", scanout);
+			snprintf(name, PANEL_NAME_LEN, "%s_%d", "DSI", scanout);
 		break;
 	case VIRTIO_PORT_TYPE_DP:
 		connector_type = DRM_MODE_CONNECTOR_DisplayPort;
 		if (name)
-			snprintf(name, PANEL_NAME_LEN, "%s_%d\n", "DP", scanout);
+			snprintf(name, PANEL_NAME_LEN, "%s_%d", "DP", scanout);
 		break;
 	default:
 		connector_type = DRM_MODE_CONNECTOR_Unknown;
 		if (name)
-			snprintf(name, PANEL_NAME_LEN, "%s_%d\n", "Unknown", scanout);
+			snprintf(name, PANEL_NAME_LEN, "%s_%d", "Unknown", scanout);
 		break;
 	}
 
@@ -845,7 +845,7 @@ static int virtio_kms_get_displays(struct sde_kms *sde_kms,
 
 	for (i = 0; i < kms->num_scanouts; i++) {
 		output = &kms->outputs[i];
-		if (output->hw_assign.dpu_id != DPUID(sde_kms->dev))
+		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 		if (displays)
 			displays[num_displays] = output;
@@ -886,7 +886,7 @@ static int virtio_kms_get_connector_infos(struct sde_kms *sde_kms,
 
 	for (i = 0; i < kms->num_scanouts; i++) {
 		output = &kms->outputs[i];
-		if (output->hw_assign.dpu_id != DPUID(sde_kms->dev))
+		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 
 		if (!connector_infos) {
@@ -1036,7 +1036,7 @@ static int virtio_kms_get_plane_infos(struct sde_kms *sde_kms,
 
 	for (i = 0; i < kms->num_scanouts; i++) {
 		output = &kms->outputs[i];
-		if (output->hw_assign.dpu_id != DPUID(sde_kms->dev))
+		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 
 		if (!plane_infos) {
@@ -1225,7 +1225,7 @@ static int virtio_kms_get_crtc_infos(struct sde_kms *sde_kms,
 
 	for (i = 0; i < kms->num_scanouts; i++) {
 		output = &kms->outputs[i];
-		if (output->hw_assign.dpu_id != DPUID(sde_kms->dev))
+		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 
 		if (!crtc_infos) {
@@ -1372,7 +1372,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 				output->hw_assign.ctl_id);
 
 		/* Check DPU id first */
-		if (output->hw_assign.dpu_id != DPUID(sde_kms->dev))
+		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 
 		/* CTL */
@@ -1697,7 +1697,7 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 				output->hw_assign.ctl_id);
 
 		/* Check DPU id first */
-		if (output->hw_assign.dpu_id != DPUID(sde_kms->dev))
+		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 
 		dpu_id = output->hw_assign.dpu_id;

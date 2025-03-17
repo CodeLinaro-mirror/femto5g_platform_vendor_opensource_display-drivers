@@ -730,7 +730,7 @@ static int _sde_rm_hw_blk_create(
 		hw = sde_hw_ds_init(id, mmio, cat);
 		break;
 	case SDE_HW_BLK_CTL:
-		hw = sde_hw_ctl_init(id, mmio, cat, sde_kms->dev->primary->index);
+		hw = sde_hw_ctl_init(id, mmio, cat, DPUID(sde_kms));
 		break;
 	case SDE_HW_BLK_CDM:
 		hw = sde_hw_cdm_init(id, mmio, cat, hw_mdp);
@@ -1034,7 +1034,7 @@ int sde_rm_init(struct sde_rm *rm)
 		rm->topology_tbl = g_top_table;
 
 	/* Some of the sub-blocks require an mdptop to be created */
-	rm->hw_mdp = sde_hw_mdptop_init(MDP_TOP, mmio, cat);
+	rm->hw_mdp = sde_hw_mdptop_init(cat->mdp[0].id, mmio, cat);
 	if (IS_ERR_OR_NULL(rm->hw_mdp)) {
 		rc = PTR_ERR(rm->hw_mdp);
 		rm->hw_mdp = NULL;

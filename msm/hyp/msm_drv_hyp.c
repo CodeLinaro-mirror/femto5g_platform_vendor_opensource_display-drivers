@@ -433,6 +433,11 @@ static int _msm_hyp_setup_displays(struct drm_device *ddev)
 
 	ret = hyp_kms->funcs->get_displays(sde_kms, displays, &sde_kms->hyp_display_count);
 
+	if (sde_kms->hyp_display_count <= 0) {
+		SDE_ERROR("invalid number of displays %d\n", sde_kms->hyp_display_count);
+		return -EINVAL;
+	}
+
 	ret = hyp_kms->funcs->get_connector_infos(sde_kms, connector_infos, &conn_num);
 
 	for (i = 0; i < sde_kms->hyp_display_count &&
@@ -596,7 +601,7 @@ struct sde_mdss_cfg *msm_hyp_hw_catalog_init(struct drm_device *dev)
 	if (!sde_kms)
 		return NULL;
 	sde_kms->hyp_kms = g_hyp_kms;
-	dpu_id = DPUID(dev);
+	dpu_id = DPUID(sde_kms);
 	if (dpu_id != -1) {
 		if (dpu_id < 0 || dpu_id >= MAX_NUM_DPU_CORE) {
 			DRM_ERROR("Invalid DPU cores id %d\n", dpu_id);

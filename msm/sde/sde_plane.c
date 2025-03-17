@@ -5724,7 +5724,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 	/* initialize underlying h/w driver */
 	if (kms->dev->primary)
 		psde->pipe_hw = sde_hw_sspp_init(pipe, kms->mmio, kms->catalog, psde->is_virtual,
-				&clk_client, kms->dev->primary->index, kms);
+				&clk_client, DPUID(kms), kms);
 
 	if (IS_ERR(psde->pipe_hw)) {
 		SDE_ERROR("[%u]SSPP init failed\n", pipe);

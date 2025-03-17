@@ -943,7 +943,7 @@ static int _sde_kms_splash_mem_put(struct sde_kms *sde_kms,
 	if (!splash->ref_cnt) {
 		mmu->funcs->one_to_one_unmap(mmu, splash->splash_buf_base,
 				splash->splash_buf_size);
-		if (sde_kms->dev->primary->index == MDP_MASTER_CORE) {
+		if (DPUID(sde_kms) == MDP_MASTER_CORE) {
 			rc = _sde_kms_release_shared_buffer(splash->splash_buf_base,
 				splash->splash_buf_size, splash->ramdump_base,
 				splash->ramdump_size);
@@ -1455,7 +1455,7 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 				priv->phandle.ib_quota[i] ? priv->phandle.ib_quota[i] :
 				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
 
-		sde_cesta_splash_release(DPUID(sde_kms->dev));
+		sde_cesta_splash_release(DPUID(sde_kms));
 		pm_runtime_put_sync(sde_kms->dev->dev);
 	}
 }
@@ -2084,7 +2084,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		}
 
 		snprintf(cesta_client_name, sizeof(cesta_client_name), "wb%u", i);
-		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+		cesta_client = sde_cesta_create_client(DPUID(sde_kms), cesta_client_name);
 
 		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
@@ -2129,7 +2129,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 		snprintf(cesta_client_name, sizeof(cesta_client_name), "dsi%u", i);
-		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+		cesta_client = sde_cesta_create_client(DPUID(sde_kms), cesta_client_name);
 
 		encoder = sde_encoder_init(dev, &info, cesta_client);
 		if (IS_ERR_OR_NULL(encoder)) {
@@ -2243,7 +2243,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		info.h_tile_instance[0] = dp_info.intf_idx[0];
 
 		snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u", i);
-		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
+		cesta_client = sde_cesta_create_client(DPUID(sde_kms), cesta_client_name);
 		sst_cesta_client = cesta_client;
 
 		encoder = sde_encoder_init(dev, &info, cesta_client);
@@ -2292,7 +2292,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			} else {
 				snprintf(cesta_client_name, sizeof(cesta_client_name),
 						"dp%u.%u", i, idx);
-				cesta_client = sde_cesta_create_client(DPUID(dev),
+				cesta_client = sde_cesta_create_client(DPUID(sde_kms),
 						cesta_client_name);
 			}
 
@@ -2547,7 +2547,7 @@ static int sde_kms_postinit(struct msm_kms *kms)
 				SDE_POWER_HANDLE_ENABLE_BUS_IB_QUOTA);
 
 #if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
-		sde_cesta_splash_release(DPUID(sde_kms->dev));
+		sde_cesta_splash_release(DPUID(sde_kms));
 		pm_runtime_put_sync(sde_kms->dev->dev);
 #endif
 	}
@@ -3465,6 +3465,10 @@ static int sde_kms_check_cwb_concurreny(struct msm_kms *kms,
 	}
 
 	sde_kms = to_sde_kms(kms);
+	if (!sde_kms)
+		return -EINVAL;
+	if (!sde_kms->catalog)
+		return -EINVAL;
 	max_cwb = sde_kms->catalog->max_cwb;
 	if (!max_cwb)
 		return 0;
@@ -5325,7 +5329,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	sde_kms->rm_init = true;
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
-	sde_kms->hw_intr = msm_hyp_irq_init(sde_kms->hyp_kms, DPUID(dev));
+	sde_kms->hw_intr = msm_hyp_irq_init(sde_kms->hyp_kms, DPUID(sde_kms));
 #else
 	sde_kms->hw_intr = sde_hw_intr_init(sde_kms->mmio, sde_kms->catalog);
 #endif
@@ -5613,7 +5617,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	perf_cfg.num_ddr_channels = sde_kms->catalog->perf.num_ddr_channels;
 	perf_cfg.dram_efficiency = sde_kms->catalog->perf.dram_efficiency;
 
-	sde_cesta_update_perf_config(DPUID(dev), &perf_cfg);
+	sde_cesta_update_perf_config(DPUID(sde_kms), &perf_cfg);
 
 	if (sde_in_trusted_vm(sde_kms)) {
 		rc = sde_vm_trusted_init(sde_kms);

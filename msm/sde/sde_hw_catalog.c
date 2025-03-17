@@ -4627,7 +4627,7 @@ static int sde_top_parse_dt(struct device_node *np, struct sde_mdss_cfg *cfg)
 
 	cfg->mdss_count = 1;
 	cfg->mdss[0].base = MDSS_BASE_OFFSET;
-	cfg->mdss[0].id = props->exists[SDE_INDEX] ? PROP_VALUE_ACCESS(props->values, SDE_INDEX, 0) : 0
+	cfg->mdss[0].id = (props->exists[SDE_INDEX] ? PROP_VALUE_ACCESS(props->values, SDE_INDEX, 0) : 0)
 						+ MDP_TOP;
 	snprintf(cfg->mdss[0].name, SDE_HW_BLK_NAME_LEN, "mdss_%u",
 			cfg->mdss[0].id - MDP_TOP);
@@ -6392,7 +6392,9 @@ void sde_hw_catalog_deinit(struct sde_mdss_cfg *sde_cfg)
 	if (!sde_cfg)
 		return;
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	sde_hw_catalog_irq_offset_list_delete(&sde_cfg->irq_offset_list);
+#endif
 
 	for (i = 0; i < sde_cfg->sspp_count; i++)
 		kvfree(sde_cfg->sspp[i].sblk);

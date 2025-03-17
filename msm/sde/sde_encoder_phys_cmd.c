@@ -452,7 +452,7 @@ static void _sde_encoder_phys_signal_frame_done(struct sde_encoder_phys *phys_en
 		info[0].intf_idx, info[0].intf_frame_count, info[0].wr_ptr_line_count,
 		info[0].rd_ptr_line_count, info[1].pp_idx, info[1].intf_idx,
 		info[1].intf_frame_count, info[1].wr_ptr_line_count, info[1].rd_ptr_line_count,
-		DPUID(phys_enc->parent->dev));
+		DPUID(phys_enc->sde_kms));
 
 	/*
 	 * For hw-fences, in the last frame during the autorefresh disable transition
@@ -515,7 +515,7 @@ static void sde_encoder_phys_cmd_autorefresh_done_irq(void *arg, int irq_idx)
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
 	SDE_EVT32_IRQ(DRMID(phys_enc->parent), phys_enc->hw_pp->idx - PINGPONG_0,
-			phys_enc->hw_intf->idx - INTF_0, new_cnt, DPUID(phys_enc->parent->dev));
+			phys_enc->hw_intf->idx - INTF_0, new_cnt, DPUID(phys_enc->sde_kms));
 
 	if (new_cnt)
 		_sde_encoder_phys_signal_frame_done(phys_enc);
@@ -565,7 +565,7 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 		info[0].intf_idx, info[0].intf_frame_count, info[0].wr_ptr_line_count,
 		info[0].rd_ptr_line_count, info[1].pp_idx, info[1].intf_idx,
 		info[1].intf_frame_count, info[1].wr_ptr_line_count, info[1].rd_ptr_line_count,
-		DPUID(phys_enc->parent->dev));
+		DPUID(phys_enc->sde_kms));
 	if (cesta_client)
 		sde_cesta_get_status(cesta_client, &scc_status);
 
@@ -609,7 +609,7 @@ static void sde_encoder_phys_cmd_wr_ptr_irq(void *arg, int irq_idx)
 		info[0].pp_idx, info[0].intf_idx, info[0].intf_frame_count,
 		info[0].wr_ptr_line_count, info[0].rd_ptr_line_count, info[1].pp_idx,
 		info[1].intf_idx, info[1].intf_frame_count, info[1].wr_ptr_line_count,
-		info[1].rd_ptr_line_count, DPUID(phys_enc->parent->dev));
+		info[1].rd_ptr_line_count, DPUID(phys_enc->sde_kms));
 
 	if (qsync_mode &&
 			!test_bit(SDE_INTF_TE_SINGLE_UPDATE, &phys_enc->hw_intf->cap->features))

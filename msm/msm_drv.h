@@ -62,7 +62,7 @@
 #define GET_MAJOR_REV(rev)		((rev) >> 28)
 #define GET_MINOR_REV(rev)		(((rev) >> 16) & 0xFFF)
 #define GET_STEP_REV(rev)		((rev) & 0xFFFF)
-#define DPUID(dev)			dev->primary->index
+#define DPUID(sde_kms)			(sde_kms->catalog->mdp[0].id - MDP_TOP)
 
 struct msm_kms;
 struct msm_gpu;

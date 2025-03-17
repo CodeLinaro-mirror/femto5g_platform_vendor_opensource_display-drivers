@@ -127,7 +127,7 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 			flush_register, event,
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
 			intf_status.frame_count, intf_status.line_count,
-			fence_ready, DPUID(phys_enc->parent->dev));
+			fence_ready, DPUID(phys_enc->sde_kms));
 	if (cesta_client)
 		sde_cesta_get_status(cesta_client, &scc_status);
 
@@ -726,7 +726,7 @@ static u32 sde_encoder_phys_hyp_get_underrun_line_count(
 
 	SDE_EVT32(DRMID(phys_enc->parent), underrun_linecount,
 		intf_status.frame_count, intf_status.line_count,
-		intf_intr_status, DPUID(phys_enc->parent->dev));
+		intf_intr_status, DPUID(phys_enc->sde_kms));
 
 	return underrun_linecount;
 }

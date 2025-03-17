@@ -630,7 +630,7 @@ struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 	c->hw_top.length = m->dspp_top.len;
 	c->hw_top.hw_rev = m->hw_rev;
 	c->hw_top.log_mask = SDE_DBG_MASK_DSPP;
-	c->dpu_idx = sde_kms->dev->primary->index;
+	c->dpu_idx = DPUID(sde_kms);
 	c->sde_kms = sde_kms;
 
 	/* Assign ops */

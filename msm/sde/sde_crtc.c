@@ -7206,7 +7206,7 @@ static void sde_crtc_install_perf_properties(struct sde_crtc *sde_crtc,
 			sde_kms->perf.max_core_clk_rate,
 			CRTC_PROP_ROT_CLK);
 
-	if (sde_cesta_is_enabled(DPUID(sde_kms->dev)))
+	if (sde_cesta_is_enabled(DPUID(sde_kms)))
 		msm_property_install_range(&sde_crtc->property_info,
 			"ubwc_clk", 0x0, 0, U64_MAX,
 			sde_kms->perf.max_core_clk_rate,
@@ -7805,7 +7805,7 @@ void sde_crtc_force_async_mode(struct drm_encoder *enc,
 	drm_prop = msm_property_index_to_drm_property(&sde_crtc->property_info,
 			CRTC_PROP_FLUSH_SYNC_EN);
 	sde_crtc_atomic_set_property(enc->crtc, crtc_state, drm_prop, 0);
-	SDE_EVT32(DRMID(enc->crtc), DPUID(enc->crtc->dev));
+	SDE_EVT32(DRMID(enc->crtc), DPUID(sde_kms));
 }
 
 /**
@@ -9027,7 +9027,7 @@ int sde_crtc_post_init(struct drm_device *dev, struct drm_crtc *crtc)
 	sde_crtc = to_sde_crtc(crtc);
 	sde_crtc->sysfs_dev = device_create_with_groups(
 		dev->primary->kdev->class, dev->primary->kdev, 0, crtc,
-		sde_crtc_attr_groups, "card%d-sde-crtc-%d", DPUID(dev), crtc->index);
+		sde_crtc_attr_groups, "card%d-sde-crtc-%d", DPUID(_sde_crtc_get_kms(crtc)), crtc->index);
 	if (IS_ERR_OR_NULL(sde_crtc->sysfs_dev)) {
 		SDE_ERROR("crtc:%d sysfs create failed rc:%ld\n", crtc->index,
 			PTR_ERR(sde_crtc->sysfs_dev));

@@ -172,16 +172,16 @@ int sde_hw_vatran_init(void __iomem *addr, struct sde_mdss_cfg *m,
 		return -EINVAL;
 	}
 
-	if (dev->primary->index >= DPU_MAX) {
-		DRM_DEBUG("invalid dpu idx %u\n", dev->primary->index);
+	dpu_idx = m->mdp[0].id - MDP_TOP;
+	if (dpu_idx >= DPU_MAX) {
+		DRM_DEBUG("invalid dpu idx %u\n", dpu_idx);
 		return -EINVAL;
 	}
 
-	dpu_idx = dev->primary->index;
 	hw_vatran = &vatran[dpu_idx];
 
 	if (hw_vatran->enabled) {
-		DRM_DEBUG("already enabled dpu idx %u\n", dev->primary->index);
+		DRM_DEBUG("already enabled dpu idx %u\n", dpu_idx);
 		return -EINVAL;
 	}
 

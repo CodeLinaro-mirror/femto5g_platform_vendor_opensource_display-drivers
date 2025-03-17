@@ -154,12 +154,12 @@ int sde_reg_dma_init(void __iomem *addr, struct sde_mdss_cfg *m,
 		return 0;
 	}
 
-	if (dev->primary->index >= DPU_MAX) {
-		DRM_DEBUG("invalid dpu idx %u\n", dev->primary->index);
+	dpu_idx = m->mdp[0].id - MDP_TOP;
+	if (dpu_idx >= DPU_MAX) {
+		DRM_DEBUG("invalid dpu idx %u\n", dpu_idx);
 		return 0;
 	}
 
-	dpu_idx = dev->primary->index;
 	set_default_dma_ops(&(reg_dma[dpu_idx]));
 
 	reg_dma[dpu_idx].reg_dma_count = m->reg_dma_count;

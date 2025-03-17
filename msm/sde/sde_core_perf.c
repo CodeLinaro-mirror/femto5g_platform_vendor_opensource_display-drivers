@@ -278,7 +278,7 @@ int sde_core_perf_crtc_check(struct drm_crtc *crtc,
 	_sde_core_perf_calc_crtc(kms, crtc, state, &sde_cstate->new_perf);
 
 	/* do cesta check and return early, when sde cesta is enabled */
-	if (sde_cesta_is_enabled(DPUID(kms->dev)))
+	if (sde_cesta_is_enabled(DPUID(kms)))
 		return _sde_core_perf_crtc_cesta_update(kms, sde_crtc, sde_cstate,
 						&sde_cstate->new_perf, SDE_PERF_NONE_COMMIT, true);
 
@@ -912,7 +912,7 @@ void sde_core_perf_crtc_release_bw(struct drm_crtc *crtc)
 	sde_cstate = to_sde_crtc_state(crtc->state);
 
 	/* return early when cesta is enabled, as a separate bw release is not required */
-	if (sde_cesta_is_enabled(DPUID(kms->dev)))
+	if (sde_cesta_is_enabled(DPUID(kms)))
 		return;
 
 	/* only do this for command mode rt client (non-rsc client) */
@@ -1043,7 +1043,7 @@ static void _sde_core_perf_crtc_update_check(struct drm_crtc *crtc,
 
 		/* display rsc override during solver mode */
 		if (kms->perf.bw_vote_mode == DISP_RSC_MODE &&
-				get_sde_rsc_current_state(DPUID(kms->dev)) !=
+				get_sde_rsc_current_state(DPUID(kms)) !=
 				SDE_RSC_CLK_STATE) {
 			/* update new bandwidth in all cases */
 			if (params_changed && ((new->bw_ctl[i] !=
@@ -1138,7 +1138,7 @@ void sde_core_perf_crtc_update(struct drm_crtc *crtc, enum sde_perf_commit_state
 	}
 
 	/* update votes through cesta and return early, when sde cesta is enabled */
-	if (sde_cesta_is_enabled(DPUID(kms->dev))) {
+	if (sde_cesta_is_enabled(DPUID(kms))) {
 		_sde_core_perf_crtc_cesta_update(kms, sde_crtc, sde_cstate,
 				&sde_crtc->new_perf, commit_state, false);
 		goto end;
@@ -1161,9 +1161,9 @@ void sde_core_perf_crtc_update(struct drm_crtc *crtc, enum sde_perf_commit_state
 	}
 
 	if (kms->perf.bw_vote_mode == DISP_RSC_MODE &&
-	    ((get_sde_rsc_current_state(DPUID(kms->dev)) != SDE_RSC_CLK_STATE
+	    ((get_sde_rsc_current_state(DPUID(kms)) != SDE_RSC_CLK_STATE
 	      && params_changed) ||
-	    (get_sde_rsc_current_state(DPUID(kms->dev)) == SDE_RSC_CLK_STATE)))
+	    (get_sde_rsc_current_state(DPUID(kms)) == SDE_RSC_CLK_STATE)))
 		sde_rsc_client_trigger_vote(sde_cstate->rsc_client,
 				update_bus ? true : false);
 
@@ -1563,7 +1563,7 @@ int sde_core_perf_init(struct sde_core_perf *perf,
 	perf->catalog = catalog;
 	perf->phandle = phandle;
 	perf->clk_name = clk_name;
-	perf->sde_rsc_available = is_sde_rsc_available(DPUID(dev));
+	perf->sde_rsc_available = is_sde_rsc_available(catalog->mdp[0].id - MDP_TOP);
 	/* set default mode */
 	if (perf->sde_rsc_available)
 		perf->bw_vote_mode = DISP_RSC_MODE;
@@ -1571,7 +1571,7 @@ int sde_core_perf_init(struct sde_core_perf *perf,
 		perf->bw_vote_mode = APPS_RSC_MODE;
 
 	/* core clk will be part of cesta node, when cesta is enabled */
-	perf->cesta_phandle = sde_cesta_get_phandle(DPUID(dev));
+	perf->cesta_phandle = sde_cesta_get_phandle(catalog->mdp[0].id - MDP_TOP);
 	phandle = perf->cesta_phandle ? perf->cesta_phandle : phandle;
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
