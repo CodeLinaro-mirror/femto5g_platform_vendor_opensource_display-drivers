@@ -70,6 +70,7 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
 	SDE_EVT32(sde_enc->pending_commit_cnt);
+
 	sde_enc->crtc_frame_event_cb_data.connector = sde_enc->cur_master->connector;
 
 	if (sde_enc->crtc_frame_event_cb)
@@ -158,8 +159,11 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 			}
 		}
 		break;
+	case HFI_COMMAND_DISPLAY_EVENT_REGISTER:
+	case HFI_COMMAND_DISPLAY_EVENT_DEREGISTER:
+		break;
 	default:
-		SDE_ERROR("Invalid HFI property %d\n", cmd_id);
+		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
 	}
 }
 
@@ -195,7 +199,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	cmd = enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER : HFI_COMMAND_DISPLAY_EVENT_DEREGISTER;
 	ret = hfi_adapter_add_get_property(cmd_buf, cmd, display_id, HFI_PAYLOAD_TYPE_U32,
 			&payload, sizeof(payload), &hfi_enc->hfi_cb_obj,
-			(HFI_HOST_FLAGS_NON_DISCARDABLE));
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (ret) {
 		SDE_ERROR("failed to update event: 0x%x\n", payload);
 		return ret;
@@ -255,13 +259,6 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 		return -EINVAL;
 	}
 
-	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
-			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
-	if (!cmd_buf) {
-		SDE_ERROR("failed to get hfi command buffer\n");
-		return -EINVAL;
-	}
-
 	drm_enc = &sde_enc->base;
 	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 
@@ -271,6 +268,13 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	}
 
 	disp_id = sde_conn_get_display_obj_id(conn);
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
 	payload[0] = disp_id;
 	payload[1] = (HFI_DEBUG_EVENT_UNDERRUN | HFI_DEBUG_EVENT_HW_RESET |
 				HFI_DEBUG_EVENT_PP_TIMEOUT);
@@ -284,12 +288,6 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 			sizeof(payload), &hfi_enc->hfi_cb_obj, HFI_HOST_FLAGS_NONE);
 	if (ret) {
 		SDE_ERROR("panic subscribe command failed\n");
-		return ret;
-	}
-
-	ret = hfi_adapter_set_cmd_buf(cmd_buf);
-	if (ret) {
-		SDE_ERROR("failed to send debug-init command\n");
 		return ret;
 	}
 
@@ -377,9 +375,9 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 		return -EINVAL;
 
 	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE) {
-		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
+		ret = _hfi_enc_register_hw_event(enc, event, enable, true);
 		if (ret) {
-			SDE_ERROR("failed to send VSYNC register\n");
+			SDE_ERROR("failed to send event register ret:%d\n", ret);
 			return ret;
 		}
 		hfi_enc->hw_events_state[event].state = enable;

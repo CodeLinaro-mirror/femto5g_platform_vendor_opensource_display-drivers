@@ -119,10 +119,14 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	case HFI_COMMAND_DISPLAY_DISABLE:
 		msleep(20);
 		break;
+	case HFI_COMMAND_DISPLAY_POST_DISABLE:
+	case HFI_COMMAND_DISPLAY_ENABLE:
+	case HFI_COMMAND_DISPLAY_POST_ENABLE:
+	case HFI_COMMAND_DISPLAY_SET_MODE:
 	case HFI_COMMAND_DISPLAY_POWER_REGISTER:
 		break;
 	default:
-		DSI_ERR("Invalid HFI property %d\n", prop);
+		DSI_ERR("Invalid HFI property 0x%x\n", prop);
 	}
 
 }
@@ -183,42 +187,48 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 
 	drm_conn = display->drm_conn;
 
-	obj_id = sde_conn_get_display_obj_id(drm_conn);
-
-	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
-	if (!cmd_buf) {
-		DSI_ERR("Could not get cmd_buf for hfi_cmd=%x\n", hfi_cmd);
-		return -ENODEV;
-	}
-
 	switch (hfi_cmd) {
 	case HFI_COMMAND_DISPLAY_MODE_VALIDATE:
 		flags = HFI_HOST_FLAGS_NONE;
 		break;
-	case HFI_COMMAND_DISPLAY_DISABLE:
+	case HFI_COMMAND_DISPLAY_SET_MODE:
+	case HFI_COMMAND_DISPLAY_ENABLE:
 	case HFI_COMMAND_DISPLAY_POST_ENABLE:
+	case HFI_COMMAND_DISPLAY_POST_DISABLE:
+	case HFI_COMMAND_DISPLAY_DISABLE:
 		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
 		break;
 	default:
 		break;
 	}
 
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
+
+	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id,
+			HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		DSI_ERR("could not get cmd_buf for hfi_cmd 0x%x\n", hfi_cmd);
+		return -ENODEV;
+	}
+
 	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED) {
 		rc = hfi_adapter_add_get_property(cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
 			payload, payload_size, &display_hfi->hfi_cb_obj, flags);
 		if (rc)
-			DSI_ERR("could not set property for hfi_cmd=%x\n", hfi_cmd);
+			DSI_ERR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
+
 		rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
 	} else {
 		rc = hfi_adapter_add_set_property(cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
 			payload, payload_size, flags);
 		if (rc)
-			DSI_ERR("could not set property for hfi_cmd=%x\n", hfi_cmd);
+			DSI_ERR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
+
 		rc = hfi_adapter_set_cmd_buf(cmd_buf);
 	}
 
 	if (rc) {
-		SDE_ERROR("failed to send hfi_cmd=%x\n", hfi_cmd);
+		SDE_ERROR("failed to send hfi_cmd 0x%x\n", hfi_cmd);
 		return rc;
 	}
 

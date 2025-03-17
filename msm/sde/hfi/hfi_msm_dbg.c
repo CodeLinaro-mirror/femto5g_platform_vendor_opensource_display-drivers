@@ -104,7 +104,7 @@ static void hfi_dbg_property_handler(u32 display_id, u32 cmd_id,
 		hfi_dbg_parse_payload(payload, size);
 
 	} else {
-		SDE_ERROR("Invalid HFI property %d\n", cmd_id);
+		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
 	}
 }
 

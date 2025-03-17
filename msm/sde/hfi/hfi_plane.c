@@ -160,8 +160,9 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	switch (hfi_prop) {
 	case HFI_PROPERTY_LAYER_ZPOS:
 		prop_id = HFI_PROPERTY_LAYER_ZPOS;
+		temp_val = sde_plane_get_property(state, PLANE_PROP_ZPOS);
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-				phfi->hfi_pipe_id, HFI_VAL_U32, &state->stage, sizeof(u32));
+				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	case HFI_PROPERTY_LAYER_ALPHA:
 		prop_id = HFI_PROPERTY_LAYER_ALPHA;
 		temp_val =  sde_plane_get_property(state, PLANE_PROP_ALPHA);

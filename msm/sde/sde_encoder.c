@@ -105,10 +105,16 @@
 
 inline enum msm_disp_op sde_encoder_get_disp_op(struct drm_encoder *drm_enc)
 {
-	if (!drm_enc || !drm_enc->crtc)
-		return MSM_DISP_OP_HWIO;
+	struct sde_kms *sde_kms;
+	enum msm_disp_op disp_op = MSM_DISP_OP_HWIO;
 
-	return sde_crtc_get_disp_op(drm_enc->crtc);
+	if (drm_enc) {
+		sde_kms = sde_encoder_get_kms(drm_enc);
+		if (sde_kms)
+			disp_op = sde_kms_get_disp_op(sde_kms);
+	}
+
+	return disp_op;
 }
 
 void sde_encoder_uidle_enable(struct drm_encoder *drm_enc, bool enable)
@@ -3962,6 +3968,8 @@ update_ppb:
 	memset(&sde_enc->prv_conn_roi, 0, sizeof(sde_enc->prv_conn_roi));
 	memset(&sde_enc->cur_conn_roi, 0, sizeof(sde_enc->cur_conn_roi));
 	_sde_encoder_control_fal10_veto(drm_enc, true);
+
+	atomic_set(&sde_enc->pending_commit_cnt, 0);
 
 	c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
 	if (!c_state) {
