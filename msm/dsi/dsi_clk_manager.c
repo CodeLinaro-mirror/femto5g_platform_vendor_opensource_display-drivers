@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -312,19 +312,11 @@ int dsi_core_clk_start(struct dsi_core_clks *c_clks)
 		}
 	}
 
-	if (c_clks->clks.ahb_swi_clk) {
-		rc = clk_prepare_enable(c_clks->clks.ahb_swi_clk);
-		if (rc) {
-			DSI_ERR("failed to enable ahb_swi_clk, rc=%d\n", rc);
-			goto error_disable_iface_clk;
-		}
-	}
-
 	if (c_clks->clks.bus_clk) {
 		rc = clk_prepare_enable(c_clks->clks.bus_clk);
 		if (rc) {
 			DSI_ERR("failed to enable bus_clk, rc=%d\n", rc);
-			goto error_disable_ahb_swi_clk;
+			goto error_disable_iface_clk;
 		}
 	}
 
@@ -342,9 +334,6 @@ int dsi_core_clk_start(struct dsi_core_clks *c_clks)
 error_disable_bus_clk:
 	if (c_clks->clks.bus_clk)
 		clk_disable_unprepare(c_clks->clks.bus_clk);
-error_disable_ahb_swi_clk:
-	if (c_clks->clks.ahb_swi_clk)
-		clk_disable_unprepare(c_clks->clks.ahb_swi_clk);
 error_disable_iface_clk:
 	if (c_clks->clks.iface_clk)
 		clk_disable_unprepare(c_clks->clks.iface_clk);
@@ -367,9 +356,6 @@ int dsi_core_clk_stop(struct dsi_core_clks *c_clks)
 
 	if (c_clks->clks.bus_clk)
 		clk_disable_unprepare(c_clks->clks.bus_clk);
-
-	if (c_clks->clks.ahb_swi_clk)
-		clk_disable_unprepare(c_clks->clks.ahb_swi_clk);
 
 	if (c_clks->clks.iface_clk)
 		clk_disable_unprepare(c_clks->clks.iface_clk);
