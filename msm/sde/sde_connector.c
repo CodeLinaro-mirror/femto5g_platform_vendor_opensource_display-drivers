@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1381,6 +1381,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	struct sde_connector *c_conn;
 	struct msm_freq_step_pattern *freq_pattern;
 	struct sde_encoder_virt *sde_enc;
+	enum sde_crtc_vm_req vm_req;
 	u64 cmd_bit_mask = 0;
 	int rc = 0;
 
@@ -1394,6 +1395,13 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 
 	if (sde_enc)
 		sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
+
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+			CRTC_PROP_VM_REQ_STATE);
+	if (vm_req == VM_REQ_RELEASE) {
+		SDE_EVT32(vm_req);
+		return 0;
+	}
 
 	if (sde_encoder_in_cont_splash(connector->encoder))
 		return 0;

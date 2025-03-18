@@ -191,6 +191,11 @@ void sde_encoder_vhm_trusted_vm_prepare(struct drm_encoder *drm_enc,
 		ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_INTF,
 			hw_intf->idx, true);
 
+	if (sde_enc->cur_master->sde_vrr_cfg.min_sr_state == SDE_MIN_SR_COMPLETE) {
+		SDE_EVT32(sde_enc->cur_master->sde_vrr_cfg.min_sr_state);
+		return;
+	}
+
 	if (enable)
 		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
 	else
@@ -5702,6 +5707,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	struct drm_crtc *crtc;
 	struct sde_connector *sde_conn;
 	struct sde_crtc *sde_crtc;
+	enum sde_crtc_vm_req vm_req;
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, send_still_cmd);
 	if (!sde_enc || !sde_enc->cur_master)
@@ -5711,6 +5717,13 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	phys_enc = sde_enc->cur_master;
 	if (!phys_enc->connector)
 		return;
+
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+			CRTC_PROP_VM_REQ_STATE);
+	if (vm_req == VM_REQ_RELEASE) {
+		SDE_EVT32(vm_req);
+		return;
+	}
 
 	sde_conn = to_sde_connector(phys_enc->connector);
 
