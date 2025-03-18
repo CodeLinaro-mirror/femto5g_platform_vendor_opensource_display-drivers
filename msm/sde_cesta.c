@@ -800,6 +800,11 @@ struct sde_cesta_client *sde_cesta_create_client(u32 cesta_index, char *client_n
 	if (!client)
 		return ERR_PTR(-ENOMEM);
 
+	/* Restrict access to hw client 0 */
+	if (id == 0 &&
+		cesta->hw_drv_ver >= (SDE_CESTA_HW_MAJOR_MINOR_STEP(4, 3, 0))) {
+		id = 1;
+	}
 	strscpy(client->name, client_name, MAX_CESTA_CLIENT_NAME_LEN);
 	client->cesta_index = cesta_index;
 	client->client_index = id;
