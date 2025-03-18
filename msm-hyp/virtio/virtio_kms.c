@@ -1516,9 +1516,13 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 			get_dma_buf(dma_bufs[idx]);
 		} else {
 			dma_bufs[idx] = drm_gem_prime_export(fb->base.obj[idx], 0);
-			if (IS_ERR(dma_bufs[idx]))
+			if (IS_ERR(dma_bufs[idx])) {
 				pr_err("export dma_buf from bo failed\n");
-			return PTR_ERR(dma_bufs[idx]);
+				return PTR_ERR(dma_bufs[idx]);
+			} else {
+				fb->base.obj[idx]->dma_buf = dma_bufs[idx];
+				get_dma_buf(dma_bufs[idx]);
+			}
 		}
 	}
 
