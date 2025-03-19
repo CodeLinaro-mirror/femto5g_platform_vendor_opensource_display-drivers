@@ -45,6 +45,7 @@ endif
 ifeq ($(CONFIG_ARCH_SM6150), y)
 	include $(DISPLAY_ROOT)/config/sm6150disp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/sm6150dispconf.h
+	subdir-ccflags-y += $(LE_EXTRA_CFLAGS)
 endif
 
 ifeq ($(CONFIG_ARCH_KALAMA), y)
@@ -77,6 +78,7 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(DISPLAY_ROOT)/msm/sde \
 	-I$(DISPLAY_ROOT)/../mm-drivers/hw_fence/include \
 	-I$(DISPLAY_ROOT)/../mm-drivers/sync_fence/include \
+	-I$(DISPLAY_ROOT)/../mm-drivers/msm_ext_display/include \
 	-I$(DISPLAY_ROOT)/include/uapi/display \
 
 CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
