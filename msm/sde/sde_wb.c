@@ -114,6 +114,7 @@ int sde_wb_connector_get_modes(struct drm_connector *connector, void *display,
 		const struct msm_resource_caps_info *avail_res)
 {
 	struct sde_wb_device *wb_dev;
+	u32 max_width = SDE_WB_MODE_MAX_WIDTH;
 	int num_modes = 0;
 
 	if (!connector || !display)
@@ -155,7 +156,6 @@ int sde_wb_connector_get_modes(struct drm_connector *connector, void *display,
 	mutex_unlock(&wb_dev->wb_lock);
 	return num_modes;
 custom_modes:
-	u32 max_width = SDE_WB_MODE_MAX_WIDTH;
 
 	if (wb_dev->wb_cfg && wb_dev->wb_cfg->sblk)
 		max_width = max(wb_dev->wb_cfg->sblk->maxlinewidth,
@@ -218,9 +218,7 @@ int sde_wb_connector_set_modes(struct sde_wb_device *wb_dev,
 		u32 count_modes, struct drm_mode_modeinfo __user *modes,
 		bool connected)
 {
-	struct drm_mode_modeinfo *modeinfo = NULL;
 	int ret = 0;
-	int i;
 
 	if (!wb_dev || !wb_dev->connector ||
 			(wb_dev->connector->connector_type !=
@@ -233,6 +231,8 @@ int sde_wb_connector_set_modes(struct sde_wb_device *wb_dev,
 
 	if (connected) {
 #if defined(drm_mode_convert_umode)
+		struct drm_mode_modeinfo *modeinfo = NULL;
+		int i;
 		SDE_DEBUG("connect\n");
 
 		if (!count_modes || !modes) {
