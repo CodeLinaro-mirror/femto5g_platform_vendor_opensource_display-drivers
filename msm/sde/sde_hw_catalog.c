@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -196,6 +196,12 @@ enum {
 	HW_LEN,
 	HW_DISP,
 	HW_PROP_MAX,
+};
+
+enum {
+	CTL_HYP_OFF,
+	CTL_HYP_LEN,
+	CTL_HYP_PROP_MAX,
 };
 
 enum sde_prop {
@@ -847,6 +853,11 @@ static struct sde_prop_type ctl_prop[] = {
 	{HW_OFF, "qcom,sde-ctl-off", true, PROP_TYPE_U32_ARRAY},
 	{HW_LEN, "qcom,sde-ctl-size", false, PROP_TYPE_U32},
 	{HW_DISP, "qcom,sde-ctl-display-pref", false, PROP_TYPE_STRING_ARRAY},
+};
+
+static struct sde_prop_type ctl_hyp_prop[] = {
+	{CTL_HYP_OFF, "qcom,sde-ctl-hyp-off", false, PROP_TYPE_U32},
+	{CTL_HYP_LEN, "qcom,sde-ctl-hyp-size", false, PROP_TYPE_U32},
 };
 
 struct sde_prop_type mixer_blend_prop[] = {
@@ -2232,6 +2243,39 @@ static int sde_sspp_parse_dt(struct device_node *np,
 	return rc;
 }
 
+static int sde_ctl_hyp_parse_dt(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	struct sde_dt_props *props;
+	struct sde_ctl_hyp_cfg *ctl_hyp;
+	u32 off_count;
+
+	if (!sde_cfg) {
+		SDE_ERROR("invalid argument input param\n");
+		return -EINVAL;
+	}
+
+	props = sde_get_dt_props(np, CTL_HYP_PROP_MAX, ctl_hyp_prop,
+			ARRAY_SIZE(ctl_hyp_prop), &off_count);
+	if (IS_ERR(props))
+		return PTR_ERR(props);
+
+	if (!off_count) {
+		SDE_DEBUG("invalid ctl hyp dt entry\n");
+		return 0;
+	}
+
+	ctl_hyp = &sde_cfg->ctl_hyp;
+
+	ctl_hyp->base = PROP_VALUE_ACCESS(props->values, CTL_HYP_OFF, 0);
+	ctl_hyp->len = PROP_VALUE_ACCESS(props->values, CTL_HYP_LEN, 0);
+	ctl_hyp->id = CTL_HYP_0;
+	snprintf(ctl_hyp->name, SDE_HW_BLK_NAME_LEN, "ctl_hyp");
+
+	sde_put_dt_props(props);
+	return 0;
+}
+
 static int sde_ctl_parse_dt(struct device_node *np,
 		struct sde_mdss_cfg *sde_cfg)
 {
@@ -2280,6 +2324,9 @@ static int sde_ctl_parse_dt(struct device_node *np,
 			set_bit(SDE_CTL_UNIFIED_DSPP_FLUSH, &ctl->features);
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00))
 			set_bit(SDE_CTL_CESTA_FLUSH, &ctl->features);
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_C00) &&
+				!!sde_cfg->ctl_hyp.base)
+			set_bit(SDE_CTL_HYP_CTL_RESERVE, &ctl->features);
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_B00))
 			set_bit(SDE_CTL_NO_LAYER_EXT, &ctl->features);
 	}
@@ -6550,7 +6597,7 @@ static int sde_hw_parse_fuse_configuration(struct platform_device *pdev, const c
 	rc = PTR_ERR_OR_ZERO(cell);
 	if (rc) {
 		if (rc == -ENOENT)
-			return 0;
+			SDE_INFO("ssip_config entry not found in nvmem_cells");
 		return rc;
 	}
 
@@ -6585,8 +6632,16 @@ static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *s
 		return 0;
 	}
 
-	disable = (fuse & BIT(1)) >> 1;
-	polarity = fuse & BIT(0);
+	if (IS_SUN_TARGET(sde_cfg->hw_rev)) {
+		disable = (fuse & BIT(1)) >> 1;
+		polarity = fuse & BIT(0);
+	} else if (IS_CANOE_TARGET(sde_cfg->hw_rev)) {
+		disable = (fuse & BIT(2)) >> 2;
+		polarity = (fuse & BIT(0));
+	} else {
+		sde_cfg->ssip_allowed = false;
+		return 0;
+	}
 
 	SDE_INFO("ssip: disable = %d polarity = %d\n", disable, polarity);
 	if ((disable && polarity) || (!disable && !polarity))
@@ -6644,6 +6699,10 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 		goto end;
 
 	rc = sde_cache_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = sde_ctl_hyp_parse_dt(np, sde_cfg);
 	if (rc)
 		goto end;
 

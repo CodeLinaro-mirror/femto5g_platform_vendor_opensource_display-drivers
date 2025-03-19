@@ -174,6 +174,7 @@ enum sde_enc_periph_cmd_state {
  * @debugfs_freq_array:    Freqency stepping array provided for simulation
  * @debugfs_freq_pattern:  Frequency pattern provided for simulation
  * @vhm_cmd_in_progress:   Whether a VHM related command is currently enqueued
+ * @vhm_pm_wake_lock:   Whether a VHM-specific wakelock is currently engaged
  */
 struct sde_encoder_vrr_info {
 	u32 frame_interval;
@@ -185,6 +186,62 @@ struct sde_encoder_vrr_info {
 	u32 *debugfs_freq_array;
 	struct msm_debugfs_freq_pattern *debugfs_freq_pattern;
 	u32 vhm_cmd_in_progress;
+	atomic_t vhm_pm_wake_lock;
+};
+
+/**
+ * enum sde_enc_rc_events - events for resource control state machine
+ * @SDE_ENC_RC_EVENT_KICKOFF:
+ *	This event happens at NORMAL priority.
+ *	Event that signals the start of the transfer. When this event is
+ *	received, enable MDP/DSI core clocks and request RSC with CMD state.
+ *	Regardless of the previous state, the resource should be in ON state
+ *	at the end of this event. At the end of this event, a delayed work is
+ *	scheduled to go to IDLE_PC state after IDLE_POWERCOLLAPSE_DURATION
+ *	ktime.
+ * @SDE_ENC_RC_EVENT_PRE_STOP:
+ *	This event happens at NORMAL priority.
+ *	This event, when received during the ON state, set RSC to IDLE,
+ *	and leave the RC STATE in the PRE_OFF state.
+ *	It should be followed by the STOP event as part of encoder disable.
+ *	If received during IDLE or OFF states, it will do nothing.
+ * @SDE_ENC_RC_EVENT_STOP:
+ *	This event happens at NORMAL priority.
+ *	When this event is received, disable all the MDP/DSI core clocks, and
+ *	disable IRQs. It should be called from the PRE_OFF or IDLE states.
+ *	IDLE is expected when IDLE_PC has run, and PRE_OFF did nothing.
+ *	PRE_OFF is expected when PRE_STOP was executed during the ON state.
+ *	Resource state should be in OFF at the end of the event.
+ * @SDE_ENC_RC_EVENT_PRE_MODESET:
+ *	This event happens at NORMAL priority from a work item.
+ *	Event signals that there is a seamless mode switch is in prgoress. A
+ *	client needs to leave clocks ON to reduce the mode switch latency.
+ * @SDE_ENC_RC_EVENT_POST_MODESET:
+ *	This event happens at NORMAL priority from a work item.
+ *	Event signals that seamless mode switch is complete and resources are
+ *	acquired. Clients wants to update the rsc with new vtotal and update
+ *	pm_qos vote.
+ * @SDE_ENC_RC_EVENT_ENTER_IDLE:
+ *	This event happens at NORMAL priority from a work item.
+ *	Event signals that there were no frame updates for
+ *	IDLE_POWERCOLLAPSE_DURATION time. This would disable MDP/DSI core clocks
+ *      and request RSC with IDLE state and change the resource state to IDLE.
+ * @SDE_ENC_RC_EVENT_EARLY_WAKEUP:
+ *	This event is triggered from the input event thread when touch event is
+ *	received from the input device. On receiving this event,
+ *      - If the device is in SDE_ENC_RC_STATE_IDLE state, it turns ON the
+	  clocks and enable RSC.
+ *      - If the device is in SDE_ENC_RC_STATE_ON state, it resets the delayed
+ *        off work since a new commit is imminent.
+ */
+enum sde_enc_rc_events {
+	SDE_ENC_RC_EVENT_KICKOFF = 1,
+	SDE_ENC_RC_EVENT_PRE_STOP,
+	SDE_ENC_RC_EVENT_STOP,
+	SDE_ENC_RC_EVENT_PRE_MODESET,
+	SDE_ENC_RC_EVENT_POST_MODESET,
+	SDE_ENC_RC_EVENT_ENTER_IDLE,
+	SDE_ENC_RC_EVENT_EARLY_WAKEUP,
 };
 
 /*
@@ -225,20 +282,6 @@ enum sde_sim_qsync_frame {
 enum sde_sim_qsync_event {
 	SDE_SIM_QSYNC_EVENT_FRAME_DETECTED,
 	SDE_SIM_QSYNC_EVENT_TE_TRIGGER
-};
-
-/*
- * enum sde_multi_te_states - enum to indicate the states of multi-TE
- * @SDE_MULTI_TE_NONE: multi-te not enabled
- * @SDE_MULTI_TE_ENTER: frame entering multi-te
- * @SDE_MULTI_TE_SESSION: frames in multi-te session
- * @SDE_MULTI_TE_EXIT: frame exiting multi-te
- */
-enum sde_multi_te_states {
-	SDE_MULTI_TE_NONE,
-	SDE_MULTI_TE_ENTER,
-	SDE_MULTI_TE_SESSION,
-	SDE_MULTI_TE_EXIT,
 };
 
 /* Frame rate value to trigger the watchdog TE in 200 us */
@@ -298,6 +341,7 @@ enum sde_multi_te_states {
  * @rc_lock:			resource control mutex lock to protect
  *				virt encoder over various state changes
  * @rc_state:			resource controller state
+ * @off_work_lock:	mutex lock to protect encoder over off work procedure
  * @delayed_off_work:		delayed worker to schedule disabling of
  *				clks and resources after IDLE_TIMEOUT time.
  * @early_wakeup_work:		worker to handle early wakeup event
@@ -339,16 +383,10 @@ enum sde_multi_te_states {
  * @ops:                        Encoder ops from init function
  * @old_vsyc_count:             Intf tearcheck vsync_count for old mode.
  * @mode_switch:                flag to indicate its a fps/resolution switch frame.
- * @multi_te_state:             enum to indicate the multi-te states.
- * @multi_te_fps:               refresh rate of multi-TE.
  * @sde_cesta_client:           Point to sde_cesta client for the encoder.
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
- * @cesta_force_auto_active_db_update:	Boolean indicating auto-active-on-panic is set in SCC
- *					with force-db-update. This is required as a workaround for
- *					cmd mode when previous frame ctl-done is very close to
- *					wakeup/panic windows.
- * @intf_master:		Interface Idx for the master interface
+ * @cesta_scc_override:	        Boolean indicating SCC CTRL settings have been overridden.
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -396,6 +434,7 @@ struct sde_encoder_virt {
 	bool input_event_enabled;
 	struct mutex rc_lock;
 	enum sde_enc_rc_states rc_state;
+	struct mutex off_work_lock;
 	struct kthread_delayed_work delayed_off_work;
 	struct kthread_work early_wakeup_work;
 	struct kthread_work input_event_work;
@@ -432,13 +471,9 @@ struct sde_encoder_virt {
 	bool dpu_ctl_op_sync;
 	struct sde_encoder_ops ops;
 	u32 mode_switch;
-	enum sde_multi_te_states multi_te_state;
-	u32 multi_te_fps;
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
-	bool cesta_force_auto_active_db_update;
-	bool cesta_reset_intf_master;
-	u32 intf_master;
+	bool cesta_scc_override;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -793,6 +828,13 @@ void sde_encoder_control_idle_pc(struct drm_encoder *enc, bool enable);
 int sde_encoder_in_cont_splash(struct drm_encoder *enc);
 
 /**
+ * sde_encoder_smooth_dimming_in_progress - checks if smooth dimming in progress
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true if smooth dimming in progress
+ */
+bool sde_encoder_smooth_dimming_in_progress(struct drm_encoder *enc);
+
+/**
  * sde_encoder_helper_hw_reset - hw reset helper function
  * @drm_enc:    Pointer to drm encoder structure
  */
@@ -1084,6 +1126,15 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 void sde_encoder_post_commit_bl_sr_work(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_rc_restart_delayed - FIXME: kshpin
+ *
+ * @sde_enc: pointer to sde encoder
+ * @sw_event: resource controller event
+ */
+void sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
+	enum sde_enc_rc_events sw_event);
 
 /**
  * sde_encoder_get_cesta_client - return the SDE CESTA client

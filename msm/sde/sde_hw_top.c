@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -558,6 +558,7 @@ void sde_hw_set_sspp_sid(struct sde_hw_sid *sid, u32 pipe, u32 vm,
 	u32 offset = 0;
 	u32 vig_sid_offset = MDP_SID_VIG0;
 	u32 dma_sid_offset = MDP_SID_DMA0;
+	u32 sid_value = 0;
 
 	if (!sid)
 		return;
@@ -574,7 +575,12 @@ void sde_hw_set_sspp_sid(struct sde_hw_sid *sid, u32 pipe, u32 vm,
 	else
 		return;
 
-	SDE_REG_WRITE(&sid->hw, offset, vm << 2);
+	sid_value |= (vm << 2);
+
+	if (SDE_HW_MAJOR(m->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_D00))
+		sid_value |= (vm << 10);
+
+	SDE_REG_WRITE(&sid->hw, offset, sid_value);
 }
 
 static void sde_hw_program_cwb_ppb_ctrl(struct sde_hw_mdp *mdp,

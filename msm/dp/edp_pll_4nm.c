@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023,2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /*
@@ -61,52 +61,53 @@
 #define TXn_VMODE_CTRL1				0x007C
 
 /* PLL register offset */
-#define QSERDES_COM_BG_TIMER			0x000C
-#define QSERDES_COM_BIAS_EN_CLKBUFLR_EN		0x0044
-#define QSERDES_COM_CLK_ENABLE1			0x0048
-#define QSERDES_COM_SYS_CLK_CTRL		0x004C
-#define QSERDES_COM_SYSCLK_BUF_ENABLE		0x0050
-#define QSERDES_COM_PLL_IVCO			0x0058
+#define QSERDES_COM_CODE1_MODE0			0x0058
+#define QSERDES_COM_CODE2_MODE0			0x005c
 
-#define QSERDES_COM_CP_CTRL_MODE0		0x0074
-#define QSERDES_COM_PLL_RCTRL_MODE0		0x007C
-#define QSERDES_COM_PLL_CCTRL_MODE0		0x0084
-#define QSERDES_COM_SYSCLK_EN_SEL		0x0094
-#define QSERDES_COM_RESETSM_CNTRL		0x009C
-#define QSERDES_COM_LOCK_CMP_EN			0x00A4
-#define QSERDES_COM_LOCK_CMP1_MODE0		0x00AC
-#define QSERDES_COM_LOCK_CMP2_MODE0		0x00B0
+#define QSERDES_COM_BG_TIMER			0x00bc
+#define QSERDES_COM_BIAS_EN_CLKBUFLR_EN		0x00dc
+#define QSERDES_COM_CLK_ENABLE1			0x00e0
+#define QSERDES_COM_SYS_CLK_CTRL		0x00e4
+#define QSERDES_COM_SYSCLK_BUF_ENABLE		0x00e8
+#define QSERDES_COM_PLL_IVCO			0x00f4
 
-#define QSERDES_COM_DEC_START_MODE0		0x00BC
-#define QSERDES_COM_DIV_FRAC_START1_MODE0	0x00CC
-#define QSERDES_COM_DIV_FRAC_START2_MODE0	0x00D0
-#define QSERDES_COM_DIV_FRAC_START3_MODE0	0x00D4
-#define QSERDES_COM_INTEGLOOP_GAIN0_MODE0	0x00EC
-#define QSERDES_COM_INTEGLOOP_GAIN1_MODE0	0x00F0
-#define QSERDES_COM_VCO_TUNE_CTRL		0x0108
-#define QSERDES_COM_VCO_TUNE_MAP		0x010C
-#define QSERDES_COM_VCO_TUNE1_MODE0		0x0110
-#define QSERDES_COM_VCO_TUNE2_MODE0		0x0114
-#define QSERDES_COM_CMN_STATUS			0x0140
+#define QSERDES_COM_CP_CTRL_MODE0		0x0070
+#define QSERDES_COM_PLL_RCTRL_MODE0		0x0074
+#define QSERDES_COM_PLL_CCTRL_MODE0		0x0078
+#define QSERDES_COM_SYSCLK_EN_SEL		0x0110
+#define QSERDES_COM_RESETSM_CNTRL		0x0118
+#define QSERDES_COM_LOCK_CMP_EN			0x0120
+#define QSERDES_COM_LOCK_CMP1_MODE0		0x0080
+#define QSERDES_COM_LOCK_CMP2_MODE0		0x0084
 
-#define QSERDES_COM_CLK_SEL			0x0154
-#define QSERDES_COM_HSCLK_SEL			0x0158
+#define QSERDES_COM_DEC_START_MODE0		0x0088
+#define QSERDES_COM_DIV_FRAC_START1_MODE0	0x0090
+#define QSERDES_COM_DIV_FRAC_START2_MODE0	0x0094
+#define QSERDES_COM_DIV_FRAC_START3_MODE0	0x0098
+#define QSERDES_COM_INTEGLOOP_GAIN0_MODE0	0x00a0
+#define QSERDES_COM_INTEGLOOP_GAIN1_MODE0	0x00a4
+#define QSERDES_COM_VCO_TUNE_CTRL		0x013c
+#define QSERDES_COM_VCO_TUNE_MAP		0x0140
+#define QSERDES_COM_VCO_TUNE1_MODE0		0x00a8
+#define QSERDES_COM_VCO_TUNE2_MODE0		0x00ac
+#define QSERDES_COM_CMN_STATUS			0x01d0
 
-#define QSERDES_COM_CORECLK_DIV_MODE0		0x0168
+#define QSERDES_COM_CLK_SEL			0x0164
+#define QSERDES_COM_HSCLK_SEL_1			0x003c
 
-#define QSERDES_COM_CORE_CLK_EN			0x0174
-#define QSERDES_COM_C_READY_STATUS		0x0178
-#define QSERDES_COM_CMN_CONFIG			0x017C
+#define QSERDES_COM_CORECLK_DIV_MODE0		0x007c
+#define QSERDES_COM_CORE_CLK_EN			0x0170
+#define QSERDES_COM_CMN_CONFIG_1		0x0174
+#define QSERDES_COM_C_READY_STATUS		0x01f8
+#define QSERDES_COM_SVS_MODE_CLK_SEL		0x017c
 
-#define QSERDES_COM_SVS_MODE_CLK_SEL		0x0184
-
-#define QSERDES_COM_SSC_EN_CENTER		0x0010
-#define QSERDES_COM_SSC_ADJ_PER1		0x0014
-#define QSERDES_COM_SSC_ADJ_PER2		0x0018
-#define QSERDES_COM_SSC_PER1			0x001C
-#define QSERDES_COM_SSC_PER2			0x0020
-#define QSERDES_COM_SSC_STEP_SIZE1_MODE0	0x0024
-#define QSERDES_COM_SSC_STEP_SIZE2_MODE0	0x0028
+#define QSERDES_COM_SSC_EN_CENTER		0x00c0
+#define QSERDES_COM_SSC_ADJ_PER1		0x00c4
+#define QSERDES_COM_SSC_ADJ_PER2		0x00c8
+#define QSERDES_COM_SSC_PER1			0x00cc
+#define QSERDES_COM_SSC_PER2			0x00d0
+#define QSERDES_COM_SSC_STEP_SIZE1_MODE0	0x0060
+#define QSERDES_COM_SSC_STEP_SIZE2_MODE0	0x0064
 
 #define DP_PHY_PLL_POLL_SLEEP_US		500
 #define DP_PHY_PLL_POLL_TIMEOUT_US		10000
@@ -115,21 +116,21 @@
 #define DP_VCO_RATE_9720MHZDIV1000		9720000UL
 #define DP_VCO_RATE_10800MHZDIV1000		10800000UL
 
-#define DP_5NM_C_READY		BIT(0)
-#define DP_5NM_FREQ_DONE	BIT(0)
-#define DP_5NM_PLL_LOCKED	BIT(1)
-#define DP_5NM_PHY_READY	BIT(1)
-#define DP_5NM_TSYNC_DONE	BIT(0)
+#define DP_4NM_C_READY		BIT(0)
+#define DP_4NM_FREQ_DONE	BIT(0)
+#define DP_4NM_PLL_LOCKED	BIT(1)
+#define DP_4NM_PHY_READY	BIT(1)
+#define DP_4NM_TSYNC_DONE	BIT(0)
 
 static const struct dp_pll_params pll_params[HSCLK_RATE_MAX] = {
-	{0x05, 0x3f, 0x00, 0x04, 0x01, 0x69, 0x00, 0x80, 0x07, 0x6f, 0x08, 0x45, 0x06, 0x36, 0x01,
-		0x00, 0x00, 0x0f, 0x0a, 0x0f, 0x0a, 0x11},
-	{0x03, 0x3f, 0x00, 0x08, 0x01, 0x69, 0x00, 0x80, 0x07, 0x0f, 0x0e, 0x45, 0x06, 0x36, 0x01,
-		0x00, 0x00, 0x0f, 0x0a, 0x0f, 0x0a, 0x11},
-	{0x01, 0x3f, 0x00, 0x08, 0x02, 0x8c, 0x00, 0x00, 0x0a, 0x1f, 0x1c, 0x5c, 0x08, 0x36, 0x01,
-		0x00, 0x00, 0x0f, 0x0a, 0x0f, 0x0a, 0x11},
-	{0x00, 0x3f, 0x00, 0x08, 0x00, 0x69, 0x00, 0x80, 0x07, 0x2f, 0x2a, 0x45, 0x06, 0x36, 0x01,
-		0x00, 0x00, 0x0f, 0x0a, 0x0f, 0x0a, 0x11},
+	{0x05, 0x3f, 0x00, 0x08, 0x01, 0x34, 0x00, 0xc0, 0x0b, 0x37, 0x04, 0x92, 0x01, 0x6b, 0x02,
+		0x71, 0x0c, 0x07, 0x0a, 0x0f, 0x11, 0x11},
+	{0x03, 0x3f, 0x00, 0x08, 0x01, 0x34, 0x00, 0xc0, 0x0b, 0x07, 0x07, 0x92, 0x01, 0x6b, 0x02,
+		0x71, 0x0c, 0x07, 0x0a, 0x0f, 0x11, 0x11},
+	{0x01, 0x3f, 0x00, 0x08, 0x02, 0x46, 0x00, 0x00, 0x05, 0x0f, 0x0e, 0x18, 0x02, 0x6b, 0x02,
+		0x97, 0x10, 0x07, 0x0a, 0x0f, 0x11, 0x11},
+	{0x00, 0x3f, 0x00, 0x08, 0x00, 0x34, 0x00, 0xc0, 0x0b, 0x17, 0x15, 0x92, 0x01, 0x6b, 0x02,
+		0x71, 0x0c, 0x07, 0x0a, 0x0f, 0x11, 0x11},
 };
 
 static int set_vco_div(struct dp_pll *pll, unsigned long rate)
@@ -182,7 +183,7 @@ static int set_vco_div(struct dp_pll *pll, unsigned long rate)
 	return 0;
 }
 
-static int edp_vco_pll_init_db_5nm(struct dp_pll_db *pdb,
+static int edp_vco_pll_init_db_4nm(struct dp_pll_db *pdb,
 		unsigned long rate)
 {
 	struct dp_pll *pll = pdb->pll;
@@ -219,7 +220,7 @@ static int edp_vco_pll_init_db_5nm(struct dp_pll_db *pdb,
 	return 0;
 }
 
-static int edp_config_vco_rate_5nm(struct dp_pll *pll,
+static int edp_config_vco_rate_4nm(struct dp_pll *pll,
 		unsigned long rate)
 {
 	int rc;
@@ -227,7 +228,7 @@ static int edp_config_vco_rate_5nm(struct dp_pll *pll,
 	const struct dp_pll_params *params;
 	u32 status;
 
-	rc = edp_vco_pll_init_db_5nm(pdb, rate);
+	rc = edp_vco_pll_init_db_4nm(pdb, rate);
 	if (rc < 0) {
 		DP_ERR("VCO Init DB failed\n");
 		return rc;
@@ -252,8 +253,8 @@ static int edp_config_vco_rate_5nm(struct dp_pll *pll,
 		DP_ERR("refgen not ready. Status=%x\n", status);
 	}
 
-	dp_pll_write(dp_ln_tx0, TXn_LDO_CONFIG, 0x01);
-	dp_pll_write(dp_ln_tx1, TXn_LDO_CONFIG, 0x01);
+	dp_pll_write(dp_ln_tx0, TXn_LDO_CONFIG, 0x91);
+	dp_pll_write(dp_ln_tx1, TXn_LDO_CONFIG, 0x91);
 	dp_pll_write(dp_ln_tx0, TXn_LANE_MODE_1, 0x00);
 	dp_pll_write(dp_ln_tx1, TXn_LANE_MODE_1, 0x00);
 
@@ -275,7 +276,7 @@ static int edp_config_vco_rate_5nm(struct dp_pll *pll,
 	dp_pll_write(dp_pll, QSERDES_COM_SYSCLK_BUF_ENABLE, 0x06);
 	dp_pll_write(dp_pll, QSERDES_COM_CLK_SEL, 0x30);
 	dp_pll_write(dp_pll,
-		QSERDES_COM_HSCLK_SEL, params->hsclk_sel);
+		QSERDES_COM_HSCLK_SEL_1, params->hsclk_sel);
 	dp_pll_write(dp_pll, QSERDES_COM_PLL_IVCO, params->pll_ivco);
 	dp_pll_write(dp_pll,
 		QSERDES_COM_LOCK_CMP_EN, params->lock_cmp_en);
@@ -291,7 +292,8 @@ static int edp_config_vco_rate_5nm(struct dp_pll *pll,
 	dp_pll_write(dp_pll,
 		QSERDES_COM_DIV_FRAC_START3_MODE0, params->div_frac_start3_mode0);
 	dp_pll_write(dp_pll,
-		QSERDES_COM_CMN_CONFIG, 0x02);
+		QSERDES_COM_CMN_CONFIG_1, 0x12);
+
 	dp_pll_write(dp_pll,
 		QSERDES_COM_INTEGLOOP_GAIN0_MODE0, params->integloop_gain0_mode0);
 	dp_pll_write(dp_pll,
@@ -302,7 +304,6 @@ static int edp_config_vco_rate_5nm(struct dp_pll *pll,
 		QSERDES_COM_LOCK_CMP1_MODE0, params->lock_cmp1_mode0);
 	dp_pll_write(dp_pll,
 		QSERDES_COM_LOCK_CMP2_MODE0, params->lock_cmp2_mode0);
-	dp_pll_write(dp_phy, EDP_PHY_VCO_DIV, params->phy_vco_div);
 	/* Make sure the PLL register writes are done */
 	wmb();
 
@@ -314,6 +315,12 @@ static int edp_config_vco_rate_5nm(struct dp_pll *pll,
 	dp_pll_write(dp_pll, QSERDES_COM_CORE_CLK_EN, params->core_clk_en);
 	/* Make sure the PHY register writes are done */
 	wmb();
+
+	dp_pll_write(dp_pll,
+		QSERDES_COM_CODE1_MODE0, params->cmp_code1_mode0);
+
+	dp_pll_write(dp_pll,
+		QSERDES_COM_CODE2_MODE0, params->cmp_code2_mode0);
 
 	/* TX Lane configuration */
 	dp_pll_write(dp_phy, DP_PHY_TX0_TX1_LANE_CTL, 0x05);
@@ -338,7 +345,7 @@ static int edp_config_vco_rate_5nm(struct dp_pll *pll,
 	return set_vco_div(pll, rate);
 }
 
-enum edp_5nm_pll_status {
+enum edp_4nm_pll_status {
 	C_READY,
 	FREQ_DONE,
 	PLL_LOCKED,
@@ -346,7 +353,7 @@ enum edp_5nm_pll_status {
 	TSYNC_DONE,
 };
 
-static char *edp_5nm_pll_get_status_name(enum edp_5nm_pll_status status)
+static char *edp_4nm_pll_get_status_name(enum edp_4nm_pll_status status)
 {
 	switch (status) {
 	case C_READY:
@@ -364,8 +371,8 @@ static char *edp_5nm_pll_get_status_name(enum edp_5nm_pll_status status)
 	}
 }
 
-static bool edp_5nm_pll_get_status(struct dp_pll *pll,
-		enum edp_5nm_pll_status status)
+static bool edp_4nm_pll_get_status(struct dp_pll *pll,
+		enum edp_4nm_pll_status status)
 {
 	u32 reg, state, bit;
 	void __iomem *base;
@@ -375,27 +382,27 @@ static bool edp_5nm_pll_get_status(struct dp_pll *pll,
 	case C_READY:
 		base = dp_pll_get_base(dp_pll);
 		reg = QSERDES_COM_C_READY_STATUS;
-		bit = DP_5NM_C_READY;
+		bit = DP_4NM_C_READY;
 		break;
 	case FREQ_DONE:
 		base = dp_pll_get_base(dp_pll);
 		reg = QSERDES_COM_CMN_STATUS;
-		bit = DP_5NM_FREQ_DONE;
+		bit = DP_4NM_FREQ_DONE;
 		break;
 	case PLL_LOCKED:
 		base = dp_pll_get_base(dp_pll);
 		reg = QSERDES_COM_CMN_STATUS;
-		bit = DP_5NM_PLL_LOCKED;
+		bit = DP_4NM_PLL_LOCKED;
 		break;
 	case PHY_READY:
 		base = dp_pll_get_base(dp_phy);
 		reg = DP_PHY_STATUS;
-		bit = DP_5NM_PHY_READY;
+		bit = DP_4NM_PHY_READY;
 		break;
 	case TSYNC_DONE:
 		base = dp_pll_get_base(dp_phy);
 		reg = DP_PHY_STATUS;
-		bit = DP_5NM_TSYNC_DONE;
+		bit = DP_4NM_TSYNC_DONE;
 		break;
 	default:
 		return false;
@@ -406,7 +413,7 @@ static bool edp_5nm_pll_get_status(struct dp_pll *pll,
 			DP_PHY_PLL_POLL_SLEEP_US,
 			DP_PHY_PLL_POLL_TIMEOUT_US)) {
 		DP_ERR("%s failed, status=%x\n",
-			edp_5nm_pll_get_status_name(status), state);
+			edp_4nm_pll_get_status_name(status), state);
 
 		success = false;
 	}
@@ -414,7 +421,7 @@ static bool edp_5nm_pll_get_status(struct dp_pll *pll,
 	return success;
 }
 
-static int edp_pll_enable_5nm(struct dp_pll *pll)
+static int edp_pll_enable_4nm(struct dp_pll *pll)
 {
 	int rc = 0;
 	u32 bias_en0, drvr_en0, bias_en1, drvr_en1, phy_cfg_1;
@@ -428,17 +435,8 @@ static int edp_pll_enable_5nm(struct dp_pll *pll)
 	dp_pll_write(dp_pll, QSERDES_COM_RESETSM_CNTRL, 0x20);
 	wmb();	/* Make sure the PLL register writes are done */
 
-	if (!edp_5nm_pll_get_status(pll, C_READY)) {
-		rc = -EINVAL;
-		goto lock_err;
-	}
 
-	if (!edp_5nm_pll_get_status(pll, FREQ_DONE)) {
-		rc = -EINVAL;
-		goto lock_err;
-	}
-
-	if (!edp_5nm_pll_get_status(pll, PLL_LOCKED)) {
+	if (!edp_4nm_pll_get_status(pll, C_READY)) {
 		rc = -EINVAL;
 		goto lock_err;
 	}
@@ -496,7 +494,7 @@ static int edp_pll_enable_5nm(struct dp_pll *pll)
 		bias_en1);
 	dp_pll_write(dp_phy, DP_PHY_CFG_1, phy_cfg_1);
 
-	if (!edp_5nm_pll_get_status(pll, PHY_READY)) {
+	if (!edp_4nm_pll_get_status(pll, PHY_READY)) {
 		rc = -EINVAL;
 		goto lock_err;
 	}
@@ -508,12 +506,12 @@ static int edp_pll_enable_5nm(struct dp_pll *pll)
 	/* Make sure the PHY register writes are done */
 	wmb();
 
-	if (!edp_5nm_pll_get_status(pll, TSYNC_DONE)) {
+	if (!edp_4nm_pll_get_status(pll, TSYNC_DONE)) {
 		rc = -EINVAL;
 		goto lock_err;
 	}
 
-	if (!edp_5nm_pll_get_status(pll, PHY_READY)) {
+	if (!edp_4nm_pll_get_status(pll, PHY_READY)) {
 		rc = -EINVAL;
 		goto lock_err;
 	}
@@ -525,7 +523,7 @@ lock_err:
 	return rc;
 }
 
-static void edp_pll_disable_5nm(struct dp_pll *pll)
+static void edp_pll_disable_4nm(struct dp_pll *pll)
 {
 	/* Assert DP PHY power down */
 	dp_pll_write(dp_phy, DP_PHY_PD_CTL, 0x2);
@@ -536,7 +534,7 @@ static void edp_pll_disable_5nm(struct dp_pll *pll)
 	wmb();
 }
 
-static int edp_vco_set_rate_5nm(struct dp_pll *pll, unsigned long rate)
+static int edp_vco_set_rate_4nm(struct dp_pll *pll, unsigned long rate)
 {
 	int rc = 0;
 
@@ -547,7 +545,7 @@ static int edp_vco_set_rate_5nm(struct dp_pll *pll, unsigned long rate)
 
 	DP_DEBUG("DP lane CLK rate=%ld\n", rate);
 
-	rc = edp_config_vco_rate_5nm(pll, rate);
+	rc = edp_config_vco_rate_4nm(pll, rate);
 	if (rc < 0) {
 		DP_ERR("Failed to set clk rate\n");
 		return rc;
@@ -577,7 +575,7 @@ static int edp_pll_configure(struct dp_pll *pll, unsigned long rate)
 		rate = DP_VCO_HSCLK_RATE_8100MHZDIV1000;
 
 	pll->vco_rate = rate;
-	rc = edp_vco_set_rate_5nm(pll, rate);
+	rc = edp_vco_set_rate_4nm(pll, rate);
 	if (rc < 0) {
 		DP_ERR("pll rate %lu set failed\n", rate);
 		pll->vco_rate = 0;
@@ -597,7 +595,7 @@ static int edp_pll_prepare(struct dp_pll *pll)
 		return -EINVAL;
 	}
 
-	rc = edp_pll_enable_5nm(pll);
+	rc = edp_pll_enable_4nm(pll);
 	if (rc < 0)
 		DP_ERR("ndx=%d failed to enable dp pll\n", pll->index);
 
@@ -613,7 +611,7 @@ static int  edp_pll_unprepare(struct dp_pll *pll)
 		return -EINVAL;
 	}
 
-	edp_pll_disable_5nm(pll);
+	edp_pll_disable_4nm(pll);
 	pll->vco_rate = 0;
 
 	return rc;
@@ -682,6 +680,8 @@ static unsigned long edp_pll_vco_div_clk_recalc_rate(struct clk_hw *hw,
 
 	pll_link = to_dp_vco_hw(hw);
 	pll = pll_link->priv;
+	if (pll->vco_rate == 0)
+		pll->vco_rate = DP_VCO_HSCLK_RATE_5400MHZDIV1000;
 
 	return edp_pll_vco_div_clk_get_rate(pll);
 }
@@ -720,6 +720,7 @@ static struct dp_pll_vco_clk *edp_pll_get_clks(struct dp_pll *pll)
 	for (i = 0; i < DP_PLL_NUM_CLKS; i++) {
 		snprintf(pll->pll_clks[i].name, DP_PLL_NAME_MAX_SIZE,
 				"%s%s", pll->name, edp_phy_pll_clks[i].name);
+
 		pll->pll_clks[i].init_data.name = pll->pll_clks[i].name;
 		pll->pll_clks[i].init_data.ops = edp_phy_pll_clks[i].ops;
 		pll->pll_clks[i].hw.init = &pll->pll_clks[i].init_data;
@@ -728,7 +729,7 @@ static struct dp_pll_vco_clk *edp_pll_get_clks(struct dp_pll *pll)
 	return pll->pll_clks;
 }
 
-int edp_pll_clock_register_5nm(struct dp_pll *pll)
+int edp_pll_clock_register_4nm(struct dp_pll *pll)
 {
 	int rc = 0;
 	struct platform_device *pdev;
@@ -778,6 +779,7 @@ int edp_pll_clock_register_5nm(struct dp_pll *pll)
 	return rc;
 
 clk_reg_fail:
-	dp_pll_clock_unregister_5nm(pll);
+	dp_pll_clock_unregister_4nm(pll);
 	return rc;
 }
+

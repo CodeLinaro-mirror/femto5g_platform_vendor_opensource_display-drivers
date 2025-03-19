@@ -410,6 +410,8 @@ static void _sde_encoder_phys_vid_setup_avr(
 			return;
 		}
 
+		phys_enc->avr_slow_vtotal = mult_frac(phys_enc->cached_mode.vtotal,
+				default_fps, qsync_min_fps);
 		avr_params.default_fps = default_fps;
 		avr_params.min_fps = qsync_min_fps;
 
@@ -526,6 +528,8 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	if (sde_enc->disp_info.vrr_caps.arp_support ||
 		sde_enc->disp_info.vrr_caps.video_psr_support) {
 		avr_step_state = AVR_STEP_ENABLE;
+		if (sde_enc->disp_info.vrr_caps.video_psr_support)
+			avr_params.avr_mode = SDE_RM_QSYNC_CONTINUOUS_MODE;
 		if (avr_params.avr_mode)
 			_sde_encoder_phys_vid_raw_te_setup(phys_enc, true);
 		else
@@ -736,6 +740,7 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 	u32 hblank;
 	u32 active_compressed;
 	u32 hsync_period_cycles;
+	u32 prog_fetch_start;
 
 	if (!info->esync_enabled)
 		goto exit;
@@ -745,7 +750,9 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 		return -EINVAL;
 	}
 
-	if (phys_enc->prog_fetch_start <= 0) {
+	prog_fetch_start = programmable_fetch_get_num_lines(vid_enc, &vid_enc->timing_params);
+
+	if (prog_fetch_start <= 0) {
 		SDE_ERROR("esync enabled but programmable fetch <= 0\n");
 		return -EINVAL;
 	}
@@ -765,7 +772,7 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 	esync_params.hsync_period_cycles = hsync_period_cycles;
 	esync_params.skew = mult_frac(phys_enc->cached_mode.htotal, info->esync_milli_skew, 1000);
 	esync_params.prog_fetch_start =
-			(phys_enc->cached_mode.vtotal - phys_enc->prog_fetch_start + 1)
+			(phys_enc->cached_mode.vtotal - prog_fetch_start + 1)
 			% esync_params.avr_step_lines;
 	esync_params.hw_fence_enabled = phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable;
 	esync_params.align_backup = exit_idle;
@@ -1232,9 +1239,13 @@ static void sde_encoder_phys_vid_te_irq(void *arg, int irq_idx)
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	drm_conn = sde_enc->cur_master->connector;
 	qsync_mode = sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_QSYNC_MODE);
+
+	atomic_add_unless(&phys_enc->pending_te_deassert_cnt, -1, 0);
+
 	SDE_EVT32(DRMID(phys_enc->parent), irq_idx, qsync_mode,
 		sde_enc->disp_info.vrr_caps.arp_support,
-		phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable);
+		phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable,
+		atomic_read(&phys_enc->pending_te_deassert_cnt));
 
 	if (qsync_mode && sde_enc->disp_info.vrr_caps.arp_support &&
 		!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable) {
@@ -1880,6 +1891,9 @@ static int sde_encoder_phys_vid_wait_for_commit_done(
 		struct sde_encoder_phys *phys_enc)
 {
 	int rc = 0;
+	struct sde_encoder_virt *sde_enc;
+	struct sde_connector *sde_conn;
+	struct msm_display_info *info;
 
 	/*
 	 * With Interface sync, Master DPU will send signal to enable the Slave DPU Timing engine.
@@ -1892,7 +1906,29 @@ static int sde_encoder_phys_vid_wait_for_commit_done(
 		return rc;
 	}
 
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	info = &sde_enc->disp_info;
+
 	rc =  _sde_encoder_phys_vid_wait_for_vblank(phys_enc, true);
+
+	SDE_EVT32(atomic_read(&phys_enc->pending_te_deassert_cnt), rc);
+	if (!rc && info->esd_rw_check && atomic_read(&phys_enc->pending_te_deassert_cnt) > 2 &&
+			gpio_get_value(info->disp_te_gpio) == 0) {
+		SDE_ERROR("RW possibly low\n");
+		SDE_EVT32(SDE_EVTLOG_ERROR, atomic_read(&phys_enc->pending_te_deassert_cnt));
+
+		atomic_set(&phys_enc->pending_te_deassert_cnt, 0);
+		if (sde_encoder_recovery_events_enabled(phys_enc->parent)) {
+			sde_connector_event_notify(phys_enc->connector, DRM_EVENT_SDE_HW_RECOVERY,
+				sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
+
+			sde_conn = to_sde_connector(phys_enc->connector);
+			if (sde_conn)
+				sde_conn->panel_dead = true;
+		}
+		rc = -ETIMEDOUT;
+	}
+
 	if (rc)
 		sde_encoder_helper_phys_reset(phys_enc);
 
@@ -2152,6 +2188,7 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 {
 	struct intf_status intf_status = {0};
 	unsigned long lock_flags;
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 
@@ -2178,6 +2215,8 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 	/* Slave DPU timing engine is disabled */
 	phys_enc->hw_intf->ops.enable_timing(phys_enc->hw_intf, false);
 	sde_encoder_phys_inc_pending(phys_enc);
+	if (sde_enc->disp_info.vrr_caps.video_psr_support)
+		phys_enc->hw_intf->ops.avr_enable(phys_enc->hw_intf, false);
 
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
@@ -2333,6 +2372,9 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 			phys_enc->hw_intf->ops.enable_esync(phys_enc->hw_intf, false);
 		if (phys_enc->hw_intf->ops.enable_backup_esync)
 			phys_enc->hw_intf->ops.enable_backup_esync(phys_enc->hw_intf, false);
+
+		if (sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE)
+			sde_connector_osc_clk_ctrl(phys_enc->connector, false);
 	}
 
 	if (sde_enc && sde_enc->disp_info.vrr_caps.vrr_support) {
@@ -2345,6 +2387,7 @@ exit:
 	SDE_EVT32(DRMID(phys_enc->parent),
 		atomic_read(&phys_enc->pending_retire_fence_cnt), phys_enc->split_role);
 	phys_enc->vfp_cached = 0;
+	atomic_set(&phys_enc->pending_te_deassert_cnt, 0);
 	phys_enc->enable_state = SDE_ENC_DISABLED;
 }
 
@@ -2757,6 +2800,7 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 	atomic_set(&phys_enc->vblank_refcount, 0);
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
+	atomic_set(&phys_enc->pending_te_deassert_cnt, 0);
 	init_waitqueue_head(&phys_enc->pending_kickoff_wq);
 
 skip_irq_init:

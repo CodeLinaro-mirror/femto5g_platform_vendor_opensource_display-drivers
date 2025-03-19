@@ -4524,6 +4524,13 @@ static int sde_kms_pm_suspend(struct device *dev)
 			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_EXIT);
 			return -EINVAL;
 		}
+
+		if (sde_encoder_smooth_dimming_in_progress(enc)) {
+			SDE_DEBUG("skip PM suspend, smooth dimming in progress enc:%d\n",
+					DRMID(enc));
+			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_CASE1, SDE_EVTLOG_FUNC_EXIT);
+			return -EINVAL;
+		}
 	}
 
 	/* acquire modeset lock(s) */
@@ -4906,6 +4913,16 @@ static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
 						sde_kms->catalog);
 }
 
+static void sde_kms_reset_cesta_resource(struct sde_kms *sde_kms)
+{
+	if (!sde_kms->hw_ctl_0 || !sde_kms->catalog)
+		return;
+
+	if (sde_kms->hw_ctl_0->ops.reset_cesta_reserve)
+		sde_kms->hw_ctl_0->ops.reset_cesta_reserve(sde_kms->hw_ctl_0,
+				sde_kms->catalog->ctl_count);
+}
+
 static void _sde_kms_set_lutdma_vbif_remap(struct sde_kms *sde_kms)
 {
 	struct sde_vbif_set_qos_params qos_params;
@@ -5014,6 +5031,7 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 		sde_vbif_init_memtypes(sde_kms);
 		sde_kms_init_shared_hw(sde_kms);
 		_sde_kms_set_lutdma_vbif_remap(sde_kms);
+		sde_kms_reset_cesta_resource(sde_kms);
 	} else if (event_type == SDE_POWER_EVENT_PRE_DISABLE) {
 		sde_irq_update(msm_kms, false);
 		sde_kms->first_kickoff = false;
