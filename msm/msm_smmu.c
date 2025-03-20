@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -167,7 +167,7 @@ static int msm_smmu_set_attribute(struct msm_mmu *mmu,
 #endif
 
 static int msm_smmu_one_to_one_unmap(struct msm_mmu *mmu,
-				uint32_t dest_address, uint32_t size)
+				uint64_t dest_address, uint32_t size)
 {
 	struct msm_smmu *smmu = to_msm_smmu(mmu);
 	struct msm_smmu_client *client = msm_smmu_to_client(smmu);
@@ -183,8 +183,8 @@ static int msm_smmu_one_to_one_unmap(struct msm_mmu *mmu,
 	return 0;
 }
 
-static int msm_smmu_one_to_one_map(struct msm_mmu *mmu, uint32_t iova,
-		uint32_t dest_address, uint32_t size, int prot)
+static int msm_smmu_one_to_one_map(struct msm_mmu *mmu, uint64_t iova,
+		uint64_t dest_address, uint32_t size, int prot)
 {
 	struct msm_smmu *smmu = to_msm_smmu(mmu);
 	struct msm_smmu_client *client = msm_smmu_to_client(smmu);
