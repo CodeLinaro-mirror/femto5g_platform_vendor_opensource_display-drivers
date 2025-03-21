@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2010-2021, The Linux Foundation. All rights reserved.
  */
@@ -1005,7 +1006,7 @@ static void sde_hdcp_1x_authentication_ops_notify(struct sde_hdcp_1x *hdcp,
 		topology->max_cascade_exceeded = hdcp->current_tp.max_cascade_exceeded;
 		topology->hdcp2LegacyDeviceDownstream = 0;
 		topology->hdcp1DeviceDownstream = 0;
-		hdcp1_ops_notify(hdcp->hdcp1_handle, topology, true);
+		//hdcp1_ops_notify(hdcp->hdcp1_handle, topology, true);
 	} else {
 		topology->depth = 0;
 		topology->device_count = 0;
@@ -1013,7 +1014,7 @@ static void sde_hdcp_1x_authentication_ops_notify(struct sde_hdcp_1x *hdcp,
 		topology->max_cascade_exceeded = 0;
 		topology->hdcp2LegacyDeviceDownstream = 0;
 		topology->hdcp1DeviceDownstream = 0;
-		hdcp1_ops_notify(hdcp->hdcp1_handle, topology, false);
+		//hdcp1_ops_notify(hdcp->hdcp1_handle, topology, false);
 	}
 
 	pr_debug("OPS is notified with state = %d\n", state);
@@ -1113,10 +1114,11 @@ static void sde_hdcp_1x_auth_work(struct work_struct *work)
 	 * successful. This is applicable for HDMI sinks and HDCP 1.x compliance
 	 * test cases.
 	 */
+/*
 	if (hdcp->init_data.client_id == HDCP_CLIENT_HDMI ||
 			hdcp->force_encryption)
 		hdcp1_set_enc(hdcp->hdcp1_handle, true);
-
+*/
 	rc = sde_hdcp_1x_authentication_part1(hdcp);
 	if (rc)
 		goto end;
@@ -1165,13 +1167,13 @@ static int sde_hdcp_1x_authenticate(void *input)
 		rc = -EINVAL;
 		goto error;
 	}
-
+/*
 	rc = hdcp1_start(hdcp->hdcp1_handle, &hdcp->aksv_msb, &hdcp->aksv_lsb);
 	if (rc) {
 		pr_err("hdcp1_start failed (%d)\n", rc);
 		goto error;
 	}
-
+*/
 	if (!sde_hdcp_1x_enable_hdcp_engine(input)) {
 
 		queue_delayed_work(hdcp->workq,
@@ -1268,11 +1270,11 @@ static void sde_hdcp_1x_off(void *input)
 	if (rc)
 		pr_debug("%s: Deleted hdcp auth work\n",
 			SDE_HDCP_STATE_NAME);
-
+/*
 	if (hdcp->init_data.client_id == HDCP_CLIENT_HDMI ||
 			hdcp->force_encryption)
 		hdcp1_set_enc(hdcp->hdcp1_handle, false);
-
+*/
 	reg = DSS_REG_R(io, reg_set->reset);
 	DSS_REG_W(io, reg_set->reset, reg | reg_set->reset_bit);
 
@@ -1284,7 +1286,7 @@ static void sde_hdcp_1x_off(void *input)
 	hdcp->sink_r0_ready = false;
 
 	sde_hdcp_1x_authentication_ops_notify(hdcp, hdcp->hdcp_state);
-	hdcp1_stop(hdcp->hdcp1_handle);
+	//hdcp1_stop(hdcp->hdcp1_handle);
 
 	pr_debug("%s: HDCP: Off\n", SDE_HDCP_STATE_NAME);
 } /* hdcp_1x_off */
@@ -1394,7 +1396,7 @@ static bool sde_hdcp_1x_feature_supported(void *input)
 		return -EINVAL;
 	}
 
-	feature_supported = hdcp1_feature_supported(hdcp->hdcp1_handle);
+	//feature_supported = hdcp1_feature_supported(hdcp->hdcp1_handle);
 
 	pr_debug("feature_supported = %d\n", feature_supported);
 
@@ -1430,7 +1432,7 @@ void sde_hdcp_1x_deinit(void *input)
 	if (hdcp->workq)
 		destroy_workqueue(hdcp->workq);
 
-	hdcp1_deinit(hdcp->hdcp1_handle);
+	//hdcp1_deinit(hdcp->hdcp1_handle);
 
 	kfree(hdcp->tz_ops);
 	kfree(hdcp);
@@ -1584,13 +1586,13 @@ void *sde_hdcp_1x_init(struct sde_hdcp_init_data *init_data)
 		pr_err("Error creating workqueue\n");
 		goto mem_error;
 	}
-
+/*
 	hdcp->hdcp1_handle = hdcp1_init();
 	if (!hdcp->hdcp1_handle) {
 		pr_err("Error creating HDCP 1.x handle\n");
 		goto hdcp1_handle_error;
 	}
-
+*/
 	sde_hdcp_1x_update_client_reg_set(hdcp);
 
 	INIT_DELAYED_WORK(&hdcp->hdcp_auth_work, sde_hdcp_1x_auth_work);
@@ -1604,8 +1606,8 @@ void *sde_hdcp_1x_init(struct sde_hdcp_init_data *init_data)
 		SDE_HDCP_STATE_NAME);
 
 	return (void *)hdcp;
-hdcp1_handle_error:
-	destroy_workqueue(hdcp->workq);
+//hdcp1_handle_error:
+//	destroy_workqueue(hdcp->workq);
 mem_error:
 	kfree(hdcp->tz_ops);
 	kfree(hdcp);

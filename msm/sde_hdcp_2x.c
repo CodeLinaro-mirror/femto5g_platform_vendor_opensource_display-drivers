@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
@@ -339,7 +340,8 @@ static bool sde_hdcp_2x_client_feature_supported(void *data)
 	while (atomic_read(&hdcp->enable_pending))
 		usleep_range(1000, 1500);
 
-	return hdcp2_feature_supported(hdcp->hdcp2_ctx);
+	//return hdcp2_feature_supported(hdcp->hdcp2_ctx);
+	return 0;
 }
 
 static void sde_hdcp_2x_force_encryption(void *data, bool enable)
@@ -373,8 +375,10 @@ static void sde_hdcp_2x_clean(struct sde_hdcp_2x_ctrl *hdcp)
 
 		stream_entry = list_entry(element, struct sde_hdcp_stream,
 			list);
+/*
 		hdcp2_close_stream(hdcp->hdcp2_ctx,
 			stream_entry->stream_handle);
+*/
 		kfree(stream_entry);
 		hdcp->stream_count--;
 	}
@@ -382,7 +386,7 @@ static void sde_hdcp_2x_clean(struct sde_hdcp_2x_ctrl *hdcp)
 	if (!atomic_xchg(&hdcp->hdcp_off, 1))
 		sde_hdcp_2x_wakeup_client(hdcp, &cdata);
 
-	hdcp2_app_comm(hdcp->hdcp2_ctx, HDCP2_CMD_STOP, &hdcp->app_data);
+	//hdcp2_app_comm(hdcp->hdcp2_ctx, HDCP2_CMD_STOP, &hdcp->app_data);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hdcp->authenticated);
 }
 
@@ -449,9 +453,10 @@ static void sde_hdcp_2x_query_stream(struct sde_hdcp_2x_ctrl *hdcp)
 		pr_debug("invalid state. HDCP repeater not authenticated\n");
 		return;
 	}
-
+/*
 	rc = hdcp2_app_comm(hdcp->hdcp2_ctx, HDCP2_CMD_QUERY_STREAM,
 			&hdcp->app_data);
+*/
 	if (rc)
 		goto exit;
 
@@ -496,6 +501,7 @@ static void sde_hdcp_2x_msg_sent(struct sde_hdcp_2x_ctrl *hdcp)
 	SDE_EVT32_EXTERNAL(hdcp->app_data.response.data[0]);
 	switch (hdcp->app_data.response.data[0]) {
 	case SKE_SEND_TYPE_ID:
+/*
 		if (!hdcp2_app_comm(hdcp->hdcp2_ctx,
 				HDCP2_CMD_EN_ENCRYPTION, &hdcp->app_data)) {
 			hdcp->authenticated = true;
@@ -506,7 +512,7 @@ static void sde_hdcp_2x_msg_sent(struct sde_hdcp_2x_ctrl *hdcp)
 			cdata.cmd = HDCP_TRANSPORT_CMD_STATUS_SUCCESS;
 			sde_hdcp_2x_wakeup_client(hdcp, &cdata);
 		}
-
+*/
 		/* poll for link check */
 		sde_hdcp_2x_initialize_command(hdcp,
 				HDCP_TRANSPORT_CMD_LINK_POLL, &cdata);
@@ -552,14 +558,17 @@ exit:
 
 static void sde_hdcp_2x_init(struct sde_hdcp_2x_ctrl *hdcp)
 {
+/*
 	int rc;
 	rc = hdcp2_app_comm(hdcp->hdcp2_ctx, HDCP2_CMD_START, &hdcp->app_data);
 	if (rc)
 		sde_hdcp_2x_clean(hdcp);
+*/
 }
 
 static void sde_hdcp_2x_start_auth(struct sde_hdcp_2x_ctrl *hdcp)
 {
+/*
 	int rc;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, hdcp->authenticated);
@@ -575,6 +584,7 @@ static void sde_hdcp_2x_start_auth(struct sde_hdcp_2x_ctrl *hdcp)
 
 	sde_hdcp_2x_send_message(hdcp);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hdcp->authenticated);
+*/
 }
 
 static void sde_hdcp_2x_timeout(struct sde_hdcp_2x_ctrl *hdcp)
@@ -586,9 +596,10 @@ static void sde_hdcp_2x_timeout(struct sde_hdcp_2x_ctrl *hdcp)
 		pr_debug("invalid state, hdcp off\n");
 		return;
 	}
-
+/*
 	rc = hdcp2_app_comm(hdcp->hdcp2_ctx, HDCP2_CMD_TIMEOUT,
 			&hdcp->app_data);
+*/
 	if (rc)
 		goto error;
 
@@ -636,6 +647,7 @@ static void sde_hdcp_2x_msg_recvd(struct sde_hdcp_2x_ctrl *hdcp)
 	pr_debug("[sink]: %s\n", sde_hdcp_2x_message_name(msg[0]));
 
 	hdcp->app_data.request.length = request_length;
+/*
 	rc = hdcp2_app_comm(hdcp->hdcp2_ctx, HDCP2_CMD_PROCESS_MSG,
 			&hdcp->app_data);
 	if (rc) {
@@ -644,7 +656,7 @@ static void sde_hdcp_2x_msg_recvd(struct sde_hdcp_2x_ctrl *hdcp)
 		rc = -EINVAL;
 		goto exit;
 	}
-
+*/
 	if (msg[0] == AKE_SEND_H_PRIME && hdcp->no_stored_km) {
 		cdata.cmd = HDCP_TRANSPORT_CMD_RECV_MESSAGE;
 		cdata.transaction_delay = hdcp->app_data.timeout;
@@ -663,16 +675,18 @@ static void sde_hdcp_2x_msg_recvd(struct sde_hdcp_2x_ctrl *hdcp)
 		if (hdcp->resend_stream_manage) {
 			pr_debug("resend stream management\n");
 		} else if (!hdcp->authenticated) {
+/*
 			rc = hdcp2_app_comm(hdcp->hdcp2_ctx,
 					HDCP2_CMD_EN_ENCRYPTION,
 					&hdcp->app_data);
+*/
 			if (!rc) {
 				hdcp->authenticated = true;
-
+/*
 				if (hdcp->force_encryption)
 					hdcp2_force_encryption(
 							hdcp->hdcp2_ctx, 1);
-
+*/
 				cdata.cmd = HDCP_TRANSPORT_CMD_STATUS_SUCCESS;
 				sde_hdcp_2x_wakeup_client(hdcp, &cdata);
 			} else {
@@ -754,13 +768,16 @@ static void sde_hdcp_2x_manage_stream(struct sde_hdcp_2x_ctrl *hdcp)
 		entry = entry->next;
 
 		if (!stream_entry->active) {
+/*
 			hdcp2_close_stream(hdcp->hdcp2_ctx,
 				stream_entry->stream_handle);
+*/
 			hdcp->stream_count--;
 			list_del(element);
 			kfree(stream_entry);
 			query_streams = true;
 		} else if (!stream_entry->stream_handle) {
+/*
 			if (hdcp2_open_stream(hdcp->hdcp2_ctx,
 					stream_entry->virtual_channel,
 					stream_entry->stream_id,
@@ -770,6 +787,7 @@ static void sde_hdcp_2x_manage_stream(struct sde_hdcp_2x_ctrl *hdcp)
 					stream_entry->virtual_channel);
 			else
 				query_streams = true;
+*/
 		}
 	}
 
@@ -956,10 +974,11 @@ static void sde_hdcp_2x_enable(struct sde_hdcp_2x_ctrl *hdcp)
 		pr_debug("HDCP library context already acquired\n");
 		return;
 	}
-
+/*
 	hdcp->hdcp2_ctx = hdcp2_init(hdcp->device_type);
 	if (!hdcp->hdcp2_ctx)
 		pr_err("Unable to acquire HDCP library handle\n");
+*/
 }
 
 static void sde_hdcp_2x_disable(struct sde_hdcp_2x_ctrl *hdcp)
@@ -967,7 +986,7 @@ static void sde_hdcp_2x_disable(struct sde_hdcp_2x_ctrl *hdcp)
 	if (!hdcp->hdcp2_ctx)
 		return;
 
-	hdcp2_deinit(hdcp->hdcp2_ctx);
+	//hdcp2_deinit(hdcp->hdcp2_ctx);
 	hdcp->hdcp2_ctx = NULL;
 }
 
