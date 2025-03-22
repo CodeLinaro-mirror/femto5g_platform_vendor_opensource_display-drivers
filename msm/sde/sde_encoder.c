@@ -416,27 +416,12 @@ int sde_encoder_helper_hw_fence_extended_wait(struct sde_encoder_phys *phys_enc,
 	int ret = -ETIMEDOUT;
 	s64 standard_kickoff_timeout_ms = wait_info->timeout_ms;
 	int timeout_iters = EXTENDED_KICKOFF_TIMEOUT_ITERS;
-	u32 fence_ready = 0;
-
-	if (!ctl || !ctl->ops.get_hw_fence_status) {
-		SDE_ERROR("invalid argument(s)\n");
-		return ret;
-	}
-
-	/* if fence_ready is high (bit zero) then skip extended wait */
-	fence_ready = ctl->ops.get_hw_fence_status(ctl) & 0x1;
-	if (fence_ready)
-		return ret;
 
 	wait_info->timeout_ms = EXTENDED_KICKOFF_TIMEOUT_MS;
 
 	while (ret == -ETIMEDOUT && timeout_iters--) {
-		ret = sde_encoder_helper_wait_for_irq(phys_enc, wait_type, wait_info);
-		if (ret == -ETIMEDOUT) {
-			/* if dma_fence is not signaled, keep waiting */
-			if (!sde_crtc_is_fence_signaled(phys_enc->parent->crtc))
-				continue;
-
+		/* if dma_fence is signaled, avoid extended wait */
+		if (sde_crtc_is_fence_signaled(phys_enc->parent->crtc)) {
 			/* timed-out waiting and no sw-override support for hw-fences */
 			if (!ctl || !ctl->ops.hw_fence_trigger_sw_override) {
 				SDE_ERROR("invalid argument(s)\n");
@@ -462,6 +447,7 @@ int sde_encoder_helper_hw_fence_extended_wait(struct sde_encoder_phys *phys_enc,
 			}
 			break;
 		}
+		ret = sde_encoder_helper_wait_for_irq(phys_enc, wait_type, wait_info);
 	}
 
 	/* reset the timeout value */
