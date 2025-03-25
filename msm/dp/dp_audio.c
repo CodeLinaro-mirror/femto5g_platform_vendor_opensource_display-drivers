@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
@@ -9,8 +8,6 @@
 #include <linux/version.h>
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <msm_ext_display.h>
-//#include <linux/soc/qcom/msm_ext_display.h>
-//#include </prj/qct/workspace/Salsa/CQ8750S.LE.1.0_scratch/kxing/CQ8750S.LE.1.0_AU016_0307/src/display/vendor/qcom/opensource/mm-drivers/msm_ext_display/includemsm_ext_display.h>
 #else
 #include <linux/soc/qcom/msm_ext_display.h>
 #endif
