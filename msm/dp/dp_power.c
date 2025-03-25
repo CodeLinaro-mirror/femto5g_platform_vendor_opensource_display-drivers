@@ -180,9 +180,9 @@ static void dp_power_clk_put(struct dp_power_private *power)
 
 		if (!pm->num_clk)
 			continue;
-
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 		msm_dss_mmrm_deregister(&power->pdev->dev, pm);
-
+#endif
 		msm_dss_put_clk(pm->clk_config, pm->num_clk);
 	}
 }
@@ -627,9 +627,10 @@ static int dp_power_mmrm_init(struct dp_power *dp_power, struct sde_power_handle
 		struct dss_module_power *pm = &power->parser->mp[module];
 		if (!pm->num_clk)
 			continue;
-
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 		rc = msm_dss_mmrm_register(dev, pm, (void*)dp_display_mmrm_callback,
 					dp, &phandle->mmrm_enable);
+#endif
 		if (rc)
 			DP_ERR("mmrm register failed rc=%d\n", rc);
 	}
