@@ -1638,6 +1638,22 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	return rc;
 }
 
+int sde_connector_setup_obj_id(struct drm_connector *conn, int id)
+{
+	int rc = 0;
+	struct sde_connector *sde_conn;
+
+	if (!conn) {
+		SDE_ERROR("invalid argument, conn %d\n", conn != NULL);
+		return -EINVAL;
+	}
+
+	sde_conn = to_sde_connector(conn);
+	sde_conn->conn_id = id;
+
+	return rc;
+}
+
 int sde_connector_trigger_cmd_self_refresh(struct drm_connector *connector)
 {
 	int rc = 0;

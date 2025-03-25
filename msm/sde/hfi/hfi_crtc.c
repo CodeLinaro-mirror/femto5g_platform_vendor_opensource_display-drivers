@@ -429,7 +429,6 @@ int hfi_crtc_atomic_begin(struct sde_crtc *sde_crtc, struct sde_crtc_state *csta
 		return -EINVAL;
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
-	disp_id = 0;
 	if (disp_id == U32_MAX) {
 		SDE_ERROR("invalid display id\n");
 		return -EINVAL;
