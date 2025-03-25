@@ -1,7 +1,7 @@
 
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef __QCOM_DISPLAY_INTERNAL_H__
@@ -16,6 +16,7 @@
 #define DMA_ATTR_QTI_SMMU_PROXY_MAP	(1UL << 18)
 #define MMRM_CLIENT_DATA_FLAG_RESERVE_ONLY  0x0001
 
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 enum mmrm_crm_drv_type {
 	MMRM_CRM_SW_DRV,
 	MMRM_CRM_HW_DRV,
@@ -122,6 +123,7 @@ enum sid_switch_direction {
 	SID_ACQUIRE,
 	SID_RELEASE,
 };
+#endif
 
 struct qtee_shm {
 	phys_addr_t paddr;
@@ -134,20 +136,24 @@ struct altmode_pan_ack_msg {
 	u8 port_index;
 };
 
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 static inline int qcom_iommu_sid_switch(struct device *dev, enum sid_switch_direction dir)
 {
 	return -EINVAL;
 }
+#endif
 
 static inline int msm_dma_unmap_all_for_dev(struct device *dev)
 {
 	return -EINVAL;
 }
 
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 static inline int qcom_iommu_enable_s1_translation(struct iommu_domain *domain)
 {
 	return 0;
 }
+#endif
 
 static inline int mem_buf_dma_buf_copy_vmperm(struct dma_buf *dmabuf, int **vmids, int **perms,
  		int *nr_acl_entries)
@@ -170,6 +176,7 @@ static inline bool qtee_shmbridge_is_enabled(void)
 	return false;
 }
 
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 static inline int32_t qtee_shmbridge_allocate_shm(size_t size, struct qtee_shm *shm)
 {
 	return -ENOMEM;
@@ -185,6 +192,7 @@ static void qtee_shmbridge_free_shm(struct qtee_shm *shm)
 {
 
 }
+
 
 static inline struct mmrm_client *mmrm_client_register(
 	struct mmrm_client_desc *desc)
@@ -211,11 +219,12 @@ static inline int llcc_notif_staling_inc_counter(struct llcc_slice_desc *desc)
 {
 	return -EINVAL;
 }
-static inline void *ipc_log_context_create(int max_num_pages, const char *modname,
-		uint32_t feature_version)
-{
-	return NULL;
-}
+#endif
+
+void *ipc_log_context_create(int max_num_pages, const char *modname,
+		uint32_t feature_version);
+
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 static inline void *ipc_log_context_destroy(void *ctxt)
 {
         return NULL;
@@ -224,8 +233,10 @@ static inline void ipc_log_string(void *ilctxt, const char *fmt, ...)
 {
 
 }
+
 static inline int altmode_send_data(int client, void *data, size_t len)
 {
 	return 0;
 }
+#endif
 #endif

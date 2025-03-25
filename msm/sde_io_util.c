@@ -2,7 +2,6 @@
 /*
  * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2015, 2017-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -586,6 +585,7 @@ error:
 } /* msm_dss_get_clk */
 EXPORT_SYMBOL_GPL(msm_dss_get_clk);
 
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
 	int (*cb_fnc)(struct mmrm_client_notifier_data *data), void *phandle,
 	bool *mmrm_enable)
@@ -681,6 +681,7 @@ void msm_dss_mmrm_deregister(struct device *dev,
 	}
 } /* msm_dss_mmrm_deregister */
 EXPORT_SYMBOL_GPL(msm_dss_mmrm_deregister);
+#endif
 
 int msm_dss_single_clk_set_rate(struct dss_clk *clk, struct device *dev)
 {
