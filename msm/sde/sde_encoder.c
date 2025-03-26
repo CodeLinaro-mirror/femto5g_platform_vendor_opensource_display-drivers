@@ -4817,7 +4817,7 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 		if (sde_enc->disp_info.vrr_caps.vrr_support) {
 			if (sde_enc->disp_info.vrr_caps.video_mrr_support &&
 					phys->ops.control_esync_vsync_irq)
-				phys->ops.control_esync_vsync_irq(phys, enable);
+				phys->ops.control_esync_vsync_irq(phys, enable, true);
 			else if (phys->ops.control_empulse_irq)
 				phys->ops.control_empulse_irq(phys, enable);
 		} else {
@@ -4971,6 +4971,55 @@ static inline void _sde_encoder_update_retire_txq(struct sde_encoder_phys *phys,
 			sde_kms->debugfs_hw_fence);
 }
 
+static void sde_encoder_wait_for_esync_vsync(struct sde_encoder_phys *phys)
+{
+	struct sde_encoder_virt *sde_enc;
+	u32 empulse_irq_refcount;
+	u32 empulse_notification_sim;
+	bool video_mrr_support = false;
+
+	if (!phys || !phys->parent) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	sde_enc = to_sde_encoder_virt(phys->parent);
+	if (!sde_encoder_check_curr_mode(phys->parent, MSM_DISPLAY_VIDEO_MODE) ||
+		!phys->wait_esync_vsync_irq)
+		return;
+
+	video_mrr_support = sde_enc->disp_info.vrr_caps.video_mrr_support;
+	mutex_lock(phys->vblank_ctl_lock);
+
+	empulse_irq_refcount = atomic_read(&phys->empulse_irq_refcount);
+	empulse_notification_sim = phys->empulse_notification_sim;
+
+	SDE_EVT32(video_mrr_support, empulse_notification_sim, empulse_irq_refcount);
+
+	if (video_mrr_support && empulse_notification_sim &&
+			empulse_irq_refcount == 1) {
+		/* Force Remove sim refcount*/
+		if (phys->ops.control_esync_vsync_irq)
+			phys->ops.control_esync_vsync_irq(phys, false, false);
+		/*Enable proper esync irq */
+		if (phys->ops.control_esync_vsync_irq)
+			phys->ops.control_esync_vsync_irq(phys, true, false);
+	} else if (video_mrr_support && empulse_irq_refcount > 1)
+		SDE_EVT32(empulse_notification_sim, empulse_irq_refcount, 0xebad);
+
+	/*acquire refcount to wait on interrupt*/
+	if (phys->ops.control_esync_vsync_irq)
+		phys->ops.control_esync_vsync_irq(phys, true, false);
+
+	mutex_unlock(phys->vblank_ctl_lock);
+
+	sde_encoder_phys_vid_wait_for_esync_vsync(phys);
+
+	/*release refcount post wait on interrupt*/
+	if (phys->ops.control_esync_vsync_irq)
+		phys->ops.control_esync_vsync_irq(phys, false, true);
+}
+
 void sde_encoder_check_prog_fetch_region(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
@@ -5091,15 +5140,9 @@ static inline void _sde_encoder_trigger_flush_helper(struct drm_encoder *drm_enc
 	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
 		sde_encoder_check_prog_fetch_region(drm_enc);
 
-	if (sde_enc->disp_info.vrr_caps.video_psr_support && phys->wait_esync_vsync_irq) {
-		if (phys->ops.control_esync_vsync_irq)
-			phys->ops.control_esync_vsync_irq(phys, true);
-
-		sde_encoder_phys_vid_wait_for_esync_vsync(phys);
-
-		if (phys->ops.control_esync_vsync_irq)
-			phys->ops.control_esync_vsync_irq(phys, false);
-	}
+	if (sde_enc->disp_info.vrr_caps.video_psr_support
+		&& phys->wait_esync_vsync_irq)
+		sde_encoder_wait_for_esync_vsync(phys);
 }
 
 /**

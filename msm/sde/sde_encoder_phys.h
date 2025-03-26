@@ -214,7 +214,8 @@ struct sde_encoder_phys_ops {
 			struct sde_encoder_hw_resources *hw_res,
 			struct drm_connector_state *conn_state);
 	int (*control_vblank_irq)(struct sde_encoder_phys *enc, bool enable);
-	int (*control_esync_vsync_irq)(struct sde_encoder_phys *enc, bool enable);
+	int (*control_esync_vsync_irq)(struct sde_encoder_phys *enc, bool enable,
+			bool acquire_lock);
 	int (*control_empulse_irq)(struct sde_encoder_phys *enc, bool enable);
 	int (*wait_for_commit_done)(struct sde_encoder_phys *phys_enc);
 	int (*wait_for_tx_complete)(struct sde_encoder_phys *phys_enc);
