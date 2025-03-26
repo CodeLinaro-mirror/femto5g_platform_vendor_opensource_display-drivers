@@ -977,8 +977,7 @@ void sde_power_resource_deinit(struct platform_device *pdev,
 	mp->num_vreg = 0;
 	mp->num_clk = 0;
 
-	if (!phandle->gdsc2_blocked)
-		sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
+	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
 
 	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_GDSC, false);
 
@@ -1093,13 +1092,10 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 			goto cesta_err;
 		}
 
-		if (!phandle->gdsc2_blocked) {
-			rc = sde_power_enable_power_domain(phandle,
-					SDE_POWER_PD_ID_INT2_GDSC, true);
-			if (rc) {
-				pr_err("failed to enable core_int2_gdsc rc=%d\n", rc);
-				goto core_int2_gdsc_err;
-			}
+		rc = sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, true);
+		if (rc) {
+			pr_err("failed to enable core_int2_gdsc rc=%d\n", rc);
+			goto core_int2_gdsc_err;
 		}
 
 		rc = sde_power_scale_reg_bus(phandle, VOTE_INDEX_LOW, true);
@@ -1156,8 +1152,7 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 
 		sde_power_scale_reg_bus(phandle, VOTE_INDEX_DISABLE, true);
 
-		if (!phandle->gdsc2_blocked)
-			sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
+		sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
 
 		sde_cesta_resource_disable(SDE_CESTA_INDEX);
 
@@ -1188,8 +1183,7 @@ rsc_err:
 reg_bus_hdl_err:
 	sde_cesta_resource_disable(SDE_CESTA_INDEX);
 core_int2_gdsc_err:
-	if (!phandle->gdsc2_blocked)
-		sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
+	sde_power_enable_power_domain(phandle, SDE_POWER_PD_ID_INT2_GDSC, false);
 cesta_err:
 	msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, 0);
 core_gdsc_err:
