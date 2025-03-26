@@ -12,7 +12,6 @@
 #include <linux/soc/qcom/llcc-qcom.h>
 #include <linux/pm_qos.h>
 #include <soc/qcom/of_common.h>
-#include <soc/qcom/socinfo.h>
 
 #include "sde_hw_mdss.h"
 #include "sde_hw_catalog.h"
@@ -95,8 +94,6 @@
 #define ROT_LM_OFFSET			3
 #define LINE_LM_OFFSET			5
 #define LINE_MODE_WB_OFFSET		2
-
-#define QULTIV_DISP_GDSC2_DISABLED	2
 
 /**
  * these configurations are decided based on max mdp clock. It accounts
@@ -6740,8 +6737,6 @@ static int sde_hw_check_qultivate_fuse(struct drm_device *dev, struct sde_mdss_c
 	int rc = -EINVAL;
 	uint32_t fuse = 0;
 	bool enable = false;
-	int disp_part_count = 0;
-	u32 *part_info = NULL;
 
 	if (!dev || !dev->dev || !sde_cfg) {
 		SDE_ERROR("invalid input\n");
@@ -6755,36 +6750,18 @@ static int sde_hw_check_qultivate_fuse(struct drm_device *dev, struct sde_mdss_c
 		return 0;
 	}
 
-	if (!socinfo_get_part_info(PART_DISPLAY)) {
-		disp_part_count = socinfo_get_part_count(PART_DISPLAY);
-
-		if (disp_part_count != 0) {
-			part_info = kcalloc(disp_part_count, sizeof(u32), GFP_KERNEL);
-			if (!part_info)
-				return -ENOMEM;
-
-			socinfo_get_subpart_info(PART_DISPLAY, part_info, disp_part_count);
-		}
-	}
+	enable = fuse & BIT(29);
 
 	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV1) {
 		config_v1 = kzalloc(sizeof(struct sde_qultivate_config_v1), GFP_KERNEL);
-		if (!config_v1) {
-			kfree(part_info);
-			return -ENOMEM;
-		}
-		config_v1->enabled = (fuse & BIT(29) ||
-			(part_info != NULL && part_info[0] == QULTIV_DISP_GDSC2_DISABLED));
+		config_v1->enabled = enable;
 		config_v1->vig_count = 2;
 		config_v1->dma_count = 4;
 		config_v1->gdsc2_blocked = true;
 		sde_cfg->qultivate_cfg = (void *)config_v1;
-		SDE_INFO("qultivate_enable:%d ,SW version:%d\n",
-				config_v1->enabled, sde_cfg->qultivate_rev);
+		SDE_INFO("qultivate_enable:%d ,SW version:%d\n", enable, sde_cfg->qultivate_rev);
 	} else if (enable)
 		SDE_ERROR("display_qualtivate fuse is enabled, but sw version is not correct");
-
-	kfree(part_info);
 
 	return rc;
 }
