@@ -32,6 +32,7 @@
 /* Poll time to do recovery during active region */
 #define POLL_TIME_USEC_FOR_LN_CNT 500
 #define MAX_POLL_CNT 10
+#define ESYNC_EMSYNC_TO_PANEL_VSYNC_NS 100
 
 static bool sde_encoder_phys_vid_is_master(
 		struct sde_encoder_phys *phys_enc)
@@ -1272,11 +1273,18 @@ static void sde_encoder_phys_vid_get_intf_ts(struct sde_encoder_phys *phys_enc,
 			diff_emsync_vsync = intf_ts->panel_vsync_counter - intf_ts->esync_counter;
 			diff_emsync_vsync_ns = DIV_ROUND_UP(diff_emsync_vsync * 1000 * 10, 192);
 		}
+
 		SDE_EVT32_VERBOSE(intf_status.frame_count, intf_status.line_count,
 			intf_ts->esync_ts_ctrl, intf_ts->mdp_vsync_counter >> 32,
 			intf_ts->mdp_vsync_counter, intf_ts->panel_vsync_counter >> 32,
 			intf_ts->panel_vsync_counter, intf_ts->esync_counter >> 32,
-			intf_ts->esync_counter, diff_emsync_vsync_ns);
+			intf_ts->esync_counter, diff_emsync_vsync_ns,
+			(diff_emsync_vsync_ns > ESYNC_EMSYNC_TO_PANEL_VSYNC_NS) ? 0xebad : 0);
+
+		if (diff_emsync_vsync_ns > ESYNC_EMSYNC_TO_PANEL_VSYNC_NS)
+			SDE_DEBUG("mipidata and esync not modulated ts: %llu %llu %llu %llu\n",
+				intf_ts->mdp_vsync_counter, intf_ts->panel_vsync_counter,
+				intf_ts->esync_counter, diff_emsync_vsync_ns);
 	}
 }
 
@@ -1735,6 +1743,7 @@ static int sde_encoder_phys_vid_control_empulse_irq(
 	}
 
 	mutex_lock(phys_enc->vblank_ctl_lock);
+
 	refcount = atomic_read(&phys_enc->empulse_irq_refcount);
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
@@ -1750,12 +1759,12 @@ static int sde_encoder_phys_vid_control_empulse_irq(
 		goto end;
 	}
 
-	SDE_DEBUG_VIDENC(vid_enc, "[%pS] enable=%d/%d\n",
+	SDE_DEBUG_VIDENC(vid_enc, "[%pS] enable=%d/%d rc_state:%d\n",
 			__builtin_return_address(0),
-			enable, atomic_read(&phys_enc->empulse_irq_refcount));
+			enable, atomic_read(&phys_enc->empulse_irq_refcount), sde_enc->rc_state);
 
-	SDE_EVT32(DRMID(phys_enc->parent), enable,
-			atomic_read(&phys_enc->empulse_irq_refcount));
+	SDE_EVT32(DRMID(phys_enc->parent), enable, atomic_read(&phys_enc->empulse_irq_refcount),
+			phys_enc->empulse_notification_sim, sde_enc->rc_state);
 
 	if (enable && atomic_inc_return(&phys_enc->empulse_irq_refcount) == 1) {
 		if (sde_enc->rc_state == SDE_ENC_RC_STATE_ON) {
@@ -1771,6 +1780,7 @@ static int sde_encoder_phys_vid_control_empulse_irq(
 	} else if (!enable && atomic_dec_return(&phys_enc->empulse_irq_refcount) == 0) {
 		if (phys_enc->empulse_notification_sim) {
 			sde_encoder_phys_vid_register_esync_backup_sim(phys_enc, false);
+			phys_enc->empulse_notification_sim = false;
 		} else {
 			ret = sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_ESYNC_EMSYNC);
 			if (ret)
@@ -1787,12 +1797,13 @@ end:
 				phys_enc->hw_intf->idx - INTF_0,
 				enable, refcount, SDE_EVTLOG_ERROR);
 	}
+
 	mutex_unlock(phys_enc->vblank_ctl_lock);
 	return ret;
 }
 
 static int sde_encoder_phys_vid_control_esync_vsync_irq(
-		struct sde_encoder_phys *phys_enc, bool enable)
+		struct sde_encoder_phys *phys_enc, bool enable, bool acquire_lock)
 {
 	struct sde_encoder_phys_vid *vid_enc;
 	struct sde_encoder_virt *sde_enc;
@@ -1805,7 +1816,9 @@ static int sde_encoder_phys_vid_control_esync_vsync_irq(
 		return -EINVAL;
 	}
 
-	mutex_lock(phys_enc->vblank_ctl_lock);
+	if (acquire_lock)
+		mutex_lock(phys_enc->vblank_ctl_lock);
+
 	refcount = atomic_read(&phys_enc->empulse_irq_refcount);
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
@@ -1821,12 +1834,14 @@ static int sde_encoder_phys_vid_control_esync_vsync_irq(
 		goto end;
 	}
 
-	SDE_DEBUG_VIDENC(vid_enc, "[%pS] enable=%d/%d\n",
+	SDE_DEBUG_VIDENC(vid_enc, "[%pS] enable=%d/%d rc state:%d\n",
 			__builtin_return_address(0),
-			enable, atomic_read(&phys_enc->empulse_irq_refcount));
+			enable, atomic_read(&phys_enc->empulse_irq_refcount),
+			sde_enc->rc_state);
 
 	SDE_EVT32(DRMID(phys_enc->parent), enable,
-			atomic_read(&phys_enc->empulse_irq_refcount));
+		atomic_read(&phys_enc->empulse_irq_refcount),
+		phys_enc->empulse_notification_sim, sde_enc->rc_state);
 
 	if (enable && atomic_inc_return(&phys_enc->empulse_irq_refcount) == 1) {
 		if (sde_enc->rc_state == SDE_ENC_RC_STATE_ON) {
@@ -1842,6 +1857,7 @@ static int sde_encoder_phys_vid_control_esync_vsync_irq(
 	} else if (!enable && atomic_dec_return(&phys_enc->empulse_irq_refcount) == 0) {
 		if (phys_enc->empulse_notification_sim) {
 			sde_encoder_phys_vid_register_esync_backup_sim(phys_enc, false);
+			phys_enc->empulse_notification_sim = false;
 		} else {
 			ret = sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_ESYNC_VSYNC);
 			if (ret)
@@ -1858,7 +1874,10 @@ end:
 				phys_enc->hw_intf->idx - INTF_0,
 				enable, refcount, SDE_EVTLOG_ERROR);
 	}
-	mutex_unlock(phys_enc->vblank_ctl_lock);
+
+	if (acquire_lock)
+		mutex_unlock(phys_enc->vblank_ctl_lock);
+
 	return ret;
 }
 
@@ -2089,7 +2108,7 @@ void sde_encoder_phys_vid_wait_for_esync_vsync(
 	/* Wait for esync vsync */
 	ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_ESYNC_VSYNC,
 			&wait_info);
-	if (ret == -ETIMEDOUT)
+	if (ret)
 		SDE_ERROR("wait for esync vsync failed,%d\n", ret);
 
 	phys_enc->wait_esync_vsync_irq = false;
