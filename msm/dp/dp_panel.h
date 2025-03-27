@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -168,6 +168,7 @@ struct dp_panel {
 	bool dsc_continuous_pps;
 	bool mst_state;
 	enum dp_output_format output_format;
+	bool dsc_24bpp_support;
 
 	/* override debug option */
 	bool mst_hide;

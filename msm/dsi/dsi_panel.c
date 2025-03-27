@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1173,8 +1173,8 @@ static int dsi_panel_parse_misc_host_config(struct dsi_host_common_cfg *host,
 				"qcom,mdss-dsi-ext-bridge-custom-topology");
 	host->ext_bridge_dynamic_mode_set = utils->read_bool(utils->data,
 				"qcom,mdss-dsi-ext-bridge-dynamic-mode-set");
-	host->ext_bridge_always_dual_intf = utils->read_bool(utils->data,
-					"qcom,ext-bridge-always-dual-intf");
+	host->ext_bridge_fixed_layer_mixer = utils->read_bool(utils->data,
+					"qcom,ext-bridge-fixed-layer-mixer");
 	host->force_hs_clk_lane = utils->read_bool(utils->data,
 					"qcom,mdss-dsi-force-clock-lane-hs");
 	panel_cphy_mode = utils->read_bool(utils->data,
