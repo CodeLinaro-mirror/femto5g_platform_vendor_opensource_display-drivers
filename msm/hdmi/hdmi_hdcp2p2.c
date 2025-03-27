@@ -561,7 +561,7 @@ static void hdmi_hdcp2p2_link_cb(void *data)
 
 }
 
-static int hdmi_hdcp2p2_register(void *input, bool mst_enabled)
+static int hdmi_hdcp2p2_register(void *input, bool mst_enabled, u32 cell_idx)
 {
 	int rc;
 	struct hdmi_hdcp2p2_ctrl *hdcp2 = input;

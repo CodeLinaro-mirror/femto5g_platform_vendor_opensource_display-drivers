@@ -153,7 +153,6 @@ struct hdmi_hdcp {
 	struct sde_hdcp_ops *ops;
 
 	u32 source_cap;
-
 	struct hdmi_hdcp_dev dev[HDCP_VERSION_MAX];
 };
 
@@ -187,6 +186,7 @@ struct hdmi_display_private {
 	struct work_struct hpd_work;
 	struct mutex session_lock;	// TODO same as display_lock in 4.4
 	struct mutex accounting_lock;
+	struct delayed_work hdcp_cb_work;
 
 	u32 tot_dsc_blks_in_use;
 	u32 tot_lm_blks_in_use;
@@ -196,7 +196,8 @@ struct hdmi_display_private {
 	bool process_hpd_connect;
 	struct dev_pm_qos_request pm_qos_req[NR_CPUS];
 	bool pm_qos_requested;
-
+	bool hdcp_delayed_off;
+	struct hdmi_hdcp_status hdcp_status;
 	u32 cell_idx;
 	u32 phy_idx;
 	/*
@@ -207,7 +208,6 @@ struct hdmi_display_private {
 	 * HDMI_HPD_CTRL
 	 */
 	spinlock_t reg_lock;
-
 	bool core_clks_off;
 };
 
@@ -267,6 +267,7 @@ static void hdmi_set_mode(struct hdmi_display_private *hdmi, bool power_on)
 	unsigned long flags;
 
 	spin_lock_irqsave(&hdmi->reg_lock, flags);
+	ctrl = hdmi_read(hdmi, HDMI_CTRL);
 	if (power_on) {
 		ctrl |= HDMI_CTRL_ENABLE;
 		if (!hdmi->hdmi_mode) {
@@ -277,7 +278,7 @@ static void hdmi_set_mode(struct hdmi_display_private *hdmi, bool power_on)
 			ctrl |= HDMI_CTRL_HDMI;
 		}
 	} else {
-		ctrl = HDMI_CTRL_HDMI;
+		ctrl &= ~HDMI_CTRL_HDMI;
 	}
 
 	hdmi_write(hdmi, HDMI_CTRL, ctrl);
@@ -433,9 +434,300 @@ static void hdmi_display_isr(struct hdmi_display_private *hdmi)
 	}
 }
 
+static void hdmi_display_deinitialize_hdcp(struct hdmi_display_private *hdmi)
+{
+	if (!hdmi) {
+		HDMI_ERR("invalid input\n");
+		return;
+	}
+
+	sde_hdcp_1x_deinit(hdmi->hdcp.dev[HDCP_VERSION_1X].fd);
+	hdmi_hdcp2p2_deinit(hdmi->hdcp.dev[HDCP_VERSION_2P2].fd);
+}
+
+static void hdmi_display_update_hdcp_status(struct hdmi_display_private *hdmi,
+					bool reset)
+{
+	if (reset) {
+		hdmi->hdcp_status.hdcp_state = HDCP_STATE_INACTIVE;
+		hdmi->hdcp_status.hdcp_version = HDCP_VERSION_NONE;
+	}
+
+	memset(hdmi->debug->hdcp_status, 0, sizeof(hdmi->debug->hdcp_status));
+
+	snprintf(hdmi->debug->hdcp_status, sizeof(hdmi->debug->hdcp_status),
+		"%s: %s\ncaps: %d\n",
+		sde_hdcp_version(hdmi->hdcp_status.hdcp_version),
+		sde_hdcp_state_name(hdmi->hdcp_status.hdcp_state),
+		hdmi->hdcp.source_cap);
+}
+
+static void hdmi_display_check_source_hdcp_caps
+				(struct hdmi_display_private *hdmi)
+{
+	int i;
+	struct hdmi_hdcp_dev *hdcp_dev = hdmi->hdcp.dev;
+
+	if (hdmi->debug->hdcp_disabled) {
+		pr_warn("hdcp disabled\n");
+		return;
+	}
+
+	for (i = 0; i < HDCP_VERSION_MAX; i++) {
+		struct hdmi_hdcp_dev *dev = &hdcp_dev[i];
+		struct sde_hdcp_ops *ops = dev->ops;
+		void *fd = dev->fd;
+
+		if (!fd || !ops)
+			continue;
+		if (ops->set_mode && ops->set_mode(fd, false, 0))
+			continue;
+
+		if (!(hdmi->hdcp.source_cap & dev->ver) &&
+				ops->feature_supported &&
+				ops->feature_supported(fd))
+			hdmi->hdcp.source_cap |= dev->ver;
+	}
+
+	hdmi_display_update_hdcp_status(hdmi, false);
+}
+
+static void hdmi_display_update_hdcp_info(struct hdmi_display_private *hdmi)
+{
+	void *fd = NULL;
+	struct hdmi_hdcp_dev *dev = NULL;
+	struct sde_hdcp_ops *ops = NULL;
+	int i = HDCP_VERSION_2P2;
+
+	hdmi_display_update_hdcp_status(hdmi, true);
+
+	hdmi->hdcp.data = NULL;
+	hdmi->hdcp.ops = NULL;
+
+	while (i) {
+		dev = &hdmi->hdcp.dev[i];
+		ops = dev->ops;
+		fd = dev->fd;
+
+		i >>= 1;
+
+		if (!(hdmi->hdcp.source_cap & dev->ver))
+			continue;
+
+		if (ops->sink_support(fd)) {
+			hdmi->hdcp.data = fd;
+			hdmi->hdcp.ops = ops;
+			hdmi->hdcp_status.hdcp_version = dev->ver;
+			break;
+		}
+	}
+
+	HDMI_DEBUG("HDCP version supported: %s\n",
+		sde_hdcp_version(hdmi->hdcp_status.hdcp_version));
+}
+
+static inline bool hdmi_display_is_hdcp_enabled
+				(struct hdmi_display_private *hdmi)
+{
+	return hdmi->hdcp_status.hdcp_version && hdmi->hdcp.ops;
+}
+
+static int hdmi_display_hdcp_start(struct hdmi_display_private *hdmi)
+{
+	if (hdmi->hdcp_status.hdcp_state != HDCP_STATE_INACTIVE)
+		return -EINVAL;
+
+	hdmi_display_check_source_hdcp_caps(hdmi);
+	hdmi_display_update_hdcp_info(hdmi);
+
+	if (hdmi_display_is_hdcp_enabled(hdmi)) {
+		if (hdmi->hdcp.ops && hdmi->hdcp.ops->on &&
+				hdmi->hdcp.ops->on(hdmi->hdcp.data)) {
+			hdmi_display_update_hdcp_status(hdmi, true);
+			return 0;
+		}
+	} else {
+		hdmi_display_update_hdcp_status(hdmi, true);
+		return 0;
+	}
+
+	return -EINVAL;
+}
+
+static void hdmi_display_hdcp_process_delayed_off
+					(struct hdmi_display_private *hdmi)
+{
+	if (hdmi->hdcp_delayed_off) {
+		if (hdmi->hdcp.ops && hdmi->hdcp.ops->off)
+			hdmi->hdcp.ops->off(hdmi->hdcp.data);
+		hdmi_display_update_hdcp_status(hdmi, true);
+		hdmi->hdcp_delayed_off = false;
+	}
+}
+
+static void hdmi_display_notify_hdcp_status_cb(void *ptr,
+		enum sde_hdcp_state state)
+{
+	struct hdmi_display *hdmi_display = ptr;
+	struct hdmi_display_private *hdmi;
+
+	if (!hdmi_display) {
+		HDMI_ERR("invalid input\n");
+		return;
+	}
+
+	hdmi = container_of(hdmi_display,
+			struct hdmi_display_private, hdmi_display);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY,
+					hdmi->hdcp_status.hdcp_state);
+
+	hdmi->hdcp_status.hdcp_state = state;
+
+	queue_delayed_work(hdmi->wq, &hdmi->hdcp_cb_work, HZ/4);
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT,
+				hdmi->hdcp_status.hdcp_state);
+}
+
+static void hdmi_display_hdcp_process_state(struct hdmi_display_private *hdmi)
+{
+	struct hdmi_hdcp_status *status;
+	struct sde_hdcp_ops *ops;
+	void *data;
+	int rc = 0;
+
+	status = &hdmi->hdcp_status;
+
+	ops = hdmi->hdcp.ops;
+	data = hdmi->hdcp.data;
+
+	if (status->hdcp_state != HDCP_STATE_AUTHENTICATED &&
+		ops && ops->force_encryption && hdmi->debug->force_encryption)
+		ops->force_encryption(data, hdmi->debug->force_encryption);
+
+	switch (status->hdcp_state) {
+	case HDCP_STATE_INACTIVE:
+		if (hdmi->hdcp.ops && hdmi->hdcp.ops->authenticate)
+			rc = hdmi->hdcp.ops->authenticate(data);
+		if (!rc)
+			status->hdcp_state = HDCP_STATE_AUTHENTICATING;
+		break;
+	case HDCP_STATE_AUTH_FAIL:
+		if (hdmi_display_state_is(HDMI_STATE_ENABLED)) {
+
+			if (ops && ops->on && ops->on(data)) {
+				hdmi_display_update_hdcp_status(hdmi, true);
+				return;
+			}
+
+			if (ops && ops->reauthenticate) {
+				rc = ops->reauthenticate(data);
+				if (rc)
+					HDMI_ERR("failed rc=%d\n", rc);
+			}
+
+			status->hdcp_state = HDCP_STATE_AUTHENTICATING;
+		} else {
+			HDMI_DEBUG("not reauthenticating cable disconnected\n");
+		}
+		break;
+	default:
+		break;
+	}
+}
+
+static void hdmi_display_hdcp_cb_work(struct work_struct *work)
+{
+	struct hdmi_display_private *hdmi;
+	struct delayed_work *dw = to_delayed_work(work);
+	struct hdmi_hdcp_status *status;
+	int rc = 0;
+
+	hdmi = (struct hdmi_display_private *)container_of
+			(dw, struct hdmi_display_private, hdcp_cb_work);
+
+	if (!hdmi_display_state_is(HDMI_STATE_ENABLED) ||
+		!hdmi_display_state_is(HDMI_STATE_CONNECTED) ||
+		hdmi_display_state_is(HDMI_STATE_ABORTED |
+					HDMI_STATE_HDCP_ABORTED))
+		return;
+
+	if (hdmi_display_state_is(HDMI_STATE_SUSPENDED)) {
+		HDMI_DEBUG("System suspending. Delay HDCP operations\n");
+		queue_delayed_work(hdmi->wq, &hdmi->hdcp_cb_work, HZ);
+		return;
+	}
+
+	hdmi_display_hdcp_process_delayed_off(hdmi);
+
+	rc = hdmi_display_hdcp_start(hdmi);
+	if (!rc)
+		return;
+
+	status = &hdmi->hdcp_status;
+	HDMI_DEBUG("%s: %s\n", sde_hdcp_version(status->hdcp_version),
+		sde_hdcp_state_name(status->hdcp_state));
+
+	hdmi_display_update_hdcp_status(hdmi, false);
+
+	hdmi_display_hdcp_process_state(hdmi);
+}
+
+static int hdmi_display_initialize_hdcp(struct hdmi_display_private *hdmi)
+{
+	struct sde_hdcp_init_data hdcp_init_data;
+	struct hdmi_parser *parser;
+	void *fd;
+	int rc = 0;
+
+	if (!hdmi) {
+		HDMI_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	parser = hdmi->parser;
+
+	hdcp_init_data.client_id     = HDCP_CLIENT_HDMI;
+	hdcp_init_data.cb_data       = (void *)&(hdmi->hdmi_display);
+	hdcp_init_data.workq         = hdmi->wq;
+	hdcp_init_data.sec_access    = true;
+	hdcp_init_data.notify_status = hdmi_display_notify_hdcp_status_cb;
+	hdcp_init_data.core_io       = &parser->get_io(parser, "hdmi_ctrl")->io;
+	hdcp_init_data.hdcp_io       = &parser->get_io(parser, "hdcp_phy")->io;
+	hdcp_init_data.msm_hdcp_dev  = hdmi->parser->msm_hdcp_dev;
+	hdcp_init_data.ddc           = hdmi->ddc;
+	fd = sde_hdcp_1x_init(&hdcp_init_data);
+	if (IS_ERR_OR_NULL(fd)) {
+		HDMI_DEBUG("Error initializing HDCP 1.x\n");
+		return -EINVAL;
+	}
+
+	hdmi->hdcp.dev[HDCP_VERSION_1X].fd = fd;
+	hdmi->hdcp.dev[HDCP_VERSION_1X].ops = sde_hdcp_1x_get(fd);
+	hdmi->hdcp.dev[HDCP_VERSION_1X].ver = HDCP_VERSION_1X;
+	HDMI_INFO("HDCP 1.3 initialized\n");
+
+	fd = hdmi_hdcp2p2_init(&hdcp_init_data);
+	if (IS_ERR_OR_NULL(fd)) {
+		HDMI_DEBUG("Error initializing HDCP 2.x\n");
+		rc = -EINVAL;
+		goto error;
+	}
+
+	hdmi->hdcp.dev[HDCP_VERSION_2P2].fd = fd;
+	hdmi->hdcp.dev[HDCP_VERSION_2P2].ops = hdmi_hdcp2p2_get(fd);
+	hdmi->hdcp.dev[HDCP_VERSION_2P2].ver = HDCP_VERSION_2P2;
+	HDMI_INFO("HDCP 2.2 initialized\n");
+
+	return 0;
+error:
+	sde_hdcp_1x_deinit(hdmi->hdcp.dev[HDCP_VERSION_1X].fd);
+	return rc;
+}
+
 static int hdmi_init_sub_modules(struct hdmi_display_private *hdmi)
 {
 	int rc = 0;
+	bool hdcp_disabled;
 	struct hdmi_parser *parser;
 	struct drm_connector *connector;
 	struct device *dev = &hdmi->pdev->dev;
@@ -530,6 +822,8 @@ static int hdmi_init_sub_modules(struct hdmi_display_private *hdmi)
 		goto error_cec;
 	}
 
+	hdcp_disabled = !!hdmi_display_initialize_hdcp(hdmi);
+
 	debug_in.panel = hdmi->panel;
 	debug_in.connector = connector;
 	debug_in.parser = hdmi->parser;
@@ -543,6 +837,9 @@ static int hdmi_init_sub_modules(struct hdmi_display_private *hdmi)
 		hdmi->debug = NULL;
 		goto error_debug;
 	}
+
+	hdmi->debug->hdcp_disabled = hdcp_disabled;
+	hdmi_display_update_hdcp_status(hdmi, true);
 
 	/* configure hpd */
 	hdmi_hpd_enable(hdmi);
@@ -559,6 +856,7 @@ static int hdmi_init_sub_modules(struct hdmi_display_private *hdmi)
 	}
 
 	hdmi->audio->display = &hdmi->hdmi_display;
+
 	return 0;
 
 error_audio:
@@ -764,7 +1062,7 @@ static void hdmi_display_hotplug_work(struct work_struct *work)
 		rc = hdmi->audio->off(hdmi->audio, 0);
 		if (rc)
 			HDMI_ERR("HDMI audio Off failed status %d\n", rc);
-
+		cancel_delayed_work_sync(&hdmi->hdcp_cb_work);
 		hdmi_display_state_add(HDMI_STATE_DISCONNECTED);
 		hdmi_display_state_remove(HDMI_STATE_CONNECTED);
 	}
@@ -785,6 +1083,7 @@ static int hdmi_display_create_workqueue(struct hdmi_display_private *hdmi)
 	}
 
 	INIT_WORK(&hdmi->hpd_work, hdmi_display_hotplug_work);
+	INIT_DELAYED_WORK(&hdmi->hdcp_cb_work, hdmi_display_hdcp_cb_work);
 	return 0;
 }
 
@@ -802,8 +1101,8 @@ static irqreturn_t hdmi_display_irq(int irq, void *dev_id)
 
 	 //Process Scrambling: ISR
 	hdmi->ddc->scrambling_isr((void *)hdmi->ddc);
-
-	//sde_hdmi_ddc_hdcp2p2_isr
+	if (hdmi->hdcp.ops && hdmi->hdcp.ops->isr)
+		hdmi->hdcp.ops->isr(hdmi->hdcp.data);
 
 	hdmi->ddc->isr(hdmi->ddc->i2c);
 
@@ -928,6 +1227,8 @@ static int hdmi_display_post_enable(struct hdmi_display *hdmi_display,
 	}
 
 	HDMI_DEBUG("display post enable complete. state: 0x%x\n", hdmi->state);
+	cancel_delayed_work_sync(&hdmi->hdcp_cb_work);
+	queue_delayed_work(hdmi->wq, &hdmi->hdcp_cb_work, HZ);
 end:
 	mutex_unlock(&hdmi->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hdmi->state);
@@ -940,6 +1241,7 @@ static int hdmi_display_pre_disable(struct hdmi_display *hdmi_display,
 {
 	struct hdmi_display_private *hdmi;
 	struct hdmi_panel *hdmi_panel;
+	struct hdmi_hdcp_status *status;
 	int rc = 0;
 
 	if (!hdmi_display || !panel) {
@@ -951,7 +1253,7 @@ static int hdmi_display_pre_disable(struct hdmi_display *hdmi_display,
 
 	hdmi = container_of(hdmi_display,
 			struct hdmi_display_private, hdmi_display);
-
+	status = &hdmi->hdcp_status;
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, hdmi->state);
 	mutex_lock(&hdmi->session_lock);
 
@@ -966,6 +1268,20 @@ static int hdmi_display_pre_disable(struct hdmi_display *hdmi_display,
 		goto end;
 	}
 
+	hdmi_display_state_add(HDMI_STATE_HDCP_ABORTED);
+	cancel_delayed_work_sync(&hdmi->hdcp_cb_work);
+	if (hdmi_display_is_hdcp_enabled(hdmi) &&
+			status->hdcp_state != HDCP_STATE_INACTIVE) {
+		if (hdmi_display_state_is(HDMI_STATE_SUSPENDED)) {
+			HDMI_ERR("HDCP cleanup not possible while suspended\n");
+			hdmi->hdcp_delayed_off = true;
+			goto end;
+		}
+
+		if (hdmi->hdcp.ops && hdmi->hdcp.ops->off)
+			hdmi->hdcp.ops->off(hdmi->hdcp.data);
+		hdmi_display_update_hdcp_status(hdmi, true);
+	}
 end:
 	mutex_unlock(&hdmi->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, hdmi->state);
@@ -1229,7 +1545,7 @@ static int hdmi_display_set_mode(struct hdmi_display *hdmi_display,
 			drm_mode_vrefresh(mode));
 
 	mutex_lock(&hdmi->session_lock);
-
+	hdmi->ddc->mode = mode;
 	rc = hdmi_panel->set_mode(hdmi_panel, mode);
 	if (rc)
 		HDMI_ERR("panel set mode failed, rc=%d\n", rc);
@@ -1698,7 +2014,7 @@ static int hdmi_display_remove(struct platform_device *pdev)
 
 	if (hdmi->wq)
 		destroy_workqueue(hdmi->wq);
-
+	hdmi_display_deinitialize_hdcp(hdmi);
 	platform_set_drvdata(pdev, NULL);
 	kfree(hdmi);
 end:
