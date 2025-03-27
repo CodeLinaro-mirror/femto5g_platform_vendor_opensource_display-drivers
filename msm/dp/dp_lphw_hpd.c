@@ -267,7 +267,7 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 
 	} else if ((status == DP_HPD_STATUS_CONNECTED) &&
 			!(isr & DP_IRQ_HPD_INT_STATUS)) { /* connected status */
-		if (!lphw_hpd->base.hpd_high) {
+		if (!lphw_hpd->hpd) {
 			DP_DEBUG("DP%d connect interrupt, hpd isr state: 0x%x\n",
 					lphw_hpd->parser->cell_idx, isr);
 			lphw_hpd->hpd = true;
