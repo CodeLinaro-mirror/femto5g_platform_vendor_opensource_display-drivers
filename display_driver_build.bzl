@@ -64,12 +64,19 @@ def display_module_entry(hdrs = []):
 
 def define_target_variant_modules(target, variant, registry, modules, config_options = []):
     kernel_build = "{}_{}".format(target, variant)
-    kernel_build_label = "//msm-kernel:{}".format(kernel_build)
+    kernel_build_label = select({
+        "//build/kernel/kleaf:socrepo_true": "//soc-repo:{}_base_kernel".format(kernel_build),
+        "//build/kernel/kleaf:socrepo_false": "//msm-kernel:{}".format(kernel_build),
+    })
     modules = [registry.get(module_name) for module_name in modules]
     options = _get_kernel_build_options(modules, config_options)
     build_print = lambda message : print("{}: {}".format(kernel_build, message))
     formatter = lambda s : s.replace("%b", kernel_build).replace("%t", target)
-    headers = ["//msm-kernel:all_headers"] + registry.hdrs
+    headers = select({
+        "//build/kernel/kleaf:socrepo_true": ["//soc-repo:all_headers",
+        "//soc-repo:{}/drivers/soc/qcom/hab/msm_hab".format(kernel_build),],
+        "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
+    })
     all_module_rules = []
 
     for module in modules:
@@ -83,7 +90,7 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
             name = rule_name,
             srcs = module_srcs,
             out = "{}.ko".format(module.name),
-            deps = headers + _get_kernel_build_module_deps(module, options, formatter),
+            deps = headers + registry.hdrs + _get_kernel_build_module_deps(module, options, formatter),
             local_defines = options.keys(),
         )
         all_module_rules.append(rule_name)
