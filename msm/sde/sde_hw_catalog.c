@@ -6433,6 +6433,34 @@ static void _sde_get_hw_caps_for_vienna(struct sde_mdss_cfg *sde_cfg,
 	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 }
 
+static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
+	set_bit(SDE_FEATURE_WB_UBWC, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_CROP, sde_cfg->features);
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
+	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+	set_bit(SDE_MDP_DHDR_MEMPOOL_4K, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
+	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
+	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
+	sde_cfg->perf.min_prefill_lines = 40;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	sde_cfg->mdss_hw_block_size = 0x158;
+}
+
 static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_170, _sde_get_hw_caps_for_msm8996},
 	{SDE_HW_VER_300, _sde_get_hw_caps_for_msm8998},
@@ -6458,6 +6486,7 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_850, _sde_get_hw_caps_for_cape},
 	{SDE_HW_VER_880, _sde_get_hw_caps_for_vienna},
 	{SDE_HW_VER_900, _sde_get_hw_caps_for_kalama},
+	{SDE_HW_VER_980, _sde_get_hw_caps_for_seraph},
 	{SDE_HW_VER_A00, _sde_get_hw_caps_for_pineapple},
 	{SDE_HW_VER_B00, _sde_get_hw_caps_for_niobe},
 	{SDE_HW_VER_C00, _sde_get_hw_caps_for_sun},
