@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef WIRE_USER_H
@@ -12,7 +12,10 @@
  * Includes
  * ---------------------------------------------------------------------------
  */
+#include <linux/version.h>
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 #include <soc/qcom/boot_stats.h>
+#endif
 #if defined(__linux__)
 #include "WF/wfd.h"
 #include "WF/wfdext2.h"

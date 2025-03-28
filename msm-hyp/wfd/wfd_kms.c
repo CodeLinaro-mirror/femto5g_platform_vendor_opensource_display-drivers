@@ -122,6 +122,7 @@
 
 #include <linux/sort.h>
 #include <linux/habmm.h>
+#include <linux/version.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
@@ -2836,7 +2837,11 @@ static int wfd_kms_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+static void wfd_kms_remove(struct platform_device *pdev)
+#else
 static int wfd_kms_remove(struct platform_device *pdev)
+#endif
 {
 	struct wfd_kms *kms = platform_get_drvdata(pdev);
 	struct device *dev = &pdev->dev;
@@ -2865,7 +2870,9 @@ static int wfd_kms_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static const struct platform_device_id wfd_kms_id[] = {
