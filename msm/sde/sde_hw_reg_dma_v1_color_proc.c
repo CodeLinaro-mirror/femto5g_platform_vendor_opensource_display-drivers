@@ -21,6 +21,38 @@
 
 #define DIVCEIL(a, b)  (((a) + (b) - 1) / (b))
 
+void log_sde_reg_write(struct sde_hw_blk_reg_map *c, u32 reg_off,
+		u32 val, const char *name)
+{
+	SDE_ERROR("writing register [%s:0x%X] with value 0x%X\n",
+		name, c->blk_off + reg_off, val);
+}
+
+int log_sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off,
+			const char *name)
+{
+	SDE_ERROR("reading register [%s:0x%X]\n",
+		name, c->blk_off + reg_off);
+	return 0;
+}
+
+#undef SDE_REG_WRITE
+#define SDE_REG_WRITE(c, off, val) \
+	( \
+		IS_DISP_OP_HWIO((c)->disp_op) ? \
+		sde_reg_write(c, off, val, #off) : \
+		log_sde_reg_write(c, off, val, #off) \
+	)
+
+#undef SDE_REG_READ
+#define SDE_REG_READ(c, off) \
+	( \
+		IS_DISP_OP_HWIO((c)->disp_op) ? \
+		sde_reg_read(c, off) : \
+		log_sde_reg_read(c, off, #off) \
+	)
+
+
 /* Reserve space of 128 words for LUT dma payload set-up */
 #define REG_DMA_HEADERS_BUFFER_SZ (sizeof(u32) * 128)
 
@@ -6618,6 +6650,7 @@ int reg_dmav1_setup_spr_cfg5_params(struct sde_hw_dspp *ctx,
 {
 	uint32_t i, reg[1];
 	int rc = 0;
+	uint32_t base_off = ctx->hw.blk_off + ctx->cap->sblk->spr.base;
 
 	if (!payload->cfg18_en) {
 		ctx->spr_cfg_18_default = 0;
@@ -6649,7 +6682,17 @@ int reg_dmav1_setup_spr_cfg5_params(struct sde_hw_dspp *ctx,
 		reg[0] |= APPLY_MASK_AND_SHIFT(val, 2, 4 * i);
 	}
 
-	SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->spr.base + 0x7C, reg[0]);
+	if (IS_DISP_OP_HWIO(ctx->hw.disp_op)) {
+		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->spr.base + 0x7C, reg[0]);
+	} else {
+		REG_DMA_SETUP_OPS(*dma_write_cfg, base_off + 0x7C, &reg[0], sizeof(u32),
+								REG_SINGLE_WRITE, 0, 0, 0);
+		rc = dma_ops->setup_payload(dma_write_cfg);
+		if (rc) {
+			DRM_ERROR("spr write cfg_18 failed ret %d\n", rc);
+			return rc;
+		}
+	}
 	ctx->spr_cfg_18_default = reg[0];
 
 	return rc;
@@ -6926,6 +6969,12 @@ void reg_dmav1_setup_spr_init_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 	if (reg_dmav1_get_spr_target(ctx, cfg, &dma_ops, &base_off, &buffer, &disable))
 		return;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	if (!disable)
+		hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 	if (disable) {
 		LOG_FEATURE_OFF;
 		return reg_dmav1_disable_spr(ctx, cfg);
@@ -6996,6 +7045,13 @@ void reg_dmav1_setup_spr_udc_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
 		goto cleanup;
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	if (!disable)
+		hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 
 	buffer = dspp_buf[SPR_UDC][ctx->idx][ctx->dpu_idx];
 	payload = hw_cfg->payload;
