@@ -10,7 +10,7 @@
 
 #include "sde_power_handle.h"
 
-#define MAX_SCC_BLOCK		6
+#define MAX_SCC_BLOCK		9
 #define MAX_CESTA_COUNT		1
 #define SDE_CESTA_INDEX		0
 
