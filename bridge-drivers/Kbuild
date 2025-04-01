@@ -2,8 +2,16 @@
 
 KDIR := $(TOP)/kernel_platform/msm-kernel
 
+ifeq ($(CONFIG_ARCH_SM6150), y)
+      include $(DISPLAY_ROOT)/config/sm6150disp.conf
+      LINUX_INC += -include $(DISPLAY_ROOT)/config/sm6150dispconf.h
+      subdir-ccflags-y += $(LE_EXTRA_CFLAGS)
+endif
+
+LINUX_INC += -I$(DISPLAY_ROOT)/../mm-drivers/msm_ext_display/include
 ccflags-y += $(LINUX_INC)
 
 obj-$(CONFIG_DRM_MSM) += lt9611uxc.o
+obj-$(CONFIG_DRM_LONTIUM_LT9611) += lt9611.o
 
 CDEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"
