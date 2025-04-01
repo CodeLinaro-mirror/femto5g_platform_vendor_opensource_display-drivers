@@ -33,7 +33,11 @@
 #endif
 
 #include <linux/version.h>
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <qcom_sync_file.h>
+#else
 #include <linux/soc/qcom/qcom_sync_file.h>
+#endif
 #include <linux/file.h>
 
 #include "sde_kms.h"
