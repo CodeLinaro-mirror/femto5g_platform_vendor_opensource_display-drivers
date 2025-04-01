@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "dsi_pll.h"
@@ -104,8 +104,10 @@
 #define DSIPHY_PLL_PLL_LPF2_POSTDIV		0x0504
 
 struct dsi_pll_div_table pll_14nm_dphy[] = {
-	{600000000, 1500000000, 2, 0},
-	/* yet to add more  */
+	{162500000, 325000000, 8, 0},
+	{325000000, 650000000, 4, 0},
+	{650000000, 1300000000, 2, 0},
+	{1300000000, 2600000000, 1, 0}
 };
 
 #endif  /* DSI_PLL_14NM_H */
