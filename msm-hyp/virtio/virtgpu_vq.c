@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/delay.h>
 #include <linux/kernel.h>
@@ -807,10 +807,10 @@ int virtio_gpu_cmd_event_control(struct virtio_kms *kms,
 {
 	struct virtio_gpu_event_control *cmd_p =
 			kzalloc(sizeof(struct virtio_gpu_event_control),
-				GFP_KERNEL);
+				GFP_ATOMIC);
 	struct virtio_gpu_ctrl_hdr *resp =
 		kzalloc(sizeof(struct virtio_gpu_ctrl_hdr),
-		       GFP_KERNEL);
+		       GFP_ATOMIC);
 
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
