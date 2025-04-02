@@ -1495,8 +1495,11 @@ void sde_dbg_update_dump_mode(bool enable_coredump)
 
 	if (enable_coredump)
 		new_mode = SDE_DBG_DUMP_IN_COREDUMP;
-	dbg_base->dump_option = new_mode;
-	dbg_base->evtlog->dump_mode = new_mode;
+	if (dbg_base) {
+		dbg_base->dump_option = new_mode;
+		if (dbg_base->evtlog)
+			dbg_base->evtlog->dump_mode = new_mode;
+	}
 }
 #else
 void sde_dbg_update_dump_mode(bool enable_coredump)

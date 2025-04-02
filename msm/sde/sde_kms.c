@@ -2627,9 +2627,16 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		sde_rm_destroy(&sde_kms->rm);
 	sde_kms->rm_init = false;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	if (sde_kms->org_catalog)
+		sde_hw_catalog_deinit(sde_kms->org_catalog);
+	sde_kms->org_catalog = NULL;
+	sde_kms->catalog = NULL;
+#else
 	if (sde_kms->catalog)
 		sde_hw_catalog_deinit(sde_kms->catalog);
 	sde_kms->catalog = NULL;
+#endif
 
 	if (sde_kms->sid)
 		msm_iounmap(pdev, sde_kms->sid);
@@ -2656,9 +2663,9 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		msm_iounmap(pdev, sde_kms->mmio);
 	sde_kms->mmio = NULL;
 
-	if (sde_kms->dev->primary) {
-		sde_reg_dma_deinit(sde_kms->dev->primary->index);
-		sde_hw_vatran_deinit(sde_kms->dev->primary->index);
+	if (sde_kms->catalog) {
+		sde_reg_dma_deinit(DPUID(sde_kms));
+		sde_hw_vatran_deinit(DPUID(sde_kms));
 	}
 
 	_sde_kms_mmu_destroy(sde_kms);
