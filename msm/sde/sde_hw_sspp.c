@@ -212,7 +212,7 @@ static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 		if (index == SDE_SSPP_RECT_SOLO)
 			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
 					BIT(2) | BIT(1) | BIT(0),
-					0x00);
+					BIT(0));
 		else if (index == SDE_SSPP_RECT_0)
 			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
 					BIT(2) | BIT(0),
@@ -998,9 +998,20 @@ static void sde_hw_sspp_setup_sourceaddress(struct sde_hw_pipe *ctx,
 {
 	int i;
 	u32 idx;
+	u32 flush_ctl_off = 0;
 
 	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
+
+	if (rect_mode == SDE_SSPP_RECT_SOLO || rect_mode == SDE_SSPP_RECT_0)
+		flush_ctl_off = SSPP_FLUSH_CTRL;
+	else
+		flush_ctl_off = SSPP_FLUSH_CTRL_REC1;
+
+	if (ctx->global_flush)
+		SDE_REG_WRITE(&ctx->hw, flush_ctl_off, 0x00);
+	else
+		SDE_REG_WRITE(&ctx->hw, flush_ctl_off, 0x02);
 
 	/* Auto mode */
 	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
@@ -1774,11 +1785,6 @@ static void sde_hw_sspp_local_flush(struct sde_hw_pipe *ctx,
 	u32 flush_ctl_off = 0;
 	u32 idx;
 
-	if (ctx->global_flush) {
-		ctx->global_flush = false;
-		return;
-	}
-
 	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
@@ -1789,7 +1795,12 @@ static void sde_hw_sspp_local_flush(struct sde_hw_pipe *ctx,
 	else
 		flush_ctl_off = SSPP_FLUSH_CTRL_REC1;
 
-	SDE_REG_WRITE(c, flush_ctl_off, 0x03);
+	if (ctx->global_flush) {
+		ctx->global_flush = false;
+		SDE_REG_WRITE(c, flush_ctl_off, 0x00);
+	} else {
+		SDE_REG_WRITE(c, flush_ctl_off, 0x03);
+	}
 }
 
 void sde_hw_sspp_set_flush_type(struct sde_hw_pipe *ctx, bool global)

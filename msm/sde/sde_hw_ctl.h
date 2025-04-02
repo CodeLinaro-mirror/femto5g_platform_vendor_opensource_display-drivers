@@ -165,6 +165,7 @@ struct sde_ctl_flush_cfg {
 	u32 active_lm_mask;
 	u32 previous_flush_mask;
 	u32 global_flush_mask;
+	bool force_global_flush;
 };
 
 enum sde_ctl_cesta_flag {
@@ -673,6 +674,12 @@ struct sde_hw_ctl_ops {
 	 * @ctx   : ctl path ctx pointer
 	 */
 	int (*get_intf_master)(struct sde_hw_ctl *ctx);
+
+	/**
+	 * Force global flush for next flush
+	 * @ctx   : ctl path ctx pointer
+	 */
+	void (*force_global_flush)(struct sde_hw_ctl *ctx);
 };
 
 /**

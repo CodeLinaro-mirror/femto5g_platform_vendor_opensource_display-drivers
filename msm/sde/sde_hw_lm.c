@@ -931,12 +931,6 @@ static void sde_hw_lm_local_flush(struct sde_hw_mixer *ctx, struct sde_hw_stage_
 	if (stages <= SDE_STAGE_BASE)
 		return;
 
-	if (ctx->global_flush) {
-		/* When making global flush, should skip local flush */
-		ctx->global_flush = false;
-		return;
-	}
-
 	if (test_bit(SDE_MIXER_SOURCESPLIT, &ctx->cap->features))
 		pipes_per_stage = PIPES_PER_STAGE;
 	else
@@ -951,8 +945,13 @@ static void sde_hw_lm_local_flush(struct sde_hw_mixer *ctx, struct sde_hw_stage_
 		if (ret)
 			return;
 
-		SDE_REG_WRITE(c, LM_BLEND0_FLUSH_CTRL + stage_off, 0x3);
+		/* When making global flush, should skip local flush */
+		if (ctx->global_flush)
+			SDE_REG_WRITE(c, LM_BLEND0_FLUSH_CTRL + stage_off, 0x0);
+		else
+			SDE_REG_WRITE(c, LM_BLEND0_FLUSH_CTRL + stage_off, 0x3);
 	}
+	ctx->global_flush = false;
 }
 
 

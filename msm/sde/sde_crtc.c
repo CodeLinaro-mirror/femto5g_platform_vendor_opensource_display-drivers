@@ -2227,6 +2227,10 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 		pstate = to_sde_plane_state(state);
 		fb = state->fb;
 
+		/* Adding/removing plane requires global flush */
+		if (psde->pipe_hw->ops.set_flush_type)
+			psde->pipe_hw->ops.set_flush_type(psde->pipe_hw, true);
+
 		mode = sde_plane_get_property(pstate,
 				PLANE_PROP_FB_TRANSLATION_MODE);
 
@@ -2242,10 +2246,6 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 				psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
 						pstate->multirect_index, fb ? true : false);
 		}
-
-		/* Adding/removing plane requires global flush */
-		if (psde->pipe_hw->ops.set_flush_type)
-			psde->pipe_hw->ops.set_flush_type(psde->pipe_hw, true);
 
 		sde_plane_ctl_flush(plane, ctl, true);
 
@@ -2356,6 +2356,10 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 
 	if (ctl->ops.set_active_pipes)
 		ctl->ops.set_active_pipes(ctl, active_pipes);
+
+	/* Force global flush when adding/removing sspp or mixer stage */
+	if (ctl->ops.force_global_flush)
+		ctl->ops.force_global_flush(ctl);
 
 	sort(pstates, cnt, sizeof(pstates[0]), pstate_cmp, NULL);
 	_sde_crtc_set_src_split_order(crtc, pstates, cnt);
@@ -2541,9 +2545,18 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 			ctl->idx - CTL_0,
 			cfg.pending_flush_mask);
 
-		/* Require global flush */
-		if (lm->ops.set_flush_type)
-			lm->ops.set_flush_type(lm, true);
+		if (lm->ops.set_flush_type) {
+			/* Require global flush */
+			if (add_planes) {
+				lm->ops.set_flush_type(lm, true);
+
+				/* Force global flush when adding/removing mixer stage */
+				if (ctl->ops.force_global_flush)
+					ctl->ops.force_global_flush(ctl);
+			} else {
+				lm->ops.set_flush_type(lm, false);
+			}
+		}
 
 		if (sde_kms_rect_is_null(lm_roi)) {
 			SDE_DEBUG(

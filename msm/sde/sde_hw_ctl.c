@@ -516,14 +516,16 @@ static inline int sde_hw_ctl_clear_flush_mask(struct sde_hw_ctl *ctx, bool clear
 
 static inline int sde_hw_ctl_clear_pending_flush(struct sde_hw_ctl *ctx)
 {
-	u32 global_flush_mask;
+	u32 global_flush_mask, previous_flush_mask;
 
 	if (!ctx)
 		return -EINVAL;
 
 	global_flush_mask = ctx->flush.global_flush_mask;
+	previous_flush_mask = ctx->flush.previous_flush_mask;
 	memset(&ctx->flush, 0, sizeof(ctx->flush));
 	ctx->flush.global_flush_mask = global_flush_mask;
+	ctx->flush.previous_flush_mask = previous_flush_mask;
 
 	return 0;
 }
@@ -1037,16 +1039,23 @@ static inline int sde_hw_ctl_trigger_flush_global_v1(struct sde_hw_ctl *ctx)
 	u32 flush_mask = ctx->flush.pending_flush_mask & ctx->flush.global_flush_mask;
 
 	/* Skip empty global flush (no SSPP/LM flush) */
-	if (flush_mask && flush_mask != CTL_FLUSH_MASK_CTL
-			&& flush_mask != ctx->flush.previous_flush_mask) {
+	if (flush_mask &&
+			( (flush_mask != CTL_FLUSH_MASK_CTL && flush_mask != ctx->flush.previous_flush_mask)
+			|| ctx->flush.force_global_flush) ) {
 		SDE_REG_WRITE(&ctx->hw, CTL_FLUSH, flush_mask);
 		ctx->flush.previous_flush_mask = flush_mask;
+		ctx->flush.force_global_flush = false;
 
 		/* ensure all register writes are written without re-ordering*/
 		wmb();
 	}
 
 	return 0;
+}
+
+static inline void sde_hw_ctl_force_global_flush(struct sde_hw_ctl *ctx)
+{
+	ctx->flush.force_global_flush = true;
 }
 
 static inline u32 sde_hw_ctl_get_intf_v1(struct sde_hw_ctl *ctx)
@@ -1800,6 +1809,7 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		if (cap & BIT(SDE_CTL_LOCAL_FLUSH)) {
 			ops->update_pending_flush = sde_hw_ctl_update_pending_flush;
 			ops->trigger_flush = sde_hw_ctl_trigger_flush_global_v1;
+			ops->force_global_flush = sde_hw_ctl_force_global_flush;
 
 			ops->update_bitmask = sde_hw_ctl_update_bitmask;
 			ops->get_ctl_intf = sde_hw_ctl_get_intf;
@@ -1919,6 +1929,7 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 		if (cap & BIT(SDE_CTL_LOCAL_FLUSH)) {
 			ops->update_pending_flush = sde_hw_ctl_update_pending_flush;
 			ops->trigger_flush = sde_hw_ctl_trigger_flush_global_v1;
+			ops->force_global_flush = sde_hw_ctl_force_global_flush;
 
 			ops->update_bitmask = sde_hw_ctl_update_bitmask;
 			ops->get_ctl_intf = sde_hw_ctl_get_intf;
