@@ -716,6 +716,15 @@ void sde_reg_modify_reg_dma(struct sde_hw_blk_reg_map *c,
 
 #endif
 
+const char *buf_type_str[] =
+{
+	"DB REG",
+	"SB REG",
+	"DB Table",
+	"SB Table",
+	"Unknown",
+};
+
 static int write_multi_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u8 *loc = NULL;
@@ -736,6 +745,11 @@ int write_multi_reg_index(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_INDEX %X: blk %X sz %X\n",
+			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			buf_type_str[cfg->dma_buf->buffer_type],
+			cfg->blk_offset, cfg->blk, cfg->data_size);
+
 	loc =  (u32 *)((u8 *)cfg->dma_buf->vaddr +
 			cfg->dma_buf->index);
 	loc[0] = HW_INDEX_REG_WRITE_OPCODE;
@@ -753,6 +767,11 @@ int write_multi_reg_inc(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_INC %X: blk %X sz %X\n",
+			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			buf_type_str[cfg->dma_buf->buffer_type],
+			cfg->blk_offset, cfg->blk, cfg->data_size);
+
 	loc =  (u32 *)((u8 *)cfg->dma_buf->vaddr +
 			cfg->dma_buf->index);
 	loc[0] = AUTO_INC_REG_WRITE_OPCODE;
@@ -769,6 +788,11 @@ int write_multi_reg_inc(struct sde_reg_dma_setup_ops_cfg *cfg)
 static int write_multi_lut_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
+
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_LUT %X: blk %X sz %X\n",
+			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			buf_type_str[cfg->dma_buf->buffer_type],
+			cfg->blk_offset, cfg->blk, cfg->data_size);
 
 	loc =  (u32 *)((u8 *)cfg->dma_buf->vaddr +
 			cfg->dma_buf->index);
@@ -789,6 +813,11 @@ static int write_multi_lut_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 static int write_single_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
+
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_SINGLE %X: blk %X %X\n",
+			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			buf_type_str[cfg->dma_buf->buffer_type],
+			cfg->blk_offset, cfg->blk, *cfg->data);
 
 	loc =  (u32 *)((u8 *)cfg->dma_buf->vaddr +
 			cfg->dma_buf->index);
@@ -811,6 +840,11 @@ static int write_single_modify(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s MODIFY_SINGLE %X: blk %X mask %X %X\n",
+			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			buf_type_str[cfg->dma_buf->buffer_type],
+			cfg->blk_offset, cfg->blk, cfg->mask, *cfg->data);
+
 	loc =  (u32 *)((u8 *)cfg->dma_buf->vaddr +
 			cfg->dma_buf->index);
 	loc[0] = SINGLE_REG_MODIFY_OPCODE;
@@ -831,6 +865,12 @@ static int write_block_lut_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 	int rc = -EINVAL;
+
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s BLOCK_LUT %X: blk %X tbl %d blk_sel %X sz %X x %X\n",
+			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			buf_type_str[cfg->dma_buf->buffer_type],
+			cfg->blk_offset, cfg->blk, cfg->table_sel, cfg->block_sel,
+			cfg->trans_size, cfg->lut_size);
 
 	loc =  (u32 *)((u8 *)cfg->dma_buf->vaddr +
 			cfg->dma_buf->index);
@@ -862,6 +902,11 @@ static int write_block_lut_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 static int write_decode_sel(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
+
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_DEC_SEL %X: blk %X\n",
+			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
+			buf_type_str[cfg->dma_buf->buffer_type],
+			reg_dma_decode_sel, cfg->blk);
 
 	loc =  (u32 *)((u8 *)cfg->dma_buf->vaddr +
 			cfg->dma_buf->index);
@@ -1295,6 +1340,8 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 	u32 *p = cfg->dma_buf->vaddr;
 	int size = cfg->dma_buf->index / sizeof(u32);
 	u32 addr, mask, len, wrap, inc, tbl, blk;
+	bool abs_addr;
+	u32 dec_sel = BIT(31);
 	int i, j;
 	char str[1024], *pstr, *end = str + sizeof(str) - 1;
 
@@ -1310,24 +1357,36 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			break;
 		case SINGLE_REG_WRITE_OPCODE:
 			addr = *p & ADDR_MASK;
-			p++;
-			SDE_DEBUG("WRITE @0x%6.6X %8.8X\n", addr, *p);
+			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
+			if (*p == reg_dma_decode_sel) {
+				p++;
+				dec_sel = *p;
+				SDE_DEBUG("DECODE_SEL %8.8X\n", dec_sel);
+			} else {
+				p++;
+				SDE_DEBUG("WRITE%s @0x%6.6X %8.8X\n",
+						abs_addr ? "_ABS" : "_REL", addr, *p);
+			}
 			p++;
 			size -= 2;
 			break;
 		case SINGLE_REG_MODIFY_OPCODE:
 			addr = *p & ADDR_MASK;
+			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			mask = *p++;
-			SDE_DEBUG("WRITE @0x%6.6X  mask %8.8X  val %8.8X\n", addr, ~mask, *p);
+			SDE_DEBUG("WRITE%s @0x%6.6X  mask %8.8X  val %8.8X\n",
+					abs_addr ? "_ABS" : "_REL", addr, ~mask, *p);
 			p++;
 			size -= 3;
 			break;
 		case HW_INDEX_REG_WRITE_OPCODE:
 			addr = *p & ADDR_MASK;
+			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			len = *p++;
-			SDE_DEBUG("WRITE @0x%6.6X  len %d:\n", addr, len);
+			SDE_DEBUG("WRITE%s @0x%6.6X  len %d:\n",
+					abs_addr ? "_ABS" : "_REL", addr, len);
 			for (i = 0; i < len; i++) {
 				if (i % 16 == 0) {
 					if (i)
@@ -1343,9 +1402,11 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			break;
 		case AUTO_INC_REG_WRITE_OPCODE:
 			addr = *p & ADDR_MASK;
+			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			len = *p++;
-			SDE_DEBUG("WRITE @0x%6.6X++  len %d:\n", addr, len);
+			SDE_DEBUG("WRITE%s @0x%6.6X++  len %d:\n",
+					abs_addr ? "_ABS" : "_REL", addr, len);
 			for (i = 0; i < len; i++) {
 				if (i % 16 == 0) {
 					if (i)
@@ -1361,12 +1422,14 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			break;
 		case BLK_REG_WRITE_OPCODE:
 			addr = *p & ADDR_MASK;
+			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			inc = *p & BIT(31);
 			wrap = (*p >> 16)  & WRAP_MAX_SIZE;
 			len = *p & MAX_DWORDS_SZ;
 			p++;
-			SDE_DEBUG("WRITE @0x%6.6X%s%d  len %d:\n", addr, inc ? "++" : "--", wrap, len);
+			SDE_DEBUG("WRITE%s @0x%6.6X%s%d  len %d:\n",
+					abs_addr ? "_ABS" : "_REL", addr, inc ? "++" : "--", wrap, len);
 			for (i = 0; i < len; i++) {
 				pstr = str;
 				pstr += snprintf(pstr, sizeof(str), "\t");
@@ -1410,18 +1473,151 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 	SDE_DEBUG("===============================\n");
 }
 
-inline u32 reg_dma_readback(u32 addr, struct sde_hw_ctl *ctl, struct sde_hw_vatran *vatran)
+void reg_dma_workload_dump(struct sde_reg_dma_kickoff_cfg *cfg)
+{
+	u32 *p = cfg->dma_buf->vaddr;
+	int size = cfg->dma_buf->index / sizeof(u32);
+	u32 opcode, data, data2, len, wrap, offset;
+	char str[1024], *pstr, *end = str + sizeof(str) - 1;
+	int i;
+
+	SDE_DEBUG("VQ%d CTL%d workload dump sz 0x%X  %pK\n",
+			cfg->dma_buf->vq_idx, cfg->ctl->idx, size, p);
+	SDE_DEBUG("===============================\n");
+	while (size) {
+		opcode = *p;
+		offset = (u64)p - (u64)cfg->dma_buf->vaddr;
+		switch (opcode & OPCODE_MASK) {
+		case NO_OP_OPCODE:
+			SDE_DEBUG("%05X: %08X\tNO-OP\n", offset, opcode);
+			p++;
+			size --;
+			break;
+		case SINGLE_REG_WRITE_OPCODE:
+			data = p[1];
+			if (data == reg_dma_decode_sel) {
+				SDE_DEBUG("%05X: %08X %08X\tDECODE_SEL\n", offset, opcode, data);
+			} else {
+				SDE_DEBUG("%05X: %08X %08X\tWRITE\n", offset, opcode, data);
+			}
+			p+=2;
+			size -= 2;
+			break;
+		case SINGLE_REG_MODIFY_OPCODE:
+			data = p[1];
+			data2 = p[2];
+			SDE_DEBUG("%05X: %08X %08X %08X\tMODIFY\n", offset, opcode, data, data2);
+			p+=3;
+			size -= 3;
+			break;
+		case HW_INDEX_REG_WRITE_OPCODE:
+			data = p[1];
+			len = data;
+			SDE_DEBUG("%05X: %08X %08X\tINDEX WRITE:\n", offset, opcode, data);
+			p+=2;
+			for (i = 0; i < len; i++) {
+				if (i % 16 == 0) {
+					if (i)
+						SDE_DEBUG("%s\n", str);
+					pstr = str;
+					pstr += snprintf(pstr, sizeof(str), "\t");
+				}
+				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X", *p);
+				p++;
+			}
+			SDE_DEBUG("%s\n", str);
+			size -= 2 + len;
+			break;
+		case AUTO_INC_REG_WRITE_OPCODE:
+			data = p[1];
+			len = data;
+			SDE_DEBUG("%05X: %08X %08X\tINC WRITE:\n", offset, opcode, data);
+			p+=2;
+			for (i = 0; i < len; i++) {
+				if (i % 16 == 0) {
+					if (i)
+						SDE_DEBUG("%s\n", str);
+					pstr = str;
+					pstr += snprintf(pstr, sizeof(str), "\t");
+				}
+				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X", *p);
+				p++;
+			}
+			SDE_DEBUG("%s\n", str);
+			size -= 2 + len;
+			break;
+		case BLK_REG_WRITE_OPCODE:
+			data = p[1];
+			wrap = (data >> 16)  & WRAP_MAX_SIZE;
+			len = data & MAX_DWORDS_SZ;
+			SDE_DEBUG("%05X: %08X %08X\tMULTI WRITE:\n", offset, opcode, data);
+			p+=2;
+			for (i = 0; i < len*wrap; i++) {
+				if (i % 16 == 0) {
+					if (i)
+						SDE_DEBUG("%s\n", str);
+					pstr = str;
+					pstr += snprintf(pstr, sizeof(str), "\t");
+				}
+				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X", *p);
+				p++;
+			}
+			SDE_DEBUG("%s\n", str);
+			size -= 2 + len * wrap;
+			break;
+		case LUTBUS_WRITE_OPCODE:
+			data = p[1];
+			wrap = (data & LUTBUS_TRANS_SZ_MASK) >> 16;
+			len = data & LUTBUS_LUT_SIZE_MASK;
+			SDE_DEBUG("%05X: %08X %08X\tLUT WRITE:\n", offset, opcode, data);
+			p+=2;
+			for (i = 0; i < len*wrap; i++) {
+				if (i % 16 == 0) {
+					if (i)
+						SDE_DEBUG("%s\n", str);
+					pstr = str;
+					pstr += snprintf(pstr, sizeof(str), "\t");
+				}
+				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X", *p);
+				p++;
+			}
+			SDE_DEBUG("%s\n", str);
+			size -= 2 + len * wrap * 4;
+			break;
+		default:
+			SDE_DEBUG("UNKNOWN\n");
+			p++;
+			size --;
+			break;
+		}
+	}
+
+	if (cfg->last_command)
+		SDE_DEBUG("LAST command\n");
+	SDE_DEBUG("===============================\n");
+}
+
+inline u32 reg_dma_readback(u32 addr, bool abs_addr, struct sde_hw_ctl *ctl, struct sde_hw_vatran *vatran)
 {
 	struct sde_hw_blk_reg_map hw;
 
-	if (addr >= vatran->caps->base_off) {
+	/* TODO: readback for relative address */
+	if (!abs_addr)
+		return 0;
+
+	if (addr >= vatran->caps->base_off + vatran->caps->len) {
+		// Invalid address
+		return 0;
+	} else if (addr >= vatran->caps->base_off) {
 		return SDE_REG_READ(&vatran->hw, addr - vatran->caps->base_off);
 	} else if (addr >= reg_dma[ctl->dpu_idx]->caps->base_off) {
 		SET_UP_REG_DMA_VQ_REG(hw, reg_dma[ctl->dpu_idx], REG_DMA_TYPE_DB, 1);
 		hw.blk_off = 0;
-		return SDE_REG_READ(&hw, addr - reg_dma[ctl->dpu_idx]->caps->base_off);
+		return SDE_REG_READ(&hw, addr);
 	} else {
-		return SDE_REG_READ(&ctl->hw, addr - ctl->hw.blk_off);
+		memcpy(&hw, &ctl->hw, sizeof(hw));
+		hw.blk_off = 0;
+		return SDE_REG_READ(&hw, addr);
 	}
 }
 
@@ -1430,8 +1626,10 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 	u32 *p = cfg->dma_buf->vaddr;
 	int size = cfg->dma_buf->index / sizeof(u32);
 	u32 addr, mask, len, wrap, inc, tbl, blk, data;
+	bool abs_addr;
 	int i, j;
 	char str[1024], *pstr, *end = str + sizeof(str) - 1;
+	u32 dec_sel = 0;
 	struct sde_hw_vatran *vatran;
 
 	vatran = sde_hw_get_vatran(cfg->ctl->dpu_idx);
@@ -1448,28 +1646,36 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			break;
 		case SINGLE_REG_WRITE_OPCODE:
 			addr = *p & ADDR_MASK;
+			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
+			if (*p == reg_dma_decode_sel)
+				dec_sel = p[1];
 			p++;
-			data = reg_dma_readback(addr, cfg->ctl, vatran);
-			SDE_DEBUG("WRITE @0x%6.6X %8.8X : [%8.8X]%s\n",
-					addr, *p, data, (*p == data) ? "" : " ***");
+			data = reg_dma_readback(addr, abs_addr, cfg->ctl, vatran);
+			SDE_DEBUG("WRITE%s @0x%6.6X %8.8X : [%8.8X]%s\n",
+					abs_addr ? "_ABS" : "_REL", addr, *p, data,
+					(*p == data) ? "" : " ***");
 			p++;
 			size -= 2;
 			break;
 		case SINGLE_REG_MODIFY_OPCODE:
 			addr = *p & ADDR_MASK;
+			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			mask = *p++;
-			data = reg_dma_readback(addr, cfg->ctl, vatran);
-			SDE_DEBUG("WRITE @0x%6.6X  mask %8.8X  val %8.8X : [%8.8X]%s\n",
-					addr, ~mask, *p, data, (*p == (data & ~mask)) ? "" : " ***");
+			data = reg_dma_readback(addr, abs_addr, cfg->ctl, vatran);
+			SDE_DEBUG("WRITE%s @0x%6.6X  mask %8.8X  val %8.8X : [%8.8X]%s\n",
+					abs_addr ? "_ABS" : "_REL", addr, ~mask, *p, data,
+					(*p == (data & ~mask)) ? "" : " ***");
 			p++;
 			size -= 3;
 			break;
 		case HW_INDEX_REG_WRITE_OPCODE:
 			addr = *p & ADDR_MASK;
+			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			len = *p++;
-			SDE_DEBUG("WRITE @0x%6.6X  len %d:\n", addr, len);
+			SDE_DEBUG("WRITE%s @0x%6.6X  len %d:\n",
+					abs_addr ? "_ABS" : "_REL", addr, len);
 			for (i = 0; i < len; i++) {
 				if (i % 16 == 0) {
 					if (i)
@@ -1477,7 +1683,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 					pstr = str;
 					pstr += snprintf(pstr, sizeof(str), "\t");
 				}
-				data = reg_dma_readback(addr, cfg->ctl, vatran);
+				data = reg_dma_readback(addr, abs_addr, cfg->ctl, vatran);
 				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X : [%8.8X]%s",
 						*p, data, (*p == data) ? "" : " ***");
 				p++;
@@ -1487,9 +1693,11 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			break;
 		case AUTO_INC_REG_WRITE_OPCODE:
 			addr = *p & ADDR_MASK;
+			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			len = *p++;
-			SDE_DEBUG("WRITE @0x%6.6X++  len %d:\n", addr, len);
+			SDE_DEBUG("WRITE%s @0x%6.6X++  len %d:\n",
+					abs_addr ? "_ABS" : "_REL", addr, len);
 			for (i = 0; i < len; i++) {
 				if (i % 16 == 0) {
 					if (i)
@@ -1497,7 +1705,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 					pstr = str;
 					pstr += snprintf(pstr, sizeof(str), "\t");
 				}
-				data = reg_dma_readback(addr, cfg->ctl, vatran);
+				data = reg_dma_readback(addr, abs_addr, cfg->ctl, vatran);
 				pstr += snprintf(pstr, (int)(end - pstr), " %8.8X : [%8.8X]%s",
 						*p, data, (*p == data) ? "" : " ***");
 				addr += 4;
@@ -1508,12 +1716,14 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			break;
 		case BLK_REG_WRITE_OPCODE:
 			addr = *p & ADDR_MASK;
+			abs_addr = (*p & REL_ADDR_OPCODE) ? true : false;
 			p++;
 			inc = *p & BIT(31);
 			wrap = (*p >> 16)  & WRAP_MAX_SIZE;
 			len = *p & MAX_DWORDS_SZ;
 			p++;
-			SDE_DEBUG("WRITE @0x%6.6X%s%d  len %d:\n", addr, inc ? "++" : "--", wrap, len);
+			SDE_DEBUG("WRITE%s @0x%6.6X%s%d  len %d:\n",
+					abs_addr ? "_ABS" : "_REL", addr, inc ? "++" : "--", wrap, len);
 			if (!inc)
 				addr -= wrap * sizeof(u32);
 			for (i = 0; i < len; i++) {
@@ -1522,7 +1732,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 				if (!inc)
 					addr += (wrap * 2 - 1) * sizeof(u32);
 				for (j = 0; j < wrap; j++) {
-					data = reg_dma_readback(addr, cfg->ctl, vatran);
+					data = reg_dma_readback(addr, abs_addr, cfg->ctl, vatran);
 					pstr += snprintf(pstr, (int)(end - pstr), " %8.8X : [%8.8X]%s",
 							*p, data, (*p == data) ? "" : " ***");
 					addr += inc ? sizeof(u32) : -sizeof(u32);
@@ -1578,7 +1788,8 @@ static void reg_dma_trigger_v4(struct sde_reg_dma_kickoff_cfg *cfg,
 			(cfg->dma_type == REG_DMA_TYPE_DB) ? "DB" : "SB",
 			cfg->queue_select ? "Q0" : "Q1",
 			cfg->dma_buf->dpu_idx);
-	reg_dma_dump_payload(cfg);
+	if (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask)
+		reg_dma_dump_payload(cfg);
 }
 
 static void reg_dma_submit_queue_v1_to_v3(struct sde_reg_dma_kickoff_cfg *cfg,
@@ -2693,9 +2904,9 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 	vq_idx = reg_dma_ctl_to_vq_map[dpu_idx][cfg->ctl->idx];
 
 	vatran = sde_hw_get_vatran(dpu_idx);
-	vatran->ops.check_violation(vatran);
 
-	reg_dma_dump_payload(cfg);
+	if (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask)
+		reg_dma_dump_payload(cfg);
 
 	memset(&hw, 0, sizeof(hw));
 	msm_gem_sync(cfg->dma_buf->buf);
@@ -2768,6 +2979,9 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 				SDE_REG_WRITE_CPU(&vatran->hw, map_addr - vatran->caps->base_off,
 						ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx][cfg->queue_select]);
 				wmb();
+
+				if (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask)
+					vatran->ops.check_violation(vatran);
 			} else {
 				SDE_ERROR("Fail to remap the CTL_LUT_DMA_VQ_TRIGGER register for reg %X ctl %d dpu %d vq %d\n",
 						reg_dma_ctl_trigger_offset, cfg->ctl->idx, dpu_idx, vq_idx);
@@ -2812,6 +3026,26 @@ static int kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 
 #define SEND_SEPARATED_LAST_CMD		0
 
+const struct {
+	enum sde_reg_dma_type type;
+	enum sde_reg_dma_buffer_type buf_type;
+	enum sde_reg_dma_queue queue;
+	enum sde_reg_dma_trigger_mode trigger;
+	enum sde_reg_dma_features features;
+	const char *name;
+} vq_kickoff[] =
+{
+	{ REG_DMA_TYPE_DB, REG_DMA_TABLE_DB, DMA_CTL_QUEUE0,
+			WRITE_TRIGGER, REG_DMA_FEATURES_MAX, "DB table" },
+	{ REG_DMA_TYPE_DB, REG_DMA_MDSS_DB, DMA_CTL_QUEUE0,
+			WRITE_TRIGGER, MDSS_REG, "DB regs" },
+	{ REG_DMA_TYPE_SB, REG_DMA_TABLE_SB, DMA_CTL_QUEUE0,
+			WRITE_TRIGGER, REG_DMA_FEATURES_MAX, "SB table" },
+	{ REG_DMA_TYPE_SB, REG_DMA_MDSS_SB, DMA_CTL_QUEUE0,
+			WRITE_TRIGGER, MDSS_REG, "SB regs" },
+	{ REG_DMA_TYPE_MAX },
+};
+
 static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode)
 {
@@ -2826,25 +3060,6 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	int dpu_idx, vq_idx;
 	u32 val;
 	int i, rc;
-	const struct {
-		enum sde_reg_dma_type type;
-		enum sde_reg_dma_buffer_type buf_type;
-		enum sde_reg_dma_queue queue;
-		enum sde_reg_dma_trigger_mode trigger;
-		enum sde_reg_dma_features features;
-		const char *name;
-	} vq_kickoff[] =
-	{
-		{ REG_DMA_TYPE_DB, REG_DMA_TABLE_DB, DMA_CTL_QUEUE0,
-				WRITE_TRIGGER, REG_DMA_FEATURES_MAX, "DB table" },
-		{ REG_DMA_TYPE_DB, REG_DMA_MDSS_DB, DMA_CTL_QUEUE0,
-				WRITE_TRIGGER, MDSS_REG, "DB regs" },
-		{ REG_DMA_TYPE_SB, REG_DMA_TABLE_SB, DMA_CTL_QUEUE0,
-				WRITE_TRIGGER, REG_DMA_FEATURES_MAX, "SB table" },
-		{ REG_DMA_TYPE_SB, REG_DMA_MDSS_SB, DMA_CTL_QUEUE0,
-				WRITE_TRIGGER, MDSS_REG, "SB regs" },
-		{ REG_DMA_TYPE_MAX },
-	};
 
 	if (!ctl || ctl->idx >= CTL_MAX || q >= DMA_CTL_QUEUE_MAX) {
 		DRM_ERROR("ctl %pK q %d index %d\n", ctl, q,
@@ -2867,7 +3082,7 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	while (vq_kickoff[i].type != REG_DMA_TYPE_MAX) {
 		SDE_DEBUG("Check buffer %s\n", vq_kickoff[i].name);
 		buf = vq_reg_dma_bufs[dpu_idx][0][vq_idx][vq_kickoff[i].buf_type];
-		if (buf && buf->index && buf->abs_write_cnt)
+		if (buf && buf->index)
 			last_idx = i;
 		i++;
 	}
@@ -2882,10 +3097,11 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	i = 0;
 	/* Enqueue each buffer queue is not empty */
 	while (vq_kickoff[i].type != REG_DMA_TYPE_MAX) {
-		SDE_DEBUG("Check buffer %s\n", vq_kickoff[i].name);
 		buf = vq_reg_dma_bufs[dpu_idx][0][vq_idx][vq_kickoff[i].buf_type];
-		if (buf && buf->index && buf->abs_write_cnt) {
-			SDE_DEBUG("Enqueue buffer %s\n", vq_kickoff[i].name);
+		SDE_DEBUG("Check buffer %s %X\n", vq_kickoff[i].name, buf ? buf->index : 0);
+		if (buf && buf->index) {
+			SDE_DEBUG("Enqueue buffer %s %X  dpu %d  vq %d  i %d  type %d  buf %pK  %X\n",
+					vq_kickoff[i].name, buf->index, dpu_idx, vq_idx, i, vq_kickoff[i].buf_type, buf, buf->iova);
 			kick_off.ctl = ctl;
 			kick_off.queue_select = vq_kickoff[i].queue;
 			kick_off.trigger_mode = vq_kickoff[i].trigger;
@@ -2964,12 +3180,12 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			//TODO: error handling
 		}
 		if (val & TRIGGER_0_DONE) {
-			DRM_ERROR("regdma done dpu %d ctl %d vq %d\n",
+			DRM_DEBUG("regdma done dpu %d ctl %d vq %d\n",
 					dpu_idx, ctl->idx, vq_idx);
 		}
 
 		/* debug only */
-		if (0) {
+		if (0 && (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask)) {
 			check_engine_status_v4(ctl);
 			dump_hyp_config(ctl);
 		}
@@ -2988,13 +3204,16 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		while (vq_kickoff[i].type != REG_DMA_TYPE_MAX) {
 			buf = vq_reg_dma_bufs[dpu_idx][0][vq_idx][vq_kickoff[i].buf_type];
 			if (buf && buf->index) {
-				SDE_DEBUG("Read buffer %s\n", vq_kickoff[i].name);
+				SDE_DEBUG("Read buffer %s  %X  dpu %d  vq %d  i %d  type %d  buf %pK  %X\n",
+						vq_kickoff[i].name, buf->index, dpu_idx, vq_idx, i, vq_kickoff[i].buf_type, buf, buf->iova);
 				kick_off.ctl = ctl;
 				kick_off.queue_select = vq_kickoff[i].queue;
 				kick_off.trigger_mode = vq_kickoff[i].trigger;
 				kick_off.dma_type = vq_kickoff[i].type;
 				kick_off.dma_buf = buf;
 				kick_off.feature = vq_kickoff[i].features;
+				kick_off.last_command = (i == last_idx);
+				//reg_dma_workload_dump(&kick_off);
 				reg_dma_readback_payload(&kick_off);
 			}
 			i++;
@@ -3212,7 +3431,19 @@ bool check_engine_status_v4(struct sde_hw_ctl *ctl)
 
 void deinit_v4(u32 dpu_idx)
 {
-	// FIXME, deallocate the VQ payload buffers
+	return;
+	int i, j, k;
+
+	for (i = 0; i < REG_DMA_VQ_MAX; i ++) {
+		for (j = 0; j < REG_DMA_PAYLOAD_BUF_MAX; j++) {
+			for (k = 0; k < NUM_BUFFERS; k++) {
+				if (vq_reg_dma_bufs[dpu_idx][k][i][j]) {
+					dealloc_reg_dma_v1(vq_reg_dma_bufs[dpu_idx][k][i][j], dpu_idx);
+					vq_reg_dma_bufs[dpu_idx][k][i][j] = NULL;
+				}
+			}
+		}
+	}
 
 	deinit_v1(dpu_idx);
 }
