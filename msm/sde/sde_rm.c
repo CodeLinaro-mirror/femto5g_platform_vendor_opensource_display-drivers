@@ -405,12 +405,12 @@ static void _sde_rm_print_rsvps(
 			if (!blk->rsvp && !blk->rsvp_nxt)
 				continue;
 
-			SDE_DEBUG("%d rsvp[s%ue%u->s%ue%u] %d %d\n", stage,
+			SDE_DEBUG("%d rsvp[s%ue%u->s%ue%u] %s %d\n", stage,
 				(blk->rsvp) ? blk->rsvp->seq : 0,
 				(blk->rsvp) ? blk->rsvp->enc_id : 0,
 				(blk->rsvp_nxt) ? blk->rsvp_nxt->seq : 0,
 				(blk->rsvp_nxt) ? blk->rsvp_nxt->enc_id : 0,
-				blk->type, blk->id);
+				sde_hw_blk_str[blk->type], blk->id);
 
 			SDE_EVT32(stage,
 				(blk->rsvp) ? blk->rsvp->seq : 0,
@@ -432,12 +432,12 @@ static void _sde_rm_print_rsvps_by_type(
 		if (!blk->rsvp && !blk->rsvp_nxt)
 			continue;
 
-		SDE_ERROR("rsvp[s%ue%u->s%ue%u] %d %d\n",
+		SDE_ERROR("rsvp[s%ue%u->s%ue%u] %s %d\n",
 			(blk->rsvp) ? blk->rsvp->seq : 0,
 			(blk->rsvp) ? blk->rsvp->enc_id : 0,
 			(blk->rsvp_nxt) ? blk->rsvp_nxt->seq : 0,
 			(blk->rsvp_nxt) ? blk->rsvp_nxt->enc_id : 0,
-			blk->type, blk->id);
+			sde_hw_blk_str[blk->type], blk->id);
 
 		SDE_EVT32((blk->rsvp) ? blk->rsvp->seq : 0,
 			(blk->rsvp) ? blk->rsvp->enc_id : 0,
@@ -500,15 +500,15 @@ static bool _sde_rm_get_hw_locked(struct sde_rm *rm, struct sde_rm_hw_iter *i,
 			struct sde_rm_rsvp *rsvp = i->blk->rsvp;
 
 			if (i->blk->type != i->type) {
-				SDE_ERROR("found incorrect block type %d on %d list\n",
-						i->blk->type, i->type);
+				SDE_ERROR("found incorrect block type %s on %d list\n",
+						sde_hw_blk_str[i->blk->type], i->type);
 				return false;
 			}
 
 			if ((i->enc_id == 0) || (rsvp && rsvp->enc_id == i->enc_id)) {
 				i->hw = i->blk->hw;
-				SDE_DEBUG("found type %d id %d for enc %d\n",
-						i->type, i->blk->id, i->enc_id);
+				SDE_DEBUG("found type %s id %d for enc %d\n",
+						sde_hw_blk_str[i->type], i->blk->id, i->enc_id);
 				return true;
 			}
 		}
@@ -517,15 +517,15 @@ static bool _sde_rm_get_hw_locked(struct sde_rm *rm, struct sde_rm_hw_iter *i,
 			struct sde_rm_rsvp *rsvp = i->blk->rsvp;
 
 			if (i->blk->type != i->type) {
-				SDE_ERROR("found incorrect block type %d on %d list\n",
-						i->blk->type, i->type);
+				SDE_ERROR("found incorrect block type %s on %s list\n",
+						sde_hw_blk_str[i->blk->type], sde_hw_blk_str[i->type]);
 				return false;
 			}
 
 			if ((i->enc_id == 0) || (rsvp && rsvp->enc_id == i->enc_id)) {
 				i->hw = i->blk->hw;
-				SDE_DEBUG("found type %d id %d for enc %d\n",
-						i->type, i->blk->id, i->enc_id);
+				SDE_DEBUG("found type %s id %d for enc %d\n",
+						sde_hw_blk_str[i->type], i->blk->id, i->enc_id);
 				return true;
 			}
 		}
@@ -554,15 +554,15 @@ static bool _sde_rm_request_hw_blk_locked(struct sde_rm *rm,
 
 	list_for_each_entry_continue(blk, blk_list, list) {
 		if (blk->type != hw_blk_info->type) {
-			SDE_ERROR("found incorrect block type %d on %d list\n",
-					blk->type, hw_blk_info->type);
+			SDE_ERROR("found incorrect block type %s on %s list\n",
+					sde_hw_blk_str[blk->type], sde_hw_blk_str[hw_blk_info->type]);
 			return false;
 		}
 
 		if (blk->id == hw_blk_info->id) {
 			hw_blk_info->hw = blk->hw;
-			SDE_DEBUG("found type %d id %d\n",
-					blk->type, blk->id);
+			SDE_DEBUG("found type %s id %d\n",
+					sde_hw_blk_str[blk->type], blk->id);
 			return true;
 		}
 	}
@@ -2830,17 +2830,17 @@ static void _sde_rm_release_rsvp(
 		list_for_each_entry(blk, &rm->hw_blks[type], list) {
 			if (blk->rsvp == rsvp) {
 				blk->rsvp = NULL;
-				SDE_DEBUG("rel rsvp %d enc %d %d %d\n",
+				SDE_DEBUG("rel rsvp %d enc %d %s %d\n",
 						rsvp->seq, rsvp->enc_id,
-						blk->type, blk->id);
+						sde_hw_blk_str[blk->type], blk->id);
 				_sde_rm_inc_resource_info(rm,
 						&rm->avail_res, blk);
 			}
 			if (blk->rsvp_nxt == rsvp) {
 				blk->rsvp_nxt = NULL;
-				SDE_DEBUG("rel rsvp_nxt %d enc %d %d %d\n",
+				SDE_DEBUG("rel rsvp_nxt %d enc %d %s %d\n",
 						rsvp->seq, rsvp->enc_id,
-						blk->type, blk->id);
+						sde_hw_blk_str[blk->type], blk->id);
 			}
 		}
 	}
@@ -3191,7 +3191,7 @@ int sde_rm_ext_blk_create_reserve(struct sde_rm *rm,
 	blk->hw = pp_shd_hw;
 	blk->rsvp = rsvp;
 	list_add_tail(&blk->list, &rm->hw_blks[hw->type]);
-	SDE_DEBUG("create blk %d %d for rsvp %d enc %d\n", blk->type, blk->id, rsvp->seq,
+	SDE_DEBUG("create blk %s %d for rsvp %d enc %d\n", sde_hw_blk_str[blk->type], blk->id, rsvp->seq,
 		  rsvp->enc_id);
 end:
 	if (ret) {
@@ -3248,7 +3248,7 @@ int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm,
 	blk->hw = &sde_hw_lm->hw;
 	blk->rsvp = rsvp;
 	list_add_tail(&blk->list, &rm->hw_blks[hw->type]);
-	SDE_DEBUG("create blk %d %d for rsvp %d enc %d\n", blk->type, blk->id,
+	SDE_DEBUG("create blk %s %d for rsvp %d enc %d\n", sde_hw_blk_str[blk->type], blk->id,
 		  rsvp->seq, rsvp->enc_id);
 end:
 	if (ret) {
@@ -3305,7 +3305,7 @@ int sde_rm_ext_blk_create_reserve_ctl(struct sde_rm *rm,
 	blk->hw = &sde_hw_ctl->hw;
 	blk->rsvp = rsvp;
 	list_add_tail(&blk->list, &rm->hw_blks[hw->type]);
-	SDE_DEBUG("create blk %d %d for rsvp %d enc %d\n", blk->type, blk->id,
+	SDE_DEBUG("create blk %s %d for rsvp %d enc %d\n", sde_hw_blk_str[blk->type], blk->id,
 		  rsvp->seq, rsvp->enc_id);
 end:
 	if (ret) {
