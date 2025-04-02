@@ -1399,8 +1399,11 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		for (j = 0; j < sde_cfg->mixer_count; j++) {
 			if (output->hw_assign.lm_mask & (1 << (sde_cfg->mixer[j].id - LM_0))) {
 				hyp_cfg->mixer[hyp_cfg->mixer_count] = sde_cfg->mixer[j];
-				if (!output->hw_assign.lm_owner)
+				if (!output->hw_assign.lm_owner) {
 					hyp_cfg->mixer[hyp_cfg->mixer_count].virtual = true;
+					/* Shared display shall disable noise layer */
+					hyp_cfg->mixer[hyp_cfg->mixer_count].features &= ~SDE_MIXER_NOISE_LAYER;
+				}
 				hyp_cfg->mixer[hyp_cfg->mixer_count].fixed_ctl_id =
 						output->hw_assign.ctl_id;
 				hyp_cfg->mixer[hyp_cfg->mixer_count].sblk->zpos_off =

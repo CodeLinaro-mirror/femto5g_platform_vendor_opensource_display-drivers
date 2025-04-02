@@ -1056,6 +1056,8 @@ static void _setup_virtual_mixer_ops(struct sde_mdss_cfg *m,
 		ops->clear_dim_layer = sde_hw_lm_clear_dim_layer;
 	}
 
+#if 0
+	/* For shared display, do NOT enable noise layer */
 	if (test_bit(SDE_MIXER_NOISE_LAYER, &features)) {
 		if (test_bit(SDE_MIXER_10_BITS_COLOR, &features))
 			ops->setup_noise_layer = sde_hw_lm_setup_noise_layer_10_bits;
@@ -1064,6 +1066,7 @@ static void _setup_virtual_mixer_ops(struct sde_mdss_cfg *m,
 		else
 			ops->setup_noise_layer = sde_hw_lm_setup_noise_layer;
 	}
+#endif
 
 	if (test_bit(SDE_MIXER_LOCAL_FLUSH, &features)) {
 		ops->local_flush = sde_hw_lm_local_flush;
