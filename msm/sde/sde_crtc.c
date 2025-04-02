@@ -2173,7 +2173,7 @@ static void _sde_crtc_setup_blend_cfg_by_stage(struct sde_crtc_mixer *mixer,
 
 static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_state, struct sde_crtc *sde_crtc,
-		struct sde_crtc_mixer *mixer)
+		struct sde_crtc_mixer *mixer, bool isLocalFlush)
 {
 	struct drm_plane *plane;
 	struct drm_framebuffer *fb;
@@ -2227,27 +2227,28 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 		pstate = to_sde_plane_state(state);
 		fb = state->fb;
 
-		/* Adding/removing plane requires global flush */
-		if (psde->pipe_hw->ops.set_flush_type)
-			psde->pipe_hw->ops.set_flush_type(psde->pipe_hw, true);
+		if (!isLocalFlush) {
+			/* Adding/removing plane requires global flush */
+			if (psde->pipe_hw->ops.set_flush_type)
+				psde->pipe_hw->ops.set_flush_type(psde->pipe_hw, true);
 
-		mode = sde_plane_get_property(pstate,
-				PLANE_PROP_FB_TRANSLATION_MODE);
+			mode = sde_plane_get_property(pstate,
+					PLANE_PROP_FB_TRANSLATION_MODE);
 
-		set_bit(sde_plane_pipe(plane), active_fetch_pipes);
-		if (psde->pipe_hw->ops.set_active_fetch_pipe)
-			psde->pipe_hw->ops.set_active_fetch_pipe(psde->pipe_hw,
-					pstate->multirect_index,fb ? true : false);
+			set_bit(sde_plane_pipe(plane), active_fetch_pipes);
+			if (psde->pipe_hw->ops.set_active_fetch_pipe)
+				psde->pipe_hw->ops.set_active_fetch_pipe(psde->pipe_hw,
+						pstate->multirect_index,fb ? true : false);
 
-		cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
-		if (cac_mode != SDE_CAC_UNPACK) {
-			set_bit(sde_plane_pipe(plane), active_pipes);
-			if (psde->pipe_hw->ops.set_active_pipe)
-				psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
-						pstate->multirect_index, fb ? true : false);
+			cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
+			if (cac_mode != SDE_CAC_UNPACK) {
+				set_bit(sde_plane_pipe(plane), active_pipes);
+				if (psde->pipe_hw->ops.set_active_pipe)
+					psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
+							pstate->multirect_index, fb ? true : false);
+			}
+			sde_plane_ctl_flush(plane, ctl, true);
 		}
-
-		sde_plane_ctl_flush(plane, ctl, true);
 
 		SDE_DEBUG("crtc %d stage:%d - plane %d sspp %d fb %d\n",
 				crtc->base.id,
@@ -2351,15 +2352,17 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 	_sde_crtc_setup_blend_cfg_by_stage(mixer, sde_crtc->num_mixers,
 			pstates, cnt);
 
-	if (ctl->ops.set_active_fetch_pipes)
-		ctl->ops.set_active_fetch_pipes(ctl, active_fetch_pipes);
+	if (!isLocalFlush) {
+		if (ctl->ops.set_active_fetch_pipes)
+			ctl->ops.set_active_fetch_pipes(ctl, active_fetch_pipes);
 
-	if (ctl->ops.set_active_pipes)
-		ctl->ops.set_active_pipes(ctl, active_pipes);
+		if (ctl->ops.set_active_pipes)
+			ctl->ops.set_active_pipes(ctl, active_pipes);
 
-	/* Force global flush when adding/removing sspp or mixer stage */
-	if (ctl->ops.force_global_flush)
-		ctl->ops.force_global_flush(ctl);
+		/* Force global flush when adding/removing sspp or mixer stage */
+		if (ctl->ops.force_global_flush)
+			ctl->ops.force_global_flush(ctl);
+	}
 
 	sort(pstates, cnt, sizeof(pstates[0]), pstate_cmp, NULL);
 	_sde_crtc_set_src_split_order(crtc, pstates, cnt);
@@ -2376,6 +2379,73 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 
 end:
 	kfree(pstates);
+}
+
+static void _sde_crtc_blend_setup_local(struct drm_crtc *crtc,
+		struct drm_crtc_state *old_state)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_crtc_state *sde_crtc_state;
+	struct sde_crtc_mixer *mixer;
+	struct sde_hw_mixer *lm;
+	struct sde_hw_ctl *ctl;
+
+	int i;
+
+	if (!crtc)
+		return;
+
+	SDE_DEBUG("_sde_crtc_blend_setup_local +");
+
+	sde_crtc = to_sde_crtc(crtc);
+	sde_crtc_state = to_sde_crtc_state(crtc->state);
+	mixer = sde_crtc->mixers;
+
+	_sde_crtc_blend_setup_mixer(crtc, old_state, sde_crtc, mixer, true);
+
+	for (i = 0; i < sde_crtc->num_mixers; i++) {
+		const struct sde_rect *lm_roi = &sde_crtc_state->lm_roi[i];
+		int lm_layout = i / MAX_MIXERS_PER_LAYOUT;
+
+		lm = mixer[i].hw_lm;
+		ctl = mixer[i].hw_ctl;
+
+		/*
+		 * When CAC loopback is enabled, the mixers and the layout to
+		 * be used for pass1 and pass2 are fixed.
+		 */
+		if (sde_crtc_state->is_loopback_mode)
+			lm_layout = (lm->idx - LM_0) / MAX_MIXERS_PER_LAYOUT;
+
+		if (sde_kms_rect_is_null(lm_roi)) {
+			SDE_DEBUG(
+				"%s: lm%d leave ctl%d mask 0 since null roi\n",
+					sde_crtc->name, lm->idx - LM_0,
+					ctl->idx - CTL_0);
+
+			sde_crtc->mixers[i].mixer_op_mode = 0;
+
+			if (ctl->ops.setup_blendstage)
+				ctl->ops.setup_blendstage(ctl, mixer[i].hw_lm->idx, NULL, true);
+
+			if (lm->ops.setup_blendstage)
+				lm->ops.setup_blendstage(lm, mixer[i].hw_lm->idx, NULL, true);
+		} else {
+			if (lm->ops.setup_alpha_out)
+				lm->ops.setup_alpha_out(lm, mixer[i].mixer_op_mode);
+
+			if (ctl->ops.setup_blendstage)
+				ctl->ops.setup_blendstage(ctl, mixer[i].hw_lm->idx,
+						&sde_crtc->stage_cfg[lm_layout], false);
+
+			if (lm->ops.setup_blendstage)
+				lm->ops.setup_blendstage(lm, mixer[i].hw_lm->idx,
+						&sde_crtc->stage_cfg[lm_layout], false);
+		}
+	}
+
+	SDE_DEBUG("_sde_crtc_blend_setup_local -");
+
 }
 
 static void _sde_crtc_swap_mixers_for_right_partial_update(
@@ -2508,7 +2578,7 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 	memset(&sde_crtc->stage_cfg, 0, sizeof(sde_crtc->stage_cfg));
 
 	if (add_planes)
-		_sde_crtc_blend_setup_mixer(crtc, old_state, sde_crtc, mixer);
+		_sde_crtc_blend_setup_mixer(crtc, old_state, sde_crtc, mixer, false);
 
 	for (i = 0; i < sde_crtc->num_mixers; i++) {
 		const struct sde_rect *lm_roi = &sde_crtc_state->lm_roi[i];
@@ -4888,10 +4958,12 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		mixer_updated = true;
 	} else if (old_state->plane_mask != crtc->state->plane_mask) {
 		mixer_updated = true;
-		_sde_crtc_setup_lm_bounds(crtc, crtc->state);
+		//_sde_crtc_setup_lm_bounds(crtc, crtc->state);
 	} else {
 		SDE_DEBUG("No update mixers\n");
 	}
+
+	_sde_crtc_setup_lm_bounds(crtc, crtc->state);
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		if (encoder->crtc != crtc)
@@ -4931,8 +5003,12 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	if (unlikely(!sde_crtc->num_mixers))
 		goto end;
 
-	if (mixer_updated)
+	if (mixer_updated) {
 		_sde_crtc_blend_setup(crtc, old_state, true);
+	} else {
+		_sde_crtc_blend_setup_local(crtc, old_state);
+	}
+
 	_sde_crtc_dest_scaler_setup(crtc);
 	sde_cp_crtc_apply_noise(crtc, old_state);
 
