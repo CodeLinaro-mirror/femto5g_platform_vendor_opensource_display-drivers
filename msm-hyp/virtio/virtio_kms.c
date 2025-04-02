@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
@@ -1482,6 +1482,11 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	uint32_t modifiers = 0;
 	int idx = 0, num_planes = 0;
 
+	if (!fb) {
+		pr_err("virtio : fb NULL\n");
+		ret = -EINVAL;
+		goto error;
+	}
 	num_planes = fb->base.format->num_planes;
 
 	fb_priv = container_of(fb->info, struct virtio_framebuffer_priv, base);
@@ -1503,16 +1508,21 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 
 		if (fb->base.obj[idx]->import_attach) {
 			dma_bufs[idx] = fb->base.obj[idx]->import_attach->dmabuf;
-			virtio_check_framebuffer_contents(dma_bufs[idx]);
+			if (!fb_priv->secure)
+				virtio_check_framebuffer_contents(dma_bufs[idx]);
 			get_dma_buf(dma_bufs[idx]);
 		} else if (fb->base.obj[idx]->dma_buf) {
 			dma_bufs[idx] = fb->base.obj[idx]->dma_buf;
 			get_dma_buf(dma_bufs[idx]);
 		} else {
 			dma_bufs[idx] = drm_gem_prime_export(fb->base.obj[idx], 0);
-			if (IS_ERR(dma_bufs[idx]))
+			if (IS_ERR(dma_bufs[idx])) {
 				pr_err("export dma_buf from bo failed\n");
-			return PTR_ERR(dma_bufs[idx]);
+				return PTR_ERR(dma_bufs[idx]);
+			} else {
+				fb->base.obj[idx]->dma_buf = dma_bufs[idx];
+				get_dma_buf(dma_bufs[idx]);
+			}
 		}
 	}
 
@@ -1998,9 +2008,15 @@ static int _virtio_kms_parse_client_id(struct device_node *node,
 static int virtio_gpu_hab_open(struct virtio_kms *kms)
 {
 	int ret = 0;
-	uint32_t client_id = kms->client_id;
-	if (!kms)
-		pr_err("kms NULL\n");
+	uint32_t client_id = 0;
+
+	if (!kms) {
+		pr_err("virtio : kms NULL\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+	client_id = kms->client_id;
+
 	ret = habmm_socket_open(
 			&kms->channel[client_id].hab_socket[CHANNEL_CMD],
 			kms->mmid_cmd,

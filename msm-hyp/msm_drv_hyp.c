@@ -3,7 +3,7 @@
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * Copyright (c) 2017-2018,2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -1933,13 +1933,7 @@ void msm_hyp_framebuffer_destroy(struct drm_framebuffer *framebuffer)
 
 	if (fb->info && fb->info->destroy)
 		fb->info->destroy(framebuffer);
-#if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
-	drm_gem_object_put(fb->bo);
-	drm_framebuffer_cleanup(&fb->base);
-	kfree(fb);
-#else
 	drm_gem_fb_destroy(framebuffer);
-#endif
 }
 
 static const struct drm_framebuffer_funcs msm_hyp_framebuffer_funcs = {
@@ -2085,12 +2079,6 @@ static struct drm_framebuffer *msm_hyp_framebuffer_create(
 		if (IS_ERR_OR_NULL(bos[i])) {
 			DRM_ERROR("failed to find gem bo %d\n", mode_cmd->handles[i]);
 			ret = -EINVAL;
-			goto out_unref;
-		}
-
-		ret = msm_hyp_shmem_sync_sg_for_device(bos[i]);
-		if (ret) {
-			DRM_ERROR("failed to do dumb buffer sync\n");
 			goto out_unref;
 		}
 	}
@@ -2271,7 +2259,8 @@ static void _msm_hyp_atomic_commit(struct drm_device *ddev,
 	struct drm_crtc_state *crtc_state;
 	struct msm_hyp_crtc_state *cstate;
 	struct msm_hyp_plane_state *pstate;
-	int i;
+	struct drm_gem_object *obj;
+	int i, j, ret;
 
 	HYP_ATRACE_BEGIN(__func__);
 
@@ -2281,6 +2270,27 @@ static void _msm_hyp_atomic_commit(struct drm_device *ddev,
 
 		cstate = to_msm_hyp_crtc_state(crtc->state);
 		drm_atomic_crtc_for_each_plane(plane, crtc) {
+			/*
+			 * Based on DMA API guide, if same streaming DMA region would be used
+			 * multiple times, and the data would be touched in between the DMA
+			 * transfers, then the buffer needs to be synced properly in order for
+			 * the CPU and device to see the most up-to-date and correct copy of
+			 * the DMA buffer.
+			 * Currently the sync logic would only work for DRM dumb buffers,
+			 * since mandatory syncing for dma buffer would cost 0.35~0.45 ms each
+			 * commit, which would be a huge impact.
+			 * KPI impact:
+			 * For dma buffers (not to sync), each commit costs 0.2~0.3 us
+			 * additionally;
+			 * For dumb buffers (to sync), each commit costs 0.25~0.35 ms
+			 * additionally.
+			 */
+			for (j = 0; j < plane->state->fb->format->num_planes; ++j) {
+				obj = drm_gem_fb_get_obj(plane->state->fb, j);
+				ret = msm_hyp_shmem_sync_sg_for_device(obj);
+				if (ret)
+					DRM_ERROR("failed to do dumb buffer sync\n");
+			}
 			pstate = to_msm_hyp_plane_state(plane->state);
 
 			msm_hyp_sync_wait(pstate->input_fence,
