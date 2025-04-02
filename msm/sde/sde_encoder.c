@@ -45,6 +45,7 @@
 #include "sde_hw_dsc.h"
 #include "sde_hw_vdc.h"
 #include "sde_crtc.h"
+#include "sde_plane.h"
 #include "sde_trace.h"
 #include "sde_core_irq.h"
 #include "sde_hw_top.h"
@@ -6983,6 +6984,15 @@ int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 		struct drm_framebuffer *fb)
 {
 	struct drm_encoder *drm_enc;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	struct sde_encoder_virt *sde_enc;
+	struct drm_plane *plane;
+	struct drm_plane_state *old_plane_state, *new_plane_state;
+	struct sde_plane *psde;
+	struct sde_plane_state *pstate;
+	struct drm_plane_state *state;
+	int i;
+#endif
 	struct sde_hw_mixer_cfg mixer;
 	struct sde_rm_hw_iter lm_iter;
 	bool lm_valid = false;
@@ -7042,6 +7052,51 @@ int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 
 		if (phys_enc->hw_ctl && phys_enc->hw_ctl->ops.set_active_pipes)
 			phys_enc->hw_ctl->ops.set_active_pipes(phys_enc->hw_ctl, NULL);
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+		sde_enc = to_sde_encoder_virt(drm_enc);
+
+		/* Clear per plane active_fectch_pipe and active_pipe */
+		if (sde_enc && sde_enc->old_state) {
+			for_each_oldnew_plane_in_state(sde_enc->old_state, plane, old_plane_state, new_plane_state, i) {
+				bool disabling;
+
+				/* Clear per plane active_fectch_pipe and active_pipe */
+				disabling = drm_atomic_plane_disabling(old_plane_state,
+								       new_plane_state);
+				if(disabling) {
+
+					state = plane->state;
+					if (!state)
+						continue;
+
+					psde = to_sde_plane(plane);
+					pstate = to_sde_plane_state(state);
+
+					/* Adding/removing plane requires global flush */
+					if (psde->pipe_hw->ops.set_flush_type)
+						psde->pipe_hw->ops.set_flush_type(psde->pipe_hw, true);
+
+					/* Make sure switch to global flush */
+					SDE_DEBUG("plane %d %s sspp local_flush  rect %d\n", DRMID(&psde->base), __func__, pstate->multirect_index);
+					if (psde->pipe_hw->ops.local_flush)
+						psde->pipe_hw->ops.local_flush(psde->pipe_hw, pstate->multirect_index);
+					if (phys_enc->hw_ctl->ops.force_global_flush)
+						phys_enc->hw_ctl->ops.force_global_flush(phys_enc->hw_ctl);
+
+					if (psde->pipe_hw->ops.set_active_fetch_pipe)
+						psde->pipe_hw->ops.set_active_fetch_pipe(psde->pipe_hw,
+								pstate->multirect_index, false);
+
+					if (psde->pipe_hw->ops.set_active_pipe)
+						psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
+								pstate->multirect_index, false);
+
+					sde_plane_ctl_flush(plane, phys_enc->hw_ctl, true);
+				}
+			}
+		}
+#endif
 	}
 
 	if (!lm_valid) {

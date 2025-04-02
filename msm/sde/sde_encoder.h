@@ -441,6 +441,10 @@ struct sde_encoder_virt {
 	bool cesta_force_auto_active_db_update;
 	bool cesta_reset_intf_master;
 	u32 intf_master;
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	struct drm_atomic_state *old_state;
+#endif
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)

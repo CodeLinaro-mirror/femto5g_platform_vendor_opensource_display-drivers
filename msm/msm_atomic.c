@@ -28,6 +28,7 @@
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
 #include <linux/dma-fence-chain.h>
 #endif
+#include "sde_encoder.h"
 
 #define MULTIPLE_CONN_DETECTED(x) (x > 1)
 
@@ -200,6 +201,9 @@ msm_disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 		const struct drm_encoder_helper_funcs *funcs;
 		struct drm_encoder *encoder;
 		struct drm_bridge *bridge;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+		struct sde_encoder_virt *sde_encoder;
+#endif
 
 		/*
 		 * Shut down everything that's in the changeset and currently
@@ -223,6 +227,12 @@ msm_disable_outputs(struct drm_device *dev, struct drm_atomic_state *old_state)
 		 */
 		if (WARN_ON(!encoder))
 			continue;
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+		/* add old_state to encoder */
+		sde_encoder = to_sde_encoder_virt(encoder);
+		sde_encoder->old_state = old_state;
+#endif
 
 		if (_msm_seamless_for_conn(connector, old_conn_state, false))
 			continue;
