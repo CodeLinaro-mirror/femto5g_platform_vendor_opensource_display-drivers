@@ -1331,6 +1331,7 @@ static int sde_cesta_probe(struct platform_device *pdev)
 		cesta->pd_fs = NULL;
 	}
 
+	cesta->phandle.cesta_pd = true;
 	if (cesta->pd_fs)
 		ret = pm_runtime_get_sync(cesta->pd_fs);
 	else if (cesta->fs)

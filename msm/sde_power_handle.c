@@ -737,6 +737,7 @@ int sde_power_enable_power_domain(struct sde_power_handle *phandle,
 	struct device *pd;
 	struct sde_power_domain_handle *pd_handle;
 	const char *pm_domain_name;
+	static bool hw_mode;
 
 	/* Only proceed on multiple power domains */
 	if (phandle->num_power_domains <= 1)
@@ -770,6 +771,22 @@ int sde_power_enable_power_domain(struct sde_power_handle *phandle,
 	}
 
 	pd = pd_handle->dev;
+
+
+	/* Enable hardware mode for Cesta clients' power domains, only once */
+	if (phandle->cesta_pd && power_domain_id == SDE_POWER_PD_ID_GDSC
+			&& !hw_mode) {
+		hw_mode = true;
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
+		ret = dev_pm_genpd_set_hwmode(pd_handle->dev, true);
+#else
+		ret = 0;
+#endif
+		if (ret) {
+			pr_err("failed to set hw mode: %d\n", ret);
+			return ret;
+		}
+	}
 
 	/* Enable or disable */
 	if (enable) {
