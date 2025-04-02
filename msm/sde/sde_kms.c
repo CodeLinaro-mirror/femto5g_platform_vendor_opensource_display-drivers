@@ -1266,7 +1266,7 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 			if (sde_encoder_in_clone_mode(encoder))
 				continue;
 
-			sde_encoder_vhm_trusted_vm_prepare(encoder, vm_req);
+			sde_encoder_vm_primary_vhm_prepare(encoder, vm_req);
 		}
 	}
 

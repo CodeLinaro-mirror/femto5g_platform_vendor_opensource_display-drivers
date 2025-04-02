@@ -1324,11 +1324,17 @@ void sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
 	enum sde_enc_rc_events sw_event);
 
 /**
- * sde_encoder_vhm_trusted_vm_prepare - prepare vhm panel for secure vm transition
+ * sde_encoder_vm_primary_vhm_prepare_helper - prepare interface for secure vm transition
+ * @sde_enc: pointer to sde encoder
+ */
+bool sde_encoder_vm_primary_vhm_prepare_helper(struct sde_encoder_virt *sde_enc);
+
+/**
+ * sde_encoder_vm_primary_vhm_prepare - prepare vhm panel for secure vm transition
  * @drm_enc: pointer to drm encoder
  * @vm_req: current vm_req state
  */
-void sde_encoder_vhm_trusted_vm_prepare(struct drm_encoder *drm_enc,
+void sde_encoder_vm_primary_vhm_prepare(struct drm_encoder *drm_enc,
 	enum sde_crtc_vm_req vm_req);
 
 /**

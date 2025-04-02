@@ -118,15 +118,40 @@ inline enum msm_disp_op sde_encoder_get_disp_op(struct drm_encoder *drm_enc)
 	return disp_op;
 }
 
-void sde_encoder_vhm_trusted_vm_prepare(struct drm_encoder *drm_enc,
+bool sde_encoder_vm_primary_vhm_prepare_helper(struct sde_encoder_virt *sde_enc)
+{
+	enum sde_crtc_vm_req vm_req = VM_REQ_NONE;
+	enum msm_disp_op disp_op;
+	struct sde_hw_intf *hw_intf;
+	struct sde_hw_ctl *ctl;
+
+	if (!sde_encoder_is_psr_supported(&sde_enc->base))
+		return false;
+
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+			CRTC_PROP_VM_REQ_STATE);
+	if (vm_req != VM_REQ_RELEASE)
+		return false;
+
+	hw_intf = sde_enc->cur_master->hw_intf;
+	ctl = sde_enc->cur_master->hw_ctl;
+	disp_op = sde_encoder_get_disp_op(&sde_enc->base);
+
+	if (hw_intf && hw_intf->ops.enable_infinite_vfp[disp_op])
+		hw_intf->ops.enable_infinite_vfp[disp_op](hw_intf, true);
+	if (ctl && ctl->ops.update_bitmask[disp_op])
+		ctl->ops.update_bitmask[disp_op](ctl, SDE_HW_FLUSH_INTF,
+			hw_intf->idx, true);
+
+	return true;
+}
+
+void sde_encoder_vm_primary_vhm_prepare(struct drm_encoder *drm_enc,
 		enum sde_crtc_vm_req vm_req)
 {
 	struct sde_encoder_virt *sde_enc;
 	struct sde_kms *sde_kms;
-	struct sde_hw_intf *hw_intf;
-	struct sde_hw_ctl *ctl;
 	u64 cmd_bit_mask = 0;
-	enum msm_disp_op disp_op;
 	bool enable;
 	int rc;
 
@@ -144,16 +169,9 @@ void sde_encoder_vhm_trusted_vm_prepare(struct drm_encoder *drm_enc,
 			sde_encoder_is_psr_supported(drm_enc)))
 		return;
 
-	disp_op = sde_encoder_get_disp_op(drm_enc);
 	enable = (vm_req == VM_REQ_RELEASE) ? true : false;
-	hw_intf = sde_enc->cur_master->hw_intf;
-	ctl = sde_enc->cur_master->hw_ctl;
-
-	if (hw_intf && hw_intf->ops.enable_infinite_vfp[disp_op])
-		hw_intf->ops.enable_infinite_vfp[disp_op](hw_intf, enable);
-	if (ctl && ctl->ops.update_bitmask[disp_op])
-		ctl->ops.update_bitmask[disp_op](ctl, SDE_HW_FLUSH_INTF,
-			hw_intf->idx, true);
+	if (sde_enc->rc_state != SDE_ENC_RC_STATE_IDLE)
+		sde_encoder_vm_primary_vhm_prepare_helper(sde_enc);
 
 	if (sde_enc->cur_master->sde_vrr_cfg.min_sr_state == SDE_MIN_SR_COMPLETE) {
 		SDE_EVT32(sde_enc->cur_master->sde_vrr_cfg.min_sr_state);
