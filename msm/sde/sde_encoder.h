@@ -1077,6 +1077,12 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc);
 void sde_encoder_post_commit_bl_sr_work(struct drm_encoder *drm_enc);
 
 /**
+ * sde_encoder_trusted_vm_release - prepare interface for secure vm transition
+ * @sde_enc: pointer to sde encoder
+ */
+bool sde_encoder_trusted_vm_release(struct sde_encoder_virt *sde_enc);
+
+/**
  * sde_encoder_vhm_trusted_vm_prepare - prepare vhm panel for secure vm transition
  * @drm_enc: pointer to drm encoder
  * @vm_req: current vm_req state

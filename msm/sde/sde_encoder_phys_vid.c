@@ -547,6 +547,9 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 		avr_params.avr_step_lines = mult_frac(phys_enc->cached_mode.vtotal,
 				vid_enc->timing_params.vrefresh, info->avr_step_fps);
 
+	if (sde_encoder_trusted_vm_release(sde_enc))
+		avr_params.infinite_mode = true;
+
 	if (intf->ops.avr_ctrl)
 		intf->ops.avr_ctrl(intf, &avr_params);
 
