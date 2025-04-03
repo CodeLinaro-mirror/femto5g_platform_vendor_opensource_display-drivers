@@ -294,10 +294,8 @@ static int _msm_hyp_planes_init(struct drm_device *ddev)
 
 		if (sde_hw_sspp_multirect_enabled(&catalog->sspp[i]) &&
 			sde_is_custom_client()) {
-			int priority =
-				catalog->sspp[i].sblk->smart_dma_priority;
-			sspp_id[priority - 1] = catalog->sspp[i].id;
-			master_plane_id[priority - 1] = plane->base.id;
+			sspp_id[num_virt_planes] = catalog->sspp[i].id;
+			master_plane_id[num_virt_planes] = plane->base.id;
 			num_virt_planes++;
 		}
 	}
