@@ -22,3 +22,16 @@ module_entry(
          ],
       }
 )
+
+#---------- MSM-CFG MODULE -------------------------
+
+module_entry(
+      name = "msm_cfg",
+      config_option = "CONFIG_DRM_MSM_CFG",
+      path = None,
+      config_srcs = {
+          "CONFIG_DRM_MSM_CFG" : [
+            "msm-cfg/msm_cfg.c",
+         ],
+      }
+)

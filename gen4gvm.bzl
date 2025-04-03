@@ -10,9 +10,11 @@ def define_gen4gvm():
             registry = display_driver_modules,
             modules = [
                 "msm_hyp",
+                "msm_cfg",
             ],
             config_options = [
                 "CONFIG_DRM_MSM_HYP",
-                "CONFIG_DRM_MSM_HYP_WFD"
+                "CONFIG_DRM_MSM_HYP_WFD",
+                "CONFIG_DRM_MSM_CFG"
             ],
         )
