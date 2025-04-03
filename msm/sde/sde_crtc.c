@@ -6147,7 +6147,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	}
 
 	if (sde_crtc->power_event) {
-		if (IS_DISP_OP_HFI(priv->disp_op))
+		if (IS_DISP_OP_HWIO(priv->disp_op))
 			sde_power_handle_unregister_event(&priv->phandle,
 					sde_crtc->power_event);
 		sde_crtc->power_event = NULL;
