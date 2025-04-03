@@ -4,7 +4,7 @@
  */
 
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
@@ -36,6 +36,12 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_crtc_helper.h>
 #include <linux/string.h>
+
+/* those header for ALSA and DAI use */
+#include <sound/soc.h>
+#include <sound/pcm.h>
+#include <sound/initval.h>
+#include <sound/tlv.h>
 
 #include <drm/drm_bridge.h>
 #include <drm/drm_probe_helper.h>
@@ -128,6 +134,7 @@ struct lt9611 {
 	u32 hdmi_3p3_en;
 	u32 hdmi_1p2_en;
 	u32 reset_gpio_flags;
+	u32 dsi_sel_gpio;
 
 	wait_queue_head_t writable_wq;
 	bool is_writable;
@@ -174,6 +181,8 @@ struct lt9611 {
 
 	struct msm_ext_disp_audio_edid_blk audio_edid_blk;
 	u8 raw_sad[MAX_NUMBER_ADB * MAX_AUDIO_DATA_BLOCK_SIZE];
+
+	int mute;
 };
 
 static int cont_splash_en;
@@ -699,6 +708,133 @@ static int lt9611_read(struct lt9611 *pdata, u8 reg, char *buf, u32 size)
 	return 0;
 }
 
+
+static void lt9611_i2c_mute(struct lt9611 *pdata, int mute)
+{
+	mutex_lock(&pdata->lock);
+	lt9611_ctl_en(pdata);
+
+	// mute C907 -> 00
+	if (mute) {
+		lt9611_write_byte(pdata, 0xFF, 0xC9);
+		lt9611_write_byte(pdata, 0x07, 0x00);
+		pr_debug("set mute mode\n");
+	} else {
+		lt9611_write_byte(pdata, 0xFF, 0xC9);
+		lt9611_write_byte(pdata, 0x07, 0x10);
+		pr_debug("set unmute mode\n");
+	}
+
+	lt9611_ctl_disable(pdata);
+	mutex_unlock(&pdata->lock);
+}
+
+static int lt9611_mute_info(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_info *uinfo)
+{
+	uinfo->type   = SNDRV_CTL_ELEM_TYPE_INTEGER;
+	uinfo->access = (SNDRV_CTL_ELEM_ACCESS_TLV_READ |
+			SNDRV_CTL_ELEM_ACCESS_READWRITE);
+	uinfo->count  = 1;
+
+	uinfo->value.integer.min  = 0;
+	uinfo->value.integer.max  = 1;
+	uinfo->value.integer.step = 1;
+
+	return 0;
+}
+
+static int lt9611_get_mute(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *uinfo)
+{
+	struct snd_soc_component *component =
+		snd_soc_kcontrol_component(kcontrol);
+	struct lt9611 *priv = snd_soc_component_get_drvdata(component);
+
+	pr_debug("in %s %d\n", __func__, priv->mute);
+	return 0;
+}
+
+static int lt9611_put_mute(struct snd_kcontrol *kcontrol,
+		struct snd_ctl_elem_value *ucontrol)
+{
+	struct snd_soc_component *component =
+		snd_soc_kcontrol_component(kcontrol);
+	struct lt9611 *priv = snd_soc_component_get_drvdata(component);
+
+	lt9611_i2c_mute(priv, ucontrol->value.integer.value[0]);
+	priv->mute = ucontrol->value.integer.value[0];
+	pr_debug("in %s %d\n", __func__, priv->mute);
+	return 0;
+}
+
+static const struct snd_kcontrol_new lt9611_snd_mute[] = {
+	{
+		.iface = SNDRV_CTL_ELEM_IFACE_MIXER,
+		.name  = "HDMI out mute",
+		.info  = lt9611_mute_info,
+		.get   = lt9611_get_mute,
+		.put   = lt9611_put_mute,
+	},
+};
+
+static int lt9611_snd_probe(struct snd_soc_component *component)
+{
+	int ret = 0;
+
+	ret = snd_soc_add_component_controls(component, lt9611_snd_mute, 1);
+	if (ret != 0) {
+		pr_err("fail add mute ctl, error: %d\n", ret);
+		return ret;
+	}
+
+	pr_err("%s is OK!\n", __func__);
+	return 0;
+}
+
+static const struct snd_soc_component_driver soc_component_lt9611 = {
+	.probe = lt9611_snd_probe,
+};
+
+static int lt9611_prepare(struct snd_pcm_substream *substream,
+		struct snd_soc_dai *dai)
+{
+	return 0;
+}
+
+static int lt9611_mute(struct snd_soc_dai *dai, int mute, int stream)
+{
+	struct snd_soc_component *component = dai->component;
+	struct lt9611 *priv = snd_soc_component_get_drvdata(component);
+
+	lt9611_i2c_mute(priv, mute);
+	pr_debug("in %s function\n", __func__);
+	return 0;
+}
+
+static const struct snd_soc_dai_ops lt9611_dai_ops = {
+	.mute_stream    = lt9611_mute,
+	.prepare = lt9611_prepare,
+};
+
+static struct snd_soc_dai_driver lt9611_dai = {
+	.name           = "lt9611",
+	.playback       = {
+		.stream_name    = "Playback",
+		.channels_min   = 2,
+		.channels_max   = 2,
+		.rates          = SNDRV_PCM_RATE_44100 |
+				SNDRV_PCM_RATE_48000 |
+				SNDRV_PCM_RATE_88200 |
+				SNDRV_PCM_RATE_96000,
+		.formats        = SNDRV_PCM_FMTBIT_S16_LE |
+				SNDRV_PCM_FMTBIT_S20_LE |
+				SNDRV_PCM_FMTBIT_S24_LE |
+				SNDRV_PCM_FMTBIT_S32_LE,
+	},
+	.ops = &lt9611_dai_ops,
+};
+
 void lt9611_config(struct lt9611 *pdata)
 {
 	struct lt9611_reg_cfg reg_cfg[] = {
@@ -714,7 +850,7 @@ void lt9611_config(struct lt9611 *pdata)
 	lt9611_write_array(pdata, reg_cfg, ARRAY_SIZE(reg_cfg));
 }
 
-u8 lt9611_get_version(struct lt9611 *pdata)
+u16 lt9611_get_version(struct lt9611 *pdata)
 {
 	u8 revison = 0;
 	u8 subversion = 0;
@@ -736,7 +872,7 @@ u8 lt9611_get_version(struct lt9611 *pdata)
 	lt9611_write_byte(pdata, 0xEE, 0x00);
 	msleep(50);
 
-	return revison;
+	return (revison<<8)|subversion;
 }
 
 void lt9611_flash_write_en(struct lt9611 *pdata)
@@ -886,6 +1022,26 @@ void lt9611_firmware_write(struct lt9611 *pdata, const u8 *f_data,
 		size, total_page, rest_data);
 }
 
+static ssize_t get_fw_version_show(struct device *dev,
+					struct device_attribute *attr,
+					char *buf)
+{
+	u32 fw_version;
+	struct lt9611 *pdata = dev_get_drvdata(dev);
+
+	if (!pdata) {
+		pr_err("pdata is NULL\n");
+		return -EINVAL;
+	}
+	if (pdata->fw_status == UPDATE_RUNNING) {
+		pr_err("can't check firmware while upgrading bridge\n");
+		return -EINVAL;
+	}
+
+	fw_version = lt9611_get_version(pdata);
+	return scnprintf(buf, PAGE_SIZE, "%#x\n", fw_version);
+}
+
 void lt9611_firmware_upgrade(struct lt9611 *pdata,
 			const struct firmware *cfg)
 {
@@ -951,6 +1107,10 @@ static void lt9611_parse_dt_modes(struct device_node *np,
 	u32 v_front_porch, v_pulse_width, v_back_porch;
 	bool h_active_high, v_active_high;
 	u32 flags = 0;
+	struct lt9611 *pdata = container_of(head, struct lt9611, mode_list);
+
+	if (!pdata)
+		return;
 
 	root_node = of_get_child_by_name(np, "lt,customize-modes");
 	if (!root_node) {
@@ -1038,6 +1198,12 @@ static void lt9611_parse_dt_modes(struct device_node *np,
 			pr_err("failed to read clock, rc=%d\n", rc);
 			goto fail;
 		}
+
+		if (gpio_is_valid(pdata->dsi_sel_gpio) &&
+				!gpio_get_value(pdata->dsi_sel_gpio) &&
+				mode->hdisplay == 3840 && mode->vdisplay == 2160 &&
+				mode->clock > 300000)
+			continue;
 
 		mode->hsync_start = mode->hdisplay + h_front_porch;
 		mode->hsync_end = mode->hsync_start + h_pulse_width;
@@ -1152,6 +1318,11 @@ static int lt9611_parse_dt(struct device *dev,
 		of_get_named_gpio(np, "lt,hdmi-1p2-en", 0);
 	if (!gpio_is_valid(pdata->hdmi_1p2_en))
 		pr_debug("hdmi_1p2_en not specified\n");
+
+	pdata->dsi_sel_gpio =
+		of_get_named_gpio(np, "lt,dsi-sel-gpio", 0);
+	if (!gpio_is_valid(pdata->dsi_sel_gpio))
+		pr_debug("dsi_sel_gpio=%d\n", pdata->dsi_sel_gpio);
 
 	pdata->ac_mode = of_property_read_bool(np, "lt,ac-mode");
 	pr_debug("ac_mode=%d\n", pdata->ac_mode);
@@ -1284,7 +1455,25 @@ static int lt9611_gpio_configure(struct lt9611 *pdata, bool on)
 			}
 		}
 
+		if (gpio_is_valid(pdata->dsi_sel_gpio)) {
+			ret = gpio_request(pdata->dsi_sel_gpio,
+				"lt9611-dsi-sel-gpio");
+			if (ret) {
+				pr_err("lt9611 dsi sel gpio request failed\n");
+				goto writable_error;
+			}
+
+			ret = gpio_direction_input(pdata->dsi_sel_gpio);
+			if (ret) {
+				pr_err("lt9611 dsi sel gpio direction failed\n");
+				goto dsi_sel_error;
+			}
+		}
+
+
 	} else {
+		if (gpio_is_valid(pdata->dsi_sel_gpio))
+			gpio_free(pdata->dsi_sel_gpio);
 		gpio_free(pdata->irq_gpio);
 		if (gpio_is_valid(pdata->writable_gpio))
 			gpio_free(pdata->writable_gpio);
@@ -1301,7 +1490,9 @@ static int lt9611_gpio_configure(struct lt9611 *pdata, bool on)
 
 	return ret;
 
-
+dsi_sel_error:
+	if (gpio_is_valid(pdata->dsi_sel_gpio))
+		gpio_free(pdata->dsi_sel_gpio);
 writable_error:
 	if (gpio_is_valid(pdata->writable_gpio))
 		gpio_free(pdata->writable_gpio);
@@ -2521,12 +2712,14 @@ err:
 }
 
 static DEVICE_ATTR_WO(dump_info);
+static DEVICE_ATTR_RO(get_fw_version);
 static DEVICE_ATTR_RW(firmware_upgrade);
 static DEVICE_ATTR_RO(get_hpd_stat);
 static DEVICE_ATTR_RW(edid_mode);
 
 static struct attribute *lt9611_sysfs_attrs[] = {
 	&dev_attr_dump_info.attr,
+	&dev_attr_get_fw_version.attr,
 	&dev_attr_firmware_upgrade.attr,
 	&dev_attr_get_hpd_stat.attr,
 	&dev_attr_edid_mode.attr,
@@ -2823,6 +3016,14 @@ static int lt9611_probe(struct i2c_client *client,
 	}
 
 	if (pdata->audio_support) {
+		ret = snd_soc_register_component(&client->dev,
+			&soc_component_lt9611, &lt9611_dai, 1);
+		if (ret) {
+			pr_err("Failed to register CODEC: %s, %d\n",
+					lt9611_dai.name, ret);
+			return ret;
+		}
+
 		pdata->audio_pdev =
 			platform_device_register_simple("lt9611", -1, NULL, 0);
 		if (IS_ERR(pdata->audio_pdev)) {
@@ -2876,6 +3077,8 @@ static int lt9611_remove(struct i2c_client *client)
 		list_del(&mode->head);
 		kfree(mode);
 	}
+
+	snd_soc_unregister_component(&client->dev);
 
 	devm_kfree(&client->dev, pdata);
 	if (pdata->wq)
