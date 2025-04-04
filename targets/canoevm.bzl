@@ -16,6 +16,8 @@ def define_canoevm():
                     "CONFIG_DRM_MSM_SDE",
                     "CONFIG_SYNC_FILE",
                     "CONFIG_DRM_MSM_DSI",
+                    "CONFIG_MDSS_HFI_ADAPTER",
+                    "CONFIG_MDSS_HFI",
                     "CONFIG_DSI_PARSER",
                     "CONFIG_QCOM_MDSS_PLL",
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",

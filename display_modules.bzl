@@ -6,31 +6,31 @@ module_entry = display_driver_modules.register
 #---------- MSM-DRM MODULE -------------------------
 
 module_entry(
-      name = "msm_drm",
-      config_option = "CONFIG_DRM_MSM",
-      path = None,
-      config_srcs = {
-         "CONFIG_DRM_MSM_HDMI" : [
+    name = "msm_drm",
+    config_option = "CONFIG_DRM_MSM",
+    path = None,
+    config_srcs = {
+        "CONFIG_DRM_MSM_HDMI": [
             "msm/hdmi/hdmi_debug.c",
             "msm/hdmi/hdmi_display.c",
             "msm/hdmi/hdmi_parser.c",
             "msm/hdmi/hdmi_power.c",
             "msm/hdmi/hdmi_drm.c",
             "msm/hdmi/hdmi_util.c",
-         ],
-         "CONFIG_HDCP_QSEECOM": [
+        ],
+        "CONFIG_HDCP_QSEECOM": [
             "hdcp/msm_hdcp.c",
             "msm/dp/dp_hdcp2p2.c",
             "msm/sde_hdcp_1x.c",
             "msm/sde_hdcp_2x.c",
-         ],
-         "CONFIG_DRM_SDE_VM" : [
+        ],
+        "CONFIG_DRM_SDE_VM": [
             "msm/sde/sde_vm_common.c",
             "msm/sde/sde_vm_primary.c",
             "msm/sde/sde_vm_trusted.c",
             "msm/sde/sde_vm_msgq.c",
-         ],
-         "CONFIG_DRM_MSM_DP" : [
+        ],
+        "CONFIG_DRM_MSM_DP": [
             "msm/dp/dp_altmode.c",
             "msm/dp/dp_parser.c",
             "msm/dp/dp_power.c",
@@ -58,21 +58,21 @@ module_entry(
             "msm/dp/dp_pll_5nm.c",
             "msm/dp/dp_pll_4nm.c",
             "msm/dp/dp_pll_3nm.c",
-	    "msm/dp/edp_pll_5nm.c",
-	    "msm/dp/edp_pll_4nm.c",
-         ],
-         "CONFIG_DRM_MSM_DP_MST" : [
+            "msm/dp/edp_pll_5nm.c",
+            "msm/dp/edp_pll_4nm.c",
+        ],
+        "CONFIG_DRM_MSM_DP_MST": [
             "msm/dp/dp_mst_drm.c",
-         ],
-         "CONFIG_DRM_MSM_DP_USBPD_LEGACY" : [
+        ],
+        "CONFIG_DRM_MSM_DP_USBPD_LEGACY": [
             "msm/dp/dp_usbpd.c",
-         ],
-         "CONFIG_MDSS_HFI_ADAPTER" : [
+        ],
+        "CONFIG_MDSS_HFI_ADAPTER": [
             "msm/hfi/hfi_adapter.c",
             "msm/hfi/hfi_packer.c",
             "msm/hfi/hfi_unpacker.c",
-         ],
-         "CONFIG_MDSS_HFI" : [
+        ],
+        "CONFIG_MDSS_HFI": [
             "msm/hfi/hfi_utils.c",
             "msm/hfi/hfi_msm_drv.c",
             "msm/sde/hfi/hfi_catalog.c",
@@ -84,8 +84,8 @@ module_entry(
             "msm/sde/hfi/hfi_plane.c",
             "msm/dsi/hfi/dsi_display_hfi.c",
             "msm/dsi/hfi/dsi_hfi.c",
-         ],
-         "CONFIG_DRM_MSM_SDE" : [
+        ],
+        "CONFIG_DRM_MSM_SDE": [
             "msm/sde/sde_crtc.c",
             "msm/sde/sde_encoder.c",
             "msm/sde/sde_encoder_dce.c",
@@ -144,21 +144,21 @@ module_entry(
             "msm/sde/sde_hw_color_proc_aiqe_v1.c",
             "msm/sde/sde_aiqe_common.c",
             "msm/sde/sde_loopback.c",
-         ],
-         "CONFIG_DRM_SDE_WB" : [
+        ],
+        "CONFIG_DRM_SDE_WB": [
             "msm/sde/sde_wb.c",
-            "msm/sde/sde_encoder_phys_wb.c"
-         ],
-         "CONFIG_DRM_SDE_RSC" : [
+            "msm/sde/sde_encoder_phys_wb.c",
+        ],
+        "CONFIG_DRM_SDE_RSC": [
             "msm/sde_rsc.c",
             "msm/sde_rsc_hw.c",
             "msm/sde_rsc_hw_v3.c",
-         ],
-         "CONFIG_DRM_SDE_CESTA" : [
+        ],
+        "CONFIG_DRM_SDE_CESTA": [
             "msm/sde_cesta.c",
             "msm/sde_cesta_hw.c",
-         ],
-         "CONFIG_DRM_MSM_DSI" : [
+        ],
+        "CONFIG_DRM_MSM_DSI": [
             "msm/dsi/dsi_phy.c",
             "msm/dsi/dsi_pwr.c",
             "msm/dsi/dsi_phy_hw_v3_0.c",
@@ -182,14 +182,14 @@ module_entry(
             "msm/dsi/dsi_panel.c",
             "msm/dsi/dsi_clk_manager.c",
             "msm/dsi/dsi_display_test.c",
-         ],
-         "CONFIG_DSI_PARSER" : [
+        ],
+        "CONFIG_DSI_PARSER": [
             "msm/dsi/dsi_parser.c",
-         ],
-         "CONFIG_THERMAL_OF" : [
+        ],
+        "CONFIG_THERMAL_OF": [
             "msm/msm_cooling_device.c",
-          ],
-         "CONFIG_DRM_MSM" : [
+        ],
+        "CONFIG_DRM_MSM": [
             "msm/msm_atomic.c",
             "msm/msm_fb.c",
             "msm/msm_drv.c",
@@ -198,53 +198,56 @@ module_entry(
             "msm/msm_gem_vma.c",
             "msm/msm_smmu.c",
             "msm/msm_prop.c",
-         ],
-         "CONFIG_MSM_SDE_ROTATOR":{
-            True: [
-               "rotator/sde_rotator_dev.c",
-               "rotator/sde_rotator_core.c",
-               "rotator/sde_rotator_base.c ",
-               "rotator/sde_rotator_formats.c",
-               "rotator/sde_rotator_util.c",
-               "rotator/sde_rotator_io_util.c",
-               "rotator/sde_rotator_smmu.c",
-               "rotator/sde_rotator_r1_wb.c",
-               "rotator/sde_rotator_r1_pipe.c ",
-               "rotator/sde_rotator_r1_ctl.c",
-               "rotator/sde_rotator_r1.c",
-               "rotator/sde_rotator_r3.c"],
-            "CONFIG_SYNC_FILE":["rotator/sde_rotator_sync.c"],
-            "CONFIG_DEBUG_FS":["rotator/sde_rotator_debug.c",
-                              "rotator/sde_rotator_r1_debug.c",
-                              "rotator/sde_rotator_r3_debug.c"],
-            },
-      },
-
-      # Configs are handled by config_options = []
-      config_deps = {
-         "CONFIG_QTI_HW_FENCE" : [
-             "//vendor/qcom/opensource/mm-drivers/hw_fence:%b_msm_hw_fence",
-             "//vendor/qcom/opensource/synx-kernel:%b_modules",
-             "//vendor/qcom/opensource/synx-kernel:synx_headers",
         ],
-        "CONFIG_QCOM_SPEC_SYNC" : [
+        "CONFIG_MSM_SDE_ROTATOR": {
+            True: [
+                "rotator/sde_rotator_dev.c",
+                "rotator/sde_rotator_core.c",
+                "rotator/sde_rotator_base.c ",
+                "rotator/sde_rotator_formats.c",
+                "rotator/sde_rotator_util.c",
+                "rotator/sde_rotator_io_util.c",
+                "rotator/sde_rotator_smmu.c",
+                "rotator/sde_rotator_r1_wb.c",
+                "rotator/sde_rotator_r1_pipe.c ",
+                "rotator/sde_rotator_r1_ctl.c",
+                "rotator/sde_rotator_r1.c",
+                "rotator/sde_rotator_r3.c",
+            ],
+            "CONFIG_SYNC_FILE": ["rotator/sde_rotator_sync.c"],
+            "CONFIG_DEBUG_FS": [
+                "rotator/sde_rotator_debug.c",
+                "rotator/sde_rotator_r1_debug.c",
+                "rotator/sde_rotator_r3_debug.c",
+            ],
+        },
+    },
+
+    # Configs are handled by config_options = []
+    config_deps = {
+        "CONFIG_QTI_HW_FENCE": [
+            "//vendor/qcom/opensource/mm-drivers/hw_fence:%b_msm_hw_fence",
+            "//vendor/qcom/opensource/synx-kernel:%b_modules",
+            "//vendor/qcom/opensource/synx-kernel:synx_headers",
+        ],
+        "CONFIG_QCOM_SPEC_SYNC": [
             "//vendor/qcom/opensource/mm-drivers/sync_fence:%b_sync_fence",
         ],
-        "CONFIG_MSM_EXT_DISPLAY" : [
+        "CONFIG_MSM_EXT_DISPLAY": [
             "//vendor/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display",
         ],
-        "CONFIG_HDCP_QSEECOM" : [
+        "CONFIG_HDCP_QSEECOM": [
             "//vendor/qcom/opensource/securemsm-kernel:%b_hdcp_qseecom_dlkm",
         ],
-        "CONFIG_MSM_MMRM" : [
+        "CONFIG_MSM_MMRM": [
             "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver",
         ],
-        "CONFIG_SMMU_PROXY" : [
+        "CONFIG_SMMU_PROXY": [
             "//vendor/qcom/opensource/securemsm-kernel:%b_smmu_proxy_dlkm",
-             "//vendor/qcom/opensource/securemsm-kernel:smmu_proxy_headers",
-      ],
-        "CONFIG_QTI_HFI_CORE" : [
+            "//vendor/qcom/opensource/securemsm-kernel:smmu_proxy_headers",
+        ],
+        "CONFIG_QTI_HFI_CORE": [
             "//vendor/qcom/opensource/mm-drivers/hfi_core:%b_msm_hfi_core",
         ],
-      },
+    },
 )
