@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -62,8 +62,6 @@
 #define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
 #define SDE_HW_VER_C40	SDE_HW_VER(12, 4, 0) /* kera */
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
-
-#define SDE_QULTIVATE_SW_REV1 0x1
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
 #define IS_SDE_MAJOR_SAME(rev1, rev2)   \
@@ -307,7 +305,6 @@ struct sde_intr_irq_offsets {
  * @SDE_MDP_WD_TIMER      WD timer support
  * @SDE_MDP_DHDR_MEMPOOL   Dynamic HDR Metadata mempool present
  * @SDE_MDP_DHDR_MEMPOOL_4K Dynamic HDR mempool is 4k aligned
- * @SDE_MDP_DHDR_MEMPOOL_4K_EXT Dynamic HDR mempool is 4k aligned (extended version)
  * @SDE_MDP_PERIPH_TOP_REMOVED Indicates if periph top0 block is removed
  * @SDE_MDP_TOP_PPB_SET_SIZE   Indicates if top block supports ppb size setting
  * @SDE_MDP_HW_FENCE_DIR_WRITE Indicates if hw supports hw-fence dir write
@@ -325,7 +322,6 @@ enum {
 	SDE_MDP_WD_TIMER,
 	SDE_MDP_DHDR_MEMPOOL,
 	SDE_MDP_DHDR_MEMPOOL_4K,
-	SDE_MDP_DHDR_MEMPOOL_4K_EXT,
 	SDE_MDP_PERIPH_TOP_0_REMOVED,
 	SDE_MDP_TOP_PPB_SET_SIZE,
 	SDE_MDP_HW_FENCE_DIR_WRITE,
@@ -1733,21 +1729,6 @@ struct sde_dnsc_blur_filter_info {
 };
 
 /**
- * struct sde_qultivate_config_v1 - information of display_qultivate fuse config
- * @qultivate_enabled  display_qultivate fuse is enabled.
- * @gdsc2_blocked      gdsc2 operation is blocked when display_qultivate fuse present
- * @vig_count          number of vig blocks when display_qultivate fuse present
- * @dma_count          number of dma blocks when display_qultivate fuse present
-
- */
-struct sde_qultivate_config_v1 {
-	bool enabled;
-	bool gdsc2_blocked;
-	u32 vig_count;
-	u32 dma_count;
-};
-
-/**
  * struct sde_intf_cfg - information of timing engine blocks
  * @id                 enum identifying this block
  * @base               register offset of this block
@@ -2064,7 +2045,6 @@ struct sde_perf_cfg {
  * @hw_rev              MDSS HW revision
  * @ubwc_rev            UBWC feature version (0x0 for not supported)
  * @ubwc_bw_calc_rev    indicates how UBWC BW has to be calculated
- * @qultivate_rev       display_qultivate software fuse revision
  * @qseed_sw_lib_rev    qseed SW library version
  * @qseed_hw_rev        qseed HW block version
  * @smart_dma_rev       smartDMA block version
@@ -2116,7 +2096,6 @@ struct sde_perf_cfg {
  * @cwb_blk_off         CWB offset address
  * @cwb_blk_stride      offset between each CWB blk
  * @dcwb_count          number of dcwb hardware instances
- * @qultivate_cfg       pointer to display_qultivate configurations
  * @reg_dma_count       number of valid reg dma blocks available
  * @dma_cfg             pointer to config containing reg dma blocks
  * @ad_count            number of AD4 hardware instances
@@ -2193,7 +2172,6 @@ struct sde_mdss_cfg {
 	u32 hw_rev;
 	u32 ubwc_rev;
 	u32 ubwc_bw_calc_rev;
-	u32 qultivate_rev;
 	u32 qseed_sw_lib_rev;
 	u32 qseed_hw_rev;
 	u32 smart_dma_rev;
@@ -2247,7 +2225,6 @@ struct sde_mdss_cfg {
 	u32 cwb_blk_off[MAX_CWB_BLOCKS];
 	u32 cwb_blk_stride;
 	u32 dcwb_count;
-	void *qultivate_cfg;
 
 	u32 reg_dma_count;
 	struct sde_reg_dma_cfg dma_cfg;
