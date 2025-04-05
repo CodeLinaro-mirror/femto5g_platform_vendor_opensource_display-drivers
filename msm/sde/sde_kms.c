@@ -2282,7 +2282,9 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
-		rc = dsi_display_drm_bridge_init(display, encoder, cesta_client);
+		/* avoid passing cesta client to DSI bridge if AOSS VCD is not supported by cesta */
+		rc = dsi_display_drm_bridge_init(display, encoder,
+				sde_cesta_is_aoss_supported(DPUID(dev)) ? cesta_client : NULL);
 		if (rc) {
 			SDE_ERROR("dsi bridge %d init failed, %d\n", i, rc);
 			sde_encoder_destroy(encoder);
@@ -2515,7 +2517,7 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 
 	u32 sspp_id[MAX_PLANES];
 	u32 master_plane_id[MAX_PLANES];
-	u32 num_virt_planes = 0, dummy_mixer_count = 0;
+	u32 dummy_mixer_count = 0;
 
 	if (!sde_kms || !sde_kms->dev || !sde_kms->dev->dev) {
 		SDE_ERROR("invalid sde_kms\n");
@@ -2549,6 +2551,9 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 		if (primary_planes_idx >= max_crtc_count)
 			primary = false;
 
+		if (catalog->sspp[i].id == SSPP_NONE)
+			continue;
+
 		plane = sde_plane_init(dev, catalog->sspp[i].id, primary,
 				(1UL << max_crtc_count) - 1, 0);
 		if (IS_ERR(plane)) {
@@ -2567,12 +2572,13 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 				catalog->sspp[i].sblk->smart_dma_priority;
 			sspp_id[priority - 1] = catalog->sspp[i].id;
 			master_plane_id[priority - 1] = plane->base.id;
-			num_virt_planes++;
 		}
 	}
 
 	/* Initialize smart DMA virtual planes */
-	for (i = 0; i < num_virt_planes; i++) {
+	for (i = 0; i < catalog->sspp_count; i++) {
+		if (sspp_id[i] == SSPP_NONE)
+			continue;
 		plane = sde_plane_init(dev, sspp_id[i], false,
 			(1UL << max_crtc_count) - 1, master_plane_id[i]);
 		if (IS_ERR(plane)) {
@@ -5340,6 +5346,65 @@ error:
 	return rc;
 }
 
+static int _sde_kms_hw_init_rm(struct sde_kms *sde_kms, struct msm_drm_private *priv)
+{
+	int i, rc = -EINVAL;
+
+	rc = sde_rm_init(&sde_kms->rm);
+	if (rc) {
+		SDE_ERROR("rm init failed: %d\n", rc);
+		goto error;
+	}
+
+	sde_kms->rm_init = true;
+
+	sde_kms->hw_intr = sde_hw_intr_init(sde_kms->mmio, sde_kms->catalog);
+	if (IS_ERR_OR_NULL(sde_kms->hw_intr)) {
+		rc = PTR_ERR(sde_kms->hw_intr);
+		SDE_ERROR("hw_intr init failed: %d\n", rc);
+		sde_kms->hw_intr = NULL;
+		goto error;
+	}
+
+	/*
+	 * Attempt continuous splash handoff only if reserved
+	 * splash memory is found & release resources on any error
+	 * in finding display hw config in splash
+	 */
+	if (sde_kms->splash_data.num_splash_regions) {
+		struct sde_splash_display *display;
+		int ret, display_count =
+			sde_kms->splash_data.num_splash_displays;
+
+		ret = sde_rm_cont_splash_res_init(priv, &sde_kms->rm,
+				&sde_kms->splash_data, sde_kms->catalog);
+
+		for (i = 0; i < display_count; i++) {
+			display = &sde_kms->splash_data.splash_display[i];
+			/*
+			 * free splash region on resource init failure and
+			 * cont-splash disabled case
+			 */
+			if (!display->cont_splash_enabled || ret)
+				_sde_kms_free_splash_display_data(
+						sde_kms, display);
+		}
+	}
+
+	sde_kms->hw_mdp = sde_rm_get_mdp(&sde_kms->rm);
+	if (IS_ERR_OR_NULL(sde_kms->hw_mdp)) {
+		rc = PTR_ERR(sde_kms->hw_mdp);
+		if (!sde_kms->hw_mdp)
+			rc = -EINVAL;
+		SDE_ERROR("failed to get hw_mdp: %d\n", rc);
+		sde_kms->hw_mdp = NULL;
+		goto error;
+	}
+
+error:
+	return rc;
+}
+
 static int _sde_kms_hw_init_power_helper(struct drm_device *dev,
 			struct sde_kms *sde_kms)
 {
@@ -5378,6 +5443,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	struct msm_drm_private *priv)
 {
 	int i, rc = -EINVAL;
+	struct sde_qultivate_config_v1 *config_v1 = NULL;
 
 	sde_kms->catalog = sde_hw_catalog_init(dev);
 	if (IS_ERR_OR_NULL(sde_kms->catalog)) {
@@ -5416,56 +5482,9 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 
 	sde_dbg_init_dbg_buses(sde_kms->core_rev);
 
-	rc = sde_rm_init(&sde_kms->rm);
-	if (rc) {
-		SDE_ERROR("rm init failed: %d\n", rc);
-		goto power_error;
-	}
-
-	sde_kms->rm_init = true;
-
-	sde_kms->hw_intr = sde_hw_intr_init(sde_kms->mmio, sde_kms->catalog);
-	if (IS_ERR_OR_NULL(sde_kms->hw_intr)) {
-		rc = PTR_ERR(sde_kms->hw_intr);
-		SDE_ERROR("hw_intr init failed: %d\n", rc);
-		sde_kms->hw_intr = NULL;
+	rc = _sde_kms_hw_init_rm(sde_kms, priv);
+	if (rc)
 		goto hw_intr_init_err;
-	}
-
-	/*
-	 * Attempt continuous splash handoff only if reserved
-	 * splash memory is found & release resources on any error
-	 * in finding display hw config in splash
-	 */
-	if (sde_kms->splash_data.num_splash_regions) {
-		struct sde_splash_display *display;
-		int ret, display_count =
-			sde_kms->splash_data.num_splash_displays;
-
-		ret = sde_rm_cont_splash_res_init(priv, &sde_kms->rm,
-				&sde_kms->splash_data, sde_kms->catalog);
-
-		for (i = 0; i < display_count; i++) {
-			display = &sde_kms->splash_data.splash_display[i];
-			/*
-			 * free splash region on resource init failure and
-			 * cont-splash disabled case
-			 */
-			if (!display->cont_splash_enabled || ret)
-				_sde_kms_free_splash_display_data(
-						sde_kms, display);
-		}
-	}
-
-	sde_kms->hw_mdp = sde_rm_get_mdp(&sde_kms->rm);
-	if (IS_ERR_OR_NULL(sde_kms->hw_mdp)) {
-		rc = PTR_ERR(sde_kms->hw_mdp);
-		if (!sde_kms->hw_mdp)
-			rc = -EINVAL;
-		SDE_ERROR("failed to get hw_mdp: %d\n", rc);
-		sde_kms->hw_mdp = NULL;
-		goto power_error;
-	}
 
 	for (i = 0; i < sde_kms->catalog->vbif_count; i++) {
 		u32 vbif_idx = sde_kms->catalog->vbif[i].id;
@@ -5482,6 +5501,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		}
 	}
 
+	sde_kms->hw_uidle = NULL;
 	if (sde_kms->catalog->uidle_cfg.base) {
 		sde_kms->hw_uidle = sde_hw_uidle_init(UIDLE, sde_kms->mmio,
 			sde_kms->mmio_len, sde_kms->catalog);
@@ -5494,8 +5514,6 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 			sde_kms->hw_uidle = NULL;
 			rc = 0;
 		}
-	} else {
-		sde_kms->hw_uidle = NULL;
 	}
 
 	if (sde_kms->sid) {
@@ -5516,6 +5534,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto perf_err;
 	}
 
+	sde_kms->hw_sw_fuse = NULL;
 	if (sde_kms->sw_fuse) {
 		sde_kms->hw_sw_fuse = sde_hw_sw_fuse_init(sde_kms->sw_fuse,
 				sde_kms->sw_fuse_len, sde_kms->catalog);
@@ -5524,9 +5543,8 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 					PTR_ERR(sde_kms->hw_sw_fuse));
 			sde_kms->hw_sw_fuse = NULL;
 		}
-	} else {
-		sde_kms->hw_sw_fuse = NULL;
 	}
+
 	/*
 	 * set the disable_immediate flag when driver supports the precise vsync
 	 * timestamp as the DRM hooks for vblank timestamp/counters would be set
@@ -5548,6 +5566,12 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (!priv->phandle.hw_fence_enable) {
 		SDE_DEBUG("power vote failed, disabling hw-fencing\n");
 		sde_kms->catalog->hw_fence_rev = 0;
+	}
+
+	if (sde_kms->catalog->qultivate_rev == SDE_QULTIVATE_SW_REV1 &&
+			sde_kms->catalog->qultivate_cfg) {
+		config_v1 = sde_kms->catalog->qultivate_cfg;
+		priv->phandle.gdsc2_blocked = config_v1->gdsc2_blocked;
 	}
 
 	return 0;
