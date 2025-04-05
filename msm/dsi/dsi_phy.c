@@ -466,7 +466,7 @@ static int dsi_phy_driver_probe(struct platform_device *pdev)
 		dsi_phy->disp_op = MSM_DISP_OP_HWIO;
 	}
 
-	if (dsi_phy->ver_info->version == DSI_PHY_VERSION_7_2) {
+	if (dsi_phy->disp_op == MSM_DISP_OP_HWIO) {
 		rc = dsi_phy_regmap_init(pdev, dsi_phy);
 		if (rc) {
 			DSI_PHY_ERR(dsi_phy, "Failed to parse register information, rc=%d\n",
