@@ -9268,7 +9268,7 @@ int dsi_display_pre_commit(void *display,
 					__func__);
 				goto error;
 			}
-		} else {
+		} else if (!dsi_display->panel->vrr_caps.vrr_support) {
 			rc = dsi_display_qsync(display, enable);
 			if (rc) {
 				DSI_ERR("%s failed to send qsync commands\n",
