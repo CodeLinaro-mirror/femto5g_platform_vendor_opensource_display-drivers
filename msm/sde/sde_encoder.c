@@ -416,27 +416,12 @@ int sde_encoder_helper_hw_fence_extended_wait(struct sde_encoder_phys *phys_enc,
 	int ret = -ETIMEDOUT;
 	s64 standard_kickoff_timeout_ms = wait_info->timeout_ms;
 	int timeout_iters = EXTENDED_KICKOFF_TIMEOUT_ITERS;
-	u32 fence_ready = 0;
-
-	if (!ctl || !ctl->ops.get_hw_fence_status) {
-		SDE_ERROR("invalid argument(s)\n");
-		return ret;
-	}
-
-	/* if fence_ready is high (bit zero) then skip extended wait */
-	fence_ready = ctl->ops.get_hw_fence_status(ctl) & 0x1;
-	if (fence_ready)
-		return ret;
 
 	wait_info->timeout_ms = EXTENDED_KICKOFF_TIMEOUT_MS;
 
 	while (ret == -ETIMEDOUT && timeout_iters--) {
-		ret = sde_encoder_helper_wait_for_irq(phys_enc, wait_type, wait_info);
-		if (ret == -ETIMEDOUT) {
-			/* if dma_fence is not signaled, keep waiting */
-			if (!sde_crtc_is_fence_signaled(phys_enc->parent->crtc))
-				continue;
-
+		/* if dma_fence is signaled, avoid extended wait */
+		if (sde_crtc_is_fence_signaled(phys_enc->parent->crtc)) {
 			/* timed-out waiting and no sw-override support for hw-fences */
 			if (!ctl || !ctl->ops.hw_fence_trigger_sw_override) {
 				SDE_ERROR("invalid argument(s)\n");
@@ -462,6 +447,7 @@ int sde_encoder_helper_hw_fence_extended_wait(struct sde_encoder_phys *phys_enc,
 			}
 			break;
 		}
+		ret = sde_encoder_helper_wait_for_irq(phys_enc, wait_type, wait_info);
 	}
 
 	/* reset the timeout value */
@@ -3576,6 +3562,7 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 				sde_crtc_state->cached_cwb_enc_mask);
 		sde_crtc_state->cwb_enc_mask = sde_crtc_state->cached_cwb_enc_mask;
 		sde_encoder_set_clone_mode(drm_enc, crtc_state);
+		sde_crtc->cached_encoder_mask |= drm_encoder_mask(drm_enc);
 	}
 
 	/* reserve dynamic resources now, indicating non test-only */
@@ -4160,6 +4147,10 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 		return;
 	}
 
+	if (sde_encoder_is_built_in_display(drm_enc) &&
+			msm_is_mode_seamless_poms(&c_state->msm_mode))
+		drm_crtc_vblank_put(sde_enc->crtc);
+
 	memset(&sde_enc->cur_master->intf_cfg_v1, 0,
 			sizeof(sde_enc->cur_master->intf_cfg_v1));
 
@@ -4229,6 +4220,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	struct sde_encoder_virt *sde_enc = NULL;
 	struct sde_connector *sde_conn;
 	struct sde_kms *sde_kms;
+	struct sde_connector_state *c_state = NULL;
 	enum sde_intf_mode intf_mode;
 	struct drm_crtc *drm_crtc;
 	struct msm_drm_private *priv;
@@ -4262,6 +4254,12 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	if (!sde_kms)
 		return;
 
+	c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
+	if (!c_state) {
+		SDE_ERROR("invalid connector state\n");
+		return;
+	}
+
 	intf_mode = sde_encoder_get_intf_mode(drm_enc);
 
 	drm_crtc = drm_enc->crtc;
@@ -4274,9 +4272,15 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	_sde_encoder_input_handler_unregister(drm_enc);
 
 	sde_encoder_cancel_vrr_timers(drm_enc);
+
 	sde_encoder_vhm_wakelock(sde_enc, false);
+
 	if (!sde_encoder_is_loopback_display(drm_enc))
 		flush_delayed_work(&sde_conn->status_work);
+
+	if (sde_encoder_is_built_in_display(drm_enc) &&
+			msm_is_mode_seamless_poms(&c_state->msm_mode))
+		drm_crtc_vblank_get(sde_enc->crtc);
 	/*
 	 * For primary command mode and video mode encoders, execute the
 	 * resource control pre-stop operations before the physical encoders
@@ -4312,7 +4316,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	 * wait for any pending vsync timestamp event to sf
 	 * to ensure vblank irq is disabled.
 	 */
-	if (drm_crtc && sde_enc->vblank_enabled) {
+	if (drm_crtc && sde_enc->vblank_enabled && !msm_is_mode_seamless_poms(&c_state->msm_mode)) {
 		drm_crtc_vblank_off(drm_crtc);
 		kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
 	}

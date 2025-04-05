@@ -693,6 +693,8 @@ bool sde_plane_is_sw_fence_signaled(struct drm_plane *plane)
 		if (pstate->input_fence) {
 			fence = (struct dma_fence *)pstate->input_fence;
 			return dma_fence_is_signaled(fence);
+		} else { /* assume plane has signaled sw fence if input fence is not present */
+			return true;
 		}
 	}
 

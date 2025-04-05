@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -420,11 +420,17 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 
 	if (c_conn->ops.set_backlight) {
 		/* skip notifying user space if bl is 0 */
-		if (c_conn->num_bl_frames && c_conn->frame_interval)
+		if (c_conn->num_bl_frames && c_conn->frame_interval) {
 			sde_connector_begin_incremental_bl(c_conn, brightness, bl_lvl);
-		else
+		} else {
 			sde_backlight_set_notify(c_conn, brightness, bl_lvl);
-
+			mutex_lock(&c_conn->bl_vrr.bl_lock);
+			c_conn->bl_vrr.curr_brightness = brightness;
+			c_conn->bl_vrr.curr_bl_lvl = bl_lvl;
+			c_conn->bl_vrr.prev_brightness = brightness;
+			c_conn->bl_vrr.prev_bl_lvl = bl_lvl;
+			mutex_unlock(&c_conn->bl_vrr.bl_lock);
+		}
 		c_conn->unset_bl_level = 0;
 	}
 
@@ -1416,7 +1422,8 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 		return 0;
 
 	if (!c_conn->freq_pattern) {
-		SDE_ERROR("frequency pattern is NULL but update is true\n");
+		SDE_INFO("frequency pattern is NULL but update is true\n");
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE3, SDE_EVTLOG_ERROR);
 		return -EINVAL;
 	}
 
