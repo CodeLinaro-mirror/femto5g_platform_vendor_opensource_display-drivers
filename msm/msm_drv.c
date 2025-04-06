@@ -2381,11 +2381,7 @@ static int msm_drm_component_dependency_check(struct device *dev)
 {
 	struct device_node *node;
 	struct device_node *np = dev->of_node;
-	struct platform_device *pdev = to_platform_device(dev);
 	unsigned int i;
-
-	if (!(get_mdp_ver(pdev) == KMS_SDE) || !(get_mdp_ver(pdev) == KMS_SDE_HFI))
-		return 0;
 
 	for (i = 0; ; i++) {
 		node = of_parse_phandle(np, "connectors", i);
