@@ -64,7 +64,7 @@ struct hdmi_phy *hdmi_phy_get(struct platform_device *pdev,
 	phy->version = parser->phy_version;
 	phy->parser = parser;
 	phy->io_data = parser->get_io(parser, "hdmi_phy");
-	phy->parser->alternate_pll = true;
+	phy->parser->alternate_pll = false;
 
 	hdmi_phy_register(phy);
 
