@@ -357,8 +357,13 @@ dma_addr_t msm_gem_get_dma_addr(struct drm_gem_object *obj)
 	struct sg_table *sgt;
 
 	if (!msm_obj->sgt) {
-		sgt = dma_buf_map_attachment(obj->import_attach,
-						DMA_BIDIRECTIONAL);
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	sgt = dma_buf_map_attachment_unlocked(obj->import_attach,
+		DMA_BIDIRECTIONAL);
+#else
+	sgt = dma_buf_map_attachment(obj->import_attach,
+		DMA_BIDIRECTIONAL);
+#endif
 		if (IS_ERR_OR_NULL(sgt)) {
 			DRM_ERROR("dma_buf_map_attachment failure, err=%ld\n",
 					PTR_ERR(sgt));
@@ -484,8 +489,13 @@ static int msm_gem_get_iova_locked(struct drm_gem_object *obj,
 					 msm_obj->obj_dirty);
 
 			if (msm_obj->sgt)
-				dma_buf_unmap_attachment(obj->import_attach,
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+			dma_buf_unmap_attachment_unlocked(obj->import_attach,
 					msm_obj->sgt, DMA_BIDIRECTIONAL);
+#else
+			dma_buf_unmap_attachment(obj->import_attach,
+					msm_obj->sgt, DMA_BIDIRECTIONAL);
+#endif
 			dma_buf_detach(dmabuf, obj->import_attach);
 
 			obj->import_attach = dma_buf_attach(dmabuf, dev);
@@ -1176,7 +1186,11 @@ int msm_gem_delayed_import(struct drm_gem_object *obj)
 	 * dma_buf_map_attachment will call dma_map_sg for ion buffer
 	 * mapping, and iova will get mapped when the function returns.
 	 */
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	sgt = dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
+#else
 	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+#endif
 	if (IS_ERR(sgt)) {
 		ret = PTR_ERR(sgt);
 		DRM_ERROR("dma_buf_map_attachment failure, err=%d\n",
