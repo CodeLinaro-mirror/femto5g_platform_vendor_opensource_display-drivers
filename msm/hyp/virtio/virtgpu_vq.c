@@ -32,7 +32,7 @@
 #define HAB_NO_TIMEOUT_VAL		-1
 #define MAX_RECV_PACKET_RETRY	        10
 
-#define UNIT_TEST
+//#define UNIT_TEST
 
 #ifdef UNIT_TEST
 static int virtio_hab_send_and_recv_ext(		uint32_t hab_socket,
@@ -1909,6 +1909,8 @@ error:
 			variable = true; \
 		else if (!strcasecmp(value, "false")) \
 			variable = false; \
+		else \
+			VIRTGPU_VQ_RSP_DBG("Unknown ownership str [%s]\n", value); \
 		continue; \
 	}
 #define DUMP_PARSED_VALUE(option)	VIRTGPU_VQ_RSP_DBG("\t" #option " = %X\n", assign->option)

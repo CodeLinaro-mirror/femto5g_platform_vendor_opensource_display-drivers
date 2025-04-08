@@ -618,7 +618,6 @@ static struct drm_encoder *virtio_connector_atomic_best_encoder(
 		struct drm_connector_state *c_state)
 {
 	struct msm_hyp_display *hyp_display = display;
-
 	return hyp_display->encoder;
 }
 
