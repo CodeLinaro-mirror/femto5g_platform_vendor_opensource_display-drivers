@@ -302,4 +302,16 @@ int dsi_hfi_misr_setup(struct dsi_display *display);
  */
 int dsi_hfi_misr_read(struct dsi_display *display);
 
+/**
+ * dsi_hfi_host_transfer_sub() - transfers DSI commands from host to DCP
+ * @host:                pointer to the DSI mipi host device
+ * @cmd:                 DSI command to be transferred
+ *
+ * This function handles the transfer of DSI commands to the Display Control
+ * Processor (DCP) via the Hardware-Firmware Interface (HFI).
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd);
+
 #endif
