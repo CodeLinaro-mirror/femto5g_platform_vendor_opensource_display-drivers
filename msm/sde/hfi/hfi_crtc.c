@@ -278,6 +278,7 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 	struct drm_encoder *enc;
 	struct drm_encoder *main_enc = NULL;
 	struct drm_connector_list_iter iter;
+	struct sde_crtc *sde_crtc;
 
 	if (!crtc || !crtc_state)
 		return U32_MAX;
@@ -287,6 +288,17 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 			continue;
 
 		main_enc = enc;
+	}
+
+	if (!main_enc) {
+		sde_crtc = to_sde_crtc(crtc);
+		drm_for_each_encoder_mask(enc, crtc->dev, sde_crtc->cached_encoder_mask) {
+			if (sde_encoder_in_clone_mode(enc))
+				continue;
+
+			main_enc = enc;
+			SDE_DEBUG("found encoder from cached\n");
+		}
 	}
 
 	if (main_enc) {

@@ -196,6 +196,12 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 				display_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
 	}
 
+	if (!cmd_buf) {
+		SDE_ERROR("enc:%d failed to get cmd buf in events enable:%d for display:%d\n",
+				enc->base.base.id, enable, display_id);
+		return -EINVAL;
+	}
+
 	cmd = enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER : HFI_COMMAND_DISPLAY_EVENT_DEREGISTER;
 	ret = hfi_adapter_add_get_property(cmd_buf, cmd, display_id, HFI_PAYLOAD_TYPE_U32,
 			&payload, sizeof(payload), &hfi_enc->hfi_cb_obj,
@@ -224,14 +230,14 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 
 	switch (event) {
 	case MSM_ENC_COMMIT_DONE:
-		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_FRAME_SCAN_START,
+		ret = _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_FRAME_SCAN_START,
 			enable, defer_to_commit);
 		break;
 	case MSM_ENC_TX_COMPLETE:
 		SDE_ERROR("unsupported tx complete wait %d\n", event);
 		break;
 	case MSM_ENC_VBLANK:
-		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_VSYNC,
+		ret = _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_VSYNC,
 				enable, defer_to_commit);
 		break;
 	default:
@@ -354,6 +360,7 @@ static int hfi_enc_wait_for_event(struct sde_encoder_virt *enc, u32 event)
 		break;
 	case MSM_ENC_TX_COMPLETE:
 		fn_wait = NULL;
+		ret = 1;
 		break;
 	default:
 		SDE_ERROR("unknown wait event %d\n", event);
