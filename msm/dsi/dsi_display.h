@@ -159,6 +159,8 @@ struct dsi_misr_values {
  * @pre_disable:                Pre Disable Display
  * @display_disable:                Disable Display
  * @display_unprepare:              Unprepare Display
+ * @misr_setup:                 Configure MISR Params
+ * @misr_read:                  Read MISR data
  * @get_modes:                  Get supported modes from panel devicetree
  * @register_dpu_conn_ops:          Register DPU connector Ops
  */
@@ -171,6 +173,8 @@ struct dsi_display_ops {
 	int(*pre_disable[MSM_DISP_OP_MAX]) (struct dsi_display *display);
 	int(*display_disable[MSM_DISP_OP_MAX]) (struct dsi_display *display);
 	int(*display_unprepare[MSM_DISP_OP_MAX]) (struct dsi_display *display);
+	int(*misr_setup[MSM_DISP_OP_MAX]) (struct dsi_display *display);
+	int(*misr_read[MSM_DISP_OP_MAX]) (struct dsi_display *display);
 };
 
 struct dsi_display_hfi_info {

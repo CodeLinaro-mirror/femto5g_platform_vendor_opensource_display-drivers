@@ -1524,6 +1524,7 @@ static ssize_t debugfs_misr_setup(struct file *file,
 	int rc = 0;
 	size_t len;
 	u32 enable, frame_count;
+	enum msm_disp_op disp_op;
 
 	if (!display)
 		return -ENODEV;
@@ -1558,6 +1559,18 @@ static ssize_t debugfs_misr_setup(struct file *file,
 		DSI_DEBUG("[%s] op not supported due to HW unavailability\n",
 				display->name);
 		rc = -EOPNOTSUPP;
+		goto unlock;
+	}
+
+	disp_op = display->ctrl->ctrl->disp_op;
+	if (display->display_ops.misr_setup[disp_op]) {
+		rc = display->display_ops.misr_setup[disp_op](display);
+		if (rc)
+			DSI_ERR("[%s] failed to enable MISR through hfi, rc=%d\n",
+					display->name, rc);
+		else
+			rc = user_len;
+
 		goto unlock;
 	}
 
@@ -1599,6 +1612,7 @@ static ssize_t debugfs_misr_read(struct file *file,
 	struct dsi_ctrl *dsi_ctrl;
 	int i;
 	u32 misr;
+	enum msm_disp_op disp_op;
 	size_t max_len = min_t(size_t, user_len, MISR_BUFF_SIZE);
 
 	if (!display)
@@ -1618,6 +1632,22 @@ static ssize_t debugfs_misr_read(struct file *file,
 				display->name);
 		rc = -EOPNOTSUPP;
 		goto error;
+	}
+
+	disp_op = display->ctrl->ctrl->disp_op;
+	if (display->display_ops.misr_read[disp_op]) {
+		display->display_ops.misr_read[disp_op](display);
+
+		for (i = 0; i < display->misr_vals.count ; i++) {
+			len += scnprintf((buf + len), max_len - len,
+				"DSI_%d MISR: 0x%x\n", (i + 1),
+				display->misr_vals.misr_values[i]);
+
+			if (len >= max_len)
+				break;
+		}
+
+		goto copy;
 	}
 
 	rc = dsi_display_clk_ctrl(display->dsi_clk_handle,
@@ -1646,7 +1676,7 @@ static ssize_t debugfs_misr_read(struct file *file,
 		       display->name, rc);
 		goto error;
 	}
-
+copy:
 	if (copy_to_user(user_buf, buf, max_len)) {
 		rc = -EFAULT;
 		goto error;
