@@ -16,13 +16,15 @@
 
 #define TIMEOUT_MAX	80
 
-static ktime_t hfi_enc_unpack_event_data(void *payload, u32 *idx, struct sde_encoder_virt *sde_enc)
+static ktime_t hfi_enc_unpack_frame_event(void *payload, u32 *idx, struct sde_encoder_virt *sde_enc)
 {
 	u32 read = 0;
+	u32 fps;
 	u64 ts_high, ts_low;
 	ktime_t ts = 0;
 	u32 *data = payload;
 	struct hfi_encoder *hfi_enc;
+	struct drm_encoder *drm_enc;
 
 	if (!payload) {
 		SDE_ERROR("No payload specified\n");
@@ -32,6 +34,9 @@ static ktime_t hfi_enc_unpack_event_data(void *payload, u32 *idx, struct sde_enc
 	hfi_enc = to_hfi_encoder(sde_enc);
 	if (!hfi_enc)
 		return -EINVAL;
+
+	drm_enc = &sde_enc->base;
+	fps = sde_encoder_get_fps(drm_enc);
 
 	ts_low =  data[read++];
 	ts_high =  data[read++];
@@ -43,7 +48,57 @@ static ktime_t hfi_enc_unpack_event_data(void *payload, u32 *idx, struct sde_enc
 	ts = (ts_high << 32);
 	ts =  ts | (ts_low);
 
-	SDE_EVT32(atomic_read(&hfi_enc->hfi_commit_cnt), atomic_read(&hfi_enc->hfi_frame_done_cnt));
+	/* convert into qtimer hw ticks & adjust */
+	ts = (ts * 192) / (10 * 1000);
+	ts = sde_encoder_event_timestamp_adjust(DRMID(drm_enc), fps, ts);
+
+	SDE_EVT32(DRMID(drm_enc), atomic_read(&hfi_enc->hfi_commit_cnt),
+			atomic_read(&hfi_enc->hfi_frame_done_cnt), ts);
+
+	return ts;
+}
+
+static ktime_t hfi_enc_unpack_vsync_event(void *payload, u32 *idx, struct sde_encoder_virt *sde_enc)
+{
+	u32 read = 0;
+	u32 fps;
+	u64 ts_high, ts_low;
+	ktime_t ts = 0;
+	u32 *data = payload;
+	u32 hw_vsync_count;
+	struct hfi_encoder *hfi_enc;
+	struct drm_encoder *drm_enc;
+
+	if (!payload) {
+		SDE_ERROR("No payload specified\n");
+		return 0;
+	}
+
+	hfi_enc = to_hfi_encoder(sde_enc);
+	if (!hfi_enc)
+		return -EINVAL;
+
+	drm_enc = &sde_enc->base;
+	fps = sde_encoder_get_fps(drm_enc);
+
+	ts_low =  data[read++];
+	ts_high =  data[read++];
+
+	hw_vsync_count = data[read++];
+	if (idx)
+		*idx = data[read++];
+
+	ts = (ts_high << 32);
+	ts =  ts | (ts_low);
+
+	/* convert into qtimer hw ticks & adjust */
+	ts = (ts * 192) / (10 * 1000);
+	ts = sde_encoder_event_timestamp_adjust(DRMID(drm_enc), fps, ts);
+
+	atomic_inc_return(&hfi_enc->hfi_vsync_cnt);
+	hfi_enc->vblank_ts = ts;
+
+	SDE_EVT32(DRMID(drm_enc), atomic_read(&hfi_enc->hfi_vsync_cnt), ts);
 
 	return ts;
 }
@@ -67,21 +122,27 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 		return;
 	}
 
-	ts = hfi_enc_unpack_event_data(payload, NULL, sde_enc);
+	ts = hfi_enc_unpack_frame_event(payload, NULL, sde_enc);
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 	new_cnt = atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
-	SDE_EVT32(sde_enc->pending_commit_cnt);
+	SDE_EVT32(atomic_read(&sde_enc->pending_commit_cnt));
 
 	sde_enc->crtc_frame_event_cb_data.connector = sde_enc->cur_master->connector;
 
 	if (sde_enc->crtc_frame_event_cb)
 		sde_enc->crtc_frame_event_cb(&sde_enc->crtc_frame_event_cb_data, event, ts);
 
-	wake_up_all(&hfi_enc->pending_kickoff_wq);
+	/* if vsync is not enabled by client, increment local vsync counter on scan-start */
+	if (!sde_enc->crtc_vblank_cb) {
+		atomic_inc_return(&hfi_enc->hfi_vsync_cnt);
+		hfi_enc->vblank_ts = ts;
+		SDE_EVT32(atomic_read(&hfi_enc->hfi_vsync_cnt), ts);
+	}
 
+	wake_up_all(&hfi_enc->pending_kickoff_wq);
 }
 
 static void hfi_encoder_vblank_callback(struct hfi_encoder *hfi_enc, void *payload)
@@ -94,7 +155,7 @@ static void hfi_encoder_vblank_callback(struct hfi_encoder *hfi_enc, void *paylo
 
 	sde_enc = hfi_enc->sde_base;
 
-	ts = hfi_enc_unpack_event_data(payload, NULL, sde_enc);
+	ts = hfi_enc_unpack_vsync_event(payload, NULL, sde_enc);
 
 	if (sde_enc->crtc_vblank_cb)
 		sde_enc->crtc_vblank_cb(sde_enc->crtc_vblank_cb_data, ts);
@@ -388,11 +449,12 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 		return -EINVAL;
 
 	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE) {
-		ret = _hfi_enc_register_hw_event(enc, event, enable, true);
+		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("failed to send event register ret:%d\n", ret);
 			return ret;
 		}
+
 		hfi_enc->hw_events_state[event].state = enable;
 		hfi_enc->hw_events_state[event].pending = false;
 	} else if (hfi_enc->hw_events_state[event].state != enable) {
@@ -739,6 +801,35 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 
 	return rc;
 }
+
+u32 hfi_enc_get_vblank_count(struct sde_encoder_virt *enc)
+{
+	int cnt = 0;
+	struct hfi_encoder *hfi_enc;
+
+	if (!enc)
+		return cnt;
+
+	hfi_enc = to_hfi_encoder(enc);
+	cnt = atomic_read(&hfi_enc->hfi_vsync_cnt);
+
+	return cnt;
+}
+
+ktime_t hfi_enc_get_vblank_timestamp(struct sde_encoder_virt *enc)
+{
+	ktime_t ts = 0;
+	struct hfi_encoder *hfi_enc;
+
+	if (!enc)
+		return ts;
+
+	hfi_enc = to_hfi_encoder(enc);
+	ts = hfi_enc->vblank_ts;
+
+	return ts;
+}
+
 #else
 static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct seq_file *s)
 {
@@ -767,6 +858,8 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 	sde_enc->hal_ops.debugfs_misr_setup[MSM_DISP_OP_HFI] = hfi_enc_debugfs_misr_setup;
 	sde_enc->hal_ops.debugfs_misr_read[MSM_DISP_OP_HFI] = hfi_enc_debugfs_misr_read;
 	sde_enc->hal_ops.debugfs_dump_status[MSM_DISP_OP_HFI] = hfi_enc_debugfs_dump_status;
+	sde_enc->hal_ops.get_vblank_count[MSM_DISP_OP_HFI] = hfi_enc_get_vblank_count;
+	sde_enc->hal_ops.get_vblank_timestamp[MSM_DISP_OP_HFI] = hfi_enc_get_vblank_timestamp;
 }
 
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
