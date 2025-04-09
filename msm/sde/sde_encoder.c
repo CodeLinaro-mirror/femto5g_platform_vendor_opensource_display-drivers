@@ -2430,7 +2430,7 @@ bool sde_encoder_copr_allow_notify(struct drm_encoder *drm_enc)
 
 	sde_enc =  to_sde_encoder_virt(drm_enc);
 	disp_op = sde_encoder_get_disp_op(drm_enc);
-	phys_enc = sde_enc->cur_master;
+	phys_enc = sde_enc->phys_encs[0];
 	if (phys_enc->hw_intf->ops.get_status[disp_op])
 		phys_enc->hw_intf->ops.get_status[disp_op](phys_enc->hw_intf, &intf_status);
 
