@@ -45,6 +45,8 @@ enum virtio_gpu_ctrl_type_ext {
 	VIRTIO_GPU_CMD_GET_DEVICE_HW_ATTRIBUTES,
 	VIRTIO_GPU_CMD_GET_SCANOUT_HW_ATTRIBUTES,
 	VIRTIO_GPU_CMD_GET_PLANE_HW_ATTRIBUTES,
+	VIRTIO_GPU_CMD_ENABLE_VIRQ,
+	VIRTIO_GPU_CMD_DISABLE_VIRQ,
 
 	VIRTIO_GPU_RESP_EXTENTION_START = 0x1300,
 	VIRTIO_GPU_RESP_ERR_UNSUPPORTED_COMMAND,
@@ -69,6 +71,8 @@ enum virtio_gpu_ctrl_type_ext {
 	VIRTIO_GPU_RESP_OK_DEVICE_HW_ATTRIBUTES,
 	VIRTIO_GPU_RESP_OK_SCANOUT_HW_ATTRIBUTES,
 	VIRTIO_GPU_RESP_OK_PLANE_HW_ATTRIBUTES,
+	VIRTIO_GPU_RESP_OK_ENABLE_VIRQ,
+	VIRTIO_GPU_RESP_OK_DISABLE_VIRQ,
 	VIRTIO_GPU_RESP_EXTENTION_END
 };
 
@@ -524,6 +528,37 @@ struct virtio_gpu_resp_plane_hw_attributes {
 	__le32 plane_id;
 	__le32 sspp_id;
 	__le32 rect_mask;
+	__le32 padding;
+};
+
+struct virtio_gpu_enable_virq {
+	struct virtio_gpu_ctrl_hdr hdr;
+	__le32 device_id;
+	__le32 shmem_id;
+	__le32 shmem_size;
+	__le32 padding;
+};
+
+struct virtio_gpu_resp_enable_virq {
+	struct virtio_gpu_ctrl_hdr hdr;
+	__le32 device_id;
+	__le32 shmem_id;
+	__le32 error_code;
+	__le32 padding;
+};
+
+struct virtio_gpu_disable_virq {
+	struct virtio_gpu_ctrl_hdr hdr;
+	__le32 device_id;
+	__le32 shmem_id;
+	__le32 padding;
+};
+
+struct virtio_gpu_resp_disable_virq {
+	struct virtio_gpu_ctrl_hdr hdr;
+	__le32 device_id;
+	__le32 shmem_id;
+	__le32 error_code;
 	__le32 padding;
 };
 

@@ -18,6 +18,7 @@
 #include <sde_hw_pingpong.h>
 #include "msm_hyp_trace.h"
 #include "msm_hyp_utils.h"
+#include "msm_hyp_irq.h"
 #include "virtio_kms.h"
 #include "virtio_ext.h"
 #include "virtgpu_vq.h"
@@ -40,6 +41,7 @@
 #define DBG_BUF_COUNT          50
 #define DEFAULT_MAX_MDP_CLK    575
 #define MAX_LAYERS_MULTIPIPE   4
+#define VIRQ_SHMEM_SIZE        4096
 
 #define VIRTIO_TRANSPARENCY_GLOBAL_ALPHA (1<<1)
 #define VIRTIO_TRANSPARENCY_SOURCE_ALPHA (1<<2)
@@ -2262,6 +2264,302 @@ exit:
 	return ret;
 }
 
+#ifdef HAB_VIRQ_FEATURE_ENABLE
+/**
+ * is_dbl_handle_valid() - Checks is a doorbell handle is valid.
+ * @hab_dbl_handle: doorbell handle
+ *
+ * Return: true/false
+ *
+ */
+bool is_dbl_handle_valid(int32_t hab_dbl_handle)
+{
+	if (hab_dbl_handle > HAB_DBL_HANDLE_NONE &&
+		hab_dbl_handle < HAB_DBL_HANDLE_MAX)
+	{
+		return true;
+	 } else {
+		return false;
+	}
+}
+
+/**
+ * hab_virq_cb() - Callback function triggered when a virq is received.
+ * @irq: pointer to virtio_kms
+ * @irq_data: pointer to private data
+ * @flags: reserved for future use
+ *
+ * Return: int
+ *
+ */
+int hab_virq_cb(int irq, void *irq_data, uint32_t flags)
+{
+	struct virq_info_t *virq_info = (struct virq_info_t *) irq_data;
+	uint32_t dpu_id;
+	uint32_t dbl_idx;
+	struct msm_kms *msm_kms = NULL;
+
+	VIRTIO_KMS_DBG("Doorbell received for hab_dbl_handle %d\n", virq_info->hab_dbl_handle);
+
+	if (is_dbl_handle_valid(virq_info->hab_dbl_handle) && irq_data != NULL)
+	{
+		/* dbl handle is either 1 or 2, dbl index is 0 or 1 resp. */
+		dbl_idx = virq_info->hab_dbl_handle - 1;
+
+		dpu_id = virq_info->kms->virq_info[dbl_idx]->dpu_id;
+		msm_kms = &virq_info->kms->base.sde_kms[dpu_id]->base;
+		msm_hyp_irq(msm_kms);
+	}
+
+	return 0;
+}
+
+/**
+ * virtio_hab_register_virq() - Registers for virtual interrupts with HAB.
+ * @kms: pointer to virtio_kms
+ *
+ * Return: integer error code
+ *
+ */
+int virtio_hab_register_virq(struct virtio_kms *kms)
+{
+	int32_t dbl_handle = -1;
+	const uint32_t pvm_hab_vmid = 0x0;
+	uint32_t virq_dpu_id[VIRTIO_GPU_MAX_VIRQ] = {3001,3002}; /* dpu id as defined by HAB */
+	int ret = -1;
+
+	for (uint32_t virq_idx = 0; virq_idx < VIRTIO_GPU_MAX_VIRQ; virq_idx++)
+	{
+		struct virq_info_t *virq_info = kzalloc(sizeof(struct virq_info_t), GFP_KERNEL);
+		virq_info->hab_dbl_handle = -1;
+		virq_info->kms = kms;
+		ret = habmm_virq_register(&dbl_handle, pvm_hab_vmid, virq_dpu_id[virq_idx], hab_virq_cb,
+				virq_info, HABMM_VIRQ_FLAGS_RX);
+		if (ret != 0 || !is_dbl_handle_valid(dbl_handle))
+		{
+			VIRTIO_KMS_ERR("Error registering for doorbell %d. Error Code %d\n", virq_idx, ret);
+			return ret;
+		}
+		virq_info->hab_dbl_handle = dbl_handle;
+		kms->virq_info[dbl_handle - 1] = virq_info;
+		kms->virq_info[dbl_handle - 1]->dpu_id = virq_idx;
+		VIRTIO_KMS_INFO("hab virq registered successfully, db_handle: %d\n", dbl_handle);
+	}
+
+	return 0;
+}
+
+/**
+ * virtio_hab_unregister_virq() - Unregisters for virtual interrupts with HAB.
+ * @kms: pointer to virtio_kms
+ *
+ * Return: integer error code
+ *
+ */
+void virtio_hab_unregister_virq(struct virtio_kms *kms)
+{
+	int ret = -1;
+
+	for (uint32_t virq_idx = 0; virq_idx < VIRTIO_GPU_MAX_VIRQ; virq_idx++)
+	{
+		struct virq_info_t *virq_info = kms->virq_info[virq_idx];
+		if(virq_info == NULL) {
+			continue;
+		}
+
+		ret = habmm_virq_unregister(virq_info->hab_dbl_handle, HABMM_VIRQ_FLAGS_RX);
+		if (ret != 0)
+		{
+			VIRTIO_KMS_ERR("Error un-registering for doorbell %d. Error Code %d\n", virq_idx, ret);
+		}
+
+		kfree((void *)virq_info);
+		kms->virq_info[virq_idx] = NULL;
+	}
+
+	return;
+}
+#endif /* HAB_VIRQ_FEATURE_ENABLE */
+
+/**
+ * intialize_virq_shmem() - initializes virq shmem
+ * @virq_shmem: pointer to virq_shmem_t struct
+ *
+ * Return: void
+ *
+ */
+static void intialize_virq_shmem(struct virq_shmem_t *virq_shmem)
+{
+	const uint32_t bytes_to_dword_bitshift = 2;
+	uint32_t queue_sz = 0;
+	if (virq_shmem) {
+		if(virq_shmem->vaddr) {
+			struct irq_metadata_t *irq_metadata = (struct irq_metadata_t *) virq_shmem->vaddr;
+			queue_sz =
+				(virq_shmem->size - sizeof(struct irq_metadata_t)) >> bytes_to_dword_bitshift;
+			irq_metadata->queue_sz = queue_sz;
+			VIRTIO_KMS_DBG("virq queue size is %u", queue_sz);
+		}
+	}
+}
+
+/**
+ * create_virq_shmem() - creates shared memory for virq for a given dpu core
+ * @dev: pointer to device struct
+ * @kms: pointer to virtio_kms
+ * @device_id: dpu id
+ *
+ * Return: integer error code
+ *
+ */
+static int create_virq_shmem(struct device *dev, struct virtio_kms *kms, uint32_t device_id)
+{
+	int rc = -1;
+	uint32_t client_id = kms->client_id;
+	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
+	struct channel_map hab_channel = kms->channel[client_id];
+
+	struct virq_shmem_t *virq_shmem = &(kms->base.virq_shmem[device_id]);
+	if (NULL != virq_shmem->vaddr) {
+		VIRTIO_KMS_ERR("virq shmem already initialized for device %d\n", device_id);
+		return -EINVAL;
+	}
+
+	virq_shmem->vaddr = dma_alloc_coherent(dev, VIRQ_SHMEM_SIZE, &virq_shmem->dma_handle,
+							GFP_KERNEL);
+
+	if (virq_shmem->vaddr == NULL || virq_shmem->dma_handle < 0) {
+		VIRTIO_KMS_ERR("error allocating memory for virq for device %d\n", device_id);
+		return -ENOMEM;
+	}
+	VIRTIO_KMS_DBG("virq_shmem vaddr %p for device %d\n", virq_shmem->vaddr, device_id);
+	virq_shmem->size = VIRQ_SHMEM_SIZE;
+	memset(virq_shmem->vaddr, 0, virq_shmem->size);
+
+	mutex_lock(&hab_channel.hyp_chl_lock[CHANNEL_CMD]);
+
+	rc = habmm_export(
+			hab_socket,
+			virq_shmem->vaddr,
+			virq_shmem->size,
+			&virq_shmem->hab_export_id,
+			0);
+
+	mutex_unlock(&hab_channel.hyp_chl_lock[CHANNEL_CMD]);
+
+	if (rc) {
+		VIRTIO_KMS_ERR("virq_shmem habmm export failed\n");
+		dma_free_coherent(dev, virq_shmem->size, virq_shmem->vaddr, virq_shmem->dma_handle);
+	} else {
+		VIRTIO_KMS_INFO("virq_shmem habmm export successful, export id %d\n",
+			virq_shmem->hab_export_id);
+	}
+
+	return rc;
+}
+
+/**
+ * destroy_virq_shmem() - creates shared memory for virq for a given dpu core
+ * @dev: pointer to device struct
+ * @kms: pointer to virtio_kms
+ * @device_id: dpu id
+ *
+ * Return: integer error code
+ *
+ */
+static void destroy_virq_shmem(struct device *dev, struct virtio_kms *kms, uint32_t device_id)
+{
+	int rc = -1;
+	uint32_t client_id = kms->client_id;
+	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
+	struct channel_map hab_channel = kms->channel[client_id];
+	struct virq_shmem_t *virq_shmem = &(kms->base.virq_shmem[device_id]);
+
+	if (NULL == virq_shmem->vaddr) {
+		VIRTIO_KMS_ERR("virq shmem not initialized for device %d\n", device_id);
+		return;
+	}
+
+	mutex_lock(&hab_channel.hyp_chl_lock[CHANNEL_CMD]);
+
+	rc = habmm_unexport(hab_socket, virq_shmem->hab_export_id, 0);
+
+	mutex_unlock(&hab_channel.hyp_chl_lock[CHANNEL_CMD]);
+
+	if (rc) {
+		VIRTIO_KMS_ERR("virq_shmem habmm unexport for device %d failed\n", device_id);
+	}
+
+	VIRTIO_KMS_DBG("virq_shmem habmm unexport for device %d successful, export id %d\n",
+						device_id, virq_shmem->hab_export_id);
+
+	dma_free_coherent(dev, virq_shmem->size, virq_shmem->vaddr, virq_shmem->dma_handle);
+
+	virq_shmem->vaddr = NULL;
+	virq_shmem->dma_handle = 0;
+	virq_shmem->size = 0;
+	virq_shmem->hab_export_id = 0;
+}
+
+/**
+ * virtio_gpu_cmd_disable_virq_all() - Disables virtual interrupt all DPU cores.
+ * @dev: pointer to struct device
+ * @kms: pointer to virtio_kms
+ *
+ * The function calls virtio_gpu_cmd_disable_virq function for all DPU cores.
+ *
+ * Return: void
+ *
+ */
+void virtio_disable_virq_all(struct device *dev, struct virtio_kms *kms)
+{
+	int rc = -1;
+
+	for (uint32_t dpu_idx = 0; dpu_idx < VIRTIO_GPU_MAX_VIRQ; dpu_idx++)
+	{
+		rc = virtio_gpu_cmd_disable_virq(dev, kms, dpu_idx);
+		if (rc) {
+			VIRTIO_KMS_ERR("Failed to disable virq for dpu %d with error code %d\n", dpu_idx, rc);
+		}
+		destroy_virq_shmem(dev, kms, dpu_idx);
+	}
+
+	return;
+}
+
+/**
+ * virtio_enable_virq_all() - Enables virtual interrupt all DPU cores.
+ * @dev: pointer to struct device
+ * @kms: pointer to virtio_kms
+ *
+ * The function calls virtio_gpu_cmd_enable_virq function for all DPU cores.
+ *
+ * Return: integer error code
+ *
+ */
+int virtio_enable_virq_all(struct device *dev, struct virtio_kms *kms)
+{
+	int rc = -1;
+
+	for (uint32_t dpu_idx = 0; dpu_idx < VIRTIO_GPU_MAX_VIRQ; dpu_idx++)
+	{
+		rc = create_virq_shmem(dev, kms, dpu_idx);
+		if (rc == 0) {
+			intialize_virq_shmem(&(kms->base.virq_shmem[dpu_idx]));
+			rc = virtio_gpu_cmd_enable_virq(dev, kms, dpu_idx);
+			if (rc) {
+				VIRTIO_KMS_ERR("Failed to enable virq for device %d with error code %d\n",
+					dpu_idx, rc);
+				destroy_virq_shmem(dev, kms, dpu_idx);
+			}
+		} else {
+			VIRTIO_KMS_ERR("error creating shmem for virq dpu%d\n", dpu_idx);
+		}
+	}
+
+	return 0;
+}
+
 static int virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout)
 {
 	int rc = 0;
@@ -2386,6 +2684,14 @@ static int virtio_kms_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+#ifdef HAB_VIRQ_FEATURE_ENABLE
+	ret = virtio_hab_register_virq(kms);
+	if (ret) {
+		VIRTIO_KMS_ERR("error registering for virq. error code %d\n", ret);
+		return ret;
+	}
+#endif
+
 	kms->stop = false;
 	kthread_run(virtio_gpu_event_kthread, kms, "virtio gpu kthread");
 
@@ -2404,6 +2710,17 @@ static int virtio_kms_probe(struct platform_device *pdev)
 	if (ret) {
 		VIRTIO_KMS_ERR("component add failed, rc=%d\n", ret);
 		return ret;
+	}
+
+	ret = virtio_enable_virq_all(dev, kms);
+	if (ret) {
+		VIRTIO_KMS_ERR("error enabling virq, rc=%d\n", ret);
+		return ret;
+	}
+	for(uint32_t dpu_idx = 0; dpu_idx < VIRTIO_GPU_MAX_VIRQ; dpu_idx++)
+	{
+		void *ptr = kms->base.virq_shmem[dpu_idx].vaddr;
+		VIRTIO_KMS_DBG("virq_shmem is %p for dpu %d\n", ptr, dpu_idx);
 	}
 
 	VIRTIO_KMS_DBG("virtio_kms_probe done\n");

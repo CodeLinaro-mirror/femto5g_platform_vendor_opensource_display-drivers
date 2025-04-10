@@ -124,7 +124,7 @@ retry_recv_packet:
 		goto end;
 	}
 	if (resp_size != size)
-		VIRTGPU_VQ_ERR("somethign wrong in the order of req and resp\n");
+		VIRTGPU_VQ_ERR("something wrong in the order of req and resp\n");
 end:
 
 	if (SPIN_LOCK_CHANNEL == lock_flag)
@@ -2334,4 +2334,126 @@ int virtio_gpu_event_kthread(void *d)
 	ret = habmm_socket_close(kms->channel[client_id].hab_socket[CHANNEL_EVENTS]);
 	VIRTGPU_VQ_RSP_DBG("exit event kthread mmid %d\n", kms->mmid_event);
 	return 0;
+}
+
+/**
+ * virtio_gpu_cmd_enable_virq() - Enables virtual interrupt for a given DPU core.
+ * @dev: pointer to struct device
+ * @kms: pointer to virtio_kms
+ * @device_id: dpu core id
+ *
+ * The function sends a virtio command to enable virtual interrupt
+ * for the given DPU core.
+ *
+ * Return: integer error code
+ *
+ */
+int virtio_gpu_cmd_enable_virq(struct device *dev, struct virtio_kms *kms, uint32_t device_id)
+{
+	void *va = NULL;
+	int rc = 0;
+
+	struct virtio_gpu_enable_virq *cmd_p =
+		kzalloc(sizeof(struct virtio_gpu_enable_virq), GFP_KERNEL);
+	struct virtio_gpu_resp_enable_virq *resp =
+		kzalloc(sizeof(struct virtio_gpu_resp_enable_virq), GFP_KERNEL);
+
+	uint32_t client_id = kms->client_id;
+	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
+
+	if (!cmd_p || !resp) {
+		VIRTGPU_VQ_ERR("memory alloc failed req %p resp %p virq_shmem %p\n", cmd_p, resp, va);
+		rc = -ENOMEM;
+		goto error;
+	}
+
+	struct virq_shmem_t *virq_shmem = &(kms->base.virq_shmem[device_id]);
+
+	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_ENABLE_VIRQ);
+	cmd_p->shmem_id = cpu_to_le32(virq_shmem->hab_export_id);
+	cmd_p->shmem_size = cpu_to_le32(virq_shmem->size);
+	cmd_p->device_id = cpu_to_le32(device_id);
+
+	rc = virtio_hab_send_and_recv(hab_socket,
+		kms->channel[client_id],
+		cmd_p,
+		sizeof(struct virtio_gpu_enable_virq),
+		resp,
+		sizeof(struct virtio_gpu_resp_enable_virq),
+		NO_SPIN_LOCK_CHANNEL);
+	if (rc) {
+		VIRTGPU_VQ_ERR("virtio cmd to enable virq for dpu %u failed with error %d\n",
+			device_id, rc);
+	} else {
+		VIRTGPU_VQ_INFO("virtio cmd to enable virq for dpu %u successful %d\n", device_id, rc);
+	}
+
+	error:
+	if (cmd_p)
+		kfree(cmd_p);
+	if (resp)
+		kfree(resp);
+
+	return rc;
+}
+
+/**
+ * virtio_gpu_cmd_disable_virq() - Sends virtio cmd to disable virq for a given DPU core.
+ * @dev: pointer to struct device
+ * @kms: pointer to virtio_kms
+ * @device_id: dpu core id
+ *
+ * Return: integer error code
+ *
+ */
+int virtio_gpu_cmd_disable_virq(struct device *dev, struct virtio_kms *kms, uint32_t device_id)
+{
+	int rc = 0;
+	struct virq_shmem_t *virq_shmem = &(kms->base.virq_shmem[device_id]);
+
+	if (NULL == virq_shmem->vaddr) {
+		VIRTGPU_VQ_ERR("virq for dpu %d not initialized\n", device_id);
+		return -EINVAL;
+	}
+
+	struct virtio_gpu_disable_virq *cmd_p =
+		kzalloc(sizeof(struct virtio_gpu_disable_virq), GFP_KERNEL);
+	struct virtio_gpu_resp_disable_virq *resp =
+		kzalloc(sizeof(struct virtio_gpu_resp_disable_virq), GFP_KERNEL);
+
+	if (!cmd_p || !resp) {
+		VIRTGPU_VQ_ERR("memory alloc failed req %p resp %p\n", cmd_p, resp);
+		rc = -ENOMEM;
+		goto error;
+	}
+
+	uint32_t client_id = kms->client_id;
+	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
+
+	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_DISABLE_VIRQ);
+	cmd_p->shmem_id = cpu_to_le32(virq_shmem->hab_export_id);
+	cmd_p->device_id = cpu_to_le32(device_id);
+
+	rc = virtio_hab_send_and_recv(hab_socket,
+		kms->channel[client_id],
+		cmd_p,
+		sizeof(struct virtio_gpu_disable_virq),
+		resp,
+		sizeof(struct virtio_gpu_resp_disable_virq),
+		NO_SPIN_LOCK_CHANNEL);
+
+	if (rc) {
+		VIRTGPU_VQ_ERR("virtio cmd to disable virq for dpu %u failed with error %d\n",
+			device_id, rc);
+	} else {
+		VIRTGPU_VQ_DBG("virtio cmd to disable virq for dpu %u successful %d\n", device_id, rc);
+	}
+
+	error:
+	if (cmd_p)
+		kfree(cmd_p);
+	if (resp)
+		kfree(resp);
+
+	return rc;
 }

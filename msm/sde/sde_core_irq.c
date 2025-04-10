@@ -625,10 +625,15 @@ irqreturn_t sde_core_irq(struct sde_kms *sde_kms)
 	 * callback is finished.
 	 * Function will also clear the interrupt status after reading.
 	 */
+	if ((sde_kms == NULL) || (sde_kms->hw_intr == NULL) ||
+		(sde_kms->hw_intr->ops.dispatch_irqs == NULL)) {
+		return IRQ_NONE;
+	}
+
 	sde_kms->hw_intr->ops.dispatch_irqs(
-			sde_kms->hw_intr,
-			sde_core_irq_callback_handler,
-			sde_kms);
+		sde_kms->hw_intr,
+		sde_core_irq_callback_handler,
+		sde_kms);
 
 	return IRQ_HANDLED;
 }
