@@ -484,6 +484,7 @@ int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 
 	SDE_DEBUG("misr_setup: sending cmd buf\n");
 	rc = hfi_adapter_set_cmd_buf(cmd_buf);
+	SDE_EVT32(crtc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_SETUP, rc, SDE_EVTLOG_FUNC_CASE1);
 	if (rc) {
 		SDE_ERROR("Failed to send misr_setup command\n");
 		return rc;
@@ -578,7 +579,9 @@ int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 	if (rc)
 		SDE_ERROR("Failed to add MISR read command!\n");
 
+	SDE_EVT32(crtc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ, SDE_EVTLOG_FUNC_CASE1);
 	rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+	SDE_EVT32(crtc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ, rc, SDE_EVTLOG_FUNC_CASE2);
 
 	return rc;
 

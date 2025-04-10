@@ -3,6 +3,8 @@
  * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
+
 #include "hfi_encoder.h"
 #include "hfi_props.h"
 #include "sde_crtc.h"
@@ -214,6 +216,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	SDE_DEBUG("sending events enable:%d for display:%d\n", enable, display_id);
 	if (!defer_to_commit) {
 		ret = hfi_adapter_set_cmd_buf(cmd_buf);
+		SDE_EVT32(enc->base.base.id, display_id, cmd, ret, SDE_EVTLOG_FUNC_CASE1);
 		if (ret) {
 			SDE_ERROR("failed to send event register command\n");
 			return ret;
@@ -297,6 +300,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 		return ret;
 	}
 
+	SDE_EVT32(drm_enc->base.id, MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE, ret);
 	return ret;
 }
 
@@ -528,6 +532,8 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 
 	SDE_DEBUG("%s misr_setup: sending cmd buf\n", __func__);
 	rc = hfi_adapter_set_cmd_buf(cmd_buf);
+	SDE_EVT32(drm_enc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_SETUP, rc,
+			SDE_EVTLOG_FUNC_CASE1);
 	if (rc) {
 		SDE_ERROR("Failed to send misr_setup command\n");
 		return rc;
@@ -642,7 +648,11 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 			&hfi_enc->misr_read_listener, (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 			HFI_HOST_FLAGS_NON_DISCARDABLE));
 
+	SDE_EVT32(drm_encoder->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ,
+			SDE_EVTLOG_FUNC_CASE1);
 	rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+	SDE_EVT32(drm_encoder->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ, rc,
+			SDE_EVTLOG_FUNC_CASE2);
 
 	return rc;
 }

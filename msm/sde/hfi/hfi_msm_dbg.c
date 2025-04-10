@@ -2,6 +2,9 @@
 /*
  * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
+
+#define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
+
 #include "hfi_msm_dbg.h"
 #include "hfi_props.h"
 #include "hfi_utils.h"
@@ -395,6 +398,7 @@ int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
 			HFI_HOST_FLAGS_NONE);
 
 	ret = hfi_adapter_set_cmd_buf(cmd_buf);
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_SETUP, ret, SDE_EVTLOG_FUNC_CASE1);
 	if (ret) {
 		SDE_ERROR("failed to send debug-init command\n");
 		return ret;
@@ -826,7 +830,9 @@ static ssize_t hfi_dbg_reg_base_reg_read(struct file *file,
 			return rc;
 		}
 
+		SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_DUMP_REGS, SDE_EVTLOG_FUNC_CASE1);
 		rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+		SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_DUMP_REGS, rc, SDE_EVTLOG_FUNC_CASE2);
 		if (rc) {
 			SDE_ERROR("failed to send debug-dump-regs command\n");
 			return rc;
@@ -1138,7 +1144,9 @@ int hfi_msm_dbg_init(struct device *dev, struct dentry *debugfs_root)
 		return ret;
 	}
 
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_INIT, SDE_EVTLOG_FUNC_CASE1);
 	ret = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_INIT, ret, SDE_EVTLOG_FUNC_CASE2);
 	if (ret) {
 		SDE_ERROR("failed to send debug-init command\n");
 		return ret;
