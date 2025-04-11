@@ -345,28 +345,10 @@ void msm_hyp_crtc_commit_done(struct drm_crtc *crtc);
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc);
 void msm_hyp_send_hpd_event(struct drm_device *dev, struct drm_connector *connector);
 
-#if IS_ENABLED(CONFIG_DRM_MSM_HYP_WFD)
 void __init wfd_kms_register(void);
 void __exit wfd_kms_unregister(void);
-#else
-static inline void __init wfd_kms_register(void)
-{
-}
-static inline void __exit wfd_kms_unregister(void)
-{
-}
-#endif /* CONFIG_DRM_MSM_HYP_WFD */
 
-#if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
 void __init virtio_kms_register(void);
 void __exit virtio_kms_unregister(void);
-#else
-static inline void __init virtio_kms_register(void)
-{
-}
-static inline void __exit virtio_kms_unregister(void)
-{
-}
-#endif /* CONFIG_DRM_MSM_HYP_VIRTIO */
 
 #endif /* __MSM_DRV_HYP_H__ */
