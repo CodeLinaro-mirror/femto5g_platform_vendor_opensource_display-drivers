@@ -1368,6 +1368,12 @@ struct drm_encoder *sde_crtc_get_src_encoder_of_clone(struct drm_crtc *crtc);
  */
 void _sde_crtc_vm_release_notify(struct drm_crtc *crtc);
 
+/*
+ * _sde_crtc_vm_reclaim_notify- notify usermode in Primary VM to trigger commit for reclaimimg
+ *	resources released by trusted VM
+ */
+void _sde_crtc_vm_reclaim_notify(struct drm_crtc *crtc);
+
 /**
  * sde_crtc_calc_vpadding_param - calculate vpadding parameters
  * @state: Pointer to DRM crtc state object
