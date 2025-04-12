@@ -57,6 +57,7 @@ static const enum dsi_ctrl_version dsi_ctrl_v2_4 = DSI_CTRL_VERSION_2_4;
 static const enum dsi_ctrl_version dsi_ctrl_v2_5 = DSI_CTRL_VERSION_2_5;
 static const enum dsi_ctrl_version dsi_ctrl_v2_6 = DSI_CTRL_VERSION_2_6;
 static const enum dsi_ctrl_version dsi_ctrl_v2_7 = DSI_CTRL_VERSION_2_7;
+static const enum dsi_ctrl_version dsi_ctrl_v2_7_hfi = DSI_CTRL_VERSION_2_7_HFI;
 static const enum dsi_ctrl_version dsi_ctrl_v2_8 = DSI_CTRL_VERSION_2_8;
 static const enum dsi_ctrl_version dsi_ctrl_v2_9 = DSI_CTRL_VERSION_2_9;
 static const enum dsi_ctrl_version dsi_ctrl_v2_10 = DSI_CTRL_VERSION_2_10;
@@ -86,6 +87,10 @@ static const struct of_device_id msm_dsi_of_match[] = {
 	{
 		.compatible = "qcom,dsi-ctrl-hw-v2.7",
 		.data = &dsi_ctrl_v2_7,
+	},
+	{
+		.compatible = "qcom,dsi-ctrl-hfi-hw-v2.7",
+		.data = &dsi_ctrl_v2_7_hfi,
 	},
 	{
 		.compatible = "qcom,dsi-ctrl-hw-v2.8",
@@ -2202,6 +2207,9 @@ static int dsi_ctrl_dev_probe(struct platform_device *pdev)
 		dsi_ctrl->version = DSI_CTRL_VERSION_2_10;
 		// Turn on HFI flag, then switch back HWIO flags
 		//so its not disturbed before catalog init.
+	} else if (dsi_ctrl->version == DSI_CTRL_VERSION_2_7_HFI) {
+		dsi_ctrl->disp_op = MSM_DISP_OP_HFI;
+		dsi_ctrl->version = DSI_CTRL_VERSION_2_7;
 	} else {
 		dsi_ctrl->disp_op = MSM_DISP_OP_HWIO;
 	}

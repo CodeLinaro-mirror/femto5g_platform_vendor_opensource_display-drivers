@@ -75,6 +75,7 @@ static void dsi_catalog_cmn_init(struct dsi_ctrl_hw *ctrl,
 	case DSI_CTRL_VERSION_2_5:
 	case DSI_CTRL_VERSION_2_6:
 	case DSI_CTRL_VERSION_2_7:
+	case DSI_CTRL_VERSION_2_7_HFI:
 	case DSI_CTRL_VERSION_2_8:
 	case DSI_CTRL_VERSION_2_9:
 	case DSI_CTRL_VERSION_2_10:
@@ -153,6 +154,7 @@ int dsi_catalog_ctrl_setup(struct dsi_ctrl_hw *ctrl,
 	case DSI_CTRL_VERSION_2_5:
 	case DSI_CTRL_VERSION_2_6:
 	case DSI_CTRL_VERSION_2_7:
+	case DSI_CTRL_VERSION_2_7_HFI:
 	case DSI_CTRL_VERSION_2_8:
 	case DSI_CTRL_VERSION_2_9:
 	case DSI_CTRL_VERSION_2_10:
