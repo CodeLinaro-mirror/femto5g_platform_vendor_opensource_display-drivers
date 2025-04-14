@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -108,7 +108,7 @@ static irqreturn_t sde_qtimer_irq_cb(int irq, void *arg)
 	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
 
 	SDE_EVT32(0);
-	if (sde_kms->sde_qtimer.qtimer_cb)
+	if (sde_kms->sde_qtimer.qtimer_cb && IS_DISP_OP_HWIO(priv->disp_op))
 		sde_qtimer_start(&sde_kms->sde_qtimer);
 
 	return IRQ_HANDLED;
@@ -740,10 +740,14 @@ void sde_hw_csc_matrix_coeff_setup(struct sde_hw_blk_reg_map *c,
 
 void sde_hw_csc_setup(struct sde_hw_blk_reg_map *c,
 		u32 csc_reg_off,
-		struct sde_csc_cfg *data, bool csc10)
+		struct sde_csc_cfg *data, bool csc10,
+		enum msm_disp_op disp_op)
 {
 	u32 clamp_shift = csc10 ? 16 : 8;
 	u32 val;
+
+	if (IS_DISP_OP_HFI(disp_op))
+		return;
 
 	if (!c || !data)
 		return;

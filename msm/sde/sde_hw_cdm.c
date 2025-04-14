@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -87,19 +88,22 @@ static struct sde_cdm_cfg *_cdm_offset(enum sde_cdm cdm,
 }
 
 static int sde_hw_cdm_setup_csc_10bit(struct sde_hw_cdm *ctx,
-		struct sde_csc_cfg *data)
+		struct sde_csc_cfg *data, enum msm_disp_op disp_op)
 {
-	sde_hw_csc_setup(&ctx->hw, CDM_CSC_10_MATRIX_COEFF_0, data, true);
+	sde_hw_csc_setup(&ctx->hw, CDM_CSC_10_MATRIX_COEFF_0, data, true, disp_op);
 
 	return 0;
 }
 
 static int sde_hw_cdm_setup_cdwn(struct sde_hw_cdm *ctx,
-		struct sde_hw_cdm_cfg *cfg)
+		struct sde_hw_cdm_cfg *cfg, enum msm_disp_op disp_op)
 {
 	struct sde_hw_blk_reg_map *c = &ctx->hw;
 	u32 opmode = 0;
 	u32 out_size = 0;
+
+	if (IS_DISP_OP_HFI(disp_op))
+		return 0;
 
 	if (cfg->output_bit_depth == CDM_CDWN_OUTPUT_10BIT)
 		opmode &= ~BIT(7);
@@ -244,11 +248,12 @@ int sde_hw_cdm_enable(struct sde_hw_cdm *ctx,
 	csc &= ~BIT(1);
 	csc |= BIT(0);
 
-	if (ctx && ctx->ops.bind_pingpong_blk)
-		ctx->ops.bind_pingpong_blk(ctx, true,
+	if (ctx && ctx->ops.bind_pingpong_blk[ctx->hw.disp_op])
+		ctx->ops.bind_pingpong_blk[ctx->hw.disp_op](ctx, true,
 				cdm->pp_id);
-	else if (ctx->hw_mdp && ctx->hw_mdp->ops.setup_cdm_output)
-		ctx->hw_mdp->ops.setup_cdm_output(ctx->hw_mdp, &cdm_cfg);
+	else if (ctx->hw_mdp && ctx->hw_mdp->ops.setup_cdm_output[ctx->hw_mdp->hw.disp_op])
+		ctx->hw_mdp->ops.setup_cdm_output[ctx->hw_mdp->hw.disp_op](ctx->hw_mdp,
+			&cdm_cfg);
 
 	SDE_REG_WRITE(c, CDM_CSC_10_OPMODE, csc);
 	SDE_REG_WRITE(c, CDM_HDMI_PACK_OP_MODE, opmode);
@@ -262,10 +267,11 @@ void sde_hw_cdm_disable(struct sde_hw_cdm *ctx)
 	if (!ctx)
 		return;
 
-	if (ctx && ctx->ops.bind_pingpong_blk)
-		ctx->ops.bind_pingpong_blk(ctx, false, 0);
-	else if (ctx->hw_mdp && ctx->hw_mdp->ops.setup_cdm_output)
-		ctx->hw_mdp->ops.setup_cdm_output(ctx->hw_mdp, &cdm_cfg);
+	if (ctx && ctx->ops.bind_pingpong_blk[ctx->hw.disp_op])
+		ctx->ops.bind_pingpong_blk[ctx->hw.disp_op](ctx, false, 0);
+	else if (ctx->hw_mdp && ctx->hw_mdp->ops.setup_cdm_output[ctx->hw_mdp->hw.disp_op])
+		ctx->hw_mdp->ops.setup_cdm_output[ctx->hw_mdp->hw.disp_op](ctx->hw_mdp,
+			&cdm_cfg);
 }
 
 static void sde_hw_cdm_bind_pingpong_blk(
@@ -291,18 +297,21 @@ static void sde_hw_cdm_bind_pingpong_blk(
 static void _setup_cdm_ops(struct sde_hw_cdm_ops *ops,
 	unsigned long features)
 {
-	ops->setup_csc_data = sde_hw_cdm_setup_csc_10bit;
-	ops->setup_cdwn = sde_hw_cdm_setup_cdwn;
-	ops->enable = sde_hw_cdm_enable;
-	ops->disable = sde_hw_cdm_disable;
-	if (features & BIT(SDE_CDM_INPUT_CTRL))
-		ops->bind_pingpong_blk = sde_hw_cdm_bind_pingpong_blk;
+	ops->setup_csc_data[MSM_DISP_OP_HWIO] = sde_hw_cdm_setup_csc_10bit;
+	ops->setup_cdwn[MSM_DISP_OP_HWIO] = sde_hw_cdm_setup_cdwn;
+	ops->enable[MSM_DISP_OP_HWIO] = sde_hw_cdm_enable;
+	ops->disable[MSM_DISP_OP_HWIO] = sde_hw_cdm_disable;
+
+	if (features & BIT(SDE_CDM_INPUT_CTRL)) {
+		ops->bind_pingpong_blk[MSM_DISP_OP_HWIO] = sde_hw_cdm_bind_pingpong_blk;
+	}
 }
 
 struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
-		struct sde_hw_mdp *hw_mdp)
+		struct sde_hw_mdp *hw_mdp,
+		enum msm_disp_op disp_op)
 {
 	struct sde_hw_cdm *c;
 	struct sde_cdm_cfg *cfg;
@@ -330,7 +339,7 @@ struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 	 * @setup default csc coefficients
 	 */
 	if (!m->trusted_vm_env)
-		sde_hw_cdm_setup_csc_10bit(c, &rgb2yuv_cfg);
+		sde_hw_cdm_setup_csc_10bit(c, &rgb2yuv_cfg, disp_op);
 
 	return &c->hw;
 }

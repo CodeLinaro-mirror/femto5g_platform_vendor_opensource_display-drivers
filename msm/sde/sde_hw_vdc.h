@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -22,7 +23,7 @@ struct sde_hw_vdc_ops {
 	 * vdc_disable - disable vdc
 	 * @hw_vdc: Pointer to vdc context
 	 */
-	void (*vdc_disable)(struct sde_hw_vdc *hw_vdc);
+	void (*vdc_disable[MSM_DISP_OP_MAX])(struct sde_hw_vdc *hw_vdc);
 
 	/**
 	 * vdc_config - configures vdc encoder
@@ -30,7 +31,7 @@ struct sde_hw_vdc_ops {
 	 * @vdc: panel vdc parameters
 	 * @is_video_mode: current panel mode is video
 	 */
-	void (*vdc_config)(struct sde_hw_vdc *hw_vdc,
+	void (*vdc_config[MSM_DISP_OP_MAX])(struct sde_hw_vdc *hw_vdc,
 			struct msm_display_vdc_info *vdc, bool is_video_mode);
 
 	/**
@@ -39,7 +40,7 @@ struct sde_hw_vdc_ops {
 	 * @enable: enable/disable connection
 	 * @pp: pingpong blk id
 	 */
-	void (*bind_pingpong_blk)(struct sde_hw_vdc *hw_vdc,
+	void (*bind_pingpong_blk[MSM_DISP_OP_MAX])(struct sde_hw_vdc *hw_vdc,
 			bool enable,
 			const enum sde_pingpong pp);
 };

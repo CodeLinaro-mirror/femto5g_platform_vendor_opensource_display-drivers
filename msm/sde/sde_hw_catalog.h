@@ -62,6 +62,7 @@
 #define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
 #define SDE_HW_VER_C40	SDE_HW_VER(12, 4, 0) /* kera */
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
+#define SDE_HW_VER_D10	SDE_HW_VER(13, 1, 0) /* alor */
 
 #define SDE_QULTIVATE_SW_REV1 0x1
 
@@ -100,6 +101,7 @@
 #define IS_TUNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C30)
 #define IS_KERA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C40)
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
+#define IS_ALOR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D10)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -915,6 +917,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_UBWC_LOSSY	Support UBWC Lossy
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
  * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
+ * @SDE_FEATURE_DISP_OP        Support Display OP switch
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -969,6 +972,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_DS_PU_SUPPORTED,
 	SDE_FEATURE_MIXER_OP_V1,
 	SDE_FEATURE_SSIP_CLK,
+	SDE_FEATURE_DISP_OP,
 	SDE_FEATURE_MAX
 };
 
@@ -1651,6 +1655,16 @@ struct sde_pingpong_cfg  {
 };
 
 /**
+ * struct sde_hfi_cfg - information of HFI mode
+ * @perf_sys_cache_enable:  system cache enable for perf
+ * @perf_max_core_clk_rate: max clock rate
+ */
+struct sde_hfi_cfg  {
+	u32 perf_sys_cache_enable;
+	u32 perf_max_core_clk_rate;
+};
+
+/**
  * struct sde_dsc_cfg - information of DSC blocks
  * @id                 enum identifying this block
  * @base               register offset of this block
@@ -2245,6 +2259,7 @@ struct sde_mdss_cfg {
 	u32 qdss_count;
 	struct sde_qdss_cfg qdss[MAX_BLOCKS];
 	u32 cwb_blk_off[MAX_CWB_BLOCKS];
+	struct sde_hfi_cfg hfi_cfg;
 	u32 cwb_blk_stride;
 	u32 dcwb_count;
 	void *qultivate_cfg;

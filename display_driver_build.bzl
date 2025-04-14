@@ -96,15 +96,15 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
         "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
         })
 
+    deps += [
+        "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
+			]
     if not vm_target:
         deps += select({
            "//build/kernel/kleaf:socrepo_true": ["//soc-repo:{}/drivers/soc/qcom/qcom_va_minidump".format(kernel_build_tv)],
            "//build/kernel/kleaf:socrepo_false": [],
         })
 
-        deps += [
-            "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
-			]
         deps += select({
             "//build/kernel/kleaf:socrepo_true": [
                 "//soc-repo:{}/drivers/gpu/drm/display/drm_display_helper".format(kernel_build_tv),

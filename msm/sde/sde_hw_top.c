@@ -942,44 +942,46 @@ static void sde_hw_setup_hw_fences_config_with_dir_write(struct sde_hw_mdp *mdp,
 
 static void _setup_mdp_ops(struct sde_hw_mdp_ops *ops, unsigned long cap, u32 hw_fence_rev)
 {
-	ops->setup_split_pipe = sde_hw_setup_split_pipe;
-	ops->setup_pp_split = sde_hw_setup_pp_split;
-	ops->setup_cdm_output = sde_hw_setup_cdm_output;
-	ops->setup_clk_force_ctrl = sde_hw_setup_clk_force_ctrl;
-	ops->get_clk_ctrl_status = sde_hw_get_clk_ctrl_status;
-	ops->set_cwb_ppb_cntl = sde_hw_program_cwb_ppb_ctrl;
-	ops->reset_ubwc = sde_hw_reset_ubwc;
-	ops->intf_audio_select = sde_hw_intf_audio_select;
-	ops->set_mdp_hw_events = sde_hw_mdp_events;
+	ops->setup_split_pipe[MSM_DISP_OP_HWIO] = sde_hw_setup_split_pipe;
+	ops->setup_pp_split[MSM_DISP_OP_HWIO] = sde_hw_setup_pp_split;
+	ops->setup_cdm_output[MSM_DISP_OP_HWIO] = sde_hw_setup_cdm_output;
+	ops->setup_clk_force_ctrl[MSM_DISP_OP_HWIO] = sde_hw_setup_clk_force_ctrl;
+	ops->get_clk_ctrl_status[MSM_DISP_OP_HWIO] = sde_hw_get_clk_ctrl_status;
+	ops->set_cwb_ppb_cntl[MSM_DISP_OP_HWIO] = sde_hw_program_cwb_ppb_ctrl;
+	ops->reset_ubwc[MSM_DISP_OP_HWIO] = sde_hw_reset_ubwc;
+	ops->intf_audio_select[MSM_DISP_OP_HWIO] = sde_hw_intf_audio_select;
+	ops->set_mdp_hw_events[MSM_DISP_OP_HWIO] = sde_hw_mdp_events;
 	if (cap & BIT(SDE_MDP_VSYNC_SEL))
-		ops->setup_vsync_source = sde_hw_setup_vsync_source;
+		ops->setup_vsync_source[MSM_DISP_OP_HWIO] = sde_hw_setup_vsync_source;
 	else if (cap & BIT(SDE_MDP_WD_TIMER))
-		ops->setup_vsync_source = sde_hw_setup_vsync_source_v1;
+		ops->setup_vsync_source[MSM_DISP_OP_HWIO] = sde_hw_setup_vsync_source_v1;
 
 	if (cap & BIT(SDE_MDP_DHDR_MEMPOOL_4K) ||
 			cap & BIT(SDE_MDP_DHDR_MEMPOOL_4K_EXT) ||
 			cap & BIT(SDE_MDP_DHDR_MEMPOOL))
-		ops->set_hdr_plus_metadata = sde_hw_set_hdr_plus_metadata;
-	ops->get_autorefresh_status = sde_hw_get_autorefresh_status;
+		ops->set_hdr_plus_metadata[MSM_DISP_OP_HWIO] = sde_hw_set_hdr_plus_metadata;
+	ops->get_autorefresh_status[MSM_DISP_OP_HWIO] = sde_hw_get_autorefresh_status;
 
 	if (hw_fence_rev) {
 		if (cap & BIT(SDE_MDP_HW_FENCE_DIR_WRITE))
-			ops->setup_hw_fences = sde_hw_setup_hw_fences_config_with_dir_write;
+			ops->setup_hw_fences[MSM_DISP_OP_HWIO] =
+					sde_hw_setup_hw_fences_config_with_dir_write;
 		else
-			ops->setup_hw_fences = sde_hw_setup_hw_fences_config;
+			ops->setup_hw_fences[MSM_DISP_OP_HWIO] = sde_hw_setup_hw_fences_config;
 
-		ops->hw_fence_input_timestamp_ctrl = sde_hw_hw_fence_timestamp_ctrl;
-		ops->hw_fence_input_status = sde_hw_input_hw_fence_status;
+		ops->hw_fence_input_timestamp_ctrl[MSM_DISP_OP_HWIO] =
+				sde_hw_hw_fence_timestamp_ctrl;
+		ops->hw_fence_input_status[MSM_DISP_OP_HWIO] = sde_hw_input_hw_fence_status;
 	}
 
 	if (cap & BIT(SDE_MDP_TOP_PPB_SET_SIZE))
-		ops->set_ppb_fifo_size = sde_hw_top_set_ppb_fifo_size;
+		ops->set_ppb_fifo_size[MSM_DISP_OP_HWIO] = sde_hw_top_set_ppb_fifo_size;
 
 	if (cap & BIT(SDE_MDP_DUAL_DPU_SYNC))
-		ops->dpu_sync_intf_mux = sde_hw_setup_dpu_sync_intf_mux;
+		ops->dpu_sync_intf_mux[MSM_DISP_OP_HWIO] = sde_hw_setup_dpu_sync_intf_mux;
 
 	if (cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
-		ops->flush_sync_intf_mux = sde_hw_setup_flush_sync_intf_mux;
+		ops->flush_sync_intf_mux[MSM_DISP_OP_HWIO] = sde_hw_setup_flush_sync_intf_mux;
 }
 
 static const struct sde_mdp_cfg *_top_offset(enum sde_mdp mdp,

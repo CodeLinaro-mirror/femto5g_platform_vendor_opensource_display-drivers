@@ -92,6 +92,9 @@ struct msm_gem_vma;
 
 #define TEARDOWN_DEADLOCK_RETRY_MAX 5
 
+#define IS_DISP_OP_HFI(disp_op)		((disp_op) == MSM_DISP_OP_HFI)
+#define IS_DISP_OP_HWIO(disp_op)		((disp_op) == MSM_DISP_OP_HWIO)
+
 #define DISP_DEV_ERR(dev, fmt, ...) dev_err(dev, "[%s:%d] " fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 struct msm_file_private {
@@ -206,6 +209,7 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_HANDLE_FENCE_ERROR,
 	CRTC_PROP_UBWC_CLK,
 	CRTC_PROP_FLUSH_SYNC_EN,
+	CRTC_PROP_DISPLAY_OP,
 
 	/* total # of properties */
 	CRTC_PROP_COUNT
@@ -464,12 +468,14 @@ struct msm_ratio {
  * @MSM_ENC_TX_COMPLETE - wait for the HW to transfer the frame to panel
  * @MSM_ENC_VBLANK - wait for the HW VBLANK event (for driver-internal waiters)
  * @MSM_ENC_ACTIVE_REGION - wait for the TG to be in active pixel region
+ * @MSM_ENC_EVENT_MAX - maximum value for events related to frame
  */
 enum msm_event_wait {
 	MSM_ENC_COMMIT_DONE = 0,
 	MSM_ENC_TX_COMPLETE,
 	MSM_ENC_VBLANK,
 	MSM_ENC_ACTIVE_REGION,
+	MSM_ENC_EVENT_MAX,
 };
 
 /**
@@ -1183,6 +1189,20 @@ struct msm_fence_error_client_entry {
 	struct list_head list;
 };
 
+/**
+ * enum msm_disp_op: type of operation path
+ * @MSM_DISP_OP_HWIO: Display operation in HWIO path
+ * @MSM_DISP_OP_HFI: Display operation in HFI path.
+ * @MSM_DISP_OP_HYP: Display operation in Hypervisor
+ * @MSM_DISP_OP_MAX: Max value.
+ */
+enum msm_disp_op {
+	MSM_DISP_OP_HWIO,
+	MSM_DISP_OP_HFI,
+	MSM_DISP_OP_HYP,
+	MSM_DISP_OP_MAX,
+};
+
 struct msm_drm_private {
 
 	struct drm_device *dev;
@@ -1315,6 +1335,9 @@ struct msm_drm_private {
 
 	/* list of component registered for notification */
 	struct blocking_notifier_head component_notifier_list;
+
+	enum msm_disp_op disp_op;
+	struct msm_drm_hfi_private *hfi_priv;
 };
 
 /* get struct msm_kms * from drm_device * */

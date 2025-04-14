@@ -16,6 +16,8 @@ def define_sun():
                     "CONFIG_DRM_MSM_SDE",
                     "CONFIG_SYNC_FILE",
                     "CONFIG_DRM_MSM_DSI",
+                    "CONFIG_MDSS_HFI_ADAPTER",
+                    "CONFIG_MDSS_HFI",
                     "CONFIG_DRM_MSM_DP",
                     "CONFIG_DRM_MSM_DP_MST",
                     "CONFIG_DSI_PARSER",

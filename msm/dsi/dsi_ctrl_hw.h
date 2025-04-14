@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -87,9 +87,11 @@ enum dsi_ctrl_version {
 	DSI_CTRL_VERSION_2_5,
 	DSI_CTRL_VERSION_2_6,
 	DSI_CTRL_VERSION_2_7,
+	DSI_CTRL_VERSION_2_7_HFI,
 	DSI_CTRL_VERSION_2_8,
 	DSI_CTRL_VERSION_2_9,
 	DSI_CTRL_VERSION_2_10,
+	DSI_CTRL_VERSION_2_10_HFI,
 	DSI_CTRL_VERSION_MAX
 };
 
@@ -385,7 +387,7 @@ struct ctrl_ulps_config_ops {
 	 * Caller should check if lanes are in ULPS mode by calling
 	 * get_lanes_in_ulps() operation.
 	 */
-	void (*ulps_request)(struct dsi_ctrl_hw *ctrl, u32 lanes);
+	void (*ulps_request[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, u32 lanes);
 
 	/**
 	 * ulps_exit() - exit ULPS on specified lanes
@@ -396,7 +398,7 @@ struct ctrl_ulps_config_ops {
 	 * Caller should check if lanes are in active mode by calling
 	 * get_lanes_in_ulps() operation.
 	 */
-	void (*ulps_exit)(struct dsi_ctrl_hw *ctrl, u32 lanes);
+	void (*ulps_exit[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, u32 lanes);
 
 	/**
 	 * get_lanes_in_ulps() - returns the list of lanes in ULPS mode
@@ -407,7 +409,7 @@ struct ctrl_ulps_config_ops {
 	 *
 	 * Return: List of lanes in ULPS state.
 	 */
-	u32 (*get_lanes_in_ulps)(struct dsi_ctrl_hw *ctrl);
+	u32 (*get_lanes_in_ulps[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 };
 
 /**
@@ -420,7 +422,7 @@ struct dsi_ctrl_hw_ops {
 	 * @ctrl:          Pointer to controller host hardware.
 	 * @config:        Configuration for DSI host controller
 	 */
-	void (*host_setup)(struct dsi_ctrl_hw *ctrl,
+	void (*host_setup[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			   struct dsi_host_common_cfg *config);
 
 	/**
@@ -428,14 +430,14 @@ struct dsi_ctrl_hw_ops {
 	 * @ctrl:          Pointer to controller host hardware.
 	 * @on:            Enable/disabel video engine.
 	 */
-	void (*video_engine_en)(struct dsi_ctrl_hw *ctrl, bool on);
+	void (*video_engine_en[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, bool on);
 
 	/**
 	 * setup_avr() - set the AVR_SUPPORT_ENABLE bit in DSI_VIDEO_MODE_CTRL
 	 * @ctrl:	   Pointer to controller host hardware.
 	 * @enable:	   Controls whether this bit is set or cleared
 	 */
-	void (*setup_avr)(struct dsi_ctrl_hw *ctrl, bool enable);
+	void (*setup_avr[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, bool enable);
 
 	/**
 	 * video_engine_setup() - Setup dsi host controller for video mode
@@ -446,7 +448,7 @@ struct dsi_ctrl_hw_ops {
 	 * Set up DSI video engine with a specific configuration. Controller and
 	 * video engine are not enabled as part of this function.
 	 */
-	void (*video_engine_setup)(struct dsi_ctrl_hw *ctrl,
+	void (*video_engine_setup[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				   struct dsi_host_common_cfg *common_cfg,
 				   struct dsi_video_engine_cfg *cfg);
 
@@ -457,7 +459,7 @@ struct dsi_ctrl_hw_ops {
 	 *
 	 * Set up the video timing parameters for the DSI video mode operation.
 	 */
-	void (*set_video_timing)(struct dsi_ctrl_hw *ctrl,
+	void (*set_video_timing[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				 struct dsi_mode_info *mode);
 
 	/**
@@ -469,7 +471,7 @@ struct dsi_ctrl_hw_ops {
 	 * Setup DSI CMD engine with a specific configuration. Controller and
 	 * command engine are not enabled as part of this function.
 	 */
-	void (*cmd_engine_setup)(struct dsi_ctrl_hw *ctrl,
+	void (*cmd_engine_setup[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				 struct dsi_host_common_cfg *common_cfg,
 				 struct dsi_cmd_engine_cfg *cfg);
 
@@ -483,7 +485,7 @@ struct dsi_ctrl_hw_ops {
 	 *
 	 * Setup parameters for command mode pixel stream size.
 	 */
-	void (*setup_cmd_stream)(struct dsi_ctrl_hw *ctrl,
+	void (*setup_cmd_stream[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				 struct dsi_mode_info *mode,
 				 struct dsi_host_common_cfg *cfg,
 				 u32 vc_id,
@@ -494,20 +496,20 @@ struct dsi_ctrl_hw_ops {
 	 * @ctrl:          Pointer to the controller host hardware.
 	 * @on:            turn on/off the DSI controller engine.
 	 */
-	void (*ctrl_en)(struct dsi_ctrl_hw *ctrl, bool on);
+	void (*ctrl_en[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, bool on);
 
 	/**
 	 * cmd_engine_en() - enable DSI controller command engine
 	 * @ctrl:          Pointer to the controller host hardware.
 	 * @on:            Turn on/off the DSI command engine.
 	 */
-	void (*cmd_engine_en)(struct dsi_ctrl_hw *ctrl, bool on);
+	void (*cmd_engine_en[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, bool on);
 
 	/**
 	 * phy_sw_reset() - perform a soft reset on the PHY.
 	 * @ctrl:        Pointer to the controller host hardware.
 	 */
-	void (*phy_sw_reset)(struct dsi_ctrl_hw *ctrl);
+	void (*phy_sw_reset[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * config_clk_gating() - enable/disable DSI PHY clk gating
@@ -515,7 +517,7 @@ struct dsi_ctrl_hw_ops {
 	 * @enable:        enable/disable DSI PHY clock gating.
 	 * @clk_selection:        clock to enable/disable clock gating.
 	 */
-	void (*config_clk_gating)(struct dsi_ctrl_hw *ctrl, bool enable,
+	void (*config_clk_gating[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, bool enable,
 			enum dsi_clk_gate_type clk_selection);
 
 	/**
@@ -529,7 +531,7 @@ struct dsi_ctrl_hw_ops {
 	 * If the reset is done while MDP timing engine is turned on, the video
 	 * engine should be re-enabled only during the vertical blanking time.
 	 */
-	void (*soft_reset)(struct dsi_ctrl_hw *ctrl);
+	void (*soft_reset[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * setup_lane_map() - setup mapping between logical and physical lanes
@@ -537,7 +539,7 @@ struct dsi_ctrl_hw_ops {
 	 * @lane_map:      Structure defining the mapping between DSI logical
 	 *                 lanes and physical lanes.
 	 */
-	void (*setup_lane_map)(struct dsi_ctrl_hw *ctrl,
+	void (*setup_lane_map[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			       struct dsi_lane_map *lane_map);
 
 	/**
@@ -552,7 +554,7 @@ struct dsi_ctrl_hw_ops {
 	 * set, caller should make a separate call to trigger_command_dma() to
 	 * transmit the command.
 	 */
-	void (*kickoff_command)(struct dsi_ctrl_hw *ctrl,
+	void (*kickoff_command[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				struct dsi_ctrl_cmd_dma_info *cmd,
 				u32 flags);
 
@@ -571,7 +573,7 @@ struct dsi_ctrl_hw_ops {
 	 * transmit the command.
 	 */
 
-	void (*kickoff_command_non_embedded_mode)(struct dsi_ctrl_hw *ctrl,
+	void (*kickoff_command_non_embedded_mode[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				struct dsi_ctrl_cmd_dma_info *cmd,
 				u32 flags);
 
@@ -588,11 +590,11 @@ struct dsi_ctrl_hw_ops {
 	 * set, caller should make a separate call to trigger_command_dma() to
 	 * transmit the command.
 	 */
-	void (*kickoff_fifo_command)(struct dsi_ctrl_hw *ctrl,
+	void (*kickoff_fifo_command[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				     struct dsi_ctrl_cmd_dma_fifo_info *cmd,
 				     u32 flags);
 
-	void (*reset_cmd_fifo)(struct dsi_ctrl_hw *ctrl);
+	void (*reset_cmd_fifo[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 	/**
 	 * trigger_command_dma() - trigger transmission of command buffer.
 	 * @ctrl:          Pointer to the controller host hardware.
@@ -601,7 +603,7 @@ struct dsi_ctrl_hw_ops {
 	 * kickoff_command() of kickoff_fifo_command() with
 	 * DSI_CTRL_HW_CMD_WAIT_FOR_TRIGGER flag.
 	 */
-	void (*trigger_command_dma)(struct dsi_ctrl_hw *ctrl);
+	void (*trigger_command_dma[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * get_cmd_read_data() - get data read from the peripheral
@@ -612,7 +614,7 @@ struct dsi_ctrl_hw_ops {
 	 * @pkt_size:        Size of response expected.
 	 * @hw_read_cnt:    Actual number of bytes read by HW.
 	 */
-	u32 (*get_cmd_read_data)(struct dsi_ctrl_hw *ctrl,
+	u32 (*get_cmd_read_data[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				 u8 *rd_buf,
 				 u32 read_offset,
 				 u32 rx_byte,
@@ -625,7 +627,7 @@ struct dsi_ctrl_hw_ops {
 	 * @lanes:         ORed list of lanes (enum dsi_data_lanes) which need
 	 *                 to be checked to be in idle state.
 	 */
-	int (*wait_for_lane_idle)(struct dsi_ctrl_hw *ctrl, u32 lanes);
+	int (*wait_for_lane_idle[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, u32 lanes);
 
 	struct ctrl_ulps_config_ops ulps_ops;
 
@@ -642,7 +644,7 @@ struct dsi_ctrl_hw_ops {
 	 * @lanes:        ORed list of lanes which need to have clamps released.
 	 * @enable_ulps: TODO:??
 	 */
-	void (*clamp_enable)(struct dsi_ctrl_hw *ctrl,
+	void (*clamp_enable[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			     u32 lanes,
 			     bool enable_ulps);
 
@@ -652,7 +654,7 @@ struct dsi_ctrl_hw_ops {
 	 * @lanes:        ORed list of lanes which need to have clamps released.
 	 * @disable_ulps: ulps state.
 	 */
-	void (*clamp_disable)(struct dsi_ctrl_hw *ctrl,
+	void (*clamp_disable[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			      u32 lanes,
 			      bool disable_ulps);
 
@@ -662,7 +664,7 @@ struct dsi_ctrl_hw_ops {
 	 * @ctrl:         Pointer to the controller host hardware.
 	 * @enable:	True to mask the reset signal, false to unmask
 	 */
-	void (*phy_reset_config)(struct dsi_ctrl_hw *ctrl,
+	void (*phy_reset_config[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			     bool enable);
 
 	/**
@@ -675,20 +677,20 @@ struct dsi_ctrl_hw_ops {
 	 *
 	 * Return: List of active interrupts.
 	 */
-	u32 (*get_interrupt_status)(struct dsi_ctrl_hw *ctrl);
+	u32 (*get_interrupt_status[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * clear_interrupt_status() - clears the specified interrupts
 	 * @ctrl:          Pointer to the controller host hardware.
 	 * @ints:          List of interrupts to be cleared.
 	 */
-	void (*clear_interrupt_status)(struct dsi_ctrl_hw *ctrl, u32 ints);
+	void (*clear_interrupt_status[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, u32 ints);
 
 	/**
 	 * poll_dma_status()- API to poll DMA status
 	 * @ctrl:                 Pointer to the controller host hardware.
 	 */
-	u32 (*poll_dma_status)(struct dsi_ctrl_hw *ctrl);
+	u32 (*poll_dma_status[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * enable_status_interrupts() - enable the specified interrupts
@@ -700,7 +702,7 @@ struct dsi_ctrl_hw_ops {
 	 * maintain the state of the interrupts enabled. To disable all
 	 * interrupts, set ints to 0.
 	 */
-	void (*enable_status_interrupts)(struct dsi_ctrl_hw *ctrl, u32 ints);
+	void (*enable_status_interrupts[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, u32 ints);
 
 	/**
 	 * get_error_status() - returns the error status
@@ -712,14 +714,14 @@ struct dsi_ctrl_hw_ops {
 	 *
 	 * Return: List of active error interrupts.
 	 */
-	u64 (*get_error_status)(struct dsi_ctrl_hw *ctrl);
+	u64 (*get_error_status[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * clear_error_status() - clears the specified errors
 	 * @ctrl:          Pointer to the controller host hardware.
 	 * @errors:          List of errors to be cleared.
 	 */
-	void (*clear_error_status)(struct dsi_ctrl_hw *ctrl, u64 errors);
+	void (*clear_error_status[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, u64 errors);
 
 	/**
 	 * enable_error_interrupts() - enable the specified interrupts
@@ -731,7 +733,7 @@ struct dsi_ctrl_hw_ops {
 	 * maintain the state of the interrupts enabled. To disable all
 	 * interrupts, set errors to 0.
 	 */
-	void (*enable_error_interrupts)(struct dsi_ctrl_hw *ctrl, u64 errors);
+	void (*enable_error_interrupts[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, u64 errors);
 
 	/**
 	 * video_test_pattern_setup() - setup test pattern engine for video mode
@@ -739,7 +741,7 @@ struct dsi_ctrl_hw_ops {
 	 * @type:          Type of test pattern.
 	 * @init_val:      Initial value to use for generating test pattern.
 	 */
-	void (*video_test_pattern_setup)(struct dsi_ctrl_hw *ctrl,
+	void (*video_test_pattern_setup[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 					 enum dsi_test_pattern type,
 					 u32 init_val);
 
@@ -750,7 +752,7 @@ struct dsi_ctrl_hw_ops {
 	 * @init_val:      Initial value to use for generating test pattern.
 	 * @stream_id:     Stream Id on which packets are generated.
 	 */
-	void (*cmd_test_pattern_setup)(struct dsi_ctrl_hw *ctrl,
+	void (*cmd_test_pattern_setup[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				       enum dsi_test_pattern  type,
 				       u32 init_val,
 				       u32 stream_id);
@@ -762,7 +764,7 @@ struct dsi_ctrl_hw_ops {
 	 * @pattern:       Type of TPG pattern
 	 * @panel_mode:    DSI operation mode
 	 */
-	void (*test_pattern_enable)(struct dsi_ctrl_hw *ctrl, bool enable,
+	void (*test_pattern_enable[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, bool enable,
 					   enum dsi_ctrl_tpg_pattern pattern,
 					   enum dsi_op_mode panel_mode);
 
@@ -770,7 +772,7 @@ struct dsi_ctrl_hw_ops {
 	 * clear_phy0_ln_err() - clear DSI PHY lane-0 errors
 	 * @ctrl:          Pointer to the controller host hardware.
 	 */
-	void (*clear_phy0_ln_err)(struct dsi_ctrl_hw *ctrl);
+	void (*clear_phy0_ln_err[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * trigger_cmd_test_pattern() - trigger a command mode frame update with
@@ -778,10 +780,10 @@ struct dsi_ctrl_hw_ops {
 	 * @ctrl:          Pointer to the controller host hardware.
 	 * @stream_id:     Stream on which frame update is sent.
 	 */
-	void (*trigger_cmd_test_pattern)(struct dsi_ctrl_hw *ctrl,
+	void (*trigger_cmd_test_pattern[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 					 u32 stream_id);
 
-	ssize_t (*reg_dump_to_buffer)(struct dsi_ctrl_hw *ctrl,
+	ssize_t (*reg_dump_to_buffer[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				      char *buf,
 				      u32 size);
 
@@ -792,7 +794,7 @@ struct dsi_ctrl_hw_ops {
 	 * @enable:       Enable/disable MISR.
 	 * @frame_count:  Number of frames to accumulate MISR.
 	 */
-	void (*setup_misr)(struct dsi_ctrl_hw *ctrl,
+	void (*setup_misr[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			   enum dsi_op_mode panel_mode,
 			   bool enable, u32 frame_count);
 
@@ -801,7 +803,7 @@ struct dsi_ctrl_hw_ops {
 	 * @ctrl:         Pointer to the controller host hardware.
 	 * @panel_mode:   CMD or VIDEO mode indicator
 	 */
-	u32 (*collect_misr)(struct dsi_ctrl_hw *ctrl,
+	u32 (*collect_misr[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			    enum dsi_op_mode panel_mode);
 
 	/**
@@ -811,13 +813,13 @@ struct dsi_ctrl_hw_ops {
 	 *
 	 * Enable or Disabe the Timing DB register.
 	 */
-	void (*set_timing_db)(struct dsi_ctrl_hw *ctrl,
+	void (*set_timing_db[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				 bool enable);
 	/**
 	 * clear_rdbk_register() - Clear and reset read back register
 	 * @ctrl:         Pointer to the controller host hardware.
 	 */
-	void (*clear_rdbk_register)(struct dsi_ctrl_hw *ctrl);
+	void (*clear_rdbk_register[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/** schedule_dma_cmd() - Schdeule DMA command transfer on a
 	 *                       particular blanking line.
@@ -826,14 +828,15 @@ struct dsi_ctrl_hw_ops {
 	 *                       needs to be sent.
 	 * @do_peripheral_flush: Flag for sending this command with peripheral flush.
 	 */
-	void (*schedule_dma_cmd)(struct dsi_ctrl_hw *ctrl, int line_no, bool do_peripheral_flush);
+	void (*schedule_dma_cmd[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
+			int line_no, bool do_peripheral_flush);
 
 	/**
 	 * ctrl_reset() - Reset DSI lanes to recover from DSI errors
 	 * @ctrl:         Pointer to the controller host hardware.
 	 * @mask:         Indicates the error type.
 	 */
-	int (*ctrl_reset)(struct dsi_ctrl_hw *ctrl, int mask);
+	int (*ctrl_reset[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, int mask);
 
 	/**
 	 * mask_error_int() - Mask/Unmask particular DSI error interrupts
@@ -841,59 +844,59 @@ struct dsi_ctrl_hw_ops {
 	 * @idx:	  Indicates the errors to be masked.
 	 * @en:		  Bool for mask or unmask of the error
 	 */
-	void (*mask_error_intr)(struct dsi_ctrl_hw *ctrl, u32 idx, bool en);
+	void (*mask_error_intr[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, u32 idx, bool en);
 
 	/**
 	 * error_intr_ctrl() - Mask/Unmask master DSI error interrupt
 	 * @ctrl:         Pointer to the controller host hardware.
 	 * @en:		  Bool for mask or unmask of DSI error
 	 */
-	void (*error_intr_ctrl)(struct dsi_ctrl_hw *ctrl, bool en);
+	void (*error_intr_ctrl[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, bool en);
 
 	/**
 	 * get_error_mask() - get DSI error interrupt mask status
 	 * @ctrl:         Pointer to the controller host hardware.
 	 */
-	u32 (*get_error_mask)(struct dsi_ctrl_hw *ctrl);
+	u32 (*get_error_mask[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * get_hw_version() - get DSI controller hw version
 	 * @ctrl:         Pointer to the controller host hardware.
 	 */
-	u32 (*get_hw_version)(struct dsi_ctrl_hw *ctrl);
+	u32 (*get_hw_version[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * wait_for_cmd_mode_mdp_idle() - wait for command mode engine not to
 	 *                           be busy sending data from display engine
 	 * @ctrl:         Pointer to the controller host hardware.
 	 */
-	int (*wait_for_cmd_mode_mdp_idle)(struct dsi_ctrl_hw *ctrl);
+	int (*wait_for_cmd_mode_mdp_idle[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * hw.ops.set_continuous_clk() - Set continuous clock
 	 * @ctrl:         Pointer to the controller host hardware.
 	 * @enable:	  Bool to control continuous clock request.
 	 */
-	void (*set_continuous_clk)(struct dsi_ctrl_hw *ctrl, bool enable);
+	void (*set_continuous_clk[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, bool enable);
 
 	/**
 	 * hw.ops.wait4dynamic_refresh_done() - Wait for dynamic refresh done
 	 * @ctrl:         Pointer to the controller host hardware.
 	 */
-	int (*wait4dynamic_refresh_done)(struct dsi_ctrl_hw *ctrl);
+	int (*wait4dynamic_refresh_done[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * hw.ops.vid_engine_busy() - Returns true if vid engine is busy
 	 * @ctrl:	Pointer to the controller host hardware.
 	 */
-	bool (*vid_engine_busy)(struct dsi_ctrl_hw *ctrl);
+	bool (*vid_engine_busy[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl);
 
 	/**
 	 * hw.ops.hs_req_sel() - enable continuous clk support through phy
 	 * @ctrl:	Pointer to the controller host hardware.
 	 * @sel_phy:	Bool to control whether to select phy or controller
 	 */
-	void (*hs_req_sel)(struct dsi_ctrl_hw *ctrl, bool sel_phy);
+	void (*hs_req_sel[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, bool sel_phy);
 
 	/**
 	 * hw.ops.configure_cmddma_window() - configure DMA window for CMD TX
@@ -902,7 +905,7 @@ struct dsi_ctrl_hw_ops {
 	 * @line_no:	Line number at which the CMD needs to be triggered.
 	 * @window:	Width of the DMA CMD window.
 	 */
-	void (*configure_cmddma_window)(struct dsi_ctrl_hw *ctrl,
+	void (*configure_cmddma_window[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			struct dsi_ctrl_cmd_dma_info *cmd,
 			u32 line_no, u32 window);
 
@@ -911,7 +914,7 @@ struct dsi_ctrl_hw_ops {
 	 * @ctrl:	Pointer to the controller host hardware.
 	 * @cfg:	Common configuration parameters.
 	 */
-	void (*reset_trig_ctrl)(struct dsi_ctrl_hw *ctrl,
+	void (*reset_trig_ctrl[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			struct dsi_host_common_cfg *cfg);
 
 	/**
@@ -921,7 +924,7 @@ struct dsi_ctrl_hw_ops {
 	 * @cfg:                 Common configuration parameters.
 	 * @do_peripheral_flush: Flag for sending this command with peripheral flush.
 	 */
-	void (*init_cmddma_trig_ctrl)(struct dsi_ctrl_hw *ctrl,
+	void (*init_cmddma_trig_ctrl[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			struct dsi_host_common_cfg *cfg, bool do_peripheral_flush);
 
 	/**
@@ -930,7 +933,7 @@ struct dsi_ctrl_hw_ops {
 	 * @ctrl:	Pointer to the controller host hardware.
 	 * @cmd_mode:	Boolean to indicate command mode operation.
 	 */
-	u32 (*log_line_count)(struct dsi_ctrl_hw *ctrl, bool cmd_mode);
+	u32 (*log_line_count[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl, bool cmd_mode);
 
 	/**
 	 * hw.ops.splitlink_cmd_setup() - configure the sublink to transfer
@@ -938,7 +941,7 @@ struct dsi_ctrl_hw_ops {
 	 * @common_cfg: Common configuration parameters.
 	 * @sublink:    Which sublink to transfer the command.
 	 */
-	void (*splitlink_cmd_setup)(struct dsi_ctrl_hw *ctrl,
+	void (*splitlink_cmd_setup[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 			struct dsi_host_common_cfg *common_cfg, u32 sublink);
 };
 

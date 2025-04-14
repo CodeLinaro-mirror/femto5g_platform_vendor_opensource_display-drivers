@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2022, 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -88,13 +88,13 @@ static void _setup_ds_ops(struct sde_hw_ds_ops *ops, unsigned long features)
 {
 
 	if (test_bit(SDE_DS_MERGE_CTRL, &features))
-		ops->setup_opmode = sde_hw_ds_setup_opmode_v1;
+		ops->setup_opmode[MSM_DISP_OP_HWIO] = sde_hw_ds_setup_opmode_v1;
 	else
-		ops->setup_opmode = sde_hw_ds_setup_opmode;
+		ops->setup_opmode[MSM_DISP_OP_HWIO] = sde_hw_ds_setup_opmode;
 
 	if (test_bit(SDE_SSPP_SCALER_QSEED3, &features) ||
 			test_bit(SDE_SSPP_SCALER_QSEED3LITE, &features))
-		ops->setup_scaler = sde_hw_ds_setup_scaler3;
+		ops->setup_scaler[MSM_DISP_OP_HWIO] = sde_hw_ds_setup_scaler3;
 }
 
 static struct sde_ds_cfg *_ds_offset(enum sde_ds ds,

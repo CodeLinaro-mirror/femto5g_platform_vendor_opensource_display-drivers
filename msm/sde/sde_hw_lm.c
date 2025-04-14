@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -922,58 +922,59 @@ static void _setup_mixer_ops(struct sde_mdss_cfg *m,
 		struct sde_hw_lm_ops *ops,
 		unsigned long features)
 {
-	ops->setup_mixer_out = sde_hw_lm_setup_out;
+	ops->setup_mixer_out[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_out;
 	if (test_bit(SDE_MIXER_COMBINED_ALPHA, &features)) {
 		if (test_bit(SDE_MIXER_10_BITS_ALPHA, &features))
-			ops->setup_blend_config =
+			ops->setup_blend_config[MSM_DISP_OP_HWIO] =
 				sde_hw_lm_setup_blend_config_combined_alpha_10_bits;
 		else if (test_bit(SDE_FEATURE_MIXER_OP_V1, m->features))
-			ops->setup_blend_config =
+			ops->setup_blend_config[MSM_DISP_OP_HWIO] =
 				sde_hw_lm_setup_blend_config_combined_alpha_v1;
 		else
-			ops->setup_blend_config =
+			ops->setup_blend_config[MSM_DISP_OP_HWIO] =
 				sde_hw_lm_setup_blend_config_combined_alpha;
 	} else {
-		ops->setup_blend_config = sde_hw_lm_setup_blend_config;
+		ops->setup_blend_config[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_blend_config;
 	}
 
 	if (test_bit(SDE_MIXER_X_SRC_SEL, &features)) {
-		ops->setup_blendstage = sde_hw_lm_setup_blendstage;
-		ops->get_staged_sspp = sde_hw_lm_get_staged_sspp;
-		ops->clear_all_blendstages = sde_hw_lm_clear_all_blendstages;
-		ops->setup_alpha_out = sde_hw_lm_setup_color3_v1;
+		ops->setup_blendstage[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_blendstage;
+		ops->get_staged_sspp[MSM_DISP_OP_HWIO] = sde_hw_lm_get_staged_sspp;
+		ops->clear_all_blendstages[MSM_DISP_OP_HWIO] = sde_hw_lm_clear_all_blendstages;
+		ops->setup_alpha_out[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_color3_v1;
 	} else {
-		ops->setup_alpha_out = sde_hw_lm_setup_color3;
+		ops->setup_alpha_out[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_color3;
 	}
 
 	if (test_bit(SDE_MIXER_10_BITS_COLOR, &features))
-		ops->setup_border_color = sde_hw_lm_setup_border_color_10_bits;
+		ops->setup_border_color[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_border_color_10_bits;
 	else if (test_bit(SDE_FEATURE_MIXER_OP_V1, m->features))
-		ops->setup_border_color = sde_hw_lm_setup_border_color_v1;
+		ops->setup_border_color[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_border_color_v1;
 	else
-		ops->setup_border_color = sde_hw_lm_setup_border_color;
+		ops->setup_border_color[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_border_color;
 
-	ops->setup_gc = sde_hw_lm_gc;
-	ops->setup_misr = sde_hw_lm_setup_misr;
-	ops->collect_misr = sde_hw_lm_collect_misr;
+	ops->setup_gc[MSM_DISP_OP_HWIO] = sde_hw_lm_gc;
+	ops->setup_misr[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_misr;
+	ops->collect_misr[MSM_DISP_OP_HWIO] = sde_hw_lm_collect_misr;
 
 	if (test_bit(SDE_DIM_LAYER, &features)) {
 		if (test_bit(SDE_MIXER_10_BITS_COLOR, &features))
-			ops->setup_dim_layer = sde_hw_lm_setup_dim_layer_10_bits;
+			ops->setup_dim_layer[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_dim_layer_10_bits;
 		else if (test_bit(SDE_FEATURE_MIXER_OP_V1, m->features))
-			ops->setup_dim_layer = sde_hw_lm_setup_dim_layer_v1;
+			ops->setup_dim_layer[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_dim_layer_v1;
 		else
-			ops->setup_dim_layer = sde_hw_lm_setup_dim_layer;
-		ops->clear_dim_layer = sde_hw_lm_clear_dim_layer;
+			ops->setup_dim_layer[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_dim_layer;
+		ops->clear_dim_layer[MSM_DISP_OP_HWIO] = sde_hw_lm_clear_dim_layer;
 	}
 
 	if (test_bit(SDE_MIXER_NOISE_LAYER, &features)) {
 		if (test_bit(SDE_MIXER_10_BITS_COLOR, &features))
-			ops->setup_noise_layer = sde_hw_lm_setup_noise_layer_10_bits;
+			ops->setup_noise_layer[MSM_DISP_OP_HWIO] =
+					sde_hw_lm_setup_noise_layer_10_bits;
 		else if (test_bit(SDE_FEATURE_MIXER_OP_V1, m->features))
-			ops->setup_noise_layer = sde_hw_lm_setup_noise_layer_v1;
+			ops->setup_noise_layer[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_noise_layer_v1;
 		else
-			ops->setup_noise_layer = sde_hw_lm_setup_noise_layer;
+			ops->setup_noise_layer[MSM_DISP_OP_HWIO] = sde_hw_lm_setup_noise_layer;
 	}
 };
 

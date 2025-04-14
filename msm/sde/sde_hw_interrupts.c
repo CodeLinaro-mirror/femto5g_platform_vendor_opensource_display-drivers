@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -510,9 +510,10 @@ static void sde_hw_intr_dispatch_irq(struct sde_hw_intr *intr,
 				 */
 				if (cbfunc)
 					cbfunc(arg, irq_idx);
-				else
-					intr->ops.clear_intr_status_nolock(
-							intr, irq_idx);
+				else if (intr->ops.clear_intr_status_nolock[
+					intr->hw.disp_op])
+					intr->ops.clear_intr_status_nolock[
+						intr->hw.disp_op](intr, irq_idx);
 
 				/*
 				 * When callback finish, clear the irq_status
@@ -868,17 +869,17 @@ static int _set_sde_irq_tbl_offset(struct sde_intr_reg *sde_irq,
 
 static void __setup_intr_ops(struct sde_hw_intr_ops *ops)
 {
-	ops->irq_idx_lookup = sde_hw_intr_irqidx_lookup;
-	ops->enable_irq_nolock = sde_hw_intr_enable_irq_nolock;
-	ops->disable_irq_nolock = sde_hw_intr_disable_irq_nolock;
-	ops->dispatch_irqs = sde_hw_intr_dispatch_irq;
-	ops->clear_all_irqs = sde_hw_intr_clear_irqs;
-	ops->disable_all_irqs = sde_hw_intr_disable_irqs;
-	ops->get_interrupt_sources = sde_hw_intr_get_interrupt_sources;
-	ops->clear_interrupt_status = sde_hw_intr_clear_interrupt_status;
-	ops->clear_intr_status_nolock = sde_hw_intr_clear_intr_status_nolock;
-	ops->get_interrupt_status = sde_hw_intr_get_interrupt_status;
-	ops->get_intr_status_nolock = sde_hw_intr_get_intr_status_nolock;
+	ops->irq_idx_lookup[MSM_DISP_OP_HWIO] = sde_hw_intr_irqidx_lookup;
+	ops->enable_irq_nolock[MSM_DISP_OP_HWIO] = sde_hw_intr_enable_irq_nolock;
+	ops->disable_irq_nolock[MSM_DISP_OP_HWIO] = sde_hw_intr_disable_irq_nolock;
+	ops->dispatch_irqs[MSM_DISP_OP_HWIO] = sde_hw_intr_dispatch_irq;
+	ops->clear_all_irqs[MSM_DISP_OP_HWIO] = sde_hw_intr_clear_irqs;
+	ops->disable_all_irqs[MSM_DISP_OP_HWIO] = sde_hw_intr_disable_irqs;
+	ops->get_interrupt_sources[MSM_DISP_OP_HWIO] = sde_hw_intr_get_interrupt_sources;
+	ops->clear_interrupt_status[MSM_DISP_OP_HWIO] = sde_hw_intr_clear_interrupt_status;
+	ops->clear_intr_status_nolock[MSM_DISP_OP_HWIO] = sde_hw_intr_clear_intr_status_nolock;
+	ops->get_interrupt_status[MSM_DISP_OP_HWIO] = sde_hw_intr_get_interrupt_status;
+	ops->get_intr_status_nolock[MSM_DISP_OP_HWIO] = sde_hw_intr_get_intr_status_nolock;
 }
 
 static struct sde_mdss_base_cfg *__intr_offset(struct sde_mdss_cfg *m,

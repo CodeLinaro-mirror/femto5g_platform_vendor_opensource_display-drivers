@@ -60,6 +60,7 @@
 #include "msm_mmu.h"
 #include "sde_wb.h"
 #include "sde_dbg.h"
+#include "hfi_msm_drv.h"
 
 /*
  * MSM driver version:
@@ -569,6 +570,7 @@ static int msm_drm_uninit(struct device *dev)
 #define KMS_MDP4 4
 #define KMS_MDP5 5
 #define KMS_SDE  3
+#define KMS_SDE_HFI 6
 
 static int get_mdp_ver(struct platform_device *pdev)
 {
@@ -580,6 +582,10 @@ static int get_mdp_ver(struct platform_device *pdev)
 	{
 		.compatible = "qcom,sde-kms",
 		.data	= (void	*)KMS_SDE,
+	},
+	{
+		.compatible = "qcom,sde-kms-hfi",
+		.data	= (void	*)KMS_SDE_HFI,
 	},
 	{},
 	};
@@ -788,7 +794,7 @@ static struct msm_kms *_msm_drm_component_init_helper(
 		struct drm_device *ddev, struct device *dev,
 		struct platform_device *pdev)
 {
-	int ret;
+	int ret = 0;
 	struct msm_kms *kms;
 
 	switch (get_mdp_ver(pdev)) {
@@ -799,6 +805,7 @@ static struct msm_kms *_msm_drm_component_init_helper(
 		kms = mdp5_kms_init(ddev);
 		break;
 	case KMS_SDE:
+	case KMS_SDE_HFI:
 		kms = sde_kms_init(ddev);
 		break;
 	default:
@@ -862,10 +869,21 @@ static int msm_drm_device_init(struct platform_device *pdev,
 	ddev->dev_private = priv;
 	priv->dev = ddev;
 
-	ret = sde_power_resource_init(pdev, &priv->phandle);
-	if (ret) {
-		pr_err("sde power resource init failed\n");
-		goto power_init_fail;
+	ret = hfi_msm_drv_init(ddev);
+	if (ret)
+		goto priv_alloc_fail;
+
+	if (get_mdp_ver(pdev) == KMS_SDE_HFI)
+		priv->disp_op = MSM_DISP_OP_HFI;
+	else
+		priv->disp_op = MSM_DISP_OP_HWIO;
+
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
+		ret = sde_power_resource_init(pdev, &priv->phandle);
+		if (ret) {
+			pr_err("sde power resource init failed\n");
+			goto power_init_fail;
+		}
 	}
 
 	ret = sde_dbg_init(&pdev->dev);
@@ -876,16 +894,18 @@ static int msm_drm_device_init(struct platform_device *pdev,
 
 	pm_runtime_enable(dev);
 
-	ret = pm_runtime_resume_and_get(dev);
-	if (ret < 0) {
-		DISP_DEV_ERR(dev, "failed to enable power resource %d\n", ret);
-		goto pm_runtime_error;
-	}
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
+		ret = pm_runtime_resume_and_get(dev);
+		if (ret < 0) {
+			DISP_DEV_ERR(dev, "failed to enable power resource %d\n", ret);
+			goto pm_runtime_error;
+		}
 
-	for (i = 0; i < SDE_POWER_HANDLE_DBUS_ID_MAX; i++)
-		sde_power_data_bus_set_quota(&priv->phandle, i,
-			SDE_POWER_HANDLE_CONT_SPLASH_BUS_AB_QUOTA,
-			SDE_POWER_HANDLE_CONT_SPLASH_BUS_IB_QUOTA);
+		for (i = 0; i < SDE_POWER_HANDLE_DBUS_ID_MAX; i++)
+			sde_power_data_bus_set_quota(&priv->phandle, i,
+				SDE_POWER_HANDLE_CONT_SPLASH_BUS_AB_QUOTA,
+				SDE_POWER_HANDLE_CONT_SPLASH_BUS_IB_QUOTA);
+	}
 
 	device_set_wakeup_capable(dev, true);
 	ret = device_set_wakeup_enable(dev, true);
@@ -903,6 +923,7 @@ dbg_init_fail:
 	sde_power_resource_deinit(pdev, &priv->phandle);
 power_init_fail:
 priv_alloc_fail:
+	kfree(priv->hfi_priv);
 	drm_dev_put(ddev);
 	return ret;
 }
@@ -982,12 +1003,15 @@ static int msm_drm_component_init(struct device *dev)
 			goto fail;
 		}
 
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 		ret = msm_irq_install(ddev, platform_get_irq(pdev, 0));
 #else
 		ret = drm_irq_install(ddev, platform_get_irq(pdev, 0));
 #endif
 		msm_sde_qtimer_install(dev);
+	}
+
 		pm_runtime_put_sync(dev);
 		if (ret < 0) {
 			DISP_DEV_ERR(dev, "failed to install IRQ handler\n");
@@ -2027,7 +2051,7 @@ static int msm_runtime_suspend(struct device *dev)
 
 	if (priv->mdss)
 		msm_mdss_disable(priv->mdss);
-	else
+	else if (IS_DISP_OP_HWIO(priv->disp_op))
 		sde_power_resource_enable(&priv->phandle, false, DPUID(ddev));
 
 	return 0;
@@ -2037,13 +2061,13 @@ static int msm_runtime_resume(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct msm_drm_private *priv = ddev->dev_private;
-	int ret;
+	int ret = 0;
 
 	DBG("");
 
 	if (priv->mdss)
 		ret = msm_mdss_enable(priv->mdss);
-	else
+	else if (IS_DISP_OP_HWIO(priv->disp_op))
 		ret = sde_power_resource_enable(&priv->phandle, true, DPUID(ddev));
 
 	return ret;
@@ -2142,9 +2166,10 @@ static int add_display_components(struct device *dev,
 {
 	struct device *mdp_dev = NULL;
 	struct device_node *node;
+	struct platform_device *pdev = to_platform_device(dev);
 	int ret;
 
-	if (of_device_is_compatible(dev->of_node, "qcom,sde-kms")) {
+	if (get_mdp_ver(pdev) == KMS_SDE || get_mdp_ver(pdev) == KMS_SDE_HFI) {
 		struct device_node *np = dev->of_node;
 		unsigned int i;
 
@@ -2358,9 +2383,6 @@ static int msm_drm_component_dependency_check(struct device *dev)
 	struct device_node *np = dev->of_node;
 	unsigned int i;
 
-	if (!of_device_is_compatible(dev->of_node, "qcom,sde-kms"))
-		return 0;
-
 	for (i = 0; ; i++) {
 		node = of_parse_phandle(np, "connectors", i);
 		if (!node)
@@ -2450,6 +2472,7 @@ static const struct of_device_id dt_match[] = {
 	{ .compatible = "qcom,mdp4", .data = (void *)KMS_MDP4 },
 	{ .compatible = "qcom,mdss", .data = (void *)KMS_MDP5 },
 	{ .compatible = "qcom,sde-kms", .data = (void *)KMS_SDE },
+	{ .compatible = "qcom,sde-kms-hfi", .data = (void *)KMS_SDE_HFI },
 	{},
 };
 MODULE_DEVICE_TABLE(of, dt_match);

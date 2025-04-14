@@ -40,6 +40,9 @@ endif
 ifeq ($(CONFIG_QTI_HW_FENCE), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
 endif
+ifeq ($(CONFIG_QTI_HFI_CORE), y)
+	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,hfi-core-module-symvers)/Module.symvers
+endif
 ifeq ($(CONFIG_HDCP_QSEECOM), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,sec-module-symvers)/Module.symvers
 endif
@@ -83,6 +86,11 @@ endif
 ifeq ($(CONFIG_QTI_HW_FENCE), y)
 	LOCAL_REQUIRED_MODULES    += hw-fence-module-symvers
 	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
+endif
+
+ifeq ($(CONFIG_QTI_HFI_CORE), y)
+	LOCAL_REQUIRED_MODULES    += hfi-core-module-symvers
+	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,hfi-core-module-symvers)/Module.symvers
 endif
 endif
 endif

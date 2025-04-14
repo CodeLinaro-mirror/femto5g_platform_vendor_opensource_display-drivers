@@ -12,6 +12,7 @@
 #include <linux/ktime.h>
 
 #include "msm_drv.h"
+#include "hfi_msm_drv.h"
 #include "sde_connector.h"
 #include "msm_mmu.h"
 #include "dsi_display.h"
@@ -24,6 +25,9 @@
 #include "sde_dbg.h"
 #include "dsi_parser.h"
 #include "dsi_display_manager.h"
+#include "dsi_hfi.h"
+#include "dsi_display_hfi.h"
+#include "hfi_defs_display.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -1248,7 +1252,7 @@ static void _dsi_display_continuous_clk_ctrl(struct dsi_display *display,
 		 * DSI PHY to force clk lane to HS mode always whereas
 		 * for other phy ver chipsets, configure DSI controller only.
 		 */
-		if (ctrl->phy->hw.ops.set_continuous_clk) {
+		if (ctrl->phy->hw.ops.set_continuous_clk[ctrl->ctrl->disp_op]) {
 			dsi_ctrl_hs_req_sel(ctrl->ctrl, true);
 			dsi_ctrl_set_continuous_clk(ctrl->ctrl, enable);
 			dsi_phy_set_continuous_clk(ctrl->phy, enable);
@@ -1422,6 +1426,14 @@ int dsi_display_set_power(struct drm_connector *connector,
 			rc ? "failed" : "successful");
 	if (!rc)
 		display->panel->power_mode = power_mode;
+
+	if (display->panel->disp_op == MSM_DISP_OP_HFI) {
+		enum hfi_display_power_mode hfi_lps = display->panel->power_mode;
+
+		rc = dsi_hfi_transition(display, hfi_lps);
+		if (rc)
+			DSI_ERR("failed to send hfi transition cmd, rc=%d\n", rc);
+	}
 
 	return rc;
 }
@@ -3087,7 +3099,7 @@ static int dsi_display_ctrl_host_disable(struct dsi_display *display)
 	 * and return early.
 	 */
 	if (display->panel->ulps_suspend_enabled &&
-			!m_ctrl->phy->hw.ops.ulps_ops.ulps_request) {
+			!m_ctrl->phy->hw.ops.ulps_ops.ulps_request[m_ctrl->ctrl->disp_op]) {
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 			rc = dsi_ctrl_update_host_state(ctrl->ctrl,
@@ -4201,7 +4213,7 @@ static bool dsi_display_validate_res(struct dsi_display *display)
 	return (ctrl_avail & phy_avail);
 }
 
-static int dsi_display_get_phandle_count(struct dsi_display *display,
+int dsi_display_get_phandle_count(struct dsi_display *display,
 			const char *propname)
 {
 	if (display->fw)
@@ -4416,10 +4428,12 @@ static int dsi_display_res_init(struct dsi_display *display)
 		goto error_panel_put;
 	}
 
-	rc = dsi_display_clocks_init(display);
-	if (rc) {
-		DSI_ERR("Failed to parse clock data, rc=%d\n", rc);
-		goto error_panel_put;
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) {
+		rc = dsi_display_clocks_init(display);
+		if (rc) {
+			DSI_ERR("Failed to parse clock data, rc=%d\n", rc);
+			goto error_panel_put;
+		}
 	}
 
 	/**
@@ -4855,7 +4869,8 @@ static int _dsi_display_dyn_update_clks(struct dsi_display *display,
 
 	enable_clk = &display->clock_info.pll_clks;
 
-	dsi_clk_prepare_enable(enable_clk);
+	if (display->ctrl->ctrl->disp_op != MSM_DISP_OP_HFI)
+		dsi_clk_prepare_enable(enable_clk);
 
 	dsi_display_phy_configure(display, false);
 
@@ -4918,7 +4933,8 @@ static int _dsi_display_dyn_update_clks(struct dsi_display *display,
 	if (rc)
 		DSI_ERR("could not switch back to src clks %d\n", rc);
 
-	dsi_clk_disable_unprepare(enable_clk);
+	if (display->ctrl->ctrl->disp_op != MSM_DISP_OP_HFI)
+		dsi_clk_disable_unprepare(enable_clk);
 
 	return rc;
 
@@ -5360,7 +5376,7 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			if (!ctrl->ctrl || (ctrl != mctrl))
 				continue;
 
-			ctrl->ctrl->hw.ops.set_timing_db(&ctrl->ctrl->hw,
+			ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op](&ctrl->ctrl->hw,
 					true);
 			dsi_phy_dynamic_refresh_clear(ctrl->phy);
 
@@ -5904,6 +5920,7 @@ static int dsi_display_bind(struct device *dev,
 	struct platform_device *pdev = to_platform_device(dev);
 	char *client1 = "dsi_clk_client";
 	char *client2 = "mdp_event_client";
+	bool detach_clks;
 	struct msm_vm_ops vm_event_ops = {
 		.vm_get_io_resources = dsi_display_get_io_resources,
 		.vm_pre_hw_release = dsi_display_pre_release,
@@ -6011,7 +6028,10 @@ static int dsi_display_bind(struct device *dev,
 	snprintf(info.name, MAX_STRING_LEN,
 			"DSI_MNGR-%s", display->name);
 
-	display->clk_mngr = dsi_display_clk_mngr_register(&info);
+	detach_clks = (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI);
+	display->panel->disp_op = display->ctrl[0].ctrl->disp_op;
+
+	display->clk_mngr = dsi_display_clk_mngr_register(&info, display->ctrl[0].ctrl->disp_op);
 	if (IS_ERR_OR_NULL(display->clk_mngr)) {
 		rc = PTR_ERR(display->clk_mngr);
 		display->clk_mngr = NULL;
@@ -6019,24 +6039,28 @@ static int dsi_display_bind(struct device *dev,
 		goto error_ctrl_deinit;
 	}
 
-	handle = dsi_register_clk_handle(display->clk_mngr, client1);
-	if (IS_ERR_OR_NULL(handle)) {
-		rc = PTR_ERR(handle);
-		DSI_ERR("failed to register %s client, rc = %d\n",
-		       client1, rc);
-		goto error_clk_deinit;
-	} else {
-		display->dsi_clk_handle = handle;
-	}
+	if (!detach_clks) {
 
-	handle = dsi_register_clk_handle(display->clk_mngr, client2);
-	if (IS_ERR_OR_NULL(handle)) {
-		rc = PTR_ERR(handle);
-		DSI_ERR("failed to register %s client, rc = %d\n",
-		       client2, rc);
-		goto error_clk_client_deinit;
-	} else {
-		display->mdp_clk_handle = handle;
+		handle = dsi_register_clk_handle(display->clk_mngr, client1);
+		if (IS_ERR_OR_NULL(handle)) {
+			rc = PTR_ERR(handle);
+			DSI_ERR("failed to register %s client, rc = %d\n",
+				client1, rc);
+			goto error_clk_deinit;
+		} else {
+			display->dsi_clk_handle = handle;
+		}
+
+		handle = dsi_register_clk_handle(display->clk_mngr, client2);
+		if (IS_ERR_OR_NULL(handle)) {
+			rc = PTR_ERR(handle);
+			DSI_ERR("failed to register %s client, rc = %d\n",
+				client2, rc);
+			goto error_clk_client_deinit;
+		} else {
+			display->mdp_clk_handle = handle;
+		}
+
 	}
 
 	dsi_display_update_byte_intf_div(display);
@@ -6074,6 +6098,7 @@ static int dsi_display_bind(struct device *dev,
 		}
 	}
 
+	dsi_display_setup_ops(display);
 
 	msm_register_vm_event(master, dev, &vm_event_ops, (void *)display);
 
@@ -7891,8 +7916,16 @@ int dsi_display_set_clk_state(void *display, u32 clk_type, u32 clk_state)
 {
 	struct dsi_display *disp = (struct dsi_display *)display;
 
-	if (!disp || !disp->mdp_clk_handle) {
-		DSI_ERR("Invalid arg\n");
+	if (!disp) {
+		DSI_ERR("invalid arg\n");
+		return -EINVAL;
+	}
+
+	if (disp->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
+
+	if (!disp->mdp_clk_handle) {
+		DSI_ERR("invalid arg\n");
 		return -EINVAL;
 	}
 
@@ -9143,6 +9176,9 @@ int dsi_display_pre_kickoff(struct drm_connector *connector,
 
 	mode = display->panel->cur_mode;
 
+	if (display->panel->disp_op == MSM_DISP_OP_HFI)
+		return 0;
+
 	/* check and setup MISR */
 	if (display->misr_enable)
 		_dsi_display_setup_misr(display);
@@ -9769,6 +9805,59 @@ int dsi_display_unprepare(struct dsi_display *display)
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, display->is_master);
 	return rc;
+}
+
+int dsi_display_ctl_init(void *display, void *hfi_priv)
+{
+
+	int rc = 0;
+	struct dsi_display *disp = (struct dsi_display *)display;
+	struct msm_drm_hfi_private *hfi_private = (struct msm_drm_hfi_private *)hfi_priv;
+
+	rc = dsi_display_hfi_setup_hfi(disp, hfi_private->hfi_adapter);
+	if (rc) {
+		DSI_ERR("hfi client could not be created for dsi\n");
+		rc = -ENODEV;
+		return rc;
+	}
+
+	rc = dsi_hfi_panel_init(disp, disp->panel);
+	if (rc) {
+		DSI_ERR("failed to send panel init to DCP: %d", rc);
+		return rc;
+	}
+
+	return rc;
+}
+
+int dsi_display_ctl_pre_transition(void *display)
+{
+
+	struct dsi_display *disp = (struct dsi_display *)display;
+
+	sde_connector_schedule_status_work(disp->drm_conn, false);
+
+	disp->ctrl->ctrl->disp_op = MSM_DISP_OP_HFI;
+	disp->ctrl->phy->disp_op = MSM_DISP_OP_HFI;
+
+	dsi_clk_mgr_detach_framework(disp->clk_mngr, disp->ctrl->ctrl->disp_op);
+
+	return 0;
+}
+
+int dsi_display_ctl_post_transition(void *display)
+{
+
+	struct dsi_display *disp = (struct dsi_display *)display;
+
+	sde_connector_schedule_status_work(disp->drm_conn, true);
+
+	disp->ctrl->ctrl->disp_op = MSM_DISP_OP_HWIO;
+	disp->ctrl->phy->disp_op = MSM_DISP_OP_HWIO;
+
+	dsi_clk_mgr_detach_framework(disp->clk_mngr, disp->ctrl->ctrl->disp_op);
+
+	return 0;
 }
 
 void __init dsi_display_register(void)

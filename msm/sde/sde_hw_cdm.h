@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2019, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -63,28 +64,28 @@ struct sde_hw_cdm_ops {
 	 * @data          Pointer to CSC configuration data
 	 * return:        0 if success; error code otherwise
 	 */
-	int (*setup_csc_data)(struct sde_hw_cdm *cdm,
-			struct sde_csc_cfg *data);
+	int (*setup_csc_data[MSM_DISP_OP_MAX])(struct sde_hw_cdm *cdm,
+			struct sde_csc_cfg *data, enum msm_disp_op disp_op);
 
 	/**
 	 * Programs the Chroma downsample part.
 	 * @cdm         Pointer to chroma down context
 	 */
-	int (*setup_cdwn)(struct sde_hw_cdm *cdm,
-	struct sde_hw_cdm_cfg *cfg);
+	int (*setup_cdwn[MSM_DISP_OP_MAX])(struct sde_hw_cdm *cdm,
+	struct sde_hw_cdm_cfg *cfg, enum msm_disp_op disp_op);
 
 	/**
 	 * Enable the CDM module
 	 * @cdm         Pointer to chroma down context
 	 */
-	int (*enable)(struct sde_hw_cdm *cdm,
+	int (*enable[MSM_DISP_OP_MAX])(struct sde_hw_cdm *cdm,
 	struct sde_hw_cdm_cfg *cfg);
 
 	/**
 	 * Disable the CDM module
 	 * @cdm         Pointer to chroma down context
 	 */
-	void (*disable)(struct sde_hw_cdm *cdm);
+	void (*disable[MSM_DISP_OP_MAX])(struct sde_hw_cdm *cdm);
 
 	/**
 	 * Enable/disable the connection with pingpong
@@ -92,7 +93,7 @@ struct sde_hw_cdm_ops {
 	 * @enable      Enable/disable control
 	 * @pp          pingpong block id.
 	 */
-	void (*bind_pingpong_blk)(struct sde_hw_cdm *cdm,
+	void (*bind_pingpong_blk[MSM_DISP_OP_MAX])(struct sde_hw_cdm *cdm,
 			bool enable,
 			const enum sde_pingpong pp);
 };
@@ -132,7 +133,8 @@ static inline struct sde_hw_cdm *to_sde_hw_cdm(struct sde_hw_blk_reg_map *hw)
 struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
-		struct sde_hw_mdp *hw_mdp);
+		struct sde_hw_mdp *hw_mdp,
+		enum msm_disp_op disp_op);
 
 /**
  * sde_hw_cdm_destroy - destroys CDM driver context
