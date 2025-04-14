@@ -455,6 +455,16 @@ static void hfi_kms_populate_catalog(u32 display_id, u32 cmd_id,
 		_hfi_kms_init_device_caps(catalog, prop_data, size);
 		atomic_inc(&hfi_kms->cat_init_done);
 		break;
+	case HFI_COMMAND_DEVICE_INIT_VIG_CAPS:
+	case HFI_COMMAND_DEVICE_INIT_DMA_CAPS:
+	case HFI_COMMAND_DEVICE_INIT_COMMON_LAYER_CAPS:
+	case HFI_COMMAND_DEVICE_INIT_DISPLAY_CAPS:
+	case HFI_COMMAND_DEVICE_INIT_DISPLAY_WB_CAPS:
+	case HFI_COMMAND_DEVICE_RESOURCE_REGISTER:
+	case HFI_COMMAND_DEVICE_CALLBACK_RESOURCE_VOTE:
+	case HFI_COMMAND_DEVICE_INIT_VIG_R1_CAPS:
+	case HFI_COMMAND_DEVICE_INIT_DMA_R1_CAPS:
+		break;
 	default:
 		SDE_ERROR("command:0x%x not supported\n", cmd_id);
 	}
