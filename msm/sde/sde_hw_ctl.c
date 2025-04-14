@@ -536,7 +536,12 @@ static inline int sde_hw_ctl_update_pending_flush(struct sde_hw_ctl *ctx,
 	if (!ctx || !cfg)
 		return -EINVAL;
 
+	for (int i = 0; i < CTL_MAX_DSPP_COUNT; i++)
+		ctx->flush.pending_dspp_flush_masks[i] |=
+				cfg->pending_dspp_flush_masks[i];
+
 	ctx->flush.pending_flush_mask |= cfg->pending_flush_mask;
+
 	return 0;
 }
 
@@ -818,6 +823,7 @@ static inline int sde_hw_ctl_update_bitmask_dspp_subblk(struct sde_hw_ctl *ctx,
 		UPDATE_MASK(ctx->flush.pending_flush_mask, DSPP_IDX, 1);
 	else
 		UPDATE_MASK(ctx->flush.pending_flush_mask, DSPP_IDX, 0);
+	ctx->flush.force_global_flush = true;//tmpp
 
 	return 0;
 }
@@ -990,6 +996,9 @@ static inline int sde_hw_ctl_trigger_flush_hyp_v1(struct sde_hw_ctl *ctx)
 	if (!ctx)
 		return -EINVAL;
 
+	if (ctx->flush.pending_flush_mask & BIT(DSPP_IDX))
+		_sde_hw_ctl_write_dspp_flushes(ctx);
+
 	for (i = 0; i < SDE_HW_FLUSH_MAX; i++)
 		if (cfg[i].flush_reg &&
 				ctx->flush.pending_flush_mask &
@@ -997,7 +1006,6 @@ static inline int sde_hw_ctl_trigger_flush_hyp_v1(struct sde_hw_ctl *ctx)
 			SDE_REG_WRITE(&ctx->hw,
 					cfg[i].flush_reg,
 					ctx->flush.pending_hw_flush_mask[i]);
-
 	SDE_REG_WRITE(&ctx->hw, CTL_FLUSH, ctx->flush.pending_flush_mask);
 
 	/* ensure all register writes are written without re-ordering*/
@@ -1038,6 +1046,8 @@ static inline int sde_hw_ctl_trigger_flush_global_v1(struct sde_hw_ctl *ctx)
 {
 	u32 flush_mask = ctx->flush.pending_flush_mask & ctx->flush.global_flush_mask;
 
+    if (ctx->flush.pending_flush_mask & BIT(DSPP_IDX))
+		_sde_hw_ctl_write_dspp_flushes(ctx);
 	/* Skip empty global flush (no SSPP/LM flush) */
 	if (flush_mask &&
 			( (flush_mask != CTL_FLUSH_MASK_CTL && flush_mask != ctx->flush.previous_flush_mask)
@@ -1974,6 +1984,15 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 		ops->reg_dma_flush = sde_hw_reg_dma_flush;
 	else if (cap & BIT(SDE_CTL_REG_DMA_VQ))
 		ops->reg_dma_flush = sde_hw_reg_dma_flush_vq;
+
+	if (cap & BIT(SDE_CTL_UNIFIED_DSPP_FLUSH)) {
+		ops->update_bitmask_dspp_subblk =
+				sde_hw_ctl_update_bitmask_dspp_subblk;
+	} else {
+		ops->update_bitmask_dspp = sde_hw_ctl_update_bitmask_dspp;
+		ops->update_bitmask_dspp_pavlut =
+				sde_hw_ctl_update_bitmask_dspp_pavlut;
+	}
 }
 
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
@@ -2013,6 +2032,7 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 			c->flush.global_flush_mask |= BIT(mixer_tbl[i]);
 		for (i = 0; i < SSPP_MAX; i ++)
 			c->flush.global_flush_mask |= BIT(sspp_tbl[i]);
+		c->flush.global_flush_mask |= BIT(DSPP_IDX); //dspp
 	}
 	c->flush.previous_flush_mask = 0;
 
