@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 /* Copyright (C) 2014 Red Hat
@@ -1411,7 +1411,6 @@ static int _wfd_kms_hw_init(struct wfd_kms *kms, struct device *dev)
 	int rc;
 	int all_ports_cnt = 0;
 	struct wfd_kms_port wfd_kms_ports[MAX_PORT_CNT] = {{0, 0, 0}};
-	char marker_buff[MARKER_BUFF_LENGTH] = {0};
 
 	attribs[0] = WFD_DEVICE_CLIENT_TYPE;
 	attribs[1] = kms->client_id;
@@ -1423,9 +1422,7 @@ static int _wfd_kms_hw_init(struct wfd_kms *kms, struct device *dev)
 		return rc;
 	}
 
-	snprintf(marker_buff, sizeof(marker_buff),
-		"kernel_fe: wire client %x ready", kms->client_id);
-	place_marker(marker_buff);
+	pr_info("kernel_fe: wire client %x ready\n", kms->client_id);
 
 	/* open a open WFD device */
 	num_dev = wfdEnumerateDevices_User(NULL, 0, attribs);
@@ -1576,7 +1573,7 @@ static void wfd_kms_bridge_enable(struct drm_bridge *drm_bridge)
 			WFD_POWER_MODE_ON);
 
 	if (first_frame) {
-		place_marker("kernel_fe: Set port attribute POWER ON");
+		pr_info("kernel_fe: Set port attribute POWER ON\n");
 		first_frame = false;
 	}
 }
@@ -2607,7 +2604,7 @@ static void *wfd_kms_complete_handler_cb(enum event_types type,
 		msm_hyp_crtc_commit_done(crtc);
 
 		if (first_frame) {
-			place_marker("kernel_fe: Fisrt commit envent done");
+			pr_info("kernel_fe: Fisrt commit event done\n");
 			first_frame = false;
 		}
 	} else if (disp_event->type == VSYNC) {
@@ -2669,7 +2666,7 @@ static void wfd_kms_commit(struct msm_hyp_kms *kms,
 	HYP_ATRACE_BEGIN(__func__);
 
 	if (first_frame) {
-		place_marker("kernel_fe: First commit kickoff");
+		pr_info("kernel_fe: First commit kickoff\n");
 		first_frame = false;
 	}
 
@@ -2811,7 +2808,6 @@ static int wfd_kms_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct wfd_kms *kms;
 	int ret;
-	char marker_buff[MARKER_BUFF_LENGTH] = {0};
 
 	kms = devm_kzalloc(dev, sizeof(*kms), GFP_KERNEL);
 	if (!kms)
@@ -2835,9 +2831,7 @@ static int wfd_kms_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	snprintf(marker_buff, sizeof(marker_buff),
-		"kernel_fe: wfd_kms probe client %x", kms->client_id);
-	place_marker(marker_buff);
+	pr_info("kernel_fe: wfd_kms probe client %x\n", kms->client_id);
 
 	return 0;
 }
