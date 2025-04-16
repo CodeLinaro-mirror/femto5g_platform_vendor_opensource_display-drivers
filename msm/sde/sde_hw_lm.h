@@ -112,6 +112,19 @@ struct sde_hw_lm_ops {
 	int (*get_staged_sspp)(struct sde_hw_mixer *ctx,
 		enum sde_lm lm, struct sde_sspp_index_info *info);
 
+	/**
+	 * Local flush layer mixer blend stage
+	 * @ctx: Pointer to layer mixer context
+	 * @stage: blend stage
+	 */
+	void (*local_flush)(struct sde_hw_mixer *ctx, struct sde_hw_stage_cfg *stage_cfg);
+
+	/**
+	 * Set mixer flush type for global flush or not
+	 * @ctx: Pointer to layer mixer context
+	 * @global: true - global flush
+	 */
+	void (*set_flush_type)(struct sde_hw_mixer *ctx, bool global);
 };
 
 struct sde_hw_mixer {
@@ -128,6 +141,7 @@ struct sde_hw_mixer {
 
 	/* store mixer info specific to display */
 	struct sde_hw_mixer_cfg cfg;
+	bool global_flush;
 };
 
 /**

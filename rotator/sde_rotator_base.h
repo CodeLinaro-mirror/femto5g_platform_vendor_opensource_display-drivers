@@ -350,6 +350,9 @@ const struct sde_rot_bus_data *sde_get_rot_reg_bus_value(u32 usecase_ndx);
 		sde_reg_w(&mdata->sde_io, offset, value, 0)
 #define SDE_REG_READ(mdata, offset) \
 		sde_reg_r(&mdata->sde_io, offset, 0)
+#define SDE_REG_MODIFY(mdata, offset, mask, value) \
+		sde_reg_w(&mdata->sde_io, offset, \
+			sde_reg_r(&mdata->sde_io, offset, 0) & ~(mask) | (value), 0)
 
 #define ATRACE_END(name) trace_rot_mark_write(current->tgid, name, 0)
 #define ATRACE_BEGIN(name) trace_rot_mark_write(current->tgid, name, 1)

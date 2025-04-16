@@ -458,7 +458,7 @@ struct sde_hw_rc_state {
  * @spr_cfg_18_default: Default SPR cfg 18 HW details. Needed for PU handling
  * @rc_state: Structure for RC state
  * @dpu_idx: dpu index
- * @sde_kms: pointer to sde_kms
+ * @ctl_idx: control index, for HW virtualization
  */
 struct sde_hw_dspp {
 	struct sde_hw_blk_reg_map hw;
@@ -480,6 +480,9 @@ struct sde_hw_dspp {
 	struct sde_hw_rc_state rc_state;
 	u32 dpu_idx;
 	struct sde_kms *sde_kms;
+
+	/* HW virtualization */
+	enum sde_ctl ctl_idx;
 };
 
 /**

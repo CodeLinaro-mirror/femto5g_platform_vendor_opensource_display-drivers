@@ -169,7 +169,12 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 	struct msm_drm_private *priv;
 	struct msm_kms *kms;
 	struct msm_gem_prime_vmid_flags vmid_flags = {0};
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	/* Hypervisor platform doesn't support delayed unmap yet */
+	bool lazy_unmap = false;
+#else
 	bool lazy_unmap = true;
+#endif
 	int ret;
 	unsigned long dma_map_attrs = 0;
 

@@ -214,7 +214,7 @@ static inline int _stage_offset(struct sde_hw_mixer *ctx, enum sde_stage stage)
 	if (stage == SDE_STAGE_BASE || stage > sblk->maxblendstages)
 		return -EINVAL;
 
-	return sblk->blendstage_base[stage - SDE_STAGE_0];
+	return sblk->blendstage_base[stage + sblk->zpos_off - SDE_STAGE_0];
 }
 
 static void _sde_shd_hw_ctl_setup_blendstage(struct sde_hw_ctl *ctx, enum sde_lm lm,
@@ -525,8 +525,9 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 			return;
 
 		if (hw_lm->cfg[i].dim_layer_enable) {
-			hw_lm->orig->ops.setup_dim_layer(ctx,
-				&hw_lm->cfg[i].dim_layer);
+			if (hw_lm->orig->ops.setup_dim_layer)
+				hw_lm->orig->ops.setup_dim_layer(ctx,
+					&hw_lm->cfg[i].dim_layer);
 		} else {
 			val = SDE_REG_READ(c, LM_BLEND0_OP + stage_off);
 			val &= reset;
@@ -534,10 +535,11 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 		}
 
 		if (hw_lm->cfg[i].dirty) {
-			hw_lm->orig->ops.setup_blend_config(ctx, i,
-				hw_lm->cfg[i].fg_alpha,
-				hw_lm->cfg[i].bg_alpha,
-				hw_lm->cfg[i].blend_op);
+			if (hw_lm->orig->ops.setup_blend_config)
+				hw_lm->orig->ops.setup_blend_config(ctx, i,
+					hw_lm->cfg[i].fg_alpha,
+					hw_lm->cfg[i].bg_alpha,
+					hw_lm->cfg[i].blend_op);
 			hw_lm->cfg[i].dirty = false;
 		}
 	}
