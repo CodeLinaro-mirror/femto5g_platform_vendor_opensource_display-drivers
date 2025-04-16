@@ -3740,6 +3740,8 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 
 	if ((crtc->state->active_changed || cont_splash_enabled) && crtc->state->active)
 		sde_crtc_event_notify(crtc, DRM_EVENT_CRTC_POWER, &power_on, sizeof(u32));
+
+	sde_crtc->kickoff_in_progress = false;
 }
 
 /**
@@ -5512,7 +5514,6 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 
 		sde_encoder_kickoff(encoder, true);
 	}
-	sde_crtc->kickoff_in_progress = false;
 
 	/* store the event after frame trigger */
 	if (sde_crtc->event) {
