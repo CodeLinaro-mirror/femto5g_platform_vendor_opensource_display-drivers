@@ -722,15 +722,20 @@ static void msm_atomic_commit_dispatch(struct drm_device *dev,
 {
 	struct msm_drm_private *priv = dev->dev_private;
 	struct drm_crtc *crtc = NULL;
-	struct drm_crtc_state *crtc_state = NULL;
+	struct drm_crtc_state *old_crtc_state = NULL, *new_crtc_state = NULL;
 	int ret = -ECANCELED, i = 0, j = 0;
 	bool nonblock;
 
 	/* cache since work will kfree commit in non-blocking case */
 	nonblock = commit->nonblock;
 
-	for_each_old_crtc_in_state(state, crtc, crtc_state, i) {
+	for_each_oldnew_crtc_in_state(state, crtc, old_crtc_state,
+			new_crtc_state, i) {
+		if (!old_crtc_state->active && !new_crtc_state->active)
+			continue;
+
 		for (j = 0; j < priv->num_crtcs; j++) {
+
 			if (priv->disp_thread[j].crtc_id ==
 						crtc->base.id) {
 				if (priv->disp_thread[j].thread) {
