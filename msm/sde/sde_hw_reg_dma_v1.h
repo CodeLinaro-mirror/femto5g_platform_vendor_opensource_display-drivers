@@ -48,12 +48,24 @@ int init_v3(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx);
  * @reg_dma - reg_dma hw info structure exposing capabilities.
  * @dpu_idx: dpu index
  */
-
-int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx);
+int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx, struct sde_mdss_cfg *m);
 
 /**
  * deinit_v1() - free up any resources allocated during the v1 reg dma init
  * @dpu_idx: dpu index
  */
 void deinit_v1(u32 dpu_idx);
+
+/**
+ * deinit_v4() - free up any resources allocated during the v4 reg dma init
+ * @dpu_idx: dpu index
+ */
+void deinit_v4(u32 dpu_idx);
+
+/**
+ * select_cur_vq_v4() - select current reg dma virtual queue
+ * @dpu_idx: dpu index
+ */
+void select_cur_vq_v4(u32 dpu_idx, u32 ctl_idx);
+
 #endif /* _SDE_HW_REG_DMA_V1_H */

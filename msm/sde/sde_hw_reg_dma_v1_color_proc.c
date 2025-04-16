@@ -260,6 +260,97 @@ static u32 ltm_mapping[LTM_MAX] = {
 	[LTM_3] = LTM3,
 };
 
+static u32 dspp_feature_vq_map[] = {
+	[0] = -1,
+	[SDE_DSPP_IGC] = REG_DMA_TABLE_SB,
+	[SDE_DSPP_PCC] = REG_DMA_TABLE_DB,
+	[SDE_DSPP_GC] = REG_DMA_TABLE_DB,
+	[SDE_DSPP_HSIC] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_MEMCOLOR] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_SIXZONE] = REG_DMA_TABLE_SB,
+	[SDE_DSPP_GAMUT] = REG_DMA_TABLE_SB,
+	[SDE_DSPP_DITHER] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_HIST] = REG_DMA_MDSS_SB,
+	[SDE_DSPP_VLUT] = REG_DMA_TABLE_SB,
+	[SDE_DSPP_AD] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_LTM] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_SPR] = REG_DMA_MDSS_SB,
+	[SDE_DSPP_DEMURA] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_RC] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_RC_PU] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_SB] = REG_DMA_MDSS_SB,
+	[SDE_DSPP_DEMURA_CFG0_PARAM2] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_AIQE] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_AIQE_DITHER] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_AIQE_WRAPPER] = REG_DMA_MDSS_DB,
+	[SDE_DSPP_AI_SCALER] = REG_DMA_TABLE_DB,
+};
+
+static u32 sspp_feature_vq_map[] = {
+	[0] = -1,
+	[SDE_SSPP_SRC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SCALER_QSEED2] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SCALER_QSEED3] = REG_DMA_TABLE_DB,
+	[SDE_SSPP_CSC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_CSC_10BIT] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_HSIC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_MEMCOLOR] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_PCC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_EXCL_RECT] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SMART_DMA_V1] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SMART_DMA_V2] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SMART_DMA_V2p5] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_VIG_IGC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_VIG_GAMUT] = REG_DMA_TABLE_DB,
+	[SDE_SSPP_DMA_IGC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_DMA_GC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_INVERSE_PMA] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_DGM_INVERSE_PMA] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_DGM_CSC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SEC_UI_ALLOWED] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_BLOCK_SEC_UI] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SCALER_QSEED3LITE] = REG_DMA_TABLE_DB,
+	[SDE_SSPP_TRUE_INLINE_ROT] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_MULTIRECT_ERROR] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_PREDOWNSCALE] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_PREDOWNSCALE_Y] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_INLINE_CONST_CLR] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_FP16_IGC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_FP16_GC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_FP16_CSC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_FP16_UNMULT] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_UBWC_STATS] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SCALER_DE_LPF_BLEND] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_LINE_INSERTION] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_UCSC_IGC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_UCSC_GC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_UCSC_CSC] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_UCSC_UNMULT] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_UCSC_ALPHA_DITHER] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_CAC_V2] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_CAC_LOOPBACK] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_REC_SWI_SEPARATION] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SCALER_QSEED_EBS] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SCALER_QSEED_ADE] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_LOCAL_FLUSH] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SMART_DMA_REC0_ONLY] = REG_DMA_MDSS_DB,
+	[SDE_SSPP_SMART_DMA_REC1_ONLY] = REG_DMA_MDSS_DB,
+};
+
+static u32 ltm_feature_vq_map[] = {
+	[0] = -1,
+	[SDE_LTM_INIT] = REG_DMA_MDSS_DB,
+	[SDE_LTM_ROI] = REG_DMA_MDSS_DB,
+	[SDE_LTM_VLUT] = REG_DMA_TABLE_SB,
+};
+
+static u32 spr_feature_vq_map[] = {
+	[0] = -1,
+	[SDE_SPR_INIT] = REG_DMA_MDSS_DB,
+	[SDE_SPR_UDC] = REG_DMA_MDSS_SB,
+};
+
+
 static int reg_dma_sspp_check(struct sde_hw_pipe *ctx, void *cfg,
 		enum sde_reg_dma_features feature,
 		enum sde_sspp_multirect_index idx);
@@ -454,9 +545,15 @@ static int _reg_dmav1_rc_program_data_offset(
 int reg_dma_buf_init(struct sde_reg_dma_buffer **buf, u32 size, u32 dpu_idx)
 {
 	struct sde_hw_reg_dma_ops *dma_ops;
+	const struct sde_reg_dma_cfg *dma_cfg;
 
 	dma_ops = sde_reg_dma_get_ops(dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
+		return -ENOTSUPP;
+
+	dma_cfg = sde_reg_dma_get_cfg(dpu_idx);
+
+	if (dma_cfg && dma_cfg->vq_supported)
 		return -ENOTSUPP;
 
 	if (!buf) {
@@ -471,6 +568,158 @@ int reg_dma_buf_init(struct sde_reg_dma_buffer **buf, u32 size, u32 dpu_idx)
 	*buf = dma_ops->alloc_reg_dma_buf(size, dpu_idx);
 	if (IS_ERR_OR_NULL(*buf))
 		return -EINVAL;
+
+	return 0;
+}
+
+int reg_dma_buf_dspp_init(struct sde_hw_dspp *ctx, int feature,
+		struct sde_reg_dma_buffer **buf, u32 size, u32 dpu_idx)
+{
+	struct sde_hw_reg_dma_ops *dma_ops;
+	const struct sde_reg_dma_cfg *dma_cfg;
+	int queue = -1;
+
+	dma_cfg = sde_reg_dma_get_cfg(dpu_idx);
+
+	if (dma_cfg && dma_cfg->vq_supported) {
+		dma_ops = sde_reg_dma_get_ops(dpu_idx);
+		if (IS_ERR_OR_NULL(dma_ops))
+			return -ENOTSUPP;
+
+		if (!buf) {
+			DRM_ERROR("invalid buf\n");
+			return -EINVAL;
+		}
+
+		/* buffer already initialized */
+		if (*buf)
+			return 0;
+
+		if (feature < SDE_DSPP_MAX)
+			queue = dspp_feature_vq_map[feature];
+		if (queue >= 0 && queue < REG_DMA_PAYLOAD_BUF_MAX) {
+			*buf = dma_ops->get_reg_dma_vq_buf(ctx->sde_kms, queue,
+					SDE_HW_BLK_DSPP, ctx->cap->id, dpu_idx);
+			if (IS_ERR_OR_NULL(*buf))
+				return -EINVAL;
+		}
+	} else {
+		return reg_dma_buf_init(buf, size, dpu_idx);
+	}
+
+	return 0;
+}
+
+int reg_dma_buf_sspp_init(struct sde_hw_pipe *ctx, int feature,
+		struct sde_reg_dma_buffer **buf, u32 size, u32 dpu_idx)
+{
+	struct sde_hw_reg_dma_ops *dma_ops;
+	const struct sde_reg_dma_cfg *dma_cfg;
+	int queue = -1;
+
+	dma_cfg = sde_reg_dma_get_cfg(dpu_idx);
+
+	if (dma_cfg && dma_cfg->vq_supported) {
+		dma_ops = sde_reg_dma_get_ops(dpu_idx);
+		if (IS_ERR_OR_NULL(dma_ops))
+			return -ENOTSUPP;
+
+		if (!buf) {
+			DRM_ERROR("invalid buf\n");
+			return -EINVAL;
+		}
+
+		/* buffer already initialized */
+		if (*buf)
+			return 0;
+
+		if (feature < SDE_SSPP_MAX)
+			queue = sspp_feature_vq_map[feature];
+		if (queue >= 0 && queue < REG_DMA_PAYLOAD_BUF_MAX) {
+			*buf = dma_ops->get_reg_dma_vq_buf(ctx->sde_kms, queue,
+					SDE_HW_BLK_SSPP, ctx->cap->id, dpu_idx);
+			if (IS_ERR_OR_NULL(*buf))
+				return -EINVAL;
+		}
+	} else {
+		return reg_dma_buf_init(buf, size, dpu_idx);
+	}
+
+	return 0;
+}
+
+int reg_dma_buf_ltm_init(struct sde_hw_dspp *ctx, int feature,
+		struct sde_reg_dma_buffer **buf, u32 size, u32 dpu_idx)
+{
+	struct sde_hw_reg_dma_ops *dma_ops;
+	const struct sde_reg_dma_cfg *dma_cfg;
+	int queue = -1;
+
+	dma_cfg = sde_reg_dma_get_cfg(dpu_idx);
+
+	if (dma_cfg && dma_cfg->vq_supported) {
+		dma_ops = sde_reg_dma_get_ops(dpu_idx);
+		if (IS_ERR_OR_NULL(dma_ops))
+			return -ENOTSUPP;
+
+		if (!buf) {
+			DRM_ERROR("invalid buf\n");
+			return -EINVAL;
+		}
+
+		/* buffer already initialized */
+		if (*buf)
+			return 0;
+
+		if (feature < SDE_LTM_MAX)
+			queue = ltm_feature_vq_map[feature];
+		if (queue >= 0 && queue < REG_DMA_PAYLOAD_BUF_MAX) {
+			*buf = dma_ops->get_reg_dma_vq_buf(ctx->sde_kms, queue,
+					SDE_HW_BLK_DSPP, ctx->cap->id, dpu_idx);
+			if (IS_ERR_OR_NULL(*buf))
+				return -EINVAL;
+		}
+	} else {
+		return reg_dma_buf_init(buf, size, dpu_idx);
+	}
+
+	return 0;
+}
+
+int reg_dma_buf_spr_init(struct sde_hw_dspp *ctx, int feature,
+		struct sde_reg_dma_buffer **buf, u32 size, u32 dpu_idx)
+{
+	struct sde_hw_reg_dma_ops *dma_ops;
+	const struct sde_reg_dma_cfg *dma_cfg;
+	int queue = -1;
+
+	dma_cfg = sde_reg_dma_get_cfg(dpu_idx);
+
+	if (dma_cfg && dma_cfg->vq_supported) {
+		dma_ops = sde_reg_dma_get_ops(dpu_idx);
+		if (IS_ERR_OR_NULL(dma_ops))
+			return -ENOTSUPP;
+
+		if (!buf) {
+			DRM_ERROR("invalid buf\n");
+			return -EINVAL;
+		}
+
+		/* buffer already initialized */
+		if (*buf)
+			return 0;
+
+		if (feature < SDE_SPR_MAX)
+			queue = spr_feature_vq_map[feature];
+		if (queue >= 0 && queue < REG_DMA_PAYLOAD_BUF_MAX) {
+			*buf = dma_ops->get_reg_dma_vq_buf(ctx->sde_kms, queue,
+					SDE_HW_BLK_DSPP, ctx->cap->id, dpu_idx);
+			if (IS_ERR_OR_NULL(*buf))
+				return -EINVAL;
+		}
+	} else {
+		return reg_dma_buf_init(buf, size, dpu_idx);
+	}
 
 	return 0;
 }
@@ -505,59 +754,59 @@ static int _reg_dma_init_dspp_feature_buf(int feature, struct sde_hw_dspp *ctx)
 	int rc = 0;
 
 	if (feature == SDE_DSPP_MEMCOLOR) {
-		rc = reg_dma_buf_init(
+		rc = reg_dma_buf_dspp_init(ctx, feature,
 			&dspp_buf[MEMC_SKIN][ctx->idx][ctx->dpu_idx],
 			feature_reg_dma_sz[feature],
 			ctx->dpu_idx);
 		if (rc)
 			return rc;
 
-		rc = reg_dma_buf_init(
+		rc = reg_dma_buf_dspp_init(ctx, feature,
 			&dspp_buf[MEMC_SKY][ctx->idx][ctx->dpu_idx],
 			feature_reg_dma_sz[feature],
 			ctx->dpu_idx);
 		if (rc)
 			return rc;
 
-		rc = reg_dma_buf_init(
+		rc = reg_dma_buf_dspp_init(ctx, feature,
 			&dspp_buf[MEMC_FOLIAGE][ctx->idx][ctx->dpu_idx],
 			feature_reg_dma_sz[feature],
 			ctx->dpu_idx);
 		if (rc)
 			return rc;
 
-		rc = reg_dma_buf_init(
+		rc = reg_dma_buf_dspp_init(ctx, feature,
 			&dspp_buf[MEMC_PROT][ctx->idx][ctx->dpu_idx],
 			feature_reg_dma_sz[feature],
 			ctx->dpu_idx);
 	} else if (feature == SDE_DSPP_RC) {
-		rc = reg_dma_buf_init(
+		rc = reg_dma_buf_dspp_init(ctx, feature,
 			&dspp_buf[RC_MASK_CFG][ctx->idx][ctx->dpu_idx],
 			feature_reg_dma_sz[feature],
 			ctx->dpu_idx);
 		if (rc)
 			return rc;
 
-		rc = reg_dma_buf_init(
+		rc = reg_dma_buf_dspp_init(ctx, feature,
 			&dspp_buf[RC_PU_CFG][ctx->idx][ctx->dpu_idx],
 			feature_reg_dma_sz[SDE_DSPP_RC_PU],
 			ctx->dpu_idx);
 	} else if (feature == SDE_DSPP_AIQE) {
-		rc = reg_dma_buf_init(
+		rc = reg_dma_buf_dspp_init(ctx, feature,
 			&dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx],
 			feature_reg_dma_sz[feature],
 			ctx->dpu_idx);
 		if (rc)
 			return rc;
 
-		rc = reg_dma_buf_init(
+		rc = reg_dma_buf_dspp_init(ctx, feature,
 			&dspp_buf[AIQE_SSRC_CONFIG][ctx->idx][ctx->dpu_idx],
 			AIQE_SSRC_CONFIG_MEM_SIZE,
 			ctx->dpu_idx);
 		if (rc)
 			return rc;
 
-		rc = reg_dma_buf_init(
+		rc = reg_dma_buf_dspp_init(ctx, feature,
 			&dspp_buf[AIQE_SSRC_DATA][ctx->idx][ctx->dpu_idx],
 			AIQE_SSRC_DATA_MEM_SIZE,
 			ctx->dpu_idx);
@@ -565,7 +814,7 @@ static int _reg_dma_init_dspp_feature_buf(int feature, struct sde_hw_dspp *ctx)
 			return rc;
 
 	} else {
-		rc = reg_dma_buf_init(
+		rc = reg_dma_buf_dspp_init(ctx, feature,
 			&dspp_buf[feature_map[feature]][ctx->idx][ctx->dpu_idx],
 			feature_reg_dma_sz[feature],
 			ctx->dpu_idx);
@@ -2924,7 +3173,7 @@ int reg_dmav1_init_sspp_op_v4(int feature, struct sde_hw_pipe *ctx)
 
 	if (!rc) {
 		for (i = SDE_SSPP_RECT_SOLO; i < SDE_SSPP_RECT_MAX; i++) {
-			rc = reg_dma_buf_init(
+			rc = reg_dma_buf_sspp_init(ctx, feature,
 				&sspp_buf[i][sspp_feature_map[feature]][ctx->idx][ctx->dpu_idx],
 				sspp_feature_reg_dma_sz[feature],
 				ctx->dpu_idx);
@@ -4344,7 +4593,8 @@ int reg_dmav1_init_ltm_op_v6(int feature, struct sde_hw_dspp *ctx)
 		rc = (is_supported) ? 0 : -ENOTSUPP;
 
 	if (!rc)
-		rc = reg_dma_buf_init(&ltm_buf[ltm_feature_map[feature]][idx][ctx->dpu_idx],
+		rc = reg_dma_buf_ltm_init(ctx, feature,
+				&ltm_buf[ltm_feature_map[feature]][idx][ctx->dpu_idx],
 				ltm_feature_reg_dma_sz[feature], ctx->dpu_idx);
 	return rc;
 }
@@ -5904,7 +6154,7 @@ int reg_dmav2_init_spr_op_v1(int feature, struct sde_hw_dspp *ctx)
 		rc = dma_ops->check_support(dma_features[i], blk, &is_supported);
 		if (!rc) {
 			if (is_supported)
-				rc = reg_dma_buf_init(
+				rc = reg_dma_buf_spr_init(ctx, feature,
 						&dspp_buf[dma_features[i]][ctx->idx][ctx->dpu_idx],
 						buffer_size, ctx->dpu_idx);
 			else

@@ -60,6 +60,14 @@ int default_dealloc_reg_dma(struct sde_reg_dma_buffer *lut_buf, u32 dpu_idx)
 	return -EINVAL;
 }
 
+struct sde_reg_dma_buffer *default_get_reg_dma_vq_buf(struct sde_kms *sde_kms,
+		enum sde_reg_dma_buffer_type type,
+		enum sde_hw_blk_type hw_type, u32 idx, u32 dpu_idx)
+{
+	DRM_ERROR("not implemented\n");
+	return ERR_PTR(-EINVAL);
+}
+
 static int default_buf_reset_reg_dma(struct sde_reg_dma_buffer *lut_buf)
 {
 	DRM_ERROR("not implemented\n");
@@ -87,7 +95,8 @@ static void set_default_dma_ops(struct sde_hw_reg_dma *reg_dma)
 	const static struct sde_hw_reg_dma_ops ops = {
 		default_check_support, default_setup_payload,
 		default_kick_off, default_reset, default_alloc_reg_dma_buf,
-		default_dealloc_reg_dma, default_buf_reset_reg_dma,
+		default_dealloc_reg_dma, default_get_reg_dma_vq_buf,
+		default_buf_reset_reg_dma,
 		default_last_command, default_last_command_sb,
 		default_dump_reg};
 	memcpy(&reg_dma->ops, &ops, sizeof(ops));
@@ -187,7 +196,7 @@ int sde_reg_dma_init(void __iomem *addr, struct sde_mdss_cfg *m,
 		break;
 	case REG_DMA_VER_4_0:
 		reg_dma[dpu_idx].vm_based_queue = true;
-		rc = init_v4(&(reg_dma[dpu_idx]), dpu_idx);
+		rc = init_v4(&(reg_dma[dpu_idx]), dpu_idx, m);
 		if (rc)
 			DRM_DEBUG("init v4 dma ops failed\n");
 		break;
@@ -208,6 +217,16 @@ struct sde_hw_reg_dma_ops *sde_reg_dma_get_ops(u32 dpu_idx)
 	return (reg_dma[dpu_idx].ops.check_support ? &(reg_dma[dpu_idx].ops) : NULL);
 }
 
+const struct sde_reg_dma_cfg *sde_reg_dma_get_cfg(u32 dpu_idx)
+{
+	if (dpu_idx >= DPU_MAX) {
+		DRM_ERROR("invalid dpu idx %d\n", dpu_idx);
+		return NULL;
+	}
+
+	return reg_dma[dpu_idx].caps;
+}
+
 void sde_reg_dma_deinit(u32 dpu_idx)
 {
 	if (dpu_idx >= DPU_MAX) {
@@ -224,6 +243,9 @@ void sde_reg_dma_deinit(u32 dpu_idx)
 	case REG_DMA_VER_1_2:
 	case REG_DMA_VER_2_0:
 		deinit_v1(dpu_idx);
+		break;
+	case REG_DMA_VER_4_0:
+		deinit_v4(dpu_idx);
 		break;
 	default:
 		break;

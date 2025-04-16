@@ -1909,7 +1909,7 @@ struct sde_reg_dma_blk_info {
  * enum sde_reg_dma_vq - defines reg dma VQ ID
  */
 enum sde_reg_dma_vq {
-	REG_DMA_VQ_0 = 0,
+	REG_DMA_VQ_0 = 1,
 	REG_DMA_VQ_1,
 	REG_DMA_VQ_2,
 	REG_DMA_VQ_3,
@@ -1931,6 +1931,7 @@ enum sde_reg_dma_vq {
 /**
  * struct sde_reg_dma_cfg - overall config struct of lut dma blocks.
  * @reg_dma_blks       Reg DMA blk info for each possible block type
+ * @reg_dma_vq_blks    Reg DMA blk info for each possible block type for each VQ
  * @version            version of lutdma hw blocks
  * @trigger_sel_off    offset to trigger select registers of lutdma
  * @broadcast_disabled flag indicating if broadcast usage should be avoided
@@ -1943,6 +1944,7 @@ enum sde_reg_dma_vq {
  */
 struct sde_reg_dma_cfg {
 	struct sde_reg_dma_blk_info reg_dma_blks[REG_DMA_TYPE_MAX];
+	struct sde_reg_dma_blk_info reg_dma_vq_blks[REG_DMA_VQ_MAX][REG_DMA_TYPE_MAX];
 	u32 version;
 	u32 trigger_sel_off;
 	u32 broadcast_disabled;

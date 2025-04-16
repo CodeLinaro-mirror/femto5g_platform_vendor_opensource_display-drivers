@@ -13,6 +13,8 @@
 #include "sde_hw_top.h"
 #include "sde_hw_util.h"
 
+struct sde_kms;
+
 /**
  * enum sde_reg_dma_op - defines operations supported by reg dma
  * @REG_DMA_READ: Read the histogram into buffer provided
@@ -23,6 +25,21 @@ enum sde_reg_dma_op {
 	REG_DMA_READ,
 	REG_DMA_WRITE,
 	REG_DMA_OP_MAX
+};
+
+/**
+ * enum sde_reg_dma_buffer_type - defines reg dma payload buffer type
+ * @REG_DMA_MDSS_DB: payload buffer for double buffer MDSS register programming
+ * @REG_DMA_MDSS_SB: payload buffer for single buffer MDSS register programming
+ * @REG_DMA_TABLE_DB: payload buffer for double buffer LUT/table programming
+ * @REG_DMA_TABLE_SB: payload buffer for single buffer LUT/table programming
+ */
+enum sde_reg_dma_buffer_type {
+	REG_DMA_MDSS_DB,
+	REG_DMA_MDSS_SB,
+	REG_DMA_TABLE_DB,
+	REG_DMA_TABLE_SB,
+	REG_DMA_PAYLOAD_BUF_MAX
 };
 
 /**
@@ -63,6 +80,7 @@ enum sde_reg_dma_read_sel {
  * @RC_MASK_CFG: Rounded corner config and mask
  * @RC_PU_CFG: Rounded corner partial update
  * @DEMURA_CFG: Demura feature
+ * @MDSS_REG: Regular MDSS register
  * @REG_DMA_FEATURES_MAX: invalid selection
  */
 enum sde_reg_dma_features {
@@ -91,6 +109,7 @@ enum sde_reg_dma_features {
 	AIQE_MDNIE,
 	AIQE_SSRC_CONFIG,
 	AIQE_SSRC_DATA,
+	MDSS_REG,
 	REG_DMA_FEATURES_MAX,
 };
 
@@ -201,6 +220,10 @@ enum sde_reg_dma_setup_ops {
  * @VIG5: select vig5 block
  * @VIG6: select vig6 block
  * @VIG7: select vig7 block
+ * @DSPP4: select dspp4 block
+ * @DSPP5: select dspp5 block
+ * @DSPP6: select dspp6 block
+ * @DSPP7: select dspp7 block
  * @MDSS: select mdss block
  */
 enum sde_reg_dma_blk {
@@ -232,7 +255,11 @@ enum sde_reg_dma_blk {
 	VIG5 = BIT(25),
 	VIG6 = BIT(26),
 	VIG7 = BIT(27),
-	MDSS  = BIT(31)
+	DSPP4 = BIT(28),
+	DSPP5 = BIT(29),
+	DSPP6 = BIT(30),
+	DSPP7 = BIT(31),
+	MDSS  = BIT(32)
 };
 
 /**
@@ -258,6 +285,9 @@ enum sde_reg_dma_last_cmd_mode {
  * @next_op_allowed: operation allowed on the buffer
  * @ops_completed: operations completed on buffer
  * @abs_write_cnt: count of mdss absolute addr writes in the current buffer
+ * @buffer_type: the payload buffer type
+ * @dpu_idx: the DPU index
+ * @vq_idx: the VQ index
  */
 struct sde_reg_dma_buffer {
 	struct drm_gem_object *buf;
@@ -269,6 +299,9 @@ struct sde_reg_dma_buffer {
 	u32 next_op_allowed;
 	u32 ops_completed;
 	u32 abs_write_cnt;
+	enum sde_reg_dma_buffer_type buffer_type;
+	u32 dpu_idx;
+	u32 vq_idx;
 };
 
 /**
@@ -362,6 +395,9 @@ struct sde_hw_reg_dma_ops {
 	int (*reset)(struct sde_hw_ctl *ctl);
 	struct sde_reg_dma_buffer* (*alloc_reg_dma_buf)(u32 size, u32 dpu_idx);
 	int (*dealloc_reg_dma)(struct sde_reg_dma_buffer *lut_buf, u32 dpu_idx);
+	struct sde_reg_dma_buffer* (*get_reg_dma_vq_buf)(struct sde_kms *sde_kms,
+			enum sde_reg_dma_buffer_type type,
+			enum sde_hw_blk_type hw_type, u32 idx, u32 dpu_idx);
 	int (*reset_reg_dma_buf)(struct sde_reg_dma_buffer *buf);
 	int (*last_command)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
@@ -369,6 +405,8 @@ struct sde_hw_reg_dma_ops {
 			enum sde_reg_dma_last_cmd_mode mode);
 	void (*dump_regs)(u32 dpu_idx);
 	enum sde_reg_dma_queue (*select_queue_sb)(void);
+	int (*flush)(struct sde_hw_ctl *ctl, u32 dpu_idx);
+	bool (*check_engine_status)(struct sde_hw_ctl *ctl);
 };
 
 /**
@@ -412,8 +450,36 @@ int sde_reg_dma_init(void __iomem *addr, struct sde_mdss_cfg *m,
 struct sde_hw_reg_dma_ops *sde_reg_dma_get_ops(u32 dpu_idx);
 
 /**
+ * sde_reg_dma_get_cfg() - singleton module, cfg is returned to the clients
+ *                            who call this api.
+ * @dpu_idx: dpu index
+ */
+const struct sde_reg_dma_cfg *sde_reg_dma_get_cfg(u32 dpu_idx);
+
+/**
  * sde_reg_dma_deinit() - de-initialize the reg dma
  * @dpu_idx: dpu index
  */
 void sde_reg_dma_deinit(u32 dpu_idx);
+
+struct sde_reg_dma_buffer **get_reg_dma_vq_ctx(u32 dpu_idx, u32 ctl_idx);
+
+#if ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+void sde_reg_write_reg_dma(struct sde_hw_blk_reg_map *c,
+		u32 reg_off, u32 val, const char *name);
+
+void sde_reg_write_reg_dma_inc(struct sde_hw_blk_reg_map *c,
+		u32 reg_off, u32 *data, u32 size, const char *name);
+
+void sde_reg_write_reg_dma_single(struct sde_hw_blk_reg_map *c,
+		u32 reg_off, u32 *data, u32 size, const char *name);
+
+void sde_reg_write_reg_dma_multiple(struct sde_hw_blk_reg_map *c,
+		u32 reg_off, u32 *data, u32 size, bool inc, u32 wrap, const char *name);
+
+void sde_reg_modify_reg_dma(struct sde_hw_blk_reg_map *c,
+		u32 reg_off, u32 mask, u32 val, const char *name);
+#endif
+
+
 #endif /* _SDE_REG_DMA_H */
