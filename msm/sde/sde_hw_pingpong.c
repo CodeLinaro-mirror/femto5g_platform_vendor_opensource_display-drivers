@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -61,6 +61,7 @@ static struct sde_merge_3d_cfg *_merge_3d_offset(enum sde_merge_3d idx,
 			b->length = m->merge_3d[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_PINGPONG;
+			b->virtual = m->merge_3d[i].virtual;
 			return &m->merge_3d[i];
 		}
 	}
@@ -129,13 +130,15 @@ static struct sde_hw_merge_3d *_sde_pp_merge_3d_init(enum sde_merge_3d idx,
 
 	c->idx = idx;
 	c->caps = cfg;
-	_setup_merge_3d_ops(&c->ops, c->caps);
+	if (!c->hw.virtual) {
+		_setup_merge_3d_ops(&c->ops, c->caps);
 
-	if (!(merge3d_init_mask & BIT(idx))) {
-		sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
-				c->hw.blk_off, c->hw.blk_off + c->hw.length,
-				c->hw.xin_id);
-		merge3d_init_mask |= BIT(idx);
+		if (!(merge3d_init_mask & BIT(idx))) {
+			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name,
+					c->hw.blk_off, c->hw.blk_off + c->hw.length,
+					c->hw.xin_id);
+			merge3d_init_mask |= BIT(idx);
+		}
 	}
 
 	return c;
@@ -155,6 +158,7 @@ static struct sde_pingpong_cfg *_pingpong_offset(enum sde_pingpong pp,
 			b->length = m->pingpong[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_PINGPONG;
+			b->virtual = m->pingpong[i].virtual;
 			return &m->pingpong[i];
 		}
 	}
@@ -642,6 +646,18 @@ static void _setup_pingpong_ops(struct sde_hw_pingpong_ops *ops,
 	}
 };
 
+static void _setup_virtual_pingpong_ops(struct sde_hw_pingpong_ops *ops,
+	const struct sde_pingpong_cfg *hw_cap)
+{
+	ops->get_hw_caps = sde_hw_pp_get_caps;
+	if (hw_cap->features & BIT(SDE_PINGPONG_TE)) {
+		ops->get_vsync_info = sde_hw_pp_get_vsync_info;
+		ops->get_autorefresh = sde_hw_pp_get_autorefresh_config;
+		ops->poll_timeout_wr_ptr = sde_hw_pp_poll_timeout_wr_ptr;
+		ops->get_line_count = sde_hw_pp_get_line_count;
+	}
+};
+
 struct sde_hw_blk_reg_map *sde_hw_pingpong_init(enum sde_pingpong idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m)
@@ -662,7 +678,7 @@ struct sde_hw_blk_reg_map *sde_hw_pingpong_init(enum sde_pingpong idx,
 	c->idx = idx;
 	c->caps = cfg;
 	c->dcwb_idx = cfg->dcwb_id;
-	if (test_bit(SDE_PINGPONG_MERGE_3D, &cfg->features)) {
+	if (!c->hw.virtual && test_bit(SDE_PINGPONG_MERGE_3D, &cfg->features)) {
 		c->merge_3d = _sde_pp_merge_3d_init(cfg->merge_3d_id, addr, m);
 			if (IS_ERR(c->merge_3d)) {
 				SDE_ERROR("invalid merge_3d block %d\n", idx);
@@ -670,7 +686,10 @@ struct sde_hw_blk_reg_map *sde_hw_pingpong_init(enum sde_pingpong idx,
 			}
 	}
 
-	_setup_pingpong_ops(&c->ops, c->caps);
+	if (c->hw.virtual)
+		_setup_virtual_pingpong_ops(&c->ops, c->caps);
+	else
+		_setup_pingpong_ops(&c->ops, c->caps);
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);

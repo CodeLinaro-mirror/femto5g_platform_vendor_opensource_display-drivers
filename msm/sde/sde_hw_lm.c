@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -63,6 +63,7 @@ static struct sde_lm_cfg *_lm_offset(enum sde_lm mixer,
 			b->length = m->mixer[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_LM;
+			b->virtual = m->mixer[i].virtual;
 			return &m->mixer[i];
 		}
 	}
@@ -977,6 +978,54 @@ static void _setup_mixer_ops(struct sde_mdss_cfg *m,
 	}
 };
 
+static void _setup_virtual_mixer_ops(struct sde_mdss_cfg *m,
+		struct sde_hw_lm_ops *ops,
+		unsigned long features)
+{
+	ops->setup_mixer_out = sde_hw_lm_setup_out;
+	if (test_bit(SDE_MIXER_COMBINED_ALPHA, &features)) {
+		if (test_bit(SDE_MIXER_10_BITS_ALPHA, &features))
+			ops->setup_blend_config =
+				sde_hw_lm_setup_blend_config_combined_alpha_10_bits;
+		else if (test_bit(SDE_FEATURE_MIXER_OP_V1, m->features))
+			ops->setup_blend_config =
+				sde_hw_lm_setup_blend_config_combined_alpha_v1;
+		else
+			ops->setup_blend_config =
+				sde_hw_lm_setup_blend_config_combined_alpha;
+	} else {
+		ops->setup_blend_config = sde_hw_lm_setup_blend_config;
+	}
+
+	if (test_bit(SDE_MIXER_X_SRC_SEL, &features)) {
+		ops->setup_blendstage = sde_hw_lm_setup_blendstage;
+		ops->get_staged_sspp = sde_hw_lm_get_staged_sspp;
+		ops->clear_all_blendstages = sde_hw_lm_clear_all_blendstages;
+		ops->setup_alpha_out = sde_hw_lm_setup_color3_v1;
+	} else {
+		ops->setup_alpha_out = sde_hw_lm_setup_color3;
+	}
+
+	if (test_bit(SDE_DIM_LAYER, &features)) {
+		if (test_bit(SDE_MIXER_10_BITS_COLOR, &features))
+			ops->setup_dim_layer = sde_hw_lm_setup_dim_layer_10_bits;
+		else if (test_bit(SDE_FEATURE_MIXER_OP_V1, m->features))
+			ops->setup_dim_layer = sde_hw_lm_setup_dim_layer_v1;
+		else
+			ops->setup_dim_layer = sde_hw_lm_setup_dim_layer;
+		ops->clear_dim_layer = sde_hw_lm_clear_dim_layer;
+	}
+
+	if (test_bit(SDE_MIXER_NOISE_LAYER, &features)) {
+		if (test_bit(SDE_MIXER_10_BITS_COLOR, &features))
+			ops->setup_noise_layer = sde_hw_lm_setup_noise_layer_10_bits;
+		else if (test_bit(SDE_FEATURE_MIXER_OP_V1, m->features))
+			ops->setup_noise_layer = sde_hw_lm_setup_noise_layer_v1;
+		else
+			ops->setup_noise_layer = sde_hw_lm_setup_noise_layer;
+	}
+};
+
 struct sde_hw_blk_reg_map *sde_hw_lm_init(enum sde_lm idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m)
@@ -1002,7 +1051,10 @@ struct sde_hw_blk_reg_map *sde_hw_lm_init(enum sde_lm idx,
 	if (cfg->dummy_mixer)
 		goto done;
 
-	_setup_mixer_ops(m, &c->ops, c->cap->features);
+	if (c->hw.virtual)
+		_setup_virtual_mixer_ops(m, &c->ops, c->cap->features);
+	else
+		_setup_mixer_ops(m, &c->ops, c->cap->features);
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);

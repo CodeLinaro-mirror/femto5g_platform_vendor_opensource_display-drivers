@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -900,7 +900,7 @@ struct sde_hw_pipe {
 struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 		void __iomem *addr, struct sde_mdss_cfg *catalog,
 		bool is_virtual_pipe, struct sde_vbif_clk_client *client,
-		u32 dpu_idx);
+		u32 dpu_idx, struct sde_kms *sde_kms);
 
 /**
  * sde_hw_sspp_destroy(): Destroys SSPP driver context

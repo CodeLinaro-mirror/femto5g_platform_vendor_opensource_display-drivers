@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1736,7 +1736,7 @@ static struct sde_sspp_cfg *_sspp_offset(enum sde_sspp sspp,
 struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 		void __iomem *addr, struct sde_mdss_cfg *catalog,
 		bool is_virtual_pipe, struct sde_vbif_clk_client *clk_client,
-		u32 dpu_idx)
+		u32 dpu_idx, struct sde_kms *sde_kms)
 {
 	struct sde_hw_pipe *hw_pipe;
 	struct sde_sspp_cfg *cfg;
@@ -1760,6 +1760,7 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 	hw_pipe->idx = idx;
 	hw_pipe->cap = cfg;
 	hw_pipe->dpu_idx = dpu_idx;
+	hw_pipe->sde_kms = sde_kms;
 
 	if (test_bit(SDE_SSPP_REC_SWI_SEPARATION, &hw_pipe->cap->features))
 		setup_layer_ops_v1(hw_pipe, hw_pipe->cap->features,

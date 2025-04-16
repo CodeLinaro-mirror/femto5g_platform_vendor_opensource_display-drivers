@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -324,6 +324,7 @@ static struct sde_ctl_cfg *_ctl_offset(enum sde_ctl ctl,
 			b->length = m->ctl[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_CTL;
+			b->virtual = m->ctl[i].virtual;
 			return &m->ctl[i];
 		}
 	}
@@ -1831,6 +1832,46 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	}
 }
 
+static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
+		unsigned long cap, unsigned long mdss_cap)
+{
+	if (cap & BIT(SDE_CTL_ACTIVE_CFG)) {
+		ops->update_pending_flush =
+			sde_hw_ctl_update_pending_flush_v1;
+		ops->trigger_flush = sde_hw_ctl_trigger_flush_v1;
+
+		ops->update_bitmask = sde_hw_ctl_update_bitmask_v1;
+		ops->bitmask_has_bit = sde_hw_ctl_bitmask_has_bit_v1;
+		ops->get_ctl_intf = sde_hw_ctl_get_intf_v1;
+
+		ops->get_scheduler_status = sde_hw_ctl_get_scheduler_status;
+		ops->read_active_status = sde_hw_ctl_read_active_status;
+	} else {
+		ops->update_pending_flush = sde_hw_ctl_update_pending_flush;
+		ops->trigger_flush = sde_hw_ctl_trigger_flush_v1;
+
+		ops->update_bitmask = sde_hw_ctl_update_bitmask;
+		ops->get_ctl_intf = sde_hw_ctl_get_intf;
+	}
+	ops->clear_pending_flush = sde_hw_ctl_clear_pending_flush;
+	ops->get_pending_flush = sde_hw_ctl_get_pending_flush;
+	ops->get_flush_register = sde_hw_ctl_get_flush_register;
+	ops->read_ctl_layers = sde_hw_ctl_read_ctl_layers;
+	ops->reset = sde_hw_ctl_reset_control;
+	if (cap & BIT(SDE_CTL_NO_LAYER_EXT)) {
+		ops->get_active_lms = sde_hw_ctl_get_active_lms;
+	} else {
+		ops->clear_all_blendstages = sde_hw_ctl_clear_all_blendstages;
+		ops->setup_blendstage = sde_hw_ctl_setup_blendstage;
+		ops->get_staged_sspp = sde_hw_ctl_get_staged_sspp;
+	}
+	// TODO: HW virtualization
+	ops->update_bitmask_sspp = sde_hw_ctl_update_bitmask_sspp;
+	ops->update_bitmask_mixer = sde_hw_ctl_update_bitmask_mixer;
+	if  (cap & BIT(SDE_CTL_REG_DMA))
+		ops->reg_dma_flush = sde_hw_reg_dma_flush;
+}
+
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
@@ -1851,11 +1892,14 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 	}
 
 	c->caps = cfg;
-	_setup_ctl_ops(&c->ops, c->caps->features, m->mdp[0].features);
 	c->idx = idx;
 	c->mixer_count = m->mixer_count;
 	c->mixer_hw_caps = m->mixer;
 	c->dpu_idx = dpu_idx;
+	if (c->hw.virtual)
+		_setup_virtual_ctl_ops(&c->ops, c->caps->features, m->mdp[0].features);
+	else
+		_setup_ctl_ops(&c->ops, c->caps->features, m->mdp[0].features);
 
 	sde_dbg_reg_register_dump_range(SDE_DBG_NAME, cfg->name, c->hw.blk_off,
 			c->hw.blk_off + c->hw.length, c->hw.xin_id);

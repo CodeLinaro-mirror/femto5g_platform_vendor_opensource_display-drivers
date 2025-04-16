@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -890,6 +890,7 @@ static struct sde_mdss_base_cfg *__intr_offset(struct sde_mdss_cfg *m,
 	hw->base_off = addr;
 	hw->blk_off = m->mdss[0].base;
 	hw->hw_rev = m->hw_rev;
+	hw->virtual = m->mdss[0].virtual;
 	return &m->mdss[0];
 }
 
@@ -1114,6 +1115,9 @@ struct sde_hw_intr *sde_hw_intr_init(void __iomem *addr,
 		ret = -EINVAL;
 		goto exit;
 	}
+	if (cfg->virtual)
+		goto done;
+
 	__setup_intr_ops(&intr->ops);
 
 	/* check how many irq's this target supports */
@@ -1175,6 +1179,6 @@ exit:
 		sde_hw_intr_destroy(intr);
 		return ERR_PTR(ret);
 	}
-
+done:
 	return intr;
 }
