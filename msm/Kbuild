@@ -306,6 +306,7 @@ msm_drm-$(CONFIG_DRM_MSM) += msm_atomic.o \
 			     msm_prop.o
 
 msm_drm-$(CONFIG_DRM_MSM_HYP) += hyp/msm_drv_hyp.o \
+				hyp/msm_hyp_irq.o \
 				hyp/sde_encoder_phys_hyp.o \
 				hyp/msm_hyp_utils.o
 

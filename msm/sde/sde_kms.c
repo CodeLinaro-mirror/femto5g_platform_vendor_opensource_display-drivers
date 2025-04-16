@@ -58,6 +58,9 @@
 #include "sde_fence.h"
 #include "sde_cesta.h"
 #include "sde_loopback.h"
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+#include "hyp/msm_hyp_irq.h"
+#endif
 
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <linux/firmware/qcom/qcom_scm.h>
@@ -1204,7 +1207,11 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 		return 0;
 
 	/* enable MDSS irq line */
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	msm_hyp_irq_update(&sde_kms->base, true);
+#else
 	sde_irq_update(&sde_kms->base, true);
+#endif
 
 	/* clear the stale IRQ status bits */
 	if (sde_kms->hw_intr && sde_kms->hw_intr->ops.clear_all_irqs)
@@ -1610,7 +1617,11 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	}
 
 	/* disable IRQ line */
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	msm_hyp_irq_update(&sde_kms->base, false);
+#else
 	sde_irq_update(&sde_kms->base, false);
+#endif
 
 	/* release HW */
 	if (vm_ops->vm_release) {
@@ -4573,10 +4584,17 @@ end:
 static const struct msm_kms_funcs kms_funcs = {
 	.hw_init         = sde_kms_hw_init,
 	.postinit        = sde_kms_postinit,
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	.irq_preinstall  = msm_hyp_irq_preinstall,
+	.irq_postinstall = msm_hyp_irq_postinstall,
+	.irq_uninstall   = msm_hyp_irq_uninstall,
+	.irq             = msm_hyp_irq,
+#else
 	.irq_preinstall  = sde_irq_preinstall,
 	.irq_postinstall = sde_irq_postinstall,
 	.irq_uninstall   = sde_irq_uninstall,
 	.irq             = sde_irq,
+#endif
 	.preclose        = sde_kms_preclose,
 	.lastclose       = sde_kms_lastclose,
 	.prepare_fence   = sde_kms_prepare_fence,
@@ -4851,7 +4869,11 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 	SDE_EVT32_VERBOSE(event_type);
 
 	if (event_type == SDE_POWER_EVENT_POST_ENABLE) {
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+		msm_hyp_irq_update(msm_kms, true);
+#else
 		sde_irq_update(msm_kms, true);
+#endif
 		sde_kms->first_kickoff = true;
 
 		/**
@@ -4868,7 +4890,11 @@ static void sde_kms_handle_power_event(u32 event_type, void *usr)
 		sde_kms_init_shared_hw(sde_kms);
 		_sde_kms_set_lutdma_vbif_remap(sde_kms);
 	} else if (event_type == SDE_POWER_EVENT_PRE_DISABLE) {
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+		msm_hyp_irq_update(msm_kms, false);
+#else
 		sde_irq_update(msm_kms, false);
+#endif
 		sde_kms->first_kickoff = false;
 		if (sde_in_trusted_vm(sde_kms))
 			return;
@@ -5267,7 +5293,11 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 
 	sde_kms->rm_init = true;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	sde_kms->hw_intr = msm_hyp_irq_init(sde_kms->hyp_kms, DPUID(dev));
+#else
 	sde_kms->hw_intr = sde_hw_intr_init(sde_kms->mmio, sde_kms->catalog);
+#endif
 	if (IS_ERR_OR_NULL(sde_kms->hw_intr)) {
 		rc = PTR_ERR(sde_kms->hw_intr);
 		SDE_ERROR("hw_intr init failed: %d\n", rc);
