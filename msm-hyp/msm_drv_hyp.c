@@ -82,7 +82,6 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
 #include <linux/of_platform.h>
-#include <soc/qcom/boot_stats.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
@@ -2346,7 +2345,7 @@ static void _msm_hyp_complete_commit(struct msm_hyp_commit *c)
 	HYP_ATRACE_BEGIN("Input_Fence_WAIT");
 
 	if (first_frame) {
-		place_marker("kernel_fe: First commit start");
+		pr_info("kernel_fe: First commit start\n");
 		first_frame = false;
 	}
 
@@ -2856,7 +2855,7 @@ static int msm_hyp_pdev_probe(struct platform_device *pdev)
 	if (ret)
 		goto fail;
 
-	place_marker("kernel_fe: msm_hyp probe ready");
+	pr_info("kernel_fe: msm_hyp probe ready\n");
 
 	return 0;
 
