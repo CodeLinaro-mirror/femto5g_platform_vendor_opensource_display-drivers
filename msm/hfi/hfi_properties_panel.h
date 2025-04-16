@@ -632,6 +632,19 @@
 #define HFI_PROPERTY_PANEL_TE_MODE                                   0x0004002A
 
 /*
+ * HFI_PROPERTY_PANEL_CPHY_MODE - Specifies whether panel is using CPHY
+ *                                This property is sent to DCP as part of
+ *                                HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                                command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_CPHY_MODE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_CPHY_MODE |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : HFI_TRUE / HFI_FALSE
+ */
+#define HFI_PROPERTY_PANEL_CPHY_MODE                                 0x0004002B
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF
