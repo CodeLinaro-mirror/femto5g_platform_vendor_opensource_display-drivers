@@ -5882,8 +5882,7 @@ struct msm_freq_step_pattern *sde_encoder_get_freq_pattern(struct drm_encoder *d
 	freq_step_list = sde_enc->mode_info.freq_step_list;
 
 	if (!freq_step_list) {
-		if (!sde_encoder_in_cont_splash(drm_enc))
-			SDE_ERROR("Invalid freq_step_list\n");
+		SDE_ERROR("Invalid freq_step_list\n");
 		return NULL;
 	}
 
