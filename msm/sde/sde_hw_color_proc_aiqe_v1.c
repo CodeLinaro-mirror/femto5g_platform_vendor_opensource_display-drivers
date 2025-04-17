@@ -229,11 +229,13 @@ static void _mdnie_disable_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg->dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_MDNIE);
-	rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
-	if (rc)
-		DRM_ERROR("failed to kick off ret %d\n", rc);
-	else
-		LOG_FEATURE_OFF;
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc)
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+		else
+			LOG_FEATURE_OFF;
+	}
 }
 
 static int _reg_dmav1_setup_mdnie_common(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top,
@@ -328,10 +330,12 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 			AIQE_MDNIE);
 
-	rc = dma_ops->kick_off[disp_op](&kick_off, ctx->dpu_idx);
-	if (rc) {
-		DRM_ERROR("failed to kick off ret %d\n", rc);
-		return;
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&kick_off, ctx->dpu_idx);
+		if (rc) {
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+			return;
+		}
 	}
 
 	LOG_FEATURE_ON;
@@ -403,10 +407,12 @@ void reg_dmav1_setup_mdnie_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 			AIQE_MDNIE);
 
-	rc = dma_ops->kick_off[disp_op](&kick_off, ctx->dpu_idx);
-	if (rc) {
-		DRM_ERROR("failed to kick off ret %d\n", rc);
-		return;
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&kick_off, ctx->dpu_idx);
+		if (rc) {
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+			return;
+		}
 	}
 
 	LOG_FEATURE_ON;
@@ -491,11 +497,13 @@ static void _aiqe_ssrc_config_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg->dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_SSRC_CONFIG);
-	rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
-	if (rc)
-		DRM_ERROR("failed to kick off ret %d\n", rc);
-	else
-		LOG_FEATURE_OFF;
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc)
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+		else
+			LOG_FEATURE_OFF;
+	}
 }
 
 void reg_dmav1_setup_aiqe_ssrc_config_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
@@ -555,11 +563,13 @@ void reg_dmav1_setup_aiqe_ssrc_config_v1(struct sde_hw_dspp *ctx, void *cfg, voi
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_SSRC_CONFIG);
-	rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
-	if (rc)
-		DRM_ERROR("failed to kick off ret %d\n", rc);
-	else
-		LOG_FEATURE_ON;
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc)
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+		else
+			LOG_FEATURE_ON;
+	}
 }
 
 void reg_dmav1_setup_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
@@ -627,11 +637,13 @@ void reg_dmav1_setup_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void 
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, AIQE_SSRC_DATA);
-	rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
-	if (rc)
-		DRM_ERROR("failed to kick off ret %d\n", rc);
-	else
-		LOG_FEATURE_ON;
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc)
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+		else
+			LOG_FEATURE_ON;
+	}
 }
 
 int sde_check_ai_scaler_v1(struct sde_hw_dspp *ctx, void *cfg)

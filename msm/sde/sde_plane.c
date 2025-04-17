@@ -3378,7 +3378,8 @@ static void _sde_plane_sspp_setup_sys_cache(struct sde_plane *psde,
 	SDE_EVT32(DRMID(&psde->base), cfg->type, cfg->rd_scid, cfg->rd_en, cfg->rd_noallocate,
 			cfg->flags, cache_state, cache_flag, cache_rd_type, cache_wr_type,
 			state->fb->base.id);
-	psde->pipe_hw->ops.setup_sys_cache[disp_op](psde->pipe_hw, cfg);
+	if (psde->pipe_hw->ops.setup_sys_cache[disp_op])
+		psde->pipe_hw->ops.setup_sys_cache[disp_op](psde->pipe_hw, cfg);
 }
 
 void sde_plane_static_img_control(struct drm_plane *plane,
@@ -3550,9 +3551,10 @@ static void _sde_plane_setup_uidle(struct drm_crtc *crtc,
 	if (psde->pipe_hw->ops.setup_uidle_fill_scale[disp_op])
 		psde->pipe_hw->ops.setup_uidle_fill_scale[disp_op](psde->pipe_hw, &cfg);
 
-	psde->pipe_hw->ops.setup_uidle[disp_op](
-		psde->pipe_hw, &cfg,
-		pstate->multirect_index);
+	if (psde->pipe_hw->ops.setup_uidle[disp_op])
+		psde->pipe_hw->ops.setup_uidle[disp_op](
+			psde->pipe_hw, &cfg,
+			pstate->multirect_index);
 }
 
 static void _sde_plane_update_secure_session(struct sde_plane *psde,
@@ -3845,8 +3847,9 @@ static void _sde_plane_update_sharpening(struct sde_plane *psde)
 	psde->sharp_cfg.smooth_thr = SHARP_SMOOTH_THR_DEFAULT;
 	psde->sharp_cfg.noise_thr = SHARP_NOISE_THR_DEFAULT;
 
-	psde->pipe_hw->ops.setup_sharpening[disp_op](psde->pipe_hw,
-			&psde->sharp_cfg);
+	if (psde->pipe_hw->ops.setup_sharpening[disp_op])
+		psde->pipe_hw->ops.setup_sharpening[disp_op](psde->pipe_hw,
+				&psde->sharp_cfg);
 }
 
 static struct hfi_cmdbuf_t *_sde_plane_get_cmd_buf(struct drm_plane *plane)
