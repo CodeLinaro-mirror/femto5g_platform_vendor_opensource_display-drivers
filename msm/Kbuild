@@ -78,6 +78,10 @@ ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8155) $(CONFIG_ARCH_SA6155) $(CONFIG_AR
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/augen3dispconf.h
 endif
 
+ifeq ($(ENABLE_BUILD_PATH), y)
+	LINUX_INC += $(LE_EXTRA_CFLAGS)
+endif
+
 LINUX_INC +=	-I$(KERNEL_SRC)/include/linux \
 		-I$(KERNEL_SRC)/include/linux/drm
 
@@ -97,6 +101,8 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(DISPLAY_ROOT)/msm/sde \
 	-I$(DISPLAY_ROOT)/../mm-drivers/hw_fence/include \
 	-I$(DISPLAY_ROOT)/../mm-drivers/hfi_core/inc \
+	-I$(DISPLAY_ROOT)/../mm-drivers/msm_ext_display/include \
+	-I$(DISPLAY_ROOT)/../mm-drivers/sync_fence/include \
 	-I$(DISPLAY_ROOT)/include/uapi/display \
 
 CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
@@ -193,7 +199,9 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 				dp/dp_pll.o \
 				dp/dp_pll_5nm.o \
 				dp/dp_pll_4nm.o \
-				dp/dp_pll_3nm.o
+				dp/dp_pll_3nm.o \
+				dp/edp_pll_4nm.o \
+				dp/edp_pll_5nm.o
 
 msm_drm-$(CONFIG_DRM_MSM_DP_MST) += dp/dp_mst_drm.o
 
