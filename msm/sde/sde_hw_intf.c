@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1483,104 +1483,111 @@ static void sde_hw_intf_setup_panic_ctrl(struct sde_hw_intf *intf,
 static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 		unsigned long cap, unsigned long mdss_cap)
 {
-	ops->setup_timing_gen = sde_hw_intf_setup_timing_engine;
-	ops->setup_prg_fetch  = sde_hw_intf_setup_prg_fetch;
-	ops->enable_timing = sde_hw_intf_enable_timing_engine;
-	ops->setup_misr = sde_hw_intf_setup_misr;
-	ops->collect_misr = sde_hw_intf_collect_misr;
-	ops->get_line_count = sde_hw_intf_get_line_count;
-	ops->get_underrun_line_count = sde_hw_intf_get_underrun_line_count;
-	ops->get_intr_status = sde_hw_intf_get_intr_status;
-	ops->avr_setup = sde_hw_intf_avr_setup;
-	ops->avr_trigger = sde_hw_intf_avr_trigger;
-	ops->avr_ctrl = sde_hw_intf_avr_ctrl;
-	ops->avr_enable = sde_hw_intf_avr_enable;
-	ops->enable_compressed_input = sde_hw_intf_enable_compressed_input;
-	ops->enable_wide_bus = sde_hw_intf_enable_wide_bus;
-	ops->is_te_32bit_supported = sde_hw_intf_is_te_32bit_supported;
+	ops->setup_timing_gen[MSM_DISP_OP_HWIO] = sde_hw_intf_setup_timing_engine;
+	ops->setup_prg_fetch[MSM_DISP_OP_HWIO]  = sde_hw_intf_setup_prg_fetch;
+	ops->enable_timing[MSM_DISP_OP_HWIO] = sde_hw_intf_enable_timing_engine;
+	ops->setup_misr[MSM_DISP_OP_HWIO] = sde_hw_intf_setup_misr;
+	ops->collect_misr[MSM_DISP_OP_HWIO] = sde_hw_intf_collect_misr;
+	ops->get_line_count[MSM_DISP_OP_HWIO] = sde_hw_intf_get_line_count;
+	ops->get_underrun_line_count[MSM_DISP_OP_HWIO] = sde_hw_intf_get_underrun_line_count;
+	ops->get_intr_status[MSM_DISP_OP_HWIO] = sde_hw_intf_get_intr_status;
+	ops->avr_setup[MSM_DISP_OP_HWIO] = sde_hw_intf_avr_setup;
+	ops->avr_trigger[MSM_DISP_OP_HWIO] = sde_hw_intf_avr_trigger;
+	ops->avr_ctrl[MSM_DISP_OP_HWIO] = sde_hw_intf_avr_ctrl;
+	ops->avr_enable[MSM_DISP_OP_HWIO] = sde_hw_intf_avr_enable;
+	ops->enable_compressed_input[MSM_DISP_OP_HWIO] = sde_hw_intf_enable_compressed_input;
+	ops->enable_wide_bus[MSM_DISP_OP_HWIO] = sde_hw_intf_enable_wide_bus;
+	ops->is_te_32bit_supported[MSM_DISP_OP_HWIO] = sde_hw_intf_is_te_32bit_supported;
 
 	if (cap & BIT(SDE_INTF_PANIC_CTRL)) {
-		ops->raw_te_setup = sde_hw_intf_raw_te_setup;
-		ops->setup_intf_panic_ctrl = sde_hw_intf_setup_panic_ctrl;
+		ops->raw_te_setup[MSM_DISP_OP_HWIO] = sde_hw_intf_raw_te_setup;
+		ops->setup_intf_panic_ctrl[MSM_DISP_OP_HWIO] = sde_hw_intf_setup_panic_ctrl;
 	}
 
 	if (cap & BIT(SDE_INTF_STATUS))
-		ops->get_status = sde_hw_intf_v1_get_status;
+		ops->get_status[MSM_DISP_OP_HWIO] = sde_hw_intf_v1_get_status;
 	else
-		ops->get_status = sde_hw_intf_get_status;
+		ops->get_status[MSM_DISP_OP_HWIO] = sde_hw_intf_get_status;
 
 	if (cap & BIT(SDE_INTF_INPUT_CTRL))
-		ops->bind_pingpong_blk = sde_hw_intf_bind_pingpong_blk;
+		ops->bind_pingpong_blk[MSM_DISP_OP_HWIO] = sde_hw_intf_bind_pingpong_blk;
 
 	if (cap & BIT(SDE_INTF_WD_TIMER))
-		ops->setup_vsync_source = sde_hw_intf_setup_vsync_source;
+		ops->setup_vsync_source[MSM_DISP_OP_HWIO] = sde_hw_intf_setup_vsync_source;
 
 	if (cap & BIT(SDE_INTF_AVR_STATUS))
-		ops->get_avr_status = sde_hw_intf_get_avr_status;
+		ops->get_avr_status[MSM_DISP_OP_HWIO] = sde_hw_intf_get_avr_status;
 
 	if (cap & BIT(SDE_INTF_NUM_AVR_STEP)) {
-		ops->set_num_avr_step = sde_hw_intf_set_num_avr_step;
-		ops->get_cur_num_avr_step = sde_hw_intf_get_cur_num_avr_step;
+		ops->set_num_avr_step[MSM_DISP_OP_HWIO] = sde_hw_intf_set_num_avr_step;
+		ops->get_cur_num_avr_step[MSM_DISP_OP_HWIO] = sde_hw_intf_get_cur_num_avr_step;
 	}
 
 	if (cap & BIT(SDE_INTF_ESYNC)) {
-		ops->prepare_esync = sde_hw_intf_prepare_esync;
-		ops->enable_esync = sde_hw_intf_enable_esync;
-		ops->prepare_backup_esync = sde_hw_intf_prepare_backup_esync;
-		ops->enable_backup_esync = sde_hw_intf_enable_backup_esync;
-		ops->wait_for_esync_src_switch = sde_hw_intf_wait_for_esync_src_switch;
-		ops->enable_infinite_vfp = sde_hw_intf_enable_infinite_vfp;
-		ops->get_esync_timestamp = sde_hw_intf_get_esync_timestamp;
+		ops->prepare_esync[MSM_DISP_OP_HWIO] = sde_hw_intf_prepare_esync;
+		ops->enable_esync[MSM_DISP_OP_HWIO] = sde_hw_intf_enable_esync;
+		ops->prepare_backup_esync[MSM_DISP_OP_HWIO] = sde_hw_intf_prepare_backup_esync;
+		ops->enable_backup_esync[MSM_DISP_OP_HWIO] = sde_hw_intf_enable_backup_esync;
+		ops->wait_for_esync_src_switch[MSM_DISP_OP_HWIO] =
+				sde_hw_intf_wait_for_esync_src_switch;
+		ops->enable_infinite_vfp[MSM_DISP_OP_HWIO] = sde_hw_intf_enable_infinite_vfp;
+		ops->get_esync_timestamp[MSM_DISP_OP_HWIO] = sde_hw_intf_get_esync_timestamp;
 	}
 
 	if (cap & BIT(SDE_INTF_TE)) {
-		ops->setup_tearcheck = sde_hw_intf_setup_te_config;
-		ops->enable_tearcheck = sde_hw_intf_enable_te;
-		ops->update_tearcheck = sde_hw_intf_update_te;
-		ops->connect_external_te = sde_hw_intf_connect_external_te;
-		ops->get_vsync_info = sde_hw_intf_get_vsync_info;
-		ops->setup_autorefresh = sde_hw_intf_setup_autorefresh_config;
-		ops->get_autorefresh = sde_hw_intf_get_autorefresh_config;
-		ops->get_autorefresh_status =
+		ops->setup_tearcheck[MSM_DISP_OP_HWIO] = sde_hw_intf_setup_te_config;
+		ops->enable_tearcheck[MSM_DISP_OP_HWIO] = sde_hw_intf_enable_te;
+		ops->update_tearcheck[MSM_DISP_OP_HWIO] = sde_hw_intf_update_te;
+		ops->connect_external_te[MSM_DISP_OP_HWIO] = sde_hw_intf_connect_external_te;
+		ops->get_vsync_info[MSM_DISP_OP_HWIO] = sde_hw_intf_get_vsync_info;
+		ops->setup_autorefresh[MSM_DISP_OP_HWIO] = sde_hw_intf_setup_autorefresh_config;
+		ops->get_autorefresh[MSM_DISP_OP_HWIO] = sde_hw_intf_get_autorefresh_config;
+		ops->get_autorefresh_status[MSM_DISP_OP_HWIO] =
 			sde_hw_intf_get_autorefresh_status;
-		ops->poll_timeout_wr_ptr = sde_hw_intf_poll_timeout_wr_ptr;
-		ops->vsync_sel = sde_hw_intf_vsync_sel;
-		ops->check_and_reset_tearcheck = sde_hw_intf_v1_check_and_reset_tearcheck;
-		ops->override_tear_rd_ptr_val = sde_hw_intf_override_tear_rd_ptr_val;
-		ops->update_tearcheck_vsync_count = sde_hw_intf_update_tearcheck_vsync_count;
+		ops->poll_timeout_wr_ptr[MSM_DISP_OP_HWIO] = sde_hw_intf_poll_timeout_wr_ptr;
+		ops->vsync_sel[MSM_DISP_OP_HWIO] = sde_hw_intf_vsync_sel;
+		ops->check_and_reset_tearcheck[MSM_DISP_OP_HWIO] =
+				sde_hw_intf_v1_check_and_reset_tearcheck;
+		ops->override_tear_rd_ptr_val[MSM_DISP_OP_HWIO] =
+				sde_hw_intf_override_tear_rd_ptr_val;
+		ops->update_tearcheck_vsync_count[MSM_DISP_OP_HWIO] =
+				sde_hw_intf_update_tearcheck_vsync_count;
 
 		if (cap & BIT(SDE_INTF_PANIC_CTRL))
-			ops->setup_te_panic_wakeup = sde_hw_intf_setup_panic_wakeup;
+			ops->setup_te_panic_wakeup[MSM_DISP_OP_HWIO] =
+					sde_hw_intf_setup_panic_wakeup;
 
 		if (cap & BIT(SDE_INTF_TEAR_TE_LEVEL_MODE))
-			ops->enable_te_level_trigger = sde_hw_intf_enable_te_level_mode;
+			ops->enable_te_level_trigger[MSM_DISP_OP_HWIO] =
+					sde_hw_intf_enable_te_level_mode;
 		else if (cap & BIT(SDE_INTF_TE_LEVEL_TRIGGER))
-			ops->enable_te_level_trigger = sde_hw_intf_enable_te_level_trigger;
+			ops->enable_te_level_trigger[MSM_DISP_OP_HWIO] =
+					sde_hw_intf_enable_te_level_trigger;
 	}
 
 	if (cap & BIT(SDE_INTF_RESET_COUNTER))
-		ops->reset_counter = sde_hw_intf_reset_counter;
+		ops->reset_counter[MSM_DISP_OP_HWIO] = sde_hw_intf_reset_counter;
 
 	if (cap & (BIT(SDE_INTF_PANEL_VSYNC_TS) | BIT(SDE_INTF_MDP_VSYNC_TS)))
-		ops->get_vsync_timestamp = sde_hw_intf_get_vsync_timestamp;
+		ops->get_vsync_timestamp[MSM_DISP_OP_HWIO] = sde_hw_intf_get_vsync_timestamp;
 
 	if (mdss_cap & BIT(SDE_MDP_DUAL_DPU_SYNC)) {
-		ops->setup_dpu_sync_prog_intf_offset =
+		ops->setup_dpu_sync_prog_intf_offset[MSM_DISP_OP_HWIO] =
 			sde_hw_intf_setup_dpu_sync_prog_intf_offset;
-		ops->enable_dpu_sync_ctrl = sde_hw_intf_enable_dpu_sync_ctrl;
+		ops->enable_dpu_sync_ctrl[MSM_DISP_OP_HWIO] = sde_hw_intf_enable_dpu_sync_ctrl;
 	}
 
 	if (cap & BIT(SDE_INTF_WD_JITTER))
-		ops->configure_wd_jitter = sde_hw_intf_configure_wd_timer_jitter;
+		ops->configure_wd_jitter[MSM_DISP_OP_HWIO] = sde_hw_intf_configure_wd_timer_jitter;
 
 	if (cap & BIT(SDE_INTF_WD_LTJ_CTL))
-		ops->get_wd_ltj_status = sde_hw_intf_read_wd_ltj_ctl;
+		ops->get_wd_ltj_status[MSM_DISP_OP_HWIO] = sde_hw_intf_read_wd_ltj_ctl;
 
 	if (mdss_cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
-		ops->setup_flush_snapshot =  sde_hw_intf_flush_snapshot_setup;
+		ops->setup_flush_snapshot[MSM_DISP_OP_HWIO] =  sde_hw_intf_flush_snapshot_setup;
 
 	if (cap & BIT(SDE_INTF_PROG_DYNREF))
-		ops->setup_prog_dynref = sde_hw_intf_setup_prog_dynref;
+		ops->setup_prog_dynref[MSM_DISP_OP_HWIO] = sde_hw_intf_setup_prog_dynref;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,

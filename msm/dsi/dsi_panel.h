@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -298,6 +298,7 @@ struct dsi_panel {
 	bool powered;
 	enum dsi_panel_physical_type panel_type;
 	bool need_post_on_supply;
+	enum msm_disp_op disp_op;
 
 	struct dsi_panel_ops panel_ops;
 };
@@ -458,4 +459,8 @@ int dsi_panel_send_cmd(struct dsi_panel *panel,
 
 int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 				struct dsi_parser_utils *utils);
+
+int dsi_panel_power_on(struct dsi_panel *panel);
+
+int dsi_panel_power_off(struct dsi_panel *panel);
 #endif /* _DSI_PANEL_H_ */

@@ -16,6 +16,11 @@
 
 #define MAX_CESTA_CLIENT_NAME_LEN	32
 
+#define SDE_CESTA_HW_MAJOR_MINOR_STEP(major, minor, step) \
+	(((major & 0xff) << 16) |\
+	((minor & 0xff) << 8) | \
+	(step & 0xff))
+
 /**
  * SCC override ctrl flags
  * SDE_CESTA_OVERRIDE_FORCE_DB_UPDATE: resets the state machines within SCC
@@ -44,6 +49,16 @@ enum sde_cesta_vote_state {
 	SDE_CESTA_BW_CLK_DOWNVOTE,
 	SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE,
 	SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE,
+};
+
+/**
+ * Client indices
+ * SDE_CESTA_SW_CLIENT0 is assigned to DCP
+ * SDE_CESTA_SW_CLIENT1 is assigned to HLOS
+ */
+enum sde_cesta_client_index {
+	SDE_CESTA_SW_CLIENT0,
+	SDE_CESTA_SW_CLIENT1
 };
 
 /**
@@ -197,6 +212,7 @@ struct sde_cesta_hw_ops {
 
 /**
  * sde_cesta - sde cesta base struct holding all cesta resources for a single instance
+ * @hw_drv_ver: cesta hw version
  * @dev: cesta device
  * @phandle: power handle object to control the resources
  * @fs: MDSS GDSC regulator handle
@@ -222,6 +238,7 @@ struct sde_cesta_hw_ops {
  * @mdp_clk_gate_disable_cnt: counter to track mdp clk gate requests
  */
 struct sde_cesta {
+	u32 hw_drv_ver;
 	struct device *dev;
 	struct sde_power_handle phandle;
 	struct regulator *fs;
@@ -418,6 +435,12 @@ void sde_cesta_force_db_update(struct sde_cesta_client *client, bool en_auto_act
 		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep, bool en_clk_gate,
 		bool cmd_mode);
 
+/**
+ * sde_cesta_is_aoss_enabled - checks if cesta drv supports AOSS VCD
+ * @cesta_index: cesta instance being checked
+ */
+bool sde_cesta_is_aoss_supported(u32 cesta_index);
+
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
 {
@@ -510,6 +533,11 @@ static inline void sde_cesta_force_db_update(struct sde_cesta_client *client,
 		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep,
 		bool en_clk_gate, bool cmd_mode)
 {
+}
+
+static inline bool  sde_cesta_is_aoss_supported(u32 cesta_index)
+{
+	return false;
 }
 #endif /* CONFIG_DRM_SDE_CESTA */
 

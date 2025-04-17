@@ -595,8 +595,8 @@ static void _sde_core_uidle_setup_wd(struct sde_kms *kms,
 	wd.heart_beat = SDE_UIDLE_WD_HEART_BEAT;
 	wd.load_value = SDE_UIDLE_WD_LOAD_VAL;
 
-	if (uidle->ops.setup_wd_timer)
-		uidle->ops.setup_wd_timer(uidle, &wd);
+	if (uidle->ops.setup_wd_timer[uidle->hw.disp_op])
+		uidle->ops.setup_wd_timer[uidle->hw.disp_op](uidle, &wd);
 }
 
 static void _sde_core_uidle_setup_cfg(struct sde_kms *kms,
@@ -619,8 +619,8 @@ static void _sde_core_uidle_setup_cfg(struct sde_kms *kms,
 	SDE_EVT32(state, cfg.fal10_danger, cfg.fal10_exit_cnt,
 		cfg.fal10_exit_danger);
 
-	if (uidle->ops.set_uidle_ctl)
-		uidle->ops.set_uidle_ctl(uidle, &cfg);
+	if (uidle->ops.set_uidle_ctl[uidle->hw.disp_op])
+		uidle->ops.set_uidle_ctl[uidle->hw.disp_op](uidle, &cfg);
 }
 
 void sde_core_perf_uidle_setup_ctl(struct drm_crtc *crtc,
@@ -696,8 +696,8 @@ static void _sde_core_perf_uidle_setup_cntr(struct sde_kms *sde_kms,
 	uidle = sde_kms->hw_uidle;
 
 	SDE_EVT32(enable);
-	if (uidle->ops.uidle_setup_cntr) {
-		uidle->ops.uidle_setup_cntr(uidle, enable);
+	if (uidle->ops.uidle_setup_cntr[uidle->hw.disp_op]) {
+		uidle->ops.uidle_setup_cntr[uidle->hw.disp_op](uidle, enable);
 		sde_kms->catalog->uidle_cfg.perf_cntr_en = enable;
 	}
 }
@@ -708,6 +708,7 @@ void sde_core_perf_crtc_update_uidle(struct drm_crtc *crtc,
 	struct drm_crtc *tmp_crtc;
 	struct sde_kms *kms;
 	enum sde_uidle_state uidle_status = UIDLE_STATE_FAL1_FAL10;
+	struct msm_drm_private *priv;
 	u32 fps, num_crtc = 0;
 
 	if (!crtc) {
@@ -720,6 +721,10 @@ void sde_core_perf_crtc_update_uidle(struct drm_crtc *crtc,
 		SDE_ERROR("invalid kms\n");
 		return;
 	}
+
+	priv = kms->dev->dev_private;
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		return;
 
 	mutex_lock(&sde_core_perf_lock);
 
@@ -898,6 +903,7 @@ void sde_core_perf_crtc_release_bw(struct drm_crtc *crtc)
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *sde_cstate;
 	struct sde_kms *kms;
+	struct msm_drm_private *priv;
 	int i;
 
 	if (!crtc) {
@@ -910,6 +916,10 @@ void sde_core_perf_crtc_release_bw(struct drm_crtc *crtc)
 		SDE_ERROR("invalid kms\n");
 		return;
 	}
+
+	priv = kms->dev->dev_private;
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		return;
 
 	sde_crtc = to_sde_crtc(crtc);
 	sde_cstate = to_sde_crtc_state(crtc->state);
@@ -967,6 +977,8 @@ void sde_core_perf_crtc_reserve_res(struct drm_crtc *crtc, u64 reserve_rate)
 	}
 
 	priv = kms->dev->dev_private;
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		return;
 
 	kms->perf.core_clk_reserve_rate = max(kms->perf.core_clk_reserve_rate, reserve_rate);
 	kms->perf.core_clk_reserve_rate = min(kms->perf.core_clk_reserve_rate,
@@ -1110,7 +1122,11 @@ void sde_core_perf_crtc_update(struct drm_crtc *crtc, enum sde_perf_commit_state
 		SDE_ERROR("invalid kms\n");
 		return;
 	}
+
 	priv = kms->dev->dev_private;
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		return;
+
 	sde_crtc = to_sde_crtc(crtc);
 	sde_cstate = to_sde_crtc_state(crtc->state);
 	params_changed = ((commit_state == SDE_PERF_BEGIN_COMMIT)
@@ -1557,6 +1573,8 @@ int sde_core_perf_init(struct sde_core_perf *perf,
 		struct sde_power_handle *phandle,
 		char *clk_name)
 {
+	struct msm_drm_private *priv = dev->dev_private;
+
 	if (!perf || !dev || !catalog || !phandle || !clk_name) {
 		SDE_ERROR("invalid parameters\n");
 		return -EINVAL;
@@ -1572,6 +1590,12 @@ int sde_core_perf_init(struct sde_core_perf *perf,
 		perf->bw_vote_mode = DISP_RSC_MODE;
 	else
 		perf->bw_vote_mode = APPS_RSC_MODE;
+
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		perf->sys_cache_enabled = catalog->hfi_cfg.perf_sys_cache_enable;
+		perf->max_core_clk_rate = catalog->hfi_cfg.perf_max_core_clk_rate;
+		return 0;
+	}
 
 	/* core clk will be part of cesta node, when cesta is enabled */
 	perf->cesta_phandle = sde_cesta_get_phandle(DPUID(dev));

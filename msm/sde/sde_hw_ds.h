@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -46,7 +46,7 @@ struct sde_hw_ds_ops {
 	 * @op_mode : Op mode configuration
 	 * @merge_mode : Specify pipe merge mode for each DS block
 	 */
-	void (*setup_opmode)(struct sde_hw_ds *hw_ds,
+	void (*setup_opmode[MSM_DISP_OP_MAX])(struct sde_hw_ds *hw_ds,
 				u32 op_mode, u32 merge_mode);
 
 	/**
@@ -55,7 +55,7 @@ struct sde_hw_ds_ops {
 	 * @scaler_cfg     : Pointer to scaler data
 	 * @scaler_lut_cfg : Pointer to scaler lut
 	 */
-	void (*setup_scaler)(struct sde_hw_ds *hw_ds,
+	void (*setup_scaler[MSM_DISP_OP_MAX])(struct sde_hw_ds *hw_ds,
 				void *scaler_cfg,
 				void *scaler_lut_cfg);
 };

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2019, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -49,7 +50,7 @@ static void sde_hw_qdss_enable_qdss_events(struct sde_hw_qdss *hw_qdss,
 
 static void _setup_qdss_ops(struct sde_hw_qdss_ops *ops)
 {
-	ops->enable_qdss_events = sde_hw_qdss_enable_qdss_events;
+	ops->enable_qdss_events[MSM_DISP_OP_HWIO] = sde_hw_qdss_enable_qdss_events;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_qdss_init(enum sde_qdss idx,

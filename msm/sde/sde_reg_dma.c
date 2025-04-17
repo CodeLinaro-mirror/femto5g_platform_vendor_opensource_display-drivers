@@ -86,9 +86,10 @@ static void set_default_dma_ops(struct sde_hw_reg_dma *reg_dma)
 {
 	const static struct sde_hw_reg_dma_ops ops = {
 		default_check_support, default_setup_payload,
-		default_kick_off, default_reset, default_alloc_reg_dma_buf,
+		{default_kick_off, default_kick_off}, default_reset, default_alloc_reg_dma_buf,
 		default_dealloc_reg_dma, default_buf_reset_reg_dma,
-		default_last_command, default_last_command_sb,
+		{default_last_command, default_last_command},
+		{default_last_command_sb, default_last_command_sb},
 		default_dump_reg};
 	memcpy(&reg_dma->ops, &ops, sizeof(ops));
 }

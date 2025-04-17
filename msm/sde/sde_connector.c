@@ -23,6 +23,7 @@
 #include <linux/version.h>
 #include <shd_drm.h>
 #include "sde_trace.h"
+#include "hfi_connector.h"
 
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
@@ -94,6 +95,14 @@ static const struct drm_prop_enum_list e_bpp_mode[] = {
 	{MSM_DISPLAY_PIXEL_FORMAT_RGB888, "dsi_24bpp"},
 	{MSM_DISPLAY_PIXEL_FORMAT_RGB101010, "dsi_30bpp"},
 };
+
+static inline enum msm_disp_op sde_connector_get_disp_op(struct drm_connector *conn)
+{
+	if (!conn || !conn->state || !conn->state->crtc)
+		return MSM_DISP_OP_HWIO;
+
+	return sde_crtc_get_disp_op(conn->state->crtc);
+}
 
 struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn)
 {
@@ -1536,7 +1545,8 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	struct msm_display_conn_params params;
 	struct drm_encoder *drm_enc;
 	struct dsi_display *display;
-	int rc;
+	enum msm_disp_op disp_op;
+	int rc = 0;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1580,6 +1590,12 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	SDE_EVT32(connector->base.id, params.qsync_mode,
 		  params.qsync_update, rc);
 
+	disp_op = sde_connector_get_disp_op(connector);
+	if (c_conn->hal_ops.prepare_commit[disp_op]) {
+		rc = c_conn->hal_ops.prepare_commit[disp_op](connector, c_state);
+		if (rc)
+			SDE_ERROR("prepare_commit HAL op failed, rc: %d\n", rc);
+	}
 	return rc;
 }
 
@@ -1918,6 +1934,7 @@ int sde_connector_clk_get_rate_esync(struct drm_connector *connector,
 void sde_connector_destroy(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
+	enum msm_disp_op disp_op;
 
 	if (!connector) {
 		SDE_ERROR("invalid connector\n");
@@ -1955,6 +1972,10 @@ void sde_connector_destroy(struct drm_connector *connector)
 	sde_fence_deinit(c_conn->retire_fence);
 	drm_connector_cleanup(connector);
 	msm_property_destroy(&c_conn->property_info);
+
+	disp_op = sde_connector_get_disp_op(connector);
+	if (c_conn->hal_ops.destroy[disp_op])
+		c_conn->hal_ops.destroy[disp_op](c_conn);
 	kfree(c_conn);
 }
 
@@ -4233,6 +4254,12 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 		return ERR_PTR(-ENOMEM);
 	}
 
+	c_conn->conn_id = 0;
+
+	rc = hfi_connector_init(connector_type, c_conn);
+	if (rc)
+		goto error_free_conn;
+
 	memset(&display_info, 0, sizeof(display_info));
 
 	rc = drm_connector_init(dev,
@@ -4491,4 +4518,13 @@ int sde_connector_event_notify(struct drm_connector *connector, uint32_t type,
 			connector->base.id, type, val);
 
 	return ret;
+}
+
+bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
+		uint32_t property_idx)
+{
+	struct sde_connector *conn = to_sde_connector(cstate->base.connector);
+
+	return msm_property_is_dirty(&conn->property_info,
+			&cstate->property_state, property_idx);
 }

@@ -11,6 +11,7 @@
 #include <linux/platform_device.h>
 #include <linux/types.h>
 #include <linux/clk.h>
+#include "msm_drv.h"
 
 #define MAX_STRING_LEN 32
 #define MAX_DSI_CTRL 2
@@ -273,8 +274,9 @@ void dsi_display_clk_mngr_update_splash_status(void *clk_mgr, bool status);
 /**
  * dsi_display_clk_mgr_register() - Register DSI clock manager
  * @info:     Structure containing DSI clock information
+ * @disp_op:  Indicates whether to use HLOS or HFI path
  */
-void *dsi_display_clk_mngr_register(struct dsi_clk_info *info);
+void *dsi_display_clk_mngr_register(struct dsi_clk_info *info, enum msm_disp_op disp_op);
 
 /**
  * dsi_display_clk_mngr_deregister() - Deregister DSI clock manager
@@ -407,5 +409,12 @@ void dsi_clk_disable_unprepare(struct dsi_clk_link_set *clk);
  * @client:       DSI clock client pointer.
  */
 int dsi_display_dump_clk_handle_state(void *client);
+
+/**
+ * dsi_clk_mgr_detach_framework() - avoid clk framework for HFI case
+ * @client: DSI clock client pointer.
+ * @disp_op: Skip (HFI) or use (HWIO) from clock framework
+ */
+void dsi_clk_mgr_detach_framework(void *clk_mgr, enum msm_disp_op disp_op);
 
 #endif /* _DSI_CLK_H_ */

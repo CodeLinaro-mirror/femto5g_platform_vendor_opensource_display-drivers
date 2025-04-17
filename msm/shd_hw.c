@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -381,8 +381,9 @@ static void _sde_shd_flush_hw_dsc_config(struct sde_hw_ctl *ctl_ctx)
 
 	hw_ctl = container_of(ctl_ctx, struct sde_shd_hw_ctl, base);
 
-	if (hw_ctl->orig && hw_ctl->orig->ops.update_intf_cfg)
-		hw_ctl->orig->ops.update_intf_cfg(ctl_ctx, &hw_ctl->dsc_cfg, true);
+	if (hw_ctl->orig && hw_ctl->orig->ops.update_intf_cfg[hw_ctl->hw.disp_op])
+		hw_ctl->orig->ops.update_intf_cfg[hw_ctl->hw.disp_op](ctl_ctx,
+			&hw_ctl->dsc_cfg, true);
 }
 #endif
 
@@ -524,8 +525,9 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 		if (WARN_ON(stage_off < 0))
 			return;
 
-		if (hw_lm->cfg[i].dim_layer_enable) {
-			hw_lm->orig->ops.setup_dim_layer(ctx,
+		if (hw_lm->cfg[i].dim_layer_enable &&
+			hw_lm->orig->ops.setup_dim_layer[hw_lm->hw.disp_op]) {
+			hw_lm->orig->ops.setup_dim_layer[hw_lm->hw.disp_op](ctx,
 				&hw_lm->cfg[i].dim_layer);
 		} else {
 			val = SDE_REG_READ(c, LM_BLEND0_OP + stage_off);
@@ -533,8 +535,9 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 			SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
 		}
 
-		if (hw_lm->cfg[i].dirty) {
-			hw_lm->orig->ops.setup_blend_config(ctx, i,
+		if (hw_lm->cfg[i].dirty &&
+			hw_lm->orig->ops.setup_blend_config[hw_lm->hw.disp_op]) {
+			hw_lm->orig->ops.setup_blend_config[hw_lm->hw.disp_op](ctx, i,
 				hw_lm->cfg[i].fg_alpha,
 				hw_lm->cfg[i].bg_alpha,
 				hw_lm->cfg[i].blend_op);
@@ -564,8 +567,8 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx, struct sde_hw_mixer *lm_ctx[MA
 	_sde_shd_flush_hw_dsc_config(ctl_ctx);
 #endif
 
-	if (ctl_ctx->ops.trigger_flush)
-		ctl_ctx->ops.trigger_flush(ctl_ctx);
+	if (ctl_ctx->ops.trigger_flush[ctl_ctx->hw.disp_op])
+		ctl_ctx->ops.trigger_flush[ctl_ctx->hw.disp_op](ctl_ctx);
 
 	SDE_REG_WRITE(c, CTL_FLUSH_MASK, 0);
 	spin_unlock_irqrestore(&hw_ctl_lock, lock_flags);
@@ -573,21 +576,21 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx, struct sde_hw_mixer *lm_ctx[MA
 
 void sde_shd_hw_ctl_init_op(struct sde_hw_ctl *ctx)
 {
-	ctx->ops.clear_all_blendstages = _sde_shd_hw_ctl_clear_all_blendstages;
-	ctx->ops.setup_blendstage = _sde_shd_hw_ctl_setup_blendstage;
-	ctx->ops.setup_intf_cfg_v1 = _sde_shd_setup_intf_cfg_v1;
+	ctx->ops.clear_all_blendstages[MSM_DISP_OP_HWIO] = _sde_shd_hw_ctl_clear_all_blendstages;
+	ctx->ops.setup_blendstage[MSM_DISP_OP_HWIO] = _sde_shd_hw_ctl_setup_blendstage;
+	ctx->ops.setup_intf_cfg_v1[MSM_DISP_OP_HWIO] = _sde_shd_setup_intf_cfg_v1;
 #ifdef cwb_dsc
-	ctx->ops.update_intf_cfg = _sde_shd_update_cwb_dsc_cfg;
+	ctx->ops.update_intf_cfg[MSM_DISP_OP_HWIO] = _sde_shd_update_cwb_dsc_cfg;
 #endif
-	ctx->ops.set_active_pipes = _sde_shd_setup_active_pipes;
+	ctx->ops.set_active_pipes[MSM_DISP_OP_HWIO] = _sde_shd_setup_active_pipes;
 }
 
 void sde_shd_hw_lm_init_op(struct sde_hw_mixer *ctx)
 {
-	ctx->ops.setup_blend_config = _sde_shd_setup_blend_config;
-	ctx->ops.setup_dim_layer = _sde_shd_setup_dim_layer;
-	ctx->ops.setup_mixer_out = _sde_shd_setup_mixer_out;
-	ctx->ops.clear_dim_layer = _sde_shd_clear_dim_layer;
+	ctx->ops.setup_blend_config[MSM_DISP_OP_HWIO] = _sde_shd_setup_blend_config;
+	ctx->ops.setup_dim_layer[MSM_DISP_OP_HWIO] = _sde_shd_setup_dim_layer;
+	ctx->ops.setup_mixer_out[MSM_DISP_OP_HWIO] = _sde_shd_setup_mixer_out;
+	ctx->ops.clear_dim_layer[MSM_DISP_OP_HWIO] = _sde_shd_clear_dim_layer;
 }
 
 void sde_shd_hw_skip_sspp_clear(struct sde_hw_ctl *ctx, enum sde_sspp sspp, int multirect_idx)

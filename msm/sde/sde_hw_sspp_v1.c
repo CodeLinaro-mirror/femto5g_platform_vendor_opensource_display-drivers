@@ -1096,102 +1096,103 @@ void setup_layer_ops_v1(struct sde_hw_pipe *c,
 	int ret;
 
 	if (test_bit(SDE_SSPP_SRC, &features)) {
-		c->ops.setup_format = sde_hw_sspp_setup_format_v1;
-		c->ops.setup_rects = sde_hw_sspp_setup_rects_v1;
-		c->ops.setup_sourceaddress = sde_hw_sspp_setup_sourceaddress_v1;
-		c->ops.get_sourceaddress = sde_hw_sspp_get_source_addr_v1;
-		c->ops.setup_solidfill = sde_hw_sspp_setup_solidfill_v1;
-		c->ops.setup_pe = sde_hw_sspp_setup_pe_config;
-		c->ops.setup_secure_address = sde_hw_sspp_setup_secure_v1;
-		c->ops.set_src_split_order = sde_hw_sspp_set_src_split_order_v1;
+		c->ops.setup_format[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_format_v1;
+		c->ops.setup_rects[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_rects_v1;
+		c->ops.setup_sourceaddress[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_sourceaddress_v1;
+		c->ops.get_sourceaddress[MSM_DISP_OP_HWIO] = sde_hw_sspp_get_source_addr_v1;
+		c->ops.setup_solidfill[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_solidfill_v1;
+		c->ops.setup_pe[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_pe_config;
+		c->ops.setup_secure_address[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_secure_v1;
+		c->ops.set_src_split_order[MSM_DISP_OP_HWIO] = sde_hw_sspp_set_src_split_order_v1;
 	}
 
 	if (test_bit(SDE_SSPP_EXCL_RECT, &features))
-		c->ops.setup_excl_rect = _sde_hw_sspp_setup_excl_rect_v1;
+		c->ops.setup_excl_rect[MSM_DISP_OP_HWIO] = _sde_hw_sspp_setup_excl_rect_v1;
 
 	if (test_bit(SDE_PERF_SSPP_QOS, &features)) {
-		c->ops.setup_qos_lut =
+		c->ops.setup_qos_lut[MSM_DISP_OP_HWIO] =
 			sde_hw_sspp_setup_qos_lut_v1;
-		c->ops.setup_qos_ctrl = sde_hw_sspp_setup_qos_ctrl_v1;
+		c->ops.setup_qos_ctrl[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_qos_ctrl_v1;
 	}
 
 	if (test_bit(SDE_PERF_SSPP_TS_PREFILL, &perf_features))
-		c->ops.setup_ts_prefill = sde_hw_sspp_setup_ts_prefill_v1;
+		c->ops.setup_ts_prefill[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_ts_prefill_v1;
 
 	if (test_bit(SDE_SSPP_CSC, &features) ||
 		test_bit(SDE_SSPP_CSC_10BIT, &features))
-		c->ops.setup_csc = sde_hw_sspp_setup_csc;
+		c->ops.setup_csc[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_csc;
 
 	if (test_bit(SDE_SSPP_DGM_CSC, &features))
-		c->ops.setup_dgm_csc = sde_hw_sspp_setup_dgm_csc;
+		c->ops.setup_dgm_csc[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_dgm_csc;
 
 	if (test_bit(SDE_SSPP_SCALER_QSEED2, &features)) {
-		c->ops.setup_sharpening = sde_hw_sspp_setup_sharpening;
-		c->ops.setup_scaler = sde_hw_sspp_setup_scaler;
+		c->ops.setup_sharpening[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_sharpening;
+		c->ops.setup_scaler[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_scaler;
 	}
 
 	if (sde_hw_sspp_multirect_enabled(c->cap))
-		c->ops.update_multirect = sde_hw_sspp_update_multirect_v1;
+		c->ops.update_multirect[MSM_DISP_OP_HWIO] = sde_hw_sspp_update_multirect_v1;
 
 	if (test_bit(SDE_SSPP_CAC_V2, &features)) {
-		c->ops.setup_cac_ctrl = sde_hw_sspp_setup_cac_v1;
-		c->ops.setup_img_size = sde_hw_sspp_setup_img_size_v1;
+		c->ops.setup_cac_ctrl[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_cac_v1;
+		c->ops.setup_img_size[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_img_size_v1;
 	}
 
 	if (test_bit(SDE_SSPP_SCALER_QSEED3, &features) ||
 			test_bit(SDE_SSPP_SCALER_QSEED3LITE, &features)) {
-		c->ops.setup_scaler = sde_hw_sspp_setup_scaler3;
-		c->ops.setup_scaler_lut = is_qseed3_rev_qseed3lite(
+		c->ops.setup_scaler[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_scaler3;
+		c->ops.setup_scaler_lut[MSM_DISP_OP_HWIO] = is_qseed3_rev_qseed3lite(
 				c->catalog) ? reg_dmav1_setup_scaler3lite_lut
 				: reg_dmav1_setup_scaler3_lut;
 		ret = reg_dmav1_init_sspp_op_v4(is_qseed3_rev_qseed3lite(
 					c->catalog) ? SDE_SSPP_SCALER_QSEED3LITE
 					: SDE_SSPP_SCALER_QSEED3, c);
 		if (!ret)
-			c->ops.setup_scaler = reg_dmav1_setup_vig_qseed3;
+			c->ops.setup_scaler[MSM_DISP_OP_HWIO] = reg_dmav1_setup_vig_qseed3;
 		else
-			c->ops.setup_scaler_cac =
+			c->ops.setup_scaler_cac[MSM_DISP_OP_HWIO] =
 				test_bit(SDE_SSPP_CAC_V2, &features) ?
 				sde_hw_sspp_setup_scaler_cac : NULL;
 	}
 
 	if (test_bit(SDE_SSPP_MULTIRECT_ERROR, &features)) {
-		c->ops.get_meta_error = sde_hw_sspp_get_meta_error_v1;
-		c->ops.clear_meta_error = sde_hw_sspp_clear_meta_error_v1;
+		c->ops.get_meta_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_get_meta_error_v1;
+		c->ops.clear_meta_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_clear_meta_error_v1;
 
-		c->ops.get_ubwc_error = sde_hw_sspp_get_ubwc_error_v3;
-		c->ops.clear_ubwc_error = sde_hw_sspp_clear_ubwc_error_v3;
+		c->ops.get_ubwc_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_get_ubwc_error_v3;
+		c->ops.clear_ubwc_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_clear_ubwc_error_v3;
 	} else {
-		c->ops.get_ubwc_error = sde_hw_sspp_get_ubwc_error_v2;
-		c->ops.clear_ubwc_error = sde_hw_sspp_clear_ubwc_error_v2;
+		c->ops.get_ubwc_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_get_ubwc_error_v2;
+		c->ops.clear_ubwc_error[MSM_DISP_OP_HWIO] = sde_hw_sspp_clear_ubwc_error_v2;
 	}
 
 	if (test_bit(SDE_SSPP_PREDOWNSCALE, &features))
-		c->ops.setup_pre_downscale = sde_hw_sspp_setup_pre_downscale_v1;
+		c->ops.setup_pre_downscale[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_pre_downscale_v1;
 
 	if (test_bit(SDE_PERF_SSPP_SYS_CACHE, &perf_features))
-		c->ops.setup_sys_cache = sde_hw_sspp_setup_sys_cache_v1;
+		c->ops.setup_sys_cache[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_sys_cache_v1;
 
 	if (test_bit(SDE_PERF_SSPP_CDP, &perf_features))
-		c->ops.setup_cdp = sde_hw_sspp_setup_cdp_v1;
+		c->ops.setup_cdp[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_cdp_v1;
 
 	if (test_bit(SDE_PERF_SSPP_UIDLE, &perf_features)) {
-		c->ops.setup_uidle = sde_hw_sspp_setup_uidle_v1;
+		c->ops.setup_uidle[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_uidle_v1;
 		if (test_bit(SDE_PERF_SSPP_UIDLE_FILL_LVL_SCALE, &perf_features))
-			c->ops.setup_uidle_fill_scale = sde_hw_sspp_setup_uidle_fill_scale_v1;
+			c->ops.setup_uidle_fill_scale[MSM_DISP_OP_HWIO] =
+					sde_hw_sspp_setup_uidle_fill_scale_v1;
 	}
 
 	setup_layer_ops_colorproc(c, features, is_virtual_pipe);
 
 	if (test_bit(SDE_SSPP_DGM_INVERSE_PMA, &features))
-		c->ops.setup_inverse_pma = sde_hw_sspp_setup_dgm_inverse_pma;
+		c->ops.setup_inverse_pma[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_dgm_inverse_pma;
 	else if (test_bit(SDE_SSPP_INVERSE_PMA, &features))
-		c->ops.setup_inverse_pma = sde_hw_sspp_setup_inverse_pma;
+		c->ops.setup_inverse_pma[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_inverse_pma;
 
 	if (test_bit(SDE_SSPP_UBWC_STATS, &features)) {
-		c->ops.set_ubwc_stats_roi = sde_hw_sspp_ubwc_stats_set_roi_v1;
-		c->ops.get_ubwc_stats_data = sde_hw_sspp_ubwc_stats_get_data_v1;
+		c->ops.set_ubwc_stats_roi[MSM_DISP_OP_HWIO] = sde_hw_sspp_ubwc_stats_set_roi_v1;
+		c->ops.get_ubwc_stats_data[MSM_DISP_OP_HWIO] = sde_hw_sspp_ubwc_stats_get_data_v1;
 	}
 	if (test_bit(SDE_SSPP_LINE_INSERTION, &features))
-		c->ops.setup_line_insertion = sde_hw_sspp_setup_line_insertion_v1;
+		c->ops.setup_line_insertion[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_line_insertion_v1;
 }

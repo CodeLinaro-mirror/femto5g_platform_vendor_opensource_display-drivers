@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -213,6 +213,7 @@ struct dsi_ctrl_interrupts {
  * @drm_dev:             Pointer to DRM device.
  * @version:             DSI controller version.
  * @hw:                  DSI controller hardware object.
+ * @disp_op:              Display HW Control
  * @current_state:       Current driver and hardware state.
  * @clk_cb:		 Callback for DSI clock control.
  * @idle_pc:             Caching the power-collapse state of DPU.
@@ -283,6 +284,8 @@ struct dsi_ctrl {
 
 	enum dsi_ctrl_version version;
 	struct dsi_ctrl_hw hw;
+
+	enum msm_disp_op disp_op;
 
 	/* Current state */
 	struct dsi_ctrl_state_info current_state;

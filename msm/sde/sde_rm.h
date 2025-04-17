@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -184,6 +184,7 @@ struct sde_rm_topology_def {
  * @rsvp_next_seq: sequence number for next reservation for debugging purposes
  * @rm_lock: resource manager mutex
  * @avail_res: Pointer with curr available resources
+ * @disp_op: enum describes display operation mode(HWIO, HFI or HYP)
  */
 struct sde_rm {
 	struct drm_device *dev;
@@ -195,6 +196,7 @@ struct sde_rm {
 	struct mutex rm_lock;
 	const struct sde_rm_topology_def *topology_tbl;
 	struct msm_resource_caps_info avail_res;
+	enum msm_disp_op disp_op;
 };
 
 /**
@@ -237,6 +239,13 @@ struct sde_rm_hw_request {
  */
 enum sde_rm_topology_name sde_rm_get_topology_name(struct sde_rm *rm,
 		struct msm_display_topology topology);
+
+/**
+ * sde_rm_set_disp_op - set display control op index for all the hw blocks accessible through rm
+ * @rm: SDE resource manager handle
+ * @disp_op_idx: value of display control op index after transition
+ */
+void sde_rm_set_disp_op(struct sde_rm *rm, enum msm_disp_op disp_op_idx);
 
 /**
  * sde_rm_debugfs_init - setup debugfs node for rm module
