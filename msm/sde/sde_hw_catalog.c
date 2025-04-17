@@ -188,7 +188,6 @@ enum {
 	SDE_HW_VERSION,
 	SDE_HW_FENCE_VERSION,
 	SDE_HW_UBWC_VERSION,
-	SDE_HW_QULTIVATE_VERSION,
 	SDE_HW_PROP_MAX,
 };
 
@@ -642,7 +641,6 @@ static struct sde_prop_type sde_hw_prop[] = {
 	{SDE_HW_VERSION, "qcom,sde-hw-version", false, PROP_TYPE_U32},
 	{SDE_HW_FENCE_VERSION, "qcom,hw-fence-sw-version", false, PROP_TYPE_U32},
 	{SDE_HW_UBWC_VERSION, "qcom,sde-ubwc-version", false, PROP_TYPE_U32},
-	{SDE_HW_QULTIVATE_VERSION, "qcom,sde-qultiv-sw-version", false, PROP_TYPE_U32},
 };
 
 static struct sde_prop_type sde_prop[] = {
@@ -1543,10 +1541,9 @@ static int _add_to_irq_offset_list(struct sde_mdss_cfg *sde_cfg,
 }
 
 /* VIG color management (VCM) feature setup */
-static void _sde_sspp_setup_vcm(struct sde_sspp_cfg *sspp,
+static bool _sde_sspp_setup_vcm(struct sde_sspp_cfg *sspp,
 		const struct sde_dt_props *props, const char *name,
-		struct sde_pp_blk *blk, u32 type, u32 prop, bool versioned,
-		u32 *num_blks)
+		struct sde_pp_blk *blk, u32 type, u32 prop, bool versioned)
 {
 	bool exists = props->exists[prop];
 
@@ -1561,11 +1558,11 @@ static void _sde_sspp_setup_vcm(struct sde_sspp_cfg *sspp,
 		if (versioned)
 			blk->version = PROP_VALUE_ACCESS(props->values,
 					prop, 1);
-		if (num_blks)
-			*num_blks += 1;
 	} else {
 		blk->id = 0;
 	}
+
+	return exists;
 }
 
 static void _sde_sspp_setup_vigs_pp(struct sde_dt_props *props,
@@ -1577,25 +1574,25 @@ static void _sde_sspp_setup_vigs_pp(struct sde_dt_props *props,
 
 	if (sde_cfg->csc_type == SDE_SSPP_CSC)
 		_sde_sspp_setup_vcm(sspp, props, "sspp_csc", &sblk->csc_blk,
-				SDE_SSPP_CSC, VIG_CSC_OFF, false, NULL);
+				SDE_SSPP_CSC, VIG_CSC_OFF, false);
 	else if (sde_cfg->csc_type == SDE_SSPP_CSC_10BIT)
 		_sde_sspp_setup_vcm(sspp, props, "sspp_csc", &sblk->csc_blk,
-				SDE_SSPP_CSC_10BIT, VIG_CSC_OFF, false, NULL);
+				SDE_SSPP_CSC_10BIT, VIG_CSC_OFF, false);
 
 	_sde_sspp_setup_vcm(sspp, props, "sspp_hsic", &sblk->hsic_blk,
-			SDE_SSPP_HSIC, VIG_HSIC_PROP, true, NULL);
+			SDE_SSPP_HSIC, VIG_HSIC_PROP, true);
 
 	_sde_sspp_setup_vcm(sspp, props, "sspp_memcolor", &sblk->memcolor_blk,
-			SDE_SSPP_MEMCOLOR, VIG_MEMCOLOR_PROP, true, NULL);
+			SDE_SSPP_MEMCOLOR, VIG_MEMCOLOR_PROP, true);
 
 	_sde_sspp_setup_vcm(sspp, props, "sspp_pcc", &sblk->pcc_blk,
-			SDE_SSPP_PCC, VIG_PCC_PROP, true, NULL);
+			SDE_SSPP_PCC, VIG_PCC_PROP, true);
 
 	_sde_sspp_setup_vcm(sspp, props, "sspp_vig_gamut", &sblk->gamut_blk,
-			SDE_SSPP_VIG_GAMUT, VIG_GAMUT_PROP, true, NULL);
+			SDE_SSPP_VIG_GAMUT, VIG_GAMUT_PROP, true);
 
 	_sde_sspp_setup_vcm(sspp, props, "sspp_vig_igc", &sblk->igc_blk[0],
-			SDE_SSPP_VIG_IGC, VIG_IGC_PROP, true, NULL);
+			SDE_SSPP_VIG_IGC, VIG_IGC_PROP, true);
 
 	if (props->exists[VIG_INVERSE_PMA]) {
 		set_bit(SDE_SSPP_INVERSE_PMA, &sspp->features);
@@ -1612,14 +1609,10 @@ static int _sde_sspp_setup_vigs(struct device_node *np,
 	struct device_node *snp = NULL;
 	int vig_count = 0, vcm_count = 0;
 	const char *type;
-	struct sde_qultivate_config_v1 *config_v1 = NULL;
 
 	snp = of_get_child_by_name(np, sspp_prop[SSPP_VIG_BLOCKS].prop_name);
 	if (!snp)
 		return 0;
-
-	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV1)
-		config_v1 = sde_cfg->qultivate_cfg;
 
 	/* Assume sub nodes are in rect order */
 	vcm_count = of_get_child_count(snp);
@@ -1669,8 +1662,7 @@ static int _sde_sspp_setup_vigs(struct device_node *np,
 
 		of_property_read_string_index(np,
 				sspp_prop[SSPP_TYPE].prop_name, i, &type);
-		if (strcmp(type, "vig") ||
-			(config_v1 && config_v1->enabled && (vig_count >= config_v1->vig_count)))
+		if (strcmp(type, "vig"))
 			continue;
 
 		sblk->maxlinewidth = sde_cfg->vig_sspp_linewidth;
@@ -1710,62 +1702,68 @@ static int _sde_sspp_setup_vigs(struct device_node *np,
 			if (!props[j])
 				continue;
 
-			_sde_sspp_setup_vcm(sspp, props[j],
+			if (_sde_sspp_setup_vcm(sspp, props[j],
 					"sspp_vig_fp16_igc",
 					&sblk->fp16_igc_blk[j],
 					SDE_SSPP_FP16_IGC, VIG_FP16_IGC_PROP,
-					true, &sblk->num_fp16_igc_blk);
+					true))
+				sblk->num_fp16_igc_blk += 1;
 
-			_sde_sspp_setup_vcm(sspp, props[j],
+			if (_sde_sspp_setup_vcm(sspp, props[j],
 					"sspp_vig_fp16_gc",
 					&sblk->fp16_gc_blk[j],
 					SDE_SSPP_FP16_GC, VIG_FP16_GC_PROP,
-					true, &sblk->num_fp16_gc_blk);
+					true))
+				sblk->num_fp16_gc_blk += 1;
 
-			_sde_sspp_setup_vcm(sspp, props[j],
+			if (_sde_sspp_setup_vcm(sspp, props[j],
 					"sspp_vig_fp16_csc",
 					&sblk->fp16_csc_blk[j],
 					SDE_SSPP_FP16_CSC, VIG_FP16_CSC_PROP,
-					true, &sblk->num_fp16_csc_blk);
+					true))
+				sblk->num_fp16_csc_blk += 1;
 
-			_sde_sspp_setup_vcm(sspp, props[j],
+			if (_sde_sspp_setup_vcm(sspp, props[j],
 					"sspp_vig_fp16_unmult",
 					&sblk->fp16_unmult_blk[j],
 					SDE_SSPP_FP16_UNMULT,
-					VIG_FP16_UNMULT_PROP, true,
-					&sblk->num_fp16_unmult_blk);
+					VIG_FP16_UNMULT_PROP, true))
+				sblk->num_fp16_unmult_blk += 1;
 
-			_sde_sspp_setup_vcm(sspp, props[j],
+			if (_sde_sspp_setup_vcm(sspp, props[j],
 					"sspp_vig_ucsc_igc",
 					&sblk->ucsc_igc_blk[j],
 					SDE_SSPP_UCSC_IGC, VIG_UCSC_IGC_PROP,
-					true, &sblk->num_ucsc_igc_blk);
+					true))
+				sblk->num_ucsc_igc_blk += 1;
 
-			_sde_sspp_setup_vcm(sspp, props[j],
+			if (_sde_sspp_setup_vcm(sspp, props[j],
 					"sspp_vig_ucsc_gc",
 					&sblk->ucsc_gc_blk[j],
 					SDE_SSPP_UCSC_GC, VIG_UCSC_GC_PROP,
-					true, &sblk->num_ucsc_gc_blk);
+					true))
+				sblk->num_ucsc_gc_blk += 1;
 
-			_sde_sspp_setup_vcm(sspp, props[j],
+			if (_sde_sspp_setup_vcm(sspp, props[j],
 					"sspp_vig_ucsc_csc",
 					&sblk->ucsc_csc_blk[j],
 					SDE_SSPP_UCSC_CSC, VIG_UCSC_CSC_PROP,
-					true, &sblk->num_ucsc_csc_blk);
+					true))
+				sblk->num_ucsc_csc_blk += 1;
 
-			_sde_sspp_setup_vcm(sspp, props[j],
+			if (_sde_sspp_setup_vcm(sspp, props[j],
 					"sspp_vig_ucsc_unmult",
 					&sblk->ucsc_unmult_blk[j],
 					SDE_SSPP_UCSC_UNMULT,
-					VIG_UCSC_UNMULT_PROP, true,
-					&sblk->num_ucsc_unmult_blk);
+					VIG_UCSC_UNMULT_PROP, true))
+				sblk->num_ucsc_unmult_blk += 1;
 
-			_sde_sspp_setup_vcm(sspp, props[j],
+			if (_sde_sspp_setup_vcm(sspp, props[j],
 					"sspp_vig_ucsc_alpha_dither",
 					&sblk->ucsc_alpha_dither_blk[j],
 					SDE_SSPP_UCSC_ALPHA_DITHER,
-					VIG_UCSC_ALPHA_DITHER_PROP, true,
-					&sblk->num_ucsc_alpha_dither_blk);
+					VIG_UCSC_ALPHA_DITHER_PROP, true))
+				sblk->num_ucsc_alpha_dither_blk += 1;
 		}
 
 		/* PP + scaling only supported on VIG rect 0 */
@@ -1834,9 +1832,6 @@ static void _sde_sspp_setup_dgm(struct sde_sspp_cfg *sspp,
 		const struct sde_dt_props *props, const char *name,
 		struct sde_pp_blk *blk, u32 type, u32 prop, bool versioned)
 {
-	if (!props->exists[prop])
-		return;
-
 	blk->id = type;
 	blk->len = 0;
 	set_bit(type, &sspp->features);
@@ -1853,14 +1848,10 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 {
 	int i = 0, j;
 	int rc = 0, dma_count = 0, dgm_count = 0;
-	struct sde_qultivate_config_v1 *config_v1 = NULL;
 	struct sde_dt_props *props[SSPP_SUBBLK_COUNT_MAX] = {NULL, NULL};
 	struct sde_dt_props *props_tmp = NULL;
 	struct device_node *snp = NULL;
 	const char *type;
-
-	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV1)
-		config_v1 = sde_cfg->qultivate_cfg;
 
 	snp = of_get_child_by_name(np, sspp_prop[SSPP_DMA_BLOCKS].prop_name);
 	if (snp) {
@@ -1907,8 +1898,7 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 
 		of_property_read_string_index(np,
 				sspp_prop[SSPP_TYPE].prop_name, i, &type);
-		if (strcmp(type, "dma") ||
-			(config_v1 && config_v1->enabled && (dma_count >= config_v1->dma_count)))
+		if (strcmp(type, "dma"))
 			continue;
 
 		sblk->maxupscale = SSPP_UNITY_SCALE;
@@ -1941,13 +1931,15 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 			if (props[j] == NULL)
 				continue;
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-				"sspp_dma_igc", &sblk->igc_blk[j],
-				SDE_SSPP_DMA_IGC, DMA_IGC_PROP, true);
+			if (props[j]->exists[DMA_IGC_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+					"sspp_dma_igc", &sblk->igc_blk[j],
+					SDE_SSPP_DMA_IGC, DMA_IGC_PROP, true);
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-				"sspp_dma_gc", &sblk->gc_blk[j],
-				SDE_SSPP_DMA_GC, DMA_GC_PROP, true);
+			if (props[j]->exists[DMA_GC_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+					"sspp_dma_gc", &sblk->gc_blk[j],
+					SDE_SSPP_DMA_GC, DMA_GC_PROP, true);
 
 			if (PROP_VALUE_ACCESS(props[j]->values,
 					DMA_DGM_INVERSE_PMA, 0)) {
@@ -1959,63 +1951,73 @@ static int _sde_sspp_setup_dmas(struct device_node *np,
 					sblk->unmult_offset[j] = SDE_DGM_UNMULT + j*0x1000;
 			}
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-				"sspp_dgm_csc", &sblk->dgm_csc_blk[j],
-				SDE_SSPP_DGM_CSC, DMA_CSC_OFF, false);
+			if (props[j]->exists[DMA_CSC_OFF])
+				_sde_sspp_setup_dgm(sspp, props[j],
+					"sspp_dgm_csc", &sblk->dgm_csc_blk[j],
+					SDE_SSPP_DGM_CSC, DMA_CSC_OFF, false);
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-					"sspp_dma_fp16_igc",
-					&sblk->fp16_igc_blk[j],
-					SDE_SSPP_FP16_IGC,
-					DMA_FP16_IGC_PROP, true);
+			if (props[j]->exists[DMA_FP16_IGC_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+						"sspp_dma_fp16_igc",
+						&sblk->fp16_igc_blk[j],
+						SDE_SSPP_FP16_IGC,
+						DMA_FP16_IGC_PROP, true);
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-					"sspp_dma_fp16_gc",
-					&sblk->fp16_gc_blk[j],
-					SDE_SSPP_FP16_GC,
-					DMA_FP16_GC_PROP, true);
+			if (props[j]->exists[DMA_FP16_GC_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+						"sspp_dma_fp16_gc",
+						&sblk->fp16_gc_blk[j],
+						SDE_SSPP_FP16_GC,
+						DMA_FP16_GC_PROP, true);
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-					"sspp_dma_fp16_csc",
-					&sblk->fp16_csc_blk[j],
-					SDE_SSPP_FP16_CSC,
-					DMA_FP16_CSC_PROP, true);
+			if (props[j]->exists[DMA_FP16_CSC_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+						"sspp_dma_fp16_csc",
+						&sblk->fp16_csc_blk[j],
+						SDE_SSPP_FP16_CSC,
+						DMA_FP16_CSC_PROP, true);
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-					"sspp_dma_fp16_unmult",
-					&sblk->fp16_unmult_blk[j],
-					SDE_SSPP_FP16_UNMULT,
-					DMA_FP16_UNMULT_PROP, true);
+			if (props[j]->exists[DMA_FP16_UNMULT_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+						"sspp_dma_fp16_unmult",
+						&sblk->fp16_unmult_blk[j],
+						SDE_SSPP_FP16_UNMULT,
+						DMA_FP16_UNMULT_PROP, true);
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-					"sspp_dma_ucsc_igc",
-					&sblk->ucsc_igc_blk[j],
-					SDE_SSPP_UCSC_IGC,
-					DMA_UCSC_IGC_PROP, true);
+			if (props[j]->exists[DMA_UCSC_IGC_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+						"sspp_dma_ucsc_igc",
+						&sblk->ucsc_igc_blk[j],
+						SDE_SSPP_UCSC_IGC,
+						DMA_UCSC_IGC_PROP, true);
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-					"sspp_dma_ucsc_gc",
-					&sblk->ucsc_gc_blk[j],
-					SDE_SSPP_UCSC_GC,
-					DMA_UCSC_GC_PROP, true);
+			if (props[j]->exists[DMA_UCSC_GC_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+						"sspp_dma_ucsc_gc",
+						&sblk->ucsc_gc_blk[j],
+						SDE_SSPP_UCSC_GC,
+						DMA_UCSC_GC_PROP, true);
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-					"sspp_dma_ucsc_csc",
-					&sblk->ucsc_csc_blk[j],
-					SDE_SSPP_UCSC_CSC,
-					DMA_UCSC_CSC_PROP, true);
+			if (props[j]->exists[DMA_UCSC_CSC_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+						"sspp_dma_ucsc_csc",
+						&sblk->ucsc_csc_blk[j],
+						SDE_SSPP_UCSC_CSC,
+						DMA_UCSC_CSC_PROP, true);
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-					"sspp_dma_ucsc_unmult",
-					&sblk->ucsc_unmult_blk[j],
-					SDE_SSPP_UCSC_UNMULT,
-					DMA_UCSC_UNMULT_PROP, true);
+			if (props[j]->exists[DMA_UCSC_UNMULT_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+						"sspp_dma_ucsc_unmult",
+						&sblk->ucsc_unmult_blk[j],
+						SDE_SSPP_UCSC_UNMULT,
+						DMA_UCSC_UNMULT_PROP, true);
 
-			_sde_sspp_setup_dgm(sspp, props[j],
-					"sspp_dma_ucsc_alpha_dither",
-					&sblk->ucsc_alpha_dither_blk[j],
-					SDE_SSPP_UCSC_ALPHA_DITHER,
-					DMA_UCSC_ALPHA_DITHER_PROP, true);
+			if (props[j]->exists[DMA_UCSC_ALPHA_DITHER_PROP])
+				_sde_sspp_setup_dgm(sspp, props[j],
+						"sspp_dma_ucsc_alpha_dither",
+						&sblk->ucsc_alpha_dither_blk[j],
+						SDE_SSPP_UCSC_ALPHA_DITHER,
+						DMA_UCSC_ALPHA_DITHER_PROP, true);
 		}
 	}
 
@@ -2028,100 +2030,98 @@ end:
 }
 
 static void sde_sspp_set_features(struct sde_mdss_cfg *sde_cfg,
-		const struct sde_dt_props *props, int sspp_index)
+		const struct sde_dt_props *props)
 {
-	struct sde_sspp_cfg *sspp = sde_cfg->sspp + sspp_index;
-	struct sde_sspp_sub_blks *sblk = sspp->sblk;
+	int i;
 
-	sblk->maxlinewidth = sde_cfg->max_sspp_linewidth;
+	for (i = 0; i < sde_cfg->sspp_count; ++i) {
+		struct sde_sspp_cfg *sspp = sde_cfg->sspp + i;
+		struct sde_sspp_sub_blks *sblk = sspp->sblk;
 
-	if (sde_cfg->has_line_insertion)
-		set_bit(SDE_SSPP_LINE_INSERTION, &sspp->features);
-	sblk->smart_dma_priority =
-		PROP_VALUE_ACCESS(props->values, SSPP_SMART_DMA, sspp_index);
-	if (sblk->smart_dma_priority && sde_cfg->smart_dma_rev)
-		set_bit(sde_cfg->smart_dma_rev, &sspp->features);
+		sblk->maxlinewidth = sde_cfg->max_sspp_linewidth;
 
-	sblk->src_blk.id = SDE_SSPP_SRC;
-	set_bit(SDE_SSPP_SRC, &sspp->features);
+		if (sde_cfg->has_line_insertion)
+			set_bit(SDE_SSPP_LINE_INSERTION, &sspp->features);
+		sblk->smart_dma_priority =
+			PROP_VALUE_ACCESS(props->values, SSPP_SMART_DMA, i);
+		if (sblk->smart_dma_priority && sde_cfg->smart_dma_rev)
+			set_bit(sde_cfg->smart_dma_rev, &sspp->features);
 
-	if (test_bit(SDE_FEATURE_CDP, sde_cfg->features))
-		set_bit(SDE_PERF_SSPP_CDP, &sspp->perf_features);
+		sblk->src_blk.id = SDE_SSPP_SRC;
+		set_bit(SDE_SSPP_SRC, &sspp->features);
 
-	if (sde_cfg->ts_prefill_rev == 1) {
-		set_bit(SDE_PERF_SSPP_TS_PREFILL, &sspp->perf_features);
-	} else if (sde_cfg->ts_prefill_rev == 2) {
-		set_bit(SDE_PERF_SSPP_TS_PREFILL, &sspp->perf_features);
-		set_bit(SDE_PERF_SSPP_TS_PREFILL_REC1,
-				&sspp->perf_features);
+		if (test_bit(SDE_FEATURE_CDP, sde_cfg->features))
+			set_bit(SDE_PERF_SSPP_CDP, &sspp->perf_features);
+
+		if (sde_cfg->ts_prefill_rev == 1) {
+			set_bit(SDE_PERF_SSPP_TS_PREFILL, &sspp->perf_features);
+		} else if (sde_cfg->ts_prefill_rev == 2) {
+			set_bit(SDE_PERF_SSPP_TS_PREFILL, &sspp->perf_features);
+			set_bit(SDE_PERF_SSPP_TS_PREFILL_REC1,
+					&sspp->perf_features);
+		}
+
+		if (sde_cfg->uidle_cfg.uidle_rev) {
+			set_bit(SDE_PERF_SSPP_UIDLE, &sspp->perf_features);
+			if (sde_cfg->uidle_cfg.uidle_rev >= SDE_UIDLE_VERSION_1_0_3)
+				set_bit(SDE_PERF_SSPP_UIDLE_FILL_LVL_SCALE, &sspp->perf_features);
+		}
+
+		if (test_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map))
+			set_bit(SDE_PERF_SSPP_SYS_CACHE, &sspp->perf_features);
+
+		if (test_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features))
+			set_bit(SDE_SSPP_MULTIRECT_ERROR, &sspp->features);
+
+		if (test_bit(SDE_FEATURE_DECIMATION, sde_cfg->features)) {
+			sblk->maxhdeciexp = MAX_HORZ_DECIMATION;
+			sblk->maxvdeciexp = MAX_VERT_DECIMATION;
+		} else {
+			sblk->maxhdeciexp = 0;
+			sblk->maxvdeciexp = 0;
+		}
+
+		sblk->pixel_ram_size = DEFAULT_PIXEL_RAM_SIZE;
+
+		if (PROP_VALUE_ACCESS(props->values, SSPP_EXCL_RECT, i) == 1)
+			set_bit(SDE_SSPP_EXCL_RECT, &sspp->features);
+
+		if (props->exists[SSPP_MAX_PER_PIPE_BW])
+			sblk->max_per_pipe_bw = PROP_VALUE_ACCESS(props->values,
+					SSPP_MAX_PER_PIPE_BW, i);
+		else
+			sblk->max_per_pipe_bw = DEFAULT_MAX_PER_PIPE_BW;
+
+		if (props->exists[SSPP_MAX_PER_PIPE_BW_HIGH])
+			sblk->max_per_pipe_bw_high =
+				PROP_VALUE_ACCESS(props->values,
+				SSPP_MAX_PER_PIPE_BW_HIGH, i);
+		else
+			sblk->max_per_pipe_bw_high = sblk->max_per_pipe_bw;
+
+		if (test_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features))
+			set_bit(SDE_SSPP_UBWC_STATS, &sspp->features);
+
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_900))
+			set_bit(SDE_SSPP_SCALER_DE_LPF_BLEND, &sspp->features);
+
+		if (sde_cfg->qseed_hw_rev >= QSEED_HW_VERSION_3_5) {
+			set_bit(SDE_SSPP_SCALER_QSEED_EBS, &sspp->features);
+			set_bit(SDE_SSPP_SCALER_QSEED_ADE, &sspp->features);
+		}
+
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_D00))
+			set_bit(SDE_SSPP_REC_SWI_SEPARATION, &sspp->features);
 	}
-
-	if (sde_cfg->uidle_cfg.uidle_rev) {
-		set_bit(SDE_PERF_SSPP_UIDLE, &sspp->perf_features);
-		if (sde_cfg->uidle_cfg.uidle_rev >= SDE_UIDLE_VERSION_1_0_3)
-			set_bit(SDE_PERF_SSPP_UIDLE_FILL_LVL_SCALE, &sspp->perf_features);
-	}
-
-	if (test_bit(SDE_SYS_CACHE_DISP, sde_cfg->sde_sys_cache_type_map))
-		set_bit(SDE_PERF_SSPP_SYS_CACHE, &sspp->perf_features);
-
-	if (test_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features))
-		set_bit(SDE_SSPP_MULTIRECT_ERROR, &sspp->features);
-
-	if (test_bit(SDE_FEATURE_DECIMATION, sde_cfg->features)) {
-		sblk->maxhdeciexp = MAX_HORZ_DECIMATION;
-		sblk->maxvdeciexp = MAX_VERT_DECIMATION;
-	} else {
-		sblk->maxhdeciexp = 0;
-		sblk->maxvdeciexp = 0;
-	}
-
-	sblk->pixel_ram_size = DEFAULT_PIXEL_RAM_SIZE;
-
-	if (PROP_VALUE_ACCESS(props->values, SSPP_EXCL_RECT, sspp_index) == 1)
-		set_bit(SDE_SSPP_EXCL_RECT, &sspp->features);
-
-	if (props->exists[SSPP_MAX_PER_PIPE_BW])
-		sblk->max_per_pipe_bw = PROP_VALUE_ACCESS(props->values,
-				SSPP_MAX_PER_PIPE_BW, sspp_index);
-	else
-		sblk->max_per_pipe_bw = DEFAULT_MAX_PER_PIPE_BW;
-
-	if (props->exists[SSPP_MAX_PER_PIPE_BW_HIGH])
-		sblk->max_per_pipe_bw_high =
-			PROP_VALUE_ACCESS(props->values,
-			SSPP_MAX_PER_PIPE_BW_HIGH, sspp_index);
-	else
-		sblk->max_per_pipe_bw_high = sblk->max_per_pipe_bw;
-
-	if (test_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features))
-		set_bit(SDE_SSPP_UBWC_STATS, &sspp->features);
-
-	if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_900))
-		set_bit(SDE_SSPP_SCALER_DE_LPF_BLEND, &sspp->features);
-
-	if (sde_cfg->qseed_hw_rev >= QSEED_HW_VERSION_3_5) {
-		set_bit(SDE_SSPP_SCALER_QSEED_EBS, &sspp->features);
-		set_bit(SDE_SSPP_SCALER_QSEED_ADE, &sspp->features);
-	}
-
-	if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_D00))
-		set_bit(SDE_SSPP_REC_SWI_SEPARATION, &sspp->features);
 }
 
 static int _sde_sspp_setup_cmn(struct device_node *np,
 		struct sde_mdss_cfg *sde_cfg)
 {
-	const char *type;
 	int rc = 0, off_count, i, j, k;
-	int dma_count = 0, vig_count = 0;
 	struct sde_dt_props *props;
 	struct sde_sspp_cfg *sspp;
 	struct sde_sspp_sub_blks *sblk;
-	struct sde_qultivate_config_v1 *config_v1 = NULL;
-
-	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV1)
-		config_v1 = sde_cfg->qultivate_cfg;
 
 	props = sde_get_dt_props(np, SSPP_PROP_MAX, sspp_prop,
 			ARRAY_SIZE(sspp_prop), &off_count);
@@ -2147,25 +2147,9 @@ static int _sde_sspp_setup_cmn(struct device_node *np,
 		sspp->sblk = sblk;
 	}
 
+	sde_sspp_set_features(sde_cfg, props);
+
 	for (i = 0; i < off_count; i++) {
-
-		/* only parse limited pipes when qultiva fuse enabled*/
-		of_property_read_string_index(np,
-				sspp_prop[SSPP_TYPE].prop_name, i, &type);
-		if (!strcmp(type, "vig")) {
-			if (config_v1 && config_v1->enabled && (vig_count >= config_v1->vig_count))
-				continue;
-			else
-				vig_count++;
-		} else if (!strcmp(type, "dma")) {
-			if (config_v1 && config_v1->enabled && (dma_count >= config_v1->dma_count))
-				continue;
-			else
-				dma_count++;
-		}
-
-		sde_sspp_set_features(sde_cfg, props, i);
-
 		sspp = sde_cfg->sspp + i;
 		sblk = sspp->sblk;
 
@@ -3549,35 +3533,6 @@ static int sde_dspp_parse_dt(struct device_node *np,
 	rc = _sde_ai_scaler_parse_dt(np, sde_cfg);
 	if (rc)
 		goto end;
-end:
-	return rc;
-}
-
-static int sde_ctl_sspp_dspp_parse_dt(struct device_node *np,
-	struct sde_mdss_cfg *sde_cfg)
-{
-	int rc = 0;
-
-	rc = sde_ctl_hyp_parse_dt(np, sde_cfg);
-	if (rc)
-		goto end;
-
-	rc = sde_ctl_parse_dt(np, sde_cfg);
-	if (rc)
-		goto end;
-
-	rc = sde_sspp_parse_dt(np, sde_cfg);
-	if (rc)
-		goto end;
-
-	rc = sde_dspp_top_parse_dt(np, sde_cfg);
-	if (rc)
-		goto end;
-
-	rc = sde_dspp_parse_dt(np, sde_cfg);
-	if (rc)
-		goto end;
-
 end:
 	return rc;
 }
@@ -5209,34 +5164,6 @@ end:
 	return rc;
 }
 
-static int sde_perf_power_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
-{
-	int rc;
-
-	rc = sde_perf_parse_dt(np, sde_cfg);
-	if (rc)
-		goto end;
-
-	rc = sde_qos_parse_dt(np, sde_cfg);
-	if (rc)
-		goto end;
-
-	/* uidle must be done before sspp and ctl,
-	 * so if something goes wrong, we won't
-	 * enable it in ctl and sspp.
-	 */
-	rc = sde_uidle_parse_dt(np, sde_cfg);
-	if (rc)
-		goto end;
-
-	rc = sde_cache_parse_dt(np, sde_cfg);
-	if (rc)
-		goto end;
-
-end:
-	return rc;
-}
-
 static int sde_parse_merge_3d_dt(struct device_node *np,
 		struct sde_mdss_cfg *sde_cfg)
 {
@@ -6653,11 +6580,6 @@ static int sde_hw_ver_parse_dt(struct drm_device *dev, struct device_node *np,
 	else
 		cfg->ubwc_rev = DEFAULT_SDE_UBWC_NONE;
 
-	if (prop_exists[SDE_HW_QULTIVATE_VERSION])
-		cfg->qultivate_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_QULTIVATE_VERSION, 0);
-	else
-		cfg->qultivate_rev = 0;
-
 end:
 	kvfree(prop_value);
 	return rc;
@@ -6675,7 +6597,7 @@ static int sde_hw_parse_fuse_configuration(struct platform_device *pdev, const c
 	rc = PTR_ERR_OR_ZERO(cell);
 	if (rc) {
 		if (rc == -ENOENT)
-			SDE_INFO("%s entry not found in nvmem_cells", cell_name);
+			SDE_INFO("ssip_config entry not found in nvmem_cells");
 		return rc;
 	}
 
@@ -6730,42 +6652,6 @@ static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *s
 	return rc;
 }
 
-static int sde_hw_check_qultivate_fuse(struct drm_device *dev, struct sde_mdss_cfg *sde_cfg)
-{
-	struct platform_device *pdev;
-	struct sde_qultivate_config_v1 *config_v1;
-	int rc = -EINVAL;
-	uint32_t fuse = 0;
-	bool enable = false;
-
-	if (!dev || !dev->dev || !sde_cfg) {
-		SDE_ERROR("invalid input\n");
-		return rc;
-	}
-
-	pdev = to_platform_device(dev->dev);
-	rc = sde_hw_parse_fuse_configuration(pdev, "disp_qultiv_fuse", &fuse);
-	if (rc) {
-		SDE_INFO("disp_qultiv_fuse config is not present\n");
-		return 0;
-	}
-
-	enable = fuse & BIT(29);
-
-	if (sde_cfg->qultivate_rev == SDE_QULTIVATE_SW_REV1) {
-		config_v1 = kzalloc(sizeof(struct sde_qultivate_config_v1), GFP_KERNEL);
-		config_v1->enabled = enable;
-		config_v1->vig_count = 2;
-		config_v1->dma_count = 4;
-		config_v1->gdsc2_blocked = true;
-		sde_cfg->qultivate_cfg = (void *)config_v1;
-		SDE_INFO("qultivate_enable:%d ,SW version:%d\n", enable, sde_cfg->qultivate_rev);
-	} else if (enable)
-		SDE_ERROR("display_qualtivate fuse is enabled, but sw version is not correct");
-
-	return rc;
-}
-
 /*************************************************************
  * hardware catalog init
  *************************************************************/
@@ -6792,19 +6678,47 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 	if (rc)
 		goto end;
 
-	rc = sde_hw_check_qultivate_fuse(dev, sde_cfg);
-	if (rc)
-		goto end;
-
 	rc = sde_top_parse_dt(np, sde_cfg);
 	if (rc)
 		goto end;
 
-	rc =  sde_perf_power_parse_dt(np, sde_cfg);
+	rc = sde_perf_parse_dt(np, sde_cfg);
 	if (rc)
 		goto end;
 
-	rc = sde_ctl_sspp_dspp_parse_dt(np, sde_cfg);
+	rc = sde_qos_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	/* uidle must be done before sspp and ctl,
+	 * so if something goes wrong, we won't
+	 * enable it in ctl and sspp.
+	 */
+	rc = sde_uidle_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = sde_cache_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = sde_ctl_hyp_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = sde_ctl_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = sde_sspp_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = sde_dspp_top_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = sde_dspp_parse_dt(np, sde_cfg);
 	if (rc)
 		goto end;
 

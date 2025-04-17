@@ -179,7 +179,6 @@ struct sde_power_mmrm_reserve {
  * @rsc_client: sde rsc client pointer
  * @rsc_client_init: boolean to control rsc client create
  * @mmrm_enable: boolean to indicate if mmrm is enabled
- * @gdsc2_blocked: boolean to indicate if gdsc2 operation is blocked
  * @ib_quota: ib quota of the given bus
  * @hw_fence_enable: boolean to indicate if hw-fence is enabled
  * @mmrm_reserve: mmrm resource reservation
@@ -198,7 +197,6 @@ struct sde_power_handle {
 	struct sde_rsc_client *rsc_client;
 	bool rsc_client_init;
 	bool mmrm_enable;
-	bool gdsc2_blocked;
 	u64 ib_quota[SDE_POWER_HANDLE_DBUS_ID_MAX];
 	bool hw_fence_enable;
 
