@@ -38,10 +38,10 @@
  *  @device_state_addr: pointer to device state variable dump address
  */
 struct msm_dbg_buf_data {
-	struct msm_dbg_addr_map reg_addr;
-	struct msm_dbg_addr_map evt_log_addr;
-	struct msm_dbg_addr_map dbg_bus_addr;
-	struct msm_dbg_addr_map device_state_addr;
+	struct hfi_shared_addr_map reg_addr;
+	struct hfi_shared_addr_map evt_log_addr;
+	struct hfi_shared_addr_map dbg_bus_addr;
+	struct hfi_shared_addr_map device_state_addr;
 };
 
 /**
@@ -53,7 +53,7 @@ struct msm_dbg_buf_data {
 struct msm_dbg_reg_base {
 	size_t off;
 	size_t cnt;
-	struct msm_dbg_addr_map *reg_addr;
+	struct hfi_shared_addr_map *reg_addr;
 };
 
 /**
