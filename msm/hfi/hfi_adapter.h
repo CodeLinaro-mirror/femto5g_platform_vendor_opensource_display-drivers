@@ -29,6 +29,8 @@
 #define HFI_PACKKEY(property_id, version, dsize) \
 	(property_id | (version << 20) | (dsize << 24))
 
+#define HFI_ADAPTER_WORK_QUEUE_SIZE 4
+
 /**
  * struct hfi_adapter_t - Structure for defining Adapter Module instance handle
  * @sde_or_vm_instance: index of VM owning adapter
@@ -49,7 +51,7 @@ struct hfi_adapter_t {
 	struct hfi_core_cb_ops *cb_ops;
 	struct hfi_core_session *session;  /* handle to hfi core device */
 #endif
-	struct kthread_work cb_work;
+	struct kthread_work cb_work[HFI_ADAPTER_WORK_QUEUE_SIZE];
 	struct kthread_worker cb_worker;
 	struct task_struct *cb_worker_thread;
 	struct idr client_ids;
