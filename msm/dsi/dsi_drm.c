@@ -363,7 +363,6 @@ static void dsi_bridge_mode_set(struct drm_bridge *bridge,
 				const struct drm_display_mode *mode,
 				const struct drm_display_mode *adjusted_mode)
 {
-	int rc = 0;
 	struct dsi_bridge *c_bridge = NULL;
 	struct dsi_display *display;
 	struct drm_connector *conn;
@@ -400,12 +399,6 @@ static void dsi_bridge_mode_set(struct drm_bridge *bridge,
 
 	msm_parse_mode_priv_info(&conn_state->msm_mode,
 					&(c_bridge->dsi_mode));
-
-	rc = dsi_display_restore_bit_clk(display, &c_bridge->dsi_mode);
-	if (rc) {
-		DSI_ERR("[%s] bit clk rate cannot be restored\n", display->name);
-		return;
-	}
 
 	DSI_DEBUG("clk_rate: %llu\n", c_bridge->dsi_mode.timing.clk_rate_hz);
 }
