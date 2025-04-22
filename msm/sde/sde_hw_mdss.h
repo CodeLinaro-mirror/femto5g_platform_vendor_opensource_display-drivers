@@ -701,12 +701,14 @@ struct sde_mdss_color {
  * struct sde_cp_skip_blend_plane: skip blend plane payload
  * @valid: True when skip blend plane is active
  * @plane: hw plane being used
+ * @y_offset: crtc plane y_offset
  * @plane_w: width of layer
  * @plane_h: height of layer
  */
 struct sde_cp_skip_blend_plane {
 	bool valid;
 	enum sde_sspp plane;
+	u32 y_offset;
 	u32 plane_w;
 	u32 plane_h;
 };

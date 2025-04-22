@@ -3537,6 +3537,7 @@ static void _dspp_demura_install_property(struct drm_crtc *crtc)
 		_dspp_demura_install_v1_property(crtc);
 		break;
 	case 3:
+	case 4:
 		_sde_cp_crtc_install_blob_property(crtc, demura_init_cfg,
 			SDE_CP_CRTC_DSPP_DEMURA_INIT,
 			sizeof(struct drm_msm_dem_cfg));
@@ -5370,6 +5371,7 @@ void sde_cp_set_skip_blend_plane_info(struct drm_crtc *drm_crtc,
 
 	skip_plane->valid = plane_valid;
 	skip_plane->plane = (plane_valid) ? skip_blend->plane : SSPP_NONE;
+	skip_plane->y_offset = (plane_valid) ? skip_blend->y_offset : 0;
 	skip_plane->plane_w = (plane_valid) ? skip_blend->width : 0;
 	skip_plane->plane_h = (plane_valid) ? skip_blend->height : 0;
 

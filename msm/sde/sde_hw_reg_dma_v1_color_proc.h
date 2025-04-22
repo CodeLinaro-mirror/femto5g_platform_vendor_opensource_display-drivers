@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -487,10 +487,25 @@ void reg_dmav1_setup_demurav2(struct sde_hw_dspp *ctx, void *cfg);
 void reg_dmav1_setup_demura_cfg0_param2(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
+ * reg_dmav1_setup_demura_cfg0_param2_v4() - function to set up the demura cfg0 param2 v4.0
+ * configuration.
+ * @ctx: dspp instance
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_demura_cfg0_param2_v4(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
  * reg_dmav1_setup_demurav3() - function to set up the demura v3 configuration.
  * @ctx: dspp instance
  * @cfg: pointer to struct sde_hw_cp_cfg
  */
 void reg_dmav1_setup_demurav3(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * reg_dmav1_setup_demurav4() - function to set up the demura v4 configuration.
+ * @ctx: dspp instance
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_demurav4(struct sde_hw_dspp *ctx, void *cfg);
 
 #endif /* _SDE_HW_REG_DMA_V1_COLOR_PROC_H */
