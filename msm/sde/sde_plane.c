@@ -39,7 +39,11 @@
 #include "sde_vbif.h"
 #include "sde_plane.h"
 #include "sde_color_processing.h"
+#include "hfi_kms.h"
+#include "hfi_crtc.h"
+#include "hfi_commands_display.h"
 #include "hfi_plane.h"
+#include "hfi_properties_display.h"
 
 #define SDE_DEBUG_PLANE(pl, fmt, ...) SDE_DEBUG("plane%d " fmt,\
 		(pl) ? (pl)->base.base.id : -1, ##__VA_ARGS__)
@@ -1345,6 +1349,7 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 
 	psde = to_sde_plane(plane);
 	pstate = to_sde_plane_state(plane->state);
+	psde->pipe_hw->hw.disp_op = disp_op;
 
 	hue = (uint32_t) sde_plane_get_property(pstate, PLANE_PROP_HUE_ADJUST);
 	if (psde->pipe_hw->ops.setup_pa_hue[disp_op])
@@ -1388,6 +1393,11 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 					MEMCOLOR_FOLIAGE, memcol);
 	}
 
+	if (psde->hfi_plane) {
+		hw_cfg.prop_helper = psde->hfi_plane->color_props;
+		hw_cfg.obj_id = psde->hfi_plane->hfi_pipe_id;
+	}
+
 	if (pstate->dirty & SDE_PLANE_DIRTY_VIG_GAMUT &&
 			psde->pipe_hw->ops.setup_vig_gamut[disp_op]) {
 		vig_gamut = msm_property_get_blob(&psde->property_info,
@@ -1398,6 +1408,9 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 		hw_cfg.ctl = ctl;
 		hw_cfg.len = size;
 		hw_cfg.payload = vig_gamut;
+#ifdef HFI_PROPERTY_LAYER_COLOR_3D_LUT
+		hw_cfg.prop_id = HFI_PROPERTY_LAYER_COLOR_3D_LUT;
+#endif
 		psde->pipe_hw->ops.setup_vig_gamut[disp_op](psde->pipe_hw, &hw_cfg);
 	}
 
@@ -1502,6 +1515,9 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 		hw_cfg.ctl = ctl;
 		hw_cfg.len = sizeof(int);
 		hw_cfg.payload = &ucsc_igc;
+#ifdef HFI_PROPERTY_LAYER_COLOR_UCSC_IGC
+		hw_cfg.prop_id = HFI_PROPERTY_LAYER_COLOR_UCSC_IGC;
+#endif
 		psde->pipe_hw->ops.setup_ucsc_igc[disp_op](psde->pipe_hw,
 				pstate->multirect_index, &hw_cfg);
 	}
@@ -1514,6 +1530,9 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 		hw_cfg.ctl = ctl;
 		hw_cfg.len = sizeof(int);
 		hw_cfg.payload = &ucsc_gc;
+#ifdef HFI_PROPERTY_LAYER_COLOR_UCSC_GC
+		hw_cfg.prop_id = HFI_PROPERTY_LAYER_COLOR_UCSC_GC;
+#endif
 		psde->pipe_hw->ops.setup_ucsc_gc[disp_op](psde->pipe_hw,
 				pstate->multirect_index, &hw_cfg);
 	}
@@ -1528,6 +1547,9 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 		hw_cfg.ctl = ctl;
 		hw_cfg.len = size;
 		hw_cfg.payload = ucsc_csc;
+#ifdef HFI_PROPERTY_LAYER_COLOR_UCSC_CSC
+		hw_cfg.prop_id = HFI_PROPERTY_LAYER_COLOR_UCSC_CSC;
+#endif
 		psde->pipe_hw->ops.setup_ucsc_csc[disp_op](psde->pipe_hw,
 				pstate->multirect_index, &hw_cfg);
 	}
@@ -1540,6 +1562,9 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 		hw_cfg.ctl = ctl;
 		hw_cfg.len = sizeof(bool);
 		hw_cfg.payload = &ucsc_unmult;
+#ifdef HFI_PROPERTY_LAYER_COLOR_UCSC_UNMULT
+		hw_cfg.prop_id = HFI_PROPERTY_LAYER_COLOR_UCSC_UNMULT;
+#endif
 		psde->pipe_hw->ops.setup_ucsc_unmult[disp_op](psde->pipe_hw,
 				pstate->multirect_index, &hw_cfg);
 	}
@@ -1552,6 +1577,9 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 		hw_cfg.ctl = ctl;
 		hw_cfg.len = sizeof(bool);
 		hw_cfg.payload = &ucsc_alpha_dither;
+#ifdef HFI_PROPERTY_LAYER_COLOR_UCSC_ALPHA_DITHER
+		hw_cfg.prop_id = HFI_PROPERTY_LAYER_COLOR_UCSC_ALPHA_DITHER;
+#endif
 		psde->pipe_hw->ops.setup_ucsc_alpha_dither[disp_op](psde->pipe_hw,
 				pstate->multirect_index, &hw_cfg);
 	}
@@ -1712,6 +1740,7 @@ static int _sde_plane_color_fill(struct sde_plane *psde,
 	plane = &psde->base;
 	pstate = to_sde_plane_state(plane->state);
 	disp_op = sde_plane_get_disp_op(&psde->base);
+	psde->pipe_hw->hw.disp_op = disp_op;
 	SDE_DEBUG_PLANE(psde, "\n");
 
 	/*
@@ -1755,7 +1784,7 @@ static int _sde_plane_color_fill(struct sde_plane *psde,
 			psde->pipe_hw->ctl = _sde_plane_get_hw_ctl(plane, NULL);
 			psde->pipe_hw->ops.setup_scaler[disp_op](psde->pipe_hw,
 					&psde->pipe_cfg, &psde->pixel_ext,
-					&psde->scaler3_cfg);
+					&psde->scaler3_cfg, &pstate->pre_down);
 		}
 
 		if (psde->pipe_hw->ops.setup_scaler_cac[disp_op] && !psde->is_virtual &&
@@ -3260,9 +3289,12 @@ void sde_plane_flush(struct drm_plane *plane)
 	else if (psde->color_fill & SDE_PLANE_COLOR_FILL_FLAG)
 		/* force 100% alpha */
 		_sde_plane_color_fill(psde, psde->color_fill, 0xFF);
-	else if (psde->pipe_hw && pstate->csc_ptr && psde->pipe_hw->ops.setup_csc[disp_op])
+	else if (psde->pipe_hw && pstate->csc_ptr && psde->pipe_hw->ops.setup_csc[disp_op]) {
+		if (psde->hfi_plane)
+			psde->pipe_hw->obj_id = psde->hfi_plane->hfi_pipe_id;
 		psde->pipe_hw->ops.setup_csc[disp_op](psde->pipe_hw,
 					pstate->csc_ptr, priv->disp_op);
+	}
 
 	/* flag h/w flush complete */
 	if (plane->state)
@@ -3589,6 +3621,11 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 	state = plane->state;
 
 	pstate = to_sde_plane_state(state);
+	psde->pipe_hw->hw.disp_op = disp_op;
+	if (psde->hfi_plane) {
+		psde->pipe_hw->prop_helper = psde->hfi_plane->color_props;
+		psde->pipe_hw->obj_id = psde->hfi_plane->hfi_pipe_id;
+	}
 
 	cac_pipe = sde_plane_is_cac_enabled(pstate);
 
@@ -3675,7 +3712,7 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 		psde->pipe_hw->ctl = _sde_plane_get_hw_ctl(plane, NULL);
 		psde->pipe_hw->ops.setup_scaler[disp_op](psde->pipe_hw,
 				&psde->pipe_cfg, &psde->pixel_ext,
-				&psde->scaler3_cfg);
+				&psde->scaler3_cfg, &pstate->pre_down);
 	}
 
 	/* update excl rect */
@@ -3812,6 +3849,41 @@ static void _sde_plane_update_sharpening(struct sde_plane *psde)
 			&psde->sharp_cfg);
 }
 
+static struct hfi_cmdbuf_t *_sde_plane_get_cmd_buf(struct drm_plane *plane)
+{
+	u32 disp_id = 0;
+	struct drm_crtc *drm_crtc = NULL;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_kms *hfi_kms = NULL;
+	struct msm_drm_private *priv = NULL;
+
+	if (plane && plane->dev && plane->dev->dev_private) {
+		priv = plane->dev->dev_private;
+		hfi_kms = ((priv && priv->kms) ?
+				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
+	}
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
+		return NULL;
+	}
+
+	if (plane->state && plane->state->crtc) {
+		drm_crtc = plane->state->crtc;
+		if (!drm_crtc) {
+			SDE_ERROR("invalid drm_crtc\n");
+			return NULL;
+		}
+	}
+	disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return NULL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	return cmd_buf;
+}
+
 static void _sde_plane_update_properties(struct drm_plane *plane,
 	struct drm_crtc *crtc, struct drm_framebuffer *fb)
 {
@@ -3823,6 +3895,11 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 	struct sde_plane_state *pstate;
 	struct sde_kms *sde_kms = NULL;
 	enum msm_disp_op disp_op = sde_plane_get_disp_op(plane);
+	int ret;
+	u32 disp_id = 0;
+	struct drm_crtc *drm_crtc = NULL;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_util_u32_prop_helper *color_props = NULL;
 
 	psde = to_sde_plane(plane);
 	state = plane->state;
@@ -3831,6 +3908,15 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 	if (!pstate) {
 		SDE_ERROR("invalid plane state for plane%d\n", DRMID(plane));
 		return;
+	}
+
+	if (IS_DISP_OP_HFI(disp_op)) {
+		cmd_buf = _sde_plane_get_cmd_buf(plane);
+		if (!cmd_buf)
+			SDE_ERROR("failed to get cmd_buf for plane:%d\n", DRMID(plane));
+
+		if (psde->hfi_plane)
+			hfi_util_u32_prop_helper_reset(psde->hfi_plane->color_props);
 	}
 
 	msm_fmt = msm_framebuffer_format(fb);
@@ -3884,6 +3970,45 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 
 	/* clear dirty */
 	pstate->dirty = 0x0;
+	if (IS_DISP_OP_HFI(disp_op)) {
+		if (!psde->hfi_plane)
+			goto end;
+		color_props = psde->hfi_plane->color_props;
+		if (!hfi_util_u32_prop_helper_prop_count(color_props) || !cmd_buf) {
+			SDE_DEBUG("prop_helper_prop_count = %d cmd_buf = %pK\n",
+				hfi_util_u32_prop_helper_prop_count(color_props), cmd_buf);
+			goto end;
+		}
+
+		if (plane->state && plane->state->crtc) {
+			drm_crtc = plane->state->crtc;
+			if (!drm_crtc) {
+				SDE_ERROR("invalid drm_crtc\n");
+				goto end;
+			}
+		}
+		disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
+		if (disp_id == U32_MAX) {
+			SDE_ERROR("invalid display id\n");
+			goto end;
+		}
+
+		/*
+		 * Once all the color processing properties are collected, invoke adapter api
+		 * to add all these properties as a single HFI Packet
+		 */
+		ret = hfi_adapter_add_set_property(cmd_buf,
+				HFI_COMMAND_DISPLAY_SET_PROPERTY,
+				disp_id,
+				HFI_PAYLOAD_TYPE_U32_ARRAY,
+				hfi_util_u32_prop_helper_get_payload_addr(color_props),
+				hfi_util_u32_prop_helper_get_size(color_props),
+				HFI_HOST_FLAGS_NONE);
+		if (ret)
+			SDE_ERROR("failed to set HFI prop\n");
+	}
+end:
+	return;
 }
 
 static void _sde_plane_check_lut_dirty(struct sde_plane *psde,

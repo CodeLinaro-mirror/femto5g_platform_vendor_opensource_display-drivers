@@ -59,6 +59,8 @@
 #include "sde_color_processing_aiqe.h"
 #include "sde_cesta.h"
 #include "hfi_crtc.h"
+#include "hfi_kms.h"
+#include "hfi_commands_display.h"
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
@@ -4953,6 +4955,33 @@ static void _sde_crtc_clear_all_blend_stages(struct sde_crtc *sde_crtc)
 	}
 }
 
+static struct hfi_cmdbuf_t *_sde_crtc_get_cmd_buf(struct drm_crtc *crtc)
+{
+	u32 disp_id = 0;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_kms *hfi_kms = NULL;
+	struct msm_drm_private *priv = NULL;
+
+	if (crtc && crtc->dev && crtc->dev->dev_private) {
+		priv = crtc->dev->dev_private;
+		hfi_kms = ((priv && priv->kms) ?
+				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
+	}
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
+		return NULL;
+	}
+
+	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return NULL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	return cmd_buf;
+}
+
 static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_state)
 
@@ -4966,7 +4995,10 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	bool cont_splash_enabled = false;
 	size_t i;
 	int ret = 0;
-	enum msm_disp_op disp_op;
+	u32 disp_id = 0;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
+	struct hfi_util_u32_prop_helper *color_props = NULL;
 
 	if (!crtc->state->enable) {
 		SDE_DEBUG("crtc%d -> enable %d, skip atomic_begin\n",
@@ -5070,13 +5102,56 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			cont_splash_enabled = true;
 	}
 
-	if (sde_kms_is_cp_operation_allowed(sde_kms))
+
+	if (sde_kms_is_cp_operation_allowed(sde_kms)) {
+		if (IS_DISP_OP_HFI(disp_op)) {
+			cmd_buf = _sde_crtc_get_cmd_buf(crtc);
+			if (!cmd_buf) {
+				SDE_ERROR("failed to get cmd_buf for crtc:%d\n", DRMID(crtc));
+				goto skip_cp;
+			}
+			if (sde_crtc->hfi_crtc)
+				hfi_util_u32_prop_helper_reset(sde_crtc->hfi_crtc->color_props);
+		}
+
 		sde_cp_crtc_apply_properties(crtc);
 
-	disp_op = sde_crtc_get_disp_op(crtc);
+		if (IS_DISP_OP_HFI(disp_op)) {
+			if (!sde_crtc->hfi_crtc)
+				goto skip_cp;
+			color_props = sde_crtc->hfi_crtc->color_props;
+			if (!hfi_util_u32_prop_helper_prop_count(color_props)) {
+				SDE_DEBUG("cmd_buf %pK, prop_count %d\n", cmd_buf,
+					hfi_util_u32_prop_helper_prop_count(color_props));
+				goto skip_cp;
+			}
+
+			disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+			if (disp_id == U32_MAX) {
+				SDE_ERROR("invalid display id\n");
+				goto skip_cp;
+			}
+
+			/*
+			 * Once all the color processing properties are collected, invoke adapter
+			 * api to add all these properties as a single HFI Packet
+			 */
+			ret = hfi_adapter_add_set_property(cmd_buf,
+				HFI_COMMAND_DISPLAY_SET_PROPERTY, disp_id,
+				HFI_PAYLOAD_TYPE_U32_ARRAY,
+				hfi_util_u32_prop_helper_get_payload_addr(color_props),
+				hfi_util_u32_prop_helper_get_size(color_props),
+				HFI_HOST_FLAGS_NONE);
+			if (ret) {
+				SDE_ERROR("failed to send HFI commands\n");
+				goto skip_cp;
+			}
+		}
+	}
+
+skip_cp:
 	if (sde_crtc->hal_ops.atomic_begin[disp_op]) {
 		ret = sde_crtc->hal_ops.atomic_begin[disp_op](sde_crtc, cstate);
-
 		if (ret)
 			SDE_ERROR("atomic_begin HAL op fail, ret: %d\n", ret);
 	}

@@ -407,6 +407,7 @@ static void hfi_plane_destroy(struct sde_plane *plane)
 	phfi = to_hfi_plane(plane);
 
 	kfree(phfi->base_props);
+	kfree(phfi->color_props);
 	kfree(phfi->kv_props);
 
 	mutex_destroy(&phfi->hfi_lock);
@@ -547,6 +548,13 @@ int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)
 	plane->base_props = hfi_util_u32_prop_helper_alloc(HFI_PLANE_BASE_PROP_MAX_SIZE);
 	if (IS_ERR(plane->base_props)) {
 		SDE_ERROR("failed to allocate memory for base prop collector\n");
+		ret = -ENOMEM;
+		goto free_kv;
+	}
+
+	plane->color_props = hfi_util_u32_prop_helper_alloc(HFI_PLANE_BASE_PROP_MAX_SIZE);
+	if (IS_ERR(plane->color_props)) {
+		SDE_ERROR("failed to allocate memory for color prop collector\n");
 		ret = -ENOMEM;
 		goto free_kv;
 	}

@@ -12,8 +12,8 @@
 #include "sde_hw_dspp.h"
 #include "sde_hw_sspp.h"
 
-#define LOG_FEATURE_OFF SDE_EVT32(ctx->idx, ctx->dpu_idx, 0)
-#define LOG_FEATURE_ON SDE_EVT32(ctx->idx, ctx->dpu_idx, 1)
+#define LOG_FEATURE_OFF SDE_EVT32(ctx->idx, ctx->dpu_idx, ctx->hw.disp_op, 0)
+#define LOG_FEATURE_ON SDE_EVT32(ctx->idx, ctx->dpu_idx, ctx->hw.disp_op, 1)
 
 #define REG_DMA_INIT_OPS(cfg, block, reg_dma_feature, feature_dma_buf) \
 	do { \
@@ -38,6 +38,7 @@
 #define REG_DMA_SETUP_KICKOFF(cfg, hw_ctl, feature_dma_buf, ops, ctl_q, \
 		mode, reg_dma_feature) \
 	do { \
+		struct sde_hw_cp_cfg *cp_cfg = container_of(&hw_ctl, struct sde_hw_cp_cfg, ctl);\
 		memset(&cfg, 0, sizeof(cfg)); \
 		(cfg).ctl = hw_ctl; \
 		(cfg).dma_buf = feature_dma_buf; \
@@ -46,6 +47,13 @@
 		(cfg).queue_select = ctl_q; \
 		(cfg).trigger_mode = mode; \
 		(cfg).feature = reg_dma_feature; \
+		(cfg).prop_helper = cp_cfg->prop_helper;\
+		(cfg).prop_id = cp_cfg->prop_id;\
+		(cfg).obj_id = cp_cfg->obj_id;\
+		(cfg).flags = cp_cfg->flags;\
+		(cfg).dspp_start_idx = cp_cfg->dspp_start_idx;\
+		(cfg).dspp_idx = cp_cfg->dspp_idx;\
+		(cfg).num_of_mixers = cp_cfg->num_of_mixers;\
 	} while (0)
 
 extern struct sde_reg_dma_buffer *dspp_buf[REG_DMA_FEATURES_MAX][DSPP_MAX][DPU_MAX];
@@ -139,6 +147,13 @@ void reg_dmav1_setup_dspp_pccv4(struct sde_hw_dspp *ctx, void *cfg);
  * @cfg: pointer to struct sde_hw_cp_cfg
  */
 void reg_dmav1_setup_dspp_pccv5(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * reg_dmav1_setup_dspp_pccv6() - pcc v6 implementation using reg dma v1.
+ * @ctx: dspp instance
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_dspp_pccv6(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
  * reg_dmav1_setup_dspp_pa_hsicv17() - pa hsic v17 impl using reg dma v1.
@@ -258,16 +273,41 @@ void reg_dmav1_setup_dma_gcv5(struct sde_hw_pipe *ctx, void *cfg,
 			enum sde_sspp_multirect_index idx);
 
 /**
+ * reg_dmav1_setup_pre_downscale - Qseed3 lut coefficient programming
+ * @buf: defines structure for reg dma ops on the reg dma buffer.
+ * @ctx: sspp instance
+ * @pre_down: Pointer to pre-downscaler configuration
+ * @returns: 0 if success, non-zero otherwise
+ */
+int reg_dmav1_setup_pre_downscale(
+			struct sde_reg_dma_setup_ops_cfg *buf,
+			struct sde_hw_pipe *ctx,
+			struct sde_hw_inline_pre_downscale_cfg *pre_down);
+
+/**
+ * reg_dmav1_setup_pe_config - Qseed3 lut coefficient programming
+ * @buf: defines structure for reg dma ops on the reg dma buffer.
+ * @ctx: sspp instance
+ * @pe_ext: Pointer to pixel ext settings
+ * @returns: 0 if success, non-zero otherwise
+ */
+int reg_dmav1_setup_pe_config(
+			struct sde_reg_dma_setup_ops_cfg *buf,
+			struct sde_hw_pipe *ctx,
+			struct sde_hw_pixel_ext *pe_ext);
+
+/**
  * reg_dmav1_setup_vig_qseed3 - Qseed3 implementation using reg dma v1.
  * @ctx: sspp instance
  * @sspp: pointer to sspp hw config
  * @pe: pointer to pixel extension config
  * @scaler_cfg: pointer to scaler config
+ * @pre_down: Pointer to pre-downscaler configuration
  */
 
 void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 	struct sde_hw_pipe_cfg *sspp, struct sde_hw_pixel_ext *pe,
-	void *scaler_cfg);
+	void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down);
 
 /**reg_dmav1_setup_scaler3_lut - Qseed3 lut coefficient programming
  * @buf: defines structure for reg dma ops on the reg dma buffer.

@@ -232,3 +232,8 @@ void sde_reg_dma_deinit(u32 dpu_idx)
 	memset(&(reg_dma[dpu_idx]), 0, sizeof(struct sde_hw_reg_dma));
 	set_default_dma_ops(&(reg_dma[dpu_idx]));
 }
+
+int sde_reg_dma_get_last_cmd_buffer(u32 dpu_idx, struct sde_reg_dma_buffer **last_cmd_buf)
+{
+	return get_last_cmd_buffer(dpu_idx, last_cmd_buf);
+}
