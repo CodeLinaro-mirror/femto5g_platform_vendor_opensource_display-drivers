@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -271,6 +271,7 @@ struct dp_parser {
 	struct dp_hw_cfg hw_cfg;
 	bool has_mst;
 	bool has_mst_sideband;
+        bool no_aux_switch;
 	bool dsc_feature_enable;
 	bool fec_feature_enable;
 	bool dsc_continuous_pps;
