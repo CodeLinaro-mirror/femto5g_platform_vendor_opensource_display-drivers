@@ -204,8 +204,13 @@ enum {
 #define SYS_CACHE_NO_ALLOC	BIT(4)
 
 /* default line padding ratio limitation */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+#define MAX_VPADDING_RATIO_M	63
+#define MAX_VPADDING_RATIO_N	15
+#else
 #define MAX_VPADDING_RATIO_M	93
 #define MAX_VPADDING_RATIO_N	45
+#endif
 
 /**
  * sde_sys_cache_type: Types of system cache supported

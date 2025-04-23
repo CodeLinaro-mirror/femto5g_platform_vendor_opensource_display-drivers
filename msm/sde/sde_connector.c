@@ -21,6 +21,9 @@
 #include "sde_vm.h"
 #include <drm/drm_probe_helper.h>
 #include <linux/version.h>
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+#include <shd_drm.h>
+#endif
 
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
@@ -86,6 +89,26 @@ static const struct drm_prop_enum_list e_panel_mode[] = {
 	{MSM_DISPLAY_MODE_MAX, "none"},
 };
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn)
+{
+	struct dsi_display *display = NULL;
+	struct shd_display *shd_display;
+
+	if (!c_conn)
+		return 0;
+
+	if (c_conn->shared) {
+		shd_display = c_conn->display;
+		display = shd_display->dsi_base;
+	} else {
+		display = (struct dsi_display *)c_conn->display;
+	}
+
+	return display;
+}
+#endif
+
 static void sde_dimming_bl_notify(struct sde_connector *conn, struct dsi_backlight_config *config)
 {
 	struct drm_event event;
@@ -140,7 +163,14 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 			(bd->props.state & BL_CORE_SUSPENDED))
 		brightness = 0;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	display = _sde_connector_get_display(c_conn);
+	if (!display)
+		return 0;
+#else
 	display = (struct dsi_display *) c_conn->display;
+#endif
+
 	if (brightness > display->panel->bl_config.brightness_max_level)
 		brightness = display->panel->bl_config.brightness_max_level;
 	if (brightness > c_conn->thermal_max_brightness)
@@ -175,9 +205,19 @@ static int sde_backlight_device_update_status(struct backlight_device *bd)
 				c_conn->base.dev, &event, (u8 *)&brightness);
 		}
 		rc = c_conn->ops.set_backlight(&c_conn->base,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+				display, bl_lvl);
+#else
 				c_conn->display, bl_lvl);
+#endif
 		if (!rc)
 			sde_dimming_bl_notify(c_conn, &display->panel->bl_config);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		if (c_conn->base.state && c_conn->base.state->crtc) {
+				sde_crtc_backlight_notify(c_conn->base.state->crtc, brightness,
+					display->panel->bl_config.brightness_max_level);
+			}
+#endif
 		c_conn->unset_bl_level = 0;
 	}
 
@@ -219,17 +259,29 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 	struct dsi_backlight_config *bl_config;
 	struct sde_kms *sde_kms;
 	static int display_count;
+
 	char bl_node_name[BL_NODE_NAME_SIZE];
 
 	sde_kms = sde_connector_get_kms(&c_conn->base);
 	if (!sde_kms) {
 		SDE_ERROR("invalid kms\n");
 		return -EINVAL;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	} else if (!c_conn->ops.set_backlight) {
+#else
 	} else if (c_conn->connector_type != DRM_MODE_CONNECTOR_DSI) {
+#endif
 		return 0;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	display = _sde_connector_get_display(c_conn);
+	if (!display)
+		return 0;
+#else
 	display = (struct dsi_display *) c_conn->display;
+#endif
+
 	bl_config = &display->panel->bl_config;
 
 	if (bl_config->type != DSI_BACKLIGHT_DCS &&
@@ -340,8 +392,13 @@ int sde_connector_register_event(struct drm_connector *connector,
 
 	/* optionally notify display of event registration */
 	if (c_conn->ops.enable_event && c_conn->display)
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		c_conn->ops.enable_event(connector, event_idx, cb_func != NULL,
+					_sde_connector_get_display(c_conn));
+#else
 		c_conn->ops.enable_event(connector, event_idx,
 				cb_func != NULL, c_conn->display);
+#endif
 	return 0;
 }
 
@@ -452,6 +509,14 @@ static void sde_connector_get_avail_res_info(struct drm_connector *conn,
 
 	avail_res->max_mixer_width = sde_kms->catalog->max_mixer_width;
 }
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+void sde_connector_get_avail_res_info_shd(struct drm_connector *conn,
+					  struct msm_resource_caps_info *avail_res)
+{
+	sde_connector_get_avail_res_info(conn, avail_res);
+}
+#endif
 
 int sde_connector_set_msm_mode(struct drm_connector_state *conn_state,
 				struct drm_display_mode *adj_mode)
@@ -696,7 +761,14 @@ static int _sde_connector_update_dimming_bl_lut(struct sde_connector *c_conn,
 		return -EINVAL;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	dsi_display = _sde_connector_get_display(c_conn);
+	if (!dsi_display)
+		return 0;
+#else
 	dsi_display = c_conn->display;
+#endif
+
 	if (!dsi_display || !dsi_display->panel) {
 		SDE_ERROR("Invalid params(s) dsi_display %pK, panel %pK\n",
 			dsi_display,
@@ -733,7 +805,14 @@ static int _sde_connector_update_dimming_ctrl(struct sde_connector *c_conn,
 		return -EINVAL;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	dsi_display = _sde_connector_get_display(c_conn);
+	if (!dsi_display)
+		return 0;
+#else
 	dsi_display = c_conn->display;
+#endif
+
 	if (!dsi_display || !dsi_display->panel) {
 		SDE_ERROR("Invalid params(s) dsi_display %pK, panel %pK\n",
 			dsi_display,
@@ -771,7 +850,14 @@ static int _sde_connector_update_dimming_min_bl(struct sde_connector *c_conn,
 		return -EINVAL;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	dsi_display = _sde_connector_get_display(c_conn);
+	if (!dsi_display)
+		return 0;
+#else
 	dsi_display = c_conn->display;
+#endif
+
 	if (!dsi_display || !dsi_display->panel) {
 		SDE_ERROR("Invalid params(s) dsi_display %pK, panel %pK\n",
 			dsi_display,
@@ -802,7 +888,14 @@ static int _sde_connector_update_bl_scale(struct sde_connector *c_conn)
 		return -EINVAL;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	dsi_display = _sde_connector_get_display(c_conn);
+	if (!dsi_display)
+		return 0;
+#else
 	dsi_display = c_conn->display;
+#endif
+
 	if (!dsi_display || !dsi_display->panel) {
 		SDE_ERROR("Invalid params(s) dsi_display %pK, panel %pK\n",
 			dsi_display,
@@ -1012,7 +1105,13 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		return -EINVAL;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	display = _sde_connector_get_display(c_conn);
+	if (!display)
+		return 0;
+#else
 	display = (struct dsi_display *)c_conn->display;
+#endif
 
 	/*
 	 * During pre kickoff DCS commands have to have an
@@ -1098,7 +1197,13 @@ void sde_connector_helper_bridge_disable(struct drm_connector *connector)
 
 	c_conn = to_sde_connector(connector);
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		display = _sde_connector_get_display(c_conn);
+		if (!display)
+			return;
+#else
 		display = (struct dsi_display *) c_conn->display;
+#endif
 		poms_pending = display->poms_pending;
 	}
 
@@ -1143,7 +1248,13 @@ void sde_connector_helper_bridge_enable(struct drm_connector *connector)
 	}
 
 	c_conn = to_sde_connector(connector);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	display = _sde_connector_get_display(c_conn);
+	if (!display)
+		return;
+#else
 	display = (struct dsi_display *) c_conn->display;
+#endif
 
 	/*
 	 * Special handling for some panels which need atleast
@@ -1177,8 +1288,13 @@ int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable)
 	}
 
 	c_conn = to_sde_connector(connector);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	display = _sde_connector_get_display(c_conn);
+	if (!display)
+		return 0;
+#else
 	display = (struct dsi_display *) c_conn->display;
-
+#endif
 	if (display && c_conn->ops.clk_ctrl)
 		rc = c_conn->ops.clk_ctrl(display->mdp_clk_handle,
 				DSI_ALL_CLKS, state);
@@ -2712,15 +2828,96 @@ sde_connector_atomic_best_encoder(struct drm_connector *connector,
 }
 #endif
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+static inline bool sde_connector_is_seamless(
+		struct drm_connector_state *old_conn_state,
+		struct drm_connector_state *new_conn_state,
+		struct drm_crtc_state *crtc_state)
+{
+	struct msm_display_mode *msm_mode;
+
+	if (!crtc_state->mode_changed &&
+			!crtc_state->active_changed &&
+			crtc_state->connectors_changed) {
+		if (old_conn_state->crtc == new_conn_state->crtc)
+			return true;
+	}
+
+	if (!new_conn_state->crtc && crtc_state->connectors_changed)
+		return false;
+
+	msm_mode = sde_crtc_get_msm_mode(crtc_state);
+	if (!msm_mode)
+		return false;
+
+	if (msm_is_mode_seamless(msm_mode))
+		return true;
+
+	if (msm_is_mode_seamless_vrr(msm_mode))
+		return true;
+
+	if (msm_is_mode_seamless_dyn_clk(msm_mode))
+		return true;
+
+	if (msm_is_mode_seamless_dms(msm_mode))
+		return true;
+
+	return false;
+}
+
+static int sde_connector_rm_check(struct drm_connector *connector,
+		struct drm_atomic_state *state)
+{
+	struct drm_connector_state *old_conn_state, *new_conn_state;
+	struct drm_crtc_state *crtc_state;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
+	int ret = 0;
+
+	/* free up previous rm resources */
+	old_conn_state = drm_atomic_get_old_connector_state(state, connector);
+	if (old_conn_state && old_conn_state->crtc) {
+		crtc_state = drm_atomic_get_new_crtc_state(state,
+				old_conn_state->crtc);
+		if (crtc_state && drm_atomic_crtc_needs_modeset(crtc_state)) {
+			new_conn_state = drm_atomic_get_new_connector_state(
+					state, connector);
+			if (new_conn_state) {
+				if (sde_connector_is_seamless(old_conn_state,
+						new_conn_state, crtc_state))
+					return 0;
+			}
+
+			priv = connector->dev->dev_private;
+			sde_kms = to_sde_kms(priv->kms);
+			if (old_conn_state->best_encoder)
+				ret = sde_rm_release(&sde_kms->rm,
+						old_conn_state->best_encoder,
+						state);
+		}
+	}
+
+	return ret;
+}
+#endif
+
 static int sde_connector_atomic_check(struct drm_connector *connector,
 		struct drm_atomic_state *state)
 {
 	struct sde_connector *c_conn;
-
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	int ret;
+#endif
 	if (!connector) {
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
 	}
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	ret = sde_connector_rm_check(connector, state);
+	if (ret)
+		return ret;
+#endif
 
 	c_conn = to_sde_connector(connector);
 	if (c_conn->ops.atomic_check)
@@ -2794,8 +2991,13 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	sde_conn = to_sde_connector(conn);
 	if (!sde_conn || !sde_conn->ops.check_status)
 		return ret;
-
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	display = _sde_connector_get_display(sde_conn);
+	if (!display)
+		return 0;
+#else
 	display = sde_conn->display;
+#endif
 
 	/* protect this call with ESD status check call */
 	mutex_lock(&sde_conn->lock);
@@ -2870,7 +3072,11 @@ static const struct drm_connector_helper_funcs sde_connector_helper_ops = {
 	.detect_ctx =   sde_connector_detect_ctx,
 	.mode_valid =   sde_connector_mode_valid,
 	.best_encoder = sde_connector_best_encoder,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	.atomic_check = sde_connector_rm_check,
+#else
 	.atomic_check = sde_connector_atomic_check,
+#endif
 };
 
 static const struct drm_connector_helper_funcs sde_connector_helper_ops_v2 = {
@@ -3086,7 +3292,11 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			DRM_MODE_PROP_IMMUTABLE, CONNECTOR_PROP_MODE_INFO);
 
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		dsi_display = _sde_connector_get_display(c_conn);
+#else
 		dsi_display = (struct dsi_display *)(display);
+#endif
 		if (dsi_display && dsi_display->panel) {
 			msm_property_install_blob(&c_conn->property_info,
 				"dimming_bl_lut", DRM_MODE_PROP_BLOB,
@@ -3254,7 +3464,11 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 		void *display,
 		const struct sde_connector_ops *ops,
 		int connector_poll,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		int connector_type, bool shared)
+#else
 		int connector_type)
+#endif
 {
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
@@ -3291,6 +3505,9 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 
 	spin_lock_init(&c_conn->event_lock);
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	c_conn->shared = shared;
+#endif
 	c_conn->panel = panel;
 	c_conn->connector_type = connector_type;
 	c_conn->encoder = encoder;
@@ -3525,7 +3742,7 @@ int sde_connector_event_notify(struct drm_connector *connector, uint32_t type,
 
 	return ret;
 }
-
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 bool sde_connector_is_line_insertion_supported(struct sde_connector *sde_conn)
 {
 	struct dsi_display *display = NULL;
@@ -3542,3 +3759,5 @@ bool sde_connector_is_line_insertion_supported(struct sde_connector *sde_conn)
 
 	return display->panel->host_config.line_insertion_enable;
 }
+#endif
+

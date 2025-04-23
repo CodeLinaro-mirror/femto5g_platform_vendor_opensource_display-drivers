@@ -1226,7 +1226,11 @@ static int sde_hw_ctl_update_intf_cfg(struct sde_hw_ctl *ctx,
 	u32 vdc_active = 0;
 	struct sde_hw_blk_reg_map *c;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (!ctx || !cfg)
+#else
 	if (!ctx)
+#endif
 		return -EINVAL;
 
 	c = &ctx->hw;

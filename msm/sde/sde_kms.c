@@ -1655,12 +1655,12 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 			break;
 		}
 
-		sde_crtc_complete_flip(crtc, NULL);
 
 		if (cwb_disabling)
 			sde_encoder_virt_reset(encoder);
 	}
 
+	sde_crtc_complete_flip(crtc, NULL);
 	/* avoid system cache update to set rd-noalloc bit when NSE feature is enabled */
 	if (!test_bit(SDE_FEATURE_SYS_CACHE_NSE, sde_kms->catalog->features))
 		sde_crtc_static_cache_read_kickoff(crtc);
@@ -1935,7 +1935,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 				display,
 				&wb_ops,
 				DRM_CONNECTOR_POLL_HPD,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+				DRM_MODE_CONNECTOR_VIRTUAL, false);
+#else
 				DRM_MODE_CONNECTOR_VIRTUAL);
+#endif
 		if (connector) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;
@@ -1978,7 +1982,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 					display,
 					&dsi_ops,
 					DRM_CONNECTOR_POLL_HPD,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+					DRM_MODE_CONNECTOR_DSI, false);
+#else
 					DRM_MODE_CONNECTOR_DSI);
+#endif
 		if (connector) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;
@@ -2054,7 +2062,11 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 					display,
 					&dp_ops,
 					DRM_CONNECTOR_POLL_HPD,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+					DRM_MODE_CONNECTOR_DisplayPort, false);
+#else
 					DRM_MODE_CONNECTOR_DisplayPort);
+#endif
 		if (connector) {
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;

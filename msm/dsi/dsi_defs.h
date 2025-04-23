@@ -528,8 +528,10 @@ struct dsi_host_common_cfg {
 	u32 byte_intf_clk_div;
 	u32 dma_sched_line;
 	u32 dma_sched_window;
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	u32 vpadding;
 	bool line_insertion_enable;
+#endif
 };
 
 /**

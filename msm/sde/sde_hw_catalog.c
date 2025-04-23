@@ -224,6 +224,9 @@ enum sde_prop {
 	TVM_INCLUDE_REG,
 	IPCC_PROTOCOL_ID,
 	SDE_EMULATED_ENV,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	LINE_INSERTION,
+#endif
 	SDE_PROP_MAX,
 };
 
@@ -624,6 +627,9 @@ static struct sde_prop_type sde_prop[] = {
 	{TVM_INCLUDE_REG, "qcom,tvm-include-reg", false, PROP_TYPE_U32_ARRAY},
 	{IPCC_PROTOCOL_ID, "qcom,sde-ipcc-protocol-id", false, PROP_TYPE_U32},
 	{SDE_EMULATED_ENV, "qcom,sde-emulated-env", false, PROP_TYPE_BOOL},
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	{LINE_INSERTION, "qcom,sde-has-line-insertion", false, PROP_TYPE_BOOL},
+#endif
 };
 
 static struct sde_prop_type sde_perf_prop[] = {
@@ -4045,6 +4051,9 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 	cfg->trusted_vm_env = PROP_VALUE_ACCESS(props->values, TRUSTED_VM_ENV, 0);
 	cfg->max_trusted_vm_displays = PROP_VALUE_ACCESS(props->values,
 			MAX_TRUSTED_VM_DISPLAYS, 0);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	cfg->has_line_insertion = PROP_VALUE_ACCESS(props->values, LINE_INSERTION, 0);
+#endif
 	if (props->exists[TVM_INCLUDE_REG]) {
 		cfg->tvm_reg_count = props->counts[TVM_INCLUDE_REG] / 2;
 		for (i = 0; i < cfg->tvm_reg_count; i++) {
