@@ -507,6 +507,7 @@ struct hfi_cmdbuf_t *hfi_adapter_get_cmd_buf(struct hfi_client_t *ctx, u32 obj_i
 	INIT_LIST_HEAD(&buffer->cmd_buf_chain);
 
 	/* Add buffer to client context */
+	INIT_LIST_HEAD(&buffer->node);
 	list_add_tail(&buffer->node, &ctx->cmd_buf_list);
 
 	return buffer;
