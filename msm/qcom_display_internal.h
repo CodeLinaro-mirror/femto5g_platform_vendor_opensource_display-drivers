@@ -49,10 +49,7 @@ enum mmrm_client_type {
 enum mmrm_cb_type {
 	MMRM_CLIENT_RESOURCE_VALUE_CHANGE = 0x1,
 };
-enum altmode_send_msg_type {
-	ALTMODE_PAN_EN = 0x10,
-	ALTMODE_PAN_ACK,
-};
+
 struct mmrm_client {
 	enum mmrm_client_type client_type;
 	u32 client_uid;
@@ -124,11 +121,15 @@ enum sid_switch_direction {
 	SID_RELEASE,
 };
 #endif
-
 struct qtee_shm {
 	phys_addr_t paddr;
  	void *vaddr;
  	size_t size;
+};
+
+enum altmode_send_msg_type {
+	ALTMODE_PAN_EN = 0x10,
+	ALTMODE_PAN_ACK,
 };
 
 struct altmode_pan_ack_msg {
