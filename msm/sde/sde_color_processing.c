@@ -1687,7 +1687,8 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 	hw_cfg.overfetch_lines_on_bottom = sde_crtc_state->user_roi_list.roi[0].y2 -
 				sde_crtc_state->user_roi_list.spr_roi[0].y2;
 
-	SDE_EVT32(prop_node->feature, hw_cfg.panel_width, hw_cfg.panel_height);
+	SDE_EVT32(prop_node->feature, hw_cfg.panel_width, hw_cfg.panel_height,
+		feature_enabled);
 
 	for (i = 0; i < num_mixers; i++) {
 		hw_dspp = sde_crtc->mixers[i].hw_dspp;
