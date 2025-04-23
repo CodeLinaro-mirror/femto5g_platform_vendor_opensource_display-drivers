@@ -45,6 +45,7 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(KERNEL_ROOT)/drivers/clk/qcom \
 	-I$(KERNEL_SRC)/drivers/clk/qcom \
 	-I$(DISPLAY_ROOT)/include/linux \
+	-I$(DISPLAY_ROOT)/msm-lease \
 	-I$(DISPLAY_ROOT)/rotator \
 	-I$(DISPLAY_ROOT)/msm \
 	-I$(DISPLAY_ROOT)/msm/dp \
@@ -240,5 +241,6 @@ msm_drm-$(CONFIG_DRM_MSM) += msm_atomic.o \
 			     msm_smmu.o \
 			     msm_prop.o
 
+msm_drm-$(CONFIG_DRM_MSM_LEASE) += ../msm-lease/msm_lease_drv.o
 CDEFINES += -DBUILD_TIMESTAMP=\"$(shell date -u +'%Y-%m-%dT%H:%M:%SZ')\"
 
