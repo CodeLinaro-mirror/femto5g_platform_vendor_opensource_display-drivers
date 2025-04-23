@@ -271,6 +271,7 @@ struct dp_parser {
 	struct dp_hw_cfg hw_cfg;
 	bool has_mst;
 	bool has_mst_sideband;
+        bool no_aux_switch;
 	bool dsc_feature_enable;
 	bool fec_feature_enable;
 	bool dsc_continuous_pps;
