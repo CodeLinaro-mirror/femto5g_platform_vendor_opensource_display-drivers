@@ -639,7 +639,10 @@ static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
 	panel_timing_caps->panel_jitter[1] = mode->priv_info->panel_jitter_denom;
 	panel_timing_caps->hsync_pulse = mode->timing.h_sync_width;
 	hfi_panel_get_mode_res_data(mode, panel_timing_caps);
-	hfi_panel_get_mode_compression_params(mode, panel_timing_caps);
+	if (mode->timing.dsc_enabled)
+		hfi_panel_get_mode_compression_params(mode, panel_timing_caps);
+	else
+		panel_timing_caps->compression_params.mode = HFI_PANEL_COMPRESSION_NONE;
 	panel_timing_caps->topology.count = 1;
 	panel_timing_caps->topology.hfi_topology.mixer_count = mode->priv_info->topology.num_lm;
 	panel_timing_caps->topology.hfi_topology.enc_count = mode->priv_info->topology.num_enc;
