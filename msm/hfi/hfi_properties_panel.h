@@ -117,7 +117,7 @@
  *                               (version=0 << 20) | (dsize=12 << 24 )
  *   (u32_value) payload[1-12] : struct hfi_panel_compression_params
  */
-#define HFI_PROPERTY_PANEL_COMPRESSION_DATA                          0x0004007
+#define HFI_PROPERTY_PANEL_COMPRESSION_DATA                          0x00040007
 
 /*
  * HFI_PROPERTY_PANEL_DISPLAY_TOPOLOGY - Sets u32 values which specifies
