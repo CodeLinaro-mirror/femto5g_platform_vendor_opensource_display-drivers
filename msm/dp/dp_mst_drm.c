@@ -52,6 +52,7 @@
 #include "dp_drm.h"
 #include "dp_debug.h"
 #include "dp_parser.h"
+#include "dp_mst_drm.h"
 
 #define DP_MST_DEBUG(fmt, ...) DP_DEBUG(fmt, ##__VA_ARGS__)
 #define DP_MST_INFO(fmt, ...) DP_INFO(fmt, ##__VA_ARGS__)
