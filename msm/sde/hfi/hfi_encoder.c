@@ -3,6 +3,8 @@
  * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
+
 #include "hfi_encoder.h"
 #include "hfi_props.h"
 #include "sde_crtc.h"
@@ -70,6 +72,7 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
 	SDE_EVT32(sde_enc->pending_commit_cnt);
+
 	sde_enc->crtc_frame_event_cb_data.connector = sde_enc->cur_master->connector;
 
 	if (sde_enc->crtc_frame_event_cb)
@@ -158,8 +161,11 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 			}
 		}
 		break;
+	case HFI_COMMAND_DISPLAY_EVENT_REGISTER:
+	case HFI_COMMAND_DISPLAY_EVENT_DEREGISTER:
+		break;
 	default:
-		SDE_ERROR("Invalid HFI property %d\n", cmd_id);
+		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
 	}
 }
 
@@ -192,10 +198,16 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 				display_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
 	}
 
+	if (!cmd_buf) {
+		SDE_ERROR("enc:%d failed to get cmd buf in events enable:%d for display:%d\n",
+				enc->base.base.id, enable, display_id);
+		return -EINVAL;
+	}
+
 	cmd = enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER : HFI_COMMAND_DISPLAY_EVENT_DEREGISTER;
 	ret = hfi_adapter_add_get_property(cmd_buf, cmd, display_id, HFI_PAYLOAD_TYPE_U32,
 			&payload, sizeof(payload), &hfi_enc->hfi_cb_obj,
-			(HFI_HOST_FLAGS_NON_DISCARDABLE));
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (ret) {
 		SDE_ERROR("failed to update event: 0x%x\n", payload);
 		return ret;
@@ -204,6 +216,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	SDE_DEBUG("sending events enable:%d for display:%d\n", enable, display_id);
 	if (!defer_to_commit) {
 		ret = hfi_adapter_set_cmd_buf(cmd_buf);
+		SDE_EVT32(enc->base.base.id, display_id, cmd, ret, SDE_EVTLOG_FUNC_CASE1);
 		if (ret) {
 			SDE_ERROR("failed to send event register command\n");
 			return ret;
@@ -220,14 +233,14 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 
 	switch (event) {
 	case MSM_ENC_COMMIT_DONE:
-		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_FRAME_SCAN_START,
+		ret = _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_FRAME_SCAN_START,
 			enable, defer_to_commit);
 		break;
 	case MSM_ENC_TX_COMPLETE:
 		SDE_ERROR("unsupported tx complete wait %d\n", event);
 		break;
 	case MSM_ENC_VBLANK:
-		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_VSYNC,
+		ret = _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_VSYNC,
 				enable, defer_to_commit);
 		break;
 	default:
@@ -255,13 +268,6 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 		return -EINVAL;
 	}
 
-	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
-			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
-	if (!cmd_buf) {
-		SDE_ERROR("failed to get hfi command buffer\n");
-		return -EINVAL;
-	}
-
 	drm_enc = &sde_enc->base;
 	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 
@@ -271,6 +277,13 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	}
 
 	disp_id = sde_conn_get_display_obj_id(conn);
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
 	payload[0] = disp_id;
 	payload[1] = (HFI_DEBUG_EVENT_UNDERRUN | HFI_DEBUG_EVENT_HW_RESET |
 				HFI_DEBUG_EVENT_PP_TIMEOUT);
@@ -287,12 +300,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 		return ret;
 	}
 
-	ret = hfi_adapter_set_cmd_buf(cmd_buf);
-	if (ret) {
-		SDE_ERROR("failed to send debug-init command\n");
-		return ret;
-	}
-
+	SDE_EVT32(drm_enc->base.id, MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE, ret);
 	return ret;
 }
 
@@ -356,6 +364,7 @@ static int hfi_enc_wait_for_event(struct sde_encoder_virt *enc, u32 event)
 		break;
 	case MSM_ENC_TX_COMPLETE:
 		fn_wait = NULL;
+		ret = 1;
 		break;
 	default:
 		SDE_ERROR("unknown wait event %d\n", event);
@@ -377,9 +386,9 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 		return -EINVAL;
 
 	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE) {
-		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
+		ret = _hfi_enc_register_hw_event(enc, event, enable, true);
 		if (ret) {
-			SDE_ERROR("failed to send VSYNC register\n");
+			SDE_ERROR("failed to send event register ret:%d\n", ret);
 			return ret;
 		}
 		hfi_enc->hw_events_state[event].state = enable;
@@ -523,6 +532,8 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 
 	SDE_DEBUG("%s misr_setup: sending cmd buf\n", __func__);
 	rc = hfi_adapter_set_cmd_buf(cmd_buf);
+	SDE_EVT32(drm_enc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_SETUP, rc,
+			SDE_EVTLOG_FUNC_CASE1);
 	if (rc) {
 		SDE_ERROR("Failed to send misr_setup command\n");
 		return rc;
@@ -637,7 +648,11 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 			&hfi_enc->misr_read_listener, (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 			HFI_HOST_FLAGS_NON_DISCARDABLE));
 
+	SDE_EVT32(drm_encoder->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ,
+			SDE_EVTLOG_FUNC_CASE1);
 	rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+	SDE_EVT32(drm_encoder->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ, rc,
+			SDE_EVTLOG_FUNC_CASE2);
 
 	return rc;
 }

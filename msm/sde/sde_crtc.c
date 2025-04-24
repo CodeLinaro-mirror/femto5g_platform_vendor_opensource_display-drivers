@@ -8160,6 +8160,7 @@ void sde_crtc_misr_setup(struct drm_crtc *crtc, bool enable, u32 frame_count)
 	struct sde_crtc_mixer *m;
 	int i;
 	enum msm_disp_op disp_op;
+	int ret;
 
 	if (!crtc) {
 		SDE_ERROR("invalid argument\n");
@@ -8170,12 +8171,20 @@ void sde_crtc_misr_setup(struct drm_crtc *crtc, bool enable, u32 frame_count)
 
 	sde_crtc->misr_enable_sui = enable;
 	sde_crtc->misr_frame_count = frame_count;
-	for (i = 0; i < sde_crtc->num_mixers; ++i) {
-		m = &sde_crtc->mixers[i];
-		if (!m->hw_lm || !m->hw_lm->ops.setup_misr[disp_op])
-			continue;
 
-		m->hw_lm->ops.setup_misr[disp_op](m->hw_lm, enable, frame_count);
+	if (sde_crtc->hal_ops.debugfs_misr_setup[disp_op]) {
+		ret = sde_crtc->hal_ops.debugfs_misr_setup[disp_op](sde_crtc);
+
+		if (ret)
+			SDE_ERROR("Failed to setup MISR\n");
+	} else {
+		for (i = 0; i < sde_crtc->num_mixers; ++i) {
+			m = &sde_crtc->mixers[i];
+			if (!m->hw_lm || !m->hw_lm->ops.setup_misr[disp_op])
+				continue;
+
+			m->hw_lm->ops.setup_misr[disp_op](m->hw_lm, enable, frame_count);
+		}
 	}
 }
 
@@ -8429,8 +8438,6 @@ static ssize_t _sde_crtc_misr_setup(struct file *file,
 	u32 frame_count, enable;
 	size_t buff_copy;
 	struct sde_kms *sde_kms;
-	enum msm_disp_op disp_op;
-	int ret = 0;
 
 	if (!file || !file->private_data)
 		return -EINVAL;
@@ -8465,14 +8472,6 @@ static ssize_t _sde_crtc_misr_setup(struct file *file,
 	sde_crtc->misr_frame_count = frame_count;
 	sde_crtc->misr_reconfigure = true;
 
-	disp_op = sde_crtc_get_disp_op(crtc);
-	if (sde_crtc->hal_ops.debugfs_misr_setup[disp_op]) {
-		ret = sde_crtc->hal_ops.debugfs_misr_setup[disp_op](sde_crtc);
-
-		if (ret)
-			SDE_ERROR("Failed to setup MISR\n");
-	}
-
 	return count;
 }
 
@@ -8500,37 +8499,48 @@ static ssize_t _sde_crtc_misr_read(struct file *file,
 	if (!sde_kms)
 		return -EINVAL;
 
-	disp_op = sde_crtc_get_disp_op(crtc);
-	if (sde_crtc->hal_ops.debugfs_misr_read[disp_op]) {
-		rc = sde_crtc->hal_ops.debugfs_misr_read[disp_op](sde_crtc);
-
-		if (rc)
-			SDE_ERROR("debugfs_misr_read failed, rc: %d\n", rc);
-	}
-
 	rc = pm_runtime_resume_and_get(crtc->dev->dev);
 	if (rc < 0) {
 		SDE_ERROR("failed to enable power resource %d\n", rc);
 		return rc;
 	}
 
+	disp_op = sde_crtc_get_disp_op(crtc);
+	if (!sde_crtc->misr_enable_debugfs) {
+		len += scnprintf(buf + len, MISR_BUFF_SIZE - len,
+				"disabled\n");
+		goto buff_check;
+	}
+
+	if (sde_crtc->hal_ops.debugfs_misr_read[disp_op]) {
+		rc = sde_crtc->hal_ops.debugfs_misr_read[disp_op](sde_crtc);
+		if (rc) {
+			SDE_ERROR("debugfs_misr_read failed, rc: %d\n", rc);
+			len += scnprintf(buf + len, MISR_BUFF_SIZE - len, "invalid\n");
+		} else {
+			for (i = 0; i < sde_crtc->misr_vals.count; i++) {
+				len += scnprintf(buf + len, MISR_BUFF_SIZE - len,
+						"lm idx:%d\n", i);
+				len += scnprintf(buf + len, MISR_BUFF_SIZE - len, "0x%x\n",
+						sde_crtc->misr_vals.misr_values[i]);
+			}
+		}
+		goto buff_check;
+	}
+
 	sde_vm_lock(sde_kms);
 	if (!sde_vm_owns_hw(sde_kms)) {
 		SDE_DEBUG("op not supported due to HW unavailability\n");
 		rc = -EOPNOTSUPP;
+		sde_vm_unlock(sde_kms);
 		goto end;
 	}
 
 	if (sde_kms_is_secure_session_inprogress(sde_kms)) {
 		SDE_DEBUG("crtc:%d misr read not allowed\n", DRMID(crtc));
 		rc = -EOPNOTSUPP;
+		sde_vm_unlock(sde_kms);
 		goto end;
-	}
-
-	if (!sde_crtc->misr_enable_debugfs) {
-		len += scnprintf(buf + len, MISR_BUFF_SIZE - len,
-				"disabled\n");
-		goto buff_check;
 	}
 
 	for (i = 0; i < sde_crtc->num_mixers; ++i) {
@@ -8556,6 +8566,7 @@ static ssize_t _sde_crtc_misr_read(struct file *file,
 			len += scnprintf(buf + len, MISR_BUFF_SIZE - len, "0x%x\n", misr_value);
 		}
 	}
+	sde_vm_unlock(sde_kms);
 
 buff_check:
 	if (count <= len) {
@@ -8571,8 +8582,8 @@ buff_check:
 	*ppos += len;   /* increase offset */
 
 end:
-	sde_vm_unlock(sde_kms);
 	pm_runtime_put_sync(crtc->dev->dev);
+
 	return len;
 }
 

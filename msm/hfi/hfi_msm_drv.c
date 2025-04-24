@@ -3,6 +3,8 @@
  * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
+#define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
+
 #include "hfi_msm_drv.h"
 
 #define MSM_DRV_HFI_ADAPTER 1

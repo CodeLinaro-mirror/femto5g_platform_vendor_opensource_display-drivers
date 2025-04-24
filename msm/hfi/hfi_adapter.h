@@ -123,6 +123,7 @@ struct hfi_kv_pairs {
  * struct hfi_cmdbuf_t - HFI Command buffer wrapper structure
  * @lock: Mutex to serialize buffer access
  * @cmd_type: enum value of hfi_cmdbuf_type to classify buffers and help look up
+ * @unique_id: unique identifier maintaining client_id with 2 LSB and a random unique id
  * @obj_id: ID of Client objects owning this command buffer (Ex. display or device ID)
  * @size: indicates current size tracking fill level of cmd buffer memory
  * @buf: handle of actual buffer provided by HFI Core driver
@@ -135,6 +136,7 @@ struct hfi_kv_pairs {
 struct hfi_cmdbuf_t {
 	struct mutex lock;
 	enum hfi_cmdbuf_type cmd_type;
+	u32 unique_id;
 	u32 obj_id;
 	u32 size;
 #if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
@@ -221,6 +223,7 @@ struct msm_dbg_addr_map {
 };
 
 #if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
+
 /**
  * hfi_adapter_init - Creates HFI adapter module object to connect with HFI driver.
  * Adapter registers with HFI driver as a client (@hfi_device_open) and provides/registers
@@ -406,6 +409,7 @@ static inline void hfi_adapter_buffer_alloc(struct msm_dbg_addr_map *addr_map)
 {
 
 }
+
 static inline void hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
 {
 
