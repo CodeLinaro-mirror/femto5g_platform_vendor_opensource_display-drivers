@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -259,6 +259,9 @@ static int kick_off_v4_dummy(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
 static int kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
 static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode);
+static int last_cmd_sb_v4_dummy(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
+		enum sde_reg_dma_last_cmd_mode mode);
+
 int reset_v4(struct sde_hw_ctl *ctl);
 int flush_v4(struct sde_hw_ctl *ctl, u32 dpu_idx);
 void dump_hyp_config(struct sde_hw_ctl *ctl);
@@ -2158,6 +2161,7 @@ int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx, struct sde_mdss_cfg *m)
 	reg_dma->ops.kick_off = kick_off_v4_dummy;
 	reg_dma->ops.reset = reset_v4;
 	reg_dma->ops.last_command = last_cmd_v4;
+	reg_dma->ops.last_command_sb = last_cmd_sb_v4_dummy;
 	reg_dma->ops.get_reg_dma_vq_buf = get_reg_dma_vq_buf_v4;
 	reg_dma->ops.reset_reg_dma_buf = reset_reg_dma_buffer_v4;
 	reg_dma->ops.check_engine_status = check_engine_status_v4;
@@ -3040,19 +3044,24 @@ const struct {
 	{ REG_DMA_TYPE_DB, REG_DMA_MDSS_DB, DMA_CTL_QUEUE0,
 			WRITE_TRIGGER, MDSS_REG, "DB regs" },
 	{ REG_DMA_TYPE_SB, REG_DMA_TABLE_SB, DMA_CTL_QUEUE0,
-			WRITE_TRIGGER, REG_DMA_FEATURES_MAX, "SB table" },
+				WRITE_TRIGGER, REG_DMA_FEATURES_MAX, "SB table" },
 	{ REG_DMA_TYPE_SB, REG_DMA_MDSS_SB, DMA_CTL_QUEUE0,
-			WRITE_TRIGGER, MDSS_REG, "SB regs" },
+				WRITE_TRIGGER, MDSS_REG, "SB regs" },
 	{ REG_DMA_TYPE_MAX },
 };
 
+static int last_cmd_sb_v4_dummy(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
+        enum sde_reg_dma_last_cmd_mode mode)
+{
+	return 0;
+}
 static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode)
 {
 #if SEND_SEPARATED_LAST_CMD
 	struct sde_reg_dma_setup_ops_cfg cfg;
 #else
-	int last_idx;
+	int last_db_idx, last_sb_idx;
 #endif
 	struct sde_reg_dma_kickoff_cfg kick_off;
 	struct sde_hw_blk_reg_map hw;
@@ -3077,17 +3086,22 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 
 #if !SEND_SEPARATED_LAST_CMD
 	i = 0;
-	last_idx = -1;
+	last_db_idx = -1;
+	last_sb_idx = -1;
 	/* Find which buffer mark last command */
 	while (vq_kickoff[i].type != REG_DMA_TYPE_MAX) {
 		SDE_DEBUG("Check buffer %s\n", vq_kickoff[i].name);
 		buf = vq_reg_dma_bufs[dpu_idx][0][vq_idx][vq_kickoff[i].buf_type];
-		if (buf && buf->index)
-			last_idx = i;
+		if (buf && buf->index) {
+			if ((buf->buffer_type == REG_DMA_MDSS_DB) || (buf->buffer_type == REG_DMA_TABLE_DB))
+				last_db_idx = i;
+			else
+				last_sb_idx = i;
+		}
 		i++;
 	}
 
-	if (last_idx < 0) {
+	if (last_db_idx < 0) {
 		DRM_DEBUG("skip empty payload dpu %d ctl %d vq %d\n",
 					dpu_idx, ctl->idx, vq_idx);
 		return 0;
@@ -3108,7 +3122,7 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 #if SEND_SEPARATED_LAST_CMD
 			kick_off.last_command = false;
 #else
-			kick_off.last_command = (i == last_idx);
+			kick_off.last_command = (i == last_db_idx) || (i == last_sb_idx);
 #endif
 			kick_off.op = REG_DMA_WRITE;
 			kick_off.dma_type = vq_kickoff[i].type;
@@ -3212,7 +3226,7 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 				kick_off.dma_type = vq_kickoff[i].type;
 				kick_off.dma_buf = buf;
 				kick_off.feature = vq_kickoff[i].features;
-				kick_off.last_command = (i == last_idx);
+				kick_off.last_command = (i == last_db_idx) || (i == last_sb_idx);
 				//reg_dma_workload_dump(&kick_off);
 				reg_dma_readback_payload(&kick_off);
 			}
