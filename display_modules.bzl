@@ -82,6 +82,7 @@ module_entry(
             "msm/sde/hfi/hfi_kms.c",
             "msm/sde/hfi/hfi_msm_dbg.c",
             "msm/sde/hfi/hfi_plane.c",
+            "msm/sde/hfi/hfi_color_proc.c",
             "msm/dsi/hfi/dsi_display_hfi.c",
             "msm/dsi/hfi/dsi_hfi.c",
         ],

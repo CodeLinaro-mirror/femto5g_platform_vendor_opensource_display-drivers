@@ -14,6 +14,7 @@
 #include "sde_kms.h"
 #include "sde_hw_reg_dma_v1_color_proc.h"
 #include "sde_hw_vbif.h"
+#include "hfi_color_proc.h"
 
 #define SDE_FETCH_CONFIG_RESET_VALUE   0x00000087
 
@@ -677,7 +678,7 @@ static void sde_hw_sspp_setup_pe_config(struct sde_hw_pipe *ctx,
 void sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
 		struct sde_hw_pipe_cfg *sspp,
 		struct sde_hw_pixel_ext *pe,
-		void *scaler_cfg)
+		void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down)
 {
 	struct sde_hw_blk_reg_map *c;
 	int config_h = 0x0;
@@ -735,7 +736,7 @@ void sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
 void sde_hw_sspp_setup_scaler3(struct sde_hw_pipe *ctx,
 		struct sde_hw_pipe_cfg *sspp,
 		struct sde_hw_pixel_ext *pe,
-		void *scaler_cfg)
+		void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down)
 {
 	u32 idx;
 	bool de_lpf_en = false;
@@ -1265,7 +1266,6 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 				c->ops.setup_vig_gamut[MSM_DISP_OP_HWIO] =
 					reg_dmav1_setup_vig_gamutv5;
 		}
-
 		if (c->cap->sblk->gamut_blk.version ==
 			(SDE_COLOR_PROCESS_VER(0x6, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
@@ -1277,9 +1277,12 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x6, 0x1))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
 							c);
-			if (!ret)
+			if (!ret) {
 				c->ops.setup_vig_gamut[MSM_DISP_OP_HWIO] =
 					reg_dmav2_setup_vig_gamutv61;
+				c->ops.setup_vig_gamut[MSM_DISP_OP_HFI] =
+					reg_dmav2_setup_vig_gamutv61;
+			}
 		}
 	}
 
@@ -1343,39 +1346,49 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 
 	if (test_bit(SDE_SSPP_UCSC_IGC, &features)) {
 		if (c->cap->sblk->ucsc_igc_blk[0].version ==
-			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_igc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_igcv1_1;
+			c->ops.setup_ucsc_igc[MSM_DISP_OP_HFI] = hfi_setup_ucsc_igcv1;
+		}
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_igc_blk[0].version))
 			c->ops.setup_ucsc_igc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_igcv1;
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_GC, &features)) {
 		if (c->cap->sblk->ucsc_gc_blk[0].version ==
-			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_gc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_gcv1_1;
+			c->ops.setup_ucsc_gc[MSM_DISP_OP_HFI] = hfi_setup_ucsc_gcv1;
+		}
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_gc_blk[0].version))
 			c->ops.setup_ucsc_gc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_gcv1;
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_CSC, &features)) {
 		if (c->cap->sblk->ucsc_csc_blk[0].version ==
-			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_csc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_cscv1_1;
+			c->ops.setup_ucsc_csc[MSM_DISP_OP_HFI] = hfi_setup_ucsc_cscv1;
+		}
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_csc_blk[0].version))
 			c->ops.setup_ucsc_csc[MSM_DISP_OP_HWIO] = sde_setup_ucsc_cscv1;
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_UNMULT, &features)) {
 		if (c->cap->sblk->ucsc_unmult_blk[0].version ==
-			SDE_COLOR_PROCESS_VER(0x1, 0x1))
+			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_unmult[MSM_DISP_OP_HWIO] = sde_setup_ucsc_unmultv1_1;
+			c->ops.setup_ucsc_unmult[MSM_DISP_OP_HFI] = hfi_setup_ucsc_unmultv1;
+		}
 		else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_unmult_blk[0].version))
 			c->ops.setup_ucsc_unmult[MSM_DISP_OP_HWIO] = sde_setup_ucsc_unmultv1;
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_ALPHA_DITHER, &features) &&
-			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_alpha_dither_blk[0].version))
+			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_alpha_dither_blk[0].version)) {
 		c->ops.setup_ucsc_alpha_dither[MSM_DISP_OP_HWIO] = sde_setup_ucsc_alpha_ditherv1;
+		c->ops.setup_ucsc_alpha_dither[MSM_DISP_OP_HFI] = hfi_setup_ucsc_alpha_ditherv1;
+	}
 }
 
 void sde_hw_sspp_setup_inverse_pma(struct sde_hw_pipe *ctx,

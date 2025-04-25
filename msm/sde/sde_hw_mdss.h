@@ -16,6 +16,7 @@
 #include <drm/drm_fourcc.h>
 
 #include "msm_drv.h"
+#include "hfi_defs_common.h"
 
 #define SDE_DBG_NAME			"sde"
 
@@ -701,12 +702,14 @@ struct sde_mdss_color {
  * struct sde_cp_skip_blend_plane: skip blend plane payload
  * @valid: True when skip blend plane is active
  * @plane: hw plane being used
+ * @y_offset: crtc plane y_offset
  * @plane_w: width of layer
  * @plane_h: height of layer
  */
 struct sde_cp_skip_blend_plane {
 	bool valid;
 	enum sde_sspp plane;
+	u32 y_offset;
 	u32 plane_w;
 	u32 plane_h;
 };
@@ -719,6 +722,16 @@ enum skip_blend_plane_type {
 	SB_PLANE_REAL,
 	SB_PLANE_VIRT,
 	SB_PLANE_MAX
+};
+
+/**
+ * mapping table to map HLOS driver DSPP index to HFI feature HW block index.
+ */
+static u32 hfi_dspp_idx_map[DSPP_MAX] = {
+	[DSPP_0] = HFI_BUFF_FEATURE_HW_BLK_IDX_0,
+	[DSPP_1] = HFI_BUFF_FEATURE_HW_BLK_IDX_1,
+	[DSPP_2] = HFI_BUFF_FEATURE_HW_BLK_IDX_2,
+	[DSPP_3] = HFI_BUFF_FEATURE_HW_BLK_IDX_3,
 };
 
 /**
@@ -739,7 +752,13 @@ enum skip_blend_plane_type {
  * @skip_planes: array of skip blend planes with crtc
  * @num_ds_enabled: Number of destination scalers enabled
  * @overfetch_lines_on_top: extra lines to over fetch on top
- * @overfetch_lines_on_top: extra lines to over fetch on bottom
+ * @overfetch_lines_on_bottom: extra lines to over fetch on bottom
+ * @prop_helper: prop_helper for color processing features
+ * @prop_id: hfi feature property ID
+ * @obj_id: hfi obj id, used for SSPP features which requires obj_id
+ * @flags: color proc feature flag indicating enable, broadcast, dspp index
+ * @dspp_start_idx: starting index of dspp pipes
+ * @dspp_idx: current dspp index
  */
 struct sde_hw_cp_cfg {
 	void *payload;
@@ -758,6 +777,12 @@ struct sde_hw_cp_cfg {
 	u32 num_ds_enabled;
 	u32 overfetch_lines_on_top;
 	u32 overfetch_lines_on_bottom;
+	struct hfi_util_u32_prop_helper *prop_helper;
+	u32 prop_id;
+	u32 obj_id;
+	u32 flags;
+	u32 dspp_start_idx;
+	u32 dspp_idx;
 };
 
 /**

@@ -119,10 +119,14 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	case HFI_COMMAND_DISPLAY_DISABLE:
 		msleep(20);
 		break;
+	case HFI_COMMAND_DISPLAY_POST_DISABLE:
+	case HFI_COMMAND_DISPLAY_ENABLE:
+	case HFI_COMMAND_DISPLAY_POST_ENABLE:
+	case HFI_COMMAND_DISPLAY_SET_MODE:
 	case HFI_COMMAND_DISPLAY_POWER_REGISTER:
 		break;
 	default:
-		DSI_ERR("Invalid HFI property %d\n", prop);
+		DSI_ERR("Invalid HFI property 0x%x\n", prop);
 	}
 
 }
@@ -183,42 +187,51 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 
 	drm_conn = display->drm_conn;
 
-	obj_id = sde_conn_get_display_obj_id(drm_conn);
-
-	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
-	if (!cmd_buf) {
-		DSI_ERR("Could not get cmd_buf for hfi_cmd=%x\n", hfi_cmd);
-		return -ENODEV;
-	}
-
 	switch (hfi_cmd) {
 	case HFI_COMMAND_DISPLAY_MODE_VALIDATE:
 		flags = HFI_HOST_FLAGS_NONE;
 		break;
-	case HFI_COMMAND_DISPLAY_DISABLE:
+	case HFI_COMMAND_DISPLAY_SET_MODE:
+	case HFI_COMMAND_DISPLAY_ENABLE:
 	case HFI_COMMAND_DISPLAY_POST_ENABLE:
+	case HFI_COMMAND_DISPLAY_POST_DISABLE:
+	case HFI_COMMAND_DISPLAY_DISABLE:
 		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
 		break;
 	default:
 		break;
 	}
 
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
+
+	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id,
+			HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		DSI_ERR("could not get cmd_buf for hfi_cmd 0x%x\n", hfi_cmd);
+		return -ENODEV;
+	}
+
 	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED) {
 		rc = hfi_adapter_add_get_property(cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
 			payload, payload_size, &display_hfi->hfi_cb_obj, flags);
 		if (rc)
-			DSI_ERR("could not set property for hfi_cmd=%x\n", hfi_cmd);
+			DSI_ERR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
+
+		SDE_EVT32(obj_id, hfi_cmd, SDE_EVTLOG_FUNC_CASE1);
 		rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+		SDE_EVT32(obj_id, hfi_cmd, rc, SDE_EVTLOG_FUNC_CASE2);
 	} else {
 		rc = hfi_adapter_add_set_property(cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
 			payload, payload_size, flags);
 		if (rc)
-			DSI_ERR("could not set property for hfi_cmd=%x\n", hfi_cmd);
+			DSI_ERR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
+
 		rc = hfi_adapter_set_cmd_buf(cmd_buf);
+		SDE_EVT32(obj_id, hfi_cmd, rc, SDE_EVTLOG_FUNC_CASE3);
 	}
 
 	if (rc) {
-		SDE_ERROR("failed to send hfi_cmd=%x\n", hfi_cmd);
+		SDE_ERROR("failed to send hfi_cmd 0x%x\n", hfi_cmd);
 		return rc;
 	}
 
@@ -250,6 +263,7 @@ int dsi_display_hfi_register_pwr_supplies(struct dsi_display *display)
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE);
 
 	rc = hfi_adapter_set_cmd_buf(cmd_buf);
+	SDE_EVT32(obj_id, hfi_cmd, rc, SDE_EVTLOG_FUNC_CASE1);
 
 	if (rc)
 		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_POWER_REGISTER, rc=%d\n", rc);
@@ -639,7 +653,10 @@ static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
 	panel_timing_caps->panel_jitter[1] = mode->priv_info->panel_jitter_denom;
 	panel_timing_caps->hsync_pulse = mode->timing.h_sync_width;
 	hfi_panel_get_mode_res_data(mode, panel_timing_caps);
-	hfi_panel_get_mode_compression_params(mode, panel_timing_caps);
+	if (mode->timing.dsc_enabled)
+		hfi_panel_get_mode_compression_params(mode, panel_timing_caps);
+	else
+		panel_timing_caps->compression_params.mode = HFI_PANEL_COMPRESSION_NONE;
 	panel_timing_caps->topology.count = 1;
 	panel_timing_caps->topology.hfi_topology.mixer_count = mode->priv_info->topology.num_lm;
 	panel_timing_caps->topology.hfi_topology.enc_count = mode->priv_info->topology.num_enc;
@@ -1013,6 +1030,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 
 	display_hfi->kv_props = hfi_util_kv_helper_alloc(HFI_UTIL_MAX_ALLOC);
 
+	SDE_EVT32(HFI_COMMAND_PANEL_INIT_PANEL_CAPS, SDE_EVTLOG_FUNC_CASE1);
 	rc = dsi_hfi_append_panel_init_caps(buffer, display, panel_init_caps, buff_desc);
 	if (rc) {
 		DSI_ERR("failed to append HFI_COMMAND_PANEL_INIT_PANEL_CAPS: rc = %d", rc);
@@ -1021,6 +1039,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		return rc;
 	}
 
+	SDE_EVT32(HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS, SDE_EVTLOG_FUNC_CASE2);
 	rc = dsi_hfi_append_panel_timing_caps(buffer, display, timing_caps_array, display->vaddr);
 	if (rc) {
 		DSI_ERR("failed to append HFI_COMMAND_PANEL_INIT_TIMING_CAPS: rc = %d", rc);
@@ -1029,6 +1048,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		return rc;
 	}
 
+	SDE_EVT32(HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, SDE_EVTLOG_FUNC_CASE3);
 	rc = dsi_hfi_append_panel_generic_caps(buffer, display, panel_generic_caps);
 	if (rc) {
 		DSI_ERR("failed to append HFI_COMMAND_PANEL_INIT_GENERIC_CAPS: rc = %d", rc);
@@ -1038,6 +1058,8 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 	}
 
 	rc = hfi_adapter_set_cmd_buf(buffer);
+	SDE_EVT32(HFI_COMMAND_PANEL_INIT_PANEL_CAPS, HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS,
+			HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, rc, SDE_EVTLOG_FUNC_CASE4);
 	if (rc)
 		DSI_ERR("failed to send panel init: rc = %d", rc);
 
@@ -1090,6 +1112,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 
 	DSI_DEBUG("misr_setup: sending cmd buf\n");
 	rc = hfi_adapter_set_cmd_buf(cmd_buf);
+	SDE_EVT32(obj_id, HFI_COMMAND_DEBUG_MISR_SETUP, rc, SDE_EVTLOG_FUNC_CASE1);
 	if (rc)
 		DSI_ERR("Failed to send misr_setup command\n");
 
@@ -1184,7 +1207,10 @@ int dsi_hfi_misr_read(struct dsi_display *display)
 	if (rc)
 		DSI_ERR("Failed to add MISR read command\n");
 
+	SDE_EVT32(drm_conn->base.id, obj_id, HFI_COMMAND_DEBUG_MISR_READ, SDE_EVTLOG_FUNC_CASE1);
 	rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+	SDE_EVT32(drm_conn->base.id, obj_id, HFI_COMMAND_DEBUG_MISR_READ, rc,
+			SDE_EVTLOG_FUNC_CASE2);
 
 	return rc;
 }

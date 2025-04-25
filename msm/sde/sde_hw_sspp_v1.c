@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1147,12 +1147,29 @@ void setup_layer_ops_v1(struct sde_hw_pipe *c,
 		ret = reg_dmav1_init_sspp_op_v4(is_qseed3_rev_qseed3lite(
 					c->catalog) ? SDE_SSPP_SCALER_QSEED3LITE
 					: SDE_SSPP_SCALER_QSEED3, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_scaler[MSM_DISP_OP_HWIO] = reg_dmav1_setup_vig_qseed3;
-		else
+			c->ops.setup_scaler[MSM_DISP_OP_HFI] = reg_dmav1_setup_vig_qseed3;
+			c->ops.setup_scaler_lut[MSM_DISP_OP_HFI] =
+					c->ops.setup_scaler_lut[MSM_DISP_OP_HWIO];
+			if (test_bit(SDE_SSPP_SRC, &features)) {
+				c->ops.reg_dma_setup_pe[MSM_DISP_OP_HWIO] =
+					reg_dmav1_setup_pe_config;
+				c->ops.reg_dma_setup_pe[MSM_DISP_OP_HFI] =
+					reg_dmav1_setup_pe_config;
+			}
+
+			if (test_bit(SDE_SSPP_PREDOWNSCALE, &features)) {
+				c->ops.reg_dma_setup_pre_downscale[MSM_DISP_OP_HWIO] =
+						reg_dmav1_setup_pre_downscale;
+				c->ops.reg_dma_setup_pre_downscale[MSM_DISP_OP_HFI] =
+						reg_dmav1_setup_pre_downscale;
+			}
+		} else {
 			c->ops.setup_scaler_cac[MSM_DISP_OP_HWIO] =
 				test_bit(SDE_SSPP_CAC_V2, &features) ?
 				sde_hw_sspp_setup_scaler_cac : NULL;
+		}
 	}
 
 	if (test_bit(SDE_SSPP_MULTIRECT_ERROR, &features)) {

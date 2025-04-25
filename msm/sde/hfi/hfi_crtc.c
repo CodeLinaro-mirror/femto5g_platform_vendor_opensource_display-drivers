@@ -278,6 +278,7 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 	struct drm_encoder *enc;
 	struct drm_encoder *main_enc = NULL;
 	struct drm_connector_list_iter iter;
+	struct sde_crtc *sde_crtc;
 
 	if (!crtc || !crtc_state)
 		return U32_MAX;
@@ -287,6 +288,17 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 			continue;
 
 		main_enc = enc;
+	}
+
+	if (!main_enc) {
+		sde_crtc = to_sde_crtc(crtc);
+		drm_for_each_encoder_mask(enc, crtc->dev, sde_crtc->cached_encoder_mask) {
+			if (sde_encoder_in_clone_mode(enc))
+				continue;
+
+			main_enc = enc;
+			SDE_DEBUG("found encoder from cached\n");
+		}
 	}
 
 	if (main_enc) {
@@ -312,6 +324,7 @@ void hfi_crtc_destroy(struct sde_crtc *crtc)
 	crtc_hfi = to_hfi_crtc(crtc);
 
 	kfree(crtc_hfi->base_props);
+	kfree(crtc_hfi->color_props);
 	kfree(crtc_hfi->kv_props);
 
 	mutex_destroy(&crtc_hfi->hfi_lock);
@@ -472,6 +485,7 @@ int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 
 	SDE_DEBUG("misr_setup: sending cmd buf\n");
 	rc = hfi_adapter_set_cmd_buf(cmd_buf);
+	SDE_EVT32(crtc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_SETUP, rc, SDE_EVTLOG_FUNC_CASE1);
 	if (rc) {
 		SDE_ERROR("Failed to send misr_setup command\n");
 		return rc;
@@ -566,7 +580,9 @@ int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 	if (rc)
 		SDE_ERROR("Failed to add MISR read command!\n");
 
+	SDE_EVT32(crtc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ, SDE_EVTLOG_FUNC_CASE1);
 	rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+	SDE_EVT32(crtc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ, rc, SDE_EVTLOG_FUNC_CASE2);
 
 	return rc;
 
@@ -627,6 +643,13 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc)
 	crtc->base_props = hfi_util_u32_prop_helper_alloc(HFI_CRTC_BASE_PROP_MAX_SIZE);
 	if (IS_ERR(crtc->base_props)) {
 		SDE_ERROR("failed to allocate memory for base prop collector\n");
+		ret = -ENOMEM;
+		goto free_kv;
+	}
+
+	crtc->color_props = hfi_util_u32_prop_helper_alloc(HFI_CRTC_BASE_PROP_MAX_SIZE);
+	if (IS_ERR(crtc->color_props)) {
+		SDE_ERROR("failed to allocate memory for color prop collector\n");
 		ret = -ENOMEM;
 		goto free_kv;
 	}

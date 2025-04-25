@@ -371,6 +371,178 @@
 #define HFI_PROPERTY_DISPLAY_DETACH_LAYER                            0x00020019
 
 /*
+ * All display color properties begin here
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_3D_LUT - This property is to setup 3D LUT.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_3D_LUT
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_3D_LUT |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_3D_LUT                            0x00020101
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_IGC - This property is to setup IGC.
+ *                                  Host is expected to send this packet
+ *                                  of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                  command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_IGC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_IGC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_IGC                               0x00020102
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_GC - This property is to setup GC.
+ *                                 Host is expected to send this packet of
+ *                                 HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_GC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_GC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_GC                                0x00020103
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_PCC - This property is to setup PCC.
+ *                                  Host is expected to send this packet of
+ *                                  HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_PCC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_PCC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_PCC                               0x00020104
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_HSIC - This property is to setup PA HSIC.
+ *                                   Host is expected to send this packet of
+ *                                   HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_HSIC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_HSIC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_HSIC                              0x00020105
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKIN - This property is to setup PA MEMCOLOR SKIN.
+ *                                            Host is expected to send this packet of
+ *                                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                            payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKIN
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKIN |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKIN                     0x00020106
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKY - This property is to setup PA MEMCOLOR SKY.
+ *                                           Host is expected to send this packet of
+ *                                           HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                           payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKY
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKY |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKY                      0x00020107
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_FOLIAGE - This property is to setup PA MEMCOLOR FOLIAGE.
+ *                                               Host is expected to send this packet of
+ *                                               HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                               payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_FOLIAGE
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_FOLIAGE |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_FOLIAGE                  0x00020108
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_PROT - This property is to setup PA MEMCOLOR PROTECTION.
+ *                                            Host is expected to send this packet of
+ *                                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                            payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_PROT
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_PROT |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_PROT                     0x00020109
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_SIXZONE - This property is to setup PA SIXZONE.
+ *                                      Host is expected to send this packet of
+ *                                      HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_SIXZONE
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_SIXZONE |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_SIXZONE                           0x0002010A
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_VLUT - This property is to setup PA VLUT.
+ *                                   Host is expected to send this packet of
+ *                                   HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_VLUT
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_VLUT |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_VLUT                              0x0002010B
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_DITHER - This property is to setup PPB DITHER.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_DITHER
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_DITHER |
+ *                                 (version=0 << 20) |
+ *                                 (dsize=(sizeof(struct hfi_display_dither)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_display_dither
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_DITHER                            0x0002010C
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_RC - This property is to setup RC.
+ *                                 Host is expected to send this packet of
+ *                                 HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_RC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_RC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_RC                                0x0002010D
+
+/*
+ * All display color properties end here
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_END                               0x000201FF
+
+/*
  * All display property IDs end here
  */
 #define HFI_PROPERTY_DISPLAY_END                                     0x0002FFFF
@@ -585,7 +757,7 @@
  *     (u32_value) payload [4]   : Stride for Plane 2
  *     (u32_value) payload [5]   : Stride for Plane 3
  */
-#define HFI_PROPERTY_LAYER_STRIDE                                0x0003000C
+#define HFI_PROPERTY_LAYER_STRIDE                                    0x0003000C
 
 /*
  * HFI_PROPERTY_LAYER_MULTIRECT_MODE- Multi rectangle fetch modes.
@@ -599,7 +771,7 @@
  *     (u32_value) payload [1]   : layer id
  *     (u32_value) payload [2]   : one of the modes from enum hfi_layer_fetch_mode
  */
-#define HFI_PROPERTY_LAYER_MULTIRECT_MODE                             0x0003000D
+#define HFI_PROPERTY_LAYER_MULTIRECT_MODE                            0x0003000D
 
 /*
  * HFI_PROPERTY_LAYER_BG_ALPHA - Gets blending background alpha of the plane.
@@ -613,6 +785,122 @@
  *     (u32_value) payload [2]     : background alpha
  */
 #define HFI_PROPERTY_LAYER_BG_ALPHA                                  0x0003000E
+
+/*
+ * All layer color properties begin here
+ */
+#define HFI_PROPERTY_LAYER_COLOR_BEGIN                               0x00030100
+
+/*
+ * HFI_PROPERTY_LAYER_COLOR_3D_LUT - This property is to setup VIG GAMUT.
+ *                                   Host is expected to send this packet of
+ *                                   HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_COLOR_3D_LUT
+ *   (u32_key) payload [0]       : HFI_PROPERTY_LAYER_COLOR_3D_LUT |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : layer_id
+ *   (u32_value) payload [2]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_LAYER_COLOR_3D_LUT                              0x00030101
+
+/*
+ * HFI_PROPERTY_LAYER_COLOR_UCSC_IGC - This property is to setup UCSC IGC.
+ *                                     Host is expected to send this packet
+ *                                     of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                     command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_COLOR_UCSC_IGC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_LAYER_COLOR_UCSC_IGC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     : layer_id
+ *   (u32_value) payload [2]     : u32
+ */
+#define HFI_PROPERTY_LAYER_COLOR_UCSC_IGC                            0x00030102
+
+/*
+ * HFI_PROPERTY_LAYER_COLOR_UCSC_UNMULT - This property is to setup UCSC UNMULT.
+ *                                        Host is expected to send this packet of
+ *                                        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_COLOR_UCSC_UNMULT
+ *   (u32_key) payload [0]       : HFI_PROPERTY_LAYER_COLOR_UCSC_UNMULT |
+ *                                 (version=0 << 20) | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     : layer_id
+ *   (u32_value) payload [2]     : u32
+ */
+#define HFI_PROPERTY_LAYER_COLOR_UCSC_UNMULT                         0x00030103
+
+/*
+ * HFI_PROPERTY_LAYER_COLOR_UCSC_GC - This property is to setup UCSC GC.
+ *                                    Host is expected to send this packet of
+ *                                    HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_COLOR_UCSC_GC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_LAYER_COLOR_UCSC_GC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     : layer_id
+ *   (u32_value) payload [2]     : u32
+ */
+#define HFI_PROPERTY_LAYER_COLOR_UCSC_GC                             0x00030104
+
+/*
+ * HFI_PROPERTY_LAYER_COLOR_UCSC_ALPHA_DITHER - This property is to setup UCSC ALPHA DITHER.
+ *                                              Host is expected to send this packet of
+ *                                              HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                              payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_COLOR_UCSC_ALPHA_DITHER
+ *   (u32_key) payload [0]       : HFI_PROPERTY_LAYER_COLOR_UCSC_ALPHA_DITHER |
+ *                                 (version=0 << 20) | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     : layer_id
+ *   (u32_value) payload [2]     : u32
+ */
+#define HFI_PROPERTY_LAYER_COLOR_UCSC_ALPHA_DITHER                   0x00030105
+
+/*
+ * HFI_PROPERTY_LAYER_COLOR_UCSC_CSC - This property is to setup UCSC CSC.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_COLOR_UCSC_CSC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_LAYER_COLOR_UCSC_CSC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_ucsc_csc)/4) << 24)
+ *   (u32_value) payload [1]     : layer_id
+ *   (u32_value) payload [2]     : struct hfi_ucsc_csc
+ */
+#define HFI_PROPERTY_LAYER_COLOR_UCSC_CSC                            0x00030106
+
+/*
+ * HFI_PROPERTY_LAYER_COLOR_CSC - This property is to setup CSC.
+ *                                Host is expected to send this packet of
+ *                                HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_COLOR_CSC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_LAYER_COLOR_CSC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_csc)/4) << 24)
+ *   (u32_value) payload [1]     : layer_id
+ *   (u32_value) payload [2]     : struct hfi_csc
+ */
+#define HFI_PROPERTY_LAYER_COLOR_CSC                                 0x00030107
+
+/*
+ * HFI_PROPERTY_LAYER_COLOR_SCALER - This property is to setup VIG scaler.
+ *                                   Host is expected to send this packet of
+ *                                   HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_COLOR_SCALER
+ *   (u32_key) payload [0]       : HFI_PROPERTY_LAYER_COLOR_SCALER |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : layer_id
+ *   (u32_value) payload [2]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_LAYER_COLOR_SCALER                              0x00030108
+
+/*
+ * All layer color properties end here
+ */
+#define HFI_PROPERTY_LAYER_COLOR_END                                 0x000301FF
 
 /*
  * All layer property IDs end here

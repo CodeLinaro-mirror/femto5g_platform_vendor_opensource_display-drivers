@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -684,6 +684,7 @@ struct drm_msm_spr_udc_cfg {
 #define DEMURA_PRECISION_1 (1 << 2)
 #define DEMURA_PRECISION_2 (2 << 2)
 #define DEMURA_FLAG_3
+#define DEMURA_FLAG_4
 
 struct drm_msm_dem_cfg {
 	__u64 flags;
@@ -744,6 +745,9 @@ struct drm_msm_dem_cfg {
 	__u32 cfg0_param5_1[CFG0_PARAM_LEN];
 	__u32 cfg0_param6_1_len;
 	__u32 cfg0_param6_1[CFG0_PARAM_LEN];
+
+	__u32 cfg0_param_7;
+	__u32 cfg0_param_8;
 };
 
 struct drm_msm_dem_cfg0_param2 {
