@@ -637,7 +637,7 @@ static int msm_init_vram(struct drm_device *dev)
 		 * Grab the entire CMA chunk carved out in early startup in
 		 * mach-msm:
 		 */
-	} else if (!iommu_present(&platform_bus_type)) {
+	} else if (!mdss_iommu_present()) {
 		u32 vram_size;
 
 		ret = of_property_read_u32(dev->dev->of_node,
@@ -2291,7 +2291,7 @@ msm_gem_smmu_address_space_get(struct drm_device *dev,
 	const struct msm_kms_funcs *funcs;
 	struct msm_gem_address_space *aspace;
 
-	if (!iommu_present(&platform_bus_type))
+	if (!mdss_iommu_present())
 		return ERR_PTR(-ENODEV);
 
 	if ((!dev) || (!dev->dev_private))

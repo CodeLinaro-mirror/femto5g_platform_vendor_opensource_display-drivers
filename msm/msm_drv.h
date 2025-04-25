@@ -1866,4 +1866,13 @@ int msm_drm_unregister_component(struct drm_device *dev, struct notifier_block *
  */
 int msm_drm_notify_components(struct drm_device *dev, enum msm_component_event event);
 
+static inline bool mdss_iommu_present(void)
+{
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+	return true;
+#else
+	return(iommu_present(&platform_bus_type));
+#endif /* __mdss_iommu_present wrapper */
+}
+
 #endif /* __MSM_DRV_H__ */

@@ -1075,7 +1075,7 @@ static struct drm_gem_object *_msm_gem_new(struct drm_device *dev,
 
 	size = PAGE_ALIGN(size);
 
-	if (!iommu_present(&platform_bus_type))
+	if (!mdss_iommu_present())
 		use_vram = true;
 	else if ((flags & (MSM_BO_STOLEN | MSM_BO_SCANOUT)) && priv->vram.size)
 		use_vram = true;
