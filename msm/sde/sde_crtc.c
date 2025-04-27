@@ -6050,7 +6050,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	for (i = 0; i < sde_crtc->num_ctls; i++) {
 		struct sde_hw_ctl *ctl;
 		ctl = sde_crtc->mixers[i].hw_ctl;
-		SDE_ERROR("ctrl %d flush  %X  %pK\n", ctl->idx, ctl->caps->features, ctl->ops.reg_dma_flush);
+		SDE_ERROR("ctrl %d flush  %lX  %pK\n", ctl->idx, ctl->caps->features, ctl->ops.reg_dma_flush);
 		if ((ctl->caps->features & BIT(SDE_CTL_REG_DMA_VQ)) && ctl->ops.reg_dma_flush) {
 			/* Blocking until VQ is executed */
 			SDE_ERROR("ctrl %d flush VQ\n", ctl->idx);

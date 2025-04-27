@@ -82,7 +82,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
 #include <linux/of_platform.h>
-#include <soc/qcom/boot_stats.h>
+//#include <soc/qcom/boot_stats.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
@@ -709,7 +709,9 @@ static int msm_hyp_pdev_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
+#if (KERNEL_VERSION(5, 10, 0) > LINUX_VERSION_CODE)
 	place_marker("kernel_fe: msm_hyp probe ready");
+#endif
 	pr_debug("msm_hyp probe done\n");
 
 	return 0;
@@ -719,12 +721,17 @@ fail:
 	return ret;
 }
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 static int msm_hyp_pdev_remove(struct platform_device *pdev)
+#else
+static void msm_hyp_pdev_remove(struct platform_device *pdev)
+#endif
 {
 	component_master_del(&pdev->dev, &msm_hyp_ops);
 	of_platform_depopulate(&pdev->dev);
-
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static const struct platform_device_id msm_id[] = {

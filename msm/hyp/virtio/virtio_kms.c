@@ -7,7 +7,7 @@
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
 #include <linux/virtio_config.h>
-#include <soc/qcom/boot_stats.h>
+//#include <soc/qcom/boot_stats.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <sde_connector.h>
@@ -1253,7 +1253,7 @@ static int virtio_kms_get_crtc_infos(struct sde_kms *sde_kms,
 			return -ENOMEM;
 		}
 
-		VIRTIO_KMS_DBG("virtio set crtc limit max_mdp_clk: %u\n", priv->base.max_mdp_clk);
+		VIRTIO_KMS_DBG("virtio set crtc limit max_mdp_clk: %llu\n", priv->base.max_mdp_clk);
 
 		//TODO these attributes need be set as kms->device_info which got from host
 		priv->base.qseed_type = "qseed3";
@@ -1463,7 +1463,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 					}
 					hyp_cfg->sspp[hyp_cfg->sspp_count].fixed_ctl_id =
 							output->hw_assign.ctl_id;
-					VIRTIO_KMS_DBG("  HYP_SSPP%d=SSPP%d->CTL%d  rect_mask %X  feature %X\n",
+					VIRTIO_KMS_DBG("  HYP_SSPP%d=SSPP%d->CTL%d  rect_mask %X  feature %lX\n",
 							hyp_cfg->sspp_count, sde_cfg->sspp[j].id, output->hw_assign.ctl_id,
 							output->plane_caps[k].rect_mask,
 							hyp_cfg->sspp[hyp_cfg->sspp_count].features);
@@ -2408,7 +2408,11 @@ static int virtio_kms_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 static int virtio_kms_remove(struct platform_device *pdev)
+#else
+static void virtio_kms_remove(struct platform_device *pdev)
+#endif
 {
 	//TODO: implement remove
 	int ret;
@@ -2418,7 +2422,9 @@ static int virtio_kms_remove(struct platform_device *pdev)
 	if (ret) {
 		VIRTIO_KMS_ERR("deinit failed \n");
 	}
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static const struct platform_device_id virtio_kms_id[] = {

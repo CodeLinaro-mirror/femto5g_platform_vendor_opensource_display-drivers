@@ -12,7 +12,7 @@
  * Includes
  * ---------------------------------------------------------------------------
  */
-#include <soc/qcom/boot_stats.h>
+//#include <soc/qcom/boot_stats.h>
 #if defined(__linux__)
 #include "WF/wfd.h"
 #include "WF/wfdext2.h"

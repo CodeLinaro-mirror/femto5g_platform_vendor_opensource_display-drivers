@@ -10,7 +10,7 @@
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
 #include <linux/virtio_config.h>
-#include <soc/qcom/boot_stats.h>
+//#include <soc/qcom/boot_stats.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 
@@ -1791,7 +1791,7 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	int rc = 0;
 
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES" \
-			"<%d:%d> (0x%x)\n",
+			"<%d:%d> (0x%llx)\n",
 			scanout, plane_id, prop.mask);
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
@@ -1967,14 +1967,14 @@ static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 		if (ptr) {
 			len = ptr - blob + 1;
 			if (len > 0 && len < MAX_LINE_LENGTH) {
-				strlcpy(line, blob, len);
+				strscpy(line, blob, len);
 				line[len] = '\0';
 				ptr++; // Move to the next line or section
 				blob = ptr;
 			}
 		} else {
 			// Last line
-			strlcpy(line, blob, MAX_LINE_LENGTH);
+			strscpy(line, blob, MAX_LINE_LENGTH);
 			blob = NULL;
 		}
 

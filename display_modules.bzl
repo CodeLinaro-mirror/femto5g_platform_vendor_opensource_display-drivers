@@ -115,10 +115,11 @@ module_entry(
             "msm/sde/sde_hw_color_proc_aiqe_v1.c",
             "msm/sde/sde_aiqe_common.c",
             "msm/sde/sde_loopback.c",
+            "msm/sde/sde_hw_vatran.c",
          ],
          "CONFIG_DRM_SDE_WB" : [
             "msm/sde/sde_wb.c",
-            "msm/sde/sde_encoder_phys_wb.c"
+            "msm/sde/sde_encoder_phys_wb.c",
          ],
          "CONFIG_DRM_SDE_RSC" : [
             "msm/sde_rsc.c",
@@ -183,16 +184,22 @@ module_entry(
                "rotator/sde_rotator_r1_pipe.c ",
                "rotator/sde_rotator_r1_ctl.c",
                "rotator/sde_rotator_r1.c",
-               "rotator/sde_rotator_r3.c"],
+                "rotator/sde_rotator_r3.c",
+            ],
             "CONFIG_SYNC_FILE":["rotator/sde_rotator_sync.c"],
-            "CONFIG_DEBUG_FS":["rotator/sde_rotator_debug.c",
-                              "rotator/sde_rotator_r1_debug.c",
-                              "rotator/sde_rotator_r3_debug.c"],
-            },
+            "CONFIG_DEBUG_FS": [
+                "rotator/sde_rotator_debug.c",
+                "rotator/sde_rotator_r1_debug.c",
+                "rotator/sde_rotator_r3_debug.c",
+            ],
+        },
          "CONFIG_DRM_MSM_HYP" : [
             "msm/hyp/msm_drv_hyp.c",
+            "msm/hyp/msm_hyp_irq.c",
+            "msm/hyp/msm_hyp_utils.c",
+            "msm/hyp/sde_encoder_phys_hyp.c",
          ],
-         "CONFIG_DRM_MSM_HYP_VITRIO" : [
+         "CONFIG_DRM_MSM_HYP_VIRTIO" : [
             "msm/hyp/virtio/virtgpu_vq.c",
             "msm/hyp/virtio/virtio_kms.c",
          ],
@@ -202,9 +209,6 @@ module_entry(
             "msm/hyp/wfd/user_hab_utils.c",
          ],
       },
-      deps = [
-         "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
-      ],
 
       # Configs are handled by config_options = []
       config_deps = {
@@ -220,7 +224,7 @@ module_entry(
             "//vendor/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display",
         ],
         "CONFIG_HDCP_QSEECOM" : [
-            "//vendor/qcom/opensource/securemsm-kernel:%b_hdcp_qseecom_dlkm"
+            "//vendor/qcom/opensource/securemsm-kernel:%b_hdcp_qseecom_dlkm",
         ],
         "CONFIG_MSM_MMRM" : [
             "//vendor/qcom/opensource/mmrm-driver:%b_mmrm_driver",

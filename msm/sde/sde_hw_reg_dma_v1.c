@@ -521,10 +521,10 @@ void sde_reg_write_reg_dma_inc(struct sde_hw_blk_reg_map *c,
 				if (p != log)
 					SDE_DEBUG_DRIVER("REG_WRITE %s\n", log);
 				p = log;
-				p += snprintf(p, (u32)(end - p), "[%s:0x%X]++ <=", name,
+				p += snprintf(p, (u32)(end - p), "[%s:0x%lX]++ <=", name,
 						c->blk_off + reg_off + i * sizeof(u32));
 			}
-			p += snprintf(p, (u32)(end - p), " 0x%8.8X", data++);
+			p += snprintf(p, (u32)(end - p), " 0x%8.8X", *data++);
 		}
 		if (p != log)
 			SDE_DEBUG_DRIVER("REG_WRITE %s\n", log);
@@ -581,7 +581,7 @@ void sde_reg_write_reg_dma_single(struct sde_hw_blk_reg_map *c,
 				p = log;
 				p += snprintf(p, (u32)(end - p), "[%s:0x%X] <=", name, c->blk_off + reg_off);
 			}
-			p += snprintf(p, (u32)(end - p), " 0x%8.8X", data++);
+			p += snprintf(p, (u32)(end - p), " 0x%8.8X", *data++);
 		}
 		if (p != log)
 			SDE_DEBUG_DRIVER("REG_WRITE %s\n", log);
@@ -640,10 +640,10 @@ void sde_reg_write_reg_dma_multiple(struct sde_hw_blk_reg_map *c,
 				if (p != log)
 					SDE_DEBUG_DRIVER("REG_MODIFY %s\n", log);
 				p = log;
-				p += snprintf(p, (u32)(end - p), "[%s:0x%X]++%d|%d <=", name,
+				p += snprintf(p, (u32)(end - p), "[%s:0x%lX]++%d|%d <=", name,
 						c->blk_off + reg_off + i * sizeof(u32), inc, wrap);
 			}
-			p += snprintf(p, (u32)(end - p), " 0x%8.8X", data++);
+			p += snprintf(p, (u32)(end - p), " 0x%8.8X", *data++);
 		}
 		if (p != log)
 			SDE_DEBUG_DRIVER("REG_WRITE %s\n", log);
@@ -745,7 +745,7 @@ int write_multi_reg_index(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_INDEX %X: blk %X sz %X\n",
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_INDEX %X: blk %lX sz %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, cfg->data_size);
@@ -767,7 +767,7 @@ int write_multi_reg_inc(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_INC %X: blk %X sz %X\n",
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_INC %X: blk %lX sz %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, cfg->data_size);
@@ -789,7 +789,7 @@ static int write_multi_lut_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_LUT %X: blk %X sz %X\n",
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_LUT %X: blk %lX sz %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, cfg->data_size);
@@ -814,7 +814,7 @@ static int write_single_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_SINGLE %X: blk %X %X\n",
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_SINGLE %X: blk %lX %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, *cfg->data);
@@ -840,7 +840,7 @@ static int write_single_modify(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s MODIFY_SINGLE %X: blk %X mask %X %X\n",
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s MODIFY_SINGLE %X: blk %lX mask %X %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, cfg->mask, *cfg->data);
@@ -866,7 +866,7 @@ static int write_block_lut_reg(struct sde_reg_dma_setup_ops_cfg *cfg)
 	u32 *loc = NULL;
 	int rc = -EINVAL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s BLOCK_LUT %X: blk %X tbl %d blk_sel %X sz %X x %X\n",
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s BLOCK_LUT %X: blk %lX tbl %d blk_sel %X sz %X x %X\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			cfg->blk_offset, cfg->blk, cfg->table_sel, cfg->block_sel,
@@ -903,7 +903,7 @@ static int write_decode_sel(struct sde_reg_dma_setup_ops_cfg *cfg)
 {
 	u32 *loc = NULL;
 
-	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_DEC_SEL %X: blk %X\n",
+	SDE_DEBUG_DRIVER("dpu%d vq%d %s WRITE_DEC_SEL %X: blk %lX\n",
 			cfg->dma_buf->dpu_idx, cfg->dma_buf->vq_idx,
 			buf_type_str[cfg->dma_buf->buffer_type],
 			reg_dma_decode_sel, cfg->blk);
@@ -1019,7 +1019,7 @@ static int validate_write_decode_sel(struct sde_reg_dma_setup_ops_cfg *cfg)
 	if ((vig_blk && dspp_blk) || (dma_blk && dspp_blk) ||
 			(vig_blk && dma_blk) ||
 			(mdss_blk && (vig_blk | dma_blk | dspp_blk))) {
-		DRM_ERROR("invalid blk combination %x\n", cfg->blk);
+		DRM_ERROR("invalid blk combination %lx\n", cfg->blk);
 		return -EINVAL;
 	}
 
@@ -1448,7 +1448,7 @@ void reg_dma_dump_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			wrap = (*p & LUTBUS_TRANS_SZ_MASK) >> 16;
 			len = *p & LUTBUS_LUT_SIZE_MASK;
 			p++;
-			SDE_DEBUG("WRITE LUT %4.4X TBL %d  TRANS %d  len %d:\n", blk, tbl ? "B" : "A", wrap, len);
+			SDE_DEBUG("WRITE LUT %4.4X TBL %s  TRANS %d  len %d:\n", blk, tbl ? "B" : "A", wrap, len);
 			for (i = 0; i < len; i++) {
 				pstr = str;
 				pstr += snprintf(pstr, sizeof(str), "\t");
@@ -1749,7 +1749,7 @@ void reg_dma_readback_payload(struct sde_reg_dma_kickoff_cfg *cfg)
 			wrap = (*p & LUTBUS_TRANS_SZ_MASK) >> 16;
 			len = *p & LUTBUS_LUT_SIZE_MASK;
 			p++;
-			SDE_DEBUG("WRITE LUT %4.4X TBL %d  TRANS %d  len %d SKIP READ BACK!\n",
+			SDE_DEBUG("WRITE LUT %4.4X TBL %s  TRANS %d  len %d SKIP READ BACK!\n",
 					blk, tbl ? "B" : "A", wrap, len);
 			p += len * wrap * 4;
 			size -= 2 + len * wrap * 4;
@@ -2217,7 +2217,7 @@ int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx, struct sde_mdss_cfg *m)
 				reg_dma_buf->buffer_type = j;
 				reg_dma_buf->dpu_idx = dpu_idx;
 				reg_dma_buf->vq_idx = vq_idx;
-				DRM_DEBUG("Allocated buffer for VQ dpu %d  idx %d  vq %d  type %d  sz %X  %pK  buf %pK\n",
+				DRM_DEBUG("Allocated buffer for VQ dpu %d  idx %d  vq %d  type %d  sz %X  %pK  buf 0x%llX\n",
 						dpu_idx, k, vq_idx, j, vq_buf_size[j],
 						reg_dma_buf, reg_dma_buf->iova);
 				vq_reg_dma_bufs[dpu_idx][k][vq_idx][j] = reg_dma_buf;
@@ -3100,7 +3100,7 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		buf = vq_reg_dma_bufs[dpu_idx][0][vq_idx][vq_kickoff[i].buf_type];
 		SDE_DEBUG("Check buffer %s %X\n", vq_kickoff[i].name, buf ? buf->index : 0);
 		if (buf && buf->index) {
-			SDE_DEBUG("Enqueue buffer %s %X  dpu %d  vq %d  i %d  type %d  buf %pK  %X\n",
+			SDE_DEBUG("Enqueue buffer %s %X  dpu %d  vq %d  i %d  type %d  buf %pK  0x%llX\n",
 					vq_kickoff[i].name, buf->index, dpu_idx, vq_idx, i, vq_kickoff[i].buf_type, buf, buf->iova);
 			kick_off.ctl = ctl;
 			kick_off.queue_select = vq_kickoff[i].queue;
@@ -3169,7 +3169,7 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 				(val & (TRIGGER_0_DONE | ACCESS_FAIL)), 200, 20000, false,
 				&hw, reg_dma_intr_0_status_offset[dpu_idx][ctl->idx][q], "INTR_0_STATUS");
 		if (rc) {
-			DRM_ERROR("poll wait failed %d val %x mask %x\n",
+			DRM_ERROR("poll wait failed %d val %x mask 0x%lx\n",
 			    rc, val, TRIGGER_0_DONE | ACCESS_FAIL);
 		}
 		SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, mode, ctl->dpu_idx, rc);
@@ -3204,7 +3204,7 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		while (vq_kickoff[i].type != REG_DMA_TYPE_MAX) {
 			buf = vq_reg_dma_bufs[dpu_idx][0][vq_idx][vq_kickoff[i].buf_type];
 			if (buf && buf->index) {
-				SDE_DEBUG("Read buffer %s  %X  dpu %d  vq %d  i %d  type %d  buf %pK  %X\n",
+				SDE_DEBUG("Read buffer %s  %X  dpu %d  vq %d  i %d  type %d  buf %pK  0x%llX\n",
 						vq_kickoff[i].name, buf->index, dpu_idx, vq_idx, i, vq_kickoff[i].buf_type, buf, buf->iova);
 				kick_off.ctl = ctl;
 				kick_off.queue_select = vq_kickoff[i].queue;

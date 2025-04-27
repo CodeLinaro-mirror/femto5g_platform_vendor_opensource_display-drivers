@@ -1591,7 +1591,7 @@ int sde_core_perf_init(struct sde_core_perf *perf,
 		perf->max_core_clk_rate = SDE_PERF_DEFAULT_MAX_CORE_CLK_RATE;
 	}
 	perf->sys_cache_enabled = 0xffffffff;
-	SDE_ERROR("max_core_clk_rate = %d\n", perf->max_core_clk_rate);
+	SDE_ERROR("max_core_clk_rate = %llu\n", perf->max_core_clk_rate);
 
 	return 0;
 

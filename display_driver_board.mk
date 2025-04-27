@@ -6,10 +6,12 @@ ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
 	endif
 endif
 
+ifneq ($(TARGET_DISABLE_DISPLAY_DLKM),true)
 ifeq ($(DISPLAY_DLKM_ENABLE),  true)
 	ifeq ($(call is-board-platform-in-list,$(TARGET_BOARD_PLATFORM)),true)
 		BOARD_VENDOR_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/msm_drm.ko
 		BOARD_VENDOR_RAMDISK_KERNEL_MODULES += $(KERNEL_MODULES_OUT)/msm_drm.ko
 		BOARD_VENDOR_RAMDISK_RECOVERY_KERNEL_MODULES_LOAD += $(KERNEL_MODULES_OUT)/msm_drm.ko
 	endif
+endif
 endif
