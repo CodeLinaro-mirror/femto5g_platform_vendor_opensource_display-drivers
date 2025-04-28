@@ -162,9 +162,14 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd, display->display_type,
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 			(HFI_HOST_FLAGS_NON_DISCARDABLE));
-	if (rc)
+	if (rc) {
 		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_ENABLE, rc=%d\n", rc);
+		goto error;
+	}
 
+	display->panel->panel_initialized = true;
+
+error:
 	return rc;
 }
 
@@ -243,9 +248,14 @@ int dsi_display_hfi_disable(struct dsi_display *display)
 	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd, display->display_type,
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 			(HFI_HOST_FLAGS_NON_DISCARDABLE));
-	if (rc)
+	if (rc) {
 		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_POST_DISABLE, rc=%d\n", rc);
+		goto error;
+	}
 
+	display->panel->panel_initialized = false;
+
+error:
 	return rc;
 }
 
