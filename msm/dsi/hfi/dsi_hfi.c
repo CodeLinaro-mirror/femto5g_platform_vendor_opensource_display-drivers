@@ -380,6 +380,8 @@ static enum hfi_panel_trigger_type dsi_get_panel_trigger_type_helper(enum dsi_tr
 		return HFI_PANEL_TRIGGER_NONE;
 	case DSI_TRIGGER_TE:
 		return HFI_PANEL_TRIGGER_TE;
+	case DSI_TRIGGER_SEOF:
+		return HFI_PANEL_TRIGGER_SEOF;
 	case DSI_TRIGGER_SW:
 		return HFI_PANEL_TRIGGER_SW;
 	case DSI_TRIGGER_SW_SEOF:
