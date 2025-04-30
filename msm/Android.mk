@@ -31,7 +31,7 @@ ifneq ($(TARGET_BOARD_AUTO),true)
 ifeq ($(CONFIG_MSM_MMRM), y)
        KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
 endif
-ifneq ($(TARGET_BOARD_PLATFORM), lanaina)
+ifneq ($(TARGET_BOARD_PLATFORM), lahaina)
        KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,sync-fence-module-symvers)/Module.symvers
        KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,msm-ext-disp-module-symvers)/Module.symvers
        KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers

@@ -86,6 +86,7 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
             "//soc-repo:{}/drivers/clk/qcom/clk-qcom".format(kernel_build_tv),
             "//soc-repo:{}/drivers/iommu/qcom_iommu_util".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/crm-v2".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/soc/qcom/qcom_rpmh".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/llcc-qcom".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/altmode-glink".format(kernel_build_tv),
             "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(kernel_build_tv),
