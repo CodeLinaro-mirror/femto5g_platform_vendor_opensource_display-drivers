@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -25,7 +25,7 @@
 #include <drm/msm_drm_pp.h>
 #include <linux/version.h>
 #include <drm/drm_blend.h>
-
+#include <linux/vmalloc.h>
 #include "msm_prop.h"
 #include "msm_drv.h"
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -73,10 +73,19 @@ struct dp_drm_mst_fw_helper_ops {
 	int (*update_payload_part1)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_dp_mst_topology_state *mst_state,
 			struct drm_dp_mst_atomic_payload *payload);
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+	int (*update_payload_part2)(struct drm_dp_mst_topology_mgr *mgr,
+			struct drm_dp_mst_atomic_payload *payload);
+#else
 	int (*update_payload_part2)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_atomic_state *state,
 			struct drm_dp_mst_atomic_payload *payload);
-#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
+#endif
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	void (*reset_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr,
+			struct drm_dp_mst_topology_state *mst_state,
+			struct drm_dp_mst_atomic_payload *new_payload);
+#elif (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
 	void (*reset_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_dp_mst_topology_state *mst_state,
 			const struct drm_dp_mst_atomic_payload *old_payload,
@@ -313,7 +322,13 @@ static int dp_mst_calc_pbn_mode(struct dp_display_mode *dp_mode)
 	dsc_en = pinfo->comp_info.enabled;
 	bpp = dsc_en ? DSC_BPP(pinfo->comp_info.dsc_info.config) : pinfo->bpp;
 
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp << 4, false);
+#elif (KERNEL_VERSION(6, 6, 17) <= LINUX_VERSION_CODE)
+	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp << 4);
+#else
 	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp, false);
+#endif
 	pbn_fp = drm_fixp_from_fraction(pbn, 1);
 	pinfo->pbn_no_overhead = pbn;
 
@@ -333,7 +348,20 @@ static int dp_mst_calc_pbn_mode(struct dp_display_mode *dp_mode)
 }
 
 static const struct dp_drm_mst_fw_helper_ops drm_dp_mst_fw_helper_ops = {
-#if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	.calc_pbn_mode             = dp_mst_calc_pbn_mode,
+	.find_vcpi_slots           = dp_mst_find_vcpi_slots,
+	.atomic_find_time_slots    = drm_dp_atomic_find_time_slots,
+	.update_payload_part1      = drm_dp_add_payload_part1,
+	.check_act_status          = drm_dp_check_act_status,
+	.update_payload_part2      = drm_dp_add_payload_part2,
+	.detect_port_ctx           = dp_mst_detect_port,
+	.get_edid                  = drm_dp_mst_get_edid,
+	.topology_mgr_set_mst      = drm_dp_mst_topology_mgr_set_mst,
+	.get_vcpi_info             = _dp_mst_get_vcpi_info,
+	.atomic_release_time_slots = drm_dp_atomic_release_time_slots,
+	.reset_vcpi_slots          = drm_dp_remove_payload_part1,
+#elif (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	.calc_pbn_mode             = dp_mst_calc_pbn_mode,
 	.find_vcpi_slots           = dp_mst_find_vcpi_slots,
 	.atomic_find_time_slots    = drm_dp_atomic_find_time_slots,
@@ -721,10 +749,15 @@ static void _dp_mst_bridge_pre_enable_part2(struct dp_mst_bridge *dp_bridge)
 		return;
 	}
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+	mst->mst_fw_cbs->update_payload_part2(&mst->mst_mgr, payload);
+#else
 	mst->mst_fw_cbs->update_payload_part2(&mst->mst_mgr, mst_state->base.state, payload);
+#endif /* KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE */
+
 #else
 	mst->mst_fw_cbs->update_payload_part2(&mst->mst_mgr);
-#endif
+#endif /* KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE */
 	DP_MST_DEBUG("mst bridge [%d] _pre enable part-2 complete\n",
 			dp_bridge->id);
 }
@@ -759,7 +792,9 @@ static void _dp_mst_bridge_pre_disable_part1(struct dp_mst_bridge *dp_bridge)
 		return;
 	}
 
-#if (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload);
+#elif (KERNEL_VERSION(6, 1, 25) <= LINUX_VERSION_CODE)
 	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload, payload);
 #else
 	mst->mst_fw_cbs->reset_vcpi_slots(&mst->mst_mgr, mst_state, payload);
