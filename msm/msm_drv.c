@@ -39,6 +39,7 @@
  */
 
 #include <linux/of_address.h>
+#include <linux/of_platform.h>
 #include <linux/kthread.h>
 #include <uapi/linux/sched/types.h>
 #include <drm/drm_of.h>
@@ -75,6 +76,10 @@
 #define MSM_VERSION_PATCHLEVEL	0
 
 #define LASTCLOSE_TIMEOUT_MS	500
+
+#if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
+#define DRM_UNLOCKED 0
+#endif
 
 #define msm_wait_event_timeout(waitq, cond, timeout_ms, ret)		\
 	do {								\
@@ -114,6 +119,7 @@ static void msm_fb_output_poll_changed(struct drm_device *dev)
 
 static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
 {
+	#if defined(sched_setscheduler)
 	int ret = 0;
 	struct sched_param param = { 0 };
 	struct task_struct *task = current->group_leader;
@@ -124,7 +130,6 @@ static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
 	 * other real time and normal priority task
 	 */
 	param.sched_priority = 16;
-	#if defined(sched_setscheduler)
 	ret = sched_setscheduler(task, SCHED_FIFO, &param);
 	if (ret)
 		pr_warn("pid:%d name:%s priority update failed: %d\n",
@@ -1797,8 +1802,7 @@ static int msm_ioctl_gem_info(struct drm_device *dev, void *data,
 {
 	struct drm_msm_gem_info *args = data;
 	struct drm_gem_object *obj;
-	struct msm_gem_object *msm_obj;
-	int i, ret = 0;
+	int ret = 0;
 
 	if (args->pad)
 		return -EINVAL;

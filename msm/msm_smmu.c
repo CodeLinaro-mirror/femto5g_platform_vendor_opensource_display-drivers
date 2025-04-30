@@ -78,7 +78,11 @@ static DEFINE_MUTEX(smmu_list_lock);
 /* List of all smmu devices installed */
 static LIST_HEAD(sde_smmu_list);
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void msm_smmu_remove(struct platform_device *pdev);
+#else
 static int msm_smmu_remove(struct platform_device *pdev);
+#endif
 
 static int msm_smmu_attach(struct msm_mmu *mmu, const char * const *names,
 		int cnt)
