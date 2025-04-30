@@ -1,9 +1,9 @@
 load(":display_modules.bzl", "display_driver_modules")
 load(":display_driver_build.bzl", "define_target_variant_modules")
-load("//msm-kernel:target_variants.bzl", "get_all_la_variants")
+load("//soc-repo:target_variants.bzl", "all_target_variants")
 
 def define_lahaina():
-    for (t, v) in get_all_la_variants():
+    for (t, v) in all_target_variants():
         if t == "lahaina":
            define_target_variant_modules(
             target = t,
@@ -27,9 +27,7 @@ def define_lahaina():
             #"CONFIG_HDCP_QSEECOM",
             #"CONFIG_QCOM_WCD939X_I2C",
             "CONFIG_THERMAL_OF",
-            #"CONFIG_MSM_MMRM",
-            #"CONFIG_QTI_HW_FENCE",
-            "CONFIG_QCOM_SPEC_SYNC",
-            #"CONFIG_MSM_EXT_DISPLAY",
+	    #"CONFIG_MSM_MMRM",
+	    #"CONFIG_MSM_EXT_DISPLAY",
         ],
 )
