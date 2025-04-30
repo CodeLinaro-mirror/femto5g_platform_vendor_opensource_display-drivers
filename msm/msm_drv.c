@@ -95,6 +95,7 @@ int msm_ioctl_rmfb2(struct drm_device *dev, void *data,
 
 static DEFINE_MUTEX(msm_release_lock);
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 static void msm_fb_output_poll_changed(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = NULL;
@@ -109,6 +110,7 @@ static void msm_fb_output_poll_changed(struct drm_device *dev)
 	if (priv->fbdev)
 		drm_fb_helper_hotplug_event(priv->fbdev);
 }
+#endif
 
 static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
 {
@@ -161,7 +163,9 @@ static int msm_atomic_check(struct drm_device *dev,
 
 static const struct drm_mode_config_funcs mode_config_funcs = {
 	.fb_create = msm_framebuffer_create,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.output_poll_changed = msm_fb_output_poll_changed,
+#endif
 	.atomic_check = msm_atomic_check,
 	.atomic_commit = msm_atomic_commit,
 	.atomic_state_alloc = msm_atomic_state_alloc,
@@ -1844,7 +1848,9 @@ static const struct file_operations fops = {
 	.compat_ioctl       = drm_compat_ioctl,
 	.poll               = drm_poll,
 	.read               = drm_read,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.llseek             = no_llseek,
+#endif
 	.mmap               = msm_gem_mmap,
 };
 
@@ -1855,7 +1861,9 @@ static struct drm_driver msm_driver = {
 				DRIVER_MODESET,
 	.open               = msm_open,
 	.postclose          = msm_postclose,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.lastclose          = msm_lastclose,
+#endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	.irq_handler        = msm_irq,
 	.irq_preinstall     = msm_irq_preinstall,
