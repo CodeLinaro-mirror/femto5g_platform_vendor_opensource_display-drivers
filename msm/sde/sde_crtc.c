@@ -3825,6 +3825,7 @@ static struct sde_hw_ctl *_sde_crtc_get_hw_ctl(struct drm_crtc *drm_crtc)
 
 static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 {
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 	struct dma_fence *fence;
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
@@ -3861,7 +3862,7 @@ static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 				spec_fence = array->fences[i];
 
 				if (!IS_ERR_OR_NULL(spec_fence) &&
-					test_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT,
+					test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT,
 						&spec_fence->flags)) {
 					spec_hw_fence = true;
 				} else {
@@ -3877,7 +3878,7 @@ static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 			}
 			if (spec_hw_fence)
 				input_hw_fence = fence;
-		} else if (test_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags)) {
+		} else if (test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags)) {
 			input_hw_fence = fence;
 
 			SDE_DEBUG("input hwfence ctx:%llu seqno:%llu f:0x%lx timeline:%s\n",
@@ -3890,6 +3891,9 @@ static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 
 exit:
 	return input_hw_fence;
+#else
+	return NULL;
+#endif /* CONFIG_QTI_HW_FENCE */
 }
 
 /**
