@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1563,7 +1563,7 @@ int dsi_conn_set_dyn_bit_clk(struct drm_connector *connector, uint64_t value)
 	display->dyn_bit_clk_pending = true;
 
 	SDE_EVT32(display->dyn_bit_clk);
-	DSI_DEBUG("update dynamic bit clock rate to %llu\n", display->dyn_bit_clk);
+	DSI_DEBUG("update dynamic bit clock rate to %u\n", display->dyn_bit_clk);
 
 	return 0;
 }
