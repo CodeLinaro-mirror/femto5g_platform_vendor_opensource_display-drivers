@@ -85,6 +85,14 @@ static struct hfi_kms *sde_plane_get_kms(struct sde_plane *plane)
 	return NULL;
 }
 
+static u32 _hfi_plane_scale_alpha(struct sde_mdss_cfg *catalog, u32 prop_val)
+{
+	 if (!(test_bit(SDE_FEATURE_10_BITS_COMPONENTS, catalog->features)))
+		 prop_val = prop_val << 8;
+
+	return prop_val;
+}
+
 static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 		struct sde_plane_state *pstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
@@ -166,11 +174,13 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	case HFI_PROPERTY_LAYER_ALPHA:
 		prop_id = HFI_PROPERTY_LAYER_ALPHA;
 		temp_val =  sde_plane_get_property(state, PLANE_PROP_ALPHA);
+		temp_val =  _hfi_plane_scale_alpha(plane->catalog, temp_val);
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	case HFI_PROPERTY_LAYER_BG_ALPHA:
 		prop_id = HFI_PROPERTY_LAYER_BG_ALPHA;
 		temp_val =  sde_plane_get_property(state, PLANE_PROP_BG_ALPHA);
+		temp_val =  _hfi_plane_scale_alpha(plane->catalog, temp_val);
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	case HFI_PROPERTY_LAYER_SRC_IMG_SIZE_W:
