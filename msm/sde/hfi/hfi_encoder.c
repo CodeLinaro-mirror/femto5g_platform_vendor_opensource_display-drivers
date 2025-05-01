@@ -453,6 +453,7 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct seq_file *s)
 {
 	struct hfi_encoder *hfi_enc;
+	struct sde_encoder_phys *phys;
 
 	if (!s || !s->private || !sde_enc || (sde_enc != s->private))
 		return -EINVAL;
@@ -461,10 +462,33 @@ static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct 
 	if (!hfi_enc)
 		return -EINVAL;
 
-	seq_printf(s, "intf:%d  vsync:%8d underrun:%8d",
-		1,  atomic_read(&hfi_enc->hfi_frame_done_cnt), 0);
+	phys = sde_enc->phys_encs[0];
+	if (!phys)
+		return -EINVAL;
 
-	seq_puts(s, "mode: video\n");
+	seq_printf(s, "intf:%d    vsync:%8d     underrun:%8d    ",
+		phys->intf_idx - INTF_0,  atomic_read(&hfi_enc->hfi_frame_done_cnt), 0);
+
+	switch (phys->intf_mode) {
+	case INTF_MODE_VIDEO:
+		seq_puts(s, "mode: video\n");
+		break;
+	case INTF_MODE_CMD:
+		seq_puts(s, "mode: command\n");
+		break;
+	case INTF_MODE_WB_BLOCK:
+		seq_puts(s, "mode: wb block\n");
+		break;
+	case INTF_MODE_WB_LINE:
+		seq_puts(s, "mode: wb line\n");
+		break;
+	case INTF_MODE_NONE:
+		seq_puts(s, "mode: none\n");
+		break;
+	default:
+		seq_puts(s, "mode: ???\n");
+		break;
+	}
 
 	return 0;
 }
