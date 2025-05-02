@@ -334,6 +334,7 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	}
 
 	INIT_LIST_HEAD(&pool->node);
+	INIT_LIST_HEAD(&pool->buffer_t.node);
 	mutex_init(&pool->lock);
 	mutex_init(&pool->buffer_t.lock);
 	pool->buffer_t.pool = pool;
@@ -345,6 +346,7 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 			HFI_AD_ERROR("failed to allocate memory for buffer pool\n");
 			goto pool_fail;
 		}
+		INIT_LIST_HEAD(&link->buffer_t.node);
 		list_add_tail(&link->node, &pool->node);
 		atomic_set(&link->available, 1);
 		mutex_init(&link->lock);
@@ -507,8 +509,10 @@ struct hfi_cmdbuf_t *hfi_adapter_get_cmd_buf(struct hfi_client_t *ctx, u32 obj_i
 	INIT_LIST_HEAD(&buffer->cmd_buf_chain);
 
 	/* Add buffer to client context */
-	INIT_LIST_HEAD(&buffer->node);
+	mutex_lock(&ctx->lock);
+	list_del_init(&buffer->node);
 	list_add_tail(&buffer->node, &ctx->cmd_buf_list);
+	mutex_unlock(&ctx->lock);
 
 	return buffer;
 }
@@ -786,6 +790,15 @@ void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 {
 	struct list_head *pos, *updated_pos;
 	struct hfi_cmdbuf_t *buf_entry;
+	struct hfi_client_t *ctx;
+
+	ctx = cmd_buf->ctx;
+	if (!ctx) {
+		HFI_AD_ERROR("no valid client for cmd_buf:%p\n", cmd_buf);
+		return;
+	}
+
+	mutex_lock(&ctx->lock);
 
 	list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
@@ -794,7 +807,8 @@ void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 		list_del(pos);
 	}
 
-	list_del(&cmd_buf->node);
+	list_del_init(&cmd_buf->node);
+	mutex_unlock(&ctx->lock);
 	_hfi_clear_buffer(cmd_buf);
 }
 
@@ -1028,6 +1042,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	list_for_each_safe(pos, updated_pos, &cmd_buf->ctx->cmd_buf_list) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
 		if (buf_entry == cmd_buf) {
+			HFI_AD_ERROR("releasing buffer incorrectly\n");
 			list_del(pos);
 			buff_arr[i++] = &buf_entry->buf;
 		}
