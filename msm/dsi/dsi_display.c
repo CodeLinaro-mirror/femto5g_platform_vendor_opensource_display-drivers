@@ -5429,8 +5429,9 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			if (!ctrl->ctrl || (ctrl != mctrl))
 				continue;
 
-			ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op](&ctrl->ctrl->hw,
-					true);
+			if (ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op])
+				ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op](
+						&ctrl->ctrl->hw, true);
 			dsi_phy_dynamic_refresh_clear(ctrl->phy);
 
 			/* Avoid setting trigger selection for 2.9 due to hardware limitation */
