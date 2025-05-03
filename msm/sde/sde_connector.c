@@ -109,7 +109,7 @@ struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn)
 	struct dsi_display *display = NULL;
 	struct shd_display *shd_display;
 
-	if (!c_conn)
+	if (!c_conn || (c_conn->connector_type != DRM_MODE_CONNECTOR_DSI))
 		return 0;
 
 	if (c_conn->shared) {
@@ -1845,7 +1845,7 @@ int sde_connector_clk_ctrl(struct drm_connector *connector, bool enable, bool id
 
 	c_conn = to_sde_connector(connector);
 	display = _sde_connector_get_display(c_conn);
-	if (!display) {
+	if ((c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) && !display) {
 		SDE_ERROR("null display\n");
 		return -EINVAL;
 	}
