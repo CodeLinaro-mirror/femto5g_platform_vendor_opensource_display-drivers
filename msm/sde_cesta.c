@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[sde_cesta:%s:%d]: " fmt, __func__, __LINE__
@@ -21,8 +21,7 @@
 
 #define DATA_BUS_HW_CLIENT_NAME "qcom,sde-data-bus-hw"
 #define DATA_BUS_SW_CLIENT_0_NAME "qcom,sde-data-bus-sw-0"
-
-#define MDP_CLK_LOWSVS_D1	156000000
+#define XO_VOTE_EXIT_FREQ_THRESHOLD 1000
 
 static struct sde_cesta *cesta_list[MAX_CESTA_COUNT] = {NULL, };
 
@@ -143,8 +142,9 @@ static int  _sde_cesta_check_mode2_entry_status(u32 cesta_index)
 	return 0;
 }
 
-void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool en_auto_active,
-		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep)
+void sde_cesta_force_db_update(struct sde_cesta_client *client, bool en_auto_active,
+		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep, bool en_clk_gate,
+		bool cmd_mode)
 {
 	struct sde_cesta *cesta;
 
@@ -156,10 +156,15 @@ void sde_cesta_force_auto_active_db_update(struct sde_cesta_client *client, bool
 
 	cesta = cesta_list[client->cesta_index];
 
-	SDE_EVT32(client->client_index, client->scc_index, en_auto_active, req_mode, en_hw_sleep);
-	if (cesta->hw_ops.force_auto_active_db_update)
-		cesta->hw_ops.force_auto_active_db_update(cesta, client->client_index,
-				en_auto_active, req_mode, en_hw_sleep);
+	SDE_EVT32(client->client_index, client->scc_index, en_auto_active, req_mode, en_hw_sleep,
+			en_clk_gate, cesta->mdp_clk_gate_disable_cnt, cmd_mode);
+
+	mutex_lock(&cesta->client_lock);
+
+	if (cesta->hw_ops.force_db_update)
+		cesta->hw_ops.force_db_update(cesta, client->client_index,
+				en_auto_active, req_mode, en_hw_sleep, en_clk_gate, cmd_mode);
+	mutex_unlock(&cesta->client_lock);
 }
 
 void sde_cesta_reset_ctrl(struct sde_cesta_client *client, bool en)
@@ -401,7 +406,7 @@ static void _sde_cesta_clk_bw_vote(struct sde_cesta_client *client, bool pwr_st_
 		idle_clk_ib = clk_ib;
 	} else {
 		idle_clk_ab = 0;
-		idle_clk_ib = MDP_CLK_LOWSVS_D1;
+		idle_clk_ib = client->base_freq;
 	}
 
 	/* mdp-clk voting */
@@ -776,6 +781,8 @@ struct sde_cesta_client *sde_cesta_create_client(u32 cesta_index, char *client_n
 	client->cesta_index = cesta_index;
 	client->client_index = id;
 	client->scc_index = cesta->scc_index[id];
+	client->base_freq = cesta->xo_freq + XO_VOTE_EXIT_FREQ_THRESHOLD;
+
 	SDE_DEBUG_CESTA("client:%s cesta_index:%d\n", client_name, cesta_index);
 
 	mutex_lock(&cesta->client_lock);
@@ -1042,6 +1049,9 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 	sde_dbg_reg_register_base("sde_rsc_wrapper", cesta->wrapper_io.base,
 			cesta->wrapper_io.len, msm_get_phys_addr(pdev, "wrapper"), SDE_DBG_RSC);
 
+	sde_dbg_reg_register_base("disp_cc", cesta->disp_cc_io.base,
+			cesta->disp_cc_io.len, msm_get_phys_addr(pdev, "disp_cc"), SDE_DBG_RSC);
+
 	for (i = 0; i < cesta->scc_count; i++) {
 		char blk_name[32];
 
@@ -1126,6 +1136,8 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	int ret, i, index;
 	struct icc_path *path;
 	char name[MAX_CESTA_CLIENT_NAME_LEN];
+	struct clk *xo_clk;
+	struct device *dev = &pdev->dev;
 
 	cesta = devm_kzalloc(&pdev->dev, sizeof(struct sde_cesta), GFP_KERNEL);
 	if (!cesta)
@@ -1159,6 +1171,12 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	ret = msm_dss_ioremap_byname(pdev, &cesta->wrapper_io, "wrapper");
 	if (ret) {
 		SDE_ERROR_CESTA("wrapper io data mapping failed, ret:%d\n", ret);
+		goto fail;
+	}
+
+	ret = msm_dss_ioremap_byname(pdev, &cesta->disp_cc_io, "disp_cc");
+	if (ret) {
+		SDE_ERROR_CESTA("dispcc io data mapping failed, ret:%d\n", ret);
 		goto fail;
 	}
 
@@ -1256,6 +1274,13 @@ static int sde_cesta_probe(struct platform_device *pdev)
 	mutex_init(&cesta->client_lock);
 
 	cesta_list[index] = cesta;
+
+	xo_clk = devm_clk_get(dev, "xo");
+	if (IS_ERR(xo_clk)) {
+		SDE_ERROR_CESTA("failed to get xo clock");
+		goto fail;
+	}
+	cesta->xo_freq = clk_get_rate(xo_clk);
 
 	sde_cesta_hw_init(cesta);
 	cesta->hw_ops.init(cesta);
