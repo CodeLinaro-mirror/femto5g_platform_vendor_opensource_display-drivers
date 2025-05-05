@@ -800,12 +800,6 @@ struct sde_cesta_client *sde_cesta_create_client(u32 cesta_index, char *client_n
 	if (!client)
 		return ERR_PTR(-ENOMEM);
 
-	if (id >= cesta->scc_count) {
-		SDE_ERROR_CESTA("SCC index %d exceeds available SCC count %d\n",
-			id, cesta->scc_count);
-		return ERR_PTR(-EOVERFLOW);
-	}
-
 	/* Restrict access to hw client 0 */
 	if (id == 0 &&
 		cesta->hw_drv_ver >= (SDE_CESTA_HW_MAJOR_MINOR_STEP(4, 3, 0))) {
@@ -817,8 +811,7 @@ struct sde_cesta_client *sde_cesta_create_client(u32 cesta_index, char *client_n
 	client->scc_index = cesta->scc_index[id];
 	client->base_freq = cesta->xo_freq + XO_VOTE_EXIT_FREQ_THRESHOLD;
 
-	SDE_DEBUG_CESTA("client:%s cesta_index:%d client_index:%d\n",
-			client_name, cesta_index, client->client_index);
+	SDE_DEBUG_CESTA("client:%s cesta_index:%d\n", client_name, cesta_index);
 
 	mutex_lock(&cesta->client_lock);
 	list_add(&client->list, &cesta->client_list);
