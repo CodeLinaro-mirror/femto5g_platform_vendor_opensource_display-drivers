@@ -8,6 +8,7 @@
 #include <linux/kthread.h>
 #include <linux/atomic.h>
 #include <linux/delay.h>
+#include <linux/ktime.h>
 
 #define HFI_AD_INFO(fmt, ...)  \
 	pr_info("[hfi_ad_info] %s:%d " fmt, __func__, __LINE__, ##__VA_ARGS__)
@@ -27,6 +28,14 @@
 #define MIN_USLEEP_RANGE 30000
 #define MAX_USLEEP_RANGE 40000
 
+/* Buffer id specific macros */
+#define CLIENT_ID_MASK 0xFF //LSB 8 bits are for storing client_id
+#define UNIQUE_BUFF_MASK 0xFFFFFF00 //MSB 24 bits are for storing unique buffer id
+#define GET_CLIENT_ID(data)           \
+	(data & CLIENT_ID_MASK)
+
+static u32 unique_id_counter = 1;
+
 static u32 hfi_cmd_type_map[HFI_CMDBUF_TYPE_MAX] = {
 	[HFI_CMDBUF_TYPE_ATOMIC_CHECK] = HFI_CMD_BUFF_DISPLAY,
 	[HFI_CMDBUF_TYPE_ATOMIC_COMMIT] = HFI_CMD_BUFF_DISPLAY,
@@ -37,6 +46,19 @@ static u32 hfi_cmd_type_map[HFI_CMDBUF_TYPE_MAX] = {
 };
 
 static atomic_t id_counter = ATOMIC_INIT(0);
+
+static u32 _create_buffer_id(u32 ctx_id)
+{
+	u32 unique_id;
+
+	if (unique_id_counter == 0xFFFFFF)
+		unique_id_counter = 1;
+
+	/* Take MSB 24 bits */
+	unique_id = (unique_id_counter++ & 0xFFFFFF) << 8;
+
+	return unique_id | (ctx_id & CLIENT_ID_MASK);
+}
 
 static int _generate_sequential_packet_id(void)
 {
@@ -148,7 +170,9 @@ static void _process_cb_buffer_work(struct kthread_work *work)
 	virtio_hdr = (struct hfi_header *)rx_buffer->pbuf_vaddr;
 	obj_id_rx = virtio_hdr->object_id;
 
-	client_id = virtio_hdr->header_id;
+	hfi_buff->unique_id = virtio_hdr->header_id;
+
+	client_id = GET_CLIENT_ID(virtio_hdr->header_id);
 
 	list_for_each(ctx_pos, &host->client_list) {
 		/* Try to match buffer based on unique OBJ ID */
@@ -189,52 +213,6 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 	kthread_queue_work(&adapter->cb_worker, &adapter->cb_work);
 	return 0;
 }
-
-#if IS_ENABLED(CONFIG_DEBUG_FS)
-int hfi_adapter_debug_info(struct hfi_cmdbuf_t *buffer)
-{
-	struct hfi_header_info header_debug_info;
-	struct hfi_packet_info packet_debug_info;
-	struct hfi_cmd_buff_hdl buff_handle;
-	int i, j;
-	int rc;
-
-	if (!buffer) {
-		HFI_AD_ERROR("virtio buffer not created or allocated\n");
-		return -EINVAL;
-	}
-
-	buff_handle.cmd_buffer = buffer->buf.pbuf_vaddr;
-	buff_handle.size = buffer->buf.size;
-
-	/* Find the number of packets in buffer */
-	rc = hfi_unpacker_get_header_info(&buff_handle, &header_debug_info);
-	if (rc) {
-		HFI_AD_ERROR("failed to get header info\n");
-		return -EINVAL;
-	}
-
-	for (i = 0; i < header_debug_info.num_packets; i++) {
-		rc = hfi_unpacker_get_packet_info(&buff_handle, i+1, &packet_debug_info);
-		if (rc)
-			HFI_AD_WARN("[warning] failed to get packet info for packet %d\n", i+1);
-
-		HFI_AD_DEBUG("[info] cmd_type = 0x%08X, packet_num = %d, packet_id = 0x%08X\n",
-			packet_debug_info.cmd, i+1, packet_debug_info.packet_id);
-		HFI_AD_DEBUG(
-			"[info] object_id = 0x%08X, payload_size (bytes) = %d\n",
-			packet_debug_info.id, packet_debug_info.payload_size);
-		 HFI_AD_DEBUG("[info] packet %d payload data:\n", i+1);
-		/* Print payload data in 32 bit (4 byte) increments.*/
-		u32 *payload_data = (u32 *)(packet_debug_info.payload_ptr);
-
-		for (j = 0; j < (packet_debug_info.payload_size / (sizeof(u32))); j++)
-			HFI_AD_DEBUG("0x%08X\n", payload_data[j]);
-	}
-
-	return 0;
-}
-#endif // CONFIG_DEBUG_FS
 
 void _hfi_clear_buffer(struct hfi_cmdbuf_t *buffer)
 {
@@ -452,7 +430,7 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	header_info.num_packets = 0;
 	header_info.cmd_buff_type = hfi_cmd_type_map[cmdbuf_type];
 	header_info.object_id = obj_id;
-	header_info.header_id = ctx->client_id;
+	header_info.header_id = _create_buffer_id(ctx->client_id);
 
 	ret = hfi_create_header(&buff_handle, &header_info);
 
@@ -466,6 +444,7 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 
 	/* Populate adapter buffer structure members */
 	buffer->cmd_type = cmdbuf_type;
+	buffer->unique_id = header_info.header_id;
 	buffer->obj_id = obj_id;
 	buffer->size = 32;
 	buffer->ctx = ctx;
@@ -784,15 +763,10 @@ void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 
 int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 {
-#if IS_ENABLED(CONFIG_DEBUG_FS)
-	hfi_adapter_debug_info(cmd_buf);
-#endif // CONFIG_DEBUG_FS
-
-	struct hfi_adapter_t *host;
-	/* Initial buffer head needs to be included in count */
 	u32 num_buffers = 1;
 	struct hfi_core_cmds_buf_desc *buff_arr[MAX_BUFFERS];
 	int rc = 0;
+	struct hfi_adapter_t *host;
 
 	if (!cmd_buf->ctx) {
 		HFI_AD_ERROR("Invalid client ctx\n");
@@ -846,15 +820,6 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_cmdbuf_t *cmd_buf)
 	struct hfi_core_cmds_buf_desc *buff_arr[MAX_BUFFERS];
 	u32 num_buffers = 1;
 	u32 i = 0;
-
-#if IS_ENABLED(CONFIG_DEBUG_FS)
-	hfi_adapter_debug_info(cmd_buf);
-#endif // CONFIG_DEBUG_FS
-
-	if (!cmd_buf->ctx) {
-		HFI_AD_ERROR("Invalid client ctx\n");
-		return -EINVAL;
-	}
 
 	host = cmd_buf->ctx->host;
 	if (!host)
@@ -983,16 +948,16 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		}
 	}
 
-	/* Loop through clients list and if matching obj_id then release */
+	/* Loop through clients list and if matching unique_id then release */
 	mutex_lock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
 	list_for_each_safe(pos, updated_pos, &ctx->cmd_buf_list) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
 		if (!buf_entry)
 			continue;
 
-		if (buf_entry->obj_id == cmd_buf->obj_id) {
-			HFI_AD_DEBUG("matched response buffer %p to original %p\n",
-				cmd_buf, buf_entry);
+		if (buf_entry->unique_id == cmd_buf->unique_id) {
+			HFI_AD_DEBUG("matched response buf 0x%x to original 0x%x at ktime:%llu\n",
+					cmd_buf->unique_id, buf_entry->unique_id, ktime_get());
 			atomic_inc(&buf_entry->buffer_send_done);
 		}
 	}

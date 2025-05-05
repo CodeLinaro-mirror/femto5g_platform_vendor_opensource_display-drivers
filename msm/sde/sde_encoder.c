@@ -105,10 +105,16 @@
 
 inline enum msm_disp_op sde_encoder_get_disp_op(struct drm_encoder *drm_enc)
 {
-	if (!drm_enc || !drm_enc->crtc)
-		return MSM_DISP_OP_HWIO;
+	struct sde_kms *sde_kms;
+	enum msm_disp_op disp_op = MSM_DISP_OP_HWIO;
 
-	return sde_crtc_get_disp_op(drm_enc->crtc);
+	if (drm_enc) {
+		sde_kms = sde_encoder_get_kms(drm_enc);
+		if (sde_kms)
+			disp_op = sde_kms_get_disp_op(sde_kms);
+	}
+
+	return disp_op;
 }
 
 void sde_encoder_uidle_enable(struct drm_encoder *drm_enc, bool enable)
@@ -2430,7 +2436,7 @@ bool sde_encoder_copr_allow_notify(struct drm_encoder *drm_enc)
 
 	sde_enc =  to_sde_encoder_virt(drm_enc);
 	disp_op = sde_encoder_get_disp_op(drm_enc);
-	phys_enc = sde_enc->cur_master;
+	phys_enc = sde_enc->phys_encs[0];
 	if (phys_enc->hw_intf->ops.get_status[disp_op])
 		phys_enc->hw_intf->ops.get_status[disp_op](phys_enc->hw_intf, &intf_status);
 
@@ -2444,7 +2450,9 @@ static void sde_encoder_misr_configure(struct drm_encoder *drm_enc,
 		bool enable, u32 frame_count)
 {
 	struct sde_encoder_virt *sde_enc;
+	enum msm_disp_op disp_op;
 	int i;
+	int ret;
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
@@ -2455,14 +2463,22 @@ static void sde_encoder_misr_configure(struct drm_encoder *drm_enc,
 	if (!sde_enc->misr_reconfigure)
 		return;
 
-	for (i = 0; i < sde_enc->num_phys_encs; i++) {
-		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.debugfs_misr_setup[disp_op]) {
+		ret = sde_enc->hal_ops.debugfs_misr_setup[disp_op](sde_enc);
+		if (ret)
+			SDE_ERROR("misr setup failure\n");
+	} else {
+		for (i = 0; i < sde_enc->num_phys_encs; i++) {
+			struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
-		if (!phys || !phys->ops.setup_misr)
-			continue;
+			if (!phys || !phys->ops.setup_misr)
+				continue;
 
-		phys->ops.setup_misr(phys, enable, frame_count);
+			phys->ops.setup_misr(phys, enable, frame_count);
+		}
 	}
+
 	sde_enc->misr_reconfigure = false;
 }
 
@@ -3962,6 +3978,8 @@ update_ppb:
 	memset(&sde_enc->prv_conn_roi, 0, sizeof(sde_enc->prv_conn_roi));
 	memset(&sde_enc->cur_conn_roi, 0, sizeof(sde_enc->cur_conn_roi));
 	_sde_encoder_control_fal10_veto(drm_enc, true);
+
+	atomic_set(&sde_enc->pending_commit_cnt, 0);
 
 	c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
 	if (!c_state) {
@@ -7599,8 +7617,6 @@ static ssize_t _sde_encoder_misr_setup(struct file *file,
 	u32 frame_count, enable;
 	struct sde_kms *sde_kms = NULL;
 	struct drm_encoder *drm_enc;
-	enum msm_disp_op disp_op;
-	int ret = 0;
 
 	if (!file || !file->private_data)
 		return -EINVAL;
@@ -7633,12 +7649,6 @@ static ssize_t _sde_encoder_misr_setup(struct file *file,
 	sde_enc->misr_reconfigure = true;
 	sde_enc->misr_frame_count = frame_count;
 
-	disp_op = sde_encoder_get_disp_op(drm_enc);
-	if (sde_enc->hal_ops.debugfs_misr_setup[disp_op]) {
-		ret = sde_enc->hal_ops.debugfs_misr_setup[disp_op](sde_enc);
-		if (ret)
-			SDE_ERROR("misr setup failure\n");
-	}
 	return count;
 }
 
@@ -7738,11 +7748,11 @@ static ssize_t _sde_encoder_misr_read(struct file *file,
 	drm_enc = &sde_enc->base;
 
 	disp_op = sde_encoder_get_disp_op(drm_enc);
-	if (sde_enc->hal_ops.debugfs_misr_read[disp_op]) {
-		ret = sde_enc->hal_ops.debugfs_misr_read[disp_op](
-				sde_enc);
-		if (ret)
-			SDE_ERROR("misr read failure\n");
+
+	if (!atomic_read(&sde_enc->misr_enable)) {
+		len += scnprintf(buf + len, MISR_BUFF_SIZE - len,
+				"disabled\n");
+		goto buff_check;
 	}
 
 	rc = pm_runtime_resume_and_get(drm_enc->dev->dev);
@@ -7752,17 +7762,29 @@ static ssize_t _sde_encoder_misr_read(struct file *file,
 		return rc;
 	}
 
+	if (sde_enc->hal_ops.debugfs_misr_read[disp_op]) {
+		ret = sde_enc->hal_ops.debugfs_misr_read[disp_op](
+				sde_enc);
+		if (ret) {
+			SDE_ERROR("debugfs_misr_read failed, rc: %d\n", rc);
+			len += scnprintf(buf + len, MISR_BUFF_SIZE - len, "invalid\n");
+		} else {
+			for (i = 0; i < sde_enc->misr_vals.count; i++) {
+				len += scnprintf(buf + len, MISR_BUFF_SIZE - len,
+						"Intf idx:%d\n", i);
+				len += scnprintf(buf + len, MISR_BUFF_SIZE - len, "0x%x\n",
+						sde_enc->misr_vals.misr_values[i]);
+			}
+		}
+		goto buff_check;
+	}
+
 	sde_vm_lock(sde_kms);
 	if (!sde_vm_owns_hw(sde_kms)) {
 		SDE_DEBUG("op not supported due to HW unavailablity\n");
 		rc = -EOPNOTSUPP;
+		sde_vm_unlock(sde_kms);
 		goto end;
-	}
-
-	if (!atomic_read(&sde_enc->misr_enable)) {
-		len += scnprintf(buf + len, MISR_BUFF_SIZE - len,
-				"disabled\n");
-		goto buff_check;
 	}
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
@@ -7791,6 +7813,7 @@ static ssize_t _sde_encoder_misr_read(struct file *file,
 					"0x%x\n", misr_value);
 		}
 	}
+	sde_vm_unlock(sde_kms);
 
 buff_check:
 	if (count <= len) {
@@ -7806,7 +7829,6 @@ buff_check:
 	*ppos += len;   /* increase offset */
 
 end:
-	sde_vm_unlock(sde_kms);
 	pm_runtime_put_sync(drm_enc->dev->dev);
 	return len;
 }

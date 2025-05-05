@@ -220,5 +220,24 @@ struct hfi_prop_u64 {
 	u32 val_hi;
 };
 
+#define HFI_BUFF_FEATURE_ENABLE         (1 << 0)
+#define HFI_BUFF_FEATURE_BROADCAST      (1 << 1)
+#define HFI_BUFF_FEATURE_HW_BLK_IDX_0   (1 << 2)
+#define HFI_BUFF_FEATURE_HW_BLK_IDX_1   (1 << 3)
+#define HFI_BUFF_FEATURE_HW_BLK_IDX_2   (1 << 4)
+#define HFI_BUFF_FEATURE_HW_BLK_IDX_3   (1 << 5)
+
+/*
+ * struct hfi_buff_dpu - hfi buffer accessible by dpu
+ * @flags    :  flags
+ * @iova     :  input and output virtual address
+ * @len      :  length of buffer
+ */
+struct hfi_buff_dpu {
+	u32 flags;
+	u32 iova;
+	u32 len;
+};
+
 #endif // __H_HFI_DEFS_COMMON_H__
 

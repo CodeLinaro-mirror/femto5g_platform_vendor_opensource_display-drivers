@@ -145,9 +145,11 @@ enum hfi_panel_backlight_ctrl {
 
 /*
  * hfi_panel_compression_mode - Panel compression modes
+ * HFI_PANEL_COMPRESSION_NONE: No Compression
  * HFI_PANEL_COMPRESSION_DSC : Display stream compression
  */
 enum hfi_panel_compression_mode {
+	HFI_PANEL_COMPRESSION_NONE  = 0,
 	HFI_PANEL_COMPRESSION_DSC   = 1,
 };
 

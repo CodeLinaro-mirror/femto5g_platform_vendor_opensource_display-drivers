@@ -295,6 +295,31 @@
  */
 #define HFI_COMMAND_DEVICE_INIT_DMA_R1_CAPS                          0x0100000B
 
+/**
+ * HFI_COMMAND_DEVICE_LUT_DMA_LAST_CMD - This command is used to send the allocated
+ *                                    REG-DMA Last Command buffer address and size
+ *                                    from Host to DCP.
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Data layout:
+ * struct hfi_buff_dpu - hfi buffer accessible by dpu
+ * @flags    :  flags
+ * @iova     :  input and output virtual address
+ * @len      :  length of buffer
+ * struct hfi_buff_dpu {
+ *      u32 flags;
+ *      u32 iova;
+ *      u32 len;
+ * }
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                      : HFI_COMMAND_DEVICE_LUT_DMA_LAST_CMD
+ *           .flags                    : HFI_TX_FLAGS_NONE
+ *           .payload                  : struct hfi_buff_dpu
+ */
+#define HFI_COMMAND_DEVICE_LUT_DMA_LAST_CMD                          0x0100000C
+
 #define HFI_COMMAND_DEVICE_END                                       0x01FFFFFF
 
 #endif // __H_HFI_COMMANDS_DEVICE_H__

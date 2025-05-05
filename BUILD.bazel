@@ -120,3 +120,6 @@ define_monaco()
 
 load(":targets/canoe.bzl", "define_canoe")
 define_canoe()
+
+load(":targets/vienna.bzl", "define_vienna")
+define_vienna()

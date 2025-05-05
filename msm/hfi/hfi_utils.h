@@ -14,6 +14,10 @@
 #define HFI_VAL_L32(val)    (val & 0xffffffff)
 #define HFI_VAL_H32(val)    (val >> 32)
 
+/* Pack feature version into HFI property ID */
+#define HFI_PACK_VERSION(major, minor, prop_id) \
+	((prop_id & ~(0xF0F000)) | (((minor) & 0xF) << 20) | (((major) & 0xF) << 12))
+
 /**
  * struct hfi_util_kv_helper - helper struct for a kv pair
  * @max_size:	Maximum size of a kv pair struct
