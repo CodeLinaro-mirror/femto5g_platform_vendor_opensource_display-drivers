@@ -5834,8 +5834,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (sde_kms->catalog->qultivate_rev == SDE_QULTIVATE_SW_REV1 &&
 			sde_kms->catalog->qultivate_cfg) {
 		config_v1 = sde_kms->catalog->qultivate_cfg;
-		priv->phandle.gdsc2_blocked = config_v1->enabled &&
-			config_v1->gdsc2_blocked;
+		priv->phandle.gdsc2_blocked = config_v1->gdsc2_blocked;
 	}
 
 	return 0;
