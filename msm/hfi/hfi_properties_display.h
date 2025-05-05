@@ -371,6 +371,20 @@
 #define HFI_PROPERTY_DISPLAY_DETACH_LAYER                            0x00020019
 
 /*
+ * HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID - This property is to add a 'sequence number' identifier
+ *                                         to a commit that DCP can return along with the
+ *                                         HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_START event.
+ *                                         Host is expected to send this packet as part of
+ *                                         HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID
+ * (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID |
+ *                             (version=0 << 20) | (dsize=1 << 24 )
+ * (u32_value) payload [1]     : sequence_id
+ */
+#define HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID                        0x0002001A
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
