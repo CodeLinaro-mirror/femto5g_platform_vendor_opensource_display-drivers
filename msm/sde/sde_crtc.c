@@ -4982,6 +4982,49 @@ static struct hfi_cmdbuf_t *_sde_crtc_get_cmd_buf(struct drm_crtc *crtc)
 	return cmd_buf;
 }
 
+static void _sde_crtc_validate_lm_rois(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+	struct sde_crtc_state *cstate;
+	const struct sde_rect *lm_roi;
+	int lm_idx;
+
+	if (!crtc) {
+		SDE_ERROR("invalid args\n");
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+	cstate = to_sde_crtc_state(crtc->state);
+
+	for (lm_idx = 0; lm_idx < sde_crtc->num_mixers; lm_idx++) {
+		lm_roi = &cstate->lm_roi[lm_idx];
+
+		/* Check to reconfigure the layer mixer when it is empty.
+		 * Caused by a timing issue when consecutive atomic checks happen
+		 * before the first atomic begin, leading to empty LM.
+		 *
+		 * Bad Case:
+		 * atomic_check 0
+		 * atomic_check 1 (gets wrong values)
+		 * atomic_begin 0 (initializes correct values)
+		 * atomic_begin 1
+		 *
+		 * Good Case:
+		 * atomic_check 0
+		 * atomic_begin 0 (initializes correct values)
+		 * atomic_check 1
+		 * atomic_begin 1
+		 */
+
+		if (!lm_roi || (!lm_roi->x && !lm_roi->y && !lm_roi->w && !lm_roi->h)) {
+			SDE_EVT32(DRMID(crtc), lm_idx, sde_crtc->num_mixers,
+				SDE_EVTLOG_ERROR);
+			_sde_crtc_setup_lm_bounds(crtc, crtc->state);
+		}
+	}
+}
+
 static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_state)
 
@@ -5031,6 +5074,9 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		_sde_crtc_setup_mixers(crtc);
 		sde_crtc->reinit_crtc_mixers = false;
 	}
+
+	/* Reconfigure the layer mixer if empty */
+	_sde_crtc_validate_lm_rois(crtc);
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
 		if (encoder->crtc != crtc)
@@ -7003,6 +7049,8 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	struct drm_plane_state *plane_state;
 	struct sde_plane_state *pstate;
 	struct drm_display_mode *mode;
+	struct sde_crtc *sde_crtc;
+	struct sde_connector_state *c_conn_state;
 	int layout_split, lb_layout_split;
 	u32 crtc_width, crtc_height;
 	enum sde_layout layout;
@@ -7015,9 +7063,13 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
-	if (!sde_rm_topology_is_group(&kms->rm, crtc_state,
-			SDE_RM_TOPOLOGY_GROUP_QUADPIPE))
+	sde_crtc = to_sde_crtc(crtc);
+	c_conn_state = _sde_crtc_get_sde_connector_state(crtc, crtc_state->state);
+	if ((c_conn_state && !sde_rm_topology_is_group(&kms->rm, crtc_state,
+		SDE_RM_TOPOLOGY_GROUP_QUADPIPE)) ||
+		(!c_conn_state && sde_crtc->num_mixers != 4)) {
 		return 0;
+	}
 
 	mode = &crtc_state->adjusted_mode;
 	sde_crtc_get_resolution(crtc, crtc_state, mode, &crtc_width, &crtc_height);

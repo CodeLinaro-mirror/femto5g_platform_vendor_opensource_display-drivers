@@ -180,6 +180,11 @@ static int dp_parser_misc(struct dp_parser *parser)
 	if (!parser->display_type)
 		parser->display_type = "unknown";
 
+	rc = of_property_read_u32(of_node,
+			"qcom,shallow-mode-retries", &parser->shallow_mode_retries);
+	if (rc)
+		parser->shallow_mode_retries = MAX_DP_SHALLOW_MODE_RETRIES;
+
 	return 0;
 }
 

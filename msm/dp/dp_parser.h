@@ -16,6 +16,7 @@
 #define MAX_DP_MST_STREAMS	2
 #define MAX_SWING_LEVELS 4
 #define MAX_PRE_EMP_LEVELS 4
+#define MAX_DP_SHALLOW_MODE_RETRIES	5
 
 enum dp_pm_type {
 	DP_CORE_PM,
@@ -255,7 +256,8 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @dsc_continuous_pps: PPS sent every frame by HW
  * @fifo_error_enable : fifo error enable status
  * @has_widebus: widebus (2PPC) feature eanble status
-  *@mst_fixed_port: mst port_num reserved for fixed topology
+ * @shallow_mode_retries: link training retry times in shallow mode
+ * @mst_fixed_port: mst port_num reserved for fixed topology
  * @qos_cpu_mask: CPU mask for QOS
  * @qos_cpu_latency: CPU Latency setting for QOS
  * @swing_hbr2_3: Voltage swing levels for HBR2 and HBR3 rates
@@ -293,6 +295,7 @@ struct dp_parser {
 	bool has_widebus;
 	bool has_4ppc_enabled;
 	bool gpio_aux_switch;
+	u32 shallow_mode_retries;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;
