@@ -59,4 +59,18 @@ void hfi_setup_ucsc_unmultv1(struct sde_hw_pipe *ctx,
  */
 void hfi_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
+
+/**
+ * hfi_setup_dspp_pa_dither_v1_7 - setup DSPP dither feature in HFI path
+ * @ctx: Pointer to DSPP context
+ * @cfg: Pointer to dither data
+ */
+void hfi_setup_dspp_pa_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * hfi_setup_dspp_spr_dither_v2 - setup DSPP SPR dither feature in HFI path
+ * @ctx: Pointer to DSPP context
+ * @cfg: Pointer to dither data
+ */
+void hfi_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx, void *cfg);
 #endif /* _HFI_COLOR_PROC_H_ */

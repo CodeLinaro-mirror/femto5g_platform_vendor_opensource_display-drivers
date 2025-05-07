@@ -17,6 +17,7 @@
 #include "sde_kms.h"
 #include "sde_aiqe_common.h"
 #include "sde_hw_color_proc_aiqe_v1.h"
+#include "hfi_color_proc.h"
 
 #define DSPP_VALID_START_OFF 0x800
 
@@ -228,8 +229,10 @@ static void dspp_gamut(struct sde_hw_dspp *c)
 
 static void dspp_dither(struct sde_hw_dspp *c)
 {
-	if (c->cap->sblk->dither.version == SDE_COLOR_PROCESS_VER(0x1, 0x7))
+	if (c->cap->sblk->dither.version == SDE_COLOR_PROCESS_VER(0x1, 0x7)) {
 		c->ops.setup_pa_dither[MSM_DISP_OP_HWIO] = sde_setup_dspp_dither_v1_7;
+		c->ops.setup_pa_dither[MSM_DISP_OP_HFI] = hfi_setup_dspp_pa_dither_v1_7;
+	}
 }
 
 static void dspp_hist(struct sde_hw_dspp *c)
@@ -427,8 +430,10 @@ static void dspp_spr(struct sde_hw_dspp *c)
 
 	if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x1, 0x7))
 		c->ops.setup_spr_dither[MSM_DISP_OP_HWIO] = sde_setup_dspp_spr_dither_v1_7;
-	else if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x2, 0x0))
+	else if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
 		c->ops.setup_spr_dither[MSM_DISP_OP_HWIO] = sde_setup_dspp_spr_dither_v2;
+		c->ops.setup_spr_dither[MSM_DISP_OP_HFI] = hfi_setup_dspp_spr_dither_v2;
+	}
 }
 
 static void dspp_demura(struct sde_hw_dspp *c)

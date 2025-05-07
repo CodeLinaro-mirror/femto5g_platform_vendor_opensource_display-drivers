@@ -578,6 +578,32 @@
 #define HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC                           0x0002010F
 
 /*
+ * HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER - This property is to setup DSPP SPR DITHER.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER |
+ *                                 (version=0 << 20) |
+ *                                 (dsize=(sizeof(struct hfi_buff)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff of array of hfi_display_dither
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER                        0X00020110
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER - This property is to setup DSPP PA DITHER.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER |
+ *                                 (version=0 << 20) | (dsize=
+ *                                 (sizeof(struct hfi_display_pa_dither)/4 * num_of_dspps) << 24)
+ *   (u32_value) payload [1]     : array of struct hfi_display_pa_dither
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER                         0x00020111
+
+/*
  * All display color properties end here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_END                               0x000201FF
