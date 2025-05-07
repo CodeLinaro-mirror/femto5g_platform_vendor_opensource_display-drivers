@@ -2405,9 +2405,6 @@ void sde_encoder_phys_vid_idle_pc_enter(struct sde_encoder_phys *phys_enc)
 	if (drm_conn && c_conn->ops.avoid_cmd_transfer)
 		c_conn->ops.avoid_cmd_transfer(c_conn->display, true);
 
-	if (drm_conn && c_conn->ops.avoid_cmd_transfer)
-		c_conn->ops.avoid_cmd_transfer(c_conn->display, true);
-
 	sde_encoder_phys_vid_timing_engine_disable_wait(phys_enc);
 
 	if (drm_conn && c_conn->ops.avoid_cmd_transfer)
