@@ -479,8 +479,7 @@ int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 				struct dsi_panel_timing_caps *panel_timing_caps,
 				struct dsi_hfi_panel_per_cmd_type *per_type,
 				struct dsi_panel_cmd_set *cmd_set,
-				u32 *size_of_cmds_by_type, void *sde_vaddr, void *hfi_vaddr,
-				bool cmd_filled)
+				u32 *size_of_cmds_by_type, void *sde_vaddr, void *hfi_vaddr)
 {
 	struct dsi_hfi_panel_cmd_info *panel_cmd_info = hfi_vaddr;
 	int i, rc = 0;
@@ -489,26 +488,22 @@ int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 	for (i = 0; i < per_type->count_cmds; i++) {
 		size_of_indv_cmd = 0;
 
-		if (cmd_filled) {
-			panel_cmd_info->delay = cmd_set->cmds[i].post_wait_ms;
-			panel_cmd_info->ctrl_flags = cmd_set->cmds[i].ctrl_flags;
-			panel_cmd_info->mode = cmd_set->state;
-		}
+		panel_cmd_info->delay = cmd_set->cmds[i].post_wait_ms;
+		panel_cmd_info->ctrl_flags = cmd_set->cmds[i].ctrl_flags;
+		panel_cmd_info->mode = cmd_set->state;
 
 		rc = dsi_hfi_packetize_panel_cmd(&cmd_set->cmds[i], &size_of_indv_cmd, sde_vaddr);
 		if (rc) {
 			DSI_ERR("failed to packetize command %d, rc=%d\n", i, rc);
 			goto error;
 		}
-		if (cmd_filled)
-			panel_cmd_info->size = size_of_indv_cmd;
+
+		panel_cmd_info->size = size_of_indv_cmd;
 
 		size_of_indv_cmd = (((size_of_indv_cmd+7)>>3)<<3);
 		sde_vaddr += size_of_indv_cmd;
 
-		if (cmd_filled)
-			panel_cmd_info->cmd_offset =
-				*size_of_cmds_by_type + display->cmd_buffer_iova;
+		panel_cmd_info->cmd_offset = *size_of_cmds_by_type + display->cmd_buffer_iova;
 
 		*size_of_cmds_by_type += size_of_indv_cmd;
 
@@ -529,10 +524,10 @@ int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 	int j = 0;
 	int rc = 0;
 	u32 offset = 0;
-	bool cmd_filled;
 
 	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
-		cmd_filled = false;
+		if (j == NUM_PANEL_CMD_TYPES_SUPPORTED)
+			break;
 
 		if (i == DSI_CMD_SET_PPS || i == DSI_CMD_SET_ROI)
 			continue;
@@ -548,19 +543,14 @@ int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 		panel_timing_caps->payload.hfi_per_type_array[j].count_cmds =
 							priv_info->cmd_sets[i].count;
 
-		if (i == DSI_CMD_SET_ON || i == DSI_CMD_SET_OFF || i == DSI_CMD_SET_TIMING_SWITCH)
-			cmd_filled = true;
-
 		rc = hfi_panel_fill_dcs_cmds_sub(display, panel_timing_caps,
 				&panel_timing_caps->payload.hfi_per_type_array[j],
-				&priv_info->cmd_sets[i], &offset, sde_vaddr, hfi_vaddr,
-				cmd_filled);
+				&priv_info->cmd_sets[i], &offset, sde_vaddr, hfi_vaddr);
 		if (rc)
 			DSI_ERR("Failed to fill panel cmds into memory for cmd type %d", i);
 
 		sde_vaddr += offset;
 		hfi_vaddr += (sizeof(struct dsi_hfi_panel_cmd_info) * priv_info->cmd_sets[i].count);
-
 		j++;
 	}
 
