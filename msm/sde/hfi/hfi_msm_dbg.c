@@ -1196,6 +1196,7 @@ void hfi_msm_dbg_destroy(void)
 	if (!hfi_dbg)
 		return;
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 	if (hfi_dbg->buff_map.reg_addr.size)
 		hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.reg_addr.alloc_info);
 	if (hfi_dbg->buff_map.evt_log_addr.size)
@@ -1204,6 +1205,7 @@ void hfi_msm_dbg_destroy(void)
 		hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.dbg_bus_addr.alloc_info);
 	if (hfi_dbg->buff_map.device_state_addr.size)
 		hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.device_state_addr.alloc_info);
+#endif
 
 	mutex_destroy(&hfi_dbg->mutex);
 	kfree(hfi_dbg->read_buf);

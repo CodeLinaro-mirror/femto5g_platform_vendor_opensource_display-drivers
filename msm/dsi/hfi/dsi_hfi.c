@@ -271,6 +271,7 @@ int dsi_display_hfi_register_pwr_supplies(struct dsi_display *display)
 	return rc;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 static void hfi_panel_get_mode_res_data(struct dsi_display_mode *mode,
 					struct dsi_panel_timing_caps *timing_caps)
 {
@@ -1065,6 +1066,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 
 	return rc;
 }
+#endif /*#if IS_ENABLED(CONFIG_QTI_HFI_CORE)*/
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 int dsi_hfi_misr_setup(struct dsi_display *display)
