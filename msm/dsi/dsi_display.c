@@ -9870,11 +9870,13 @@ int dsi_display_ctl_init(void *display, void *hfi_priv)
 		return rc;
 	}
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 	rc = dsi_hfi_panel_init(disp, disp->panel);
 	if (rc) {
 		DSI_ERR("failed to send panel init to DCP: %d", rc);
 		return rc;
 	}
+#endif /*IS_ENABLED(CONFIG_QTI_HFI_CORE)*/
 
 	return rc;
 }
