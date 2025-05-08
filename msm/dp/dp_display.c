@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1156,7 +1156,7 @@ static int dp_display_panel_ready(struct dp_display_private *dp)
 {
 	int rc = 0;
 
-	if (dp->dp_display.is_edp) {
+	if ((dp->dp_display.is_edp)  && (!dp->dp_display.ext_hpd_en)) {
 		rc = dp->power->edp_panel_set_gpio(dp->power, DP_GPIO_EDP_VCC_EN, true);
 		if (rc) {
 			DP_ERR("Cannot turn edp panel power on");
@@ -3055,7 +3055,7 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 		dp_display_state_add(DP_STATE_SRC_PWRDN);
 	}
 
-	if (dp_display->is_edp) {
+	if ((dp_display->is_edp)  && (!dp_display->ext_hpd_en)) {
 		rc = dp->power->edp_panel_set_gpio(dp->power, DP_GPIO_EDP_VCC_EN, false);
 		if (rc)
 			DP_ERR("Cannot turn edp panel power off\n");
