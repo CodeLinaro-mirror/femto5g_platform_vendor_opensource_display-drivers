@@ -161,6 +161,31 @@ static void hfi_encoder_vblank_callback(struct hfi_encoder *hfi_enc, void *paylo
 		sde_enc->crtc_vblank_cb(sde_enc->crtc_vblank_cb_data, ts);
 }
 
+static void hfi_encoder_hw_recovery_callback(struct sde_encoder_virt *sde_enc, void *payload)
+{
+	struct drm_encoder *drm_enc;
+	struct drm_connector *conn;
+	bool recovery_events;
+
+	if (!sde_enc)
+		return;
+
+	recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
+
+	if (recovery_events) {
+		drm_enc = &sde_enc->base;
+		conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
+
+		if (!conn) {
+			SDE_ERROR("invalid connector\n");
+			return;
+		}
+
+		sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
+				sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
+	}
+}
+
 static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		void *payload, u32 size, struct hfi_prop_listener *listener)
 {
@@ -194,6 +219,9 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_VSYNC:
 		hfi_encoder_vblank_callback(hfi_enc, payload);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_HW_RECOVERY:
+		hfi_encoder_hw_recovery_callback(sde_enc, payload);
 		break;
 	case HFI_COMMAND_DEBUG_PANIC_EVENT:
 		recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
@@ -304,6 +332,10 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 		break;
 	case MSM_ENC_VBLANK:
 		ret = _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_VSYNC,
+				enable, defer_to_commit);
+		break;
+	case MSM_ENC_HW_RECOVERY:
+		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_HW_RECOVERY,
 				enable, defer_to_commit);
 		break;
 	default:
@@ -448,7 +480,8 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 	if (!hfi_enc || event >= MSM_ENC_EVENT_MAX)
 		return -EINVAL;
 
-	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE) {
+	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE ||
+			event == MSM_ENC_HW_RECOVERY) {
 		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("failed to send event register ret:%d\n", ret);
