@@ -224,7 +224,7 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 		if (!attach_dev)
 			attach_dev = kms->funcs->get_address_space_device(kms,
 					MSM_SMMU_DOMAIN_UNSECURE);
-	} else if (!mdss_iommu_present() || vmid_flags.is_tvm
+	} else if (!mdss_iommu_present(dev) || vmid_flags.is_tvm
 		   || vmid_flags.is_cam_preview || vmid_flags.is_sec_display) {
 		attach_dev = dev->dev;
 		lazy_unmap = false;
