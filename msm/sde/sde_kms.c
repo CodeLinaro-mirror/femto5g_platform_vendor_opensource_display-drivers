@@ -4980,7 +4980,7 @@ struct msm_display_mode *sde_kms_get_msm_mode(struct drm_connector_state *conn_s
 	return &sde_conn_state->msm_mode;
 }
 
-static int sde_kms_pm_suspend(struct device *dev)
+int sde_kms_suspend_helper(struct sde_kms *sde_kms)
 {
 	struct drm_device *ddev;
 	struct drm_modeset_acquire_ctx ctx;
@@ -4988,17 +4988,15 @@ static int sde_kms_pm_suspend(struct device *dev)
 	struct drm_encoder *enc;
 	struct drm_connector_list_iter conn_iter;
 	struct drm_atomic_state *state = NULL;
-	struct sde_kms *sde_kms;
 	int ret = 0, num_crtcs = 0;
 
-	if (!dev)
+	if (!sde_kms || !sde_kms->dev)
 		return -EINVAL;
 
-	ddev = dev_get_drvdata(dev);
-	if (!ddev || !ddev_to_msm_kms(ddev))
+	ddev = sde_kms->dev;
+	if (!ddev->dev)
 		return -EINVAL;
 
-	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
 	SDE_EVT32(0);
 
 	/* disable hot-plug polling */
@@ -5102,7 +5100,7 @@ retry:
 	if (num_crtcs == 0) {
 		DRM_DEBUG("all crtcs are already in the off state\n");
 		sde_kms->suspend_block = true;
-		_sde_kms_pm_suspend_idle_helper(sde_kms, dev);
+		_sde_kms_pm_suspend_idle_helper(sde_kms, ddev->dev);
 		goto unlock;
 	}
 
@@ -5114,7 +5112,7 @@ retry:
 	}
 
 	sde_kms->suspend_block = true;
-	_sde_kms_pm_suspend_idle_helper(sde_kms, dev);
+	_sde_kms_pm_suspend_idle_helper(sde_kms, ddev->dev);
 
 unlock:
 	if (state) {
@@ -5142,8 +5140,8 @@ unlock:
 	 * commit. It removes the extra vote from suspend and adds it back
 	 * later to allow power collapse during pm_suspend call
 	 */
-	pm_runtime_put_sync(dev);
-	pm_runtime_get_noresume(dev);
+	pm_runtime_put_sync(ddev->dev);
+	pm_runtime_get_noresume(ddev->dev);
 
 	/* dump clock state before entering suspend */
 	if (sde_kms->pm_suspend_clk_dump)
@@ -5152,13 +5150,11 @@ unlock:
 	return ret;
 }
 
-static int sde_kms_pm_resume(struct device *dev)
+static int sde_kms_pm_suspend(struct device *dev)
 {
 	struct drm_device *ddev;
 	struct sde_kms *sde_kms;
-	struct drm_encoder *enc;
-	struct drm_modeset_acquire_ctx ctx;
-	int ret, i;
+	int ret = 0;
 
 	if (!dev)
 		return -EINVAL;
@@ -5168,6 +5164,28 @@ static int sde_kms_pm_resume(struct device *dev)
 		return -EINVAL;
 
 	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
+	SDE_EVT32(0);
+
+	ret = sde_kms_suspend_helper(sde_kms);
+	if (ret)
+		SDE_ERROR("Failed sde_kms_suspend_helper: %d\n", ret);
+
+	return ret;
+}
+
+int sde_kms_resume_helper(struct sde_kms *sde_kms)
+{
+	struct drm_device *ddev;
+	struct drm_encoder *enc;
+	struct drm_modeset_acquire_ctx ctx;
+	int ret, i;
+
+	if (!sde_kms || !sde_kms->dev)
+		return -EINVAL;
+
+	ddev = sde_kms->dev;
+	if (!ddev->dev)
+		return -EINVAL;
 
 	SDE_EVT32(sde_kms->suspend_state != NULL);
 	/* if a display is in cont splash early exit */
@@ -5183,6 +5201,7 @@ static int sde_kms_pm_resume(struct device *dev)
 		drm_mode_config_reset(ddev);
 
 	drm_modeset_acquire_init(&ctx, 0);
+
 retry:
 	ret = drm_modeset_lock_all_ctx(ddev, &ctx);
 	if (ret == -EDEADLK) {
@@ -5220,6 +5239,28 @@ end:
 	drm_kms_helper_poll_enable(ddev);
 
 	return 0;
+}
+
+static int sde_kms_pm_resume(struct device *dev)
+{
+	struct drm_device *ddev;
+	struct sde_kms *sde_kms;
+	int ret;
+
+	if (!dev)
+		return -EINVAL;
+
+	ddev = dev_get_drvdata(dev);
+	if (!ddev || !ddev_to_msm_kms(ddev))
+		return -EINVAL;
+
+	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
+
+	ret = sde_kms_resume_helper(sde_kms);
+	if (ret)
+		SDE_ERROR("Failed sde_kms_resume_helper: %d\n", ret);
+
+	return ret;
 }
 
 static const struct msm_kms_funcs kms_funcs = {
