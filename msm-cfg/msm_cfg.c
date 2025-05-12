@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -14,6 +14,8 @@
 #include <linux/platform_device.h>
 #include <linux/types.h>
 #include <linux/of_device.h>
+#include <linux/of_platform.h>
+#include <linux/version.h>
 
 static unsigned int cfg_sel;
 module_param_named(cfg_sel, cfg_sel, int, 0600);
@@ -128,10 +130,17 @@ static int msm_cfg_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 static int msm_cfg_remove(struct platform_device *pdev)
 {
 	return 0;
 }
+#else
+static void msm_cfg_remove(struct platform_device *pdev)
+{
+
+}
+#endif
 
 static const struct of_device_id dt_match[] = {
 	{ .compatible = "qcom,sde-cfg" },

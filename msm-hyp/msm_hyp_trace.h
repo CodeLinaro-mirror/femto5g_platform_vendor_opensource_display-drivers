@@ -9,6 +9,7 @@
 #include <linux/stringify.h>
 #include <linux/types.h>
 #include <linux/tracepoint.h>
+#include <linux/version.h>
 
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM msm_hyp
@@ -28,7 +29,11 @@ TRACE_EVENT(tracing_mark_write,
 	TP_fast_assign(
 			__entry->trace_type = trace_type;
 			__entry->pid = task ? task->tgid : 0;
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 			__assign_str(trace_name, name);
+#else
+			 __assign_str(trace_name);
+#endif
 			__entry->value = value;
 	),
 	TP_printk("%c|%d|%s|%d", __entry->trace_type,
