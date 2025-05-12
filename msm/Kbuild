@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
-KDIR := $(TOP)/kernel_platform/msm-kernel
+#TODO: check with Techteam PoC on why we need it here
+#KDIR := $(TOP)/kernel_platform/soc-repo
 
 ifeq ($(CONFIG_ARCH_QCOM), y)
 	include $(DISPLAY_ROOT)/config/qcomdisp.conf
@@ -42,6 +43,12 @@ else
 endif
 endif
 
+ifeq ($(CONFIG_ARCH_SM6150), y)
+	include $(DISPLAY_ROOT)/config/sm6150disp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/sm6150dispconf.h
+	subdir-ccflags-y += $(LE_EXTRA_CFLAGS)
+endif
+
 ifeq ($(CONFIG_ARCH_KALAMA), y)
 ifeq ($(CONFIG_ARCH_QTI_VM), y)
         include $(DISPLAY_ROOT)/config/gki_kalamadisptui.conf
@@ -70,6 +77,9 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(DISPLAY_ROOT)/msm/dp \
 	-I$(DISPLAY_ROOT)/msm/dsi \
 	-I$(DISPLAY_ROOT)/msm/sde \
+	-I$(DISPLAY_ROOT)/../mm-drivers/hw_fence/include \
+	-I$(DISPLAY_ROOT)/../mm-drivers/sync_fence/include \
+	-I$(DISPLAY_ROOT)/../mm-drivers/msm_ext_display/include \
 	-I$(DISPLAY_ROOT)/include/uapi/display \
 
 CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
@@ -86,14 +96,22 @@ KBUILD_CPPFLAGS += $(CDEFINES)
 
 ccflags-y += $(LINUX_INC)
 
+ifeq ($(call cc-option-yn, -Wmaybe-uninitialized),y)
+EXTRA_CFLAGS += -Wmaybe-uninitialized
+endif
+
+ifeq ($(CONFIG_HDCP_QSEECOM), y)
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/display-drivers/hdcp/Module.symvers
+endif
+ifeq ($(CONFIG_DRM_MSM), y)
 KBUILD_EXTRA_SYMBOLS +=$(OUT)/obj/vendor/qcom/opensource/display-drivers/msm/Module.symvers
+endif
 
 ifeq ($(call cc-option-yn, -Wheader-guard),y)
 EXTRA_CFLAGS += -Wheader-guard
 endif
 
-ccflags-y +=  -Wno-attribute-warning -Wno-maybe-uninitialized -Wno-int-conversion \
+ccflags-y +=  -Wno-attribute-warning -Wno-int-conversion \
 			-Wno-sequence-point -Wnonnull -Wno-unused -Wno-format \
 			-Wno-implicit-function-declaration -Wmissing-prototypes
 
@@ -231,15 +249,18 @@ msm_drm-$(CONFIG_DRM_SDE_RSC) += sde_rsc.o \
 msm_drm-$(CONFIG_DRM_MSM_DSI) += dsi/dsi_phy.o \
 				 dsi/dsi_pwr.o \
 				 dsi/dsi_phy.o \
+				 dsi/dsi_phy_hw_v2_0.o \
 				 dsi/dsi_phy_hw_v3_0.o \
 				 dsi/dsi_phy_hw_v4_0.o \
 				 dsi/dsi_phy_hw_v5_0.o \
 				 dsi/dsi_phy_timing_calc.o \
+				 dsi/dsi_phy_timing_v2_0.o \
 				 dsi/dsi_phy_timing_v3_0.o \
 				 dsi/dsi_phy_timing_v4_0.o \
 				 dsi/dsi_pll.o \
 				 dsi/dsi_pll_5nm.o \
 				 dsi/dsi_pll_4nm.o \
+				 dsi/dsi_pll_14nm.o \
 				 dsi/dsi_ctrl_hw_cmn.o \
 				 dsi/dsi_ctrl_hw_2_2.o \
 				 dsi/dsi_ctrl.o \

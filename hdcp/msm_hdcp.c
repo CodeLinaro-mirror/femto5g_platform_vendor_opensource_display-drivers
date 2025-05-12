@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -303,13 +303,20 @@ error_class_create:
 	return ret;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void msm_hdcp_remove(struct platform_device *pdev)
+#else
 static int msm_hdcp_remove(struct platform_device *pdev)
+#endif
 {
+	int rc = 0;
 	struct msm_hdcp *hdcp;
 
 	hdcp = platform_get_drvdata(pdev);
-	if (!hdcp)
-		return -ENODEV;
+	if (!hdcp) {
+		rc = -ENODEV;
+		goto end;
+	}
 
 	sysfs_remove_group(&hdcp->device->kobj,
 	&msm_hdcp_fs_attr_group);
@@ -318,7 +325,12 @@ static int msm_hdcp_remove(struct platform_device *pdev)
 	class_destroy(hdcp->class);
 	unregister_chrdev_region(hdcp->dev_num, 1);
 
-	return 0;
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+	return rc;
+#else
+	return;
+#endif
 }
 
 static struct platform_driver msm_hdcp_driver = {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -114,6 +114,7 @@ int sde_wb_connector_get_modes(struct drm_connector *connector, void *display,
 		const struct msm_resource_caps_info *avail_res)
 {
 	struct sde_wb_device *wb_dev;
+	u32 max_width = SDE_WB_MODE_MAX_WIDTH;
 	int num_modes = 0;
 
 	if (!connector || !display)
@@ -155,7 +156,6 @@ int sde_wb_connector_get_modes(struct drm_connector *connector, void *display,
 	mutex_unlock(&wb_dev->wb_lock);
 	return num_modes;
 custom_modes:
-	u32 max_width = SDE_WB_MODE_MAX_WIDTH;
 
 	if (wb_dev->wb_cfg && wb_dev->wb_cfg->sblk)
 		max_width = max(wb_dev->wb_cfg->sblk->maxlinewidth,
@@ -218,9 +218,7 @@ int sde_wb_connector_set_modes(struct sde_wb_device *wb_dev,
 		u32 count_modes, struct drm_mode_modeinfo __user *modes,
 		bool connected)
 {
-	struct drm_mode_modeinfo *modeinfo = NULL;
 	int ret = 0;
-	int i;
 
 	if (!wb_dev || !wb_dev->connector ||
 			(wb_dev->connector->connector_type !=
@@ -233,6 +231,8 @@ int sde_wb_connector_set_modes(struct sde_wb_device *wb_dev,
 
 	if (connected) {
 #if defined(drm_mode_convert_umode)
+		struct drm_mode_modeinfo *modeinfo = NULL;
+		int i;
 		SDE_DEBUG("connect\n");
 
 		if (!count_modes || !modes) {
@@ -1049,14 +1049,21 @@ static int sde_wb_probe(struct platform_device *pdev)
  * sde_wb_remove - unload writeback module
  * @pdev:	Pointer to platform device
  */
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void sde_wb_remove(struct platform_device *pdev)
+#else
 static int sde_wb_remove(struct platform_device *pdev)
+#endif
 {
+	int rc = 0;
 	struct sde_wb_device *wb_dev;
 	struct sde_wb_device *curr, *next;
 
 	wb_dev = platform_get_drvdata(pdev);
-	if (!wb_dev)
-		return 0;
+	if (!wb_dev) {
+		rc = 0;
+		goto end;
+	}
 
 	SDE_DEBUG("\n");
 
@@ -1077,7 +1084,12 @@ static int sde_wb_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, wb_dev);
 
-	return 0;
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+	return rc;
+#else
+	return;
+#endif
 }
 
 static const struct of_device_id dt_match[] = {

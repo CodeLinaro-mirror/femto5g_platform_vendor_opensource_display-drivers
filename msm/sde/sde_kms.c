@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -61,15 +61,16 @@
 #include "sde_vm.h"
 #include "sde_fence.h"
 #include "soc/qcom/secure_buffer.h"
-#if __has_include(<linux/qcom_scm.h>) && \
-    __has_include(<linux/qcom-iommu-util.h>) && \
-    __has_include(<linux/qtee_shmbridge.h>)
+
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <linux/firmware/qcom/qcom_scm.h>
+#else
 #include <linux/qcom_scm.h>
+#endif
+
+
 #include <linux/qcom-iommu-util.h>
 #include <linux/qtee_shmbridge.h>
-#else
-#include "qcom_display_internal.h"
-#endif
 
 #ifdef CONFIG_DRM_SDE_VM
 #include <linux/gunyah/gh_irq_lend.h>
@@ -354,7 +355,7 @@ static int _sde_kms_scm_call(struct sde_kms *sde_kms, int vmid)
 		SDE_DEBUG("sid_mask[%d]: %d\n", i, sec_sid[i]);
 	}
 
-	ret = dma_coerce_mask_and_coherent(&dummy, DMA_BIT_MASK(64));
+	ret = dma_coerce_mask_and_coherent(&dummy, (u64)DMA_BIT_MASK(64));
 	if (ret) {
 		SDE_ERROR("Failed to set dma mask for dummy dev %d\n", ret);
 		goto map_error;
@@ -866,7 +867,7 @@ static int _sde_kms_splash_mem_get(struct sde_kms *sde_kms,
 	}
 
 	splash->ref_cnt++;
-	SDE_DEBUG("one2one mapping done for base:%lx size:%x ref_cnt:%d\n",
+	SDE_DEBUG("one2one mapping done for base:%lx size:%u ref_cnt:%d\n",
 				splash->splash_buf_base,
 				splash->splash_buf_size,
 				splash->ref_cnt);
@@ -1834,13 +1835,13 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 	}
 #endif
 	return 0;
-
+#if IS_ENABLED(CONFIG_DRM_MSM_DP)
 exit_deinit_dp:
 	kfree(sde_kms->dp_displays);
 	sde_kms->dp_stream_count = 0;
 	sde_kms->dp_display_count = 0;
 	sde_kms->dp_displays = NULL;
-
+#endif
 exit_deinit_wb:
 	kfree(sde_kms->wb_displays);
 	sde_kms->wb_display_count = 0;
@@ -4745,7 +4746,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 			continue;
 
 		} else if (!mem->splash_buf_base || !mem->splash_buf_size) {
-			SDE_ERROR("mem for disp %d invalid: add:%lx size:%lx\n",
+			SDE_ERROR("mem for disp %d invalid: add:%lx size:%u\n",
 					(i+1), mem->splash_buf_base,
 					mem->splash_buf_size);
 			continue;
@@ -4755,7 +4756,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 		splash_display->demura = mem;
 		count++;
 
-		SDE_DEBUG("demura mem for disp:%d add:%lx size:%x\n", (i + 1),
+		SDE_DEBUG("demura mem for disp:%d add:%lx size:%u\n", (i + 1),
 				mem->splash_buf_base,
 				mem->splash_buf_size);
 	}
@@ -5141,6 +5142,7 @@ power_error:
 	return rc;
 }
 
+#ifdef CONFIG_DRM_SDE_VM
 static int _sde_kms_get_tvm_inclusion_mem(struct sde_mdss_cfg *catalog, struct list_head *mem_list)
 {
 	struct list_head temp_head;
@@ -5173,7 +5175,6 @@ parse_fail:
 	return rc;
 }
 
-#ifdef CONFIG_DRM_SDE_VM
 int sde_kms_get_io_resources(struct sde_kms *sde_kms, struct msm_io_res *io_res)
 {
 	struct platform_device *pdev = to_platform_device(sde_kms->dev->dev);
@@ -5313,12 +5314,12 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 
 	ret = devm_pm_opp_set_clkname(dev->dev, "core_clk");
 	if (ret)
-		return ret;
+		return ERR_PTR(ret);
 	/* OPP table is optional */
 	ret = devm_pm_opp_of_add_table(dev->dev);
 	if (ret && ret != -ENODEV) {
 		dev_err(dev->dev, "invalid OPP table in device tree\n");
-		return ret;
+		return ERR_PTR(ret);
 	}
 
 	opp = dev_pm_opp_find_freq_floor(dev->dev, &max_freq);

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/of.h>
@@ -1374,7 +1374,7 @@ void *dsi_register_clk_handle(void *clk_mngr, char *client)
 		goto error;
 	}
 
-	strlcpy(c->name, client, MAX_STRING_LEN);
+	strscpy(c->name, client, MAX_STRING_LEN);
 	c->mngr = mngr;
 
 	list_add(&c->list, &mngr->client_list);

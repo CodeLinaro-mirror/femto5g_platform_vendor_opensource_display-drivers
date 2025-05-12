@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -25,7 +25,7 @@
 #include <drm/msm_drm_pp.h>
 #include <linux/version.h>
 #include <drm/drm_blend.h>
-
+#include <linux/vmalloc.h>
 #include "msm_prop.h"
 #include "msm_drv.h"
 
@@ -1692,7 +1692,7 @@ static int sde_plane_rot_atomic_check(struct drm_plane *plane,
 			!psde->pipe_sblk->in_rot_format_list ||
 			!(psde->features & BIT(SDE_SSPP_TRUE_INLINE_ROT))) {
 			SDE_ERROR_PLANE(psde,
-			    "wrong config rt:%d/%d nrt:%d fmt:%d h:%d 0x%x\n",
+			    "wrong config rt:%d/%d nrt:%d fmt:%d h:%d 0x%llx\n",
 				!psde->pipe_sblk->in_rot_maxdwnscale_rt_num,
 				!psde->pipe_sblk->in_rot_maxdwnscale_rt_denom,
 				!psde->pipe_sblk->in_rot_maxdwnscale_nrt,
@@ -2434,12 +2434,12 @@ static int _sde_atomic_check_pre_downscale(struct sde_plane *psde,
 
 	if (pd_x && !_sde_plane_has_pre_downscale(psde)) {
 		SDE_ERROR_PLANE(psde,
-			"hw does not support pre-downscale X: 0x%x\n",
+			"hw does not support pre-downscale X: 0x%llx\n",
 			psde->features);
 		ret = -EINVAL;
 	} else if (pd_y && !(psde->features & BIT(SDE_SSPP_PREDOWNSCALE_Y))) {
 		SDE_ERROR_PLANE(psde,
-			"hw does not support pre-downscale Y: 0x%x\n",
+			"hw does not support pre-downscale Y: 0x%llx\n",
 			psde->features);
 		ret = -EINVAL;
 	} else if (!min_ratio_numer || !min_ratio_denom) {

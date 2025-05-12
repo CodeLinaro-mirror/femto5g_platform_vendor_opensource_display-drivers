@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2015, 2017-2021 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -20,8 +21,10 @@
 #include <linux/delay.h>
 #include <linux/sde_io_util.h>
 #include <linux/sde_vm_event.h>
-#include "sde_dbg.h"
+#include <linux/version.h>
 
+#include "sde_dbg.h"
+#include <linux/pm_opp.h>
 #define MAX_I2C_CMDS  16
 void dss_reg_w(struct dss_io_data *io, u32 offset, u32 value, u32 debug)
 {
@@ -182,8 +185,10 @@ int msm_dss_get_pmic_io_mem(struct platform_device *pdev,
 	struct list_head temp_head;
 	struct msm_io_mem_entry *io_mem;
 	struct resource *res = NULL;
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	struct property *prop;
 	const __be32 *cur;
+#endif
 	int rc = 0;
 	u32 val;
 
@@ -193,8 +198,12 @@ int msm_dss_get_pmic_io_mem(struct platform_device *pdev,
 	if (!res)
 		return -ENOMEM;
 
-	of_property_for_each_u32(pdev->dev.of_node, "qcom,pmic-arb-address",
-			prop, cur, val) {
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+	of_property_for_each_u32(pdev->dev.of_node, "qcom,pmic-arb-address", prop, cur, val)
+#else
+	of_property_for_each_u32(pdev->dev.of_node, "qcom,pmic-arb-address", val)
+#endif
+	{
 		rc = spmi_pmic_arb_map_address(&pdev->dev, val, res);
 		if (rc < 0) {
 			DEV_ERR("%pS - failed to map pmic address, rc:%d\n",
@@ -578,7 +587,7 @@ error:
 EXPORT_SYMBOL_GPL(msm_dss_get_clk);
 
 int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
-	int (*cb_fnc)(void *data), void *phandle,
+	int (*cb_fnc)(struct mmrm_client_notifier_data *data), void *phandle,
 	bool *mmrm_enable)
 {
 	int i, rc = 0;
@@ -599,7 +608,7 @@ int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
 			MMRM_CLIENT_DOMAIN_DISPLAY;
 		desc.client_info.desc.client_id =
 			clk_array[i].mmrm.clk_id;
-		strlcpy(name, clk_array[i].clk_name,
+		strscpy(name, clk_array[i].clk_name,
 			sizeof(desc.client_info.desc.name));
 		desc.client_info.desc.clk = clk_array[i].clk;
 		desc.priority = MMRM_CLIENT_PRIOR_LOW;
@@ -619,7 +628,9 @@ int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
 		desc.pvt_data = (void *)mmrm_cb_data;
 		desc.notifier_callback_fn = cb_fnc;
 
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 		clk_array[i].mmrm.mmrm_client = mmrm_client_register(&desc);
+#endif
 		if (!clk_array[i].mmrm.mmrm_client) {
 			DEV_ERR("mmrm register error\n");
 			DEV_ERR("clk[%d] type:%d id:%d name:%s\n",
@@ -644,7 +655,7 @@ EXPORT_SYMBOL_GPL(msm_dss_mmrm_register);
 void msm_dss_mmrm_deregister(struct device *dev,
 	struct dss_module_power *mp)
 {
-	int i, ret;
+	int i, ret = 0;
 	struct dss_clk *clk_array = mp->clk_config;
 	int num_clk = mp->num_clk;
 
@@ -652,8 +663,10 @@ void msm_dss_mmrm_deregister(struct device *dev,
 		if (clk_array[i].type != DSS_CLK_MMRM)
 			continue;
 
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 		ret = mmrm_client_deregister(
 			clk_array[i].mmrm.mmrm_client);
+#endif
 		if (ret) {
 			DEV_DBG("fail mmrm deregister ret:%d clk:%s\n",
 				ret, clk_array[i].clk_name);
@@ -715,10 +728,12 @@ int msm_dss_single_clk_set_rate(struct dss_clk *clk, struct device *dev)
 		client_data.num_hw_blocks = 1;
 		client_data.flags = clk->mmrm.flags;
 
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 		rc = mmrm_client_set_value(
 			clk->mmrm.mmrm_client,
 			&client_data,
 			clk->rate);
+#endif
 		if (rc) {
 			DEV_ERR("%pS->%s: %s mmrm setval fail rc:%d\n",
 				__builtin_return_address(0),

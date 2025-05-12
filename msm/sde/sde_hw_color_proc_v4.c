@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 #include <drm/msm_drm_pp.h>
@@ -629,7 +629,7 @@ void sde_setup_fp16_gcv1(struct sde_hw_pipe *ctx,
 	fp16_gc = (struct drm_msm_fp16_gc *)(hw_cfg->payload);
 	if (fp16_gc && (hw_cfg->len != sizeof(struct drm_msm_fp16_gc) ||
 			fp16_gc->mode == FP16_GC_MODE_INVALID)) {
-		DRM_ERROR("invalid hw_cfg payload\tpipe: %d\tindex: %d\tlen: %d\tmode: %d",
+		DRM_ERROR("invalid hw_cfg payload\tpipe: %d\tindex: %d\tlen: %d\tmode: %lld",
 				ctx->idx, index, hw_cfg->len, fp16_gc->mode);
 		return;
 	}

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -23,6 +23,12 @@
 #include <linux/input.h>
 #include <linux/seq_file.h>
 #include <linux/sde_rsc.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
+#include <msm_hw_fence.h>
+#else
+#include <linux/soc/qcom/msm_hw_fence.h>
+#endif
 
 #include "msm_drv.h"
 #include "sde_kms.h"
@@ -2065,12 +2071,14 @@ void sde_encoder_clear_fence_error_in_progress(struct sde_encoder_phys *phys_enc
 
 static int sde_encoder_hw_fence_signal(struct sde_encoder_phys *phys_enc)
 {
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 	struct sde_hw_ctl *hw_ctl;
 	struct sde_hw_fence_data *hwfence_data;
 	int pending_kickoff_cnt = -1;
 	int rc = 0;
 
-	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_ctl) {
+	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_ctl ||
+			!phys_enc->hw_ctl->hwfence_data.hw_fence_handle) {
 		SDE_DEBUG("invalid parameters\n");
 		SDE_EVT32(SDE_EVTLOG_ERROR);
 		return -EINVAL;
@@ -2084,7 +2092,7 @@ static int sde_encoder_hw_fence_signal(struct sde_encoder_phys *phys_enc)
 	/* out of order hw fence error signal is needed for video panel. */
 	if (sde_encoder_check_curr_mode(phys_enc->parent, MSM_DISPLAY_VIDEO_MODE)) {
 		/* out of order hw fence error signal */
-		rc = msm_hw_fence_update_txq_error(hwfence_data->hw_fence_handle,
+		rc = msm_hw_fence_update_txq_error(hwfence_data->hw_fence_handle->client,
 			phys_enc->sde_hw_fence_handle, phys_enc->sde_hw_fence_error_value,
 			MSM_HW_FENCE_UPDATE_ERROR_WITH_MOVE);
 		if (rc) {
@@ -2112,6 +2120,9 @@ static int sde_encoder_hw_fence_signal(struct sde_encoder_phys *phys_enc)
 
 	SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FUNC_EXIT);
 	return rc;
+#else
+	return -EINVAL;
+#endif /* CONFIG_QTI_HW_FENCE */
 }
 
 int sde_encoder_handle_dma_fence_out_of_order(struct drm_encoder *drm_enc)

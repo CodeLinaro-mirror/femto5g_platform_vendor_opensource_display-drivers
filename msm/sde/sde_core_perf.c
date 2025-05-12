@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1309,7 +1309,7 @@ static ssize_t _sde_core_perf_mmrm_write(struct file *file,
 	ret = sde_power_mmrm_set_clk_limit(clk,
 		perf->phandle, requested_clk);
 	if (ret)
-		SDE_ERROR("Failed to set %s clock rate %llu\n",
+		SDE_ERROR("Failed to set %s clock rate %lu\n",
 			clk->clk_name, requested_clk);
 
 exit:
@@ -1330,7 +1330,7 @@ static ssize_t _sde_core_perf_mmrm_read(struct file *file,
 		return 0;	/* the end */
 
 	len = snprintf(buf, sizeof(buf),
-			"mmrm clk_limit:%lu clk:%s\n",
+			"mmrm clk_limit:%llu clk:%s\n",
 			sde_power_mmrm_get_requested_clk(perf->phandle,
 			perf->clk_name), perf->clk_name);
 	if (len < 0 || len >= sizeof(buf))

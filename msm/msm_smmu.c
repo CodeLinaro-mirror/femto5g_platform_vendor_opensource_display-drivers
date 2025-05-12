@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -78,7 +78,11 @@ static DEFINE_MUTEX(smmu_list_lock);
 /* List of all smmu devices installed */
 static LIST_HEAD(sde_smmu_list);
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void msm_smmu_remove(struct platform_device *pdev);
+#else
 static int msm_smmu_remove(struct platform_device *pdev);
+#endif
 
 static int msm_smmu_attach(struct msm_mmu *mmu, const char * const *names,
 		int cnt)
@@ -564,7 +568,7 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	if (!client->dev->dma_parms)
 		client->dev->dma_parms = devm_kzalloc(client->dev,
 				sizeof(*client->dev->dma_parms), GFP_KERNEL);
-	dma_set_max_seg_size(client->dev, DMA_BIT_MASK(32));
+	dma_set_max_seg_size(client->dev, (unsigned int)DMA_BIT_MASK(32));
 	dma_set_seg_boundary(client->dev, (unsigned long)DMA_BIT_MASK(64));
 
 	iommu_set_fault_handler(client->domain,
@@ -588,7 +592,11 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	return ret;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void msm_smmu_remove(struct platform_device *pdev)
+#else
 static int msm_smmu_remove(struct platform_device *pdev)
+#endif
 {
 	struct msm_smmu_client *client;
 	struct msm_smmu_client *curr, *next;
@@ -605,7 +613,9 @@ static int msm_smmu_remove(struct platform_device *pdev)
 	}
 	mutex_unlock(&smmu_list_lock);
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static struct platform_driver msm_smmu_driver = {

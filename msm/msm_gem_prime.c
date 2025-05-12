@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -237,7 +237,11 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 	 * after the SID switch scm_call and will be handled during msm_gem_get_dma_addr
 	 */
 	if (!is_vmid_tvm && !is_vmid_cam_preview && !is_vmid_sec_display) {
-		sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	sgt = dma_buf_map_attachment_unlocked(attach, DMA_BIDIRECTIONAL);
+#else
+	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+#endif
 		if (IS_ERR(sgt)) {
 			ret = PTR_ERR(sgt);
 			DRM_ERROR("dma_buf_map_attachment failure, err=%d\n", ret);
@@ -265,7 +269,11 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 
 fail_unmap:
 	if (sgt)
-		dma_buf_unmap_attachment(attach, sgt, DMA_BIDIRECTIONAL);
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	dma_buf_unmap_attachment_unlocked(attach, sgt, DMA_BIDIRECTIONAL);
+#else
+	dma_buf_unmap_attachment(attach, sgt, DMA_BIDIRECTIONAL);
+#endif
 fail_detach:
 	dma_buf_detach(dma_buf, attach);
 fail_put:
