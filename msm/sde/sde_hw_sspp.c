@@ -202,7 +202,7 @@ static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index,
 		enum sde_sspp_multirect_mode mode)
 {
-	u32 mode_mask;
+	u32 mode_mask, mask;
 	u32 idx;
 
 	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
@@ -229,8 +229,10 @@ static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 			 * and disable multirect
 			 */
 			mode_mask = 0;
+			SDE_REG_WRITE(&ctx->hw, SSPP_MULTIRECT_OPMODE + idx, mode_mask);
 		} else {
-			mode_mask = SDE_REG_READ(&ctx->hw, SSPP_MULTIRECT_OPMODE + idx);
+			mode_mask = 0;
+			mask = index | BIT(2);
 
 			if (enable)
 				mode_mask |= index;
@@ -241,9 +243,8 @@ static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 				mode_mask |= BIT(2);
 			else
 				mode_mask &= ~BIT(2);
+			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE + idx, mask, mode_mask);
 		}
-
-		SDE_REG_WRITE(&ctx->hw, SSPP_MULTIRECT_OPMODE + idx, mode_mask);
 	}
 }
 
@@ -347,7 +348,7 @@ static void sde_hw_sspp_setup_format(struct sde_hw_pipe *ctx,
 {
 	struct sde_hw_blk_reg_map *c;
 	u32 chroma_samp, unpack, src_format;
-	u32 opmode = 0;
+	u32 opmode = 0, mask;
 	u32 op_mode_off, unpack_pat_off, format_off;
 	u32 idx;
 	bool const_color_en = true;
@@ -373,9 +374,9 @@ static void sde_hw_sspp_setup_format(struct sde_hw_pipe *ctx,
 	else
 		SDE_REG_MODIFY(c, SSPP_FETCH_CONFIG, BIT(10), 0);
 
-	opmode = SDE_REG_READ(c, op_mode_off + idx);
-	opmode &= ~(MDSS_MDP_OP_FLIP_LR | MDSS_MDP_OP_FLIP_UD |
-			MDSS_MDP_OP_BWC_EN | MDSS_MDP_OP_PE_OVERRIDE);
+	mask = MDSS_MDP_OP_FLIP_LR | MDSS_MDP_OP_FLIP_UD |
+			MDSS_MDP_OP_BWC_EN | MDSS_MDP_OP_PE_OVERRIDE;
+	opmode = 0;
 
 	if (flags & SDE_SSPP_FLIP_LR)
 		opmode |= MDSS_MDP_OP_FLIP_LR;
@@ -449,7 +450,7 @@ static void sde_hw_sspp_setup_format(struct sde_hw_pipe *ctx,
 
 	SDE_REG_WRITE(c, format_off + idx, src_format);
 	SDE_REG_WRITE(c, unpack_pat_off + idx, unpack);
-	SDE_REG_WRITE(c, op_mode_off + idx, opmode);
+	SDE_REG_MODIFY(c, op_mode_off + idx, mask, opmode);
 
 	/* clear previous UBWC error */
 	SDE_REG_WRITE(c, SSPP_UBWC_ERROR_STATUS + idx, BIT(31));
@@ -542,7 +543,7 @@ static void sde_hw_sspp_ubwc_stats_set_roi(struct sde_hw_pipe *ctx,
 {
 	struct sde_hw_blk_reg_map *c;
 	u32 idx, ctrl_off, roi_off;
-	u32 ctrl_val = 0, roi_val = 0;
+	u32 ctrl_val = 0, roi_val = 0, mask;
 
 	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
@@ -557,7 +558,8 @@ static void sde_hw_sspp_ubwc_stats_set_roi(struct sde_hw_pipe *ctx,
 
 	c = &ctx->hw;
 
-	ctrl_val = SDE_REG_READ(c, ctrl_off);
+	ctrl_val = 0;
+	mask = BIT(24) | BIT(25) | BIT(26);
 
 	if (roi) {
 		ctrl_val |= BIT(24);
@@ -574,7 +576,7 @@ static void sde_hw_sspp_ubwc_stats_set_roi(struct sde_hw_pipe *ctx,
 		ctrl_val &= ~(BIT(24) | BIT(25) | BIT(26));
 	}
 
-	SDE_REG_WRITE(c, ctrl_off, ctrl_val);
+	SDE_REG_MODIFY(c, ctrl_off, mask, ctrl_val);
 	SDE_REG_WRITE(c, roi_off, roi_val);
 }
 
@@ -610,7 +612,7 @@ static void sde_hw_sspp_setup_secure(struct sde_hw_pipe *ctx,
 		bool enable)
 {
 	struct sde_hw_blk_reg_map *c;
-	u32 secure = 0, secure_bit_mask;
+	u32 secure_bit_mask;
 	u32 idx;
 
 	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
@@ -625,28 +627,10 @@ static void sde_hw_sspp_setup_secure(struct sde_hw_pipe *ctx,
 	else
 		secure_bit_mask = 0xA;
 
-	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
-		if (rect_mode == SDE_SSPP_RECT_1)
-			secure = SDE_REG_READ(c, SSPP_SRC_ADDR_SW_STATUS_REC1 + idx);
-		else
-			secure = SDE_REG_READ(c, SSPP_SRC_ADDR_SW_STATUS_ALT + idx);
-	} else {
-		secure = SDE_REG_READ(c, SSPP_SRC_ADDR_SW_STATUS + idx);
-	}
-
 	if (enable)
-		secure |= secure_bit_mask;
+		SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS + idx, secure_bit_mask, secure_bit_mask);
 	else
-		secure &= ~secure_bit_mask;
-
-	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
-		if (rect_mode == SDE_SSPP_RECT_1)
-			SDE_REG_WRITE(c, SSPP_SRC_ADDR_SW_STATUS_REC1 + idx, secure);
-		else
-			SDE_REG_WRITE(c, SSPP_SRC_ADDR_SW_STATUS_ALT + idx, secure);
-	} else {
-		SDE_REG_WRITE(c, SSPP_SRC_ADDR_SW_STATUS + idx, secure);
-	}
+		SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS + idx, secure_bit_mask, 0);
 
 	/* multiple planes share same sw_status register */
 	wmb();
@@ -822,7 +806,7 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 	u32 src_size_ext_off, src_xy_ext_off, out_size_ext_off, out_xy_ext_off;
 	u32 src_extn_size, src_extn_xy, dst_extn_size, dst_extn_xy;
 	u32 decimation = 0;
-	u32 idx, opmode, mask_extn = 0;
+	u32 idx, off, mask_extn = 0;
 
 	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx) || !cfg)
 		return;
@@ -913,7 +897,10 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 	src_extn_xy = (cfg->src_rect_extn.y << 16) | (cfg->src_rect_extn.x);
 	dst_extn_xy = (cfg->dst_rect_extn.y << 16) | (cfg->dst_rect_extn.x);
 
-	opmode = SDE_REG_READ(c, SSPP_MULTIRECT_OPMODE + idx);
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+		off = SSPP_MULTIRECT_OPMODE_ALT;
+	else
+		off = SSPP_MULTIRECT_OPMODE;
 
 	if (rect_index == SDE_SSPP_RECT_0) {
 		mask_extn = BIT(8);
@@ -930,13 +917,11 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 	}
 
 	if (!src_extn_size && !dst_extn_size) {
-		opmode &= ~mask_extn;
-		SDE_REG_WRITE(c, SSPP_MULTIRECT_OPMODE + idx, opmode);
+		SDE_REG_MODIFY(c, off + idx, mask_extn, 0);
 		return;
 	}
 
-	opmode |= mask_extn;
-	SDE_REG_WRITE(c, SSPP_MULTIRECT_OPMODE + idx, opmode);
+	SDE_REG_MODIFY(c, off + idx, mask_extn, mask_extn);
 	SDE_REG_WRITE(c, src_size_ext_off + idx, src_extn_size);
 	SDE_REG_WRITE(c, src_xy_ext_off + idx, src_extn_xy);
 	SDE_REG_WRITE(c, out_size_ext_off + idx, dst_extn_size);
@@ -978,17 +963,24 @@ static void _sde_hw_sspp_setup_excl_rect(struct sde_hw_pipe *ctx,
 	size = (excl_rect->h << 16) | (excl_rect->w);
 
 	/* Set if multi-rect disabled, read+modify only if multi-rect enabled */
-	if (rect_index != SDE_SSPP_RECT_SOLO)
-		excl_ctrl = SDE_REG_READ(c, SSPP_EXCL_REC_CTL + idx);
-
-	if (!size) {
-		SDE_REG_WRITE(c, SSPP_EXCL_REC_CTL + idx,
-				excl_ctrl & ~enable_bit);
+	if (rect_index == SDE_SSPP_RECT_SOLO) {
+		if (!size) {
+			SDE_REG_WRITE(c, SSPP_EXCL_REC_CTL + idx,
+					excl_ctrl & ~enable_bit);
+		} else {
+			SDE_REG_WRITE(c, SSPP_EXCL_REC_CTL + idx,
+					excl_ctrl | enable_bit);
+			SDE_REG_WRITE(c, reg_size + idx, size);
+			SDE_REG_WRITE(c, reg_xy + idx, xy);
+		}
 	} else {
-		SDE_REG_WRITE(c, SSPP_EXCL_REC_CTL + idx,
-				excl_ctrl | enable_bit);
-		SDE_REG_WRITE(c, reg_size + idx, size);
-		SDE_REG_WRITE(c, reg_xy + idx, xy);
+		if (!size) {
+			SDE_REG_MODIFY(c, SSPP_EXCL_REC_CTL + idx, enable_bit, 0);
+		} else {
+			SDE_REG_MODIFY(c, SSPP_EXCL_REC_CTL + idx, enable_bit, enable_bit);
+			SDE_REG_WRITE(c, reg_size + idx, size);
+			SDE_REG_WRITE(c, reg_xy + idx, xy);
+		}
 	}
 }
 
