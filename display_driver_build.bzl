@@ -92,6 +92,7 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
             "//soc-repo:{}/drivers/soc/qcom/mem_buf/mem_buf_dev".format(kernel_build_tv),
             "//soc-repo:{}/drivers/iommu/msm_dma_iommu_mapping".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/socinfo".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/soc/qcom/panel_event_notifier".format(kernel_build_tv),
         ],
         "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
         })
@@ -114,7 +115,6 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
                 "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(kernel_build_tv),
                 "//soc-repo:{}/drivers/usb/dwc3/dwc3-msm".format(kernel_build_tv),
                 "//soc-repo:{}/drivers/soc/qcom/wcd_usbss_i2c".format(kernel_build_tv),
-                "//soc-repo:{}/drivers/soc/qcom/panel_event_notifier".format(kernel_build_tv),
             ],
             "//build/kernel/kleaf:socrepo_false": [],
         })
