@@ -8425,6 +8425,12 @@ void reg_dmav1_setup_demura_cfg0_param2_v4(struct sde_hw_dspp *ctx, void *cfg)
 		return;
 	}
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(4, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
+
 	if (hw_cfg->len != sizeof(struct drm_msm_dem_cfg0_param2)) {
 		DRM_ERROR("invalid sz of payload len %d exp %zd\n",
 				hw_cfg->len, sizeof(struct drm_msm_dem_cfg0_param2));
@@ -8709,6 +8715,13 @@ void reg_dmav1_setup_demurav4(struct sde_hw_dspp *ctx, void *cfx)
 	rc = reg_dma_dspp_check(ctx, cfx, DEMURA_CFG);
 	if (rc)
 		return;
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(4, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	if (hw_cfg->payload)
+		hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 
 	if (!hw_cfg->payload) {
 		LOG_FEATURE_OFF;

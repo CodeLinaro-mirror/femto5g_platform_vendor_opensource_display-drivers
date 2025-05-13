@@ -73,4 +73,12 @@ void hfi_setup_dspp_pa_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg);
  * @cfg: Pointer to dither data
  */
 void hfi_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * hfi_setup_demura_backlight_cfg_v4 - setup demura backlight in HFI path
+ * @ctx: Pointer to DSPP context
+ * @hw_cfg: pointer to sde_hw_cp_cfg containing u32 backlight data
+ */
+void hfi_setup_demura_backlight_cfg_v4(struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg);
+
 #endif /* _HFI_COLOR_PROC_H_ */
