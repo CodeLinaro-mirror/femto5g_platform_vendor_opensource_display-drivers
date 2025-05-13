@@ -2216,10 +2216,17 @@ static int add_components_mdp(struct device *mdp_dev,
 	return 0;
 }
 
+#if (KERNEL_VERSION(6, 14, 0) > LINUX_VERSION_CODE)
 static int compare_name_mdp(struct device *dev, void *data)
 {
 	return (strnstr(dev_name(dev), "mdp", strlen("mdp")) != NULL);
 }
+#else
+static int compare_name_mdp(struct device *dev, const void *data)
+{
+	return (strnstr(dev_name(dev), "mdp", strlen("mdp")) != NULL);
+}
+#endif
 
 static int add_display_components(struct device *dev,
 				  struct component_match **matchptr)
