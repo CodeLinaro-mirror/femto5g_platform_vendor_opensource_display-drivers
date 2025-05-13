@@ -219,7 +219,7 @@ static void _process_cb_buffer_work(struct kthread_work *work)
 }
 
 int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
-		const void *cb_data, uint32_t flags)
+		const void *cb_data, enum hfi_core_event_type event_type, bool blocking)
 {
 	struct hfi_adapter_t *adapter = (struct hfi_adapter_t *)cb_data;
 	struct callback_work *cb_work;
@@ -230,19 +230,27 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		return -EINVAL;
 
 	HFI_AD_DEBUG("hfi callback called\n");
-	atomic_fetch_add_unless(&work_queue_pos_wr, 1, HFI_ADAPTER_WORK_QUEUE_SIZE);
-	work_queue_idx = atomic_read(&work_queue_pos_wr);
-	if (work_queue_idx >= HFI_ADAPTER_WORK_QUEUE_SIZE) {
-		/* If exceeds index limit, reset to 0 */
-		atomic_set(&work_queue_pos_wr, 0);
-		work_queue_idx = 0;
+
+	switch (event_type) {
+	case HFI_CORE_EVENT_DCP_RESPONSE:
+		atomic_fetch_add_unless(&work_queue_pos_wr, 1,
+				HFI_ADAPTER_WORK_QUEUE_SIZE);
+		work_queue_idx = atomic_read(&work_queue_pos_wr);
+		if (work_queue_idx >= HFI_ADAPTER_WORK_QUEUE_SIZE) {
+			/* If exceeds index limit, reset to 0 */
+			atomic_set(&work_queue_pos_wr, 0);
+			work_queue_idx = 0;
+		}
+
+		cb_work = &adapter->cb_work[work_queue_idx];
+
+		ret = kthread_queue_work(&adapter->cb_worker, &cb_work->work);
+		if (!ret)
+			HFI_AD_WARN("failed to queue work at index:%d\n", work_queue_idx);
+		break;
+	default:
+		return -EINVAL;
 	}
-
-	cb_work = &adapter->cb_work[work_queue_idx];
-
-	ret = kthread_queue_work(&adapter->cb_worker, &cb_work->work);
-	if (!ret)
-		HFI_AD_WARN("failed to queue work at index:%d\n", work_queue_idx);
 
 	return 0;
 }
