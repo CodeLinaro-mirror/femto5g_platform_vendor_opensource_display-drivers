@@ -19,6 +19,24 @@
 #include "hfi_defs_display.h"
 
 /**
+ * struct dsi_display_hfi - dsi display hfi structure
+ * @hfi_adapter:          Pointer to hfi adapter structure
+ * @hfi_client:           Pointer to hfi client structure
+ * @kv_props:             Pointer to hfi util kv helper structure
+ * @cmd_buf_worker:       kthread worker
+ * @mode_valid:           Indicate whether mode is valid
+ */
+struct dsi_display_hfi {
+	struct hfi_adapter_t *hfi_adapter;
+	struct hfi_client_t *hfi_client;
+	struct hfi_util_kv_helper *kv_props;
+
+	struct kthread_worker cmd_buf_worker;
+
+	bool mode_valid;
+};
+
+/**
  * dsi_display_hfi_prepare() - enable clocks, send panel pre on commands, panel power on
  * @display: Pointer to dsi_display structure
 
