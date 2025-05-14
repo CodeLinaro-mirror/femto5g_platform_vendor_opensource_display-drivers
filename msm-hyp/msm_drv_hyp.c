@@ -2853,14 +2853,25 @@ static int msm_hyp_pdev_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *node;
 	unsigned int i;
-	int ret;
+	int ret, len = 0;
+	const char *transport;
 
-	for (i = 0; ; i++) {
-		node = of_parse_phandle(np, "qcom,kms", i);
-		if (!node)
-			break;
+	transport = of_get_property(np, "qcom,transport", &len);
+	if (len > 0 && transport != NULL) {
+		pr_info("transport is %s\n", transport);
+		node = of_find_node_by_name(np, transport);
+		if (node == NULL)
+			pr_err("failed to find %s node by name\n", transport);
 
 		component_match_add(&pdev->dev, &match, compare_of, node);
+	} else {
+		for (i = 0; ; i++) {
+			node = of_parse_phandle(np, "qcom,kms", i);
+			if (!node)
+				break;
+
+			component_match_add(&pdev->dev, &match, compare_of, node);
+		}
 	}
 
 	if (!match)
