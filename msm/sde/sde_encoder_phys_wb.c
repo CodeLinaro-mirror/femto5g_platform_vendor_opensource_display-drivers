@@ -43,22 +43,6 @@ static const u32 cwb_irq_tbl[PINGPONG_MAX] = {SDE_NONE, INTR_IDX_PP1_OVFL,
 	INTR_IDX_PP5_OVFL, SDE_NONE, SDE_NONE};
 
 /**
- * sde_rgb2yuv_601l - rgb to yuv color space conversion matrix
- *
- */
-static struct sde_csc_cfg sde_encoder_phys_wb_rgb2yuv_601l = {
-	{
-		TO_S15D16(0x0083), TO_S15D16(0x0102), TO_S15D16(0x0032),
-		TO_S15D16(0x1fb5), TO_S15D16(0x1f6c), TO_S15D16(0x00e1),
-		TO_S15D16(0x00e1), TO_S15D16(0x1f45), TO_S15D16(0x1fdc)
-	},
-	{ 0x00, 0x00, 0x00 },
-	{ 0x0040, 0x0200, 0x0200 },
-	{ 0x000, 0x3ff, 0x000, 0x3ff, 0x000, 0x3ff },
-	{ 0x040, 0x3ac, 0x040, 0x3c0, 0x040, 0x3c0 },
-};
-
-/**
  * sde_encoder_phys_wb_is_master - report wb always as master encoder
  */
 static bool sde_encoder_phys_wb_is_master(struct sde_encoder_phys *phys_enc)
@@ -251,7 +235,13 @@ void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_fr
 	struct sde_hw_cdm_cfg *cdm_cfg;
 	struct sde_hw_pingpong *hw_pp;
 	struct sde_encoder_phys_wb *wb_enc;
+	struct sde_connector *sde_conn;
+	struct sde_connector_state *sde_conn_state;
+	struct sde_drm_csc_v1 *wb_csc;
+	struct sde_csc_cfg wb_csc_cfg = {};
 	int ret;
+	int i;
+	size_t csc_size = 0;
 	enum msm_disp_op disp_op;
 
 	if (!phys_enc || !format)
@@ -259,6 +249,10 @@ void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_fr
 
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	wb_enc = to_sde_encoder_phys_wb(phys_enc);
+
+	sde_conn = to_sde_connector(wb_enc->wb_dev->connector);
+	sde_conn_state = to_sde_connector_state(wb_enc->wb_dev->connector->state);
+
 	cdm_cfg = &phys_enc->cdm_cfg;
 	hw_pp = phys_enc->hw_pp;
 	hw_cdm = phys_enc->hw_cdm;
@@ -316,8 +310,25 @@ void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_fr
 		cdm_cfg->h_cdwn_type, cdm_cfg->v_cdwn_type);
 
 	if (hw_cdm && hw_cdm->ops.setup_csc_data[disp_op]) {
+		wb_csc = msm_property_get_blob(&sde_conn->property_info,
+			&sde_conn_state->property_state, &csc_size, CONNECTOR_PROP_WB_CSC_CONFIG);
+		if (!wb_csc) {
+			SDE_ERROR("[enc:%d wb:%d] invalid CSC to setup;\n",
+					DRMID(phys_enc->parent), WBID(wb_enc));
+			return;
+		}
+		for (i = 0; i < SDE_CSC_MATRIX_COEFF_SIZE; i++)
+			wb_csc_cfg.csc_mv[i] = (uint32_t)(wb_csc->ctm_coeff[i] & 0xffffffff);
+		for (i = 0; i < SDE_CSC_BIAS_SIZE; i++) {
+			wb_csc_cfg.csc_pre_bv[i] = wb_csc->pre_bias[i];
+			wb_csc_cfg.csc_post_bv[i] = wb_csc->post_bias[i];
+		}
+		for (i = 0; i < SDE_CSC_CLAMP_SIZE; i++) {
+			wb_csc_cfg.csc_pre_lv[i] = wb_csc->pre_clamp[i];
+			wb_csc_cfg.csc_post_lv[i] = wb_csc->post_clamp[i];
+		}
 		ret = hw_cdm->ops.setup_csc_data[disp_op](hw_cdm,
-			&sde_encoder_phys_wb_rgb2yuv_601l, disp_op);
+			&wb_csc_cfg, disp_op);
 		if (ret < 0) {
 			SDE_ERROR("[enc:%d wb:%d] failed to setup CSC; ret:%d\n",
 					DRMID(phys_enc->parent), WBID(wb_enc), ret);

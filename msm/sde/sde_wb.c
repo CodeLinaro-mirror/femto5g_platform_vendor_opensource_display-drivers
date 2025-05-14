@@ -693,6 +693,9 @@ int sde_wb_connector_post_init(struct drm_connector *connector, void *display)
 			0x0, 0, e_wb_usage_type, ARRAY_SIZE(e_wb_usage_type),
 			0, CONNECTOR_PROP_WB_USAGE_TYPE);
 
+	msm_property_install_blob(&c_conn->property_info, "wb_csc_config",
+			DRM_MODE_PROP_BLOB, CONNECTOR_PROP_WB_CSC_CONFIG);
+
 	_sde_wb_connector_install_dither_property(wb_dev);
 
 	return 0;
