@@ -19,18 +19,15 @@
 #include "hfi_props.h"
 #include "hfi_kms.h"
 
-static int dsi_display_hfi_power_supplies(struct dsi_display_hfi *display_hfi,
+static int dsi_display_hfi_power_supplies(struct dsi_display *display,
 					  u32 hfi_power_control, bool hfi_power_enable)
 {
-	struct dsi_display *display;
 	int rc = 0;
 
-	if (!display_hfi) {
-		DSI_ERR("Invalid dsi_display_hfi\n");
+	if (!display) {
+		DSI_ERR("Invalid dsi_display\n");
 		goto end;
 	}
-
-	display = &display_hfi->dsi_display;
 
 	if (hfi_power_control & HFI_PANEL_POWER) {
 		rc = dsi_display_hfi_panel_enable_supplies(display, hfi_power_enable);
@@ -88,14 +85,14 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 		return;
 	}
 
-	display_hfi = container_of(listener, struct dsi_display_hfi,
+	display = container_of(listener, struct dsi_display,
 						hfi_cb_obj);
-	if (!display_hfi) {
+	if (!display) {
 		DSI_ERR("invalid object or listener from FW\n");
 		return;
 	}
 
-	display = &display_hfi->dsi_display;
+	display_hfi = display->dsi_hfi_info;
 	dsi_display_obj_id = strcmp(display->display_type, "primary");
 
 	if (dsi_display_obj_id != hfi_uid) {
@@ -110,7 +107,7 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 			display_hfi->mode_valid = true;
 		break;
 	case HFI_COMMAND_DISPLAY_POWER_CONTROL:
-		rc = dsi_display_hfi_power_supplies(display_hfi,
+		rc = dsi_display_hfi_power_supplies(display,
 								((u32 *)payload)[0],
 								((bool *)payload)[1]);
 		if (rc)
@@ -146,9 +143,10 @@ int dsi_display_hfi_setup_hfi(struct dsi_display *display, struct hfi_adapter_t 
 		return -EINVAL;
 	}
 
-	display_hfi = to_dsi_display_hfi(display);
+	display_hfi = kvzalloc(sizeof(struct dsi_display_hfi), GFP_KERNEL);
+	display->dsi_hfi_info = display_hfi;
 
-	display_hfi->hfi_cb_obj.hfi_prop_handler = dsi_hfi_prop_handler;
+	display->hfi_cb_obj.hfi_prop_handler = dsi_hfi_prop_handler;
 	display_hfi->hfi_adapter = hfi_host;
 
 	display_hfi->hfi_client = kmalloc(sizeof(struct hfi_client_t), GFP_KERNEL);
@@ -173,7 +171,6 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 					void *payload, u32 payload_size, u32 flags)
 {
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
-	struct dsi_display_hfi *display_hfi;
 	struct drm_connector *drm_conn;
 	int rc = 0;
 	u32 obj_id;
@@ -182,8 +179,6 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 		DSI_ERR("invalid display\n");
 		return -EINVAL;
 	}
-
-	display_hfi = to_dsi_display_hfi(display);
 
 	drm_conn = display->drm_conn;
 
@@ -213,7 +208,7 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 
 	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED) {
 		rc = hfi_adapter_add_get_property(cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
-			payload, payload_size, &display_hfi->hfi_cb_obj, flags);
+			payload, payload_size, &display->hfi_cb_obj, flags);
 		if (rc)
 			DSI_ERR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
 
@@ -251,7 +246,7 @@ int dsi_display_hfi_register_pwr_supplies(struct dsi_display *display)
 		return -EINVAL;
 	}
 
-	display_hfi = to_dsi_display_hfi(display);
+	display_hfi = display->dsi_hfi_info;
 
 	obj_id = strcmp(display->display_type, "primary");
 
@@ -259,7 +254,7 @@ int dsi_display_hfi_register_pwr_supplies(struct dsi_display *display)
 					  HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
 
 	rc = hfi_adapter_add_get_property(cmd_buf, hfi_cmd, obj_id, HFI_PAYLOAD_TYPE_NONE,
-			NULL, 0, &display_hfi->hfi_cb_obj,
+			NULL, 0, &display->hfi_cb_obj,
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE);
 
 	rc = hfi_adapter_set_cmd_buf(cmd_buf);
@@ -685,7 +680,7 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 	hfi_addr[1] = HFI_VAL_L32(buff_desc->priv_dva);
 	hfi_addr[2] = HFI_VAL_H32(buff_desc->priv_dva);
 
-	display_hfi = to_dsi_display_hfi(display);
+	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi)
 		return -EINVAL;
 
@@ -742,7 +737,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	if (!display)
 		return -EINVAL;
 
-	display_hfi = to_dsi_display_hfi(display);
+	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi)
 		return -EINVAL;
 
@@ -843,7 +838,7 @@ static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
 	if (!display)
 		return -EINVAL;
 
-	display_hfi = to_dsi_display_hfi(display);
+	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi)
 		return -EINVAL;
 
@@ -949,7 +944,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 
 	obj_id = strcmp(display->display_type, "primary");
 
-	display_hfi = to_dsi_display_hfi(display);
+	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi)
 		return -EINVAL;
 
@@ -1068,7 +1063,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 	if (!display)
 		return -EINVAL;
 
-	display_hfi = to_dsi_display_hfi(display);
+	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi)
 		return -EINVAL;
 
@@ -1112,7 +1107,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 void dsi_hfi_misr_read_prop_handler(u32 obj_id, u32 CMD_ID, void *payload, u32 size,
 			struct hfi_prop_listener *hfi_listener)
 {
-	struct dsi_display_hfi *display_hfi;
+	struct dsi_display *display;
 	struct misr_read_data_ret *misr_data;
 	struct dsi_misr_values *misr_read_values;
 	u32 max_count = 0;
@@ -1129,17 +1124,17 @@ void dsi_hfi_misr_read_prop_handler(u32 obj_id, u32 CMD_ID, void *payload, u32 s
 		return;
 	}
 
-	display_hfi = container_of(hfi_listener, struct dsi_display_hfi,
+	display = container_of(hfi_listener, struct dsi_display,
 						hfi_cb_obj);
 
-	if (!display_hfi) {
+	if (!display) {
 		DSI_ERR("invalid object or listener from FW\n");
 		return;
 	}
 
 	DSI_DEBUG("About to read MISR values from %s\n", __func__);
 
-	misr_read_values = &display_hfi->dsi_display.misr_vals;
+	misr_read_values = &display->misr_vals;
 	misr_data = (struct misr_read_data_ret *)payload;
 
 	max_count = misr_data->num_misr;
@@ -1169,7 +1164,7 @@ int dsi_hfi_misr_read(struct dsi_display *display)
 	if (!display)
 		return -EINVAL;
 
-	display_hfi = to_dsi_display_hfi(display);
+	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi)
 		return -EINVAL;
 

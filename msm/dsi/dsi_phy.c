@@ -1105,10 +1105,11 @@ int dsi_phy_enable(struct msm_dsi_phy *phy,
 	 * updated before enabling PHY.
 	 */
 	if (!phy->cfg.is_phy_timing_present)
-		rc = phy->hw.ops.calculate_timing_params[phy->disp_op](&phy->hw,
-						 &phy->mode,
-						 &config->common_config,
-						 &phy->cfg.timing, false);
+		if (phy->hw.ops.calculate_timing_params[phy->disp_op])
+			rc = phy->hw.ops.calculate_timing_params[phy->disp_op](&phy->hw,
+							&phy->mode,
+							&config->common_config,
+							&phy->cfg.timing, false);
 	if (rc) {
 		DSI_PHY_ERR(phy, "failed to set timing, rc=%d\n", rc);
 		goto error;
@@ -1137,9 +1138,10 @@ int dsi_phy_update_phy_timings(struct msm_dsi_phy *phy,
 	}
 
 	memcpy(&phy->mode, &config->video_timing, sizeof(phy->mode));
-	rc = phy->hw.ops.calculate_timing_params[phy->disp_op](&phy->hw, &phy->mode,
-						 &config->common_config,
-						 &phy->cfg.timing, use_mode_bit_clk);
+	if (phy->hw.ops.calculate_timing_params[phy->disp_op])
+		rc = phy->hw.ops.calculate_timing_params[phy->disp_op](&phy->hw, &phy->mode,
+							&config->common_config,
+							&phy->cfg.timing, use_mode_bit_clk);
 	if (rc)
 		DSI_PHY_ERR(phy, "failed to calculate phy timings %d\n", rc);
 	else
