@@ -1172,11 +1172,11 @@ static int dsi_pll_14nm_dynamic_clk_vco_set_rate(struct dsi_pll_resource *pll_re
 	rate = pll_res->vco_rate;
 	rc = dsi_pll_read_stored_trim_codes(pll_res, rate);
 	if (rc) {
-		DSI_PLL_ERR(pll_res, "cannot find pll codes rate=%ld\n", rate);
+		DSI_PLL_ERR(pll_res, "cannot find pll codes rate=%u\n", rate);
 		return -EINVAL;
 	}
 
-	DSI_PLL_DBG(pll_res, "rate=%lu vco_ref_clk_rate=%lu\n",
+	DSI_PLL_DBG(pll_res, "rate=%lld vco_ref_clk_rate=%lld\n",
 			pll_res->vco_rate, pll_res->vco_ref_clk_rate);
 
 	pll_res->vco_current_rate = pll_res->vco_rate;
@@ -1201,7 +1201,7 @@ static int dsi_pll_14nm_vco_set_rate(struct dsi_pll_resource *pll_res)
 		return -EINVAL;
 	}
 
-	DSI_PLL_DBG(pll_res, "rate=%lu\n", pll_res->vco_rate);
+	DSI_PLL_DBG(pll_res, "rate=%lld\n", pll_res->vco_rate);
 
 	pll_res->vco_current_rate = pll_res->vco_rate;
 
@@ -1238,7 +1238,7 @@ static int dsi_pll_14nm_enable(struct dsi_pll_resource *rsc)
 
 	rc = dsi_pll_14nm_lock_status(rsc);
 	if (!rc) {
-		DSI_PLL_ERR(rsc, "DSI PLL ndx=%d lock failed\n");
+		DSI_PLL_ERR(rsc, "DSI PLL lock failed\n");
 		rc = -EINVAL;
 		goto init_lock_err;
 	}
