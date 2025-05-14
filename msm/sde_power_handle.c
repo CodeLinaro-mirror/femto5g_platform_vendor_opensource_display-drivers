@@ -622,6 +622,7 @@ exit:
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 static int sde_power_mmrm_callback(
 	struct mmrm_client_notifier_data *notifier_data)
 {
@@ -644,7 +645,7 @@ static int sde_power_mmrm_callback(
 
 	return ret;
 }
-
+#endif
 u64 sde_power_mmrm_get_requested_clk(struct sde_power_handle *phandle,
 	char *clock_name)
 {
@@ -744,8 +745,8 @@ bus_err:
 clkset_err:
 #if IS_ENABLED(CONFIG_MSM_MMRM)
 	msm_dss_mmrm_deregister(&pdev->dev, mp);
-#endif
 clkmmrm_err:
+#endif
 	msm_dss_put_clk(mp->clk_config, mp->num_clk);
 clkget_err:
 	msm_dss_get_vreg(&pdev->dev, mp->vreg_config, mp->num_vreg, 0);
