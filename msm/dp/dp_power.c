@@ -272,7 +272,6 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 		}
 
 		/* If link_parent node is available, convert clk rates to HZ for byte2 ops */
-		power->pll->clk_factor = 1000;
 		power->link_parent = clk_get(dev, "link_parent");
 		if (IS_ERR(power->link_parent)) {
 			DP_WARN("Unable to get DP link parent: %ld\n",
