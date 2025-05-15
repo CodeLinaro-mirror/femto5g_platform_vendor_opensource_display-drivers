@@ -9,12 +9,16 @@
 #include <linux/delay.h>
 #include <linux/module.h>
 #include <linux/kthread.h>
-#include <linux/soc/qcom/pmic_glink_altmode.h>
+#if __has_include(<soc/qcom/pmic_glink_altmode.h>)
+    #include <linux/soc/qcom/pmic_glink_altmode.h>
+    #include "qcom_display_internal.h"
+#else
+    #include <linux/soc/qcom/altmode-glink.h>
+#endif
 #include <linux/usb/pd_vdo.h>
 #include <linux/usb/typec_dp.h>
 #include <linux/of_platform.h>
 
-#include "qcom_display_internal.h"
 #include "dp_altmode.h"
 #include "dp_debug.h"
 #include "sde_dbg.h"
@@ -211,6 +215,7 @@ ack:
 	return rc;
 }
 
+#if __has_include(<soc/qcom/pmic_glink_altmode.h>)
 static int dp_altmode_pmic_notify(void *priv, struct typec_displayport_data data, int orientation)
 {
 	int rc = 0;
@@ -292,6 +297,27 @@ static int dp_altmode_pmic_notify(void *priv, struct typec_displayport_data data
 ack:
 	return rc;
 }
+#else
+static void dp_altmode_register(void *priv)
+{
+	struct dp_altmode_private *altmode = priv;
+	struct altmode_client_data cd = {
+		.callback	= &dp_altmode_notify,
+	};
+
+	cd.name = "displayport";
+	cd.svid = USB_SID_DISPLAYPORT;
+	cd.priv = altmode;
+
+	altmode->amclient = altmode_register_client(altmode->dev, &cd);
+	if (IS_ERR_OR_NULL(altmode->amclient))
+		DP_ERR("failed to register as client: %ld\n",
+				PTR_ERR(altmode->amclient));
+	else
+		DP_DEBUG("success\n");
+}
+
+#endif
 
 static int dp_altmode_simulate_connect(struct dp_hpd *dp_hpd, bool hpd)
 {
@@ -357,8 +383,11 @@ struct dp_hpd *dp_altmode_get(struct device *dev, struct dp_hpd_cb *cb)
 	dp_altmode->base.register_hpd = NULL;
 	dp_altmode->base.simulate_connect = dp_altmode_simulate_connect;
 	dp_altmode->base.simulate_attention = dp_altmode_simulate_attention;
-
+#if __has_include(<soc/qcom/pmic_glink_altmode.h>)
 	rc = pmic_glink_altmode_register_client((void *) dp_altmode_pmic_notify, altmode);
+#else
+	rc = altmode_register_notifier(dev, dp_altmode_register, altmode);
+#endif
 	if (rc < 0) {
 		DP_ERR("altmode probe notifier registration failed: %d\n", rc);
 		goto error;
@@ -383,6 +412,9 @@ void dp_altmode_put(struct dp_hpd *dp_hpd)
 
 	altmode = container_of(dp_altmode, struct dp_altmode_private,
 			dp_altmode);
-
+#if __has_include(<soc/qcom/altmode_glink.h>)
+	altmode_deregister_client(altmode->amclient);
+	altmode_deregister_notifier(altmode->dev, altmode);
+#endif
 	kfree(altmode);
 }
