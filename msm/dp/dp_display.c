@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -14,7 +14,13 @@
 #include <linux/usb/phy.h>
 #include <linux/jiffies.h>
 #include <linux/pm_qos.h>
-#include <linux/soc/qcom/pmic_glink_altmode.h>
+
+#if __has_include(<soc/qcom/pmic_glink_altmode.h>)
+    #include <linux/soc/qcom/pmic_glink_altmode.h>
+#else
+    #include <linux/soc/qcom/altmode-glink.h>
+#endif
+
 #if __has_include(<linux/ipc_logging.h>)
 #include <linux/ipc_logging.h>
 #else
@@ -3449,6 +3455,7 @@ static int dp_display_bridge_internal_hpd(void *dev, bool hpd, bool hpd_irq)
 	return 0;
 }
 
+#if __has_include(<soc/qcom/pmic_glink_altmode.h>)
 static int dp_display_init_hpd_bridge(struct dp_display_private *dp)
 {
 	int rc = 0;
@@ -3473,7 +3480,7 @@ static int dp_display_init_hpd_bridge(struct dp_display_private *dp)
 end:
 	return rc;
 }
-
+#endif
 static int dp_display_init_aux_bridge(struct dp_display_private *dp)
 {
 	int rc = 0;
@@ -4003,11 +4010,11 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp->name = "drm_dp";
 
 	memset(&dp->mst, 0, sizeof(dp->mst));
-
+#if __has_include(<soc/qcom/pmic_glink_altmode.h>)
 	rc = dp_display_init_hpd_bridge(dp);
 	if (rc)
 		goto error;
-
+#endif
 	rc = dp_display_init_aux_bridge(dp);
 	if (rc)
 		goto error;
