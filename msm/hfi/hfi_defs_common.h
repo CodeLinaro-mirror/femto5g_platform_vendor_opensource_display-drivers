@@ -162,6 +162,10 @@ enum hfi_color_formats {
 	HFI_COLOR_FORMAT_NV12                       = 0x05000003,
 	HFI_COLOR_FORMAT_NV21                       = 0x05000004,
 	HFI_COLOR_FORMAT_P010                       = 0x05000005,
+	HFI_COLOR_FORMAT_YUYV                       = 0x05000006,
+	HFI_COLOR_FORMAT_YVYU                       = 0x05000007,
+	HFI_COLOR_FORMAT_UYVY                       = 0x05000008,
+	HFI_COLOR_FORMAT_VYUY                       = 0x05000009,
 	HFI_COLOR_FORMAT_LINEAR_MAX                 = 0x05FFFFFF,
 	/* Compressed UBWC 3.0 / 4.x / 5.0 Lossless */
 	HFI_COLOR_FORMAT_UBWC_LOSSLESS_MIN          = 0x06000000,

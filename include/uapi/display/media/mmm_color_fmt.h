@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #ifndef __MMM_COLOR_FMT_INFO_H__
 #define __MMM_COLOR_FMT_INFO_H__
@@ -1203,7 +1203,7 @@ static inline unsigned int MMM_COLOR_FMT_Y_STRIDE(unsigned int color_fmt,
 		stride = MMM_COLOR_FMT_ALIGN(width * 2, alignment);
 		break;
 	case MMM_COLOR_FMT_P010_512:
-		alignment = 512;
+		alignment = 1024;
 		stride = MMM_COLOR_FMT_ALIGN(width * 2, alignment);
 		break;
 	default:
@@ -1256,7 +1256,7 @@ static inline unsigned int MMM_COLOR_FMT_UV_STRIDE(unsigned int color_fmt,
 		stride = MMM_COLOR_FMT_ALIGN(width * 2, alignment);
 		break;
 	case MMM_COLOR_FMT_P010_512:
-		alignment = 512;
+		alignment = 1024;
 		stride = MMM_COLOR_FMT_ALIGN(width * 2, alignment);
 		break;
 	default:
@@ -1283,12 +1283,12 @@ static inline unsigned int MMM_COLOR_FMT_Y_SCANLINES(unsigned int color_fmt,
 
 	switch (color_fmt) {
 	case MMM_COLOR_FMT_NV12_512:
+	case MMM_COLOR_FMT_P010_512:
 		alignment = 512;
 		break;
 	case MMM_COLOR_FMT_NV12:
 	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_UBWC:
-	case MMM_COLOR_FMT_P010_512:
 	case MMM_COLOR_FMT_P010:
 		alignment = 32;
 		break;
@@ -1325,13 +1325,13 @@ static inline unsigned int MMM_COLOR_FMT_UV_SCANLINES(unsigned int color_fmt,
 	switch (color_fmt) {
 
 	case MMM_COLOR_FMT_NV12_512:
+	case MMM_COLOR_FMT_P010_512:
 		alignment = 256;
 		break;
 	case MMM_COLOR_FMT_NV12:
 	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_BPP10_UBWC:
 	case MMM_COLOR_FMT_P010_UBWC:
-	case MMM_COLOR_FMT_P010_512:
 	case MMM_COLOR_FMT_P010:
 	case MMM_COLOR_FMT_NV124R_UBWC:
 	case MMM_COLOR_FMT_P210_UBWC:

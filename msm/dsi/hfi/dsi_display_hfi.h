@@ -18,16 +18,15 @@
 #include "hfi_utils.h"
 #include "hfi_defs_display.h"
 
-#define to_dsi_display_hfi(x) container_of(x, struct dsi_display_hfi, dsi_display)
-
+/**
+ * struct dsi_display_hfi - dsi display hfi structure
+ * @hfi_adapter:          Pointer to hfi adapter structure
+ * @hfi_client:           Pointer to hfi client structure
+ * @kv_props:             Pointer to hfi util kv helper structure
+ * @cmd_buf_worker:       kthread worker
+ * @mode_valid:           Indicate whether mode is valid
+ */
 struct dsi_display_hfi {
-	struct dsi_display dsi_display;
-
-	struct dsi_ctrl_power_info ctrl_pwr_info;
-	struct dsi_phy_power_info phy_pwr_info;
-
-	struct hfi_prop_listener hfi_cb_obj;
-	struct hfi_prop_listener misr_read_listener;
 	struct hfi_adapter_t *hfi_adapter;
 	struct hfi_client_t *hfi_client;
 	struct hfi_util_kv_helper *kv_props;
