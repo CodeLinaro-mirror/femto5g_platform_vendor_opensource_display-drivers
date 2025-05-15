@@ -130,7 +130,7 @@ int dp_pll_clock_register_helper(struct dp_pll *pll, struct dp_pll_vco_clk *clks
 
 struct dp_pll *dp_pll_get(struct dp_pll_in *in)
 {
-	int rc = 0;
+	int val, rc = 0;
 	struct dp_pll *pll;
 	struct dp_parser *parser;
 	const char *label = NULL;
@@ -189,6 +189,13 @@ struct dp_pll *dp_pll_get(struct dp_pll_in *in)
 	pll->bonding_en = of_property_read_bool(pdev->dev.of_node,
 						"qcom,bonding-feature-enable");
 
+	rc = of_property_read_u32(pdev->dev.of_node,
+			"qcom,pll-clk-factor", &val);
+	if (!rc)
+		pll->clk_factor = val;
+	else
+		pll->clk_factor = 1000; /* default value */
+
 	rc = dp_pll_fill_io(pll);
 	if (rc)
 		goto error;
@@ -197,9 +204,9 @@ struct dp_pll *dp_pll_get(struct dp_pll_in *in)
 	if (rc)
 		goto error;
 
-	DP_INFO("revision=%s, ssc_en=%d, bonding_en=%d\n",
+	DP_INFO("revision=%s, ssc_en=%d, bonding_en=%d, clk_factor=%d\n",
 			dp_pll_get_revision(pll->revision), pll->ssc_en,
-			pll->bonding_en);
+			pll->bonding_en, pll->clk_factor);
 
 	return pll;
 error:
