@@ -397,7 +397,7 @@ struct sde_hw_reg_dma_ops {
 	int (*dealloc_reg_dma)(struct sde_reg_dma_buffer *lut_buf, u32 dpu_idx);
 	struct sde_reg_dma_buffer* (*get_reg_dma_vq_buf)(struct sde_kms *sde_kms,
 			enum sde_reg_dma_buffer_type type,
-			enum sde_hw_blk_type hw_type, u32 idx, u32 dpu_idx);
+			enum sde_hw_blk_type hw_type, u32 idx, u32 dpu_idx, u32 display_idx);
 	int (*reset_reg_dma_buf)(struct sde_reg_dma_buffer *buf);
 	int (*last_command)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
@@ -462,7 +462,7 @@ const struct sde_reg_dma_cfg *sde_reg_dma_get_cfg(u32 dpu_idx);
  */
 void sde_reg_dma_deinit(u32 dpu_idx);
 
-struct sde_reg_dma_buffer **get_reg_dma_vq_ctx(u32 dpu_idx, u32 ctl_idx);
+struct sde_reg_dma_buffer **get_reg_dma_vq_ctx(u32 dpu_idx, u32 ctl_idx, u32 display_idx);
 
 #if ENABLE_REG_DMA_MDSS_REGISTER_WRITE
 void sde_reg_write_reg_dma(struct sde_hw_blk_reg_map *c,

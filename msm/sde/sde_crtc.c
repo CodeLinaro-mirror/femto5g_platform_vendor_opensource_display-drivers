@@ -4777,10 +4777,10 @@ static void _sde_crtc_setup_mixer_for_encoder(
 		mixer->encoder = enc;
 
 		sde_crtc->num_mixers++;
-		SDE_DEBUG("setup mixer %d: lm %d\n",
-				i, mixer->hw_lm->idx - LM_0);
-		SDE_DEBUG("setup mixer %d: ctl %d\n",
-				i, mixer->hw_ctl->idx - CTL_0);
+		SDE_DEBUG("setup mixer %d: lm %d lm display_idx %d"
+				" ctl %d ctl display_idx %d\n",
+				i, mixer->hw_lm->idx - LM_0, mixer->hw_lm->display_idx,
+				mixer->hw_ctl->idx - CTL_0, mixer->hw_ctl->display_idx);
 		if (mixer->hw_ds)
 			SDE_DEBUG("setup mixer %d: ds %d\n",
 				i, mixer->hw_ds->idx - DS_0);

@@ -189,6 +189,7 @@ struct msm_hyp_framebuffer_info {
 
 struct msm_hyp_display {
 	void *display;
+	int id;
 	struct sde_kms *sde_kms;
 	struct drm_connector *connector;
 	struct drm_encoder *encoder;
@@ -321,7 +322,7 @@ struct msm_hyp_kms;
 
 struct msm_hyp_kms_funcs {
 	int (*get_displays)(struct sde_kms *sde_kms,
-			void **displays, int *display_num);
+			void **displays, int *id, int *display_num);
 	int (*get_connector_infos)(struct sde_kms *sde_kms,
 			struct msm_hyp_connector_info **connector_infos,
 			int *connector_num);
