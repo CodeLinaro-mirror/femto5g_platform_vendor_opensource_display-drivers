@@ -23,6 +23,7 @@
 static struct sde_dspp_cfg *_dspp_offset(enum sde_dspp dspp,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
+		u32 display_idx,
 		struct sde_hw_blk_reg_map *b)
 {
 	int i;
@@ -31,13 +32,14 @@ static struct sde_dspp_cfg *_dspp_offset(enum sde_dspp dspp,
 		return ERR_PTR(-EINVAL);
 
 	for (i = 0; i < m->dspp_count; i++) {
-		if (dspp == m->dspp[i].id) {
+		if (dspp == m->dspp[i].id && display_idx == m->dspp[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->dspp[i].base;
 			b->length = m->dspp[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_DSPP;
 			b->virtual = m->dspp[i].virtual;
+			b->display_idx = display_idx;
 			return &m->dspp[i];
 		}
 	}
@@ -605,7 +607,8 @@ static void _setup_dspp_ops(struct sde_hw_dspp *c, unsigned long features)
 struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 			void __iomem *addr,
 			struct sde_mdss_cfg *m,
-			struct sde_kms *sde_kms)
+			struct sde_kms *sde_kms,
+			u32 display_idx)
 {
 	struct sde_hw_dspp *c;
 	struct sde_dspp_cfg *cfg;
@@ -618,7 +621,7 @@ struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _dspp_offset(idx, m, addr, &c->hw);
+	cfg = _dspp_offset(idx, m, addr, display_idx, &c->hw);
 	if (IS_ERR_OR_NULL(cfg)) {
 		kfree(c);
 		return ERR_PTR(-EINVAL);

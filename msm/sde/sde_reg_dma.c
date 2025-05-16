@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -62,7 +62,7 @@ int default_dealloc_reg_dma(struct sde_reg_dma_buffer *lut_buf, u32 dpu_idx)
 
 struct sde_reg_dma_buffer *default_get_reg_dma_vq_buf(struct sde_kms *sde_kms,
 		enum sde_reg_dma_buffer_type type,
-		enum sde_hw_blk_type hw_type, u32 idx, u32 dpu_idx)
+		enum sde_hw_blk_type hw_type, u32 idx, u32 dpu_idx, u32 display_idx)
 {
 	DRM_ERROR("not implemented\n");
 	return ERR_PTR(-EINVAL);

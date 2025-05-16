@@ -46,6 +46,8 @@ struct sde_hw_blk_reg_map {
 	u32 log_mask;
 	bool virtual;
 	void *vq_ctx;
+	u32 display_idx;
+	u32 fixed_enc_id;
 };
 
 /**

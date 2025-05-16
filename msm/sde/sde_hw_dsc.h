@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2019, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -89,7 +90,8 @@ static inline struct sde_hw_dsc *to_sde_hw_dsc(struct sde_hw_blk_reg_map *hw)
  */
 struct sde_hw_blk_reg_map *sde_hw_dsc_init(enum sde_dsc idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m);
+		struct sde_mdss_cfg *m,
+		u32 display_idx);
 
 /**
  * sde_hw_dsc_destroy - destroys dsc driver context
