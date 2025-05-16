@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2019, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -132,7 +133,8 @@ static inline struct sde_hw_cdm *to_sde_hw_cdm(struct sde_hw_blk_reg_map *hw)
 struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
-		struct sde_hw_mdp *hw_mdp);
+		struct sde_hw_mdp *hw_mdp,
+		u32 display_idx);
 
 /**
  * sde_hw_cdm_destroy - destroys CDM driver context

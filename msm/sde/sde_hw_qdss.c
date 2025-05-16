@@ -18,18 +18,20 @@
 static struct sde_qdss_cfg *_qdss_offset(enum sde_qdss qdss,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
+		u32 display_idx,
 		struct sde_hw_blk_reg_map *b)
 {
 	int i;
 
 	for (i = 0; i < m->qdss_count; i++) {
-		if (qdss == m->qdss[i].id) {
+		if (qdss == m->qdss[i].id && display_idx == m->qdss[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->qdss[i].base;
 			b->length = m->qdss[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_QDSS;
 			b->virtual = m->qdss[i].virtual;
+			b->display_idx = display_idx;
 			return &m->qdss[i];
 		}
 	}
@@ -56,7 +58,8 @@ static void _setup_qdss_ops(struct sde_hw_qdss_ops *ops)
 
 struct sde_hw_blk_reg_map *sde_hw_qdss_init(enum sde_qdss idx,
 			void __iomem *addr,
-			struct sde_mdss_cfg *m)
+			struct sde_mdss_cfg *m,
+			u32 display_idx)
 {
 	struct sde_hw_qdss *c;
 	struct sde_qdss_cfg *cfg;
@@ -65,7 +68,7 @@ struct sde_hw_blk_reg_map *sde_hw_qdss_init(enum sde_qdss idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _qdss_offset(idx, m, addr, &c->hw);
+	cfg = _qdss_offset(idx, m, addr, display_idx, &c->hw);
 	if (IS_ERR_OR_NULL(cfg)) {
 		kfree(c);
 		return ERR_PTR(-EINVAL);

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -80,7 +80,8 @@ static inline struct sde_hw_dnsc_blur *to_sde_hw_dnsc_blur(struct sde_hw_blk_reg
  * @m: pointer to mdss catalog data
  */
 struct sde_hw_blk_reg_map *sde_hw_dnsc_blur_init(enum sde_dnsc_blur idx,
-		void __iomem *addr, struct sde_mdss_cfg *m);
+		void __iomem *addr, struct sde_mdss_cfg *m,
+		u32 display_idx);
 
 /**
  * sde_hw_dnsc_blur_destroy - destroys dnsc_blur driver context

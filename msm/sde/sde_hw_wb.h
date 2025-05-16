@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -290,7 +290,8 @@ struct sde_hw_blk_reg_map *sde_hw_wb_init(enum sde_wb idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
 		struct sde_hw_mdp *hw_mdp,
-		struct sde_vbif_clk_client *clk_client);
+		struct sde_vbif_clk_client *clk_client,
+		u32 display_idx);
 
 /**
  * sde_hw_wb_destroy(): Destroy writeback hw driver object.

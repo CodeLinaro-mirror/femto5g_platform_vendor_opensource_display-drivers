@@ -147,18 +147,20 @@ static struct sde_hw_merge_3d *_sde_pp_merge_3d_init(enum sde_merge_3d idx,
 static struct sde_pingpong_cfg *_pingpong_offset(enum sde_pingpong pp,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
+		u32 display_idx,
 		struct sde_hw_blk_reg_map *b)
 {
 	int i;
 
 	for (i = 0; i < m->pingpong_count; i++) {
-		if (pp == m->pingpong[i].id) {
+		if (pp == m->pingpong[i].id && display_idx == m->pingpong[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->pingpong[i].base;
 			b->length = m->pingpong[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_PINGPONG;
 			b->virtual = m->pingpong[i].virtual;
+			b->display_idx = display_idx;
 			return &m->pingpong[i];
 		}
 	}
@@ -660,7 +662,8 @@ static void _setup_virtual_pingpong_ops(struct sde_hw_pingpong_ops *ops,
 
 struct sde_hw_blk_reg_map *sde_hw_pingpong_init(enum sde_pingpong idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m)
+		struct sde_mdss_cfg *m,
+		u32 display_idx)
 {
 	struct sde_hw_pingpong *c;
 	struct sde_pingpong_cfg *cfg;
@@ -669,7 +672,7 @@ struct sde_hw_blk_reg_map *sde_hw_pingpong_init(enum sde_pingpong idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _pingpong_offset(idx, m, addr, &c->hw);
+	cfg = _pingpong_offset(idx, m, addr, display_idx, &c->hw);
 	if (IS_ERR_OR_NULL(cfg)) {
 		kfree(c);
 		return ERR_PTR(-EINVAL);

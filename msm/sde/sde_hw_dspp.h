@@ -509,7 +509,8 @@ static inline struct sde_hw_dspp *to_sde_hw_dspp(struct sde_hw_blk_reg_map *hw)
 struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 			void __iomem *addr,
 			struct sde_mdss_cfg *m,
-			struct sde_kms *sde_kms);
+			struct sde_kms *sde_kms,
+			u32 display_idx);
 
 /**
  * sde_hw_dspp_destroy(): Destroys DSPP driver context

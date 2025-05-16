@@ -599,7 +599,8 @@ int reg_dma_buf_dspp_init(struct sde_hw_dspp *ctx, int feature,
 			queue = dspp_feature_vq_map[feature];
 		if (queue >= 0 && queue < REG_DMA_PAYLOAD_BUF_MAX) {
 			*buf = dma_ops->get_reg_dma_vq_buf(ctx->sde_kms, queue,
-					SDE_HW_BLK_DSPP, ctx->cap->id, dpu_idx);
+					SDE_HW_BLK_DSPP, ctx->cap->id, dpu_idx,
+					ctx->cap->display_idx);
 			if (IS_ERR_OR_NULL(*buf))
 				return -EINVAL;
 		}
@@ -637,7 +638,8 @@ int reg_dma_buf_sspp_init(struct sde_hw_pipe *ctx, int feature,
 			queue = sspp_feature_vq_map[feature];
 		if (queue >= 0 && queue < REG_DMA_PAYLOAD_BUF_MAX) {
 			*buf = dma_ops->get_reg_dma_vq_buf(ctx->sde_kms, queue,
-					SDE_HW_BLK_SSPP, ctx->cap->id, dpu_idx);
+					SDE_HW_BLK_SSPP, ctx->cap->id, dpu_idx,
+					ctx->cap->display_idx);
 			if (IS_ERR_OR_NULL(*buf))
 				return -EINVAL;
 		}
@@ -675,7 +677,8 @@ int reg_dma_buf_ltm_init(struct sde_hw_dspp *ctx, int feature,
 			queue = ltm_feature_vq_map[feature];
 		if (queue >= 0 && queue < REG_DMA_PAYLOAD_BUF_MAX) {
 			*buf = dma_ops->get_reg_dma_vq_buf(ctx->sde_kms, queue,
-					SDE_HW_BLK_DSPP, ctx->cap->id, dpu_idx);
+					SDE_HW_BLK_DSPP, ctx->cap->id, dpu_idx,
+					ctx->cap->display_idx);
 			if (IS_ERR_OR_NULL(*buf))
 				return -EINVAL;
 		}
@@ -713,7 +716,8 @@ int reg_dma_buf_spr_init(struct sde_hw_dspp *ctx, int feature,
 			queue = spr_feature_vq_map[feature];
 		if (queue >= 0 && queue < REG_DMA_PAYLOAD_BUF_MAX) {
 			*buf = dma_ops->get_reg_dma_vq_buf(ctx->sde_kms, queue,
-					SDE_HW_BLK_DSPP, ctx->cap->id, dpu_idx);
+					SDE_HW_BLK_DSPP, ctx->cap->id, dpu_idx,
+					ctx->cap->display_idx);
 			if (IS_ERR_OR_NULL(*buf))
 				return -EINVAL;
 		}

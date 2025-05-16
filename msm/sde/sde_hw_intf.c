@@ -153,19 +153,21 @@
 static struct sde_intf_cfg *_intf_offset(enum sde_intf intf,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
+		u32 display_idx,
 		struct sde_hw_blk_reg_map *b)
 {
 	int i;
 
 	for (i = 0; i < m->intf_count; i++) {
 		if ((intf == m->intf[i].id) &&
-		(m->intf[i].type != INTF_NONE)) {
+		(m->intf[i].type != INTF_NONE) && display_idx == m->intf[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->intf[i].base;
 			b->length = m->intf[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_INTF;
 			b->virtual = m->intf[i].virtual;
+			b->display_idx = display_idx;
 			return &m->intf[i];
 		}
 	}
@@ -1608,7 +1610,8 @@ static void _setup_virtual_intf_ops(struct sde_hw_intf_ops *ops,
 
 struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m)
+		struct sde_mdss_cfg *m,
+		u32 display_idx)
 {
 	struct sde_hw_intf *c;
 	struct sde_intf_cfg *cfg;
@@ -1617,7 +1620,7 @@ struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _intf_offset(idx, m, addr, &c->hw);
+	cfg = _intf_offset(idx, m, addr, display_idx, &c->hw);
 	if (IS_ERR_OR_NULL(cfg)) {
 		kfree(c);
 		pr_err("failed to create sde_hw_intf %d\n", idx);

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -445,7 +445,8 @@ static inline struct sde_hw_intf *to_sde_hw_intf(struct sde_hw_blk_reg_map *hw)
  */
 struct sde_hw_blk_reg_map *sde_hw_intf_init(enum sde_intf idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m);
+		struct sde_mdss_cfg *m,
+		u32 display_idx);
 
 /**
  * sde_hw_intf_destroy(): Destroys INTF driver context

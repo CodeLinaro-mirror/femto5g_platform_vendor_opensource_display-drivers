@@ -305,18 +305,20 @@ static const struct ctl_hw_flush_cfg
 static struct sde_ctl_cfg *_ctl_offset(enum sde_ctl ctl,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
+		u32 display_idx,
 		struct sde_hw_blk_reg_map *b)
 {
 	int i;
 
 	for (i = 0; i < m->ctl_count; i++) {
-		if (ctl == m->ctl[i].id) {
+		if (ctl == m->ctl[i].id && display_idx == m->ctl[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->ctl[i].base;
 			b->length = m->ctl[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_CTL;
 			b->virtual = m->ctl[i].virtual;
+			b->display_idx = display_idx;
 			return &m->ctl[i];
 		}
 	}
@@ -2062,7 +2064,7 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
-		u32 dpu_idx)
+		u32 dpu_idx, u32 display_idx)
 {
 	struct sde_hw_ctl *c;
 	struct sde_ctl_cfg *cfg;
@@ -2072,7 +2074,7 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _ctl_offset(idx, m, addr, &c->hw);
+	cfg = _ctl_offset(idx, m, addr, display_idx, &c->hw);
 	if (IS_ERR_OR_NULL(cfg)) {
 		kfree(c);
 		pr_err("failed to create sde_hw_ctl %d\n", idx);
@@ -2084,6 +2086,7 @@ struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 	c->mixer_count = m->mixer_count;
 	c->mixer_hw_caps = m->mixer;
 	c->dpu_idx = dpu_idx;
+	c->display_idx = display_idx;
 	if (!c->hw.virtual) {
 		_setup_ctl_ops(&c->ops, c->caps->features, m->mdp[0].features);
 		c->flush.global_flush_mask = 0xFFFFFFFF;

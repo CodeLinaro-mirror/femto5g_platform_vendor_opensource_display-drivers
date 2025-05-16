@@ -186,18 +186,20 @@ static void sde_hw_dsc_bind_pingpong_blk(
 static struct sde_dsc_cfg *_dsc_offset(enum sde_dsc dsc,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
+		u32 display_idx,
 		struct sde_hw_blk_reg_map *b)
 {
 	int i;
 
 	for (i = 0; i < m->dsc_count; i++) {
-		if (dsc == m->dsc[i].id) {
+		if (dsc == m->dsc[i].id && display_idx == m->dsc[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->dsc[i].base;
 			b->length = m->dsc[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_DSC;
 			b->virtual = m->dsc[i].virtual;
+			b->display_idx = display_idx;
 			return &m->dsc[i];
 		}
 	}
@@ -217,7 +219,8 @@ static void _setup_dsc_ops(struct sde_hw_dsc_ops *ops,
 
 struct sde_hw_blk_reg_map *sde_hw_dsc_init(enum sde_dsc idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m)
+		struct sde_mdss_cfg *m,
+		u32 display_idx)
 {
 	struct sde_hw_dsc *c;
 	struct sde_dsc_cfg *cfg;
@@ -227,7 +230,7 @@ struct sde_hw_blk_reg_map *sde_hw_dsc_init(enum sde_dsc idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _dsc_offset(idx, m, addr, &c->hw);
+	cfg = _dsc_offset(idx, m, addr, display_idx, &c->hw);
 	if (IS_ERR_OR_NULL(cfg))
 		goto error_inv;
 
