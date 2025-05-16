@@ -521,6 +521,7 @@ struct sde_crtc_hal_funcs {
  * @mdnie_art_frame_count: number of frames required for mdnie art to converge.
  * @hfi_crtc: Pointer to hfi crtc struct
  * @hal_ops: Local callback hal function pointer table
+ * @dspp_pa_mode: top-level bitmask maintaining state of PA block
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -649,6 +650,8 @@ struct sde_crtc {
 
 	struct hfi_crtc *hfi_crtc;
 	struct sde_crtc_hal_funcs hal_ops;
+
+	struct cp_pa_mode dspp_pa_mode;
 };
 
 enum sde_crtc_dirty_flags {

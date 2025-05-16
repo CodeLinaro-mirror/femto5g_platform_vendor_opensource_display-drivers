@@ -97,6 +97,7 @@ static int _sde_cp_crtc_cache_property(struct drm_crtc *crtc,
 
 static void _sde_cp_mark_active_dirty_internal(struct sde_crtc *crtc);
 static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_node *prop_node);
+static void _sde_cp_feature_set_state(struct drm_crtc *crtc, struct sde_cp_node *prop_node);
 
 #define setup_dspp_prop_install_funcs(func) \
 do { \
@@ -1750,6 +1751,8 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 #ifdef HFI_PROPERTY_DISPLAY_COLOR_BEGIN
 			hw_cfg.prop_id = sde_cp_crtc_feat_to_hfi_prop_id[prop_node->feature];
 #endif
+			hw_cfg.dspp_pa_mode = &sde_crtc->dspp_pa_mode;
+
 			ret = commit_feature(hw_dspp, &hw_cfg, sde_crtc);
 			if (ret)
 				break;
@@ -2649,6 +2652,7 @@ static int _sde_cp_flush_properties(struct drm_crtc *crtc)
 			_sde_cp_crtc_cache_property(crtc, cstate, prop_node,
 					property, val);
 			_sde_cp_check_aiqe_properties(crtc, prop_node);
+			_sde_cp_feature_set_state(crtc, prop_node);
 		}
 	}
 	cstate->cp_prop_cnt = 0;
@@ -5101,6 +5105,42 @@ static void _sde_cp_check_aiqe_properties(struct drm_crtc *crtc, struct sde_cp_n
 			aiqe_register_client(feature, &sde_crtc->aiqe_top_level);
 		else
 			aiqe_deregister_client(feature, &sde_crtc->aiqe_top_level);
+	}
+}
+
+static void _sde_cp_feature_set_state(struct drm_crtc *crtc, struct sde_cp_node *prop_node)
+{
+	u64 prop_val = 0;
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+
+	prop_val = prop_node->prop_val;
+	switch (prop_node->feature) {
+	case SDE_CP_CRTC_DSPP_HSIC:
+		cp_feature_set_curr_mode(CP_STATE_PA_HSIC,
+			&sde_crtc->dspp_pa_mode, prop_val);
+		break;
+	case SDE_CP_CRTC_DSPP_SIXZONE:
+		cp_feature_set_curr_mode(CP_STATE_PA_SIXZONE,
+			&sde_crtc->dspp_pa_mode, prop_val);
+		break;
+	case SDE_CP_CRTC_DSPP_MEMCOL_SKY:
+		cp_feature_set_curr_mode(CP_STATE_PA_MEMC_SKY,
+			&sde_crtc->dspp_pa_mode, prop_val);
+		break;
+	case SDE_CP_CRTC_DSPP_MEMCOL_SKIN:
+		cp_feature_set_curr_mode(CP_STATE_PA_MEMC_SKIN,
+			&sde_crtc->dspp_pa_mode, prop_val);
+		break;
+	case SDE_CP_CRTC_DSPP_MEMCOL_FOLIAGE:
+		cp_feature_set_curr_mode(CP_STATE_PA_MEMC_FOLIAGE,
+			&sde_crtc->dspp_pa_mode, prop_val);
+		break;
+	case SDE_CP_CRTC_DSPP_MEMCOL_PROT:
+		cp_feature_set_curr_mode(CP_STATE_PA_MEMC_PROT,
+			&sde_crtc->dspp_pa_mode, prop_val);
+		break;
+	default:
+		break;
 	}
 }
 

@@ -1411,6 +1411,7 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 #ifdef HFI_PROPERTY_LAYER_COLOR_3D_LUT
 		hw_cfg.prop_id = HFI_PROPERTY_LAYER_COLOR_3D_LUT;
 #endif
+		hw_cfg.vig_gamut_mode = &psde->vig_gamut_mode;
 		psde->pipe_hw->ops.setup_vig_gamut[disp_op](psde->pipe_hw, &hw_cfg);
 	}
 
@@ -5291,6 +5292,10 @@ static int sde_plane_atomic_set_property(struct drm_plane *plane,
 			case PLANE_PROP_DST_RECT_EXT:
 				_sde_plane_set_dst_rect_extn(psde, pstate,
 						(void *)(uintptr_t)val);
+				break;
+			case PLANE_PROP_VIG_GAMUT:
+				cp_feature_set_curr_mode(CP_STATE_VIG_GAMUT,
+					&psde->vig_gamut_mode, val);
 				break;
 			default:
 				/* nothing to do */
