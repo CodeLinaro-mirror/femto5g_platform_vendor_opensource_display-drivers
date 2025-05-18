@@ -552,6 +552,32 @@
 #define HFI_PROPERTY_DISPLAY_COLOR_RC                                0x0002010D
 
 /*
+ * HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT   -   This property is to setup SPR_INIT config.
+ *                                           Host is expected to send this packet
+ *                                           of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                           command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT                          0x0002010E
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC   -    This property is to setup SPR_UDC config.
+ *                                           Host is expected to send this packet
+ *                                           of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                           command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC                           0x0002010F
+
+/*
  * All display color properties end here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_END                               0x000201FF

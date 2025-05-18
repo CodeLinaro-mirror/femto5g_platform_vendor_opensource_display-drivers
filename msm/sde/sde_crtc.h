@@ -521,7 +521,6 @@ struct sde_crtc_hal_funcs {
  * @mdnie_art_frame_count: number of frames required for mdnie art to converge.
  * @hfi_crtc: Pointer to hfi crtc struct
  * @hal_ops: Local callback hal function pointer table
- * @prev_disp_op: previous disp_op
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -650,7 +649,6 @@ struct sde_crtc {
 
 	struct hfi_crtc *hfi_crtc;
 	struct sde_crtc_hal_funcs hal_ops;
-	enum msm_disp_op prev_disp_op;
 };
 
 enum sde_crtc_dirty_flags {
