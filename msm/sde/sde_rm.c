@@ -2600,9 +2600,11 @@ static int _sde_rm_populate_requirements(
 		struct sde_rm_requirements *reqs)
 {
 	const struct drm_display_mode *mode = &crtc_state->mode;
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc_state->crtc);
 	struct drm_encoder *encoder_iter;
 	struct drm_connector *conn;
 	int i, num_lm;
+	enum sde_lm lm_idx;
 
 	reqs->top_ctrl = sde_connector_get_property(conn_state,
 			CONNECTOR_PROP_TOPOLOGY_CONTROL);
@@ -2680,6 +2682,14 @@ static int _sde_rm_populate_requirements(
 			if (conn)
 				reqs->conn_lm_mask = to_sde_connector(conn)->lm_mask;
 			break;
+		}
+
+		if (sde_crtc && (conn_state->connector->connector_type ==
+				DRM_MODE_CONNECTOR_VIRTUAL) &&
+				(reqs->topology->num_lm == 1) &&
+				sde_crtc->mixers[0].hw_lm) {
+			lm_idx = sde_crtc->mixers[0].hw_lm->idx;
+			reqs->conn_lm_mask |= (lm_idx > 0) ? (1 << (lm_idx - LM_0)) : 0;
 		}
 	}
 
