@@ -1874,6 +1874,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.prepare_commit = dsi_conn_prepare_commit,
 		.set_submode_info = dsi_conn_set_submode_blob_info,
 		.get_num_lm_from_mode = dsi_conn_get_lm_from_mode,
+		.get_yuv_support = NULL,
 	};
 	static const struct sde_connector_ops wb_ops = {
 		.post_init =    sde_wb_connector_post_init,
@@ -1894,6 +1895,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.install_properties = NULL,
 		.set_dyn_bit_clk = NULL,
 		.set_allowed_mode_switch = NULL,
+		.get_yuv_support = NULL,
 	};
 	static const struct sde_connector_ops dp_ops = {
 		.set_info_blob = dp_connector_set_info_blob,
@@ -1905,6 +1907,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.get_info   = dp_connector_get_info,
 		.get_mode_info  = dp_connector_get_mode_info,
 		.post_open  = dp_connector_post_open,
+		.mode_needs_full_range = dp_connector_mode_needs_full_range,
 		.check_status = NULL,
 		.set_colorspace = dp_connector_set_colorspace,
 		.config_hdr = dp_connector_config_hdr,
@@ -1917,7 +1920,10 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.install_properties = dp_connector_install_properties,
 		.set_allowed_mode_switch = NULL,
 		.set_dyn_bit_clk = NULL,
+		.get_csc_type = dp_connector_get_csc_type,
+		.get_yuv_support = dp_connector_yuv_support,
 	};
+
 	struct msm_display_info info;
 	struct drm_encoder *encoder;
 	void *display, *connector;

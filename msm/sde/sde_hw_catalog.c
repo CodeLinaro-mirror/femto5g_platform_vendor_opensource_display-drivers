@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -3471,9 +3471,9 @@ static int sde_cdm_parse_dt(struct device_node *np,
 				cdm->id - CDM_0);
 		cdm->len = PROP_VALUE_ACCESS(prop_value, HW_LEN, 0);
 
-		/* intf3 and wb2 for cdm block */
+		/* intf0 and wb2 for cdm block */
 		cdm->wb_connect = sde_cfg->wb_count ? BIT(WB_2) : BIT(31);
-		cdm->intf_connect = sde_cfg->intf_count ? BIT(INTF_3) : BIT(31);
+		cdm->intf_connect = sde_cfg->intf_count ? BIT(INTF_0) : BIT(31);
 
 		if (IS_SDE_CTL_REV_100(sde_cfg->ctl_rev))
 			set_bit(SDE_CDM_INPUT_CTRL, &cdm->features);

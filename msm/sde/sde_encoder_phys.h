@@ -300,8 +300,10 @@ struct sde_encoder_irq {
  * @pending_kickoff_wq:		Wait queue for blocking until kickoff completes
  * @kickoff_timeout_ms:		kickoff timeout in mill seconds
  * @irq:			IRQ tracking structures
+ * @enc_cdm_csc:		Encoder cdm colorspace type
  * @has_intf_te:		Interface TE configuration support
  * @cont_splash_enabled:	Variable to store continuous splash settings.
+ * @cdm_capable:		Variable to store cdm support capability.
  * @in_clone_mode		Indicates if encoder is in clone mode ref@CWB
  * @vfp_cached:			cached vertical front porch to be used for
  *				programming ROT and MDP fetch start
@@ -348,8 +350,10 @@ struct sde_encoder_phys {
 	wait_queue_head_t pending_kickoff_wq;
 	u32 kickoff_timeout_ms;
 	struct sde_encoder_irq irq[INTR_IDX_MAX];
+	enum sde_csc_type enc_cdm_csc;
 	bool has_intf_te;
 	bool cont_splash_enabled;
+	bool cdm_capable;
 	bool in_clone_mode;
 	int vfp_cached;
 	enum frame_trigger_mode_type frame_trigger_mode;
@@ -365,6 +369,7 @@ static inline int sde_encoder_phys_inc_pending(struct sde_encoder_phys *phys)
  * struct sde_encoder_phys_vid - sub-class of sde_encoder_phys to handle video
  *	mode specific operations
  * @base:	Baseclass physical encoder structure
+ * @hw_intf:    Hardware interface to the intf registers
  * @timing_params: Current timing parameter
  * @error_count: Number of consecutive kickoffs that experienced an error
  */
@@ -545,8 +550,10 @@ struct sde_encoder_phys *sde_encoder_phys_wb_init(
 #endif /* CONFIG_DRM_SDE_WB */
 
 void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc,
-		struct drm_framebuffer *fb, const struct sde_format *format,
-		struct sde_rect *wb_roi);
+		const struct sde_format *format, const u32 output_type,
+		struct sde_rect *roi);
+
+void sde_encoder_phys_destroy_cdm(struct sde_encoder_phys *phys_enc);
 
 /**
  * sde_encoder_helper_get_pp_line_count - pingpong linecount helper function

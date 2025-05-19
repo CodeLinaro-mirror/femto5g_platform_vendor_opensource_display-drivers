@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/module.h>
@@ -53,6 +53,8 @@
 #define dp_display_state_remove(x) { \
 	(dp->state &= ~(x)); \
 	dp_display_state_log("remove "#x); }
+
+#define MAX_SUPPORTED_BPP 30
 
 enum dp_display_states {
 	DP_STATE_DISCONNECTED           = 0,
@@ -1677,6 +1679,8 @@ static void dp_display_clean(struct dp_display_private *dp)
 static int dp_display_handle_disconnect(struct dp_display_private *dp)
 {
 	int rc;
+	struct drm_connector *connector;
+	struct sde_connector *sde_conn;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	rc = dp_display_process_hpd_low(dp);
@@ -1692,8 +1696,17 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp)
 
 	dp_display_host_unready(dp);
 
-	mutex_unlock(&dp->session_lock);
 
+	/* clear yuv422_enable flag on each hpd disconnect event
+	 * and let it set based on the required flags on hpd connect.
+	 */
+	dp->dp_display.yuv422_enable = false;
+	connector = dp->dp_display.base_connector;
+	sde_conn = to_sde_connector(connector);
+	connector->state->colorspace = DRM_MODE_COLORIMETRY_DEFAULT;
+	sde_conn->colorspace = DRM_MODE_COLORIMETRY_DEFAULT;
+	mutex_unlock(&dp->session_lock);
+	DP_INFO("Display disconnect! Connector %d\n", sde_conn->base.base.id);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 	return rc;
 }
@@ -2123,6 +2136,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 
 	dp->dp_display.is_mst_supported = dp->parser->has_mst;
 	dp->dp_display.dsc_cont_pps = dp->parser->dsc_continuous_pps;
+	dp->dp_display.is_yuv_supported = dp->parser->yuv422_support;
 
 	dp->catalog = dp_catalog_get(dev, dp->parser);
 	if (IS_ERR(dp->catalog)) {
@@ -2401,6 +2415,8 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 	const u32 num_components = 3, default_bpp = 24;
 	struct dp_display_private *dp;
 	struct dp_panel *dp_panel;
+	bool dsc_en = (mode->capabilities & DP_PANEL_CAPS_DSC) ? true : false;
+	bool yuv422 = false;
 
 	if (!dp_display || !panel) {
 		DP_ERR("invalid input\n");
@@ -2419,13 +2435,22 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 			mode->timing.refresh_rate);
 
 	mutex_lock(&dp->session_lock);
+	dp_panel->output_format = mode->output_format;
+
+	/* Update yuv422 and dsc flags to accurately calculate bpp
+	 * for the mode, based on the selected colorspace.
+	 */
+	if (dp_panel->output_format == DP_OUTPUT_FORMAT_YCBCR422)
+		get_yuv_config(&dsc_en, &yuv422);
+
 	mode->timing.bpp =
 		dp_panel->connector->display_info.bpc * num_components;
 	if (!mode->timing.bpp)
 		mode->timing.bpp = default_bpp;
 
 	mode->timing.bpp = dp->panel->get_mode_bpp(dp->panel,
-			mode->timing.bpp, mode->timing.pixel_clk_khz);
+			mode->timing.bpp, mode->timing.pixel_clk_khz,
+			dsc_en, yuv422);
 
 	dp_panel->pinfo = mode->timing;
 	mutex_unlock(&dp->session_lock);
@@ -3109,6 +3134,40 @@ static int dp_display_validate_topology(struct dp_display_private *dp,
 	return 0;
 }
 
+static int dp_display_get_dc_support(struct dp_display *dp_display,
+		struct drm_display_mode *mode, u32 out_format)
+{
+	struct dp_display_mode dp_mode;
+	struct dp_display_private *dp = NULL;
+	bool dsc_en = false;
+	bool yuv422 = false;
+
+	if (!dp_display || !mode) {
+		DP_ERR("invalid input");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	dp_display->convert_to_dp_mode(dp_display, dp->panel, mode, &dp_mode);
+	dsc_en = (dp_mode.capabilities & DP_PANEL_CAPS_DSC) ? true : false;
+
+	/* Fill the dsc and yuv422 flags to accurately calculate
+	 * the bpp for respective colorspace.
+	 * YUV422 doesn't require DSC to be enabled.
+	 */
+	if (out_format & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422)
+		get_yuv_config(&dsc_en, &yuv422);
+
+	dp_mode.timing.bpp = dp->panel->get_mode_bpp(dp->panel,
+		MAX_SUPPORTED_BPP, dp_mode.timing.pixel_clk_khz, dsc_en, yuv422);
+
+	if (dp_mode.timing.bpp == MAX_SUPPORTED_BPP)
+		return true;
+	else
+		return false;
+}
+
 static enum drm_mode_status dp_display_validate_mode(
 		struct dp_display *dp_display,
 		void *panel, struct drm_display_mode *mode,
@@ -3231,7 +3290,7 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 	int rc;
 	struct dp_display_private *dp;
 	struct dp_panel *dp_panel;
-	u32 free_dsc_blks = 0, required_dsc_blks = 0;
+	u32 free_dsc_blks = 0, required_dsc_blks = 0, curr_dsc = 0, new_dsc = 0;
 
 	if (!dp_display || !drm_mode || !dp_mode || !panel) {
 		DP_ERR("invalid input\n");
@@ -3254,8 +3313,17 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 		return;
 	}
 
-	if (free_dsc_blks >= required_dsc_blks)
+	curr_dsc = dp_panel->dsc_blks_in_use;
+	dp->tot_dsc_blks_in_use -= dp_panel->dsc_blks_in_use;
+	dp_panel->dsc_blks_in_use = 0;
+
+	if (free_dsc_blks >= required_dsc_blks &&
+			dp_panel->dsc_en) {
 		dp_mode->capabilities |= DP_PANEL_CAPS_DSC;
+		new_dsc = max(curr_dsc, required_dsc_blks);
+		dp_panel->dsc_blks_in_use = new_dsc;
+		dp->tot_dsc_blks_in_use += new_dsc;
+	}
 
 	if (dp_mode->capabilities & DP_PANEL_CAPS_DSC)
 		DP_DEBUG("in_use:%d, max:%d, free:%d, req:%d, caps:0x%x\n",
@@ -3264,6 +3332,7 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 				free_dsc_blks, required_dsc_blks,
 				dp_mode->capabilities);
 
+	dp_mode->flags = drm_mode->flags;
 	dp_panel->convert_to_dp_mode(dp_panel, drm_mode, dp_mode);
 }
 
@@ -3912,6 +3981,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp_display->set_mode      = dp_display_set_mode;
 	dp_display->validate_mode = dp_display_validate_mode;
 	dp_display->get_modes     = dp_display_get_modes;
+	dp_display->get_dc_support = dp_display_get_dc_support;
 	dp_display->prepare       = dp_display_prepare;
 	dp_display->unprepare     = dp_display_unprepare;
 	dp_display->request_irq   = dp_request_irq;

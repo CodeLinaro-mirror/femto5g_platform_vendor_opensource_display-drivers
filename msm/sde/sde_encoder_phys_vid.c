@@ -763,6 +763,22 @@ static void sde_encoder_phys_vid_mode_set(
 
 	phys_enc->kickoff_timeout_ms =
 		sde_encoder_helper_get_kickoff_timeout_ms(phys_enc->parent);
+
+	/* CDM is optional */
+	if (phys_enc->cdm_capable) {
+		sde_rm_init_hw_iter(&iter, phys_enc->parent->base.id, SDE_HW_BLK_CDM);
+		for (i = 0; i <= instance; i++) {
+			sde_rm_get_hw(rm, &iter);
+			if (i == instance)
+				phys_enc->hw_cdm = (struct sde_hw_cdm *)iter.hw;
+		}
+
+		if (IS_ERR_OR_NULL(phys_enc->hw_cdm)) {
+			SDE_ERROR_VIDENC(vid_enc, "CDM required but not allted: %ld\n",
+				PTR_ERR(phys_enc->hw_cdm));
+			phys_enc->hw_cdm = NULL;
+		}
+	}
 }
 
 static int sde_encoder_phys_vid_control_vblank_irq(
@@ -861,6 +877,10 @@ static void sde_encoder_phys_vid_enable(struct sde_encoder_phys *phys_enc)
 	struct sde_encoder_phys_vid *vid_enc;
 	struct sde_hw_intf *intf;
 	struct sde_hw_ctl *ctl;
+	struct sde_hw_cdm *hw_cdm;
+	struct drm_display_mode mode;
+	bool cdm_enable = false;
+	const struct sde_format *fmt = NULL;
 
 	if (!phys_enc || !phys_enc->parent || !phys_enc->parent->dev ||
 			!phys_enc->parent->dev->dev_private ||
@@ -868,7 +888,12 @@ static void sde_encoder_phys_vid_enable(struct sde_encoder_phys *phys_enc)
 		SDE_ERROR("invalid encoder/device\n");
 		return;
 	}
+
+	cdm_enable = phys_enc->cdm_capable;
+
 	priv = phys_enc->parent->dev->dev_private;
+	hw_cdm = phys_enc->hw_cdm;
+	mode = phys_enc->cached_mode;
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	intf = phys_enc->hw_intf;
@@ -917,6 +942,25 @@ static void sde_encoder_phys_vid_enable(struct sde_encoder_phys *phys_enc)
 		goto skip_flush;
 	}
 
+	if (mode.flags & MSM_MODE_FLAG_COLOR_FORMAT_YCBCR422)
+		fmt = sde_get_sde_format(DRM_FORMAT_NV61);
+	else if (mode.flags & MSM_MODE_FLAG_COLOR_FORMAT_RGB444)
+		fmt = sde_get_sde_format(DRM_FORMAT_RGB888);
+
+	if (fmt && cdm_enable) {
+		struct sde_rect hdmi_roi;
+
+		hdmi_roi.w = mode.hdisplay;
+		hdmi_roi.h = mode.vdisplay;
+		sde_encoder_phys_setup_cdm(phys_enc, fmt,
+			CDM_CDWN_OUTPUT_HDMI, &hdmi_roi);
+		SDE_ERROR("fmt bpp: %u, fmt chrom_sample_type: 0x%x", fmt->bpp,
+				fmt->chroma_sample);
+	}
+
+	if (ctl->ops.update_bitmask && hw_cdm && cdm_enable)
+		ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_CDM, hw_cdm->idx, 1);
+
 	ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_INTF, intf->idx, 1);
 
 	if (phys_enc->hw_pp->merge_3d)
@@ -949,6 +993,7 @@ static void sde_encoder_phys_vid_destroy(struct sde_encoder_phys *phys_enc)
 	}
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	sde_encoder_phys_destroy_cdm(phys_enc);
 	SDE_DEBUG_VIDENC(vid_enc, "\n");
 	kfree(vid_enc);
 }
@@ -966,14 +1011,16 @@ static void sde_encoder_phys_vid_get_hw_resources(
 		return;
 	}
 
+	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+
 	if ((phys_enc->intf_idx - INTF_0) >= INTF_MAX) {
 		SDE_ERROR("invalid intf idx:%d\n", phys_enc->intf_idx);
 		return;
 	}
 
-	vid_enc = to_sde_encoder_phys_vid(phys_enc);
-	SDE_DEBUG_VIDENC(vid_enc, "\n");
 	hw_res->intfs[phys_enc->intf_idx - INTF_0] = INTF_MODE_VIDEO;
+	hw_res->needs_cdm = phys_enc->cdm_capable;
+	SDE_DEBUG_VIDENC(vid_enc, "needs_cdm=%d\n", hw_res->needs_cdm);
 }
 
 static bool sde_encoder_handle_ipcc_fence_timeout(struct sde_encoder_phys *phys_enc)
@@ -1304,6 +1351,10 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 	}
 
 	sde_encoder_helper_phys_disable(phys_enc, NULL);
+	if (phys_enc->hw_cdm && phys_enc->hw_cdm->ops.disable) {
+		SDE_DEBUG_DRIVER("[cdm_disable]\n");
+		phys_enc->hw_cdm->ops.disable(phys_enc->hw_cdm);
+	}
 exit:
 	SDE_EVT32(DRMID(phys_enc->parent),
 		atomic_read(&phys_enc->pending_retire_fence_cnt), phys_enc->split_role);
@@ -1657,6 +1708,5 @@ fail:
 	SDE_ERROR("failed to create encoder\n");
 	if (vid_enc)
 		sde_encoder_phys_vid_destroy(phys_enc);
-
 	return ERR_PTR(ret);
 }

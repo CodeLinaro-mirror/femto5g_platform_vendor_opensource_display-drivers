@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #ifndef _SDE_EDID_PARSER_H_
@@ -23,10 +24,18 @@
 #define SDE_CEA_EXT    0x02
 #define SDE_EXTENDED_TAG 0x07
 
-#define SDE_DRM_MODE_FLAG_FMT_MASK (0x3 << 20)
+#define SDE_DRM_MODE_FLAG_SUPPORTS_YCBCR420 (1 << 24)
+#define SDE_DRM_MODE_FLAG_SUPPORTS_YCBCR422 (1 << 25)
+#define SDE_DRM_MODE_FLAG_SUPPORTS_RGB (1 << 26)
+
+#define SDE_DRM_MODE_FLAG_FMT_MASK (SDE_DRM_MODE_FLAG_SUPPORTS_RGB |\
+		SDE_DRM_MODE_FLAG_SUPPORTS_YCBCR422 |\
+		SDE_DRM_MODE_FLAG_SUPPORTS_YCBCR420)
 
 #define VSVDB_HDR10_PLUS_IEEE_CODE 0x90848b
 #define VSVDB_HDR10_PLUS_APP_VER_MASK 0x3
+
+#define SDE_MIN_BPC 10
 
 /*Enum storing luminance types for HDR blocks in EDID*/
 enum luminance_value {

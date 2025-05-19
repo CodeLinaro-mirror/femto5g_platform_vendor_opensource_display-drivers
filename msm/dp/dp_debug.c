@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2023, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/debugfs.h>
@@ -2255,6 +2256,18 @@ static int dp_debug_init_dsc_fec(struct dp_debug_private *debug,
 	return rc;
 }
 
+static int dp_debug_init_yuv_enable(struct dp_debug_private *debug,
+		struct dentry *dir)
+{
+	int rc = 0;
+
+	if (debug->parser->yuv422_support)
+		debugfs_create_bool("yuv422_enable", 0644, dir,
+				&debug->display->yuv422_enable);
+
+	return rc;
+}
+
 static int dp_debug_init_tpg(struct dp_debug_private *debug, struct dentry *dir)
 {
 	int rc = 0;
@@ -2406,6 +2419,10 @@ static int dp_debug_init(struct dp_debug *dp_debug)
 		goto error_remove_dir;
 
 	rc = dp_debug_init_dsc_fec(debug, dir);
+	if (rc)
+		goto error_remove_dir;
+
+	rc = dp_debug_init_yuv_enable(debug, dir);
 	if (rc)
 		goto error_remove_dir;
 

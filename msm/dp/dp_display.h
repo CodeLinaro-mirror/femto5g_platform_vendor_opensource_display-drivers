@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -56,6 +56,8 @@ struct dp_display {
 	bool is_mst_supported;
 	bool is_edp;
 	bool dsc_cont_pps;
+	bool is_yuv_supported;
+	bool yuv422_enable;
 	u32 max_pclk_khz;
 	void *dp_mst_prv_info;
 	u32 max_mixer_count;
@@ -74,6 +76,8 @@ struct dp_display {
 			const struct msm_resource_caps_info *avail_res);
 	int (*get_modes)(struct dp_display *dp_display, void *panel,
 		struct dp_display_mode *dp_mode);
+	int (*get_dc_support)(struct dp_display *dp,
+		struct drm_display_mode *mode, u32 out_format);
 	int (*prepare)(struct dp_display *dp_display, void *panel);
 	int (*unprepare)(struct dp_display *dp_display, void *panel);
 	int (*request_irq)(struct dp_display *dp_display);
@@ -127,6 +131,7 @@ int dp_display_get_displays(struct drm_device *dev, void **displays, int count);
 int dp_display_get_num_of_streams(struct drm_device *dev);
 int dp_display_get_info(void *dp_display, struct dp_display_info *dp_info);
 int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data);
+bool dp_connector_mode_needs_full_range(void *display);
 #else
 static inline int dp_display_get_num_of_displays(struct drm_device *dev)
 {
