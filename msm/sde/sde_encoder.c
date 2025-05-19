@@ -7030,7 +7030,9 @@ void sde_encoder_kickoff(struct drm_encoder *drm_enc, bool config_changed)
 	struct sde_encoder_virt *sde_enc;
 	struct sde_encoder_phys *phys;
 	struct sde_kms *sde_kms;
+	enum msm_disp_op disp_op;
 	unsigned int i;
+	int ret;
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
@@ -7040,6 +7042,15 @@ void sde_encoder_kickoff(struct drm_encoder *drm_enc, bool config_changed)
 	sde_enc = to_sde_encoder_virt(drm_enc);
 
 	SDE_DEBUG_ENC(sde_enc, "\n");
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.kickoff[disp_op]) {
+		ret = sde_enc->hal_ops.kickoff[disp_op](sde_enc, config_changed);
+		if (ret)
+			SDE_ERROR("kickoff halop failed ret:%d\n", ret);
+
+		return;
+	}
 
 	if (sde_enc->delay_kickoff) {
 		u32 loop_count = 20;
@@ -7441,20 +7452,21 @@ static int _sde_encoder_status_show(struct seq_file *s, void *data)
 	sde_enc = s->private;
 
 	mutex_lock(&sde_enc->enc_lock);
+	disp_op = sde_encoder_get_disp_op(&sde_enc->base);
+	if (sde_enc->hal_ops.debugfs_dump_status[disp_op]) {
+		rc = sde_enc->hal_ops.debugfs_dump_status[disp_op](sde_enc, s);
+		if (rc)
+			SDE_DEBUG_ENC(sde_enc,
+				"failed to dump debugfs status with error:%d\n", rc);
+		mutex_unlock(&sde_enc->enc_lock);
+		return rc;
+	}
+
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
 		if (!phys)
 			continue;
-		disp_op = sde_encoder_get_disp_op(phys->parent);
-		if (sde_enc->hal_ops.debugfs_dump_status[disp_op]) {
-			rc = sde_enc->hal_ops.debugfs_dump_status[disp_op](sde_enc, s);
-			if (rc) {
-				SDE_DEBUG_ENC(sde_enc,
-					"failed to dump debugfs status with error:%d\n", rc);
-				return rc;
-			}
-		}
 
 		seq_printf(s, "intf:%d    vsync:%8d     underrun:%8d    ",
 				phys->intf_idx - INTF_0,

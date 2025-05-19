@@ -35,6 +35,8 @@
 	(data & CLIENT_ID_MASK)
 
 static u32 unique_id_counter = 1;
+static atomic_t work_queue_pos_wr = ATOMIC_INIT(0);
+static atomic_t work_queue_pos_rd = ATOMIC_INIT(0);
 
 static u32 hfi_cmd_type_map[HFI_CMDBUF_TYPE_MAX] = {
 	[HFI_CMDBUF_TYPE_ATOMIC_CHECK] = HFI_CMD_BUFF_DISPLAY,
@@ -141,76 +143,107 @@ static void _process_cb_buffer_work(struct kthread_work *work)
 	struct hfi_header *virtio_hdr;
 	struct hfi_buffer_pool *pool;
 	bool client_found = false;
+	u32 work_queue_pos;
+	int i = 0;
 
 	if (!work)
 		return;
 
-	host = container_of(work, struct hfi_adapter_t, cb_work);
-
-	pool = get_avail_buffer(host);
-	if (!pool) {
-		HFI_AD_ERROR("failed to get buffer pool\n");
-		return;
+	work_queue_pos = atomic_fetch_add_unless(&work_queue_pos_rd, 1,
+			HFI_ADAPTER_WORK_QUEUE_SIZE);
+	/* If exceeds limit index, reset to 0. */
+	if (work_queue_pos >= HFI_ADAPTER_WORK_QUEUE_SIZE) {
+		atomic_set(&work_queue_pos_rd, 0);
+		work_queue_pos = 0;
 	}
 
-	rx_buffer = &pool->buffer_t.buf;
-	if (!rx_buffer) {
-		HFI_AD_ERROR("buffer descriptor is null\n");
-		atomic_set(&pool->available, 1);
-		return;
-	}
+	host = container_of(work, struct hfi_adapter_t, cb_work[work_queue_pos]);
 
-	if (hfi_core_cmds_rx_buf_get(host->session, rx_buffer)) {
-		HFI_AD_ERROR("failed to get rx buffer\n");
-		atomic_set(&pool->available, 1);
-		return;
-	}
-
-	hfi_buff = &pool->buffer_t;
-	virtio_hdr = (struct hfi_header *)rx_buffer->pbuf_vaddr;
-	obj_id_rx = virtio_hdr->object_id;
-
-	hfi_buff->unique_id = virtio_hdr->header_id;
-
-	client_id = GET_CLIENT_ID(virtio_hdr->header_id);
-
-	list_for_each(ctx_pos, &host->client_list) {
-		/* Try to match buffer based on unique OBJ ID */
-		ctx = list_entry(ctx_pos, struct hfi_client_t, node);
-		if (!ctx || ctx->client_id == client_id) {
-			client_found = true;
-			break;
+	do {
+		pool = get_avail_buffer(host);
+		if (!pool) {
+			HFI_AD_ERROR("failed to get buffer pool\n");
+			return;
 		}
-		continue;
-	}
 
-	if (!client_found) {
-		HFI_AD_ERROR("could not match buffer client id to a client\n");
-		release_rx_buffer_fail(hfi_buff, host);
-		return;
-	}
+		rx_buffer = &pool->buffer_t.buf;
+		if (!rx_buffer) {
+			HFI_AD_ERROR("buffer descriptor is null\n");
+			atomic_set(&pool->available, 1);
+			return;
+		}
 
-	INIT_LIST_HEAD(&hfi_buff->cmd_buf_chain);
-	if (ctx && hfi_buff) {
-		hfi_buff->obj_id = virtio_hdr->object_id;
-		hfi_buff->ctx = ctx;
-		ctx->process_cmd_buf(ctx, hfi_buff);
-	}  else {
-		HFI_AD_ERROR("could not match buffer to a client\n");
-		release_rx_buffer_fail(hfi_buff, host);
-	}
+		if (hfi_core_cmds_rx_buf_get(host->session, rx_buffer)) {
+			atomic_set(&pool->available, 1);
+			return;
+		}
+
+		hfi_buff = &pool->buffer_t;
+		virtio_hdr = (struct hfi_header *)rx_buffer->pbuf_vaddr;
+		if (!virtio_hdr)
+			return;
+
+		obj_id_rx = virtio_hdr->object_id;
+
+		hfi_buff->unique_id = virtio_hdr->header_id;
+
+		client_id = GET_CLIENT_ID(virtio_hdr->header_id);
+
+		list_for_each(ctx_pos, &host->client_list) {
+			/* Try to match buffer based on unique OBJ ID */
+			ctx = list_entry(ctx_pos, struct hfi_client_t, node);
+			if (!ctx || ctx->client_id == client_id) {
+				client_found = true;
+				break;
+			}
+			continue;
+		}
+
+		if (!client_found) {
+			HFI_AD_ERROR("could not match buffer client id to a client\n");
+			release_rx_buffer_fail(hfi_buff, host);
+			return;
+		}
+
+		INIT_LIST_HEAD(&hfi_buff->cmd_buf_chain);
+		if (ctx && hfi_buff) {
+			hfi_buff->obj_id = virtio_hdr->object_id;
+			hfi_buff->ctx = ctx;
+			ctx->process_cmd_buf(ctx, hfi_buff);
+		}  else {
+			HFI_AD_ERROR("could not match buffer to a client\n");
+			release_rx_buffer_fail(hfi_buff, host);
+		}
+	} while (i++ <= MAX_TRY_COUNT);
+
+	if (i >= MAX_TRY_COUNT)
+		HFI_AD_ERROR("max retries exceeded: %d\n", i);
+
 }
 
 int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		const void *cb_data, uint32_t flags)
 {
 	struct hfi_adapter_t *adapter = (struct hfi_adapter_t *)cb_data;
+	int ret;
+	u32 work_queue_idx;
 
 	if (!cb_data)
 		return -EINVAL;
 
 	HFI_AD_DEBUG("hfi callback called\n");
-	kthread_queue_work(&adapter->cb_worker, &adapter->cb_work);
+	work_queue_idx = atomic_fetch_add_unless(&work_queue_pos_wr, 1,
+			HFI_ADAPTER_WORK_QUEUE_SIZE);
+	if (work_queue_idx >= HFI_ADAPTER_WORK_QUEUE_SIZE) {
+		/* If exceeds index limit, reset to 0 */
+		atomic_set(&work_queue_pos_wr, 0);
+		work_queue_idx = 0;
+	}
+
+	ret = kthread_queue_work(&adapter->cb_worker, &adapter->cb_work[work_queue_idx]);
+	if (!ret)
+		HFI_AD_ERROR("failed to queue work\n");
+
 	return 0;
 }
 
@@ -276,7 +309,10 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	hfi_host->cb_ops = cb_ops;
 	hfi_host->session = hfi_handle;
 
-	kthread_init_work(&hfi_host->cb_work, _process_cb_buffer_work);
+	/* Pre initialize work queues */
+	for (i = 0; i < HFI_ADAPTER_WORK_QUEUE_SIZE; i++)
+		kthread_init_work(&hfi_host->cb_work[i], _process_cb_buffer_work);
+
 	kthread_init_worker(&hfi_host->cb_worker);
 	hfi_host->cb_worker_thread = kthread_run(kthread_worker_fn, &hfi_host->cb_worker,
 			"adapter_cb_thread");
@@ -298,6 +334,7 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	}
 
 	INIT_LIST_HEAD(&pool->node);
+	INIT_LIST_HEAD(&pool->buffer_t.node);
 	mutex_init(&pool->lock);
 	mutex_init(&pool->buffer_t.lock);
 	pool->buffer_t.pool = pool;
@@ -309,6 +346,7 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 			HFI_AD_ERROR("failed to allocate memory for buffer pool\n");
 			goto pool_fail;
 		}
+		INIT_LIST_HEAD(&link->buffer_t.node);
 		list_add_tail(&link->node, &pool->node);
 		atomic_set(&link->available, 1);
 		mutex_init(&link->lock);
@@ -471,7 +509,10 @@ struct hfi_cmdbuf_t *hfi_adapter_get_cmd_buf(struct hfi_client_t *ctx, u32 obj_i
 	INIT_LIST_HEAD(&buffer->cmd_buf_chain);
 
 	/* Add buffer to client context */
+	mutex_lock(&ctx->lock);
+	list_del_init(&buffer->node);
 	list_add_tail(&buffer->node, &ctx->cmd_buf_list);
+	mutex_unlock(&ctx->lock);
 
 	return buffer;
 }
@@ -749,6 +790,15 @@ void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 {
 	struct list_head *pos, *updated_pos;
 	struct hfi_cmdbuf_t *buf_entry;
+	struct hfi_client_t *ctx;
+
+	ctx = cmd_buf->ctx;
+	if (!ctx) {
+		HFI_AD_ERROR("no valid client for cmd_buf:%p\n", cmd_buf);
+		return;
+	}
+
+	mutex_lock(&ctx->lock);
 
 	list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
@@ -757,7 +807,8 @@ void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 		list_del(pos);
 	}
 
-	list_del(&cmd_buf->node);
+	list_del_init(&cmd_buf->node);
+	mutex_unlock(&ctx->lock);
 	_hfi_clear_buffer(cmd_buf);
 }
 
@@ -991,6 +1042,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	list_for_each_safe(pos, updated_pos, &cmd_buf->ctx->cmd_buf_list) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
 		if (buf_entry == cmd_buf) {
+			HFI_AD_ERROR("releasing buffer incorrectly\n");
 			list_del(pos);
 			buff_arr[i++] = &buf_entry->buf;
 		}

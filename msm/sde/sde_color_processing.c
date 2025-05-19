@@ -165,10 +165,10 @@ static bool feature_handoff_mask[SDE_CP_CRTC_MAX_FEATURES] = {
 
 #ifdef HFI_PROPERTY_DISPLAY_COLOR_BEGIN
 static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
-	[SDE_CP_CRTC_DSPP_IGC] = HFI_PROPERTY_DISPLAY_COLOR_IGC,
-	[SDE_CP_CRTC_DSPP_DITHER] = HFI_PROPERTY_DISPLAY_COLOR_DITHER,
 	[SDE_CP_CRTC_DSPP_PCC] = HFI_PROPERTY_DISPLAY_COLOR_PCC,
+	[SDE_CP_CRTC_DSPP_IGC] = HFI_PROPERTY_DISPLAY_COLOR_IGC,
 	[SDE_CP_CRTC_DSPP_GC] = HFI_PROPERTY_DISPLAY_COLOR_GC,
+	[SDE_CP_CRTC_DSPP_GAMUT] = HFI_PROPERTY_DISPLAY_COLOR_3D_LUT,
 	[SDE_CP_CRTC_DSPP_HSIC] = HFI_PROPERTY_DISPLAY_COLOR_HSIC,
 	[SDE_CP_CRTC_DSPP_MEMCOL_SKIN] = HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKIN,
 	[SDE_CP_CRTC_DSPP_MEMCOL_SKY] = HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKY,
@@ -176,8 +176,10 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_MEMCOL_PROT] = HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_PROT,
 	[SDE_CP_CRTC_DSPP_SIXZONE] = HFI_PROPERTY_DISPLAY_COLOR_SIXZONE,
 	[SDE_CP_CRTC_DSPP_VLUT] = HFI_PROPERTY_DISPLAY_COLOR_VLUT,
+	[SDE_CP_CRTC_DSPP_DITHER] = HFI_PROPERTY_DISPLAY_COLOR_DITHER,
 	[SDE_CP_CRTC_DSPP_RC_MASK] = HFI_PROPERTY_DISPLAY_COLOR_RC,
-	[SDE_CP_CRTC_DSPP_GAMUT] = HFI_PROPERTY_DISPLAY_COLOR_3D_LUT,
+	[SDE_CP_CRTC_DSPP_SPR_INIT] = HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT,
+	[SDE_CP_CRTC_DSPP_SPR_UDC] = HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC,
 };
 #endif
 
@@ -1685,7 +1687,6 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 	bool feature_enabled = false;
 	struct sde_mdss_cfg *catalog = NULL;
 	struct sde_crtc_state *sde_crtc_state;
-	enum msm_disp_op disp_op = sde_crtc_get_disp_op(&sde_crtc->base);
 
 	sde_crtc_state = to_sde_crtc_state(sde_crtc->base.state);
 	if (!sde_crtc_state) {
@@ -1761,16 +1762,14 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 		}
 	}
 
-	if (!IS_DISP_OP_HFI(disp_op)) {
-		if (feature_enabled) {
-			DRM_DEBUG_DRIVER("Add feature to active list %d\n",
-					prop_node->property_id);
-			_sde_cp_update_list(prop_node, sde_crtc, false);
-		} else {
-			DRM_DEBUG_DRIVER("remove feature from active list %d\n",
+	if (feature_enabled) {
+		DRM_DEBUG_DRIVER("Add feature to active list %d\n",
 				prop_node->property_id);
-			list_del_init(&prop_node->cp_active_list);
-		}
+		_sde_cp_update_list(prop_node, sde_crtc, false);
+	} else {
+		DRM_DEBUG_DRIVER("remove feature from active list %d\n",
+			prop_node->property_id);
+		list_del_init(&prop_node->cp_active_list);
 	}
 	/* Programming of feature done remove from dirty list */
 	list_del_init(&prop_node->cp_dirty_list);
@@ -2274,10 +2273,6 @@ void sde_cp_crtc_apply_properties(struct drm_crtc *crtc)
 		}
 	}
 
-	if (sde_crtc->prev_disp_op != disp_op) {
-		sde_crtc->prev_disp_op = disp_op;
-		sde_cp_crtc_mark_features_dirty(crtc);
-	}
 	_sde_cp_flush_properties(crtc);
 	_sde_cp_check_mdnie_art_done(crtc);
 	mutex_lock(&sde_crtc->crtc_cp_lock);

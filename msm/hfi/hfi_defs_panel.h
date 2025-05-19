@@ -80,6 +80,26 @@ enum hfi_panel_color_order_type {
 };
 
 /*
+ * hfi_panel_vsync_source - panel vsync source
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_0 : Vsync source from GPIO 0
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_1 : Vsync source from GPIO 1
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_2 : Vsync source from GPIO 2
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_3 : Vsync source from GPIO 3
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_4 : Vsync source from GPIO 4
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_5 : Vsync source from GPIO 5
+ * HFI_PANEL_VSYNC_SOURCE_WD     : Vsync source from Watchdog timer
+ */
+enum hfi_panel_vsync_source {
+	HFI_PANEL_VSYNC_SOURCE_GPIO_0  = 0x0,
+	HFI_PANEL_VSYNC_SOURCE_GPIO_1  = 0x1,
+	HFI_PANEL_VSYNC_SOURCE_GPIO_2  = 0x2,
+	HFI_PANEL_VSYNC_SOURCE_GPIO_3  = 0x3,
+	HFI_PANEL_VSYNC_SOURCE_GPIO_4  = 0x4,
+	HFI_PANEL_VSYNC_SOURCE_GPIO_5  = 0x5,
+	HFI_PANEL_VSYNC_SOURCE_WD      = 0xf,
+};
+
+/*
  * hfi_panel_trigger_type - Trigger mechanism types
  * HFI_PANEL_TRIGGER_NONE : No trigger
  * HFI_PANEL_TRIGGER_TE : Tear check signal line used for trigger
