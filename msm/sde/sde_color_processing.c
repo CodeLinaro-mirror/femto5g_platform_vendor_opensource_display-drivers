@@ -1875,7 +1875,8 @@ static void _flush_sb_dma_hw(int *active_ctls, struct sde_hw_ctl *ctl,
 			break;
 		} else if (active_ctls[j] == 0) {
 			active_ctls[j] = ctl->idx;
-			dma_ops->last_command_sb[ctl->hw.disp_op](ctl,
+			if (dma_ops->last_command_sb[ctl->hw.disp_op])
+				dma_ops->last_command_sb[ctl->hw.disp_op](ctl,
 						dma_ops->select_queue_sb(), REG_DMA_NOWAIT);
 			break;
 		}
@@ -2897,6 +2898,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 		SDE_CP_CRTC_DSPP_DEMURA_INIT,
 		SDE_CP_CRTC_DSPP_RC_MASK,
 		SDE_CP_CRTC_DSPP_LTM_HIST_CTL,
+		SDE_CP_CRTC_DSPP_AIQE_ABC,
 	};
 	for (n = 0; n < ARRAY_SIZE(features); n++) {
 		if (features[n] > ARRAY_SIZE(set_crtc_feature_wrappers)) {
@@ -3732,8 +3734,9 @@ static void _sde_cp_notify_ad_event(struct drm_crtc *crtc_drm, void *arg)
 		return;
 	}
 
-	hw_dspp->ops.ad_read_intr_resp[hw_dspp->hw.disp_op](hw_dspp, AD4_IN_OUT_BACKLIGHT,
-			&input_bl, &output_bl);
+	if (hw_dspp->ops.ad_read_intr_resp[hw_dspp->hw.disp_op])
+		hw_dspp->ops.ad_read_intr_resp[hw_dspp->hw.disp_op](hw_dspp, AD4_IN_OUT_BACKLIGHT,
+				&input_bl, &output_bl);
 
 	pm_runtime_put_sync(kms->dev->dev);
 	if (!input_bl || input_bl < output_bl)
@@ -4469,7 +4472,8 @@ static void _sde_cp_crtc_queue_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
 				DRM_ERROR("invalid dspp for mixer %d\n", i);
 				break;
 			}
-			hw_dspp->ops.setup_ltm_hist_buffer[disp_op](hw_dspp, addr);
+			if (hw_dspp->ops.setup_ltm_hist_buffer[disp_op])
+				hw_dspp->ops.setup_ltm_hist_buffer[disp_op](hw_dspp, addr);
 		}
 	}
 	spin_unlock_irqrestore(&sde_crtc->ltm_lock, irq_flags);
@@ -4539,8 +4543,9 @@ static void _sde_cp_crtc_enable_ltm_hist(struct sde_crtc *sde_crtc,
 	if (!ret) {
 		if (!hw_lm->cfg.right_mixer)
 			sde_crtc->ltm_hist_en = true;
-		hw_dspp->ops.setup_ltm_hist_ctrl[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
-			true, addr);
+		if (hw_dspp->ops.setup_ltm_hist_ctrl[hw_dspp->hw.disp_op])
+			hw_dspp->ops.setup_ltm_hist_ctrl[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
+					true, addr);
 		SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
 	}
 	spin_unlock_irqrestore(&sde_crtc->ltm_lock, irq_flags);
@@ -4564,8 +4569,9 @@ static void _sde_cp_crtc_disable_ltm_hist(struct sde_crtc *sde_crtc,
 	for (i = 0; i < sde_crtc->ltm_buffer_cnt; i++)
 		list_add(&sde_crtc->ltm_buffers[i]->node,
 			&sde_crtc->ltm_buf_free);
-	hw_dspp->ops.setup_ltm_hist_ctrl[hw_dspp->hw.disp_op](hw_dspp, NULL,
-			false, 0);
+	if (hw_dspp->ops.setup_ltm_hist_ctrl[hw_dspp->hw.disp_op])
+		hw_dspp->ops.setup_ltm_hist_ctrl[hw_dspp->hw.disp_op](hw_dspp, NULL,
+				false, 0);
 	spin_unlock_irqrestore(&sde_crtc->ltm_lock, irq_flags);
 	event.type = DRM_EVENT_LTM_OFF;
 	event.length = sizeof(hist_off);
@@ -4629,8 +4635,8 @@ static void _sde_cp_ltm_hist_interrupt_cb(void *arg, int irq_idx)
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
 			if (!hw_dspp || i >= DSPP_MAX)
 				continue;
-			hw_dspp->ops.setup_ltm_hist_ctrl[disp_op](hw_dspp, NULL, false,
-				0);
+			if (hw_dspp->ops.setup_ltm_hist_ctrl[disp_op])
+				hw_dspp->ops.setup_ltm_hist_ctrl[disp_op](hw_dspp, NULL, false, 0);
 		}
 		sde_crtc->ltm_merge_clear_pending = true;
 		SDE_EVT32(DRMID(&sde_crtc->base), sde_crtc->ltm_merge_clear_pending);
@@ -4671,7 +4677,8 @@ static void _sde_cp_ltm_hist_interrupt_cb(void *arg, int irq_idx)
 			DRM_ERROR("invalid dspp for mixer %d\n", i);
 			return;
 		}
-		hw_dspp->ops.setup_ltm_hist_buffer[disp_op](hw_dspp, addr);
+		if (hw_dspp->ops.setup_ltm_hist_buffer[disp_op])
+			hw_dspp->ops.setup_ltm_hist_buffer[disp_op](hw_dspp, addr);
 	}
 
 	list_del_init(&busy_buf->node);
@@ -5427,6 +5434,7 @@ void _sde_cp_mark_active_dirty_internal(struct sde_crtc *crtc)
 	enum sde_cp_crtc_features features[] = {
 		SDE_CP_CRTC_DSPP_DEMURA_INIT,
 		SDE_CP_CRTC_DSPP_LTM_HIST_CTL,
+		SDE_CP_CRTC_DSPP_AIQE_ABC,
 	};
 	mutex_lock(&crtc->crtc_cp_lock);
 	for (i = 0; i < ARRAY_SIZE(features); i++) {

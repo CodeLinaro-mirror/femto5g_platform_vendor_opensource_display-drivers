@@ -10,6 +10,7 @@
 #include <linux/err.h>
 #include <linux/version.h>
 #include <linux/ktime.h>
+#include <linux/pinctrl/qcom-pinctrl.h>
 
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
@@ -35,6 +36,8 @@
 #define MISR_BUFF_SIZE	256
 #define ESD_MODE_STRING_MAX_LEN 256
 #define ESD_TRIGGER_STRING_MAX_LEN 10
+#define TLMM_GPIO_CFG_LEN 0x4
+#define TLMM_GPIO_CFG_OFFSET 0x0
 
 #define MAX_NAME_SIZE	64
 #define MAX_TE_RECHECKS 5
@@ -462,7 +465,8 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	int rc = 0;
 	struct platform_device *pdev;
 	struct device *dev;
-	unsigned int te_irq;
+	unsigned int te_irq, tlmm_gpio_cfg;
+	struct resource te_res;
 
 	pdev = display->pdev;
 	if (!pdev) {
@@ -492,9 +496,28 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	/* Avoid deferred spurious irqs with disable_irq() */
 	irq_set_status_flags(te_irq, IRQ_DISABLE_UNLAZY);
 
+	rc = msm_gpio_get_pin_address(display->disp_te_gpio, &te_res);
+	if (!rc)
+		DSI_ERR("Failed to get GPIO pin address\n");
+
+	/*
+	 * The FUNC_SEL value of the TLMM_GPIO_CFG register resets
+	 * to 0 after TE IRQ registration, disrupting GPIO functionality.
+	 * This causes the rd_ptr_irq to stop during the TE check after the
+	 * first TE IRQ registration. Read the TE GPIO configuration before
+	 * IRQ registration to restore it after registration.
+	 */
+	tlmm_gpio_cfg = DSI_GEN_R32(devm_ioremap(&display->pdev->dev, te_res.start,
+				TLMM_GPIO_CFG_LEN), TLMM_GPIO_CFG_OFFSET);
+
 	rc = devm_request_irq(dev, te_irq, dsi_display_panel_te_irq_handler,
 			      IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 			      "TE_GPIO", display);
+
+	/* Restore TE gpio configuration after IRQ registration */
+	DSI_GEN_W32(devm_ioremap(&display->pdev->dev, te_res.start,
+				TLMM_GPIO_CFG_LEN), TLMM_GPIO_CFG_OFFSET, tlmm_gpio_cfg);
+
 	if (rc) {
 		DSI_ERR("TE request_irq failed for ESD rc:%d\n", rc);
 		irq_clear_status_flags(te_irq, IRQ_DISABLE_UNLAZY);
@@ -732,7 +755,7 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 		}
 
-		if (mode_info->esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
+		if (display->config.esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
 			flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
 		else
 			flags &= ~DSI_CTRL_CMD_MULTI_DMA_BURST;
@@ -4739,7 +4762,7 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 			goto error;
 		}
 
-		if (display->config.video_timing.esync_enabled) {
+		if (display->config.esync_enabled) {
 			ctrl->esync_clk_freq = pclk_rate;
 			rc = dsi_clk_set_esync_frequency(display->dsi_clk_handle,
 					ctrl->esync_clk_freq, ctrl->cell_index);
@@ -5406,8 +5429,9 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			if (!ctrl->ctrl || (ctrl != mctrl))
 				continue;
 
-			ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op](&ctrl->ctrl->hw,
-					true);
+			if (ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op])
+				ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op](
+						&ctrl->ctrl->hw, true);
 			dsi_phy_dynamic_refresh_clear(ctrl->phy);
 
 			/* Avoid setting trigger selection for 2.9 due to hardware limitation */
@@ -7173,6 +7197,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->esync_emsync_milli_pulse_width = display->panel->esync_caps.emsync_milli_pulse_width;
 	info->vrr_caps.vrr_support = display->panel->vrr_caps.vrr_support;
 	info->vrr_caps.video_psr_support = display->panel->vrr_caps.video_psr_support;
+	info->vrr_caps.video_mrr_support = display->panel->vrr_caps.video_mrr_support;
 	info->vrr_caps.arp_support = display->panel->vrr_caps.arp_support;
 	info->poms_align_vsync = display->panel->poms_align_vsync;
 	info->is_te_using_watchdog_timer = is_sim_panel(display);
@@ -9494,7 +9519,7 @@ int dsi_display_post_enable(struct dsi_display *display)
 
 	/* remove the clk vote for CMD mode panels */
 	if (display->config.panel_mode == DSI_OP_CMD_MODE ||
-			display->config.video_timing.esync_enabled)
+			display->config.esync_enabled)
 		dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
 
@@ -9525,7 +9550,7 @@ int dsi_display_pre_disable(struct dsi_display *display)
 
 	/* enable the clk vote for CMD mode panels */
 	if (display->config.panel_mode == DSI_OP_CMD_MODE ||
-			display->config.video_timing.esync_enabled)
+			display->config.esync_enabled)
 		dsi_display_clk_ctrl(display->dsi_clk_handle,
 			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 	if (display->poms_pending) {

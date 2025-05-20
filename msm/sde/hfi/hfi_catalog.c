@@ -51,6 +51,10 @@ static const struct hfi_format_map sde_linear_fmt_map[] = {
 	{HFI_COLOR_FORMAT_YV12, DRM_FORMAT_YVU420, 0},
 	{HFI_COLOR_FORMAT_NV12, DRM_FORMAT_NV12, 0},
 	{HFI_COLOR_FORMAT_NV21, DRM_FORMAT_NV21, 0},
+	{HFI_COLOR_FORMAT_YUYV, DRM_FORMAT_YUYV, 0},
+	{HFI_COLOR_FORMAT_YVYU, DRM_FORMAT_YVYU, 0},
+	{HFI_COLOR_FORMAT_UYVY, DRM_FORMAT_UYVY, 0},
+	{HFI_COLOR_FORMAT_VYUY, DRM_FORMAT_VYUY, 0},
 };
 
 static const struct hfi_format_map sde_non_linear_fmt_map[] = {
@@ -164,7 +168,8 @@ u32 hfi_catalog_get_hfi_format(struct sde_format_extended *sde_fmt)
 	}
 
 	if (hfi_fmt == U32_MAX)
-		SDE_ERROR("No valid HFI format for given SDE format");
+		SDE_ERROR("No valid HFI format for given SDE format 0x%x\t, fmt modifier: 0x%llx\n",
+				sde_fmt->fourcc_format, sde_fmt->modifier);
 
 	return hfi_fmt;
 }

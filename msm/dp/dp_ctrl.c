@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -745,6 +745,13 @@ static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
 	catalog->phy_lane_cfg(catalog, ctrl->orientation,
 				link_params->lane_count);
 
+	/*
+	 * In shallow mode, the number of link training trials are limited to
+	 * 5 by default or by the number defined in the dtsi.
+	 */
+	if (shallow)
+		link_train_max_retries = ctrl->parser->shallow_mode_retries;
+
 	while (1) {
 		DP_DEBUG("bw_code=%d, lane_count=%d\n",
 			link_params->bw_code, link_params->lane_count);
@@ -772,18 +779,6 @@ static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
 		rc = dp_ctrl_setup_main_link(ctrl);
 		if (!rc)
 			break;
-
-		/*
-		 * Shallow means link training failure is not important.
-		 * If it fails, we still keep the link clocks on.
-		 * In this mode, the system expects DP to be up
-		 * even though the cable is removed. Disconnect interrupt
-		 * will eventually trigger and shutdown DP.
-		 */
-		if (shallow) {
-			rc = 0;
-			break;
-		}
 
 		if (!link_train_max_retries || atomic_read(&ctrl->aborted)) {
 			dp_ctrl_disable_link_clock(ctrl);

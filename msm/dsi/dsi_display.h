@@ -177,16 +177,6 @@ struct dsi_display_ops {
 	int(*misr_read[MSM_DISP_OP_MAX]) (struct dsi_display *display);
 };
 
-struct dsi_display_hfi_info {
-
-	struct hfi_prop_listener hfi_cb_obj;
-	struct hfi_adapter_t *hfi_adapter;
-	struct hfi_client_t *hfi_client;
-	struct hfi_util_kv_helper *kv_props;
-
-	struct kthread_worker cmd_buf_worker;
-};
-
 /**
  * struct dsi_display - dsi display information
  * @pdev:             Pointer to platform device.
@@ -362,7 +352,8 @@ struct dsi_display {
 	int tx_cmd_buf_ndx;
 	struct dsi_panel_cmd_set cmd_set;
 
-	struct dsi_display_hfi_info *dsi_hfi_info;
+	struct dsi_display_hfi *dsi_hfi_info;
+	struct hfi_prop_listener hfi_cb_obj;
 
 	struct dsi_display_ops display_ops;
 
