@@ -12,6 +12,7 @@
 #include <linux/list.h>
 #include <soc/qcom/minidump.h>
 #include <drm/drm_print.h>
+#include "msm_drv.h"
 
 /* select an uncommon hex value for the limiter */
 #define SDE_EVTLOG_DATA_LIMITER	(0xC0DEBEEF)
@@ -61,6 +62,10 @@
 
 #define SDE_DBG_DUMP_DATA_LIMITER (NULL)
 
+#define SDE_DBG_BASE_MAX		10
+#define RANGE_NAME_LEN		40
+#define REG_BASE_NAME_LEN	80
+
 enum sde_dbg_evtlog_flag {
 	SDE_EVTLOG_CRITICAL = BIT(0),
 	SDE_EVTLOG_IRQ = BIT(1),
@@ -80,6 +85,14 @@ enum sde_dbg_dump_context {
 	SDE_DBG_DUMP_PROC_CTX,
 	SDE_DBG_DUMP_IRQ_CTX,
 	SDE_DBG_DUMP_CLK_ENABLED_CTX,
+};
+
+enum sde_dbg_data {
+	SDE_DBG_REG_DUMP = 1,
+	SDE_DBG_EVT_LOG,
+	SDE_DBG_BUS,
+	SDE_DBG_DEV_STATE,
+	SDE_DEBUG_MAX,
 };
 
 /*
@@ -143,11 +156,32 @@ enum sde_dbg_dump_context {
 #define SDE_EVTLOG_BUF_MAX 512
 #define SDE_EVTLOG_BUF_ALIGN 32
 
+
+/**
+ * struct sde_dbg_power_ctrl - Debug interface for controlling power state
+ * @handle: Pointer to the power control handle
+ * @client: Pointer to the client requesting power control
+ * @enable_fn: Callback function to enable or disable power
+ *              @handle: The power control handle
+ *              @client: The requesting client
+ *              @enable: Boolean flag to enable/disable power
+ */
 struct sde_dbg_power_ctrl {
 	void *handle;
 	void *client;
 	int (*enable_fn)(void *handle, void *client, bool enable);
 };
+
+/**
+ * struct sde_dbg_evtlog_log - Single event log entry for debug tracing
+ * @time:      Timestamp of the event (in nanoseconds or system ticks)
+ * @name:      Name of the function or module where the event occurred
+ * @line:      Line number in the source code where the event was logged
+ * @data:      Array of event-specific data values
+ * @data_cnt:  Number of valid entries in the @data array
+ * @pid:       Process ID associated with the event
+ * @cpu:       CPU ID where the event was logged
+ */
 
 struct sde_dbg_evtlog_log {
 	s64 time;
@@ -159,9 +193,21 @@ struct sde_dbg_evtlog_log {
 	u8 cpu;
 };
 
+
 /**
- * @last_dump: Index of last entry to be output during evtlog dumps
- * @filter_list: Linked list of currently active filter strings
+ * struct sde_dbg_evtlog - Debug event log container for SDE
+ * @logs:            Circular buffer of event log entries
+ * @first:           Index of the first valid log entry
+ * @last:            Atomic index of the last written log entry
+ * @last_dump:       Index of the last dumped log entry
+ * @curr:            Atomic index used for current log operations
+ * @next:            Index for the next log entry to be written
+ * @enable:          Flag indicating whether event logging is enabled
+ * @dump_mode:       Mode used for dumping logs
+ * @dumped_evtlog:   Pointer to the buffer holding the last dumped log data
+ * @log_size:        Total number of log entries currently stored
+ * @spin_lock:       Spinlock to protect access to the log buffer
+ * @filter_list:     List of filters applied to event logging
  */
 struct sde_dbg_evtlog {
 	struct sde_dbg_evtlog_log logs[SDE_EVTLOG_ENTRY];
@@ -179,6 +225,252 @@ struct sde_dbg_evtlog {
 };
 
 extern struct sde_dbg_evtlog *sde_dbg_base_evtlog;
+
+/**
+ * struct sde_dbg_reg_offset - tracking for start and end of region
+ * @start: start offset
+ * @end: end offset
+ */
+struct sde_dbg_reg_offset {
+	u32 start;
+	u32 end;
+};
+
+/**
+ * struct sde_dbg_reg_range - register dumping named sub-range
+ * @head: head of this node
+ * @reg_dump: address for the mem dump
+ * @range_name: name of this range
+ * @offset: offsets for range to dump
+ * @xin_id: client xin id
+ */
+struct sde_dbg_reg_range {
+	struct list_head head;
+	u32 *reg_dump;
+	char range_name[RANGE_NAME_LEN];
+	struct sde_dbg_reg_offset offset;
+	uint32_t xin_id;
+};
+
+/**
+ * struct sde_dbg_reg_base - register region base.
+ *	may sub-ranges: sub-ranges are used for dumping
+ *	or may not have sub-ranges: dumping is base -> max_offset
+ * @reg_base_head: head of this node
+ * @sub_range_list: head to the list with dump ranges
+ * @name: register base name
+ * @base: base pointer
+ * @phys_addr: block physical address
+ * @off: cached offset of region for manual register dumping
+ * @cnt: cached range of region for manual register dumping
+ * @max_offset: length of region
+ * @buf: buffer used for manual register dumping
+ * @buf_len:  buffer length used for manual register dumping
+ * @reg_dump: address for the mem dump if no ranges used
+ * @cb: callback for external dump function, null if not defined
+ * @cb_ptr: private pointer to callback function
+ * @blk_id: id indicate the HW block
+ */
+struct sde_dbg_reg_base {
+	struct list_head reg_base_head;
+	struct list_head sub_range_list;
+	char name[REG_BASE_NAME_LEN];
+	void __iomem *base;
+	unsigned long phys_addr;
+	size_t off;
+	size_t cnt;
+	size_t max_offset;
+	char *buf;
+	size_t buf_len;
+	u32 *reg_dump;
+	void (*cb)(void *ptr);
+	void *cb_ptr;
+	u64 blk_id;
+};
+
+/**
+ * struct sde_debug_bus_entry - Entry for a debug bus test configuration
+ * @wr_addr:     Write address for the debug bus
+ * @rd_addr:     Read address for the debug bus
+ * @block_id:    Starting block ID for the test
+ * @block_id_max: Maximum block ID for the test range
+ * @test_id:     Starting test ID for the test
+ * @test_id_max: Maximum test ID for the test range
+ * @analyzer:    Optional callback to analyze the read value
+ *               @wr_addr: Write address used
+ *               @block_id: Block ID tested
+ *               @test_id: Test ID used
+ *               @val: Value read from the debug bus
+ */
+struct sde_debug_bus_entry {
+	u32 wr_addr;
+	u32 rd_addr;
+	u32 block_id;
+	u32 block_id_max;
+	u32 test_id;
+	u32 test_id_max;
+	void (*analyzer)(u32 wr_addr, u32 block_id, u32 test_id, u32 val);
+};
+
+
+/**
+ * struct sde_dbg_dsi_ctrl_list_entry - DSI controller debug entry
+ * @name: Name of the DSI controller
+ * @base: Base memory address of the controller
+ * @list: List node for linking multiple DSI controllers
+ */
+struct sde_dbg_dsi_ctrl_list_entry {
+	const char *name;
+	void __iomem *base;
+	struct list_head list;
+};
+
+/**
+ * struct sde_dbg_debug_bus_common - Common debug bus metadata
+ * @name:                Name of the debug bus configuration
+ * @entries_size:        Total number of debug bus entries
+ * @limited_entries_size: Number of limited debug bus entries
+ * @dumped_content:      Pointer to buffer holding dumped debug values
+ * @content_idx:         Current index in the dumped content buffer
+ * @content_size:        Total size of the dumped content buffer
+ * @blk_id:              Block ID associated with this debug bus
+ */
+struct sde_dbg_debug_bus_common {
+	char *name;
+	u32 entries_size;
+	u32 limited_entries_size;
+	u32 *dumped_content;
+	u32 content_idx;
+	u32 content_size;
+	u64 blk_id;
+};
+
+/**
+ * struct sde_dbg_sde_debug_bus - Debug bus interface for SDE hardware
+ * @cmn:           Common debug bus metadata
+ * @entries:       Pointer to full list of debug bus entries
+ * @limited_entries: Pointer to a reduced set of debug bus entries
+ * @top_blk_off:   Offset to the top-level hardware block
+ * @read_tp:       Function to read a test point from the debug bus
+ *                 @mem_base: Base memory address
+ *                 @wr_addr: Write address
+ *                 @rd_addr: Read address
+ *                 @block_id: Block ID
+ *                 @test_id: Test ID
+ * @clear_tp:      Function to clear a test point
+ * @disable_block: Function to disable a debug block
+ */
+struct sde_dbg_sde_debug_bus {
+	struct sde_dbg_debug_bus_common cmn;
+	struct sde_debug_bus_entry *entries;
+	struct sde_debug_bus_entry *limited_entries;
+	u32 top_blk_off;
+	u32 (*read_tp)(void __iomem *mem_base, u32 wr_addr, u32 rd_addr, u32 block_id, u32 test_id);
+	void (*clear_tp)(void __iomem *mem_base, u32 wr_addr);
+	void (*disable_block)(void __iomem *mem_base, u32 wr_addr);
+};
+
+/**
+ * struct sde_dbg_regbuf - wraps buffer and tracking params for register dumps
+ * @buf: pointer to allocated memory for storing register dumps in hw recovery
+ * @buf_size: size of the memory allocated
+ * @len: size of the dump data valid in the buffer
+ * @rpos: cursor points to the buffer position read by client
+ * @dump_done: to indicate if dumping to user memory is complete
+ * @cur_blk: points to the current sde_dbg_reg_base block
+ */
+struct sde_dbg_regbuf {
+	char *buf;
+	int buf_size;
+	int len;
+	int rpos;
+	int dump_done;
+	struct sde_dbg_reg_base *cur_blk;
+};
+
+/**
+ * struct sde_dbg_hal_funcs - interface api for sde debug hal
+ */
+struct sde_dbg_hal_funcs {
+	/**
+	 * dbg_dump - performs debug dump when panic is triggered
+	 * Returns: none
+	 */
+	void (*dbg_dump[MSM_DISP_OP_MAX])(bool do_panic, const char *name,
+			bool dump_secure, u64 dump_blk_mask);
+};
+
+/**
+ * struct sde_dbg_base - global sde debug base structure
+ * @evtlog: event log instance
+ * @reglog: reg log instance
+ * @reg_base_list: list of register dumping regions
+ * @reg_dump_base: base address of register dump region
+ * @reg_dump_addr: register dump address for a block/range
+ * @dev: device pointer
+ * @mutex: mutex to serialize access to serialze dumps, debugfs access
+ * @req_dump_blks: list of blocks requested for dumping
+ * @panic_on_err: whether to kernel panic after triggering dump via debugfs
+ * @dump_work: work struct for deferring register dump work to separate thread
+ * @work_panic: panic after dump if internal user passed "panic" special region
+ * @dump_option: whether to dump registers and dbgbus into memory, kernel log, or both
+ * @coredump_pending: coredump is pending read from userspace
+ * @coredump_reading: coredump is in reading stage
+ * @dbgbus_sde: debug bus structure for the sde
+ * @dbgbus_vbif_rt: debug bus structure for the realtime vbif
+ * @dbgbus_dsi: debug bus structure for the dsi
+ * @dbgbus_rsc: debug bus structure for rscc
+ * @dbgbus_lutdma: debug bus structure for the lutdma hw
+ * @dbgbus_dp: debug bus structure for dp
+ * @dump_blk_mask: mask of all the hw blk-ids that has to be dumped
+ * @dump_secure: dump entries excluding few as it is in secure-session
+ * @regbuf: buffer data to track the register dumping in hw recovery
+ * @sde_dbg_printer: drm printer handle used to print sde_dbg info in devcoredump device
+ * @cur_evt_index: index used for tracking event logs dump in hw recovery
+ * @cur_reglog_index: index used for tracking register logs dump in hw recovery
+ * @dbgbus_dump_idx: index used for tracking dbg-bus dump in hw recovery
+ * @vbif_dbgbus_dump_idx: index for tracking vbif dumps in hw recovery
+ * @hw_ownership: indicates if the VM owns the HW resources
+ */
+struct sde_dbg_base {
+	struct sde_dbg_evtlog *evtlog;
+	struct sde_dbg_reglog *reglog;
+	struct list_head reg_base_list;
+	void *reg_dump_base;
+	void *reg_dump_addr;
+	struct device *dev;
+	struct mutex mutex;
+
+	struct sde_dbg_reg_base *req_dump_blks[SDE_DBG_BASE_MAX];
+
+	u32 panic_on_err;
+	struct work_struct dump_work;
+	bool work_panic;
+	u32 dump_option;
+	bool coredump_pending;
+	bool coredump_reading;
+
+	struct sde_dbg_sde_debug_bus dbgbus_sde;
+	struct sde_dbg_sde_debug_bus dbgbus_vbif_rt;
+	struct sde_dbg_sde_debug_bus dbgbus_dsi;
+	struct sde_dbg_sde_debug_bus dbgbus_rsc;
+	struct sde_dbg_sde_debug_bus dbgbus_lutdma;
+	struct sde_dbg_sde_debug_bus dbgbus_dp;
+	u64 dump_blk_mask;
+	bool dump_secure;
+	u32 debugfs_ctrl;
+
+	struct drm_printer *sde_dbg_printer;
+	struct sde_dbg_regbuf regbuf;
+	u32 cur_evt_index;
+	u32 cur_reglog_index;
+	enum sde_dbg_dump_context dump_mode;
+	bool hw_ownership;
+	char *read_buf;
+	u32 buff_sz;
+	bool is_dumped;
+	struct sde_dbg_hal_funcs hal_ops;
+};
 
 /*
  * reglog keeps this number of entries in memory for debug purpose. This
@@ -407,6 +699,13 @@ void sde_dbg_init_dbg_buses(u32 hw_rev);
  * Returns:		0 or -ERROR
  */
 int sde_dbg_init(struct device *dev);
+
+/**
+ * sde_dbg_setup - setup global sde debug
+ * @dev:	pointer to device
+ * Returns:		0 or -ERROR
+ */
+int sde_dbg_setup(struct device *dev);
 
 /**
  * sde_dbg_debugfs_register - register entries at the given debugfs dir
