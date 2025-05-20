@@ -1846,7 +1846,7 @@ static void virtio_get_device_hw_attributes(
 	VIRTGPU_VQ_RSP_DBG("virtio_get_device_hw_attributes\n");
 	kms->device_info.num_virq = resp->num_vriq;
 	for (i = 0; i < resp->num_vriq; i++) {
-		kms->device_info.virq_shmem[kms->device_info.num_virq] = resp->virq_shmem[i];
+		kms->device_info.virq_shmem[i] = resp->virq_shmem[i];
 		VIRTGPU_VQ_RSP_DBG("virq[%d]: %lld\n", kms->device_info.num_virq, resp->virq_shmem[i]);
 	}
 }
