@@ -1806,7 +1806,8 @@ disable_feature:
 			hw_cfg.mixer_info = hw_lm;
 			hw_cfg.displayh = num_mixers * hw_lm->cfg.out_width;
 			hw_cfg.displayv = hw_lm->cfg.out_height;
-
+			hw_cfg.dspp_idx = hw_dspp->idx;
+			_sde_cp_setup_hfi_config(prop_node->feature, sde_crtc, &hw_cfg);
 			ret = disable_handler(hw_dspp, &hw_cfg, sde_crtc);
 		}
 
@@ -2903,12 +2904,19 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 	int n = 0, i = 0, ret = 0;
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
 	u32 num_mixers = _sde_cp_get_num_dspp_mixers(sde_crtc);
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 	enum sde_cp_crtc_features features[] = {
 		SDE_CP_CRTC_DSPP_DEMURA_INIT,
 		SDE_CP_CRTC_DSPP_RC_MASK,
 		SDE_CP_CRTC_DSPP_LTM_HIST_CTL,
 		SDE_CP_CRTC_DSPP_AIQE_ABC,
 	};
+
+	if (IS_DISP_OP_HFI(disp_op)) {
+		_sde_cp_mark_active_dirty_internal(sde_crtc);
+		return;
+	}
+
 	for (n = 0; n < ARRAY_SIZE(features); n++) {
 		if (features[n] > ARRAY_SIZE(set_crtc_feature_wrappers)) {
 			DRM_DEBUG("invalid feature:%d\n", features[n]);
@@ -2949,7 +2957,6 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 			hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
 			hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
 
-			_sde_cp_setup_hfi_config(features[n], sde_crtc, &hw_cfg);
 			ret = set_feature(hw_dspp, &hw_cfg, sde_crtc);
 			if (ret)
 				break;
