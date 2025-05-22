@@ -237,9 +237,6 @@ static int hdmi_power_clk_init(struct hdmi_power_private *power, bool enable)
 			goto err_xo_clk;
 		}
 
-		/* default factor is 1 */
-		power->pll->clk_factor = 1;
-
 	} else {
 		if (power->pixel_parent)
 			clk_put(power->pixel_parent);
@@ -302,7 +299,7 @@ static int hdmi_power_park_module(struct hdmi_power_private *power,
 		goto exit;
 	}
 
-	mp->clk_config->rate = XO_CLK_KHZ * 1000;
+	mp->clk_config->rate = XO_CLK_KHZ * power->pll->clk_factor;
 	rc = msm_dss_clk_set_rate(mp->clk_config, mp->num_clk);
 	if (rc) {
 		HDMI_ERR("failed to set clk rate.\n");

@@ -23,7 +23,6 @@
 #include "hdmi_util.h"
 #include "sde_edid_parser.h"
 
-#define HDMI_KHZ_TO_HZ 1000
 #define hdmi_display_state_show(x) { \
 	HDMI_ERR("%s: state (0x%x): %s\n", x, hdmi->state, \
 		hdmi_display_state_name(hdmi->state)); \
@@ -1007,7 +1006,7 @@ static int hdmi_display_prepare(struct hdmi_display *hdmi_display, void *panel)
 		return rc;
 	}
 
-	hdmi_display->pixclk = rate * HDMI_KHZ_TO_HZ;
+	hdmi_display->pixclk = rate * hdmi->pll->clk_factor;
 
 	rc = hdmi->phy->pre_enable(hdmi->phy);
 	if (rc) {

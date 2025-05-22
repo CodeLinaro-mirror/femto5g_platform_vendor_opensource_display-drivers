@@ -334,11 +334,13 @@ static void _hdmi_panel_config_mode(struct hdmi_panel_private *panel)
 			HDMI_VSYNC_ACTIVE_F2_END(0));
 	}
 
-/*	if (pinfo->h_active_low)
-		frame_ctrl |= HDMI_FRAME_CTRL_HSYNC_LOW;
-	if (pinfo->v_active_low)
-		frame_ctrl |= HDMI_FRAME_CTRL_VSYNC_LOW;
-*/
+	if (pinfo->v_active == 480) {
+		if (pinfo->h_active_low)
+			frame_ctrl |= HDMI_FRAME_CTRL_HSYNC_LOW;
+		if (pinfo->v_active_low)
+			frame_ctrl |= HDMI_FRAME_CTRL_VSYNC_LOW;
+	}
+
 	if (pinfo->interlace)
 		frame_ctrl |= HDMI_FRAME_CTRL_INTERLACED_EN;
 
