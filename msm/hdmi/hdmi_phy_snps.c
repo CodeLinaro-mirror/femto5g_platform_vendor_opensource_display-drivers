@@ -157,6 +157,11 @@ static void hdmi_phy_snps_tx_lane_config(struct hdmi_phy *phy, u32 tmds_clk)
 
 	HDMI_PHY_CONF_REG_GRP(phy, HDMI_PHY_TXn_CONTROL_10, BIT(3), CLEAR_BIT);
 
+	if (bpp * tmds_clk >= max_bit_rate)
+		op = CLEAR_BIT;
+	else
+		op = SET_BIT;
+
 	HDMI_PHY_CONF_REG(phy, HDMI_PHY_TX_COMMON_CONTROL_0, BIT(2), SET_BIT);
 
 	HDMI_PHY_CONF_REG_GRP(phy, HDMI_PHY_TXn_CONTROL_9,
