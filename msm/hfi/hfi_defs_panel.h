@@ -30,6 +30,7 @@ enum hfi_panel_phy_type {
  * HFI_PANEL_BPP_16 : 16 BPP for rgb565
  * HFI_PANEL_BPP_18 : 18 BPP for rgb666
  * HFI_PANEL_BPP_24 : 24 BPP for rgb888
+ * HFI_PANEL_BPP_30 : 30 BPP for rgb101010
  */
 enum hfi_panel_bpp {
 	HFI_PANEL_BPP_3      = 1,
@@ -38,6 +39,7 @@ enum hfi_panel_bpp {
 	HFI_PANEL_BPP_16     = 4,
 	HFI_PANEL_BPP_18     = 5,
 	HFI_PANEL_BPP_24     = 6,
+	HFI_PANEL_BPP_30     = 7,
 };
 
 /*
