@@ -19,6 +19,21 @@ module_entry(
             "msm-hyp/wfd/user_hab_utils.c",
             "msm-hyp/wfd/wfd_kms.c",
             "msm-hyp/wfd/wire_user.c",
+            "msm-hyp/virtio/virtio_kms.c",
+            "msm-hyp/virtio/virtgpu_vq.c",
+         ],
+      }
+)
+
+#---------- MSM-CFG MODULE -------------------------
+
+module_entry(
+      name = "msm_cfg",
+      config_option = "CONFIG_DRM_MSM_CFG",
+      path = None,
+      config_srcs = {
+          "CONFIG_DRM_MSM_CFG" : [
+            "msm-cfg/msm_cfg.c",
          ],
       }
 )

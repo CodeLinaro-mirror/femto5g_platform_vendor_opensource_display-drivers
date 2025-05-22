@@ -82,6 +82,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
 #include <linux/of_platform.h>
+#include <linux/version.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
@@ -100,6 +101,10 @@
 #define MAX_CONNECTORS              16
 #define MAX_CRTCS                   16
 #define HPD_STRING_SIZE             30
+
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+#define DRM_UNLOCKED 0
+#endif
 
 struct msm_hyp_commit {
 	struct drm_device *dev;
@@ -2553,10 +2558,6 @@ static int msm_hyp_open(struct drm_device *dev, struct drm_file *file)
 	return 0;
 }
 
-static void msm_hyp_postclose(struct drm_device *dev, struct drm_file *file)
-{
-}
-
 static void msm_hyp_lastclose(struct drm_device *dev)
 {
 	struct msm_hyp_drm_private *priv = dev->dev_private;
@@ -2565,6 +2566,14 @@ static void msm_hyp_lastclose(struct drm_device *dev)
 	ret = drm_client_modeset_commit_locked(&priv->client);
 	if (ret)
 		DRM_ERROR("client modeset commit failed: %d\n", ret);
+}
+
+static void msm_hyp_postclose(struct drm_device *dev, struct drm_file *file)
+{
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	if (atomic_read(&dev->open_count) == 1)
+		msm_hyp_lastclose(dev);
+#endif
 }
 
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc)
@@ -2721,7 +2730,9 @@ static struct drm_driver msm_hyp_driver = {
 				DRIVER_MODESET,
 	.open               = msm_hyp_open,
 	.postclose          = msm_hyp_postclose,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.lastclose          = msm_hyp_lastclose,
+#endif
 	DRM_GEM_SHMEM_DRIVER_OPS,
 	.ioctls             = msm_hyp_ioctls,
 	.num_ioctls         = ARRAY_SIZE(msm_hyp_ioctls),
@@ -2750,7 +2761,11 @@ static int msm_hyp_bind(struct device *dev)
 	ret = of_property_read_string(pdev->dev.of_node,
 			"qcom,dev-name", &dev_name);
 	if (ret == 0) {
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+		strscpy(priv->dev_name_from_dt, dev_name, DRM_DRI_NAME_SIZE);
+#else
 		strlcpy(priv->dev_name_from_dt, dev_name, DRM_DRI_NAME_SIZE);
+#endif
 		priv->driver.name = priv->dev_name_from_dt;
 	}
 
@@ -2864,12 +2879,18 @@ fail:
 	return ret;
 }
 
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+static void msm_hyp_pdev_remove(struct platform_device *pdev)
+#else
 static int msm_hyp_pdev_remove(struct platform_device *pdev)
+#endif
 {
 	component_master_del(&pdev->dev, &msm_hyp_ops);
 	of_platform_depopulate(&pdev->dev);
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	return 0;
+ #endif
 }
 
 static const struct platform_device_id msm_id[] = {
