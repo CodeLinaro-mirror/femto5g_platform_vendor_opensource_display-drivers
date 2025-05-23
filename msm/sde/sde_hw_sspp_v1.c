@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -312,7 +312,8 @@ static void sde_hw_sspp_setup_ubwc_v1(struct sde_hw_pipe *ctx, struct sde_hw_blk
 static void sde_hw_sspp_setup_format_v1(struct sde_hw_pipe *ctx,
 		const struct sde_format *fmt,
 		bool const_alpha_en, u32 flags,
-		enum sde_sspp_multirect_index rect_mode)
+		enum sde_sspp_multirect_index rect_mode,
+		enum sde_color_component_mask color_mask)
 {
 	struct sde_hw_blk_reg_map *c;
 	u32 chroma_samp, unpack, src_format;
