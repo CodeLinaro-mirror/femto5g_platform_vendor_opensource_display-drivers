@@ -989,6 +989,7 @@ skip_edid:
 
 	dp_panel->fec_en = false;
 	dp_panel->dsc_en = false;
+	dp_panel->fec_overhead_fp = 0;
 
 	if (dp_panel->dpcd[DP_DPCD_REV] >= DP_DPCD_REV_14 &&
 			dp_panel->fec_feature_enable) {
