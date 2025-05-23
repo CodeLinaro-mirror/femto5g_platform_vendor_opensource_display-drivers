@@ -5894,7 +5894,6 @@ static struct drm_crtc_state *sde_crtc_duplicate_state(struct drm_crtc *crtc)
 {
 	struct sde_kms *sde_kms;
 	struct drm_device *dev;
-	struct drm_property *drm_prop;
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate, *old_cstate;
 
@@ -5932,14 +5931,6 @@ static struct drm_crtc_state *sde_crtc_duplicate_state(struct drm_crtc *crtc)
 			old_cstate, cstate,
 			&cstate->property_state, cstate->property_values);
 	sde_cp_duplicate_state_info(&old_cstate->base, &cstate->base);
-
-	if (!atomic_read(&dev->open_count) && sde_vm_owns_hw(sde_kms) &&
-			sde_in_trusted_vm(sde_kms)) {
-		drm_prop = msm_property_index_to_drm_property(
-				&sde_crtc->property_info, CRTC_PROP_VM_REQ_STATE);
-		sde_crtc_atomic_set_property(crtc, &cstate->base,
-				drm_prop, VM_REQ_RELEASE);
-	}
 
 	/* duplicate base helper */
 	__drm_atomic_helper_crtc_duplicate_state(crtc, &cstate->base);
