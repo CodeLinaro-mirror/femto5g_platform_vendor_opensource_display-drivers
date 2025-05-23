@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -2377,20 +2377,19 @@ static int __init msm_drm_register(void)
 	msm_dsi_register();
 	msm_edp_register();
 	msm_hdmi_register();
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	sde_shd_register();
-#endif
 	msm_lease_drm_register();
+	sde_shp_register();
+
 	return 0;
 }
 
 static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
+	sde_shp_unregister();
 	msm_lease_drm_unregister();
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	sde_shd_unregister();
-#endif
 	sde_wb_unregister();
 	msm_hdmi_unregister();
 	msm_edp_unregister();

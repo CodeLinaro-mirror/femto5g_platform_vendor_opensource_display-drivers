@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -24,3 +24,4 @@
 #define CONFIG_QCOM_SPEC_SYNC 1
 #define CONFIG_QCOM_FSA4480_I2C 1
 #define CONFIG_DRM_MSM_LEASE 1
+#define CONFIG_DRM_SDE_SHP 1

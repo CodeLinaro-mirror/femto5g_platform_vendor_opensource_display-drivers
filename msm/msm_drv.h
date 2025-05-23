@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1416,6 +1416,19 @@ static inline void __exit sde_shd_unregister(void)
 {
 }
 #endif /* CONFIG_DRM_SDE_SHD */
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHP)
+void __init sde_shp_register(void);
+void __exit sde_shp_unregister(void);
+#else
+static inline void __init sde_shp_register(void)
+{
+}
+static inline void __exit sde_shp_unregister(void)
+{
+}
+#endif /* CONFIG_DRM_SDE_SHP */
+
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 void __init msm_hdcp_register(void);
 void __exit msm_hdcp_unregister(void);
