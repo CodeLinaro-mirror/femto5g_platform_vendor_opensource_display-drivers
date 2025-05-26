@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/err.h>
 #include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include "dp_debug.h"
 #include "dp_pll.h"
 
@@ -66,6 +67,9 @@ static int dp_pll_clock_register(struct dp_pll *pll)
 	case EDP_PLL_5NM:
 		rc = edp_pll_clock_register_5nm(pll);
 		break;
+	case  DP_PLL_14NM:
+		rc = dp_pll_clock_register_14nm(pll);
+		break;
 	default:
 		rc = -ENOTSUPP;
 		break;
@@ -87,6 +91,9 @@ static void dp_pll_clock_unregister(struct dp_pll *pll)
 	case DP_PLL_4NM_V1:
 	case DP_PLL_4NM_V1_1:
 		dp_pll_clock_unregister_4nm(pll);
+		break;
+	case  DP_PLL_14NM:
+		dp_pll_clock_unregister_14nm(pll);
 		break;
 	default:
 		break;
@@ -160,6 +167,8 @@ struct dp_pll *dp_pll_get(struct dp_pll_in *in)
 			pll->revision = EDP_PLL_7NM;
 		} else if (!strcmp(label, "edp-5nm")) {
 			pll->revision = EDP_PLL_5NM;
+		} else if (!strcmp(label, "14nm")) {
+			pll->revision = DP_PLL_14NM;
 		} else {
 			DP_ERR("Unsupported pll revision\n");
 			rc = -ENOTSUPP;

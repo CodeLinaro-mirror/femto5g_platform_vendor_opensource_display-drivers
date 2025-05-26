@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -39,6 +39,7 @@
  */
 
 #include <linux/of_address.h>
+#include <linux/of_platform.h>
 #include <linux/kthread.h>
 #include <uapi/linux/sched/types.h>
 #include <drm/drm_of.h>
@@ -76,6 +77,10 @@
 
 #define LASTCLOSE_TIMEOUT_MS	500
 
+#if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
+#define DRM_UNLOCKED 0
+#endif
+
 #define msm_wait_event_timeout(waitq, cond, timeout_ms, ret)		\
 	do {								\
 		ktime_t cur_ktime;					\
@@ -95,6 +100,7 @@ int msm_ioctl_rmfb2(struct drm_device *dev, void *data,
 
 static DEFINE_MUTEX(msm_release_lock);
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 static void msm_fb_output_poll_changed(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = NULL;
@@ -109,9 +115,11 @@ static void msm_fb_output_poll_changed(struct drm_device *dev)
 	if (priv->fbdev)
 		drm_fb_helper_hotplug_event(priv->fbdev);
 }
+#endif
 
 static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
 {
+	#if defined(sched_setscheduler)
 	int ret = 0;
 	struct sched_param param = { 0 };
 	struct task_struct *task = current->group_leader;
@@ -122,7 +130,6 @@ static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
 	 * other real time and normal priority task
 	 */
 	param.sched_priority = 16;
-	#if defined(sched_setscheduler)
 	ret = sched_setscheduler(task, SCHED_FIFO, &param);
 	if (ret)
 		pr_warn("pid:%d name:%s priority update failed: %d\n",
@@ -161,7 +168,9 @@ static int msm_atomic_check(struct drm_device *dev,
 
 static const struct drm_mode_config_funcs mode_config_funcs = {
 	.fb_create = msm_framebuffer_create,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.output_poll_changed = msm_fb_output_poll_changed,
+#endif
 	.atomic_check = msm_atomic_check,
 	.atomic_commit = msm_atomic_commit,
 	.atomic_state_alloc = msm_atomic_state_alloc,
@@ -1793,8 +1802,7 @@ static int msm_ioctl_gem_info(struct drm_device *dev, void *data,
 {
 	struct drm_msm_gem_info *args = data;
 	struct drm_gem_object *obj;
-	struct msm_gem_object *msm_obj;
-	int i, ret = 0;
+	int ret = 0;
 
 	if (args->pad)
 		return -EINVAL;
@@ -1840,11 +1848,16 @@ static const struct file_operations fops = {
 	.owner              = THIS_MODULE,
 	.open               = drm_open,
 	.release            = msm_release,
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+	.fop_flags          = FOP_UNSIGNED_OFFSET,
+#endif
 	.unlocked_ioctl     = drm_ioctl,
 	.compat_ioctl       = drm_compat_ioctl,
 	.poll               = drm_poll,
 	.read               = drm_read,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.llseek             = no_llseek,
+#endif
 	.mmap               = msm_gem_mmap,
 };
 
@@ -1855,7 +1868,9 @@ static struct drm_driver msm_driver = {
 				DRIVER_MODESET,
 	.open               = msm_open,
 	.postclose          = msm_postclose,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.lastclose          = msm_lastclose,
+#endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	.irq_handler        = msm_irq,
 	.irq_preinstall     = msm_irq_preinstall,
@@ -1882,7 +1897,7 @@ static struct drm_driver msm_driver = {
 	.ioctls             = msm_ioctls,
 	.num_ioctls         = ARRAY_SIZE(msm_ioctls),
 	.fops               = &fops,
-	.name               = "msm",
+	.name               = "msm_drm",
 	.desc               = "MSM Snapdragon DRM",
 	.date               = "20130625",
 	.major              = MSM_VERSION_MAJOR,
@@ -2335,12 +2350,18 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	return component_master_add_with_match(&pdev->dev, &msm_drm_ops, match);
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void msm_pdev_remove(struct platform_device *pdev)
+#else
 static int msm_pdev_remove(struct platform_device *pdev)
+#endif
 {
 	component_master_del(&pdev->dev, &msm_drm_ops);
 	of_platform_depopulate(&pdev->dev);
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static void msm_pdev_shutdown(struct platform_device *pdev)

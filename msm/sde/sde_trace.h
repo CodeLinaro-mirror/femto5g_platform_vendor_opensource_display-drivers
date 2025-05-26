@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -10,6 +10,7 @@
 #include <linux/stringify.h>
 #include <linux/types.h>
 #include <linux/tracepoint.h>
+#include <linux/version.h>
 
 #undef TRACE_SYSTEM
 #define TRACE_SYSTEM sde
@@ -127,7 +128,11 @@ TRACE_EVENT(tracing_mark_write,
 	TP_fast_assign(
 			__entry->trace_type = trace_type;
 			__entry->pid = task ? task->tgid : 0;
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+			__assign_str(trace_name);
+#else
 			__assign_str(trace_name, name);
+#endif
 			__entry->value = value;
 	),
 	TP_printk("%c|%d|%s|%d", __entry->trace_type,
@@ -161,7 +166,11 @@ TRACE_EVENT(sde_evtlog,
 	),
 	TP_fast_assign(
 			__entry->pid = current->tgid;
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+			__assign_str(evtlog_tag);
+#else
 			__assign_str(evtlog_tag, tag);
+#endif
 			__entry->tag_id = tag_id;
 			if (cnt > SDE_TRACE_EVTLOG_SIZE)
 				cnt = SDE_TRACE_EVTLOG_SIZE;
@@ -441,7 +450,7 @@ TRACE_EVENT(sde_hw_fence_status,
 			__entry->hw_fence_start_timestamp = hw_fence_start_timestamp;
 			__entry->hw_fence_end_timestamp = hw_fence_end_timestamp;),
 	TP_printk(
-		"crtc:%d %s hw-fence start timestamp:%llu end timestamp:%llu",
+		"crtc:%d %s hw-fence start timestamp:%u end timestamp:%u",
 			__entry->crtc,
 			__entry->fence,
 			__entry->hw_fence_start_timestamp,

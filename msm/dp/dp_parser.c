@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -225,6 +225,24 @@ static int dp_parser_pinctrl(struct dp_parser *parser)
 		goto error;
 	}
 
+	if (parser->lphw_hpd) {
+		pinctrl->state_hpd_tlmm = pinctrl->state_hpd_ctrl = NULL;
+
+		pinctrl->state_hpd_tlmm = pinctrl_lookup_state(pinctrl->pin,
+				"mdss_dp_hpd_tlmm");
+		if (!IS_ERR_OR_NULL(pinctrl->state_hpd_tlmm)) {
+			pinctrl->state_hpd_ctrl = pinctrl_lookup_state(
+					pinctrl->pin, "mdss_dp_hpd_ctrl");
+		}
+
+		if (IS_ERR_OR_NULL(pinctrl->state_hpd_tlmm) ||
+				IS_ERR_OR_NULL(pinctrl->state_hpd_ctrl)) {
+			pinctrl->state_hpd_tlmm = NULL;
+			pinctrl->state_hpd_ctrl = NULL;
+			DP_DEBUG("tlmm or ctrl pinctrl state does not exist\n");
+		}
+	}
+
 	pinctrl->state_active = pinctrl_lookup_state(pinctrl->pin,
 					"mdss_dp_active");
 	if (IS_ERR_OR_NULL(pinctrl->state_active)) {
@@ -260,6 +278,12 @@ static int dp_parser_gpio(struct dp_parser *parser)
 		"qcom,edp-backlight-en-gpio",
 	};
 
+	if (of_find_property(of_node, "qcom,dp-hpd-gpio", NULL)) {
+		parser->lphw_hpd = of_find_property(of_node,
+				"qcom,dp-low-power-hw-hpd", NULL);
+		return 0;
+	}
+
 	if (of_find_property(of_node, "qcom,dp-gpio-aux-switch", NULL))
 		parser->gpio_aux_switch = true;
 	mp->gpio_config = devm_kzalloc(dev,
@@ -282,7 +306,7 @@ static int dp_parser_gpio(struct dp_parser *parser)
 			continue;
 		}
 
-		strlcpy(mp->gpio_config[i].gpio_name, dp_gpios[i],
+		strscpy(mp->gpio_config[i].gpio_name, dp_gpios[i],
 			sizeof(mp->gpio_config[i].gpio_name));
 
 		mp->gpio_config[i].value = 0;
@@ -648,14 +672,14 @@ static int dp_parser_clock(struct dp_parser *parser)
 				core_clk_index < core_clk_count) {
 			struct dss_clk *clk =
 				&core_power->clk_config[core_clk_index];
-			strlcpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
+			strscpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
 			clk->type = DSS_CLK_AHB;
 			core_clk_index++;
 		} else if (dp_parser_check_prefix(link_clk, clk_name) &&
 			   link_clk_index < link_clk_count) {
 			struct dss_clk *clk =
 				&link_power->clk_config[link_clk_index];
-			strlcpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
+			strscpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
 			link_clk_index++;
 			clock_mmrm = 0;
 			of_property_read_u32_index(dev->of_node, "clock-mmrm", i, &clock_mmrm);
@@ -671,7 +695,7 @@ static int dp_parser_clock(struct dp_parser *parser)
 			   strm0_clk_index < strm0_clk_count) {
 			struct dss_clk *clk =
 				&strm0_power->clk_config[strm0_clk_index];
-			strlcpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
+			strscpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
 			strm0_clk_index++;
 
 			clk->type = DSS_CLK_PCLK;
@@ -679,7 +703,7 @@ static int dp_parser_clock(struct dp_parser *parser)
 			   strm1_clk_index < strm1_clk_count) {
 			struct dss_clk *clk =
 				&strm1_power->clk_config[strm1_clk_index];
-			strlcpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
+			strscpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
 			strm1_clk_index++;
 
 			clk->type = DSS_CLK_PCLK;
@@ -787,7 +811,7 @@ static void dp_parser_qos(struct dp_parser *parser)
 	parser->qos_cpu_mask = mask;
 	parser->qos_cpu_latency = latency;
 
-	DP_DEBUG("qos parsing successful. mask:%x latency:%ld\n", mask, latency);
+	DP_DEBUG("qos parsing successful. mask:%x latency:%u\n", mask, latency);
 }
 
 static void dp_parser_fec(struct dp_parser *parser)

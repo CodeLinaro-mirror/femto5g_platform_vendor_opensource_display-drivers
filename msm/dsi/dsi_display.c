@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -258,7 +258,7 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 	/* use bl_temp as index of dimming bl lut to find the dimming panel backlight */
 	if (bl_temp != 0 && panel->bl_config.dimming_bl_lut &&
 	    bl_temp < panel->bl_config.dimming_bl_lut->length) {
-		DSI_DEBUG("before dimming bl_temp = %u, after dimming bl_temp = %lu\n",
+		DSI_DEBUG("before dimming bl_temp = %llu, after dimming bl_temp = %u\n",
 			bl_temp, panel->bl_config.dimming_bl_lut->mapped_bl[bl_temp]);
 		bl_temp = panel->bl_config.dimming_bl_lut->mapped_bl[bl_temp];
 	}
@@ -635,7 +635,7 @@ static void dsi_display_parse_demura_data(struct dsi_display *display)
 		DSI_DEBUG("Dummy panel ID node present for this display\n");
 		display->panel_id = ~0x0;
 	} else {
-		DSI_DEBUG("panel id found: %lx\n", display->panel_id);
+		DSI_DEBUG("panel id found: %llx\n", display->panel_id);
 	}
 }
 
@@ -1980,7 +1980,7 @@ static int dsi_display_debugfs_init(struct dsi_display *display)
 	char secondary_panel_str[] = "_secondary";
 	int i;
 
-	strlcpy(panel_name, display->name, SEC_PANEL_NAME_MAX_LEN);
+	strscpy(panel_name, display->name, SEC_PANEL_NAME_MAX_LEN);
 	if (strcmp(display->display_type, "secondary") == 0)
 		strlcat(panel_name, secondary_panel_str, SEC_PANEL_NAME_MAX_LEN);
 
@@ -2642,7 +2642,7 @@ static int dsi_display_parse_boot_display_selection(void)
 	int i, j;
 
 	for (i = 0; i < MAX_DSI_ACTIVE_DISPLAY; i++) {
-		strlcpy(disp_buf, boot_displays[i].boot_param,
+		strscpy(disp_buf, boot_displays[i].boot_param,
 			MAX_CMDLINE_PARAM_LEN);
 
 		pos = strnstr(disp_buf, ":", strlen(disp_buf));
@@ -6148,7 +6148,11 @@ end:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+void dsi_display_dev_remove(struct platform_device *pdev)
+#else
 int dsi_display_dev_remove(struct platform_device *pdev)
+#endif
 {
 	int rc = 0, i = 0;
 	struct dsi_display *display;
@@ -6156,13 +6160,16 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 
 	if (!pdev) {
 		DSI_ERR("Invalid device\n");
-		return -EINVAL;
+		rc = -EINVAL;
+		goto end;
 	}
 
 	display = platform_get_drvdata(pdev);
 	if (!display || !display->panel_node) {
-		DSI_ERR("invalid display\n");
-		return -EINVAL;
+		DSI_ERR("invalid param, display %pK, display panel node %pK\n",
+				display, display ? display->panel_node : NULL);
+		rc = -EINVAL;
+		goto end;
 	}
 
 	/* decrement ref count */
@@ -6184,7 +6191,13 @@ int dsi_display_dev_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, display);
+
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return rc;
+#else
+	return;
+#endif
 }
 
 int dsi_display_get_num_of_displays(void)
@@ -9061,7 +9074,7 @@ int dsi_display_update_dyn_bit_clk(struct dsi_display *display,
 		DSI_DEBUG("dynamic bit clock rate cleared\n");
 		return 0;
 	} else if (display->dyn_bit_clk < mode->priv_info->min_dsi_clk_hz) {
-		DSI_ERR("dynamic bit clock rate %llu smaller than minimum value:%llu\n",
+		DSI_ERR("dynamic bit clock rate %u smaller than minimum value:%llu\n",
 				display->dyn_bit_clk, mode->priv_info->min_dsi_clk_hz);
 		return -EINVAL;
 	}

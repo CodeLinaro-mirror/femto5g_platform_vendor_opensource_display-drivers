@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -153,6 +153,20 @@ static int dp_power_pinctrl_set(struct dp_power_private *power, bool active)
 	if (IS_ERR_OR_NULL(parser->pinctrl.pin))
 		return 0;
 
+	if (parser->lphw_hpd) {
+		pin_state = active ? parser->pinctrl.state_hpd_ctrl
+			: parser->pinctrl.state_hpd_tlmm;
+		if (!IS_ERR_OR_NULL(pin_state)) {
+			rc = pinctrl_select_state(parser->pinctrl.pin,
+					pin_state);
+			if (rc) {
+				DP_ERR("cannot direct hpd line to %s\n",
+						active ? "ctrl" : "tlmm");
+				return rc;
+			}
+		}
+	}
+
 	pin_state = active ? parser->pinctrl.state_active
 				: parser->pinctrl.state_suspend;
 	if (!IS_ERR_OR_NULL(pin_state)) {
@@ -222,7 +236,7 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 
 		power->pixel_parent = clk_get(dev, "pixel_parent");
 		if (IS_ERR(power->pixel_parent)) {
-			DP_ERR("Unable to get DP pixel RCG parent: %d\n",
+			DP_ERR("Unable to get DP pixel RCG parent: %ld\n",
 					PTR_ERR(power->pixel_parent));
 			rc = PTR_ERR(power->pixel_parent);
 			power->pixel_parent = NULL;
@@ -231,7 +245,7 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 
 		power->xo_clk = clk_get(dev, "rpmh_cxo_clk");
 		if (IS_ERR(power->xo_clk)) {
-			DP_ERR("Unable to get XO clk: %d\n", PTR_ERR(power->xo_clk));
+			DP_ERR("Unable to get XO clk: %ld\n", PTR_ERR(power->xo_clk));
 			rc = PTR_ERR(power->xo_clk);
 			power->xo_clk = NULL;
 			goto err_xo_clk;
@@ -240,7 +254,7 @@ static int dp_power_clk_init(struct dp_power_private *power, bool enable)
 		if (power->parser->has_mst) {
 			power->pixel1_clk_rcg = clk_get(dev, "pixel1_clk_rcg");
 			if (IS_ERR(power->pixel1_clk_rcg)) {
-				DP_ERR("Unable to get DP pixel1 clk RCG: %d\n",
+				DP_ERR("Unable to get DP pixel1 clk RCG: %ld\n",
 						PTR_ERR(power->pixel1_clk_rcg));
 				rc = PTR_ERR(power->pixel1_clk_rcg);
 				power->pixel1_clk_rcg = NULL;

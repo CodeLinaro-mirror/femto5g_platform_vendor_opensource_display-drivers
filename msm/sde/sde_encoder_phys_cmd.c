@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -280,7 +280,7 @@ void sde_encoder_restore_tearcheck_rd_ptr(struct sde_encoder_phys *phys_enc)
 			mode->vtotal, panel_scan_line, qsync_timeout_lines, latency_margin_lines,
 			restored_rd_ptr_lines, info[0].rd_ptr_line_count - mode->vdisplay,
 			ktime_to_us(time_into_frame_ns));
-	SDE_DEBUG_CMDENC(cmd_enc, "scan_line:%u rest_rd_ptr:%u rd_ptr:%u frame_ns:%u\n",
+	SDE_DEBUG_CMDENC(cmd_enc, "scan_line:%u rest_rd_ptr:%u rd_ptr:%u frame_ns:%llu\n",
 			panel_scan_line, restored_rd_ptr_lines,
 			info[0].rd_ptr_line_count - mode->vdisplay,
 			ktime_to_us(time_into_frame_ns));

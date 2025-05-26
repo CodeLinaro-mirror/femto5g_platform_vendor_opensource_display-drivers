@@ -7,7 +7,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 #include "msm_drv.h"
 #include "sde_dbg.h"
-
+#include <linux/vmalloc.h>
 #include "sde_kms.h"
 #include "sde_connector.h"
 #include "sde_encoder.h"
@@ -1747,7 +1747,7 @@ static int _sde_connector_set_prop_dyn_transfer_time(struct sde_connector *c_con
 
 	rc = c_conn->ops.update_transfer_time(c_conn->display, val);
 	if (rc)
-		SDE_ERROR_CONN(c_conn, "updating transfer time failed, val: %u, rc %d\n", val, rc);
+		SDE_ERROR_CONN(c_conn, "transfer time update failed, val: %llu, rc %d\n", val, rc);
 
 	return rc;
 }

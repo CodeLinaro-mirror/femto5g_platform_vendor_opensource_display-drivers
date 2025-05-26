@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2015, 2017-2021 The Linux Foundation. All rights reserved.
  * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  */
@@ -21,8 +21,10 @@
 #include <linux/delay.h>
 #include <linux/sde_io_util.h>
 #include <linux/sde_vm_event.h>
-#include "sde_dbg.h"
+#include <linux/version.h>
 
+#include "sde_dbg.h"
+#include <linux/pm_opp.h>
 #define MAX_I2C_CMDS  16
 void dss_reg_w(struct dss_io_data *io, u32 offset, u32 value, u32 debug)
 {
@@ -183,8 +185,10 @@ int msm_dss_get_pmic_io_mem(struct platform_device *pdev,
 	struct list_head temp_head;
 	struct msm_io_mem_entry *io_mem;
 	struct resource *res = NULL;
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	struct property *prop;
 	const __be32 *cur;
+#endif
 	int rc = 0;
 	u32 val;
 
@@ -194,8 +198,12 @@ int msm_dss_get_pmic_io_mem(struct platform_device *pdev,
 	if (!res)
 		return -ENOMEM;
 
-	of_property_for_each_u32(pdev->dev.of_node, "qcom,pmic-arb-address",
-			prop, cur, val) {
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+	of_property_for_each_u32(pdev->dev.of_node, "qcom,pmic-arb-address", prop, cur, val)
+#else
+	of_property_for_each_u32(pdev->dev.of_node, "qcom,pmic-arb-address", val)
+#endif
+	{
 		rc = spmi_pmic_arb_map_address(&pdev->dev, val, res);
 		if (rc < 0) {
 			DEV_ERR("%pS - failed to map pmic address, rc:%d\n",
@@ -580,7 +588,7 @@ EXPORT_SYMBOL_GPL(msm_dss_get_clk);
 
 #if IS_ENABLED(CONFIG_MSM_MMRM)
 int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
-	int (*cb_fnc)(void *data), void *phandle,
+	int (*cb_fnc)(struct mmrm_client_notifier_data *data), void *phandle,
 	bool *mmrm_enable)
 {
 	int i, rc = 0;
@@ -601,7 +609,7 @@ int msm_dss_mmrm_register(struct device *dev, struct dss_module_power *mp,
 			MMRM_CLIENT_DOMAIN_DISPLAY;
 		desc.client_info.desc.client_id =
 			clk_array[i].mmrm.clk_id;
-		strlcpy(name, clk_array[i].clk_name,
+		strscpy(name, clk_array[i].clk_name,
 			sizeof(desc.client_info.desc.name));
 		desc.client_info.desc.clk = clk_array[i].clk;
 		desc.priority = MMRM_CLIENT_PRIOR_LOW;

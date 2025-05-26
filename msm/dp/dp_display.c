@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -4173,12 +4173,19 @@ static void dp_display_set_mst_state(void *dp_display,
 		dp->mst.cbs.set_drv_state(dp_display, mst_state);
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void dp_display_remove(struct platform_device *pdev)
+#else
 static int dp_display_remove(struct platform_device *pdev)
+#endif
 {
+	int rc = 0;
 	struct dp_display_private *dp;
 
-	if (!pdev)
-		return -EINVAL;
+	if (!pdev) {
+		rc = -EINVAL;
+		goto end;
+	}
 
 	dp = platform_get_drvdata(pdev);
 	if (!dp) {
@@ -4204,7 +4211,12 @@ static int dp_display_remove(struct platform_device *pdev)
 		dp->dp_display.dp_aux_ipc_log = NULL;
 	}
 
-	return 0;
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+	return rc;
+#else
+	return;
+#endif
 }
 
 static int dp_pm_prepare(struct device *dev)
