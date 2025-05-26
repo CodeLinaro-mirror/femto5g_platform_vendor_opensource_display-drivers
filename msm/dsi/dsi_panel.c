@@ -5,14 +5,18 @@
  */
 
 #include <linux/delay.h>
+#include <linux/firmware.h>
+#include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/gpio.h>
 #include <linux/of_gpio.h>
 #include <linux/pwm.h>
+#include <linux/string.h>
 #include <video/mipi_display.h>
 
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"
+#include "dsi_defs.h"
 #include "dsi_parser.h"
 #include "sde_dbg.h"
 #include "sde_dsc_helper.h"
@@ -1891,6 +1895,7 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-post-mode-switch-on-command",
 	"qcom,mdss-dsi-qsync-on-commands",
 	"qcom,mdss-dsi-qsync-off-commands",
+	"qcom,mdss-dsi-calibration-commands",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -1919,6 +1924,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-post-mode-switch-on-command-state",
 	"qcom,mdss-dsi-qsync-on-commands-state",
 	"qcom,mdss-dsi-qsync-off-commands-state",
+	"qcom,mdss-dsi-calibration-commands-state",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -2025,7 +2031,8 @@ int dsi_panel_alloc_cmd_packets(struct dsi_panel_cmd_set *cmd,
 	return 0;
 }
 
-static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel_cmd_set *cmd,
+static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel *panel,
+					struct dsi_panel_cmd_set *cmd,
 					enum dsi_cmd_set_type type,
 					struct dsi_parser_utils *utils)
 {
@@ -2035,8 +2042,16 @@ static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel_cmd_set *cmd,
 	const char *state;
 	u32 packet_count = 0;
 
-	data = utils->get_property(utils->data, cmd_set_prop_map[type],
-			&length);
+	if ((type == DSI_CMD_SET_CALIBRATION_DATA) &&
+		panel->calib_data.data && panel->calib_data.len) {
+		// For calibration data, check if it exists as fw first.
+		DSI_INFO("%s using %s calibration data for %s\n", __func__,
+				panel->type, cmd_set_prop_map[type]);
+		data = panel->calib_data.data;
+		length = panel->calib_data.len;
+	} else {
+		data = utils->get_property(utils->data, cmd_set_prop_map[type], &length);
+	}
 	if (!data) {
 		DSI_DEBUG("%s commands not defined\n", cmd_set_prop_map[type]);
 		rc = -ENOTSUPP;
@@ -2052,7 +2067,7 @@ static int dsi_panel_parse_cmd_sets_sub(struct dsi_panel_cmd_set *cmd,
 		DSI_ERR("commands failed, rc=%d\n", rc);
 		goto error;
 	}
-	DSI_DEBUG("[%s] packet-count=%d, %d\n", cmd_set_prop_map[type],
+	DSI_DEBUG("[%s] packet-count=%d, length=%d\n", cmd_set_prop_map[type],
 		packet_count, length);
 
 	rc = dsi_panel_alloc_cmd_packets(cmd, packet_count);
@@ -2089,6 +2104,7 @@ error:
 }
 
 static int dsi_panel_parse_cmd_sets(
+		struct dsi_panel *panel,
 		struct dsi_display_mode_priv_info *priv_info,
 		struct dsi_parser_utils *utils)
 {
@@ -2113,7 +2129,7 @@ static int dsi_panel_parse_cmd_sets(
 					i, rc);
 			set->state = DSI_CMD_SET_STATE_LP;
 		} else {
-			rc = dsi_panel_parse_cmd_sets_sub(set, i, utils);
+			rc = dsi_panel_parse_cmd_sets_sub(panel, set, i, utils);
 			if (rc)
 				DSI_DEBUG("failed to parse set %d\n", i);
 		}
@@ -2223,6 +2239,9 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 
 	panel->reset_gpio_always_on = utils->read_bool(utils->data,
 			"qcom,platform-reset-gpio-always-on");
+
+	panel->calibration_enabled = utils->read_bool(utils->data,
+			"qcom,mdss-dsi-panel-calibration-enabled");
 
 	panel->spr_info.enable = false;
 	panel->spr_info.pack_type = MSM_DISPLAY_SPR_TYPE_MAX;
@@ -3437,7 +3456,7 @@ int dsi_panel_parse_esd_reg_read_configs(struct dsi_panel *panel)
 	if (!esd_config)
 		return -EINVAL;
 
-	dsi_panel_parse_cmd_sets_sub(&esd_config->status_cmd,
+	dsi_panel_parse_cmd_sets_sub(panel, &esd_config->status_cmd,
 				DSI_CMD_SET_PANEL_STATUS, utils);
 	if (!esd_config->status_cmd.count) {
 		DSI_ERR("panel status command parsing failed\n");
@@ -3658,6 +3677,85 @@ static void dsi_panel_setup_vm_ops(struct dsi_panel *panel, bool trusted_vm_env)
 	}
 }
 
+static int dsi_panel_parse_calib_data(struct dsi_panel *panel,
+			char *raw_calib_data_head, size_t data_size)
+{
+	int rc;
+	char *raw_calib_data = raw_calib_data_head;
+
+	if (!raw_calib_data || !data_size)
+		return -EINVAL;
+
+	// Each byte is represented by 2 hex and a space or endline
+	panel->calib_data.len = 0;
+	panel->calib_data.data = kvzalloc(data_size / 3 + 1, GFP_KERNEL);
+	if (!panel->calib_data.data) {
+		DSI_ERR("failed to allocated memory for display %s calibration data\n",
+				panel->type);
+		return -ENOMEM;
+	}
+
+	while (raw_calib_data && strlen(raw_calib_data)) {
+		int val;
+		char *token;
+
+		// Skip the rest of this line if '#' is encountered.
+		if (*raw_calib_data == '#') {
+			raw_calib_data = strchr(raw_calib_data, '\n');
+			if (raw_calib_data)
+				raw_calib_data++; // Move to the next character after '\n'
+			continue;
+		}
+
+		token = strsep(&raw_calib_data, "\n");
+		rc = kstrtoint(token, 16, &val);
+		if (rc) {
+			DSI_ERR("Error converting %s: %d, aborting calibration data\n",
+					rc, token);
+			kvfree(panel->calib_data.data);
+			panel->calib_data.data = NULL;
+			panel->calib_data.len = 0;
+			return rc;
+		}
+		panel->calib_data.data[panel->calib_data.len++] = (char)(val & 0xFF);
+	}
+	return 0;
+}
+
+static int dsi_panel_load_calib_data(struct dsi_panel *panel,
+			struct dsi_parser_utils *utils)
+{
+	const struct firmware *fw;
+	int ret;
+	char *raw_calib_data;
+	size_t fw_size;
+
+	if (!strcmp(panel->type, "primary"))
+		ret = firmware_request_nowarn(&fw, "dsi_calib_data", panel->parent);
+	else if (!strcmp(panel->type, "secondary"))
+		ret = firmware_request_nowarn(&fw, "dsi_calib_data_sec", panel->parent);
+	else
+		ret = -ENOENT;
+	if (ret)
+		return ret;
+
+	DSI_INFO("found calibration data for %s display, size: %llu\n",
+				panel->type, fw->size);
+	fw_size = fw->size;
+
+	raw_calib_data = kvzalloc(fw->size, GFP_KERNEL);
+	if (!raw_calib_data) {
+		DSI_ERR("failed to allocated memory for %s display calib data\n", panel->type);
+		return -ENOMEM;
+	}
+	memcpy(raw_calib_data, fw->data, fw->size);
+
+	ret = dsi_panel_parse_calib_data(panel, raw_calib_data, fw_size);
+	kvfree(raw_calib_data);
+	release_firmware(fw);
+	return ret;
+}
+
 struct dsi_panel *dsi_panel_get(struct device *parent,
 				struct device_node *of_node,
 				struct device_node *parser_node,
@@ -3701,6 +3799,16 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 		DSI_ERR("failed to parse host configuration, rc=%d\n",
 				rc);
 		goto error;
+	}
+
+	// We must get the calib data before parsing panel mode.
+	if (panel->calibration_enabled) {
+		rc = dsi_panel_load_calib_data(panel, utils);
+		if (rc)
+			DSI_WARN("not using calibration data for: %s display: %d\n",
+					panel->type, rc);
+		else
+			DSI_INFO("calibration data loaded for: %s display\n", panel->type);
 	}
 
 	rc = dsi_panel_parse_panel_mode(panel);
@@ -4304,7 +4412,7 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 			goto parse_fail;
 		}
 
-		rc = dsi_panel_parse_cmd_sets(prv_info, utils);
+		rc = dsi_panel_parse_cmd_sets(panel, prv_info, utils);
 		if (rc) {
 			DSI_ERR("failed to parse command sets, rc=%d\n", rc);
 			goto parse_fail;
@@ -4562,6 +4670,15 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_PRE_ON cmds, rc=%d\n",
 		       panel->name, rc);
 		goto error;
+	}
+
+	if (panel->calibration_enabled) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_CALIBRATION_DATA);
+		if (rc) {
+			DSI_ERR("[%s] failed to send DSI_CMD_SET_CALIBRATION_DATA cmds, rc=%d\n",
+				panel->name, rc);
+			goto error;
+		}
 	}
 
 error:
