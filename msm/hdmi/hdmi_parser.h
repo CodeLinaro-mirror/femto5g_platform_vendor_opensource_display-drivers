@@ -15,7 +15,8 @@ enum hdmi_pm_type {
 	HDMI_CTRL_PM,
 	HDMI_PHY_PM,
 	HDMI_PLL_PM,
-	HDMI_LINK_PM,
+	HDMI_HPD_PM,
+	HDMI_PCLK_PM,
 	HDMI_MAX_PM
 };
 
@@ -27,6 +28,7 @@ enum hdmi_pin_states {
 	HDMI_GPIO_MUX_SEL,
 	HDMI_GPIO_MUX_LPM,
 	HDMI_GPIO_HPD5V,
+	HDMI_GPIO_CEC,
 	HDMI_GPIO_MAX,
 };
 
@@ -109,7 +111,6 @@ struct hdmi_core_clk_info {
 struct hdmi_clk_info {
 	/* Clocks parsed from DT */
 	struct hdmi_core_clk_info core_clks;
-	// TODO: check if any clks pending
 };
 
 struct hdmi_parser {
@@ -117,7 +118,7 @@ struct hdmi_parser {
 	struct device *msm_hdcp_dev;
 	struct dss_module_power mp[HDMI_MAX_PM];
 	struct hdmi_clk_info clk_info;
-	struct hdmi_pinctrl pinctrl;	// TODO not using for now
+	struct hdmi_pinctrl pinctrl;
 	struct hdmi_io io;
 
 	u32 max_pclk_khz;
@@ -128,6 +129,7 @@ struct hdmi_parser {
 	u32 display_topology;
 	bool skip_ddc;
 	u32 num_of_modes;
+	int phy_version;
 
 	/* gpio's: */
 	int ddc_clk_gpio, ddc_data_gpio;
@@ -148,6 +150,8 @@ static inline const char *hdmi_parser_pm_name(enum hdmi_pm_type module)
 	case HDMI_CTRL_PM:	return "HDMI_CTRL_PM";
 	case HDMI_PHY_PM:	return "HDMI_PHY_PM";
 	case HDMI_PLL_PM:	return "HDMI_PLL_PM";
+	case HDMI_HPD_PM:	return "HDMI_HPD_PM";
+	case HDMI_PCLK_PM:	return "HDMI_PCLK_PM";
 	default:		return "???";
 	}
 }

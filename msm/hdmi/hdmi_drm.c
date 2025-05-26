@@ -13,46 +13,6 @@
 
 #define to_hdmi_bridge(x)     container_of((x), struct hdmi_bridge, base)
 
-void hdmi_convert_to_drm_mode(const struct hdmi_display_mode *hdmi_mode,
-				struct drm_display_mode *drm_mode)
-{
-	u32 flags = 0;
-
-	memset(drm_mode, 0, sizeof(*drm_mode));
-
-	drm_mode->hdisplay = hdmi_mode->timing.h_active;
-	drm_mode->hsync_start = drm_mode->hdisplay +
-				hdmi_mode->timing.h_front_porch;
-	drm_mode->hsync_end = drm_mode->hsync_start +
-			      hdmi_mode->timing.h_sync_width;
-	drm_mode->htotal = drm_mode->hsync_end + hdmi_mode->timing.h_back_porch;
-	drm_mode->hskew = hdmi_mode->timing.h_skew;
-
-	drm_mode->vdisplay = hdmi_mode->timing.v_active;
-	drm_mode->vsync_start = drm_mode->vdisplay +
-				hdmi_mode->timing.v_front_porch;
-	drm_mode->vsync_end = drm_mode->vsync_start +
-			      hdmi_mode->timing.v_sync_width;
-	drm_mode->vtotal = drm_mode->vsync_end + hdmi_mode->timing.v_back_porch;
-
-	drm_mode->clock = hdmi_mode->timing.pixel_clk_khz;
-
-	if (hdmi_mode->timing.h_active_low)
-		flags |= DRM_MODE_FLAG_NHSYNC;
-	else
-		flags |= DRM_MODE_FLAG_PHSYNC;
-
-	if (hdmi_mode->timing.v_active_low)
-		flags |= DRM_MODE_FLAG_NVSYNC;
-	else
-		flags |= DRM_MODE_FLAG_PVSYNC;
-
-	drm_mode->flags = flags;
-
-	drm_mode->type = 0x48;
-	drm_mode_set_name(drm_mode);
-}
-
 int hdmi_connector_set_info_blob(struct drm_connector *connector,
 		void *info, void *display, struct msm_mode_info *mode_info)
 {
@@ -116,6 +76,7 @@ int hdmi_connector_get_info(struct drm_connector *connector,
 			MSM_DISPLAY_CAP_EDID | MSM_DISPLAY_CAP_VID_MODE;
 	}
 	info->is_connected = display->connected;
+	info->curr_panel_mode = MSM_DISPLAY_VIDEO_MODE;
 	info->max_width = HDMI_DISPLAY_MAX_WIDTH;
 	info->max_height = HDMI_DISPLAY_MAX_HEIGHT;
 
@@ -153,26 +114,6 @@ enum drm_connector_status hdmi_connector_detect(struct drm_connector *conn,
 	conn->display_info.height_mm = info.height_mm;
 
 	return status;
-}
-
-int hdmi_connector_add_custom_mode(struct drm_connector *conn,
-		struct hdmi_display_mode *hdmi_mode)
-{
-	struct drm_display_mode *m, drm_mode;
-
-	memset(&drm_mode, 0x0, sizeof(drm_mode));
-	hdmi_convert_to_drm_mode(hdmi_mode, &drm_mode);
-	m = drm_mode_duplicate(conn->dev, &drm_mode);
-	if (!m) {
-		HDMI_ERR("failed to add mode %ux%u\n", drm_mode.hdisplay,
-				drm_mode.vdisplay);
-		return 0;
-	}
-	m->width_mm = conn->display_info.width_mm;
-	m->height_mm = conn->display_info.height_mm;
-	drm_mode_probed_add(conn, m);
-
-	return 1;
 }
 
 int hdmi_connector_atomic_check(struct drm_connector *connector,
@@ -213,7 +154,6 @@ int hdmi_connector_get_modes(struct drm_connector *connector,
 {
 	int rc = 0;
 	struct hdmi_display *hdmi;
-	struct hdmi_display_mode *hdmi_mode = NULL;
 	struct sde_connector *sde_conn;
 
 	if (!connector || !display)
@@ -227,28 +167,14 @@ int hdmi_connector_get_modes(struct drm_connector *connector,
 
 	hdmi = display;
 
-	hdmi_mode = kzalloc(sizeof(*hdmi_mode),  GFP_KERNEL);
-	if (!hdmi_mode)
-		return 0;
-
 	/* pluggable case assumes EDID is read when HPD */
 	if (hdmi->connected) {
-		/*
-		 * 1. for test request, rc = 1, and hdmi_mode will have test mode populated
-		 * 2. During normal operation, hdmi_mode will be untouched
-		 *    a. if mode query succeeds rc >= 0, valid modes will be added to connector
-		 *    b. if edid read failed, then connector mode list will be empty and rc <= 0
-		 */
-		rc = hdmi->get_modes(hdmi, sde_conn->drv_panel, hdmi_mode);
+		rc = hdmi->get_modes(hdmi, sde_conn->drv_panel);
 		if (!rc)
 			HDMI_WARN("failed to get HDMI sink modes, adding failsafe");
-		if (hdmi_mode->timing.pixel_clk_khz) /* valid HDMI mode */
-			rc = hdmi_connector_add_custom_mode(connector,
-							hdmi_mode);
 	} else {
 		HDMI_ERR("No sink connected\n");
 	}
-	kfree(hdmi_mode);
 
 	return rc;
 }
@@ -295,8 +221,7 @@ enum drm_mode_status hdmi_connector_mode_valid(struct drm_connector *connector,
 	if (hdmi_panel->mode_override &&
 			(mode->hdisplay != hdmi_panel->hdisplay ||
 			mode->vdisplay != hdmi_panel->vdisplay ||
-			vrefresh != hdmi_panel->vrefresh ||
-			mode->picture_aspect_ratio != hdmi_panel->aspect_ratio))
+			vrefresh != hdmi_panel->vrefresh))
 		return MODE_BAD;
 	else if (hdmi_panel->mode_override)
 		mode->type |= DRM_MODE_TYPE_PREFERRED;
@@ -317,7 +242,6 @@ int hdmi_connector_get_mode_info(struct drm_connector *connector,
 	struct msm_display_topology *topology;
 	struct sde_connector *sde_conn;
 	struct hdmi_panel *hdmi_panel;
-	struct hdmi_display_mode hdmi_mode;
 	struct hdmi_display *hdmi_disp = display;
 	struct msm_drm_private *priv;
 	struct msm_resource_caps_info avail_hdmi_res;
@@ -364,17 +288,6 @@ int hdmi_connector_get_mode_info(struct drm_connector *connector,
 	mode_info->vtotal = drm_mode->vtotal;
 
 	mode_info->pclk_factor = hdmi_panel->pclk_factor;
-
-	hdmi_disp->convert_to_hdmi_mode(hdmi_disp, hdmi_panel, drm_mode, &hdmi_mode);
-
-	if (hdmi_mode.timing.comp_info.enabled) {
-		memcpy(&mode_info->comp_info,
-			&hdmi_mode.timing.comp_info,
-			sizeof(mode_info->comp_info));
-
-		topology->num_enc = topology->num_lm;
-		topology->comp_type = mode_info->comp_info.comp_type;
-	}
 
 	return 0;
 }
@@ -527,14 +440,6 @@ static void hdmi_bridge_pre_enable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
-	/* By this point mode should have been validated through mode_fixup */
-	rc = hdmi->set_mode(hdmi, bridge->hdmi_panel, &bridge->hdmi_mode);
-	if (rc) {
-		HDMI_ERR("[%d] failed to perform a mode set, rc=%d\n",
-		       bridge->id, rc);
-		return;
-	}
-
 	rc = hdmi->prepare(hdmi, bridge->hdmi_panel);
 	if (rc) {
 		HDMI_ERR("[%d] HDMI display prepare failed, rc=%d\n",
@@ -550,10 +455,69 @@ static void hdmi_bridge_pre_enable(struct drm_bridge *drm_bridge)
 
 static void hdmi_bridge_enable(struct drm_bridge *drm_bridge)
 {
+	int rc = 0;
+	struct hdmi_bridge *bridge;
+	struct hdmi_display *hdmi;
+
+	if (!drm_bridge) {
+		HDMI_ERR("Invalid params\n");
+		return;
+	}
+
+	bridge = to_hdmi_bridge(drm_bridge);
+	if (!bridge->connector) {
+		HDMI_ERR("Invalid connector\n");
+		return;
+	}
+
+	if (!bridge->hdmi_panel) {
+		HDMI_ERR("Invalid hdmi_panel\n");
+		return;
+	}
+
+	hdmi = bridge->display;
+
+	rc = hdmi->post_enable(hdmi, bridge->hdmi_panel);
+	if (rc)
+		HDMI_ERR("[%d] HDMI display post enable failed, rc=%d\n",
+		       bridge->id, rc);
 }
 
 static void hdmi_bridge_disable(struct drm_bridge *drm_bridge)
 {
+	int rc = 0;
+	struct hdmi_bridge *bridge;
+	struct hdmi_display *hdmi;
+
+	if (!drm_bridge) {
+		HDMI_ERR("Invalid params\n");
+		return;
+	}
+
+	bridge = to_hdmi_bridge(drm_bridge);
+	if (!bridge->connector) {
+		HDMI_ERR("Invalid connector\n");
+		return;
+	}
+
+	if (!bridge->hdmi_panel) {
+		HDMI_ERR("Invalid hdmi_panel\n");
+		return;
+	}
+
+	hdmi = bridge->display;
+
+	if (!hdmi) {
+		HDMI_ERR("hdmi is null\n");
+		return;
+	}
+
+	sde_connector_helper_bridge_disable(bridge->connector);
+
+	rc = hdmi->pre_disable(hdmi, bridge->hdmi_panel);
+	if (rc)
+		HDMI_ERR("[%d] HDMI display pre disable failed, rc=%d\n",
+		       bridge->id, rc);
 }
 
 static void hdmi_bridge_post_disable(struct drm_bridge *drm_bridge)
@@ -601,6 +565,38 @@ static void hdmi_bridge_mode_set(struct drm_bridge *drm_bridge,
 				const struct drm_display_mode *mode,
 				const struct drm_display_mode *adjusted_mode)
 {
+	int rc = 0;
+	struct hdmi_bridge *bridge;
+	struct hdmi_display *hdmi;
+
+	if (!drm_bridge) {
+		HDMI_ERR("Invalid params\n");
+		return;
+	}
+
+	bridge = to_hdmi_bridge(drm_bridge);
+	if (!bridge->connector) {
+		HDMI_ERR("Invalid connector\n");
+		return;
+	}
+
+	if (!bridge->hdmi_panel) {
+		HDMI_ERR("Invalid hdmi_panel\n");
+		return;
+	}
+
+	hdmi = bridge->display;
+	DRM_DEBUG("mode set");
+
+	/* By this point mode should have been validated through mode_fixup */
+	rc = hdmi->set_mode(hdmi, bridge->hdmi_panel, mode);
+	if (rc)
+		HDMI_ERR("[%d] failed to perform a mode set, rc=%d\n",
+		       bridge->id, rc);
+
+	//FIXME: check what to do with adj mode
+	return;
+
 }
 
 static bool hdmi_bridge_mode_fixup(struct drm_bridge *drm_bridge,
@@ -608,7 +604,6 @@ static bool hdmi_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 				  struct drm_display_mode *adjusted_mode)
 {
 	bool ret = true;
-	struct hdmi_display_mode hdmi_mode;
 	struct hdmi_bridge *bridge;
 	struct hdmi_display *hdmi;
 
@@ -633,8 +628,7 @@ static bool hdmi_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 
 	hdmi = bridge->display;
 
-	hdmi->convert_to_hdmi_mode(hdmi, bridge->hdmi_panel, mode, &hdmi_mode);
-	hdmi_convert_to_drm_mode(&hdmi_mode, adjusted_mode);
+	//FIXME: copy mode to adj mode
 end:
 	return ret;
 }
