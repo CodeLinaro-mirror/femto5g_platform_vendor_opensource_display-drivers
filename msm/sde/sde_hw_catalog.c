@@ -6923,6 +6923,7 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		sde_cfg->hfi_cfg.perf_sys_cache_enable = SDE_PERF_SYS_CACHE_ENABLE;
 		sde_cfg->hfi_cfg.perf_max_core_clk_rate = SDE_PERF_MAX_CORE_CLK_RATE;
+		set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
 	}
 
 	INIT_LIST_HEAD(&sde_cfg->irq_offset_list);
