@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1870,10 +1870,17 @@ static int _sde_encoder_update_rsc_client(
 void sde_encoder_irq_control(struct drm_encoder *drm_enc, bool enable)
 {
 	struct sde_encoder_virt *sde_enc;
+	struct sde_kms *sde_kms = NULL;
 	int i;
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
+		return;
+	}
+
+	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
 		return;
 	}
 
@@ -1889,7 +1896,7 @@ void sde_encoder_irq_control(struct drm_encoder *drm_enc, bool enable)
 		if (phys && phys->ops.dynamic_irq_control)
 			phys->ops.dynamic_irq_control(phys, enable);
 	}
-	sde_kms_cpu_vote_for_irq(sde_encoder_get_kms(drm_enc), enable);
+	sde_kms_cpu_vote_for_irq(sde_kms, enable);
 
 }
 
@@ -3412,6 +3419,8 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	struct sde_connector *sde_conn;
 	struct sde_kms *sde_kms;
 	enum sde_intf_mode intf_mode;
+	struct drm_crtc *drm_crtc;
+	struct msm_drm_private *priv;
 	int ret, i = 0;
 
 	if (!drm_enc) {
@@ -3443,6 +3452,9 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		return;
 
 	intf_mode = sde_encoder_get_intf_mode(drm_enc);
+
+	drm_crtc = drm_enc->crtc;
+	priv = drm_crtc->dev->dev_private;
 
 	SDE_EVT32(DRMID(drm_enc));
 
@@ -3491,6 +3503,15 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		}
 		sde_encoder_resource_control(drm_enc,
 				SDE_ENC_RC_EVENT_PRE_STOP);
+	}
+
+	/*
+	 * wait for any pending vsync timestamp event to sf
+	 * to ensure vblank irq is disabled.
+	 */
+	if (drm_crtc && sde_enc->vblank_enabled) {
+		drm_crtc_vblank_off(drm_crtc);
+		kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
 	}
 
 	/*
