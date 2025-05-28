@@ -521,6 +521,7 @@ struct dsi_split_link_config {
  * @num_data_lanes:      Number of physical data lanes.
  * @bpp:                 Number of bits per pixel.
  * @bpp_switch_enabled:  Check if bpp switch is enabled without DSC.
+ * @dpu_dma_enabled:     Check if dpu dma mode is enabled.
  * @en_crc_check:        Enable CRC checks.
  * @en_ecc_check:        Enable ECC checks.
  * @te_mode:             Source for TE signalling.
@@ -558,6 +559,7 @@ struct dsi_host_common_cfg {
 	u8 num_data_lanes;
 	u8 bpp;
 	bool bpp_switch_enabled;
+	bool dpu_dma_enabled;
 	bool en_crc_check;
 	bool en_ecc_check;
 	enum dsi_te_mode te_mode;
