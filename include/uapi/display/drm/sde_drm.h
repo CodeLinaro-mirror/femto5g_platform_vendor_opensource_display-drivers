@@ -90,6 +90,13 @@ extern "C" {
 #define DRM_FORMAT_MOD_QCOM_LOSSY_2_1	fourcc_mod_code(QCOM, 0x200)
 
 /**
+ * @DRM_FORMAT_MOD_QCOM_DMA:       Refers to a DMA variant of the base format.
+ *                                  Implementation may be platform and
+ *                                  base-format specific.
+ */
+#define DRM_FORMAT_MOD_QCOM_DMA	fourcc_mod_code(QCOM, 0x400)
+
+/**
  * Blend operations for "blend_op" property
  *
  * @SDE_DRM_BLEND_OP_NOT_DEFINED:   No blend operation defined for the layer.

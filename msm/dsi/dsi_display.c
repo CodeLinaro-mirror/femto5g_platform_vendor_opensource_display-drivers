@@ -7196,7 +7196,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->disp_te_gpio = display->disp_te_gpio;
 	info->esd_rw_check = display->panel->esd_config.esd_enabled &&
 			display->panel->esd_config.status_mode == ESD_MODE_PANEL_RW;
-
+	info->dpu_dma_enabled = display->panel->host_config.dpu_dma_enabled;
 	switch (display->panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:
 		info->curr_panel_mode = MSM_DISPLAY_VIDEO_MODE;
