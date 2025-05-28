@@ -435,8 +435,11 @@ struct virtio_gpu_resp_event {
 		__le32 vsync_count;
 		__le32 commit_count;
 		__le32 hpd_count;
+		/* temporarily removed for backward compatibility */
+		/*
 		__le32 display_reset_status;
 		__le32 lutdma_vq_reset_status;
+		*/
 	}scanout[VIRTIO_GPU_MAX_SCANOUTS];
 	__le32 padding;
 };
