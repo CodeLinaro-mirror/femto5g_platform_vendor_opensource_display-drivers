@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -114,7 +114,7 @@ struct sde_rsc_client *sde_rsc_client_create(u32 rsc_index, char *client_name,
 		return ERR_PTR(-ENOMEM);
 
 	mutex_lock(&rsc->client_lock);
-	strlcpy(client->name, client_name, MAX_RSC_CLIENT_NAME_LEN);
+	strscpy(client->name, client_name, MAX_RSC_CLIENT_NAME_LEN);
 	client->current_state = SDE_RSC_IDLE_STATE;
 	client->rsc_index = rsc_index;
 	client->id = id;
@@ -1847,12 +1847,18 @@ rsc_alloc_fail:
 	return ret;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void sde_rsc_remove(struct platform_device *pdev)
+#else
 static int sde_rsc_remove(struct platform_device *pdev)
+#endif
 {
 	struct sde_rsc_priv *rsc = platform_get_drvdata(pdev);
 
 	sde_rsc_deinit(pdev, rsc);
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static int sde_rsc_rpmh_probe(struct platform_device *pdev)
@@ -1873,14 +1879,22 @@ static int sde_rsc_rpmh_probe(struct platform_device *pdev)
 	return 0;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+void sde_rsc_rpmh_remove(struct platform_device *pdev)
+#else
 static int sde_rsc_rpmh_remove(struct platform_device *pdev)
+#endif
 {
 	int i;
 
 	for (i = 0; i < MAX_RSC_COUNT; i++)
 		rpmh_dev[i] = NULL;
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+	return;
+#else
 	return 0;
+#endif
 }
 
 static const struct of_device_id dt_match[] = {

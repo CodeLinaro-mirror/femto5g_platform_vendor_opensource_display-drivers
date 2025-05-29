@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023, 2025, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include "dsi_pll.h"
@@ -19,61 +19,61 @@
 
 #define DSIPHY_CMN_LDO_CNTRL		0x004c
 
-#define PLL_IE_TRIM			0x0000
-#define PLL_IP_TRIM			0x0004
+#define PLL_IE_TRIM			0x0400
+#define PLL_IP_TRIM			0x0404
 
-#define PLL_IPTAT_TRIM			0x0010
+#define PLL_IPTAT_TRIM			0x0410
 
-#define PLL_CLKBUFLR_EN			0x001c
+#define PLL_CLKBUFLR_EN			0x041c
 
-#define PLL_SYSCLK_EN_RESET		0x0028
-#define PLL_RESETSM_CNTRL		0x002c
-#define PLL_RESETSM_CNTRL2		0x0030
-#define PLL_RESETSM_CNTRL3		0x0034
-#define PLL_RESETSM_CNTRL4		0x0038
-#define PLL_RESETSM_CNTRL5		0x003c
-#define PLL_KVCO_DIV_REF1		0x0040
-#define PLL_KVCO_DIV_REF2		0x0044
-#define PLL_KVCO_COUNT1			0x0048
-#define PLL_KVCO_COUNT2			0x004c
-#define PLL_VREF_CFG1			0x005c
+#define PLL_SYSCLK_EN_RESET		0x0428
+#define PLL_RESETSM_CNTRL		0x042c
+#define PLL_RESETSM_CNTRL2		0x0430
+#define PLL_RESETSM_CNTRL3		0x0434
+#define PLL_RESETSM_CNTRL4		0x0438
+#define PLL_RESETSM_CNTRL5		0x043c
+#define PLL_KVCO_DIV_REF1		0x0440
+#define PLL_KVCO_DIV_REF2		0x0444
+#define PLL_KVCO_COUNT1			0x0448
+#define PLL_KVCO_COUNT2			0x044c
+#define PLL_VREF_CFG1			0x045c
 
-#define PLL_KVCO_CODE			0x0058
+#define PLL_KVCO_CODE			0x0458
 
-#define PLL_VCO_DIV_REF1		0x006c
-#define PLL_VCO_DIV_REF2		0x0070
-#define PLL_VCO_COUNT1			0x0074
-#define PLL_VCO_COUNT2			0x0078
-#define PLL_PLLLOCK_CMP1		0x007c
-#define PLL_PLLLOCK_CMP2		0x0080
-#define PLL_PLLLOCK_CMP3		0x0084
-#define PLL_PLLLOCK_CMP_EN		0x0088
-#define PLL_PLL_VCO_TUNE		0x008C
-#define PLL_DEC_START			0x0090
-#define PLL_SSC_EN_CENTER		0x0094
-#define PLL_SSC_ADJ_PER1		0x0098
-#define PLL_SSC_ADJ_PER2		0x009c
-#define PLL_SSC_PER1			0x00a0
-#define PLL_SSC_PER2			0x00a4
-#define PLL_SSC_STEP_SIZE1		0x00a8
-#define PLL_SSC_STEP_SIZE2		0x00ac
-#define PLL_DIV_FRAC_START1		0x00b4
-#define PLL_DIV_FRAC_START2		0x00b8
-#define PLL_DIV_FRAC_START3		0x00bc
-#define PLL_TXCLK_EN			0x00c0
-#define PLL_PLL_CRCTRL			0x00c4
+#define PLL_VCO_DIV_REF1		0x046c
+#define PLL_VCO_DIV_REF2		0x0470
+#define PLL_VCO_COUNT1  		0x0474
+#define PLL_VCO_COUNT2		  0x0478
+#define PLL_PLLLOCK_CMP1		0x047c
+#define PLL_PLLLOCK_CMP2		0x0480
+#define PLL_PLLLOCK_CMP3		0x0484
+#define PLL_PLLLOCK_CMP_EN	      0x0488
+#define PLL_PLL_VCO_TUNE		0x048C
+#define PLL_DEC_START			0x0490
+#define PLL_SSC_EN_CENTER		0x0494
+#define PLL_SSC_ADJ_PER1		0x0498
+#define PLL_SSC_ADJ_PER2		0x049c
+#define PLL_SSC_PER1			0x04a0
+#define PLL_SSC_PER2			0x04a4
+#define PLL_SSC_STEP_SIZE1		0x04a8
+#define PLL_SSC_STEP_SIZE2		0x04ac
+#define PLL_DIV_FRAC_START1		0x04b4
+#define PLL_DIV_FRAC_START2		0x04b8
+#define PLL_DIV_FRAC_START3		0x04bc
+#define PLL_TXCLK_EN			0x04c0
+#define PLL_PLL_CRCTRL			0x04c4
 
-#define PLL_RESET_SM_READY_STATUS	0x00cc
+#define PLL_RESET_SM_READY_STATUS	0x04cc
 
-#define PLL_PLL_MISC1			0x00e8
+#define PLL_PLL_MISC1			0x04e8
 
-#define PLL_CP_SET_CUR			0x00f0
-#define PLL_PLL_ICPMSET			0x00f4
-#define PLL_PLL_ICPCSET			0x00f8
-#define PLL_PLL_ICP_SET			0x00fc
-#define PLL_PLL_LPF1			0x0100
-#define PLL_PLL_LPF2_POSTDIV		0x0104
-#define PLL_PLL_BANDGAP			0x0108
+#define PLL_CP_SET_CUR			0x04f0
+#define PLL_PLL_ICPMSET			0x04f4
+#define PLL_PLL_ICPCSET			0x04f8
+#define PLL_PLL_ICP_SET			0x04fc
+#define PLL_PLL_LPF1			0x0500
+#define PLL_PLL_LPF2_POSTDIV		0x0504
+#define PLL_PLL_BANDGAP			0x0508
 
 #define DSI_DYNAMIC_REFRESH_PLL_CTRL15		0x050
 #define DSI_DYNAMIC_REFRESH_PLL_CTRL19		0x060

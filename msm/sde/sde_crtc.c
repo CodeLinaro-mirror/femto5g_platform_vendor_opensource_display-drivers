@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -20,6 +20,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 #include <linux/sort.h>
 #include <linux/debugfs.h>
+#include <linux/vmalloc.h>
 #include <linux/ktime.h>
 #include <drm/sde_drm.h>
 #include <drm/drm_mode.h>
@@ -31,7 +32,6 @@
 #else
 #include "qcom_display_internal.h"
 #endif
-
 #include <linux/version.h>
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <qcom_sync_file.h>
@@ -614,7 +614,7 @@ static void sde_crtc_event_notify(struct drm_crtc *crtc, uint32_t type, void *pa
 
 	SDE_EVT32(DRMID(crtc), type, len, *data,
 			((uint64_t)payload) >> 32, ((uint64_t)payload) & 0xFFFFFFFF);
-	SDE_DEBUG("crtc:%d event(%lu) ptr(%pK) value(%lu) notified\n",
+	SDE_DEBUG("crtc:%d event(%u) ptr(%pK) value(%u) notified\n",
 			DRMID(crtc), type, payload, *data);
 }
 
@@ -645,23 +645,6 @@ static void sde_crtc_destroy(struct drm_crtc *crtc)
 	drm_crtc_cleanup(crtc);
 	mutex_destroy(&sde_crtc->crtc_lock);
 	kfree(sde_crtc);
-}
-
-static struct sde_connector_state *_sde_crtc_get_sde_connector_state(struct drm_crtc *crtc,
-		struct drm_atomic_state *state)
-{
-	struct drm_connector *conn;
-	struct drm_connector_state *conn_state;
-	int i;
-
-	for_each_new_connector_in_state(state, conn, conn_state, i) {
-		if (!conn_state || conn_state->crtc != crtc)
-			continue;
-
-		return to_sde_connector_state(conn_state);
-	}
-
-	return NULL;
 }
 
 struct msm_display_mode *sde_crtc_get_msm_mode(struct drm_crtc_state *c_state)
@@ -3824,7 +3807,7 @@ static struct sde_hw_ctl *_sde_crtc_get_hw_ctl(struct drm_crtc *drm_crtc)
 
 static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 {
-#ifdef CONFIG_QTI_HW_FENCE
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 	struct dma_fence *fence;
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
@@ -3861,7 +3844,7 @@ static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 				spec_fence = array->fences[i];
 
 				if (!IS_ERR_OR_NULL(spec_fence) &&
-					test_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT,
+					test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT,
 						&spec_fence->flags)) {
 					spec_hw_fence = true;
 				} else {
@@ -3877,7 +3860,7 @@ static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 			}
 			if (spec_hw_fence)
 				input_hw_fence = fence;
-		} else if (test_bit(MSM_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags)) {
+		} else if (test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags)) {
 			input_hw_fence = fence;
 
 			SDE_DEBUG("input hwfence ctx:%llu seqno:%llu f:0x%lx timeline:%s\n",
@@ -3892,7 +3875,7 @@ exit:
 	return input_hw_fence;
 #else
 	return NULL;
-#endif
+#endif /* CONFIG_QTI_HW_FENCE */
 }
 
 /**
@@ -5058,7 +5041,7 @@ static void _sde_crtc_reserve_resource(struct drm_crtc *crtc, struct drm_connect
 	/* mode clock = [(h * v * fps * 1.05) / (num_lm)] */
 	mode_clock_hz = mult_frac(crtc->mode.htotal * crtc->mode.vtotal * updated_fps, 105, 100);
 	mode_clock_hz = div_u64(mode_clock_hz, lm_count);
-	SDE_DEBUG("[%s] h=%d v=%d fps=%d lm=%d mode_clk=%u\n",
+	SDE_DEBUG("[%s] h=%d v=%d fps=%lld lm=%d mode_clk=%llu\n",
 			crtc->mode.name, crtc->mode.htotal, crtc->mode.vtotal,
 			updated_fps, lm_count, mode_clock_hz);
 
@@ -5231,7 +5214,7 @@ static void sde_crtc_mmrm_cb_notification(struct drm_crtc *crtc)
 	/* notify user space the reduced clk rate */
 	sde_crtc_event_notify(crtc, DRM_EVENT_MMRM_CB, &requested_clk, sizeof(unsigned long));
 
-	SDE_DEBUG("crtc[%d]: MMRM cb notified clk:%d\n",
+	SDE_DEBUG("crtc[%d]: MMRM cb notified clk:%lu\n",
 		crtc->base.id, requested_clk);
 }
 

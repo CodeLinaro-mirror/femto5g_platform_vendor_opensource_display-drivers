@@ -5,8 +5,6 @@
  * Copyright (c) 2022, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-#define DEBUG
-
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
@@ -550,7 +548,7 @@ static int lt9611_power_on(struct lt9611 *lt9611)
 
 	if (lt9611->power_on)
 		return 0;
-	
+
 	dev_dbg(lt9611->dev, "power on\n");
 
 	ret = regmap_multi_reg_write(lt9611->regmap, seq, ARRAY_SIZE(seq));
@@ -1304,8 +1302,6 @@ static int lt9611_probe(struct i2c_client *client)
 	ret = lt9611_regulator_enable(lt9611);
 	if (ret)
 		return ret;
-
-	lt9611_reset(lt9611);
 
 	usleep_range(15000, 20000);
 

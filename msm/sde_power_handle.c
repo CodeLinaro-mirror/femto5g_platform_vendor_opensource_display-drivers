@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d]: " fmt, __func__, __LINE__
@@ -139,7 +139,7 @@ static int sde_power_parse_dt_supply(struct platform_device *pdev,
 			goto error;
 		}
 
-		strlcpy(mp->vreg_config[i].vreg_name, st,
+		strscpy(mp->vreg_config[i].vreg_name, st,
 					sizeof(mp->vreg_config[i].vreg_name));
 
 		rc = of_property_read_u32(supply_node,
@@ -268,7 +268,7 @@ static int sde_power_parse_dt_clock(struct platform_device *pdev,
 	for (i = 0; i < num_clk; i++) {
 		of_property_read_string_index(pdev->dev.of_node, "clock-names",
 							i, &clock_name);
-		strlcpy(mp->clk_config[i].clk_name, clock_name,
+		strscpy(mp->clk_config[i].clk_name, clock_name,
 				sizeof(mp->clk_config[i].clk_name));
 
 		of_property_read_u32_index(pdev->dev.of_node, "clock-rate",
@@ -622,6 +622,7 @@ exit:
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_MSM_MMRM)
 static int sde_power_mmrm_callback(
 	struct mmrm_client_notifier_data *notifier_data)
 {
@@ -644,7 +645,7 @@ static int sde_power_mmrm_callback(
 
 	return ret;
 }
-
+#endif
 u64 sde_power_mmrm_get_requested_clk(struct sde_power_handle *phandle,
 	char *clock_name)
 {
@@ -709,6 +710,7 @@ int sde_power_resource_init(struct platform_device *pdev,
 		pr_err("clock get failed rc=%d\n", rc);
 		goto clkget_err;
 	}
+
 #if IS_ENABLED(CONFIG_MSM_MMRM)
 	rc = msm_dss_mmrm_register(&pdev->dev, mp,
 		(void*)sde_power_mmrm_callback, (void *)phandle,
@@ -979,7 +981,7 @@ int sde_power_clk_reserve_rate(struct sde_power_handle *phandle, char *clock_nam
 
 	mutex_lock(&phandle->phandle_lock);
 	phandle->mmrm_reserve.clk_rate = rate;
-	strlcpy(phandle->mmrm_reserve.clk_name, clock_name,
+	strscpy(phandle->mmrm_reserve.clk_name, clock_name,
 			sizeof(phandle->mmrm_reserve.clk_name));
 	mutex_unlock(&phandle->phandle_lock);
 
@@ -1026,7 +1028,7 @@ int sde_power_clk_set_rate(struct sde_power_handle *phandle, char *clock_name,
 
 			mp->clk_config[i].rate = rate;
 			mp->clk_config[i].mmrm.flags = flags;
-			pr_debug("set rate clk:%s rate:%lu flags:0x%x\n",
+			pr_debug("set rate clk:%s rate:%llu flags:0x%x\n",
 				clock_name, rate, flags);
 
 			SDE_ATRACE_BEGIN("sde_clk_set_rate");
@@ -1131,7 +1133,7 @@ struct sde_power_event *sde_power_handle_register_event(
 	event->event_type = event_type;
 	event->cb_fnc = cb_fnc;
 	event->usr = usr;
-	strlcpy(event->client_name, client_name, MAX_CLIENT_NAME_LEN);
+	strscpy(event->client_name, client_name, MAX_CLIENT_NAME_LEN);
 	event->active = true;
 
 	mutex_lock(&phandle->phandle_lock);
