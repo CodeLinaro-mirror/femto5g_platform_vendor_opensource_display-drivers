@@ -89,6 +89,13 @@ struct sde_hw_pipe;
 	(1UL << SDE_SSPP_SCALER_QSEED3) | \
 	(1UL << SDE_SSPP_SCALER_QSEED3LITE))
 
+/* Offsets from base register */
+#define SSPP_REC0_OFFSET_FROM_SSPP_CMN 0x1000
+#define SSPP_REC1_OFFSET_FROM_SSPP_CMN 0x3000
+
+/* Size of SSPP_REC */
+#define SSPP_REC_SIZE 0x17C
+
 /**
  * Component indices
  */
