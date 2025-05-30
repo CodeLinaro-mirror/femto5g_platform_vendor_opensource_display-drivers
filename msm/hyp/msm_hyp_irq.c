@@ -417,6 +417,25 @@ void msm_hyp_irq_uninstall(struct msm_kms *kms)
 	sde_core_irq_uninstall(sde_kms);
 }
 
+void msm_hyp_irq_destroy(struct msm_hyp_kms *hyp_kms, int dpu_id)
+{
+	struct msm_hyp_irq_controller *irq = NULL;
+	struct sde_hw_intr *intr = NULL;
+
+	if (hyp_kms)
+		irq = hyp_kms->hyp_irq[dpu_id];
+	if (irq)
+		intr = &irq->sde_irq;
+
+	if (intr) {
+		kfree(intr->sde_irq_tbl);
+		kfree(intr->sde_irq_map);
+		kfree(intr->cache_irq_mask);
+		kfree(intr->save_irq_status);
+		kfree(irq);
+	}
+}
+
 struct sde_hw_intr *msm_hyp_irq_init(struct msm_hyp_kms *hyp_kms, int dpu_id)
 {
 	struct msm_hyp_irq_controller *irq = NULL;

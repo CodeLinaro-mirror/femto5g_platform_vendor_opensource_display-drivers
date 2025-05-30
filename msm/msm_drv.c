@@ -994,8 +994,9 @@ static int msm_drm_component_init(struct device *dev)
 			DISP_DEV_ERR(dev, "failed to enable power resource %d\n", ret);
 			goto fail;
 		}
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+		ret = msm_irq_install(ddev, 0);
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 		ret = msm_irq_install(ddev, platform_get_irq(pdev, 0));
 #else
 		ret = drm_irq_install(ddev, platform_get_irq(pdev, 0));
