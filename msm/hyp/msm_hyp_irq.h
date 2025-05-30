@@ -128,6 +128,14 @@ irqreturn_t msm_hyp_irq(struct msm_kms *kms);
 void msm_hyp_irq_update(struct msm_kms *kms, bool enable);
 
 /**
+ * msm_hyp_irq_destroy - destroy hypervision virtual IRQ context
+ * @hyp_kms:   pointer to hyp_kms context
+ * @dpu_id:            DPU core id
+ * @return:            void
+ */
+void msm_hyp_irq_destroy(struct msm_hyp_kms *hyp_kms, int dpu_id);
+
+/**
  * msm_hyp_irq_init - initialize hypervision virtual IRQ context
  * @hyp_kms:	pointer to hyp_kms context
  * @dpu_id:		DPU core id

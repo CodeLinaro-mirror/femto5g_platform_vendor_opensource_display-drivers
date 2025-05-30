@@ -2603,7 +2603,11 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 		vm_ops->vm_deinit(sde_kms, vm_ops);
 
 	if (sde_kms->hw_intr)
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+		msm_hyp_irq_destroy(sde_kms->hyp_kms, DPUID(sde_kms));
+#else
 		sde_hw_intr_destroy(sde_kms->hw_intr);
+#endif
 	sde_kms->hw_intr = NULL;
 
 	if (sde_kms->power_event)
