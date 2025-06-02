@@ -5927,9 +5927,11 @@ static struct drm_crtc_state *sde_crtc_duplicate_state(struct drm_crtc *crtc)
 		return NULL;
 	}
 	/* duplicate value helper */
+	mutex_lock(&sde_crtc->property_info.property_lock);
 	msm_property_duplicate_state(&sde_crtc->property_info,
 			old_cstate, cstate,
 			&cstate->property_state, cstate->property_values);
+	mutex_unlock(&sde_crtc->property_info.property_lock);
 	sde_cp_duplicate_state_info(&old_cstate->base, &cstate->base);
 
 	/* duplicate base helper */
