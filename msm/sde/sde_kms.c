@@ -2647,6 +2647,161 @@ static void _sde_kms_drm_obj_destroy(struct sde_kms *sde_kms)
 	_sde_kms_release_displays(sde_kms);
 }
 
+int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
+{
+	int rc = 0;
+
+	if (!priv || !dev) {
+		SDE_ERROR("invalid arg priv: %pK dev: %pK", priv, dev);
+		return -EINVAL;
+	}
+
+	rc = hfi_msm_drv_hfi_init(priv);
+	if (rc) {
+		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
+		return rc;
+	}
+
+	rc = hfi_kms_reg_client(dev);
+	if (rc) {
+		SDE_ERROR("error with hfi_kms_reg_client rc: %d\n", rc);
+		kfree(priv->hfi_priv);
+	}
+
+	return rc;
+}
+
+static void sde_kms_set_hw_blks_disp_op(enum msm_disp_op disp_op, struct sde_kms *sde_kms)
+{
+	int itr;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid arguments\n");
+		return;
+	}
+
+	sde_kms->hw_intr->hw.disp_op = disp_op;
+	sde_kms->hw_mdp->hw.disp_op = disp_op;
+	sde_kms->hw_uidle->hw.disp_op = disp_op;
+	for (itr = 0; itr < ARRAY_SIZE(sde_kms->hw_vbif); itr++) {
+		if (sde_kms->hw_vbif[itr])
+			sde_kms->hw_vbif[itr]->hw.disp_op = disp_op;
+	}
+}
+
+static int _sde_kms_send_reg_dma_last_cmd_hfi(struct sde_kms *sde_kms)
+{
+	struct sde_reg_dma_buffer *last_cmd_buf = NULL;
+	int ret;
+	u32 dpu_idx = DPUID(sde_kms->dev);
+
+	ret = sde_reg_dma_get_last_cmd_buffer(dpu_idx, &last_cmd_buf);
+	if (ret) {
+		SDE_ERROR("Failed to get LUT DMA last command buffer, ret: %d\n", ret);
+		return -EINVAL;
+	}
+
+	ret = hfi_kms_set_reg_dma_buffer(sde_kms->hfi_kms, last_cmd_buf);
+	if (ret) {
+		SDE_ERROR("failed to set reg_dma_buffer to FW\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
+{
+	struct drm_device *dev;
+	struct drm_connector *conn;
+	struct sde_connector *c_conn;
+	struct drm_connector_list_iter conn_iter;
+	struct msm_drm_private *priv;
+	struct drm_plane *plane;
+	int ret = 0;
+	int wb_idx = 0;
+	int dsi_idx = 0;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	dev = sde_kms->dev;
+	priv = dev->dev_private;
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		struct sde_connector *sde_conn;
+
+		sde_conn = to_sde_connector(conn);
+
+		if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+			sde_connector_setup_obj_id(conn,
+				sde_kms->hfi_kms->catalog->wb_indices[wb_idx++]);
+		} else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+			sde_connector_setup_obj_id(conn,
+				sde_kms->hfi_kms->catalog->dsi_indices[dsi_idx++]);
+			c_conn = to_sde_connector(conn);
+			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
+			c_conn->ops.ctl_pre_transition(c_conn->display);
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	drm_for_each_plane(plane, dev) {
+		ret = sde_plane_post_init(plane);
+		if (ret) {
+			SDE_ERROR("plane post-init failed\n");
+			return -EPROBE_DEFER;
+		}
+	}
+
+	/* send LUT DMA last_cmd buffer */
+	ret = _sde_kms_send_reg_dma_last_cmd_hfi(sde_kms);
+	if (ret)
+		SDE_ERROR("failed to send last command LUT DMA buffer to HFI\n");
+
+	sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
+	sde_kms_set_hw_blks_disp_op(sde_kms->frame_trigger_state, sde_kms);
+	sde_rm_set_disp_op(&sde_kms->rm, sde_kms->frame_trigger_state);
+
+	return ret;
+}
+
+static int sde_kms_hfi_boot_init(struct sde_kms *sde_kms)
+{
+	struct drm_device *dev;
+	struct msm_drm_private *priv;
+	int ret = 0;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	dev = sde_kms->dev;
+	priv = dev->dev_private;
+
+	sde_kms->frame_trigger_state = MSM_DISP_OP_HFI;
+
+	ret = sde_kms_setup_hfi(priv, dev);
+	if (ret) {
+		SDE_ERROR("HFI setup failed\n");
+		return -EPROBE_DEFER;
+	}
+
+	ret = hfi_kms_get_catalog_data(sde_kms->hfi_kms);
+	if (ret) {
+		SDE_ERROR("HFI get catalog data failed\n");
+		return -EPROBE_DEFER;
+	}
+
+	sde_kms->hfi_session_start = false;
+
+	return ret;
+}
+
 static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 {
 	struct drm_device *dev;
@@ -3824,28 +3979,6 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 	return rc;
 }
 
-int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
-{
-	int rc = 0;
-
-	if (!priv || !dev) {
-		SDE_ERROR("invalid arg");
-		return -EINVAL;
-	}
-
-	rc = hfi_msm_drv_hfi_init(priv);
-	if (rc)
-		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
-
-	rc = hfi_kms_reg_client(dev);
-	if (rc) {
-		SDE_ERROR("error with hfi_kms_reg_client rc: %d\n", rc);
-		kfree(priv->hfi_priv);
-	}
-
-	return rc;
-}
-
 static void _sde_kms_idle_helper(struct sde_kms *sde_kms, struct drm_device *dev)
 {
 	int ret, crtc_id = 0;
@@ -3881,48 +4014,6 @@ static void _sde_kms_idle_helper(struct sde_kms *sde_kms, struct drm_device *dev
 	msm_atomic_flush_display_threads(priv);
 }
 
-static void sde_kms_set_hw_blks_disp_op(enum msm_disp_op disp_op, struct sde_kms *sde_kms)
-{
-	int itr;
-
-	if (!sde_kms) {
-		SDE_ERROR("invalid arguments\n");
-		return;
-	}
-
-	sde_kms->hw_intr->hw.disp_op = disp_op;
-	sde_kms->hw_mdp->hw.disp_op = disp_op;
-	sde_kms->hw_uidle->hw.disp_op = disp_op;
-	for (itr = 0; itr < ARRAY_SIZE(sde_kms->hw_vbif); itr++) {
-		if (sde_kms->hw_vbif[itr])
-			sde_kms->hw_vbif[itr]->hw.disp_op = disp_op;
-	}
-}
-
-static int _sde_kms_send_reg_dma_last_cmd_hfi(struct sde_kms *sde_kms)
-{
-	struct hfi_kms *hfi_kms;
-	struct sde_reg_dma_buffer *last_cmd_buf = NULL;
-	int ret;
-	u32 dpu_idx = DPUID(sde_kms->dev);
-
-	hfi_kms = to_hfi_kms(sde_kms);
-
-	ret = sde_reg_dma_get_last_cmd_buffer(dpu_idx, &last_cmd_buf);
-	if (ret) {
-		SDE_ERROR("Failed to get LUT DMA last command buffer, ret: %d\n", ret);
-		return -EINVAL;
-	}
-
-	ret = hfi_kms_set_reg_dma_buffer(hfi_kms, last_cmd_buf);
-	if (ret) {
-		SDE_ERROR("failed to set reg_dma_buffer to FW\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -3930,14 +4021,12 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 	struct drm_device *dev;
 	struct msm_drm_private *priv;
 	struct drm_crtc *crtc;
-	struct drm_plane *plane;
 	struct drm_crtc *cur_crtc = NULL;
 	struct drm_connector *conn;
 	struct drm_connector *cur_conn = NULL;
 	struct sde_connector *c_conn;
 	struct drm_crtc_state *crtc_state;
 	struct drm_connector_state *conn_state;
-	struct drm_connector_list_iter iter;
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	int i, ret;
 	u32 frame_trigger;
@@ -4015,45 +4104,17 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 		sde_kms->frame_trigger_state = MSM_DISP_OP_HFI;
 
 		if (sde_kms->hfi_session_start) {
-			int wb_idx = 0;
-			int dsi_idx = 0;
-			ret = sde_kms_setup_hfi(priv, dev);
+			ret = sde_kms_hfi_boot_init(sde_kms);
 			if (ret) {
-				SDE_ERROR("HFI setup failed\n");
-				return -EINVAL;
+				SDE_ERROR("hfi boot init failed: %d\n", ret);
+				return ret;
 			}
 
-			hfi_kms_send_trace_cfg(sde_kms->hfi_kms, HFI_TRUE);
-			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
-			hfi_kms_get_catalog_data(sde_kms->hfi_kms);
-			ret = sde_dbg_setup(sde_kms->dev->dev);
-			if (ret)
-				SDE_ERROR("error with debug setup ret: %d\n", ret);
-
-			drm_for_each_plane(plane, dev)
-				sde_plane_post_init(plane);
-
-			/* send LUT DMA last_cmd buffer */
-			ret = _sde_kms_send_reg_dma_last_cmd_hfi(sde_kms);
-			if (ret)
-				SDE_ERROR("failed to send last command LUT DMA buffer to HFI\n");
-
-			drm_connector_list_iter_begin(dev, &iter);
-			drm_for_each_connector_iter(conn, &iter) {
-				struct sde_connector *sde_conn;
-
-				sde_conn = to_sde_connector(conn);
-
-				if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
-					sde_connector_setup_obj_id(conn,
-						sde_kms->hfi_kms->catalog->wb_indices[wb_idx++]);
-				else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
-					sde_connector_setup_obj_id(conn,
-						sde_kms->hfi_kms->catalog->dsi_indices[dsi_idx++]);
+			ret = sde_kms_hfi_post_boot(sde_kms);
+			if (ret) {
+				SDE_ERROR("hfi post boot failed: %d\n", ret);
+				return ret;
 			}
-			drm_connector_list_iter_end(&iter);
-
-			sde_kms->hfi_session_start = false;
 		}
 
 		/* Make sure everything goes to idle */
@@ -6170,6 +6231,15 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		sde_kms->catalog = NULL;
 		goto power_error;
 	}
+
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = sde_kms_hfi_boot_init(sde_kms);
+		if (rc) {
+			SDE_ERROR("hfi boot init failed: %d\n", rc);
+			return rc;
+		}
+	}
+
 	sde_kms->core_rev = sde_kms->catalog->hw_rev;
 
 	pr_info("sde hardware revision:0x%x\n", sde_kms->core_rev);
@@ -6453,11 +6523,17 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		goto error;
 	}
 
-	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features))
+	if (IS_DISP_OP_HWIO(priv->disp_op) && test_bit(SDE_FEATURE_DISP_OP,
+			sde_kms->catalog->features))
 		sde_kms->hfi_session_start = true;
 
-	if (IS_DISP_OP_HFI(priv->disp_op))
-		sde_kms_set_hw_blks_disp_op(priv->disp_op, sde_kms);
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = sde_kms_hfi_post_boot(sde_kms);
+		if (rc) {
+			SDE_ERROR("hfi post boot failed: %d\n", rc);
+			return rc;
+		}
+	}
 
 	return 0;
 error:
