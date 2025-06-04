@@ -3422,40 +3422,6 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 	return rc;
 }
 
-static void sde_kms_trusted_release_resources(struct drm_crtc_state *new_cstate,
-		struct drm_crtc_state *old_cstate, struct sde_kms *sde_kms)
-{
-	struct sde_crtc_state *new_state = NULL;
-	struct msm_property_info *crtc_prop_info;
-	struct sde_crtc *sde_crtc = NULL;
-	enum sde_crtc_vm_req new_vm_req = VM_REQ_NONE;
-	bool vm_owns_hw;
-	int ret = 0;
-
-	if (!new_cstate || !old_cstate)
-		return;
-
-	sde_vm_lock(sde_kms);
-	vm_owns_hw = sde_vm_owns_hw(sde_kms);
-	sde_vm_unlock(sde_kms);
-
-	if (old_cstate->active && !new_cstate->active && vm_owns_hw) {
-		new_state = to_sde_crtc_state(new_cstate);
-		sde_crtc = to_sde_crtc(new_cstate->crtc);
-		new_vm_req = sde_crtc_get_property(new_state, CRTC_PROP_VM_REQ_STATE);
-
-		if (new_vm_req == VM_REQ_RELEASE)
-			return;
-
-		crtc_prop_info = &sde_crtc->property_info;
-		ret = msm_property_set_property(crtc_prop_info, &new_state->property_state,
-				CRTC_PROP_VM_REQ_STATE, VM_REQ_RELEASE);
-	}
-
-	SDE_EVT32(old_cstate->active, new_cstate->active, vm_owns_hw, ret);
-
-}
-
 static int sde_kms_check_vm_request(struct msm_kms *kms,
 				    struct drm_atomic_state *state)
 {
@@ -3466,14 +3432,13 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 	enum sde_crtc_vm_req old_vm_req = VM_REQ_NONE, new_vm_req = VM_REQ_NONE;
 	int i, rc = 0;
 	bool vm_req_active = false, prev_vm_req = false;
-	bool vm_owns_hw, in_trusted_vm;
+	bool vm_owns_hw;
 
 	if (!kms || !state)
 		return -EINVAL;
 
 	sde_kms = to_sde_kms(kms);
 	vm_ops = sde_vm_get_ops(sde_kms);
-	in_trusted_vm = sde_in_trusted_vm(sde_kms);
 	if (!vm_ops)
 		return 0;
 
@@ -3494,10 +3459,6 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 
 		if (!new_cstate->active && !old_cstate->active)
 			continue;
-
-		/*Suspend in TVM from lastclose*/
-		if (in_trusted_vm && !new_cstate->active)
-			sde_kms_trusted_release_resources(new_cstate, old_cstate, sde_kms);
 
 		new_state = to_sde_crtc_state(new_cstate);
 		new_vm_req = sde_crtc_get_property(new_state, CRTC_PROP_VM_REQ_STATE);
