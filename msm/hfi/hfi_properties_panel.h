@@ -592,6 +592,18 @@
 #define HFI_PROPERTY_PANEL_DPHY_TIMINGS                              0x00040027
 
 /*
+ * HFI_PROPERTY_PANEL_VSYNC_SOURCE - Entry to select vsync source from GPIO's/Watchdog timer.
+ *                                 This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_VSYNC_SOURCE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_VSYNC_SOURCE |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : one of the values from enum hfi_panel_vsync_source
+ */
+#define HFI_PROPERTY_PANEL_VSYNC_SOURCE                              0x00040028
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF

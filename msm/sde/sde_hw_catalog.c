@@ -6814,6 +6814,11 @@ static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *s
 		return rc;
 	}
 
+	if (sde_cfg->trusted_vm_env) {
+		sde_cfg->ssip_allowed = true;
+		return 0;
+	}
+
 	pdev = to_platform_device(dev->dev);
 	rc = sde_hw_parse_fuse_configuration(pdev, "ssip_config", &fuse);
 	if (rc) {

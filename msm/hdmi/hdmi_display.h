@@ -35,12 +35,11 @@ struct hdmi_display {
 	int (*disable)(struct hdmi_display *hdmi_display, void *panel);
 
 	int (*set_mode)(struct hdmi_display *hdmi_display, void *panel,
-					struct hdmi_display_mode *mode);
+					const struct drm_display_mode *mode);
 	enum drm_mode_status (*validate_mode)(struct hdmi_display *hdmi_display,
 						void *panel, struct drm_display_mode *mode,
 						const struct msm_resource_caps_info *avail_res);
-	int (*get_modes)(struct hdmi_display *hdmi_display, void *panel,
-					struct hdmi_display_mode *hdmi_mode);
+	int (*get_modes)(struct hdmi_display *hdmi_display, void *panel);
 	int (*prepare)(struct hdmi_display *hdmi_display, void *panel);
 	int (*unprepare)(struct hdmi_display *hdmi_display, void *panel);
 	int (*request_irq)(struct hdmi_display *hdmi_display);
@@ -53,9 +52,6 @@ struct hdmi_display {
 	int (*set_colorspace)(struct hdmi_display *hdmi_display, void *panel,
 				u32 colorspace);
 	int (*post_init)(struct hdmi_display *hdmi_display);
-	void (*convert_to_hdmi_mode)(struct hdmi_display *hdmi_display,
-			void *panel, const struct drm_display_mode *drm_mode,
-			struct hdmi_display_mode *hdmi_mode);
 	int (*update_pps)(struct hdmi_display *hdmi_display,
 			struct drm_connector *connector, char *pps_cmd);
 	int (*get_available_hdmi_resources)(struct hdmi_display *hdmi_display,

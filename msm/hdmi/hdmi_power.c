@@ -22,14 +22,12 @@ struct hdmi_power_private {
 	struct clk *pixel_clk_rcg;
 	struct clk *pixel_parent;
 	struct clk *xo_clk;
-	struct clk *link_clk_rcg;
-	struct clk *link_parent;
 
 	struct hdmi_power hdmi_power;
 
 	bool core_clks_on;
-	bool link_clks_on;
-	bool link_clks_parked;
+	bool pclk_clks_on;
+	bool pclk_clks_parked;
 };
 
 static int hdmi_power_regulator_init(struct hdmi_power_private *power)
@@ -232,30 +230,16 @@ static int hdmi_power_clk_init(struct hdmi_power_private *power, bool enable)
 
 		power->xo_clk = clk_get(dev, "rpmh_cxo_clk");
 		if (IS_ERR(power->xo_clk)) {
-			HDMI_ERR("Unable to get XO clk: %ld\n", PTR_ERR(power->xo_clk));
+			HDMI_ERR("Unable to get XO clk: %ld\n",
+					PTR_ERR(power->xo_clk));
 			rc = PTR_ERR(power->xo_clk);
 			power->xo_clk = NULL;
 			goto err_xo_clk;
 		}
 
-		power->link_clk_rcg = clk_get(dev, "link_clk_src");
-		if (IS_ERR(power->link_clk_rcg)) {
-			HDMI_ERR("Unable to get HDMI link clk RCG: %ld\n",
-					PTR_ERR(power->link_clk_rcg));
-			rc = PTR_ERR(power->link_clk_rcg);
-			power->link_clk_rcg = NULL;
-			goto err_link_clk_rcg;
-		}
+		/* default factor is 1 */
+		power->pll->clk_factor = 1;
 
-		/* If link_parent node is available, convert clk rates to HZ for byte2 ops */
-		power->pll->clk_factor = 1000;
-		power->link_parent = clk_get(dev, "link_parent");
-		if (IS_ERR(power->link_parent)) {
-			HDMI_WARN("Unable to get HDMI link parent: %ld\n",
-					PTR_ERR(power->link_parent));
-			power->link_parent = NULL;
-			power->pll->clk_factor = 1;
-		}
 	} else {
 		if (power->pixel_parent)
 			clk_put(power->pixel_parent);
@@ -263,18 +247,13 @@ static int hdmi_power_clk_init(struct hdmi_power_private *power, bool enable)
 		if (power->pixel_clk_rcg)
 			clk_put(power->pixel_clk_rcg);
 
-		if (power->link_parent)
-			clk_put(power->link_parent);
-
-		if (power->link_clk_rcg)
-			clk_put(power->link_clk_rcg);
+		if (power->xo_clk)
+			clk_put(power->xo_clk);
 
 		hdmi_power_clk_put(power);
 	}
 
 	return rc;
-err_link_clk_rcg:
-	clk_put(power->xo_clk);
 err_xo_clk:
 	clk_put(power->pixel_parent);
 err_pixel_parent:
@@ -296,9 +275,9 @@ static int hdmi_power_park_module(struct hdmi_power_private *power,
 	// TODO: check optimizing this func
 	mp = &power->parser->mp[module];
 
-	if (module == HDMI_LINK_PM) {
-		clk = power->link_clk_rcg;
-		parked = &power->link_clks_parked;
+	if (module == HDMI_PCLK_PM) {
+		clk = power->pixel_clk_rcg;
+		parked = &power->pclk_clks_parked;
 	} else {
 		goto exit;
 	}
@@ -374,9 +353,9 @@ static int hdmi_power_park_clocks(struct hdmi_power *hdmi_power)
 
 	power = container_of(hdmi_power, struct hdmi_power_private, hdmi_power);
 
-	rc = hdmi_power_park_module(power, HDMI_LINK_PM);
+	rc = hdmi_power_park_module(power, HDMI_PCLK_PM);
 	if (rc) {
-		HDMI_ERR("failed to park link clock. err=%d\n", rc);
+		HDMI_ERR("failed to park pixel clock. err=%d\n", rc);
 		goto error;
 	}
 
@@ -436,8 +415,8 @@ static bool hdmi_power_clk_status(struct hdmi_power *hdmi_power,
 	power = container_of(hdmi_power,
 				struct hdmi_power_private, hdmi_power);
 
-	if (pm_type == HDMI_LINK_PM)
-		return power->link_clks_on;
+	if (pm_type == HDMI_PCLK_PM)
+		return power->pclk_clks_on;
 	else if (pm_type == HDMI_CORE_PM)
 		return power->core_clks_on;
 	else
@@ -446,7 +425,7 @@ static bool hdmi_power_clk_status(struct hdmi_power *hdmi_power,
 
 
 static int hdmi_power_clk_enable(struct hdmi_power *hdmi_power,
-						enum hdmi_pm_type pm_type, bool enable)
+		enum hdmi_pm_type pm_type, bool enable)
 {
 	int rc = 0;
 	struct dss_module_power *mp;
@@ -458,7 +437,8 @@ static int hdmi_power_clk_enable(struct hdmi_power *hdmi_power,
 		goto error;
 	}
 
-	power = container_of(hdmi_power, struct hdmi_power_private, hdmi_power);
+	power = container_of(hdmi_power,
+			struct hdmi_power_private, hdmi_power);
 
 	mp = &power->parser->mp[pm_type];
 
@@ -470,12 +450,13 @@ static int hdmi_power_clk_enable(struct hdmi_power *hdmi_power,
 
 	if (enable) {
 		if (hdmi_power_clk_status(hdmi_power, pm_type)) {
-			HDMI_DEBUG("%s clks already enabled\n", hdmi_parser_pm_name(pm_type));
+			HDMI_DEBUG("%s clks already enabled\n",
+					hdmi_parser_pm_name(pm_type));
 			return 0;
 		}
 
 		if ((pm_type == HDMI_CTRL_PM) && (!power->core_clks_on)) {
-			HDMI_DEBUG("Need to enable core clks before link clks\n");
+			HDMI_DEBUG("Need to enable core clks before pclk\n");
 
 			rc = hdmi_power_clk_set_rate(power, pm_type, enable);
 			if (rc) {
@@ -487,10 +468,11 @@ static int hdmi_power_clk_enable(struct hdmi_power *hdmi_power,
 			}
 		}
 
-		if (pm_type == HDMI_LINK_PM && power->link_parent) {
-			rc = clk_set_parent(power->link_clk_rcg, power->link_parent);
+		if (pm_type == HDMI_PCLK_PM && power->pixel_parent) {
+			rc = clk_set_parent(power->pixel_clk_rcg,
+					power->pixel_parent);
 			if (rc) {
-				HDMI_ERR("failed to set link parent\n");
+				HDMI_ERR("failed to set pixel parent\n");
 				goto error;
 			}
 		}
@@ -506,11 +488,11 @@ static int hdmi_power_clk_enable(struct hdmi_power *hdmi_power,
 
 	if (pm_type == HDMI_CORE_PM)
 		power->core_clks_on = enable;
-	else if (pm_type == HDMI_LINK_PM)
-		power->link_clks_on = enable;
+	else if (pm_type == HDMI_PCLK_PM)
+		power->pclk_clks_on = enable;
 
-	if (pm_type == HDMI_LINK_PM)
-		power->link_clks_parked = false;
+	if (pm_type == HDMI_PCLK_PM)
+		power->pclk_clks_parked = false;
 
 	/*
 	 * This log is printed only when user connects or disconnects
@@ -518,69 +500,44 @@ static int hdmi_power_clk_enable(struct hdmi_power *hdmi_power,
 	 * usecase, it is not going to flood the kernel logs. Also,
 	 * helpful in debugging the NOC issues.
 	 */
-	HDMI_INFO("core:%s link:%s\n",
+	HDMI_INFO("core:%s pclk:%s\n",
 		power->core_clks_on ? "on" : "off",
-		power->link_clks_on ? "on" : "off");
+		power->pclk_clks_on ? "on" : "off");
 error:
 	return rc;
 }
 
-static int hdmi_power_request_gpios(struct hdmi_power_private *power)
+static bool hdmi_power_find_gpio(const char *gpio1, const char *gpio2)
 {
-	int rc = 0, i;
-	struct device *dev;
-	struct dss_module_power *mp;
-	static const char * const gpio_names[] = {
-		"ddc_clk_gpio",
-		"ddc_data_gpio",
-		"hpd_gpio",
-		"mux_en_gpio",
-		"mux_sel_gpio",
-		"mux_lpm_gpio",
-		"hpd5v_gpio",
-	};
+	return !!strnstr(gpio1, gpio2, strlen(gpio1));
+}
 
-	if (!power) {
-		HDMI_ERR("invalid power data\n");
-		return -EINVAL;
-	}
+static void hdmi_power_set_gpio(struct hdmi_power_private *power)
+{
+	int i;
+	struct dss_module_power *mp = &power->parser->mp[HDMI_CORE_PM];
+	struct dss_gpio *config = mp->gpio_config;
 
-	dev = &power->pdev->dev;
-	mp = &power->parser->mp[HDMI_CORE_PM];
+	for (i = 0; i <= HDMI_GPIO_MAX; i++) {
+		if (gpio_is_valid(config->gpio)) {
+			HDMI_DEBUG("gpio %s, value %d\n", config->gpio_name,
+				config->value);
 
-	for (i = 0; i < ARRAY_SIZE(gpio_names); i++) {
-		unsigned int gpio = mp->gpio_config[i].gpio;
-
-		if (gpio_is_valid(gpio)) {
-			rc = gpio_request(gpio, gpio_names[i]);
-			if (rc) {
-				HDMI_ERR("request %s gpio failed, rc=%d\n",
-					       gpio_names[i], rc);
-				goto error;
-			}
+			if (hdmi_power_find_gpio(config->gpio_name, "mux-en") ||
+			    hdmi_power_find_gpio(config->gpio_name, "mux-lpm") ||
+			    hdmi_power_find_gpio(config->gpio_name, "mux-sel"))
+				gpio_direction_output(config->gpio,
+					config->value);
 		}
+		config++;
 	}
 
-	return 0;
-error:
-	for (i = 0; i < ARRAY_SIZE(gpio_names); i++) {
-		unsigned int gpio = mp->gpio_config[i].gpio;
-
-		if (gpio_is_valid(gpio))
-			gpio_free(gpio);
-	}
-	return rc;
 }
 
-static void hdmi_power_set_gpio(struct hdmi_power_private *power, bool flip)
+static int hdmi_power_config_gpios(struct hdmi_power_private *power,
+				bool enable)
 {
-	// TODO: do we need this function
-}
-
-static int hdmi_power_config_gpios(struct hdmi_power_private *power, bool flip,
-									bool enable)
-{
-	int rc = 0, i;
+	int i;
 	struct dss_module_power *mp;
 	struct dss_gpio *config;
 
@@ -588,13 +545,7 @@ static int hdmi_power_config_gpios(struct hdmi_power_private *power, bool flip,
 	config = mp->gpio_config;
 
 	if (enable) {
-		rc = hdmi_power_request_gpios(power);
-		if (rc) {
-			HDMI_ERR("gpio request failed\n");
-			return rc;
-		}
-
-		hdmi_power_set_gpio(power, flip);
+		hdmi_power_set_gpio(power);
 	} else {
 		for (i = 0; i < mp->num_gpio; i++) {
 			if (gpio_is_valid(config[i].gpio)) {
@@ -656,7 +607,7 @@ static u64 hdmi_power_clk_get_rate(struct hdmi_power *hdmi_power,
 	return rate;
 }
 
-static int hdmi_power_init(struct hdmi_power *hdmi_power, bool flip)
+static int hdmi_power_init(struct hdmi_power *hdmi_power)
 {
 	int rc = 0;
 	struct hdmi_power_private *power;
@@ -667,7 +618,8 @@ static int hdmi_power_init(struct hdmi_power *hdmi_power, bool flip)
 		goto exit;
 	}
 
-	power = container_of(hdmi_power, struct hdmi_power_private, hdmi_power);
+	power = container_of(hdmi_power,
+			struct hdmi_power_private, hdmi_power);
 
 	rc = hdmi_power_regulator_ctrl(power, true);
 	if (rc) {
@@ -681,7 +633,7 @@ static int hdmi_power_init(struct hdmi_power *hdmi_power, bool flip)
 		goto err_pinctrl;
 	}
 
-	rc = hdmi_power_config_gpios(power, flip, true);
+	rc = hdmi_power_config_gpios(power, true);
 	if (rc) {
 		HDMI_ERR("failed to enable gpios\n");
 		goto err_gpio;
@@ -704,7 +656,7 @@ static int hdmi_power_init(struct hdmi_power *hdmi_power, bool flip)
 err_clk:
 	pm_runtime_put_sync(hdmi_power->drm_dev->dev);
 err_sde_power:
-	hdmi_power_config_gpios(power, flip, false);
+	hdmi_power_config_gpios(power, false);
 err_gpio:
 	hdmi_power_pinctrl_set(power, false);
 err_pinctrl:
@@ -715,7 +667,30 @@ exit:
 
 static int hdmi_power_deinit(struct hdmi_power *hdmi_power)
 {
-	//TODO: add deinit sequence
+	int rc = 0;
+	struct hdmi_power_private *power;
+
+	if (!hdmi_power) {
+		HDMI_ERR("invalid power data\n");
+		rc = -EINVAL;
+		goto exit;
+	}
+
+	power = container_of(hdmi_power,
+			struct hdmi_power_private, hdmi_power);
+
+	if (power->pclk_clks_on)
+		hdmi_power_clk_enable(hdmi_power, HDMI_PCLK_PM, false);
+
+	hdmi_power_clk_enable(hdmi_power, HDMI_CORE_PM, false);
+	pm_runtime_put_sync(hdmi_power->drm_dev->dev);
+
+	hdmi_power_config_gpios(power, false);
+	hdmi_power_pinctrl_set(power, false);
+	hdmi_power_regulator_ctrl(power, false);
+exit:
+	return rc;
+
 	return 0;
 }
 
