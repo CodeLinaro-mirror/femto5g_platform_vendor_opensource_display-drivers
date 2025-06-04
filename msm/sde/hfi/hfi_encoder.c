@@ -661,13 +661,12 @@ static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct 
 {
 	return 0;
 }
-
-static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
+static int hfi_enc_debugfs_misr_setup(struct sde_encoder *enc)
 {
 	return 0;
 }
 
-static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
+static int hfi_enc_debugfs_misr_read(struct sde_encoder *enc)
 {
 	return 0;
 }
