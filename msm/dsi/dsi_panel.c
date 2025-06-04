@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2892,9 +2892,11 @@ static int dsi_panel_post_pwr_ctrl(struct dsi_panel *panel, bool enable)
 		}
 	}
 
-	if (rc)
+	if (rc) {
 		DSI_WARN("[%s] wait for oled en status failed,enable=%d rc=%d\n",
 					panel->name, enable, rc);
+		return rc;
+	}
 
 	rc = dsi_pwr_enable_regulator(&panel->post_power_info, enable);
 	if (rc)
