@@ -103,6 +103,8 @@ static int sde_crtc_mdnie_art_event_handler(struct drm_crtc *crtc_drm,
 	bool en, struct sde_irq_callback *irq);
 static int sde_crtc_copr_status_event_handler(struct drm_crtc *crtc_drm,
 	bool en, struct sde_irq_callback *irq);
+static int sde_crtc_vm_reclaim_handler(struct drm_crtc *crtc_drm,
+	bool en, struct sde_irq_callback *irq);
 
 static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 		struct drm_crtc_state *state,
@@ -125,6 +127,7 @@ static struct sde_crtc_custom_events custom_events[] = {
 	{DRM_EVENT_FRAME_DONE, sde_crtc_framedone_event_handler},
 	{DRM_EVENT_MDNIE_ART, sde_crtc_mdnie_art_event_handler},
 	{DRM_EVENT_COPR, sde_crtc_copr_status_event_handler},
+	{DRM_EVENT_VM_RECLAIM, sde_crtc_vm_reclaim_handler},
 };
 
 /* default input fence timeout, in ms */
@@ -6739,6 +6742,8 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	struct drm_plane_state *plane_state;
 	struct sde_plane_state *pstate;
 	struct drm_display_mode *mode;
+	struct sde_crtc *sde_crtc;
+	struct sde_connector_state *c_conn_state;
 	int layout_split, lb_layout_split;
 	u32 crtc_width, crtc_height;
 	enum sde_layout layout;
@@ -6751,9 +6756,13 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
-	if (!sde_rm_topology_is_group(&kms->rm, crtc_state,
-			SDE_RM_TOPOLOGY_GROUP_QUADPIPE))
+	sde_crtc = to_sde_crtc(crtc);
+	c_conn_state = _sde_crtc_get_sde_connector_state(crtc, crtc_state->state);
+	if ((c_conn_state && !sde_rm_topology_is_group(&kms->rm, crtc_state,
+		SDE_RM_TOPOLOGY_GROUP_QUADPIPE)) ||
+		(!c_conn_state && sde_crtc->num_mixers != 4)) {
 		return 0;
+	}
 
 	mode = &crtc_state->adjusted_mode;
 	sde_crtc_get_resolution(crtc, crtc_state, mode, &crtc_width, &crtc_height);
@@ -9251,6 +9260,12 @@ static int sde_crtc_vm_release_handler(struct drm_crtc *crtc_drm,
 	return 0;
 }
 
+static int sde_crtc_vm_reclaim_handler(struct drm_crtc *crtc_drm,
+	bool en, struct sde_irq_callback *irq)
+{
+	return 0;
+}
+
 static int sde_crtc_frame_data_interrupt_handler(struct drm_crtc *crtc_drm,
 	bool en, struct sde_irq_callback *irq)
 {
@@ -9437,6 +9452,13 @@ void _sde_crtc_vm_release_notify(struct drm_crtc *crtc)
 	uint32_t val = 1;
 
 	sde_crtc_event_notify(crtc, DRM_EVENT_VM_RELEASE, &val, sizeof(uint32_t));
+}
+
+void _sde_crtc_vm_reclaim_notify(struct drm_crtc *crtc)
+{
+	uint32_t val = 1;
+
+	sde_crtc_event_notify(crtc, DRM_EVENT_VM_RECLAIM, &val, sizeof(val));
 }
 
 int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint32_t crtc_h,
