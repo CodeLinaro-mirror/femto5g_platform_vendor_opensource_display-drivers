@@ -4242,16 +4242,13 @@ static void sde_plane_atomic_update(struct drm_plane *plane,
 		ret = sde_plane_sspp_atomic_update(plane, old_state);
 		/* atomic_check should have ensured that this doesn't fail */
 		WARN_ON(ret < 0);
+	}
 
-		disp_op = sde_plane_get_disp_op(plane);
-		if (psde->hal_ops.atomic_update[disp_op]) {
-			ret = psde->hal_ops.atomic_update[disp_op](psde,
-					to_sde_plane_state(old_state));
-			if (ret) {
-				SDE_ERROR_PLANE(psde,
-					"failed in HAL op atomic update ret:%d\n", ret);
-			}
-		}
+	disp_op = sde_plane_get_disp_op(plane);
+	if (psde->hal_ops.atomic_update[disp_op]) {
+		ret = psde->hal_ops.atomic_update[disp_op](psde, to_sde_plane_state(old_state));
+		if (ret)
+			SDE_ERROR_PLANE(psde, "failed in HAL op atomic update ret:%d\n", ret);
 	}
 }
 
