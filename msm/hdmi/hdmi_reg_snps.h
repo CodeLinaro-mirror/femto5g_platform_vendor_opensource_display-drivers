@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _HDMI_REG_SNPS_H_
@@ -13,6 +13,11 @@
 #define HDMI_PHY_MISC_CONTROL_3		0x024
 #define	HDMI_PHY_SRAM_CONTROL_0		0x028
 #define	HDMI_PHY_SRAM_CONTROL_1		0x02c
+#define	HDMI_PHY_CR_ACCESS_CMD		0x038
+#define	HDMI_PHY_CR_ADDRESS_LSB		0x040
+#define	HDMI_PHY_CR_ADDRESS_MSB		0x044
+#define	HDMI_PHY_CR_WRDATA_LSB		0x048
+#define	HDMI_PHY_CR_WRDATA_MSB		0x04c
 
 #define HDMI_PHY_REXT_CONTROL_2		0x060
 #define HDMI_PHY_REFCLK_CONTROL_0	0x06c
@@ -69,5 +74,6 @@
 #define HDMI_PHY_QCSRAM_CONFIG_3	0x224
 #define HDMI_PHY_CLOCK_PATTERN_CONFIG_0	0x228
 
-#define HDMI_PHY_RX2_CONFIG_15		0x278
+#define	HDMI_PHY_RX1_CONFIG_15          0x270
+#define	HDMI_PHY_RX2_CONFIG_15		0x2B4
 #endif

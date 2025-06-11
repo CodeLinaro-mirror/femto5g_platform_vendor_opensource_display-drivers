@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _HDMI_PHY_H_
@@ -41,14 +41,16 @@ static inline bool hdmi_phy_read_poll_timeout(
 	u8 state;
 	void __iomem *base;
 	u32 const poll_sleep_us = 2000;
-	u32 const poll_timeout_us = 1000000;
+	//Wait for 3 sec until read doesn't done.
+	u32 const poll_timeout_us = 3000000;
 
 	base = phy->io_data->io.base;
 
 	if (readl_poll_timeout_atomic((base + reg), state,
 			((state & val) > 0),
 			poll_sleep_us, poll_timeout_us)) {
-		HDMI_ERR("poll timeout crossed, reg: 0x%x status=0x%x", reg, state);
+		HDMI_ERR("poll timeout crossed, reg: 0x%x status=0x%x", reg,
+				state);
 
 		return false;
 	}

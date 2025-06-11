@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -455,7 +455,7 @@ void sde_hw_reset_ubwc(struct sde_hw_mdp *mdp, struct sde_mdss_cfg *m)
 	}
 }
 
-static void sde_hw_intf_audio_select(struct sde_hw_mdp *mdp)
+static void sde_hw_intf_audio_select(struct sde_hw_mdp *mdp, int audio_core)
 {
 	struct sde_hw_blk_reg_map *c;
 
@@ -464,7 +464,7 @@ static void sde_hw_intf_audio_select(struct sde_hw_mdp *mdp)
 
 	c = &mdp->hw;
 
-	SDE_REG_WRITE(c, HDMI_DP_CORE_SELECT, 0x0);
+	SDE_REG_WRITE(c, HDMI_DP_CORE_SELECT, audio_core);
 }
 
 static void sde_hw_mdp_events(struct sde_hw_mdp *mdp, bool enable)

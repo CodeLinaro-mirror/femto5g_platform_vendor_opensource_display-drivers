@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -744,12 +744,13 @@ static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct 
 {
 	return 0;
 }
-static int hfi_enc_debugfs_misr_setup(struct sde_encoder *enc)
+
+static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 {
 	return 0;
 }
 
-static int hfi_enc_debugfs_misr_read(struct sde_encoder *enc)
+static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 {
 	return 0;
 }

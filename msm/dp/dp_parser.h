@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -251,6 +251,9 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @has_mst: MST feature enable status
  * @has_mst_sideband: MST sideband feature enable status
  * @gpio_aux_switch: presence GPIO AUX switch status
+ * @no_backlight_support: For some display type that no support backlight
+ * @ext_hpd_en: A boolean value indicates an external dp can support hotplug
+ * @is_edp: A boolean value indicates an edp interface
  * @dsc_feature_enable: DSC feature enable status
  * @fec_feature_enable: FEC feature enable status
  * @dsc_continuous_pps: PPS sent every frame by HW
@@ -296,6 +299,9 @@ struct dp_parser {
 	bool has_4ppc_enabled;
 	bool gpio_aux_switch;
 	u32 shallow_mode_retries;
+	bool no_backlight_support;
+	bool ext_hpd_en;
+	bool is_edp;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;
