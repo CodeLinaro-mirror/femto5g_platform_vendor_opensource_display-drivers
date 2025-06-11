@@ -432,8 +432,11 @@ static int virtio_connector_set_info_blob(struct drm_connector *connector,
         void *info, void *display, struct msm_mode_info *mode_info)
 {
 	struct msm_hyp_display *hyp_display = display;
+	struct virtio_connector_info_priv *priv = container_of(hyp_display->info,
+		struct virtio_connector_info_priv, base);
 
 	sde_kms_info_add_keystr(info, "display type", hyp_display->info->display_type);
+	sde_kms_info_add_keystr(info, "panel name", priv->panel_name);
 
 	return 0;
 }
