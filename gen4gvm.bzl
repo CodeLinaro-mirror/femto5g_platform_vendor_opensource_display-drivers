@@ -15,6 +15,7 @@ def define_gen4gvm():
             config_options = [
                 "CONFIG_DRM_MSM_HYP",
                 "CONFIG_DRM_MSM_HYP_WFD",
-                "CONFIG_DRM_MSM_CFG"
+                "CONFIG_DRM_MSM_CFG",
+                "CONFIG_DRM_MSM_HYP_VIRTIO"
             ],
         )

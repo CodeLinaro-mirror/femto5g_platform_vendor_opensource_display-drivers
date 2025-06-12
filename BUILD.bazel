@@ -38,6 +38,7 @@ ddk_headers(
       "msm-hyp/wfd/*.h",
       "msm-hyp/wfd/WF/*.h",
       "msm-hyp/wfd/KHR/*.h",
+      "msm-hyp/virtio/*h",
     ]),
     includes = ["msm-hyp", "msm-hyp/wfd", "msm-hyp/wfd/WF", "msm-hyp/wfd/KHR"]
 )

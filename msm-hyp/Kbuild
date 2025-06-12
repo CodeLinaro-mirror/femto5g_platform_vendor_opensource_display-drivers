@@ -2,6 +2,12 @@
 
 KDIR := $(TOP)/kernel_platform/msm-kernel
 
+ifeq ($(PLATFORM_VERSION), W Baklava 16)
+ifeq (y, $(findstring y, $(CONFIG_ARCH_QTI_VM)))
+	include $(DISPLAY_ROOT)/config/gvmdisp.conf
+	LINUXINCLUDE += -include $(DISPLAY_ROOT)/config/gvmdispconf.h
+endif
+else
 ifeq (y, $(findstring y, $(CONFIG_QTI_QUIN_GVM)))
 	include $(DISPLAY_ROOT)/config/gvmdisp.conf
 	LINUXINCLUDE += -include $(DISPLAY_ROOT)/config/gvmdispconf.h
@@ -11,6 +17,9 @@ ifeq (y, $(findstring y, $(CONFIG_ARCH_QTI_VM)))
 	include $(DISPLAY_ROOT)/config/hgygvmdisp.conf
 	LINUXINCLUDE += -include $(DISPLAY_ROOT)/config/hgygvmdispconf.h
 endif
+endif #Platform
+
+
 
 LINUX_INC +=    -Iinclude/linux \
         -Iinclude/linux/drm \
