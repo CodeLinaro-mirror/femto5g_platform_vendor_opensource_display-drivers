@@ -24,6 +24,8 @@
  * @kv_props:             Pointer to hfi util kv helper structure
  * @cmd_buf_worker:       kthread worker
  * @mode_valid:           Indicate whether mode is valid
+ * @tx_cmd_buf_dva:       DCP virtual address of the DCS cmd tx buffer
+ * @tx_cmd_buf_fill_level:Tracks fill level of the DCS cmd tx buffer
  */
 struct dsi_display_hfi {
 	struct hfi_adapter_t *hfi_adapter;
@@ -33,6 +35,8 @@ struct dsi_display_hfi {
 	struct kthread_worker cmd_buf_worker;
 
 	bool mode_valid;
+	unsigned long tx_cmd_buf_dva;
+	u32 tx_cmd_buf_fill_level;
 };
 
 /**
