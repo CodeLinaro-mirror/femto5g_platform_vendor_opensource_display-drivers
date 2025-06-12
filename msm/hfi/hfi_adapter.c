@@ -1028,7 +1028,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	int i = 0;
 	int rc = 0;
 
-	mutex_lock(&cmd_buf->pool->lock);
+	mutex_lock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 
 	/* Release chained buffers */
 	list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
@@ -1059,7 +1059,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 
 	if (rc) {
 		HFI_AD_ERROR("failed to release rx buffer(s)\n");
-		mutex_unlock(&cmd_buf->pool->lock);
+		mutex_unlock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 		return rc;
 	}
 
@@ -1067,7 +1067,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	atomic_set(&cmd_buf->pool->available, 1);
 	_hfi_clear_buffer(cmd_buf);
 
-	mutex_unlock(&cmd_buf->pool->lock);
+	mutex_unlock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 
 	return rc;
 }
