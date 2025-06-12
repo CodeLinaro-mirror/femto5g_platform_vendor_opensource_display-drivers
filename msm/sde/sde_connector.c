@@ -1520,7 +1520,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
 	struct msm_display_kickoff_params params;
-	struct dsi_display *display;
+	struct dsi_display *display = NULL;
 	enum msm_disp_op disp_op;
 	int rc;
 
@@ -1536,17 +1536,20 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		return -EINVAL;
 	}
 
-	display = _sde_connector_get_display(c_conn);
-	if (!display)
-		return 0;
 	/*
 	 * During pre kickoff DCS commands have to have an
 	 * asynchronous wait to avoid an unnecessary stall
 	 * in pre-kickoff. This flag must be reset at the
 	 * end of display pre-kickoff.
 	 */
-	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		display = _sde_connector_get_display(c_conn);
+		if (!display)
+			return 0;
+
+		/* Set queue_cmd_waits only for DSI connectors */
 		display->queue_cmd_waits = true;
+	}
 
 	rc = _sde_connector_update_dirty_properties(connector);
 	if (rc) {
@@ -1590,7 +1593,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	rc = c_conn->ops.pre_kickoff(connector, c_conn->display, &params);
 
 end:
-	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI && display)
 		display->queue_cmd_waits = false;
 
 	return rc;
