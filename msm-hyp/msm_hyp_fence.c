@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022,2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022,2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 #include <linux/sync_file.h>
 #include <linux/dma-fence.h>
+#include <linux/version.h>
 #include "msm_hyp_fence.h"
 #include "msm_drv_hyp.h"
 
@@ -227,8 +228,11 @@ struct msm_hyp_fence_context *msm_hyp_fence_init(const char *name)
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
 		return ERR_PTR(-ENOMEM);
-
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	strscpy(ctx->name, name, sizeof(ctx->name));
+#else
 	strlcpy(ctx->name, name, sizeof(ctx->name));
+#endif
 	kref_init(&ctx->kref);
 	ctx->context = dma_fence_context_alloc(1);
 

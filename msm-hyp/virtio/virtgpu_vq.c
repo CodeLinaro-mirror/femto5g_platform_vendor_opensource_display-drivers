@@ -1,14 +1,17 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 #include <linux/delay.h>
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <linux/spinlock.h>
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
 #include <linux/virtio_config.h>
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 #include <soc/qcom/boot_stats.h>
+#endif
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 
@@ -807,10 +810,10 @@ int virtio_gpu_cmd_event_control(struct virtio_kms *kms,
 {
 	struct virtio_gpu_event_control *cmd_p =
 			kzalloc(sizeof(struct virtio_gpu_event_control),
-				GFP_KERNEL);
+				GFP_ATOMIC);
 	struct virtio_gpu_ctrl_hdr *resp =
 		kzalloc(sizeof(struct virtio_gpu_ctrl_hdr),
-		       GFP_KERNEL);
+		       GFP_ATOMIC);
 
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
@@ -1734,7 +1737,7 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 		goto error;
 	}
 	pr_debug("virtio: cmd VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES" \
-			"<%d:%d> (0x%x)\n",
+			"<%d:%d> (0x%llx)\n",
 			scanout, plane_id, prop.mask);
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_SET_PLANE_PROPERTIES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);

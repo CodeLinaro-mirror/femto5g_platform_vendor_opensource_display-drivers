@@ -1,0 +1,52 @@
+load("//build/kernel/kleaf:kernel.bzl", "ddk_headers")
+
+package(
+    default_visibility = [
+      "//visibility:public"],
+)
+
+ddk_headers(
+    name = "linux_includes",
+    hdrs = glob([
+      "include/linux/*.h",
+    ]),
+    includes = ["include"]
+)
+
+ddk_headers(
+    name = "uapi_headers",
+    hdrs = glob([
+      "include/uapi/display/drm/*.h",
+      "include/uapi/display/hdcp/*.h",
+      "include/uapi/display/media/*.h",
+    ]),
+    includes = ["include/uapi/display"]
+)
+
+ddk_headers(
+    name = "msm_headers",
+    hdrs = glob([
+      "msm/*.h"
+    ]),
+    includes = ["msm"]
+)
+
+ddk_headers(
+    name = "msm_hyp_headers",
+    hdrs = glob([
+      "msm-hyp/*.h",
+      "msm-hyp/wfd/*.h",
+      "msm-hyp/wfd/WF/*.h",
+      "msm-hyp/wfd/KHR/*.h",
+      "msm-hyp/virtio/*h",
+    ]),
+    includes = ["msm-hyp", "msm-hyp/wfd", "msm-hyp/wfd/WF", "msm-hyp/wfd/KHR"]
+)
+
+ddk_headers(
+    name = "display_drivers_headers",
+    hdrs = [ ":linux_includes", ":uapi_headers", ":msm_headers", ":msm_hyp_headers"]
+)
+
+load(":gen4gvm.bzl", "define_gen4gvm")
+define_gen4gvm()

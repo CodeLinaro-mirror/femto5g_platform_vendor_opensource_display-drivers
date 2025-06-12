@@ -82,7 +82,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
 #include <linux/of_platform.h>
-#include <soc/qcom/boot_stats.h>
+#include <linux/version.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
@@ -101,6 +101,10 @@
 #define MAX_CONNECTORS              16
 #define MAX_CRTCS                   16
 #define HPD_STRING_SIZE             30
+
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+#define DRM_UNLOCKED 0
+#endif
 
 struct msm_hyp_commit {
 	struct drm_device *dev;
@@ -2081,12 +2085,6 @@ static struct drm_framebuffer *msm_hyp_framebuffer_create(
 			ret = -EINVAL;
 			goto out_unref;
 		}
-
-		ret = msm_hyp_shmem_sync_sg_for_device(bos[i]);
-		if (ret) {
-			DRM_ERROR("failed to do dumb buffer sync\n");
-			goto out_unref;
-		}
 	}
 
 	fb = msm_hyp_framebuffer_init(dev, mode_cmd, bos);
@@ -2265,7 +2263,8 @@ static void _msm_hyp_atomic_commit(struct drm_device *ddev,
 	struct drm_crtc_state *crtc_state;
 	struct msm_hyp_crtc_state *cstate;
 	struct msm_hyp_plane_state *pstate;
-	int i;
+	struct drm_gem_object *obj;
+	int i, j, ret;
 
 	HYP_ATRACE_BEGIN(__func__);
 
@@ -2275,6 +2274,27 @@ static void _msm_hyp_atomic_commit(struct drm_device *ddev,
 
 		cstate = to_msm_hyp_crtc_state(crtc->state);
 		drm_atomic_crtc_for_each_plane(plane, crtc) {
+			/*
+			 * Based on DMA API guide, if same streaming DMA region would be used
+			 * multiple times, and the data would be touched in between the DMA
+			 * transfers, then the buffer needs to be synced properly in order for
+			 * the CPU and device to see the most up-to-date and correct copy of
+			 * the DMA buffer.
+			 * Currently the sync logic would only work for DRM dumb buffers,
+			 * since mandatory syncing for dma buffer would cost 0.35~0.45 ms each
+			 * commit, which would be a huge impact.
+			 * KPI impact:
+			 * For dma buffers (not to sync), each commit costs 0.2~0.3 us
+			 * additionally;
+			 * For dumb buffers (to sync), each commit costs 0.25~0.35 ms
+			 * additionally.
+			 */
+			for (j = 0; j < plane->state->fb->format->num_planes; ++j) {
+				obj = drm_gem_fb_get_obj(plane->state->fb, j);
+				ret = msm_hyp_shmem_sync_sg_for_device(obj);
+				if (ret)
+					DRM_ERROR("failed to do dumb buffer sync\n");
+			}
 			pstate = to_msm_hyp_plane_state(plane->state);
 
 			msm_hyp_sync_wait(pstate->input_fence,
@@ -2330,7 +2350,7 @@ static void _msm_hyp_complete_commit(struct msm_hyp_commit *c)
 	HYP_ATRACE_BEGIN("Input_Fence_WAIT");
 
 	if (first_frame) {
-		place_marker("kernel_fe: First commit start");
+		pr_info("kernel_fe: First commit start\n");
 		first_frame = false;
 	}
 
@@ -2538,10 +2558,6 @@ static int msm_hyp_open(struct drm_device *dev, struct drm_file *file)
 	return 0;
 }
 
-static void msm_hyp_postclose(struct drm_device *dev, struct drm_file *file)
-{
-}
-
 static void msm_hyp_lastclose(struct drm_device *dev)
 {
 	struct msm_hyp_drm_private *priv = dev->dev_private;
@@ -2550,6 +2566,14 @@ static void msm_hyp_lastclose(struct drm_device *dev)
 	ret = drm_client_modeset_commit_locked(&priv->client);
 	if (ret)
 		DRM_ERROR("client modeset commit failed: %d\n", ret);
+}
+
+static void msm_hyp_postclose(struct drm_device *dev, struct drm_file *file)
+{
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	if (atomic_read(&dev->open_count) == 1)
+		msm_hyp_lastclose(dev);
+#endif
 }
 
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc)
@@ -2706,7 +2730,9 @@ static struct drm_driver msm_hyp_driver = {
 				DRIVER_MODESET,
 	.open               = msm_hyp_open,
 	.postclose          = msm_hyp_postclose,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.lastclose          = msm_hyp_lastclose,
+#endif
 	DRM_GEM_SHMEM_DRIVER_OPS,
 	.ioctls             = msm_hyp_ioctls,
 	.num_ioctls         = ARRAY_SIZE(msm_hyp_ioctls),
@@ -2735,7 +2761,11 @@ static int msm_hyp_bind(struct device *dev)
 	ret = of_property_read_string(pdev->dev.of_node,
 			"qcom,dev-name", &dev_name);
 	if (ret == 0) {
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+		strscpy(priv->dev_name_from_dt, dev_name, DRM_DRI_NAME_SIZE);
+#else
 		strlcpy(priv->dev_name_from_dt, dev_name, DRM_DRI_NAME_SIZE);
+#endif
 		priv->driver.name = priv->dev_name_from_dt;
 	}
 
@@ -2823,14 +2853,25 @@ static int msm_hyp_pdev_probe(struct platform_device *pdev)
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *node;
 	unsigned int i;
-	int ret;
+	int ret, len = 0;
+	const char *transport;
 
-	for (i = 0; ; i++) {
-		node = of_parse_phandle(np, "qcom,kms", i);
-		if (!node)
-			break;
+	transport = of_get_property(np, "qcom,transport", &len);
+	if (len > 0 && transport != NULL) {
+		pr_info("transport is %s\n", transport);
+		node = of_find_node_by_name(np, transport);
+		if (node == NULL)
+			pr_err("failed to find %s node by name\n", transport);
 
 		component_match_add(&pdev->dev, &match, compare_of, node);
+	} else {
+		for (i = 0; ; i++) {
+			node = of_parse_phandle(np, "qcom,kms", i);
+			if (!node)
+				break;
+
+			component_match_add(&pdev->dev, &match, compare_of, node);
+		}
 	}
 
 	if (!match)
@@ -2840,7 +2881,7 @@ static int msm_hyp_pdev_probe(struct platform_device *pdev)
 	if (ret)
 		goto fail;
 
-	place_marker("kernel_fe: msm_hyp probe ready");
+	pr_info("kernel_fe: msm_hyp probe ready\n");
 
 	return 0;
 
@@ -2849,12 +2890,18 @@ fail:
 	return ret;
 }
 
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+static void msm_hyp_pdev_remove(struct platform_device *pdev)
+#else
 static int msm_hyp_pdev_remove(struct platform_device *pdev)
+#endif
 {
 	component_master_del(&pdev->dev, &msm_hyp_ops);
 	of_platform_depopulate(&pdev->dev);
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	return 0;
+ #endif
 }
 
 static const struct platform_device_id msm_id[] = {

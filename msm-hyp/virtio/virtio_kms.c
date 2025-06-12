@@ -5,7 +5,10 @@
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
 #include <linux/virtio_config.h>
+#include <linux/version.h>
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 #include <soc/qcom/boot_stats.h>
+#endif
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
 
@@ -1383,7 +1386,7 @@ static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
 			return -ENOMEM;
 		}
 
-		pr_debug("virtio set crtc limit max_mdp_clk: %u\n", priv->base.max_mdp_clk);
+		pr_debug("virtio set crtc limit max_mdp_clk: %llu\n", priv->base.max_mdp_clk);
 
 		//TODO these attributes need be set as kms->device_info which got from host
 		priv->base.qseed_type = "qseed3";
@@ -1496,7 +1499,7 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	pr_debug("virtio : create: FB ID: %d (%pK)\n", fb->base.base.id, fb);
 
 	if (fb_priv->created) {
-		pr_debug("virtio : fb already created shmem_id %d\n", mem->shmem_id);
+		pr_debug("virtio : fb already created shmem_id %llu\n", mem->shmem_id);
 		return 0;
 	}
 
@@ -1516,9 +1519,13 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 			get_dma_buf(dma_bufs[idx]);
 		} else {
 			dma_bufs[idx] = drm_gem_prime_export(fb->base.obj[idx], 0);
-			if (IS_ERR(dma_bufs[idx]))
+			if (IS_ERR(dma_bufs[idx])) {
 				pr_err("export dma_buf from bo failed\n");
-			return PTR_ERR(dma_bufs[idx]);
+				return PTR_ERR(dma_bufs[idx]);
+			} else {
+				fb->base.obj[idx]->dma_buf = dma_bufs[idx];
+				get_dma_buf(dma_bufs[idx]);
+			}
 		}
 	}
 
@@ -1547,7 +1554,7 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 	mem->shmem_id = export_id;
 
 	mutex_unlock(&fb_priv->kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
-	pr_debug("virtio :framebuffer habmm_export done %d\n",
+	pr_debug("virtio :framebuffer habmm_export done %llu\n",
 		mem->shmem_id);
 	for (idx = 0; idx < num_planes; idx++)
 		dma_buf_put(dma_bufs[idx]);
@@ -1615,7 +1622,7 @@ static void virtio_kms_destroy_framebuffer(struct drm_framebuffer *framebuffer)
 	client_id = fb_priv->kms->client_id;
 	mem = &fb_priv->mem;
 	handle = fb_priv->kms->channel[client_id].hab_socket[CHANNEL_CMD];
-	pr_debug("virtio : framebuffer destroy FB ID: %d (%pK) created %d shmem_id%d\n",
+	pr_debug("virtio : framebuffer destroy FB ID: %d (%pK) created %d shmem_id%llu\n",
 			fb->base.base.id, fb,
 			fb_priv->created, mem->shmem_id);
 
@@ -2186,7 +2193,11 @@ static int virtio_kms_probe(struct platform_device *pdev)
         return 0;
 }
 
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+static void virtio_kms_remove(struct platform_device *pdev)
+#else
 static int virtio_kms_remove(struct platform_device *pdev)
+#endif
 {
 	//TODO: implement remove
 	int ret;
@@ -2196,7 +2207,9 @@ static int virtio_kms_remove(struct platform_device *pdev)
 	if (ret) {
 		pr_err("deinit failed \n");
 	}
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static const struct platform_device_id virtio_kms_id[] = {
