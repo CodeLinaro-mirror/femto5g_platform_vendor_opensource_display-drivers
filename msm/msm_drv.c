@@ -1097,6 +1097,7 @@ static int msm_drm_component_init(struct device *dev)
 		priv->fbdev = msm_fbdev_init(ddev);
 #endif /* CONFIG_DRM_FBDEV_EMULATION */
 
+#if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
 	/* create drm client only when fbdev is not supported */
 	if (!priv->fbdev) {
 		ret = drm_client_init(ddev, &kms->client, "kms_client", NULL);
@@ -1108,7 +1109,7 @@ static int msm_drm_component_init(struct device *dev)
 
 		drm_client_register(&kms->client);
 	}
-
+#endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	ret = sde_dbg_debugfs_register(dev);
 	if (ret) {
 		DISP_DEV_ERR(dev, "failed to reg sde dbg debugfs: %d\n", ret);
@@ -1270,10 +1271,12 @@ static void msm_lastclose(struct drm_device *dev)
 		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
 		if (rc)
 			DRM_ERROR("restore FBDEV mode failed: %d\n", rc);
+#if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
 	} else if (kms && kms->client.dev) {
 		rc = drm_client_modeset_commit_locked(&kms->client);
 		if (rc)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
+#endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	}
 
 	/* wait again, before kms driver does it's lastclose commit */
