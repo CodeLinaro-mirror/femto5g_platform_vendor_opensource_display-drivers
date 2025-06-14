@@ -599,6 +599,64 @@ static int get_mdp_ver(struct platform_device *pdev)
 	return KMS_MDP4;
 }
 
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+/**
+ * msm_check_device_iommu_mapped - Check if a device is mapped to an IOMMU
+ * @dev: Pointer to the device to check
+ * @data: Pointer to a boolean flag that is set to true if an IOMMU is mapped
+ *
+ * This function is used as a callback for iterating over devices on a bus.
+ * It checks if the given device is mapped to an IOMMU using the
+ * device_iommu_mapped() function.
+ * If an IOMMU is mapped, it sets the boolean flag pointed to by
+ * @data to true and stops the iteration.
+ * Otherwise, it continues the iteration.
+ *
+ * Return: 1 if an IOMMU is mapped for the device (stops iteration),
+ * 0 otherwise (continues iteration).
+ */
+int msm_check_device_iommu_mapped(struct device *dev, void *data)
+{
+	if (!dev || !data) {
+		pr_err("msm check device iommu_mapped invalid input [%s] is null\n",
+				!dev ? "'dev'" : "'data'");
+		return -EINVAL;
+	}
+
+	if (device_iommu_mapped(dev)) {
+		*(bool *)data = true;
+		return 1; /* Stop iteration as we found a mapped device */
+	}
+	return 0; /* Continue iteration */
+}
+
+bool msm_iommu_present_on_bus(const struct bus_type *bus)
+{
+	bool iommu_present = false;
+
+	bus_for_each_dev(bus, NULL, &iommu_present, msm_check_device_iommu_mapped);
+	return iommu_present;
+}
+#endif /* KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE */
+
+bool mdss_iommu_present(struct drm_device *dev)
+{
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+	struct msm_drm_private *priv = dev->dev_private;
+
+	if (!priv)
+		return false;
+
+	if (priv->iommu_status == MSM_IOMMU_UNKNOWN)
+		priv->iommu_status = msm_iommu_present_on_bus(&platform_bus_type) ?
+			MSM_IOMMU_PRESENT : MSM_IOMMU_NOT_PRESENT;
+
+	return (priv->iommu_status == MSM_IOMMU_PRESENT);
+#else
+	return(iommu_present(&platform_bus_type));
+#endif /* KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE */
+}
+
 static int msm_init_vram(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
@@ -637,7 +695,7 @@ static int msm_init_vram(struct drm_device *dev)
 		 * Grab the entire CMA chunk carved out in early startup in
 		 * mach-msm:
 		 */
-	} else if (!iommu_present(&platform_bus_type)) {
+	} else if (!mdss_iommu_present(dev)) {
 		u32 vram_size;
 
 		ret = of_property_read_u32(dev->dev->of_node,
@@ -2158,10 +2216,17 @@ static int add_components_mdp(struct device *mdp_dev,
 	return 0;
 }
 
+#if (KERNEL_VERSION(6, 14, 0) > LINUX_VERSION_CODE)
 static int compare_name_mdp(struct device *dev, void *data)
 {
 	return (strnstr(dev_name(dev), "mdp", strlen("mdp")) != NULL);
 }
+#else
+static int compare_name_mdp(struct device *dev, const void *data)
+{
+	return (strnstr(dev_name(dev), "mdp", strlen("mdp")) != NULL);
+}
+#endif
 
 static int add_display_components(struct device *dev,
 				  struct component_match **matchptr)
@@ -2291,7 +2356,7 @@ msm_gem_smmu_address_space_get(struct drm_device *dev,
 	const struct msm_kms_funcs *funcs;
 	struct msm_gem_address_space *aspace;
 
-	if (!iommu_present(&platform_bus_type))
+	if (!mdss_iommu_present(dev))
 		return ERR_PTR(-ENODEV);
 
 	if ((!dev) || (!dev->dev_private))

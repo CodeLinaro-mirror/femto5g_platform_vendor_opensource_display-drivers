@@ -479,6 +479,15 @@ enum msm_event_wait {
 };
 
 /**
+ * enum msm_iommu_status - Status of iommu
+ */
+enum msm_iommu_status {
+	MSM_IOMMU_UNKNOWN = 0,
+	MSM_IOMMU_PRESENT,
+	MSM_IOMMU_NOT_PRESENT,
+};
+
+/**
  * struct msm_roi_alignment - region of interest alignment restrictions
  * @xstart_pix_align: left x offset alignment restriction
  * @width_pix_align: width alignment restriction
@@ -1335,6 +1344,8 @@ struct msm_drm_private {
 	struct mutex fence_error_client_lock;
 	struct list_head fence_error_client_list;
 
+	enum msm_iommu_status iommu_status;
+
 	/* list of component registered for notification */
 	struct blocking_notifier_head component_notifier_list;
 
@@ -1865,5 +1876,32 @@ int msm_drm_unregister_component(struct drm_device *dev, struct notifier_block *
  * @event: defined in msm_component_event
  */
 int msm_drm_notify_components(struct drm_device *dev, enum msm_component_event event);
+
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+/**
+ * msm_iommu_present_on_bus - Check if any device on a bus is mapped to an IOMMU
+ * @bus: Pointer to the bus to check
+ *
+ * This function iterates over all devices on the specified bus
+ * If any device is mapped to an IOMMU,
+ * the function sets the iommu_present flag to true.
+ *
+ * Return: true if any device on the bus is mapped to an IOMMU, false otherwise.
+ */
+bool msm_iommu_present_on_bus(const struct bus_type *bus);
+#endif /* KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE */
+
+/**
+ * mdss_iommu_present - Check if IOMMU is present for a DRM device
+ * @dev: Pointer to the DRM device to check
+ *
+ * This function checks whether the IOMMU is present for the given DRM device.
+ * It first verifies the kernel version and then performs the necessary checks
+ * on the device's private data and KMS initialization status.
+ * If the IOMMU presence is not already determined, it sets the iommu_present flag.
+ *
+ * Return: true if the IOMMU is present, false otherwise.
+ */
+bool mdss_iommu_present(struct drm_device *dev);
 
 #endif /* __MSM_DRV_H__ */
