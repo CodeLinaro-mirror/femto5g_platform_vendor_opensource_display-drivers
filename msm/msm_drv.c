@@ -1983,7 +1983,9 @@ static struct drm_driver msm_driver = {
 	.fops               = &fops,
 	.name               = "msm_drm",
 	.desc               = "MSM Snapdragon DRM",
+#if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
 	.date               = "20130625",
+#endif
 	.major              = MSM_VERSION_MAJOR,
 	.minor              = MSM_VERSION_MINOR,
 	.patchlevel         = MSM_VERSION_PATCHLEVEL,
