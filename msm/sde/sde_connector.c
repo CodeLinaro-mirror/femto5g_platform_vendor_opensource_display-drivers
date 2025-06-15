@@ -2097,9 +2097,11 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 	}
 
 	/* duplicate value helper */
+	mutex_lock(&c_conn->property_info.property_lock);
 	msm_property_duplicate_state(&c_conn->property_info,
 			c_oldstate, c_state,
 			&c_state->property_state, c_state->property_values);
+	mutex_unlock(&c_conn->property_info.property_lock);
 
 	__drm_atomic_helper_connector_duplicate_state(connector,
 			&c_state->base);

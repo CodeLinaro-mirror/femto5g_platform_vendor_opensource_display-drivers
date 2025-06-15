@@ -5494,8 +5494,10 @@ sde_plane_duplicate_state(struct drm_plane *plane)
 	SDE_DEBUG_PLANE(psde, "\n");
 
 	/* duplicate value helper */
+	mutex_lock(&psde->property_info.property_lock);
 	msm_property_duplicate_state(&psde->property_info, old_state, pstate,
 			&pstate->property_state, pstate->property_values);
+	mutex_unlock(&psde->property_info.property_lock);
 
 	/* clear out any input fence */
 	pstate->input_fence = 0;
