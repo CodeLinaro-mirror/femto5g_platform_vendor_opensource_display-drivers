@@ -486,7 +486,6 @@ int msm_get_src_bpc(int chroma_format,
 
 static int msm_drm_uninit(struct device *dev)
 {
-	return 0;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct drm_device *ddev = platform_get_drvdata(pdev);
 	struct msm_drm_private *priv = ddev->dev_private;
