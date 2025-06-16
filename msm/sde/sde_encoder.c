@@ -4862,18 +4862,18 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 	sde_enc->crtc_vblank_cb_data = vbl_data;
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (sde_enc->hal_ops.enable_hw_event[disp_op]) {
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+				MSM_ENC_VBLANK, vbl_cb ? true : false);
+		goto exit;
+	}
+
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
 		if (!phys)
 			continue;
-
-		disp_op = sde_encoder_get_disp_op(drm_enc);
-		if (sde_enc->hal_ops.enable_hw_event[disp_op]) {
-			sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
-					MSM_ENC_VBLANK, vbl_cb ? true : false);
-			goto exit;
-		}
 
 		if (sde_enc->disp_info.vrr_caps.vrr_support) {
 			if (sde_enc->disp_info.vrr_caps.video_mrr_support &&
@@ -8672,12 +8672,18 @@ u32 sde_encoder_get_frame_count(struct drm_encoder *encoder)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
 	struct sde_encoder_phys *phys;
+	enum msm_disp_op disp_op;
 
 	if (!encoder) {
 		SDE_ERROR("invalid encoder\n");
 		return 0;
 	}
+
 	sde_enc = to_sde_encoder_virt(encoder);
+
+	disp_op = sde_encoder_get_disp_op(encoder);
+	if (sde_enc->hal_ops.get_vblank_count[disp_op])
+		return sde_enc->hal_ops.get_vblank_count[disp_op](sde_enc);
 
 	phys = sde_enc->cur_master;
 	if (sde_enc->disp_info.vrr_caps.vrr_support)
@@ -8691,12 +8697,20 @@ bool sde_encoder_get_vblank_timestamp(struct drm_encoder *encoder,
 {
 	struct sde_encoder_virt *sde_enc = NULL;
 	struct sde_encoder_phys *phys;
+	enum msm_disp_op disp_op;
 
 	if (!encoder) {
 		SDE_ERROR("invalid encoder\n");
 		return false;
 	}
+
 	sde_enc = to_sde_encoder_virt(encoder);
+
+	disp_op = sde_encoder_get_disp_op(encoder);
+	if (sde_enc->hal_ops.get_vblank_timestamp[disp_op]) {
+		*tvblank = sde_enc->hal_ops.get_vblank_timestamp[disp_op](sde_enc);
+		return *tvblank ? true : false;
+	}
 
 	phys = sde_enc->cur_master;
 	if (!phys)

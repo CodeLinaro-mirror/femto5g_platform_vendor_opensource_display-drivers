@@ -36,7 +36,6 @@
 
 static u32 unique_id_counter = 1;
 static atomic_t work_queue_pos_wr = ATOMIC_INIT(0);
-static atomic_t work_queue_pos_rd = ATOMIC_INIT(0);
 
 static u32 hfi_cmd_type_map[HFI_CMDBUF_TYPE_MAX] = {
 	[HFI_CMDBUF_TYPE_ATOMIC_CHECK] = HFI_CMD_BUFF_DISPLAY,
@@ -139,25 +138,22 @@ static void _process_cb_buffer_work(struct kthread_work *work)
 	u32 obj_id_rx = MAX_U32;
 	int client_id;
 	struct hfi_adapter_t *host;
+	struct callback_work *cb_work;
 	struct hfi_core_cmds_buf_desc *rx_buffer;
 	struct hfi_header *virtio_hdr;
 	struct hfi_buffer_pool *pool;
 	bool client_found = false;
-	u32 work_queue_pos;
 	int i = 0;
 
 	if (!work)
 		return;
 
-	work_queue_pos = atomic_fetch_add_unless(&work_queue_pos_rd, 1,
-			HFI_ADAPTER_WORK_QUEUE_SIZE);
-	/* If exceeds limit index, reset to 0. */
-	if (work_queue_pos >= HFI_ADAPTER_WORK_QUEUE_SIZE) {
-		atomic_set(&work_queue_pos_rd, 0);
-		work_queue_pos = 0;
+	cb_work = container_of(work, struct callback_work, work);
+	host = cb_work->host;
+	if (!host) {
+		HFI_AD_ERROR("thread %d could not match host\n", cb_work->index);
+		return;
 	}
-
-	host = container_of(work, struct hfi_adapter_t, cb_work[work_queue_pos]);
 
 	do {
 		pool = get_avail_buffer(host);
@@ -225,6 +221,7 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		const void *cb_data, uint32_t flags)
 {
 	struct hfi_adapter_t *adapter = (struct hfi_adapter_t *)cb_data;
+	struct callback_work *cb_work;
 	int ret;
 	u32 work_queue_idx;
 
@@ -232,17 +229,19 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		return -EINVAL;
 
 	HFI_AD_DEBUG("hfi callback called\n");
-	work_queue_idx = atomic_fetch_add_unless(&work_queue_pos_wr, 1,
-			HFI_ADAPTER_WORK_QUEUE_SIZE);
+	atomic_fetch_add_unless(&work_queue_pos_wr, 1, HFI_ADAPTER_WORK_QUEUE_SIZE);
+	work_queue_idx = atomic_read(&work_queue_pos_wr);
 	if (work_queue_idx >= HFI_ADAPTER_WORK_QUEUE_SIZE) {
 		/* If exceeds index limit, reset to 0 */
 		atomic_set(&work_queue_pos_wr, 0);
 		work_queue_idx = 0;
 	}
 
-	ret = kthread_queue_work(&adapter->cb_worker, &adapter->cb_work[work_queue_idx]);
+	cb_work = &adapter->cb_work[work_queue_idx];
+
+	ret = kthread_queue_work(&adapter->cb_worker, &cb_work->work);
 	if (!ret)
-		HFI_AD_ERROR("failed to queue work\n");
+		HFI_AD_WARN("failed to queue work at index:%d\n", work_queue_idx);
 
 	return 0;
 }
@@ -310,8 +309,11 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	hfi_host->session = hfi_handle;
 
 	/* Pre initialize work queues */
-	for (i = 0; i < HFI_ADAPTER_WORK_QUEUE_SIZE; i++)
-		kthread_init_work(&hfi_host->cb_work[i], _process_cb_buffer_work);
+	for (i = 0; i < HFI_ADAPTER_WORK_QUEUE_SIZE; i++) {
+		kthread_init_work(&hfi_host->cb_work[i].work, _process_cb_buffer_work);
+		hfi_host->cb_work[i].host = hfi_host;
+		hfi_host->cb_work[i].index = i;
+	}
 
 	kthread_init_worker(&hfi_host->cb_worker);
 	hfi_host->cb_worker_thread = kthread_run(kthread_worker_fn, &hfi_host->cb_worker,
