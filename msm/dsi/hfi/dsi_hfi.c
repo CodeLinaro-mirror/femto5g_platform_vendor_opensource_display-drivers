@@ -481,6 +481,8 @@ static enum hfi_panel_bpp dsi_get_panel_bpp_helper(struct dsi_panel *panel)
 		return HFI_PANEL_BPP_18;
 	case DSI_PIXEL_FORMAT_RGB888:
 		return HFI_PANEL_BPP_24;
+	case DSI_PIXEL_FORMAT_RGB101010:
+		return HFI_PANEL_BPP_30;
 	default:
 		return HFI_PANEL_BPP_24;
 	}
