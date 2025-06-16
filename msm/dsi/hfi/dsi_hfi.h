@@ -17,7 +17,7 @@
 
 #define MAX_NUM_CTRLS_AND_LENGTH 3
 #define MAX_NUM_PHYS_AND_LENGTH 3
-#define MIN_NUM_OF_GEN_CAPS 12
+#define MIN_NUM_OF_GEN_CAPS 13
 #define NUM_PANEL_CMD_TYPES_SUPPORTED 4
 #define CLK_RATE_SIZE 2
 #define JITTER_SIZE 2
@@ -166,6 +166,7 @@ struct dsi_panel_timing_caps {
  * @backlight_ctrl_prim:            HFI_PROPERTY_PANEL_BL_PMIC_CONTROL_TYPE
  * @backlight_ctrl_sec:             HFI_PROPERTY_PANEL_SEC_BL_PMIC_CONTROL_TYPE
  * @is_bl_inverted:                 HFI_PROPERTY_PANEL_BL_INVERTED_DBV
+ * @vsync_src:                      HFI_PROPERTY_PANEL_VSYNC_SOURCE
  * @ctrl_nums:                      HFI_PROPERTY_PANEL_CTRL_NUM
  * @phy_nums:                       HFI_PROPERTY_PANEL_PHY_NUM
  */
@@ -194,6 +195,7 @@ struct dsi_panel_generic_caps {
 	enum hfi_panel_backlight_ctrl backlight_ctrl_prim;
 	enum hfi_panel_backlight_ctrl backlight_ctrl_sec;
 	u32 is_bl_inverted;
+	enum hfi_panel_vsync_source vsync_src;
 	u32 ctrl_nums[MAX_NUM_CTRLS_AND_LENGTH];
 	u32 phy_nums[MAX_NUM_PHYS_AND_LENGTH];
 };
