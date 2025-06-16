@@ -452,10 +452,9 @@ static const struct backlight_ops msm_hyp_backlight_device_ops = {
 
 static int _msm_hyp_connector_create_backlight(struct msm_hyp_connector *connector)
 {
-	struct backlight_properties props;
+	struct backlight_properties props = {0};
 	char bl_node_name[32];
 
-	memset(&props, 0, sizeof(props));
 	props.type = BACKLIGHT_RAW;
 	props.power = FB_BLANK_UNBLANK;
 	props.max_brightness = 255;
@@ -1580,7 +1579,8 @@ static bool msm_hyp_plane_format_mod_supported(struct drm_plane *plane,
 			format == DRM_FORMAT_XRGB2101010 ||
 			format == DRM_FORMAT_ABGR2101010 ||
 			format == DRM_FORMAT_XBGR2101010 ||
-			format == DRM_FORMAT_BGR888) {
+			format == DRM_FORMAT_BGR888 ||
+			format == DRM_FORMAT_NV21) {
 			/* Linear formats */
 			ret = true;
 		}
