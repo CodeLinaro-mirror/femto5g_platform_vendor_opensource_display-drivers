@@ -34,7 +34,6 @@
 #define GET_CLIENT_ID(data)           \
 	(data & CLIENT_ID_MASK)
 
-#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 static u32 unique_id_counter = 1;
 static atomic_t work_queue_pos_wr = ATOMIC_INIT(0);
 static atomic_t work_queue_pos_rd = ATOMIC_INIT(0);
@@ -1103,4 +1102,3 @@ void hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
 	if (ret)
 		HFI_AD_ERROR("failed to deallocate shared buffer, ret: %d\n", ret);
 }
-#endif /* IS_ENABLED(CONFIG_QTI_HFI_CORE)*/
