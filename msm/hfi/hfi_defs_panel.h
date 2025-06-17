@@ -108,6 +108,7 @@ enum hfi_panel_vsync_source {
  * HFI_PANEL_TRIGGER_SW : Triggered by software
  * HFI_PANEL_TRIGGER_SW_TE : Software trigger and TE
  * HFI_PANEL_TRIGGER_SW_SEOF : Software trigger and start/end of frame trigger.
+ * HFI_PANEL_TRIGGER_SEOF : Start/end of frame used for trigger
  */
 enum hfi_panel_trigger_type {
 	HFI_PANEL_TRIGGER_NONE      = 1,
@@ -115,6 +116,7 @@ enum hfi_panel_trigger_type {
 	HFI_PANEL_TRIGGER_SW        = 3,
 	HFI_PANEL_TRIGGER_SW_TE     = 4,
 	HFI_PANEL_TRIGGER_SW_SEOF   = 5,
+	HFI_PANEL_TRIGGER_SEOF      = 6,
 };
 
 /*
