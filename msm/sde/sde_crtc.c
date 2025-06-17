@@ -5750,11 +5750,14 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	}
 
 	/*
-	 * for cmd and wb modes, update the txq for incoming fences before flush to avoid race
-	 * condition between txq update and the hw signal during ctl-done for partial updates
+	 * For cmd and wb modes, txq for incoming fences must be updated before flush to avoid race
+	 * condition between txq update and the hw signal during ctl-done for partial updates.
+	 *
+	 * For video mode, txq for incoming fences is updated before flush to correctly program the
+	 * output fence (this must be the second to most recently created output fence).
 	 */
-	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) && !is_vid)
-		sde_fence_update_hw_fences_txq(sde_crtc->output_fence, false, 0,
+	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask))
+		sde_fence_update_hw_fences_txq(sde_crtc->output_fence, is_vid, 0,
 			sde_kms->debugfs_hw_fence);
 
 	if (sde_crtc->cesta_client) {
