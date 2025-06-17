@@ -481,6 +481,8 @@ static enum hfi_panel_bpp dsi_get_panel_bpp_helper(struct dsi_panel *panel)
 		return HFI_PANEL_BPP_18;
 	case DSI_PIXEL_FORMAT_RGB888:
 		return HFI_PANEL_BPP_24;
+	case DSI_PIXEL_FORMAT_RGB101010:
+		return HFI_PANEL_BPP_30;
 	default:
 		return HFI_PANEL_BPP_24;
 	}
@@ -527,6 +529,8 @@ static enum hfi_panel_trigger_type dsi_get_panel_trigger_type_helper(enum dsi_tr
 		return HFI_PANEL_TRIGGER_NONE;
 	case DSI_TRIGGER_TE:
 		return HFI_PANEL_TRIGGER_TE;
+	case DSI_TRIGGER_SEOF:
+		return HFI_PANEL_TRIGGER_SEOF;
 	case DSI_TRIGGER_SW:
 		return HFI_PANEL_TRIGGER_SW;
 	case DSI_TRIGGER_SW_SEOF:
@@ -562,6 +566,14 @@ static enum hfi_panel_modes dsi_get_panel_op_mode_helper(struct dsi_panel *panel
 	default:
 		return HFI_PANEL_VIDEO_MODE_8_BIT;
 	}
+}
+
+static enum hfi_panel_vsync_source dsi_get_panel_vsync_src(struct dsi_display *display)
+{
+	if (display->panel->te_using_watchdog_timer)
+		return HFI_PANEL_VSYNC_SOURCE_WD;
+	else
+		return (enum hfi_panel_vsync_source)display->te_source;
 }
 
 static enum hfi_panel_lane_map dsi_get_panel_lane_map_helper(struct dsi_panel *panel)
@@ -724,6 +736,7 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->min_backlight_level = panel->bl_config.bl_min_level;
 	panel_generic_caps->max_backlight_level = panel->bl_config.bl_max_level;
 	panel_generic_caps->max_brightness_level = panel->hdr_props.peak_brightness;
+	panel_generic_caps->vsync_src = dsi_get_panel_vsync_src(display);
 
 	panel_generic_caps->panel_name = (*(u32 *)panel->name);
 	if (panel_generic_caps->panel_name)
@@ -907,6 +920,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		{panel_generic_caps.panel_op_mode, HFI_PROPERTY_PANEL_OPERATING_MODE},
 		{panel_generic_caps.min_backlight_level, HFI_PROPERTY_PANEL_BL_MIN_LEVEL},
 		{panel_generic_caps.max_backlight_level, HFI_PROPERTY_PANEL_BL_MAX_LEVEL},
+		{panel_generic_caps.vsync_src, HFI_PROPERTY_PANEL_VSYNC_SOURCE},
 		{panel_generic_caps.max_brightness_level, HFI_PROPERTY_PANEL_BRIGHTNESS_MAX_LEVEL},
 		/*Cutoff for properties that take on default value*/
 		{panel_generic_caps.panel_name, HFI_PROPERTY_PANEL_NAME},

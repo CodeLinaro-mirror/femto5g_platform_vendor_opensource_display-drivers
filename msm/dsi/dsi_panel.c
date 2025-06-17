@@ -1646,6 +1646,7 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 {
 	u32 *freq_patterrn_arr32;
 	u32 *freq_interval_arr32;
+	u32 *freq_pattern_needs_sr;
 	u32 *freq_stepping_seq;
 	const u32 *arr;
 	int i, j, k, rc = 0;
@@ -1653,6 +1654,7 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 	u32 freq_pattern_length, freq_interval_length;
 	struct msm_freq_step_pattern *freq_pattern;
 	struct msm_freq_step_list *freq_step_list;
+	bool needs_sr_defined = true;
 
 	if (!mode || !mode->priv_info) {
 		DSI_ERR("invalid arguments\n");
@@ -1696,10 +1698,12 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 	freq_interval_length = freq_interval_length / sizeof(u32);
 	size = freq_interval_length * sizeof(u32);
 	freq_interval_arr32 = kzalloc(size, GFP_KERNEL);
-	if (!freq_interval_arr32) {
+	freq_pattern_needs_sr = kzalloc(size / 3, GFP_KERNEL);
+
+	if (!freq_interval_arr32 || !freq_pattern_needs_sr) {
 		rc = -ENOMEM;
 		DSI_ERR("Error allocating memory for property\n");
-		goto error;
+		goto error_free_frame_interval;
 	}
 	rc = utils->read_u32_array(utils->data,
 		"qcom,mdss-dsi-qsync-freq-step-sequence-interval",
@@ -1708,6 +1712,15 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 	if (rc) {
 		DSI_ERR("cannot read dsi freq steps %d\n", rc);
 		goto error_free_frame_interval;
+	}
+
+	rc = utils->read_u32_array(utils->data,
+		"qcom,mdss-dsi-qsync-freq-pattren-needs-selfrefresh",
+			freq_pattern_needs_sr, freq_interval_length / 3);
+
+	if (rc) {
+		needs_sr_defined = false;
+		pr_err("cannot read freq-pattern-needs-selfrefresh %d\n", rc);
 	}
 
 	/* Allocate the frequency stepping pattern table
@@ -1776,23 +1789,28 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 		prop_length += (freq_pattern[i].num_freq_steps * 2);
 		freq_pattern[i].freq_stepping_seq = freq_stepping_seq;
 
-		if (freq_pattern[i].frame_interval >= freq_pattern[i].freq_stepping_seq[0])
+		if (needs_sr_defined)
+			freq_pattern[i].needs_ap_refresh = freq_pattern_needs_sr[i];
+		else if (freq_pattern[i].frame_interval >= freq_pattern[i].freq_stepping_seq[0])
 			freq_pattern[i].needs_ap_refresh = true;
+
 	}
 
 	for (i = 0; i < freq_step_list->count; i++) {
-		DSI_DEBUG("usecaseIdx:%d FrameInterval:%d, Num freq steps:%d Total steps:%d %p\n",
+		DSI_DEBUG("usecaseIdx:%d FI:%d, AP_SR:%d Num freq steps:%d Total steps:%d %p\n",
 			freq_step_list->freq_pattern[i].usecase_idx,
 			freq_step_list->freq_pattern[i].frame_interval,
+			freq_pattern[i].needs_ap_refresh,
 			freq_step_list->freq_pattern[i].num_freq_steps,
-			freq_step_list->freq_pattern[i].length, &freq_step_list->freq_pattern[i]);
+			freq_step_list->freq_pattern[i].length,
+			&freq_step_list->freq_pattern[i]);
 		for (j = 0; j < freq_step_list->freq_pattern[i].length; j++)
 			DSI_DEBUG(" %d\n", freq_step_list->freq_pattern[i].freq_stepping_seq[j]);
 	}
 
 
 error_free_frame_interval:
-	kfree(freq_interval_arr32);
+	kfree(freq_pattern_needs_sr);
 error_free:
 	kfree(freq_patterrn_arr32);
 error:
