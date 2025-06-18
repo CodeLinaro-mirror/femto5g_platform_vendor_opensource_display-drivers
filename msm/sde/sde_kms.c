@@ -6252,7 +6252,7 @@ static int _sde_kms_register_events(struct msm_kms *kms,
 
 	sde_kms = to_sde_kms(kms);
 	sde_vm_lock(sde_kms);
-	if (!sde_vm_owns_hw(sde_kms)) {
+	if (!sde_vm_owns_hw(sde_kms) && !sde_vm_allow_event_list(event)) {
 		sde_vm_unlock(sde_kms);
 		SDE_DEBUG("HW is owned by other VM\n");
 		return -EACCES;
