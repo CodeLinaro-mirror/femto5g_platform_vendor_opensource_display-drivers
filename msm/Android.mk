@@ -43,8 +43,10 @@ LOCAL_MODULE_DEBUG_ENABLE := true
 LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
 
 # Enable KPIs to boot marker
-ifneq (,$(filter U UpsideDownCake 14 V VanillaIceCream 15 W Baklava 16, $(PLATFORM_VERSION)))
+ifneq (,$(filter U UpsideDownCake 14 V VanillaIceCream 15, $(PLATFORM_VERSION)))
 KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,platform_kernel_select-module-symvers)/Module.symvers
+else ifneq (,$(filter W Baklava 16, $(PLATFORM_VERSION)))
+KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=../../vendor/qcom/opensource/platform-kernel/drivers/Module.symvers
 endif
 
 ifneq ($(TARGET_BOARD_AUTO),true)
