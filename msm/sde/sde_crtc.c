@@ -7841,6 +7841,7 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	bool is_wb = false;
 	struct drm_encoder *encoder;
 	struct sde_hw_ctl *hw_ctl = NULL;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 	static u32 count;
 
 	sde_crtc = to_sde_crtc(crtc);
@@ -7868,12 +7869,16 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	offset = sde_crtc_get_property(cstate, CRTC_PROP_OUTPUT_FENCE_OFFSET);
 
 	/*
-	 * Increment trigger offset for vidoe mode alone as its release fence
+	 * Increment trigger offset for video mode alone as its release fence
 	 * can be triggered only after the next frame-update. For cmd mode &
 	 * virtual displays the release fence for the current frame can be
-	 * triggered right after PP_DONE/WB_DONE interrupt
+	 * triggered right after PP_DONE/WB_DONE interrupt.
+	 * Note that for HFI Mode, we use same mechanism as video-mode where fences
+	 * get signaled along with the next frame update, this reduces the overhead of
+	 * multiple hfi-events (i.e. one for vsync and one for pp-done), which are
+	 * unnecessary.
 	 */
-	if (is_vid)
+	if (is_vid || (IS_DISP_OP_HFI(disp_op) && !is_wb))
 		offset++;
 
 	/*
