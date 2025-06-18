@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define CONFIG_DRM_MSM 1
@@ -26,3 +26,4 @@
 #define CONFIG_QCOM_WCD939X_I2C 1
 #define CONFIG_DRM_SDE_CESTA 1
 #define CONFIG_SMMU_PROXY 1
+#define CONFIG_DRM_MSM_HDMI 1

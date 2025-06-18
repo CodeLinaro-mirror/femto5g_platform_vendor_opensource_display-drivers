@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -599,6 +599,64 @@ static int get_mdp_ver(struct platform_device *pdev)
 	return KMS_MDP4;
 }
 
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+/**
+ * msm_check_device_iommu_mapped - Check if a device is mapped to an IOMMU
+ * @dev: Pointer to the device to check
+ * @data: Pointer to a boolean flag that is set to true if an IOMMU is mapped
+ *
+ * This function is used as a callback for iterating over devices on a bus.
+ * It checks if the given device is mapped to an IOMMU using the
+ * device_iommu_mapped() function.
+ * If an IOMMU is mapped, it sets the boolean flag pointed to by
+ * @data to true and stops the iteration.
+ * Otherwise, it continues the iteration.
+ *
+ * Return: 1 if an IOMMU is mapped for the device (stops iteration),
+ * 0 otherwise (continues iteration).
+ */
+int msm_check_device_iommu_mapped(struct device *dev, void *data)
+{
+	if (!dev || !data) {
+		pr_err("msm check device iommu_mapped invalid input [%s] is null\n",
+				!dev ? "'dev'" : "'data'");
+		return -EINVAL;
+	}
+
+	if (device_iommu_mapped(dev)) {
+		*(bool *)data = true;
+		return 1; /* Stop iteration as we found a mapped device */
+	}
+	return 0; /* Continue iteration */
+}
+
+bool msm_iommu_present_on_bus(const struct bus_type *bus)
+{
+	bool iommu_present = false;
+
+	bus_for_each_dev(bus, NULL, &iommu_present, msm_check_device_iommu_mapped);
+	return iommu_present;
+}
+#endif /* KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE */
+
+bool mdss_iommu_present(struct drm_device *dev)
+{
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+	struct msm_drm_private *priv = dev->dev_private;
+
+	if (!priv)
+		return false;
+
+	if (priv->iommu_status == MSM_IOMMU_UNKNOWN)
+		priv->iommu_status = msm_iommu_present_on_bus(&platform_bus_type) ?
+			MSM_IOMMU_PRESENT : MSM_IOMMU_NOT_PRESENT;
+
+	return (priv->iommu_status == MSM_IOMMU_PRESENT);
+#else
+	return(iommu_present(&platform_bus_type));
+#endif /* KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE */
+}
+
 static int msm_init_vram(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
@@ -637,7 +695,7 @@ static int msm_init_vram(struct drm_device *dev)
 		 * Grab the entire CMA chunk carved out in early startup in
 		 * mach-msm:
 		 */
-	} else if (!iommu_present(&platform_bus_type)) {
+	} else if (!mdss_iommu_present(dev)) {
 		u32 vram_size;
 
 		ret = of_property_read_u32(dev->dev->of_node,
@@ -1039,6 +1097,7 @@ static int msm_drm_component_init(struct device *dev)
 		priv->fbdev = msm_fbdev_init(ddev);
 #endif /* CONFIG_DRM_FBDEV_EMULATION */
 
+#if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
 	/* create drm client only when fbdev is not supported */
 	if (!priv->fbdev) {
 		ret = drm_client_init(ddev, &kms->client, "kms_client", NULL);
@@ -1050,7 +1109,7 @@ static int msm_drm_component_init(struct device *dev)
 
 		drm_client_register(&kms->client);
 	}
-
+#endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	ret = sde_dbg_debugfs_register(dev);
 	if (ret) {
 		DISP_DEV_ERR(dev, "failed to reg sde dbg debugfs: %d\n", ret);
@@ -1212,10 +1271,12 @@ static void msm_lastclose(struct drm_device *dev)
 		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
 		if (rc)
 			DRM_ERROR("restore FBDEV mode failed: %d\n", rc);
+#if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
 	} else if (kms && kms->client.dev) {
 		rc = drm_client_modeset_commit_locked(&kms->client);
 		if (rc)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
+#endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	}
 
 	/* wait again, before kms driver does it's lastclose commit */
@@ -1983,7 +2044,9 @@ static struct drm_driver msm_driver = {
 	.fops               = &fops,
 	.name               = "msm_drm",
 	.desc               = "MSM Snapdragon DRM",
+#if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
 	.date               = "20130625",
+#endif
 	.major              = MSM_VERSION_MAJOR,
 	.minor              = MSM_VERSION_MINOR,
 	.patchlevel         = MSM_VERSION_PATCHLEVEL,
@@ -2156,10 +2219,17 @@ static int add_components_mdp(struct device *mdp_dev,
 	return 0;
 }
 
+#if (KERNEL_VERSION(6, 14, 0) > LINUX_VERSION_CODE)
 static int compare_name_mdp(struct device *dev, void *data)
 {
 	return (strnstr(dev_name(dev), "mdp", strlen("mdp")) != NULL);
 }
+#else
+static int compare_name_mdp(struct device *dev, const void *data)
+{
+	return (strnstr(dev_name(dev), "mdp", strlen("mdp")) != NULL);
+}
+#endif
 
 static int add_display_components(struct device *dev,
 				  struct component_match **matchptr)
@@ -2289,7 +2359,7 @@ msm_gem_smmu_address_space_get(struct drm_device *dev,
 	const struct msm_kms_funcs *funcs;
 	struct msm_gem_address_space *aspace;
 
-	if (!iommu_present(&platform_bus_type))
+	if (!mdss_iommu_present(dev))
 		return ERR_PTR(-ENODEV);
 
 	if ((!dev) || (!dev->dev_private))

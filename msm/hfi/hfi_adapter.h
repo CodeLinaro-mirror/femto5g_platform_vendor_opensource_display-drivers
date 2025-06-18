@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _HFI_ADAPTER_H_
@@ -209,14 +209,14 @@ struct hfi_client_t {
 };
 
 /*
- * struct msm_dbg_addr_map -  msm debug dump address map structure
- *@remote_addr:  pointer to the HFI mapped base dump address
- *@local_addr:  pointer to the kernel mapped base dump address
- *@size: size of the buffer to dump
+ * struct hfi_shared_addr_map -  HFI shared memory address map structure
+ *@remote_addr:  pointer to the HFI mapped base address
+ *@local_addr:  pointer to the kernel mapped base address
+ *@size: size of the buffer
  *@aligned_size: aligned size of the buffer to map
- *@alloc_info: hfi stcuture to store memory allocation information
+ *@alloc_info: hfi structure to store memory allocation information
  */
-struct msm_dbg_addr_map {
+struct hfi_shared_addr_map {
 	unsigned long remote_addr;
 	void __iomem *local_addr;
 	u32 size;
@@ -338,14 +338,14 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf);
  * @addr_map: Pointer to hfi_adapter address map which stores the size to allocate
  * and pointers to kernel & hfi address of the shared space.
  */
-void hfi_adapter_buffer_alloc(struct msm_dbg_addr_map *addr_map);
+int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map);
 
 /**
  * hfi_adapter_buffer_dealloc - API to deallocate shared memory between HFI & kernel
  * @alloc_info: Pointer to hfi_core memory alloc info which stores the allocated size
  * and pointers to kernel & hfi address of the shared space.
  */
-void hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info);
+int hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info);
 
 #else
 
@@ -407,14 +407,14 @@ static inline int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	return 0;
 }
 
-static inline void hfi_adapter_buffer_alloc(struct msm_dbg_addr_map *addr_map)
+static inline int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
 {
-
+	return 0;
 }
 
-static inline void hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
+static inline int hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
 {
-
+	return 0;
 }
 #endif
 

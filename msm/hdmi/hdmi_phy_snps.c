@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 
@@ -21,8 +21,8 @@
  * operations are imported from the header kernel.h
  */
 enum {
-	SRAM	= 0,
-	NO_ROM	= 1,
+	NO_ROM	= 0,
+	SRAM    = 1,
 	SET_BIT	= 2,
 	CLEAR_BIT = 3,
 	ASSERT_RESET,
@@ -199,6 +199,8 @@ static void hdmi_phy_snps_disable_hstx_reset(struct hdmi_phy *phy)
 
 	HDMI_PHY_CONF_REG_GRP(phy, HDMI_PHY_TXn_CONTROL_0, 0, WRITE);
 
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_RX1_CONFIG_15, 0, WRITE);
+
 	HDMI_PHY_CONF_REG(phy, HDMI_PHY_RX2_CONFIG_15, 0, WRITE);
 
 	HDMI_PHY_CONF_REG(phy, HDMI_PHY_REXT_CONTROL_2, 0, WRITE);
@@ -217,10 +219,10 @@ static void hdmi_phy_snps_sw_reset(struct hdmi_phy *phy, bool reset)
 static void hdmi_phy_snps_sram_init_wait(struct hdmi_phy *phy,
 		bool no_rom_copy)
 {
-	int op = SET_BIT;
+	int op = SRAM;
 
 	if (no_rom_copy)
-		op = CLEAR_BIT;
+		op = NO_ROM;
 
 	/*
 	 * FIXME: Add conditional check for the return value
@@ -229,12 +231,47 @@ static void hdmi_phy_snps_sram_init_wait(struct hdmi_phy *phy,
 	 */
 	hdmi_phy_read_poll_timeout(phy, HDMI_PHY_SRAM_CONTROL_1, BIT(0));
 
-	HDMI_PHY_CONF_REG(phy, HDMI_PHY_SRAM_CONTROL_0, BIT(1), op);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ADDRESS_LSB, 0x03, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ADDRESS_MSB, 0xe0, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_WRDATA_LSB, 0x18, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_WRDATA_MSB, 0x00, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ACCESS_CMD, 0x03, WRITE);
+	ndelay(400);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ACCESS_CMD, 0x0, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ADDRESS_LSB, 0x05, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ADDRESS_MSB, 0x90, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_WRDATA_LSB, 0x0c, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_WRDATA_MSB, 0x00, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ACCESS_CMD, 0x03, WRITE);
+	ndelay(400);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ACCESS_CMD, 0x0, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_MISC_CONTROL_0, 0x07, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ADDRESS_LSB, 0x1a, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ADDRESS_MSB, 0xe0, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_WRDATA_LSB, 0xa0, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_WRDATA_MSB, 0x00, WRITE);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ACCESS_CMD, 0x03, WRITE);
+	ndelay(400);
+	HDMI_PHY_CONF_REG(phy, HDMI_PHY_CR_ACCESS_CMD, 0x0, WRITE);
+
+	if (op == NO_ROM)
+		HDMI_PHY_CONF_REG(phy, HDMI_PHY_SRAM_CONTROL_0, BIT(0), op);
+	else
+		HDMI_PHY_CONF_REG(phy, HDMI_PHY_SRAM_CONTROL_0, BIT(1), op);
 }
 
 static bool hdmi_phy_snps_tx_ack_wait(struct hdmi_phy *phy)
 {
-	return hdmi_phy_read_poll_timeout(phy, HDMI_PHY_TXn_CONTROL_2, BIT(1));
+	bool rv = true;
+
+	for (int i = 0; i < PHY_TXn_CONTROL; i++) {
+		rv &= hdmi_phy_read_poll_timeout(phy,
+				HDMI_PHY_TXn_CONTROL_2 + i*0x34, BIT(0));
+		if (!rv)
+			break;
+	}
+
+	return rv;
 }
 
 static void hdmi_phy_snps_tx_data_en(struct hdmi_phy *phy, bool en)

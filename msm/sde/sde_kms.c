@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -3271,6 +3271,10 @@ static void sde_kms_lastclose(struct msm_kms *kms)
 	struct drm_device *dev;
 	struct drm_atomic_state *state;
 	struct drm_modeset_acquire_ctx ctx;
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+	struct drm_plane *plane;
+	struct drm_crtc *crtc;
+#endif /* (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE) */
 	int ret;
 
 	if (!kms) {
@@ -3293,6 +3297,38 @@ static void sde_kms_lastclose(struct msm_kms *kms)
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
 
 retry:
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+	drm_for_each_plane(plane, dev) {
+		struct drm_plane_state *plane_state;
+
+		plane_state = drm_atomic_get_plane_state(state, plane);
+		if (IS_ERR(plane_state)) {
+			ret = PTR_ERR(plane_state);
+			goto out_state;
+		}
+
+		plane_state->rotation = DRM_MODE_ROTATE_0;
+
+		/* disable non-primary: */
+		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
+			continue;
+
+		ret = __drm_atomic_helper_disable_plane(plane, plane_state);
+		if (ret != 0)
+			goto out_state;
+	}
+
+	drm_for_each_crtc(crtc, dev) {
+		struct drm_mode_set mode_set;
+
+		mode_set.crtc = crtc;
+
+		ret = __drm_atomic_helper_set_config(&mode_set, state);
+		if (ret != 0)
+			goto out_state;
+	}
+#endif /* (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE) */
+
 	ret = drm_modeset_lock_all_ctx(dev, &ctx);
 	if (ret)
 		goto out_state;

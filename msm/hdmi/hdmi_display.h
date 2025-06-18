@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _HDMI_DISPLAY_H_
@@ -24,6 +24,7 @@ struct hdmi_display {
 	bool non_pluggable;
 	bool dsc_cont_pps;
 	bool connected;
+	u32 pixclk;
 	u32 max_pclk_khz;
 	u32 max_mixer_count;
 	u32 max_dsc_count;

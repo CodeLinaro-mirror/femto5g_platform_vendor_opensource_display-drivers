@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -5494,8 +5494,10 @@ sde_plane_duplicate_state(struct drm_plane *plane)
 	SDE_DEBUG_PLANE(psde, "\n");
 
 	/* duplicate value helper */
+	mutex_lock(&psde->property_info.property_lock);
 	msm_property_duplicate_state(&psde->property_info, old_state, pstate,
 			&pstate->property_state, pstate->property_values);
+	mutex_unlock(&psde->property_info.property_lock);
 
 	/* clear out any input fence */
 	pstate->input_fence = 0;

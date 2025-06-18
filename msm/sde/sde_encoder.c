@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -3900,6 +3900,9 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 	struct sde_kms *sde_kms;
 	struct sde_connector_state *c_state;
 	enum msm_disp_op disp_op;
+	bool is_ext_intf = false;
+	int intf_type;
+	int audio_core;
 
 	if (!drm_enc || !drm_enc->dev || !drm_enc->dev->dev_private) {
 		SDE_ERROR("invalid parameters\n");
@@ -3925,11 +3928,19 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 	if (sde_encoder_is_loopback_display(drm_enc))
 		goto update_ppb;
 
-	if (sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_DisplayPort &&
-	    sde_enc->cur_master->hw_mdptop &&
+	intf_type = sde_enc->disp_info.intf_type;
+	if (intf_type == DRM_MODE_CONNECTOR_DisplayPort ||
+		intf_type == DRM_MODE_CONNECTOR_HDMIA) {
+		is_ext_intf = true;
+		audio_core = (intf_type ==
+				DRM_MODE_CONNECTOR_DisplayPort) ? 1 : 0;
+	}
+
+	if (is_ext_intf && sde_enc->cur_master->hw_mdptop &&
 	    sde_enc->cur_master->hw_mdptop->ops.intf_audio_select[disp_op])
 		sde_enc->cur_master->hw_mdptop->ops.intf_audio_select[disp_op](
-					sde_enc->cur_master->hw_mdptop);
+					sde_enc->cur_master->hw_mdptop,
+					audio_core);
 
 	if (sde_enc->cur_master->hw_mdptop &&
 			sde_enc->cur_master->hw_mdptop->ops.reset_ubwc[disp_op] &&

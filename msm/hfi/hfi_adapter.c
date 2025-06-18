@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include "hfi_adapter.h"
@@ -1069,36 +1069,46 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	return rc;
 }
 
-void hfi_adapter_buffer_alloc(struct msm_dbg_addr_map *addr_map)
+int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
 {
 	int ret = 0;
 
 	if (!addr_map->size) {
 		HFI_AD_ERROR("failed to get shared buffer size\n");
-		return;
+		return -EINVAL;
 	}
 	addr_map->aligned_size = ALIGN(addr_map->size, HFI_CORE_IOMMU_MAP_SIZE_ALIGNMENT);
 
 	ret = hfi_core_allocate_shared_mem(&addr_map->alloc_info, addr_map->aligned_size,
 		HFI_CORE_DMA_ALLOC_UNCACHE, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
-	if (ret)
+	if (ret) {
 		HFI_AD_ERROR("failed to allocate shared buffer, ret: %d\n", ret);
+		return ret;
+	}
 
 	addr_map->remote_addr = addr_map->alloc_info.mapped_iova;
 	addr_map->local_addr = addr_map->alloc_info.cpu_va;
 
-	if (!addr_map->remote_addr || !addr_map->local_addr)
+	if (!addr_map->remote_addr || !addr_map->local_addr) {
 		HFI_AD_ERROR("failed to allocate shared buffer\n");
+		return -EINVAL;
+	}
+
+	return ret;
 }
 
-void hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
+int hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
 {
 	int ret = 0;
 
-	if (!alloc_info->mapped_iova || !alloc_info->cpu_va)
+	if (!alloc_info->mapped_iova || !alloc_info->cpu_va) {
 		HFI_AD_ERROR("failed to get buffer mapping info\n");
+		return -EINVAL;
+	}
 
 	ret = hfi_core_deallocate_shared_mem(alloc_info);
 	if (ret)
 		HFI_AD_ERROR("failed to deallocate shared buffer, ret: %d\n", ret);
+
+	return ret;
 }

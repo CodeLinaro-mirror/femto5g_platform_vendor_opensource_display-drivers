@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2097,9 +2097,11 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 	}
 
 	/* duplicate value helper */
+	mutex_lock(&c_conn->property_info.property_lock);
 	msm_property_duplicate_state(&c_conn->property_info,
 			c_oldstate, c_state,
 			&c_state->property_state, c_state->property_values);
+	mutex_unlock(&c_conn->property_info.property_lock);
 
 	__drm_atomic_helper_connector_duplicate_state(connector,
 			&c_state->base);
