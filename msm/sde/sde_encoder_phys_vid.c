@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -954,8 +954,9 @@ static void sde_encoder_phys_vid_enable(struct sde_encoder_phys *phys_enc)
 		hdmi_roi.h = mode.vdisplay;
 		sde_encoder_phys_setup_cdm(phys_enc, fmt,
 			CDM_CDWN_OUTPUT_HDMI, &hdmi_roi);
-		SDE_ERROR("fmt bpp: %u, fmt chrom_sample_type: 0x%x", fmt->bpp,
-				fmt->chroma_sample);
+		SDE_DEBUG_VIDENC(vid_enc,
+				"fmt bpp: %u, fmt chrom_sample_type: 0x%x",
+				fmt->bpp, fmt->chroma_sample);
 	}
 
 	if (ctl->ops.update_bitmask && hw_cdm && cdm_enable)
