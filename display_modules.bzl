@@ -151,6 +151,7 @@ module_entry(
             "msm/sde/sde_hw_color_proc_aiqe_v1.c",
             "msm/sde/sde_aiqe_common.c",
             "msm/sde/sde_loopback.c",
+            "msm/sde/sde_color_proc_feature_state_helper.c"
         ],
         "CONFIG_DRM_SDE_WB": [
             "msm/sde/sde_wb.c",
