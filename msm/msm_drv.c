@@ -2399,11 +2399,7 @@ static struct platform_driver msm_platform_driver = {
 	.remove     = msm_pdev_remove,
 	.shutdown   = msm_pdev_shutdown,
 	.driver     = {
-#if IS_ENABLED(CONFIG_ARCH_SM6150)
-		.name   = "msm",
-#else
 		.name   = "msm_drm",
-#endif
 		.of_match_table = dt_match,
 		.pm     = &msm_pm_ops,
 		.suppress_bind_attrs = true,

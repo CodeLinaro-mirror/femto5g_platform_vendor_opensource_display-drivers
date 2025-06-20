@@ -538,21 +538,21 @@ static int dp_catalog_ctrl_late_phy_init(struct dp_catalog_ctrl *ctrl,
 	}
 
 	io_data = catalog->io.dp_ln_tx0;
-	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_4_2_0) {
-		dp_write(TXn_HIGHZ_DRVR_EN_V420, drvr0_en);
-		dp_write(TXn_TRANSCEIVER_BIAS_EN_V420, bias0_en);
-	} else {
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0) {
 		dp_write(TXn_HIGHZ_DRVR_EN, drvr0_en);
 		dp_write(TXn_TRANSCEIVER_BIAS_EN, bias0_en);
+	} else {
+		dp_write(TXn_HIGHZ_DRVR_EN_V420, drvr0_en);
+		dp_write(TXn_TRANSCEIVER_BIAS_EN_V420, bias0_en);
 	}
 
 	io_data = catalog->io.dp_ln_tx1;
-	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_4_2_0) {
-		dp_write(TXn_HIGHZ_DRVR_EN_V420, drvr1_en);
-		dp_write(TXn_TRANSCEIVER_BIAS_EN_V420, bias1_en);
-	} else {
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0) {
 		dp_write(TXn_HIGHZ_DRVR_EN, drvr1_en);
 		dp_write(TXn_TRANSCEIVER_BIAS_EN, bias1_en);
+	} else {
+		dp_write(TXn_HIGHZ_DRVR_EN_V420, drvr1_en);
+		dp_write(TXn_TRANSCEIVER_BIAS_EN_V420, bias1_en);
 	}
 
 	io_data = catalog->io.dp_phy;
@@ -573,28 +573,28 @@ static int dp_catalog_ctrl_late_phy_init(struct dp_catalog_ctrl *ctrl,
 	}
 
 	io_data = catalog->io.dp_ln_tx0;
-	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_4_2_0)
-		dp_write(TXn_TX_POL_INV_V420, 0x0a);
-	else
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
 		dp_write(TXn_TX_POL_INV, 0x0a);
+	else
+		dp_write(TXn_TX_POL_INV_V420, 0x0a);
 
 	io_data = catalog->io.dp_ln_tx1;
-	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_4_2_0)
-		dp_write(TXn_TX_POL_INV_V420, 0x0a);
-	else
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
 		dp_write(TXn_TX_POL_INV, 0x0a);
+	else
+		dp_write(TXn_TX_POL_INV_V420, 0x0a);
 
 	io_data = catalog->io.dp_ln_tx0;
-	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_4_2_0)
-		dp_write(TXn_TX_DRV_LVL_V420, 0x27);
-	else
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
 		dp_write(TXn_TX_DRV_LVL, 0x27);
+	else
+		dp_write(TXn_TX_DRV_LVL_V420, 0x27);
 
 	io_data = catalog->io.dp_ln_tx1;
-	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_4_2_0)
-		dp_write(TXn_TX_DRV_LVL_V420, 0x27);
-	else
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
 		dp_write(TXn_TX_DRV_LVL, 0x27);
+	else
+		dp_write(TXn_TX_DRV_LVL_V420, 0x27);
 
 	io_data = catalog->io.dp_ln_tx0;
 	dp_write(TXn_TX_EMP_POST1_LVL, 0x20);

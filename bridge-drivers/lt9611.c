@@ -597,9 +597,9 @@ static void lt9611_reset(struct lt9611 *lt9611)
 	gpiod_set_value_cansleep(lt9611->reset_gpio, 1);
 	msleep(20);
 	gpiod_set_value_cansleep(lt9611->reset_gpio, 0);
-	msleep(60);
+	msleep(40);
 	gpiod_set_value_cansleep(lt9611->reset_gpio, 1);
-	msleep(400);
+	msleep(200);
 }
 
 static void lt9611_assert_5v(struct lt9611 *lt9611)

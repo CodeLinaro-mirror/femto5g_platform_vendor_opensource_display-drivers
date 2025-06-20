@@ -745,8 +745,8 @@ bus_err:
 clkset_err:
 #if IS_ENABLED(CONFIG_MSM_MMRM)
 	msm_dss_mmrm_deregister(&pdev->dev, mp);
-#endif
 clkmmrm_err:
+#endif
 	msm_dss_put_clk(mp->clk_config, mp->num_clk);
 clkget_err:
 	msm_dss_get_vreg(&pdev->dev, mp->vreg_config, mp->num_vreg, 0);
