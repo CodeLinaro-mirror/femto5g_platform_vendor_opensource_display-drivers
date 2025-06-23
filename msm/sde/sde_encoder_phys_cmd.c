@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -548,14 +548,16 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 	u32 fence_ready = 0;
 	enum msm_disp_op disp_op;
 
-	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_pp || !phys_enc->hw_intf
-		|| !phys_enc->hw_ctl)
+	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_pp || !phys_enc->hw_intf)
+		return;
+
+	ctl = phys_enc->hw_ctl;
+	if (!ctl)
 		return;
 
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	SDE_ATRACE_BEGIN("rd_ptr_irq");
 	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
-	ctl = phys_enc->hw_ctl;
 	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 
 	if (ctl->ops.get_scheduler_status[disp_op])
