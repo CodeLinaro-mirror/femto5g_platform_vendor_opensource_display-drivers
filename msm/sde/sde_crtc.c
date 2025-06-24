@@ -2427,6 +2427,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 					pstate->multirect_mode,
 					format->base.pixel_format,
 					fb ? fb->modifier : 0,
+					pstate->rotation,
 					layout_idx);
 
 			for (lm_idx = 0; lm_idx < sde_crtc->num_mixers;
