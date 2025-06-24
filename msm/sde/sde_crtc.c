@@ -4055,7 +4055,7 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 			scaler_v2.enable, scaler_v2.dir_en, scaler_v2.de.enable,
 			scaler_v2.src_width[0], scaler_v2.src_height[0],
 			scaler_v2.dst_width, scaler_v2.dst_height);
-		SDE_EVT32_VERBOSE(DRMID(&sde_crtc->base),
+		SDE_EVT32(DRMID(&sde_crtc->base),
 			scaler_v2.enable, scaler_v2.dir_en, scaler_v2.de.enable,
 			scaler_v2.src_width[0], scaler_v2.src_height[0],
 			scaler_v2.dst_width, scaler_v2.dst_height);
@@ -4064,7 +4064,7 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 			i, ds_cfg_usr->index, ds_cfg_usr->flags,
 			ds_cfg_usr->lm_width, ds_cfg_usr->lm_height,
 			ds_cfg_usr->merge_mode);
-		SDE_EVT32_VERBOSE(DRMID(&sde_crtc->base), i, ds_cfg_usr->index,
+		SDE_EVT32(DRMID(&sde_crtc->base), i, ds_cfg_usr->index,
 			ds_cfg_usr->flags, ds_cfg_usr->lm_width,
 			ds_cfg_usr->lm_height, ds_cfg_usr->merge_mode);
 	}
@@ -5750,11 +5750,14 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	}
 
 	/*
-	 * for cmd and wb modes, update the txq for incoming fences before flush to avoid race
-	 * condition between txq update and the hw signal during ctl-done for partial updates
+	 * For cmd and wb modes, txq for incoming fences must be updated before flush to avoid race
+	 * condition between txq update and the hw signal during ctl-done for partial updates.
+	 *
+	 * For video mode, txq for incoming fences is updated before flush to correctly program the
+	 * output fence (this must be the second to most recently created output fence).
 	 */
-	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) && !is_vid)
-		sde_fence_update_hw_fences_txq(sde_crtc->output_fence, false, 0,
+	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask))
+		sde_fence_update_hw_fences_txq(sde_crtc->output_fence, is_vid, 0,
 			sde_kms->debugfs_hw_fence);
 
 	if (sde_crtc->cesta_client) {

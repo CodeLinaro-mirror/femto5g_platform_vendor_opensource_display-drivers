@@ -2157,7 +2157,9 @@ void reg_dmav1_setup_dspp_pccv6(struct sde_hw_dspp *ctx, void *cfg)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(6, 0, hw_cfg->prop_id);
+#endif
 	reg_dmav1_setup_dspp_pcc_common(ctx, cfg);
 }
 
@@ -2455,9 +2457,6 @@ static void _reg_dma_dspp_pa_sixzone_common_off(struct sde_hw_dspp *ctx, void *c
 		}
 	}
 
-#ifdef HFI_BUFF_FEATURE_ENABLE
-	hw_cfg->flags = HFI_BUFF_FEATURE_BROADCAST;
-#endif
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[SIX_ZONE][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, SIX_ZONE);
 	if (dma_ops->kick_off[ctx->hw.disp_op]) {
@@ -2651,14 +2650,18 @@ void reg_dmav2_setup_dspp_sixzonev2(struct sde_hw_dspp *ctx, void *cfg)
 	u16 *data = NULL;
 	int i, rc, j, k;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = HFI_BUFF_FEATURE_BROADCAST;
+#endif
+
 	rc = reg_dma_validate_sixzone_config(ctx, cfg, &num_of_mixers, &blk, dspp_list);
 	if (rc) {
 		return;
 	}
 
 #ifdef HFI_BUFF_FEATURE_ENABLE
-	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
-	hw_cfg->flags = HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
 #endif
 
 	sixzone = hw_cfg->payload;
@@ -3125,7 +3128,9 @@ void reg_dmav1_setup_dspp_memcol_skinv17(struct sde_hw_dspp *ctx, void *cfg)
 	if (rc)
 		return;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 7, hw_cfg->prop_id);
+#endif
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("disable memcolor skin feature\n");
 		_reg_dma_dspp_memcol_off(ctx, cfg, MEMC_SKIN);
@@ -3157,7 +3162,9 @@ void reg_dmav1_setup_dspp_memcol_skyv17(struct sde_hw_dspp *ctx, void *cfg)
 	if (rc)
 		return;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 7, hw_cfg->prop_id);
+#endif
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("disable memcolor sky feature\n");
 		_reg_dma_dspp_memcol_off(ctx, cfg, MEMC_SKY);
@@ -3189,7 +3196,9 @@ void reg_dmav1_setup_dspp_memcol_folv17(struct sde_hw_dspp *ctx, void *cfg)
 	if (rc)
 		return;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 7, hw_cfg->prop_id);
+#endif
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("disable memcolor foliage feature\n");
 		_reg_dma_dspp_memcol_off(ctx, cfg, MEMC_FOLIAGE);
@@ -3226,7 +3235,9 @@ void reg_dmav1_setup_dspp_memcol_protv17(struct sde_hw_dspp *ctx, void *cfg)
 	if (rc)
 		return;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 7, hw_cfg->prop_id);
+#endif
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("disable memcolor prot feature\n");
 		_reg_dma_dspp_memcol_off(ctx, cfg, MEMC_PROT);
@@ -6198,7 +6209,9 @@ void reg_dmav2_setup_dspp_igcv51(struct sde_hw_dspp *ctx, void *cfg)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(5, 1, hw_cfg->prop_id);
+#endif
 	reg_dmav2_setup_dspp_igc_common_v5(ctx, cfg, BIT(5) | BIT(6));
 }
 

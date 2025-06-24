@@ -18,6 +18,7 @@
  * @base_props: prop helper object for intermediate property collection
  * @color_props: color prop helper object for intermediate property collection
  * @kv_props: kv pair helper object for intermediate property collection
+ * @hfi_buff_map_dither: hfi_buff map object for SPR dither
  */
 struct hfi_crtc {
 	struct sde_crtc *sde_base;
@@ -26,6 +27,7 @@ struct hfi_crtc {
 	struct hfi_util_u32_prop_helper *color_props;
 	struct hfi_util_kv_helper *kv_props;
 	struct hfi_prop_listener misr_read_listener;
+	struct hfi_shared_addr_map hfi_buff_map_dither;
 };
 
 /**

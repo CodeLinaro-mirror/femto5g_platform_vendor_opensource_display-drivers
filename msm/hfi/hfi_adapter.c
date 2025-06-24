@@ -34,6 +34,7 @@
 #define GET_CLIENT_ID(data)           \
 	(data & CLIENT_ID_MASK)
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 static u32 unique_id_counter = 1;
 static atomic_t work_queue_pos_wr = ATOMIC_INIT(0);
 
@@ -1027,7 +1028,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	int i = 0;
 	int rc = 0;
 
-	mutex_lock(&cmd_buf->pool->lock);
+	mutex_lock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 
 	/* Release chained buffers */
 	list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
@@ -1058,7 +1059,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 
 	if (rc) {
 		HFI_AD_ERROR("failed to release rx buffer(s)\n");
-		mutex_unlock(&cmd_buf->pool->lock);
+		mutex_unlock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 		return rc;
 	}
 
@@ -1066,7 +1067,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	atomic_set(&cmd_buf->pool->available, 1);
 	_hfi_clear_buffer(cmd_buf);
 
-	mutex_unlock(&cmd_buf->pool->lock);
+	mutex_unlock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 
 	return rc;
 }
@@ -1099,9 +1100,15 @@ int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
 	return ret;
 }
 
-int hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
+int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
 {
+	struct hfi_core_mem_alloc_info *alloc_info = &addr_map->alloc_info;
 	int ret = 0;
+
+	if (!addr_map->size) {
+		HFI_AD_DEBUG("empty buf\n");
+		return ret;
+	}
 
 	if (!alloc_info->mapped_iova || !alloc_info->cpu_va) {
 		HFI_AD_ERROR("failed to get buffer mapping info\n");
@@ -1114,3 +1121,4 @@ int hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
 
 	return ret;
 }
+#endif /* IS_ENABLED(CONFIG_QTI_HFI_CORE)*/
