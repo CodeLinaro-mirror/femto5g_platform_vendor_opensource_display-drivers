@@ -902,6 +902,17 @@ static int virtio_kms_get_connector_infos(struct sde_kms *sde_kms,
 		priv->connector_status = attr->connection_status ?
 				connector_status_connected :
 				connector_status_disconnected;
+		/*
+		 * For supporting both HW-virtualization and para-virtualization with single
+		 * PVM image, host side might advertise the scanout type as DSI for primary
+		 * display. Since the actual HW INTF is DP, it will cause fail to find the
+		 * matched INTF. Workaround for now forcing to DP type. Shall remove this
+		 * workaround later once para-virtualization support fades out.
+		 */
+		if (attr->type != VIRTIO_PORT_TYPE_DP) {
+			VIRTIO_KMS_INFO("Force scanout %d type %d to DP\n", i, attr->type);
+			attr->type = VIRTIO_PORT_TYPE_DP;
+		}
 		priv->base.connector_type =
 			virtio_kms_connector_get_type(attr->type,
 					i,
