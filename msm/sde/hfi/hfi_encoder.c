@@ -14,6 +14,7 @@
 #include "hfi_kms.h"
 #include "sde_kms.h"
 #include "hfi_dbg.h"
+#include <drm/drm_edid.h>
 
 #define TIMEOUT_MAX	80
 
@@ -754,6 +755,9 @@ static int hfi_encoder_mode_set(struct sde_encoder_virt *enc, struct drm_display
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
 	}
+
+	// Set current mode as preferred mode.
+	drm_set_preferred_mode(conn, adj_mode->hdisplay, adj_mode->vdisplay);
 
 	ret = hfi_conn_send_panel_init(conn);
 	if (ret) {
