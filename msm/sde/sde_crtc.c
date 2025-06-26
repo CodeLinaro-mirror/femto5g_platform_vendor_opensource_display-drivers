@@ -4117,7 +4117,7 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc;
 	struct sde_rect conn_roi = {0};
 	struct sde_rect crtc_roi = {0};
-	bool is_cac_lb = false;
+	bool is_cac_lb = false, pu_enable = false;
 
 	sde_crtc = to_sde_crtc(crtc);
 	crtc_state = &cstate->base;
@@ -4127,17 +4127,16 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 	if (c_conn_state == NULL)
 		return -EINVAL;
 
-	if (c_conn_state->rois.num_rects)
+	if (c_conn_state->rois.num_rects || cstate->user_roi_list.num_rects) {
 		sde_kms_rect_merge_rectangles(&c_conn_state->rois, &conn_roi);
-
-	if (cstate->user_roi_list.num_rects)
 		sde_kms_rect_merge_rectangles(&cstate->user_roi_list, &crtc_roi);
+		pu_enable = true;
+	}
 
 	is_cac_lb = cstate->is_loopback_mode || cstate->in_loopback_transition;
 
 	if (cfg->flags & SDE_DRM_DESTSCALER_SCALE_UPDATE ||
 		cfg->flags & SDE_DRM_DESTSCALER_ENHANCER_UPDATE) {
-		bool pu_enable = cfg->flags & SDE_DRM_DESTSCALER_PU_ENABLE;
 
 		/**
 		 * Scaler src and dst width shouldn't exceed the maximum
@@ -4157,10 +4156,8 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 			!cfg->scl3_cfg.src_width[0] ||
 			!cfg->scl3_cfg.dst_width ||
 			(pu_enable && cfg->scl3_cfg.dst_width != hdisplay) ||
-			(pu_enable && conn_roi.h != 0 &&
-					cfg->scl3_cfg.dst_height != conn_roi.h) ||
-			(pu_enable && crtc_roi.h != 0 &&
-					cfg->scl3_cfg.src_height[0] != crtc_roi.h) ||
+			(pu_enable && cfg->scl3_cfg.dst_height != conn_roi.h) ||
+			(pu_enable && cfg->scl3_cfg.src_height[0] != crtc_roi.h) ||
 			(!(pu_enable || is_cac_lb) && (cfg->scl3_cfg.dst_width != hdisplay ||
 				cfg->scl3_cfg.dst_height != mode->vdisplay))) {
 			SDE_ERROR("crtc%d: ", crtc->base.id);
