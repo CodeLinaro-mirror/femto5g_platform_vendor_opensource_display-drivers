@@ -1623,7 +1623,8 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 				allow_switch = true;
 			} else if ((common_mode_caps & DSI_OP_VIDEO_MODE) &&
 				(panel->dfps_caps.dfps_support ||
-				panel->dyn_clk_caps.dyn_clk_support)) {
+				panel->dyn_clk_caps.dyn_clk_support ||
+				panel->esync_caps.emsync_switch_enabled)) {
 				allow_switch = true;
 			} else {
 				if (is_valid_poms_switch(panel_dsi_mode,

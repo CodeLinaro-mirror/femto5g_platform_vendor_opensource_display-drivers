@@ -1427,7 +1427,6 @@ static int _sde_encoder_atomic_check_qsync(struct sde_connector *sde_conn,
 
 	if (has_modeset && qsync_dirty &&
 		(msm_is_mode_seamless_poms(&sde_conn_state->msm_mode) ||
-			msm_is_mode_seamless_emsync_fps_switch(&sde_conn_state->msm_mode) ||
 			msm_is_mode_seamless_dyn_clk(&sde_conn_state->msm_mode))) {
 		SDE_ERROR("invalid qsync update during modeset priv flag:%x\n",
 				sde_conn_state->msm_mode.private_flags);
