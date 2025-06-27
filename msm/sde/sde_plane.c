@@ -3608,7 +3608,8 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 				psde->pipe_hw,
 				true,
 				pstate->multirect_index,
-				pstate->multirect_mode);
+				pstate->multirect_mode,
+				fmt);
 	/* update line insertion */
 	if (psde->pipe_hw->ops.setup_line_insertion)
 		psde->pipe_hw->ops.setup_line_insertion(psde->pipe_hw,
@@ -4005,7 +4006,7 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	/* disable multirect config of corresponding rect */
 	if (psde->pipe_hw && psde->pipe_hw->ops.update_multirect)
 		psde->pipe_hw->ops.update_multirect(psde->pipe_hw, false,
-				multirect_index, SDE_SSPP_MULTIRECT_TIME_MX);
+				multirect_index, SDE_SSPP_MULTIRECT_TIME_MX, NULL);
 
 	_sde_plane_set_active(psde, pstate, false);
 	_sde_plane_set_active_fetch(psde, pstate, false);

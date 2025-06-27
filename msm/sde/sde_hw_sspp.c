@@ -200,7 +200,8 @@ int sspp_subblk_offset(struct sde_hw_pipe *ctx,
 static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 		bool enable,
 		enum sde_sspp_multirect_index index,
-		enum sde_sspp_multirect_mode mode)
+		enum sde_sspp_multirect_mode mode,
+		const struct sde_format *fmt)
 {
 	u32 mode_mask, mask;
 	u32 idx;
@@ -209,18 +210,24 @@ static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 		return;
 
 	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
-		if (index == SDE_SSPP_RECT_SOLO)
-			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
-					BIT(2) | BIT(1) | BIT(0),
-					BIT(0));
-		else if (index == SDE_SSPP_RECT_0)
+		if (index == SDE_SSPP_RECT_SOLO) {
+			if (fmt && fmt->fetch_planes == SDE_PLANE_INTERLEAVED && !SDE_FORMAT_IS_YUV(fmt))
+				SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
+						BIT(2) | BIT(1) | BIT(0),
+						BIT(0));
+			else
+				SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
+						BIT(2) | BIT(1) | BIT(0),
+						0);
+		} else if (index == SDE_SSPP_RECT_0) {
 			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
 					BIT(2) | BIT(0),
 					(enable ? BIT(0) : 0) | ((mode == SDE_SSPP_MULTIRECT_TIME_MX) ? BIT(2) : 0));
-		else
+		} else {
 			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
 					BIT(2) | BIT(1),
 					(enable ? BIT(1) : 0) | ((mode == SDE_SSPP_MULTIRECT_TIME_MX) ? BIT(2) : 0));
+		}
 	} else {
 		if (index == SDE_SSPP_RECT_SOLO) {
 			/**
