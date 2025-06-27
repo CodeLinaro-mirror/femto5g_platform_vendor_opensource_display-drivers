@@ -19,13 +19,42 @@ uint32_t g_msm_hyp_irq_status;
 #define COUNTOF(x)  (sizeof(x) / sizeof(x[0]))
 
 #pragma pack(push, 1)
-struct hyp_irq_payload {
-	u32 dpu_id : 2;
-	u32 ctl_id : 6;
-	u32 irq_type : 8;
+/**
+ * struct hyp_irq_payload_t - structure defining a virq payload
+ * @status: irq reg value
+ * @irq_type: irq source type
+ * @ctl_id: control path id
+ * @dpu_id: dpu id
+ */
+struct hyp_irq_payload_t {
 	u32 status : 16;
+	u32 irq_type : 8;
+	u32 ctl_id : 6;
+	u32 dpu_id : 2;
+};
+
+/**
+ * struct virq_data_t - structure for the virq shmem
+ * @irq_metadata_t: virq shmem header
+ * @hyp_irq_payload_t: firt payload in the virq shmem
+ */
+struct virq_data_t {
+	struct irq_metadata_t irq_metadata;
+	struct hyp_irq_payload_t irq_payload; /* the first payload in virq shmem */
 };
 #pragma pack(pop)
+
+/**
+ * enum virq_type_t - virq source types
+ */
+enum virq_type_t {
+	VIRQ_TYPE_VSYNC = 0,
+	VIRQ_TYPE_LUTDMA_VQ,
+	VIRQ_TYPE_ROI_CRC,
+	VIRQ_TYPE_UNDER_RUN,
+	VIRQ_TYPE_MAX,
+	VIRQ_TYPE_NOT_SUPPORTED,
+};
 
 /**
  * struct sde_intr_reg - array of SDE register sets
@@ -151,6 +180,58 @@ struct msm_hyp_irq dspp_hist_irqs[] = {
 	{ 0x0080, DSPP_7, 0, 0, },
 };
 
+enum sde_intr_type virq_to_sde_irq_map[VIRQ_TYPE_MAX] = {
+	SDE_IRQ_TYPE_INTF_VSYNC,
+	SDE_IRQ_TYPE_LUTDMA_DB,
+	SDE_IRQ_TYPE_ROI_MISR,
+	SDE_IRQ_TYPE_INTF_UNDER_RUN
+};
+
+enum virq_type_t sde_irq_to_virq_map[] = {
+	/* SDE_IRQ_TYPE_WB_ROT_COMP				*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_WB_WFD_COMP				*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_PING_PONG_COMP			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_PING_PONG_RD_PTR		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_PING_PONG_WR_PTR		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_PING_PONG_AUTO_REF		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_PING_PONG_TEAR_CHECK	*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_PING_PONG_TE_CHECK		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_INTF_UNDER_RUN			*/ VIRQ_TYPE_UNDER_RUN,
+	/* SDE_IRQ_TYPE_INTF_VSYNC				*/ VIRQ_TYPE_VSYNC,
+	/* SDE_IRQ_TYPE_CWB_OVERFLOW			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_HIST_VIG_DONE			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_HIST_VIG_RSTSEQ			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_HIST_DSPP_DONE			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_HIST_DSPP_RSTSEQ		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_WD_TIMER				*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_WD_TIMER_1				*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_SFI_VIDEO_IN			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_SFI_VIDEO_OUT			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_SFI_CMD_0_IN			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_SFI_CMD_0_OUT			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_SFI_CMD_1_IN			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_SFI_CMD_1_OUT			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_SFI_CMD_2_IN			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_SFI_CMD_2_OUT			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_PROG_LINE				*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_AD4_BL_DONE				*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_CTL_START				*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_CTL_DONE				*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_INTF_TEAR_RD_PTR		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_INTF_TEAR_WR_PTR		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_INTF_TEAR_AUTO_REF		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_INTF_TEAR_TEAR_DETECT	*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_INTF_TEAR_TE_ASSERT		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_INTF_TEAR_TE_DEASSERT	*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_LTM_STATS_DONE			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_LTM_STATS_WB_PB			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_WB_PROG_LINE			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_RESERVED				*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_INTF_ESYNC_EMSYNC		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_ROI_MISR				*/ VIRQ_TYPE_ROI_CRC,
+	/* SDE_IRQ_TYPE_LUTDMA_DB				*/ VIRQ_TYPE_LUTDMA_VQ,
+	/* SDE_IRQ_TYPE_LUTDMA_SB				*/ VIRQ_TYPE_LUTDMA_VQ
+};
 
 #define ADD_IRQ_MAP(map) { COUNTOF(map), map }
 #define ADD_RESERVED_IRQ_MAP(type) { 0, NULL }
@@ -207,148 +288,281 @@ static const struct msm_hyp_irq_map irq_map[MSM_HYP_IRQ_TYPE_MAX] = {
 	ADD_UNSUPPORTED_IRQ_MAP(AD4_BL_DONE),	// 45 MSM_HYP_IRQ_TYPE_AD4_BL_DONE
 };
 
-static int msm_hyp_irq_idx_lookup(		struct sde_hw_intr *intr,
-		enum sde_intr_type intr_type, u32 instance_idx)
+#ifdef VIRQ_DEBUG
+static void print_irq_metadata(struct virq_data_t *virq_data)
+{
+	if (!virq_data)
+	{
+		SDE_ERROR("virq_data is NULL");
+		return;
+	}
+
+	SDE_DEBUG("virq_metadata: ctl_mask 0x%x\n", virq_data->irq_metadata.ctl_mask);
+	for (uint32_t ctl_idx = 0; ctl_idx < MAX_CTL_PATH_NUM; ctl_idx++) {
+		SDE_DEBUG("virq_metadata: ctl_en_mask[%d] 0x%x\n",
+					ctl_idx, virq_data->irq_metadata.ctl_irq_enable_mask[ctl_idx]);
+	}
+
+	mb();
+}
+#endif
+
+static volatile struct virq_data_t * get_virq_shmem_vaddr(struct sde_hw_intr *intr)
+{
+	struct msm_hyp_irq_controller *hyp_irq_controller =
+				container_of(intr, struct msm_hyp_irq_controller, sde_irq);
+	if(!hyp_irq_controller) return NULL;
+	return hyp_irq_controller->virq_data;
+}
+
+static int msm_hyp_irq_idx_lookup(struct sde_hw_intr *intr,
+	enum sde_intr_type intr_type, u32 instance_idx)
 {
 	int i;
 
 	for (i = 0; i < intr->sde_irq_map_size; i++) {
-		if (intr_type == intr->sde_irq_map[i].intr_type &&
-			instance_idx == intr->sde_irq_map[i].instance_idx)
+		if ((intr_type == intr->sde_irq_map[i].intr_type) && 
+			(instance_idx == intr->sde_irq_map[i].instance_idx))
 			return i;
 	}
 
-	pr_debug("IRQ lookup fail!! intr_type=%d, instance_idx=%d\n",
+	pr_err("IRQ lookup fail!! intr_type=%d, instance_idx=%d\n",
 			intr_type, instance_idx);
 	return -EINVAL;
 }
 
-static int msm_hyp_enable_irq_nolock(		struct sde_hw_intr *intr,
-		int irq_idx)
+static int msm_hyp_enable_irq_nolock(struct sde_hw_intr *intr, int irq_idx)
 {
+	SDE_ERROR("msm hyp irq enable\n");
+	volatile struct virq_data_t *virq_data = get_virq_shmem_vaddr(intr);
+	if (virq_data == NULL) {
+		SDE_ERROR("virq_data is NULL\n");
+		return -EFAULT;
+	}
+
+	enum sde_intr_type intr_type = intr->sde_irq_map[irq_idx].intr_type;
+	enum virq_type_t virq_type = sde_irq_to_virq_map[intr_type];
+	for (uint32_t ctl_idx = 0; ctl_idx < MAX_CTL_PATH_NUM; ctl_idx++) {
+		virq_data->irq_metadata.ctl_irq_enable_mask[ctl_idx] |= (1 << virq_type);
+	}
+
+	mb();
+
+#ifdef VIRQ_DEBUG
+	print_irq_metadata(virq_data);
+#endif
 	return 0;
 }
 
-static int msm_hyp_disable_irq_nolock(		struct sde_hw_intr *intr,
-		int irq_idx)
+static int msm_hyp_disable_irq_nolock(struct sde_hw_intr *intr, int irq_idx)
 {
+	SDE_ERROR("msm hyp irq disable\n");
+	volatile struct virq_data_t *virq_data = get_virq_shmem_vaddr(intr);
+	if (virq_data == NULL) {
+		SDE_ERROR("virq_data is NULL\n");
+		return -EFAULT;
+	}
+
+	enum sde_intr_type intr_type = intr->sde_irq_map[irq_idx].intr_type;
+	enum virq_type_t virq_type = sde_irq_to_virq_map[intr_type];
+	for (uint32_t ctl_idx = 0; ctl_idx < MAX_CTL_PATH_NUM; ctl_idx++) {
+		virq_data->irq_metadata.ctl_irq_enable_mask[ctl_idx] &= ~(1 << virq_type);
+	}
+
+	mb();
+
+#ifdef VIRQ_DEBUG
+	print_irq_metadata(virq_data);
+#endif
 	return 0;
 }
 
-static int msm_hyp_clear_all_irqs(		struct sde_hw_intr *intr)
+static int msm_hyp_clear_all_irqs(struct sde_hw_intr *intr)
 {
+	SDE_ERROR("msm hyp irq clear all\n");
+	volatile struct virq_data_t *virq_data = get_virq_shmem_vaddr(intr);
+	if (virq_data == NULL) {
+		SDE_ERROR("virq_data is NULL\n");
+		return -EFAULT;
+	}
+	virq_data->irq_metadata.rd_idx = virq_data->irq_metadata.wr_idx;
+
+	mb();
+
 	return 0;
 }
 
 static int msm_hyp_disable_all_irqs(struct sde_hw_intr *intr)
 {
+	SDE_ERROR("msm hyp irq disable all\n");
+	volatile struct virq_data_t *virq_data = get_virq_shmem_vaddr(intr);
+	if (virq_data == NULL) {
+		SDE_ERROR("virq_data is NULL\n");
+		return -EFAULT;
+	}
+	virq_data->irq_metadata.ctl_mask = 0;
+	for (uint32_t ctl_idx = 0; ctl_idx < MAX_CTL_PATH_NUM; ctl_idx++) {
+		virq_data->irq_metadata.ctl_irq_enable_mask[ctl_idx] = 0;
+	}
+
+	mb();
+
+#ifdef VIRQ_DEBUG
+	print_irq_metadata(virq_data);
+#endif
 	return 0;
 }
 
-static void msm_hyp_dispatch_irqs(		struct sde_hw_intr *intr,
+static void msm_hyp_dispatch_irqs(struct sde_hw_intr *intr,
 		void msm_hyp_cbfunc(void *arg, int irq_idx), void *arg)
 {
+	uint32_t ctl_irq_enable_mask = 0;
+	int irq_idx = 0;
+	uint32_t rd_idx = 0;
+	uint32_t wr_idx = 0;
+	uint32_t queue_sz = 0;
+	volatile uint32_t *irq_queue_start = 0;
+	uint32_t irq_instance_bitmask = 0;
+	uint32_t irq_instance_idx = 0;
+	volatile struct hyp_irq_payload_t *irq_payload = NULL;
+
+	volatile struct virq_data_t *virq_data = get_virq_shmem_vaddr(intr);
+	if (virq_data == NULL) {
+		SDE_ERROR("virq_data is NULL\n");
+		return;
+	}
+	rd_idx = virq_data->irq_metadata.rd_idx;
+	wr_idx = virq_data->irq_metadata.wr_idx;
+	/* TODO: do not read queue size form shmem every time, read from RAM data structure */
+	queue_sz = virq_data->irq_metadata.queue_sz;
+	irq_queue_start = (volatile uint32_t *)&virq_data->irq_payload;
+
+	while (rd_idx != wr_idx)
+	{
+		irq_payload = (volatile struct hyp_irq_payload_t *)(irq_queue_start + rd_idx);
+
+		ctl_irq_enable_mask = virq_data->irq_metadata.ctl_irq_enable_mask[irq_payload->ctl_id];
+		SDE_DEBUG("rd_idx 0x%x wr_idx 0x%x virq payload 0x%x irqmask 0x%x irq_type %u "
+			"irq_status 0x%x dpu%u, ctl%u\n",
+			rd_idx, wr_idx, *((volatile uint32_t *)irq_payload), ctl_irq_enable_mask,
+			irq_payload->irq_type, irq_payload->status, irq_payload->dpu_id, irq_payload->ctl_id);
+
+		if (ctl_irq_enable_mask & (1u<<irq_payload->irq_type)) /* check if irq type is enabled */
+		{
+			irq_instance_bitmask = irq_payload->status;
+			while (irq_instance_bitmask)
+			{
+				irq_instance_idx = ffs(irq_instance_bitmask);
+
+				/* ffs returns 1 for first bit position */
+				irq_instance_bitmask &= ~(1u<<(irq_instance_idx - 1));
+				irq_idx = intr->ops.irq_idx_lookup(intr,
+							virq_to_sde_irq_map[irq_payload->irq_type], irq_instance_idx);
+				if (irq_idx != -EINVAL)
+				{
+					if (msm_hyp_cbfunc)
+						msm_hyp_cbfunc(arg, irq_idx);
+				}
+			}
+		}
+
+		rd_idx++;
+		if (rd_idx >= queue_sz) {
+			rd_idx = 0;
+			SDE_INFO("Resetting virq read index to 0\n");
+		}
+		virq_data->irq_metadata.rd_idx = rd_idx;
+		mb();
+	}
+
 	return;
 }
 
-static void msm_hyp_clear_interrupt_status(		struct sde_hw_intr *intr,
-		int irq_idx)
+
+static void msm_hyp_clear_interrupt_status(struct sde_hw_intr *intr, int irq_idx)
 {
+	SDE_DEBUG("msm hyp irq clear interrupt\n");
 	return;
 }
 
 static void msm_hyp_clear_intr_status_nolock(struct sde_hw_intr *intr,
 		int irq_idx)
 {
+	SDE_DEBUG("msm hyp irq clear intr status\n");
 	return;
 }
 
-static u32 msm_hyp_get_interrupt_status(		struct sde_hw_intr *intr,
-		int irq_idx, bool clear)
+static u32 msm_hyp_get_interrupt_status(struct sde_hw_intr *intr, int irq_idx, bool clear)
 {
+	SDE_DEBUG("msm hyp irq get status\n");
 	return 0;
 }
 
 static u32 msm_hyp_get_intr_status_nolock(		struct sde_hw_intr *intr,
 		int irq_idx, bool clear)
 {
+	SDE_DEBUG("msm hyp irq get status\n");
 	return 0;
 }
 
-static int msm_hyp_get_interrupt_sources(		struct sde_hw_intr *intr,
-		uint32_t *sources)
+static int msm_hyp_get_interrupt_sources(struct sde_hw_intr *intr, uint32_t *sources)
 {
+	SDE_DEBUG("msm hyp irq get intr\n");
 	return 0;
 }
 
 void msm_hyp_irq_update(struct msm_kms *msm_kms, bool enable)
 {
+	SDE_DEBUG("msm hyp irq update\n");
 	struct sde_kms *sde_kms = to_sde_kms(msm_kms);
 
-	if (!msm_kms || !sde_kms) {
+	if (!sde_kms) {
 		SDE_ERROR("invalid kms arguments\n");
 		return;
 	}
 
 	sde_kms->irq_enabled = enable;
 
-	if (enable) {
-		// TODO: Enable overall IRQ mask for DPU sde_kms->irq_num
-	} else {
-		// TODO: Disable overall IRQ mask for DPU sde_kms->irq_num
+	for (uint32_t dpu_idx = 0; dpu_idx < MAX_NUM_DPU_CORE; dpu_idx++)
+	{
+		struct msm_hyp_kms *msm_hyp_kms = sde_kms->hyp_kms;
+		if (!msm_hyp_kms) {
+			SDE_ERROR("msm_hyp_kms is not initialized for dpu %d\n", dpu_idx);
+			continue;
+		}
+
+		if (NULL == msm_hyp_kms->virq_shmem[dpu_idx].vaddr){
+			SDE_ERROR("virq_shmem for device %d is NULL\n", dpu_idx);
+			continue;
+		}
+
+		volatile struct virq_data_t *virq_data =
+			(volatile struct virq_data_t *) msm_hyp_kms->virq_shmem[dpu_idx].vaddr;
+		if (!virq_data) {
+			SDE_ERROR("virq_data is NULL\n");
+			continue;
+		}
+
+		if (enable) {
+			virq_data->irq_metadata.ctl_mask = 0xFF; /* 0xFF since there are 8 control paths */
+		} else {
+			virq_data->irq_metadata.ctl_mask = 0;
+		}
+
+		mb();
+
+#ifdef VIRQ_DEBUG
+		print_irq_metadata(virq_data);
+#endif
 	}
 }
 
 irqreturn_t msm_hyp_irq(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms = to_sde_kms(kms);
-	u32 interrupts;
-
-	// TODO: get next interrupt source
-	sde_kms->hw_intr->ops.get_interrupt_sources(sde_kms->hw_intr,
-			&interrupts);
-
-	/* store irq status in case of irq-storm debugging */
-	g_msm_hyp_irq_status = interrupts;
-
-	/*
-	 * Taking care of MDP interrupt
-	 */
-	if (interrupts & IRQ_SOURCE_MDP) {
-		interrupts &= ~IRQ_SOURCE_MDP;
-		sde_core_irq(sde_kms);
-	}
-
-	/*
-	 * Routing all other interrupts to external drivers
-	 */
-	while (interrupts) {
-		irq_hw_number_t hwirq = fls(interrupts) - 1;
-		unsigned int mapping;
-		int rc;
-
-		mapping = irq_find_mapping(sde_kms->irq_controller.domain,
-				hwirq);
-		if (mapping == 0) {
-			SDE_EVT32(hwirq, SDE_EVTLOG_ERROR);
-			goto error;
-		}
-
-		rc = generic_handle_irq(mapping);
-		if (rc < 0) {
-			SDE_EVT32(hwirq, mapping, rc, SDE_EVTLOG_ERROR);
-			goto error;
-		}
-
-		interrupts &= ~(1 << hwirq);
-	}
-
-	return IRQ_HANDLED;
-
-error:
-	/* bad situation, inform irq system, it may disable overall MDSS irq */
-	return IRQ_NONE;
+	return sde_core_irq(sde_kms);
 }
+
 
 static const struct sde_hw_intr_ops msm_hyp_irq_ops =
 {
@@ -367,6 +581,7 @@ static const struct sde_hw_intr_ops msm_hyp_irq_ops =
 
 void msm_hyp_irq_preinstall(struct msm_kms *kms)
 {
+	SDE_DEBUG("msm hyp irq preinstall\n");
 	struct sde_kms *sde_kms = to_sde_kms(kms);
 
 	if (!sde_kms->dev || !sde_kms->dev->dev) {
@@ -392,6 +607,7 @@ void msm_hyp_irq_preinstall(struct msm_kms *kms)
 
 int msm_hyp_irq_postinstall(struct msm_kms *kms)
 {
+	SDE_DEBUG("msm hyp irq postinstall\n");
 	struct sde_kms *sde_kms = to_sde_kms(kms);
 	int rc;
 
@@ -407,6 +623,7 @@ int msm_hyp_irq_postinstall(struct msm_kms *kms)
 
 void msm_hyp_irq_uninstall(struct msm_kms *kms)
 {
+	SDE_DEBUG("msm hyp irq uninstall\n");
 	struct sde_kms *sde_kms = to_sde_kms(kms);
 
 	if (!kms) {
@@ -438,6 +655,9 @@ void msm_hyp_irq_destroy(struct msm_hyp_kms *hyp_kms, int dpu_id)
 
 struct sde_hw_intr *msm_hyp_irq_init(struct msm_hyp_kms *hyp_kms, int dpu_id)
 {
+	SDE_DEBUG("msm hyp irq init for dpu%d\n", dpu_id);
+	SDE_DEBUG("virq_shmem %p for dpu%d\n", hyp_kms->virq_shmem[dpu_id].vaddr, dpu_id);
+
 	struct msm_hyp_irq_controller *irq = NULL;
 	struct sde_hw_intr *intr;
 	u32 irq_regs_count = 0;
@@ -529,13 +749,23 @@ struct sde_hw_intr *msm_hyp_irq_init(struct msm_hyp_kms *hyp_kms, int dpu_id)
 			intr->sde_irq_map[irq_idx].sde_irq_idx = irq_map[i].irqs[j].sde_irq_idx;
 			intr->sde_irq_map[irq_idx].irq_mask = irq_map[i].irqs[j].irq_mask;
 			intr->sde_irq_map[irq_idx].reg_idx = reg_idx;
+			pr_info("irq_idx %u, intr_type %u, instance_idx %u, sde_irq_idx %u, irq_mask %u,"
+				" reg_idx %u", irq_idx,
+				intr->sde_irq_map[irq_idx].intr_type,
+				intr->sde_irq_map[irq_idx].instance_idx,
+				intr->sde_irq_map[irq_idx].sde_irq_idx,
+				intr->sde_irq_map[irq_idx].irq_mask,
+				intr->sde_irq_map[irq_idx].reg_idx);
 			irq_idx++;
 		}
 
 		intr->sde_irq_tbl[reg_idx].map_idx_end = irq_idx - 1;
 		reg_idx++;
 	}
-
+	irq->virq_data = (struct virq_data_t *)(hyp_kms->virq_shmem[dpu_id].vaddr);
+#ifdef VIRQ_DEBUG
+	print_irq_metadata(virq_data);
+#endif
 exit:
 	if (ret) {
 		kfree(intr->sde_irq_tbl);
@@ -551,5 +781,6 @@ exit:
 
 int msm_hyp_irq_deinit(struct msm_hyp_kms *hyp_kms, int dpu_id)
 {
+	SDE_DEBUG("msm hyp irq deinit\n");
 	return 0;
 }

@@ -334,9 +334,17 @@ struct msm_hyp_kms_funcs {
 	int (*update_hw_reservation)(struct sde_kms *sde_kms);
 };
 
+struct virq_shmem_t {
+	dma_addr_t dma_handle;
+	void *vaddr;
+	size_t size;
+	uint32_t hab_export_id;
+};
+
 struct msm_hyp_kms {
 	const struct msm_hyp_kms_funcs *funcs;
 	uint32_t num_sde_kms;
+	struct virq_shmem_t virq_shmem[MAX_NUM_DPU_CORE];
 	struct sde_kms *sde_kms[MAX_NUM_DPU_CORE];
 	struct msm_hyp_irq_controller *hyp_irq[MAX_NUM_DPU_CORE];
 };

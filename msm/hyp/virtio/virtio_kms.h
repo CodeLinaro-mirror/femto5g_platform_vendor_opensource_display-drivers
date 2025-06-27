@@ -24,6 +24,13 @@ enum virtio_channel_ids {
 	MAX_CHANNELS
 };
 
+enum hab_dbl_handle_t {
+	HAB_DBL_HANDLE_NONE,
+	HAB_DBL_HANDLE_1,
+	HAB_DBL_HANDLE_2,
+	HAB_DBL_HANDLE_MAX
+};
+
 struct scanout_attrib {
 	uint32_t type;
 	uint32_t connection_status;
@@ -76,6 +83,12 @@ struct channel_map {
 	struct mutex hyp_chl_lock[MAX_CHANNELS];
 };
 
+struct virq_info_t {
+	enum hab_dbl_handle_t hab_dbl_handle;
+	struct virtio_kms *kms;
+	uint32_t dpu_id;
+};
+
 struct device_info_type {
 	uint32_t qseed_type;
 	uint32_t max_mdp_clk;
@@ -88,6 +101,7 @@ struct device_info_type {
 struct virtio_kms {
 	struct msm_hyp_kms base;
 	struct channel_map channel[VIRTIO_MAX_CLIENTS];
+	struct virq_info_t *virq_info[VIRTIO_GPU_MAX_VIRQ];
 	uint32_t mmid_cmd;
 	uint32_t mmid_buffer;
 	uint32_t mmid_event;

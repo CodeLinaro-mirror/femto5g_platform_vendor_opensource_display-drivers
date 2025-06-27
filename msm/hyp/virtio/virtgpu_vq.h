@@ -153,4 +153,8 @@ int virtio_gpu_cmd_get_plane_hw_attributes(struct virtio_kms *kms,
 		uint32_t scanout,
 		uint32_t plane_id);
 
+int virtio_gpu_cmd_enable_virq(struct device *dev, struct virtio_kms *kms, uint32_t device_id);
+
+int virtio_gpu_cmd_disable_virq(struct device *dev, struct virtio_kms *kms, uint32_t device_id);
+
 #endif //__VIRTIOGPU_VQ_H__
