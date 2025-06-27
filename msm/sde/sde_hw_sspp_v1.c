@@ -561,7 +561,7 @@ static void sde_hw_sspp_setup_secure_v1(struct sde_hw_pipe *ctx,
 
 	if (rect_mode == SDE_SSPP_RECT_SOLO)
 		secure_bit_mask = 0xF;
-	else if (rect_mode == SDE_SSPP_RECT_0)
+	else if (rect_mode == SDE_SSPP_RECT_0 || rect_mode == SDE_SSPP_RECT_1)
 		secure_bit_mask = 0x5;
 	else
 		secure_bit_mask = 0xA;
