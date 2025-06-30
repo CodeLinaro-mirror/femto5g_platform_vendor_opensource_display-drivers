@@ -372,6 +372,31 @@ dma_addr_t msm_gem_get_dma_addr(struct drm_gem_object *obj)
 	return sg_dma_address(msm_obj->sgt->sgl);
 }
 
+/**
+ * msm_gem_get_sgt - Get the scatter-gather table for a GEM object
+ * @obj: The GEM object
+ *
+ * This function returns the scatter-gather table for a GEM object.
+ *
+ * Return: The scatter-gather table on success, ERR_PTR on failure
+ */
+struct sg_table *msm_gem_get_sgt(struct drm_gem_object *obj)
+{
+	struct msm_gem_object *msm_obj;
+
+	if (!obj) {
+		DRM_ERROR("invalid params\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	msm_obj = to_msm_bo(obj);
+
+	if (!msm_obj->sgt)
+		return ERR_PTR(-ENOENT);
+
+	return msm_obj->sgt;
+}
+
 static struct msm_gem_vma *add_vma(struct drm_gem_object *obj,
 		struct msm_gem_address_space *aspace)
 {
