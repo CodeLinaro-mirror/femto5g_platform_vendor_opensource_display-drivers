@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -334,7 +334,7 @@ int msm_fb_obj_get_attrs(struct drm_gem_object *obj,
 	if (!obj->import_attach) {
 		DRM_DEBUG("NULL attachment in drm gem object flags:0x%x\n",
 			msm_obj->flags);
-		return -EINVAL;
+		return 0;
 	}
 
 	dma_buf = obj->import_attach->dmabuf;
