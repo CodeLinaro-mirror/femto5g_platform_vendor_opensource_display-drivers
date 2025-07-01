@@ -4608,8 +4608,11 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 	cfg->ipcc_protocol_offset = PROP_VALUE_ACCESS(props->values, IPCC_PROTOCOL_OFFSET, 0);
 	if (!cfg->ipcc_protocol_offset)
 		cfg->ipcc_protocol_offset = HW_FENCE_DEFAULT_IPCC_PROTOCOL_OFFSET;
-	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id)
-		cfg->hw_fence_rev = 0; /* disable hw fences*/
+	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id) {
+		SDE_INFO("disabling hw-fence because invalid protocol_id:%d client_phys_id:%d\n",
+			cfg->ipcc_protocol_id, cfg->ipcc_client_phys_id);
+		cfg->hw_fence_rev = 0;
+	}
 	cfg->ipcc_client_out_phys_id = PROP_VALUE_ACCESS(props->values, IPCC_CLIENT_OUT_PHYS_ID, 0);
 
 	cfg->soccp_ph = PROP_VALUE_ACCESS(props->values, SOCCP_PH, 0);
