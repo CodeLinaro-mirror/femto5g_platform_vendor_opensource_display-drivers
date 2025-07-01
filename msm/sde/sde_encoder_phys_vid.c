@@ -409,13 +409,12 @@ static void _sde_encoder_phys_vid_setup_avr(
 				sde_conn->freq_pattern->freq_stepping_seq)
 				dpu_min_fps = sde_conn->freq_pattern->freq_stepping_seq[0];
 			/* set qsync min fps to dpu_min_fps only in sticky-on-fly case */
-			if (dpu_min_fps && ((sde_conn->frame_interval >= dpu_min_fps)
-					|| (sde_conn->freq_pattern &&
-					sde_conn->freq_pattern->needs_ap_refresh)))
+			if (dpu_min_fps && sde_conn->frame_interval >= dpu_min_fps)
 				qsync_min_fps = dpu_min_fps / 1000;
 
 			avr_params.infinite_mode = true;
 		}
+
 		if (qsync_min_fps > default_fps) {
 			SDE_ERROR_VIDENC(vid_enc,
 				"qsync fps %d must be less than default %d\n",
@@ -2139,7 +2138,6 @@ static void sde_encoder_phys_vid_enact_updated_qsync_state(struct sde_encoder_ph
 	struct sde_ctl_cesta_cfg cfg = {0,};
 	struct sde_cesta_client *cesta_client;
 	enum msm_disp_op disp_op;
-	u32 qsync_min_fps = 0;
 
 	if (!phys_enc || !phys_enc->parent) {
 		SDE_ERROR("invalid encoder parameters\n");
@@ -2181,13 +2179,6 @@ static void sde_encoder_phys_vid_enact_updated_qsync_state(struct sde_encoder_ph
 									phys_enc->hw_ctl, &cfg);
 					SDE_EVT32(DRMID(phys_enc->parent), cfg.index);
 				}
-			}
-			if (sde_enc->disp_info.vrr_caps.video_psr_support &&
-					phys_enc->parent_ops.get_qsync_fps) {
-				phys_enc->parent_ops.get_qsync_fps(
-					phys_enc->parent, &qsync_min_fps,
-					phys_enc->connector->state, NULL);
-				_sde_encoder_phys_vid_setup_avr(phys_enc, qsync_min_fps);
 			}
 			_sde_encoder_phys_vid_avr_ctrl(phys_enc);
 		}
