@@ -34,7 +34,6 @@
 #define GET_CLIENT_ID(data)           \
 	(data & CLIENT_ID_MASK)
 
-#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 static u32 unique_id_counter = 1;
 static atomic_t work_queue_pos_wr = ATOMIC_INIT(0);
 static atomic_t work_queue_pos_rd = ATOMIC_INIT(0);
@@ -1098,15 +1097,9 @@ int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
 	return ret;
 }
 
-int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
+int hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
 {
-	struct hfi_core_mem_alloc_info *alloc_info = &addr_map->alloc_info;
 	int ret = 0;
-
-	if (!addr_map->size) {
-		HFI_AD_DEBUG("empty buf\n");
-		return ret;
-	}
 
 	if (!alloc_info->mapped_iova || !alloc_info->cpu_va) {
 		HFI_AD_ERROR("failed to get buffer mapping info\n");
@@ -1119,4 +1112,3 @@ int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
 
 	return ret;
 }
-#endif /* IS_ENABLED(CONFIG_QTI_HFI_CORE)*/
