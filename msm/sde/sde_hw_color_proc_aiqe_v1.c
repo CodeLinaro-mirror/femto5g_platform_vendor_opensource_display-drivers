@@ -906,3 +906,288 @@ void sde_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 	sde_setup_aiqe_common_v1(ctx, hw_cfg, aiqe_top);
 	LOG_FEATURE_ON;
 }
+
+static void _aiqe_abc_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
+		struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg,
+		struct sde_hw_reg_dma_ops *dma_ops,
+		struct sde_aiqe_top_level *aiqe_top)
+{
+	int rc = 0;
+	u32 value = 0;
+	u32 base = ctx->hw.blk_off + ctx->cap->sblk->aiqe.base;
+	struct sde_reg_dma_kickoff_cfg dma_kickoff;
+	enum msm_disp_op disp_op = ctx->hw.disp_op;
+
+	/* Write the top-level AIQE configuration to the hardware */
+	rc = _reg_dmav1_aiqe_write_top_level_v1(dma_cfg, ctx, hw_cfg, dma_ops, aiqe_top);
+	if (rc)
+		return;
+
+	REG_DMA_SETUP_OPS(*dma_cfg, base + 0x20,
+		&value, sizeof(u32), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_cfg);
+	if (rc) {
+		DRM_ERROR("write ABC off failed ret %d\n", rc);
+		return;
+	}
+
+	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg->dma_buf,
+			REG_DMA_WRITE, DMA_CTL_QUEUE0,
+			WRITE_IMMEDIATE, AIQE_ABC);
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc)
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+		else
+			LOG_FEATURE_OFF;
+	}
+}
+
+void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
+{
+	struct drm_msm_abc *aiqe_abc;
+	struct sde_aiqe_top_level *aiqe_tl = aiqe_top;
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct sde_hw_reg_dma_ops *dma_ops;
+	struct sde_reg_dma_buffer *buf;
+	struct sde_reg_dma_setup_ops_cfg dma_cfg;
+	struct sde_reg_dma_kickoff_cfg dma_kickoff;
+	int rc = -EINVAL;
+	u32 aiqe_base;
+	enum msm_disp_op disp_op = ctx->hw.disp_op;
+
+	rc = reg_dma_dspp_check(ctx, cfg, AIQE_ABC);
+	if (rc)
+		return;
+
+	if (!ctx->cap->sblk->aiqe.base) {
+		SDE_DEBUG("AIQE not present on DSPP idx %d", ctx->idx);
+		return;
+	}
+
+	aiqe_base = ctx->hw.blk_off + ctx->cap->sblk->aiqe.base;
+	if (!aiqe_base) {
+		SDE_DEBUG("AIQE not supported on DSPP idx %d", ctx->idx);
+		return;
+	}
+
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	buf = dspp_buf[AIQE_ABC][ctx->idx][ctx->dpu_idx];
+	dma_ops->reset_reg_dma_buf(buf);
+	REG_DMA_INIT_OPS(dma_cfg, MDSS, AIQE_ABC, buf);
+	REG_DMA_SETUP_OPS(dma_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write decode select failed ret %d\n", rc);
+		return;
+	}
+
+	aiqe_abc = (struct drm_msm_abc *)(hw_cfg->payload);
+
+	if (!hw_cfg->payload || !valid_abc_v1_en_cfg(aiqe_abc, hw_cfg)) {
+		SDE_DEBUG("Disable ABC feature\n");
+		_aiqe_abc_off_v1(&dma_cfg, ctx, hw_cfg, dma_ops, aiqe_tl);
+		return;
+	}
+
+	if (hw_cfg->len != sizeof(struct drm_msm_abc)) {
+		SDE_ERROR("invalid size of payload len %d exp %zd\n",
+			hw_cfg->len, sizeof(struct drm_msm_abc));
+		return;
+	}
+
+	REG_DMA_SETUP_OPS(dma_cfg, ctx->cap->sblk->aiqe_wrapper.base + 0x4,
+		&aiqe_abc->src_sel, sizeof(u32), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write MDNIE src sel failed ret %d\n", rc);
+		return;
+	}
+
+	REG_DMA_SETUP_OPS(dma_cfg, aiqe_base + 0x20,
+		aiqe_abc->param, AIQE_ABC_PARAM_LEN * sizeof(u32),
+		REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write ABC param failed ret %d\n", rc);
+		return;
+	}
+
+	/* Write the top-level AIQE configuration to the hardware */
+	rc = _reg_dmav1_aiqe_write_top_level_v1(&dma_cfg, ctx, hw_cfg, dma_ops, aiqe_tl);
+	if (rc) {
+		SDE_ERROR("writing aiqe top level failed");
+		return;
+	}
+
+	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
+			REG_DMA_WRITE, DMA_CTL_QUEUE0,
+			WRITE_IMMEDIATE, AIQE_ABC);
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc)
+			SDE_ERROR("failed to kick off ret %d\n", rc);
+		else
+			LOG_FEATURE_ON;
+	}
+}
+
+int _ai_scaler_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
+	struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg,
+	struct sde_hw_reg_dma_ops *dma_ops)
+{
+	int rc = 0;
+	u32 value = 0;
+	u32 base = ctx->hw.blk_off + ctx->cap->sblk->ai_scaler.base;
+	struct sde_reg_dma_kickoff_cfg dma_kickoff;
+	enum msm_disp_op disp_op = ctx->hw.disp_op;
+
+	REG_DMA_SETUP_OPS(*dma_cfg, base + 0x4,
+		&value, sizeof(u32), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_cfg);
+	if (rc) {
+		SDE_ERROR("write AI Scaler off failed ret %d\n", rc);
+		return rc;
+	}
+
+	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg->dma_buf,
+		REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, AIQE_AI_SCALER);
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc) {
+			SDE_ERROR("failed to kick off ret %d\n", rc);
+			return rc;
+		}
+		LOG_FEATURE_OFF;
+	} else {
+		SDE_ERROR("kick off not supported for disp_op %d\n", disp_op);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int reg_dma_setup_ai_scaler_v1(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	u32 ai_scaler_base, width, height, size, offset = 0, cache[4];
+	struct drm_msm_ai_scaler *ai_scaler_cfg = NULL;
+	struct sde_hw_reg_dma_ops *dma_ops;
+	struct sde_reg_dma_buffer *buf;
+	struct sde_reg_dma_setup_ops_cfg dma_cfg;
+	struct sde_reg_dma_kickoff_cfg dma_kickoff;
+	int rc;
+	enum msm_disp_op disp_op = ctx->hw.disp_op;
+
+	rc = reg_dma_dspp_check(ctx, cfg, AIQE_AI_SCALER);
+	if (rc) {
+		SDE_DEBUG("dspp check failed");
+		return rc;
+	}
+
+	if (!ctx->cap->sblk->ai_scaler.base) {
+		SDE_DEBUG("AI Scaler not supported on DSPP idx %d", ctx->idx);
+		return -EINVAL;
+	}
+
+	/* program ai scaler for single dspp instance */
+	if (ctx->idx != hw_cfg->dspp[0]->idx) {
+		SDE_DEBUG("AI Scaler need not be programmed on %d", ctx->idx);
+		return 0;
+	}
+
+	ai_scaler_base = ctx->hw.blk_off + ctx->cap->sblk->ai_scaler.base;
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	buf = dspp_buf[AIQE_AI_SCALER][ctx->idx][ctx->dpu_idx];
+	dma_ops->reset_reg_dma_buf(buf);
+	REG_DMA_INIT_OPS(dma_cfg, MDSS, AIQE_AI_SCALER, buf);
+	REG_DMA_SETUP_OPS(dma_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write decode select failed ret %d\n", rc);
+		return -EINVAL;
+	}
+
+	ai_scaler_cfg = (struct drm_msm_ai_scaler *)(hw_cfg->payload);
+	if (!ai_scaler_cfg) {
+		SDE_DEBUG("Disable AI Scaler");
+		rc = _ai_scaler_off_v1(&dma_cfg, ctx, hw_cfg, dma_ops);
+		return rc;
+	}
+
+	if (hw_cfg->len != sizeof(struct drm_msm_ai_scaler)) {
+		SDE_ERROR("invalid size of payload len %d exp %zd\n",
+				hw_cfg->len, sizeof(struct drm_msm_ai_scaler));
+		return -EINVAL;
+	}
+
+
+	/* program config register */
+	cache[0] = ai_scaler_cfg->config;
+
+	/* program merge control config register */
+	if (hw_cfg->num_of_mixers == 1)
+		cache[1] = 0;
+	else if (hw_cfg->num_of_mixers == 2)
+		cache[1] = 1;
+	else {
+		SDE_ERROR("invalid number of mixers %d\n", hw_cfg->num_of_mixers);
+		return -EINVAL;
+	}
+
+	/* program input size register */
+	width = (ai_scaler_cfg->src_w) & 0xFFF;
+	height = (ai_scaler_cfg->src_h) & 0xFFF;
+	size = width | height << 0x10;
+	cache[2] = size;
+
+	/* program output size register */
+	width = (ai_scaler_cfg->dst_w) & 0xFFF;
+	height = (ai_scaler_cfg->dst_h) & 0xFFF;
+	size = width | height << 0x10;
+	cache[3] = size;
+
+	REG_DMA_SETUP_OPS(dma_cfg, ai_scaler_base + 0x4, cache,
+			4 * sizeof(u32), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write ai scaler config failed ret %d\n", rc);
+		return -EINVAL;
+	}
+
+	/* program parameter registers only when weight selection bit is set */
+	if (!(ai_scaler_cfg->config & BIT(18)))
+		goto skip_param;
+
+	offset = 0x3C;
+	REG_DMA_SETUP_OPS(dma_cfg, ai_scaler_base + offset, ai_scaler_cfg->param,
+			AIQE_AI_SCALER_PARAM_LEN * sizeof(u32), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write ai scaler param failed ret %d\n", rc);
+		return -EINVAL;
+	}
+
+skip_param:
+	SDE_DEBUG("Enable AI Scaler: src_w:0x%X src_h:0x%X dst_w:0x%X dst_h:0x%X\n",
+			ai_scaler_cfg->src_w, ai_scaler_cfg->src_h, ai_scaler_cfg->dst_w,
+			ai_scaler_cfg->dst_h);
+	SDE_EVT32(hw_cfg->num_of_mixers, ai_scaler_cfg->config, ai_scaler_cfg->src_w,
+			ai_scaler_cfg->src_h, ai_scaler_cfg->dst_w, ai_scaler_cfg->dst_h);
+
+	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, buf,
+			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, AIQE_AI_SCALER);
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc) {
+			SDE_ERROR("failed to kick off ret %d\n", rc);
+			return rc;
+		}
+		LOG_FEATURE_ON;
+	} else {
+		SDE_ERROR("kick off not supported for disp_op %d\n", disp_op);
+		return -EINVAL;
+	}
+
+	return 0;
+}

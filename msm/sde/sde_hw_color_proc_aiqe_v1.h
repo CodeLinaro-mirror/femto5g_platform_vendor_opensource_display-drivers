@@ -111,4 +111,19 @@ void reg_dmav1_setup_aiqe_ssrc_config_v1(struct sde_hw_dspp *ctx, void *cfg, voi
  */
 void reg_dmav1_setup_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void *mdnie_top);
 
+/**
+ * reg_dmav1_setup_aiqe_abc_v1 - api to setup aiqe abc programming
+ * @ctx: pointer to dspp object.
+ * @cfg: pointer to sde_hw_cp_cfg.
+ * @aiqe_top: pointer to aiqe top level structure
+ */
+void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
+
+/**
+ * reg_dma_setup_ai_scaler_v1 - api to setup ai scaler programming
+ * @ctx: pointer to dspp object.
+ * @cfg: Pointer to sde_hw_cp_cfg.
+ */
+int reg_dma_setup_ai_scaler_v1(struct sde_hw_dspp *ctx, void *cfg);
+
 #endif /* _SDE_HW_COLOR_PROC_AIQE_H_ */
