@@ -511,13 +511,10 @@ static int _dp_mst_compute_config(struct drm_atomic_state *state,
 	mst_state = to_drm_dp_mst_topology_state(mst->mst_mgr.base.state);
 
 #if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
-	if (!dfixed_trunc(mst_state->pbn_div)) {
-		pbn_div = mst->dp_display->get_mst_pbn_div(mst->dp_display);
-		mst_state->pbn_div.full = dfixed_const(pbn_div);
-	}
+	pbn_div = mst->dp_display->get_mst_pbn_div(mst->dp_display);
+	mst_state->pbn_div.full = dfixed_const(pbn_div);
 #else
-	if (!mst_state->pbn_div)
-		mst_state->pbn_div = mst->dp_display->get_mst_pbn_div(mst->dp_display);
+	mst_state->pbn_div = mst->dp_display->get_mst_pbn_div(mst->dp_display);
 #endif
 	rc = mst->mst_fw_cbs->atomic_find_time_slots(state, &mst->mst_mgr, c_conn->mst_port, pbn);
 	if (rc < 0) {

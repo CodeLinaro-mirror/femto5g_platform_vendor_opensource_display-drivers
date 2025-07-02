@@ -864,7 +864,9 @@ void sde_sync_put(void *fence)
 
 void sde_fence_dump(struct dma_fence *fence)
 {
+	struct dma_fence_array *array = NULL;
 	char timeline_str[TIMELINE_VAL_LENGTH];
+	uint32_t i;
 
 	if (fence->ops->timeline_value_str)
 		fence->ops->timeline_value_str(fence, timeline_str, TIMELINE_VAL_LENGTH);
@@ -877,6 +879,15 @@ void sde_fence_dump(struct dma_fence *fence)
 		fence->ops->signaled ?
 		fence->ops->signaled(fence) : 0xffffffff,
 		dma_fence_get_status(fence), fence->flags);
+
+	/* dump child fences for any array fence */
+	if (dma_fence_is_array(fence)) {
+		array = container_of(fence, struct dma_fence_array, base);
+		SDE_ERROR("fence drv name:%s num_fences:%d\n", fence->ops->get_driver_name(fence),
+			array->num_fences);
+		for (i = 0; i < array->num_fences; i++)
+			sde_fence_dump(array->fences[i]);
+	}
 }
 
 static void sde_fence_dump_user_fds_info(struct dma_fence *base_fence)

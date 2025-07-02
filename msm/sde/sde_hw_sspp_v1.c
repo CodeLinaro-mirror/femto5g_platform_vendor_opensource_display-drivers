@@ -151,11 +151,6 @@
 #define SSPP_VIG_CSC_10_OP_MODE            0x0
 #define SSPP_TRAFFIC_SHAPER_BPC_MAX        0xFF
 
-/* Offsets from base register */
-#define SSPP_REC0_OFFSET_FROM_SSPP_CMN 0x1000
-#define SSPP_REC1_OFFSET_FROM_SSPP_CMN 0x3000
-#define SDE_SSPP_CMN SDE_SSPP_SRC
-
 static inline int _sspp_calculate_rect_off(enum sde_sspp_multirect_index rect_index)
 {
 	return (rect_index == SDE_SSPP_RECT_SOLO || rect_index == SDE_SSPP_RECT_0) ?

@@ -30,6 +30,7 @@ enum hfi_panel_phy_type {
  * HFI_PANEL_BPP_16 : 16 BPP for rgb565
  * HFI_PANEL_BPP_18 : 18 BPP for rgb666
  * HFI_PANEL_BPP_24 : 24 BPP for rgb888
+ * HFI_PANEL_BPP_30 : 30 BPP for rgb101010
  */
 enum hfi_panel_bpp {
 	HFI_PANEL_BPP_3      = 1,
@@ -38,6 +39,7 @@ enum hfi_panel_bpp {
 	HFI_PANEL_BPP_16     = 4,
 	HFI_PANEL_BPP_18     = 5,
 	HFI_PANEL_BPP_24     = 6,
+	HFI_PANEL_BPP_30     = 7,
 };
 
 /*
@@ -106,6 +108,7 @@ enum hfi_panel_vsync_source {
  * HFI_PANEL_TRIGGER_SW : Triggered by software
  * HFI_PANEL_TRIGGER_SW_TE : Software trigger and TE
  * HFI_PANEL_TRIGGER_SW_SEOF : Software trigger and start/end of frame trigger.
+ * HFI_PANEL_TRIGGER_SEOF : Start/end of frame used for trigger
  */
 enum hfi_panel_trigger_type {
 	HFI_PANEL_TRIGGER_NONE      = 1,
@@ -113,6 +116,7 @@ enum hfi_panel_trigger_type {
 	HFI_PANEL_TRIGGER_SW        = 3,
 	HFI_PANEL_TRIGGER_SW_TE     = 4,
 	HFI_PANEL_TRIGGER_SW_SEOF   = 5,
+	HFI_PANEL_TRIGGER_SEOF      = 6,
 };
 
 /*

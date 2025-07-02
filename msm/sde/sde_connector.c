@@ -1227,7 +1227,18 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 				old_freq_pattern->frame_interval, new_freq_pattern->usecase_idx,
 				old_freq_pattern->usecase_idx);
 		}
+
+		if (new_freq_pattern && old_freq_pattern &&
+				(new_freq_pattern->freq_stepping_seq[0] !=
+				old_freq_pattern->freq_stepping_seq[0])) {
+			c_conn->qsync_updated = true;
+			SDE_EVT32(
+					SDE_EVTLOG_FUNC_CASE1,
+					new_freq_pattern->freq_stepping_seq[0],
+					old_freq_pattern->freq_stepping_seq[0]);
+		}
 	}
+
 	SDE_EVT32(connector->base.id, frame_interval_ns,
 		frame_interval_ns>>32, usecase_idx_updated,
 		frame_interval_updated, c_conn->freq_pattern_updated,

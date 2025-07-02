@@ -32,6 +32,18 @@
 #define HFI_ADAPTER_WORK_QUEUE_SIZE 4
 
 /**
+ * struct callback_work - Structure for containing work queue items
+ * @work: kthread_work instance
+ * @host: pointer to adapter module instance
+ * @index: index of kthread queue position
+ */
+struct callback_work {
+	struct kthread_work work;
+	struct hfi_adapter_t *host;
+	u32 index;
+};
+
+/**
  * struct hfi_adapter_t - Structure for defining Adapter Module instance handle
  * @sde_or_vm_instance: index of VM owning adapter
  * @cb_ops: callback ops supplied to HFI core driver for receiving IRQ
@@ -51,7 +63,7 @@ struct hfi_adapter_t {
 	struct hfi_core_cb_ops *cb_ops;
 	struct hfi_core_session *session;  /* handle to hfi core device */
 #endif
-	struct kthread_work cb_work[HFI_ADAPTER_WORK_QUEUE_SIZE];
+	struct callback_work cb_work[HFI_ADAPTER_WORK_QUEUE_SIZE];
 	struct kthread_worker cb_worker;
 	struct task_struct *cb_worker_thread;
 	struct idr client_ids;
