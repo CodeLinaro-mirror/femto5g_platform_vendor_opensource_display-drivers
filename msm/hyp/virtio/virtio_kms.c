@@ -441,6 +441,23 @@ static int virtio_connector_set_info_blob(struct drm_connector *connector,
 	sde_kms_info_add_keystr(info, "display type", hyp_display->info->display_type);
 	sde_kms_info_add_keystr(info, "panel name", priv->panel_name);
 
+	switch (hyp_display->info->panel_orientation) {
+	case PANEL_ROTATE_NONE:
+		sde_kms_info_add_keystr(info, "panel orientation", "none");
+		break;
+	case PANEL_ROTATE_180:
+		sde_kms_info_add_keystr(info, "panel orientation", "horz & vert flip");
+		break;
+	case PANEL_ROTATE_H_FLIP:
+		sde_kms_info_add_keystr(info, "panel orientation", "horz flip");
+		break;
+	case PANEL_ROTATE_V_FLIP:
+		sde_kms_info_add_keystr(info, "panel orientation", "vert flip");
+		break;
+	default:
+		break;
+	}
+
 	return 0;
 }
 
@@ -961,6 +978,7 @@ static int virtio_kms_get_connector_infos(struct sde_kms *sde_kms,
 			drm_mode_set_name(mode);
 		}
 		priv->mode_count = output->num_modes;
+		priv->base.panel_orientation = attr->panel_orientation;
 
 		if (i < ARRAY_SIZE(disp_order_str))
 			priv->base.display_type = disp_order_str[i];
