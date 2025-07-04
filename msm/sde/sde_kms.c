@@ -5289,6 +5289,8 @@ static void sde_kms_init_rot_sid_hw(struct sde_kms *sde_kms)
 
 static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
 {
+	struct sde_rm_hw_iter rm_iter;
+
 	if (!sde_kms || !sde_kms->hw_mdp)
 		return;
 
@@ -5296,6 +5298,16 @@ static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
 		sde_kms->hw_mdp->ops.setup_hw_fences[sde_kms->hw_mdp->hw.disp_op](
 			sde_kms->hw_mdp, sde_kms->catalog->ipcc_protocol_id,
 			sde_kms->dpu_ipcc_addr);
+
+	/* set input_fence_id for all ctl paths to avoid reset value matching with signal_id = 0 */
+	if (sde_kms->catalog->hw_fence_rev) {
+		sde_rm_init_hw_iter(&rm_iter, 0, SDE_HW_BLK_CTL);
+		while (sde_rm_get_hw(&sde_kms->rm, &rm_iter)) {
+			struct sde_hw_ctl *ctl = to_sde_hw_ctl(rm_iter.hw);
+
+			sde_fence_update_input_fence_id(ctl);
+		}
+	}
 }
 
 static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
