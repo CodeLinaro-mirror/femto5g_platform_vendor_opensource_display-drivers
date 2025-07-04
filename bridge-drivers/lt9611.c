@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2018, The Linux Foundation. All rights reserved.
  * Copyright (c) 2019. Linaro Ltd
- * Copyright (c) 2022, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/types.h>
@@ -597,9 +597,9 @@ static void lt9611_reset(struct lt9611 *lt9611)
 	gpiod_set_value_cansleep(lt9611->reset_gpio, 1);
 	msleep(20);
 	gpiod_set_value_cansleep(lt9611->reset_gpio, 0);
-	msleep(20);
+	msleep(40);
 	gpiod_set_value_cansleep(lt9611->reset_gpio, 1);
-	msleep(100);
+	msleep(200);
 }
 
 static void lt9611_assert_5v(struct lt9611 *lt9611)
@@ -1310,7 +1310,6 @@ static int lt9611_probe(struct i2c_client *client)
 	ret = lt9611_read_device_rev(lt9611);
 	if (ret) {
 		dev_err(dev, "failed to read chip rev\n");
-		goto err_disable_regulators;
 	}
 
 	lt9611_i2s_init(lt9611);
@@ -1320,7 +1319,6 @@ static int lt9611_probe(struct i2c_client *client)
 					IRQF_ONESHOT, "lt9611", lt9611);
 	if (ret) {
 		dev_err(dev, "failed to request irq\n");
-		goto err_disable_regulators;
 	}
 
 	i2c_set_clientdata(client, lt9611);
@@ -1341,9 +1339,6 @@ static int lt9611_probe(struct i2c_client *client)
 	lt9611_enable_hpd_interrupts(lt9611);
 
 	return 0;
-
-err_disable_regulators:
-	regulator_bulk_disable(ARRAY_SIZE(lt9611->supplies), lt9611->supplies);
 
 	of_node_put(lt9611->dsi0_node);
 	of_node_put(lt9611->dsi1_node);
