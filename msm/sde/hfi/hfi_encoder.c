@@ -206,6 +206,9 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 
 	switch (cmd_id) {
 	case HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_START:
+		if (sde_encoder_is_wb_display(&sde_enc->base))
+			break;
+
 		event = SDE_ENCODER_FRAME_EVENT_DONE |
 			SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
 			SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
@@ -215,6 +218,12 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_COMPLETE:
 		event = SDE_ENCODER_FRAME_EVENT_DONE;
+		if (sde_encoder_is_wb_display(&sde_enc->base)) {
+			event |= SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
+				SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
+			sde_encoder_update_pending_kickoff_cnt(hfi_enc->sde_base);
+		}
+
 		hfi_encoder_frame_event_callback(hfi_enc->sde_base,
 				payload, event);
 		break;
@@ -329,7 +338,8 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 			enable, defer_to_commit);
 		break;
 	case MSM_ENC_TX_COMPLETE:
-		SDE_ERROR("unsupported tx complete wait %d\n", event);
+		ret = _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_FRAME_SCAN_COMPLETE,
+			enable, defer_to_commit);
 		break;
 	case MSM_ENC_VBLANK:
 		ret = _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_VSYNC,
@@ -491,7 +501,7 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 		return -EINVAL;
 
 	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE ||
-			event == MSM_ENC_HW_RECOVERY) {
+			event == MSM_ENC_HW_RECOVERY || event == MSM_ENC_TX_COMPLETE) {
 		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("failed to send event register ret:%d\n", ret);
@@ -622,6 +632,12 @@ static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 	}
 
 	if (sde_encoder_is_wb_display(&enc->base)) {
+		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, true);
+		if (ret) {
+			SDE_ERROR("failed to send tx complete command\n");
+			return ret;
+		}
+
 		ret = _hfi_enc_send_display_ctrl_cmd(enc, true);
 		if (ret) {
 			SDE_ERROR("failed to send display enable cmd\n");
@@ -654,6 +670,12 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 	}
 
 	if (sde_encoder_is_wb_display(&enc->base)) {
+		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, false);
+		if (ret) {
+			SDE_ERROR("failed to send tx complete command\n");
+			return ret;
+		}
+
 		ret = _hfi_enc_send_display_ctrl_cmd(enc, false);
 		if (ret) {
 			SDE_ERROR("failed to send display disable cmd\n");
