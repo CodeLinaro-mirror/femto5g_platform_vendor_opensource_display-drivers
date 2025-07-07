@@ -13,6 +13,7 @@
 #include <linux/msm_hdcp.h>
 #include <linux/kfifo.h>
 #include <linux/version.h>
+#include <uapi/linux/sched/types.h>
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
 #include <drm/display/drm_dp_helper.h>
 #else
@@ -892,6 +893,12 @@ static int dp_hdcp2p2_main(void *data)
 {
 	struct dp_hdcp2p2_ctrl *ctrl = data;
 	enum hdcp_transport_wakeup_cmd cmd;
+	struct sched_param param = {.sched_priority = 16};
+
+	int ret = sched_setscheduler(current, SCHED_FIFO, &param);
+
+	if (ret)
+		pr_err("Failed to set dp hdcp2p2 thread priority: %d\n", ret);
 
 	while (1) {
 		wait_event_idle(ctrl->wait_q,
