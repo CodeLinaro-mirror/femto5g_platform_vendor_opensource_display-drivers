@@ -5227,7 +5227,7 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 			pdev = to_platform_device(sde_kms->dev->dev);
 			res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ipcc_reg");
 			if (!res) {
-				SDE_DEBUG("failed to get resource ipcc_reg, cannot map ipcc\n");
+				SDE_INFO("failed to get resource ipcc_reg, cannot map ipcc\n");
 				sde_kms->catalog->hw_fence_rev = 0;
 			} else {
 				sde_kms->dpu_ipcc_addr = HW_FENCE_IPCC_PROTOCOLp_CLIENTc(res->start,
@@ -5238,8 +5238,10 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 				ret = _sde_kms_one2one_mem_map_ipcc_reg(sde_kms, resource_size(res),
 					sde_kms->dpu_ipcc_addr);
 				/* if mapping fails disable hw-fences */
-				if (ret)
+				if (ret) {
+					SDE_ERROR("Failed to map DPU IPCC register\n");
 					sde_kms->catalog->hw_fence_rev = 0;
+				}
 			}
 		}
 
@@ -5945,6 +5947,11 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (test_bit(SDE_FEATURE_HW_VSYNC_TS, sde_kms->catalog->features))
 		dev->vblank_disable_immediate = true;
 
+	if (!priv->phandle.hw_fence_enable) {
+		SDE_INFO("power vote failed, disabling hw-fencing\n");
+		sde_kms->catalog->hw_fence_rev = 0;
+	}
+
 	/*
 	 * _sde_kms_drm_obj_init should create the DRM related objects
 	 * i.e. CRTCs, planes, encoders, connectors and so forth
@@ -5953,11 +5960,6 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (rc) {
 		SDE_ERROR("modeset init failed: %d\n", rc);
 		goto drm_obj_init_err;
-	}
-
-	if (!priv->phandle.hw_fence_enable) {
-		SDE_DEBUG("power vote failed, disabling hw-fencing\n");
-		sde_kms->catalog->hw_fence_rev = 0;
 	}
 
 	if (sde_kms->catalog->qultivate_rev == SDE_QULTIVATE_SW_REV1 &&
