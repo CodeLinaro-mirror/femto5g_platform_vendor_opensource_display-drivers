@@ -44,7 +44,7 @@
 #define LINK_INTEGRITY_FAILURE BIT(4)
 
 /* Temporary define to override wrong TZ value */
-#define AKE_SEND_CERT_MSG_DELAY 100
+#define AKE_SEND_CERT_MSG_DELAY 50
 
 struct sde_hdcp_2x_ctrl {
 	DECLARE_KFIFO(cmd_q, enum sde_hdcp_2x_wakeup_cmd, 8);

@@ -4553,6 +4553,16 @@ int sde_crtc_sw_fence_error_handle(struct drm_crtc *crtc, int err_status)
 	return rc;
 }
 
+static bool _is_crtc_intf_mode_wb(struct drm_crtc *crtc)
+{
+	enum sde_intf_mode intf_mode = sde_crtc_get_intf_mode(crtc, crtc->state);
+
+	if ((intf_mode != INTF_MODE_WB_BLOCK) && (intf_mode != INTF_MODE_WB_LINE))
+		return false;
+
+	return true;
+}
+
 /**
  * _sde_crtc_fences_wait_list - wait for input sw-fences and return any hw-fences
  * @crtc: Pointer to CRTC object.
@@ -4576,11 +4586,13 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 	ktime_t kt_end, kt_wait;
 	uint32_t wait_ms = 1;
 	struct msm_display_mode *msm_mode;
-	bool mode_switch;
+	bool mode_switch, is_wb = false;
 	int i, status = 0, rc = 0;
 
 	msm_mode = sde_crtc_get_msm_mode(crtc->state);
 	mode_switch = msm_is_mode_seamless_poms(msm_mode);
+
+	is_wb = _is_crtc_intf_mode_wb(crtc);
 
 	/* use monotonic timer to limit total fence wait time */
 	kt_end = ktime_add_ns(ktime_get(),
@@ -4609,8 +4621,11 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 				else
 					num_hw_fences++; /* keep fence in the list */
 
-				/* go to next, to skip sw-wait */
-				continue;
+				/*
+				 * go to next, to skip sw-wait for hw-fences not for writeback path.
+				 */
+				if (!is_wb)
+					continue;
 			}
 		}
 
@@ -7816,16 +7831,6 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			CRTC_PROP_DISPLAY_OP);
 
 	vfree(info);
-}
-
-static bool _is_crtc_intf_mode_wb(struct drm_crtc *crtc)
-{
-	enum sde_intf_mode intf_mode = sde_crtc_get_intf_mode(crtc, crtc->state);
-
-	if ((intf_mode != INTF_MODE_WB_BLOCK) && (intf_mode != INTF_MODE_WB_LINE))
-		return false;
-
-	return true;
 }
 
 static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
