@@ -53,8 +53,24 @@ struct hfi_plane_state {
  * @Returns: 0 on success, or error code on failure
  */
 int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu);
+
+/**
+ * hfi_plane_disable - disable plane
+ * @cmd_buf: command buffer to use to set the disable property hfi
+ * @disp_id: display id
+ * @plane: plane to disable within the given display
+ * @use_lock: boolean to indicate if api should use hfi mutex lock
+ */
+void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
+	bool use_lock);
 #else
 int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)
+{
+	return -HFI_ERROR;
+}
+
+void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
+	bool use_lock);
 {
 	return -HFI_ERROR;
 }
