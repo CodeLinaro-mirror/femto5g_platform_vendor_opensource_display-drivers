@@ -11,6 +11,7 @@
 #include "hfi_kms.h"
 #include "hfi_props.h"
 #include "hfi_adapter.h"
+#include "hfi_defs_display_color.h"
 
 #define HFI_CRTC_ID(c) ((c)->sde_base->base.base.id)
 
@@ -314,6 +315,7 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 
 void hfi_crtc_destroy(struct sde_crtc *crtc)
 {
+	int ret = 0;
 	struct hfi_crtc *crtc_hfi;
 
 	if (!crtc) {
@@ -322,6 +324,10 @@ void hfi_crtc_destroy(struct sde_crtc *crtc)
 	}
 
 	crtc_hfi = to_hfi_crtc(crtc);
+
+	ret = hfi_adapter_buffer_dealloc(&crtc_hfi->hfi_buff_map_dither);
+	if (ret)
+		SDE_ERROR("failed to deallocated hfi shared memory for dither\n");
 
 	kfree(crtc_hfi->base_props);
 	kfree(crtc_hfi->color_props);
@@ -614,6 +620,22 @@ int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 	return 0;
 }
 
+static int _hfi_cp_crtc_allocate_dither(struct hfi_crtc *hfi_crtc)
+{
+	int ret = 0;
+
+	hfi_crtc->hfi_buff_map_dither.size =
+		sizeof(struct hfi_display_dither) * (DSPP_MAX - DSPP_0);
+	ret = hfi_adapter_buffer_alloc(&hfi_crtc->hfi_buff_map_dither);
+	if (ret) {
+		hfi_crtc->hfi_buff_map_dither.size = 0;
+		SDE_DEBUG("failed to allocate shared memory for SPR Dither, ret: %d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
 int hfi_crtc_init(struct sde_crtc *sde_crtc)
 {
 	struct hfi_crtc *crtc = NULL;
@@ -653,6 +675,10 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc)
 		ret = -ENOMEM;
 		goto free_kv;
 	}
+
+	ret = _hfi_cp_crtc_allocate_dither(crtc);
+	if (ret)
+		SDE_DEBUG("failed to allocated shared memory for dither payloads ret: %d\n", ret);
 
 	crtc->sde_base = sde_crtc;
 	sde_crtc->hfi_crtc = crtc;

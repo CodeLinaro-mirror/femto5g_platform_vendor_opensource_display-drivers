@@ -760,6 +760,7 @@ static u32 hfi_dspp_idx_map[DSPP_MAX] = {
  * @flags: color proc feature flag indicating enable, broadcast, dspp index
  * @dspp_start_idx: starting index of dspp pipes
  * @dspp_idx: current dspp index
+ * @hfi_buff_map: pointer to hfi_buff map object of shared memory
  * @vig_gamut_mode: top-level structure maintaining state of VIG Gamut mode
  * @dspp_pa_mode: top-level bitmask maintaining state of PA block
  */
@@ -786,6 +787,7 @@ struct sde_hw_cp_cfg {
 	u32 flags;
 	u32 dspp_start_idx;
 	u32 dspp_idx;
+	struct hfi_shared_addr_map *hfi_buff_map;
 
 	struct cp_vig_gamut_mode *vig_gamut_mode;
 	struct cp_pa_mode *dspp_pa_mode;

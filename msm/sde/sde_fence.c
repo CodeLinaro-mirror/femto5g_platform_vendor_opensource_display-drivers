@@ -440,7 +440,8 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 						SDE_EVTLOG_H32(array->fences[0]->context),
 						SDE_EVTLOG_L32(array->fences[0]->context),
 						SDE_EVTLOG_H32(array->fences[0]->seqno),
-						SDE_EVTLOG_L32(array->fences[0]->seqno));
+						SDE_EVTLOG_L32(array->fences[0]->seqno),
+						dma_fence_is_signaled(array->fences[0]));
 				else
 					SDE_EVT32(ctl_id, num_fences, array->num_fences, i,
 						SDE_EVTLOG_ERROR);
@@ -453,7 +454,8 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 				SDE_EVT32(ctl_id, num_fences, i, SDE_EVTLOG_H32(fences[i]->context),
 					SDE_EVTLOG_L32(fences[i]->context),
 					SDE_EVTLOG_H32(fences[i]->seqno),
-					SDE_EVTLOG_L32(fences[i]->seqno));
+					SDE_EVTLOG_L32(fences[i]->seqno),
+					dma_fence_is_signaled(fences[i]));
 			}
 		}
 
@@ -468,7 +470,7 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 		}
 		SDE_EVT32(ctl_id, fence_list_index, SDE_EVTLOG_H32(data->dma_context),
 			SDE_EVTLOG_L32(data->dma_context), SDE_EVTLOG_H32(seqno),
-			SDE_EVTLOG_L32(seqno));
+			SDE_EVTLOG_L32(seqno), dma_fence_is_signaled(&temp_array->base));
 
 		params.indv.fence = &temp_array->base;
 	} else {
@@ -480,6 +482,7 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 		SDE_EVT32(ctl_id, num_fences, SDE_EVTLOG_H32(fences[0]->context),
 			SDE_EVTLOG_L32(fences[0]->context), SDE_EVTLOG_H32(fences[0]->seqno),
 			SDE_EVTLOG_L32(fences[0]->seqno), fences[0]->flags,
+			dma_fence_is_signaled(fences[0]),
 			tmp_array ? tmp_array->num_fences : SDE_EVTLOG_FUNC_CASE2);
 		params.indv.fence = fences[0];
 	}
@@ -639,10 +642,14 @@ int sde_fence_update_hw_fences_txq(struct sde_fence_context *ctx, bool vid_mode,
 	list_for_each_entry_safe(fc, next, &ctx->fence_list_head, fence_list) {
 		struct dma_fence *fence = &fc->base;
 
-		/* this is not hw-fence, or already processed */
+		/* this is not hw-fence, or already processed, or for later commits */
 		if (!test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags) ||
-				fc->txq_updated_fence)
+				fc->txq_updated_fence || fence->seqno > ctx->commit_count) {
+			SDE_DEBUG("skip fence ctx:%llu seq:%llu f:0x%lx commit_cnt:%d txq:%d\n",
+				fence->context, fence->seqno, fence->flags, ctx->commit_count,
+				fc->txq_updated_fence);
 			continue;
+		}
 
 		hw_ctl = fc->hwfence_out_ctl;
 		if (!hw_ctl) {
@@ -670,7 +677,9 @@ int sde_fence_update_hw_fences_txq(struct sde_fence_context *ctx, bool vid_mode,
 
 		/* update hw-fence tx queue */
 		SDE_EVT32(ctl_id, SDE_EVTLOG_H32(fc->hwfence_index),
-			SDE_EVTLOG_L32(fc->hwfence_index), *data->txq_tx_wm_va);
+			SDE_EVTLOG_L32(fc->hwfence_index), *data->txq_tx_wm_va,
+			SDE_EVTLOG_H32(fence->context), SDE_EVTLOG_L32(fence->context),
+			SDE_EVTLOG_H32(fence->seqno), SDE_EVTLOG_L32(fence->seqno));
 		ret = synx_signal(data->hw_fence_handle, fc->hwfence_index,
 			SYNX_STATE_SIGNALED_SUCCESS);
 		if (ret) {

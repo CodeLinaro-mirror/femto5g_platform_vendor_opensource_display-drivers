@@ -14,7 +14,9 @@
 #include <linux/spinlock.h>
 #if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
 #include "hfi_pack_unpack_common.h"
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 #include "hfi_interface.h"
+#endif
 #include "hfi_packer.h"
 #include "hfi_unpacker.h"
 #endif
@@ -153,7 +155,7 @@ struct hfi_cmdbuf_t {
 	u32 unique_id;
 	u32 obj_id;
 	u32 size;
-#if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 	struct hfi_core_cmds_buf_desc buf;
 #endif
 	struct list_head node;
@@ -233,10 +235,12 @@ struct hfi_shared_addr_map {
 	void __iomem *local_addr;
 	u32 size;
 	u32 aligned_size;
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 	struct hfi_core_mem_alloc_info alloc_info;
+#endif
 };
 
-#if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 
 /**
  * hfi_adapter_init - Creates HFI adapter module object to connect with HFI driver.
@@ -354,10 +358,10 @@ int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map);
 
 /**
  * hfi_adapter_buffer_dealloc - API to deallocate shared memory between HFI & kernel
- * @alloc_info: Pointer to hfi_core memory alloc info which stores the allocated size
+ * @addr_map: Pointer to hfi_adapter address map which stores the size to allocate
  * and pointers to kernel & hfi address of the shared space.
  */
-int hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info);
+int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map);
 
 #else
 
@@ -424,10 +428,11 @@ static inline int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
 	return 0;
 }
 
-static inline int hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
+static inline int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
 {
 	return 0;
 }
-#endif
+
+#endif /*#if IS_ENABLED(CONFIG_QTI_HFI_CORE)*/
 
 #endif  /* _HFI_ADAPTER_H_ */

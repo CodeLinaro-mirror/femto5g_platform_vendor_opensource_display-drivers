@@ -177,7 +177,8 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_MEMCOL_PROT] = HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_PROT,
 	[SDE_CP_CRTC_DSPP_SIXZONE] = HFI_PROPERTY_DISPLAY_COLOR_SIXZONE,
 	[SDE_CP_CRTC_DSPP_VLUT] = HFI_PROPERTY_DISPLAY_COLOR_VLUT,
-	[SDE_CP_CRTC_DSPP_DITHER] = HFI_PROPERTY_DISPLAY_COLOR_DITHER,
+	[SDE_CP_CRTC_DSPP_DITHER] = HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER,
+	[SDE_CP_CRTC_DSPP_SPR_DITHER] = HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER,
 	[SDE_CP_CRTC_DSPP_RC_MASK] = HFI_PROPERTY_DISPLAY_COLOR_RC,
 	[SDE_CP_CRTC_DSPP_SPR_INIT] = HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT,
 	[SDE_CP_CRTC_DSPP_SPR_UDC] = HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC,
@@ -1677,6 +1678,19 @@ static int _sde_cp_crtc_checkfeature(u32 feature,
 	return ret;
 }
 
+static void _sde_cp_setup_hfi_config(enum sde_cp_crtc_features feature,
+		struct sde_crtc *sde_crtc, struct sde_hw_cp_cfg *hw_cfg)
+{
+#ifdef HFI_PROPERTY_DISPLAY_COLOR_BEGIN
+	hw_cfg->prop_id = sde_cp_crtc_feat_to_hfi_prop_id[feature];
+	if (sde_crtc->hfi_crtc) {
+		hw_cfg->prop_helper = sde_crtc->hfi_crtc->color_props;
+		if (feature == SDE_CP_CRTC_DSPP_SPR_DITHER)
+			hw_cfg->hfi_buff_map = &sde_crtc->hfi_crtc->hfi_buff_map_dither;
+	}
+#endif
+}
+
 static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 				   struct sde_crtc *sde_crtc)
 {
@@ -1746,13 +1760,8 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 			hw_cfg.mixer_info = hw_lm;
 			hw_cfg.displayh = num_mixers * hw_lm->cfg.out_width;
 			hw_cfg.displayv = hw_lm->cfg.out_height;
-			if (sde_crtc->hfi_crtc)
-				hw_cfg.prop_helper = sde_crtc->hfi_crtc->color_props;
-#ifdef HFI_PROPERTY_DISPLAY_COLOR_BEGIN
-			hw_cfg.prop_id = sde_cp_crtc_feat_to_hfi_prop_id[prop_node->feature];
-#endif
 			hw_cfg.dspp_pa_mode = &sde_crtc->dspp_pa_mode;
-
+			_sde_cp_setup_hfi_config(prop_node->feature, sde_crtc, &hw_cfg);
 			ret = commit_feature(hw_dspp, &hw_cfg, sde_crtc);
 			if (ret)
 				break;
@@ -2939,11 +2948,8 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 			hw_cfg.displayv = hw_lm->cfg.out_height;
 			hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
 			hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
-			if (sde_crtc->hfi_crtc)
-				hw_cfg.prop_helper = sde_crtc->hfi_crtc->color_props;
-#ifdef HFI_PROPERTY_DISPLAY_COLOR_BEGIN
-			hw_cfg.prop_id = sde_cp_crtc_feat_to_hfi_prop_id[features[n]];
-#endif
+
+			_sde_cp_setup_hfi_config(features[n], sde_crtc, &hw_cfg);
 			ret = set_feature(hw_dspp, &hw_cfg, sde_crtc);
 			if (ret)
 				break;

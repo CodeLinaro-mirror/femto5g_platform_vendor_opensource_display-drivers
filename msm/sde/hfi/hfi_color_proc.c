@@ -5,8 +5,12 @@
 
 #include "hfi_color_proc.h"
 #include "hfi_defs_layer_color.h"
+#include "hfi_defs_display_color.h"
 #include "hfi_properties_display.h"
 #include "sde_kms.h"
+#include "sde_hw_dspp.h"
+
+static struct hfi_display_pa_dither hfi_pa_dither_cached[DPU_MAX][DSPP_MAX] = {};
 
 void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data)
 {
@@ -243,4 +247,170 @@ void hfi_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
 			hw_cfg->obj_id, HFI_VAL_U32, &hfi_cfg, sizeof(u32));
 	if (ret)
 		SDE_ERROR("failed to add HFI prop: %d ret: %d\n", hw_cfg->prop_id, ret);
+}
+
+/* Helper function to send hfi_buff packet for AHB non-broadcast use-case */
+static int hfi_buff_send_payload(void *cfg, void *hfi_cfg, u32 prop_id,
+	u32 major_ver, u32 minor_ver)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct hfi_shared_addr_map *hfi_buff_map = NULL;
+	u32 ret = 0, indx, payload_size;
+	struct hfi_buff prop_hfi_buff;
+	u64 fw_buff_addr;
+
+	hfi_buff_map = hw_cfg->hfi_buff_map;
+	hfi_cfg = (struct hfi_display_dither *)hfi_cfg;
+	payload_size = sizeof(struct hfi_display_dither);
+
+	if (!hfi_buff_map || !hfi_buff_map->remote_addr ||
+		!hfi_buff_map->local_addr) {
+		SDE_ERROR("Invalid inputs: hfi_buff_map %pK, remote_addr %lu, local_addr %pK\n",
+			hfi_buff_map, (hfi_buff_map ? hfi_buff_map->remote_addr : 0),
+			(hfi_buff_map ? hfi_buff_map->local_addr : NULL));
+		return -EINVAL;
+	}
+
+	if (hw_cfg->dspp_idx < hw_cfg->dspp_start_idx) {
+		SDE_ERROR("Invalid dspp_idx %d or dspp_start_idx %d\n", hw_cfg->dspp_idx,
+				hw_cfg->dspp_start_idx);
+		return -EINVAL;
+	}
+
+	indx = (hw_cfg->dspp_idx - hw_cfg->dspp_start_idx) * payload_size;
+	if (indx + payload_size > hfi_buff_map->size) {
+		SDE_ERROR("Not enough memory left, remaining size %u, payload_size %u\n",
+			hfi_buff_map->size - indx, payload_size);
+		return -EINVAL;
+	}
+	memcpy(hfi_buff_map->local_addr + indx, hfi_cfg, payload_size);
+
+	/* non-broadcast and it is the last dspp idx - send the packet */
+	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
+		// populate hfi_buff to send over hfi packet.
+		fw_buff_addr = (u64) hfi_buff_map->remote_addr;
+		prop_hfi_buff.addr_l = (fw_buff_addr & 0xFFFFFFFF);
+		prop_hfi_buff.addr_h = (fw_buff_addr >> 32);
+		prop_hfi_buff.size = (payload_size / sizeof(u32)) * hw_cfg->num_of_mixers;
+
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				HFI_PACK_VERSION(major_ver, minor_ver, prop_id),
+				HFI_VAL_U32_ARRAY, &prop_hfi_buff,
+				sizeof(struct hfi_buff));
+		if (ret)
+			SDE_ERROR("Failed to add hfi prop %d ret %d\n", prop_id, ret);
+		else
+			SDE_DEBUG("non-broadcast feature: submitted to prop_helper\n");
+	}
+
+	return ret;
+}
+
+void hfi_setup_dspp_pa_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_pa_dither *dither;
+	u32 i, ret = 0;
+	u32 payload_size = sizeof(struct hfi_display_pa_dither);
+	u32 prop_id = HFI_PACK_VERSION(1, 7, HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER);
+	struct hfi_display_pa_dither *hfi_cfg = NULL;
+
+	if (!hw_cfg || (hw_cfg->len != sizeof(struct drm_msm_pa_dither) &&
+			hw_cfg->payload)) {
+		SDE_ERROR("hw %pK payload %pK size %d expected sz %zd\n",
+			hw_cfg, ((hw_cfg) ? hw_cfg->payload : NULL),
+			((hw_cfg) ? hw_cfg->len : 0),
+			sizeof(struct drm_msm_pa_dither));
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	hfi_cfg = &hfi_pa_dither_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
+
+	if (!hw_cfg->payload) {
+		/* Turn off feature */
+		hfi_cfg->flags = 0;
+	} else {
+		/* Turn on feature */
+		hfi_cfg->flags = HFI_DISPLAY_COLOR_FLAGS_FEATURE_ENABLE;
+		dither = hw_cfg->payload;
+		for (i = 0; i < DITHER_MATRIX_SZ; i++)
+			hfi_cfg->matrix[i] = dither->matrix[i];
+		hfi_cfg->strength = dither->strength;
+		hfi_cfg->offset_en = dither->offset_en;
+	}
+
+	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
+		/* non-broadcast and it is the last dspp idx - send the payload */
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				prop_id, HFI_VAL_U32_ARRAY,
+				&hfi_pa_dither_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx],
+				payload_size * hw_cfg->num_of_mixers);
+		if (ret)
+			SDE_ERROR("Failed to add hfi prop for PA dither %d ret %d\n",
+				prop_id, ret);
+		else
+			SDE_DEBUG("non-broadcast feature: submitted to prop_helper\n");
+		/* reset the cached struct for current dpu_idx after submitting to FW */
+		memset(&hfi_pa_dither_cached[ctx->dpu_idx], 0,
+			   sizeof(hfi_pa_dither_cached[ctx->dpu_idx]));
+	}
+}
+
+void hfi_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_dither *dither;
+	u32 i, ret = 0, row, col;
+	struct hfi_display_dither hfi_cfg = {};
+
+	if (!hw_cfg || (hw_cfg->len != sizeof(struct drm_msm_dither) &&
+			hw_cfg->payload)) {
+		DRM_ERROR("hw %pK payload %pK size %d expected sz %zd\n",
+			hw_cfg, ((hw_cfg) ? hw_cfg->payload : NULL),
+			((hw_cfg) ? hw_cfg->len : 0),
+			sizeof(struct drm_msm_dither));
+		return;
+	}
+
+	if (!hw_cfg->payload) {
+		/* Turn off feature */
+		DRM_DEBUG_DRIVER("Disable DSPP SPR dither feature\n");
+		hfi_cfg.flags = 0;
+	} else {
+		/* Turn on feature */
+		DRM_DEBUG_DRIVER("Enable DSPP SPR dither feature\n");
+		hfi_cfg.flags = HFI_DISPLAY_COLOR_FLAGS_FEATURE_ENABLE;
+
+		dither = hw_cfg->payload;
+		hfi_cfg.feature_flags = dither->flags;
+		hfi_cfg.temporal_en = dither->temporal_en;
+		hfi_cfg.c0_bitdepth = dither->c0_bitdepth;
+		hfi_cfg.c1_bitdepth = dither->c1_bitdepth;
+		hfi_cfg.c2_bitdepth = dither->c2_bitdepth;
+		hfi_cfg.c3_bitdepth = dither->c3_bitdepth;
+		hfi_cfg.dither_matrix_select =
+			dither->dither_matrix_select ? (dither->dither_matrix_select - 1) : 0;
+
+		if (dither->dither_matrix_select == DITHER_MATRIX_SELECT_NONE) {
+			/* Legacy Matrix */
+			for (i = 0; i < HFI_DITHER_MATRIX_SZ; i++) {
+				row = i / 4;
+				col = i % 4;
+				hfi_cfg.matrix[row * 16 + col] = dither->matrix[i];
+			}
+		} else {
+			memcpy(hfi_cfg.matrix, dither->dither_matrix_extended,
+				HFI_DITHER_MATRIX_SZ_EXTENDED * sizeof(s32));
+		}
+	}
+
+	ret = hfi_buff_send_payload(cfg, &hfi_cfg,
+			HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER, 2, 0);
+	if (ret)
+		SDE_ERROR("Failed to send hfi_buff from SPR dither ret: %d\n", ret);
 }

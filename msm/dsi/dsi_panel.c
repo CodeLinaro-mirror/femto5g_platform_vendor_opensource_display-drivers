@@ -2910,9 +2910,11 @@ static int dsi_panel_post_pwr_ctrl(struct dsi_panel *panel, bool enable)
 		}
 	}
 
-	if (rc)
+	if (rc) {
 		DSI_WARN("[%s] wait for oled en status failed,enable=%d rc=%d\n",
 					panel->name, enable, rc);
+		return rc;
+	}
 
 	rc = dsi_pwr_enable_regulator(&panel->post_power_info, enable);
 	if (rc)
