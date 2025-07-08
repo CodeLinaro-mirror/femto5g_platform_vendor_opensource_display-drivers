@@ -867,6 +867,9 @@ void sde_connector_schedule_status_work(struct drm_connector *connector,
 	struct sde_connector *c_conn;
 	struct msm_display_info info;
 
+	if (sde_connector_get_disp_op(connector) == MSM_DISP_OP_HFI)
+		return;
+
 	c_conn = to_sde_connector(connector);
 	if (!c_conn)
 		return;
@@ -3615,6 +3618,9 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	int ret = 0;
 
 	if (!conn)
+		return ret;
+
+	if (sde_connector_get_disp_op(conn) == MSM_DISP_OP_HFI)
 		return ret;
 
 	sde_conn = to_sde_connector(conn);
