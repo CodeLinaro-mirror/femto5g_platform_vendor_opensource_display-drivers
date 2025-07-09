@@ -1450,7 +1450,7 @@ static void virtio_check_framebuffer_contents(struct dma_buf *dma_buf_dump)
 {
 	int ret = 0;
 	char *ptr;
-	struct iosys_map map;
+	struct iosys_map map = {0};
 
 	dma_buf_begin_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
 
