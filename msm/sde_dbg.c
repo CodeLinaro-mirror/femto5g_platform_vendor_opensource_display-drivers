@@ -532,12 +532,20 @@ static int sde_md_notify_handler(struct notifier_block *this,
 	sde_mini_dump_add_va_region("msm_drm_priv", sizeof(*priv), priv);
 	sde_mini_dump_add_va_region("sde_evtlog",
 			sizeof(*sde_dbg_base_evtlog), sde_dbg_base_evtlog);
-	sde_mini_dump_add_va_region("sde_reglog",
-			sizeof(*sde_dbg_base_reglog), sde_dbg_base_reglog);
 
-	sde_mini_dump_add_va_region("sde_reg_dump", reg_dump_size, dbg_base->reg_dump_base);
+	if (priv && IS_DISP_OP_HWIO(priv->disp_op)) {
+		sde_mini_dump_add_va_region("sde_reglog",
+				sizeof(*sde_dbg_base_reglog), sde_dbg_base_reglog);
 
-	sde_dbg_add_dbg_buses_to_minidump_va();
+		sde_mini_dump_add_va_region("sde_reg_dump", reg_dump_size, dbg_base->reg_dump_base);
+
+		sde_dbg_add_dbg_buses_to_minidump_va();
+
+	} else if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
+		if (sde_dbg_base.hal_ops.add_minidump_va[priv->disp_op])
+			sde_dbg_base.hal_ops.add_minidump_va[priv->disp_op]();
+	}
+
 	sde_kms_add_data_to_minidump_va(sde_kms);
 
 	return 0;

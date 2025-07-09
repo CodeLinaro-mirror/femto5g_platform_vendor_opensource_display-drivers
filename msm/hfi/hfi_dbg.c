@@ -209,6 +209,31 @@ ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
 	return (offset < total_sz) ? copied : 0;
 }
 
+#if IS_ENABLED(CONFIG_QCOM_VA_MINIDUMP)
+void hfi_dbg_add_va_region(void)
+{
+	if (hfi_dbg->buff_map.reg_addr.size)
+		sde_mini_dump_add_va_region("reg_dump",
+			hfi_dbg->buff_map.reg_addr.size,
+			hfi_dbg->buff_map.reg_addr.local_addr);
+
+	if (hfi_dbg->buff_map.evt_log_addr.size)
+		sde_mini_dump_add_va_region("evtlog",
+			hfi_dbg->buff_map.evt_log_addr.size,
+			hfi_dbg->buff_map.evt_log_addr.local_addr);
+
+	if (hfi_dbg->buff_map.dbg_bus_addr.size)
+		sde_mini_dump_add_va_region("dbgbus_dump",
+			hfi_dbg->buff_map.dbg_bus_addr.size,
+			hfi_dbg->buff_map.dbg_bus_addr.local_addr);
+}
+#else
+void hfi_dbg_add_va_region(void)
+{
+
+}
+#endif
+
 void _hfi_dump_buff(void __iomem *local_addr, u32 size, char *evt_type)
 {
 	u32 in_log;
@@ -328,6 +353,7 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 
 	dbg->hal_ops.dbg_dump[MSM_DISP_OP_HFI] = hfi_dbg_dump;
 	dbg->hal_ops.devcoredump_read[MSM_DISP_OP_HFI] = hfi_devcoredump_read;
+	dbg->hal_ops.add_minidump_va[MSM_DISP_OP_HFI] = hfi_dbg_add_va_region;
 
 	kms = to_sde_kms(priv->kms);
 	hfi_kms = to_hfi_kms(kms);

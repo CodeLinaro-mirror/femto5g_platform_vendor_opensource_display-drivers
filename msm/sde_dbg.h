@@ -404,6 +404,12 @@ struct sde_dbg_hal_funcs {
 	 * Returns: Number of bytes copied to the buffer, or 0 if no more data available
 	 */
 	ssize_t (*devcoredump_read[MSM_DISP_OP_MAX])(char *buffer, loff_t offset, size_t count);
+
+	/**
+	 * add_minidump_va - registers minidump regions
+	 * Returns: none
+	 */
+	void (*add_minidump_va[MSM_DISP_OP_MAX])(void);
 };
 
 /**
