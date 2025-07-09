@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2014 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -149,6 +149,9 @@ retry:
 			 */
 			if (delta < RELOCK_MUTEX_RETRY_LIMIT_US * NSEC_PER_USEC) {
 				state->acquire_ctx->contended = NULL;
+#ifdef DEBUG_WW_MUTEXES
+				state->acquire_ctx->ww_ctx.contending_lock = NULL;
+#endif
 				goto retry;
 			} else {
 				/*
