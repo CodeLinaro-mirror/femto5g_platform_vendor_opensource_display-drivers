@@ -4149,6 +4149,20 @@ int dp_display_get_displays(struct drm_device *dev, void **displays, int count)
 	return j;
 }
 
+int edp_display_get_num_of_displays(struct drm_device *dev)
+{
+	int i, j;
+
+	for (i = 0, j = 0; i < MAX_DP_ACTIVE_DISPLAY; i++) {
+		if (!g_dp_display[i])
+			break;
+		if ((g_dp_display[i]->drm_dev == dev) && g_dp_display[i]->is_edp)
+			j++;
+	}
+
+	return j;
+}
+
 int dp_display_get_num_of_displays(struct drm_device *dev)
 {
 	int i, j;

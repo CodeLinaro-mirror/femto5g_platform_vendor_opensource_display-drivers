@@ -306,7 +306,9 @@ static int _sde_crtc_check_loopback_mode(struct drm_crtc *crtc,
 	struct drm_crtc_state *crtc_state)
 {
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
-	int i, num_lm = 0;
+	struct drm_connector_state *conn_state;
+	struct msm_display_topology topology = {0};
+	int i, ret = 0;
 
 	cstate->is_loopback_mode = sde_crtc_state_in_lb_mode(crtc_state);
 	if (sde_crtc_in_lb_transition(crtc->state, crtc_state) &&
@@ -323,18 +325,19 @@ static int _sde_crtc_check_loopback_mode(struct drm_crtc *crtc,
 	for (i = 0; i < cstate->num_connectors; i++) {
 		struct drm_connector *conn = cstate->connectors[i];
 
-		if (conn && conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
-			num_lm =  sde_connector_get_lm_cnt_from_topology(conn,
-					&crtc_state->adjusted_mode);
+		if (sde_connector_supports_cac(conn)) {
+			conn_state = drm_atomic_get_new_connector_state(crtc_state->state, conn);
+			ret = sde_connector_state_get_topology(conn_state, &topology);
+			break;
 		}
 	}
 
-	if (!num_lm) {
-		SDE_ERROR("Invalid num of mixers\n");
+	if (ret || !topology.num_lm) {
+		SDE_ERROR("Invalid params\n");
 		return -EINVAL;
 	}
 
-	cstate->num_prim_mixers = num_lm;
+	cstate->num_prim_mixers = topology.num_lm;
 	_sde_crtc_check_loopback_pstates(crtc_state);
 
 	return 0;
