@@ -3272,6 +3272,8 @@ static void sde_kms_lastclose(struct msm_kms *kms)
 	struct drm_device *dev;
 	struct drm_atomic_state *state;
 	struct drm_modeset_acquire_ctx ctx;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
 #if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
 	struct drm_plane *plane;
 	struct drm_crtc *crtc;
@@ -3285,6 +3287,8 @@ static void sde_kms_lastclose(struct msm_kms *kms)
 
 	sde_kms = to_sde_kms(kms);
 	dev = sde_kms->dev;
+	hfi_kms = to_hfi_kms(sde_kms);
+	hfi_client = &hfi_kms->hfi_client;
 
 	drm_modeset_acquire_init(&ctx, 0);
 
@@ -3350,6 +3354,9 @@ out_ctx:
 
 	if (ret)
 		SDE_ERROR("kms lastclose failed: %d\n", ret);
+
+	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)))
+		hfi_adapter_deinit(hfi_client);
 
 	SDE_EVT32(ret, SDE_EVTLOG_FUNC_EXIT);
 
