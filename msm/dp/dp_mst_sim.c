@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -495,6 +495,7 @@ int dp_sim_read_dpcd_reg(struct dp_aux_bridge *bridge,
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 static void dp_sim_update_dtd(struct edid *edid,
 		struct drm_display_mode *mode)
 {
@@ -842,7 +843,7 @@ static int dp_sim_parse_misc(struct dp_sim_device *sim_dev)
 
 	return 0;
 }
-
+#endif
 static ssize_t dp_sim_debug_write_edid(struct file *file,
 		const char __user *user_buff, size_t count, loff_t *ppos)
 {
@@ -1387,6 +1388,7 @@ static const struct file_operations sim_mst_mode_fops = {
 	.write = dp_sim_debug_write_mst_mode,
 };
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 static int dp_sim_debug_init(struct dp_sim_device *sim_dev)
 {
 	struct dp_sim_debug_edid_entry *edid_entry;
@@ -1579,6 +1581,7 @@ static int dp_sim_parse(struct dp_sim_device *sim_dev)
 
 	return 0;
 }
+#endif
 
 int dp_sim_create_bridge(struct device *dev, struct dp_aux_bridge **bridge)
 {
@@ -1653,6 +1656,7 @@ int dp_sim_destroy_bridge(struct dp_aux_bridge *bridge)
 	return 0;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 static int dp_sim_probe(struct platform_device *pdev)
 {
 	struct dp_sim_device *dp_sim_dev;
@@ -1708,3 +1712,4 @@ static int dp_sim_remove(struct platform_device *pdev)
 
 	return 0;
 }
+#endif
