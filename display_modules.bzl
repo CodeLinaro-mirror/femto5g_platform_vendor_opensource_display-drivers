@@ -154,6 +154,10 @@ module_entry(
             "msm/sde/sde_loopback.c",
             "msm/sde/sde_color_proc_feature_state_helper.c"
         ],
+        "CONFIG_DRM_SDE_LSR": [
+            "msm/sde/sde_wb_lsr.c",
+            "msm/sde/hfi/hfi_wb_lsr.c",
+        ],
         "CONFIG_DRM_SDE_WB": [
             "msm/sde/sde_wb.c",
             "msm/sde/sde_encoder_phys_wb.c",

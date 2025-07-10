@@ -2034,6 +2034,39 @@ end:
 	return rc;
 }
 
+static int _sde_setup_lsr_sspp(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	int rc = 0;
+	int i, csc_count = 0, repro_count = 0;
+	const char *type;
+
+	if (!test_bit(SDE_FEATURE_LSR, sde_cfg->features))
+		return rc;
+
+	for (i = 0; i < sde_cfg->sspp_count; ++i) {
+		struct sde_sspp_cfg *sspp = sde_cfg->sspp + i;
+		struct sde_sspp_sub_blks *sblk = sspp->sblk;
+
+		of_property_read_string_index(np,
+					sspp_prop[SSPP_TYPE].prop_name, i, &type);
+		if (!strcmp(type, "csc")) {
+			sspp->type = SSPP_TYPE_CSC;
+			sspp->id = SSPP_CSC0 + csc_count;
+			sblk->format_list = sde_cfg->csc_formats;
+			csc_count++;
+			set_bit(SDE_SSPP_CSC, &sspp->features);
+			set_bit(SDE_SSPP_SCALER_QSEED3, &sspp->features);
+		} else if (!strcmp(type, "repro")) {
+			sspp->type = SSPP_TYPE_REPRO;
+			sspp->id = SSPP_REPRO0 + repro_count;
+			sblk->format_list = sde_cfg->repro_formats;
+			repro_count++;
+		}
+	}
+	return rc;
+}
+
 static void sde_sspp_set_features(struct sde_mdss_cfg *sde_cfg,
 		const struct sde_dt_props *props, int sspp_index)
 {
@@ -2262,6 +2295,9 @@ static int sde_sspp_parse_dt(struct device_node *np,
 		return rc;
 
 	rc = _sde_sspp_setup_dmas(np, sde_cfg);
+
+	if (test_bit(SDE_FEATURE_LSR, sde_cfg->features))
+		rc = _sde_setup_lsr_sspp(np, sde_cfg);
 
 	return rc;
 }
@@ -5339,7 +5375,8 @@ end:
 static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	uint32_t hw_rev)
 {
-	uint32_t dma_list_size, vig_list_size, virt_vig_list_size;
+	uint32_t dma_list_size, vig_list_size, virt_vig_list_size, csc_list_size,
+			repro_list_size;
 	uint32_t index = 0, rc = 0;
 
 	/* DMA pipe input formats */
@@ -5425,6 +5462,32 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 				virt_vig_list_size, index, rgb_lossy_formats,
 				ARRAY_SIZE(rgb_lossy_formats));
 
+	if (test_bit(SDE_FEATURE_LSR, sde_cfg->features)) {
+		csc_list_size = ARRAY_SIZE(plane_csc_formats);
+
+		sde_cfg->csc_formats = kvcalloc(csc_list_size,
+			sizeof(struct sde_format_extended), GFP_KERNEL);
+		if (!sde_cfg->csc_formats) {
+			rc = -ENOMEM;
+			goto out;
+		}
+
+		index = sde_copy_formats(sde_cfg->csc_formats, csc_list_size,
+				0, plane_csc_formats, ARRAY_SIZE(plane_csc_formats));
+
+		repro_list_size = ARRAY_SIZE(plane_repro_formats);
+
+		sde_cfg->repro_formats = kvcalloc(repro_list_size,
+			sizeof(struct sde_format_extended), GFP_KERNEL);
+		if (!sde_cfg->repro_formats) {
+			rc = -ENOMEM;
+			goto out;
+		}
+
+		index = sde_copy_formats(sde_cfg->repro_formats, repro_list_size,
+				0, plane_repro_formats, ARRAY_SIZE(plane_repro_formats));
+	}
+
 	return 0;
 
 free_vig:
@@ -5440,6 +5503,7 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 {
 	int rc = 0;
 	uint32_t wb2_list_size, wb_rot_fmt_list_size;
+	uint32_t wb_csc_list_size, wb_repro_list_size;
 	uint32_t in_rot_list_size = 0;
 	uint32_t index = 0;
 	uint32_t in_rot_restricted_list_size = 0;
@@ -5544,8 +5608,38 @@ static int sde_hardware_format_caps(struct sde_mdss_cfg *sde_cfg,
 				0, cac_formats, ARRAY_SIZE(cac_formats));
 	}
 
+	if (test_bit(SDE_FEATURE_LSR, sde_cfg->features)) {
+		/* WB CSC output formats */
+		wb_csc_list_size = ARRAY_SIZE(wb_csc_formats);
+		sde_cfg->wb_csc_formats = kvcalloc(wb_csc_list_size,
+			sizeof(struct sde_format_extended), GFP_KERNEL);
+		if (!sde_cfg->wb_csc_formats) {
+			SDE_ERROR("failed to allocate wb csc format list\n");
+			rc = -ENOMEM;
+			goto free_cac;
+		}
+
+		index = sde_copy_formats(sde_cfg->wb_csc_formats, wb_csc_list_size,
+			0, wb_csc_formats, ARRAY_SIZE(wb_csc_formats));
+
+		/* WB REPRO output formats */
+		wb_repro_list_size = ARRAY_SIZE(wb_repro_formats);
+		sde_cfg->wb_repro_formats = kvcalloc(wb_repro_list_size,
+			sizeof(struct sde_format_extended), GFP_KERNEL);
+		if (!sde_cfg->wb_repro_formats) {
+			SDE_ERROR("failed to allocate wb repro format list\n");
+			rc = -ENOMEM;
+			goto free_cac;
+		}
+
+		index = sde_copy_formats(sde_cfg->wb_repro_formats, wb_repro_list_size,
+			0, wb_repro_formats, ARRAY_SIZE(wb_repro_formats));
+	}
+
 	return 0;
 
+free_cac:
+	kvfree(sde_cfg->cac_formats);
 free_in_rot_res:
 	kvfree(sde_cfg->inline_rot_restricted_formats);
 free_in_rot:
@@ -6459,6 +6553,7 @@ static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
+	set_bit(SDE_FEATURE_LSR, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->vbif_qos_nlvl = 8;
 	sde_cfg->ts_prefill_rev = 2;

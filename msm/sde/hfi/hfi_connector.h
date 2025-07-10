@@ -9,6 +9,10 @@
 #include "sde_connector.h"
 #include "hfi_adapter.h"
 #include "hfi_utils.h"
+#include "sde_wb_lsr.h"
+
+#define HFI_CONNECTOR_MAX_PROPS 128
+#define HFI_CONNECTOR_BASE_PROP_MAX_SIZE 1024
 
 /**
  * struct hfi_connector - local sde connector hfi structure
@@ -16,12 +20,18 @@
  * @hfi_lock: Mutex to protect hfi specific data
  * @base_props: prop helper object for intermediate property collection
  * @kv_props: kv pair helper object for intermediate property collection
+ * @lsr_props: prop helper object for lsr property collection
+ * @lsr_blob_props: prop helper object for lsr blob property collection
+ * @lsr_out_buff_props: prop helper object for lsr out buffer property collection
  */
 struct hfi_connector {
 	struct sde_connector *sde_base;
 	struct mutex hfi_lock;
 	struct hfi_util_u32_prop_helper *base_props;
 	struct hfi_util_kv_helper *kv_props;
+	struct hfi_util_u32_prop_helper *lsr_props;
+	struct hfi_util_u32_prop_helper *lsr_blob_props;
+	struct hfi_util_u32_prop_helper *lsr_out_buffer_props;
 };
 
 /**

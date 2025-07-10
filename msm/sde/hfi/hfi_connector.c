@@ -22,9 +22,6 @@
 
 #define to_hfi_connector(x) x->hfi_conn
 
-#define HFI_CONNECTOR_MAX_PROPS 128
-#define HFI_CONNECTOR_BASE_PROP_MAX_SIZE 1024
-
 struct hfi_prop_map {
 	u32 drm_prop;
 	u32 hfi_prop;
@@ -572,8 +569,10 @@ int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 	int rc = 0;
 	struct sde_kms *sde_kms = sde_connector_get_kms(&c_conn->base);
 	struct hfi_kms *hfi_kms;
+	struct sde_wb_device *wb_dev;
+	enum wb_opmode opmode;
 
-	if (!sde_kms)
+	if (!sde_kms || !c_conn)
 		return -EINVAL;
 
 	hfi_kms = sde_kms->hfi_kms;
@@ -597,6 +596,20 @@ int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 	if (IS_ERR(hfi_conn->base_props)) {
 		SDE_ERROR("failed to allocate memory for base prop collector\n");
 		goto free_kv;
+	}
+
+	if ((test_bit(SDE_FEATURE_LSR, sde_kms->catalog->features)) &&
+			c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+		wb_dev = (struct sde_wb_device *)c_conn->display;
+		if (wb_dev && wb_dev->wb_cfg) {
+			opmode = wb_dev->wb_cfg->opmode;
+			if (opmode == WB_CSC || opmode == WB_REPRO)
+				rc = hfi_wb_lsr_prop_helper_alloc(hfi_conn);
+			if (rc) {
+				SDE_ERROR("failed to allocate memory for LSR prop collectors\n");
+				return rc;
+			}
+		}
 	}
 
 	rc = sde_connector_get_info(&c_conn->base, &display_info);

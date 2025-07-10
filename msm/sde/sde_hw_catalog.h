@@ -925,6 +925,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
  * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
  * @SDE_FEATURE_DISP_OP        Support Display OP switch
+ * @SDE_FEATURE_LSR            Support Display LSR
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -980,6 +981,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_MIXER_OP_V1,
 	SDE_FEATURE_SSIP_CLK,
 	SDE_FEATURE_DISP_OP,
+	SDE_FEATURE_LSR,
 	SDE_FEATURE_MAX
 };
 
@@ -1801,6 +1803,7 @@ struct sde_intf_cfg  {
  * @vbif_idx           vbif identifier
  * @xin_id             client interface identifier
  * @clk_ctrl           clock control identifier
+ * opmode:             opmode is used to distinguish LSR / DPU WB blocks.
  */
 struct sde_wb_cfg {
 	SDE_HW_BLK_INFO;
@@ -1810,6 +1813,7 @@ struct sde_wb_cfg {
 	u32 vbif_idx;
 	u32 xin_id;
 	enum sde_clk_ctrl_type clk_ctrl;
+	enum wb_opmode opmode;
 };
 
 /**
@@ -2192,7 +2196,11 @@ struct sde_perf_cfg {
  * @features            bitmap of supported SDE_FEATUREs
  * @dma_formats         supported formats for dma pipe
  * @vig_formats         supported formats for vig pipe
+ * @csc_formats         supported formats for csc pipe
+ * @repro_formats       supported formats for repro pipe
  * @wb_formats          supported formats for wb
+ * @wb_csc_formats      supported formats for wb csc
+ * @wb_repro_formats    supported formats for wb repro
  * @wb_rot_formats      supported output formats for wb rotation operation
  * @virt_vig_formats    supported formats for virtual vig pipe
  * @inline_rot_formats  supported formats for inline rotation
@@ -2334,7 +2342,11 @@ struct sde_mdss_cfg {
 	/* Supported Pixel Format Lists */
 	struct sde_format_extended *dma_formats;
 	struct sde_format_extended *vig_formats;
+	struct sde_format_extended *csc_formats;
+	struct sde_format_extended *repro_formats;
 	struct sde_format_extended *wb_formats;
+	struct sde_format_extended *wb_csc_formats;
+	struct sde_format_extended *wb_repro_formats;
 	struct sde_format_extended *wb_rot_formats;
 	struct sde_format_extended *virt_vig_formats;
 	struct sde_format_extended *inline_rot_formats;

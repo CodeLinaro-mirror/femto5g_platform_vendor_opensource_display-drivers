@@ -1318,11 +1318,12 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 	struct sde_rect wb_roi;
 	u32 out_width = 0, out_height = 0;
 	const struct drm_display_mode *mode = &crtc_state->mode;
-	int rc;
+	int rc = 0;
 	bool clone_mode_curr = false;
 	enum sde_wb_rot_type rotation_type;
 	struct sde_drm_csc_v1 *wb_csc;
 	size_t csc_size = 0;
+	enum wb_opmode opmode;
 
 	SDE_DEBUG("[enc:%d wb:%d] atomic_check:\"%s\",%d,%d]\n", DRMID(phys_enc->parent),
 			WBID(wb_enc), mode->name, mode->hdisplay, mode->vdisplay);
@@ -1347,6 +1348,16 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 		SDE_ERROR("[enc:%d wb:%d] WB commit before CWB disable\n",
 				DRMID(phys_enc->parent), WBID(wb_enc));
 		return -EINVAL;
+	}
+
+	if (hw_wb->catalog && test_bit(SDE_FEATURE_LSR, hw_wb->catalog->features)) {
+		opmode = wb_cfg->opmode;
+
+		if (opmode == WB_CSC || opmode == WB_REPRO) {
+			SDE_DEBUG("Default out layer properties are not	set for WB type:%d\n",
+				opmode);
+			return rc;
+		}
 	}
 
 	memset(&wb_roi, 0, sizeof(struct sde_rect));
