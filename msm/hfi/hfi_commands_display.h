@@ -295,23 +295,6 @@
  */
 #define HFI_COMMAND_DISPLAY_POWER_REGISTER                            0x0200000D
 
-/*
- * HFI_COMMAND_DISPLAY_LP_STATE_REQ   -     From Host to DCP, this command
- *                                          tells DCP what power state to transition to
- *
- * Host to DCP:
- * hfi_header.num_packets                 : 1
- *
- * hfi_packet.payload_info.type           : HFI_PAYLOAD_U32
- *           .cmd                         : HFI_COMMAND_DISPLAY_LP_STATE_REQ
- *           .flags                       : HFI_TX_FLAGS_NON_DISCARDABLE
- *           .id                          : Bits 0:15 carry the display id
- *           .packet_id                   : unique id
- *           .payload                     : enum hfi_display_power_mode;
-
- */
-#define HFI_COMMAND_DISPLAY_LP_STATE_REQ                              0x0200000E
-
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_H__

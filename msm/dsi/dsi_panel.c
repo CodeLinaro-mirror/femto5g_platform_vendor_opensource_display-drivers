@@ -5315,14 +5315,10 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 		panel->power_mode != SDE_MODE_DPMS_LP2)
 		dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 			"ibb", REGULATOR_MODE_IDLE);
-
-	if (panel->disp_op == MSM_DISP_OP_HWIO) {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP1, false);
-		if (rc)
-			DSI_ERR("[%s] failed to send DSI_CMD_SET_LP1 cmd, rc=%d\n",
-				panel->name, rc);
-	}
-
+	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP1, false);
+	if (rc)
+		DSI_ERR("[%s] failed to send DSI_CMD_SET_LP1 cmd, rc=%d\n",
+		       panel->name, rc);
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -5341,13 +5337,10 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 	if (!panel->panel_initialized)
 		goto exit;
 
-	if (panel->disp_op == MSM_DISP_OP_HWIO) {
-		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP2, false);
-		if (rc)
-			DSI_ERR("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
-				panel->name, rc);
-	}
-
+	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP2, false);
+	if (rc)
+		DSI_ERR("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
+		       panel->name, rc);
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
