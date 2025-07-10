@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -468,14 +469,28 @@ void *msm_property_alloc_state(struct msm_property_info *info)
  */
 static void _msm_property_free_state(struct msm_property_info *info, void *st)
 {
+	uint32_t i, found = 0;
 	if (!info || !st)
 		return;
 
 	mutex_lock(&info->property_lock);
+	for (i = 0; i < info->state_cache_size; i++) {
+		if (info->state_cache[i] == st) {
+			found = 1;
+			break;
+		}
+	}
+
+	if (found) {
+		goto exit;
+	}
+
 	if (info->state_cache_size < MSM_PROP_STATE_CACHE_SIZE)
 		info->state_cache[(info->state_cache_size)++] = st;
 	else
 		kfree(st);
+
+exit:
 	mutex_unlock(&info->property_lock);
 }
 
