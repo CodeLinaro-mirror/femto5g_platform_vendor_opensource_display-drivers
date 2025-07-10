@@ -2824,6 +2824,12 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 	panel->skip_panel_off = utils->read_bool(utils->data,
 			"qcom,skip-panel-power-off");
 
+	panel->privacy_feature_enabled = utils->read_bool(utils->data,
+			"qcom,mdss-dsi-panel-privacy-enabled");
+
+	DSI_DEBUG("%s: privacy feature %s\n", __func__,
+		(panel->privacy_feature_enabled ? "enabled" : "disabled"));
+
 	panel->spr_info.enable = false;
 	panel->spr_info.pack_type = MSM_DISPLAY_SPR_TYPE_MAX;
 

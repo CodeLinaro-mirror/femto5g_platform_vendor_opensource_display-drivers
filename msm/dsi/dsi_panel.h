@@ -272,6 +272,7 @@ struct dsi_panel {
 	bool ulps_suspend_enabled;
 	bool allow_phy_power_off;
 	bool reset_gpio_always_on;
+	bool privacy_feature_enabled;
 	atomic_t esd_recovery_pending;
 
 	bool skip_panel_off;

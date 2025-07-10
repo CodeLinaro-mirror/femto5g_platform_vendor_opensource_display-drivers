@@ -946,6 +946,8 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 			msm_spr_pack_type_mode_str[panel->spr_info.pack_type_mode]);
 	}
 
+	sde_kms_info_add_keystr(info, "privacy layer support",
+			panel->privacy_feature_enabled ? "true" : "false");
 	/**
 	 * Set partial update props in hwio mode only, this disables the feature in hfi mode as
 	 * a temporal workaround until this feature is implemented in fw.
