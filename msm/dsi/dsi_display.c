@@ -9140,6 +9140,8 @@ int dsi_display_process_dcs_cmd_bitmask(void *display, struct msm_display_conn_p
 
 	mutex_lock(&dsi_display->display_lock);
 
+	DSI_DEBUG("bitmask in dsi_display_send_pre_commit_cmd =0x%llx\n", params->cmd_bit_mask);
+
 	for (idx = 0; idx < sizeof(params->cmd_bit_mask) * 8; idx++) {
 		if (params->cmd_bit_mask & BIT(idx)) {
 			if ((fls64(params->cmd_bit_mask)-1) == idx)
@@ -9233,6 +9235,27 @@ exit:
 	return rc;
 }
 
+static int dsi_display_set_privacy(struct dsi_display *display,
+		struct sde_drm_privacy_layer_v1 *privacy_v1)
+{
+	int rc = 0;
+	int i;
+
+	if (!display || !privacy_v1 || !display->panel)
+		return -EINVAL;
+
+	display_for_each_ctrl(i, display) {
+		/* send the new privacy region to the panel via dcs commands */
+		rc = dsi_panel_send_privacy_dcs(display->panel, i, privacy_v1);
+		if (rc) {
+			DSI_ERR("dsi_panel_send_privacy_dcs failed rc %d\n", rc);
+			return rc;
+		}
+	}
+
+	return rc;
+}
+
 static int dsi_display_set_roi(struct dsi_display *display,
 		struct msm_roi_list *rois)
 {
@@ -9305,10 +9328,16 @@ int dsi_display_pre_kickoff(struct drm_connector *connector,
 		struct msm_display_kickoff_params *params)
 {
 	struct dsi_display_mode *mode;
+	struct sde_connector_state *c_state;
 	int rc = 0, ret = 0;
 	int i;
 
 	mode = display->panel->cur_mode;
+
+	c_state = to_sde_connector_state(connector->state);
+
+	if(c_state == NULL)
+		return -EINVAL;
 
 	if (display->panel->disp_op == MSM_DISP_OP_HFI)
 		return 0;
@@ -9369,8 +9398,13 @@ wait_failure:
 		mutex_unlock(&display->display_lock);
 	}
 
-	if (!ret)
+	if (!ret) {
+		if ((c_state->privacy_layer_updated &&
+					(!display->panel->vrr_caps.video_psr_support)))
+			rc = dsi_display_set_privacy(display, &(c_state->privacy_v1));
+
 		rc = dsi_display_set_roi(display, params->rois);
+	}
 
 	return rc;
 }

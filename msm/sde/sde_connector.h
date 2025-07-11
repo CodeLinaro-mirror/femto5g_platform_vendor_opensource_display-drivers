@@ -975,6 +975,8 @@ struct sde_connector {
  * @msm_mode: struct containing drm_mode and downstream private variables
  * @old_topology_name: topology of previous atomic state. remove this in later
  *	kernel versions which provide drm_atomic_state old_state pointers
+ * @privacy_v1: Privacy layer info
+ * @privacy_layer_updated: Privacy layer is updated
  * @cont_splash_populated: State was populated as part of cont. splash
  * @dnsc_blur_count: Number of downscale blur blocks used
  * @dnsc_blur_cfg: Configs for the downscale blur block
@@ -994,7 +996,8 @@ struct sde_connector_state {
 	struct sde_connector_dyn_hdr_metadata dyn_hdr_meta;
 	struct msm_display_mode msm_mode;
 	enum sde_rm_topology_name old_topology_name;
-
+	struct sde_drm_privacy_layer_v1 privacy_v1;
+	bool privacy_layer_updated;
 	bool cont_splash_populated;
 
 	u32 dnsc_blur_count;
