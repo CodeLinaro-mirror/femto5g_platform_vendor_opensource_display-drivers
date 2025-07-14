@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #include <linux/sort.h>
 #include <drm/drm_atomic.h>
@@ -1450,7 +1450,7 @@ static void virtio_check_framebuffer_contents(struct dma_buf *dma_buf_dump)
 {
 	int ret = 0;
 	char *ptr;
-	struct iosys_map map;
+	struct iosys_map map = {0};
 
 	dma_buf_begin_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
 
@@ -1785,6 +1785,24 @@ static void virtio_kms_disable_vblank(struct msm_hyp_kms *hyp_kms,
 			false);
 }
 
+static void virtio_kms_register_event(struct msm_hyp_kms *hyp_kms)
+{
+	struct virtio_kms *kms;
+	uint32_t scanout;
+
+	kms = to_virtio_kms(hyp_kms);
+	if (kms){
+		for (scanout = 0; scanout < kms->num_scanouts; scanout++) {
+			virtio_gpu_cmd_event_control(kms,
+					scanout,
+					VIRTIO_HPD,
+					true);
+		}
+	} else {
+		pr_err("HPDLOG %s wrong virtio kms\n", __func__);
+	}
+}
+
 static const struct msm_hyp_kms_funcs virtio_kms_funcs = {
 	.get_connector_infos = virtio_kms_get_connector_infos,
 	.get_plane_infos = virtio_kms_get_plane_infos,
@@ -1794,6 +1812,7 @@ static const struct msm_hyp_kms_funcs virtio_kms_funcs = {
 	.commit = virtio_kms_commit,
 	.enable_vblank = virtio_kms_enable_vblank,
 	.disable_vblank = virtio_kms_disable_vblank,
+	.register_event = virtio_kms_register_event,
 };
 
 /*
@@ -1840,6 +1859,10 @@ static int _virtio_kms_hw_deinit(struct virtio_kms *kms)
 	for (scanout = 0; scanout < kms->num_scanouts; scanout++) {
 		num_planes = kms->outputs[scanout].plane_cnt;
 		output = &kms->outputs[scanout];
+		virtio_gpu_cmd_event_control(kms,
+				scanout,
+				VIRTIO_HPD,
+				false);
 		for (plane = 0; plane < num_planes; plane++) {
 			plane_id = output->plane_caps[plane].plane_id;
 			rc = virtio_gpu_cmd_plane_destroy(kms,
@@ -2051,13 +2074,161 @@ exit:
 	return ret;
 }
 
-static int virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout)
+static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uint32_t event_type)
 {
 	int rc = 0;
-	rc = virtio_kms_scanout_init(kms, scanout);
+	int i = 0;
+	struct drm_device *dev;
+	struct drm_connector *connector;
+	struct msm_hyp_connector *c_conn;
+	struct drm_display_mode *mode;
+	struct virtio_connector_info_priv *priv;
+	struct scanout_attrib *attr;
+	struct virtio_display_modes *info;
+	struct drm_connector_list_iter conn_iter;
+
+	if (scanout >= VIRTIO_GPU_MAX_SCANOUTS) {
+		pr_err("HPDLOG: Wrong Scanout ID\n");
+		goto error;
+	}
+
+	if (!kms) {
+		pr_err("HPDLOG: invalid kms\n");
+		rc = -1;
+		goto error;
+	}
+
+	dev = kms->dev;
+	if (!dev) {
+		pr_err("HPDLOG: invalid dev\n");
+		rc = -1;
+		goto error;
+	}
+
+	/* Get connector information */
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(
+		connector, &conn_iter) {
+		c_conn = to_msm_hyp_connector(connector);
+		if (!c_conn) {
+			pr_err("HPDLOG: No msm hyp connector\n");
+			rc = -1;
+			goto error;
+		}
+
+		priv = container_of(c_conn->info, struct virtio_connector_info_priv, base);
+		if (!priv) {
+			pr_err("HPDLOG:NULL priv\n");
+			rc = -1;
+			goto error;
+		}
+
+		if (priv->scanout != scanout) {
+			pr_info("HPDLOG: scanout not match priv:%d,but %d\n",priv->scanout, scanout);
+			rc = -1;
+			continue;
+		}
+
+		pr_info("HPDLOG: scanout %d name %s connector type id %d, current connector status %d\n",
+				priv->scanout,
+				connector->name,
+				connector->connector_type_id,
+				connector->status);
+
+		/* Handle HPD connect event*/
+		if ((event_type == VIRTIO_HPD_CONNECT) && (priv->connector_status ==
+					connector_status_disconnected)) {
+			pr_info("HPDLOG: handle plug-in");
+			if (kms->has_edid)
+				virtio_gpu_cmd_get_edid(kms, scanout);
+
+			rc = virtio_gpu_cmd_get_display_info_ext(kms, scanout);
+			if (rc) {
+				pr_err("HPDLOG: get_display_info_ext failed %d\n",
+						scanout);
+				goto error;
+			}
+
+			rc = virtio_gpu_cmd_get_scanout_attributes(kms, scanout);
+			if (rc) {
+				goto error;
+			}
+
+			attr = &kms->outputs[scanout].attr;
+			info = &kms->outputs[scanout].info[0];
+			priv->base.display_info.width_mm = attr->width_mm;
+			priv->base.display_info.height_mm = attr->height_mm;
+			priv->base.possible_crtcs = 1 << scanout;
+
+			if (!kms->outputs[scanout].num_modes) {
+				kfree(priv);
+				pr_err("HPDLOG: number of modes is 0\n");
+				rc = -1;
+				goto error;
+			}
+
+			if (kms->outputs[scanout].num_modes > 0) {
+				if (priv->modes) {
+					pr_debug("HPDLOG: free old priv->modes\n");
+					kfree(priv->modes);
+				}
+
+				priv->modes = kcalloc(kms->outputs[scanout].num_modes,
+						sizeof(struct drm_display_mode),
+						GFP_KERNEL);
+				if (!priv->modes) {
+					pr_err("HPDLOG: Mode allocation failed\n");
+					kfree(priv);
+					rc = -1;
+					goto error;
+				}
+			}
+
+			for (i = 0; i < kms->outputs[scanout].num_modes; i++) {
+				mode = &priv->modes[i];
+				mode->hdisplay = info[i].r.width;
+				mode->vdisplay = info[i].r.height;
+				mode->hsync_end = mode->hdisplay;
+				mode->htotal = mode->hdisplay;
+				mode->hsync_start = mode->hdisplay;
+				mode->vsync_end = mode->vdisplay;
+				mode->vtotal = mode->vdisplay;
+				mode->vsync_start = mode->vdisplay;
+				mode->clock =
+					info[i].refresh * mode->vtotal *
+					mode->htotal / 1000LL;
+				drm_mode_set_name(mode);
+				pr_debug("HPDLOG: scanout[%d] mode name[%s]\n",
+						priv->scanout, mode->name);
+				pr_debug("hdisplay[%d] vdisplay[%d] clock[%d]\n",
+						mode->hdisplay, mode->vdisplay,
+						mode->clock);
+			}
+			priv->connector_status = connector_status_connected;
+			connector->status = connector_status_connected;
+			msm_hyp_send_hpd_event(dev, connector);
+			break;
+		} else if ((event_type == VIRTIO_HPD_DISCONNECT) &&
+					(priv->connector_status ==
+					connector_status_connected)) {
+			rc = 0;
+			/* Handle HPD disconnect event*/
+			pr_info("HPDLOG: handle plug-out\n");
+			priv->connector_status = connector_status_disconnected;
+			connector->status = connector_status_disconnected;
+			msm_hyp_send_hpd_event(dev, connector);
+			break;
+		} else {
+			rc = -1;
+			pr_err("HPDLOG: HPD redundant event scanout %d, event_type %d, conn status : %d\n",
+					scanout, event_type, priv->connector_status);
+			break;
+		}
+	}
+
+error:
 	if (rc)
-		 pr_err("scanout init failed %d\n", scanout);
-	return 0;
+		 pr_err("HPD event handle failed %d\n", scanout);
 }
 
 static void virtio_kms_vsync(struct virtio_kms *kms, uint32_t scanout)
@@ -2102,7 +2273,8 @@ void  virtio_kms_event_handler(struct virtio_kms *kms,
 	break;
 
 	case VIRTIO_HPD:
-		virtio_kms_service_hpd(kms, scanout);
+		/* For HPD , num_event is HPD event type*/
+		virtio_kms_service_hpd(kms, scanout, num_event);
 	break;
 
 	default:
