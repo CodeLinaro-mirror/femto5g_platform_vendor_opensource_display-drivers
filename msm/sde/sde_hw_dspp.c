@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
-* Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -632,6 +632,7 @@ struct sde_hw_blk_reg_map *sde_hw_dspp_init(enum sde_dspp idx,
 	c->hw_top.log_mask = SDE_DBG_MASK_DSPP;
 	c->dpu_idx = DPUID(sde_kms);
 	c->sde_kms = sde_kms;
+	c->pa_opcode = 0;
 
 	/* Assign ops */
 	c->idx = idx;

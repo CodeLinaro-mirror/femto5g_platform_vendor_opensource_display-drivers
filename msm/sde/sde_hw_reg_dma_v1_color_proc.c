@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2246,9 +2246,11 @@ void reg_dmav1_setup_dspp_pa_hsicv17(struct sde_hw_dspp *ctx, void *cfg)
 	int rc, i;
 	u32 num_of_mixers, blk = 0;
 
-
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	opcode = ctx->pa_opcode;
+#else
 	opcode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->hsic.base);
-
+#endif
 	rc = reg_dma_dspp_check(ctx, cfg, HSIC);
 	if (rc)
 		return;
@@ -2258,7 +2260,13 @@ void reg_dmav1_setup_dspp_pa_hsicv17(struct sde_hw_dspp *ctx, void *cfg)
 		opcode &= ~(PA_HUE_EN | PA_SAT_EN | PA_VAL_EN | PA_CONT_EN);
 		if (PA_DISABLE_REQUIRED(opcode))
 			opcode &= ~PA_EN;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->pa_opcode = opcode;
+		SDE_REG_MODIFY(&ctx->hw, ctx->cap->sblk->hsic.base,
+						~(REG_DMA_PA_MODE_HSIC_MASK), opcode);
+#else
 		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->hsic.base, opcode);
+#endif
 		LOG_FEATURE_OFF;
 		return;
 	}
@@ -2376,6 +2384,10 @@ void reg_dmav1_setup_dspp_pa_hsicv17(struct sde_hw_dspp *ctx, void *cfg)
 			return;
 		}
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->pa_opcode |= local_opcode;
+#endif
+
 		REG_DMA_SETUP_OPS(dma_write_cfg,
 			ctx->cap->sblk->hsic.base, &local_opcode,
 			sizeof(local_opcode), REG_SINGLE_MODIFY, 0, 0,
@@ -2402,7 +2414,11 @@ static int reg_dma_validate_sixzone_config(struct sde_hw_dspp *ctx, void *cfg,
 	u32 opcode = 0;
 	int rc;
 
-	opcode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->hsic.base);
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		opcode = ctx->pa_opcode;
+#else
+		opcode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->hsic.base);
+#endif
 
 	rc = reg_dma_dspp_check(ctx, cfg, SIX_ZONE);
 	if (rc)
@@ -2414,7 +2430,13 @@ static int reg_dma_validate_sixzone_config(struct sde_hw_dspp *ctx, void *cfg,
 			PA_SIXZONE_VAL_EN);
 		if (PA_DISABLE_REQUIRED(opcode))
 			opcode &= ~PA_EN;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->pa_opcode = opcode;
+		SDE_REG_MODIFY(&ctx->hw, ctx->cap->sblk->hsic.base,
+						~(REG_DMA_PA_MODE_SZONE_MASK), opcode);
+#else
 		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->hsic.base, opcode);
+#endif
 		LOG_FEATURE_OFF;
 		return -EALREADY;
 	}
@@ -2550,6 +2572,9 @@ void reg_dmav1_setup_dspp_sixzonev17(struct sde_hw_dspp *ctx, void *cfg)
 			return;
 		}
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->pa_opcode |= local_opcode;
+#endif
 		REG_DMA_SETUP_OPS(dma_write_cfg,
 			ctx->cap->sblk->hsic.base, &local_opcode,
 			sizeof(local_opcode), REG_SINGLE_MODIFY, 0, 0,
@@ -2746,6 +2771,9 @@ void reg_dmav2_setup_dspp_sixzonev2(struct sde_hw_dspp *ctx, void *cfg)
 			goto exit;
 		}
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->pa_opcode |= local_opcode;
+#endif
 		REG_DMA_SETUP_OPS(dma_write_cfg,
 			ctx->cap->sblk->hsic.base, &local_opcode,
 			sizeof(local_opcode), REG_SINGLE_MODIFY, 0, 0,
@@ -2918,6 +2946,9 @@ static void __setup_dspp_memcol(struct sde_hw_dspp *ctx,
 			return;
 		}
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->pa_opcode |= opcode;
+#endif
 		REG_DMA_SETUP_OPS(dma_write_cfg,
 			ctx->cap->sblk->hsic.base, &opcode, sizeof(opcode),
 			REG_SINGLE_MODIFY, 0, 0, opcode_mask);
@@ -2950,15 +2981,25 @@ void reg_dmav1_setup_dspp_memcol_skinv17(struct sde_hw_dspp *ctx, void *cfg)
 	rc = reg_dma_dspp_check(ctx, cfg, MEMC_SKIN);
 	if (rc)
 		return;
-
-	opcode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->hsic.base);
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		opcode = ctx->pa_opcode;
+#else
+		opcode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->hsic.base);
+#endif
 
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("disable memcolor skin feature\n");
 		opcode &= ~(PA_SKIN_EN);
 		if (PA_DISABLE_REQUIRED(opcode))
 			opcode &= ~PA_EN;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->pa_opcode = opcode;
+		SDE_REG_MODIFY(&ctx->hw, ctx->cap->sblk->hsic.base,
+						(u32)(PA_SKIN_EN | PA_EN), opcode);
+#else
 		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->hsic.base, opcode);
+#endif
+
 		LOG_FEATURE_OFF;
 		return;
 	}
@@ -2988,14 +3029,24 @@ void reg_dmav1_setup_dspp_memcol_skyv17(struct sde_hw_dspp *ctx, void *cfg)
 	if (rc)
 		return;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	opcode = ctx->pa_opcode;
+#else
 	opcode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->hsic.base);
+#endif
 
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("disable memcolor sky feature\n");
 		opcode &= ~(PA_SKY_EN);
 		if (PA_DISABLE_REQUIRED(opcode))
 			opcode &= ~PA_EN;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->pa_opcode = opcode;
+		SDE_REG_MODIFY(&ctx->hw, ctx->cap->sblk->hsic.base,
+						(u32)(PA_SKY_EN | PA_EN), opcode);
+#else
 		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->hsic.base, opcode);
+#endif
 		LOG_FEATURE_OFF;
 		return;
 	}
@@ -3025,14 +3076,25 @@ void reg_dmav1_setup_dspp_memcol_folv17(struct sde_hw_dspp *ctx, void *cfg)
 	if (rc)
 		return;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	opcode = ctx->pa_opcode;
+#else
 	opcode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->hsic.base);
+#endif
 
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("disable memcolor foliage feature\n");
 		opcode &= ~(PA_FOL_EN);
 		if (PA_DISABLE_REQUIRED(opcode))
 			opcode &= ~PA_EN;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->pa_opcode = opcode;
+		SDE_REG_MODIFY(&ctx->hw, ctx->cap->sblk->hsic.base,
+						(u32)(PA_FOL_EN | PA_EN), opcode);
+#else
 		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->hsic.base, opcode);
+#endif
+
 		LOG_FEATURE_OFF;
 		return;
 	}
@@ -3066,14 +3128,24 @@ void reg_dmav1_setup_dspp_memcol_protv17(struct sde_hw_dspp *ctx, void *cfg)
 	if (rc)
 		return;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	opcode = ctx->pa_opcode;
+#else
 	opcode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->hsic.base);
+#endif
 
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("disable memcolor prot feature\n");
 		opcode &= ~(MEMCOL_PROT_MASK);
 		if (PA_DISABLE_REQUIRED(opcode))
 			opcode &= ~PA_EN;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->pa_opcode = opcode;
+		SDE_REG_MODIFY(&ctx->hw, ctx->cap->sblk->hsic.base,
+						(u32)(MEMCOL_PROT_MASK | PA_EN), opcode);
+#else
 		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->hsic.base, opcode);
+#endif
 		LOG_FEATURE_OFF;
 		return;
 	}
@@ -3123,6 +3195,10 @@ void reg_dmav1_setup_dspp_memcol_protv17(struct sde_hw_dspp *ctx, void *cfg)
 		DRM_ERROR("write decode select failed ret %d\n", rc);
 		return;
 	}
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	ctx->pa_opcode |= opcode;
+#endif
 
 	REG_DMA_SETUP_OPS(dma_write_cfg,
 		ctx->cap->sblk->hsic.base, &opcode, sizeof(opcode),
