@@ -1162,7 +1162,7 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 		if (phandle->hw_fence_enable) {
 			rc = _set_power_vote(enable);
 			if (rc) {
-				pr_debug("soccp power vote failed, state:%s rc:%d\n",
+				pr_info("soccp power vote failed, state:%s rc:%d\n",
 						enable ? "enable" : "disable", rc);
 				phandle->hw_fence_enable = false;
 				rc = 0;
@@ -1179,7 +1179,7 @@ int sde_power_resource_enable(struct sde_power_handle *phandle, bool enable, int
 		if (phandle->hw_fence_enable) {
 			rc = _set_power_vote(enable);
 			if (rc) {
-				pr_debug("soccp power vote failed, state:%s rc:%d\n",
+				pr_info("soccp power vote failed, state:%s rc:%d\n",
 						enable ? "enable" : "disable", rc);
 				rc = 0;
 			}

@@ -853,6 +853,21 @@
 #define HFI_PROPERTY_LAYER_BG_ALPHA                                  0x0003000E
 
 /*
+ * HFI_PROPERTY_LAYER_ROTATION - Gets rotation for each layer.
+ *                             Host is expected to send this packet
+ *                             of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                             command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_ROTATION
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_ROTATION |
+ *                                 (version=0 << 20) | (dsize=2 << 24 )
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2]   : bitwise OR of rotation flags
+ *
+ */
+#define HFI_PROPERTY_LAYER_ROTATION                                  0x00030016
+
+/*
  * All layer color properties begin here
  */
 #define HFI_PROPERTY_LAYER_COLOR_BEGIN                               0x00030100

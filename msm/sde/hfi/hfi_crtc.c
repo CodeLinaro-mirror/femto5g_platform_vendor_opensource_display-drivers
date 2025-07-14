@@ -8,6 +8,7 @@
 #include <linux/types.h>
 
 #include "hfi_crtc.h"
+#include "hfi_plane.h"
 #include "hfi_kms.h"
 #include "hfi_props.h"
 #include "hfi_adapter.h"
@@ -115,6 +116,8 @@ static int _hfi_crtc_set_props_base(struct sde_crtc *crtc, u32 disp_id,
 	u32 drm_prop, hfi_prop;
 	int i, ret = 0;
 	struct hfi_crtc *crtc_hfi;
+	uint32_t detach_plane_mask;
+	struct drm_plane *plane;
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -154,6 +157,12 @@ static int _hfi_crtc_set_props_base(struct sde_crtc *crtc, u32 disp_id,
 		HFI_ERROR_CRTC(crtc_hfi, "failed to send HFI commands\n");
 		goto end;
 	}
+
+	detach_plane_mask = crtc_hfi->prev_plane_mask & ~(cstate->base.plane_mask);
+	drm_for_each_plane_mask(plane, crtc->base.dev, detach_plane_mask)
+		hfi_plane_disable(cmd_buf, disp_id, to_sde_plane(plane), false);
+
+	crtc_hfi->prev_plane_mask = cstate->base.plane_mask;
 
 	HFI_DEBUG_CRTC(crtc_hfi, "done adding all base props\n");
 end:

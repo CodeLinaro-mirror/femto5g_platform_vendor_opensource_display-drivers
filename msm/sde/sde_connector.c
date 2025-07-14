@@ -867,6 +867,9 @@ void sde_connector_schedule_status_work(struct drm_connector *connector,
 	struct sde_connector *c_conn;
 	struct msm_display_info info;
 
+	if (sde_connector_get_disp_op(connector) == MSM_DISP_OP_HFI)
+		return;
+
 	c_conn = to_sde_connector(connector);
 	if (!c_conn)
 		return;
@@ -1168,12 +1171,23 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 		drm_enc = connector->encoder;
 
 	if (c_conn->vrr_caps.video_mrr_support &&
-			msm_is_mode_seamless_vrr(&c_state->msm_mode))
+			msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
+			!drm_mode_vrefresh(c_state->msm_mode.base))
 		frame_interval_ns =
 			NSEC_PER_SEC/drm_mode_vrefresh(c_state->msm_mode.base);
 	else
 		frame_interval_ns = sde_connector_get_property(c_conn->base.state,
 			CONNECTOR_PROP_FRAME_INTERVAL);
+
+	/*
+	 * recovery and power off charging cases will not set CONNECTOR_PROP_FRAME_INTERVAL.
+	 * Set current mode frame interval when the frame_interval_ns is 0.
+	 */
+	if (frame_interval_ns == 0 && !drm_mode_vrefresh(c_state->msm_mode.base)) {
+		frame_interval_ns =
+			NSEC_PER_SEC/drm_mode_vrefresh(c_state->msm_mode.base);
+		SDE_EVT32(frame_interval_ns);
+	}
 
 	if (!c_conn->apply_vrr && frame_interval_ns) {
 		c_conn->apply_vrr = true;
@@ -3604,6 +3618,9 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	int ret = 0;
 
 	if (!conn)
+		return ret;
+
+	if (sde_connector_get_disp_op(conn) == MSM_DISP_OP_HFI)
 		return ret;
 
 	sde_conn = to_sde_connector(conn);

@@ -2427,6 +2427,7 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 					pstate->multirect_mode,
 					format->base.pixel_format,
 					fb ? fb->modifier : 0,
+					pstate->rotation,
 					layout_idx);
 
 			for (lm_idx = 0; lm_idx < sde_crtc->num_mixers;
@@ -4553,6 +4554,16 @@ int sde_crtc_sw_fence_error_handle(struct drm_crtc *crtc, int err_status)
 	return rc;
 }
 
+static bool _is_crtc_intf_mode_wb(struct drm_crtc *crtc)
+{
+	enum sde_intf_mode intf_mode = sde_crtc_get_intf_mode(crtc, crtc->state);
+
+	if ((intf_mode != INTF_MODE_WB_BLOCK) && (intf_mode != INTF_MODE_WB_LINE))
+		return false;
+
+	return true;
+}
+
 /**
  * _sde_crtc_fences_wait_list - wait for input sw-fences and return any hw-fences
  * @crtc: Pointer to CRTC object.
@@ -4576,11 +4587,13 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 	ktime_t kt_end, kt_wait;
 	uint32_t wait_ms = 1;
 	struct msm_display_mode *msm_mode;
-	bool mode_switch;
+	bool mode_switch, is_wb = false;
 	int i, status = 0, rc = 0;
 
 	msm_mode = sde_crtc_get_msm_mode(crtc->state);
 	mode_switch = msm_is_mode_seamless_poms(msm_mode);
+
+	is_wb = _is_crtc_intf_mode_wb(crtc);
 
 	/* use monotonic timer to limit total fence wait time */
 	kt_end = ktime_add_ns(ktime_get(),
@@ -4609,8 +4622,11 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 				else
 					num_hw_fences++; /* keep fence in the list */
 
-				/* go to next, to skip sw-wait */
-				continue;
+				/*
+				 * go to next, to skip sw-wait for hw-fences not for writeback path.
+				 */
+				if (!is_wb)
+					continue;
 			}
 		}
 
@@ -7821,16 +7837,6 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 	vfree(info);
 }
 
-static bool _is_crtc_intf_mode_wb(struct drm_crtc *crtc)
-{
-	enum sde_intf_mode intf_mode = sde_crtc_get_intf_mode(crtc, crtc->state);
-
-	if ((intf_mode != INTF_MODE_WB_BLOCK) && (intf_mode != INTF_MODE_WB_LINE))
-		return false;
-
-	return true;
-}
-
 static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	const struct drm_crtc_state *state, uint64_t *val)
 {
@@ -7841,6 +7847,7 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	bool is_wb = false;
 	struct drm_encoder *encoder;
 	struct sde_hw_ctl *hw_ctl = NULL;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 	static u32 count;
 
 	sde_crtc = to_sde_crtc(crtc);
@@ -7868,12 +7875,16 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	offset = sde_crtc_get_property(cstate, CRTC_PROP_OUTPUT_FENCE_OFFSET);
 
 	/*
-	 * Increment trigger offset for vidoe mode alone as its release fence
+	 * Increment trigger offset for video mode alone as its release fence
 	 * can be triggered only after the next frame-update. For cmd mode &
 	 * virtual displays the release fence for the current frame can be
-	 * triggered right after PP_DONE/WB_DONE interrupt
+	 * triggered right after PP_DONE/WB_DONE interrupt.
+	 * Note that for HFI Mode, we use same mechanism as video-mode where fences
+	 * get signaled along with the next frame update, this reduces the overhead of
+	 * multiple hfi-events (i.e. one for vsync and one for pp-done), which are
+	 * unnecessary.
 	 */
-	if (is_vid)
+	if (is_vid || (IS_DISP_OP_HFI(disp_op) && !is_wb))
 		offset++;
 
 	/*

@@ -265,6 +265,12 @@ struct sde_connector_ops {
 			void *display, u32 bl_lvl);
 
 	/**
+	 * toggle_te - toggle TE to refresh hardware state tracking
+	 * @display: Pointer to display structure
+	 */
+	int (*toggle_te)(void *display);
+
+	/**
 	 * set_colorspace - set colorspace for connector
 	 * @connector: Pointer to drm connector structure
 	 * @display: Pointer to private display structure

@@ -572,6 +572,15 @@ int dsi_display_splash_res_cleanup(struct  dsi_display *display);
 int dsi_display_config_ctrl_for_cont_splash(struct dsi_display *display);
 
 /**
+ * dsi_display_pinctrl_toggle_te_function() - Toggle TE GPIO to refresh hardware
+ *                                            state tracking
+ * @display: Handle to DSI display
+ *
+ * Return: error code
+ */
+int dsi_display_pinctrl_toggle_te_function(void *display);
+
+/**
  * dsi_display_enable() - enable display
  * @display:            Handle to display.
  *
