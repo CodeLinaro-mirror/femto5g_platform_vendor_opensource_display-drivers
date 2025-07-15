@@ -9597,7 +9597,17 @@ static void dsi_display_handle_poms_te(struct work_struct *work)
 	}
 
 	dsi = &panel->mipi_device;
+
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 	rc = mipi_dsi_dcs_set_tear_off(dsi);
+#else
+	struct mipi_dsi_multi_context ctx;
+
+	ctx.dsi = dsi;
+	ctx.accum_err = 0;
+	mipi_dsi_dcs_set_tear_off_multi(&ctx);
+	rc = ctx.accum_err;
+#endif
 
 error:
 	mutex_unlock(&panel->panel_lock);

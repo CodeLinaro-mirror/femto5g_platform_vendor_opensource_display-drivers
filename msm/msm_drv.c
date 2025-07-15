@@ -1251,8 +1251,13 @@ static void msm_lastclose(struct drm_device *dev)
 		struct drm_vblank_crtc *vblank = &dev->vblank[i];
 		struct timer_list *disable_timer = &vblank->disable_timer;
 
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 		if (del_timer_sync(disable_timer))
 			disable_timer->function(disable_timer);
+#else
+		if (timer_delete_sync(disable_timer))
+			disable_timer->function(disable_timer);
+#endif
 	}
 
 	/* wait for pending vblank requests to be executed by worker thread */
