@@ -45,6 +45,7 @@
 #endif
 
 #define MAX_DSI_DISPLAYS		2
+#define MAX_SPLASH_DISPLAYS		2
 #define MAX_DATA_PATH_PER_DSIPLAY	4
 
 enum sde_format_flags {
