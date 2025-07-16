@@ -379,6 +379,7 @@ enum sde_wb {
 	WB_1,
 	WB_2,
 	WB_3,
+	WB_4,
 	WB_MAX
 };
 
