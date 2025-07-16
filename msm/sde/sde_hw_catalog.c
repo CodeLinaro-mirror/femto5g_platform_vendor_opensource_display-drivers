@@ -6769,16 +6769,21 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
 	sde_cfg->mdss_hw_block_size = 0x15c;
 	sde_cfg->max_bw_upvote_threshold_ns = DEFAULT_BW_UPVOTE_THRESHOLD_NS;
-	sde_cfg->demura_supported[SSPP_DMA1][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
-	sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
-	sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
-	sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
+	sde_cfg->demura_supported[SSPP_DMA1][0] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
 	sde_cfg->qrtc_supported[SSPP_DMA1][0] = BIT(QRTC_0) | BIT(QRTC_2);
 	sde_cfg->qrtc_supported[SSPP_DMA1][1] = BIT(QRTC_1) | BIT(QRTC_3);
 	sde_cfg->qrtc_supported[SSPP_DMA3][0] = BIT(QRTC_0) | BIT(QRTC_2);
 	sde_cfg->qrtc_supported[SSPP_DMA3][1] = BIT(QRTC_1) | BIT(QRTC_3);
 	sde_cfg->has_line_insertion = true;
 	sde_cfg->osc_clk_rate = 38400000;
+	sde_cfg->has_demura_single_rect_support = true;
 }
 
 static void _sde_get_hw_caps_for_pebble(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)

@@ -547,6 +547,7 @@ enum {
  * @SDE_DSPP_SPR_DITHER      SPR Dither block
  * @SDE_DSPP_SPR_DITHER_LUMA SPR Dither block (Luma supported)
  * @SDE_DSPP_DEMURA          Demura block
+ * @SDE_DSPP_DEMURA_PU       Demura block (pu)
  * @SDE_DSPP_RC              RC block (mask)
  * @SDE_DSPP_RC_PU           RC block (pu)
  * @SDE_DSPP_SB              SB LUT DMA
@@ -575,6 +576,7 @@ enum {
 	SDE_DSPP_SPR_DITHER,
 	SDE_DSPP_SPR_DITHER_LUMA,
 	SDE_DSPP_DEMURA,
+	SDE_DSPP_DEMURA_PU,
 	SDE_DSPP_RC,
 	SDE_DSPP_RC_PU,
 	SDE_DSPP_SB,
@@ -2261,6 +2263,7 @@ struct sde_perf_cfg {
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
  * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
  *                      If not set it is immediate self refresh
+ * @has_demura_single_rect_support   supported demura surface with single rect
  * @virtual_mixers_mask bitmask of virtual mixers
  * @repro_excluded_props   Pointer to 2D array [obj_type][props] of excluded
 			   properties for reprojection
@@ -2420,6 +2423,7 @@ struct sde_mdss_cfg {
 	u32 controlled_SR;
 	u32 early_EPT_handling;
 
+	bool has_demura_single_rect_support;
 	bool disable_multirect;
 
 	u32 **repro_excluded_props;
