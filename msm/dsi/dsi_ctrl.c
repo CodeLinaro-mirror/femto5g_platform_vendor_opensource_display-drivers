@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -57,8 +57,11 @@ static const enum dsi_ctrl_version dsi_ctrl_v2_4 = DSI_CTRL_VERSION_2_4;
 static const enum dsi_ctrl_version dsi_ctrl_v2_5 = DSI_CTRL_VERSION_2_5;
 static const enum dsi_ctrl_version dsi_ctrl_v2_6 = DSI_CTRL_VERSION_2_6;
 static const enum dsi_ctrl_version dsi_ctrl_v2_7 = DSI_CTRL_VERSION_2_7;
+static const enum dsi_ctrl_version dsi_ctrl_v2_7_hfi = DSI_CTRL_VERSION_2_7_HFI;
 static const enum dsi_ctrl_version dsi_ctrl_v2_8 = DSI_CTRL_VERSION_2_8;
 static const enum dsi_ctrl_version dsi_ctrl_v2_9 = DSI_CTRL_VERSION_2_9;
+static const enum dsi_ctrl_version dsi_ctrl_v2_10 = DSI_CTRL_VERSION_2_10;
+static const enum dsi_ctrl_version dsi_ctrl_v2_10_hfi = DSI_CTRL_VERSION_2_10_HFI;
 
 static const struct of_device_id msm_dsi_of_match[] = {
 	{
@@ -86,12 +89,24 @@ static const struct of_device_id msm_dsi_of_match[] = {
 		.data = &dsi_ctrl_v2_7,
 	},
 	{
+		.compatible = "qcom,dsi-ctrl-hfi-hw-v2.7",
+		.data = &dsi_ctrl_v2_7_hfi,
+	},
+	{
 		.compatible = "qcom,dsi-ctrl-hw-v2.8",
 		.data = &dsi_ctrl_v2_8,
 	},
 	{
 		.compatible = "qcom,dsi-ctrl-hw-v2.9",
 		.data = &dsi_ctrl_v2_9,
+	},
+	{
+		.compatible = "qcom,dsi-ctrl-hw-v2.10",
+		.data = &dsi_ctrl_v2_10,
+	},
+	{
+		.compatible = "qcom,dsi-ctrl-hfi-hw-v2.10",
+		.data = &dsi_ctrl_v2_10_hfi,
 	},
 	{}
 };
@@ -180,8 +195,8 @@ static ssize_t debugfs_reg_dump_read(struct file *file,
 		return rc;
 	}
 
-	if (dsi_ctrl->hw.ops.reg_dump_to_buffer)
-		len = dsi_ctrl->hw.ops.reg_dump_to_buffer(&dsi_ctrl->hw,
+	if (dsi_ctrl->hw.ops.reg_dump_to_buffer[dsi_ctrl->disp_op])
+		len = dsi_ctrl->hw.ops.reg_dump_to_buffer[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 				buf, SZ_4K);
 
 	clk_info.clk_state = DSI_CLK_OFF;
@@ -378,7 +393,7 @@ dsi_ctrl_get_aspace(struct dsi_ctrl *dsi_ctrl,
 static void dsi_ctrl_dma_cmd_wait_for_done(struct dsi_ctrl *dsi_ctrl)
 {
 	int ret = 0;
-	u32 status;
+	u32 status = 0;
 	u32 mask = DSI_CMD_MODE_DMA_DONE;
 	struct dsi_ctrl_hw_ops dsi_hw_ops;
 
@@ -389,11 +404,13 @@ static void dsi_ctrl_dma_cmd_wait_for_done(struct dsi_ctrl *dsi_ctrl)
 			&dsi_ctrl->irq_info.cmd_dma_done,
 			msecs_to_jiffies(DSI_CTRL_TX_TO_MS));
 	if (ret == 0 && !atomic_read(&dsi_ctrl->dma_irq_trig)) {
-		status = dsi_hw_ops.get_interrupt_status(&dsi_ctrl->hw);
+		if (dsi_hw_ops.get_interrupt_status[dsi_ctrl->disp_op])
+			status = dsi_hw_ops.get_interrupt_status[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 		if (status & mask) {
 			status |= (DSI_CMD_MODE_DMA_DONE | DSI_BTA_DONE);
-			dsi_hw_ops.clear_interrupt_status(&dsi_ctrl->hw,
-					status);
+			if (dsi_hw_ops.clear_interrupt_status[dsi_ctrl->disp_op])
+				dsi_hw_ops.clear_interrupt_status[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+						status);
 			SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_CASE1);
 			DSI_CTRL_WARN(dsi_ctrl,
 					"dma_tx done but irq not triggered\n");
@@ -427,20 +444,19 @@ static void dsi_ctrl_clear_dma_status(struct dsi_ctrl *dsi_ctrl)
 	dsi_hw_ops = dsi_ctrl->hw.ops;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
-
-	status = dsi_hw_ops.poll_dma_status(&dsi_ctrl->hw);
+	if (dsi_hw_ops.poll_dma_status[dsi_ctrl->disp_op])
+		status = dsi_hw_ops.poll_dma_status[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, status);
 
 	status |= (DSI_CMD_MODE_DMA_DONE | DSI_BTA_DONE);
-	dsi_hw_ops.clear_interrupt_status(&dsi_ctrl->hw, status);
+	if (dsi_hw_ops.clear_interrupt_status[dsi_ctrl->disp_op])
+		dsi_hw_ops.clear_interrupt_status[dsi_ctrl->disp_op](&dsi_ctrl->hw, status);
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 }
 
 static void dsi_ctrl_post_cmd_transfer(struct dsi_ctrl *dsi_ctrl)
 {
-	struct dsi_ctrl_hw_ops dsi_hw_ops = dsi_ctrl->hw.ops;
-
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, dsi_ctrl->cell_index, dsi_ctrl->pending_cmd_flags);
 
 	/* In case of broadcast messages, we poll on the slave controller. */
@@ -454,8 +470,8 @@ static void dsi_ctrl_post_cmd_transfer(struct dsi_ctrl *dsi_ctrl)
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
-	if (dsi_ctrl->hw.reset_trig_ctrl)
-		dsi_hw_ops.reset_trig_ctrl(&dsi_ctrl->hw,
+	if (dsi_ctrl->hw.ops.reset_trig_ctrl[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.reset_trig_ctrl[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config);
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
@@ -473,7 +489,7 @@ static void dsi_ctrl_post_cmd_transfer_work(struct work_struct *work)
 	dsi_ctrl->post_tx_queued = false;
 }
 
-static void dsi_ctrl_flush_cmd_dma_queue(struct dsi_ctrl *dsi_ctrl)
+void dsi_ctrl_flush_cmd_dma_queue(struct dsi_ctrl *dsi_ctrl)
 {
 	/*
 	 * If a command is triggered right after another command,
@@ -507,12 +523,15 @@ static int dsi_ctrl_check_state(struct dsi_ctrl *dsi_ctrl,
 	int rc = 0;
 	struct dsi_ctrl_state_info *state = &dsi_ctrl->current_state;
 	bool esync_enabled = false;
-	struct dsi_mode_info *host_mode;
+	struct dsi_host_config *host_config;
 
-	host_mode = &dsi_ctrl->host_config.video_timing;
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
 
-	if (host_mode)
-		esync_enabled = host_mode->esync_enabled;
+	host_config = &dsi_ctrl->host_config;
+
+	if (host_config)
+		esync_enabled = host_config->esync_enabled;
 	SDE_EVT32(esync_enabled, dsi_ctrl->cell_index, op, op_state);
 
 	switch (op) {
@@ -690,6 +709,9 @@ static int dsi_ctrl_init_regmap(struct platform_device *pdev,
 	int rc = 0;
 	void __iomem *ptr;
 
+	if (ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
+
 	ptr = msm_ioremap(pdev, "dsi_ctrl", ctrl->name);
 	if (IS_ERR(ptr)) {
 		rc = PTR_ERR(ptr);
@@ -708,6 +730,7 @@ static int dsi_ctrl_init_regmap(struct platform_device *pdev,
 	case DSI_CTRL_VERSION_2_7:
 	case DSI_CTRL_VERSION_2_8:
 	case DSI_CTRL_VERSION_2_9:
+	case DSI_CTRL_VERSION_2_10:
 		ptr = msm_ioremap(pdev, "disp_cc_base", ctrl->name);
 		if (IS_ERR(ptr)) {
 			DSI_CTRL_ERR(ctrl, "disp_cc base address not found for\n");
@@ -737,41 +760,12 @@ static int dsi_ctrl_clocks_deinit(struct dsi_ctrl *ctrl)
 	struct dsi_esync_clk_info *esync = &ctrl->clk_info.esync_clk;
 	struct dsi_osc_clk_info *osc = &ctrl->clk_info.osc_clk;
 
-	if (core->mdp_core_clk)
-		devm_clk_put(&ctrl->pdev->dev, core->mdp_core_clk);
-	if (core->iface_clk)
-		devm_clk_put(&ctrl->pdev->dev, core->iface_clk);
-	if (core->core_mmss_clk)
-		devm_clk_put(&ctrl->pdev->dev, core->core_mmss_clk);
-	if (core->bus_clk)
-		devm_clk_put(&ctrl->pdev->dev, core->bus_clk);
-	if (core->mnoc_clk)
-		devm_clk_put(&ctrl->pdev->dev, core->mnoc_clk);
-
 	memset(core, 0x0, sizeof(*core));
-
-	if (hs_link->byte_clk)
-		devm_clk_put(&ctrl->pdev->dev, hs_link->byte_clk);
-	if (hs_link->pixel_clk)
-		devm_clk_put(&ctrl->pdev->dev, hs_link->pixel_clk);
-	if (esync->clk)
-		devm_clk_put(&ctrl->pdev->dev, esync->clk);
-	if (lp_link->esc_clk)
-		devm_clk_put(&ctrl->pdev->dev, lp_link->esc_clk);
-	if (osc->clk)
-		devm_clk_put(&ctrl->pdev->dev, osc->clk);
-	if (hs_link->byte_intf_clk)
-		devm_clk_put(&ctrl->pdev->dev, hs_link->byte_intf_clk);
-
 	memset(hs_link, 0x0, sizeof(*hs_link));
 	memset(lp_link, 0x0, sizeof(*lp_link));
-
-	if (rcg->byte_clk)
-		devm_clk_put(&ctrl->pdev->dev, rcg->byte_clk);
-	if (rcg->pixel_clk)
-		devm_clk_put(&ctrl->pdev->dev, rcg->pixel_clk);
-
 	memset(rcg, 0x0, sizeof(*rcg));
+	memset(esync, 0x0, sizeof(*esync));
+	memset(osc, 0x0, sizeof(*osc));
 
 	return 0;
 }
@@ -798,6 +792,12 @@ static int dsi_ctrl_clocks_init(struct platform_device *pdev,
 	if (IS_ERR(core->iface_clk)) {
 		core->iface_clk = NULL;
 		DSI_CTRL_DEBUG(ctrl, "failed to get iface_clk, rc=%d\n", rc);
+	}
+
+	core->ahb_swi_clk = devm_clk_get(&pdev->dev, "ahb_swi_clk");
+	if (IS_ERR(core->ahb_swi_clk)) {
+		core->ahb_swi_clk = NULL;
+		DSI_CTRL_DEBUG(ctrl, "failed to get ahb_swi_clk, rc=%d\n", rc);
 	}
 
 	core->core_mmss_clk = devm_clk_get(&pdev->dev, "core_mmss_clk");
@@ -1154,7 +1154,7 @@ static int dsi_ctrl_update_link_freqs(struct dsi_ctrl *dsi_ctrl,
 		goto error;
 	}
 
-	if (config->video_timing.esync_enabled) {
+	if (config->esync_enabled) {
 		dsi_ctrl->esync_clk_freq = pclk_rate;
 		rc = dsi_clk_set_esync_frequency(clk_handle, dsi_ctrl->esync_clk_freq,
 						dsi_ctrl->cell_index);
@@ -1173,12 +1173,12 @@ static int dsi_ctrl_aoss_update(struct dsi_ctrl *dsi_ctrl, bool enable)
 	int rc;
 	u32 cp_level;
 	bool esync_enabled = false;
-	struct dsi_mode_info *host_mode;
+	struct dsi_host_config *host_config;
 
-	host_mode = &dsi_ctrl->host_config.video_timing;
+	host_config = &dsi_ctrl->host_config;
 
-	if (host_mode)
-		esync_enabled = host_mode->esync_enabled;
+	if (host_config)
+		esync_enabled = host_config->esync_enabled;
 
 	if (enable) {
 		rc = pm_runtime_resume_and_get(dsi_ctrl->drm_dev->dev);
@@ -1349,7 +1349,8 @@ int dsi_ctrl_wait_for_cmd_mode_mdp_idle(struct dsi_ctrl *dsi_ctrl)
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
-	rc = dsi_ctrl->hw.ops.wait_for_cmd_mode_mdp_idle(&dsi_ctrl->hw);
+	if (dsi_ctrl->hw.ops.wait_for_cmd_mode_mdp_idle[dsi_ctrl->disp_op])
+		rc = dsi_ctrl->hw.ops.wait_for_cmd_mode_mdp_idle[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 
@@ -1368,7 +1369,7 @@ int dsi_message_validate_tx_mode(struct dsi_ctrl *dsi_ctrl,
 			DSI_CTRL_ERR(dsi_ctrl, "Cannot transfer Cmd in FIFO config\n");
 			return -ENOTSUPP;
 		}
-		if (!dsi_ctrl->hw.ops.kickoff_fifo_command) {
+		if (!dsi_ctrl->hw.ops.kickoff_fifo_command[dsi_ctrl->disp_op]) {
 			DSI_CTRL_ERR(dsi_ctrl, "Cannot transfer command,ops not defined\n");
 			return -ENOTSUPP;
 		}
@@ -1379,7 +1380,7 @@ int dsi_message_validate_tx_mode(struct dsi_ctrl *dsi_ctrl,
 			DSI_CTRL_ERR(dsi_ctrl, "Non embedded not supported with broadcast\n");
 			return -ENOTSUPP;
 		}
-		if (!dsi_ctrl->hw.ops.kickoff_command_non_embedded_mode) {
+		if (!dsi_ctrl->hw.ops.kickoff_command_non_embedded_mode[dsi_ctrl->disp_op]) {
 			DSI_CTRL_ERR(dsi_ctrl, " Cannot transfer command,ops not defined\n");
 			return -ENOTSUPP;
 		}
@@ -1418,7 +1419,7 @@ static void dsi_configure_command_scheduling(struct dsi_ctrl *dsi_ctrl,
 	 *	2) schedule line defined is greater than VFP.
 	 */
 	if ((dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE) &&
-		dsi_hw_ops.schedule_dma_cmd &&
+		dsi_hw_ops.schedule_dma_cmd[dsi_ctrl->disp_op] &&
 		(dsi_ctrl->current_state.vid_engine_state ==
 					DSI_CTRL_ENGINE_ON)) {
 		sched_line_no = (line_no == 0) ? 1 : line_no;
@@ -1429,7 +1430,8 @@ static void dsi_configure_command_scheduling(struct dsi_ctrl *dsi_ctrl,
 			sched_line_no += timing->v_back_porch +
 				timing->v_sync_width + timing->v_active;
 		}
-		dsi_hw_ops.schedule_dma_cmd(&dsi_ctrl->hw, sched_line_no, do_peripheral_flush);
+		dsi_hw_ops.schedule_dma_cmd[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+				sched_line_no, do_peripheral_flush);
 	}
 
 	/*
@@ -1438,14 +1440,14 @@ static void dsi_configure_command_scheduling(struct dsi_ctrl *dsi_ctrl,
 	 * window size properties are defined by the panel.
 	 */
 	if ((dsi_ctrl->host_config.panel_mode == DSI_OP_CMD_MODE) &&
-			dsi_hw_ops.configure_cmddma_window) {
+			dsi_hw_ops.configure_cmddma_window[dsi_ctrl->disp_op]) {
 
 		sched_line_no = (line_no == 0) ? TEARCHECK_WINDOW_SIZE :
 					line_no;
 		window = (window == 0) ? timing->v_active : window;
 		sched_line_no += timing->v_active;
 
-		dsi_hw_ops.configure_cmddma_window(&dsi_ctrl->hw, cmd_mem,
+		dsi_hw_ops.configure_cmddma_window[dsi_ctrl->disp_op](&dsi_ctrl->hw, cmd_mem,
 				sched_line_no, window);
 	}
 	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_EXIT,
@@ -1478,20 +1480,21 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 				u32 flags, bool do_peripheral_flush)
 {
 	u32 hw_flags = 0;
-	struct dsi_ctrl_hw_ops dsi_hw_ops = dsi_ctrl->hw.ops;
+	u32 reg = 0;
 	struct dsi_split_link_config *split_link;
+	enum msm_disp_op disp_op;
 
 	split_link = &(dsi_ctrl->host_config.common_config.split_link);
 
 	SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_ENTRY, flags,
 		msg->flags);
-
-	if (dsi_hw_ops.splitlink_cmd_setup && split_link->enabled)
-		dsi_hw_ops.splitlink_cmd_setup(&dsi_ctrl->hw,
+	disp_op = dsi_ctrl->disp_op;
+	if (dsi_ctrl->hw.ops.splitlink_cmd_setup[disp_op] && split_link->enabled)
+		dsi_ctrl->hw.ops.splitlink_cmd_setup[disp_op](&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config, flags);
 
-	if (dsi_hw_ops.init_cmddma_trig_ctrl)
-		dsi_hw_ops.init_cmddma_trig_ctrl(&dsi_ctrl->hw,
+	if (dsi_ctrl->hw.ops.init_cmddma_trig_ctrl[disp_op])
+		dsi_ctrl->hw.ops.init_cmddma_trig_ctrl[disp_op](&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config, do_peripheral_flush);
 
 	/*
@@ -1524,20 +1527,23 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 	if (flags & DSI_CTRL_CMD_DEFER_TRIGGER) {
 		if (flags & DSI_CTRL_CMD_FETCH_MEMORY) {
 			if (flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE) {
-				dsi_hw_ops.kickoff_command_non_embedded_mode(
+				if (dsi_ctrl->hw.ops.kickoff_command_non_embedded_mode[disp_op])
+					dsi_ctrl->hw.ops.kickoff_command_non_embedded_mode[disp_op](
+								&dsi_ctrl->hw,
+								cmd_mem,
+								hw_flags);
+			} else {
+				if (dsi_ctrl->hw.ops.kickoff_command[disp_op])
+					dsi_ctrl->hw.ops.kickoff_command[disp_op](
 							&dsi_ctrl->hw,
 							cmd_mem,
 							hw_flags);
-			} else {
-				dsi_hw_ops.kickoff_command(
-						&dsi_ctrl->hw,
-						cmd_mem,
-						hw_flags);
 			}
 		} else if (flags & DSI_CTRL_CMD_FIFO_STORE) {
-			dsi_hw_ops.kickoff_fifo_command(&dsi_ctrl->hw,
-							      cmd,
-							      hw_flags);
+			if (dsi_ctrl->hw.ops.kickoff_fifo_command[disp_op])
+				dsi_ctrl->hw.ops.kickoff_fifo_command[disp_op](&dsi_ctrl->hw,
+									cmd,
+									hw_flags);
 		}
 	}
 
@@ -1549,25 +1555,31 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 
 		if (flags & DSI_CTRL_CMD_FETCH_MEMORY) {
 			if (flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE) {
-				dsi_hw_ops.kickoff_command_non_embedded_mode(
+				if (dsi_ctrl->hw.ops.kickoff_command_non_embedded_mode[disp_op])
+					dsi_ctrl->hw.ops.kickoff_command_non_embedded_mode[disp_op](
+								&dsi_ctrl->hw,
+								cmd_mem,
+								hw_flags);
+			} else {
+				if (dsi_ctrl->hw.ops.kickoff_command[disp_op])
+					dsi_ctrl->hw.ops.kickoff_command[disp_op](
 							&dsi_ctrl->hw,
 							cmd_mem,
 							hw_flags);
-			} else {
-				dsi_hw_ops.kickoff_command(
-						&dsi_ctrl->hw,
-						cmd_mem,
-						hw_flags);
 			}
 		} else if (flags & DSI_CTRL_CMD_FIFO_STORE) {
-			dsi_hw_ops.kickoff_fifo_command(&dsi_ctrl->hw,
-							      cmd,
-							      hw_flags);
+			if (dsi_ctrl->hw.ops.kickoff_fifo_command[disp_op])
+				dsi_ctrl->hw.ops.kickoff_fifo_command[disp_op](&dsi_ctrl->hw,
+									cmd,
+									hw_flags);
 		}
 
 		if (dsi_ctrl->enable_cmd_dma_stats) {
-			u32 reg = dsi_hw_ops.log_line_count(&dsi_ctrl->hw,
-					dsi_ctrl->cmd_mode);
+			if (dsi_ctrl->hw.ops.log_line_count[disp_op])
+				reg = dsi_ctrl->hw.ops.log_line_count[disp_op](&dsi_ctrl->hw,
+						dsi_ctrl->cmd_mode);
+			else
+				reg = 0;
 			dsi_ctrl->cmd_trigger_line = (reg & 0xFFFF);
 			dsi_ctrl->cmd_trigger_frame = ((reg >> 16) & 0xFFFF);
 			SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_CASE1,
@@ -1575,8 +1587,8 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 					dsi_ctrl->cmd_trigger_frame);
 		}
 
-
-		dsi_hw_ops.reset_cmd_fifo(&dsi_ctrl->hw);
+		if (dsi_ctrl->hw.ops.reset_cmd_fifo[disp_op])
+			dsi_ctrl->hw.ops.reset_cmd_fifo[disp_op](&dsi_ctrl->hw);
 
 		/*
 		 * DSI 2.2 needs a soft reset whenever we send non-embedded
@@ -1585,7 +1597,8 @@ static void dsi_kickoff_msg_tx(struct dsi_ctrl *dsi_ctrl,
 		 */
 		if (flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE) {
 			if (dsi_ctrl->version < DSI_CTRL_VERSION_2_4)
-				dsi_hw_ops.soft_reset(&dsi_ctrl->hw);
+				if (dsi_ctrl->hw.ops.soft_reset[disp_op])
+					dsi_ctrl->hw.ops.soft_reset[disp_op](&dsi_ctrl->hw);
 			dsi_ctrl->cmd_len = 0;
 		}
 	}
@@ -1859,7 +1872,8 @@ static int dsi_message_rx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_de
 		}
 
 		/* clear RDBK_DATA registers before proceeding */
-		dsi_ctrl->hw.ops.clear_rdbk_register(&dsi_ctrl->hw);
+		if (dsi_ctrl->hw.ops.clear_rdbk_register[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.clear_rdbk_register[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 		rc = dsi_message_tx(dsi_ctrl, cmd_desc, false);
 		if (rc) {
@@ -1879,10 +1893,11 @@ static int dsi_message_rx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_de
 			usleep_range(cmd_desc->post_wait_ms * 1000,
 					((cmd_desc->post_wait_ms * 1000) + 10));
 
-		dlen = dsi_ctrl->hw.ops.get_cmd_read_data(&dsi_ctrl->hw,
-					buff, total_bytes_read,
-					total_read_len, rd_pkt_size,
-					&hw_read_cnt);
+		if (dsi_ctrl->hw.ops.get_cmd_read_data[dsi_ctrl->disp_op])
+			dlen = dsi_ctrl->hw.ops.get_cmd_read_data[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+						buff, total_bytes_read,
+						total_read_len, rd_pkt_size,
+						&hw_read_cnt);
 		if (!dlen)
 			goto error;
 
@@ -1950,27 +1965,30 @@ static int dsi_enable_ulps(struct dsi_ctrl *dsi_ctrl)
 {
 	int rc = 0;
 	u32 lanes = 0;
-	u32 ulps_lanes;
+	u32 ulps_lanes = 0;
 
 	lanes = dsi_ctrl->host_config.common_config.data_lanes;
 
-	rc = dsi_ctrl->hw.ops.wait_for_lane_idle(&dsi_ctrl->hw, lanes);
+	if (dsi_ctrl->hw.ops.wait_for_lane_idle[dsi_ctrl->disp_op])
+		rc = dsi_ctrl->hw.ops.wait_for_lane_idle[dsi_ctrl->disp_op](&dsi_ctrl->hw, lanes);
 	if (rc) {
 		DSI_CTRL_ERR(dsi_ctrl, "lanes not entering idle, skip ULPS\n");
 		return rc;
 	}
 
-	if (!dsi_ctrl->hw.ops.ulps_ops.ulps_request ||
-			!dsi_ctrl->hw.ops.ulps_ops.ulps_exit) {
+	if (!dsi_ctrl->hw.ops.ulps_ops.ulps_request[dsi_ctrl->disp_op] ||
+			!dsi_ctrl->hw.ops.ulps_ops.ulps_exit[dsi_ctrl->disp_op]) {
 		DSI_CTRL_DEBUG(dsi_ctrl, "DSI controller ULPS ops not present\n");
 		return 0;
 	}
 
 	if (!dsi_is_type_cphy(&dsi_ctrl->host_config.common_config))
 		lanes |= DSI_CLOCK_LANE;
-	dsi_ctrl->hw.ops.ulps_ops.ulps_request(&dsi_ctrl->hw, lanes);
+	dsi_ctrl->hw.ops.ulps_ops.ulps_request[dsi_ctrl->disp_op](&dsi_ctrl->hw, lanes);
 
-	ulps_lanes = dsi_ctrl->hw.ops.ulps_ops.get_lanes_in_ulps(&dsi_ctrl->hw);
+	if (dsi_ctrl->hw.ops.ulps_ops.get_lanes_in_ulps[dsi_ctrl->disp_op])
+		ulps_lanes =
+		   dsi_ctrl->hw.ops.ulps_ops.get_lanes_in_ulps[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 	if ((lanes & ulps_lanes) != lanes) {
 		DSI_CTRL_ERR(dsi_ctrl, "Failed to enter ULPS, request=0x%x, actual=0x%x\n",
@@ -1984,12 +2002,14 @@ static int dsi_enable_ulps(struct dsi_ctrl *dsi_ctrl)
 static int dsi_disable_ulps(struct dsi_ctrl *dsi_ctrl)
 {
 	int rc = 0;
-	u32 ulps_lanes, lanes = 0;
+	u32 ulps_lanes = 0;
+	u32 lanes = 0;
 
-	dsi_ctrl->hw.ops.clear_phy0_ln_err(&dsi_ctrl->hw);
+	if (dsi_ctrl->hw.ops.clear_phy0_ln_err[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.clear_phy0_ln_err[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
-	if (!dsi_ctrl->hw.ops.ulps_ops.ulps_request ||
-			!dsi_ctrl->hw.ops.ulps_ops.ulps_exit) {
+	if (!dsi_ctrl->hw.ops.ulps_ops.ulps_request[dsi_ctrl->disp_op] ||
+			!dsi_ctrl->hw.ops.ulps_ops.ulps_exit[dsi_ctrl->disp_op]) {
 		DSI_CTRL_DEBUG(dsi_ctrl, "DSI controller ULPS ops not present\n");
 		return 0;
 	}
@@ -1998,16 +2018,20 @@ static int dsi_disable_ulps(struct dsi_ctrl *dsi_ctrl)
 	if (!dsi_is_type_cphy(&dsi_ctrl->host_config.common_config))
 		lanes |= DSI_CLOCK_LANE;
 
-	ulps_lanes = dsi_ctrl->hw.ops.ulps_ops.get_lanes_in_ulps(&dsi_ctrl->hw);
+	if (dsi_ctrl->hw.ops.ulps_ops.get_lanes_in_ulps[dsi_ctrl->disp_op])
+		ulps_lanes =
+		   dsi_ctrl->hw.ops.ulps_ops.get_lanes_in_ulps[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 	if ((lanes & ulps_lanes) != lanes)
 		DSI_CTRL_ERR(dsi_ctrl, "Mismatch between lanes in ULPS\n");
 
 	lanes &= ulps_lanes;
 
-	dsi_ctrl->hw.ops.ulps_ops.ulps_exit(&dsi_ctrl->hw, lanes);
+	dsi_ctrl->hw.ops.ulps_ops.ulps_exit[dsi_ctrl->disp_op](&dsi_ctrl->hw, lanes);
 
-	ulps_lanes = dsi_ctrl->hw.ops.ulps_ops.get_lanes_in_ulps(&dsi_ctrl->hw);
+	if (dsi_ctrl->hw.ops.ulps_ops.get_lanes_in_ulps[dsi_ctrl->disp_op])
+		ulps_lanes =
+		   dsi_ctrl->hw.ops.ulps_ops.get_lanes_in_ulps[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 	if (ulps_lanes & lanes) {
 		DSI_CTRL_ERR(dsi_ctrl, "Lanes (0x%x) stuck in ULPS\n",
 				ulps_lanes);
@@ -2020,14 +2044,21 @@ static int dsi_disable_ulps(struct dsi_ctrl *dsi_ctrl)
 void dsi_ctrl_toggle_error_interrupt_status(struct dsi_ctrl *dsi_ctrl, bool enable)
 {
 	if (!enable) {
-		dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw, 0);
+		if (dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op](
+					&dsi_ctrl->hw, 0);
 	} else {
 		if (dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE &&
 				!dsi_ctrl->host_config.u.video_engine.bllp_lp11_en &&
-				!dsi_ctrl->host_config.u.video_engine.eof_bllp_lp11_en)
-			dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw,	0xFF00A0);
-		else
-			dsi_ctrl->hw.ops.enable_error_interrupts(&dsi_ctrl->hw, 0xFF00E0);
+				!dsi_ctrl->host_config.u.video_engine.eof_bllp_lp11_en) {
+			if (dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op])
+				dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op](
+					&dsi_ctrl->hw, 0xFF00A0);
+		} else {
+			if (dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op])
+				dsi_ctrl->hw.ops.enable_error_interrupts[dsi_ctrl->disp_op](
+					&dsi_ctrl->hw, 0xFF00E0);
+		}
 	}
 }
 
@@ -2121,12 +2152,17 @@ static int dsi_enable_io_clamp(struct dsi_ctrl *dsi_ctrl,
 
 	lanes |= DSI_CLOCK_LANE;
 
-	if (enable)
-		dsi_ctrl->hw.ops.clamp_enable(&dsi_ctrl->hw,
-			lanes, ulps_enabled);
-	else
-		dsi_ctrl->hw.ops.clamp_disable(&dsi_ctrl->hw,
-			lanes, ulps_enabled);
+	if (enable) {
+		if (dsi_ctrl->hw.ops.clamp_enable[dsi_ctrl->disp_op]) {
+			dsi_ctrl->hw.ops.clamp_enable[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+				lanes, ulps_enabled);
+		}
+	} else {
+		if (dsi_ctrl->hw.ops.clamp_disable[dsi_ctrl->disp_op]) {
+			dsi_ctrl->hw.ops.clamp_disable[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+				lanes, ulps_enabled);
+		}
+	}
 
 	return 0;
 }
@@ -2201,6 +2237,18 @@ static int dsi_ctrl_dev_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	dsi_ctrl->version = version;
+	if (dsi_ctrl->version == DSI_CTRL_VERSION_2_10_HFI) {
+		dsi_ctrl->disp_op = MSM_DISP_OP_HFI;
+		dsi_ctrl->version = DSI_CTRL_VERSION_2_10;
+		// Turn on HFI flag, then switch back HWIO flags
+		//so its not disturbed before catalog init.
+	} else if (dsi_ctrl->version == DSI_CTRL_VERSION_2_7_HFI) {
+		dsi_ctrl->disp_op = MSM_DISP_OP_HFI;
+		dsi_ctrl->version = DSI_CTRL_VERSION_2_7;
+	} else {
+		dsi_ctrl->disp_op = MSM_DISP_OP_HWIO;
+	}
+
 	dsi_ctrl->irq_info.irq_num = -1;
 	dsi_ctrl->irq_info.irq_stat_mask = 0x0;
 
@@ -2215,25 +2263,29 @@ static int dsi_ctrl_dev_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	rc = dsi_ctrl_init_regmap(pdev, dsi_ctrl);
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "Failed to parse register information, rc = %d\n",
-				rc);
-		goto fail;
-	}
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HWIO) {
 
-	rc = dsi_ctrl_supplies_init(pdev, dsi_ctrl);
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "Failed to parse voltage supplies, rc = %d\n",
-				rc);
-		goto fail;
-	}
+		rc = dsi_ctrl_init_regmap(pdev, dsi_ctrl);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "Failed to parse register information, rc = %d\n",
+					rc);
+			goto fail;
+		}
 
-	rc = dsi_ctrl_clocks_init(pdev, dsi_ctrl);
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "Failed to parse clock information, rc = %d\n",
-				rc);
-		goto fail_supplies;
+		rc = dsi_ctrl_supplies_init(pdev, dsi_ctrl);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "Failed to parse voltage supplies, rc = %d\n",
+					rc);
+			goto fail;
+		}
+
+		rc = dsi_ctrl_clocks_init(pdev, dsi_ctrl);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "Failed to parse clock information, rc = %d\n",
+					rc);
+			goto fail_supplies;
+		}
+
 	}
 
 	rc = dsi_catalog_ctrl_setup(&dsi_ctrl->hw, dsi_ctrl->version,
@@ -2269,7 +2321,11 @@ fail:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void dsi_ctrl_dev_remove(struct platform_device *pdev)
+#else
 static int dsi_ctrl_dev_remove(struct platform_device *pdev)
+#endif
 {
 	int rc = 0;
 	struct dsi_ctrl *dsi_ctrl;
@@ -2311,7 +2367,9 @@ static int dsi_ctrl_dev_remove(struct platform_device *pdev)
 	devm_kfree(&pdev->dev, dsi_ctrl);
 
 	platform_set_drvdata(pdev, NULL);
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static struct platform_driver dsi_ctrl_driver = {
@@ -2554,6 +2612,9 @@ int dsi_ctrl_phy_sw_reset(struct dsi_ctrl *dsi_ctrl)
 		return -EINVAL;
 	}
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_PHY_SW_RESET, 0x0);
 	if (rc) {
@@ -2562,7 +2623,8 @@ int dsi_ctrl_phy_sw_reset(struct dsi_ctrl *dsi_ctrl)
 		goto error;
 	}
 
-	dsi_ctrl->hw.ops.phy_sw_reset(&dsi_ctrl->hw);
+	if (dsi_ctrl->hw.ops.phy_sw_reset[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.phy_sw_reset[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 	DSI_CTRL_DEBUG(dsi_ctrl, "PHY soft reset done\n");
 	dsi_ctrl_update_state(dsi_ctrl, DSI_CTRL_OP_PHY_SW_RESET, 0x0);
@@ -2592,6 +2654,9 @@ int dsi_ctrl_async_timing_update(struct dsi_ctrl *dsi_ctrl,
 		return -EINVAL;
 	}
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_ASYNC_TIMING,
@@ -2604,8 +2669,11 @@ int dsi_ctrl_async_timing_update(struct dsi_ctrl *dsi_ctrl,
 
 	host_mode = &dsi_ctrl->host_config.video_timing;
 	memcpy(host_mode, timing, sizeof(*host_mode));
-	dsi_ctrl->hw.ops.set_timing_db(&dsi_ctrl->hw, true);
-	dsi_ctrl->hw.ops.set_video_timing(&dsi_ctrl->hw, host_mode);
+	if (dsi_ctrl->hw.ops.set_timing_db[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.set_timing_db[dsi_ctrl->disp_op](&dsi_ctrl->hw, true);
+	if (dsi_ctrl->hw.ops.set_video_timing[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.set_video_timing[dsi_ctrl->disp_op](
+				&dsi_ctrl->hw, &dsi_ctrl->host_config);
 
 exit:
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
@@ -2631,6 +2699,9 @@ int dsi_ctrl_timing_db_update(struct dsi_ctrl *dsi_ctrl,
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid dsi_ctrl\n");
 		return -EINVAL;
 	}
+
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return 0;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
@@ -2659,7 +2730,8 @@ int dsi_ctrl_timing_db_update(struct dsi_ctrl *dsi_ctrl,
 
 	usleep_range(pf_time_in_us, pf_time_in_us + 10);
 
-	dsi_ctrl->hw.ops.set_timing_db(&dsi_ctrl->hw, enable);
+	if (dsi_ctrl->hw.ops.set_timing_db[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.set_timing_db[dsi_ctrl->disp_op](&dsi_ctrl->hw, enable);
 
 exit:
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
@@ -2677,23 +2749,29 @@ int dsi_ctrl_timing_setup(struct dsi_ctrl *dsi_ctrl)
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
 	if (dsi_ctrl->host_config.panel_mode == DSI_OP_CMD_MODE) {
-		dsi_ctrl->hw.ops.cmd_engine_setup(&dsi_ctrl->hw,
-					&dsi_ctrl->host_config.common_config,
-					&dsi_ctrl->host_config.u.cmd_engine);
+		if (dsi_ctrl->hw.ops.cmd_engine_setup[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.cmd_engine_setup[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+						&dsi_ctrl->host_config.common_config,
+						&dsi_ctrl->host_config.u.cmd_engine);
 
-		dsi_ctrl->hw.ops.setup_cmd_stream(&dsi_ctrl->hw,
-				&dsi_ctrl->host_config.video_timing,
-				&dsi_ctrl->host_config.common_config,
-				0x0,
-				&dsi_ctrl->roi);
-		dsi_ctrl->hw.ops.cmd_engine_en(&dsi_ctrl->hw, true);
-	} else {
-		dsi_ctrl->hw.ops.video_engine_setup(&dsi_ctrl->hw,
+		if (dsi_ctrl->hw.ops.setup_cmd_stream[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.setup_cmd_stream[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+					&dsi_ctrl->host_config.video_timing,
 					&dsi_ctrl->host_config.common_config,
-					&dsi_ctrl->host_config.u.video_engine);
-		dsi_ctrl->hw.ops.set_video_timing(&dsi_ctrl->hw,
-					  &dsi_ctrl->host_config.video_timing);
-		dsi_ctrl->hw.ops.video_engine_en(&dsi_ctrl->hw, true);
+					0x0,
+					&dsi_ctrl->roi);
+		if (dsi_ctrl->hw.ops.cmd_engine_en[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.cmd_engine_en[dsi_ctrl->disp_op](&dsi_ctrl->hw, true);
+	} else {
+		if (dsi_ctrl->hw.ops.video_engine_setup[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.video_engine_setup[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+						&dsi_ctrl->host_config.common_config,
+						&dsi_ctrl->host_config.u.video_engine);
+		if (dsi_ctrl->hw.ops.set_video_timing[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.set_video_timing[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+						&dsi_ctrl->host_config);
+		if (dsi_ctrl->hw.ops.video_engine_en[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.video_engine_en[dsi_ctrl->disp_op](&dsi_ctrl->hw, true);
 	}
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
@@ -2710,16 +2788,20 @@ int dsi_ctrl_setup(struct dsi_ctrl *dsi_ctrl)
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
-	dsi_ctrl->hw.ops.setup_lane_map(&dsi_ctrl->hw,
-					&dsi_ctrl->host_config.lane_map);
+	if (dsi_ctrl->hw.ops.setup_lane_map[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.setup_lane_map[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+						&dsi_ctrl->host_config.lane_map);
 
-	dsi_ctrl->hw.ops.host_setup(&dsi_ctrl->hw,
-				    &dsi_ctrl->host_config.common_config);
+	if (dsi_ctrl->hw.ops.host_setup[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.host_setup[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+						&dsi_ctrl->host_config.common_config);
 
-	dsi_ctrl->hw.ops.enable_status_interrupts(&dsi_ctrl->hw, 0x0);
+	if (dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op](&dsi_ctrl->hw, 0x0);
 	dsi_ctrl_toggle_error_interrupt_status(dsi_ctrl, true);
 
-	dsi_ctrl->hw.ops.ctrl_en(&dsi_ctrl->hw, true);
+	if (dsi_ctrl->hw.ops.ctrl_en[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.ctrl_en[dsi_ctrl->disp_op](&dsi_ctrl->hw, true);
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 	return rc;
@@ -2764,8 +2846,8 @@ int dsi_ctrl_config_clk_gating(struct dsi_ctrl *dsi_ctrl, bool enable,
 		return -EINVAL;
 	}
 
-	if (dsi_ctrl->hw.ops.config_clk_gating)
-		dsi_ctrl->hw.ops.config_clk_gating(&dsi_ctrl->hw, enable,
+	if (dsi_ctrl->hw.ops.config_clk_gating[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.config_clk_gating[dsi_ctrl->disp_op](&dsi_ctrl->hw, enable,
 				clk_selection);
 
 	return 0;
@@ -2786,8 +2868,8 @@ int dsi_ctrl_phy_reset_config(struct dsi_ctrl *dsi_ctrl, bool enable)
 		return -EINVAL;
 	}
 
-	if (dsi_ctrl->hw.ops.phy_reset_config)
-		dsi_ctrl->hw.ops.phy_reset_config(&dsi_ctrl->hw, enable);
+	if (dsi_ctrl->hw.ops.phy_reset_config[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.phy_reset_config[dsi_ctrl->disp_op](&dsi_ctrl->hw, enable);
 
 	return 0;
 }
@@ -2831,12 +2913,12 @@ static void dsi_ctrl_handle_error_status(struct dsi_ctrl *dsi_ctrl,
 	cb_info = dsi_ctrl->irq_info.irq_err_cb;
 
 	/* disable error interrupts */
-	if (dsi_ctrl->hw.ops.error_intr_ctrl)
-		dsi_ctrl->hw.ops.error_intr_ctrl(&dsi_ctrl->hw, false);
+	if (dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op](&dsi_ctrl->hw, false);
 
 	/* clear error interrupts first */
-	if (dsi_ctrl->hw.ops.clear_error_status)
-		dsi_ctrl->hw.ops.clear_error_status(&dsi_ctrl->hw,
+	if (dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					error);
 
 	/* DTLN PHY error */
@@ -2867,8 +2949,8 @@ static void dsi_ctrl_handle_error_status(struct dsi_ctrl *dsi_ctrl,
 	if (error & 0xF0000) {
 		u32 mask = 0;
 
-		if (dsi_ctrl->hw.ops.get_error_mask)
-			mask = dsi_ctrl->hw.ops.get_error_mask(&dsi_ctrl->hw);
+		if (dsi_ctrl->hw.ops.get_error_mask[dsi_ctrl->disp_op])
+			mask = dsi_ctrl->hw.ops.get_error_mask[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 		/* no need to report FIFO overflow if already masked */
 		if (cb_info.event_cb && !(mask & 0xf0000)) {
 			cb_info.event_idx = DSI_FIFO_OVERFLOW;
@@ -2907,13 +2989,14 @@ static void dsi_ctrl_handle_error_status(struct dsi_ctrl *dsi_ctrl,
 	 */
 	if (dsi_ctrl_check_for_spurious_error_interrupts(dsi_ctrl) &&
 				dsi_ctrl->esd_check_underway) {
-		dsi_ctrl->hw.ops.soft_reset(&dsi_ctrl->hw);
+		if (dsi_ctrl->hw.ops.soft_reset[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.soft_reset[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 		return;
 	}
 
 	/* enable back DSI interrupts */
-	if (dsi_ctrl->hw.ops.error_intr_ctrl)
-		dsi_ctrl->hw.ops.error_intr_ctrl(&dsi_ctrl->hw, true);
+	if (dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op](&dsi_ctrl->hw, true);
 }
 
 /**
@@ -2929,22 +3012,23 @@ static irqreturn_t dsi_ctrl_isr(int irq, void *ptr)
 	unsigned long flags;
 	uint32_t status = 0x0, i;
 	uint64_t errors = 0x0;
+	u32 reg = 0;
 
 	if (!ptr)
 		return IRQ_NONE;
 	dsi_ctrl = ptr;
 
 	/* check status interrupts */
-	if (dsi_ctrl->hw.ops.get_interrupt_status)
-		status = dsi_ctrl->hw.ops.get_interrupt_status(&dsi_ctrl->hw);
+	if (dsi_ctrl->hw.ops.get_interrupt_status[dsi_ctrl->disp_op])
+		status = dsi_ctrl->hw.ops.get_interrupt_status[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 	/* check error interrupts */
-	if (dsi_ctrl->hw.ops.get_error_status)
-		errors = dsi_ctrl->hw.ops.get_error_status(&dsi_ctrl->hw);
+	if (dsi_ctrl->hw.ops.get_error_status[dsi_ctrl->disp_op])
+		errors = dsi_ctrl->hw.ops.get_error_status[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 	/* clear interrupts */
-	if (dsi_ctrl->hw.ops.clear_interrupt_status)
-		dsi_ctrl->hw.ops.clear_interrupt_status(&dsi_ctrl->hw, 0x0);
+	if (dsi_ctrl->hw.ops.clear_interrupt_status[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.clear_interrupt_status[dsi_ctrl->disp_op](&dsi_ctrl->hw, 0x0);
 
 	SDE_EVT32_IRQ(dsi_ctrl->cell_index, status, errors);
 
@@ -2954,8 +3038,12 @@ static irqreturn_t dsi_ctrl_isr(int irq, void *ptr)
 
 	if (status & DSI_CMD_MODE_DMA_DONE) {
 		if (dsi_ctrl->enable_cmd_dma_stats) {
-			u32 reg = dsi_ctrl->hw.ops.log_line_count(&dsi_ctrl->hw,
-						dsi_ctrl->cmd_mode);
+			if (dsi_ctrl->hw.ops.log_line_count[dsi_ctrl->disp_op])
+				reg =
+				  dsi_ctrl->hw.ops.log_line_count[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+							dsi_ctrl->cmd_mode);
+			else
+				reg = 0;
 			dsi_ctrl->cmd_success_line = (reg & 0xFFFF);
 			dsi_ctrl->cmd_success_frame = ((reg >> 16) & 0xFFFF);
 			SDE_EVT32(dsi_ctrl->cell_index,	SDE_EVTLOG_FUNC_CASE1,
@@ -2990,8 +3078,8 @@ static irqreturn_t dsi_ctrl_isr(int irq, void *ptr)
 		dsi_ctrl_disable_status_interrupt(dsi_ctrl,
 					DSI_SINT_BTA_DONE);
 		complete_all(&dsi_ctrl->irq_info.bta_done);
-		if (dsi_ctrl->hw.ops.clear_error_status)
-			dsi_ctrl->hw.ops.clear_error_status(&dsi_ctrl->hw,
+		if (dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					fifo_overflow_mask);
 	}
 
@@ -3092,13 +3180,15 @@ void dsi_ctrl_enable_status_interrupt(struct dsi_ctrl *dsi_ctrl,
 
 		/* update hardware mask */
 		dsi_ctrl->irq_info.irq_stat_mask |= BIT(intr_idx);
-		dsi_ctrl->hw.ops.enable_status_interrupts(&dsi_ctrl->hw,
-				dsi_ctrl->irq_info.irq_stat_mask);
+		if (dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+					dsi_ctrl->irq_info.irq_stat_mask);
 	}
 
 	if (intr_idx == DSI_SINT_CMD_MODE_DMA_DONE)
-		dsi_ctrl->hw.ops.enable_status_interrupts(&dsi_ctrl->hw,
-				dsi_ctrl->irq_info.irq_stat_mask);
+		if (dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+					dsi_ctrl->irq_info.irq_stat_mask);
 	++(dsi_ctrl->irq_info.irq_stat_refcount[intr_idx]);
 
 	if (event_info)
@@ -3124,8 +3214,10 @@ void dsi_ctrl_disable_status_interrupt(struct dsi_ctrl *dsi_ctrl,
 	if (dsi_ctrl->irq_info.irq_stat_refcount[intr_idx])
 		if (--(dsi_ctrl->irq_info.irq_stat_refcount[intr_idx]) == 0) {
 			dsi_ctrl->irq_info.irq_stat_mask &= ~BIT(intr_idx);
-			dsi_ctrl->hw.ops.enable_status_interrupts(&dsi_ctrl->hw,
-					dsi_ctrl->irq_info.irq_stat_mask);
+			if (dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op])
+				dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op]
+						(&dsi_ctrl->hw,
+						dsi_ctrl->irq_info.irq_stat_mask);
 
 			/* don't need irq if no lines are enabled */
 			if (dsi_ctrl->irq_info.irq_stat_mask == 0 &&
@@ -3145,18 +3237,18 @@ int dsi_ctrl_host_timing_update(struct dsi_ctrl *dsi_ctrl)
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
-	if (dsi_ctrl->hw.ops.host_setup)
-		dsi_ctrl->hw.ops.host_setup(&dsi_ctrl->hw,
+	if (dsi_ctrl->hw.ops.host_setup[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.host_setup[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.common_config);
 
 	if (dsi_ctrl->host_config.panel_mode == DSI_OP_CMD_MODE) {
-		if (dsi_ctrl->hw.ops.cmd_engine_setup)
-			dsi_ctrl->hw.ops.cmd_engine_setup(&dsi_ctrl->hw,
+		if (dsi_ctrl->hw.ops.cmd_engine_setup[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.cmd_engine_setup[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					&dsi_ctrl->host_config.common_config,
 					&dsi_ctrl->host_config.u.cmd_engine);
 
-		if (dsi_ctrl->hw.ops.setup_cmd_stream)
-			dsi_ctrl->hw.ops.setup_cmd_stream(&dsi_ctrl->hw,
+		if (dsi_ctrl->hw.ops.setup_cmd_stream[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.setup_cmd_stream[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.video_timing,
 				&dsi_ctrl->host_config.common_config,
 				0x0, NULL);
@@ -3186,8 +3278,9 @@ int dsi_ctrl_update_host_state(struct dsi_ctrl *dsi_ctrl,
 	int rc = 0;
 	u32 state = enable ? 0x1 : 0x0;
 
-	if (!dsi_ctrl)
+	if (!dsi_ctrl || dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
 		return rc;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 	rc = dsi_ctrl_check_state(dsi_ctrl, op, state);
 	if (rc) {
@@ -3224,6 +3317,9 @@ int dsi_ctrl_host_init(struct dsi_ctrl *dsi_ctrl, bool skip_op)
 		return -EINVAL;
 	}
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_HOST_INIT, 0x1);
 	if (rc) {
@@ -3237,32 +3333,32 @@ int dsi_ctrl_host_init(struct dsi_ctrl *dsi_ctrl, bool skip_op)
 	 * as bootloader/primary vm takes care of them respectively
 	 */
 	if (!skip_op) {
-		dsi_ctrl->hw.ops.setup_lane_map(&dsi_ctrl->hw,
+		dsi_ctrl->hw.ops.setup_lane_map[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					&dsi_ctrl->host_config.lane_map);
 
-		dsi_ctrl->hw.ops.host_setup(&dsi_ctrl->hw,
+		dsi_ctrl->hw.ops.host_setup[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 				    &dsi_ctrl->host_config.common_config);
 
 		if (dsi_ctrl->host_config.panel_mode == DSI_OP_CMD_MODE) {
-			dsi_ctrl->hw.ops.cmd_engine_setup(&dsi_ctrl->hw,
+			dsi_ctrl->hw.ops.cmd_engine_setup[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					&dsi_ctrl->host_config.common_config,
 					&dsi_ctrl->host_config.u.cmd_engine);
 
-			dsi_ctrl->hw.ops.setup_cmd_stream(&dsi_ctrl->hw,
+			dsi_ctrl->hw.ops.setup_cmd_stream[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 				&dsi_ctrl->host_config.video_timing,
 				&dsi_ctrl->host_config.common_config,
 				0x0,
 				NULL);
 		} else {
-			dsi_ctrl->hw.ops.video_engine_setup(&dsi_ctrl->hw,
+			dsi_ctrl->hw.ops.video_engine_setup[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					&dsi_ctrl->host_config.common_config,
 					&dsi_ctrl->host_config.u.video_engine);
-			dsi_ctrl->hw.ops.set_video_timing(&dsi_ctrl->hw,
-					  &dsi_ctrl->host_config.video_timing);
+			dsi_ctrl->hw.ops.set_video_timing[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+					  &dsi_ctrl->host_config);
 		}
 	}
 
-	dsi_ctrl->hw.ops.enable_status_interrupts(&dsi_ctrl->hw, 0x0);
+	dsi_ctrl->hw.ops.enable_status_interrupts[dsi_ctrl->disp_op](&dsi_ctrl->hw, 0x0);
 	dsi_ctrl_toggle_error_interrupt_status(dsi_ctrl, true);
 
 	DSI_CTRL_DEBUG(dsi_ctrl, "Host initialization complete, skip op: %d\n",
@@ -3298,7 +3394,8 @@ void dsi_ctrl_hs_req_sel(struct dsi_ctrl *dsi_ctrl, bool sel_phy)
 		return;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
-	dsi_ctrl->hw.ops.hs_req_sel(&dsi_ctrl->hw, sel_phy);
+	if (dsi_ctrl->hw.ops.hs_req_sel[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.hs_req_sel[dsi_ctrl->disp_op](&dsi_ctrl->hw, sel_phy);
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 }
 
@@ -3308,7 +3405,8 @@ void dsi_ctrl_set_continuous_clk(struct dsi_ctrl *dsi_ctrl, bool enable)
 		return;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
-	dsi_ctrl->hw.ops.set_continuous_clk(&dsi_ctrl->hw, enable);
+	if (dsi_ctrl->hw.ops.set_continuous_clk[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.set_continuous_clk[dsi_ctrl->disp_op](&dsi_ctrl->hw, enable);
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 }
 
@@ -3318,7 +3416,8 @@ int dsi_ctrl_soft_reset(struct dsi_ctrl *dsi_ctrl)
 		return -EINVAL;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
-	dsi_ctrl->hw.ops.soft_reset(&dsi_ctrl->hw);
+	if (dsi_ctrl->hw.ops.soft_reset[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.soft_reset[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 
 	DSI_CTRL_DEBUG(dsi_ctrl, "Soft reset complete\n");
@@ -3333,7 +3432,8 @@ int dsi_ctrl_reset(struct dsi_ctrl *dsi_ctrl, int mask)
 		return -EINVAL;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
-	rc = dsi_ctrl->hw.ops.ctrl_reset(&dsi_ctrl->hw, mask);
+	if (dsi_ctrl->hw.ops.ctrl_reset[dsi_ctrl->disp_op])
+		rc = dsi_ctrl->hw.ops.ctrl_reset[dsi_ctrl->disp_op](&dsi_ctrl->hw, mask);
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 
 	return rc;
@@ -3347,7 +3447,8 @@ int dsi_ctrl_get_hw_version(struct dsi_ctrl *dsi_ctrl)
 		return -EINVAL;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
-	rc = dsi_ctrl->hw.ops.get_hw_version(&dsi_ctrl->hw);
+	if (dsi_ctrl->hw.ops.get_hw_version[dsi_ctrl->disp_op])
+		rc = dsi_ctrl->hw.ops.get_hw_version[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 
 	return rc;
@@ -3361,7 +3462,8 @@ int dsi_ctrl_vid_engine_en(struct dsi_ctrl *dsi_ctrl, bool on)
 		return -EINVAL;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
-	dsi_ctrl->hw.ops.video_engine_en(&dsi_ctrl->hw, on);
+	if (dsi_ctrl->hw.ops.video_engine_en[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.video_engine_en[dsi_ctrl->disp_op](&dsi_ctrl->hw, on);
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 
 	return rc;
@@ -3374,7 +3476,8 @@ int dsi_ctrl_setup_avr(struct dsi_ctrl *dsi_ctrl, bool enable)
 
 	if (dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE) {
 		mutex_lock(&dsi_ctrl->ctrl_lock);
-		dsi_ctrl->hw.ops.setup_avr(&dsi_ctrl->hw, enable);
+		if (dsi_ctrl->hw.ops.setup_avr[dsi_ctrl->disp_op])
+			dsi_ctrl->hw.ops.setup_avr[dsi_ctrl->disp_op](&dsi_ctrl->hw, enable);
 		mutex_unlock(&dsi_ctrl->ctrl_lock);
 	}
 
@@ -3440,6 +3543,9 @@ int dsi_ctrl_update_host_config(struct dsi_ctrl *ctrl,
 		DSI_CTRL_ERR(ctrl, "Invalid params\n");
 		return -EINVAL;
 	}
+
+	if (ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
 
 	mutex_lock(&ctrl->ctrl_lock);
 
@@ -3692,6 +3798,7 @@ void dsi_ctrl_transfer_unprepare(struct dsi_ctrl *dsi_ctrl, u32 flags)
 int dsi_ctrl_cmd_tx_trigger(struct dsi_ctrl *dsi_ctrl, u32 flags)
 {
 	int rc = 0;
+	u32 reg = 0;
 	struct dsi_ctrl_hw_ops dsi_hw_ops;
 	u32 v_total = 0, fps = 0, cur_line = 0, mem_latency_us = 100;
 	u32 line_time = 0, schedule_line = 0x1, latency_by_line = 0;
@@ -3725,10 +3832,14 @@ int dsi_ctrl_cmd_tx_trigger(struct dsi_ctrl *dsi_ctrl, u32 flags)
 	}
 
 	if (!(flags & DSI_CTRL_CMD_BROADCAST_MASTER)) {
-		dsi_hw_ops.trigger_command_dma(&dsi_ctrl->hw);
+		if (dsi_hw_ops.trigger_command_dma[dsi_ctrl->disp_op])
+			dsi_hw_ops.trigger_command_dma[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 		if (dsi_ctrl->enable_cmd_dma_stats) {
-			u32 reg = dsi_hw_ops.log_line_count(&dsi_ctrl->hw,
-					dsi_ctrl->cmd_mode);
+			if (dsi_hw_ops.log_line_count[dsi_ctrl->disp_op])
+				reg = dsi_hw_ops.log_line_count[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+						dsi_ctrl->cmd_mode);
+			else
+				reg = 0;
 			dsi_ctrl->cmd_trigger_line = (reg & 0xFFFF);
 			dsi_ctrl->cmd_trigger_frame = ((reg >> 16) & 0xFFFF);
 			SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_CASE1,
@@ -3746,7 +3857,7 @@ int dsi_ctrl_cmd_tx_trigger(struct dsi_ctrl *dsi_ctrl, u32 flags)
 
 		/* trigger command */
 		if ((dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE) &&
-			dsi_hw_ops.schedule_dma_cmd &&
+			dsi_hw_ops.schedule_dma_cmd[dsi_ctrl->disp_op] &&
 			(dsi_ctrl->current_state.vid_engine_state ==
 			DSI_CTRL_ENGINE_ON)) {
 			/*
@@ -3759,12 +3870,12 @@ int dsi_ctrl_cmd_tx_trigger(struct dsi_ctrl *dsi_ctrl, u32 flags)
 			while (1) {
 				local_irq_save(flag);
 				cur_line =
-				dsi_hw_ops.log_line_count(&dsi_ctrl->hw,
+				dsi_hw_ops.log_line_count[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					dsi_ctrl->cmd_mode);
 				if (cur_line <
 					(schedule_line - latency_by_line) ||
 					cur_line > (schedule_line + 1)) {
-					dsi_hw_ops.trigger_command_dma(
+					dsi_hw_ops.trigger_command_dma[dsi_ctrl->disp_op](
 						&dsi_ctrl->hw);
 					local_irq_restore(flag);
 					break;
@@ -3773,11 +3884,15 @@ int dsi_ctrl_cmd_tx_trigger(struct dsi_ctrl *dsi_ctrl, u32 flags)
 				udelay(1000);
 			}
 		} else
-			dsi_hw_ops.trigger_command_dma(&dsi_ctrl->hw);
+			if (dsi_hw_ops.trigger_command_dma[dsi_ctrl->disp_op])
+				dsi_hw_ops.trigger_command_dma[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 		if (dsi_ctrl->enable_cmd_dma_stats) {
-			u32 reg = dsi_hw_ops.log_line_count(&dsi_ctrl->hw,
-					dsi_ctrl->cmd_mode);
+			if (dsi_hw_ops.log_line_count[dsi_ctrl->disp_op])
+				reg = dsi_hw_ops.log_line_count[dsi_ctrl->disp_op](&dsi_ctrl->hw,
+						dsi_ctrl->cmd_mode);
+			else
+				reg = 0;
 			dsi_ctrl->cmd_trigger_line = (reg & 0xFFFF);
 			dsi_ctrl->cmd_trigger_frame = ((reg >> 16) & 0xFFFF);
 			SDE_EVT32(dsi_ctrl->cell_index, SDE_EVTLOG_FUNC_CASE1,
@@ -3787,7 +3902,8 @@ int dsi_ctrl_cmd_tx_trigger(struct dsi_ctrl *dsi_ctrl, u32 flags)
 
 		if (flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE) {
 			if (dsi_ctrl->version < DSI_CTRL_VERSION_2_4)
-				dsi_hw_ops.soft_reset(&dsi_ctrl->hw);
+				if (dsi_hw_ops.soft_reset[dsi_ctrl->disp_op])
+					dsi_hw_ops.soft_reset[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 			dsi_ctrl->cmd_len = 0;
 		}
 	}
@@ -3804,10 +3920,10 @@ void dsi_ctrl_cache_misr(struct dsi_ctrl *dsi_ctrl)
 {
 	u32 misr;
 
-	if (!dsi_ctrl || !dsi_ctrl->hw.ops.collect_misr)
+	if (!dsi_ctrl || !dsi_ctrl->hw.ops.collect_misr[dsi_ctrl->disp_op])
 		return;
 
-	misr = dsi_ctrl->hw.ops.collect_misr(&dsi_ctrl->hw,
+	misr = dsi_ctrl->hw.ops.collect_misr[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 				dsi_ctrl->host_config.panel_mode);
 
 	if (misr)
@@ -3857,6 +3973,9 @@ int dsi_ctrl_set_power_state(struct dsi_ctrl *dsi_ctrl,
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid Params\n");
 		return -EINVAL;
 	}
+
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
@@ -3912,6 +4031,9 @@ int dsi_ctrl_set_tpg_state(struct dsi_ctrl *dsi_ctrl, bool on,
 		return -EINVAL;
 	}
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_TPG, on);
@@ -3923,11 +4045,13 @@ int dsi_ctrl_set_tpg_state(struct dsi_ctrl *dsi_ctrl, bool on,
 
 	if (on) {
 		if (dsi_ctrl->host_config.panel_mode == DSI_OP_VIDEO_MODE)
-			dsi_ctrl->hw.ops.video_test_pattern_setup(&dsi_ctrl->hw, type, init_val);
+			dsi_ctrl->hw.ops.video_test_pattern_setup[dsi_ctrl->disp_op](
+				&dsi_ctrl->hw, type, init_val);
 		else
-			dsi_ctrl->hw.ops.cmd_test_pattern_setup(&dsi_ctrl->hw, type, init_val, 0x0);
+			dsi_ctrl->hw.ops.cmd_test_pattern_setup[dsi_ctrl->disp_op](
+				&dsi_ctrl->hw, type, init_val, 0x0);
 	}
-	dsi_ctrl->hw.ops.test_pattern_enable(&dsi_ctrl->hw, on, pattern,
+	dsi_ctrl->hw.ops.test_pattern_enable[dsi_ctrl->disp_op](&dsi_ctrl->hw, on, pattern,
 			dsi_ctrl->host_config.panel_mode);
 
 	DSI_CTRL_DEBUG(dsi_ctrl, "Set test pattern state=%d\n", on);
@@ -3955,7 +4079,8 @@ int dsi_ctrl_trigger_test_pattern(struct dsi_ctrl *dsi_ctrl)
 	}
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
-	dsi_ctrl->hw.ops.trigger_cmd_test_pattern(&dsi_ctrl->hw, 0);
+	if (dsi_ctrl->hw.ops.trigger_cmd_test_pattern[dsi_ctrl->disp_op])
+		dsi_ctrl->hw.ops.trigger_cmd_test_pattern[dsi_ctrl->disp_op](&dsi_ctrl->hw, 0);
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 
 	return ret;
@@ -3983,6 +4108,9 @@ int dsi_ctrl_set_host_engine_state(struct dsi_ctrl *dsi_ctrl,
 		return -EINVAL;
 	}
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_HOST_ENGINE, state);
@@ -3994,9 +4122,9 @@ int dsi_ctrl_set_host_engine_state(struct dsi_ctrl *dsi_ctrl,
 
 	if (!skip_op) {
 		if (state == DSI_CTRL_ENGINE_ON)
-			dsi_ctrl->hw.ops.ctrl_en(&dsi_ctrl->hw, true);
+			dsi_ctrl->hw.ops.ctrl_en[dsi_ctrl->disp_op](&dsi_ctrl->hw, true);
 		else
-			dsi_ctrl->hw.ops.ctrl_en(&dsi_ctrl->hw, false);
+			dsi_ctrl->hw.ops.ctrl_en[dsi_ctrl->disp_op](&dsi_ctrl->hw, false);
 	}
 
 	SDE_EVT32(dsi_ctrl->cell_index, state, skip_op);
@@ -4029,6 +4157,9 @@ int dsi_ctrl_set_cmd_engine_state(struct dsi_ctrl *dsi_ctrl,
 		return -EINVAL;
 	}
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
+
 	if (state == DSI_CTRL_ENGINE_ON) {
 		if (dsi_ctrl->cmd_engine_refcount > 0) {
 			dsi_ctrl->cmd_engine_refcount++;
@@ -4049,9 +4180,9 @@ int dsi_ctrl_set_cmd_engine_state(struct dsi_ctrl *dsi_ctrl,
 
 	if (!skip_op) {
 		if (state == DSI_CTRL_ENGINE_ON)
-			dsi_ctrl->hw.ops.cmd_engine_en(&dsi_ctrl->hw, true);
+			dsi_ctrl->hw.ops.cmd_engine_en[dsi_ctrl->disp_op](&dsi_ctrl->hw, true);
 		else
-			dsi_ctrl->hw.ops.cmd_engine_en(&dsi_ctrl->hw, false);
+			dsi_ctrl->hw.ops.cmd_engine_en[dsi_ctrl->disp_op](&dsi_ctrl->hw, false);
 	}
 
 	if (state == DSI_CTRL_ENGINE_ON)
@@ -4092,6 +4223,9 @@ int dsi_ctrl_set_vid_engine_state(struct dsi_ctrl *dsi_ctrl,
 		return -EINVAL;
 	}
 
+	if (dsi_ctrl->disp_op == MSM_DISP_OP_HFI)
+		return rc;
+
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
 	rc = dsi_ctrl_check_state(dsi_ctrl, DSI_CTRL_OP_VID_ENGINE, state);
@@ -4104,8 +4238,8 @@ int dsi_ctrl_set_vid_engine_state(struct dsi_ctrl *dsi_ctrl,
 
 	if (!skip_op) {
 		on = (state == DSI_CTRL_ENGINE_ON) ? true : false;
-		dsi_ctrl->hw.ops.video_engine_en(&dsi_ctrl->hw, on);
-		vid_eng_busy = dsi_ctrl->hw.ops.vid_engine_busy(&dsi_ctrl->hw);
+		dsi_ctrl->hw.ops.video_engine_en[dsi_ctrl->disp_op](&dsi_ctrl->hw, on);
+		vid_eng_busy = dsi_ctrl->hw.ops.vid_engine_busy[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 
 		/*
 		 * During ESD check failure, DSI video engine can get stuck
@@ -4115,7 +4249,7 @@ int dsi_ctrl_set_vid_engine_state(struct dsi_ctrl *dsi_ctrl,
 		 * Perform a reset if video engine is stuck.
 		 */
 		if (!on && vid_eng_busy)
-			dsi_ctrl->hw.ops.soft_reset(&dsi_ctrl->hw);
+			dsi_ctrl->hw.ops.soft_reset[dsi_ctrl->disp_op](&dsi_ctrl->hw);
 	}
 
 	SDE_EVT32(dsi_ctrl->cell_index, state, skip_op);
@@ -4183,8 +4317,8 @@ int dsi_ctrl_set_clamp_state(struct dsi_ctrl *dsi_ctrl,
 		return -EINVAL;
 	}
 
-	if (!dsi_ctrl->hw.ops.clamp_enable ||
-			!dsi_ctrl->hw.ops.clamp_disable) {
+	if (!dsi_ctrl->hw.ops.clamp_enable[dsi_ctrl->disp_op] ||
+			!dsi_ctrl->hw.ops.clamp_disable[dsi_ctrl->disp_op]) {
 		DSI_CTRL_DEBUG(dsi_ctrl, "No clamp control for DSI controller\n");
 		return 0;
 	}
@@ -4224,13 +4358,15 @@ int dsi_ctrl_set_clock_source(struct dsi_ctrl *dsi_ctrl,
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
-	rc = dsi_clk_update_parent(source_clks, &dsi_ctrl->clk_info.rcg_clks);
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "Failed to update link clk parent, rc=%d\n",
-				rc);
-		(void)dsi_clk_update_parent(&dsi_ctrl->clk_info.pll_op_clks,
-					    &dsi_ctrl->clk_info.rcg_clks);
-		goto error;
+	if (dsi_ctrl->disp_op != MSM_DISP_OP_HFI) {
+		rc = dsi_clk_update_parent(source_clks, &dsi_ctrl->clk_info.rcg_clks);
+		if (rc) {
+			DSI_CTRL_ERR(dsi_ctrl, "Failed to update link clk parent, rc=%d\n",
+					rc);
+			(void)dsi_clk_update_parent(&dsi_ctrl->clk_info.pll_op_clks,
+							&dsi_ctrl->clk_info.rcg_clks);
+			goto error;
+		}
 	}
 
 	dsi_ctrl->clk_info.pll_op_clks.byte_clk = source_clks->byte_clk;
@@ -4260,12 +4396,12 @@ int dsi_ctrl_setup_misr(struct dsi_ctrl *dsi_ctrl,
 		return -EINVAL;
 	}
 
-	if (!dsi_ctrl->hw.ops.setup_misr)
+	if (!dsi_ctrl->hw.ops.setup_misr[dsi_ctrl->disp_op])
 		return 0;
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 	dsi_ctrl->misr_enable = enable;
-	dsi_ctrl->hw.ops.setup_misr(&dsi_ctrl->hw,
+	dsi_ctrl->hw.ops.setup_misr[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 			dsi_ctrl->host_config.panel_mode,
 			enable, frame_count);
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
@@ -4282,10 +4418,10 @@ u32 dsi_ctrl_collect_misr(struct dsi_ctrl *dsi_ctrl)
 {
 	u32 misr;
 
-	if (!dsi_ctrl || !dsi_ctrl->hw.ops.collect_misr)
+	if (!dsi_ctrl || !dsi_ctrl->hw.ops.collect_misr[dsi_ctrl->disp_op])
 		return 0;
 
-	misr = dsi_ctrl->hw.ops.collect_misr(&dsi_ctrl->hw,
+	misr = dsi_ctrl->hw.ops.collect_misr[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 				dsi_ctrl->host_config.panel_mode);
 	if (!misr)
 		misr = dsi_ctrl->misr_cache;
@@ -4299,8 +4435,8 @@ u32 dsi_ctrl_collect_misr(struct dsi_ctrl *dsi_ctrl)
 void dsi_ctrl_mask_error_status_interrupts(struct dsi_ctrl *dsi_ctrl, u32 idx,
 		bool mask_enable)
 {
-	if (!dsi_ctrl || !dsi_ctrl->hw.ops.error_intr_ctrl
-			|| !dsi_ctrl->hw.ops.clear_error_status) {
+	if (!dsi_ctrl || !dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op]
+			|| !dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op]) {
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid params\n");
 		return;
 	}
@@ -4317,13 +4453,13 @@ void dsi_ctrl_mask_error_status_interrupts(struct dsi_ctrl *dsi_ctrl, u32 idx,
 		 * masking.
 		 */
 
-		dsi_ctrl->hw.ops.error_intr_ctrl(&dsi_ctrl->hw, !mask_enable);
-		dsi_ctrl->hw.ops.clear_error_status(&dsi_ctrl->hw,
+		dsi_ctrl->hw.ops.error_intr_ctrl[dsi_ctrl->disp_op](&dsi_ctrl->hw, !mask_enable);
+		dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					DSI_ERROR_INTERRUPT_COUNT);
 	} else {
-		dsi_ctrl->hw.ops.mask_error_intr(&dsi_ctrl->hw, idx,
+		dsi_ctrl->hw.ops.mask_error_intr[dsi_ctrl->disp_op](&dsi_ctrl->hw, idx,
 								mask_enable);
-		dsi_ctrl->hw.ops.clear_error_status(&dsi_ctrl->hw,
+		dsi_ctrl->hw.ops.clear_error_status[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 					DSI_ERROR_INTERRUPT_COUNT);
 	}
 }
@@ -4364,8 +4500,8 @@ int dsi_ctrl_wait4dynamic_refresh_done(struct dsi_ctrl *ctrl)
 
 	mutex_lock(&ctrl->ctrl_lock);
 
-	if (ctrl->hw.ops.wait4dynamic_refresh_done)
-		rc = ctrl->hw.ops.wait4dynamic_refresh_done(&ctrl->hw);
+	if (ctrl->hw.ops.wait4dynamic_refresh_done[ctrl->disp_op])
+		rc = ctrl->hw.ops.wait4dynamic_refresh_done[ctrl->disp_op](&ctrl->hw);
 
 	mutex_unlock(&ctrl->ctrl_lock);
 	return rc;

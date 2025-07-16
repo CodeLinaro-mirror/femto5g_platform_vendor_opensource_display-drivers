@@ -32,11 +32,43 @@ ddk_headers(
 )
 
 ddk_headers(
+    name = "dsi_hfi_headers",
+    hdrs = glob([
+      "msm/dsi/hfi/*.h",
+    ]),
+    includes = ["msm/dsi/hfi"]
+)
+
+ddk_headers(
     name = "dsi_headers",
     hdrs = glob([
       "msm/dsi/*.h",
     ]),
     includes = ["msm/dsi"]
+)
+
+ddk_headers(
+    name = "hdmi_headers",
+    hdrs = glob([
+      "msm/hdmi/*.h",
+    ]),
+    includes = ["msm/hdmi"]
+)
+
+ddk_headers(
+    name = "hfi_headers",
+    hdrs = glob([
+      "msm/hfi/*.h",
+    ]),
+    includes = ["msm/hfi"]
+)
+
+ddk_headers(
+    name = "sde_hfi_headers",
+    hdrs = glob([
+      "msm/sde/hfi/*.h",
+    ]),
+    includes = ["msm/sde/hfi"]
 )
 
 ddk_headers(
@@ -65,11 +97,17 @@ ddk_headers(
 
 ddk_headers(
     name = "display_drivers_headers",
-    hdrs = [ ":linux_includes", ":uapi_headers", ":msm_headers",":dp_headers",":dsi_headers",":sde_headers",":rotator_headers"]
+    hdrs = [ ":linux_includes", ":uapi_headers", ":msm_headers",":dp_headers", ":dsi_hfi_headers", ":dsi_headers",":hfi_headers",":sde_hfi_headers",":sde_headers",":rotator_headers",":hdmi_headers"]
 )
 
 load(":targets/sun.bzl", "define_sun")
 define_sun()
+
+load(":targets/sunvm.bzl", "define_sunvm")
+define_sunvm()
+
+load(":targets/canoevm.bzl", "define_canoevm")
+define_canoevm()
 
 load(":targets/pineapple.bzl", "define_pineapple")
 define_pineapple()
@@ -79,3 +117,12 @@ define_niobe()
 
 load(":targets/monaco.bzl", "define_monaco")
 define_monaco()
+
+load(":targets/canoe.bzl", "define_canoe")
+define_canoe()
+
+load(":targets/vienna.bzl", "define_vienna")
+define_vienna()
+
+load(":targets/seraph.bzl", "define_seraph")
+define_seraph()

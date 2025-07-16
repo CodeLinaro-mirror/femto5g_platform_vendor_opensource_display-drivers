@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _DSI_CLK_H_
@@ -11,6 +11,7 @@
 #include <linux/platform_device.h>
 #include <linux/types.h>
 #include <linux/clk.h>
+#include "msm_drv.h"
 
 #define MAX_STRING_LEN 32
 #define MAX_DSI_CTRL 2
@@ -70,6 +71,7 @@ struct clk_ctrl_cb {
  * struct dsi_core_clk_info - Core clock information for DSI hardware
  * @mdp_core_clk:        Handle to MDP core clock.
  * @iface_clk:           Handle to MDP interface clock.
+ * @ahb_swi_clk:           Handle to AHB SWI clock.
  * @core_mmss_clk:       Handle to MMSS core clock.
  * @bus_clk:             Handle to bus clock.
  * @mnoc_clk:            Handle to MMSS NOC clock.
@@ -78,6 +80,7 @@ struct clk_ctrl_cb {
 struct dsi_core_clk_info {
 	struct clk *mdp_core_clk;
 	struct clk *iface_clk;
+	struct clk *ahb_swi_clk;
 	struct clk *core_mmss_clk;
 	struct clk *bus_clk;
 	struct clk *mnoc_clk;
@@ -271,8 +274,9 @@ void dsi_display_clk_mngr_update_splash_status(void *clk_mgr, bool status);
 /**
  * dsi_display_clk_mgr_register() - Register DSI clock manager
  * @info:     Structure containing DSI clock information
+ * @disp_op:  Indicates whether to use HLOS or HFI path
  */
-void *dsi_display_clk_mngr_register(struct dsi_clk_info *info);
+void *dsi_display_clk_mngr_register(struct dsi_clk_info *info, enum msm_disp_op disp_op);
 
 /**
  * dsi_display_clk_mngr_deregister() - Deregister DSI clock manager
@@ -405,5 +409,12 @@ void dsi_clk_disable_unprepare(struct dsi_clk_link_set *clk);
  * @client:       DSI clock client pointer.
  */
 int dsi_display_dump_clk_handle_state(void *client);
+
+/**
+ * dsi_clk_mgr_detach_framework() - avoid clk framework for HFI case
+ * @client: DSI clock client pointer.
+ * @disp_op: Skip (HFI) or use (HWIO) from clock framework
+ */
+void dsi_clk_mgr_detach_framework(void *clk_mgr, enum msm_disp_op disp_op);
 
 #endif /* _DSI_CLK_H_ */

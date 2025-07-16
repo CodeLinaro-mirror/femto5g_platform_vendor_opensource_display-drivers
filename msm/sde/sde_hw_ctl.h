@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -190,20 +190,20 @@ struct sde_hw_ctl_ops {
 	 * @sw_avr_set     : AVR is enabled
 	 * @sw_arp_set     : ARP mode is enabled
 	 */
-	void (*hw_fence_ctrl)(struct sde_hw_ctl *ctx, bool sw_set, bool sw_clear, u32 mode,
-		bool sw_avr_set, bool sw_arp_set);
+	void (*hw_fence_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, bool sw_set, bool sw_clear,
+		u32 mode, bool sw_avr_set, bool sw_arp_set);
 
 	/**
 	 * override to trigger the signal for the output hw-fence
 	 * @ctx         : ctl path ctx pointer
 	 */
-	void (*trigger_output_fence_override)(struct sde_hw_ctl *ctx);
+	void (*trigger_output_fence_override[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * trigger hw fence fence-ready sw override
 	 * @ctx         : ctl path ctx pointer
 	 */
-	void (*hw_fence_trigger_sw_override)(struct sde_hw_ctl *ctx);
+	void (*hw_fence_trigger_sw_override[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * enable or clear hw fence output fence timestamps
@@ -211,7 +211,8 @@ struct sde_hw_ctl_ops {
 	 * @enable      : indicates if timestamps should be enabled
 	 * @clear       : indicates if timestamps should be cleared
 	 */
-	void (*hw_fence_output_timestamp_ctrl)(struct sde_hw_ctl *ctx, bool enable, bool clear);
+	void (*hw_fence_output_timestamp_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, bool enable,
+		bool clear);
 
 	/**
 	 * get hw fence output fence timestamps and clear them
@@ -220,21 +221,23 @@ struct sde_hw_ctl_ops {
 	 * @val_end          : pointer to end timestamp value
 	 * @Return: error code
 	 */
-	int (*hw_fence_output_status)(struct sde_hw_ctl *ctx, u64 *val_start, u64 *val_end);
+	int (*hw_fence_output_status[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, u64 *val_start,
+		u64 *val_end);
 
 	/**
 	 * configure output hw fence trigger
 	 * @ctx         : ctl path ctx pointer
 	 * @trigger_sel : select upon which event the output trigger will happen
 	 */
-	void (*hw_fence_trigger_output_fence)(struct sde_hw_ctl *ctx, u32 trigger_sel);
+	void (*hw_fence_trigger_output_fence[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
+		u32 trigger_sel);
 
 	/**
 	 * get hw fence status
 	 * @ctx         : ctl path ctx pointer
 	 * @Return: fence status
 	 */
-	int (*get_hw_fence_status)(struct sde_hw_ctl *ctx);
+	int (*get_hw_fence_status[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * update output hw fence ipcc client_id and signal_id
@@ -242,7 +245,8 @@ struct sde_hw_ctl_ops {
 	 * @client_id : value to write to update the client_id
 	 * @signal_id : value to write to update the signal_id
 	 */
-	void (*hw_fence_update_output_fence)(struct sde_hw_ctl *ctx, u32 client_id, u32 signal_id);
+	void (*hw_fence_update_output_fence[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, u32 client_id,
+		u32 signal_id);
 
 	/**
 	 * update address, data size, and mask values for output fence direct writes
@@ -251,14 +255,15 @@ struct sde_hw_ctl_ops {
 	 * @size   : size value to write
 	 * @mask   : mask value to write
 	 */
-	void (*hw_fence_output_fence_dir_write_init)(struct sde_hw_ctl *ctx, u32 *addr, u32 size,
-		u32 mask);
+	void (*hw_fence_output_fence_dir_write_init[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
+		u32 *addr, u32 size, u32 mask);
 	/**
 	 * update data value for output_fence direct writes
 	 * @ctx     : ctl path ctx pointer
 	 * @data    : data value to write
 	 */
-	void (*hw_fence_output_fence_dir_write_data)(struct sde_hw_ctl *ctx, u32 data);
+	void (*hw_fence_output_fence_dir_write_data[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
+		u32 data);
 
 	/**
 	 * update input hw fence ipcc client_id and signal_id
@@ -266,7 +271,8 @@ struct sde_hw_ctl_ops {
 	 * @client_id : value to write to update the client_id
 	 * @signal_id : value to write to update the signal_id
 	 */
-	void (*hw_fence_update_input_fence)(struct sde_hw_ctl *ctx, u32 client_id, u32 signal_id);
+	void (*hw_fence_update_input_fence[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, u32 client_id,
+		u32 signal_id);
 
 	/**
 	 * kickoff hw operation for Sw controlled interfaces
@@ -274,7 +280,7 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: error code
 	 */
-	int (*trigger_start)(struct sde_hw_ctl *ctx);
+	int (*trigger_start[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * kickoff prepare is in progress hw operation for sw
@@ -283,7 +289,7 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: error code
 	 */
-	int (*trigger_pending)(struct sde_hw_ctl *ctx);
+	int (*trigger_pending[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * kickoff rotator operation for Sw controlled interfaces
@@ -291,21 +297,21 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: error code
 	 */
-	int (*trigger_rot_start)(struct sde_hw_ctl *ctx);
+	int (*trigger_rot_start[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * enable/disable UIDLE feature
 	 * @ctx       : ctl path ctx pointer
 	 * @enable: true to enable the feature
 	 */
-	void (*uidle_enable)(struct sde_hw_ctl *ctx, bool enable);
+	void (*uidle_enable[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, bool enable);
 
 	/**
 	 * clear flush mask
 	 * @ctx       : ctl path ctx pointer
 	 * @clear     : true to clear the flush mask
 	 */
-	int (*clear_flush_mask)(struct sde_hw_ctl *ctx, bool clear);
+	int (*clear_flush_mask[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, bool clear);
 
 	/**
 	 * Clear the value of the cached pending_flush_mask
@@ -313,7 +319,7 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: error code
 	 */
-	int (*clear_pending_flush)(struct sde_hw_ctl *ctx);
+	int (*clear_pending_flush[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * Query the value of the cached pending_flush_mask
@@ -322,7 +328,7 @@ struct sde_hw_ctl_ops {
 	 * @cfg       : current flush configuration
 	 * @Return: error code
 	 */
-	int (*get_pending_flush)(struct sde_hw_ctl *ctx,
+	int (*get_pending_flush[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 			struct sde_ctl_flush_cfg *cfg);
 
 	/**
@@ -332,7 +338,7 @@ struct sde_hw_ctl_ops {
 	 * @cfg     : flush configuration pointer
 	 * @Return: error code
 	 */
-	int (*update_pending_flush)(struct sde_hw_ctl *ctx,
+	int (*update_pending_flush[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		struct sde_ctl_flush_cfg *cfg);
 
 	/**
@@ -340,14 +346,14 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: error code
 	 */
-	int (*trigger_flush)(struct sde_hw_ctl *ctx);
+	int (*trigger_flush[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * Read the value of the flush register
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: value of the ctl flush register.
 	 */
-	u32 (*get_flush_register)(struct sde_hw_ctl *ctx);
+	u32 (*get_flush_register[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * Setup ctl_path interface config
@@ -355,7 +361,7 @@ struct sde_hw_ctl_ops {
 	 * @cfg    : interface config structure pointer
 	 * @Return: error code
 	 */
-	int (*setup_intf_cfg)(struct sde_hw_ctl *ctx,
+	int (*setup_intf_cfg[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		struct sde_hw_intf_cfg *cfg);
 
 	/**
@@ -365,7 +371,7 @@ struct sde_hw_ctl_ops {
 	 * @merge_3d_idx	: index of merge3d blk
 	 * @Return: error code
 	 */
-	int (*reset_post_disable)(struct sde_hw_ctl *ctx,
+	int (*reset_post_disable[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		struct sde_hw_intf_cfg_v1 *cfg, u32 merge_3d_idx);
 
 	/** update cwb  for ctl_path
@@ -374,7 +380,7 @@ struct sde_hw_ctl_ops {
 	 * @enable    : enable/disable the dynamic sub-blocks in interface cfg
 	 * @Return: error code
 	 */
-	int (*update_intf_cfg)(struct sde_hw_ctl *ctx,
+	int (*update_intf_cfg[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		struct sde_hw_intf_cfg_v1 *cfg, bool enable);
 
 	/**
@@ -383,7 +389,7 @@ struct sde_hw_ctl_ops {
 	 * @cfg    : interface config structure pointer
 	 * @Return: error code
 	 */
-	int (*setup_intf_cfg_v1)(struct sde_hw_ctl *ctx,
+	int (*setup_intf_cfg_v1[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		struct sde_hw_intf_cfg_v1 *cfg);
 
 	/**
@@ -392,31 +398,31 @@ struct sde_hw_ctl_ops {
 	 * @cfg       : pointer to input wb config
 	 * @enable    : set if true, clear otherwise
 	 */
-	void (*update_wb_cfg)(struct sde_hw_ctl *ctx,
+	void (*update_wb_cfg[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		struct sde_hw_intf_cfg *cfg, bool enable);
 
-	int (*reset)(struct sde_hw_ctl *c);
+	int (*reset[MSM_DISP_OP_MAX])(struct sde_hw_ctl *c);
 
 	/**
 	 * get_reset - check ctl reset status bit
 	 * @ctx    : ctl path ctx pointer
 	 * Returns: current value of ctl reset status
 	 */
-	u32 (*get_reset)(struct sde_hw_ctl *ctx);
+	u32 (*get_reset[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * get_scheduler_reset - check ctl scheduler status bit
 	 * @ctx    : ctl path ctx pointer
 	 * Returns: current value of ctl scheduler and idle status
 	 */
-	u32 (*get_scheduler_status)(struct sde_hw_ctl *ctx);
+	u32 (*get_scheduler_status[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * hard_reset - force reset on ctl_path
 	 * @ctx    : ctl path ctx pointer
 	 * @enable : whether to enable/disable hard reset
 	 */
-	void (*hard_reset)(struct sde_hw_ctl *c, bool enable);
+	void (*hard_reset[MSM_DISP_OP_MAX])(struct sde_hw_ctl *c, bool enable);
 
 	/*
 	 * wait_reset_status - checks ctl reset status
@@ -427,14 +433,14 @@ struct sde_hw_ctl_ops {
 	 * reset is complete.
 	 * Returns: 0 on success or -error if reset incomplete within interval
 	 */
-	int (*wait_reset_status)(struct sde_hw_ctl *ctx);
+	int (*wait_reset_status[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * update_bitmask_sspp: updates mask corresponding to sspp
 	 * @blk               : blk id
 	 * @enable            : true to enable, 0 to disable
 	 */
-	int (*update_bitmask_sspp)(struct sde_hw_ctl *ctx,
+	int (*update_bitmask_sspp[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		enum sde_sspp blk, bool enable);
 
 	/**
@@ -442,7 +448,7 @@ struct sde_hw_ctl_ops {
 	 * @blk               : blk id
 	 * @enable            : true to enable, 0 to disable
 	 */
-	int (*update_bitmask_mixer)(struct sde_hw_ctl *ctx,
+	int (*update_bitmask_mixer[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		enum sde_lm blk, bool enable);
 
 	/**
@@ -450,7 +456,7 @@ struct sde_hw_ctl_ops {
 	 * @blk               : blk id
 	 * @enable            : true to enable, 0 to disable
 	 */
-	int (*update_bitmask_dspp)(struct sde_hw_ctl *ctx,
+	int (*update_bitmask_dspp[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		enum sde_dspp blk, bool enable);
 
 	/**
@@ -458,7 +464,7 @@ struct sde_hw_ctl_ops {
 	 * @blk               : blk id
 	 * @enable            : true to enable, 0 to disable
 	 */
-	int (*update_bitmask_dspp_pavlut)(struct sde_hw_ctl *ctx,
+	int (*update_bitmask_dspp_pavlut[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		enum sde_dspp blk, bool enable);
 
 	/**
@@ -470,7 +476,7 @@ struct sde_hw_ctl_ops {
 	 *
 	 * This API is for CTL with DSPP flush hierarchy registers.
 	 */
-	int (*update_bitmask_dspp_subblk)(struct sde_hw_ctl *ctx,
+	int (*update_bitmask_dspp_subblk[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 			enum sde_dspp dspp, u32 sub_blk, bool enable);
 
 	/**
@@ -478,7 +484,7 @@ struct sde_hw_ctl_ops {
 	 * @blk               : blk id
 	 * @enable            : true to enable, 0 to disable
 	 */
-	int (*update_bitmask_rot)(struct sde_hw_ctl *ctx,
+	int (*update_bitmask_rot[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		enum sde_rot blk, bool enable);
 
 	/**
@@ -487,7 +493,7 @@ struct sde_hw_ctl_ops {
 	 * @blk_idx           : blk idx
 	 * @enable            : true to enable, 0 to disable
 	 */
-	int (*update_bitmask)(struct sde_hw_ctl *ctx,
+	int (*update_bitmask[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 			enum ctl_hw_flush_type type, u32 blk_idx, bool enable);
 
 	/**
@@ -495,7 +501,7 @@ struct sde_hw_ctl_ops {
 	 * @type              : blk type to test
 	 * @blk_idx           : blk idx
 	 */
-	bool (*bitmask_has_bit)(struct sde_hw_ctl *ctx,
+	bool (*bitmask_has_bit[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 			enum ctl_hw_flush_type type, u32 blk_idx);
 
 	/**
@@ -504,21 +510,22 @@ struct sde_hw_ctl_ops {
 	 * @blk_idx           : blk idx
 	 * @enable            : true to enable, 0 to disable
 	 */
-	void (*update_dnsc_blur_bitmask)(struct sde_hw_ctl *ctx, u32 blk_idx, bool enable);
+	void (*update_dnsc_blur_bitmask[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, u32 blk_idx,
+		bool enable);
 
 	/**
 	 * get interfaces for the active CTL .
 	 * @ctx		: ctl path ctx pointer
 	 * @return	: bit mask with the active interfaces for the CTL
 	 */
-	u32 (*get_ctl_intf)(struct sde_hw_ctl *ctx);
+	u32 (*get_ctl_intf[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * control the group setting in ctl_top.
 	 * @ctx		: ctl path ctx pointer
 	 * @enable	: flag to enable/disable group setting
 	 */
-	void (*update_ctl_top_group)(struct sde_hw_ctl *ctx, bool enable);
+	void (*update_ctl_top_group[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, bool enable);
 
 	/**
 	 * read CTL layers register value and return
@@ -527,7 +534,7 @@ struct sde_hw_ctl_ops {
 	 * @index       : layer index for this ctl path
 	 * @return	: CTL layers register value
 	 */
-	u32 (*read_ctl_layers)(struct sde_hw_ctl *ctx, int index);
+	u32 (*read_ctl_layers[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, int index);
 
 	/**
 	 * read active register configuration for this block
@@ -537,14 +544,14 @@ struct sde_hw_ctl_ops {
 	 * @index     : blk index
 	 * @return    : true if blk at idx is active or false
 	 */
-	bool (*read_active_status)(struct sde_hw_ctl *ctx,
+	bool (*read_active_status[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 			enum sde_hw_blk_type blk, int index);
 
 	/**
 	 * Set all blend stages to disabled
 	 * @ctx       : ctl path ctx pointer
 	 */
-	void (*clear_all_blendstages)(struct sde_hw_ctl *ctx);
+	void (*clear_all_blendstages[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * Configure layer mixer to pipe configuration
@@ -553,7 +560,7 @@ struct sde_hw_ctl_ops {
 	 * @cfg           : blend stage configuration
 	 * @disable_border: if true disable border, else enable border out
 	 */
-	void (*setup_blendstage)(struct sde_hw_ctl *ctx,
+	void (*setup_blendstage[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 		enum sde_lm lm, struct sde_hw_stage_cfg *cfg,
 		bool disable_border);
 
@@ -564,7 +571,7 @@ struct sde_hw_ctl_ops {
 	 * @info      : structure to populate connected sspp index info
 	 * @Return: count of sspps info elements populated
 	 */
-	u32 (*get_staged_sspp)(struct sde_hw_ctl *ctx, enum sde_lm lm,
+	u32 (*get_staged_sspp[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, enum sde_lm lm,
 		struct sde_sspp_index_info *info);
 
 	/**
@@ -573,7 +580,7 @@ struct sde_hw_ctl_ops {
 	 * @blocking  : if set to true api will block until flush is done
 	 * @Return: error code
 	 */
-	int (*reg_dma_flush)(struct sde_hw_ctl *ctx, bool blocking);
+	int (*reg_dma_flush[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, bool blocking);
 
 	/**
 	 * check if ctl start trigger state to confirm the frame pending
@@ -581,14 +588,14 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: error code
 	 */
-	int (*get_start_state)(struct sde_hw_ctl *ctx);
+	int (*get_start_state[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * set the active fetch pipes attached to this CTL
 	 * @ctx         : ctl path ctx pointer
 	 * @active_fetch_pipes: bitmap of enum sde_sspp pipes attached
 	 */
-	void (*set_active_fetch_pipes)(struct sde_hw_ctl *ctx,
+	void (*set_active_fetch_pipes[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 			unsigned long *active_fetch_pipes);
 
 	/**
@@ -596,14 +603,14 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: bitmap of enum sde_sspp pipes found
 	 */
-	u32 (*get_active_fetch_pipes)(struct sde_hw_ctl *ctx);
+	u32 (*get_active_fetch_pipes[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * set the active pipes attached to this CTL
 	 * @ctx         : ctl path ctx pointer
 	 * @active_pipes: bitmap of enum sde_sspp pipes attached
 	 */
-	void (*set_active_pipes)(struct sde_hw_ctl *ctx,
+	void (*set_active_pipes[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 			unsigned long *active_pipes);
 
 	/**
@@ -611,14 +618,14 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: bitmap of enum sde_sspp pipes found
 	 */
-	u32 (*get_active_pipes)(struct sde_hw_ctl *ctx);
+	u32 (*get_active_pipes[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * set the active layer mixers attached to this CTL
 	 * @ctx         : ctl path ctx pointer
 	 * @active_lms: bitmap of enum sde_lm mixers attached
 	 */
-	void (*set_active_lms)(struct sde_hw_ctl *ctx,
+	void (*set_active_lms[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx,
 			unsigned long *active_lms);
 
 	/**
@@ -626,14 +633,14 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 * @Return: bitmap of enum sde_lm mixers found
 	 */
-	u32 (*get_active_lms)(struct sde_hw_ctl *ctx);
+	u32 (*get_active_lms[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * Setup Cesta flush
 	 * @ctx: ctl path ctx pointer
 	 * @cfg: Cesta flush config settings
 	 */
-	void (*cesta_flush)(struct sde_hw_ctl *ctx, struct sde_ctl_cesta_cfg *cfg);
+	void (*cesta_flush[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, struct sde_ctl_cesta_cfg *cfg);
 
 	/**
 	 * Reserve cesta for this ctl path
@@ -655,7 +662,7 @@ struct sde_hw_ctl_ops {
 	 * @is_master : true for master, false for slave)
 	 * @enable    : true to enable flush sync, false otherwise
 	 */
-	void (*setup_flush_sync)(struct sde_hw_ctl *ctx, bool is_master,
+	void (*setup_flush_sync[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, bool is_master,
 			bool enable);
 
 	/**
@@ -663,26 +670,26 @@ struct sde_hw_ctl_ops {
 	 * @ctx       : ctl path ctx pointer
 	 * @async_en  : true to enable async, 0 to enable sync mode
 	 */
-	void (*enable_sync_mode)(struct sde_hw_ctl *ctx, bool async_en);
+	void (*enable_sync_mode[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, bool async_en);
 
 	/**
 	 * get flush sync mode enabled for current commit
 	 * @ctx       : ctl path ctx pointer
 	 */
-	bool (*get_flush_sync_mode)(struct sde_hw_ctl *ctx);
+	bool (*get_flush_sync_mode[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 
 	/**
 	 * Set ctl_path INTF master
 	 * @ctx          : ctl path ctx pointer
 	 * @intf_master  : Master Interface idx
 	 */
-	int (*set_intf_master)(struct sde_hw_ctl *ctx, u32 intf_master);
+	int (*set_intf_master[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx, u32 intf_master);
 
 	/**
 	 * Get ctl_path INTF master
 	 * @ctx   : ctl path ctx pointer
 	 */
-	int (*get_intf_master)(struct sde_hw_ctl *ctx);
+	int (*get_intf_master[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctx);
 };
 
 /**

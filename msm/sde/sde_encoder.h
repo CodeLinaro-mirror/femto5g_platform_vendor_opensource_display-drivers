@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -31,6 +31,9 @@
 #include "sde_connector.h"
 #include "sde_power_handle.h"
 #include "sde_cesta.h"
+
+struct sde_encoder_virt;
+struct sde_crtc_state;
 
 /*
  * Two to anticipate panels that can do cmd/vid dynamic switching
@@ -80,6 +83,20 @@
 #define SDE_MODE_SWITCH_FPS_DOWN	BIT(1)
 #define SDE_MODE_SWITCH_RES_UP		BIT(2)
 #define SDE_MODE_SWITCH_RES_DOWN	BIT(3)
+
+/**
+ * struct sde_encoder_event_ops - Interface the containing virtual encoder
+ * provides for the physical encoders to use to callback.
+ * Note: All these ops may be called from IRQ handler context.
+ * @handle_vblank_virt:	Notify encoder of vblank IRQ reception
+ * @handle_underrun_virt:	Notify virtual encoder of underrun IRQ reception
+ * @handle_frame_done:		Notify virtual encoder of completion of last requested frame.
+ */
+struct sde_encoder_event_ops {
+	void (*handle_vblank_virt)(struct drm_encoder *enc, void *vbl_data);
+	void (*handle_underrun_virt)(struct drm_encoder *enc, void *underrun_data);
+	void (*handle_frame_done)(struct drm_encoder *enc, void *fevent_data);
+};
 
 /**
  * Encoder functions and data types
@@ -174,6 +191,7 @@ enum sde_enc_periph_cmd_state {
  * @debugfs_freq_array:    Freqency stepping array provided for simulation
  * @debugfs_freq_pattern:  Frequency pattern provided for simulation
  * @vhm_cmd_in_progress:   Whether a VHM related command is currently enqueued
+ * @vhm_pm_wake_lock:   Whether a VHM-specific wakelock is currently engaged
  */
 struct sde_encoder_vrr_info {
 	u32 frame_interval;
@@ -185,6 +203,62 @@ struct sde_encoder_vrr_info {
 	u32 *debugfs_freq_array;
 	struct msm_debugfs_freq_pattern *debugfs_freq_pattern;
 	u32 vhm_cmd_in_progress;
+	atomic_t vhm_pm_wake_lock;
+};
+
+/**
+ * enum sde_enc_rc_events - events for resource control state machine
+ * @SDE_ENC_RC_EVENT_KICKOFF:
+ *	This event happens at NORMAL priority.
+ *	Event that signals the start of the transfer. When this event is
+ *	received, enable MDP/DSI core clocks and request RSC with CMD state.
+ *	Regardless of the previous state, the resource should be in ON state
+ *	at the end of this event. At the end of this event, a delayed work is
+ *	scheduled to go to IDLE_PC state after IDLE_POWERCOLLAPSE_DURATION
+ *	ktime.
+ * @SDE_ENC_RC_EVENT_PRE_STOP:
+ *	This event happens at NORMAL priority.
+ *	This event, when received during the ON state, set RSC to IDLE,
+ *	and leave the RC STATE in the PRE_OFF state.
+ *	It should be followed by the STOP event as part of encoder disable.
+ *	If received during IDLE or OFF states, it will do nothing.
+ * @SDE_ENC_RC_EVENT_STOP:
+ *	This event happens at NORMAL priority.
+ *	When this event is received, disable all the MDP/DSI core clocks, and
+ *	disable IRQs. It should be called from the PRE_OFF or IDLE states.
+ *	IDLE is expected when IDLE_PC has run, and PRE_OFF did nothing.
+ *	PRE_OFF is expected when PRE_STOP was executed during the ON state.
+ *	Resource state should be in OFF at the end of the event.
+ * @SDE_ENC_RC_EVENT_PRE_MODESET:
+ *	This event happens at NORMAL priority from a work item.
+ *	Event signals that there is a seamless mode switch is in prgoress. A
+ *	client needs to leave clocks ON to reduce the mode switch latency.
+ * @SDE_ENC_RC_EVENT_POST_MODESET:
+ *	This event happens at NORMAL priority from a work item.
+ *	Event signals that seamless mode switch is complete and resources are
+ *	acquired. Clients wants to update the rsc with new vtotal and update
+ *	pm_qos vote.
+ * @SDE_ENC_RC_EVENT_ENTER_IDLE:
+ *	This event happens at NORMAL priority from a work item.
+ *	Event signals that there were no frame updates for
+ *	IDLE_POWERCOLLAPSE_DURATION time. This would disable MDP/DSI core clocks
+ *      and request RSC with IDLE state and change the resource state to IDLE.
+ * @SDE_ENC_RC_EVENT_EARLY_WAKEUP:
+ *	This event is triggered from the input event thread when touch event is
+ *	received from the input device. On receiving this event,
+ *      - If the device is in SDE_ENC_RC_STATE_IDLE state, it turns ON the
+	  clocks and enable RSC.
+ *      - If the device is in SDE_ENC_RC_STATE_ON state, it resets the delayed
+ *        off work since a new commit is imminent.
+ */
+enum sde_enc_rc_events {
+	SDE_ENC_RC_EVENT_KICKOFF = 1,
+	SDE_ENC_RC_EVENT_PRE_STOP,
+	SDE_ENC_RC_EVENT_STOP,
+	SDE_ENC_RC_EVENT_PRE_MODESET,
+	SDE_ENC_RC_EVENT_POST_MODESET,
+	SDE_ENC_RC_EVENT_ENTER_IDLE,
+	SDE_ENC_RC_EVENT_EARLY_WAKEUP,
 };
 
 /*
@@ -229,6 +303,146 @@ enum sde_sim_qsync_event {
 
 /* Frame rate value to trigger the watchdog TE in 200 us */
 #define SDE_SIM_QSYNC_IMMEDIATE_FPS 5000
+
+/**
+ * struct sde_encoder_hal_funcs - interface api for sde encoder hal
+ */
+struct sde_encoder_hal_funcs {
+	/**
+	 * post_init - perform additional initialization steps
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Zero on success
+	 */
+	int (*post_init[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * destroy - Clean up encoder resources
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*destroy[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * debugfs_init - perform debugfs node initialization
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Zero on success
+	 */
+	int (*debugfs_init[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * debugfs_destroy - handle destroy operations for debugfs
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Zero on success
+	 */
+	void (*debugfs_destroy[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * mode_set - perform set mode operations
+	 * @enc: Pointer to sde encoder structure
+	 * @mode: Pointer to drm mode structure
+	 * @mdj_ode: Pointer to adjusted drm mode structure
+	 */
+	void (*mode_set[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+			struct drm_display_mode *mode, struct drm_display_mode *adj_mode);
+
+	/**
+	 * atomic_check - atomic check handling for encoder
+	 * @enc: Pointer to sde encoder structure
+	 * @crtc_state: Pointer to sde crtc state
+	 * @conn_state:Pointer to sde connector state
+	 * Returns: Zero on success
+	 */
+	int (*atomic_check[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+			struct sde_crtc_state *crtc_state, struct sde_connector_state *conn_state);
+
+	/**
+	 * encoder_enable - function for encoder enable
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Zero on success
+	 */
+	int (*encoder_enable[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * encoder_disable - function for encoder disable
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Zero on success
+	 */
+	int (*encoder_disable[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * prepare_commit - start of atomic commit sequence
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Zero on success
+	 */
+	int (*prepare_commit[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * @prepare_for_kickoff: Do any work necessary prior to a kickoff
+	 * @enc: Pointer to sde encoder structure
+	 * @params: info encoder requires at kickoff
+	 * Returns: Zero on success
+	 */
+	int (*prepare_for_kickoff[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * @kickoff: kickoff processing for the encoder
+	 * @enc: Pointer to sde encoder structure
+	 * @cfg_changed: config change boolean
+	 * Returns: Zero on success
+	 */
+	int (*kickoff[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc, bool cfg_changed);
+
+	/**
+	 * wait_for_event - Wait for hardware event
+	 * @enc: Pointer to sde encoder structure
+	 * @event: event for which response is needed
+	 * Returns: Zero on success
+	 */
+	int (*wait_for_event[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc, u32 event);
+
+	/**
+	 * enable_hw_event - Notify display of event registration/unregistration
+	 * @enc: Pointer to sde encoder structure
+	 * @event: encoder event for which response is needed
+	 * @enable: Whether the event is being enabled/disabled
+	 */
+	int (*enable_hw_event[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+		u32 event, bool enable);
+
+	/**
+	 * debugfs_misr_setup - Enable MISR for specified module and display
+	 * @enc: Pointer to sde encoder structure
+	 */
+	int (*debugfs_misr_setup[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * debugfs_misr_read - Read MISR value for specified module and display
+	 * @enc: Pointer to sde encoder structure
+	 */
+	int (*debugfs_misr_read[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * debugfs_dump_status - Read dump status for specified module and display
+	 * @enc: Pointer to dpu encoder structure
+	 * @s: used to writing on debugfs node
+	 */
+	int (*debugfs_dump_status[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+			struct seq_file *s);
+
+	/**
+	 * get_vblank_count - Get the current vblank counter value
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Counter value of last vblank event occurrence
+	 */
+	u32 (*get_vblank_count[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * get_vblank_timestamp - Get the last vblank timestamp
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: timestamp of last known vblank event occurrence
+	 */
+	ktime_t (*get_vblank_timestamp[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+};
 
 /**
  * struct sde_encoder_virt - virtual encoder. Container of one or more physical
@@ -277,6 +491,7 @@ enum sde_sim_qsync_event {
  * @vsync_cnt:			Vsync count for the virtual encoder
  * @misr_reconfigure:		boolean entry indicates misr reconfigure status
  * @misr_frame_count:		misr frame count before start capturing the data
+ * @misr_vals:			Cached misr read values
  * @idle_pc_enabled:		indicate if idle power collapse is enabled
  *				currently. This can be controlled by user-mode
  * @restore_te_rd_ptr:          flag to indicate that te read pointer value must
@@ -284,6 +499,7 @@ enum sde_sim_qsync_event {
  * @rc_lock:			resource control mutex lock to protect
  *				virt encoder over various state changes
  * @rc_state:			resource controller state
+ * @off_work_lock:	mutex lock to protect encoder over off work procedure
  * @delayed_off_work:		delayed worker to schedule disabling of
  *				clks and resources after IDLE_TIMEOUT time.
  * @early_wakeup_work:		worker to handle early wakeup event
@@ -329,6 +545,8 @@ enum sde_sim_qsync_event {
  * @cesta_enable_frame:         Boolean indicating if its first frame after power-collapse/resume
  *				which requires special handling for cesta.
  * @cesta_scc_override:	        Boolean indicating SCC CTRL settings have been overridden.
+ * @hfi_enc:		        Pointer to hfi encoder struct
+ * @hal_ops:			Encoder ops from init function
  */
 struct sde_encoder_virt {
 	struct drm_encoder base;
@@ -361,6 +579,7 @@ struct sde_encoder_virt {
 	struct dentry *debugfs_root;
 	struct mutex enc_lock;
 	atomic_t frame_done_cnt[MAX_PHYS_ENCODERS_PER_VIRTUAL];
+	atomic_t pending_commit_cnt;
 	void (*crtc_frame_event_cb)(void *data, u32 event, ktime_t ts);
 	struct sde_kms_frame_event_cb_data crtc_frame_event_cb_data;
 
@@ -371,11 +590,13 @@ struct sde_encoder_virt {
 	atomic_t vsync_cnt;
 	bool misr_reconfigure;
 	u32 misr_frame_count;
+	struct sde_misr_values misr_vals;
 
 	bool idle_pc_enabled;
 	bool input_event_enabled;
 	struct mutex rc_lock;
 	enum sde_enc_rc_states rc_state;
+	struct mutex off_work_lock;
 	struct kthread_delayed_work delayed_off_work;
 	struct kthread_work early_wakeup_work;
 	struct kthread_work input_event_work;
@@ -415,6 +636,8 @@ struct sde_encoder_virt {
 	struct sde_cesta_client *cesta_client;
 	bool cesta_enable_frame;
 	bool cesta_scc_override;
+	struct hfi_encoder *hfi_encoder;
+	struct sde_encoder_hal_funcs hal_ops;
 };
 
 #define to_sde_encoder_virt(x) container_of(x, struct sde_encoder_virt, base)
@@ -683,6 +906,13 @@ void sde_encoder_enable_recovery_event(struct drm_encoder *encoder);
 bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
 
 /**
+ * sde_encoder_is_self_refresh_completed - checks if self refresh is completed
+ * @sde_enc:    Pointer to sde encoder structure
+ * @Return:     true if self refresh is completed
+ */
+bool sde_encoder_is_self_refresh_completed(struct sde_encoder_virt *sde_enc);
+
+/**
  * sde_encoder_in_video_psr - checks if it is in video psr panel
  * @drm_enc:    Pointer to drm encoder structure
  * @Return:     true if successful
@@ -767,6 +997,13 @@ void sde_encoder_control_idle_pc(struct drm_encoder *enc, bool enable);
  * @Return:     true if display in continuous splash
  */
 int sde_encoder_in_cont_splash(struct drm_encoder *enc);
+
+/**
+ * sde_encoder_smooth_dimming_in_progress - checks if smooth dimming in progress
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true if smooth dimming in progress
+ */
+bool sde_encoder_smooth_dimming_in_progress(struct drm_encoder *enc);
 
 /**
  * sde_encoder_helper_hw_reset - hw reset helper function
@@ -948,6 +1185,14 @@ struct sde_hw_ctl *sde_encoder_get_hw_ctl(struct sde_connector *c_conn);
 u32 sde_encoder_get_programmed_fetch_time(struct drm_encoder *encoder);
 
 /**
+ * sde_encoder_event_timestamp_adjust - adjust the hw timestamp local system time
+ * @drm_enc_id: id of drm encoder object
+ * @event_fps: current frame rate for reference
+ * @event_timestamp_hw: input hw event timestamp
+ */
+ktime_t sde_encoder_event_timestamp_adjust(u32 drm_enc_id, u32 event_fps, u64 event_timestamp_hw);
+
+/**
  * sde_encoder_has_dpu_ctl_op_sync - check if dpu sync is enabled for this encoder
  * @drm_enc:    Pointer to drm encoder structure
  * @Return: true if DPU Interface sync is enabled
@@ -1062,6 +1307,15 @@ void sde_encoder_complete_commit(struct drm_encoder *drm_enc);
 void sde_encoder_post_commit_bl_sr_work(struct drm_encoder *drm_enc);
 
 /**
+ * sde_encoder_rc_restart_delayed - FIXME: kshpin
+ *
+ * @sde_enc: pointer to sde encoder
+ * @sw_event: resource controller event
+ */
+void sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
+	enum sde_enc_rc_events sw_event);
+
+/**
  * sde_encoder_get_cesta_client - return the SDE CESTA client
  * @drm_enc: pointer to drm encoder
  */
@@ -1110,4 +1364,22 @@ static inline int sde_encoder_register_misr_event(struct drm_encoder *drm_enc, b
  * @Return: true if copr notify is allowed
  */
 bool sde_encoder_copr_allow_notify(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_get_disp_op - Returns the display control index - default: MSM_DISP_OP_HWIO
+ * @drm_enc: pointer to drm_encoder
+ */
+inline enum msm_disp_op sde_encoder_get_disp_op(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_helper_inc_pending - increment pending commit count on the encoder
+ * @drm_enc: pointer to drm encoder
+ */
+int sde_encoder_helper_inc_pending(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_update_pending_kickoff_cnt - increment pending kickoff cnt and retire fence cnt
+ * @sde_enc: pointer to sde encoder
+ */
+int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc);
 #endif /* __SDE_ENCODER_H__ */

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -74,9 +74,14 @@ struct dp_drm_mst_fw_helper_ops {
 	int (*update_payload_part1)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_dp_mst_topology_state *mst_state,
 			struct drm_dp_mst_atomic_payload *payload);
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+	int (*update_payload_part2)(struct drm_dp_mst_topology_mgr *mgr,
+			struct drm_dp_mst_atomic_payload *payload);
+#else
 	int (*update_payload_part2)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_atomic_state *state,
 			struct drm_dp_mst_atomic_payload *payload);
+#endif
 #if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
 	void (*reset_vcpi_slots)(struct drm_dp_mst_topology_mgr *mgr,
 			struct drm_dp_mst_topology_state *mst_state,
@@ -243,6 +248,25 @@ static int dp_mst_detect_port(
 	return status;
 }
 
+#if (KERNEL_VERSION(6, 7, 0) <= LINUX_VERSION_CODE)
+/**
+ * _dp_mst_remove_payload() - Invoke upstream APIs to reset VCPI slots/remove payload
+ * @mgr: Manager to use.
+ * @mst_state: The MST atomic state
+ * @payload: The payload to remove
+ *
+ * Latest upstream implementation removes payload information in 2 parts. This func invokes
+ * both the required APIs.
+ */
+static void _dp_mst_remove_payload(struct drm_dp_mst_topology_mgr *mgr,
+				 struct drm_dp_mst_topology_state *mst_state,
+				 struct drm_dp_mst_atomic_payload *payload)
+{
+	drm_dp_remove_payload_part1(mgr, mst_state, payload);
+	drm_dp_remove_payload_part2(mgr, mst_state, payload, payload);
+}
+#endif
+
 static void _dp_mst_get_vcpi_info(
 		struct drm_dp_mst_topology_mgr *mgr,
 		int vcpi, int *start_slot, int *num_slots)
@@ -362,7 +386,7 @@ static const struct dp_drm_mst_fw_helper_ops drm_dp_mst_fw_helper_ops = {
 	.topology_mgr_set_mst      = drm_dp_mst_topology_mgr_set_mst,
 	.get_vcpi_info             = _dp_mst_get_vcpi_info,
 	.atomic_release_time_slots = drm_dp_atomic_release_time_slots,
-	.reset_vcpi_slots          = drm_dp_remove_payload_part1,
+	.reset_vcpi_slots          = _dp_mst_remove_payload,
 #elif (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	.calc_pbn_mode             = dp_mst_calc_pbn_mode,
 	.find_vcpi_slots           = dp_mst_find_vcpi_slots,
@@ -487,13 +511,10 @@ static int _dp_mst_compute_config(struct drm_atomic_state *state,
 	mst_state = to_drm_dp_mst_topology_state(mst->mst_mgr.base.state);
 
 #if (KERNEL_VERSION(6, 8, 0) <= LINUX_VERSION_CODE)
-	if (!dfixed_trunc(mst_state->pbn_div)) {
-		pbn_div = mst->dp_display->get_mst_pbn_div(mst->dp_display);
-		mst_state->pbn_div.full = dfixed_const(pbn_div);
-	}
+	pbn_div = mst->dp_display->get_mst_pbn_div(mst->dp_display);
+	mst_state->pbn_div.full = dfixed_const(pbn_div);
 #else
-	if (!mst_state->pbn_div)
-		mst_state->pbn_div = mst->dp_display->get_mst_pbn_div(mst->dp_display);
+	mst_state->pbn_div = mst->dp_display->get_mst_pbn_div(mst->dp_display);
 #endif
 	rc = mst->mst_fw_cbs->atomic_find_time_slots(state, &mst->mst_mgr, c_conn->mst_port, pbn);
 	if (rc < 0) {
@@ -770,10 +791,15 @@ static void _dp_mst_bridge_pre_enable_part2(struct dp_mst_bridge *dp_bridge)
 		return;
 	}
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+	mst->mst_fw_cbs->update_payload_part2(&mst->mst_mgr, payload);
+#else
 	mst->mst_fw_cbs->update_payload_part2(&mst->mst_mgr, mst_state->base.state, payload);
+#endif /* KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE */
+
 #else
 	mst->mst_fw_cbs->update_payload_part2(&mst->mst_mgr);
-#endif
+#endif /* KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE */
 	DP_MST_DEBUG("mst bridge [%d] _pre enable part-2 complete\n",
 			dp_bridge->id);
 }

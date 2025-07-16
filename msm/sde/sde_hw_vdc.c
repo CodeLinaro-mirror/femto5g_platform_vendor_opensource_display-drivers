@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -382,9 +382,9 @@ static struct sde_vdc_cfg *_vdc_offset(enum sde_vdc vdc,
 static void _setup_vdc_ops(struct sde_hw_vdc_ops *ops,
 		unsigned long features)
 {
-	ops->vdc_disable = sde_hw_vdc_disable;
-	ops->vdc_config = sde_hw_vdc_config;
-	ops->bind_pingpong_blk = sde_hw_vdc_bind_pingpong_blk;
+	ops->vdc_disable[MSM_DISP_OP_HWIO] = sde_hw_vdc_disable;
+	ops->vdc_config[MSM_DISP_OP_HWIO] = sde_hw_vdc_config;
+	ops->bind_pingpong_blk[MSM_DISP_OP_HWIO] = sde_hw_vdc_bind_pingpong_blk;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_vdc_init(enum sde_vdc idx,

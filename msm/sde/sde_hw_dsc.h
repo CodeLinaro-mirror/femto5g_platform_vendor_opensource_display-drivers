@@ -26,7 +26,7 @@ struct sde_hw_dsc_ops {
 	 * dsc_disable - disable dsc
 	 * @hw_dsc: Pointer to dsc context
 	 */
-	void (*dsc_disable)(struct sde_hw_dsc *hw_dsc);
+	void (*dsc_disable[MSM_DISP_OP_MAX])(struct sde_hw_dsc *hw_dsc);
 
 	/**
 	 * dsc_config - configures dsc encoder
@@ -35,7 +35,7 @@ struct sde_hw_dsc_ops {
 	 * @mode: dsc topology mode to be set
 	 * @ich_reset_override: option to reset ich
 	 */
-	void (*dsc_config)(struct sde_hw_dsc *hw_dsc,
+	void (*dsc_config[MSM_DISP_OP_MAX])(struct sde_hw_dsc *hw_dsc,
 			struct msm_display_dsc_info *dsc,
 			u32 mode, bool ich_reset_override);
 
@@ -44,7 +44,7 @@ struct sde_hw_dsc_ops {
 	 * @hw_dsc: Pointer to dsc context
 	 * @dsc: panel dsc parameters
 	 */
-	void (*dsc_config_thresh)(struct sde_hw_dsc *hw_dsc,
+	void (*dsc_config_thresh[MSM_DISP_OP_MAX])(struct sde_hw_dsc *hw_dsc,
 			struct msm_display_dsc_info *dsc);
 
 	/**
@@ -53,7 +53,7 @@ struct sde_hw_dsc_ops {
 	 * @enable: enable/disable connection
 	 * @pp: pingpong blk id
 	 */
-	void (*bind_pingpong_blk)(struct sde_hw_dsc *hw_dsc,
+	void (*bind_pingpong_blk[MSM_DISP_OP_MAX])(struct sde_hw_dsc *hw_dsc,
 			bool enable,
 			const enum sde_pingpong pp);
 };

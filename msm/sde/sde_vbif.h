@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -133,7 +133,7 @@ void sde_vbif_init_memtypes(struct sde_kms *sde_kms);
  * sde_vbif_axi_halt_request - halt all axi transcations on vbif
  * @sde_kms:	SDE handler
  */
-void sde_vbif_axi_halt_request(struct sde_kms *sde_kms);
+int sde_vbif_axi_halt_request(struct sde_kms *sde_kms);
 
 /**
  * sde_vbif_halt_xin_mask - halts/unhalts all the xin clients present in

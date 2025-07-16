@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -167,7 +167,7 @@ static int msm_smmu_set_attribute(struct msm_mmu *mmu,
 #endif
 
 static int msm_smmu_one_to_one_unmap(struct msm_mmu *mmu,
-				uint32_t dest_address, uint32_t size)
+				uint64_t dest_address, uint32_t size)
 {
 	struct msm_smmu *smmu = to_msm_smmu(mmu);
 	struct msm_smmu_client *client = msm_smmu_to_client(smmu);
@@ -183,8 +183,8 @@ static int msm_smmu_one_to_one_unmap(struct msm_mmu *mmu,
 	return 0;
 }
 
-static int msm_smmu_one_to_one_map(struct msm_mmu *mmu, uint32_t iova,
-		uint32_t dest_address, uint32_t size, int prot)
+static int msm_smmu_one_to_one_map(struct msm_mmu *mmu, uint64_t iova,
+		uint64_t dest_address, uint32_t size, int prot)
 {
 	struct msm_smmu *smmu = to_msm_smmu(mmu);
 	struct msm_smmu_client *client = msm_smmu_to_client(smmu);
@@ -602,7 +602,11 @@ static int msm_smmu_probe(struct platform_device *pdev)
 	return ret;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void msm_smmu_remove(struct platform_device *pdev)
+#else
 static int msm_smmu_remove(struct platform_device *pdev)
+#endif
 {
 	struct msm_smmu_client *client;
 	struct msm_smmu_client *curr, *next;
@@ -619,7 +623,9 @@ static int msm_smmu_remove(struct platform_device *pdev)
 	}
 	mutex_unlock(&smmu_list_lock);
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static struct platform_driver msm_smmu_driver = {
@@ -650,6 +656,8 @@ void __exit msm_smmu_driver_cleanup(void)
 
 MODULE_LICENSE("GPL v2");
 MODULE_DESCRIPTION("MSM SMMU driver");
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+MODULE_IMPORT_NS("DMA_BUF");
+#elif (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
 MODULE_IMPORT_NS(DMA_BUF);
 #endif

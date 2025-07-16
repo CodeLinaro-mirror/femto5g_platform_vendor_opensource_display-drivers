@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _SDE_HWIO_H
@@ -65,6 +65,11 @@
 #define DP_DHDR_MEM_POOL_1_DATA_4K      0x2004
 #define DP_DHDR_MEM_POOL_0_NUM_BYTES_4K 0x100c
 #define DP_DHDR_MEM_POOL_1_NUM_BYTES_4K 0x200c
+
+#define DP_DHDR_MEM_POOL_0_DATA_4K_EXT      0x1AC004
+#define DP_DHDR_MEM_POOL_1_DATA_4K_EXT      0x1AD004
+#define DP_DHDR_MEM_POOL_0_NUM_BYTES_4K_EXT 0x1AC00C
+#define DP_DHDR_MEM_POOL_1_NUM_BYTES_4K_EXT 0x1AD00C
 
 /* SDE_SCALER_QSEED3 */
 #define QSEED3_COEF_LUT_OFF              0x100

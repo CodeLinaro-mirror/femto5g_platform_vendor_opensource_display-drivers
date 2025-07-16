@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2019, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -63,6 +63,7 @@
  * @SDE_IRQ_TYPE_PROG_LINE:		Programmable Line interrupt for WB
  * @SDE_IRQ_TYPE_RESERVED:		Reserved for expansion
  * @SDE_IRQ_TYPE_INTF_ESYNC_EMSYNC:		INTF ESYNC EMSYNC
+ * @SDE_IRQ_TYPE_INTF_ESYNC_VSYNC:		INTF ESYNC VSYNC
  */
 enum sde_intr_type {
 	SDE_IRQ_TYPE_WB_ROT_COMP,
@@ -105,6 +106,7 @@ enum sde_intr_type {
 	SDE_IRQ_TYPE_WB_PROG_LINE,
 	SDE_IRQ_TYPE_RESERVED,
 	SDE_IRQ_TYPE_INTF_ESYNC_EMSYNC,
+	SDE_IRQ_TYPE_INTF_ESYNC_VSYNC,
 };
 
 struct sde_hw_intr;
@@ -121,7 +123,7 @@ struct sde_hw_intr_ops {
 	 * @instance_idx:	HW interrupt block instance
 	 * @return:		irq_idx or -EINVAL for lookup fail
 	 */
-	int (*irq_idx_lookup)(
+	int (*irq_idx_lookup[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr,
 			enum sde_intr_type intr_type,
 			u32 instance_idx);
@@ -132,7 +134,7 @@ struct sde_hw_intr_ops {
 	 * @irq_idx:	Lookup irq index return from irq_idx_lookup
 	 * @return:	0 for success, otherwise failure
 	 */
-	int (*enable_irq_nolock)(
+	int (*enable_irq_nolock[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr,
 			int irq_idx);
 
@@ -142,7 +144,7 @@ struct sde_hw_intr_ops {
 	 * @irq_idx:	Lookup irq index return from irq_idx_lookup
 	 * @return:	0 for success, otherwise failure
 	 */
-	int (*disable_irq_nolock)(
+	int (*disable_irq_nolock[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr,
 			int irq_idx);
 
@@ -152,7 +154,7 @@ struct sde_hw_intr_ops {
 	 * @intr:	HW interrupt handle
 	 * @return:	0 for success, otherwise failure
 	 */
-	int (*clear_all_irqs)(
+	int (*clear_all_irqs[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr);
 
 	/**
@@ -160,7 +162,7 @@ struct sde_hw_intr_ops {
 	 * @intr:	HW interrupt handle
 	 * @return:	0 for success, otherwise failure
 	 */
-	int (*disable_all_irqs)(
+	int (*disable_all_irqs[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr);
 
 	/**
@@ -171,7 +173,7 @@ struct sde_hw_intr_ops {
 	 * @cbfunc:	Callback function pointer
 	 * @arg:	Argument to pass back during callback
 	 */
-	void (*dispatch_irqs)(
+	void (*dispatch_irqs[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr,
 			void (*cbfunc)(void *arg, int irq_idx),
 			void *arg);
@@ -182,7 +184,7 @@ struct sde_hw_intr_ops {
 	 * @intr:	HW interrupt handle
 	 * @irq_idx:	Lookup irq index return from irq_idx_lookup
 	 */
-	void (*clear_interrupt_status)(
+	void (*clear_interrupt_status[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr,
 			int irq_idx);
 
@@ -191,7 +193,7 @@ struct sde_hw_intr_ops {
 	 * @intr:	HW interrupt handle
 	 * @irq_idx:	Lookup irq index return from irq_idx_lookup
 	 */
-	void (*clear_intr_status_nolock)(
+	void (*clear_intr_status_nolock[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr,
 			int irq_idx);
 
@@ -202,7 +204,7 @@ struct sde_hw_intr_ops {
 	 * @irq_idx:	Lookup irq index return from irq_idx_lookup
 	 * @clear:	True to clear irq after read
 	 */
-	u32 (*get_interrupt_status)(
+	u32 (*get_interrupt_status[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr,
 			int irq_idx,
 			bool clear);
@@ -213,7 +215,7 @@ struct sde_hw_intr_ops {
 	 * @irq_idx:	Lookup irq index return from irq_idx_lookup
 	 * @clear:	True to clear irq after read
 	 */
-	u32 (*get_intr_status_nolock)(
+	u32 (*get_intr_status_nolock[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr,
 			int irq_idx,
 			bool clear);
@@ -225,7 +227,7 @@ struct sde_hw_intr_ops {
 	 * @sources:	Returning the SDE interrupt source status bit mask
 	 * @return:	0 for success, otherwise failure
 	 */
-	int (*get_interrupt_sources)(
+	int (*get_interrupt_sources[MSM_DISP_OP_MAX])(
 			struct sde_hw_intr *intr,
 			uint32_t *sources);
 };

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
  */
 
@@ -35,10 +35,11 @@ void sde_irq_update(struct msm_kms *msm_kms, bool enable)
 irqreturn_t sde_irq(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms = to_sde_kms(kms);
-	u32 interrupts;
+	u32 interrupts = 0;
 
-	sde_kms->hw_intr->ops.get_interrupt_sources(sde_kms->hw_intr,
-			&interrupts);
+	if (sde_kms->hw_intr->ops.get_interrupt_sources[sde_kms->hw_intr->hw.disp_op])
+		sde_kms->hw_intr->ops.get_interrupt_sources[sde_kms->hw_intr->hw.disp_op](
+			sde_kms->hw_intr, &interrupts);
 
 	/* store irq status in case of irq-storm debugging */
 	g_sde_irq_status = interrupts;

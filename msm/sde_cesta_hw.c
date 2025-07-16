@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"[sde_cesta_hw:%s:%d]: " fmt, __func__, __LINE__
@@ -11,6 +11,7 @@
 
 #include "sde_cesta.h"
 
+#define RSCC_SEQ_RSC_ID_DRV		0x0
 #define RSCC_SEQ_PWR_CTRL_STATUS	0x2d0
 
 #define RSCC_WRAPPER_CTRL		0x0
@@ -30,6 +31,8 @@
 void _sde_cesta_hw_init(struct sde_cesta *cesta)
 {
 	int i;
+
+	cesta->hw_drv_ver = dss_reg_r(&cesta->rscc_io, RSCC_SEQ_RSC_ID_DRV, cesta->debug_mode);
 
 	for (i = 0; i < cesta->scc_count; i++) {
 		dss_reg_w(&cesta->scc_io[i], SCC_CLK_GATE_SEL, 0x1, cesta->debug_mode);

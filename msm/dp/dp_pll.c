@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/err.h>
@@ -67,6 +67,12 @@ static int dp_pll_clock_register(struct dp_pll *pll)
 	case DP_PLL_3NM_V1:
 		rc = dp_pll_clock_register_3nm(pll);
 		break;
+	case EDP_PLL_4NM:
+		rc = edp_pll_clock_register_4nm(pll);
+		break;
+	case EDP_PLL_5NM:
+		rc = edp_pll_clock_register_5nm(pll);
+		break;
 	default:
 		rc = -ENOTSUPP;
 		break;
@@ -85,6 +91,7 @@ static void dp_pll_clock_unregister(struct dp_pll *pll)
 		break;
 	case DP_PLL_4NM_V1:
 	case DP_PLL_4NM_V1_1:
+	case EDP_PLL_4NM:
 		dp_pll_clock_unregister_4nm(pll);
 		break;
 	case DP_PLL_3NM_V1:
@@ -183,6 +190,10 @@ static const struct dp_pll_ver_spec_info dp_pll_4nm_v1_1 = {
 	.revision = DP_PLL_4NM_V1_1,
 };
 
+static const struct dp_pll_ver_spec_info edp_pll_4nm = {
+	.revision = EDP_PLL_4NM,
+};
+
 static const struct dp_pll_ver_spec_info edp_pll_5nm = {
 	.revision = EDP_PLL_5NM,
 };
@@ -200,6 +211,8 @@ static const struct of_device_id dp_pll_of_match[] = {
 	  .data = &dp_pll_4nm_v1,},
 	{ .compatible = "qcom,dp-pll-4nm-v1.1",
 	  .data = &dp_pll_4nm_v1_1,},
+	{ .compatible = "qcom,edp-pll-4nm",
+	  .data = &edp_pll_4nm,},
 	{ .compatible = "qcom,edp-pll-5nm",
 	  .data = &edp_pll_5nm,},
 	{ .compatible = "qcom,dp-pll-3nm-v1",
@@ -256,7 +269,11 @@ error:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void dp_pll_driver_remove(struct platform_device *pdev)
+#else
 static int dp_pll_driver_remove(struct platform_device *pdev)
+#endif
 {
 	struct dp_pll *pll = platform_get_drvdata(pdev);
 
@@ -266,7 +283,9 @@ static int dp_pll_driver_remove(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, NULL);
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static struct platform_driver dp_pll_platform_driver = {

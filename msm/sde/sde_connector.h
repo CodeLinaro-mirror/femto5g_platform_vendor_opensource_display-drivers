@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -10,6 +10,7 @@
 #include <drm/msm_drm_pp.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_panel.h>
+#include <linux/types.h>
 
 #include "msm_drv.h"
 #include "msm_prop.h"
@@ -24,6 +25,83 @@
 
 struct sde_connector;
 struct sde_connector_state;
+
+/**
+ * struct sde_connector_hal_funcs - interface api for sde connector hal
+ */
+struct sde_connector_hal_funcs {
+	/**
+	 * post_init - perform additional initialization steps
+	 * @conn: Pointer to sde connector structure
+	 * Returns: Zero on success
+	 */
+	int (*post_init[MSM_DISP_OP_MAX])(struct sde_connector *conn);
+
+	/**
+	 * destroy - Clean up connector resources
+	 * @conn: Pointer to sde connector structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*destroy[MSM_DISP_OP_MAX])(struct sde_connector *conn);
+
+	/**
+	 * debugfs_init - perform debugfs node initialization
+	 * @conn: Pointer to sde connector structure
+	 * Returns: Zero on success
+	 */
+	int (*debugfs_init[MSM_DISP_OP_MAX])(struct sde_connector *conn);
+
+	/**
+	 * debugfs_destroy - handle destroy operations for debugfs
+	 * @conn: Pointer to sde connector structure
+	 * Returns: Zero on success
+	 */
+	void (*debugfs_destroy[MSM_DISP_OP_MAX])(struct sde_connector *conn);
+
+	/**
+	 * atomic_duplicate_state - Duplicate the current atomic state for the connector
+	 * @conn: Pointer to sde connector structure
+	 * Returns: Duplicated atomic state or NULL when the allocation failed.
+	 */
+	struct sde_connector_state* (*atomic_duplicate_state[MSM_DISP_OP_MAX])
+			(struct sde_connector *conn);
+
+	/**
+	 * atomic_destroy_state - Destroy a state duplicated with @atomic_duplicate_state
+	 * and release or unreference all resources it references
+	 * @conn: Pointer to sde connector structure
+	 * @state: Pointer to sde connector state structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*atomic_destroy_state[MSM_DISP_OP_MAX])(struct sde_connector *conn,
+		struct sde_connector_state *state);
+
+	/**
+	 * enable_hw_event - Notify display of event registration/unregistration
+	 * @conn: Pointer to sde connector structure
+	 * @event_idx: sde connector event index
+	 * @enable: Whether the event is being enabled/disabled
+	 */
+	int (*enable_hw_event[MSM_DISP_OP_MAX])(struct sde_connector *conn,
+			uint32_t event_idx, bool enable);
+
+	/**
+	 * connector_lm_preference - Updates LM preference for the display type
+	 * @conn: Pointer to sde connector structure
+	 * @sde_kms: Pointer to sde kms structure
+	 * @disp_type: Connector display types
+	 */
+	int (*connector_lm_preference[MSM_DISP_OP_MAX])(struct sde_connector *conn,
+		struct sde_kms *sde_kms, uint32_t disp_type);
+
+	/**
+	 * prepare_commit - Updates LM preference for the display type
+	 * @conn: Pointer to sde connector structure
+	 */
+	int (*prepare_commit[MSM_DISP_OP_MAX])(struct drm_connector *conn,
+				struct sde_connector_state *cstate);
+
+};
 
 /**
  * struct sde_connector_ops - callback functions for generic sde connector
@@ -185,6 +263,12 @@ struct sde_connector_ops {
 	 */
 	int (*set_backlight)(struct drm_connector *connector,
 			void *display, u32 bl_lvl);
+
+	/**
+	 * toggle_te - toggle TE to refresh hardware state tracking
+	 * @display: Pointer to display structure
+	 */
+	int (*toggle_te)(void *display);
 
 	/**
 	 * set_colorspace - set colorspace for connector
@@ -488,6 +572,37 @@ struct sde_connector_ops {
 	 * Returns: error code
 	 */
 	int (*avoid_cmd_transfer)(void *display, bool avoid_transfer);
+
+	/*
+	 * ctl_init -  register with HFI, trigger panel init
+	 * @display: Pointer to private display structure
+	 * @hfi_priv: Pointer to private hfi structure
+	 * Returns: error code
+	 */
+	int (*ctl_init)(void *display, void *hfi_priv);
+
+	/*
+	 * ctl_pre_transition -  switch dsi disp ops to hfi
+	 * @display: Pointer to private display structure
+	 * Returns: error code
+	 */
+	int (*ctl_pre_transition)(void *display);
+
+	/*
+	 * ctl_post_transition -  switch dsi disp ops to hlos
+	 * @display: Pointer to private display structure
+	 * Returns: error code
+	 */
+	int (*ctl_post_transition)(void *display);
+
+	/*
+	 * process_dcs_cmd_bitmask -  process a bitmask to send multiple
+	 *                            DCS command sets in a batch
+	 * @display: Pointer to private display structure
+	 * @params: Parmeters for DCS command bit mask and peripheral flush
+	 * Returns: Zero on success
+	 */
+	int (*process_dcs_cmd_bitmask)(void *display, struct msm_display_conn_params *params);
 };
 
 /**
@@ -586,6 +701,7 @@ struct sde_misr_sign {
  * @curr_bl_lvl : Current backlight level value
  * @bl_frame_idx : Index value of dimming frame
  * @bl_increment_in_progress : Smooth dimming in progress
+ * @new_incremental_bl_update : Whether new smooth dimming update is scheduled
  * @prev_bl_time_ns : Time in ns when previous BL was sent
  * @bl_lock : Backlight operations lock
  */
@@ -598,6 +714,7 @@ struct sde_backlight_vrr_update {
 	u32 curr_bl_lvl;
 	u32 bl_frame_idx;
 	bool bl_increment_in_progress;
+	atomic_t new_incremental_bl_update;
 	u64 prev_bl_time_ns;
 	struct mutex bl_lock;
 };
@@ -606,6 +723,7 @@ struct sde_backlight_vrr_update {
  * struct sde_connector - local sde connector structure
  * @base: Base drm connector structure
  * @connector_type: Set to one of DRM_MODE_CONNECTOR_ types
+ * @conn_id: connector id
  * @encoder: Pointer to preferred drm encoder
  * @panel: Pointer to drm panel, if present
  * @display: Pointer to private display data structure
@@ -667,6 +785,7 @@ struct sde_backlight_vrr_update {
  * @freq_pattern_type_changed: True if frequency pattern type is updated
  * @vrr_cmd_state: Scenario in which VRR cmd is sent
  * @num_bl_frames: Number of frames needed for incremental dimming
+ * @disable_cont_dimming: Skip smooth dimming during continuous BL updates
  * @last_vhm_cmd: Last VHM commands queued to panel
  * @colorspace_updated: Colorspace property was updated
  * @last_cmd_tx_sts: status of the last command transfer
@@ -680,11 +799,14 @@ struct sde_backlight_vrr_update {
  * @max_mode_width: max width of all available modes
  * @shared: If a connector is sharing resource of its parent
  * @is_lb_conn: Indicates if this connector is a loopback connector
+ * @hfi_conn: Pointer to hfi connector struct
+ * @hal_ops: hal ops for hfi communication
  */
 struct sde_connector {
 	struct drm_connector base;
 
 	int connector_type;
+	u32 conn_id;
 
 	struct drm_encoder *encoder;
 	struct drm_panel *panel;
@@ -759,6 +881,7 @@ struct sde_connector {
 	bool freq_pattern_type_changed;
 	enum sde_conn_vrr_cmd_state vrr_cmd_state;
 	u32 num_bl_frames;
+	bool disable_cont_dimming;
 	u64 last_vhm_cmd;
 
 	bool colorspace_updated;
@@ -778,6 +901,9 @@ struct sde_connector {
 	u32 max_mode_width;
 	bool shared;
 	bool is_lb_conn;
+
+	struct hfi_connector *hfi_conn;
+	struct sde_connector_hal_funcs hal_ops;
 };
 
 /**
@@ -1502,6 +1628,20 @@ int sde_connector_get_mode_info(struct drm_connector *conn,
 		struct msm_mode_info *mode_info);
 
 /**
+ * sde_conn_get_display_obj_id - helper to provide display object unique id
+ * @conn: Pointer to drm_connector struct
+ */
+static inline u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
+{
+	struct sde_connector *sde_conn = to_sde_connector(conn);
+
+	if (!sde_conn)
+		return U32_MAX;
+
+	return sde_conn->conn_id;
+}
+
+/**
  * sde_conn_timeline_status - current buffer timeline status
  * conn: Pointer to drm_connector struct
  */
@@ -1589,5 +1729,8 @@ static inline void sde_connector_backlight_lock(struct sde_connector *c_conn, bo
 	else
 		mutex_unlock(&c_conn->bl_vrr.bl_lock);
 }
+
+bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
+		uint32_t property_idx);
 
 #endif /* _SDE_CONNECTOR_H_ */

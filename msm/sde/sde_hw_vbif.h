@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -25,7 +25,7 @@ struct sde_hw_vbif_ops {
 	 * @rd: true for read limit; false for write limit
 	 * @limit: outstanding transaction limit
 	 */
-	void (*set_limit_conf)(struct sde_hw_vbif *vbif,
+	void (*set_limit_conf[MSM_DISP_OP_MAX])(struct sde_hw_vbif *vbif,
 			u32 xin_id, bool rd, u32 limit);
 
 	/**
@@ -35,7 +35,7 @@ struct sde_hw_vbif_ops {
 	 * @rd: true for read limit; false for write limit
 	 * @return: outstanding transaction limit
 	 */
-	u32 (*get_limit_conf)(struct sde_hw_vbif *vbif,
+	u32 (*get_limit_conf[MSM_DISP_OP_MAX])(struct sde_hw_vbif *vbif,
 			u32 xin_id, bool rd);
 
 	/**
@@ -44,7 +44,7 @@ struct sde_hw_vbif_ops {
 	 * @xin_id: client interface identifier
 	 * @enable: halt control enable
 	 */
-	void (*set_xin_halt)(struct sde_hw_vbif *vbif,
+	void (*set_xin_halt[MSM_DISP_OP_MAX])(struct sde_hw_vbif *vbif,
 			u32 xin_id, bool enable);
 
 	/**
@@ -53,20 +53,20 @@ struct sde_hw_vbif_ops {
 	 * @xin_id: client interface identifier
 	 * @return: halt control enable
 	 */
-	bool (*get_xin_halt_status)(struct sde_hw_vbif *vbif,
+	bool (*get_xin_halt_status[MSM_DISP_OP_MAX])(struct sde_hw_vbif *vbif,
 			u32 xin_id);
 
 	/**
 	 * set_axi_halt - set axi port halt control
 	 * @vbif: vbif context driver
 	 */
-	void (*set_axi_halt)(struct sde_hw_vbif *vbif);
+	void (*set_axi_halt[MSM_DISP_OP_MAX])(struct sde_hw_vbif *vbif);
 
 	/**
 	 * get_axi_halt_status - get axi port halt control status
 	 * @vbif: vbif context driver
 	 */
-	int (*get_axi_halt_status)(struct sde_hw_vbif *vbif);
+	int (*get_axi_halt_status[MSM_DISP_OP_MAX])(struct sde_hw_vbif *vbif);
 
 	/**
 	 * set_qos_remap - set QoS priority remap
@@ -76,7 +76,7 @@ struct sde_hw_vbif_ops {
 	 * @rp_remap: rp_remap level
 	 * @lvl_remap: lvl_remap level
 	 */
-	void (*set_qos_remap)(struct sde_hw_vbif *vbif,
+	void (*set_qos_remap[MSM_DISP_OP_MAX])(struct sde_hw_vbif *vbif,
 			u32 xin_id, u32 level, u32 rp_remap, u32 lvl_remap);
 
 	/**
@@ -85,7 +85,7 @@ struct sde_hw_vbif_ops {
 	 * @xin_id: client interface identifier
 	 * @value: memory type value
 	 */
-	void (*set_mem_type)(struct sde_hw_vbif *vbif,
+	void (*set_mem_type[MSM_DISP_OP_MAX])(struct sde_hw_vbif *vbif,
 			u32 xin_id, u32 value);
 
 	/**
@@ -97,7 +97,7 @@ struct sde_hw_vbif_ops {
 	 * @pnd_errors: pointer to pending error reporting variable
 	 * @src_errors: pointer to source error reporting variable
 	 */
-	void (*clear_errors)(struct sde_hw_vbif *vbif,
+	void (*clear_errors[MSM_DISP_OP_MAX])(struct sde_hw_vbif *vbif,
 		u32 *pnd_errors, u32 *src_errors);
 
 	/**
@@ -105,7 +105,7 @@ struct sde_hw_vbif_ops {
 	 * @vbif: vbif context driver
 	 * @xin_id: client interface identifier
 	 */
-	void (*set_write_gather_en)(struct sde_hw_vbif *vbif, u32 xin_id);
+	void (*set_write_gather_en[MSM_DISP_OP_MAX])(struct sde_hw_vbif *vbif, u32 xin_id);
 };
 
 struct sde_hw_vbif {

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -384,6 +384,8 @@ void msm_property_reset_state(struct msm_property_info *info, void *state,
 
 /**
  * msm_property_duplicate_state - helper function for duplicate state cb
+ * Caller needs to acquire property lock before calling this function and
+ * release the lock when finished.
  * @info: Pointer to property info container struct
  * @old_state: Pointer to original state structure
  * @state: Pointer to newly created state structure
