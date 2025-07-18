@@ -1601,6 +1601,9 @@ int sde_kms_vm_pre_release(struct sde_kms *sde_kms,
 		return 0;
 	priv = sde_kms->dev->dev_private;
 
+	if (!is_primary)
+		sde_encoder_check_frame_pending(&sde_kms->base, crtc);
+
 	/* if vm_req is enabled, once CRTC on the commit is guaranteed */
 	sde_kms_wait_for_frame_transfer_complete(&sde_kms->base, crtc);
 

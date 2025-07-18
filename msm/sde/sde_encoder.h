@@ -1425,6 +1425,13 @@ int sde_encoder_helper_inc_pending(struct drm_encoder *drm_enc);
  * @sde_enc: pointer to sde encoder
  */
 int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc);
+ 
+/**
+ * sde_encoder_check_frame_pending - increment pending count on the encoder
+ * @msm_kms: pointer to kms
+ * #drm_crtc: pointer to drm crtc
+ */
+void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc);
 
 /**
  * sde_encoder_cancel_vrr_timers - cancel vrr timers

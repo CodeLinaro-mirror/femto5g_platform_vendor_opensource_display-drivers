@@ -9500,3 +9500,43 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
 						(u8 *)&c_conn->previous_misr_sign);
 	}
 }
+
+void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
+{
+	struct drm_encoder *encoder;
+	struct drm_device *dev;
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *cur_master;
+	enum msm_disp_op disp_op;
+
+	if (!kms || !crtc || !crtc->state || !crtc->dev) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	dev = crtc->dev;
+
+	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+		if (encoder->crtc != crtc)
+			continue;
+
+		sde_enc = to_sde_encoder_virt(encoder);
+		cur_master = sde_enc->phys_encs[0];
+
+		if (!cur_master || !cur_master->hw_ctl)
+			return;
+
+		disp_op = sde_encoder_get_disp_op(cur_master->parent);
+
+		if (cur_master->hw_ctl->ops.get_scheduler_status[disp_op]) {
+			if (cur_master->hw_ctl->ops.get_scheduler_status[disp_op](
+				cur_master->hw_ctl) & BIT(0))
+				return;
+
+			if (!atomic_read(&cur_master->pending_kickoff_cnt))
+				sde_encoder_phys_inc_pending(cur_master);
+		}
+		return;
+	}
+}
+
