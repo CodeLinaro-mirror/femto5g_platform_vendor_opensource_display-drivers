@@ -50,10 +50,11 @@
 
 /* SDE_ROI_MISR_CTL */
 #define ROI_MISR_OP_MODE                 0x00
-#define ROI_MISR_POSITION(i)            (0x10 + 0x4 * (i))
-#define ROI_MISR_SIZE(i)                (0x20 + 0x4 * (i))
-#define ROI_MISR_CTRL(i)                (0x30 + 0x4 * (i))
-#define ROI_MISR_EXPECTED(i)            (0x50 + 0x4 * (i))
+#define ROI_MISR_POSITION(i)            (0x40 + 0x4 * (i))
+#define ROI_MISR_SIZE(i)                (0x50 + 0x4 * (i))
+#define ROI_MISR_CTRL(i)                (0x60 + 0x4 * (i))
+#define ROI_MISR_CAPTURED(i)            (0x70 + 0x4 * (i))
+#define ROI_MISR_EXPECTED(i)            (0x80 + 0x4 * (i))
 
 /* ROI_MISR_CTRL register */
 #define ROI_MISR_CTRL_ENABLE            BIT(8)
@@ -293,57 +294,6 @@ static int _sde_shd_setup_intf_cfg_v1(struct sde_hw_ctl *ctx, struct sde_hw_intf
 	return 0;
 }
 
-#ifdef cwb_dsc
-static int _sde_shd_update_cwb_dsc_cfg(struct sde_hw_ctl *ctx, struct sde_hw_intf_cfg_v1 *cfg,
-				       bool enable)
-{
-	int i;
-	u32 cwb_active = 0;
-	u32 merge_3d_active = 0;
-	struct sde_hw_blk_reg_map *c;
-	struct sde_shd_hw_ctl *hw_ctl;
-
-	if (!ctx || !cfg)
-		return -EINVAL;
-
-	if (!cfg->cwb_count)
-		goto dsc;
-
-	c = &ctx->hw;
-	hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
-
-	if (enable) {
-		for (i = 0; i < cfg->cwb_count; i++) {
-			if (cfg->cwb[i])
-				cwb_active |= BIT(cfg->cwb[i] - CWB_0);
-		}
-
-		for (i = 0; i < cfg->merge_3d_count; i++) {
-			if (cfg->merge_3d[i])
-				merge_3d_active |=
-					BIT(cfg->merge_3d[i] - MERGE_3D_0);
-		}
-
-		hw_ctl->cwb_active = cwb_active;
-		hw_ctl->merge_3d_active = merge_3d_active;
-	}
-
-	hw_ctl->cwb_enable = enable;
-	hw_ctl->cwb_changed = true;
-
-	return 0;
-
-dsc:
-	if (cfg->dsc_count) {
-		struct sde_shd_hw_ctl *hw_ctl;
-
-		hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
-		hw_ctl->dsc_cfg = *cfg;
-	}
-
-	return 0;
-}
-
 static void _sde_shd_flush_cwb_cfg(struct sde_shd_hw_ctl *hw_ctl)
 {
 	struct sde_hw_blk_reg_map *c;
@@ -379,16 +329,45 @@ static void _sde_shd_flush_cwb_cfg(struct sde_shd_hw_ctl *hw_ctl)
 	hw_ctl->cwb_changed = false;
 }
 
-static void _sde_shd_flush_hw_dsc_config(struct sde_hw_ctl *ctl_ctx)
+static int _sde_shd_update_intf_cfg(struct sde_hw_ctl *ctx,
+		struct sde_hw_intf_cfg_v1 *cfg, bool enable)
 {
+	int i;
+	u32 cwb_active = 0;
+	u32 merge_3d_active = 0;
 	struct sde_shd_hw_ctl *hw_ctl;
 
-	hw_ctl = container_of(ctl_ctx, struct sde_shd_hw_ctl, base);
+	if (!ctx || !cfg)
+		return -EINVAL;
 
-	if (hw_ctl->orig && hw_ctl->orig->ops.update_intf_cfg)
-		hw_ctl->orig->ops.update_intf_cfg(ctl_ctx, &hw_ctl->dsc_cfg, true);
+	hw_ctl = container_of(ctx, struct sde_shd_hw_ctl, base);
+
+	if (cfg->cwb_count) {
+		if (enable) {
+			for (i = 0; i < cfg->cwb_count; i++) {
+				if (cfg->cwb[i])
+					cwb_active |= BIT(cfg->cwb[i] - CWB_0);
+			}
+
+			for (i = 0; i < cfg->merge_3d_count; i++) {
+				if (cfg->merge_3d[i])
+					merge_3d_active |=
+						BIT(cfg->merge_3d[i] - MERGE_3D_0);
+			}
+
+			hw_ctl->cwb_active = cwb_active;
+			hw_ctl->merge_3d_active = merge_3d_active;
+		}
+
+		hw_ctl->cwb_enable = enable;
+		hw_ctl->cwb_changed = true;
+	}
+
+	if (cfg->dsc_count)
+		hw_ctl->dsc_cfg = *cfg;
+
+	return 0;
 }
-#endif
 
 static void _sde_shd_flush_hw_pipe_active(struct sde_hw_ctl *ctx)
 {
@@ -448,9 +427,8 @@ static void _sde_shd_flush_hw_ctl(struct sde_hw_ctl *ctx)
 		SDE_REG_WRITE(c, CTL_LAYER_EXT3(lm), mixercfg_ext3);
 		SDE_REG_WRITE(c, CTL_LAYER_EXT4(lm), mixercfg_ext4);
 	}
-#ifdef cwb_dsc
+
 	_sde_shd_flush_cwb_cfg(hw_ctl);
-#endif
 }
 
 static void _sde_shd_setup_blend_config(struct sde_hw_mixer *ctx, u32 stage, u32 fg_alpha,
@@ -551,8 +529,136 @@ static void _sde_shd_flush_hw_lm(struct sde_hw_mixer *ctx)
 	}
 }
 
-void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx, struct sde_hw_mixer *lm_ctx[MAX_MIXERS_PER_CRTC],
-		      int lm_num)
+static void _sde_shd_setup_roi_misr(struct sde_hw_roi_misr *ctx,
+		struct sde_roi_misr_hw_cfg *cfg)
+{
+	struct sde_shd_hw_roi_misr *hw_roi_misr;
+
+	if (!ctx || !cfg)
+		return;
+
+	hw_roi_misr = container_of(ctx, struct sde_shd_hw_roi_misr, base);
+	hw_roi_misr->misr_cfg = *cfg;
+}
+
+static void _sde_shd_roi_misr_reset(struct sde_hw_roi_misr *ctx)
+{
+	/* do nothing */
+}
+
+static void _sde_shd_reset_hw_roi_misr(struct sde_hw_roi_misr *ctx)
+{
+	struct sde_shd_hw_roi_misr *hw_roi_misr;
+	struct sde_hw_blk_reg_map *roi_misr_c;
+	uint32_t tmp_hw_mask;
+	int i;
+
+	hw_roi_misr = container_of(ctx, struct sde_shd_hw_roi_misr, base);
+	roi_misr_c = &ctx->hw;
+
+	for (i = 0; i < ROI_MISR_MAX_ROIS_PER_MISR; ++i) {
+		if (!(hw_roi_misr->cur_roi_mask & BIT(i)))
+			continue;
+
+		SDE_REG_WRITE(roi_misr_c, ROI_MISR_POSITION(i), 0x0);
+		SDE_REG_WRITE(roi_misr_c, ROI_MISR_SIZE(i), 0x0);
+		SDE_REG_WRITE(roi_misr_c, ROI_MISR_EXPECTED(i), 0x0);
+		SDE_REG_WRITE(roi_misr_c, ROI_MISR_CTRL(i), 0x0);
+	}
+
+	tmp_hw_mask = SDE_REG_READ(roi_misr_c, ROI_MISR_OP_MODE);
+	tmp_hw_mask &= ~hw_roi_misr->cur_roi_mask;
+	SDE_REG_WRITE(roi_misr_c, ROI_MISR_OP_MODE, tmp_hw_mask);
+}
+
+static void _sde_shd_flush_hw_roi_misr(struct sde_hw_roi_misr *ctx)
+{
+	struct sde_shd_hw_roi_misr *hw_roi_misr;
+	struct sde_hw_blk_reg_map *roi_misr_c;
+	struct sde_roi_misr_hw_cfg *roi_info;
+	uint32_t ctrl_val = 0;
+	uint32_t tmp_hw_mask;
+	int i;
+
+	if (!ctx)
+		return;
+
+	hw_roi_misr = container_of(ctx, struct sde_shd_hw_roi_misr, base);
+	roi_misr_c = &ctx->hw;
+	roi_info = &hw_roi_misr->misr_cfg;
+
+	_sde_shd_reset_hw_roi_misr(ctx);
+
+	for (i = 0; i < ROI_MISR_MAX_ROIS_PER_MISR; ++i) {
+		if (!(roi_info->roi_mask & BIT(i)))
+			continue;
+
+		ctrl_val = ROI_MISR_CTRL_RUN_MODE
+			| ROI_MISR_CTRL_ENABLE
+			| ROI_MISR_CTRL_STATUS_CLEAR
+			| roi_info->frame_count[i];
+
+		SDE_REG_WRITE(roi_misr_c, ROI_MISR_POSITION(i),
+			ROI_POSITION_VAL(roi_info->misr_roi_rect[i].x,
+			roi_info->misr_roi_rect[i].y));
+
+		SDE_REG_WRITE(roi_misr_c, ROI_MISR_SIZE(i),
+			ROI_SIZE_VAL(roi_info->misr_roi_rect[i].w,
+			roi_info->misr_roi_rect[i].h));
+
+		SDE_REG_WRITE(roi_misr_c, ROI_MISR_EXPECTED(i),
+			roi_info->golden_value[i]);
+
+		SDE_REG_WRITE(roi_misr_c, ROI_MISR_CTRL(i), ctrl_val);
+	}
+
+	tmp_hw_mask = SDE_REG_READ(roi_misr_c, ROI_MISR_OP_MODE);
+	tmp_hw_mask |= roi_info->roi_mask;
+	hw_roi_misr->cur_roi_mask = roi_info->roi_mask;
+	roi_info->roi_mask = 0;
+	SDE_REG_WRITE(roi_misr_c, ROI_MISR_OP_MODE, tmp_hw_mask);
+}
+
+static void _sde_shd_dspp_setup_roi_misr(struct sde_hw_dspp *ctx,
+		uint32_t roi_mask, struct sde_rect *roi_cfg)
+{
+	struct sde_shd_hw_dspp *hw_dspp;
+
+	if (!ctx || !roi_cfg) {
+		pr_err("invalid param ctx %pK, roi_cfg %pK\n",
+				ctx, roi_cfg);
+		return;
+	}
+
+	hw_dspp = container_of(ctx, struct sde_shd_hw_dspp, base);
+
+	if (hw_dspp->dspp_controlled_by_shd)
+		return;
+
+	hw_dspp->orig->ops.setup_roi_misr(ctx, roi_mask, roi_cfg);
+}
+
+static void _sde_shd_flush_hw_dspp(struct sde_hw_dspp *ctx)
+{
+	struct sde_shd_hw_dspp *hw_dspp;
+
+	if (!ctx)
+		return;
+
+	hw_dspp = container_of(ctx, struct sde_shd_hw_dspp, base);
+
+	if (!hw_dspp->dspp_controlled_by_shd)
+		return;
+
+	hw_dspp->orig->ops.setup_roi_misr(ctx,
+			hw_dspp->bypass_cfg.roi_mask,
+			hw_dspp->bypass_cfg.roi_info);
+}
+
+void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
+		struct sde_hw_mixer *lm_ctx[MAX_MIXERS_PER_CRTC], int lm_num,
+		struct sde_hw_dspp *dspp_ctx[MAX_MIXERS_PER_CRTC], int dspp_num,
+		struct sde_hw_roi_misr *misr_ctx[MAX_MIXERS_PER_CRTC], int misr_num)
 {
 	struct sde_hw_blk_reg_map *c;
 	unsigned long lock_flags;
@@ -568,9 +674,11 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx, struct sde_hw_mixer *lm_ctx[MA
 	for (i = 0; i < lm_num; i++)
 		_sde_shd_flush_hw_lm(lm_ctx[i]);
 
-#ifdef cwb_dsc
-	_sde_shd_flush_hw_dsc_config(ctl_ctx);
-#endif
+	for (i = 0; i < dspp_num; i++)
+		_sde_shd_flush_hw_dspp(dspp_ctx[i]);
+
+	for (i = 0; i < misr_num; i++)
+		_sde_shd_flush_hw_roi_misr(misr_ctx[i]);
 
 	if (ctl_ctx->ops.trigger_flush)
 		ctl_ctx->ops.trigger_flush(ctl_ctx);
@@ -584,9 +692,7 @@ void sde_shd_hw_ctl_init_op(struct sde_hw_ctl *ctx)
 	ctx->ops.clear_all_blendstages = _sde_shd_hw_ctl_clear_all_blendstages;
 	ctx->ops.setup_blendstage = _sde_shd_hw_ctl_setup_blendstage;
 	ctx->ops.setup_intf_cfg_v1 = _sde_shd_setup_intf_cfg_v1;
-#ifdef cwb_dsc
-	ctx->ops.update_intf_cfg = _sde_shd_update_cwb_dsc_cfg;
-#endif
+	ctx->ops.update_intf_cfg = _sde_shd_update_intf_cfg;
 	ctx->ops.set_active_pipes = _sde_shd_setup_active_pipes;
 }
 
@@ -596,6 +702,17 @@ void sde_shd_hw_lm_init_op(struct sde_hw_mixer *ctx)
 	ctx->ops.setup_dim_layer = _sde_shd_setup_dim_layer;
 	ctx->ops.setup_mixer_out = _sde_shd_setup_mixer_out;
 	ctx->ops.clear_dim_layer = _sde_shd_clear_dim_layer;
+}
+
+void sde_shd_hw_dspp_init_op(struct sde_hw_dspp *ctx)
+{
+	ctx->ops.setup_roi_misr = _sde_shd_dspp_setup_roi_misr;
+}
+
+void sde_shd_hw_roi_misr_init_op(struct sde_hw_roi_misr *ctx)
+{
+	ctx->ops.setup_roi_misr = _sde_shd_setup_roi_misr;
+	ctx->ops.reset_roi_misr = _sde_shd_roi_misr_reset;
 }
 
 void sde_shd_hw_skip_sspp_clear(struct sde_hw_ctl *ctx, enum sde_sspp sspp, int multirect_idx)

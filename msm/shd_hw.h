@@ -7,6 +7,9 @@
 #include <drm/sde_drm.h>
 #include "sde_hw_top.h"
 #include "shd_drm.h"
+#include "sde_hw_ctl.h"
+#include "sde_hw_roi_misr.h"
+#include "sde_hw_dspp.h"
 
 #ifndef SHD_HW_H
 #define SHD_HW_H
@@ -62,9 +65,30 @@ struct sde_shd_hw_mixer {
 	struct sde_shd_mixer_cfg cfg[SDE_STAGE_MAX];
 };
 
+struct sde_shd_hw_dspp {
+	struct sde_hw_dspp base;
+	const char *shd_name;
+	bool dspp_enabled;
+	bool dspp_controlled_by_shd;
+	struct shd_roi_bypass_range bypass_cfg;
+	struct sde_hw_dspp *orig;
+};
+
+struct sde_shd_hw_roi_misr {
+	struct sde_hw_roi_misr base;
+	struct sde_hw_roi_misr *orig;
+	uint32_t roi_mask;
+	uint32_t cur_roi_mask;
+	struct sde_roi_misr_hw_cfg misr_cfg;
+};
+
 void sde_shd_hw_ctl_init_op(struct sde_hw_ctl *ctx);
 
 void sde_shd_hw_lm_init_op(struct sde_hw_mixer *ctx);
+
+void sde_shd_hw_dspp_init_op(struct sde_hw_dspp *ctx);
+
+void sde_shd_hw_roi_misr_init_op(struct sde_hw_roi_misr *ctx);
 
 void sde_shd_hw_skip_sspp_clear(struct sde_hw_ctl *ctx, enum sde_sspp sspp, int multirect_idx);
 
