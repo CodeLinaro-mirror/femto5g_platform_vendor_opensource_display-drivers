@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -12,6 +12,7 @@
 #include "dsi_display.h"
 #include "sde_trace.h"
 #include <drm/drm_fixed.h>
+#include "sde_roi_misr_helper.h"
 
 #define SDE_DEBUG_VIDENC(e, fmt, ...) SDE_DEBUG("enc%d intf%d " fmt, \
 		(e) && (e)->base.parent ? \
@@ -537,6 +538,10 @@ not_flushed:
 
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
+	if (phys_enc->parent_ops.handle_roi_misr_virt_v2)
+		phys_enc->parent_ops.handle_roi_misr_virt_v2(phys_enc->parent,
+				phys_enc);
+
 	if (event && phys_enc->parent_ops.handle_frame_done)
 		phys_enc->parent_ops.handle_frame_done(phys_enc->parent,
 			phys_enc, event);
@@ -577,6 +582,17 @@ static void sde_encoder_phys_vid_underrun_irq(void *arg, int irq_idx)
 			phys_enc);
 }
 
+static void sde_encoder_phys_vid_roi_misr_irq(void *arg, int irq_idx)
+{
+	struct sde_encoder_phys *phys_enc = arg;
+
+	if (!phys_enc || !sde_encoder_phys_vid_is_master(phys_enc))
+		return;
+
+	if (phys_enc->parent_ops.handle_roi_misr_virt_v1)
+		phys_enc->parent_ops.handle_roi_misr_virt_v1(phys_enc->parent);
+}
+
 static void _sde_encoder_phys_vid_setup_irq_hw_idx(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -595,6 +611,9 @@ static void _sde_encoder_phys_vid_setup_irq_hw_idx(
 	irq = &phys_enc->irq[INTR_IDX_UNDERRUN];
 	if (irq->irq_idx < 0)
 		irq->hw_idx = phys_enc->intf_idx;
+
+	if (sde_encoder_phys_vid_is_master(phys_enc))
+		sde_roi_misr_setup_irq_hw_idx(phys_enc);
 }
 
 static void sde_encoder_phys_vid_cont_splash_mode_set(
@@ -670,6 +689,20 @@ static void sde_encoder_phys_vid_mode_set(
 		return;
 	}
 
+	phys_enc->roi_misr_num = 0;
+	if (sde_encoder_phys_vid_is_master(phys_enc)) {
+		sde_rm_init_hw_iter(&iter, phys_enc->parent->base.id,
+				SDE_HW_BLK_ROI_MISR);
+		for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
+			if (!sde_rm_get_hw(rm, &iter))
+				break;
+
+			phys_enc->hw_roi_misr[i] =
+					(struct sde_hw_roi_misr *)iter.hw;
+			phys_enc->roi_misr_num++;
+		}
+	}
+
 	_sde_encoder_phys_vid_setup_irq_hw_idx(phys_enc);
 
 	phys_enc->kickoff_timeout_ms =
@@ -733,6 +766,34 @@ end:
 	}
 	mutex_unlock(phys_enc->vblank_ctl_lock);
 	return ret;
+}
+
+static int sde_encoder_phys_vid_control_roi_misr_irq(
+		struct sde_encoder_phys *phys_enc, bool enable)
+{
+	int base_irq_idx;
+	int hw_idx;
+	int ret;
+	int i, j;
+
+	if (!sde_encoder_phys_vid_is_master(phys_enc))
+		return 0;
+
+	for (i = 0; i < phys_enc->roi_misr_num; i++) {
+		hw_idx = phys_enc->hw_roi_misr[i]->idx;
+		base_irq_idx = MISR_ROI_MISMATCH_BASE_IDX
+				+ SDE_ROI_MISR_GET_INTR_OFFSET(hw_idx)
+				* ROI_MISR_MAX_ROIS_PER_MISR;
+
+		for (j = 0; j < ROI_MISR_MAX_ROIS_PER_MISR; j++) {
+			ret = sde_roi_misr_irq_control(phys_enc,
+					base_irq_idx, j, enable);
+			if (ret)
+				return ret;
+		}
+	}
+
+	return 0;
 }
 
 static bool sde_encoder_phys_vid_wait_dma_trigger(
@@ -1154,6 +1215,8 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 		return;
 	}
 
+	sde_roi_misr_hw_reset(phys_enc);
+
 	if (sde_in_trusted_vm(phys_enc->sde_kms))
 		goto exit;
 
@@ -1290,12 +1353,16 @@ static void sde_encoder_phys_vid_irq_control(struct sde_encoder_phys *phys_enc,
 		bool enable)
 {
 	struct sde_encoder_phys_vid *vid_enc;
+	struct sde_encoder_virt *sde_enc;
 	int ret;
 
 	if (!phys_enc)
 		return;
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	if (!sde_enc)
+		return;
 
 	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_intf->idx - INTF_0,
 			enable, atomic_read(&phys_enc->vblank_refcount));
@@ -1306,9 +1373,13 @@ static void sde_encoder_phys_vid_irq_control(struct sde_encoder_phys *phys_enc,
 			return;
 
 		sde_encoder_helper_register_irq(phys_enc, INTR_IDX_UNDERRUN);
+		if (sde_enc->misr_mismatch)
+			sde_encoder_phys_vid_control_roi_misr_irq(phys_enc, true);
 	} else {
 		sde_encoder_phys_vid_control_vblank_irq(phys_enc, false);
 		sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_UNDERRUN);
+		if (sde_enc->misr_mismatch)
+			sde_encoder_phys_vid_control_roi_misr_irq(phys_enc, false);
 	}
 }
 
@@ -1445,6 +1516,7 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 {
 	struct sde_encoder_phys *phys_enc = NULL;
 	struct sde_encoder_phys_vid *vid_enc = NULL;
+	struct sde_encoder_virt *sde_enc;
 	struct sde_hw_mdp *hw_mdp;
 	struct sde_encoder_irq *irq;
 	int i, ret = 0;
@@ -1502,6 +1574,20 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 	irq->intr_type = SDE_IRQ_TYPE_INTF_UNDER_RUN;
 	irq->intr_idx = INTR_IDX_UNDERRUN;
 	irq->cb.func = sde_encoder_phys_vid_underrun_irq;
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	if (!sde_enc)
+		goto fail;
+
+	if (sde_enc->misr_mismatch) {
+		for (i = INTR_IDX_MISR_ROI0_MISMATCH; i < INTR_IDX_MAX; i++) {
+			irq = &phys_enc->irq[i];
+			irq->name = "roi_misr_mismatch";
+			irq->intr_type = SDE_IRQ_TYPE_ROI_MISR;
+			irq->intr_idx = i;
+			irq->cb.func = sde_encoder_phys_vid_roi_misr_irq;
+		}
+	}
 
 	atomic_set(&phys_enc->vblank_refcount, 0);
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -238,6 +238,7 @@ enum sde_intr_hwblk_type {
 	SDE_INTR_HWBLK_INTF_TEAR,
 	SDE_INTR_HWBLK_LTM,
 	SDE_INTR_HWBLK_WB,
+	SDE_INTR_HWBLK_ROI_MISR,
 	SDE_INTR_HWBLK_MAX
 };
 
@@ -443,6 +444,7 @@ enum {
  * @SDE_DSPP_DEMURA          Demura block
  * @SDE_DSPP_RC              RC block
  * @SDE_DSPP_SB              SB LUT DMA
+ * @SDE_DSPP_ROI_MISR_BYPASS ROI MISR bypass block
  * @SDE_DSPP_MAX             maximum value
  */
 enum {
@@ -462,6 +464,7 @@ enum {
 	SDE_DSPP_DEMURA,
 	SDE_DSPP_RC,
 	SDE_DSPP_SB,
+	SDE_DSPP_ROI_MISR_BYPASS,
 	SDE_DSPP_MAX
 };
 
@@ -1068,6 +1071,7 @@ struct sde_dspp_sub_blks {
 	struct sde_pp_blk dither;
 	struct sde_pp_blk hist;
 	struct sde_pp_blk ad;
+	struct sde_pp_blk roi_misr;
 	struct sde_pp_blk ltm;
 	struct sde_pp_blk spr;
 	struct sde_pp_blk vlut;
@@ -1295,6 +1299,7 @@ struct sde_lm_cfg {
 	u32 dspp;
 	u32 pingpong;
 	u32 ds;
+	u32 roi_misr;
 	u32 merge_3d;
 	bool dummy_mixer;
 	unsigned long lm_pair_mask;
@@ -1384,6 +1389,17 @@ struct sde_dsc_cfg {
 	SDE_HW_BLK_INFO;
 	DECLARE_BITMAP(dsc_pair_mask, DSC_MAX);
 	struct sde_dsc_sub_blks *sblk;
+};
+
+/**
+ * struct sde_roi_misr_cfg - information of ROI_MISR blocks
+ * @id                 enum identifying this block
+ * @base               register offset of this block
+ * @len                length of hardware block
+ * @features           bit mask identifying sub-blocks/features
+ */
+struct sde_roi_misr_cfg {
+	SDE_HW_BLK_INFO;
 };
 
 /**
@@ -1904,6 +1920,12 @@ struct sde_mdss_cfg {
 	struct sde_pingpong_cfg pingpong[MAX_BLOCKS];
 	u32 dsc_count;
 	struct sde_dsc_cfg dsc[MAX_BLOCKS];
+
+	u32 roi_misr_count;
+	struct sde_roi_misr_cfg roi_misr[MAX_BLOCKS];
+	bool has_roi_misr;
+	bool misr_mismatch_irq;
+
 	u32 vdc_count;
 	struct sde_vdc_cfg vdc[MAX_BLOCKS];
 	u32 cdm_count;

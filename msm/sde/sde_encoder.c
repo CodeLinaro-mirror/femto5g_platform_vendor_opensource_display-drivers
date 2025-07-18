@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -45,6 +45,7 @@
 #include "sde_encoder_dce.h"
 #include "sde_vm.h"
 #include "sde_fence.h"
+#include "sde_roi_misr_helper.h"
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -1081,6 +1082,9 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 	int ret = 0;
 	struct drm_display_mode *adj_mode = &crtc_state->adjusted_mode;
 	struct msm_sub_mode sub_mode;
+	struct sde_crtc_state *sde_crtc_state = NULL;
+
+	sde_crtc_state = to_sde_crtc_state(crtc_state);
 
 	if (sde_conn && msm_atomic_needs_modeset(crtc_state, conn_state)) {
 		struct msm_display_topology *topology = NULL;
@@ -1134,7 +1138,29 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 				return ret;
 			}
 		}
-		
+
+		/**
+		 * There will be two connectors for one CRTC in CWB case,
+		 * and only update mode_info and topology name for primary
+		 * connector if the number of encoder is more then one in
+		 * virtual encoder case.
+		 */
+		if (hweight32(sde_crtc_state->base.encoder_mask) == 1 ||
+				drm_enc->encoder_type != DRM_MODE_ENCODER_VIRTUAL) {
+			ret = sde_roi_misr_get_mode_info(
+					&sde_conn->base,
+					adj_mode,
+					&sde_conn_state->mode_info,
+					&sde_crtc_state->misr_mode_info,
+					sde_conn->display);
+			if (ret)
+				return ret;
+
+			memcpy(&sde_crtc_state->mode_info,
+					&sde_conn_state->mode_info,
+					sizeof(sde_conn_state->mode_info));
+		}
+
 #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 		sde_crtc_state_set_topology_name(crtc_state,
 				sde_connector_get_property(conn_state,
@@ -2053,7 +2079,7 @@ void sde_encoder_cancel_delayed_work(struct drm_encoder *encoder)
 static void _sde_encoder_rc_kickoff_delayed(struct sde_encoder_virt *sde_enc,
 	u32 sw_event)
 {
-	if (_sde_encoder_is_autorefresh_enabled(sde_enc))
+	if (!sde_enc->idle_pc_enabled || _sde_encoder_is_autorefresh_enabled(sde_enc))
 		_sde_encoder_rc_cancel_delayed(sde_enc, sw_event);
 	else
 		_sde_encoder_rc_restart_delayed(sde_enc, sw_event);
@@ -3817,6 +3843,46 @@ static void sde_encoder_vblank_callback(struct drm_encoder *drm_enc,
 	SDE_ATRACE_END("encoder_vblank_callback");
 }
 
+static void sde_encoder_roi_misr_callback_v1(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = NULL;
+	unsigned long lock_flags;
+
+	if (!drm_enc)
+		return;
+
+	SDE_ATRACE_BEGIN("encoder_roi_misr_callback");
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
+	if (sde_enc->misr_data.crtc_roi_misr_cb)
+		sde_enc->misr_data.crtc_roi_misr_cb(
+			sde_enc->misr_data.crtc_roi_misr_cb_data);
+	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
+
+	SDE_ATRACE_END("encoder_roi_misr_callback");
+}
+
+static void sde_encoder_roi_misr_callback_v2(struct drm_encoder *drm_enc,
+		struct sde_encoder_phys *phy_enc)
+{
+	struct sde_encoder_virt *sde_enc = NULL;
+
+	if (!drm_enc || !phy_enc)
+		return;
+
+	SDE_ATRACE_BEGIN("encoder_roi_misr_callback");
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	atomic_inc(&phy_enc->roi_misr_cnt);
+	SDE_EVT32(DRMID(drm_enc), atomic_read(&phy_enc->roi_misr_cnt));
+
+	if (sde_enc->misr_data.crtc_roi_misr_cb)
+		sde_enc->misr_data.crtc_roi_misr_cb(
+			sde_enc->misr_data.crtc_roi_misr_cb_data);
+
+	SDE_ATRACE_END("encoder_roi_misr_callback");
+}
+
 static void sde_encoder_underrun_callback(struct drm_encoder *drm_enc,
 		struct sde_encoder_phys *phy_enc)
 {
@@ -3878,6 +3944,28 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 
 	if (!enable)
 		wake_up_all(&sde_enc->vsync_event_wq);
+}
+
+void sde_encoder_register_roi_misr_callback(struct drm_encoder *drm_enc,
+		void (*roi_misr_cb)(void *), void *roi_misr_data)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	unsigned long lock_flags;
+	bool enable;
+
+	enable = roi_misr_cb ? true : false;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return;
+	}
+	SDE_DEBUG_ENC(sde_enc, "\n");
+	SDE_EVT32(DRMID(drm_enc), enable);
+
+	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
+	sde_enc->misr_data.crtc_roi_misr_cb = roi_misr_cb;
+	sde_enc->misr_data.crtc_roi_misr_cb_data = roi_misr_data;
+	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 }
 
 void sde_encoder_register_frame_event_callback(struct drm_encoder *drm_enc,
@@ -5593,6 +5681,8 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 	struct sde_encoder_virt_ops parent_ops = {
 		sde_encoder_vblank_callback,
 		sde_encoder_underrun_callback,
+		NULL,
+		NULL,
 		sde_encoder_frame_done_callback,
 		_sde_encoder_get_qsync_fps_callback,
 	};
@@ -5602,6 +5692,14 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 		SDE_ERROR("invalid arg(s), enc %d kms %d\n",
 				!sde_enc, !sde_kms);
 		return -EINVAL;
+	}
+
+	if (sde_kms->catalog->misr_mismatch_irq) {
+		parent_ops.handle_roi_misr_virt_v1 = sde_encoder_roi_misr_callback_v1;
+		sde_enc->misr_mismatch = true;
+	} else {
+		parent_ops.handle_roi_misr_virt_v2 = sde_encoder_roi_misr_callback_v2;
+		sde_enc->misr_mismatch = false;
 	}
 
 	memset(&phys_params, 0, sizeof(phys_params));

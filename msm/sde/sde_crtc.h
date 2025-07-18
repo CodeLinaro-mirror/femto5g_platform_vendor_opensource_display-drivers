@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -31,6 +31,7 @@
 #include "sde_hw_ds.h"
 #include "sde_color_processing.h"
 #include "sde_encoder.h"
+#include "sde_roi_misr.h"
 
 #define SDE_CRTC_NAME_SIZE	12
 
@@ -105,6 +106,7 @@ struct sde_crtc_retire_event {
  * @hw_ctl:	CTL Path HW driver context
  * @hw_dspp:	DSPP HW driver context
  * @hw_ds:	DS HW driver context
+ * @hw_roi_misr:	ROI_MISR HW driver context
  * @encoder:	Encoder attached to this lm & ctl
  * @mixer_op_mode: mixer blending operation mode
  */
@@ -113,6 +115,7 @@ struct sde_crtc_mixer {
 	struct sde_hw_ctl *hw_ctl;
 	struct sde_hw_dspp *hw_dspp;
 	struct sde_hw_ds *hw_ds;
+	struct sde_hw_roi_misr *hw_roi_misr;
 	struct drm_encoder *encoder;
 	u32 mixer_op_mode;
 };
@@ -349,6 +352,8 @@ enum sde_crtc_hw_fence_flags {
  *                          sde_crtc_hw_fence_flags for available fields.
  * @hwfence_out_fences_skip: number of frames to skip before create a new hw-fence, this can be
  *                   used to slow-down creation of output hw-fences for debugging purposes.
+ * @post_commit_fence_ctx: post-commit fence context of this crtc
+ * @roi_misr_data: roi misr related fence, event and hw config data
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -459,6 +464,9 @@ struct sde_crtc {
 	struct sde_opr_value previous_opr_value;
 	bool opr_event_notify_enabled;
 
+	/* disable idle pc flag for specific property */
+	bool disable_idle_pc;
+
 	DECLARE_BITMAP(hwfence_features_mask, HW_FENCE_FEATURES_MAX);
 	u32 hwfence_out_fences_skip;
 #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
@@ -468,6 +476,8 @@ struct sde_crtc {
 	u32 back_light_max;
 	u32 back_light_pending;
 #endif
+	struct sde_post_commit_fence_context post_commit_fence_ctx;
+	struct sde_misr_crtc_data roi_misr_data;
 };
 
 enum sde_crtc_dirty_flags {
@@ -501,6 +511,7 @@ struct sde_line_insertion_param {
  * @num_connectors: Number of associated drm connectors
  * @rsc_client    : sde rsc client when mode is valid
  * @topology_name : Current topology name
+ * @misr_mode_info: Local copy of sde_roi_misr_mode_info struct
  * @is_ppsplit    : Whether current topology requires PPSplit special handling
  * @bw_control    : true if bw/clk controlled by core bw/clk properties
  * @bw_split_vote : true if bw controlled by llcc/dram bw properties
@@ -533,6 +544,8 @@ struct sde_line_insertion_param {
  * @cont_splash_populated: State was populated as part of cont. splash
  * @param: sde line insertion parameters
  * @hwfence_in_fences_set: input hw fences are configured for the commit
+ * @misr_state: misr config data and current topology state
+ * @post_commit_fence_mask: post-commit fence mask for sub-fence creation
  */
 struct sde_crtc_state {
 	struct drm_crtc_state base;
@@ -544,10 +557,12 @@ struct sde_crtc_state {
 	bool bw_control;
 	bool bw_split_vote;
 
-#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	enum sde_rm_topology_name topology_name;
 	u32 num_mixers;
-#endif
+
+	struct msm_mode_info mode_info;
+	struct sde_roi_misr_mode_info misr_mode_info;
+
 	bool is_ppsplit;
 	struct sde_rect crtc_roi;
 	struct sde_rect lm_bounds[MAX_MIXERS_PER_CRTC];
@@ -579,6 +594,8 @@ struct sde_crtc_state {
 	bool cont_splash_populated;
 	struct sde_line_insertion_param line_insertion;
 	bool hwfence_in_fences_set;
+	struct sde_misr_state misr_state;
+	uint32_t post_commit_fence_mask;
 };
 
 enum sde_crtc_irq_state {

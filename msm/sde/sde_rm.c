@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -22,6 +22,7 @@
 #include "sde_hw_qdss.h"
 #include "sde_vbif.h"
 #include "sde_hw_dnsc_blur.h"
+#include "sde_hw_roi_misr.h"
 #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #include <shd_drm.h>
 #endif
@@ -681,6 +682,24 @@ enum sde_rm_topology_name sde_rm_get_topology_name(struct sde_rm *rm,
 	return SDE_RM_TOPOLOGY_NONE;
 }
 
+int sde_rm_get_roi_misr_num(struct sde_rm *rm,
+		enum sde_rm_topology_name topology)
+{
+	int i;
+
+	for (i = 0; i < SDE_RM_TOPOLOGY_MAX; i++)
+		if (rm->topology_tbl[i].top_name == topology) {
+			if (topology == SDE_RM_TOPOLOGY_PPSPLIT)
+				return 0;
+			else if (TOPOLOGY_DSCMERGE_MODE(topology))
+				return rm->topology_tbl[i].num_intf * 2;
+			else
+				return rm->topology_tbl[i].num_intf;
+		}
+
+	return 0;
+}
+
 #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 static bool _sde_rm_get_hw_locked(struct sde_rm *rm,
 		struct sde_rm_state *state,
@@ -895,6 +914,9 @@ static void _sde_rm_hw_destroy(enum sde_hw_blk_type type, struct sde_hw_blk_reg_
 	case SDE_HW_BLK_DSC:
 		sde_hw_dsc_destroy(hw);
 		break;
+	case SDE_HW_BLK_ROI_MISR:
+		sde_hw_roi_misr_destroy(hw);
+		break;
 	case SDE_HW_BLK_VDC:
 		sde_hw_vdc_destroy(hw);
 		break;
@@ -1035,6 +1057,9 @@ static int _sde_rm_hw_blk_create(
 	case SDE_HW_BLK_DSC:
 		hw = sde_hw_dsc_init(id, mmio, cat);
 		break;
+	case SDE_HW_BLK_ROI_MISR:
+		hw = sde_hw_roi_misr_init(id, mmio, cat);
+		break;
 	case SDE_HW_BLK_VDC:
 		hw = sde_hw_vdc_init(id, mmio, cat);
 		break;
@@ -1171,6 +1196,15 @@ static int _sde_rm_hw_blk_create_new(struct sde_rm *rm,
 			cat->dsc[i].id, &cat->dsc[i]);
 		if (rc) {
 			SDE_ERROR("failed: dsc hw not available\n");
+			goto fail;
+		}
+	}
+
+	for (i = 0; i < cat->roi_misr_count; i++) {
+		rc = _sde_rm_hw_blk_create(rm, cat, mmio, SDE_HW_BLK_ROI_MISR,
+			cat->roi_misr[i].id, &cat->roi_misr[i]);
+		if (rc) {
+			SDE_ERROR("failed: roi misr hw not available\n");
 			goto fail;
 		}
 	}
@@ -1609,6 +1643,112 @@ static bool _sde_rm_reserve_pp(
 	return true;
 }
 
+static bool _sde_rm_reserve_roi_misr(
+		struct sde_rm *rm,
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		struct sde_rm_state *state,
+		uint32_t enc_id,
+#else
+		struct sde_rm_rsvp *rsvp,
+#endif
+		struct sde_rm_requirements *reqs,
+		const struct sde_lm_cfg *lm_cfg,
+		struct sde_rm_hw_blk *lm,
+		struct sde_rm_hw_blk **roi_misr,
+		struct sde_rm_hw_blk **dsc,
+		struct sde_rm_hw_blk *primary_lm)
+{
+	struct sde_rm_hw_iter iter;
+	struct msm_drm_private *priv = rm->dev->dev_private;
+	struct sde_kms *sde_kms = to_sde_kms(priv->kms);
+
+	*roi_misr = NULL;
+	*dsc = NULL;
+
+	if (lm_cfg->roi_misr != ROI_MISR_MAX) {
+		sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_ROI_MISR);
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		while (_sde_rm_get_hw_locked(rm, state, &iter, true)) {
+#else
+		while (_sde_rm_get_hw_locked(rm, &iter)) {
+#endif
+			if (iter.blk->id == lm_cfg->roi_misr) {
+				*roi_misr = iter.blk;
+				break;
+			}
+		}
+
+		if (!*roi_misr) {
+			SDE_ERROR("failed to get roi misr on lm %d\n",
+					lm_cfg->roi_misr);
+
+			return false;
+		}
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		if (RESERVED_BY_OTHER(*roi_misr, enc_id)) {
+#else
+		if (RESERVED_BY_OTHER(*roi_misr, rsvp)) {
+#endif
+			SDE_ERROR("lm %d roi_misr %d already reserved\n",
+					lm->id, (*roi_misr)->id);
+			return false;
+		}
+
+		/**
+		 * in 3DMux case, we should set the second roi misr to null,
+		 * because it's not in the control path and only first roi
+		 * misr is available.
+		 */
+		if (primary_lm &&
+				TOPOLOGY_3DMUX_MODE(reqs->topology->top_name))
+			*roi_misr = NULL;
+	}
+
+	/**
+	 * if roi misr has been enabled in DT, DSC block
+	 * should be reserved here and skip reserve DSC
+	 * from free pool.
+	 * Due to hardware limitation, DSC block should
+	 * be reserved with roi misr id if both dsc and
+	 * roi misr are enabled.
+	 */
+	if (reqs->topology->num_comp_enc
+		&& sde_kms->catalog->has_roi_misr) {
+		sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DSC);
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		while (_sde_rm_get_hw_locked(rm, state, &iter, true)) {
+#else
+		while (_sde_rm_get_hw_locked(rm, &iter)) {
+#endif
+			if (iter.blk->id == lm_cfg->roi_misr) {
+				*dsc = iter.blk;
+				break;
+			}
+		}
+
+		if (!*dsc) {
+			SDE_ERROR("failed to get dsc on lm %d\n",
+					lm_cfg->roi_misr);
+			return false;
+		}
+
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		if (RESERVED_BY_OTHER(*dsc, enc_id)) {
+#else
+		if (RESERVED_BY_OTHER(*dsc, rsvp)) {
+#endif
+			SDE_ERROR("lm %d dsc %d already reserved\n",
+					lm->id, (*dsc)->id);
+			*roi_misr = NULL;
+			return false;
+		}
+	}
+
+	return true;
+}
+
 /**
  * _sde_rm_check_lm_and_get_connected_blks - check if proposed layer mixer meets
  *	proposed use case requirements, incl. hardwired dependent blocks like
@@ -1639,6 +1779,8 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 		struct sde_rm_hw_blk **dspp,
 		struct sde_rm_hw_blk **ds,
 		struct sde_rm_hw_blk **pp,
+		struct sde_rm_hw_blk **roi_misr,
+		struct sde_rm_hw_blk **dsc,
 		struct sde_rm_hw_blk *primary_lm,
 		u32 conn_lm_mask)
 {
@@ -1660,9 +1802,10 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	is_conn_secondary = (reqs->hw_res.display_type ==
 				 SDE_CONNECTOR_SECONDARY) ? true : false;
 
-	SDE_DEBUG("check lm %d: dspp %d ds %d pp %d features %ld disp type %d\n",
-		 lm_cfg->id, lm_cfg->dspp, lm_cfg->ds, lm_cfg->pingpong,
-		 lm_cfg->features, (int)reqs->hw_res.display_type);
+	SDE_DEBUG("check lm %d: dspp %d ds %d pp %d roi_misr %d features %ld disp type %d\n",
+		lm_cfg->id, lm_cfg->dspp, lm_cfg->ds, lm_cfg->pingpong,
+		lm_cfg->roi_misr,
+		lm_cfg->features, (int)reqs->hw_res.display_type);
 
 	/* Check if this layer mixer is a peer of the proposed primary LM */
 	if (primary_lm) {
@@ -1751,6 +1894,14 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	if (!ret)
 		return ret;
 
+	/* Reserve roi misr */
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	ret = _sde_rm_reserve_roi_misr(rm, state, enc_id, reqs, lm_cfg, lm,
+#else
+	ret = _sde_rm_reserve_roi_misr(rm, rsvp, reqs, lm_cfg, lm,
+#endif
+			roi_misr, dsc, primary_lm);
+
 	return true;
 }
 
@@ -1770,6 +1921,8 @@ static int _sde_rm_reserve_lms(
 	struct sde_rm_hw_blk *dspp[MAX_BLOCKS];
 	struct sde_rm_hw_blk *ds[MAX_BLOCKS];
 	struct sde_rm_hw_blk *pp[MAX_BLOCKS];
+	struct sde_rm_hw_blk *roi_misr[MAX_BLOCKS];
+	struct sde_rm_hw_blk *dsc[MAX_BLOCKS];
 	struct sde_rm_hw_iter iter_i, iter_j;
 	u32 lm_mask = 0,  conn_lm_mask = 0;
 	int lm_count = 0;
@@ -1797,6 +1950,8 @@ static int _sde_rm_reserve_lms(
 		dspp[lm_count] = NULL;
 		ds[lm_count] = NULL;
 		pp[lm_count] = NULL;
+		roi_misr[lm_count] = NULL;
+		dsc[lm_count] = NULL;
 
 		SDE_DEBUG("blk id = %d, _lm_ids[%d] = %d\n",
 			iter_i.blk->id,
@@ -1813,7 +1968,10 @@ static int _sde_rm_reserve_lms(
 				rm, rsvp, reqs, lm[lm_count],
 #endif
 				&dspp[lm_count], &ds[lm_count],
-				&pp[lm_count], NULL, conn_lm_mask))
+				&pp[lm_count],
+				&roi_misr[lm_count],
+				&dsc[lm_count],
+				NULL, conn_lm_mask))
 			continue;
 
 		lm_mask |= (1 << iter_i.blk->id);
@@ -1849,8 +2007,10 @@ static int _sde_rm_reserve_lms(
 					rm, rsvp, reqs, iter_j.blk,
 #endif
 					&dspp[lm_count], &ds[lm_count],
-					&pp[lm_count], iter_i.blk,
-					conn_lm_mask))
+					&pp[lm_count],
+					&roi_misr[lm_count],
+					&dsc[lm_count],
+					iter_i.blk, conn_lm_mask))
 				continue;
 
 			SDE_DEBUG("blk id = %d, _lm_ids[%d] = %d\n",
@@ -1892,6 +2052,12 @@ static int _sde_rm_reserve_lms(
 		if (ds[i])
 			ds[i]->enc_id = enc_id;
 
+		if (roi_misr[i])
+			roi_misr[i]->enc_id = enc_id;
+
+		if (dsc[i])
+			dsc[i]->enc_id = enc_id;
+
 		SDE_EVT32(lm[i]->type, enc_id, lm[i]->id, pp[i]->id,
 #else
 		lm[i]->rsvp_nxt = rsvp;
@@ -1901,6 +2067,12 @@ static int _sde_rm_reserve_lms(
 
 		if (ds[i])
 			ds[i]->rsvp_nxt = rsvp;
+
+		if (roi_misr[i])
+			roi_misr[i]->rsvp = rsvp;
+
+		if (dsc[i])
+			dsc[i]->rsvp = rsvp;
 
 		SDE_EVT32(lm[i]->type, rsvp->enc_id, lm[i]->id, pp[i]->id,
 #endif
@@ -2176,6 +2348,8 @@ static int _sde_rm_reserve_dsc(
 	struct sde_rm_hw_blk *dsc[MAX_BLOCKS];
 	u32 reserve_mask = 0;
 	struct sde_rm_hw_blk *pp[MAX_BLOCKS];
+	struct msm_drm_private *priv = rm->dev->dev_private;
+	struct sde_kms *sde_kms;
 	int alloc_count = 0;
 	int num_dsc_enc;
 	struct msm_display_dsc_info *dsc_info;
@@ -2192,12 +2366,21 @@ static int _sde_rm_reserve_dsc(
 
 	num_dsc_enc = reqs->topology->num_comp_enc;
 	dsc_info = &reqs->hw_res.comp_info->dsc_info;
+	sde_kms = to_sde_kms(priv->kms);
 
 	if ((!num_dsc_enc) || !dsc_info) {
 		SDE_DEBUG("invalid topoplogy params: %d, %d\n",
 				num_dsc_enc, !(dsc_info == NULL));
 		return 0;
 	}
+
+	/**
+	 * if roi misr has been enabled in DT, DSC block
+	 * should be reserved from lm reservation function
+	 * and skip here.
+	 */
+	if (sde_kms->catalog->has_roi_misr)
+		return 0;
 
 	sde_rm_init_hw_iter(&iter_i, 0, SDE_HW_BLK_DSC);
 

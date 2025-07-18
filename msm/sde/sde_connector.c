@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -24,6 +24,7 @@
 #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 #include <shd_drm.h>
 #endif
+#include "sde_roi_misr_helper.h"
 
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
@@ -3168,6 +3169,8 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 
 		sde_kms_info_add_keyint(info, "allowed_mode_switch",
 			mode_info.allowed_mode_switches);
+
+		sde_roi_misr_populate_roi_range(c_conn, info, mode, &mode_info);
 
 		if (!mode_info.roi_caps.num_roi)
 			continue;

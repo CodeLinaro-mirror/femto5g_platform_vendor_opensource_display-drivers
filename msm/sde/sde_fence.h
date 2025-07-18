@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
  */
 
@@ -92,6 +92,10 @@ struct sde_hw_fence_data {
 };
 
 #if IS_ENABLED(CONFIG_SYNC_FILE)
+
+struct sde_hw_mdp;
+struct sde_hw_ctl;
+
 /**
  * sde_sync_get - Query sync fence object from a file handle
  *
