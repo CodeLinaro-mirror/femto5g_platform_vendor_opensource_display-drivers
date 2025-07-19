@@ -639,14 +639,10 @@ int sde_fence_update_hw_fences_txq(struct sde_fence_context *ctx, bool vid_mode,
 	list_for_each_entry_safe(fc, next, &ctx->fence_list_head, fence_list) {
 		struct dma_fence *fence = &fc->base;
 
-		/* this is not hw-fence, or already processed, or for later commits */
+		/* this is not hw-fence, or already processed */
 		if (!test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags) ||
-				fc->txq_updated_fence || fence->seqno > ctx->commit_count) {
-			SDE_DEBUG("skip fence ctx:%llu seq:%llu f:0x%lx commit_cnt:%d txq:%d\n",
-				fence->context, fence->seqno, fence->flags, ctx->commit_count,
-				fc->txq_updated_fence);
+				fc->txq_updated_fence)
 			continue;
-		}
 
 		hw_ctl = fc->hwfence_out_ctl;
 		if (!hw_ctl) {
