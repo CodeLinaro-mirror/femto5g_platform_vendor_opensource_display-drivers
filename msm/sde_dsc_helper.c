@@ -227,7 +227,7 @@ static int _get_rc_table_index(struct drm_dsc_config *dsc, int scr_ver)
 			return sde_dsc_index_map[i].type;
 	}
 
-	SDE_INFO("unsupported DSC v%d.%dr%d, bpc:%d, bpp:%d, fmt:0x%x\n",
+	SDE_ERROR("unsupported DSC v%d.%dr%d, bpc:%d, bpp:%d, fmt:0x%x\n",
 			dsc->dsc_version_major, dsc->dsc_version_minor,
 			scr_ver, bpc, bpp, fmt);
 	return -EINVAL;
