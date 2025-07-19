@@ -522,17 +522,10 @@ static void dp_hdcp2p2_send_msg(struct dp_hdcp2p2_ctrl *ctrl)
 	mutex_unlock(&ctrl->msg_lock);
 
 exit:
-	if (rc) {
+	if (rc == -ETIMEDOUT)
+		cdata.cmd = HDCP_2X_CMD_MSG_SEND_TIMEOUT;
+	else if (rc)
 		cdata.cmd = HDCP_2X_CMD_MSG_SEND_FAILED;
-		/*
-		 * TZ starts hdcp re-authentication right after previous failures
-		 * and some dongles doesn't like it. They will be defering or nacking
-		 * reads or write for subsequent sessions. Keeping one sec delay here
-		 * to do re-auth when previous auth for reading or writing message to
-		 * monitor fails for HDCP sessions until TZ has this delay at their end.
-		 */
-		msleep(1000);
-	}
 
 	dp_hdcp2p2_wakeup_lib(ctrl, &cdata);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, cdata.cmd);
@@ -554,17 +547,10 @@ static int dp_hdcp2p2_get_msg_from_sink(struct dp_hdcp2p2_ctrl *ctrl)
 	cdata.total_message_length = ctrl->total_message_length;
 	cdata.timeout = ctrl->transaction_delay;
 exit:
-	if (rc) {
+	if (rc == -ETIMEDOUT)
+		cdata.cmd = HDCP_2X_CMD_MSG_RECV_TIMEOUT;
+	else if (rc)
 		cdata.cmd = HDCP_2X_CMD_MSG_RECV_FAILED;
-		/*
-		 * TZ starts hdcp re-authentication right after previous failures
-		 * and some dongles doesn't like it. They will be defering or nacking
-		 * reads or write for subsequent sessions. Keeping one sec delay here
-		 * to do re-auth when previous auth for reading or writing message to
-		 * monitor fails for HDCP sessions until TZ has this delay at their end.
-		 */
-		msleep(1000);
-	}
 	else
 		cdata.cmd = HDCP_2X_CMD_MSG_RECV_SUCCESS;
 
