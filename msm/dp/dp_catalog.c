@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -480,6 +480,8 @@ static bool dp_catalog_ctrl_wait_for_phy_ready(
 	phy_version = dp_catalog_get_dp_phy_version(&catalog->dp_catalog);
 	if (phy_version >= 0x60000000) {
 		reg = DP_PHY_STATUS_V600;
+	} else if (phy_version == 0x20000000) {
+		reg = DP_PHY_STATUS_V200;
 	} else {
 		reg = DP_PHY_STATUS;
 	}
@@ -503,6 +505,7 @@ static int dp_catalog_ctrl_late_phy_init(struct dp_catalog_ctrl *ctrl,
 	u32 bias0_en, drvr0_en, bias1_en, drvr1_en;
 	struct dp_catalog_private *catalog;
 	struct dp_io_data *io_data;
+	struct dp_parser *parser;
 
 	if (!ctrl) {
 		DP_ERR("invalid input\n");
@@ -510,6 +513,7 @@ static int dp_catalog_ctrl_late_phy_init(struct dp_catalog_ctrl *ctrl,
 	}
 
 	catalog = dp_catalog_get_priv(ctrl);
+	parser = catalog->parser;
 
 	switch (lane_cnt) {
 	case 1:
@@ -534,12 +538,22 @@ static int dp_catalog_ctrl_late_phy_init(struct dp_catalog_ctrl *ctrl,
 	}
 
 	io_data = catalog->io.dp_ln_tx0;
-	dp_write(TXn_HIGHZ_DRVR_EN_V420, drvr0_en);
-	dp_write(TXn_TRANSCEIVER_BIAS_EN_V420, bias0_en);
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0) {
+		dp_write(TXn_HIGHZ_DRVR_EN, drvr0_en);
+		dp_write(TXn_TRANSCEIVER_BIAS_EN, bias0_en);
+	} else {
+		dp_write(TXn_HIGHZ_DRVR_EN_V420, drvr0_en);
+		dp_write(TXn_TRANSCEIVER_BIAS_EN_V420, bias0_en);
+	}
 
 	io_data = catalog->io.dp_ln_tx1;
-	dp_write(TXn_HIGHZ_DRVR_EN_V420, drvr1_en);
-	dp_write(TXn_TRANSCEIVER_BIAS_EN_V420, bias1_en);
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0) {
+		dp_write(TXn_HIGHZ_DRVR_EN, drvr1_en);
+		dp_write(TXn_TRANSCEIVER_BIAS_EN, bias1_en);
+	} else {
+		dp_write(TXn_HIGHZ_DRVR_EN_V420, drvr1_en);
+		dp_write(TXn_TRANSCEIVER_BIAS_EN_V420, bias1_en);
+	}
 
 	io_data = catalog->io.dp_phy;
 	dp_write(DP_PHY_CFG, 0x18);
@@ -559,14 +573,28 @@ static int dp_catalog_ctrl_late_phy_init(struct dp_catalog_ctrl *ctrl,
 	}
 
 	io_data = catalog->io.dp_ln_tx0;
-	dp_write(TXn_TX_POL_INV_V420, 0x0a);
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
+		dp_write(TXn_TX_POL_INV, 0x0a);
+	else
+		dp_write(TXn_TX_POL_INV_V420, 0x0a);
+
 	io_data = catalog->io.dp_ln_tx1;
-	dp_write(TXn_TX_POL_INV_V420, 0x0a);
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
+		dp_write(TXn_TX_POL_INV, 0x0a);
+	else
+		dp_write(TXn_TX_POL_INV_V420, 0x0a);
 
 	io_data = catalog->io.dp_ln_tx0;
-	dp_write(TXn_TX_DRV_LVL_V420, 0x27);
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
+		dp_write(TXn_TX_DRV_LVL, 0x27);
+	else
+		dp_write(TXn_TX_DRV_LVL_V420, 0x27);
+
 	io_data = catalog->io.dp_ln_tx1;
-	dp_write(TXn_TX_DRV_LVL_V420, 0x27);
+	if (parser->hw_cfg.phy_version == DP_PHY_VERSION_2_0_0)
+		dp_write(TXn_TX_DRV_LVL, 0x27);
+	else
+		dp_write(TXn_TX_DRV_LVL_V420, 0x27);
 
 	io_data = catalog->io.dp_ln_tx0;
 	dp_write(TXn_TX_EMP_POST1_LVL, 0x20);

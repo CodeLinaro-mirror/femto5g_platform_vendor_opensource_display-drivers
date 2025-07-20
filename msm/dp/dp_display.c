@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -14,7 +14,13 @@
 #include <linux/usb/phy.h>
 #include <linux/jiffies.h>
 #include <linux/pm_qos.h>
-#include <linux/soc/qcom/pmic_glink_altmode.h>
+
+#if __has_include(<soc/qcom/pmic_glink_altmode.h>)
+    #include <linux/soc/qcom/pmic_glink_altmode.h>
+#else
+    #include <linux/soc/qcom/altmode-glink.h>
+#endif
+
 #if __has_include(<linux/ipc_logging.h>)
 #include <linux/ipc_logging.h>
 #else
@@ -66,6 +72,8 @@
 	dp_display_state_log("remove "#x); }
 
 #define MAX_TMDS_CLOCK_HDMI_1_4 340000
+// Max pixel clock HD monitor resolution 1920x1200@60hz
+#define MAX_HD_MONITOR_PIXELCLK_KHZ 164340
 
 enum dp_display_states {
 	DP_STATE_DISCONNECTED           = 0,
@@ -1226,6 +1234,7 @@ static int dp_display_host_ready(struct dp_display_private *dp)
 	dp->ctrl->abort(dp->ctrl, false);
 
 	dp->aux->init(dp->aux, dp->parser->aux_cfg);
+	rc = dp_display_panel_ready(dp);
 
 	dp_display_state_add(DP_STATE_READY);
 	/* log this as it results from user action of cable connection */
@@ -1350,8 +1359,6 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 		dp_display_state_show("[ready failed]");
 		goto err_state;
 	}
-
-	rc = dp_display_panel_ready(dp);
 
 	dp->link->psm_config(dp->link, &dp->panel->link_info, false);
 	dp->debug->psm_enabled = false;
@@ -2410,6 +2417,60 @@ end:
 	return rc;
 }
 
+static int dp_display_get_mode_bit_rate(struct dp_display_mode *mode,
+		u32 lane_count, u32 *out_bit_rate)
+{
+	u32 mode_bit_rate = 0;
+
+	if (!mode || !out_bit_rate || (lane_count == 0)) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	mode_bit_rate = mode->timing.pixel_clk_khz * mode->timing.bpp / 8;
+	mode_bit_rate /=  lane_count;
+
+	*out_bit_rate = mode_bit_rate;
+
+	return 0;
+}
+
+static int dp_display_adjust_mode_link_bw(struct dp_display *dp_display,
+		struct dp_display_mode *mode)
+{
+	struct dp_display_private *dp;
+	u32 mode_bit_rate = 0;
+	int rc = 0;
+
+	if (!dp_display) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	if (dp->dp_display.is_edp)
+		return 0;
+
+	rc = dp_display_get_mode_bit_rate(mode, dp->link->link_params.lane_count,
+		&mode_bit_rate);
+	if (rc) {
+		DP_ERR("fail to get mode bit rate\n");
+		goto end;
+	}
+
+	// NOTE: This is a temporary fix. Using this workaround can lead to link CTS failures/issues.
+	if (mode_bit_rate < drm_dp_bw_code_to_link_rate(DP_LINK_BW_1_62)) {
+		dp->ctrl->set_lane_rate(dp->ctrl, DP_LINK_BW_1_62);
+		rc = dp->ctrl->reset(dp->ctrl, false);
+		if (rc)
+			DP_WARN("dp ctrl reset fails, rc:%d\n", rc);
+	}
+
+end:
+	return rc;
+}
+
 static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 		struct dp_display_mode *mode)
 {
@@ -2447,6 +2508,20 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 		dp->mst.cbs.set_mst_mode_params(&dp->dp_display, mode);
 
 	dp_panel->pinfo = mode->timing;
+
+	/*
+	 * In the current implementation of TU calculator, it is observed that smaller resolutions
+	 * running on lower pixel clock might lead to non-optimal TU values. In these cases where
+	 * pclk will fit in RBR bw, reduce the bw to RBR and re-train the link.
+	 *
+	 * A validation check is applied to ensure the pixel clock is below 164340kHz as per the
+	 * 1920x1200 resolution at 60Hz, aligning with standard display timing specifications.
+	 *
+	 * TO DO: when latest TU calculator is adapted, this implementation need to be re-looked.
+	 */
+	if ((!dp->mst.mst_active) && (mode->timing.pixel_clk_khz < MAX_HD_MONITOR_PIXELCLK_KHZ))
+		dp_display_adjust_mode_link_bw(dp_display, mode);
+
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
@@ -2534,13 +2609,6 @@ static int dp_display_prepare(struct dp_display *dp_display, void *panel)
 	rc = dp_display_host_ready(dp);
 	if (rc) {
 		dp_display_state_show("[ready failed]");
-		goto end;
-	}
-
-	rc = dp_display_panel_ready(dp);
-	if (rc) {
-		dp_display_host_unready(dp);
-		dp_display_host_deinit(dp);
 		goto end;
 	}
 
@@ -3449,6 +3517,7 @@ static int dp_display_bridge_internal_hpd(void *dev, bool hpd, bool hpd_irq)
 	return 0;
 }
 
+#if __has_include(<soc/qcom/pmic_glink_altmode.h>)
 static int dp_display_init_hpd_bridge(struct dp_display_private *dp)
 {
 	int rc = 0;
@@ -3473,7 +3542,7 @@ static int dp_display_init_hpd_bridge(struct dp_display_private *dp)
 end:
 	return rc;
 }
-
+#endif
 static int dp_display_init_aux_bridge(struct dp_display_private *dp)
 {
 	int rc = 0;
@@ -3930,13 +3999,6 @@ static int dp_display_edp_detect(struct dp_display *dp_display)
 		goto end;
 	}
 
-	rc = dp_display_panel_ready(dp);
-	if (rc) {
-		dp_display_host_unready(dp);
-		dp_display_host_deinit(dp);
-		goto end;
-	}
-
 	dp->link->psm_config(dp->link, &dp->panel->link_info, false);
 	dp->debug->psm_enabled = false;
 
@@ -4003,11 +4065,11 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp->name = "drm_dp";
 
 	memset(&dp->mst, 0, sizeof(dp->mst));
-
+#if __has_include(<soc/qcom/pmic_glink_altmode.h>)
 	rc = dp_display_init_hpd_bridge(dp);
 	if (rc)
 		goto error;
-
+#endif
 	rc = dp_display_init_aux_bridge(dp);
 	if (rc)
 		goto error;

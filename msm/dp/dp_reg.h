@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -387,6 +387,7 @@
 #define TXn_HIGHZ_DRVR_EN			(0x0060)
 
 #define DP_PHY_STATUS				(0x00DC)
+#define DP_PHY_STATUS_V200			(0x00C0)
 #define DP_PHY_STATUS_V600                      (0x00E4)
 #define DP_PHY_AUX_INTERRUPT_MASK_V420		(0x0054)
 #define DP_PHY_AUX_INTERRUPT_CLEAR_V420		(0x0058)
