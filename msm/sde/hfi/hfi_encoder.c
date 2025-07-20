@@ -846,15 +846,6 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	return 0;
 }
 
-u32 hfi_enc_get_vblank_count(struct sde_encoder_virt *enc)
-{
-	return 0;
-}
-
-ktime_t hfi_enc_get_vblank_timestamp(struct sde_encoder_virt *enc)
-{
-	return 0;
-}
 #endif /* CONFIG_DEBUG_FS */
 
 static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
