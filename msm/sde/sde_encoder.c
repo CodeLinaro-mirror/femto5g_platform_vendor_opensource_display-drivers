@@ -7808,7 +7808,7 @@ static ssize_t _sde_encoder_arp_freq_steps_read(struct file *file,
 	if (len < 0 || len >= sizeof(buf))
 		return 0;
 
-	if (copy_to_user(user_buff, buf, len))
+	if ((count < sizeof(buf)) || copy_to_user(user_buff, buf, len))
 		return -EFAULT;
 
 	*ppos += len;   /* increase offset */
