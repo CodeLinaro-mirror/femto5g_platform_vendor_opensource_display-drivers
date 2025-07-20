@@ -375,7 +375,7 @@ static void _sde_encoder_phys_vid_raw_te_setup(
 	if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable &&
 		phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op])
 		phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op](phys_enc->hw_ctl, true, true, 1,
-			enable, enable && sde_enc->disp_info.vrr_caps.arp_support);
+			true, sde_enc->disp_info.vrr_caps.arp_support);
 	if (vid_enc->base.hw_intf->ops.raw_te_setup[disp_op] &&
 		sde_enc->disp_info.vrr_caps.arp_support)
 		vid_enc->base.hw_intf->ops.raw_te_setup[disp_op](vid_enc->base.hw_intf, enable);
@@ -542,15 +542,16 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	memset(&avr_params, 0, sizeof(avr_params));
 	avr_params.avr_mode = sde_connector_get_qsync_mode(phys_enc->connector);
 
-	if (sde_enc->disp_info.vrr_caps.video_psr_support ||
-			sde_enc->disp_info.vrr_caps.arp_support)
+	if (sde_enc->disp_info.vrr_caps.arp_support ||
+		sde_enc->disp_info.vrr_caps.video_psr_support) {
 		avr_step_state = AVR_STEP_ENABLE;
-	if (sde_enc->disp_info.vrr_caps.video_psr_support)
-		avr_params.avr_mode = SDE_RM_QSYNC_CONTINUOUS_MODE;
-	if (avr_params.avr_mode)
-		_sde_encoder_phys_vid_raw_te_setup(phys_enc, true);
-	else
-		_sde_encoder_phys_vid_raw_te_setup(phys_enc, false);
+		if (sde_enc->disp_info.vrr_caps.video_psr_support)
+			avr_params.avr_mode = SDE_RM_QSYNC_CONTINUOUS_MODE;
+		if (avr_params.avr_mode)
+			_sde_encoder_phys_vid_raw_te_setup(phys_enc, true);
+		else
+			_sde_encoder_phys_vid_raw_te_setup(phys_enc, false);
+	}
 
 	if (sde_enc->disp_info.vrr_caps.video_psr_support &&
 			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
@@ -2003,6 +2004,20 @@ static int sde_encoder_phys_vid_wait_for_vblank(
 	return _sde_encoder_phys_vid_wait_for_vblank(phys_enc, true);
 }
 
+static void sde_encoder_phys_vid_update_txq(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!phys_enc)
+		return;
+
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	if (!sde_enc)
+		return;
+
+	sde_encoder_helper_update_out_fence_txq(sde_enc, true);
+}
+
 static int sde_encoder_phys_vid_wait_for_commit_done(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -2047,6 +2062,9 @@ static int sde_encoder_phys_vid_wait_for_commit_done(
 
 	if (rc)
 		sde_encoder_helper_phys_reset(phys_enc);
+
+	/* Update TxQ for the incoming frame */
+	sde_encoder_phys_vid_update_txq(phys_enc);
 
 	return rc;
 }
