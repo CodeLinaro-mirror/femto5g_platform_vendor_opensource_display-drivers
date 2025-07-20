@@ -2494,6 +2494,10 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 	info = &sde_enc->disp_info;
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	/* Skip further operations for HFI mode as they're not needed */
+	if (IS_DISP_OP_HFI(disp_op))
+		return;
+
 	if (!phys_enc->hw_intf || !phys_enc->hw_ctl) {
 		SDE_ERROR("invalid hw_intf %d hw_ctl %d\n",
 				!phys_enc->hw_intf, !phys_enc->hw_ctl);
