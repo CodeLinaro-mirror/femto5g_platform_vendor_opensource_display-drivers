@@ -1196,10 +1196,14 @@ void hfi_msm_dbg_destroy(void)
 	if (!hfi_dbg)
 		return;
 
-	hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.reg_addr);
-	hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.evt_log_addr);
-	hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.dbg_bus_addr);
-	hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.device_state_addr);
+	if (hfi_dbg->buff_map.reg_addr.size)
+		hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.reg_addr.alloc_info);
+	if (hfi_dbg->buff_map.evt_log_addr.size)
+		hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.evt_log_addr.alloc_info);
+	if (hfi_dbg->buff_map.dbg_bus_addr.size)
+		hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.dbg_bus_addr.alloc_info);
+	if (hfi_dbg->buff_map.device_state_addr.size)
+		hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.device_state_addr.alloc_info);
 
 	mutex_destroy(&hfi_dbg->mutex);
 	kfree(hfi_dbg->read_buf);
