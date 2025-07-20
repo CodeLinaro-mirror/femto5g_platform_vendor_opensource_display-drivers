@@ -822,7 +822,7 @@ static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
 static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 					struct dsi_display *display,
 					struct dsi_panel_init_caps panel_init_caps,
-					struct hfi_shared_addr_map *addr_map)
+					struct hfi_core_cmds_buf_desc *buff_desc)
 {
 	int rc = 0;
 	u32 object_id = 0x0;
@@ -833,7 +833,6 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 	u32 payload_size = 0;
 	u32 sde_addr[3];
 	u32 hfi_addr[3];
-	u64 rem_prop_val = (u64) addr_map->remote_addr;
 
 	if (!display)
 		return -EINVAL;
@@ -843,8 +842,8 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 	sde_addr[2] = HFI_VAL_H32(display->cmd_buffer_iova);
 
 	hfi_addr[0] = reserved_key;
-	hfi_addr[1] = HFI_VAL_L32(rem_prop_val);
-	hfi_addr[2] = HFI_VAL_H32(rem_prop_val);
+	hfi_addr[1] = HFI_VAL_L32(buff_desc->priv_dva);
+	hfi_addr[2] = HFI_VAL_H32(buff_desc->priv_dva);
 
 	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi)
@@ -1103,7 +1102,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 	int i;
 	int rc = 0;
 	u32 obj_id;
-	struct hfi_shared_addr_map *addr_map;
+	struct hfi_core_cmds_buf_desc *buff_desc;
 	struct dsi_display_hfi *display_hfi;
 
 	if (!display)
@@ -1118,38 +1117,58 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 	struct hfi_cmdbuf_t *buffer = hfi_adapter_get_cmd_buf(display_hfi->hfi_client,
 							obj_id,
 							HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	static u32 counter;
 
 	panel_init_caps.num_timing_modes = panel->num_timing_nodes;
 	if (!panel_init_caps.num_timing_modes) {
 		DSI_ERR("No timing modes - panel init failed");
-		goto error_buff;
+		return -EINVAL;
 	}
 
 	if (display->tx_cmd_buf == NULL) {
 		rc = dsi_hfi_host_alloc_cmd_tx_buffer(display);
 		if (rc) {
 			DSI_ERR("failed to allocate sde mapped buffer\n");
-			goto error_buff;
+			return rc;
 		}
 	}
 
-	addr_map = kvzalloc(sizeof(struct hfi_shared_addr_map), GFP_KERNEL);
-	if (!addr_map) {
-		DSI_ERR("failed to allocate addr_map");
-		goto error_buff;
+	buff_desc = kvzalloc(sizeof(struct hfi_core_cmds_buf_desc), GFP_KERNEL);
+	if (!buff_desc) {
+		DSI_ERR("failed to allocate hfi mapped buffer");
+		return -EINVAL;
 	}
 
-	addr_map->size = SZ_4K;
+	buff_desc->prio_info = HFI_CORE_PRIO_1;
+	if (counter <= 100) {
+		usleep_range(120000, 120005);
+		counter++;
+		if (counter >= 101)
+			DSI_ERR("finish tx buf wait\n");
+	} else if (counter <= 200) {
+		usleep_range(70000, 70005);
+		counter++;
+		if (counter >= 201)
+			DSI_ERR("finish tx buf wait2\n");
+	} else {
+		usleep_range(30000, 30005);
+	}
 
-	hfi_adapter_buffer_alloc(addr_map);
-	if (!addr_map->remote_addr || !addr_map->local_addr)
-		goto error_addr_map;
+	rc = hfi_core_cmds_tx_buf_get(display_hfi->hfi_adapter->session, buff_desc);
+	if (rc || !buff_desc->pbuf_vaddr || !buff_desc->size) {
+		pr_err("failed to get tx buffer for client: rc: %d count:%d\n", rc, counter);
+		kfree(buff_desc);
+		return -EINVAL;
+	}
+
+	DSI_DEBUG("%s: got tx buffer for client with pbuf_vaddr: 0x%pK size: %lu\n",
+		__func__, buff_desc->pbuf_vaddr, buff_desc->size);
 
 	timing_caps_array = kcalloc(panel_init_caps.num_timing_modes,
 					sizeof(struct dsi_panel_timing_caps),
 					GFP_KERNEL);
 	if (!timing_caps_array)
-		goto error_array;
+		return -ENOMEM;
 
 	dsi_hfi_populate_panel_generic_caps(display, panel, &panel_generic_caps);
 
@@ -1158,49 +1177,42 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 								&display->modes[i],
 								&timing_caps_array[i],
 								display->vaddr,
-								addr_map->local_addr);
+								buff_desc->pbuf_vaddr);
 
 	display_hfi->kv_props = hfi_util_kv_helper_alloc(HFI_UTIL_MAX_ALLOC);
 
 	SDE_EVT32(HFI_COMMAND_PANEL_INIT_PANEL_CAPS, SDE_EVTLOG_FUNC_CASE1);
-	rc = dsi_hfi_append_panel_init_caps(buffer, display, panel_init_caps, addr_map);
+	rc = dsi_hfi_append_panel_init_caps(buffer, display, panel_init_caps, buff_desc);
 	if (rc) {
 		DSI_ERR("failed to append HFI_COMMAND_PANEL_INIT_PANEL_CAPS: rc = %d", rc);
-		goto error_array;
+		kfree(buff_desc);
+		kfree(timing_caps_array);
+		return rc;
 	}
 
 	SDE_EVT32(HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS, SDE_EVTLOG_FUNC_CASE2);
 	rc = dsi_hfi_append_panel_timing_caps(buffer, display, timing_caps_array, display->vaddr);
 	if (rc) {
 		DSI_ERR("failed to append HFI_COMMAND_PANEL_INIT_TIMING_CAPS: rc = %d", rc);
-		goto error_array;
+		kfree(buff_desc);
+		kfree(timing_caps_array);
+		return rc;
 	}
 
 	SDE_EVT32(HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, SDE_EVTLOG_FUNC_CASE3);
 	rc = dsi_hfi_append_panel_generic_caps(buffer, display, panel_generic_caps);
 	if (rc) {
 		DSI_ERR("failed to append HFI_COMMAND_PANEL_INIT_GENERIC_CAPS: rc = %d", rc);
-		goto error_array;
+		kfree(buff_desc);
+		kfree(timing_caps_array);
+		return rc;
 	}
 
 	rc = hfi_adapter_set_cmd_buf(buffer);
 	SDE_EVT32(HFI_COMMAND_PANEL_INIT_PANEL_CAPS, HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS,
 			HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, rc, SDE_EVTLOG_FUNC_CASE4);
-	if (rc) {
-		DSI_ERR("failed to send panel init: rc = %d", rc);
-		goto error_array;
-	}
-
-	return rc;
-
-error_array:
-	kfree(timing_caps_array);
-error_addr_map:
-	kfree(addr_map);
-error_buff:
-	rc = hfi_adapter_release_cmd_buf(buffer);
 	if (rc)
-		DSI_ERR("failed to release command buffer\n");
+		DSI_ERR("failed to send panel init: rc = %d", rc);
 
 	return rc;
 }
