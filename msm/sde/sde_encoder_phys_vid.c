@@ -856,8 +856,8 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 	struct drm_display_mode *cached_mode = NULL;
 	struct intf_esync_params esync_params = {0};
 	struct intf_timing_params timing_params = vid_enc->timing_params;
-	u32 emsync_fps = mode_info->esync_params.emsync_fps ?
-						mode_info->esync_params.emsync_fps : 1;
+	struct esync_params *esync_info = NULL;
+	u32 emsync_fps;
 	u32 avr_step_fps, vrefresh;
 	u32 hsync_period_cycles;
 	u32 prog_fetch_start;
@@ -893,11 +893,15 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 		cached_mode = &backup_params->backup_mode;
 		avr_step_fps = backup_params->avr_step_fps;
 		vrefresh = backup_params->vrefresh;
+		esync_info = &backup_params->esync_params;
 	} else {
 		cached_mode = &phys_enc->cached_mode;
 		avr_step_fps = mode_info->avr_step_fps;
 		vrefresh = timing_params.vrefresh;
+		esync_info = &mode_info->esync_params;
 	}
+	emsync_fps = esync_info->emsync_fps ?
+		esync_info->emsync_fps : 1;
 
 	hsync_period_cycles =  timing_params.hsync_pulse_width + timing_params.h_back_porch
 			+ timing_params.width + timing_params.h_front_porch;
@@ -905,15 +909,15 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 	esync_params.avr_step_lines = mult_frac(cached_mode->vtotal,
 			drm_mode_vrefresh(cached_mode), avr_step_fps);
 	esync_params.emsync_pulse_width = mult_frac(
-			mode_info->esync_params.emsync_milli_pulse_width,
+			esync_info->emsync_milli_pulse_width,
 			hsync_period_cycles, 1000);
 	esync_params.emsync_period_lines = mult_frac(cached_mode->vtotal,
 			vrefresh, emsync_fps);
-	esync_params.hsync_pulse_width = mult_frac(mode_info->esync_params.hsync_milli_pulse_width,
+	esync_params.hsync_pulse_width = mult_frac(esync_info->hsync_milli_pulse_width,
 			hsync_period_cycles, 1000);
 	esync_params.hsync_period_cycles = hsync_period_cycles;
 	esync_params.skew = mult_frac(cached_mode->htotal,
-			mode_info->esync_params.milli_skew, 1000);
+			esync_info->milli_skew, 1000);
 	esync_params.prog_fetch_start =
 			(cached_mode->vtotal - phys_enc->prog_fetch_start + 1)
 			% esync_params.avr_step_lines;
@@ -922,7 +926,8 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 	phys_enc->hw_intf->ops.prepare_esync[disp_op](phys_enc->hw_intf, &esync_params);
 
 	SDE_EVT32_VERBOSE(cached_mode->vtotal, esync_params.avr_step_lines, avr_step_fps,
-				drm_mode_vrefresh(cached_mode), phys_enc->prog_fetch_start);
+				drm_mode_vrefresh(cached_mode), phys_enc->prog_fetch_start,
+				esync_info->emsync_fps);
 
 exit:
 	return 0;
@@ -993,6 +998,8 @@ static int sde_encoder_phys_vid_setup_backup_esync_engine(
 
 	memcpy(&backup_params->backup_mode, &phys_enc->cached_mode,
 					sizeof(struct drm_display_mode));
+	memcpy(&backup_params->esync_params, &mode_info->esync_params,
+					sizeof(struct esync_params));
 	backup_params->vrefresh = vid_enc->timing_params.vrefresh;
 	backup_params->avr_step_fps = sde_enc->mode_info.avr_step_fps;
 
@@ -2729,6 +2736,7 @@ void sde_encoder_phys_vid_idle_pc_exit(struct sde_encoder_phys *phys_enc)
 	struct backup_esync_params *backup_params = NULL;
 	int rc;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
+	struct sde_connector_state *c_state;
 
 	if (WARN_ON(!phys_enc->hw_intf->ops.enable_timing[disp_op]
 			|| !phys_enc->hw_intf->ops.enable_backup_esync[disp_op]
@@ -2745,8 +2753,11 @@ void sde_encoder_phys_vid_idle_pc_exit(struct sde_encoder_phys *phys_enc)
 
 	sde_connector_esync_clk_ctrl(drm_conn, true);
 
-	if (backup_params->vrefresh != 0 &&
-			backup_params->vrefresh != drm_mode_vrefresh(&phys_enc->cached_mode))
+	c_state = to_sde_connector_state(phys_enc->connector->state);
+
+	if ((backup_params->vrefresh != 0 &&
+			backup_params->vrefresh != drm_mode_vrefresh(&phys_enc->cached_mode)) ||
+			msm_is_mode_seamless_emsync_fps_switch(&c_state->msm_mode))
 		phys_enc->wait_esync_vsync_irq = true;
 
 	sde_encoder_phys_vid_setup_timing_engine(phys_enc, true);

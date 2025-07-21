@@ -1121,6 +1121,7 @@ struct msm_display_info {
 	bool hwfence_sw_override_always;
 
 	bool esync_enabled;
+	bool emsync_switch_enabled;
 
 	bool event_notification_disabled;
 
