@@ -677,6 +677,7 @@ struct dsi_host_config {
  * @dsi_transfer_time_us: Specifies the dsi transfer time for cmd panels.
  * @qsync_min_fps:        Qsync min fps value for the mode
  * @avr_step_fps:         AVR step fps value for the mode
+ * @esync_params:         esync parameters
  * @clk_rate_hz:          DSI bit clock per lane in hz.
  * @min_dsi_clk_hz:       Min dsi clk per lane to transfer frame in vsync time.
  * @bit_clk_list:         List of dynamic bit clock rates supported.
@@ -708,6 +709,7 @@ struct dsi_display_mode_priv_info {
 	u32 dsi_transfer_time_us;
 	u32 qsync_min_fps;
 	u32 avr_step_fps;
+	struct esync_params esync_params;
 	u64 clk_rate_hz;
 	u64 min_dsi_clk_hz;
 	struct msm_dyn_clk_list bit_clk_list;

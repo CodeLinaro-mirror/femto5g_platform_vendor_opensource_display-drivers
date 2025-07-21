@@ -530,7 +530,7 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	struct sde_encoder_phys_vid *vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	struct drm_connector *conn = phys_enc->connector;
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
-	struct msm_mode_info *info = &sde_enc->mode_info;
+	struct msm_mode_info *mode_info = &sde_enc->mode_info;
 	struct sde_hw_intf *intf = vid_enc->base.hw_intf;
 	u32 avr_step_state;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
@@ -557,9 +557,9 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
 		avr_params.hw_avr_trigger = true;
 
-	if (info->avr_step_fps && (avr_step_state == AVR_STEP_ENABLE))
+	if (mode_info->avr_step_fps && (avr_step_state == AVR_STEP_ENABLE))
 		avr_params.avr_step_lines = mult_frac(phys_enc->cached_mode.vtotal,
-				vid_enc->timing_params.vrefresh, info->avr_step_fps);
+				vid_enc->timing_params.vrefresh, mode_info->avr_step_fps);
 
 	if (intf->ops.avr_ctrl[disp_op])
 		intf->ops.avr_ctrl[disp_op](intf, &avr_params);
@@ -576,7 +576,7 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 		_sde_encoder_phys_vid_set_num_avr_step(phys_enc);
 
 	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_intf->idx - INTF_0, avr_params.avr_mode,
-			avr_params.avr_step_lines, info->avr_step_fps, avr_step_state,
+			avr_params.avr_step_lines, mode_info->avr_step_fps, avr_step_state,
 			sde_enc->disp_info.is_te_using_watchdog_timer);
 }
 
@@ -788,18 +788,20 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 {
 	struct sde_encoder_phys_vid *vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
-	struct msm_display_info *info = &sde_enc->disp_info;
+	struct msm_display_info *disp_info = &sde_enc->disp_info;
+	struct msm_mode_info *mode_info = &sde_enc->mode_info;
 	struct backup_esync_params *backup_params = NULL;
 	struct drm_display_mode *cached_mode = NULL;
 	struct intf_esync_params esync_params = {0};
 	struct intf_timing_params timing_params = vid_enc->timing_params;
-	u32 emsync_fps = info->esync_emsync_fps ? info->esync_emsync_fps : 1;
+	u32 emsync_fps = mode_info->esync_params.emsync_fps ?
+						mode_info->esync_params.emsync_fps : 1;
 	u32 avr_step_fps, vrefresh;
 	u32 hsync_period_cycles;
 	u32 prog_fetch_start;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
-	if (!info->esync_enabled)
+	if (!disp_info->esync_enabled)
 		goto exit;
 
 	if (!phys_enc->hw_intf->ops.prepare_esync[disp_op]) {
@@ -831,7 +833,7 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 		vrefresh = backup_params->vrefresh;
 	} else {
 		cached_mode = &phys_enc->cached_mode;
-		avr_step_fps = sde_enc->mode_info.avr_step_fps;
+		avr_step_fps = mode_info->avr_step_fps;
 		vrefresh = timing_params.vrefresh;
 	}
 
@@ -840,14 +842,16 @@ static int sde_encoder_phys_vid_setup_esync_engine(
 
 	esync_params.avr_step_lines = mult_frac(cached_mode->vtotal,
 			drm_mode_vrefresh(cached_mode), avr_step_fps);
-	esync_params.emsync_pulse_width = mult_frac(info->esync_emsync_milli_pulse_width,
+	esync_params.emsync_pulse_width = mult_frac(
+			mode_info->esync_params.emsync_milli_pulse_width,
 			hsync_period_cycles, 1000);
 	esync_params.emsync_period_lines = mult_frac(cached_mode->vtotal,
 			vrefresh, emsync_fps);
-	esync_params.hsync_pulse_width = mult_frac(info->esync_hsync_milli_pulse_width,
+	esync_params.hsync_pulse_width = mult_frac(mode_info->esync_params.hsync_milli_pulse_width,
 			hsync_period_cycles, 1000);
 	esync_params.hsync_period_cycles = hsync_period_cycles;
-	esync_params.skew = mult_frac(cached_mode->htotal, info->esync_milli_skew, 1000);
+	esync_params.skew = mult_frac(cached_mode->htotal,
+			mode_info->esync_params.milli_skew, 1000);
 	esync_params.prog_fetch_start =
 			(cached_mode->vtotal - phys_enc->prog_fetch_start + 1)
 			% esync_params.avr_step_lines;
@@ -868,7 +872,8 @@ static int sde_encoder_phys_vid_setup_backup_esync_engine(
 	struct sde_encoder_phys_vid *vid_enc = to_sde_encoder_phys_vid(phys_enc);
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct drm_connector *conn = phys_enc->connector;
-	struct msm_display_info *info = &sde_enc->disp_info;
+	struct msm_display_info *disp_info = &sde_enc->disp_info;
+	struct msm_mode_info *mode_info = &sde_enc->mode_info;
 	struct backup_esync_params *backup_params;
 	struct intf_esync_params esync_params = {0};
 	struct intf_timing_params timing_params = vid_enc->timing_params;
@@ -880,7 +885,7 @@ static int sde_encoder_phys_vid_setup_backup_esync_engine(
 	int rc;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
-	if (!info->esync_enabled)
+	if (!disp_info->esync_enabled)
 		goto exit;
 
 	if (!phys_enc->hw_intf->ops.prepare_backup_esync[disp_op]) {
@@ -911,12 +916,13 @@ static int sde_encoder_phys_vid_setup_backup_esync_engine(
 	hsync_period_cycles_osc = mult_frac(hsync_period_cycles_pclk, osc_freq, esync_freq);
 
 	esync_params.avr_step_lines = mult_frac(phys_enc->cached_mode.vtotal,
-			timing_params.vrefresh, sde_enc->mode_info.avr_step_fps);
-	esync_params.emsync_pulse_width = mult_frac(info->esync_emsync_milli_pulse_width,
+			timing_params.vrefresh, mode_info->avr_step_fps);
+	esync_params.emsync_pulse_width = mult_frac(
+			mode_info->esync_params.emsync_milli_pulse_width,
 			hsync_period_cycles_osc, 1000);
 	esync_params.emsync_period_lines = mult_frac(phys_enc->cached_mode.vtotal,
-			timing_params.vrefresh, info->esync_emsync_fps);
-	esync_params.hsync_pulse_width = mult_frac(info->esync_hsync_milli_pulse_width,
+			timing_params.vrefresh, mode_info->esync_params.emsync_fps);
+	esync_params.hsync_pulse_width = mult_frac(mode_info->esync_params.hsync_milli_pulse_width,
 			hsync_period_cycles_osc, 1000);
 	esync_params.hsync_period_cycles = hsync_period_cycles_osc;
 	esync_params.align_backup = align;
@@ -1501,7 +1507,7 @@ static enum hrtimer_restart sde_encoder_phys_vid_esync_backup_sim(struct hrtimer
 	struct sde_encoder_phys *phys_enc =
 			container_of(timer, struct sde_encoder_phys, empulse_backup_timer);
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
-	struct msm_display_info *info;
+	struct msm_mode_info *mode_info;
 
 	if (!sde_enc)
 		return HRTIMER_NORESTART;
@@ -1511,8 +1517,9 @@ static enum hrtimer_restart sde_encoder_phys_vid_esync_backup_sim(struct hrtimer
 
 	SDE_EVT32(DRMID(phys_enc->parent), SDE_EVTLOG_FUNC_EXIT);
 
-	info = &sde_enc->disp_info;
-	hrtimer_forward_now(timer, ns_to_ktime(DIV_ROUND_UP(NSEC_PER_SEC, info->esync_emsync_fps)));
+	mode_info = &sde_enc->mode_info;
+	hrtimer_forward_now(timer,
+		ns_to_ktime(DIV_ROUND_UP(NSEC_PER_SEC, mode_info->esync_params.emsync_fps)));
 	return HRTIMER_RESTART;
 }
 
@@ -1703,7 +1710,8 @@ static void sde_encoder_phys_vid_register_esync_backup_sim(
 		struct sde_encoder_phys *phys_enc, bool enable)
 {
 	struct sde_encoder_virt *sde_enc;
-	struct msm_display_info *info;
+	struct msm_mode_info *mode_info;
+	struct msm_display_info *disp_info;
 	u64 now_ns;
 	u64 last_ns;
 	u64 period_ns;
@@ -1712,13 +1720,14 @@ static void sde_encoder_phys_vid_register_esync_backup_sim(
 
 	if (enable) {
 		sde_enc = to_sde_encoder_virt(phys_enc->parent);
-		info = &sde_enc->disp_info;
+		mode_info = &sde_enc->mode_info;
+		disp_info = &sde_enc->disp_info;
 
-		if (info->vrr_caps.video_mrr_support)
+		if (disp_info->vrr_caps.video_mrr_support)
 			esync_emsync_fps =
 				drm_mode_vrefresh(&phys_enc->cached_mode);
 		else
-			esync_emsync_fps = info->esync_emsync_fps;
+			esync_emsync_fps = mode_info->esync_params.emsync_fps;
 
 		now_ns = ktime_to_ns(ktime_get());
 		last_ns = ktime_to_ns(phys_enc->last_vsync_timestamp);
