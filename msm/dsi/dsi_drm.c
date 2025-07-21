@@ -524,10 +524,12 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 
 	convert_to_dsi_mode(mode, &dsi_mode);
 	msm_parse_mode_priv_info(&conn_state->msm_mode, &dsi_mode);
-	new_sub_mode.dsc_mode = sde_connector_get_property(drm_conn_state,
-				CONNECTOR_PROP_DSC_MODE);
-	new_sub_mode.pixel_format_mode = sde_connector_get_property(drm_conn_state,
-				CONNECTOR_PROP_BPP_MODE);
+	rc = sde_connector_state_get_sub_mode(drm_conn_state, &new_sub_mode);
+	if (rc) {
+		DSI_ERR("[%s] failed to get sub mode\n", display->name);
+		return rc;
+	}
+
 	/*
 	 * retrieve dsi mode from dsi driver's cache since not safe to take
 	 * the drm mode config mutex in all paths
