@@ -316,7 +316,7 @@ ktime_t sde_encoder_calc_last_empulse_timestamp(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc;
 	struct sde_encoder_phys *cur_master;
-	struct msm_display_info *info;
+	struct msm_mode_info *mode_info;
 	u64 em_timestamp_hw;
 	u32 empulse_fps;
 	bool is_vid;
@@ -324,8 +324,8 @@ ktime_t sde_encoder_calc_last_empulse_timestamp(struct drm_encoder *drm_enc)
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	cur_master = sde_enc->cur_master;
-	info = &sde_enc->disp_info;
-	empulse_fps = info->esync_emsync_fps;
+	mode_info = &sde_enc->mode_info;
+	empulse_fps = mode_info->esync_params.emsync_fps;
 	is_vid = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_VIDEO_MODE);
 	disp_op = sde_encoder_get_disp_op(drm_enc);
 

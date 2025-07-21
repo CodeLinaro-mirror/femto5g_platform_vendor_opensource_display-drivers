@@ -674,6 +674,9 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 	mode_info->wd_jitter = dsi_mode->priv_info->wd_jitter;
 	mode_info->te_pulse_width_us = dsi_mode->timing.te_pulse_width_us;
 
+	memcpy(&mode_info->esync_params, &dsi_mode->priv_info->esync_params,
+			sizeof(struct esync_params));
+
 	memcpy(&mode_info->topology, &dsi_mode->priv_info->topology,
 			sizeof(struct msm_display_topology));
 
