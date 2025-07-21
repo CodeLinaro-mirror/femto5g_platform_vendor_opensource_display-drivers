@@ -2711,7 +2711,8 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 			primary_planes[primary_planes_idx++] = plane;
 
 		if (sde_hw_sspp_multirect_enabled(&catalog->sspp[i]) &&
-			sde_is_custom_client()) {
+			sde_is_custom_client() &&
+			!catalog->disable_multirect) {
 			int priority =
 				catalog->sspp[i].sblk->smart_dma_priority;
 			sspp_id[priority - 1] = catalog->sspp[i].id;
