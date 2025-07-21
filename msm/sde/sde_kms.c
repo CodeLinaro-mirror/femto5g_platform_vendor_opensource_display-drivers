@@ -1558,6 +1558,26 @@ static void sde_kms_cancel_delayed_work(struct drm_crtc *crtc)
 	}
 }
 
+static void sde_kms_vm_force_disable_idle_pc(struct sde_kms *sde_kms, enum sde_crtc_vm_req vm_req)
+{
+	struct drm_device *dev;
+	struct drm_encoder *enc;
+	bool enable;
+
+	if (!sde_kms || vm_req == VM_REQ_NONE)
+		return;
+
+	dev = sde_kms->dev;
+	enable = (vm_req == VM_REQ_RELEASE) ? false : true;
+
+	drm_for_each_encoder(enc, dev) {
+		if (!sde_encoder_is_dsi_display(enc))
+			continue;
+
+		sde_encoder_control_idle_pc(enc, enable);
+	}
+}
+
 int sde_kms_vm_pre_release(struct sde_kms *sde_kms,
 	struct drm_atomic_state *state, bool is_primary)
 {
@@ -1664,6 +1684,9 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+
+	sde_kms_vm_force_disable_idle_pc(sde_kms, vm_req);
+
 	if (vm_req != VM_REQ_RELEASE)
 		return 0;
 
@@ -2155,6 +2178,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.mode_valid = dsi_conn_mode_valid,
 		.get_info =   dsi_display_get_info,
 		.set_backlight = dsi_display_set_backlight,
+		.toggle_te = dsi_display_pinctrl_toggle_te_function,
 		.soft_reset   = dsi_display_soft_reset,
 		.pre_kickoff  = dsi_conn_pre_kickoff,
 		.clk_ctrl = dsi_display_set_clk_state,
@@ -2177,6 +2201,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.set_dyn_bit_clk = dsi_conn_set_dyn_bit_clk,
 		.get_qsync_min_fps = dsi_conn_get_qsync_min_fps,
 		.get_avr_step_fps = dsi_conn_get_avr_step_fps,
+		.process_dcs_cmd_bitmask = dsi_display_process_dcs_cmd_bitmask,
 		.dcs_cmd_tx = dsi_conn_dcs_cmd_tx,
 		.prepare_commit = dsi_conn_prepare_commit,
 		.set_submode_info = dsi_conn_set_submode_blob_info,
@@ -5202,7 +5227,7 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 			pdev = to_platform_device(sde_kms->dev->dev);
 			res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ipcc_reg");
 			if (!res) {
-				SDE_DEBUG("failed to get resource ipcc_reg, cannot map ipcc\n");
+				SDE_INFO("failed to get resource ipcc_reg, cannot map ipcc\n");
 				sde_kms->catalog->hw_fence_rev = 0;
 			} else {
 				sde_kms->dpu_ipcc_addr = HW_FENCE_IPCC_PROTOCOLp_CLIENTc(res->start,
@@ -5213,8 +5238,10 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 				ret = _sde_kms_one2one_mem_map_ipcc_reg(sde_kms, resource_size(res),
 					sde_kms->dpu_ipcc_addr);
 				/* if mapping fails disable hw-fences */
-				if (ret)
+				if (ret) {
+					SDE_ERROR("Failed to map DPU IPCC register\n");
 					sde_kms->catalog->hw_fence_rev = 0;
+				}
 			}
 		}
 
@@ -5920,6 +5947,11 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (test_bit(SDE_FEATURE_HW_VSYNC_TS, sde_kms->catalog->features))
 		dev->vblank_disable_immediate = true;
 
+	if (!priv->phandle.hw_fence_enable) {
+		SDE_INFO("power vote failed, disabling hw-fencing\n");
+		sde_kms->catalog->hw_fence_rev = 0;
+	}
+
 	/*
 	 * _sde_kms_drm_obj_init should create the DRM related objects
 	 * i.e. CRTCs, planes, encoders, connectors and so forth
@@ -5928,11 +5960,6 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (rc) {
 		SDE_ERROR("modeset init failed: %d\n", rc);
 		goto drm_obj_init_err;
-	}
-
-	if (!priv->phandle.hw_fence_enable) {
-		SDE_DEBUG("power vote failed, disabling hw-fencing\n");
-		sde_kms->catalog->hw_fence_rev = 0;
 	}
 
 	if (sde_kms->catalog->qultivate_rev == SDE_QULTIVATE_SW_REV1 &&

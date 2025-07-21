@@ -2161,7 +2161,8 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 	if ((commit_state == SDE_PERF_COMPLETE_COMMIT)
 			&& (cesta_client->vote_state != SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE)
-			&& (cesta_client->vote_state != SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE))
+			&& (cesta_client->vote_state != SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE)
+			&& (cesta_client->vote_state != SDE_CESTA_BW_CLK_DOWNVOTE))
 		return;
 
 	/* SCC configs */
@@ -2780,7 +2781,7 @@ void sde_encoder_control_idle_pc(struct drm_encoder *drm_enc, bool enable)
 	sde_enc->idle_pc_enabled = enable;
 
 	SDE_DEBUG("idle-pc state:%d\n", sde_enc->idle_pc_enabled);
-	SDE_EVT32(sde_enc->idle_pc_enabled);
+	SDE_EVT32(DRMID(drm_enc), sde_enc->idle_pc_enabled);
 }
 
 void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
@@ -5962,6 +5963,15 @@ static void sde_encoder_handle_self_refresh(struct kthread_work *work)
 		return;
 	}
 
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde kms\n");
+		return;
+	}
+
+	sde_vm_lock(sde_kms);
+	if (!sde_vm_owns_hw(sde_kms))
+		goto end;
+
 	if (sde_enc->disp_info.vrr_caps.video_psr_support) {
 		sde_connector_backlight_lock(c_conn, true);
 		sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
@@ -5969,32 +5979,63 @@ static void sde_encoder_handle_self_refresh(struct kthread_work *work)
 	} else {
 		sde_connector_trigger_cmd_self_refresh(sde_enc->cur_master->connector);
 	}
+
+end:
+	sde_vm_unlock(sde_kms);
 }
 
 static void sde_encoder_cmd_backlight_update(struct kthread_work *work)
 {
 	struct sde_encoder_virt *sde_enc = container_of(work,
 				struct sde_encoder_virt, backlight_cmd_work);
+	struct sde_kms *sde_kms;
 
 	if (!sde_enc || !sde_enc->cur_master) {
 		SDE_ERROR("invalid sde encoder\n");
 		return;
 	}
 
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde kms\n");
+		return;
+	}
+
+	sde_vm_lock(sde_kms);
+	if (!sde_vm_owns_hw(sde_kms))
+		goto end;
+
 	sde_connector_trigger_cmd_backlight_update(sde_enc->cur_master->connector);
+
+end:
+	sde_vm_unlock(sde_kms);
 }
 
 static void sde_encoder_cmd_backlight_sr_work_handler(struct kthread_work *work)
 {
 	struct sde_encoder_virt *sde_enc = container_of(work,
 				struct sde_encoder_virt, backlight_sr_work.work);
+	struct sde_kms *sde_kms;
 
 	if (!sde_enc || !sde_enc->cur_master) {
 		SDE_ERROR("invalid sde encoder\n");
 		return;
 	}
 
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde kms\n");
+		return;
+	}
+
+	sde_vm_lock(sde_kms);
+	if (!sde_vm_owns_hw(sde_kms))
+		goto end;
+
 	sde_connector_trigger_cmd_backlight_sr(sde_enc->cur_master->connector);
+
+end:
+	sde_vm_unlock(sde_kms);
 }
 
 static void sde_encoder_input_event_work_handler(struct kthread_work *work)

@@ -604,6 +604,47 @@
 #define HFI_PROPERTY_PANEL_VSYNC_SOURCE                              0x00040028
 
 /*
+ * HFI_PROPERTY_PANEL_STREAM_TRIGGER - Specifies the trigger mechanism to be used for pixel
+ *                                  stream transfer in a command mode display processor path.
+ *                                  This property is sent to DCP as part of
+ *                                  HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                                  command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_STREAM_TRIGGER
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_STREAM_TRIGGER |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : One of enum hfi_panel_trigger_type
+ */
+#define HFI_PROPERTY_PANEL_STREAM_TRIGGER                            0x00040029
+
+/*
+ * HFI_PROPERTY_PANEL_TE_MODE - Specifies the TE Path for command mode panels.
+ *                              This property is sent to DCP as part of
+ *                              HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                              command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_TE_MODE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_TE_MODE |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : 1 / 0 (1 = TE returned from dedicated pin,
+ *                                      0 = TE returned from data link)
+ */
+#define HFI_PROPERTY_PANEL_TE_MODE                                   0x0004002A
+
+/*
+ * HFI_PROPERTY_PANEL_CPHY_MODE - Specifies whether panel is using CPHY
+ *                                This property is sent to DCP as part of
+ *                                HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                                command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_CPHY_MODE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_CPHY_MODE |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : HFI_TRUE / HFI_FALSE
+ */
+#define HFI_PROPERTY_PANEL_CPHY_MODE                                 0x0004002B
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF

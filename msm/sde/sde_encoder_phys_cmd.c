@@ -2566,6 +2566,14 @@ static void _sde_encoder_phys_cmd_calculate_wd_params(struct sde_encoder_phys *p
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	mode_info = &sde_enc->mode_info;
 
+	/*
+	 * Reset watchdog jitter config to 0 before calculating new values
+	 * to prevent stale values from affecting the calculation
+	 */
+	phys_enc->wd_jitter.jitter = 0;
+	phys_enc->wd_jitter.ltj_max = 0;
+	phys_enc->wd_jitter.ltj_slope = 0;
+
 	if (mode_info->wd_jitter.jitter_type & MSM_DISPLAY_WD_INSTANTANEOUS_JITTER) {
 		wd_jtr.jitter = mult_frac(multiplier,
 				mode_info->wd_jitter.inst_jitter_numer,

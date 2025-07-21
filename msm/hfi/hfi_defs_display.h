@@ -212,5 +212,41 @@ enum hfi_layer_fetch_mode {
 	HFI_TIME_MULTIPLEX_FETCH  = 0x1,
 };
 
+/**
+ * @def HFI_DISPLAY_ROTATION_0
+ * @brief Set when layer is not rotated.
+ */
+#define HFI_DISPLAY_ROTATION_0   (1 << 0)
+
+/**
+ * @def HFI_DISPLAY_ROTATION_90
+ * @brief Set when layer is rotated by 90 degrees.
+ */
+#define HFI_DISPLAY_ROTATION_90   (1 << 1)
+
+/**
+ * @def HFI_DISPLAY_ROTATION_180
+ * @brief Set when layer is rotated by 180 degrees.
+ */
+#define HFI_DISPLAY_ROTATION_180     (1 << 2)
+
+/**
+ * @def HFI_DISPLAY_ROTATION_270
+ * @brief Set when layer is rotated by 270 degrees.
+ */
+#define HFI_DISPLAY_ROTATION_270   (1 << 3)
+
+/**
+ * @def HFI_DISPLAY_REFLECT_X
+ * @brief Set when layer is reflected along X-axis.
+ */
+#define HFI_DISPLAY_REFLECT_X   (1 << 4)
+
+/**
+ * @def HFI_DISPLAY_REFLECT_Y
+ * @brief Set when layer is reflected along Y-axis.
+ */
+#define HFI_DISPLAY_REFLECT_Y   (1 << 5)
+
 #endif // __H_HFI_DEFS_DISPLAY_H__
 

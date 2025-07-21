@@ -18,6 +18,9 @@
  * @base_props: prop helper object for intermediate property collection
  * @color_props: color prop helper object for intermediate property collection
  * @kv_props: kv pair helper object for intermediate property collection
+ * @misr_read_listener: hfi listener for MISR
+ * @hfi_buff_map_dither: hfi_buff map object for SPR dither
+ * @prev_plane_mask: tracks the previous plane mask
  */
 struct hfi_crtc {
 	struct sde_crtc *sde_base;
@@ -26,6 +29,8 @@ struct hfi_crtc {
 	struct hfi_util_u32_prop_helper *color_props;
 	struct hfi_util_kv_helper *kv_props;
 	struct hfi_prop_listener misr_read_listener;
+	struct hfi_shared_addr_map hfi_buff_map_dither;
+	uint32_t prev_plane_mask;
 };
 
 /**

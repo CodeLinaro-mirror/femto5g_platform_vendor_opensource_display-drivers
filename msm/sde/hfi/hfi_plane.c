@@ -37,6 +37,26 @@ struct base_prop_lookup {
 	u32 hfi_prop;
 };
 
+/*
+ * dcp_rot_map - maps for drm rotation to hfi rotation
+ *
+ * @hfi_rot		HFI layer rotation
+ * @drm_rot		DRM layer rotation
+ */
+struct dcp_rot_map {
+	u32 hfi_rot;
+	u32 drm_rot;
+};
+
+static const struct dcp_rot_map dpu_rot_map[] = {
+	{HFI_DISPLAY_ROTATION_0, DRM_MODE_ROTATE_0},
+	{HFI_DISPLAY_ROTATION_90, DRM_MODE_ROTATE_90},
+	{HFI_DISPLAY_ROTATION_180, DRM_MODE_ROTATE_180},
+	{HFI_DISPLAY_ROTATION_270, DRM_MODE_ROTATE_270},
+	{HFI_DISPLAY_REFLECT_X, DRM_MODE_REFLECT_X},
+	{HFI_DISPLAY_REFLECT_Y, DRM_MODE_REFLECT_Y},
+};
+
 static struct base_prop_lookup hfi_plane_base_props_map[] = {
 	{PLANE_PROP_ZPOS, HFI_PROPERTY_LAYER_ZPOS},
 	{PLANE_PROP_ALPHA, HFI_PROPERTY_LAYER_ALPHA},
@@ -93,12 +113,23 @@ static u32 _hfi_plane_scale_alpha(struct sde_mdss_cfg *catalog, u32 prop_val)
 	return prop_val;
 }
 
+static u32 hfi_rot_lookup(u32 drm_rot)
+{
+	u32 support_rot = 0;
+
+	for (int i = 0; i < ARRAY_SIZE(dpu_rot_map); i++) {
+		if (dpu_rot_map[i].drm_rot & drm_rot)
+			support_rot |= dpu_rot_map[i].hfi_rot;
+	}
+
+	return support_rot;
+}
+
 static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 		struct sde_plane_state *pstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
-	u32 prop_id;
-	u32 hfi_format;
+	u32 prop_id, hfi_format, supported_rot;
 	struct hfi_display_roi src, dst;
 	struct drm_plane_state *state;
 	struct hfi_plane *phfi;
@@ -145,6 +176,12 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	prop_id = HFI_PROPERTY_LAYER_SRC_FORMAT;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &hfi_format, sizeof(u32));
+
+	prop_id = HFI_PROPERTY_LAYER_ROTATION;
+	supported_rot = hfi_rot_lookup(pstate->rotation);
+	SDE_EVT32(prop_id, supported_rot, phfi->hfi_pipe_id);
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
+			HFI_VAL_U32_ARRAY, &supported_rot, sizeof(u32));
 
 	HFI_DEBUG_PLANE(phfi, "done adding drm props\n");
 
@@ -367,27 +404,30 @@ int _hfi_plane_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 	return ret;
 }
 
-void _hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
-		struct sde_plane_state *pstate)
+void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
+	bool use_lock)
 {
 	u32 prop_id;
 	int ret;
 	struct hfi_plane *phfi;
+	struct drm_plane *drm_plane;
 
-	if (!plane || !pstate) {
+	if (!plane) {
 		SDE_ERROR("invalid plane args\n");
 		return;
 	}
 
 	phfi = to_hfi_plane(plane);
+	drm_plane = &(plane->base);
 
-	mutex_lock(&phfi->hfi_lock);
+	if (use_lock)
+		mutex_lock(&phfi->hfi_lock);
 
 	hfi_util_u32_prop_helper_reset(phfi->base_props);
 
 	prop_id = HFI_PROPERTY_DISPLAY_DETACH_LAYER;
 	hfi_util_u32_prop_helper_add_prop(phfi->base_props, prop_id, HFI_VAL_U32_ARRAY,
-			&phfi->sde_base->pipe, sizeof(u32));
+			&phfi->hfi_pipe_id, sizeof(u32));
 
 	ret = hfi_adapter_add_set_property(cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
@@ -403,7 +443,8 @@ void _hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_pl
 
 	HFI_DEBUG_PLANE(phfi, "adding detatch layer\n");
 end:
-	mutex_unlock(&phfi->hfi_lock);
+	if (use_lock)
+		mutex_unlock(&phfi->hfi_lock);
 }
 
 static void hfi_plane_destroy(struct sde_plane *plane)
@@ -437,7 +478,7 @@ static int hfi_plane_add_hfi_cmds(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 	}
 
 	if (!sde_plane_enabled(&pstate->base))
-		_hfi_plane_disable(cmd_buf, disp_id, plane, pstate);
+		hfi_plane_disable(cmd_buf, disp_id, plane, true);
 	else
 		_hfi_plane_populate_props(cmd_buf, disp_id, plane, pstate);
 

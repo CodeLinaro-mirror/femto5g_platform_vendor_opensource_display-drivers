@@ -867,6 +867,9 @@ void sde_connector_schedule_status_work(struct drm_connector *connector,
 	struct sde_connector *c_conn;
 	struct msm_display_info info;
 
+	if (sde_connector_get_disp_op(connector) == MSM_DISP_OP_HFI)
+		return;
+
 	c_conn = to_sde_connector(connector);
 	if (!c_conn)
 		return;
@@ -1168,12 +1171,23 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 		drm_enc = connector->encoder;
 
 	if (c_conn->vrr_caps.video_mrr_support &&
-			msm_is_mode_seamless_vrr(&c_state->msm_mode))
+			msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
+			!drm_mode_vrefresh(c_state->msm_mode.base))
 		frame_interval_ns =
 			NSEC_PER_SEC/drm_mode_vrefresh(c_state->msm_mode.base);
 	else
 		frame_interval_ns = sde_connector_get_property(c_conn->base.state,
 			CONNECTOR_PROP_FRAME_INTERVAL);
+
+	/*
+	 * recovery and power off charging cases will not set CONNECTOR_PROP_FRAME_INTERVAL.
+	 * Set current mode frame interval when the frame_interval_ns is 0.
+	 */
+	if (frame_interval_ns == 0 && !drm_mode_vrefresh(c_state->msm_mode.base)) {
+		frame_interval_ns =
+			NSEC_PER_SEC/drm_mode_vrefresh(c_state->msm_mode.base);
+		SDE_EVT32(frame_interval_ns);
+	}
 
 	if (!c_conn->apply_vrr && frame_interval_ns) {
 		c_conn->apply_vrr = true;
@@ -1539,6 +1553,15 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
 	}
 
+	if (msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
+			c_conn->ops.check_cmd_defined(c_conn->display,
+			DSI_CMD_SET_FPS_SWITCH) &&
+			!c_conn->vrr_caps.video_psr_support) {
+		rc = sde_connector_update_cmd(connector, BIT(DSI_CMD_SET_FPS_SWITCH), true);
+		if (rc)
+			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+	}
+
 	if (!c_conn->ops.pre_kickoff)
 		return 0;
 
@@ -1549,9 +1572,10 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 
 	rc = c_conn->ops.pre_kickoff(connector, c_conn->display, &params);
 
+end:
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
 		display->queue_cmd_waits = false;
-end:
+
 	return rc;
 }
 
@@ -1589,18 +1613,6 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	}
 
 	display = (struct dsi_display *)c_conn->display;
-
-	if (msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
-			c_conn->ops.check_cmd_defined(c_conn->display,
-			DSI_CMD_SET_FPS_SWITCH) &&
-			!c_conn->vrr_caps.video_psr_support) {
-		rc = sde_encoder_update_periph_flush(drm_enc);
-		if (!rc) {
-			params.cmd_bit_mask = BIT(DSI_CMD_SET_FPS_SWITCH);
-			params.peripheral_flush = true;
-		}
-		SDE_EVT32(params.peripheral_flush, params.cmd_bit_mask, rc);
-	}
 
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
 
@@ -1752,7 +1764,7 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 	params.cmd_bit_mask = cmd_bit_mask;
 	params.peripheral_flush = peripheral_flush;
 
-	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
+	rc = c_conn->ops.process_dcs_cmd_bitmask(c_conn->display, &params);
 
 	c_conn->last_vhm_cmd = cmd_bit_mask;
 	SDE_EVT32(connector->base.id, params.cmd_bit_mask >> 32,
@@ -2563,6 +2575,7 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 			SDE_ERROR_CONN(c_conn, "cannot set hdr info %d\n", rc);
 		break;
 	case CONNECTOR_PROP_QSYNC_MODE:
+	case CONNECTOR_PROP_BRIGHTNESS:
 	case CONNECTOR_PROP_AVR_STEP_STATE:
 	case CONNECTOR_PROP_EPT_FPS:
 		msm_property_set_dirty(&c_conn->property_info,
@@ -3605,6 +3618,9 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	int ret = 0;
 
 	if (!conn)
+		return ret;
+
+	if (sde_connector_get_disp_op(conn) == MSM_DISP_OP_HFI)
 		return ret;
 
 	sde_conn = to_sde_connector(conn);

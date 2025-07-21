@@ -19,7 +19,7 @@
 #include <linux/errno.h>
 #include <linux/kthread.h>
 #include <linux/kfifo.h>
-
+#include <uapi/linux/sched/types.h>
 #include "sde_hdcp_2x.h"
 
 /* all message IDs */
@@ -44,7 +44,7 @@
 #define LINK_INTEGRITY_FAILURE BIT(4)
 
 /* Temporary define to override wrong TZ value */
-#define AKE_SEND_CERT_MSG_DELAY 100
+#define AKE_SEND_CERT_MSG_DELAY 50
 
 struct sde_hdcp_2x_ctrl {
 	DECLARE_KFIFO(cmd_q, enum sde_hdcp_2x_wakeup_cmd, 8);
@@ -975,6 +975,12 @@ static int sde_hdcp_2x_main(void *data)
 {
 	struct sde_hdcp_2x_ctrl *hdcp = data;
 	enum sde_hdcp_2x_wakeup_cmd cmd;
+
+	struct sched_param param = {.sched_priority = 16};
+	int ret = sched_setscheduler(current, SCHED_FIFO, &param);
+
+	if (ret)
+		pr_err("Failed to set sde hdcp thread priority: %d\n", ret);
 
 	while (1) {
 		wait_event_idle(hdcp->wait_q,

@@ -265,6 +265,12 @@ struct sde_connector_ops {
 			void *display, u32 bl_lvl);
 
 	/**
+	 * toggle_te - toggle TE to refresh hardware state tracking
+	 * @display: Pointer to display structure
+	 */
+	int (*toggle_te)(void *display);
+
+	/**
 	 * set_colorspace - set colorspace for connector
 	 * @connector: Pointer to drm connector structure
 	 * @display: Pointer to private display structure
@@ -588,6 +594,15 @@ struct sde_connector_ops {
 	 * Returns: error code
 	 */
 	int (*ctl_post_transition)(void *display);
+
+	/*
+	 * process_dcs_cmd_bitmask -  process a bitmask to send multiple
+	 *                            DCS command sets in a batch
+	 * @display: Pointer to private display structure
+	 * @params: Parmeters for DCS command bit mask and peripheral flush
+	 * Returns: Zero on success
+	 */
+	int (*process_dcs_cmd_bitmask)(void *display, struct msm_display_conn_params *params);
 };
 
 /**
