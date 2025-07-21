@@ -1271,10 +1271,12 @@ static int _sde_encoder_atomic_check_reserve(struct drm_encoder *drm_enc,
 	if (sde_conn && msm_atomic_needs_modeset(crtc_state, conn_state)) {
 		struct msm_display_topology *topology = NULL;
 
-		sub_mode.dsc_mode = sde_connector_get_property(conn_state,
-				CONNECTOR_PROP_DSC_MODE);
-		sub_mode.pixel_format_mode = sde_connector_get_property(conn_state,
-				CONNECTOR_PROP_BPP_MODE);
+		ret = sde_connector_state_get_sub_mode(conn_state, &sub_mode);
+		if (ret) {
+			SDE_ERROR_ENC(sde_enc, "failed to get sub mode, rc=%d\n", ret);
+			return ret;
+		}
+
 		ret = sde_connector_get_mode_info(&sde_conn->base,
 				adj_mode, &sub_mode, &sde_conn_state->mode_info);
 		if (ret) {
