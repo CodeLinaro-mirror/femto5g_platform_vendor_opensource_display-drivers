@@ -108,6 +108,7 @@ struct dsi_avr_capabilities {
 
 struct dsi_esync_capabilities {
 	bool esync_support;
+	bool emsync_switch_enabled;
 	struct esync_params default_esync_params;
 };
 

@@ -1770,6 +1770,8 @@ sde_connector_state_get_sub_mode(struct drm_connector_state *conn_state,
 			CONNECTOR_PROP_DSC_MODE);
 	sub_mode->pixel_format_mode = sde_connector_get_property(conn_state,
 			CONNECTOR_PROP_BPP_MODE);
+	sub_mode->emsync_fps = sde_connector_get_property(conn_state,
+			CONNECTOR_PROP_EMSYNC_FPS);
 	return 0;
 }
 

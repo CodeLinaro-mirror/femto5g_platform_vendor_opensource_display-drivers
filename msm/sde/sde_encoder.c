@@ -1427,6 +1427,7 @@ static int _sde_encoder_atomic_check_qsync(struct sde_connector *sde_conn,
 
 	if (has_modeset && qsync_dirty &&
 		(msm_is_mode_seamless_poms(&sde_conn_state->msm_mode) ||
+			msm_is_mode_seamless_emsync_fps_switch(&sde_conn_state->msm_mode) ||
 			msm_is_mode_seamless_dyn_clk(&sde_conn_state->msm_mode))) {
 		SDE_ERROR("invalid qsync update during modeset priv flag:%x\n",
 				sde_conn_state->msm_mode.private_flags);
@@ -1459,6 +1460,7 @@ static int sde_encoder_virt_atomic_check(
 	enum sde_rm_topology_name old_top;
 	enum sde_rm_topology_name top_name;
 	struct msm_display_info *disp_info;
+	struct msm_display_mode *msm_mode;
 	int ret = 0;
 
 	if (!drm_enc || !crtc_state || !conn_state) {
@@ -1521,6 +1523,13 @@ static int sde_encoder_virt_atomic_check(
 					 top_name);
 			return -EINVAL;
 		}
+	}
+
+	msm_mode = &sde_conn_state->msm_mode;
+	if (msm_is_mode_seamless_emsync_fps_switch(msm_mode) &&
+		sde_enc->rc_state & SDE_ENC_RC_STATE_IDLE) {
+		SDE_EVT32(SDE_EVTLOG_ERROR);
+		SDE_INFO("emsync can't be switched in idle power collapse\n");
 	}
 
 	ret = sde_connector_roi_v1_check_roi(conn_state);
