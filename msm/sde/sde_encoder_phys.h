@@ -376,6 +376,7 @@ struct sde_encoder_vrr_cfg {
  */
 struct backup_esync_params {
 	struct drm_display_mode backup_mode;
+	struct esync_params esync_params;
 	u32 avr_step_fps;
 	u32 vrefresh;
 };

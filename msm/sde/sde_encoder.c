@@ -1459,7 +1459,6 @@ static int sde_encoder_virt_atomic_check(
 	enum sde_rm_topology_name old_top;
 	enum sde_rm_topology_name top_name;
 	struct msm_display_info *disp_info;
-	struct msm_display_mode *msm_mode;
 	int ret = 0;
 
 	if (!drm_enc || !crtc_state || !conn_state) {
@@ -1522,13 +1521,6 @@ static int sde_encoder_virt_atomic_check(
 					 top_name);
 			return -EINVAL;
 		}
-	}
-
-	msm_mode = &sde_conn_state->msm_mode;
-	if (msm_is_mode_seamless_emsync_fps_switch(msm_mode) &&
-		sde_enc->rc_state & SDE_ENC_RC_STATE_IDLE) {
-		SDE_EVT32(SDE_EVTLOG_ERROR);
-		SDE_INFO("emsync can't be switched in idle power collapse\n");
 	}
 
 	ret = sde_connector_roi_v1_check_roi(conn_state);
@@ -4977,8 +4969,9 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 			continue;
 
 		if (sde_enc->disp_info.vrr_caps.vrr_support) {
-			if (sde_enc->disp_info.vrr_caps.video_mrr_support &&
-					phys->ops.control_esync_vsync_irq)
+			if ((sde_enc->disp_info.vrr_caps.video_mrr_support ||
+				 sde_enc->disp_info.emsync_switch_enabled) &&
+				 phys->ops.control_esync_vsync_irq)
 				phys->ops.control_esync_vsync_irq(phys, enable, true);
 			else if (phys->ops.control_empulse_irq)
 				phys->ops.control_empulse_irq(phys, enable);
@@ -5140,6 +5133,7 @@ static void sde_encoder_wait_for_esync_vsync(struct sde_encoder_phys *phys)
 	u32 empulse_irq_refcount;
 	u32 empulse_notification_sim;
 	bool video_mrr_support = false;
+	bool emsync_switch_enabled = false;
 
 	if (!phys || !phys->parent) {
 		SDE_ERROR("invalid params\n");
@@ -5152,14 +5146,16 @@ static void sde_encoder_wait_for_esync_vsync(struct sde_encoder_phys *phys)
 		return;
 
 	video_mrr_support = sde_enc->disp_info.vrr_caps.video_mrr_support;
+	emsync_switch_enabled = sde_enc->disp_info.emsync_switch_enabled;
 	mutex_lock(phys->vblank_ctl_lock);
 
 	empulse_irq_refcount = atomic_read(&phys->empulse_irq_refcount);
 	empulse_notification_sim = phys->empulse_notification_sim;
 
-	SDE_EVT32(video_mrr_support, empulse_notification_sim, empulse_irq_refcount);
+	SDE_EVT32(video_mrr_support, empulse_notification_sim, empulse_irq_refcount,
+		emsync_switch_enabled);
 
-	if (video_mrr_support && empulse_notification_sim &&
+	if ((video_mrr_support || emsync_switch_enabled) && empulse_notification_sim &&
 			empulse_irq_refcount == 1) {
 		/* Force Remove sim refcount*/
 		if (phys->ops.control_esync_vsync_irq)
@@ -5167,7 +5163,7 @@ static void sde_encoder_wait_for_esync_vsync(struct sde_encoder_phys *phys)
 		/*Enable proper esync irq */
 		if (phys->ops.control_esync_vsync_irq)
 			phys->ops.control_esync_vsync_irq(phys, true, false);
-	} else if (video_mrr_support && empulse_irq_refcount > 1)
+	} else if ((video_mrr_support || emsync_switch_enabled) && empulse_irq_refcount > 1)
 		SDE_EVT32(empulse_notification_sim, empulse_irq_refcount, 0xebad);
 
 	/*acquire refcount to wait on interrupt*/
