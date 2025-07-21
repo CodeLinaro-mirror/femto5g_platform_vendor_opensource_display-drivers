@@ -1564,6 +1564,13 @@ static int dsi_panel_parse_esync_caps(struct dsi_panel *panel,
 		return 0;
 	}
 
+	esync_caps->emsync_switch_enabled = utils->read_bool(utils->data,
+					"qcom,mdss-dsi-panel-esync-emsync-switch-enabled");
+	DSI_DEBUG("emsync switch feature %s\n",
+			(esync_caps->emsync_switch_enabled ? "enabled" : "disabled"));
+	if (esync_caps->emsync_switch_enabled)
+		return 0;
+
 	rc = dsi_panel_parse_esync_params(panel,
 		&esync_caps->default_esync_params, utils);
 	if (rc) {
@@ -1575,6 +1582,7 @@ static int dsi_panel_parse_esync_caps(struct dsi_panel *panel,
 
 error:
 	esync_caps->esync_support = false;
+	esync_caps->emsync_switch_enabled = false;
 	return rc;
 }
 
@@ -2443,6 +2451,7 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-sticky_on_fly-command",
 	"qcom,mdss-dsi-trigger_self_refresh-command",
 	"qcom,mdss-dsi-fps-switch-command",
+	"qcom,mdss-dsi-em-pulse-switch-command",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -2487,6 +2496,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-sticky_on_fly-command-state",
 	"qcom,mdss-dsi-trigger_self_refresh-command-state",
 	"qcom,mdss-dsi-fps-switch-command-state",
+	"qcom,mdss-dsi-em-pulse-switch-command-state",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -4782,6 +4792,7 @@ int dsi_panel_get_mode_count(struct dsi_panel *panel)
 	 */
 	if (panel->panel_mode != DSI_OP_CMD_MODE &&
 		!panel->host_config.ext_bridge_mode &&
+		!panel->esync_caps.emsync_switch_enabled &&
 		!panel->panel_mode_switch_enabled)
 		count = SINGLE_MODE_SUPPORT;
 
@@ -5131,6 +5142,14 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 		rc = dsi_panel_parse_partial_update_caps(mode, utils);
 		if (rc)
 			DSI_ERR("failed to partial update caps, rc=%d\n", rc);
+
+		if (panel->esync_caps.emsync_switch_enabled) {
+			rc = dsi_panel_parse_esync_params(panel, &prv_info->esync_params, utils);
+			if (rc) {
+				DSI_ERR("failed to parse mode esync caps, rc=%d\n", rc);
+				goto parse_fail;
+			}
+		}
 	}
 
 parse_fail:
