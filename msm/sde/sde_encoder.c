@@ -5451,6 +5451,29 @@ u32 sde_encoder_helper_calc_vsync_count(struct drm_encoder *drm_enc, u32 vtotal,
 	return vsync_count;
 }
 
+static void _sde_encoder_setup_misr(struct sde_encoder_virt *sde_enc)
+{
+	struct sde_crtc_misr_info crtc_misr_info = {false, 0};
+	struct sde_crtc *sde_crtc = to_sde_crtc(sde_enc->crtc);
+
+	if (!sde_crtc) {
+		SDE_ERROR("invalid crtc to setup misr\n");
+		return;
+	}
+
+	if (atomic_read(&sde_enc->misr_enable))
+		sde_encoder_misr_configure(&sde_enc->base, true,
+				sde_enc->misr_frame_count);
+
+	sde_crtc_get_misr_info(sde_enc->crtc, &crtc_misr_info);
+	if (crtc_misr_info.misr_enable && sde_crtc &&
+				sde_crtc->misr_reconfigure) {
+		sde_crtc_misr_setup(sde_enc->crtc, true,
+				crtc_misr_info.misr_frame_count);
+		sde_crtc->misr_reconfigure = false;
+	}
+}
+
 /**
  * _sde_encoder_kickoff_phys - handle physical encoder kickoff
  *	Iterate through the physical encoders and perform consolidated flush
@@ -5472,7 +5495,6 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	struct msm_drm_private *priv = NULL;
 	struct sde_kms *sde_kms = NULL;
 	struct sde_encoder_phys *phys_enc;
-	struct sde_crtc_misr_info crtc_misr_info = {false, 0};
 	bool is_regdma_blocking = false, is_vid_mode = false;
 	struct sde_crtc *sde_crtc;
 	struct sde_cesta_scc_status scc_status = {0, };
@@ -5564,17 +5586,7 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 		SDE_EVT32(atomic_read(&phys->pending_te_deassert_cnt));
 	}
 
-	if (atomic_read(&sde_enc->misr_enable))
-		sde_encoder_misr_configure(&sde_enc->base, true,
-				sde_enc->misr_frame_count);
-
-	sde_crtc_get_misr_info(sde_enc->crtc, &crtc_misr_info);
-	if (crtc_misr_info.misr_enable && sde_crtc &&
-				sde_crtc->misr_reconfigure) {
-		sde_crtc_misr_setup(sde_enc->crtc, true,
-				crtc_misr_info.misr_frame_count);
-		sde_crtc->misr_reconfigure = false;
-	}
+	_sde_encoder_setup_misr(sde_enc);
 
 	_sde_encoder_trigger_start(sde_enc->cur_master);
 
@@ -7099,6 +7111,7 @@ void sde_encoder_kickoff(struct drm_encoder *drm_enc, bool config_changed)
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
+
 	SDE_ATRACE_BEGIN("encoder_kickoff");
 	sde_enc = to_sde_encoder_virt(drm_enc);
 
@@ -7106,6 +7119,9 @@ void sde_encoder_kickoff(struct drm_encoder *drm_enc, bool config_changed)
 
 	disp_op = sde_encoder_get_disp_op(drm_enc);
 	if (sde_enc->hal_ops.kickoff[disp_op]) {
+
+		_sde_encoder_setup_misr(sde_enc);
+
 		ret = sde_enc->hal_ops.kickoff[disp_op](sde_enc, config_changed);
 		if (ret)
 			SDE_ERROR("kickoff halop failed ret:%d\n", ret);
@@ -7808,7 +7824,7 @@ static ssize_t _sde_encoder_arp_freq_steps_read(struct file *file,
 	if (len < 0 || len >= sizeof(buf))
 		return 0;
 
-	if (copy_to_user(user_buff, buf, len))
+	if ((count < sizeof(buf)) || copy_to_user(user_buff, buf, len))
 		return -EFAULT;
 
 	*ppos += len;   /* increase offset */
