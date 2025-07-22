@@ -173,6 +173,42 @@ int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
+ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
+{
+	ssize_t read_sz, evtlog_sz, total_sz;
+	ssize_t copied = 0;
+	ssize_t rd_buf_offset;
+	ssize_t rd_buf_cpy, evtlog_cpy;
+
+	if (!hfi_dbg->base->evtlog || !hfi_dbg->base->evtlog->dumped_evtlog ||
+		!hfi_dbg->base->read_buf)
+		return 0;
+
+	evtlog_sz = SDE_EVTLOG_ENTRY * SDE_EVTLOG_BUF_MAX;
+	read_sz = hfi_dbg->base->buff_sz;
+	total_sz = read_sz + evtlog_sz;
+	hfi_dbg->base->is_dumped = true;
+
+	/* Copy from evtlog if offset is within evtlog range */
+	if (evtlog_sz > offset) {
+		evtlog_cpy = min(count, (size_t)(evtlog_sz - offset));
+		memcpy(buffer, hfi_dbg->base->evtlog->dumped_evtlog + offset,
+			evtlog_cpy);
+		copied += evtlog_cpy;
+	}
+
+	if ((total_sz > (offset + copied)) && copied < count) {
+		rd_buf_offset = evtlog_sz < offset ? offset - evtlog_sz : 0;
+		rd_buf_cpy = min(count - copied, (size_t)(read_sz - rd_buf_offset));
+
+		memcpy(buffer + copied, hfi_dbg->base->read_buf + rd_buf_offset,
+			rd_buf_cpy);
+		copied += rd_buf_cpy;
+	}
+
+	return (offset < total_sz) ? copied : 0;
+}
+
 void _hfi_dump_buff(void __iomem *local_addr, u32 size, char *evt_type)
 {
 	u32 in_log;
@@ -214,6 +250,7 @@ void _hfi_dump_buff(void __iomem *local_addr, u32 size, char *evt_type)
  * @do_panic: whether to trigger a panic after dumping
  * @name: string indicating origin of dump
  * @dump_secure: flag to indicate dumping in secure-session
+ * @dump_blk_mask: mask of all the hw blk-ids that has to be dumped
  */
 static void _hfi_dump_all(bool do_panic, const char *name, bool dump_secure)
 {
@@ -222,9 +259,11 @@ static void _hfi_dump_all(bool do_panic, const char *name, bool dump_secure)
 
 	in_dump = (hfi_dbg->base->dump_option);
 
-	if (sde_evtlog_is_enabled(hfi_dbg->base->evtlog, SDE_EVTLOG_ALWAYS))
+	if (sde_evtlog_is_enabled(hfi_dbg->base->evtlog, SDE_EVTLOG_ALWAYS)) {
+		sde_evtlog_dump_all(hfi_dbg->base->evtlog);
 		_hfi_dump_buff(hfi_dbg->buff_map.evt_log_addr.local_addr,
 			hfi_dbg->buff_map.evt_log_addr.size, "evtlog");
+	}
 
 	start = ktime_get();
 	_hfi_dump_buff(hfi_dbg->buff_map.reg_addr.local_addr,
@@ -288,6 +327,7 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 	hfi_dbg->buff_map.device_state_addr.size = 0;
 
 	dbg->hal_ops.dbg_dump[MSM_DISP_OP_HFI] = hfi_dbg_dump;
+	dbg->hal_ops.devcoredump_read[MSM_DISP_OP_HFI] = hfi_devcoredump_read;
 
 	kms = to_sde_kms(priv->kms);
 	hfi_kms = to_hfi_kms(kms);
@@ -399,7 +439,7 @@ void hfi_dbg_destroy(void)
 	hfi_dbg->base->read_buf = NULL;
 	hfi_dbg->base->buff_sz = 0;
 
-	hfi_adapter_buffer_dealloc(&hfi_dbg->base_buf_addr);
-	kfree(hfi_dbg->base_props);
+	hfi_adapter_buffer_dealloc(&hfi_dbg->buff_map.reg_addr);
+
 	kfree(hfi_dbg);
 }

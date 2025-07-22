@@ -1107,7 +1107,20 @@ void sde_evtlog_dump_all(struct sde_dbg_evtlog *evtlog)
 	bool update_last_entry = true;
 	u32 in_log, in_mem, in_dump;
 	char *dump_addr = NULL;
-	int i;
+	struct platform_device *pdev = NULL;
+	struct drm_device *ddev = NULL;
+	struct msm_drm_private *priv = NULL;
+	int i, ret = 0;
+
+	pdev = to_platform_device(sde_dbg_base.dev);
+	ddev = platform_get_drvdata(pdev);
+
+	if (!ddev || !ddev->dev_private) {
+		SDE_ERROR("invalid drm device node\n");
+		return;
+	}
+
+	priv = ddev->dev_private;
 
 	if (!evtlog )
 		return;
@@ -1121,29 +1134,42 @@ void sde_evtlog_dump_all(struct sde_dbg_evtlog *evtlog)
 				GFP_KERNEL);
 		if (!evtlog->dumped_evtlog)
 			return;
-
 		evtlog->log_size = SDE_EVTLOG_ENTRY;
 	}
 	dump_addr = evtlog->dumped_evtlog;
+	if (priv && IS_DISP_OP_HWIO(priv->disp_op)) {
+		if ((in_mem || in_dump) && dump_addr && (!sde_dbg_base.coredump_reading)) {
+			for (i =  0; i < evtlog->log_size; i++) {
+				if (!sde_evtlog_dump_to_buffer(evtlog, dump_addr,
+						SDE_EVTLOG_BUF_MAX, update_last_entry, true))
+					break;
 
-	if ((in_mem || in_dump) && dump_addr && (!sde_dbg_base.coredump_reading)) {
-		for (i =  0; i < evtlog->log_size; i++) {
-			if (!sde_evtlog_dump_to_buffer(evtlog, dump_addr, SDE_EVTLOG_BUF_MAX,
-					update_last_entry, true))
-				break;
-
-			dump_addr += SDE_EVTLOG_BUF_MAX;
-			update_last_entry = false;
+				dump_addr += SDE_EVTLOG_BUF_MAX;
+				update_last_entry = false;
+			}
 		}
-	}
 
-	if (in_dump && dump_addr && sde_dbg_base.coredump_reading) {
-		drm_printf(sde_dbg_base.sde_dbg_printer, "===================evtlog================\n");
-		for (i = 0; i < evtlog->log_size; i++) {
-			drm_printf(sde_dbg_base.sde_dbg_printer, "%s", dump_addr);
-			dump_addr += SDE_EVTLOG_BUF_MAX;
+		if (in_dump && dump_addr && sde_dbg_base.coredump_reading) {
+			drm_printf(sde_dbg_base.sde_dbg_printer,
+					"===================evtlog================\n");
+			for (i = 0; i < evtlog->log_size; i++) {
+				drm_printf(sde_dbg_base.sde_dbg_printer, "%s", dump_addr);
+				dump_addr += SDE_EVTLOG_BUF_MAX;
+			}
+			drm_printf(sde_dbg_base.sde_dbg_printer, "\n");
 		}
-		drm_printf(sde_dbg_base.sde_dbg_printer, "\n");
+	} else if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
+		if ((in_mem || in_dump) && dump_addr) {
+			for (i =  0; i < evtlog->log_size; i++) {
+				ret = sde_evtlog_dump_to_buffer(evtlog, dump_addr,
+						SDE_EVTLOG_BUF_MAX, update_last_entry, true);
+				if (!ret)
+					break;
+
+				dump_addr += ret;
+				update_last_entry = false;
+			}
+		}
 	}
 
 	if (in_log) {
@@ -1312,6 +1338,7 @@ static ssize_t sde_devcoredump_read(char *buffer, loff_t offset,
 	struct platform_device *pdev = NULL;
 	struct drm_device *ddev = NULL;
 	struct msm_drm_private *priv = NULL;
+	int ret;
 
 	pdev = to_platform_device(sde_dbg_base.dev);
 	ddev = platform_get_drvdata(pdev);
@@ -1322,24 +1349,23 @@ static ssize_t sde_devcoredump_read(char *buffer, loff_t offset,
 	}
 
 	priv = ddev->dev_private;
-	if (priv && IS_DISP_OP_HWIO(priv->disp_op)) {
-		if (!sde_dbg_base.read_buf) {
-			sde_dbg_base.read_buf = kvzalloc(MAX_BUFF_SIZE, GFP_KERNEL);
-			if (!sde_dbg_base.read_buf)
-				return -ENOMEM;
-			sde_dbg_base.is_dumped = false;
+	if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
+		if (sde_dbg_base.hal_ops.devcoredump_read[priv->disp_op]) {
+			ret = sde_dbg_base.hal_ops.devcoredump_read[priv->disp_op](buffer,
+				offset, count);
+			return ret;
 		}
+	}
 
-		if (!sde_dbg_base.is_dumped) {
-			read_size = sde_devcoredump_drm_read(sde_dbg_base.read_buf, MAX_BUFF_SIZE);
-			sde_dbg_base.is_dumped = true;
-		}
-
-	} else if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
+	if (!sde_dbg_base.read_buf) {
+		sde_dbg_base.read_buf = kvzalloc(MAX_BUFF_SIZE, GFP_KERNEL);
 		if (!sde_dbg_base.read_buf)
-			return 0;
+			return -ENOMEM;
+		sde_dbg_base.is_dumped = false;
+	}
 
-		read_size = sde_dbg_base.buff_sz;
+	if (!sde_dbg_base.is_dumped) {
+		read_size = sde_devcoredump_drm_read(sde_dbg_base.read_buf, MAX_BUFF_SIZE);
 		sde_dbg_base.is_dumped = true;
 	}
 

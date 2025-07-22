@@ -398,6 +398,12 @@ struct sde_dbg_hal_funcs {
 	 */
 	void (*dbg_dump[MSM_DISP_OP_MAX])(bool do_panic, const char *name,
 			bool dump_secure, u64 dump_blk_mask);
+
+	/**
+	 * devcoredump_read - read handler for devcoredump interface in HFI mode
+	 * Returns: Number of bytes copied to the buffer, or 0 if no more data available
+	 */
+	ssize_t (*devcoredump_read[MSM_DISP_OP_MAX])(char *buffer, loff_t offset, size_t count);
 };
 
 /**
@@ -657,6 +663,13 @@ void sde_reglog_log(u8 blk_id, u32 val, u32 addr);
 ssize_t sde_evtlog_dump_to_buffer(struct sde_dbg_evtlog *evtlog,
 		char *evtlog_buf, ssize_t evtlog_buf_size,
 		bool update_last_entry, bool full_dump);
+
+/**
+ * sde_evtlog_dump_all - dump evtlog based on selected dump options
+ * @evtlog:	pointer to evtlog
+ * Returns:	log size
+ */
+void sde_evtlog_dump_all(struct sde_dbg_evtlog *evtlog);
 
 /**
  * sde_evtlog_count - count the current log size for print
