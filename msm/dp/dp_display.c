@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2459,6 +2459,7 @@ static int dp_display_adjust_mode_link_bw(struct dp_display *dp_display,
 		goto end;
 	}
 
+	// NOTE: This is a temporary fix. Using this workaround can lead to link CTS failures/issues.
 	if (mode_bit_rate < drm_dp_bw_code_to_link_rate(DP_LINK_BW_1_62)) {
 		dp->ctrl->set_lane_rate(dp->ctrl, DP_LINK_BW_1_62);
 		rc = dp->ctrl->reset(dp->ctrl, false);
