@@ -6528,6 +6528,10 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 			SDE_ERROR("hfi post boot failed: %d\n", rc);
 			return rc;
 		}
+
+		rc = sde_hfi_hw_fence_init(priv, sde_kms);
+		if (rc)
+			SDE_ERROR("sde hfi hw fence data init failed: %d\n", rc);
 	}
 
 	return 0;

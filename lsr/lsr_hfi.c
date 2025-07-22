@@ -34,6 +34,7 @@
 #include "lsr_hw_io.h"
 #include "msm_lsr_clocks.h"
 #include <linux/clk/qcom.h>
+#include "msm_lsr_synx.h"
 
 #define REG_ADDR_OFFSET_BITMASK	0x000FFFFF
 #define QDSS_IOVA_START 0x80001000
@@ -86,8 +87,8 @@ static int __reset_control_deassert_name(struct lsr_device *device, const char *
 static int __reset_control_acquire(struct lsr_device *device, const char *name);
 static int __reset_control_release(struct lsr_device *device, const char *name);
 
-static int lsr_iommu_map(struct iommu_domain *domain, unsigned long iova, phys_addr_t paddr,
-	size_t size, int prot)
+int lsr_iommu_map(struct iommu_domain *domain, unsigned long iova, phys_addr_t paddr, size_t size,
+		int prot)
 {
 	int rc = 0;
 #if (KERNEL_VERSION(6, 2, 0) > LINUX_VERSION_CODE)
@@ -2185,6 +2186,20 @@ err_subcache_get:
 	return 0;
 }
 
+static int __init_synx(struct lsr_device *device)
+{
+	int rc = 0;
+
+	if (!device) {
+		dprintk(LSR_ERR, "init_synx: invalid device %pK\n", device);
+		return -EINVAL;
+	}
+
+	lsr_synx_ftbl_init(device);
+	rc = device->synx_ftbl->lsr_sess_init_synx(device);
+	return rc;
+}
+
 static int __init_resources(struct lsr_device *device,
 				struct msm_lsr_platform_resources *res)
 {
@@ -2221,6 +2236,10 @@ static int __init_resources(struct lsr_device *device,
 	rc = __init_subcaches(device);
 	if (rc)
 		dprintk(LSR_WARN, "Failed to init subcaches: %d\n", rc);
+
+	rc = __init_synx(device);
+	if (rc)
+		dprintk(LSR_ERR, "Failed to init synx %d\n", rc);
 
 	return rc;
 

@@ -195,6 +195,7 @@
 enum {
 	SDE_HW_VERSION,
 	SDE_HW_FENCE_VERSION,
+	SDE_LSR_HW_FENCE_VERSION,
 	SDE_HW_UBWC_VERSION,
 	SDE_HW_QULTIVATE_VERSION,
 	SDE_HW_PROP_MAX,
@@ -656,6 +657,7 @@ struct sde_dt_props {
 static struct sde_prop_type sde_hw_prop[] = {
 	{SDE_HW_VERSION, "qcom,sde-hw-version", false, PROP_TYPE_U32},
 	{SDE_HW_FENCE_VERSION, "qcom,hw-fence-sw-version", false, PROP_TYPE_U32},
+	{SDE_LSR_HW_FENCE_VERSION, "qcom,lsr-hw-fence-sw-version", false, PROP_TYPE_U32},
 	{SDE_HW_UBWC_VERSION, "qcom,sde-ubwc-version", false, PROP_TYPE_U32},
 	{SDE_HW_QULTIVATE_VERSION, "qcom,sde-qultiv-sw-version", false, PROP_TYPE_U32},
 };
@@ -7225,6 +7227,11 @@ static int sde_hw_ver_parse_dt(struct drm_device *dev, struct device_node *np,
 		cfg->hw_fence_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_FENCE_VERSION, 0);
 	else
 		cfg->hw_fence_rev = 0; /* disable hw-fences */
+
+	if (prop_exists[SDE_LSR_HW_FENCE_VERSION])
+		cfg->lsr_hw_fence_rev = PROP_VALUE_ACCESS(prop_value, SDE_LSR_HW_FENCE_VERSION, 0);
+	else
+		cfg->lsr_hw_fence_rev = 0; /* disable lsr-hw-fences */
 
 	if (prop_exists[SDE_HW_UBWC_VERSION])
 		cfg->ubwc_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_UBWC_VERSION, 0);

@@ -97,6 +97,7 @@ struct hfi_catalog_base {
  * @catalog: structure holding parsed catalog data
  * @primary_connector: primary connector handle
  * @ssr_in_progress: atomic variable tracking ssr progress
+ * @hfi_hw_fence_data: HFI hw-fence data for fence creation and register for wait
  */
 struct hfi_kms {
 	struct sde_kms *base;
@@ -109,6 +110,7 @@ struct hfi_kms {
 	struct hfi_catalog_base *catalog;
 	struct hfi_connector *primary_connector;
 	atomic_t ssr_in_progress;
+	struct hfi_hwfence_data *hfi_hw_fence_data;
 };
 
 /**
@@ -133,6 +135,21 @@ int hfi_kms_reg_client(struct drm_device *dev);
 #else
 int hfi_kms_reg_client(struct drm_device *dev);
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
+
+#if IS_ENABLED(CONFIG_MDSS_HFI) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+/**
+ * sde_hfi_hw_fence_init - initialize sde hfi hw fence data
+ * @priv:        Pointer to msm_drm_private
+ * @sde_kms:        Pointer to sde kms structure
+ * Returns:     0 on success, or error code on failure
+ */
+int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde_kms *sde_kms);
+#else
+static inline int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde_kms *sde_kms)
+{
+	return -EINVAL;
+}
+#endif
 
 #if IS_ENABLED(CONFIG_MDSS_HFI)
 /**

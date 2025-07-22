@@ -516,6 +516,26 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
+{
+	int ret = 0;
+
+	ret = hfi_core_hw_fence_init(hfi_handle);
+	if (ret) {
+		HFI_AD_ERROR("failed to init DCP hw fence client\n");
+		ret = hfi_core_hw_fence_deinit(hfi_handle);
+		if (ret)
+			HFI_AD_ERROR("failed to deinit DCP hw fence client\n");
+	}
+}
+#else
+static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
+{
+	HFI_AD_ERROR("HFI hw fence not enabled\n");
+}
+#endif
+
 struct hfi_adapter_t *hfi_adapter_init(int instance)
 {
 	struct hfi_adapter_t *hfi_host;
@@ -549,6 +569,9 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 		HFI_AD_ERROR("failed to open hfi core session\n");
 		goto fail;
 	}
+
+	/* Initialize DCP hw fence client */
+	_hfi_core_hw_fence_init(hfi_handle);
 
 	/* Initialize hfi_adapter_t after core session is created */
 	hfi_host->sde_or_vm_instance = instance;
