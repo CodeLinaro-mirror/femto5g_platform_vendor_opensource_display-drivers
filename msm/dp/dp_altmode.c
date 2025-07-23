@@ -15,9 +15,10 @@
 #else
     #include <linux/soc/qcom/altmode-glink.h>
 #endif
+#include <linux/usb/dwc3-msm.h>
 #include <linux/usb/pd_vdo.h>
-#include <linux/usb/typec_dp.h>
 #include <linux/of_platform.h>
+#include <linux/version.h>
 
 #include "dp_altmode.h"
 #include "dp_debug.h"
