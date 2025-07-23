@@ -29,6 +29,7 @@ module_entry(
             "msm/dp/dp_catalog.c",
             "msm/dp/dp_catalog_v420.c",
             "msm/dp/dp_catalog_v200.c",
+            "msm/dp/dp_catalog_v500.c",
             "msm/dp/dp_aux.c",
             "msm/dp/dp_panel.c",
             "msm/dp/dp_link.c",
@@ -47,6 +48,9 @@ module_entry(
             "msm/dp/dp_pll.c",
             "msm/dp/dp_pll_5nm.c",
             "msm/dp/dp_pll_4nm.c",
+            "msm/dp/dp_pll_14nm.c",
+            "msm/dp/edp_pll_5nm.c",
+            "msm/dp/edp_pll_7nm.c",
          ],
          "CONFIG_DRM_MSM_DP_MST" : [
             "msm/dp/dp_mst_drm.c",
