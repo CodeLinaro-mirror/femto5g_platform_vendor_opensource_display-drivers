@@ -111,6 +111,7 @@ int hdmi_pll_clock_register_helper(struct hdmi_pll *pll,
 struct hdmi_pll *hdmi_pll_get(struct platform_device *pdev,
 		struct hdmi_parser *parser)
 {
+	int rc = 0, val = 0;
 	struct device_node *node;
 	struct platform_device *lpdev;
 	struct hdmi_pll *pll;
@@ -139,6 +140,13 @@ struct hdmi_pll *hdmi_pll_get(struct platform_device *pdev,
 	}
 
 	pll->parser = parser;
+
+	rc = of_property_read_u32(pdev->dev.of_node,
+			"qcom,pll-clk-factor", &val);
+	if (!rc)
+		pll->clk_factor = val;
+	else
+		pll->clk_factor = 1000; /* default value */
 
 	pll->io_data = hdmi_pll_get_io_handle(pll);
 	if (!pll->io_data) {
