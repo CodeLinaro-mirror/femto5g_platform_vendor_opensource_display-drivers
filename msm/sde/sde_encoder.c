@@ -3824,7 +3824,8 @@ static void _sde_encoder_input_handler_register(
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	int rc;
 
-	if (!sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+	if (!(sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+		sde_enc->disp_info.vrr_caps.video_psr_support) ||
 		!sde_enc->input_event_enabled)
 		return;
 
@@ -3846,7 +3847,8 @@ static void _sde_encoder_input_handler_unregister(
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 
-	if (!sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+	if (!(sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+		sde_enc->disp_info.vrr_caps.video_psr_support) ||
 		!sde_enc->input_event_enabled)
 		return;
 
