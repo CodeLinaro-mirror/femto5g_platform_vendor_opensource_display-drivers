@@ -12,6 +12,7 @@
 #include <drm/drm_crtc_helper.h>
 #include "msm_drv.h"
 #include "dsi_display.h"
+#include "sde_hw_catalog.h"
 
 struct shd_mode_info {
 	int x_offset;
@@ -23,6 +24,11 @@ struct shd_mode_info {
 struct shd_stage_range {
 	u32 start;
 	u32 size;
+};
+
+struct shd_roi_bypass_range {
+	u32 roi_mask;
+	struct sde_rect roi_info[ROI_MISR_MAX_ROIS_PER_MISR];
 };
 
 struct shd_display_base {
@@ -57,8 +63,13 @@ struct shd_display {
 	struct sde_rect src;
 	struct sde_rect roi;
 	struct shd_stage_range stage_range;
-
+	uint32_t misr_roi_mask;
+	struct sde_rect misr_range[ROI_MISR_MAX_ROIS_PER_CRTC];
 	bool full_screen;
+
+	bool dspp_enabled;
+	bool has_bypass_property;
+	struct shd_roi_bypass_range bypass_range[MAX_MIXERS_PER_CRTC];
 
 	struct platform_device *pdev;
 	struct list_head head;
@@ -70,7 +81,9 @@ void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id,
 				void *phys_init_params);
 
 void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
-		      struct sde_hw_mixer *lm_ctx[MAX_MIXERS_PER_CRTC], int lm_num);
+		struct sde_hw_mixer *lm_ctx[MAX_MIXERS_PER_CRTC], int lm_num,
+		struct sde_hw_dspp *dspp_ctx[MAX_MIXERS_PER_CRTC], int dspp_num,
+		struct sde_hw_roi_misr *misr_ctx[MAX_MIXERS_PER_CRTC], int misr_num);
 
 /* helper for seamless plane handoff */
 
