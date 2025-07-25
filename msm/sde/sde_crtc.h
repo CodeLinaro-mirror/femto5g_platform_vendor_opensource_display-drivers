@@ -704,7 +704,8 @@ static inline int sde_crtc_request_frame_reset(struct drm_crtc *crtc,
 		sde_crtc_dump_fences(crtc);
 
 	if (sde_crtc->frame_trigger_mode == FRAME_DONE_WAIT_POSTED_START ||
-			!sde_encoder_is_dsi_display(encoder))
+			(!sde_encoder_is_dsi_display(encoder) &&
+			sde_encoder_get_intf_mode(encoder) != INTF_MODE_VIDEO))
 		sde_crtc_reset_hw(crtc, crtc->state, false);
 
 	return 0;
