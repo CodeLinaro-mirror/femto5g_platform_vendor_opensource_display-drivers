@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -671,7 +671,8 @@ static inline int sde_crtc_request_frame_reset(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
 
 	if (sde_crtc->frame_trigger_mode == FRAME_DONE_WAIT_POSTED_START ||
-			!sde_encoder_is_dsi_display(encoder))
+			(!sde_encoder_is_dsi_display(encoder) &&
+			sde_encoder_get_intf_mode(encoder) != INTF_MODE_VIDEO))
 		sde_crtc_reset_hw(crtc, crtc->state, false);
 
 	return 0;

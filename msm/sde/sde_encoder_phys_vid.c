@@ -1065,8 +1065,6 @@ static int sde_encoder_phys_vid_wait_for_commit_done(
 	int rc;
 
 	rc =  _sde_encoder_phys_vid_wait_for_vblank(phys_enc, true);
-	if (rc)
-		sde_encoder_helper_phys_reset(phys_enc);
 
 	/* Update TxQ for the incoming frame */
 	sde_encoder_phys_vid_update_txq(phys_enc);
