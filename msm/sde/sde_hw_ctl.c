@@ -442,7 +442,7 @@ static inline void sde_hw_ctl_hw_fence_ctrl(struct sde_hw_ctl *ctx, bool sw_over
 static inline void sde_hw_ctl_trigger_sw_override(struct sde_hw_ctl *ctx)
 {
 	/* clear input fence before override */
-	sde_hw_ctl_update_input_fence(ctx, 0, 0);
+	sde_hw_ctl_update_input_fence(ctx, CTL_INVALID_BIT, 0);
 
 	SDE_REG_WRITE(&ctx->hw, CTL_FENCE_READY_SW_OVERRIDE, 0x1);
 }
