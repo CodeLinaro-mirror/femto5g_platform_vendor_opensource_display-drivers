@@ -1605,6 +1605,11 @@ static inline bool sde_connector_is_3d_merge_enabled(struct drm_connector_state 
 		|| sde_connector_is_quadpipe_3d_merge_enabled(conn_state);
 }
 
+static inline bool sde_connector_supports_cac(struct drm_connector *conn)
+{
+	return (conn && (conn->connector_type == DRM_MODE_CONNECTOR_DSI ||
+		conn->connector_type == DRM_MODE_CONNECTOR_eDP));
+}
 /**
 * sde_connector_set_msm_mode - set msm_mode for connector state
 * @conn_state: Pointer to drm connector state structure
