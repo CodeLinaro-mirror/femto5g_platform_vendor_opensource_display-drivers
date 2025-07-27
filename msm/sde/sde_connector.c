@@ -3469,6 +3469,7 @@ static int sde_connector_get_modes(struct drm_connector *connector)
 	return mode_count;
 }
 
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 static enum drm_mode_status
 sde_connector_mode_valid(struct drm_connector *connector,
 		struct drm_display_mode *mode)
@@ -3494,6 +3495,33 @@ sde_connector_mode_valid(struct drm_connector *connector,
 	/* assume all modes okay by default */
 	return MODE_OK;
 }
+#else
+static enum drm_mode_status
+sde_connector_mode_valid(struct drm_connector *connector,
+		const struct drm_display_mode *mode)
+{
+	struct sde_connector *c_conn;
+	struct msm_resource_caps_info avail_res;
+
+	if (!connector || !mode) {
+		SDE_ERROR("invalid argument(s), conn %pK, mode %pK\n",
+				connector, mode);
+		return MODE_ERROR;
+	}
+
+	c_conn = to_sde_connector(connector);
+
+	memset(&avail_res, 0, sizeof(avail_res));
+	sde_connector_get_avail_res_info(connector, &avail_res);
+
+	if (c_conn->ops.mode_valid)
+		return c_conn->ops.mode_valid(connector, (struct drm_display_mode *)mode,
+				c_conn->display, &avail_res);
+
+	/* assume all modes okay by default */
+	return MODE_OK;
+}
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 static struct drm_encoder *
