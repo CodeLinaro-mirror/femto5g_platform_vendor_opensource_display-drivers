@@ -423,7 +423,7 @@ static void dp_display_check_source_hdcp_caps(struct dp_display_private *dp)
 		if (!fd || !ops)
 			continue;
 
-		if (ops->set_mode && ops->set_mode(fd, dp->mst.mst_active))
+		if (ops->set_mode && ops->set_mode(fd, dp->mst.mst_active, dp->cell_idx))
 			continue;
 
 		if (!(dp->hdcp.source_cap & dev->ver) &&
