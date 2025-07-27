@@ -3995,7 +3995,6 @@ static int dp_display_edp_detect(struct dp_display *dp_display)
 	dp_display_state_add(DP_STATE_CONNECT_NOTIFIED);
 	dp_display_state_remove(DP_STATE_DISCONNECT_NOTIFIED);
 
-	dp->power->edp_panel_set_gpio(dp->power, DP_GPIO_EDP_VCC_EN, false);
 end:
 	mutex_unlock(&dp->session_lock);
 	return rc;
