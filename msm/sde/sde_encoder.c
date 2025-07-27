@@ -4435,6 +4435,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		}
 	} else {
 		sde_encoder_resource_control(drm_enc, SDE_ENC_RC_EVENT_KICKOFF);
+		sde_encoder_cancel_delayed_work(drm_enc);
 		for (i = 0; i < sde_enc->num_phys_encs; i++) {
 			struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
@@ -7842,6 +7843,7 @@ static ssize_t _sde_encoder_misr_read(struct file *file,
 	int rc;
 	enum msm_disp_op disp_op;
 	int ret = 0;
+	bool pm_enabled = false;
 
 	if (*ppos)
 		return 0;
@@ -7874,6 +7876,7 @@ static ssize_t _sde_encoder_misr_read(struct file *file,
 		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
 		return rc;
 	}
+	pm_enabled = true;
 
 	if (sde_enc->hal_ops.debugfs_misr_read[disp_op]) {
 		ret = sde_enc->hal_ops.debugfs_misr_read[disp_op](
@@ -7942,7 +7945,8 @@ buff_check:
 	*ppos += len;   /* increase offset */
 
 end:
-	pm_runtime_put_sync(drm_enc->dev->dev);
+	if (pm_enabled)
+		pm_runtime_put_sync(drm_enc->dev->dev);
 	return len;
 }
 
