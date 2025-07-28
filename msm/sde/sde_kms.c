@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -5280,7 +5280,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	/*
 	 * Support format modifiers for compression etc.
 	 */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 19, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
 	dev->mode_config.allow_fb_modifiers = true;
 #endif
 
