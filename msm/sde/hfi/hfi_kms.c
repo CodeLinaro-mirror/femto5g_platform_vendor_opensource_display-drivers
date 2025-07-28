@@ -519,6 +519,60 @@ static int _send_device_init_cmd(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
+static void hfi_kms_get_trace_cfg_resp(u32 display_id, u32 cmd_id, void *prop_data,
+	u32 size, struct hfi_prop_listener *hfi_listener)
+{
+	if (cmd_id != HFI_COMMAND_DEBUG_TRACE_CFG)
+		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
+	else
+		SDE_DEBUG("Trace config command processed successfully\n");
+}
+
+static int _send_trace_cfg_cmd(struct hfi_kms *hfi_kms, uint32_t flag)
+{
+	int ret = 0;
+	struct hfi_cmdbuf_t *cmd_buf;
+
+	if (!hfi_kms)
+		return -EINVAL;
+
+	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_ENTRY);
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_CASE1);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -ENOMEM;
+	}
+
+	hfi_kms->trace_cfg_listener.hfi_prop_handler = hfi_kms_get_trace_cfg_resp;
+	ret = hfi_adapter_add_get_property(cmd_buf, HFI_COMMAND_DEBUG_TRACE_CFG,
+			MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_U32, &flag, sizeof(flag),
+			&hfi_kms->trace_cfg_listener,
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE);
+	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_CASE2, ret);
+	if (ret) {
+		SDE_ERROR("failed to add trace config command\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(cmd_buf);
+	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_CASE3, ret);
+	if (ret) {
+		SDE_ERROR("failed to send trace config command\n");
+		return ret;
+	}
+
+	SDE_DEBUG("Sent trace config command successfully\n");
+	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_EXIT);
+	return ret;
+}
+
+int hfi_kms_send_trace_cfg(struct hfi_kms *hfi_kms, u32 enable)
+{
+	return _send_trace_cfg_cmd(hfi_kms, enable);
+}
+
 int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe,
 		uint32_t pipe_idx, bool rect1, uint32_t *hfi_pipe_id)
 {

@@ -84,6 +84,7 @@ struct hfi_kms {
 	struct hfi_adapter_t *hfi_adapter;
 	struct hfi_prop_listener device_init_listener;
 	struct hfi_prop_listener resource_vote_listener;
+	struct hfi_prop_listener trace_cfg_listener;
 	atomic_t cat_init_done;
 	struct hfi_catalog_base *catalog;
 };
@@ -158,6 +159,14 @@ struct hfi_cmdbuf_t *hfi_kms_get_cmd_buf(struct hfi_kms *hfi_kms,
  * Returns: 0 on success, or error code on failure
  */
 int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms);
+
+/**
+ * hfi_kms_send_trace_cfg - enable/disable trace logs
+ * @hfi_kms: Pointer to hfi_kms structure
+ * @enable: HFI_TRUE to enable, HFI_FALSE to disable
+ * Returns: 0 on success, or error code on failure
+ */
+int hfi_kms_send_trace_cfg(struct hfi_kms *hfi_kms, u32 enable);
 
 /**
  * hfi_kms_get_plane_indices - get hfi plane indices
