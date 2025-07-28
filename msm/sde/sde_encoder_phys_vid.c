@@ -563,6 +563,9 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	if (intf->ops.avr_ctrl[disp_op])
 		intf->ops.avr_ctrl[disp_op](intf, &avr_params);
 
+	if (sde_encoder_vm_primary_vhm_prepare_helper(sde_enc))
+		avr_params.infinite_mode = true;
+
 	if (intf->ops.enable_te_level_trigger[disp_op] &&
 			!sde_enc->disp_info.is_te_using_watchdog_timer)
 		intf->ops.enable_te_level_trigger[disp_op](intf,
@@ -672,6 +675,9 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 		SDE_ERROR("invalid encoder %d\n", !phys_enc);
 		return;
 	}
+
+	if (sde_in_trusted_vm(phys_enc->sde_kms))
+		return;
 
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	mode = phys_enc->cached_mode;

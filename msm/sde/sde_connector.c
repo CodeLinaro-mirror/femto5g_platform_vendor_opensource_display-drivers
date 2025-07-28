@@ -1443,6 +1443,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	struct sde_connector *c_conn;
 	struct msm_freq_step_pattern *freq_pattern;
 	struct sde_encoder_virt *sde_enc;
+	enum sde_crtc_vm_req vm_req;
 	u64 cmd_bit_mask = 0;
 	int rc = 0;
 
@@ -1457,6 +1458,11 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	if (sde_enc)
 		sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
 
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+			CRTC_PROP_VM_REQ_STATE);
+	if (vm_req == VM_REQ_RELEASE)
+		return 0;
+
 	if (sde_encoder_in_cont_splash(connector->encoder))
 		return 0;
 
@@ -1468,7 +1474,6 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 
 	SDE_EVT32(c_conn->vrr_cmd_state, c_conn->freq_pattern_updated,
 		SDE_EVTLOG_FUNC_CASE1);
-	mutex_lock(&c_conn->bl_vrr.bl_lock);
 	freq_pattern = c_conn->freq_pattern;
 
 	if (c_conn->vrr_cmd_state == VRR_CMD_POWER_ON ||
@@ -1491,9 +1496,11 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
 
 	if (cmd_bit_mask) {
+		mutex_lock(&c_conn->bl_vrr.bl_lock);
 		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
 		if (sde_enc)
 			sde_enc->vrr_info.vhm_cmd_in_progress = SDE_CMD_SCHEDULED;
+		mutex_unlock(&c_conn->bl_vrr.bl_lock);
 	}
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, rc, cmd_bit_mask>>32, cmd_bit_mask,
@@ -1504,7 +1511,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	c_conn->freq_pattern_updated = false;
 	c_conn->freq_pattern_type_changed = false;
 
-	mutex_unlock(&c_conn->bl_vrr.bl_lock);
+
 	return rc;
 }
 
