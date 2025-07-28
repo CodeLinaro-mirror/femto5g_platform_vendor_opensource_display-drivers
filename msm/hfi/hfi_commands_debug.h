@@ -330,6 +330,33 @@
  */
 #define HFI_COMMAND_DEBUG_DUMP_REGS                                  0xFF00000D
 
+/*!
+ * HFI_COMMAND_DEBUG_TRACE_CFG - This command is used to enable/disable the trace.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi packet layout                      | Value
+ *----------------------------------------|------------------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32
+ * hfi_packet.cmd                         | HFI_COMMAND_DEBUG_TRACE_CFG
+ * hfi_packet.flags                       | HFI_TX_FLAGS_INTR_REQUIRED |
+ * ^                                      | HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ * ^                                      | HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.payload                     | u32 flag to enable/disable trace logs.
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi packet layout                      | Value
+ *----------------------------------------|------------------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_NONE
+ * hfi_packet.cmd                         | HFI_COMMAND_DEBUG_TRACE_CFG
+ * hfi_packet.flags                       | HFI_RX_FLAGS_SUCCESS
+ *
+ */
+#define HFI_COMMAND_DEBUG_TRACE_CFG                                  0xFF00000E
+
 #define HFI_COMMAND_DEBUG_END                                        0xFFFFFFFF
 
 #endif // __H_HFI_COMMANDS_DEBUG_H__
