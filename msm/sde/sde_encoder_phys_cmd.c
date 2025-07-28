@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -548,14 +548,16 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 	u32 fence_ready = 0;
 	enum msm_disp_op disp_op;
 
-	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_pp || !phys_enc->hw_intf
-		|| !phys_enc->hw_ctl)
+	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_pp || !phys_enc->hw_intf)
+		return;
+
+	ctl = phys_enc->hw_ctl;
+	if (!ctl)
 		return;
 
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	SDE_ATRACE_BEGIN("rd_ptr_irq");
 	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
-	ctl = phys_enc->hw_ctl;
 	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 
 	if (ctl->ops.get_scheduler_status[disp_op])
@@ -2566,6 +2568,14 @@ static void _sde_encoder_phys_cmd_calculate_wd_params(struct sde_encoder_phys *p
 	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	mode_info = &sde_enc->mode_info;
 
+	/*
+	 * Reset watchdog jitter config to 0 before calculating new values
+	 * to prevent stale values from affecting the calculation
+	 */
+	phys_enc->wd_jitter.jitter = 0;
+	phys_enc->wd_jitter.ltj_max = 0;
+	phys_enc->wd_jitter.ltj_slope = 0;
+
 	if (mode_info->wd_jitter.jitter_type & MSM_DISPLAY_WD_INSTANTANEOUS_JITTER) {
 		wd_jtr.jitter = mult_frac(multiplier,
 				mode_info->wd_jitter.inst_jitter_numer,
@@ -2858,6 +2868,7 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 		list_add(&cmd_enc->te_timestamp[i].list,
 				&cmd_enc->te_timestamp_list);
 
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 	hrtimer_init(&phys_enc->sde_vrr_cfg.self_refresh_timer,
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.self_refresh_timer.function =
@@ -2867,6 +2878,13 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.backlight_timer.function =
 		sde_encoder_phys_backlight_timer_cb;
+#else
+	hrtimer_setup(&phys_enc->sde_vrr_cfg.self_refresh_timer,
+		sde_encoder_phys_phys_self_refresh_helper, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+
+	hrtimer_setup(&phys_enc->sde_vrr_cfg.backlight_timer, sde_encoder_phys_backlight_timer_cb,
+		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+#endif
 
 	SDE_DEBUG_CMDENC(cmd_enc, "created\n");
 

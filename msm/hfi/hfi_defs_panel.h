@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __H_HFI_DEFS_PANEL_H__
@@ -30,6 +30,7 @@ enum hfi_panel_phy_type {
  * HFI_PANEL_BPP_16 : 16 BPP for rgb565
  * HFI_PANEL_BPP_18 : 18 BPP for rgb666
  * HFI_PANEL_BPP_24 : 24 BPP for rgb888
+ * HFI_PANEL_BPP_30 : 30 BPP for rgb101010
  */
 enum hfi_panel_bpp {
 	HFI_PANEL_BPP_3      = 1,
@@ -38,6 +39,7 @@ enum hfi_panel_bpp {
 	HFI_PANEL_BPP_16     = 4,
 	HFI_PANEL_BPP_18     = 5,
 	HFI_PANEL_BPP_24     = 6,
+	HFI_PANEL_BPP_30     = 7,
 };
 
 /*
@@ -80,12 +82,33 @@ enum hfi_panel_color_order_type {
 };
 
 /*
+ * hfi_panel_vsync_source - panel vsync source
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_0 : Vsync source from GPIO 0
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_1 : Vsync source from GPIO 1
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_2 : Vsync source from GPIO 2
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_3 : Vsync source from GPIO 3
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_4 : Vsync source from GPIO 4
+ * HFI_PANEL_VSYNC_SOURCE_GPIO_5 : Vsync source from GPIO 5
+ * HFI_PANEL_VSYNC_SOURCE_WD     : Vsync source from Watchdog timer
+ */
+enum hfi_panel_vsync_source {
+	HFI_PANEL_VSYNC_SOURCE_GPIO_0  = 0x0,
+	HFI_PANEL_VSYNC_SOURCE_GPIO_1  = 0x1,
+	HFI_PANEL_VSYNC_SOURCE_GPIO_2  = 0x2,
+	HFI_PANEL_VSYNC_SOURCE_GPIO_3  = 0x3,
+	HFI_PANEL_VSYNC_SOURCE_GPIO_4  = 0x4,
+	HFI_PANEL_VSYNC_SOURCE_GPIO_5  = 0x5,
+	HFI_PANEL_VSYNC_SOURCE_WD      = 0xf,
+};
+
+/*
  * hfi_panel_trigger_type - Trigger mechanism types
  * HFI_PANEL_TRIGGER_NONE : No trigger
  * HFI_PANEL_TRIGGER_TE : Tear check signal line used for trigger
  * HFI_PANEL_TRIGGER_SW : Triggered by software
  * HFI_PANEL_TRIGGER_SW_TE : Software trigger and TE
  * HFI_PANEL_TRIGGER_SW_SEOF : Software trigger and start/end of frame trigger.
+ * HFI_PANEL_TRIGGER_SEOF : Start/end of frame used for trigger
  */
 enum hfi_panel_trigger_type {
 	HFI_PANEL_TRIGGER_NONE      = 1,
@@ -93,6 +116,7 @@ enum hfi_panel_trigger_type {
 	HFI_PANEL_TRIGGER_SW        = 3,
 	HFI_PANEL_TRIGGER_SW_TE     = 4,
 	HFI_PANEL_TRIGGER_SW_SEOF   = 5,
+	HFI_PANEL_TRIGGER_SEOF      = 6,
 };
 
 /*

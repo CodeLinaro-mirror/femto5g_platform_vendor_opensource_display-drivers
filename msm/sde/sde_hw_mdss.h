@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -17,6 +17,7 @@
 
 #include "msm_drv.h"
 #include "hfi_defs_common.h"
+#include "sde_color_proc_feature_state_helper.h"
 
 #define SDE_DBG_NAME			"sde"
 
@@ -759,6 +760,9 @@ static u32 hfi_dspp_idx_map[DSPP_MAX] = {
  * @flags: color proc feature flag indicating enable, broadcast, dspp index
  * @dspp_start_idx: starting index of dspp pipes
  * @dspp_idx: current dspp index
+ * @hfi_buff_map: pointer to hfi_buff map object of shared memory
+ * @vig_gamut_mode: top-level structure maintaining state of VIG Gamut mode
+ * @dspp_pa_mode: top-level bitmask maintaining state of PA block
  */
 struct sde_hw_cp_cfg {
 	void *payload;
@@ -783,6 +787,10 @@ struct sde_hw_cp_cfg {
 	u32 flags;
 	u32 dspp_start_idx;
 	u32 dspp_idx;
+	struct hfi_shared_addr_map *hfi_buff_map;
+
+	struct cp_vig_gamut_mode *vig_gamut_mode;
+	struct cp_pa_mode *dspp_pa_mode;
 };
 
 /**

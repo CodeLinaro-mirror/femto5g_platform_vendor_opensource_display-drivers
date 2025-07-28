@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _HDMI_POWER_H_
@@ -29,7 +29,7 @@ struct hdmi_power {
 	struct drm_device *drm_dev;
 	struct sde_power_handle *phandle;
 	struct regulator *hdmi_phy_gdsc;
-	int (*init)(struct hdmi_power *power, bool flip);
+	int (*init)(struct hdmi_power *power);
 	int (*deinit)(struct hdmi_power *power);
 	int (*clk_enable)(struct hdmi_power *power, enum hdmi_pm_type pm_type,
 				bool enable);

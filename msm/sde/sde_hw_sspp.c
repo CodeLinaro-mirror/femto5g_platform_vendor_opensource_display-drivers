@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1808,6 +1808,17 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 				hw_pipe->hw.blk_off + cfg->sblk->ucsc_csc_blk[1].base,
 				hw_pipe->hw.blk_off + cfg->sblk->ucsc_csc_blk[1].base +\
 				SSPP_UCSC_SIZE, hw_pipe->hw.xin_id);
+		}
+
+		if (test_bit(SDE_SSPP_REC_SWI_SEPARATION, &hw_pipe->cap->features)) {
+			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "SSPP_REC_0",
+				hw_pipe->hw.blk_off + SSPP_REC0_OFFSET_FROM_SSPP_CMN,
+				hw_pipe->hw.blk_off + SSPP_REC0_OFFSET_FROM_SSPP_CMN +
+				SSPP_REC_SIZE, hw_pipe->hw.xin_id);
+			sde_dbg_reg_register_dump_range(SDE_DBG_NAME, "SSPP_REC_1",
+				hw_pipe->hw.blk_off + SSPP_REC1_OFFSET_FROM_SSPP_CMN,
+				hw_pipe->hw.blk_off + SSPP_REC1_OFFSET_FROM_SSPP_CMN +
+				SSPP_REC_SIZE, hw_pipe->hw.xin_id);
 		}
 	}
 

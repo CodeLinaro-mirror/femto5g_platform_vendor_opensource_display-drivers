@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1411,6 +1411,7 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 #ifdef HFI_PROPERTY_LAYER_COLOR_3D_LUT
 		hw_cfg.prop_id = HFI_PROPERTY_LAYER_COLOR_3D_LUT;
 #endif
+		hw_cfg.vig_gamut_mode = &psde->vig_gamut_mode;
 		psde->pipe_hw->ops.setup_vig_gamut[disp_op](psde->pipe_hw, &hw_cfg);
 	}
 
@@ -4241,16 +4242,13 @@ static void sde_plane_atomic_update(struct drm_plane *plane,
 		ret = sde_plane_sspp_atomic_update(plane, old_state);
 		/* atomic_check should have ensured that this doesn't fail */
 		WARN_ON(ret < 0);
+	}
 
-		disp_op = sde_plane_get_disp_op(plane);
-		if (psde->hal_ops.atomic_update[disp_op]) {
-			ret = psde->hal_ops.atomic_update[disp_op](psde,
-					to_sde_plane_state(old_state));
-			if (ret) {
-				SDE_ERROR_PLANE(psde,
-					"failed in HAL op atomic update ret:%d\n", ret);
-			}
-		}
+	disp_op = sde_plane_get_disp_op(plane);
+	if (psde->hal_ops.atomic_update[disp_op]) {
+		ret = psde->hal_ops.atomic_update[disp_op](psde, to_sde_plane_state(old_state));
+		if (ret)
+			SDE_ERROR_PLANE(psde, "failed in HAL op atomic update ret:%d\n", ret);
 	}
 }
 
@@ -5292,6 +5290,10 @@ static int sde_plane_atomic_set_property(struct drm_plane *plane,
 				_sde_plane_set_dst_rect_extn(psde, pstate,
 						(void *)(uintptr_t)val);
 				break;
+			case PLANE_PROP_VIG_GAMUT:
+				cp_feature_set_curr_mode(CP_STATE_VIG_GAMUT,
+					&psde->vig_gamut_mode, val);
+				break;
 			default:
 				/* nothing to do */
 				break;
@@ -5494,8 +5496,10 @@ sde_plane_duplicate_state(struct drm_plane *plane)
 	SDE_DEBUG_PLANE(psde, "\n");
 
 	/* duplicate value helper */
+	mutex_lock(&psde->property_info.property_lock);
 	msm_property_duplicate_state(&psde->property_info, old_state, pstate,
 			&pstate->property_state, pstate->property_values);
+	mutex_unlock(&psde->property_info.property_lock);
 
 	/* clear out any input fence */
 	pstate->input_fence = 0;

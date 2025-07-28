@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -150,11 +150,6 @@
 #define SSPP_VIG_OP_MODE                   0x4
 #define SSPP_VIG_CSC_10_OP_MODE            0x0
 #define SSPP_TRAFFIC_SHAPER_BPC_MAX        0xFF
-
-/* Offsets from base register */
-#define SSPP_REC0_OFFSET_FROM_SSPP_CMN 0x1000
-#define SSPP_REC1_OFFSET_FROM_SSPP_CMN 0x3000
-#define SDE_SSPP_CMN SDE_SSPP_SRC
 
 static inline int _sspp_calculate_rect_off(enum sde_sspp_multirect_index rect_index)
 {
@@ -566,7 +561,7 @@ static void sde_hw_sspp_setup_secure_v1(struct sde_hw_pipe *ctx,
 
 	if (rect_mode == SDE_SSPP_RECT_SOLO)
 		secure_bit_mask = 0xF;
-	else if (rect_mode == SDE_SSPP_RECT_0)
+	else if (rect_mode == SDE_SSPP_RECT_0 || rect_mode == SDE_SSPP_RECT_1)
 		secure_bit_mask = 0x5;
 	else
 		secure_bit_mask = 0xA;

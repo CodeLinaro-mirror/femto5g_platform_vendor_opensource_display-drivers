@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -93,17 +93,29 @@ static void dp_power_phy_gdsc(struct dp_power *dp_power, bool on)
 {
 	int rc = 0;
 
-	if (IS_ERR_OR_NULL(dp_power->dp_phy_gdsc))
+	if (IS_ERR_OR_NULL(dp_power->dp_phy_gdsc) && IS_ERR_OR_NULL(dp_power->pd_dp_phy_gdsc))
 		return;
 
-	if (on)
-		rc = regulator_enable(dp_power->dp_phy_gdsc);
-	else
-		rc = regulator_disable(dp_power->dp_phy_gdsc);
+	if (dp_power->dp_phy_gdsc) {
+		if (on)
+			rc = regulator_enable(dp_power->dp_phy_gdsc);
+		else
+			rc = regulator_disable(dp_power->dp_phy_gdsc);
 
-	if (rc)
-		DP_ERR("Fail to %s dp_phy_gdsc regulator ret =%d\n",
-				on ? "enable" : "disable", rc);
+		if (rc)
+			DP_ERR("Fail to %s dp_phy_gdsc regulator ret = %d\n",
+					on ? "enable" : "disable", rc);
+	} else if (dp_power->pd_dp_phy_gdsc) {
+		if (on)
+			rc = pm_runtime_get_sync(dp_power->pd_dp_phy_gdsc);
+		else
+			rc = pm_runtime_put_sync(dp_power->pd_dp_phy_gdsc);
+
+		if (rc < 0)
+			DP_ERR("Fail to %s pd_dp_phy_gdsc regulator ret = %d\n",
+					on ? "enable" : "disable", rc);
+	}
+
 }
 
 static int dp_power_regulator_ctrl(struct dp_power_private *power, bool enable)
@@ -902,7 +914,13 @@ static int dp_power_edp_panel_set_gpio(struct dp_power *dp_power,
 		return -EINVAL;
 
 	if ((pin_state >= DP_GPIO_EDP_MIN) && (pin_state < DP_GPIO_EDP_MAX)) {
-		gpio_direction_output(config[pin_state].gpio, enable);
+		if (gpio_is_valid(config[pin_state].gpio)) {
+			rc = gpio_direction_output(config[pin_state].gpio,
+				enable);
+			if (rc)
+				DP_ERR("unable to set gpio rc=%d\n", rc);
+		} else
+			DP_ERR("gpio invalid for %d pin\n", pin_state);
 	} else {
 		DP_ERR("Invalid GPIO call with pin state: %d\n", pin_state);
 		return -EINVAL;
@@ -949,10 +967,17 @@ struct dp_power *dp_power_get(struct dp_parser *parser, struct dp_pll *pll)
 	dp_power->power_mmrm_init = dp_power_mmrm_init;
 	dp_power->edp_panel_set_gpio = dp_power_edp_panel_set_gpio;
 
-	dp_power->dp_phy_gdsc = devm_regulator_get(dev, "dp_phy_gdsc");
-	if (IS_ERR(dp_power->dp_phy_gdsc)) {
+	if (dev->pm_domain) {
+		pm_runtime_enable(dev);
+		dp_power->pd_dp_phy_gdsc = dev;
 		dp_power->dp_phy_gdsc = NULL;
-		DP_DEBUG("Optional GDSC regulator is missing\n");
+	} else {
+		dp_power->dp_phy_gdsc = devm_regulator_get(dev, "dp_phy_gdsc");
+		if (IS_ERR(dp_power->dp_phy_gdsc)) {
+			dp_power->dp_phy_gdsc = NULL;
+			DP_DEBUG("Optional GDSC regulator is missing\n");
+		}
+		dp_power->pd_dp_phy_gdsc = NULL;
 	}
 
 	return dp_power;

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -27,6 +27,7 @@
 #include "sde_hw_mdss.h"
 #include "sde_hw_sspp.h"
 #include "sde_crtc.h"
+#include "sde_color_proc_feature_state_helper.h"
 
 /* dirty bits for update function */
 #define SDE_PLANE_DIRTY_RECTS	0x1
@@ -176,6 +177,9 @@ struct sde_plane {
 
 	struct hfi_plane *hfi_plane;
 	struct sde_plane_hal_funcs hal_ops;
+
+	/* top-level bitmask maintaining state of VIG GAMUT feature */
+	struct cp_vig_gamut_mode vig_gamut_mode;
 };
 
 #define to_sde_plane(x) container_of(x, struct sde_plane, base)

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -122,8 +122,10 @@ struct dsi_dyn_clk_caps {
 
 struct dsi_pinctrl_info {
 	struct pinctrl *pinctrl;
+	struct pinctrl_state *cur_state;
 	struct pinctrl_state *active;
 	struct pinctrl_state *active_with_esync;
+	struct pinctrl_state *active_with_esync_without_te;
 	struct pinctrl_state *suspend;
 	struct pinctrl_state *pwm_pin;
 };
@@ -294,6 +296,8 @@ struct dsi_panel {
 	u32 dsc_count;
 	u32 lm_count;
 
+	enum msm_disp_op disp_op;
+
 	bool ctl_op_sync;
 
 	int panel_test_gpio;
@@ -301,7 +305,6 @@ struct dsi_panel {
 	bool powered;
 	enum dsi_panel_physical_type panel_type;
 	bool need_post_on_supply;
-	enum msm_disp_op disp_op;
 
 	struct dsi_panel_ops panel_ops;
 };
@@ -466,4 +469,6 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 int dsi_panel_power_on(struct dsi_panel *panel);
 
 int dsi_panel_power_off(struct dsi_panel *panel);
+
+int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel);
 #endif /* _DSI_PANEL_H_ */

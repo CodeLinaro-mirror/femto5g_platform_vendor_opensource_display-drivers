@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -867,6 +867,9 @@ void sde_connector_schedule_status_work(struct drm_connector *connector,
 	struct sde_connector *c_conn;
 	struct msm_display_info info;
 
+	if (sde_connector_get_disp_op(connector) == MSM_DISP_OP_HFI)
+		return;
+
 	c_conn = to_sde_connector(connector);
 	if (!c_conn)
 		return;
@@ -1168,12 +1171,23 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 		drm_enc = connector->encoder;
 
 	if (c_conn->vrr_caps.video_mrr_support &&
-			msm_is_mode_seamless_vrr(&c_state->msm_mode))
+			msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
+			!drm_mode_vrefresh(c_state->msm_mode.base))
 		frame_interval_ns =
 			NSEC_PER_SEC/drm_mode_vrefresh(c_state->msm_mode.base);
 	else
 		frame_interval_ns = sde_connector_get_property(c_conn->base.state,
 			CONNECTOR_PROP_FRAME_INTERVAL);
+
+	/*
+	 * recovery and power off charging cases will not set CONNECTOR_PROP_FRAME_INTERVAL.
+	 * Set current mode frame interval when the frame_interval_ns is 0.
+	 */
+	if (frame_interval_ns == 0 && !drm_mode_vrefresh(c_state->msm_mode.base)) {
+		frame_interval_ns =
+			NSEC_PER_SEC/drm_mode_vrefresh(c_state->msm_mode.base);
+		SDE_EVT32(frame_interval_ns);
+	}
 
 	if (!c_conn->apply_vrr && frame_interval_ns) {
 		c_conn->apply_vrr = true;
@@ -1227,7 +1241,18 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 				old_freq_pattern->frame_interval, new_freq_pattern->usecase_idx,
 				old_freq_pattern->usecase_idx);
 		}
+
+		if (new_freq_pattern && old_freq_pattern &&
+				(new_freq_pattern->freq_stepping_seq[0] !=
+				old_freq_pattern->freq_stepping_seq[0])) {
+			c_conn->qsync_updated = true;
+			SDE_EVT32(
+					SDE_EVTLOG_FUNC_CASE1,
+					new_freq_pattern->freq_stepping_seq[0],
+					old_freq_pattern->freq_stepping_seq[0]);
+		}
 	}
+
 	SDE_EVT32(connector->base.id, frame_interval_ns,
 		frame_interval_ns>>32, usecase_idx_updated,
 		frame_interval_updated, c_conn->freq_pattern_updated,
@@ -1447,7 +1472,8 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	freq_pattern = c_conn->freq_pattern;
 
 	if (c_conn->vrr_cmd_state == VRR_CMD_POWER_ON ||
-			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT) {
+			c_conn->vrr_cmd_state == VRR_CMD_IDLE_EXIT ||
+			sde_encoder_is_self_refresh_completed(sde_enc)) {
 		if (!sde_connector_power_on_off_frame(connector)) {
 			c_conn->freq_pattern_updated = true;
 			c_conn->freq_pattern_type_changed = true;
@@ -1527,6 +1553,15 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
 	}
 
+	if (msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
+			c_conn->ops.check_cmd_defined(c_conn->display,
+			DSI_CMD_SET_FPS_SWITCH) &&
+			!c_conn->vrr_caps.video_psr_support) {
+		rc = sde_connector_update_cmd(connector, BIT(DSI_CMD_SET_FPS_SWITCH), true);
+		if (rc)
+			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+	}
+
 	if (!c_conn->ops.pre_kickoff)
 		return 0;
 
@@ -1537,9 +1572,10 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 
 	rc = c_conn->ops.pre_kickoff(connector, c_conn->display, &params);
 
+end:
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
 		display->queue_cmd_waits = false;
-end:
+
 	return rc;
 }
 
@@ -1577,18 +1613,6 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	}
 
 	display = (struct dsi_display *)c_conn->display;
-
-	if (msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
-			c_conn->ops.check_cmd_defined(c_conn->display,
-			DSI_CMD_SET_FPS_SWITCH) &&
-			!c_conn->vrr_caps.video_psr_support) {
-		rc = sde_encoder_update_periph_flush(drm_enc);
-		if (!rc) {
-			params.cmd_bit_mask = BIT(DSI_CMD_SET_FPS_SWITCH);
-			params.peripheral_flush = true;
-		}
-		SDE_EVT32(params.peripheral_flush, params.cmd_bit_mask, rc);
-	}
 
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
 
@@ -1740,7 +1764,7 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 	params.cmd_bit_mask = cmd_bit_mask;
 	params.peripheral_flush = peripheral_flush;
 
-	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
+	rc = c_conn->ops.process_dcs_cmd_bitmask(c_conn->display, &params);
 
 	c_conn->last_vhm_cmd = cmd_bit_mask;
 	SDE_EVT32(connector->base.id, params.cmd_bit_mask >> 32,
@@ -2096,9 +2120,11 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 	}
 
 	/* duplicate value helper */
+	mutex_lock(&c_conn->property_info.property_lock);
 	msm_property_duplicate_state(&c_conn->property_info,
 			c_oldstate, c_state,
 			&c_state->property_state, c_state->property_values);
+	mutex_unlock(&c_conn->property_info.property_lock);
 
 	__drm_atomic_helper_connector_duplicate_state(connector,
 			&c_state->base);
@@ -2549,6 +2575,7 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 			SDE_ERROR_CONN(c_conn, "cannot set hdr info %d\n", rc);
 		break;
 	case CONNECTOR_PROP_QSYNC_MODE:
+	case CONNECTOR_PROP_BRIGHTNESS:
 	case CONNECTOR_PROP_AVR_STEP_STATE:
 	case CONNECTOR_PROP_EPT_FPS:
 		msm_property_set_dirty(&c_conn->property_info,
@@ -3442,6 +3469,7 @@ static int sde_connector_get_modes(struct drm_connector *connector)
 	return mode_count;
 }
 
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 static enum drm_mode_status
 sde_connector_mode_valid(struct drm_connector *connector,
 		struct drm_display_mode *mode)
@@ -3467,6 +3495,33 @@ sde_connector_mode_valid(struct drm_connector *connector,
 	/* assume all modes okay by default */
 	return MODE_OK;
 }
+#else
+static enum drm_mode_status
+sde_connector_mode_valid(struct drm_connector *connector,
+		const struct drm_display_mode *mode)
+{
+	struct sde_connector *c_conn;
+	struct msm_resource_caps_info avail_res;
+
+	if (!connector || !mode) {
+		SDE_ERROR("invalid argument(s), conn %pK, mode %pK\n",
+				connector, mode);
+		return MODE_ERROR;
+	}
+
+	c_conn = to_sde_connector(connector);
+
+	memset(&avail_res, 0, sizeof(avail_res));
+	sde_connector_get_avail_res_info(connector, &avail_res);
+
+	if (c_conn->ops.mode_valid)
+		return c_conn->ops.mode_valid(connector, (struct drm_display_mode *)mode,
+				c_conn->display, &avail_res);
+
+	/* assume all modes okay by default */
+	return MODE_OK;
+}
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 static struct drm_encoder *
@@ -3591,6 +3646,9 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	int ret = 0;
 
 	if (!conn)
+		return ret;
+
+	if (sde_connector_get_disp_op(conn) == MSM_DISP_OP_HFI)
 		return ret;
 
 	sde_conn = to_sde_connector(conn);

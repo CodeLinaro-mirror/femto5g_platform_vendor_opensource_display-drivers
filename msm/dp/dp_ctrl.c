@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1128,7 +1128,7 @@ static void dp_ctrl_mst_stream_setup(struct dp_ctrl_private *ctrl,
 	mst_rg_calc_in.dsc_en = panel->pinfo.comp_info.enabled ? 1 : 0;
 	mst_rg_calc_in.fec_overhead_fp = panel->fec_overhead_fp;
 	mst_rg_calc_in.dsc_overhead_fp = panel->pinfo.dsc_overhead_fp;
-	mst_rg_calc_in.pbn = panel->pbn;
+	mst_rg_calc_in.pbn = panel->pinfo.pbn_no_overhead;
 
 	dp_tu_mst_rg_calc(&mst_rg_calc_in, &mst_rg_calc_out);
 

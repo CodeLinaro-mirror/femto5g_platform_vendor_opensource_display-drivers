@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __H_HFI_PROPERTIES_DISPLAY_H__
@@ -371,6 +371,20 @@
 #define HFI_PROPERTY_DISPLAY_DETACH_LAYER                            0x00020019
 
 /*
+ * HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID - This property is to add a 'sequence number' identifier
+ *                                         to a commit that DCP can return along with the
+ *                                         HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_START event.
+ *                                         Host is expected to send this packet as part of
+ *                                         HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID
+ * (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID |
+ *                             (version=0 << 20) | (dsize=1 << 24 )
+ * (u32_value) payload [1]     : sequence_id
+ */
+#define HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID                        0x0002001A
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
@@ -536,6 +550,58 @@
  *   (u32_value) payload [1]     : struct hfi_buff_dpu
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_RC                                0x0002010D
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT   -   This property is to setup SPR_INIT config.
+ *                                           Host is expected to send this packet
+ *                                           of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                           command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT                          0x0002010E
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC   -    This property is to setup SPR_UDC config.
+ *                                           Host is expected to send this packet
+ *                                           of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                           command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC |
+ *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC                           0x0002010F
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER - This property is to setup DSPP SPR DITHER.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER |
+ *                                 (version=0 << 20) |
+ *                                 (dsize=(sizeof(struct hfi_buff)/4) << 24)
+ *   (u32_value) payload [1]     : struct hfi_buff of array of hfi_display_dither
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER                        0X00020110
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER - This property is to setup DSPP PA DITHER.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER
+ *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER |
+ *                                 (version=0 << 20) | (dsize=
+ *                                 (sizeof(struct hfi_display_pa_dither)/4 * num_of_dspps) << 24)
+ *   (u32_value) payload [1]     : array of struct hfi_display_pa_dither
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER                         0x00020111
 
 /*
  * All display color properties end here
@@ -785,6 +851,131 @@
  *     (u32_value) payload [2]     : background alpha
  */
 #define HFI_PROPERTY_LAYER_BG_ALPHA                                  0x0003000E
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_SRC_ROI - Gets source Region of Interest (ROI) of
+ *                                     the output layer, defining the area within
+ *                                     the source buffer that is to be processed.
+ *                                     Host is expected to send this packet
+ *                                     of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                     command packet payload.
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_SRC_ROI
+ *
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_SRC_ROI |
+ *                                 (version=0 << 20) | (dsize=5 << 24)
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2-6] : struct hfi_display_roi
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_SRC_ROI                            0x0003000F
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_DST_ROI - Gets destination Region of Interest(ROI) of
+ *                                     output layer where the processed content will
+ *                                     appear in the destination buffer.
+ *                                     Host is expected to send this packet
+ *                                     of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                     command packet payload.
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_DST_ROI
+ *
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_DST_ROI |
+ *                                 (version=0 << 20) | (dsize=5 << 24)
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2-6] : struct hfi_display_roi
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_DST_ROI                            0x00030010
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_H - Gets total image height of output buffer.
+ *                                            Host is expected to send this packet
+ *                                            of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                            command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_H
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_H |
+ *                                 (version=0 << 20) | (dsize=2 << 24)
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2]   : source img height
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_H                      0x00030011
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_W - Gets total image width of output buffer.
+ *                                     Host is expected to send this packet
+ *                                     of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                     command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_W
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_W |
+ *                                 (version=0 << 20) | (dsize=2 << 24)
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2]   : source img width
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_W                      0x00030012
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR - Gets SMMU mapped start address
+ *                                      of output buffer.
+ *                                      Host is expected to send this packet
+ *                                      of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                      command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR |
+ *                                 (version=0 << 20) | (dsize=6 << 24)
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2]   : output buffer start address
+ *     (u32_value) payload [3]   : Plane start address for Plane 0
+ *     (u32_value) payload [4]   : Plane start address for Plane 1
+ *     (u32_value) payload [5]   : Plane start address for Plane 2
+ *     (u32_value) payload [6]   : Plane start address for Plane 3
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR                            0x00030013
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_DST_FORMAT - Gets Destination Format Configuration of output buffer.
+ *                                        Host is expected to send this packet
+ *                                        of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                        command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_DST_FORMAT
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_DST_FORMAT |
+ *                                 (version=0 << 20) | (dsize=2 << 24)
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2]   : one of the formats from enum hfi_color_formats
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_DST_FORMAT                         0x00030014
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_STRIDE - Gets Stride for each layer.
+ *                                    Host is expected to send this packet
+ *                                    of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                    command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_STRIDE
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_STRIDE |
+ *                                 (version=0 << 20) | (dsize=5 << 24)
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2]   : Stride for Plane 0
+ *     (u32_value) payload [3]   : Stride for Plane 1
+ *     (u32_value) payload [4]   : Stride for Plane 2
+ *     (u32_value) payload [5]   : Stride for Plane 3
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_STRIDE                             0x00030015
+
+/*
+ * HFI_PROPERTY_LAYER_ROTATION - Gets rotation for each layer.
+ *                             Host is expected to send this packet
+ *                             of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                             command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_ROTATION
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_ROTATION |
+ *                                 (version=0 << 20) | (dsize=2 << 24 )
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2]   : bitwise OR of rotation flags
+ *
+ */
+#define HFI_PROPERTY_LAYER_ROTATION                                  0x00030016
 
 /*
  * All layer color properties begin here

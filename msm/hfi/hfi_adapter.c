@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include "hfi_adapter.h"
@@ -34,7 +34,9 @@
 #define GET_CLIENT_ID(data)           \
 	(data & CLIENT_ID_MASK)
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 static u32 unique_id_counter = 1;
+static atomic_t work_queue_pos_wr = ATOMIC_INIT(0);
 
 static u32 hfi_cmd_type_map[HFI_CMDBUF_TYPE_MAX] = {
 	[HFI_CMDBUF_TYPE_ATOMIC_CHECK] = HFI_CMD_BUFF_DISPLAY,
@@ -137,80 +139,111 @@ static void _process_cb_buffer_work(struct kthread_work *work)
 	u32 obj_id_rx = MAX_U32;
 	int client_id;
 	struct hfi_adapter_t *host;
+	struct callback_work *cb_work;
 	struct hfi_core_cmds_buf_desc *rx_buffer;
 	struct hfi_header *virtio_hdr;
 	struct hfi_buffer_pool *pool;
 	bool client_found = false;
+	int i = 0;
 
 	if (!work)
 		return;
 
-	host = container_of(work, struct hfi_adapter_t, cb_work);
-
-	pool = get_avail_buffer(host);
-	if (!pool) {
-		HFI_AD_ERROR("failed to get buffer pool\n");
+	cb_work = container_of(work, struct callback_work, work);
+	host = cb_work->host;
+	if (!host) {
+		HFI_AD_ERROR("thread %d could not match host\n", cb_work->index);
 		return;
 	}
 
-	rx_buffer = &pool->buffer_t.buf;
-	if (!rx_buffer) {
-		HFI_AD_ERROR("buffer descriptor is null\n");
-		atomic_set(&pool->available, 1);
-		return;
-	}
-
-	if (hfi_core_cmds_rx_buf_get(host->session, rx_buffer)) {
-		HFI_AD_ERROR("failed to get rx buffer\n");
-		atomic_set(&pool->available, 1);
-		return;
-	}
-
-	hfi_buff = &pool->buffer_t;
-	virtio_hdr = (struct hfi_header *)rx_buffer->pbuf_vaddr;
-	obj_id_rx = virtio_hdr->object_id;
-
-	hfi_buff->unique_id = virtio_hdr->header_id;
-
-	client_id = GET_CLIENT_ID(virtio_hdr->header_id);
-
-	list_for_each(ctx_pos, &host->client_list) {
-		/* Try to match buffer based on unique OBJ ID */
-		ctx = list_entry(ctx_pos, struct hfi_client_t, node);
-		if (!ctx || ctx->client_id == client_id) {
-			client_found = true;
-			break;
+	do {
+		pool = get_avail_buffer(host);
+		if (!pool) {
+			HFI_AD_ERROR("failed to get buffer pool\n");
+			return;
 		}
-		continue;
-	}
 
-	if (!client_found) {
-		HFI_AD_ERROR("could not match buffer client id to a client\n");
-		release_rx_buffer_fail(hfi_buff, host);
-		return;
-	}
+		rx_buffer = &pool->buffer_t.buf;
+		if (!rx_buffer) {
+			HFI_AD_ERROR("buffer descriptor is null\n");
+			atomic_set(&pool->available, 1);
+			return;
+		}
 
-	INIT_LIST_HEAD(&hfi_buff->cmd_buf_chain);
-	if (ctx && hfi_buff) {
-		hfi_buff->obj_id = virtio_hdr->object_id;
-		hfi_buff->ctx = ctx;
-		ctx->process_cmd_buf(ctx, hfi_buff);
-	}  else {
-		HFI_AD_ERROR("could not match buffer to a client\n");
-		release_rx_buffer_fail(hfi_buff, host);
-	}
+		if (hfi_core_cmds_rx_buf_get(host->session, rx_buffer)) {
+			atomic_set(&pool->available, 1);
+			return;
+		}
+
+		hfi_buff = &pool->buffer_t;
+		virtio_hdr = (struct hfi_header *)rx_buffer->pbuf_vaddr;
+		if (!virtio_hdr)
+			return;
+
+		obj_id_rx = virtio_hdr->object_id;
+
+		hfi_buff->unique_id = virtio_hdr->header_id;
+
+		client_id = GET_CLIENT_ID(virtio_hdr->header_id);
+
+		list_for_each(ctx_pos, &host->client_list) {
+			/* Try to match buffer based on unique OBJ ID */
+			ctx = list_entry(ctx_pos, struct hfi_client_t, node);
+			if (!ctx || ctx->client_id == client_id) {
+				client_found = true;
+				break;
+			}
+			continue;
+		}
+
+		if (!client_found) {
+			HFI_AD_ERROR("could not match buffer client id to a client\n");
+			release_rx_buffer_fail(hfi_buff, host);
+			return;
+		}
+
+		INIT_LIST_HEAD(&hfi_buff->cmd_buf_chain);
+		if (ctx && hfi_buff) {
+			hfi_buff->obj_id = virtio_hdr->object_id;
+			hfi_buff->ctx = ctx;
+			ctx->process_cmd_buf(ctx, hfi_buff);
+		}  else {
+			HFI_AD_ERROR("could not match buffer to a client\n");
+			release_rx_buffer_fail(hfi_buff, host);
+		}
+	} while (i++ <= MAX_TRY_COUNT);
+
+	if (i >= MAX_TRY_COUNT)
+		HFI_AD_ERROR("max retries exceeded: %d\n", i);
+
 }
 
 int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		const void *cb_data, uint32_t flags)
 {
 	struct hfi_adapter_t *adapter = (struct hfi_adapter_t *)cb_data;
+	struct callback_work *cb_work;
+	int ret;
+	u32 work_queue_idx;
 
 	if (!cb_data)
 		return -EINVAL;
 
 	HFI_AD_DEBUG("hfi callback called\n");
-	kthread_queue_work(&adapter->cb_worker, &adapter->cb_work);
+	atomic_fetch_add_unless(&work_queue_pos_wr, 1, HFI_ADAPTER_WORK_QUEUE_SIZE);
+	work_queue_idx = atomic_read(&work_queue_pos_wr);
+	if (work_queue_idx >= HFI_ADAPTER_WORK_QUEUE_SIZE) {
+		/* If exceeds index limit, reset to 0 */
+		atomic_set(&work_queue_pos_wr, 0);
+		work_queue_idx = 0;
+	}
+
+	cb_work = &adapter->cb_work[work_queue_idx];
+
+	ret = kthread_queue_work(&adapter->cb_worker, &cb_work->work);
+	if (!ret)
+		HFI_AD_WARN("failed to queue work at index:%d\n", work_queue_idx);
+
 	return 0;
 }
 
@@ -276,7 +309,13 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	hfi_host->cb_ops = cb_ops;
 	hfi_host->session = hfi_handle;
 
-	kthread_init_work(&hfi_host->cb_work, _process_cb_buffer_work);
+	/* Pre initialize work queues */
+	for (i = 0; i < HFI_ADAPTER_WORK_QUEUE_SIZE; i++) {
+		kthread_init_work(&hfi_host->cb_work[i].work, _process_cb_buffer_work);
+		hfi_host->cb_work[i].host = hfi_host;
+		hfi_host->cb_work[i].index = i;
+	}
+
 	kthread_init_worker(&hfi_host->cb_worker);
 	hfi_host->cb_worker_thread = kthread_run(kthread_worker_fn, &hfi_host->cb_worker,
 			"adapter_cb_thread");
@@ -298,6 +337,7 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	}
 
 	INIT_LIST_HEAD(&pool->node);
+	INIT_LIST_HEAD(&pool->buffer_t.node);
 	mutex_init(&pool->lock);
 	mutex_init(&pool->buffer_t.lock);
 	pool->buffer_t.pool = pool;
@@ -309,6 +349,7 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 			HFI_AD_ERROR("failed to allocate memory for buffer pool\n");
 			goto pool_fail;
 		}
+		INIT_LIST_HEAD(&link->buffer_t.node);
 		list_add_tail(&link->node, &pool->node);
 		atomic_set(&link->available, 1);
 		mutex_init(&link->lock);
@@ -471,7 +512,10 @@ struct hfi_cmdbuf_t *hfi_adapter_get_cmd_buf(struct hfi_client_t *ctx, u32 obj_i
 	INIT_LIST_HEAD(&buffer->cmd_buf_chain);
 
 	/* Add buffer to client context */
+	mutex_lock(&ctx->lock);
+	list_del_init(&buffer->node);
 	list_add_tail(&buffer->node, &ctx->cmd_buf_list);
+	mutex_unlock(&ctx->lock);
 
 	return buffer;
 }
@@ -494,59 +538,82 @@ static struct hfi_cmdbuf_t *_chain_new_buffer(struct hfi_cmdbuf_t *buffer_head)
 	return buffer;
 }
 
-int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 object_id,
-		enum hfi_payload_type hfi_payload_type, void *payload, u32 size, u32 flags)
+static struct hfi_cmdbuf_t *_check_attached_buffer(struct hfi_cmdbuf_t *cmd_buf,
+		enum hfi_payload_type hfi_payload_type, u32 size)
 {
 	struct hfi_adapter_t *host;
-	struct hfi_cmdbuf_t *current_buffer;
-	struct hfi_packet_info packet_info;
-	struct hfi_cmd_buff_hdl buff_handle;
-	unsigned long lock_flags;
-	int rc = 0;
+	struct hfi_cmdbuf_t *current_buffer = cmd_buf;
 
 	if (!cmd_buf || !cmd_buf->ctx) {
 		HFI_AD_ERROR("invalid command buffer\n");
-		return -EINVAL;
+		return NULL;
 	}
 
 	host = cmd_buf->ctx->host;
 	if (!host)
-		return -EINVAL;
+		return NULL;
 
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 	u32 available_buff_size = cmd_buf->buf.size - cmd_buf->size;
-
 	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+
 	/* 32 bytes for packet header */
 	u32 packet_size = 32;
 
 	/* If we have a payload, add the size of the payload to packet size */
-	if (hfi_payload_type != HFI_PAYLOAD_TYPE_NONE) {
-		if (!payload) {
-			HFI_AD_ERROR("payload not provided\n");
-			return -EINVAL;
-		}
-
+	if (hfi_payload_type != HFI_PAYLOAD_TYPE_NONE)
 		packet_size += size;
-	}
 
-	/* Validate size, if not available then chain new buffer. */
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
+	/* If there is a chained buffer, use the tail */
+	if (!list_empty(&cmd_buf->cmd_buf_chain)) {
+		current_buffer = list_last_entry(&cmd_buf->cmd_buf_chain, struct hfi_cmdbuf_t,
+				cmd_buf_chain);
+		available_buff_size = current_buffer->buf.size - current_buffer->size;
+		HFI_AD_DEBUG("found a chained buffer, using it as current buffer\n");
+
+		if (!current_buffer) {
+			HFI_AD_ERROR("failed to get chained buffer tail\n");
+			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+			return NULL;
+		}
+	}
+	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+
+	/* Validate size, if not available then chain new buffer */
 	if (available_buff_size < packet_size)
 		current_buffer = _chain_new_buffer(cmd_buf);
-	else
-		current_buffer = cmd_buf;
-
-	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 
 	if (!current_buffer) {
 		HFI_AD_ERROR("failed to chain command buffer\n");
-		return -HFI_ERROR;
+		return NULL;
 	}
 
+	current_buffer->size += packet_size;
+
+	return current_buffer;
+}
+
+static u32 _hfi_adapter_add_prop_helper(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 object_id,
+		enum hfi_payload_type hfi_payload_type, void *payload, u32 size, u32 flags,
+		u32 cnt, u32 *packet_id)
+{
+	struct hfi_cmd_buff_hdl buff_handle;
+	struct hfi_packet_info packet_info;
+	unsigned long lock_flags;
+	int rc = 0;
+
 	/* Populate HFI packer structs */
-	buff_handle.cmd_buffer = current_buffer->buf.pbuf_vaddr;
-	buff_handle.size = current_buffer->buf.size;
+	buff_handle.cmd_buffer = cmd_buf->buf.pbuf_vaddr;
+	buff_handle.size = cmd_buf->buf.size;
+
+	if (hfi_payload_type != HFI_PAYLOAD_TYPE_NONE && !payload) {
+		HFI_AD_ERROR("payload not provided for cmd:0x%x type:%d\n",
+			cmd, hfi_payload_type);
+		return -EINVAL;
+	} else if (hfi_payload_type == HFI_PAYLOAD_TYPE_NONE && payload) {
+		HFI_AD_WARN("unexpected packet payload for cmd:0x%x\n", cmd);
+	}
 
 	memset(&packet_info, 0, sizeof(struct hfi_packet_info));
 	packet_info.cmd = cmd;
@@ -559,7 +626,7 @@ int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 obje
 	packet_info.payload_size = size;
 	packet_info.payload_ptr = payload;
 
-	if (hfi_payload_type == HFI_PAYLOAD_TYPE_NONE)
+	if (hfi_payload_type == HFI_PAYLOAD_TYPE_NONE || cnt > 0)
 		rc = hfi_create_packet_header(&buff_handle, &packet_info);
 	else
 		rc = hfi_create_full_packet(&buff_handle, &packet_info);
@@ -569,7 +636,35 @@ int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 obje
 		return rc;
 	}
 
-	current_buffer->size += packet_size;
+	if (cnt != 0) {
+		/* Append the key value pairs */
+		rc = hfi_append_packet_with_kv_pairs(&buff_handle, cmd,
+				(enum hfi_packet_payload_type) hfi_payload_type, 0,
+				(struct hfi_kv_info *)payload, cnt, size);
+		if (rc) {
+			HFI_AD_ERROR("failed to append kv pairs. error code = %d\n", rc);
+			return rc;
+		}
+	}
+
+	*packet_id = packet_info.packet_id;
+
+	return rc;
+}
+
+int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 object_id,
+		enum hfi_payload_type hfi_payload_type, void *payload, u32 size, u32 flags)
+{
+	struct hfi_cmdbuf_t *current_buffer = cmd_buf;
+	u32 packet_id;
+	int rc = 0;
+
+	current_buffer = _check_attached_buffer(cmd_buf, hfi_payload_type, size);
+	if (!current_buffer)
+		return -EINVAL;
+
+	rc = _hfi_adapter_add_prop_helper(current_buffer, cmd, object_id, hfi_payload_type,
+			payload, size, flags, 0, &packet_id);
 
 	return rc;
 }
@@ -578,82 +673,23 @@ int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
 		u32 obj_id, enum hfi_payload_type hfi_payload_type,
 		void *payload, u32 size, struct hfi_prop_listener *listener, u32 flags)
 {
-	struct hfi_adapter_t *host;
 	struct hfi_client_t *ctx;
-	struct hfi_cmdbuf_t *current_buffer;
-	struct hfi_packet_info packet_info;
-	struct hfi_cmd_buff_hdl buff_handle;
-	unsigned long lock_flags;
+	struct hfi_cmdbuf_t *current_buffer = cmd_buf;
+	u32 packet_id;
 	int rc = 0;
 
-	if (!cmd_buf || !cmd_buf->ctx) {
-		HFI_AD_ERROR("invalid command buffer\n");
-		return -EINVAL;
-	}
-
-	host = cmd_buf->ctx->host;
-	if (!host)
+	current_buffer = _check_attached_buffer(cmd_buf, hfi_payload_type, size);
+	if (!current_buffer)
 		return -EINVAL;
 
-	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
-	u32 available_buff_size = cmd_buf->buf.size - cmd_buf->size;
-
-	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
-	/* 32 bytes for packet header */
-	u32 packet_size = 32;
-
-	/* If we have a payload, add the size of the payload to packet size */
-	if (hfi_payload_type != HFI_PAYLOAD_TYPE_NONE) {
-		if (!payload) {
-			HFI_AD_ERROR("payload not provided\n");
-			return -EINVAL;
-		}
-
-		packet_size += size;
-	}
-
-	/* Validate size, if not available then chain new buffer. */
-	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
-	if (available_buff_size < packet_size)
-		current_buffer = _chain_new_buffer(cmd_buf);
-	else
-		current_buffer = cmd_buf;
-
-	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
-
-	/* Populate HFI packer structs */
-	buff_handle.cmd_buffer = current_buffer->buf.pbuf_vaddr;
-	buff_handle.size = current_buffer->buf.size;
-
-	memset(&packet_info, 0, sizeof(struct hfi_packet_info));
-	packet_info.cmd = cmd_id;
-	packet_info.id = obj_id;
-	packet_info.flags = flags;
-	spin_lock_irqsave(&cmd_buf->ctx->host->packet_id_lock, lock_flags);
-	packet_info.packet_id = _generate_sequential_packet_id();
-	spin_unlock_irqrestore(&cmd_buf->ctx->host->packet_id_lock, lock_flags);
-	packet_info.payload_type = (enum hfi_packet_payload_type) hfi_payload_type;
-	packet_info.payload_size = size;
-	packet_info.payload_ptr = payload;
-
-	if (hfi_payload_type == HFI_PAYLOAD_TYPE_NONE)
-		rc = hfi_create_packet_header(&buff_handle, &packet_info);
-	else
-		rc = hfi_create_full_packet(&buff_handle, &packet_info);
-
+	rc = _hfi_adapter_add_prop_helper(current_buffer, cmd_id, obj_id, hfi_payload_type,
+			payload, size, flags, 0, &packet_id);
 	if (rc) {
-		HFI_AD_ERROR("failed to create hfi packet. error code = %d\n", rc);
+		HFI_AD_ERROR("failed to populate buffer packet with cmd:0x%x\n", cmd_id);
 		return rc;
 	}
 
-	current_buffer->size += packet_size;
-
-	/* Add listener based on packet obj_id  */
 	ctx = cmd_buf->ctx;
-	if (!ctx) {
-		HFI_AD_ERROR("could not obtain client context from command buffer\n");
-		return -EINVAL;
-	}
 
 	/* Create new listener_list structure to insert. */
 	struct listener_list *listener_entry = kmalloc(sizeof(struct listener_list), GFP_KERNEL);
@@ -663,7 +699,7 @@ int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
 		return -ENOMEM;
 	}
 
-	listener_entry->packet_id = packet_info.packet_id;
+	listener_entry->packet_id = packet_id;
 	listener_entry->listener_obj = listener;
 
 	list_add_tail(&listener_entry->list_ptr, &ctx->packet_listeners.list_ptr);
@@ -675,72 +711,27 @@ int hfi_adapter_add_prop_array(struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
 		u32 object_id, enum hfi_payload_type payload_type,
 		struct hfi_kv_pairs *payload, u32 cnt, u32 size)
 {
-	struct hfi_adapter_t *host;
-	struct hfi_cmdbuf_t *current_buffer;
-	struct hfi_packet_info packet_info;
-	struct hfi_cmd_buff_hdl buff_handle;
-	unsigned long lock_flags;
+	struct hfi_cmdbuf_t *current_buffer = cmd_buf;
+	u32 packet_id;
 	int rc = 0;
 
-	if (!cmd_buf || !payload || !cmd_buf->ctx) {
-		HFI_AD_ERROR("invalid buffer or payload\n");
+	if (!payload) {
+		HFI_AD_ERROR("payload not provided\n");
 		return -EINVAL;
 	}
-
-	host = cmd_buf->ctx->host;
-	if (!host)
-		return -EINVAL;
 
 	if (payload_type == HFI_PAYLOAD_TYPE_NONE || !size || !cnt) {
 		HFI_AD_ERROR("invalid payload parameters\n");
 		return -EINVAL;
 	}
 
-	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
-	u32 available_buff_size = cmd_buf->buf.size - cmd_buf->size;
+	current_buffer = _check_attached_buffer(cmd_buf, payload_type, size);
+	if (!current_buffer)
+		return -EINVAL;
 
-	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
-	/* 32 bytes for packet header + size of all (k,v) pairs */
-	u32 packet_size = 32 + size;
+	rc = _hfi_adapter_add_prop_helper(current_buffer, cmd, object_id, payload_type,
+			payload, size, HFI_HOST_FLAGS_NON_DISCARDABLE, cnt, &packet_id);
 
-	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
-	if (available_buff_size < packet_size)
-		current_buffer = _chain_new_buffer(cmd_buf);
-	else
-		current_buffer = cmd_buf;
-
-	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
-
-	/* Populate HFI packer structs */
-	buff_handle.cmd_buffer = current_buffer->buf.pbuf_vaddr;
-	buff_handle.size = current_buffer->buf.size;
-
-	packet_info.cmd = cmd;
-	packet_info.id = object_id;
-	packet_info.flags = HFI_HOST_FLAGS_NON_DISCARDABLE;
-	spin_lock_irqsave(&cmd_buf->ctx->host->packet_id_lock, lock_flags);
-	packet_info.packet_id = _generate_sequential_packet_id();
-	spin_unlock_irqrestore(&cmd_buf->ctx->host->packet_id_lock, lock_flags);
-	packet_info.payload_type = (enum hfi_packet_payload_type) payload_type;
-
-	rc = hfi_create_packet_header(&buff_handle, &packet_info);
-
-	if (rc) {
-		HFI_AD_ERROR("failed to create packet header. error code = %d\n", rc);
-		return rc;
-	}
-
-	/* Append the key value pairs */
-	rc = hfi_append_packet_with_kv_pairs(&buff_handle, cmd,
-			(enum hfi_packet_payload_type) payload_type, 0,
-			(struct hfi_kv_info *)payload, cnt, size);
-
-	if (rc) {
-		HFI_AD_ERROR("failed to append kv pairs. error code = %d\n", rc);
-		return rc;
-	}
-
-	current_buffer->size += packet_size;
 
 	return rc;
 }
@@ -749,15 +740,25 @@ void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 {
 	struct list_head *pos, *updated_pos;
 	struct hfi_cmdbuf_t *buf_entry;
+	struct hfi_client_t *ctx;
+
+	ctx = cmd_buf->ctx;
+	if (!ctx) {
+		HFI_AD_ERROR("no valid client for cmd_buf:%p\n", cmd_buf);
+		return;
+	}
+
+	mutex_lock(&ctx->lock);
 
 	list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
-		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
+		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
 		if (buf_entry->pool)
 			_hfi_clear_buffer(buf_entry);
 		list_del(pos);
 	}
 
-	list_del(&cmd_buf->node);
+	list_del_init(&cmd_buf->node);
+	mutex_unlock(&ctx->lock);
 	_hfi_clear_buffer(cmd_buf);
 }
 
@@ -789,7 +790,7 @@ int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	u32 i = 1;
 
 	list_for_each(pos, &cmd_buf->cmd_buf_chain) {
-		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
+		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
 		if (buf_entry)
 			buff_arr[i++] = &buf_entry->buf;
 	}
@@ -833,7 +834,7 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_cmdbuf_t *cmd_buf)
 
 	buff_arr[i++] = &cmd_buf->buf;
 	list_for_each(pos, &cmd_buf->cmd_buf_chain) {
-		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
+		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
 		if (buf_entry)
 			buff_arr[i++] = &buf_entry->buf;
 	}
@@ -974,7 +975,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	int i = 0;
 	int rc = 0;
 
-	mutex_lock(&cmd_buf->pool->lock);
+	mutex_lock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 
 	/* Release chained buffers */
 	list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
@@ -991,6 +992,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	list_for_each_safe(pos, updated_pos, &cmd_buf->ctx->cmd_buf_list) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
 		if (buf_entry == cmd_buf) {
+			HFI_AD_ERROR("releasing buffer incorrectly\n");
 			list_del(pos);
 			buff_arr[i++] = &buf_entry->buf;
 		}
@@ -1004,7 +1006,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 
 	if (rc) {
 		HFI_AD_ERROR("failed to release rx buffer(s)\n");
-		mutex_unlock(&cmd_buf->pool->lock);
+		mutex_unlock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 		return rc;
 	}
 
@@ -1012,41 +1014,58 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	atomic_set(&cmd_buf->pool->available, 1);
 	_hfi_clear_buffer(cmd_buf);
 
-	mutex_unlock(&cmd_buf->pool->lock);
+	mutex_unlock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 
 	return rc;
 }
 
-void hfi_adapter_buffer_alloc(struct msm_dbg_addr_map *addr_map)
+int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
 {
 	int ret = 0;
 
 	if (!addr_map->size) {
 		HFI_AD_ERROR("failed to get shared buffer size\n");
-		return;
+		return -EINVAL;
 	}
 	addr_map->aligned_size = ALIGN(addr_map->size, HFI_CORE_IOMMU_MAP_SIZE_ALIGNMENT);
 
 	ret = hfi_core_allocate_shared_mem(&addr_map->alloc_info, addr_map->aligned_size,
 		HFI_CORE_DMA_ALLOC_UNCACHE, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
-	if (ret)
+	if (ret) {
 		HFI_AD_ERROR("failed to allocate shared buffer, ret: %d\n", ret);
+		return ret;
+	}
 
 	addr_map->remote_addr = addr_map->alloc_info.mapped_iova;
 	addr_map->local_addr = addr_map->alloc_info.cpu_va;
 
-	if (!addr_map->remote_addr || !addr_map->local_addr)
+	if (!addr_map->remote_addr || !addr_map->local_addr) {
 		HFI_AD_ERROR("failed to allocate shared buffer\n");
+		return -EINVAL;
+	}
+
+	return ret;
 }
 
-void hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
+int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
 {
+	struct hfi_core_mem_alloc_info *alloc_info = &addr_map->alloc_info;
 	int ret = 0;
 
-	if (!alloc_info->mapped_iova || !alloc_info->cpu_va)
+	if (!addr_map->size) {
+		HFI_AD_DEBUG("empty buf\n");
+		return ret;
+	}
+
+	if (!alloc_info->mapped_iova || !alloc_info->cpu_va) {
 		HFI_AD_ERROR("failed to get buffer mapping info\n");
+		return -EINVAL;
+	}
 
 	ret = hfi_core_deallocate_shared_mem(alloc_info);
 	if (ret)
 		HFI_AD_ERROR("failed to deallocate shared buffer, ret: %d\n", ret);
+
+	return ret;
 }
+#endif /* IS_ENABLED(CONFIG_QTI_HFI_CORE)*/

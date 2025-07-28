@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __H_HFI_COMMANDS_DISPLAY_EVENTS_H
@@ -73,7 +73,9 @@
  * struct hfi_display_frame_event_data- frame event data
  * @timestamp_lo      :  lower value of 64bit Buffer flip timestamp
  * @timestamp_hi      :  higher value of 64bit Buffer flip timestamp
- * @bufferflip_index  :  bufferflip index for the timestamp
+ * @bufferflip_index  :  carry the "sequence_id" received from
+ *                       HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID,
+ *                       otherwise it will be zero.
  * struct hfi_display_frame_event_data{
  *   u32 timestamp_lo;
  *   u32 timestamp_hi;

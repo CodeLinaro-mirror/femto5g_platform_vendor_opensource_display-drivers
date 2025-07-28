@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -230,7 +230,7 @@ static reg_dma_internal_ops validate_dma_op_params[REG_DMA_SETUP_OPS_MAX] = {
 };
 
 static struct sde_reg_dma_buffer *last_cmd_buf[DPU_MAX];
-static struct hfi_buff_dpu hfi_cfg_cached[DSPP_MAX] = {};
+static struct hfi_buff_dpu hfi_cfg_cached[DPU_MAX][DSPP_MAX] = {};
 
 static void get_decode_sel(unsigned long blk, u32 *decode_sel)
 {
@@ -784,25 +784,25 @@ static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_id
 			return ret;
 		} else if (cfg->dspp_idx != (cfg->dspp_start_idx + cfg->num_of_mixers - 1)) {
 			/* non-broadcast and it is not the last dspp idx */
-			hfi_cfg_cached[cfg->dspp_idx].flags = cfg->flags;
-			hfi_cfg_cached[cfg->dspp_idx].iova = cfg->dma_buf->iova;
-			hfi_cfg_cached[cfg->dspp_idx].len = cfg->dma_buf->index;
-			DRM_DEBUG("non-broadcast feature: copied to hfi_cfg_cached\n");
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].flags = cfg->flags;
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].iova = cfg->dma_buf->iova;
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].len = cfg->dma_buf->index;
+			DRM_DEBUG("non-broadcast feature: copied to hfi_cfg_cached[%d]\n", dpu_idx);
 			return 0;
 		} else if (cfg->dspp_idx == (cfg->dspp_start_idx + cfg->num_of_mixers - 1)) {
 			/* non-broadcast and it is the last dspp idx */
-			hfi_cfg_cached[cfg->dspp_idx].flags = cfg->flags;
-			hfi_cfg_cached[cfg->dspp_idx].iova = cfg->dma_buf->iova;
-			hfi_cfg_cached[cfg->dspp_idx].len = cfg->dma_buf->index;
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].flags = cfg->flags;
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].iova = cfg->dma_buf->iova;
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].len = cfg->dma_buf->index;
 			ret = hfi_util_u32_prop_helper_add_prop(cfg->prop_helper, cfg->prop_id,
-				HFI_VAL_U32_ARRAY, &hfi_cfg_cached[cfg->dspp_start_idx],
+				HFI_VAL_U32_ARRAY, &hfi_cfg_cached[dpu_idx][cfg->dspp_start_idx],
 				sizeof(struct hfi_buff_dpu) * cfg->num_of_mixers);
 			if (ret)
 				DRM_ERROR("Failed to add hfi prop %d ret %d\n", cfg->prop_id, ret);
 			else
 				DRM_DEBUG("non-broadcast feature: submitted to prop_helper\n");
 			/* reset the cached struct after submitting to FW */
-			memset(&hfi_cfg_cached[0], 0, sizeof(hfi_cfg_cached));
+			memset(&hfi_cfg_cached[dpu_idx][0], 0, sizeof(hfi_cfg_cached[dpu_idx]));
 			return ret;
 		}
 	} else {
@@ -1762,7 +1762,7 @@ static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			kick_off.dma_type, kick_off.op, ctl->dpu_idx);
 	if (mode == REG_DMA_WAIT4_COMP) {
 		rc = read_poll_timeout(sde_reg_read, val,
-				(val & ctl_trigger_done_mask[ctl->idx][q]), 10, false, 20000,
+				(val & ctl_trigger_done_mask[ctl->idx][q]), 10, 20000, false,
 				&hw, reg_dma_intr_0_status_offset[ctl->idx][q]);
 		if (rc)
 			DRM_ERROR("poll wait failed %d val %x mask %x\n",

@@ -11,6 +11,8 @@
 #define TO_STR(x) #x
 
 #define HDCP_MAX_MESSAGE_PARTS 4
+#define MDSS_0_DP3_IDX 3
+#define MDSS_1_DP3_IDX 7
 
 /**
  * enum sde_hdcp_2x_wakeup_cmd - commands for interacting with HDCP driver
@@ -75,7 +77,9 @@ enum hdcp_transport_wakeup_cmd {
 enum sde_hdcp_2x_device_type {
 	HDCP_TXMTR_HDMI = 0x8001,
 	HDCP_TXMTR_DP = 0x8002,
-	HDCP_TXMTR_DP_MST = 0x8003
+	HDCP_TXMTR_DP_MST = 0x8003,
+	HDCP_TXMTR_DP3 = 0x8008,
+	HDCP_TXMTR_DP7 = 0x18008
 };
 
 /**

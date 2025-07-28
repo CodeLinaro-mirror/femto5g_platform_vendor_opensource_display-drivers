@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -4608,8 +4608,11 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 	cfg->ipcc_protocol_offset = PROP_VALUE_ACCESS(props->values, IPCC_PROTOCOL_OFFSET, 0);
 	if (!cfg->ipcc_protocol_offset)
 		cfg->ipcc_protocol_offset = HW_FENCE_DEFAULT_IPCC_PROTOCOL_OFFSET;
-	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id)
-		cfg->hw_fence_rev = 0; /* disable hw fences*/
+	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id) {
+		SDE_INFO("disabling hw-fence because invalid protocol_id:%d client_phys_id:%d\n",
+			cfg->ipcc_protocol_id, cfg->ipcc_client_phys_id);
+		cfg->hw_fence_rev = 0;
+	}
 	cfg->ipcc_client_out_phys_id = PROP_VALUE_ACCESS(props->values, IPCC_CLIENT_OUT_PHYS_ID, 0);
 
 	cfg->soccp_ph = PROP_VALUE_ACCESS(props->values, SOCCP_PH, 0);
@@ -6814,6 +6817,11 @@ static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *s
 		return rc;
 	}
 
+	if (sde_cfg->trusted_vm_env) {
+		sde_cfg->ssip_allowed = true;
+		return 0;
+	}
+
 	pdev = to_platform_device(dev->dev);
 	rc = sde_hw_parse_fuse_configuration(pdev, "ssip_config", &fuse);
 	if (rc) {
@@ -6918,6 +6926,7 @@ struct sde_mdss_cfg *sde_hw_catalog_init(struct drm_device *dev)
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		sde_cfg->hfi_cfg.perf_sys_cache_enable = SDE_PERF_SYS_CACHE_ENABLE;
 		sde_cfg->hfi_cfg.perf_max_core_clk_rate = SDE_PERF_MAX_CORE_CLK_RATE;
+		set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
 	}
 
 	INIT_LIST_HEAD(&sde_cfg->irq_offset_list);

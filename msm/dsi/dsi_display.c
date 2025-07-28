@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -27,8 +27,6 @@
 #include "dsi_parser.h"
 #include "dsi_display_manager.h"
 #include "dsi_hfi.h"
-#include "dsi_display_hfi.h"
-#include "hfi_defs_display.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -1449,14 +1447,6 @@ int dsi_display_set_power(struct drm_connector *connector,
 			rc ? "failed" : "successful");
 	if (!rc)
 		display->panel->power_mode = power_mode;
-
-	if (display->panel->disp_op == MSM_DISP_OP_HFI) {
-		enum hfi_display_power_mode hfi_lps = display->panel->power_mode;
-
-		rc = dsi_hfi_transition(display, hfi_lps);
-		if (rc)
-			DSI_ERR("failed to send hfi transition cmd, rc=%d\n", rc);
-	}
 
 	return rc;
 }
@@ -9041,19 +9031,19 @@ exit:
 	return rc;
 }
 
-static int dsi_display_send_pre_commit_cmd(struct dsi_display *display,
-	struct msm_display_conn_params *params)
+int dsi_display_process_dcs_cmd_bitmask(void *display, struct msm_display_conn_params *params)
 {
 	u32 idx;
 	int rc = 0;
 	bool last_command = false;
+	struct dsi_display *dsi_display = display;
 
-	if (!params || !display) {
+	if (!params || !dsi_display) {
 		DSI_ERR("Invalid params\n");
 		return -EINVAL;
 	}
 
-	mutex_lock(&display->display_lock);
+	mutex_lock(&dsi_display->display_lock);
 
 	for (idx = 0; idx < sizeof(params->cmd_bit_mask) * 8; idx++) {
 		if (params->cmd_bit_mask & BIT(idx)) {
@@ -9062,7 +9052,7 @@ static int dsi_display_send_pre_commit_cmd(struct dsi_display *display,
 
 			SDE_EVT32(idx, last_command, params->cmd_bit_mask>>32,
 				params->cmd_bit_mask, fls64(params->cmd_bit_mask));
-			rc = dsi_panel_send_cmd(display->panel, params, idx, last_command);
+			rc = dsi_panel_send_cmd(dsi_display->panel, params, idx, last_command);
 			if (rc) {
 				DSI_ERR("fail cmd idx:%d rc:%d\n", idx, rc);
 				goto exit;
@@ -9070,7 +9060,7 @@ static int dsi_display_send_pre_commit_cmd(struct dsi_display *display,
 		}
 	}
 exit:
-	mutex_unlock(&display->display_lock);
+	mutex_unlock(&dsi_display->display_lock);
 	return rc;
 }
 
@@ -9339,9 +9329,6 @@ int dsi_display_pre_commit(void *display,
 		return -EINVAL;
 	}
 
-	if (params->cmd_bit_mask)
-		dsi_display_send_pre_commit_cmd(display, params);
-
 	if (!params->cmd_bit_mask && params->qsync_update) {
 		enable = (params->qsync_mode > 0) ? true : false;
 
@@ -9377,6 +9364,14 @@ static void dsi_display_panel_id_notification(struct dsi_display *display)
 			0, ((display->panel_id & 0xffffffff00000000) >> 32),
 			(display->panel_id & 0xffffffff), 0, 0);
 	}
+}
+
+int dsi_display_pinctrl_toggle_te_function(void *display)
+{
+	if (!display)
+		return -EINVAL;
+
+	return dsi_panel_pinctrl_toggle_te_function(((struct dsi_display *) display)->panel);
 }
 
 int dsi_display_enable(struct dsi_display *display)
@@ -9592,7 +9587,17 @@ static void dsi_display_handle_poms_te(struct work_struct *work)
 	}
 
 	dsi = &panel->mipi_device;
+
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 	rc = mipi_dsi_dcs_set_tear_off(dsi);
+#else
+	struct mipi_dsi_multi_context ctx;
+
+	ctx.dsi = dsi;
+	ctx.accum_err = 0;
+	mipi_dsi_dcs_set_tear_off_multi(&ctx);
+	rc = ctx.accum_err;
+#endif
 
 error:
 	mutex_unlock(&panel->panel_lock);

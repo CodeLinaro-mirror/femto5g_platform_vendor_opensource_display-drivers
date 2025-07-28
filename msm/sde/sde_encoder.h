@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -428,6 +428,20 @@ struct sde_encoder_hal_funcs {
 	 */
 	int (*debugfs_dump_status[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
 			struct seq_file *s);
+
+	/**
+	 * get_vblank_count - Get the current vblank counter value
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: Counter value of last vblank event occurrence
+	 */
+	u32 (*get_vblank_count[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * get_vblank_timestamp - Get the last vblank timestamp
+	 * @enc: Pointer to sde encoder structure
+	 * Returns: timestamp of last known vblank event occurrence
+	 */
+	ktime_t (*get_vblank_timestamp[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 };
 
 /**
@@ -892,6 +906,13 @@ void sde_encoder_enable_recovery_event(struct drm_encoder *encoder);
 bool sde_encoder_in_clone_mode(struct drm_encoder *enc);
 
 /**
+ * sde_encoder_is_self_refresh_completed - checks if self refresh is completed
+ * @sde_enc:    Pointer to sde encoder structure
+ * @Return:     true if self refresh is completed
+ */
+bool sde_encoder_is_self_refresh_completed(struct sde_encoder_virt *sde_enc);
+
+/**
  * sde_encoder_in_video_psr - checks if it is in video psr panel
  * @drm_enc:    Pointer to drm encoder structure
  * @Return:     true if successful
@@ -1162,6 +1183,14 @@ struct sde_hw_ctl *sde_encoder_get_hw_ctl(struct sde_connector *c_conn);
  * @Return: programmable fetch time in microseconds
  */
 u32 sde_encoder_get_programmed_fetch_time(struct drm_encoder *encoder);
+
+/**
+ * sde_encoder_event_timestamp_adjust - adjust the hw timestamp local system time
+ * @drm_enc_id: id of drm encoder object
+ * @event_fps: current frame rate for reference
+ * @event_timestamp_hw: input hw event timestamp
+ */
+ktime_t sde_encoder_event_timestamp_adjust(u32 drm_enc_id, u32 event_fps, u64 event_timestamp_hw);
 
 /**
  * sde_encoder_has_dpu_ctl_op_sync - check if dpu sync is enabled for this encoder

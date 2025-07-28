@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -227,6 +227,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_DEMURA_PANEL_ID,
 	CONNECTOR_PROP_DIMMING_BL_LUT,
 	CONNECTOR_PROP_DNSC_BLUR,
+	CONNECTOR_PROP_WB_CSC_CONFIG,
 
 	/* # of blob properties */
 	CONNECTOR_PROP_BLOBCOUNT,
@@ -476,6 +477,15 @@ enum msm_event_wait {
 	MSM_ENC_VBLANK,
 	MSM_ENC_ACTIVE_REGION,
 	MSM_ENC_EVENT_MAX,
+};
+
+/**
+ * enum msm_iommu_status - Status of iommu
+ */
+enum msm_iommu_status {
+	MSM_IOMMU_UNKNOWN = 0,
+	MSM_IOMMU_PRESENT,
+	MSM_IOMMU_NOT_PRESENT,
 };
 
 /**
@@ -1335,6 +1345,8 @@ struct msm_drm_private {
 	struct mutex fence_error_client_lock;
 	struct list_head fence_error_client_list;
 
+	enum msm_iommu_status iommu_status;
+
 	/* list of component registered for notification */
 	struct blocking_notifier_head component_notifier_list;
 
@@ -1866,4 +1878,38 @@ int msm_drm_unregister_component(struct drm_device *dev, struct notifier_block *
  */
 int msm_drm_notify_components(struct drm_device *dev, enum msm_component_event event);
 
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+/**
+ * msm_iommu_present_on_bus - Check if any device on a bus is mapped to an IOMMU
+ * @bus: Pointer to the bus to check
+ *
+ * This function iterates over all devices on the specified bus
+ * If any device is mapped to an IOMMU,
+ * the function sets the iommu_present flag to true.
+ *
+ * Return: true if any device on the bus is mapped to an IOMMU, false otherwise.
+ */
+bool msm_iommu_present_on_bus(const struct bus_type *bus);
+#endif /* KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE */
+
+/**
+ * mdss_iommu_present - Check if IOMMU is present for a DRM device
+ * @dev: Pointer to the DRM device to check
+ *
+ * This function checks whether the IOMMU is present for the given DRM device.
+ * It first verifies the kernel version and then performs the necessary checks
+ * on the device's private data and KMS initialization status.
+ * If the IOMMU presence is not already determined, it sets the iommu_present flag.
+ *
+ * Return: true if the IOMMU is present, false otherwise.
+ */
+bool mdss_iommu_present(struct drm_device *dev);
+
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+/* Functions from upstream kernel */
+int __drm_atomic_helper_disable_plane(struct drm_plane *plane,
+			struct drm_plane_state *plane_state);
+int __drm_atomic_helper_set_config(struct drm_mode_set *set,
+			struct drm_atomic_state *state);
+#endif /* (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE) */
 #endif /* __MSM_DRV_H__ */

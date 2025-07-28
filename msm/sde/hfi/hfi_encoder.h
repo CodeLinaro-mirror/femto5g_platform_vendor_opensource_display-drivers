@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _HFI_ENCODER_H_
@@ -22,6 +22,9 @@ struct hw_event_state {
  * struct hfi_encoder - hfi implementation extension of sde_encoder object
  * @sde_base: Pointer to sde encoder base structure
  * @event_cbs: event ops for sde encoder
+ * @vblank_ts: actual timestamp of last reported vblank event
+ * @hfi_vsync_cnt: Atomic counter for tracking vsync events
+ * @hfi_commit_cnt: Atomic counter for tracking frame commits to FW
  * @hfi_frame_done_cnt: Atomic counter for tracking which enc is
  *				done with frame processing
  * @hw_events_state: maintains state of HW events
@@ -32,7 +35,11 @@ struct hw_event_state {
 struct hfi_encoder {
 	struct sde_encoder_virt *sde_base;
 	struct sde_encoder_event_ops event_cbs;
+	ktime_t vblank_ts;
+	atomic_t hfi_vsync_cnt;
+	atomic_t hfi_commit_cnt;
 	atomic_t hfi_frame_done_cnt;
+
 	struct hw_event_state hw_events_state[MSM_ENC_EVENT_MAX];
 	wait_queue_head_t pending_kickoff_wq;
 

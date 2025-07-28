@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __H_HFI_PROPERTIES_PANEL_H__
@@ -590,6 +590,91 @@
  *   (u32_value) payload[2..n]    : property_array_u32[count]
  */
 #define HFI_PROPERTY_PANEL_DPHY_TIMINGS                              0x00040027
+
+/*
+ * HFI_PROPERTY_PANEL_VSYNC_SOURCE - Entry to select vsync source from GPIO's/Watchdog timer.
+ *                                 This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_VSYNC_SOURCE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_VSYNC_SOURCE |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : one of the values from enum hfi_panel_vsync_source
+ */
+#define HFI_PROPERTY_PANEL_VSYNC_SOURCE                              0x00040028
+
+/*
+ * HFI_PROPERTY_PANEL_STREAM_TRIGGER - Specifies the trigger mechanism to be used for pixel
+ *                                  stream transfer in a command mode display processor path.
+ *                                  This property is sent to DCP as part of
+ *                                  HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                                  command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_STREAM_TRIGGER
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_STREAM_TRIGGER |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : One of enum hfi_panel_trigger_type
+ */
+#define HFI_PROPERTY_PANEL_STREAM_TRIGGER                            0x00040029
+
+/*
+ * HFI_PROPERTY_PANEL_TE_MODE - Specifies the TE Path for command mode panels.
+ *                              This property is sent to DCP as part of
+ *                              HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                              command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_TE_MODE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_TE_MODE |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : 1 / 0 (1 = TE returned from dedicated pin,
+ *                                      0 = TE returned from data link)
+ */
+#define HFI_PROPERTY_PANEL_TE_MODE                                   0x0004002A
+
+/*
+ * HFI_PROPERTY_PANEL_CPHY_MODE - Specifies whether panel is using CPHY
+ *                                This property is sent to DCP as part of
+ *                                HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                                command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_CPHY_MODE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_CPHY_MODE |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : HFI_TRUE / HFI_FALSE
+ */
+#define HFI_PROPERTY_PANEL_CPHY_MODE                                 0x0004002B
+
+/*
+ * HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_DVA - Provides DCP virtual address of an always alive
+ *                                       DCS command Tx buffer mapped to both DPU and DCP
+ *                                       which is used for DMA operation to send MIPI DSI
+ *                                       packets from DCP to the panel.
+ *                                       This property is sent to DCP as part of
+ *                                       HFI_COMMAND_PANEL_INIT_PANEL_CAPS
+ *                                       command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_DVA
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_DVA |
+ *                               (version=0 << 20) | (dsize=2 << 24 )
+ *   (u32_array) payload[1]    : struct hfi_buff of DCP mapped vaddr of DCS command tx buffer
+ */
+#define HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_DVA                        0x0004002C
+
+/*
+ * HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA - Provides DPU Input/Output virtual address
+ *                                       of an always alive DCS command tx buffer mapped to
+ *                                       both DPU and DCP which is used for DMA operation
+ *                                       to send MIPI DSI packets from DCP to the panel.
+ *                                       This property is sent to DCP as part of
+ *                                       HFI_COMMAND_PANEL_INIT_PANEL_CAPS
+ *                                       command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA |
+ *                               (version=0 << 20) | (dsize=2 << 24 )
+ *   (u32_array) payload[1]    : struct hfi_buff of DPU mapped iova of DCS command tx buffer
+ */
+#define HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA                       0x0004002D
 
 /*
  * All panel property IDs end here

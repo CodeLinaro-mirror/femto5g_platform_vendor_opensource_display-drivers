@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -41,22 +41,6 @@
 static const u32 cwb_irq_tbl[PINGPONG_MAX] = {SDE_NONE, INTR_IDX_PP1_OVFL,
 	INTR_IDX_PP2_OVFL, INTR_IDX_PP3_OVFL, INTR_IDX_PP4_OVFL,
 	INTR_IDX_PP5_OVFL, SDE_NONE, SDE_NONE};
-
-/**
- * sde_rgb2yuv_601l - rgb to yuv color space conversion matrix
- *
- */
-static struct sde_csc_cfg sde_encoder_phys_wb_rgb2yuv_601l = {
-	{
-		TO_S15D16(0x0083), TO_S15D16(0x0102), TO_S15D16(0x0032),
-		TO_S15D16(0x1fb5), TO_S15D16(0x1f6c), TO_S15D16(0x00e1),
-		TO_S15D16(0x00e1), TO_S15D16(0x1f45), TO_S15D16(0x1fdc)
-	},
-	{ 0x00, 0x00, 0x00 },
-	{ 0x0040, 0x0200, 0x0200 },
-	{ 0x000, 0x3ff, 0x000, 0x3ff, 0x000, 0x3ff },
-	{ 0x040, 0x3ac, 0x040, 0x3c0, 0x040, 0x3c0 },
-};
 
 /**
  * sde_encoder_phys_wb_is_master - report wb always as master encoder
@@ -251,7 +235,13 @@ void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_fr
 	struct sde_hw_cdm_cfg *cdm_cfg;
 	struct sde_hw_pingpong *hw_pp;
 	struct sde_encoder_phys_wb *wb_enc;
+	struct sde_connector *sde_conn;
+	struct sde_connector_state *sde_conn_state;
+	struct sde_drm_csc_v1 *wb_csc;
+	struct sde_csc_cfg wb_csc_cfg = {};
 	int ret;
+	int i;
+	size_t csc_size = 0;
 	enum msm_disp_op disp_op;
 
 	if (!phys_enc || !format)
@@ -259,6 +249,10 @@ void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_fr
 
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	wb_enc = to_sde_encoder_phys_wb(phys_enc);
+
+	sde_conn = to_sde_connector(wb_enc->wb_dev->connector);
+	sde_conn_state = to_sde_connector_state(wb_enc->wb_dev->connector->state);
+
 	cdm_cfg = &phys_enc->cdm_cfg;
 	hw_pp = phys_enc->hw_pp;
 	hw_cdm = phys_enc->hw_cdm;
@@ -316,8 +310,25 @@ void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_fr
 		cdm_cfg->h_cdwn_type, cdm_cfg->v_cdwn_type);
 
 	if (hw_cdm && hw_cdm->ops.setup_csc_data[disp_op]) {
+		wb_csc = msm_property_get_blob(&sde_conn->property_info,
+			&sde_conn_state->property_state, &csc_size, CONNECTOR_PROP_WB_CSC_CONFIG);
+		if (!wb_csc) {
+			SDE_ERROR("[enc:%d wb:%d] invalid CSC to setup;\n",
+					DRMID(phys_enc->parent), WBID(wb_enc));
+			return;
+		}
+		for (i = 0; i < SDE_CSC_MATRIX_COEFF_SIZE; i++)
+			wb_csc_cfg.csc_mv[i] = (uint32_t)(wb_csc->ctm_coeff[i] & 0xffffffff);
+		for (i = 0; i < SDE_CSC_BIAS_SIZE; i++) {
+			wb_csc_cfg.csc_pre_bv[i] = wb_csc->pre_bias[i];
+			wb_csc_cfg.csc_post_bv[i] = wb_csc->post_bias[i];
+		}
+		for (i = 0; i < SDE_CSC_CLAMP_SIZE; i++) {
+			wb_csc_cfg.csc_pre_lv[i] = wb_csc->pre_clamp[i];
+			wb_csc_cfg.csc_post_lv[i] = wb_csc->post_clamp[i];
+		}
 		ret = hw_cdm->ops.setup_csc_data[disp_op](hw_cdm,
-			&sde_encoder_phys_wb_rgb2yuv_601l, disp_op);
+			&wb_csc_cfg, disp_op);
 		if (ret < 0) {
 			SDE_ERROR("[enc:%d wb:%d] failed to setup CSC; ret:%d\n",
 					DRMID(phys_enc->parent), WBID(wb_enc), ret);
@@ -394,6 +405,19 @@ static void _sde_enc_phys_wb_get_out_resolution(struct drm_crtc_state *crtc_stat
 		swap(*out_width, *out_height);
 }
 
+static void _sde_encoder_phys_wb_get_pu_roi(struct sde_crtc_state *cstate,
+	struct sde_connector_state *c_conn_state, u32 ds_tap_pt,
+	struct sde_rect *pu_roi)
+{
+	if (!cstate || !c_conn_state || !pu_roi)
+		return;
+
+	if (ds_tap_pt == CAPTURE_MIXER_OUT)
+		sde_kms_rect_merge_rectangles(&cstate->user_roi_list, pu_roi);
+	else
+		sde_kms_rect_merge_rectangles(&c_conn_state->rois, pu_roi);
+}
+
 static void _sde_encoder_phys_wb_setup_cdp(struct sde_encoder_phys *phys_enc,
 		struct sde_hw_wb_cfg *wb_cfg)
 {
@@ -427,28 +451,38 @@ static void _sde_encoder_phys_wb_setup_roi(struct sde_encoder_phys *phys_enc,
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
 	struct sde_rect pu_roi = {0,};
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
+	struct sde_connector_state *c_conn_state;
+	u32 ds_tap_pt = sde_crtc_get_property(cstate, CRTC_PROP_CAPTURE_OUTPUT);
+	bool crop_enabled = false;
 
 	if (!hw_wb->ops.setup_roi[disp_op])
 		return;
+
+	c_conn_state = to_sde_connector_state(phys_enc->connector->state);
 
 	if (hw_wb->ops.setup_crop[disp_op] && phys_enc->in_clone_mode) {
 		wb_cfg->crop.x = wb_cfg->roi.x;
 		wb_cfg->crop.y = wb_cfg->roi.y;
 
-		if (cstate->user_roi_list.num_rects) {
-			sde_kms_rect_merge_rectangles(&cstate->user_roi_list, &pu_roi);
+		if (cstate->user_roi_list.num_rects || c_conn_state->rois.num_rects) {
+			_sde_encoder_phys_wb_get_pu_roi(cstate, c_conn_state, ds_tap_pt, &pu_roi);
 
 			if ((wb_cfg->roi.w != pu_roi.w) || (wb_cfg->roi.h != pu_roi.h)) {
 				/* offset cropping region to PU region */
 				wb_cfg->crop.x = wb_cfg->crop.x - pu_roi.x;
 				wb_cfg->crop.y = wb_cfg->crop.y - pu_roi.y;
 				hw_wb->ops.setup_crop[disp_op](hw_wb, wb_cfg, true);
+				crop_enabled = true;
 			} else {
 				hw_wb->ops.setup_crop[disp_op](hw_wb, wb_cfg, false);
 			}
+			/* Align ROI to top left corner, when PU is enabled */
+			wb_cfg->roi.x = 0;
+			wb_cfg->roi.y = 0;
 		} else if (((wb_cfg->roi.w != out_width) || (wb_cfg->roi.h != out_height))
 				&& !phys_enc->quad_cwb_roi) {
 			hw_wb->ops.setup_crop[disp_op](hw_wb, wb_cfg, true);
+			crop_enabled = true;
 		} else {
 			hw_wb->ops.setup_crop[disp_op](hw_wb, wb_cfg, false);
 		}
@@ -460,7 +494,9 @@ static void _sde_encoder_phys_wb_setup_roi(struct sde_encoder_phys *phys_enc,
 		}
 
 		SDE_EVT32(DRMID(phys_enc->parent), WBID(wb_enc), wb_cfg->crop.x, wb_cfg->crop.y,
-				pu_roi.x, pu_roi.y, pu_roi.w, pu_roi.h);
+				pu_roi.x, pu_roi.y, pu_roi.w, pu_roi.h,
+				wb_cfg->roi.x, wb_cfg->roi.y, wb_cfg->roi.w, wb_cfg->roi.h,
+				crop_enabled, ds_tap_pt);
 	}
 
 	hw_wb->ops.setup_roi[disp_op](hw_wb, wb_cfg);
@@ -1000,10 +1036,14 @@ static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
 {
 	struct drm_framebuffer *fb;
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
+	struct sde_connector_state *c_conn_state;
 	struct sde_rect wb_roi = {0,}, pu_roi = {0,};
-	u32  out_width = 0, out_height = 0;
+	u32  out_width = 0, out_height = 0, ds_tap_pt;
 	const struct sde_format *fmt;
 	int num_lm, prog_line, ret = 0;
+
+	ds_tap_pt = sde_crtc_get_property(cstate, CRTC_PROP_CAPTURE_OUTPUT);
+	c_conn_state = to_sde_connector_state(conn_state);
 
 	fb = sde_wb_connector_state_get_output_fb(conn_state);
 	if (!fb) {
@@ -1101,11 +1141,21 @@ static int _sde_enc_phys_wb_validate_cwb(struct sde_encoder_phys *phys_enc,
 	}
 
 	/* validate wb roi against pu rect */
-	if (cstate->user_roi_list.num_rects) {
-		sde_kms_rect_merge_rectangles(&cstate->user_roi_list, &pu_roi);
+	if (cstate->user_roi_list.num_rects || c_conn_state->rois.num_rects) {
+		_sde_encoder_phys_wb_get_pu_roi(cstate, c_conn_state, ds_tap_pt, &pu_roi);
+
 		if (wb_roi.w > pu_roi.w || wb_roi.h > pu_roi.h) {
 			SDE_ERROR("invalid wb roi with pu [%dx%d vs %dx%d]\n",
 					wb_roi.w, wb_roi.h, pu_roi.w, pu_roi.h);
+			return -EINVAL;
+		}
+
+		if (wb_roi.y < pu_roi.y || wb_roi.x < pu_roi.x ||
+			wb_roi.y + wb_roi.h > pu_roi.y + pu_roi.h ||
+			wb_roi.x + wb_roi.w > pu_roi.x + pu_roi.w) {
+			SDE_ERROR("invalid wb roi with pu [%dx%dx%dx%d vs %dx%dx%dx%d]\n",
+					wb_roi.x, wb_roi.y, wb_roi.w, wb_roi.h,
+					pu_roi.x, pu_roi.y, pu_roi.w, pu_roi.h);
 			return -EINVAL;
 		}
 	}

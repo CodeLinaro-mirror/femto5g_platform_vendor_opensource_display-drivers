@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -692,6 +692,9 @@ int sde_wb_connector_post_init(struct drm_connector *connector, void *display)
 	msm_property_install_enum(&c_conn->property_info, "wb_usage_type",
 			0x0, 0, e_wb_usage_type, ARRAY_SIZE(e_wb_usage_type),
 			0, CONNECTOR_PROP_WB_USAGE_TYPE);
+
+	msm_property_install_blob(&c_conn->property_info, "wb_csc_config",
+			DRM_MODE_PROP_BLOB, CONNECTOR_PROP_WB_CSC_CONFIG);
 
 	_sde_wb_connector_install_dither_property(wb_dev);
 

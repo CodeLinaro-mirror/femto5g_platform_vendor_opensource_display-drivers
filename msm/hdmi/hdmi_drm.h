@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _HDMI_DRM_H_
@@ -13,6 +13,13 @@
 #include "sde_connector.h"
 #include "hdmi_display.h"
 #include "hdmi_panel.h"
+#include "hdmi_phy.h"
+
+#define HDMI_SEC_TO_MS 1000
+#define HDMI_MS_TO_US 1000
+#define HDMI_SEC_TO_US (HDMI_SEC_TO_MS * HDMI_MS_TO_US)
+#define HDMI_KHZ_TO_HZ 1000
+#define HDMI_BUSY_WAIT_DELAY_US 100
 
 struct hdmi_bridge {
 	struct drm_bridge base;
@@ -20,8 +27,8 @@ struct hdmi_bridge {
 
 	struct drm_connector *connector;
 	struct hdmi_display *display;
-	struct hdmi_display_mode hdmi_mode;
 	void *hdmi_panel;
+	struct drm_display_mode mode;
 
 };
 
@@ -157,14 +164,6 @@ int hdmi_drm_bridge_init(void *display, struct drm_encoder *encoder,
 void hdmi_drm_bridge_deinit(void *display);
 
 /**
- * hdmi_convert_to_drm_mode - convert hdmi mode to drm mode
- * @hdmi_mode: Point to hdmi mode
- * @drm_mode: Pointer to drm mode
- */
-void hdmi_convert_to_drm_mode(const struct hdmi_display_mode *hdmi_mode,
-				struct drm_display_mode *drm_mode);
-
-/**
  * hdmi_connector_update_pps - update pps for given connector
  * @hdmi_mode: Point to hdmi mode
  * @pps_cmd: PPS packet
@@ -180,13 +179,6 @@ int hdmi_connector_update_pps(struct drm_connector *connector,
  */
 int hdmi_connector_install_properties(void *display,
 		struct drm_connector *conn);
-
-/**
- * hdmi_connector_add_custom_mode - add edid mode to connector
- * @conn: Pointer to connector
- * @hdmi_mode: Pointer to mode
- */
-int hdmi_connector_add_custom_mode(struct drm_connector *conn, struct hdmi_display_mode *hdmi_mode);
 
 #else
 static inline int hdmi_connector_config_hdr(struct drm_connector *connector,
@@ -269,12 +261,6 @@ static inline int hdmi_drm_bridge_init(void *display, struct drm_encoder *encode
 }
 
 static inline void hdmi_drm_bridge_deinit(void *display)
-{
-}
-
-static inline void hdmi_convert_to_drm_mode(
-		const struct hdmi_display_mode *hdmi_mode,
-		struct drm_display_mode *drm_mode)
 {
 }
 

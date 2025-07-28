@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -521,6 +521,7 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 	u32 display_data_hctl = 0, active_data_hctl = 0;
 	u32 data_width;
 	bool dp_intf = false;
+	bool hdmi_intf = false;
 	u32 alignment = 0;
 
 	/* read interface_cfg */
@@ -528,6 +529,9 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 
 	if (ctx->cap->type == INTF_EDP || ctx->cap->type == INTF_DP)
 		dp_intf = true;
+
+	if (ctx->cap->type == INTF_HDMI)
+		hdmi_intf = true;
 
 	hsync_period = p->hsync_pulse_width + p->h_back_porch + p->width +
 			p->h_front_porch;
@@ -604,7 +608,7 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 
 	active_hctl = (active_h_end << 16) | active_h_start;
 
-	if (dp_intf) {
+	if (dp_intf || hdmi_intf) {
 		display_hctl = active_hctl;
 
 		if (p->compression_en) {
@@ -620,7 +624,7 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 			&intf_cfg2);
 
 	den_polarity = 0;
-	if (ctx->cap->type == INTF_HDMI) {
+	if (hdmi_intf) {
 		hsync_polarity = p->yres >= 720 ? 0 : 1;
 		vsync_polarity = p->yres >= 720 ? 0 : 1;
 	} else if (ctx->cap->type == INTF_DP) {
@@ -651,7 +655,7 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 
 	/* Synchronize timing engine enable to TE */
 	if ((ctx->cap->features & BIT(SDE_INTF_TE_ALIGN_VSYNC))
-			&& p->poms_align_vsync)
+			&& p->poms_align_vsync && p->poms_pending)
 		intf_cfg2 |= BIT(16);
 
 	if (align_esync) {
@@ -673,7 +677,8 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 		intf_cfg2 |= BIT(23);
 	}
 
-	if (!dp_intf && ctx->cap->features & BIT(SDE_INTF_PERIPHERAL_FLUSH))
+	if (!(dp_intf || hdmi_intf) &&
+		ctx->cap->features & BIT(SDE_INTF_PERIPHERAL_FLUSH))
 		intf_cfg2 |= BIT(24);
 
 	if (ctx->cap->features & BIT(SDE_INTF_PROG_DYNREF))

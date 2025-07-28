@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -521,7 +521,7 @@ struct sde_crtc_hal_funcs {
  * @mdnie_art_frame_count: number of frames required for mdnie art to converge.
  * @hfi_crtc: Pointer to hfi crtc struct
  * @hal_ops: Local callback hal function pointer table
- * @prev_disp_op: previous disp_op
+ * @dspp_pa_mode: top-level bitmask maintaining state of PA block
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -650,7 +650,8 @@ struct sde_crtc {
 
 	struct hfi_crtc *hfi_crtc;
 	struct sde_crtc_hal_funcs hal_ops;
-	enum msm_disp_op prev_disp_op;
+
+	struct cp_pa_mode dspp_pa_mode;
 };
 
 enum sde_crtc_dirty_flags {
@@ -690,8 +691,7 @@ struct sde_line_insertion_param {
  * @lm_roi        : Current LM ROI, possibly sub-rectangle of mode.
  *                  Origin top left of CRTC.
  * @user_roi_list : List of user's requested ROIs as from set property
- * @cached_user_roi_list : Copy of user_roi_list from previous PU frame
- * @property_state: Local storage for msm_prop properties
+  * @property_state: Local storage for msm_prop properties
  * @property_values: Current crtc property values
  * @input_fence_timeout_ns : Cached input fence timeout, in ns
  * @num_dim_layers: Number of dim layers
@@ -732,7 +732,7 @@ struct sde_crtc_state {
 	struct sde_rect crtc_roi;
 	struct sde_rect lm_bounds[MAX_MIXERS_PER_CRTC];
 	struct sde_rect lm_roi[MAX_MIXERS_PER_CRTC];
-	struct msm_roi_list user_roi_list, cached_user_roi_list;
+	struct msm_roi_list user_roi_list;
 
 	struct msm_property_state property_state;
 	struct msm_property_value property_values[CRTC_PROP_COUNT];

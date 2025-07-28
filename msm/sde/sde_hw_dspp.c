@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -17,6 +17,7 @@
 #include "sde_kms.h"
 #include "sde_aiqe_common.h"
 #include "sde_hw_color_proc_aiqe_v1.h"
+#include "hfi_color_proc.h"
 
 #define DSPP_VALID_START_OFF 0x800
 
@@ -128,8 +129,10 @@ static void dspp_hsic(struct sde_hw_dspp *c)
 
 	if (c->cap->sblk->hsic.version == SDE_COLOR_PROCESS_VER(0x1, 0x7)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_HSIC, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_pa_hsic[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_pa_hsicv17;
+			c->ops.setup_pa_hsic[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_pa_hsicv17;
+		}
 		else
 			c->ops.setup_pa_hsic[MSM_DISP_OP_HWIO] = sde_setup_dspp_pa_hsic_v17;
 	}
@@ -149,6 +152,15 @@ static void dspp_memcolor(struct sde_hw_dspp *c)
 			c->ops.setup_pa_memcol_foliage[MSM_DISP_OP_HWIO] =
 				reg_dmav1_setup_dspp_memcol_folv17;
 			c->ops.setup_pa_memcol_prot[MSM_DISP_OP_HWIO] =
+				reg_dmav1_setup_dspp_memcol_protv17;
+
+			c->ops.setup_pa_memcol_skin[MSM_DISP_OP_HFI] =
+				reg_dmav1_setup_dspp_memcol_skinv17;
+			c->ops.setup_pa_memcol_sky[MSM_DISP_OP_HFI] =
+				reg_dmav1_setup_dspp_memcol_skyv17;
+			c->ops.setup_pa_memcol_foliage[MSM_DISP_OP_HFI] =
+				reg_dmav1_setup_dspp_memcol_folv17;
+			c->ops.setup_pa_memcol_prot[MSM_DISP_OP_HFI] =
 				reg_dmav1_setup_dspp_memcol_protv17;
 		} else {
 			c->ops.setup_pa_memcol_skin[MSM_DISP_OP_HWIO] =
@@ -176,8 +188,10 @@ static void dspp_sixzone(struct sde_hw_dspp *c)
 	} else if (c->cap->sblk->sixzone.version ==
 			SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
 		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_SIXZONE, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_sixzone[MSM_DISP_OP_HWIO] = reg_dmav2_setup_dspp_sixzonev2;
+			c->ops.setup_sixzone[MSM_DISP_OP_HFI] = reg_dmav2_setup_dspp_sixzonev2;
+		}
 	}
 }
 
@@ -215,8 +229,10 @@ static void dspp_gamut(struct sde_hw_dspp *c)
 
 static void dspp_dither(struct sde_hw_dspp *c)
 {
-	if (c->cap->sblk->dither.version == SDE_COLOR_PROCESS_VER(0x1, 0x7))
+	if (c->cap->sblk->dither.version == SDE_COLOR_PROCESS_VER(0x1, 0x7)) {
 		c->ops.setup_pa_dither[MSM_DISP_OP_HWIO] = sde_setup_dspp_dither_v1_7;
+		c->ops.setup_pa_dither[MSM_DISP_OP_HFI] = hfi_setup_dspp_pa_dither_v1_7;
+	}
 }
 
 static void dspp_hist(struct sde_hw_dspp *c)
@@ -407,12 +423,17 @@ static void dspp_spr(struct sde_hw_dspp *c)
 		c->ops.setup_spr_udc_config[MSM_DISP_OP_HWIO] = reg_dmav1_setup_spr_udc_cfgv2;
 		c->ops.setup_spr_pu_config[MSM_DISP_OP_HWIO] = reg_dmav1_setup_spr_pu_cfgv2;
 		c->ops.read_spr_opr_value[MSM_DISP_OP_HWIO] = sde_spr_read_opr_value;
+
+		c->ops.setup_spr_init_config[MSM_DISP_OP_HFI] = reg_dmav1_setup_spr_init_cfgv2;
+		c->ops.setup_spr_udc_config[MSM_DISP_OP_HFI] = reg_dmav1_setup_spr_udc_cfgv2;
 	}
 
 	if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x1, 0x7))
 		c->ops.setup_spr_dither[MSM_DISP_OP_HWIO] = sde_setup_dspp_spr_dither_v1_7;
-	else if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x2, 0x0))
+	else if (c->cap->sblk->spr_dither.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
 		c->ops.setup_spr_dither[MSM_DISP_OP_HWIO] = sde_setup_dspp_spr_dither_v2;
+		c->ops.setup_spr_dither[MSM_DISP_OP_HFI] = hfi_setup_dspp_spr_dither_v2;
+	}
 }
 
 static void dspp_demura(struct sde_hw_dspp *c)

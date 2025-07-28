@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __H_HFI_DEFS_DISPLAY_H__
@@ -173,6 +173,54 @@ struct hfi_display_mode_info {
 };
 
 /*
+ * struct hfi_dsi_cmd_desc - hfi dcp transfer dcs data
+ * @size             :  Size of this struct used for backward compatibility.
+ * @channel          :  DSI virtual channel id
+ * @type             :  MIPI DSI data type of the DCS command.
+ * @flags            :  MIPI flags controlling this message transmission.
+ *                      Ex: MIPI_DSI_MSG_UNICAST_COMMAND
+ * @tx_len           :  Transfer buffer length.
+ * @tx_buff_addr_lsb :  Tx command buffer DCP address location (lo).
+ * @tx_buff_addr_msb :  Tx command buffer DCP address location (hi).
+ * @rx_len           :  Receiving buffer length.
+ * @rx_buff_addr_lsb :  Rx command buffer DCP address location (lo).
+ * @rx_buff_addr_msb :  Rx command buffer DCP address location (hi).
+ * @ctrl_idx         :  DSI controller index
+ * @ctrl_flags       :  CTRL flags.
+ * @last_command     :  Is last DCS command.
+ * @post_wait_ms     :  Wait time in milliseconds.
+ * @reserved1        :  Reserved for future use.
+ * @reserved2        :  Reserved for future use.
+ */
+struct hfi_dsi_cmd_desc {
+	u32 size;
+
+	u8 channel;
+	u8 type;
+	u16 flags;
+
+	/* Transmit buffer information */
+	u32 tx_len;
+	u32 tx_buff_addr_lsb;
+	u32 tx_buff_addr_msb;
+
+	/* Receive buffer information */
+	u32 rx_len;
+	u32 rx_buff_addr_lsb;
+	u32 rx_buff_addr_msb;
+
+	/* Control information */
+	u32 ctrl_idx;
+	u32 ctrl_flags;
+	u32 last_command;
+	u32 post_wait_ms;
+
+	/* Reserved for future use */
+	u32 reserved1;
+	u32 reserved2;
+};
+
+/*
  * enum hfi_display_blend_stage - Defines blending stages
  * @HFI_BLEND_STAGE_BASE    :  base layer
  * @HFI_BLEND_STAGE_0       :  Blend Stage #0(One base layer + one foreground layer)
@@ -211,6 +259,42 @@ enum hfi_layer_fetch_mode {
 	HFI_PARALLEL_FETCH        = 0x0,
 	HFI_TIME_MULTIPLEX_FETCH  = 0x1,
 };
+
+/**
+ * @def HFI_DISPLAY_ROTATION_0
+ * @brief Set when layer is not rotated.
+ */
+#define HFI_DISPLAY_ROTATION_0   (1 << 0)
+
+/**
+ * @def HFI_DISPLAY_ROTATION_90
+ * @brief Set when layer is rotated by 90 degrees.
+ */
+#define HFI_DISPLAY_ROTATION_90   (1 << 1)
+
+/**
+ * @def HFI_DISPLAY_ROTATION_180
+ * @brief Set when layer is rotated by 180 degrees.
+ */
+#define HFI_DISPLAY_ROTATION_180     (1 << 2)
+
+/**
+ * @def HFI_DISPLAY_ROTATION_270
+ * @brief Set when layer is rotated by 270 degrees.
+ */
+#define HFI_DISPLAY_ROTATION_270   (1 << 3)
+
+/**
+ * @def HFI_DISPLAY_REFLECT_X
+ * @brief Set when layer is reflected along X-axis.
+ */
+#define HFI_DISPLAY_REFLECT_X   (1 << 4)
+
+/**
+ * @def HFI_DISPLAY_REFLECT_Y
+ * @brief Set when layer is reflected along Y-axis.
+ */
+#define HFI_DISPLAY_REFLECT_Y   (1 << 5)
 
 #endif // __H_HFI_DEFS_DISPLAY_H__
 

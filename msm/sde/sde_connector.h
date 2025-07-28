@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -263,6 +263,12 @@ struct sde_connector_ops {
 	 */
 	int (*set_backlight)(struct drm_connector *connector,
 			void *display, u32 bl_lvl);
+
+	/**
+	 * toggle_te - toggle TE to refresh hardware state tracking
+	 * @display: Pointer to display structure
+	 */
+	int (*toggle_te)(void *display);
 
 	/**
 	 * set_colorspace - set colorspace for connector
@@ -588,6 +594,15 @@ struct sde_connector_ops {
 	 * Returns: error code
 	 */
 	int (*ctl_post_transition)(void *display);
+
+	/*
+	 * process_dcs_cmd_bitmask -  process a bitmask to send multiple
+	 *                            DCS command sets in a batch
+	 * @display: Pointer to private display structure
+	 * @params: Parmeters for DCS command bit mask and peripheral flush
+	 * Returns: Zero on success
+	 */
+	int (*process_dcs_cmd_bitmask)(void *display, struct msm_display_conn_params *params);
 };
 
 /**
@@ -1590,6 +1605,11 @@ static inline bool sde_connector_is_3d_merge_enabled(struct drm_connector_state 
 		|| sde_connector_is_quadpipe_3d_merge_enabled(conn_state);
 }
 
+static inline bool sde_connector_supports_cac(struct drm_connector *conn)
+{
+	return (conn && (conn->connector_type == DRM_MODE_CONNECTOR_DSI ||
+		conn->connector_type == DRM_MODE_CONNECTOR_eDP));
+}
 /**
 * sde_connector_set_msm_mode - set msm_mode for connector state
 * @conn_state: Pointer to drm connector state structure

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _HFI_ADAPTER_H_
@@ -14,7 +14,9 @@
 #include <linux/spinlock.h>
 #if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
 #include "hfi_pack_unpack_common.h"
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 #include "hfi_interface.h"
+#endif
 #include "hfi_packer.h"
 #include "hfi_unpacker.h"
 #endif
@@ -28,6 +30,20 @@
  */
 #define HFI_PACKKEY(property_id, version, dsize) \
 	(property_id | (version << 20) | (dsize << 24))
+
+#define HFI_ADAPTER_WORK_QUEUE_SIZE 4
+
+/**
+ * struct callback_work - Structure for containing work queue items
+ * @work: kthread_work instance
+ * @host: pointer to adapter module instance
+ * @index: index of kthread queue position
+ */
+struct callback_work {
+	struct kthread_work work;
+	struct hfi_adapter_t *host;
+	u32 index;
+};
 
 /**
  * struct hfi_adapter_t - Structure for defining Adapter Module instance handle
@@ -49,7 +65,7 @@ struct hfi_adapter_t {
 	struct hfi_core_cb_ops *cb_ops;
 	struct hfi_core_session *session;  /* handle to hfi core device */
 #endif
-	struct kthread_work cb_work;
+	struct callback_work cb_work[HFI_ADAPTER_WORK_QUEUE_SIZE];
 	struct kthread_worker cb_worker;
 	struct task_struct *cb_worker_thread;
 	struct idr client_ids;
@@ -139,7 +155,7 @@ struct hfi_cmdbuf_t {
 	u32 unique_id;
 	u32 obj_id;
 	u32 size;
-#if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 	struct hfi_core_cmds_buf_desc buf;
 #endif
 	struct list_head node;
@@ -207,22 +223,24 @@ struct hfi_client_t {
 };
 
 /*
- * struct msm_dbg_addr_map -  msm debug dump address map structure
- *@remote_addr:  pointer to the HFI mapped base dump address
- *@local_addr:  pointer to the kernel mapped base dump address
- *@size: size of the buffer to dump
+ * struct hfi_shared_addr_map -  HFI shared memory address map structure
+ *@remote_addr:  pointer to the HFI mapped base address
+ *@local_addr:  pointer to the kernel mapped base address
+ *@size: size of the buffer
  *@aligned_size: aligned size of the buffer to map
- *@alloc_info: hfi stcuture to store memory allocation information
+ *@alloc_info: hfi structure to store memory allocation information
  */
-struct msm_dbg_addr_map {
+struct hfi_shared_addr_map {
 	unsigned long remote_addr;
 	void __iomem *local_addr;
 	u32 size;
 	u32 aligned_size;
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 	struct hfi_core_mem_alloc_info alloc_info;
+#endif
 };
 
-#if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 
 /**
  * hfi_adapter_init - Creates HFI adapter module object to connect with HFI driver.
@@ -336,14 +354,14 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf);
  * @addr_map: Pointer to hfi_adapter address map which stores the size to allocate
  * and pointers to kernel & hfi address of the shared space.
  */
-void hfi_adapter_buffer_alloc(struct msm_dbg_addr_map *addr_map);
+int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map);
 
 /**
  * hfi_adapter_buffer_dealloc - API to deallocate shared memory between HFI & kernel
- * @alloc_info: Pointer to hfi_core memory alloc info which stores the allocated size
+ * @addr_map: Pointer to hfi_adapter address map which stores the size to allocate
  * and pointers to kernel & hfi address of the shared space.
  */
-void hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info);
+int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map);
 
 #else
 
@@ -405,15 +423,16 @@ static inline int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	return 0;
 }
 
-static inline void hfi_adapter_buffer_alloc(struct msm_dbg_addr_map *addr_map)
+static inline int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
 {
-
+	return 0;
 }
 
-static inline void hfi_adapter_buffer_dealloc(struct hfi_core_mem_alloc_info *alloc_info)
+static inline int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
 {
-
+	return 0;
 }
-#endif
+
+#endif /*#if IS_ENABLED(CONFIG_QTI_HFI_CORE)*/
 
 #endif  /* _HFI_ADAPTER_H_ */

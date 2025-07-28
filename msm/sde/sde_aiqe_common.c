@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include "sde_kms.h"
@@ -128,6 +128,7 @@ void get_mdnie_art_frame_count(u32 *mdnie_art_frame_count, u32 art_param)
 	art_slope = (art_param & 0xF0000) >> 16;
 	*mdnie_art_frame_count = 1 << art_slope;
 	++(*mdnie_art_frame_count);
+	SDE_EVT32(*mdnie_art_frame_count);
 }
 
 void aiqe_deinit(struct sde_aiqe_top_level *aiqe_top)

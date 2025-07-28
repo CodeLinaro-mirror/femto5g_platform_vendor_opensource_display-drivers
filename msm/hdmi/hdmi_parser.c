@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/of_gpio.h>
@@ -11,6 +11,7 @@
 #include "hdmi_parser.h"
 #include "hdmi_debug.h"
 #include "hdmi_pll.h"
+#include "hdmi_phy.h"
 
 static void hdmi_parser_unmap_io_resources(struct hdmi_parser *parser)
 {
@@ -61,7 +62,7 @@ err:
 }
 
 static void hdmi_parser_put_clk_data(struct device *dev,
-	struct dss_module_power *mp)
+		struct dss_module_power *mp)
 {
 	if (!mp) {
 		DEV_ERR("%s: invalid input\n", __func__);
@@ -74,42 +75,89 @@ static void hdmi_parser_put_clk_data(struct device *dev,
 	mp->num_clk = 0;
 }
 
+static bool hdmi_parser_check_prefix(const char *clk_prefix, const char *clk_name)
+{
+	return !!strnstr(clk_name, clk_prefix, strlen(clk_name));
+}
+
 static int hdmi_parser_clock(struct hdmi_parser *parser)
 {
 	int i = 0;
 	size_t alloc_size;
 	struct device *dev = &parser->pdev->dev;
-	struct dss_module_power *mp = &parser->mp[HDMI_CORE_PM];
-	static const char * const hdmi_core_clks[HDMI_CORE_CLK_MAX] = {
-		"mdp_core_clk",
-		"iface_clk",
-		"alt_iface_clk",
-		"hdmi_core_clk",
-		"bus_clk",
-		"core_mmss_clk",
-		"mnoc_clk",
-		"misc_ahb_clk",
-		"extp_clk",
-	};
+	struct dss_module_power *core_mp = &parser->mp[HDMI_CORE_PM];
+	struct dss_module_power *pclk_mp = &parser->mp[HDMI_PCLK_PM];
+	const char *core_clk = "core";
+	const char *pclk_clk = "pixel";
+	int core_clk_count = 0, pclk_clk_count = 0;
+	int core_clk_index = 0, pclk_clk_index = 0;
+	const char *clk_name;
+	int num_clk, rc;
 
-	alloc_size = sizeof(struct dss_clk) * HDMI_CORE_CLK_MAX;
-	mp->clk_config = kzalloc(alloc_size, GFP_KERNEL);
-	if (!mp->clk_config)
-		return -ENOMEM;
+	num_clk = of_property_count_strings(dev->of_node, "clock-names");
+	if (num_clk <= 0) {
+		HDMI_ERR("no clocks are defined\n");
+		rc = -EINVAL;
+		goto exit;
+	}
 
-	for (i = 0; i < ARRAY_SIZE(hdmi_core_clks); i++) {
-		mp->clk_config[i].clk = devm_clk_get(dev, hdmi_core_clks[i]);
+	for (i = 0; i < num_clk; i++) {
+		of_property_read_string_index(dev->of_node,
+				"clock-names", i, &clk_name);
 
-		if (IS_ERR(mp->clk_config[i].clk)) {
-			HDMI_DEBUG("failed to get %s clk\n", hdmi_core_clks[i]);
-			continue;
+		if (hdmi_parser_check_prefix(core_clk, clk_name))
+			core_clk_count++;
+
+		if (hdmi_parser_check_prefix(pclk_clk, clk_name))
+			pclk_clk_count++;
+	}
+
+	core_mp->num_clk = core_clk_count;
+	alloc_size = sizeof(struct dss_clk) * core_clk_count;
+	core_mp->clk_config = kzalloc(alloc_size, GFP_KERNEL);
+	if (!core_mp->clk_config) {
+		rc = -ENOMEM;
+		goto exit;
+	}
+
+	pclk_mp->num_clk = pclk_clk_count;
+	alloc_size = sizeof(struct dss_clk) * pclk_clk_count;
+	pclk_mp->clk_config = kzalloc(alloc_size, GFP_KERNEL);
+	if (!pclk_mp->clk_config) {
+		rc = -ENOMEM;
+		goto error_core_clk;
+	}
+
+	for (i = 0; i < num_clk; i++) {
+		of_property_read_string_index(dev->of_node,
+				"clock-names", i, &clk_name);
+
+		if (hdmi_parser_check_prefix(core_clk, clk_name) &&
+				core_clk_index < core_clk_count) {
+			struct dss_clk *clk =
+				&core_mp->clk_config[core_clk_index];
+
+			strscpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
+			clk->type = DSS_CLK_AHB;
+			core_clk_index++;
 		}
 
-		strscpy(mp->clk_config[i].clk_name, hdmi_core_clks[i],
-			sizeof(mp->clk_config[i].clk_name));
+		if (hdmi_parser_check_prefix(pclk_clk, clk_name) &&
+				pclk_clk_index < pclk_clk_count) {
+			struct dss_clk *clk =
+				&pclk_mp->clk_config[pclk_clk_index];
+
+			strscpy(clk->clk_name, clk_name, sizeof(clk->clk_name));
+			clk->type = DSS_CLK_PCLK;
+			pclk_clk_index++;
+		}
 	}
 
 	return 0;
+error_core_clk:
+	hdmi_parser_put_clk_data(&parser->pdev->dev, core_mp);
+exit:
+	return rc;
 }
 
 static struct hdmi_io_data *hdmi_parser_get_io(struct hdmi_parser *parser,
@@ -180,7 +228,6 @@ static void hdmi_parser_clear_io_buf(struct hdmi_parser *parser)
 
 static int hdmi_parser_ddc(struct hdmi_parser *parser)
 {
-	//TODO: remove if not specific entries
 	return 0;
 }
 
@@ -206,6 +253,10 @@ static int hdmi_parser_misc(struct hdmi_parser *parser)
 	if (!parser->display_type)
 		parser->display_type = "unknown";
 
+	if (of_property_read_bool(of_node,
+			"qcom,hdmi-phy-snps-4nm"))
+		parser->phy_version = HDMI_PHY_SNPS_V4NM;
+
 	return 0;
 }
 
@@ -216,6 +267,7 @@ static const char *hdmi_parser_supply_node_name(enum hdmi_pm_type module)
 	case HDMI_CTRL_PM:	return "qcom,ctrl-supply-entries";
 	case HDMI_PHY_PM:	return "qcom,phy-supply-entries";
 	case HDMI_PLL_PM:	return "qcom,pll-supply-entries";
+	case HDMI_HPD_PM:	return "qcom,hpd-supply-entries";
 	default:		return "???";
 	}
 }
@@ -387,11 +439,12 @@ static int hdmi_parser_gpio(struct hdmi_parser *parser)
 	static const char * const hdmi_gpios[HDMI_GPIO_MAX] = {
 		"qcom,ddc-clk-gpio",
 		"qcom,ddc-data-gpio",
-		"qcom,hpd-gpio",
+		"qcom,hdmi-hpd-gpio",
 		"qcom,mux-en-gpio",
 		"qcom,mux-sel-gpio",
 		"qcom,mux-lpm-gpio",
 		"qcom,hpd5v-gpio",
+		"qcom,hdmi-cec-gpio",
 	};
 
 	alloc_size = sizeof(struct dss_gpio) * HDMI_GPIO_MAX;

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -989,6 +989,7 @@ skip_edid:
 
 	dp_panel->fec_en = false;
 	dp_panel->dsc_en = false;
+	dp_panel->fec_overhead_fp = 0;
 
 	if (dp_panel->dpcd[DP_DPCD_REV] >= DP_DPCD_REV_14 &&
 			dp_panel->fec_feature_enable) {

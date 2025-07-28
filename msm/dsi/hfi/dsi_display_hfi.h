@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _DSI_DISPLAY_HFI_H_
@@ -16,7 +16,6 @@
 #include "hfi_adapter.h"
 #include "hfi_props.h"
 #include "hfi_utils.h"
-#include "hfi_defs_display.h"
 
 /**
  * struct dsi_display_hfi - dsi display hfi structure
@@ -110,15 +109,7 @@ int dsi_hfi_packetize_panel_cmd(struct dsi_cmd_desc *cmd_desc, u32 *size_of_indv
 int dsi_hfi_host_alloc_cmd_tx_buffer(struct dsi_display *display);
 
 /**
- * dsi_hfi_transition() - transition to hfi lpm path
- * @display: Pointer to dsi_display structure
- * @lpm_state: Destination Power state
- * Return: error code (0 on success)
- */
-int dsi_hfi_transition(struct dsi_display *display, enum hfi_display_power_mode lpm_state);
-
-/**
- * dsi_display_setup_ops() - setup HWIO / HFI display ops
+ * dsi_display_setup_ops() - setup hlos/hfi display ops
  * @display: Pointer to dsi_display structure
  */
 void dsi_display_setup_ops(struct dsi_display *display);

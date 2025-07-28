@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -572,6 +572,15 @@ int dsi_display_splash_res_cleanup(struct  dsi_display *display);
 int dsi_display_config_ctrl_for_cont_splash(struct dsi_display *display);
 
 /**
+ * dsi_display_pinctrl_toggle_te_function() - Toggle TE GPIO to refresh hardware
+ *                                            state tracking
+ * @display: Handle to DSI display
+ *
+ * Return: error code
+ */
+int dsi_display_pinctrl_toggle_te_function(void *display);
+
+/**
  * dsi_display_enable() - enable display
  * @display:            Handle to display.
  *
@@ -840,6 +849,16 @@ int dsi_display_pre_kickoff(struct drm_connector *connector,
  * Returns: Zero on success
  */
 int dsi_display_pre_commit(void *display,
+		struct msm_display_conn_params *params);
+
+/*
+ * dsi_display_process_dcs_cmd_bitmask - process a bit mask to send multiple
+ *                                       DCS command sets in a batch
+ * @display: Pointer to private display structure
+ * @params: Parameters for DCS command bit mask and peripheral flush
+ * Returns: Zero on success
+ */
+int dsi_display_process_dcs_cmd_bitmask(void *display,
 		struct msm_display_conn_params *params);
 
 /**

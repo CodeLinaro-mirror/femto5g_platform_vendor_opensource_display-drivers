@@ -17,6 +17,12 @@ module_entry(
             "msm/hdmi/hdmi_power.c",
             "msm/hdmi/hdmi_drm.c",
             "msm/hdmi/hdmi_util.c",
+            "msm/hdmi/hdmi_panel.c",
+            "msm/hdmi/hdmi_pll.c",
+            "msm/hdmi/hdmi_pll_snps.c",
+            "msm/hdmi/hdmi_phy.c",
+            "msm/hdmi/hdmi_phy_snps.c",
+	    "msm/hdmi/hdmi_audio.c",
         ],
         "CONFIG_HDCP_QSEECOM": [
             "hdcp/msm_hdcp.c",
@@ -145,6 +151,7 @@ module_entry(
             "msm/sde/sde_hw_color_proc_aiqe_v1.c",
             "msm/sde/sde_aiqe_common.c",
             "msm/sde/sde_loopback.c",
+            "msm/sde/sde_color_proc_feature_state_helper.c"
         ],
         "CONFIG_DRM_SDE_WB": [
             "msm/sde/sde_wb.c",

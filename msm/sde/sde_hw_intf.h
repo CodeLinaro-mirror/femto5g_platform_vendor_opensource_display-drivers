@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -39,6 +39,7 @@ struct intf_timing_params {
 	u32 extra_dto_cycles;	/* for DP only */
 	bool dsc_4hs_merge;	/* DSC 4HS merge */
 	bool poms_align_vsync;	/* poms with vsync aligned */
+	bool poms_pending;
 	u32 dce_bytes_per_line;
 	u32 vrefresh;
 };

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -88,6 +88,13 @@ struct sde_hw_pipe;
 #define SDE_SSPP_SCALER ((1UL << SDE_SSPP_SCALER_QSEED2) | \
 	(1UL << SDE_SSPP_SCALER_QSEED3) | \
 	(1UL << SDE_SSPP_SCALER_QSEED3LITE))
+
+/* Offsets from base register */
+#define SSPP_REC0_OFFSET_FROM_SSPP_CMN 0x1000
+#define SSPP_REC1_OFFSET_FROM_SSPP_CMN 0x3000
+
+/* Size of SSPP_REC */
+#define SSPP_REC_SIZE 0x17C
 
 /**
  * Component indices
