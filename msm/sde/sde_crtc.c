@@ -5731,6 +5731,13 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 		 */
 		params.affected_displays = _sde_crtc_get_displays_affected(crtc,
 				crtc->state);
+		/*
+		 * Pingpong to DSC mapping changes during cac loopback
+		 * transitions. Detect such cases and bind the pingpong
+		 * block to corresponding DSC properly.
+		 */
+		params.update_dce_pp_mux = cstate->in_loopback_transition ? true : false;
+
 		if (sde_encoder_prepare_for_kickoff(encoder, &params))
 			sde_crtc->needs_hw_reset = true;
 

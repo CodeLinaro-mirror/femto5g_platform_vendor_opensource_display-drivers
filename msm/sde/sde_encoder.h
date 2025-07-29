@@ -126,11 +126,13 @@ struct sde_encoder_hw_resources {
  *                      the bounds of the physical display at the bit index
  * @recovery_events_enabled: indicates status of client for recoovery events
  * @frame_trigger_mode: indicates frame trigger mode
+ * @update_dce_pp_mux: indicates if the pp mux needs to be updated for dce
  */
 struct sde_encoder_kickoff_params {
 	unsigned long affected_displays;
 	bool recovery_events_enabled;
 	enum frame_trigger_mode_type frame_trigger_mode;
+	bool update_dce_pp_mux;
 };
 
 struct sde_encoder_ops {

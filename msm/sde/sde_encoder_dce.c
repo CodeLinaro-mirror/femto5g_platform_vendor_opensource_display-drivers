@@ -323,7 +323,7 @@ static int _dce_dsc_setup_single(struct sde_encoder_virt *sde_enc,
 		const struct sde_rect *roi, int dsc_common_mode,
 		bool merge_3d, bool disable_merge_3d, bool mode_3d,
 		bool dsc_4hsmerge, bool half_panel_partial_update,
-		int ich_res)
+		int ich_res, bool update_dce_pp_mux)
 {
 	struct sde_hw_ctl *hw_ctl;
 	struct sde_hw_dsc *hw_dsc;
@@ -360,6 +360,17 @@ static int _dce_dsc_setup_single(struct sde_encoder_virt *sde_enc,
 	SDE_EVT32(DRMID(&sde_enc->base), roi->w, roi->h, dsc_common_mode,
 			index, active, merge_3d, disable_merge_3d,
 			dsc_4hsmerge);
+
+	if (update_dce_pp_mux) {
+		if (hw_dsc && hw_dsc->ops.bind_pingpong_blk[disp_op])
+			hw_dsc->ops.bind_pingpong_blk[disp_op](hw_dsc, true, hw_pp->idx);
+
+		if (hw_ctl->ops.update_bitmask[disp_op])
+			hw_ctl->ops.update_bitmask[disp_op](hw_ctl, SDE_HW_FLUSH_DSC,
+				hw_dsc->idx, true);
+
+		return 0;
+	}
 
 	_dce_dsc_pipe_cfg(hw_dsc, hw_pp, dsc, dsc_common_mode, ich_res,
 			hw_dsc_pp, mode_3d, disable_merge_3d, active,
@@ -404,7 +415,7 @@ static int _dce_dsc_setup_single(struct sde_encoder_virt *sde_enc,
 }
 
 static int _dce_dsc_setup_helper(struct sde_encoder_virt *sde_enc,
-		unsigned long affected_displays,
+		struct sde_encoder_kickoff_params *params,
 		enum sde_rm_topology_name topology)
 {
 	struct sde_kms *sde_kms;
@@ -423,6 +434,7 @@ static int _dce_dsc_setup_helper(struct sde_encoder_virt *sde_enc,
 	int dsc_common_mode = 0;
 	int i, rc = 0;
 	bool widebus_en;
+	unsigned long affected_displays = params->affected_displays;
 
 	sde_kms = sde_encoder_get_kms(&sde_enc->base);
 
@@ -512,7 +524,8 @@ static int _dce_dsc_setup_helper(struct sde_encoder_virt *sde_enc,
 		rc = _dce_dsc_setup_single(sde_enc, dsc, affected_displays, i,
 				roi, dsc_common_mode, merge_3d,
 				disable_merge_3d, mode_3d, dsc_4hsmerge,
-				dsc->half_panel_pu, ich_res);
+				dsc->half_panel_pu, ich_res,
+				params->update_dce_pp_mux);
 		if (rc)
 			break;
 	}
@@ -525,7 +538,6 @@ static int _dce_dsc_setup(struct sde_encoder_virt *sde_enc,
 {
 	struct drm_connector *drm_conn;
 	enum sde_rm_topology_name topology;
-	struct sde_crtc_state *cstate;
 
 	if (!sde_enc || !params || !sde_enc->phys_encs[0] ||
 			!sde_enc->phys_encs[0]->connector)
@@ -541,10 +553,9 @@ static int _dce_dsc_setup(struct sde_encoder_virt *sde_enc,
 
 	SDE_DEBUG_DCE(sde_enc, "topology:%d\n", topology);
 
-	cstate = to_sde_crtc_state(sde_enc->crtc->state);
 	if (sde_kms_rect_is_equal(&sde_enc->cur_conn_roi,
 			&sde_enc->prv_conn_roi) &&
-			!cstate->in_loopback_transition)
+			!params->update_dce_pp_mux)
 		return 0;
 
 	SDE_EVT32(DRMID(&sde_enc->base), topology,
@@ -555,8 +566,7 @@ static int _dce_dsc_setup(struct sde_encoder_virt *sde_enc,
 			sde_enc->cur_master->cached_mode.hdisplay,
 			sde_enc->cur_master->cached_mode.vdisplay);
 
-	return _dce_dsc_setup_helper(sde_enc, params->affected_displays,
-			topology);
+	return _dce_dsc_setup_helper(sde_enc, params, topology);
 }
 
 static int _dce_vdc_setup(struct sde_encoder_virt *sde_enc,
@@ -611,7 +621,8 @@ static int _dce_vdc_setup(struct sde_encoder_virt *sde_enc,
 			sde_enc->cur_master->cached_mode.vdisplay);
 
 	if (sde_kms_rect_is_equal(&sde_enc->cur_conn_roi,
-			&sde_enc->prv_conn_roi))
+			&sde_enc->prv_conn_roi) &&
+			!params->update_dce_pp_mux)
 		return ret;
 
 	enc_master = sde_enc->cur_master;
@@ -671,6 +682,17 @@ static int _dce_vdc_setup(struct sde_encoder_virt *sde_enc,
 		else
 			hw_pp[i] = sde_enc->hw_pp[i];
 		hw_vdc[i] = sde_enc->hw_vdc[i];
+
+		if (params->update_dce_pp_mux) {
+			if (hw_vdc[i]->ops.bind_pingpong_blk[disp_op])
+				hw_vdc[i]->ops.bind_pingpong_blk[disp_op](hw_vdc[i], true,
+					hw_pp[i]->idx);
+			if (hw_ctl->ops.update_bitmask[disp_op])
+				hw_ctl->ops.update_bitmask[disp_op](hw_ctl,
+					SDE_HW_FLUSH_VDC,
+					hw_vdc[i]->idx, active);
+			continue;
+		}
 
 		if (!hw_vdc[i]) {
 			SDE_ERROR_DCE(sde_enc, "invalid params for VDC\n");
