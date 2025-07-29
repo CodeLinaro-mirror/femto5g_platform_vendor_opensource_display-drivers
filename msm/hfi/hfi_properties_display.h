@@ -978,6 +978,24 @@
 #define HFI_PROPERTY_LAYER_ROTATION                                  0x00030016
 
 /*
+ * HFI_PROPERTY_LAYER_SECURITY_POLICY - Gets security policy settings applied
+ *                                      to the layer by the Host.
+ *                                      Host is expected to send this packet
+ *                                      of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                      command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_SECURITY_POLICY
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_LAYER_SECURITY_POLICY \|
+ *                               | (version=0 << 20) \| (dsize=2 << 24 )
+ *     (u32_value) payload [1]   | layer id
+ *     (u32_value) payload [2]   | one of the enum values in hfi_layer_security_policy
+ */
+#define HFI_PROPERTY_LAYER_SECURITY_POLICY                           0x00030017
+
+/*
  * All layer color properties begin here
  */
 #define HFI_PROPERTY_LAYER_COLOR_BEGIN                               0x00030100
@@ -1099,4 +1117,3 @@
 #define HFI_PROPERTY_LAYER_END                                       0x0003FFFF
 
 #endif // __H_HFI_PROPERTIES_DISPLAY_H__
-

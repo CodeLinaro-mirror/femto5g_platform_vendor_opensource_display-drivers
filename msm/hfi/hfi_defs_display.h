@@ -260,6 +260,26 @@ enum hfi_layer_fetch_mode {
 	HFI_TIME_MULTIPLEX_FETCH  = 0x1,
 };
 
+/*
+ * @enum hfi_layer_security_policy
+ * @brief Security policies for layers.
+ *
+ * @var HFI_LAYER_SECURITY_POLICY_NON_SECURE
+ *   Default security mode with no security restrictions.
+ * @var HFI_LAYER_SECURITY_POLICY_SECURE
+ *   Secure mode with S1 and S2 translation.
+ * @var HFI_LAYER_SECURITY_POLICY_SECURE_DIR_TRANSLATION
+ *   Secure mode with S2 translation.
+ * @var HFI_LAYER_SECURITY_POLICY_MAX
+ *   Used to track the maximum security policy value possible.
+ */
+enum hfi_layer_security_policy {
+	HFI_LAYER_SECURITY_POLICY_NON_SECURE                  = 0x0,
+	HFI_LAYER_SECURITY_POLICY_SECURE                      = 0x1,
+	HFI_LAYER_SECURITY_POLICY_SECURE_DIR_TRANSLATION      = 0x2,
+	HFI_LAYER_SECURITY_POLICY_MAX
+};
+
 /**
  * @def HFI_DISPLAY_ROTATION_0
  * @brief Set when layer is not rotated.
@@ -297,4 +317,3 @@ enum hfi_layer_fetch_mode {
 #define HFI_DISPLAY_REFLECT_Y   (1 << 5)
 
 #endif // __H_HFI_DEFS_DISPLAY_H__
-
