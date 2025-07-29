@@ -2670,6 +2670,7 @@ static int virtio_kms_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct virtio_kms *kms;
 	int ret;
+	bool virq_registered = false;
 
 	VIRTIO_KMS_DBG("virtio_kms_probe\n");
 
@@ -2699,8 +2700,10 @@ static int virtio_kms_probe(struct platform_device *pdev)
 #ifdef HAB_VIRQ_FEATURE_ENABLE
 	ret = virtio_hab_register_virq(kms);
 	if (ret) {
-		VIRTIO_KMS_ERR("error registering for virq. error code %d\n", ret);
-		return ret;
+		VIRTIO_KMS_WARN("error registering for virq. error code %d, falling back\n", ret);
+	} else {
+		VIRTIO_KMS_INFO("virq registered\n");
+		virq_registered = true;
 	}
 #endif
 
@@ -2724,15 +2727,17 @@ static int virtio_kms_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ret = virtio_enable_virq_all(dev, kms);
-	if (ret) {
-		VIRTIO_KMS_ERR("error enabling virq, rc=%d\n", ret);
-		return ret;
-	}
-	for(uint32_t dpu_idx = 0; dpu_idx < VIRTIO_GPU_MAX_VIRQ; dpu_idx++)
-	{
-		void *ptr = kms->base.virq_shmem[dpu_idx].vaddr;
-		VIRTIO_KMS_DBG("virq_shmem is %p for dpu %d\n", ptr, dpu_idx);
+	if (virq_registered) {
+		ret = virtio_enable_virq_all(dev, kms);
+		if (ret) {
+			VIRTIO_KMS_ERR("error enabling virq, rc=%d\n", ret);
+			return ret;
+		}
+		for(uint32_t dpu_idx = 0; dpu_idx < VIRTIO_GPU_MAX_VIRQ; dpu_idx++)
+		{
+			void *ptr = kms->base.virq_shmem[dpu_idx].vaddr;
+			VIRTIO_KMS_DBG("virq_shmem is %p for dpu %d\n", ptr, dpu_idx);
+		}
 	}
 
 	VIRTIO_KMS_DBG("virtio_kms_probe done\n");
