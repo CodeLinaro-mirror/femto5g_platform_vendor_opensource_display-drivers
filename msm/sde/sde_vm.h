@@ -306,6 +306,17 @@ static inline bool sde_vm_owns_hw(struct sde_kms *sde_kms)
 	return true;
 }
 
+/**
+ * sde_vm_allow_event_list - Checks if a software event is allowed for notification
+ * @event: type of event to check against the allowed list
+ * Return: true if the event is allowed for notification; false otherwise
+ */
+static inline bool sde_vm_allow_event_list(u32 event)
+{
+	/* list of sw events for notification which don't interact with un lended resources */
+	return ((event == DRM_EVENT_FRAME_DONE) || (event == DRM_EVENT_MDNIE_ART));
+}
+
 #else
 static inline int sde_vm_primary_init(struct sde_kms *kms)
 {
@@ -338,6 +349,11 @@ static inline struct sde_vm_ops *sde_vm_get_ops(struct sde_kms *sde_kms)
 static inline bool sde_vm_owns_hw(struct sde_kms *sde_kms)
 {
 	return true;
+}
+
+static inline bool sde_vm_allow_event_list(u32 event)
+{
+	return false;
 }
 
 #endif /* IS_ENABLED(CONFIG_DRM_SDE_VM) */
