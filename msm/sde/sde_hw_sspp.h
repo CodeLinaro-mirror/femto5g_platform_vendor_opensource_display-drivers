@@ -903,6 +903,7 @@ struct sde_hw_sspp_ops {
  * @dpu_idx: dpu index
  * @globl_flush: for next commit perform global flush or local flush
  * @sde_kms: SDE KMS context
+ * @ucsc_cfg: variable to track UCSC configuration register value
  */
 struct sde_hw_pipe {
 	struct sde_hw_blk_reg_map hw;
@@ -920,6 +921,7 @@ struct sde_hw_pipe {
 	u32 dpu_idx;
 	bool global_flush;
 	struct sde_kms *sde_kms;
+	u32 ucsc_cfg;
 };
 
 /**
