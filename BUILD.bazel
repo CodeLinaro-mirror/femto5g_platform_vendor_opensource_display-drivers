@@ -132,3 +132,6 @@ define_x1p42100()
 
 load(":targets/bengal.bzl", "define_bengal")
 define_bengal()
+
+load(":targets/parrot.bzl", "define_parrot")
+define_parrot()

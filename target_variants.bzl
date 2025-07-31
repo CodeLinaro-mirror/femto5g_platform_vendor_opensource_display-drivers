@@ -4,6 +4,7 @@ targets = [
     "gen3auto",
     "bengal",
     "sun",
+    "parrot",
     "vienna",
     "niobe",
     "seraph",
