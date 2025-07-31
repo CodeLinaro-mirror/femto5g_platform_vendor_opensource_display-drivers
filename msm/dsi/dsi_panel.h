@@ -305,6 +305,7 @@ struct dsi_panel {
 	bool powered;
 	enum dsi_panel_physical_type panel_type;
 	bool need_post_on_supply;
+	bool post_power_enable_status;
 
 	struct dsi_panel_ops panel_ops;
 };
