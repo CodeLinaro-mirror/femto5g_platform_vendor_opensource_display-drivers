@@ -84,7 +84,7 @@ struct sde_hdcp_ops {
 	void (*force_encryption)(void *input, bool enable);
 	bool (*sink_support)(void *input);
 	void (*abort)(void *input, bool abort);
-	int (*set_mode)(void *input, bool mst_enabled);
+	int (*set_mode)(void *input, bool mst_enabled, u32 cell_idx);
 	int (*on)(void *input);
 	void (*off)(void *hdcp_ctrl);
 	int (*register_streams)(void *input, u8 num_streams,

@@ -136,6 +136,7 @@ int dp_display_get_displays(struct drm_device *dev, void **displays, int count);
 int dp_display_get_num_of_streams(struct drm_device *dev);
 int dp_display_get_info(void *dp_display, struct dp_display_info *dp_info);
 int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data);
+int edp_display_get_num_of_displays(struct drm_device *dev);
 #else
 static inline int dp_display_get_num_of_displays(struct drm_device *dev)
 {
@@ -159,6 +160,10 @@ static inline int dp_connector_update_pps(struct drm_connector *connector,
 	return 0;
 }
 static inline int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data)
+{
+	return 0;
+}
+static inline int edp_display_get_num_of_displays(struct drm_device *dev)
 {
 	return 0;
 }

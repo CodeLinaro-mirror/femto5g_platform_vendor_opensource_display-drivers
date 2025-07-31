@@ -306,7 +306,9 @@ static int _sde_crtc_check_loopback_mode(struct drm_crtc *crtc,
 	struct drm_crtc_state *crtc_state)
 {
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
-	int i, num_lm = 0;
+	struct drm_connector_state *conn_state;
+	struct msm_display_topology topology = {0};
+	int i, ret = 0;
 
 	cstate->is_loopback_mode = sde_crtc_state_in_lb_mode(crtc_state);
 	if (sde_crtc_in_lb_transition(crtc->state, crtc_state) &&
@@ -323,18 +325,19 @@ static int _sde_crtc_check_loopback_mode(struct drm_crtc *crtc,
 	for (i = 0; i < cstate->num_connectors; i++) {
 		struct drm_connector *conn = cstate->connectors[i];
 
-		if (conn && conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
-			num_lm =  sde_connector_get_lm_cnt_from_topology(conn,
-					&crtc_state->adjusted_mode);
+		if (sde_connector_supports_cac(conn)) {
+			conn_state = drm_atomic_get_new_connector_state(crtc_state->state, conn);
+			ret = sde_connector_state_get_topology(conn_state, &topology);
+			break;
 		}
 	}
 
-	if (!num_lm) {
-		SDE_ERROR("Invalid num of mixers\n");
+	if (ret || !topology.num_lm) {
+		SDE_ERROR("Invalid params\n");
 		return -EINVAL;
 	}
 
-	cstate->num_prim_mixers = num_lm;
+	cstate->num_prim_mixers = topology.num_lm;
 	_sde_crtc_check_loopback_pstates(crtc_state);
 
 	return 0;
@@ -4670,6 +4673,7 @@ static inline bool _is_vid_power_on_frame(struct drm_crtc *crtc)
 static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct drm_encoder *encoder = NULL;
 	bool ipcc_input_signal_wait = false;
 	struct dma_fence *dma_hw_fences[MAX_HW_FENCES] = {0};
 	int num_hw_fences = 0;
@@ -4681,6 +4685,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	bool disable_hw_fences = false;
 	bool trigger_sw_override = false;
 	enum msm_disp_op disp_op;
+	bool video_psr_support = false;
 
 	SDE_DEBUG("\n");
 
@@ -4704,10 +4709,23 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 		return false;
 	}
 
+	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+		if (sde_encoder_in_clone_mode(encoder))
+			continue;
+
+		if (sde_encoder_is_built_in_display(encoder)) {
+			video_psr_support = sde_encoder_is_psr_supported(encoder);
+			break;
+		}
+	}
+
 	/* if this is the last frame on vm transition, disable hw fences */
-	vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc->state), CRTC_PROP_VM_REQ_STATE);
-	if (vm_req == VM_REQ_RELEASE)
-		disable_hw_fences = true;
+	if (!video_psr_support) {
+		vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc->state),
+				CRTC_PROP_VM_REQ_STATE);
+		if (vm_req == VM_REQ_RELEASE)
+			disable_hw_fences = true;
+	}
 
 	/* update ctl hw to wait for ipcc input signal before fetch */
 	if (test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
@@ -5818,6 +5836,8 @@ static int _sde_crtc_vblank_enable(
 {
 	struct drm_crtc *crtc;
 	struct drm_encoder *enc;
+	enum sde_intf_mode intf_mode;
+	bool wb_intf_mode = false;
 
 	if (!sde_crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -5828,6 +5848,9 @@ static int _sde_crtc_vblank_enable(
 	SDE_EVT32(DRMID(crtc), enable, sde_crtc->enabled,
 			crtc->state->encoder_mask,
 			sde_crtc->cached_encoder_mask);
+
+	intf_mode = sde_crtc_get_intf_mode(crtc, crtc->state);
+	wb_intf_mode = ((intf_mode == INTF_MODE_WB_BLOCK) || (intf_mode == INTF_MODE_WB_LINE));
 
 	if (enable) {
 		int ret;
@@ -5841,7 +5864,7 @@ static int _sde_crtc_vblank_enable(
 
 		mutex_lock(&sde_crtc->crtc_lock);
 		drm_for_each_encoder_mask(enc, crtc->dev, sde_crtc->cached_encoder_mask) {
-			if (sde_encoder_in_clone_mode(enc))
+			if (sde_encoder_in_clone_mode(enc) || wb_intf_mode)
 				continue;
 
 			sde_encoder_register_vblank_callback(enc, sde_crtc_vblank_cb, (void *)crtc);
@@ -5850,7 +5873,7 @@ static int _sde_crtc_vblank_enable(
 	} else {
 		mutex_lock(&sde_crtc->crtc_lock);
 		drm_for_each_encoder_mask(enc, crtc->dev, sde_crtc->cached_encoder_mask) {
-			if (sde_encoder_in_clone_mode(enc))
+			if (sde_encoder_in_clone_mode(enc) || wb_intf_mode)
 				continue;
 
 			sde_encoder_register_vblank_callback(enc, NULL, NULL);

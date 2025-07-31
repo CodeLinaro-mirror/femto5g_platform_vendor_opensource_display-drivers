@@ -459,6 +459,8 @@ static void sde_hw_intf_enable_infinite_vfp(struct sde_hw_intf *ctx, bool enable
 
 	if (enable)
 		val |= BIT(9);
+	else
+		val &= ~BIT(9);
 
 	SDE_REG_WRITE(c, INTF_AVR_MODE, val);
 }

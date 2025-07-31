@@ -1260,6 +1260,16 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+	if (vm_req != VM_REQ_NONE) {
+		drm_for_each_encoder_mask(encoder, crtc->dev,
+						crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			sde_encoder_vm_primary_vhm_prepare(encoder, vm_req);
+		}
+	}
+
 	if (vm_req != VM_REQ_ACQUIRE)
 		return 0;
 
@@ -1905,6 +1915,44 @@ static void sde_kms_prepare_fence(struct msm_kms *kms,
 	SDE_ATRACE_END("sde_kms_prepare_fence");
 }
 
+static void edp_display_get_displays(struct sde_kms *sde_kms)
+{
+	int i, count = 0;
+	struct dp_display *display;
+
+	for (i = 0; i < sde_kms->dp_display_count; i++) {
+		display = (struct dp_display *)sde_kms->dp_displays[i];
+		if (display->is_edp)
+			sde_kms->edp_displays[count++] = display;
+	}
+}
+
+static void lb_display_get_displays(struct sde_kms *sde_kms)
+{
+	int i, j = 0;
+
+	for (i = 0; i < sde_kms->dsi_display_count; i++)
+		sde_kms->lb_displays[j++] = sde_kms->dsi_displays[i];
+
+	for (i = 0; i < sde_kms->edp_display_count; i++)
+		sde_kms->lb_displays[j++] =  sde_kms->edp_displays[i];
+}
+
+static int sde_get_builtin_disp_count(struct drm_device *dev)
+{
+	int dsi_display_count, edp_display_count;
+
+	dsi_display_count = dsi_display_get_num_of_displays(dev);
+	if (dsi_display_count)
+		return dsi_display_count;
+
+	edp_display_count = edp_display_get_num_of_displays(dev);
+	if (edp_display_count)
+		return edp_display_count;
+
+	return 0;
+}
+
 /**
  * _sde_kms_get_displays - query for underlying display handles and cache them
  * @sde_kms:    Pointer to sde kms structure
@@ -1912,7 +1960,7 @@ static void sde_kms_prepare_fence(struct msm_kms *kms,
  */
 static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 {
-	int i, rc = -ENOMEM;
+	int rc = -ENOMEM;
 
 	if (!sde_kms) {
 		SDE_ERROR("invalid sde kms\n");
@@ -1969,11 +2017,27 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 		sde_kms->dp_stream_count = dp_display_get_num_of_streams(sde_kms->dev);
 	}
 
+	/* edp */
+	sde_kms->edp_displays = NULL;
+	sde_kms->edp_display_count = edp_display_get_num_of_displays(sde_kms->dev);
+	if (sde_kms->edp_display_count) {
+		sde_kms->edp_displays = kcalloc(sde_kms->edp_display_count,
+				sizeof(void *), GFP_KERNEL);
+		if (!sde_kms->edp_displays) {
+			SDE_ERROR("failed to allocate edp displays\n");
+			goto exit_deinit_edp;
+		}
+
+		edp_display_get_displays(sde_kms);
+	}
+
+	sde_kms->builtin_disp_count = sde_get_builtin_disp_count(sde_kms->dev);
+
 	/* cac loopback display */
 	sde_kms->lb_displays = NULL;
 	sde_kms->lb_disp_count =
 		(sde_kms->catalog->cac_version == SDE_SSPP_CAC_LOOPBACK) ?
-			sde_kms->dsi_display_count : 0;
+			sde_kms->builtin_disp_count : 0;
 	if (sde_kms->lb_disp_count) {
 		sde_kms->lb_displays = kcalloc(sde_kms->lb_disp_count,
 				sizeof(void *), GFP_KERNEL);
@@ -1982,8 +2046,7 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			goto exit_deinit_lb;
 		}
 
-		for (i = 0; i < sde_kms->lb_disp_count; i++)
-			sde_kms->lb_displays[i] =  sde_kms->dsi_displays[i];
+		lb_display_get_displays(sde_kms);
 	}
 
 	/* hdmi */
@@ -2015,6 +2078,11 @@ exit_deinit_lb:
 	kfree(sde_kms->lb_displays);
 	sde_kms->lb_disp_count = 0;
 	sde_kms->lb_displays = NULL;
+
+exit_deinit_edp:
+	kfree(sde_kms->edp_displays);
+	sde_kms->edp_display_count = 0;
+	sde_kms->edp_displays = NULL;
 
 exit_deinit_dp:
 	kfree(sde_kms->dp_displays);
@@ -2151,6 +2219,53 @@ int setup_hdmi_displays(struct drm_device *dev,
 	return 0;
 }
 
+void setup_loopback_displays(struct drm_device *dev,
+	struct msm_drm_private *priv, struct sde_kms *sde_kms,
+	int max_encoders)
+{
+	struct msm_display_info info;
+	void *display, *connector;
+	struct drm_encoder *encoder;
+	int i, rc;
+
+	static const struct sde_connector_ops virt_ops = {
+		.set_info_blob = sde_lb_set_info_blob,
+		.detect = sde_lb_detect,
+		.get_modes = sde_lb_connector_get_modes,
+		.get_info = sde_lb_display_get_info,
+		.get_mode_info = sde_lb_get_mode_info,
+	};
+
+	for (i = 0; i < sde_kms->lb_disp_count &&
+			priv->num_encoders < max_encoders; ++i) {
+		display = sde_kms->lb_displays[i];
+		encoder = NULL;
+		memset(&info, 0x0, sizeof(info));
+		rc = sde_lb_display_get_info(NULL, &info, display);
+		if (rc) {
+			SDE_ERROR("lb get info %d failed\n", i);
+			continue;
+		}
+
+		encoder = sde_encoder_init(dev, &info, NULL);
+		if (IS_ERR_OR_NULL(encoder)) {
+			SDE_ERROR("encoder init failed for loopback %d\n", i);
+			continue;
+		}
+
+		connector = sde_connector_init(dev, encoder, 0, display,
+				&virt_ops, DRM_CONNECTOR_POLL_HPD,
+				DRM_MODE_CONNECTOR_VIRTUAL, false);
+		if (!IS_ERR_OR_NULL(connector)) {
+			priv->encoders[priv->num_encoders++] = encoder;
+			priv->connectors[priv->num_connectors++] = connector;
+		} else {
+			SDE_ERROR("lb %d connector init failed\n", i);
+			sde_encoder_destroy(encoder);
+		}
+	}
+}
+
 /**
  * _sde_kms_setup_displays - create encoders, bridges and connectors
  *                           for underlying displays
@@ -2163,13 +2278,6 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		struct msm_drm_private *priv,
 		struct sde_kms *sde_kms)
 {
-	static const struct sde_connector_ops virt_ops = {
-		.set_info_blob = sde_lb_set_info_blob,
-		.detect = sde_lb_detect,
-		.get_modes = sde_lb_connector_get_modes,
-		.get_info = sde_lb_display_get_info,
-		.get_mode_info = sde_lb_get_mode_info,
-	};
 	static const struct sde_connector_ops dsi_ops = {
 		.set_info_blob = dsi_conn_set_info_blob,
 		.detect =     dsi_conn_detect,
@@ -2393,32 +2501,6 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			sde_kms->dsc_switch_support = true;
 	}
 
-	for (i = 0; i < sde_kms->lb_disp_count &&
-		priv->num_encoders < max_encoders; ++i) {
-		display = sde_kms->lb_displays[i];
-		encoder = NULL;
-		memset(&info, 0x0, sizeof(info));
-		rc = sde_lb_display_get_info(NULL, &info, display);
-
-		encoder = sde_encoder_init(dev, &info, NULL);
-		if (IS_ERR_OR_NULL(encoder)) {
-			SDE_ERROR("encoder init failed for loopback %d\n", i);
-			continue;
-		}
-
-		connector = sde_connector_init(dev, encoder, 0, display,
-				&virt_ops, DRM_CONNECTOR_POLL_HPD,
-				DRM_MODE_CONNECTOR_VIRTUAL, false);
-		if (!IS_ERR_OR_NULL(connector)) {
-			priv->encoders[priv->num_encoders++] = encoder;
-			priv->connectors[priv->num_connectors++] = connector;
-		} else {
-			SDE_ERROR("lb %d connector init failed\n", i);
-			sde_encoder_destroy(encoder);
-		}
-
-	}
-
 	if (sde_kms->catalog->allowed_dsc_reservation_switch &&
 			!sde_kms->dsc_switch_support) {
 		SDE_DEBUG("dsc switch not supported\n");
@@ -2523,6 +2605,8 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 skip_dp:
 	setup_hdmi_displays(dev, priv, sde_kms, max_encoders,
 				max_dp_mixer_count, max_dp_dsc_count);
+
+	setup_loopback_displays(dev, priv, sde_kms, max_encoders);
 
 	return 0;
 }
@@ -4834,11 +4918,15 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct drm_connector *conn;
 	struct drm_connector_list_iter conn_iter;
+	struct sde_encoder_virt *sde_enc = NULL;
 	struct msm_drm_private *priv = sde_kms->dev->dev_private;
 
 	drm_connector_list_iter_begin(ddev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		uint64_t lp;
+
+		if (conn && conn->encoder)
+			sde_enc = to_sde_encoder_virt(conn->encoder);
 
 		lp = sde_connector_get_lp(conn);
 		if (lp != SDE_MODE_DPMS_LP2)
@@ -4862,7 +4950,11 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 			if (priv->event_thread[crtc_id].thread)
 				kthread_flush_worker(
 					&priv->event_thread[crtc_id].worker);
-			sde_encoder_idle_request(conn->encoder);
+			if (sde_enc)
+				kthread_mod_delayed_work(&priv->disp_thread[crtc_id].worker,
+					&sde_enc->delayed_off_work, 0);
+			else
+				sde_encoder_idle_request(conn->encoder);
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
@@ -5289,6 +5381,8 @@ static void sde_kms_init_rot_sid_hw(struct sde_kms *sde_kms)
 
 static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
 {
+	struct sde_rm_hw_iter rm_iter;
+
 	if (!sde_kms || !sde_kms->hw_mdp)
 		return;
 
@@ -5296,6 +5390,16 @@ static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
 		sde_kms->hw_mdp->ops.setup_hw_fences[sde_kms->hw_mdp->hw.disp_op](
 			sde_kms->hw_mdp, sde_kms->catalog->ipcc_protocol_id,
 			sde_kms->dpu_ipcc_addr);
+
+	/* set input_fence_id for all ctl paths to avoid reset value matching with signal_id = 0 */
+	if (sde_kms->catalog->hw_fence_rev) {
+		sde_rm_init_hw_iter(&rm_iter, 0, SDE_HW_BLK_CTL);
+		while (sde_rm_get_hw(&sde_kms->rm, &rm_iter)) {
+			struct sde_hw_ctl *ctl = to_sde_hw_ctl(rm_iter.hw);
+
+			sde_fence_update_input_fence_id(ctl);
+		}
+	}
 }
 
 static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
@@ -6279,7 +6383,7 @@ static int _sde_kms_register_events(struct msm_kms *kms,
 
 	sde_kms = to_sde_kms(kms);
 	sde_vm_lock(sde_kms);
-	if (!sde_vm_owns_hw(sde_kms)) {
+	if (!sde_vm_owns_hw(sde_kms) && !sde_vm_allow_event_list(event)) {
 		sde_vm_unlock(sde_kms);
 		SDE_DEBUG("HW is owned by other VM\n");
 		return -EACCES;

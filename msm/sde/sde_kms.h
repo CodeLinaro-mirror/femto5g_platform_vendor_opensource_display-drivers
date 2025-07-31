@@ -485,6 +485,9 @@ struct sde_kms {
 	bool dsc_switch_support;
 	void **hdmi_displays;
 	int hdmi_display_count;
+	void **edp_displays;
+	int edp_display_count;
+	int builtin_disp_count;
 
 	bool has_danger_ctrl;
 

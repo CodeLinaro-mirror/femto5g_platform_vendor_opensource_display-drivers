@@ -28,6 +28,7 @@
 #include "msm_drv.h"
 #include "sde_hw_mdss.h"
 #include "sde_kms.h"
+#include "sde_vm.h"
 #include "sde_connector.h"
 #include "sde_power_handle.h"
 #include "sde_cesta.h"
@@ -1006,6 +1007,13 @@ int sde_encoder_in_cont_splash(struct drm_encoder *enc);
 bool sde_encoder_smooth_dimming_in_progress(struct drm_encoder *enc);
 
 /**
+ * sde_encoder_is_psr_supported - checks if display supports PSR feature
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true if display supports PSR feature
+ */
+bool sde_encoder_is_psr_supported(struct drm_encoder *enc);
+
+/**
  * sde_encoder_helper_hw_reset - hw reset helper function
  * @drm_enc:    Pointer to drm encoder structure
  */
@@ -1314,6 +1322,20 @@ void sde_encoder_post_commit_bl_sr_work(struct drm_encoder *drm_enc);
  */
 void sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
 	enum sde_enc_rc_events sw_event);
+
+/**
+ * sde_encoder_vm_primary_vhm_prepare_helper - prepare interface for secure vm transition
+ * @sde_enc: pointer to sde encoder
+ */
+bool sde_encoder_vm_primary_vhm_prepare_helper(struct sde_encoder_virt *sde_enc);
+
+/**
+ * sde_encoder_vm_primary_vhm_prepare - prepare vhm panel for secure vm transition
+ * @drm_enc: pointer to drm encoder
+ * @vm_req: current vm_req state
+ */
+void sde_encoder_vm_primary_vhm_prepare(struct drm_encoder *drm_enc,
+	enum sde_crtc_vm_req vm_req);
 
 /**
  * sde_encoder_get_cesta_client - return the SDE CESTA client
