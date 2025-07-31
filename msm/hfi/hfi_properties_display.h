@@ -1408,6 +1408,23 @@
 #define HFI_PROPERTY_LAYER_SRC_IMAGE_SIZE                           0x00030022
 
 /*
+ * HFI_PROPERTY_OUTPUT_LAYER_ROTATION - Gets rotation for output layer.
+ *                                      Host is expected to send this packet
+ *                                      of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                      command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_ROTATION
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_OUTPUT_LAYER_ROTATION \|
+ *                               | (version=0 << 20) | (dsize=2 << 24 )
+ *     (u32_value) payload [1]   | output layer id
+ *     (u32_value) payload [2]   | bitwise OR of rotation flags
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_ROTATION                           0x00030023
+
+/*
  * All layer color properties begin here
  */
 #define HFI_PROPERTY_LAYER_COLOR_BEGIN                               0x00030100
