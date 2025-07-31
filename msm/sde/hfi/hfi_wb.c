@@ -50,6 +50,8 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	int width, height;
 	int ret = 0;
 	u32 hfi_format;
+	u32 wb_rotate_type;
+	u32 rotation_flags;
 	struct drm_framebuffer *fb;
 	struct sde_hw_wb_cfg wb_cfg = {0,};
 	struct sde_format_extended fmt = {0,};
@@ -89,6 +91,16 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 			(sizeof(u32) * SDE_MAX_PLANES));
 
 	_hfi_wb_add_roi_prop(wb_dev, cstate, hfi_conn->base_props, disp_id);
+
+	wb_rotate_type = sde_connector_get_property(&cstate->base, CONNECTOR_PROP_WB_ROT_TYPE);
+
+	/* Only set rotation property if WB rotation is enabled */
+	if (wb_rotate_type != WB_ROT_NONE) {
+		rotation_flags = HFI_DISPLAY_ROTATION_90;
+		prop_id = HFI_PROPERTY_OUTPUT_LAYER_ROTATION;
+		hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, disp_id,
+			HFI_VAL_U32, &rotation_flags, sizeof(u32));
+	}
 
 	SDE_DEBUG("Done adding hfi props for wb\n");
 
@@ -188,4 +200,3 @@ int hfi_wb_display_prepare_commit(struct sde_wb_device *wb_dev,
 
 	return ret;
 }
-
