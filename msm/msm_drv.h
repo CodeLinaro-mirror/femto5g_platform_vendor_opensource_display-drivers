@@ -83,6 +83,14 @@ struct msm_gem_vma;
 #define MAX_BRIDGES    16
 #define MAX_CONNECTORS 16
 
+#if IS_ENABLED(CONFIG_DSI_EXTENDED_MODES)
+#define DSI_MODE_MAX 256
+#else
+#define DSI_MODE_MAX 32
+#endif
+#define MODE_SWITCH_BITS_PER_WORD 32
+#define MODE_SWITCH_BITMAP_SIZE (DSI_MODE_MAX / MODE_SWITCH_BITS_PER_WORD)
+
 #define MSM_RGB 0x0
 #define MSM_YUV 0x1
 
@@ -1017,7 +1025,7 @@ struct msm_mode_info {
 	u32 mdp_transfer_time_us;
 	u32 mdp_transfer_time_us_min;
 	u32 mdp_transfer_time_us_max;
-	u32 allowed_mode_switches;
+	u32 allowed_mode_switches[MODE_SWITCH_BITMAP_SIZE];
 	bool disable_rsc_solver;
 	struct msm_dyn_clk_list dyn_clk_list;
 	struct msm_freq_step_list *freq_step_list;

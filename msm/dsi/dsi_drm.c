@@ -745,8 +745,8 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 			sizeof(dsi_mode->priv_info->roi_caps));
 	}
 
-	mode_info->allowed_mode_switches =
-		dsi_mode->priv_info->allowed_mode_switch;
+	memcpy(mode_info->allowed_mode_switches, dsi_mode->priv_info->allowed_mode_switch,
+			sizeof(mode_info->allowed_mode_switches));
 
 	return 0;
 }
@@ -1560,6 +1560,14 @@ static bool is_valid_poms_switch(struct dsi_display_mode *mode_a,
 			(mode_a->timing.h_active == mode_b->timing.h_active));
 }
 
+static inline void set_allowed_mode_switch_bit(uint32_t *bitmap_array, int mode_idx)
+{
+	int arr_idx = mode_idx / MODE_SWITCH_BITS_PER_WORD;
+	int bit_idx = mode_idx % MODE_SWITCH_BITS_PER_WORD;
+
+	bitmap_array[arr_idx] |= BIT(bit_idx);
+}
+
 void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 		void *display)
 {
@@ -1592,12 +1600,13 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 			return;
 
 		dsi_mode_info =  panel_dsi_mode->priv_info;
-		dsi_mode_info->allowed_mode_switch |= BIT(mode_idx);
+		set_allowed_mode_switch_bit(dsi_mode_info->allowed_mode_switch, mode_idx);
+
 		if (mode_idx == mode_count - 1)
 			break;
 
 		mode_list = mode_list->next;
-		cmp_mode_idx = 1;
+		cmp_mode_idx = mode_idx + 1;
 		list_for_each_entry(cmp_drm_mode, mode_list, head) {
 			if (&cmp_drm_mode->head == &connector->modes)
 				continue;
@@ -1633,13 +1642,13 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 			}
 
 			if (allow_switch) {
-				dsi_mode_info->allowed_mode_switch |=
-					BIT(mode_idx + cmp_mode_idx);
-				cmp_dsi_mode_info->allowed_mode_switch |=
-					BIT(mode_idx);
+				set_allowed_mode_switch_bit(dsi_mode_info->allowed_mode_switch,
+					cmp_mode_idx);
+				set_allowed_mode_switch_bit(cmp_dsi_mode_info->allowed_mode_switch,
+					mode_idx);
 			}
 
-			if ((mode_idx + cmp_mode_idx) >= mode_count - 1)
+			if (cmp_mode_idx == mode_count - 1)
 				break;
 
 			cmp_mode_idx++;
