@@ -399,11 +399,14 @@ struct sde_hw_sspp_ops {
 	 * @blend_enabled: flag indicating blend enabled or disabled on plane
 	 * @flags: Extra flags for format config
 	 * @index: rectangle index in multirect
+	 * @color_mask: color components to be extracted
 	 */
 	void (*setup_format[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			const struct sde_format *fmt,
 			bool blend_enabled, u32 flags,
-			enum sde_sspp_multirect_index index);
+			enum sde_sspp_multirect_index index,
+			enum sde_color_component_mask color_mask);
+
 
 	/**
 	 * setup_rects - setup pipe ROI rectangles

@@ -167,6 +167,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_CAC_TYPE,
 	PLANE_PROP_SRC_RECT_EXT,
 	PLANE_PROP_DST_RECT_EXT,
+	PLANE_PROP_COLOR_MASK_OVERRIDE,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
