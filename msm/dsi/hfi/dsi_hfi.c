@@ -740,7 +740,7 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	struct hfi_shared_addr_map *tx_cmd_buf_map;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD;
 	int rc = 0;
-
+	size_t mem_size = 0;
 	if (!display || !display->dsi_hfi_info || !cmd || !cmd->msg.tx_buf) {
 		DSI_ERR("Invalid params\n");
 		return -EINVAL;
@@ -761,18 +761,23 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	/* Get the shared address map for command payload transfer between host and DCP */
 	tx_cmd_buf_map = &display_hfi->tx_cmd_buf_map;
 
-	if (!tx_cmd_buf_map->alloc_info.size_allocated) {
+	mem_size = hfi_adapter_get_shared_mem_allocated_size(tx_cmd_buf_map);
+
+	if (!mem_size) {
 		tx_cmd_buf_map->size = SZ_4K;
-		hfi_adapter_buffer_alloc(tx_cmd_buf_map);
-		if (!tx_cmd_buf_map->alloc_info.size_allocated) {
+		rc = hfi_adapter_buffer_alloc(tx_cmd_buf_map);
+
+		if (rc || !hfi_adapter_get_shared_mem_allocated_size(tx_cmd_buf_map)) {
 			DSI_ERR("failed to allocate HFI buffer for command payload\n");
 			return -ENOMEM;
 		}
+
+		mem_size = hfi_adapter_get_shared_mem_allocated_size(tx_cmd_buf_map);
 	}
 
-	if (cmd->msg.tx_len > tx_cmd_buf_map->alloc_info.size_allocated) {
+	if (cmd->msg.tx_len > mem_size) {
 		DSI_ERR("command payload (%zu bytes) is larger than (%zu bytes)\n", cmd->msg.tx_len,
-			 tx_cmd_buf_map->alloc_info.size_allocated);
+			mem_size);
 		return -EINVAL;
 	}
 
@@ -1263,8 +1268,8 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		goto error_buff;
 	}
 
-	rc = hfi_core_map_sg_table(tx_cmd_buf->sgt, display->cmd_buffer_size,
-			&display_hfi->tx_cmd_buf_dva, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+	rc = hfi_adapter_map_sg_table(tx_cmd_buf->sgt, display->cmd_buffer_size,
+			&display_hfi->tx_cmd_buf_dva);
 	if (rc) {
 		DSI_ERR("failed to map tx command buffer to FW, rc = %d\n", rc);
 		goto error_buff;
@@ -1335,7 +1340,7 @@ error_array:
 error_addr_map:
 	kfree(addr_map);
 error_unmap_dva:
-	rc = hfi_core_unmap_iova(display_hfi->tx_cmd_buf_dva, display->cmd_buffer_size);
+	rc = hfi_adapter_unmap_iova(display_hfi->tx_cmd_buf_dva, display->cmd_buffer_size);
 	if (rc)
 		DSI_ERR("failed to unmap command buffer from FW\n");
 	display_hfi->tx_cmd_buf_dva = 0;

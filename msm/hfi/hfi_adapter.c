@@ -1111,4 +1111,25 @@ int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
 
 	return ret;
 }
+
+int hfi_adapter_map_sg_table(struct sg_table *sgt, size_t size, unsigned long *mapped_iova)
+{
+	return hfi_core_map_sg_table(sgt, size, mapped_iova,
+		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+}
+
+size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_shared_addr_map *addr_map)
+{
+	if (addr_map == NULL) {
+		HFI_AD_ERROR("Invalid parameter, addr_map is NULL\n");
+		return 0;
+	}
+
+	return addr_map->alloc_info.size_allocated;
+}
+
+int hfi_adapter_unmap_iova(unsigned long iova, size_t size)
+{
+	return hfi_core_unmap_iova(iova, size);
+}
 #endif /* IS_ENABLED(CONFIG_QTI_HFI_CORE)*/

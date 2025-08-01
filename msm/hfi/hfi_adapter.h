@@ -12,6 +12,7 @@
 #include <linux/mutex.h>
 #include <linux/kthread.h>
 #include <linux/spinlock.h>
+#include <linux/scatterlist.h>
 #if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
 #include "hfi_pack_unpack_common.h"
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
@@ -371,6 +372,27 @@ int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map);
  */
 void hfi_adapter_deinit(struct hfi_client_t *ctx);
 
+/**
+ * hfi_adapter_map_sg_table - API to map given scatter-gather table to DCP
+ * @sgt: Pointer to scatter-gather table of the memory to be mapped.
+ * @size: Size of the memory.
+ * @mapped_iova: Pointer to store resulting virtual address.
+ */
+int hfi_adapter_map_sg_table(struct sg_table *sgt, size_t size, unsigned long *mapped_iova);
+
+/**
+ * hfi_adapter_get_shared_mem_allocated_size - API to return the size of shared memory allocated
+ * @addr_map: Pointer to the HFI shared memory address map structure.
+ */
+size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_shared_addr_map *addr_map);
+
+/**
+ * hfi_adapter_unmap_iova - API to unmap IOVA memory for firmware
+ * @iova: input/output virtual address to be unmapped.
+ * @size: size to be unmapped.
+ */
+int hfi_adapter_unmap_iova(unsigned long iova, size_t size);
+
 #else
 
 static inline struct hfi_adapter_t *hfi_adapter_init(int instance)
@@ -443,6 +465,23 @@ static inline int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_ma
 
 static inline void hfi_adapter_deinit(struct hfi_client_t *ctx)
 {
+}
+
+static inline int hfi_adapter_map_sg_table(struct sg_table *sgt, size_t size,
+		unsigned long *mapped_iova)
+{
+	return 0;
+}
+
+static inline size_t hfi_adapter_get_shared_mem_allocated_size(
+		struct hfi_shared_addr_map *addr_map)
+{
+	return 0;
+}
+
+static inline int hfi_adapter_unmap_iova(unsigned long iova, size_t size)
+{
+	return 0;
 }
 
 #endif /*#if IS_ENABLED(CONFIG_QTI_HFI_CORE)*/
