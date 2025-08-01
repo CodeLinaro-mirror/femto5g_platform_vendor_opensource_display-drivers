@@ -103,6 +103,29 @@ extern "C" {
  */
 #define DRM_FORMAT_MOD_QCOM_FSC_TILE	fourcc_mod_code(QCOM, 0x800)
 
+
+/**
+ * @DRM_FORMAT_MOD_QCOM_FSC_4R_TILE:	Refers to a tile variant of the
+ *					planar format. Implementation may be
+ *					platform and base-format specific.
+ */
+#define DRM_FORMAT_MOD_QCOM_FSC_4R_TILE	fourcc_mod_code(QCOM, 0x1000)
+
+/**
+ * @DRM_FORMAT_MOD_QCOM_FSC_ALPHA:	Refers to a alpha variant of the
+ *					planar format. Implementation may be
+ *					platform and base-format specific.
+ */
+#define DRM_FORMAT_MOD_QCOM_FSC_ALPHA	fourcc_mod_code(QCOM, 0x2000)
+
+/**
+ * @DRM_FORMAT_MOD_QCOM_NV12_4R_Y_4:	Refers to a RGBA variant of the
+ *					stitched NV12_4R(Y only) layers as
+ *					planar format. Implementation may be
+ *					platform and base-format specific.
+ */
+#define DRM_FORMAT_MOD_QCOM_NV12_4R_4Y	fourcc_mod_code(QCOM, 0x4000)
+
 /**
  * Blend operations for "blend_op" property
  *

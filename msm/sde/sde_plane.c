@@ -1125,8 +1125,8 @@ static void _sde_plane_setup_scaler3(struct sde_plane *psde,
 	scale_cfg->uv_filter_cfg = SDE_SCALE_BIL;
 	scale_cfg->alpha_filter_cfg = SDE_SCALE_ALPHA_BIL;
 	scale_cfg->lut_flag = 0;
-	scale_cfg->blend_cfg = SDE_FORMAT_IS_FSC(fmt) ? 0 : 1;
-	scale_cfg->enable = SDE_FORMAT_IS_FSC(fmt) ? 0 : 1;
+	scale_cfg->blend_cfg = (SDE_FORMAT_IS_FSC(fmt) || SDE_FORMAT_IS_FSC_4R(fmt)) ? 0 : 1;
+	scale_cfg->enable = (SDE_FORMAT_IS_FSC(fmt) || SDE_FORMAT_IS_FSC_4R(fmt)) ? 0 : 1;
 	scale_cfg->dyn_exp_disabled = SDE_QSEED_DEFAULT_DYN_EXP;
 }
 
@@ -2721,7 +2721,7 @@ static int _sde_atomic_check_decimation_scaler(struct drm_plane_state *state,
 	}
 
 	/* scaling checks are not needed for fsc formats*/
-	if (sde_plane_is_cac_enabled(pstate) || SDE_FORMAT_IS_FSC(fmt))
+	if (sde_plane_is_cac_enabled(pstate) || SDE_FORMAT_IS_FSC(fmt) || SDE_FORMAT_IS_FSC_4R(fmt))
 		return 0;
 
 	deci_w = sde_plane_get_property(pstate, PLANE_PROP_H_DECIMATE);
