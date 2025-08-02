@@ -670,6 +670,113 @@ int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 }
 #endif /* CONFIG_DEBUG_FS */
 
+static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
+		void *payload, u32 size, struct hfi_prop_listener *listener)
+{
+	struct hfi_crtc *hfi_crtc = container_of(listener,
+			struct hfi_crtc, hfi_cb_obj);
+	struct sde_crtc *sde_crtc = NULL;
+
+	if (!hfi_crtc) {
+		SDE_ERROR("hfi_crtc is NULL\n");
+		return;
+	}
+
+	sde_crtc = hfi_crtc->sde_base;
+	if (!sde_crtc) {
+		SDE_ERROR("sde_crtc is NULL\n");
+		return;
+	}
+
+	switch (cmd_id) {
+	default:
+		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
+	}
+}
+
+static int _hfi_crtc_hw_event_set_buff(struct sde_crtc *crtc, u32 payload,
+		bool enable, bool defer_to_commit)
+{
+	struct hfi_crtc *hfi_crtc = to_hfi_crtc(crtc);
+	struct hfi_kms *hfi_kms = sde_crtc_get_kms(crtc);
+	struct hfi_cmdbuf_t *cmd_buf;
+	u32 cmd, display_id = 0;
+	int ret = 0;
+
+	if (!hfi_crtc || !hfi_kms) {
+		SDE_ERROR("invalid hfi_crtc:%pK or hfi_kms:%pK\n", hfi_crtc, hfi_kms);
+		return -EINVAL;
+	}
+
+	display_id = hfi_crtc_get_display_id(&crtc->base, crtc->base.state);
+	if (defer_to_commit) {
+		cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, display_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	} else {
+		cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+				display_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	}
+
+	if (!cmd_buf) {
+		SDE_ERROR("crtc:%d failed to get cmd buf in events enable:%d for display:%d\n",
+				DRMID(&crtc->base), enable, display_id);
+		return -EINVAL;
+	}
+
+	cmd = enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER : HFI_COMMAND_DISPLAY_EVENT_DEREGISTER;
+	ret = hfi_adapter_add_get_property(cmd_buf->ctx, cmd_buf, cmd, display_id,
+			HFI_PAYLOAD_TYPE_U32, &payload, sizeof(payload), &hfi_crtc->hfi_cb_obj,
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		SDE_ERROR("failed to update event: 0x%x\n", payload);
+		return ret;
+	}
+
+	SDE_DEBUG("sending event:%d enable:%d for display:%d\n", payload, enable, display_id);
+	if (!defer_to_commit) {
+		ret = hfi_adapter_set_cmd_buf(cmd_buf->ctx, cmd_buf);
+		SDE_EVT32(DRMID(&crtc->base), display_id, cmd, ret, SDE_EVTLOG_FUNC_CASE1);
+		if (ret) {
+			SDE_ERROR("failed to send event register command\n");
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+
+static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enable)
+{
+	int ret = 0;
+	struct hfi_crtc *hfi_crtc = to_hfi_crtc(crtc);
+
+	if (!crtc || event < HFI_EVENT_VSYNC) {
+		SDE_ERROR("invalid crtc:%pK or event id: %d\n", crtc, event);
+		return -EINVAL;
+	}
+
+	switch (event) {
+	case DRM_EVENT_LTM_HIST:
+		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
+		if (ret) {
+			SDE_ERROR("event registration failed: event %d, enable %d\n",
+				event, enable);
+			return ret;
+		}
+
+		hfi_crtc->hw_events_state[event].state = enable;
+		hfi_crtc->hw_events_state[event].pending = false;
+		break;
+	default:
+		if (hfi_crtc->hw_events_state[event].state != enable) {
+			hfi_crtc->hw_events_state[event].state = enable;
+			hfi_crtc->hw_events_state[event].pending = true;
+		}
+	}
+
+	return ret;
+}
+
 int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 {
 	if (!crtc) {
@@ -681,6 +788,7 @@ int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 	crtc->hal_ops.atomic_begin[MSM_DISP_OP_HFI] = hfi_crtc_atomic_begin;
 	crtc->hal_ops.debugfs_misr_setup[MSM_DISP_OP_HFI] = hfi_crtc_debugfs_misr_setup;
 	crtc->hal_ops.debugfs_misr_read[MSM_DISP_OP_HFI] = hfi_crtc_debugfs_misr_read;
+	crtc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI] = hfi_crtc_enable_hw_event;
 
 	return 0;
 }
@@ -752,6 +860,7 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc)
 	if (ret)
 		SDE_DEBUG("failed to allocated shared memory for dither payloads ret: %d\n", ret);
 
+	crtc->hfi_cb_obj.hfi_prop_handler = hfi_crtc_prop_handler;
 	crtc->sde_base = sde_crtc;
 	sde_crtc->hfi_crtc = crtc;
 	return 0;

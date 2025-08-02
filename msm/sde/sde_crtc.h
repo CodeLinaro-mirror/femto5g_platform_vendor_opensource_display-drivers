@@ -522,6 +522,7 @@ struct sde_crtc_hal_funcs {
  * @mdnie_art_frame_count: number of frames required for mdnie art to converge.
  * @hfi_crtc: Pointer to hfi crtc struct
  * @hal_ops: Local callback hal function pointer table
+ * @crtc_event_cb: CRTC event callback when hw event is received
  * @dspp_pa_mode: top-level bitmask maintaining state of PA block
  * @is_waiting_for_hw_fence: true if hw-fence backed input fence is not signaled prior to
  *                           commit prepare
@@ -654,6 +655,7 @@ struct sde_crtc {
 
 	struct hfi_crtc *hfi_crtc;
 	struct sde_crtc_hal_funcs hal_ops;
+	void (*crtc_event_cb)(void *data, u32 event, void *event_payload);
 
 	struct cp_pa_mode dspp_pa_mode;
 	bool is_waiting_for_hw_fence;
