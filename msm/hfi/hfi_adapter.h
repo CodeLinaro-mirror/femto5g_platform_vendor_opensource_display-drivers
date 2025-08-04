@@ -148,6 +148,7 @@ struct hfi_kv_pairs {
  * @ctx: handle of the HFI adapter Client
  * @pool: Pointer to hfi_buffer_pool structure
  * @buffer_send_done: atomic variable to signal when unpack is finished
+ * @is_released: tracks if buffer is released back to hfi_core
  */
 struct hfi_cmdbuf_t {
 	struct mutex lock;
@@ -163,6 +164,7 @@ struct hfi_cmdbuf_t {
 	struct hfi_client_t *ctx;
 	struct hfi_buffer_pool *pool;
 	atomic_t buffer_send_done;
+	bool is_released;
 };
 
 /**
@@ -363,6 +365,12 @@ int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map);
  */
 int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map);
 
+/**
+ * hfi_adapter_deinit - API to release tx buffer pools and make them available
+ * @ctx: Pointer to hfi_client struct
+ */
+void hfi_adapter_deinit(struct hfi_client_t *ctx);
+
 #else
 
 static inline struct hfi_adapter_t *hfi_adapter_init(int instance)
@@ -431,6 +439,10 @@ static inline int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
 static inline int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
 {
 	return 0;
+}
+
+static inline void hfi_adapter_deinit(struct hfi_client_t *ctx)
+{
 }
 
 #endif /*#if IS_ENABLED(CONFIG_QTI_HFI_CORE)*/

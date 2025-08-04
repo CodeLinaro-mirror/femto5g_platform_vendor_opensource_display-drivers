@@ -464,6 +464,8 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 		goto error;
 	}
 
+	buffer->is_released = false;
+
 	/* Populate structs for HFI Packer */
 	buff_handle.cmd_buffer = buff_desc->pbuf_vaddr;
 	buff_handle.size = buff_desc->size;
@@ -736,11 +738,18 @@ int hfi_adapter_add_prop_array(struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
 	return rc;
 }
 
-void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
+static void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 {
 	struct list_head *pos, *updated_pos;
 	struct hfi_cmdbuf_t *buf_entry;
 	struct hfi_client_t *ctx;
+	int i = 0;
+	struct hfi_core_cmds_buf_desc *buff_arr[MAX_BUFFERS];
+
+	if (!cmd_buf) {
+		HFI_AD_ERROR("invalid params\n");
+		return;
+	}
 
 	ctx = cmd_buf->ctx;
 	if (!ctx) {
@@ -750,12 +759,20 @@ void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 
 	mutex_lock(&ctx->lock);
 
-	list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
-		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
-		if (buf_entry->pool)
-			_hfi_clear_buffer(buf_entry);
-		list_del(pos);
+	buff_arr[i++] = &cmd_buf->buf;
+
+	if (!list_empty(&cmd_buf->cmd_buf_chain)) {
+		list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
+			buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
+			buff_arr[i++] = &buf_entry->buf;
+			if (buf_entry->pool)
+				_hfi_clear_buffer(buf_entry);
+			list_del(pos);
+		}
 	}
+
+	if (!cmd_buf->is_released)
+		hfi_core_release_tx_buffer(cmd_buf->ctx->host->session, buff_arr, i);
 
 	list_del_init(&cmd_buf->node);
 	mutex_unlock(&ctx->lock);
@@ -804,6 +821,7 @@ int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	}
 
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
+	cmd_buf->is_released = true;
 	_release_tx_buffers(cmd_buf);
 	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 
@@ -869,6 +887,7 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_cmdbuf_t *cmd_buf)
 		HFI_AD_DEBUG("[info] buffer response received after %d ms\n", wait_count);
 
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
+	cmd_buf->is_released = true;
 	_release_tx_buffers(cmd_buf);
 	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 
@@ -1017,6 +1036,30 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	mutex_unlock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 
 	return rc;
+}
+
+void hfi_adapter_deinit(struct hfi_client_t *ctx)
+{
+	struct list_head *pos, *updated_pos;
+	struct hfi_cmdbuf_t *buf;
+	int i = 0;
+
+	if (!ctx || !ctx->host)
+		return;
+
+	mutex_lock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
+	if (!list_empty(&ctx->cmd_buf_list)) {
+		list_for_each_safe(pos, updated_pos, &ctx->cmd_buf_list) {
+			buf = list_entry(pos, struct hfi_cmdbuf_t, node);
+			if (buf) {
+				i++;
+				_release_tx_buffers(buf);
+			}
+		}
+	}
+	mutex_unlock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
+
+	HFI_AD_DEBUG("Freeing %d buffers on close\n", i);
 }
 
 int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
