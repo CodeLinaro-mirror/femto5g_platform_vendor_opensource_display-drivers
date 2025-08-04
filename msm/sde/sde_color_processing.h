@@ -158,6 +158,8 @@ enum sde_cp_crtc_features {
 	SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF2,
 	SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF3,
 	SDE_CP_CRTC_DSPP_RGB_HIST_CTRL,
+	SDE_CP_CRTC_DSPP_QRTC_BUFF,
+	SDE_CP_CRTC_DSPP_QRTC_CONFIG,
 	SDE_CP_CRTC_DSPP_MAX,
 	/* DSPP features end */
 
@@ -209,6 +211,26 @@ struct sde_cp_crtc_skip_blend_plane {
 	u32 width;
 	u32 height;
 	bool is_virtual;
+};
+
+/**
+ * struct sde_qrtc_buffer - defines QRTC buffer structure.
+ * @fb: frm framebuffer for the buffer
+ * @gem: drm gem handle for the buffer
+ * @asapce : pointer to address space
+ * @drm_fb_id: framebuffer id associated with this buffer
+ * @iova: device address
+ * @len: buffer length
+ * @len: buffer format
+ */
+struct sde_qrtc_buffer {
+	struct drm_framebuffer *fb;
+	struct drm_gem_object *gem;
+	struct msm_gem_address_space *aspace;
+	int drm_fb_id;
+	u64 iova;
+	u32 len;
+	u32 format;
 };
 
 /**
