@@ -41,16 +41,19 @@ enum hfi_display_blend_ops {
 
 /*
  * enum hfi_display_power_mode - extended power modes supported by the Display
+ * @HFI_MODE_DPMS_OFF     :   OFF
  * @HFI_MODE_DPMS_ON      :   ON
  * @HFI_MODE_DPMS_LP1     :   Low power mode 1
  * @HFI_MODE_DPMS_LP2     :   Low power mode 2
- * @HFI_MODE_DPMS_OFF     :   OFF
+ * @HFI_MODE_DPMS_NOLP    :   Normal mode or No Low Power mode
  */
 enum hfi_display_power_mode {
-	HFI_MODE_DPMS_ON        = 0x0,
-	HFI_MODE_DPMS_LP1       = 0x1,
-	HFI_MODE_DPMS_LP2       = 0x2,
-	HFI_MODE_DPMS_OFF       = 0x3,
+	HFI_MODE_DPMS_INVALID   = 0,
+	HFI_MODE_DPMS_OFF       = 0x1,
+	HFI_MODE_DPMS_ON        = 0x2,
+	HFI_MODE_DPMS_LP1       = 0x3,
+	HFI_MODE_DPMS_LP2       = 0x4,
+	HFI_MODE_DPMS_NOLP      = 0x5,
 };
 
 /*
