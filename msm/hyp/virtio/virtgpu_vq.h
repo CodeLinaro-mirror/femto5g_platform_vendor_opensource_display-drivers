@@ -157,4 +157,6 @@ int virtio_gpu_cmd_enable_virq(struct device *dev, struct virtio_kms *kms, uint3
 
 int virtio_gpu_cmd_disable_virq(struct device *dev, struct virtio_kms *kms, uint32_t device_id);
 
+int virtio_gpu_cmd_set_power(struct virtio_kms *kms, uint32_t device_id, uint32_t power_level);
+
 #endif //__VIRTIOGPU_VQ_H__

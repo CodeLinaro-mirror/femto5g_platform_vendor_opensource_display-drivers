@@ -296,6 +296,12 @@ struct msm_hyp_mode_info {
 	uint32_t num_intf;
 };
 
+enum {
+	MSM_HYP_DEVICE_POWER_OFF	= 0,
+	MSM_HYP_DEVICE_POWER_ON,
+	MSM_HYP_DEVICE_POWER_MAX,
+};
+
 struct msm_hyp_kms;
 
 struct msm_hyp_kms_funcs {
@@ -332,6 +338,7 @@ struct msm_hyp_kms_funcs {
 	void (*register_event)(struct sde_kms *sde_kms);
 	struct sde_mdss_cfg * (*hw_catalog_init)(struct sde_kms *sde_kms);
 	int (*update_hw_reservation)(struct sde_kms *sde_kms);
+	int (*set_power_level)(struct sde_kms *sde_kms, uint32_t power_level);
 };
 
 struct virq_shmem_t {
@@ -354,8 +361,6 @@ struct msm_hyp_drm_private {
 	struct msm_hyp_kms *kms;
 	struct drm_driver driver;
 
-	struct drm_atomic_state *suspend_state;
-
 	struct blocking_notifier_head component_notifier_list;
 
 	char dev_name_from_dt[DRM_DRI_NAME_SIZE];
@@ -367,6 +372,7 @@ void msm_hyp_set_kms(struct drm_device *dev, struct msm_hyp_kms *kms);
 void msm_hyp_crtc_commit_done(struct drm_crtc *crtc);
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc);
 void msm_hyp_send_hpd_event(struct drm_device *dev, struct drm_connector *connector);
+int msm_hyp_set_power_level(struct sde_kms *sde_kms, uint32_t power_level);
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP_WFD)
 void __init wfd_kms_register(void);

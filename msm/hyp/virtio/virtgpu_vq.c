@@ -2469,3 +2469,73 @@ int virtio_gpu_cmd_disable_virq(struct device *dev, struct virtio_kms *kms, uint
 
 	return rc;
 }
+
+/**
+ * virtio_gpu_cmd_set_power() - set DPU core power level.
+ * @kms: pointer to virtio_kms
+ * @device_id: dpu core id
+ * @power_level: power level
+ *
+ * The function sends a virtio command to change (negotiate) the power level
+ * for the given DPU core. Host VM shall return the actual power level sets to.
+ *
+ * Return: integer error code
+ *
+ */
+int virtio_gpu_cmd_set_power(struct virtio_kms *kms, uint32_t device_id, uint32_t power_level)
+{
+	int rc = 0;
+
+	struct virtio_gpu_set_power *cmd_p =
+		kzalloc(sizeof(struct virtio_gpu_set_power), GFP_KERNEL);
+	struct virtio_gpu_resp_set_power *resp =
+		kzalloc(sizeof(struct virtio_gpu_resp_set_power), GFP_KERNEL);
+
+	uint32_t client_id = kms->client_id;
+	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
+
+	if (!cmd_p || !resp) {
+		VIRTGPU_VQ_ERR("memory alloc failed req %p resp %p for set power\n", cmd_p, resp);
+		rc = -ENOMEM;
+		goto error;
+	}
+
+	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_SET_POWER);
+	cmd_p->device_id = cpu_to_le32(device_id);
+	cmd_p->power_level = cpu_to_le32(power_level);
+
+	rc = virtio_hab_send_and_recv(hab_socket,
+		kms->channel[client_id],
+		cmd_p,
+		sizeof(struct virtio_gpu_set_power),
+		resp,
+		sizeof(struct virtio_gpu_resp_set_power),
+		NO_SPIN_LOCK_CHANNEL);
+	if (rc) {
+		VIRTGPU_VQ_ERR("virtio cmd to set power for dpu %u level %d failed with error %d\n",
+				device_id, power_level, rc);
+	} else if (resp->error_code) {
+		VIRTGPU_VQ_ERR("Failed to change dpu %d power level %d! error %d  level %d\n",
+				device_id, power_level, resp->error_code, resp->power_level);
+		rc = -EINVAL;
+	} else if (resp->power_level < power_level) {
+		if (!resp->power_level) {
+			VIRTGPU_VQ_ERR("Failed to power up dpu %d level %d! ret level %d\n",
+					device_id, power_level, resp->power_level);
+			rc = -EINVAL;
+		} else {
+			VIRTGPU_VQ_WARN("Set dpu %d power level %d not satisfied! ret level %d\n",
+					device_id, power_level, resp->power_level);
+			rc = -EPERM;
+		}
+	} else {
+		VIRTGPU_VQ_INFO("Set power for dpu %u power level %d successful %d, level %d\n",
+				device_id, power_level, rc, resp->power_level);
+	}
+
+error:
+	kfree(cmd_p);
+	kfree(resp);
+
+	return rc;
+}
