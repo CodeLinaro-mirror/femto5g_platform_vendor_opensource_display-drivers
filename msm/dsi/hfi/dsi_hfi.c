@@ -513,7 +513,7 @@ static void hfi_panel_get_mode_res_data(struct dsi_display_mode *mode,
 	timing_caps->res_data.h_front_porch = mode->timing.h_front_porch;
 	timing_caps->res_data.h_back_porch = mode->timing.h_back_porch;
 	timing_caps->res_data.h_sync_skew = mode->timing.h_skew;
-	timing_caps->res_data.h_sync_pulse = mode->timing.h_sync_width;
+	timing_caps->res_data.h_pulse_width = mode->timing.h_sync_width;
 	timing_caps->res_data.v_front_porch = mode->timing.v_front_porch;
 	timing_caps->res_data.v_back_porch = mode->timing.v_back_porch;
 	timing_caps->res_data.v_pulse_width = mode->timing.v_sync_width;
