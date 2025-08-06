@@ -48,6 +48,19 @@ static int dp_pll_fill_io(struct dp_pll *pll)
 		return -ENOMEM;
 	}
 
+	pll->io.m_dp_phy = parser->get_io(parser, "m_dp_phy");
+	if (!pll->io.m_dp_phy) {
+		DP_DEBUG("Invalid dp_phy resource\n");
+		goto out;
+	}
+
+	pll->io.m_dp_pll = parser->get_io(parser, "m_dp_pll");
+	if (!pll->io.m_dp_pll) {
+		DP_DEBUG("Invalid dp_pll resource\n");
+		goto out;
+	}
+
+out:
 	return 0;
 }
 

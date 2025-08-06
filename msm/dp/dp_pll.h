@@ -75,6 +75,8 @@ struct dp_pll_io {
 	struct dp_io_data *dp_ln_tx0;
 	struct dp_io_data *dp_ln_tx1;
 	struct dp_io_data *gdsc;
+	struct dp_io_data *m_dp_phy;
+	struct dp_io_data *m_dp_pll;
 };
 
 struct dp_pll_vco_clk {
