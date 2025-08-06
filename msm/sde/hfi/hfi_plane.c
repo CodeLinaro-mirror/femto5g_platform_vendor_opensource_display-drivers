@@ -24,6 +24,9 @@
 
 #define to_hfi_plane(x) x->hfi_plane
 
+#define HFI_IS_YUV_FORMAT(format) \
+	(((format) >= HFI_COLOR_FORMAT_LINEAR_MIN) && ((format) <= HFI_COLOR_FORMAT_UBWC_LOSSY_MAX))
+
 #define HFI_PLANE_MAX_PROPS 128
 #define HFI_PLANE_BASE_PROP_MAX_SIZE 1024
 
@@ -174,6 +177,9 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 			(sizeof(u32) * SDE_MAX_PLANES));
 
 	hfi_format = hfi_catalog_get_hfi_format(&fmt);
+	if (HFI_IS_YUV_FORMAT(hfi_format))
+		_sde_plane_setup_csc(plane, pstate);
+
 	prop_id = HFI_PROPERTY_LAYER_SRC_FORMAT;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &hfi_format, sizeof(u32));
