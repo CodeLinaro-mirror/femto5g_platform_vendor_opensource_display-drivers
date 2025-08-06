@@ -18,6 +18,7 @@
 #include "hfi_adapter.h"
 #include "hfi_props.h"
 #include "hfi_kms.h"
+#include "sde_dsc_helper.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 
@@ -522,23 +523,31 @@ static void hfi_panel_get_mode_res_data(struct dsi_display_mode *mode,
 static void hfi_panel_get_mode_compression_params(struct dsi_display_mode *mode,
 						  struct dsi_panel_timing_caps *timing_caps)
 {
-	u32 v_major = mode->priv_info->dsc.config.dsc_version_major;
-	u32 v_minor = mode->priv_info->dsc.config.dsc_version_minor;
+	struct msm_display_dsc_info *dsc = &mode->priv_info->dsc;
+	u32 v_major = dsc->config.dsc_version_major;
+	u32 v_minor = dsc->config.dsc_version_minor;
+	int rc;
 
 	timing_caps->compression_params.mode = HFI_PANEL_COMPRESSION_DSC;
 	timing_caps->compression_params.version = ((v_major & 0x0F) << 4) | (v_minor & 0x0F);
-	timing_caps->compression_params.scr_version = mode->priv_info->dsc.scr_rev;
-	timing_caps->compression_params.slice_height = mode->priv_info->dsc.config.slice_height;
-	timing_caps->compression_params.slice_width = mode->priv_info->dsc.config.slice_width;
-	timing_caps->compression_params.slices_per_pkt = mode->priv_info->dsc.slice_per_pkt;
-	timing_caps->compression_params.bits_per_component =
-						mode->priv_info->dsc.config.bits_per_component;
-	timing_caps->compression_params.pps_delay_ms = mode->priv_info->dsc.pps_delay_ms;
-	timing_caps->compression_params.bits_per_pixel = mode->priv_info->dsc.config.bits_per_pixel;
-	timing_caps->compression_params.chroma_format = mode->priv_info->dsc.chroma_format;
-	timing_caps->compression_params.color_space = mode->priv_info->dsc.source_color_space;
-	timing_caps->compression_params.block_prediction_enable =
-						mode->priv_info->dsc.config.block_pred_enable;
+	timing_caps->compression_params.scr_version = dsc->scr_rev;
+	timing_caps->compression_params.slice_height = dsc->config.slice_height;
+	timing_caps->compression_params.slice_width = dsc->config.slice_width;
+	timing_caps->compression_params.slices_per_pkt = dsc->slice_per_pkt;
+	timing_caps->compression_params.bits_per_component = dsc->config.bits_per_component;
+	timing_caps->compression_params.pps_delay_ms = dsc->pps_delay_ms;
+	timing_caps->compression_params.bits_per_pixel = dsc->config.bits_per_pixel;
+	timing_caps->compression_params.chroma_format = dsc->chroma_format;
+	timing_caps->compression_params.color_space = dsc->source_color_space;
+	timing_caps->compression_params.block_prediction_enable = dsc->config.block_pred_enable;
+
+	if (dsc->rc_override_v1) {
+		rc = sde_dsc_get_rc_params(dsc, (u8 *)&timing_caps->rc_override.min_qp[0],
+					(u8 *)&timing_caps->rc_override.max_qp[0],
+					(u8 *)&timing_caps->rc_override.offsets[0]);
+		if (!rc)
+			timing_caps->rc_override_enabled = true;
+	}
 }
 
 static enum hfi_panel_phy_type dsi_get_panel_type_helper(struct dsi_panel *panel)
@@ -1264,6 +1273,14 @@ static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
 				(sizeof(timing_caps_array[i].compression_params) / sizeof(u32))),
 				(void *)&timing_caps_array[i].compression_params);
 		kv_size += sizeof(timing_caps_array[i].compression_params);
+
+		if (timing_caps_array[i].rc_override_enabled) {
+			hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_RC_OVERRIDE, 0,
+				(sizeof(timing_caps_array[i].rc_override) / sizeof(u32))),
+				(void *)&timing_caps_array[i].rc_override);
+			kv_size += sizeof(timing_caps_array[i].rc_override);
+		}
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
 				HFI_PACKKEY(HFI_PROPERTY_PANEL_DISPLAY_TOPOLOGY, 0,
