@@ -4798,3 +4798,80 @@ bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
 	return msm_property_is_dirty(&conn->property_info,
 			&cstate->property_state, property_idx);
 }
+
+/**
+ * sde_conn_get_display_obj_id - helper to provide display object unique id
+ * @conn: Pointer to drm_connector struct
+ */
+u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
+{
+	struct sde_connector *sde_conn;
+	struct drm_encoder *encoder;
+	struct drm_crtc *crtc;
+	struct drm_encoder *other_enc = NULL;
+	struct drm_connector *other_conn = NULL;
+	struct sde_connector *other_sde_conn = NULL;
+	struct drm_connector_list_iter conn_iter;
+	u32 conn_id = U32_MAX;
+
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return U32_MAX;
+	}
+
+	/* Get the connector's own conn_id as default return value */
+	sde_conn = to_sde_connector(conn);
+	if (!sde_conn)
+		return U32_MAX;
+
+	conn_id = sde_conn->conn_id;
+
+	/* Get encoder */
+	encoder = sde_conn->encoder;
+	if (!encoder) {
+		SDE_DEBUG("no encoder for connector %d\n", conn->base.id);
+		return conn_id;
+	}
+
+	/* If not in clone mode, return the connector's own ID */
+	if (!sde_encoder_in_clone_mode(encoder)) {
+		SDE_DEBUG("not in clone mode, using own conn_id %d\n", conn_id);
+		return conn_id;
+	}
+
+	/* Handle clone mode - get CRTC */
+	crtc = encoder->crtc;
+	if (!crtc) {
+		SDE_DEBUG("no crtc for encoder %d\n", encoder->base.id);
+		return conn_id;
+	}
+
+	/* Find another encoder attached to this CRTC */
+	drm_for_each_encoder_mask(other_enc, crtc->dev, crtc->state->encoder_mask) {
+		/* Skip the current encoder */
+		if (other_enc == encoder)
+			continue;
+
+		/* Found another encoder on same CRTC */
+		/* Find connector attached to this encoder */
+		drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+		drm_for_each_connector_iter(other_conn, &conn_iter) {
+			if (other_conn->encoder == other_enc) {
+				other_sde_conn = to_sde_connector(other_conn);
+				if (other_sde_conn) {
+					conn_id = other_sde_conn->conn_id;
+					SDE_DEBUG("clone mode: using other connector %d\n",
+							other_conn->base.id);
+					break;
+				}
+			}
+		}
+		drm_connector_list_iter_end(&conn_iter);
+
+		/* If we found a connector, break out of the encoder loop too */
+		if (other_sde_conn)
+			break;
+	}
+
+	return conn_id;
+}

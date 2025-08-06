@@ -1716,15 +1716,7 @@ int sde_connector_get_mode_info(struct drm_connector *conn,
  * sde_conn_get_display_obj_id - helper to provide display object unique id
  * @conn: Pointer to drm_connector struct
  */
-static inline u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
-{
-	struct sde_connector *sde_conn = to_sde_connector(conn);
-
-	if (!sde_conn)
-		return U32_MAX;
-
-	return sde_conn->conn_id;
-}
+u32 sde_conn_get_display_obj_id(struct drm_connector *conn);
 
 /**
  * sde_conn_timeline_status - current buffer timeline status
