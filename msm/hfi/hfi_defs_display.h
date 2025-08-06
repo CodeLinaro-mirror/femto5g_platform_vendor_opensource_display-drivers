@@ -417,4 +417,20 @@ enum hfi_layer_security_policy {
  */
 #define HFI_DISPLAY_REFLECT_Y   (1 << 5)
 
+/**
+ * @enum hfi_cwb_tap_points - CWB tap points.
+ * @HFI_TAP_POINT_NONE    :  CWB is disabled
+ * @HFI_TAP_POINT_LM    :  Tap point at the LM stage
+ * @HFI_TAP_POINT_DSPP    :  Tap point at the DSPP stage
+ * @HFI_TAP_POINT_DEMURA   :  Tap point after Demura correction
+ * @HFI_TAP_POINT_MAX    :  Maximum number of tap points
+ */
+enum hfi_cwb_tap_points {
+	HFI_TAP_POINT_NONE,
+	HFI_TAP_POINT_LM,
+	HFI_TAP_POINT_DSPP,
+	HFI_TAP_POINT_DEMURA,
+	HFI_TAP_POINT_MAX,
+};
+
 #endif // __H_HFI_DEFS_DISPLAY_H__
