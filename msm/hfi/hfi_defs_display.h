@@ -220,6 +220,7 @@ enum hfi_display_idle_timer_control {
  * @HFI_EVENT_FRAME_IDLE              : Event ID for frame idle
  * @HFI_EVENT_DISPLAY_POWER           : Event ID for display power
  * @HFI_EVENT_HW_RECOVERY             : Event ID for hw recovery
+ * @HFI_EVENT_FRAME_CAPTURE_COMPLETE  : Event ID for frame capture complete.
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC                     = 0x1,
@@ -228,6 +229,7 @@ enum hfi_display_event_id {
 	HFI_EVENT_FRAME_IDLE                = 0x4,
 	HFI_EVENT_DISPLAY_POWER             = 0x5,
 	HFI_EVENT_HW_RECOVERY               = 0x6,
+	HFI_EVENT_FRAME_CAPTURE_COMPLETE    = 0x7,
 };
 
 /*

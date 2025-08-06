@@ -174,6 +174,26 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_HW_RECOVERY                                   0x04000006
 
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_FRAME_CAPTURE_COMPLETE - This is a DCP event command sent to Host to
+ *                                                    notify when the frame capture (CWB) is
+ *                                                    complete.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in @ref disp_events_header_data_page)
+ *
+ * Hfi packet layout                      | Value
+ *----------------------------------------|---------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                         | HFI_COMMAND_DISPLAY_EVENT_FRAME_CAPTURE_COMPLETE
+ * hfi_packet.flags                       | HFI_RX_FLAGS_NONE (on success)
+ * ^                                      | HFI_RX_FLAGS_DEVICE_ERROR (on failure)
+ * hfi_packet.id                          | BITS 0:15 carry the display id for which the
+ *                                        | event is applicable.
+ * hfi_packet.payload[0-3]                | struct hfi_display_frame_event_data
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_FRAME_CAPTURE_COMPLETE                        0x04000007
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H
