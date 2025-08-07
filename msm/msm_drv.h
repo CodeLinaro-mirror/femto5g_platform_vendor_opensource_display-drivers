@@ -167,6 +167,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_CAC_TYPE,
 	PLANE_PROP_SRC_RECT_EXT,
 	PLANE_PROP_DST_RECT_EXT,
+	PLANE_PROP_COLOR_MASK_OVERRIDE,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -469,6 +470,7 @@ struct msm_ratio {
  * @MSM_ENC_TX_COMPLETE - wait for the HW to transfer the frame to panel
  * @MSM_ENC_VBLANK - wait for the HW VBLANK event (for driver-internal waiters)
  * @MSM_ENC_ACTIVE_REGION - wait for the TG to be in active pixel region
+ * @MSM_ENC_HW_RECOVERY - wait for the HW to recover from error
  * @MSM_ENC_EVENT_MAX - maximum value for events related to frame
  */
 enum msm_event_wait {
@@ -476,6 +478,7 @@ enum msm_event_wait {
 	MSM_ENC_TX_COMPLETE,
 	MSM_ENC_VBLANK,
 	MSM_ENC_ACTIVE_REGION,
+	MSM_ENC_HW_RECOVERY,
 	MSM_ENC_EVENT_MAX,
 };
 

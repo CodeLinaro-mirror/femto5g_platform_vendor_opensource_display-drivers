@@ -126,11 +126,13 @@ struct sde_encoder_hw_resources {
  *                      the bounds of the physical display at the bit index
  * @recovery_events_enabled: indicates status of client for recoovery events
  * @frame_trigger_mode: indicates frame trigger mode
+ * @update_dce_pp_mux: indicates if the pp mux needs to be updated for dce
  */
 struct sde_encoder_kickoff_params {
 	unsigned long affected_displays;
 	bool recovery_events_enabled;
 	enum frame_trigger_mode_type frame_trigger_mode;
+	bool update_dce_pp_mux;
 };
 
 struct sde_encoder_ops {
@@ -893,11 +895,12 @@ int sde_encoder_display_failure_notification(struct drm_encoder *enc,
 bool sde_encoder_recovery_events_enabled(struct drm_encoder *encoder);
 
 /**
- * sde_encoder_enable_recovery_event - handler to enable the sw recovery
+ * sde_encoder_setup_hw_recovery_event - handler to enable the sw recovery
  * for this connector
  * @drm_enc:    Pointer to drm encoder structure
+ * @enable:     enable/disable hw recovery event
  */
-void sde_encoder_enable_recovery_event(struct drm_encoder *encoder);
+void sde_encoder_setup_hw_recovery_event(struct drm_encoder *encoder, bool enable);
 /**
  * sde_encoder_in_clone_mode - checks if underlying phys encoder is in clone
  *	mode or independent display mode. ref@ WB in Concurrent writeback mode.

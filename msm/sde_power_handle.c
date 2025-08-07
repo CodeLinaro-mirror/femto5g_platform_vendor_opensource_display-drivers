@@ -867,6 +867,54 @@ static int sde_power_update_power_domains_count(struct sde_power_handle *phandle
 	return 0;
 }
 
+int sde_power_supply_init(struct platform_device *pdev,
+	struct sde_power_handle *phandle)
+{
+	int rc = 0;
+	struct dss_module_power *mp;
+
+	if (!phandle || !pdev) {
+		pr_err("invalid input param\n");
+		rc = -EINVAL;
+		goto end;
+	}
+	mp = &phandle->mp;
+	phandle->dev = &pdev->dev;
+
+	/* event init must happen before mmrm register */
+	INIT_LIST_HEAD(&phandle->event_list);
+
+	mutex_init(&phandle->phandle_lock);
+
+	rc = sde_power_parse_dt_supply(pdev, mp);
+	if (rc) {
+		pr_err("device vreg supply parsing failed\n");
+		goto parse_vreg_err;
+	}
+
+	rc = msm_dss_get_vreg(&pdev->dev, mp->vreg_config, mp->num_vreg, 1);
+	if (rc) {
+		pr_err("get config failed rc=%d\n", rc);
+		goto vreg_err;
+	}
+
+	phandle->rsc_client = NULL;
+	phandle->rsc_client_init = false;
+
+	return rc;
+
+vreg_err:
+	if (mp->vreg_config)
+		mp->vreg_config = NULL;
+	mp->num_vreg = 0;
+parse_vreg_err:
+	if (mp->clk_config)
+		mp->clk_config = NULL;
+	mp->num_clk = 0;
+end:
+	return rc;
+}
+
 int sde_power_resource_init(struct platform_device *pdev,
 	struct sde_power_handle *phandle)
 {

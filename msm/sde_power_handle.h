@@ -213,6 +213,16 @@ struct sde_power_handle {
 };
 
 /**
+ * sde_power_supply_init() - initializes the sde power handle for supply only
+ * @pdev:   platform device to search the power resources
+ * @pdata:  power handle to store the power resources
+ *
+ * Return: error code.
+ */
+int sde_power_supply_init(struct platform_device *pdev,
+	struct sde_power_handle *phandle);
+
+/**
  * sde_power_resource_init() - initializes the sde power handle
  * @pdev:   platform device to search the power resources
  * @pdata:  power handle to store the power resources

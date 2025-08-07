@@ -9177,9 +9177,10 @@ bool sde_encoder_recovery_events_enabled(struct drm_encoder *encoder)
 	return sde_enc->recovery_events_enabled;
 }
 
-void sde_encoder_enable_recovery_event(struct drm_encoder *encoder)
+void sde_encoder_setup_hw_recovery_event(struct drm_encoder *encoder, bool enable)
 {
 	struct sde_encoder_virt *sde_enc;
+	enum msm_disp_op disp_op;
 
 	if (!encoder) {
 		SDE_ERROR("invalid drm enc\n");
@@ -9187,6 +9188,11 @@ void sde_encoder_enable_recovery_event(struct drm_encoder *encoder)
 	}
 
 	sde_enc = to_sde_encoder_virt(encoder);
+	disp_op = sde_encoder_get_disp_op(encoder);
+
+	if (sde_enc->hal_ops.enable_hw_event[disp_op])
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc, MSM_ENC_HW_RECOVERY, enable);
+
 	sde_enc->recovery_events_enabled = true;
 }
 

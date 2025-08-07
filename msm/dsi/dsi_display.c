@@ -3549,22 +3549,27 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host, const struct mipi_d
 {
 	int rc = 0;
 	struct dsi_cmd_desc cmd;
+	struct dsi_display *display;
 
 	if (!msg) {
 		DSI_ERR("Invalid params\n");
 		return 0;
 	}
 
+	display = to_dsi_display(host);
+
 	memcpy(&cmd.msg, msg, sizeof(*msg));
 	cmd.ctrl = 0;
 	cmd.post_wait_ms = 0;
 	cmd.ctrl_flags = 0;
 
-	rc = dsi_host_transfer_sub(host, &cmd, false);
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+		rc = dsi_hfi_host_transfer_sub(host, &cmd);
+	else
+		rc = dsi_host_transfer_sub(host, &cmd, false);
 
 	return rc;
 }
-
 
 static struct mipi_dsi_host_ops dsi_host_ops = {
 	.attach = dsi_host_attach,
