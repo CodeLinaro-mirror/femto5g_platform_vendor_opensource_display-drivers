@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"[sde-hdcp-2x] %s: " fmt, __func__
@@ -254,9 +254,6 @@ static void sde_hdcp_2x_wait_for_response(struct sde_hdcp_2x_ctrl *hdcp)
 			hdcp->wait_timeout_ms = HZ * 3;
 		else
 			hdcp->wait_timeout_ms = 0;
-		break;
-	case REP_CONFIG_VERSION:
-		hdcp->wait_timeout_ms = HZ;
 		break;
 	default:
 		hdcp->wait_timeout_ms = 0;
