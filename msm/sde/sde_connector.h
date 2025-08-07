@@ -1021,6 +1021,7 @@ struct sde_connector {
  * @reproj_disp_im_h: Reprojection display image height
  * @reproj_tile_h: Reprojection tile height
  * @reproj_min_bbox_h: Reprojection minimum bbox height
+ * @capture_mode: capture mode for WB
  */
 struct sde_connector_state {
 	struct drm_connector_state base;
@@ -1073,6 +1074,7 @@ struct sde_connector_state {
 	u32 reproj_disp_im_h;
 	u32 reproj_tile_h;
 	u32 reproj_min_bbox_h;
+	u32 capture_mode;
 };
 
 /**

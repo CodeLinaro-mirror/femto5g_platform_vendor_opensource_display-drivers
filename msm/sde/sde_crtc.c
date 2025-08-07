@@ -7453,6 +7453,22 @@ static int _sde_crtc_atomic_check(struct drm_crtc *crtc,
 	}
 
 	disp_op = sde_crtc_get_disp_op(crtc);
+
+	/*
+	 * Copy the capture mode to wb connector state, so that it can be
+	 * used by the hfi property mappings.
+	 */
+	if (disp_op == MSM_DISP_OP_HFI) {
+		struct sde_connector_state *sde_conn_state;
+
+		sde_conn_state = _sde_crtc_get_sde_connector_state(crtc, state->state);
+		if (sde_conn_state &&
+			sde_conn_state->base.connector->connector_type ==
+			DRM_MODE_CONNECTOR_VIRTUAL)
+			sde_conn_state->capture_mode =
+				sde_crtc_get_property(cstate, CRTC_PROP_CAPTURE_OUTPUT);
+	}
+
 	if (sde_crtc->hal_ops.atomic_check[disp_op]) {
 		rc = sde_crtc->hal_ops.atomic_check[disp_op](sde_crtc, cstate);
 		if (rc)
