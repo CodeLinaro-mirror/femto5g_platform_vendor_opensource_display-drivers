@@ -6412,6 +6412,32 @@ static void _sde_get_hw_caps_for_niobe(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	sde_cfg->cac_version = SDE_SSPP_CAC_LOOPBACK;
 }
 
+static void _sde_get_hw_caps_for_parrot(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_CROP, sde_cfg->features);
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	sde_cfg->perf.min_prefill_lines = 40;
+	sde_cfg->has_reduced_ob_max = true;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	clear_bit(SDE_FEATURE_SUI_NS_ALLOWED, sde_cfg->features);
+	set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
+	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+	sde_cfg->mdss_hw_block_size = 0x158;
+	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+}
+
 static void _sde_get_hw_caps_for_canoe(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
@@ -6648,6 +6674,7 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_D00, _sde_get_hw_caps_for_canoe},
 	{SDE_HW_VER_D10, _sde_get_hw_caps_for_alor},
 	{SDE_HW_VER_970, _sde_get_hw_caps_for_x1p42100},
+	{SDE_HW_VER_830, _sde_get_hw_caps_for_parrot},
 };
 
 static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
