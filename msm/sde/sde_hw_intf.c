@@ -655,7 +655,7 @@ static void sde_hw_intf_setup_timing_engine(struct sde_hw_intf *ctx,
 
 	/* Synchronize timing engine enable to TE */
 	if ((ctx->cap->features & BIT(SDE_INTF_TE_ALIGN_VSYNC))
-			&& p->poms_align_vsync)
+			&& p->poms_align_vsync && p->poms_pending)
 		intf_cfg2 |= BIT(16);
 
 	if (align_esync) {

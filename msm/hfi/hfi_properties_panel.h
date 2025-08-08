@@ -645,6 +645,38 @@
 #define HFI_PROPERTY_PANEL_CPHY_MODE                                 0x0004002B
 
 /*
+ * HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_DVA - Provides DCP virtual address of an always alive
+ *                                       DCS command Tx buffer mapped to both DPU and DCP
+ *                                       which is used for DMA operation to send MIPI DSI
+ *                                       packets from DCP to the panel.
+ *                                       This property is sent to DCP as part of
+ *                                       HFI_COMMAND_PANEL_INIT_PANEL_CAPS
+ *                                       command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_DVA
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_DVA |
+ *                               (version=0 << 20) | (dsize=2 << 24 )
+ *   (u32_array) payload[1]    : struct hfi_buff of DCP mapped vaddr of DCS command tx buffer
+ */
+#define HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_DVA                        0x0004002C
+
+/*
+ * HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA - Provides DPU Input/Output virtual address
+ *                                       of an always alive DCS command tx buffer mapped to
+ *                                       both DPU and DCP which is used for DMA operation
+ *                                       to send MIPI DSI packets from DCP to the panel.
+ *                                       This property is sent to DCP as part of
+ *                                       HFI_COMMAND_PANEL_INIT_PANEL_CAPS
+ *                                       command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA |
+ *                               (version=0 << 20) | (dsize=2 << 24 )
+ *   (u32_array) payload[1]    : struct hfi_buff of DPU mapped iova of DCS command tx buffer
+ */
+#define HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA                       0x0004002D
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF

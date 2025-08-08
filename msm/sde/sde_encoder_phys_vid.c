@@ -630,6 +630,26 @@ void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
 		phys_enc->hw_intf->ops.setup_intf_panic_ctrl[disp_op](phys_enc->hw_intf, &cfg);
 }
 
+static void _sde_encoder_update_timing_poms_pending(
+		struct sde_encoder_phys *phys_enc,
+		struct intf_timing_params *timing_params)
+{
+	struct sde_connector *sde_conn;
+	struct dsi_display *display;
+
+	if (!phys_enc || !timing_params) {
+		SDE_ERROR("invalid input phys_enc [%d]\n", !phys_enc);
+		return;
+	}
+
+	sde_conn = to_sde_connector(phys_enc->connector);
+	if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		display = _sde_connector_get_display(sde_conn);
+		if (display)
+			timing_params->poms_pending = display->poms_pending;
+	}
+}
+
 static void sde_encoder_phys_vid_setup_timing_engine(
 		struct sde_encoder_phys *phys_enc, bool from_idle)
 {
@@ -701,6 +721,8 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 
 	fmt = sde_get_sde_format(fmt_fourcc);
 	SDE_DEBUG_VIDENC(vid_enc, "fmt_fourcc 0x%X\n", fmt_fourcc);
+
+	_sde_encoder_update_timing_poms_pending(phys_enc, &timing_params);
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 	phys_enc->hw_intf->ops.setup_timing_gen[disp_op](phys_enc->hw_intf,
@@ -2494,6 +2516,10 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 	info = &sde_enc->disp_info;
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	/* Skip further operations for HFI mode as they're not needed */
+	if (IS_DISP_OP_HFI(disp_op))
+		return;
+
 	if (!phys_enc->hw_intf || !phys_enc->hw_ctl) {
 		SDE_ERROR("invalid hw_intf %d hw_ctl %d\n",
 				!phys_enc->hw_intf, !phys_enc->hw_ctl);

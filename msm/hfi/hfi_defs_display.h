@@ -173,6 +173,54 @@ struct hfi_display_mode_info {
 };
 
 /*
+ * struct hfi_dsi_cmd_desc - hfi dcp transfer dcs data
+ * @size             :  Size of this struct used for backward compatibility.
+ * @channel          :  DSI virtual channel id
+ * @type             :  MIPI DSI data type of the DCS command.
+ * @flags            :  MIPI flags controlling this message transmission.
+ *                      Ex: MIPI_DSI_MSG_UNICAST_COMMAND
+ * @tx_len           :  Transfer buffer length.
+ * @tx_buff_addr_lsb :  Tx command buffer DCP address location (lo).
+ * @tx_buff_addr_msb :  Tx command buffer DCP address location (hi).
+ * @rx_len           :  Receiving buffer length.
+ * @rx_buff_addr_lsb :  Rx command buffer DCP address location (lo).
+ * @rx_buff_addr_msb :  Rx command buffer DCP address location (hi).
+ * @ctrl_idx         :  DSI controller index
+ * @ctrl_flags       :  CTRL flags.
+ * @last_command     :  Is last DCS command.
+ * @post_wait_ms     :  Wait time in milliseconds.
+ * @reserved1        :  Reserved for future use.
+ * @reserved2        :  Reserved for future use.
+ */
+struct hfi_dsi_cmd_desc {
+	u32 size;
+
+	u8 channel;
+	u8 type;
+	u16 flags;
+
+	/* Transmit buffer information */
+	u32 tx_len;
+	u32 tx_buff_addr_lsb;
+	u32 tx_buff_addr_msb;
+
+	/* Receive buffer information */
+	u32 rx_len;
+	u32 rx_buff_addr_lsb;
+	u32 rx_buff_addr_msb;
+
+	/* Control information */
+	u32 ctrl_idx;
+	u32 ctrl_flags;
+	u32 last_command;
+	u32 post_wait_ms;
+
+	/* Reserved for future use */
+	u32 reserved1;
+	u32 reserved2;
+};
+
+/*
  * enum hfi_display_blend_stage - Defines blending stages
  * @HFI_BLEND_STAGE_BASE    :  base layer
  * @HFI_BLEND_STAGE_0       :  Blend Stage #0(One base layer + one foreground layer)
