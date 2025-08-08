@@ -2093,7 +2093,8 @@ struct sde_perf_cfg {
  * @true_inline_rot_rev inline rotator feature revision
  * @dnsc_blur_rev       downscale blur HW block version
  * @hw_fence_rev        hw fence feature revision
- * @cac_version        CAC version supported by the target
+ * @cac_version         CAC version supported by the target
+ * @cwb_cfg_mask        configuration mask for the CWB module in use
  * @mdss_count          number of valid MDSS HW blocks
  * @mdss                array of pointers to MDSS HW blocks
  * @mdss_hw_block_size  max offset of MDSS_HW block (0 offset), used for debug
@@ -2223,6 +2224,7 @@ struct sde_mdss_cfg {
 	u32 dnsc_blur_rev;
 	u32 hw_fence_rev;
 	u32 cac_version;
+	u32 cwb_cfg_mask;
 
 	/* HW Blocks */
 	u32 mdss_count;
