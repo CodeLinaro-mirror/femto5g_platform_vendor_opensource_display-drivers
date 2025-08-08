@@ -7826,7 +7826,6 @@ static ssize_t _sde_encoder_misr_read(struct file *file,
 	int rc;
 	enum msm_disp_op disp_op;
 	int ret = 0;
-	bool pm_enabled = false;
 
 	if (*ppos)
 		return 0;
@@ -7859,7 +7858,6 @@ static ssize_t _sde_encoder_misr_read(struct file *file,
 		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
 		return rc;
 	}
-	pm_enabled = true;
 
 	if (sde_enc->hal_ops.debugfs_misr_read[disp_op]) {
 		ret = sde_enc->hal_ops.debugfs_misr_read[disp_op](
@@ -7928,8 +7926,7 @@ buff_check:
 	*ppos += len;   /* increase offset */
 
 end:
-	if (pm_enabled)
-		pm_runtime_put_sync(drm_enc->dev->dev);
+	pm_runtime_put_sync(drm_enc->dev->dev);
 	return len;
 }
 
