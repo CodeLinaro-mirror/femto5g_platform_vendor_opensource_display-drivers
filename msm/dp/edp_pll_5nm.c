@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 /*
@@ -23,7 +23,12 @@
 #include <linux/iopoll.h>
 #include <linux/kernel.h>
 #include <linux/regmap.h>
+#include <linux/version.h>
+
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 #include "clk-regmap-mux.h"
+#endif
+
 #include "dp_hpd.h"
 #include "dp_debug.h"
 #include "dp_pll.h"
@@ -580,7 +585,7 @@ static int edp_pll_configure(struct dp_pll *pll, unsigned long rate)
 	pll->vco_rate = rate;
 	rc = edp_vco_set_rate_5nm(pll, rate);
 	if (rc < 0) {
-		DP_ERR("pll rate %s set failed\n", rate);
+		DP_ERR("pll rate %lu set failed\n", rate);
 		pll->vco_rate = 0;
 		return rc;
 	}

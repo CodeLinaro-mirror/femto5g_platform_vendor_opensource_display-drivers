@@ -4252,7 +4252,8 @@ static int dp_display_remove(struct platform_device *pdev)
 	dp = platform_get_drvdata(pdev);
 	if (!dp) {
 		DP_ERR("Invalid param, dp %pK\n", dp);
-		return -EINVAL;
+		rc = -EINVAL;
+		goto end;
 	}
 
 	dp_display_deinit_sub_modules(dp);
@@ -4379,7 +4380,6 @@ static struct platform_driver dp_display_driver = {
 
 void __init dp_display_register(void)
 {
-
 	platform_driver_register(&dp_display_driver);
 }
 
