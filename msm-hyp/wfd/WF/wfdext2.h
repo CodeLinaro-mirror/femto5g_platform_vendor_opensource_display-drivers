@@ -298,7 +298,6 @@ enum WFDTranslationMode {
 #define WFD_FORMAT_RGBX1010102        24
 #define WFD_FORMAT_BGRA1010102        25
 #define WFD_FORMAT_BGRX1010102        26
-#define WFD_FORMAT_NV21               27
 
 #ifndef WFD_FORMAT_NV12_QC_SUPERTILE
 #define WFD_FORMAT_NV12_QC_SUPERTILE  ((1 << 16) | WFD_FORMAT_NV12)

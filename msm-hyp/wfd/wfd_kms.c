@@ -293,7 +293,6 @@ static const struct {
 	{ DRM_FORMAT_ABGR2101010, WFD_FORMAT_BGRA1010102, WFD_FORMAT_RGBA1010102 },
 	{ DRM_FORMAT_XBGR2101010, WFD_FORMAT_BGRX1010102, WFD_FORMAT_RGBA1010102 },
 	{ DRM_FORMAT_BGR888, WFD_FORMAT_BGR888, WFD_FORMAT_RGB888 },
-	{ DRM_FORMAT_NV21, WFD_FORMAT_NV21, WFD_FORMAT_NV21 },
 	{ 0, 0, 0 },
 };
 static void *wfd_kms_complete_handler_cb(enum event_types type,
@@ -1087,8 +1086,6 @@ static int _wfd_kms_format_to_openwfd_format(uint32_t format,
 			*wfd_format = WFD_FORMAT_P010;
 		else
 			*wfd_format = WFD_FORMAT_NV12;
-	} else if (format == DRM_FORMAT_NV21) {
-		*wfd_format = WFD_FORMAT_NV21;
 	}
 
 	return 0;
