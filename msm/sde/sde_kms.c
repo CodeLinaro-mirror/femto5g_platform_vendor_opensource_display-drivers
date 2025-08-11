@@ -3897,6 +3897,9 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 			hfi_kms_send_trace_cfg(sde_kms->hfi_kms, HFI_TRUE);
 			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
 			hfi_kms_get_catalog_data(sde_kms->hfi_kms);
+			ret = sde_dbg_setup(sde_kms->dev->dev);
+			if (ret)
+				SDE_ERROR("error with debug setup ret: %d\n", ret);
 
 			drm_for_each_plane(plane, dev)
 				sde_plane_post_init(plane);

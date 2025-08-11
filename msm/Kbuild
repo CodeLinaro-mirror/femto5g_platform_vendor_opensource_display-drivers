@@ -307,12 +307,12 @@ msm_drm-$(CONFIG_MDSS_HFI_ADAPTER) += hfi/hfi_adapter.o \
 
 msm_drm-$(CONFIG_MDSS_HFI) += hfi/hfi_utils.o \
 				 hfi/hfi_msm_drv.o \
+				 hfi/hfi_dbg.o \
 				 sde/hfi/hfi_catalog.o \
 				 sde/hfi/hfi_connector.o \
 				 sde/hfi/hfi_crtc.o \
 				 sde/hfi/hfi_encoder.o \
 				 sde/hfi/hfi_kms.o \
-				 sde/hfi/hfi_msm_dbg.o \
 				 sde/hfi/hfi_plane.o \
 				 sde/hfi/hfi_color_proc.o \
 				 dsi/hfi/dsi_display_hfi.o \
