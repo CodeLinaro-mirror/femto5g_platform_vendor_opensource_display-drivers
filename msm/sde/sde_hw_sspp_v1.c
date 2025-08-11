@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -191,7 +191,8 @@ static inline int _sspp_check_rect_err(enum sde_sspp_multirect_index rect_index)
 static void sde_hw_sspp_update_multirect_v1(struct sde_hw_pipe *ctx,
 		bool enable,
 		enum sde_sspp_multirect_index index,
-		enum sde_sspp_multirect_mode mode)
+		enum sde_sspp_multirect_mode mode,
+		const struct sde_format *fmt)
 {
 	u32 mode_mask;
 	u32 idx;
