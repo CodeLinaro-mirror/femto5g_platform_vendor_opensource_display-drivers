@@ -6231,6 +6231,45 @@ static void _sde_get_hw_caps_for_kalama(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	sde_cfg->has_line_insertion = true;
 }
 
+static void _sde_get_hw_caps_for_x1e80100(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
+	set_bit(SDE_FEATURE_WB_UBWC, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_CROP, sde_cfg->features);
+	set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
+	set_bit(SDE_FEATURE_HDR_PLUS, sde_cfg->features);
+	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+	set_bit(SDE_MDP_DHDR_MEMPOOL_4K, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
+	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
+	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
+	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
+	sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
+	sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
+	sde_cfg->perf.min_prefill_lines = 40;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->qos_target_time_ns = 11160;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+	sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_3;
+	sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
+	sde_cfg->mdss_hw_block_size = 0x158;
+	sde_cfg->demura_supported[SSPP_DMA1][0] = 0;
+	sde_cfg->demura_supported[SSPP_DMA1][1] = 1;
+	sde_cfg->demura_supported[SSPP_DMA3][0] = 0;
+	sde_cfg->demura_supported[SSPP_DMA3][1] = 1;
+	sde_cfg->has_line_insertion = true;
+}
+
 static void _sde_get_hw_caps_for_pineapple(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
@@ -6721,6 +6760,8 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_850, _sde_get_hw_caps_for_cape},
 	{SDE_HW_VER_880, _sde_get_hw_caps_for_vienna},
 	{SDE_HW_VER_900, _sde_get_hw_caps_for_kalama},
+	{SDE_HW_VER_920, _sde_get_hw_caps_for_x1e80100},
+	{SDE_HW_VER_970, _sde_get_hw_caps_for_x1p42100},
 	{SDE_HW_VER_980, _sde_get_hw_caps_for_seraph},
 	{SDE_HW_VER_A00, _sde_get_hw_caps_for_pineapple},
 	{SDE_HW_VER_B00, _sde_get_hw_caps_for_niobe},
@@ -6729,7 +6770,6 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_C40, _sde_get_hw_caps_for_kera},
 	{SDE_HW_VER_D00, _sde_get_hw_caps_for_canoe},
 	{SDE_HW_VER_D10, _sde_get_hw_caps_for_alor},
-	{SDE_HW_VER_970, _sde_get_hw_caps_for_x1p42100},
 	{SDE_HW_VER_830, _sde_get_hw_caps_for_parrot},
 };
 
