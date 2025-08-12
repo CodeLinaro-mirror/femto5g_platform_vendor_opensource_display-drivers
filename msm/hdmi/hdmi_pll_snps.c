@@ -577,7 +577,7 @@ static int hdmi_pll_snps_configure(struct hdmi_pll *pll,
 
 config:
 	hdmi_pll_snps_mpll_config(pll);
-	pll->vco_rate = clock_khz;
+	pll->vco_rate = clock_khz * pll->clk_factor;
 	hdmi_pll_snps_set_rate(pll);
 
 	return rc;

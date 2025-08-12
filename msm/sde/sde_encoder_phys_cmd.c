@@ -548,14 +548,16 @@ static void sde_encoder_phys_cmd_te_rd_ptr_irq(void *arg, int irq_idx)
 	u32 fence_ready = 0;
 	enum msm_disp_op disp_op;
 
-	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_pp || !phys_enc->hw_intf
-		|| !phys_enc->hw_ctl)
+	if (!phys_enc || !phys_enc->parent || !phys_enc->hw_pp || !phys_enc->hw_intf)
+		return;
+
+	ctl = phys_enc->hw_ctl;
+	if (!ctl)
 		return;
 
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	SDE_ATRACE_BEGIN("rd_ptr_irq");
 	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
-	ctl = phys_enc->hw_ctl;
 	cesta_client = sde_encoder_get_cesta_client(phys_enc->parent);
 
 	if (ctl->ops.get_scheduler_status[disp_op])
@@ -2866,6 +2868,7 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 		list_add(&cmd_enc->te_timestamp[i].list,
 				&cmd_enc->te_timestamp_list);
 
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 	hrtimer_init(&phys_enc->sde_vrr_cfg.self_refresh_timer,
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.self_refresh_timer.function =
@@ -2875,6 +2878,13 @@ struct sde_encoder_phys *sde_encoder_phys_cmd_init(
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.backlight_timer.function =
 		sde_encoder_phys_backlight_timer_cb;
+#else
+	hrtimer_setup(&phys_enc->sde_vrr_cfg.self_refresh_timer,
+		sde_encoder_phys_phys_self_refresh_helper, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+
+	hrtimer_setup(&phys_enc->sde_vrr_cfg.backlight_timer, sde_encoder_phys_backlight_timer_cb,
+		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+#endif
 
 	SDE_DEBUG_CMDENC(cmd_enc, "created\n");
 

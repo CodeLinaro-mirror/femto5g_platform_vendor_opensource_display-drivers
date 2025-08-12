@@ -1762,7 +1762,7 @@ static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			kick_off.dma_type, kick_off.op, ctl->dpu_idx);
 	if (mode == REG_DMA_WAIT4_COMP) {
 		rc = read_poll_timeout(sde_reg_read, val,
-				(val & ctl_trigger_done_mask[ctl->idx][q]), 10, false, 20000,
+				(val & ctl_trigger_done_mask[ctl->idx][q]), 10, 20000, false,
 				&hw, reg_dma_intr_0_status_offset[ctl->idx][q]);
 		if (rc)
 			DRM_ERROR("poll wait failed %d val %x mask %x\n",

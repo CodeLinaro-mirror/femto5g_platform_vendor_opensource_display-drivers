@@ -254,6 +254,7 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @no_backlight_support: For some display type that no support backlight
  * @ext_hpd_en: A boolean value indicates an external dp can support hotplug
  * @is_edp: A boolean value indicates an edp interface
+ * @max_fps_mode_en: A boolean value to select max resolution and max fps
  * @dsc_feature_enable: DSC feature enable status
  * @fec_feature_enable: FEC feature enable status
  * @dsc_continuous_pps: PPS sent every frame by HW
@@ -302,6 +303,7 @@ struct dp_parser {
 	bool no_backlight_support;
 	bool ext_hpd_en;
 	bool is_edp;
+	bool max_fps_mode_en;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;

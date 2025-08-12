@@ -442,7 +442,7 @@ static inline void sde_hw_ctl_hw_fence_ctrl(struct sde_hw_ctl *ctx, bool sw_over
 static inline void sde_hw_ctl_trigger_sw_override(struct sde_hw_ctl *ctx)
 {
 	/* clear input fence before override */
-	sde_hw_ctl_update_input_fence(ctx, 0, 0);
+	sde_hw_ctl_update_input_fence(ctx, CTL_INVALID_BIT, 0);
 
 	SDE_REG_WRITE(&ctx->hw, CTL_FENCE_READY_SW_OVERRIDE, 0x1);
 }
@@ -1679,17 +1679,18 @@ static inline bool sde_hw_ctl_read_active_status(struct sde_hw_ctl *ctx,
 
 static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 {
-	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	struct sde_hw_reg_dma_ops *ops = NULL;
 
+	if (!ctx)
+		return -EINVAL;
+
+	ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (!ops) {
 		SDE_ERROR("dma ops is NULL\n");
 		return -EINVAL;
 	}
 
-	if (!ctx)
-		return -EINVAL;
-
-	if (ops && ops->last_command[ctx->hw.disp_op])
+	if (ops->last_command[ctx->hw.disp_op])
 		return ops->last_command[ctx->hw.disp_op](ctx, DMA_CTL_QUEUE0,
 		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
 

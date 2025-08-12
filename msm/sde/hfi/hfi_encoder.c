@@ -12,7 +12,7 @@
 #include "hfi_crtc.h"
 #include "hfi_kms.h"
 #include "sde_kms.h"
-#include "hfi_msm_dbg.h"
+#include "hfi_dbg.h"
 
 #define TIMEOUT_MAX	80
 
@@ -161,6 +161,31 @@ static void hfi_encoder_vblank_callback(struct hfi_encoder *hfi_enc, void *paylo
 		sde_enc->crtc_vblank_cb(sde_enc->crtc_vblank_cb_data, ts);
 }
 
+static void hfi_encoder_hw_recovery_callback(struct sde_encoder_virt *sde_enc, void *payload)
+{
+	struct drm_encoder *drm_enc;
+	struct drm_connector *conn;
+	bool recovery_events;
+
+	if (!sde_enc)
+		return;
+
+	recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
+
+	if (recovery_events) {
+		drm_enc = &sde_enc->base;
+		conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
+
+		if (!conn) {
+			SDE_ERROR("invalid connector\n");
+			return;
+		}
+
+		sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
+				sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
+	}
+}
+
 static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		void *payload, u32 size, struct hfi_prop_listener *listener)
 {
@@ -195,32 +220,35 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 	case HFI_COMMAND_DISPLAY_EVENT_VSYNC:
 		hfi_encoder_vblank_callback(hfi_enc, payload);
 		break;
+	case HFI_COMMAND_DISPLAY_EVENT_HW_RECOVERY:
+		hfi_encoder_hw_recovery_callback(sde_enc, payload);
+		break;
 	case HFI_COMMAND_DEBUG_PANIC_EVENT:
 		recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
 
 		drm_enc = &sde_enc->base;
 		conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
-
 		if (!conn) {
-			SDE_ERROR("Invalid connector\n");
+			SDE_ERROR("invalid connector\n");
 			return;
 		}
 
 		if (sde_conn_get_display_obj_id(conn) != (u32) data[0]) {
-			SDE_ERROR("Invalid display ID\n");
+			SDE_ERROR("invalid display id\n");
 			return;
 		}
 
 		if (recovery_events) {
+			SDE_DBG_DUMP(SDE_DBG_BUILT_IN_ALL);
 			sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
 				sizeof(uint8_t), SDE_RECOVERY_CAPTURE);
 		} else {
 			event = (u32) data[1];
 			if (HFI_DEBUG_EVENT_UNDERRUN & event) {
-				MDSS_DBG_CTRL(0x0, "stop_ftrace");
-				MDSS_DBG_CTRL(0x0, "panic_underrun");
+				SDE_DBG_CTRL("stop_ftrace");
+				SDE_DBG_CTRL("panic_underrun");
 			} else {
-				MDSS_DBG_DUMP(0x0, "panic");
+				SDE_DBG_DUMP(0x0, "panic");
 			}
 		}
 		break;
@@ -306,8 +334,12 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 		ret = _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_VSYNC,
 				enable, defer_to_commit);
 		break;
+	case MSM_ENC_HW_RECOVERY:
+		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_HW_RECOVERY,
+				enable, defer_to_commit);
+		break;
 	default:
-		SDE_ERROR("Invalid SDE event %d\n", event);
+		SDE_ERROR("invalid sde event %d\n", event);
 		return -EINVAL;
 	}
 
@@ -327,7 +359,14 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	int ret;
 
 	if (!enc || !hfi_enc || !hfi_kms) {
-		SDE_ERROR("Invalid params\n");
+		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+		MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
 		return -EINVAL;
 	}
 
@@ -335,17 +374,11 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 
 	if (!conn) {
-		SDE_ERROR("Invalid connector\n");
+		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
 	}
 
 	disp_id = sde_conn_get_display_obj_id(conn);
-
-	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
-	if (!cmd_buf) {
-		SDE_ERROR("failed to get hfi command buffer\n");
-		return -EINVAL;
-	}
 
 	payload[0] = disp_id;
 	payload[1] = (HFI_DEBUG_EVENT_UNDERRUN | HFI_DEBUG_EVENT_HW_RESET |
@@ -364,6 +397,12 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	}
 
 	SDE_EVT32(drm_enc->base.id, MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE, ret);
+	ret = hfi_adapter_set_cmd_buf(cmd_buf);
+	if (ret) {
+		SDE_ERROR("failed to send panic subscribe command\n");
+		return ret;
+	}
+
 	return ret;
 }
 
@@ -448,7 +487,8 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 	if (!hfi_enc || event >= MSM_ENC_EVENT_MAX)
 		return -EINVAL;
 
-	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE) {
+	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE ||
+			event == MSM_ENC_HW_RECOVERY) {
 		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("failed to send event register ret:%d\n", ret);
@@ -483,7 +523,7 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 	sde_kms = sde_encoder_get_kms(&enc->base);
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
-		SDE_ERROR("Failed to get hfi_kms\n");
+		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
 	}
 
@@ -513,7 +553,7 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 			sizeof(scan_id_prop),
 			HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (ret) {
-		SDE_ERROR("failed to send scan id HFI property\n");
+		SDE_ERROR("failed to send scan id hfi property\n");
 		return ret;
 	}
 
@@ -527,7 +567,7 @@ static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 	int ret;
 
 	if (!enc) {
-		SDE_ERROR("Invalid params\n");
+		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
 
@@ -551,7 +591,7 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 	int ret;
 
 	if (!enc) {
-		SDE_ERROR("Invalid params\n");
+		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
 
@@ -630,14 +670,14 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 
 	crtc = enc->crtc;
 	if (!crtc)
-		SDE_ERROR("Failed to get crtc\n");
+		SDE_ERROR("failed to get crtc\n");
 
 	drm_enc = &enc->base;
 	priv = drm_enc->dev->dev_private;
 	sde_kms = to_sde_kms(priv->kms);
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
-		SDE_ERROR("Failed to get hfi_kms\n");
+		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
 	}
 
@@ -645,7 +685,7 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 	drm_encoder = &enc->base;
 	drm_connector = sde_encoder_get_connector(drm_encoder->dev, drm_encoder);
 	if (!drm_connector) {
-		SDE_ERROR("Failed to get connector\n");
+		SDE_ERROR("failed to get connector\n");
 		return -EINVAL;
 	}
 
@@ -658,7 +698,7 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
 			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
 	if (!cmd_buf) {
-		SDE_ERROR("Failed to get valid command buffer\n");
+		SDE_ERROR("failed to get valid command buffer\n");
 		return -EINVAL;
 	}
 
@@ -671,7 +711,7 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 			disp_id, HFI_PAYLOAD_TYPE_U32_ARRAY, &misr_data,
 			sizeof(misr_data), HFI_HOST_FLAGS_NONE);
 	if (rc) {
-		SDE_ERROR("Failed to add property\n");
+		SDE_ERROR("failed to add property\n");
 		return rc;
 	}
 
@@ -680,7 +720,7 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 	SDE_EVT32(drm_enc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_SETUP, rc,
 			SDE_EVTLOG_FUNC_CASE1);
 	if (rc) {
-		SDE_ERROR("Failed to send misr_setup command\n");
+		SDE_ERROR("failed to send misr_setup command\n");
 		return rc;
 	}
 
@@ -699,24 +739,24 @@ void hfi_enc_misr_read_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *payload, 
 	u32 *misr_values;
 
 	if (!hfi_enc) {
-		SDE_ERROR("Invalid object or listener from FW\n");
+		SDE_ERROR("invalid object or listener from fw\n");
 		return;
 	}
 
 	/* Parse MISR values */
 	if (!payload || !size) {
-		SDE_ERROR("Invalid payload received from FW\n");
+		SDE_ERROR("invalid payload received from FW\n");
 		return;
 	}
 
-	SDE_DEBUG("About to read MISR values from %s\n", __func__);
+	SDE_DEBUG("about to read misr values from %s\n", __func__);
 
 	misr_read_values = &hfi_enc->sde_base->misr_vals;
 	misr_data = (struct misr_read_data_ret *)payload;
 
 	max_count = misr_data->num_misr;
 	module_type = misr_data->module_type;
-	SDE_DEBUG("Module_type:%d, Max_count:%d\n", module_type, max_count);
+	SDE_DEBUG("module_type:%d, Max_count:%d\n", module_type, max_count);
 	misr_values = (u32 *)(payload + sizeof(u32) * 2);
 
 	memset(&misr_read_values->misr_values, 0, sizeof(u32) * MAX_MISR_MODULES);
@@ -741,13 +781,13 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	u32 disp_id;
 
 	if (!enc) {
-		SDE_ERROR("Invalid encoder\n");
+		SDE_ERROR("invalid encoder\n");
 		return -EINVAL;
 	}
 
 	crtc = enc->crtc;
 	if (!crtc) {
-		SDE_ERROR("Failed to get crtc\n");
+		SDE_ERROR("failed to get crtc\n");
 		//return -EINVAL;
 	}
 
@@ -757,7 +797,7 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 
 	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
 	if (!hfi_kms) {
-		SDE_ERROR("Failed to get hfi_kms\n");
+		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
 	}
 
@@ -765,7 +805,7 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	drm_encoder = &enc->base;
 	drm_connector = sde_encoder_get_connector(drm_encoder->dev, drm_encoder);
 	if (!drm_connector) {
-		SDE_ERROR("Failed to get connector\n");
+		SDE_ERROR("failed to get connector\n");
 		return -EINVAL;
 	}
 
@@ -778,7 +818,7 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
 			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
 	if (!cmd_buf) {
-		SDE_ERROR("Failed to get valid command buffer\n");
+		SDE_ERROR("failed to get valid command buffer\n");
 		return -EINVAL;
 	}
 
@@ -846,6 +886,15 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	return 0;
 }
 
+u32 hfi_enc_get_vblank_count(struct sde_encoder_virt *enc)
+{
+	return 0;
+}
+
+ktime_t hfi_enc_get_vblank_timestamp(struct sde_encoder_virt *enc)
+{
+	return 0;
+}
 #endif /* CONFIG_DEBUG_FS */
 
 static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)

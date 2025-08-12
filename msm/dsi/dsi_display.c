@@ -27,8 +27,6 @@
 #include "dsi_parser.h"
 #include "dsi_display_manager.h"
 #include "dsi_hfi.h"
-#include "dsi_display_hfi.h"
-#include "hfi_defs_display.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -1449,14 +1447,6 @@ int dsi_display_set_power(struct drm_connector *connector,
 			rc ? "failed" : "successful");
 	if (!rc)
 		display->panel->power_mode = power_mode;
-
-	if (display->panel->disp_op == MSM_DISP_OP_HFI) {
-		enum hfi_display_power_mode hfi_lps = display->panel->power_mode;
-
-		rc = dsi_hfi_transition(display, hfi_lps);
-		if (rc)
-			DSI_ERR("failed to send hfi transition cmd, rc=%d\n", rc);
-	}
 
 	return rc;
 }
@@ -3559,22 +3549,27 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host, const struct mipi_d
 {
 	int rc = 0;
 	struct dsi_cmd_desc cmd;
+	struct dsi_display *display;
 
 	if (!msg) {
 		DSI_ERR("Invalid params\n");
 		return 0;
 	}
 
+	display = to_dsi_display(host);
+
 	memcpy(&cmd.msg, msg, sizeof(*msg));
 	cmd.ctrl = 0;
 	cmd.post_wait_ms = 0;
 	cmd.ctrl_flags = 0;
 
-	rc = dsi_host_transfer_sub(host, &cmd, false);
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+		rc = dsi_hfi_host_transfer_sub(host, &cmd);
+	else
+		rc = dsi_host_transfer_sub(host, &cmd, false);
 
 	return rc;
 }
-
 
 static struct mipi_dsi_host_ops dsi_host_ops = {
 	.attach = dsi_host_attach,
@@ -9597,7 +9592,17 @@ static void dsi_display_handle_poms_te(struct work_struct *work)
 	}
 
 	dsi = &panel->mipi_device;
+
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 	rc = mipi_dsi_dcs_set_tear_off(dsi);
+#else
+	struct mipi_dsi_multi_context ctx;
+
+	ctx.dsi = dsi;
+	ctx.accum_err = 0;
+	mipi_dsi_dcs_set_tear_off_multi(&ctx);
+	rc = ctx.accum_err;
+#endif
 
 error:
 	mutex_unlock(&panel->panel_lock);

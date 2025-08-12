@@ -732,6 +732,9 @@ static void _sde_encoder_phys_wb_setup_cwb_source(struct sde_encoder_phys *phys_
 		if (hw_wb->ops.setup_crop[disp_op] && !enable)
 			hw_wb->ops.setup_crop[disp_op](hw_wb, wb_cfg, false);
 
+		if (hw_dnsc_blur && hw_dnsc_blur->ops.setup_dnsc_blur[disp_op] && !enable)
+			hw_dnsc_blur->ops.setup_dnsc_blur[disp_op](hw_dnsc_blur, NULL, 0);
+
 		if (hw_ctl->ops.update_intf_cfg[disp_op]) {
 			hw_ctl->ops.update_intf_cfg[disp_op](hw_ctl, &intf_cfg, enable);
 			SDE_DEBUG("[enc:%d wb:%d] in CWB/DCWB mode on CTL_%d PP-%d merge3d:%d\n",

@@ -248,7 +248,7 @@ static bool _sde_rm_reserved_by_cac_enc(struct sde_rm *rm,
 
 	drm_for_each_encoder(enc, rm->dev)
 		if ((enc->base.id == blk->rsvp->enc_id) &&
-			(sde_encoder_is_dsi_display(enc) ||
+			(sde_encoder_is_built_in_display(enc) ||
 			sde_encoder_is_loopback_display(enc)))
 			return true;
 

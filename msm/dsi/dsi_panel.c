@@ -5577,7 +5577,8 @@ static int dsi_panel_prepare_cmd(struct dsi_panel *panel,
 	set = &priv_info->cmd_sets[type];
 
 	if (!set->cmds) {
-		DSI_ERR("Invalid params\n");
+		DSI_ERR("Invalid params cmds NULL, type %x, last_command %d\n",
+				type, last_command);
 		return -EINVAL;
 	}
 
@@ -5612,7 +5613,10 @@ int dsi_panel_send_cmd(struct dsi_panel *panel,
 	if (params && params->peripheral_flush)
 		peripheral_flush = true;
 
-	dsi_panel_prepare_cmd(panel, params, type, last_command);
+	rc = dsi_panel_prepare_cmd(panel, params, type, last_command);
+	if (rc)
+		DSI_ERR("[%s] failed to prepare cmd type %x rc=%d\n",
+				panel->name, type, rc);
 
 	rc = dsi_panel_tx_cmd_set(panel, type, peripheral_flush);
 

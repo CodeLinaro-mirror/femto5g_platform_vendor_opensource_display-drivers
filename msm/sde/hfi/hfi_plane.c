@@ -65,6 +65,7 @@ static struct base_prop_lookup hfi_plane_base_props_map[] = {
 	{PLANE_PROP_SRC_IMG_SIZE, HFI_PROPERTY_LAYER_SRC_IMG_SIZE_W},
 	{PLANE_PROP_MULTIRECT_MODE, HFI_PROPERTY_LAYER_MULTIRECT_MODE},
 	{PLANE_PROP_BG_ALPHA, HFI_PROPERTY_LAYER_BG_ALPHA},
+	{PLANE_PROP_FB_TRANSLATION_MODE, HFI_PROPERTY_LAYER_SECURITY_POLICY},
 };
 
 static u32 hfi_plane_blend_ops_map[] = {
@@ -192,15 +193,17 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		struct sde_plane_state *pstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
-	u32 prop_id, temp_val;
+	u32 prop_id, temp_val, ret = 0;
 	struct sde_plane_state *state;
 	struct hfi_plane *phfi;
+	struct drm_plane_state *plane_state;
 
 	if (!plane || !prop_collector || !plane->base.state)
 		return -EINVAL;
 
 	phfi = to_hfi_plane(plane);
 	state = (struct sde_plane_state *)plane->base.state;
+	plane_state = &pstate->base;
 
 	switch (hfi_prop) {
 	case HFI_PROPERTY_LAYER_ZPOS:
@@ -215,11 +218,16 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	case HFI_PROPERTY_LAYER_BG_ALPHA:
-		prop_id = HFI_PROPERTY_LAYER_BG_ALPHA;
-		temp_val =  sde_plane_get_property(state, PLANE_PROP_BG_ALPHA);
-		temp_val =  _hfi_plane_scale_alpha(plane->catalog, temp_val);
-		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+		if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA) ||
+				sde_plane_is_cac_enabled(pstate)) {
+			prop_id = HFI_PROPERTY_LAYER_BG_ALPHA;
+			temp_val =  sde_plane_get_property(state, PLANE_PROP_BG_ALPHA);
+			temp_val =  _hfi_plane_scale_alpha(plane->catalog, temp_val);
+
+			ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
+		}
+		return ret;
 	case HFI_PROPERTY_LAYER_SRC_IMG_SIZE_W:
 		prop_id = HFI_PROPERTY_LAYER_SRC_IMG_SIZE_W;
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
@@ -250,6 +258,23 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 
 		temp_val = hfi_plane_multirect_mode_map[temp_val];
 		prop_id = HFI_PROPERTY_LAYER_MULTIRECT_MODE;
+
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
+	case HFI_PROPERTY_LAYER_SECURITY_POLICY:
+		prop_id = HFI_PROPERTY_LAYER_SECURITY_POLICY;
+		temp_val = sde_plane_get_property(state, PLANE_PROP_FB_TRANSLATION_MODE);
+
+		switch (temp_val) {
+		case SDE_DRM_FB_SEC:
+			temp_val = (u32)HFI_LAYER_SECURITY_POLICY_SECURE;
+			break;
+		case SDE_DRM_FB_SEC_DIR_TRANS:
+			temp_val = (u32)HFI_LAYER_SECURITY_POLICY_SECURE_DIR_TRANSLATION;
+			break;
+		default:
+			temp_val = (u32)HFI_LAYER_SECURITY_POLICY_NON_SECURE;
+		}
 
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));

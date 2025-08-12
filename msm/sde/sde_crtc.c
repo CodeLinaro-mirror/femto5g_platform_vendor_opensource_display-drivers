@@ -306,7 +306,9 @@ static int _sde_crtc_check_loopback_mode(struct drm_crtc *crtc,
 	struct drm_crtc_state *crtc_state)
 {
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
-	int i, num_lm = 0;
+	struct drm_connector_state *conn_state;
+	struct msm_display_topology topology = {0};
+	int i, ret = 0;
 
 	cstate->is_loopback_mode = sde_crtc_state_in_lb_mode(crtc_state);
 	if (sde_crtc_in_lb_transition(crtc->state, crtc_state) &&
@@ -323,18 +325,19 @@ static int _sde_crtc_check_loopback_mode(struct drm_crtc *crtc,
 	for (i = 0; i < cstate->num_connectors; i++) {
 		struct drm_connector *conn = cstate->connectors[i];
 
-		if (conn && conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
-			num_lm =  sde_connector_get_lm_cnt_from_topology(conn,
-					&crtc_state->adjusted_mode);
+		if (sde_connector_supports_cac(conn)) {
+			conn_state = drm_atomic_get_new_connector_state(crtc_state->state, conn);
+			ret = sde_connector_state_get_topology(conn_state, &topology);
+			break;
 		}
 	}
 
-	if (!num_lm) {
-		SDE_ERROR("Invalid num of mixers\n");
+	if (ret || !topology.num_lm) {
+		SDE_ERROR("Invalid params\n");
 		return -EINVAL;
 	}
 
-	cstate->num_prim_mixers = num_lm;
+	cstate->num_prim_mixers = topology.num_lm;
 	_sde_crtc_check_loopback_pstates(crtc_state);
 
 	return 0;
@@ -1297,7 +1300,6 @@ static int _sde_crtc_set_roi_v1(struct drm_crtc_state *state,
 	crtc = cstate->base.crtc;
 
 	memset(&cstate->user_roi_list, 0, sizeof(cstate->user_roi_list));
-	memset(&cstate->cached_user_roi_list, 0, sizeof(cstate->cached_user_roi_list));
 
 	if (!usr_ptr) {
 		SDE_DEBUG("crtc%d: rois cleared\n", DRMID(crtc));
@@ -4118,7 +4120,7 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 	struct sde_crtc *sde_crtc;
 	struct sde_rect conn_roi = {0};
 	struct sde_rect crtc_roi = {0};
-	bool is_cac_lb = false;
+	bool is_cac_lb = false, pu_enable = false;
 
 	sde_crtc = to_sde_crtc(crtc);
 	crtc_state = &cstate->base;
@@ -4128,17 +4130,16 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 	if (c_conn_state == NULL)
 		return -EINVAL;
 
-	if (c_conn_state->rois.num_rects)
+	if (c_conn_state->rois.num_rects || cstate->user_roi_list.num_rects) {
 		sde_kms_rect_merge_rectangles(&c_conn_state->rois, &conn_roi);
-
-	if (cstate->user_roi_list.num_rects)
 		sde_kms_rect_merge_rectangles(&cstate->user_roi_list, &crtc_roi);
+		pu_enable = true;
+	}
 
 	is_cac_lb = cstate->is_loopback_mode || cstate->in_loopback_transition;
 
 	if (cfg->flags & SDE_DRM_DESTSCALER_SCALE_UPDATE ||
 		cfg->flags & SDE_DRM_DESTSCALER_ENHANCER_UPDATE) {
-		bool pu_enable = cfg->flags & SDE_DRM_DESTSCALER_PU_ENABLE;
 
 		/**
 		 * Scaler src and dst width shouldn't exceed the maximum
@@ -4158,10 +4159,8 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 			!cfg->scl3_cfg.src_width[0] ||
 			!cfg->scl3_cfg.dst_width ||
 			(pu_enable && cfg->scl3_cfg.dst_width != hdisplay) ||
-			(pu_enable && conn_roi.h != 0 &&
-					cfg->scl3_cfg.dst_height != conn_roi.h) ||
-			(pu_enable && crtc_roi.h != 0 &&
-					cfg->scl3_cfg.src_height[0] != crtc_roi.h) ||
+			(pu_enable && cfg->scl3_cfg.dst_height != conn_roi.h) ||
+			(pu_enable && cfg->scl3_cfg.src_height[0] != crtc_roi.h) ||
 			(!(pu_enable || is_cac_lb) && (cfg->scl3_cfg.dst_width != hdisplay ||
 				cfg->scl3_cfg.dst_height != mode->vdisplay))) {
 			SDE_ERROR("crtc%d: ", crtc->base.id);
@@ -4674,6 +4673,7 @@ static inline bool _is_vid_power_on_frame(struct drm_crtc *crtc)
 static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct drm_encoder *encoder = NULL;
 	bool ipcc_input_signal_wait = false;
 	struct dma_fence *dma_hw_fences[MAX_HW_FENCES] = {0};
 	int num_hw_fences = 0;
@@ -4685,6 +4685,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	bool disable_hw_fences = false;
 	bool trigger_sw_override = false;
 	enum msm_disp_op disp_op;
+	bool video_psr_support = false;
 
 	SDE_DEBUG("\n");
 
@@ -4708,10 +4709,23 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 		return false;
 	}
 
+	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+		if (sde_encoder_in_clone_mode(encoder))
+			continue;
+
+		if (sde_encoder_is_built_in_display(encoder)) {
+			video_psr_support = sde_encoder_is_psr_supported(encoder);
+			break;
+		}
+	}
+
 	/* if this is the last frame on vm transition, disable hw fences */
-	vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc->state), CRTC_PROP_VM_REQ_STATE);
-	if (vm_req == VM_REQ_RELEASE)
-		disable_hw_fences = true;
+	if (!video_psr_support) {
+		vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc->state),
+				CRTC_PROP_VM_REQ_STATE);
+		if (vm_req == VM_REQ_RELEASE)
+			disable_hw_fences = true;
+	}
 
 	/* update ctl hw to wait for ipcc input signal before fetch */
 	if (test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
@@ -5717,6 +5731,13 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 		 */
 		params.affected_displays = _sde_crtc_get_displays_affected(crtc,
 				crtc->state);
+		/*
+		 * Pingpong to DSC mapping changes during cac loopback
+		 * transitions. Detect such cases and bind the pingpong
+		 * block to corresponding DSC properly.
+		 */
+		params.update_dce_pp_mux = cstate->in_loopback_transition ? true : false;
+
 		if (sde_encoder_prepare_for_kickoff(encoder, &params))
 			sde_crtc->needs_hw_reset = true;
 
@@ -5822,6 +5843,8 @@ static int _sde_crtc_vblank_enable(
 {
 	struct drm_crtc *crtc;
 	struct drm_encoder *enc;
+	enum sde_intf_mode intf_mode;
+	bool wb_intf_mode = false;
 
 	if (!sde_crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -5832,6 +5855,9 @@ static int _sde_crtc_vblank_enable(
 	SDE_EVT32(DRMID(crtc), enable, sde_crtc->enabled,
 			crtc->state->encoder_mask,
 			sde_crtc->cached_encoder_mask);
+
+	intf_mode = sde_crtc_get_intf_mode(crtc, crtc->state);
+	wb_intf_mode = ((intf_mode == INTF_MODE_WB_BLOCK) || (intf_mode == INTF_MODE_WB_LINE));
 
 	if (enable) {
 		int ret;
@@ -5845,7 +5871,7 @@ static int _sde_crtc_vblank_enable(
 
 		mutex_lock(&sde_crtc->crtc_lock);
 		drm_for_each_encoder_mask(enc, crtc->dev, sde_crtc->cached_encoder_mask) {
-			if (sde_encoder_in_clone_mode(enc))
+			if (sde_encoder_in_clone_mode(enc) || wb_intf_mode)
 				continue;
 
 			sde_encoder_register_vblank_callback(enc, sde_crtc_vblank_cb, (void *)crtc);
@@ -5854,7 +5880,7 @@ static int _sde_crtc_vblank_enable(
 	} else {
 		mutex_lock(&sde_crtc->crtc_lock);
 		drm_for_each_encoder_mask(enc, crtc->dev, sde_crtc->cached_encoder_mask) {
-			if (sde_encoder_in_clone_mode(enc))
+			if (sde_encoder_in_clone_mode(enc) || wb_intf_mode)
 				continue;
 
 			sde_encoder_register_vblank_callback(enc, NULL, NULL);
@@ -6037,9 +6063,6 @@ void sde_crtc_reset_sw_state(struct drm_crtc *crtc)
 	set_bit(SDE_CRTC_DIRTY_DIM_LAYERS, &sde_crtc->revalidate_mask);
 	if (cstate->num_ds_enabled)
 		set_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
-
-	/* wipe out cached CRTC ROI so PU is seen as dirty next update */
-	memset(&cstate->cached_user_roi_list, 0, sizeof(cstate->cached_user_roi_list));
 }
 
 static void sde_crtc_post_ipc(struct drm_crtc *crtc)

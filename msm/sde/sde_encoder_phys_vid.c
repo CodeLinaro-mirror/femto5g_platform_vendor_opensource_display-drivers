@@ -563,6 +563,9 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	if (intf->ops.avr_ctrl[disp_op])
 		intf->ops.avr_ctrl[disp_op](intf, &avr_params);
 
+	if (sde_encoder_vm_primary_vhm_prepare_helper(sde_enc))
+		avr_params.infinite_mode = true;
+
 	if (intf->ops.enable_te_level_trigger[disp_op] &&
 			!sde_enc->disp_info.is_te_using_watchdog_timer)
 		intf->ops.enable_te_level_trigger[disp_op](intf,
@@ -630,6 +633,26 @@ void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
 		phys_enc->hw_intf->ops.setup_intf_panic_ctrl[disp_op](phys_enc->hw_intf, &cfg);
 }
 
+static void _sde_encoder_update_timing_poms_pending(
+		struct sde_encoder_phys *phys_enc,
+		struct intf_timing_params *timing_params)
+{
+	struct sde_connector *sde_conn;
+	struct dsi_display *display;
+
+	if (!phys_enc || !timing_params) {
+		SDE_ERROR("invalid input phys_enc [%d]\n", !phys_enc);
+		return;
+	}
+
+	sde_conn = to_sde_connector(phys_enc->connector);
+	if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		display = _sde_connector_get_display(sde_conn);
+		if (display)
+			timing_params->poms_pending = display->poms_pending;
+	}
+}
+
 static void sde_encoder_phys_vid_setup_timing_engine(
 		struct sde_encoder_phys *phys_enc, bool from_idle)
 {
@@ -652,6 +675,9 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 		SDE_ERROR("invalid encoder %d\n", !phys_enc);
 		return;
 	}
+
+	if (sde_in_trusted_vm(phys_enc->sde_kms))
+		return;
 
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	mode = phys_enc->cached_mode;
@@ -701,6 +727,8 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 
 	fmt = sde_get_sde_format(fmt_fourcc);
 	SDE_DEBUG_VIDENC(vid_enc, "fmt_fourcc 0x%X\n", fmt_fourcc);
+
+	_sde_encoder_update_timing_poms_pending(phys_enc, &timing_params);
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
 	phys_enc->hw_intf->ops.setup_timing_gen[disp_op](phys_enc->hw_intf,
@@ -2494,6 +2522,10 @@ static void sde_encoder_phys_vid_disable(struct sde_encoder_phys *phys_enc)
 	info = &sde_enc->disp_info;
 
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	/* Skip further operations for HFI mode as they're not needed */
+	if (IS_DISP_OP_HFI(disp_op))
+		return;
+
 	if (!phys_enc->hw_intf || !phys_enc->hw_ctl) {
 		SDE_ERROR("invalid hw_intf %d hw_ctl %d\n",
 				!phys_enc->hw_intf, !phys_enc->hw_ctl);
@@ -2987,6 +3019,8 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 
 skip_irq_init:
 	phys_enc->enable_state = SDE_ENC_DISABLED;
+
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 	hrtimer_init(&phys_enc->sde_vrr_cfg.freq_step_timer,
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->sde_vrr_cfg.freq_step_timer.function =
@@ -3009,6 +3043,22 @@ skip_irq_init:
 		CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	phys_enc->empulse_backup_timer.function =
 		sde_encoder_phys_vid_esync_backup_sim;
+#else
+	hrtimer_setup(&phys_enc->sde_vrr_cfg.freq_step_timer,
+		sde_encoder_phys_vid_freq_step_callback, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	hrtimer_setup(&phys_enc->sde_vrr_cfg.arp_transition_timer,
+		sde_encoder_phys_vid_arp_transition_timer_cb, CLOCK_MONOTONIC,
+		HRTIMER_MODE_REL);
+	hrtimer_setup(&phys_enc->sde_vrr_cfg.self_refresh_timer,
+		sde_encoder_phys_phys_self_refresh_helper, CLOCK_MONOTONIC,
+		HRTIMER_MODE_REL);
+
+	hrtimer_setup(&phys_enc->sde_vrr_cfg.backlight_timer,
+		sde_encoder_phys_backlight_timer_cb, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+
+	hrtimer_setup(&phys_enc->empulse_backup_timer,
+		sde_encoder_phys_vid_esync_backup_sim, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+#endif
 
 	SDE_DEBUG_VIDENC(vid_enc, "created intf idx:%d\n", p->intf_idx);
 
