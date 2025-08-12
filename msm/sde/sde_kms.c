@@ -2797,8 +2797,6 @@ static int sde_kms_hfi_boot_init(struct sde_kms *sde_kms)
 		return -EPROBE_DEFER;
 	}
 
-	sde_kms->hfi_session_start = false;
-
 	return ret;
 }
 
@@ -3979,170 +3977,6 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 	return rc;
 }
 
-static void _sde_kms_idle_helper(struct sde_kms *sde_kms, struct drm_device *dev)
-{
-	int ret, crtc_id = 0;
-	struct drm_connector *conn;
-	struct drm_connector_list_iter conn_iter;
-	struct msm_drm_private *priv = sde_kms->dev->dev_private;
-
-	drm_connector_list_iter_begin(dev, &conn_iter);
-	drm_for_each_connector_iter(conn, &conn_iter) {
-		if (!conn->state || !conn->state->crtc)
-			continue;
-
-		crtc_id = drm_crtc_index(conn->state->crtc);
-		if (priv->disp_thread[crtc_id].thread)
-			kthread_flush_worker(
-				&priv->disp_thread[crtc_id].worker);
-
-		ret = sde_encoder_wait_for_event(conn->encoder,
-						MSM_ENC_TX_COMPLETE);
-		if (ret && ret != -EWOULDBLOCK) {
-			SDE_ERROR(
-				"[conn: %d] wait for commit done returned %d\n",
-				conn->base.id, ret);
-		} else if (!ret) {
-			if (priv->event_thread[crtc_id].thread)
-				kthread_flush_worker(
-					&priv->event_thread[crtc_id].worker);
-			sde_encoder_idle_request(conn->encoder);
-		}
-	}
-	drm_connector_list_iter_end(&conn_iter);
-
-	msm_atomic_flush_display_threads(priv);
-}
-
-static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
-		struct drm_atomic_state *state)
-{
-	struct sde_kms *sde_kms;
-	struct drm_device *dev;
-	struct msm_drm_private *priv;
-	struct drm_crtc *crtc;
-	struct drm_crtc *cur_crtc = NULL;
-	struct drm_connector *conn;
-	struct drm_connector *cur_conn = NULL;
-	struct sde_connector *c_conn;
-	struct drm_crtc_state *crtc_state;
-	struct drm_connector_state *conn_state;
-	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
-	int i, ret;
-	u32 frame_trigger;
-
-	if (!kms || !state) {
-		SDE_ERROR("invalid arguments\n");
-		return -EINVAL;
-	}
-
-	sde_kms = to_sde_kms(kms);
-	dev = sde_kms->dev;
-	priv = dev->dev_private;
-
-	/* iterate state object for active secure/non-secure crtc */
-	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
-		if (!crtc_state->active)
-			continue;
-		frame_trigger = sde_crtc_get_property(to_sde_crtc_state(crtc->state),
-				CRTC_PROP_DISPLAY_OP);
-		active_crtc_cnt++;
-		cur_crtc = crtc;
-	}
-
-	for_each_new_connector_in_state(state, conn, conn_state, i) {
-		if (!conn)
-			continue;
-
-		if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
-			continue;
-
-		cur_conn = conn;
-	}
-
-	if (!active_crtc_cnt || !cur_conn) {
-		SDE_DEBUG("No active crtc found: active_crtc_cnt = %d\n",
-				active_crtc_cnt);
-		goto end;
-	}
-
-	/* If no change in transition then exit early */
-	if (IS_DISP_OP_HWIO(frame_trigger) && IS_DISP_OP_HWIO(sde_kms->frame_trigger_state))
-		goto end;
-
-	/* iterate global list for active and secure/non-secure crtc */
-	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-		if (!crtc->state->active)
-			continue;
-
-		global_active_crtc_cnt++;
-	}
-
-	/*
-	 * - fail crtc commit, if secure-camera/secure-ui session is
-	 *   in-progress in any other display
-	 * - fail secure-camera/secure-ui crtc commit, if any other display
-	 *   session is in-progress
-	 * - fail crtc commit, if write-back is enabled
-	 */
-	if ((global_active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_HFI) ||
-		    (active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_HFI)) {
-		SDE_ERROR(
-		    "crtc%d secure check failed global_active:%d active:%d\n",
-				cur_crtc ? cur_crtc->base.id : -1,
-				global_active_crtc_cnt, active_crtc_cnt);
-		return -EPERM;
-	}
-
-	/* If no change in transition then exit early */
-	if (IS_DISP_OP_HFI(frame_trigger) && IS_DISP_OP_HFI(sde_kms->frame_trigger_state))
-		goto end;
-
-	c_conn = to_sde_connector(cur_conn);
-	/* Transition from HWIO to HFI */
-	if (IS_DISP_OP_HWIO(sde_kms->frame_trigger_state)) {
-		sde_kms->frame_trigger_state = MSM_DISP_OP_HFI;
-
-		if (sde_kms->hfi_session_start) {
-			ret = sde_kms_hfi_boot_init(sde_kms);
-			if (ret) {
-				SDE_ERROR("hfi boot init failed: %d\n", ret);
-				return ret;
-			}
-
-			ret = sde_kms_hfi_post_boot(sde_kms);
-			if (ret) {
-				SDE_ERROR("hfi post boot failed: %d\n", ret);
-				return ret;
-			}
-		}
-
-		/* Make sure everything goes to idle */
-		_sde_kms_idle_helper(sde_kms, dev);
-		sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
-		sde_kms_set_hw_blks_disp_op(sde_kms->frame_trigger_state, sde_kms);
-		sde_rm_set_disp_op(&sde_kms->rm, sde_kms->frame_trigger_state);
-		c_conn->ops.ctl_pre_transition(c_conn->display);
-
-	/* Transition from HFI to HWIO */
-	} else if (IS_DISP_OP_HFI(sde_kms->frame_trigger_state)) {
-		list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-			if (!crtc->state->active)
-				continue;
-			sde_crtc_transition_handle_events(crtc, false);
-		}
-
-		sde_kms->frame_trigger_state = MSM_DISP_OP_HWIO;
-		_sde_kms_idle_helper(sde_kms, dev);
-		sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
-		sde_kms_set_hw_blks_disp_op(sde_kms->frame_trigger_state, sde_kms);
-		sde_rm_set_disp_op(&sde_kms->rm, sde_kms->frame_trigger_state);
-		c_conn->ops.ctl_post_transition(c_conn->display);
-	}
-end:
-	return 0;
-}
-
 static int sde_kms_check_secure_transition(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -4353,19 +4187,6 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	ret = sde_kms_check_secure_transition(kms, state);
 	if (ret)
 		goto vm_clean_up;
-
-	/*
-	 * Check if any secure transition(moving CRTC between secure and
-	 * non-secure state and vice-versa) is allowed or not. when moving
-	 * to secure state, planes with fb_mode set to dir_translated only can
-	 * be staged on the CRTC, and only one CRTC can be active during
-	 * Secure state
-	 */
-	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features)) {
-		ret = sde_kms_check_frame_trigger_transition(kms, state);
-		if (ret)
-			goto vm_clean_up;
-	}
 
 	ret = sde_kms_check_cwb_concurreny(kms, state);
 	if (ret)
@@ -6522,10 +6343,6 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		SDE_ERROR("failed to initialize VM ops, rc: %d\n", rc);
 		goto error;
 	}
-
-	if (IS_DISP_OP_HWIO(priv->disp_op) && test_bit(SDE_FEATURE_DISP_OP,
-			sde_kms->catalog->features))
-		sde_kms->hfi_session_start = true;
 
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		rc = sde_kms_hfi_post_boot(sde_kms);
