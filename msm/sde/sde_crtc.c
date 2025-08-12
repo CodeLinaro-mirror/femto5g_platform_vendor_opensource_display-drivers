@@ -5214,7 +5214,8 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			 * Once all the color processing properties are collected, invoke adapter
 			 * api to add all these properties as a single HFI Packet
 			 */
-			ret = hfi_adapter_add_set_property(cmd_buf,
+			ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+				cmd_buf,
 				HFI_COMMAND_DISPLAY_SET_PROPERTY, disp_id,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,
 				hfi_util_u32_prop_helper_get_payload_addr(color_props),
