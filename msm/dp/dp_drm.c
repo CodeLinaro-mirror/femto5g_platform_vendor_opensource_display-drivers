@@ -565,7 +565,8 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 		return connector_status_disconnected;
 	}
 
-	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG) {
+	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG &&
+			!dp_disp->is_cont_splash_enabled) {
 		status = (info.is_connected ? connector_status_connected :
 					      connector_status_disconnected);
 	} else {
