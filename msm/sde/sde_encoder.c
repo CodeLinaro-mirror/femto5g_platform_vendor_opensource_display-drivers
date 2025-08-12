@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -155,6 +155,75 @@ enum sde_enc_rc_events {
 	SDE_ENC_RC_EVENT_ENTER_IDLE,
 	SDE_ENC_RC_EVENT_EARLY_WAKEUP,
 };
+
+bool sde_encoder_trusted_vm_release(struct sde_encoder_virt *sde_enc)
+{
+	enum sde_crtc_vm_req vm_req = VM_REQ_NONE;
+	struct sde_hw_intf *hw_intf;
+	struct sde_hw_ctl *ctl;
+
+	if (!sde_encoder_is_psr_supported(&sde_enc->base))
+		return false;
+
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+			CRTC_PROP_VM_REQ_STATE);
+	if (vm_req != VM_REQ_RELEASE)
+		return false;
+
+	hw_intf = sde_enc->cur_master->hw_intf;
+	ctl = sde_enc->cur_master->hw_ctl;
+
+	if (hw_intf && hw_intf->ops.enable_infinite_vfp)
+		hw_intf->ops.enable_infinite_vfp(hw_intf, true);
+	if (ctl && ctl->ops.update_bitmask)
+		ctl->ops.update_bitmask(ctl, SDE_HW_FLUSH_INTF,
+			hw_intf->idx, true);
+
+	return true;
+}
+
+void sde_encoder_vhm_trusted_vm_prepare(struct drm_encoder *drm_enc,
+		enum sde_crtc_vm_req vm_req)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct sde_kms *sde_kms;
+	u64 cmd_bit_mask = 0;
+	bool enable;
+	int rc;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (sde_in_trusted_vm(sde_kms))
+		return;
+
+	if(!(sde_encoder_is_built_in_display(drm_enc) &&
+			sde_encoder_is_psr_supported(drm_enc)))
+		return;
+
+	enable = (vm_req == VM_REQ_RELEASE) ? true : false;
+	if (sde_enc->rc_state != SDE_ENC_RC_STATE_IDLE)
+		sde_encoder_trusted_vm_release(sde_enc);
+
+	if (sde_enc->cur_master->sde_vrr_cfg.min_sr_state == SDE_MIN_SR_COMPLETE) {
+		SDE_EVT32(sde_enc->cur_master->sde_vrr_cfg.min_sr_state);
+		return;
+	}
+
+	if (enable)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
+	else
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
+
+	rc = sde_connector_update_cmd(sde_enc->cur_master->connector,
+			cmd_bit_mask, true);
+	if (rc)
+		SDE_EVT32(cmd_bit_mask >> 32, cmd_bit_mask, enable, 0xebad);
+}
 
 void sde_encoder_uidle_enable(struct drm_encoder *drm_enc, bool enable)
 {
@@ -545,6 +614,14 @@ int sde_encoder_in_cont_splash(struct drm_encoder *drm_enc)
 
 	return sde_enc && sde_enc->cur_master &&
 		sde_enc->cur_master->cont_splash_enabled;
+}
+
+bool sde_encoder_is_psr_supported(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc &&
+		sde_enc->disp_info.vrr_caps.video_psr_support;
 }
 
 void sde_encoder_helper_report_irq_timeout(struct sde_encoder_phys *phys_enc,
@@ -2134,7 +2211,8 @@ static void _sde_encoder_cesta_update(struct drm_encoder *drm_enc,
 
 	if ((commit_state == SDE_PERF_COMPLETE_COMMIT)
 			&& (cesta_client->vote_state != SDE_CESTA_BW_UPVOTE_CLK_DOWNVOTE)
-			&& (cesta_client->vote_state != SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE))
+			&& (cesta_client->vote_state != SDE_CESTA_CLK_UPVOTE_BW_DOWNVOTE)
+			&& (cesta_client->vote_state != SDE_CESTA_BW_CLK_DOWNVOTE))
 		return;
 
 	/* SCC configs */
@@ -2705,7 +2783,7 @@ void sde_encoder_control_idle_pc(struct drm_encoder *drm_enc, bool enable)
 	sde_enc->idle_pc_enabled = enable;
 
 	SDE_DEBUG("idle-pc state:%d\n", sde_enc->idle_pc_enabled);
-	SDE_EVT32(sde_enc->idle_pc_enabled);
+	SDE_EVT32(DRMID(drm_enc), sde_enc->idle_pc_enabled);
 }
 
 void sde_encoder_begin_commit(struct drm_encoder *drm_enc)
@@ -5647,6 +5725,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	struct drm_crtc *crtc;
 	struct sde_connector *sde_conn;
 	struct sde_crtc *sde_crtc;
+	enum sde_crtc_vm_req vm_req;
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, send_still_cmd);
 	if (!sde_enc || !sde_enc->cur_master)
@@ -5656,6 +5735,13 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	phys_enc = sde_enc->cur_master;
 	if (!phys_enc->connector)
 		return;
+
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+			CRTC_PROP_VM_REQ_STATE);
+	if (vm_req == VM_REQ_RELEASE) {
+		SDE_EVT32(vm_req);
+		return;
+	}
 
 	sde_conn = to_sde_connector(phys_enc->connector);
 
@@ -5761,6 +5847,15 @@ static void sde_encoder_handle_self_refresh(struct kthread_work *work)
 		return;
 	}
 
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde kms\n");
+		return;
+	}
+
+	sde_vm_lock(sde_kms);
+	if (!sde_vm_owns_hw(sde_kms))
+		goto end;
+
 	if (sde_enc->disp_info.vrr_caps.video_psr_support) {
 		sde_connector_backlight_lock(c_conn, true);
 		sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
@@ -5768,36 +5863,63 @@ static void sde_encoder_handle_self_refresh(struct kthread_work *work)
 	} else {
 		sde_connector_trigger_cmd_self_refresh(sde_enc->cur_master->connector);
 	}
+
+end:
+	sde_vm_unlock(sde_kms);
 }
 
 static void sde_encoder_cmd_backlight_update(struct kthread_work *work)
 {
 	struct sde_encoder_virt *sde_enc = container_of(work,
 				struct sde_encoder_virt, backlight_cmd_work);
+	struct sde_kms *sde_kms;
 
 	if (!sde_enc || !sde_enc->cur_master) {
 		SDE_ERROR("invalid sde encoder\n");
 		return;
 	}
 
-	if (kthread_cancel_delayed_work_sync(&sde_enc->delayed_off_work)) {
-		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
-		_sde_encoder_rc_restart_delayed(sde_enc, SDE_ENC_RC_EVENT_KICKOFF);
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde kms\n");
+		return;
 	}
+
+	sde_vm_lock(sde_kms);
+	if (!sde_vm_owns_hw(sde_kms))
+		goto end;
+
 	sde_connector_trigger_cmd_backlight_update(sde_enc->cur_master->connector);
+
+end:
+	sde_vm_unlock(sde_kms);
 }
 
 static void sde_encoder_cmd_backlight_sr_work_handler(struct kthread_work *work)
 {
 	struct sde_encoder_virt *sde_enc = container_of(work,
 				struct sde_encoder_virt, backlight_sr_work.work);
+	struct sde_kms *sde_kms;
 
 	if (!sde_enc || !sde_enc->cur_master) {
 		SDE_ERROR("invalid sde encoder\n");
 		return;
 	}
 
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde kms\n");
+		return;
+	}
+
+	sde_vm_lock(sde_kms);
+	if (!sde_vm_owns_hw(sde_kms))
+		goto end;
+
 	sde_connector_trigger_cmd_backlight_sr(sde_enc->cur_master->connector);
+
+end:
+	sde_vm_unlock(sde_kms);
 }
 
 static void sde_encoder_input_event_work_handler(struct kthread_work *work)

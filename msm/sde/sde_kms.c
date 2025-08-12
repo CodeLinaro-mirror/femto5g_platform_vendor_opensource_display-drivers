@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1240,6 +1240,16 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+	if (vm_req != VM_REQ_NONE) {
+		drm_for_each_encoder_mask(encoder, crtc->dev,
+						crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			sde_encoder_vhm_trusted_vm_prepare(encoder, vm_req);
+		}
+	}
+
 	if (vm_req != VM_REQ_ACQUIRE)
 		return 0;
 
@@ -1517,6 +1527,26 @@ static void sde_kms_cancel_delayed_work(struct drm_crtc *crtc)
 	}
 }
 
+static void sde_kms_vm_force_disable_idle_pc(struct sde_kms *sde_kms, enum sde_crtc_vm_req vm_req)
+{
+	struct drm_device *dev;
+	struct drm_encoder *enc;
+	bool enable;
+
+	if (!sde_kms || vm_req == VM_REQ_NONE)
+		return;
+
+	dev = sde_kms->dev;
+	enable = (vm_req == VM_REQ_RELEASE) ? false : true;
+
+	drm_for_each_encoder(enc, dev) {
+		if (!sde_encoder_is_dsi_display(enc))
+			continue;
+
+		sde_encoder_control_idle_pc(enc, enable);
+	}
+}
+
 int sde_kms_vm_pre_release(struct sde_kms *sde_kms,
 	struct drm_atomic_state *state, bool is_primary)
 {
@@ -1623,6 +1653,9 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+
+	sde_kms_vm_force_disable_idle_pc(sde_kms, vm_req);
+
 	if (vm_req != VM_REQ_RELEASE)
 		return 0;
 
@@ -2016,6 +2049,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.set_dyn_bit_clk = dsi_conn_set_dyn_bit_clk,
 		.get_qsync_min_fps = dsi_conn_get_qsync_min_fps,
 		.get_avr_step_fps = dsi_conn_get_avr_step_fps,
+		.process_dcs_cmd_bitmask = dsi_display_process_dcs_cmd_bitmask,
 		.dcs_cmd_tx = dsi_conn_dcs_cmd_tx,
 		.prepare_commit = dsi_conn_prepare_commit,
 		.set_submode_info = dsi_conn_set_submode_blob_info,
@@ -4317,11 +4351,15 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct drm_connector *conn;
 	struct drm_connector_list_iter conn_iter;
+	struct sde_encoder_virt *sde_enc = NULL;
 	struct msm_drm_private *priv = sde_kms->dev->dev_private;
 
 	drm_connector_list_iter_begin(ddev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		uint64_t lp;
+
+		if (conn && conn->encoder)
+			sde_enc = to_sde_encoder_virt(conn->encoder);
 
 		lp = sde_connector_get_lp(conn);
 		if (lp != SDE_MODE_DPMS_LP2)
@@ -4345,7 +4383,11 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 			if (priv->event_thread[crtc_id].thread)
 				kthread_flush_worker(
 					&priv->event_thread[crtc_id].worker);
-			sde_encoder_idle_request(conn->encoder);
+			if (sde_enc)
+				kthread_mod_delayed_work(&priv->disp_thread[crtc_id].worker,
+					&sde_enc->delayed_off_work, 0);
+			else
+				sde_encoder_idle_request(conn->encoder);
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
