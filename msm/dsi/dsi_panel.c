@@ -2945,6 +2945,9 @@ static int dsi_panel_post_pwr_ctrl(struct dsi_panel *panel, bool enable)
 		return -EINVAL;
 	}
 
+	if (panel->post_power_enable_status == enable)
+		return 0;
+
 	r_config = &panel->reset_config;
 	if (gpio_is_valid(r_config->oled_en_gpio)) {
 		if (enable) {
@@ -2954,19 +2957,22 @@ static int dsi_panel_post_pwr_ctrl(struct dsi_panel *panel, bool enable)
 			rc = poll_status_timeout((gpio_get_value(r_config->oled_en_gpio) == 0),
 				sleep_us, timeout_us);
 		}
-	}
 
-	if (rc) {
-		DSI_WARN("[%s] wait for oled en status failed,enable=%d rc=%d\n",
+		if (rc) {
+			DSI_WARN("[%s] wait for oled en status failed,enable=%d rc=%d\n",
 					panel->name, enable, rc);
-		return rc;
+			return rc;
+		}
 	}
 
 	rc = dsi_pwr_enable_regulator(&panel->post_power_info, enable);
-	if (rc)
+	if (rc) {
 		DSI_ERR("[%s] failed to set post power vregs status, enable=%d rc=%d\n",
 				panel->name, enable, rc);
+		return rc;
+	}
 
+	panel->post_power_enable_status = enable;
 	return 0;
 }
 
@@ -4415,6 +4421,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	panel->panel_of_node = of_node;
 	panel->parent = parent;
 	panel->type = type;
+	panel->post_power_enable_status = false;
 
 	dsi_panel_update_util(panel, parser_node);
 	utils = &panel->utils;
