@@ -6336,10 +6336,12 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	rc = hfi_kms_init(sde_kms);
-	if (rc) {
-		kfree(sde_kms);
-		return ERR_PTR(rc);
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = hfi_kms_init(sde_kms);
+		if (rc) {
+			kfree(sde_kms);
+			return ERR_PTR(rc);
+		}
 	}
 
 	msm_kms_init(&sde_kms->base, &kms_funcs);

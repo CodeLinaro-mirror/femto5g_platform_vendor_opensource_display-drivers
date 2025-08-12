@@ -8598,9 +8598,11 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 		goto fail;
 	}
 
-	ret = hfi_encoder_init(dev, sde_enc);
-	if (ret)
-		goto fail;
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		ret = hfi_encoder_init(dev, sde_enc);
+		if (ret)
+			goto fail;
+	}
 
 	if (ops)
 		sde_enc->ops = *ops;

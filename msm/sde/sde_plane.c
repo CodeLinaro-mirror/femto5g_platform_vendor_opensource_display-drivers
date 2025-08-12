@@ -5954,9 +5954,11 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 		goto exit;
 	}
 
-	ret = hfi_plane_init(pipe, psde);
-	if (ret)
-		goto clean_plane;
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		ret = hfi_plane_init(pipe, psde);
+		if (ret)
+			goto clean_plane;
+	}
 
 	/* cache local stuff for later */
 	plane = &psde->base;

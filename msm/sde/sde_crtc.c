@@ -9277,10 +9277,12 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	if (!sde_crtc)
 		return ERR_PTR(-ENOMEM);
 
-	rc = hfi_crtc_init(sde_crtc);
-	if (rc) {
-		kfree(sde_crtc);
-		return ERR_PTR(rc);
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = hfi_crtc_init(sde_crtc);
+		if (rc) {
+			kfree(sde_crtc);
+			return ERR_PTR(rc);
+		}
 	}
 
 	crtc = &sde_crtc->base;
