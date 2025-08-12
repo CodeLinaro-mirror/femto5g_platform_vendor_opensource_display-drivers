@@ -6775,12 +6775,15 @@ static int _sde_crtc_check_secure_conn(struct drm_crtc *crtc,
 	bool conn_secure = false, is_wb = false;
 	struct drm_connector *conn;
 	struct drm_connector_state *conn_state;
+	struct sde_connector *c_conn;
 	int i;
 
 	for_each_new_connector_in_state(state->state, conn, conn_state, i) {
 		if (conn_state && conn_state->crtc == crtc) {
-			if (conn->connector_type ==
-					DRM_MODE_CONNECTOR_VIRTUAL)
+			c_conn = to_sde_connector(conn);
+			if (c_conn && !c_conn->is_lb_conn &&
+				conn->connector_type ==
+				DRM_MODE_CONNECTOR_VIRTUAL)
 				is_wb = true;
 			if (sde_connector_get_property(conn_state,
 					CONNECTOR_PROP_FB_TRANSLATION_MODE) ==
