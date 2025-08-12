@@ -1832,7 +1832,31 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 
 		sde_kms->dp_stream_count = dp_display_get_num_of_streams();
 	}
+
+	/* edp */
+	sde_kms->edp_displays = NULL;
+	sde_kms->edp_display_count = 0;
+	if (sde_kms->dp_display_count) {
+		int i;
+
+		sde_kms->edp_displays = kcalloc(sde_kms->dp_display_count,
+				sizeof(void *), GFP_KERNEL);
+		if (!sde_kms->edp_displays) {
+			SDE_ERROR("failed to allocate edp displays\n");
+			goto exit_deinit_dp;
+		}
+
+		for (i = 0; i < sde_kms->dp_display_count; i++) {
+			struct dp_display *dp_display = sde_kms->dp_displays[i];
+
+			if (dp_display->is_edp)
+				sde_kms->edp_displays[sde_kms->edp_display_count++] = dp_display;
+		}
+	}
 #endif
+	sde_kms->builtin_disp_count = sde_kms->dsi_display_count ?
+			sde_kms->dsi_display_count : sde_kms->edp_display_count;
+
 	return 0;
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
 exit_deinit_dp:
@@ -1871,6 +1895,10 @@ static void _sde_kms_release_displays(struct sde_kms *sde_kms)
 	kfree(sde_kms->dsi_displays);
 	sde_kms->dsi_displays = NULL;
 	sde_kms->dsi_display_count = 0;
+
+	kfree(sde_kms->edp_displays);
+	sde_kms->edp_displays = NULL;
+	sde_kms->edp_display_count = 0;
 }
 
 /**
@@ -1955,8 +1983,8 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.set_colorspace = dp_connector_set_colorspace,
 		.config_hdr = dp_connector_config_hdr,
 		.cmd_transfer = NULL,
-		.cont_splash_config = NULL,
-		.cont_splash_res_disable = NULL,
+		.cont_splash_config = dp_display_cont_splash_config,
+		.cont_splash_res_disable = dp_display_cont_splash_res_disable,
 		.get_panel_vfp = NULL,
 		.update_pps = dp_connector_update_pps,
 		.cmd_receive = NULL,
@@ -4781,7 +4809,18 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 	return ret;
 }
 
-static int _sde_kms_get_splash_data(struct sde_splash_data *data)
+static int sde_get_builtin_disp_count(struct drm_device *dev)
+{
+	int count;
+
+	count = dsi_display_get_num_of_displays();
+	if (count)
+		return count;
+
+	return edp_display_get_num_of_displays(dev);
+}
+
+static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_data *data)
 {
 	int i = 0;
 	int ret = 0;
@@ -5253,7 +5292,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	if (rc)
 		goto error;
 
-	rc = _sde_kms_get_splash_data(&sde_kms->splash_data);
+	rc = _sde_kms_get_splash_data(dev, &sde_kms->splash_data);
 	if (rc)
 		SDE_DEBUG("sde splash data fetch failed: %d\n", rc);
 

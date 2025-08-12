@@ -2315,7 +2315,7 @@ static int dp_panel_set_stream_info(struct dp_panel *dp_panel,
 	return 0;
 }
 
-static int dp_panel_init_panel_info(struct dp_panel *dp_panel)
+static int dp_panel_init_panel_info(struct dp_panel *dp_panel, bool skip_op)
 {
 	int rc = 0;
 	struct dp_panel_private *panel;
@@ -2328,6 +2328,10 @@ static int dp_panel_init_panel_info(struct dp_panel *dp_panel)
 	}
 
 	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
+
+	if (skip_op)
+		goto end;
+
 	pinfo = &dp_panel->pinfo;
 
 	drm_dp_dpcd_writeb(panel->aux->drm_aux, DP_SET_POWER, DP_SET_POWER_D3);
