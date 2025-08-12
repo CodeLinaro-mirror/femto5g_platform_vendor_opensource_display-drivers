@@ -146,7 +146,8 @@ static int _hfi_crtc_set_props_base(struct sde_crtc *crtc, u32 disp_id,
 	 * Once all the key value pairs of properties are collected invoke adapter api
 	 * to add all these property array as a single HFI Packet
 	 */
-	ret = hfi_adapter_add_set_property(cmd_buf,
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+			cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -202,7 +203,8 @@ int hfi_crtc_populate_custom_kv_setter_props(struct sde_crtc *crtc, u32 disp_id,
 	if (!kv_count)
 		goto end;
 
-	ret = hfi_adapter_add_prop_array(cmd_buf,
+	ret = hfi_adapter_add_prop_array(cmd_buf->ctx,
+			cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -265,7 +267,8 @@ void _hfi_crtc_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_crt
 
 	hfi_util_u32_prop_helper_reset(crtc_hfi->base_props);
 
-	ret = hfi_adapter_add_set_property(cmd_buf,
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+			cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -333,6 +336,7 @@ void hfi_crtc_destroy(struct sde_crtc *crtc)
 {
 	int ret = 0;
 	struct hfi_crtc *crtc_hfi;
+	struct hfi_kms *hfi_kms;
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
@@ -341,7 +345,11 @@ void hfi_crtc_destroy(struct sde_crtc *crtc)
 
 	crtc_hfi = to_hfi_crtc(crtc);
 
-	ret = hfi_adapter_buffer_dealloc(&crtc_hfi->hfi_buff_map_dither);
+	hfi_kms = sde_crtc_get_kms(crtc);
+	if (!hfi_kms)
+		return;
+
+	ret = hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client, &crtc_hfi->hfi_buff_map_dither);
 	if (ret)
 		SDE_ERROR("failed to deallocated hfi shared memory for dither\n");
 
@@ -496,16 +504,16 @@ int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 	misr_data.frame_count = sde_crtc->misr_frame_count;
 	misr_data.module_type = HFI_DEBUG_MISR_MIXER;
 
-	rc = hfi_adapter_add_set_property(cmd_buf, HFI_COMMAND_DEBUG_MISR_SETUP,
-			disp_id, HFI_PAYLOAD_TYPE_U32_ARRAY, &misr_data,
-			sizeof(misr_data), HFI_HOST_FLAGS_NONE);
+	rc = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_MISR_SETUP, disp_id, HFI_PAYLOAD_TYPE_U32_ARRAY,
+			&misr_data, sizeof(misr_data), HFI_HOST_FLAGS_NONE);
 	if (rc) {
 		SDE_ERROR("Failed to add property\n");
 		return rc;
 	}
 
 	SDE_DEBUG("misr_setup: sending cmd buf\n");
-	rc = hfi_adapter_set_cmd_buf(cmd_buf);
+	rc = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	SDE_EVT32(crtc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_SETUP, rc, SDE_EVTLOG_FUNC_CASE1);
 	if (rc) {
 		SDE_ERROR("Failed to send misr_setup command\n");
@@ -594,7 +602,8 @@ int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 	/* Listener init */
 	hfi_crtc->misr_read_listener.hfi_prop_handler = &hfi_crtc_misr_read_hfi_prop_handler;
 
-	rc = hfi_adapter_add_get_property(cmd_buf, HFI_COMMAND_DEBUG_MISR_READ, disp_id,
+	rc = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_MISR_READ, disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &misr_read, sizeof(misr_read),
 			&hfi_crtc->misr_read_listener, (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 			HFI_HOST_FLAGS_NON_DISCARDABLE));
@@ -602,7 +611,7 @@ int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 		SDE_ERROR("Failed to add MISR read command!\n");
 
 	SDE_EVT32(crtc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ, SDE_EVTLOG_FUNC_CASE1);
-	rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+	rc = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
 	SDE_EVT32(crtc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ, rc, SDE_EVTLOG_FUNC_CASE2);
 
 	return rc;
@@ -638,10 +647,20 @@ int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 static int _hfi_cp_crtc_allocate_dither(struct hfi_crtc *hfi_crtc)
 {
 	int ret = 0;
+	struct sde_crtc *sde_crtc;
+	struct hfi_kms *hfi_kms;
+
+	sde_crtc = hfi_crtc->sde_base;
+	if (!sde_crtc)
+		return -EINVAL;
+
+	hfi_kms = sde_crtc_get_kms(sde_crtc);
+	if (!hfi_kms)
+		return -EINVAL;
 
 	hfi_crtc->hfi_buff_map_dither.size =
 		sizeof(struct hfi_display_dither) * (DSPP_MAX - DSPP_0);
-	ret = hfi_adapter_buffer_alloc(&hfi_crtc->hfi_buff_map_dither);
+	ret = hfi_adapter_buffer_alloc(&hfi_kms->hfi_client, &hfi_crtc->hfi_buff_map_dither);
 	if (ret) {
 		hfi_crtc->hfi_buff_map_dither.size = 0;
 		SDE_DEBUG("failed to allocate shared memory for SPR Dither, ret: %d\n", ret);
