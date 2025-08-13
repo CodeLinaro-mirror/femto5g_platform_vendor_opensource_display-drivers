@@ -938,7 +938,7 @@ static inline bool sde_encoder_phys_is_cwb_disabling(
 		return false;
 
 	wb_enc = container_of(phys, struct sde_encoder_phys_wb, base);
-	return (wb_enc->crtc == crtc) ? true : false;
+	return (wb_enc->crtc && wb_enc->crtc == crtc) ? true : false;
 }
 
 /**

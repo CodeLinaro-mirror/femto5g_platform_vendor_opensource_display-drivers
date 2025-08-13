@@ -1667,7 +1667,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 			if (hw_wb->ops.program_dcwb_ctrl[disp_op] && phys_enc->quad_cwb_roi)
 				hw_wb->ops.program_dcwb_ctrl[disp_op](hw_wb, dcwb_idx,
 					src_pp_cwb_idx, cwb_capture_mode, enable);
-			else
+			else if (hw_wb->ops.program_dcwb_ctrl[disp_op])
 				hw_wb->ops.program_dcwb_ctrl[disp_op](hw_wb, dcwb_idx,
 					src_pp_idx, cwb_capture_mode, enable);
 			if (hw_ctl->ops.update_bitmask[disp_op])
