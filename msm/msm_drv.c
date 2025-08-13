@@ -964,6 +964,7 @@ static int msm_drm_component_init(struct device *dev)
 	kms = _msm_drm_component_init_helper(priv, ddev, dev, pdev);
 	if (IS_ERR_OR_NULL(kms)) {
 		DISP_DEV_ERR(dev, "msm_drm_component_init_helper failed\n");
+		ret = -ENODEV;
 		goto fail;
 	}
 
@@ -1984,14 +1985,22 @@ static int msm_pm_suspend(struct device *dev)
 	struct msm_drm_private *priv;
 	struct msm_kms *kms;
 
-	if (!dev)
-		return -EINVAL;
+	if (!dev) {
+		DRM_ERROR("no dev, skipping suspend\n");
+		return -ENODEV;
+	}
 
 	ddev = dev_get_drvdata(dev);
-	if (!ddev || !ddev->dev_private)
-		return -EINVAL;
+	if (!ddev || !ddev->dev_private) {
+		DRM_ERROR("no drm, skipping suspend\n");
+		return -ENODEV;
+	}
 
 	priv = ddev->dev_private;
+	if (!priv->registered) {
+		DRM_ERROR("drm not registered, skipping suspend\n");
+		return -ENODEV;
+	}
 	kms = priv->kms;
 
 	if (kms && kms->funcs && kms->funcs->pm_suspend)
@@ -2009,14 +2018,22 @@ static int msm_pm_resume(struct device *dev)
 	struct msm_drm_private *priv;
 	struct msm_kms *kms;
 
-	if (!dev)
-		return -EINVAL;
+	if (!dev) {
+		DRM_ERROR("no dev, skipping resume\n");
+		return -ENODEV;
+	}
 
 	ddev = dev_get_drvdata(dev);
-	if (!ddev || !ddev->dev_private)
-		return -EINVAL;
+	if (!ddev || !ddev->dev_private) {
+		DRM_ERROR("no drm, skipping resume\n");
+		return -ENODEV;
+	}
 
 	priv = ddev->dev_private;
+	if (!priv->registered) {
+		DRM_ERROR("drm not registered, skipping resume\n");
+		return -ENODEV;
+	}
 	kms = priv->kms;
 
 	if (kms && kms->funcs && kms->funcs->pm_resume)
