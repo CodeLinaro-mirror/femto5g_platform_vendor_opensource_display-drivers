@@ -247,12 +247,22 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	case HFI_PROPERTY_LAYER_MULTIRECT_MODE:
-		temp_val = sde_plane_get_property(pstate, PLANE_PROP_MULTIRECT_MODE);
+		/*
+		 * Note: We are not retrieving multirect mode directly via
+		 * sde_plane_get_property. The multirect mode is not always set
+		 * through plane properties. It can be automatically determined
+		 * by the driver based on the layers received.
+		 * Function sde_plane_validate_multirect_v2 determines and
+		 * validates the multirect config mode and updates it in the
+		 * plane state (pstate).
+		 */
+		temp_val = pstate->multirect_mode;
+
 		if (temp_val == SDE_SSPP_MULTIRECT_NONE)
 			break;
 
 		if (temp_val >= ARRAY_SIZE(hfi_plane_multirect_mode_map)) {
-			HFI_ERROR_PLANE(phfi, "unsupported blendop %d\n", temp_val);
+			HFI_ERROR_PLANE(phfi, "unsupported multirect mode %d\n", temp_val);
 			return -EINVAL;
 		}
 
@@ -317,7 +327,7 @@ static int _hfi_plane_set_props_base(struct sde_plane *plane, u32 disp_id,
 	for (i = 0; i < ARRAY_SIZE(hfi_plane_base_props_map); i++) {
 		drm_prop = hfi_plane_base_props_map[i].drm_prop;
 
-		 _sde_hfi_add_base_prop_helper(hfi_plane_base_props_map[i].hfi_prop,
+		_sde_hfi_add_base_prop_helper(hfi_plane_base_props_map[i].hfi_prop,
 				 plane, pstate, phfi->base_props);
 	}
 
@@ -641,6 +651,7 @@ int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)
 	return 0;
 
 free_kv:
+	kfree(plane->kv_props);
 	kfree(plane->base_props);
 free_plane:
 	mutex_destroy(&plane->hfi_lock);
