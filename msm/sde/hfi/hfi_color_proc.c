@@ -12,7 +12,7 @@
 
 static struct hfi_display_pa_dither hfi_pa_dither_cached[DPU_MAX][DSPP_MAX] = {};
 
-void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data)
+void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data, enum msm_disp_op disp_op)
 {
 	struct hfi_csc hfi_cfg;
 	int ret = 0;
@@ -25,22 +25,23 @@ void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data)
 
 	prop_id = HFI_PACK_VERSION(1, 0, prop_id);
 	hfi_cfg.flags = HFI_BUFF_FEATURE_ENABLE;
-	for (int  i = 0; i < HFI_CSC_MATRIX_COEFF_SIZE; i++)
+	for (int i = 0; i < HFI_CSC_MATRIX_COEFF_SIZE; i++)
 		hfi_cfg.ctm_coeff[i] = data->csc_mv[i];
 
-	for (int  i = 0; i < HFI_CSC_BIAS_SIZE; i++) {
+	for (int i = 0; i < HFI_CSC_BIAS_SIZE; i++) {
 		hfi_cfg.pre_bias[i] = data->csc_pre_bv[i];
 		hfi_cfg.post_bias[i] = data->csc_post_bv[i];
 	}
 
-	for (int  i = 0; i < HFI_CSC_CLAMP_SIZE; i++) {
+	for (int i = 0; i < HFI_CSC_CLAMP_SIZE; i++) {
 		hfi_cfg.pre_clamp[i] = data->csc_pre_lv[i];
-		hfi_cfg.post_bias[i] = data->csc_post_lv[i];
+		hfi_cfg.post_clamp[i] = data->csc_post_lv[i];
 	}
 
 	ret = hfi_util_u32_prop_helper_add_prop_by_obj(ctx->prop_helper,
 		prop_id, ctx->obj_id, HFI_VAL_U32_ARRAY, &hfi_cfg,
 		sizeof(struct hfi_csc));
+
 	if (ret)
 		SDE_ERROR("failed to add HFI prop: %d ret: %d\n", prop_id, ret);
 

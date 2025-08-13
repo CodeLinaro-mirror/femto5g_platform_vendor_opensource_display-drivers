@@ -14,6 +14,7 @@
 #include "sde_kms.h"
 #include "sde_hw_reg_dma_v1_color_proc.h"
 #include "sde_hw_vbif.h"
+#include "hfi_color_proc.h"
 
 #define SDE_FETCH_CONFIG_RESET_VALUE   0x00000087
 
@@ -1115,9 +1116,10 @@ void setup_layer_ops_v1(struct sde_hw_pipe *c,
 		c->ops.setup_ts_prefill[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_ts_prefill_v1;
 
 	if (test_bit(SDE_SSPP_CSC, &features) ||
-		test_bit(SDE_SSPP_CSC_10BIT, &features))
+		test_bit(SDE_SSPP_CSC_10BIT, &features)) {
 		c->ops.setup_csc[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_csc;
-
+		c->ops.setup_csc[MSM_DISP_OP_HFI] = hfi_sspp_setup_csc;
+	}
 	if (test_bit(SDE_SSPP_DGM_CSC, &features))
 		c->ops.setup_dgm_csc[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_dgm_csc;
 

@@ -1008,8 +1008,8 @@ u32 sde_hw_sspp_get_source_addr(struct sde_hw_pipe *ctx, bool is_virtual)
 	return SDE_REG_READ(&ctx->hw, offset);
 }
 
-void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx,
-		struct sde_csc_cfg *data, enum msm_disp_op disp_op)
+void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
+	enum msm_disp_op disp_op)
 {
 	u32 idx;
 	bool csc10 = false;
