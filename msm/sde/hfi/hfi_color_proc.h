@@ -12,8 +12,10 @@
  * hfi_sspp_setup_csc - setup color space conversion in HFI path
  * @ctx: Pointer to pipe context
  * @data: Pointer to config structure
+ * @disp_op: Display operation mode (HWIO, HFI)
  */
-void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data);
+void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
+	enum msm_disp_op disp_op);
 
 /**
  * hfi_setup_ucsc_igcv1 - set UCSC IGC cp block in HFI path

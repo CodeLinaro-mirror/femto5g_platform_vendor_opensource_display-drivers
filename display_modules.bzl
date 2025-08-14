@@ -81,18 +81,19 @@ module_entry(
         "CONFIG_MDSS_HFI": [
             "msm/hfi/hfi_utils.c",
             "msm/hfi/hfi_msm_drv.c",
+            "msm/hfi/hfi_dbg.c",
             "msm/sde/hfi/hfi_catalog.c",
             "msm/sde/hfi/hfi_connector.c",
             "msm/sde/hfi/hfi_crtc.c",
             "msm/sde/hfi/hfi_encoder.c",
             "msm/sde/hfi/hfi_kms.c",
-            "msm/sde/hfi/hfi_msm_dbg.c",
             "msm/sde/hfi/hfi_plane.c",
             "msm/sde/hfi/hfi_color_proc.c",
             "msm/dsi/hfi/dsi_display_hfi.c",
             "msm/dsi/hfi/dsi_hfi.c",
-        ],
-        "CONFIG_DRM_MSM_SDE": [
+            "msm/sde/hfi/hfi_wb.c",
+         ],
+         "CONFIG_DRM_MSM_SDE" : [
             "msm/sde/sde_crtc.c",
             "msm/sde/sde_encoder.c",
             "msm/sde/sde_encoder_dce.c",

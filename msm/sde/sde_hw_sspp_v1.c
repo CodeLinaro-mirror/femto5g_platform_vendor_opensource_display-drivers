@@ -14,6 +14,7 @@
 #include "sde_kms.h"
 #include "sde_hw_reg_dma_v1_color_proc.h"
 #include "sde_hw_vbif.h"
+#include "hfi_color_proc.h"
 
 #define SDE_FETCH_CONFIG_RESET_VALUE   0x00000087
 
@@ -307,7 +308,8 @@ static void sde_hw_sspp_setup_ubwc_v1(struct sde_hw_pipe *ctx, struct sde_hw_blk
 static void sde_hw_sspp_setup_format_v1(struct sde_hw_pipe *ctx,
 		const struct sde_format *fmt,
 		bool const_alpha_en, u32 flags,
-		enum sde_sspp_multirect_index rect_mode)
+		enum sde_sspp_multirect_index rect_mode,
+		enum sde_color_component_mask color_mask)
 {
 	struct sde_hw_blk_reg_map *c;
 	u32 chroma_samp, unpack, src_format;
@@ -1114,9 +1116,10 @@ void setup_layer_ops_v1(struct sde_hw_pipe *c,
 		c->ops.setup_ts_prefill[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_ts_prefill_v1;
 
 	if (test_bit(SDE_SSPP_CSC, &features) ||
-		test_bit(SDE_SSPP_CSC_10BIT, &features))
+		test_bit(SDE_SSPP_CSC_10BIT, &features)) {
 		c->ops.setup_csc[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_csc;
-
+		c->ops.setup_csc[MSM_DISP_OP_HFI] = hfi_sspp_setup_csc;
+	}
 	if (test_bit(SDE_SSPP_DGM_CSC, &features))
 		c->ops.setup_dgm_csc[MSM_DISP_OP_HWIO] = sde_hw_sspp_setup_dgm_csc;
 

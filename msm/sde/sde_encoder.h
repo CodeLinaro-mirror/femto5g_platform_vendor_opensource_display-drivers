@@ -28,6 +28,7 @@
 #include "msm_drv.h"
 #include "sde_hw_mdss.h"
 #include "sde_kms.h"
+#include "sde_vm.h"
 #include "sde_connector.h"
 #include "sde_power_handle.h"
 #include "sde_cesta.h"
@@ -125,11 +126,13 @@ struct sde_encoder_hw_resources {
  *                      the bounds of the physical display at the bit index
  * @recovery_events_enabled: indicates status of client for recoovery events
  * @frame_trigger_mode: indicates frame trigger mode
+ * @update_dce_pp_mux: indicates if the pp mux needs to be updated for dce
  */
 struct sde_encoder_kickoff_params {
 	unsigned long affected_displays;
 	bool recovery_events_enabled;
 	enum frame_trigger_mode_type frame_trigger_mode;
+	bool update_dce_pp_mux;
 };
 
 struct sde_encoder_ops {
@@ -341,8 +344,9 @@ struct sde_encoder_hal_funcs {
 	 * @enc: Pointer to sde encoder structure
 	 * @mode: Pointer to drm mode structure
 	 * @mdj_ode: Pointer to adjusted drm mode structure
+	 * Returns: Zero on success
 	 */
-	void (*mode_set[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+	int (*mode_set[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
 			struct drm_display_mode *mode, struct drm_display_mode *adj_mode);
 
 	/**
@@ -892,11 +896,12 @@ int sde_encoder_display_failure_notification(struct drm_encoder *enc,
 bool sde_encoder_recovery_events_enabled(struct drm_encoder *encoder);
 
 /**
- * sde_encoder_enable_recovery_event - handler to enable the sw recovery
+ * sde_encoder_setup_hw_recovery_event - handler to enable the sw recovery
  * for this connector
  * @drm_enc:    Pointer to drm encoder structure
+ * @enable:     enable/disable hw recovery event
  */
-void sde_encoder_enable_recovery_event(struct drm_encoder *encoder);
+void sde_encoder_setup_hw_recovery_event(struct drm_encoder *encoder, bool enable);
 /**
  * sde_encoder_in_clone_mode - checks if underlying phys encoder is in clone
  *	mode or independent display mode. ref@ WB in Concurrent writeback mode.
@@ -1004,6 +1009,13 @@ int sde_encoder_in_cont_splash(struct drm_encoder *enc);
  * @Return:     true if smooth dimming in progress
  */
 bool sde_encoder_smooth_dimming_in_progress(struct drm_encoder *enc);
+
+/**
+ * sde_encoder_is_psr_supported - checks if display supports PSR feature
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true if display supports PSR feature
+ */
+bool sde_encoder_is_psr_supported(struct drm_encoder *enc);
 
 /**
  * sde_encoder_helper_hw_reset - hw reset helper function
@@ -1162,6 +1174,19 @@ static inline bool sde_encoder_is_loopback_display(struct drm_encoder *drm_enc)
 	return sde_enc &&
 		(sde_enc->disp_info.capabilities & MSM_DISPLAY_LOOPBACK_MODE);
 }
+
+static inline bool sde_encoder_is_wb_display(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc && (sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL);
+}
+
 /*
  * sde_encoder_is_line_insertion_supported - get line insertion
  * feature bit value from panel
@@ -1314,6 +1339,20 @@ void sde_encoder_post_commit_bl_sr_work(struct drm_encoder *drm_enc);
  */
 void sde_encoder_rc_restart_delayed(struct sde_encoder_virt *sde_enc,
 	enum sde_enc_rc_events sw_event);
+
+/**
+ * sde_encoder_vm_primary_vhm_prepare_helper - prepare interface for secure vm transition
+ * @sde_enc: pointer to sde encoder
+ */
+bool sde_encoder_vm_primary_vhm_prepare_helper(struct sde_encoder_virt *sde_enc);
+
+/**
+ * sde_encoder_vm_primary_vhm_prepare - prepare vhm panel for secure vm transition
+ * @drm_enc: pointer to drm encoder
+ * @vm_req: current vm_req state
+ */
+void sde_encoder_vm_primary_vhm_prepare(struct drm_encoder *drm_enc,
+	enum sde_crtc_vm_req vm_req);
 
 /**
  * sde_encoder_get_cesta_client - return the SDE CESTA client

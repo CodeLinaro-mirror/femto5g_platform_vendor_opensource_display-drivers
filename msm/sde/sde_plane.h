@@ -243,6 +243,7 @@ enum sde_plane_sclcheck_state {
  *			SDE_SSPP_RIGHT - right pipe in source split pair
  * @layout_offset:	horizontal layout offset for global coordinate
  * @layout:             layout for topology requiring more than 1 lm pair.
+ * @color_mask: color components to be extracted
  * @scaler3_cfg: configuration data for scaler3
  * @pixel_ext: configuration data for pixel extensions
  * @scaler_check_state: indicates status of user provided pixel extension data
@@ -280,6 +281,7 @@ struct sde_plane_state {
 	uint32_t pipe_order_flags;
 	int layout_offset;
 	enum sde_layout layout;
+	enum sde_color_component_mask color_mask;
 
 	/* scaler configuration */
 	struct sde_hw_scaler3_cfg scaler3_cfg;
@@ -344,6 +346,13 @@ void sde_plane_destroy_fb(struct drm_plane_state *state);
  * Returns: sspp identifier of the given plane
  */
 enum sde_sspp sde_plane_pipe(struct drm_plane *plane);
+
+/**
+ * _sde_plane_setup_csc - setup color space conversion matrix for plane
+ * @psde: Pointer to SDE plane object
+ * @pstate: Pointer to SDE plane state containing CSC configuration
+ */
+void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate);
 
 /**
  * is_sde_plane_virtual - check for virtual plane

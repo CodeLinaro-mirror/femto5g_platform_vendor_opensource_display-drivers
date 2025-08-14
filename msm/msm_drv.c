@@ -942,6 +942,13 @@ static int msm_drm_device_init(struct platform_device *pdev,
 			pr_err("sde power resource init failed\n");
 			goto power_init_fail;
 		}
+	} else {
+		/* mmcx voting from HLOS is required for SSR sequence */
+		ret = sde_power_supply_init(pdev, &priv->phandle);
+		if (ret) {
+			pr_err("sde power resource init failed\n");
+			goto power_init_fail;
+		}
 	}
 
 	ret = sde_dbg_init(&pdev->dev);

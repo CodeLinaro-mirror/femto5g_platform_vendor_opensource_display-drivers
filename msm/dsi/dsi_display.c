@@ -3549,22 +3549,27 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host, const struct mipi_d
 {
 	int rc = 0;
 	struct dsi_cmd_desc cmd;
+	struct dsi_display *display;
 
 	if (!msg) {
 		DSI_ERR("Invalid params\n");
 		return 0;
 	}
 
+	display = to_dsi_display(host);
+
 	memcpy(&cmd.msg, msg, sizeof(*msg));
 	cmd.ctrl = 0;
 	cmd.post_wait_ms = 0;
 	cmd.ctrl_flags = 0;
 
-	rc = dsi_host_transfer_sub(host, &cmd, false);
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+		rc = dsi_hfi_host_transfer_sub(host, &cmd);
+	else
+		rc = dsi_host_transfer_sub(host, &cmd, false);
 
 	return rc;
 }
-
 
 static struct mipi_dsi_host_ops dsi_host_ops = {
 	.attach = dsi_host_attach,
@@ -5614,9 +5619,23 @@ int dsi_display_cont_splash_res_disable(void *dsi_display)
 	/* Remove the panel vote that was added during dsi display probe */
 	if (!(display->panel->ctl_op_sync && !strcmp(display->panel->type, "secondary"))) {
 		rc = dsi_pwr_enable_regulator(&display->panel->power_info, false);
-		if (rc)
+		if (rc) {
 			DSI_ERR("[%s] failed to disable vregs, rc=%d\n",
 				display->panel->name, rc);
+			return rc;
+		}
+	}
+
+	/* Remove each panels post_power vote that was added during dsi display probe */
+	if (display->panel && display->panel->need_post_on_supply &&
+		display->panel->post_power_enable_status) {
+		rc = dsi_pwr_enable_regulator(&display->panel->post_power_info, false);
+		if (rc) {
+			DSI_ERR("[%s] failed to disable post vregs, rc=%d\n",
+					display->panel->name, rc);
+			return rc;
+		}
+		display->panel->post_power_enable_status = false;
 	}
 	return rc;
 }
@@ -6344,6 +6363,23 @@ static int dsi_display_init(struct dsi_display *display)
 					display->panel->name, rc);
 			return rc;
 		}
+	}
+
+	/*
+	 * Vote on each panels post_power to make sure regulators are on for cont-splash
+	 * enabled usecase. And avoid kernel driver disable panel regulator after
+	 * dsi probe is complete.
+	 */
+
+	if (display->panel && display->panel->need_post_on_supply &&
+		!display->panel->post_power_enable_status) {
+		rc = dsi_pwr_enable_regulator(&display->panel->post_power_info, true);
+		if (rc) {
+			DSI_ERR("[%s] failed to enable post vregs, rc=%d\n",
+					display->panel->name, rc);
+			return rc;
+		}
+		display->panel->post_power_enable_status = true;
 	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);

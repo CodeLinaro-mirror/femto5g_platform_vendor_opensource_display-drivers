@@ -399,11 +399,14 @@ struct sde_hw_sspp_ops {
 	 * @blend_enabled: flag indicating blend enabled or disabled on plane
 	 * @flags: Extra flags for format config
 	 * @index: rectangle index in multirect
+	 * @color_mask: color components to be extracted
 	 */
 	void (*setup_format[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			const struct sde_format *fmt,
 			bool blend_enabled, u32 flags,
-			enum sde_sspp_multirect_index index);
+			enum sde_sspp_multirect_index index,
+			enum sde_color_component_mask color_mask);
+
 
 	/**
 	 * setup_rects - setup pipe ROI rectangles
@@ -466,6 +469,7 @@ struct sde_hw_sspp_ops {
 	 * setup_csc - setup color space conversion
 	 * @ctx: Pointer to pipe context
 	 * @data: Pointer to config structure
+	 * @disp_op: Display operation mode (HWIO, HFI)
 	 */
 	void (*setup_csc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
 			enum msm_disp_op disp_op);
@@ -976,9 +980,10 @@ void sde_hw_sspp_setup_scaler3(struct sde_hw_pipe *ctx,
  * sde_hw_sspp_setup_csc - Configures the color space conversion (CSC)
  * @ctx: Pointer to the SSPP HW pipe context
  * @data: Pointer to the CSC configuration data
+ * @disp_op: Display operation mode (HWIO, HFI)
  */
-void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx,
-		struct sde_csc_cfg *data, enum msm_disp_op disp_op);
+void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
+		enum msm_disp_op disp_op);
 /**
  * sde_hw_sspp_setup_sharpening - Configures the sharpening settings
  * Sets up the sharpening configuration for the specified SSPP HW pipe.
