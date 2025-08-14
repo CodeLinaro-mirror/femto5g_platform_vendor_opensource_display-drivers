@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -60,6 +60,7 @@
 #include "msm_mmu.h"
 #include "sde_wb.h"
 #include "sde_dbg.h"
+#include "hfi_msm_drv.h"
 
 /*
  * MSM driver version:
@@ -99,6 +100,7 @@
 
 static DEFINE_MUTEX(msm_release_lock);
 
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 static void msm_fb_output_poll_changed(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = NULL;
@@ -113,6 +115,7 @@ static void msm_fb_output_poll_changed(struct drm_device *dev)
 	if (priv->fbdev)
 		drm_fb_helper_hotplug_event(priv->fbdev);
 }
+#endif
 
 static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
 {
@@ -163,7 +166,9 @@ int msm_atomic_check(struct drm_device *dev,
 
 static const struct drm_mode_config_funcs mode_config_funcs = {
 	.fb_create = msm_framebuffer_create,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.output_poll_changed = msm_fb_output_poll_changed,
+#endif
 	.atomic_check = msm_atomic_check,
 	.atomic_commit = msm_atomic_commit,
 	.atomic_state_alloc = msm_atomic_state_alloc,
@@ -565,6 +570,7 @@ static int msm_drm_uninit(struct device *dev)
 #define KMS_MDP4 4
 #define KMS_MDP5 5
 #define KMS_SDE  3
+#define KMS_SDE_HFI 6
 
 static int get_mdp_ver(struct platform_device *pdev)
 {
@@ -577,6 +583,10 @@ static int get_mdp_ver(struct platform_device *pdev)
 		.compatible = "qcom,sde-kms",
 		.data	= (void	*)KMS_SDE,
 	},
+	{
+		.compatible = "qcom,sde-kms-hfi",
+		.data	= (void	*)KMS_SDE_HFI,
+	},
 	{},
 	};
 	struct device *dev = &pdev->dev;
@@ -587,6 +597,64 @@ static int get_mdp_ver(struct platform_device *pdev)
 		return (int)(unsigned long)match->data;
 #endif /* CONFIG_OF */
 	return KMS_MDP4;
+}
+
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+/**
+ * msm_check_device_iommu_mapped - Check if a device is mapped to an IOMMU
+ * @dev: Pointer to the device to check
+ * @data: Pointer to a boolean flag that is set to true if an IOMMU is mapped
+ *
+ * This function is used as a callback for iterating over devices on a bus.
+ * It checks if the given device is mapped to an IOMMU using the
+ * device_iommu_mapped() function.
+ * If an IOMMU is mapped, it sets the boolean flag pointed to by
+ * @data to true and stops the iteration.
+ * Otherwise, it continues the iteration.
+ *
+ * Return: 1 if an IOMMU is mapped for the device (stops iteration),
+ * 0 otherwise (continues iteration).
+ */
+int msm_check_device_iommu_mapped(struct device *dev, void *data)
+{
+	if (!dev || !data) {
+		pr_err("msm check device iommu_mapped invalid input [%s] is null\n",
+				!dev ? "'dev'" : "'data'");
+		return -EINVAL;
+	}
+
+	if (device_iommu_mapped(dev)) {
+		*(bool *)data = true;
+		return 1; /* Stop iteration as we found a mapped device */
+	}
+	return 0; /* Continue iteration */
+}
+
+bool msm_iommu_present_on_bus(const struct bus_type *bus)
+{
+	bool iommu_present = false;
+
+	bus_for_each_dev(bus, NULL, &iommu_present, msm_check_device_iommu_mapped);
+	return iommu_present;
+}
+#endif /* KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE */
+
+bool mdss_iommu_present(struct drm_device *dev)
+{
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+	struct msm_drm_private *priv = dev->dev_private;
+
+	if (!priv)
+		return false;
+
+	if (priv->iommu_status == MSM_IOMMU_UNKNOWN)
+		priv->iommu_status = msm_iommu_present_on_bus(&platform_bus_type) ?
+			MSM_IOMMU_PRESENT : MSM_IOMMU_NOT_PRESENT;
+
+	return (priv->iommu_status == MSM_IOMMU_PRESENT);
+#else
+	return(iommu_present(&platform_bus_type));
+#endif /* KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE */
 }
 
 static int msm_init_vram(struct drm_device *dev)
@@ -627,7 +695,7 @@ static int msm_init_vram(struct drm_device *dev)
 		 * Grab the entire CMA chunk carved out in early startup in
 		 * mach-msm:
 		 */
-	} else if (!iommu_present(&platform_bus_type)) {
+	} else if (!mdss_iommu_present(dev)) {
 		u32 vram_size;
 
 		ret = of_property_read_u32(dev->dev->of_node,
@@ -784,7 +852,7 @@ static struct msm_kms *_msm_drm_component_init_helper(
 		struct drm_device *ddev, struct device *dev,
 		struct platform_device *pdev)
 {
-	int ret;
+	int ret = 0;
 	struct msm_kms *kms;
 
 	switch (get_mdp_ver(pdev)) {
@@ -795,6 +863,7 @@ static struct msm_kms *_msm_drm_component_init_helper(
 		kms = mdp5_kms_init(ddev);
 		break;
 	case KMS_SDE:
+	case KMS_SDE_HFI:
 		kms = sde_kms_init(ddev);
 		break;
 	default:
@@ -858,10 +927,28 @@ static int msm_drm_device_init(struct platform_device *pdev,
 	ddev->dev_private = priv;
 	priv->dev = ddev;
 
-	ret = sde_power_resource_init(pdev, &priv->phandle);
-	if (ret) {
-		pr_err("sde power resource init failed\n");
-		goto power_init_fail;
+	ret = hfi_msm_drv_init(ddev);
+	if (ret)
+		goto priv_alloc_fail;
+
+	if (get_mdp_ver(pdev) == KMS_SDE_HFI)
+		priv->disp_op = MSM_DISP_OP_HFI;
+	else
+		priv->disp_op = MSM_DISP_OP_HWIO;
+
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
+		ret = sde_power_resource_init(pdev, &priv->phandle);
+		if (ret) {
+			pr_err("sde power resource init failed\n");
+			goto power_init_fail;
+		}
+	} else {
+		/* mmcx voting from HLOS is required for SSR sequence */
+		ret = sde_power_supply_init(pdev, &priv->phandle);
+		if (ret) {
+			pr_err("sde power resource init failed\n");
+			goto power_init_fail;
+		}
 	}
 
 	ret = sde_dbg_init(&pdev->dev);
@@ -872,25 +959,25 @@ static int msm_drm_device_init(struct platform_device *pdev,
 
 	pm_runtime_enable(dev);
 
-	ret = pm_runtime_resume_and_get(dev);
-	if (ret < 0) {
-		DISP_DEV_ERR(dev, "failed to enable power resource %d\n", ret);
-		goto pm_runtime_error;
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
+		ret = pm_runtime_resume_and_get(dev);
+		if (ret < 0) {
+			DISP_DEV_ERR(dev, "failed to enable power resource %d\n", ret);
+			goto pm_runtime_error;
+		}
+
+		for (i = 0; i < SDE_POWER_HANDLE_DBUS_ID_MAX; i++)
+			sde_power_data_bus_set_quota(&priv->phandle, i,
+				SDE_POWER_HANDLE_CONT_SPLASH_BUS_AB_QUOTA,
+				SDE_POWER_HANDLE_CONT_SPLASH_BUS_IB_QUOTA);
 	}
 
-	for (i = 0; i < SDE_POWER_HANDLE_DBUS_ID_MAX; i++)
-		sde_power_data_bus_set_quota(&priv->phandle, i,
-			SDE_POWER_HANDLE_CONT_SPLASH_BUS_AB_QUOTA,
-			SDE_POWER_HANDLE_CONT_SPLASH_BUS_IB_QUOTA);
-
-	if (of_property_read_bool(dev->of_node, "wake_up_capable")) {
-		device_set_wakeup_capable(dev, true);
-		ret = device_set_wakeup_enable(dev, true);
-		if (ret < 0) {
-			DISP_DEV_ERR(dev, "failed to enable wakeup on device  %d\n", ret);
-			device_set_wakeup_capable(dev, false);
-			ret = 0;
-		}
+	device_set_wakeup_capable(dev, true);
+	ret = device_set_wakeup_enable(dev, true);
+	if (ret < 0) {
+		DISP_DEV_ERR(dev, "failed to enable wakeup on device  %d\n", ret);
+		device_set_wakeup_capable(dev, false);
+		ret = 0;
 	}
 
 	return ret;
@@ -901,6 +988,7 @@ dbg_init_fail:
 	sde_power_resource_deinit(pdev, &priv->phandle);
 power_init_fail:
 priv_alloc_fail:
+	kfree(priv->hfi_priv);
 	drm_dev_put(ddev);
 	return ret;
 }
@@ -980,12 +1068,15 @@ static int msm_drm_component_init(struct device *dev)
 			goto fail;
 		}
 
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 		ret = msm_irq_install(ddev, platform_get_irq(pdev, 0));
 #else
 		ret = drm_irq_install(ddev, platform_get_irq(pdev, 0));
 #endif
 		msm_sde_qtimer_install(dev);
+	}
+
 		pm_runtime_put_sync(dev);
 		if (ret < 0) {
 			DISP_DEV_ERR(dev, "failed to install IRQ handler\n");
@@ -1013,6 +1104,7 @@ static int msm_drm_component_init(struct device *dev)
 		priv->fbdev = msm_fbdev_init(ddev);
 #endif /* CONFIG_DRM_FBDEV_EMULATION */
 
+#if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
 	/* create drm client only when fbdev is not supported */
 	if (!priv->fbdev) {
 		ret = drm_client_init(ddev, &kms->client, "kms_client", NULL);
@@ -1024,7 +1116,7 @@ static int msm_drm_component_init(struct device *dev)
 
 		drm_client_register(&kms->client);
 	}
-
+#endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	ret = sde_dbg_debugfs_register(dev);
 	if (ret) {
 		DISP_DEV_ERR(dev, "failed to reg sde dbg debugfs: %d\n", ret);
@@ -1131,33 +1223,6 @@ static void msm_preclose(struct drm_device *dev, struct drm_file *file)
 		kms->funcs->preclose(kms, file);
 }
 
-static void msm_postclose(struct drm_device *dev, struct drm_file *file)
-{
-	struct msm_drm_private *priv = dev->dev_private;
-	struct msm_file_private *ctx = file->driver_priv;
-	struct msm_kms *kms = priv->kms;
-
-	if (!kms)
-		return;
-
-	if (kms->funcs && kms->funcs->postclose)
-		kms->funcs->postclose(kms, file);
-
-	mutex_lock(&dev->struct_mutex);
-	if (ctx == priv->lastctx)
-		priv->lastctx = NULL;
-	mutex_unlock(&dev->struct_mutex);
-
-	mutex_lock(&ctx->power_lock);
-	if (ctx->enable_refcnt) {
-		SDE_EVT32(ctx->enable_refcnt);
-		pm_runtime_put_sync(dev->dev);
-	}
-	mutex_unlock(&ctx->power_lock);
-
-	context_close(ctx);
-}
-
 static void msm_lastclose(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
@@ -1193,8 +1258,13 @@ static void msm_lastclose(struct drm_device *dev)
 		struct drm_vblank_crtc *vblank = &dev->vblank[i];
 		struct timer_list *disable_timer = &vblank->disable_timer;
 
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 		if (del_timer_sync(disable_timer))
 			disable_timer->function(disable_timer);
+#else
+		if (timer_delete_sync(disable_timer))
+			disable_timer->function(disable_timer);
+#endif
 	}
 
 	/* wait for pending vblank requests to be executed by worker thread */
@@ -1213,10 +1283,12 @@ static void msm_lastclose(struct drm_device *dev)
 		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
 		if (rc)
 			DRM_ERROR("restore FBDEV mode failed: %d\n", rc);
+#if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
 	} else if (kms && kms->client.dev) {
 		rc = drm_client_modeset_commit_locked(&kms->client);
 		if (rc)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
+#endif /* (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE) */
 	}
 
 	/* wait again, before kms driver does it's lastclose commit */
@@ -1228,6 +1300,39 @@ static void msm_lastclose(struct drm_device *dev)
 
 	if (kms->funcs && kms->funcs->lastclose)
 		kms->funcs->lastclose(kms);
+}
+
+static void msm_postclose(struct drm_device *dev, struct drm_file *file)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_file_private *ctx = file->driver_priv;
+	struct msm_kms *kms = priv->kms;
+
+	if (!kms)
+		return;
+
+	if (kms->funcs && kms->funcs->postclose)
+		kms->funcs->postclose(kms, file);
+
+	mutex_lock(&dev->struct_mutex);
+	if (ctx == priv->lastctx)
+		priv->lastctx = NULL;
+	mutex_unlock(&dev->struct_mutex);
+
+	mutex_lock(&ctx->power_lock);
+	if (ctx->enable_refcnt) {
+		SDE_EVT32(ctx->enable_refcnt);
+		pm_runtime_put_sync(dev->dev);
+	}
+	mutex_unlock(&ctx->power_lock);
+
+	context_close(ctx);
+
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	if (atomic_read(&dev->open_count) == 1)
+		msm_lastclose(dev);
+#endif
+
 }
 
 /*
@@ -1899,11 +2004,16 @@ static const struct file_operations fops = {
 	.owner              = THIS_MODULE,
 	.open               = drm_open,
 	.release            = msm_release,
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+	.fop_flags          = FOP_UNSIGNED_OFFSET,
+#endif
 	.unlocked_ioctl     = drm_ioctl,
 	.compat_ioctl       = drm_compat_ioctl,
 	.poll               = drm_poll,
 	.read               = drm_read,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.llseek             = no_llseek,
+#endif
 	.mmap               = msm_gem_mmap,
 };
 
@@ -1914,7 +2024,9 @@ static struct drm_driver msm_driver = {
 				DRIVER_MODESET,
 	.open               = msm_open,
 	.postclose          = msm_postclose,
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	.lastclose          = msm_lastclose,
+#endif
 	.release	    = msm_drm_release,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	.irq_handler        = msm_irq,
@@ -1944,7 +2056,9 @@ static struct drm_driver msm_driver = {
 	.fops               = &fops,
 	.name               = "msm_drm",
 	.desc               = "MSM Snapdragon DRM",
+#if (KERNEL_VERSION(6, 13, 0) > LINUX_VERSION_CODE)
 	.date               = "20130625",
+#endif
 	.major              = MSM_VERSION_MAJOR,
 	.minor              = MSM_VERSION_MINOR,
 	.patchlevel         = MSM_VERSION_PATCHLEVEL,
@@ -2012,7 +2126,7 @@ static int msm_runtime_suspend(struct device *dev)
 
 	if (priv->mdss)
 		msm_mdss_disable(priv->mdss);
-	else
+	else if (IS_DISP_OP_HWIO(priv->disp_op))
 		sde_power_resource_enable(&priv->phandle, false, DPUID(ddev));
 
 	return 0;
@@ -2022,13 +2136,13 @@ static int msm_runtime_resume(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
 	struct msm_drm_private *priv = ddev->dev_private;
-	int ret;
+	int ret = 0;
 
 	DBG("");
 
 	if (priv->mdss)
 		ret = msm_mdss_enable(priv->mdss);
-	else
+	else if (IS_DISP_OP_HWIO(priv->disp_op))
 		ret = sde_power_resource_enable(&priv->phandle, true, DPUID(ddev));
 
 	return ret;
@@ -2117,19 +2231,27 @@ static int add_components_mdp(struct device *mdp_dev,
 	return 0;
 }
 
+#if (KERNEL_VERSION(6, 14, 0) > LINUX_VERSION_CODE)
 static int compare_name_mdp(struct device *dev, void *data)
 {
 	return (strnstr(dev_name(dev), "mdp", strlen("mdp")) != NULL);
 }
+#else
+static int compare_name_mdp(struct device *dev, const void *data)
+{
+	return (strnstr(dev_name(dev), "mdp", strlen("mdp")) != NULL);
+}
+#endif
 
 static int add_display_components(struct device *dev,
 				  struct component_match **matchptr)
 {
 	struct device *mdp_dev = NULL;
 	struct device_node *node;
+	struct platform_device *pdev = to_platform_device(dev);
 	int ret;
 
-	if (of_device_is_compatible(dev->of_node, "qcom,sde-kms")) {
+	if (get_mdp_ver(pdev) == KMS_SDE || get_mdp_ver(pdev) == KMS_SDE_HFI) {
 		struct device_node *np = dev->of_node;
 		unsigned int i;
 
@@ -2249,7 +2371,7 @@ msm_gem_smmu_address_space_get(struct drm_device *dev,
 	const struct msm_kms_funcs *funcs;
 	struct msm_gem_address_space *aspace;
 
-	if (!iommu_present(&platform_bus_type))
+	if (!mdss_iommu_present(dev))
 		return ERR_PTR(-ENODEV);
 
 	if ((!dev) || (!dev->dev_private))
@@ -2343,9 +2465,6 @@ static int msm_drm_component_dependency_check(struct device *dev)
 	struct device_node *np = dev->of_node;
 	unsigned int i;
 
-	if (!of_device_is_compatible(dev->of_node, "qcom,sde-kms"))
-		return 0;
-
 	for (i = 0; ; i++) {
 		node = of_parse_phandle(np, "connectors", i);
 		if (!node)
@@ -2395,12 +2514,18 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	return component_master_add_with_match(&pdev->dev, &msm_drm_ops, match);
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void msm_pdev_remove(struct platform_device *pdev)
+#else
 static int msm_pdev_remove(struct platform_device *pdev)
+#endif
 {
 	component_master_del(&pdev->dev, &msm_drm_ops);
 	of_platform_depopulate(&pdev->dev);
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static void msm_pdev_shutdown(struct platform_device *pdev)
@@ -2429,6 +2554,7 @@ static const struct of_device_id dt_match[] = {
 	{ .compatible = "qcom,mdp4", .data = (void *)KMS_MDP4 },
 	{ .compatible = "qcom,mdss", .data = (void *)KMS_MDP5 },
 	{ .compatible = "qcom,sde-kms", .data = (void *)KMS_SDE },
+	{ .compatible = "qcom,sde-kms-hfi", .data = (void *)KMS_SDE_HFI },
 	{},
 };
 MODULE_DEVICE_TABLE(of, dt_match);
@@ -2460,9 +2586,9 @@ static int __init msm_drm_register(void)
 	dsi_display_register();
 	msm_hdcp_register();
 	dp_display_register();
+	hdmi_display_register();
 	msm_dsi_register();
 	msm_edp_register();
-	msm_hdmi_register();
 	sde_shd_register();
 	msm_lease_drm_register();
 	return 0;
@@ -2473,13 +2599,13 @@ static void __exit msm_drm_unregister(void)
 	DBG("fini");
 	msm_lease_drm_unregister();
 	sde_wb_unregister();
-	msm_hdmi_unregister();
 	msm_edp_unregister();
 	msm_dsi_unregister();
 	sde_rotator_smmu_driver_unregister();
 	sde_rotator_unregister();
 	msm_smmu_driver_cleanup();
 	msm_hdcp_unregister();
+	hdmi_display_unregister();
 	dp_display_unregister();
 	dsi_display_unregister();
 	sde_cesta_unregister();

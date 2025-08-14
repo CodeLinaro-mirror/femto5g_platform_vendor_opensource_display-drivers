@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -347,6 +347,7 @@ struct sde_drm_cac {
 #define SDE_DRM_QSEED4
 #define SDE_DRM_INLINE_PREDOWNSCALE
 #define SDE_DRM_QSEED6
+#define SDE_DRM_QSEED7
 
 /**
  * struct sde_drm_scaler_v2 - version 2 of struct sde_drm_scaler
@@ -391,6 +392,14 @@ struct sde_drm_cac {
  * @dir45_en:          45/-45 degree direction filtering enable
  * @cor_en:            corner enhancer enable
  * @cac_cfg:           CAC QSEED config
+ * @edge_bleed_sup_en: Enable edge bleed supression
+ * @adaptive_de_en:    Enable adaptive DE
+ * @polarity_en:       Enable polarity check
+ * @strength_slope:    Slope(m) in y=mx+c, DG calculation
+ * @strength_const:    Constant(c) in y=mx+c, DG calculation
+ * @strength_coeff_tl: Low threshold for Dynamic gain(DG)
+ * @strength_coeff_th: High threshold for Dynamic gain(DG)
+ * @halo_suppress_coeff: Halo Suppress Multiplier
  */
 struct sde_drm_scaler_v2 {
 	/*
@@ -465,6 +474,15 @@ struct sde_drm_scaler_v2 {
 	__u32 cor_en;
 
 	struct sde_drm_cac cac_cfg;
+	__u32 edge_bleed_sup_en;
+	__u32 adaptive_de_en;
+	__u32 polarity_en;
+
+	__u32 strength_slope;
+	__u32 strength_const;
+	__u32 strength_coeff_tl;
+	__u32 strength_coeff_th;
+	__u32 halo_suppress_coeff;
 };
 
 /* Number of dest scalers supported */
@@ -643,6 +661,12 @@ struct sde_drm_roi_v1 {
 #define SDE_RECOVERY_SUCCESS		0
 #define SDE_RECOVERY_CAPTURE		1
 #define SDE_RECOVERY_HARD_RESET		2
+
+/**
+ * sde SSR events for notifying client
+ */
+#define SDE_SSR_START                   0
+#define SDE_SSR_END                     1
 
 /**
  * Define UBWC statistics config
@@ -1041,6 +1065,8 @@ struct sde_drm_dnsc_blur_cfg {
 #define DRM_EVENT_FRAME_DONE 0X8000011
 #define DRM_EVENT_MDNIE_ART 0X80000012
 #define DRM_EVENT_COPR 0X80000013
+#define DRM_EVENT_VM_RECLAIM 0X80000014
+#define DRM_EVENT_SSR 0X80000015
 
 #ifndef DRM_MODE_FLAG_VID_MODE_PANEL
 #define DRM_MODE_FLAG_VID_MODE_PANEL        0x01

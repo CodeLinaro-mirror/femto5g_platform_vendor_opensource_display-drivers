@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -54,6 +54,7 @@ enum dsi_backlight_type {
 	DSI_BACKLIGHT_WLED,
 	DSI_BACKLIGHT_DCS,
 	DSI_BACKLIGHT_EXTERNAL,
+	DSI_BACKLIGHT_I2C,
 	DSI_BACKLIGHT_UNKNOWN,
 	DSI_BACKLIGHT_MAX,
 };
@@ -121,8 +122,10 @@ struct dsi_dyn_clk_caps {
 
 struct dsi_pinctrl_info {
 	struct pinctrl *pinctrl;
+	struct pinctrl_state *cur_state;
 	struct pinctrl_state *active;
 	struct pinctrl_state *active_with_esync;
+	struct pinctrl_state *active_with_esync_without_te;
 	struct pinctrl_state *suspend;
 	struct pinctrl_state *pwm_pin;
 };
@@ -178,6 +181,7 @@ struct dsi_panel_reset_config {
 
 	int reset_gpio;
 	int disp_en_gpio;
+	int oled_en_gpio;
 	int lcd_mode_sel_gpio;
 	u32 mode_sel_state;
 };
@@ -186,6 +190,7 @@ enum esd_check_status_mode {
 	ESD_MODE_REG_READ,
 	ESD_MODE_SW_BTA,
 	ESD_MODE_PANEL_TE,
+	ESD_MODE_PANEL_RW,
 	ESD_MODE_SW_SIM_SUCCESS,
 	ESD_MODE_SW_SIM_FAILURE,
 	ESD_MODE_MAX
@@ -230,6 +235,8 @@ struct dsi_panel {
 	struct device_node *panel_of_node;
 	struct mipi_dsi_device mipi_device;
 	bool panel_ack_disabled;
+	struct device_node *rgb_left_led_node;
+	struct device_node *rgb_right_led_node;
 
 	struct mutex panel_lock;
 	struct drm_panel drm_panel;
@@ -253,6 +260,7 @@ struct dsi_panel {
 	u32 num_display_modes;
 
 	struct dsi_regulator_info power_info;
+	struct dsi_regulator_info post_power_info;
 	struct dsi_backlight_config bl_config;
 	struct dsi_panel_reset_config reset_config;
 	struct dsi_pinctrl_info pinctrl;
@@ -288,12 +296,15 @@ struct dsi_panel {
 	u32 dsc_count;
 	u32 lm_count;
 
+	enum msm_disp_op disp_op;
+
 	bool ctl_op_sync;
 
 	int panel_test_gpio;
 	int power_mode;
 	bool powered;
 	enum dsi_panel_physical_type panel_type;
+	bool need_post_on_supply;
 
 	struct dsi_panel_ops panel_ops;
 };
@@ -454,4 +465,10 @@ int dsi_panel_send_cmd(struct dsi_panel *panel,
 
 int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 				struct dsi_parser_utils *utils);
+
+int dsi_panel_power_on(struct dsi_panel *panel);
+
+int dsi_panel_power_off(struct dsi_panel *panel);
+
+int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel);
 #endif /* _DSI_PANEL_H_ */

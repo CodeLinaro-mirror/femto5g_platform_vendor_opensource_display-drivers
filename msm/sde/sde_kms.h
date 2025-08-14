@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -23,6 +23,7 @@
 #include <linux/pm_domain.h>
 #include <linux/pm_qos.h>
 #include <drm/drm_framebuffer.h>
+#include <linux/types.h>
 
 #include "msm_drv.h"
 #include "msm_kms.h"
@@ -81,7 +82,7 @@
 			pr_debug(fmt, ##__VA_ARGS__);                      \
 	} while (0)
 
-#define SDE_ERROR(fmt, ...) pr_err("[sde error]" fmt, ##__VA_ARGS__)
+#define SDE_ERROR(fmt, ...) pr_err("%s[sde error]" fmt, __func__, ##__VA_ARGS__)
 
 #define POPULATE_RECT(rect, a, b, c, d, Q16_flag) \
 	do {						\
@@ -118,6 +119,9 @@
 /* max active crtc when secure client is active */
 #define MAX_ALLOWED_CRTC_CNT_DURING_SECURE	1
 
+/* max active crtc when HFI client is active */
+#define MAX_ALLOWED_CRTC_CNT_DURING_HFI	1
+
 /* max virtual encoders per secure crtc */
 #define MAX_ALLOWED_ENCODER_CNT_PER_SECURE_CRTC	1
 
@@ -129,6 +133,9 @@
 
 /* ESD status check interval in miliseconds */
 #define STATUS_CHECK_INTERVAL_MS 5000
+
+#define MISR_BUFF_SIZE          256
+#define MAX_MISR_MODULES        4
 
 /**
  * enum sde_kms_smmu_state:	smmu state
@@ -246,6 +253,178 @@ struct sde_kms_frame_event_cb_data {
 	struct drm_connector *connector;
 };
 
+/*
+ * struct sde_misr_values -	Cached MISR values
+ * @count:			number of modules
+ * @misr_values:		MISR values obtained
+ */
+struct sde_misr_values {
+	u32 count;
+	u32 misr_values[MAX_MISR_MODULES];
+};
+
+/*
+ * struct misr_read_data_ret -	MISR read information
+ * @count:			number of modules
+ * @misr_values:		MISR values obtained
+ */
+struct misr_read_data_ret {
+	u32 module_type;
+	u32 num_misr;
+	u32 *misr_value;
+};
+
+/**
+ * struct sde_kms_hal_funcs - interface api for sde kms hal
+ */
+struct sde_kms_hal_funcs {
+	/**
+	 * post_init - perform additional initialization steps
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success
+	 */
+	int (*post_init[MSM_DISP_OP_MAX])(struct sde_kms *kms);
+
+	/**
+	 * destroy - Clean up kms resources
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*destroy[MSM_DISP_OP_MAX])(struct sde_kms *kms);
+
+	/**
+	 * debugfs_init - perform debugfs node initialization
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success
+	 */
+	int (*debugfs_init[MSM_DISP_OP_MAX])(struct sde_kms *kms);
+
+	/**
+	 * debugfs_destroy - handle destroy operations for debugfs
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success
+	 */
+	void (*debugfs_destroy[MSM_DISP_OP_MAX])(struct sde_kms *kms);
+
+	/**
+	 * irq_preinstall - perform pre-setup for kms IRQ register
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*irq_preinstall[MSM_DISP_OP_MAX])(struct sde_kms *kms);
+
+	/**
+	 * irq_postinstall - perform post setup for kms IRQ register
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	int (*irq_postinstall[MSM_DISP_OP_MAX])(struct sde_kms *kms);
+
+	/**
+	 * irq_uninstall - perform kms IRQ unregister
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*irq_uninstall[MSM_DISP_OP_MAX])(struct sde_kms *kms);
+
+	/**
+	 * irq_uninstall - handle kms IRQ
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	irqreturn_t (*irq[MSM_DISP_OP_MAX])(struct sde_kms *kms);
+
+	/**
+	 * hw_init - sets up the hw state
+	 * @kms: Pointer to sde kms structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	int (*hw_init[MSM_DISP_OP_MAX])(struct sde_kms *kms);
+
+	/**
+	 * atomic_check - atomic check handling for kms
+	 * @kms: Pointer to sde kms structure
+	 * @state: Pointer to drm atomic state
+	 */
+	int (*atomic_check[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_atomic_state *state);
+
+	/**
+	 * prepare_commit - start of atomic commit sequence
+	 * @kms: Pointer to sde kms structure
+	 * @state: Pointer to drm atomic state
+	 */
+	int (*prepare_commit[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_atomic_state *state);
+
+	/**
+	 * complete_commit - callback signalling completion of current commit
+	 * @kms: Pointer to sde kms structure
+	 * @state: Pointer to drm atomic state
+	 */
+	int (*complete_commit[MSM_DISP_OP_MAX])(struct sde_kms *kms,
+			struct drm_atomic_state *state);
+
+	/**
+	 * commit - process the commit manager routines
+	 * @kms: Pointer to sde kms structure
+	 * @state: Pointer to drm atomic state
+	 */
+	int (*commit[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_atomic_state *state);
+
+	/**
+	 * trigger_commit - callback triggering current commit on to HW
+	 * @kms: Pointer to sde kms structure
+	 * @state: Pointer to drm atomic state
+	 */
+	int (*trigger_commit[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_atomic_state *state);
+
+	/**
+	 * wait_for_commit_done - Wait for hardware to have flushed the
+	 *		current pending frames to hardware
+	 * @kms: Pointer to sde kms structure
+	 * @crtc: Pointer to drm crtc structure
+	 */
+	int (*wait_for_commit_done[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_crtc *crtc);
+
+	/**
+	 * wait_for_tx_complete - Wait for hardware to transfer the pixels
+	 *		to the panel
+	 * @kms: Pointer to sde kms structure
+	 * @crtc: Pointer to drm crtc structure
+	 */
+	int (*wait_for_tx_complete[MSM_DISP_OP_MAX])(struct sde_kms *kms, struct drm_crtc *crtc);
+
+	/**
+	 * pm_suspend - process suspending the system.
+	 * @dev: Pointer to device structure
+	 */
+	int (*pm_suspend[MSM_DISP_OP_MAX])(struct device *dev);
+
+	/**
+	 * pm_resume - process resuming the system.
+	 * @dev: Pointer to device structure
+	 */
+	int (*pm_resume[MSM_DISP_OP_MAX])(struct device *dev);
+
+	/**
+	 * get_mixer_count - get topology mixer count information
+	 * @kms: Pointer to sde kms structure
+	 * @display_mode: Pointer to drm display mode structure
+	 * @resource_caps: Pointer to resource capabilities information structure
+	 * @num_lm: Number of LMs attached
+	 */
+	int (*get_mixer_count[MSM_DISP_OP_MAX])(struct sde_kms *kms,
+			const struct drm_display_mode *display_mode,
+			const struct msm_resource_caps_info *resource_caps, u32 *num_lm);
+
+	/**
+	 * get_dsc_count - get topology DSC count information
+	 * @kms: Pointer to sde kms structure
+	 * @hdisplay: horizontal display timing
+	 * @num_dsc: Number of DSCs attached
+	 */
+	void (*get_dsc_count[MSM_DISP_OP_MAX])(struct sde_kms *kms, u32 hdisplay, u32 *num_dsc);
+};
+
 struct sde_kms {
 	struct msm_kms base;
 	struct drm_device *dev;
@@ -304,6 +483,11 @@ struct sde_kms {
 	void **lb_displays;
 	int lb_disp_count;
 	bool dsc_switch_support;
+	void **hdmi_displays;
+	int hdmi_display_count;
+	void **edp_displays;
+	int edp_display_count;
+	int builtin_disp_count;
 
 	bool has_danger_ctrl;
 
@@ -323,11 +507,17 @@ struct sde_kms {
 
 	struct sde_vm *vm;
 
-	unsigned long ipcc_base_addr;
+	unsigned long dpu_ipcc_addr;
 	u32 debugfs_hw_fence;
 	u32 debugfs_early_ept_handling;
 	atomic_t stay_awake_count;
 	struct sde_qtimer sde_qtimer;
+
+	struct hfi_kms *hfi_kms;
+	struct sde_kms_hal_funcs hal_ops;
+	bool hfi_session_start;
+	enum msm_disp_op debugfs_display_op;
+	enum msm_disp_op frame_trigger_state;
 };
 
 struct vsync_info {
@@ -799,4 +989,48 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 					   struct drm_atomic_state *state);
 
 void sde_kms_add_data_to_minidump_va(struct sde_kms *sde_kms);
+
+/**
+ * sde_kms_get_disp_op - Returns the display op index - default: MSM_DISP_OP_HWIO
+ * @sde_kms: pointer to sde_kms
+ */
+inline enum msm_disp_op sde_kms_get_disp_op(struct sde_kms *sde_kms);
+
+/**
+ * sde_kms_set_disp_op - Sets the display op index
+ * @sde_kms: pointer to sde_kms
+ * @disp_op: type of operation path
+ */
+static inline int sde_kms_set_disp_op(struct sde_kms *sde_kms, enum msm_disp_op disp_op)
+{
+	struct msm_drm_private *priv;
+
+	if (!sde_kms || !sde_kms->dev->dev_private) {
+		SDE_ERROR("invalid sde_kms\n");
+		return MSM_DISP_OP_HWIO;
+	}
+	priv = sde_kms->dev->dev_private;
+	priv->disp_op = disp_op;
+
+	return 0;
+}
+
+/*
+ * sde_kms_reinit_device_lut_dma - function to set lut dma configuration to firmware.
+ * @sde_kms: Pointer to sde kms object
+ */
+int sde_kms_reinit_device_lut_dma(struct sde_kms *sde_kms);
+
+/*
+ * sde_kms_suspend_helper - helper function to suspend all active displays
+ * @sde_kms: Pointer to sde kms object
+ */
+int sde_kms_suspend_helper(struct sde_kms *sde_kms);
+
+/*
+ * sde_kms_resume_helper - helper function to resume all inactive displays
+ * @sde_kms: Pointer to sde kms object
+ */
+int sde_kms_resume_helper(struct sde_kms *sde_kms);
+
 #endif /* __sde_kms_H__ */

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021 The Linux Foundation. All rights reserved.
  */
 
@@ -214,19 +214,19 @@ static void _dce_dsc_pipe_cfg(struct sde_hw_dsc *hw_dsc,
 		 * not double-buffered and is not required to be disabled
 		 * for half panel updates
 		 */
-		if (hw_dsc_pp && hw_dsc_pp->ops.disable_dsc
+		if (hw_dsc_pp && hw_dsc_pp->ops.disable_dsc[hw_dsc_pp->hw.disp_op]
 				&& !half_panel_partial_update)
-			hw_dsc_pp->ops.disable_dsc(hw_dsc_pp);
+			hw_dsc_pp->ops.disable_dsc[hw_dsc_pp->hw.disp_op](hw_dsc_pp);
 
-		if (hw_dsc && hw_dsc->ops.dsc_disable)
-			hw_dsc->ops.dsc_disable(hw_dsc);
+		if (hw_dsc && hw_dsc->ops.dsc_disable[hw_dsc->hw.disp_op])
+			hw_dsc->ops.dsc_disable[hw_dsc->hw.disp_op](hw_dsc);
 
-		if (hw_dsc && hw_dsc->ops.bind_pingpong_blk)
-			hw_dsc->ops.bind_pingpong_blk(hw_dsc, false,
+		if (hw_dsc && hw_dsc->ops.bind_pingpong_blk[hw_dsc->hw.disp_op])
+			hw_dsc->ops.bind_pingpong_blk[hw_dsc->hw.disp_op](hw_dsc, false,
 					PINGPONG_MAX);
 
-		if (mode_3d && hw_pp && hw_pp->ops.reset_3d_mode)
-			hw_pp->ops.reset_3d_mode(hw_pp);
+		if (mode_3d && hw_pp && hw_pp->ops.reset_3d_mode[hw_pp->hw.disp_op])
+			hw_pp->ops.reset_3d_mode[hw_pp->hw.disp_op](hw_pp);
 		return;
 	}
 
@@ -236,28 +236,30 @@ static void _dce_dsc_pipe_cfg(struct sde_hw_dsc *hw_dsc,
 		return;
 	}
 
-	if (hw_dsc->ops.dsc_config)
-		hw_dsc->ops.dsc_config(hw_dsc, dsc, common_mode, ich_reset);
+	if (hw_dsc->ops.dsc_config[hw_dsc->hw.disp_op])
+		hw_dsc->ops.dsc_config[hw_dsc->hw.disp_op](hw_dsc, dsc, common_mode,
+			ich_reset);
 
-	if (hw_dsc->ops.dsc_config_thresh)
-		hw_dsc->ops.dsc_config_thresh(hw_dsc, dsc);
+	if (hw_dsc->ops.dsc_config_thresh[hw_dsc->hw.disp_op])
+		hw_dsc->ops.dsc_config_thresh[hw_dsc->hw.disp_op](hw_dsc, dsc);
 
-	if (hw_dsc_pp && hw_dsc_pp->ops.setup_dsc)
-		hw_dsc_pp->ops.setup_dsc(hw_dsc_pp);
+	if (hw_dsc_pp && hw_dsc_pp->ops.setup_dsc[hw_dsc_pp->hw.disp_op])
+		hw_dsc_pp->ops.setup_dsc[hw_dsc_pp->hw.disp_op](hw_dsc_pp);
 
-	if (mode_3d && disable_merge_3d && hw_pp->ops.reset_3d_mode) {
+	if (mode_3d && disable_merge_3d && hw_pp->ops.reset_3d_mode[hw_pp->hw.disp_op]) {
 		SDE_DEBUG("disabling 3d mux \n");
-		hw_pp->ops.reset_3d_mode(hw_pp);
-	} else if (mode_3d && disable_merge_3d && hw_pp->ops.setup_3d_mode) {
+		hw_pp->ops.reset_3d_mode[hw_pp->hw.disp_op](hw_pp);
+	} else if (mode_3d &&
+		disable_merge_3d && hw_pp->ops.setup_3d_mode[hw_pp->hw.disp_op]) {
 		SDE_DEBUG("enabling 3d mux \n");
-		hw_pp->ops.setup_3d_mode(hw_pp, mode_3d);
+		hw_pp->ops.setup_3d_mode[hw_pp->hw.disp_op](hw_pp, mode_3d);
 	}
 
-	if (hw_dsc && hw_dsc->ops.bind_pingpong_blk)
-		hw_dsc->ops.bind_pingpong_blk(hw_dsc, true, hw_pp->idx);
+	if (hw_dsc && hw_dsc->ops.bind_pingpong_blk[hw_dsc->hw.disp_op])
+		hw_dsc->ops.bind_pingpong_blk[hw_dsc->hw.disp_op](hw_dsc, true, hw_pp->idx);
 
-	if (hw_dsc_pp && hw_dsc_pp->ops.enable_dsc)
-		hw_dsc_pp->ops.enable_dsc(hw_dsc_pp);
+	if (hw_dsc_pp && hw_dsc_pp->ops.enable_dsc[hw_dsc_pp->hw.disp_op])
+		hw_dsc_pp->ops.enable_dsc[hw_dsc_pp->hw.disp_op](hw_dsc_pp);
 }
 
 static void _dce_vdc_pipe_cfg(struct sde_hw_vdc *hw_vdc,
@@ -275,32 +277,32 @@ static void _dce_vdc_pipe_cfg(struct sde_hw_vdc *hw_vdc,
 	}
 
 	if (!enable) {
-		if (hw_vdc->ops.vdc_disable)
-			hw_vdc->ops.vdc_disable(hw_vdc);
+		if (hw_vdc->ops.vdc_disable[hw_vdc->hw.disp_op])
+			hw_vdc->ops.vdc_disable[hw_vdc->hw.disp_op](hw_vdc);
 
-		if (hw_vdc->ops.bind_pingpong_blk)
-			hw_vdc->ops.bind_pingpong_blk(hw_vdc, false,
+		if (hw_vdc->ops.bind_pingpong_blk[hw_vdc->hw.disp_op])
+			hw_vdc->ops.bind_pingpong_blk[hw_vdc->hw.disp_op](hw_vdc, false,
 					PINGPONG_MAX);
 
-		if (mode_3d && hw_pp->ops.reset_3d_mode)
-			hw_pp->ops.reset_3d_mode(hw_pp);
+		if (mode_3d && hw_pp->ops.reset_3d_mode[hw_pp->hw.disp_op])
+			hw_pp->ops.reset_3d_mode[hw_pp->hw.disp_op](hw_pp);
 		return;
 	}
 
-	if (hw_vdc->ops.vdc_config)
-		hw_vdc->ops.vdc_config(hw_vdc, vdc, is_video_mode);
+	if (hw_vdc->ops.vdc_config[hw_vdc->hw.disp_op])
+		hw_vdc->ops.vdc_config[hw_vdc->hw.disp_op](hw_vdc, vdc, is_video_mode);
 
-	if (mode_3d && disable_merge_3d && hw_pp->ops.reset_3d_mode) {
+	if (mode_3d && disable_merge_3d && hw_pp->ops.reset_3d_mode[hw_pp->hw.disp_op]) {
 		SDE_DEBUG("disabling 3d mux\n");
-		hw_pp->ops.reset_3d_mode(hw_pp);
+		hw_pp->ops.reset_3d_mode[hw_pp->hw.disp_op](hw_pp);
 	}
 
-	if (mode_3d && !disable_merge_3d && hw_pp->ops.setup_3d_mode) {
+	if (mode_3d && !disable_merge_3d && hw_pp->ops.setup_3d_mode[hw_pp->hw.disp_op]) {
 		SDE_DEBUG("enabling 3d mux\n");
-		hw_pp->ops.setup_3d_mode(hw_pp, mode_3d);
+		hw_pp->ops.setup_3d_mode[hw_pp->hw.disp_op](hw_pp, mode_3d);
 	}
-	if (hw_vdc->ops.bind_pingpong_blk)
-		hw_vdc->ops.bind_pingpong_blk(hw_vdc, true, hw_pp->idx);
+	if (hw_vdc->ops.bind_pingpong_blk[hw_vdc->hw.disp_op])
+		hw_vdc->ops.bind_pingpong_blk[hw_vdc->hw.disp_op](hw_vdc, true, hw_pp->idx);
 
 }
 
@@ -321,7 +323,7 @@ static int _dce_dsc_setup_single(struct sde_encoder_virt *sde_enc,
 		const struct sde_rect *roi, int dsc_common_mode,
 		bool merge_3d, bool disable_merge_3d, bool mode_3d,
 		bool dsc_4hsmerge, bool half_panel_partial_update,
-		int ich_res)
+		int ich_res, bool update_dce_pp_mux)
 {
 	struct sde_hw_ctl *hw_ctl;
 	struct sde_hw_dsc *hw_dsc;
@@ -329,6 +331,7 @@ static int _dce_dsc_setup_single(struct sde_encoder_virt *sde_enc,
 	struct sde_hw_pingpong *hw_dsc_pp;
 	struct sde_hw_intf_cfg_v1 cfg;
 	bool active = !!((1 << index) & affected_displays);
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(&sde_enc->base);
 
 	hw_ctl = sde_enc->cur_master->hw_ctl;
 
@@ -358,6 +361,17 @@ static int _dce_dsc_setup_single(struct sde_encoder_virt *sde_enc,
 			index, active, merge_3d, disable_merge_3d,
 			dsc_4hsmerge);
 
+	if (update_dce_pp_mux) {
+		if (hw_dsc && hw_dsc->ops.bind_pingpong_blk[disp_op])
+			hw_dsc->ops.bind_pingpong_blk[disp_op](hw_dsc, true, hw_pp->idx);
+
+		if (hw_ctl->ops.update_bitmask[disp_op])
+			hw_ctl->ops.update_bitmask[disp_op](hw_ctl, SDE_HW_FLUSH_DSC,
+				hw_dsc->idx, true);
+
+		return 0;
+	}
+
 	_dce_dsc_pipe_cfg(hw_dsc, hw_pp, dsc, dsc_common_mode, ich_res,
 			hw_dsc_pp, mode_3d, disable_merge_3d, active,
 			half_panel_partial_update);
@@ -365,11 +379,11 @@ static int _dce_dsc_setup_single(struct sde_encoder_virt *sde_enc,
 	memset(&cfg, 0, sizeof(cfg));
 	cfg.dsc[cfg.dsc_count++] = hw_dsc->idx;
 
-	if (hw_ctl->ops.update_intf_cfg)
-		hw_ctl->ops.update_intf_cfg(hw_ctl, &cfg, active);
+	if (hw_ctl->ops.update_intf_cfg[disp_op])
+		hw_ctl->ops.update_intf_cfg[disp_op](hw_ctl, &cfg, active);
 
-	if (hw_ctl->ops.update_bitmask)
-		hw_ctl->ops.update_bitmask(hw_ctl, SDE_HW_FLUSH_DSC,
+	if (hw_ctl->ops.update_bitmask[disp_op])
+		hw_ctl->ops.update_bitmask[disp_op](hw_ctl, SDE_HW_FLUSH_DSC,
 				hw_dsc->idx, true);
 
 	SDE_DEBUG_DCE(sde_enc, "update_intf_cfg hw_ctl[%d], dsc:%d, %s %d\n",
@@ -382,12 +396,12 @@ static int _dce_dsc_setup_single(struct sde_encoder_virt *sde_enc,
 
 		cfg.merge_3d[cfg.merge_3d_count++] = hw_pp->merge_3d->idx;
 
-		if (hw_ctl->ops.update_intf_cfg)
-			hw_ctl->ops.update_intf_cfg(hw_ctl, &cfg,
+		if (hw_ctl->ops.update_intf_cfg[disp_op])
+			hw_ctl->ops.update_intf_cfg[disp_op](hw_ctl, &cfg,
 					!disable_merge_3d);
 
-		if (hw_ctl->ops.update_bitmask)
-			hw_ctl->ops.update_bitmask(
+		if (hw_ctl->ops.update_bitmask[disp_op])
+			hw_ctl->ops.update_bitmask[disp_op](
 					hw_ctl, SDE_HW_FLUSH_MERGE_3D,
 					hw_pp->merge_3d->idx, true);
 
@@ -401,7 +415,7 @@ static int _dce_dsc_setup_single(struct sde_encoder_virt *sde_enc,
 }
 
 static int _dce_dsc_setup_helper(struct sde_encoder_virt *sde_enc,
-		unsigned long affected_displays,
+		struct sde_encoder_kickoff_params *params,
 		enum sde_rm_topology_name topology)
 {
 	struct sde_kms *sde_kms;
@@ -420,6 +434,7 @@ static int _dce_dsc_setup_helper(struct sde_encoder_virt *sde_enc,
 	int dsc_common_mode = 0;
 	int i, rc = 0;
 	bool widebus_en;
+	unsigned long affected_displays = params->affected_displays;
 
 	sde_kms = sde_encoder_get_kms(&sde_enc->base);
 
@@ -509,7 +524,8 @@ static int _dce_dsc_setup_helper(struct sde_encoder_virt *sde_enc,
 		rc = _dce_dsc_setup_single(sde_enc, dsc, affected_displays, i,
 				roi, dsc_common_mode, merge_3d,
 				disable_merge_3d, mode_3d, dsc_4hsmerge,
-				dsc->half_panel_pu, ich_res);
+				dsc->half_panel_pu, ich_res,
+				params->update_dce_pp_mux);
 		if (rc)
 			break;
 	}
@@ -522,7 +538,6 @@ static int _dce_dsc_setup(struct sde_encoder_virt *sde_enc,
 {
 	struct drm_connector *drm_conn;
 	enum sde_rm_topology_name topology;
-	struct sde_crtc_state *cstate;
 
 	if (!sde_enc || !params || !sde_enc->phys_encs[0] ||
 			!sde_enc->phys_encs[0]->connector)
@@ -538,10 +553,9 @@ static int _dce_dsc_setup(struct sde_encoder_virt *sde_enc,
 
 	SDE_DEBUG_DCE(sde_enc, "topology:%d\n", topology);
 
-	cstate = to_sde_crtc_state(sde_enc->crtc->state);
 	if (sde_kms_rect_is_equal(&sde_enc->cur_conn_roi,
 			&sde_enc->prv_conn_roi) &&
-			!cstate->in_loopback_transition)
+			!params->update_dce_pp_mux)
 		return 0;
 
 	SDE_EVT32(DRMID(&sde_enc->base), topology,
@@ -552,8 +566,7 @@ static int _dce_dsc_setup(struct sde_encoder_virt *sde_enc,
 			sde_enc->cur_master->cached_mode.hdisplay,
 			sde_enc->cur_master->cached_mode.vdisplay);
 
-	return _dce_dsc_setup_helper(sde_enc, params->affected_displays,
-			topology);
+	return _dce_dsc_setup_helper(sde_enc, params, topology);
 }
 
 static int _dce_vdc_setup(struct sde_encoder_virt *sde_enc,
@@ -579,11 +592,13 @@ static int _dce_vdc_setup(struct sde_encoder_virt *sde_enc,
 	bool is_video_mode = false;
 	int i;
 	int ret = 0;
+	enum msm_disp_op disp_op;
 
 	if (!sde_enc || !params || !sde_enc->phys_encs[0] ||
 			!sde_enc->phys_encs[0]->connector)
 		return -EINVAL;
 
+	disp_op = sde_encoder_get_disp_op(&sde_enc->base);
 	drm_conn = sde_enc->phys_encs[0]->connector;
 
 	topology = sde_connector_get_topology_name(drm_conn);
@@ -606,7 +621,8 @@ static int _dce_vdc_setup(struct sde_encoder_virt *sde_enc,
 			sde_enc->cur_master->cached_mode.vdisplay);
 
 	if (sde_kms_rect_is_equal(&sde_enc->cur_conn_roi,
-			&sde_enc->prv_conn_roi))
+			&sde_enc->prv_conn_roi) &&
+			!params->update_dce_pp_mux)
 		return ret;
 
 	enc_master = sde_enc->cur_master;
@@ -667,6 +683,17 @@ static int _dce_vdc_setup(struct sde_encoder_virt *sde_enc,
 			hw_pp[i] = sde_enc->hw_pp[i];
 		hw_vdc[i] = sde_enc->hw_vdc[i];
 
+		if (params->update_dce_pp_mux) {
+			if (hw_vdc[i]->ops.bind_pingpong_blk[disp_op])
+				hw_vdc[i]->ops.bind_pingpong_blk[disp_op](hw_vdc[i], true,
+					hw_pp[i]->idx);
+			if (hw_ctl->ops.update_bitmask[disp_op])
+				hw_ctl->ops.update_bitmask[disp_op](hw_ctl,
+					SDE_HW_FLUSH_VDC,
+					hw_vdc[i]->idx, active);
+			continue;
+		}
+
 		if (!hw_vdc[i]) {
 			SDE_ERROR_DCE(sde_enc, "invalid params for VDC\n");
 			SDE_EVT32(DRMID(&sde_enc->base), roi->w, roi->h,
@@ -681,13 +708,13 @@ static int _dce_vdc_setup(struct sde_encoder_virt *sde_enc,
 		memset(&cfg, 0, sizeof(cfg));
 		cfg.vdc[cfg.vdc_count++] = hw_vdc[i]->idx;
 
-		if (hw_ctl->ops.update_intf_cfg)
-			hw_ctl->ops.update_intf_cfg(hw_ctl,
+		if (hw_ctl->ops.update_intf_cfg[disp_op])
+			hw_ctl->ops.update_intf_cfg[disp_op](hw_ctl,
 					&cfg,
 					active);
 
-		if (hw_ctl->ops.update_bitmask)
-			hw_ctl->ops.update_bitmask(hw_ctl,
+		if (hw_ctl->ops.update_bitmask[disp_op])
+			hw_ctl->ops.update_bitmask[disp_op](hw_ctl,
 					SDE_HW_FLUSH_VDC,
 					hw_vdc[i]->idx, active);
 
@@ -703,13 +730,13 @@ static int _dce_vdc_setup(struct sde_encoder_virt *sde_enc,
 			cfg.merge_3d[cfg.merge_3d_count++] =
 				hw_pp[i]->merge_3d->idx;
 
-			if (hw_ctl->ops.update_intf_cfg)
-				hw_ctl->ops.update_intf_cfg(hw_ctl,
+			if (hw_ctl->ops.update_intf_cfg[disp_op])
+				hw_ctl->ops.update_intf_cfg[disp_op](hw_ctl,
 						&cfg,
 						!disable_merge_3d);
 
-			if (hw_ctl->ops.update_bitmask)
-				hw_ctl->ops.update_bitmask(
+			if (hw_ctl->ops.update_bitmask[disp_op])
+				hw_ctl->ops.update_bitmask[disp_op](
 						hw_ctl, SDE_HW_FLUSH_MERGE_3D,
 						hw_pp[i]->merge_3d->idx, true);
 
@@ -735,6 +762,7 @@ static void _dce_dsc_disable(struct sde_encoder_virt *sde_enc)
 	struct sde_hw_dsc *hw_dsc = NULL;
 	struct sde_hw_ctl *hw_ctl = NULL;
 	struct sde_hw_intf_cfg_v1 cfg;
+	enum msm_disp_op disp_op;
 
 	if (!sde_enc || !sde_enc->phys_encs[0]) {
 		SDE_ERROR("invalid params %d %d\n",
@@ -742,6 +770,7 @@ static void _dce_dsc_disable(struct sde_encoder_virt *sde_enc)
 		return;
 	}
 
+	disp_op = sde_encoder_get_disp_op(&sde_enc->base);
 	/*
 	 * Connector can be null if the first virt modeset after suspend
 	 * is called with dynamic clock or dms enabled.
@@ -771,8 +800,8 @@ static void _dce_dsc_disable(struct sde_encoder_virt *sde_enc)
 	}
 
 	/* Clear the DSC ACTIVE config for this CTL */
-	if (hw_ctl && hw_ctl->ops.update_intf_cfg)
-		hw_ctl->ops.update_intf_cfg(hw_ctl, &cfg, false);
+	if (hw_ctl && hw_ctl->ops.update_intf_cfg[disp_op])
+		hw_ctl->ops.update_intf_cfg[disp_op](hw_ctl, &cfg, false);
 
 	/**
 	 * Since pending flushes from previous commit get cleared
@@ -791,6 +820,7 @@ static void _dce_vdc_disable(struct sde_encoder_virt *sde_enc)
 	struct sde_hw_ctl *hw_ctl = NULL;
 	struct sde_hw_intf_cfg_v1 cfg;
 	bool is_video_mode = false;
+	enum msm_disp_op disp_op;
 
 	if (!sde_enc || !sde_enc->phys_encs[0] ||
 			!sde_enc->phys_encs[0]->connector) {
@@ -799,6 +829,7 @@ static void _dce_vdc_disable(struct sde_encoder_virt *sde_enc)
 		return;
 	}
 
+	disp_op = sde_encoder_get_disp_op(&sde_enc->base);
 	if (sde_enc->cur_master)
 		hw_ctl = sde_enc->cur_master->hw_ctl;
 
@@ -821,8 +852,8 @@ static void _dce_vdc_disable(struct sde_encoder_virt *sde_enc)
 	}
 
 	/* Clear the VDC ACTIVE config for this CTL */
-	if (hw_ctl && hw_ctl->ops.update_intf_cfg)
-		hw_ctl->ops.update_intf_cfg(hw_ctl, &cfg, false);
+	if (hw_ctl && hw_ctl->ops.update_intf_cfg[disp_op])
+		hw_ctl->ops.update_intf_cfg[disp_op](hw_ctl, &cfg, false);
 
 	/**
 	 * Since pending flushes from previous commit get cleared
@@ -869,14 +900,15 @@ static void _dce_helper_flush_dsc(struct sde_encoder_virt *sde_enc)
 	int i;
 	struct sde_hw_ctl *hw_ctl = NULL;
 	enum sde_dsc dsc_idx;
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(&sde_enc->base);
 
 	if (sde_enc->cur_master)
 		hw_ctl = sde_enc->cur_master->hw_ctl;
 
 	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
 		dsc_idx = sde_enc->dirty_dsc_ids[i];
-		if (dsc_idx && hw_ctl && hw_ctl->ops.update_bitmask)
-			hw_ctl->ops.update_bitmask(hw_ctl, SDE_HW_FLUSH_DSC,
+		if (dsc_idx && hw_ctl && hw_ctl->ops.update_bitmask[disp_op])
+			hw_ctl->ops.update_bitmask[disp_op](hw_ctl, SDE_HW_FLUSH_DSC,
 					dsc_idx, 1);
 
 		sde_enc->dirty_dsc_ids[i] = DSC_NONE;
@@ -888,14 +920,15 @@ void _dce_helper_flush_vdc(struct sde_encoder_virt *sde_enc)
 	int i;
 	struct sde_hw_ctl *hw_ctl = NULL;
 	enum sde_vdc vdc_idx;
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(&sde_enc->base);
 
 	if (sde_enc->cur_master)
 		hw_ctl = sde_enc->cur_master->hw_ctl;
 
 	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
 		vdc_idx = sde_enc->dirty_vdc_ids[i];
-		if (vdc_idx && hw_ctl && hw_ctl->ops.update_bitmask)
-			hw_ctl->ops.update_bitmask(hw_ctl, SDE_HW_FLUSH_VDC,
+		if (vdc_idx && hw_ctl && hw_ctl->ops.update_bitmask[disp_op])
+			hw_ctl->ops.update_bitmask[disp_op](hw_ctl, SDE_HW_FLUSH_VDC,
 					vdc_idx, 1);
 
 		sde_enc->dirty_vdc_ids[i] = VDC_NONE;

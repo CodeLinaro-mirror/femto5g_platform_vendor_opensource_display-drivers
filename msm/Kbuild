@@ -1,6 +1,7 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
-KDIR := $(TOP)/kernel_platform/msm-kernel
+#TODO: check with Techteam PoC on why we need it here
+#KDIR := $(TOP)/kernel_platform/soc-repo
 
 ifeq ($(CONFIG_ARCH_WAIPIO), y)
 ifeq ($(CONFIG_ARCH_QTI_VM), y)
@@ -47,6 +48,16 @@ else
 endif
 endif
 
+ifeq ($(CONFIG_ARCH_CANOE), y)
+ifeq ($(CONFIG_ARCH_QTI_VM), y)
+    include $(DISPLAY_ROOT)/config/gki_canoedisptui.conf
+    LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_canoedisptuiconf.h
+else
+	include $(DISPLAY_ROOT)/config/gki_canoedisp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_canoedispconf.h
+endif
+endif
+
 ifeq ($(CONFIG_ARCH_MONACO), y)
 	include $(DISPLAY_ROOT)/config/gki_monacodisp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_monacodispconf.h
@@ -67,9 +78,9 @@ ifeq (y, $(findstring y, $(CONFIG_ARCH_SA8155) $(CONFIG_ARCH_SA6155) $(CONFIG_AR
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/augen3dispconf.h
 endif
 
-LINUX_INC +=	-I$(WORKSPACE)/vendor/qcom/opensource/synx-kernel/msm/synx \
-		-I$(WORKSPACE)/vendor/qcom/opensource/synx-kernel/include/uapi/synx/media \
-		-I$(WORKSPACE)/vendor/qcom/opensource/securemsm-kernel
+ifeq ($(ENABLE_BUILD_PATH), y)
+	LINUX_INC += $(LE_EXTRA_CFLAGS)
+endif
 
 LINUX_INC +=	-I$(KERNEL_SRC)/include/linux \
 		-I$(KERNEL_SRC)/include/linux/drm
@@ -82,9 +93,14 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(DISPLAY_ROOT)/rotator \
 	-I$(DISPLAY_ROOT)/msm \
 	-I$(DISPLAY_ROOT)/msm/dp \
+	-I$(DISPLAY_ROOT)/msm/hdmi \
 	-I$(DISPLAY_ROOT)/msm/dsi \
+	-I$(DISPLAY_ROOT)/msm/hfi \
+	-I$(DISPLAY_ROOT)/msm/sde/hfi \
+	-I$(DISPLAY_ROOT)/msm/dsi/hfi \
 	-I$(DISPLAY_ROOT)/msm/sde \
 	-I$(DISPLAY_ROOT)/../mm-drivers/hw_fence/include \
+	-I$(DISPLAY_ROOT)/../mm-drivers/hfi_core/inc \
 	-I$(DISPLAY_ROOT)/../mm-drivers/msm_ext_display/include \
 	-I$(DISPLAY_ROOT)/../mm-drivers/sync_fence/include \
 	-I$(DISPLAY_ROOT)/include/uapi/display \
@@ -166,6 +182,7 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 				dp/dp_catalog_v500.o \
 				dp/dp_aux.o \
 				dp/dp_panel.o \
+				dp/dp_panel_tu.o \
 				dp/dp_link.o \
 				dp/dp_ctrl.o \
 				dp/dp_audio.o \
@@ -182,7 +199,9 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 				dp/dp_pll.o \
 				dp/dp_pll_5nm.o \
 				dp/dp_pll_4nm.o \
-				dp/dp_pll_3nm.o
+				dp/dp_pll_3nm.o \
+				dp/edp_pll_4nm.o \
+				dp/edp_pll_5nm.o
 
 msm_drm-$(CONFIG_DRM_MSM_DP_MST) += dp/dp_mst_drm.o
 
@@ -218,6 +237,7 @@ msm_drm-$(CONFIG_DRM_MSM_SDE) += sde/sde_crtc.o \
 				 sde/sde_hw_lm.o \
 				 sde/sde_hw_ctl.o \
 				 sde/sde_hw_util.o \
+				 sde/sde_hw_sspp_v1.o \
 				 sde/sde_hw_sspp.o \
 				 sde/sde_hw_wb.o \
 				 sde/sde_hw_pingpong.o \
@@ -243,7 +263,8 @@ msm_drm-$(CONFIG_DRM_MSM_SDE) += sde/sde_crtc.o \
 				 sde/sde_color_processing_aiqe.o \
 				 sde/sde_hw_color_proc_aiqe_v1.o \
 				 sde/sde_aiqe_common.o \
-				 sde/sde_loopback.o
+				 sde/sde_loopback.o \
+				 sde/sde_color_proc_feature_state_helper.o
 
 msm_drm-$(CONFIG_DRM_SDE_WB) += sde/sde_wb.o \
 				sde/sde_encoder_phys_wb.o
@@ -280,9 +301,39 @@ msm_drm-$(CONFIG_DRM_MSM_DSI) += dsi/dsi_phy.o \
 				 dsi/dsi_clk_manager.o \
 				 dsi/dsi_display_test.o
 
+msm_drm-$(CONFIG_MDSS_HFI_ADAPTER) += hfi/hfi_adapter.o \
+				 hfi/hfi_packer.o \
+				 hfi/hfi_unpacker.o
+
+msm_drm-$(CONFIG_MDSS_HFI) += hfi/hfi_utils.o \
+				 hfi/hfi_msm_drv.o \
+				 hfi/hfi_dbg.o \
+				 sde/hfi/hfi_catalog.o \
+				 sde/hfi/hfi_connector.o \
+				 sde/hfi/hfi_crtc.o \
+				 sde/hfi/hfi_encoder.o \
+				 sde/hfi/hfi_kms.o \
+				 sde/hfi/hfi_plane.o \
+				 sde/hfi/hfi_color_proc.o \
+				 dsi/hfi/dsi_display_hfi.o \
+				 dsi/hfi/dsi_hfi.o
+
 msm_drm-$(CONFIG_DSI_PARSER) += dsi/dsi_parser.o
 
 msm_drm-$(CONFIG_THERMAL_OF) += msm_cooling_device.o
+
+msm_drm-$(CONFIG_DRM_MSM_HDMI) += hdmi/hdmi_audio.o \
+				hdmi/hdmi_cec.o \
+				hdmi/hdmi_debug.o \
+				hdmi/hdmi_display.o \
+				hdmi/hdmi_drm.o \
+				hdmi/hdmi_hdcp2p2.o \
+				hdmi/hdmi_panel.o \
+				hdmi/hdmi_phy.o \
+				hdmi/hdmi_phy_snps.o \
+				hdmi/hdmi_pll.o \
+				hdmi/hdmi_pll_snps.o \
+				hdmi/hdmi_util.o
 
 msm_drm-$(CONFIG_DRM_MSM) += msm_atomic.o \
 			     msm_fb.o \

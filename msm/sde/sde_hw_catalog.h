@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -55,13 +55,18 @@
 #define SDE_HW_VER_810	SDE_HW_VER(8, 1, 0) /* waipio */
 #define SDE_HW_VER_820	SDE_HW_VER(8, 2, 0) /* diwali */
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
+#define SDE_HW_VER_880  SDE_HW_VER(8, 8, 0) /* vienna */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
+#define SDE_HW_VER_980	SDE_HW_VER(9, 8, 0) /* seraph */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
 #define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
 #define SDE_HW_VER_C40	SDE_HW_VER(12, 4, 0) /* kera */
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
+#define SDE_HW_VER_D10	SDE_HW_VER(13, 1, 0) /* alor */
+
+#define SDE_QULTIVATE_SW_REV1 0x1
 
 /* Avoid using below IS_XXX macros outside catalog, use feature bit instead */
 #define IS_SDE_MAJOR_SAME(rev1, rev2)   \
@@ -92,12 +97,15 @@
 #define IS_DIWALI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_820)
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
+#define IS_SERAPH_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_980)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
 #define IS_TUNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C30)
 #define IS_KERA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C40)
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
+#define IS_ALOR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D10)
+#define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -209,6 +217,7 @@ enum {
 	SDE_HW_UBWC_VER_40 = SDE_HW_UBWC_VER(0x400),
 	SDE_HW_UBWC_VER_43 = SDE_HW_UBWC_VER(0x431),
 	SDE_HW_UBWC_VER_50 = SDE_HW_UBWC_VER(0x501),
+	SDE_HW_UBWC_VER_60 = SDE_HW_UBWC_VER(0X600),
 };
 #define IS_UBWC_10_SUPPORTED(rev) \
 		IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_UBWC_VER_10)
@@ -222,6 +231,15 @@ enum {
 		IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_UBWC_VER_43)
 #define IS_UBWC_50_SUPPORTED(rev) \
 		IS_SDE_MAJOR_SAME((rev), SDE_HW_UBWC_VER_50)
+#define IS_UBWC_60_SUPPORTED(rev) \
+		IS_SDE_MAJOR_SAME((rev), SDE_HW_UBWC_VER_60)
+
+/**
+ * QSEED HW versions
+ */
+enum {
+	QSEED_HW_VERSION_3_5 = 0x3005,
+};
 
 /**
  * Supported system cache settings
@@ -295,6 +313,7 @@ struct sde_intr_irq_offsets {
  * @SDE_MDP_WD_TIMER      WD timer support
  * @SDE_MDP_DHDR_MEMPOOL   Dynamic HDR Metadata mempool present
  * @SDE_MDP_DHDR_MEMPOOL_4K Dynamic HDR mempool is 4k aligned
+ * @SDE_MDP_DHDR_MEMPOOL_4K_EXT Dynamic HDR mempool is 4k aligned (extended version)
  * @SDE_MDP_PERIPH_TOP_REMOVED Indicates if periph top0 block is removed
  * @SDE_MDP_TOP_PPB_SET_SIZE   Indicates if top block supports ppb size setting
  * @SDE_MDP_HW_FENCE_DIR_WRITE Indicates if hw supports hw-fence dir write
@@ -312,6 +331,7 @@ enum {
 	SDE_MDP_WD_TIMER,
 	SDE_MDP_DHDR_MEMPOOL,
 	SDE_MDP_DHDR_MEMPOOL_4K,
+	SDE_MDP_DHDR_MEMPOOL_4K_EXT,
 	SDE_MDP_PERIPH_TOP_0_REMOVED,
 	SDE_MDP_TOP_PPB_SET_SIZE,
 	SDE_MDP_HW_FENCE_DIR_WRITE,
@@ -363,6 +383,9 @@ enum {
  * @SDE_SSPP_UCSC_ALPHA_DITHER UCSC alpha dither color processing block support
  * @SDE_SSPP_CAC_V2          CAC v2 support
  * @SDE_SSPP_CAC_LOOPBACK    CAC loopback support
+ * @SDE_SSPP_REC_SWI_SEPARATION SSPP Registers are split into CMN, REC0 and REC1
+ * @SDE_SSPP_SCALER_QSEED_EBS Edge Bleed Supresison support in QSEED block
+ * @SDE_SSPP_SCALER_QSEED_ADE Adaptive DE support in QSEED block
  * @SDE_SSPP_MAX             maximum value
  */
 enum {
@@ -407,6 +430,9 @@ enum {
 	SDE_SSPP_UCSC_ALPHA_DITHER,
 	SDE_SSPP_CAC_V2,
 	SDE_SSPP_CAC_LOOPBACK,
+	SDE_SSPP_REC_SWI_SEPARATION,
+	SDE_SSPP_SCALER_QSEED_EBS,
+	SDE_SSPP_SCALER_QSEED_ADE,
 	SDE_SSPP_MAX
 };
 
@@ -499,6 +525,8 @@ enum {
  * @SDE_DSPP_AD              AD block
  * @SDE_DSPP_LTM             LTM block
  * @SDE_DSPP_SPR             SPR block
+ * @SDE_DSPP_SPR_DITHER      SPR Dither block
+ * @SDE_DSPP_SPR_DITHER_LUMA SPR Dither block (Luma supported)
  * @SDE_DSPP_DEMURA          Demura block
  * @SDE_DSPP_RC              RC block (mask)
  * @SDE_DSPP_RC_PU           RC block (pu)
@@ -524,6 +552,8 @@ enum {
 	SDE_DSPP_AD,
 	SDE_DSPP_LTM,
 	SDE_DSPP_SPR,
+	SDE_DSPP_SPR_DITHER,
+	SDE_DSPP_SPR_DITHER_LUMA,
 	SDE_DSPP_DEMURA,
 	SDE_DSPP_RC,
 	SDE_DSPP_RC_PU,
@@ -858,6 +888,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_TOUCH_WAKEUP   Early wakeup with touch supported
  * @SDE_FEATURE_SRC_SPLIT      Source split supported
  * @SDE_FEATURE_VIG_P010       P010 ViG pipe format supported
+ * @SDE_FEATURE_VIG_P210       P210 ViG pipe format supported
  * @SDE_FEATURE_FP16           FP16 pipe format supported
  * @SDE_FEATURE_HDR            High Dynamic Range supported
  * @SDE_FEATURE_HDR_PLUS       HDR10+ supported
@@ -890,6 +921,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_UBWC_LOSSY	Support UBWC Lossy
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
  * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
+ * @SDE_FEATURE_DISP_OP        Support Display OP switch
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -910,6 +942,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_TOUCH_WAKEUP,
 	SDE_FEATURE_SRC_SPLIT,
 	SDE_FEATURE_VIG_P010,
+	SDE_FEATURE_VIG_P210,
 	SDE_FEATURE_FP16,
 	SDE_FEATURE_HDR,
 	SDE_FEATURE_HDR_PLUS,
@@ -942,6 +975,8 @@ enum sde_mdss_features {
 	SDE_FEATURE_UBWC_LOSSY,
 	SDE_FEATURE_DS_PU_SUPPORTED,
 	SDE_FEATURE_MIXER_OP_V1,
+	SDE_FEATURE_SSIP_CLK,
+	SDE_FEATURE_DISP_OP,
 	SDE_FEATURE_MAX
 };
 
@@ -1295,6 +1330,7 @@ struct sde_dspp_sub_blks {
 	struct sde_pp_blk ad;
 	struct sde_pp_blk ltm;
 	struct sde_pp_blk spr;
+	struct sde_pp_blk spr_dither;
 	struct sde_pp_blk vlut;
 	struct sde_dspp_rc rc;
 	struct sde_pp_blk demura;
@@ -1623,6 +1659,16 @@ struct sde_pingpong_cfg  {
 };
 
 /**
+ * struct sde_hfi_cfg - information of HFI mode
+ * @perf_sys_cache_enable:  system cache enable for perf
+ * @perf_max_core_clk_rate: max clock rate
+ */
+struct sde_hfi_cfg  {
+	u32 perf_sys_cache_enable;
+	u32 perf_max_core_clk_rate;
+};
+
+/**
  * struct sde_dsc_cfg - information of DSC blocks
  * @id                 enum identifying this block
  * @base               register offset of this block
@@ -1702,6 +1748,21 @@ struct sde_dnsc_blur_filter_info {
 	bool fraction_support;
 	u32 ratio_count;
 	u32 ratio[DNSC_BLUR_MAX_RATIO_COUNT];
+};
+
+/**
+ * struct sde_qultivate_config_v1 - information of display_qultivate fuse config
+ * @qultivate_enabled  display_qultivate fuse is enabled.
+ * @gdsc2_blocked      gdsc2 operation is blocked when display_qultivate fuse present
+ * @vig_count          number of vig blocks when display_qultivate fuse present
+ * @dma_count          number of dma blocks when display_qultivate fuse present
+
+ */
+struct sde_qultivate_config_v1 {
+	bool enabled;
+	bool gdsc2_blocked;
+	u32 vig_count;
+	u32 dma_count;
 };
 
 /**
@@ -2021,6 +2082,7 @@ struct sde_perf_cfg {
  * @hw_rev              MDSS HW revision
  * @ubwc_rev            UBWC feature version (0x0 for not supported)
  * @ubwc_bw_calc_rev    indicates how UBWC BW has to be calculated
+ * @qultivate_rev       display_qultivate software fuse revision
  * @qseed_sw_lib_rev    qseed SW library version
  * @qseed_hw_rev        qseed HW block version
  * @smart_dma_rev       smartDMA block version
@@ -2072,6 +2134,7 @@ struct sde_perf_cfg {
  * @cwb_blk_off         CWB offset address
  * @cwb_blk_stride      offset between each CWB blk
  * @dcwb_count          number of dcwb hardware instances
+ * @qultivate_cfg       pointer to display_qultivate configurations
  * @reg_dma_count       number of valid reg dma blocks available
  * @dma_cfg             pointer to config containing reg dma blocks
  * @ad_count            number of AD4 hardware instances
@@ -2134,6 +2197,8 @@ struct sde_perf_cfg {
  * @rgb_lossy_formats	supported formats for UBWC lossy
  * @ipcc_protocol_id    ipcc protocol id for the hw
  * @ipcc_client_phys_id dpu ipcc client id for the hw, physical client id if supported
+ * @ipcc_client_out_phys_id ipcc client id that dpu outputs ipcc to, nonzero if supported
+ * @ipcc_protocol_offset offset for ipcc protocol within ipcc register space
  * @soccp_ph            if soccp is supported, soccp phandle needed to get rproc to set power vote
  * @is_vrr_hw_fence_enable        enable hw-fence override configuration
  * @ppb_sz_program      enum value for pingpong buffer size programming choice by hw
@@ -2146,6 +2211,7 @@ struct sde_mdss_cfg {
 	u32 hw_rev;
 	u32 ubwc_rev;
 	u32 ubwc_bw_calc_rev;
+	u32 qultivate_rev;
 	u32 qseed_sw_lib_rev;
 	u32 qseed_hw_rev;
 	u32 smart_dma_rev;
@@ -2197,8 +2263,10 @@ struct sde_mdss_cfg {
 	u32 qdss_count;
 	struct sde_qdss_cfg qdss[MAX_BLOCKS];
 	u32 cwb_blk_off[MAX_CWB_BLOCKS];
+	struct sde_hfi_cfg hfi_cfg;
 	u32 cwb_blk_stride;
 	u32 dcwb_count;
+	void *qultivate_cfg;
 
 	u32 reg_dma_count;
 	struct sde_reg_dma_cfg dma_cfg;
@@ -2271,6 +2339,8 @@ struct sde_mdss_cfg {
 
 	u32 ipcc_protocol_id;
 	u32 ipcc_client_phys_id;
+	u32 ipcc_client_out_phys_id;
+	u32 ipcc_protocol_offset;
 	phandle soccp_ph;
 	bool is_vrr_hw_fence_enable;
 
@@ -2284,6 +2354,11 @@ struct sde_mdss_hw_cfg_handler {
 	u32 major;
 	u32 minor;
 	struct sde_mdss_cfg* (*cfg_init)(u32 data);
+};
+
+struct sde_mdss_hw_caps {
+	u32 target_rev;
+	void (*sde_get_target_hw_caps)(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev);
 };
 
 /*

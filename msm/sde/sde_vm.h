@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -8,6 +8,7 @@
 #define __SDE_VM_H__
 
 #include "msm_drv.h"
+#include <drm/drm_crtc.h>
 
 #define TRUSTED_VM_MAX_ENCODER_PER_CRTC	1
 
@@ -189,6 +190,7 @@ struct sde_vm_ops {
  * @msgq_listener_thread - handle to msgq receiver thread
  * @vm_work - kthread work obj for msgq
  * @msgq_handle - handle to display msgq
+ * @crtc: pointer to crtc
  */
 struct sde_vm {
 	struct mutex vm_res_lock;
@@ -200,6 +202,7 @@ struct sde_vm {
 	struct task_struct *msgq_listener_thread;
 	struct sde_vm_msg_work vm_work;
 	void *msgq_handle;
+	struct drm_crtc *crtc;
 };
 
 /**
@@ -303,6 +306,17 @@ static inline bool sde_vm_owns_hw(struct sde_kms *sde_kms)
 	return true;
 }
 
+/**
+ * sde_vm_allow_event_list - Checks if a software event is allowed for notification
+ * @event: type of event to check against the allowed list
+ * Return: true if the event is allowed for notification; false otherwise
+ */
+static inline bool sde_vm_allow_event_list(u32 event)
+{
+	/* list of sw events for notification which don't interact with un lended resources */
+	return ((event == DRM_EVENT_FRAME_DONE) || (event == DRM_EVENT_MDNIE_ART));
+}
+
 #else
 static inline int sde_vm_primary_init(struct sde_kms *kms)
 {
@@ -335,6 +349,11 @@ static inline struct sde_vm_ops *sde_vm_get_ops(struct sde_kms *sde_kms)
 static inline bool sde_vm_owns_hw(struct sde_kms *sde_kms)
 {
 	return true;
+}
+
+static inline bool sde_vm_allow_event_list(u32 event)
+{
+	return false;
 }
 
 #endif /* IS_ENABLED(CONFIG_DRM_SDE_VM) */

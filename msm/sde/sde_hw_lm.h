@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2019, 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -33,31 +33,31 @@ struct sde_hw_lm_ops {
 	 * Sets up mixer output width and height
 	 * and border color if enabled
 	 */
-	void (*setup_mixer_out)(struct sde_hw_mixer *ctx,
+	void (*setup_mixer_out[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx,
 		struct sde_hw_mixer_cfg *cfg);
 
 	/*
 	 * Alpha blending configuration
 	 * for the specified stage
 	 */
-	void (*setup_blend_config)(struct sde_hw_mixer *ctx, u32 stage,
+	void (*setup_blend_config[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx, u32 stage,
 		u32 fg_alpha, u32 bg_alpha, u32 blend_op);
 
 	/*
 	 * Alpha color component selection from either fg or bg
 	 */
-	void (*setup_alpha_out)(struct sde_hw_mixer *ctx, u32 mixer_op);
+	void (*setup_alpha_out[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx, u32 mixer_op);
 
 	/**
 	 * setup_border_color : enable/disable border color
 	 */
-	void (*setup_border_color)(struct sde_hw_mixer *ctx,
+	void (*setup_border_color[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx,
 		struct sde_mdss_color *color,
 		u8 border_en);
 	/**
 	 * setup_gc : enable/disable gamma correction feature
 	 */
-	void (*setup_gc)(struct sde_hw_mixer *mixer,
+	void (*setup_gc[MSM_DISP_OP_MAX])(struct sde_hw_mixer *mixer,
 			void *cfg);
 
 	/**
@@ -65,25 +65,25 @@ struct sde_hw_lm_ops {
 	 * @ctx: Pointer to layer mixer context
 	 * @dim_layer: dim layer configs
 	 */
-	void (*setup_dim_layer)(struct sde_hw_mixer *ctx,
+	void (*setup_dim_layer[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx,
 			struct sde_hw_dim_layer *dim_layer);
 
 	/**
 	 * clear_dim_layer: clear dim layer settings
 	 * @ctx: Pointer to layer mixer context
 	 */
-	void (*clear_dim_layer)(struct sde_hw_mixer *ctx);
+	void (*clear_dim_layer[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx);
 
 	/* setup_misr: enables/disables MISR in HW register */
-	void (*setup_misr)(struct sde_hw_mixer *ctx,
+	void (*setup_misr[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx,
 			bool enable, u32 frame_count);
 
 	/* collect_misr: reads and stores MISR data from HW register */
-	int (*collect_misr)(struct sde_hw_mixer *ctx, bool nonblock,
+	int (*collect_misr[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx, bool nonblock,
 			u32 *misr_value);
 
 	/* setup_noise_layer: enables/disables noise layer */
-	int (*setup_noise_layer)(struct sde_hw_mixer *ctx,
+	int (*setup_noise_layer[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx,
 		struct sde_hw_noise_layer_cfg *cfg);
 
 	/**
@@ -93,7 +93,7 @@ struct sde_hw_lm_ops {
 	 * @cfg: blend stage configuration
 	 * @disable_border: if true disable border, else enable border out
 	 */
-	int (*setup_blendstage)(struct sde_hw_mixer *ctx,
+	int (*setup_blendstage[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx,
 		enum sde_lm lm, struct sde_hw_stage_cfg *cfg,
 		bool disable_border);
 
@@ -101,7 +101,7 @@ struct sde_hw_lm_ops {
 	 * Clear layer mixer to pipe configuration
 	 * @ctx: Pointer to layer mixer context
 	 */
-	int (*clear_all_blendstages)(struct sde_hw_mixer *ctx);
+	int (*clear_all_blendstages[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx);
 
 	/**
 	 * Get all the sspp staged on a layer mixer
@@ -109,7 +109,7 @@ struct sde_hw_lm_ops {
 	 * @lm: layer mixer enumeration
 	 * @info: structure to populate connected sspp index info
 	 */
-	int (*get_staged_sspp)(struct sde_hw_mixer *ctx,
+	int (*get_staged_sspp[MSM_DISP_OP_MAX])(struct sde_hw_mixer *ctx,
 		enum sde_lm lm, struct sde_sspp_index_info *info);
 
 };

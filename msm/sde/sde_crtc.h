@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -40,6 +40,9 @@
 /* define the maximum number of in-flight frame events */
 /* Expand it to 2x for handling atleast 2 connectors safely */
 #define SDE_CRTC_EVENT_SIZE	(4 * 2)
+
+struct sde_crtc;
+struct sde_crtc_state;
 
 /**
  * enum sde_crtc_client_type: crtc client type
@@ -288,6 +291,134 @@ enum sde_crtc_hw_fence_flags {
 };
 
 /**
+ * struct sde_crtc_hal_funcs - interface api for sde crtc hal
+ */
+struct sde_crtc_hal_funcs {
+	/**
+	 * post_init - perform additional initialization steps
+	 * @crtc: Pointer to sde crtc structure
+	 * Returns: Zero on success
+	 */
+	int (*post_init[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
+
+	/**
+	 * destroy - Clean up crtc resources
+	 * @crtc: Pointer to sde crtc structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	void (*destroy[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
+
+	/**
+	 * debugfs_init - perform debugfs node initialization
+	 * @crtc: Pointer to sde crtc structure
+	 * Returns: Zero on success
+	 */
+	int (*debugfs_init[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
+
+	/**
+	 * debugfs_destroy - handle destroy operations for debugfs
+	 * @crtc: Pointer to sde crtc structure
+	 * @debugfs_root: Pointer to parent of debugfs node
+	 * Returns: Zero on success
+	 */
+	void (*debugfs_destroy[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
+
+	/**
+	 * atomic_duplicate_state - Duplicate the current atomic state for the crtc
+	 * @crtc: Pointer to sde crtc structure
+	 * Returns: Duplicated atomic state or NULL when the allocation failed.
+	 */
+	struct sde_crtc_state *(*atomic_duplicate_state[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
+
+	/**
+	 * atomic_destroy_state - Destroy a state duplicated with @atomic_duplicate_state
+	 * and release or unreference all resources it references
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state structure
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	int (*atomic_destroy_state[MSM_DISP_OP_MAX])(struct sde_crtc *crtc,
+				struct sde_crtc_state *state);
+
+	/**
+	 * prepare_commit - start of atomic commit sequence
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*prepare_commit[MSM_DISP_OP_MAX])(struct sde_crtc *crtc,
+			struct sde_crtc_state *state);
+
+	/**
+	 * complete_commit - callback signalling completion of current commit
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to crtc old state
+	 */
+	int (*complete_commit[MSM_DISP_OP_MAX])(struct sde_crtc *crtc,
+			struct sde_crtc_state *state);
+
+	/**
+	 * atomic_check - atomic check handling for crtc
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*atomic_check[MSM_DISP_OP_MAX])(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * atomic_begin - atomic begin handle for crtc
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*atomic_begin[MSM_DISP_OP_MAX])(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * atomic_flush - Process flush event on crtc
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*atomic_flush[MSM_DISP_OP_MAX])(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * crtc_enable - function for crtc enable
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*crtc_enable[MSM_DISP_OP_MAX])(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * crtc_disable - function for crtc disable
+	 * @crtc: Pointer to sde crtc structure
+	 */
+	int (*crtc_disable[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
+
+	/**
+	 * control_vblank - Register/Deregister for VBLANK or vsync notification
+	 * @crtc: Pointer to sde crtc structure
+	 * @state: Pointer to sde crtc state
+	 */
+	int (*control_vblank[MSM_DISP_OP_MAX])(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
+	/**
+	 * enable_hw_event - Notify display of event registration/unregistration
+	 * @crtc: Pointer to sde crtc structure
+	 * @event_idx: sde crtc event index
+	 * @enable: Whether the event is being enabled/disabled
+	 */
+	int (*enable_hw_event[MSM_DISP_OP_MAX])(struct sde_crtc *crtc, u32 event, bool enable);
+
+	/**
+	 * debugfs_misr_setup - Enable MISR for specified module and display
+	 * @crtc: Pointer to sde crtc structure
+	 */
+	int (*debugfs_misr_setup[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
+
+	/**
+	 * debugfs_misr_read - Read MISR value for specified module and display
+	 * @crtc: Pointer to sde crtc structure
+	 */
+	int (*debugfs_misr_read[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
+};
+
+/**
  * struct sde_crtc - virtualized CRTC data structure
  * @base          : Base drm crtc structure
  * @name          : ASCII description of this crtc
@@ -344,6 +475,7 @@ enum sde_crtc_hw_fence_flags {
  * @misr_reconfigure : boolean entry indicates misr reconfigure status
  * @misr_frame_count  : misr frame count provided by client
  * @misr_data     : store misr data before turning off the clocks.
+ * @misr_vals: Cached misr read values
  * @power_event   : registered power event handle
  * @cur_perf      : current performance committed to clock/bandwidth driver
  * @plane_mask_old: keeps track of the planes used in the previous commit
@@ -387,6 +519,9 @@ enum sde_crtc_hw_fence_flags {
  * @skip_blend_planes: array holding skip blend plane list
  * @sde_cesta_client: Pointer to sde_cesta client for the encoder.
  * @mdnie_art_frame_count: number of frames required for mdnie art to converge.
+ * @hfi_crtc: Pointer to hfi crtc struct
+ * @hal_ops: Local callback hal function pointer table
+ * @dspp_pa_mode: top-level bitmask maintaining state of PA block
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -450,6 +585,7 @@ struct sde_crtc {
 	bool misr_enable_debugfs;
 	bool misr_reconfigure;
 	u32 misr_frame_count;
+	struct sde_misr_values misr_vals;
 
 	struct sde_power_event *power_event;
 
@@ -511,6 +647,11 @@ struct sde_crtc {
 
 	struct sde_cesta_client *cesta_client;
 	u32 mdnie_art_frame_count;
+
+	struct hfi_crtc *hfi_crtc;
+	struct sde_crtc_hal_funcs hal_ops;
+
+	struct cp_pa_mode dspp_pa_mode;
 };
 
 enum sde_crtc_dirty_flags {
@@ -550,8 +691,7 @@ struct sde_line_insertion_param {
  * @lm_roi        : Current LM ROI, possibly sub-rectangle of mode.
  *                  Origin top left of CRTC.
  * @user_roi_list : List of user's requested ROIs as from set property
- * @cached_user_roi_list : Copy of user_roi_list from previous PU frame
- * @property_state: Local storage for msm_prop properties
+  * @property_state: Local storage for msm_prop properties
  * @property_values: Current crtc property values
  * @input_fence_timeout_ns : Cached input fence timeout, in ns
  * @num_dim_layers: Number of dim layers
@@ -592,7 +732,7 @@ struct sde_crtc_state {
 	struct sde_rect crtc_roi;
 	struct sde_rect lm_bounds[MAX_MIXERS_PER_CRTC];
 	struct sde_rect lm_roi[MAX_MIXERS_PER_CRTC];
-	struct msm_roi_list user_roi_list, cached_user_roi_list;
+	struct msm_roi_list user_roi_list;
 
 	struct msm_property_state property_state;
 	struct msm_property_value property_values[CRTC_PROP_COUNT];
@@ -1230,6 +1370,12 @@ struct drm_encoder *sde_crtc_get_src_encoder_of_clone(struct drm_crtc *crtc);
  */
 void _sde_crtc_vm_release_notify(struct drm_crtc *crtc);
 
+/*
+ * _sde_crtc_vm_reclaim_notify- notify usermode in Primary VM to trigger commit for reclaimimg
+ *	resources released by trusted VM
+ */
+void _sde_crtc_vm_reclaim_notify(struct drm_crtc *crtc);
+
 /**
  * sde_crtc_calc_vpadding_param - calculate vpadding parameters
  * @state: Pointer to DRM crtc state object
@@ -1294,4 +1440,26 @@ static inline bool sde_crtc_is_power_on_frame(struct drm_crtc *crtc)
  * @crtc: Pointer to drm_crtc.
  */
 void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc);
+
+/**
+ * sde_crtc_get_disp_op - Returns the display op index - default: MSM_DISP_OP_HWIO
+ * @crtc: pointer to drm_crtc
+ */
+inline enum msm_disp_op sde_crtc_get_disp_op(struct drm_crtc *crtc);
+
+/**
+ * sde_crtc_transition_handle_events - register for event at HFI transition
+ * @crtc: Pointer to drm_crtc.
+ * @enable: the event is enabled/disabled
+ */
+void sde_crtc_transition_handle_events(struct drm_crtc *crtc, bool enable);
+
+/**
+ * sde_crtc_property_is_dirty - Returns true if DRM property is dirty
+ * @cstate: pointer to sde_crtc_state
+ * @property_idx: property index
+ */
+bool sde_crtc_property_is_dirty(struct sde_crtc_state *cstate,
+		uint32_t property_idx);
+
 #endif /* _SDE_CRTC_H_ */

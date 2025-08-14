@@ -4,8 +4,9 @@ DISPLAY_ROOT=$(ROOTDIR)display/vendor/qcom/opensource/display-drivers
 CONFIG_DRM_MSM=$(MODULE_DRM_MSM)
 KBUILD_OPTIONS := DISPLAY_ROOT=$(DISPLAY_ROOT) CONFIG_DRM_MSM=$(CONFIG_DRM_MSM)
 
-ifeq ($(TARGET_SUPPORT),genericarmv8)
+ifeq ($(TARGET_SUPPORT), $(filter $(TARGET_SUPPORT), genericarmv8 kera))
 	KBUILD_OPTIONS += CONFIG_ARCH_SUN=y
+	KBUILD_OPTIONS += CONFIG_ARCH_CANOE=y
 endif
 
 obj-m += msm/

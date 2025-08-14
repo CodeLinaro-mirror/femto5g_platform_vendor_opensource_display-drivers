@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -12,11 +12,13 @@
 #include "msm_mmu.h"
 #include "sde_dbg.h"
 #include "sde_vbif.h"
+#include "hfi_defs_display.h"
+#include "hfi_properties_display.h"
 
 #define GUARD_BYTES (BIT(8) - 1)
 #define ALIGNED_OFFSET (U32_MAX & ~(GUARD_BYTES))
 #define ADDR_ALIGN BIT(8)
-#define MAX_RELATIVE_OFF (BIT(21) - 1)
+#define MAX_RELATIVE_OFF (BIT(22) - 1)
 #define ABSOLUTE_RANGE BIT(27)
 
 #define DECODE_SEL_OP (BIT(HW_BLK_SELECT))
@@ -39,7 +41,6 @@
 
 #define SIZE_DWORD(x) ((x) / (sizeof(u32)))
 #define NOT_WORD_ALIGNED(x) ((x) & 0x3)
-
 
 #define GRP_VIG_HW_BLK_SELECT (VIG0 | VIG1 | VIG2 | VIG3 | VIG4 | VIG5 | VIG6 | VIG7)
 #define GRP_DMA_HW_BLK_SELECT (DMA0 | DMA1 | DMA2 | DMA3 | DMA4 | DMA5)
@@ -69,6 +70,9 @@
 #define LUTBUS_LUT_SIZE_MASK 0x3fff
 
 #define PMU_CLK_CTRL  0x1F0
+#define VM_Q_SZ 16
+
+#define PROP_ID_MASK(x) ((x) & 0x000F0FFF)
 
 static uint32_t reg_dma_register_count;
 static uint32_t reg_dma_decode_sel;
@@ -84,8 +88,19 @@ static uint32_t reg_dma_ctl0_reset_offset[CTL_MAX][DMA_CTL_QUEUE_MAX];
 static uint32_t reg_dma_error_clear_mask;
 static uint32_t reg_dma_ctl_queue_off[CTL_MAX];
 static uint32_t reg_dma_ctl_queue1_off[CTL_MAX];
+static uint32_t reg_dma_vm_busy_status[CTL_MAX][DMA_CTL_QUEUE_MAX];
+static uint32_t reg_dma_intr_5_status_offset[CTL_MAX][DMA_CTL_QUEUE_MAX];
+static uint32_t reg_dma_intr_5_clear_offset[CTL_MAX][DMA_CTL_QUEUE_MAX];
 
 typedef int (*reg_dma_internal_ops) (struct sde_reg_dma_setup_ops_cfg *cfg);
+typedef int (*validate_queue_type)(struct sde_reg_dma_kickoff_cfg *cfg);
+
+typedef void (*reg_dma_read_clear_status)(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw);
+typedef void (*reg_dma_trigger)(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw);
+typedef void (*reg_dma_cmd_queue)(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw, u32 cmd);
 
 static struct sde_hw_reg_dma *reg_dma[DPU_MAX];
 static u32 ops_mem_size[REG_DMA_SETUP_OPS_MAX] = {
@@ -133,6 +148,13 @@ static u32 ctl_trigger_done_mask[CTL_MAX][DMA_CTL_QUEUE_MAX] = {
 	[CTL_5][1] = BIT(28),
 };
 
+static u32 vm_q_ctl_assigned_mask[CTL_MAX];
+
+static validate_queue_type validate_queue_func;
+static reg_dma_read_clear_status read_clear_reg_dma_status;
+static reg_dma_trigger trigger_reg_dma;
+static reg_dma_cmd_queue reg_dma_submit_payload;
+
 static int validate_dma_cfg(struct sde_reg_dma_setup_ops_cfg *cfg);
 static int validate_write_decode_sel(struct sde_reg_dma_setup_ops_cfg *cfg);
 static int validate_write_reg(struct sde_reg_dma_setup_ops_cfg *cfg);
@@ -152,6 +174,7 @@ static int check_support_v1(enum sde_reg_dma_features feature,
 		enum sde_reg_dma_blk blk, bool *is_supported);
 static int setup_payload_v1(struct sde_reg_dma_setup_ops_cfg *cfg);
 static int kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
+static int hfi_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
 static int reset_v1(struct sde_hw_ctl *ctl);
 static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode);
@@ -159,6 +182,31 @@ static struct sde_reg_dma_buffer *alloc_reg_dma_buf_v1(u32 size, u32 dpu_idx);
 static int dealloc_reg_dma_v1(struct sde_reg_dma_buffer *lut_buf, u32 dpu_idx);
 static void dump_regs_v1(u32 dpu_idx);
 static int last_cmd_sb_v2(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
+		enum sde_reg_dma_last_cmd_mode mode);
+
+static int validate_queue_type_v1_to_3(struct sde_reg_dma_kickoff_cfg *cfg);
+static int validate_queue_type_v4(struct sde_reg_dma_kickoff_cfg *cfg);
+
+static enum sde_reg_dma_queue reg_dma_select_queue_sb_v1_to_3(void);
+static enum sde_reg_dma_queue reg_dma_select_queue_sb_v4(void);
+
+static void reg_dma_read_clear_status_v1_to_v3(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw);
+static void reg_dma_read_clear_status_v4(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw);
+
+static void reg_dma_trigger_v1_to_v3(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw);
+static void reg_dma_trigger_v4(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw);
+
+static void reg_dma_submit_queue_v1_to_v3(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw, u32 cmd);
+static void reg_dma_submit_queue_v4(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw, u32 cmd);
+
+static int write_last_cmd_buffer(u32 dpu_idx);
+static int hfi_last_cmd_null_impl(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode);
 
 static reg_dma_internal_ops write_dma_op_params[REG_DMA_SETUP_OPS_MAX] = {
@@ -181,8 +229,8 @@ static reg_dma_internal_ops validate_dma_op_params[REG_DMA_SETUP_OPS_MAX] = {
 	[REG_BLK_LUT_WRITE] = validate_blk_lut_write,
 };
 
-static struct sde_reg_dma_buffer *last_cmd_buf_db[CTL_MAX][DPU_MAX];
-static struct sde_reg_dma_buffer *last_cmd_buf_sb[CTL_MAX][DPU_MAX];
+static struct sde_reg_dma_buffer *last_cmd_buf[DPU_MAX];
+static struct hfi_buff_dpu hfi_cfg_cached[DPU_MAX][DSPP_MAX] = {};
 
 static void get_decode_sel(unsigned long blk, u32 *decode_sel)
 {
@@ -656,9 +704,7 @@ static int validate_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx
 		return -EINVAL;
 	}
 
-	if (cfg->dma_type == REG_DMA_TYPE_SB &&
-			(cfg->queue_select != DMA_CTL_QUEUE1 ||
-			cfg->op == REG_DMA_READ)) {
+	if (!validate_queue_func || validate_queue_func(cfg)) {
 		DRM_ERROR("invalid queue selected %d or op %d for SB LUTDMA\n",
 				cfg->queue_select, cfg->op);
 		return -EINVAL;
@@ -693,9 +739,83 @@ static int validate_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx
 	return 0;
 }
 
+static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
+{
+	struct hfi_buff_dpu hfi_cfg = {};
+	int ret = 0;
+
+	if (!cfg || dpu_idx >= DPU_MAX) {
+		DRM_ERROR("invalid params cfg - %p, dpu idx %d\n", cfg, dpu_idx);
+		return -EINVAL;
+	}
+
+	if ((PROP_ID_MASK(cfg->prop_id) > HFI_PROPERTY_LAYER_COLOR_BEGIN) &&
+		(PROP_ID_MASK(cfg->prop_id) < HFI_PROPERTY_LAYER_COLOR_END)) {
+		/* broadcast doesn't apply to SSPP features */
+		hfi_cfg.flags = cfg->flags;
+		hfi_cfg.iova = cfg->dma_buf->iova;
+		hfi_cfg.len = cfg->dma_buf->index;
+		ret  = hfi_util_u32_prop_helper_add_prop_by_obj(cfg->prop_helper,
+				cfg->prop_id, cfg->obj_id, HFI_VAL_U32_ARRAY,
+				&hfi_cfg, sizeof(struct hfi_buff_dpu));
+		if (ret)
+			DRM_ERROR("error adding hfi property: %d error: %d\n", cfg->prop_id, ret);
+		else
+			DRM_DEBUG("successfully added SSPP feature: 0x%x flag %u iova %x len %x\n",
+				cfg->prop_id, cfg->flags, hfi_cfg.iova, hfi_cfg.len);
+		return ret;
+	} else if ((PROP_ID_MASK(cfg->prop_id) > HFI_PROPERTY_DISPLAY_COLOR_BEGIN) &&
+			(PROP_ID_MASK(cfg->prop_id) < HFI_PROPERTY_DISPLAY_COLOR_END)) {
+		DRM_DEBUG("DSPP feature 0x%x flag %u dspp_idx %d start_idx %d num_mixers %d\n",
+				cfg->prop_id, cfg->flags, cfg->dspp_idx, cfg->dspp_start_idx,
+				cfg->num_of_mixers);
+		if (cfg->flags & HFI_BUFF_FEATURE_BROADCAST) {
+			/* broadcast feature */
+			hfi_cfg.flags = cfg->flags;
+			hfi_cfg.iova = cfg->dma_buf->iova;
+			hfi_cfg.len = cfg->dma_buf->index;
+
+			ret = hfi_util_u32_prop_helper_add_prop(cfg->prop_helper, cfg->prop_id,
+				HFI_VAL_U32_ARRAY, &hfi_cfg, sizeof(struct hfi_buff_dpu));
+			if (ret)
+				DRM_ERROR("Failed to add hfi prop %d ret %d\n", cfg->prop_id, ret);
+			else
+				DRM_DEBUG("broadcast feature: added to prop_helper\n");
+			return ret;
+		} else if (cfg->dspp_idx != (cfg->dspp_start_idx + cfg->num_of_mixers - 1)) {
+			/* non-broadcast and it is not the last dspp idx */
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].flags = cfg->flags;
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].iova = cfg->dma_buf->iova;
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].len = cfg->dma_buf->index;
+			DRM_DEBUG("non-broadcast feature: copied to hfi_cfg_cached[%d]\n", dpu_idx);
+			return 0;
+		} else if (cfg->dspp_idx == (cfg->dspp_start_idx + cfg->num_of_mixers - 1)) {
+			/* non-broadcast and it is the last dspp idx */
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].flags = cfg->flags;
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].iova = cfg->dma_buf->iova;
+			hfi_cfg_cached[dpu_idx][cfg->dspp_idx].len = cfg->dma_buf->index;
+			ret = hfi_util_u32_prop_helper_add_prop(cfg->prop_helper, cfg->prop_id,
+				HFI_VAL_U32_ARRAY, &hfi_cfg_cached[dpu_idx][cfg->dspp_start_idx],
+				sizeof(struct hfi_buff_dpu) * cfg->num_of_mixers);
+			if (ret)
+				DRM_ERROR("Failed to add hfi prop %d ret %d\n", cfg->prop_id, ret);
+			else
+				DRM_DEBUG("non-broadcast feature: submitted to prop_helper\n");
+			/* reset the cached struct after submitting to FW */
+			memset(&hfi_cfg_cached[dpu_idx][0], 0, sizeof(hfi_cfg_cached[dpu_idx]));
+			return ret;
+		}
+	} else {
+		DRM_ERROR("unsupported prop_id %d\n", cfg->prop_id);
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
 static int write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 {
-	u32 cmd1, mask = 0, val = 0;
+	u32 cmd1;
 	struct sde_hw_blk_reg_map hw;
 
 	if (dpu_idx >= DPU_MAX) {
@@ -723,13 +843,7 @@ static int write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 	}
 
 	SDE_REG_WRITE(&hw, reg_dma_opmode_offset, BIT(0));
-	val = SDE_REG_READ(&hw, reg_dma_intr_4_status_offset);
-	if (val) {
-		DRM_DEBUG("LUT dma status %x\n", val);
-		mask = reg_dma_error_clear_mask;
-		SDE_REG_WRITE(&hw, reg_dma_intr_4_clear_offset, mask);
-		SDE_EVT32(val);
-	}
+	read_clear_reg_dma_status(cfg, &hw);
 
 	if (cfg->last_command) {
 		/* ensure all packets are queued in packet queue before
@@ -738,32 +852,12 @@ static int write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 		wmb();
 	}
 
-	if (cfg->dma_type == REG_DMA_TYPE_DB) {
-		SDE_REG_WRITE(&hw, reg_dma_ctl_queue_off[cfg->ctl->idx],
-				cfg->dma_buf->iova);
-		SDE_REG_WRITE(&hw, reg_dma_ctl_queue_off[cfg->ctl->idx] + 0x4,
-				cmd1);
-	} else if (cfg->dma_type == REG_DMA_TYPE_SB) {
-		SDE_REG_WRITE(&hw, reg_dma_ctl_queue1_off[cfg->ctl->idx],
-				cfg->dma_buf->iova);
-		SDE_REG_WRITE(&hw, reg_dma_ctl_queue1_off[cfg->ctl->idx] + 0x4,
-				cmd1);
-	}
+	reg_dma_submit_payload(cfg, &hw, cmd1);
 
 	if (cfg->last_command) {
 		/* ensure last command is queued before lut dma trigger */
 		wmb();
-
-		mask = ctl_trigger_done_mask[cfg->ctl->idx][cfg->queue_select];
-		SDE_REG_WRITE(&hw, reg_dma_intr_0_clear_offset[cfg->ctl->idx][cfg->queue_select],
-				mask);
-		/* DB LUTDMA use SW trigger while SB LUTDMA uses DSPP_SB
-		 * flush as its trigger event.
-		 */
-		if (cfg->dma_type == REG_DMA_TYPE_DB) {
-			SDE_REG_WRITE(&cfg->ctl->hw, reg_dma_ctl_trigger_offset,
-					queue_sel[cfg->queue_select]);
-		}
+		trigger_reg_dma(cfg, &hw);
 	}
 
 	SDE_EVT32(cfg->feature, cfg->dma_type,
@@ -802,6 +896,144 @@ static bool setup_clk_force_ctrl(struct sde_hw_blk_reg_map *hw,
 	return !(reg_val & (BIT(0) | BIT(16)));
 }
 
+static int validate_queue_type_v1_to_3(struct sde_reg_dma_kickoff_cfg *cfg)
+{
+	if (cfg->dma_type == REG_DMA_TYPE_SB && (cfg->queue_select != DMA_CTL_QUEUE1 ||
+			cfg->op == REG_DMA_READ))
+		return -EINVAL;
+
+	return 0;
+}
+
+static int validate_queue_type_v4(struct sde_reg_dma_kickoff_cfg *cfg)
+{
+	if (cfg->dma_type == REG_DMA_TYPE_SB && (cfg->queue_select != DMA_CTL_QUEUE0 ||
+			cfg->op == REG_DMA_READ))
+		return -EINVAL;
+
+	return 0;
+}
+
+static enum sde_reg_dma_queue reg_dma_select_queue_sb_v1_to_3(void)
+{
+	return DMA_CTL_QUEUE1;
+}
+
+static enum sde_reg_dma_queue reg_dma_select_queue_sb_v4(void)
+{
+	return DMA_CTL_QUEUE0;
+}
+
+static void reg_dma_read_clear_status_v1_to_v3(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw)
+{
+	u32 val, mask;
+
+	val = SDE_REG_READ(hw, reg_dma_intr_4_status_offset);
+	if (val) {
+		DRM_DEBUG("LUT dma status %x\n", val);
+		mask = reg_dma_error_clear_mask;
+		SDE_REG_WRITE(hw, reg_dma_intr_4_clear_offset, mask);
+		SDE_EVT32(val);
+	}
+}
+
+static void reg_dma_read_clear_status_v4(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw)
+{
+	u32 val, mask;
+
+	val = SDE_REG_READ(hw, reg_dma_intr_5_status_offset[cfg->ctl->idx][cfg->dma_type]);
+	if (val) {
+		DRM_DEBUG("LUT dma status %x\n", val);
+		mask = reg_dma_error_clear_mask;
+		SDE_REG_WRITE(hw, reg_dma_intr_5_status_offset[cfg->ctl->idx][cfg->dma_type], mask);
+		SDE_EVT32(val);
+	}
+}
+
+static void reg_dma_trigger_v1_to_v3(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw)
+{
+	u32 mask;
+
+	mask = ctl_trigger_done_mask[cfg->ctl->idx][cfg->queue_select];
+	SDE_REG_WRITE(hw, reg_dma_intr_0_clear_offset[cfg->ctl->idx][cfg->queue_select],
+				mask);
+	/* DB LUTDMA use SW trigger while SB LUTDMA uses DSPP_SB
+	 * flush as its trigger event.
+	 */
+	if (cfg->dma_type == REG_DMA_TYPE_DB) {
+		SDE_REG_WRITE(&cfg->ctl->hw, reg_dma_ctl_trigger_offset,
+				queue_sel[cfg->queue_select]);
+	}
+}
+
+static void reg_dma_trigger_v4(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw)
+{
+	u32 mask;
+
+	mask = ctl_trigger_done_mask[cfg->ctl->idx][cfg->queue_select];
+	SDE_REG_WRITE(hw, reg_dma_intr_0_clear_offset[cfg->ctl->idx][cfg->queue_select],
+				mask);
+	/* DB LUTDMA use SW trigger while SB LUTDMA uses DSPP_SB
+	 * flush as its trigger event.
+	 */
+	if (cfg->dma_type == REG_DMA_TYPE_DB) {
+		SDE_REG_WRITE(&cfg->ctl->hw, reg_dma_ctl_trigger_offset,
+				vm_q_ctl_assigned_mask[cfg->ctl->idx]);
+	}
+}
+
+static void reg_dma_submit_queue_v1_to_v3(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw, u32 cmd)
+{
+	if (cfg->dma_type == REG_DMA_TYPE_DB) {
+		SDE_REG_WRITE(hw, reg_dma_ctl_queue_off[cfg->ctl->idx],
+				cfg->dma_buf->iova);
+		SDE_REG_WRITE(hw, reg_dma_ctl_queue_off[cfg->ctl->idx] + 0x4,
+				cmd);
+	} else if (cfg->dma_type == REG_DMA_TYPE_SB) {
+		SDE_REG_WRITE(hw, reg_dma_ctl_queue1_off[cfg->ctl->idx],
+				cfg->dma_buf->iova);
+		SDE_REG_WRITE(hw, reg_dma_ctl_queue1_off[cfg->ctl->idx] + 0x4,
+				cmd);
+	}
+}
+
+static void reg_dma_submit_queue_v4(struct sde_reg_dma_kickoff_cfg *cfg,
+					struct sde_hw_blk_reg_map *hw, u32 cmd)
+{
+		SDE_REG_WRITE(hw, reg_dma_ctl_queue_off[cfg->ctl->idx],
+				cfg->dma_buf->iova);
+		SDE_REG_WRITE(hw, reg_dma_ctl_queue_off[cfg->ctl->idx] + 0x4,
+				cmd);
+}
+
+static int write_last_cmd_buffer(u32 dpu_idx)
+{
+	struct sde_reg_dma_setup_ops_cfg dma_cfg;
+
+	if (!last_cmd_buf[dpu_idx] || !last_cmd_buf[dpu_idx]->iova) {
+		DRM_ERROR("invalid last cmd buf for dpu idx %d\n", dpu_idx);
+		return -EINVAL;
+	}
+
+	dma_cfg.dma_buf = last_cmd_buf[dpu_idx];
+	reset_reg_dma_buffer_v1(last_cmd_buf[dpu_idx]);
+	if (validate_last_cmd(&dma_cfg)) {
+		DRM_ERROR("validate last_cmd_buf failed\n");
+		return -EINVAL;
+	}
+
+	if (write_last_cmd(&dma_cfg)) {
+		DRM_ERROR("write last_cmd_buf failed\n");
+		return -EINVAL;
+	}
+	return 0;
+}
+
 int init_v1(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 {
 	int i = 0, rc = 0;
@@ -810,59 +1042,31 @@ int init_v1(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 		return -EINVAL;
 
 	reg_dma[dpu_idx] = cfg;
-	for (i = CTL_0; i < CTL_MAX; i++) {
-		if (!last_cmd_buf_db[i][dpu_idx]) {
-			last_cmd_buf_db[i][dpu_idx] =
-			    alloc_reg_dma_buf_v1(REG_DMA_HEADERS_BUFFER_SZ, dpu_idx);
-			if (IS_ERR_OR_NULL(last_cmd_buf_db[i][dpu_idx])) {
-				/*
-				 * This will allow reg dma to fall back to
-				 * AHB domain
-				 */
-				pr_info("Failed to allocate reg dma, ret:%lu\n",
-						PTR_ERR(last_cmd_buf_db[i][dpu_idx]));
-				return 0;
-			}
+	if (!last_cmd_buf[dpu_idx]) {
+		last_cmd_buf[dpu_idx] = alloc_reg_dma_buf_v1(REG_DMA_HEADERS_BUFFER_SZ, dpu_idx);
+		if (IS_ERR_OR_NULL(last_cmd_buf[dpu_idx])) {
+			/*
+			 * This will allow reg dma to fall back to
+			 * AHB domain
+			 */
+			pr_info("Failed to allocate reg dma, ret:%lu\n",
+					PTR_ERR(last_cmd_buf[dpu_idx]));
+			return 0;
 		}
-		if (!last_cmd_buf_sb[i][dpu_idx]) {
-			last_cmd_buf_sb[i][dpu_idx] =
-			    alloc_reg_dma_buf_v1(REG_DMA_HEADERS_BUFFER_SZ, dpu_idx);
-			if (IS_ERR_OR_NULL(last_cmd_buf_sb[i][dpu_idx])) {
-				/*
-				 * This will allow reg dma to fall back to
-				 * AHB domain
-				 */
-				pr_info("Failed to allocate reg dma, ret:%lu\n",
-						PTR_ERR(last_cmd_buf_sb[i][dpu_idx]));
-				return 0;
-			}
-		}
-	}
-	if (rc) {
-		for (i = 0; i < CTL_MAX; i++) {
-			if (!last_cmd_buf_db[i][dpu_idx])
-				continue;
-			dealloc_reg_dma_v1(last_cmd_buf_db[i][dpu_idx], dpu_idx);
-			last_cmd_buf_db[i][dpu_idx] = NULL;
-		}
-		for (i = 0; i < CTL_MAX; i++) {
-			if (!last_cmd_buf_sb[i][dpu_idx])
-				continue;
-			dealloc_reg_dma_v1(last_cmd_buf_sb[i][dpu_idx], dpu_idx);
-			last_cmd_buf_sb[i][dpu_idx] = NULL;
-		}
-		return rc;
 	}
 
 	reg_dma[dpu_idx]->ops.check_support = check_support_v1;
 	reg_dma[dpu_idx]->ops.setup_payload = setup_payload_v1;
-	reg_dma[dpu_idx]->ops.kick_off = kick_off_v1;
+	reg_dma[dpu_idx]->ops.kick_off[MSM_DISP_OP_HWIO] = kick_off_v1;
+	reg_dma[dpu_idx]->ops.kick_off[MSM_DISP_OP_HFI] = hfi_kick_off_v1;
 	reg_dma[dpu_idx]->ops.reset = reset_v1;
 	reg_dma[dpu_idx]->ops.alloc_reg_dma_buf = alloc_reg_dma_buf_v1;
 	reg_dma[dpu_idx]->ops.dealloc_reg_dma = dealloc_reg_dma_v1;
 	reg_dma[dpu_idx]->ops.reset_reg_dma_buf = reset_reg_dma_buffer_v1;
-	reg_dma[dpu_idx]->ops.last_command = last_cmd_v1;
+	reg_dma[dpu_idx]->ops.last_command[MSM_DISP_OP_HWIO] = last_cmd_v1;
+	reg_dma[dpu_idx]->ops.last_command[MSM_DISP_OP_HFI] = hfi_last_cmd_null_impl;
 	reg_dma[dpu_idx]->ops.dump_regs = dump_regs_v1;
+	reg_dma[dpu_idx]->ops.select_queue_sb = reg_dma_select_queue_sb_v1_to_3;
 
 	reg_dma_register_count = 60;
 	reg_dma_decode_sel = 0x180ac060;
@@ -886,7 +1090,17 @@ int init_v1(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 	for (i = CTL_1; i < ARRAY_SIZE(reg_dma_ctl_queue_off); i++)
 		reg_dma_ctl_queue_off[i] = reg_dma_ctl_queue_off[i - 1] +
 			(sizeof(u32) * 4);
+	validate_queue_func = validate_queue_type_v1_to_3;
+	reg_dma_submit_payload = reg_dma_submit_queue_v1_to_v3;
+	read_clear_reg_dma_status = reg_dma_read_clear_status_v1_to_v3;
+	trigger_reg_dma = reg_dma_trigger_v1_to_v3;
 
+	rc = write_last_cmd_buffer(dpu_idx);
+	if (rc) {
+		dealloc_reg_dma_v1(last_cmd_buf[dpu_idx], dpu_idx);
+		last_cmd_buf[dpu_idx] = NULL;
+		return -EINVAL;
+	}
 	return 0;
 }
 
@@ -933,7 +1147,14 @@ int init_v11(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 	v1_supported[MEMC_SKY] = GRP_DSPP_HW_BLK_SELECT;
 	v1_supported[MEMC_FOLIAGE] = GRP_DSPP_HW_BLK_SELECT;
 	v1_supported[MEMC_PROT] = GRP_DSPP_HW_BLK_SELECT;
-	v1_supported[QSEED] = GRP_VIG_HW_BLK_SELECT;
+	v1_supported[QSEED] = GRP_VIG_HW_BLK_SELECT | GRP_MDSS_HW_BLK_SELECT;
+
+	ret = write_last_cmd_buffer(dpu_idx);
+	if (ret) {
+		dealloc_reg_dma_v1(last_cmd_buf[dpu_idx], dpu_idx);
+		last_cmd_buf[dpu_idx] = NULL;
+		return ret;
+	}
 
 	return 0;
 }
@@ -963,6 +1184,13 @@ int init_v12(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 			GRP_MDSS_HW_BLK_SELECT);
 	v1_supported[DEMURA_CFG] = MDSS | DSPP0 | DSPP1;
 	v1_supported[DEMURA_CFG0_PARAM2] = MDSS | DSPP0 | DSPP1;
+
+	ret = write_last_cmd_buffer(dpu_idx);
+	if (ret) {
+		dealloc_reg_dma_v1(last_cmd_buf[dpu_idx], dpu_idx);
+		last_cmd_buf[dpu_idx] = NULL;
+		return ret;
+	}
 
 	return 0;
 }
@@ -1033,7 +1261,8 @@ int init_v2(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 		snprintf(name, sizeof(name), "REG_DMA_SB");
 		sde_dbg_reg_register_dump_range(LUTDMA_DBG_NAME, name, base,
 				base + BASE_REG_SIZE, cfg->caps->xin_id);
-		reg_dma[dpu_idx]->ops.last_command_sb = last_cmd_sb_v2;
+		reg_dma[dpu_idx]->ops.last_command_sb[MSM_DISP_OP_HWIO] = last_cmd_sb_v2;
+		reg_dma[dpu_idx]->ops.last_command_sb[MSM_DISP_OP_HFI] = hfi_last_cmd_null_impl;
 	}
 
 	if (cfg->caps->reg_dma_blks[REG_DMA_TYPE_DB].valid == true) {
@@ -1047,6 +1276,13 @@ int init_v2(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 
 	if (cfg->caps->split_vbif_supported)
 		ret = init_reg_dma_vbif(cfg);
+
+	ret = write_last_cmd_buffer(dpu_idx);
+	if (ret) {
+		dealloc_reg_dma_v1(last_cmd_buf[dpu_idx], dpu_idx);
+		last_cmd_buf[dpu_idx] = NULL;
+		return ret;
+	}
 
 	return ret;
 }
@@ -1113,6 +1349,77 @@ int init_v3(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 	v1_supported[AIQE_MDNIE] = MDSS | DSPP0 | DSPP2;
 	v1_supported[AIQE_SSRC_CONFIG] = MDSS | DSPP0 | DSPP2;
 	v1_supported[AIQE_SSRC_DATA] = MDSS | DSPP0 | DSPP2;
+
+	ret = write_last_cmd_buffer(dpu_idx);
+	if (ret) {
+		dealloc_reg_dma_v1(last_cmd_buf[dpu_idx], dpu_idx);
+		last_cmd_buf[dpu_idx] = NULL;
+		return ret;
+	}
+
+	return 0;
+}
+
+int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx)
+{
+	char name[20];
+	int rc, i, j;
+
+	rc = init_v3(reg_dma, dpu_idx);
+	if (rc) {
+		DRM_ERROR("failed to initialize v3: ret %d\n", rc);
+		return rc;
+	}
+
+	reg_dma_register_count = 0x10880;
+	reg_dma_decode_sel = 0x18360114;
+
+	if (reg_dma->caps->reg_dma_blks[REG_DMA_TYPE_DB].valid && reg_dma->vm_based_queue) {
+		for (i = 1; i < VM_Q_SZ + 1; i++) {
+			u32 base = reg_dma->caps->reg_dma_blks[REG_DMA_TYPE_DB].base +
+					reg_dma_ctl0_queue0_cmd0_offset * i;
+			snprintf(name, sizeof(name), "REG_DMA_DB_VQ%d", i - 1);
+			sde_dbg_reg_register_dump_range(LUTDMA_DBG_NAME, name, base,
+					base + CTL_REG_SIZE, reg_dma->caps->xin_id);
+		}
+	}
+
+	if (reg_dma->caps->reg_dma_blks[REG_DMA_TYPE_SB].valid && reg_dma->vm_based_queue) {
+		for (i = 1; i < VM_Q_SZ + 1; i++) {
+			u32 base = reg_dma->caps->reg_dma_blks[REG_DMA_TYPE_SB].base +
+					reg_dma_ctl0_queue1_cmd0_offset * i;
+
+			snprintf(name, sizeof(name), "REG_DMA_SB_VQ%d", i - 1);
+			sde_dbg_reg_register_dump_range(LUTDMA_DBG_NAME, name, base,
+					base + CTL_REG_SIZE, reg_dma->caps->xin_id);
+		}
+	}
+
+	for (i = CTL_0; i < CTL_MAX; i++) {
+		reg_dma_vm_busy_status[i][DMA_CTL_QUEUE0] = 4096 * i + 0x10;
+		reg_dma_vm_busy_status[i][DMA_CTL_QUEUE1] = 4096 * i + 0x10;
+		reg_dma_intr_5_status_offset[i][DMA_CTL_QUEUE0] = 4096 * i + 0x60;
+		reg_dma_intr_5_status_offset[i][DMA_CTL_QUEUE1] = 4096 * i + 0x60;
+		reg_dma_intr_5_clear_offset[i][DMA_CTL_QUEUE0] = 4096 * i + 0x5c;
+		reg_dma_intr_5_clear_offset[i][DMA_CTL_QUEUE1] = 4096 * i + 0x5c;
+	}
+	validate_queue_func = validate_queue_type_v4;
+	reg_dma->ops.select_queue_sb = reg_dma_select_queue_sb_v4;
+	j = 0;
+	for (i = CTL_0; i < CTL_MAX; i++)
+		vm_q_ctl_assigned_mask[i] = BIT(j++);
+	reg_dma_ctl_trigger_offset = 0x900;
+	read_clear_reg_dma_status = reg_dma_read_clear_status_v4;
+	trigger_reg_dma = reg_dma_trigger_v4;
+	reg_dma_submit_payload = reg_dma_submit_queue_v4;
+
+	rc = write_last_cmd_buffer(dpu_idx);
+	if (rc) {
+		dealloc_reg_dma_v1(last_cmd_buf[dpu_idx], dpu_idx);
+		last_cmd_buf[dpu_idx] = NULL;
+		return rc;
+	}
+
 	return 0;
 }
 
@@ -1150,7 +1457,6 @@ static int setup_payload_v1(struct sde_reg_dma_setup_ops_cfg *cfg)
 	return rc;
 }
 
-
 static int kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 {
 	int rc = 0;
@@ -1160,6 +1466,18 @@ static int kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 		return rc;
 
 	rc = write_kick_off_v1(cfg, dpu_idx);
+	return rc;
+}
+
+static int hfi_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
+{
+	int rc = 0;
+
+	rc = validate_kick_off_v1(cfg, dpu_idx);
+	if (rc)
+		return rc;
+
+	rc = hfi_write_kick_off_v1(cfg, dpu_idx);
 	return rc;
 }
 
@@ -1402,7 +1720,6 @@ static int write_last_cmd(struct sde_reg_dma_setup_ops_cfg *cfg)
 static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode)
 {
-	struct sde_reg_dma_setup_ops_cfg cfg;
 	struct sde_reg_dma_kickoff_cfg kick_off;
 	struct sde_hw_blk_reg_map hw;
 	u32 val;
@@ -1413,27 +1730,13 @@ static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 				((ctl) ? ctl->idx : -1));
 		return -EINVAL;
 	}
-
-	if (!last_cmd_buf_db[ctl->idx][ctl->dpu_idx]
-		|| !last_cmd_buf_db[ctl->idx][ctl->dpu_idx]->iova) {
-		DRM_ERROR("invalid last cmd buf for idx %d\n", ctl->idx);
-		return -EINVAL;
-	}
-
 	if (ctl->dpu_idx >= DPU_MAX) {
 		DRM_ERROR("invalid dpu idx %d\n", ctl->dpu_idx);
 		return -EINVAL;
 	}
 
-	cfg.dma_buf = last_cmd_buf_db[ctl->idx][ctl->dpu_idx];
-	reset_reg_dma_buffer_v1(last_cmd_buf_db[ctl->idx][ctl->dpu_idx]);
-	if (validate_last_cmd(&cfg)) {
-		DRM_ERROR("validate buf failed\n");
-		return -EINVAL;
-	}
-
-	if (write_last_cmd(&cfg)) {
-		DRM_ERROR("write buf failed\n");
+	if (!last_cmd_buf[ctl->dpu_idx] || !last_cmd_buf[ctl->dpu_idx]->iova) {
+		DRM_ERROR("invalid last cmd buf for dpu idx %d\n", ctl->dpu_idx);
 		return -EINVAL;
 	}
 
@@ -1443,7 +1746,7 @@ static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	kick_off.last_command = 1;
 	kick_off.op = REG_DMA_WRITE;
 	kick_off.dma_type = REG_DMA_TYPE_DB;
-	kick_off.dma_buf = last_cmd_buf_db[ctl->idx][ctl->dpu_idx];
+	kick_off.dma_buf = last_cmd_buf[ctl->dpu_idx];
 	kick_off.feature = REG_DMA_FEATURES_MAX;
 	rc = kick_off_v1(&kick_off, ctl->dpu_idx);
 	if (rc) {
@@ -1459,7 +1762,7 @@ static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			kick_off.dma_type, kick_off.op, ctl->dpu_idx);
 	if (mode == REG_DMA_WAIT4_COMP) {
 		rc = read_poll_timeout(sde_reg_read, val,
-				(val & ctl_trigger_done_mask[ctl->idx][q]), 10, false, 20000,
+				(val & ctl_trigger_done_mask[ctl->idx][q]), 10, 20000, false,
 				&hw, reg_dma_intr_0_status_offset[ctl->idx][q]);
 		if (rc)
 			DRM_ERROR("poll wait failed %d val %x mask %x\n",
@@ -1470,18 +1773,17 @@ static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	return rc;
 }
 
+static int hfi_last_cmd_null_impl(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
+		enum sde_reg_dma_last_cmd_mode mode)
+{
+	return 0;
+}
+
 void deinit_v1(u32 dpu_idx)
 {
-	int i = 0;
-
-	for (i = CTL_0; i < CTL_MAX; i++) {
-		if (last_cmd_buf_db[i][dpu_idx])
-			dealloc_reg_dma_v1(last_cmd_buf_db[i][dpu_idx], dpu_idx);
-		last_cmd_buf_db[i][dpu_idx] = NULL;
-		if (last_cmd_buf_sb[i][dpu_idx])
-			dealloc_reg_dma_v1(last_cmd_buf_sb[i][dpu_idx], dpu_idx);
-		last_cmd_buf_sb[i][dpu_idx] = NULL;
-	}
+	if (last_cmd_buf[dpu_idx])
+		dealloc_reg_dma_v1(last_cmd_buf[dpu_idx], dpu_idx);
+	last_cmd_buf[dpu_idx] = NULL;
 }
 
 static void dump_regs_v1(u32 dpu_idx)
@@ -1513,7 +1815,6 @@ static void dump_regs_v1(u32 dpu_idx)
 static int last_cmd_sb_v2(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		enum sde_reg_dma_last_cmd_mode mode)
 {
-	struct sde_reg_dma_setup_ops_cfg cfg;
 	struct sde_reg_dma_kickoff_cfg kick_off;
 	int rc = 0;
 
@@ -1522,22 +1823,13 @@ static int last_cmd_sb_v2(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 				((ctl) ? ctl->idx : -1));
 		return -EINVAL;
 	}
-
-	if (!last_cmd_buf_sb[ctl->idx][ctl->dpu_idx]
-		|| !last_cmd_buf_sb[ctl->idx][ctl->dpu_idx]->iova) {
-		DRM_ERROR("invalid last cmd buf for idx %d\n", ctl->idx);
+	if (ctl->dpu_idx >= DPU_MAX) {
+		DRM_ERROR("invalid dpu idx %d\n", ctl->dpu_idx);
 		return -EINVAL;
 	}
 
-	cfg.dma_buf = last_cmd_buf_sb[ctl->idx][ctl->dpu_idx];
-	reset_reg_dma_buffer_v1(last_cmd_buf_sb[ctl->idx][ctl->dpu_idx]);
-	if (validate_last_cmd(&cfg)) {
-		DRM_ERROR("validate buf failed\n");
-		return -EINVAL;
-	}
-
-	if (write_last_cmd(&cfg)) {
-		DRM_ERROR("write buf failed\n");
+	if (!last_cmd_buf[ctl->dpu_idx] || !last_cmd_buf[ctl->dpu_idx]->iova) {
+		DRM_ERROR("invalid last cmd buf for dpu idx %d\n", ctl->dpu_idx);
 		return -EINVAL;
 	}
 
@@ -1546,8 +1838,8 @@ static int last_cmd_sb_v2(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	kick_off.last_command = 1;
 	kick_off.op = REG_DMA_WRITE;
 	kick_off.dma_type = REG_DMA_TYPE_SB;
-	kick_off.queue_select = DMA_CTL_QUEUE1;
-	kick_off.dma_buf = last_cmd_buf_sb[ctl->idx][ctl->dpu_idx];
+	kick_off.queue_select = q;
+	kick_off.dma_buf = last_cmd_buf[ctl->dpu_idx];
 	kick_off.feature = REG_DMA_FEATURES_MAX;
 	rc = kick_off_v1(&kick_off, ctl->dpu_idx);
 	if (rc)
@@ -1556,4 +1848,20 @@ static int last_cmd_sb_v2(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	SDE_EVT32(ctl->idx, kick_off.queue_select, kick_off.dma_type,
 			kick_off.op, ctl->dpu_idx);
 	return rc;
+}
+
+int get_last_cmd_buffer(u32 dpu_idx, struct sde_reg_dma_buffer **last_cmd_payload)
+{
+	if (dpu_idx >= DPU_MAX) {
+		DRM_ERROR("invalid dpu idx %d\n", dpu_idx);
+		return -EINVAL;
+	}
+
+	if (!last_cmd_buf[dpu_idx] || !last_cmd_buf[dpu_idx]->iova) {
+		DRM_ERROR("invalid last cmd buf\n");
+		return -EINVAL;
+	}
+
+	*last_cmd_payload = last_cmd_buf[dpu_idx];
+	return 0;
 }

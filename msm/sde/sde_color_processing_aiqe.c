@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <drm/msm_drm_aiqe.h>
@@ -39,6 +39,7 @@ void _aiqe_caps_update(struct sde_crtc *crtc, struct sde_kms_info *info)
 
 void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 {
+	char aiqe_mdnie_prop[256];
 	struct sde_crtc *sde_crtc = NULL;
 	struct sde_kms *kms = NULL;
 	struct sde_mdss_cfg *catalog = NULL;
@@ -55,8 +56,11 @@ void _dspp_aiqe_install_property(struct drm_crtc *crtc)
 	major_version = version >> 16;
 	switch (major_version) {
 	case 1:
+	case 2:
 		if (catalog->dspp[0].sblk->aiqe.mdnie_supported) {
-			_sde_cp_crtc_install_range_property(crtc, "SDE_DSPP_AIQE_MDNIE_V1",
+			snprintf(aiqe_mdnie_prop, ARRAY_SIZE(aiqe_mdnie_prop),
+				 "%s%d", "SDE_DSPP_AIQE_MDNIE_V", major_version);
+			_sde_cp_crtc_install_range_property(crtc, aiqe_mdnie_prop,
 				SDE_CP_CRTC_DSPP_MDNIE, 0, U64_MAX, 0);
 			_sde_cp_create_local_blob(crtc, SDE_CP_CRTC_DSPP_MDNIE,
 				sizeof(struct drm_msm_mdnie));
@@ -113,14 +117,14 @@ int set_mdnie_feature(struct sde_hw_dspp *hw_dspp,
 
 	if (!hw_dspp)
 		ret = -EINVAL;
-	else if (!hw_dspp->ops.setup_mdnie) {
+	else if (!hw_dspp->ops.setup_mdnie[hw_dspp->hw.disp_op]) {
 		if (!hw_dspp->cap->sblk->aiqe.mdnie_supported)
 			DRM_DEBUG_DRIVER("MDNIE not supported in dspp idx %d", hw_dspp->idx);
 		else
 			ret = -EINVAL;
-	}
-	else
-		hw_dspp->ops.setup_mdnie(hw_dspp, hw_cfg, &hw_crtc->aiqe_top_level);
+	} else
+		hw_dspp->ops.setup_mdnie[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
+							  &hw_crtc->aiqe_top_level);
 
 	return ret;
 }
@@ -133,14 +137,14 @@ int set_mdnie_art_feature(struct sde_hw_dspp *hw_dspp,
 
 	if (!hw_dspp)
 		ret = -EINVAL;
-	else if (!hw_dspp->ops.setup_mdnie_art) {
+	else if (!hw_dspp->ops.setup_mdnie_art[hw_dspp->hw.disp_op]) {
 		if (!hw_dspp->cap->sblk->aiqe.mdnie_supported)
 			DRM_DEBUG_DRIVER("MDNIE not supported in dspp idx %d", hw_dspp->idx);
 		else
 			ret = -EINVAL;
-	}
-	else
-		hw_dspp->ops.setup_mdnie_art(hw_dspp, hw_cfg, &hw_crtc->aiqe_top_level);
+	} else
+		hw_dspp->ops.setup_mdnie_art[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
+							      &hw_crtc->aiqe_top_level);
 
 	return ret;
 }
@@ -153,11 +157,11 @@ int check_aiqe_ssrc_data(struct sde_hw_dspp *hw_dspp,
 
 	if (!hw_dspp)
 		ret = -EINVAL;
-	else if (!hw_dspp->ops.validate_aiqe_ssrc_data)
+	else if (!hw_dspp->ops.validate_aiqe_ssrc_data[hw_dspp->hw.disp_op])
 		ret = 0;
 	else
-		ret = hw_dspp->ops.validate_aiqe_ssrc_data(hw_dspp, hw_cfg,
-				&sde_crtc->aiqe_top_level);
+		ret = hw_dspp->ops.validate_aiqe_ssrc_data[hw_dspp->hw.disp_op](hw_dspp,
+							hw_cfg,	&sde_crtc->aiqe_top_level);
 
 	return ret;
 }
@@ -170,10 +174,10 @@ int set_aiqe_ssrc_config(struct sde_hw_dspp *hw_dspp,
 
 	if (!hw_dspp)
 		ret = -EINVAL;
-	else if (!hw_dspp->ops.setup_aiqe_ssrc_config)
+	else if (!hw_dspp->ops.setup_aiqe_ssrc_config[hw_dspp->hw.disp_op])
 		ret = 0;
 	else
-		hw_dspp->ops.setup_aiqe_ssrc_config(hw_dspp, hw_cfg,
+		hw_dspp->ops.setup_aiqe_ssrc_config[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
 				&sde_crtc->aiqe_top_level);
 
 	return ret;
@@ -187,10 +191,10 @@ int set_aiqe_ssrc_data(struct sde_hw_dspp *hw_dspp,
 
 	if (!hw_dspp)
 		ret = -EINVAL;
-	else if (!hw_dspp->ops.setup_aiqe_ssrc_data)
+	else if (!hw_dspp->ops.setup_aiqe_ssrc_data[hw_dspp->hw.disp_op])
 		ret = 0;
 	else
-		hw_dspp->ops.setup_aiqe_ssrc_data(hw_dspp, hw_cfg,
+		hw_dspp->ops.setup_aiqe_ssrc_data[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
 				&sde_crtc->aiqe_top_level);
 
 	return ret;
@@ -204,14 +208,14 @@ int set_copr_feature(struct sde_hw_dspp *hw_dspp,
 
 	if (!hw_dspp)
 		ret = -EINVAL;
-	else if (!hw_dspp->ops.setup_copr) {
+	else if (!hw_dspp->ops.setup_copr[hw_dspp->hw.disp_op]) {
 		if (!hw_dspp->cap->sblk->aiqe.copr_supported)
 			DRM_DEBUG_DRIVER("COPR not supported in dspp idx %d", hw_dspp->idx);
 		else
 			ret = -EINVAL;
-	}
-	else
-		hw_dspp->ops.setup_copr(hw_dspp, hw_cfg, &hw_crtc->aiqe_top_level);
+	} else
+		hw_dspp->ops.setup_copr[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
+						&hw_crtc->aiqe_top_level);
 
 	return ret;
 }
@@ -220,18 +224,22 @@ int set_aiqe_abc_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_c
 			struct sde_crtc *hw_crtc)
 {
 	int ret = 0;
+	enum msm_disp_op disp_op;
 
 	if (!hw_dspp)
-		ret = -EINVAL;
-	else if (!hw_dspp->ops.setup_aiqe_abc)
+		return -EINVAL;
+
+	disp_op = hw_dspp->hw.disp_op;
+	if (!hw_dspp->ops.setup_aiqe_abc[disp_op])
 		ret = 0;
 	else
-		hw_dspp->ops.setup_aiqe_abc(hw_dspp, hw_cfg, &hw_crtc->aiqe_top_level);
+		hw_dspp->ops.setup_aiqe_abc[disp_op](hw_dspp, hw_cfg,
+							     &hw_crtc->aiqe_top_level);
 
 	if (ret)
 		DRM_ERROR("invalid params hw_dspp %pK dspp idx %d setup_aiqe_abc %pK\n",
 			hw_dspp, (hw_dspp) ? hw_dspp->idx : -1,
-			(hw_dspp) ? hw_dspp->ops.setup_aiqe_abc : NULL);
+			(hw_dspp) ? hw_dspp->ops.setup_aiqe_abc[disp_op] : NULL);
 
 	return ret;
 }
@@ -241,10 +249,12 @@ int sde_dspp_copr_read_status(struct sde_hw_dspp *hw_dspp,
 {
 	int rc;
 
-	if (!copr_status || !hw_dspp || !hw_dspp->ops.read_copr_status)
+	if (!copr_status || !hw_dspp)
 		return -EINVAL;
 
-	rc = hw_dspp->ops.read_copr_status(hw_dspp, copr_status);
+	if (!hw_dspp->ops.read_copr_status[hw_dspp->hw.disp_op])
+		return IS_DISP_OP_HFI(hw_dspp->hw.disp_op) ? 0 : -EINVAL;
+	rc = hw_dspp->ops.read_copr_status[hw_dspp->hw.disp_op](hw_dspp, copr_status);
 	if (rc)
 		SDE_ERROR("invalid status read %d", rc);
 
@@ -254,17 +264,20 @@ int sde_dspp_copr_read_status(struct sde_hw_dspp *hw_dspp,
 void sde_set_mdnie_psr(struct sde_crtc *sde_crtc)
 {
 	struct sde_hw_dspp *hw_dspp = NULL;
-	u32 num_mixers = sde_crtc->num_mixers;
+	u32 num_mixers;
 	int i;
 
-	hw_dspp = sde_crtc->mixers[0].hw_dspp;
-
-	if (!sde_crtc || !hw_dspp)
+	if (!sde_crtc)
 		return;
 
-	if (hw_dspp->ops.setup_mdnie_psr) {
+	hw_dspp = sde_crtc->mixers[0].hw_dspp;
+	num_mixers = sde_crtc->num_mixers;
+	if (!hw_dspp)
+		return;
+
+	if (hw_dspp->ops.setup_mdnie_psr[hw_dspp->hw.disp_op]) {
 		for (i = 0; i < num_mixers; i++)
-			hw_dspp->ops.setup_mdnie_psr(hw_dspp);
+			hw_dspp->ops.setup_mdnie_psr[hw_dspp->hw.disp_op](hw_dspp);
 	}
 }
 
@@ -306,13 +319,13 @@ int check_ai_scaler_feature(struct sde_hw_dspp *hw_dspp,
 
 	if (!hw_dspp)
 		ret = -EINVAL;
-	else if (!hw_dspp->ops.check_ai_scaler) {
+	else if (!hw_dspp->ops.check_ai_scaler[hw_dspp->hw.disp_op]) {
 		if (!hw_dspp->cap->sblk->ai_scaler.ai_scaler_supported)
 			DRM_DEBUG_DRIVER("AI Scaler not supported in dspp idx %d", hw_dspp->idx);
 		else
 			ret = -EINVAL;
 	} else
-		ret = hw_dspp->ops.check_ai_scaler(hw_dspp, hw_cfg);
+		ret = hw_dspp->ops.check_ai_scaler[hw_dspp->hw.disp_op](hw_dspp, hw_cfg);
 
 	return ret;
 }
@@ -325,13 +338,13 @@ int set_ai_scaler_feature(struct sde_hw_dspp *hw_dspp,
 
 	if (!hw_dspp)
 		ret = -EINVAL;
-	else if (!hw_dspp->ops.setup_ai_scaler) {
+	else if (!hw_dspp->ops.setup_ai_scaler[hw_dspp->hw.disp_op]) {
 		if (!hw_dspp->cap->sblk->ai_scaler.ai_scaler_supported)
 			DRM_DEBUG_DRIVER("AI Scaler not supported in dspp idx %d", hw_dspp->idx);
 		else
 			ret = -EINVAL;
 	} else
-		ret = hw_dspp->ops.setup_ai_scaler(hw_dspp, hw_cfg);
+		ret = hw_dspp->ops.setup_ai_scaler[hw_dspp->hw.disp_op](hw_dspp, hw_cfg);
 
 	return ret;
 }

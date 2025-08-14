@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -28,12 +28,73 @@ struct sde_hw_pipe;
 #define SDE_SSPP_SOLID_FILL 0x20
 #define SDE_SSPP_RIGHT	 0x40
 
+/* SSPP_QOS_CTRL */
+#define SSPP_QOS_CTRL_VBLANK_EN            BIT(16)
+#define SSPP_QOS_CTRL_DANGER_SAFE_EN       BIT(0)
+#define SSPP_QOS_CTRL_DANGER_VBLANK_MASK   0x3
+#define SSPP_QOS_CTRL_DANGER_VBLANK_OFF    4
+#define SSPP_QOS_CTRL_CREQ_VBLANK_MASK     0x3
+#define SSPP_QOS_CTRL_CREQ_VBLANK_OFF      20
+
+#define SSPP_SYS_CACHE_MODE                0x1BC
+#define SSPP_SBUF_STATUS_PLANE0            0x1C0
+#define SSPP_SBUF_STATUS_PLANE1            0x1C4
+#define SSPP_SBUF_STATUS_PLANE_EMPTY       BIT(16)
+
+/* SDE_SSPP_SCALER_QSEED2 */
+#define SCALE_CONFIG                       0x04
+#define COMP0_3_PHASE_STEP_X               0x10
+#define COMP0_3_PHASE_STEP_Y               0x14
+#define COMP1_2_PHASE_STEP_X               0x18
+#define COMP1_2_PHASE_STEP_Y               0x1c
+#define COMP0_3_INIT_PHASE_X               0x20
+#define COMP0_3_INIT_PHASE_Y               0x24
+#define COMP1_2_INIT_PHASE_X               0x28
+#define COMP1_2_INIT_PHASE_Y               0x2C
+#define VIG_0_QSEED2_SHARP                 0x30
+
+/*
+ * Definitions for ViG op modes
+ */
+#define VIG_OP_CSC_DST_DATAFMT BIT(19)
+#define VIG_OP_CSC_SRC_DATAFMT BIT(18)
+#define VIG_OP_CSC_EN          BIT(17)
+#define VIG_OP_MEM_PROT_CONT   BIT(15)
+#define VIG_OP_MEM_PROT_VAL    BIT(14)
+#define VIG_OP_MEM_PROT_SAT    BIT(13)
+#define VIG_OP_MEM_PROT_HUE    BIT(12)
+#define VIG_OP_HIST            BIT(8)
+#define VIG_OP_SKY_COL         BIT(7)
+#define VIG_OP_FOIL            BIT(6)
+#define VIG_OP_SKIN_COL        BIT(5)
+#define VIG_OP_PA_EN           BIT(4)
+#define VIG_OP_PA_SAT_ZERO_EXP BIT(2)
+#define VIG_OP_MEM_PROT_BLEND  BIT(1)
+
+/*
+ * Definitions for CSC 10 op modes
+ */
+#define VIG_CSC_10_SRC_DATAFMT BIT(1)
+#define VIG_CSC_10_EN          BIT(0)
+#define CSC_10BIT_OFFSET       4
+#define DGM_CSC_MATRIX_SHIFT       0
+
+/* traffic shaper clock in Hz */
+#define TS_CLK			19200000
+
 /**
  * Define all scaler feature bits in catalog
  */
 #define SDE_SSPP_SCALER ((1UL << SDE_SSPP_SCALER_QSEED2) | \
 	(1UL << SDE_SSPP_SCALER_QSEED3) | \
 	(1UL << SDE_SSPP_SCALER_QSEED3LITE))
+
+/* Offsets from base register */
+#define SSPP_REC0_OFFSET_FROM_SSPP_CMN 0x1000
+#define SSPP_REC1_OFFSET_FROM_SSPP_CMN 0x3000
+
+/* Size of SSPP_REC */
+#define SSPP_REC_SIZE 0x17C
 
 /**
  * Component indices
@@ -338,11 +399,14 @@ struct sde_hw_sspp_ops {
 	 * @blend_enabled: flag indicating blend enabled or disabled on plane
 	 * @flags: Extra flags for format config
 	 * @index: rectangle index in multirect
+	 * @color_mask: color components to be extracted
 	 */
-	void (*setup_format)(struct sde_hw_pipe *ctx,
+	void (*setup_format[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			const struct sde_format *fmt,
 			bool blend_enabled, u32 flags,
-			enum sde_sspp_multirect_index index);
+			enum sde_sspp_multirect_index index,
+			enum sde_color_component_mask color_mask);
+
 
 	/**
 	 * setup_rects - setup pipe ROI rectangles
@@ -350,9 +414,21 @@ struct sde_hw_sspp_ops {
 	 * @cfg: Pointer to pipe config structure
 	 * @index: rectangle index in multirect
 	 */
-	void (*setup_rects)(struct sde_hw_pipe *ctx,
+	void (*setup_rects[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			struct sde_hw_pipe_cfg *cfg,
 			enum sde_sspp_multirect_index index);
+
+	/**
+	 * reg_dma_setup_pe - setup pipe pixel extension
+	 * @buf: defines structure for reg dma ops on the reg dma buffer.
+	 * @ctx: sspp instance
+	 * @pe_ext: Pointer to pixel ext settings
+	 * @returns: 0 if success, non-zero otherwise
+	 */
+	int (*reg_dma_setup_pe[MSM_DISP_OP_MAX])(
+			struct sde_reg_dma_setup_ops_cfg *buf,
+			struct sde_hw_pipe *ctx,
+			struct sde_hw_pixel_ext *pe_ext);
 
 	/**
 	 * setup_pe - setup pipe pixel extension
@@ -360,7 +436,7 @@ struct sde_hw_sspp_ops {
 	 * @pe_ext: Pointer to pixel ext settings
 	 * @cac_en : Boolean to indicate cac is enabled or disabled
 	 */
-	void (*setup_pe)(struct sde_hw_pipe *ctx,
+	void (*setup_pe[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			struct sde_hw_pixel_ext *pe_ext, bool cac_en);
 
 	/**
@@ -369,7 +445,7 @@ struct sde_hw_sspp_ops {
 	 * @excl_rect: Pointer to exclclusion rect structure
 	 * @index: rectangle index in multirect
 	 */
-	void (*setup_excl_rect)(struct sde_hw_pipe *ctx,
+	void (*setup_excl_rect[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			struct sde_rect *excl_rect,
 			enum sde_sspp_multirect_index index);
 
@@ -379,7 +455,7 @@ struct sde_hw_sspp_ops {
 	 * @cfg: Pointer to pipe config structure
 	 * @index: rectangle index in multirect
 	 */
-	void (*setup_sourceaddress)(struct sde_hw_pipe *ctx,
+	void (*setup_sourceaddress[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			struct sde_hw_pipe_cfg *cfg,
 			enum sde_sspp_multirect_index index);
 
@@ -387,14 +463,15 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @is_virtual: If true get address programmed for R1 in multirect
 	 */
-	u32 (*get_sourceaddress)(struct sde_hw_pipe *ctx, bool is_virtual);
+	u32 (*get_sourceaddress[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, bool is_virtual);
 
 	/**
 	 * setup_csc - setup color space conversion
 	 * @ctx: Pointer to pipe context
 	 * @data: Pointer to config structure
 	 */
-	void (*setup_csc)(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data);
+	void (*setup_csc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
+			enum msm_disp_op disp_op);
 
 	/**
 	 * setup_solidfill - enable/disable colorfill
@@ -403,7 +480,7 @@ struct sde_hw_sspp_ops {
 	 * @flags: Pipe flags
 	 * @index: rectangle index in multirect
 	 */
-	void (*setup_solidfill)(struct sde_hw_pipe *ctx, u32 color,
+	void (*setup_solidfill[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, u32 color,
 			enum sde_sspp_multirect_index index);
 
 	/**
@@ -414,7 +491,7 @@ struct sde_hw_sspp_ops {
 	 * @mode: parallel fetch / time multiplex multirect mode
 	 */
 
-	void (*update_multirect)(struct sde_hw_pipe *ctx,
+	void (*update_multirect[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			bool enable,
 			enum sde_sspp_multirect_index index,
 			enum sde_sspp_multirect_mode mode);
@@ -424,7 +501,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to config structure
 	 */
-	void (*setup_sharpening)(struct sde_hw_pipe *ctx,
+	void (*setup_sharpening[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			struct sde_hw_sharp_cfg *cfg);
 
 
@@ -433,28 +510,28 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to hue data
 	 */
-	void (*setup_pa_hue)(struct sde_hw_pipe *ctx, void *cfg);
+	void (*setup_pa_hue[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, void *cfg);
 
 	/**
 	 * setup_pa_sat(): Setup source saturation adjustment
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to saturation data
 	 */
-	void (*setup_pa_sat)(struct sde_hw_pipe *ctx, void *cfg);
+	void (*setup_pa_sat[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, void *cfg);
 
 	/**
 	 * setup_pa_val(): Setup source value adjustment
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to value data
 	 */
-	void (*setup_pa_val)(struct sde_hw_pipe *ctx, void *cfg);
+	void (*setup_pa_val[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, void *cfg);
 
 	/**
 	 * setup_pa_cont(): Setup source contrast adjustment
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer contrast data
 	 */
-	void (*setup_pa_cont)(struct sde_hw_pipe *ctx, void *cfg);
+	void (*setup_pa_cont[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, void *cfg);
 
 	/**
 	 * setup_pa_memcolor - setup source color processing
@@ -462,7 +539,7 @@ struct sde_hw_sspp_ops {
 	 * @type: Memcolor type (Skin, sky or foliage)
 	 * @cfg: Pointer to memory color config data
 	 */
-	void (*setup_pa_memcolor)(struct sde_hw_pipe *ctx,
+	void (*setup_pa_memcolor[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			enum sde_memcolor_type type, void *cfg);
 
 	/**
@@ -470,14 +547,14 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to vig gamut data
 	 */
-	void (*setup_vig_gamut)(struct sde_hw_pipe *ctx, void *cfg);
+	void (*setup_vig_gamut[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, void *cfg);
 
 	/**
 	 * setup_vig_igc - setup 1D LUT IGC in VIG pipes
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to vig igc data
 	 */
-	void (*setup_vig_igc)(struct sde_hw_pipe *ctx, void *cfg);
+	void (*setup_vig_igc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, void *cfg);
 
 	/**
 	 * setup_dma_igc - setup 1D LUT IGC in DMA pipes
@@ -485,7 +562,7 @@ struct sde_hw_sspp_ops {
 	 * @cfg: Pointer to dma igc data
 	 * @idx: multirect index
 	 */
-	void (*setup_dma_igc)(struct sde_hw_pipe *ctx, void *cfg,
+	void (*setup_dma_igc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, void *cfg,
 				enum sde_sspp_multirect_index idx);
 
 	/**
@@ -494,7 +571,7 @@ struct sde_hw_sspp_ops {
 	 * @cfg: Pointer to dma gc data
 	 * @idx: multirect index
 	 */
-	void (*setup_dma_gc)(struct sde_hw_pipe *ctx, void *cfg,
+	void (*setup_dma_gc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, void *cfg,
 				enum sde_sspp_multirect_index idx);
 
 	/**
@@ -503,7 +580,7 @@ struct sde_hw_sspp_ops {
 	 * @cfg: Pointer to pipe QoS configuration
 	 *
 	 */
-	void (*setup_qos_lut)(struct sde_hw_pipe *ctx,
+	void (*setup_qos_lut[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			struct sde_hw_pipe_qos_cfg *cfg);
 
 	/**
@@ -512,7 +589,7 @@ struct sde_hw_sspp_ops {
 	 * @cfg: Pointer to pipe QoS configuration
 	 *
 	 */
-	void (*setup_qos_ctrl)(struct sde_hw_pipe *ctx,
+	void (*setup_qos_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			struct sde_hw_pipe_qos_cfg *cfg);
 
 	/**
@@ -520,7 +597,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to histogram configuration
 	 */
-	void (*setup_histogram)(struct sde_hw_pipe *ctx,
+	void (*setup_histogram[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			void *cfg);
 
 	/**
@@ -529,11 +606,12 @@ struct sde_hw_sspp_ops {
 	 * @pipe_cfg: Pointer to pipe configuration
 	 * @pe_cfg: Pointer to pixel extension configuration
 	 * @scaler_cfg: Pointer to scaler configuration
+	 * @pre_down: Pointer to pre-downscaler configuration
 	 */
-	void (*setup_scaler)(struct sde_hw_pipe *ctx,
+	void (*setup_scaler[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		struct sde_hw_pipe_cfg *pipe_cfg,
 		struct sde_hw_pixel_ext *pe_cfg,
-		void *scaler_cfg);
+		void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down);
 
 	/**
 	 * setup_scaler_lut - setup scaler lut
@@ -542,16 +620,28 @@ struct sde_hw_sspp_ops {
 	 * @offset: Scaler Offset
 	 * @dpu_idx: dpu index
 	 */
-	void (*setup_scaler_lut)(struct sde_reg_dma_setup_ops_cfg *buf,
+	void (*setup_scaler_lut[MSM_DISP_OP_MAX])(struct sde_reg_dma_setup_ops_cfg *buf,
 			struct sde_hw_scaler3_cfg *scaler3_cfg,
 			u32 offset, u32 dpu_idx);
+
+	/**
+	 * reg_dma_setup_pre_downscale - setup pre-downscaler for inline rotation
+	 * @buf: defines structure for reg dma ops on the reg dma buffer.
+	 * @ctx: sspp instance
+	 * @pre_down: Pointer to pre-downscaler configuration
+	 * @returns: 0 if success, non-zero otherwise
+	 */
+	int (*reg_dma_setup_pre_downscale[MSM_DISP_OP_MAX])(
+			struct sde_reg_dma_setup_ops_cfg *buf,
+			struct sde_hw_pipe *ctx,
+			struct sde_hw_inline_pre_downscale_cfg *pre_down);
 
 	/**
 	 * setup_pre_downscale - setup pre-downscaler for inline rotation
 	 * @ctx: Pointer to pipe context
 	 * @pre_down: Pointer to pre-downscaler configuration
 	 */
-	void (*setup_pre_downscale)(struct sde_hw_pipe *ctx,
+	void (*setup_pre_downscale[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		struct sde_hw_inline_pre_downscale_cfg *pre_down);
 
 	/**
@@ -559,7 +649,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to system cache configuration
 	 */
-	void (*setup_sys_cache)(struct sde_hw_pipe *ctx,
+	void (*setup_sys_cache[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			struct sde_hw_pipe_sc_cfg *cfg);
 
 	 /**
@@ -568,7 +658,7 @@ struct sde_hw_sspp_ops {
 	  * @cfg: Pointer to uidle configuration
 	  * @index: rectangle index in multirect
 	  */
-	 void (*setup_uidle)(struct sde_hw_pipe *ctx,
+	 void (*setup_uidle[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			 struct sde_hw_pipe_uidle_cfg *cfg,
 			 enum sde_sspp_multirect_index index);
 
@@ -577,7 +667,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to uidle configuration
 	 */
-	void (*setup_uidle_fill_scale)(struct sde_hw_pipe *ctx,
+	void (*setup_uidle_fill_scale[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			 struct sde_hw_pipe_uidle_cfg *cfg);
 
 	/**
@@ -586,7 +676,7 @@ struct sde_hw_sspp_ops {
 	 * @cfg: Pointer to traffic shaper configuration
 	 * @index: rectangle index in multirect
 	 */
-	void (*setup_ts_prefill)(struct sde_hw_pipe *ctx,
+	void (*setup_ts_prefill[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			struct sde_hw_pipe_ts_cfg *cfg,
 			enum sde_sspp_multirect_index index);
 
@@ -596,7 +686,7 @@ struct sde_hw_sspp_ops {
 	 * @cfg: Pointer to cdp configuration
 	 * @index: rectangle index in multirect
 	 */
-	void (*setup_cdp)(struct sde_hw_pipe *ctx,
+	void (*setup_cdp[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			struct sde_hw_pipe_cdp_cfg *cfg,
 			enum sde_sspp_multirect_index index);
 
@@ -606,7 +696,7 @@ struct sde_hw_sspp_ops {
 	 * @index: rectangle index in multirect
 	 * @enable: enable content protected buffer state
 	 */
-	void (*setup_secure_address)(struct sde_hw_pipe *ctx,
+	void (*setup_secure_address[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index index,
 		bool enable);
 
@@ -616,7 +706,7 @@ struct sde_hw_sspp_ops {
 	 * @index: rectangle index in multirect
 	 * @enable: enable src split order
 	 */
-	void (*set_src_split_order)(struct sde_hw_pipe *ctx,
+	void (*set_src_split_order[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index index, bool enable);
 
 	/**
@@ -625,7 +715,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Rectangle index in multirect
 	 * @enable: PMA enable/disable settings
 	 */
-	void (*setup_inverse_pma)(struct sde_hw_pipe *ctx,
+	void (*setup_inverse_pma[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index index, u32 enable);
 
 	/**
@@ -634,7 +724,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Rectangle index in multirect
 	 * @data: Pointer to config structure
 	 */
-	void (*setup_dgm_csc)(struct sde_hw_pipe *ctx,
+	void (*setup_dgm_csc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, struct sde_csc_cfg *data);
 
 	/**
@@ -642,7 +732,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @multirect_index: rec in use
 	 */
-	void (*clear_meta_error)(struct sde_hw_pipe *ctx,
+	void (*clear_meta_error[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index multirect_index);
 
 	/**
@@ -650,7 +740,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @multirect_index: rec in use
 	 */
-	u32 (*get_meta_error)(struct sde_hw_pipe *ctx,
+	u32 (*get_meta_error[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index multirect_index);
 
 	/**
@@ -658,7 +748,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @multirect_index: rec in use
 	 */
-	void (*clear_ubwc_error)(struct sde_hw_pipe *ctx,
+	void (*clear_ubwc_error[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index multirect_index);
 
 	/**
@@ -666,7 +756,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @multirect_index: rec in use
 	 */
-	u32 (*get_ubwc_error)(struct sde_hw_pipe *ctx,
+	u32 (*get_ubwc_error[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index multirect_index);
 
 	/**
@@ -675,7 +765,7 @@ struct sde_hw_sspp_ops {
 	 * @multirect_index: rec in use
 	 * @data: Pointer to ubwc data to populate
 	 */
-	void (*get_ubwc_stats_data)(struct sde_hw_pipe *ctx,
+	void (*get_ubwc_stats_data[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index multirect_index,
 			struct sde_drm_ubwc_stats_data *data);
 
@@ -685,7 +775,7 @@ struct sde_hw_sspp_ops {
 	 * @multirect_index: rec in use
 	 * @roi: roi to be programmed
 	 */
-	void (*set_ubwc_stats_roi)(struct sde_hw_pipe *ctx,
+	void (*set_ubwc_stats_roi[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 			enum sde_sspp_multirect_index multirect_index,
 			struct sde_drm_ubwc_stats_roi *roi);
 
@@ -695,7 +785,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Pipe rectangle to operate on
 	 * @data: Pointer to sde_hw_cp_cfg object holding drm_msm_fp16_csc data
 	 */
-	void (*setup_fp16_csc)(struct sde_hw_pipe *ctx,
+	void (*setup_fp16_csc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 	/**
@@ -704,7 +794,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Pipe rectangle to operate on
 	 * @data: Pointer to sde_hw_cp_cfg object holding drm_msm_fp16_gc data
 	 */
-	void (*setup_fp16_gc)(struct sde_hw_pipe *ctx,
+	void (*setup_fp16_gc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 	/**
@@ -713,7 +803,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Pipe rectangle to operate on
 	 * @data: Pointer to sde_hw_cp_cfg object containing bool data
 	 */
-	void (*setup_fp16_igc)(struct sde_hw_pipe *ctx,
+	void (*setup_fp16_igc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 	/**
@@ -722,7 +812,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Pipe rectangle to operate on
 	 * @data: Pointer to sde_hw_cp_cfg object containing bool data
 	 */
-	void (*setup_fp16_unmult)(struct sde_hw_pipe *ctx,
+	void (*setup_fp16_unmult[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 	/**
@@ -730,7 +820,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe context
 	 * @cfg: Pointer to line insertion configuration
 	 */
-	void (*setup_line_insertion)(struct sde_hw_pipe *ctx,
+	void (*setup_line_insertion[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 				     enum sde_sspp_multirect_index index,
 				     struct sde_hw_pipe_line_insertion_cfg *cfg);
 
@@ -740,7 +830,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Pipe rectangle to operate on
 	 * @data: Pointer to sde_hw_cp_cfg object holding drm_msm_ucsc_csc data
 	 */
-	void (*setup_ucsc_csc)(struct sde_hw_pipe *ctx,
+	void (*setup_ucsc_csc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 	/**
@@ -749,7 +839,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Pipe rectangle to operate on
 	 * @mode: Pointer to sde_hw_cp_cfg object holding GC mode data
 	 */
-	void (*setup_ucsc_gc)(struct sde_hw_pipe *ctx,
+	void (*setup_ucsc_gc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 	/**
@@ -758,7 +848,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Pipe rectangle to operate on
 	 * @mode: Pointer to sde_hw_cp_cfg object containing IGC mode data
 	 */
-	void (*setup_ucsc_igc)(struct sde_hw_pipe *ctx,
+	void (*setup_ucsc_igc[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 	/**
@@ -767,7 +857,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Pipe rectangle to operate on
 	 * @data: Pointer to sde_hw_cp_cfg object containing bool data
 	 */
-	void (*setup_ucsc_unmult)(struct sde_hw_pipe *ctx,
+	void (*setup_ucsc_unmult[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 	/**
@@ -776,7 +866,7 @@ struct sde_hw_sspp_ops {
 	 * @index: Pipe rectangle to operate on
 	 * @data: Pointer to sde_hw_cp_cfg object containing bool data
 	 */
-	void (*setup_ucsc_alpha_dither)(struct sde_hw_pipe *ctx,
+	void (*setup_ucsc_alpha_dither[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index, void *data);
 
 	/**
@@ -786,7 +876,7 @@ struct sde_hw_sspp_ops {
 	 * @fov_en: is foveation enabled
 	 * @pp_idx: pp_idx used in cac loopback
 	 */
-	void (*setup_cac_ctrl)(struct sde_hw_pipe *ctx, u32 cac_mode,
+	void (*setup_cac_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx, u32 cac_mode,
 		bool fov_en, u32 pp_idx);
 
 	/**
@@ -794,7 +884,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe object
 	 * @cac_cfg: cac scaler config for each sspp
 	 */
-	void (*setup_scaler_cac)(struct sde_hw_pipe *ctx,
+	void (*setup_scaler_cac[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		struct sde_hw_cac_cfg *cac_cfg);
 
 	/**
@@ -802,7 +892,7 @@ struct sde_hw_sspp_ops {
 	 * @ctx: Pointer to pipe object
 	 * @img_rec: Pointer to image rect structure
 	 */
-	void (*setup_img_size)(struct sde_hw_pipe *ctx,
+	void (*setup_img_size[MSM_DISP_OP_MAX])(struct sde_hw_pipe *ctx,
 		struct sde_rect *img_rec);
 };
 
@@ -816,6 +906,8 @@ struct sde_hw_sspp_ops {
  * @cap: pointer to layer_cfg
  * @ops: pointer to operations possible for this pipe
  * @dpu_idx: dpu index
+ * @prop_helper: prop_helper for color processing features
+ * @obj_id: HFI layer id
  */
 struct sde_hw_pipe {
 	struct sde_hw_blk_reg_map hw;
@@ -831,6 +923,8 @@ struct sde_hw_pipe {
 	struct sde_hw_ctl *ctl;
 
 	u32 dpu_idx;
+	struct hfi_util_u32_prop_helper *prop_helper;
+	u32 obj_id;
 };
 
 /**
@@ -854,6 +948,147 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
  * @ctx:  Pointer to SSPP driver context returned by sde_hw_sspp_init
  */
 void sde_hw_sspp_destroy(struct sde_hw_pipe *ctx);
+
+/* Shared functions between sde_hw_sspp.c and sde_hw_sspp_v1.c */
+
+/**
+ * sspp_subblk_offset - Calculates the sub-block offset for a given pipe.
+ * determines the offset for a specific sub-block within the SSPP HW pipe.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @s_id: Sub-block ID for which the offset is required
+ * @idx: Pointer to store the calculated offset index
+ */
+int sspp_subblk_offset(struct sde_hw_pipe *ctx,
+		int s_id,
+		u32 *idx);
+
+/**
+ * sde_hw_sspp_setup_scaler3 - Configures the scaler for the SSPP HW pipe.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @sspp: Pointer to the SSPP HW pipe configuration
+ * @pe: Pointer to the pixel extension configuration
+ * @scaler_cfg: Pointer to the scaler configuration data
+ * @pre_down: Pointer to pre-downscaler configuration
+ */
+void sde_hw_sspp_setup_scaler3(struct sde_hw_pipe *ctx,
+		struct sde_hw_pipe_cfg *sspp,
+		struct sde_hw_pixel_ext *pe,
+		void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down);
+
+/**
+ * sde_hw_sspp_setup_csc - Configures the color space conversion (CSC)
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @data: Pointer to the CSC configuration data
+ */
+void sde_hw_sspp_setup_csc(struct sde_hw_pipe *ctx,
+		struct sde_csc_cfg *data, enum msm_disp_op disp_op);
+/**
+ * sde_hw_sspp_setup_sharpening - Configures the sharpening settings
+ * Sets up the sharpening configuration for the specified SSPP HW pipe.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @cfg: Pointer to the sharpening configuration data
+ */
+void sde_hw_sspp_setup_sharpening(struct sde_hw_pipe *ctx,
+		struct sde_hw_sharp_cfg *cfg);
+
+/**
+ * setup_layer_ops_colorproc - Sets up layer operations for color processing.
+ * This function configures the layer operations related to color processing
+ * for the specified SSPP HW pipe.
+ * @c: Pointer to the SSPP HW pipe context
+ * @features: Bitmask of features to be enabled
+ * @is_virtual_pipe: Indicates if the pipe is a virtual pipe
+ */
+void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
+		unsigned long features, bool is_virtual_pipe);
+
+/**
+ * sde_hw_sspp_setup_scaler - Configures the scaler for the SSPP HW pipe.
+ * Sets up the scaler configuration for the specified SSPP HW pipe
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @sspp: Pointer to the SSPP HW pipe configuration
+ * @pe: Pointer to the pixel extension configuration
+ * @scaler_cfg: Pointer to the scaler configuration data
+ * @pre_down: Pointer to pre-downscaler configuration
+ */
+void sde_hw_sspp_setup_scaler(struct sde_hw_pipe *ctx,
+		struct sde_hw_pipe_cfg *sspp,
+		struct sde_hw_pixel_ext *pe,
+		void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down);
+
+/**
+ * sde_hw_sspp_setup_dgm_csc - Configures the DGM color space conversion (CSC)
+ * for the SSPP HW pipe.
+ * This function sets up the CSC configuration for the specified SSPP HW
+ * pipe in the DGM block.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @index: Multirect index for the pipe
+ * @data: Pointer to the CSC configuration data
+ */
+void sde_hw_sspp_setup_dgm_csc(struct sde_hw_pipe *ctx,
+		enum sde_sspp_multirect_index index, struct sde_csc_cfg *data);
+
+/**
+ * sde_hw_sspp_setup_dgm_inverse_pma - Configures the DGM inverse PMA for the
+ * SSPP HW pipe.
+ * This function sets up the inverse PMA configuration for the specified SSPP
+ * hardware pipe in the DGM block.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @index: Multirect index for the pipe
+ * @enable: Enable or disable the inverse PMA (1 to enable, 0 to disable)
+ */
+void sde_hw_sspp_setup_dgm_inverse_pma(struct sde_hw_pipe *ctx,
+			enum sde_sspp_multirect_index index, u32 enable);
+
+/**
+ * sde_hw_sspp_setup_inverse_pma - Configures the inverse PMA
+ * Sets up the inverse PMA configuration for the specified SSPP HW pipe.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @index: Multirect index for the pipe
+ * @enable: Enable or disable the inverse PMA (1 to enable, 0 to disable)
+ */
+void sde_hw_sspp_setup_inverse_pma(struct sde_hw_pipe *ctx,
+			enum sde_sspp_multirect_index index, u32 enable);
+
+/**
+ * sde_hw_sspp_setup_scaler_cac - Configures the CAC scaler
+ * Sets up the CAC scaler configuration for the specified SSPP HW pipe.
+ * @ctx: Pointer to the SSPP HW pipe context
+ * @cac_cfg: Pointer to the CAC configuration data
+ */
+void sde_hw_sspp_setup_scaler_cac(struct sde_hw_pipe *ctx,
+		struct sde_hw_cac_cfg *cac_cfg);
+
+/**
+ * setup_layer_ops_v1 - Sets up layer operations for v1 of sspp registers
+ * @c: Pointer to the SSPP HW pipe context
+ * @features: Bitmask of features to be enabled
+ * @perf_features: Bitmask of performance features to be enabled
+ * @is_virtual_pipe: Indicates if the pipe is a virtual pipe
+ */
+void setup_layer_ops_v1(struct sde_hw_pipe *c,
+		unsigned long features, unsigned long perf_features,
+		bool is_virtual_pipe);
+
+/**
+ * sde_hw_sspp_setup_clk_force_ctrl_v1 - Configures the clock force control
+ * Sets up the clock force control for the specified SSPP HW block.
+ * @hw: Pointer to the SSPP HW block register map
+ * @clk_ctrl: Clock control type to be configured
+ * @enable: Enable or disable the clock force control
+ */
+bool sde_hw_sspp_setup_clk_force_ctrl_v1(struct sde_hw_blk_reg_map *hw,
+		enum sde_clk_ctrl_type clk_ctrl, bool enable);
+
+/**
+ * sde_hw_sspp_get_clk_ctrl_status_v1 - Retrieves the clock control status
+ * Gets the current status of the clock control for the specified SSPP HW block
+ * @hw: Pointer to the SSPP HW block register map
+ * @clk_ctrl: Clock control type to be checked
+ * @status: Pointer to store the clock control status
+ */
+int sde_hw_sspp_get_clk_ctrl_status_v1(struct sde_hw_blk_reg_map *hw,
+		enum sde_clk_ctrl_type clk_ctrl, bool *status);
 
 #endif /*_SDE_HW_SSPP_H */
 

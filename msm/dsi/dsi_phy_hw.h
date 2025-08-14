@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _DSI_PHY_HW_H_
@@ -50,6 +50,7 @@ enum dsi_phy_version {
 	DSI_PHY_VERSION_4_3_2, /* 4nm */
 	DSI_PHY_VERSION_5_2, /* 4nm */
 	DSI_PHY_VERSION_7_2, /* 3nm */
+	DSI_PHY_VERSION_7_2_HFI,
 	DSI_PHY_VERSION_MAX
 };
 
@@ -62,6 +63,7 @@ enum dsi_phy_version {
  */
 enum dsi_pll_version {
 	DSI_PLL_VERSION_3NM,
+	DSI_PLL_VERSION_3NM_HFI,
 	DSI_PLL_VERSION_4NM,
 	DSI_PLL_VERSION_5NM,
 	DSI_PLL_VERSION_10NM,
@@ -119,6 +121,7 @@ struct dsi_phy_per_lane_cfgs {
  * @is_phy_timing_present:	Boolean whether phy timings are defined.
  * @regulators:       Regulator settings for lanes.
  * @pll_source:       PLL source.
+ * @data_lanes:       Bitmask of enum dsi_data_lanes.
  * @lane_map:         DSI logical to PHY lane mapping.
  * @force_clk_lane_hs:Boolean whether to force clock lane in HS mode.
  * @phy_type:         Phy-type (Dphy/Cphy).
@@ -137,6 +140,7 @@ struct dsi_phy_cfg {
 	enum dsi_phy_type phy_type;
 	unsigned long bit_clk_rate_hz;
 	struct dsi_split_link_config split_link;
+	u32 data_lanes;
 };
 
 struct dsi_phy_hw;
@@ -148,7 +152,7 @@ struct phy_ulps_config_ops {
 	 * @lanes:         ORed list of lanes (enum dsi_data_lanes) which need
 	 *                 to be checked to be in idle state.
 	 */
-	int (*wait_for_lane_idle)(struct dsi_phy_hw *phy, u32 lanes);
+	int (*wait_for_lane_idle[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy, u32 lanes);
 
 	/**
 	 * ulps_request() - request ulps entry for specified lanes
@@ -161,7 +165,7 @@ struct phy_ulps_config_ops {
 	 * Caller should check if lanes are in ULPS mode by calling
 	 * get_lanes_in_ulps() operation.
 	 */
-	void (*ulps_request)(struct dsi_phy_hw *phy,
+	void (*ulps_request[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy,
 			struct dsi_phy_cfg *cfg, u32 lanes);
 
 	/**
@@ -175,7 +179,7 @@ struct phy_ulps_config_ops {
 	 * Caller should check if lanes are in active mode by calling
 	 * get_lanes_in_ulps() operation.
 	 */
-	void (*ulps_exit)(struct dsi_phy_hw *phy,
+	void (*ulps_exit[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy,
 			struct dsi_phy_cfg *cfg, u32 lanes);
 
 	/**
@@ -187,7 +191,7 @@ struct phy_ulps_config_ops {
 	 *
 	 * Return: List of lanes in ULPS state.
 	 */
-	u32 (*get_lanes_in_ulps)(struct dsi_phy_hw *phy);
+	u32 (*get_lanes_in_ulps[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy);
 
 	/**
 	 * is_lanes_in_ulps() - checks if the given lanes are in ulps
@@ -196,7 +200,7 @@ struct phy_ulps_config_ops {
 	 *
 	 * Return: true if all the given lanes are in ulps; false otherwise.
 	 */
-	bool (*is_lanes_in_ulps)(u32 ulps, u32 ulps_lanes);
+	bool (*is_lanes_in_ulps[MSM_DISP_OP_MAX])(u32 ulps, u32 ulps_lanes);
 };
 
 struct phy_dyn_refresh_ops {
@@ -205,14 +209,14 @@ struct phy_dyn_refresh_ops {
 	 * @phy:           Pointer to DSI PHY hardware instance.
 	 * @offset:         register offset to program.
 	 */
-	void (*dyn_refresh_helper)(struct dsi_phy_hw *phy, u32 offset);
+	void (*dyn_refresh_helper[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy, u32 offset);
 
 	/**
 	 * dyn_refresh_trigger_sel - configure trigger_sel to frame flush
 	 * @phy:           Pointer to DSI PHY hardware instance.
 	 * @is_master:      Boolean to indicate whether master or slave.
 	 */
-	void (*dyn_refresh_trigger_sel)(struct dsi_phy_hw *phy,
+	void (*dyn_refresh_trigger_sel[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy,
 			bool is_master);
 
 	/**
@@ -221,7 +225,7 @@ struct phy_dyn_refresh_ops {
 	 * @cfg:	   Pointer to DSI PHY timings.
 	 * @is_master:	   Boolean to indicate whether for master or slave.
 	 */
-	void (*dyn_refresh_config)(struct dsi_phy_hw *phy,
+	void (*dyn_refresh_config[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy,
 				   struct dsi_phy_cfg *cfg, bool is_master);
 
 	/**
@@ -230,7 +234,7 @@ struct phy_dyn_refresh_ops {
 	 * @phy:           Pointer to DSI PHY hardware instance.
 	 * @delay:	   structure containing all the delays to be programed.
 	 */
-	void (*dyn_refresh_pipe_delay)(struct dsi_phy_hw *phy,
+	void (*dyn_refresh_pipe_delay[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy,
 				      struct dsi_dyn_clk_delay *delay);
 
 	/**
@@ -240,7 +244,7 @@ struct phy_dyn_refresh_ops {
 	 * @dst:	   Pointer to cache location.
 	 * @size:	   Number of phy lane settings.
 	 */
-	int (*cache_phy_timings)(struct dsi_phy_per_lane_cfgs *timings,
+	int (*cache_phy_timings[MSM_DISP_OP_MAX])(struct dsi_phy_per_lane_cfgs *timings,
 				  u32 *dst, u32 size);
 };
 
@@ -258,14 +262,14 @@ struct dsi_phy_hw_ops {
 	 * @phy:      Pointer to DSI PHY hardware object.
 	 * @reg_cfg:  Regulator configuration for all DSI lanes.
 	 */
-	void (*regulator_enable)(struct dsi_phy_hw *phy,
+	void (*regulator_enable[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy,
 				 struct dsi_phy_per_lane_cfgs *reg_cfg);
 
 	/**
 	 * regulator_disable() - disable regulators
 	 * @phy:      Pointer to DSI PHY hardware object.
 	 */
-	void (*regulator_disable)(struct dsi_phy_hw *phy);
+	void (*regulator_disable[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy);
 
 	/**
 	 * enable() - Enable PHY hardware
@@ -273,7 +277,7 @@ struct dsi_phy_hw_ops {
 	 * @cfg:      Per lane configurations for timing, strength and lane
 	 *	      configurations.
 	 */
-	void (*enable)(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
+	void (*enable[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
 
 	/**
 	 * disable() - Disable PHY hardware
@@ -281,7 +285,7 @@ struct dsi_phy_hw_ops {
 	 * @cfg:      Per lane configurations for timing, strength and lane
 	 *	      configurations.
 	 */
-	void (*disable)(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
+	void (*disable[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
 
 	/**
 	 * phy_idle_on() - Enable PHY hardware when entering idle screen
@@ -289,7 +293,7 @@ struct dsi_phy_hw_ops {
 	 * @cfg:      Per lane configurations for timing, strength and lane
 	 *	      configurations.
 	 */
-	void (*phy_idle_on)(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
+	void (*phy_idle_on[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
 
 	/**
 	 * phy_idle_off() - Disable PHY hardware when exiting idle screen
@@ -297,7 +301,7 @@ struct dsi_phy_hw_ops {
 	 * @cfg:      Per lane configurations for timing, strength and lane
 	 *	      configurations.
 	 */
-	void (*phy_idle_off)(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
+	void (*phy_idle_off[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy, struct dsi_phy_cfg *cfg);
 
 	/**
 	 * calculate_timing_params() - calculates timing parameters.
@@ -308,7 +312,7 @@ struct dsi_phy_hw_ops {
 	 * @use_mode_bit_clk: Boolean to indicate whether reacalculate dsi
 	 *		bitclk or use the existing bitclk(for dynamic clk case).
 	 */
-	int (*calculate_timing_params)(struct dsi_phy_hw *phy,
+	int (*calculate_timing_params[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy,
 				       struct dsi_mode_info *mode,
 				       struct dsi_host_common_cfg *config,
 				       struct dsi_phy_per_lane_cfgs *timing,
@@ -320,7 +324,7 @@ struct dsi_phy_hw_ops {
 	 * @timing: Array containing PHY timing values
 	 * @size: Size of the array
 	 */
-	int (*phy_timing_val)(struct dsi_phy_per_lane_cfgs *timing_val,
+	int (*phy_timing_val[MSM_DISP_OP_MAX])(struct dsi_phy_per_lane_cfgs *timing_val,
 				u32 *timing, u32 size);
 
 	/**
@@ -329,41 +333,41 @@ struct dsi_phy_hw_ops {
 	 * @enable:     boolean to specify clamp enable/disable.
 	 * Return:    error code.
 	 */
-	void (*clamp_ctrl)(struct dsi_phy_hw *phy, bool enable);
+	void (*clamp_ctrl[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy, bool enable);
 
 	/**
 	 * phy_lane_reset() - Reset dsi phy lanes in case of error.
 	 * @phy:      Pointer to DSI PHY hardware object.
 	 * Return:    error code.
 	 */
-	int (*phy_lane_reset)(struct dsi_phy_hw *phy);
+	int (*phy_lane_reset[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy);
 
 	/**
 	 * toggle_resync_fifo() - toggle resync retime FIFO to sync data paths
 	 * @phy:      Pointer to DSI PHY hardware object.
 	 * Return:    error code.
 	 */
-	void (*toggle_resync_fifo)(struct dsi_phy_hw *phy);
+	void (*toggle_resync_fifo[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy);
 
 	/**
 	 * reset_clk_en_sel() - reset clk_en_sel on phy cmn_clk_cfg1 register
 	 * @phy:      Pointer to DSI PHY hardware object.
 	 */
-	void (*reset_clk_en_sel)(struct dsi_phy_hw *phy);
+	void (*reset_clk_en_sel[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy);
 
 	/**
 	 * set_continuous_clk() - Set continuous clock
 	 * @phy:	Pointer to DSI PHY hardware object
 	 * @enable:	Bool to control continuous clock request.
 	 */
-	void (*set_continuous_clk)(struct dsi_phy_hw *phy, bool enable);
+	void (*set_continuous_clk[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy, bool enable);
 
 	/**
 	 * commit_phy_timing() - Commit PHY timing
 	 * @phy:	Pointer to DSI PHY hardware object.
 	 * @timing: Pointer to PHY timing array
 	 */
-	void (*commit_phy_timing)(struct dsi_phy_hw *phy,
+	void (*commit_phy_timing[MSM_DISP_OP_MAX])(struct dsi_phy_hw *phy,
 			struct dsi_phy_per_lane_cfgs *timing);
 
 	void *timing_ops;
@@ -377,14 +381,14 @@ struct dsi_phy_hw_ops {
 			 needs to be committed. Set to false in case of
 			 dynamic clock switch.
 	 */
-	int (*configure)(void *pll, bool commit);
+	int (*configure[MSM_DISP_OP_MAX])(void *pll, bool commit);
 
 	/**
 	 * pll_toggle() - Toggle the DSI PHY PLL
 	 * @pll:	  Pointer to DSI PLL.
 	 * @prepare:	  specify if PLL needs to be turned on or off.
 	 */
-	int (*pll_toggle)(void *pll, bool prepare);
+	int (*pll_toggle[MSM_DISP_OP_MAX])(void *pll, bool prepare);
 
 };
 

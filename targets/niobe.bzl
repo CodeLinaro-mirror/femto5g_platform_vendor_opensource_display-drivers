@@ -1,9 +1,9 @@
 load(":display_modules.bzl", "display_driver_modules")
 load(":display_driver_build.bzl", "define_target_variant_modules")
-load("//msm-kernel:target_variants.bzl", "get_all_la_variants")
+load(":target_variants.bzl", "get_all_variants")
 
 def define_niobe():
-    for (t, v) in get_all_la_variants():
+    for (t, v) in get_all_variants():
         if t == "niobe":
             define_target_variant_modules(
                 target = t,
@@ -16,6 +16,8 @@ def define_niobe():
                     "CONFIG_DRM_MSM_SDE",
                     "CONFIG_SYNC_FILE",
                     "CONFIG_DRM_MSM_DSI",
+                    "CONFIG_MDSS_HFI_ADAPTER",
+                    "CONFIG_MDSS_HFI",
                     "CONFIG_DRM_MSM_DP",
                     #"CONFIG_DRM_MSM_DP_MST",
                     "CONFIG_DSI_PARSER",

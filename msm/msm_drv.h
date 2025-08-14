@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -92,6 +92,9 @@ struct msm_gem_vma;
 
 #define TEARDOWN_DEADLOCK_RETRY_MAX 5
 
+#define IS_DISP_OP_HFI(disp_op)		((disp_op) == MSM_DISP_OP_HFI)
+#define IS_DISP_OP_HWIO(disp_op)		((disp_op) == MSM_DISP_OP_HWIO)
+
 #define DISP_DEV_ERR(dev, fmt, ...) dev_err(dev, "[%s:%d] " fmt, __func__, __LINE__, ##__VA_ARGS__)
 
 struct msm_file_private {
@@ -164,6 +167,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_CAC_TYPE,
 	PLANE_PROP_SRC_RECT_EXT,
 	PLANE_PROP_DST_RECT_EXT,
+	PLANE_PROP_COLOR_MASK_OVERRIDE,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -206,6 +210,7 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_HANDLE_FENCE_ERROR,
 	CRTC_PROP_UBWC_CLK,
 	CRTC_PROP_FLUSH_SYNC_EN,
+	CRTC_PROP_DISPLAY_OP,
 
 	/* total # of properties */
 	CRTC_PROP_COUNT
@@ -223,6 +228,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_DEMURA_PANEL_ID,
 	CONNECTOR_PROP_DIMMING_BL_LUT,
 	CONNECTOR_PROP_DNSC_BLUR,
+	CONNECTOR_PROP_WB_CSC_CONFIG,
 
 	/* # of blob properties */
 	CONNECTOR_PROP_BLOBCOUNT,
@@ -464,12 +470,25 @@ struct msm_ratio {
  * @MSM_ENC_TX_COMPLETE - wait for the HW to transfer the frame to panel
  * @MSM_ENC_VBLANK - wait for the HW VBLANK event (for driver-internal waiters)
  * @MSM_ENC_ACTIVE_REGION - wait for the TG to be in active pixel region
+ * @MSM_ENC_HW_RECOVERY - wait for the HW to recover from error
+ * @MSM_ENC_EVENT_MAX - maximum value for events related to frame
  */
 enum msm_event_wait {
 	MSM_ENC_COMMIT_DONE = 0,
 	MSM_ENC_TX_COMPLETE,
 	MSM_ENC_VBLANK,
 	MSM_ENC_ACTIVE_REGION,
+	MSM_ENC_HW_RECOVERY,
+	MSM_ENC_EVENT_MAX,
+};
+
+/**
+ * enum msm_iommu_status - Status of iommu
+ */
+enum msm_iommu_status {
+	MSM_IOMMU_UNKNOWN = 0,
+	MSM_IOMMU_PRESENT,
+	MSM_IOMMU_NOT_PRESENT,
 };
 
 /**
@@ -885,11 +904,13 @@ struct msm_freq_step_list {
  * struct msm_vrr_capabilities - VRR capabilities
  * @vrr_support: True for any VRR supported panel
  * @video_psr_support: True if it is Video hybrid mode panel
+ * @video_mrr_support: True if it is Video MRR feature for VHM panel
  * @arp_support:    True if it is ARP panel
  */
 struct msm_vrr_capabilities {
 	bool vrr_support;
 	bool video_psr_support;
+	bool video_mrr_support;
 	bool arp_support;
 };
 
@@ -1043,6 +1064,8 @@ struct msm_resource_caps_info {
  * @esync_emsync_fps:   esync's EM pulse rate in Hz
  * @esync_emsync_milli_pulse_width: esync's EM pulse width, in 1/1000ths of a line
  * @te_source		vsync source pin information
+ * @disp_te_gpio:       TE GPIO identifier
+ * @esd_rw_check:       whether ESD should be checked using the RW window (through TE)
  * @dsc_count:		max dsc hw blocks used by display (only available
  *			for dsi display)
  * @lm_count:		max layer mixer blocks used by display (only available
@@ -1087,6 +1110,8 @@ struct msm_display_info {
 	bool event_notification_disabled;
 
 	uint32_t te_source;
+	int disp_te_gpio;
+	bool esd_rw_check;
 
 	uint32_t dsc_count;
 	uint32_t lm_count;
@@ -1177,6 +1202,20 @@ struct msm_fence_error_client_entry {
 	struct device *dev;
 	void *data;
 	struct list_head list;
+};
+
+/**
+ * enum msm_disp_op: type of operation path
+ * @MSM_DISP_OP_HWIO: Display operation in HWIO path
+ * @MSM_DISP_OP_HFI: Display operation in HFI path.
+ * @MSM_DISP_OP_HYP: Display operation in Hypervisor
+ * @MSM_DISP_OP_MAX: Max value.
+ */
+enum msm_disp_op {
+	MSM_DISP_OP_HWIO,
+	MSM_DISP_OP_HFI,
+	MSM_DISP_OP_HYP,
+	MSM_DISP_OP_MAX,
 };
 
 struct msm_drm_private {
@@ -1309,8 +1348,13 @@ struct msm_drm_private {
 	struct mutex fence_error_client_lock;
 	struct list_head fence_error_client_list;
 
+	enum msm_iommu_status iommu_status;
+
 	/* list of component registered for notification */
 	struct blocking_notifier_head component_notifier_list;
+
+	enum msm_disp_op disp_op;
+	struct msm_drm_hfi_private *hfi_priv;
 };
 
 /* get struct msm_kms * from drm_device * */
@@ -1526,15 +1570,13 @@ void msm_fbdev_free(struct drm_device *dev);
 
 struct hdmi;
 #if IS_ENABLED(CONFIG_DRM_MSM_HDMI)
-int msm_hdmi_modeset_init(struct hdmi *hdmi, struct drm_device *dev,
-		struct drm_encoder *encoder);
-void __init msm_hdmi_register(void);
-void __exit msm_hdmi_unregister(void);
+void __init hdmi_display_register(void);
+void __exit hdmi_display_unregister(void);
 #else
-static inline void __init msm_hdmi_register(void)
+static inline void __init hdmi_display_register(void)
 {
 }
-static inline void __exit msm_hdmi_unregister(void)
+static inline void __exit hdmi_display_unregister(void)
 {
 }
 #endif /* CONFIG_DRM_MSM_HDMI */
@@ -1839,4 +1881,38 @@ int msm_drm_unregister_component(struct drm_device *dev, struct notifier_block *
  */
 int msm_drm_notify_components(struct drm_device *dev, enum msm_component_event event);
 
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+/**
+ * msm_iommu_present_on_bus - Check if any device on a bus is mapped to an IOMMU
+ * @bus: Pointer to the bus to check
+ *
+ * This function iterates over all devices on the specified bus
+ * If any device is mapped to an IOMMU,
+ * the function sets the iommu_present flag to true.
+ *
+ * Return: true if any device on the bus is mapped to an IOMMU, false otherwise.
+ */
+bool msm_iommu_present_on_bus(const struct bus_type *bus);
+#endif /* KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE */
+
+/**
+ * mdss_iommu_present - Check if IOMMU is present for a DRM device
+ * @dev: Pointer to the DRM device to check
+ *
+ * This function checks whether the IOMMU is present for the given DRM device.
+ * It first verifies the kernel version and then performs the necessary checks
+ * on the device's private data and KMS initialization status.
+ * If the IOMMU presence is not already determined, it sets the iommu_present flag.
+ *
+ * Return: true if the IOMMU is present, false otherwise.
+ */
+bool mdss_iommu_present(struct drm_device *dev);
+
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+/* Functions from upstream kernel */
+int __drm_atomic_helper_disable_plane(struct drm_plane *plane,
+			struct drm_plane_state *plane_state);
+int __drm_atomic_helper_set_config(struct drm_mode_set *set,
+			struct drm_atomic_state *state);
+#endif /* (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE) */
 #endif /* __MSM_DRV_H__ */

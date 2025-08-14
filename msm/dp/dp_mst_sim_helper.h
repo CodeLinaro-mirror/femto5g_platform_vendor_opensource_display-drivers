@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -68,7 +68,11 @@ struct dp_mst_sim_port {
 	u8 pdt;
 	bool ldps;
 	u8 dpcd_rev;
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	u8 peer_guid[16];
+#else
+	guid_t peer_guid;
+#endif
 	u8 num_sdp_streams;
 	u8 num_sdp_stream_sinks;
 	u16 full_pbn;
@@ -84,7 +88,11 @@ struct dp_mst_sim_port {
  */
 struct dp_mst_sim_cfg {
 	void *host_dev;
+#if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	u8 guid[16];
+#else
+	guid_t guid;
+#endif
 
 	/**
 	 * @host_hpd_irq:

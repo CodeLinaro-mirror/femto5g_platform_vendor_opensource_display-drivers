@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -138,6 +138,7 @@ enum sde_cp_crtc_features {
 	SDE_CP_CRTC_DSPP_RC_MASK,
 	SDE_CP_CRTC_DSPP_SPR_INIT,
 	SDE_CP_CRTC_DSPP_SPR_UDC,
+	SDE_CP_CRTC_DSPP_SPR_DITHER,
 	SDE_CP_CRTC_DSPP_DEMURA_INIT,
 	SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT,
 	SDE_CP_CRTC_DSPP_DEMURA_BOOT_PLANE,
@@ -188,6 +189,7 @@ struct sde_cp_crtc_range_prop_payload {
  * struct sde_cp_crtc_skip_blend_plane: struct to define skip blend plane configuration
  * @valid_plane: flag to indicate plane is valid
  * @plane: plane that has been enabled and skipped blending
+ * @y_offset: crtc plane y_offset
  * @width: plane width
  * @height: plane height
  * @is_virtual: indicates plane type
@@ -196,6 +198,7 @@ struct sde_cp_crtc_range_prop_payload {
 struct sde_cp_crtc_skip_blend_plane {
 	bool valid_plane;
 	enum sde_sspp plane;
+	u32 y_offset;
 	u32 width;
 	u32 height;
 	bool is_virtual;

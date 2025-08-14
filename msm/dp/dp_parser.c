@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -176,9 +176,25 @@ static int dp_parser_misc(struct dp_parser *parser)
 				&parser->pixel_base_off[i]);
 	}
 
-	parser->display_type = of_get_property(of_node, "qcom,display-type", NULL);
+	parser->display_type = of_get_property(of_node, "qcom,display-type",
+					NULL);
 	if (!parser->display_type)
 		parser->display_type = "unknown";
+
+
+	rc = of_property_read_u32(of_node,
+			"qcom,shallow-mode-retries", &parser->shallow_mode_retries);
+	if (rc)
+		parser->shallow_mode_retries = MAX_DP_SHALLOW_MODE_RETRIES;
+
+	parser->no_backlight_support = of_property_read_bool(of_node,
+			"qcom,no-backlight-support");
+
+	parser->ext_hpd_en = of_property_read_bool(of_node,
+			"qcom,dp-ext-hpd");
+
+	parser->max_fps_mode_en = of_property_read_bool(of_node,
+			"qcom,dp-max-fps-mode-en");
 
 	return 0;
 }
@@ -716,6 +732,18 @@ static int dp_parser_catalog(struct dp_parser *parser)
 		}
 	} else {
 		parser->hw_cfg.phy_mode = DP_PHY_MODE_UNKNOWN;
+	}
+
+	/* phy-revision */
+	rc = of_property_read_string(dev->of_node, "qcom,phy-revision", &st);
+
+	if (!rc) {
+		if (!strcmp(st, "v1"))
+			parser->hw_cfg.phy_revision = DP_PHY_REVISION_V1;
+		else if (!strcmp(st, "v2"))
+			parser->hw_cfg.phy_revision = DP_PHY_REVISION_V2;
+		else
+			parser->hw_cfg.phy_revision = DP_PHY_REVISION_UNKNOWN;
 	}
 
 	return 0;

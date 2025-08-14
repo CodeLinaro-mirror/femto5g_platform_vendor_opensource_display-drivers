@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -71,9 +71,23 @@ static int _sde_hw_rc_program_enable_bits(
 	if (r2_enable)
 		val |= BIT(4);
 
-	/*corner case for partial update in R2 region*/
-	if (!r1_enable && r2_enable)
-		ystart = rc_roi->y;
+	/*ROI should include complete top region when top region is enabled*/
+	if (r1_enable &&
+		(rc_roi->y || ((rc_roi->y + rc_roi->h) < rc_mask_cfg->cfg_param_01))) {
+		SDE_EVT32(0x1111, RC_IDX(hw_dspp), r1_enable, rc_roi->y, rc_roi->h,
+				rc_mask_cfg->cfg_param_01);
+		return -EINVAL;
+	}
+
+	/*ROI should include complete bottom region when bottom region is enabled*/
+	if (r2_enable &&
+		(((rc_roi->y + rc_roi->h) != mask_h) || (rc_roi->y > rc_mask_cfg->cfg_param_02))) {
+		SDE_EVT32(0x2222, RC_IDX(hw_dspp), r2_enable, rc_roi->y, rc_roi->h, mask_h,
+				rc_mask_cfg->cfg_param_02);
+		return -EINVAL;
+	}
+
+	ystart = rc_roi->y;
 
 	SDE_DEBUG("idx:%d w:%llu h:%lld flags:%llx, R1:%d, R2:%d, PU R1:%d, PU R2:%d, Y_START:%d\n",
 			RC_IDX(hw_dspp), mask_w, mask_h, flags, r1_valid, r2_valid, pu_in_r1,
@@ -577,8 +591,8 @@ int sde_hw_rc_setup_mask(struct sde_hw_dspp *hw_dspp, void *cfg)
 	} else {
 		SDE_DEBUG("partial frame update\n");
 		sde_kms_rect_merge_rectangles(last_roi_list, &merged_roi);
+		SDE_EVT32(RC_IDX(hw_dspp), last_roi_list->num_rects);
 	}
-	SDE_EVT32(RC_IDX(hw_dspp), last_roi_list->num_rects);
 
 	rc = _sde_hw_rc_get_ajusted_roi(hw_cfg, &merged_roi, &rc_roi);
 	if (rc) {

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
  */
 #define pr_fmt(fmt)	"%s:%d: " fmt, __func__, __LINE__
@@ -3624,6 +3624,8 @@ void sde_rotator_unregister(void)
 	platform_driver_unregister(&rotator_driver);
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+MODULE_IMPORT_NS("DMA_BUF");
+#elif (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
 MODULE_IMPORT_NS(DMA_BUF);
 #endif

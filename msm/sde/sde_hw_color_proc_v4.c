@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 #include <drm/msm_drm_pp.h>
@@ -717,6 +717,32 @@ void sde_demura_read_plane_status(struct sde_hw_dspp *ctx, u32 *status)
 		if (value & 0x80000000)
 			*status = DEM_FETCH_DMA1_RECT1;
 		else
+			*status = DEM_FETCH_DMA3_RECT1;
+	}
+}
+
+void sde_demura_read_plane_status_v3(struct sde_hw_dspp *ctx, u32 *status)
+{
+	u32 demura_base;
+	u32 value;
+
+	if (!ctx) {
+		DRM_ERROR("invalid parameter ctx %pK", ctx);
+		return;
+	}
+
+	*status = DEM_FETCH_DMA_INVALID;
+	demura_base = ctx->cap->sblk->demura.base;
+	value = SDE_REG_READ(&ctx->hw, demura_base + 0x18);
+	if (ctx->idx == DSPP_0 || ctx->idx == DSPP_2) {
+		if (value == 0x1)
+			*status = DEM_FETCH_DMA1_RECT0;
+		else if (value == 0x3)
+			*status = DEM_FETCH_DMA3_RECT0;
+	} else if (ctx->idx == DSPP_1 || ctx->idx == DSPP_3) {
+		if (value == 0x1)
+			*status = DEM_FETCH_DMA1_RECT1;
+		else if (value == 0x3)
 			*status = DEM_FETCH_DMA3_RECT1;
 	}
 }

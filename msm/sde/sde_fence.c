@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -10,10 +10,12 @@
 #include <linux/dma-fence-array.h>
 #include <linux/file.h>
 #include <linux/version.h>
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 #if (KERNEL_VERSION(6, 3, 0) <= LINUX_VERSION_CODE)
 #include <msm_hw_fence.h>
 #else
 #include <linux/soc/qcom/msm_hw_fence.h>
+#endif
 #endif
 #include "msm_drv.h"
 #include "sde_kms.h"
@@ -170,11 +172,13 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 	phys_addr_t queue_pa;
 	void *queue_va;
 	u32 qhdr0_offset, ctl_hfi_iova;
-	int ctl_id, ret;
+	int i, ctl_id, ret;
 	int iommu_flags;
 
-	if (!hw_ctl || !hw_ctl->ops.hw_fence_output_fence_dir_write_init)
+	if (!hw_ctl)
 		return -EINVAL;
+	if (!hw_ctl->ops.hw_fence_output_fence_dir_write_init[hw_ctl->hw.disp_op])
+		return IS_DISP_OP_HFI(hw_ctl->hw.disp_op) ? 0 : -EINVAL;
 
 	ctl_id = hw_ctl->idx - CTL_0;
 	if (ctl_id >= SDE_HW_FENCE_CLIENT_MAX || ctl_id < 0) {
@@ -191,6 +195,16 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 			sde_hw_fence_data = hw_fence_data_dpu_client;
 	} else {
 		sde_hw_fence_data = hw_fence_data_no_dpu;
+	}
+
+	/* some targets use physical instead of virtual client IDs; update reg map accordingly */
+	if (sde_kms->catalog->ipcc_client_out_phys_id) {
+		for (i = 0; i < SDE_HW_FENCE_CLIENT_MAX; i++) {
+			sde_hw_fence_data[i].ipcc_out_client =
+				sde_kms->catalog->ipcc_client_out_phys_id;
+			sde_hw_fence_data[i].ipcc_this_client =
+				sde_kms->catalog->ipcc_client_phys_id;
+		}
 	}
 
 	if (sde_hw_fence_data[ctl_id].client_id != ctl_id) {
@@ -426,7 +440,8 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 						SDE_EVTLOG_H32(array->fences[0]->context),
 						SDE_EVTLOG_L32(array->fences[0]->context),
 						SDE_EVTLOG_H32(array->fences[0]->seqno),
-						SDE_EVTLOG_L32(array->fences[0]->seqno));
+						SDE_EVTLOG_L32(array->fences[0]->seqno),
+						dma_fence_is_signaled(array->fences[0]));
 				else
 					SDE_EVT32(ctl_id, num_fences, array->num_fences, i,
 						SDE_EVTLOG_ERROR);
@@ -439,7 +454,8 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 				SDE_EVT32(ctl_id, num_fences, i, SDE_EVTLOG_H32(fences[i]->context),
 					SDE_EVTLOG_L32(fences[i]->context),
 					SDE_EVTLOG_H32(fences[i]->seqno),
-					SDE_EVTLOG_L32(fences[i]->seqno));
+					SDE_EVTLOG_L32(fences[i]->seqno),
+					dma_fence_is_signaled(fences[i]));
 			}
 		}
 
@@ -454,7 +470,7 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 		}
 		SDE_EVT32(ctl_id, fence_list_index, SDE_EVTLOG_H32(data->dma_context),
 			SDE_EVTLOG_L32(data->dma_context), SDE_EVTLOG_H32(seqno),
-			SDE_EVTLOG_L32(seqno));
+			SDE_EVTLOG_L32(seqno), dma_fence_is_signaled(&temp_array->base));
 
 		params.indv.fence = &temp_array->base;
 	} else {
@@ -466,6 +482,7 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 		SDE_EVT32(ctl_id, num_fences, SDE_EVTLOG_H32(fences[0]->context),
 			SDE_EVTLOG_L32(fences[0]->context), SDE_EVTLOG_H32(fences[0]->seqno),
 			SDE_EVTLOG_L32(fences[0]->seqno), fences[0]->flags,
+			dma_fence_is_signaled(fences[0]),
 			tmp_array ? tmp_array->num_fences : SDE_EVTLOG_FUNC_CASE2);
 		params.indv.fence = fences[0];
 	}
@@ -503,10 +520,15 @@ static int _arm_output_hw_fence(struct sde_hw_ctl *hw_ctl, bool vid_mode, u32 li
 	u32 ipcc_out_signal;
 	int ctl_id;
 
-	if (!hw_ctl || !hw_ctl->ops.hw_fence_trigger_output_fence ||
-			!hw_ctl->ops.hw_fence_update_output_fence) {
-		SDE_ERROR("missing ctl/trigger or update fence %d\n", !hw_ctl);
+	if (!hw_ctl)
 		return -EINVAL;
+	if (!hw_ctl->ops.hw_fence_trigger_output_fence[hw_ctl->hw.disp_op] ||
+			!hw_ctl->ops.hw_fence_update_output_fence[hw_ctl->hw.disp_op]) {
+		if (IS_DISP_OP_HWIO(hw_ctl->hw.disp_op)) {
+			SDE_ERROR("missing ctl/trigger or update fence %d\n", !hw_ctl);
+			return -EINVAL;
+		}
+		return 0;
 	}
 
 	ctl_id = hw_ctl->idx - CTL_0;
@@ -526,21 +548,25 @@ static int _arm_output_hw_fence(struct sde_hw_ctl *hw_ctl, bool vid_mode, u32 li
 		ctl_id, ipcc_out_signal, _get_client_id_name(data->hw_fence_client_id));
 
 	if ((debugfs_hw_fence & SDE_OUTPUT_HW_FENCE_TIMESTAMP) &&
-			hw_ctl->ops.hw_fence_output_timestamp_ctrl)
-		hw_ctl->ops.hw_fence_output_timestamp_ctrl(hw_ctl, true, false);
+			hw_ctl->ops.hw_fence_output_timestamp_ctrl[hw_ctl->hw.disp_op])
+		hw_ctl->ops.hw_fence_output_timestamp_ctrl[hw_ctl->hw.disp_op](hw_ctl,
+			true, false);
 
 	/* update client/signal output fence */
-	hw_ctl->ops.hw_fence_update_output_fence(hw_ctl, data->ipcc_out_client, ipcc_out_signal);
+	hw_ctl->ops.hw_fence_update_output_fence[hw_ctl->hw.disp_op](hw_ctl,
+		data->ipcc_out_client, ipcc_out_signal);
 	SDE_EVT32_VERBOSE(ctl_id, ipcc_out_signal);
 
 	/* arm dpu to trigger output fence signal once ready */
 	if (line_count)
-		hw_ctl->ops.hw_fence_trigger_output_fence(hw_ctl,
+		hw_ctl->ops.hw_fence_trigger_output_fence[hw_ctl->hw.disp_op](hw_ctl,
 			HW_FENCE_TRIGGER_SEL_PROG_LINE_COUNT);
 	else if (vid_mode && (hw_ctl->caps->features & BIT(SDE_CTL_HW_FENCE_TRIGGER_SEL)))
-		hw_ctl->ops.hw_fence_trigger_output_fence(hw_ctl, HW_FENCE_TRIGGER_SEL_VID_MODE);
+		hw_ctl->ops.hw_fence_trigger_output_fence[hw_ctl->hw.disp_op](hw_ctl,
+			HW_FENCE_TRIGGER_SEL_VID_MODE);
 	else
-		hw_ctl->ops.hw_fence_trigger_output_fence(hw_ctl, HW_FENCE_TRIGGER_SEL_CMD_MODE);
+		hw_ctl->ops.hw_fence_trigger_output_fence[hw_ctl->hw.disp_op](hw_ctl,
+			HW_FENCE_TRIGGER_SEL_CMD_MODE);
 
 	return 0;
 }
@@ -590,8 +616,8 @@ static int _sde_fence_arm_output_hw_fence(struct sde_fence_context *ctx, bool vi
 
 void sde_fence_output_hw_fence_dir_write_init(struct sde_hw_ctl *hw_ctl)
 {
-	if (hw_ctl && hw_ctl->ops.hw_fence_output_fence_dir_write_init)
-		hw_ctl->ops.hw_fence_output_fence_dir_write_init(hw_ctl,
+	if (hw_ctl && hw_ctl->ops.hw_fence_output_fence_dir_write_init[hw_ctl->hw.disp_op])
+		hw_ctl->ops.hw_fence_output_fence_dir_write_init[hw_ctl->hw.disp_op](hw_ctl,
 			hw_ctl->hwfence_data.txq_wr_ptr_pa, HW_FENCE_DIR_WRITE_SIZE,
 			HW_FENCE_DIR_WRITE_MASK);
 }
@@ -616,10 +642,14 @@ int sde_fence_update_hw_fences_txq(struct sde_fence_context *ctx, bool vid_mode,
 	list_for_each_entry_safe(fc, next, &ctx->fence_list_head, fence_list) {
 		struct dma_fence *fence = &fc->base;
 
-		/* this is not hw-fence, or already processed */
+		/* this is not hw-fence, or already processed, or for later commits */
 		if (!test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags) ||
-				fc->txq_updated_fence)
+				fc->txq_updated_fence || fence->seqno > ctx->commit_count) {
+			SDE_DEBUG("skip fence ctx:%llu seq:%llu f:0x%lx commit_cnt:%d txq:%d\n",
+				fence->context, fence->seqno, fence->flags, ctx->commit_count,
+				fc->txq_updated_fence);
 			continue;
+		}
 
 		hw_ctl = fc->hwfence_out_ctl;
 		if (!hw_ctl) {
@@ -647,7 +677,9 @@ int sde_fence_update_hw_fences_txq(struct sde_fence_context *ctx, bool vid_mode,
 
 		/* update hw-fence tx queue */
 		SDE_EVT32(ctl_id, SDE_EVTLOG_H32(fc->hwfence_index),
-			SDE_EVTLOG_L32(fc->hwfence_index), *data->txq_tx_wm_va);
+			SDE_EVTLOG_L32(fc->hwfence_index), *data->txq_tx_wm_va,
+			SDE_EVTLOG_H32(fence->context), SDE_EVTLOG_L32(fence->context),
+			SDE_EVTLOG_H32(fence->seqno), SDE_EVTLOG_L32(fence->seqno));
 		ret = synx_signal(data->hw_fence_handle, fc->hwfence_index,
 			SYNX_STATE_SIGNALED_SUCCESS);
 		if (ret) {
@@ -660,9 +692,9 @@ int sde_fence_update_hw_fences_txq(struct sde_fence_context *ctx, bool vid_mode,
 		}
 
 		/* update hw-fence tx queue wr_idx data */
-		if (hw_ctl->ops.hw_fence_output_fence_dir_write_data)
-			hw_ctl->ops.hw_fence_output_fence_dir_write_data(hw_ctl,
-				*data->txq_tx_wm_va);
+		if (hw_ctl->ops.hw_fence_output_fence_dir_write_data[hw_ctl->hw.disp_op])
+			hw_ctl->ops.hw_fence_output_fence_dir_write_data[
+				hw_ctl->hw.disp_op](hw_ctl, *data->txq_tx_wm_va);
 
 		/* avoid updating txq more than once and avoid repeating the same fence twice */
 		txq_updated = fc->txq_updated_fence = true;
@@ -737,8 +769,7 @@ static int _reset_hw_fence_timeline(struct sde_hw_ctl *hw_ctl)
 	return ret;
 }
 
-int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugfs_hw_fence,
-		struct sde_hw_mdp *hw_mdp, bool disable, bool override)
+int sde_fence_update_input_fence_id(struct sde_hw_ctl *hw_ctl)
 {
 	struct sde_hw_fence_data *data;
 	u32 ipcc_signal_id;
@@ -746,29 +777,11 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 	int ctl_id;
 	u64 qtime;
 
-	/* we must support sw_override as well, so check both functions */
-	if (!hw_mdp || !hw_ctl || !hw_ctl->ops.hw_fence_update_input_fence ||
-			!hw_ctl->ops.hw_fence_trigger_sw_override) {
-		SDE_ERROR("missing ctl/override/update fence %d\n", !hw_ctl);
+	if (!hw_ctl || !hw_ctl->ops.hw_fence_update_input_fence[hw_ctl->hw.disp_op])
 		return -EINVAL;
-	}
 
 	ctl_id = hw_ctl->idx - CTL_0;
 	data = &hw_ctl->hwfence_data;
-
-	if (disable) {
-		hw_ctl->ops.hw_fence_ctrl(hw_ctl, false, false, 0, false, false);
-		return -EPERM;
-	}
-	if (override) {
-		hw_ctl->ops.hw_fence_ctrl(hw_ctl, true, true, 1, false, false);
-		return -EPERM;
-	}
-
-	if ((debugfs_hw_fence & SDE_INPUT_HW_FENCE_TIMESTAMP)
-			&& hw_mdp->ops.hw_fence_input_timestamp_ctrl)
-		hw_mdp->ops.hw_fence_input_timestamp_ctrl(hw_mdp, true, false);
-
 	ipcc_signal_id = data->ipcc_in_signal;
 	ipcc_client_id = data->ipcc_in_client;
 
@@ -776,14 +789,52 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 		ipcc_client_id, ctl_id);
 
 	/* configure dpu hw for the client/signal pair signaling input-fence */
-	hw_ctl->ops.hw_fence_update_input_fence(hw_ctl, ipcc_client_id, ipcc_signal_id);
-
-	/* Enable hw-fence for this ctrl-path */
-	hw_ctl->ops.hw_fence_ctrl(hw_ctl, true, true, 1, false, false);
+	hw_ctl->ops.hw_fence_update_input_fence[hw_ctl->hw.disp_op](hw_ctl, ipcc_client_id,
+		ipcc_signal_id);
 
 	qtime = arch_timer_read_counter();
 	SDE_EVT32(ctl_id, ipcc_signal_id, ipcc_client_id, SDE_EVTLOG_H32(qtime),
 		SDE_EVTLOG_L32(qtime));
+
+	return 0;
+}
+
+int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugfs_hw_fence,
+		struct sde_hw_mdp *hw_mdp, bool disable, bool override)
+{
+	if (!hw_mdp || !hw_ctl)
+		return -EINVAL;
+	/* we must support sw_override as well, so check both functions */
+	if (!hw_ctl->ops.hw_fence_update_input_fence[hw_ctl->hw.disp_op] ||
+			!hw_ctl->ops.hw_fence_trigger_sw_override[hw_ctl->hw.disp_op]) {
+		if (IS_DISP_OP_HWIO(hw_ctl->hw.disp_op))
+			SDE_ERROR("missing ctl/override/update fence %d\n", !hw_ctl);
+			return -EINVAL;
+		return 0;
+	}
+
+	if (disable && hw_ctl->ops.hw_fence_ctrl[hw_ctl->hw.disp_op]) {
+		hw_ctl->ops.hw_fence_ctrl[hw_ctl->hw.disp_op](hw_ctl, false, false, 0,
+			false, false);
+		return -EPERM;
+	}
+	if (override && hw_ctl->ops.hw_fence_ctrl[hw_ctl->hw.disp_op]) {
+		hw_ctl->ops.hw_fence_ctrl[hw_ctl->hw.disp_op](hw_ctl, true, true, 1,
+			false, false);
+		return -EPERM;
+	}
+
+	if ((debugfs_hw_fence & SDE_INPUT_HW_FENCE_TIMESTAMP)
+			&& hw_mdp->ops.hw_fence_input_timestamp_ctrl[hw_mdp->hw.disp_op])
+		hw_mdp->ops.hw_fence_input_timestamp_ctrl[hw_mdp->hw.disp_op](hw_mdp, true,
+			false);
+
+	sde_fence_update_input_fence_id(hw_ctl);
+
+	/* Enable hw-fence for this ctrl-path */
+	if (hw_ctl->ops.hw_fence_ctrl[hw_ctl->hw.disp_op])
+		hw_ctl->ops.hw_fence_ctrl[hw_ctl->hw.disp_op](hw_ctl, true, true, 1, false,
+			false);
 
 	return 0;
 }
@@ -831,7 +882,9 @@ void sde_sync_put(void *fence)
 
 void sde_fence_dump(struct dma_fence *fence)
 {
+	struct dma_fence_array *array = NULL;
 	char timeline_str[TIMELINE_VAL_LENGTH];
+	uint32_t i;
 
 	if (fence->ops->timeline_value_str)
 		fence->ops->timeline_value_str(fence, timeline_str, TIMELINE_VAL_LENGTH);
@@ -844,6 +897,15 @@ void sde_fence_dump(struct dma_fence *fence)
 		fence->ops->signaled ?
 		fence->ops->signaled(fence) : 0xffffffff,
 		dma_fence_get_status(fence), fence->flags);
+
+	/* dump child fences for any array fence */
+	if (dma_fence_is_array(fence)) {
+		array = container_of(fence, struct dma_fence_array, base);
+		SDE_ERROR("fence drv name:%s num_fences:%d\n", fence->ops->get_driver_name(fence),
+			array->num_fences);
+		for (i = 0; i < array->num_fences; i++)
+			sde_fence_dump(array->fences[i]);
+	}
 }
 
 static void sde_fence_dump_user_fds_info(struct dma_fence *base_fence)

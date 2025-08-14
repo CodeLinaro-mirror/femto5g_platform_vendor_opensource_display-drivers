@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -63,6 +63,8 @@ struct dp_display {
 	u32 max_dsc_count;
 	void *dp_ipc_log;
 	void *dp_aux_ipc_log;
+	bool no_backlight_support;
+	bool ext_hpd_en;
 
 	int (*enable)(struct dp_display *dp_display, void *panel);
 	int (*post_enable)(struct dp_display *dp_display, void *panel);
@@ -134,6 +136,7 @@ int dp_display_get_displays(struct drm_device *dev, void **displays, int count);
 int dp_display_get_num_of_streams(struct drm_device *dev);
 int dp_display_get_info(void *dp_display, struct dp_display_info *dp_info);
 int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data);
+int edp_display_get_num_of_displays(struct drm_device *dev);
 #else
 static inline int dp_display_get_num_of_displays(struct drm_device *dev)
 {
@@ -157,6 +160,10 @@ static inline int dp_connector_update_pps(struct drm_connector *connector,
 	return 0;
 }
 static inline int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data)
+{
+	return 0;
+}
+static inline int edp_display_get_num_of_displays(struct drm_device *dev)
 {
 	return 0;
 }

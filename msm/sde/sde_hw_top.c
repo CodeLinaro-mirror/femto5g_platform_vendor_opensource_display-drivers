@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -102,8 +102,8 @@
 #define MDP_CTL_HW_FENCE_IDm_MASK		0x5c
 #define MDP_CTL_HW_FENCE_IDm_ATTR		0x60
 
-#define HW_FENCE_IPCC_PROTOCOLp_CLIENTc_SEND(ba, p, c) ((ba+0xc) + (0x40000*p) + (0x1000*c))
-#define HW_FENCE_IPCC_PROTOCOLp_CLIENTc_RECV_ID(ba, p, c) ((ba+0x10) + (0x40000*p) + (0x1000*c))
+#define HW_FENCE_IPCC_SEND(addr) ((addr)+0xc)
+#define HW_FENCE_IPCC_RECV_ID(addr) ((addr)+0x10)
 #define MDP_CTL_HW_FENCE_ID_OFFSET_n(base, n) (base + (0x14*n))
 #define MDP_CTL_HW_FENCE_ID_OFFSET_m(base, m) (base + (0x14*m))
 #define MDP_CTL_FENCE_ATTRS(devicetype, size, resp_req) \
@@ -419,7 +419,10 @@ void sde_hw_reset_ubwc(struct sde_hw_mdp *mdp, struct sde_mdss_cfg *m)
 			((m->mdp[0].highest_bank_bit & 0x7) << 4) |
 			((m->macrotile_mode & 0x1) << 12);
 
-		if (IS_UBWC_50_SUPPORTED(ubwc_enc_version)) {
+		if (IS_UBWC_60_SUPPORTED(ubwc_dec_version)) {
+			ver = 5;
+			mode = 1;
+		} else if (IS_UBWC_50_SUPPORTED(ubwc_dec_version)) {
 			ver = 4;
 			mode = 1;
 		} else if (IS_UBWC_43_SUPPORTED(ubwc_enc_version)) {
@@ -452,7 +455,7 @@ void sde_hw_reset_ubwc(struct sde_hw_mdp *mdp, struct sde_mdss_cfg *m)
 	}
 }
 
-static void sde_hw_intf_audio_select(struct sde_hw_mdp *mdp)
+static void sde_hw_intf_audio_select(struct sde_hw_mdp *mdp, int audio_core)
 {
 	struct sde_hw_blk_reg_map *c;
 
@@ -461,7 +464,7 @@ static void sde_hw_intf_audio_select(struct sde_hw_mdp *mdp)
 
 	c = &mdp->hw;
 
-	SDE_REG_WRITE(c, HDMI_DP_CORE_SELECT, 0x1);
+	SDE_REG_WRITE(c, HDMI_DP_CORE_SELECT, audio_core);
 }
 
 static void sde_hw_mdp_events(struct sde_hw_mdp *mdp, bool enable)
@@ -555,6 +558,7 @@ void sde_hw_set_sspp_sid(struct sde_hw_sid *sid, u32 pipe, u32 vm,
 	u32 offset = 0;
 	u32 vig_sid_offset = MDP_SID_VIG0;
 	u32 dma_sid_offset = MDP_SID_DMA0;
+	u32 sid_value = 0;
 
 	if (!sid)
 		return;
@@ -571,7 +575,12 @@ void sde_hw_set_sspp_sid(struct sde_hw_sid *sid, u32 pipe, u32 vm,
 	else
 		return;
 
-	SDE_REG_WRITE(&sid->hw, offset, vm << 2);
+	sid_value |= (vm << 2);
+
+	if (SDE_HW_MAJOR(m->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_D00))
+		sid_value |= (vm << 10);
+
+	SDE_REG_WRITE(&sid->hw, offset, sid_value);
 }
 
 static void sde_hw_program_cwb_ppb_ctrl(struct sde_hw_mdp *mdp,
@@ -595,6 +604,8 @@ static void sde_hw_set_hdr_plus_metadata(struct sde_hw_mdp *mdp,
 	const u32 dword_size = sizeof(u32);
 	bool is_4k_aligned = mdp->caps->features &
 			BIT(SDE_MDP_DHDR_MEMPOOL_4K);
+	bool is_4k_aligned_ext = mdp->caps->features &
+			BIT(SDE_MDP_DHDR_MEMPOOL_4K_EXT);
 
 	if (!payload || !len) {
 		SDE_ERROR("invalid payload with length: %d\n", len);
@@ -605,6 +616,9 @@ static void sde_hw_set_hdr_plus_metadata(struct sde_hw_mdp *mdp,
 		if (is_4k_aligned) {
 			d_offset = DP_DHDR_MEM_POOL_1_DATA_4K;
 			nb_offset = DP_DHDR_MEM_POOL_1_NUM_BYTES_4K;
+		} else if (is_4k_aligned_ext) {
+			d_offset = DP_DHDR_MEM_POOL_1_DATA_4K_EXT;
+			nb_offset = DP_DHDR_MEM_POOL_1_NUM_BYTES_4K_EXT;
 		} else {
 			d_offset = DP_DHDR_MEM_POOL_1_DATA;
 			nb_offset = DP_DHDR_MEM_POOL_1_NUM_BYTES;
@@ -613,6 +627,9 @@ static void sde_hw_set_hdr_plus_metadata(struct sde_hw_mdp *mdp,
 		if (is_4k_aligned) {
 			d_offset = DP_DHDR_MEM_POOL_0_DATA_4K;
 			nb_offset = DP_DHDR_MEM_POOL_0_NUM_BYTES_4K;
+		} else if (is_4k_aligned_ext) {
+			d_offset = DP_DHDR_MEM_POOL_0_DATA_4K_EXT;
+			nb_offset = DP_DHDR_MEM_POOL_0_NUM_BYTES_4K_EXT;
 		} else {
 			d_offset = DP_DHDR_MEM_POOL_0_DATA;
 			nb_offset = DP_DHDR_MEM_POOL_0_NUM_BYTES;
@@ -710,8 +727,8 @@ static void sde_hw_input_hw_fence_status(struct sde_hw_mdp *mdp, u64 *s_val, u64
 	wmb(); /* make sure the timestamps are cleared */
 }
 
-static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phys_id,
-	unsigned long ipcc_base_addr, unsigned long hw_fence_mdp_offset,
+static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id,
+	unsigned long dpu_ipcc_addr, unsigned long hw_fence_mdp_offset,
 	struct sde_hw_blk_reg_map *c, bool has_soccp)
 {
 	u32 val, offset, mask;
@@ -734,8 +751,7 @@ static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phy
 
 	/* configure the attribs for the isr read_reg op */
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ADDR, 0);
-	val = HW_FENCE_IPCC_PROTOCOLp_CLIENTc_RECV_ID(ipcc_base_addr,
-				protocol_id, client_phys_id);
+	val = HW_FENCE_IPCC_RECV_ID(dpu_ipcc_addr);
 	SDE_REG_WRITE(c, offset, val);
 
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ATTR, 0);
@@ -771,7 +787,7 @@ static void _sde_hw_setup_hw_input_fences_config(u32 protocol_id, u32 client_phy
 }
 
 static void sde_hw_setup_hw_fences_config(struct sde_hw_mdp *mdp, u32 protocol_id,
-	u32 client_phys_id, unsigned long ipcc_base_addr)
+	unsigned long dpu_ipcc_addr)
 {
 	u32 val, offset;
 	struct sde_hw_blk_reg_map c;
@@ -787,15 +803,14 @@ static void sde_hw_setup_hw_fences_config(struct sde_hw_mdp *mdp, u32 protocol_i
 
 	hw_fence_mdp_offset = mdp->caps->hw_fence_mdp_offset;
 
-	_sde_hw_setup_hw_input_fences_config(protocol_id, client_phys_id, ipcc_base_addr,
+	_sde_hw_setup_hw_input_fences_config(protocol_id, dpu_ipcc_addr,
 			hw_fence_mdp_offset, &c, mdp->caps->has_soccp);
 
 	/*setup output fence isr */
 
 	/* configure the attribs for the isr load_data op */
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ADDR, 4);
-	val =  HW_FENCE_IPCC_PROTOCOLp_CLIENTc_SEND(ipcc_base_addr,
-			protocol_id, client_phys_id);
+	val =  HW_FENCE_IPCC_SEND(dpu_ipcc_addr);
 	SDE_REG_WRITE(&c, offset, val);
 
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ATTR, 4);
@@ -859,7 +874,7 @@ void sde_hw_top_set_ppb_fifo_size(struct sde_hw_mdp *mdp, u32 pp, u32 sz)
 }
 
 static void sde_hw_setup_hw_fences_config_with_dir_write(struct sde_hw_mdp *mdp, u32 protocol_id,
-	u32 client_phys_id, unsigned long ipcc_base_addr)
+	unsigned long dpu_ipcc_addr)
 {
 	u32 val, offset;
 	struct sde_hw_blk_reg_map c;
@@ -875,15 +890,14 @@ static void sde_hw_setup_hw_fences_config_with_dir_write(struct sde_hw_mdp *mdp,
 
 	hw_fence_mdp_offset = mdp->caps->hw_fence_mdp_offset;
 
-	_sde_hw_setup_hw_input_fences_config(protocol_id, client_phys_id, ipcc_base_addr,
+	_sde_hw_setup_hw_input_fences_config(protocol_id, dpu_ipcc_addr,
 			hw_fence_mdp_offset, &c, mdp->caps->has_soccp);
 
 	/*setup output fence isr */
 
 	/* configure the attribs for the isr load_data op */
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ADDR, 4);
-	val =  HW_FENCE_IPCC_PROTOCOLp_CLIENTc_SEND(ipcc_base_addr,
-		protocol_id, client_phys_id);
+	val =  HW_FENCE_IPCC_SEND(dpu_ipcc_addr);
 	SDE_REG_WRITE(&c, offset, val);
 
 	offset = MDP_CTL_HW_FENCE_ID_OFFSET_m(hw_fence_mdp_offset + MDP_CTL_HW_FENCE_IDm_ATTR, 4);
@@ -928,43 +942,46 @@ static void sde_hw_setup_hw_fences_config_with_dir_write(struct sde_hw_mdp *mdp,
 
 static void _setup_mdp_ops(struct sde_hw_mdp_ops *ops, unsigned long cap, u32 hw_fence_rev)
 {
-	ops->setup_split_pipe = sde_hw_setup_split_pipe;
-	ops->setup_pp_split = sde_hw_setup_pp_split;
-	ops->setup_cdm_output = sde_hw_setup_cdm_output;
-	ops->setup_clk_force_ctrl = sde_hw_setup_clk_force_ctrl;
-	ops->get_clk_ctrl_status = sde_hw_get_clk_ctrl_status;
-	ops->set_cwb_ppb_cntl = sde_hw_program_cwb_ppb_ctrl;
-	ops->reset_ubwc = sde_hw_reset_ubwc;
-	ops->intf_audio_select = sde_hw_intf_audio_select;
-	ops->set_mdp_hw_events = sde_hw_mdp_events;
+	ops->setup_split_pipe[MSM_DISP_OP_HWIO] = sde_hw_setup_split_pipe;
+	ops->setup_pp_split[MSM_DISP_OP_HWIO] = sde_hw_setup_pp_split;
+	ops->setup_cdm_output[MSM_DISP_OP_HWIO] = sde_hw_setup_cdm_output;
+	ops->setup_clk_force_ctrl[MSM_DISP_OP_HWIO] = sde_hw_setup_clk_force_ctrl;
+	ops->get_clk_ctrl_status[MSM_DISP_OP_HWIO] = sde_hw_get_clk_ctrl_status;
+	ops->set_cwb_ppb_cntl[MSM_DISP_OP_HWIO] = sde_hw_program_cwb_ppb_ctrl;
+	ops->reset_ubwc[MSM_DISP_OP_HWIO] = sde_hw_reset_ubwc;
+	ops->intf_audio_select[MSM_DISP_OP_HWIO] = sde_hw_intf_audio_select;
+	ops->set_mdp_hw_events[MSM_DISP_OP_HWIO] = sde_hw_mdp_events;
 	if (cap & BIT(SDE_MDP_VSYNC_SEL))
-		ops->setup_vsync_source = sde_hw_setup_vsync_source;
+		ops->setup_vsync_source[MSM_DISP_OP_HWIO] = sde_hw_setup_vsync_source;
 	else if (cap & BIT(SDE_MDP_WD_TIMER))
-		ops->setup_vsync_source = sde_hw_setup_vsync_source_v1;
+		ops->setup_vsync_source[MSM_DISP_OP_HWIO] = sde_hw_setup_vsync_source_v1;
 
 	if (cap & BIT(SDE_MDP_DHDR_MEMPOOL_4K) ||
+			cap & BIT(SDE_MDP_DHDR_MEMPOOL_4K_EXT) ||
 			cap & BIT(SDE_MDP_DHDR_MEMPOOL))
-		ops->set_hdr_plus_metadata = sde_hw_set_hdr_plus_metadata;
-	ops->get_autorefresh_status = sde_hw_get_autorefresh_status;
+		ops->set_hdr_plus_metadata[MSM_DISP_OP_HWIO] = sde_hw_set_hdr_plus_metadata;
+	ops->get_autorefresh_status[MSM_DISP_OP_HWIO] = sde_hw_get_autorefresh_status;
 
 	if (hw_fence_rev) {
 		if (cap & BIT(SDE_MDP_HW_FENCE_DIR_WRITE))
-			ops->setup_hw_fences = sde_hw_setup_hw_fences_config_with_dir_write;
+			ops->setup_hw_fences[MSM_DISP_OP_HWIO] =
+					sde_hw_setup_hw_fences_config_with_dir_write;
 		else
-			ops->setup_hw_fences = sde_hw_setup_hw_fences_config;
+			ops->setup_hw_fences[MSM_DISP_OP_HWIO] = sde_hw_setup_hw_fences_config;
 
-		ops->hw_fence_input_timestamp_ctrl = sde_hw_hw_fence_timestamp_ctrl;
-		ops->hw_fence_input_status = sde_hw_input_hw_fence_status;
+		ops->hw_fence_input_timestamp_ctrl[MSM_DISP_OP_HWIO] =
+				sde_hw_hw_fence_timestamp_ctrl;
+		ops->hw_fence_input_status[MSM_DISP_OP_HWIO] = sde_hw_input_hw_fence_status;
 	}
 
 	if (cap & BIT(SDE_MDP_TOP_PPB_SET_SIZE))
-		ops->set_ppb_fifo_size = sde_hw_top_set_ppb_fifo_size;
+		ops->set_ppb_fifo_size[MSM_DISP_OP_HWIO] = sde_hw_top_set_ppb_fifo_size;
 
 	if (cap & BIT(SDE_MDP_DUAL_DPU_SYNC))
-		ops->dpu_sync_intf_mux = sde_hw_setup_dpu_sync_intf_mux;
+		ops->dpu_sync_intf_mux[MSM_DISP_OP_HWIO] = sde_hw_setup_dpu_sync_intf_mux;
 
 	if (cap & BIT(SDE_MDP_HW_FLUSH_SYNC))
-		ops->flush_sync_intf_mux = sde_hw_setup_flush_sync_intf_mux;
+		ops->flush_sync_intf_mux[MSM_DISP_OP_HWIO] = sde_hw_setup_flush_sync_intf_mux;
 }
 
 static const struct sde_mdp_cfg *_top_offset(enum sde_mdp mdp,
@@ -1071,7 +1088,7 @@ struct sde_hw_sw_fuse *sde_hw_sw_fuse_init(void __iomem *addr,
 		c->demura_sw_fuse_offset = 0x88;
 	else if (IS_SUN_TARGET(c->hw.hw_rev))
 		c->demura_sw_fuse_offset = 0x7c;
-	else if (IS_CANOE_TARGET(c->hw.hw_rev))
+	else if (IS_CANOE_TARGET(c->hw.hw_rev) || IS_ALOR_TARGET(c->hw.hw_rev))
 		c->demura_sw_fuse_offset = 0x84;
 	else
 		c->demura_sw_fuse_offset = 0;

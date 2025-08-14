@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -72,10 +72,12 @@ static void sde_encoder_phys_shd_vblank_irq(void *arg, int irq_idx)
 	u32 flush_register = ~0;
 	int new_cnt = -1, old_cnt = -1;
 	u32 event = 0;
+	enum msm_disp_op disp_op;
 
 	if (!phys_enc)
 		return;
 
+	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	hw_ctl = phys_enc->hw_ctl;
 	if (!hw_ctl)
 		return;
@@ -91,8 +93,8 @@ static void sde_encoder_phys_shd_vblank_irq(void *arg, int irq_idx)
 
 	old_cnt = atomic_read(&phys_enc->pending_kickoff_cnt);
 
-	if (hw_ctl && hw_ctl->ops.get_flush_register)
-		flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
+	if (hw_ctl && hw_ctl->ops.get_flush_register[disp_op])
+		flush_register = hw_ctl->ops.get_flush_register[disp_op](hw_ctl);
 
 	shd_ctl = container_of(hw_ctl, struct sde_shd_hw_ctl, base);
 

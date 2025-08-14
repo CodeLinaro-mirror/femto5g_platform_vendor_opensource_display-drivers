@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -207,11 +207,11 @@ static struct sde_dsc_cfg *_dsc_offset(enum sde_dsc dsc,
 static void _setup_dsc_ops(struct sde_hw_dsc_ops *ops,
 		unsigned long features)
 {
-	ops->dsc_disable = sde_hw_dsc_disable;
-	ops->dsc_config = sde_hw_dsc_config;
-	ops->dsc_config_thresh = sde_hw_dsc_config_thresh;
+	ops->dsc_disable[MSM_DISP_OP_HWIO] = sde_hw_dsc_disable;
+	ops->dsc_config[MSM_DISP_OP_HWIO] = sde_hw_dsc_config;
+	ops->dsc_config_thresh[MSM_DISP_OP_HWIO] = sde_hw_dsc_config_thresh;
 	if (test_bit(SDE_DSC_OUTPUT_CTRL, &features))
-		ops->bind_pingpong_blk = sde_hw_dsc_bind_pingpong_blk;
+		ops->bind_pingpong_blk[MSM_DISP_OP_HWIO] = sde_hw_dsc_bind_pingpong_blk;
 };
 
 struct sde_hw_blk_reg_map *sde_hw_dsc_init(enum sde_dsc idx,

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -448,17 +448,34 @@ struct drm_msm_ad4_cfg {
 
 #define DITHER_MATRIX_SZ 16
 #define DITHER_LUMA_MODE (1 << 0)
+#define DITHER_OFFSET_ENABLE (1 << 1)
+
+#define DITHER_MATRIX_SZ_EXTENDED 256
+#define DITHER_MATRIX_SELECT_NONE 0
+#define DITHER_MATRIX_SELECT_4_4 1
+#define DITHER_MATRIX_SELECT_6_6 2
+#define DITHER_MATRIX_SELECT_8_8 3
+#define DITHER_MATRIX_SELECT_16_16 4
 
 /**
  * struct drm_msm_dither - dither feature structure
  * @flags: flags for the feature customization, values can be:
 	   -DITHER_LUMA_MODE: Enable LUMA dither mode
+	   -DITHER_OFFSET_ENABLE: Enable DC offset
  * @temporal_en: temperal dither enable
  * @c0_bitdepth: c0 component bit depth
  * @c1_bitdepth: c1 component bit depth
  * @c2_bitdepth: c2 component bit depth
  * @c3_bitdepth: c2 component bit depth
- * @matrix: dither strength matrix
+ * @matrix: legacy dither strength matrix
+ * @dither_matrix_select: represents dither matrix size
+	   -DITHER_MATRIX_SELECT_NONE: Legacy dither matrix of size 4x4
+	   -DITHER_MATRIX_SELECT_4_4: new dither matrix of size 4x4
+	   -DITHER_MATRIX_SELECT_6_6: new dither matrix of size 6x6
+	   -DITHER_MATRIX_SELECT_8_8: new dither matrix of size 8x8
+	   -DITHER_MATRIX_SELECT_16_16: new dither matrix of size 16x16
+ * @dither_matrix_extended: new dither strength matrix
+ *    -programmed using the ADDRESS and VALUE fields
  */
 struct drm_msm_dither {
 	__u64 flags;
@@ -468,6 +485,9 @@ struct drm_msm_dither {
 	__u32 c2_bitdepth;
 	__u32 c3_bitdepth;
 	__u32 matrix[DITHER_MATRIX_SZ];
+
+	__u32 dither_matrix_select;
+	__s32 dither_matrix_extended[DITHER_MATRIX_SZ_EXTENDED];
 };
 
 /**
@@ -664,6 +684,7 @@ struct drm_msm_spr_udc_cfg {
 #define DEMURA_PRECISION_1 (1 << 2)
 #define DEMURA_PRECISION_2 (2 << 2)
 #define DEMURA_FLAG_3
+#define DEMURA_FLAG_4
 
 struct drm_msm_dem_cfg {
 	__u64 flags;
@@ -724,6 +745,9 @@ struct drm_msm_dem_cfg {
 	__u32 cfg0_param5_1[CFG0_PARAM_LEN];
 	__u32 cfg0_param6_1_len;
 	__u32 cfg0_param6_1[CFG0_PARAM_LEN];
+
+	__u32 cfg0_param_7;
+	__u32 cfg0_param_8;
 };
 
 struct drm_msm_dem_cfg0_param2 {

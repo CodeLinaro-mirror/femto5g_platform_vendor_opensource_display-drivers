@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -224,7 +224,7 @@ struct drm_gem_object *msm_gem_prime_import(struct drm_device *dev,
 		if (!attach_dev)
 			attach_dev = kms->funcs->get_address_space_device(kms,
 					MSM_SMMU_DOMAIN_UNSECURE);
-	} else if (!iommu_present(&platform_bus_type) || vmid_flags.is_tvm
+	} else if (!mdss_iommu_present(dev) || vmid_flags.is_tvm
 		   || vmid_flags.is_cam_preview || vmid_flags.is_sec_display) {
 		attach_dev = dev->dev;
 		lazy_unmap = false;
@@ -312,6 +312,8 @@ fail_put:
 	return ERR_PTR(ret);
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 19, 0))
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+MODULE_IMPORT_NS("DMA_BUF");
+#elif (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
 MODULE_IMPORT_NS(DMA_BUF);
 #endif

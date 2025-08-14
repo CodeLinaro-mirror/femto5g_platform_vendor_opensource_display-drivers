@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -12,6 +12,7 @@
 #include "sde_hw_mdss.h"
 #include "sde_hw_top.h"
 #include "sde_hw_util.h"
+#include "hfi_utils.h"
 
 /**
  * enum sde_reg_dma_op - defines operations supported by reg dma
@@ -322,6 +323,13 @@ struct sde_reg_dma_setup_ops_cfg {
  * @dma_type: DB or SB LUT DMA block selection
  * @feature: feature the provided kickoff buffer belongs to
  * @last_command: last command for this vsync
+ * @prop_helper: common property helper used to add hfi properties
+ * @prop_id: hfi property id of the regdma feature
+ * @obj_id: pipe index as object id added in hfi property
+ * @flags: flag indicating feature's enable/disable/broadcast settings
+ * @num_of_mixers: number of mixers
+ * @dspp_start_idx: starting index of dspp block
+ * @dspp_idx: current dspp's index
  */
 struct sde_reg_dma_kickoff_cfg {
 	struct sde_hw_ctl *ctl;
@@ -333,6 +341,13 @@ struct sde_reg_dma_kickoff_cfg {
 	enum sde_reg_dma_type dma_type;
 	enum sde_reg_dma_features feature;
 	u32 last_command;
+	struct hfi_util_u32_prop_helper *prop_helper;
+	u32 prop_id;
+	u32 obj_id;
+	u32 flags;
+	u32 num_of_mixers;
+	u32 dspp_start_idx;
+	u32 dspp_idx;
 };
 
 /**
@@ -351,22 +366,24 @@ struct sde_reg_dma_kickoff_cfg {
  * @last_command: notify control that last command is queued
  * @last_command_sb: notify control that last command for SB LUTDMA is queued
  * @dump_regs: dump reg dma registers
+ * @select_queue_sb: select correct ctl queue for sb lutdma based on version
  */
 struct sde_hw_reg_dma_ops {
 	int (*check_support)(enum sde_reg_dma_features feature,
 			     enum sde_reg_dma_blk blk,
 			     bool *is_supported);
 	int (*setup_payload)(struct sde_reg_dma_setup_ops_cfg *cfg);
-	int (*kick_off)(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
+	int (*kick_off[MSM_DISP_OP_MAX])(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
 	int (*reset)(struct sde_hw_ctl *ctl);
 	struct sde_reg_dma_buffer* (*alloc_reg_dma_buf)(u32 size, u32 dpu_idx);
 	int (*dealloc_reg_dma)(struct sde_reg_dma_buffer *lut_buf, u32 dpu_idx);
 	int (*reset_reg_dma_buf)(struct sde_reg_dma_buffer *buf);
-	int (*last_command)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
+	int (*last_command[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
-	int (*last_command_sb)(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
+	int (*last_command_sb[MSM_DISP_OP_MAX])(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			enum sde_reg_dma_last_cmd_mode mode);
 	void (*dump_regs)(u32 dpu_idx);
+	enum sde_reg_dma_queue (*select_queue_sb)(void);
 };
 
 /**
@@ -376,6 +393,7 @@ struct sde_hw_reg_dma_ops {
  * @caps: LUTDMA hw caps on the platform
  * @ops: reg dma ops supported on the platform
  * @addr: reg dma hw block base address
+ * @vm_based_queue: flag to specify per vm based queue capability of reg dma
  */
 struct sde_hw_reg_dma {
 	struct drm_device *drm_dev;
@@ -383,6 +401,7 @@ struct sde_hw_reg_dma {
 	const struct sde_reg_dma_cfg *caps;
 	struct sde_hw_reg_dma_ops ops;
 	void __iomem *addr;
+	bool vm_based_queue;
 };
 
 /**
@@ -412,4 +431,11 @@ struct sde_hw_reg_dma_ops *sde_reg_dma_get_ops(u32 dpu_idx);
  * @dpu_idx: dpu index
  */
 void sde_reg_dma_deinit(u32 dpu_idx);
+
+/**
+ * sde_reg_dma_get_last_cmd_buffer() - function to get the LUT DMA last command buffer info.
+ * @dpu_idx: dpu index
+ * @last_cmd_buf: pointer to a pointer of last command buffer
+ */
+int sde_reg_dma_get_last_cmd_buffer(u32 dpu_idx, struct sde_reg_dma_buffer **last_cmd_buf);
 #endif /* _SDE_REG_DMA_H */

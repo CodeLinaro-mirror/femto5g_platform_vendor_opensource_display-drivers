@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -16,6 +16,7 @@
 #define MAX_DP_MST_STREAMS	2
 #define MAX_SWING_LEVELS 4
 #define MAX_PRE_EMP_LEVELS 4
+#define MAX_DP_SHALLOW_MODE_RETRIES	5
 
 enum dp_pm_type {
 	DP_CORE_PM,
@@ -182,6 +183,21 @@ enum dp_phy_mode {
 };
 
 /**
+ * enum dp_phy_revision - revision of the dp phy
+ * @DP_PHY_REVISION_UNKNOWN:Unknown PHY revision
+ * @DP_PHY_REVISION_V1:		DP PHY ver1
+ * @DP_PHY_REVISION_V2:		DP PHY ver2
+ * @DP_PHY_REVISION_MAX:	max PHY revision
+ */
+
+enum dp_phy_revision {
+	DP_PHY_REVISION_UNKNOWN = 0,
+	DP_PHY_REVISION_V1,
+	DP_PHY_REVISION_V2,
+	DP_PHY_REVISION_MAX
+};
+
+/**
  * struct dp_hw_cfg - DP HW specific configuration
  *
  * @phy_version: DP PHY HW version
@@ -189,6 +205,7 @@ enum dp_phy_mode {
 struct dp_hw_cfg {
 	enum dp_phy_version phy_version;
 	enum dp_phy_mode phy_mode;
+	enum dp_phy_revision phy_revision;
 };
 
 static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
@@ -234,12 +251,17 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @has_mst: MST feature enable status
  * @has_mst_sideband: MST sideband feature enable status
  * @gpio_aux_switch: presence GPIO AUX switch status
+ * @no_backlight_support: For some display type that no support backlight
+ * @ext_hpd_en: A boolean value indicates an external dp can support hotplug
+ * @is_edp: A boolean value indicates an edp interface
+ * @max_fps_mode_en: A boolean value to select max resolution and max fps
  * @dsc_feature_enable: DSC feature enable status
  * @fec_feature_enable: FEC feature enable status
  * @dsc_continuous_pps: PPS sent every frame by HW
  * @fifo_error_enable : fifo error enable status
  * @has_widebus: widebus (2PPC) feature eanble status
-  *@mst_fixed_port: mst port_num reserved for fixed topology
+ * @shallow_mode_retries: link training retry times in shallow mode
+ * @mst_fixed_port: mst port_num reserved for fixed topology
  * @qos_cpu_mask: CPU mask for QOS
  * @qos_cpu_latency: CPU Latency setting for QOS
  * @swing_hbr2_3: Voltage swing levels for HBR2 and HBR3 rates
@@ -277,6 +299,11 @@ struct dp_parser {
 	bool has_widebus;
 	bool has_4ppc_enabled;
 	bool gpio_aux_switch;
+	u32 shallow_mode_retries;
+	bool no_backlight_support;
+	bool ext_hpd_en;
+	bool is_edp;
+	bool max_fps_mode_en;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;
