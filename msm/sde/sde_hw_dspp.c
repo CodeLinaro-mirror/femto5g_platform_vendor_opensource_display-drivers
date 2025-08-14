@@ -20,9 +20,11 @@
 
 #define ROI_MISR_OP_MODE(i)                    (BIT(i) | BIT((i) + 16))
 
+#define ROI_MISR_ROI_CTRL                      (0x10)
 #define ROI_MISR_ROI_POSITION(i)               (0x40 + 0x4 * (i))
 #define ROI_MISR_ROI_SIZE(i)                   (0x50 + 0x4 * (i))
 
+#define TFO_ONLY_BYPASS_ENABLE                 (1)
 #define ROI_POSITION_VAL(x, y)                 ((x) | ((y) << 16))
 #define ROI_SIZE_VAL(w, h)                     ((w) | ((h) << 16))
 
@@ -398,7 +400,11 @@ static void sde_setup_dspp_roi_misr(struct sde_hw_dspp *ctx,
 			ROI_POSITION_VAL(roi_cfg[i].w, roi_cfg[i].h));
 	}
 
+	/*set ROI_EN and ROI_BYPASS_EN*/
 	SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->roi_misr.base, op_mode);
+	/*set TFO_ONLY_BYPASS*/
+	SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->roi_misr.base
+			+ ROI_MISR_ROI_CTRL, TFO_ONLY_BYPASS_ENABLE);
 }
 
 static void dspp_roi_misr_bypass(struct sde_hw_dspp *c)

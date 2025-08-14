@@ -36,6 +36,7 @@
 #define ROI_MISR_CTRL_ENABLE                       BIT(8)
 #define ROI_MISR_CTRL_STATUS                       BIT(9)
 #define ROI_MISR_CTRL_STATUS_CLEAR                 BIT(10)
+#define ROI_MISR_CTRL_SLP_ONLY                     BIT(12)
 #define ROI_MISR_CTRL_RUN_MODE                     BIT(31)
 
 #define ROI_POSITION_VAL(x, y)                     ((x) | ((y) << 16))
@@ -54,6 +55,7 @@ static void sde_hw_roi_misr_setup(struct sde_hw_roi_misr *ctx,
 	for (i = 0; i < ROI_MISR_MAX_ROIS_PER_MISR; ++i) {
 		if (roi_info->roi_mask & BIT(i)) {
 			ctrl_val = ROI_MISR_CTRL_RUN_MODE
+				| ROI_MISR_CTRL_SLP_ONLY  /*SLP always enabled*/
 				| ROI_MISR_CTRL_ENABLE
 				| ROI_MISR_CTRL_STATUS_CLEAR
 				| cfg->frame_count[i];

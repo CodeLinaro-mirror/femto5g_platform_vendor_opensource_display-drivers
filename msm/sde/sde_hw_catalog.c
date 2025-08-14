@@ -828,7 +828,7 @@ static struct sde_prop_type dspp_blocks_prop[] = {
 	{DSPP_DITHER_PROP, "qcom,sde-dspp-dither", false, PROP_TYPE_U32_ARRAY},
 	{DSPP_HIST_PROP, "qcom,sde-dspp-hist", false, PROP_TYPE_U32_ARRAY},
 	{DSPP_VLUT_PROP, "qcom,sde-dspp-vlut", false, PROP_TYPE_U32_ARRAY},
-	{DSPP_ROI_MISR_BYPASS_PROP, "qcom,sde-dspp-roi-misr", false,
+	{DSPP_ROI_MISR_BYPASS_PROP, "qcom,sde-dspp-roi-misr-bypass", false,
 		PROP_TYPE_U32_ARRAY},
 };
 

@@ -59,6 +59,7 @@
 /* ROI_MISR_CTRL register */
 #define ROI_MISR_CTRL_ENABLE            BIT(8)
 #define ROI_MISR_CTRL_STATUS_CLEAR      BIT(10)
+#define ROI_MISR_CTRL_SLP_ONLY          BIT(12)
 #define ROI_MISR_CTRL_RUN_MODE          BIT(31)
 
 #define ROI_POSITION_VAL(x, y)          ((x) | ((y) << 16))
@@ -594,6 +595,7 @@ static void _sde_shd_flush_hw_roi_misr(struct sde_hw_roi_misr *ctx)
 			continue;
 
 		ctrl_val = ROI_MISR_CTRL_RUN_MODE
+			| ROI_MISR_CTRL_SLP_ONLY  /*SLP always enabled*/
 			| ROI_MISR_CTRL_ENABLE
 			| ROI_MISR_CTRL_STATUS_CLEAR
 			| roi_info->frame_count[i];
