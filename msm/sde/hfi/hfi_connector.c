@@ -5,6 +5,7 @@
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
+#include "hfi_catalog.h"
 #include "hfi_connector.h"
 #include "hfi_kms.h"
 #include "hfi_wb.h"
@@ -295,6 +296,191 @@ static int hfi_conn_add_hfi_cmds(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 	}
 
 	ret = _hfi_connector_populate_props(cmd_buf, disp_id, conn, cstate);
+
+	return ret;
+}
+
+static int _hfi_conn_add_init_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
+		struct sde_connector *conn)
+{
+	int ret = 0;
+	u32 num_modes = 0;
+	u32 obj_id = 0;
+	struct drm_connector *drm_conn;
+	struct hfi_connector *hfi_conn;
+	struct drm_display_mode *mode;
+
+	if (!cmd_buf || !conn)
+		return -EINVAL;
+
+	hfi_conn = to_hfi_connector(conn);
+	if (!hfi_conn->base_props)
+		return -EINVAL;
+
+	drm_conn = &conn->base;
+
+	mutex_lock(&hfi_conn->hfi_lock);
+
+	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
+
+	list_for_each_entry(mode, &drm_conn->modes, head) {
+		num_modes++;
+	}
+
+	hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props,
+			HFI_PROPERTY_PANEL_TIMING_MODE_COUNT, HFI_VAL_U32, &num_modes, sizeof(u32));
+
+	ret = hfi_adapter_add_set_property(cmd_buf,
+			HFI_COMMAND_PANEL_INIT_PANEL_CAPS,
+			obj_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			hfi_util_u32_prop_helper_get_payload_addr(hfi_conn->base_props),
+			hfi_util_u32_prop_helper_get_size(hfi_conn->base_props),
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		SDE_ERROR("failed to add panel init caps command\n");
+		goto end;
+	}
+end:
+	mutex_unlock(&hfi_conn->hfi_lock);
+
+	return ret;
+}
+
+static void _hfi_conn_get_mode_res_data(struct drm_display_mode *mode,
+		struct hfi_panel_res_data *res_data)
+{
+	if (!mode || !res_data)
+		return;
+
+	res_data->active_width = mode->hdisplay;
+	res_data->active_height = mode->vdisplay;
+	res_data->h_front_porch = mode->hsync_start - mode->hdisplay;
+	res_data->h_back_porch = mode->htotal - mode->hsync_end;
+	res_data->h_sync_skew = mode->hskew;
+	res_data->h_sync_pulse = mode->hsync_end - mode->hsync_start;
+	res_data->v_front_porch =  mode->vsync_start - mode->vdisplay;
+	res_data->v_back_porch = mode->vtotal - mode->vsync_end;
+	res_data->v_pulse_width = mode->vsync_end - mode->vsync_start;
+}
+
+static int _hfi_conn_add_timing_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
+		struct sde_connector *conn)
+{
+	int ret = 0;
+	u32 mode_idx = 0;
+	u64 mode_clock;
+	u64 jitter  = ((u64)0x1 << 32);
+	u32 refresh;
+	u32 obj_id = 0;
+	struct hfi_connector *hfi_conn;
+	struct drm_connector *drm_conn;
+	struct drm_display_mode *mode;
+	struct hfi_panel_res_data res_data;
+	struct hfi_panel_compression_params compression_params = {0,};
+
+	if (!cmd_buf || !conn)
+		return -EINVAL;
+
+	hfi_conn = to_hfi_connector(conn);
+	if (!hfi_conn->base_props)
+		return -EINVAL;
+
+	drm_conn = &conn->base;
+	mutex_lock(&hfi_conn->hfi_lock);
+
+	list_for_each_entry(mode, &drm_conn->modes, head) {
+		hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
+		mode_clock = mode->clock * 1000;
+		refresh = drm_mode_vrefresh(mode);
+
+		hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props, HFI_PROPERTY_PANEL_INDEX,
+				HFI_VAL_U32, &mode_idx, sizeof(u32));
+		hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props,
+				HFI_PROPERTY_PANEL_CLOCKRATE, HFI_VAL_U32_ARRAY,
+				&mode_clock, 2 * sizeof(u32));
+		hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props,
+				HFI_PROPERTY_PANEL_FRAMERATE, HFI_VAL_U32,
+				&refresh, sizeof(u32));
+		hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props,
+				HFI_PROPERTY_PANEL_JITTER, HFI_VAL_U32_ARRAY,
+				&jitter, 2 * sizeof(u32));
+
+		_hfi_conn_get_mode_res_data(mode, &res_data);
+		hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props,
+				HFI_PROPERTY_PANEL_RESOLUTION_DATA, HFI_VAL_U32_ARRAY,
+				&res_data, sizeof(struct hfi_panel_res_data));
+		hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props,
+				HFI_PROPERTY_PANEL_COMPRESSION_DATA, HFI_VAL_U32_ARRAY,
+				&compression_params, sizeof(struct hfi_panel_compression_params));
+
+		ret = hfi_adapter_add_set_property(cmd_buf,
+				HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS,
+				obj_id,
+				HFI_PAYLOAD_TYPE_U32_ARRAY,
+				hfi_util_u32_prop_helper_get_payload_addr(hfi_conn->base_props),
+				hfi_util_u32_prop_helper_get_size(hfi_conn->base_props),
+				HFI_HOST_FLAGS_NON_DISCARDABLE);
+		if (ret) {
+			SDE_ERROR("failed to add panel init caps command\n");
+			goto end;
+		}
+		mode_idx++;
+	}
+end:
+	mutex_unlock(&hfi_conn->hfi_lock);
+
+	return ret;
+}
+
+int hfi_conn_send_panel_init(struct drm_connector *conn)
+{
+	int ret = 0;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct sde_connector *c_conn;
+	struct hfi_cmdbuf_t *cmd_buf;
+
+	if (!conn) {
+		SDE_ERROR("invalid args\n");
+		return -EINVAL;
+	}
+
+	/**
+	 * currently this function is handling only for WB to send client modes.
+	 * If required, we could extend this to DSI
+	 */
+	c_conn = to_sde_connector(conn);
+	if (c_conn->connector_type != DRM_MODE_CONNECTOR_VIRTUAL)
+		return ret;
+
+	sde_kms = sde_connector_get_kms(conn);
+	hfi_kms = to_hfi_kms(sde_kms);
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_DEVICE_INFO);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get command buf\n");
+		return -EINVAL;
+	}
+
+	ret = _hfi_conn_add_init_caps_cmd(cmd_buf, c_conn);
+	if (ret) {
+		SDE_ERROR("failed to add panel init caps command\n");
+		goto end;
+	}
+
+	ret = _hfi_conn_add_timing_caps_cmd(cmd_buf, c_conn);
+	if (ret) {
+		SDE_ERROR("failed to add panel int timing caps command\n");
+		goto end;
+	}
+end:
+	ret = hfi_adapter_set_cmd_buf(cmd_buf);
+	if (ret) {
+		SDE_ERROR("failed to send panel int command\n");
+		return ret;
+	}
 
 	return ret;
 }

@@ -3811,6 +3811,7 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 	struct sde_connector *c_conn;
 	struct drm_crtc_state *crtc_state;
 	struct drm_connector_state *conn_state;
+	struct drm_connector_list_iter iter;
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	int i, ret;
 	u32 frame_trigger;
@@ -3908,6 +3909,23 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 			ret = _sde_kms_send_reg_dma_last_cmd_hfi(sde_kms);
 			if (ret)
 				SDE_ERROR("failed to send last command LUT DMA buffer to HFI\n");
+
+			drm_connector_list_iter_begin(dev, &iter);
+			drm_for_each_connector_iter(conn, &iter) {
+				int wb_idx = 0;
+				int dsi_idx = 0;
+				struct sde_connector *sde_conn;
+
+				sde_conn = to_sde_connector(conn);
+
+				if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+					sde_connector_setup_obj_id(conn,
+						sde_kms->hfi_kms->catalog->wb_indices[wb_idx++]);
+				else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+					sde_connector_setup_obj_id(conn,
+						sde_kms->hfi_kms->catalog->dsi_indices[dsi_idx++]);
+			}
+			drm_connector_list_iter_end(&iter);
 
 			sde_kms->hfi_session_start = false;
 		}

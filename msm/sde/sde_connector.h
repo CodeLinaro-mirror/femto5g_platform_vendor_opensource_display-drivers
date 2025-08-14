@@ -1656,6 +1656,13 @@ static inline u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
 void sde_conn_timeline_status(struct drm_connector *conn);
 
 /**
+ * sde_connector_setup_obj_id - update connector object ids
+ * @conn: Pointer to drm_connector struct
+ * @id: Opaque Object id of connector
+ */
+int sde_connector_setup_obj_id(struct drm_connector *conn, int id);
+
+/**
  * sde_connector_helper_bridge_disable - helper function for drm bridge disable
  * @connector: Pointer to DRM connector object
  */
