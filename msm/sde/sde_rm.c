@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -453,7 +453,7 @@ static const struct drm_private_state_funcs sde_rm_state_funcs = {
 };
 
 static struct sde_rm_state *sde_rm_get_atomic_state(
-		struct drm_atomic_state *state, struct sde_rm *rm)
+		struct drm_atomic_state *state, struct sde_rm *rm, bool atomic_check)
 {
 	int ret = 0;
 	struct drm_device *dev = rm->dev;
@@ -464,6 +464,9 @@ retry:
 	WARN_ON(!drm_modeset_is_locked(&dev->mode_config.connection_mutex));
 
 	priv_state = drm_atomic_get_private_obj_state(state, &rm->obj);
+	if (atomic_check)
+		goto end;
+
 	if (PTR_ERR(priv_state) == -EDEADLK) {
 		do {
 			drm_modeset_backoff(state->acquire_ctx);
@@ -475,6 +478,10 @@ retry:
 
 		drm_modeset_drop_locks(state->acquire_ctx);
 	}
+
+end:
+	if (IS_ERR(priv_state))
+		return ERR_CAST(priv_state);
 
 	return to_sde_rm_priv_state(priv_state);
 }
@@ -630,7 +637,7 @@ bool sde_rm_atomic_get_hw(struct sde_rm *rm,
 	struct sde_rm_state *state;
 	bool ret;
 
-	state = sde_rm_get_atomic_state(atomic_state, rm);
+	state = sde_rm_get_atomic_state(atomic_state, rm, false);
 	if (IS_ERR(state))
 		return false;
 
@@ -2863,7 +2870,7 @@ int sde_rm_release(struct sde_rm *rm,
 
 	sde_kms = to_sde_kms(priv->kms);
 
-	state = sde_rm_get_atomic_state(atomic_state, rm);
+	state = sde_rm_get_atomic_state(atomic_state, rm, true);
 	if (IS_ERR(state))
 		return PTR_ERR(state);
 
@@ -2924,7 +2931,7 @@ int sde_rm_reserve(
 	}
 
 	if (conn_state->state)
-		state = sde_rm_get_atomic_state(conn_state->state, rm);
+		state = sde_rm_get_atomic_state(conn_state->state, rm, false);
 	else
 		state = to_sde_rm_priv_state(rm->obj.state);
 
@@ -2999,7 +3006,7 @@ int sde_rm_ext_blk_create_reserve(struct sde_rm *rm, struct drm_atomic_state *at
 		return -EINVAL;
 	}
 
-	state = sde_rm_get_atomic_state(atomic_state, rm);
+	state = sde_rm_get_atomic_state(atomic_state, rm, false);
 	if (IS_ERR(state))
 		return PTR_ERR(state);
 	blk = kzalloc(sizeof(*blk), GFP_KERNEL);
@@ -3038,7 +3045,7 @@ int sde_rm_ext_blk_create_reserve_lm(struct sde_rm *rm, struct drm_atomic_state 
 		return -EINVAL;
 	}
 
-	state = sde_rm_get_atomic_state(atomic_state, rm);
+	state = sde_rm_get_atomic_state(atomic_state, rm, false);
 	if (IS_ERR(state))
 		return PTR_ERR(state);
 
@@ -3078,7 +3085,7 @@ int sde_rm_ext_blk_create_reserve_ctl(struct sde_rm *rm, struct drm_atomic_state
 		return -EINVAL;
 	}
 
-	state = sde_rm_get_atomic_state(atomic_state, rm);
+	state = sde_rm_get_atomic_state(atomic_state, rm, false);
 	if (IS_ERR(state))
 		return PTR_ERR(state);
 

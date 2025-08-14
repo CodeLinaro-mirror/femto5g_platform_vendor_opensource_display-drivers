@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2014 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -972,14 +972,11 @@ int msm_atomic_commit(struct drm_device *dev,
 	}
 
 	/* Protection for prepare_fence callback */
-retry:
 	ret = drm_modeset_lock(&state->dev->mode_config.connection_mutex,
 		state->acquire_ctx);
 
-	if (ret == -EDEADLK) {
-		drm_modeset_backoff(state->acquire_ctx);
-		goto retry;
-	}
+	if (ret)
+		goto err_free;
 
 	/*
 	 * Wait for pending updates on any of the same crtc's and then
