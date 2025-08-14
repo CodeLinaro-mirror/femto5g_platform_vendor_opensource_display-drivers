@@ -323,8 +323,15 @@ static int _hfi_conn_add_init_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
 
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
 
-	list_for_each_entry(mode, &drm_conn->modes, head) {
-		num_modes++;
+	if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+		// Avoid populating noedid modes.
+		if (!list_empty(&drm_conn->modes))
+			num_modes = 1;
+		else
+			num_modes = 0;
+	} else {
+		list_for_each_entry(mode, &drm_conn->modes, head)
+			num_modes++;
 	}
 
 	hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props,
@@ -390,6 +397,9 @@ static int _hfi_conn_add_timing_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
 	mutex_lock(&hfi_conn->hfi_lock);
 
 	list_for_each_entry(mode, &drm_conn->modes, head) {
+		if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL &&
+			!(mode->type & DRM_MODE_TYPE_PREFERRED))
+			continue;
 		hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
 		mode_clock = mode->clock * 1000;
 		refresh = drm_mode_vrefresh(mode);
