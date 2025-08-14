@@ -911,14 +911,11 @@ int msm_atomic_commit(struct drm_device *dev,
 	}
 
 	/* Protection for prepare_fence callback */
-retry:
 	ret = drm_modeset_lock(&state->dev->mode_config.connection_mutex,
 		state->acquire_ctx);
 
-	if (ret == -EDEADLK) {
-		drm_modeset_backoff(state->acquire_ctx);
-		goto retry;
-	}
+	if (ret)
+		goto err_free;
 
 	/*
 	 * Wait for pending updates on any of the same crtc's and then
