@@ -30,14 +30,20 @@ static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 	HFI_POPULATE_RECT(&dst_roi, roi.x, roi.y, roi.w, roi.h, false);
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SRC_ROI;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-		to_sde_connector(wb_dev->connector)->conn_id, HFI_VAL_U32_ARRAY,
-		&src_roi, sizeof(struct hfi_display_roi));
+	u32 src_roi_payload[1 + (sizeof(struct hfi_display_roi) / sizeof(u32))];
+
+	src_roi_payload[0] = to_sde_connector(wb_dev->connector)->conn_id;
+	memcpy(&src_roi_payload[1], &src_roi, sizeof(struct hfi_display_roi));
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, src_roi_payload, sizeof(src_roi_payload));
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DST_ROI;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
-		to_sde_connector(wb_dev->connector)->conn_id, HFI_VAL_U32_ARRAY,
-		&dst_roi, sizeof(struct hfi_display_roi));
+	u32 dst_roi_payload[1 + (sizeof(struct hfi_display_roi) / sizeof(u32))];
+
+	dst_roi_payload[0] = to_sde_connector(wb_dev->connector)->conn_id;
+	memcpy(&dst_roi_payload[1], &dst_roi, sizeof(struct hfi_display_roi));
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, dst_roi_payload, sizeof(dst_roi_payload));
 
 	return ret;
 }
@@ -53,16 +59,19 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	int ret = 0;
 	u32 hfi_format;
 	u32 wb_rotate_type;
-	u32 rotation_flags;
+	u32 rotation_flags, rot_payload[2];
 	struct drm_framebuffer *fb;
 	struct sde_hw_wb_cfg wb_cfg = {0,};
 	struct sde_format_extended fmt = {0,};
 	struct sde_connector *sde_conn = to_sde_connector(wb_dev->connector);
 	/* This should be the index which this WB device received as part of init caps */
 	u32 wb_id = sde_conn->conn_id;
+	u32 format_payload[2], width_payload[2], height_payload[2];
+	u32 addr_payload[1 + SDE_MAX_PLANES], stride_payload[1 + SDE_MAX_PLANES];
+	u32 tap_point, tap_payload[2];
 
 	prop_id = HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, wb_id,
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
 		HFI_VAL_U32, &wb_id, sizeof(u32));
 
 	fb = sde_wb_get_output_fb(wb_dev);
@@ -71,18 +80,24 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 
 	hfi_format = hfi_catalog_get_hfi_format(&fmt);
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DST_FORMAT;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, wb_id,
-		HFI_VAL_U32_ARRAY, &hfi_format, sizeof(u32));
+	format_payload[0] = wb_id;
+	format_payload[1] = hfi_format;
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, format_payload, sizeof(format_payload));
 
 	width = fb->width;
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_W;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, wb_id,
-		HFI_VAL_U32, &width, sizeof(u32));
+	width_payload[0] = wb_id;
+	width_payload[1] = width;
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, width_payload, sizeof(width_payload));
 
 	height = fb->height;
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_H;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, wb_id,
-		HFI_VAL_U32, &height, sizeof(u32));
+	height_payload[0] = wb_id;
+	height_payload[1] = height;
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, height_payload, sizeof(height_payload));
 
 	ret = sde_wb_get_scan_out_info(wb_dev, cstate, fb, &wb_cfg);
 	if (ret) {
@@ -91,15 +106,18 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	}
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, wb_id,
-		HFI_VAL_U32_ARRAY, &wb_cfg.dest.plane_addr[0], (sizeof(u32) * SDE_MAX_PLANES));
+	addr_payload[0] = wb_id;
+	memcpy(&addr_payload[1], &wb_cfg.dest.plane_addr[0], sizeof(u32) * SDE_MAX_PLANES);
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, addr_payload, sizeof(addr_payload));
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_STRIDE;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, wb_id,
-			HFI_VAL_U32_ARRAY, &wb_cfg.dest.plane_pitch[0],
-			(sizeof(u32) * SDE_MAX_PLANES));
+	stride_payload[0] = wb_id;
+	memcpy(&stride_payload[1], &wb_cfg.dest.plane_pitch[0], sizeof(u32) * SDE_MAX_PLANES);
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, stride_payload, sizeof(stride_payload));
 
-	u32 tap_point = HFI_TAP_POINT_NONE;
+	tap_point = HFI_TAP_POINT_NONE;
 
 	_hfi_wb_add_roi_prop(wb_dev, cstate, hfi_conn->base_props);
 
@@ -109,22 +127,25 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	if (wb_rotate_type != WB_ROT_NONE) {
 		rotation_flags = HFI_DISPLAY_ROTATION_90;
 		prop_id = HFI_PROPERTY_OUTPUT_LAYER_ROTATION;
-		hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, disp_id,
-			HFI_VAL_U32, &rotation_flags, sizeof(u32));
+		rot_payload[0] = wb_id;
+		rot_payload[1] = rotation_flags;
+		hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+			HFI_VAL_U32_ARRAY, rot_payload, sizeof(rot_payload));
 	}
 
-	switch (cstate->capture_mode) {
-	case CAPTURE_MIXER_OUT:
+	if (cstate->capture_mode == CAPTURE_MIXER_OUT)
 		tap_point = HFI_TAP_POINT_LM;
-		break;
-	case CAPTURE_DSPP_OUT:
+	else if (cstate->capture_mode == CAPTURE_DSPP_OUT)
 		tap_point = HFI_TAP_POINT_DSPP;
-		break;
-	case CAPTURE_DEMURA_OUT:
+	else if (cstate->capture_mode == CAPTURE_DEMURA_OUT)
 		tap_point = HFI_TAP_POINT_DEMURA;
-		break;
-	default:
-		goto exit;
+
+	if (tap_point != HFI_TAP_POINT_NONE) {
+		prop_id = HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT;
+		tap_payload[0] = wb_id;
+		tap_payload[1] = tap_point;
+		hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+			HFI_VAL_U32_ARRAY, tap_payload, sizeof(tap_payload));
 	}
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT;
@@ -133,7 +154,6 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 
 	SDE_DEBUG("Done adding hfi props for wb\n");
 
-exit:
 	return ret;
 }
 
