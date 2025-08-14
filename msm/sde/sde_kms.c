@@ -4134,6 +4134,11 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	sde_kms = to_sde_kms(kms);
 	dev = sde_kms->dev;
 
+	if (!sde_kms->catalog) {
+		SDE_DEBUG("Device catalog absent, skip atomic_check\n");
+		return -ENODEV;
+	}
+
 	SDE_ATRACE_BEGIN("atomic_check");
 
 	if (sde_kms_is_suspend_blocked(dev)) {
