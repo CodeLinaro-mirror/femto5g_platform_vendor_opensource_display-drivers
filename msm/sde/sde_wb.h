@@ -51,6 +51,20 @@ struct sde_wb_device {
 };
 
 /**
+ * struct wb_display_ops - wb display ops
+ * @post_init:		Post init connector for wb
+ * @enable:		Enable wb
+ * @disable:		Disable wb
+ * @prepare_commit:	Do any work necessary prior to a kickoff
+ */
+struct wb_display_hal_ops {
+	int (*post_init)(struct sde_wb_device *wb_dev);
+	void (*enable)(struct sde_wb_device *wb_dev);
+	void (*disable)(struct sde_wb_device *wb_dev);
+	int (*prepare_commit)(struct sde_wb_device *wb_dev, struct sde_connector_state *cstate);
+};
+
+/**
  * sde_wb_get_index - get device index of the given writeback device
  * @wb_dev:	Pointer to writeback device
  * Returns:	Index of hardware instance
@@ -124,6 +138,18 @@ int sde_wb_drm_deinit(struct sde_wb_device *wb_dev);
 int sde_wb_config(struct drm_device *drm_dev, void *data,
 				struct drm_file *file_priv);
 
+/**
+ * sde_wb_get_scan_out_info - provides output buffer info
+ * @wb_dev:	Pointer to writeback device
+ * @old_cstate:	Pointer to connector state
+ * @fb:	        Pointer to wb output DRM framebuffer
+ * @wb_cfg:	Pointer to SDE writeback config
+ * Returns:	0 if success; error code otherwise
+ */
+int sde_wb_get_scan_out_info(struct sde_wb_device *wb_dev,
+		struct sde_connector_state *old_cstate,
+		struct drm_framebuffer *fb,
+		struct sde_hw_wb_cfg *wb_cfg);
 /**
  * sde_wb_connector_post_init - perform writeback specific initialization
  * @connector: Pointer to drm connector structure
@@ -288,6 +314,14 @@ int sde_wb_drm_deinit(struct sde_wb_device *wb_dev)
 static inline
 int sde_wb_config(struct drm_device *drm_dev, void *data,
 				struct drm_file *file_priv)
+{
+	return 0;
+}
+static inline
+int sde_wb_get_scan_out_info(struct sde_wb_device *wb_dev,
+		struct sde_connector_state *old_cstate,
+		struct drm_framebuffer *fb,
+		struct sde_hw_wb_cfg *wb_cfg)
 {
 	return 0;
 }

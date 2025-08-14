@@ -3812,6 +3812,13 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 
 	/* update resources after seamless mode change */
 	sde_encoder_virt_modeset_rc(drm_enc, adj_mode, msm_mode, false);
+
+	if (sde_enc->hal_ops.mode_set[disp_op]) {
+		ret = sde_enc->hal_ops.mode_set[disp_op](sde_enc, mode, adj_mode);
+		if (ret)
+			SDE_ERROR_ENC(sde_enc, "encoder modeset hal_op failure\n");
+	}
+
 }
 
 void sde_encoder_idle_pc_enter(struct drm_encoder *drm_enc)

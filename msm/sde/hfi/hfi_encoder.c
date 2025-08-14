@@ -610,6 +610,93 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 	return 0;
 }
 
+static int _hfi_enc_fill_hfi_mode(struct hfi_display_mode_info *hfi_mode,
+		struct drm_display_mode *mode)
+{
+	int ret = 0;
+	u64 mode_clock;
+
+	if (!mode || !hfi_mode)
+		return -EINVAL;
+
+	mode_clock = mode->clock * 1000; /* mode clock is in kHz */
+	hfi_mode->size = sizeof(struct hfi_display_mode_info);
+	hfi_mode->h_skew = mode->hskew;
+	hfi_mode->h_active = mode->hdisplay;
+	hfi_mode->h_back_porch = mode->htotal - mode->hsync_end;
+	hfi_mode->h_sync_width = mode->hsync_end - mode->hsync_start;
+	hfi_mode->h_front_porch = mode->hsync_start - mode->hdisplay;
+	hfi_mode->h_sync_polarity = (mode->flags & DRM_MODE_FLAG_NHSYNC) ? 1 : 0;
+	hfi_mode->v_active = mode->vdisplay;
+	hfi_mode->v_back_porch = mode->vtotal - mode->vsync_end;
+	hfi_mode->v_sync_width = mode->vsync_end - mode->vsync_start;
+	hfi_mode->v_front_porch = mode->vsync_start - mode->vdisplay;
+	hfi_mode->v_sync_polarity = (mode->flags & DRM_MODE_FLAG_NVSYNC) ? 1 : 0;
+	hfi_mode->refresh_rate = drm_mode_vrefresh(mode);
+	hfi_mode->clk_rate_hz_lo = HFI_VAL_L32(mode_clock);
+	hfi_mode->clk_rate_hz_hi = HFI_VAL_H32(mode_clock);
+	hfi_mode->flags_lo = 0; /* need to have generic flags defined */
+
+	return ret;
+}
+
+static int hfi_encoder_mode_set(struct sde_encoder_virt *enc, struct drm_display_mode *mode,
+		struct drm_display_mode *adj_mode)
+{
+	struct drm_connector *conn;
+	struct hfi_encoder *hfi_enc;
+	struct hfi_kms *hfi_kms;
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_display_mode_info hfi_mode;
+	u32 display_id = 0;
+	int ret = 0;
+
+	if (!enc) {
+		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	if (!sde_encoder_is_wb_display(&enc->base))
+		return ret;
+
+	hfi_enc = to_hfi_encoder(enc);
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+
+	if (!hfi_kms) {
+		SDE_ERROR("invalid dcp kms obj\n");
+		return -EINVAL;
+	}
+
+	ret = _hfi_enc_fill_hfi_mode(&hfi_mode, adj_mode);
+	if (ret) {
+		SDE_ERROR("failed to populate hfi mode\n");
+		return ret;
+	}
+
+	conn = sde_encoder_get_connector(enc->base.dev, &enc->base);
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	display_id = sde_conn_get_display_obj_id(conn);
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, display_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get valid command buffer\n");
+		return -EINVAL;
+	}
+
+	ret = hfi_adapter_add_set_property(cmd_buf, HFI_COMMAND_DISPLAY_SET_MODE, display_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &hfi_mode, sizeof(hfi_mode),
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		SDE_ERROR("failed to trigger modeset hfi\n");
+		return ret;
+	}
+
+	return ret;
+}
+
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct seq_file *s)
 {
@@ -902,6 +989,7 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 	sde_enc->hal_ops.kickoff[MSM_DISP_OP_HFI] = hfi_enc_kickoff;
 	sde_enc->hal_ops.encoder_enable[MSM_DISP_OP_HFI] = hfi_enc_encoder_enable;
 	sde_enc->hal_ops.encoder_disable[MSM_DISP_OP_HFI] = hfi_enc_encoder_disable;
+	sde_enc->hal_ops.mode_set[MSM_DISP_OP_HFI] = hfi_encoder_mode_set;
 	sde_enc->hal_ops.wait_for_event[MSM_DISP_OP_HFI] = hfi_enc_wait_for_event;
 	sde_enc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI] = hfi_enc_enable_hw_event;
 	sde_enc->hal_ops.debugfs_misr_setup[MSM_DISP_OP_HFI] = hfi_enc_debugfs_misr_setup;

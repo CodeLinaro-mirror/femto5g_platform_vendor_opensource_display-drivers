@@ -7,6 +7,7 @@
 
 #include "hfi_connector.h"
 #include "hfi_kms.h"
+#include "hfi_wb.h"
 #include "hfi_crtc.h"
 #include "hfi_props.h"
 
@@ -313,6 +314,10 @@ int hfi_connector_prepare_commit(struct drm_connector *conn, struct sde_connecto
 	}
 
 	sde_conn = to_sde_connector(conn);
+	if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+		return hfi_wb_display_prepare_commit((struct sde_wb_device *) sde_conn->display,
+				cstate);
+
 	sde_kms = sde_connector_get_kms(conn);
 	hfi_kms = to_hfi_kms(sde_kms);
 
