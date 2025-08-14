@@ -500,6 +500,12 @@ static void dspp_demura(struct sde_hw_dspp *c)
 			c->ops.setup_demura_pu_config[MSM_DISP_OP_HWIO] = sde_demura_pu_cfg;
 			c->ops.setup_demura_cfg0_param2[MSM_DISP_OP_HWIO] =
 					reg_dmav1_setup_demura_cfg0_param2_v4;
+
+			c->ops.setup_demura_cfg[MSM_DISP_OP_HFI] = reg_dmav1_setup_demurav4;
+			c->ops.setup_demura_backlight_cfg[MSM_DISP_OP_HFI] =
+					hfi_setup_demura_backlight_cfg_v4;
+			c->ops.setup_demura_cfg0_param2[MSM_DISP_OP_HFI] =
+					reg_dmav1_setup_demura_cfg0_param2_v4;
 		} else {
 			SDE_ERROR("Regdma init dspp op failed for Demura v4\n");
 		}

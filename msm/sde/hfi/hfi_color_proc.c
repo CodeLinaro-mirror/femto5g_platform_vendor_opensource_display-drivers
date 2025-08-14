@@ -11,6 +11,7 @@
 #include "sde_hw_dspp.h"
 
 static struct hfi_display_pa_dither hfi_pa_dither_cached[DPU_MAX][DSPP_MAX] = {};
+static u32 hfi_demura_backlight_cached[DPU_MAX][DSPP_MAX] = {};
 
 void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data, enum msm_disp_op disp_op)
 {
@@ -414,4 +415,44 @@ void hfi_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx, void *cfg)
 			HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER, 2, 0);
 	if (ret)
 		SDE_ERROR("Failed to send hfi_buff from SPR dither ret: %d\n", ret);
+}
+
+void hfi_setup_demura_backlight_cfg_v4(struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg)
+{
+	u32 backlight = 0;
+	u32 ret = 0;
+	u32 prop_id = HFI_PACK_VERSION(4, 0, HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT);
+
+	if (!ctx || !hw_cfg || (hw_cfg->len != sizeof(u64) && hw_cfg->payload)) {
+		DRM_ERROR("ctx %pK hw_cfg %pK payload %pK size %d expected sz %zd\n",
+			ctx, hw_cfg, ((hw_cfg) ? hw_cfg->payload : NULL),
+			((hw_cfg) ? hw_cfg->len : 0), sizeof(u64));
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	if (!hw_cfg->payload) {
+		DRM_DEBUG_DRIVER("disable demura backlight feature\n");
+		hfi_demura_backlight_cached[ctx->dpu_idx][hw_cfg->dspp_idx] = 0;
+	} else {
+		backlight = (*((u64 *)(hw_cfg->payload)) & REG_MASK(32));
+		hfi_demura_backlight_cached[ctx->dpu_idx][hw_cfg->dspp_idx] = backlight;
+	}
+
+	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				prop_id, HFI_VAL_U32_ARRAY,
+				&hfi_demura_backlight_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx],
+				sizeof(u32) * hw_cfg->num_of_mixers);
+		if (ret)
+			SDE_ERROR("Failed to add hfi prop for demura backlight %d ret %d\n",
+				prop_id, ret);
+		else
+			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
+				HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT);
+	}
 }

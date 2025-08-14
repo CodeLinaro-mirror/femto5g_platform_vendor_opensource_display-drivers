@@ -604,6 +604,54 @@
 #define HFI_PROPERTY_DISPLAY_COLOR_PA_DITHER                         0x00020111
 
 /*
+ * HFI_PROPERTY_DISPLAY_COLOR_DEMURA_CFG - This property is to setup Demura.
+ *                                  Host is expected to send this packet of
+ *                                  HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_DEMURA_CFG
+ *   (u32_key) payload       : HFI_PROPERTY_DISPLAY_COLOR_DEMURA_CFG |
+ *                             (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload     : struct hfi_buff_dpu
+ *
+ * | Major        | Minor        | Payload               |
+ * |--------------|--------------|-----------------------|
+ * | 4            | 0            | hfi_buff_dpu          |
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_DEMURA_CFG                        0x00020112
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_DEMURA_TABLE - This property is to setup Demura tables.
+ *                                  Host is expected to send this packet of
+ *                                  HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_DEMURA_TABLE
+ *   (u32_key) payload       : HFI_PROPERTY_DISPLAY_COLOR_DEMURA_TABLE |
+ *                             (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload     : struct hfi_buff_dpu
+ *
+ * | Major        | Minor        | Payload               |
+ * |--------------|--------------|-----------------------|
+ * | 4            | 0            | hfi_buff_dpu          |
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_DEMURA_TABLE                      0x00020113
+
+/*
+ * HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT - This property is to setup Demura backlight.
+ *                                  Host is expected to send this packet of
+ *                                  HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT
+ *   (u32_key) payload       : HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT |
+ *                             (version=0 << 20) | (dsize=(sizeof(u32)/4 * num_of_dspps) << 24)
+ *   (u32_value) payload     : array of u32
+ *
+ * | Major        | Minor        | Payload               |
+ * |--------------|--------------|-----------------------|
+ * | 4            | 0            | u32                   |
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT                  0x00020114
+
+/*
  * All display color properties end here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_END                               0x000201FF
