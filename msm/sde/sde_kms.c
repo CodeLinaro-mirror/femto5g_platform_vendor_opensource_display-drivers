@@ -3889,6 +3889,8 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 		sde_kms->frame_trigger_state = MSM_DISP_OP_HFI;
 
 		if (sde_kms->hfi_session_start) {
+			int wb_idx = 0;
+			int dsi_idx = 0;
 			ret = sde_kms_setup_hfi(priv, dev);
 			if (ret) {
 				SDE_ERROR("HFI setup failed\n");
@@ -3912,8 +3914,6 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 
 			drm_connector_list_iter_begin(dev, &iter);
 			drm_for_each_connector_iter(conn, &iter) {
-				int wb_idx = 0;
-				int dsi_idx = 0;
 				struct sde_connector *sde_conn;
 
 				sde_conn = to_sde_connector(conn);
