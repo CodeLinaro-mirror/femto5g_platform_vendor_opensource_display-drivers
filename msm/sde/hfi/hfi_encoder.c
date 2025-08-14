@@ -372,8 +372,10 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	}
 
 	drm_enc = &sde_enc->base;
-	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
+	if (!sde_encoder_is_primary_display(drm_enc))
+		return 0;
 
+	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 	if (!conn) {
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
