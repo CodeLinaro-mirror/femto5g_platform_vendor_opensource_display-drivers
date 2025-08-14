@@ -562,6 +562,41 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 	return ret;
 }
 
+static int _hfi_enc_send_display_ctrl_cmd(struct sde_encoder_virt *enc, bool enable)
+{
+	struct hfi_kms *hfi_kms;
+	struct hfi_encoder *hfi_enc;
+	struct drm_connector *conn;
+	struct hfi_cmdbuf_t *cmd_buf;
+	u32 display_id, hfi_cmd;
+	int ret = 0;
+
+	if (!enc)
+		return -EINVAL;
+
+	hfi_enc = to_hfi_encoder(enc);
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+
+	conn = sde_encoder_get_connector(enc->base.dev, &enc->base);
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	display_id = sde_conn_get_display_obj_id(conn);
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, display_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get valid command buffer\n");
+		return -EINVAL;
+	}
+
+	hfi_cmd = enable ? HFI_COMMAND_DISPLAY_ENABLE : HFI_COMMAND_DISPLAY_DISABLE;
+	ret = hfi_adapter_add_set_property(cmd_buf, hfi_cmd, display_id,
+			HFI_PAYLOAD_TYPE_NONE, NULL, 0, HFI_HOST_FLAGS_NON_DISCARDABLE);
+
+	return ret;
+}
+
 static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 {
 	int ret;
@@ -581,6 +616,14 @@ static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 	if (ret) {
 		SDE_ERROR("failed to send commit wait command\n");
 		return ret;
+	}
+
+	if (sde_encoder_is_wb_display(&enc->base)) {
+		ret = _hfi_enc_send_display_ctrl_cmd(enc, true);
+		if (ret) {
+			SDE_ERROR("failed to send display enable cmd\n");
+			return ret;
+		}
 	}
 
 	return 0;
@@ -605,6 +648,14 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 	if (ret) {
 		SDE_ERROR("failed to send debug-init command\n");
 		return ret;
+	}
+
+	if (sde_encoder_is_wb_display(&enc->base)) {
+		ret = _hfi_enc_send_display_ctrl_cmd(enc, false);
+		if (ret) {
+			SDE_ERROR("failed to send display disable cmd\n");
+			return ret;
+		}
 	}
 
 	return 0;
