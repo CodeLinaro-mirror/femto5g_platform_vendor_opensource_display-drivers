@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -459,6 +459,7 @@ struct sde_hw_rc_state {
  * @rc_state: Structure for RC state
  * @dpu_idx: dpu index
  * @ctl_idx: control index, for HW virtualization
+ * @pa_opmode: pa mode, for HW virtualization
  */
 struct sde_hw_dspp {
 	struct sde_hw_blk_reg_map hw;
@@ -483,6 +484,7 @@ struct sde_hw_dspp {
 
 	/* HW virtualization */
 	enum sde_ctl ctl_idx;
+	u32 pa_opcode;
 };
 
 /**

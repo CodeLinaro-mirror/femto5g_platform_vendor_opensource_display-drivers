@@ -3,7 +3,7 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
-#define pr_fmt(fmt)	"[virtgpu-vq:%s:%d] " fmt, __func__, __LINE__
+#define pr_fmt(fmt)	"[drm:virtgpu-vq:%s:%d] " fmt, __func__, __LINE__
 #include <linux/delay.h>
 #include <linux/kernel.h>
 #include <linux/spinlock.h>
@@ -915,8 +915,18 @@ int virtio_gpu_cmd_event_wait(struct virtio_kms *kms,
 static int virtio_get_edid_block(struct virtio_kms *kms, uint32_t scanout,
 		void *buf, size_t len)
 {
-	kms->outputs[scanout].edid = kzalloc(len, GFP_KERNEL);
-	memcpy(kms->outputs[scanout].edid, buf, len);
+	void *new_edid;
+
+	if (!kms || !buf || scanout >= kms->num_scanouts || len == 0)
+		return -EINVAL;
+
+	new_edid = kmemdup(buf, len, GFP_KERNEL);
+	if (!new_edid)
+		return -ENOMEM;
+
+	kfree(kms->outputs[scanout].edid);
+	kms->outputs[scanout].edid = new_edid;
+
 	return 0;
 }
 
@@ -957,10 +967,12 @@ int virtio_gpu_cmd_get_edid(struct virtio_kms *kms,
 	VIRTGPU_VQ_RSP_DBG("resp VIRTIO_GPU_CMD_GET_EDID (%s)\n",
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
 
-	virtio_get_edid_block(kms,
+	rc = virtio_get_edid_block(kms,
 			scanout,
 			resp->edid,
 			le32_to_cpu(resp->size));
+	if (rc)
+		VIRTGPU_VQ_ERR("virtio_get_edid_block failed, rc=%d\n", rc);
 
 error:
 	if (cmd_p)

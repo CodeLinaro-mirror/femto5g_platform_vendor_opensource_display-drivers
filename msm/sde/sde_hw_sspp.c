@@ -1976,6 +1976,7 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 	hw_pipe->dpu_idx = dpu_idx;
 	hw_pipe->sde_kms = sde_kms;
 	hw_pipe->global_flush = true;	// Next commit should be global flush
+	hw_pipe->ucsc_cfg = 0;
 
 	if (test_bit(SDE_SSPP_REC_SWI_SEPARATION, &hw_pipe->cap->features))
 		setup_layer_ops_v1(hw_pipe, hw_pipe->cap->features,

@@ -31,6 +31,11 @@ enum hab_dbl_handle_t {
 	HAB_DBL_HANDLE_MAX
 };
 
+enum virtio_hpd_connection_status {
+	VIRTIO_HPD_DISCONNECT = 1,
+	VIRTIO_HPD_CONNECT
+};
+
 struct scanout_attrib {
 	uint32_t type;
 	uint32_t connection_status;
@@ -75,6 +80,7 @@ struct virtio_kms_output {
 	struct virtio_plane_caps plane_caps[VIRTIO_GPU_MAX_PLANES];
 	struct drm_crtc *crtc;
 	bool vblank_enabled;
+	bool hpd_enabled;
 };
 
 struct channel_map {

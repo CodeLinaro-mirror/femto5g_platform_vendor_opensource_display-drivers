@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2014 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -812,6 +812,7 @@ int msm_atomic_commit(struct drm_device *dev,
 	struct drm_crtc_state *crtc_state;
 	struct drm_plane *plane;
 	struct drm_plane_state *old_plane_state, *new_plane_state;
+	struct list_head *entry;
 	int i, ret;
 
 	if (!priv || priv->shutdown_in_progress) {
@@ -931,6 +932,29 @@ retry:
 	 * composition of the next frame right after having submitted the
 	 * current layout
 	 */
+
+	/*
+	 * For blocking commit, since the msm_atomic_commit_dispatch will wait for
+	 * the hardware committing and next vsync to ensure the commit is done, and
+	 * at the same time might lock the global connection_mutex shared by other
+	 * committing threads, thus blocks other commits for long (up to one frame).
+	 * Drop connection_mutex before dispatch, since it is shared by all CRTCs.
+	 * For non-blocking commit, since the dispatch will only pass the commit
+	 * to the crtc_commit thread and return without waiting for the completion,
+	 * thus there is no benefit of unlocking connection_mutex here.
+	 * Check if connection_mutex is locked in the context before unlocking.
+	 */
+	if (!nonblock) {
+		list_for_each(entry, &state->acquire_ctx->locked) {
+			struct drm_modeset_lock *lock;
+
+			lock = list_entry(entry, struct drm_modeset_lock, head);
+			if (lock == &dev->mode_config.connection_mutex) {
+				drm_modeset_unlock(&dev->mode_config.connection_mutex);
+				break;
+			}
+		}
+	}
 
 	drm_atomic_state_get(state);
 	msm_atomic_commit_dispatch(dev, state, c);
