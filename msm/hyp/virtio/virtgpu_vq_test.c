@@ -1288,7 +1288,7 @@ static int virtio_test_get_plane_hw_attrib(void *req, uint32_t req_size,
 }
 
 static int virtio_hab_send_and_recv(uint32_t hab_socket,
-		struct channel_map hab_channel,
+		struct channel_map *phab_channel,
 		void *req,
 		uint32_t req_size,
 		void *resp,
@@ -1336,7 +1336,7 @@ static int virtio_hab_send_and_recv(uint32_t hab_socket,
 	case VIRTIO_GPU_CMD_SCANOUT_FLUSH:
 	case VIRTIO_GPU_CMD_FULL_FLUSH:
 #endif
-		return virtio_hab_send_and_recv_ext(hab_socket, hab_channel,
+		return virtio_hab_send_and_recv_ext(hab_socket, phab_channel,
 				req, req_size, resp, resp_size, lock_flag);
 		break;
 #else
@@ -1433,7 +1433,7 @@ static int virtio_hab_send_and_recv(uint32_t hab_socket,
 		break;
 
 	default:
-		return virtio_hab_send_and_recv_ext(hab_socket, hab_channel,
+		return virtio_hab_send_and_recv_ext(hab_socket, phab_channel,
 				req, req_size, resp, resp_size, lock_flag);
 		break;
 	}
@@ -1441,7 +1441,7 @@ static int virtio_hab_send_and_recv(uint32_t hab_socket,
 
 
 int virtio_hab_send_and_recv_timeout(uint32_t hab_socket,
-		struct mutex hab_lock,
+		struct mutex *hab_lock,
 		void *req,
 		uint32_t req_size,
 		void *resp,
@@ -1452,7 +1452,7 @@ int virtio_hab_send_and_recv_timeout(uint32_t hab_socket,
 			req, req_size, resp, resp_size);
 #else
 	struct channel_map hab_channel = { 0 };
-	return virtio_hab_send_and_recv(hab_socket, hab_channel,
+	return virtio_hab_send_and_recv(hab_socket, &hab_channel,
 			req, req_size, resp, resp_size, false);
 #endif
 }
