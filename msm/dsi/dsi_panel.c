@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -19,6 +19,25 @@
 #include "sde_dsc_helper.h"
 #include "sde_vdc_helper.h"
 #include "sde_hw_catalog.h"
+
+#if IS_ENABLED(CONFIG_ISL97900_LED)
+#include <misc/isl97900_led.h>
+
+#else
+enum isl_function {
+	ISL_LED_BRIGHTNESS_RGB_LEVEL,
+	ISL_LED_BRIGHTNESS_RED_LEVEL,
+	ISL_LED_BRIGHTNESS_GREEN_LEVEL,
+	ISL_LED_BRIGHTNESS_BLUE_LEVEL,
+	ISL_LED_BRIGHTNESS_EVENT_MAX,
+};
+
+static int isl97900_led_event(struct device_node *node, enum isl_function event, u32 level)
+{
+	return 0;
+}
+
+#endif
 
 /**
  * topology is currently defined by a set of following 3 values:
@@ -112,10 +131,33 @@ static int dsi_panel_vreg_put(struct dsi_panel *panel)
 	return rc;
 }
 
+static int dsi_panel_post_vreg_get(struct dsi_panel *panel)
+{
+	int rc = 0;
+	int i;
+	struct regulator *vreg = NULL;
+
+	for (i = 0; i < panel->post_power_info.count; i++) {
+		vreg = devm_regulator_get(panel->parent,
+					  panel->post_power_info.vregs[i].vreg_name);
+		rc = PTR_ERR_OR_ZERO(vreg);
+		if (rc) {
+			DSI_ERR("failed to get %s post regulator\n",
+			       panel->post_power_info.vregs[i].vreg_name);
+		}
+		panel->post_power_info.vregs[i].vreg = vreg;
+	}
+
+	return rc;
+}
+
 static int dsi_panel_gpio_request(struct dsi_panel *panel)
 {
 	int rc = 0;
 	struct dsi_panel_reset_config *r_config = &panel->reset_config;
+
+	if (panel->ctl_op_sync && !strcmp(panel->type, "secondary"))
+		return 0;
 
 	if (gpio_is_valid(r_config->reset_gpio)) {
 		rc = gpio_request(r_config->reset_gpio, "reset_gpio");
@@ -133,11 +175,21 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 		}
 	}
 
+	if (panel->need_post_on_supply) {
+		if (gpio_is_valid(r_config->oled_en_gpio)) {
+			rc = gpio_request_one(r_config->oled_en_gpio, GPIOF_IN, "oled_en_gpio");
+			if (rc) {
+				DSI_ERR("request for oled_en_gpio failed, rc=%d\n", rc);
+				goto error_release_disp_en;
+			}
+		}
+	}
+
 	if (gpio_is_valid(panel->bl_config.en_gpio)) {
 		rc = gpio_request(panel->bl_config.en_gpio, "bklt_en_gpio");
 		if (rc) {
 			DSI_ERR("request for bklt_en_gpio failed, rc=%d\n", rc);
-			goto error_release_disp_en;
+			goto error_release_oled_en;
 		}
 	}
 
@@ -163,6 +215,9 @@ static int dsi_panel_gpio_request(struct dsi_panel *panel)
 error_release_mode_sel:
 	if (gpio_is_valid(panel->bl_config.en_gpio))
 		gpio_free(panel->bl_config.en_gpio);
+error_release_oled_en:
+	if (panel->need_post_on_supply && gpio_is_valid(r_config->oled_en_gpio))
+		gpio_free(r_config->oled_en_gpio);
 error_release_disp_en:
 	if (gpio_is_valid(r_config->disp_en_gpio))
 		gpio_free(r_config->disp_en_gpio);
@@ -183,6 +238,9 @@ static int dsi_panel_gpio_release(struct dsi_panel *panel)
 
 	if (gpio_is_valid(r_config->disp_en_gpio))
 		gpio_free(r_config->disp_en_gpio);
+
+	if (panel->need_post_on_supply && gpio_is_valid(r_config->oled_en_gpio))
+		gpio_free(r_config->oled_en_gpio);
 
 	if (gpio_is_valid(panel->bl_config.en_gpio))
 		gpio_free(panel->bl_config.en_gpio);
@@ -336,6 +394,39 @@ exit:
 	return rc;
 }
 
+int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel)
+{
+	int rc = 0;
+	struct pinctrl_state *orig_state;
+
+	if (panel->host_config.ext_bridge_mode)
+		return 0;
+
+	if (IS_ERR_OR_NULL(panel->pinctrl.pinctrl) ||
+		IS_ERR_OR_NULL(panel->pinctrl.active_with_esync_without_te))
+		return 0;
+
+	orig_state = panel->pinctrl.cur_state;
+	if (!orig_state && panel->esync_caps.esync_support)
+		orig_state = panel->pinctrl.active_with_esync;
+	else if (!orig_state)
+		orig_state = panel->pinctrl.active;
+
+	rc = pinctrl_select_state(panel->pinctrl.pinctrl,
+			panel->pinctrl.active_with_esync_without_te);
+	if (rc) {
+		DSI_ERR("[%s] failed to toggle TE, rc=%d", panel->name, rc);
+		return rc;
+	}
+
+	usleep_range(1, 2);
+	pinctrl_select_state(panel->pinctrl.pinctrl, orig_state);
+	if (rc)
+		DSI_ERR("[%s] failed to toggle TE back, rc=%d", panel->name, rc);
+
+	return rc;
+}
+
 static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
 {
 	int rc = 0;
@@ -361,11 +452,12 @@ static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
 		DSI_ERR("[%s] failed to set pin state, rc=%d\n",
 				panel->name, rc);
 
+	panel->pinctrl.cur_state = state;
+
 	return rc;
 }
 
-
-static int dsi_panel_power_on(struct dsi_panel *panel)
+int dsi_panel_power_on(struct dsi_panel *panel)
 {
 	int rc = 0;
 
@@ -406,7 +498,7 @@ exit:
 	return rc;
 }
 
-static int dsi_panel_power_off(struct dsi_panel *panel)
+int dsi_panel_power_off(struct dsi_panel *panel)
 {
 	int rc = 0;
 
@@ -540,6 +632,13 @@ static int dsi_panel_pinctrl_init(struct dsi_panel *panel)
 		DSI_DEBUG("failed to get pinctrl active with esync state\n");
 	}
 
+	panel->pinctrl.active_with_esync_without_te =
+		pinctrl_lookup_state(panel->pinctrl.pinctrl, "panel_active_with_esync_without_te");
+	if (IS_ERR_OR_NULL(panel->pinctrl.active_with_esync_without_te)) {
+		panel->pinctrl.active_with_esync_without_te = NULL;
+		DSI_DEBUG("failed to get pinctrl active with esync without te state\n");
+	}
+
 	panel->pinctrl.suspend =
 		pinctrl_lookup_state(panel->pinctrl.pinctrl, "panel_suspend");
 
@@ -556,6 +655,8 @@ static int dsi_panel_pinctrl_init(struct dsi_panel *panel)
 		panel->pinctrl.pwm_pin = NULL;
 		DSI_DEBUG("failed to get pinctrl pwm_pin");
 	}
+
+	panel->pinctrl.cur_state = NULL;
 
 error:
 	return rc;
@@ -699,6 +800,15 @@ int dsi_panel_set_backlight(struct dsi_panel *panel, u32 bl_lvl)
 	case DSI_BACKLIGHT_PWM:
 		rc = dsi_panel_update_pwm_backlight(panel, bl_lvl);
 		break;
+	case DSI_BACKLIGHT_I2C:
+		if (panel->rgb_left_led_node)
+			isl97900_led_event(panel->rgb_left_led_node,
+					0, bl_lvl);
+
+		if (panel->rgb_right_led_node)
+			isl97900_led_event(panel->rgb_right_led_node,
+					0, bl_lvl);
+		break;
 	default:
 		DSI_ERR("Backlight type(%d) not supported\n", bl->type);
 		rc = -ENOTSUPP;
@@ -724,6 +834,7 @@ static u32 dsi_panel_get_brightness(struct dsi_backlight_config *bl)
 	case DSI_BACKLIGHT_DCS:
 	case DSI_BACKLIGHT_EXTERNAL:
 	case DSI_BACKLIGHT_PWM:
+	case DSI_BACKLIGHT_I2C:
 	default:
 		/*
 		 * Ideally, we should read the backlight level from the
@@ -768,7 +879,29 @@ static int dsi_panel_pwm_register(struct dsi_panel *panel)
 				panel->name, rc);
 	}
 
+	panel->pinctrl.cur_state = panel->pinctrl.pwm_pin;
+
 	return 0;
+}
+
+static int dsi_panel_parse_rgb_led(struct dsi_panel *panel,
+		struct device_node *of_node)
+{
+	int rc = 0;
+
+	if (!panel || !of_node)
+		return -EINVAL;
+
+	if (panel->bl_config.type != DSI_BACKLIGHT_I2C)
+		return 0;
+
+	panel->rgb_left_led_node = of_parse_phandle(of_node,
+		"qcom,panel-rgb-left-led", 0);
+
+	panel->rgb_right_led_node = of_parse_phandle(of_node,
+		"qcom,panel-rgb-right-led", 0);
+
+	return rc;
 }
 
 static int dsi_panel_bl_register(struct dsi_panel *panel)
@@ -789,6 +922,8 @@ static int dsi_panel_bl_register(struct dsi_panel *panel)
 		break;
 	case DSI_BACKLIGHT_PWM:
 		rc = dsi_panel_pwm_register(panel);
+		break;
+	case DSI_BACKLIGHT_I2C:
 		break;
 	default:
 		DSI_ERR("Backlight type(%d) not supported\n", bl->type);
@@ -816,6 +951,8 @@ static int dsi_panel_bl_unregister(struct dsi_panel *panel)
 	case DSI_BACKLIGHT_EXTERNAL:
 		break;
 	case DSI_BACKLIGHT_PWM:
+		break;
+	case DSI_BACKLIGHT_I2C:
 		break;
 	default:
 		DSI_ERR("Backlight type(%d) not supported\n", bl->type);
@@ -1460,6 +1597,9 @@ static int dsi_panel_parse_qsync_caps(struct dsi_panel *panel,
 		goto error;
 	}
 
+	panel->vrr_caps.video_mrr_support =
+		utils->read_bool(utils->data, "qcom,video-mrr-enable");
+
 	/**
 	 * "mdss-dsi-qsync-min-refresh-rate" is defined in cmd mode and
 	 *  video mode when there is only one qsync min fps present.
@@ -1552,6 +1692,7 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 {
 	u32 *freq_patterrn_arr32;
 	u32 *freq_interval_arr32;
+	u32 *freq_pattern_needs_sr;
 	u32 *freq_stepping_seq;
 	const u32 *arr;
 	int i, j, k, rc = 0;
@@ -1559,6 +1700,7 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 	u32 freq_pattern_length, freq_interval_length;
 	struct msm_freq_step_pattern *freq_pattern;
 	struct msm_freq_step_list *freq_step_list;
+	bool needs_sr_defined = true;
 
 	if (!mode || !mode->priv_info) {
 		DSI_ERR("invalid arguments\n");
@@ -1602,10 +1744,12 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 	freq_interval_length = freq_interval_length / sizeof(u32);
 	size = freq_interval_length * sizeof(u32);
 	freq_interval_arr32 = kzalloc(size, GFP_KERNEL);
-	if (!freq_interval_arr32) {
+	freq_pattern_needs_sr = kzalloc(size / 3, GFP_KERNEL);
+
+	if (!freq_interval_arr32 || !freq_pattern_needs_sr) {
 		rc = -ENOMEM;
 		DSI_ERR("Error allocating memory for property\n");
-		goto error;
+		goto error_free_frame_interval;
 	}
 	rc = utils->read_u32_array(utils->data,
 		"qcom,mdss-dsi-qsync-freq-step-sequence-interval",
@@ -1614,6 +1758,15 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 	if (rc) {
 		DSI_ERR("cannot read dsi freq steps %d\n", rc);
 		goto error_free_frame_interval;
+	}
+
+	rc = utils->read_u32_array(utils->data,
+		"qcom,mdss-dsi-qsync-freq-pattren-needs-selfrefresh",
+			freq_pattern_needs_sr, freq_interval_length / 3);
+
+	if (rc) {
+		needs_sr_defined = false;
+		pr_err("cannot read freq-pattern-needs-selfrefresh %d\n", rc);
 	}
 
 	/* Allocate the frequency stepping pattern table
@@ -1682,23 +1835,28 @@ int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 		prop_length += (freq_pattern[i].num_freq_steps * 2);
 		freq_pattern[i].freq_stepping_seq = freq_stepping_seq;
 
-		if (freq_pattern[i].frame_interval >= freq_pattern[i].freq_stepping_seq[0])
+		if (needs_sr_defined)
+			freq_pattern[i].needs_ap_refresh = freq_pattern_needs_sr[i];
+		else if (freq_pattern[i].frame_interval >= freq_pattern[i].freq_stepping_seq[0])
 			freq_pattern[i].needs_ap_refresh = true;
+
 	}
 
 	for (i = 0; i < freq_step_list->count; i++) {
-		DSI_DEBUG("usecaseIdx:%d FrameInterval:%d, Num freq steps:%d Total steps:%d %p\n",
+		DSI_DEBUG("usecaseIdx:%d FI:%d, AP_SR:%d Num freq steps:%d Total steps:%d %p\n",
 			freq_step_list->freq_pattern[i].usecase_idx,
 			freq_step_list->freq_pattern[i].frame_interval,
+			freq_pattern[i].needs_ap_refresh,
 			freq_step_list->freq_pattern[i].num_freq_steps,
-			freq_step_list->freq_pattern[i].length, &freq_step_list->freq_pattern[i]);
+			freq_step_list->freq_pattern[i].length,
+			&freq_step_list->freq_pattern[i]);
 		for (j = 0; j < freq_step_list->freq_pattern[i].length; j++)
 			DSI_DEBUG(" %d\n", freq_step_list->freq_pattern[i].freq_stepping_seq[j]);
 	}
 
 
 error_free_frame_interval:
-	kfree(freq_interval_arr32);
+	kfree(freq_pattern_needs_sr);
 error_free:
 	kfree(freq_patterrn_arr32);
 error:
@@ -1732,7 +1890,8 @@ static int dsi_panel_parse_vrr_caps(struct dsi_panel *panel,
 	}
 
 	if ((panel->vrr_caps.arp_support || panel->vrr_caps.video_psr_support) &&
-			panel->dfps_caps.dfps_support) {
+			panel->dfps_caps.dfps_support &&
+			!panel->vrr_caps.video_mrr_support) {
 		DSI_ERR("disabling dfps as it can't be supported with ARP/Video PSR\n");
 		panel->dfps_caps.dfps_support = false;
 	}
@@ -2237,6 +2396,9 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-freq-step-pattern3-command",
 	"qcom,mdss-dsi-freq-step-pattern4-command",
 	"qcom,mdss-dsi-freq-step-pattern5-command",
+	"qcom,mdss-dsi-freq-step-pattern6-command",
+	"qcom,mdss-dsi-freq-step-pattern7-command",
+	"qcom,mdss-dsi-freq-step-pattern8-command",
 	"qcom,mdss-dsi-sticky_still_en-command",
 	"qcom,mdss-dsi-sticky_still_disable-command",
 	"qcom,mdss-dsi-sticky_on_fly-command",
@@ -2278,6 +2440,9 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-freq-step-pattern3-command-state",
 	"qcom,mdss-dsi-freq-step-pattern4-command-state",
 	"qcom,mdss-dsi-freq-step-pattern5-command-state",
+	"qcom,mdss-dsi-freq-step-pattern6-command-state",
+	"qcom,mdss-dsi-freq-step-pattern7-command-state",
+	"qcom,mdss-dsi-freq-step-pattern8-command-state",
 	"qcom,mdss-dsi-sticky_still_en-command-state",
 	"qcom,mdss-dsi-sticky_still_disable-command-state",
 	"qcom,mdss-dsi-sticky_on_fly-command-state",
@@ -2324,7 +2489,8 @@ int dsi_panel_create_cmd_packets(const char *data,
 		cmd[i].msg.type = data[0];
 		cmd[i].msg.channel = data[2];
 		cmd[i].msg.flags |= data[3];
-		cmd[i].ctrl = 0;
+		/* Use the two MSBs of data[1] to specify the DSI ctrl index */
+		cmd[i].ctrl = data[1] >> 6;
 		cmd[i].post_wait_ms = data[4];
 		cmd[i].msg.tx_len = ((data[5] << 8) | (data[6]));
 
@@ -2735,24 +2901,104 @@ static int dsi_panel_parse_jitter_config(
 	return 0;
 }
 
+/**
+ * poll_status_timeout - Periodically poll a condition until it is
+ *			met or a timeout occurs
+ * @cond: Break condition
+ * @sleep_us: Maximum time to sleep between polls in us (0
+ *            tight-loops).  Should be less than ~20ms since usleep_range
+ *            is used (see Documentation/timers/timers-howto.rst).
+ * @timeout_us: Timeout in us, 0 means never timeout
+ *
+ * Returns 0 on success and -ETIMEDOUT upon a timeout.
+ */
+
+#define poll_status_timeout(cond, sleep_us, timeout_us) \
+({ \
+	u64 __timeout_us = (timeout_us); \
+	unsigned long __sleep_us = (sleep_us); \
+	ktime_t __timeout = ktime_add_us(ktime_get(), __timeout_us); \
+	might_sleep_if((__sleep_us) != 0); \
+	for (;;) { \
+		if (cond) \
+			break; \
+		if (__timeout_us && \
+		    ktime_compare(ktime_get(), __timeout) > 0) { \
+			break; \
+		} \
+		if (__sleep_us) \
+			usleep_range((__sleep_us >> 2) + 1, __sleep_us); \
+		cpu_relax(); \
+	} \
+	(cond) ? 0 : -ETIMEDOUT; \
+})
+
+static int dsi_panel_post_pwr_ctrl(struct dsi_panel *panel, bool enable)
+{
+	int rc = 0;
+	struct dsi_panel_reset_config *r_config;
+	u32 const sleep_us = 5000;
+	u32 const timeout_us = 150000;
+
+	if (!panel) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	r_config = &panel->reset_config;
+	if (gpio_is_valid(r_config->oled_en_gpio)) {
+		if (enable) {
+			rc = poll_status_timeout((gpio_get_value(r_config->oled_en_gpio) == 1),
+				sleep_us, timeout_us);
+		} else {
+			rc = poll_status_timeout((gpio_get_value(r_config->oled_en_gpio) == 0),
+				sleep_us, timeout_us);
+		}
+	}
+
+	if (rc) {
+		DSI_WARN("[%s] wait for oled en status failed,enable=%d rc=%d\n",
+					panel->name, enable, rc);
+		return rc;
+	}
+
+	rc = dsi_pwr_enable_regulator(&panel->post_power_info, enable);
+	if (rc)
+		DSI_ERR("[%s] failed to set post power vregs status, enable=%d rc=%d\n",
+				panel->name, enable, rc);
+
+	return 0;
+}
+
 static int dsi_panel_parse_power_cfg(struct dsi_panel *panel)
 {
 	int rc = 0;
-	char *supply_name;
+	char *supply_name, *post_supply_name;
 
 	if (panel->host_config.ext_bridge_mode)
 		return 0;
 
-	if (!strcmp(panel->type, "primary"))
+	if (!strcmp(panel->type, "primary")) {
 		supply_name = "qcom,panel-supply-entries";
-	else
+		post_supply_name = "qcom,panel-post-supply-entries";
+	} else {
 		supply_name = "qcom,panel-sec-supply-entries";
+		post_supply_name = "qcom,panel-sec-post-supply-entries";
+	}
 
 	rc = dsi_pwr_of_get_vreg_data(&panel->utils,
 			&panel->power_info, supply_name);
 	if (rc) {
 		DSI_ERR("[%s] failed to parse vregs\n", panel->name);
 		goto error;
+	}
+
+	if (panel->need_post_on_supply) {
+		rc = dsi_pwr_of_get_vreg_data(&panel->utils,
+				&panel->post_power_info, post_supply_name);
+		if (rc)
+			DSI_ERR("[%s] failed to parse post vregs\n", panel->name);
+
 	}
 
 error:
@@ -2786,14 +3032,16 @@ static int dsi_panel_parse_gpios(struct dsi_panel *panel)
 	int rc = 0;
 	const char *data;
 	struct dsi_parser_utils *utils = &panel->utils;
-	char *reset_gpio_name, *mode_set_gpio_name;
+	char *reset_gpio_name, *mode_set_gpio_name, *oled_en_gpio_name;
 
 	if (!strcmp(panel->type, "primary")) {
 		reset_gpio_name = "qcom,platform-reset-gpio";
 		mode_set_gpio_name = "qcom,panel-mode-gpio";
+		oled_en_gpio_name = "qcom,platform-oled-en-gpio";
 	} else {
 		reset_gpio_name = "qcom,platform-sec-reset-gpio";
 		mode_set_gpio_name = "qcom,panel-sec-mode-gpio";
+		oled_en_gpio_name = "qcom,platform-sec-oled-en-gpio";
 	}
 
 	panel->reset_config.reset_gpio = utils->get_named_gpio(utils->data,
@@ -2817,6 +3065,13 @@ static int dsi_panel_parse_gpios(struct dsi_panel *panel)
 			DSI_DEBUG("[%s] platform-en-gpio is not set, rc=%d\n",
 				 panel->name, rc);
 		}
+	}
+
+	if (panel->need_post_on_supply) {
+		panel->reset_config.oled_en_gpio = panel->utils.get_named_gpio(panel->utils.data,
+							oled_en_gpio_name, 0);
+		if (!gpio_is_valid(panel->reset_config.oled_en_gpio))
+			DSI_DEBUG("[%s] oled-en-gpio is not set\n", panel->name);
 	}
 
 	panel->reset_config.lcd_mode_sel_gpio = utils->get_named_gpio(
@@ -2910,6 +3165,8 @@ static int dsi_panel_parse_bl_config(struct dsi_panel *panel)
 		panel->bl_config.type = DSI_BACKLIGHT_DCS;
 	} else if (!strcmp(bl_type, "bl_ctrl_external")) {
 		panel->bl_config.type = DSI_BACKLIGHT_EXTERNAL;
+	} else if (!strcmp(bl_type, "bl_ctrl_i2c")) {
+		panel->bl_config.type = DSI_BACKLIGHT_I2C;
 	} else {
 		DSI_DEBUG("[%s] bl-pmic-control-type unknown-%s\n",
 			 panel->name, bl_type);
@@ -3969,6 +4226,8 @@ static int dsi_panel_parse_esd_config(struct dsi_panel *panel)
 				rc = -EINVAL;
 				goto error;
 			}
+		} else if (!strcmp(string, "rw_low_detection")) {
+			esd_config->status_mode = ESD_MODE_PANEL_RW;
 		} else if (!strcmp(string, "esd_sw_sim_success")) {
 			esd_config->status_mode = ESD_MODE_SW_SIM_SUCCESS;
 		} else {
@@ -4004,6 +4263,84 @@ static int dsi_panel_parse_esd_config(struct dsi_panel *panel)
 
 error:
 	panel->esd_config.esd_enabled = false;
+	return rc;
+}
+
+static int dsi_panel_parse_name(struct dsi_panel *panel,
+				  struct dsi_parser_utils *utils)
+{
+	int rc = 0, size;
+	char *panel_type;
+	bool is_panel_xr;
+	char *new_panel_name = NULL;
+
+	panel->name = utils->get_property(utils->data, "qcom,mdss-dsi-panel-name", &size);
+	is_panel_xr = utils->read_bool(utils->data, "qcom,mdss-dsi-panel-xr");
+
+	if (is_panel_xr) {
+		panel_type = (!strcmp(panel->type, "primary") ? " left" : " right");
+
+		size += strlen(panel_type);
+
+		new_panel_name = devm_kzalloc(panel->parent, size, GFP_KERNEL);
+		if (!new_panel_name) {
+			rc = -ENOMEM;
+			return rc;
+		}
+
+		strscpy(new_panel_name, panel->name, size);
+		strlcat(new_panel_name, panel_type, size);
+		panel->name = new_panel_name;
+	} else if (!strcmp(panel->type, "secondary")) {
+		panel_type = "_secondary";
+
+		size += strlen(panel_type);
+
+		new_panel_name = devm_kzalloc(panel->parent, size, GFP_KERNEL);
+		if (!new_panel_name) {
+			rc = -ENOMEM;
+			return rc;
+		}
+
+		strscpy(new_panel_name, panel->name, size);
+		strlcat(new_panel_name, panel_type, size);
+		panel->name = new_panel_name;
+	}
+
+	if (!panel->name)
+		panel->name = DSI_PANEL_DEFAULT_LABEL;
+	return rc;
+}
+
+static int dsi_panel_parse_caps(struct dsi_panel *panel,
+				struct device_node *of_node)
+{
+	int rc = 0;
+
+	rc = dsi_panel_parse_dfps_caps(panel);
+	if (rc)
+		DSI_ERR("failed to parse dfps configuration, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_qsync_caps(panel, of_node);
+	if (rc)
+		DSI_DEBUG("failed to parse qsync features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_avr_caps(panel, of_node);
+	if (rc)
+		DSI_ERR("failed to parse AVR features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_esync_caps(panel, of_node);
+	if (rc)
+		DSI_ERR("failed to parse esync features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_vrr_caps(panel, of_node);
+	if (rc)
+		DSI_DEBUG("failed to parse VRR features, rc=%d\n", rc);
+
+	rc = dsi_panel_parse_dyn_clk_caps(panel);
+	if (rc)
+		DSI_ERR("failed to parse dynamic clk config, rc=%d\n", rc);
+
 	return rc;
 }
 
@@ -4067,9 +4404,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	struct dsi_panel *panel;
 	struct dsi_parser_utils *utils;
 	const char *panel_physical_type;
-	int rc = 0, size;
-	char *new_panel_name = NULL, *panel_type;
-	bool is_panel_xr;
+	int rc = 0;
 
 	panel = kzalloc(sizeof(*panel), GFP_KERNEL);
 	if (!panel)
@@ -4084,42 +4419,15 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	dsi_panel_update_util(panel, parser_node);
 	utils = &panel->utils;
 
-	panel->name = utils->get_property(utils->data, "qcom,mdss-dsi-panel-name", &size);
-
-	is_panel_xr = utils->read_bool(utils->data, "qcom,mdss-dsi-panel-xr");
-
-	if (is_panel_xr) {
-		panel_type = (!strcmp(panel->type, "primary") ? " left" : " right");
-
-		size += strlen(panel_type);
-
-		new_panel_name = kzalloc(size, GFP_KERNEL);
-		if (!new_panel_name) {
-			rc = -ENOMEM;
-			goto error;
-		}
-
-		strscpy(new_panel_name, panel->name, size);
-		strlcat(new_panel_name, panel_type, size);
-		panel->name = new_panel_name;
-	} else if (!strcmp(panel->type, "secondary")) {
-		panel_type = "_secondary";
-
-		size += strlen(panel_type);
-
-		new_panel_name = kzalloc(size, GFP_KERNEL);
-		if (!new_panel_name) {
-			rc = -ENOMEM;
-			goto error;
-		}
-
-		strscpy(new_panel_name, panel->name, size);
-		strlcat(new_panel_name, panel_type, size);
-		panel->name = new_panel_name;
+	rc = dsi_panel_parse_name(panel, utils);
+	if (rc) {
+		DSI_ERR("failed to parse panel name, rc=%d\n",
+				rc);
+		goto error;
 	}
 
-	if (!panel->name)
-		panel->name = DSI_PANEL_DEFAULT_LABEL;
+	panel->need_post_on_supply =
+		utils->read_bool(utils->data, "qcom,mdss-panel-need-post-on-supply");
 
 	/*
 	 * Set panel type to LCD as default.
@@ -4147,29 +4455,9 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 		goto error;
 	}
 
-	rc = dsi_panel_parse_dfps_caps(panel);
+	rc = dsi_panel_parse_caps(panel, of_node);
 	if (rc)
-		DSI_ERR("failed to parse dfps configuration, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_qsync_caps(panel, of_node);
-	if (rc)
-		DSI_DEBUG("failed to parse qsync features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_avr_caps(panel, of_node);
-	if (rc)
-		DSI_ERR("failed to parse AVR features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_esync_caps(panel, of_node);
-	if (rc)
-		DSI_ERR("failed to parse esync features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_vrr_caps(panel, of_node);
-	if (rc)
-		DSI_DEBUG("failed to parse VRR features, rc=%d\n", rc);
-
-	rc = dsi_panel_parse_dyn_clk_caps(panel);
-	if (rc)
-		DSI_ERR("failed to parse dynamic clk config, rc=%d\n", rc);
+		DSI_ERR("failed to parse panel caps, rc=%d\n", rc);
 
 	rc = dsi_panel_parse_phy_props(panel);
 	if (rc) {
@@ -4217,11 +4505,24 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (rc)
 		DSI_DEBUG("failed to parse esd config, rc=%d\n", rc);
 
+	rc = dsi_panel_parse_rgb_led(panel, of_node);
+	if (rc)
+		DSI_DEBUG("failed to get rgb led info, rc=%d\n", rc);
+
 	rc = dsi_panel_vreg_get(panel);
 	if (rc) {
 		DSI_ERR("[%s] failed to get panel regulators, rc=%d\n",
 		       panel->name, rc);
 		goto error;
+	}
+
+	if (panel->need_post_on_supply) {
+		rc = dsi_panel_post_vreg_get(panel);
+		if (rc) {
+			DSI_ERR("[%s] failed to get panel post regulators, rc=%d\n",
+				panel->name, rc);
+			goto error;
+		}
 	}
 
 	panel->power_mode = SDE_MODE_DPMS_OFF;
@@ -4235,7 +4536,6 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 
 	return panel;
 error:
-	kfree(new_panel_name);
 	kfree(panel);
 	return ERR_PTR(rc);
 }
@@ -4906,7 +5206,7 @@ int dsi_panel_get_host_cfg_for_mode(struct dsi_panel *panel,
 
 	config->video_timing.vdc_enabled = mode->priv_info->vdc_enabled;
 	config->video_timing.vdc = &mode->priv_info->vdc;
-	config->video_timing.esync_enabled = panel->esync_caps.esync_support;
+	config->esync_enabled = panel->esync_caps.esync_support;
 
 	if (dyn_clk_caps->dyn_clk_support)
 		config->bit_clk_rate_hz_override = mode->timing.clk_rate_hz;
@@ -5015,10 +5315,14 @@ int dsi_panel_set_lp1(struct dsi_panel *panel)
 		panel->power_mode != SDE_MODE_DPMS_LP2)
 		dsi_pwr_panel_regulator_mode_set(&panel->power_info,
 			"ibb", REGULATOR_MODE_IDLE);
-	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP1, false);
-	if (rc)
-		DSI_ERR("[%s] failed to send DSI_CMD_SET_LP1 cmd, rc=%d\n",
-		       panel->name, rc);
+
+	if (panel->disp_op == MSM_DISP_OP_HWIO) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP1, false);
+		if (rc)
+			DSI_ERR("[%s] failed to send DSI_CMD_SET_LP1 cmd, rc=%d\n",
+				panel->name, rc);
+	}
+
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -5037,10 +5341,13 @@ int dsi_panel_set_lp2(struct dsi_panel *panel)
 	if (!panel->panel_initialized)
 		goto exit;
 
-	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP2, false);
-	if (rc)
-		DSI_ERR("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
-		       panel->name, rc);
+	if (panel->disp_op == MSM_DISP_OP_HWIO) {
+		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_LP2, false);
+		if (rc)
+			DSI_ERR("[%s] failed to send DSI_CMD_SET_LP2 cmd, rc=%d\n",
+				panel->name, rc);
+	}
+
 exit:
 	mutex_unlock(&panel->panel_lock);
 	return rc;
@@ -5550,6 +5857,15 @@ int dsi_panel_post_enable(struct dsi_panel *panel)
 
 	mutex_lock(&panel->panel_lock);
 
+	if (panel->need_post_on_supply) {
+		rc = dsi_panel_post_pwr_ctrl(panel, true);
+		if (rc) {
+			DSI_ERR("[%s] power on post vregs failed, rc=%d\n",
+					panel->name, rc);
+			goto error;
+		}
+	}
+
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_POST_ON, false);
 	if (rc) {
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_POST_ON cmds, rc=%d\n",
@@ -5645,6 +5961,14 @@ int dsi_panel_unprepare(struct dsi_panel *panel)
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_POST_OFF cmds, rc=%d\n",
 		       panel->name, rc);
 		goto error;
+	}
+
+	if (panel->need_post_on_supply) {
+		rc = dsi_panel_post_pwr_ctrl(panel, false);
+		if (rc) {
+			DSI_ERR("[%s] panel power off post vregs failed, rc=%d\n",
+						panel->name, rc);
+		}
 	}
 
 error:

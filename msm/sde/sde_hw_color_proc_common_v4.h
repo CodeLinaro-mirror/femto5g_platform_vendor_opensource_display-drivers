@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2019, 2021 The Linux Foundation. All rights reserved.
  */
 #ifndef _SDE_HW_COLOR_PROC_COMMON_V4_H_
@@ -121,12 +121,9 @@ enum {
 #define PA_PWL_HOLD_OFF 0x40
 
 #define PA_DISABLE_REQUIRED(x) \
-	!((x) & (PA_SKIN_EN | PA_SKY_EN | \
-	PA_FOL_EN | PA_HUE_EN | \
-	PA_SAT_EN | PA_VAL_EN | \
-	PA_CONT_EN | PA_HIST_EN | \
-	PA_SIXZONE_HUE_EN | PA_SIXZONE_SAT_EN | \
-	PA_SIXZONE_VAL_EN))
+	!((x) & (PA_HSIC | PA_SIXZONE | \
+	PA_MEMC_SKY | PA_MEMC_SKIN | \
+	PA_MEMC_FOLIAGE | PA_MEMC_PROT))
 
 #define SIXZONE_ADJ_CURVE_P1_OFF 0x4
 #define SIXZONE_THRESHOLDS_OFF 0x8

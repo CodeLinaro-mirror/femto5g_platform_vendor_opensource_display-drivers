@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _DSI_PHY_H_
@@ -65,13 +65,13 @@ enum phy_ulps_return_type {
  * @phy_lock:          Mutex for hardware and object access.
  * @ver_info:          Version specific phy parameters.
  * @hw:                DSI PHY hardware object.
+ * @disp_op:           Display HW Control
  * @pwr_info:          Power information.
  * @cfg:               DSI phy configuration.
  * @clk_cb:	       structure containing call backs for clock control
  * @power_state:       True if PHY is powered on.
  * @dsi_phy_state:     PHY state information.
  * @mode:              Current mode.
- * @data_lanes:        Number of data lanes used.
  * @dst_format:        Destination format.
  * @pll:	       Pointer to PLL resource.
  * @allow_phy_power_off: True if PHY is allowed to power off when idle
@@ -91,6 +91,8 @@ struct msm_dsi_phy {
 	const struct dsi_ver_spec_info *ver_info;
 	struct dsi_phy_hw hw;
 
+	enum msm_disp_op disp_op;
+
 	struct dsi_phy_power_info pwr_info;
 
 	struct dsi_phy_cfg cfg;
@@ -99,7 +101,6 @@ struct msm_dsi_phy {
 	enum phy_engine_state dsi_phy_state;
 	bool power_state;
 	struct dsi_mode_info mode;
-	enum dsi_data_lanes data_lanes;
 	enum dsi_pixel_format dst_format;
 
 	struct dsi_pll_resource *pll;

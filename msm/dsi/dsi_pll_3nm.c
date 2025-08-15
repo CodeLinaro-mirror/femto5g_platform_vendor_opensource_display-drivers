@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/kernel.h>
@@ -724,6 +724,7 @@ static unsigned long dsi_pll_vco_recalc_rate(struct dsi_pll_resource *pll)
 
 	vco_rate = div_u64(pll_freq, pll_post_div);
 
+	pll->vco_rate = vco_rate;
 	return vco_rate;
 }
 
@@ -764,6 +765,7 @@ static unsigned long dsi_pll_byteclk_recalc_rate(struct clk_hw *hw, unsigned lon
 	else
 		byte_rate = div_u64(byte_rate, 7);
 
+	pll->byteclk_rate = byte_rate;
 	return byte_rate;
 }
 
@@ -811,6 +813,7 @@ static unsigned long dsi_pll_pclk_recalc_rate(struct clk_hw *hw, unsigned long p
 	pclk_div = dsi_pll_get_pclk_div(pll);
 	pclk_rate = div_u64(pclk_rate, pclk_div);
 
+	pll->pclk_rate = pclk_rate;
 	return pclk_rate;
 }
 
@@ -973,6 +976,8 @@ int dsi_pll_clock_register_3nm(struct platform_device *pdev, struct dsi_pll_reso
 	dsi_pllcc_3nm[byteclk_idx]->priv = pll_res;
 	dsi_pllcc_3nm[dsiclk_idx]->priv = pll_res;
 
+	pm_runtime_resume_and_get(&pdev->dev);
+
 	/* byte clk registration */
 	clk = devm_clk_register(&pdev->dev,
 			&dsi_pllcc_3nm[byteclk_idx]->hw);
@@ -1019,12 +1024,11 @@ int dsi_pll_clock_register_3nm(struct platform_device *pdev, struct dsi_pll_reso
 	rc = of_clk_add_provider(pdev->dev.of_node,
 			of_clk_src_onecell_get, clk_data);
 
-	if (!rc) {
+	if (!rc)
 		DSI_PLL_INFO(pll_res, "Registered clocks successfully\n");
-
-		return rc;
-	}
 clk_register_fail:
+	pm_runtime_put_sync(&pdev->dev);
+
 	return rc;
 }
 

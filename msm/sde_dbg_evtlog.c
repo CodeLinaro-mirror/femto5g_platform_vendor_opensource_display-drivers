@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -14,7 +14,7 @@
 #include <linux/dma-buf.h>
 #include <linux/slab.h>
 #include <linux/sched/clock.h>
-
+#include <linux/vmalloc.h>
 #include "sde_dbg.h"
 #include "sde_trace.h"
 

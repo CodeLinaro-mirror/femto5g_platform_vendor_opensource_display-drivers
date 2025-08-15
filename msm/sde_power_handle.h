@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -83,6 +83,29 @@ enum SDE_POWER_HANDLE_DBUS_ID {
 };
 
 /**
+ * @SDE_POWER_PD_ID_GDSC: gdsc power domain
+ * @SDE_POWER_PD_ID_INT2_GDSC: gdsc2 power domain
+ * @SDE_POWER_PD_ID_MAX: maximum number of power domains
+ */
+enum sde_power_domain_id {
+	SDE_POWER_PD_ID_GDSC,
+	SDE_POWER_PD_ID_INT2_GDSC,
+	SDE_POWER_PD_ID_MAX
+};
+
+/**
+ * @ struct sde_power_domain_handle: struct for handling power domains
+ * @enabled: state of the power domain
+ * @attached: state of the attachment of a power domain
+ * @dev: pointer to the power domain device
+ */
+struct sde_power_domain_handle {
+	atomic_t enabled;
+	atomic_t attached;
+	struct device *dev;
+};
+
+/**
  * struct sde_power_bus_scaling_data: struct for bus setting
  * @ab: average bandwidth in bytes per second
  * @ib: peak bandwidth in bytes per second
@@ -156,10 +179,14 @@ struct sde_power_mmrm_reserve {
  * @rsc_client: sde rsc client pointer
  * @rsc_client_init: boolean to control rsc client create
  * @mmrm_enable: boolean to indicate if mmrm is enabled
+ * @gdsc2_blocked: boolean to indicate if gdsc2 operation is blocked
  * @ib_quota: ib quota of the given bus
  * @hw_fence_enable: boolean to indicate if hw-fence is enabled
  * @mmrm_reserve: mmrm resource reservation
  * @wakelock_count: wakelock coint to avoid pm suspend
+ * @bool cesta_pd: boolean to indicate if power domains are cesta controlled
+ * @num_power_domains: number of powerdomains
+ * @power_domain_handles: array of power domains
  */
 struct sde_power_handle {
 	struct dss_module_power mp;
@@ -173,11 +200,16 @@ struct sde_power_handle {
 	struct sde_rsc_client *rsc_client;
 	bool rsc_client_init;
 	bool mmrm_enable;
+	bool gdsc2_blocked;
 	u64 ib_quota[SDE_POWER_HANDLE_DBUS_ID_MAX];
 	bool hw_fence_enable;
 
 	struct sde_power_mmrm_reserve mmrm_reserve;
 	atomic_t wakelock_count;
+
+	bool cesta_pd;
+	u32 num_power_domains;
+	struct sde_power_domain_handle power_domain_handles[SDE_POWER_PD_ID_MAX];
 };
 
 /**
@@ -395,4 +427,38 @@ void sde_power_mmrm_reserve(struct sde_power_handle *phandle);
  */
 int sde_power_wakelock_ctrl(struct sde_power_handle *phandle, bool enable);
 
+/**
+ * @brief Manages the power domain of a device.
+ *
+ * This function enables or disables the specified power domain of a device.
+ *
+ * @param phandle A pointer to the power handle structure.
+ * @param power_domain_id ID of the power domain to be managed.
+ * @param enable Boolean to enable (true) or disable (false) the power domain.
+ * @return int 0 on success, negative error code on failure.
+ *
+ * @details
+ * - **Single Power Domain:** If the device has only one power domain,
+ *		it is automatically managed by the core framework.
+ *		No need to attach it manually.
+ *- **Multiple Power Domains:** If the device has multiple power domains,
+ *		each must be attached and managed individually.
+ */
+int sde_power_enable_power_domain(struct sde_power_handle *phandle,
+	enum sde_power_domain_id power_domain_id, bool enable);
+/**
+ * @brief Detaches a power domain from a device.
+ *
+ * Detaches the power domain from a device if it is currently attached.
+ *
+ * @param phandle Pointer to the power handle structure.
+ * @param power_domain_id ID of the power domain to be detached.
+ * @return int 0 on success, negative error code on failure.
+ *
+ * @details
+ * - **Single Power Domain:** Returns immediately if only one power domain.
+ * - **Multiple Power Domains:** Detaches the power domain if attached.
+ */
+int sde_power_detach_power_domain(struct sde_power_handle *phandle,
+	enum sde_power_domain_id power_domain_id);
 #endif /* _SDE_POWER_HANDLE_H_ */

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 #ifndef _SDE_HW_REG_DMA_V1_H
@@ -44,8 +44,23 @@ int init_v2(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx);
 int init_v3(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx);
 
 /**
+ * init_v4() - initialize the reg dma v4 driver by installing v4/older applicable ops
+ * @reg_dma - reg_dma hw info structure exposing capabilities.
+ * @dpu_idx: dpu index
+ */
+
+int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx);
+
+/**
  * deinit_v1() - free up any resources allocated during the v1 reg dma init
  * @dpu_idx: dpu index
  */
 void deinit_v1(u32 dpu_idx);
+
+/**
+ * get_last_cmd_buffer() - function to get the LUT DMA last command buffer info.
+ * @dpu_idx: dpu index
+ * @last_cmd_buf: pointer to a pointer of last command buffer
+ */
+int get_last_cmd_buffer(u32 dpu_idx, struct sde_reg_dma_buffer **last_cmd_buf);
 #endif /* _SDE_HW_REG_DMA_V1_H */

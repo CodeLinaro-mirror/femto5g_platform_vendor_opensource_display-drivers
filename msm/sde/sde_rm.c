@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -238,8 +238,25 @@ static void _sde_rm_inc_resource_info_lm(struct sde_rm *rm,
 	avail_res->num_3dmux = hweight_long(avail_res->merge_3d_mask);
 }
 
-static bool _sde_rm_is_blk_available(struct sde_rm_hw_blk *blk, struct sde_rm_rsvp *rsvp,
-	struct sde_rm_requirements *reqs)
+static bool _sde_rm_reserved_by_cac_enc(struct sde_rm *rm,
+		struct sde_rm_hw_blk *blk, struct sde_rm_rsvp *rsvp)
+{
+	struct drm_encoder *enc;
+
+	if (!blk->rsvp)
+		return false;
+
+	drm_for_each_encoder(enc, rm->dev)
+		if ((enc->base.id == blk->rsvp->enc_id) &&
+			(sde_encoder_is_dsi_display(enc) ||
+			sde_encoder_is_loopback_display(enc)))
+			return true;
+
+	return false;
+}
+
+static bool _sde_rm_is_blk_available(struct sde_rm *rm, struct sde_rm_hw_blk *blk,
+	struct sde_rm_rsvp *rsvp, struct sde_rm_requirements *reqs)
 {
 	/*
 	 * Entry and exit of cac loopback is a seamless commit. So resources
@@ -249,7 +266,8 @@ static bool _sde_rm_is_blk_available(struct sde_rm_hw_blk *blk, struct sde_rm_rs
 	 * it is needed for next commit before failing the reservation.
 	 */
 	if (reqs->is_cac_transition && RESERVED_BY_OTHER(blk, rsvp)) {
-		if (RESERVED_BY_NEXT(blk, rsvp))
+		if (RESERVED_BY_NEXT(blk, rsvp) ||
+			!_sde_rm_reserved_by_cac_enc(rm, blk, rsvp))
 			return false;
 	} else {
 		if (RESERVED_BY_OTHER(blk, rsvp))
@@ -453,6 +471,40 @@ enum sde_rm_topology_name sde_rm_get_topology_name(struct sde_rm *rm,
 			return rm->topology_tbl[i].top_name;
 
 	return SDE_RM_TOPOLOGY_NONE;
+}
+
+void sde_rm_set_disp_op(struct sde_rm *rm, enum msm_disp_op disp_op_idx)
+{
+	struct list_head *blk_list;
+	struct sde_rm_hw_blk *blk;
+	enum sde_hw_blk_type type;
+
+	if (!rm) {
+		SDE_ERROR("invalid rm\n");
+		return;
+	}
+
+	mutex_lock(&rm->rm_lock);
+	/* Top is a singleton, not managed in hw_blks list */
+	/* SSPPs are not managed by the resource manager */
+	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
+		blk_list = &rm->hw_blks[type];
+
+		if (!blk_list) {
+			SDE_ERROR("invalid blk list for type: %d\n", type);
+			continue;
+		}
+
+		list_for_each_entry(blk, blk_list, list) {
+			if (!blk || !blk->hw) {
+				SDE_ERROR("invalid hw blk\n");
+				continue;
+			}
+
+			blk->hw->disp_op = disp_op_idx;
+		}
+	}
+	mutex_unlock(&rm->rm_lock);
 }
 
 static bool _sde_rm_get_hw_locked(struct sde_rm *rm, struct sde_rm_hw_iter *i,
@@ -709,7 +761,7 @@ static int _sde_rm_hw_blk_create(
 					&sde_kms->hw_ctl_0);
 		break;
 	case SDE_HW_BLK_CDM:
-		hw = sde_hw_cdm_init(id, mmio, cat, hw_mdp);
+		hw = sde_hw_cdm_init(id, mmio, cat, hw_mdp, rm->disp_op);
 		break;
 	case SDE_HW_BLK_PINGPONG:
 		hw = sde_hw_pingpong_init(id, mmio, cat);
@@ -985,6 +1037,7 @@ int sde_rm_init(struct sde_rm *rm)
 	struct sde_mdss_cfg *cat = sde_kms->catalog;
 	void __iomem *mmio = sde_kms->mmio;
 	struct drm_device *dev = sde_kms->dev;
+	struct msm_drm_private *priv;
 	int i, rc = 0;
 	enum sde_hw_blk_type type;
 
@@ -1003,6 +1056,8 @@ int sde_rm_init(struct sde_rm *rm)
 		INIT_LIST_HEAD(&rm->hw_blks[type]);
 
 	rm->dev = dev;
+	priv = dev->dev_private;
+	rm->disp_op = priv->disp_op;
 
 	if (IS_SDE_CTL_REV_100(cat->ctl_rev))
 		rm->topology_tbl = g_top_table_v1;
@@ -1122,7 +1177,7 @@ static bool _sde_rm_reserve_dspp(
 			return false;
 		}
 
-		if (!_sde_rm_is_blk_available(*dspp, rsvp, reqs)) {
+		if (!_sde_rm_is_blk_available(rm, *dspp, rsvp, reqs)) {
 			SDE_DEBUG("lm %d dspp %d already reserved\n",
 					lm->id, (*dspp)->id);
 			return false;
@@ -1158,7 +1213,7 @@ static bool _sde_rm_reserve_ds(
 			return false;
 		}
 
-		if (!_sde_rm_is_blk_available(*ds, rsvp, reqs)) {
+		if (!_sde_rm_is_blk_available(rm, *ds, rsvp, reqs)) {
 			SDE_DEBUG("lm %d ds %d already reserved\n",
 					lm->id, (*ds)->id);
 			return false;
@@ -1194,7 +1249,7 @@ static bool _sde_rm_reserve_pp(
 		return false;
 	}
 
-	if (!_sde_rm_is_blk_available(*pp, rsvp, reqs)) {
+	if (!_sde_rm_is_blk_available(rm, *pp, rsvp, reqs)) {
 		SDE_DEBUG("lm %d pp %d already reserved\n", lm->id,
 				(*pp)->id);
 		*dspp = NULL;
@@ -1328,7 +1383,7 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	}
 
 	 /* Already reserved? */
-	if (!_sde_rm_is_blk_available(lm, rsvp, reqs)) {
+	if (!_sde_rm_is_blk_available(rm, lm, rsvp, reqs)) {
 		SDE_DEBUG("lm %d already reserved\n", lm_cfg->id);
 		return false;
 	}
@@ -2362,19 +2417,23 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 			break;
 
 		mixer = to_sde_hw_mixer(iter_lm.blk->hw);
-		if (ctl->ops.get_staged_sspp || mixer->ops.get_staged_sspp) {
+		if (ctl->ops.get_staged_sspp[ctl->hw.disp_op] ||
+			mixer->ops.get_staged_sspp[mixer->hw.disp_op]) {
 			// reset bordercolor from previous LM
 			splash_display->pipe_info.bordercolor = false;
 
-			if (ctl->ops.get_staged_sspp)
-				pipes_per_lm = ctl->ops.get_staged_sspp(ctl, iter_lm.blk->id,
-					&splash_display->pipe_info);
+			if (ctl->ops.get_staged_sspp[ctl->hw.disp_op])
+				pipes_per_lm = ctl->ops.get_staged_sspp[ctl->hw.disp_op](
+					ctl, iter_lm.blk->id, &splash_display->pipe_info);
 
-			if (mixer->ops.get_staged_sspp && ctl->ops.get_active_lms) {
+			if (mixer->ops.get_staged_sspp[mixer->hw.disp_op] &&
+				ctl->ops.get_active_lms[ctl->hw.disp_op]) {
 				pipes_per_lm =
-					BIT(iter_lm.blk->id - LM_0) & ctl->ops.get_active_lms(ctl);
+					BIT(iter_lm.blk->id - LM_0) &
+					ctl->ops.get_active_lms[ctl->hw.disp_op](ctl);
 				if (pipes_per_lm)
-					pipe_count = mixer->ops.get_staged_sspp(mixer,
+					pipe_count = mixer->ops.get_staged_sspp[
+						mixer->hw.disp_op](mixer,
 						iter_lm.blk->id, &splash_display->pipe_info);
 			}
 
@@ -2388,15 +2447,15 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 		}
 	}
 
-	if (ctl->ops.get_active_pipes)
-		active_pipes_mask = ctl->ops.get_active_pipes(ctl);
+	if (ctl->ops.get_active_pipes[ctl->hw.disp_op])
+		active_pipes_mask = ctl->ops.get_active_pipes[ctl->hw.disp_op](ctl);
 
 	if (_sde_rm_update_active_only_pipes(splash_display, active_pipes_mask))
 		return 0;
 
 	while (_sde_rm_get_hw_locked(rm, &iter_dsc, true)) {
-		if (ctl->ops.read_active_status &&
-				!(ctl->ops.read_active_status(ctl,
+		if (ctl->ops.read_active_status[ctl->hw.disp_op] &&
+				!(ctl->ops.read_active_status[ctl->hw.disp_op](ctl,
 					SDE_HW_BLK_DSC,
 					iter_dsc.blk->id)))
 			continue;
@@ -2448,12 +2507,15 @@ int sde_rm_cont_splash_res_init(struct msm_drm_private *priv,
 			&& (splash_disp_count < splash_data->num_splash_displays)) {
 		struct sde_hw_ctl *ctl = to_sde_hw_ctl(iter_c.blk->hw);
 
-		if (!ctl->ops.get_ctl_intf) {
-			SDE_ERROR("get_ctl_intf not initialized\n");
-			return -EINVAL;
+		if (!ctl->ops.get_ctl_intf[ctl->hw.disp_op]) {
+			if (IS_DISP_OP_HWIO(ctl->hw.disp_op)) {
+				SDE_ERROR("get_ctl_intf not initialized\n");
+				return -EINVAL;
+			}
+			return 0;
 		}
 
-		intf_sel = ctl->ops.get_ctl_intf(ctl);
+		intf_sel = ctl->ops.get_ctl_intf[ctl->hw.disp_op](ctl);
 		if (intf_sel) {
 			splash_display =
 				&splash_data->splash_display[index ? 1 : 0];
@@ -2493,6 +2555,42 @@ static struct drm_connector *_sde_rm_get_connector(
 	return conn;
 }
 
+static void sde_rm_populate_lb_reqs(struct drm_encoder *enc, struct sde_rm *rm,
+	struct drm_crtc_state *crtc_state, struct sde_rm_requirements *reqs)
+{
+	struct drm_crtc_state *old_cstate =  NULL;
+
+	if (crtc_state->state && crtc_state->crtc)
+		old_cstate = drm_atomic_get_old_crtc_state(crtc_state->state,
+					crtc_state->crtc);
+	reqs->is_cac_transition = sde_crtc_in_lb_transition(old_cstate,
+					crtc_state);
+
+	if (!sde_crtc_state_in_lb_mode(crtc_state))
+		return;
+
+	/*
+	 * When CRTC is in loopback mode, RM should only allocate resources
+	 * defined for loopback mode for both first pass(virtual) and second
+	 * pass(primary) encoders. Set preference here so that reservation
+	 * of blocks like LM, INTF, DSPP can be done accordingly.
+	 * When CRTC is in loopback mode, select DSPP and DS only for loopback
+	 * encoder.
+	 */
+	if (sde_encoder_is_loopback_display(enc)) {
+		if (!RM_RQ_DSPP(reqs))
+			reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_DSPP);
+
+		if (!RM_RQ_DS(reqs) && rm->hw_mdp->caps->has_dest_scaler)
+			reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_DS);
+
+		reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_CAC_LB);
+	} else {
+		reqs->top_ctrl &= ~(BIT(SDE_RM_TOPCTL_DSPP) | BIT(SDE_RM_TOPCTL_DS));
+		reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_CAC_PRIMARY);
+	}
+}
+
 static int _sde_rm_populate_requirements(
 		struct sde_rm *rm,
 		struct drm_encoder *enc,
@@ -2502,20 +2600,15 @@ static int _sde_rm_populate_requirements(
 		struct sde_rm_requirements *reqs)
 {
 	const struct drm_display_mode *mode = &crtc_state->mode;
+	struct sde_crtc *sde_crtc = to_sde_crtc(crtc_state->crtc);
 	struct drm_encoder *encoder_iter;
 	struct drm_connector *conn;
-	struct drm_crtc_state *old_cstate = NULL;
 	int i, num_lm;
-	bool crtc_in_lb_mode = false;
+	enum sde_lm lm_idx;
 
 	reqs->top_ctrl = sde_connector_get_property(conn_state,
 			CONNECTOR_PROP_TOPOLOGY_CONTROL);
 	sde_encoder_get_hw_resources(enc, &reqs->hw_res, conn_state);
-	crtc_in_lb_mode = sde_crtc_state_in_lb_mode(crtc_state);
-	if (crtc_state->state && crtc_state->crtc)
-		old_cstate = drm_atomic_get_old_crtc_state(crtc_state->state, crtc_state->crtc);
-
-	reqs->is_cac_transition = sde_crtc_in_lb_transition(old_cstate, crtc_state);
 
 	for (i = 0; i < SDE_RM_TOPOLOGY_MAX; i++) {
 		if (RM_IS_TOPOLOGY_MATCH(rm->topology_tbl[i],
@@ -2531,35 +2624,19 @@ static int _sde_rm_populate_requirements(
 	}
 
 	/*
-	 * When CRTC is in loopback mode, RM should only allocate resources
-	 * defined for loopback mode for both first pass(virtual) and second
-	 * pass(primary) encoders. Set preference here so that reservation
-	 * of blocks like LM, INTF, DSPP can be done accordingly.
-	 * Loopback display + CWB is not supported currently.
-	 */
-	if (crtc_in_lb_mode && !sde_crtc_state_in_clone_mode(enc, crtc_state)) {
-		reqs->top_ctrl |= sde_encoder_is_loopback_display(enc) ?
-					BIT(SDE_RM_TOPCTL_CAC_LB) :
-					BIT(SDE_RM_TOPCTL_CAC_PRIMARY);
-		reqs->top_ctrl &= ~(BIT(SDE_RM_TOPCTL_DSPP) | BIT(SDE_RM_TOPCTL_DS));
-	}
-
-	/*
-	 * When CRTC is in loopback mode, select DSPP and DS only
-	 * for loopback encoder. When loopback is disabled, select
-	 * dspp HW block for all dsi displays and ds only for
+	 * select dspp HW block for all dsi displays and ds for only
 	 * primary dsi display.
 	 */
-	if ((conn_state->connector->connector_type == DRM_MODE_CONNECTOR_DSI && !crtc_in_lb_mode) ||
-		sde_encoder_is_loopback_display(enc)) {
+	if (conn_state->connector->connector_type == DRM_MODE_CONNECTOR_DSI) {
 		if (!RM_RQ_DSPP(reqs))
 			reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_DSPP);
 
 		if (!RM_RQ_DS(reqs) && rm->hw_mdp->caps->has_dest_scaler &&
-		    (sde_encoder_is_primary_display(enc) ||
-				sde_encoder_is_loopback_display(enc)))
+		    sde_encoder_is_primary_display(enc))
 			reqs->top_ctrl |= BIT(SDE_RM_TOPCTL_DS);
 	}
+
+	sde_rm_populate_lb_reqs(enc, rm, crtc_state, reqs);
 
 	/**
 	 * Set the requirement for LM which has CWB support if CWB is
@@ -2605,6 +2682,14 @@ static int _sde_rm_populate_requirements(
 			if (conn)
 				reqs->conn_lm_mask = to_sde_connector(conn)->lm_mask;
 			break;
+		}
+
+		if (sde_crtc && (conn_state->connector->connector_type ==
+				DRM_MODE_CONNECTOR_VIRTUAL) &&
+				(reqs->topology->num_lm == 1) &&
+				sde_crtc->mixers[0].hw_lm) {
+			lm_idx = sde_crtc->mixers[0].hw_lm->idx;
+			reqs->conn_lm_mask |= (lm_idx > 0) ? (1 << (lm_idx - LM_0)) : 0;
 		}
 	}
 

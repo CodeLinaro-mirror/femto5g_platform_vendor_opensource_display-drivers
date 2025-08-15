@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 #include <linux/iopoll.h>
@@ -200,7 +200,7 @@ static int sde_hw_get_axi_halt_status(struct sde_hw_vbif *vbif)
 {
 	struct sde_hw_blk_reg_map *c = &vbif->hw;
 	int ctrl = 0, ret = 0;
-	u32 val;
+	u32 val, mask = BIT(4) | BIT(5);
 
 	ret = read_poll_timeout(sde_reg_read, ctrl, (ctrl & BIT(0)),
 			100, 4000, false, c, VBIF_AXI_HALT_CTRL1);
@@ -208,7 +208,9 @@ static int sde_hw_get_axi_halt_status(struct sde_hw_vbif *vbif)
 	/* check AXI port 0 & 1 status on error */
 	if (ret) {
 		val = SDE_REG_READ(c, VBIF_AXI_HALT_CTRL1);
-		ret = (val & (BIT(4) | BIT(5))) ? 0 : ret;
+		ret = ((val & mask) == mask) ? 0 : ret;
+		if (ret)
+			pr_err("vbif axi halt failed, ret:%d, val:0x%x\n", ret, val);
 	}
 
 	return ret;
@@ -261,20 +263,20 @@ static void sde_hw_set_write_gather_en(struct sde_hw_vbif *vbif, u32 xin_id)
 static void _setup_vbif_ops(const struct sde_mdss_cfg *m,
 		struct sde_hw_vbif_ops *ops, unsigned long cap)
 {
-	ops->set_limit_conf = sde_hw_set_limit_conf;
-	ops->get_limit_conf = sde_hw_get_limit_conf;
-	ops->set_axi_halt = sde_hw_set_axi_halt;
-	ops->get_axi_halt_status = sde_hw_get_axi_halt_status;
-	ops->set_xin_halt = sde_hw_set_xin_halt;
-	ops->get_xin_halt_status = sde_hw_get_xin_halt_status;
+	ops->set_limit_conf[MSM_DISP_OP_HWIO] = sde_hw_set_limit_conf;
+	ops->get_limit_conf[MSM_DISP_OP_HWIO] = sde_hw_get_limit_conf;
+	ops->set_axi_halt[MSM_DISP_OP_HWIO] = sde_hw_set_axi_halt;
+	ops->get_axi_halt_status[MSM_DISP_OP_HWIO] = sde_hw_get_axi_halt_status;
+	ops->set_xin_halt[MSM_DISP_OP_HWIO] = sde_hw_set_xin_halt;
+	ops->get_xin_halt_status[MSM_DISP_OP_HWIO] = sde_hw_get_xin_halt_status;
 	if (test_bit(SDE_VBIF_QOS_REMAP, &cap))
-		ops->set_qos_remap = sde_hw_set_qos_remap;
+		ops->set_qos_remap[MSM_DISP_OP_HWIO] = sde_hw_set_qos_remap;
 	if (test_bit(SDE_VBIF_DISABLE_SHAREABLE, &cap))
-		ops->set_mem_type = sde_hw_set_mem_type_v1;
+		ops->set_mem_type[MSM_DISP_OP_HWIO] = sde_hw_set_mem_type_v1;
 	else
-		ops->set_mem_type = sde_hw_set_mem_type;
-	ops->clear_errors = sde_hw_clear_errors;
-	ops->set_write_gather_en = sde_hw_set_write_gather_en;
+		ops->set_mem_type[MSM_DISP_OP_HWIO] = sde_hw_set_mem_type;
+	ops->clear_errors[MSM_DISP_OP_HWIO] = sde_hw_clear_errors;
+	ops->set_write_gather_en[MSM_DISP_OP_HWIO] = sde_hw_set_write_gather_en;
 }
 
 static const struct sde_vbif_cfg *_top_offset(enum sde_vbif vbif,

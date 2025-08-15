@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -482,6 +482,12 @@ static const struct sde_format sde_format_map[] = {
 		C1_B_Cb, C2_R_Cr, C0_G_Y,
 		false, SDE_CHROMA_420, 1, SDE_FORMAT_FLAG_YUV,
 		SDE_FETCH_LINEAR, 3),
+
+	PSEUDO_YUV_FMT_LOOSE(P210,
+		0, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C1_B_Cb, C2_R_Cr,
+		SDE_CHROMA_H2V1, (SDE_FORMAT_FLAG_YUV | SDE_FORMAT_FLAG_DX),
+		SDE_FETCH_LINEAR, 2),
 };
 
 /* Base formats supporting the alpha swapping modifier */
@@ -666,19 +672,32 @@ static const struct sde_format sde_format_map_LOSSY_2_1[] = {
 		SDE_FETCH_UBWC, 2, SDE_TILE_HEIGHT_UBWC),
 };
 
-static const struct sde_format sde_format_map_p010[] = {
+static const struct sde_format sde_format_map_yuv10bit[] = {
 	PSEUDO_YUV_FMT_LOOSE(NV12,
 		0, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
 		C1_B_Cb, C2_R_Cr,
 		SDE_CHROMA_420, (SDE_FORMAT_FLAG_YUV | SDE_FORMAT_FLAG_DX),
 		SDE_FETCH_LINEAR, 2),
+
+	PSEUDO_YUV_FMT_LOOSE(P210,
+		0, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C1_B_Cb, C2_R_Cr,
+		SDE_CHROMA_H2V1, (SDE_FORMAT_FLAG_YUV | SDE_FORMAT_FLAG_DX),
+		SDE_FETCH_LINEAR, 2),
 };
 
-static const struct sde_format sde_format_map_p010_ubwc[] = {
+static const struct sde_format sde_format_map_yuv10bit_ubwc[] = {
 	PSEUDO_YUV_FMT_LOOSE_TILED(NV12,
 		0, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
 		C1_B_Cb, C2_R_Cr,
 		SDE_CHROMA_420, (SDE_FORMAT_FLAG_YUV | SDE_FORMAT_FLAG_DX |
+				SDE_FORMAT_FLAG_COMPRESSED),
+		SDE_FETCH_UBWC, 4, SDE_TILE_HEIGHT_NV12),
+
+	PSEUDO_YUV_FMT_LOOSE_TILED(P210,
+		0, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C1_B_Cb, C2_R_Cr,
+		SDE_CHROMA_H2V1, (SDE_FORMAT_FLAG_YUV | SDE_FORMAT_FLAG_DX |
 				SDE_FORMAT_FLAG_COMPRESSED),
 		SDE_FETCH_UBWC, 4, SDE_TILE_HEIGHT_NV12),
 };
@@ -801,6 +820,8 @@ static int _sde_format_get_media_color_ubwc(const struct sde_format *fmt)
 		} else
 			color_fmt = MMM_COLOR_FMT_NV12_UBWC;
 		return color_fmt;
+	} else if (fmt->base.pixel_format == DRM_FORMAT_P210) {
+		color_fmt = MMM_COLOR_FMT_P210_UBWC;
 	}
 
 	if (test_bit(SDE_FORMAT_FLAG_LOSSY_8_5_BIT, fmt->flag)) {
@@ -944,8 +965,9 @@ static int _sde_format_get_plane_sizes_linear(
 			return -EINVAL;
 		}
 
-		if ((fmt->base.pixel_format == DRM_FORMAT_NV12) &&
-			(SDE_FORMAT_IS_DX(fmt)))
+		if (((fmt->base.pixel_format == DRM_FORMAT_NV12) &&
+			(SDE_FORMAT_IS_DX(fmt)))  ||
+			(fmt->base.pixel_format == DRM_FORMAT_P210))
 			bpp = 2;
 		layout->plane_pitch[0] = width * bpp;
 		layout->plane_pitch[1] = layout->plane_pitch[0] / h_subsample;
@@ -1293,16 +1315,16 @@ const struct sde_format *sde_get_sde_format_ext(
 		SDE_DEBUG("found fmt: %4.4s DRM_FORMAT_MOD_QCOM_LOSSY_2_1\n", (char *)&format);
 		break;
 	case DRM_FORMAT_MOD_QCOM_DX:
-		map = sde_format_map_p010;
-		map_size = ARRAY_SIZE(sde_format_map_p010);
+		map = sde_format_map_yuv10bit;
+		map_size = ARRAY_SIZE(sde_format_map_yuv10bit);
 		SDE_DEBUG("found fmt: %4.4s DRM_FORMAT_MOD_QCOM_DX\n",
 				(char *)&format);
 		break;
 	case (DRM_FORMAT_MOD_QCOM_DX | DRM_FORMAT_MOD_QCOM_COMPRESSED):
 	case (DRM_FORMAT_MOD_QCOM_DX | DRM_FORMAT_MOD_QCOM_COMPRESSED |
 			DRM_FORMAT_MOD_QCOM_TILE):
-		map = sde_format_map_p010_ubwc;
-		map_size = ARRAY_SIZE(sde_format_map_p010_ubwc);
+		map = sde_format_map_yuv10bit_ubwc;
+		map_size = ARRAY_SIZE(sde_format_map_yuv10bit_ubwc);
 		SDE_DEBUG(
 			"found fmt: %4.4s DRM_FORMAT_MOD_QCOM_COMPRESSED/DX\n",
 				(char *)&format);

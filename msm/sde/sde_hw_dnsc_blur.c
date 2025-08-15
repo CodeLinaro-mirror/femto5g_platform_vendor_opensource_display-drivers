@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -233,9 +233,9 @@ static void _sde_hw_dnsc_blur_bind_pingpong_blk(struct sde_hw_dnsc_blur *hw_dnsc
 
 static void _setup_dnsc_blur_ops(struct sde_hw_dnsc_blur_ops *ops, unsigned long features)
 {
-	ops->setup_dnsc_blur = _sde_hw_dnsc_blur_setup;
-	ops->setup_dither = _sde_hw_dnsc_blur_dither_setup;
-	ops->bind_pingpong_blk = _sde_hw_dnsc_blur_bind_pingpong_blk;
+	ops->setup_dnsc_blur[MSM_DISP_OP_HWIO] = _sde_hw_dnsc_blur_setup;
+	ops->setup_dither[MSM_DISP_OP_HWIO] = _sde_hw_dnsc_blur_dither_setup;
+	ops->bind_pingpong_blk[MSM_DISP_OP_HWIO] = _sde_hw_dnsc_blur_bind_pingpong_blk;
 }
 
 struct sde_hw_blk_reg_map *sde_hw_dnsc_blur_init(enum sde_dnsc_blur idx,

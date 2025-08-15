@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"%s: " fmt, __func__
@@ -295,6 +295,10 @@ int dsi_pll_init(struct platform_device *pdev, struct dsi_pll_resource **pll)
 
 	if (!strcmp(label, "dsi_pll_3nm"))
 		pll_res->pll_revision = DSI_PLL_3NM;
+	else if (!strcmp(label, "dsi_pll_3nm_hfi")) {
+		pll_res->pll_revision = DSI_PLL_3NM_HFI;
+		pll_res->disp_op = MSM_DISP_OP_HFI;
+	}
 	else if (!strcmp(label, "dsi_pll_4nm"))
 		pll_res->pll_revision = DSI_PLL_4NM;
 	else if (!strcmp(label, "dsi_pll_5nm"))
@@ -333,43 +337,48 @@ int dsi_pll_init(struct platform_device *pdev, struct dsi_pll_resource **pll)
 	pll_res->phy_pll_bypass = of_property_read_bool(pdev->dev.of_node,
 			"qcom,dsi-phy-pll-bypass");
 
-	if (dsi_pll_get_ioresources(pdev, &pll_res->pll_base, "pll_base")) {
-		DSI_PLL_ERR(pll_res, "Unable to remap pll base resources\n");
-		return -ENOMEM;
-	}
-
-	pr_info("PLL base=%p\n", pll_res->pll_base);
-
-	if (dsi_pll_get_ioresources(pdev, &pll_res->phy_base, "dsi_phy")) {
-		DSI_PLL_ERR(pll_res, "Unable to remap pll phy base resources\n");
-		return -ENOMEM;
-	}
-
-	if (dsi_pll_get_ioresources(pdev, &pll_res->dyn_pll_base,
-							"dyn_refresh_base")) {
-		DSI_PLL_ERR(pll_res, "Unable to remap dynamic pll base resources\n");
-		return -ENOMEM;
-	}
-
-	if (dsi_pll_get_ioresources(pdev, &pll_res->gdsc_base, "gdsc_base"))
-		DSI_PLL_DBG(pll_res, "Unable to remap gdsc base resources\n");
-
-	pll_res->in_trusted_vm = of_property_read_bool(pdev->dev.of_node,
-						"qcom,dsi-pll-in-trusted-vm");
-
-	if (pll_res->in_trusted_vm) {
-		DSI_PLL_INFO(pll_res,
-			"Bypassing PLL clock register for Trusted VM\n");
-		return rc;
-	}
+	if (pll_res->disp_op == MSM_DISP_OP_HFI)
+		pll_res->phy_pll_bypass = true;
 
 	if (pll_res->phy_pll_bypass)
 		return 0;
 
-	rc = dsi_pll_clock_register(pdev, pll_res);
-	if (rc) {
-		DSI_PLL_ERR(pll_res, "clock register failed rc=%d\n", rc);
-		return -EINVAL;
+	if (pll_res->disp_op == MSM_DISP_OP_HWIO) {
+		if (dsi_pll_get_ioresources(pdev, &pll_res->pll_base, "pll_base")) {
+			DSI_PLL_ERR(pll_res, "Unable to remap pll base resources\n");
+			return -ENOMEM;
+		}
+
+		pr_info("PLL base=%p\n", pll_res->pll_base);
+
+		if (dsi_pll_get_ioresources(pdev, &pll_res->phy_base, "dsi_phy")) {
+			DSI_PLL_ERR(pll_res, "Unable to remap pll phy base resources\n");
+			return -ENOMEM;
+		}
+
+		if (dsi_pll_get_ioresources(pdev, &pll_res->dyn_pll_base,
+								"dyn_refresh_base")) {
+			DSI_PLL_ERR(pll_res, "Unable to remap dynamic pll base resources\n");
+			return -ENOMEM;
+		}
+
+		if (dsi_pll_get_ioresources(pdev, &pll_res->gdsc_base, "gdsc_base"))
+			DSI_PLL_DBG(pll_res, "Unable to remap gdsc base resources\n");
+
+		pll_res->in_trusted_vm = of_property_read_bool(pdev->dev.of_node,
+							"qcom,dsi-pll-in-trusted-vm");
+
+		if (pll_res->in_trusted_vm) {
+			DSI_PLL_INFO(pll_res,
+				"Bypassing PLL clock register for Trusted VM\n");
+			return rc;
+		}
+
+		rc = dsi_pll_clock_register(pdev, pll_res);
+		if (rc) {
+			DSI_PLL_ERR(pll_res, "clock register failed rc=%d\n", rc);
+			return -EINVAL;
+		}
 	}
 
 	return rc;

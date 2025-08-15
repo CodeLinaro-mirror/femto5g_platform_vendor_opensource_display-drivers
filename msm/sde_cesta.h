@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __SDE_CESTA_H__
@@ -10,11 +10,16 @@
 
 #include "sde_power_handle.h"
 
-#define MAX_SCC_BLOCK		6
+#define MAX_SCC_BLOCK		9
 #define MAX_CESTA_COUNT		1
 #define SDE_CESTA_INDEX		0
 
 #define MAX_CESTA_CLIENT_NAME_LEN	32
+
+#define SDE_CESTA_HW_MAJOR_MINOR_STEP(major, minor, step) \
+	(((major & 0xff) << 16) |\
+	((minor & 0xff) << 8) | \
+	(step & 0xff))
 
 /**
  * SCC override ctrl flags
@@ -47,6 +52,16 @@ enum sde_cesta_vote_state {
 };
 
 /**
+ * Client indices
+ * SDE_CESTA_SW_CLIENT0 is assigned to DCP
+ * SDE_CESTA_SW_CLIENT1 is assigned to HLOS
+ */
+enum sde_cesta_client_index {
+	SDE_CESTA_SW_CLIENT0,
+	SDE_CESTA_SW_CLIENT1
+};
+
+/**
  * sde_cesta_client_data - sde cesta resource voting values
  * @bw_ab: CRMB_PT bandwidth AB in bytes
  * @bw_ib: CRMB_PT bandwidth IB in bytes
@@ -65,6 +80,7 @@ struct sde_cesta_client_data {
  * @client_index: client index
  * @cesta_index: sde cesta instance
  * @scc_index: sde cesta control index
+ * @base_freq: idle frequency set for mdp-clk hw client
  * @name: client name
  * @enabled: client cesta status
  * @pwr_st_override: cesta override request
@@ -77,6 +93,7 @@ struct sde_cesta_client {
 	u32 client_index;
 	u32 cesta_index;
 	u32 scc_index;
+	u64 base_freq;
 	char name[MAX_CESTA_CLIENT_NAME_LEN];
 	bool enabled;
 	bool pwr_st_override;
@@ -195,6 +212,7 @@ struct sde_cesta_hw_ops {
 
 /**
  * sde_cesta - sde cesta base struct holding all cesta resources for a single instance
+ * @hw_drv_ver: cesta hw version
  * @dev: cesta device
  * @phandle: power handle object to control the resources
  * @fs: MDSS GDSC regulator handle
@@ -202,6 +220,7 @@ struct sde_cesta_hw_ops {
  * @scc_io: scc instances io data mapping
  * @scc_index: stores the SCC index
  * @scc_count: number of SCC instances
+ * @xo_freq: stores the xo frequency for the target
  * @rscc_io: sde rscc io data mapping
  * @wrapper_io: wrapper io data mapping
  * @disp_cc_io: dispcc io data mapping
@@ -219,6 +238,7 @@ struct sde_cesta_hw_ops {
  * @mdp_clk_gate_disable_cnt: counter to track mdp clk gate requests
  */
 struct sde_cesta {
+	u32 hw_drv_ver;
 	struct device *dev;
 	struct sde_power_handle phandle;
 	struct regulator *fs;
@@ -227,6 +247,7 @@ struct sde_cesta {
 	struct dss_io_data scc_io[MAX_SCC_BLOCK];
 	u32 scc_index[MAX_SCC_BLOCK];
 	u32 scc_count;
+	u64 xo_freq;
 
 	struct dss_io_data rscc_io;
 	struct dss_io_data wrapper_io;
@@ -414,6 +435,12 @@ void sde_cesta_force_db_update(struct sde_cesta_client *client, bool en_auto_act
 		enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep, bool en_clk_gate,
 		bool cmd_mode);
 
+/**
+ * sde_cesta_is_aoss_enabled - checks if cesta drv supports AOSS VCD
+ * @cesta_index: cesta instance being checked
+ */
+bool sde_cesta_is_aoss_supported(u32 cesta_index);
+
 #else
 static inline bool sde_cesta_is_enabled(u32 cesta_index)
 {
@@ -506,6 +533,11 @@ static inline void sde_cesta_force_db_update(struct sde_cesta_client *client,
 		bool en_auto_active, enum sde_cesta_ctrl_pwr_req_mode req_mode, bool en_hw_sleep,
 		bool en_clk_gate, bool cmd_mode)
 {
+}
+
+static inline bool  sde_cesta_is_aoss_supported(u32 cesta_index)
+{
+	return false;
 }
 #endif /* CONFIG_DRM_SDE_CESTA */
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -126,8 +126,8 @@ void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
 			      dsi_mode->timing.v_sync_width;
 	drm_mode->vtotal = drm_mode->vsync_end + dsi_mode->timing.v_back_porch;
 
-	drm_mode->clock = drm_mode->htotal * drm_mode->vtotal * dsi_mode->timing.refresh_rate;
-	drm_mode->clock /= 1000;
+	drm_mode->clock = (drm_mode->htotal * drm_mode->vtotal * dsi_mode->timing.refresh_rate) /
+				1000;
 
 	if (dsi_mode->timing.h_sync_polarity)
 		drm_mode->flags |= DRM_MODE_FLAG_PHSYNC;
@@ -186,6 +186,8 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 {
 	int rc = 0;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
+	struct dsi_display *display;
+	enum msm_disp_op disp_op;
 
 	if (!bridge) {
 		DSI_ERR("Invalid params\n");
@@ -196,6 +198,8 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		DSI_ERR("Incorrect bridge details\n");
 		return;
 	}
+
+	display = c_bridge->display;
 
 	if (bridge->encoder->crtc->state->active_changed)
 		atomic_set(&c_bridge->display->panel->esd_recovery_pending, 0);
@@ -216,8 +220,9 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		return;
 	}
 
+	disp_op = display->ctrl[0].ctrl->disp_op;
 	SDE_ATRACE_BEGIN("dsi_display_prepare");
-	rc = dsi_display_prepare(c_bridge->display);
+	rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
 		       c_bridge->id, rc);
@@ -227,11 +232,11 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 	SDE_ATRACE_END("dsi_display_prepare");
 
 	SDE_ATRACE_BEGIN("dsi_display_enable");
-	rc = dsi_display_enable(c_bridge->display);
+	rc = display->display_ops.display_enable[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display enable failed, rc=%d\n",
 				c_bridge->id, rc);
-		(void)dsi_display_unprepare(c_bridge->display);
+		(void)display->display_ops.display_unprepare[disp_op](c_bridge->display);
 	}
 	SDE_ATRACE_END("dsi_display_enable");
 
@@ -260,7 +265,7 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 	}
 	display = c_bridge->display;
 
-	rc = dsi_display_post_enable(display);
+	rc = display->display_ops.post_enable[display->ctrl[0].ctrl->disp_op](c_bridge->display);
 	if (rc)
 		DSI_ERR("[%d] DSI display post enabled failed, rc=%d\n",
 		       c_bridge->id, rc);
@@ -307,7 +312,7 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 		sde_connector_helper_bridge_disable(display->drm_conn);
 	}
 
-	rc = dsi_display_pre_disable(c_bridge->display);
+	rc = display->display_ops.pre_disable[display->ctrl[0].ctrl->disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display pre disable failed, rc=%d\n",
 		       c_bridge->id, rc);
@@ -319,6 +324,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	int rc = 0;
 	struct dsi_display *display;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
+	enum msm_disp_op disp_op;
 
 	if (!bridge) {
 		DSI_ERR("Invalid params\n");
@@ -329,7 +335,9 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 
 	SDE_ATRACE_BEGIN("dsi_bridge_post_disable");
 	SDE_ATRACE_BEGIN("dsi_display_disable");
-	rc = dsi_display_disable(c_bridge->display);
+	disp_op = display->ctrl[0].ctrl->disp_op;
+
+	rc = display->display_ops.display_disable[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display disable failed, rc=%d\n",
 		       c_bridge->id, rc);
@@ -341,7 +349,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	if (display && display->drm_conn)
 		sde_connector_helper_bridge_post_disable(display->drm_conn);
 
-	rc = dsi_display_unprepare(c_bridge->display);
+	rc = display->display_ops.display_unprepare[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display unprepare failed, rc=%d\n",
 		       c_bridge->id, rc);
@@ -355,7 +363,6 @@ static void dsi_bridge_mode_set(struct drm_bridge *bridge,
 				const struct drm_display_mode *mode,
 				const struct drm_display_mode *adjusted_mode)
 {
-	int rc = 0;
 	struct dsi_bridge *c_bridge = NULL;
 	struct dsi_display *display;
 	struct drm_connector *conn;
@@ -392,12 +399,6 @@ static void dsi_bridge_mode_set(struct drm_bridge *bridge,
 
 	msm_parse_mode_priv_info(&conn_state->msm_mode,
 					&(c_bridge->dsi_mode));
-
-	rc = dsi_display_restore_bit_clk(display, &c_bridge->dsi_mode);
-	if (rc) {
-		DSI_ERR("[%s] bit clk rate cannot be restored\n", display->name);
-		return;
-	}
 
 	DSI_DEBUG("clk_rate: %llu\n", c_bridge->dsi_mode.timing.clk_rate_hz);
 }
@@ -462,6 +463,14 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 			adj_mode->timing.refresh_rate,
 			adj_mode->pixel_clk_khz,
 			adj_mode->panel_mode_caps);
+	}
+
+	if (!dsi_display_mode_match(&cur_dsi_mode, adj_mode,
+			DSI_MODE_MATCH_ACTIVE_TIMINGS) &&
+			(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) {
+		adj_mode->dsi_mode_flags &= ~DSI_MODE_FLAG_DYN_CLK;
+		DSI_ERR("DMS and dyn clk not supported in same commit\n");
+		return false;
 	}
 
 	return rc;
@@ -704,7 +713,12 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 		mode_info->wide_bus_en = dsi_mode->priv_info->widebus_support;
 	}
 
-	if (dsi_mode->priv_info->roi_caps.enabled) {
+	/**
+	 * Set partial update in hwio mode only, this disables the feature in hfi mode as
+	 * a temporal workaround until this feature is implemented in fw.
+	 */
+	if (dsi_mode->priv_info->roi_caps.enabled &&
+			dsi_display->panel->disp_op == MSM_DISP_OP_HWIO) {
 		memcpy(&mode_info->roi_caps, &dsi_mode->priv_info->roi_caps,
 			sizeof(dsi_mode->priv_info->roi_caps));
 	}
@@ -904,7 +918,12 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 			msm_spr_pack_type_mode_str[panel->spr_info.pack_type_mode]);
 	}
 
-	if (mode_info && mode_info->roi_caps.enabled) {
+	/**
+	 * Set partial update props in hwio mode only, this disables the feature in hfi mode as
+	 * a temporal workaround until this feature is implemented in fw.
+	 */
+	if (mode_info && mode_info->roi_caps.enabled
+			&& dsi_display->panel->disp_op == MSM_DISP_OP_HWIO) {
 		sde_kms_info_add_keyint(info, "partial_update_num_roi",
 				mode_info->roi_caps.num_roi);
 		sde_kms_info_add_keyint(info, "partial_update_xstart",
@@ -1416,7 +1435,8 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 					DSI_ERR("wait4dfps refresh failed\n");
 
 				dsi_phy_dynamic_refresh_clear(ctrl->phy);
-				dsi_clk_disable_unprepare(&display->clock_info.pll_clks);
+				if (display->ctrl->ctrl->disp_op != MSM_DISP_OP_HFI)
+					dsi_clk_disable_unprepare(&display->clock_info.pll_clks);
 			}
 		}
 

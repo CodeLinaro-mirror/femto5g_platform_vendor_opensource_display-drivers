@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -72,19 +72,20 @@ static void sde_core_irq_callback_handler(void *arg, int irq_idx)
 	 * NOTE: sde_core_irq_callback_handler is protected by top-level
 	 *       spinlock, so it is safe to clear any interrupt status here.
 	 */
-	sde_kms->hw_intr->ops.clear_intr_status_nolock(
-			sde_kms->hw_intr,
-			irq_idx);
+	if (sde_kms->hw_intr->ops.clear_intr_status_nolock[sde_kms->hw_intr->hw.disp_op])
+		sde_kms->hw_intr->ops.clear_intr_status_nolock[
+			sde_kms->hw_intr->hw.disp_op](sde_kms->hw_intr, irq_idx);
 }
 
 int sde_core_irq_idx_lookup(struct sde_kms *sde_kms,
 		enum sde_intr_type intr_type, u32 instance_idx)
 {
-	if (!sde_kms || !sde_kms->hw_intr ||
-			!sde_kms->hw_intr->ops.irq_idx_lookup)
+	if (!sde_kms || !sde_kms->hw_intr)
 		return -EINVAL;
+	if (!sde_kms->hw_intr->ops.irq_idx_lookup[sde_kms->hw_intr->hw.disp_op])
+		return IS_DISP_OP_HFI(sde_kms->hw_intr->hw.disp_op) ? 0 : -EINVAL;
 
-	return sde_kms->hw_intr->ops.irq_idx_lookup(
+	return sde_kms->hw_intr->ops.irq_idx_lookup[sde_kms->hw_intr->hw.disp_op](
 			sde_kms->hw_intr, intr_type,
 			instance_idx);
 }
@@ -126,8 +127,9 @@ static int _sde_core_irq_enable(struct sde_kms *sde_kms, int irq_idx)
 		spin_unlock_irqrestore(&sde_kms->irq_obj.cb_lock, irq_flags);
 
 		spin_lock_irqsave(&sde_kms->hw_intr->irq_lock, irq_flags);
-		ret = sde_kms->hw_intr->ops.enable_irq_nolock(
-				sde_kms->hw_intr, irq_idx);
+		if (sde_kms->hw_intr->ops.enable_irq_nolock[sde_kms->hw_intr->hw.disp_op])
+			ret = sde_kms->hw_intr->ops.enable_irq_nolock[
+				sde_kms->hw_intr->hw.disp_op](sde_kms->hw_intr, irq_idx);
 		spin_unlock_irqrestore(&sde_kms->hw_intr->irq_lock, irq_flags);
 	}
 
@@ -181,10 +183,11 @@ static int _sde_core_irq_disable(struct sde_kms *sde_kms, int irq_idx)
 			atomic_read(&sde_kms->irq_obj.enable_counts[irq_idx]));
 
 	spin_lock_irqsave(&sde_kms->hw_intr->irq_lock, irq_flags);
-	if (atomic_add_unless(&sde_kms->irq_obj.enable_counts[irq_idx], -1, 0)
-		&& atomic_read(&sde_kms->irq_obj.enable_counts[irq_idx]) == 0)
-		ret = sde_kms->hw_intr->ops.disable_irq_nolock(
-				sde_kms->hw_intr, irq_idx);
+	if (atomic_add_unless(&sde_kms->irq_obj.enable_counts[irq_idx], -1, 0) &&
+		atomic_read(&sde_kms->irq_obj.enable_counts[irq_idx]) == 0 &&
+		sde_kms->hw_intr->ops.disable_irq_nolock[sde_kms->hw_intr->hw.disp_op])
+		ret = sde_kms->hw_intr->ops.disable_irq_nolock[
+			sde_kms->hw_intr->hw.disp_op](sde_kms->hw_intr, irq_idx);
 	spin_unlock_irqrestore(&sde_kms->hw_intr->irq_lock, irq_flags);
 
 	if (ret)
@@ -234,10 +237,10 @@ int sde_core_irq_disable_nolock(struct sde_kms *sde_kms, int irq_idx)
 
 	SDE_EVT32(irq_idx,
 			atomic_read(&sde_kms->irq_obj.enable_counts[irq_idx]));
-	if (atomic_dec_return(&sde_kms->irq_obj.enable_counts[irq_idx]) == 0) {
-		ret = sde_kms->hw_intr->ops.disable_irq_nolock(
-				sde_kms->hw_intr,
-				irq_idx);
+	if (atomic_dec_return(&sde_kms->irq_obj.enable_counts[irq_idx]) == 0 &&
+		sde_kms->hw_intr->ops.disable_irq_nolock[sde_kms->hw_intr->hw.disp_op]) {
+		ret = sde_kms->hw_intr->ops.disable_irq_nolock[
+			sde_kms->hw_intr->hw.disp_op](sde_kms->hw_intr, irq_idx);
 		if (ret)
 			SDE_ERROR("Fail to disable IRQ for irq_idx:%d\n",
 					irq_idx);
@@ -250,7 +253,7 @@ int sde_core_irq_disable_nolock(struct sde_kms *sde_kms, int irq_idx)
 u32 sde_core_irq_read(struct sde_kms *sde_kms, int irq_idx, bool clear)
 {
 	if (!sde_kms || !sde_kms->hw_intr ||
-			!sde_kms->hw_intr->ops.get_interrupt_status)
+		!sde_kms->hw_intr->ops.get_interrupt_status[sde_kms->hw_intr->hw.disp_op])
 		return 0;
 
 	if (irq_idx < 0) {
@@ -259,8 +262,8 @@ u32 sde_core_irq_read(struct sde_kms *sde_kms, int irq_idx, bool clear)
 		return 0;
 	}
 
-	return sde_kms->hw_intr->ops.get_interrupt_status(sde_kms->hw_intr,
-			irq_idx, clear);
+	return sde_kms->hw_intr->ops.get_interrupt_status[sde_kms->hw_intr->hw.disp_op](
+		sde_kms->hw_intr, irq_idx, clear);
 }
 
 int sde_core_irq_register_callback(struct sde_kms *sde_kms, int irq_idx,
@@ -338,19 +341,21 @@ int sde_core_irq_unregister_callback(struct sde_kms *sde_kms, int irq_idx,
 static void sde_clear_all_irqs(struct sde_kms *sde_kms)
 {
 	if (!sde_kms || !sde_kms->hw_intr ||
-			!sde_kms->hw_intr->ops.clear_all_irqs)
+			!sde_kms->hw_intr->ops.clear_all_irqs[sde_kms->hw_intr->hw.disp_op])
 		return;
 
-	sde_kms->hw_intr->ops.clear_all_irqs(sde_kms->hw_intr);
+	sde_kms->hw_intr->ops.clear_all_irqs[sde_kms->hw_intr->hw.disp_op](
+		sde_kms->hw_intr);
 }
 
 static void sde_disable_all_irqs(struct sde_kms *sde_kms)
 {
 	if (!sde_kms || !sde_kms->hw_intr ||
-			!sde_kms->hw_intr->ops.disable_all_irqs)
+		!sde_kms->hw_intr->ops.disable_all_irqs[sde_kms->hw_intr->hw.disp_op])
 		return;
 
-	sde_kms->hw_intr->ops.disable_all_irqs(sde_kms->hw_intr);
+	sde_kms->hw_intr->ops.disable_all_irqs[sde_kms->hw_intr->hw.disp_op](
+		sde_kms->hw_intr);
 }
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
@@ -625,10 +630,11 @@ irqreturn_t sde_core_irq(struct sde_kms *sde_kms)
 	 * callback is finished.
 	 * Function will also clear the interrupt status after reading.
 	 */
-	sde_kms->hw_intr->ops.dispatch_irqs(
-			sde_kms->hw_intr,
-			sde_core_irq_callback_handler,
-			sde_kms);
+	if (sde_kms->hw_intr->ops.dispatch_irqs[sde_kms->hw_intr->hw.disp_op])
+		sde_kms->hw_intr->ops.dispatch_irqs[sde_kms->hw_intr->hw.disp_op](
+				sde_kms->hw_intr,
+				sde_core_irq_callback_handler,
+				sde_kms);
 
 	return IRQ_HANDLED;
 }

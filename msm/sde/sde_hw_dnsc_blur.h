@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2021, The Linux Foundation. All rights reserved.
  */
 
@@ -26,7 +26,7 @@ struct sde_hw_dnsc_blur_ops {
 	 * @cfg : Pointer to dnsc_blur configs
 	 * @lut_sel: LUT index for Gausian filter
 	 */
-	void (*setup_dnsc_blur)(struct sde_hw_dnsc_blur *hw_dnsc_blur,
+	void (*setup_dnsc_blur[MSM_DISP_OP_MAX])(struct sde_hw_dnsc_blur *hw_dnsc_blur,
 			struct sde_drm_dnsc_blur_cfg *cfg, u32 lut_sel);
 
 	/**
@@ -34,7 +34,7 @@ struct sde_hw_dnsc_blur_ops {
 	 * @hw_dnsc_blur: Pointer to dnsc_blur context
 	 * @cfg : Pointer to dnsc_blur configs
 	 */
-	void (*setup_dither)(struct sde_hw_dnsc_blur *hw_dnsc_blur,
+	void (*setup_dither[MSM_DISP_OP_MAX])(struct sde_hw_dnsc_blur *hw_dnsc_blur,
 			struct sde_drm_dnsc_blur_cfg *cfg);
 
 	/**
@@ -45,7 +45,7 @@ struct sde_hw_dnsc_blur_ops {
 	 * @pp: Pingpong block idx for binding
 	 * @cwb: Flag to indicate concurrent writeback
 	 */
-	void (*bind_pingpong_blk)(struct sde_hw_dnsc_blur *hw_dnsc_blur,
+	void (*bind_pingpong_blk[MSM_DISP_OP_MAX])(struct sde_hw_dnsc_blur *hw_dnsc_blur,
 			bool enable, const enum sde_pingpong pp, bool cwb);
 };
 

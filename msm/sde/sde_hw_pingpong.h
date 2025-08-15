@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -44,111 +44,111 @@ struct sde_hw_pingpong_ops {
 	 * enables vysnc generation and sets up init value of
 	 * read pointer and programs the tear check cofiguration
 	 */
-	int (*setup_tearcheck)(struct sde_hw_pingpong *pp,
+	int (*setup_tearcheck[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp,
 			struct sde_hw_tear_check *cfg);
 
 	/**
 	 * enables tear check block
 	 */
-	int (*enable_tearcheck)(struct sde_hw_pingpong *pp,
+	int (*enable_tearcheck[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp,
 			bool enable);
 
 	/**
 	 * updates tearcheck configuration
 	 */
-	void (*update_tearcheck)(struct sde_hw_pingpong *pp,
+	void (*update_tearcheck[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp,
 			struct sde_hw_tear_check *cfg);
 
 	/**
 	 * read, modify, write to either set or clear listening to external TE
 	 * @Return: 1 if TE was originally connected, 0 if not, or -ERROR
 	 */
-	int (*connect_external_te)(struct sde_hw_pingpong *pp,
+	int (*connect_external_te[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp,
 			bool enable_external_te);
 
 	/**
 	 * provides the programmed and current
 	 * line_count
 	 */
-	int (*get_vsync_info)(struct sde_hw_pingpong *pp,
+	int (*get_vsync_info[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp,
 			struct sde_hw_pp_vsync_info  *info);
 
 	/**
 	 * configure and enable the autorefresh config
 	 */
-	int (*setup_autorefresh)(struct sde_hw_pingpong *pp,
+	int (*setup_autorefresh[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp,
 			struct sde_hw_autorefresh *cfg);
 
 	/**
 	 * retrieve autorefresh config from hardware
 	 */
-	int (*get_autorefresh)(struct sde_hw_pingpong *pp,
+	int (*get_autorefresh[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp,
 			struct sde_hw_autorefresh *cfg);
 
 	/**
 	 * poll until write pointer transmission starts
 	 * @Return: 0 on success, -ETIMEDOUT on timeout
 	 */
-	int (*poll_timeout_wr_ptr)(struct sde_hw_pingpong *pp, u32 timeout_us);
+	int (*poll_timeout_wr_ptr[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp, u32 timeout_us);
 
 	/**
 	 * Program the dsc compression block
 	 */
-	int (*setup_dsc)(struct sde_hw_pingpong *pp);
+	int (*setup_dsc[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp);
 
 	/**
 	 * Enables DSC encoder
 	 */
-	void (*enable_dsc)(struct sde_hw_pingpong *pp);
+	void (*enable_dsc[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp);
 
 	/**
 	 * Disables DSC encoder
 	 */
-	void (*disable_dsc)(struct sde_hw_pingpong *pp);
+	void (*disable_dsc[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp);
 
 	/**
 	 * Program the dither hw block
 	 */
-	int (*setup_dither)(struct sde_hw_pingpong *pp, void *cfg, size_t len);
+	int (*setup_dither[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp, void *cfg, size_t len);
 
 	/**
 	 * Obtain current vertical line counter
 	 */
-	u32 (*get_line_count)(struct sde_hw_pingpong *pp);
+	u32 (*get_line_count[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp);
 
 	/**
 	 * Programs the 3d blend configuration
 	 */
-	void (*setup_3d_mode)(struct sde_hw_pingpong *pp,
+	void (*setup_3d_mode[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp,
 			enum sde_3d_blend_mode cfg);
 
 	/**
 	 * reset 3d blend configuration
 	 */
-	void (*reset_3d_mode)(struct sde_hw_pingpong *pp);
+	void (*reset_3d_mode[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp);
 
 	/**
 	 * get PP features supported by this instance
 	 */
-	unsigned long (*get_hw_caps)(struct sde_hw_pingpong *pp);
+	unsigned long (*get_hw_caps[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp);
 
 	/**
 	 * set_ppb_fifo_size - set ppb latency buffer size to a fixed value
 	 */
-	void (*set_ppb_fifo_size)(struct sde_hw_pingpong *pp, u32 pixels);
+	void (*set_ppb_fifo_size[MSM_DISP_OP_MAX])(struct sde_hw_pingpong *pp, u32 pixels);
 };
 
 struct sde_hw_merge_3d_ops {
 	/**
 	 * setup the 3d blend mode configuration
 	 */
-	void (*setup_blend_mode)(struct sde_hw_merge_3d *id,
+	void (*setup_blend_mode[MSM_DISP_OP_MAX])(struct sde_hw_merge_3d *id,
 			enum sde_3d_blend_mode cfg);
 
 	/**
 	 * reset 3d blend mode configuration
 	 */
-	void (*reset_blend_mode)(struct sde_hw_merge_3d *id);
+	void (*reset_blend_mode[MSM_DISP_OP_MAX])(struct sde_hw_merge_3d *id);
 };
 
 struct sde_hw_merge_3d {

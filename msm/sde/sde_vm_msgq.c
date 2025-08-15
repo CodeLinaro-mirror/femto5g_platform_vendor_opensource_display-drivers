@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -87,7 +87,7 @@ int sde_vm_msgq_init(struct sde_vm *sde_vm)
 	msgq_handle = gh_msgq_register(GH_MSGQ_LABEL_DISPLAY);
 	if (IS_ERR(msgq_handle)) {
 		SDE_ERROR("gh_msgq_register failed, hdl=%p\n", msgq_handle);
-		return -EINVAL;
+		return 0;
 	}
 
 	sde_vm->msgq_handle = msgq_handle;

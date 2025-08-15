@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -34,6 +34,8 @@
 #define MAX_KICKOFF_TIMEOUT_MS                  100000
 
 #define MAX_TE_PROFILE_COUNT		5
+#define IDLE_FPS            1
+#define HZ_240              240
 /**
  * enum sde_enc_split_role - Role this physical encoder will play in a
  *	split-panel configuration, where one panel is master, and others slaves.
@@ -148,6 +150,7 @@ struct sde_encoder_virt_ops {
  *				resources that this phys_enc is using.
  *				Expect no overlap between phys_encs.
  * @control_vblank_irq		Register/Deregister for VBLANK IRQ
+ * @control_esync_vsync_irq	Register/Deregister for esync vsync IRQ
  * @control_empulse_irq:	Register/Deregister for EM pulse IRQ
  * @wait_for_commit_done:	Wait for hardware to have flushed the
  *				current pending frames to hardware
@@ -210,6 +213,7 @@ struct sde_encoder_phys_ops {
 			struct sde_encoder_hw_resources *hw_res,
 			struct drm_connector_state *conn_state);
 	int (*control_vblank_irq)(struct sde_encoder_phys *enc, bool enable);
+	int (*control_esync_vsync_irq)(struct sde_encoder_phys *enc, bool enable);
 	int (*control_empulse_irq)(struct sde_encoder_phys *enc, bool enable);
 	int (*wait_for_commit_done)(struct sde_encoder_phys *phys_enc);
 	int (*wait_for_tx_complete)(struct sde_encoder_phys *phys_enc);
@@ -257,6 +261,7 @@ struct sde_encoder_phys_ops {
  * @INTR_IDX_UNDERRUN: Underrun interrupt for video and cmd mode panel
  * @INTR_IDX_WD_TIMER: Watchdog interrupt
  * @INTR_IDX_ESYNC_EMSYNC:   Esync interrupt for video mode panel.
+ * @INTR_IDX_ESYNC_VSYNC:   Esync Vsync interrupt for video hybrid mode panel.
  * @INTR_IDX_CTL_START:Control start interrupt to indicate the frame start
  * @INTR_IDX_CTL_DONE: Control done interrupt indicating the control path being idle
  * @INTR_IDX_RDPTR:    Readpointer done interrupt for cmd mode panel
@@ -282,6 +287,7 @@ enum sde_intr_idx {
 	INTR_IDX_UNDERRUN,
 	INTR_IDX_WD_TIMER,
 	INTR_IDX_ESYNC_EMSYNC,
+	INTR_IDX_ESYNC_VSYNC,
 	INTR_IDX_CTL_START,
 	INTR_IDX_CTL_DONE,
 	INTR_IDX_RDPTR,
@@ -405,6 +411,8 @@ struct sde_encoder_vrr_cfg {
  *                              used to release commit thread. Currently managed
  *                              only for writeback encoder and the counter keeps
  *                              increasing for other type of encoders.
+ * @pending_te_deassert_cnt:    Atomic counter tracking the pending TE deasserts
+ *                              for ESD detection.
  * @pending_kickoff_wq:		Wait queue for blocking until kickoff completes
  * @empulse_backup_timer: Timer to simulate EM pulse IRQ when idle
  * @empulse_notification_sim: whether the last enabled EM pulse notification
@@ -418,6 +426,7 @@ struct sde_encoder_vrr_cfg {
  * @quad_cwb_roi		Indicates ROI's for cwb in quad pipe
  * @vfp_cached:			cached vertical front porch to be used for
  *				programming ROT and MDP fetch start
+ * @avr_slow_vtotal		AVR slow fps vtotal
  * @pf_time_in_us:		Programmable fetch time in micro-seconds
  * @sde_hw_fence_error_status:	Hw fence error handing flag controled by userspace
  *				that if handing fence error in driver
@@ -476,6 +485,7 @@ struct sde_encoder_phys {
 	atomic_t pending_kickoff_cnt;
 	atomic_t pending_retire_fence_cnt;
 	atomic_t pending_ctl_start_cnt;
+	atomic_t pending_te_deassert_cnt;
 	wait_queue_head_t pending_kickoff_wq;
 	struct hrtimer empulse_backup_timer;
 	bool empulse_notification_sim;
@@ -487,6 +497,7 @@ struct sde_encoder_phys {
 	bool in_clone_mode;
 	enum quad_pipe_cwb_roi quad_cwb_roi;
 	int vfp_cached;
+	u32 avr_slow_vtotal;
 	u32 pf_time_in_us;
 	bool sde_hw_fence_error_status;
 	int sde_hw_fence_error_value;
@@ -1099,13 +1110,14 @@ int sde_encoder_helper_collect_misr(struct sde_encoder_phys *phys_enc,
 static inline u32 sde_encoder_helper_get_ctl_flush(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_hw_ctl *hw_ctl;
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
 	hw_ctl = phys_enc->hw_ctl;
 
-	if (!hw_ctl || !hw_ctl->ops.get_flush_register)
+	if (!hw_ctl || !hw_ctl->ops.get_flush_register[disp_op])
 		return 0;
 
-	return hw_ctl->ops.get_flush_register(hw_ctl);
+	return hw_ctl->ops.get_flush_register[disp_op](hw_ctl);
 }
 
 /**
@@ -1116,12 +1128,13 @@ static inline u32 sde_encoder_helper_get_ctl_flush(struct sde_encoder_phys *phys
 static inline bool sde_encoder_helper_flush_in_sync_mode(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_hw_ctl *hw_ctl;
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
 	hw_ctl = phys_enc->hw_ctl;
 
-	if (!hw_ctl || !hw_ctl->ops.get_flush_sync_mode)
+	if (!hw_ctl || !hw_ctl->ops.get_flush_sync_mode[disp_op])
 		return false;
 
-	return hw_ctl->ops.get_flush_sync_mode(hw_ctl);
+	return hw_ctl->ops.get_flush_sync_mode[disp_op](hw_ctl);
 }
 #endif /* __sde_encoder_phys_H__ */

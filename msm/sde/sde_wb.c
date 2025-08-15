@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -589,6 +589,7 @@ static void _sde_wb_connector_install_dither_property(struct sde_wb_device *wb_d
 	snprintf(prop_name, ARRAY_SIZE(prop_name), "%s%d", "SDE_PP_CWB_DITHER_V", version);
 	switch (version) {
 	case 2:
+	case 3:
 		msm_property_install_blob(&c_conn->property_info, prop_name,
 			DRM_MODE_PROP_BLOB, CONNECTOR_PROP_PP_CWB_DITHER);
 		break;
@@ -691,6 +692,9 @@ int sde_wb_connector_post_init(struct drm_connector *connector, void *display)
 	msm_property_install_enum(&c_conn->property_info, "wb_usage_type",
 			0x0, 0, e_wb_usage_type, ARRAY_SIZE(e_wb_usage_type),
 			0, CONNECTOR_PROP_WB_USAGE_TYPE);
+
+	msm_property_install_blob(&c_conn->property_info, "wb_csc_config",
+			DRM_MODE_PROP_BLOB, CONNECTOR_PROP_WB_CSC_CONFIG);
 
 	_sde_wb_connector_install_dither_property(wb_dev);
 
@@ -1037,14 +1041,21 @@ static int sde_wb_probe(struct platform_device *pdev)
  * sde_wb_remove - unload writeback module
  * @pdev:	Pointer to platform device
  */
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void sde_wb_remove(struct platform_device *pdev)
+#else
 static int sde_wb_remove(struct platform_device *pdev)
+#endif
 {
+	int rc = 0;
 	struct sde_wb_device *wb_dev;
 	struct sde_wb_device *curr, *next;
 
 	wb_dev = platform_get_drvdata(pdev);
-	if (!wb_dev)
-		return 0;
+	if (!wb_dev) {
+		rc = 0;
+		goto end;
+	}
 
 	SDE_DEBUG("\n");
 
@@ -1065,7 +1076,12 @@ static int sde_wb_remove(struct platform_device *pdev)
 	platform_set_drvdata(pdev, NULL);
 	devm_kfree(&pdev->dev, wb_dev);
 
-	return 0;
+end:
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+	return rc;
+#else
+	return;
+#endif
 }
 
 static const struct of_device_id dt_match[] = {

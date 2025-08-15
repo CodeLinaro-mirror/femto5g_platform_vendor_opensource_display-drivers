@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2020, The Linux Foundation. All rights reserved.
  */
 
@@ -15,6 +15,7 @@
 #define REG_DMA_VER_1_2 0x00010002
 #define REG_DMA_VER_2_0 0x00020000
 #define REG_DMA_VER_3_0 0x00030000
+#define REG_DMA_VER_4_0 0x00040000
 
 static int default_check_support(enum sde_reg_dma_features feature,
 		     enum sde_reg_dma_blk blk,
@@ -85,9 +86,10 @@ static void set_default_dma_ops(struct sde_hw_reg_dma *reg_dma)
 {
 	const static struct sde_hw_reg_dma_ops ops = {
 		default_check_support, default_setup_payload,
-		default_kick_off, default_reset, default_alloc_reg_dma_buf,
+		{default_kick_off, default_kick_off}, default_reset, default_alloc_reg_dma_buf,
 		default_dealloc_reg_dma, default_buf_reset_reg_dma,
-		default_last_command, default_last_command_sb,
+		{default_last_command, default_last_command},
+		{default_last_command_sb, default_last_command_sb},
 		default_dump_reg};
 	memcpy(&reg_dma->ops, &ops, sizeof(ops));
 }
@@ -156,6 +158,7 @@ int sde_reg_dma_init(void __iomem *addr, struct sde_mdss_cfg *m,
 	reg_dma[dpu_idx].drm_dev = dev;
 	reg_dma[dpu_idx].addr = addr;
 	reg_dma[dpu_idx].caps = &m->dma_cfg;
+	reg_dma[dpu_idx].vm_based_queue = false;
 
 	switch (reg_dma[dpu_idx].caps->version) {
 	case REG_DMA_VER_1_0:
@@ -182,6 +185,12 @@ int sde_reg_dma_init(void __iomem *addr, struct sde_mdss_cfg *m,
 		rc = init_v3(&(reg_dma[dpu_idx]), dpu_idx);
 		if (rc)
 			DRM_DEBUG("init v3 dma ops failed\n");
+		break;
+	case REG_DMA_VER_4_0:
+		reg_dma[dpu_idx].vm_based_queue = true;
+		rc = init_v4(&(reg_dma[dpu_idx]), dpu_idx);
+		if (rc)
+			DRM_DEBUG("init v4 dma ops failed\n");
 		break;
 	default:
 		break;
@@ -222,4 +231,9 @@ void sde_reg_dma_deinit(u32 dpu_idx)
 	}
 	memset(&(reg_dma[dpu_idx]), 0, sizeof(struct sde_hw_reg_dma));
 	set_default_dma_ops(&(reg_dma[dpu_idx]));
+}
+
+int sde_reg_dma_get_last_cmd_buffer(u32 dpu_idx, struct sde_reg_dma_buffer **last_cmd_buf)
+{
+	return get_last_cmd_buffer(dpu_idx, last_cmd_buf);
 }

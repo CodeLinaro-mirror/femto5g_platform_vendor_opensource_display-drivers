@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2019, The Linux Foundation. All rights reserved.
  */
 
@@ -28,6 +28,9 @@
 #define SDE_FENCE_NAME_SIZE	24
 
 #define MAX_SDE_HFENCE_OUT_SIGNAL_PING_PONG 2
+
+struct sde_hw_ctl;
+struct sde_hw_mdp;
 
 /**
  * enum sde_fence_error_state - fence error state handled in _sde_fence_trigger

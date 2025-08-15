@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -25,11 +25,12 @@ struct sde_format_extended;
  * This is the common struct maintained by each sub block
  * for mapping the register offsets in this block to the
  * absoulute IO address
- * @base_off:     mdp register mapped offset
- * @blk_off:      pipe offset relative to mdss offset
- * @length        length of register block offset
- * @xin_id        xin id
- * @hw_rev     mdss hw revision
+ * @base_off:        mdp register mapped offset
+ * @blk_off:         pipe offset relative to mdss offset
+ * @length           length of register block offset
+ * @xin_id           xin id
+ * @hw_rev           mdss hw revision
+ * @disp_op: display control op index
  */
 struct sde_hw_blk_reg_map {
 	void __iomem *base_off;
@@ -38,6 +39,28 @@ struct sde_hw_blk_reg_map {
 	u32 xin_id;
 	u32 hw_rev;
 	u32 log_mask;
+	enum msm_disp_op disp_op;
+};
+
+/**
+ * struct sde_hw_ade_cfg : QSEEDv3 Adaptive DE configuration
+ * @adaptive_de_en:      Enable adaptive DE
+ * @polarity_en:         Enable polarity check
+ * @strength_slope:      Slope(m) in y=mx+c, DG calculation
+ * @strength_const:      Constant(c) in y=mx+c, DG calculation
+ * @strength_coeff_tl:   Low threshold for Dynamic gain(DG)
+ * @strength_coeff_th:   High threshold for Dynamic gain(DG)
+ * @halo_suppress_coeff: Halo Suppress Multiplier
+ */
+struct sde_hw_ade_cfg {
+	u32 adaptive_de_en;
+	u32 polarity_en;
+
+	u32 strength_slope;
+	u32 strength_const;
+	u32 strength_coeff_tl;
+	u32 strength_coeff_th;
+	u32 halo_suppress_coeff;
 };
 
 /**
@@ -180,6 +203,8 @@ struct sde_hw_cac_cfg {
  * @de_lpf_l:          Detail enhancer lpf blend low
  * @de_lpf_m:          Detail enhancer lpf blend medium
  * @cac_cfg:              CAC qseed config
+ * @edge_bleed_sup_en: Edge bleed supression enable
+ * @ade:               Adaptive DE config structure
  */
 struct sde_hw_scaler3_cfg {
 	u32 enable;
@@ -230,6 +255,9 @@ struct sde_hw_scaler3_cfg {
 	__u32 de_lpf_l;
 	__u32 de_lpf_m;
 	struct sde_hw_cac_cfg cac_cfg;
+
+	u32 edge_bleed_sup_en;
+	struct sde_hw_ade_cfg ade_cfg;
 };
 
 struct sde_hw_scaler3_lut_cfg {
@@ -287,7 +315,8 @@ void sde_hw_csc_matrix_coeff_setup(struct sde_hw_blk_reg_map *c,
 
 void sde_hw_csc_setup(struct sde_hw_blk_reg_map  *c,
 		u32 csc_reg_off,
-		struct sde_csc_cfg *data, bool csc10);
+		struct sde_csc_cfg *data, bool csc10,
+		enum msm_disp_op disp_op);
 
 uint32_t sde_copy_formats(
 		struct sde_format_extended *dst_list,

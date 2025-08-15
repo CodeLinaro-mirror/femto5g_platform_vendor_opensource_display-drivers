@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include "sde_kms.h"
@@ -8,6 +8,7 @@
 #include "sde_hw_mdss.h"
 
 #define AIQE_VER_1_0 0x00010000
+#define AIQE_VER_2_0 0x00020000
 
 void (*aiqe_get_common_values_func)(struct sde_hw_cp_cfg *cfg,
 		struct sde_aiqe_top_level *aiqe_top, struct aiqe_reg_common *aiqe_cmn);
@@ -22,6 +23,7 @@ void aiqe_init(u32 aiqe_version, struct sde_aiqe_top_level *aiqe_top)
 
 	switch (aiqe_version) {
 	case AIQE_VER_1_0:
+	case AIQE_VER_2_0:
 		aiqe_get_common_values_func = &aiqe_get_common_values_v1;
 		break;
 	default:
@@ -126,6 +128,7 @@ void get_mdnie_art_frame_count(u32 *mdnie_art_frame_count, u32 art_param)
 	art_slope = (art_param & 0xF0000) >> 16;
 	*mdnie_art_frame_count = 1 << art_slope;
 	++(*mdnie_art_frame_count);
+	SDE_EVT32(*mdnie_art_frame_count);
 }
 
 void aiqe_deinit(struct sde_aiqe_top_level *aiqe_top)

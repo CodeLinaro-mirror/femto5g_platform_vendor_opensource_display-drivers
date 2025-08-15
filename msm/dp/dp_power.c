@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -902,7 +902,13 @@ static int dp_power_edp_panel_set_gpio(struct dp_power *dp_power,
 		return -EINVAL;
 
 	if ((pin_state >= DP_GPIO_EDP_MIN) && (pin_state < DP_GPIO_EDP_MAX)) {
-		gpio_direction_output(config[pin_state].gpio, enable);
+		if (gpio_is_valid(config[pin_state].gpio)) {
+			rc = gpio_direction_output(config[pin_state].gpio,
+				enable);
+			if (rc)
+				DP_ERR("unable to set gpio rc=%d\n", rc);
+		} else
+			DP_ERR("gpio invalid for %d pin\n", pin_state);
 	} else {
 		DP_ERR("Invalid GPIO call with pin state: %d\n", pin_state);
 		return -EINVAL;

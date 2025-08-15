@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
@@ -40,7 +40,7 @@ enum {
 	TX_DRIVE_MODE_MAX,
 };
 
-static const u8 ldo_config[TX_DRIVE_MODE_MAX] = {
+static const u8 ldo_config_v1[TX_DRIVE_MODE_MAX] = {
 	0x81,	/* 600mV */
 	0x00,	/* off */
 	0x41,	/* 650mV */
@@ -49,87 +49,27 @@ static const u8 ldo_config[TX_DRIVE_MODE_MAX] = {
 	0x00,	/* off */
 };
 
-static const u8 vm_pre_emphasis
-	[TX_DRIVE_MODE_MAX][MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	/* pe0, 0 db; pe1, 2.0 db; pe2, 3.6 db; pe3, 6.0 db */
-	{	// Low swing/pre-emphasis, low HBR
-		{0x05, 0x12, 0x17, 0x1D}, /* sw0, 0.2v  */
-		{0x05, 0x11, 0x18, 0xFF}, /* sw1, 0.25 v */
-		{0x06, 0x11, 0xFF, 0xFF}, /* sw2, 0.3 v */
-		{0x00, 0xFF, 0xFF, 0xFF}  /* sw3, 0.35 v */
-	},
-	{	// High swing/pre-emphasis, low HBR
-		{0x02, 0x0F, 0x17, 0x1D}, /* sw0, 0.3v  */
-		{0x01, 0x0F, 0x17, 0xFF}, /* sw1, 0.35v  */
-		{0x02, 0x0F, 0xFF, 0xFF}, /* sw2, 0.4v  */
-		{0x00, 0xFF, 0xFF, 0xFF}  /* sw3, 0.45v  */
-	},
-	{	// Low swing/pre-emphasis, high HBR
-		{0x0C, 0x15, 0x19, 0x1E}, /* sw0, 0.2v  */
-		{0x08, 0x15, 0x19, 0xFF}, /* sw1, 0.25v  */
-		{0x0E, 0x14, 0xFF, 0xFF}, /* sw2, 0.3v  */
-		{0x0D, 0xFF, 0xFF, 0xFF}  /* sw3, 0.35v  */
-	},
-	{	// High swing/pre-emphasis, high HBR
-		{0x08, 0x11, 0x17, 0x1B}, /* sw0, 0.3v  */
-		{0x00, 0x0C, 0x13, 0xFF}, /* sw1, 0.35v  */
-		{0x05, 0x10, 0xFF, 0xFF}, /* sw2, 0.4v  */
-		{0x00, 0xFF, 0xFF, 0xFF}  /* sw3, 0.45v  */
-	},
-	{	// DP-only, DP/USB
-		{0x20, 0x2E, 0x35, 0xFF}, /* sw0, 0.4v  */
-		{0x20, 0x2E, 0x35, 0xFF}, /* sw1, 0.6v  */
-		{0x20, 0x2E, 0xFF, 0xFF}, /* sw2, 0.8v  */
-		{0xFF, 0xFF, 0xFF, 0xFF}  /* sw3, 1.2 v, optional */
-	},
-	{	// MiniDP-only
-		{0x00, 0x0E, 0x17, 0xFF}, /* sw0, 0.4v  */
-		{0x00, 0x0D, 0x16, 0xFF}, /* sw1, 0.6v  */
-		{0x00, 0x0D, 0xFF, 0xFF}, /* sw2, 0.8v  */
-		{0xFF, 0xFF, 0xFF, 0xFF}  /* sw3, 1.2 v, optional */
-	},
+static const u8 ldo_config_v2[TX_DRIVE_MODE_MAX] = {
+	0xc1,	/* 600mV */
+	0x00,	/* off */
+	0x91,	/* 650mV */
+	0x00,	/* off */
+	0x00,	/* off */
+	0x00,	/* off */
 };
 
-/* voltage swing, 0.2v and 1.0v are not support */
-static const u8 vm_voltage_swing
-	[TX_DRIVE_MODE_MAX][MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
-	/* pe0, 0 db; pe1, 2.0 db; pe2, 3.6 db; pe3, 6.0 db */
-	{	// Low swing/pre-emphasis, low HBR
-		{0x07, 0x0F, 0x16, 0x1F}, /* sw0, 0.2v  */
-		{0x0D, 0x16, 0x1E, 0xFF}, /* sw1, 0.25 v */
-		{0x11, 0x1B, 0xFF, 0xFF}, /* sw1, 0.3 v */
-		{0x16, 0xFF, 0xFF, 0xFF}  /* sw1, 0.35 v */
-	},
-	{	// High swing/pre-emphasis, low HBR
-		{0x05, 0x0C, 0x14, 0x1D}, /* sw0, 0.3v  */
-		{0x08, 0x13, 0x1B, 0xFF}, /* sw1, 0.35 v */
-		{0x0C, 0x17, 0xFF, 0xFF}, /* sw1, 0.4 v */
-		{0x14, 0xFF, 0xFF, 0xFF}  /* sw1, 0.45 v */
-	},
-	{	// Low swing/pre-emphasis, high HBR
-		{0x0B, 0x11, 0x17, 0x1C}, /* sw0, 0.2v  */
-		{0x10, 0x19, 0x1F, 0xFF}, /* sw1, 0.25 v */
-		{0x19, 0x1F, 0xFF, 0xFF}, /* sw1, 0.3 v */
-		{0x1F, 0xFF, 0xFF, 0xFF}  /* sw1, 0.35 v */
-	},
-	{	// High swing/pre-emphasis, high HBR
-		{0x0A, 0x11, 0x17, 0x1F}, /* sw0, 0.3v  */
-		{0x0C, 0x14, 0x1D, 0xFF}, /* sw1, 0.35 v */
-		{0x15, 0x1F, 0xFF, 0xFF}, /* sw1, 0.4 v */
-		{0x17, 0xFF, 0xFF, 0xFF}  /* sw1, 0.45 v */
-	},
-	{	// DP-only, DP/USB
-		{0x27, 0x2F, 0x36, 0xFF}, /* sw0, 0.4v  */
-		{0x31, 0x3E, 0x3F, 0xFF}, /* sw1, 0.6v  */
-		{0x3A, 0x3F, 0xFF, 0xFF}, /* sw2, 0.8v  */
-		{0xFF, 0xFF, 0xFF, 0xFF}  /* sw3, 1.2 v, optional */
-	},
-	{	// MiniDP-only
-		{0x09, 0x17, 0x1F, 0xFF}, /* sw0, 0.4v  */
-		{0x11, 0x1D, 0x1F, 0xFF}, /* sw1, 0.6v  */
-		{0x1C, 0x1F, 0xFF, 0xFF}, /* sw2, 0.8v  */
-		{0xFF, 0xFF, 0xFF, 0xFF}  /* sw3, 1.2 v, optional */
-	},
+static const u8 vm_pre_emphasis[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
+	{0x00, 0x0C, 0x15, 0x1B},	/* sw0, 0.4v */
+	{0x02, 0x0E, 0x16, 0xFF},	/* sw1, 0.6v */
+	{0x02, 0x11, 0xFF, 0xFF},	/* sw2, 0.8v */
+	{0x04, 0xFF, 0xFF, 0xFF}	/* sw3, 1.2v */
+};
+
+static const u8 vm_voltage_swing[MAX_VOLTAGE_LEVELS][MAX_PRE_EMP_LEVELS] = {
+	{0x02, 0x12, 0x16, 0x1A},	/* sw0, 0.4v  */
+	{0x09, 0x19, 0x1F, 0xFF},	/* sw1, 0.6 v */
+	{0x10, 0x1F, 0xFF, 0xFF},	/* sw1, 0.8 v */
+	{0x1F, 0xFF, 0xFF, 0xFF}	/* sw1, 1.2 v, optional */
 };
 
 struct dp_catalog_private_v500 {
@@ -171,8 +111,13 @@ static void dp_catalog_aux_setup_v500(struct dp_catalog_aux *aux,
 
 	/* Turn on BIAS current for PHY/PLL */
 	io_data = catalog->io->dp_pll;
-	dp_write(QSERDES_COM_BIAS_EN_CLKBUFLR_EN,
+	if (catalog->dpc->parser->hw_cfg.phy_revision == DP_PHY_REVISION_V2) {
+		dp_write(QSERDES_COM_BIAS_EN_CLKBUFLR_EN_V600,
+			0x1F);
+	} else {
+		dp_write(QSERDES_COM_BIAS_EN_CLKBUFLR_EN,
 			0x17);
+	}
 	wmb(); /* make sure BIAS programming happened */
 
 	io_data = catalog->io->dp_phy;
@@ -306,11 +251,12 @@ static void dp_catalog_ctrl_phy_lane_cfg_v500(struct dp_catalog_ctrl *ctrl,
 static void dp_catalog_ctrl_update_vx_px_v500(struct dp_catalog_ctrl *ctrl,
 		u8 v_level, u8 p_level, bool high)
 {
-	struct dp_catalog *dp_catalog;
 	struct dp_catalog_private_v500 *catalog;
 	struct dp_io_data *io_data;
 	u8 value0, value1, ldo_cfg;
-	int index;
+	u32 phy_version;
+	u32 version;
+	int idx, mode;
 
 	if (!ctrl || !((v_level < MAX_VOLTAGE_LEVELS)
 		&& (p_level < MAX_PRE_EMP_LEVELS))) {
@@ -318,49 +264,67 @@ static void dp_catalog_ctrl_update_vx_px_v500(struct dp_catalog_ctrl *ctrl,
 		return;
 	}
 
-	dp_catalog = container_of(ctrl, struct dp_catalog, ctrl);
+	DP_DEBUG("hw: v=%d p=%d\n", v_level, p_level);
 
 	catalog = dp_catalog_get_priv_v500(ctrl);
 
-	DP_DEBUG("hw: v=%d p=%d\n", v_level, p_level);
-
-	io_data = catalog->io->dp_phy;
-
-	switch (dp_catalog->parser->hw_cfg.phy_mode) {
+	switch (catalog->dpc->parser->hw_cfg.phy_mode) {
 	case DP_PHY_MODE_DP:
 	case DP_PHY_MODE_UNKNOWN:
-		index = TX_DRIVE_MODE_DP;
+		mode = TX_DRIVE_MODE_DP;
 		break;
 	case DP_PHY_MODE_MINIDP:
-		index = TX_DRIVE_MODE_MINIDP;
+		mode = TX_DRIVE_MODE_MINIDP;
 		break;
 	case DP_PHY_MODE_EDP:
 	default:
 		if (!high)
-			index = TX_DRIVE_MODE_LOW_SWING_LOW_HBR;
+			mode = TX_DRIVE_MODE_LOW_SWING_LOW_HBR;
 		else
-			index = TX_DRIVE_MODE_LOW_SWING_HIGH_HBR;
+			mode = TX_DRIVE_MODE_LOW_SWING_HIGH_HBR;
 		break;
 	case DP_PHY_MODE_EDP_HIGH_SWING:
 		if (!high)
-			index = TX_DRIVE_MODE_HIGH_SWING_LOW_HBR;
+			mode = TX_DRIVE_MODE_HIGH_SWING_LOW_HBR;
 		else
-			index = TX_DRIVE_MODE_HIGH_SWING_HIGH_HBR;
+			mode = TX_DRIVE_MODE_HIGH_SWING_HIGH_HBR;
 		break;
 	}
 
-	value0 = vm_voltage_swing[index][v_level][p_level];
-	value1 = vm_pre_emphasis[index][v_level][p_level];
-	ldo_cfg = ldo_config[index];
+	phy_version = dp_catalog_get_dp_phy_version(catalog->dpc);
+
+	io_data = catalog->io->dp_ahb;
+	version = dp_read(DP_HW_VERSION);
+	DP_DEBUG("version: 0x%x\n", version);
+
+	/*
+	 * For DP controller versions >= 1.2.3
+	 */
+	if (version >= 0x10020003 && ctrl->valid_lt_params) {
+		idx = v_level * MAX_VOLTAGE_LEVELS + p_level;
+		if (high) {
+			value0 = ctrl->swing_hbr2_3[idx];
+			value1 = ctrl->pre_emp_hbr2_3[idx];
+		} else {
+			value0 = ctrl->swing_hbr_rbr[idx];
+			value1 = ctrl->pre_emp_hbr_rbr[idx];
+		}
+	} else {
+		value0 = vm_voltage_swing[v_level][p_level];
+		value1 = vm_pre_emphasis[v_level][p_level];
+	}
+
+	if (catalog->dpc->parser->hw_cfg.phy_revision == DP_PHY_REVISION_V2)
+		ldo_cfg = ldo_config_v2[mode];
+	else
+		ldo_cfg = ldo_config_v1[mode];
 
 	/* program default setting first */
 	io_data = catalog->io->dp_ln_tx0;
-	dp_write(TXn_LDO_CONFIG_V500, 0x01);
 	dp_write(TXn_TX_DRV_LVL_V500, 0x17);
 	dp_write(TXn_TX_EMP_POST1_LVL_V500, 0x00);
 
 	io_data = catalog->io->dp_ln_tx1;
-	dp_write(TXn_LDO_CONFIG_V500, 0x01);
 	dp_write(TXn_TX_DRV_LVL_V500, 0x2A);
 	dp_write(TXn_TX_EMP_POST1_LVL_V500, 0x20);
 
