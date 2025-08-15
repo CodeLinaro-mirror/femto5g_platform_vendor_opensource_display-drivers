@@ -25,7 +25,7 @@ void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data, enum 
 	}
 
 	prop_id = HFI_PACK_VERSION(1, 0, prop_id);
-	hfi_cfg.flags = HFI_BUFF_FEATURE_ENABLE;
+	hfi_cfg.flags = HFI_COLOR_LAYER_FEATURE_ENABLE_FLAG;
 	for (int i = 0; i < HFI_CSC_MATRIX_COEFF_SIZE; i++)
 		hfi_cfg.ctm_coeff[i] = data->csc_mv[i];
 
@@ -176,7 +176,7 @@ void hfi_setup_ucsc_cscv1(struct sde_hw_pipe *ctx,
 		return;
 	}
 
-	hfi_cfg.flags = HFI_BUFF_FEATURE_ENABLE;
+	hfi_cfg.flags = HFI_COLOR_LAYER_FEATURE_ENABLE_FLAG;
 	for (int i = 0; i < HFI_UCSC_CSC_MATRIX_COEFF_SIZE; i++)
 		hfi_cfg.ctm_coeff[i] = ucsc_csc->cfg_param_0[i];
 
@@ -214,7 +214,7 @@ void hfi_setup_ucsc_unmultv1(struct sde_hw_pipe *ctx,
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 1, hw_cfg->prop_id);
 	ucsc_unmult = (bool *)(hw_cfg->payload);
 	if (ucsc_unmult && *ucsc_unmult)
-		hfi_cfg = HFI_BUFF_FEATURE_ENABLE;
+		hfi_cfg = HFI_COLOR_LAYER_FEATURE_ENABLE_FLAG;
 
 	ret = hfi_util_u32_prop_helper_add_prop_by_obj(hw_cfg->prop_helper, hw_cfg->prop_id,
 			hw_cfg->obj_id, HFI_VAL_U32, &hfi_cfg, sizeof(u32));
@@ -243,7 +243,7 @@ void hfi_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 0, hw_cfg->prop_id);
 	ucsc_alpha_dither  = (bool *)(hw_cfg->payload);
 	if (ucsc_alpha_dither && *ucsc_alpha_dither)
-		hfi_cfg = HFI_BUFF_FEATURE_ENABLE;
+		hfi_cfg = HFI_COLOR_LAYER_FEATURE_ENABLE_FLAG;
 
 	ret = hfi_util_u32_prop_helper_add_prop_by_obj(hw_cfg->prop_helper, hw_cfg->prop_id,
 			hw_cfg->obj_id, HFI_VAL_U32, &hfi_cfg, sizeof(u32));
