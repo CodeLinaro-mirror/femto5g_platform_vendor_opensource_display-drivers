@@ -4395,9 +4395,11 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 			"conn%u",
 			c_conn->base.base.id);
 
-	rc = hfi_connector_init(connector_type, c_conn);
-	if (rc)
-		goto error_free_conn;
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = hfi_connector_init(connector_type, c_conn);
+		if (rc)
+			goto error_free_conn;
+	}
 
 	rc = sde_connector_get_info(&c_conn->base, &display_info);
 	if (rc)
