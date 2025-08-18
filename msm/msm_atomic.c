@@ -62,17 +62,67 @@ static uint8_t next_injection;
 static uint32_t injection_count;
 #endif
 
+static int atomic_retry_lock_connection_mutex(struct msm_drm_private *priv,
+		struct drm_atomic_state *state)
+{
+	int rc = 0;
+	ktime_t start_time, delta;
+
+	start_time = ktime_get_ns();
+retry:
+#ifdef RANDOM_FAILURE_INJECTION
+	if (!next_injection) {
+		// Generate random number between 10 and 50
+		get_random_bytes(&next_injection, 1);
+		next_injection = (next_injection % 40) + 10;
+	}
+	if (++injection_count >= next_injection) {
+		pr_info("Manual failure injected\n");
+		next_injection = 0;
+		injection_count = 0;
+		state->acquire_ctx->contended =
+				&priv->dev->mode_config.connection_mutex;
+		rc = -EDEADLK;
+	} else
+#endif
+		rc = drm_modeset_lock(&priv->dev->mode_config.connection_mutex,
+				state->acquire_ctx);
+
+	if (rc == -EDEADLK) {
+		delta = ktime_get_ns() - start_time;
+		pr_warn_ratelimited("failed to relock mutex, retry\n");
+		/*
+		 * We are not allowed to backoff from atomic_commit call.
+		 * Just keep trying relock the mutex. Make sure clear contended.
+		 */
+		if (delta < RELOCK_MUTEX_RETRY_LIMIT_US * NSEC_PER_USEC) {
+			state->acquire_ctx->contended = NULL;
+			goto retry;
+		} else {
+			/*
+			 * Bail out, even DRM framework doesn't expect return EDEADLK from
+			 * atomic_check callback, but we haven't done actual commit, so
+			 * most likely is ok to let framework rollback and retry.
+			 */
+			pr_warn("Failed to lock conn_mutex after %uns\n",
+					delta);
+		}
+	} else {
+		WARN_ON(rc < 0);
+	}
+
+	return rc;
+}
 /* block until specified crtcs are no longer pending update, and
  * atomically mark them as pending update
  */
 static int start_atomic(struct msm_drm_private *priv, uint32_t crtc_mask,
 			uint32_t plane_mask, struct drm_atomic_state *state)
 {
-	int ret, rc;
+	int ret;
 	struct list_head *entry;
 	bool conn_mutex_locked = false;
 	bool conn_mutex_unlocked = false;
-	ktime_t start_time, delta;
 	bool masked = false;
 
 	// Check if connection_mutex is locked in the context
@@ -119,49 +169,7 @@ static int start_atomic(struct msm_drm_private *priv, uint32_t crtc_mask,
 	 * between CRTCs, connectors, and encoders.
 	 */
 	if (conn_mutex_unlocked) {
-		start_time = ktime_get_ns();
-retry:
-#ifdef RANDOM_FAILURE_INJECTION
-		if (!next_injection) {
-			// Generate random number between 10 and 50
-			get_random_bytes(&next_injection, 1);
-			next_injection = (next_injection % 40) + 10;
-		}
-		if (++injection_count >= next_injection) {
-			pr_info("Manual failure injected\n");
-			next_injection = 0;
-			injection_count = 0;
-			state->acquire_ctx->contended =
-					&priv->dev->mode_config.connection_mutex;
-			rc = -EDEADLK;
-		} else
-#endif
-			rc = drm_modeset_lock(&priv->dev->mode_config.connection_mutex,
-					state->acquire_ctx);
-		if (rc == -EDEADLK) {
-			delta = ktime_get_ns() - start_time;
-			pr_warn_ratelimited("failed to relock mutex, retry, crtc_mask %X\n",
-					crtc_mask);
-			/*
-			 * We are not allowed to backoff from atomic_commit call.
-			 * Just keep trying relock the mutex. Make sure clear contended.
-			 */
-			if (delta < RELOCK_MUTEX_RETRY_LIMIT_US * NSEC_PER_USEC) {
-				state->acquire_ctx->contended = NULL;
-				goto retry;
-			} else {
-				/*
-				 * Bail out, even DRM framework doesn't expect return EDEADLK from
-				 * atomic_check callback, but we haven't done actual commit, so
-				 * most likely is ok to let framework rollback and retry.
-				 */
-				pr_warn("Failed to lock conn_mutex after %uns, crtc_mask %X\n",
-						delta, crtc_mask);
-				ret = rc;
-			}
-		} else {
-			WARN_ON(rc < 0);
-		}
+		ret = atomic_retry_lock_connection_mutex(priv, state);
 	}
 
 	if (ret && masked) {
@@ -911,8 +919,7 @@ int msm_atomic_commit(struct drm_device *dev,
 	}
 
 	/* Protection for prepare_fence callback */
-	ret = drm_modeset_lock(&state->dev->mode_config.connection_mutex,
-		state->acquire_ctx);
+	ret = atomic_retry_lock_connection_mutex(dev->dev_private, state);
 
 	if (ret)
 		goto err_free;
