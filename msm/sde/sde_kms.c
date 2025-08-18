@@ -2372,7 +2372,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 	void *display, *connector;
 	struct sde_cesta_client *cesta_client;
 	int i, max_encoders;
-	int rc = 0;
+	int rc = 0, connector_poll = 0;
 	u32 dsc_count = 0, mixer_count = 0;
 	u32 max_dp_dsc_count, max_dp_mixer_count;
 	char cesta_client_name[32];
@@ -2421,12 +2421,15 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
+		connector_poll = (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG) ?
+			DRM_CONNECTOR_POLL_HPD : 0;
+
 		connector = sde_connector_init(dev,
 				encoder,
 				0,
 				display,
 				&wb_ops,
-				DRM_CONNECTOR_POLL_HPD,
+				connector_poll,
 				DRM_MODE_CONNECTOR_VIRTUAL, false);
 		if (!IS_ERR_OR_NULL(connector)) {
 			priv->encoders[priv->num_encoders++] = encoder;
@@ -2468,12 +2471,15 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
+		connector_poll = (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG) ?
+			DRM_CONNECTOR_POLL_HPD : 0;
+
 		connector = sde_connector_init(dev,
 					encoder,
 					dsi_display_get_drm_panel(display),
 					display,
 					&dsi_ops,
-					DRM_CONNECTOR_POLL_HPD,
+					connector_poll,
 					DRM_MODE_CONNECTOR_DSI, false);
 		if (!IS_ERR_OR_NULL(connector)) {
 			priv->encoders[priv->num_encoders++] = encoder;
