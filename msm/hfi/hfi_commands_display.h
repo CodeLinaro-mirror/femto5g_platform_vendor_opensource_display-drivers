@@ -313,6 +313,25 @@
  */
 #define HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD                          0x0200000E
 
+/*!
+ * HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL - From Host to DCP, this command tells DCP to modify the
+ *                                          idle timer, see enum hfi_display_idle_timer_control
+ *                                          for more info.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi packet layout                      | Value
+ *----------------------------------------|---------------------------------
+ * hfi_packet.payload_info.type           | HFI_PAYLOAD_U32
+ * hfi_packet.cmd                         | HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL
+ * hfi_packet.flags                       | HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                          | Bits 0:15 carry the display id
+ * hfi_packet.packet_id                   | unique id
+ * hfi_packet.payload[0]                  | enum hfi_display_idle_timer_control
+ */
+#define HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL                        0x0200000F
+
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_H__
