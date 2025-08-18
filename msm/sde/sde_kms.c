@@ -3811,6 +3811,7 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 	struct sde_connector *c_conn;
 	struct drm_crtc_state *crtc_state;
 	struct drm_connector_state *conn_state;
+	struct drm_connector_list_iter iter;
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	int i, ret;
 	u32 frame_trigger;
@@ -3888,14 +3889,20 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 		sde_kms->frame_trigger_state = MSM_DISP_OP_HFI;
 
 		if (sde_kms->hfi_session_start) {
+			int wb_idx = 0;
+			int dsi_idx = 0;
 			ret = sde_kms_setup_hfi(priv, dev);
 			if (ret) {
 				SDE_ERROR("HFI setup failed\n");
 				return -EINVAL;
 			}
 
+			hfi_kms_send_trace_cfg(sde_kms->hfi_kms, HFI_TRUE);
 			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
 			hfi_kms_get_catalog_data(sde_kms->hfi_kms);
+			ret = sde_dbg_setup(sde_kms->dev->dev);
+			if (ret)
+				SDE_ERROR("error with debug setup ret: %d\n", ret);
 
 			drm_for_each_plane(plane, dev)
 				sde_plane_post_init(plane);
@@ -3904,6 +3911,21 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 			ret = _sde_kms_send_reg_dma_last_cmd_hfi(sde_kms);
 			if (ret)
 				SDE_ERROR("failed to send last command LUT DMA buffer to HFI\n");
+
+			drm_connector_list_iter_begin(dev, &iter);
+			drm_for_each_connector_iter(conn, &iter) {
+				struct sde_connector *sde_conn;
+
+				sde_conn = to_sde_connector(conn);
+
+				if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+					sde_connector_setup_obj_id(conn,
+						sde_kms->hfi_kms->catalog->wb_indices[wb_idx++]);
+				else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+					sde_connector_setup_obj_id(conn,
+						sde_kms->hfi_kms->catalog->dsi_indices[dsi_idx++]);
+			}
+			drm_connector_list_iter_end(&iter);
 
 			sde_kms->hfi_session_start = false;
 		}
@@ -6336,10 +6358,12 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	rc = hfi_kms_init(sde_kms);
-	if (rc) {
-		kfree(sde_kms);
-		return ERR_PTR(rc);
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = hfi_kms_init(sde_kms);
+		if (rc) {
+			kfree(sde_kms);
+			return ERR_PTR(rc);
+		}
 	}
 
 	msm_kms_init(&sde_kms->base, &kms_funcs);

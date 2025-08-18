@@ -591,8 +591,8 @@ int sde_hw_rc_setup_mask(struct sde_hw_dspp *hw_dspp, void *cfg)
 	} else {
 		SDE_DEBUG("partial frame update\n");
 		sde_kms_rect_merge_rectangles(last_roi_list, &merged_roi);
+		SDE_EVT32(RC_IDX(hw_dspp), last_roi_list->num_rects);
 	}
-	SDE_EVT32(RC_IDX(hw_dspp), last_roi_list->num_rects);
 
 	rc = _sde_hw_rc_get_ajusted_roi(hw_cfg, &merged_roi, &rc_roi);
 	if (rc) {

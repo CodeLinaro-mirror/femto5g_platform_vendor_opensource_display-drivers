@@ -971,6 +971,11 @@ static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
 {
 	int i;
 
+	if (!mode || !mode->priv_info) {
+		DSI_ERR("Invalid params %d\n", !mode);
+		return;
+	}
+
 	panel_timing_caps->panel_index = mode->mode_idx;
 	panel_timing_caps->clockrate[0] = HFI_VAL_L32(mode->timing.clk_rate_hz);
 	panel_timing_caps->clockrate[1] = HFI_VAL_H32(mode->timing.clk_rate_hz);
@@ -990,9 +995,11 @@ static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
 	panel_timing_caps->top_index = 0;
 	hfi_panel_fill_dcs_cmds(display, mode->priv_info, panel_timing_caps, sde_vaddr, hfi_vaddr);
 	panel_timing_caps->phy_timings_payload.count = mode->priv_info->phy_timing_len;
-	for (i = 0; i < NUM_VARIABLE_DPHY_TIMINGS; i++)
-		panel_timing_caps->phy_timings_payload.dphy_timings[i] =
-			mode->priv_info->phy_timing_val[i];
+	if (mode->priv_info->phy_timing_val) {
+		for (i = 0; i < NUM_VARIABLE_DPHY_TIMINGS; i++)
+			panel_timing_caps->phy_timings_payload.dphy_timings[i] =
+				mode->priv_info->phy_timing_val[i];
+	}
 }
 
 static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
