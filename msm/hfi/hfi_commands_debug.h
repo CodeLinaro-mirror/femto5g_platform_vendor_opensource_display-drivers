@@ -357,6 +357,23 @@
  */
 #define HFI_COMMAND_DEBUG_TRACE_CFG                                  0xFF00000E
 
+/*!
+ * HFI_COMMAND_DEBUG_IDLE_TIMEOUT is sent from Host to DCP to modify the duration of Idle timeout
+ * for all displays associated with device.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi packet layout                   | Value
+ *-------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (type)      | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                      | HFI_COMMAND_DEBUG_IDLE_TIMEOUT
+ * hfi_packet.flags                    | HFI_TX_FLAGS_RESPONSE_REQUIRED
+ * hfi_packet.payload[0]               | uint32 device_id
+ * hfi_packet.payload[1]               | uint32 idle_timeout_ms
+ */
+#define HFI_COMMAND_DEBUG_IDLE_TIMEOUT                               0xFF00000F
+
 #define HFI_COMMAND_DEBUG_END                                        0xFFFFFFFF
 
 #endif // __H_HFI_COMMANDS_DEBUG_H__
