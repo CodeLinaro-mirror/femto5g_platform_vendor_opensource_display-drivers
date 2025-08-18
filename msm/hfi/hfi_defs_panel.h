@@ -368,4 +368,30 @@ struct hfi_panel_dcs_cmd_buffer_info {
 	u32 reserve2;
 };
 
+/*!
+ * @struct hfi_panel_compression_rc_override
+ * @brief Panel compression RC override values
+ *
+ * @var min_qp
+ *   set of 15 min QP values
+ * @var padding1
+ *   first padding byte
+ * @var max_qp
+ *   set of 15 max QP values
+ * @var padding2
+ *   second padding byte
+ * @var offsets
+ *   set of 15 rc offset values
+ * @var padding3
+ *   third padding byte
+ */
+struct hfi_panel_compression_rc_override {
+	u8 min_qp[15];
+	u8 padding1;
+	u8 max_qp[15];
+	u8 padding2;
+	u8 offsets[15];
+	u8 padding3;
+};
+
 #endif // __H_HFI_DEFS_PANEL_H__
