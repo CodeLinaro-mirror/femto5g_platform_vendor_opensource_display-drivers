@@ -509,10 +509,19 @@ int dp_connector_get_info(struct drm_connector *connector,
 
 	display->get_display_type(display, &display_type);
 	if (display_type) {
-		if (!strcmp(display_type, "primary"))
+		if (!strcmp(display_type, "primary")) {
+			if (display->ctl_op_sync) {
+				info->ctl_op_sync = true;
+				info->is_master = true;
+			}
 			conn_disp_type = SDE_CONNECTOR_PRIMARY;
-		else if (!strcmp(display_type, "secondary"))
+		} else if (!strcmp(display_type, "secondary")) {
+			if (display->ctl_op_sync) {
+				info->ctl_op_sync = true;
+				info->is_master = false;
+			}
 			conn_disp_type = SDE_CONNECTOR_SECONDARY;
+		}
 	}
 
 	info->num_of_h_tiles = 1;
@@ -679,6 +688,11 @@ int dp_connector_set_info_blob(struct drm_connector *connector,
 
 	if ((dp_display->is_edp) && (dp_display->ext_hpd_en))
 		sde_kms_info_add_keystr(info, "ext bridge hpd support", "true");
+
+	if (dp_display->ctl_op_sync) {
+		sde_kms_info_add_keystr(info, "has_disp_in_other_core", "true");
+		sde_kms_info_add_keystr(info, "dpu_ctl_op_sync", "true");
+	}
 
 	return 0;
 }

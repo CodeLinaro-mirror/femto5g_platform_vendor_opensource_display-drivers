@@ -2246,6 +2246,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 
 	dp->dp_display.is_mst_supported = dp->parser->has_mst;
 	dp->dp_display.dsc_cont_pps = dp->parser->dsc_continuous_pps;
+	dp->dp_display.ctl_op_sync = dp->parser->ctl_op_sync;
 
 	dp->dp_display.no_backlight_support = dp->parser->no_backlight_support;
 	dp->dp_display.ext_hpd_en = dp->parser->ext_hpd_en;
