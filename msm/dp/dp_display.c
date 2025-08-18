@@ -423,7 +423,7 @@ static void dp_display_check_source_hdcp_caps(struct dp_display_private *dp)
 		if (!fd || !ops)
 			continue;
 
-		if (ops->set_mode && ops->set_mode(fd, dp->mst.mst_active))
+		if (ops->set_mode && ops->set_mode(fd, dp->mst.mst_active, dp->cell_idx))
 			continue;
 
 		if (!(dp->hdcp.source_cap & dev->ver) &&
@@ -3995,7 +3995,6 @@ static int dp_display_edp_detect(struct dp_display *dp_display)
 	dp_display_state_add(DP_STATE_CONNECT_NOTIFIED);
 	dp_display_state_remove(DP_STATE_DISCONNECT_NOTIFIED);
 
-	dp->power->edp_panel_set_gpio(dp->power, DP_GPIO_EDP_VCC_EN, false);
 end:
 	mutex_unlock(&dp->session_lock);
 	return rc;
@@ -4144,6 +4143,20 @@ int dp_display_get_displays(struct drm_device *dev, void **displays, int count)
 			displays[j] = g_dp_display[i];
 			j++;
 		}
+	}
+
+	return j;
+}
+
+int edp_display_get_num_of_displays(struct drm_device *dev)
+{
+	int i, j;
+
+	for (i = 0, j = 0; i < MAX_DP_ACTIVE_DISPLAY; i++) {
+		if (!g_dp_display[i])
+			break;
+		if ((g_dp_display[i]->drm_dev == dev) && g_dp_display[i]->is_edp)
+			j++;
 	}
 
 	return j;

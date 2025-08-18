@@ -363,7 +363,15 @@ struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
 int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 {
 	struct hfi_connector *hfi_conn = NULL;
+	struct msm_display_info display_info;
+	int rc = 0;
+	struct sde_kms *sde_kms = sde_connector_get_kms(&c_conn->base);
+	struct hfi_kms *hfi_kms;
 
+	if (!sde_kms)
+		return -EINVAL;
+
+	hfi_kms = sde_kms->hfi_kms;
 	hfi_conn = kvzalloc(sizeof(*hfi_conn), GFP_KERNEL);
 	if (!hfi_conn) {
 		SDE_ERROR("[%u] failed to allocate memory for hfi connector\n", connector_type);
@@ -386,9 +394,19 @@ int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 		goto free_kv;
 	}
 
+	rc = sde_connector_get_info(&c_conn->base, &display_info);
+	if (rc) {
+		SDE_ERROR("failed to get display info %d\n", rc);
+		goto free_kv;
+	}
+
+	if (display_info.display_type == SDE_CONNECTOR_PRIMARY)
+		hfi_kms->primary_connector = hfi_conn;
+
 	hfi_conn->sde_base = c_conn;
 	c_conn->hfi_conn = hfi_conn;
-	return 0;
+
+	return rc;
 
 free_kv:
 	kfree(hfi_conn->base_props);

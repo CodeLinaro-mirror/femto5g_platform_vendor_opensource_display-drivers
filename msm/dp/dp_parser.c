@@ -193,6 +193,9 @@ static int dp_parser_misc(struct dp_parser *parser)
 	parser->ext_hpd_en = of_property_read_bool(of_node,
 			"qcom,dp-ext-hpd");
 
+	parser->max_fps_mode_en = of_property_read_bool(of_node,
+			"qcom,dp-max-fps-mode-en");
+
 	return 0;
 }
 

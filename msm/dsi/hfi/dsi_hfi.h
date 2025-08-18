@@ -38,9 +38,13 @@ struct dsi_value_to_prop_lookup {
  * struct dsi_panel_init_caps - contains properties to be sent as part of
  * HFI_COMMAND_PANEL_INIT_PANEL_CAPS
  * @num_timing_modes:               HFI_PROPERTY_PANEL_TIMING_MODE_COUNT
+ * @dcs_cmd_tx_buf_dva:             HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_DVA
+ * @dcs_cmd_tx_buf_iova:            HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA
  */
 struct dsi_panel_init_caps {
 	u32 num_timing_modes;
+	u64 dcs_cmd_tx_buf_dva;
+	u64 dcs_cmd_tx_buf_iova;
 };
 
 /**
@@ -297,5 +301,17 @@ int dsi_hfi_misr_setup(struct dsi_display *display);
  * Return: error code.
  */
 int dsi_hfi_misr_read(struct dsi_display *display);
+
+/**
+ * dsi_hfi_host_transfer_sub() - transfers DSI commands from host to DCP
+ * @host:                pointer to the DSI mipi host device
+ * @cmd:                 DSI command to be transferred
+ *
+ * This function handles the transfer of DSI commands to the Display Control
+ * Processor (DCP) via the Hardware-Firmware Interface (HFI).
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd);
 
 #endif
