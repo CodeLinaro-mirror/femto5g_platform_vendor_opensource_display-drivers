@@ -27,6 +27,21 @@ struct dp_display_info {
 	u32 stream_cnt;
 };
 
+/**
+ * struct dp_display_pair - Structure to track master and slave eDP displays
+ * @m_pll_display: Pointer to the master eDP display (eDP1)
+ * @s_pll_display: Pointer to the slave eDP display (eDP0)
+ *
+ * This structure is used to synchronize operations between primary and
+ * secondary eDP displays, particularly for shared PLL operations.
+ */
+struct dp_display_pair {
+	struct dp_display *m_pll_display; /* eDP1 */
+	struct dp_display *s_pll_display;  /* eDP0 */
+};
+
+extern struct dp_display_pair g_edp_pair;
+
 struct dp_mst_drm_cbs {
 	void (*hpd)(void *display, bool hpd_status);
 	void (*hpd_irq)(void *display);
