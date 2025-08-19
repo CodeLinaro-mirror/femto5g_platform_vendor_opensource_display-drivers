@@ -569,8 +569,13 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 			c->ops.reset_mdnie_art[MSM_DISP_OP_HWIO] = sde_reset_mdnie_art;
 			c->ops.setup_mdnie_psr[MSM_DISP_OP_HWIO] = sde_setup_mdnie_psr;
 
-			if (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x0))
+			if (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
 				c->ops.setup_mdnie[MSM_DISP_OP_HWIO] = reg_dmav1_setup_mdnie_v2;
+
+				c->ops.setup_mdnie[MSM_DISP_OP_HFI] = reg_dmav1_setup_mdnie_v2;
+				c->ops.setup_mdnie_art[MSM_DISP_OP_HFI] = hfi_setup_mdnie_art_v1;
+				c->ops.reset_mdnie_art[MSM_DISP_OP_HFI] = NULL;
+			}
 		}
 
 		if (c->cap->sblk->aiqe.ssrc_supported) {
@@ -579,6 +584,13 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 			c->ops.setup_aiqe_ssrc_config[MSM_DISP_OP_HWIO] =
 						reg_dmav1_setup_aiqe_ssrc_config_v1;
 			c->ops.setup_aiqe_ssrc_data[MSM_DISP_OP_HWIO] =
+						reg_dmav1_setup_aiqe_ssrc_data_v1;
+
+			c->ops.validate_aiqe_ssrc_data[MSM_DISP_OP_HFI] =
+						sde_validate_aiqe_ssrc_data_v1;
+			c->ops.setup_aiqe_ssrc_config[MSM_DISP_OP_HFI] =
+						reg_dmav1_setup_aiqe_ssrc_config_v1;
+			c->ops.setup_aiqe_ssrc_data[MSM_DISP_OP_HFI] =
 						reg_dmav1_setup_aiqe_ssrc_data_v1;
 		}
 

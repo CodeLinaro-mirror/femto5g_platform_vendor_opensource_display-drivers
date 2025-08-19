@@ -204,6 +204,12 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF2] = HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER,
 	[SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF3] = HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER,
 	[SDE_CP_CRTC_DSPP_RGB_HIST_CTRL] = HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CTRL,
+	[SDE_CP_CRTC_DSPP_AI_SCALER] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_AI_SCALER,
+	[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG,
+	[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA,
+	[SDE_CP_CRTC_DSPP_MDNIE] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE,
+	[SDE_CP_CRTC_DSPP_MDNIE_ART] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART,
+	[SDE_CP_CRTC_DSPP_AIQE_ABC] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC,
 };
 #endif
 
@@ -5830,8 +5836,10 @@ void _sde_cp_check_mdnie_art_done(struct drm_crtc *crtc)
 			hw_dspp = sde_crtc->mixers[i].hw_dspp;
 			if (!hw_dspp || i >= DSPP_MAX)
 				goto exit;
-			else if (hw_dspp->ops.reset_mdnie_art[disp_op]) {
-				hw_dspp->ops.reset_mdnie_art[disp_op](hw_dspp);
+			else {
+				if (hw_dspp->ops.reset_mdnie_art[disp_op])
+					hw_dspp->ops.reset_mdnie_art[disp_op](hw_dspp);
+
 				aiqe_deregister_client(FEATURE_MDNIE_ART,
 							&sde_crtc->aiqe_top_level);
 			}

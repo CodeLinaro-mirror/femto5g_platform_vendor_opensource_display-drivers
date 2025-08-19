@@ -1177,3 +1177,44 @@ void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc, void *cfg)
 		return;
 	}
 }
+
+void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_mdnie_art *art_payload = NULL;
+	u32 prop_id, ret;
+	u32 art_value = 0;
+
+	if (!ctx || !cfg || (hw_cfg->len != sizeof(struct drm_msm_mdnie_art) && hw_cfg->payload)) {
+		DRM_ERROR("ctx %pK hw_cfg %pK payload %pK size %d expected sz %zd\n",
+			ctx, hw_cfg, ((hw_cfg) ? hw_cfg->payload : NULL),
+			((hw_cfg) ? hw_cfg->len : 0), sizeof(struct drm_msm_mdnie_art));
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	art_payload = (struct drm_msm_mdnie_art *)(hw_cfg->payload);
+
+	prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	if (art_payload) {
+		art_value =  art_payload->param;
+	} else {
+		DRM_DEBUG_DRIVER("disable art feature\n");
+		art_value =  0;
+	}
+
+	ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+			prop_id, HFI_VAL_U32,
+			&art_value,
+			sizeof(u32));
+	if (ret)
+		SDE_ERROR("Failed to add hfi prop for mdnie art %d ret %d\n",
+			prop_id, ret);
+	else
+		SDE_DEBUG("feature %d: submitted to prop_helper\n",
+			HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART);
+}

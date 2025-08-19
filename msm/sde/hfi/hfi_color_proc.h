@@ -192,6 +192,14 @@ int hfi_setup_dspp_rgb_hist_ctrlv2(struct sde_hw_dspp *hw_dspp, void *data);
  */
 void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc, void *cfg);
 
+/**
+ * hfi_setup_mdnie_art_v1 - api to setup mdnie art programming
+ * @ctx: pointer to dspp object.
+ * @cfg: Pointer to sde_hw_cp_cfg.
+ * @aiqe_top: Pointer to aiqe top level structure
+ */
+void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
+
 #else
 
 void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
@@ -295,6 +303,10 @@ int hfi_setup_dspp_rgb_hist_ctrlv2(struct sde_hw_dspp *hw_dspp, void *data)
 }
 
 void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc, void *cfg)
+{
+}
+
+void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 {
 }
 
