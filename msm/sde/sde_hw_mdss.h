@@ -56,6 +56,7 @@ enum sde_format_flags {
 	SDE_FORMAT_FLAG_LOSSY_8_5_BIT,
 	SDE_FORMAT_FLAG_LOSSY_2_1_BIT,
 	SDE_FORMAT_FLAG_CAC_BIT,
+	SDE_FORMAT_FLAG_DMA_BIT,
 	SDE_FORMAT_FLAG_BIT_MAX,
 };
 
@@ -67,6 +68,7 @@ enum sde_format_flags {
 #define SDE_FORMAT_FLAG_LOSSY_8_5	BIT(SDE_FORMAT_FLAG_LOSSY_8_5_BIT)
 #define SDE_FORMAT_FLAG_LOSSY_2_1	BIT(SDE_FORMAT_FLAG_LOSSY_2_1_BIT)
 #define SDE_FORMAT_FLAG_CAC		BIT(SDE_FORMAT_FLAG_CAC_BIT)
+#define SDE_FORMAT_FLAG_DMA		BIT(SDE_FORMAT_FLAG_DMA_BIT)
 #define SDE_FORMAT_IS_YUV(X)		\
 	(test_bit(SDE_FORMAT_FLAG_YUV_BIT, (X)->flag))
 #define SDE_FORMAT_IS_DX(X)		\
@@ -92,6 +94,8 @@ enum sde_format_flags {
 	(test_bit(SDE_FORMAT_FLAG_FP16_BIT, (X)->flag))
 #define SDE_FORMAT_IS_CAC_FETCH(X) \
 	(test_bit(SDE_FORMAT_FLAG_CAC_BIT, (X)->flag))
+#define SDE_FORMAT_IS_DPU_DMA(X) \
+	(test_bit(SDE_FORMAT_FLAG_DMA_BIT, (X)->flag))
 
 #define MDP_TICK_COUNT                    16
 #define XO_CLK_RATE                       19200
