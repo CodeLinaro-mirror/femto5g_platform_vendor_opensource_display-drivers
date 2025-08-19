@@ -4320,6 +4320,10 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 
 	c_conn->conn_id = 0;
 
+	rc = hfi_connector_init(connector_type, c_conn);
+	if (rc)
+		goto error_free_conn;
+
 	memset(&display_info, 0, sizeof(display_info));
 
 	rc = drm_connector_init(dev,
@@ -4341,7 +4345,6 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	c_conn->lp_mode = 0;
 	c_conn->last_panel_power_mode = SDE_MODE_DPMS_ON;
 	c_conn->twm_en = false;
-	atomic_set(&c_conn->ssr_notify_enabled, 0);
 
 	sde_kms = to_sde_kms(priv->kms);
 	if (sde_kms->vbif[VBIF_NRT]) {
@@ -4372,10 +4375,6 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 			SDE_CONNECTOR_NAME_SIZE,
 			"conn%u",
 			c_conn->base.base.id);
-
-	rc = hfi_connector_init(connector_type, c_conn);
-	if (rc)
-		goto error_free_conn;
 
 	rc = sde_connector_get_info(&c_conn->base, &display_info);
 	if (rc)
@@ -4542,15 +4541,6 @@ int sde_connector_register_custom_event(struct sde_kms *kms,
 		ret = _sde_conn_setup_recovery_event(conn_drm, val);
 		sde_dbg_update_dump_mode(val);
 		break;
-	case DRM_EVENT_SSR:
-		if (!conn_drm) {
-			SDE_ERROR("invalid connector\n");
-			return -EINVAL;
-		}
-		c_conn = to_sde_connector(conn_drm);
-		atomic_set(&c_conn->ssr_notify_enabled, (val ? 1 : 0));
-		ret = 0;
-		break;
 	default:
 		break;
 	}
@@ -4561,8 +4551,7 @@ int sde_connector_event_notify(struct drm_connector *connector, uint32_t type,
 		uint32_t len, uint32_t val)
 {
 	struct drm_event event;
-	struct sde_connector *c_conn;
-	int ret = 0;
+	int ret;
 
 	if (!connector) {
 		SDE_ERROR("invalid connector\n");
@@ -4575,11 +4564,7 @@ int sde_connector_event_notify(struct drm_connector *connector, uint32_t type,
 	case DRM_EVENT_PANEL_DEAD:
 	case DRM_EVENT_SDE_HW_RECOVERY:
 	case DRM_EVENT_MISR_SIGN:
-		break;
-	case DRM_EVENT_SSR:
-		c_conn = to_sde_connector(connector);
-		if (!atomic_read(&c_conn->ssr_notify_enabled))
-			return 0;
+		ret = 0;
 		break;
 	default:
 		SDE_ERROR("connector %d, Unsupported event %d\n",

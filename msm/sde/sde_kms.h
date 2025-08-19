@@ -1016,12 +1016,6 @@ static inline int sde_kms_set_disp_op(struct sde_kms *sde_kms, enum msm_disp_op 
 }
 
 /*
- * sde_kms_reinit_device_lut_dma - function to set lut dma configuration to firmware.
- * @sde_kms: Pointer to sde kms object
- */
-int sde_kms_reinit_device_lut_dma(struct sde_kms *sde_kms);
-
-/*
  * sde_kms_suspend_helper - helper function to suspend all active displays
  * @sde_kms: Pointer to sde kms object
  */

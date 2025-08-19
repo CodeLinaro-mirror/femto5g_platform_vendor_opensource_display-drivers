@@ -184,170 +184,6 @@ static int hfi_kms_process_cmd_buf(struct hfi_client_t *client, struct hfi_cmdbu
 	return rc;
 }
 
-static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
-{
-	int rc;
-	struct msm_drm_private *priv;
-	struct dss_module_power *mp;
-	struct sde_power_handle *phandle;
-	struct hfi_kms *hfi_kms;
-	struct hfi_connector *hfi_conn;
-	struct sde_kms *sde_kms;
-	struct drm_device *ddev;
-
-	if (!hfi_client || !hfi_client->priv) {
-		SDE_ERROR("invalid params\n");
-		return -EINVAL;
-	}
-
-	hfi_kms = (struct hfi_kms *)hfi_client->priv;
-
-	hfi_conn = hfi_kms->primary_connector;
-	if (!hfi_conn) {
-		SDE_ERROR("hfi_conn is null\n");
-		return -EINVAL;
-	}
-	sde_kms = hfi_kms->base;
-	if (!sde_kms) {
-		SDE_ERROR("sde_kms is null\n");
-		return -EINVAL;
-	}
-
-	ddev = sde_kms->dev;
-	if (!ddev || !ddev->dev_private) {
-		SDE_ERROR("ddev or dev priv is null\n");
-		return -EINVAL;
-	}
-
-	priv = ddev->dev_private;
-	phandle = &priv->phandle;
-	mp = &phandle->mp;
-
-	atomic_set(&hfi_kms->ssr_in_progress, 1);
-
-	SDE_DEBUG("process ssr start called\n");
-
-	if (!hfi_conn->sde_base) {
-		SDE_ERROR("sde_base is null\n");
-		return -EINVAL;
-	}
-	/* Notify SSR start event to user mode driver */
-	rc = sde_connector_event_notify(&hfi_conn->sde_base->base, DRM_EVENT_SSR,
-				sizeof(uint8_t), SDE_SSR_START);
-	if (rc)
-		SDE_ERROR("[WARNING] Failed to notify ssr start event to user mode driver\n");
-
-	/* Enable MMCX vote for HLOS driver */
-	if (!mp->vreg_config) {
-		SDE_ERROR("mp->vreg_config is null\n");
-		return -EINVAL;
-	}
-	rc = msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, true);
-	if (rc) {
-		SDE_ERROR("failed to enable vregs rc=%d\n", rc);
-		return rc;
-	}
-
-	/* Suspend all active displays */
-	rc = sde_kms_suspend_helper(sde_kms);
-	if (rc) {
-		SDE_ERROR("failed sde_kms_suspend_helper rc=%d\n", rc);
-		return rc;
-	}
-
-	/* Release all command buffers associated with DPU driver hfi client */
-	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
-	if (rc)
-		SDE_ERROR("[WARNING] Failed to release command buffers\n");
-
-	return rc;
-}
-
-static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
-{
-	int rc;
-	struct msm_drm_private *priv;
-	struct dss_module_power *mp;
-	struct hfi_kms *hfi_kms;
-	struct hfi_connector *hfi_conn;
-	struct sde_kms *sde_kms;
-	struct drm_device *ddev;
-
-	if (!hfi_client) {
-		SDE_ERROR("invalid params\n");
-		return -EINVAL;
-	}
-
-	if (!hfi_client->priv) {
-		SDE_ERROR("invalid client private data\n");
-		return -EINVAL;
-	}
-
-	hfi_kms = (struct hfi_kms *)hfi_client->priv;
-	hfi_conn = hfi_kms->primary_connector;
-	sde_kms = hfi_kms->base;
-	ddev = sde_kms->dev;
-
-	if (!ddev || !ddev->dev_private) {
-		SDE_ERROR("invalid drm device / drm device priv\n");
-		return -EINVAL;
-	}
-
-	priv = ddev->dev_private;
-	mp = &priv->phandle.mp;
-
-	/* re configure fw with lut dma configs */
-	rc = sde_kms_reinit_device_lut_dma(sde_kms);
-	if (rc) {
-		SDE_ERROR("failed lut dma configuration rc=%d\n", rc);
-		return rc;
-	}
-
-	/* Resume all connected displays */
-	rc = sde_kms_resume_helper(sde_kms);
-	if (rc) {
-		SDE_ERROR("failed sde_kms_suspend_helper rc=%d\n", rc);
-		return rc;
-	}
-
-	/* Disable MMCX vote for HLOS driver */
-	rc = msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, false);
-	if (rc)
-		SDE_ERROR("[WARNING] failed to disable vregs rc=%d\n", rc);
-
-	/* Notify SSR end event to user mode driver */
-	rc = sde_connector_event_notify(&hfi_conn->sde_base->base, DRM_EVENT_SSR,
-				sizeof(uint8_t), SDE_SSR_END);
-	if (rc)
-		SDE_ERROR("[WARNING] Failed to notify ssr end event to user mode driver\n");
-
-	atomic_set(&hfi_kms->ssr_in_progress, 0);
-
-	return rc;
-}
-
-static int hfi_kms_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
-			bool blocking)
-{
-	if (!hfi_client) {
-		DSI_ERR("Invalid client\n");
-		return -EINVAL;
-	}
-
-	SDE_DEBUG("%s: called\n", __func__);
-
-	switch (event) {
-	case HFI_ADAPTER_EVENT_SSR_START:
-		return _hfi_kms_process_ssr_start(hfi_client);
-	case HFI_ADAPTER_EVENT_SSR_END:
-		return _hfi_kms_process_ssr_end(hfi_client);
-	default:
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 static const struct sde_kms_hal_funcs hfi_hal_funcs = {
 	.prepare_commit[MSM_DISP_OP_HFI] = hfi_kms_prepare_commit,
 	.commit[MSM_DISP_OP_HFI] = hfi_kms_commit,
@@ -363,8 +199,6 @@ static int _hfi_kms_setup_hfi(struct hfi_adapter_t *adapter, struct hfi_kms *hfi
 
 	hfi_kms->hfi_adapter = adapter;
 	hfi_kms->hfi_client.process_cmd_buf = hfi_kms_process_cmd_buf;
-	hfi_kms->hfi_client.process_event = hfi_kms_process_event;
-	hfi_kms->hfi_client.priv = (void *)hfi_kms;
 
 	ret = hfi_adapter_client_register(hfi_kms->hfi_adapter, &hfi_kms->hfi_client);
 	if (ret) {
@@ -426,7 +260,6 @@ int hfi_kms_reg_client(struct drm_device *dev)
 		SDE_ERROR("Invalid sde_kms");
 		return -HFI_ERROR;
 	}
-	atomic_set(&sde_kms->hfi_kms->ssr_in_progress, 0);
 
 	ret = _hfi_kms_setup_hfi(hfi_drv_priv->hfi_adapter, sde_kms->hfi_kms);
 	if (ret) {

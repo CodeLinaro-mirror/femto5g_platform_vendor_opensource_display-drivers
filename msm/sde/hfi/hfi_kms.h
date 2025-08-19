@@ -10,7 +10,6 @@
 #include "hfi_adapter.h"
 #include "hfi_msm_drv.h"
 #include "linux/completion.h"
-#include "hfi_connector.h"
 
 #define SDE_MAX_SSPP_COUNT  16
 
@@ -78,9 +77,6 @@ struct hfi_catalog_base {
  * @device_init_listener: HFI listener object for catalog parsing
  * @resource_vote_listener: HFI listener object for resource vote
  * @cat_init_done: atomic variable tracking catalog parse status
- * @catalog: structure holding parsed catalog data
- * @primary_connector: primary connector handle
- * @ssr_in_progress: atomic variable tracking ssr progress
  */
 struct hfi_kms {
 	struct sde_kms *base;
@@ -90,8 +86,6 @@ struct hfi_kms {
 	struct hfi_prop_listener resource_vote_listener;
 	atomic_t cat_init_done;
 	struct hfi_catalog_base *catalog;
-	struct hfi_connector *primary_connector;
-	atomic_t ssr_in_progress;
 };
 
 /**

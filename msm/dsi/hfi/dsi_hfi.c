@@ -52,82 +52,6 @@ end:
 	return rc;
 }
 
-static int _dsi_display_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
-{
-	struct dsi_display *display;
-	struct dsi_display_hfi *display_hfi;
-	int rc = 0;
-
-	display = (struct dsi_display *)hfi_client->priv;
-	if (!display) {
-		DSI_ERR("invalid display\n");
-		return -EINVAL;
-	}
-
-	display_hfi = display->dsi_hfi_info;
-	if (!display_hfi) {
-		DSI_ERR("invalid display hfi handle\n");
-		return -EINVAL;
-	}
-
-	if (!display_hfi->shared_addr_map)
-		DSI_DEBUG("shared addr map is null\n");
-	else if (display_hfi->shared_addr_map->remote_addr ||
-			display_hfi->shared_addr_map->local_addr)
-		hfi_adapter_buffer_dealloc(display_hfi->shared_addr_map);
-
-	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
-	if (rc) {
-		DSI_ERR("failed to release command buffers, rc: %d\n", rc);
-		return rc;
-	}
-
-	return rc;
-}
-
-static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
-{
-	struct dsi_display *display;
-	int rc = 0;
-
-	display = (struct dsi_display *)hfi_client->priv;
-	if (!display) {
-		DSI_ERR("invalid display\n");
-		return -EINVAL;
-	}
-
-	rc = dsi_hfi_panel_init(display, display->panel);
-	if (rc) {
-		DSI_ERR("failed to send panel init to DCP: %d", rc);
-		return rc;
-	}
-
-	return rc;
-}
-
-int dsi_hfi_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
-			bool blocking)
-{
-	if (!hfi_client) {
-		DSI_ERR("invalid client\n");
-		return -EINVAL;
-	}
-
-	DSI_DEBUG("%s: called\n", __func__);
-
-	switch (event) {
-	case HFI_ADAPTER_EVENT_SSR_START:
-		return _dsi_display_hfi_process_ssr_start(hfi_client);
-	case HFI_ADAPTER_EVENT_SSR_END:
-		return _dsi_display_hfi_process_ssr_end(hfi_client);
-	default:
-		DSI_ERR("%s: invalid event type: %d\n", __func__, event);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 int dsi_hfi_process_cmd_buf(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t *cmd_buf)
 {
 	int rc = 0;
@@ -391,8 +315,6 @@ int dsi_display_hfi_setup_hfi(struct dsi_display *display, struct hfi_adapter_t 
 		return -ENOMEM;
 
 	display_hfi->hfi_client->process_cmd_buf = dsi_hfi_process_cmd_buf;
-	display_hfi->hfi_client->process_event = dsi_hfi_process_event;
-	display_hfi->hfi_client->priv = (void *) display;
 
 	rc = hfi_adapter_client_register(hfi_host, display_hfi->hfi_client);
 	if (rc) {
@@ -1358,7 +1280,6 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		DSI_ERR("failed to allocate addr_map");
 		goto error_unmap_dva;
 	}
-	display_hfi->shared_addr_map = addr_map;
 
 	addr_map->size = SZ_4K;
 

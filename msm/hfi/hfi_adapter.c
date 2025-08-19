@@ -9,7 +9,6 @@
 #include <linux/atomic.h>
 #include <linux/delay.h>
 #include <linux/ktime.h>
-#include "hfi_interface.h"
 
 #define HFI_AD_INFO(fmt, ...)  \
 	pr_info("[hfi_ad_info] %s:%d " fmt, __func__, __LINE__, ##__VA_ARGS__)
@@ -132,7 +131,7 @@ static struct hfi_buffer_pool *get_avail_buffer(struct hfi_adapter_t *host)
 	return ret_pool;
 }
 
-static void _process_cb_cmd_buf_work(struct kthread_work *work)
+static void _process_cb_buffer_work(struct kthread_work *work)
 {
 	struct list_head *ctx_pos;
 	struct hfi_client_t *ctx;
@@ -140,22 +139,20 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 	u32 obj_id_rx = MAX_U32;
 	int client_id;
 	struct hfi_adapter_t *host;
-	struct callback_work *cb_cmd_buf_work;
+	struct callback_work *cb_work;
 	struct hfi_core_cmds_buf_desc *rx_buffer;
 	struct hfi_header *virtio_hdr;
 	struct hfi_buffer_pool *pool;
 	bool client_found = false;
 	int i = 0;
 
-	if (!work) {
-		HFI_AD_ERROR("%s null work\n", __func__);
+	if (!work)
 		return;
-	}
 
-	cb_cmd_buf_work = container_of(work, struct callback_work, work);
-	host = cb_cmd_buf_work->host;
+	cb_work = container_of(work, struct callback_work, work);
+	host = cb_work->host;
 	if (!host) {
-		HFI_AD_ERROR("thread %d could not match host\n", cb_cmd_buf_work->index);
+		HFI_AD_ERROR("thread %d could not match host\n", cb_work->index);
 		return;
 	}
 
@@ -209,7 +206,6 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 		if (ctx && hfi_buff) {
 			hfi_buff->obj_id = virtio_hdr->object_id;
 			hfi_buff->ctx = ctx;
-			hfi_buff->virtq_type = HFI_VIRTQUEUE_TYPE_RX;
 			ctx->process_cmd_buf(ctx, hfi_buff);
 		}  else {
 			HFI_AD_ERROR("could not match buffer to a client\n");
@@ -222,83 +218,11 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 
 }
 
-static void handle_ssr_start(struct hfi_adapter_t *adapter)
-{
-	struct list_head *client_pos;
-	struct hfi_client_t *client;
-
-	if (!adapter)
-		return;
-
-	HFI_AD_DEBUG("handling SSR start\n");
-	list_for_each(client_pos, &adapter->client_list) {
-		/* Try to match buffer based on unique OBJ ID */
-		client = list_entry(client_pos, struct hfi_client_t, node);
-		if (client) {
-			client->process_event(client, HFI_ADAPTER_EVENT_SSR_START,
-				adapter->blocking);
-		}
-	}
-}
-
-static void handle_ssr_end(struct hfi_adapter_t *adapter)
-{
-	int ret = 0;
-	struct hfi_client_t *client;
-
-	if (!adapter) {
-		HFI_AD_ERROR("invalid adapter\n");
-		return;
-	}
-
-	HFI_AD_DEBUG("handling SSR end\n");
-
-	ret = hfi_core_close_session(adapter->session);
-	if (ret) {
-		HFI_AD_ERROR("hfi_core_close_session failed, ret: %d\n", ret);
-		return;
-	}
-	struct hfi_core_open_params open_params = {
-		HFI_CORE_CLIENT_ID_0, adapter->cb_ops, HFI_CORE_HOST};
-
-	adapter->session = hfi_core_open_session(&open_params);
-	if (!adapter->session) {
-		HFI_AD_ERROR("failed to open hfi core session\n");
-		return;
-	}
-
-	list_for_each_entry_reverse(client, &adapter->client_list, node) {
-		client->process_event(client, HFI_ADAPTER_EVENT_SSR_END,
-			adapter->blocking);
-	}
-}
-
-static void _process_cb_ssr_work(struct kthread_work *work)
-{
-	struct hfi_adapter_t *adapter;
-
-	if (!work)
-		return;
-
-	adapter = container_of(work, struct hfi_adapter_t, cb_ssr_work);
-
-	switch (adapter->event_type) {
-	case HFI_ADAPTER_EVENT_SSR_START:
-		handle_ssr_start(adapter);
-		break;
-	case HFI_ADAPTER_EVENT_SSR_END:
-		handle_ssr_end(adapter);
-		break;
-	default:
-		break;
-	}
-}
-
 int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		const void *cb_data, enum hfi_core_event_type event_type, bool blocking)
 {
 	struct hfi_adapter_t *adapter = (struct hfi_adapter_t *)cb_data;
-	struct callback_work *cb_cmd_buf_work;
+	struct callback_work *cb_work;
 	int ret;
 	u32 work_queue_idx;
 
@@ -309,9 +233,6 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 
 	switch (event_type) {
 	case HFI_CORE_EVENT_DCP_RESPONSE:
-		if (atomic_read(&adapter->ssr_in_progress))
-			break;
-
 		atomic_fetch_add_unless(&work_queue_pos_wr, 1,
 				HFI_ADAPTER_WORK_QUEUE_SIZE);
 		work_queue_idx = atomic_read(&work_queue_pos_wr);
@@ -321,40 +242,11 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 			work_queue_idx = 0;
 		}
 
-		cb_cmd_buf_work = &adapter->cb_cmd_buf_work[work_queue_idx];
+		cb_work = &adapter->cb_work[work_queue_idx];
 
-		ret = kthread_queue_work(&adapter->cb_event_worker, &cb_cmd_buf_work->work);
+		ret = kthread_queue_work(&adapter->cb_worker, &cb_work->work);
 		if (!ret)
 			HFI_AD_WARN("failed to queue work at index:%d\n", work_queue_idx);
-		break;
-	case HFI_CORE_EVENT_SSR_START:
-		HFI_AD_DEBUG("SSR has been initiated\n");
-		atomic_set(&adapter->ssr_in_progress, 1);
-		/* finish processing all buffers sent by dcp */
-		kthread_flush_worker(&adapter->cb_event_worker);
-		adapter->event_type = HFI_ADAPTER_EVENT_SSR_START;
-		adapter->blocking = blocking;
-		ret = kthread_queue_work(&adapter->cb_event_ssr_worker, &adapter->cb_ssr_work);
-		if (!ret)
-			HFI_AD_WARN("failed to queue ssr start work\n");
-
-		/* This event callback is in non ISR context so blocing is fine */
-		if (blocking)
-			kthread_flush_work(&adapter->cb_ssr_work);
-		break;
-	case HFI_CORE_EVENT_SSR_END:
-		adapter->event_type = HFI_ADAPTER_EVENT_SSR_END;
-		adapter->blocking = blocking;
-		ret = kthread_queue_work(&adapter->cb_event_ssr_worker, &adapter->cb_ssr_work);
-		if (!ret)
-			HFI_AD_WARN("failed to queue ssr end work\n");
-
-		/* This event callback is in non ISR context so blocing is fine */
-		if (blocking)
-			kthread_flush_work(&adapter->cb_ssr_work);
-
-		atomic_set(&adapter->ssr_in_progress, 0);
-		HFI_AD_DEBUG("SSR completed successfully\n");
 		break;
 	default:
 		return -EINVAL;
@@ -380,7 +272,6 @@ void _hfi_clear_buffer(struct hfi_cmdbuf_t *buffer)
 	buffer->size = 0;
 	atomic_set(&buffer->pool->available, 1);
 	atomic_set(&buffer->buffer_send_done, 0);
-	buffer->virtq_type = HFI_VIRTQUEUE_TYPE_MAX;
 
 	HFI_AD_DEBUG("done clearing buffer -- requested by %pS buff:%p\n",
 		__builtin_return_address(0), buffer);
@@ -428,25 +319,16 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 
 	/* Pre initialize work queues */
 	for (i = 0; i < HFI_ADAPTER_WORK_QUEUE_SIZE; i++) {
-		kthread_init_work(&hfi_host->cb_cmd_buf_work[i].work, _process_cb_cmd_buf_work);
-		hfi_host->cb_cmd_buf_work[i].host = hfi_host;
-		hfi_host->cb_cmd_buf_work[i].index = i;
-	}
-	kthread_init_worker(&hfi_host->cb_event_worker);
-	hfi_host->cb_event_worker_thread = kthread_run(kthread_worker_fn,
-			&hfi_host->cb_event_worker, "adapter_cb_event_thread");
-
-	if (IS_ERR(hfi_host->cb_event_worker_thread)) {
-		HFI_AD_ERROR("failed to create adapter_cb_thread\n");
-		goto fail;
+		kthread_init_work(&hfi_host->cb_work[i].work, _process_cb_buffer_work);
+		hfi_host->cb_work[i].host = hfi_host;
+		hfi_host->cb_work[i].index = i;
 	}
 
-	kthread_init_work(&hfi_host->cb_ssr_work, _process_cb_ssr_work);
-	kthread_init_worker(&hfi_host->cb_event_ssr_worker);
-	hfi_host->cb_event_worker_ssr_thread = kthread_run(kthread_worker_fn,
-			&hfi_host->cb_event_ssr_worker, "adapter_cb_event_ssr_thread");
+	kthread_init_worker(&hfi_host->cb_worker);
+	hfi_host->cb_worker_thread = kthread_run(kthread_worker_fn, &hfi_host->cb_worker,
+			"adapter_cb_thread");
 
-	if (IS_ERR(hfi_host->cb_event_worker_ssr_thread)) {
+	if (IS_ERR(hfi_host->cb_worker_thread)) {
 		HFI_AD_ERROR("failed to create adapter_cb_thread\n");
 		goto fail;
 	}
@@ -454,8 +336,6 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	idr_init(&hfi_host->client_ids);
 	spin_lock_init(&hfi_host->packet_id_lock);
 	mutex_init(&hfi_host->hfi_adapter_cmd_buf_list_lock);
-
-	atomic_set(&hfi_host->ssr_in_progress, 0);
 
 	/* Initialize buffers */
 	pool = kmalloc(sizeof(struct hfi_buffer_pool), GFP_KERNEL);
@@ -541,7 +421,6 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	struct hfi_cmd_buff_hdl buff_handle;
 	struct hfi_header_info header_info;
 	struct hfi_buffer_pool *pool;
-	struct hfi_adapter_t *adapter;
 	int ret = 0;
 	static u32 counter;
 	int failed_loop = 0;
@@ -550,9 +429,8 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 		HFI_AD_ERROR("invalid client callback function pointer\n");
 		return NULL;
 	}
-	adapter = ctx->host;
 
-	pool = get_avail_buffer(adapter);
+	pool = get_avail_buffer(ctx->host);
 	if (!pool) {
 		HFI_AD_ERROR("failed to get available buffer pool\n");
 		return NULL;
@@ -569,9 +447,7 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 
 	counter++;
 	do {
-		if (atomic_read(&adapter->ssr_in_progress))
-			break;
-		ret = hfi_core_cmds_tx_buf_get(adapter->session, buff_desc);
+		ret = hfi_core_cmds_tx_buf_get(ctx->host->session, buff_desc);
 		if (ret) {
 			failed_loop++;
 			HFI_AD_ERROR("failed to get tx buff counter:%d retry:%d ret:%d\n",
@@ -590,7 +466,7 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	if (!buffer) {
 		HFI_AD_ERROR("failed to allocate memory for adapter command buffer\n");
 		/* If adapter command buffer allocation fails, release VIRTIO buffer */
-		ret = hfi_core_release_tx_buffer(adapter->session, &buff_desc, 1);
+		ret = hfi_core_release_tx_buffer(ctx->host->session, &buff_desc, 1);
 		if (ret)
 			HFI_AD_ERROR("failed to release buffer back to virtio queue\n");
 		goto error;
@@ -607,15 +483,14 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	header_info.object_id = obj_id;
 	header_info.header_id = _create_buffer_id(ctx->client_id);
 
-	if (!atomic_read(&adapter->ssr_in_progress)) {
-		ret = hfi_create_header(&buff_handle, &header_info);
-		if (ret) {
-			HFI_AD_ERROR("failed to create buffer header\n");
-			ret = hfi_core_release_tx_buffer(adapter->session, &buff_desc, 1);
-			if (ret)
-				HFI_AD_ERROR("failed to release buffer back to virtio queue\n");
-			goto error;
-		}
+	ret = hfi_create_header(&buff_handle, &header_info);
+
+	if (ret) {
+		HFI_AD_ERROR("failed to create buffer header\n");
+		ret = hfi_core_release_tx_buffer(ctx->host->session, &buff_desc, 1);
+		if (ret)
+			HFI_AD_ERROR("failed to release buffer back to virtio queue\n");
+		goto error;
 	}
 
 	/* Populate adapter buffer structure members */
@@ -624,7 +499,6 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	buffer->obj_id = obj_id;
 	buffer->size = 32;
 	buffer->ctx = ctx;
-	buffer->virtq_type = HFI_VIRTQUEUE_TYPE_TX;
 
 	return buffer;
 
@@ -739,6 +613,10 @@ static u32 _hfi_adapter_add_prop_helper(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u
 	unsigned long lock_flags;
 	int rc = 0;
 
+	/* Populate HFI packer structs */
+	buff_handle.cmd_buffer = cmd_buf->buf.pbuf_vaddr;
+	buff_handle.size = cmd_buf->buf.size;
+
 	if (hfi_payload_type != HFI_PAYLOAD_TYPE_NONE && !payload) {
 		HFI_AD_ERROR("payload not provided for cmd:0x%x type:%d\n",
 			cmd, hfi_payload_type);
@@ -746,17 +624,6 @@ static u32 _hfi_adapter_add_prop_helper(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u
 	} else if (hfi_payload_type == HFI_PAYLOAD_TYPE_NONE && payload) {
 		HFI_AD_WARN("unexpected packet payload for cmd:0x%x\n", cmd);
 	}
-
-	/*
-	 * if SSR is in progress, cannot queue buffer to hfi core,
-	 * so do not create packets.
-	 */
-	if (atomic_read(&cmd_buf->ctx->host->ssr_in_progress))
-		return rc;
-
-	/* Populate HFI packer structs */
-	buff_handle.cmd_buffer = cmd_buf->buf.pbuf_vaddr;
-	buff_handle.size = cmd_buf->buf.size;
 
 	memset(&packet_info, 0, sizeof(struct hfi_packet_info));
 	packet_info.cmd = cmd;
@@ -845,7 +712,6 @@ int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
 	listener_entry->packet_id = packet_id;
 	listener_entry->listener_obj = listener;
 
-	/* Add listener based on packet obj_id  */
 	list_add_tail(&listener_entry->list_ptr, &ctx->packet_listeners.list_ptr);
 
 	return rc;
@@ -927,16 +793,9 @@ int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	struct hfi_core_cmds_buf_desc *buff_arr[MAX_BUFFERS];
 	int rc = 0;
 	struct hfi_adapter_t *host;
-	struct hfi_cmdbuf_t *buf_entry;
-	u32 i = 1;
 
-	if (!cmd_buf || !cmd_buf->ctx) {
+	if (!cmd_buf->ctx) {
 		HFI_AD_ERROR("Invalid client ctx\n");
-		return -EINVAL;
-	}
-
-	if (cmd_buf->virtq_type != HFI_VIRTQUEUE_TYPE_TX) {
-		HFI_AD_ERROR("invalid virtqueue type %d\n", cmd_buf->virtq_type);
 		return -EINVAL;
 	}
 
@@ -952,6 +811,8 @@ int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	HFI_AD_DEBUG("from %pS\n", __builtin_return_address(0));
 
 	buff_arr[0] = &cmd_buf->buf;
+	struct hfi_cmdbuf_t *buf_entry;
+	u32 i = 1;
 
 	list_for_each(pos, &cmd_buf->cmd_buf_chain) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
@@ -961,11 +822,10 @@ int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 
 	u32 host_flags = HFI_CORE_SET_FLAGS_TRIGGER_IPC;
 
-	if (!atomic_read(&host->ssr_in_progress)) {
-		rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
-				buff_arr, num_buffers, host_flags);
-		if (rc)
-			HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
+	rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
+			buff_arr, num_buffers, host_flags);
+	if (rc) {
+		HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
 	}
 
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
@@ -988,16 +848,6 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_cmdbuf_t *cmd_buf)
 	u32 num_buffers = 1;
 	u32 i = 0;
 
-	if (!cmd_buf || !cmd_buf->ctx) {
-		HFI_AD_ERROR("Invalid client ctx\n");
-		return -EINVAL;
-	}
-
-	if (cmd_buf->virtq_type != HFI_VIRTQUEUE_TYPE_TX) {
-		HFI_AD_ERROR("invalid virtqueue type %d\n", cmd_buf->virtq_type);
-		return -EINVAL;
-	}
-
 	host = cmd_buf->ctx->host;
 	if (!host)
 		return -EINVAL;
@@ -1017,35 +867,27 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_cmdbuf_t *cmd_buf)
 
 	u32 host_flags = HFI_CORE_SET_FLAGS_TRIGGER_IPC;
 
-	if (!atomic_read(&host->ssr_in_progress)) {
-		rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
-				buff_arr, num_buffers, host_flags);
-		HFI_AD_DEBUG("from %pS: host_flags:0x%x\n",
-			__builtin_return_address(0), host_flags);
-		if (rc) {
-			HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
-			return rc;
-		}
+	rc = hfi_core_cmds_tx_buf_send(cmd_buf->ctx->host->session,
+			buff_arr, num_buffers, host_flags);
+	HFI_AD_DEBUG("from %pS: host_flags:0x%x\n",
+		__builtin_return_address(0), host_flags);
+	if (rc) {
+		HFI_AD_ERROR("failed to send tx buffer. error code = %d\n", rc);
+		return rc;
 	}
 
 	HFI_AD_DEBUG("[info] tx buffer sent\n");
 
-	atomic_set(&cmd_buf->waiting_for_rsp, 1);
 	do {
-		if (atomic_read(&host->ssr_in_progress))
-			break;
 		usleep_range(HFI_APADTER_STEP_US, HFI_APADTER_STEP_US + 10);
 		if (wait_count++ > MAX_TRY_COUNT) {
 			HFI_AD_ERROR("set_cmd_buf_blocking wait timed-out\n");
-			rc = hfi_core_notify_rsp_timeout(host->session);
-			atomic_set(&cmd_buf->waiting_for_rsp, 0);
 			rc = -ETIMEDOUT;
 			break;
 		}
 		response_ack = atomic_read(&cmd_buf->buffer_send_done);
 		HFI_AD_INFO("response_ack = 0x%08X\n", response_ack);
 	} while (!response_ack);
-	atomic_set(&cmd_buf->waiting_for_rsp, 0);
 
 	if (!response_ack)
 		HFI_AD_ERROR("timed out waiting for response_ack for tx!\n");
@@ -1079,12 +921,6 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		HFI_AD_ERROR("invalid param\n");
 		return -EINVAL;
 	}
-
-	if (cmd_buf->virtq_type != HFI_VIRTQUEUE_TYPE_RX) {
-		HFI_AD_ERROR("invalid virtqueue type %d\n", cmd_buf->virtq_type);
-		return -EINVAL;
-	}
-
 	/* Request header info to obtain the number of packets available in the buffer */
 	buff_handle.cmd_buffer = cmd_buf->buf.pbuf_vaddr;
 	buff_handle.size = cmd_buf->buf.size;
@@ -1166,16 +1002,6 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	int i = 0;
 	int rc = 0;
 
-	if (!cmd_buf) {
-		HFI_AD_ERROR("invalid param\n");
-		return -EINVAL;
-	}
-
-	if (cmd_buf->virtq_type == HFI_VIRTQUEUE_TYPE_MAX) {
-		HFI_AD_ERROR("invalid virtqueue type %d\n", cmd_buf->virtq_type);
-		return -EINVAL;
-	}
-
 	mutex_lock(&cmd_buf->ctx->host->hfi_adapter_cmd_buf_list_lock);
 
 	/* Release chained buffers */
@@ -1203,10 +1029,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 		buff_arr[i++] = &cmd_buf->buf;
 
 	HFI_AD_DEBUG("number of buffers to release = %d\n", i);
-	if (cmd_buf->virtq_type == HFI_VIRTQUEUE_TYPE_RX)
-		rc = hfi_core_release_rx_buffer(cmd_buf->ctx->host->session, buff_arr, i);
-	else if (cmd_buf->virtq_type == HFI_VIRTQUEUE_TYPE_TX)
-		rc = hfi_core_release_tx_buffer(cmd_buf->ctx->host->session, buff_arr, i);
+	rc = hfi_core_release_rx_buffer(cmd_buf->ctx->host->session, buff_arr, i);
 
 	if (rc) {
 		HFI_AD_ERROR("failed to release rx buffer(s)\n");
@@ -1317,43 +1140,4 @@ int hfi_adapter_unmap_iova(unsigned long iova, size_t size)
 {
 	return hfi_core_unmap_iova(iova, size);
 }
-
-int hfi_adapter_release_all_cmd_bufs(struct hfi_client_t *client)
-{
-	struct list_head *pos, *updated_pos;
-	struct hfi_cmdbuf_t *cmd_buf;
-	struct hfi_adapter_t *host;
-	int ret = 0;
-
-	if (!client || !client->host) {
-		HFI_AD_ERROR("invalid hfi_client\n");
-		return -EINVAL;
-	}
-
-	HFI_AD_DEBUG("%s: client id: %d\n", __func__, client->client_id);
-	host = client->host;
-
-	/* Loop through command buffer list of the client */
-	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
-	list_for_each_safe(pos, updated_pos, &client->cmd_buf_list) {
-		cmd_buf = list_entry(pos, struct hfi_cmdbuf_t, node);
-		if (!cmd_buf)
-			continue;
-
-		/* Unblock the client waiting on response from DCP */
-		if (atomic_read(&cmd_buf->waiting_for_rsp)) {
-			atomic_inc(&cmd_buf->buffer_send_done);
-			continue;
-		}
-		ret = hfi_adapter_release_cmd_buf(cmd_buf);
-		if (ret != 0) {
-			HFI_AD_ERROR("failed to hfi_adapter_release_cmd_buf, ret: %d\n", ret);
-			continue;
-		}
-	}
-	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
-
-	return 0;
-}
-
 #endif /* IS_ENABLED(CONFIG_QTI_HFI_CORE)*/
