@@ -1294,6 +1294,10 @@ void reg_dmav1_setup_dspp_gcv18(struct sde_hw_dspp *ctx, void *cfg)
 		return;
 	}
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 8, hw_cfg->prop_id);
+	hw_cfg->flags = HFI_BUFF_FEATURE_BROADCAST;
+#endif
 	if (!hw_cfg->payload) {
 		DRM_DEBUG_DRIVER("disable pgc feature\n");
 		LOG_FEATURE_OFF;
@@ -1329,6 +1333,10 @@ void reg_dmav1_setup_dspp_gcv18(struct sde_hw_dspp *ctx, void *cfg)
 		DRM_ERROR("enabling gamma correction failed ret %d\n", rc);
 		return;
 	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[GC][ctx->idx][ctx->dpu_idx],
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, GC);
@@ -2145,6 +2153,11 @@ void reg_dmav1_setup_dspp_pccv4(struct sde_hw_dspp *ctx, void *cfg)
 		pcc_cfg = hw_cfg->payload;
 		pcc_cfg->flags = 0;
 	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(4, 0, hw_cfg->prop_id);
+#endif
+
 	reg_dmav1_setup_dspp_pcc_common(ctx, cfg);
 }
 
@@ -2524,11 +2537,18 @@ void reg_dmav1_setup_dspp_sixzonev17(struct sde_hw_dspp *ctx, void *cfg)
 	u32 num_of_mixers, blk = 0;
 	int i, rc;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 7, hw_cfg->prop_id);
+	hw_cfg->flags = HFI_BUFF_FEATURE_BROADCAST;
+#endif
+
 	rc = reg_dma_validate_sixzone_config(ctx, cfg, &num_of_mixers, &blk, dspp_list);
 	if (rc) {
 		return;
 	}
-
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	 hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 	sixzone = hw_cfg->payload;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
@@ -6127,6 +6147,10 @@ void reg_dmav2_setup_dspp_igcv4(struct sde_hw_dspp *ctx, void *cfg)
 	data[j++] = lut_cfg->c2_last ? (u16)(lut_cfg->c2_last << 4) : (4095 << 4);
 	data[j++] = lut_cfg->c0_last ? (u16)(lut_cfg->c0_last << 4) : (4095 << 4);
 	data[j++] = lut_cfg->c1_last ? (u16)(lut_cfg->c1_last << 4) : (4095 << 4);
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	 hw_cfg->prop_id = HFI_PACK_VERSION(4, 0, hw_cfg->prop_id);
+#endif
 
 	reg_dmav2_setup_dspp_igc_common(ctx, cfg, len, data, transfer_size_bytes, 0);
 	kvfree(data);
