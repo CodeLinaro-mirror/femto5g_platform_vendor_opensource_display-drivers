@@ -194,6 +194,8 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 	struct hfi_connector *hfi_conn;
 	struct sde_kms *sde_kms;
 	struct drm_device *ddev;
+	struct sde_crtc *crtc;
+	struct drm_crtc *dcrtc = NULL;
 
 	if (!hfi_client || !hfi_client->priv) {
 		SDE_ERROR("invalid params\n");
@@ -255,6 +257,16 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 		return rc;
 	}
 
+	drm_for_each_crtc(dcrtc, ddev) {
+		crtc = to_sde_crtc(dcrtc);
+		/* destroy fw mapped buffers for crtc */
+		rc = hfi_crtc_destroy_shared_map_buffers(crtc);
+		if (rc) {
+			SDE_ERROR("failed to destroy fw mapped buffers for crtc\n");
+			return rc;
+		}
+	}
+
 	/* Release all command buffers associated with DPU driver hfi client */
 	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
 	if (rc)
@@ -272,6 +284,10 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 	struct hfi_connector *hfi_conn;
 	struct sde_kms *sde_kms;
 	struct drm_device *ddev;
+	struct sde_crtc *crtc;
+	struct drm_crtc *dcrtc = NULL;
+
+	SDE_DEBUG("process ssr end called\n");
 
 	if (!hfi_client) {
 		SDE_ERROR("invalid params\n");
@@ -303,6 +319,16 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 		return rc;
 	}
 
+	drm_for_each_crtc(dcrtc, ddev) {
+		crtc = to_sde_crtc(dcrtc);
+		/* allocate fw mapped buffers for crtc */
+		rc = hfi_crtc_alloc_shared_map_buffers(crtc);
+		if (rc) {
+			SDE_ERROR("failed to allocate fw mapped buffers for crtc\n");
+			return rc;
+		}
+	}
+
 	/* Resume all connected displays */
 	rc = sde_kms_resume_helper(sde_kms);
 	if (rc) {
@@ -330,7 +356,7 @@ static int hfi_kms_process_event(struct hfi_client_t *hfi_client, enum hfi_adapt
 			bool blocking)
 {
 	if (!hfi_client) {
-		DSI_ERR("Invalid client\n");
+		SDE_ERROR("Invalid client\n");
 		return -EINVAL;
 	}
 

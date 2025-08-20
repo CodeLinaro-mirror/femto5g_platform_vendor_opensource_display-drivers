@@ -1321,6 +1321,9 @@ int hfi_adapter_buffer_dealloc(struct hfi_client_t *ctx, struct hfi_shared_addr_
 	if (ret)
 		HFI_AD_ERROR("failed to deallocate shared buffer, ret: %d\n", ret);
 
+	alloc_info->mapped_iova = 0;
+	alloc_info->cpu_va = NULL;
+
 	return ret;
 }
 
