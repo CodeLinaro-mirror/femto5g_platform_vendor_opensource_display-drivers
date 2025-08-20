@@ -461,13 +461,15 @@ int dsi_panel_power_on(struct dsi_panel *panel)
 {
 	int rc = 0;
 
-	rc = dsi_pwr_enable_regulator(&panel->power_info, true);
-	if (rc) {
-		DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
-				panel->name, rc);
-		goto exit;
+	if (!panel->skip_pwr) {
+		/* avoid reg vote, if disable vote is skipped */
+		rc = dsi_pwr_enable_regulator(&panel->power_info, true);
+		if (rc) {
+			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
+					panel->name, rc);
+			goto exit;
+		}
 	}
-
 	rc = dsi_panel_set_pinctrl_state(panel, true);
 	if (rc) {
 		DSI_ERR("[%s] failed to set pinctrl, rc=%d\n", panel->name, rc);
@@ -479,6 +481,9 @@ int dsi_panel_power_on(struct dsi_panel *panel)
 		DSI_ERR("[%s] failed to reset panel, rc=%d\n", panel->name, rc);
 		goto error_disable_gpio;
 	}
+
+	if (panel->skip_pwr)
+		panel->skip_pwr = false;
 
 	goto exit;
 
@@ -504,6 +509,7 @@ int dsi_panel_power_off(struct dsi_panel *panel)
 
 	if (panel->skip_panel_off) {
 		DSI_DEBUG("skip panel power off\n");
+		panel->skip_pwr = true;
 		return rc;
 	}
 
@@ -4471,6 +4477,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	panel->parent = parent;
 	panel->type = type;
 	panel->post_power_enable_status = false;
+	panel->skip_pwr = false;
 
 	dsi_panel_update_util(panel, parser_node);
 	utils = &panel->utils;

@@ -759,6 +759,7 @@ struct sde_backlight_vrr_update {
  * @panel_dead: Flag to indicate if panel has gone bad
  * @esd_status_check: Flag to indicate if ESD thread is scheduled or not
  * @twm_en: Flag to indicate if TWM mode is enabled or not.
+ * @skip_panel_power: Flag to indicate if skip panel power is enabled or not.
  * @bl_scale_dirty: Flag to indicate PP BL scale value(s) is changed
  * @bl_scale: BL scale value for ABA feature
  * @bl_scale_sv: BL scale value for sunlight visibility feature
@@ -850,6 +851,7 @@ struct sde_connector {
 	bool panel_dead;
 	bool esd_status_check;
 	bool twm_en;
+	bool skip_panel_power;
 	enum panel_op_mode expected_panel_mode;
 
 	bool bl_scale_dirty;

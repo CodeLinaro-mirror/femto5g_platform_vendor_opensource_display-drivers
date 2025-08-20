@@ -4296,12 +4296,53 @@ static ssize_t twm_enable_show(struct device *device,
 	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->twm_en);
 }
 
+static ssize_t skip_panel_power_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+	struct dsi_display *dsi_display;
+	int rc;
+	int data;
+
+	conn = dev_get_drvdata(device);
+	sde_conn = to_sde_connector(conn);
+	dsi_display = (struct dsi_display *) sde_conn->display;
+	rc = kstrtoint(buf, 10, &data);
+	if (rc) {
+		SDE_ERROR("kstrtoint failed, rc = %d\n", rc);
+		return -EINVAL;
+	}
+	sde_conn->skip_panel_power = data ? true : false;
+	dsi_display->panel->skip_panel_off = sde_conn->skip_panel_power;
+
+	SDE_DEBUG("skip panel power: %s\n",
+			sde_conn->skip_panel_power ? "ENABLED" : "DISABLED");
+	return count;
+}
+
+static ssize_t skip_panel_power_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+
+	conn = dev_get_drvdata(device);
+	sde_conn = to_sde_connector(conn);
+
+	SDE_DEBUG("skip panel power: %s\n",
+			sde_conn->skip_panel_power ? "ENABLED" : "DISABLED");
+	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->skip_panel_power);
+}
+
 static DEVICE_ATTR_RO(panel_power_state);
 static DEVICE_ATTR_RW(twm_enable);
+static DEVICE_ATTR_RW(skip_panel_power);
 
 static struct attribute *sde_connector_dev_attrs[] = {
 	&dev_attr_panel_power_state.attr,
 	&dev_attr_twm_enable.attr,
+	&dev_attr_skip_panel_power.attr,
 	NULL
 };
 
@@ -4401,6 +4442,7 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	c_conn->last_panel_power_mode = SDE_MODE_DPMS_ON;
 	c_conn->twm_en = false;
 	atomic_set(&c_conn->ssr_notify_enabled, 0);
+	c_conn->skip_panel_power = true;
 
 	sde_kms = to_sde_kms(priv->kms);
 	if (sde_kms->vbif[VBIF_NRT]) {
