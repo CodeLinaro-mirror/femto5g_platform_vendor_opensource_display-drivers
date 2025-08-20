@@ -622,7 +622,8 @@ static void dspp_ai_scaler(struct sde_hw_dspp *c)
 		return;
 	}
 
-	if (c->cap->sblk->ai_scaler.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) {
+	if (c->cap->sblk->ai_scaler.version == SDE_COLOR_PROCESS_VER(0x1, 0x0) ||
+		c->cap->sblk->ai_scaler.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
 		if (c->cap->sblk->ai_scaler.ai_scaler_supported) {
 			c->ops.check_ai_scaler[MSM_DISP_OP_HWIO] = sde_check_ai_scaler_v1;
 			c->ops.setup_ai_scaler[MSM_DISP_OP_HWIO] = sde_setup_ai_scaler_v1;
@@ -632,6 +633,13 @@ static void dspp_ai_scaler(struct sde_hw_dspp *c)
 				return;
 			c->ops.check_ai_scaler[MSM_DISP_OP_HFI] = sde_check_ai_scaler_v1;
 			c->ops.setup_ai_scaler[MSM_DISP_OP_HFI] = reg_dma_setup_ai_scaler_v1;
+
+			if (c->cap->sblk->ai_scaler.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
+				c->ops.setup_ai_scaler[MSM_DISP_OP_HWIO] =
+						reg_dma_setup_ai_scaler_v2;
+				c->ops.setup_ai_scaler[MSM_DISP_OP_HFI] =
+						reg_dma_setup_ai_scaler_v2;
+			}
 		}
 	}
 }

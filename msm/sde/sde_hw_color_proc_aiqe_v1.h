@@ -126,4 +126,11 @@ void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
  */
 int reg_dma_setup_ai_scaler_v1(struct sde_hw_dspp *ctx, void *cfg);
 
+/**
+ * reg_dma_setup_ai_scaler_v2 - api to setup ai scaler programming
+ * @ctx: pointer to dspp object.
+ * @cfg: Pointer to sde_hw_cp_cfg.
+ */
+int reg_dma_setup_ai_scaler_v2(struct sde_hw_dspp *ctx, void *cfg);
+
 #endif /* _SDE_HW_COLOR_PROC_AIQE_H_ */
