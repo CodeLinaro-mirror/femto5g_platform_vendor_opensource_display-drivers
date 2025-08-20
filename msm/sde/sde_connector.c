@@ -25,6 +25,7 @@
 #include <shd_drm.h>
 #endif
 #include "sde_roi_misr_helper.h"
+#include "sde_trace.h"
 
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
@@ -2244,6 +2245,7 @@ int sde_connector_helper_mode_change_commit(struct drm_connector *conn)
 	if (!state)
 		return -ENOMEM;
 
+	SDE_ATRACE_BEGIN("mode_change_commit");
 	drm_modeset_acquire_init(&ctx, 0);
 	state->acquire_ctx = &ctx;
 retry:
@@ -2282,7 +2284,7 @@ end:
 	drm_atomic_state_put(state);
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
-
+	SDE_ATRACE_END("mode_change_commit");
 	return ret;
 }
 

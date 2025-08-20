@@ -35,6 +35,7 @@
 #include "dp_mst_sim.h"
 #include "dp_pll.h"
 #include "sde_dbg.h"
+#include "sde_trace.h"
 
 #define DRM_DP_IPC_NUM_PAGES 10
 #define DP_MST_DEBUG(fmt, ...) DP_DEBUG(fmt, ##__VA_ARGS__)
@@ -1241,6 +1242,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 		return -EISCONN;
 	}
 
+	SDE_ATRACE_BEGIN("dp_display_process_hpd_high");
 	dp_display_state_add(DP_STATE_CONNECTED);
 
 	dp->dp_display.max_pclk_khz = min(dp->parser->max_pclk_khz,
@@ -1252,6 +1254,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 			&& dp->aux_switch_node && dp->aux->switch_configure && !sim_mode) {
 		rc = dp->aux->switch_configure(dp->aux, true, dp->hpd->orientation);
 		if (rc) {
+			SDE_ATRACE_END("dp_display_process_hpd_high");
 			mutex_unlock(&dp->session_lock);
 			return rc;
 		}
@@ -1378,6 +1381,7 @@ end:
 
 skip_notify:
 
+	SDE_ATRACE_END("dp_display_process_hpd_high");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state,
 		wait_timeout_ms, rc);
 	return rc;
@@ -1618,6 +1622,7 @@ static void dp_display_stream_disable(struct dp_display_private *dp,
 		return;
 	}
 
+	SDE_ATRACE_BEGIN("dp_display_stream_disable");
 	dp_display_clear_dsc_resources(dp, dp_panel);
 
 	DP_DEBUG("stream_id=%d, active_stream_cnt=%d, tot_dsc_blks_in_use=%d\n",
@@ -1630,6 +1635,7 @@ static void dp_display_stream_disable(struct dp_display_private *dp,
 	if (dp_panel->connector)
 		sde_encoder_set_bridge_enabled(dp_panel->connector->encoder,
 				false);
+	SDE_ATRACE_END("dp_display_stream_disable");
 }
 
 static void dp_display_clean(struct dp_display_private *dp, bool skip_wait)
@@ -1685,6 +1691,7 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 	int rc;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
+	SDE_ATRACE_BEGIN("dp_display_handle_disconnect");
 
 	if (dp->parser->force_connect_mode) {
 		/*
@@ -1714,6 +1721,7 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 			sde_connector_helper_mode_change_commit(
 					dp->dp_display.base_connector);
 
+		SDE_ATRACE_END("dp_display_handle_disconnect");
 		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 		return 0;
 	}
@@ -1731,6 +1739,7 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 	dp->tot_lm_blks_in_use = 0;
 	mutex_unlock(&dp->session_lock);
 
+	SDE_ATRACE_END("dp_display_handle_disconnect");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 	return rc;
 }
@@ -1740,6 +1749,7 @@ static void dp_display_disconnect_sync(struct dp_display_private *dp)
 	int disconnect_delay_ms;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
+	SDE_ATRACE_BEGIN("dp_display_disconnect_sync");
 	/* cancel any pending request */
 	dp_display_state_add(DP_STATE_ABORTED);
 
@@ -1765,6 +1775,7 @@ static void dp_display_disconnect_sync(struct dp_display_private *dp)
 	msleep(disconnect_delay_ms);
 
 	dp_display_handle_disconnect(dp, false);
+	SDE_ATRACE_END("dp_display_disconnect_sync");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state,
 		disconnect_delay_ms);
 }
@@ -1830,6 +1841,7 @@ static int dp_display_stream_enable(struct dp_display_private *dp,
 {
 	int rc = 0;
 
+	SDE_ATRACE_BEGIN("dp_display_stream_enable");
 	rc = dp->ctrl->stream_on(dp->ctrl, dp_panel);
 
 	if (dp->debug->tpg_pattern)
@@ -1841,6 +1853,7 @@ static int dp_display_stream_enable(struct dp_display_private *dp,
 	}
 
 
+	SDE_ATRACE_END("dp_display_stream_enable");
 	DP_DEBUG("dp active_stream_cnt:%d, tot_dsc_blks_in_use=%d\n",
 			dp->active_stream_cnt, dp->tot_dsc_blks_in_use);
 
@@ -2155,6 +2168,7 @@ static void dp_display_connect_work(struct work_struct *work)
 		return;
 	}
 
+	SDE_ATRACE_BEGIN("dp_display_connect_work");
 	mutex_lock(&dp->session_lock);
 
 	/*
@@ -2202,6 +2216,7 @@ static void dp_display_connect_work(struct work_struct *work)
 	DP_INFO("DP process hpd high, rc: %d\n", rc);
 	if (!rc && reset_connector)
 		sde_connector_helper_mode_change_commit(reset_connector);
+	SDE_ATRACE_END("dp_display_connect_work");
 }
 
 static int dp_display_usb_notifier(struct notifier_block *nb,
@@ -2659,6 +2674,7 @@ static int dp_display_prepare(struct dp_display *dp_display, void *panel)
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
+	SDE_ATRACE_BEGIN("dp_display_prepare");
 	mutex_lock(&dp->session_lock);
 
 	/*
@@ -2750,6 +2766,7 @@ end:
 	if (dp->parser->force_connect_mode)
 		dp_display_send_force_connect_event(dp);
 
+	SDE_ATRACE_END("dp_display_prepare");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, rc);
 	return rc;
 }
@@ -2813,6 +2830,7 @@ static int dp_display_enable(struct dp_display *dp_display, void *panel)
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
+	SDE_ATRACE_BEGIN("dp_display_enable");
 	mutex_lock(&dp->session_lock);
 
 	/*
@@ -2846,6 +2864,7 @@ static int dp_display_enable(struct dp_display *dp_display, void *panel)
 				true);
 end:
 	mutex_unlock(&dp->session_lock);
+	SDE_ATRACE_END("dp_display_enable");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, rc);
 	return rc;
 }
@@ -2871,6 +2890,7 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 	dp_panel = panel;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
+	SDE_ATRACE_BEGIN("dp_display_post_enable");
 	mutex_lock(&dp->session_lock);
 
 	/*
@@ -2917,6 +2937,7 @@ end:
 		dp_display_send_force_connect_event(dp);
 
 	mutex_unlock(&dp->session_lock);
+	SDE_ATRACE_END("dp_display_post_enable");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 	return 0;
 }
@@ -2945,6 +2966,7 @@ static int dp_display_pre_disable(struct dp_display *dp_display, void *panel)
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
+	SDE_ATRACE_BEGIN("dp_display_pre_disable");
 	mutex_lock(&dp->session_lock);
 
 	if (!dp_display_state_is(DP_STATE_ENABLED)) {
@@ -2970,6 +2992,7 @@ clean:
 
 end:
 	mutex_unlock(&dp->session_lock);
+	SDE_ATRACE_END("dp_display_pre_disable");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 	return 0;
 }
@@ -2991,6 +3014,7 @@ static int dp_display_disable(struct dp_display *dp_display, void *panel)
 	status = &dp->link->hdcp_status;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
+	SDE_ATRACE_BEGIN("dp_display_disable");
 	mutex_lock(&dp->session_lock);
 
 	if (!dp_display_state_is(DP_STATE_ENABLED)) {
@@ -3016,6 +3040,7 @@ static int dp_display_disable(struct dp_display *dp_display, void *panel)
 	}
 end:
 	mutex_unlock(&dp->session_lock);
+	SDE_ATRACE_END("dp_display_disable");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 	return 0;
 }
@@ -3079,6 +3104,7 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
+	SDE_ATRACE_BEGIN("dp_display_unprepare");
 	mutex_lock(&dp->session_lock);
 
 	if (!dp_display_state_is(DP_STATE_ENABLED)) {
@@ -3137,6 +3163,7 @@ end:
 	dp_panel->max_lm = 0;
 	dp_panel->deinit(dp_panel, flags);
 	mutex_unlock(&dp->session_lock);
+	SDE_ATRACE_END("dp_display_unprepare");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
 	return 0;
@@ -4149,6 +4176,7 @@ static int dp_pm_prepare(struct device *dev)
 			struct dp_display_private, dp_display);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
+	SDE_ATRACE_BEGIN("dp_pm_prepare");
 	mutex_lock(&dp->session_lock);
 	dp_display_set_mst_state(g_dp_display, PM_SUSPEND);
 
@@ -4186,6 +4214,7 @@ static int dp_pm_prepare(struct device *dev)
 		DP_INFO("DP Force HPD to be low and switch to sim mode when DP suspend.\n");
 		mutex_unlock(&dp->session_lock);
 	}
+	SDE_ATRACE_END("dp_pm_prepare");
 	return 0;
 }
 
@@ -4195,6 +4224,7 @@ static void dp_pm_complete(struct device *dev)
 			struct dp_display_private, dp_display);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
+	SDE_ATRACE_BEGIN("dp_pm_complete");
 	mutex_lock(&dp->session_lock);
 	dp_display_set_mst_state(g_dp_display, PM_DEFAULT);
 
@@ -4238,6 +4268,7 @@ static void dp_pm_complete(struct device *dev)
 
 	dp_display_state_remove(DP_STATE_SUSPENDED);
 	mutex_unlock(&dp->session_lock);
+	SDE_ATRACE_END("dp_pm_complete");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 }
 

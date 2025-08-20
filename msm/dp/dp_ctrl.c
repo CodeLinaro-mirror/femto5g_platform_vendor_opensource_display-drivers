@@ -13,6 +13,7 @@
 #include "dp_ctrl.h"
 #include "dp_debug.h"
 #include "sde_dbg.h"
+#include "sde_trace.h"
 
 #define DP_MST_DEBUG(fmt, ...) DP_DEBUG(fmt, ##__VA_ARGS__)
 
@@ -1436,7 +1437,9 @@ static int dp_ctrl_on(struct dp_ctrl *dp_ctrl, bool mst_mode,
 	ctrl->initial_lane_count = ctrl->link->link_params.lane_count;
 	ctrl->initial_bw_code = ctrl->link->link_params.bw_code;
 
+	SDE_ATRACE_BEGIN("dp_link_training");
 	rc = dp_ctrl_link_setup(ctrl, training_mode == LINK_TRAINING_MODE_SHALLOW);
+	SDE_ATRACE_END("dp_link_training");
 	if (!rc)
 		ctrl->power_on = true;
 end:

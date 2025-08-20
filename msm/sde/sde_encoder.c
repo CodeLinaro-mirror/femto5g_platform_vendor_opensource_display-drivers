@@ -3498,6 +3498,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		return;
 	}
 
+	SDE_ATRACE_BEGIN("sde_encoder_virt_disable");
 	intf_mode = sde_encoder_get_intf_mode(drm_enc);
 
 	SDE_EVT32(DRMID(drm_enc));
@@ -3566,12 +3567,15 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 				sde_enc->cur_master->connector->state, NULL);
 		if (ret) {
 			SDE_ERROR_ENC(sde_enc, "RM failed to update topology, rc: %d\n", ret);
+			SDE_ATRACE_END("sde_encoder_virt_disable");
 			return;
 		}
 	}
 
 	if (!sde_encoder_in_clone_mode(drm_enc))
 		sde_encoder_virt_reset(drm_enc);
+
+	SDE_ATRACE_END("sde_encoder_virt_disable");
 }
 
 static void _trigger_encoder_hw_fences_override(struct sde_kms *sde_kms, struct sde_hw_ctl *ctl)

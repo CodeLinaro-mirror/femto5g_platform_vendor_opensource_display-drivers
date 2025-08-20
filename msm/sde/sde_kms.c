@@ -4185,6 +4185,7 @@ static int sde_kms_pm_suspend(struct device *dev)
 
 	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
 	SDE_EVT32(0);
+	SDE_ATRACE_BEGIN("sde_kms_pm_suspend");
 
 	/* disable hot-plug polling */
 	drm_kms_helper_poll_disable(ddev);
@@ -4198,6 +4199,7 @@ static int sde_kms_pm_suspend(struct device *dev)
 		if (sde_encoder_in_cont_splash(enc) && enc->crtc) {
 			SDE_DEBUG("skip PM suspend, splash is enabled on enc:%d\n", DRMID(enc));
 			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_EXIT);
+			SDE_ATRACE_END("sde_kms_pm_suspend");
 			return -EINVAL;
 		}
 	}
@@ -4326,6 +4328,7 @@ unlock:
 	if (sde_kms->pm_suspend_clk_dump)
 		_sde_kms_dump_clks_state(sde_kms);
 
+	SDE_ATRACE_END("sde_kms_pm_suspend");
 	return ret;
 }
 
@@ -4356,6 +4359,7 @@ static int sde_kms_pm_resume(struct device *dev)
 		}
 	}
 
+	SDE_ATRACE_BEGIN("sde_kms_pm_resume");
 	if (sde_kms->suspend_state)
 		drm_mode_config_reset(ddev);
 
@@ -4396,6 +4400,7 @@ end:
 	/* enable hot-plug polling */
 	drm_kms_helper_poll_enable(ddev);
 
+	SDE_ATRACE_END("sde_kms_pm_resume");
 	return 0;
 }
 
