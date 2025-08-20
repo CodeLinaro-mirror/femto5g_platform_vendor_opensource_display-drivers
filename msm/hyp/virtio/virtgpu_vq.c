@@ -133,7 +133,8 @@ retry_recv_packet:
 		goto end;
 	}
 	if (resp_size != size)
-		VIRTGPU_VQ_ERR("something wrong in the order of req and resp\n");
+		VIRTGPU_VQ_ERR("something wrong in the order of req %d and resp %d\n",
+				size, resp_size);
 end:
 
 	if (SPIN_LOCK_CHANNEL == lock_flag)
@@ -1960,6 +1961,86 @@ struct topology_name_list {
 	{SDE_RM_TOPOLOGY_MAX,     				NULL},
 };
 
+static inline int count_of_ones(u32 data)
+{
+	int c = 0;
+
+	while (data) {
+		c += data & 0x1;
+		data >>= 1;
+	}
+	return c;
+}
+
+static const struct sde_rm_topology_def g_topology_table[SDE_RM_TOPOLOGY_MAX] = {
+	{   SDE_RM_TOPOLOGY_NONE,                 0, 0, 0, 0, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_SINGLEPIPE,           1, 0, 1, 1, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_SINGLEPIPE_DSC,       1, 1, 1, 1, false,
+			MSM_DISPLAY_COMPRESSION_DSC },
+	{   SDE_RM_TOPOLOGY_SINGLEPIPE_VDC,       1, 1, 1, 1, false,
+			MSM_DISPLAY_COMPRESSION_VDC },
+	{   SDE_RM_TOPOLOGY_DUALPIPE,             2, 0, 2, 1, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_DUALPIPE_DSC,         2, 2, 2, 1, false,
+			MSM_DISPLAY_COMPRESSION_DSC },
+	{   SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE,     2, 0, 1, 1, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC, 2, 1, 1, 1, false,
+			MSM_DISPLAY_COMPRESSION_DSC },
+	{   SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_VDC, 2, 1, 1, 1, false,
+			MSM_DISPLAY_COMPRESSION_VDC },
+	{   SDE_RM_TOPOLOGY_DUALPIPE_DSCMERGE,    2, 2, 1, 1, false,
+			MSM_DISPLAY_COMPRESSION_DSC },
+	{   SDE_RM_TOPOLOGY_PPSPLIT,              1, 0, 2, 1, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE,     4, 0, 2, 1, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_QUADPIPE_3DMERGE_DSC, 4, 3, 2, 1, false,
+			MSM_DISPLAY_COMPRESSION_DSC },
+	{   SDE_RM_TOPOLOGY_QUADPIPE_DSCMERGE,    4, 4, 2, 1, false,
+			MSM_DISPLAY_COMPRESSION_DSC },
+	{   SDE_RM_TOPOLOGY_QUADPIPE_DSC4HSMERGE, 4, 4, 1, 1, false,
+			MSM_DISPLAY_COMPRESSION_DSC },
+	{   SDE_RM_TOPOLOGY_DUALPIPE_LOOPBACK,    2, 0, 0, 0, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+	{   SDE_RM_TOPOLOGY_QUADPIPE_LOOPBACK,    4, 0, 0, 0, false,
+			MSM_DISPLAY_COMPRESSION_NONE },
+};
+
+static enum sde_rm_topology_name get_topology_name(struct display_hw_assigment *assign)
+{
+	int num_ctl;
+	int num_lm;
+	int num_intf;
+	int num_merge3d;
+	int num_comp_enc;
+	int num_dsc;
+	int num_dscmerge;
+	int num_dsc4hsmerge;
+	enum msm_display_compression_type comp_type = MSM_DISPLAY_COMPRESSION_NONE;
+	int i;
+
+	num_ctl = 1;
+	num_lm = count_of_ones(assign->lm_owner);
+	num_intf = count_of_ones(assign->intf_mask);
+	num_merge3d = count_of_ones(assign->merge3d_mask);
+	num_comp_enc = 0;
+	num_dsc = count_of_ones(assign->dsc_mask);
+	num_dscmerge = count_of_ones(assign->dsc_merge_mask);
+	num_dsc4hsmerge = count_of_ones(assign->dsc_4hs_merge_mask);
+
+	for (i = 0; i < SDE_RM_TOPOLOGY_MAX; i++)
+		if (num_lm == g_topology_table[i].num_lm &&
+				num_comp_enc == g_topology_table[i].num_comp_enc &&
+				num_intf == g_topology_table[i].num_intf &&
+				comp_type == g_topology_table[i].comp_type)
+			return g_topology_table[i].top_name;
+
+	return SDE_RM_TOPOLOGY_NONE;
+}
+
 static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 		uint32_t scanout,
 		struct virtio_gpu_resp_scanout_hw_attributes *resp)
@@ -2062,9 +2143,12 @@ static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 				}
 				top++;
 			}
-			if (assign->top_name == SDE_RM_TOPOLOGY_MAX) {
-				VIRTGPU_VQ_RSP_DBG("Unknown topology, fallback to single pipe\n");
-				assign->top_name = SDE_RM_TOPOLOGY_SINGLEPIPE;
+			if (assign->top_name == SDE_RM_TOPOLOGY_MAX ||
+					assign->top_name == SDE_RM_TOPOLOGY_NONE ||
+					assign->top_name == SDE_RM_TOPOLOGY_SINGLEPIPE) {
+				assign->top_name = get_topology_name(assign);
+				VIRTGPU_VQ_RSP_DBG("Unknown topology, fallback to topology %d\n",
+						assign->top_name);
 			}
 			continue;
 		}
