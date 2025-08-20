@@ -9330,6 +9330,9 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	if (!sde_crtc)
 		return ERR_PTR(-ENOMEM);
 
+	crtc = &sde_crtc->base;
+	crtc->dev = dev;
+
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		rc = hfi_crtc_init(sde_crtc);
 		if (rc) {
@@ -9337,9 +9340,6 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 			return ERR_PTR(rc);
 		}
 	}
-
-	crtc = &sde_crtc->base;
-	crtc->dev = dev;
 
 	mutex_init(&sde_crtc->crtc_lock);
 	spin_lock_init(&sde_crtc->spin_lock);

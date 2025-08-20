@@ -332,6 +332,60 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 	return disp_id;
 }
 
+int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc)
+{
+	int ret = 0;
+	struct hfi_crtc *crtc_hfi;
+	struct hfi_kms *hfi_kms;
+
+	if (!crtc) {
+		SDE_ERROR("invalid crtc\n");
+		return -EINVAL;
+	}
+
+	crtc_hfi = to_hfi_crtc(crtc);
+
+	hfi_kms = sde_crtc_get_kms(crtc);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	ret = hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client, &crtc_hfi->hfi_buff_map_dither);
+	if (ret) {
+		SDE_ERROR("failed to deallocate hfi shared memory for dither\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc)
+{
+	int ret = 0;
+	struct hfi_crtc *crtc_hfi;
+	struct hfi_kms *hfi_kms;
+
+	if (!crtc) {
+		SDE_ERROR("invalid crtc\n");
+		return -EINVAL;
+	}
+
+	crtc_hfi = to_hfi_crtc(crtc);
+
+	hfi_kms = sde_crtc_get_kms(crtc);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	crtc_hfi->hfi_buff_map_dither.size =
+		sizeof(struct hfi_display_dither) * (DSPP_MAX - DSPP_0);
+	ret = hfi_adapter_buffer_alloc(&hfi_kms->hfi_client, &crtc_hfi->hfi_buff_map_dither);
+	if (ret) {
+		SDE_ERROR("failed to allocate hfi shared memory for dither\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 void hfi_crtc_destroy(struct sde_crtc *crtc)
 {
 	int ret = 0;
@@ -644,19 +698,16 @@ int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 	return 0;
 }
 
-static int _hfi_cp_crtc_allocate_dither(struct hfi_crtc *hfi_crtc)
+static int _hfi_cp_crtc_allocate_dither(struct sde_crtc *crtc, struct hfi_crtc *hfi_crtc)
 {
 	int ret = 0;
-	struct sde_crtc *sde_crtc;
 	struct hfi_kms *hfi_kms;
 
-	sde_crtc = hfi_crtc->sde_base;
-	if (!sde_crtc)
+	hfi_kms = sde_crtc_get_kms(crtc);
+	if (!hfi_kms) {
+		SDE_ERROR("%s: failed to get hfi kms\n", __func__);
 		return -EINVAL;
-
-	hfi_kms = sde_crtc_get_kms(sde_crtc);
-	if (!hfi_kms)
-		return -EINVAL;
+	}
 
 	hfi_crtc->hfi_buff_map_dither.size =
 		sizeof(struct hfi_display_dither) * (DSPP_MAX - DSPP_0);
@@ -710,7 +761,7 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc)
 		goto free_kv;
 	}
 
-	ret = _hfi_cp_crtc_allocate_dither(crtc);
+	ret = _hfi_cp_crtc_allocate_dither(sde_crtc, crtc);
 	if (ret)
 		SDE_DEBUG("failed to allocated shared memory for dither payloads ret: %d\n", ret);
 
