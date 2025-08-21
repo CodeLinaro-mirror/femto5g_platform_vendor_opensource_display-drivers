@@ -486,6 +486,22 @@
  */
 #define HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_LAYER_INDICES         0x0001001A
 
+/*
+ * HFI_PROPERTY_DEVICE_INIT_SYS_CACHE_STALING - This property is set to indicate
+ *                                  support for system cache staling feature.
+ *                                  Firmware is expected to send this property
+ *                                  as part of
+ *                                  HFI_COMMAND_DEVICE_INIT_DEVICE_CAPS
+ *                                  command packet payload.
+ *
+ * @BasicFuntionality @DeviceInit - HFI_PROPERTY_DEVICE_INIT_SYS_CACHE_STALING
+ *     (u32_key) payload [0]   : HFI_PROPERTY_DEVICE_INIT_SYS_CACHE_STALING \|
+ *                               (version=0 << 20) \|
+ *                               (dsize=1 << 24)
+ *   (u32_value) payload [1]   : HFI_TRUE or HFI_FALSE
+ */
+#define HFI_PROPERTY_DEVICE_INIT_SYS_CACHE_STALING                   0x0001001B
+
 /* Device Resource Property IDs end here */
 
 /*
