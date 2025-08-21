@@ -3911,7 +3911,8 @@ static void _sde_encoder_input_handler_register(
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	int rc;
 
-	if (!sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+	if (!(sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+		sde_enc->disp_info.vrr_caps.video_psr_support) ||
 		!sde_enc->input_event_enabled)
 		return;
 
@@ -3933,7 +3934,8 @@ static void _sde_encoder_input_handler_unregister(
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 
-	if (!sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+	if (!(sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+		sde_enc->disp_info.vrr_caps.video_psr_support) ||
 		!sde_enc->input_event_enabled)
 		return;
 
@@ -8605,9 +8607,11 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 		goto fail;
 	}
 
-	ret = hfi_encoder_init(dev, sde_enc);
-	if (ret)
-		goto fail;
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		ret = hfi_encoder_init(dev, sde_enc);
+		if (ret)
+			goto fail;
+	}
 
 	if (ops)
 		sde_enc->ops = *ops;

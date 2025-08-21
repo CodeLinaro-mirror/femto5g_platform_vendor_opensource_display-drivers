@@ -1437,6 +1437,19 @@ static void dsi_panel_parse_split_link_config(struct dsi_host_common_cfg *host,
 	split_link->enabled = true;
 }
 
+static void dsi_panel_parse_dpu_dma_mode(struct dsi_host_common_cfg *host,
+					struct dsi_parser_utils *utils,
+					const char *name)
+{
+	bool dpu_dma_enabled;
+
+	dpu_dma_enabled = utils->read_bool(utils->data, "qcom,mdss-dpu-dma-mode");
+	if (dpu_dma_enabled)
+		DSI_DEBUG("[%s] dpu dma is supported\n", name);
+
+	host->dpu_dma_enabled = dpu_dma_enabled;
+}
+
 static int dsi_panel_parse_host_config(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -1484,6 +1497,8 @@ static int dsi_panel_parse_host_config(struct dsi_panel *panel)
 
 	dsi_panel_parse_split_link_config(&panel->host_config, utils,
 						panel->name);
+
+	dsi_panel_parse_dpu_dma_mode(&panel->host_config, utils, panel->name);
 
 error:
 	return rc;

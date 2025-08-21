@@ -3842,6 +3842,9 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 		if (c_conn->vrr_caps.video_psr_support)
 			sde_kms_info_add_keyint(info, "has_vhm_support", 1);
 
+		if (c_conn->dpu_dma_enabled)
+			sde_kms_info_add_keyint(info, "dpu_dma_enabled", 1);
+
 		if (c_conn->vrr_caps.vrr_support)
 			sde_kms_info_add_keyint(info, "early_ept_timeout",
 				IDLE_POWERCOLLAPSE_DURATION * NSEC_PER_MSEC);
@@ -4112,6 +4115,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			CONNECTOR_PROP_AUTOREFRESH);
 
 	c_conn->vrr_caps = display_info->vrr_caps;
+	c_conn->dpu_dma_enabled = display_info->dpu_dma_enabled;
 
 	if (c_conn->vrr_caps.vrr_support &&
 			!c_conn->vrr_caps.video_mrr_support) {
@@ -4201,7 +4205,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 		dsi_display = (struct dsi_display *)(display);
 		if (dsi_display && dsi_display->panel) {
 			msm_property_install_range(&c_conn->property_info, "brightness",
-			0x0, 0, dsi_display->panel->bl_config.brightness_max_level, 0,
+			0x0, 0, 0xFFFF, 0,
 			CONNECTOR_PROP_BRIGHTNESS);
 		}
 	}
@@ -4395,9 +4399,11 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 			"conn%u",
 			c_conn->base.base.id);
 
-	rc = hfi_connector_init(connector_type, c_conn);
-	if (rc)
-		goto error_free_conn;
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = hfi_connector_init(connector_type, c_conn);
+		if (rc)
+			goto error_free_conn;
+	}
 
 	rc = sde_connector_get_info(&c_conn->base, &display_info);
 	if (rc)
