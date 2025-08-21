@@ -4102,7 +4102,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	event = crtc->state->event;
 
 	/* Get a vblank event refcount to enable page-flip */
-	if (event)
+	if (event && sde_crtc->enabled)
 		WARN_ON(drm_crtc_vblank_get(crtc) != 0);
 
 	if (!sde_crtc->num_mixers) {
