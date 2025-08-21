@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 #include <drm/msm_drm_pp.h>
@@ -884,7 +884,7 @@ int sde_spr_read_opr_value(struct sde_hw_dspp *ctx, uint32_t *opr_value)
 static void ucsc_setup_int2fp_fp2int(struct sde_hw_pipe *ctx,
 		enum sde_sspp_multirect_index index)
 {
-	u32 ucsc_base, ucsc, mask;
+	u32 ucsc_base, mask;
 
 	if (!ctx || index == SDE_SSPP_RECT_MAX) {
 		DRM_ERROR("invalid parameter\tctx: %pK\tindex: %d\n",
@@ -898,13 +898,14 @@ static void ucsc_setup_int2fp_fp2int(struct sde_hw_pipe *ctx,
 		ucsc_base = ctx->cap->sblk->ucsc_csc_blk[1].base;
 
 	mask = BIT(20) | BIT(21);
-	ucsc = 0;
-	if (ucsc & UCSC_ANY_EN) {
-		if ((ucsc & UCSC_FP2INT_INT2FP_EN) == UCSC_FP2INT_INT2FP_EN)
+	if (ctx->ucsc_cfg & UCSC_ANY_EN) {
+		if ((ctx->ucsc_cfg & UCSC_FP2INT_INT2FP_EN) == UCSC_FP2INT_INT2FP_EN)
 			return;
-		ucsc |= BIT(20) | BIT(21);
+		ctx->ucsc_cfg |= BIT(20) | BIT(21);
+	} else {
+		ctx->ucsc_cfg &= ~(BIT(20) | BIT(21));
 	}
-	SDE_REG_MODIFY(&ctx->hw, ucsc_base, mask, ucsc);
+	SDE_REG_MODIFY(&ctx->hw, ucsc_base, mask, ctx->ucsc_cfg);
 }
 
 static void sde_setup_ucsc_cscv1_common(struct sde_hw_pipe *ctx,
@@ -912,7 +913,7 @@ static void sde_setup_ucsc_cscv1_common(struct sde_hw_pipe *ctx,
 {
 	struct sde_hw_cp_cfg *hw_cfg = data;
 	drm_msm_ucsc_csc *ucsc_csc;
-	u32 csc_base, csc, i, mask, offset = 0;
+	u32 csc_base, i, csc, mask, offset = 0;
 
 	if (!ctx || !data || index == SDE_SSPP_RECT_MAX) {
 		DRM_ERROR("invalid parameter\tctx: %pK\tdata: %pK\tindex: %d\n",
@@ -969,11 +970,12 @@ static void sde_setup_ucsc_cscv1_common(struct sde_hw_pipe *ctx,
 
 write_base:
 	mask = BIT(2);
-	csc = 0;
 	if (ucsc_csc)
-		csc |= BIT(2);
+		ctx->ucsc_cfg |= BIT(2);
+	else
+		ctx->ucsc_cfg &= ~BIT(2);
 
-	SDE_REG_MODIFY(&ctx->hw, csc_base, mask, csc);
+	SDE_REG_MODIFY(&ctx->hw, csc_base, mask, ctx->ucsc_cfg);
 }
 
 void sde_setup_ucsc_cscv1_1(struct sde_hw_pipe *ctx,
@@ -994,7 +996,7 @@ static void sde_setup_ucsc_gcv1_common(struct sde_hw_pipe *ctx,
 {
 	struct sde_hw_cp_cfg *hw_cfg = data;
 	int *ucsc_gc;
-	u32 gc_base, gc, mask;
+	u32 gc_base, mask;
 
 	if (!ctx || !data || index == SDE_SSPP_RECT_MAX) {
 		DRM_ERROR("invalid parameter\tctx: %pK\tdata: %pK\tindex: %d\n",
@@ -1022,26 +1024,26 @@ static void sde_setup_ucsc_gcv1_common(struct sde_hw_pipe *ctx,
 	}
 
 	mask = 0xF8;
-	gc = 0;
+	ctx->ucsc_cfg &= ~mask;
 
 	if (*ucsc_gc == UCSC_GC_MODE_DISABLE)
 		goto reset_gc;
 
 	if (ucsc_gc && *ucsc_gc) {
-		gc |= BIT(4);
+		ctx->ucsc_cfg |= BIT(4);
 
 		switch (*ucsc_gc)
 		{
 		case UCSC_GC_MODE_SRGB:
 			break;
 		case UCSC_GC_MODE_PQ:
-			gc |= BIT(5);
+			ctx->ucsc_cfg |= BIT(5);
 			break;
 		case UCSC_GC_MODE_GAMMA2_2:
-			gc |= BIT(6);
+			ctx->ucsc_cfg |= BIT(6);
 			break;
 		case UCSC_GC_MODE_HLG:
-			gc |= BIT(5)|BIT(6);
+			ctx->ucsc_cfg |= BIT(5)|BIT(6);
 			break;
 		default:
 			DRM_ERROR("Invalid UCSC GC mode \tmode: %d\n", *ucsc_gc);
@@ -1050,7 +1052,7 @@ static void sde_setup_ucsc_gcv1_common(struct sde_hw_pipe *ctx,
 	}
 
 reset_gc:
-	SDE_REG_MODIFY(&ctx->hw, gc_base, mask, gc);
+	SDE_REG_MODIFY(&ctx->hw, gc_base, mask, ctx->ucsc_cfg);
 }
 
 void sde_setup_ucsc_gcv1_1(struct sde_hw_pipe *ctx,
@@ -1071,7 +1073,7 @@ static void sde_setup_ucsc_igcv1_common(struct sde_hw_pipe *ctx,
 {
 	struct sde_hw_cp_cfg *hw_cfg = data;
 	int *ucsc_igc;
-	u32 igc_base, igc, mask;
+	u32 igc_base, mask;
 
 	if (!ctx || !data || index == SDE_SSPP_RECT_MAX) {
 		DRM_ERROR("invalid parameter\tctx: %pK\tdata: %pK\tindex: %d\n",
@@ -1099,29 +1101,29 @@ static void sde_setup_ucsc_igcv1_common(struct sde_hw_pipe *ctx,
 	}
 
 	mask = 0x702;
-	igc = 0;
+	ctx->ucsc_cfg &= ~mask;
 
 	if (*ucsc_igc == UCSC_IGC_MODE_DISABLE)
 		goto reset_igc;
 
 	if (ucsc_igc && *ucsc_igc) {
-		igc |= BIT(1);
+		ctx->ucsc_cfg |= BIT(1);
 
 		switch (*ucsc_igc)
 		{
 		case UCSC_IGC_MODE_SRGB:
 			break;
 		case UCSC_IGC_MODE_REC709:
-			igc |= BIT(8);
+			ctx->ucsc_cfg |= BIT(8);
 			break;
 		case UCSC_IGC_MODE_GAMMA2_2:
-			igc |= BIT(9);
+			ctx->ucsc_cfg |= BIT(9);
 			break;
 		case UCSC_IGC_MODE_HLG:
-			igc |= BIT(8)|BIT(9);
+			ctx->ucsc_cfg |= BIT(8)|BIT(9);
 			break;
 		case UCSC_IGC_MODE_PQ:
-			igc |= BIT(10);
+			ctx->ucsc_cfg |= BIT(10);
 			break;
 		default:
 		    DRM_ERROR("Invalid UCSC IGC mode \tmode: %d\n", *ucsc_igc);
@@ -1130,7 +1132,7 @@ static void sde_setup_ucsc_igcv1_common(struct sde_hw_pipe *ctx,
 	}
 
 reset_igc:
-	SDE_REG_MODIFY(&ctx->hw, igc_base, mask, igc);
+	SDE_REG_MODIFY(&ctx->hw, igc_base, mask, ctx->ucsc_cfg);
 }
 
 void sde_setup_ucsc_igcv1_1(struct sde_hw_pipe *ctx,
@@ -1151,7 +1153,7 @@ static void sde_setup_ucsc_unmultv1_common(struct sde_hw_pipe *ctx,
 {
 	struct sde_hw_cp_cfg *hw_cfg = data;
 	bool *ucsc_unmult;
-	u32 unmult_base, unmult, mask;
+	u32 unmult_base, mask;
 
 	if (!ctx || !data || index == SDE_SSPP_RECT_MAX) {
 		DRM_ERROR("invalid parameter\tctx: %pK\tdata: %pK\tindex: %d\n",
@@ -1175,13 +1177,14 @@ static void sde_setup_ucsc_unmultv1_common(struct sde_hw_pipe *ctx,
 	}
 
 	mask = BIT(0)|BIT(18);
-	unmult = 0;
 	ucsc_unmult = (bool *)(hw_cfg->payload);
 
 	if (ucsc_unmult && *ucsc_unmult)
-		unmult |= BIT(0)|BIT(18);
+		ctx->ucsc_cfg |= BIT(0)|BIT(18);
+	else
+		ctx->ucsc_cfg &= ~(BIT(0)|BIT(18));
 
-	SDE_REG_MODIFY(&ctx->hw, unmult_base, mask, unmult);
+	SDE_REG_MODIFY(&ctx->hw, unmult_base, mask, ctx->ucsc_cfg);
 }
 
 void sde_setup_ucsc_unmultv1_1(struct sde_hw_pipe *ctx,
@@ -1202,7 +1205,7 @@ void sde_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
 {
 	struct sde_hw_cp_cfg *hw_cfg = data;
 	bool *ucsc_alpha_dither;
-	u32 alpha_dither_base, alpha_dither, mask;
+	u32 alpha_dither_base, mask;
 
 	if (!ctx || index == SDE_SSPP_RECT_MAX) {
 		DRM_ERROR("invalid parameter\tctx: %pK\tindex: %d\n",
@@ -1226,13 +1229,14 @@ void sde_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
 	}
 
 	mask = BIT(17);
-	alpha_dither = 0;
 	ucsc_alpha_dither = (bool *)(hw_cfg->payload);
 
 	if (ucsc_alpha_dither && *ucsc_alpha_dither)
-		alpha_dither |= BIT(17);
+		ctx->ucsc_cfg |= BIT(17);
+	else
+		ctx->ucsc_cfg &= ~BIT(17);
 
-	SDE_REG_MODIFY(&ctx->hw, alpha_dither_base, mask, alpha_dither);
+	SDE_REG_MODIFY(&ctx->hw, alpha_dither_base, mask, ctx->ucsc_cfg);
 }
 
 int sde_validate_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
