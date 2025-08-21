@@ -8251,9 +8251,12 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			sde_kms_info_add_keyint(info, "ai_scaler_count",
 					catalog->ai_scaler_count);
 
-		if ((catalog->abc_count) && (catalog->ssip_allowed))
+		if ((catalog->abc_count) && (catalog->ssip_allowed)) {
 			sde_kms_info_add_keyint(info, "abc_count",
 					catalog->abc_count);
+			sde_kms_info_add_keyint(info, "is_udc_supported",
+					catalog->is_udc_supported);
+		}
 	}
 
 	sde_kms_info_add_keyint(info, "dsc_block_count", catalog->dsc_count);

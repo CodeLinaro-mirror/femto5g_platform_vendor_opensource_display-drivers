@@ -3350,6 +3350,12 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 				sde_cfg->abc_count++;
 				sblk->aiqe.abc_supported = true;
 			}
+			// udc is not supported for aiqe v2.1.0
+			if (sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x1))
+				sde_cfg->is_udc_supported = false;
+			else
+				sde_cfg->is_udc_supported = true;
+
 			if (PROP_VALUE_ACCESS(props->values, SSRC, 0))
 				sblk->aiqe.ssrc_supported = true;
 			if (PROP_VALUE_ACCESS(props->values, COPR, 0))

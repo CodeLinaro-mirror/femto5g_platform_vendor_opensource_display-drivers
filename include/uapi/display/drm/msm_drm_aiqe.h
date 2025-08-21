@@ -127,6 +127,7 @@ struct drm_msm_ai_scaler {
 
 #define AIQE_ABC_SUPPORTED
 #define AIQE_ABC_PARAM_LEN 44
+#define AIQE_ABC_UDC_PARAM_LEN 20
 #define AIQE_ABC_SRC_SEL_DMA1 1
 #define AIQE_ABC_SRC_SEL_DMA3 3
 /**

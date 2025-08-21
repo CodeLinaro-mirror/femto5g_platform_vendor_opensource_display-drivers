@@ -961,7 +961,10 @@ static void _aiqe_abc_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 	}
 }
 
-void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
+void _reg_dma_setup_common_aiqe_abc(struct sde_hw_dspp *ctx,
+				void *cfg,
+				void *aiqe_top,
+				u32 aiqe_abc_param_len)
 {
 	struct drm_msm_abc *aiqe_abc;
 	struct sde_aiqe_top_level *aiqe_tl = aiqe_top;
@@ -973,10 +976,6 @@ void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 	int rc = -EINVAL;
 	u32 aiqe_base, aiqe_wrapper_base;
 	enum msm_disp_op disp_op = ctx->hw.disp_op;
-
-	rc = reg_dma_dspp_check(ctx, cfg, AIQE_ABC);
-	if (rc)
-		return;
 
 	if (!ctx->cap->sblk->aiqe.base) {
 		SDE_DEBUG("AIQE not present on DSPP idx %d", ctx->idx);
@@ -999,12 +998,6 @@ void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 		SDE_ERROR("write decode select failed ret %d\n", rc);
 		return;
 	}
-
-#ifdef HFI_BUFF_FEATURE_ENABLE
-	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
-	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
-	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
-#endif
 
 	aiqe_abc = (struct drm_msm_abc *)(hw_cfg->payload);
 
@@ -1030,7 +1023,7 @@ void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 	}
 
 	REG_DMA_SETUP_OPS(dma_cfg, aiqe_base + 0x20,
-		aiqe_abc->param, AIQE_ABC_PARAM_LEN * sizeof(u32),
+		aiqe_abc->param, aiqe_abc_param_len * sizeof(u32),
 		REG_BLK_WRITE_SINGLE, 0, 0, 0);
 	rc = dma_ops->setup_payload(&dma_cfg);
 	if (rc) {
@@ -1055,6 +1048,49 @@ void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 		else
 			LOG_FEATURE_ON;
 	}
+}
+
+void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	int rc = reg_dma_dspp_check(ctx, cfg, AIQE_ABC);
+
+	if (rc)
+		return;
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+#endif
+
+	/*
+	 * Setup AIQE ABC parameters using the full parameter length.
+	 * This ensures all ABC-related parameters are configured.
+	 */
+	_reg_dma_setup_common_aiqe_abc(ctx, cfg, aiqe_top, AIQE_ABC_PARAM_LEN);
+}
+
+void reg_dmav1_setup_aiqe_abc_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	int rc = reg_dma_dspp_check(ctx, cfg, AIQE_ABC);
+
+	if (rc)
+		return;
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 1, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+#endif
+
+	/*
+	 * Setup AIQE ABC parameters excluding UDC parameters.
+	 * Uses reduced parameter length to omit UDC, as v2 does not require UDC configuration.
+	 */
+	_reg_dma_setup_common_aiqe_abc(ctx, cfg, aiqe_top,
+					(AIQE_ABC_PARAM_LEN - AIQE_ABC_UDC_PARAM_LEN));
 }
 
 int _ai_scaler_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,

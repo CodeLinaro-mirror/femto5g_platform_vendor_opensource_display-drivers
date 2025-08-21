@@ -559,7 +559,8 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 	}
 
 	if ((c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) ||
-		 (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x0))) {
+		(c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) ||
+		(c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x1))) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_AIQE, c);
 		if (ret)
 			return;
@@ -602,6 +603,13 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 		if (c->cap->sblk->aiqe.abc_supported) {
 			c->ops.setup_aiqe_abc[MSM_DISP_OP_HWIO] = sde_setup_aiqe_abc_v1;
 			c->ops.setup_aiqe_abc[MSM_DISP_OP_HFI] = reg_dmav1_setup_aiqe_abc_v1;
+
+			if (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x1)) {
+				c->ops.setup_aiqe_abc[MSM_DISP_OP_HWIO] =
+						reg_dmav1_setup_aiqe_abc_v2;
+				c->ops.setup_aiqe_abc[MSM_DISP_OP_HFI] =
+						reg_dmav1_setup_aiqe_abc_v2;
+			}
 		}
 	}
 }
