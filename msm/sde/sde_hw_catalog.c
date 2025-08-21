@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2132,9 +2132,8 @@ static void sde_sspp_set_features(struct sde_mdss_cfg *sde_cfg,
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_D00))
 			set_bit(SDE_SSPP_REC_SWI_SEPARATION, &sspp->features);
 
-		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features)) {
-			set_bit(SDE_SSPP_LOCAL_FLUSH, &sspp->features);
-		}
+		//if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+			//set_bit(SDE_SSPP_LOCAL_FLUSH, &sspp->features);
 	}
 }
 
@@ -2316,8 +2315,8 @@ static int sde_ctl_parse_dt(struct device_node *np,
 			set_bit(SDE_CTL_CESTA_FLUSH, &ctl->features);
 		if (SDE_HW_MAJOR(sde_cfg->hw_rev) >= SDE_HW_MAJOR(SDE_HW_VER_B00))
 			set_bit(SDE_CTL_NO_LAYER_EXT, &ctl->features);
-		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
-			set_bit(SDE_CTL_LOCAL_FLUSH, &ctl->features);
+		//if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+		//	set_bit(SDE_CTL_LOCAL_FLUSH, &ctl->features);
 	}
 
 	sde_put_dt_props(props);
@@ -2496,8 +2495,8 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 			set_bit(SDE_MIXER_10_BITS_ALPHA, &mixer->features);
 			set_bit(SDE_MIXER_10_BITS_COLOR, &mixer->features);
 		}
-		if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
-			set_bit(SDE_MIXER_LOCAL_FLUSH, &mixer->features);
+		//if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
+		//	set_bit(SDE_MIXER_LOCAL_FLUSH, &mixer->features);
 
 		of_property_read_string_index(np,
 			mixer_prop[MIXER_DISP].prop_name, i, &disp_pref);

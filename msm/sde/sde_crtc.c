@@ -4990,6 +4990,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		//_sde_crtc_setup_lm_bounds(crtc, crtc->state);
 	} else {
 		SDE_DEBUG("No update mixers\n");
+		mixer_updated = true;
 	}
 
 	_sde_crtc_setup_lm_bounds(crtc, crtc->state);
