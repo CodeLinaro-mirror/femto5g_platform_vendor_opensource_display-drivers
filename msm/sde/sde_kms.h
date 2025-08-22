@@ -258,6 +258,7 @@ struct sde_kms {
 	/* Hyper vision driver make a backup and update catalog for HW blocks only exist on GVM */
 	struct sde_mdss_cfg *org_catalog;
 	struct msm_hyp_kms *hyp_kms;
+	int dpu_id;
 #endif
 
 	struct generic_pm_domain genpd;
