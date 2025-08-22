@@ -9,7 +9,9 @@
 #include <linux/atomic.h>
 #include <linux/delay.h>
 #include <linux/ktime.h>
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 #include "hfi_interface.h"
+#endif
 
 #define HFI_AD_INFO(fmt, ...)  \
 	pr_info("[hfi_ad_info] %s:%d " fmt, __func__, __LINE__, ##__VA_ARGS__)
