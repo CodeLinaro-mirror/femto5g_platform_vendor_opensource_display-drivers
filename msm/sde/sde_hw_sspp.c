@@ -1795,7 +1795,6 @@ static void sde_hw_sspp_local_flush(struct sde_hw_pipe *ctx,
 		flush_ctl_off = SSPP_FLUSH_CTRL_REC1;
 
 	if (ctx->global_flush) {
-		ctx->global_flush = false;
 		SDE_REG_WRITE(c, flush_ctl_off, 0x00);
 	} else {
 		SDE_REG_WRITE(c, flush_ctl_off, 0x03);
