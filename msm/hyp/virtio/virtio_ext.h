@@ -47,6 +47,7 @@ enum virtio_gpu_ctrl_type_ext {
 	VIRTIO_GPU_CMD_GET_PLANE_HW_ATTRIBUTES,
 	VIRTIO_GPU_CMD_ENABLE_VIRQ,
 	VIRTIO_GPU_CMD_DISABLE_VIRQ,
+	VIRTIO_GPU_CMD_SET_POWER,
 
 	VIRTIO_GPU_RESP_EXTENTION_START = 0x1300,
 	VIRTIO_GPU_RESP_ERR_UNSUPPORTED_COMMAND,
@@ -73,6 +74,7 @@ enum virtio_gpu_ctrl_type_ext {
 	VIRTIO_GPU_RESP_OK_PLANE_HW_ATTRIBUTES,
 	VIRTIO_GPU_RESP_OK_ENABLE_VIRQ,
 	VIRTIO_GPU_RESP_OK_DISABLE_VIRQ,
+	VIRTIO_GPU_RESP_OK_SET_POWER,
 	VIRTIO_GPU_RESP_EXTENTION_END
 };
 
@@ -136,13 +138,13 @@ enum display_port_type {
 
 enum
 {
-    VIRTIO_SCANOUT_POWER_MODE_OFF           = 0x7680,
-    VIRTIO_SCANOUT_POWER_MODE_SUSPEND       = 0x7681,
-    VIRTIO_SCANOUT_POWER_MODE_LIMITED_USE   = 0x7682,
-    VIRTIO_SCANOUT_POWER_MODE_ON            = 0x7683,
-    VIRTIO_SCANOUT_POWER_MODE_PRE_DISABLE   = 0x7684,
-    VIRTIO_SCANOUT_POWER_MODE_PRE_ENABLE    = 0x7685,
-    VIRTIO_SCANOUT_POWER_MODE_FORCE_32BIT   = 0x7FFFFFFF
+	VIRTIO_SCANOUT_POWER_MODE_OFF           = 0x7680,
+	VIRTIO_SCANOUT_POWER_MODE_SUSPEND       = 0x7681,
+	VIRTIO_SCANOUT_POWER_MODE_LIMITED_USE   = 0x7682,
+	VIRTIO_SCANOUT_POWER_MODE_ON            = 0x7683,
+	VIRTIO_SCANOUT_POWER_MODE_PRE_DISABLE   = 0x7684,
+	VIRTIO_SCANOUT_POWER_MODE_PRE_ENABLE    = 0x7685,
+	VIRTIO_SCANOUT_POWER_MODE_FORCE_32BIT   = 0x7FFFFFFF
 };
 
 enum source_pipe_id_type {
@@ -157,6 +159,12 @@ enum source_pipe_id_type {
 
 	SOURCE_PIPE_INDEX_MASK = 0x0000FFFF,
 	SOURCE_PIPE_INDEX_SHIFT = 0,
+};
+
+enum {
+	VIRTIO_DEVICE_POWER_OFF		= 0,
+	VIRTIO_DEVICE_POWER_ON,
+	VIRTIO_DEVICE_POWER_MAX,
 };
 
 struct virtio_gpu_get_display_info_ext {
@@ -558,6 +566,21 @@ struct virtio_gpu_resp_disable_virq {
 	struct virtio_gpu_ctrl_hdr hdr;
 	__le32 device_id;
 	__le32 shmem_id;
+	__le32 error_code;
+	__le32 padding;
+};
+
+struct virtio_gpu_set_power {
+	struct virtio_gpu_ctrl_hdr hdr;
+	__le32 device_id;
+	__le32 power_level;
+	__le32 padding;
+};
+
+struct virtio_gpu_resp_set_power {
+	struct virtio_gpu_ctrl_hdr hdr;
+	__le32 device_id;
+	__le32 power_level;
 	__le32 error_code;
 	__le32 padding;
 };

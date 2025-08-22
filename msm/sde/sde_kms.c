@@ -2673,6 +2673,10 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 	}
 
 	_sde_kms_mmu_destroy(sde_kms);
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_OFF);
+#endif
 }
 
 int sde_kms_mmu_detach(struct sde_kms *sde_kms, bool secure_only)
@@ -4364,42 +4368,19 @@ struct msm_display_mode *sde_kms_get_msm_mode(struct drm_connector_state *conn_s
 	return &sde_conn_state->msm_mode;
 }
 
-static int sde_kms_pm_suspend(struct device *dev)
+static int _sde_kms_pm_disable_all_crtcs(struct device *dev,
+	struct sde_kms *sde_kms)
 {
 	struct drm_device *ddev;
 	struct drm_modeset_acquire_ctx ctx;
 	struct drm_connector *conn;
-	struct drm_encoder *enc;
 	struct drm_connector_list_iter conn_iter;
 	struct drm_atomic_state *state = NULL;
-	struct sde_kms *sde_kms;
 	int ret = 0, num_crtcs = 0;
 
-	if (!dev)
-		return -EINVAL;
-
 	ddev = dev_get_drvdata(dev);
-	if (!ddev || !ddev_to_msm_kms(ddev))
+	if (!ddev)
 		return -EINVAL;
-
-	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
-	SDE_EVT32(0);
-
-	/* disable hot-plug polling */
-	drm_kms_helper_poll_disable(ddev);
-
-	/* if any built-in display is stuck in CS, skip PM suspend entry to
-	 * avoid driver SW state changes. With speculative fence enabled, HAL depends
-	 * on power_on notification for the first commit to exit the Wait completion
-	 * instead of retire fence signal.
-	 */
-	drm_for_each_encoder(enc, ddev) {
-		if (sde_encoder_in_cont_splash(enc) && enc->crtc) {
-			SDE_DEBUG("skip PM suspend, splash is enabled on enc:%d\n", DRMID(enc));
-			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_EXIT);
-			return -EINVAL;
-		}
-	}
 
 	/* acquire modeset lock(s) */
 	drm_modeset_acquire_init(&ctx, 0);
@@ -4512,6 +4493,44 @@ unlock:
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
 
+	return ret;
+}
+
+static int sde_kms_pm_suspend(struct device *dev)
+{
+	struct drm_device *ddev;
+	struct drm_encoder *enc;
+	struct sde_kms *sde_kms;
+	int ret = 0;
+
+	if (!dev)
+		return -EINVAL;
+
+	ddev = dev_get_drvdata(dev);
+	if (!ddev || !ddev_to_msm_kms(ddev))
+		return -EINVAL;
+
+	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
+	SDE_EVT32(0);
+
+	/* disable hot-plug polling */
+	drm_kms_helper_poll_disable(ddev);
+
+	/* if any built-in display is stuck in CS, skip PM suspend entry to
+	 * avoid driver SW state changes. With speculative fence enabled, HAL depends
+	 * on power_on notification for the first commit to exit the Wait completion
+	 * instead of retire fence signal.
+	 */
+	drm_for_each_encoder(enc, ddev) {
+		if (sde_encoder_in_cont_splash(enc) && enc->crtc) {
+			SDE_DEBUG("skip PM suspend, splash is enabled on enc:%d\n", DRMID(enc));
+			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_EXIT);
+			return -EINVAL;
+		}
+	}
+
+	ret = _sde_kms_pm_disable_all_crtcs(dev, sde_kms);
+
 	/*
 	 * pm runtime driver avoids multiple runtime_suspend API call by
 	 * checking runtime_status. However, this call helps when there is a
@@ -4521,6 +4540,10 @@ unlock:
 	 */
 	pm_runtime_put_sync(dev);
 	pm_runtime_get_noresume(dev);
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_OFF);
+#endif
 
 	/* dump clock state before entering suspend */
 	if (sde_kms->pm_suspend_clk_dump)
@@ -4545,6 +4568,10 @@ static int sde_kms_pm_resume(struct device *dev)
 		return -EINVAL;
 
 	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_ON);
+#endif
 
 	SDE_EVT32(sde_kms->suspend_state != NULL);
 	/* if a display is in cont splash early exit */
@@ -5265,11 +5292,30 @@ static int _sde_kms_hw_init_power_helper(struct drm_device *dev,
 	return rc;
 }
 
-static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
-	struct drm_device *dev,
-	struct msm_drm_private *priv)
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+static int _sde_kms_hyp_power_up_dpu(struct sde_kms *sde_kms,
+	struct drm_device *dev)
 {
-	int i, rc = -EINVAL;
+	struct device_node *np = dev->dev->of_node;
+	u32 dpu_id;
+
+	/* Parse the DPU id, which is needed for requesting power voting */
+	if (of_property_read_u32(np, "cell-index", &dpu_id)) {
+		pr_warn("Missing cell-index for DPU id, default to 0\n");
+		dpu_id = 0;
+	}
+	/* Store the DPU ID */
+	sde_kms->dev->primary->index = dpu_id;
+	sde_kms->hyp_kms = msm_hyp_get_kms();
+	/* Make sure core clock/power is up, to able read registers for HW init */
+	return msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_ON);
+}
+#endif
+
+static int _sde_kms_hw_init_catalog(struct sde_kms *sde_kms,
+	struct drm_device *dev)
+{
+	int rc = 0;
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	struct sde_mdss_cfg *hyp_cfg;
 #endif
@@ -5281,7 +5327,8 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 			rc = -EINVAL;
 		SDE_ERROR("catalog init failed: %d\n", rc);
 		sde_kms->catalog = NULL;
-		goto power_error;
+		rc = -EINVAL;
+		goto error;
 	}
 	sde_kms->core_rev = sde_kms->catalog->hw_rev;
 
@@ -5296,6 +5343,154 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	}
 #endif
 
+error:
+	return rc;
+}
+
+static int _sde_kms_hw_init_cont_splash(struct sde_kms *sde_kms,
+	struct msm_drm_private *priv)
+{
+	int i;
+
+	/*
+	 * Attempt continuous splash handoff only if reserved
+	 * splash memory is found & release resources on any error
+	 * in finding display hw config in splash
+	 */
+	if (sde_kms->splash_data.num_splash_regions) {
+		struct sde_splash_display *display;
+		int ret, display_count =
+			sde_kms->splash_data.num_splash_displays;
+
+		ret = sde_rm_cont_splash_res_init(priv, &sde_kms->rm,
+				&sde_kms->splash_data, sde_kms->catalog);
+
+		for (i = 0; i < display_count; i++) {
+			display = &sde_kms->splash_data.splash_display[i];
+			/*
+			 * free splash region on resource init failure and
+			 * cont-splash disabled case
+			 */
+			if (!display->cont_splash_enabled || ret)
+				_sde_kms_free_splash_display_data(
+						sde_kms, display);
+		}
+	}
+
+	return 0;
+}
+
+static int sde_kms_hw_init_vatran(struct sde_kms *sde_kms)
+{
+	int rc = 0;
+
+	/* Initialize va tran block which is a singleton */
+	if (sde_kms->catalog->vatran_count) {
+		sde_kms->catalog->vatran.base_off = sde_kms->va_tran_off;
+		rc = sde_hw_vatran_init(sde_kms->va_tran, sde_kms->catalog,
+				sde_kms->dev);
+	}
+
+	return rc;
+}
+
+static int sde_kms_hw_init_vbif(struct sde_kms *sde_kms)
+{
+	int i, rc = 0;
+
+	for (i = 0; i < sde_kms->catalog->vbif_count; i++) {
+		u32 vbif_idx = sde_kms->catalog->vbif[i].id;
+
+		sde_kms->hw_vbif[i] = sde_hw_vbif_init(vbif_idx,
+				sde_kms->vbif[vbif_idx], sde_kms->catalog);
+		if (IS_ERR_OR_NULL(sde_kms->hw_vbif[vbif_idx])) {
+			rc = PTR_ERR(sde_kms->hw_vbif[vbif_idx]);
+			if (!sde_kms->hw_vbif[vbif_idx])
+				rc = -EINVAL;
+			SDE_ERROR("failed to init vbif %d: %d\n", vbif_idx, rc);
+			sde_kms->hw_vbif[vbif_idx] = NULL;
+			break;
+		}
+	}
+
+	return rc;
+}
+
+static int sde_kms_hw_init_uidle(struct sde_kms *sde_kms)
+{
+	int rc = 0;
+
+	if (sde_kms->catalog->uidle_cfg.uidle_rev) {
+		sde_kms->hw_uidle = sde_hw_uidle_init(UIDLE, sde_kms->mmio,
+			sde_kms->mmio_len, sde_kms->catalog);
+		if (IS_ERR_OR_NULL(sde_kms->hw_uidle)) {
+			rc = PTR_ERR(sde_kms->hw_uidle);
+			if (!sde_kms->hw_uidle)
+				rc = -EINVAL;
+			/* uidle is optional, so do not make it a fatal error */
+			SDE_ERROR("failed to init uidle rc:%d\n", rc);
+			sde_kms->hw_uidle = NULL;
+			rc = 0;
+		}
+	} else {
+		sde_kms->hw_uidle = NULL;
+	}
+
+	return rc;
+}
+
+static int sde_kms_hw_init_sid(struct sde_kms *sde_kms)
+{
+	int rc = 0;
+
+	if (sde_kms->sid) {
+		sde_kms->hw_sid = sde_hw_sid_init(sde_kms->sid,
+				sde_kms->sid_len, sde_kms->catalog);
+		if (IS_ERR_OR_NULL(sde_kms->hw_sid)) {
+			rc = PTR_ERR(sde_kms->hw_sid);
+			SDE_ERROR("failed to init sid %d\n", rc);
+			sde_kms->hw_sid = NULL;
+		}
+	}
+
+	return rc;
+}
+
+static int sde_kms_hw_init_sw_fuse(struct sde_kms *sde_kms)
+{
+	if (sde_kms->sw_fuse) {
+		sde_kms->hw_sw_fuse = sde_hw_sw_fuse_init(sde_kms->sw_fuse,
+				sde_kms->sw_fuse_len, sde_kms->catalog);
+		if (IS_ERR(sde_kms->hw_sw_fuse)) {
+			SDE_ERROR("failed to init sw_fuse %ld\n",
+					PTR_ERR(sde_kms->hw_sw_fuse));
+			sde_kms->hw_sw_fuse = NULL;
+		}
+	} else {
+		sde_kms->hw_sw_fuse = NULL;
+	}
+
+	return 0;
+}
+
+static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
+	struct drm_device *dev,
+	struct msm_drm_private *priv)
+{
+	int rc = -EINVAL;
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	rc = _sde_kms_hyp_power_up_dpu(sde_kms, dev);
+	if (rc) {
+		SDE_ERROR("Failed to power up DPU core!\n");
+		goto power_error;
+	}
+#endif
+
+	rc = _sde_kms_hw_init_catalog(sde_kms, dev);
+	if (rc)
+		goto power_error;
+
 	/* initialize power domain if defined */
 	rc = _sde_kms_hw_init_power_helper(dev, sde_kms);
 	if (rc) {
@@ -5309,15 +5504,10 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto power_error;
 	}
 
-	/* Initialize va tran block which is a singleton */
-	if (sde_kms->catalog->vatran_count) {
-		sde_kms->catalog->vatran.base_off = sde_kms->va_tran_off;
-		rc = sde_hw_vatran_init(sde_kms->va_tran, sde_kms->catalog,
-				sde_kms->dev);
-		if (rc) {
-			SDE_ERROR("failed: va tran init failed\n");
-			goto power_error;
-		}
+	rc = sde_kms_hw_init_vatran(sde_kms);
+	if (rc) {
+		SDE_ERROR("failed: va tran init failed\n");
+		goto power_error;
 	}
 
 	/* Initialize reg dma block which is a singleton */
@@ -5351,30 +5541,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto hw_intr_init_err;
 	}
 
-	/*
-	 * Attempt continuous splash handoff only if reserved
-	 * splash memory is found & release resources on any error
-	 * in finding display hw config in splash
-	 */
-	if (sde_kms->splash_data.num_splash_regions) {
-		struct sde_splash_display *display;
-		int ret, display_count =
-			sde_kms->splash_data.num_splash_displays;
-
-		ret = sde_rm_cont_splash_res_init(priv, &sde_kms->rm,
-				&sde_kms->splash_data, sde_kms->catalog);
-
-		for (i = 0; i < display_count; i++) {
-			display = &sde_kms->splash_data.splash_display[i];
-			/*
-			 * free splash region on resource init failure and
-			 * cont-splash disabled case
-			 */
-			if (!display->cont_splash_enabled || ret)
-				_sde_kms_free_splash_display_data(
-						sde_kms, display);
-		}
-	}
+	_sde_kms_hw_init_cont_splash(sde_kms, priv);
 
 	sde_kms->hw_mdp = sde_rm_get_mdp(&sde_kms->rm);
 	if (IS_ERR_OR_NULL(sde_kms->hw_mdp)) {
@@ -5386,47 +5553,16 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto power_error;
 	}
 
-	for (i = 0; i < sde_kms->catalog->vbif_count; i++) {
-		u32 vbif_idx = sde_kms->catalog->vbif[i].id;
+	rc = sde_kms_hw_init_vbif(sde_kms);
+	if (rc)
+		goto power_error;
 
-		sde_kms->hw_vbif[i] = sde_hw_vbif_init(vbif_idx,
-				sde_kms->vbif[vbif_idx], sde_kms->catalog);
-		if (IS_ERR_OR_NULL(sde_kms->hw_vbif[vbif_idx])) {
-			rc = PTR_ERR(sde_kms->hw_vbif[vbif_idx]);
-			if (!sde_kms->hw_vbif[vbif_idx])
-				rc = -EINVAL;
-			SDE_ERROR("failed to init vbif %d: %d\n", vbif_idx, rc);
-			sde_kms->hw_vbif[vbif_idx] = NULL;
-			goto power_error;
-		}
-	}
+	/* Uidle is optional, not bail out if init failed */
+	rc = sde_kms_hw_init_uidle(sde_kms);
 
-	if (sde_kms->catalog->uidle_cfg.uidle_rev) {
-		sde_kms->hw_uidle = sde_hw_uidle_init(UIDLE, sde_kms->mmio,
-			sde_kms->mmio_len, sde_kms->catalog);
-		if (IS_ERR_OR_NULL(sde_kms->hw_uidle)) {
-			rc = PTR_ERR(sde_kms->hw_uidle);
-			if (!sde_kms->hw_uidle)
-				rc = -EINVAL;
-			/* uidle is optional, so do not make it a fatal error */
-			SDE_ERROR("failed to init uidle rc:%d\n", rc);
-			sde_kms->hw_uidle = NULL;
-			rc = 0;
-		}
-	} else {
-		sde_kms->hw_uidle = NULL;
-	}
-
-	if (sde_kms->sid) {
-		sde_kms->hw_sid = sde_hw_sid_init(sde_kms->sid,
-				sde_kms->sid_len, sde_kms->catalog);
-		if (IS_ERR_OR_NULL(sde_kms->hw_sid)) {
-			rc = PTR_ERR(sde_kms->hw_sid);
-			SDE_ERROR("failed to init sid %d\n", rc);
-			sde_kms->hw_sid = NULL;
-			goto power_error;
-		}
-	}
+	rc = sde_kms_hw_init_sid(sde_kms);
+	if (rc)
+		goto power_error;
 
 	rc = sde_core_perf_init(&sde_kms->perf, dev, sde_kms->catalog,
 			&priv->phandle, "core_clk");
@@ -5435,17 +5571,9 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto perf_err;
 	}
 
-	if (sde_kms->sw_fuse) {
-		sde_kms->hw_sw_fuse = sde_hw_sw_fuse_init(sde_kms->sw_fuse,
-				sde_kms->sw_fuse_len, sde_kms->catalog);
-		if (IS_ERR(sde_kms->hw_sw_fuse)) {
-			SDE_ERROR("failed to init sw_fuse %ld\n",
-					PTR_ERR(sde_kms->hw_sw_fuse));
-			sde_kms->hw_sw_fuse = NULL;
-		}
-	} else {
-		sde_kms->hw_sw_fuse = NULL;
-	}
+	/* SW fuse is optional, not bail out if init failed */
+	rc = sde_kms_hw_init_sw_fuse(sde_kms);
+
 	/*
 	 * set the disable_immediate flag when driver supports the precise vsync
 	 * timestamp as the DRM hooks for vblank timestamp/counters would be set

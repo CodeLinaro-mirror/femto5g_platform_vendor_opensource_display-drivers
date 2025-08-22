@@ -514,37 +514,12 @@ void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc)
 #ifdef CONFIG_PM_SLEEP
 static int msm_hyp_suspend(struct device *dev)
 {
-	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_hyp_drm_private *priv = ddev->dev_private;
-	int ret = 0;
-
-	if (priv->suspend_state)
-		drm_atomic_state_put(priv->suspend_state);
-
-	priv->suspend_state = drm_atomic_helper_suspend(ddev);
-	if (IS_ERR(priv->suspend_state)) {
-		ret = PTR_ERR(priv->suspend_state);
-		priv->suspend_state = NULL;
-		DRM_ERROR("failed to suspend %d\n", ret);
-	}
-
-	return ret;
+	return 0;
 }
 
 static int msm_hyp_resume(struct device *dev)
 {
-	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_hyp_drm_private *priv = ddev->dev_private;
-	int ret;
-
-	ret = drm_atomic_helper_resume(ddev, priv->suspend_state);
-	if (ret) {
-		DRM_ERROR("failed to resume %d\n", ret);
-		return ret;
-	}
-
-	priv->suspend_state = NULL;
-	return ret;
+	return 0;
 }
 #endif
 
@@ -585,6 +560,24 @@ void msm_hyp_send_hpd_event(struct drm_device *dev,
 static const struct dev_pm_ops msm_hyp_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(msm_hyp_suspend, msm_hyp_resume)
 };
+
+int msm_hyp_set_power_level(struct sde_kms *sde_kms, uint32_t power_level)
+{
+	struct msm_hyp_kms *kms = sde_kms->hyp_kms;
+	int ret = 0;
+
+	/**
+	 * Early probe sequence, SDE KMS is not ready, hyp_kms is not updated.
+	 * Take the hyp KMS handle from the global variable.
+	 */
+	if (!kms)
+		kms = msm_hyp_get_kms();
+
+	if (kms->funcs && kms->funcs->set_power_level)
+		ret = kms->funcs->set_power_level(sde_kms, power_level);
+
+	return ret;
+}
 
 struct sde_mdss_cfg *msm_hyp_hw_catalog_init(struct drm_device *dev)
 {
