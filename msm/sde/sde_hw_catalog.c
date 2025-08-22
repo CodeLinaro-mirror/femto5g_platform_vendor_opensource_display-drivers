@@ -6834,8 +6834,8 @@ static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *s
 		disable = (fuse & BIT(1)) >> 1;
 		polarity = fuse & BIT(0);
 	} else if (IS_CANOE_TARGET(sde_cfg->hw_rev)) {
-		disable = (fuse & BIT(2)) >> 2;
-		polarity = (fuse & BIT(0));
+		disable = (fuse & BIT(5)) >> 5;
+		polarity = (fuse & BIT(3)) >> 3;
 	} else {
 		sde_cfg->ssip_allowed = false;
 		return 0;

@@ -120,7 +120,7 @@
 #define MAX_ALLOWED_CRTC_CNT_DURING_SECURE	1
 
 /* max active crtc when HFI client is active */
-#define MAX_ALLOWED_CRTC_CNT_DURING_HFI	1
+#define MAX_ALLOWED_CRTC_CNT_DURING_HFI	5
 
 /* max virtual encoders per secure crtc */
 #define MAX_ALLOWED_ENCODER_CNT_PER_SECURE_CRTC	1

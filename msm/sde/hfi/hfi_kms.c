@@ -73,6 +73,7 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 				return -EINVAL;
 			}
 		}
+		hfi_crtc_set_pending_enc_mask(sde_crtc, encoder_mask);
 	}
 
 	SDE_DEBUG("done\n");
@@ -101,42 +102,41 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 
 	SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, SDE_EVTLOG_FUNC_ENTRY);
 	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
-		if (crtc->state->active || crtc_state->active || crtc_state->active_changed) {
-			disp_id = hfi_crtc_get_display_id(crtc, crtc_state);
-			if (disp_id == U32_MAX) {
-				SDE_DEBUG("no valid display for crtc:%d\n", DRMID(crtc));
-				continue;
-			}
-			SDE_DEBUG("getting cmd buffer for disp_id:%d\n", disp_id);
-
-			cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id,
-					HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
-			if (!cmd_buf) {
-				SDE_ERROR("failed to get cmd_buf for crtc:%d disp_id:%d\n",
-						DRMID(crtc), disp_id);
-				return -EINVAL;
-			}
-
-			ret = hfi_adapter_add_set_property(cmd_buf,
-					HFI_COMMAND_DISPLAY_FRAME_TRIGGER, MSM_DRV_HFI_ID,
-					HFI_PAYLOAD_TYPE_U32, &payload, sizeof(u32), 0);
-
-			dev = crtc->dev;
-			list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
-				if (encoder->crtc != crtc)
-					continue;
-
-				pending_commit_count = sde_encoder_helper_inc_pending(encoder);
-				SDE_EVT32(pending_commit_count);
-			}
-
-			ret = hfi_adapter_set_cmd_buf(cmd_buf);
-			SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, ret, SDE_EVTLOG_FUNC_CASE1);
-			if (ret) {
-				SDE_ERROR("failed to send commit buffer\n");
-				return ret;
-			}
+		disp_id = hfi_crtc_get_display_id(crtc, crtc_state);
+		if (disp_id == U32_MAX) {
+			SDE_DEBUG("no valid display for crtc:%d\n", DRMID(crtc));
+			continue;
 		}
+		SDE_DEBUG("getting cmd buffer for disp_id:%d\n", disp_id);
+
+		cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id,
+				HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+		if (!cmd_buf) {
+			SDE_ERROR("failed to get cmd_buf for crtc:%d disp_id:%d\n",
+					DRMID(crtc), disp_id);
+			return -EINVAL;
+		}
+
+		ret = hfi_adapter_add_set_property(cmd_buf,
+				HFI_COMMAND_DISPLAY_FRAME_TRIGGER, MSM_DRV_HFI_ID,
+				HFI_PAYLOAD_TYPE_U32, &payload, sizeof(u32), 0);
+
+		dev = crtc->dev;
+		list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+			if (encoder->crtc != crtc)
+				continue;
+
+			pending_commit_count = sde_encoder_helper_inc_pending(encoder);
+			SDE_EVT32(pending_commit_count);
+		}
+
+		ret = hfi_adapter_set_cmd_buf(cmd_buf);
+		SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, ret, SDE_EVTLOG_FUNC_CASE1);
+		if (ret) {
+			SDE_ERROR("failed to send commit buffer\n");
+			return ret;
+		}
+		hfi_crtc_set_pending_enc_mask(to_sde_crtc(crtc), 0);
 	}
 
 	SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, SDE_EVTLOG_FUNC_EXIT);

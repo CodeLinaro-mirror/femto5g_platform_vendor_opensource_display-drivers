@@ -472,6 +472,35 @@ int sde_crtc_get_lb_layout_split(struct drm_crtc *crtc, struct drm_crtc_state *c
 	return layout_split;
 }
 
+bool sde_crtc_state_in_dpu_dma_mode(struct drm_crtc_state *c_state)
+{
+	struct drm_connector *connector;
+	struct drm_encoder *encoder;
+	struct sde_connector *sde_conn;
+	bool encoder_valid = false;
+
+	if (!c_state || !c_state->crtc)
+		return false;
+
+	drm_for_each_encoder_mask(encoder, c_state->crtc->dev,
+			c_state->encoder_mask) {
+		if (!sde_encoder_in_clone_mode(encoder)) {
+			encoder_valid = true;
+			break;
+		}
+	}
+
+	if (!encoder_valid)
+		return false;
+
+	connector = sde_encoder_get_connector(c_state->crtc->dev, encoder);
+	if (!connector)
+		return false;
+
+	sde_conn = to_sde_connector(connector);
+	return sde_conn->dpu_dma_enabled;
+}
+
 void sde_crtc_get_loopback_resolution(struct sde_crtc_state *cstate,
 			struct sde_crtc *sde_crtc, u32 *width, u32 *height)
 {
@@ -7090,6 +7119,8 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	u32 crtc_width, crtc_height;
 	enum sde_layout layout;
 	bool cac_lb_plane = false;
+	bool dpu_dma_mode = false;
+	u32 dma_layer_cnt = 0;
 
 	kms = _sde_crtc_get_kms(crtc);
 
@@ -7109,8 +7140,12 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	mode = &crtc_state->adjusted_mode;
 	sde_crtc_get_resolution(crtc, crtc_state, mode, &crtc_width, &crtc_height);
 	lb_layout_split = sde_crtc_get_lb_layout_split(crtc, crtc_state);
+	dpu_dma_mode = sde_crtc_state_in_dpu_dma_mode(crtc_state);
 
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
+		const struct msm_format *msm_fmt;
+		const struct sde_format *fmt;
+
 		plane_state = drm_atomic_get_existing_plane_state(
 				crtc_state->state, plane);
 		if (!plane_state)
@@ -7120,6 +7155,23 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 		cac_lb_plane =
 			(sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE) ==
 				SDE_CAC_LOOPBACK_UNPACK) ? true : false;
+
+		if (dpu_dma_mode) {
+			if (dma_layer_cnt >= 1) {
+				SDE_ERROR("blending is not supported for dma_mode\n");
+				return -EOPNOTSUPP;
+			}
+
+			msm_fmt = msm_framebuffer_format(plane_state->fb);
+			fmt = to_sde_format(msm_fmt);
+			if (!SDE_FORMAT_IS_DPU_DMA(fmt)) {
+				SDE_ERROR("plane%d: unsupported fmt for DPU DMA mode!\n",
+					DRMID(plane));
+				return -EOPNOTSUPP;
+			}
+
+			dma_layer_cnt++;
+		}
 
 		layout_split = cac_lb_plane ? lb_layout_split : crtc_width >> 1;
 		if (plane_state->crtc_x >= layout_split) {
@@ -9277,10 +9329,12 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	if (!sde_crtc)
 		return ERR_PTR(-ENOMEM);
 
-	rc = hfi_crtc_init(sde_crtc);
-	if (rc) {
-		kfree(sde_crtc);
-		return ERR_PTR(rc);
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = hfi_crtc_init(sde_crtc);
+		if (rc) {
+			kfree(sde_crtc);
+			return ERR_PTR(rc);
+		}
 	}
 
 	crtc = &sde_crtc->base;

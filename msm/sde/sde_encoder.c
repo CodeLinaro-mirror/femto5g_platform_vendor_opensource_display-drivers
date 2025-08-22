@@ -3812,6 +3812,13 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 
 	/* update resources after seamless mode change */
 	sde_encoder_virt_modeset_rc(drm_enc, adj_mode, msm_mode, false);
+
+	if (sde_enc->hal_ops.mode_set[disp_op]) {
+		ret = sde_enc->hal_ops.mode_set[disp_op](sde_enc, mode, adj_mode);
+		if (ret)
+			SDE_ERROR_ENC(sde_enc, "encoder modeset hal_op failure\n");
+	}
+
 }
 
 void sde_encoder_idle_pc_enter(struct drm_encoder *drm_enc)
@@ -3904,7 +3911,8 @@ static void _sde_encoder_input_handler_register(
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	int rc;
 
-	if (!sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+	if (!(sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+		sde_enc->disp_info.vrr_caps.video_psr_support) ||
 		!sde_enc->input_event_enabled)
 		return;
 
@@ -3926,7 +3934,8 @@ static void _sde_encoder_input_handler_unregister(
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 
-	if (!sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+	if (!(sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+		sde_enc->disp_info.vrr_caps.video_psr_support) ||
 		!sde_enc->input_event_enabled)
 		return;
 
@@ -8598,9 +8607,11 @@ struct drm_encoder *sde_encoder_init_with_ops(struct drm_device *dev,
 		goto fail;
 	}
 
-	ret = hfi_encoder_init(dev, sde_enc);
-	if (ret)
-		goto fail;
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		ret = hfi_encoder_init(dev, sde_enc);
+		if (ret)
+			goto fail;
+	}
 
 	if (ops)
 		sde_enc->ops = *ops;

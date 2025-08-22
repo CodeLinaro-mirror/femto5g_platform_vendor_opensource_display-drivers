@@ -713,6 +713,15 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 		mode_info->wide_bus_en = dsi_mode->priv_info->widebus_support;
 	}
 
+	if (dsi_display->panel->host_config.dpu_dma_enabled) {
+		if (dsi_mode->priv_info->widebus_support) {
+			mode_info->wide_bus_en = dsi_mode->priv_info->widebus_support;
+		} else {
+			DSI_ERR("DPU DMA mode cannot enable without widebus support\n");
+			return -EINVAL;
+		}
+	}
+
 	/**
 	 * Set partial update in hwio mode only, this disables the feature in hfi mode as
 	 * a temporal workaround until this feature is implemented in fw.
@@ -951,6 +960,9 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 		sde_kms_info_add_keystr(info, "dpu_ctl_op_sync", "true");
 		sde_kms_info_add_keystr(info, "has_disp_in_other_core", "true");
 	}
+
+	if (panel->host_config.dpu_dma_enabled)
+		sde_kms_info_add_keyint(info, "dpu_dma_enabled", 1);
 
 end:
 	return 0;
