@@ -169,6 +169,48 @@ end:
 	return ret;
 }
 
+static void _hfi_crtc_setup_sys_cache(struct sde_crtc_state *cstate, struct sde_crtc *sde_crtc)
+{
+	struct drm_crtc *crtc;
+	struct drm_device *dev;
+	struct drm_encoder *encoder;
+	bool is_vid = false;
+
+	if (!cstate || !sde_crtc)
+		return;
+
+	crtc = &sde_crtc->base;
+
+	if (!crtc)
+		return;
+
+	dev = crtc->dev;
+	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+		if (encoder->crtc != crtc)
+			continue;
+
+		if (sde_encoder_get_intf_mode(encoder) == INTF_MODE_VIDEO)
+			is_vid = true;
+	}
+
+	if (!is_vid)
+		return;
+
+	/* Check if previous commit requested stale frame handling */
+	if (sde_crtc->llcc_stale_frame_trigger) {
+		sde_core_perf_llcc_stale_frame(crtc, SDE_SYS_CACHE_DISP);
+		sde_crtc->llcc_stale_frame_trigger = false;
+	}
+
+	sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] =
+		sde_crtc_get_property(cstate, CRTC_PROP_CACHE_STATE) ? true : false;
+
+	if (sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP])
+		sde_crtc->llcc_stale_frame_trigger = true;
+
+	sde_core_perf_crtc_update_llcc(crtc);
+}
+
 int hfi_crtc_populate_custom_kv_setter_props(struct sde_crtc *crtc, u32 disp_id,
 		struct sde_crtc_state *cstate, struct hfi_cmdbuf_t *cmd_buf)
 {
@@ -199,6 +241,8 @@ int hfi_crtc_populate_custom_kv_setter_props(struct sde_crtc *crtc, u32 disp_id,
 	kv_count = hfi_util_kv_helper_get_count(crtc_hfi->kv_props);
 	if (!kv_count)
 		goto end;
+
+	_hfi_crtc_setup_sys_cache(cstate, crtc);
 
 	ret = hfi_adapter_add_prop_array(cmd_buf->ctx,
 			cmd_buf,
