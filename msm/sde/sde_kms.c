@@ -5305,7 +5305,7 @@ static int _sde_kms_hyp_power_up_dpu(struct sde_kms *sde_kms,
 		dpu_id = 0;
 	}
 	/* Store the DPU ID */
-	sde_kms->dev->primary->index = dpu_id;
+	sde_kms->dpu_id = dpu_id;
 	sde_kms->hyp_kms = msm_hyp_get_kms();
 	/* Make sure core clock/power is up, to able read registers for HW init */
 	return msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_ON);

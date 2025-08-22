@@ -2024,10 +2024,8 @@ int virtio_kms_set_power_level(struct sde_kms *sde_kms, uint32_t power_level)
 
 	if (sde_kms->catalog)
 		dpu_id = DPUID(sde_kms);
-	else if (sde_kms && sde_kms->dev && sde_kms->dev->primary)
-		dpu_id = sde_kms->dev->primary->index;
 	else
-		VIRTIO_KMS_ERR("Unknown DPU ID, default to 0\n");
+		dpu_id = sde_kms->dpu_id;
 
 	switch (power_level) {
 	case MSM_HYP_DEVICE_POWER_OFF:
