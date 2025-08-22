@@ -40,6 +40,7 @@
 #include <linux/kthread.h>
 #include <linux/version.h>
 #include <linux/delay.h>
+#include <linux/vmalloc.h>
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
@@ -1855,5 +1856,23 @@ int msm_drm_unregister_component(struct drm_device *dev, struct notifier_block *
  * @event: defined in msm_component_event
  */
 int msm_drm_notify_components(struct drm_device *dev, enum msm_component_event event);
+
+/**
+ * vmemdup - duplicate region of non-contiguous (vmalloc) memory
+ *
+ * @src: memory region to duplicate
+ * @len: memory region length
+ *
+ * Return: newly allocated copy of @src or %NULL in case of error
+ */
+static inline void *vmemdup(const void *src, size_t len)
+{
+	void *p;
+
+	p = vmalloc(len);
+	if (p)
+		memcpy(p, src, len);
+	return p;
+}
 
 #endif /* __MSM_DRV_H__ */

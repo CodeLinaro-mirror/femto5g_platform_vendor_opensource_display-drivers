@@ -573,7 +573,7 @@ int virtio_gpu_cmd_resource_create_2D(struct virtio_kms *kms,
 error:
 	if (cmd_p)
 		kfree(cmd_p);
-	if(resp)
+	if (resp)
 		kfree(resp);
 
 	return rc;
@@ -920,11 +920,11 @@ static int virtio_get_edid_block(struct virtio_kms *kms, uint32_t scanout,
 	if (!kms || !buf || scanout >= kms->num_scanouts || len == 0)
 		return -EINVAL;
 
-	new_edid = kmemdup(buf, len, GFP_KERNEL);
+	new_edid = vmemdup(buf, len);
 	if (!new_edid)
 		return -ENOMEM;
 
-	kfree(kms->outputs[scanout].edid);
+	vfree(kms->outputs[scanout].edid);
 	kms->outputs[scanout].edid = new_edid;
 
 	return 0;
