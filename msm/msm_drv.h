@@ -1222,6 +1222,7 @@ struct msm_display_kickoff_params {
  * @arp_t2_in_us: Time when TE shall be asserted relative to next frame
  *		  update deadline(T1) in case of ARP
  * @privacy_v1: Privacy layer info
+ * @b_lvl: Brightness value to be set
  */
 struct msm_display_conn_params {
 	uint32_t qsync_mode;
@@ -1231,6 +1232,7 @@ struct msm_display_conn_params {
 	struct msm_freq_step_pattern *freq_pattern;
 	uint16_t arp_t2_in_us;
 	struct sde_drm_privacy_layer_v1 *privacy_v1;
+	u32 b_lvl;
 };
 
 /**
