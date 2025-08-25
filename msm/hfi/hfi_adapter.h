@@ -116,6 +116,9 @@ struct hfi_adapter_t {
 	spinlock_t packet_id_lock;
 	struct mutex hfi_adapter_cmd_buf_list_lock;
 	atomic_t ssr_in_progress;
+
+	/* Shutdown coordination */
+	atomic_t shutdown_in_progress;
 };
 
 /**
