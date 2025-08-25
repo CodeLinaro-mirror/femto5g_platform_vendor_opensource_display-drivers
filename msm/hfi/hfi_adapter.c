@@ -531,6 +531,7 @@ int hfi_adapter_client_register(struct hfi_adapter_t *host, struct hfi_client_t 
 	spin_lock_init(&ctx->sgt_addr_data.slock);
 	INIT_LIST_HEAD(&ctx->sgt_addr_data.list);
 
+	mutex_init(&ctx->listener_lock);
 	ctx->host = host;
 	list_add_tail(&ctx->node, &host->client_list);
 
@@ -858,7 +859,7 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 	buff_client_ctx = cmd_buf->ctx;
 
 	/* Create new listener_list structure to insert. */
-	struct listener_list *listener_entry = kmalloc(sizeof(struct listener_list), GFP_KERNEL);
+	struct listener_list *listener_entry = kzalloc(sizeof(struct listener_list), GFP_KERNEL);
 
 	if (!listener_entry) {
 		HFI_AD_ERROR("failed to allocate memory for listener_entry\n");
@@ -869,8 +870,10 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 	listener_entry->listener_obj = listener;
 
 	/* Add listener based on packet obj_id  */
+	mutex_lock(&buff_client_ctx->listener_lock);
 	list_add_tail(&listener_entry->list_ptr,
 			&buff_client_ctx->packet_listeners.list_ptr);
+	mutex_unlock(&buff_client_ctx->listener_lock);
 
 	return rc;
 }
@@ -1137,6 +1140,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		}
 
 		/* Find the client's listener attached to the packet-id */
+		mutex_lock(&ctx->listener_lock);
 		list_for_each(pos, &ctx->packet_listeners.list_ptr) {
 			listener_entry = list_entry(pos, struct listener_list, list_ptr);
 			if (!listener_entry)
@@ -1167,6 +1171,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 				}
 			}
 		}
+		mutex_unlock(&ctx->listener_lock);
 	}
 
 	/* Loop through clients list and if matching unique_id then release */
