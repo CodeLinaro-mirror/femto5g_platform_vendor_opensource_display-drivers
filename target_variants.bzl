@@ -1,5 +1,6 @@
 targets = [
     # keep sorted
+    "art",
     "canoe",
     "gen3auto",
     "bengal",
@@ -34,6 +35,7 @@ vm_types = [
 ]
 
 vm_target_bases = [
+    "art",
     "sun",
     "canoe",
 ]
