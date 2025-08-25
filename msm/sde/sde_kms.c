@@ -5065,6 +5065,29 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	msm_atomic_flush_display_threads(priv);
 }
 
+void sde_kms_cancel_vrr_timers(struct msm_kms *kms)
+{
+	struct sde_kms *sde_kms;
+	struct drm_device *dev;
+	struct drm_encoder *enc;
+
+	if (!kms) {
+		SDE_ERROR("invalid kms\n");
+		return;
+	}
+
+	sde_kms = to_sde_kms(kms);
+	dev = sde_kms->dev;
+
+	drm_for_each_encoder(enc, dev) {
+		if (!sde_encoder_is_dsi_display(enc))
+			continue;
+
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		sde_encoder_cancel_vrr_timers(enc);
+	}
+}
+
 struct msm_display_mode *sde_kms_get_msm_mode(struct drm_connector_state *conn_state)
 {
 	struct sde_connector_state *sde_conn_state;
@@ -5389,6 +5412,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.prepare_commit  = sde_kms_prepare_commit,
 	.commit          = sde_kms_commit,
 	.complete_commit = sde_kms_complete_commit,
+	.cancel_vrr_timers = sde_kms_cancel_vrr_timers,
 	.get_msm_mode = sde_kms_get_msm_mode,
 	.wait_for_crtc_commit_done = sde_kms_wait_for_commit_done,
 	.wait_for_tx_complete = sde_kms_wait_for_frame_transfer_complete,

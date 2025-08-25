@@ -1283,6 +1283,9 @@ static void msm_lastclose(struct drm_device *dev)
 		DRM_INFO("wait for crtc mask 0x%x failed, commit anyway...\n",
 				priv->pending_crtcs);
 
+	if (kms->funcs && kms->funcs->cancel_vrr_timers)
+		kms->funcs->cancel_vrr_timers(kms);
+
 	msm_atomic_flush_display_threads(priv);
 
 	if (priv->fbdev) {
