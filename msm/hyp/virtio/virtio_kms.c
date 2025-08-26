@@ -2016,6 +2016,37 @@ static void virtio_kms_register_event(struct sde_kms *sde_kms)
 	}
 }
 
+int virtio_kms_set_power_level(struct sde_kms *sde_kms, uint32_t power_level)
+{
+	struct msm_hyp_kms *hyp_kms = sde_kms->hyp_kms;
+	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
+	u32 dpu_id = 0;
+
+	if (sde_kms->catalog)
+		dpu_id = DPUID(sde_kms);
+	else if (sde_kms && sde_kms->dev && sde_kms->dev->primary)
+		dpu_id = sde_kms->dev->primary->index;
+	else
+		VIRTIO_KMS_ERR("Unknown DPU ID, default to 0\n");
+
+	switch (power_level) {
+	case MSM_HYP_DEVICE_POWER_OFF:
+		power_level = VIRTIO_DEVICE_POWER_OFF;
+		break;
+	case MSM_HYP_DEVICE_POWER_ON:
+		power_level = VIRTIO_DEVICE_POWER_ON;
+		break;
+	case MSM_HYP_DEVICE_POWER_MAX:
+		power_level = VIRTIO_DEVICE_POWER_MAX;
+		break;
+	default:
+		VIRTIO_KMS_ERR("Wrong power level %d for DPU %d\n", power_level, dpu_id);
+		return -EINVAL;
+	}
+
+	return virtio_gpu_cmd_set_power(kms, dpu_id, power_level);
+}
+
 static const struct msm_hyp_kms_funcs virtio_kms_funcs = {
 	.get_displays = virtio_kms_get_displays,
 	.get_connector_infos = virtio_kms_get_connector_infos,
@@ -2025,6 +2056,7 @@ static const struct msm_hyp_kms_funcs virtio_kms_funcs = {
 	.hw_catalog_init = virtio_kms_hw_catalog_init,
 	.update_hw_reservation = virtio_kms_update_hw_reservation,
 	.register_event = virtio_kms_register_event,
+	.set_power_level = virtio_kms_set_power_level,
 };
 
 /*
