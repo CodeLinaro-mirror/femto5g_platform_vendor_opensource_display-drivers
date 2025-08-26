@@ -677,6 +677,20 @@
 #define HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA                       0x0004002D
 
 /*
+ * HFI_PROPERTY_PANEL_COMPRESSION_RC_OVERRIDE - Sets the compression rate control
+ *                                             override value for the panel.
+ *                                             This property is sent to DCP as part of
+ *                                             HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                                             command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_COMPRESSION_RC_OVERRIDE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_COMPRESSION_RC_OVERRIDE |
+ *                               (version=0 << 20) | (dsize=12 << 24 )
+ *   (u32_value) payload[1-12] : struct hfi_panel_compression_rc_override
+ */
+#define HFI_PROPERTY_PANEL_COMPRESSION_RC_OVERRIDE                   0x0004002E
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF
