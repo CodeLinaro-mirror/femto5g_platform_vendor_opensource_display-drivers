@@ -1008,6 +1008,7 @@ struct esync_params {
  * @wd_jitter:         Info for WD jitter.
  * @vpadding:        panel stacking height
  * @te_pulse_width_ns: pulse width of the TE in microseconds
+ * @overlap:           Overlap pixel within pingpong buffer
  */
 struct msm_mode_info {
 	uint32_t frame_rate;
@@ -1038,6 +1039,7 @@ struct msm_mode_info {
 	struct msm_display_wd_jitter_config wd_jitter;
 	u32 vpadding;
 	u32 te_pulse_width_us;
+	u32 overlap;
 };
 
 /**

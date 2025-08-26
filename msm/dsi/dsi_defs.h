@@ -470,6 +470,7 @@ struct dsi_panel_cmd_set {
  * @avr_step_fps:     AVR step fps rate
  * @esync_emsync_fps: esync EM pulse rate
  * @te_pulse_width_us:         Pulse width of TE in microseconds
+ * @overlap:          Overlap pixel within pingpong buffer
  */
 struct dsi_mode_info {
 	u32 h_active;
@@ -500,6 +501,7 @@ struct dsi_mode_info {
 	u32 avr_step_fps;
 	u32 esync_emsync_fps;
 	u32 te_pulse_width_us;
+	u32 overlap;
 };
 
 /**

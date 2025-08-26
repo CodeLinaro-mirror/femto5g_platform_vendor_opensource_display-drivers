@@ -1598,7 +1598,11 @@ static int _sde_encoder_update_roi(struct drm_encoder *drm_enc)
 
 	_sde_encoder_get_connector_roi(sde_enc, &roi);
 	if (sde_kms_rect_is_null(&roi)) {
-		roi.w = adj_mode->hdisplay;
+		// Use the actual active width including overlap for internal calculations
+		if (sde_enc && sde_enc->mode_info.overlap)
+			roi.w = adj_mode->hdisplay + sde_enc->mode_info.overlap;
+		else
+			roi.w = adj_mode->hdisplay;
 		roi.h = adj_mode->vdisplay;
 	}
 
@@ -1664,6 +1668,8 @@ static void _sde_encoder_update_ppb_size(struct drm_encoder *drm_enc)
 		}
 
 		if (hw_pp->ops.set_ppb_fifo_size[disp_op]) {
+			hw_pp->overlap_per_pp = sde_enc->mode_info.overlap
+								/ sde_enc->cur_channel_cnt;
 			pixels_per_pp = mult_frac(mode->hdisplay, latency_lines, num_lm_or_pp);
 			hw_pp->ops.set_ppb_fifo_size[disp_op](hw_pp, pixels_per_pp);
 
