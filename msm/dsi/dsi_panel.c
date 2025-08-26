@@ -1140,6 +1140,12 @@ static int dsi_panel_parse_timing(struct dsi_mode_info *mode,
 		rc = 0;
 	}
 
+	rc = utils->read_u32(utils->data, "qcom,mdss-ppb-overlap", &mode->overlap);
+	if (rc) {
+		DSI_DEBUG("overlap not defined in timing node\n");
+		rc = 0;
+	}
+
 	DSI_DEBUG("panel vert active:%d front_portch:%d back_porch:%d pulse_width:%d\n",
 		mode->v_active, mode->v_front_porch, mode->v_back_porch,
 		mode->v_sync_width);
