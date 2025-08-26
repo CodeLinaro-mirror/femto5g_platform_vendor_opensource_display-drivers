@@ -5820,6 +5820,7 @@ static void _sde_get_hw_caps_for_monaco(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	sde_cfg->ts_prefill_rev = 2;
 	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
 	sde_cfg->sui_block_xin_mask = 0x1;
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 }
 
 static void _sde_get_hw_caps_for_lahaina(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)

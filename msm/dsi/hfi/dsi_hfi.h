@@ -128,6 +128,7 @@ struct dsi_hfi_phy_timings_payload {
  * running_hfi_offset:              offset of pointer in hfi mapped buffer
  * payload:                         panel cmd information
  * phy_timings_payload:             DSI PHY panel tmgs info
+ * compression_rc_override:         Custom RC parameters for compression, if applicable
  */
 struct dsi_panel_timing_caps {
 	u32 panel_index;
@@ -142,6 +143,8 @@ struct dsi_panel_timing_caps {
 	u32 running_hfi_offset;
 	struct dsi_hfi_per_cmd_type_payload payload;
 	struct dsi_hfi_phy_timings_payload phy_timings_payload;
+	bool rc_override_enabled;
+	struct hfi_panel_compression_rc_override rc_override;
 };
 
 /**
