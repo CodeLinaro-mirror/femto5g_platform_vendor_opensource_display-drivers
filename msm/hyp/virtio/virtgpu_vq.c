@@ -30,18 +30,18 @@
 #define VIRTGPU_VQ_RSP_DBG(fmt, ...)	pr_debug(fmt, ##__VA_ARGS__)
 
 #define HAB_NO_TIMEOUT_VAL		-1
-#define MAX_RECV_PACKET_RETRY	        10
+#define MAX_SEND_RECV_PACKET_RETRY	10
 
 //#define UNIT_TEST
 
 #ifdef UNIT_TEST
 static int virtio_hab_send_and_recv_ext(		uint32_t hab_socket,
-		struct channel_map hab_channel,
+		struct channel_map *phab_channel,
 		void *req, uint32_t req_size, void *resp,uint32_t resp_size,
 		bool lock_flag);
 
 int virtio_hab_send_and_recv_timeout_ext(		uint32_t hab_socket,
-		struct mutex hab_lock,
+		struct mutex *phab_lock,
 		void *req, uint32_t req_size, void *resp, uint32_t resp_size);
 
 static char *virtio_cmd_type(uint32_t cmd);
@@ -62,7 +62,7 @@ static int virtio_hab_send_and_recv_ext(
 static int virtio_hab_send_and_recv(
 #endif
 		uint32_t hab_socket,
-		struct channel_map hab_channel,
+		struct channel_map *phab_channel,
 		void *req,
 		uint32_t req_size,
 		void *resp,
@@ -75,18 +75,27 @@ static int virtio_hab_send_and_recv(
 	uint32_t retry_times = 0;
 
 	if (SPIN_LOCK_CHANNEL == lock_flag)
-		spin_lock(&hab_channel.hyp_chl_spin_lock);
+		spin_lock(&phab_channel->hyp_chl_spin_lock);
 	else
-		mutex_lock(&hab_channel.hyp_chl_lock[CHANNEL_CMD]);
+		mutex_lock(&phab_channel->hyp_chl_lock[CHANNEL_CMD]);
 
-	rc = habmm_socket_send(hab_socket, req, req_size, 0x00);
+retry_send_packet:
+	rc = habmm_socket_send(hab_socket, req, req_size, (lock_flag == SPIN_LOCK_CHANNEL ?
+				HABMM_SOCKET_SEND_FLAGS_NON_BLOCKING : 0x00));
 	if (rc) {
-		VIRTGPU_VQ_ERR("habmm_socket_send failed <%d>\n", rc);
+		if ((rc == -EAGAIN) && (retry_times < MAX_SEND_RECV_PACKET_RETRY)) {
+			retry_times++;
+			VIRTGPU_VQ_DBG("send packet retry %d\n", retry_times);
+			goto retry_send_packet;
+		}
 		rc = -1;
+		VIRTGPU_VQ_ERR("virtio: habmm_socket_send failed <%d>\n", rc);
 		goto end;
 	}
 	if (!resp)
 		goto end;
+
+	retry_times = 0;
 
 retry_recv_packet:
 	do {
@@ -114,7 +123,7 @@ retry_recv_packet:
 			(-EAGAIN == rc) && (size == 0));
 
 	if (rc) {
-		if ((rc == -EAGAIN) && (retry_times < MAX_RECV_PACKET_RETRY))
+		if ((rc == -EAGAIN) && (retry_times < MAX_SEND_RECV_PACKET_RETRY))
 		{
 			retry_times++;
 			VIRTGPU_VQ_RSP_DBG("recv packet retry %d", retry_times);
@@ -128,9 +137,9 @@ retry_recv_packet:
 end:
 
 	if (SPIN_LOCK_CHANNEL == lock_flag)
-		spin_unlock(&hab_channel.hyp_chl_spin_lock);
+		spin_unlock(&phab_channel->hyp_chl_spin_lock);
 	else
-		mutex_unlock(&hab_channel.hyp_chl_lock[CHANNEL_CMD]);
+		mutex_unlock(&phab_channel->hyp_chl_lock[CHANNEL_CMD]);
 	return rc;
 }
 
@@ -140,7 +149,7 @@ int virtio_hab_send_and_recv_timeout_ext(
 int virtio_hab_send_and_recv_timeout(
 #endif
 		uint32_t hab_socket,
-		struct mutex hab_lock,
+		struct mutex *phab_lock,
 		void *req,
 		uint32_t req_size,
 		void *resp,
@@ -150,7 +159,7 @@ int virtio_hab_send_and_recv_timeout(
 	uint32_t flags = HABMM_SOCKET_RECV_FLAGS_TIMEOUT;
 	uint32_t size = resp_size;
 	uint32_t max_retries = 10;
-	mutex_lock(&hab_lock);
+	mutex_lock(phab_lock);
 retry:
 	rc = habmm_socket_send(hab_socket, req, req_size, 0x00);
 	if (rc) {
@@ -182,7 +191,7 @@ retry:
 				VIRTGPU_VQ_ERR("socket_recv failed <%d>\n",rc);
 		}
 end:
-	mutex_unlock(&hab_lock);
+	mutex_unlock(phab_lock);
 	return rc;
 }
 
@@ -376,7 +385,7 @@ int virtio_gpu_cmd_set_scanout_pic_adjust(struct virtio_kms *kms,
 	req->contrast = cpu_to_le32(contrast);
 	req->brightness = cpu_to_le32(brightness);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			req,
 			sizeof(struct virtio_gpu_set_scanout_pic_adjust),
 			NULL,
@@ -442,7 +451,7 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 	req->r.y = cpu_to_le32(dest_rect.y);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			req,
 			sizeof(struct virtio_gpu_set_scanout_properties),
 			resp,
@@ -507,7 +516,7 @@ int virtio_gpu_cmd_set_scanout(struct virtio_kms *kms,
 	req->r.y = cpu_to_le32(dst_rect.y);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			req,
 			sizeof(struct virtio_gpu_set_scanout),
 			NULL,
@@ -560,7 +569,7 @@ int virtio_gpu_cmd_resource_create_2D(struct virtio_kms *kms,
 	cmd_p->height = cpu_to_le32(height);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_create_2d),
 			NULL,
@@ -608,7 +617,7 @@ int virtio_gpu_cmd_resource_attach_backing(struct virtio_kms *kms,
 	cmd_p->size = cpu_to_le32(size);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_attach_backing_ext),
 			NULL,
@@ -652,7 +661,7 @@ int virtio_gpu_cmd_resource_detach_backing(struct virtio_kms *kms,
 	cmd_p->resource_id = cpu_to_le32(resource_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_detach_backing),
 			resp,
@@ -701,7 +710,7 @@ int virtio_gpu_cmd_resource_unref(struct virtio_kms *kms,
 	cmd_p->resource_id = cpu_to_le32(resource_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_resource_unref),
 			resp,
@@ -751,7 +760,7 @@ int virtio_gpu_cmd_plane_flush(struct virtio_kms *kms,
 	cmd_p->async_mode = cpu_to_le32(sync);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_plane_flush),
 			sync ? resp : NULL,
@@ -811,7 +820,7 @@ int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 	cmd_p->async_mode = cpu_to_le32(sync);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_scanout_flush),
 			NULL,
@@ -886,7 +895,7 @@ int virtio_gpu_cmd_event_control(struct virtio_kms *kms,
 	 * */
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_event_control),
 			NULL,
@@ -953,7 +962,7 @@ int virtio_gpu_cmd_get_edid(struct virtio_kms *kms,
 	cmd_p->scanout = cpu_to_le32(scanout);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_cmd_get_edid),
 			resp,
@@ -1080,7 +1089,7 @@ int virtio_gpu_cmd_get_display_info(struct virtio_kms *kms)
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_GET_DISPLAY_INFO\n");
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_ctrl_hdr),
 			resp,
@@ -1127,7 +1136,7 @@ int virtio_gpu_cmd_get_display_info_ext(struct virtio_kms *kms,
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_display_info_ext),
 			resp,
@@ -1174,7 +1183,7 @@ int virtio_gpu_cmd_get_device_info(struct virtio_kms *kms)
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_GET_DEVICE_INFO\n");
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_ctrl_hdr),
 			resp,
@@ -1238,7 +1247,7 @@ int virtio_gpu_cmd_get_scanout_attributes(struct virtio_kms *kms,
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_SCANOUT_ATTRIBUTES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_scanout_attributes),
 			resp,
@@ -1300,7 +1309,7 @@ int virtio_gpu_cmd_get_scanout_planes(struct virtio_kms *kms,
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_SCANOUT_PLANES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_scanout_planes),
 			resp,
@@ -1414,7 +1423,7 @@ int virtio_gpu_cmd_get_plane_caps(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_planes_caps),
 			resp,
@@ -1503,7 +1512,7 @@ static int virtio_gpu_cmd_get_event (struct virtio_kms *kms,
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_WAIT_EVENTS (%d)\n",
 			cmd_p->max_num_events);
 	rc = virtio_hab_send_and_recv_timeout(hab_socket,
-			kms->channel[client_id].hyp_chl_lock[CHANNEL_EVENTS],
+			&kms->channel[client_id].hyp_chl_lock[CHANNEL_EVENTS],
 			cmd_p,
 			sizeof(struct virtio_gpu_wait_events),
 			resp,
@@ -1545,7 +1554,7 @@ int virtio_gpu_cmd_get_plane_properties(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_plane_properties),
 			resp,
@@ -1622,7 +1631,7 @@ int virtio_gpu_cmd_set_resource_info(struct virtio_kms *kms,
 	}
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_set_resource_info),
 			NULL,
@@ -1665,7 +1674,7 @@ int virtio_gpu_cmd_set_plane(struct virtio_kms *kms,
 	cmd_p->resource_id = cpu_to_le32(res_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_set_plane),
 			NULL,
@@ -1707,7 +1716,7 @@ int virtio_gpu_cmd_plane_create(struct virtio_kms *kms,
 
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_PLANE_CREATE scanout %d plane_id %d\n", scanout, plane_id);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_create_plane),
 			resp,
@@ -1759,7 +1768,7 @@ int virtio_gpu_cmd_plane_destroy(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_plane_destroy),
 			resp,
@@ -1829,7 +1838,7 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	cmd_p->brightness = cpu_to_le32(prop.brightness);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_set_plane_properties),
 			NULL,
@@ -1883,7 +1892,7 @@ int virtio_gpu_cmd_get_device_hw_attributes(struct virtio_kms *kms)
 
 	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_GET_DEVICE_HW_ATTRIBUTES\n");
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_device_hw_attributes),
 			resp,
@@ -2148,7 +2157,7 @@ int virtio_gpu_cmd_get_scanout_hw_attributes(struct virtio_kms *kms,
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_GET_SCANOUT_HW_ATTRIBUTES);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_scanout_hw_attributes),
 			resp,
@@ -2247,7 +2256,7 @@ int virtio_gpu_cmd_get_plane_hw_attributes(struct virtio_kms *kms,
 	cmd_p->plane_id = cpu_to_le32(plane_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-			kms->channel[client_id],
+			&kms->channel[client_id],
 			cmd_p,
 			sizeof(struct virtio_gpu_get_plane_hw_attributes),
 			resp,
@@ -2387,7 +2396,7 @@ int virtio_gpu_cmd_enable_virq(struct device *dev, struct virtio_kms *kms, uint3
 	cmd_p->device_id = cpu_to_le32(device_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-		kms->channel[client_id],
+		&kms->channel[client_id],
 		cmd_p,
 		sizeof(struct virtio_gpu_enable_virq),
 		resp,
@@ -2447,7 +2456,7 @@ int virtio_gpu_cmd_disable_virq(struct device *dev, struct virtio_kms *kms, uint
 	cmd_p->device_id = cpu_to_le32(device_id);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-		kms->channel[client_id],
+		&kms->channel[client_id],
 		cmd_p,
 		sizeof(struct virtio_gpu_disable_virq),
 		resp,
@@ -2505,7 +2514,7 @@ int virtio_gpu_cmd_set_power(struct virtio_kms *kms, uint32_t device_id, uint32_
 	cmd_p->power_level = cpu_to_le32(power_level);
 
 	rc = virtio_hab_send_and_recv(hab_socket,
-		kms->channel[client_id],
+		&kms->channel[client_id],
 		cmd_p,
 		sizeof(struct virtio_gpu_set_power),
 		resp,
