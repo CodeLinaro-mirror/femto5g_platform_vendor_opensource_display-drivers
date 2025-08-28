@@ -201,6 +201,50 @@ struct msm_hyp_kms *msm_hyp_get_kms(void)
 	return g_hyp_kms;
 }
 
+int msm_hyp_check_dpu_probed(int dpu_id)
+{
+	int i;
+	bool other_dpu_driver_probed = true;
+
+	if (!g_hyp_kms) {
+		DRM_DEBUG("hyp_kms is not ready\n");
+		return -EINVAL;
+	}
+
+	if (dpu_id < 0 || dpu_id >= MAX_NUM_DPU_CORE) {
+		DRM_ERROR("invalid DPU id\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < dpu_id; i++) {
+		if (!g_hyp_kms->probed[i]) {
+			DRM_DEBUG("DPU %d is not probed, defer\n", i);
+			other_dpu_driver_probed = false;
+			break;
+		}
+	}
+
+	return other_dpu_driver_probed;
+}
+
+int msm_hyp_set_dpu_probed(int dpu_id)
+{
+	if (!g_hyp_kms) {
+		DRM_DEBUG("hyp_kms is not ready\n");
+		return -EINVAL;
+	}
+
+	if (dpu_id < 0 || dpu_id >= MAX_NUM_DPU_CORE) {
+		DRM_ERROR("invalid DPU id\n");
+		return -EINVAL;
+	}
+
+	g_hyp_kms->probed[dpu_id] = true;
+	DRM_DEBUG("DPU core %d driver probed\n", dpu_id);
+
+	return 0;
+}
+
 int hyp_drm_bridge_init(struct drm_device *ddev, struct drm_encoder *encoder,
 		struct msm_hyp_display *display)
 {
@@ -601,6 +645,9 @@ struct sde_mdss_cfg *msm_hyp_hw_catalog_init(struct drm_device *dev)
 			DRM_ERROR("DPU cores id %d already exist\n", dpu_id);
 			goto error;
 		} else {
+			DRM_DEBUG("Attached SDE driver to instance[%d] of DPU %d, card %d\n",
+					g_hyp_kms->num_sde_kms, dpu_id,
+					sde_kms->dev->primary->index);
 			g_hyp_kms->sde_kms[dpu_id] = sde_kms;
 			g_hyp_kms->num_sde_kms++;
 		}
