@@ -58,6 +58,7 @@
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_880  SDE_HW_VER(8, 8, 0) /* vienna */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
+#define SDE_HW_VER_970  SDE_HW_VER(9, 7, 0) /* x1p42100 */
 #define SDE_HW_VER_980	SDE_HW_VER(9, 8, 0) /* seraph */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
@@ -107,6 +108,7 @@
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 #define IS_ALOR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D10)
 #define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
+#define IS_X1P42100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_970)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
