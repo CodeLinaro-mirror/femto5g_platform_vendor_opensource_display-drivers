@@ -23,6 +23,7 @@
 #define MAX_REG_SIZE_ENTRIES 14
 #define MAX_CWB_BLOCKS    2
 #define MAX_CWB_BLOCKSIZE    2
+#define DPU_MAX_SSPP_COUNT   32
 
 #define SDE_HW_VER(MAJOR, MINOR, STEP) ((u32)((MAJOR & 0xF) << 28)    |\
 		((MINOR & 0xFFF) << 16)  |\
@@ -1406,6 +1407,8 @@ enum sde_clk_ctrl_type {
 	SDE_CLK_CTRL_WB0,
 	SDE_CLK_CTRL_WB1,
 	SDE_CLK_CTRL_WB2,
+	SDE_CLK_CTRL_WB3,
+	SDE_CLK_CTRL_WB4,
 	SDE_CLK_CTRL_LUTDMA,
 	SDE_CLK_CTRL_IPCC_MSI,
 	SDE_CLK_CTRL_MAX,
@@ -2234,7 +2237,7 @@ struct sde_mdss_cfg {
 	struct sde_ctl_cfg ctl[MAX_BLOCKS];
 	struct sde_ctl_hyp_cfg ctl_hyp;
 	u32 sspp_count;
-	struct sde_sspp_cfg sspp[MAX_BLOCKS];
+	struct sde_sspp_cfg sspp[DPU_MAX_SSPP_COUNT];
 	u32 mixer_count;
 	struct sde_lm_cfg mixer[MAX_BLOCKS];
 	struct sde_dspp_top_cfg dspp_top;
@@ -2348,6 +2351,8 @@ struct sde_mdss_cfg {
 	u32 ppb_buf_max_lines;
 	u32 controlled_SR;
 	u32 early_EPT_handling;
+
+	bool disable_multirect;
 };
 
 struct sde_mdss_hw_cfg_handler {

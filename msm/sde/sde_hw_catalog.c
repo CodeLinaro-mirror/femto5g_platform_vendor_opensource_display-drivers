@@ -1203,13 +1203,15 @@ static int _validate_dt_entry(struct device_node *np,
 	struct sde_prop_type *sde_prop, u32 prop_size, int *prop_count,
 	int *off_count)
 {
-	int rc = 0, i, val;
+	int rc = 0, i, val, count_check = 0;
 	struct device_node *snp = NULL;
 
 	if (off_count) {
 		*off_count = of_property_count_u32_elems(np,
 				sde_prop[0].prop_name);
-		if ((*off_count > MAX_BLOCKS) || (*off_count < 0)) {
+		(strcmp(sde_prop[0].prop_name, "qcom,sde-sspp-off") == 0) ?
+			(count_check = DPU_MAX_SSPP_COUNT) : (count_check = MAX_BLOCKS);
+		if ((*off_count > DPU_MAX_SSPP_COUNT) || (*off_count < 0)) {
 			if (sde_prop[0].is_mandatory) {
 				SDE_ERROR(
 					"invalid hw offset prop name:%s count: %d\n",
@@ -2133,7 +2135,7 @@ static int _sde_sspp_setup_cmn(struct device_node *np,
 	if (IS_ERR(props))
 		return PTR_ERR(props);
 
-	if (off_count > MAX_BLOCKS) {
+	if (off_count > DPU_MAX_SSPP_COUNT) {
 		SDE_ERROR("%d off_count exceeds MAX_BLOCKS, limiting to %d\n",
 				off_count, MAX_BLOCKS);
 		off_count = MAX_BLOCKS;
@@ -6462,6 +6464,7 @@ static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	sde_cfg->ts_prefill_rev = 2;
 	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
 	sde_cfg->mdss_hw_block_size = 0x158;
+	sde_cfg->disable_multirect = true;
 }
 
 static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
