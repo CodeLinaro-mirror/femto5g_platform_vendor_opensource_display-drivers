@@ -1262,6 +1262,8 @@ void dp_mst_clear_edid_cache(void *dp_display) {
 		c_conn = to_sde_connector(conn);
 		if (!c_conn->mst_port)
 			continue;
+		if (conn->status == connector_status_connected)
+			continue;
 
 		mutex_lock(&mst->edid_lock);
 		kfree(c_conn->cached_edid);
