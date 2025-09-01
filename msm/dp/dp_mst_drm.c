@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -243,16 +243,14 @@ static int dp_mst_calc_pbn_mode(struct dp_display_mode *dp_mode)
 	int pbn, bpp;
 	bool dsc_en;
 	s64 pbn_fp;
+	struct dp_panel_info *pinfo = &dp_mode->timing;
 
-	dsc_en = dp_mode->timing.comp_info.enabled;
-	bpp = dsc_en ?
-		DSC_BPP(dp_mode->timing.comp_info.dsc_info.config)
-		: dp_mode->timing.bpp;
+	dsc_en = pinfo->comp_info.enabled;
+	bpp = dsc_en ? DSC_BPP(pinfo->comp_info.dsc_info.config) : pinfo->bpp;
 
-	pbn = drm_dp_calc_pbn_mode(dp_mode->timing.pixel_clk_khz, bpp, false);
+	pbn = drm_dp_calc_pbn_mode(pinfo->pixel_clk_khz, bpp, false);
 	pbn_fp = drm_fixp_from_fraction(pbn, 1);
-
-	DP_DEBUG_V("before overhead pbn:%d, bpp:%d\n", pbn, bpp);
+	pinfo->pbn_no_overhead = pbn;
 
 	if (dsc_en)
 		pbn_fp = drm_fixp_mul(pbn_fp, dp_mode->dsc_overhead_fp);
@@ -261,8 +259,11 @@ static int dp_mst_calc_pbn_mode(struct dp_display_mode *dp_mode)
 		pbn_fp = drm_fixp_mul(pbn_fp, dp_mode->fec_overhead_fp);
 
 	pbn = drm_fixp2int(pbn_fp);
+	pinfo->pbn = pbn;
 
-	DP_DEBUG_V("after overhead pbn:%d, bpp:%d\n", pbn, bpp);
+	DP_DEBUG_V("pbn before overhead:%d pbn final:%d, bpp:%d\n", pinfo->pbn_no_overhead, pbn,
+			bpp);
+
 	return pbn;
 }
 
@@ -1854,6 +1855,12 @@ static void dp_mst_set_state(void *dp_display, enum dp_drv_state mst_state)
 	DP_MST_INFO("mst power state:%d\n", mst_state);
 }
 
+static void dp_mst_display_set_mst_mode_params(void *dp_display, struct dp_display_mode *mode)
+{
+	// update pbn values that will later be used for rg calculation
+	dp_mst_calc_pbn_mode(mode);
+}
+
 /* DP MST APIs */
 
 static const struct dp_mst_drm_cbs dp_mst_display_cbs = {
@@ -1861,6 +1868,7 @@ static const struct dp_mst_drm_cbs dp_mst_display_cbs = {
 	.hpd_irq = dp_mst_display_hpd_irq,
 	.set_drv_state = dp_mst_set_state,
 	.set_mgr_state = dp_mst_display_set_mgr_state,
+	.set_mst_mode_params = dp_mst_display_set_mst_mode_params,
 };
 
 static const struct drm_dp_mst_topology_cbs dp_mst_drm_cbs = {

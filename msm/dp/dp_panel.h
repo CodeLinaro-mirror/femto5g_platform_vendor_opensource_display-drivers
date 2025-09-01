@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -64,6 +64,8 @@ struct dp_panel_info {
 	bool widebus_en;
 	struct msm_compression_info comp_info;
 	s64 dsc_overhead_fp;
+	u32 pbn_no_overhead;
+	u32 pbn;
 };
 
 struct dp_display_mode {

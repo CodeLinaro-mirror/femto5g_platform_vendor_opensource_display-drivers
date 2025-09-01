@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1122,7 +1122,7 @@ static void dp_ctrl_mst_calculate_rg(struct dp_ctrl_private *ctrl,
 	u64 lclk = 0;
 	u64 lanes = ctrl->link->link_params.lane_count;
 	u64 bpp = panel->pinfo.bpp;
-	u64 pbn = panel->pbn;
+	u64 pbn = panel->pinfo.pbn_no_overhead; // before dsc/fec overhead
 	u64 numerator, denominator, temp, temp1, temp2;
 	u32 x_int = 0, y_frac_enum = 0;
 	u64 target_strm_sym, ts_int_fixp, ts_frac_fixp, y_frac_enum_fixp;
