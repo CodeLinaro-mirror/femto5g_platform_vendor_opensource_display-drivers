@@ -296,6 +296,9 @@ static void programmable_fetch_config(struct sde_encoder_phys *phys_enc,
 	struct sde_mdss_cfg *m;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
+	if (phys_enc->hw_intf->cap->type != INTF_DSI)
+		goto skip_prg_fetch;
+
 	if (WARN_ON_ONCE(!phys_enc->hw_intf->ops.setup_prg_fetch[disp_op]))
 		return;
 
@@ -340,6 +343,7 @@ static void programmable_fetch_config(struct sde_encoder_phys *phys_enc,
 				prog_dr_start_line);
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
 
+skip_prg_fetch:
 	/*
 	 * In Dual DPU sync mode, prog_intf_offset set in Master DPU
 	 * to enable Slave DPU timing engine.
@@ -753,8 +757,7 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 				&intf_cfg);
 	}
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
-	if (phys_enc->hw_intf->cap->type == INTF_DSI)
-		programmable_fetch_config(phys_enc, &timing_params);
+	programmable_fetch_config(phys_enc, &timing_params);
 
 	if (sde_encoder_has_dpu_ctl_op_sync(phys_enc->parent) &&
 		sde_encoder_phys_has_role_master_dpu_master_intf(phys_enc))
