@@ -2882,12 +2882,23 @@ static int _sde_plane_validate_shared_crtc(struct sde_plane *psde,
 }
 
 static int _sde_plane_sspp_atomic_check_helper(struct sde_plane *psde,
+		struct sde_plane_state *pstate,
 		const struct sde_format *fmt,
 		struct sde_rect src, struct sde_rect dst,
 		u32 width, u32 height)
 {
 	int ret = 0;
 	u32 min_src_size = SDE_FORMAT_IS_YUV(fmt) ? 2 : 1;
+	u32 deci_w, deci_h;
+	u32 horizontal_subsampled = false, vertical_subsampled = false;
+
+	if (fmt->chroma_sample == SDE_CHROMA_420 || fmt->chroma_sample == SDE_CHROMA_H2V1)
+		horizontal_subsampled = true;
+	if (fmt->chroma_sample == SDE_CHROMA_420 || fmt->chroma_sample == SDE_CHROMA_H1V2)
+		vertical_subsampled = true;
+
+	deci_w = sde_plane_get_property(pstate, PLANE_PROP_H_DECIMATE);
+	deci_h = sde_plane_get_property(pstate, PLANE_PROP_V_DECIMATE);
 
 	if (SDE_FORMAT_IS_YUV(fmt) &&
 			(!(psde->features & SDE_SSPP_SCALER) ||
@@ -2907,12 +2918,17 @@ static int _sde_plane_sspp_atomic_check_helper(struct sde_plane *psde,
 		ret = -E2BIG;
 
 	/* valid yuv image */
-	} else if (SDE_FORMAT_IS_YUV(fmt) && ((src.x & 0x1) || (src.y & 0x1) ||
-			 (src.w & 0x1) || (src.h & 0x1))) {
+	} else if (!deci_w && horizontal_subsampled &&
+			((src.x & 0x1) || (src.w & 0x1))) {
 		SDE_ERROR_PLANE(psde, "invalid yuv source %u, %u, %ux%u\n",
 				src.x, src.y, src.w, src.h);
 		ret = -EINVAL;
 
+	} else if (!deci_h && vertical_subsampled &&
+			((src.y & 0x1) || (src.h & 0x1))) {
+		SDE_ERROR_PLANE(psde, "invalid yuv source %u, %u, %ux%u\n",
+				src.x, src.y, src.w, src.h);
+		ret = -EINVAL;
 	/* min dst support */
 	} else if (dst.w < 0x1 || dst.h < 0x1) {
 		SDE_ERROR_PLANE(psde, "invalid dest rect %u, %u, %ux%u\n",
@@ -3167,7 +3183,7 @@ static int sde_plane_sspp_atomic_check(struct drm_plane *plane,
 	msm_fmt = msm_framebuffer_format(fb);
 	fmt = to_sde_format(msm_fmt);
 
-	ret = _sde_plane_sspp_atomic_check_helper(psde, fmt, src, dst, width,
+	ret = _sde_plane_sspp_atomic_check_helper(psde, pstate, fmt, src, dst, width,
 			height);
 	if (ret)
 		return ret;
