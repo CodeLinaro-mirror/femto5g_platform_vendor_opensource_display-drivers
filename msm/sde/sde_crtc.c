@@ -6936,7 +6936,10 @@ static int _sde_crtc_check_get_pstates(struct drm_crtc *crtc,
 
 	for (i = 1; i < SSPP_MAX; i++) {
 		if (pipe_staged[i]) {
-			sde_plane_clear_multirect(pipe_staged[i]);
+			/* Don't modify the current state in check context */
+			if (pipe_staged[i]->plane->state != pipe_staged[i])
+				sde_plane_clear_multirect(pipe_staged[i]);
+
 			if (is_sde_plane_virtual(pipe_staged[i]->plane)) {
 				struct sde_plane_state *psde_state;
 
