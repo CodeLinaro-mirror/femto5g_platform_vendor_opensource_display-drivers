@@ -5243,7 +5243,8 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			 * Once all the color processing properties are collected, invoke adapter
 			 * api to add all these properties as a single HFI Packet
 			 */
-			ret = hfi_adapter_add_set_property(cmd_buf,
+			ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+				cmd_buf,
 				HFI_COMMAND_DISPLAY_SET_PROPERTY, disp_id,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,
 				hfi_util_u32_prop_helper_get_payload_addr(color_props),
@@ -9333,6 +9334,9 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	if (!sde_crtc)
 		return ERR_PTR(-ENOMEM);
 
+	crtc = &sde_crtc->base;
+	crtc->dev = dev;
+
 	if (IS_DISP_OP_HFI(priv->disp_op)) {
 		rc = hfi_crtc_init(sde_crtc);
 		if (rc) {
@@ -9340,9 +9344,6 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 			return ERR_PTR(rc);
 		}
 	}
-
-	crtc = &sde_crtc->base;
-	crtc->dev = dev;
 
 	mutex_init(&sde_crtc->crtc_lock);
 	spin_lock_init(&sde_crtc->spin_lock);

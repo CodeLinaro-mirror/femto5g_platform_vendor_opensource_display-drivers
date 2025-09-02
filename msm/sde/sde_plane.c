@@ -3309,6 +3309,7 @@ void sde_plane_flush(struct drm_plane *plane)
 	u32 disp_id = U32_MAX;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	struct hfi_util_u32_prop_helper *color_props = NULL;
+	struct hfi_client_t *hfi_client = NULL;
 	int ret = 0;
 
 	if (!plane || !plane->state || !plane->state->crtc) {
@@ -3345,8 +3346,11 @@ void sde_plane_flush(struct drm_plane *plane)
 		cmd_buf = _sde_plane_get_cmd_buf(plane);
 		if (!cmd_buf)
 			SDE_ERROR("failed to get cmd_buf for plane:%d\n", DRMID(plane));
+		else
+			hfi_client = cmd_buf->ctx;
 
-		ret = hfi_adapter_add_set_property(cmd_buf,
+		ret = hfi_adapter_add_set_property(hfi_client,
+				cmd_buf,
 				HFI_COMMAND_DISPLAY_SET_PROPERTY,
 				disp_id,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -4030,7 +4034,8 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 		 * Once all the color processing properties are collected, invoke adapter api
 		 * to add all these properties as a single HFI Packet
 		 */
-		ret = hfi_adapter_add_set_property(cmd_buf,
+		ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+				cmd_buf,
 				HFI_COMMAND_DISPLAY_SET_PROPERTY,
 				disp_id,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,
