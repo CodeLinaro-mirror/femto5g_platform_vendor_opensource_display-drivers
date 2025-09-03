@@ -203,6 +203,8 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *state;
 	struct hfi_plane *phfi;
 	struct drm_plane_state *plane_state;
+	struct drm_framebuffer *fb;
+	struct sde_hw_fmt_layout layout;
 
 	if (!plane || !prop_collector || !plane->base.state)
 		return -EINVAL;
@@ -210,6 +212,9 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	phfi = to_hfi_plane(plane);
 	state = (struct sde_plane_state *)plane->base.state;
 	plane_state = &pstate->base;
+
+	fb = plane_state->fb;
+	ret = sde_format_populate_layout(pstate->aspace, fb, &layout);
 
 	switch (hfi_prop) {
 	case HFI_PROPERTY_LAYER_ZPOS:
@@ -225,7 +230,8 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	case HFI_PROPERTY_LAYER_BG_ALPHA:
 		if (sde_plane_property_is_dirty(plane_state, PLANE_PROP_BG_ALPHA) ||
-				sde_plane_is_cac_enabled(pstate)) {
+				sde_plane_is_cac_enabled(pstate) ||
+				SDE_FORMAT_IS_FSC(layout.format)) {
 			prop_id = HFI_PROPERTY_LAYER_BG_ALPHA;
 			temp_val =  sde_plane_get_property(state, PLANE_PROP_BG_ALPHA);
 			temp_val =  _hfi_plane_scale_alpha(plane->catalog, temp_val);
