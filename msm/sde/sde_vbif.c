@@ -687,6 +687,7 @@ int sde_vbif_axi_halt_request(struct sde_kms *sde_kms)
 			mutex_lock(&vbif->mutex);
 			vbif->ops.set_axi_halt[vbif->hw.disp_op](vbif);
 			rc = _sde_vbif_wait_for_axi_halt(vbif);
+			sde_hw_vbif_clear_axi_halt(vbif);
 			mutex_unlock(&vbif->mutex);
 		}
 	}
