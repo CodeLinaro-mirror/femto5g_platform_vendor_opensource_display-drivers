@@ -252,6 +252,16 @@ struct listener_list {
 };
 
 /**
+ * struct hfi_fw_shared_addr_info - Stores the information of addresses shared with firmware.
+ * @slock: Spinlock to protect list
+ * @list: List to hold hfi_shared_addr_map struct data
+ */
+struct hfi_fw_shared_addr_info {
+	spinlock_t slock;
+	struct list_head list;
+};
+
+/**
  * struct hfi_client_t - Client handle of adapter interface
  * @node: list node for adapter
  * @lock: Mutex to protect cmd_buf_list
@@ -263,6 +273,7 @@ struct listener_list {
  * @host: pointer to adapter module instance
  * @priv: Client private data pointer
  * @client_id: client identifier
+ * @shared_addr_data: dcp mapped address buffer list and lock
  */
 struct hfi_client_t {
 	struct list_head node;
@@ -275,6 +286,8 @@ struct hfi_client_t {
 	struct hfi_adapter_t *host;
 	void *priv;
 	int client_id;
+	struct hfi_fw_shared_addr_info shared_addr_data;
+	struct hfi_fw_shared_addr_info sgt_addr_data;
 };
 
 /*
@@ -286,6 +299,8 @@ struct hfi_client_t {
  *@alloc_info: hfi structure to store memory allocation information
  */
 struct hfi_shared_addr_map {
+	struct list_head node;
+	struct sg_table *sgt;
 	unsigned long remote_addr;
 	void __iomem *local_addr;
 	u32 size;
@@ -427,6 +442,19 @@ int hfi_adapter_buffer_alloc(struct hfi_client_t *ctx, struct hfi_shared_addr_ma
  */
 int hfi_adapter_buffer_dealloc(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map);
 
+/**
+ * hfi_adapter_ssr_unmap_device_addr - API to unmap all shared memory between host and dcp fw
+ * as part of SSR sequence.
+ * @ctx: Pointer to hfi_client struct.
+ */
+int hfi_adapter_ssr_unmap_device_addr(struct hfi_client_t *ctx);
+
+/**
+ * hfi_adapter_ssr_map_device_addr - API to map all shared memory between host and dcp fw
+ * as part of SSR sequence.
+ * @ctx: Pointer to hfi_client struct.
+ */
+int hfi_adapter_ssr_map_device_addr(struct hfi_client_t *ctx);
 /*
  * hfi_adapter_release_all_cmd_bufs - Release all tx buffer and rx buffers
  * associated with the client
@@ -453,8 +481,8 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx);
  * @size: Size of the memory.
  * @mapped_iova: Pointer to store resulting virtual address.
  */
-int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt, size_t size,
-		unsigned long *mapped_iova);
+int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
+		struct hfi_shared_addr_map *addr_map);
 
 /**
  * hfi_adapter_get_shared_mem_allocated_size - API to return the size of shared memory allocated
@@ -548,6 +576,16 @@ static inline int hfi_adapter_buffer_dealloc(struct hfi_client_t *ctx,
 	return 0;
 }
 
+static inline int hfi_adapter_ssr_unmap_device_addr(struct hfi_client_t *ctx)
+{
+	return 0;
+}
+
+static inline int hfi_adapter_ssr_map_device_addr(struct hfi_client_t *ctx)
+{
+	return 0;
+}
+
 static inline int hfi_adapter_release_all_cmd_bufs(struct hfi_client_t *ctx)
 {
 	return 0;
@@ -564,7 +602,7 @@ static inline void hfi_adapter_deinit(struct hfi_client_t *ctx)
 }
 
 static inline int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
-		size_t size, unsigned long *mapped_iova)
+		struct hfi_shared_addr_map *addr_map)
 {
 	return 0;
 }
