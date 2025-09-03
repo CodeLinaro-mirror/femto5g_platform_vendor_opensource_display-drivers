@@ -6434,6 +6434,8 @@ static void sde_encoder_early_wakeup_work_handler(struct kthread_work *work)
 	struct sde_encoder_virt *sde_enc = container_of(work,
 			struct sde_encoder_virt, early_wakeup_work);
 	struct sde_kms *sde_kms = to_sde_kms(ddev_to_msm_kms(sde_enc->base.dev));
+	enum msm_disp_op disp_op;
+	int rc = 0;
 
 	if (!sde_kms)
 		return;
@@ -6444,6 +6446,13 @@ static void sde_encoder_early_wakeup_work_handler(struct kthread_work *work)
 		SDE_DEBUG("skip early wakeup for ENC-%d, HW is owned by other VM\n",
 				DRMID(&sde_enc->base));
 		return;
+	}
+
+	disp_op = sde_encoder_get_disp_op(&sde_enc->base);
+	if (sde_enc->hal_ops.early_wakeup_call[disp_op]) {
+		rc = sde_enc->hal_ops.early_wakeup_call[disp_op](sde_enc);
+		if (rc)
+			SDE_ERROR_ENC(sde_enc, "failed to send early wakeup call hint\n");
 	}
 
 	SDE_ATRACE_BEGIN("encoder_early_wakeup");
