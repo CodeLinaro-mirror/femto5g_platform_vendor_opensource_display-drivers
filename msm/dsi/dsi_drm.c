@@ -485,6 +485,25 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 		return false;
 	}
 
+	/* Reject non-supported mode switches in HFI.*/
+	if (adj_mode->dsi_mode_flags &&  display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HWIO) {
+		if (adj_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) {
+			bool matching = (cur_dsi_mode.timing.h_active == adj_mode->timing.h_active)
+			       && (cur_dsi_mode.timing.v_active == adj_mode->timing.v_active);
+
+			if (!matching) {
+				DSI_INFO("Mode switch %u is not supported\n",
+					adj_mode->dsi_mode_flags);
+				adj_mode->dsi_mode_flags &= ~DSI_MODE_FLAG_DMS;
+				return true;
+			}
+		} else {
+			DSI_INFO("Mode switch %u is not supported\n", adj_mode->dsi_mode_flags);
+			adj_mode->dsi_mode_flags = 0;
+			return true;
+		}
+	}
+
 	return rc;
 }
 
