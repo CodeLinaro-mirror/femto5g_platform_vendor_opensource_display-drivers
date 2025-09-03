@@ -2317,6 +2317,8 @@ static int sde_ctl_parse_dt(struct device_node *np,
 			set_bit(SDE_CTL_NO_LAYER_EXT, &ctl->features);
 		//if (test_bit(SDE_FEATURE_HW_VIRTUAL, sde_cfg->features))
 		//	set_bit(SDE_CTL_LOCAL_FLUSH, &ctl->features);
+		if (SDE_HW_MAJOR(sde_cfg->hw_rev) == SDE_HW_MAJOR(SDE_HW_VER_C01))
+			set_bit(SDE_CTL_NO_ROT, &ctl->features);
 	}
 
 	sde_put_dt_props(props);

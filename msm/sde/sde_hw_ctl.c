@@ -583,6 +583,18 @@ static inline u32 sde_hw_ctl_get_flush_register(struct sde_hw_ctl *ctx)
 	return SDE_REG_READ(c, CTL_FLUSH);
 }
 
+static inline u32 sde_hw_ctl_get_flush_register_no_rot(struct sde_hw_ctl *ctx)
+{
+	struct sde_hw_blk_reg_map *c;
+
+	if (!ctx)
+		return 0;
+
+	c = &ctx->hw;
+
+	return SDE_REG_READ(c, CTL_FLUSH);
+}
+
 static inline void sde_hw_ctl_uidle_enable(struct sde_hw_ctl *ctx, bool enable)
 {
 	if (!ctx)
@@ -1860,7 +1872,10 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	ops->clear_flush_mask = sde_hw_ctl_clear_flush_mask;
 	ops->clear_pending_flush = sde_hw_ctl_clear_pending_flush;
 	ops->get_pending_flush = sde_hw_ctl_get_pending_flush;
-	ops->get_flush_register = sde_hw_ctl_get_flush_register;
+	if (cap & BIT(SDE_CTL_NO_ROT))
+		ops->get_flush_register = sde_hw_ctl_get_flush_register_no_rot;
+	else
+		ops->get_flush_register = sde_hw_ctl_get_flush_register;
 	ops->trigger_start = sde_hw_ctl_trigger_start;
 	ops->trigger_pending = sde_hw_ctl_trigger_pending;
 	ops->read_ctl_layers = sde_hw_ctl_read_ctl_layers;
@@ -1966,7 +1981,10 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 	}
 	ops->clear_pending_flush = sde_hw_ctl_clear_pending_flush;
 	ops->get_pending_flush = sde_hw_ctl_get_pending_flush;
-	ops->get_flush_register = sde_hw_ctl_get_flush_register;
+	if (cap & BIT(SDE_CTL_NO_ROT))
+		ops->get_flush_register = sde_hw_ctl_get_flush_register_no_rot;
+	else
+		ops->get_flush_register = sde_hw_ctl_get_flush_register;
 	ops->read_ctl_layers = sde_hw_ctl_read_ctl_layers;
 	ops->reset = sde_hw_ctl_reset_control_virt;
 	if (cap & BIT(SDE_CTL_NO_LAYER_EXT)) {
