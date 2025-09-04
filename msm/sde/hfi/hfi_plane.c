@@ -139,6 +139,7 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	struct hfi_plane *phfi;
 	struct drm_framebuffer *fb;
 	struct sde_format_extended fmt = {0,};
+	bool format_is_yuv;
 
 	if (!plane || !prop_collector || !pstate)
 		return -EINVAL;
@@ -177,8 +178,8 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 			(sizeof(u32) * SDE_MAX_PLANES));
 
 	hfi_format = hfi_catalog_get_hfi_format(&fmt);
-	if (HFI_IS_YUV_FORMAT(hfi_format))
-		_sde_plane_setup_csc(plane, pstate);
+	format_is_yuv = HFI_IS_YUV_FORMAT(hfi_format) ? true : false;
+	_sde_plane_setup_csc(plane, pstate, format_is_yuv);
 
 	prop_id = HFI_PROPERTY_LAYER_SRC_FORMAT;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
