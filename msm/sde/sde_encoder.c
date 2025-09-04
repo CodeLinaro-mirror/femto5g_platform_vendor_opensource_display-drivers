@@ -8925,6 +8925,53 @@ int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc)
 	return 0;
 }
 
+u32 sde_encoder_phys_delay_dcs(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct msm_mode_info *mode_info;
+	struct sde_encoder_phys *phys_enc;
+	enum msm_disp_op disp_op;
+	u32 linecount = 0xffff;
+	u32 reserve_lines = VTOTAL_RESERVE_LINES;
+	u32 fps, height;
+	u32 line_time_us, delay_time, end_time, start_time;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc || !sde_enc->cur_master)
+		return 0;
+	phys_enc = sde_enc->cur_master;
+	mode_info = &sde_enc->mode_info;
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+
+	fps = sde_encoder_get_fps(&sde_enc->base);
+	if (!fps)
+		return 0;
+
+	height = mode_info->vtotal;
+	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_line_count[disp_op])
+		linecount = phys_enc->hw_intf->ops.get_line_count[disp_op](phys_enc->hw_intf);
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, linecount, fps);
+	if (linecount <= 1 || linecount > (height - reserve_lines)) {
+		SDE_EVT32(linecount, height);
+		return 0;
+	}
+
+	line_time_us = DIV_ROUND_UP(USEC_PER_SEC, fps * height);
+	delay_time = line_time_us * (height - reserve_lines - linecount);
+	start_time = ktime_get();
+	usleep_range(delay_time, delay_time + 100);
+	end_time = ktime_get();
+
+	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_line_count[disp_op])
+		linecount = phys_enc->hw_intf->ops.get_line_count[disp_op](phys_enc->hw_intf);
+	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, linecount, height,
+		ktime_sub(end_time, start_time), line_time_us);
+
+	return delay_time;
+}
+
 int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 	enum msm_event_wait event)
 {
