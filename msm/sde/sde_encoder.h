@@ -71,6 +71,9 @@ struct sde_crtc_state;
 #define DEVIATION_NS 500000
 #define EPT_TIMEOUT_NS 44000000
 
+/* Trigger sysfs commands before the final reserved lines at the end of Vtotal. */
+#define VTOTAL_RESERVE_LINES 500
+
 /*
  * flags to indicate the type of mode switch
  * @SDE_MODE_SWITCH_NONE: not a switch frame
@@ -1471,5 +1474,11 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
  * @encoder: pointer to drm_encoder
  */
 void sde_encoder_cancel_vrr_timers(struct drm_encoder *encoder);
+
+/**
+ * sde_encoder_phys_delay_dcs - delay the sysfs node for triggering
+ * @sde_enc: pointer to drm encoder
+ */
+u32 sde_encoder_phys_delay_dcs(struct drm_encoder *drm_enc);
 
 #endif /* __SDE_ENCODER_H__ */

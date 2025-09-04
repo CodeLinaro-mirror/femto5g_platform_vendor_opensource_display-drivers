@@ -3183,18 +3183,25 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 {
 	struct drm_connector *connector = file->private_data;
 	struct sde_connector *c_conn = NULL;
+	struct drm_encoder *drm_enc;
 	struct sde_kms *sde_kms;
 	char *input, *token, *input_copy, *input_dup = NULL;
 	const char *delim = " ";
 	char buffer[MAX_CMD_PAYLOAD_SIZE] = {0};
 	int rc = 0, strtoint = 0;
 	u32 buf_size = 0;
+	u32 delay_time = 0;
 
 	if (*ppos || !connector) {
 		SDE_ERROR("invalid argument(s), conn %d\n", connector != NULL);
 		return -EINVAL;
 	}
 	c_conn = to_sde_connector(connector);
+
+	if (connector->state && connector->state->best_encoder)
+		drm_enc = connector->state->best_encoder;
+	else
+		drm_enc = connector->encoder;
 
 	sde_kms = sde_connector_get_kms(&c_conn->base);
 	if (!sde_kms) {
@@ -3227,6 +3234,11 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 	input[count] = '\0';
 
 	SDE_INFO("Command requested for transfer to panel: %s\n", input);
+
+	if (c_conn->vrr_caps.video_psr_support) {
+		delay_time = sde_encoder_phys_delay_dcs(drm_enc);
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, delay_time);
+	}
 
 	input_copy = kstrdup(input, GFP_KERNEL);
 	if (!input_copy) {
