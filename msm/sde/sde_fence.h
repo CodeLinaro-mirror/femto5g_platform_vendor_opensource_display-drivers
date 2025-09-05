@@ -34,6 +34,30 @@ struct sde_hw_ctl;
 struct sde_hw_mdp;
 
 /**
+ * struct sde_fence - release/retire fence structure
+ * @base: base fence structure
+ * @ctx: fence context
+ * @name: name of each fence- it is fence timeline + commit_count
+ * @fence_list: list to associated this fence on timeline/context
+ * @fd: fd attached to this fence - debugging purpose.
+ * @hwfence_out_ctl: optional hw ctl for the output fence
+ * @hwfence_index: hw fence index for this fence
+ * @txq_updated_fence: flag to indicate that a fence has been updated in txq
+ * @hw_fence_handle: optional pointer to hw-fence handle used to create and release this fence
+ */
+struct sde_fence {
+	struct dma_fence base;
+	struct sde_fence_context *ctx;
+	char name[SDE_FENCE_NAME_SIZE];
+	struct list_head fence_list;
+	int fd;
+	struct sde_hw_ctl *hwfence_out_ctl;
+	u64 hwfence_index;
+	bool txq_updated_fence;
+	void *hw_fence_handle;
+};
+
+/**
  * enum sde_fence_error_state - fence error state handled in _sde_fence_trigger
  * @NO_ERROR: no fence error
  * @SET_ERROR_ONLY_CMD_RELEASE: cmd panel release fence error state
@@ -151,6 +175,9 @@ struct sde_hw_fence_data {
 	u32 input_h_synx;
 	struct sde_hw_fence_error_cb_data sde_hw_fence_error_cb_data;
 };
+
+/* External declaration for sde_fence_ops */
+extern struct dma_fence_ops sde_fence_ops;
 
 #if IS_ENABLED(CONFIG_SYNC_FILE)
 /**
@@ -474,6 +501,13 @@ int sde_fence_update_input_fence_id(struct sde_hw_ctl *ctl);
 int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *ctl, u32 debugfs_hw_fence,
 	struct sde_hw_mdp *hw_mdp, bool disable, bool override);
 
+/**
+ * sde_fence_get_hwfence_index - get the latest hardware fence index from connector
+ * @ctx: pointer to fence context
+ * Returns: Hardware fence index, or 0 if no valid fence found
+ */
+u64 sde_fence_get_hwfence_index(struct sde_fence_context *ctx);
+
 #else
 static inline int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms,
 	bool use_dpu_ipcc, bool use_soccp, struct msm_mmu *mmu)
@@ -519,6 +553,11 @@ static inline int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *ctl,
 	u32 debugfs_hw_fence, struct sde_hw_mdp *hw_mdp, bool disable, bool override)
 {
 	return -EINVAL;
+}
+
+static inline u64 sde_fence_get_hwfence_index(struct sde_fence_context *ctx)
+{
+	return 0;
 }
 #endif /* CONFIG_SYNC_FILE && CONFIG_QTI_HW_FENCE */
 

@@ -119,7 +119,7 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 		return -EINVAL;
 
 	sde_cfg = hfi_kms->base->catalog;
-	opmode = sde_crtc_check_for_lsr_opmode(&crtc->base);
+	opmode = sde_crtc_check_for_lsr_opmode(&crtc->base, &cstate->base);
 	if (_hfi_crtc_is_prop_excluded_for_repro(drm_prop, opmode, sde_cfg)) {
 		HFI_DEBUG_CRTC(crtc_hfi, "Unsupported property for Repro drm_prop:%x\n", drm_prop);
 		return 0;
@@ -152,6 +152,43 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 	return 0;
 }
 
+void hfi_set_hw_fence_prop(struct sde_fence_context *ctx,
+			enum hfi_fence_type hfi_fence_type,
+			struct hfi_util_u32_prop_helper *prop_collector,
+			u32 disp_id, u32 hfi_prop_id)
+{
+	u64 hwfence_index = 0;
+	struct hfi_hw_fence fence_prop;
+	int ret = 0;
+
+	if (!ctx) {
+		SDE_ERROR("Invalid fence ctx\n");
+		return;
+	}
+
+	hwfence_index = sde_fence_get_hwfence_index(ctx);
+
+	if (!hwfence_index) {
+		SDE_ERROR("Invalid hwfence index: %llu, cannot set prop\n", hwfence_index);
+		return;
+	}
+
+	fence_prop.h_synx = hwfence_index;
+	fence_prop.flags = hfi_fence_type;
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+		hfi_prop_id, HFI_VAL_U32_ARRAY, &fence_prop,
+		sizeof(struct hfi_hw_fence));
+	if (ret) {
+		SDE_ERROR("hfi set fence prop failed %d\n", ret);
+		return;
+	}
+
+	SDE_DEBUG("disp_id = %d, prop = 0x%x, h_synx = 0x%x, flags = 0x%x\n", disp_id,
+		hfi_prop_id, fence_prop.h_synx, fence_prop.flags);
+}
+
+
 static int _hfi_crtc_set_props_base(struct sde_crtc *crtc, u32 disp_id,
 		struct sde_crtc_state *cstate, struct hfi_cmdbuf_t *cmd_buf)
 {
@@ -180,6 +217,10 @@ static int _hfi_crtc_set_props_base(struct sde_crtc *crtc, u32 disp_id,
 		_hfi_crtc_add_base_prop_helper(hfi_prop, crtc, cstate,
 			crtc_hfi->base_props, drm_prop);
 	}
+
+	if (sde_crtc_out_hw_fences_enabled(crtc))
+		hfi_set_hw_fence_prop(crtc->output_fence, HFI_FENCE_SCAN_COMPLETE,
+				crtc_hfi->base_props, disp_id, HFI_PROPERTY_DISPLAY_INPUT_FENCE);
 
 	if (!hfi_util_u32_prop_helper_prop_count(crtc_hfi->base_props))
 		goto end;

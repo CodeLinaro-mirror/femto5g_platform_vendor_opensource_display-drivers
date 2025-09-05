@@ -1841,6 +1841,13 @@ static inline void sde_connector_backlight_lock(struct sde_connector *c_conn, bo
 bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
 		uint32_t property_idx);
 
+/*
+ * sde_connector_out_hw_fences_enabled - check if output hardware fences are enabled
+ * @c_conn: Pointer to sde connector
+ * Return: true if output hardware fences are enabled, false otherwise
+ */
+bool sde_connector_out_hw_fences_enabled(struct sde_connector *sde_conn);
+
 /**
  * sde_connector_state_get_sub_mode - get sub mode from connector state
  * @conn_state: Pointer to sde connector state

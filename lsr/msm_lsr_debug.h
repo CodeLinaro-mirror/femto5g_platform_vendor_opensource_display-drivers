@@ -19,7 +19,7 @@
 /* To enable messages OR these values and
  * echo the result to debugfs file.
  *
- * To enable all messages set debug_level = 0x101F
+ * To enable all messages set debug_level = 0xFFF
  */
 
 enum lsr_msg_prio {
@@ -34,6 +34,7 @@ enum lsr_msg_prio {
 	LSR_SESS  = 0x000100,
 	LSR_HFI   = 0x000200,
 	LSR_TRACE = 0x000400,
+	LSR_SYNX  = 0x000800,
 	LSR_DBG  = LSR_MEM | LSR_CORE | LSR_REG | LSR_PWR | LSR_SESS | LSR_HFI,
 };
 
@@ -117,6 +118,8 @@ static inline char *get_debug_level_str(int level)
 		return "hfi";
 	case LSR_TRACE:
 		return "trace";
+	case LSR_SYNX:
+		return "synx";
 	default:
 		return "???";
 	}
