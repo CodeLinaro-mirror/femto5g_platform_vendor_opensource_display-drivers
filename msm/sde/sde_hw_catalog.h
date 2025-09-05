@@ -485,6 +485,8 @@ enum {
  * @SDE_MIXER_CAC_PRIMARY     Layer mixer preferred for primary during two pass CAC
  * @SDE_MIXER_CAC_LB          Layer mixer preferred for loopback during two pass CAC
  * @SDE_MIXER_MAX             maximum value
+ * @SDE_MIXER_IS_VIRTUAL      Layer mixer which is removed but used for proper
+ *                            Dedicated CWB allocation
  */
 enum {
 	SDE_MIXER_LAYER = 0x1,
@@ -502,6 +504,7 @@ enum {
 	SDE_MIXER_10_BITS_COLOR,
 	SDE_MIXER_CAC_PRIMARY,
 	SDE_MIXER_CAC_LB,
+	SDE_MIXER_IS_VIRTUAL,
 	SDE_MIXER_MAX
 };
 
@@ -2223,6 +2226,7 @@ struct sde_perf_cfg {
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
  * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
  *                      If not set it is immediate self refresh
+ * @virtual_mixers_mask bitmask of virtual mixers
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -2256,6 +2260,7 @@ struct sde_mdss_cfg {
 	struct sde_sspp_cfg sspp[DPU_MAX_SSPP_COUNT];
 	u32 mixer_count;
 	struct sde_lm_cfg mixer[MAX_BLOCKS];
+	u32 virtual_mixers_mask;
 	struct sde_dspp_top_cfg dspp_top;
 	u32 dspp_count;
 	struct sde_dspp_cfg dspp[MAX_BLOCKS];
