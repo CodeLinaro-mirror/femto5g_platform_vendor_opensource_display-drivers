@@ -375,16 +375,16 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 		return -EINVAL;
 	}
 
+	drm_enc = &sde_enc->base;
+	if (!sde_encoder_is_primary_display(drm_enc))
+		return 0;
+
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
 		MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
 	if (!cmd_buf) {
 		SDE_ERROR("failed to get hfi command buffer\n");
 		return -EINVAL;
 	}
-
-	drm_enc = &sde_enc->base;
-	if (!sde_encoder_is_primary_display(drm_enc))
-		return 0;
 
 	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 	if (!conn) {
