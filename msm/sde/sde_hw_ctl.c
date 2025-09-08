@@ -92,8 +92,6 @@
 #define UPDATE_MASK(m, idx, en)           \
 	((m) = (en) ? ((m) | BIT((idx))) : ((m) & ~BIT((idx))))
 
-#define CTL_INVALID_BIT                0xffff
-
 #define VDC_IDX(i) ((i) +  16)
 
 #define UPDATE_ACTIVE(r, idx, en)  UPDATE_MASK((r), (idx), (en))
@@ -151,12 +149,6 @@ static const u32 intf_tbl[INTF_MAX] = {SDE_NONE, 31, 30, 29, 28};
  * List of SSPP bits in CTL_FETCH_PIPE_ACTIVE
  */
 static const u32 fetch_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT,
-		16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5};
-
-/**
- * List of SSPP bits in CTL_PIPE_ACTIVE
- */
-static const u32 pipe_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT,
 		16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5};
 
 /**
@@ -828,6 +820,24 @@ static inline int sde_hw_ctl_update_bitmask_dspp_subblk(struct sde_hw_ctl *ctx,
 	return 0;
 }
 
+static void sde_hw_ctl_set_active_fetch_pipes_virtual(struct sde_hw_ctl *ctx,
+		unsigned long *active_fetch_pipes)
+{
+	int i;
+	u32 val = 0;
+
+	if (!active_fetch_pipes)
+		goto end;
+
+	for (i = 0; i < SSPP_MAX; i++) {
+		if (test_bit(i, active_fetch_pipes) && fetch_active_tbl[i] != CTL_INVALID_BIT)
+			val |= BIT(fetch_active_tbl[i]);
+	}
+
+end:
+	SDE_REG_MODIFY(&ctx->hw, CTL_FETCH_PIPE_ACTIVE, ctx->caps->pipe_active_mask, val);
+}
+
 static void sde_hw_ctl_set_active_fetch_pipes(struct sde_hw_ctl *ctx,
 		unsigned long *active_fetch_pipes)
 {
@@ -909,6 +919,24 @@ static void sde_hw_ctl_set_active_pipes(struct sde_hw_ctl *ctx, unsigned long *a
 
 end:
 	SDE_REG_WRITE(&ctx->hw, CTL_PIPE_ACTIVE, val);
+}
+
+
+static void sde_hw_ctl_set_active_pipes_virtual(struct sde_hw_ctl *ctx, unsigned long *active_pipes)
+{
+	int i;
+	u32 val = 0;
+
+	if (!active_pipes)
+		goto end;
+
+	for (i = 0; i < SSPP_MAX; i++) {
+		if (test_bit(i, active_pipes) && pipe_active_tbl[i] != CTL_INVALID_BIT)
+			val |= BIT(pipe_active_tbl[i]);
+	}
+
+end:
+	SDE_REG_MODIFY(&ctx->hw, CTL_PIPE_ACTIVE, ctx->caps->pipe_active_mask, val);
 }
 
 static u32 sde_hw_ctl_get_active_pipes(struct sde_hw_ctl *ctx)
@@ -1046,7 +1074,7 @@ static inline int sde_hw_ctl_trigger_flush_global_v1(struct sde_hw_ctl *ctx)
 {
 	u32 flush_mask = ctx->flush.pending_flush_mask & ctx->flush.global_flush_mask;
 
-    if (ctx->flush.pending_flush_mask & BIT(DSPP_IDX))
+	if (ctx->flush.pending_flush_mask & BIT(DSPP_IDX))
 		_sde_hw_ctl_write_dspp_flushes(ctx);
 	/* Skip empty global flush (no SSPP/LM flush) */
 	if (flush_mask &&
@@ -1950,6 +1978,9 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 
 			ops->update_bitmask = sde_hw_ctl_update_bitmask_v1;
 			ops->get_ctl_intf = sde_hw_ctl_get_intf_v1;
+
+			ops->set_active_fetch_pipes = sde_hw_ctl_set_active_fetch_pipes_virtual;
+			ops->get_active_fetch_pipes = sde_hw_ctl_get_active_fetch_pipes;
 		}
 
 		ops->bitmask_has_bit = sde_hw_ctl_bitmask_has_bit_v1;
@@ -1972,6 +2003,9 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 	if (cap & BIT(SDE_CTL_NO_LAYER_EXT)) {
 		ops->get_active_pipes = sde_hw_ctl_get_active_pipes;
 		ops->get_active_lms = sde_hw_ctl_get_active_lms;
+		if (!(cap & BIT(SDE_CTL_LOCAL_FLUSH))) {
+			ops->set_active_pipes = sde_hw_ctl_set_active_pipes_virtual;
+		}
 	} else {
 		ops->clear_all_blendstages = sde_hw_ctl_clear_all_blendstages;
 		ops->setup_blendstage = sde_hw_ctl_setup_blendstage;

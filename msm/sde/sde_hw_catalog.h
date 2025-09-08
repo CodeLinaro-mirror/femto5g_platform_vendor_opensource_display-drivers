@@ -1523,17 +1523,19 @@ struct sde_uidle_cfg {
 	bool dirty;
 };
 
-/* struct sde_mdp_cfg : MDP TOP-BLK instance info
+/* struct sde_ctl_cfg : MDP TOP-BLK instance info
  * @id:                index identifying this block
  * @base:              register base offset to mdss
  * @features           bit mask identifying sub-blocks/features
  * @fixed_enc_id:      ID of encoder for fixed resource reservation, used in HW virtualzation
  * @vq_idx:            LUTDMA VQ index
+ * @pipe_active_mask:  controllable pipe active mask under shared display mode
  */
 struct sde_ctl_cfg {
 	SDE_HW_BLK_INFO;
 	int fixed_enc_id;
 	int vq_idx;
+	u32 pipe_active_mask;
 };
 
 /**
@@ -2224,6 +2226,7 @@ struct sde_perf_cfg {
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
  * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
  *                      If not set it is immediate self refresh
+ * @pipe_active_mask    The controllable pipe active mask under shared display mode
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -2364,6 +2367,8 @@ struct sde_mdss_cfg {
 	u32 ppb_buf_max_lines;
 	u32 controlled_SR;
 	u32 early_EPT_handling;
+
+	u32 pipe_active_mask;
 };
 
 struct sde_mdss_hw_cfg_handler {
