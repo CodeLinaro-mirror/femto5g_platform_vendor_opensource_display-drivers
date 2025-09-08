@@ -35,6 +35,36 @@
 #define HFI_ADAPTER_WORK_QUEUE_SIZE 4
 
 /**
+ * @brief Type of virtqueue event
+ *
+ * This enumeration defines the type of virtqueue to denote whether the buffer is from
+ * RX or TX virtqueue
+ *
+ * @HFI_VIRTQUEUE_TYPE_RX: Denotes the buffer from RX virt queue.
+ * @HFI_VIRTQUEUE_TYPE_TX: Denotes the buffer from TX virt queue.
+ */
+enum hfi_virt_queue_type {
+	HFI_VIRTQUEUE_TYPE_RX = 0x0,
+	HFI_VIRTQUEUE_TYPE_TX,
+	HFI_VIRTQUEUE_TYPE_MAX,
+};
+
+/**
+ * @brief Type of ssr event
+ *
+ * This enumeration defines the type of the event to be notified to the
+ * client as a part of the callback
+ *
+ * @HFI_ADAPTER_EVENT_SSR_START: callback is triggerred as a event of SSR start.
+ * @HFI_ADAPTER_EVENT_SSR_END: callback is triggerred as a event of SSR end.
+ */
+enum hfi_adapter_event_type {
+	HFI_ADAPTER_EVENT_SSR_START = 0x0,
+	HFI_ADAPTER_EVENT_SSR_END,
+	HFI_ADAPTER_EVENT_MAX,
+};
+
+/**
  * struct callback_work - Structure for containing work queue items
  * @work: kthread_work instance
  * @host: pointer to adapter module instance
@@ -49,15 +79,22 @@ struct callback_work {
 /**
  * struct hfi_adapter_t - Structure for defining Adapter Module instance handle
  * @sde_or_vm_instance: index of VM owning adapter
+ * @client_list: list to hold all clients registered
  * @cb_ops: callback ops supplied to HFI core driver for receiving IRQ
  * @session: hfi_core_session handle for interfacing with HFI Core driver
- * @cb_work: Callback work structure
- * @cb_worker: Callback worker structure
- * @cb_worker_thread: Callback worker thread
+ * @cb_event_worker: Callback worker structure for non SSR work
+ * @cb_event_worker_thread: Callback worker thread for non SSR work
+ * @cb_cmd_buf_work: Callback work structure for non SSR work
+ * @cb_event_ssr_worker: Callback worker structure for SSR work
+ * @cb_event_worker_ssr_thread: Callback worker thread for SSR work
+ * @cb_ssr_work: Callback work structure for SSR work
+ * @event_type: type of adapter event received from hfi core
+ * @blocking: true for blocking event and false for non blocking event
  * @client_ids: ID allocation for client ID's
  * @pool: Pointer to hfi_buffer_pool struct
  * @packet_id_lock: Lock for packet id
  * @hfi_adapter_cmd_buf_list_lock:Lock for cmd_buf list
+ * @ssr_in_progress: atomic member storing current ssr status
  */
 struct hfi_adapter_t {
 	u32  sde_or_vm_instance;
@@ -66,13 +103,19 @@ struct hfi_adapter_t {
 	struct hfi_core_cb_ops *cb_ops;
 	struct hfi_core_session *session;  /* handle to hfi core device */
 #endif
-	struct callback_work cb_work[HFI_ADAPTER_WORK_QUEUE_SIZE];
-	struct kthread_worker cb_worker;
-	struct task_struct *cb_worker_thread;
+	struct callback_work cb_cmd_buf_work[HFI_ADAPTER_WORK_QUEUE_SIZE];
+	struct kthread_work cb_ssr_work;
+	struct kthread_worker cb_event_worker;
+	struct kthread_worker cb_event_ssr_worker;
+	struct task_struct *cb_event_worker_thread;
+	struct task_struct *cb_event_worker_ssr_thread;
+	enum hfi_adapter_event_type event_type;
+	bool blocking;
 	struct idr client_ids;
 	struct hfi_buffer_pool *pool;
 	spinlock_t packet_id_lock;
 	struct mutex hfi_adapter_cmd_buf_list_lock;
+	atomic_t ssr_in_progress;
 };
 
 /**
@@ -150,6 +193,8 @@ struct hfi_kv_pairs {
  * @pool: Pointer to hfi_buffer_pool structure
  * @buffer_send_done: atomic variable to signal when unpack is finished
  * @is_released: tracks if buffer is released back to hfi_core
+ * @waiting_for_rsp: atomic variable to signal if buffer is waiting for the response
+ * @virtq_type: virtqueue type of the buffer
  */
 struct hfi_cmdbuf_t {
 	struct mutex lock;
@@ -166,6 +211,8 @@ struct hfi_cmdbuf_t {
 	struct hfi_buffer_pool *pool;
 	atomic_t buffer_send_done;
 	bool is_released;
+	atomic_t waiting_for_rsp;
+	enum hfi_virt_queue_type virtq_type;
 };
 
 /**
@@ -209,9 +256,12 @@ struct listener_list {
  * @node: list node for adapter
  * @lock: Mutex to protect cmd_buf_list
  * @cmd_buf_list: list of command buffers attached to the client
- * @process_cmd_buf: callback function pointer populated by client
+ * @process_cmd_buf: callback function pointer for processing command buffer
+ *                   populated by client
+ * @process_event: callback function pointer for processing events
+ *                 (hfi_adapter_event_type) populated by client
  * @host: pointer to adapter module instance
- * @priv: Client provate data pointer
+ * @priv: Client private data pointer
  * @client_id: client identifier
  */
 struct hfi_client_t {
@@ -220,6 +270,8 @@ struct hfi_client_t {
 	struct list_head cmd_buf_list;
 	struct listener_list packet_listeners;
 	int (*process_cmd_buf)(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t *cmd_buf);
+	int (*process_event)(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
+		bool blocking);
 	struct hfi_adapter_t *host;
 	void *priv;
 	int client_id;
@@ -366,6 +418,19 @@ int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map);
  */
 int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map);
 
+/*
+ * hfi_adapter_release_all_cmd_bufs - Release all tx buffer and rx buffers
+ * associated with the client
+ * @ctx: Pointer to hfi_client struct.
+ */
+int hfi_adapter_release_all_cmd_bufs(struct hfi_client_t *ctx);
+
+/**
+ * hfi_adapter_notify_rsp_timeout - Response timeout notification to hfi adapter by clients
+ * @ctx: Pointer to hfi_client struct.
+ */
+int hfi_adapter_notify_rsp_timeout(struct hfi_client_t *ctx);
+
 /**
  * hfi_adapter_deinit - API to release tx buffer pools and make them available
  * @ctx: Pointer to hfi_client struct
@@ -463,8 +528,19 @@ static inline int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_ma
 	return 0;
 }
 
+static inline int hfi_adapter_release_all_cmd_bufs(struct hfi_client_t *ctx)
+{
+	return 0;
+}
+
+static inline int hfi_adapter_notify_rsp_timeout(struct hfi_client_t *ctx)
+{
+	return 0;
+}
+
 static inline void hfi_adapter_deinit(struct hfi_client_t *ctx)
 {
+	return;
 }
 
 static inline int hfi_adapter_map_sg_table(struct sg_table *sgt, size_t size,

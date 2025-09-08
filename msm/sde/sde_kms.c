@@ -4980,6 +4980,23 @@ struct msm_display_mode *sde_kms_get_msm_mode(struct drm_connector_state *conn_s
 	return &sde_conn_state->msm_mode;
 }
 
+int sde_kms_reinit_device_lut_dma(struct sde_kms *sde_kms)
+{
+	int ret;
+
+	if (!sde_kms || !sde_kms->hfi_kms)
+		return -EINVAL;
+
+	/* send LUT DMA last_cmd buffer */
+	ret = _sde_kms_send_reg_dma_last_cmd_hfi(sde_kms);
+	if (ret) {
+		SDE_ERROR("failed to send last command LUT DMA buffer to HFI\n");
+		return ret;
+	}
+
+	return ret;
+}
+
 int sde_kms_suspend_helper(struct sde_kms *sde_kms)
 {
 	struct drm_device *ddev;
