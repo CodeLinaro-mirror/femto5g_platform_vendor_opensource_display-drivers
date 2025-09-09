@@ -15,6 +15,7 @@
 #include "dp_catalog.h"
 #include "dp_debug.h"
 #include "dp_pll.h"
+#include "dp_display.h"
 
 #define DP_CLIENT_NAME_SIZE	20
 #define XO_CLK_KHZ	19200
@@ -840,6 +841,14 @@ static int dp_power_init(struct dp_power *dp_power, bool flip)
 		goto err_gpio;
 	}
 
+	if (power->parser->ctl_op_sync && power->pll->slave) {
+		rc = pm_runtime_resume_and_get(g_edp_pair.m_pll_display->drm_dev->dev);
+		if (rc < 0) {
+			DP_ERR("failed to enable power resource %d\n", rc);
+			goto err_sde_power;
+		}
+	}
+
 	rc = pm_runtime_resume_and_get(dp_power->drm_dev->dev);
 	if (rc < 0) {
 		DP_ERR("failed to enable power resource %d\n", rc);
@@ -883,6 +892,10 @@ static int dp_power_deinit(struct dp_power *dp_power)
 		dp_power_clk_enable(dp_power, DP_LINK_PM, false);
 
 	dp_power_clk_enable(dp_power, DP_CORE_PM, false);
+
+	if (power->parser->ctl_op_sync && power->pll->slave)
+		pm_runtime_put_sync(g_edp_pair.m_pll_display->drm_dev->dev);
+
 	pm_runtime_put_sync(dp_power->drm_dev->dev);
 
 	dp_power_config_gpios(power, false, false);

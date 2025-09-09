@@ -117,7 +117,7 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 			return -EINVAL;
 		}
 
-		ret = hfi_adapter_add_set_property(cmd_buf,
+		ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
 				HFI_COMMAND_DISPLAY_FRAME_TRIGGER, MSM_DRV_HFI_ID,
 				HFI_PAYLOAD_TYPE_U32, &payload, sizeof(u32), 0);
 
@@ -130,7 +130,7 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 			SDE_EVT32(pending_commit_count);
 		}
 
-		ret = hfi_adapter_set_cmd_buf(cmd_buf);
+		ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 		SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, ret, SDE_EVTLOG_FUNC_CASE1);
 		if (ret) {
 			SDE_ERROR("failed to send commit buffer\n");
@@ -177,7 +177,7 @@ static int hfi_kms_process_cmd_buf(struct hfi_client_t *client, struct hfi_cmdbu
 	if (rc)
 		SDE_ERROR("[WARNING] error in response packet or unpacking buffer\n");
 
-	rc = hfi_adapter_release_cmd_buf(cmd_buf);
+	rc = hfi_adapter_release_cmd_buf(client, cmd_buf);
 	if (rc)
 		SDE_ERROR("[WARNING] Failed to release command buffer\n");
 
@@ -194,6 +194,8 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 	struct hfi_connector *hfi_conn;
 	struct sde_kms *sde_kms;
 	struct drm_device *ddev;
+	struct sde_crtc *crtc;
+	struct drm_crtc *dcrtc = NULL;
 
 	if (!hfi_client || !hfi_client->priv) {
 		SDE_ERROR("invalid params\n");
@@ -255,6 +257,16 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 		return rc;
 	}
 
+	drm_for_each_crtc(dcrtc, ddev) {
+		crtc = to_sde_crtc(dcrtc);
+		/* destroy fw mapped buffers for crtc */
+		rc = hfi_crtc_destroy_shared_map_buffers(crtc);
+		if (rc) {
+			SDE_ERROR("failed to destroy fw mapped buffers for crtc\n");
+			return rc;
+		}
+	}
+
 	/* Release all command buffers associated with DPU driver hfi client */
 	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
 	if (rc)
@@ -272,6 +284,10 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 	struct hfi_connector *hfi_conn;
 	struct sde_kms *sde_kms;
 	struct drm_device *ddev;
+	struct sde_crtc *crtc;
+	struct drm_crtc *dcrtc = NULL;
+
+	SDE_DEBUG("process ssr end called\n");
 
 	if (!hfi_client) {
 		SDE_ERROR("invalid params\n");
@@ -303,6 +319,16 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 		return rc;
 	}
 
+	drm_for_each_crtc(dcrtc, ddev) {
+		crtc = to_sde_crtc(dcrtc);
+		/* allocate fw mapped buffers for crtc */
+		rc = hfi_crtc_alloc_shared_map_buffers(crtc);
+		if (rc) {
+			SDE_ERROR("failed to allocate fw mapped buffers for crtc\n");
+			return rc;
+		}
+	}
+
 	/* Resume all connected displays */
 	rc = sde_kms_resume_helper(sde_kms);
 	if (rc) {
@@ -330,7 +356,7 @@ static int hfi_kms_process_event(struct hfi_client_t *hfi_client, enum hfi_adapt
 			bool blocking)
 {
 	if (!hfi_client) {
-		DSI_ERR("Invalid client\n");
+		SDE_ERROR("Invalid client\n");
 		return -EINVAL;
 	}
 
@@ -660,7 +686,7 @@ static int _send_device_init_cmd(struct hfi_kms *hfi_kms)
 	}
 
 	hfi_kms->device_init_listener.hfi_prop_handler = hfi_kms_populate_catalog;
-	ret = hfi_adapter_add_get_property(cmd_buf, HFI_COMMAND_DEVICE_INIT,
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf, HFI_COMMAND_DEVICE_INIT,
 			MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 			&hfi_kms->device_init_listener,
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE);
@@ -670,7 +696,7 @@ static int _send_device_init_cmd(struct hfi_kms *hfi_kms)
 	}
 
 	SDE_EVT32(HFI_COMMAND_DEVICE_INIT, SDE_EVTLOG_FUNC_CASE2);
-	ret = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+	ret = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
 	SDE_EVT32(HFI_COMMAND_DEVICE_INIT, ret, SDE_EVTLOG_FUNC_CASE3);
 	if (ret) {
 		SDE_ERROR("failed to send device-init command\n");
@@ -713,9 +739,9 @@ static int _send_trace_cfg_cmd(struct hfi_kms *hfi_kms, uint32_t flag)
 	}
 
 	hfi_kms->trace_cfg_listener.hfi_prop_handler = hfi_kms_get_trace_cfg_resp;
-	ret = hfi_adapter_add_get_property(cmd_buf, HFI_COMMAND_DEBUG_TRACE_CFG,
-			MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_U32, &flag, sizeof(flag),
-			&hfi_kms->trace_cfg_listener,
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_TRACE_CFG, MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_U32,
+			&flag, sizeof(flag), &hfi_kms->trace_cfg_listener,
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE);
 	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_CASE2, ret);
 	if (ret) {
@@ -723,7 +749,7 @@ static int _send_trace_cfg_cmd(struct hfi_kms *hfi_kms, uint32_t flag)
 		return ret;
 	}
 
-	ret = hfi_adapter_set_cmd_buf(cmd_buf);
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_CASE3, ret);
 	if (ret) {
 		SDE_ERROR("failed to send trace config command\n");
@@ -806,15 +832,16 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
 	hfi_cfg.iova = buffer->iova;
 	hfi_cfg.len = buffer->index;
 
-	ret = hfi_adapter_add_set_property(cmd_buf, HFI_COMMAND_DEVICE_LUT_DMA_LAST_CMD,
-			MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_U32_ARRAY, &hfi_cfg, sizeof(hfi_cfg),
+	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEVICE_LUT_DMA_LAST_CMD, MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &hfi_cfg, sizeof(hfi_cfg),
 			HFI_HOST_FLAGS_NONE);
 	if (ret) {
 		SDE_ERROR("failed to set hfi property for last command buffer\n");
 		return -EINVAL;
 	}
 
-	ret = hfi_adapter_set_cmd_buf(cmd_buf);
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	if (ret) {
 		SDE_ERROR("failed to send DEVICE_REG_DMA_LAST_CMD\n");
 		return ret;

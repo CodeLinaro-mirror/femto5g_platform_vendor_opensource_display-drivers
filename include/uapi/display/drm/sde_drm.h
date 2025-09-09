@@ -97,6 +97,13 @@ extern "C" {
 #define DRM_FORMAT_MOD_QCOM_DMA	fourcc_mod_code(QCOM, 0x400)
 
 /**
+ * @DRM_FORMAT_MOD_QCOM_FSC_TILE:	Refers to a tile variant of the
+ *					planar format. Implementation may be
+ *					platform and base-format specific.
+ */
+#define DRM_FORMAT_MOD_QCOM_FSC_TILE	fourcc_mod_code(QCOM, 0x800)
+
+/**
  * Blend operations for "blend_op" property
  *
  * @SDE_DRM_BLEND_OP_NOT_DEFINED:   No blend operation defined for the layer.

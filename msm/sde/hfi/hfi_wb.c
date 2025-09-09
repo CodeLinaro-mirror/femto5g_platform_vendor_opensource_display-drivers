@@ -128,7 +128,8 @@ static int _hfi_wb_set_props_base(struct sde_wb_device *wb_dev, u32 disp_id,
 	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props))
 		goto end;
 
-	ret = hfi_adapter_add_set_property(cmd_buf,
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+		cmd_buf,
 		HFI_COMMAND_DISPLAY_SET_PROPERTY,
 		disp_id,
 		HFI_PAYLOAD_TYPE_U32_ARRAY,

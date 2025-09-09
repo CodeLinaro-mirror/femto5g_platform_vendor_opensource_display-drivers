@@ -711,7 +711,6 @@ struct sde_line_insertion_param {
  * @cp_range_payload: array storing state user_data passed via range props
  * @cont_splash_populated: State was populated as part of cont. splash
  * @param: sde line insertion parameters
- * @hwfence_in_fences_set: input hw fences are configured for the commit
  * @is_loopback_mode: boolean variable to indicate if crtc is running in loopback mode
  * @in_loopback_transition: boolean variable to indicate if crtc is transitioning in or out
 				of loopback mode
@@ -758,7 +757,6 @@ struct sde_crtc_state {
 		cp_range_payload[SDE_CP_CRTC_MAX_FEATURES];
 	bool cont_splash_populated;
 	struct sde_line_insertion_param line_insertion;
-	bool hwfence_in_fences_set;
 	bool is_loopback_mode;
 	bool in_loopback_transition;
 	struct sde_io_res cac_mixer_roi[MAX_MIXERS_PER_CRTC];

@@ -1504,6 +1504,52 @@ error:
 	return rc;
 }
 
+static int dsi_panel_parse_esync_params(struct dsi_panel *panel,
+	struct esync_params *esync_params,
+	struct dsi_parser_utils *utils)
+{
+	int val, rc = 0;
+
+	if (!panel || !esync_params || !utils || !utils->data) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-milli-skew", &val);
+	if (rc) {
+		DSI_DEBUG("mode esync skew fallback on default\n");
+		val = 0;
+	}
+	esync_params->milli_skew = val;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-hsync-milli-pulse-width", &val);
+	if (rc) {
+		DSI_ERR("mode esync enabled but hsync pulse width not defined\n");
+		goto error;
+	}
+	esync_params->hsync_milli_pulse_width = val;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-emsync-fps", &val);
+	if (rc) {
+		DSI_DEBUG("mode esync EM pulse not enabled\n");
+		esync_params->emsync_fps = 0;
+		return 0;
+	}
+	esync_params->emsync_fps = val;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-emsync-milli-pulse-width", &val);
+	if (rc) {
+		DSI_ERR("mode esync EM pulse enabled but pulse width not defined\n");
+		goto error;
+	}
+	esync_params->emsync_milli_pulse_width = val;
+
+	return 0;
+
+error:
+	return rc;
+}
+
 static int dsi_panel_parse_esync_caps(struct dsi_panel *panel,
 				       struct device_node *of_node)
 {
@@ -1518,39 +1564,25 @@ static int dsi_panel_parse_esync_caps(struct dsi_panel *panel,
 		return 0;
 	}
 
-	rc = utils->read_u32(utils->data, "qcom,mdss-esync-milli-skew", &val);
-	if (rc) {
-		DSI_DEBUG("[%s] esync skew fallback on default\n", panel->name);
-		val = 0;
-	}
-	esync_caps->milli_skew = val;
-
-	rc = utils->read_u32(utils->data, "qcom,mdss-esync-hsync-milli-pulse-width", &val);
-	if (rc) {
-		DSI_ERR("[%s] esync enabled but hsync pulse width not defined\n", panel->name);
-		goto error;
-	}
-	esync_caps->hsync_milli_pulse_width = val;
-
-	rc = utils->read_u32(utils->data, "qcom,mdss-esync-emsync-fps", &val);
-	if (rc) {
-		DSI_DEBUG("[%s] esync EM pulse not enabled\n", panel->name);
-		esync_caps->emsync_fps = 0;
+	esync_caps->emsync_switch_enabled = utils->read_bool(utils->data,
+					"qcom,mdss-dsi-panel-esync-emsync-switch-enabled");
+	DSI_DEBUG("emsync switch feature %s\n",
+			(esync_caps->emsync_switch_enabled ? "enabled" : "disabled"));
+	if (esync_caps->emsync_switch_enabled)
 		return 0;
-	}
-	esync_caps->emsync_fps = val;
 
-	rc = utils->read_u32(utils->data, "qcom,mdss-esync-emsync-milli-pulse-width", &val);
+	rc = dsi_panel_parse_esync_params(panel,
+		&esync_caps->default_esync_params, utils);
 	if (rc) {
-		DSI_ERR("[%s] esync EM pulse enabled but pulse width not defined\n", panel->name);
+		DSI_ERR("[%s] parse esync params failed, rc=%d\n", panel->name, rc);
 		goto error;
 	}
-	esync_caps->emsync_milli_pulse_width = val;
 
 	return 0;
 
 error:
 	esync_caps->esync_support = false;
+	esync_caps->emsync_switch_enabled = false;
 	return rc;
 }
 
@@ -2419,6 +2451,7 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-sticky_on_fly-command",
 	"qcom,mdss-dsi-trigger_self_refresh-command",
 	"qcom,mdss-dsi-fps-switch-command",
+	"qcom,mdss-dsi-em-pulse-switch-command",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -2463,6 +2496,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-sticky_on_fly-command-state",
 	"qcom,mdss-dsi-trigger_self_refresh-command-state",
 	"qcom,mdss-dsi-fps-switch-command-state",
+	"qcom,mdss-dsi-em-pulse-switch-command-state",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -4758,6 +4792,7 @@ int dsi_panel_get_mode_count(struct dsi_panel *panel)
 	 */
 	if (panel->panel_mode != DSI_OP_CMD_MODE &&
 		!panel->host_config.ext_bridge_mode &&
+		!panel->esync_caps.emsync_switch_enabled &&
 		!panel->panel_mode_switch_enabled)
 		count = SINGLE_MODE_SUPPORT;
 
@@ -5107,6 +5142,14 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 		rc = dsi_panel_parse_partial_update_caps(mode, utils);
 		if (rc)
 			DSI_ERR("failed to partial update caps, rc=%d\n", rc);
+
+		if (panel->esync_caps.emsync_switch_enabled) {
+			rc = dsi_panel_parse_esync_params(panel, &prv_info->esync_params, utils);
+			if (rc) {
+				DSI_ERR("failed to parse mode esync caps, rc=%d\n", rc);
+				goto parse_fail;
+			}
+		}
 	}
 
 parse_fail:

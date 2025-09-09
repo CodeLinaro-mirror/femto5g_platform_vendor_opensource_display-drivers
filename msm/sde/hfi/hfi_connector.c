@@ -168,7 +168,8 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 	 * Once all the key value pairs of properties are collected invoke adapter api
 	 * to add all these property array as a single HFI Packet
 	 */
-	ret = hfi_adapter_add_set_property(cmd_buf,
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+			cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -223,7 +224,8 @@ int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *conn, u3
 	if (!kv_count)
 		goto end;
 
-	ret = hfi_adapter_add_prop_array(cmd_buf,
+	ret = hfi_adapter_add_prop_array(cmd_buf->ctx,
+			cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -337,7 +339,8 @@ static int _hfi_conn_add_init_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
 	hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props,
 			HFI_PROPERTY_PANEL_TIMING_MODE_COUNT, HFI_VAL_U32, &num_modes, sizeof(u32));
 
-	ret = hfi_adapter_add_set_property(cmd_buf,
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+			cmd_buf,
 			HFI_COMMAND_PANEL_INIT_PANEL_CAPS,
 			obj_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -424,7 +427,8 @@ static int _hfi_conn_add_timing_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
 				HFI_PROPERTY_PANEL_COMPRESSION_DATA, HFI_VAL_U32_ARRAY,
 				&compression_params, sizeof(struct hfi_panel_compression_params));
 
-		ret = hfi_adapter_add_set_property(cmd_buf,
+		ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+				cmd_buf,
 				HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS,
 				obj_id,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -486,7 +490,7 @@ int hfi_conn_send_panel_init(struct drm_connector *conn)
 		goto end;
 	}
 end:
-	ret = hfi_adapter_set_cmd_buf(cmd_buf);
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	if (ret) {
 		SDE_ERROR("failed to send panel int command\n");
 		return ret;
