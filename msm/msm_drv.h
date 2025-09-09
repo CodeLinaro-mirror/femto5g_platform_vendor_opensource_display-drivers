@@ -1915,12 +1915,4 @@ bool msm_iommu_present_on_bus(const struct bus_type *bus);
  * Return: true if the IOMMU is present, false otherwise.
  */
 bool mdss_iommu_present(struct drm_device *dev);
-
-#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
-/* Functions from upstream kernel */
-int __drm_atomic_helper_disable_plane(struct drm_plane *plane,
-			struct drm_plane_state *plane_state);
-int __drm_atomic_helper_set_config(struct drm_mode_set *set,
-			struct drm_atomic_state *state);
-#endif /* (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE) */
 #endif /* __MSM_DRV_H__ */
