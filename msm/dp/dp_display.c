@@ -82,6 +82,8 @@ struct dp_display_type_info {
 	int display_type;
 };
 
+struct dp_display_pair g_edp_pair;
+
 static char *dp_display_state_name(enum dp_display_states state)
 {
 	static char buf[SZ_1K];
@@ -2246,6 +2248,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 
 	dp->dp_display.is_mst_supported = dp->parser->has_mst;
 	dp->dp_display.dsc_cont_pps = dp->parser->dsc_continuous_pps;
+	dp->dp_display.ctl_op_sync = dp->parser->ctl_op_sync;
 
 	dp->dp_display.no_backlight_support = dp->parser->no_backlight_support;
 	dp->dp_display.ext_hpd_en = dp->parser->ext_hpd_en;
@@ -2456,6 +2459,7 @@ static int dp_display_post_init(struct dp_display *dp_display)
 {
 	int rc = 0;
 	struct dp_display_private *dp;
+	const char *display_type = NULL;
 
 	if (!dp_display) {
 		DP_ERR("invalid input\n");
@@ -2473,6 +2477,18 @@ static int dp_display_post_init(struct dp_display *dp_display)
 	rc = dp_init_sub_modules(dp);
 	if (rc)
 		goto end;
+
+	if (dp->parser->ctl_op_sync) {
+		dp_display->get_display_type(dp_display, &display_type);
+
+		if (strcmp(display_type, "secondary") == 0) {
+			g_edp_pair.m_pll_display = dp_display;
+			DP_DEBUG("Registered eDP Master Display\n");
+		} else if (strcmp(display_type, "primary") == 0) {
+			g_edp_pair.s_pll_display = dp_display;
+			DP_DEBUG("Registered eDP Slave Display\n");
+		}
+	}
 
 	dp_display->post_init = NULL;
 end:

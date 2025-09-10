@@ -31,6 +31,7 @@
 #define DP_PHY_CFG_1				0x0014
 #define DP_PHY_PD_CTL				0x001C
 #define DP_PHY_MODE				0x0020
+#define DP_PHY_TSYNC_OVRD			0x0078
 
 #define DP_PHY_AUX_CFG2				0x002C
 
@@ -79,6 +80,7 @@
 #define QSERDES_COM_LOCK_CMP_EN			0x0120
 #define QSERDES_COM_LOCK_CMP1_MODE0		0x0080
 #define QSERDES_COM_LOCK_CMP2_MODE0		0x0084
+#define QSERDES_COM_CMN_MODE0			0x0188
 
 #define QSERDES_COM_DEC_START_MODE0		0x0088
 #define QSERDES_COM_DIV_FRAC_START1_MODE0	0x0090
@@ -421,6 +423,184 @@ static bool edp_4nm_pll_get_status(struct dp_pll *pll,
 	return success;
 }
 
+static int edp_config_vco_rate_4nm_slave(struct dp_pll *pll,
+		unsigned long rate)
+{
+	int rc;
+	struct dp_pll_db *pdb = &pll->pll_db;
+	const struct dp_pll_params *params;
+	u32 status, bias_en0, drvr_en0, bias_en1, drvr_en1, phy_cfg_1;
+
+	if (!pll->io.m_dp_pll || !pll->io.m_dp_phy) {
+		DP_ERR("Master PLL or PHY not initialized\n");
+		return -EINVAL;
+	}
+
+	rc = edp_vco_pll_init_db_4nm(pdb, rate);
+	if (rc < 0) {
+		DP_ERR("VCO Init DB failed\n");
+		return rc;
+	}
+
+	if (pll->pll_db.lane_cnt == 1) {
+		bias_en0 = 0x01;
+		bias_en1 = 0x00;
+		drvr_en0 = 0x06;
+		drvr_en1 = 0x07;
+		phy_cfg_1 = 0xc1;
+	} else if (pll->pll_db.lane_cnt == 2) {
+		bias_en0 = 0x03;
+		bias_en1 = 0x00;
+		drvr_en0 = 0x04;
+		drvr_en1 = 0x07;
+		phy_cfg_1 = 0xc3;
+	} else {
+		bias_en0 = 0x03;
+		bias_en1 = 0x03;
+		drvr_en0 = 0x04;
+		drvr_en1 = 0x04;
+		phy_cfg_1 = 0xcf;
+	}
+
+	dp_pll_write(dp_phy, DP_PHY_PD_CTL, 0x7d);
+	dp_pll_write(dp_phy, DP_PHY_MODE, 0xfc);
+	/* Make sure the PHY register writes are done */
+	wmb();
+
+	if (pdb->rate_idx < HSCLK_RATE_MAX) {
+		params = &pdb->pll_params[pdb->rate_idx];
+	} else {
+		DP_ERR("link rate not set\n");
+		return -EINVAL;
+	}
+
+	if (readl_poll_timeout_atomic((dp_pll_get_base(dp_pll) +
+				QSERDES_COM_CMN_STATUS),
+				status, ((status & BIT(7)) > 0),
+				5, 100)) {
+		DP_ERR("refgen not ready. Status=%x\n", status);
+	}
+
+	dp_pll_write(dp_ln_tx0, TXn_LDO_CONFIG, 0x91);
+	dp_pll_write(dp_ln_tx1, TXn_LDO_CONFIG, 0x91);
+	dp_pll_write(dp_ln_tx0, TXn_LANE_MODE_1, 0x00);
+	dp_pll_write(dp_ln_tx1, TXn_LANE_MODE_1, 0x00);
+
+	if (pll->ssc_en) {
+		dp_pll_write(dp_pll, QSERDES_COM_SSC_EN_CENTER, 0x01);
+		dp_pll_write(dp_pll, QSERDES_COM_SSC_ADJ_PER1, 0x00);
+		dp_pll_write(dp_pll, QSERDES_COM_SSC_PER1, params->ssc_per1);
+		dp_pll_write(dp_pll, QSERDES_COM_SSC_PER2, params->ssc_per2);
+		dp_pll_write(dp_pll, QSERDES_COM_SSC_STEP_SIZE1_MODE0,
+				params->ssc_step_size1_mode0);
+		dp_pll_write(dp_pll, QSERDES_COM_SSC_STEP_SIZE2_MODE0,
+				params->ssc_step_size2_mode0);
+	}
+
+	dp_pll_write(dp_pll,
+		QSERDES_COM_BIAS_EN_CLKBUFLR_EN, 0x1f);
+	dp_pll_write(dp_pll, QSERDES_COM_SYSCLK_EN_SEL, 0x3b);
+	/* Make sure the PLL register writes are done */
+	wmb();
+
+	dp_pll_write(dp_pll, QSERDES_COM_CMN_MODE0, 0x24);
+	dp_pll_write(dp_pll,
+		QSERDES_COM_BIAS_EN_CLKBUFLR_EN, 0x1f);
+	dp_pll_write(dp_pll,
+		QSERDES_COM_BIAS_EN_CLKBUFLR_EN, 0x1f);
+
+	/* TX Lane configuration */
+	dp_pll_write(dp_phy, DP_PHY_TX0_TX1_LANE_CTL, 0x05);
+	dp_pll_write(dp_phy, DP_PHY_TX2_TX3_LANE_CTL, 0x05);
+
+	/* TX-0 register configuration */
+	dp_pll_write(dp_ln_tx0, TXn_CLKBUF_ENABLE, 0x0f);
+	dp_pll_write(dp_ln_tx0, TXn_RESET_TSYNC_EN, 0x03);
+	dp_pll_write(dp_ln_tx0, TXn_TRAN_DRVR_EMP_EN, 0x01);
+	dp_pll_write(dp_ln_tx0, TXn_TX_EMP_POST1_LVL, 0x03);
+	dp_pll_write(dp_ln_tx0, TXn_TX_DRV_LVL_OFFSET, 0x10);
+	dp_pll_write(dp_ln_tx0,
+		TXn_RES_CODE_LANE_OFFSET_TX0, 0x11);
+	dp_pll_write(dp_ln_tx0,
+		TXn_RES_CODE_LANE_OFFSET_TX1, 0x11);
+	dp_pll_write(dp_ln_tx0, TXn_TX_BAND, 0x4);
+
+	/* TX-1 register configuration */
+	dp_pll_write(dp_ln_tx1, TXn_CLKBUF_ENABLE, 0x0f);
+	dp_pll_write(dp_ln_tx1, TXn_RESET_TSYNC_EN, 0x03);
+	dp_pll_write(dp_ln_tx1, TXn_TRAN_DRVR_EMP_EN, 0x01);
+	dp_pll_write(dp_ln_tx1, TXn_TX_EMP_POST1_LVL, 0x03);
+	dp_pll_write(dp_ln_tx1, TXn_TX_DRV_LVL_OFFSET, 0x10);
+	dp_pll_write(dp_ln_tx1,
+		TXn_RES_CODE_LANE_OFFSET_TX0, 0x11);
+	dp_pll_write(dp_ln_tx1,
+		TXn_RES_CODE_LANE_OFFSET_TX1, 0x11);
+	dp_pll_write(dp_ln_tx1, TXn_TX_BAND, 0x4);
+
+	rc = set_vco_div(pll, rate);
+	if (rc < 0) {
+		DP_ERR("VCO set div failed\n");
+		return rc;
+	}
+
+	dp_pll_write(dp_phy, DP_PHY_AUX_CFG2, 0xA4);
+	dp_pll_write(dp_phy, DP_PHY_CFG, 0x11);
+	dp_pll_write(dp_phy, DP_PHY_CFG, 0x11);
+
+	dp_pll_write(dp_pll, QSERDES_COM_RESETSM_CNTRL, 0x20);
+	/* Make sure the PLL register write are done */
+	wmb();
+
+	dp_pll_write(dp_phy, DP_PHY_CFG, 0x19);
+	/* Make sure the PHY register writes are done */
+	wmb();
+
+	/* TX-0 register configuration */
+	dp_pll_write(dp_ln_tx0, TXn_HIGHZ_DRVR_EN, 0x1f);
+	dp_pll_write(dp_ln_tx0, TXn_TRANSCEIVER_BIAS_EN, bias_en0);
+	dp_pll_write(dp_ln_tx0, TXn_HIGHZ_DRVR_EN, drvr_en0);
+	dp_pll_write(dp_ln_tx0, TXn_TX_POL_INV, 0x00);
+
+	/* TX-1 register configuration */
+	dp_pll_write(dp_ln_tx1, TXn_HIGHZ_DRVR_EN, 0x1f);
+	dp_pll_write(dp_ln_tx1, TXn_TRANSCEIVER_BIAS_EN, bias_en1);
+	dp_pll_write(dp_ln_tx1, TXn_HIGHZ_DRVR_EN, drvr_en1);
+	dp_pll_write(dp_ln_tx1, TXn_TX_POL_INV, 0x00);
+
+	dp_pll_write(dp_phy, DP_PHY_CFG, 0x10);
+	/* Make sure the PLL register write are done */
+	wmb();
+
+	dp_pll_write(dp_phy, DP_PHY_CFG, 0x11);
+	dp_pll_write(dp_phy, DP_PHY_CFG_1, phy_cfg_1);
+	dp_pll_write(dp_phy, DP_PHY_TSYNC_OVRD, 0x18);
+	dp_pll_write(dp_phy, DP_PHY_TSYNC_OVRD, 0x1c);
+
+	/* Master tsync register configuration */
+	dp_pll_write(m_dp_pll,
+		QSERDES_COM_BIAS_EN_CLKBUFLR_EN, 0x13);
+	dp_pll_write(m_dp_phy, DP_PHY_CFG, 0x09);
+	dp_pll_write(m_dp_phy, DP_PHY_CFG, 0x19);
+
+	dp_pll_write(dp_phy, DP_PHY_TSYNC_OVRD, 0x1f);
+	dp_pll_write(dp_phy, DP_PHY_TSYNC_OVRD, 0x1e);
+
+	/* Master PLL register configuration */
+	dp_pll_write(m_dp_pll,
+		QSERDES_COM_BIAS_EN_CLKBUFLR_EN, 0x1f);
+	/* Make sure the PLL register write are done */
+	wmb();
+
+	/* Master retiming configuration */
+	dp_pll_write(m_dp_phy, DP_PHY_CFG, 0x18);
+	dp_pll_write(m_dp_phy, DP_PHY_CFG, 0x19);
+
+	dp_pll_write(dp_phy, DP_PHY_CFG, 0x10);
+	dp_pll_write(dp_phy, DP_PHY_CFG, 0x11);
+
+	return rc;
+}
+
 static int edp_pll_enable_4nm(struct dp_pll *pll)
 {
 	int rc = 0;
@@ -527,6 +707,8 @@ static void edp_pll_disable_4nm(struct dp_pll *pll)
 {
 	/* Assert DP PHY power down */
 	dp_pll_write(dp_phy, DP_PHY_PD_CTL, 0x2);
+	if (pll->slave)
+		dp_pll_write(m_dp_phy, DP_PHY_PD_CTL, 0x2);
 	/*
 	 * Make sure all the register writes to disable PLL are
 	 * completed before doing any other operation
@@ -545,7 +727,11 @@ static int edp_vco_set_rate_4nm(struct dp_pll *pll, unsigned long rate)
 
 	DP_DEBUG("DP lane CLK rate=%ld\n", rate);
 
-	rc = edp_config_vco_rate_4nm(pll, rate);
+	if (pll->slave)
+		rc = edp_config_vco_rate_4nm_slave(pll, rate);
+	else
+		rc = edp_config_vco_rate_4nm(pll, rate);
+
 	if (rc < 0) {
 		DP_ERR("Failed to set clk rate\n");
 		return rc;
@@ -595,6 +781,11 @@ static int edp_pll_prepare(struct dp_pll *pll)
 		return -EINVAL;
 	}
 
+	if (pll->slave) {
+		DP_INFO("skipping slave pll prepare\n");
+		return rc;
+	}
+
 	rc = edp_pll_enable_4nm(pll);
 	if (rc < 0)
 		DP_ERR("ndx=%d failed to enable dp pll\n", pll->index);
@@ -609,6 +800,11 @@ static int  edp_pll_unprepare(struct dp_pll *pll)
 	if (!pll) {
 		DP_ERR("invalid input parameter\n");
 		return -EINVAL;
+	}
+
+	if (pll->parser->ctl_op_sync && !pll->slave) {
+		DP_INFO("skipping master pll unprepare\n");
+		return rc;
 	}
 
 	edp_pll_disable_4nm(pll);

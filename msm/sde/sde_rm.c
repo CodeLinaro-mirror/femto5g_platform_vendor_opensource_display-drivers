@@ -143,6 +143,7 @@ char sde_hw_blk_str[SDE_HW_BLK_MAX][SDE_HW_BLK_NAME_LEN] = {
  * @top:       selected topology for the display
  * @hw_res:	   Hardware resources required as reported by the encoders
  * @conn_lm_mask:  preferred LM mask of cwb requested display
+ * @cwb_cfg_mask:  configuration mask for the CWB module in use
  * @is_cac_transition: Boolean variable indicatiing if encoder is transitioning
 			in or out of cac loopback usecases
  */
@@ -151,6 +152,7 @@ struct sde_rm_requirements {
 	const struct sde_rm_topology_def *topology;
 	struct sde_encoder_hw_resources hw_res;
 	u32 conn_lm_mask;
+	u32 cwb_cfg_mask;
 	bool is_cac_transition;
 };
 
@@ -1356,6 +1358,10 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 				((ffs(conn_lm_mask) % 2) ==  ((lm_cfg->id + 1) % 2))) {
 			SDE_DEBUG("fail: dcwb:%d trying to match lm:%d\n",
 					lm_cfg->id, ffs(conn_lm_mask));
+			return false;
+		} else if (RM_RQ_DCWB(reqs) && dcwb_pref && reqs->cwb_cfg_mask &&
+				(reqs->cwb_cfg_mask & (1 << lm_cfg->id))) {
+			SDE_DEBUG("fail: dcwb:%d trying to match with cwb cfg mask\n", lm_cfg->id);
 			return false;
 		} else if (RM_RQ_CAC_PRIMARY(reqs) && !cac_primary_pref) {
 			SDE_DEBUG("cac primary preference is not met,cac_prim_pref: %d lm_id: %d\n",
@@ -2605,6 +2611,7 @@ static int _sde_rm_populate_requirements(
 	struct drm_connector *conn;
 	int i, num_lm;
 	enum sde_lm lm_idx;
+	u32 cwb_mask;
 
 	reqs->top_ctrl = sde_connector_get_property(conn_state,
 			CONNECTOR_PROP_TOPOLOGY_CONTROL);
@@ -2688,8 +2695,19 @@ static int _sde_rm_populate_requirements(
 				DRM_MODE_CONNECTOR_VIRTUAL) &&
 				(reqs->topology->num_lm == 1) &&
 				sde_crtc->mixers[0].hw_lm) {
-			lm_idx = sde_crtc->mixers[0].hw_lm->idx;
-			reqs->conn_lm_mask |= (lm_idx > 0) ? (1 << (lm_idx - LM_0)) : 0;
+			if (!reqs->conn_lm_mask) {
+				lm_idx = sde_crtc->mixers[0].hw_lm->idx;
+				reqs->conn_lm_mask |= (lm_idx > 0) ? (1 << (lm_idx - LM_0)) : 0;
+			}
+
+			cwb_mask = (1 << PINGPONG_CWB_0) | (1 << PINGPONG_CWB_1);
+			if (cfg->cwb_cfg_mask & cwb_mask) {
+				reqs->cwb_cfg_mask = cwb_mask;
+			} else {
+				cwb_mask = (1 << PINGPONG_CWB_2) | (1 << PINGPONG_CWB_3);
+				if (cfg->cwb_cfg_mask & cwb_mask)
+					reqs->cwb_cfg_mask = cwb_mask;
+			}
 		}
 	}
 

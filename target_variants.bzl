@@ -6,6 +6,7 @@ targets = [
     "vienna",
     "niobe",
     "seraph",
+    "x1p42100",
 ]
 
 la_variants = [

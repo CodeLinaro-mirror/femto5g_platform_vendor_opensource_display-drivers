@@ -108,10 +108,8 @@ struct dsi_avr_capabilities {
 
 struct dsi_esync_capabilities {
 	bool esync_support;
-	u32 milli_skew;
-	u32 hsync_milli_pulse_width;
-	u32 emsync_milli_pulse_width;
-	u32 emsync_fps;
+	bool emsync_switch_enabled;
+	struct esync_params default_esync_params;
 };
 
 struct dsi_dyn_clk_caps {

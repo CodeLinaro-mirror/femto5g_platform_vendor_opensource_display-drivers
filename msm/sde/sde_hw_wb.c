@@ -368,9 +368,12 @@ static void sde_hw_wb_bind_dcwb_pp_blk(
 		return;
 
 	c = &ctx->hw;
-	if (enable)
+	if (enable) {
 		mux_cfg = (pp < PINGPONG_CWB_2) ? 0xd : 0xb;
-
+		ctx->catalog->cwb_cfg_mask |= 1 << pp;
+	} else {
+		ctx->catalog->cwb_cfg_mask &= ~(1 << pp);
+	}
 	SDE_REG_WRITE(c, WB_MUX, mux_cfg);
 }
 
