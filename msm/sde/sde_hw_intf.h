@@ -54,6 +54,9 @@ struct intf_status {
 	bool is_prog_fetch_en;	/* interface prog fetch counter is enabled or not */
 	u32 frame_count;	/* frame count since timing engine enabled */
 	u32 line_count;		/* current line count including blanking */
+	u32 intf_status_val;	/* value read from intf_status register */
+	u32 esync_vsync_counter; /* esync vsync line count */
+	u32 esync_emsync_counter; /* esync emsync line count */
 };
 
 struct intf_tear_status {
@@ -126,6 +129,21 @@ struct intf_esync_params {
 	u32 prog_fetch_start;
 	bool hw_fence_enabled;
 	bool align_backup;
+};
+
+/**
+ * struct intf_timestamps : captures hw timestamps.
+ *
+ * @panel_vsync_counter: INTF's MDSS Vsync equivalent to panel vsync
+ * @mdp_vsync_counter:   MDP Vsync timestamp
+ * @esync_counter:  Esync timestamp based on esync_ts_ctrl
+ * @esync_ts_ctrl:  Esync timestamp ctrl value
+ */
+struct intf_timestamps {
+	u64 panel_vsync_counter;
+	u64 mdp_vsync_counter;
+	u64 esync_counter;
+	u32 esync_ts_ctrl;
 };
 
 /**
@@ -355,6 +373,11 @@ struct sde_hw_intf_ops {
 	 * Get the HW vsync timestamp counter
 	 */
 	u64 (*get_vsync_timestamp)(struct sde_hw_intf *intf, bool is_vid);
+
+	/**
+	 * Get the HW panel vsync timestamp counter
+	 */
+	u64 (*get_panel_vsync_timestamp)(struct sde_hw_intf *intf);
 
 	/**
 	 * Enable processing of 2 pixels per clock
