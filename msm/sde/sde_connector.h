@@ -803,6 +803,7 @@ struct sde_backlight_vrr_update {
  * @is_lb_conn: Indicates if this connector is a loopback connector
  * @hfi_conn: Pointer to hfi connector struct
  * @hal_ops: hal ops for hfi communication
+ * @dpu_dma_enabled: Indicates if dpu dma mode is enabled
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -907,6 +908,8 @@ struct sde_connector {
 
 	struct hfi_connector *hfi_conn;
 	struct sde_connector_hal_funcs hal_ops;
+
+	bool dpu_dma_enabled;
 };
 
 /**
@@ -1654,6 +1657,13 @@ static inline u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
  * conn: Pointer to drm_connector struct
  */
 void sde_conn_timeline_status(struct drm_connector *conn);
+
+/**
+ * sde_connector_setup_obj_id - update connector object ids
+ * @conn: Pointer to drm_connector struct
+ * @id: Opaque Object id of connector
+ */
+int sde_connector_setup_obj_id(struct drm_connector *conn, int id);
 
 /**
  * sde_connector_helper_bridge_disable - helper function for drm bridge disable

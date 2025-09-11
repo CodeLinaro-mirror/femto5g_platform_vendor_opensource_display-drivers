@@ -58,8 +58,10 @@ static void dspp_igc(struct sde_hw_dspp *c)
 	} else if (c->cap->sblk->igc.version ==
 			SDE_COLOR_PROCESS_VER(0x4, 0x0)) {
 		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_IGC, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_igc[MSM_DISP_OP_HWIO] = reg_dmav2_setup_dspp_igcv4;
+			c->ops.setup_igc[MSM_DISP_OP_HFI] = reg_dmav2_setup_dspp_igcv4;
+		}
 	} else if (c->cap->sblk->igc.version ==
 			SDE_COLOR_PROCESS_VER(0x5, 0x0)) {
 		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_IGC, c);
@@ -84,10 +86,12 @@ static void dspp_pcc(struct sde_hw_dspp *c)
 	} else if (c->cap->sblk->pcc.version ==
 			SDE_COLOR_PROCESS_VER(0x4, 0x0)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_PCC, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_pcc[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_pccv4;
-		else
+			c->ops.setup_pcc[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_pccv4;
+		} else {
 			c->ops.setup_pcc[MSM_DISP_OP_HWIO] = sde_setup_dspp_pccv4;
+		}
 	} else if (c->cap->sblk->pcc.version ==
 			SDE_COLOR_PROCESS_VER(0x5, 0x0) ||
 			c->cap->sblk->pcc.version ==
@@ -106,8 +110,10 @@ static void dspp_gc(struct sde_hw_dspp *c)
 
 	if (c->cap->sblk->gc.version == SDE_COLOR_PROCESS_VER(0x1, 8)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_GC, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_gc[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_gcv18;
+			c->ops.setup_gc[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_gcv18;
+		}
 		/**
 		 * programming for v18 through ahb is same as v17,
 		 * hence assign v17 function
@@ -181,8 +187,10 @@ static void dspp_sixzone(struct sde_hw_dspp *c)
 
 	if (c->cap->sblk->sixzone.version == SDE_COLOR_PROCESS_VER(0x1, 0x7)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_SIXZONE, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_sixzone[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_sixzonev17;
+			c->ops.setup_sixzone[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_sixzonev17;
+		}
 		else
 			c->ops.setup_sixzone[MSM_DISP_OP_HWIO] = sde_setup_dspp_sixzone_v17;
 	} else if (c->cap->sblk->sixzone.version ==
@@ -253,8 +261,10 @@ static void dspp_vlut(struct sde_hw_dspp *c)
 	} else if (c->cap->sblk->vlut.version ==
 			(SDE_COLOR_PROCESS_VER(0x1, 0x8))) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_VLUT, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_vlut[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_vlutv18;
+			c->ops.setup_vlut[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_vlutv18;
+		}
 		else
 			c->ops.setup_vlut[MSM_DISP_OP_HWIO] = sde_setup_dspp_pa_vlut_v1_8;
 	}
@@ -499,6 +509,12 @@ static void dspp_demura(struct sde_hw_dspp *c)
 					sde_demura_read_plane_status_v3;
 			c->ops.setup_demura_pu_config[MSM_DISP_OP_HWIO] = sde_demura_pu_cfg;
 			c->ops.setup_demura_cfg0_param2[MSM_DISP_OP_HWIO] =
+					reg_dmav1_setup_demura_cfg0_param2_v4;
+
+			c->ops.setup_demura_cfg[MSM_DISP_OP_HFI] = reg_dmav1_setup_demurav4;
+			c->ops.setup_demura_backlight_cfg[MSM_DISP_OP_HFI] =
+					hfi_setup_demura_backlight_cfg_v4;
+			c->ops.setup_demura_cfg0_param2[MSM_DISP_OP_HFI] =
 					reg_dmav1_setup_demura_cfg0_param2_v4;
 		} else {
 			SDE_ERROR("Regdma init dspp op failed for Demura v4\n");

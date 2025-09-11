@@ -472,6 +472,35 @@ int sde_crtc_get_lb_layout_split(struct drm_crtc *crtc, struct drm_crtc_state *c
 	return layout_split;
 }
 
+bool sde_crtc_state_in_dpu_dma_mode(struct drm_crtc_state *c_state)
+{
+	struct drm_connector *connector;
+	struct drm_encoder *encoder;
+	struct sde_connector *sde_conn;
+	bool encoder_valid = false;
+
+	if (!c_state || !c_state->crtc)
+		return false;
+
+	drm_for_each_encoder_mask(encoder, c_state->crtc->dev,
+			c_state->encoder_mask) {
+		if (!sde_encoder_in_clone_mode(encoder)) {
+			encoder_valid = true;
+			break;
+		}
+	}
+
+	if (!encoder_valid)
+		return false;
+
+	connector = sde_encoder_get_connector(c_state->crtc->dev, encoder);
+	if (!connector)
+		return false;
+
+	sde_conn = to_sde_connector(connector);
+	return sde_conn->dpu_dma_enabled;
+}
+
 void sde_crtc_get_loopback_resolution(struct sde_crtc_state *cstate,
 			struct sde_crtc *sde_crtc, u32 *width, u32 *height)
 {
@@ -3412,14 +3441,9 @@ void sde_crtc_complete_flip(struct drm_crtc *crtc,
 		struct drm_file *file)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
-	struct drm_device *dev;
+	struct drm_device *dev = crtc->dev;
 	struct drm_pending_vblank_event *event;
 	unsigned long flags;
-
-	if (!crtc)
-		return;
-
-	dev = crtc->dev;
 
 	spin_lock_irqsave(&dev->event_lock, flags);
 	event = sde_crtc->event;
@@ -3436,7 +3460,6 @@ void sde_crtc_complete_flip(struct drm_crtc *crtc,
 		DRM_DEBUG_VBL("%s: send event: %pK\n",
 					sde_crtc->name, event);
 		SDE_EVT32_VERBOSE(DRMID(crtc));
-		drm_crtc_vblank_put(crtc);
 		drm_crtc_send_vblank_event(crtc, event);
 	}
 
@@ -5069,7 +5092,6 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	struct drm_encoder *encoder;
 	struct drm_device *dev;
 	struct sde_kms *sde_kms;
-	struct drm_pending_vblank_event *event;
 	struct sde_splash_display *splash_display;
 	struct sde_crtc_state *cstate;
 	bool cont_splash_enabled = false;
@@ -5101,11 +5123,6 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(crtc->state);
 	dev = crtc->dev;
-	event = crtc->state->event;
-
-	/* Get a vblank event refcount to enable page-flip */
-	if (event)
-		WARN_ON(drm_crtc_vblank_get(crtc) != 0);
 
 	if (!sde_crtc->num_mixers || cstate->in_loopback_transition) {
 		_sde_crtc_setup_mixers(crtc);
@@ -6402,7 +6419,6 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	struct msm_display_mode *msm_mode;
 	enum sde_intf_mode intf_mode;
 	struct sde_kms *kms;
-	struct drm_pending_vblank_event *event;
 
 	if (!crtc || !crtc->dev || !crtc->dev->dev_private) {
 		SDE_ERROR("invalid crtc\n");
@@ -6426,8 +6442,6 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	SDE_EVT32_VERBOSE(DRMID(crtc));
 	sde_crtc = to_sde_crtc(crtc);
 
-	event = crtc->state->event;
-
 	/*
 	 * Avoid drm_crtc_vblank_on during seamless DMS case
 	 * when CRTC is already in enabled state
@@ -6443,9 +6457,6 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 			if (test_bit(SDE_FEATURE_HW_VSYNC_TS, kms->catalog->features))
 				drm_crtc_set_max_vblank_count(crtc, INT_MAX);
 			drm_crtc_vblank_on(crtc);
-			/* Enable vblank event in first commit cycle */
-			if (event)
-				WARN_ON(drm_crtc_vblank_get(crtc) != 0);
 		}
 	}
 
@@ -7108,6 +7119,8 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	u32 crtc_width, crtc_height;
 	enum sde_layout layout;
 	bool cac_lb_plane = false;
+	bool dpu_dma_mode = false;
+	u32 dma_layer_cnt = 0;
 
 	kms = _sde_crtc_get_kms(crtc);
 
@@ -7127,8 +7140,12 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	mode = &crtc_state->adjusted_mode;
 	sde_crtc_get_resolution(crtc, crtc_state, mode, &crtc_width, &crtc_height);
 	lb_layout_split = sde_crtc_get_lb_layout_split(crtc, crtc_state);
+	dpu_dma_mode = sde_crtc_state_in_dpu_dma_mode(crtc_state);
 
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
+		const struct msm_format *msm_fmt;
+		const struct sde_format *fmt;
+
 		plane_state = drm_atomic_get_existing_plane_state(
 				crtc_state->state, plane);
 		if (!plane_state)
@@ -7138,6 +7155,23 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 		cac_lb_plane =
 			(sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE) ==
 				SDE_CAC_LOOPBACK_UNPACK) ? true : false;
+
+		if (dpu_dma_mode) {
+			if (dma_layer_cnt >= 1) {
+				SDE_ERROR("blending is not supported for dma_mode\n");
+				return -EOPNOTSUPP;
+			}
+
+			msm_fmt = msm_framebuffer_format(plane_state->fb);
+			fmt = to_sde_format(msm_fmt);
+			if (!SDE_FORMAT_IS_DPU_DMA(fmt)) {
+				SDE_ERROR("plane%d: unsupported fmt for DPU DMA mode!\n",
+					DRMID(plane));
+				return -EOPNOTSUPP;
+			}
+
+			dma_layer_cnt++;
+		}
 
 		layout_split = cac_lb_plane ? lb_layout_split : crtc_width >> 1;
 		if (plane_state->crtc_x >= layout_split) {
@@ -9295,10 +9329,12 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	if (!sde_crtc)
 		return ERR_PTR(-ENOMEM);
 
-	rc = hfi_crtc_init(sde_crtc);
-	if (rc) {
-		kfree(sde_crtc);
-		return ERR_PTR(rc);
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = hfi_crtc_init(sde_crtc);
+		if (rc) {
+			kfree(sde_crtc);
+			return ERR_PTR(rc);
+		}
 	}
 
 	crtc = &sde_crtc->base;
