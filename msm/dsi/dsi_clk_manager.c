@@ -8,11 +8,8 @@
 #include <linux/delay.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
-#include <linux/pm_opp.h>
 #include "dsi_clk.h"
 #include "dsi_defs.h"
-#include "dsi_display.h"
-#include "dsi_ctrl.h"
 
 struct dsi_core_clks {
 	struct dsi_core_clk_info clks;
@@ -350,7 +347,6 @@ static int dsi_link_hs_clk_set_rate(struct dsi_link_hs_clk_info *link_hs_clks,
 		int index)
 {
 	int rc = 0;
-	struct opp_table *opp_table = NULL;
 	struct dsi_clk_mngr *mngr;
 	struct dsi_link_clks *l_clks;
 
@@ -374,25 +370,11 @@ static int dsi_link_hs_clk_set_rate(struct dsi_link_hs_clk_info *link_hs_clks,
 	if (mngr->phy_pll_bypass)
 		return 0;
 
-	struct dsi_display *display = mngr->priv_data;
-	struct dsi_ctrl *ctrl = display->ctrl[index].ctrl;
-
-	opp_table = dev_pm_opp_get_opp_table(&ctrl->pdev->dev);
-	if (!IS_ERR(opp_table)) {
-		rc = dev_pm_opp_set_rate(&ctrl->pdev->dev,
-				l_clks->freq.byte_clk_rate);
-		if (rc) {
-			DSI_ERR("clk_set_rate failed for byte_clk rc = %d\n", rc);
-			goto error;
-		}
-	}
-	else {
-		rc = clk_set_rate(link_hs_clks->byte_clk,
-				l_clks->freq.byte_clk_rate);
-		if (rc) {
-			DSI_ERR("clk_set_rate failed for byte_clk rc = %d\n", rc);
-			goto error;
-		}
+	rc = clk_set_rate(link_hs_clks->byte_clk,
+		l_clks->freq.byte_clk_rate);
+	if (rc) {
+		DSI_ERR("clk_set_rate failed for byte_clk rc = %d\n", rc);
+		goto error;
 	}
 
 	rc = clk_set_rate(link_hs_clks->pixel_clk,
