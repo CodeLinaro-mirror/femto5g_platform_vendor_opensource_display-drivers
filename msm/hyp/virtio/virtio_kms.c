@@ -104,7 +104,7 @@ static struct limit_constraints constraints_table[] = {
 		}
 	},
 	{
-		/* SA8295 */
+		/* GEN5 */
 		2560,
 		{
 			{"sspp_linewidth_usecases", 3},
@@ -113,26 +113,9 @@ static struct limit_constraints constraints_table[] = {
 			{"scale", 0x4},
 			{"sspp_linewidth_values", 3},
 			{"limit_usecase", 0x1},
-			{"limit_value",  2560},
+			{"limit_value",  3840},
 			{"limit_usecase", 0x5},
 			{"limit_value",  2560},
-			{"limit_usecase", 0x2},
-			{"limit_value",  5120},
-		}
-	},
-	{
-		/* SA8797 */
-		5120,
-		{
-			{"sspp_linewidth_usecases", 3},
-			{"vig",   0x1},
-			{"dma",   0x2},
-			{"scale", 0x4},
-			{"sspp_linewidth_values", 3},
-			{"limit_usecase", 0x1},
-			{"limit_value",  5120},
-			{"limit_usecase", 0x5},
-			{"limit_value",  5120},
 			{"limit_usecase", 0x2},
 			{"limit_value",  5120},
 		}
