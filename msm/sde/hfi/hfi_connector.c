@@ -469,6 +469,11 @@ int hfi_conn_send_panel_init(struct drm_connector *conn)
 		return ret;
 
 	sde_kms = sde_connector_get_kms(conn);
+	if (!sde_kms) {
+		SDE_ERROR("failed to get sde_kms\n");
+		return -EINVAL;
+	}
+
 	hfi_kms = to_hfi_kms(sde_kms);
 
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
