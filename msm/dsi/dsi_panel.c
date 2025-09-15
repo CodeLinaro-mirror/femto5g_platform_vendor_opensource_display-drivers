@@ -427,7 +427,7 @@ int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel)
 	return rc;
 }
 
-static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
+static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable, bool is_cont_splash)
 {
 	int rc = 0;
 	struct pinctrl_state *state;
@@ -447,17 +447,21 @@ static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
 		state = panel->pinctrl.suspend;
 	}
 
-	rc = pinctrl_select_state(panel->pinctrl.pinctrl, state);
-	if (rc)
-		DSI_ERR("[%s] failed to set pin state, rc=%d\n",
-				panel->name, rc);
+	if (is_cont_splash && panel->disp_op == MSM_DISP_OP_HFI) {
+		DSI_DEBUG("Skipping pintctrl_select_state in HFI cont-splash case\n");
+	} else {
+		rc = pinctrl_select_state(panel->pinctrl.pinctrl, state);
+		if (rc)
+			DSI_ERR("[%s] failed to set pin state, rc=%d\n",
+					panel->name, rc);
+	}
 
 	panel->pinctrl.cur_state = state;
 
 	return rc;
 }
 
-int dsi_panel_power_on(struct dsi_panel *panel)
+int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash)
 {
 	int rc = 0;
 
@@ -470,16 +474,22 @@ int dsi_panel_power_on(struct dsi_panel *panel)
 			goto exit;
 		}
 	}
-	rc = dsi_panel_set_pinctrl_state(panel, true);
+
+	rc = dsi_panel_set_pinctrl_state(panel, true, is_cont_splash);
 	if (rc) {
 		DSI_ERR("[%s] failed to set pinctrl, rc=%d\n", panel->name, rc);
 		goto error_disable_vregs;
 	}
 
-	rc = dsi_panel_reset(panel);
-	if (rc) {
-		DSI_ERR("[%s] failed to reset panel, rc=%d\n", panel->name, rc);
-		goto error_disable_gpio;
+	/* For HFI continuous splash case - avoid panel-reset GPIO */
+	if (is_cont_splash && panel->disp_op == MSM_DISP_OP_HFI) {
+		DSI_DEBUG("[%s] skipping panel reset in hfi path with cont-splash\n", panel->name);
+	} else {
+		rc = dsi_panel_reset(panel);
+		if (rc) {
+			DSI_ERR("[%s] failed to reset panel, rc=%d\n", panel->name, rc);
+			goto error_disable_gpio;
+		}
 	}
 
 	if (panel->skip_pwr)
@@ -494,7 +504,7 @@ error_disable_gpio:
 	if (gpio_is_valid(panel->bl_config.en_gpio))
 		gpio_set_value(panel->bl_config.en_gpio, 0);
 
-	(void)dsi_panel_set_pinctrl_state(panel, false);
+	(void)dsi_panel_set_pinctrl_state(panel, false, is_cont_splash);
 
 error_disable_vregs:
 	(void)dsi_pwr_enable_regulator(&panel->power_info, false);
@@ -530,7 +540,7 @@ int dsi_panel_power_off(struct dsi_panel *panel)
 				 rc);
 	}
 
-	rc = dsi_panel_set_pinctrl_state(panel, false);
+	rc = dsi_panel_set_pinctrl_state(panel, false, false);
 	if (rc) {
 		DSI_ERR("[%s] failed set pinctrl state, rc=%d\n", panel->name,
 		       rc);
@@ -5305,7 +5315,7 @@ int dsi_panel_pre_prepare(struct dsi_panel *panel)
 	if (panel->lp11_init)
 		goto error;
 
-	rc = dsi_panel_power_on(panel);
+	rc = dsi_panel_power_on(panel, false);
 	if (rc) {
 		DSI_ERR("[%s] panel power on failed, rc=%d\n", panel->name, rc);
 		goto error;
@@ -5490,7 +5500,7 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 	mutex_lock(&panel->panel_lock);
 
 	if (panel->lp11_init) {
-		rc = dsi_panel_power_on(panel);
+		rc = dsi_panel_power_on(panel, false);
 		if (rc) {
 			DSI_ERR("[%s] panel power on failed, rc=%d\n",
 			       panel->name, rc);
