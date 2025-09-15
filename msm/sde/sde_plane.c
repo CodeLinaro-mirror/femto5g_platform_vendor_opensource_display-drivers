@@ -2867,6 +2867,10 @@ static int _sde_plane_validate_shared_crtc(struct sde_plane *psde,
 	if (!sde_kms || !state->crtc)
 		return 0;
 
+	/* For HFI cont-splash skip checking pipe configuration */
+	if (IS_DISP_OP_HFI(sde_plane_get_disp_op(&psde->base)))
+		return 0;
+
 	for (i = 0; i < MAX_DSI_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
 
