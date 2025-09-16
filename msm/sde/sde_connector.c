@@ -1535,6 +1535,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		SDE_ERROR("invalid argument\n");
 		return -EINVAL;
 	}
+	disp_op = sde_connector_get_disp_op(connector);
 
 	c_conn = to_sde_connector(connector);
 	c_state = to_sde_connector_state(connector->state);
@@ -1558,10 +1559,12 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		display->queue_cmd_waits = true;
 	}
 
-	rc = _sde_connector_update_dirty_properties(connector);
-	if (rc) {
-		SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
-		goto end;
+	if (disp_op == MSM_DISP_OP_HWIO) {
+		rc = _sde_connector_update_dirty_properties(connector);
+		if (rc) {
+			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+			goto end;
+		}
 	}
 
 	/* Send VHM commands post BRIGHTNESS updates */
@@ -1580,13 +1583,24 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
 	}
 
-	disp_op = sde_connector_get_disp_op(connector);
 	if (c_conn->hal_ops.prepare_commit[disp_op]) {
 		rc = c_conn->hal_ops.prepare_commit[disp_op](connector, c_state);
 		if (rc) {
 			SDE_ERROR("prepare_commit HAL op failed, rc: %d\n", rc);
 			return rc;
 		}
+	}
+	if (disp_op == MSM_DISP_OP_HFI) {
+		/*
+		 * clear dirty list after all properties
+		 * are processed during the prepartion of commit
+		 */
+		mutex_lock(&c_conn->property_info.property_lock);
+		rc = msm_property_clear_dirty_list(&c_conn->property_info,
+			&c_state->property_state);
+		mutex_unlock(&c_conn->property_info.property_lock);
+		if (rc)
+			SDE_ERROR("failed to clear dirty list, rc: %d\n", rc);
 	}
 
 	if (!c_conn->ops.pre_kickoff)
