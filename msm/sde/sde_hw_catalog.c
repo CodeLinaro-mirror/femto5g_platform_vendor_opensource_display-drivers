@@ -6472,9 +6472,6 @@ static void _sde_get_hw_caps_for_niobe(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 
 static void _sde_get_hw_caps_for_parrot(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
-	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
-	set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
-	set_bit(SDE_FEATURE_CWB_CROP, sde_cfg->features);
 	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->has_reduced_ob_max = true;
