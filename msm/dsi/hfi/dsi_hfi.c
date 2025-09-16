@@ -663,6 +663,114 @@ static enum hfi_panel_trigger_type dsi_get_panel_trigger_type_helper(enum dsi_tr
 	}
 }
 
+static enum hfi_panel_esd_status_mode dsi_get_esd_status_mode_helper(
+	enum esd_check_status_mode mode)
+{
+	switch (mode) {
+	case ESD_MODE_REG_READ:
+		return HFI_PANEL_ESD_STATUS_MODE_REG_READ;
+	case ESD_MODE_SW_BTA:
+		return HFI_PANEL_ESD_STATUS_MODE_SW_BTA;
+	case ESD_MODE_PANEL_TE:
+		return HFI_PANEL_ESD_STATUS_MODE_PANEL_TE;
+	case ESD_MODE_PANEL_RW:
+		return HFI_PANEL_ESD_STATUS_MODE_PANEL_RW;
+	case ESD_MODE_SW_SIM_SUCCESS:
+		return HFI_PANEL_ESD_STATUS_MODE_SW_SIM_SUCCESS;
+	case ESD_MODE_SW_SIM_FAILURE:
+		return HFI_PANEL_ESD_STATUS_MODE_SW_SIM_FAILURE;
+	default:
+		return HFI_PANEL_ESD_STATUS_MODE_SW_SIM_SUCCESS;
+	}
+}
+
+static void dsi_get_panel_esd_config_helper(struct dsi_display *display,
+	struct hfi_panel_esd_config *esd_config)
+{
+	struct hfi_shared_addr_map *addr_map;
+	struct hfi_dsi_cmd_desc *cmd_desc;
+	struct dsi_cmd_desc *cmds;
+	u8 *local_addr_ptr;
+	u64 remote_addr_ptr;
+	u32 status_len = 0;
+	u32 *lenp;
+
+	esd_config->size = sizeof(struct hfi_panel_esd_config);
+	esd_config->status_mode = dsi_get_esd_status_mode_helper(
+			display->panel->esd_config.status_mode);
+
+	if (esd_config->status_mode == HFI_PANEL_ESD_STATUS_MODE_REG_READ) {
+
+		addr_map = display->dsi_hfi_info->esd_addr_map;
+		if (!addr_map || !addr_map->local_addr || !addr_map->remote_addr) {
+			DSI_ERR("Invalid ESD address map\n");
+			return;
+		}
+
+		esd_config->groups = display->panel->esd_config.groups;
+		esd_config->count = display->panel->esd_config.status_cmd.count;
+
+		lenp = display->panel->esd_config.status_valid_params ?:
+					display->panel->esd_config.status_cmds_rlen;
+
+		cmd_desc = (struct hfi_dsi_cmd_desc *)addr_map->local_addr;
+		local_addr_ptr = (u8 *)addr_map->local_addr + sizeof(struct hfi_dsi_cmd_desc);
+		remote_addr_ptr = (u64)addr_map->remote_addr + sizeof(struct hfi_dsi_cmd_desc);
+
+		cmds = display->panel->esd_config.status_cmd.cmds;
+
+		/* Populate commmand descriptor for ESD commands.*/
+		for (int i = 0 ; i < display->panel->esd_config.status_cmd.count ; i++) {
+			cmd_desc->tx_len =       cmds[i].msg.tx_len;
+			cmd_desc->type =         cmds[i].msg.type;
+			cmd_desc->flags =        cmds[i].msg.flags | MIPI_DSI_MSG_UNICAST_COMMAND;
+			cmd_desc->ctrl_idx =     cmds[i].ctrl;
+			cmd_desc->channel =      cmds[i].msg.channel;
+			cmd_desc->last_command = cmds[i].last_command;
+			cmd_desc->post_wait_ms = cmds[i].post_wait_ms;
+			cmd_desc->ctrl_flags =   cmds[i].ctrl_flags | DSI_CTRL_CMD_READ;
+			cmd_desc->rx_len =       display->panel->esd_config.status_cmds_rlen[i];
+			cmd_desc->tx_buff_addr_lsb = HFI_VAL_L32(remote_addr_ptr);
+			cmd_desc->tx_buff_addr_msb = HFI_VAL_H32(remote_addr_ptr);
+			memcpy(local_addr_ptr, cmds[i].msg.tx_buf, cmds[i].msg.tx_len);
+
+			cmd_desc = (struct hfi_dsi_cmd_desc *)(local_addr_ptr + cmds[i].msg.tx_len);
+			local_addr_ptr += cmds[i].msg.tx_len + sizeof(struct hfi_dsi_cmd_desc);
+			remote_addr_ptr += cmds[i].msg.tx_len + sizeof(struct hfi_dsi_cmd_desc);
+
+			status_len += lenp[i];
+		}
+
+		esd_config->hfi_dsi_cmd_desc_lsb = HFI_VAL_L32((u64)addr_map->remote_addr);
+		esd_config->hfi_dsi_cmd_desc_msb = HFI_VAL_H32((u64)addr_map->remote_addr);
+
+		/* Populate ESD status values. */
+		local_addr_ptr = (u8 *)cmd_desc;
+		remote_addr_ptr = (u64)addr_map->remote_addr +
+			((u64)cmd_desc - (u64)addr_map->local_addr);
+
+		memcpy(local_addr_ptr, display->panel->esd_config.status_value,
+				status_len * sizeof(u32) * display->panel->esd_config.groups);
+
+		esd_config->status_values_lsb =	HFI_VAL_L32(remote_addr_ptr);
+		esd_config->status_values_msb =	HFI_VAL_H32(remote_addr_ptr);
+
+		/* Populate ESD valid params. */
+		local_addr_ptr = local_addr_ptr +
+				(status_len * sizeof(u32) * display->panel->esd_config.groups);
+		remote_addr_ptr = remote_addr_ptr +
+				(status_len * sizeof(u32) * display->panel->esd_config.groups);
+
+		if (display->panel->esd_config.status_valid_params) {
+			memcpy(local_addr_ptr,  display->panel->esd_config.status_valid_params,
+					display->panel->esd_config.status_cmd.count * sizeof(u32));
+
+			esd_config->valid_params_lsb = HFI_VAL_L32(remote_addr_ptr);
+			esd_config->valid_params_msb = HFI_VAL_H32(remote_addr_ptr);
+		}
+	}
+}
+
 static enum hfi_panel_fps_traffic_mode dsi_get_panel_traffic_mode_helper(struct dsi_panel *panel)
 {
 	switch (panel->video_config.traffic_mode) {
@@ -1061,6 +1169,10 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	if (panel_generic_caps->phy_nums[0])
 		panel_generic_caps->valid_gen_caps_cnt++;
 
+	if (display->panel->esd_config.esd_enabled) {
+		dsi_get_panel_esd_config_helper(display, &panel_generic_caps->esd_config);
+		panel_generic_caps->valid_gen_caps_cnt++;
+	}
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -1264,7 +1376,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	}
 
 	/* Populate properties that need to be checked for presence */
-	for (i = MIN_NUM_OF_GEN_CAPS; i < (num_caps-2); i++) {
+	for (i = MIN_NUM_OF_GEN_CAPS; i < (num_caps-3); i++) {
 		if (dsi_hfi_gen_props_map[i].value) {
 			hfi_util_kv_helper_add(display_hfi->kv_props,
 					HFI_PACKKEY(dsi_hfi_gen_props_map[i].hfi_prop, 0,
@@ -1289,6 +1401,14 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 					(sizeof(panel_generic_caps.phy_nums) / sizeof(u32))),
 					(void *)&panel_generic_caps.phy_nums);
 		kv_size += sizeof(panel_generic_caps.phy_nums);
+	}
+
+	if (display->panel->esd_config.esd_enabled) {
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_ESD_CONFIG, 0,
+				(sizeof(panel_generic_caps.esd_config) / sizeof(u32))),
+				(void *)&panel_generic_caps.esd_config);
+		kv_size += sizeof(panel_generic_caps.esd_config);
 	}
 
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
@@ -1501,6 +1621,27 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 			goto error_addr_map;
 	} else {
 		addr_map = display_hfi->shared_addr_map;
+	}
+
+	if (panel->esd_config.esd_enabled && panel->esd_config.status_mode == ESD_MODE_REG_READ) {
+		if (!display_hfi->esd_addr_map) {
+			display_hfi->esd_addr_map = kvzalloc(sizeof(struct hfi_shared_addr_map),
+							GFP_KERNEL);
+			if (!display_hfi->esd_addr_map) {
+				DSI_ERR("failed to allocate addr_map");
+				goto error_addr_map;
+			}
+			display_hfi->esd_addr_map->size = SZ_4K;
+
+			hfi_adapter_buffer_alloc(display_hfi->hfi_client,
+						display_hfi->esd_addr_map);
+			if (!display_hfi->esd_addr_map->remote_addr ||
+				!display_hfi->esd_addr_map->local_addr) {
+				kfree(display_hfi->esd_addr_map);
+				display_hfi->esd_addr_map = NULL;
+				goto error_addr_map;
+			}
+		}
 	}
 
 	timing_caps_array = kcalloc(panel_init_caps.num_timing_modes,
