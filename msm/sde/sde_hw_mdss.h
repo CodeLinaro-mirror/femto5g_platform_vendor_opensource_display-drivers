@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -455,6 +455,23 @@ enum {
 	C1_B_Cb = 1,
 	C2_R_Cr = 2,
 	C3_ALPHA = 3
+};
+
+/**
+ * enum sde_color_component_mask
+ * Describes which color component(s) to be extracted
+ * @SDE_COLOR_MASK_NONE    : No color component to be extracted
+ * @SDE_COLOR_MASK_GREEN   : Green color component to be extracted
+ * @SDE_COLOR_MASK_BLUE    : blue color component to be extracted
+ * @SDE_COLOR_MASK_RED     : Red color component to be extracted
+ * @SDE_COLOR_MASK_ALPHA   : Alpha color component to be extracted
+ */
+enum sde_color_component_mask {
+	SDE_COLOR_MASK_NONE = 0,
+	SDE_COLOR_MASK_GREEN = BIT(C0_G_Y),
+	SDE_COLOR_MASK_BLUE = BIT(C1_B_Cb),
+	SDE_COLOR_MASK_RED = BIT(C2_R_Cr),
+	SDE_COLOR_MASK_ALPHA = BIT(C3_ALPHA),
 };
 
 /**
