@@ -257,6 +257,7 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @max_fps_mode_en: A boolean value to select max resolution and max fps
  * @dsc_feature_enable: DSC feature enable status
  * @fec_feature_enable: FEC feature enable status
+ * @ctl_op_sync: ctl sync mode feature enable status
  * @dsc_continuous_pps: PPS sent every frame by HW
  * @fifo_error_enable : fifo error enable status
  * @has_widebus: widebus (2PPC) feature eanble status
@@ -304,6 +305,7 @@ struct dp_parser {
 	bool ext_hpd_en;
 	bool is_edp;
 	bool max_fps_mode_en;
+	bool ctl_op_sync;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;

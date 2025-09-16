@@ -48,6 +48,19 @@ static int dp_pll_fill_io(struct dp_pll *pll)
 		return -ENOMEM;
 	}
 
+	pll->io.m_dp_phy = parser->get_io(parser, "m_dp_phy");
+	if (!pll->io.m_dp_phy) {
+		DP_DEBUG("Invalid dp_phy resource\n");
+		goto out;
+	}
+
+	pll->io.m_dp_pll = parser->get_io(parser, "m_dp_pll");
+	if (!pll->io.m_dp_pll) {
+		DP_DEBUG("Invalid dp_pll resource\n");
+		goto out;
+	}
+
+out:
 	return 0;
 }
 
@@ -252,14 +265,15 @@ static int dp_pll_driver_probe(struct platform_device *pdev)
 						"qcom,ssc-feature-enable");
 	pll->bonding_en = of_property_read_bool(pdev->dev.of_node,
 						"qcom,bonding-feature-enable");
+	pll->slave = of_property_read_bool(pdev->dev.of_node, "qcom,pll-slave");
 
 	rc = dp_pll_clock_register(pll);
 	if (rc)
 		goto error;
 
-	DP_INFO("revision=%s, ssc_en=%d, bonding_en=%d\n",
+	DP_INFO("revision=%s, ssc_en=%d, bonding_en=%d, slave=%d\n",
 			dp_pll_get_revision(pll->revision), pll->ssc_en,
-			pll->bonding_en);
+			pll->bonding_en, pll->slave);
 
 	platform_set_drvdata(pdev, pll);
 	return 0;

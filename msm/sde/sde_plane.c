@@ -1125,8 +1125,8 @@ static void _sde_plane_setup_scaler3(struct sde_plane *psde,
 	scale_cfg->uv_filter_cfg = SDE_SCALE_BIL;
 	scale_cfg->alpha_filter_cfg = SDE_SCALE_ALPHA_BIL;
 	scale_cfg->lut_flag = 0;
-	scale_cfg->blend_cfg = 1;
-	scale_cfg->enable = 1;
+	scale_cfg->blend_cfg = SDE_FORMAT_IS_FSC(fmt) ? 0 : 1;
+	scale_cfg->enable = SDE_FORMAT_IS_FSC(fmt) ? 0 : 1;
 	scale_cfg->dyn_exp_disabled = SDE_QSEED_DEFAULT_DYN_EXP;
 }
 
@@ -1278,7 +1278,8 @@ static void _sde_plane_setup_pixel_ext(struct sde_plane *psde,
 	}
 }
 
-void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate)
+void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate,
+	bool format_is_yuv)
 {
 	static const struct sde_csc_cfg sde_csc_YUV2RGB_601L = {
 		{
@@ -1315,12 +1316,19 @@ void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate
 	}
 
 	/* revert to kernel default if override not available */
+	mutex_lock(&psde->property_info.property_lock);
+	if (!format_is_yuv) {
+		pstate->csc_ptr = 0;
+		mutex_unlock(&psde->property_info.property_lock);
+		return;
+	}
 	if (pstate->csc_usr_ptr)
 		pstate->csc_ptr = pstate->csc_usr_ptr;
 	else if (BIT(SDE_SSPP_CSC_10BIT) & psde->features)
 		pstate->csc_ptr = (struct sde_csc_cfg *)&sde_csc10_YUV2RGB_601L;
 	else
 		pstate->csc_ptr = (struct sde_csc_cfg *)&sde_csc_YUV2RGB_601L;
+	mutex_unlock(&psde->property_info.property_lock);
 
 	SDE_DEBUG_PLANE(psde, "using 0x%X 0x%X 0x%X...\n",
 			pstate->csc_ptr->csc_mv[0],
@@ -2721,7 +2729,7 @@ static int _sde_atomic_check_decimation_scaler(struct drm_plane_state *state,
 	}
 
 	/* scaling checks are not needed for fsc formats*/
-	if (sde_plane_is_cac_enabled(pstate))
+	if (sde_plane_is_cac_enabled(pstate) || SDE_FORMAT_IS_FSC(fmt))
 		return 0;
 
 	deci_w = sde_plane_get_property(pstate, PLANE_PROP_H_DECIMATE);
@@ -3309,6 +3317,7 @@ void sde_plane_flush(struct drm_plane *plane)
 	u32 disp_id = U32_MAX;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	struct hfi_util_u32_prop_helper *color_props = NULL;
+	struct hfi_client_t *hfi_client = NULL;
 	int ret = 0;
 
 	if (!plane || !plane->state || !plane->state->crtc) {
@@ -3345,8 +3354,11 @@ void sde_plane_flush(struct drm_plane *plane)
 		cmd_buf = _sde_plane_get_cmd_buf(plane);
 		if (!cmd_buf)
 			SDE_ERROR("failed to get cmd_buf for plane:%d\n", DRMID(plane));
+		else
+			hfi_client = cmd_buf->ctx;
 
-		ret = hfi_adapter_add_set_property(cmd_buf,
+		ret = hfi_adapter_add_set_property(hfi_client,
+				cmd_buf,
 				HFI_COMMAND_DISPLAY_SET_PROPERTY,
 				disp_id,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -3831,6 +3843,7 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	bool fov_en = false;
 	u32 pp_idx;
 	enum msm_disp_op disp_op;
+	bool format_is_yuv;
 
 	SDE_DEBUG_PLANE(psde, "rotation 0x%X\n", pstate->rotation);
 	if (pstate->rotation & DRM_MODE_REFLECT_X)
@@ -3867,10 +3880,8 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	_sde_plane_sspp_setup_sys_cache(psde, pstate);
 
 	/* update csc */
-	if (SDE_FORMAT_IS_YUV(fmt))
-		_sde_plane_setup_csc(psde, pstate);
-	else
-		pstate->csc_ptr = 0;
+	format_is_yuv = SDE_FORMAT_IS_YUV(fmt) ? true : false;
+	_sde_plane_setup_csc(psde, pstate, format_is_yuv);
 
 	if (psde->pipe_hw->ops.setup_inverse_pma[disp_op]) {
 		uint32_t pma_mode = 0;
@@ -4030,7 +4041,8 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 		 * Once all the color processing properties are collected, invoke adapter api
 		 * to add all these properties as a single HFI Packet
 		 */
-		ret = hfi_adapter_add_set_property(cmd_buf,
+		ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+				cmd_buf,
 				HFI_COMMAND_DISPLAY_SET_PROPERTY,
 				disp_id,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,

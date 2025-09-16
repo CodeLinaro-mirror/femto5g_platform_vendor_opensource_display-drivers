@@ -837,6 +837,17 @@ static void dp_parser_widebus(struct dp_parser *parser)
 	DP_DEBUG("4ppc enablement : %d\n", parser->has_4ppc_enabled);
 }
 
+static void dp_parser_ctl_op_sync(struct dp_parser *parser)
+{
+	struct device *dev = &parser->pdev->dev;
+
+	parser->ctl_op_sync = of_property_read_bool(dev->of_node,
+			"qcom,dp-ctl-op-sync");
+
+	DP_DEBUG("ctl sync parsing successful. ctl_op_sync:%d\n",
+			parser->ctl_op_sync);
+}
+
 static int parse_lt_param(struct device *dev, u8 **ptr, char *property) {
 	int ret = 0, i = 0, j = 0, index = 0;
 	u32 out_val = 0;
@@ -973,6 +984,7 @@ static int dp_parser_parse(struct dp_parser *parser)
 
 	dp_parser_dsc(parser);
 	dp_parser_fec(parser);
+	dp_parser_ctl_op_sync(parser);
 	dp_parser_widebus(parser);
 	dp_parser_qos(parser);
 	dp_parser_link_training_params(parser);

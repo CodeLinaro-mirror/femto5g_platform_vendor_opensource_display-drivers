@@ -1171,7 +1171,6 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 		drm_enc = connector->encoder;
 
 	if (c_conn->vrr_caps.video_mrr_support &&
-			msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
 			!drm_mode_vrefresh(c_state->msm_mode.base))
 		frame_interval_ns =
 			NSEC_PER_SEC/drm_mode_vrefresh(c_state->msm_mode.base);
@@ -1444,6 +1443,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	struct msm_freq_step_pattern *freq_pattern;
 	struct sde_encoder_virt *sde_enc;
 	enum sde_crtc_vm_req vm_req;
+	struct sde_connector_state *c_state;
 	u64 cmd_bit_mask = 0;
 	int rc = 0;
 
@@ -1454,6 +1454,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 
 	c_conn = to_sde_connector(connector);
 	sde_enc = to_sde_encoder_virt(c_conn->encoder);
+	c_state = to_sde_connector_state(connector->state);
 
 	if (sde_enc)
 		sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
@@ -1494,6 +1495,12 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
 	else if (c_conn->freq_pattern_type_changed && !freq_pattern->needs_ap_refresh)
 		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
+
+	if (msm_is_mode_seamless_emsync_fps_switch(&c_state->msm_mode) &&
+			c_conn->ops.check_cmd_defined(c_conn->display,
+			DSI_CMD_SET_EM_PULSE_SWITCH)) {
+		cmd_bit_mask |= BIT(DSI_CMD_SET_EM_PULSE_SWITCH);
+	}
 
 	if (cmd_bit_mask) {
 		mutex_lock(&c_conn->bl_vrr.bl_lock);
@@ -4002,6 +4009,28 @@ static void _sde_connector_install_qsync_properties(struct sde_kms *sde_kms,
 				CONNECTOR_PROP_AVR_STEP_STATE);
 }
 
+static void _sde_connector_install_emsync_fps_property(struct sde_connector *c_conn,
+	struct dsi_display *dsi_display)
+{
+	u32 max_emsync_fps = 0;
+	int i;
+
+	if (!c_conn || !dsi_display || !dsi_display->panel || !dsi_display->modes) {
+		SDE_ERROR("invalid arguments\n");
+		return;
+	} else if (!dsi_display->panel->esync_caps.emsync_switch_enabled)
+		return;
+
+	for (i = 0; i < dsi_display->panel->num_display_modes; ++i)
+		max_emsync_fps = max(max_emsync_fps,
+			dsi_display->modes[i].priv_info->esync_params.emsync_fps);
+
+	msm_property_install_range(&c_conn->property_info, "emsync_fps",
+		0x0, 0, max_emsync_fps,
+		dsi_display->modes[0].priv_info->esync_params.emsync_fps,
+		CONNECTOR_PROP_EMSYNC_FPS);
+}
+
 static int _sde_connector_install_properties(struct drm_device *dev,
 	struct sde_kms *sde_kms, struct sde_connector *c_conn,
 	int connector_type, void *display,
@@ -4135,6 +4164,8 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 
 		msm_property_install_enum(&c_conn->property_info, "dsc_mode", 0,
 			0, e_dsc_mode, ARRAY_SIZE(e_dsc_mode), 0, CONNECTOR_PROP_DSC_MODE);
+
+		_sde_connector_install_emsync_fps_property(c_conn, dsi_display);
 
 		if (dsi_display && dsi_display->panel &&
 			display_info->capabilities & MSM_DISPLAY_CAP_CMD_MODE &&

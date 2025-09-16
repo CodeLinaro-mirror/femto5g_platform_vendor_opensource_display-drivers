@@ -25,6 +25,8 @@
 #define DEFAULT_PANEL_JITTER_ARRAY_SIZE		2
 #define DEFAULT_PANEL_PREFILL_LINES	25
 
+#define MAX_EMSYNC_FPS_LIST_LEN 8
+
 static struct dsi_display_mode_priv_info default_priv_info = {
 	.panel_jitter_numer = DEFAULT_PANEL_JITTER_NUMERATOR,
 	.panel_jitter_denom = DEFAULT_PANEL_JITTER_DENOMINATOR,
@@ -94,6 +96,8 @@ static void msm_parse_mode_priv_info(const struct msm_display_mode *msm_mode,
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DYN_CLK;
 	if (msm_is_mode_bpp_switch(msm_mode))
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_NONDSC_BPP_SWITCH;
+	if (msm_is_mode_seamless_emsync_fps_switch(msm_mode))
+		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_EMSYNC_FPS_SWITCH;
 }
 
 void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
@@ -164,6 +168,8 @@ static void dsi_convert_to_msm_mode(const struct dsi_display_mode *dsi_mode,
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DYN_CLK;
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_NONDSC_BPP_SWITCH)
 		msm_mode->private_flags |= MSM_MODE_FLAG_NONDSC_BPP_SWITCH;
+	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)
+		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_EMSYNC_FPS_SWITCH;
 }
 
 static int dsi_bridge_attach(struct drm_bridge *bridge,
@@ -215,7 +221,7 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 
 	if (c_bridge->dsi_mode.dsi_mode_flags &
 		(DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
-		 DSI_MODE_FLAG_DYN_CLK)) {
+		 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) {
 		DSI_DEBUG("[%d] seamless pre-enable\n", c_bridge->id);
 		return;
 	}
@@ -259,7 +265,7 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 
 	if (c_bridge->dsi_mode.dsi_mode_flags &
 			(DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
-			 DSI_MODE_FLAG_DYN_CLK)) {
+			 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) {
 		DSI_DEBUG("[%d] seamless enable\n", c_bridge->id);
 		return;
 	}
@@ -453,6 +459,7 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) &&
 		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_VID)) &&
 		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_CMD)) &&
+		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) &&
 		(!crtc_state->active_changed ||
 		 display->is_cont_splash_enabled)) {
 		adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS;
@@ -524,10 +531,12 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 
 	convert_to_dsi_mode(mode, &dsi_mode);
 	msm_parse_mode_priv_info(&conn_state->msm_mode, &dsi_mode);
-	new_sub_mode.dsc_mode = sde_connector_get_property(drm_conn_state,
-				CONNECTOR_PROP_DSC_MODE);
-	new_sub_mode.pixel_format_mode = sde_connector_get_property(drm_conn_state,
-				CONNECTOR_PROP_BPP_MODE);
+	rc = sde_connector_state_get_sub_mode(drm_conn_state, &new_sub_mode);
+	if (rc) {
+		DSI_ERR("[%s] failed to get sub mode\n", display->name);
+		return rc;
+	}
+
 	/*
 	 * retrieve dsi mode from dsi driver's cache since not safe to take
 	 * the drm mode config mutex in all paths
@@ -574,6 +583,7 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 	if (crtc_state->active_changed &&
 		((dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) ||
+		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_VID) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_CMD))) {
 		DSI_INFO("seamless upon active changed 0x%x %d\n",
@@ -671,6 +681,9 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 	mode_info->avr_step_fps = dsi_mode->timing.avr_step_fps;
 	mode_info->wd_jitter = dsi_mode->priv_info->wd_jitter;
 	mode_info->te_pulse_width_us = dsi_mode->timing.te_pulse_width_us;
+
+	memcpy(&mode_info->esync_params, &dsi_mode->priv_info->esync_params,
+			sizeof(struct esync_params));
 
 	memcpy(&mode_info->topology, &dsi_mode->priv_info->topology,
 			sizeof(struct msm_display_topology));
@@ -964,6 +977,9 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 	if (panel->host_config.dpu_dma_enabled)
 		sde_kms_info_add_keyint(info, "dpu_dma_enabled", 1);
 
+	sde_kms_info_add_keystr(info, "emsync_switch_enabled",
+			panel->esync_caps.emsync_switch_enabled ? "true" : "false");
+
 end:
 	return 0;
 }
@@ -981,6 +997,8 @@ void dsi_conn_set_submode_blob_info(struct drm_connector *conn,
 		[DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_HFP] = "hfp",
 		[DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_VFP] = "vfp",
 	};
+	u32 emsync_fps_list[MAX_EMSYNC_FPS_LIST_LEN];
+	u32 emsync_fps_pos = 0;
 
 	if (!conn || !display || !drm_mode) {
 		DSI_ERR("Invalid params\n");
@@ -1014,6 +1032,14 @@ void dsi_conn_set_submode_blob_info(struct drm_connector *conn,
 
 		sde_kms_info_add_keyint(info, "panel_mode_capabilities",
 			panel_mode_caps);
+
+		if (dsi_display->panel->esync_caps.emsync_switch_enabled) {
+			if (emsync_fps_pos < MAX_EMSYNC_FPS_LIST_LEN)
+				emsync_fps_list[emsync_fps_pos++] =
+					dsi_mode->priv_info->esync_params.emsync_fps;
+			else
+				DSI_ERR("emsync fps list length is not enough\n");
+		}
 
 		switch (dsi_mode->pixel_format_caps) {
 		case DSI_PIXEL_FORMAT_RGB888:
@@ -1056,6 +1082,10 @@ void dsi_conn_set_submode_blob_info(struct drm_connector *conn,
 	if (preferred_submode_idx >= 0)
 		sde_kms_info_add_keyint(info, "preferred_submode_idx",
 			preferred_submode_idx);
+
+	if (dsi_display->panel->esync_caps.emsync_switch_enabled)
+		sde_kms_info_add_list(info, "emsync_fps_list",
+				emsync_fps_list, emsync_fps_pos);
 
 	mutex_unlock(&dsi_display->display_lock);
 }
@@ -1593,7 +1623,8 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 				allow_switch = true;
 			} else if ((common_mode_caps & DSI_OP_VIDEO_MODE) &&
 				(panel->dfps_caps.dfps_support ||
-				panel->dyn_clk_caps.dyn_clk_support)) {
+				panel->dyn_clk_caps.dyn_clk_support ||
+				panel->esync_caps.emsync_switch_enabled)) {
 				allow_switch = true;
 			} else {
 				if (is_valid_poms_switch(panel_dsi_mode,
