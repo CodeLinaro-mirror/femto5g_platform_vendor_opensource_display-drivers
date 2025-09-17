@@ -803,6 +803,7 @@ struct sde_backlight_vrr_update {
  * @is_lb_conn: Indicates if this connector is a loopback connector
  * @hfi_conn: Pointer to hfi connector struct
  * @hal_ops: hal ops for hfi communication
+ * @dpu_dma_enabled: Indicates if dpu dma mode is enabled
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -907,6 +908,8 @@ struct sde_connector {
 
 	struct hfi_connector *hfi_conn;
 	struct sde_connector_hal_funcs hal_ops;
+
+	bool dpu_dma_enabled;
 };
 
 /**
@@ -1656,6 +1659,13 @@ static inline u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
 void sde_conn_timeline_status(struct drm_connector *conn);
 
 /**
+ * sde_connector_setup_obj_id - update connector object ids
+ * @conn: Pointer to drm_connector struct
+ * @id: Opaque Object id of connector
+ */
+int sde_connector_setup_obj_id(struct drm_connector *conn, int id);
+
+/**
  * sde_connector_helper_bridge_disable - helper function for drm bridge disable
  * @connector: Pointer to DRM connector object
  */
@@ -1740,5 +1750,27 @@ static inline void sde_connector_backlight_lock(struct sde_connector *c_conn, bo
 
 bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
 		uint32_t property_idx);
+
+/**
+ * sde_connector_state_get_sub_mode - get sub mode from connector state
+ * @conn_state: Pointer to sde connector state
+ * @msm_sub_mode: Out parameter, the sub mode obtained fron connector state
+ * @return: 0 success otherwise failure
+ */
+static inline int
+sde_connector_state_get_sub_mode(struct drm_connector_state *conn_state,
+	struct msm_sub_mode *sub_mode)
+{
+	if (!conn_state || !sub_mode) {
+		SDE_ERROR("Invalid arguments\n");
+		return -EINVAL;
+	}
+
+	sub_mode->dsc_mode = sde_connector_get_property(conn_state,
+			CONNECTOR_PROP_DSC_MODE);
+	sub_mode->pixel_format_mode = sde_connector_get_property(conn_state,
+			CONNECTOR_PROP_BPP_MODE);
+	return 0;
+}
 
 #endif /* _SDE_CONNECTOR_H_ */

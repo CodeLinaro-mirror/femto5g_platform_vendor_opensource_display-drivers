@@ -255,6 +255,8 @@ int sde_wb_connector_set_modes(struct sde_wb_device *wb_dev,
 			memset(&dispmode, 0, sizeof(dispmode));
 			ret = drm_mode_convert_umode(wb_dev->drm_dev,
 					&dispmode, &modeinfo[i]);
+			/* null terminate the string */
+			modeinfo[i].name[DRM_DISPLAY_MODE_LEN - 1] = '\0';
 			if (ret) {
 				SDE_ERROR(
 					"failed to convert mode %d:\"%s\" %d %d %d %d %d %d %d %d %d %d 0x%x 0x%x status:%d rc:%d\n",
@@ -495,6 +497,61 @@ int sde_wb_get_mode_info(struct drm_connector *connector,
 	mode_info->comp_info.comp_ratio = MSM_DISPLAY_COMPRESSION_RATIO_NONE;
 
 	return 0;
+}
+
+int sde_wb_get_scan_out_info(struct sde_wb_device *wb_dev,
+		struct sde_connector_state *old_cstate,
+		struct drm_framebuffer *fb,
+		struct sde_hw_wb_cfg *wb_cfg)
+{
+	struct msm_gem_address_space *aspace = NULL;
+	struct sde_kms *sde_kms;
+	const struct msm_format *format;
+	u32 fb_mode;
+	uint32_t ret;
+
+	sde_kms = sde_connector_get_kms(wb_dev->connector);
+
+	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
+	if (!aspace) {
+		SDE_ERROR("invalid aspace\n");
+		return -EINVAL;
+	}
+
+	ret = msm_framebuffer_prepare(fb, aspace);
+	if (ret) {
+		SDE_ERROR("failed to prepare framebuffer %d\n", ret);
+		return -EINVAL;
+	}
+
+	drm_framebuffer_get(fb);
+	format = msm_framebuffer_format(fb);
+	if (!format) {
+		SDE_ERROR("invalid fb fmt\n");
+		return -EINVAL;
+	}
+
+	fb_mode = sde_connector_get_property(wb_dev->connector->state,
+		CONNECTOR_PROP_FB_TRANSLATION_MODE);
+	wb_cfg->is_secure = ((fb_mode == SDE_DRM_FB_SEC) || (fb_mode == SDE_DRM_FB_SEC_DIR_TRANS)) ?
+		true : false;
+
+	wb_cfg->dest.format = sde_get_sde_format_ext(format->pixel_format, fb->modifier);
+	if (!wb_cfg->dest.format) {
+		SDE_ERROR("invalid fb format\n");
+		return -EINVAL;
+	}
+
+	wb_cfg->dest.width = fb->width;
+	wb_cfg->dest.height = fb->height;
+	wb_cfg->dest.num_planes = wb_cfg->dest.format->num_planes;
+	ret = sde_format_populate_layout(aspace, fb, &wb_cfg->dest);
+	if (ret) {
+		SDE_ERROR("failed dpu_format_populate_layout\n");
+		return -EINVAL;
+	}
+
+	return ret;
 }
 
 int sde_wb_connector_set_info_blob(struct drm_connector *connector,

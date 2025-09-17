@@ -777,7 +777,7 @@ static inline bool sde_hw_ctl_bitmask_has_bit_v1(struct sde_hw_ctl *ctx,
 		return false;
 	}
 
-	return ctx->flush.pending_flush_mask & cfg->flush_idx;
+	return ctx->flush.pending_flush_mask & BIT(cfg->flush_idx);
 }
 
 static inline void sde_hw_ctl_update_dnsc_blur_bitmask(struct sde_hw_ctl *ctx,
@@ -1679,17 +1679,18 @@ static inline bool sde_hw_ctl_read_active_status(struct sde_hw_ctl *ctx,
 
 static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 {
-	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	struct sde_hw_reg_dma_ops *ops = NULL;
 
+	if (!ctx)
+		return -EINVAL;
+
+	ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (!ops) {
 		SDE_ERROR("dma ops is NULL\n");
 		return -EINVAL;
 	}
 
-	if (!ctx)
-		return -EINVAL;
-
-	if (ops && ops->last_command[ctx->hw.disp_op])
+	if (ops->last_command[ctx->hw.disp_op])
 		return ops->last_command[ctx->hw.disp_op](ctx, DMA_CTL_QUEUE0,
 		    (blocking ? REG_DMA_WAIT4_COMP : REG_DMA_NOWAIT));
 

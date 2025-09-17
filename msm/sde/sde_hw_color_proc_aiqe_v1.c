@@ -350,7 +350,7 @@ void reg_dmav1_setup_mdnie_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 	struct sde_reg_dma_kickoff_cfg kick_off;
 	int rc = 0;
 	u32 aiqe_base = 0;
-	enum msm_disp_op disp_op = ctx->hw.disp_op;
+	enum msm_disp_op disp_op = MSM_DISP_OP_MAX;
 
 	if (!ctx || !cfg || !aiqe_top) {
 		DRM_ERROR("invalid parameters ctx %pK cfg %pK aiqe top %pK\n",
@@ -358,6 +358,7 @@ void reg_dmav1_setup_mdnie_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 		return;
 	}
 
+	disp_op = ctx->hw.disp_op;
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	dma_ops->reset_reg_dma_buf(dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx]);
 	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, AIQE_MDNIE,

@@ -797,12 +797,18 @@ static u32 _hfi_adapter_add_prop_helper(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u
 	return rc;
 }
 
-int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 object_id,
-		enum hfi_payload_type hfi_payload_type, void *payload, u32 size, u32 flags)
+int hfi_adapter_add_set_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
+		u32 object_id, enum hfi_payload_type hfi_payload_type, void *payload, u32 size,
+		u32 flags)
 {
 	struct hfi_cmdbuf_t *current_buffer = cmd_buf;
 	u32 packet_id;
 	int rc = 0;
+
+	if (!ctx) {
+		HFI_AD_ERROR("invalid client\n");
+		return -EINVAL;
+	}
 
 	current_buffer = _check_attached_buffer(cmd_buf, hfi_payload_type, size);
 	if (!current_buffer)
@@ -814,14 +820,19 @@ int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 obje
 	return rc;
 }
 
-int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
-		u32 obj_id, enum hfi_payload_type hfi_payload_type,
+int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf,
+		u32 cmd_id, u32 obj_id, enum hfi_payload_type hfi_payload_type,
 		void *payload, u32 size, struct hfi_prop_listener *listener, u32 flags)
 {
-	struct hfi_client_t *ctx;
 	struct hfi_cmdbuf_t *current_buffer = cmd_buf;
+	struct hfi_client_t *buff_client_ctx;
 	u32 packet_id;
 	int rc = 0;
+
+	if (!ctx || !cmd_buf) {
+		HFI_AD_ERROR("invalid client\n");
+		return -EINVAL;
+	}
 
 	current_buffer = _check_attached_buffer(cmd_buf, hfi_payload_type, size);
 	if (!current_buffer)
@@ -834,7 +845,7 @@ int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
 		return rc;
 	}
 
-	ctx = cmd_buf->ctx;
+	buff_client_ctx = cmd_buf->ctx;
 
 	/* Create new listener_list structure to insert. */
 	struct listener_list *listener_entry = kmalloc(sizeof(struct listener_list), GFP_KERNEL);
@@ -848,18 +859,24 @@ int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
 	listener_entry->listener_obj = listener;
 
 	/* Add listener based on packet obj_id  */
-	list_add_tail(&listener_entry->list_ptr, &ctx->packet_listeners.list_ptr);
+	list_add_tail(&listener_entry->list_ptr,
+			&buff_client_ctx->packet_listeners.list_ptr);
 
 	return rc;
 }
 
-int hfi_adapter_add_prop_array(struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
+int hfi_adapter_add_prop_array(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
 		u32 object_id, enum hfi_payload_type payload_type,
 		struct hfi_kv_pairs *payload, u32 cnt, u32 size)
 {
 	struct hfi_cmdbuf_t *current_buffer = cmd_buf;
 	u32 packet_id;
 	int rc = 0;
+
+	if (!ctx) {
+		HFI_AD_ERROR("invalid client\n");
+		return -EINVAL;
+	}
 
 	if (!payload) {
 		HFI_AD_ERROR("payload not provided\n");
@@ -923,7 +940,7 @@ static void _release_tx_buffers(struct hfi_cmdbuf_t *cmd_buf)
 	_hfi_clear_buffer(cmd_buf);
 }
 
-int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
+int hfi_adapter_set_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf)
 {
 	u32 num_buffers = 1;
 	struct hfi_core_cmds_buf_desc *buff_arr[MAX_BUFFERS];
@@ -932,7 +949,7 @@ int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	struct hfi_cmdbuf_t *buf_entry;
 	u32 i = 1;
 
-	if (!cmd_buf || !cmd_buf->ctx) {
+	if (!cmd_buf || !cmd_buf->ctx || !ctx) {
 		HFI_AD_ERROR("Invalid client ctx\n");
 		return -EINVAL;
 	}
@@ -978,7 +995,7 @@ int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	return rc;
 }
 
-int hfi_adapter_set_cmd_buf_blocking(struct hfi_cmdbuf_t *cmd_buf)
+int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf)
 {
 	struct hfi_adapter_t *host;
 	int rc;
@@ -990,7 +1007,7 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_cmdbuf_t *cmd_buf)
 	u32 num_buffers = 1;
 	u32 i = 0;
 
-	if (!cmd_buf || !cmd_buf->ctx) {
+	if (!cmd_buf || !cmd_buf->ctx || !ctx) {
 		HFI_AD_ERROR("Invalid client ctx\n");
 		return -EINVAL;
 	}
@@ -1160,7 +1177,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 	return ret;
 }
 
-int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
+int hfi_adapter_release_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf)
 {
 	struct list_head *pos, *updated_pos;
 	struct hfi_cmdbuf_t *buf_entry;
@@ -1168,7 +1185,7 @@ int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
 	int i = 0;
 	int rc = 0;
 
-	if (!cmd_buf) {
+	if (!cmd_buf || !ctx) {
 		HFI_AD_ERROR("invalid param\n");
 		return -EINVAL;
 	}
@@ -1249,9 +1266,14 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx)
 	HFI_AD_DEBUG("Freeing %d buffers on close\n", i);
 }
 
-int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
+int hfi_adapter_buffer_alloc(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map)
 {
 	int ret = 0;
+
+	if (!ctx) {
+		HFI_AD_ERROR("invalid client\n");
+		return -EINVAL;
+	}
 
 	if (!addr_map->size) {
 		HFI_AD_ERROR("failed to get shared buffer size\n");
@@ -1277,10 +1299,15 @@ int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
 	return ret;
 }
 
-int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
+int hfi_adapter_buffer_dealloc(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map)
 {
 	struct hfi_core_mem_alloc_info *alloc_info = &addr_map->alloc_info;
 	int ret = 0;
+
+	if (!ctx) {
+		HFI_AD_ERROR("invalid client\n");
+		return -EINVAL;
+	}
 
 	if (!addr_map->size) {
 		HFI_AD_DEBUG("empty buf\n");
@@ -1296,17 +1323,32 @@ int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
 	if (ret)
 		HFI_AD_ERROR("failed to deallocate shared buffer, ret: %d\n", ret);
 
+	alloc_info->mapped_iova = 0;
+	alloc_info->cpu_va = NULL;
+
 	return ret;
 }
 
-int hfi_adapter_map_sg_table(struct sg_table *sgt, size_t size, unsigned long *mapped_iova)
+int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt, size_t size,
+		unsigned long *mapped_iova)
 {
+	if (!ctx) {
+		HFI_AD_ERROR("invalid client\n");
+		return -EINVAL;
+	}
+
 	return hfi_core_map_sg_table(sgt, size, mapped_iova,
 		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
 }
 
-size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_shared_addr_map *addr_map)
+size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_client_t *ctx,
+		struct hfi_shared_addr_map *addr_map)
 {
+	if (!ctx) {
+		HFI_AD_ERROR("invalid client\n");
+		return 0;
+	}
+
 	if (addr_map == NULL) {
 		HFI_AD_ERROR("Invalid parameter, addr_map is NULL\n");
 		return 0;
@@ -1315,8 +1357,13 @@ size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_shared_addr_map *add
 	return addr_map->alloc_info.size_allocated;
 }
 
-int hfi_adapter_unmap_iova(unsigned long iova, size_t size)
+int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t size)
 {
+	if (!ctx) {
+		HFI_AD_ERROR("invalid client\n");
+		return -EINVAL;
+	}
+
 	return hfi_core_unmap_iova(iova, size);
 }
 
@@ -1347,7 +1394,7 @@ int hfi_adapter_release_all_cmd_bufs(struct hfi_client_t *client)
 			atomic_inc(&cmd_buf->buffer_send_done);
 			continue;
 		}
-		ret = hfi_adapter_release_cmd_buf(cmd_buf);
+		ret = hfi_adapter_release_cmd_buf(client, cmd_buf);
 		if (ret != 0) {
 			HFI_AD_ERROR("failed to hfi_adapter_release_cmd_buf, ret: %d\n", ret);
 			continue;

@@ -1171,7 +1171,6 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 		drm_enc = connector->encoder;
 
 	if (c_conn->vrr_caps.video_mrr_support &&
-			msm_is_mode_seamless_vrr(&c_state->msm_mode) &&
 			!drm_mode_vrefresh(c_state->msm_mode.base))
 		frame_interval_ns =
 			NSEC_PER_SEC/drm_mode_vrefresh(c_state->msm_mode.base);
@@ -1520,7 +1519,8 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
 	struct msm_display_kickoff_params params;
-	struct dsi_display *display;
+	struct dsi_display *display = NULL;
+	enum msm_disp_op disp_op;
 	int rc;
 
 	if (!connector) {
@@ -1535,17 +1535,20 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		return -EINVAL;
 	}
 
-	display = _sde_connector_get_display(c_conn);
-	if (!display)
-		return 0;
 	/*
 	 * During pre kickoff DCS commands have to have an
 	 * asynchronous wait to avoid an unnecessary stall
 	 * in pre-kickoff. This flag must be reset at the
 	 * end of display pre-kickoff.
 	 */
-	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		display = _sde_connector_get_display(c_conn);
+		if (!display)
+			return 0;
+
+		/* Set queue_cmd_waits only for DSI connectors */
 		display->queue_cmd_waits = true;
+	}
 
 	rc = _sde_connector_update_dirty_properties(connector);
 	if (rc) {
@@ -1569,6 +1572,15 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
 	}
 
+	disp_op = sde_connector_get_disp_op(connector);
+	if (c_conn->hal_ops.prepare_commit[disp_op]) {
+		rc = c_conn->hal_ops.prepare_commit[disp_op](connector, c_state);
+		if (rc) {
+			SDE_ERROR("prepare_commit HAL op failed, rc: %d\n", rc);
+			return rc;
+		}
+	}
+
 	if (!c_conn->ops.pre_kickoff)
 		return 0;
 
@@ -1580,7 +1592,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	rc = c_conn->ops.pre_kickoff(connector, c_conn->display, &params);
 
 end:
-	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI && display)
 		display->queue_cmd_waits = false;
 
 	return rc;
@@ -1593,7 +1605,6 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	struct msm_display_conn_params params;
 	struct drm_encoder *drm_enc;
 	struct dsi_display *display;
-	enum msm_disp_op disp_op;
 	int rc = 0;
 
 	if (!connector) {
@@ -1626,12 +1637,22 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	SDE_EVT32(connector->base.id, params.qsync_mode,
 		  params.qsync_update, rc);
 
-	disp_op = sde_connector_get_disp_op(connector);
-	if (c_conn->hal_ops.prepare_commit[disp_op]) {
-		rc = c_conn->hal_ops.prepare_commit[disp_op](connector, c_state);
-		if (rc)
-			SDE_ERROR("prepare_commit HAL op failed, rc: %d\n", rc);
+	return rc;
+}
+
+int sde_connector_setup_obj_id(struct drm_connector *conn, int id)
+{
+	int rc = 0;
+	struct sde_connector *sde_conn;
+
+	if (!conn) {
+		SDE_ERROR("invalid argument, conn %d\n", conn != NULL);
+		return -EINVAL;
 	}
+
+	sde_conn = to_sde_connector(conn);
+	sde_conn->conn_id = id;
+
 	return rc;
 }
 
@@ -3820,6 +3841,9 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 		if (c_conn->vrr_caps.video_psr_support)
 			sde_kms_info_add_keyint(info, "has_vhm_support", 1);
 
+		if (c_conn->dpu_dma_enabled)
+			sde_kms_info_add_keyint(info, "dpu_dma_enabled", 1);
+
 		if (c_conn->vrr_caps.vrr_support)
 			sde_kms_info_add_keyint(info, "early_ept_timeout",
 				IDLE_POWERCOLLAPSE_DURATION * NSEC_PER_MSEC);
@@ -4090,6 +4114,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			CONNECTOR_PROP_AUTOREFRESH);
 
 	c_conn->vrr_caps = display_info->vrr_caps;
+	c_conn->dpu_dma_enabled = display_info->dpu_dma_enabled;
 
 	if (c_conn->vrr_caps.vrr_support &&
 			!c_conn->vrr_caps.video_mrr_support) {
@@ -4179,7 +4204,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 		dsi_display = (struct dsi_display *)(display);
 		if (dsi_display && dsi_display->panel) {
 			msm_property_install_range(&c_conn->property_info, "brightness",
-			0x0, 0, dsi_display->panel->bl_config.brightness_max_level, 0,
+			0x0, 0, 0xFFFF, 0,
 			CONNECTOR_PROP_BRIGHTNESS);
 		}
 	}
@@ -4373,9 +4398,11 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 			"conn%u",
 			c_conn->base.base.id);
 
-	rc = hfi_connector_init(connector_type, c_conn);
-	if (rc)
-		goto error_free_conn;
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = hfi_connector_init(connector_type, c_conn);
+		if (rc)
+			goto error_free_conn;
+	}
 
 	rc = sde_connector_get_info(&c_conn->base, &display_info);
 	if (rc)

@@ -1278,7 +1278,8 @@ static void _sde_plane_setup_pixel_ext(struct sde_plane *psde,
 	}
 }
 
-static inline void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate)
+void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate,
+	bool format_is_yuv)
 {
 	static const struct sde_csc_cfg sde_csc_YUV2RGB_601L = {
 		{
@@ -1315,12 +1316,19 @@ static inline void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane
 	}
 
 	/* revert to kernel default if override not available */
+	mutex_lock(&psde->property_info.property_lock);
+	if (!format_is_yuv) {
+		pstate->csc_ptr = 0;
+		mutex_unlock(&psde->property_info.property_lock);
+		return;
+	}
 	if (pstate->csc_usr_ptr)
 		pstate->csc_ptr = pstate->csc_usr_ptr;
 	else if (BIT(SDE_SSPP_CSC_10BIT) & psde->features)
 		pstate->csc_ptr = (struct sde_csc_cfg *)&sde_csc10_YUV2RGB_601L;
 	else
 		pstate->csc_ptr = (struct sde_csc_cfg *)&sde_csc_YUV2RGB_601L;
+	mutex_unlock(&psde->property_info.property_lock);
 
 	SDE_DEBUG_PLANE(psde, "using 0x%X 0x%X 0x%X...\n",
 			pstate->csc_ptr->csc_mv[0],
@@ -3264,14 +3272,55 @@ static int sde_plane_atomic_check(struct drm_plane *plane,
 }
 #endif
 
+static struct hfi_cmdbuf_t *_sde_plane_get_cmd_buf(struct drm_plane *plane)
+{
+	u32 disp_id = 0;
+	struct drm_crtc *drm_crtc = NULL;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_kms *hfi_kms = NULL;
+	struct msm_drm_private *priv = NULL;
+
+	if (plane && plane->dev && plane->dev->dev_private) {
+		priv = plane->dev->dev_private;
+		hfi_kms = ((priv && priv->kms) ?
+				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
+	}
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
+		return NULL;
+	}
+
+	if (plane->state && plane->state->crtc) {
+		drm_crtc = plane->state->crtc;
+		if (!drm_crtc) {
+			SDE_ERROR("invalid drm_crtc\n");
+			return NULL;
+		}
+	}
+	disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return NULL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	return cmd_buf;
+}
+
 void sde_plane_flush(struct drm_plane *plane)
 {
 	struct sde_plane *psde;
 	struct sde_plane_state *pstate;
 	struct msm_drm_private *priv;
 	enum msm_disp_op disp_op;
+	struct drm_crtc *drm_crtc =  NULL;
+	u32 disp_id = U32_MAX;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_util_u32_prop_helper *color_props = NULL;
+	struct hfi_client_t *hfi_client = NULL;
+	int ret = 0;
 
-	if (!plane || !plane->state) {
+	if (!plane || !plane->state || !plane->state->crtc) {
 		SDE_ERROR("invalid plane\n");
 		return;
 	}
@@ -3280,6 +3329,8 @@ void sde_plane_flush(struct drm_plane *plane)
 	pstate = to_sde_plane_state(plane->state);
 	priv = plane->dev->dev_private;
 	disp_op = sde_plane_get_disp_op(&psde->base);
+	drm_crtc = plane->state->crtc;
+	disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
 
 	/*
 	 * These updates have to be done immediately before the plane flush
@@ -3296,6 +3347,28 @@ void sde_plane_flush(struct drm_plane *plane)
 			psde->pipe_hw->obj_id = psde->hfi_plane->hfi_pipe_id;
 		psde->pipe_hw->ops.setup_csc[disp_op](psde->pipe_hw,
 					pstate->csc_ptr, priv->disp_op);
+	}
+
+	if (disp_op == MSM_DISP_OP_HFI) {
+		color_props = psde->pipe_hw->prop_helper;
+		cmd_buf = _sde_plane_get_cmd_buf(plane);
+		if (!cmd_buf)
+			SDE_ERROR("failed to get cmd_buf for plane:%d\n", DRMID(plane));
+		else
+			hfi_client = cmd_buf->ctx;
+
+		ret = hfi_adapter_add_set_property(hfi_client,
+				cmd_buf,
+				HFI_COMMAND_DISPLAY_SET_PROPERTY,
+				disp_id,
+				HFI_PAYLOAD_TYPE_U32_ARRAY,
+				hfi_util_u32_prop_helper_get_payload_addr(color_props),
+				hfi_util_u32_prop_helper_get_size(color_props),
+				HFI_HOST_FLAGS_NONE);
+		if (ret)
+			SDE_ERROR("failed to set HFI prop\n");
+
+		hfi_util_u32_prop_helper_reset(color_props);
 	}
 
 	/* flag h/w flush complete */
@@ -3770,6 +3843,7 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	bool fov_en = false;
 	u32 pp_idx;
 	enum msm_disp_op disp_op;
+	bool format_is_yuv;
 
 	SDE_DEBUG_PLANE(psde, "rotation 0x%X\n", pstate->rotation);
 	if (pstate->rotation & DRM_MODE_REFLECT_X)
@@ -3806,10 +3880,8 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	_sde_plane_sspp_setup_sys_cache(psde, pstate);
 
 	/* update csc */
-	if (SDE_FORMAT_IS_YUV(fmt))
-		_sde_plane_setup_csc(psde, pstate);
-	else
-		pstate->csc_ptr = 0;
+	format_is_yuv = SDE_FORMAT_IS_YUV(fmt) ? true : false;
+	_sde_plane_setup_csc(psde, pstate, format_is_yuv);
 
 	if (psde->pipe_hw->ops.setup_inverse_pma[disp_op]) {
 		uint32_t pma_mode = 0;
@@ -3854,41 +3926,6 @@ static void _sde_plane_update_sharpening(struct sde_plane *psde)
 	if (psde->pipe_hw->ops.setup_sharpening[disp_op])
 		psde->pipe_hw->ops.setup_sharpening[disp_op](psde->pipe_hw,
 				&psde->sharp_cfg);
-}
-
-static struct hfi_cmdbuf_t *_sde_plane_get_cmd_buf(struct drm_plane *plane)
-{
-	u32 disp_id = 0;
-	struct drm_crtc *drm_crtc = NULL;
-	struct hfi_cmdbuf_t *cmd_buf = NULL;
-	struct hfi_kms *hfi_kms = NULL;
-	struct msm_drm_private *priv = NULL;
-
-	if (plane && plane->dev && plane->dev->dev_private) {
-		priv = plane->dev->dev_private;
-		hfi_kms = ((priv && priv->kms) ?
-				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
-	}
-	if (!hfi_kms) {
-		SDE_ERROR("invalid hfi_kms\n");
-		return NULL;
-	}
-
-	if (plane->state && plane->state->crtc) {
-		drm_crtc = plane->state->crtc;
-		if (!drm_crtc) {
-			SDE_ERROR("invalid drm_crtc\n");
-			return NULL;
-		}
-	}
-	disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
-	if (disp_id == U32_MAX) {
-		SDE_ERROR("invalid display id\n");
-		return NULL;
-	}
-
-	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
-	return cmd_buf;
 }
 
 static void _sde_plane_update_properties(struct drm_plane *plane,
@@ -4004,7 +4041,8 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 		 * Once all the color processing properties are collected, invoke adapter api
 		 * to add all these properties as a single HFI Packet
 		 */
-		ret = hfi_adapter_add_set_property(cmd_buf,
+		ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+				cmd_buf,
 				HFI_COMMAND_DISPLAY_SET_PROPERTY,
 				disp_id,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -4013,6 +4051,9 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 				HFI_HOST_FLAGS_NONE);
 		if (ret)
 			SDE_ERROR("failed to set HFI prop\n");
+
+		if (psde->hfi_plane)
+			hfi_util_u32_prop_helper_reset(psde->hfi_plane->color_props);
 	}
 end:
 	return;
@@ -5954,9 +5995,11 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 		goto exit;
 	}
 
-	ret = hfi_plane_init(pipe, psde);
-	if (ret)
-		goto clean_plane;
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		ret = hfi_plane_init(pipe, psde);
+		if (ret)
+			goto clean_plane;
+	}
 
 	/* cache local stuff for later */
 	plane = &psde->base;

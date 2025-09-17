@@ -71,6 +71,17 @@
 /* Wait for at most 2 vsync for spec fence bind */
 #define SPEC_FENCE_TIMEOUT_MS 84
 
+/*
+ * This macro ensures that operations on the dirty flags are protected
+ * by the property_lock mutex to prevent race conditions.
+ */
+#define CRTC_DIRTY_OP_LOCK(crtc, op_func, bit, dirty) \
+	do { \
+		mutex_lock(&(crtc)->property_info.property_lock); \
+		op_func((bit), (dirty)); \
+		mutex_unlock(&(crtc)->property_info.property_lock); \
+	} while (0)
+
 struct sde_crtc_custom_events {
 	u32 event;
 	int (*func)(struct drm_crtc *crtc, bool en,
@@ -470,6 +481,35 @@ int sde_crtc_get_lb_layout_split(struct drm_crtc *crtc, struct drm_crtc_state *c
 	}
 
 	return layout_split;
+}
+
+bool sde_crtc_state_in_dpu_dma_mode(struct drm_crtc_state *c_state)
+{
+	struct drm_connector *connector;
+	struct drm_encoder *encoder;
+	struct sde_connector *sde_conn;
+	bool encoder_valid = false;
+
+	if (!c_state || !c_state->crtc)
+		return false;
+
+	drm_for_each_encoder_mask(encoder, c_state->crtc->dev,
+			c_state->encoder_mask) {
+		if (!sde_encoder_in_clone_mode(encoder)) {
+			encoder_valid = true;
+			break;
+		}
+	}
+
+	if (!encoder_valid)
+		return false;
+
+	connector = sde_encoder_get_connector(c_state->crtc->dev, encoder);
+	if (!connector)
+		return false;
+
+	sde_conn = to_sde_connector(connector);
+	return sde_conn->dpu_dma_enabled;
 }
 
 void sde_crtc_get_loopback_resolution(struct sde_crtc_state *cstate,
@@ -2475,7 +2515,8 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			for (i = 0; i < cstate->num_dim_layers; i++)
 				_sde_crtc_setup_dim_layer_cfg(crtc, sde_crtc,
 						mixer, &cstate->dim_layer[i]);
-			clear_bit(SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty);
+			CRTC_DIRTY_OP_LOCK(sde_crtc, clear_bit,	SDE_CRTC_DIRTY_DIM_LAYERS,
+					cstate->dirty);
 		}
 	}
 
@@ -2589,7 +2630,8 @@ static void _sde_crtc_blend_setup(struct drm_crtc *crtc,
 	}
 
 	if (test_bit(SDE_CRTC_DIRTY_DIM_LAYERS, &sde_crtc->revalidate_mask)) {
-		set_bit(SDE_CRTC_DIRTY_DIM_LAYERS, sde_crtc_state->dirty);
+		CRTC_DIRTY_OP_LOCK(sde_crtc, set_bit, SDE_CRTC_DIRTY_DIM_LAYERS,
+				sde_crtc_state->dirty);
 		clear_bit(SDE_CRTC_DIRTY_DIM_LAYERS, &sde_crtc->revalidate_mask);
 	}
 
@@ -3870,6 +3912,8 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 
 	if ((crtc->state->active_changed || cont_splash_enabled) && crtc->state->active)
 		sde_crtc_event_notify(crtc, DRM_EVENT_CRTC_POWER, &power_on, sizeof(u32));
+
+	sde_crtc->kickoff_in_progress = false;
 }
 
 /**
@@ -3916,11 +3960,13 @@ static void _sde_crtc_set_dim_layer_v1(struct drm_crtc *crtc,
 	struct sde_hw_dim_layer *dim_layer;
 	u32 count, i;
 	struct sde_kms *kms;
+	struct sde_crtc *sde_crtc;
 
 	if (!crtc || !cstate) {
 		SDE_ERROR("invalid crtc or cstate\n");
 		return;
 	}
+	sde_crtc = to_sde_crtc(crtc);
 	dim_layer = cstate->dim_layer;
 
 	if (!usr_ptr) {
@@ -3979,7 +4025,8 @@ static void _sde_crtc_set_dim_layer_v1(struct drm_crtc *crtc,
 				dim_layer[i].color_fill.color_3);
 	}
 clear:
-	set_bit(SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty);
+	CRTC_DIRTY_OP_LOCK(sde_crtc, set_bit, SDE_CRTC_DIRTY_DIM_LAYERS,
+			cstate->dirty);
 }
 
 /**
@@ -4073,7 +4120,8 @@ static int _sde_crtc_set_dest_scaler(struct sde_crtc *sde_crtc,
 	}
 
 	cstate->num_ds = count;
-	set_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
+	CRTC_DIRTY_OP_LOCK(sde_crtc, set_bit, SDE_CRTC_DIRTY_DEST_SCALER,
+			cstate->dirty);
 	SDE_EVT32_VERBOSE(DRMID(&sde_crtc->base), count);
 
 	return 0;
@@ -4265,7 +4313,14 @@ static void _sde_crtc_check_dest_scaler_data_disable(struct drm_crtc *crtc,
 	struct sde_crtc_state *cstate, u32 num_ds_enable)
 {
 	struct sde_hw_ds_cfg *cfg;
+	struct sde_crtc *sde_crtc;
 	int i;
+
+	if (!crtc || !cstate) {
+		SDE_ERROR("invalid crtc or cstate\n");
+		return;
+	}
+	sde_crtc = to_sde_crtc(crtc);
 
 	SDE_DEBUG("dest scaler status : %d -> %d\n",
 		cstate->num_ds_enabled, num_ds_enable);
@@ -4285,10 +4340,12 @@ static void _sde_crtc_check_dest_scaler_data_disable(struct drm_crtc *crtc,
 			}
 		}
 		cstate->num_ds_enabled = num_ds_enable;
-		set_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
+		CRTC_DIRTY_OP_LOCK(sde_crtc, set_bit, SDE_CRTC_DIRTY_DEST_SCALER,
+				cstate->dirty);
 	} else {
 		if (!cstate->num_ds_enabled)
-			clear_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
+			CRTC_DIRTY_OP_LOCK(sde_crtc, clear_bit,	SDE_CRTC_DIRTY_DEST_SCALER,
+					cstate->dirty);
 	}
 }
 
@@ -4388,7 +4445,8 @@ disable:
 	goto end;
 
 err:
-	clear_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
+	CRTC_DIRTY_OP_LOCK(sde_crtc, clear_bit,	SDE_CRTC_DIRTY_DEST_SCALER,
+			cstate->dirty);
 end:
 	mutex_unlock(&sde_crtc->crtc_lock);
 	return ret;
@@ -5212,7 +5270,8 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			 * Once all the color processing properties are collected, invoke adapter
 			 * api to add all these properties as a single HFI Packet
 			 */
-			ret = hfi_adapter_add_set_property(cmd_buf,
+			ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+				cmd_buf,
 				HFI_COMMAND_DISPLAY_SET_PROPERTY, disp_id,
 				HFI_PAYLOAD_TYPE_U32_ARRAY,
 				hfi_util_u32_prop_helper_get_payload_addr(color_props),
@@ -5365,7 +5424,7 @@ static void sde_crtc_atomic_flush_common(struct drm_crtc *crtc,
 	sde_core_perf_crtc_update_llcc(crtc);
 
 	/* wait for acquire fences before anything else is done */
-	cstate->hwfence_in_fences_set = _sde_crtc_wait_for_fences(crtc);
+	_sde_crtc_wait_for_fences(crtc);
 
 	/*
 	 * Final plane updates: Give each plane a chance to complete all
@@ -5817,7 +5876,6 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 
 		sde_encoder_kickoff(encoder, true);
 	}
-	sde_crtc->kickoff_in_progress = false;
 
 	/* store the event after frame trigger */
 	if (sde_crtc->event) {
@@ -6062,7 +6120,8 @@ void sde_crtc_reset_sw_state(struct drm_crtc *crtc)
 	/* mark other properties which need to be dirty for next update */
 	set_bit(SDE_CRTC_DIRTY_DIM_LAYERS, &sde_crtc->revalidate_mask);
 	if (cstate->num_ds_enabled)
-		set_bit(SDE_CRTC_DIRTY_DEST_SCALER, cstate->dirty);
+		CRTC_DIRTY_OP_LOCK(sde_crtc, set_bit, SDE_CRTC_DIRTY_DEST_SCALER,
+				cstate->dirty);
 }
 
 static void sde_crtc_post_ipc(struct drm_crtc *crtc)
@@ -6198,7 +6257,6 @@ static void _sde_crtc_reset(struct drm_crtc *crtc)
 	/* disable clk & bw control until clk & bw properties are set */
 	cstate->bw_control = false;
 	cstate->bw_split_vote = false;
-	cstate->hwfence_in_fences_set = false;
 
 	sde_crtc_static_img_control(crtc, CACHE_STATE_DISABLED, false);
 }
@@ -6906,7 +6964,10 @@ static int _sde_crtc_check_get_pstates(struct drm_crtc *crtc,
 
 	for (i = 1; i < SSPP_MAX; i++) {
 		if (pipe_staged[i]) {
-			sde_plane_clear_multirect(pipe_staged[i]);
+			/* Don't modify the current state in check context */
+			if (pipe_staged[i]->plane->state != pipe_staged[i])
+				sde_plane_clear_multirect(pipe_staged[i]);
+
 			if (is_sde_plane_virtual(pipe_staged[i]->plane)) {
 				struct sde_plane_state *psde_state;
 
@@ -7090,6 +7151,8 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	u32 crtc_width, crtc_height;
 	enum sde_layout layout;
 	bool cac_lb_plane = false;
+	bool dpu_dma_mode = false;
+	u32 dma_layer_cnt = 0;
 
 	kms = _sde_crtc_get_kms(crtc);
 
@@ -7109,8 +7172,12 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 	mode = &crtc_state->adjusted_mode;
 	sde_crtc_get_resolution(crtc, crtc_state, mode, &crtc_width, &crtc_height);
 	lb_layout_split = sde_crtc_get_lb_layout_split(crtc, crtc_state);
+	dpu_dma_mode = sde_crtc_state_in_dpu_dma_mode(crtc_state);
 
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
+		const struct msm_format *msm_fmt;
+		const struct sde_format *fmt;
+
 		plane_state = drm_atomic_get_existing_plane_state(
 				crtc_state->state, plane);
 		if (!plane_state)
@@ -7120,6 +7187,23 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 		cac_lb_plane =
 			(sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE) ==
 				SDE_CAC_LOOPBACK_UNPACK) ? true : false;
+
+		if (dpu_dma_mode) {
+			if (dma_layer_cnt >= 1) {
+				SDE_ERROR("blending is not supported for dma_mode\n");
+				return -EOPNOTSUPP;
+			}
+
+			msm_fmt = msm_framebuffer_format(plane_state->fb);
+			fmt = to_sde_format(msm_fmt);
+			if (!SDE_FORMAT_IS_DPU_DMA(fmt)) {
+				SDE_ERROR("plane%d: unsupported fmt for DPU DMA mode!\n",
+					DRMID(plane));
+				return -EOPNOTSUPP;
+			}
+
+			dma_layer_cnt++;
+		}
 
 		layout_split = cac_lb_plane ? lb_layout_split : crtc_width >> 1;
 		if (plane_state->crtc_x >= layout_split) {
@@ -9277,14 +9361,16 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	if (!sde_crtc)
 		return ERR_PTR(-ENOMEM);
 
-	rc = hfi_crtc_init(sde_crtc);
-	if (rc) {
-		kfree(sde_crtc);
-		return ERR_PTR(rc);
-	}
-
 	crtc = &sde_crtc->base;
 	crtc->dev = dev;
+
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = hfi_crtc_init(sde_crtc);
+		if (rc) {
+			kfree(sde_crtc);
+			return ERR_PTR(rc);
+		}
+	}
 
 	mutex_init(&sde_crtc->crtc_lock);
 	spin_lock_init(&sde_crtc->spin_lock);
@@ -9764,7 +9850,8 @@ static int _sde_crtc_set_noise_layer(struct sde_crtc *sde_crtc,
 	if (!usr_ptr) {
 		SDE_DEBUG("noise layer removed\n");
 		cstate->noise_layer_en = false;
-		set_bit(SDE_CRTC_NOISE_LAYER, cstate->dirty);
+		CRTC_DIRTY_OP_LOCK(sde_crtc, set_bit, SDE_CRTC_NOISE_LAYER,
+				cstate->dirty);
 		return 0;
 	}
 	ret = copy_from_user(&cstate->layer_cfg, usr_ptr,
@@ -9797,7 +9884,8 @@ static int _sde_crtc_set_noise_layer(struct sde_crtc *sde_crtc,
 		return -EINVAL;
 	}
 	cstate->noise_layer_en = true;
-	set_bit(SDE_CRTC_NOISE_LAYER, cstate->dirty);
+	CRTC_DIRTY_OP_LOCK(sde_crtc, set_bit, SDE_CRTC_NOISE_LAYER,
+			cstate->dirty);
 	return 0;
 }
 
@@ -9850,7 +9938,8 @@ static void sde_cp_crtc_apply_noise(struct drm_crtc *crtc,
 			lm->ops.setup_noise_layer[disp_op](lm, &cfg);
 	}
 	if (!cstate->noise_layer_en)
-		clear_bit(SDE_CRTC_NOISE_LAYER, cstate->dirty);
+		CRTC_DIRTY_OP_LOCK(scrtc, clear_bit, SDE_CRTC_NOISE_LAYER,
+				cstate->dirty);
 }
 
 void sde_crtc_disable_cp_features(struct drm_crtc *crtc)

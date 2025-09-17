@@ -524,10 +524,12 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 
 	convert_to_dsi_mode(mode, &dsi_mode);
 	msm_parse_mode_priv_info(&conn_state->msm_mode, &dsi_mode);
-	new_sub_mode.dsc_mode = sde_connector_get_property(drm_conn_state,
-				CONNECTOR_PROP_DSC_MODE);
-	new_sub_mode.pixel_format_mode = sde_connector_get_property(drm_conn_state,
-				CONNECTOR_PROP_BPP_MODE);
+	rc = sde_connector_state_get_sub_mode(drm_conn_state, &new_sub_mode);
+	if (rc) {
+		DSI_ERR("[%s] failed to get sub mode\n", display->name);
+		return rc;
+	}
+
 	/*
 	 * retrieve dsi mode from dsi driver's cache since not safe to take
 	 * the drm mode config mutex in all paths
@@ -672,6 +674,9 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 	mode_info->wd_jitter = dsi_mode->priv_info->wd_jitter;
 	mode_info->te_pulse_width_us = dsi_mode->timing.te_pulse_width_us;
 
+	memcpy(&mode_info->esync_params, &dsi_mode->priv_info->esync_params,
+			sizeof(struct esync_params));
+
 	memcpy(&mode_info->topology, &dsi_mode->priv_info->topology,
 			sizeof(struct msm_display_topology));
 
@@ -711,6 +716,15 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 		mode_info->comp_info.comp_ratio = mult_frac(100, src_bpp,
 				tar_bpp);
 		mode_info->wide_bus_en = dsi_mode->priv_info->widebus_support;
+	}
+
+	if (dsi_display->panel->host_config.dpu_dma_enabled) {
+		if (dsi_mode->priv_info->widebus_support) {
+			mode_info->wide_bus_en = dsi_mode->priv_info->widebus_support;
+		} else {
+			DSI_ERR("DPU DMA mode cannot enable without widebus support\n");
+			return -EINVAL;
+		}
 	}
 
 	/**
@@ -951,6 +965,9 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 		sde_kms_info_add_keystr(info, "dpu_ctl_op_sync", "true");
 		sde_kms_info_add_keystr(info, "has_disp_in_other_core", "true");
 	}
+
+	if (panel->host_config.dpu_dma_enabled)
+		sde_kms_info_add_keyint(info, "dpu_dma_enabled", 1);
 
 end:
 	return 0;

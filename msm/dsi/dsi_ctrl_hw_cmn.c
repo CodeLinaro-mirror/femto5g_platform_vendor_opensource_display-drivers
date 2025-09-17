@@ -537,6 +537,41 @@ void dsi_ctrl_hw_cmn_set_video_timing(struct dsi_ctrl_hw *ctrl,
 	}
 }
 
+static void dsi_configure_compression_stream(struct dsi_ctrl_hw *ctrl,
+					u32 vc_id,
+					u32 pkt_per_line,
+					u32 eol_byte_num,
+					u32 bytes_in_slice)
+{
+	u32 reg_ctrl = 0, reg_ctrl2 = 0, reg = 0;
+	u32 offset = 0;
+
+	offset = (vc_id != 0) ? 16 : 0;
+	reg_ctrl = DSI_R32(ctrl, DSI_COMMAND_COMPRESSION_MODE_CTRL);
+	reg_ctrl2 = DSI_R32(ctrl, DSI_COMMAND_COMPRESSION_MODE_CTRL2);
+
+	reg = 0x39 << 8;
+	/*
+	 * pkt_per_line:
+	 * 0 == 1 pkt
+	 * 1 == 2 pkt
+	 * 2 == 4 pkt
+	 * 3 pkt is not supported
+	 */
+	reg |= ((pkt_per_line >> 1) & 0x3) << 6;
+	reg |= (eol_byte_num & 0x3) << 4;
+	reg |= 1; /* set STREAM0_EN=1 */
+
+	reg_ctrl &= ~(0xFFFF << offset);
+	reg_ctrl |= (reg << offset);
+	reg_ctrl2 &= ~(0xFFFF << offset);
+	reg_ctrl2 |= (bytes_in_slice << offset);
+
+	DSI_W32(ctrl, DSI_COMMAND_COMPRESSION_MODE_CTRL, reg_ctrl);
+	DSI_W32(ctrl, DSI_COMMAND_COMPRESSION_MODE_CTRL2, reg_ctrl2);
+	DSI_CTRL_HW_DBG(ctrl, "reg_ctrl 0x%x reg_ctrl2 0x%x\n", reg_ctrl, reg_ctrl2);
+}
+
 /**
  * setup_cmd_stream() - set up parameters for command pixel streams
  * @ctrl:              Pointer to controller host hardware.
@@ -556,8 +591,8 @@ void dsi_ctrl_hw_cmn_setup_cmd_stream(struct dsi_ctrl_hw *ctrl,
 	u32 width_final = 0, stride_final = 0;
 	u32 height_final = 0;
 	u32 stream_total = 0, stream_ctrl = 0;
-	u32 reg_ctrl = 0, reg_ctrl2 = 0, data = 0;
-	u32 reg = 0, offset = 0;
+	u32 data = 0;
+	u32 reg = 0;
 	int pic_width = 0, this_frame_slices = 0, intf_ip_w = 0;
 	u32 pkt_per_line = 0, eol_byte_num = 0, bytes_in_slice = 0;
 	u32 bpp;
@@ -621,31 +656,25 @@ void dsi_ctrl_hw_cmn_setup_cmd_stream(struct dsi_ctrl_hw *ctrl,
 			width_final = DIV_ROUND_UP(width_final, 3);
 		}
 
-		reg_ctrl = DSI_R32(ctrl, DSI_COMMAND_COMPRESSION_MODE_CTRL);
-		reg_ctrl2 = DSI_R32(ctrl, DSI_COMMAND_COMPRESSION_MODE_CTRL2);
+		dsi_configure_compression_stream(ctrl, vc_id, pkt_per_line,
+				eol_byte_num, bytes_in_slice);
+	} else if (cfg->dpu_dma_enabled) {
+		if (!ctrl->widebus_support) {
+			DSI_CTRL_HW_ERR(ctrl, "widebus not supported, unable to use DMA mode.\n");
+			return;
+		}
+		reg = DSI_R32(ctrl, DSI_COMMAND_MODE_MDP_CTRL2);
+		reg |= BIT(20); /* Get 48-bit compressed data per pclk from MDP */
+		DSI_W32(ctrl, DSI_COMMAND_MODE_MDP_CTRL2, reg);
 
-		if (vc_id != 0)
-			offset = 16;
+		bytes_in_slice = mode->h_active;
+		stride_final = mode->h_active;
+		width_final = DIV_ROUND_UP(DIV_ROUND_UP(stride_final, 3), 2);
+		height_final = mode->v_active;
 
-		reg = 0x39 << 8;
-		/*
-		 * pkt_per_line:
-		 * 0 == 1 pkt
-		 * 1 == 2 pkt
-		 * 2 == 4 pkt
-		 * 3 pkt is not supported
-		 */
-		reg |= (pkt_per_line >> 1) << 6;
-		reg |= eol_byte_num << 4;
-		reg |= 1;
-
-		reg_ctrl &= ~(0xFFFF << offset);
-		reg_ctrl |= (reg << offset);
-		reg_ctrl2 &= ~(0xFFFF << offset);
-		reg_ctrl2 |= (bytes_in_slice << offset);
-
-		DSI_CTRL_HW_DBG(ctrl, "reg_ctrl 0x%x reg_ctrl2 0x%x\n",
-				reg_ctrl, reg_ctrl2);
+		dsi_configure_compression_stream(ctrl, vc_id, 0, 0, bytes_in_slice);
+		DSI_CTRL_HW_DBG(ctrl, "stride_final 0x%x width_final 0x%x",
+				stride_final, width_final);
 	}
 
 	/* HS Timer value */
@@ -654,9 +683,6 @@ void dsi_ctrl_hw_cmn_setup_cmd_stream(struct dsi_ctrl_hw *ctrl,
 	stream_ctrl = (stride_final + 1) << 16;
 	stream_ctrl |= (vc_id & 0x3) << 8;
 	stream_ctrl |= 0x39; /* packet data type */
-
-	DSI_W32(ctrl, DSI_COMMAND_COMPRESSION_MODE_CTRL, reg_ctrl);
-	DSI_W32(ctrl, DSI_COMMAND_COMPRESSION_MODE_CTRL2, reg_ctrl2);
 
 	DSI_W32(ctrl, DSI_COMMAND_MODE_MDP_STREAM0_CTRL, stream_ctrl);
 	DSI_W32(ctrl, DSI_COMMAND_MODE_MDP_STREAM1_CTRL, stream_ctrl);

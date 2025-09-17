@@ -5619,9 +5619,23 @@ int dsi_display_cont_splash_res_disable(void *dsi_display)
 	/* Remove the panel vote that was added during dsi display probe */
 	if (!(display->panel->ctl_op_sync && !strcmp(display->panel->type, "secondary"))) {
 		rc = dsi_pwr_enable_regulator(&display->panel->power_info, false);
-		if (rc)
+		if (rc) {
 			DSI_ERR("[%s] failed to disable vregs, rc=%d\n",
 				display->panel->name, rc);
+			return rc;
+		}
+	}
+
+	/* Remove each panels post_power vote that was added during dsi display probe */
+	if (display->panel && display->panel->need_post_on_supply &&
+		display->panel->post_power_enable_status) {
+		rc = dsi_pwr_enable_regulator(&display->panel->post_power_info, false);
+		if (rc) {
+			DSI_ERR("[%s] failed to disable post vregs, rc=%d\n",
+					display->panel->name, rc);
+			return rc;
+		}
+		display->panel->post_power_enable_status = false;
 	}
 	return rc;
 }
@@ -6349,6 +6363,23 @@ static int dsi_display_init(struct dsi_display *display)
 					display->panel->name, rc);
 			return rc;
 		}
+	}
+
+	/*
+	 * Vote on each panels post_power to make sure regulators are on for cont-splash
+	 * enabled usecase. And avoid kernel driver disable panel regulator after
+	 * dsi probe is complete.
+	 */
+
+	if (display->panel && display->panel->need_post_on_supply &&
+		!display->panel->post_power_enable_status) {
+		rc = dsi_pwr_enable_regulator(&display->panel->post_power_info, true);
+		if (rc) {
+			DSI_ERR("[%s] failed to enable post vregs, rc=%d\n",
+					display->panel->name, rc);
+			return rc;
+		}
+		display->panel->post_power_enable_status = true;
 	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
@@ -7186,10 +7217,6 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->has_qsync_min_fps_list = (display->panel->qsync_caps.qsync_min_fps_list_len > 0);
 	info->avr_step_fps = display->panel->avr_caps.avr_step_fps;
 	info->esync_enabled = display->panel->esync_caps.esync_support;
-	info->esync_milli_skew = display->panel->esync_caps.milli_skew;
-	info->esync_hsync_milli_pulse_width = display->panel->esync_caps.hsync_milli_pulse_width;
-	info->esync_emsync_fps = display->panel->esync_caps.emsync_fps;
-	info->esync_emsync_milli_pulse_width = display->panel->esync_caps.emsync_milli_pulse_width;
 	info->vrr_caps.vrr_support = display->panel->vrr_caps.vrr_support;
 	info->vrr_caps.video_psr_support = display->panel->vrr_caps.video_psr_support;
 	info->vrr_caps.video_mrr_support = display->panel->vrr_caps.video_mrr_support;
@@ -7201,7 +7228,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->disp_te_gpio = display->disp_te_gpio;
 	info->esd_rw_check = display->panel->esd_config.esd_enabled &&
 			display->panel->esd_config.status_mode == ESD_MODE_PANEL_RW;
-
+	info->dpu_dma_enabled = display->panel->host_config.dpu_dma_enabled;
 	switch (display->panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:
 		info->curr_panel_mode = MSM_DISPLAY_VIDEO_MODE;
@@ -7524,10 +7551,29 @@ void dsi_display_put_mode(struct dsi_display *display,
 	dsi_panel_put_mode(mode);
 }
 
+static void _dsi_display_populate_esync_caps(struct dsi_display *display,
+	struct dsi_display_mode *dsi_mode,
+	struct dsi_esync_capabilities *esync_caps)
+{
+	if (!display || !dsi_mode) {
+		DSI_ERR("invalid arguments\n");
+		return;
+	}
+
+	if (!esync_caps)
+		return;
+
+	if (esync_caps->esync_support)
+		memcpy(&dsi_mode->priv_info->esync_params,
+			&esync_caps->default_esync_params,
+			sizeof(struct esync_params));
+}
+
 int dsi_display_get_modes_helper(struct dsi_display *display,
 	struct dsi_display_ctrl *ctrl, u32 timing_mode_count,
 	struct dsi_dfps_capabilities dfps_caps, struct dsi_qsync_capabilities *qsync_caps,
-	struct dsi_dyn_clk_caps *dyn_clk_caps, struct dsi_avr_capabilities *avr_caps)
+	struct dsi_dyn_clk_caps *dyn_clk_caps, struct dsi_avr_capabilities *avr_caps,
+	struct dsi_esync_capabilities *esync_caps)
 {
 	int dsc_modes = 0, nondsc_modes = 0, rc = 0, i, start, end;
 	u32 num_dfps_rates, mode_idx, sublinks_count, array_idx = 0;
@@ -7654,6 +7700,11 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			if (!sub_mode->timing.avr_step_fps && avr_caps->avr_step_fps)
 				sub_mode->timing.avr_step_fps = avr_caps->avr_step_fps;
 
+			/* populate mode esync params from panel esync params if the panel
+			 * supports esync but emsync switch feature is disabled
+			 */
+			_dsi_display_populate_esync_caps(display, sub_mode, esync_caps);
+
 			/*
 			 * Qsync min fps for the mode will be populated in the timing info
 			 * in dsi_panel_get_mode function.
@@ -7736,6 +7787,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 	int rc = -EINVAL;
 	struct dsi_qsync_capabilities *qsync_caps;
 	struct dsi_avr_capabilities *avr_caps;
+	struct dsi_esync_capabilities *esync_caps;
 
 	if (!display || !out_modes) {
 		DSI_ERR("Invalid params\n");
@@ -7769,6 +7821,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 	qsync_caps = &(display->panel->qsync_caps);
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 	avr_caps = &(display->panel->avr_caps);
+	esync_caps = &(display->panel->esync_caps);
 
 	timing_mode_count = display->panel->num_timing_nodes;
 
@@ -7778,7 +7831,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 		display->cmdline_timing = NO_OVERRIDE;
 
 	rc = dsi_display_get_modes_helper(display, ctrl, timing_mode_count,
-			dfps_caps, qsync_caps, dyn_clk_caps, avr_caps);
+			dfps_caps, qsync_caps, dyn_clk_caps, avr_caps, esync_caps);
 	if (rc)
 		goto error;
 

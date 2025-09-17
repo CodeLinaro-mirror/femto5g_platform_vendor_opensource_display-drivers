@@ -3374,6 +3374,133 @@ static int _sde_kms_helper_reset_custom_properties(struct sde_kms *sde_kms,
 	return ret;
 }
 
+#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
+static int _sde_kms_helper_disable_plane(struct drm_plane *plane,
+				      struct drm_plane_state *plane_state)
+{
+	int ret;
+
+	ret = drm_atomic_set_crtc_for_plane(plane_state, NULL);
+	if (ret != 0)
+		return ret;
+
+	drm_atomic_set_fb_for_plane(plane_state, NULL);
+	plane_state->crtc_x = 0;
+	plane_state->crtc_y = 0;
+	plane_state->crtc_w = 0;
+	plane_state->crtc_h = 0;
+	plane_state->src_x = 0;
+	plane_state->src_y = 0;
+	plane_state->src_w = 0;
+	plane_state->src_h = 0;
+
+	return 0;
+}
+
+static int _sde_kms_helper_update_output_state(struct drm_atomic_state *state,
+			       struct drm_mode_set *set)
+{
+	struct drm_device *dev = set->crtc->dev;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *new_crtc_state;
+	struct drm_connector *connector;
+	struct drm_connector_state *new_conn_state;
+	int ret, i;
+
+	if (!drm_modeset_is_locked(&dev->mode_config.connection_mutex)) {
+		ret = drm_modeset_lock(&dev->mode_config.connection_mutex,
+					state->acquire_ctx);
+		if (ret)
+			return ret;
+	}
+
+	ret = drm_atomic_add_affected_connectors(state, set->crtc);
+	if (ret)
+		return ret;
+
+	for_each_new_connector_in_state(state, connector, new_conn_state, i) {
+		if (new_conn_state->crtc == set->crtc) {
+			ret = drm_atomic_set_crtc_for_connector(new_conn_state,
+								NULL);
+			if (ret)
+				return ret;
+
+			new_conn_state->link_status = DRM_LINK_STATUS_GOOD;
+		}
+	}
+
+	for (i = 0; i < set->num_connectors; i++) {
+		new_conn_state = drm_atomic_get_connector_state(state,
+								set->connectors[i]);
+		if (IS_ERR(new_conn_state))
+			return PTR_ERR(new_conn_state);
+
+		ret = drm_atomic_set_crtc_for_connector(new_conn_state,
+							set->crtc);
+		if (ret)
+			return ret;
+	}
+
+	for_each_new_crtc_in_state(state, crtc, new_crtc_state, i) {
+		if (crtc == set->crtc)
+			continue;
+
+		if (!new_crtc_state->connector_mask) {
+			ret = drm_atomic_set_mode_prop_for_crtc(new_crtc_state,
+								NULL);
+			if (ret < 0)
+				return ret;
+
+			new_crtc_state->active = false;
+		}
+	}
+
+	return 0;
+}
+
+static int _sde_kms_helper_set_config(struct drm_mode_set *set,
+				   struct drm_atomic_state *state)
+{
+	struct drm_crtc_state *crtc_state;
+	struct drm_plane_state *primary_state;
+	struct drm_crtc *crtc = set->crtc;
+
+	int ret;
+
+	crtc_state = drm_atomic_get_crtc_state(state, crtc);
+	if (IS_ERR(crtc_state))
+		return PTR_ERR(crtc_state);
+
+	primary_state = drm_atomic_get_plane_state(state, crtc->primary);
+	if (IS_ERR(primary_state))
+		return PTR_ERR(primary_state);
+
+	if (set->fb)
+		pr_info("warning: framebuffer is not NULL\n");
+	if (set->num_connectors)
+		pr_info("warning: num_connectors > 0 :%zu\n", set->num_connectors);
+
+
+	ret = drm_atomic_set_mode_for_crtc(crtc_state, NULL);
+	if (ret != 0)
+		return ret;
+
+	crtc_state->active = false;
+
+	ret = drm_atomic_set_crtc_for_plane(primary_state, NULL);
+	if (ret != 0)
+		return ret;
+
+	drm_atomic_set_fb_for_plane(primary_state, NULL);
+
+	ret = _sde_kms_helper_update_output_state(state, set);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+#endif /* (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE) */
+
 static void sde_kms_lastclose(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
@@ -3410,6 +3537,9 @@ static void sde_kms_lastclose(struct msm_kms *kms)
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
 
 retry:
+	ret = drm_modeset_lock_all_ctx(dev, &ctx);
+	if (ret)
+		goto out_state;
 #if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
 	drm_for_each_plane(plane, dev) {
 		struct drm_plane_state *plane_state;
@@ -3426,7 +3556,7 @@ retry:
 		if (plane->type == DRM_PLANE_TYPE_PRIMARY)
 			continue;
 
-		ret = __drm_atomic_helper_disable_plane(plane, plane_state);
+		ret = _sde_kms_helper_disable_plane(plane, plane_state);
 		if (ret != 0)
 			goto out_state;
 	}
@@ -3436,15 +3566,11 @@ retry:
 
 		mode_set.crtc = crtc;
 
-		ret = __drm_atomic_helper_set_config(&mode_set, state);
+		ret = _sde_kms_helper_set_config(&mode_set, state);
 		if (ret != 0)
 			goto out_state;
 	}
 #endif /* (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE) */
-
-	ret = drm_modeset_lock_all_ctx(dev, &ctx);
-	if (ret)
-		goto out_state;
 
 	ret = _sde_kms_helper_reset_custom_properties(sde_kms, state);
 	if (ret)
@@ -3811,6 +3937,7 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 	struct sde_connector *c_conn;
 	struct drm_crtc_state *crtc_state;
 	struct drm_connector_state *conn_state;
+	struct drm_connector_list_iter iter;
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	int i, ret;
 	u32 frame_trigger;
@@ -3888,14 +4015,20 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 		sde_kms->frame_trigger_state = MSM_DISP_OP_HFI;
 
 		if (sde_kms->hfi_session_start) {
+			int wb_idx = 0;
+			int dsi_idx = 0;
 			ret = sde_kms_setup_hfi(priv, dev);
 			if (ret) {
 				SDE_ERROR("HFI setup failed\n");
 				return -EINVAL;
 			}
 
+			hfi_kms_send_trace_cfg(sde_kms->hfi_kms, HFI_TRUE);
 			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
 			hfi_kms_get_catalog_data(sde_kms->hfi_kms);
+			ret = sde_dbg_setup(sde_kms->dev->dev);
+			if (ret)
+				SDE_ERROR("error with debug setup ret: %d\n", ret);
 
 			drm_for_each_plane(plane, dev)
 				sde_plane_post_init(plane);
@@ -3904,6 +4037,21 @@ static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
 			ret = _sde_kms_send_reg_dma_last_cmd_hfi(sde_kms);
 			if (ret)
 				SDE_ERROR("failed to send last command LUT DMA buffer to HFI\n");
+
+			drm_connector_list_iter_begin(dev, &iter);
+			drm_for_each_connector_iter(conn, &iter) {
+				struct sde_connector *sde_conn;
+
+				sde_conn = to_sde_connector(conn);
+
+				if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+					sde_connector_setup_obj_id(conn,
+						sde_kms->hfi_kms->catalog->wb_indices[wb_idx++]);
+				else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
+					sde_connector_setup_obj_id(conn,
+						sde_kms->hfi_kms->catalog->dsi_indices[dsi_idx++]);
+			}
+			drm_connector_list_iter_end(&iter);
 
 			sde_kms->hfi_session_start = false;
 		}
@@ -4111,6 +4259,11 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 
 	sde_kms = to_sde_kms(kms);
 	dev = sde_kms->dev;
+
+	if (!sde_kms->catalog) {
+		SDE_DEBUG("Device catalog absent, skip atomic_check\n");
+		return -ENODEV;
+	}
 
 	SDE_ATRACE_BEGIN("atomic_check");
 
@@ -6336,10 +6489,12 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	rc = hfi_kms_init(sde_kms);
-	if (rc) {
-		kfree(sde_kms);
-		return ERR_PTR(rc);
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = hfi_kms_init(sde_kms);
+		if (rc) {
+			kfree(sde_kms);
+			return ERR_PTR(rc);
+		}
 	}
 
 	msm_kms_init(&sde_kms->base, &kms_funcs);

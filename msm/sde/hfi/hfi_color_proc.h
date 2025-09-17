@@ -12,8 +12,10 @@
  * hfi_sspp_setup_csc - setup color space conversion in HFI path
  * @ctx: Pointer to pipe context
  * @data: Pointer to config structure
+ * @disp_op: Display operation mode (HWIO, HFI)
  */
-void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data);
+void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
+	enum msm_disp_op disp_op);
 
 /**
  * hfi_setup_ucsc_igcv1 - set UCSC IGC cp block in HFI path
@@ -73,4 +75,12 @@ void hfi_setup_dspp_pa_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg);
  * @cfg: Pointer to dither data
  */
 void hfi_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * hfi_setup_demura_backlight_cfg_v4 - setup demura backlight in HFI path
+ * @ctx: Pointer to DSPP context
+ * @hw_cfg: pointer to sde_hw_cp_cfg containing u32 backlight data
+ */
+void hfi_setup_demura_backlight_cfg_v4(struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg);
+
 #endif /* _HFI_COLOR_PROC_H_ */

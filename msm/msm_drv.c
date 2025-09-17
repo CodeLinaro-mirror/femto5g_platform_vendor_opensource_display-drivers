@@ -1209,9 +1209,11 @@ static void context_close(struct msm_file_private *ctx)
 static void msm_drm_release(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
+	struct platform_device *pdev = to_platform_device(dev->dev);
 
 	dev->dev_private = NULL;
 	kfree(priv);
+	platform_set_drvdata(pdev, NULL);
 }
 
 static void msm_preclose(struct drm_device *dev, struct drm_file *file)
@@ -2461,7 +2463,7 @@ static const struct component_master_ops msm_drm_ops = {
 
 static int msm_drm_component_dependency_check(struct device *dev)
 {
-	struct device_node *node;
+	struct device_node *node, *parent_node;
 	struct device_node *np = dev->of_node;
 	unsigned int i;
 
@@ -2484,6 +2486,24 @@ static int msm_drm_component_dependency_check(struct device *dev)
 			}
 		}
 	}
+
+	parent_node = of_get_parent(np);
+	if (!parent_node)
+		return 0;
+
+	node = of_get_child_by_name(parent_node, "qcom,hfi-core");
+	of_node_put(parent_node);
+	if (node && of_device_is_available(node)
+			&& of_node_check_flag(node, OF_POPULATED)) {
+		struct platform_device *pdev = of_find_device_by_node(node);
+
+		if (!platform_get_drvdata(pdev)) {
+			DISP_DEV_ERR(dev, "qcom,hfi-core not probed yet\n");
+			of_node_put(node);
+			return -EPROBE_DEFER;
+		}
+	}
+	of_node_put(node);
 
 	return 0;
 }

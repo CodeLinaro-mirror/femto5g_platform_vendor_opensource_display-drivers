@@ -108,10 +108,7 @@ struct dsi_avr_capabilities {
 
 struct dsi_esync_capabilities {
 	bool esync_support;
-	u32 milli_skew;
-	u32 hsync_milli_pulse_width;
-	u32 emsync_milli_pulse_width;
-	u32 emsync_fps;
+	struct esync_params default_esync_params;
 };
 
 struct dsi_dyn_clk_caps {
@@ -305,6 +302,7 @@ struct dsi_panel {
 	bool powered;
 	enum dsi_panel_physical_type panel_type;
 	bool need_post_on_supply;
+	bool post_power_enable_status;
 
 	struct dsi_panel_ops panel_ops;
 };

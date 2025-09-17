@@ -344,8 +344,9 @@ struct sde_encoder_hal_funcs {
 	 * @enc: Pointer to sde encoder structure
 	 * @mode: Pointer to drm mode structure
 	 * @mdj_ode: Pointer to adjusted drm mode structure
+	 * Returns: Zero on success
 	 */
-	void (*mode_set[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+	int (*mode_set[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
 			struct drm_display_mode *mode, struct drm_display_mode *adj_mode);
 
 	/**
@@ -1173,6 +1174,19 @@ static inline bool sde_encoder_is_loopback_display(struct drm_encoder *drm_enc)
 	return sde_enc &&
 		(sde_enc->disp_info.capabilities & MSM_DISPLAY_LOOPBACK_MODE);
 }
+
+static inline bool sde_encoder_is_wb_display(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc)
+		return false;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc && (sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL);
+}
+
 /*
  * sde_encoder_is_line_insertion_supported - get line insertion
  * feature bit value from panel

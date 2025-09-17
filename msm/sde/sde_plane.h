@@ -348,6 +348,14 @@ void sde_plane_destroy_fb(struct drm_plane_state *state);
 enum sde_sspp sde_plane_pipe(struct drm_plane *plane);
 
 /**
+ * _sde_plane_setup_csc - setup color space conversion matrix for plane
+ * @psde: Pointer to SDE plane object
+ * @pstate: Pointer to SDE plane state containing CSC configuration
+ */
+void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate,
+		bool format_is_yuv);
+
+/**
  * is_sde_plane_virtual - check for virtual plane
  * @plane: Pointer to DRM plane object
  * returns: true - if the plane is virtual

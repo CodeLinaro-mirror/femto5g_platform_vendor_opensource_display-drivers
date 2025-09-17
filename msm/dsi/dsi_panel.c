@@ -1437,6 +1437,19 @@ static void dsi_panel_parse_split_link_config(struct dsi_host_common_cfg *host,
 	split_link->enabled = true;
 }
 
+static void dsi_panel_parse_dpu_dma_mode(struct dsi_host_common_cfg *host,
+					struct dsi_parser_utils *utils,
+					const char *name)
+{
+	bool dpu_dma_enabled;
+
+	dpu_dma_enabled = utils->read_bool(utils->data, "qcom,mdss-dpu-dma-mode");
+	if (dpu_dma_enabled)
+		DSI_DEBUG("[%s] dpu dma is supported\n", name);
+
+	host->dpu_dma_enabled = dpu_dma_enabled;
+}
+
 static int dsi_panel_parse_host_config(struct dsi_panel *panel)
 {
 	int rc = 0;
@@ -1485,6 +1498,54 @@ static int dsi_panel_parse_host_config(struct dsi_panel *panel)
 	dsi_panel_parse_split_link_config(&panel->host_config, utils,
 						panel->name);
 
+	dsi_panel_parse_dpu_dma_mode(&panel->host_config, utils, panel->name);
+
+error:
+	return rc;
+}
+
+static int dsi_panel_parse_esync_params(struct dsi_panel *panel,
+	struct esync_params *esync_params,
+	struct dsi_parser_utils *utils)
+{
+	int val, rc = 0;
+
+	if (!panel || !esync_params || !utils || !utils->data) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-milli-skew", &val);
+	if (rc) {
+		DSI_DEBUG("mode esync skew fallback on default\n");
+		val = 0;
+	}
+	esync_params->milli_skew = val;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-hsync-milli-pulse-width", &val);
+	if (rc) {
+		DSI_ERR("mode esync enabled but hsync pulse width not defined\n");
+		goto error;
+	}
+	esync_params->hsync_milli_pulse_width = val;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-emsync-fps", &val);
+	if (rc) {
+		DSI_DEBUG("mode esync EM pulse not enabled\n");
+		esync_params->emsync_fps = 0;
+		return 0;
+	}
+	esync_params->emsync_fps = val;
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-esync-emsync-milli-pulse-width", &val);
+	if (rc) {
+		DSI_ERR("mode esync EM pulse enabled but pulse width not defined\n");
+		goto error;
+	}
+	esync_params->emsync_milli_pulse_width = val;
+
+	return 0;
+
 error:
 	return rc;
 }
@@ -1503,34 +1564,12 @@ static int dsi_panel_parse_esync_caps(struct dsi_panel *panel,
 		return 0;
 	}
 
-	rc = utils->read_u32(utils->data, "qcom,mdss-esync-milli-skew", &val);
+	rc = dsi_panel_parse_esync_params(panel,
+		&esync_caps->default_esync_params, utils);
 	if (rc) {
-		DSI_DEBUG("[%s] esync skew fallback on default\n", panel->name);
-		val = 0;
-	}
-	esync_caps->milli_skew = val;
-
-	rc = utils->read_u32(utils->data, "qcom,mdss-esync-hsync-milli-pulse-width", &val);
-	if (rc) {
-		DSI_ERR("[%s] esync enabled but hsync pulse width not defined\n", panel->name);
+		DSI_ERR("[%s] parse esync params failed, rc=%d\n", panel->name, rc);
 		goto error;
 	}
-	esync_caps->hsync_milli_pulse_width = val;
-
-	rc = utils->read_u32(utils->data, "qcom,mdss-esync-emsync-fps", &val);
-	if (rc) {
-		DSI_DEBUG("[%s] esync EM pulse not enabled\n", panel->name);
-		esync_caps->emsync_fps = 0;
-		return 0;
-	}
-	esync_caps->emsync_fps = val;
-
-	rc = utils->read_u32(utils->data, "qcom,mdss-esync-emsync-milli-pulse-width", &val);
-	if (rc) {
-		DSI_ERR("[%s] esync EM pulse enabled but pulse width not defined\n", panel->name);
-		goto error;
-	}
-	esync_caps->emsync_milli_pulse_width = val;
 
 	return 0;
 
@@ -2945,6 +2984,9 @@ static int dsi_panel_post_pwr_ctrl(struct dsi_panel *panel, bool enable)
 		return -EINVAL;
 	}
 
+	if (panel->post_power_enable_status == enable)
+		return 0;
+
 	r_config = &panel->reset_config;
 	if (gpio_is_valid(r_config->oled_en_gpio)) {
 		if (enable) {
@@ -2954,19 +2996,22 @@ static int dsi_panel_post_pwr_ctrl(struct dsi_panel *panel, bool enable)
 			rc = poll_status_timeout((gpio_get_value(r_config->oled_en_gpio) == 0),
 				sleep_us, timeout_us);
 		}
-	}
 
-	if (rc) {
-		DSI_WARN("[%s] wait for oled en status failed,enable=%d rc=%d\n",
+		if (rc) {
+			DSI_WARN("[%s] wait for oled en status failed,enable=%d rc=%d\n",
 					panel->name, enable, rc);
-		return rc;
+			return rc;
+		}
 	}
 
 	rc = dsi_pwr_enable_regulator(&panel->post_power_info, enable);
-	if (rc)
+	if (rc) {
 		DSI_ERR("[%s] failed to set post power vregs status, enable=%d rc=%d\n",
 				panel->name, enable, rc);
+		return rc;
+	}
 
+	panel->post_power_enable_status = enable;
 	return 0;
 }
 
@@ -4415,6 +4460,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	panel->panel_of_node = of_node;
 	panel->parent = parent;
 	panel->type = type;
+	panel->post_power_enable_status = false;
 
 	dsi_panel_update_util(panel, parser_node);
 	utils = &panel->utils;
