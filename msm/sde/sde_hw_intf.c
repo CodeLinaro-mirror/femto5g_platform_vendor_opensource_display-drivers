@@ -482,6 +482,20 @@ static void sde_hw_intf_reset_counter(struct sde_hw_intf *ctx)
 	SDE_REG_WRITE(c, INTF_LINE_COUNT, BIT(31));
 }
 
+static u64 sde_hw_intf_get_panel_vsync_timestamp(struct sde_hw_intf *ctx)
+{
+	struct sde_hw_blk_reg_map *c = &ctx->hw;
+	u32 timestamp_lo, timestamp_hi;
+	u64 timestamp = 0;
+
+	timestamp_hi = SDE_REG_READ(c, INTF_VSYNC_TIMESTAMP1);
+	timestamp_lo = SDE_REG_READ(c, INTF_VSYNC_TIMESTAMP0);
+	timestamp = timestamp_hi;
+	timestamp = (timestamp << 32) | timestamp_lo;
+
+	return timestamp;
+}
+
 static u64 sde_hw_intf_get_vsync_timestamp(struct sde_hw_intf *ctx, bool is_vid)
 {
 	struct sde_hw_blk_reg_map *c = &ctx->hw;
@@ -969,6 +983,13 @@ static void sde_hw_intf_v1_get_status(
 
 	s->is_en = SDE_REG_READ(c, INTF_STATUS) & BIT(0);
 	s->is_prog_fetch_en = (SDE_REG_READ(c, INTF_CONFIG) & BIT(31));
+	s->intf_status_val = SDE_REG_READ(c, INTF_STATUS);
+
+	if (intf->cap->features & BIT(SDE_INTF_ESYNC)) {
+		s->esync_vsync_counter = SDE_REG_READ(c, INTF_ESYNC_VSYNC_COUNT);
+		s->esync_emsync_counter = SDE_REG_READ(c, INTF_ESYNC_EMSYNC_COUNT);
+	}
+
 	if (s->is_en) {
 		s->frame_count = sde_hw_intf_get_frame_count(intf);
 		s->line_count = SDE_REG_READ(c, INTF_LINE_COUNT) & 0xffff;
@@ -977,6 +998,7 @@ static void sde_hw_intf_v1_get_status(
 		s->frame_count = 0;
 	}
 }
+
 static void sde_hw_intf_setup_misr(struct sde_hw_intf *intf,
 						bool enable, u32 frame_count)
 {
@@ -1575,8 +1597,11 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops,
 	if (cap & BIT(SDE_INTF_RESET_COUNTER))
 		ops->reset_counter[MSM_DISP_OP_HWIO] = sde_hw_intf_reset_counter;
 
-	if (cap & (BIT(SDE_INTF_PANEL_VSYNC_TS) | BIT(SDE_INTF_MDP_VSYNC_TS)))
+	if (cap & (BIT(SDE_INTF_PANEL_VSYNC_TS) | BIT(SDE_INTF_MDP_VSYNC_TS))) {
 		ops->get_vsync_timestamp[MSM_DISP_OP_HWIO] = sde_hw_intf_get_vsync_timestamp;
+		ops->get_panel_vsync_timestamp[MSM_DISP_OP_HWIO] =
+					sde_hw_intf_get_panel_vsync_timestamp;
+	}
 
 	if (mdss_cap & BIT(SDE_MDP_DUAL_DPU_SYNC)) {
 		ops->setup_dpu_sync_prog_intf_offset[MSM_DISP_OP_HWIO] =

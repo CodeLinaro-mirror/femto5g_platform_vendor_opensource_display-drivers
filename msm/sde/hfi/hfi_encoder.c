@@ -307,8 +307,8 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	}
 
 	cmd = enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER : HFI_COMMAND_DISPLAY_EVENT_DEREGISTER;
-	ret = hfi_adapter_add_get_property(cmd_buf, cmd, display_id, HFI_PAYLOAD_TYPE_U32,
-			&payload, sizeof(payload), &hfi_enc->hfi_cb_obj,
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf, cmd, display_id,
+			HFI_PAYLOAD_TYPE_U32, &payload, sizeof(payload), &hfi_enc->hfi_cb_obj,
 			HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (ret) {
 		SDE_ERROR("failed to update event: 0x%x\n", payload);
@@ -317,7 +317,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 
 	SDE_DEBUG("sending events enable:%d for display:%d\n", enable, display_id);
 	if (!defer_to_commit) {
-		ret = hfi_adapter_set_cmd_buf(cmd_buf);
+		ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 		SDE_EVT32(enc->base.base.id, display_id, cmd, ret, SDE_EVTLOG_FUNC_CASE1);
 		if (ret) {
 			SDE_ERROR("failed to send event register command\n");
@@ -402,7 +402,8 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	else
 		payload[2] = HFI_FALSE;
 
-	ret = hfi_adapter_add_get_property(cmd_buf, HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE,
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE,
 			MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_U32_ARRAY, &payload,
 			sizeof(payload), &hfi_enc->hfi_cb_obj, HFI_HOST_FLAGS_NONE);
 	if (ret) {
@@ -411,7 +412,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	}
 
 	SDE_EVT32(drm_enc->base.id, MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE, ret);
-	ret = hfi_adapter_set_cmd_buf(cmd_buf);
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	if (ret) {
 		SDE_ERROR("failed to send panic subscribe command\n");
 		return ret;
@@ -559,7 +560,8 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 	scan_id_prop[1] = HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID;
 	scan_id_prop[2] = atomic_inc_return(&hfi_enc->hfi_commit_cnt);
 
-	ret = hfi_adapter_add_set_property(cmd_buf,
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+			cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
 			display_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -605,7 +607,7 @@ static int _hfi_enc_send_display_ctrl_cmd(struct sde_encoder_virt *enc, bool ena
 	}
 
 	hfi_cmd = enable ? HFI_COMMAND_DISPLAY_ENABLE : HFI_COMMAND_DISPLAY_DISABLE;
-	ret = hfi_adapter_add_set_property(cmd_buf, hfi_cmd, display_id,
+	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf, hfi_cmd, display_id,
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0, HFI_HOST_FLAGS_NON_DISCARDABLE);
 
 	return ret;
@@ -772,7 +774,8 @@ static int hfi_encoder_mode_set(struct sde_encoder_virt *enc, struct drm_display
 		return -EINVAL;
 	}
 
-	ret = hfi_adapter_add_set_property(cmd_buf, HFI_COMMAND_DISPLAY_SET_MODE, display_id,
+	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DISPLAY_SET_MODE, display_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &hfi_mode, sizeof(hfi_mode),
 			HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (ret) {
@@ -880,16 +883,16 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 	misr_data.frame_count = enc->misr_frame_count;
 	misr_data.module_type = HFI_DEBUG_MISR_INTF;
 
-	rc = hfi_adapter_add_set_property(cmd_buf, HFI_COMMAND_DEBUG_MISR_SETUP,
-			disp_id, HFI_PAYLOAD_TYPE_U32_ARRAY, &misr_data,
-			sizeof(misr_data), HFI_HOST_FLAGS_NONE);
+	rc = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_MISR_SETUP, disp_id, HFI_PAYLOAD_TYPE_U32_ARRAY,
+			&misr_data, sizeof(misr_data), HFI_HOST_FLAGS_NONE);
 	if (rc) {
 		SDE_ERROR("failed to add property\n");
 		return rc;
 	}
 
 	SDE_DEBUG("%s misr_setup: sending cmd buf\n", __func__);
-	rc = hfi_adapter_set_cmd_buf(cmd_buf);
+	rc = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	SDE_EVT32(drm_enc->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_SETUP, rc,
 			SDE_EVTLOG_FUNC_CASE1);
 	if (rc) {
@@ -1001,14 +1004,15 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	/* Listener init */
 	hfi_enc->misr_read_listener.hfi_prop_handler = &hfi_enc_misr_read_hfi_prop_handler;
 
-	rc = hfi_adapter_add_get_property(cmd_buf, HFI_COMMAND_DEBUG_MISR_READ, disp_id,
+	rc = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_MISR_READ, disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &misr_read, sizeof(misr_read),
 			&hfi_enc->misr_read_listener, (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
 			HFI_HOST_FLAGS_NON_DISCARDABLE));
 
 	SDE_EVT32(drm_encoder->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ,
 			SDE_EVTLOG_FUNC_CASE1);
-	rc = hfi_adapter_set_cmd_buf_blocking(cmd_buf);
+	rc = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
 	SDE_EVT32(drm_encoder->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ, rc,
 			SDE_EVTLOG_FUNC_CASE2);
 

@@ -57,6 +57,7 @@ enum sde_format_flags {
 	SDE_FORMAT_FLAG_LOSSY_2_1_BIT,
 	SDE_FORMAT_FLAG_CAC_BIT,
 	SDE_FORMAT_FLAG_DMA_BIT,
+	SDE_FORMAT_FLAG_FSC_BIT,
 	SDE_FORMAT_FLAG_BIT_MAX,
 };
 
@@ -69,8 +70,11 @@ enum sde_format_flags {
 #define SDE_FORMAT_FLAG_LOSSY_2_1	BIT(SDE_FORMAT_FLAG_LOSSY_2_1_BIT)
 #define SDE_FORMAT_FLAG_CAC		BIT(SDE_FORMAT_FLAG_CAC_BIT)
 #define SDE_FORMAT_FLAG_DMA		BIT(SDE_FORMAT_FLAG_DMA_BIT)
+#define SDE_FORMAT_FLAG_FSC		BIT(SDE_FORMAT_FLAG_FSC_BIT)
 #define SDE_FORMAT_IS_YUV(X)		\
 	(test_bit(SDE_FORMAT_FLAG_YUV_BIT, (X)->flag))
+#define SDE_FORMAT_IS_FSC(X)		\
+	(test_bit(SDE_FORMAT_FLAG_FSC_BIT, (X)->flag))
 #define SDE_FORMAT_IS_DX(X)		\
 	(test_bit(SDE_FORMAT_FLAG_DX_BIT, (X)->flag))
 #define SDE_FORMAT_IS_LINEAR(X)		((X)->fetch_mode == SDE_FETCH_LINEAR)
@@ -383,6 +387,7 @@ enum sde_wb {
 	WB_1,
 	WB_2,
 	WB_3,
+	WB_4,
 	WB_MAX
 };
 

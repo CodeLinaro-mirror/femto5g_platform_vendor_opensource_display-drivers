@@ -327,10 +327,11 @@ struct hfi_cmdbuf_t *hfi_adapter_get_cmd_buf(struct hfi_client_t *ctx, u32 obj_i
 		u32 cmdbuf_type);
 
 /**
- * hfi_adapter_add_hfi_command - Validate available size in HFI command buffer based on current
+ * hfi_adapter_add_set_property - Validate available size in HFI command buffer based on current
  * fill level, if sufficient, populate HFI Command packet and payload into HFI cmd-buffer.
  * Update the HFI header accordingly. If size is not sufficient, internally/seamlessly get
  * another buffer from HFI core and chain-up
+ * @ctx: Pointer to hfi_client struct.
  * @cmd_buf: Pointer to hfi_adapter command buffer, returned from hfi_adapter_get_cmd_buf.
  * @cmd: HFI COMMAND ID to be added to command buffer.
  * @object_id: ID of display or device, this command is meant for
@@ -339,13 +340,15 @@ struct hfi_cmdbuf_t *hfi_adapter_get_cmd_buf(struct hfi_client_t *ctx, u32 obj_i
  * @size: Size of the payload data in bytes. This does not include packet size, only payload size.
  * @flags: Flags to indicate hints attached with HFI Commands buffer.
  */
-int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 object_id,
-		enum hfi_payload_type payload_type, void *payload, u32 size, u32 flags);
+int hfi_adapter_add_set_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
+		u32 object_id, enum hfi_payload_type payload_type, void *payload,
+		u32 size, u32 flags);
 
 /**
  * hfi_adapter_add_get_property - Similar to 'hfi_adapter_add_set_property'
  * Additionally expects listener handle or object that requires to get notified back
  * if caller expects any response from fw (status flags, response packets etc..)
+ * @ctx: Pointer to hfi_client struct.
  * @cmd_buf: Pointer to hfi_adapter command buffer, returned from hfi_adapter_get_cmd_buf.
  * @cmd: HFI COMMAND ID to be added to command buffer.
  * @object_id: ID of display or device, this command is meant for
@@ -355,14 +358,15 @@ int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 obje
  * @listener: Pointer to listener object, required to pass data from adapter to caller.
  * @flags: Flags to indicate hints attached with HFI Commands buffer.
  */
-int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
-		u32 obj_id, enum hfi_payload_type payload_type,
+int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf,
+		u32 cmd_id, u32 obj_id, enum hfi_payload_type payload_type,
 		void *payload, u32 size, struct hfi_prop_listener *listener, u32 flags);
 
 /**
  * hfi_adapter_add_prop_array - Same as above just payload is an array of key-value pairs.
  * Validates available size in HFI command buffer based on current fill level, then populates
  * property payload into HFI cmd-buffer and updates the HFI header accordingly.
+ * @ctx: Pointer to hfi_client struct.
  * @cmd_buf: Pointer to hfi_adapter command buffer, returned from hfi_adapter_get_cmd_buf.
  * @cmd: HFI COMMAND ID to be added to command buffer.
  * @object_id: ID of display or device, this command is meant for
@@ -371,24 +375,26 @@ int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
  * @cnt: Count of the number of elements in the hfi_kv_pairs array.
  * @size: Size of the payload data in bytes. This does not include packet size, only payload size.
  */
-int hfi_adapter_add_prop_array(struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
+int hfi_adapter_add_prop_array(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
 		u32 object_id, enum hfi_payload_type payload_type,
 		struct hfi_kv_pairs *payload, u32 cnt, u32 size);
 
 /**
  * hfi_adapter_set_cmd_buf - Submit command buf to HFI Core (destined to FW). If it's a chain of
  * command buffers, posts one by one. This releases to HFI tx Queue using HFI core driver API
+ * @ctx: Pointer to hfi_client struct.
  * @cmd_buf: Pointer to hfi_adapter command buffer, returned from hfi_adapter_get_cmd_buf.
  */
-int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf);
+int hfi_adapter_set_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf);
 
 /**
  * hfi_adapter_set_cmd_buf_blocking - Submit command buf to HFI Core (destined to FW). If it's
  * a chain of command buffers, posts one by one. This releases to HFI tx Queue using HFI core
  * driver API. The blocking call waits for response for the command from FW.
+ * @ctx: Pointer to hfi_client struct.
  * @cmd_buf: Pointer to hfi_adapter command buffer, returned from hfi_adapter_get_cmd_buf.
  */
-int hfi_adapter_set_cmd_buf_blocking(struct hfi_cmdbuf_t *cmd_buf);
+int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf);
 
 /**
  * hfi_adapter_unpack_cmd_buf - Invokes unpacker API. Recommended to Invoke in Non-IRQ thread
@@ -400,23 +406,26 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 /**
  * hfi_adapter_release_cmd_buf - Release-buffer explicit API. Client require to invoke
  * this API explicitly for HFI command buffers from Firmware after handling unpack
+ * @ctx: Pointer to hfi_client struct.
  * @cmd_buf: Pointer to hfi_adapter command buffer.
  */
-int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf);
+int hfi_adapter_release_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf);
 
 /**
  * hfi_adapter_buffer_alloc - API to allocate shared memory between HFI & kernel
+ * @ctx: Pointer to hfi_client struct.
  * @addr_map: Pointer to hfi_adapter address map which stores the size to allocate
  * and pointers to kernel & hfi address of the shared space.
  */
-int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map);
+int hfi_adapter_buffer_alloc(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map);
 
 /**
  * hfi_adapter_buffer_dealloc - API to deallocate shared memory between HFI & kernel
+ * @ctx: Pointer to hfi_client struct.
  * @addr_map: Pointer to hfi_adapter address map which stores the size to allocate
  * and pointers to kernel & hfi address of the shared space.
  */
-int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map);
+int hfi_adapter_buffer_dealloc(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map);
 
 /*
  * hfi_adapter_release_all_cmd_bufs - Release all tx buffer and rx buffers
@@ -433,30 +442,35 @@ int hfi_adapter_notify_rsp_timeout(struct hfi_client_t *ctx);
 
 /**
  * hfi_adapter_deinit - API to release tx buffer pools and make them available
- * @ctx: Pointer to hfi_client struct
+ * @ctx: Pointer to hfi_client struct.
  */
 void hfi_adapter_deinit(struct hfi_client_t *ctx);
 
 /**
  * hfi_adapter_map_sg_table - API to map given scatter-gather table to DCP
+ * @ctx: Pointer to hfi_client struct.
  * @sgt: Pointer to scatter-gather table of the memory to be mapped.
  * @size: Size of the memory.
  * @mapped_iova: Pointer to store resulting virtual address.
  */
-int hfi_adapter_map_sg_table(struct sg_table *sgt, size_t size, unsigned long *mapped_iova);
+int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt, size_t size,
+		unsigned long *mapped_iova);
 
 /**
  * hfi_adapter_get_shared_mem_allocated_size - API to return the size of shared memory allocated
+ * @ctx: Pointer to hfi_client struct.
  * @addr_map: Pointer to the HFI shared memory address map structure.
  */
-size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_shared_addr_map *addr_map);
+size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_client_t *ctx,
+		struct hfi_shared_addr_map *addr_map);
 
 /**
  * hfi_adapter_unmap_iova - API to unmap IOVA memory for firmware
+ * @ctx: Pointer to hfi_client struct.
  * @iova: input/output virtual address to be unmapped.
  * @size: size to be unmapped.
  */
-int hfi_adapter_unmap_iova(unsigned long iova, size_t size);
+int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t size);
 
 #else
 
@@ -477,33 +491,36 @@ static inline struct hfi_cmdbuf_t *hfi_adapter_get_cmd_buf(struct hfi_client_t *
 	return NULL;
 }
 
-static inline int hfi_adapter_add_set_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
-		u32 object_id, enum hfi_payload_type payload_type,
-		void *payload, u32 size, u32 flags)
+static inline int hfi_adapter_add_set_property(struct hfi_client_t *ctx,
+		struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 object_id,
+		enum hfi_payload_type payload_type, void *payload, u32 size, u32 flags)
 {
 	return 0;
 }
 
-static inline int hfi_adapter_add_get_property(struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
-		u32 obj_id, enum hfi_payload_type payload_type,
-		void *payload, u32 size, struct hfi_prop_listener *listener, u32 flags)
+static inline int hfi_adapter_add_get_property(struct hfi_client_t *ctx,
+		struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
+		u32 obj_id, enum hfi_payload_type payload_type, void *payload, u32 size,
+		struct hfi_prop_listener *listener, u32 flags)
 {
 	return 0;
 }
 
-static inline int hfi_adapter_add_prop_array(struct hfi_cmdbuf_t *cmd_buf, u32 cmd,
-		u32 object_id, enum hfi_payload_type payload_type,
-		struct hfi_kv_pairs *payload, u32 cnt, u32 size)
+static inline int hfi_adapter_add_prop_array(struct hfi_client_t *ctx,
+		struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u32 object_id,
+		enum hfi_payload_type payload_type, struct hfi_kv_pairs *payload,
+		u32 cnt, u32 size)
 {
 	return 0;
 }
 
-static inline int hfi_adapter_set_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
+static inline int hfi_adapter_set_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf)
 {
 	return 0;
 }
 
-static inline int hfi_adapter_set_cmd_buf_blocking(struct hfi_cmdbuf_t *cmd_buf)
+static inline int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx,
+		struct hfi_cmdbuf_t *cmd_buf)
 {
 	return 0;
 }
@@ -513,17 +530,20 @@ static inline int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hf
 	return 0;
 }
 
-static inline int hfi_adapter_release_cmd_buf(struct hfi_cmdbuf_t *cmd_buf)
+static inline int hfi_adapter_release_cmd_buf(struct hfi_client_t *ctx,
+		struct hfi_cmdbuf_t *cmd_buf)
 {
 	return 0;
 }
 
-static inline int hfi_adapter_buffer_alloc(struct hfi_shared_addr_map *addr_map)
+static inline int hfi_adapter_buffer_alloc(struct hfi_client_t *ctx,
+		struct hfi_shared_addr_map *addr_map)
 {
 	return 0;
 }
 
-static inline int hfi_adapter_buffer_dealloc(struct hfi_shared_addr_map *addr_map)
+static inline int hfi_adapter_buffer_dealloc(struct hfi_client_t *ctx,
+		struct hfi_shared_addr_map *addr_map)
 {
 	return 0;
 }
@@ -543,19 +563,19 @@ static inline void hfi_adapter_deinit(struct hfi_client_t *ctx)
 	return;
 }
 
-static inline int hfi_adapter_map_sg_table(struct sg_table *sgt, size_t size,
-		unsigned long *mapped_iova)
+static inline int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
+		size_t size, unsigned long *mapped_iova)
 {
 	return 0;
 }
 
 static inline size_t hfi_adapter_get_shared_mem_allocated_size(
-		struct hfi_shared_addr_map *addr_map)
+		struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map)
 {
 	return 0;
 }
 
-static inline int hfi_adapter_unmap_iova(unsigned long iova, size_t size)
+static inline int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t size)
 {
 	return 0;
 }
