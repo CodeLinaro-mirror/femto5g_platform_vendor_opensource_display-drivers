@@ -158,6 +158,8 @@
 #define SSPP_LINE_INSERTION_CTRL_ALT_REC1		0x364
 #define SSPP_LINE_INSERTION_OUT_SIZE_ALT_REC1	0x368
 
+#define AUTO_SWI_MODE		1
+
 int sspp_subblk_offset(struct sde_hw_pipe *ctx,
 		int s_id,
 		u32 *idx)
@@ -209,9 +211,13 @@ static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 	if (sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return;
 
-	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+	/* Disable the local flush but still use the AUTO SWI mode */
+	//if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+	if (AUTO_SWI_MODE) {
 		if (index == SDE_SSPP_RECT_SOLO) {
-			if (fmt && fmt->fetch_planes == SDE_PLANE_INTERLEAVED && !SDE_FORMAT_IS_YUV(fmt))
+			/* Disable the local flush so do not set the REC0_EN */
+			if (0 && fmt && fmt->fetch_planes == SDE_PLANE_INTERLEAVED
+					&& !SDE_FORMAT_IS_YUV(fmt))
 				SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
 						BIT(2) | BIT(1) | BIT(0),
 						BIT(0));
@@ -307,7 +313,8 @@ static void sde_hw_sspp_setup_ubwc(struct sde_hw_pipe *ctx, struct sde_hw_blk_re
 	fetch_cfg = SDE_FETCH_CONFIG_RESET_VALUE | ctx->mdp->highest_bank_bit << 18;
 
 	/* Auto mode */
-	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+	//if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+	if (AUTO_SWI_MODE)
 		fetch_cfg |= BIT(10);
 
 	SDE_REG_WRITE(c, SSPP_FETCH_CONFIG, fetch_cfg);
@@ -376,7 +383,8 @@ static void sde_hw_sspp_setup_format(struct sde_hw_pipe *ctx,
 	c = &ctx->hw;
 
 	/* Auto mode */
-	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+	//if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+	if (AUTO_SWI_MODE)
 		SDE_REG_MODIFY(c, SSPP_FETCH_CONFIG, BIT(10), BIT(10));
 	else
 		SDE_REG_MODIFY(c, SSPP_FETCH_CONFIG, BIT(10), 0);
@@ -844,7 +852,8 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 		ystride1 = (cfg->layout.plane_pitch[2]) |
 			(cfg->layout.plane_pitch[3] << 16);
 	} else if (rect_index == SDE_SSPP_RECT_1
-			&& test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+			//&& test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+			&& (AUTO_SWI_MODE)) {
 		ystride0 = SDE_REG_READ(c, SSPP_SRC_YSTRIDE0_REC1 + idx);
 		ystride1 = SDE_REG_READ(c, SSPP_SRC_YSTRIDE1_REC1 + idx);
 
@@ -887,7 +896,8 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 	SDE_REG_WRITE(c, out_xy_off + idx, dst_xy);
 
 	if (rect_index == SDE_SSPP_RECT_1
-		&& test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		//&& test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		&& (AUTO_SWI_MODE)) {
 		SDE_REG_WRITE(c, SSPP_SRC_YSTRIDE0_REC1 + idx, ystride0);
 		SDE_REG_WRITE(c, SSPP_SRC_YSTRIDE1_REC1 + idx, ystride1);
 	} else {
@@ -904,7 +914,8 @@ static void sde_hw_sspp_setup_rects(struct sde_hw_pipe *ctx,
 	src_extn_xy = (cfg->src_rect_extn.y << 16) | (cfg->src_rect_extn.x);
 	dst_extn_xy = (cfg->dst_rect_extn.y << 16) | (cfg->dst_rect_extn.x);
 
-	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+	//if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+	if (AUTO_SWI_MODE)
 		off = SSPP_MULTIRECT_OPMODE_ALT;
 	else
 		off = SSPP_MULTIRECT_OPMODE;
@@ -1013,7 +1024,8 @@ static void sde_hw_sspp_setup_sourceaddress(struct sde_hw_pipe *ctx,
 		SDE_REG_WRITE(&ctx->hw, flush_ctl_off, 0x02);
 
 	/* Auto mode */
-	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+	//if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+	if (AUTO_SWI_MODE)
 		SDE_REG_MODIFY(&ctx->hw, SSPP_FETCH_CONFIG, BIT(10), BIT(10));
 	else
 		SDE_REG_MODIFY(&ctx->hw, SSPP_FETCH_CONFIG, BIT(10), 0);
@@ -1028,7 +1040,8 @@ static void sde_hw_sspp_setup_sourceaddress(struct sde_hw_pipe *ctx,
 		SDE_REG_WRITE(&ctx->hw, SSPP_SRC2_ADDR + idx,
 				cfg->layout.plane_addr[2]);
 	} else if ((rect_mode == SDE_SSPP_RECT_1)
-		&& test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		//&& test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		&& (AUTO_SWI_MODE)) {
 		SDE_REG_WRITE(&ctx->hw, SSPP_SRC1_ADDR_REC1 + idx,
 				cfg->layout.plane_addr[0]);
 		SDE_REG_WRITE(&ctx->hw, SSPP_SRC3_ADDR_REC1 + idx,
@@ -1049,7 +1062,8 @@ u32 sde_hw_sspp_get_source_addr(struct sde_hw_pipe *ctx, bool is_virtual)
 	if (!ctx || sspp_subblk_offset(ctx, SDE_SSPP_SRC, &idx))
 		return 0;
 
-	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+	//if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features))
+	if (AUTO_SWI_MODE)
 		offset =  is_virtual ? (SSPP_SRC1_ADDR_REC1 + idx) : (SSPP_SRC0_ADDR + idx);
 	else
 		offset =  is_virtual ? (SSPP_SRC1_ADDR + idx) : (SSPP_SRC0_ADDR + idx);
@@ -1651,7 +1665,8 @@ static void sde_hw_sspp_setup_line_insertion(struct sde_hw_pipe *ctx,
 
 	c = &ctx->hw;
 
-	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+	//if (test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+	if (AUTO_SWI_MODE) {
 		if (rect_index == SDE_SSPP_RECT_SOLO || rect_index == SDE_SSPP_RECT_0) {
 			ctl_off = SSPP_LINE_INSERTION_CTRL_ALT;
 			size_off = SSPP_LINE_INSERTION_OUT_SIZE_ALT;

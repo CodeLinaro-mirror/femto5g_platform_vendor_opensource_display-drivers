@@ -2430,10 +2430,27 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	struct component_match *match = NULL;
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	struct device_node *np = pdev->dev.of_node;
+	u32 dpu_id;
+
+	/* Parse the DPU id, which is needed for requesting power voting */
+	if (of_property_read_u32(np, "cell-index", &dpu_id)) {
+		DRM_INFO("Missing cell-index for DPU id, default to 0\n");
+		dpu_id = 0;
+	}
+
 	if (!msm_hyp_get_kms()) {
 		DRM_DEBUG("Wait for MSM_HYP KMS\n");
 		return -EPROBE_DEFER;
 	}
+
+	/* Check with msm_hyp for the order of the probing */
+	if (!msm_hyp_check_dpu_probed(dpu_id)) {
+		DRM_DEBUG("Wait for the other KMS driver probed first\n");
+		return -EPROBE_DEFER;
+	}
+
+	msm_hyp_set_dpu_probed(dpu_id);
 #endif
 
 	ret = msm_drm_component_dependency_check(&pdev->dev);

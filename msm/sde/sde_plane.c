@@ -1497,6 +1497,13 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 		psde->pipe_hw->ops.setup_ucsc_alpha_dither(psde->pipe_hw,
 				pstate->multirect_index, &hw_cfg);
 	}
+
+	if (psde->pipe_hw->ops.set_flush_type &&
+		pstate->dirty & SDE_PLANE_DIRTY_CP) {
+		ctl->ops.update_bitmask_sspp(ctl, sde_plane_pipe(plane), true);
+		ctl->ops.force_global_flush(ctl);
+		psde->pipe_hw->ops.set_flush_type(psde->pipe_hw, true);
+	}
 }
 
 static void _sde_plane_setup_scaler(struct sde_plane *psde,
