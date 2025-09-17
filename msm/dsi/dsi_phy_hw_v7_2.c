@@ -64,6 +64,7 @@
 #define DSIPHY_CMN_LANE_STATUS1                                   0x14C
 #define DSIPHY_CMN_GLBL_DIGTOP_SPARE10                            0x1AC
 #define DSIPHY_CMN_SL_DSI_LANE_CTRL1                              0x1B4
+#define PHY_CMN_GLBL_DIGTOP_SPARE4                                0x128
 
 /* n = 0..3 for data lanes and n = 4 for clock lane */
 #define DSIPHY_LNX_CFG0(n)                         (0x200 + (0x80 * (n)))
@@ -386,6 +387,17 @@ static void dsi_phy_hw_dphy_enable(struct dsi_phy_hw *phy, struct dsi_phy_cfg *c
 
 	/* turn off resync FIFO */
 	DSI_W32(phy, DSIPHY_CMN_RBUF_CTRL, 0x00);
+
+	/*
+	 * Assert power on reset on DSI PHY Analog immeditately
+	 * after 0P9 resume to make sure PHY starts in a
+	 * clean state
+	 */
+	DSI_W32(phy, PHY_CMN_GLBL_DIGTOP_SPARE4, BIT(0));
+	wmb(); /* Ensure that the reset is asserted */
+	mdelay(1);
+	DSI_W32(phy, PHY_CMN_GLBL_DIGTOP_SPARE4, 0x0);
+	wmb(); /* Ensure that the reset is deasserted */
 
 	/* program CMN_CTRL_4 for minor_ver greater than 2 chipsets*/
 	DSI_W32(phy, DSIPHY_CMN_CTRL_4, 0x04);

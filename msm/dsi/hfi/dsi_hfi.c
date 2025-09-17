@@ -71,11 +71,11 @@ static int _dsi_display_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 		return -EINVAL;
 	}
 
-	if (!display_hfi->shared_addr_map)
-		DSI_DEBUG("shared addr map is null\n");
-	else if (display_hfi->shared_addr_map->remote_addr ||
-			display_hfi->shared_addr_map->local_addr)
-		hfi_adapter_buffer_dealloc(hfi_client, display_hfi->shared_addr_map);
+	rc = hfi_adapter_ssr_unmap_device_addr(hfi_client);
+	if (rc) {
+		DSI_ERR("failed to unmap fw mapped buffers, rc: %d\n", rc);
+		return rc;
+	}
 
 	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
 	if (rc) {
@@ -95,6 +95,12 @@ static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 	if (!display) {
 		DSI_ERR("invalid display\n");
 		return -EINVAL;
+	}
+
+	rc = hfi_adapter_ssr_map_device_addr(hfi_client);
+	if (rc) {
+		DSI_ERR("failed to map fw mapped buffers, rc: %d\n", rc);
+		return rc;
 	}
 
 	rc = dsi_hfi_panel_init(display, display->panel);
@@ -384,7 +390,6 @@ int dsi_display_hfi_setup_hfi(struct dsi_display *display, struct hfi_adapter_t 
 	}
 
 	display->dsi_hfi_info = display_hfi;
-	display_hfi->tx_cmd_buf_dva = 0;
 	display_hfi->tx_cmd_buf_fill_level = 0;
 	display->hfi_cb_obj.hfi_prop_handler = dsi_hfi_prop_handler;
 	display_hfi->hfi_adapter = hfi_host;
@@ -516,7 +521,7 @@ static void hfi_panel_get_mode_res_data(struct dsi_display_mode *mode,
 	timing_caps->res_data.h_front_porch = mode->timing.h_front_porch;
 	timing_caps->res_data.h_back_porch = mode->timing.h_back_porch;
 	timing_caps->res_data.h_sync_skew = mode->timing.h_skew;
-	timing_caps->res_data.h_sync_pulse = mode->timing.h_sync_width;
+	timing_caps->res_data.h_pulse_width = mode->timing.h_sync_width;
 	timing_caps->res_data.v_front_porch = mode->timing.v_front_porch;
 	timing_caps->res_data.v_back_porch = mode->timing.v_back_porch;
 	timing_caps->res_data.v_pulse_width = mode->timing.v_sync_width;
@@ -913,6 +918,7 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->mdp_trigger_type =
 		dsi_get_panel_trigger_type_helper(panel->host_config.mdp_cmd_trigger);
 	panel_generic_caps->te_mode = panel->host_config.te_mode;
+	panel_generic_caps->dma_sched_line = panel->host_config.dma_sched_line;
 	panel_generic_caps->traffic_mode = dsi_get_panel_traffic_mode_helper(panel);
 	panel_generic_caps->virtual_channel_id = panel->video_config.vc_id;
 	panel_generic_caps->wr_mem_start = panel->cmd_config.wr_mem_start;
@@ -1050,7 +1056,8 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 		return -EINVAL;
 
 	panel_init_caps.dcs_cmd_tx_buf_dva =
-			display_hfi->tx_cmd_buf_dva + display_hfi->tx_cmd_buf_fill_level;
+			display_hfi->sgt_tx_cmd_buf_map.remote_addr +
+			display_hfi->tx_cmd_buf_fill_level;
 	panel_init_caps.dcs_cmd_tx_buf_iova =
 			display->cmd_buffer_iova + display_hfi->tx_cmd_buf_fill_level;
 
@@ -1140,6 +1147,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		{panel_generic_caps.dma_trigger_type, HFI_PROPERTY_PANEL_DMA_TRIGGER},
 		{panel_generic_caps.mdp_trigger_type, HFI_PROPERTY_PANEL_STREAM_TRIGGER},
 		{panel_generic_caps.te_mode, HFI_PROPERTY_PANEL_TE_MODE},
+		{panel_generic_caps.dma_sched_line, HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE},
 		{panel_generic_caps.traffic_mode, HFI_PROPERTY_PANEL_TRAFFIC_MODE},
 		{panel_generic_caps.virtual_channel_id, HFI_PROPERTY_PANEL_VIRTUAL_CHANNEL_ID},
 		{panel_generic_caps.wr_mem_start, HFI_PROPERTY_PANEL_WR_MEM_START},
@@ -1372,31 +1380,38 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		}
 	}
 
-	tx_cmd_buf = to_msm_bo(display->tx_cmd_buf);
-	if (!tx_cmd_buf || !tx_cmd_buf->sgt) {
-		DSI_ERR("Invalid tx command buffer\n");
-		goto error_buff;
+	if (!display_hfi->sgt_tx_cmd_buf_map.remote_addr) {
+		tx_cmd_buf = to_msm_bo(display->tx_cmd_buf);
+		if (!tx_cmd_buf || !tx_cmd_buf->sgt) {
+			DSI_ERR("Invalid tx command buffer\n");
+			goto error_buff;
+		}
+
+		display_hfi->sgt_tx_cmd_buf_map.size = display->cmd_buffer_size;
+		rc = hfi_adapter_map_sg_table(display_hfi->hfi_client, tx_cmd_buf->sgt,
+				&display_hfi->sgt_tx_cmd_buf_map);
+		if (rc) {
+			DSI_ERR("failed to map tx command buffer to FW, rc = %d\n", rc);
+			goto error_buff;
+		}
 	}
 
-	rc = hfi_adapter_map_sg_table(display_hfi->hfi_client, tx_cmd_buf->sgt,
-			display->cmd_buffer_size, &display_hfi->tx_cmd_buf_dva);
-	if (rc) {
-		DSI_ERR("failed to map tx command buffer to FW, rc = %d\n", rc);
-		goto error_buff;
+	if (!display_hfi->shared_addr_map) {
+		addr_map = kvzalloc(sizeof(struct hfi_shared_addr_map), GFP_KERNEL);
+		if (!addr_map) {
+			DSI_ERR("failed to allocate addr_map");
+			goto error_unmap_dva;
+		}
+		display_hfi->shared_addr_map = addr_map;
+
+		addr_map->size = SZ_4K;
+
+		hfi_adapter_buffer_alloc(display_hfi->hfi_client, addr_map);
+		if (!addr_map->remote_addr || !addr_map->local_addr)
+			goto error_addr_map;
+	} else {
+		addr_map = display_hfi->shared_addr_map;
 	}
-
-	addr_map = kvzalloc(sizeof(struct hfi_shared_addr_map), GFP_KERNEL);
-	if (!addr_map) {
-		DSI_ERR("failed to allocate addr_map");
-		goto error_unmap_dva;
-	}
-	display_hfi->shared_addr_map = addr_map;
-
-	addr_map->size = SZ_4K;
-
-	hfi_adapter_buffer_alloc(display_hfi->hfi_client, addr_map);
-	if (!addr_map->remote_addr || !addr_map->local_addr)
-		goto error_addr_map;
 
 	timing_caps_array = kcalloc(panel_init_caps.num_timing_modes,
 					sizeof(struct dsi_panel_timing_caps),
@@ -1451,11 +1466,12 @@ error_array:
 error_addr_map:
 	kfree(addr_map);
 error_unmap_dva:
-	rc = hfi_adapter_unmap_iova(display_hfi->hfi_client, display_hfi->tx_cmd_buf_dva,
+	rc = hfi_adapter_unmap_iova(display_hfi->hfi_client,
+			display_hfi->sgt_tx_cmd_buf_map.remote_addr,
 			display->cmd_buffer_size);
 	if (rc)
 		DSI_ERR("failed to unmap command buffer from FW\n");
-	display_hfi->tx_cmd_buf_dva = 0;
+	display_hfi->sgt_tx_cmd_buf_map.remote_addr = 0;
 error_buff:
 	rc = hfi_adapter_release_cmd_buf(display_hfi->hfi_client, buffer);
 	if (rc)

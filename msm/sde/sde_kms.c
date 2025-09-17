@@ -2647,6 +2647,159 @@ static void _sde_kms_drm_obj_destroy(struct sde_kms *sde_kms)
 	_sde_kms_release_displays(sde_kms);
 }
 
+int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
+{
+	int rc = 0;
+
+	if (!priv || !dev) {
+		SDE_ERROR("invalid arg priv: %pK dev: %pK", priv, dev);
+		return -EINVAL;
+	}
+
+	rc = hfi_msm_drv_hfi_init(priv);
+	if (rc) {
+		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
+		return rc;
+	}
+
+	rc = hfi_kms_reg_client(dev);
+	if (rc) {
+		SDE_ERROR("error with hfi_kms_reg_client rc: %d\n", rc);
+		kfree(priv->hfi_priv);
+	}
+
+	return rc;
+}
+
+static void sde_kms_set_hw_blks_disp_op(enum msm_disp_op disp_op, struct sde_kms *sde_kms)
+{
+	int itr;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid arguments\n");
+		return;
+	}
+
+	sde_kms->hw_intr->hw.disp_op = disp_op;
+	sde_kms->hw_mdp->hw.disp_op = disp_op;
+	sde_kms->hw_uidle->hw.disp_op = disp_op;
+	for (itr = 0; itr < ARRAY_SIZE(sde_kms->hw_vbif); itr++) {
+		if (sde_kms->hw_vbif[itr])
+			sde_kms->hw_vbif[itr]->hw.disp_op = disp_op;
+	}
+}
+
+static int _sde_kms_send_reg_dma_last_cmd_hfi(struct sde_kms *sde_kms)
+{
+	struct sde_reg_dma_buffer *last_cmd_buf = NULL;
+	int ret;
+	u32 dpu_idx = DPUID(sde_kms->dev);
+
+	ret = sde_reg_dma_get_last_cmd_buffer(dpu_idx, &last_cmd_buf);
+	if (ret) {
+		SDE_ERROR("Failed to get LUT DMA last command buffer, ret: %d\n", ret);
+		return -EINVAL;
+	}
+
+	ret = hfi_kms_set_reg_dma_buffer(sde_kms->hfi_kms, last_cmd_buf);
+	if (ret) {
+		SDE_ERROR("failed to set reg_dma_buffer to FW\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
+{
+	struct drm_device *dev;
+	struct drm_connector *conn;
+	struct sde_connector *c_conn;
+	struct drm_connector_list_iter conn_iter;
+	struct msm_drm_private *priv;
+	struct drm_plane *plane;
+	int ret = 0;
+	int wb_idx = 0;
+	int dsi_idx = 0;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	dev = sde_kms->dev;
+	priv = dev->dev_private;
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		struct sde_connector *sde_conn;
+
+		sde_conn = to_sde_connector(conn);
+
+		if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+			sde_connector_setup_obj_id(conn,
+				sde_kms->hfi_kms->catalog->wb_indices[wb_idx++]);
+		} else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+			sde_connector_setup_obj_id(conn,
+				sde_kms->hfi_kms->catalog->dsi_indices[dsi_idx++]);
+			c_conn = to_sde_connector(conn);
+			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
+			c_conn->ops.ctl_pre_transition(c_conn->display);
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	drm_for_each_plane(plane, dev) {
+		ret = sde_plane_post_init(plane);
+		if (ret) {
+			SDE_ERROR("plane post-init failed\n");
+			return -EPROBE_DEFER;
+		}
+	}
+
+	/* send LUT DMA last_cmd buffer */
+	ret = _sde_kms_send_reg_dma_last_cmd_hfi(sde_kms);
+	if (ret)
+		SDE_ERROR("failed to send last command LUT DMA buffer to HFI\n");
+
+	sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
+	sde_kms_set_hw_blks_disp_op(sde_kms->frame_trigger_state, sde_kms);
+	sde_rm_set_disp_op(&sde_kms->rm, sde_kms->frame_trigger_state);
+
+	return ret;
+}
+
+static int sde_kms_hfi_boot_init(struct sde_kms *sde_kms)
+{
+	struct drm_device *dev;
+	struct msm_drm_private *priv;
+	int ret = 0;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	dev = sde_kms->dev;
+	priv = dev->dev_private;
+
+	sde_kms->frame_trigger_state = MSM_DISP_OP_HFI;
+
+	ret = sde_kms_setup_hfi(priv, dev);
+	if (ret) {
+		SDE_ERROR("HFI setup failed\n");
+		return -EPROBE_DEFER;
+	}
+
+	ret = hfi_kms_get_catalog_data(sde_kms->hfi_kms);
+	if (ret) {
+		SDE_ERROR("HFI get catalog data failed\n");
+		return -EPROBE_DEFER;
+	}
+
+	return ret;
+}
+
 static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 {
 	struct drm_device *dev;
@@ -3825,264 +3978,6 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 	return rc;
 }
 
-int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
-{
-	int rc = 0;
-
-	if (!priv || !dev) {
-		SDE_ERROR("invalid arg");
-		return -EINVAL;
-	}
-
-	rc = hfi_msm_drv_hfi_init(priv);
-	if (rc)
-		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
-
-	rc = hfi_kms_reg_client(dev);
-	if (rc) {
-		SDE_ERROR("error with hfi_kms_reg_client rc: %d\n", rc);
-		kfree(priv->hfi_priv);
-	}
-
-	return rc;
-}
-
-static void _sde_kms_idle_helper(struct sde_kms *sde_kms, struct drm_device *dev)
-{
-	int ret, crtc_id = 0;
-	struct drm_connector *conn;
-	struct drm_connector_list_iter conn_iter;
-	struct msm_drm_private *priv = sde_kms->dev->dev_private;
-
-	drm_connector_list_iter_begin(dev, &conn_iter);
-	drm_for_each_connector_iter(conn, &conn_iter) {
-		if (!conn->state || !conn->state->crtc)
-			continue;
-
-		crtc_id = drm_crtc_index(conn->state->crtc);
-		if (priv->disp_thread[crtc_id].thread)
-			kthread_flush_worker(
-				&priv->disp_thread[crtc_id].worker);
-
-		ret = sde_encoder_wait_for_event(conn->encoder,
-						MSM_ENC_TX_COMPLETE);
-		if (ret && ret != -EWOULDBLOCK) {
-			SDE_ERROR(
-				"[conn: %d] wait for commit done returned %d\n",
-				conn->base.id, ret);
-		} else if (!ret) {
-			if (priv->event_thread[crtc_id].thread)
-				kthread_flush_worker(
-					&priv->event_thread[crtc_id].worker);
-			sde_encoder_idle_request(conn->encoder);
-		}
-	}
-	drm_connector_list_iter_end(&conn_iter);
-
-	msm_atomic_flush_display_threads(priv);
-}
-
-static void sde_kms_set_hw_blks_disp_op(enum msm_disp_op disp_op, struct sde_kms *sde_kms)
-{
-	int itr;
-
-	if (!sde_kms) {
-		SDE_ERROR("invalid arguments\n");
-		return;
-	}
-
-	sde_kms->hw_intr->hw.disp_op = disp_op;
-	sde_kms->hw_mdp->hw.disp_op = disp_op;
-	sde_kms->hw_uidle->hw.disp_op = disp_op;
-	for (itr = 0; itr < ARRAY_SIZE(sde_kms->hw_vbif); itr++) {
-		if (sde_kms->hw_vbif[itr])
-			sde_kms->hw_vbif[itr]->hw.disp_op = disp_op;
-	}
-}
-
-static int _sde_kms_send_reg_dma_last_cmd_hfi(struct sde_kms *sde_kms)
-{
-	struct hfi_kms *hfi_kms;
-	struct sde_reg_dma_buffer *last_cmd_buf = NULL;
-	int ret;
-	u32 dpu_idx = DPUID(sde_kms->dev);
-
-	hfi_kms = to_hfi_kms(sde_kms);
-
-	ret = sde_reg_dma_get_last_cmd_buffer(dpu_idx, &last_cmd_buf);
-	if (ret) {
-		SDE_ERROR("Failed to get LUT DMA last command buffer, ret: %d\n", ret);
-		return -EINVAL;
-	}
-
-	ret = hfi_kms_set_reg_dma_buffer(hfi_kms, last_cmd_buf);
-	if (ret) {
-		SDE_ERROR("failed to set reg_dma_buffer to FW\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
-static int sde_kms_check_frame_trigger_transition(struct msm_kms *kms,
-		struct drm_atomic_state *state)
-{
-	struct sde_kms *sde_kms;
-	struct drm_device *dev;
-	struct msm_drm_private *priv;
-	struct drm_crtc *crtc;
-	struct drm_plane *plane;
-	struct drm_crtc *cur_crtc = NULL;
-	struct drm_connector *conn;
-	struct drm_connector *cur_conn = NULL;
-	struct sde_connector *c_conn;
-	struct drm_crtc_state *crtc_state;
-	struct drm_connector_state *conn_state;
-	struct drm_connector_list_iter iter;
-	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
-	int i, ret;
-	u32 frame_trigger;
-
-	if (!kms || !state) {
-		SDE_ERROR("invalid arguments\n");
-		return -EINVAL;
-	}
-
-	sde_kms = to_sde_kms(kms);
-	dev = sde_kms->dev;
-	priv = dev->dev_private;
-
-	/* iterate state object for active secure/non-secure crtc */
-	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
-		if (!crtc_state->active)
-			continue;
-		frame_trigger = sde_crtc_get_property(to_sde_crtc_state(crtc->state),
-				CRTC_PROP_DISPLAY_OP);
-		active_crtc_cnt++;
-		cur_crtc = crtc;
-	}
-
-	for_each_new_connector_in_state(state, conn, conn_state, i) {
-		if (!conn)
-			continue;
-
-		if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
-			continue;
-
-		cur_conn = conn;
-	}
-
-	if (!active_crtc_cnt || !cur_conn) {
-		SDE_DEBUG("No active crtc found: active_crtc_cnt = %d\n",
-				active_crtc_cnt);
-		goto end;
-	}
-
-	/* If no change in transition then exit early */
-	if (IS_DISP_OP_HWIO(frame_trigger) && IS_DISP_OP_HWIO(sde_kms->frame_trigger_state))
-		goto end;
-
-	/* iterate global list for active and secure/non-secure crtc */
-	list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-		if (!crtc->state->active)
-			continue;
-
-		global_active_crtc_cnt++;
-	}
-
-	/*
-	 * - fail crtc commit, if secure-camera/secure-ui session is
-	 *   in-progress in any other display
-	 * - fail secure-camera/secure-ui crtc commit, if any other display
-	 *   session is in-progress
-	 * - fail crtc commit, if write-back is enabled
-	 */
-	if ((global_active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_HFI) ||
-		    (active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_HFI)) {
-		SDE_ERROR(
-		    "crtc%d secure check failed global_active:%d active:%d\n",
-				cur_crtc ? cur_crtc->base.id : -1,
-				global_active_crtc_cnt, active_crtc_cnt);
-		return -EPERM;
-	}
-
-	/* If no change in transition then exit early */
-	if (IS_DISP_OP_HFI(frame_trigger) && IS_DISP_OP_HFI(sde_kms->frame_trigger_state))
-		goto end;
-
-	c_conn = to_sde_connector(cur_conn);
-	/* Transition from HWIO to HFI */
-	if (IS_DISP_OP_HWIO(sde_kms->frame_trigger_state)) {
-		sde_kms->frame_trigger_state = MSM_DISP_OP_HFI;
-
-		if (sde_kms->hfi_session_start) {
-			int wb_idx = 0;
-			int dsi_idx = 0;
-			ret = sde_kms_setup_hfi(priv, dev);
-			if (ret) {
-				SDE_ERROR("HFI setup failed\n");
-				return -EINVAL;
-			}
-
-			hfi_kms_send_trace_cfg(sde_kms->hfi_kms, HFI_TRUE);
-			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
-			hfi_kms_get_catalog_data(sde_kms->hfi_kms);
-			ret = sde_dbg_setup(sde_kms->dev->dev);
-			if (ret)
-				SDE_ERROR("error with debug setup ret: %d\n", ret);
-
-			drm_for_each_plane(plane, dev)
-				sde_plane_post_init(plane);
-
-			/* send LUT DMA last_cmd buffer */
-			ret = _sde_kms_send_reg_dma_last_cmd_hfi(sde_kms);
-			if (ret)
-				SDE_ERROR("failed to send last command LUT DMA buffer to HFI\n");
-
-			drm_connector_list_iter_begin(dev, &iter);
-			drm_for_each_connector_iter(conn, &iter) {
-				struct sde_connector *sde_conn;
-
-				sde_conn = to_sde_connector(conn);
-
-				if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
-					sde_connector_setup_obj_id(conn,
-						sde_kms->hfi_kms->catalog->wb_indices[wb_idx++]);
-				else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI)
-					sde_connector_setup_obj_id(conn,
-						sde_kms->hfi_kms->catalog->dsi_indices[dsi_idx++]);
-			}
-			drm_connector_list_iter_end(&iter);
-
-			sde_kms->hfi_session_start = false;
-		}
-
-		/* Make sure everything goes to idle */
-		_sde_kms_idle_helper(sde_kms, dev);
-		sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
-		sde_kms_set_hw_blks_disp_op(sde_kms->frame_trigger_state, sde_kms);
-		sde_rm_set_disp_op(&sde_kms->rm, sde_kms->frame_trigger_state);
-		c_conn->ops.ctl_pre_transition(c_conn->display);
-
-	/* Transition from HFI to HWIO */
-	} else if (IS_DISP_OP_HFI(sde_kms->frame_trigger_state)) {
-		list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
-			if (!crtc->state->active)
-				continue;
-			sde_crtc_transition_handle_events(crtc, false);
-		}
-
-		sde_kms->frame_trigger_state = MSM_DISP_OP_HWIO;
-		_sde_kms_idle_helper(sde_kms, dev);
-		sde_kms_set_disp_op(sde_kms, sde_kms->frame_trigger_state);
-		sde_kms_set_hw_blks_disp_op(sde_kms->frame_trigger_state, sde_kms);
-		sde_rm_set_disp_op(&sde_kms->rm, sde_kms->frame_trigger_state);
-		c_conn->ops.ctl_post_transition(c_conn->display);
-	}
-end:
-	return 0;
-}
-
 static int sde_kms_check_secure_transition(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -4293,19 +4188,6 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	ret = sde_kms_check_secure_transition(kms, state);
 	if (ret)
 		goto vm_clean_up;
-
-	/*
-	 * Check if any secure transition(moving CRTC between secure and
-	 * non-secure state and vice-versa) is allowed or not. when moving
-	 * to secure state, planes with fb_mode set to dir_translated only can
-	 * be staged on the CRTC, and only one CRTC can be active during
-	 * Secure state
-	 */
-	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features)) {
-		ret = sde_kms_check_frame_trigger_transition(kms, state);
-		if (ret)
-			goto vm_clean_up;
-	}
 
 	ret = sde_kms_check_cwb_concurreny(kms, state);
 	if (ret)
@@ -6171,6 +6053,15 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		sde_kms->catalog = NULL;
 		goto power_error;
 	}
+
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = sde_kms_hfi_boot_init(sde_kms);
+		if (rc) {
+			SDE_ERROR("hfi boot init failed: %d\n", rc);
+			return rc;
+		}
+	}
+
 	sde_kms->core_rev = sde_kms->catalog->hw_rev;
 
 	pr_info("sde hardware revision:0x%x\n", sde_kms->core_rev);
@@ -6454,11 +6345,13 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		goto error;
 	}
 
-	if (test_bit(SDE_FEATURE_DISP_OP, sde_kms->catalog->features))
-		sde_kms->hfi_session_start = true;
-
-	if (IS_DISP_OP_HFI(priv->disp_op))
-		sde_kms_set_hw_blks_disp_op(priv->disp_op, sde_kms);
+	if (IS_DISP_OP_HFI(priv->disp_op)) {
+		rc = sde_kms_hfi_post_boot(sde_kms);
+		if (rc) {
+			SDE_ERROR("hfi post boot failed: %d\n", rc);
+			return rc;
+		}
+	}
 
 	return 0;
 error:

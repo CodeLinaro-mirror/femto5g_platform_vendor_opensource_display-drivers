@@ -84,6 +84,7 @@
  * @HFI_COLOR_FORMAT_FSC_R                 : Color format FSC_R
  * @HFI_COLOR_FORMAT_FSC_G                 : Color format FSC_G
  * @HFI_COLOR_FORMAT_FSC_B                 : Color format FSC_B
+ * @HFI_COLOR_FORMAT_FSC_ALPHA             : Color format FSC_ALPHA
  * // Compressed UBWC 3.0 / 4.x / 5.0 Lossless / FSC (MSB byte = 0x06)
  * @HFI_COLOR_FORMAT_UBWC_NV12             : Color format UBWC NV12
  * @HFI_COLOR_FORMAT_UBWC_NV12_Interlace   : Color format UBWC NV12 Interlace
@@ -92,6 +93,13 @@
  * @HFI_COLOR_FORMAT_UBWC_FSC_R            : Color format UBWC FSC_R
  * @HFI_COLOR_FORMAT_UBWC_FSC_G            : Color format UBWC FSC_G
  * @HFI_COLOR_FORMAT_UBWC_FSC_B            : Color format UBWC FSC_B
+ * @HFI_COLOR_FORMAT_UBWC_FSC_ALPHA        : Color format UBWC FSC_ALPHA
+ * @HFI_COLOR_FORMAT_UBWC_FSC_R_4R	   : Color format UBWC_FSC_R_4R
+ * @HFI_COLOR_FORMAT_UBWC_FSC_G_4R	   : Color format UBWC_FSC_G_4R
+ * @HFI_COLOR_FORMAT_UBWC_FSC_B_4R	   : Color format UBWC_FSC_B_4R
+ * @HFI_COLOR_FORMAT_UBWC_FSC_ALPHA_4R	   : Color format UBWC_FSC_4R_ALPHA
+ * @HFI_COLOR_FORMAT_UBWC_ABGR_NV12_4R_4Y  : Color format of Planar ABGR
+ *                                           each field with NV12_4R(Y)
  * // Compressed UBWC 3.0 / 4.x / 5.0 Lossy (MSB byte = 0x07)
  * @HFI_COLOR_FORMAT_UBWC_NV12_LOSSY       : Color format UBWC NV12 Lossy
  * @HFI_COLOR_FORMAT_UBWC_TP10_LOSSY       : Color format UBWC TP10 Lossy
@@ -175,6 +183,7 @@ enum hfi_color_formats {
 	HFI_COLOR_FORMAT_FSC_R			    = 0x0500000A,
 	HFI_COLOR_FORMAT_FSC_G			    = 0x0500000B,
 	HFI_COLOR_FORMAT_FSC_B			    = 0x0500000C,
+	HFI_COLOR_FORMAT_FSC_ALPHA		    = 0x0500000D,
 	HFI_COLOR_FORMAT_LINEAR_MAX                 = 0x05FFFFFF,
 	/* Compressed UBWC 3.0 / 4.x / 5.0 Lossless / FSC */
 	HFI_COLOR_FORMAT_UBWC_LOSSLESS_MIN          = 0x06000000,
@@ -182,9 +191,15 @@ enum hfi_color_formats {
 	HFI_COLOR_FORMAT_UBWC_NV12_Interlace        = 0x06000002,
 	HFI_COLOR_FORMAT_UBWC_TP10                  = 0x06000003,
 	HFI_COLOR_FORMAT_UBWC_P010                  = 0x06000004,
-	HFI_COLOR_FORMAT_UBWC_FSC_R		    = 0x06000005,
+	HFI_COLOR_FORMAT_UBWC_FSC_R                 = 0x06000005,
 	HFI_COLOR_FORMAT_UBWC_FSC_G                 = 0x06000006,
 	HFI_COLOR_FORMAT_UBWC_FSC_B                 = 0x06000007,
+	HFI_COLOR_FORMAT_UBWC_FSC_ALPHA             = 0x06000008,
+	HFI_COLOR_FORMAT_UBWC_FSC_R_4R              = 0x06000009,
+	HFI_COLOR_FORMAT_UBWC_FSC_G_4R              = 0x0600000A,
+	HFI_COLOR_FORMAT_UBWC_FSC_B_4R              = 0x0600000B,
+	HFI_COLOR_FORMAT_UBWC_FSC_ALPHA_4R          = 0x0600000C,
+	HFI_COLOR_FORMAT_UBWC_ABGR_NV12_4R_4Y	    = 0x0600000D,
 	HFI_COLOR_FORMAT_UBWC_LOSSLESS_MAX          = 0x06FFFFFF,
 	/* Compressed UBWC 3.0 / 4.x / 5.0 Lossy */
 	HFI_COLOR_FORMAT_UBWC_LOSSY_MIN             = 0x07000000,

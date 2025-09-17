@@ -38,7 +38,7 @@ struct dsi_display_hfi {
 	struct hfi_shared_addr_map *shared_addr_map;
 
 	bool mode_valid;
-	unsigned long tx_cmd_buf_dva;
+	struct hfi_shared_addr_map sgt_tx_cmd_buf_map;
 	u32 tx_cmd_buf_fill_level;
 	struct hfi_shared_addr_map tx_cmd_buf_map;
 };
