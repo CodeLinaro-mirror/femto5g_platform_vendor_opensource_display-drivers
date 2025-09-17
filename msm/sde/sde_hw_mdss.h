@@ -56,6 +56,7 @@ enum sde_format_flags {
 	SDE_FORMAT_FLAG_LOSSY_8_5_BIT,
 	SDE_FORMAT_FLAG_LOSSY_2_1_BIT,
 	SDE_FORMAT_FLAG_CAC_BIT,
+	SDE_FORMAT_FLAG_DMA_BIT,
 	SDE_FORMAT_FLAG_BIT_MAX,
 };
 
@@ -67,6 +68,7 @@ enum sde_format_flags {
 #define SDE_FORMAT_FLAG_LOSSY_8_5	BIT(SDE_FORMAT_FLAG_LOSSY_8_5_BIT)
 #define SDE_FORMAT_FLAG_LOSSY_2_1	BIT(SDE_FORMAT_FLAG_LOSSY_2_1_BIT)
 #define SDE_FORMAT_FLAG_CAC		BIT(SDE_FORMAT_FLAG_CAC_BIT)
+#define SDE_FORMAT_FLAG_DMA		BIT(SDE_FORMAT_FLAG_DMA_BIT)
 #define SDE_FORMAT_IS_YUV(X)		\
 	(test_bit(SDE_FORMAT_FLAG_YUV_BIT, (X)->flag))
 #define SDE_FORMAT_IS_DX(X)		\
@@ -92,6 +94,8 @@ enum sde_format_flags {
 	(test_bit(SDE_FORMAT_FLAG_FP16_BIT, (X)->flag))
 #define SDE_FORMAT_IS_CAC_FETCH(X) \
 	(test_bit(SDE_FORMAT_FLAG_CAC_BIT, (X)->flag))
+#define SDE_FORMAT_IS_DPU_DMA(X) \
+	(test_bit(SDE_FORMAT_FLAG_DMA_BIT, (X)->flag))
 
 #define MDP_TICK_COUNT                    16
 #define XO_CLK_RATE                       19200
@@ -458,6 +462,23 @@ enum {
 	C1_B_Cb = 1,
 	C2_R_Cr = 2,
 	C3_ALPHA = 3
+};
+
+/**
+ * enum sde_color_component_mask
+ * Describes which color component(s) to be extracted
+ * @SDE_COLOR_MASK_NONE    : No color component to be extracted
+ * @SDE_COLOR_MASK_GREEN   : Green color component to be extracted
+ * @SDE_COLOR_MASK_BLUE    : blue color component to be extracted
+ * @SDE_COLOR_MASK_RED     : Red color component to be extracted
+ * @SDE_COLOR_MASK_ALPHA   : Alpha color component to be extracted
+ */
+enum sde_color_component_mask {
+	SDE_COLOR_MASK_NONE = 0,
+	SDE_COLOR_MASK_GREEN = BIT(C0_G_Y),
+	SDE_COLOR_MASK_BLUE = BIT(C1_B_Cb),
+	SDE_COLOR_MASK_RED = BIT(C2_R_Cr),
+	SDE_COLOR_MASK_ALPHA = BIT(C3_ALPHA),
 };
 
 /**

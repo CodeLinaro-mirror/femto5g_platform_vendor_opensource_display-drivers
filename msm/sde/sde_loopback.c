@@ -18,7 +18,7 @@ static struct drm_connector *sde_get_primary_conn(struct drm_device *dev)
 
 	drm_connector_list_iter_begin(dev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
-		if (conn && conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
+		if (sde_connector_supports_cac(conn)) {
 			prim_conn = conn;
 			break;
 		}

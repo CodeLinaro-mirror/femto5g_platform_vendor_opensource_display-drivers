@@ -1136,10 +1136,51 @@ static void dp_panel_set_test_mode(struct dp_panel_private *panel,
 		pinfo->pixel_clk_khz = 25170;
 }
 
+static int dp_panel_select_max_fps_mode(struct drm_connector *connector)
+{
+	struct drm_display_mode *drm_mode, *tmp;
+	struct drm_display_mode *best_mode = NULL;
+	struct drm_display_mode *new_mode = NULL;
+	int max_pixels = 0, max_refresh = 0;
+
+	/* Find the best mode: highest resolution, and among them highest refresh rate */
+	list_for_each_entry(drm_mode, &connector->probed_modes, head) {
+		int pixels = drm_mode->hdisplay * drm_mode->vdisplay;
+		int refresh = drm_mode_vrefresh(drm_mode);
+
+		if ((pixels > max_pixels) ||
+		    (pixels == max_pixels && refresh > max_refresh)) {
+			max_pixels = pixels;
+			max_refresh = refresh;
+			best_mode = drm_mode;
+		}
+	}
+
+	if (best_mode) {
+		new_mode = drm_mode_duplicate(connector->dev, best_mode);
+
+		if (new_mode) {
+			list_for_each_entry_safe(drm_mode, tmp, &connector->probed_modes, head) {
+				list_del(&drm_mode->head);
+				drm_mode_destroy(connector->dev, drm_mode);
+			}
+
+			new_mode->type |= DRM_MODE_TYPE_PREFERRED;
+			list_add_tail(&new_mode->head, &connector->probed_modes);
+			DP_INFO("Selected best mode: %dx%d@%dHz",
+				new_mode->hdisplay, new_mode->vdisplay, max_refresh);
+			return 1;
+		}
+	}
+
+	return 0;
+}
+
 static int dp_panel_get_modes(struct dp_panel *dp_panel,
 	struct drm_connector *connector, struct dp_display_mode *mode)
 {
 	struct dp_panel_private *panel;
+	int rc = 0;
 
 	if (!dp_panel) {
 		DP_ERR("invalid input\n");
@@ -1152,10 +1193,12 @@ static int dp_panel_get_modes(struct dp_panel *dp_panel,
 		dp_panel_set_test_mode(panel, mode);
 		return 1;
 	} else if (dp_panel->edid_ctrl->edid) {
-		return _sde_edid_update_modes(connector, dp_panel->edid_ctrl);
-	}
+		rc = _sde_edid_update_modes(connector, dp_panel->edid_ctrl);
 
-	return 0;
+		if (panel->parser->max_fps_mode_en)
+			rc = dp_panel_select_max_fps_mode(connector);
+	}
+	return rc;
 }
 
 static void dp_panel_set_lttpr_mode(struct dp_panel *dp_panel, bool is_transparent)

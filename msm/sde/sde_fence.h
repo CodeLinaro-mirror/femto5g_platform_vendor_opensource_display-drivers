@@ -411,6 +411,16 @@ int sde_fence_update_hw_fences_txq(struct sde_fence_context *ctx, bool vid_mode,
 	u32 debugfs_hw_fence);
 
 /**
+ * sde_fence_update_input_fence_id - updates input-fence id used for comparison with ipcc
+ *                                         signal in dpu
+ *
+ * @ctl: hw ctl to update the input-fence id
+ *
+ * Returns: Zero on success, otherwise returns an error code.
+ */
+int sde_fence_update_input_fence_id(struct sde_hw_ctl *ctl);
+
+/**
  * sde_fence_update_input_hw_fence_signal - updates input-fence ipcc signal in dpu and enables
  *                                  hw-fences for the ctl.
  *
@@ -450,6 +460,11 @@ static inline void sde_fence_output_hw_fence_dir_write_init(struct sde_hw_ctl *h
 
 static inline int sde_fence_update_hw_fences_txq(struct sde_fence_context *ctx, bool vid_mode,
 	u32 line_count, u32 debugfs_hw_fence)
+{
+	return -EINVAL;
+}
+
+static inline int sde_fence_update_input_fence_id(struct sde_hw_ctl *ctl)
 {
 	return -EINVAL;
 }

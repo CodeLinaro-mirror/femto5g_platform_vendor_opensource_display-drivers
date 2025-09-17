@@ -249,7 +249,7 @@ static void dp_hdcp2p2_reset(struct dp_hdcp2p2_ctrl *ctrl)
 	atomic_set(&ctrl->auth_state, HDCP_STATE_INACTIVE);
 }
 
-static int dp_hdcp2p2_register(void *input, bool mst_enabled)
+static int dp_hdcp2p2_register(void *input, bool mst_enabled, u32 cell_idx)
 {
 	int rc;
 	struct dp_hdcp2p2_ctrl *ctrl = input;
@@ -261,8 +261,19 @@ static int dp_hdcp2p2_register(void *input, bool mst_enabled)
 
 	if (mst_enabled)
 		cdata.device_type = HDCP_TXMTR_DP_MST;
-	else
-		cdata.device_type = HDCP_TXMTR_DP;
+	else {
+		switch (cell_idx) {
+		case MDSS_0_DP3_IDX:
+			cdata.device_type = HDCP_TXMTR_DP3;
+			break;
+		case MDSS_1_DP3_IDX:
+			cdata.device_type = HDCP_TXMTR_DP7;
+			break;
+		default:
+			cdata.device_type = HDCP_TXMTR_DP;
+			break;
+		}
+	}
 
 	cdata.context = ctrl->lib_ctx;
 	rc = ctrl->lib->wakeup(&cdata);

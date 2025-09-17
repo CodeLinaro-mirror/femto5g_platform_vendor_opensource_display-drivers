@@ -27,8 +27,6 @@
 #include "dsi_parser.h"
 #include "dsi_display_manager.h"
 #include "dsi_hfi.h"
-#include "dsi_display_hfi.h"
-#include "hfi_defs_display.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -1449,14 +1447,6 @@ int dsi_display_set_power(struct drm_connector *connector,
 			rc ? "failed" : "successful");
 	if (!rc)
 		display->panel->power_mode = power_mode;
-
-	if (display->panel->disp_op == MSM_DISP_OP_HFI) {
-		enum hfi_display_power_mode hfi_lps = display->panel->power_mode;
-
-		rc = dsi_hfi_transition(display, hfi_lps);
-		if (rc)
-			DSI_ERR("failed to send hfi transition cmd, rc=%d\n", rc);
-	}
 
 	return rc;
 }
@@ -3559,22 +3549,27 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host, const struct mipi_d
 {
 	int rc = 0;
 	struct dsi_cmd_desc cmd;
+	struct dsi_display *display;
 
 	if (!msg) {
 		DSI_ERR("Invalid params\n");
 		return 0;
 	}
 
+	display = to_dsi_display(host);
+
 	memcpy(&cmd.msg, msg, sizeof(*msg));
 	cmd.ctrl = 0;
 	cmd.post_wait_ms = 0;
 	cmd.ctrl_flags = 0;
 
-	rc = dsi_host_transfer_sub(host, &cmd, false);
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+		rc = dsi_hfi_host_transfer_sub(host, &cmd);
+	else
+		rc = dsi_host_transfer_sub(host, &cmd, false);
 
 	return rc;
 }
-
 
 static struct mipi_dsi_host_ops dsi_host_ops = {
 	.attach = dsi_host_attach,
@@ -5624,9 +5619,23 @@ int dsi_display_cont_splash_res_disable(void *dsi_display)
 	/* Remove the panel vote that was added during dsi display probe */
 	if (!(display->panel->ctl_op_sync && !strcmp(display->panel->type, "secondary"))) {
 		rc = dsi_pwr_enable_regulator(&display->panel->power_info, false);
-		if (rc)
+		if (rc) {
 			DSI_ERR("[%s] failed to disable vregs, rc=%d\n",
 				display->panel->name, rc);
+			return rc;
+		}
+	}
+
+	/* Remove each panels post_power vote that was added during dsi display probe */
+	if (display->panel && display->panel->need_post_on_supply &&
+		display->panel->post_power_enable_status) {
+		rc = dsi_pwr_enable_regulator(&display->panel->post_power_info, false);
+		if (rc) {
+			DSI_ERR("[%s] failed to disable post vregs, rc=%d\n",
+					display->panel->name, rc);
+			return rc;
+		}
+		display->panel->post_power_enable_status = false;
 	}
 	return rc;
 }
@@ -6354,6 +6363,23 @@ static int dsi_display_init(struct dsi_display *display)
 					display->panel->name, rc);
 			return rc;
 		}
+	}
+
+	/*
+	 * Vote on each panels post_power to make sure regulators are on for cont-splash
+	 * enabled usecase. And avoid kernel driver disable panel regulator after
+	 * dsi probe is complete.
+	 */
+
+	if (display->panel && display->panel->need_post_on_supply &&
+		!display->panel->post_power_enable_status) {
+		rc = dsi_pwr_enable_regulator(&display->panel->post_power_info, true);
+		if (rc) {
+			DSI_ERR("[%s] failed to enable post vregs, rc=%d\n",
+					display->panel->name, rc);
+			return rc;
+		}
+		display->panel->post_power_enable_status = true;
 	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
@@ -7206,7 +7232,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->disp_te_gpio = display->disp_te_gpio;
 	info->esd_rw_check = display->panel->esd_config.esd_enabled &&
 			display->panel->esd_config.status_mode == ESD_MODE_PANEL_RW;
-
+	info->dpu_dma_enabled = display->panel->host_config.dpu_dma_enabled;
 	switch (display->panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:
 		info->curr_panel_mode = MSM_DISPLAY_VIDEO_MODE;
@@ -9597,7 +9623,17 @@ static void dsi_display_handle_poms_te(struct work_struct *work)
 	}
 
 	dsi = &panel->mipi_device;
+
+#if (KERNEL_VERSION(6, 15, 0) > LINUX_VERSION_CODE)
 	rc = mipi_dsi_dcs_set_tear_off(dsi);
+#else
+	struct mipi_dsi_multi_context ctx;
+
+	ctx.dsi = dsi;
+	ctx.accum_err = 0;
+	mipi_dsi_dcs_set_tear_off_multi(&ctx);
+	rc = ctx.accum_err;
+#endif
 
 error:
 	mutex_unlock(&panel->panel_lock);

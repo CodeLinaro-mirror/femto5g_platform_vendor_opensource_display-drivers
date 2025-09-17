@@ -17,7 +17,7 @@
 
 #define MAX_NUM_CTRLS_AND_LENGTH 3
 #define MAX_NUM_PHYS_AND_LENGTH 3
-#define MIN_NUM_OF_GEN_CAPS 15
+#define MIN_NUM_OF_GEN_CAPS 16
 #define NUM_PANEL_CMD_TYPES_SUPPORTED 4
 #define CLK_RATE_SIZE 2
 #define JITTER_SIZE 2
@@ -38,9 +38,13 @@ struct dsi_value_to_prop_lookup {
  * struct dsi_panel_init_caps - contains properties to be sent as part of
  * HFI_COMMAND_PANEL_INIT_PANEL_CAPS
  * @num_timing_modes:               HFI_PROPERTY_PANEL_TIMING_MODE_COUNT
+ * @dcs_cmd_tx_buf_dva:             HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_DVA
+ * @dcs_cmd_tx_buf_iova:            HFI_PROPERTY_PANEL_DCS_CMD_TX_BUF_IOVA
  */
 struct dsi_panel_init_caps {
 	u32 num_timing_modes;
+	u64 dcs_cmd_tx_buf_dva;
+	u64 dcs_cmd_tx_buf_iova;
 };
 
 /**
@@ -171,6 +175,7 @@ struct dsi_panel_timing_caps {
  * @vsync_src:                      HFI_PROPERTY_PANEL_VSYNC_SOURCE
  * @ctrl_nums:                      HFI_PROPERTY_PANEL_CTRL_NUM
  * @phy_nums:                       HFI_PROPERTY_PANEL_PHY_NUM
+ * @cphy_enabled:                   HFI_PROPERTY_PANEL_CPHY_MODE
  */
 struct dsi_panel_generic_caps {
 	int valid_gen_caps_cnt;
@@ -202,6 +207,7 @@ struct dsi_panel_generic_caps {
 	enum hfi_panel_vsync_source vsync_src;
 	u32 ctrl_nums[MAX_NUM_CTRLS_AND_LENGTH];
 	u32 phy_nums[MAX_NUM_PHYS_AND_LENGTH];
+	bool cphy_enabled;
 };
 
 /**
@@ -295,5 +301,17 @@ int dsi_hfi_misr_setup(struct dsi_display *display);
  * Return: error code.
  */
 int dsi_hfi_misr_read(struct dsi_display *display);
+
+/**
+ * dsi_hfi_host_transfer_sub() - transfers DSI commands from host to DCP
+ * @host:                pointer to the DSI mipi host device
+ * @cmd:                 DSI command to be transferred
+ *
+ * This function handles the transfer of DSI commands to the Display Control
+ * Processor (DCP) via the Hardware-Firmware Interface (HFI).
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd);
 
 #endif

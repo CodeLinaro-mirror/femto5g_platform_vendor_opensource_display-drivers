@@ -296,6 +296,8 @@ struct dsi_panel {
 	u32 dsc_count;
 	u32 lm_count;
 
+	enum msm_disp_op disp_op;
+
 	bool ctl_op_sync;
 
 	int panel_test_gpio;
@@ -303,7 +305,7 @@ struct dsi_panel {
 	bool powered;
 	enum dsi_panel_physical_type panel_type;
 	bool need_post_on_supply;
-	enum msm_disp_op disp_op;
+	bool post_power_enable_status;
 
 	struct dsi_panel_ops panel_ops;
 };

@@ -128,6 +128,21 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_POWER                                         0x04000005
 
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_HW_RECOVERY is sent from DCP to host to indicate a hw recovery event
+ * for a given display.
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_NONE
+ *           .cmd                      : HFI_COMMAND_DISPLAY_EVENT_HW_RECOVERY
+ *           .flags                    : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *           .id                       : BITS 0:15 carry the display id for which the event
+ *                                          is applicable
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_HW_RECOVERY                                   0x04000006
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H

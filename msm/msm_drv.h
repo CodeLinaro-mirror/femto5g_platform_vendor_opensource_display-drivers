@@ -167,6 +167,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_CAC_TYPE,
 	PLANE_PROP_SRC_RECT_EXT,
 	PLANE_PROP_DST_RECT_EXT,
+	PLANE_PROP_COLOR_MASK_OVERRIDE,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -469,6 +470,7 @@ struct msm_ratio {
  * @MSM_ENC_TX_COMPLETE - wait for the HW to transfer the frame to panel
  * @MSM_ENC_VBLANK - wait for the HW VBLANK event (for driver-internal waiters)
  * @MSM_ENC_ACTIVE_REGION - wait for the TG to be in active pixel region
+ * @MSM_ENC_HW_RECOVERY - wait for the HW to recover from error
  * @MSM_ENC_EVENT_MAX - maximum value for events related to frame
  */
 enum msm_event_wait {
@@ -476,6 +478,7 @@ enum msm_event_wait {
 	MSM_ENC_TX_COMPLETE,
 	MSM_ENC_VBLANK,
 	MSM_ENC_ACTIVE_REGION,
+	MSM_ENC_HW_RECOVERY,
 	MSM_ENC_EVENT_MAX,
 };
 
@@ -1070,6 +1073,7 @@ struct msm_resource_caps_info {
  * @ctl_op_sync:        Indicates dual display panels are operating in sync mode
  * @is_master:          Flag indicating the Master display which drives the displays in sync mode
  * @disable_cesta_hw_sleep: Disable cesta hardware sleep & panic/wakeup_en for the display
+ * @dpu_dma_enabled:		Flag indicating dpu dma mode is enabled
  */
 struct msm_display_info {
 	int intf_type;
@@ -1115,6 +1119,7 @@ struct msm_display_info {
 	bool ctl_op_sync;
 	bool is_master;
 	bool disable_cesta_hw_sleep;
+	bool dpu_dma_enabled;
 };
 
 #define MSM_MAX_ROI	4

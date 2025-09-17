@@ -11,8 +11,9 @@
 #include "sde_hw_dspp.h"
 
 static struct hfi_display_pa_dither hfi_pa_dither_cached[DPU_MAX][DSPP_MAX] = {};
+static u32 hfi_demura_backlight_cached[DPU_MAX][DSPP_MAX] = {};
 
-void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data)
+void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data, enum msm_disp_op disp_op)
 {
 	struct hfi_csc hfi_cfg;
 	int ret = 0;
@@ -24,23 +25,24 @@ void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data)
 	}
 
 	prop_id = HFI_PACK_VERSION(1, 0, prop_id);
-	hfi_cfg.flags = HFI_BUFF_FEATURE_ENABLE;
-	for (int  i = 0; i < HFI_CSC_MATRIX_COEFF_SIZE; i++)
+	hfi_cfg.flags = HFI_COLOR_LAYER_FEATURE_ENABLE_FLAG;
+	for (int i = 0; i < HFI_CSC_MATRIX_COEFF_SIZE; i++)
 		hfi_cfg.ctm_coeff[i] = data->csc_mv[i];
 
-	for (int  i = 0; i < HFI_CSC_BIAS_SIZE; i++) {
+	for (int i = 0; i < HFI_CSC_BIAS_SIZE; i++) {
 		hfi_cfg.pre_bias[i] = data->csc_pre_bv[i];
 		hfi_cfg.post_bias[i] = data->csc_post_bv[i];
 	}
 
-	for (int  i = 0; i < HFI_CSC_CLAMP_SIZE; i++) {
+	for (int i = 0; i < HFI_CSC_CLAMP_SIZE; i++) {
 		hfi_cfg.pre_clamp[i] = data->csc_pre_lv[i];
-		hfi_cfg.post_bias[i] = data->csc_post_lv[i];
+		hfi_cfg.post_clamp[i] = data->csc_post_lv[i];
 	}
 
 	ret = hfi_util_u32_prop_helper_add_prop_by_obj(ctx->prop_helper,
 		prop_id, ctx->obj_id, HFI_VAL_U32_ARRAY, &hfi_cfg,
 		sizeof(struct hfi_csc));
+
 	if (ret)
 		SDE_ERROR("failed to add HFI prop: %d ret: %d\n", prop_id, ret);
 
@@ -174,7 +176,7 @@ void hfi_setup_ucsc_cscv1(struct sde_hw_pipe *ctx,
 		return;
 	}
 
-	hfi_cfg.flags = HFI_BUFF_FEATURE_ENABLE;
+	hfi_cfg.flags = HFI_COLOR_LAYER_FEATURE_ENABLE_FLAG;
 	for (int i = 0; i < HFI_UCSC_CSC_MATRIX_COEFF_SIZE; i++)
 		hfi_cfg.ctm_coeff[i] = ucsc_csc->cfg_param_0[i];
 
@@ -212,7 +214,7 @@ void hfi_setup_ucsc_unmultv1(struct sde_hw_pipe *ctx,
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 1, hw_cfg->prop_id);
 	ucsc_unmult = (bool *)(hw_cfg->payload);
 	if (ucsc_unmult && *ucsc_unmult)
-		hfi_cfg = HFI_BUFF_FEATURE_ENABLE;
+		hfi_cfg = HFI_COLOR_LAYER_FEATURE_ENABLE_FLAG;
 
 	ret = hfi_util_u32_prop_helper_add_prop_by_obj(hw_cfg->prop_helper, hw_cfg->prop_id,
 			hw_cfg->obj_id, HFI_VAL_U32, &hfi_cfg, sizeof(u32));
@@ -241,7 +243,7 @@ void hfi_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 0, hw_cfg->prop_id);
 	ucsc_alpha_dither  = (bool *)(hw_cfg->payload);
 	if (ucsc_alpha_dither && *ucsc_alpha_dither)
-		hfi_cfg = HFI_BUFF_FEATURE_ENABLE;
+		hfi_cfg = HFI_COLOR_LAYER_FEATURE_ENABLE_FLAG;
 
 	ret = hfi_util_u32_prop_helper_add_prop_by_obj(hw_cfg->prop_helper, hw_cfg->prop_id,
 			hw_cfg->obj_id, HFI_VAL_U32, &hfi_cfg, sizeof(u32));
@@ -413,4 +415,44 @@ void hfi_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx, void *cfg)
 			HFI_PROPERTY_DISPLAY_COLOR_SPR_DITHER, 2, 0);
 	if (ret)
 		SDE_ERROR("Failed to send hfi_buff from SPR dither ret: %d\n", ret);
+}
+
+void hfi_setup_demura_backlight_cfg_v4(struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg)
+{
+	u32 backlight = 0;
+	u32 ret = 0;
+	u32 prop_id = HFI_PACK_VERSION(4, 0, HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT);
+
+	if (!ctx || !hw_cfg || (hw_cfg->len != sizeof(u64) && hw_cfg->payload)) {
+		DRM_ERROR("ctx %pK hw_cfg %pK payload %pK size %d expected sz %zd\n",
+			ctx, hw_cfg, ((hw_cfg) ? hw_cfg->payload : NULL),
+			((hw_cfg) ? hw_cfg->len : 0), sizeof(u64));
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	if (!hw_cfg->payload) {
+		DRM_DEBUG_DRIVER("disable demura backlight feature\n");
+		hfi_demura_backlight_cached[ctx->dpu_idx][hw_cfg->dspp_idx] = 0;
+	} else {
+		backlight = (*((u64 *)(hw_cfg->payload)) & REG_MASK(32));
+		hfi_demura_backlight_cached[ctx->dpu_idx][hw_cfg->dspp_idx] = backlight;
+	}
+
+	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				prop_id, HFI_VAL_U32_ARRAY,
+				&hfi_demura_backlight_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx],
+				sizeof(u32) * hw_cfg->num_of_mixers);
+		if (ret)
+			SDE_ERROR("Failed to add hfi prop for demura backlight %d ret %d\n",
+				prop_id, ret);
+		else
+			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
+				HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT);
+	}
 }

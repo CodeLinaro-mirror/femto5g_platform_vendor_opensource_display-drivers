@@ -281,6 +281,16 @@ end:
 	mutex_unlock(&crtc_hfi->hfi_lock);
 }
 
+void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask)
+{
+	struct hfi_crtc *hfi_crtc;
+
+	if (sde_crtc) {
+		hfi_crtc = to_hfi_crtc(sde_crtc);
+		hfi_crtc->pending_enc_mask = enc_mask;
+	}
+}
+
 u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
 {
 	u32 disp_id = U32_MAX;
@@ -289,26 +299,23 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 	struct drm_encoder *main_enc = NULL;
 	struct drm_connector_list_iter iter;
 	struct sde_crtc *sde_crtc;
+	struct hfi_crtc *hfi_crtc;
+	u32 enc_mask;
 
 	if (!crtc || !crtc_state)
 		return U32_MAX;
 
-	drm_for_each_encoder_mask(enc, crtc->dev, crtc_state->encoder_mask) {
+	sde_crtc =  to_sde_crtc(crtc);
+	hfi_crtc = to_hfi_crtc(sde_crtc);
+
+	enc_mask = crtc_state->encoder_mask ?
+		crtc_state->encoder_mask : sde_crtc->cached_encoder_mask;
+	enc_mask = enc_mask ? enc_mask : hfi_crtc->pending_enc_mask;
+	drm_for_each_encoder_mask(enc, crtc->dev, enc_mask) {
 		if (sde_encoder_in_clone_mode(enc))
 			continue;
 
 		main_enc = enc;
-	}
-
-	if (!main_enc) {
-		sde_crtc = to_sde_crtc(crtc);
-		drm_for_each_encoder_mask(enc, crtc->dev, sde_crtc->cached_encoder_mask) {
-			if (sde_encoder_in_clone_mode(enc))
-				continue;
-
-			main_enc = enc;
-			SDE_DEBUG("found encoder from cached\n");
-		}
 	}
 
 	if (main_enc) {
@@ -429,7 +436,6 @@ int hfi_crtc_atomic_begin(struct sde_crtc *sde_crtc, struct sde_crtc_state *csta
 		return -EINVAL;
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
-	disp_id = 0;
 	if (disp_id == U32_MAX) {
 		SDE_ERROR("invalid display id\n");
 		return -EINVAL;

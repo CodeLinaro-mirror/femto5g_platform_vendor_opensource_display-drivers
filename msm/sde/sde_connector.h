@@ -11,6 +11,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_panel.h>
 #include <linux/types.h>
+#include <linux/atomic.h>
 
 #include "msm_drv.h"
 #include "msm_prop.h"
@@ -772,6 +773,7 @@ struct sde_backlight_vrr_update {
  * @lm_mask: preferred LM mask for connector
  * @allow_bl_update: Flag to indicate if BL update is allowed currently or not
  * @dimming_bl_notify_enabled: Flag to indicate if dimming bl notify is enabled or not
+ * @ssr_notify_enabled: atomic variable to identify if ssr event notification is enabled
  * @sde_backlight_vrr_update: Smooth dimming backlight structure for vrr
  * @qsync_mode: Cached Qsync mode, 0=disabled, 1=continuous mode
  * @qsync_updated: Qsync settings were updated
@@ -801,6 +803,7 @@ struct sde_backlight_vrr_update {
  * @is_lb_conn: Indicates if this connector is a loopback connector
  * @hfi_conn: Pointer to hfi connector struct
  * @hal_ops: hal ops for hfi communication
+ * @dpu_dma_enabled: Indicates if dpu dma mode is enabled
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -856,6 +859,7 @@ struct sde_connector {
 	bool allow_bl_update;
 	bool dimming_bl_notify_enabled;
 	struct sde_backlight_vrr_update bl_vrr;
+	atomic_t ssr_notify_enabled;
 
 	u32 hdr_eotf;
 	bool hdr_metadata_type_one;
@@ -904,6 +908,8 @@ struct sde_connector {
 
 	struct hfi_connector *hfi_conn;
 	struct sde_connector_hal_funcs hal_ops;
+
+	bool dpu_dma_enabled;
 };
 
 /**
@@ -1605,6 +1611,11 @@ static inline bool sde_connector_is_3d_merge_enabled(struct drm_connector_state 
 		|| sde_connector_is_quadpipe_3d_merge_enabled(conn_state);
 }
 
+static inline bool sde_connector_supports_cac(struct drm_connector *conn)
+{
+	return (conn && (conn->connector_type == DRM_MODE_CONNECTOR_DSI ||
+		conn->connector_type == DRM_MODE_CONNECTOR_eDP));
+}
 /**
 * sde_connector_set_msm_mode - set msm_mode for connector state
 * @conn_state: Pointer to drm connector state structure
@@ -1646,6 +1657,13 @@ static inline u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
  * conn: Pointer to drm_connector struct
  */
 void sde_conn_timeline_status(struct drm_connector *conn);
+
+/**
+ * sde_connector_setup_obj_id - update connector object ids
+ * @conn: Pointer to drm_connector struct
+ * @id: Opaque Object id of connector
+ */
+int sde_connector_setup_obj_id(struct drm_connector *conn, int id);
 
 /**
  * sde_connector_helper_bridge_disable - helper function for drm bridge disable

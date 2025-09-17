@@ -90,6 +90,13 @@ extern "C" {
 #define DRM_FORMAT_MOD_QCOM_LOSSY_2_1	fourcc_mod_code(QCOM, 0x200)
 
 /**
+ * @DRM_FORMAT_MOD_QCOM_DMA:       Refers to a DMA variant of the base format.
+ *                                  Implementation may be platform and
+ *                                  base-format specific.
+ */
+#define DRM_FORMAT_MOD_QCOM_DMA	fourcc_mod_code(QCOM, 0x400)
+
+/**
  * Blend operations for "blend_op" property
  *
  * @SDE_DRM_BLEND_OP_NOT_DEFINED:   No blend operation defined for the layer.
@@ -663,6 +670,12 @@ struct sde_drm_roi_v1 {
 #define SDE_RECOVERY_HARD_RESET		2
 
 /**
+ * sde SSR events for notifying client
+ */
+#define SDE_SSR_START                   0
+#define SDE_SSR_END                     1
+
+/**
  * Define UBWC statistics config
  */
 #define UBWC_STATS_MAX_ROI		0x3
@@ -1060,6 +1073,7 @@ struct sde_drm_dnsc_blur_cfg {
 #define DRM_EVENT_MDNIE_ART 0X80000012
 #define DRM_EVENT_COPR 0X80000013
 #define DRM_EVENT_VM_RECLAIM 0X80000014
+#define DRM_EVENT_SSR 0X80000015
 
 #ifndef DRM_MODE_FLAG_VID_MODE_PANEL
 #define DRM_MODE_FLAG_VID_MODE_PANEL        0x01

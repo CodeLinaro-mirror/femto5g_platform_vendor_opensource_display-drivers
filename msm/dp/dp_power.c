@@ -93,17 +93,29 @@ static void dp_power_phy_gdsc(struct dp_power *dp_power, bool on)
 {
 	int rc = 0;
 
-	if (IS_ERR_OR_NULL(dp_power->dp_phy_gdsc))
+	if (IS_ERR_OR_NULL(dp_power->dp_phy_gdsc) && IS_ERR_OR_NULL(dp_power->pd_dp_phy_gdsc))
 		return;
 
-	if (on)
-		rc = regulator_enable(dp_power->dp_phy_gdsc);
-	else
-		rc = regulator_disable(dp_power->dp_phy_gdsc);
+	if (dp_power->dp_phy_gdsc) {
+		if (on)
+			rc = regulator_enable(dp_power->dp_phy_gdsc);
+		else
+			rc = regulator_disable(dp_power->dp_phy_gdsc);
 
-	if (rc)
-		DP_ERR("Fail to %s dp_phy_gdsc regulator ret =%d\n",
-				on ? "enable" : "disable", rc);
+		if (rc)
+			DP_ERR("Fail to %s dp_phy_gdsc regulator ret = %d\n",
+					on ? "enable" : "disable", rc);
+	} else if (dp_power->pd_dp_phy_gdsc) {
+		if (on)
+			rc = pm_runtime_get_sync(dp_power->pd_dp_phy_gdsc);
+		else
+			rc = pm_runtime_put_sync(dp_power->pd_dp_phy_gdsc);
+
+		if (rc < 0)
+			DP_ERR("Fail to %s pd_dp_phy_gdsc regulator ret = %d\n",
+					on ? "enable" : "disable", rc);
+	}
+
 }
 
 static int dp_power_regulator_ctrl(struct dp_power_private *power, bool enable)
@@ -955,10 +967,17 @@ struct dp_power *dp_power_get(struct dp_parser *parser, struct dp_pll *pll)
 	dp_power->power_mmrm_init = dp_power_mmrm_init;
 	dp_power->edp_panel_set_gpio = dp_power_edp_panel_set_gpio;
 
-	dp_power->dp_phy_gdsc = devm_regulator_get(dev, "dp_phy_gdsc");
-	if (IS_ERR(dp_power->dp_phy_gdsc)) {
+	if (dev->pm_domain) {
+		pm_runtime_enable(dev);
+		dp_power->pd_dp_phy_gdsc = dev;
 		dp_power->dp_phy_gdsc = NULL;
-		DP_DEBUG("Optional GDSC regulator is missing\n");
+	} else {
+		dp_power->dp_phy_gdsc = devm_regulator_get(dev, "dp_phy_gdsc");
+		if (IS_ERR(dp_power->dp_phy_gdsc)) {
+			dp_power->dp_phy_gdsc = NULL;
+			DP_DEBUG("Optional GDSC regulator is missing\n");
+		}
+		dp_power->pd_dp_phy_gdsc = NULL;
 	}
 
 	return dp_power;

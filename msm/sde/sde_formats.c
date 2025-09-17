@@ -184,6 +184,24 @@ flg, fm, np)                                                      \
 	.tile_height = SDE_TILE_HEIGHT_DEFAULT                            \
 }
 
+#define PLANAR_DMA_YUV_FMT(fmt, a, r, g, b, e0, e1, e2, chroma, flg, fm, np)      \
+{                                                                         \
+	.base.pixel_format = DRM_FORMAT_ ## fmt,                          \
+	.fetch_planes = SDE_PLANE_PLANAR,                          \
+	.alpha_enable = false,                                            \
+	.element = { (e0), (e1), (e2), 0 },                                  \
+	.bits = { g, b, r, a },                                           \
+	.chroma_sample = chroma,                                          \
+	.unpack_align_msb = 0,                                            \
+	.unpack_tight = 1,                                                \
+	.unpack_count = 3,                                                \
+	.bpp = 1,                                                         \
+	.fetch_mode = fm,                                                 \
+	.flag = {(flg)},                                                  \
+	.num_planes = np,                                                 \
+	.tile_height = SDE_TILE_HEIGHT_DEFAULT                            \
+}
+
 /*
  * struct sde_media_color_map - maps drm format to media format
  * @format: DRM base pixel format
@@ -757,6 +775,13 @@ static const struct sde_format sde_format_map_cac_b[] = {
 		SDE_FETCH_LINEAR, 1),
 };
 
+static const struct sde_format sde_format_map_dma[] = {
+	PLANAR_DMA_YUV_FMT(NV12,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C2_R_Cr, C0_G_Y, C1_B_Cb,
+		SDE_CHROMA_RGB, SDE_FORMAT_FLAG_DMA, SDE_FETCH_LINEAR, 1),
+};
+
 bool sde_format_is_tp10_ubwc(const struct sde_format *fmt)
 {
 	if (SDE_FORMAT_IS_YUV(fmt) && SDE_FORMAT_IS_DX(fmt) &&
@@ -947,7 +972,8 @@ static int _sde_format_get_plane_sizes_linear(
 	layout->num_planes = fmt->num_planes;
 
 	/* Due to memset above, only need to set planes of interest */
-	if (fmt->fetch_planes == SDE_PLANE_INTERLEAVED) {
+	if (fmt->fetch_planes == SDE_PLANE_INTERLEAVED
+			|| test_bit(SDE_FORMAT_FLAG_DMA_BIT, fmt->flag)) {
 		layout->num_planes = 1;
 		layout->plane_size[0] = width * height * layout->format->bpp;
 		layout->plane_pitch[0] = width * layout->format->bpp;
@@ -1379,6 +1405,10 @@ const struct sde_format *sde_get_sde_format_ext(
 		SDE_DEBUG(
 			"found cac fmt: %4.4s DRM_FORMAT_MOD_QCOM_CAC_B\n",
 				(char *)&format);
+		break;
+	case DRM_FORMAT_MOD_QCOM_DMA:
+		map = sde_format_map_dma;
+		map_size = ARRAY_SIZE(sde_format_map_dma);
 		break;
 	default:
 		SDE_ERROR("unsupported format modifier %llX\n", modifier);

@@ -182,6 +182,9 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_RC_MASK] = HFI_PROPERTY_DISPLAY_COLOR_RC,
 	[SDE_CP_CRTC_DSPP_SPR_INIT] = HFI_PROPERTY_DISPLAY_COLOR_SPR_INIT,
 	[SDE_CP_CRTC_DSPP_SPR_UDC] = HFI_PROPERTY_DISPLAY_COLOR_SPR_UDC,
+	[SDE_CP_CRTC_DSPP_DEMURA_INIT] = HFI_PROPERTY_DISPLAY_COLOR_DEMURA_CFG,
+	[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = HFI_PROPERTY_DISPLAY_COLOR_DEMURA_TABLE,
+	[SDE_CP_CRTC_DSPP_DEMURA_BACKLIGHT] = HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT,
 };
 #endif
 
@@ -1806,7 +1809,8 @@ disable_feature:
 			hw_cfg.mixer_info = hw_lm;
 			hw_cfg.displayh = num_mixers * hw_lm->cfg.out_width;
 			hw_cfg.displayv = hw_lm->cfg.out_height;
-
+			hw_cfg.dspp_idx = hw_dspp->idx;
+			_sde_cp_setup_hfi_config(prop_node->feature, sde_crtc, &hw_cfg);
 			ret = disable_handler(hw_dspp, &hw_cfg, sde_crtc);
 		}
 
@@ -1945,6 +1949,9 @@ static int _sde_cp_crtc_check_pu_features(struct drm_crtc *crtc)
 	struct sde_crtc_state *sde_crtc_state;
 	struct sde_hw_cp_cfg hw_cfg;
 	struct sde_hw_dspp *hw_dspp;
+	struct drm_connector *conn;
+	struct drm_connector_list_iter conn_iter;
+	struct sde_connector_state *sde_conn_state = NULL;
 
 	if (!crtc) {
 		DRM_ERROR("invalid crtc %pK\n", crtc);
@@ -1983,8 +1990,6 @@ static int _sde_cp_crtc_check_pu_features(struct drm_crtc *crtc)
 
 	memset(&hw_cfg, 0, sizeof(hw_cfg));
 	hw_cfg.num_of_mixers = sde_crtc->num_mixers;
-	hw_cfg.payload = &sde_crtc_state->user_roi_list;
-	hw_cfg.len = sizeof(sde_crtc_state->user_roi_list);
 	hw_cfg.panel_height = sde_crtc_state->base.adjusted_mode.vdisplay;
 	hw_cfg.panel_width = sde_crtc_state->base.adjusted_mode.hdisplay;
 
@@ -1998,6 +2003,33 @@ static int _sde_cp_crtc_check_pu_features(struct drm_crtc *crtc)
 		if (!check_pu_feature ||
 				!(sde_crtc->cp_pu_feature_mask & BIT(i)))
 			continue;
+
+		/* get ROIs from connector if RC and destination scaler is enabled */
+		if (i == SDE_CP_CRTC_DSPP_RC_PU && sde_crtc_state->num_ds_enabled) {
+			drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+			drm_for_each_connector_iter(conn, &conn_iter) {
+				if (conn->state && (conn->state->crtc != crtc))
+					continue;
+
+				if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+					continue;
+
+				sde_conn_state = to_sde_connector_state(conn->state);
+				break;
+			}
+			drm_connector_list_iter_end(&conn_iter);
+			if (!sde_conn_state) {
+				DRM_ERROR("invalid sde_conn_state %pK\n", sde_conn_state);
+				return -EINVAL;
+			}
+			hw_cfg.payload = (sde_conn_state->rois.num_rects) ?
+				&sde_conn_state->rois : NULL;
+			hw_cfg.len = sizeof(sde_conn_state->rois);
+		} else {
+			hw_cfg.payload = (sde_crtc_state->user_roi_list.num_rects) ?
+				&sde_crtc_state->user_roi_list : NULL;
+			hw_cfg.len = sizeof(sde_crtc_state->user_roi_list);
+		}
 
 		SDE_EVT32(i, hw_cfg.panel_width, hw_cfg.panel_height);
 		for (j = 0; j < hw_cfg.num_of_mixers; j++) {
@@ -2094,7 +2126,9 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 	struct sde_hw_dspp *hw_dspp;
 	struct sde_hw_mixer *hw_lm;
 	struct sde_mdss_cfg *catalog;
-	struct sde_rect user_rect, cached_rect;
+	struct drm_connector *conn;
+	struct drm_connector_list_iter conn_iter;
+	struct sde_connector_state *sde_conn_state = NULL;
 
 	if (!need_flush) {
 		DRM_ERROR("invalid need_flush %pK\n", need_flush);
@@ -2130,28 +2164,10 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 		}
 	}
 
-	/* early return if not a partial update frame or no change in rois */
-	if (sde_crtc_state->user_roi_list.num_rects == 0) {
-		DRM_DEBUG_DRIVER("no partial update required\n");
-		memset(&sde_crtc_state->cached_user_roi_list, 0,
-				sizeof(struct msm_roi_list));
-	} else {
-		sde_kms_rect_merge_rectangles(&sde_crtc_state->user_roi_list,
-				&user_rect);
-		sde_kms_rect_merge_rectangles(&sde_crtc_state->cached_user_roi_list,
-				&cached_rect);
-		if (sde_kms_rect_is_equal(&user_rect, &cached_rect)) {
-			DRM_DEBUG_DRIVER("no change in list of ROIs\n");
-		}
-	}
-
 	catalog = get_kms(&sde_crtc->base)->catalog;
 	memset(&hw_cfg, 0, sizeof(hw_cfg));
 	hw_cfg.num_of_mixers = _sde_cp_get_num_dspp_mixers(sde_crtc);
 	hw_cfg.broadcast_disabled = catalog->dma_cfg.broadcast_disabled;
-	hw_cfg.payload = (sde_crtc_state->user_roi_list.num_rects) ?
-		&sde_crtc_state->user_roi_list : NULL;
-	hw_cfg.len = sizeof(sde_crtc_state->user_roi_list);
 	hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
 	hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
 	for (i = 0; i < hw_cfg.num_of_mixers; i++)
@@ -2164,6 +2180,33 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 		if (!set_pu_feature ||
 				!(sde_crtc->cp_pu_feature_mask & BIT(i)))
 			continue;
+
+		/* get ROIs from connector for RC if destination scaler is enabled */
+		if (i == SDE_CP_CRTC_DSPP_RC_PU && sde_crtc_state->num_ds_enabled) {
+			drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+			drm_for_each_connector_iter(conn, &conn_iter) {
+				if (conn->state && (conn->state->crtc != crtc))
+					continue;
+
+				if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+					continue;
+
+				sde_conn_state = to_sde_connector_state(conn->state);
+				break;
+			}
+			drm_connector_list_iter_end(&conn_iter);
+			if (!sde_conn_state) {
+				DRM_ERROR("invalid sde_conn_state %pK\n", sde_conn_state);
+				return -EINVAL;
+			}
+			hw_cfg.payload = (sde_conn_state->rois.num_rects) ?
+				&sde_conn_state->rois : NULL;
+			hw_cfg.len = sizeof(sde_conn_state->rois);
+		} else {
+			hw_cfg.payload = (sde_crtc_state->user_roi_list.num_rects) ?
+				&sde_crtc_state->user_roi_list : NULL;
+			hw_cfg.len = sizeof(sde_crtc_state->user_roi_list);
+		}
 
 		SDE_EVT32(i, hw_cfg.panel_width, hw_cfg.panel_height);
 		for (j = 0; j < hw_cfg.num_of_mixers; j++) {
@@ -2189,10 +2232,6 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 			}
 		}
 	}
-
-	memcpy(&sde_crtc_state->cached_user_roi_list,
-			&sde_crtc_state->user_roi_list,
-			sizeof(struct msm_roi_list));
 
 	return 0;
 }
@@ -2903,12 +2942,19 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 	int n = 0, i = 0, ret = 0;
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
 	u32 num_mixers = _sde_cp_get_num_dspp_mixers(sde_crtc);
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 	enum sde_cp_crtc_features features[] = {
 		SDE_CP_CRTC_DSPP_DEMURA_INIT,
 		SDE_CP_CRTC_DSPP_RC_MASK,
 		SDE_CP_CRTC_DSPP_LTM_HIST_CTL,
 		SDE_CP_CRTC_DSPP_AIQE_ABC,
 	};
+
+	if (IS_DISP_OP_HFI(disp_op)) {
+		_sde_cp_mark_active_dirty_internal(sde_crtc);
+		return;
+	}
+
 	for (n = 0; n < ARRAY_SIZE(features); n++) {
 		if (features[n] > ARRAY_SIZE(set_crtc_feature_wrappers)) {
 			DRM_DEBUG("invalid feature:%d\n", features[n]);
@@ -2949,7 +2995,6 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 			hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
 			hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
 
-			_sde_cp_setup_hfi_config(features[n], sde_crtc, &hw_cfg);
 			ret = set_feature(hw_dspp, &hw_cfg, sde_crtc);
 			if (ret)
 				break;
