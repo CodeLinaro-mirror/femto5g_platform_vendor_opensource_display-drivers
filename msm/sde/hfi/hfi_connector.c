@@ -85,6 +85,33 @@ void sde_connector_add_roi_v1(u32 hfi_prop, struct sde_connector *conn,
 		HFI_ERROR_CONN(hfi_conn, "failed adding HFI KV prop:0x%x\n", hfi_prop);
 }
 
+void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
+		struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf,
+		bool is_cont_splash)
+{
+	struct hfi_connector *hfi_conn;
+	struct hfi_display_autorefresh_cfg payload;
+	u32 key;
+	int ret = 0;
+
+	if (!conn || !cmd_buf || !old_state)
+		return;
+
+	hfi_conn = to_hfi_connector(conn);
+
+	/* For HFI cont-splash - disable autorefresh */
+	if (is_cont_splash) {
+		payload.enable = false;
+		payload.frame_count = 0;
+	}
+
+	key = HFI_PACKKEY(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG, 0, sizeof(payload));
+
+	ret = hfi_util_kv_helper_add(hfi_conn->kv_props, key, (u32 *)&payload);
+	if (ret)
+		HFI_ERROR_CONN(hfi_conn, "failed adding HFI KV prop:0x%x\n", hfi_prop);
+}
+
 int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn,
 		struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
@@ -199,12 +226,22 @@ int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *conn, u3
 	struct hfi_prop_map *setter;
 	int i, ret = 0;
 	struct hfi_connector *hfi_conn = to_hfi_connector(conn);
+	struct sde_kms *sde_kms;
+	struct msm_kms *msm_kms;
 	u32 kv_count;
+	bool is_cont_splash = false;
 
 	if (!hfi_conn || !old_cstate || !cmd_buf) {
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
 	}
+
+	sde_kms = sde_connector_get_kms(&conn->base);
+	if (!sde_kms)
+		return -EINVAL;
+	msm_kms = &sde_kms->base;
+	if (!msm_kms)
+		return -EINVAL;
 
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_kv_helper_reset(hfi_conn->kv_props);
@@ -219,6 +256,14 @@ int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *conn, u3
 		if (setter->add_hfi_prop)
 			setter->add_hfi_prop(setter->hfi_prop, conn, old_cstate, cmd_buf);
 	}
+
+	/* Check continuous splash HFI for autorefresh disable */
+	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
+		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
+
+	if (is_cont_splash)
+		sde_connector_add_autorefresh(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG,
+				conn, old_cstate, cmd_buf, is_cont_splash);
 
 	kv_count = hfi_util_kv_helper_get_count(hfi_conn->kv_props);
 	if (!kv_count)
