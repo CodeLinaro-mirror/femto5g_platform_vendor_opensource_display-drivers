@@ -2797,6 +2797,7 @@ static int sde_kms_hfi_boot_init(struct sde_kms *sde_kms)
 		return -EPROBE_DEFER;
 	}
 
+	hfi_kms_send_trace_cfg(sde_kms->hfi_kms, HFI_TRUE);
 	ret = hfi_kms_get_catalog_data(sde_kms->hfi_kms);
 	if (ret) {
 		SDE_ERROR("HFI get catalog data failed\n");
