@@ -600,6 +600,8 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 		if (c->cap->sblk->aiqe.copr_supported) {
 			c->ops.setup_copr[MSM_DISP_OP_HWIO] = sde_setup_copr_v1;
 			c->ops.read_copr_status[MSM_DISP_OP_HWIO] = sde_read_copr_status;
+
+			c->ops.setup_copr[MSM_DISP_OP_HFI] = reg_dmav1_setup_copr_v1;
 		}
 
 		if (c->cap->sblk->aiqe.abc_supported) {

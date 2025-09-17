@@ -185,6 +185,124 @@ void sde_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 	LOG_FEATURE_ON;
 }
 
+void _aiqe_copr_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
+		struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg,
+		struct sde_hw_reg_dma_ops *dma_ops,
+		struct sde_aiqe_top_level *aiqe_top)
+{
+	int rc = 0;
+	u32 value = 0;
+	u32 base = ctx->hw.blk_off + ctx->cap->sblk->aiqe.base;
+	struct sde_reg_dma_kickoff_cfg dma_kickoff;
+	enum msm_disp_op disp_op = ctx->hw.disp_op;
+
+	/* Write the top-level AIQE configuration to the hardware */
+	rc = _reg_dmav1_aiqe_write_top_level_v1(dma_cfg, ctx, hw_cfg, dma_ops, aiqe_top);
+	if (rc)
+		return;
+
+	REG_DMA_SETUP_OPS(*dma_cfg, base + 0x300,
+		&value, sizeof(u32), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_cfg);
+	if (rc) {
+		DRM_ERROR("write COPR off failed ret %d\n", rc);
+		return;
+	}
+
+	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg->dma_buf,
+			REG_DMA_WRITE, DMA_CTL_QUEUE0,
+			WRITE_IMMEDIATE, AIQE_COPR);
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc)
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+		else
+			LOG_FEATURE_OFF;
+	}
+}
+
+void reg_dmav1_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
+{
+	struct drm_msm_copr *copr_data;
+	struct sde_aiqe_top_level *aiqe_tl = aiqe_top;
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct sde_hw_reg_dma_ops *dma_ops;
+	struct sde_reg_dma_buffer *buf;
+	struct sde_reg_dma_setup_ops_cfg dma_cfg;
+	struct sde_reg_dma_kickoff_cfg dma_kickoff;
+	int rc = -EINVAL;
+	u32 aiqe_base;
+	enum msm_disp_op disp_op = ctx->hw.disp_op;
+
+	rc = reg_dma_dspp_check(ctx, cfg, AIQE_COPR);
+	if (rc)
+		return;
+
+	if (!ctx->cap->sblk->aiqe.base) {
+		SDE_DEBUG("AIQE not present on DSPP idx %d", ctx->idx);
+		return;
+	}
+
+	aiqe_base = ctx->hw.blk_off + ctx->cap->sblk->aiqe.base;
+	if (!aiqe_base) {
+		SDE_DEBUG("AIQE not supported on DSPP idx %d", ctx->idx);
+		return;
+	}
+
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	buf = dspp_buf[AIQE_COPR][ctx->idx][ctx->dpu_idx];
+	dma_ops->reset_reg_dma_buf(buf);
+	REG_DMA_INIT_OPS(dma_cfg, MDSS, AIQE_COPR, buf);
+	REG_DMA_SETUP_OPS(dma_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write decode select failed ret %d\n", rc);
+		return;
+	}
+
+	copr_data = (struct drm_msm_copr *) hw_cfg->payload;
+
+	if (copr_data && hw_cfg->len != sizeof(struct drm_msm_copr)) {
+		DRM_ERROR("invalid size of payload len %d exp %zd\n",
+				hw_cfg->len, sizeof(struct drm_msm_copr));
+		return;
+	}
+
+	if (!copr_data || !(copr_data->param[0] & BIT(0))) {
+		DRM_DEBUG_DRIVER("Disable COPR feature\n");
+		_aiqe_copr_off_v1(&dma_cfg, ctx, hw_cfg, dma_ops, aiqe_tl);
+		return;
+	}
+
+	/* Write the top-level AIQE configuration to the hardware */
+	rc = _reg_dmav1_aiqe_write_top_level_v1(&dma_cfg, ctx, hw_cfg, dma_ops, aiqe_tl);
+	if (rc) {
+		SDE_ERROR("writing aiqe top level failed");
+		return;
+	}
+
+	/* Write the AIQE COPR parameters to the hardware */
+	REG_DMA_SETUP_OPS(dma_cfg, aiqe_base + 0x300,
+		copr_data->param, AIQE_COPR_PARAM_LEN * sizeof(u32),
+		REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write COPR param failed ret %d\n", rc);
+		return;
+	}
+
+	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
+			REG_DMA_WRITE, DMA_CTL_QUEUE0,
+			WRITE_IMMEDIATE, AIQE_COPR);
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc)
+			SDE_ERROR("failed to kick off ret %d\n", rc);
+		else
+			LOG_FEATURE_ON;
+	}
+}
+
 void sde_setup_mdnie_psr(struct sde_hw_dspp *ctx)
 {
 	u32 aiqe_base = 0;

@@ -146,6 +146,8 @@ int log_sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off,
 #define DESTINATION_SCALER_SIZE (sizeof(struct sde_hw_scaler3_cfg) + \
 		(450 * sizeof(u32)) + \
 		REG_DMA_HEADERS_BUFFER_SZ)
+#define AIQE_COPR_MEM_SIZE ((sizeof(struct drm_msm_copr)) + \
+		REG_DMA_HEADERS_BUFFER_SZ)
 
 #define APPLY_MASK_AND_SHIFT(x, n, shift) ((x & (REG_MASK(n))) << (shift))
 #define REG_DMA_VIG_GAMUT_OP_MASK 0x300
@@ -634,6 +636,13 @@ static int _reg_dma_init_dspp_feature_buf(int feature, struct sde_hw_dspp *ctx)
 		rc = reg_dma_buf_init(
 			&dspp_buf[AIQE_ABC][ctx->idx][ctx->dpu_idx],
 			AIQE_ABC_MEM_SIZE,
+			ctx->dpu_idx);
+		if (rc)
+			return rc;
+
+		rc = reg_dma_buf_init(
+			&dspp_buf[AIQE_COPR][ctx->idx][ctx->dpu_idx],
+			AIQE_COPR_MEM_SIZE,
 			ctx->dpu_idx);
 	} else if (feature == SDE_DSPP_AI_SCALER) {
 		rc = reg_dma_buf_init(
