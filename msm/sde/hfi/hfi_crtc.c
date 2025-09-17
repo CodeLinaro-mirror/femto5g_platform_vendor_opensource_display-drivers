@@ -1064,3 +1064,85 @@ int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_bu
 		SDE_ERROR("failed to set HFI prop\n");
 	return ret;
 }
+
+int hfi_crtc_set_input_wait_hw_fence(struct sde_crtc *crtc, u32 h_synx, u32 prop)
+{
+	struct hfi_kms *hfi_kms;
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_crtc *crtc_hfi;
+	u32 disp_id;
+	struct hfi_hw_fence fence_prop;
+	int ret = 0;
+
+	if (!crtc) {
+		SDE_ERROR("invalid crtc\n");
+		return -EINVAL;
+	}
+
+	if (!h_synx) {
+		SDE_DEBUG("h_synx is 0, skipping fence send\n");
+		return 0;
+	}
+
+	crtc_hfi = to_hfi_crtc(crtc);
+	if (!crtc_hfi) {
+		SDE_ERROR("hfi_crtc is null\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = sde_crtc_get_kms(crtc);
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi kms\n");
+		return -EINVAL;
+	}
+
+	disp_id = hfi_crtc_get_display_id(&crtc->base, crtc->base.state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return -EINVAL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get cmd_buf for crtc:%d disp_id:%d\n",
+				DRMID(&crtc->base), disp_id);
+		return -EINVAL;
+	}
+
+	/* Format the fence property according to HFI specification */
+	fence_prop.h_synx = h_synx;
+	fence_prop.flags = HFI_FENCE_SCAN_START;
+
+	if (!crtc_hfi->base_props)
+		return -EINVAL;
+
+	mutex_lock(&crtc_hfi->hfi_lock);
+	hfi_util_u32_prop_helper_reset(crtc_hfi->base_props);
+
+	ret = hfi_util_u32_prop_helper_add_prop(crtc_hfi->base_props,
+			prop, HFI_VAL_U32_ARRAY, &fence_prop, sizeof(struct hfi_hw_fence));
+
+	if (!hfi_util_u32_prop_helper_prop_count(crtc_hfi->base_props))
+		goto end;
+
+	/* Send the property to firmware */
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+			cmd_buf,
+			HFI_COMMAND_DISPLAY_SET_PROPERTY,
+			disp_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			hfi_util_u32_prop_helper_get_payload_addr(crtc_hfi->base_props),
+			hfi_util_u32_prop_helper_get_size(crtc_hfi->base_props),
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		HFI_ERROR_CRTC(crtc_hfi, "failed to send fence property: %d\n", ret);
+		goto end;
+	}
+
+	HFI_DEBUG_CRTC(crtc_hfi, "payload: disp_id = %d, prop = 0x%x, h_synx = 0x%x, flags = 0x%x",
+			disp_id, prop, fence_prop.h_synx, fence_prop.flags);
+
+end:
+	mutex_unlock(&crtc_hfi->hfi_lock);
+	return ret;
+}
