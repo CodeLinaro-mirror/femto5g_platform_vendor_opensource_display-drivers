@@ -8854,22 +8854,6 @@ fail:
 	return ERR_PTR(ret);
 }
 
-int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc)
-{
-	struct sde_encoder_phys *phys_enc;
-
-	if (!sde_enc || !sde_enc->cur_master) {
-		SDE_ERROR("invalid encoder\n");
-		return -EINVAL;
-	}
-
-	phys_enc = sde_enc->cur_master;
-	atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
-	atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0);
-
-	return 0;
-}
-
 int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 	enum msm_event_wait event)
 {

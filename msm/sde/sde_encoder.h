@@ -1441,12 +1441,6 @@ inline enum msm_disp_op sde_encoder_get_disp_op(struct drm_encoder *drm_enc);
 int sde_encoder_helper_inc_pending(struct drm_encoder *drm_enc);
 
 /**
- * sde_encoder_update_pending_kickoff_cnt - increment pending kickoff cnt and retire fence cnt
- * @sde_enc: pointer to sde encoder
- */
-int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc);
-
-/**
  * sde_encoder_cancel_vrr_timers - cancel vrr timers
  * @encoder: pointer to drm_encoder
  */

@@ -426,6 +426,8 @@ struct backup_esync_params {
  *				scheduled. Decremented in irq handler
  * @pending_retire_fence_cnt:   Atomic counter tracking the pending retire
  *                              fences that have to be signalled.
+ * @pending_release_fence_cnt:   Atomic counter tracking the pending release
+ *                               fences that have to be signalled.
  * @pending_ctl_start_cnt:      Atomic counter tracking the pending ctl-start-irq,
  *                              used to release commit thread. Currently managed
  *                              only for writeback encoder and the counter keeps
@@ -509,6 +511,7 @@ struct sde_encoder_phys {
 	atomic_t underrun_cnt;
 	atomic_t pending_kickoff_cnt;
 	atomic_t pending_retire_fence_cnt;
+	atomic_t pending_release_fence_cnt;
 	atomic_t pending_ctl_start_cnt;
 	atomic_t pending_te_deassert_cnt;
 	wait_queue_head_t pending_kickoff_wq;

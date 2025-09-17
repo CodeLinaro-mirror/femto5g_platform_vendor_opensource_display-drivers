@@ -127,10 +127,17 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	ts = hfi_enc_unpack_frame_event(payload, NULL, sde_enc);
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
-	new_cnt = atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
+	if (event & SDE_ENCODER_FRAME_EVENT_DONE)
+		new_cnt = atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
+	if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE) && sde_enc->cur_master)
+		atomic_add_unless(&sde_enc->cur_master->pending_retire_fence_cnt, -1, 0);
+	if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE) && sde_enc->cur_master)
+		atomic_add_unless(&sde_enc->cur_master->pending_release_fence_cnt, -1, 0);
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
-	SDE_EVT32(atomic_read(&sde_enc->pending_commit_cnt));
+	SDE_EVT32(event, atomic_read(&sde_enc->pending_commit_cnt),
+		&sde_enc->cur_master->pending_retire_fence_cnt,
+		&sde_enc->cur_master->pending_release_fence_cnt);
 
 	sde_enc->crtc_frame_event_cb_data.connector = sde_enc->cur_master->connector;
 
@@ -215,6 +222,36 @@ static void hfi_encoder_hw_recovery_callback(struct sde_encoder_virt *sde_enc, v
 	}
 }
 
+static int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc)
+{
+	struct sde_encoder_phys *phys_enc;
+
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	phys_enc = sde_enc->cur_master;
+	atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
+
+	return 0;
+}
+
+static int sde_encoder_update_pending_release_fence_cnt(struct sde_encoder_virt *sde_enc)
+{
+	struct sde_encoder_phys *phys_enc;
+
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	phys_enc = sde_enc->cur_master;
+	atomic_inc(&phys_enc->pending_release_fence_cnt);
+
+	return 0;
+}
+
 static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		void *payload, u32 size, struct hfi_prop_listener *listener)
 {
@@ -236,19 +273,22 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 	case HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_START:
 		if (sde_encoder_is_wb_display(&sde_enc->base))
 			break;
+		event = SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
+			SDE_ENCODER_FRAME_EVENT_DONE;
+		if (!hfi_enc->hw_events_state[MSM_ENC_TX_COMPLETE].state)
+			event |= SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
+		else
+			sde_encoder_update_pending_release_fence_cnt(hfi_enc->sde_base);
 
-		event = SDE_ENCODER_FRAME_EVENT_DONE |
-			SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
-			SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
 		sde_encoder_update_pending_kickoff_cnt(hfi_enc->sde_base);
 		hfi_encoder_frame_event_callback(hfi_enc->sde_base,
 				payload, event);
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_COMPLETE:
-		event = SDE_ENCODER_FRAME_EVENT_DONE;
+		event = SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
 		if (sde_encoder_is_wb_display(&sde_enc->base)) {
-			event |= SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
-				SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
+			event |= SDE_ENCODER_FRAME_EVENT_DONE |
+				SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE;
 			sde_encoder_update_pending_kickoff_cnt(hfi_enc->sde_base);
 		}
 
@@ -514,6 +554,30 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	return ret;
 }
 
+static int _hfi_enc_wait_for_tx_complete(struct hfi_encoder *hfi_enc)
+{
+	int ret;
+	struct sde_encoder_wait_info wait_info = {0};
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *phys_enc;
+
+	sde_enc = hfi_enc->sde_base;
+	phys_enc = sde_enc->cur_master;
+	if (!phys_enc)
+		return -EINVAL;
+
+	if ((sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE)) ||
+			sde_encoder_is_wb_display(&sde_enc->base))
+		return 1;
+
+	wait_info.wq = &hfi_enc->pending_kickoff_wq;
+	wait_info.atomic_cnt = &phys_enc->pending_release_fence_cnt;
+	wait_info.timeout_ms = TIMEOUT_MAX;
+
+	ret = hfi_encoder_helper_wait_for_event(hfi_enc, &wait_info, HFI_EVENT_FRAME_SCAN_COMPLETE);
+	return ret;
+}
+
 static int hfi_enc_wait_for_event(struct sde_encoder_virt *enc, u32 event)
 {
 	int (*fn_wait)(struct hfi_encoder *hfi_enc) = NULL;
@@ -525,8 +589,7 @@ static int hfi_enc_wait_for_event(struct sde_encoder_virt *enc, u32 event)
 		fn_wait = _hfi_enc_wait_for_commit_done;
 		break;
 	case MSM_ENC_TX_COMPLETE:
-		fn_wait = NULL;
-		ret = 1;
+		fn_wait = _hfi_enc_wait_for_tx_complete;
 		break;
 	default:
 		SDE_ERROR("unknown wait event %d\n", event);
@@ -679,13 +742,16 @@ static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 		return ret;
 	}
 
-	if (sde_encoder_is_wb_display(&enc->base)) {
+	if ((sde_encoder_check_curr_mode(&enc->base, MSM_DISPLAY_CMD_MODE)) ||
+		sde_encoder_is_wb_display(&enc->base)) {
 		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, true);
 		if (ret) {
 			SDE_ERROR("failed to send tx complete command\n");
 			return ret;
 		}
+	}
 
+	if (sde_encoder_is_wb_display(&enc->base)) {
 		ret = _hfi_enc_send_display_ctrl_cmd(enc, true);
 		if (ret) {
 			SDE_ERROR("failed to send display enable cmd\n");
@@ -717,13 +783,16 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 		return ret;
 	}
 
-	if (sde_encoder_is_wb_display(&enc->base)) {
+	if ((sde_encoder_check_curr_mode(&enc->base, MSM_DISPLAY_CMD_MODE)) ||
+		sde_encoder_is_wb_display(&enc->base)) {
 		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, false);
 		if (ret) {
 			SDE_ERROR("failed to send tx complete command\n");
 			return ret;
 		}
+	}
 
+	if (sde_encoder_is_wb_display(&enc->base)) {
 		ret = _hfi_enc_send_display_ctrl_cmd(enc, false);
 		if (ret) {
 			SDE_ERROR("failed to send display disable cmd\n");
