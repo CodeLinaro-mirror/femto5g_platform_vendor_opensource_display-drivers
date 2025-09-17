@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/habmm.h>
@@ -3173,7 +3173,12 @@ wfdDestroyWFDEGLImages_User(
 	destroy_egl_images->req.dev = (u32)(uintptr_t)wire_dev->device;
 	destroy_egl_images->req.count = (u32)count;
 	for (i = 0; i < count; i++) {
-		wfd_eglimage = (struct WFD_EGLImageType *)images[i];
+		if (images && images[i] && virt_addr_valid(images[i])) {
+			wfd_eglimage = (struct WFD_EGLImageType *)images[i];
+		} else {
+			sts = WFD_ERROR_ILLEGAL_ARGUMENT;
+			goto end;
+		}
 
 		WIRE_LOG_INFO("wfd_eglimage=0x%p dvaddr=0x%lx",
 				wfd_eglimage, wfd_eglimage->dvaddr);
