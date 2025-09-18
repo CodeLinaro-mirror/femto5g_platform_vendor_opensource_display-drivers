@@ -652,7 +652,7 @@ static void dp_aux_reset_phy_config_indices(struct dp_aux_cfg *aux_cfg)
 		aux_cfg[i].current_index = 0;
 }
 
-static void dp_aux_init(struct dp_aux *dp_aux, struct dp_aux_cfg *aux_cfg)
+static void dp_aux_init(struct dp_aux *dp_aux, struct dp_aux_cfg *aux_cfg, bool skip_op)
 {
 	struct dp_aux_private *aux;
 
@@ -667,9 +667,13 @@ static void dp_aux_init(struct dp_aux *dp_aux, struct dp_aux_cfg *aux_cfg)
 		return;
 
 	dp_aux_reset_phy_config_indices(aux_cfg);
-	aux->catalog->setup(aux->catalog, aux_cfg);
-	aux->catalog->reset(aux->catalog);
-	aux->catalog->enable(aux->catalog, true);
+
+	if (!skip_op) {
+		aux->catalog->setup(aux->catalog, aux_cfg);
+		aux->catalog->reset(aux->catalog);
+		aux->catalog->enable(aux->catalog, true);
+	}
+
 	atomic_set(&aux->aborted, 0);
 	aux->retry_cnt = 0;
 	aux->enabled = true;
