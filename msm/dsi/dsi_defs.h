@@ -82,6 +82,7 @@ enum dsi_op_mode {
  * @DSI_MODE_FLAG_POMS_TO_CMD:
  *         Seamless transition is dynamic panel operating mode switch to cmd
  * @DSI_MODE_FLAG_NONDSC_BPP_SWITCH:  Transition is bpp mode switch without DSC.
+ * @DSI_MODE_FLAG_EMSYNC_FPS_SWITCH: Seamless transition is emsync fps switch
  */
 enum dsi_mode_flags {
 	DSI_MODE_FLAG_SEAMLESS			= BIT(0),
@@ -93,7 +94,8 @@ enum dsi_mode_flags {
 	DSI_MODE_FLAG_DMS_FPS                   = BIT(6),
 	DSI_MODE_FLAG_POMS_TO_VID		= BIT(7),
 	DSI_MODE_FLAG_POMS_TO_CMD		= BIT(8),
-	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9)
+	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9),
+	DSI_MODE_FLAG_EMSYNC_FPS_SWITCH		= BIT(10)
 };
 
 /**
@@ -294,6 +296,7 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_STICKY_ON_FLY:             Still indication enable for only one frame
  * @DSI_CMD_SET_TRIGGER_SELF_REFRESH:      Trigger self refresh from Gram
  * @DSI_CMD_SET_FPS_SWITCH:		   FPS Switch
+ * @DSI_CMD_SET_EM_PULSE_SWITCH:           EM pulse switch cmd
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -338,6 +341,7 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_STICKY_ON_FLY,
 	DSI_CMD_SET_TRIGGER_SELF_REFRESH,
 	DSI_CMD_SET_FPS_SWITCH,
+	DSI_CMD_SET_EM_PULSE_SWITCH,
 	DSI_CMD_SET_MAX
 };
 
