@@ -512,7 +512,6 @@ static int msm_drm_uninit(struct device *dev)
 
 	sde_dbg_destroy();
 	debugfs_remove_recursive(priv->debug_root);
-	drm_mode_config_cleanup(ddev);
 
 	if (priv->registered) {
 		drm_dev_unregister(ddev);
@@ -523,7 +522,12 @@ static int msm_drm_uninit(struct device *dev)
 	if (fbdev && priv->fbdev)
 		msm_fbdev_free(ddev);
 #endif /* CONFIG_DRM_FBDEV_EMULATION */
-	drm_atomic_helper_shutdown(ddev);
+
+	if (ddev->mode_config.num_crtc > 0)
+		drm_atomic_helper_shutdown(ddev);
+
+	drm_mode_config_cleanup(ddev);
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 	msm_irq_uninstall(ddev);
 #else
@@ -1209,9 +1213,11 @@ static void context_close(struct msm_file_private *ctx)
 static void msm_drm_release(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
+	struct platform_device *pdev = to_platform_device(dev->dev);
 
 	dev->dev_private = NULL;
 	kfree(priv);
+	platform_set_drvdata(pdev, NULL);
 }
 
 static void msm_preclose(struct drm_device *dev, struct drm_file *file)
@@ -2461,7 +2467,7 @@ static const struct component_master_ops msm_drm_ops = {
 
 static int msm_drm_component_dependency_check(struct device *dev)
 {
-	struct device_node *node;
+	struct device_node *node, *parent_node;
 	struct device_node *np = dev->of_node;
 	unsigned int i;
 
@@ -2484,6 +2490,24 @@ static int msm_drm_component_dependency_check(struct device *dev)
 			}
 		}
 	}
+
+	parent_node = of_get_parent(np);
+	if (!parent_node)
+		return 0;
+
+	node = of_get_child_by_name(parent_node, "qcom,hfi-core");
+	of_node_put(parent_node);
+	if (node && of_device_is_available(node)
+			&& of_node_check_flag(node, OF_POPULATED)) {
+		struct platform_device *pdev = of_find_device_by_node(node);
+
+		if (!platform_get_drvdata(pdev)) {
+			DISP_DEV_ERR(dev, "qcom,hfi-core not probed yet\n");
+			of_node_put(node);
+			return -EPROBE_DEFER;
+		}
+	}
+	of_node_put(node);
 
 	return 0;
 }

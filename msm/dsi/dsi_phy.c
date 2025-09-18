@@ -242,12 +242,8 @@ error_digital_put:
 	for (i = 0; i < regs->count; i++)
 		devm_regulator_put(regs->vregs[i].vreg);
 error_host_pwr:
-	devm_kfree(&pdev->dev, phy->pwr_info.phy_pwr.vregs);
-	phy->pwr_info.phy_pwr.vregs = NULL;
 	phy->pwr_info.phy_pwr.count = 0;
 error_digital:
-	devm_kfree(&pdev->dev, phy->pwr_info.digital.vregs);
-	phy->pwr_info.digital.vregs = NULL;
 	phy->pwr_info.digital.count = 0;
 error:
 	return rc;
@@ -276,13 +272,9 @@ static int dsi_phy_supplies_deinit(struct msm_dsi_phy *phy)
 	}
 
 	if (phy->pwr_info.phy_pwr.vregs) {
-		devm_kfree(&phy->pdev->dev, phy->pwr_info.phy_pwr.vregs);
-		phy->pwr_info.phy_pwr.vregs = NULL;
 		phy->pwr_info.phy_pwr.count = 0;
 	}
 	if (phy->pwr_info.digital.vregs) {
-		devm_kfree(&phy->pdev->dev, phy->pwr_info.digital.vregs);
-		phy->pwr_info.digital.vregs = NULL;
 		phy->pwr_info.digital.count = 0;
 	}
 

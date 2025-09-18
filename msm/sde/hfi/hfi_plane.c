@@ -139,6 +139,7 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	struct hfi_plane *phfi;
 	struct drm_framebuffer *fb;
 	struct sde_format_extended fmt = {0,};
+	bool format_is_yuv;
 
 	if (!plane || !prop_collector || !pstate)
 		return -EINVAL;
@@ -177,8 +178,8 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 			(sizeof(u32) * SDE_MAX_PLANES));
 
 	hfi_format = hfi_catalog_get_hfi_format(&fmt);
-	if (HFI_IS_YUV_FORMAT(hfi_format))
-		_sde_plane_setup_csc(plane, pstate);
+	format_is_yuv = HFI_IS_YUV_FORMAT(hfi_format) ? true : false;
+	_sde_plane_setup_csc(plane, pstate, format_is_yuv);
 
 	prop_id = HFI_PROPERTY_LAYER_SRC_FORMAT;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
@@ -344,7 +345,8 @@ static int _hfi_plane_set_props_base(struct sde_plane *plane, u32 disp_id,
 	 * Once all the key value pairs of properties are collected invoke adapter api
 	 * to add all these property array as a single HFI Packet
 	 */
-	ret = hfi_adapter_add_set_property(cmd_buf,
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+			cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -398,7 +400,8 @@ int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u32 disp_
 	if (!kv_count)
 		goto end;
 
-	ret = hfi_adapter_add_prop_array(cmd_buf,
+	ret = hfi_adapter_add_prop_array(cmd_buf->ctx,
+			cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,
@@ -470,7 +473,8 @@ void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_pla
 	hfi_util_u32_prop_helper_add_prop(phfi->base_props, prop_id, HFI_VAL_U32_ARRAY,
 			&phfi->hfi_pipe_id, sizeof(u32));
 
-	ret = hfi_adapter_add_set_property(cmd_buf,
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+			cmd_buf,
 			HFI_COMMAND_DISPLAY_SET_PROPERTY,
 			disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY,

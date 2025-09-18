@@ -620,3 +620,28 @@ int sde_dsc_create_pps_buf_cmd(struct msm_display_dsc_info *dsc_info,
 
 	return 0;
 }
+
+int sde_dsc_get_rc_params(struct msm_display_dsc_info *dsc_info, u8 *min_qp, u8 *max_qp,
+		u8 *bpg_offsets)
+{
+	u32 ratio_idx;
+	int i;
+	u8 *offsets;
+
+	ratio_idx = _get_rc_table_index(&dsc_info->config, dsc_info->scr_rev);
+	if ((ratio_idx < 0) || (ratio_idx >= DSC_RATIO_TYPE_MAX))
+		return -EINVAL;
+
+	if (dsc_info->rc_override_v1)
+		offsets = (u8 *)sde_dsc_rc_range_bpg_override_v1[ratio_idx];
+	else
+		offsets = (u8 *)sde_dsc_rc_range_bpg[ratio_idx];
+
+	for (i = 0; i < DSC_NUM_BUF_RANGES; i++) {
+		min_qp[i] = (u8)sde_dsc_rc_range_min_qp[ratio_idx][i];
+		max_qp[i] = (u8)sde_dsc_rc_range_max_qp[ratio_idx][i];
+		bpg_offsets[i] = offsets[i];
+	}
+
+	return 0;
+}

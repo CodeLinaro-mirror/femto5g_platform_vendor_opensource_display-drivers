@@ -251,6 +251,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_EARLY_FENCE_LINE,
 	CONNECTOR_PROP_DYN_TRANSFER_TIME,
 	CONNECTOR_PROP_BRIGHTNESS,
+	CONNECTOR_PROP_EMSYNC_FPS,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -448,10 +449,12 @@ struct msm_display_mode {
  * struct msm_sub_mode - msm display sub mode
  * @dsc_enabled: boolean used to indicate if dsc should be enabled
  * @pixel_format_mode: used to indicate pixel format mode
+ * @emsync_fps: used to indicate emsync fps
  */
 struct msm_sub_mode {
 	enum msm_display_dsc_mode dsc_mode;
 	enum msm_display_pixel_format pixel_format_mode;
+	u32 emsync_fps;
 };
 
 /**
@@ -949,6 +952,20 @@ struct msm_display_wd_jitter_config {
 };
 
 /**
+ * struct esync_params - defines esync related parameters
+ * @milli_skew:   esync skew, in 1/1000ths of a line
+ * @hsync_milli_pulse_width: esync's hsync pulse width, in 1/1000ths of a line
+ * @emsync_fps:   esync's EM pulse rate in Hz
+ * @emsync_milli_pulse_width: esync's EM pulse width, in 1/1000ths of a line
+ */
+struct esync_params {
+	u32 milli_skew;
+	u32 hsync_milli_pulse_width;
+	u32 emsync_fps;
+	u32 emsync_milli_pulse_width;
+};
+
+/**
  * struct msm_mode_info - defines all msm custom mode info
  * @frame_rate:      frame_rate of the mode
  * @vtotal:          vtotal calculated for the mode
@@ -976,6 +993,7 @@ struct msm_display_wd_jitter_config {
  * @freq_step_list: List of Frequency steping pattrerns.
  * @qsync_min_fps: qsync min fps rate
  * @avr_step_fps: AVR step fps rate
+ * @esync_params: esync parameters
  * @wd_jitter:         Info for WD jitter.
  * @vpadding:        panel stacking height
  * @te_pulse_width_ns: pulse width of the TE in microseconds
@@ -1005,6 +1023,7 @@ struct msm_mode_info {
 	struct msm_freq_step_list *freq_step_list;
 	u32 qsync_min_fps;
 	u32 avr_step_fps;
+	struct esync_params esync_params;
 	struct msm_display_wd_jitter_config wd_jitter;
 	u32 vpadding;
 	u32 te_pulse_width_us;
@@ -1059,10 +1078,6 @@ struct msm_resource_caps_info {
  * @hwfence_sw_override_always	whether to trigger fence software override every flush (only
  *				intended for TVM)
  * @esync_enabled:      esync is supported
- * @esync_milli_skew:   esync skew, in 1/1000ths of a line
- * @esync_hsync_milli_pulse_width: esync's hsync pulse width, in 1/1000ths of a line
- * @esync_emsync_fps:   esync's EM pulse rate in Hz
- * @esync_emsync_milli_pulse_width: esync's EM pulse width, in 1/1000ths of a line
  * @te_source		vsync source pin information
  * @disp_te_gpio:       TE GPIO identifier
  * @esd_rw_check:       whether ESD should be checked using the RW window (through TE)
@@ -1103,10 +1118,6 @@ struct msm_display_info {
 	bool hwfence_sw_override_always;
 
 	bool esync_enabled;
-	uint32_t esync_milli_skew;
-	uint32_t esync_hsync_milli_pulse_width;
-	uint32_t esync_emsync_fps;
-	uint32_t esync_emsync_milli_pulse_width;
 
 	bool event_notification_disabled;
 
@@ -1909,12 +1920,4 @@ bool msm_iommu_present_on_bus(const struct bus_type *bus);
  * Return: true if the IOMMU is present, false otherwise.
  */
 bool mdss_iommu_present(struct drm_device *dev);
-
-#if (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE)
-/* Functions from upstream kernel */
-int __drm_atomic_helper_disable_plane(struct drm_plane *plane,
-			struct drm_plane_state *plane_state);
-int __drm_atomic_helper_set_config(struct drm_mode_set *set,
-			struct drm_atomic_state *state);
-#endif /* (KERNEL_VERSION(6, 13, 0) <= LINUX_VERSION_CODE) */
 #endif /* __MSM_DRV_H__ */

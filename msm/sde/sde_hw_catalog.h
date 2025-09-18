@@ -23,6 +23,7 @@
 #define MAX_REG_SIZE_ENTRIES 14
 #define MAX_CWB_BLOCKS    2
 #define MAX_CWB_BLOCKSIZE    2
+#define DPU_MAX_SSPP_COUNT   32
 
 #define SDE_HW_VER(MAJOR, MINOR, STEP) ((u32)((MAJOR & 0xF) << 28)    |\
 		((MINOR & 0xFFF) << 16)  |\
@@ -57,6 +58,7 @@
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_880  SDE_HW_VER(8, 8, 0) /* vienna */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
+#define SDE_HW_VER_970  SDE_HW_VER(9, 7, 0) /* x1p42100 */
 #define SDE_HW_VER_980	SDE_HW_VER(9, 8, 0) /* seraph */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
@@ -106,6 +108,7 @@
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 #define IS_ALOR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D10)
 #define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
+#define IS_X1P42100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_970)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -1406,6 +1409,8 @@ enum sde_clk_ctrl_type {
 	SDE_CLK_CTRL_WB0,
 	SDE_CLK_CTRL_WB1,
 	SDE_CLK_CTRL_WB2,
+	SDE_CLK_CTRL_WB3,
+	SDE_CLK_CTRL_WB4,
 	SDE_CLK_CTRL_LUTDMA,
 	SDE_CLK_CTRL_IPCC_MSI,
 	SDE_CLK_CTRL_MAX,
@@ -2093,7 +2098,8 @@ struct sde_perf_cfg {
  * @true_inline_rot_rev inline rotator feature revision
  * @dnsc_blur_rev       downscale blur HW block version
  * @hw_fence_rev        hw fence feature revision
- * @cac_version        CAC version supported by the target
+ * @cac_version         CAC version supported by the target
+ * @cwb_cfg_mask        configuration mask for the CWB module in use
  * @mdss_count          number of valid MDSS HW blocks
  * @mdss                array of pointers to MDSS HW blocks
  * @mdss_hw_block_size  max offset of MDSS_HW block (0 offset), used for debug
@@ -2223,6 +2229,7 @@ struct sde_mdss_cfg {
 	u32 dnsc_blur_rev;
 	u32 hw_fence_rev;
 	u32 cac_version;
+	u32 cwb_cfg_mask;
 
 	/* HW Blocks */
 	u32 mdss_count;
@@ -2234,7 +2241,7 @@ struct sde_mdss_cfg {
 	struct sde_ctl_cfg ctl[MAX_BLOCKS];
 	struct sde_ctl_hyp_cfg ctl_hyp;
 	u32 sspp_count;
-	struct sde_sspp_cfg sspp[MAX_BLOCKS];
+	struct sde_sspp_cfg sspp[DPU_MAX_SSPP_COUNT];
 	u32 mixer_count;
 	struct sde_lm_cfg mixer[MAX_BLOCKS];
 	struct sde_dspp_top_cfg dspp_top;
@@ -2348,6 +2355,8 @@ struct sde_mdss_cfg {
 	u32 ppb_buf_max_lines;
 	u32 controlled_SR;
 	u32 early_EPT_handling;
+
+	bool disable_multirect;
 };
 
 struct sde_mdss_hw_cfg_handler {

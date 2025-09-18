@@ -175,6 +175,7 @@ struct sde_encoder_virt_ops {
  * @is_autorefresh_enabled:	provides the autorefresh current
  *                              enable/disable state.
  * @get_line_count:		Obtain current internal vertical line count
+ * @get_intf_ts:		Obtain Timestamps from INTF
  * @wait_dma_trigger:		Returns true if lut dma has to trigger and wait
  *                              unitl transaction is complete.
  * @wait_for_active:		Wait for display scan line to be in active area
@@ -213,7 +214,8 @@ struct sde_encoder_phys_ops {
 			struct sde_encoder_hw_resources *hw_res,
 			struct drm_connector_state *conn_state);
 	int (*control_vblank_irq)(struct sde_encoder_phys *enc, bool enable);
-	int (*control_esync_vsync_irq)(struct sde_encoder_phys *enc, bool enable);
+	int (*control_esync_vsync_irq)(struct sde_encoder_phys *enc, bool enable,
+			bool acquire_lock);
 	int (*control_empulse_irq)(struct sde_encoder_phys *enc, bool enable);
 	int (*wait_for_commit_done)(struct sde_encoder_phys *phys_enc);
 	int (*wait_for_tx_complete)(struct sde_encoder_phys *phys_enc);
@@ -239,6 +241,7 @@ struct sde_encoder_phys_ops {
 	void (*restore)(struct sde_encoder_phys *phys);
 	bool (*is_autorefresh_enabled)(struct sde_encoder_phys *phys);
 	int (*get_line_count)(struct sde_encoder_phys *phys);
+	void (*get_intf_ts)(struct sde_encoder_phys *phys, struct intf_timestamps *intf_ts);
 	bool (*wait_dma_trigger)(struct sde_encoder_phys *phys);
 	int (*wait_for_active)(struct sde_encoder_phys *phys);
 	void (*setup_vsync_source)(struct sde_encoder_phys *phys, u32 vsync_source,
@@ -362,6 +365,22 @@ struct sde_encoder_vrr_cfg {
 };
 
 /**
+ * struct backup_esync_params - backup params used to configure main esync engine
+ *       when exit from idle. Hardware recommendation is configure main esync
+ *       engine params to be same as backup esync engine and wait for esync vsync
+ *       before Timing genrator is flushed for new fps.
+ *
+ * @backup_mode:	drm mode used for configuring backup esync engine
+ * @avr_step_fps:	Avr step fps of the mode
+ * @vrefresh:		Fps of the mode
+ */
+struct backup_esync_params {
+	struct drm_display_mode backup_mode;
+	u32 avr_step_fps;
+	u32 vrefresh;
+};
+
+/**
  * struct sde_encoder_phys - physical encoder that drives a single INTF block
  *	tied to a specific panel / sub-panel. Abstract type, sub-classed by
  *	phys_vid or phys_cmd for video mode or command mode encs respectively.
@@ -445,6 +464,12 @@ struct sde_encoder_vrr_cfg {
  * @sim_qsync_frame:            Current simulated qsync frame type
  * @prog_fetch_start:           current programmable fetch value
  * @sde_vrr_cfg:      VRR configuration information
+ * @wait_esync_vsync_irq:       set if wait for esync vsync irq is needed for panel
+ *                              dp update to occur
+ * @backup_esync_params:	esync params backed up in VHM MRR case used to configure
+ *				main esync engine when exiting from idle pc
+ * @pending_esync_vsync_cnt:	Atomic counter tracking the pending esync vsync interrupt
+ *				from intf
  */
 struct sde_encoder_phys {
 	struct drm_encoder *parent;
@@ -510,6 +535,9 @@ struct sde_encoder_phys {
 	u32 prog_fetch_start;
 	bool esync_pc_exit;
 	struct sde_encoder_vrr_cfg sde_vrr_cfg;
+	struct backup_esync_params backup_esync_params;
+	atomic_t pending_esync_vsync_cnt;
+	bool wait_esync_vsync_irq;
 };
 
 static inline int sde_encoder_phys_inc_pending(struct sde_encoder_phys *phys)
@@ -1137,4 +1165,11 @@ static inline bool sde_encoder_helper_flush_in_sync_mode(struct sde_encoder_phys
 
 	return hw_ctl->ops.get_flush_sync_mode[disp_op](hw_ctl);
 }
+
+/**
+ * sde_encoder_phys_vid_wait_for_esync_vsync - wait for esync vsync irq
+ * @phys_enc: Pointer to physical encoder structure
+ */
+void sde_encoder_phys_vid_wait_for_esync_vsync(struct sde_encoder_phys *phys_enc);
+
 #endif /* __sde_encoder_phys_H__ */

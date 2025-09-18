@@ -126,3 +126,6 @@ define_vienna()
 
 load(":targets/seraph.bzl", "define_seraph")
 define_seraph()
+
+load(":targets/x1p42100.bzl", "define_x1p42100")
+define_x1p42100()
