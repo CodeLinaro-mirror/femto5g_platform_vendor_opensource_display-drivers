@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 /*
@@ -652,73 +652,6 @@ static int dp_pll_unprepare(struct dp_pll *pll)
 	pll->vco_rate = 0;
 
 	return rc;
-}
-
-static unsigned long dp_vco_recalc_rate_4nm(struct dp_pll *pll)
-{
-	u32 hsclk_sel, link_clk_divsel, hsclk_div, link_clk_div = 0;
-	unsigned long vco_rate = 0;
-
-	if (!pll) {
-		DP_ERR("invalid input parameters\n");
-		return -EINVAL;
-	}
-
-	if (is_gdsc_disabled(pll))
-		return 0;
-
-	hsclk_sel = dp_pll_read(dp_pll, QSERDES_COM_HSCLK_SEL_1);
-	hsclk_sel &= 0x0f;
-
-	switch (hsclk_sel) {
-	case 5:
-		hsclk_div = 5;
-		break;
-	case 3:
-		hsclk_div = 3;
-		break;
-	case 1:
-		hsclk_div = 2;
-		break;
-	case 0:
-		hsclk_div = 1;
-		break;
-	default:
-		DP_DEBUG("unknown divider. forcing to default\n");
-		hsclk_div = 5;
-		break;
-	}
-
-	link_clk_divsel = dp_pll_read(dp_phy, DP_PHY_AUX_CFG2);
-	link_clk_divsel >>= 2;
-	link_clk_divsel &= 0x3;
-
-	if (link_clk_divsel == 0)
-		link_clk_div = 5;
-	else if (link_clk_divsel == 1)
-		link_clk_div = 10;
-	else if (link_clk_divsel == 2)
-		link_clk_div = 20;
-	else
-		DP_ERR("unsupported div. Phy_mode: %d\n", link_clk_divsel);
-
-	if (link_clk_div == 20) {
-		vco_rate = DP_VCO_HSCLK_RATE_2700MHZDIV1000;
-	} else {
-		if (hsclk_div == 5)
-			vco_rate = DP_VCO_HSCLK_RATE_1620MHZDIV1000;
-		else if (hsclk_div == 3)
-			vco_rate = DP_VCO_HSCLK_RATE_2700MHZDIV1000;
-		else if (hsclk_div == 2)
-			vco_rate = DP_VCO_HSCLK_RATE_5400MHZDIV1000;
-		else
-			vco_rate = DP_VCO_HSCLK_RATE_8100MHZDIV1000;
-	}
-
-	DP_DEBUG("hsclk: sel=0x%x, div=0x%x; lclk: sel=%u, div=%u, rate=%lu\n",
-		hsclk_sel, hsclk_div, link_clk_divsel, link_clk_div, vco_rate);
-
-	return vco_rate;
 }
 
 static unsigned long dp_pll_link_clk_recalc_rate(struct clk_hw *hw,

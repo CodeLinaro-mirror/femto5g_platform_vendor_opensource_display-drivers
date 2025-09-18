@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2018, 2020, The Linux Foundation. All rights reserved.
  */
 
@@ -587,11 +587,11 @@ static int dp_pll_configure(struct dp_pll *pll, unsigned long rate)
 		rate = DP_VCO_HSCLK_RATE_8100MHZDIV1000;
 
 	pll->vco_rate = rate;
-	DP_DEBUG("pll->vco_rate: %llu", pll->vco_rate);
+	DP_DEBUG("pll->vco_rate: %lu", pll->vco_rate);
 
 	rc = dp_vco_set_rate_14nm(pll, rate);
 	if (rc < 0) {
-		DP_ERR("pll rate %s set failed\n", rate);
+		DP_ERR("pll rate %lu set failed\n", rate);
 		pll->vco_rate = 0;
 		return rc;
 	}
