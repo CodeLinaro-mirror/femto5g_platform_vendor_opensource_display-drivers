@@ -1867,11 +1867,15 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 			clk_client->clk_ctrl = cfg->clk_ctrl;
 
 			if (test_bit(SDE_SSPP_REC_SWI_SEPARATION, &hw_pipe->cap->features)) {
-				clk_client->ops.get_clk_ctrl_status = sde_hw_sspp_get_clk_ctrl_status_v1;
-				clk_client->ops.setup_clk_force_ctrl = sde_hw_sspp_setup_clk_force_ctrl_v1;
+				clk_client->ops.get_clk_ctrl_status[MSM_DISP_OP_HWIO] =
+					sde_hw_sspp_get_clk_ctrl_status_v1;
+				clk_client->ops.setup_clk_force_ctrl[MSM_DISP_OP_HWIO] =
+					sde_hw_sspp_setup_clk_force_ctrl_v1;
 			} else {
-				clk_client->ops.get_clk_ctrl_status = sde_hw_sspp_get_clk_ctrl_status;
-				clk_client->ops.setup_clk_force_ctrl = sde_hw_sspp_setup_clk_force_ctrl;
+				clk_client->ops.get_clk_ctrl_status[MSM_DISP_OP_HWIO] =
+					sde_hw_sspp_get_clk_ctrl_status;
+				clk_client->ops.setup_clk_force_ctrl[MSM_DISP_OP_HWIO] =
+					sde_hw_sspp_setup_clk_force_ctrl;
 			}
 		} else {
 			SDE_ERROR("invalid sspp clk ctrl type %d\n", cfg->clk_ctrl);
