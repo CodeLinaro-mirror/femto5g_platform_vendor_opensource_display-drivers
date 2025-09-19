@@ -1497,6 +1497,13 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 		psde->pipe_hw->ops.setup_ucsc_alpha_dither(psde->pipe_hw,
 				pstate->multirect_index, &hw_cfg);
 	}
+
+	if (psde->pipe_hw->ops.set_flush_type &&
+		pstate->dirty & SDE_PLANE_DIRTY_CP) {
+		ctl->ops.update_bitmask_sspp(ctl, sde_plane_pipe(plane), true);
+		ctl->ops.force_global_flush(ctl);
+		psde->pipe_hw->ops.set_flush_type(psde->pipe_hw, true);
+	}
 }
 
 static void _sde_plane_setup_scaler(struct sde_plane *psde,
@@ -3608,7 +3615,8 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 				psde->pipe_hw,
 				true,
 				pstate->multirect_index,
-				pstate->multirect_mode);
+				pstate->multirect_mode,
+				fmt);
 	/* update line insertion */
 	if (psde->pipe_hw->ops.setup_line_insertion)
 		psde->pipe_hw->ops.setup_line_insertion(psde->pipe_hw,
@@ -4005,7 +4013,7 @@ static void _sde_plane_atomic_disable(struct drm_plane *plane,
 	/* disable multirect config of corresponding rect */
 	if (psde->pipe_hw && psde->pipe_hw->ops.update_multirect)
 		psde->pipe_hw->ops.update_multirect(psde->pipe_hw, false,
-				multirect_index, SDE_SSPP_MULTIRECT_TIME_MX);
+				multirect_index, SDE_SSPP_MULTIRECT_TIME_MX, NULL);
 
 	_sde_plane_set_active(psde, pstate, false);
 	_sde_plane_set_active_fetch(psde, pstate, false);

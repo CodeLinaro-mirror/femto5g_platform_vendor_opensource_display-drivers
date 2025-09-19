@@ -19,6 +19,7 @@
 #include <drm/drm_panel.h>
 #include <drm/drm_vblank.h>
 #include <linux/version.h>
+#include <linux/random.h>
 
 #include "msm_drv.h"
 #include "msm_gem.h"
@@ -40,6 +41,144 @@ struct msm_commit {
 	bool nonblock;
 	struct kthread_work commit_work;
 };
+
+/*
+ * Defines the time we could try relocking connection_mutex, before bail
+ * out and unlocking other commit thread. The DRM framework shall backoff
+ * all resource and locks and retry from the slow path.
+ * A commit shouldn't took long (~500us usually), so wait 1ms here at most.
+ * If the value is set to 0ms, will bail out at the first EDEADLK error.
+ */
+#define RELOCK_MUTEX_RETRY_LIMIT_US		1000
+
+/*
+ * Debugging only, inject -EDEADLK error randomly, without relocking
+ * connection_mutex.
+ * Alternatively, can enable kernel config CONFIG_DEBUG_WW_MUTEX_SLOWPATH
+ * and/or CONFIG_PROVE_LOCKING.
+ */
+//#define RANDOM_FAILURE_INJECTION
+
+#ifdef RANDOM_FAILURE_INJECTION
+static uint8_t next_injection;
+static uint32_t injection_count;
+#endif
+
+/* block until specified crtcs are no longer pending update, and
+ * atomically mark them as pending update
+ */
+static int start_atomic(struct msm_drm_private *priv, uint32_t crtc_mask,
+			uint32_t plane_mask, struct drm_atomic_state *state)
+{
+	int ret = 0, rc = 0;
+	struct list_head *entry;
+	bool conn_mutex_locked = false;
+	bool conn_mutex_unlocked = false;
+	ktime_t start_time = 0;
+	uint64_t elapsed_us = 0;
+	bool masked = false;
+
+	// Check if connection_mutex is locked in the context
+	list_for_each(entry, &state->acquire_ctx->locked) {
+		struct drm_modeset_lock *lock;
+
+		lock = list_entry(entry, struct drm_modeset_lock, head);
+		if (lock == &priv->dev->mode_config.connection_mutex) {
+			conn_mutex_locked = true;
+			break;
+		}
+	}
+
+	spin_lock(&priv->pending_crtcs_event.lock);
+	if (((priv->pending_crtcs & crtc_mask) ||
+			(priv->pending_planes & plane_mask))
+			&& conn_mutex_locked) {
+		/*
+		 * Regardless blocking or non-blocking commit, since we will
+		 * wait here for previous commit to the same CRTC to be done
+		 * before we could submit a new commit request, shall unlock
+		 * the global connection_mutex which is shared by all CRTCs,
+		 * otherwise other commits acquire the same connection_mutex
+		 * will be blocked for up to one frame period.
+		 */
+		drm_modeset_unlock(&priv->dev->mode_config.connection_mutex);
+		conn_mutex_unlocked = true;
+	}
+
+	ret = wait_event_interruptible_locked(priv->pending_crtcs_event,
+			!(priv->pending_crtcs & crtc_mask) &&
+			!(priv->pending_planes & plane_mask));
+	if (ret == 0) {
+		DBG("start: %08x", crtc_mask);
+		priv->pending_crtcs |= crtc_mask;
+		priv->pending_planes |= plane_mask;
+		masked = true;
+	}
+	spin_unlock(&priv->pending_crtcs_event.lock);
+
+	/*
+	 * Lock the connection_mutex again after waiting start_atomic,
+	 * to protect the context of connectors' state, and relationship
+	 * between CRTCs, connectors, and encoders.
+	 */
+	if (conn_mutex_unlocked) {
+		start_time = ktime_get();
+retry:
+#ifdef RANDOM_FAILURE_INJECTION
+		if (!next_injection) {
+			/* Generate random number between 10 and 50 */
+			next_injection = (prandom_u32() % 40) + 10;
+		}
+		if (++injection_count >= next_injection) {
+			pr_info("Manual failure injected\n");
+			next_injection = 0;
+			injection_count = 0;
+			state->acquire_ctx->contended =
+					&priv->dev->mode_config.connection_mutex;
+			rc = -EDEADLK;
+		} else
+#endif
+			rc = drm_modeset_lock(&priv->dev->mode_config.connection_mutex,
+					state->acquire_ctx);
+		if (rc == -EDEADLK) {
+			elapsed_us = ktime_to_us(ktime_sub(ktime_get(), start_time));
+			pr_warn_ratelimited("failed to relock mutex, retry, crtc_mask %X\n",
+					crtc_mask);
+			/*
+			 * We are not allowed to backoff from atomic_commit call.
+			 * Just keep trying relock the mutex. Make sure clear contended.
+			 */
+			if (elapsed_us < RELOCK_MUTEX_RETRY_LIMIT_US) {
+				state->acquire_ctx->contended = NULL;
+#ifdef DEBUG_WW_MUTEXES
+				state->acquire_ctx->ww_ctx.contending_lock = NULL;
+#endif
+				goto retry;
+			} else {
+				/*
+				 * Bail out, even DRM framework doesn't expect return EDEADLK from
+				 * atomic_check callback, but we haven't done actual commit, so
+				 * most likely is ok to let framework rollback and retry.
+				 */
+				pr_warn("Failed to lock conn_mutex after %lluus, crtc_mask %X\n",
+						elapsed_us, crtc_mask);
+				ret = rc;
+			}
+		} else {
+			WARN_ON(rc < 0);
+		}
+	}
+
+	if (ret && masked) {
+		spin_lock(&priv->pending_crtcs_event.lock);
+		DBG("bail: %08x", crtc_mask);
+		priv->pending_crtcs &= ~crtc_mask;
+		priv->pending_planes &= ~plane_mask;
+		spin_unlock(&priv->pending_crtcs_event.lock);
+	}
+
+	return ret;
+}
 
 static struct drm_connector_state *_msm_get_conn_state(struct drm_crtc_state *crtc_state)
 {
@@ -889,19 +1028,7 @@ retry:
 	 * Wait for pending updates on any of the same crtc's and then
 	 * mark our set of crtc's as busy:
 	 */
-
-	/* Start Atomic */
-	spin_lock(&priv->pending_crtcs_event.lock);
-	ret = wait_event_interruptible_locked(priv->pending_crtcs_event,
-			!(priv->pending_crtcs & c->crtc_mask) &&
-			!(priv->pending_planes & c->plane_mask));
-	if (ret == 0) {
-		DBG("start: %08x", c->crtc_mask);
-		priv->pending_crtcs |= c->crtc_mask;
-		priv->pending_planes |= c->plane_mask;
-	}
-	spin_unlock(&priv->pending_crtcs_event.lock);
-
+	ret = start_atomic(dev->dev_private, c->crtc_mask, c->plane_mask, state);
 	if (ret)
 		goto err_free;
 

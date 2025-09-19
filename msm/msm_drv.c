@@ -964,6 +964,7 @@ static int msm_drm_component_init(struct device *dev)
 	kms = _msm_drm_component_init_helper(priv, ddev, dev, pdev);
 	if (IS_ERR_OR_NULL(kms)) {
 		DISP_DEV_ERR(dev, "msm_drm_component_init_helper failed\n");
+		ret = -ENODEV;
 		goto fail;
 	}
 
@@ -1984,14 +1985,22 @@ static int msm_pm_suspend(struct device *dev)
 	struct msm_drm_private *priv;
 	struct msm_kms *kms;
 
-	if (!dev)
-		return -EINVAL;
+	if (!dev) {
+		DRM_ERROR("no dev, skipping suspend\n");
+		return -ENODEV;
+	}
 
 	ddev = dev_get_drvdata(dev);
-	if (!ddev || !ddev->dev_private)
-		return -EINVAL;
+	if (!ddev || !ddev->dev_private) {
+		DRM_ERROR("no drm, skipping suspend\n");
+		return -ENODEV;
+	}
 
 	priv = ddev->dev_private;
+	if (!priv->registered) {
+		DRM_ERROR("drm not registered, skipping suspend\n");
+		return -ENODEV;
+	}
 	kms = priv->kms;
 
 	if (kms && kms->funcs && kms->funcs->pm_suspend)
@@ -2009,14 +2018,22 @@ static int msm_pm_resume(struct device *dev)
 	struct msm_drm_private *priv;
 	struct msm_kms *kms;
 
-	if (!dev)
-		return -EINVAL;
+	if (!dev) {
+		DRM_ERROR("no dev, skipping resume\n");
+		return -ENODEV;
+	}
 
 	ddev = dev_get_drvdata(dev);
-	if (!ddev || !ddev->dev_private)
-		return -EINVAL;
+	if (!ddev || !ddev->dev_private) {
+		DRM_ERROR("no drm, skipping resume\n");
+		return -ENODEV;
+	}
 
 	priv = ddev->dev_private;
+	if (!priv->registered) {
+		DRM_ERROR("drm not registered, skipping resume\n");
+		return -ENODEV;
+	}
 	kms = priv->kms;
 
 	if (kms && kms->funcs && kms->funcs->pm_resume)
@@ -2413,10 +2430,27 @@ static int msm_pdev_probe(struct platform_device *pdev)
 	struct component_match *match = NULL;
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	struct device_node *np = pdev->dev.of_node;
+	u32 dpu_id;
+
+	/* Parse the DPU id, which is needed for requesting power voting */
+	if (of_property_read_u32(np, "cell-index", &dpu_id)) {
+		DRM_INFO("Missing cell-index for DPU id, default to 0\n");
+		dpu_id = 0;
+	}
+
 	if (!msm_hyp_get_kms()) {
 		DRM_DEBUG("Wait for MSM_HYP KMS\n");
 		return -EPROBE_DEFER;
 	}
+
+	/* Check with msm_hyp for the order of the probing */
+	if (!msm_hyp_check_dpu_probed(dpu_id)) {
+		DRM_DEBUG("Wait for the other KMS driver probed first\n");
+		return -EPROBE_DEFER;
+	}
+
+	msm_hyp_set_dpu_probed(dpu_id);
 #endif
 
 	ret = msm_drm_component_dependency_check(&pdev->dev);

@@ -686,6 +686,7 @@ enum {
  * @SDE_CTL_REG_DMA             CTL supports REG_DMA block
  * @SDE_CTL_REG_DMA_VQ          CTL supports REG_DMA virtual queue block for HW virtualization
  * @SDE_CTL_LOCAL_FLUSH         CTL supports LM/SSPP/MISR local flush
+ * @SDE_CTL_NO_ROT              CTL removal of CTL_ROT_TOP registers
  * @SDE_CTL_MAX
  */
 enum {
@@ -703,6 +704,7 @@ enum {
 	SDE_CTL_REG_DMA,
 	SDE_CTL_REG_DMA_VQ,
 	SDE_CTL_LOCAL_FLUSH,
+	SDE_CTL_NO_ROT,
 	SDE_CTL_MAX
 };
 

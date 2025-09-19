@@ -351,6 +351,7 @@ struct virq_shmem_t {
 struct msm_hyp_kms {
 	const struct msm_hyp_kms_funcs *funcs;
 	uint32_t num_sde_kms;
+	bool probed[MAX_NUM_DPU_CORE];
 	struct virq_shmem_t virq_shmem[MAX_NUM_DPU_CORE];
 	struct sde_kms *sde_kms[MAX_NUM_DPU_CORE];
 	struct msm_hyp_irq_controller *hyp_irq[MAX_NUM_DPU_CORE];
@@ -368,6 +369,8 @@ struct msm_hyp_drm_private {
 };
 
 struct msm_hyp_kms *msm_hyp_get_kms(void);
+int msm_hyp_check_dpu_probed(int dpu_id);
+int msm_hyp_set_dpu_probed(int dpu_id);
 void msm_hyp_set_kms(struct drm_device *dev, struct msm_hyp_kms *kms);
 void msm_hyp_crtc_commit_done(struct drm_crtc *crtc);
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc);
