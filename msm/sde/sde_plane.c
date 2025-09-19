@@ -1354,6 +1354,7 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 	struct drm_msm_fp16_csc *fp16_csc = NULL;
 	struct drm_msm_ucsc_csc *ucsc_csc = NULL;
 	enum msm_disp_op disp_op = sde_plane_get_disp_op(plane);
+	u64 prop_val = 0;
 
 	psde = to_sde_plane(plane);
 	pstate = to_sde_plane_state(plane->state);
@@ -1421,6 +1422,9 @@ static void sde_color_process_plane_setup(struct drm_plane *plane)
 #endif
 		hw_cfg.vig_gamut_mode = &psde->vig_gamut_mode;
 		psde->pipe_hw->ops.setup_vig_gamut[disp_op](psde->pipe_hw, &hw_cfg);
+		prop_val = (hw_cfg.payload) ? 1 : 0;
+		cp_feature_set_curr_mode(CP_STATE_VIG_GAMUT,
+			&psde->vig_gamut_mode, prop_val);
 	}
 
 	if (pstate->dirty & SDE_PLANE_DIRTY_VIG_IGC &&
@@ -5557,10 +5561,6 @@ static int sde_plane_atomic_set_property(struct drm_plane *plane,
 			case PLANE_PROP_DST_RECT_EXT:
 				_sde_plane_set_dst_rect_extn(psde, pstate,
 						(void *)(uintptr_t)val);
-				break;
-			case PLANE_PROP_VIG_GAMUT:
-				cp_feature_set_curr_mode(CP_STATE_VIG_GAMUT,
-					&psde->vig_gamut_mode, val);
 				break;
 			case PLANE_PROP_IN_BBOX:
 				_sde_plane_set_bounding_box(psde, pstate,
