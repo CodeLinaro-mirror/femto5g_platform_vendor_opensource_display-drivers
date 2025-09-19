@@ -2076,8 +2076,11 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 			if ((!nxt_pstate)
 				    || (nxt_pstate->stage != cur_pstate->stage)
 				    || (nxt_pstate->sde_pstate->layout !=
-					cur_pstate->sde_pstate->layout))
+					cur_pstate->sde_pstate->layout)) {
+				mutex_lock(&sde_crtc->property_info.property_lock);
 				cur_pstate->sde_pstate->pipe_order_flags = 0;
+				mutex_unlock(&sde_crtc->property_info.property_lock);
+			}
 
 			continue;
 		}
@@ -2102,8 +2105,10 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 			swap(prv_pstate, cur_pstate);
 		}
 
+		mutex_lock(&sde_crtc->property_info.property_lock);
 		cur_pstate->sde_pstate->pipe_order_flags = SDE_SSPP_RIGHT;
 		prv_pstate->sde_pstate->pipe_order_flags = 0;
+		mutex_unlock(&sde_crtc->property_info.property_lock);
 	}
 
 	for (i = 0; i < cnt; i++) {
