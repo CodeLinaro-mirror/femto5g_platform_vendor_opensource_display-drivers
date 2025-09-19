@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/delay.h>
@@ -21,6 +21,8 @@
 
 #include "sde_hdcp_2x.h"
 #include "dp_debug.h"
+#include <linux/sched.h>
+#include <uapi/linux/sched/types.h>
 
 #define DP_INTR_STATUS2				(0x00000024)
 #define DP_INTR_STATUS3				(0x00000028)
@@ -1014,6 +1016,7 @@ void *sde_dp_hdcp2p2_init(struct sde_hdcp_init_data *init_data)
 {
 	int rc;
 	struct dp_hdcp2p2_ctrl *ctrl;
+	static struct sched_param param = {.sched_priority = 1};
 	static struct sde_hdcp_ops ops = {
 		.isr = dp_hdcp2p2_isr,
 		.reauthenticate = dp_hdcp2p2_reauthenticate,
@@ -1101,6 +1104,11 @@ void *sde_dp_hdcp2p2_init(struct sde_hdcp_init_data *init_data)
 		rc = PTR_ERR(ctrl->thread);
 		ctrl->thread = NULL;
 		goto error;
+	}
+
+	rc = sched_setscheduler(ctrl->thread, SCHED_FIFO, &param);
+	if (rc) {
+		DP_ERR("sched_setscheduler failed for dp_hdcp2p2\n");
 	}
 
 	return ctrl;
