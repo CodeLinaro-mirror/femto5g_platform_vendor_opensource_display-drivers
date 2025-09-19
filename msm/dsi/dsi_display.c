@@ -8451,7 +8451,10 @@ int dsi_display_set_mode(struct dsi_display *display,
 
 	adj_mode = *mode;
 	timing = adj_mode.timing;
-	adjust_timing_by_ctrl_count(display, &adj_mode);
+
+	/* hfi interface expects full horizontal timings, therefore skip adjustment */
+	if (display->panel->disp_op != MSM_DISP_OP_HFI)
+		adjust_timing_by_ctrl_count(display, &adj_mode);
 
 	if (!display->panel->cur_mode) {
 		display->panel->cur_mode =
