@@ -141,6 +141,20 @@ enum color_space {
 	VIRTIO_COLOR_SPACE_BT601_FULL  = 0x4,
 	VIRTIO_COLOR_SPACE_BT709       = 0x5,
 	VIRTIO_COLOR_SPACE_BT709_FULL  = 0x6,
+	VIRTIO_COLOR_SPACE_BT2020      = 0x7,
+	VIRTIO_COLOR_SPACE_BT2020_FULL = 0x8,
+	VIRTIO_COLOR_SPACE_MAX,
+	VIRTIO_COLOR_SPACE_MAX_FORCE_32BIT = 0x7FFFFFFF
+};
+
+enum panel_color_space {
+	VIRTIO_PANEL_COLOR_SPACE_UNCORRECTED	= 0x0,
+	VIRTIO_PANEL_COLOR_SPACE_SRGB	= 0x1,
+	VIRTIO_PANEL_COLOR_SPACE_PQ	= 0x2,
+	VIRTIO_PANEL_COLOR_SPACE_GAMMA2_2	= 0x4,
+	VIRTIO_PANEL_COLOR_SPACE_HLG	= 0x8,
+	VIRTIO_PANEL_COLOR_SPACE_MAX,
+	VIRTIO_PANEL_COLOR_SPACE_MAX_FORCE_32BIT = 0x7FFFFFFF
 };
 
 enum virtio_layer_type {
@@ -451,12 +465,55 @@ static int virtio_connector_post_init(struct drm_connector *connector,
 	return 0;
 }
 
+void virtio_connector_get_hdr_info(struct virtio_connector_info_priv *priv,
+	struct sde_connector *sde_conn)
+{
+	uint32_t panel_colorspace;
+	bool hdr_support;
+
+	panel_colorspace = priv->base.panel_colorspace;
+
+	if (panel_colorspace != PANEL_COLORSPACE_NONE) {
+		/* EOTF: SDR Luminance Range */
+		sde_conn->hdr_eotf |= 0x01;
+
+		/* EOTF: HDR Luminance Range */
+		if (panel_colorspace & PANEL_COLORSPACE_GAMMA2_2) {
+			sde_conn->hdr_eotf |= 0x02;
+			hdr_support = true;
+		}
+
+		/* EOTF: SMPTE ST 2084 */
+		if (panel_colorspace & PANEL_COLORSPACE_PQ) {
+			sde_conn->hdr_eotf |= 0x04;
+			hdr_support = true;
+		}
+
+		/* EOTF: Hybrid Log-Gamma (HLG) based on ITU-R BT.2100-0 */
+		if (panel_colorspace & PANEL_COLORSPACE_HLG) {
+			sde_conn->hdr_eotf |= 0x08;
+			hdr_support = true;
+		}
+
+		if (hdr_support) {
+			sde_conn->hdr_metadata_type_one = true;
+			sde_conn->hdr_supported = true;
+			sde_conn->hdr_plus_app_ver = 0x03;
+		}
+
+		sde_conn->hdr_max_luminance = priv->base.hdr_max_luminance;
+		sde_conn->hdr_avg_luminance = priv->base.hdr_avg_luminance;
+		sde_conn->hdr_min_luminance = priv->base.hdr_min_luminance;
+	}
+}
+
 static int virtio_connector_get_modes(struct drm_connector *connector,
         void *display, const struct msm_resource_caps_info *avail_res)
 {
 	struct msm_hyp_display *hyp_display = display;
 	struct drm_display_mode *m;
 	struct virtio_connector_info_priv *priv;
+	struct sde_connector *sde_conn = to_sde_connector(connector);
 	int i;
 
 	priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base);
@@ -477,6 +534,7 @@ static int virtio_connector_get_modes(struct drm_connector *connector,
 	}
 
 	msm_hyp_connector_init_edid(connector, priv->panel_name);
+	virtio_connector_get_hdr_info(priv, sde_conn);
 
 	return priv->mode_count;
 }
@@ -586,17 +644,69 @@ static void virtio_connector_post_open(struct drm_connector *connector, void *di
 	// TODO:
 }
 
+enum panel_color_space virtio_connector_colorspace_map(enum drm_colorspace drm_colorspace)
+{
+	switch (drm_colorspace) {
+	case DRM_MODE_COLORIMETRY_BT709_YCC:
+		return VIRTIO_PANEL_COLOR_SPACE_SRGB;
+	case DRM_MODE_COLORIMETRY_BT2020_RGB:
+		return VIRTIO_PANEL_COLOR_SPACE_PQ;
+	case DRM_MODE_COLORIMETRY_DCI_P3_RGB_D65:
+		return VIRTIO_PANEL_COLOR_SPACE_GAMMA2_2;
+
+	case DRM_MODE_COLORIMETRY_SMPTE_170M_YCC:
+	case DRM_MODE_COLORIMETRY_XVYCC_601:
+	case DRM_MODE_COLORIMETRY_XVYCC_709:
+	case DRM_MODE_COLORIMETRY_SYCC_601:
+	case DRM_MODE_COLORIMETRY_OPYCC_601:
+	case DRM_MODE_COLORIMETRY_OPRGB:
+	case DRM_MODE_COLORIMETRY_BT2020_CYCC:
+	case DRM_MODE_COLORIMETRY_BT2020_YCC:
+	case DRM_MODE_COLORIMETRY_DCI_P3_RGB_THEATER:
+	case DRM_MODE_COLORIMETRY_RGB_WIDE_FLOAT:
+	case DRM_MODE_COLORIMETRY_RGB_WIDE_FIXED:
+	case DRM_MODE_COLORIMETRY_BT601_YCC:
+	default:
+		return VIRTIO_PANEL_COLOR_SPACE_SRGB;
+	}
+}
+
 static int virtio_connector_set_colorspace(struct drm_connector *connector,
                         void *display)
 {
-	// TODO:
+	struct msm_hyp_display *hyp_display = display;
+	struct virtio_connector_info_priv *priv;
+	enum panel_color_space virtio_colorspace = VIRTIO_PANEL_COLOR_SPACE_UNCORRECTED;
+	struct virtio_gpu_rect dest_rect;
+	int rc = 0;
+
+	priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base);
+	dest_rect.width = priv->mode_rect.width;
+	dest_rect.height = priv->mode_rect.height;
+	dest_rect.x = priv->mode_rect.x;
+	dest_rect.y = priv->mode_rect.y;
+
+	if (connector && connector->state) {
+		virtio_colorspace = virtio_connector_colorspace_map(connector->state->colorspace);
+
+		rc = virtio_gpu_cmd_set_scanout_properties(priv->kms,
+				priv->scanout,
+				VIRTIO_SCANOUT_POWER_MODE_ON,
+				priv->mode_index,
+				0,
+				dest_rect,
+				virtio_colorspace);
+		if (rc)
+			VIRTIO_KMS_ERR("scanout set color space failed\n");
+	}
+
 	return 0;
 }
 
 static int virtio_connector_config_hdr(struct drm_connector *connector, void *display,
         struct sde_connector_state *c_state)
 {
-	// TODO:
+	// TODO;
 	return 0;
 }
 
@@ -690,7 +800,8 @@ static void virtio_kms_bridge_mode_set(struct drm_bridge *drm_bridge,
 			VIRTIO_SCANOUT_POWER_MODE_OFF,
 			mode_index,
 			0,
-			dest_rect);
+			dest_rect,
+			VIRTIO_PANEL_COLOR_SPACE_SRGB);
 	if (rc) {
 		VIRTIO_KMS_ERR("scanout set properties for mode failed %d\n",
 				mode_index);
@@ -727,6 +838,7 @@ static void virtio_kms_bridge_enable(struct drm_bridge *drm_bridge)
 	struct virtio_connector_info_priv *priv;
 	struct virtio_gpu_rect dest_rect;
 	uint32_t scanout;
+	int rc = 0;
 
 	display = container_of(drm_bridge, struct msm_hyp_display, bridge);
 	priv = container_of(display->info, struct virtio_connector_info_priv, base);
@@ -735,12 +847,16 @@ static void virtio_kms_bridge_enable(struct drm_bridge *drm_bridge)
         dest_rect.x = priv->mode_rect.x,
         dest_rect.y = priv->mode_rect.y;
 	scanout = priv->scanout;
-	virtio_gpu_cmd_set_scanout_properties(priv->kms,
+	rc = virtio_gpu_cmd_set_scanout_properties(priv->kms,
 			scanout,
 			VIRTIO_SCANOUT_POWER_MODE_ON,
 			priv->mode_index,
 			0,
-			dest_rect);
+			dest_rect,
+			VIRTIO_PANEL_COLOR_SPACE_SRGB);
+	if (rc)
+		VIRTIO_KMS_ERR("scanout power on failed\n");
+
 	virtio_gpu_cmd_scanout_flush(priv->kms, scanout, true);
 }
 
@@ -776,6 +892,7 @@ static void virtio_kms_bridge_post_disable(struct drm_bridge *drm_bridge)
 	struct virtio_connector_info_priv *priv;
 	struct virtio_gpu_rect dest_rect;
 	uint32_t scanout;
+	int rc = 0;
 
 	display = container_of(drm_bridge, struct msm_hyp_display, bridge);
 	priv = container_of(display->info, struct virtio_connector_info_priv, base);
@@ -785,12 +902,16 @@ static void virtio_kms_bridge_post_disable(struct drm_bridge *drm_bridge)
 	dest_rect.y = priv->mode_rect.y;
 
 	scanout = priv->scanout;
-	virtio_gpu_cmd_set_scanout_properties(priv->kms,
+	rc = virtio_gpu_cmd_set_scanout_properties(priv->kms,
 			scanout,
 			VIRTIO_SCANOUT_POWER_MODE_OFF,
 			priv->mode_index,
 			0,
-			dest_rect);
+			dest_rect,
+			VIRTIO_PANEL_COLOR_SPACE_SRGB);
+	if (rc)
+		VIRTIO_KMS_ERR("scanout power off failed\n");
+
 	virtio_gpu_cmd_scanout_flush(priv->kms, scanout, true);
 }
 
@@ -963,6 +1084,14 @@ static int virtio_kms_get_connector_infos(struct sde_kms *sde_kms,
 		}
 		priv->mode_count = output->num_modes;
 		priv->base.panel_orientation = attr->panel_orientation;
+
+		/* HDR */
+		if (attr->type == VIRTIO_PORT_TYPE_DP) {
+			priv->base.panel_colorspace = attr->panel_colorspace;
+			priv->base.hdr_max_luminance = attr->hdr_max_luminance;
+			priv->base.hdr_avg_luminance = attr->hdr_avg_luminance;
+			priv->base.hdr_min_luminance = attr->hdr_min_luminance;
+		}
 
 		if (i < ARRAY_SIZE(disp_order_str))
 			priv->base.display_type = disp_order_str[i];
