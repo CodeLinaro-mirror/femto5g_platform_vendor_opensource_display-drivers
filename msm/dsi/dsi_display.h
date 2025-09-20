@@ -36,6 +36,7 @@
 #define DSI_MODE_MATCH_DSC_CONFIG (1 << 2)
 #define DSI_MODE_MATCH_NONDSC_BPP_CONFIG (1 << 3)
 #define DSI_MODE_MATCH_EMSYNC_FPS (1 << 4)
+#define DSI_TX_CMD_BUF_SIZE (SZ_4K * 4)
 
 /*
  * DSI Validate Mode modifiers

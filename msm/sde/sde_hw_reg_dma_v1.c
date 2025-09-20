@@ -1220,7 +1220,7 @@ static int init_reg_dma_vbif(struct sde_hw_reg_dma *cfg)
 
 	clk_client.hw = hw;
 	clk_client.clk_ctrl = cfg->caps->clk_ctrl;
-	clk_client.ops.setup_clk_force_ctrl = setup_clk_force_ctrl;
+	clk_client.ops.setup_clk_force_ctrl[MSM_DISP_OP_HWIO] = setup_clk_force_ctrl;
 
 	ret = sde_vbif_clk_register(sde_kms, &clk_client);
 	if (ret) {

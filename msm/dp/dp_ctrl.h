@@ -19,7 +19,7 @@ struct dp_ctrl {
 	int (*init)(struct dp_ctrl *dp_ctrl, bool flip, bool reset);
 	void (*deinit)(struct dp_ctrl *dp_ctrl);
 	int (*on)(struct dp_ctrl *dp_ctrl, bool mst_mode, bool fec_en,
-			bool dsc_en, bool shallow);
+			bool dsc_en, bool shallow, bool skip_op);
 	void (*off)(struct dp_ctrl *dp_ctrl);
 	void (*abort)(struct dp_ctrl *dp_ctrl, bool abort);
 	void (*isr)(struct dp_ctrl *dp_ctrl);

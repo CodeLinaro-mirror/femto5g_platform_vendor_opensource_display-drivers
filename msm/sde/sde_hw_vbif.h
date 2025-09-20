@@ -134,7 +134,7 @@ struct sde_vbif_clk_ops {
 	 * @enable:	force on enable
 	 * @return:	if the clock is forced-on by this function
 	 */
-	bool (*setup_clk_force_ctrl)(struct sde_hw_blk_reg_map *hw,
+	bool (*setup_clk_force_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_blk_reg_map *hw,
 			enum sde_clk_ctrl_type clk_ctrl, bool enable);
 
 	/**
@@ -144,7 +144,7 @@ struct sde_vbif_clk_ops {
 	 * @status:	returns true if clock is on
 	 * @return:	0 if success, otherwise return error code
 	 */
-	int (*get_clk_ctrl_status)(struct sde_hw_blk_reg_map *hw,
+	int (*get_clk_ctrl_status[MSM_DISP_OP_MAX])(struct sde_hw_blk_reg_map *hw,
 			enum sde_clk_ctrl_type clk_ctrl, bool *status);
 };
 

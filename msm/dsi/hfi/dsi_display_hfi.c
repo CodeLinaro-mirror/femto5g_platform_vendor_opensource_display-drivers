@@ -74,6 +74,11 @@ static int dsi_display_hfi_set_mode(struct dsi_display *display, struct dsi_disp
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_SET_MODE;
 	int rc = 0;
 
+	if (!mode) {
+		DSI_ERR("Invalid param %d\n", !mode);
+		return -EINVAL;
+	}
+
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
 		return -EINVAL;
@@ -421,7 +426,7 @@ int dsi_hfi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 	int rc = 0;
 
 	display->tx_cmd_buf = msm_gem_new(display->drm_dev,
-			SZ_4K,
+			DSI_TX_CMD_BUF_SIZE,
 			MSM_BO_UNCACHED);
 
 	if ((display->tx_cmd_buf) == NULL) {
@@ -430,7 +435,7 @@ int dsi_hfi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 		goto error;
 	}
 
-	display->cmd_buffer_size = SZ_4K;
+	display->cmd_buffer_size = DSI_TX_CMD_BUF_SIZE;
 
 	display->aspace = msm_gem_smmu_address_space_get(
 			display->drm_dev, MSM_SMMU_DOMAIN_UNSECURE);

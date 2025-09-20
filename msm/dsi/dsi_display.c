@@ -541,7 +541,7 @@ static int dsi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 	struct dsi_display_ctrl *display_ctrl;
 
 	display->tx_cmd_buf = msm_gem_new(display->drm_dev,
-			SZ_4K,
+			DSI_TX_CMD_BUF_SIZE,
 			MSM_BO_UNCACHED);
 
 	if ((display->tx_cmd_buf) == NULL) {
@@ -550,7 +550,7 @@ static int dsi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 		goto error;
 	}
 
-	display->cmd_buffer_size = SZ_4K;
+	display->cmd_buffer_size = DSI_TX_CMD_BUF_SIZE;
 
 	display->aspace = msm_gem_smmu_address_space_get(
 			display->drm_dev, MSM_SMMU_DOMAIN_UNSECURE);
@@ -7843,8 +7843,10 @@ exit:
 	rc = 0;
 
 error:
-	if (rc)
+	if (rc) {
 		kfree(display->modes);
+		display->modes = NULL;
+	}
 
 	mutex_unlock(&display->display_lock);
 	return rc;
@@ -8449,7 +8451,10 @@ int dsi_display_set_mode(struct dsi_display *display,
 
 	adj_mode = *mode;
 	timing = adj_mode.timing;
-	adjust_timing_by_ctrl_count(display, &adj_mode);
+
+	/* hfi interface expects full horizontal timings, therefore skip adjustment */
+	if (display->panel->disp_op != MSM_DISP_OP_HFI)
+		adjust_timing_by_ctrl_count(display, &adj_mode);
 
 	if (!display->panel->cur_mode) {
 		display->panel->cur_mode =
