@@ -116,6 +116,9 @@ struct hfi_adapter_t {
 	spinlock_t packet_id_lock;
 	struct mutex hfi_adapter_cmd_buf_list_lock;
 	atomic_t ssr_in_progress;
+
+	/* Shutdown coordination */
+	atomic_t shutdown_in_progress;
 };
 
 /**
@@ -279,6 +282,7 @@ struct hfi_client_t {
 	struct list_head node;
 	struct mutex lock;
 	struct list_head cmd_buf_list;
+	struct mutex listener_lock;
 	struct listener_list packet_listeners;
 	int (*process_cmd_buf)(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t *cmd_buf);
 	int (*process_event)(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,

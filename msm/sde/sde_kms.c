@@ -3743,8 +3743,13 @@ out_ctx:
 	if (ret)
 		SDE_ERROR("kms lastclose failed: %d\n", ret);
 
-	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)))
+	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)) && hfi_client) {
 		hfi_adapter_deinit(hfi_client);
+		/* Reset shutdown flag after cleanup is complete */
+		if (hfi_client->host)
+			atomic_set(&hfi_client->host->shutdown_in_progress, 0);
+	}
+
 
 	SDE_EVT32(ret, SDE_EVTLOG_FUNC_EXIT);
 

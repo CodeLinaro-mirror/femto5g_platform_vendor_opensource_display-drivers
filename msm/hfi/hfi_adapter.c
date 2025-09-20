@@ -110,6 +110,12 @@ static struct hfi_buffer_pool *get_avail_buffer(struct hfi_adapter_t *host)
 		return NULL;
 	}
 
+	/* Check if adapter is shutting down */
+	if (atomic_read(&host->shutdown_in_progress)) {
+		HFI_AD_DEBUG("adapter shutdown in progress, skipping buffer allocation\n");
+		return NULL;
+	}
+
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 	list_for_each(pos, &host->pool->node) {
 		pool = list_entry(pos, struct hfi_buffer_pool, node);
@@ -158,6 +164,12 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 	host = cb_cmd_buf_work->host;
 	if (!host) {
 		HFI_AD_ERROR("thread %d could not match host\n", cb_cmd_buf_work->index);
+		return;
+	}
+
+	/* Check if adapter is shutting down */
+	if (atomic_read(&host->shutdown_in_progress)) {
+		HFI_AD_DEBUG("adapter shutdown in progress, exiting worker\n");
 		return;
 	}
 
@@ -316,6 +328,12 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		if (atomic_read(&adapter->ssr_in_progress))
 			break;
 
+		/* Don't queue new work if shutdown is in progress */
+		if (atomic_read(&adapter->shutdown_in_progress)) {
+			HFI_AD_DEBUG("adapter shutdown in progress, skipping work queue\n");
+			break;
+		}
+
 		atomic_fetch_add_unless(&work_queue_pos_wr, 1,
 				HFI_ADAPTER_WORK_QUEUE_SIZE);
 		work_queue_idx = atomic_read(&work_queue_pos_wr);
@@ -460,6 +478,7 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	mutex_init(&hfi_host->hfi_adapter_cmd_buf_list_lock);
 
 	atomic_set(&hfi_host->ssr_in_progress, 0);
+	atomic_set(&hfi_host->shutdown_in_progress, 0);
 
 	/* Initialize buffers */
 	pool = kmalloc(sizeof(struct hfi_buffer_pool), GFP_KERNEL);
@@ -531,6 +550,7 @@ int hfi_adapter_client_register(struct hfi_adapter_t *host, struct hfi_client_t 
 	spin_lock_init(&ctx->sgt_addr_data.slock);
 	INIT_LIST_HEAD(&ctx->sgt_addr_data.list);
 
+	mutex_init(&ctx->listener_lock);
 	ctx->host = host;
 	list_add_tail(&ctx->node, &host->client_list);
 
@@ -858,7 +878,7 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 	buff_client_ctx = cmd_buf->ctx;
 
 	/* Create new listener_list structure to insert. */
-	struct listener_list *listener_entry = kmalloc(sizeof(struct listener_list), GFP_KERNEL);
+	struct listener_list *listener_entry = kzalloc(sizeof(struct listener_list), GFP_KERNEL);
 
 	if (!listener_entry) {
 		HFI_AD_ERROR("failed to allocate memory for listener_entry\n");
@@ -869,8 +889,10 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 	listener_entry->listener_obj = listener;
 
 	/* Add listener based on packet obj_id  */
+	mutex_lock(&buff_client_ctx->listener_lock);
 	list_add_tail(&listener_entry->list_ptr,
 			&buff_client_ctx->packet_listeners.list_ptr);
+	mutex_unlock(&buff_client_ctx->listener_lock);
 
 	return rc;
 }
@@ -1137,6 +1159,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		}
 
 		/* Find the client's listener attached to the packet-id */
+		mutex_lock(&ctx->listener_lock);
 		list_for_each(pos, &ctx->packet_listeners.list_ptr) {
 			listener_entry = list_entry(pos, struct listener_list, list_ptr);
 			if (!listener_entry)
@@ -1167,6 +1190,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 				}
 			}
 		}
+		mutex_unlock(&ctx->listener_lock);
 	}
 
 	/* Loop through clients list and if matching unique_id then release */
@@ -1252,6 +1276,36 @@ int hfi_adapter_release_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *c
 	return rc;
 }
 
+/**
+ * hfi_adapter_flush_workers - Flush all pending work from HFI worker threads
+ * @host: HFI adapter instance
+ *
+ * This function ensures all pending work is completed before proceeding
+ * with adapter cleanup to avoid mutex deadlocks.
+ */
+static void hfi_adapter_flush_workers(struct hfi_adapter_t *host)
+{
+	if (!host) {
+		HFI_AD_ERROR("invalid host pointer\n");
+		return;
+	}
+
+	HFI_AD_DEBUG("flushing HFI worker threads\n");
+
+	/* Set shutdown flag to prevent new work from being queued */
+	atomic_set(&host->shutdown_in_progress, 1);
+
+	/* Flush all pending work in the event worker */
+	HFI_AD_DEBUG("flushing cb_event_worker\n");
+	kthread_flush_worker(&host->cb_event_worker);
+
+	/* Flush all pending work in the SSR worker */
+	HFI_AD_DEBUG("flushing cb_event_ssr_worker\n");
+	kthread_flush_worker(&host->cb_event_ssr_worker);
+
+	HFI_AD_DEBUG("HFI worker flush complete\n");
+}
+
 void hfi_adapter_deinit(struct hfi_client_t *ctx)
 {
 	struct list_head *pos, *updated_pos;
@@ -1260,6 +1314,11 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx)
 
 	if (!ctx || !ctx->host)
 		return;
+
+	HFI_AD_DEBUG("starting HFI adapter deinit for client %d\n", ctx->client_id);
+
+	/* Flush all pending work to prevent mutex contention */
+	hfi_adapter_flush_workers(ctx->host);
 
 	mutex_lock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
 	if (!list_empty(&ctx->cmd_buf_list)) {
