@@ -5318,8 +5318,12 @@ static inline void _sde_encoder_trigger_flush_helper(struct drm_encoder *drm_enc
 		bool is_vid_mode, bool is_dp)
 {
 	struct sde_encoder_virt *sde_enc;
+	u32 qsync_mode;
+	bool qsync_updated;
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
+	qsync_updated = sde_connector_is_qsync_updated(sde_enc->cur_master->connector);
+	qsync_mode = sde_connector_get_qsync_mode(sde_enc->cur_master->connector);
 
 	if (((sde_enc->disp_info.vrr_caps.video_psr_support &&
 			!phys->sde_kms->catalog->hw_fence_rev) ||
@@ -5341,7 +5345,8 @@ static inline void _sde_encoder_trigger_flush_helper(struct drm_encoder *drm_enc
 	if (sde_enc->cesta_client && phys->hw_intf && is_vid_mode &&
 		ctl->ops.bitmask_has_bit[disp_op] && (is_dp ||
 		ctl->ops.bitmask_has_bit[disp_op](ctl, SDE_HW_FLUSH_PERIPH, phys->hw_intf->idx) ||
-		ctl->ops.bitmask_has_bit[disp_op](ctl, SDE_HW_FLUSH_INTF, phys->hw_intf->idx)))
+		ctl->ops.bitmask_has_bit[disp_op](ctl, SDE_HW_FLUSH_INTF, phys->hw_intf->idx) ||
+		(!qsync_mode && qsync_updated)))
 		sde_cesta_poll_handshake(sde_enc->cesta_client);
 
 	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
