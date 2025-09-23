@@ -252,6 +252,33 @@ static int sde_encoder_update_pending_release_fence_cnt(struct sde_encoder_virt 
 	return 0;
 }
 
+static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, void *payload)
+{
+	struct drm_connector *conn;
+	struct drm_encoder *drm_enc;
+	struct sde_connector *sde_conn;
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return;
+	}
+
+	drm_enc = &sde_enc->base;
+	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return;
+	}
+
+	sde_conn = to_sde_connector(conn);
+	if (!sde_conn || !sde_conn->display) {
+		SDE_ERROR("invalid sde_connector or display\n");
+		return;
+	}
+
+	hfi_connector_report_panel_dead(sde_conn, false);
+}
+
 static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		void *payload, u32 size, struct hfi_prop_listener *listener)
 {
@@ -308,6 +335,9 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_HW_RECOVERY:
 		hfi_encoder_hw_recovery_callback(sde_enc, payload);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD:
+		hfi_encoder_panel_dead_callback(sde_enc, payload);
 		break;
 	case HFI_COMMAND_DEBUG_PANIC_EVENT:
 		recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
@@ -434,6 +464,10 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 		break;
 	case MSM_ENC_DISPLAY_POWER:
 		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_DISPLAY_POWER,
+				enable, defer_to_commit);
+		break;
+	case MSM_ENC_PANEL_DEAD:
+		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_PANEL_DEAD,
 				enable, defer_to_commit);
 		break;
 	default:
@@ -649,6 +683,21 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 		hfi_enc->hw_events_state[event].state = enable;
 		hfi_enc->hw_events_state[event].pending = true;
 	}
+
+	return ret;
+}
+
+static int hfi_enc_register_panel_dead_event(struct sde_encoder_virt *enc, bool enable)
+{
+	int ret = 0;
+	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+
+	if (!hfi_enc)
+		return -EINVAL;
+
+	ret = _hfi_enc_register_hw_event(enc, MSM_ENC_PANEL_DEAD, enable, false);
+	if (ret)
+		SDE_ERROR("failed to send event register ret:%d\n", ret);
 
 	return ret;
 }
@@ -1400,6 +1449,8 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 	sde_enc->hal_ops.get_vblank_count[MSM_DISP_OP_HFI] = hfi_enc_get_vblank_count;
 	sde_enc->hal_ops.get_vblank_timestamp[MSM_DISP_OP_HFI] = hfi_enc_get_vblank_timestamp;
 	sde_enc->hal_ops.register_power_event_notify[MSM_DISP_OP_HFI] = hfi_enc_register_pwr_event;
+	sde_enc->hal_ops.register_panel_dead_event_notify[MSM_DISP_OP_HFI] =
+								hfi_enc_register_panel_dead_event;
 }
 
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
