@@ -7,6 +7,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_crtc.h>
+#include <linux/version.h>
 
 #include "msm_drv.h"
 #include "msm_kms.h"
@@ -59,8 +60,13 @@ void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
 	drm_mode_set_name(drm_mode);
 }
 
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 static int dp_bridge_attach(struct drm_bridge *dp_bridge,
 				enum drm_bridge_attach_flags flags)
+#else
+static int dp_bridge_attach(struct drm_bridge *dp_bridge,
+		struct drm_encoder *encoder, enum drm_bridge_attach_flags flags)
+#endif
 {
 	struct dp_bridge *bridge = to_dp_bridge(dp_bridge);
 
