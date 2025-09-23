@@ -1339,6 +1339,19 @@ static int virtio_kms_get_mode_info(struct sde_kms *sde_kms,
 	return 0;
 }
 
+void virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg, unsigned long *avail_pipes)
+{
+	int i;
+
+	if (!avail_pipes)
+		return;
+
+	for (i = 0; i < SSPP_MAX; i++) {
+		if (test_bit(i, avail_pipes) && pipe_active_tbl[i] != CTL_INVALID_BIT)
+			hyp_cfg->pipe_active_mask |= BIT(pipe_active_tbl[i]);
+	}
+}
+
 struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 {
 	int i, j, k;
@@ -1347,6 +1360,8 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
 	struct sde_mdss_cfg *hyp_cfg;
 	struct virtio_kms_output *output;
+	unsigned long features;
+	DECLARE_BITMAP(avail_pipes, SSPP_MAX);
 
 	VIRTIO_KMS_DBG("Enter virtio_kms_hw_catalog_init\n");
 
@@ -1355,6 +1370,8 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		return ERR_PTR(-ENOMEM);
 
 	memcpy(hyp_cfg, sde_cfg, sizeof(struct sde_mdss_cfg));
+
+	memset(avail_pipes, 0, sizeof(avail_pipes));
 
 	/* REGDMA (LUTDMA) remain not changed */
 
@@ -1409,6 +1426,62 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 
+		/* SSPP */
+		VIRTIO_KMS_DBG("SSPP %d  planes %d\n", sde_cfg->sspp_count, output->plane_cnt);
+		for (k = 0; k < output->plane_cnt; k++) {
+			for (j = 0; j < sde_cfg->sspp_count; j++) {
+				// FIXME: how to distinguish DMA/VIG pipe?
+				if (output->plane_caps[k].sspp_id == sde_cfg->sspp[j].id) {
+					hyp_cfg->sspp[hyp_cfg->sspp_count] = sde_cfg->sspp[j];
+					if (output->plane_caps[k].rect_mask & 0x3) {
+						// Keep original smart dma feature
+						/*
+						 * hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
+						 *		~(BIT(SDE_SSPP_SMART_DMA_V1) |
+						 *		BIT(SDE_SSPP_SMART_DMA_V2) |
+						 *		BIT(SDE_SSPP_SMART_DMA_V2p5));
+						 * hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
+						 *		BIT(SDE_SSPP_SMART_DMA_V2p5);
+						 */
+					} else if (output->plane_caps[k].rect_mask & 0x1) {
+						hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
+								~(BIT(SDE_SSPP_SMART_DMA_V1) |
+								BIT(SDE_SSPP_SMART_DMA_V2) |
+								BIT(SDE_SSPP_SMART_DMA_V2p5));
+						hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
+								BIT(SDE_SSPP_SMART_DMA_REC0_ONLY);
+					} else if (output->plane_caps[k].rect_mask & 0x2) {
+						hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
+								~(BIT(SDE_SSPP_SMART_DMA_V1) |
+								BIT(SDE_SSPP_SMART_DMA_V2) |
+								BIT(SDE_SSPP_SMART_DMA_V2p5));
+						hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
+								BIT(SDE_SSPP_SMART_DMA_REC1_ONLY);
+					} else {
+						VIRTIO_KMS_WARN("plane invalid rect mask %X\n",
+								output->plane_caps[k].rect_mask);
+					}
+					hyp_cfg->sspp[hyp_cfg->sspp_count].fixed_ctl_id =
+							output->hw_assign.ctl_id;
+					set_bit(output->plane_caps[k].sspp_id, avail_pipes);
+					features = hyp_cfg->sspp[hyp_cfg->sspp_count].features;
+					VIRTIO_KMS_DBG(
+							"  HYP_SSPP%d=SSPP%d->CTL%d rect_mask %X feature %lX\n",
+							hyp_cfg->sspp_count, sde_cfg->sspp[j].id,
+							output->hw_assign.ctl_id,
+							output->plane_caps[k].rect_mask,
+							features);
+
+					hyp_cfg->sspp_count++;
+					break;
+				}
+			}
+		}
+
+		virtio_kms_update_pipe_active_mask(hyp_cfg, avail_pipes);
+		VIRTIO_KMS_DBG("HYP_SSPP %d, active mask 0x%x\n",
+				hyp_cfg->sspp_count, hyp_cfg->pipe_active_mask);
+
 		/* CTL */
 		VIRTIO_KMS_DBG("CTL %d\n", sde_cfg->ctl_count);
 		for (j = 0; j < sde_cfg->ctl_count; j++) {
@@ -1419,9 +1492,15 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 				hyp_cfg->ctl[hyp_cfg->ctl_count].fixed_ctl_id =
 						output->hw_assign.ctl_id;
 				hyp_cfg->ctl[hyp_cfg->ctl_count].vq_idx = output->hw_assign.vq_id;
-				VIRTIO_KMS_DBG("  HYP_CTL%d=CTL%d  virtual %s  VQ %d\n", hyp_cfg->ctl_count, output->hw_assign.ctl_id,
+				hyp_cfg->ctl[hyp_cfg->ctl_count].pipe_active_mask =
+						hyp_cfg->pipe_active_mask;
+
+				VIRTIO_KMS_DBG(
+						"  HYP_CTL%d=CTL%d virtual %s VQ %d pipe mask 0x%x\n",
+						hyp_cfg->ctl_count, output->hw_assign.ctl_id,
 						hyp_cfg->ctl[hyp_cfg->ctl_count].virtual ? "Yes" : "No",
-						output->hw_assign.vq_id);
+						output->hw_assign.vq_id,
+						hyp_cfg->ctl[hyp_cfg->ctl_count].pipe_active_mask);
 				hyp_cfg->ctl_count++;
 				break;
 			}
@@ -1461,53 +1540,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		}
 		VIRTIO_KMS_DBG("HYP_LM %d\n", hyp_cfg->mixer_count);
 
-		/* SSPP */
-		VIRTIO_KMS_DBG("SSPP %d  planes %d\n", sde_cfg->sspp_count, output->plane_cnt);
-		for (k = 0; k < output->plane_cnt; k++) {
-			for (j = 0; j < sde_cfg->sspp_count; j++) {
-				// FIXME: how to distinguish DMA/VIG pipe?
-				if (output->plane_caps[k].sspp_id == sde_cfg->sspp[j].id) {
-					hyp_cfg->sspp[hyp_cfg->sspp_count] = sde_cfg->sspp[j];
-					if (output->plane_caps[k].rect_mask & 0x3) {
-						// Keep original smart dma feature
-						/*
-						hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
-								~(BIT(SDE_SSPP_SMART_DMA_V1) |
-								BIT(SDE_SSPP_SMART_DMA_V2) |
-								BIT(SDE_SSPP_SMART_DMA_V2p5));
-						hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
-								BIT(SDE_SSPP_SMART_DMA_V2p5);
-						*/
-					} else if (output->plane_caps[k].rect_mask & 0x1) {
-						hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
-								~(BIT(SDE_SSPP_SMART_DMA_V1) |
-								BIT(SDE_SSPP_SMART_DMA_V2) |
-								BIT(SDE_SSPP_SMART_DMA_V2p5));
-						hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
-								BIT(SDE_SSPP_SMART_DMA_REC0_ONLY);
-					} else if (output->plane_caps[k].rect_mask & 0x2) {
-						hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
-								~(BIT(SDE_SSPP_SMART_DMA_V1) |
-								BIT(SDE_SSPP_SMART_DMA_V2) |
-								BIT(SDE_SSPP_SMART_DMA_V2p5));
-						hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
-								BIT(SDE_SSPP_SMART_DMA_REC1_ONLY);
-					} else {
-						VIRTIO_KMS_WARN("plane invalid rect mask %X\n",
-								output->plane_caps[k].rect_mask);
-					}
-					hyp_cfg->sspp[hyp_cfg->sspp_count].fixed_ctl_id =
-							output->hw_assign.ctl_id;
-					VIRTIO_KMS_DBG("  HYP_SSPP%d=SSPP%d->CTL%d  rect_mask %X  feature %lX\n",
-							hyp_cfg->sspp_count, sde_cfg->sspp[j].id, output->hw_assign.ctl_id,
-							output->plane_caps[k].rect_mask,
-							hyp_cfg->sspp[hyp_cfg->sspp_count].features);
-					hyp_cfg->sspp_count++;
-					break;
-				}
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_SSPP %d\n", hyp_cfg->sspp_count);
+
 
 		/* DSPP */
 		VIRTIO_KMS_DBG("DSPP %d  mask %X\n", sde_cfg->dspp_count, output->hw_assign.dspp_mask);

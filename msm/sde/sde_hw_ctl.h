@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -16,6 +16,13 @@
 
 #define INVALID_CTL_STATUS 0xfffff88e
 #define CTL_MAX_DSPP_COUNT (DSPP_MAX - DSPP_0)
+
+#define CTL_INVALID_BIT                0xffff
+/**
+ * List of SSPP bits in CTL_PIPE_ACTIVE
+ */
+static const u32 pipe_active_tbl[SSPP_MAX] = {CTL_INVALID_BIT,
+		16, 17, 18, 19, 20, 21, 22, 23, 0, 1, 2, 3, 4, 5};
 
 /**
  * sde_ctl_mode_sel: Interface mode selection
