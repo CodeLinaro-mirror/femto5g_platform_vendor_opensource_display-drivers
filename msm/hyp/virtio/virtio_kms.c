@@ -484,12 +484,14 @@ void virtio_connector_get_hdr_info(struct virtio_connector_info_priv *priv,
 		/* EOTF: HDR Luminance Range */
 		if (panel_colorspace & PANEL_COLORSPACE_GAMMA2_2) {
 			sde_conn->hdr_eotf |= 0x02;
+			sde_conn->color_enc_fmt |= DRM_EDID_CLRMETRY_DCI_P3;
 			hdr_support = true;
 		}
 
 		/* EOTF: SMPTE ST 2084 */
 		if (panel_colorspace & PANEL_COLORSPACE_PQ) {
 			sde_conn->hdr_eotf |= 0x04;
+			sde_conn->color_enc_fmt |= DRM_EDID_CLRMETRY_BT2020_RGB;
 			hdr_support = true;
 		}
 
@@ -529,8 +531,8 @@ static int virtio_connector_get_modes(struct drm_connector *connector,
 		drm_mode_probed_add(connector, m);
 	}
 
-	msm_hyp_connector_init_edid(connector, priv->panel_name);
 	virtio_connector_get_hdr_info(priv, sde_conn);
+	msm_hyp_connector_init_edid(connector, priv->panel_name);
 
 	if (hyp_display->info->display_info.width_mm > 0 &&
 				hyp_display->info->display_info.height_mm > 0) {
