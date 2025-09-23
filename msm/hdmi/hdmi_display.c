@@ -59,6 +59,7 @@ static inline uint32_t HDMI_HPD_CTRL_TIMEOUT(uint32_t val)
 }
 
 #define HPD_STRING_SIZE 30
+#define MAX_RETRIES 5
 
 enum hdmi_display_states {
 	HDMI_STATE_DISCONNECTED           = 0,
@@ -570,6 +571,51 @@ end:
 	return rc;
 }
 
+static int hdmi_read_edid_retry(struct hdmi_display_private *hdmi,
+	struct drm_connector *connector)
+{
+	int edid_read_retry = 0;
+	int ret = 0;
+
+	// Free any previous failed attempt's memory if it exists
+	if (hdmi->panel->edid_ctrl && !hdmi->panel->edid_ctrl->edid)
+		sde_free_edid((void **)&hdmi->panel->edid_ctrl);
+
+	/*
+	 * Adding retries and wait helps ensure the EDID block is
+	 * read in full.
+	 * For monitors without timing issues, the read operation
+	 * typically succeeds on the first attempt.
+	 */
+
+	do {
+		if (hdmi->panel->edid_ctrl && !hdmi->panel->edid_ctrl->edid)
+			sde_free_edid((void **)&hdmi->panel->edid_ctrl);
+
+		sde_get_edid(connector, hdmi->ddc->i2c,
+			(void **)&hdmi->panel->edid_ctrl);
+		if (!hdmi->panel->edid_ctrl ||
+			!hdmi->panel->edid_ctrl->edid) {
+			edid_read_retry++;
+			// Small delay before retrying
+			if (edid_read_retry < MAX_RETRIES)
+				usleep_range(15000, 20000);
+		}
+	// Keep Retrying as per MAX_RETRIES
+	} while (hdmi->panel->edid_ctrl && !hdmi->panel->edid_ctrl->edid
+		&& edid_read_retry < MAX_RETRIES);
+
+	if (!hdmi->panel->edid_ctrl || !hdmi->panel->edid_ctrl->edid) {
+		HDMI_WARN("EDID read failed, Continuing without EDID.");
+		if (hdmi->panel->edid_ctrl)
+			sde_free_edid((void **)&hdmi->panel->edid_ctrl);
+
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
 static void hdmi_display_hotplug_work(struct work_struct *work)
 {
 	struct hdmi_display_private *hdmi =
@@ -578,7 +624,7 @@ static void hdmi_display_hotplug_work(struct work_struct *work)
 	u32 hdmi_ctrl;
 	int rc = 0;
 
-	if (!hdmi) {
+	if (!hdmi || !hdmi->panel) {
 		HDMI_ERR("Invalid param\n");
 		return;
 	}
@@ -589,11 +635,15 @@ static void hdmi_display_hotplug_work(struct work_struct *work)
 		hdmi_ctrl = hdmi_read(hdmi, HDMI_CTRL);
 		hdmi_write(hdmi, HDMI_CTRL, hdmi_ctrl | HDMI_CTRL_ENABLE);
 
-		sde_get_edid(connector, hdmi->ddc->i2c,
-				(void **)&hdmi->panel->edid_ctrl);
+		rc = hdmi_read_edid_retry(hdmi, connector);
 
 		hdmi_write(hdmi, HDMI_CTRL, hdmi_ctrl);
-		hdmi->hdmi_mode = sde_detect_hdmi_monitor(hdmi->panel->edid_ctrl);
+		if (!rc) {
+			hdmi->hdmi_mode =
+			sde_detect_hdmi_monitor(hdmi->panel->edid_ctrl);
+		} else {
+			hdmi->hdmi_mode = false;
+		}
 		//TODO: default value of hdmi_mode must be set to true
 
 		//cec_notifier_set_phys_addr_from_edid(hdmi->cec->notifier,
