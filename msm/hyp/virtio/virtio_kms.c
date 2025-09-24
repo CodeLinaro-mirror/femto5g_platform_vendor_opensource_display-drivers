@@ -436,12 +436,37 @@ uint32_t virtio_gpu_translate_format(uint32_t drm_fourcc, uint64_t modifier)
 static int virtio_connector_set_info_blob(struct drm_connector *connector,
         void *info, void *display, struct msm_mode_info *mode_info)
 {
+	struct drm_device *drm_dev = NULL;
+	struct msm_drm_private *msm_drm_priv = NULL;
+	struct msm_kms *msm_kms = NULL;
+	struct sde_kms *sde_kms = NULL;
+	struct msm_hyp_kms *hyp_kms = NULL;
+	struct virtio_kms *virtio_kms = NULL;
+	struct virtio_kms_output *output = NULL;
 	struct msm_hyp_display *hyp_display = display;
-	struct virtio_connector_info_priv *priv = container_of(hyp_display->info,
-		struct virtio_connector_info_priv, base);
+	struct virtio_connector_info_priv *priv = NULL;
+
+	if (!display || !connector || !(priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base)) ||
+		!(drm_dev = connector->dev) || !(msm_drm_priv = drm_dev->dev_private) || !(msm_kms = msm_drm_priv->kms) ||
+		!(sde_kms = to_sde_kms(msm_kms)) || !(hyp_kms = sde_kms->hyp_kms) ||
+		!(virtio_kms = priv->kms) || (priv->scanout >= virtio_kms->num_scanouts)) {
+		VIRTIO_KMS_ERR(
+			"Invalid? - display: %p, conn: %p, dev: %p, msm_drm_priv: %p, msm_kms: %p, priv: %p sde_kms: %p hyp_kms: %p virtio_kms: %p"
+			" scanout: %d #(scanouts): %d",
+			display, connector, drm_dev, msm_drm_priv, msm_kms, priv, sde_kms, hyp_kms, virtio_kms,
+			((priv)?priv->scanout:-1), ((virtio_kms)?virtio_kms->num_scanouts:-1));
+			return 0;
+	}
+
+	output = &virtio_kms->outputs[priv->scanout];
 
 	sde_kms_info_add_keystr(info, "display type", hyp_display->info->display_type);
 	sde_kms_info_add_keystr(info, "panel name", priv->panel_name);
+
+	if (output->attr.avr_supported && output->attr.avr_min_fps) {
+		sde_kms_info_add_keystr(info, "qsync support", "true");
+		sde_kms_info_add_keyint(info, "qsync_fps", output->attr.avr_min_fps);
+	}
 
 	switch (hyp_display->info->panel_orientation) {
 	case PANEL_ROTATE_NONE:
@@ -569,6 +594,79 @@ static int virtio_connector_get_info(struct drm_connector *connector,
 	return 0;
 }
 
+
+static int virtio_connector_prepare_freq_step_table(struct msm_mode_info *mode,
+				struct virtio_connector_info_priv *conn_priv)
+{
+	u32 *freq_stepping_seq;
+	int i, j, rc = 0;
+	u32 avr_min_fps = 0, avr_step_fps = 0, start_freq_mHz = 0, num_freq_steps = 0;
+	u32 freq_interval_length;
+	struct msm_freq_step_pattern *freq_pattern;
+	struct msm_freq_step_list *freq_step_list;
+
+	if ( !conn_priv || !mode || !mode->avr_step_fps ||
+		(mode->qsync_min_fps == mode->frame_rate) ||
+		(mode->avr_step_fps % mode->frame_rate) ||
+		(mode->avr_step_fps % mode->qsync_min_fps) ) {
+		VIRTIO_KMS_ERR("invalid arguments? priv :%p, mode :%p, min_fps: %d, max_fps: %d, step_fps:%d\n",
+			conn_priv, mode, (mode)?mode->qsync_min_fps:-1,(mode)?mode->frame_rate:-1, (mode)?mode->avr_step_fps:-1);
+		return -EINVAL;
+	}
+	freq_step_list = &conn_priv->freq_step_list;
+	mode->freq_step_list = freq_step_list;
+	avr_min_fps = mode->qsync_min_fps;
+	avr_step_fps = mode->avr_step_fps;
+	start_freq_mHz = avr_min_fps * 1000;
+	num_freq_steps = (avr_step_fps/avr_min_fps) - (avr_step_fps/mode->frame_rate) + 1;
+
+	freq_interval_length = 1;
+	freq_step_list->count = freq_interval_length;
+	freq_pattern = kcalloc(freq_step_list->count, sizeof(struct msm_freq_step_pattern), GFP_KERNEL);
+	if (!freq_pattern) {
+		VIRTIO_KMS_ERR("Failed to create frequency pattern array.\n");
+		rc = -ENOMEM;
+		goto error;
+	}
+	freq_step_list->freq_pattern = freq_pattern;
+
+	for (i = 0; i < freq_interval_length; i++) {
+		freq_pattern[i].frame_interval = start_freq_mHz;
+		freq_pattern[i].num_freq_steps = num_freq_steps;
+		freq_pattern[i].usecase_idx = 0;
+		freq_pattern[i].frame_pattern_seq_idx = i;
+
+		freq_pattern[i].length = num_freq_steps;
+
+		freq_stepping_seq = kcalloc(freq_pattern[i].length, sizeof(u32), GFP_KERNEL);
+		if (!freq_stepping_seq) {
+			VIRTIO_KMS_ERR("Failed to create frequency stepping array.\n");
+			kfree(freq_pattern);
+			rc = -ENOMEM;
+			goto error;
+		}
+
+		for (j = 0; j < freq_pattern[i].num_freq_steps; j++) {
+			freq_stepping_seq[j] = (1000*avr_step_fps)/(freq_pattern[i].num_freq_steps-j+1);
+		}
+		freq_pattern[i].freq_stepping_seq = freq_stepping_seq;
+		freq_pattern[i].needs_ap_refresh = true;
+	}
+
+	for (i = 0; i < freq_step_list->count; i++) {
+		VIRTIO_KMS_DBG("usecaseIdx:%d FrameInterval:%d, Num freq steps:%d Total steps:%d %p\n",
+			freq_step_list->freq_pattern[i].usecase_idx,
+			freq_step_list->freq_pattern[i].frame_interval,
+			freq_step_list->freq_pattern[i].num_freq_steps,
+			freq_step_list->freq_pattern[i].length, &freq_step_list->freq_pattern[i]);
+		for (j = 0; j < freq_step_list->freq_pattern[i].length; j++)
+			VIRTIO_KMS_DBG(" %d\n", freq_step_list->freq_pattern[i].freq_stepping_seq[j]);
+	}
+
+error:
+	return rc;
+}
+
 static int virtio_connector_get_mode_info(struct drm_connector *connector,
         const struct drm_display_mode *drm_mode,
         struct msm_sub_mode *sub_mode,
@@ -585,6 +683,10 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 	struct msm_resource_caps_info avail_dp_res;
 	struct msm_display_info *info;
 	int rc = 0;
+	struct msm_hyp_kms *hyp_kms = hyp_display->sde_kms->hyp_kms;
+	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
+	struct virtio_connector_info_priv *conn_priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base);
+	struct virtio_kms_output *output = &kms->outputs[conn_priv->scanout];
 
 	if (!drm_mode || !mode_info || !avail_res ||
 			!avail_res->max_mixer_width || !connector || !display ||
@@ -629,6 +731,12 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 	mode_info->wide_bus_en = true;
 	//FIXME: by default 2ppc
 	mode_info->pclk_factor = 2;
+
+	mode_info->qsync_min_fps = output->attr.avr_min_fps;
+	mode_info->avr_step_fps  = output->attr.avr_step;
+
+	if (output->attr.avr_supported)
+		rc = virtio_connector_prepare_freq_step_table(mode_info,conn_priv);
 
 	//FIXME: how to determine the DSC number for compression
 	topology->comp_type = mode_info->comp_info.comp_type;
@@ -699,7 +807,8 @@ static int virtio_connector_set_colorspace(struct drm_connector *connector,
 				priv->mode_index,
 				0,
 				dest_rect,
-				virtio_colorspace);
+				virtio_colorspace,
+				false);
 		if (rc)
 			VIRTIO_KMS_ERR("scanout set color space failed\n");
 	}
@@ -716,7 +825,59 @@ static int virtio_connector_config_hdr(struct drm_connector *connector, void *di
 
 static int virtio_connector_install_properties(void *display, struct drm_connector *conn)
 {
-	// TODO:
+	struct sde_connector *sde_conn = NULL;
+	struct drm_device *drm_dev = NULL;
+	struct msm_drm_private *msm_drm_priv = NULL;
+	struct msm_hyp_display *hyp_display = display;
+	struct virtio_connector_info_priv *priv = NULL;
+	struct msm_display_info *display_info = NULL;
+	struct msm_kms *msm_kms = NULL;
+	struct msm_hyp_kms *hyp_kms = NULL;
+	struct sde_kms *sde_kms = NULL;
+	struct virtio_kms *virtio_kms = NULL;
+	struct virtio_kms_output *output = NULL;
+	struct sde_mdss_cfg *catalog = NULL;
+	uint32_t scanout = 0;
+
+	static const struct drm_prop_enum_list e_avr_step_state[] = {
+		{AVR_STEP_NONE, "avr_step_none"},
+		{AVR_STEP_ENABLE, "avr_step_enable"},
+		{AVR_STEP_DISABLE, "avr_step_disable"},
+	};
+	static const struct drm_prop_enum_list e_qsync_mode[] = {
+		{SDE_RM_QSYNC_DISABLED,	"none"},
+		{SDE_RM_QSYNC_CONTINUOUS_MODE,	"continuous"},
+		{SDE_RM_QSYNC_ONE_SHOT_MODE,	"one_shot"},
+	};
+
+	if (!display || !conn || !(sde_conn = to_sde_connector(conn)) ||
+		!(priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base)) ||
+		!(drm_dev = conn->dev) || !(msm_drm_priv = drm_dev->dev_private) || !(msm_kms = msm_drm_priv->kms) ||
+		!(sde_kms = to_sde_kms(msm_kms)) || !(hyp_kms = sde_kms->hyp_kms) ||
+		!(virtio_kms = priv->kms) || !(catalog = sde_kms->catalog) ||
+		(priv->scanout >= virtio_kms->num_scanouts)) {
+		VIRTIO_KMS_ERR(
+			"Invalid? - display: %p, conn: %p, dev: %p, msm_drm_priv: %p, msm_kms: %p, sde_conn: %p, priv: %p sde_kms: %p hyp_kms: %p virtio_kms: %p"
+			" catalog: %p scanout: %d #(scanouts): %d",
+			display, conn, drm_dev, msm_drm_priv, msm_kms, sde_conn, priv, sde_kms, hyp_kms, virtio_kms,
+			catalog, ((priv)?priv->scanout:-1), ((virtio_kms)?virtio_kms->num_scanouts:-1));
+		return -EINVAL;
+	}
+
+	scanout = priv->scanout;
+	display_info = &priv->base.display_info;
+	output = &virtio_kms->outputs[scanout];
+
+	if (test_bit(SDE_FEATURE_QSYNC, catalog->features) && (output && output->attr.avr_supported)) {
+		msm_property_install_enum(&sde_conn->property_info, "qsync_mode", 0, 0, e_qsync_mode,
+				ARRAY_SIZE(e_qsync_mode), 0, CONNECTOR_PROP_QSYNC_MODE);
+	}
+
+	if (test_bit(SDE_FEATURE_AVR_STEP, catalog->features))
+		msm_property_install_enum(&sde_conn->property_info, "avr_step_state",
+				0, 0, e_avr_step_state, ARRAY_SIZE(e_avr_step_state), 0,
+				CONNECTOR_PROP_AVR_STEP_STATE);
+
 	return 0;
 }
 
@@ -742,6 +903,32 @@ static struct drm_encoder *virtio_connector_atomic_best_encoder(
 	return hyp_display->encoder;
 }
 
+int virtio_connector_get_qsync_min_fps(struct drm_connector_state *conn_state)
+{
+	struct sde_connector_state *sde_conn_state = to_sde_connector_state(conn_state);
+
+	if (!sde_conn_state || !sde_conn_state->mode_info.qsync_min_fps) {
+		VIRTIO_KMS_ERR("Invalid? - conn_state: %p, qsync_min_fps: %d",
+			sde_conn_state, sde_conn_state->mode_info.qsync_min_fps);
+		return -EINVAL;
+	}
+
+	return sde_conn_state->mode_info.qsync_min_fps;
+}
+
+int virtio_connector_get_avr_step_fps(struct drm_connector_state *conn_state)
+{
+	struct sde_connector_state *sde_conn_state = to_sde_connector_state(conn_state);
+
+	if (!sde_conn_state || !sde_conn_state->mode_info.avr_step_fps) {
+		VIRTIO_KMS_ERR("Invalid? - conn_state: %p, avr_step_fps: %d",
+			sde_conn_state, sde_conn_state->mode_info.avr_step_fps);
+		return -EINVAL;
+	}
+
+	return sde_conn_state->mode_info.avr_step_fps;
+}
+
 static const struct sde_connector_ops virtio_conn_ops = {
 	.set_info_blob = virtio_connector_set_info_blob,
 	.post_init	= virtio_connector_post_init,
@@ -756,6 +943,8 @@ static const struct sde_connector_ops virtio_conn_ops = {
 	.config_hdr = virtio_connector_config_hdr,
 	.atomic_best_encoder = virtio_connector_atomic_best_encoder,
 	.install_properties = virtio_connector_install_properties,
+	.get_qsync_min_fps = virtio_connector_get_qsync_min_fps,
+	.get_avr_step_fps = virtio_connector_get_avr_step_fps
 };
 
 static void virtio_kms_bridge_mode_set(struct drm_bridge *drm_bridge,
@@ -805,7 +994,8 @@ static void virtio_kms_bridge_mode_set(struct drm_bridge *drm_bridge,
 			mode_index,
 			0,
 			dest_rect,
-			VIRTIO_PANEL_COLOR_SPACE_SRGB);
+			VIRTIO_PANEL_COLOR_SPACE_SRGB,
+			false);
 	if (rc) {
 		VIRTIO_KMS_ERR("scanout set properties for mode failed %d\n",
 				mode_index);
@@ -871,7 +1061,8 @@ static void virtio_kms_bridge_enable(struct drm_bridge *drm_bridge)
 			priv->mode_index,
 			0,
 			dest_rect,
-			VIRTIO_PANEL_COLOR_SPACE_SRGB);
+			VIRTIO_PANEL_COLOR_SPACE_SRGB,
+			false);
 	if (rc)
 		VIRTIO_KMS_ERR("scanout power on failed\n");
 
@@ -900,7 +1091,8 @@ static void virtio_kms_bridge_disable(struct drm_bridge *drm_bridge)
 			VIRTIO_SCANOUT_POWER_MODE_PRE_DISABLE,
 			priv->mode_index,
 			0,
-			dest_rect);
+			dest_rect,
+			false);
 	virtio_gpu_cmd_scanout_flush(priv->kms, scanout, true);
 #endif
 }
@@ -940,7 +1132,8 @@ static void virtio_kms_bridge_post_disable(struct drm_bridge *drm_bridge)
 			priv->mode_index,
 			0,
 			dest_rect,
-			VIRTIO_PANEL_COLOR_SPACE_SRGB);
+			VIRTIO_PANEL_COLOR_SPACE_SRGB,
+			false);
 	if (rc)
 		VIRTIO_KMS_ERR("scanout power off failed\n");
 
@@ -1152,6 +1345,15 @@ static int virtio_kms_get_connector_infos(struct sde_kms *sde_kms,
 		disp_info->height_mm = attr->height_mm;
 		disp_info->is_connected = output->attr.connection_status;
 		disp_info->is_master = true;
+
+		VIRTIO_KMS_INFO("avr_supported %d",output->attr.avr_supported);
+		if (output->attr.avr_supported) {
+			disp_info->vrr_caps.vrr_support = true;
+			disp_info->qsync_min_fps = output->attr.avr_min_fps;
+			VIRTIO_KMS_INFO("avr_min_fps %d",output->attr.avr_min_fps);
+			disp_info->avr_step_fps = output->attr.avr_step;
+			VIRTIO_KMS_INFO("avr_step_fps %d",disp_info->avr_step_fps);
+		}
 
 		j = 0;
 		count = 0;
