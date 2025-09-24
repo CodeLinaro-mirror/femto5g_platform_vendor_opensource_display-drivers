@@ -3868,6 +3868,29 @@ static void sde_crtc_frame_event_work(struct kthread_work *work)
 	SDE_ATRACE_END("crtc_frame_event");
 }
 
+/* clear hw-fence is_waiting status if set during input fence wait */
+static void sde_crtc_clear_hw_fence_is_waiting(struct drm_crtc *crtc)
+{
+	bool check_hw_fence_signal_status;
+	struct sde_crtc *sde_crtc = NULL;
+	struct sde_kms *sde_kms;
+
+	if (!crtc)
+		return;
+
+	sde_kms = _sde_crtc_get_kms(crtc);
+	if (!sde_kms)
+		return;
+
+	sde_crtc = to_sde_crtc(crtc);
+	check_hw_fence_signal_status = sde_kms->debugfs_hw_fence & SDE_CHECK_HW_FENCE_IS_WAITING;
+	if (check_hw_fence_signal_status && sde_crtc->is_waiting_for_hw_fence) {
+		SDE_EVT32(DRMID(crtc));
+		SDE_DEBUG("finished wait on hwfence for crtc:%d\n", DRMID(crtc));
+		sde_crtc->is_waiting_for_hw_fence = false;
+	}
+}
+
 void sde_crtc_complete_commit(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_state)
 {
@@ -3886,6 +3909,7 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 
 	sde_crtc = to_sde_crtc(crtc);
 	SDE_EVT32_VERBOSE(DRMID(crtc));
+	sde_crtc_clear_hw_fence_is_waiting(crtc);
 
 	sde_kms = _sde_crtc_get_kms(crtc);
 	if (!sde_kms)
@@ -4621,6 +4645,36 @@ static bool _is_crtc_intf_mode_wb(struct drm_crtc *crtc)
 	return true;
 }
 
+static void _crtc_check_hw_fence_is_waiting(struct drm_crtc *crtc, struct dma_fence *fence)
+{
+	bool check_hw_fence_signal_status;
+	struct sde_crtc *sde_crtc = NULL;
+	struct sde_kms *sde_kms;
+
+	if (!crtc || !fence)
+		return;
+
+	sde_kms = _sde_crtc_get_kms(crtc);
+	if (!sde_kms)
+		return;
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	check_hw_fence_signal_status = sde_kms->debugfs_hw_fence & SDE_CHECK_HW_FENCE_IS_WAITING;
+	if (check_hw_fence_signal_status && !dma_fence_is_signaled(fence) &&
+			!sde_crtc->is_waiting_for_hw_fence) {
+		sde_crtc->is_waiting_for_hw_fence = true;
+
+		SDE_EVT32(DRMID(crtc), SDE_EVTLOG_H32(fence->context),
+			SDE_EVTLOG_L32(fence->context), SDE_EVTLOG_H32(fence->seqno),
+			SDE_EVTLOG_L32(fence->seqno), fence->flags, SDE_EVTLOG_FUNC_CASE2);
+
+		SDE_DEBUG("waiting hw-fence name:%s ctx:0x%llx seq:0x%llx status:%d flags:0x%lx\n",
+			fence->ops->get_driver_name(fence), fence->context, fence->seqno,
+			dma_fence_get_status(fence), fence->flags);
+	}
+}
+
 /**
  * _sde_crtc_fences_wait_list - wait for input sw-fences and return any hw-fences
  * @crtc: Pointer to CRTC object.
@@ -4674,10 +4728,13 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 					}
 				}
 
-				if (repeated_fence)
+				if (repeated_fence) {
 					dma_hw_fences[num_hw_fences] = NULL; /* cleanup from list */
-				else
+				} else {
+					_crtc_check_hw_fence_is_waiting(crtc,
+						dma_hw_fences[num_hw_fences]);
 					num_hw_fences++; /* keep fence in the list */
+				}
 
 				/*
 				 * go to next, to skip sw-wait for hw-fences not for writeback path.
