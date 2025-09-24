@@ -1517,8 +1517,9 @@ static inline bool sde_crtc_is_power_on_frame(struct drm_crtc *crtc)
 /**
  * sde_crtc_copr_status_event_notify - notify copr status to userspace
  * @crtc: Pointer to drm_crtc.
+ * @arg: Pointer to copr status argument
  */
-void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc);
+void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc, void *arg);
 
 /**
  * sde_crtc_get_disp_op - Returns the display op index - default: MSM_DISP_OP_HWIO

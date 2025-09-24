@@ -260,6 +260,12 @@ void reg_dmav1_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 		return;
 	}
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
+#endif
+
 	copr_data = (struct drm_msm_copr *) hw_cfg->payload;
 
 	if (copr_data && hw_cfg->len != sizeof(struct drm_msm_copr)) {
@@ -290,6 +296,10 @@ void reg_dmav1_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 		SDE_ERROR("write COPR param failed ret %d\n", rc);
 		return;
 	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,

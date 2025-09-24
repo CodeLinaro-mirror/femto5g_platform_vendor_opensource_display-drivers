@@ -3900,22 +3900,40 @@ void sde_crtc_mdnie_art_event_notify(struct drm_crtc *crtc)
 			(u8 *)&mdnie_art_done);
 }
 
-void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc)
+void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc, void *arg)
 {
 	struct sde_crtc *sde_crtc;
 	struct drm_msm_copr_status copr_status;
+	u32 *copr_data;
 	int rc;
 	struct drm_event event;
-
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 	sde_crtc = to_sde_crtc(crtc);
 
 	if (!sde_crtc->copr_status_event_notify_enabled)
 		return;
 
-	rc = sde_dspp_copr_read_status(sde_crtc->mixers[0].hw_dspp, &copr_status);
-	if (rc) {
-		SDE_ERROR("failed to collect COPR STATUS rc: %d\n", rc);
-		return;
+
+	if (IS_DISP_OP_HFI(disp_op)) {
+		if (!arg) {
+			SDE_ERROR("invalid args sent in COPR event cb\n");
+			return;
+		}
+
+		copr_data = (u32 *) arg;
+		if (copr_data[0] * sizeof(u32) !=
+			sizeof(struct drm_msm_copr_status)) {
+			SDE_ERROR("size mismatch between copr data and drm structures\n");
+			return;
+		}
+
+		memcpy(&copr_status, &copr_data[1], sizeof(struct drm_msm_copr_status));
+	} else {
+		rc = sde_dspp_copr_read_status(sde_crtc->mixers[0].hw_dspp, &copr_status);
+		if (rc) {
+			SDE_ERROR("failed to collect COPR STATUS rc: %d\n", rc);
+			return;
+		}
 	}
 
 	event.type = DRM_EVENT_COPR;
@@ -3946,10 +3964,13 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 	if (sde_crtc->framedone_event_notify_enabled)
 		sde_crtc_event_notify(crtc, DRM_EVENT_FRAME_DONE, &frame_done, sizeof(u32));
 
+	if (IS_DISP_OP_HFI(disp_op))
+		return;
+
 	drm_for_each_encoder(encoder, crtc->dev) {
 		if (encoder->crtc == crtc) {
 			if (sde_encoder_copr_allow_notify(encoder))
-				sde_crtc_copr_status_event_notify(crtc);
+				sde_crtc_copr_status_event_notify(crtc, NULL);
 		}
 	}
 }
@@ -6503,6 +6524,7 @@ static bool skip_event_handling_required(struct drm_crtc *crtc, u32 event)
 	case DRM_EVENT_RGB_HIST_OFF:
 	case DRM_EVENT_HISTOGRAM:
 	case DRM_EVENT_OPR_VALUE:
+	case DRM_EVENT_COPR:
 		return true;
 	default:
 		return false;
@@ -6913,6 +6935,10 @@ void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
 	case DRM_EVENT_OPR_VALUE:
 		sde_crtc_event_queue(&sde_crtc->base, sde_crtc_opr_event_notify,
 			event_payload, true);
+		break;
+	case DRM_EVENT_COPR:
+		sde_crtc_event_queue(&sde_crtc->base, sde_crtc_copr_status_event_notify,
+				event_payload, true);
 		break;
 	}
 }
@@ -10329,11 +10355,24 @@ static int sde_crtc_copr_status_event_handler(struct drm_crtc *crtc_drm,
 	bool en, struct sde_irq_callback *irq)
 {
 	struct sde_crtc *sde_crtc;
+	int ret = 0;
 
 	sde_crtc = to_sde_crtc(crtc_drm);
 	if (!sde_crtc)
 		return -EINVAL;
 
+	/*
+	 * If in HFI mode, enable/disable copr_status by sending
+	 * registration /deregisteration request to FW.
+	 */
+	if (sde_crtc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI]) {
+		ret = sde_crtc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI](sde_crtc,
+			HFI_EVENT_AIQE_COPR, en);
+		if (ret) {
+			DRM_ERROR("failed to enable COPR event\n");
+			return ret;
+		}
+	}
 	sde_crtc->copr_status_event_notify_enabled = en;
 	return 0;
 }

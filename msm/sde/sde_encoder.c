@@ -2566,7 +2566,9 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 			if (sde_conn)
 				sde_conn->vrr_cmd_state = VRR_CMD_IDLE_ENTRY_START;
 
-			sde_crtc_copr_status_event_notify(drm_crtc);
+			if (!IS_DISP_OP_HFI(disp_op))
+				sde_crtc_copr_status_event_notify(drm_crtc, NULL);
+
 			sde_encoder_cancel_vrr_timers(drm_enc);
 			sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
 			sde_encoder_vhm_wakelock(sde_enc, false);
