@@ -1030,6 +1030,7 @@ static inline void sde_hdcp_1x_send_notification(struct sde_hdcp_1x *hdcp,
 
 	status.state = state;
 	status.version = version;
+	status.min_enc_level = 0;
 	msm_hdcp_notify_status(hdcp->init_data.msm_hdcp_dev,
 			&status);
 
