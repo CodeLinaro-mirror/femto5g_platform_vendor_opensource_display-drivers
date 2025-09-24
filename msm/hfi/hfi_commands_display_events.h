@@ -194,6 +194,23 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_FRAME_CAPTURE_COMPLETE                        0x04000007
 
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD event is sent from DCP to the host for a given display to
+ * indicate that the panel has entered a critical failure state, typically caused by ESD-related
+ * damage, hardware faults, or software misconfigurations. In this state, the panel becomes
+ * unresponsive or fails to function, and the event signals the need for recovery or diagnostic
+ * action.
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_NONE
+ *           .cmd                      : HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD
+ *           .flags                    : HFI_RX_FLAGS_NONE
+ *           .id                       : BITS 0:15 carry the display id for which the event
+ *                                          is applicable
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD                                    0x04000008
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H
