@@ -5124,6 +5124,7 @@ static int dsi_display_dfps_update(struct dsi_display *display,
 	int rc = 0;
 	int i = 0;
 	struct dsi_dyn_clk_caps *dyn_clk_caps;
+	bool emsync_switch_support = false;
 
 	if (!display || !dsi_mode || !display->panel) {
 		DSI_ERR("Invalid params\n");
@@ -5131,10 +5132,12 @@ static int dsi_display_dfps_update(struct dsi_display *display,
 	}
 	timing = &dsi_mode->timing;
 
+	emsync_switch_support = display->panel->esync_caps.emsync_switch_enabled;
 	dsi_panel_get_dfps_caps(display->panel, &dfps_caps);
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
-	if (!dfps_caps.dfps_support && !dyn_clk_caps->maintain_const_fps) {
-		DSI_ERR("dfps or constant fps not supported\n");
+	if (!dfps_caps.dfps_support && !dyn_clk_caps->maintain_const_fps &&
+		!emsync_switch_support) {
+		DSI_ERR("dfps or constant fps or emsync switch not supported\n");
 		return -ENOTSUPP;
 	}
 
@@ -8303,9 +8306,18 @@ int dsi_display_validate_mode_change(struct dsi_display *display,
 		cur_mode->priv_info->esync_params.emsync_fps !=
 		adj_mode->priv_info->esync_params.emsync_fps) {
 		adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_EMSYNC_FPS_SWITCH;
+		/* Enable emsync FPS switch flag when switching between different emsync
+		 * FPS modes. Additionally, if v_front_porch changes, we need to switch
+		 * DFPS at the same frame.
+		 */
+		if (cur_mode->timing.v_front_porch !=
+			adj_mode->timing.v_front_porch)
+			adj_mode->dsi_mode_flags |= (DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_SEAMLESS);
 		SDE_EVT32(SDE_EVTLOG_FUNC_CASE5,
 				cur_mode->priv_info->esync_params.emsync_fps,
-				adj_mode->priv_info->esync_params.emsync_fps);
+				adj_mode->priv_info->esync_params.emsync_fps,
+				cur_mode->timing.v_front_porch,
+				adj_mode->timing.v_front_porch);
 		DSI_DEBUG("AVR/EM fps change detected\n");
 	} else {
 		dyn_clk_caps = &(display->panel->dyn_clk_caps);
