@@ -57,6 +57,8 @@
 #define UINT_MAX 0xffffffffU  /* define this if limits.h not available */
 #endif
 
+static struct task_struct *_virtio_gpu_event_thread;
+
 struct limit_val_pair {
 	const char *str;
 	uint32_t val;
@@ -2985,7 +2987,8 @@ static int virtio_kms_probe(struct platform_device *pdev)
 #endif
 
 	kms->stop = false;
-	kthread_run(virtio_gpu_event_kthread, kms, "virtio gpu kthread");
+	_virtio_gpu_event_thread =
+		kthread_run(virtio_gpu_event_kthread, kms, "virtio gpu kthread");
 
 	ret = _virtio_kms_hw_init(kms);
 	if (ret) {
@@ -3036,6 +3039,14 @@ static void virtio_kms_remove(struct platform_device *pdev)
 	if (ret) {
 		VIRTIO_KMS_ERR("deinit failed \n");
 	}
+
+	if (_virtio_gpu_event_thread) {
+		VIRTIO_KMS_INFO("stop virtio gpu event thread\n");
+		kms->stop = true;
+		kthread_stop(_virtio_gpu_event_thread);
+		_virtio_gpu_event_thread = NULL;
+	}
+
 #if (KERNEL_VERSION(6, 12, 0) > LINUX_VERSION_CODE)
 	return 0;
 #endif
