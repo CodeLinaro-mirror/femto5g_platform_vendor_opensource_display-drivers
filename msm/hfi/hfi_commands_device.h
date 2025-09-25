@@ -320,6 +320,30 @@
  */
 #define HFI_COMMAND_DEVICE_LUT_DMA_LAST_CMD                          0x0100000C
 
+/**
+ * HFI_COMMAND_DEVICE_DEINIT - This command is used to de-initialize the device.
+ *
+ * Host to DCP:
+ *
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info (type)         : HFI_PAYLOAD_U32
+ *           .cmd                         : HFI_COMMAND_DEVICE_DEINIT
+ *           .flags                       : HFI_TX_FLAGS_INTR_REQUIRED |
+ *                                        : HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *           .payload                     : 32-bits reserved field
+ *
+ * DCP to Host:
+ *
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info (type)         : HFI_PAYLOAD_NONE
+ *           .cmd                         : HFI_COMMAND_DEVICE_DEINIT
+ *           .flags                       : HFI_RX_FLAGS_SUCCESS
+ */
+#define HFI_COMMAND_DEVICE_DEINIT                                    0x0100000D
+
 /*
  * HFI_COMMAND_DEVICE_INIT_LSR_WB_CSC_LAYER_CAPS - Response packet [10] of
  *                                                         HFI_COMMAND_DEVICE_INIT. This command
