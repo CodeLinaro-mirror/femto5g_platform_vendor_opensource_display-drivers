@@ -275,6 +275,8 @@ struct dsi_panel {
 	atomic_t esd_recovery_pending;
 
 	bool skip_panel_off;
+	bool skip_pwr;
+	bool ttw_enabled;
 	bool panel_initialized;
 	bool te_using_watchdog_timer;
 	bool disable_cesta_hw_sleep;
