@@ -40,7 +40,6 @@
 #define MAX_NUM_LIMIT_PAIRS    16
 #define DBG_BUF_COUNT          50
 #define DEFAULT_MAX_MDP_CLK    575
-#define MAX_LAYERS_MULTIPIPE   4
 #define VIRQ_SHMEM_SIZE        4096
 #define HAB_VIRQ_FEATURE_ENABLE
 
@@ -1220,27 +1219,20 @@ static void _virtio_kms_set_crtc_limit(struct virtio_kms *kms,
 uint32_t drm_calc_max_mdp_clk(struct msm_hyp_kms *hyp_kms)
 {
 	uint32_t tmp_max_mdp_clk = 0;
-	uint64_t magnification_times = 1;
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
 
 	if (!kms)
 		return 0;
-
-	/* take MAX_LAYERS_MULTIPIPE * max_mdp_clk as max mdp clk to bypass sdm strategy manager */
-	/* when max_sdma_width is not set*/
-	if (!kms->max_sdma_width)
-		magnification_times = MAX_LAYERS_MULTIPIPE;
-
 	if (kms->device_info.max_mdp_clk)
 		tmp_max_mdp_clk = kms->device_info.max_mdp_clk;
 	else
 		tmp_max_mdp_clk = DEFAULT_MAX_MDP_CLK;
 
-	if (UINT_MAX < (uint64_t)tmp_max_mdp_clk  * magnification_times * 1000000) {
+	if (UINT_MAX < (uint64_t)tmp_max_mdp_clk * 1000000) {
 		VIRTIO_KMS_ERR("max_mdp_clk overflow\n");
 		tmp_max_mdp_clk = 0;
 	} else
-		tmp_max_mdp_clk = tmp_max_mdp_clk  * magnification_times * 1000000;
+		tmp_max_mdp_clk = tmp_max_mdp_clk * 1000000;
 
 	return tmp_max_mdp_clk;
 }
