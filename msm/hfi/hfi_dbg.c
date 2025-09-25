@@ -268,7 +268,7 @@ void _hfi_dump_buff(void __iomem *local_addr, u32 size, char *evt_type)
 		}
 		pr_info("\n");
 	}
-	kfree(data_cpy);
+	kvfree(dump_addr);
 }
 
 /**
@@ -444,7 +444,7 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 	return ret;
 
 free_kv:
-	kfree(hfi_dbg->base_props);
+	kvfree(hfi_dbg->base_props);
 	return -EINVAL;
 }
 
@@ -495,5 +495,5 @@ void hfi_dbg_destroy(void)
 
 	hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client, &hfi_dbg->buff_map.reg_addr);
 
-	kfree(hfi_dbg);
+	kvfree(hfi_dbg);
 }
