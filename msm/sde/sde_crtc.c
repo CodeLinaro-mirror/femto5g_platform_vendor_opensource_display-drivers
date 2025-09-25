@@ -4217,7 +4217,8 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 		 * Scaler src and dst width shouldn't exceed the maximum
 		 * width limitation.
 		 * If there is no partial update :
-		 * dst width and height must match display resolution.
+		 * dst width and height must match display resolution unless
+		 * AI Scaler is enabled.
 		 * If there is partial update :
 		 * Only Full width is allowed.
 		 *
@@ -4226,6 +4227,7 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 		 * pass and each block can have unequal dst width. Avoid
 		 * failing check in this case.
 		 */
+		sde_crtc_get_ai_scaler_io_res(crtc_state);
 		if (cfg->scl3_cfg.src_width[0] > max_in_width ||
 			cfg->scl3_cfg.dst_width > max_out_width ||
 			!cfg->scl3_cfg.src_width[0] ||
@@ -4233,8 +4235,9 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 			(pu_enable && cfg->scl3_cfg.dst_width != hdisplay) ||
 			(pu_enable && cfg->scl3_cfg.dst_height != conn_roi.h) ||
 			(pu_enable && cfg->scl3_cfg.src_height[0] != crtc_roi.h) ||
-			(!(pu_enable || is_cac_lb) && (cfg->scl3_cfg.dst_width != hdisplay ||
-				cfg->scl3_cfg.dst_height != mode->vdisplay))) {
+			(!(pu_enable || is_cac_lb) && (!sde_crtc->ai_scaler_res.enabled &&
+				(cfg->scl3_cfg.dst_width != hdisplay ||
+				cfg->scl3_cfg.dst_height != mode->vdisplay)))) {
 			SDE_ERROR("crtc%d: ", crtc->base.id);
 			SDE_ERROR("src_wxh(%dx%d) dst(%dx%d) display(%dx%d)",
 				cfg->scl3_cfg.src_width[0],
