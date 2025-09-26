@@ -331,7 +331,7 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	}
 
 	display_hfi = display->dsi_hfi_info;
-	dsi_display_obj_id = strcmp(display->display_type, "primary");
+	dsi_display_obj_id = sde_conn_get_display_obj_id(display->drm_conn);
 
 	if (dsi_display_obj_id != hfi_uid) {
 		DSI_ERR("Component and HFI ID mismatch (%d != %d)\n",
@@ -475,7 +475,7 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 	}
 
 	if (rc) {
-		SDE_ERROR("failed to send hfi_cmd 0x%x\n", hfi_cmd);
+		SDE_ERROR("failed to send hfi_cmd 0x%x display_id: %d\n", hfi_cmd, obj_id);
 		return rc;
 	}
 
@@ -497,7 +497,7 @@ int dsi_display_hfi_register_pwr_supplies(struct dsi_display *display)
 
 	display_hfi = display->dsi_hfi_info;
 
-	obj_id = strcmp(display->display_type, "primary");
+	obj_id = sde_conn_get_display_obj_id(display->drm_conn);
 
 	cmd_buf = hfi_adapter_get_cmd_buf(display_hfi->hfi_client, obj_id,
 					  HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
@@ -688,28 +688,38 @@ static enum hfi_panel_lane_map dsi_get_panel_lane_map_helper(struct dsi_panel *p
 
 static void dsi_get_panel_ctrl_nums_helper(struct dsi_display *display, u32 *ctrl_array)
 {
-	char *dsi_ctrl_name = "qcom,dsi-ctrl-num";
+	char *dsi_ctrl_name;
 	int cnt, i;
+
+	if (!strcmp(display->display_type, "primary"))
+		dsi_ctrl_name = "qcom,dsi-ctrl-num";
+	else
+		dsi_ctrl_name = "qcom,dsi-sec-ctrl-num";
 
 	cnt = dsi_display_get_phandle_count(display,
 					dsi_ctrl_name);
 	ctrl_array[0] = cnt;
 
 	for (i = 0; i < cnt; i++)
-		ctrl_array[i+1] = i;
+		ctrl_array[i+1] = dsi_display_get_phandle_index(display, dsi_ctrl_name, cnt, i);
 }
 
 static void dsi_get_panel_phy_nums_helper(struct dsi_display *display, u32 *phy_array)
 {
-	char *dsi_phy_name = "qcom,dsi-phy-num";
+	char *dsi_phy_name;
 	int cnt, i;
+
+	if (!strcmp(display->display_type, "primary"))
+		dsi_phy_name = "qcom,dsi-phy-num";
+	else
+		dsi_phy_name = "qcom,dsi-sec-phy-num";
 
 	cnt = dsi_display_get_phandle_count(display,
 					dsi_phy_name);
 	phy_array[0] = cnt;
 
 	for (i = 0; i < cnt; i++)
-		phy_array[i+1] = i;
+		phy_array[i+1] = dsi_display_get_phandle_index(display, dsi_phy_name, cnt, i);
 }
 
 static enum hfi_panel_backlight_ctrl dsi_get_panel_backlight_type(struct dsi_panel *panel,
@@ -1412,7 +1422,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 	if (!display)
 		return -EINVAL;
 
-	obj_id = strcmp(display->display_type, "primary");
+	obj_id = sde_conn_get_display_obj_id(display->drm_conn);
 
 	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi)
