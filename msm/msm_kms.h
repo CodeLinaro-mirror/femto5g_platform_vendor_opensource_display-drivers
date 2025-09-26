@@ -74,6 +74,8 @@ struct msm_kms_funcs {
 	void (*commit)(struct msm_kms *kms, struct drm_atomic_state *state);
 	void (*complete_commit)(struct msm_kms *kms,
 			struct drm_atomic_state *state);
+	/* cancel vrr timers */
+	void (*cancel_vrr_timers)(struct msm_kms *kms);
 	struct msm_display_mode *(*get_msm_mode)(
 				struct drm_connector_state *c_state);
 	/* functions to wait for atomic commit completed on each CRTC */
