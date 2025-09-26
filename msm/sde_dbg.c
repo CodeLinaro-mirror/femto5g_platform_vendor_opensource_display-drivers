@@ -2767,10 +2767,28 @@ int sde_dbg_setup(struct device *dev)
 
 int sde_dbg_init(struct device *dev)
 {
+	struct platform_device *pdev;
+	struct drm_device *ddev;
+	struct msm_drm_private *priv;
+
 	if (!dev) {
-		pr_err("invalid params\n");
+		pr_err("invalid dev params\n");
 		return -EINVAL;
 	}
+
+	pdev = to_platform_device(dev);
+	if (!pdev) {
+		pr_err("invalid pdev params\n");
+		return -EINVAL;
+	}
+
+	ddev = platform_get_drvdata(pdev);
+	if (!ddev) {
+		pr_err("invalid ddev params\n");
+		return -EINVAL;
+	}
+
+	priv = ddev->dev_private;
 
 	mutex_init(&sde_dbg_base.mutex);
 	INIT_LIST_HEAD(&sde_dbg_base.reg_base_list);
@@ -2801,9 +2819,11 @@ int sde_dbg_init(struct device *dev)
 		sde_dbg_base.evtlog->enable, sde_dbg_base.panic_on_err,
 		sde_dbg_base.dump_option);
 
-	sde_dbg_base.read_buf = kvzalloc(MAX_BUFF_SIZE, GFP_KERNEL);
-	if (!sde_dbg_base.read_buf)
-		return -ENOMEM;
+	if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
+		sde_dbg_base.read_buf = kvzalloc(MAX_BUFF_SIZE, GFP_KERNEL);
+		if (!sde_dbg_base.read_buf)
+			return -ENOMEM;
+	}
 	sde_dbg_base.is_dumped = false;
 
 	sde_dbg_base.hal_ops.dbg_dump[MSM_DISP_OP_HWIO] = sde_dbg_dbg_dump;
