@@ -267,6 +267,16 @@ struct virtio_gpu_set_scanout_properties {
 	__le32 color_space;
 };
 
+struct virtio_gpu_set_scanout_properties_dup {
+	struct virtio_gpu_ctrl_hdr hdr;
+	__le32 scanout_id;
+	__le32 power_mode;
+	__le32 mode_index;
+	__le32 rotation;
+	struct virtio_gpu_rect r; //dest_rect
+	__le32 padding;
+};
+
 struct virtio_gpu_resp_scanout_properties {
 	struct virtio_gpu_ctrl_hdr hdr;
 	__le32 scanout_id;

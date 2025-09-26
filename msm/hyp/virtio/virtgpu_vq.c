@@ -424,6 +424,10 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 		kzalloc(sizeof(struct virtio_gpu_set_scanout_properties), GFP_KERNEL);
 	struct virtio_gpu_resp_scanout_properties *resp =
 		kzalloc(sizeof(struct virtio_gpu_resp_scanout_properties), GFP_KERNEL);
+
+	struct virtio_gpu_set_scanout_properties_dup *req_dup =
+		kzalloc(sizeof(struct virtio_gpu_set_scanout_properties_dup), GFP_KERNEL);
+
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
@@ -453,6 +457,24 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 	req->r.y = cpu_to_le32(dest_rect.y);
 	req->color_space = cpu_to_le32(color_space);
 
+	req_dup->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_SET_SCANOUT_PROPERTIES);
+	req_dup->power_mode = cpu_to_le32(power_mode);
+	req_dup->scanout_id = cpu_to_le32(scanout);
+	req_dup->mode_index = cpu_to_le32(mode_index);
+	req_dup->rotation = cpu_to_le32(rotation);
+	req_dup->r.width = cpu_to_le32(dest_rect.width);
+	req_dup->r.height = cpu_to_le32(dest_rect.height);
+	req_dup->r.x = cpu_to_le32(dest_rect.x);
+	req_dup->r.y = cpu_to_le32(dest_rect.y);
+
+	rc = virtio_hab_send_and_recv(hab_socket,
+			&kms->channel[client_id],
+			req_dup,
+			sizeof(struct virtio_gpu_set_scanout_properties_dup),
+			resp,
+			sizeof(struct virtio_gpu_resp_scanout_properties),
+			NO_SPIN_LOCK_CHANNEL);
+
 	rc = virtio_hab_send_and_recv(hab_socket,
 			&kms->channel[client_id],
 			req,
@@ -463,7 +485,7 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 	if(rc) {
 		VIRTGPU_VQ_ERR("virtio_hab_send_and_recv failed\
 				for SET_SCANOUT_PROPERTIES %d\n", rc);
-		goto error;
+		//goto error;
 	}
 	error_code = le32_to_cpu(resp->error_code);
 	if(error_code) {
@@ -476,6 +498,8 @@ error:
 		kfree(req);
 	if (resp)
 		kfree(resp);
+	if (req_dup)
+		kfree(req_dup);
 
 	return rc;
 }
