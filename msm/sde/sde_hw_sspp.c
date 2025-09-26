@@ -635,17 +635,34 @@ static void sde_hw_sspp_setup_secure(struct sde_hw_pipe *ctx,
 
 	c = &ctx->hw;
 
-	if ((rect_mode == SDE_SSPP_RECT_SOLO)
-			|| (rect_mode == SDE_SSPP_RECT_0))
-		secure_bit_mask =
-			(rect_mode == SDE_SSPP_RECT_SOLO) ? 0xF : 0x5;
-	else
-		secure_bit_mask = 0xA;
+	if (AUTO_SWI_MODE || test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
+		if ((rect_mode == SDE_SSPP_RECT_SOLO)
+				|| (rect_mode == SDE_SSPP_RECT_0)) {
+			if (enable)
+				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_ALT + idx, 0x05, 0x05);
+			else
+				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_ALT + idx, 0x05, 0);
+		} else {
+			if (enable)
+				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_REC1 + idx, 0x0A, 0x0A);
+			else
+				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_REC1 + idx, 0x0A, 0);
+		}
 
-	if (enable)
-		SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS + idx, secure_bit_mask, secure_bit_mask);
-	else
-		SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS + idx, secure_bit_mask, 0);
+	} else {
+		if ((rect_mode == SDE_SSPP_RECT_SOLO)
+				|| (rect_mode == SDE_SSPP_RECT_0))
+			secure_bit_mask =
+				(rect_mode == SDE_SSPP_RECT_SOLO) ? 0xF : 0x5;
+		else
+			secure_bit_mask = 0xA;
+
+		if (enable)
+			SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS + idx, secure_bit_mask,
+					secure_bit_mask);
+		else
+			SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS + idx, secure_bit_mask, 0);
+	}
 
 	/* multiple planes share same sw_status register */
 	wmb();
