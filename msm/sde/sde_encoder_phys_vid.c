@@ -1419,7 +1419,12 @@ not_flushed:
 		sde_cesta_get_status(cesta_client, &scc_status);
 
 	sde_encoder_phys_wd_config(phys_enc, old_cnt);
-	sde_encoder_handle_frequency_stepping(phys_enc, old_cnt);
+
+	/*
+	 * If the flush_register is not cleared by the hardware,
+	 * the psr should not be triggered.
+	 */
+	sde_encoder_handle_frequency_stepping(phys_enc, (old_cnt && !flush_register));
 
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&phys_enc->pending_kickoff_wq);
