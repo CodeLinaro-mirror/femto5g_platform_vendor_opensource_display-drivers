@@ -17,6 +17,8 @@
 #define HFI_FALSE		0
 #define HFI_TRUE		1
 
+#define HFI_MAX_PLANES  4 /* Maximum number of planes supported */
+
 /*
  * Note: 1st MSB byte determines the type of color format
  * // Interleaved RGB (MSB byte = 0x01)
@@ -224,6 +226,9 @@ typedef uint32_t u32; /**< Unsigned 32-bit integer */
 #ifndef u64
 typedef uint64_t u64; /**< Unsigned 64-bit integer */
 #endif
+#ifndef r32
+typedef uint32_t r32; /**< Implementation defined 32-bit real number e.g., float, GLfixed */
+#endif
 
 /*
  * struct hfi_buff - hfi buffer
@@ -242,6 +247,24 @@ struct hfi_buff {
 };
 
 /*
+ * struct hfi_wb_out_buff - hfi buffer
+ * @addr_l    :  Array holding the lower 32-bit addresses for each buffer plane
+ * @addr_h    :  Array holding the upper 32-bit addresses for each buffer plane
+ * @size      :  size of buffer
+ * @version   :  version of buffer
+ * @flags     :  flags
+ * @format    :  hfi format of wb out buffer
+ */
+struct hfi_wb_out_buff {
+	u32 addr_l[HFI_MAX_PLANES];
+	u32 addr_h[HFI_MAX_PLANES];
+	u32 size;
+	u32 version;
+	u32 flags;
+	u32 format;
+};
+
+/*
  * struct hfi_prop_u64 - hfi 64 bit prop
  * @val_lo    :  lower value of 64 bit property
  * @val_hi    :  higher value of 64 bit property
@@ -249,6 +272,16 @@ struct hfi_buff {
 struct hfi_prop_u64 {
 	u32 val_lo;
 	u32 val_hi;
+};
+
+/**
+ * struct hfi_display_sys_cache_info - payload structure to configure system cache resource on FW
+ * @size: size of the subcache from system cache
+ * @sub_cache_id: Sub Cache Id
+ */
+struct hfi_display_sys_cache_info {
+	uint32_t size;         /**< The size of the subcache from system cache */
+	uint32_t sub_cache_id;   /**< Sub Cache Id */
 };
 
 #define HFI_BUFF_FEATURE_ENABLE         (1 << 0)
