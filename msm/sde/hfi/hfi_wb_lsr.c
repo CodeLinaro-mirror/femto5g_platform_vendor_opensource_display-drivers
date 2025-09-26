@@ -24,6 +24,7 @@ struct base_prop_lookup hfi_wb_repro_lsr_custom_props_map[] = {
 			LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_DISTORT_RESOLUTION },
 	{ CONNECTOR_PROP_REPROJ_GRID_WIDTH, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID_WIDTH },
 	{ CONNECTOR_PROP_REPROJ_GRID_HEIGHT, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID_HEIGHT },
+	{ CONNECTOR_PROP_LSR_WB_REPROJ_POSE_FB, HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG },
 	{ CONNECTOR_PROP_REPROJ_R_MAX, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_R_MAX },
 	{ CONNECTOR_PROP_REPROJ_TO_LRGB_LEFT, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_TO_LRGB },
 	{ CONNECTOR_PROP_REPROJ_ERROR_TO_L, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_ERROR_TO_L },
@@ -122,6 +123,34 @@ int _hfi_wb_lsr_out_buffer_prop_helper(struct sde_wb_device *wb_dev,
 
 	ret = _hfi_wb_lsr_add_fb_id_list_prop(wb_dev, cstate, prop_collector, disp_id);
 
+	return ret;
+}
+
+static int _hfi_wb_lsr_repro_set_hrp(struct sde_connector_state *cstate,
+	struct hfi_util_u32_prop_helper *prop_collector)
+{
+	struct hfi_buff *pose_buff = NULL;
+	u32 payload_size = sizeof(struct hfi_buff);
+	u32 ret = 0;
+
+	if (cstate->reproj_pose_size == 0)
+		return 0;
+
+	pose_buff = kzalloc(payload_size, GFP_KERNEL);
+	if (!pose_buff)
+		return -ENOMEM;
+
+	pose_buff->addr_l = cstate->reproj_pose_iova;
+	pose_buff->size = cstate->reproj_pose_size;
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+		HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG, HFI_VAL_U32_ARRAY, pose_buff, payload_size);
+
+	if (!ret)
+		SDE_DEBUG("HRP buffer set with iova = 0x%x\n", pose_buff->addr_l);
+	else
+		SDE_ERROR("Failed to set HRP HFI config property");
+
+	kfree(pose_buff);
 	return ret;
 }
 
@@ -322,6 +351,9 @@ int _hfi_wb_lsr_repro_custom_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_
 				HFI_VAL_U32_ARRAY, optical_axis_payload, payload_size);
 
 			kfree(optical_axis_payload);
+		break;
+	case HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG:
+			ret = _hfi_wb_lsr_repro_set_hrp(cstate, prop_collector);
 		break;
 	default:
 		SDE_ERROR("Failed to send HFI commands\n");

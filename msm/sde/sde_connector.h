@@ -1028,6 +1028,7 @@ struct sde_connector {
 struct sde_connector_state {
 	struct drm_connector_state base;
 	struct drm_framebuffer *out_fb;
+	struct drm_framebuffer *pose_fb;
 	struct msm_property_state property_state;
 	struct msm_property_value property_values[CONNECTOR_PROP_COUNT];
 
@@ -1077,6 +1078,9 @@ struct sde_connector_state {
 	u32 reproj_tile_h;
 	u32 reproj_min_bbox_h;
 	u32 capture_mode;
+
+	u32 reproj_pose_iova;
+	u32 reproj_pose_size;
 };
 
 /**
