@@ -88,9 +88,6 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 	case HFI_PROPERTY_DISPLAY_CORE_IB:
 	case HFI_PROPERTY_DISPLAY_CORE_AB:
 	case HFI_PROPERTY_DISPLAY_CORE_CLK:
-		if (!sde_crtc_property_is_dirty(cstate, drm_prop))
-			return 0;
-
 		prop_val = sde_crtc_get_property(cstate, drm_prop);
 
 		prop_u64.val_lo = HFI_VAL_L32(prop_val);
