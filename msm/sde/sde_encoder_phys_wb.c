@@ -1309,6 +1309,7 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
+	struct sde_connector *sde_conn;
 	struct sde_connector_state *sde_conn_state;
 	struct sde_hw_wb *hw_wb = wb_enc->hw_wb;
 	const struct sde_wb_cfg *wb_cfg = hw_wb->caps;
@@ -1320,6 +1321,8 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 	int rc;
 	bool clone_mode_curr = false;
 	enum sde_wb_rot_type rotation_type;
+	struct sde_drm_csc_v1 *wb_csc;
+	size_t csc_size = 0;
 
 	SDE_DEBUG("[enc:%d wb:%d] atomic_check:\"%s\",%d,%d]\n", DRMID(phys_enc->parent),
 			WBID(wb_enc), mode->name, mode->hdisplay, mode->vdisplay);
@@ -1334,6 +1337,7 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 		return -EINVAL;
 	}
 
+	sde_conn =  to_sde_connector(conn_state->connector);
 	sde_conn_state = to_sde_connector_state(conn_state);
 	clone_mode_curr = phys_enc->in_clone_mode;
 
@@ -1386,6 +1390,17 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 
 	if (SDE_FORMAT_IS_YUV(fmt) != !!phys_enc->hw_cdm)
 		crtc_state->mode_changed = true;
+
+	if (SDE_FORMAT_IS_YUV(fmt) && phys_enc->hw_cdm) {
+		wb_csc = msm_property_get_blob(&sde_conn->property_info,
+			 &sde_conn_state->property_state, &csc_size, CONNECTOR_PROP_WB_CSC_CONFIG);
+		if (!wb_csc) {
+			SDE_ERROR("[enc:%d wb:%d fb:%u fmt:0x%x] invalid CSC to setup;\n",
+					DRMID(phys_enc->parent), WBID(wb_enc), fb->base.id,
+					fb->format->format);
+			return -EINVAL;
+		}
+	}
 
 	rc = _sde_enc_phys_wb_validate_dnsc_blur_ds(crtc_state, conn_state, fmt, &wb_roi);
 	if (rc) {

@@ -2372,7 +2372,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 	void *display, *connector;
 	struct sde_cesta_client *cesta_client;
 	int i, max_encoders;
-	int rc = 0;
+	int rc = 0, connector_poll = 0;
 	u32 dsc_count = 0, mixer_count = 0;
 	u32 max_dp_dsc_count, max_dp_mixer_count;
 	char cesta_client_name[32];
@@ -2421,12 +2421,15 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
+		connector_poll = (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG) ?
+			DRM_CONNECTOR_POLL_HPD : 0;
+
 		connector = sde_connector_init(dev,
 				encoder,
 				0,
 				display,
 				&wb_ops,
-				DRM_CONNECTOR_POLL_HPD,
+				connector_poll,
 				DRM_MODE_CONNECTOR_VIRTUAL, false);
 		if (!IS_ERR_OR_NULL(connector)) {
 			priv->encoders[priv->num_encoders++] = encoder;
@@ -2468,12 +2471,15 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
+		connector_poll = (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG) ?
+			DRM_CONNECTOR_POLL_HPD : 0;
+
 		connector = sde_connector_init(dev,
 					encoder,
 					dsi_display_get_drm_panel(display),
 					display,
 					&dsi_ops,
-					DRM_CONNECTOR_POLL_HPD,
+					connector_poll,
 					DRM_MODE_CONNECTOR_DSI, false);
 		if (!IS_ERR_OR_NULL(connector)) {
 			priv->encoders[priv->num_encoders++] = encoder;
@@ -2791,6 +2797,7 @@ static int sde_kms_hfi_boot_init(struct sde_kms *sde_kms)
 		return -EPROBE_DEFER;
 	}
 
+	hfi_kms_send_trace_cfg(sde_kms->hfi_kms, HFI_TRUE);
 	ret = hfi_kms_get_catalog_data(sde_kms->hfi_kms);
 	if (ret) {
 		SDE_ERROR("HFI get catalog data failed\n");
@@ -3743,8 +3750,13 @@ out_ctx:
 	if (ret)
 		SDE_ERROR("kms lastclose failed: %d\n", ret);
 
-	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)))
+	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)) && hfi_client) {
 		hfi_adapter_deinit(hfi_client);
+		/* Reset shutdown flag after cleanup is complete */
+		if (hfi_client->host)
+			atomic_set(&hfi_client->host->shutdown_in_progress, 0);
+	}
+
 
 	SDE_EVT32(ret, SDE_EVTLOG_FUNC_EXIT);
 
@@ -5054,6 +5066,29 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	msm_atomic_flush_display_threads(priv);
 }
 
+void sde_kms_cancel_vrr_timers(struct msm_kms *kms)
+{
+	struct sde_kms *sde_kms;
+	struct drm_device *dev;
+	struct drm_encoder *enc;
+
+	if (!kms) {
+		SDE_ERROR("invalid kms\n");
+		return;
+	}
+
+	sde_kms = to_sde_kms(kms);
+	dev = sde_kms->dev;
+
+	drm_for_each_encoder(enc, dev) {
+		if (!sde_encoder_is_dsi_display(enc))
+			continue;
+
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		sde_encoder_cancel_vrr_timers(enc);
+	}
+}
+
 struct msm_display_mode *sde_kms_get_msm_mode(struct drm_connector_state *conn_state)
 {
 	struct sde_connector_state *sde_conn_state;
@@ -5378,6 +5413,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.prepare_commit  = sde_kms_prepare_commit,
 	.commit          = sde_kms_commit,
 	.complete_commit = sde_kms_complete_commit,
+	.cancel_vrr_timers = sde_kms_cancel_vrr_timers,
 	.get_msm_mode = sde_kms_get_msm_mode,
 	.wait_for_crtc_commit_done = sde_kms_wait_for_commit_done,
 	.wait_for_tx_complete = sde_kms_wait_for_frame_transfer_complete,

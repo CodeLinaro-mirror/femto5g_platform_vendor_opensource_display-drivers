@@ -114,6 +114,16 @@ struct hfi_display_frame_event_data {
 };
 
 /*
+ * struct hfi_display_autorefresh_cfg - autorefresh config data.
+ * @enable        :  autorefresh enable/disable.
+ * @frame_count   :  autorefresh frame number for controlling frame rate.
+ */
+struct hfi_display_autorefresh_cfg {
+	u32 enable;
+	u32 frame_count;
+};
+
+/*
  * hfi_display_event_id - HFI event ID
  * @HFI_EVENT_VSYNC                   : Event ID for vsync
  * @HFI_EVENT_FRAME_SCAN_START        : Event ID for frame scan start

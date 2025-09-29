@@ -847,9 +847,11 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	struct hfi_client_t *hfi_client;
 	struct hfi_dsi_cmd_desc *dsi_cmd_desc;
 	struct hfi_shared_addr_map *tx_cmd_buf_map;
+	struct hfi_shared_addr_map *rx_cmd_buf_map;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD;
 	int rc = 0;
 	size_t mem_size = 0;
+	size_t mem_size_rx = 0;
 	if (!display || !display->dsi_hfi_info || !cmd || !cmd->msg.tx_buf) {
 		DSI_ERR("Invalid params\n");
 		return -EINVAL;
@@ -890,6 +892,31 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 		return -EINVAL;
 	}
 
+	if (cmd->ctrl_flags & DSI_CTRL_CMD_READ) {
+		rx_cmd_buf_map = &display_hfi->rx_cmd_buf_map;
+		mem_size_rx = hfi_adapter_get_shared_mem_allocated_size(hfi_client, rx_cmd_buf_map);
+
+		if (!mem_size_rx) {
+			rx_cmd_buf_map->size = SZ_4K;
+			rc = hfi_adapter_buffer_alloc(hfi_client, rx_cmd_buf_map);
+
+			if (rc || !hfi_adapter_get_shared_mem_allocated_size(hfi_client, rx_cmd_buf_map)) {
+				DSI_ERR("failed to allocate HFI buffer for receiving payload\n");
+				return -ENOMEM;
+			}
+
+			mem_size_rx = hfi_adapter_get_shared_mem_allocated_size(hfi_client, rx_cmd_buf_map);
+		}
+
+		if (cmd->msg.rx_len > mem_size_rx) {
+			DSI_ERR("Receiving payload (%zu bytes) is larger than (%zu bytes)\n",
+				cmd->msg.rx_len, mem_size_rx);
+			return -EINVAL;
+		}
+
+		memset(rx_cmd_buf_map->local_addr, 0, rx_cmd_buf_map->size);
+	}
+
 	dsi_cmd_desc = kzalloc(sizeof(struct hfi_dsi_cmd_desc), GFP_KERNEL);
 	if (!dsi_cmd_desc) {
 		DSI_ERR("failed to allocate memory for hfi_dsi_cmd_desc\n");
@@ -907,6 +934,11 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	dsi_cmd_desc->ctrl_flags = cmd->ctrl_flags;
 	dsi_cmd_desc->tx_buff_addr_lsb = HFI_VAL_L32((u64)tx_cmd_buf_map->remote_addr);
 	dsi_cmd_desc->tx_buff_addr_msb = HFI_VAL_H32((u64)tx_cmd_buf_map->remote_addr);
+	if (cmd->ctrl_flags & DSI_CTRL_CMD_READ) {
+		dsi_cmd_desc->rx_len = cmd->msg.rx_len;
+		dsi_cmd_desc->rx_buff_addr_lsb = HFI_VAL_L32((u64)rx_cmd_buf_map->remote_addr);
+		dsi_cmd_desc->rx_buff_addr_msb = HFI_VAL_H32((u64)rx_cmd_buf_map->remote_addr);
+	}
 
 	/* Copy command payload to HFI buffer */
 	memcpy(tx_cmd_buf_map->local_addr, cmd->msg.tx_buf, cmd->msg.tx_len);
@@ -916,6 +948,15 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
 	if (rc)
 		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_SEND_DCS_CMD, rc=%d\n", rc);
+
+	if ((!rc) && (cmd->ctrl_flags & DSI_CTRL_CMD_READ)) {
+		if (cmd->msg.rx_buf) {
+			memcpy(cmd->msg.rx_buf, rx_cmd_buf_map->local_addr, cmd->msg.rx_len);
+		} else {
+			DSI_ERR("rx buffer is NULL but rx_len is non-zero\n");
+			return -EINVAL;
+		}
+	}
 
 	kfree(dsi_cmd_desc);
 	return rc;

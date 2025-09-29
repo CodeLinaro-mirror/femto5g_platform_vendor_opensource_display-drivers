@@ -337,3 +337,11 @@ void sde_hw_vbif_destroy(struct sde_hw_vbif *vbif)
 		mutex_destroy(&vbif->mutex);
 	kfree(vbif);
 }
+
+void sde_hw_vbif_clear_axi_halt(struct sde_hw_vbif *vbif)
+{
+	struct sde_hw_blk_reg_map *c = &vbif->hw;
+
+	SDE_REG_WRITE(c, VBIF_AXI_HALT_CTRL0, (u32)~BIT(0));
+	wmb();  /* make sure that axi halt is cleared */
+}

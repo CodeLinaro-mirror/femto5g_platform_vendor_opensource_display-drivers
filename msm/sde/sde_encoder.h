@@ -1421,4 +1421,11 @@ int sde_encoder_helper_inc_pending(struct drm_encoder *drm_enc);
  * @sde_enc: pointer to sde encoder
  */
 int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc);
+
+/**
+ * sde_encoder_cancel_vrr_timers - cancel vrr timers
+ * @encoder: pointer to drm_encoder
+ */
+void sde_encoder_cancel_vrr_timers(struct drm_encoder *encoder);
+
 #endif /* __SDE_ENCODER_H__ */

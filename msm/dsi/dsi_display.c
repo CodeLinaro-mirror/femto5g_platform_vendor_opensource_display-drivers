@@ -1313,6 +1313,24 @@ int dsi_display_cmd_receive(void *display, const char *cmd_buf,
 		goto end;
 	}
 
+	if (dsi_display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI) {
+		if (!dsi_display->panel->panel_initialized) {
+			DSI_DEBUG("panel not initialized\n");
+			goto end;
+		}
+
+		/* acquire panel_lock to make sure no commands are in progress */
+		dsi_panel_acquire_panel_lock(dsi_display->panel);
+
+		cmd.ctrl_flags = DSI_CTRL_CMD_READ;
+		if (!dsi_hfi_host_transfer_sub(&dsi_display->host, &cmd))
+			rc = cmd.msg.rx_len;
+
+		dsi_panel_release_panel_lock(dsi_display->panel);
+
+		goto end;
+	}
+
 	rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
 
 	/**
@@ -3562,6 +3580,10 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host, const struct mipi_d
 	cmd.ctrl = 0;
 	cmd.post_wait_ms = 0;
 	cmd.ctrl_flags = 0;
+
+	if (msg->rx_buf && msg->rx_len > 0)
+		cmd.ctrl_flags |= DSI_CTRL_CMD_READ;
+
 
 	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
 		rc = dsi_hfi_host_transfer_sub(host, &cmd);
@@ -6237,6 +6259,13 @@ static void dsi_display_unbind(struct device *dev,
 		DSI_ERR("[%s] failed to deinit mipi hosts, rc=%d\n",
 		       display->name,
 		       rc);
+
+	if (display->panel) {
+		rc = display->panel->panel_ops.gpio_release(display->panel);
+		if (rc)
+			DSI_ERR("[%s] failed to release gpios, rc=%d\n", display->panel->name,
+			       rc);
+	}
 
 	display_for_each_ctrl(i, display) {
 		display_ctrl = &display->ctrl[i];
