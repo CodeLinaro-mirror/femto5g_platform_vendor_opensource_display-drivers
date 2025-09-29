@@ -2545,6 +2545,7 @@ int dsi_panel_create_cmd_packets(const char *data,
 					struct dsi_cmd_desc *cmd)
 {
 	int rc = 0;
+	u32 ctrl_idx;
 	int i, j;
 	u8 *payload;
 
@@ -2554,10 +2555,16 @@ int dsi_panel_create_cmd_packets(const char *data,
 		cmd[i].msg.type = data[0];
 		cmd[i].msg.channel = data[2];
 		cmd[i].msg.flags |= data[3];
-		/* Use the two MSBs of data[1] to specify the DSI ctrl index */
-		cmd[i].ctrl = data[1] >> 6;
 		cmd[i].post_wait_ms = data[4];
 		cmd[i].msg.tx_len = ((data[5] << 8) | (data[6]));
+
+		/* Use the two MSBs of data[1] to specify the DSI ctrl index */
+		ctrl_idx = data[1] >> 6;
+
+		if (cmd[i].msg.flags & MIPI_DSI_MSG_UNICAST_COMMAND && ctrl_idx < MAX_DSI_CTRL)
+			cmd[i].ctrl = ctrl_idx;
+		else
+			cmd[i].ctrl = 0;
 
 		if (cmd[i].msg.flags & MIPI_DSI_MSG_BATCH_COMMAND)
 			cmd[i].last_command = false;
