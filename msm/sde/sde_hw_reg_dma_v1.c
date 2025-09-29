@@ -1220,7 +1220,7 @@ static int init_reg_dma_vbif(struct sde_hw_reg_dma *cfg)
 
 	clk_client.hw = hw;
 	clk_client.clk_ctrl = cfg->caps->clk_ctrl;
-	clk_client.ops.setup_clk_force_ctrl = setup_clk_force_ctrl;
+	clk_client.ops.setup_clk_force_ctrl[MSM_DISP_OP_HWIO] = setup_clk_force_ctrl;
 
 	ret = sde_vbif_clk_register(sde_kms, &clk_client);
 	if (ret) {
@@ -1412,6 +1412,9 @@ int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx)
 	read_clear_reg_dma_status = reg_dma_read_clear_status_v4;
 	trigger_reg_dma = reg_dma_trigger_v4;
 	reg_dma_submit_payload = reg_dma_submit_queue_v4;
+
+	v1_supported[AIQE_ABC] = MDSS | DSPP0 | DSPP2;
+	v1_supported[AIQE_AI_SCALER] = MDSS | DSPP0;
 
 	rc = write_last_cmd_buffer(dpu_idx);
 	if (rc) {

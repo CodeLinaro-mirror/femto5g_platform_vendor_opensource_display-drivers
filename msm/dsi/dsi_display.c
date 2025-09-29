@@ -541,7 +541,7 @@ static int dsi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 	struct dsi_display_ctrl *display_ctrl;
 
 	display->tx_cmd_buf = msm_gem_new(display->drm_dev,
-			SZ_4K,
+			DSI_TX_CMD_BUF_SIZE,
 			MSM_BO_UNCACHED);
 
 	if ((display->tx_cmd_buf) == NULL) {
@@ -550,7 +550,7 @@ static int dsi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 		goto error;
 	}
 
-	display->cmd_buffer_size = SZ_4K;
+	display->cmd_buffer_size = DSI_TX_CMD_BUF_SIZE;
 
 	display->aspace = msm_gem_smmu_address_space_get(
 			display->drm_dev, MSM_SMMU_DOMAIN_UNSECURE);
@@ -1310,6 +1310,24 @@ int dsi_display_cmd_receive(void *display, const char *cmd_buf,
 
 	if (is_sim_panel(display)) {
 		DSI_DEBUG("Simulation panel doesn't support read commands\n");
+		goto end;
+	}
+
+	if (dsi_display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI) {
+		if (!dsi_display->panel->panel_initialized) {
+			DSI_DEBUG("panel not initialized\n");
+			goto end;
+		}
+
+		/* acquire panel_lock to make sure no commands are in progress */
+		dsi_panel_acquire_panel_lock(dsi_display->panel);
+
+		cmd.ctrl_flags = DSI_CTRL_CMD_READ;
+		if (!dsi_hfi_host_transfer_sub(&dsi_display->host, &cmd))
+			rc = cmd.msg.rx_len;
+
+		dsi_panel_release_panel_lock(dsi_display->panel);
+
 		goto end;
 	}
 
@@ -3562,6 +3580,10 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host, const struct mipi_d
 	cmd.ctrl = 0;
 	cmd.post_wait_ms = 0;
 	cmd.ctrl_flags = 0;
+
+	if (msg->rx_buf && msg->rx_len > 0)
+		cmd.ctrl_flags |= DSI_CTRL_CMD_READ;
+
 
 	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
 		rc = dsi_hfi_host_transfer_sub(host, &cmd);
@@ -6238,6 +6260,13 @@ static void dsi_display_unbind(struct device *dev,
 		       display->name,
 		       rc);
 
+	if (display->panel) {
+		rc = display->panel->panel_ops.gpio_release(display->panel);
+		if (rc)
+			DSI_ERR("[%s] failed to release gpios, rc=%d\n", display->panel->name,
+			       rc);
+	}
+
 	display_for_each_ctrl(i, display) {
 		display_ctrl = &display->ctrl[i];
 
@@ -7843,8 +7872,10 @@ exit:
 	rc = 0;
 
 error:
-	if (rc)
+	if (rc) {
 		kfree(display->modes);
+		display->modes = NULL;
+	}
 
 	mutex_unlock(&display->display_lock);
 	return rc;
@@ -8449,7 +8480,10 @@ int dsi_display_set_mode(struct dsi_display *display,
 
 	adj_mode = *mode;
 	timing = adj_mode.timing;
-	adjust_timing_by_ctrl_count(display, &adj_mode);
+
+	/* hfi interface expects full horizontal timings, therefore skip adjustment */
+	if (display->panel->disp_op != MSM_DISP_OP_HFI)
+		adjust_timing_by_ctrl_count(display, &adj_mode);
 
 	if (!display->panel->cur_mode) {
 		display->panel->cur_mode =

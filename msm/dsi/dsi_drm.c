@@ -8,6 +8,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_edid.h>
+#include <linux/version.h>
 
 #include "msm_kms.h"
 #include "sde_connector.h"
@@ -172,8 +173,13 @@ static void dsi_convert_to_msm_mode(const struct dsi_display_mode *dsi_mode,
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_EMSYNC_FPS_SWITCH;
 }
 
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 static int dsi_bridge_attach(struct drm_bridge *bridge,
 			enum drm_bridge_attach_flags flags)
+#else
+static int dsi_bridge_attach(struct drm_bridge *bridge,
+		struct drm_encoder *encoder, enum drm_bridge_attach_flags flags)
+#endif
 {
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 

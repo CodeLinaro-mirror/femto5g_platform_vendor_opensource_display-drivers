@@ -3868,6 +3868,29 @@ static void sde_crtc_frame_event_work(struct kthread_work *work)
 	SDE_ATRACE_END("crtc_frame_event");
 }
 
+/* clear hw-fence is_waiting status if set during input fence wait */
+static void sde_crtc_clear_hw_fence_is_waiting(struct drm_crtc *crtc)
+{
+	bool check_hw_fence_signal_status;
+	struct sde_crtc *sde_crtc = NULL;
+	struct sde_kms *sde_kms;
+
+	if (!crtc)
+		return;
+
+	sde_kms = _sde_crtc_get_kms(crtc);
+	if (!sde_kms)
+		return;
+
+	sde_crtc = to_sde_crtc(crtc);
+	check_hw_fence_signal_status = sde_kms->debugfs_hw_fence & SDE_CHECK_HW_FENCE_IS_WAITING;
+	if (check_hw_fence_signal_status && sde_crtc->is_waiting_for_hw_fence) {
+		SDE_EVT32(DRMID(crtc));
+		SDE_DEBUG("finished wait on hwfence for crtc:%d\n", DRMID(crtc));
+		sde_crtc->is_waiting_for_hw_fence = false;
+	}
+}
+
 void sde_crtc_complete_commit(struct drm_crtc *crtc,
 		struct drm_crtc_state *old_state)
 {
@@ -3886,6 +3909,7 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 
 	sde_crtc = to_sde_crtc(crtc);
 	SDE_EVT32_VERBOSE(DRMID(crtc));
+	sde_crtc_clear_hw_fence_is_waiting(crtc);
 
 	sde_kms = _sde_crtc_get_kms(crtc);
 	if (!sde_kms)
@@ -4193,7 +4217,8 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 		 * Scaler src and dst width shouldn't exceed the maximum
 		 * width limitation.
 		 * If there is no partial update :
-		 * dst width and height must match display resolution.
+		 * dst width and height must match display resolution unless
+		 * AI Scaler is enabled.
 		 * If there is partial update :
 		 * Only Full width is allowed.
 		 *
@@ -4202,6 +4227,7 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 		 * pass and each block can have unequal dst width. Avoid
 		 * failing check in this case.
 		 */
+		sde_crtc_get_ai_scaler_io_res(crtc_state);
 		if (cfg->scl3_cfg.src_width[0] > max_in_width ||
 			cfg->scl3_cfg.dst_width > max_out_width ||
 			!cfg->scl3_cfg.src_width[0] ||
@@ -4209,8 +4235,9 @@ static int _sde_crtc_check_dest_scaler_cfg(struct drm_crtc *crtc,
 			(pu_enable && cfg->scl3_cfg.dst_width != hdisplay) ||
 			(pu_enable && cfg->scl3_cfg.dst_height != conn_roi.h) ||
 			(pu_enable && cfg->scl3_cfg.src_height[0] != crtc_roi.h) ||
-			(!(pu_enable || is_cac_lb) && (cfg->scl3_cfg.dst_width != hdisplay ||
-				cfg->scl3_cfg.dst_height != mode->vdisplay))) {
+			(!(pu_enable || is_cac_lb) && (!sde_crtc->ai_scaler_res.enabled &&
+				(cfg->scl3_cfg.dst_width != hdisplay ||
+				cfg->scl3_cfg.dst_height != mode->vdisplay)))) {
 			SDE_ERROR("crtc%d: ", crtc->base.id);
 			SDE_ERROR("src_wxh(%dx%d) dst(%dx%d) display(%dx%d)",
 				cfg->scl3_cfg.src_width[0],
@@ -4621,6 +4648,36 @@ static bool _is_crtc_intf_mode_wb(struct drm_crtc *crtc)
 	return true;
 }
 
+static void _crtc_check_hw_fence_is_waiting(struct drm_crtc *crtc, struct dma_fence *fence)
+{
+	bool check_hw_fence_signal_status;
+	struct sde_crtc *sde_crtc = NULL;
+	struct sde_kms *sde_kms;
+
+	if (!crtc || !fence)
+		return;
+
+	sde_kms = _sde_crtc_get_kms(crtc);
+	if (!sde_kms)
+		return;
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	check_hw_fence_signal_status = sde_kms->debugfs_hw_fence & SDE_CHECK_HW_FENCE_IS_WAITING;
+	if (check_hw_fence_signal_status && !dma_fence_is_signaled(fence) &&
+			!sde_crtc->is_waiting_for_hw_fence) {
+		sde_crtc->is_waiting_for_hw_fence = true;
+
+		SDE_EVT32(DRMID(crtc), SDE_EVTLOG_H32(fence->context),
+			SDE_EVTLOG_L32(fence->context), SDE_EVTLOG_H32(fence->seqno),
+			SDE_EVTLOG_L32(fence->seqno), fence->flags, SDE_EVTLOG_FUNC_CASE2);
+
+		SDE_DEBUG("waiting hw-fence name:%s ctx:0x%llx seq:0x%llx status:%d flags:0x%lx\n",
+			fence->ops->get_driver_name(fence), fence->context, fence->seqno,
+			dma_fence_get_status(fence), fence->flags);
+	}
+}
+
 /**
  * _sde_crtc_fences_wait_list - wait for input sw-fences and return any hw-fences
  * @crtc: Pointer to CRTC object.
@@ -4674,10 +4731,13 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 					}
 				}
 
-				if (repeated_fence)
+				if (repeated_fence) {
 					dma_hw_fences[num_hw_fences] = NULL; /* cleanup from list */
-				else
+				} else {
+					_crtc_check_hw_fence_is_waiting(crtc,
+						dma_hw_fences[num_hw_fences]);
 					num_hw_fences++; /* keep fence in the list */
+				}
 
 				/*
 				 * go to next, to skip sw-wait for hw-fences not for writeback path.
@@ -6775,12 +6835,15 @@ static int _sde_crtc_check_secure_conn(struct drm_crtc *crtc,
 	bool conn_secure = false, is_wb = false;
 	struct drm_connector *conn;
 	struct drm_connector_state *conn_state;
+	struct sde_connector *c_conn;
 	int i;
 
 	for_each_new_connector_in_state(state->state, conn, conn_state, i) {
 		if (conn_state && conn_state->crtc == crtc) {
-			if (conn->connector_type ==
-					DRM_MODE_CONNECTOR_VIRTUAL)
+			c_conn = to_sde_connector(conn);
+			if (c_conn && !c_conn->is_lb_conn &&
+				conn->connector_type ==
+				DRM_MODE_CONNECTOR_VIRTUAL)
 				is_wb = true;
 			if (sde_connector_get_property(conn_state,
 					CONNECTOR_PROP_FB_TRANSLATION_MODE) ==

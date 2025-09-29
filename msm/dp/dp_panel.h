@@ -171,7 +171,7 @@ struct dp_panel {
 
 	s64 fec_overhead_fp;
 
-	int (*init)(struct dp_panel *dp_panel);
+	int (*init)(struct dp_panel *dp_panel, bool skip_op);
 	int (*deinit)(struct dp_panel *dp_panel, u32 flags);
 	int (*hw_cfg)(struct dp_panel *dp_panel, bool enable);
 	int (*read_sink_caps)(struct dp_panel *dp_panel,

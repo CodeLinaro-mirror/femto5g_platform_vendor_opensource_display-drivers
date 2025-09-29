@@ -58,7 +58,7 @@ struct dp_aux {
 	int (*drm_aux_register)(struct dp_aux *aux, struct drm_device *drm_dev);
 	void (*drm_aux_deregister)(struct dp_aux *aux);
 	void (*isr)(struct dp_aux *aux);
-	void (*init)(struct dp_aux *aux, struct dp_aux_cfg *aux_cfg);
+	void (*init)(struct dp_aux *aux, struct dp_aux_cfg *aux_cfg, bool skip_op);
 	void (*deinit)(struct dp_aux *aux);
 	void (*reconfig)(struct dp_aux *aux);
 	void (*abort)(struct dp_aux *aux, bool abort);

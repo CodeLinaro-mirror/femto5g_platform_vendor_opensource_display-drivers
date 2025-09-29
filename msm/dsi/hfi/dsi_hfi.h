@@ -160,6 +160,7 @@ struct dsi_panel_timing_caps {
  * @dma_trigger_type:               HFI_PROPERTY_PANEL_DMA_TRIGGER
  * @mdp_trigger_type:               HFI_PROPERTY_PANEL_STREAM_TRIGGER
  * @te_mode:                        HFI_PROPERTY_PANEL_TE_MODE
+ * @dma_sched_line:                 HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE
  * @tx_eot_append:                  HFI_PROPERTY_PANEL_TX_EOT_APPEND
  * @eof_power_mode:                 HFI_PROPERTY_PANEL_BLLP_EOF_POWER_MODE
  * @bllp_power_mode:                HFI_PROPERTY_PANEL_BLLP_POWER_MODE
@@ -192,6 +193,7 @@ struct dsi_panel_generic_caps {
 	enum hfi_panel_trigger_type dma_trigger_type;
 	enum hfi_panel_trigger_type mdp_trigger_type;
 	u32 te_mode;
+	u32 dma_sched_line;
 	u32 tx_eot_append;
 	u32 eof_power_mode;
 	u32 bllp_power_mode;
