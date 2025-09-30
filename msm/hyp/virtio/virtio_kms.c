@@ -2949,13 +2949,17 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 
 	struct virtio_kms_output *output = &kms->outputs[scanout];
 
-	VIRTIO_KMS_INFO("Handling HPD event: scanout=%u, type=%u\n", scanout, event_type);
+	VIRTIO_KMS_INFO("Handling HPD event: scanout=%u, event=%u\n", scanout, event_type);
 
 	if (output->hpd_enabled && output->attr.type == VIRTIO_PORT_TYPE_DP) {
 		int rc = _virtio_kms_service_dp_hpd(kms, scanout, event_type);
 
 		if (rc)
 			VIRTIO_KMS_ERR("DP HPD handling failed for scanout %u\n", scanout);
+	} else {
+		VIRTIO_KMS_INFO("Skip handle HPD event: scanout=%u, hpd_event=%u, "
+				"hpd_enable=%d, output_type=%d\n",
+				scanout, event_type, output->hpd_enabled, output->attr.type);
 	}
 }
 
