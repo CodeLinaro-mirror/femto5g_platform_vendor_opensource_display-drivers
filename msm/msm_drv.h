@@ -251,6 +251,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_EARLY_FENCE_LINE,
 	CONNECTOR_PROP_DYN_TRANSFER_TIME,
 	CONNECTOR_PROP_BRIGHTNESS,
+	CONNECTOR_PROP_EMSYNC_FPS,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -448,10 +449,12 @@ struct msm_display_mode {
  * struct msm_sub_mode - msm display sub mode
  * @dsc_enabled: boolean used to indicate if dsc should be enabled
  * @pixel_format_mode: used to indicate pixel format mode
+ * @emsync_fps: used to indicate emsync fps
  */
 struct msm_sub_mode {
 	enum msm_display_dsc_mode dsc_mode;
 	enum msm_display_pixel_format pixel_format_mode;
+	u32 emsync_fps;
 };
 
 /**

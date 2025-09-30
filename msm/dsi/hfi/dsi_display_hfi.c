@@ -74,6 +74,11 @@ static int dsi_display_hfi_set_mode(struct dsi_display *display, struct dsi_disp
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_SET_MODE;
 	int rc = 0;
 
+	if (!mode) {
+		DSI_ERR("Invalid param %d\n", !mode);
+		return -EINVAL;
+	}
+
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
 		return -EINVAL;

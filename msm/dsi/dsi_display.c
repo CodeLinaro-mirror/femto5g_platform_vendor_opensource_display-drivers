@@ -7563,7 +7563,7 @@ static void _dsi_display_populate_esync_caps(struct dsi_display *display,
 	if (!esync_caps)
 		return;
 
-	if (esync_caps->esync_support)
+	if (esync_caps->esync_support && !esync_caps->emsync_switch_enabled)
 		memcpy(&dsi_mode->priv_info->esync_params,
 			&esync_caps->default_esync_params,
 			sizeof(struct esync_params));
@@ -8115,6 +8115,11 @@ bool dsi_display_mode_match(const struct dsi_display_mode *mode1,
 			mode1->pixel_format_caps != mode2->pixel_format_caps)
 		return false;
 
+	if ((match_flags & DSI_MODE_MATCH_EMSYNC_FPS) &&
+			mode1->priv_info->esync_params.emsync_fps !=
+			mode2->priv_info->esync_params.emsync_fps)
+		return false;
+
 	return true;
 }
 
@@ -8169,6 +8174,12 @@ int dsi_display_find_mode(struct dsi_display *display,
 			cmp->priv_info = priv_info;
 			cmp->priv_info->dsc_enabled = (sub_mode->dsc_mode ==
 				MSM_DISPLAY_DSC_MODE_ENABLED) ? true : false;
+		}
+
+		if (sub_mode && sub_mode->emsync_fps) {
+			match_flags |= DSI_MODE_MATCH_EMSYNC_FPS;
+			cmp->priv_info = priv_info;
+			cmp->priv_info->esync_params.emsync_fps = sub_mode->emsync_fps;
 		}
 
 		if (sub_mode) {
@@ -8287,6 +8298,15 @@ int dsi_display_validate_mode_change(struct dsi_display *display,
 		SDE_EVT32(SDE_EVTLOG_FUNC_CASE4, cur_mode->pixel_format_caps,
 				adj_mode->pixel_format_caps);
 		DSI_DEBUG("BPP mode change detected\n");
+	} else if (display->panel->esync_caps.esync_support &&
+		display->panel->esync_caps.emsync_switch_enabled &&
+		cur_mode->priv_info->esync_params.emsync_fps !=
+		adj_mode->priv_info->esync_params.emsync_fps) {
+		adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_EMSYNC_FPS_SWITCH;
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE5,
+				cur_mode->priv_info->esync_params.emsync_fps,
+				adj_mode->priv_info->esync_params.emsync_fps);
+		DSI_DEBUG("AVR/EM fps change detected\n");
 	} else {
 		dyn_clk_caps = &(display->panel->dyn_clk_caps);
 		/* dfps and dynamic clock with const fps use case */
@@ -8296,7 +8316,7 @@ int dsi_display_validate_mode_change(struct dsi_display *display,
 				dyn_clk_caps->maintain_const_fps) {
 				DSI_DEBUG("Mode switch is seamless variable refresh\n");
 				adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_VRR;
-				SDE_EVT32(SDE_EVTLOG_FUNC_CASE5,
+				SDE_EVT32(SDE_EVTLOG_FUNC_CASE6,
 					cur_mode->timing.refresh_rate,
 					adj_mode->timing.refresh_rate,
 					cur_mode->timing.h_front_porch,
@@ -8417,7 +8437,10 @@ int dsi_display_set_mode(struct dsi_display *display,
 
 	adj_mode = *mode;
 	timing = adj_mode.timing;
-	adjust_timing_by_ctrl_count(display, &adj_mode);
+
+	/* hfi interface expects full horizontal timings, therefore skip adjustment */
+	if (display->panel->disp_op != MSM_DISP_OP_HFI)
+		adjust_timing_by_ctrl_count(display, &adj_mode);
 
 	if (!display->panel->cur_mode) {
 		display->panel->cur_mode =
