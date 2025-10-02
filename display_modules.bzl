@@ -1,6 +1,6 @@
 load(":display_driver_build.bzl", "display_module_entry")
 
-display_driver_modules = display_module_entry([":display_drivers_headers"])
+display_driver_modules = display_module_entry([":display_drivers_uapi_headers"])
 module_entry = display_driver_modules.register
 
 #---------- MSM-DRM MODULE -------------------------
