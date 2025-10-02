@@ -6302,6 +6302,30 @@ static void sde_crtc_handle_power_event(u32 event_type, void *arg)
 	mutex_unlock(&sde_crtc->crtc_lock);
 }
 
+static void sde_crtc_power_event_cb(void *data, u32 event)
+{
+	struct drm_crtc *crtc;
+	struct sde_crtc *sde_crtc;
+	struct sde_kms_frame_event_cb_data *cb_data;
+
+	cb_data = (struct sde_kms_frame_event_cb_data *)data;
+	if (!cb_data) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	crtc = cb_data->crtc;
+	if (!crtc || !crtc->dev || !crtc->dev->dev_private) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	/* Notify client */
+	sde_crtc_handle_power_event(event, crtc);
+}
+
 static void _sde_crtc_reset(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
@@ -6422,6 +6446,8 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	drm_for_each_encoder_mask(encoder, crtc->dev,
 			crtc->state->encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, NULL, NULL);
+		if (IS_DISP_OP_HFI(priv->disp_op))
+			sde_encoder_register_display_power_event_callback(encoder, NULL, NULL);
 		cstate->rsc_client = NULL;
 		cstate->rsc_update = false;
 
@@ -6580,6 +6606,9 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 
 	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, sde_crtc_frame_event_cb, crtc);
+		if (IS_DISP_OP_HFI(priv->disp_op))
+			sde_encoder_register_display_power_event_callback(encoder,
+					sde_crtc_power_event_cb, crtc);
 		sde_crtc_static_img_control(crtc, CACHE_STATE_NORMAL,
 				sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE));
 	}

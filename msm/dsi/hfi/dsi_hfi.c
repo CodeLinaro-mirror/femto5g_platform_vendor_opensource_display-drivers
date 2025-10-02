@@ -91,6 +91,8 @@ static int _dsi_display_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 {
 	struct dsi_display *display;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
 	int rc = 0;
 
 	display = (struct dsi_display *)hfi_client->priv;
@@ -102,6 +104,20 @@ static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 	rc = hfi_adapter_ssr_map_device_addr(hfi_client);
 	if (rc) {
 		DSI_ERR("failed to map fw mapped buffers, rc: %d\n", rc);
+		return rc;
+	}
+
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms)
+		return -EINVAL;
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	rc = hfi_kms_send_trace_cfg(hfi_kms, HFI_TRUE);
+	if (rc) {
+		DSI_ERR("failed to send trace config to DCP, rc: %d\n", rc);
 		return rc;
 	}
 
@@ -1418,6 +1434,9 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 	if (!display_hfi)
 		return -EINVAL;
 
+	display_hfi->running_hfi_offset = 0;
+	display_hfi->running_sde_offset = 0;
+
 	struct hfi_cmdbuf_t *buffer = hfi_adapter_get_cmd_buf(display_hfi->hfi_client,
 							obj_id,
 							HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
@@ -1487,7 +1506,10 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 								&tx_cmd_buf_vaddr,
 								&hfi_buff_vaddr);
 
-	display_hfi->kv_props = hfi_util_kv_helper_alloc(HFI_UTIL_MAX_ALLOC);
+	if (display_hfi->kv_props)
+		hfi_util_kv_helper_reset(display_hfi->kv_props);
+	else
+		display_hfi->kv_props = hfi_util_kv_helper_alloc(HFI_UTIL_MAX_ALLOC);
 
 	SDE_EVT32(HFI_COMMAND_PANEL_INIT_PANEL_CAPS, SDE_EVTLOG_FUNC_CASE1);
 	rc = dsi_hfi_append_panel_init_caps(buffer, display, panel_init_caps, addr_map);
@@ -1518,6 +1540,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		goto error_array;
 	}
 
+	kfree(timing_caps_array);
 	return rc;
 
 error_array:

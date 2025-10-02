@@ -1514,12 +1514,14 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 
 	for (i = 0; i < MAX_SPLASH_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
+		if (IS_DISP_OP_HFI(priv->disp_op) && splash_display->cont_splash_enabled)
+			_sde_kms_free_splash_display_data(sde_kms, splash_display);
 		if (splash_display->encoder &&
 				crtc == splash_display->encoder->crtc)
 			break;
 	}
 
-	if (i >= MAX_SPLASH_DISPLAYS)
+	if (i >= MAX_DSI_DISPLAYS || IS_DISP_OP_HFI(priv->disp_op))
 		return;
 
 	if (splash_display->cont_splash_enabled) {
@@ -4576,6 +4578,12 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			dsi_display = (struct dsi_display *)display;
 			display_name = dsi_display->name;
 			encoder = ((struct dsi_display *)display)->bridge->base.encoder;
+
+			if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms))) {
+				/* Skip DSI op splash config */
+				continue;
+			}
+
 		} else if (intf_type == INTF_EDP) {
 			display = sde_kms->edp_displays[i];
 			encoder = ((struct dp_display *)display)->bridge->base.encoder;
@@ -5889,8 +5897,6 @@ static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_da
 	num_displays = sde_get_builtin_disp_count(dev);
 	num_regions = of_property_count_u64_elems(node, "reg") / 2;
 
-	data->num_splash_displays = num_displays;
-
 	SDE_DEBUG("splash mem num_regions:%d\n", num_regions);
 	if (num_displays > num_regions) {
 		share_splash_mem = true;
@@ -5917,9 +5923,12 @@ static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_da
 
 			mem->splash_buf_base = (unsigned long)r.start;
 			mem->splash_buf_size = (r.end - r.start) + 1;
-			mem->ref_cnt = 0;
-			splash_display->splash = mem;
-			data->num_splash_regions++;
+			if (mem->splash_buf_base) {
+				mem->ref_cnt = 0;
+				splash_display->splash = mem;
+				data->num_splash_regions++;
+			}
+
 		} else {
 			data->splash_display[i].splash = &data->splash_mem[0];
 		}
@@ -5928,6 +5937,9 @@ static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_da
 				splash_display->splash->splash_buf_base,
 				splash_display->splash->splash_buf_size);
 	}
+
+	if (data->num_splash_regions)
+		data->num_splash_displays = num_displays;
 
 	data->type = SDE_SPLASH_HANDOFF;
 	ret = _sde_kms_get_demura_plane_data(data);
@@ -6057,14 +6069,17 @@ static int _sde_kms_hw_init_rm(struct sde_kms *sde_kms, struct msm_drm_private *
 	 */
 	if (sde_kms->splash_data.num_splash_regions) {
 		struct sde_splash_display *display;
-		int ret, display_count =
-			sde_kms->splash_data.num_splash_displays;
+		int ret = 0;
+		int display_count = sde_kms->splash_data.num_splash_displays;
 
-		ret = sde_rm_cont_splash_res_init(priv, &sde_kms->rm,
-				&sde_kms->splash_data, sde_kms->catalog);
+		if (IS_DISP_OP_HWIO(priv->disp_op))
+			ret = sde_rm_cont_splash_res_init(priv, &sde_kms->rm,
+					&sde_kms->splash_data, sde_kms->catalog);
 
 		for (i = 0; i < display_count; i++) {
 			display = &sde_kms->splash_data.splash_display[i];
+			if (IS_DISP_OP_HFI(priv->disp_op))
+				display->cont_splash_enabled = true;
 			/*
 			 * free splash region on resource init failure and
 			 * cont-splash disabled case

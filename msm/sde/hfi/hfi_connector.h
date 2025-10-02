@@ -54,6 +54,9 @@ struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
 void sde_connector_add_roi_v1(u32 hfi_prop, struct sde_connector *conn,
 	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf);
 
+void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
+	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf, bool is_cont_splash);
+
 /**
  * hfi_conn_send_panel_init - send panel config and opertaing modes to fw
  * @drm_conn: pointer to the DRM connector structure
