@@ -822,7 +822,8 @@ error:
 
 int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 		uint32_t scanout,
-		bool sync)
+		bool sync,
+		uint32_t timeout)
 {
 	struct virtio_gpu_scanout_flush *cmd_p =
 			kzalloc(sizeof(struct virtio_gpu_scanout_flush),
@@ -833,15 +834,25 @@ int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
 	int rc = 0;
-//	uint32_t error_code = 0;
+	struct virtio_kms_output *output;
+	uint32_t error_code = 0;
 
 	if (!cmd_p || !resp) {
 		VIRTGPU_VQ_ERR("memory alloc failed \n");
 		rc = -ENOMEM;
 		goto error;
 	}
-	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_SCANOUT_FLUSH <%d> (%d)\n",
-			scanout, sync);
+
+	if (timeout > 0) {
+		output = &kms->outputs[scanout];
+		if (!output)
+			VIRTGPU_VQ_WARN("Invalid NULL output\n");
+		else
+			reinit_completion(&output->commit_done);
+	}
+
+	VIRTGPU_VQ_CMD_DBG("cmd VIRTIO_GPU_CMD_SCANOUT_FLUSH <%d> (%d) (%u)\n",
+			scanout, sync, timeout);
 	cmd_p->hdr.type = cpu_to_le32(VIRTIO_GPU_CMD_SCANOUT_FLUSH);
 	cmd_p->scanout_id = cpu_to_le32(scanout);
 	cmd_p->async_mode = cpu_to_le32(sync);
@@ -857,28 +868,32 @@ int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 		VIRTGPU_VQ_ERR("send_and_recv failed for SCANOUT_FLUSH rc=%d\n", rc);
 		goto error;
 	}
-/*
-	if (!sync) {
-		VIRTGPU_VQ_CMD_DBG("resp VIRTIO_GPU_CMD_SCANOUT_FLUSH <%d>(%s)\n",
-			le32_to_cpu(resp->scanout_id),
-			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
 
-		error_code = le32_to_cpu(resp->error_code);
-		if(error_code)
-			VIRTGPU_VQ_ERR("scanout flush failed for %d error%d\n",
-				resp->scanout_id,
-				error_code);
+	VIRTGPU_VQ_CMD_DBG("resp VIRTIO_GPU_CMD_SCANOUT_FLUSH <%d>(%s)\n",
+		le32_to_cpu(resp->scanout_id),
+		virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
 
-		virtio_gpu_cmd_event_control(kms,
-				scanout,
-				VIRTIO_COMMIT_COMPLETE,
-				true);
+	error_code = le32_to_cpu(resp->error_code);
+	if (error_code)
+		VIRTGPU_VQ_ERR("scanout flush failed for %d error%d\n",
+			resp->scanout_id,
+			error_code);
 
-		virtio_gpu_cmd_event_wait(kms,
-				scanout,
-				1);
+	if (timeout > 0 && output) {
+		/* Commit done event is always on, no need to subscribe */
+		//virtio_gpu_cmd_event_control(kms, scanout, VIRTIO_COMMIT_COMPLETE, true);
+
+		/* Wait up to timeout for commit done */
+		rc = wait_for_completion_timeout(&output->commit_done, timeout);
+		if (!rc) {
+			VIRTGPU_VQ_ERR("Waiting for scanout %d commit done timedout!\n", scanout);
+			rc = -ETIMEDOUT;
+		} else {
+			VIRTGPU_VQ_INFO("Scanout %d commit done\n", scanout);
+			rc = 0;
+		}
 	}
-*/
+
 error:
 	if (cmd_p)
 		kfree(cmd_p);
@@ -945,7 +960,6 @@ int virtio_gpu_cmd_event_wait(struct virtio_kms *kms,
 		uint32_t max_num_events)
 {
 	return 0;
-
 }
 
 static int virtio_get_edid_block(struct virtio_kms *kms, uint32_t scanout,

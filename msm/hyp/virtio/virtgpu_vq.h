@@ -77,7 +77,8 @@ int virtio_gpu_cmd_plane_flush(struct virtio_kms *kms,
 
 int virtio_gpu_cmd_scanout_flush(struct virtio_kms *kms,
 		uint32_t scanout,
-		bool sync);
+		bool sync,
+		uint32_t timeout);
 
 int virtio_gpu_cmd_event_wait(struct virtio_kms *kms,
 		uint32_t scanout,

@@ -47,6 +47,10 @@
 #define VIRTIO_TRANSPARENCY_SOURCE_ALPHA (1<<2)
 //#define VIRTIO_DEBUG 1
 
+/* Timeout for waiting the commit_done for power mode change request to PVM */
+#define VIRTIO_SCANOUT_POWER_UP_TIMEOUT_MS		200
+#define VIRTIO_SCANOUT_POWER_DOWN_TIMEOUT_MS	100
+
 #define DUMP_FRAME_CONTENT(start, end, ptr)					\
 	for (int idx = (start); idx < (end); idx++) {				\
 		DRM_DEBUG_KMS("framebuffer data %x\n", ptr[idx]);	\
@@ -839,6 +843,7 @@ static void virtio_kms_bridge_enable(struct drm_bridge *drm_bridge)
 	struct virtio_gpu_rect dest_rect;
 	uint32_t scanout;
 	int rc = 0;
+	struct virtio_kms *kms;
 
 	display = container_of(drm_bridge, struct msm_hyp_display, bridge);
 	priv = container_of(display->info, struct virtio_connector_info_priv, base);
@@ -846,8 +851,21 @@ static void virtio_kms_bridge_enable(struct drm_bridge *drm_bridge)
         dest_rect.height = priv->mode_rect.height;
         dest_rect.x = priv->mode_rect.x,
         dest_rect.y = priv->mode_rect.y;
+
+	kms = priv->kms;
+	if (!kms) {
+		VIRTIO_KMS_ERR("Invalid kms\n");
+		return;
+	}
+
 	scanout = priv->scanout;
-	rc = virtio_gpu_cmd_set_scanout_properties(priv->kms,
+	if (scanout >= kms->num_scanouts) {
+		VIRTIO_KMS_ERR("Invalid scanout %d\n", scanout);
+		return;
+	}
+
+	VIRTIO_KMS_INFO("Power on scanout %d\n", scanout);
+	rc = virtio_gpu_cmd_set_scanout_properties(kms,
 			scanout,
 			VIRTIO_SCANOUT_POWER_MODE_ON,
 			priv->mode_index,
@@ -857,7 +875,8 @@ static void virtio_kms_bridge_enable(struct drm_bridge *drm_bridge)
 	if (rc)
 		VIRTIO_KMS_ERR("scanout power on failed\n");
 
-	virtio_gpu_cmd_scanout_flush(priv->kms, scanout, true);
+	virtio_gpu_cmd_scanout_flush(kms, scanout, true,
+			VIRTIO_SCANOUT_POWER_UP_TIMEOUT_MS);
 }
 
 static void virtio_kms_bridge_disable(struct drm_bridge *drm_bridge)
@@ -893,6 +912,7 @@ static void virtio_kms_bridge_post_disable(struct drm_bridge *drm_bridge)
 	struct virtio_gpu_rect dest_rect;
 	uint32_t scanout;
 	int rc = 0;
+	struct virtio_kms *kms;
 
 	display = container_of(drm_bridge, struct msm_hyp_display, bridge);
 	priv = container_of(display->info, struct virtio_connector_info_priv, base);
@@ -901,8 +921,20 @@ static void virtio_kms_bridge_post_disable(struct drm_bridge *drm_bridge)
 	dest_rect.x = priv->mode_rect.x,
 	dest_rect.y = priv->mode_rect.y;
 
+	kms = priv->kms;
+	if (!kms) {
+		VIRTIO_KMS_ERR("Invalid kms\n");
+		return;
+	}
+
 	scanout = priv->scanout;
-	rc = virtio_gpu_cmd_set_scanout_properties(priv->kms,
+	if (scanout >= kms->num_scanouts) {
+		VIRTIO_KMS_ERR("Invalid scanout %d\n", scanout);
+		return;
+	}
+
+	VIRTIO_KMS_INFO("Power off scanout %d\n", scanout);
+	rc = virtio_gpu_cmd_set_scanout_properties(kms,
 			scanout,
 			VIRTIO_SCANOUT_POWER_MODE_OFF,
 			priv->mode_index,
@@ -912,7 +944,8 @@ static void virtio_kms_bridge_post_disable(struct drm_bridge *drm_bridge)
 	if (rc)
 		VIRTIO_KMS_ERR("scanout power off failed\n");
 
-	virtio_gpu_cmd_scanout_flush(priv->kms, scanout, true);
+	virtio_gpu_cmd_scanout_flush(kms, scanout, true,
+			VIRTIO_SCANOUT_POWER_DOWN_TIMEOUT_MS);
 }
 
 static const struct drm_bridge_funcs virtio_bridge_ops = {
@@ -2299,6 +2332,8 @@ static int virtio_kms_scanout_init(struct virtio_kms *kms, uint32_t scanout)
 		goto error;
 	}
 
+	init_completion(&output->commit_done);
+
 	num_planes = output->plane_cnt;
 	VIRTIO_KMS_DBG("scanout id: %d, planes num: %d\n", scanout, num_planes);
 
@@ -2981,11 +3016,24 @@ static void virtio_kms_service_commit_done(
 		uint32_t scanout)
 {
 	struct drm_crtc *crtc = kms->outputs[scanout].crtc;
+	struct virtio_kms_output *output;
 
 	virtio_gpu_cmd_event_control(kms,
 				scanout,
 				VIRTIO_COMMIT_COMPLETE,
 				false);
+
+	if (scanout < kms->num_scanouts) {
+		output = &kms->outputs[scanout];
+		if (output) {
+			complete(&output->commit_done);
+			VIRTIO_KMS_DBG("Commit done!\n");
+		} else {
+			VIRTIO_KMS_ERR("Invalid NULL output\n");
+		}
+	} else {
+		VIRTIO_KMS_ERR("Invalid scanout %d\n", scanout);
+	}
 
 	msm_hyp_crtc_commit_done(crtc);
 }

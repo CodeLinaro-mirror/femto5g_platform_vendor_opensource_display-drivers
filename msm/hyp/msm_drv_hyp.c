@@ -543,10 +543,6 @@ void msm_hyp_crtc_commit_done(struct drm_crtc *crtc)
 
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc)
 {
-	if (WARN_ON(!crtc))
-		return;
-
-	drm_crtc_handle_vblank(crtc);
 }
 
 #ifdef CONFIG_PM_SLEEP

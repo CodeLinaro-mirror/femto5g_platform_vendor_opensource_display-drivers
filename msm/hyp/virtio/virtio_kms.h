@@ -86,6 +86,7 @@ struct virtio_kms_output {
 	struct drm_crtc *crtc;
 	bool vblank_enabled;
 	bool hpd_enabled;
+	struct completion commit_done;
 };
 
 struct channel_map {
