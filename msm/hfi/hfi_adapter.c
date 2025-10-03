@@ -12,6 +12,8 @@
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 #include "hfi_interface.h"
 #endif
+#include "sde_dbg.h"
+#include <uapi/linux/sched/types.h>
 
 #define HFI_AD_INFO(fmt, ...)  \
 	pr_info("[hfi_ad_info] %s:%d " fmt, __func__, __LINE__, ##__VA_ARGS__)
@@ -51,6 +53,24 @@ static u32 hfi_cmd_type_map[HFI_CMDBUF_TYPE_MAX] = {
 };
 
 static atomic_t id_counter = ATOMIC_INIT(0);
+
+static void hfi_thread_priority_worker(struct kthread_work *work)
+{
+	int ret = 0;
+	struct sched_param param = { 0 };
+	struct task_struct *task = current->group_leader;
+
+	/**
+	 * this priority was found during empiric testing to have appropriate
+	 * realtime scheduling to process display updates and interact with
+	 * other real time and normal priority task
+	 */
+	param.sched_priority = 16;
+	ret = sched_setscheduler(task, SCHED_FIFO, &param);
+	if (ret)
+		pr_warn("pid:%d name:%s priority update failed: %d\n",
+			current->tgid, task->comm, ret);
+}
 
 static u32 _create_buffer_id(u32 ctx_id)
 {
@@ -344,6 +364,7 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		}
 
 		cb_cmd_buf_work = &adapter->cb_cmd_buf_work[work_queue_idx];
+		SDE_EVT32(event_type, SDE_EVTLOG_FUNC_CASE1);
 
 		ret = kthread_queue_work(&adapter->cb_event_worker, &cb_cmd_buf_work->work);
 		if (!ret)
@@ -462,6 +483,11 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 		HFI_AD_ERROR("failed to create adapter_cb_thread\n");
 		goto fail;
 	}
+
+	kthread_init_work(&hfi_host->hfi_thread_priority_work,
+			  hfi_thread_priority_worker);
+	kthread_queue_work(&hfi_host->cb_event_worker, &hfi_host->hfi_thread_priority_work);
+	kthread_flush_work(&hfi_host->hfi_thread_priority_work);
 
 	kthread_init_work(&hfi_host->cb_ssr_work, _process_cb_ssr_work);
 	kthread_init_worker(&hfi_host->cb_event_ssr_worker);
