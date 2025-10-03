@@ -519,6 +519,7 @@ struct msm_ratio {
  * @MSM_ENC_VBLANK - wait for the HW VBLANK event (for driver-internal waiters)
  * @MSM_ENC_ACTIVE_REGION - wait for the TG to be in active pixel region
  * @MSM_ENC_HW_RECOVERY - wait for the HW to recover from error
+ * @MSM_ENC_DISPLAY_POWER - notify display power event
  * @MSM_ENC_EVENT_MAX - maximum value for events related to frame
  */
 enum msm_event_wait {
@@ -527,6 +528,7 @@ enum msm_event_wait {
 	MSM_ENC_VBLANK,
 	MSM_ENC_ACTIVE_REGION,
 	MSM_ENC_HW_RECOVERY,
+	MSM_ENC_DISPLAY_POWER,
 	MSM_ENC_EVENT_MAX,
 };
 
