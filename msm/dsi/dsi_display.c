@@ -4226,9 +4226,9 @@ set_default:
 	return 0;
 }
 
-static int dsi_display_get_phandle_index(
-			struct dsi_display *display,
-			const char *propname, int count, int index)
+int dsi_display_get_phandle_index(
+		struct dsi_display *display,
+		const char *propname, int count, int index)
 {
 	struct device_node *disp_node = display->panel_node;
 	u32 *val = NULL;
