@@ -1451,6 +1451,11 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 							obj_id,
 							HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
 
+	if (!buffer) {
+		DSI_ERR("failed to allocate hfi command buffer\n");
+		return -EINVAL;
+	}
+
 	panel_init_caps.num_timing_modes = panel->num_timing_nodes;
 	if (!panel_init_caps.num_timing_modes) {
 		DSI_ERR("No timing modes - panel init failed");
