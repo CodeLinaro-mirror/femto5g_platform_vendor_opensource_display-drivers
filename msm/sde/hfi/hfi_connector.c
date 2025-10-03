@@ -369,6 +369,7 @@ static int _hfi_conn_add_init_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
 	mutex_lock(&hfi_conn->hfi_lock);
 
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
 
 	if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
 		// Avoid populating noedid modes.
@@ -443,6 +444,7 @@ static int _hfi_conn_add_timing_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
 
 	drm_conn = &conn->base;
 	mutex_lock(&hfi_conn->hfi_lock);
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
 
 	list_for_each_entry(mode, &drm_conn->modes, head) {
 		if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL &&
@@ -499,6 +501,7 @@ int hfi_conn_send_panel_init(struct drm_connector *conn)
 	struct hfi_kms *hfi_kms;
 	struct sde_connector *c_conn;
 	struct hfi_cmdbuf_t *cmd_buf;
+	int display_id;
 
 	if (!conn) {
 		SDE_ERROR("invalid args\n");
@@ -515,9 +518,10 @@ int hfi_conn_send_panel_init(struct drm_connector *conn)
 
 	sde_kms = sde_connector_get_kms(conn);
 	hfi_kms = to_hfi_kms(sde_kms);
+	display_id = sde_conn_get_display_obj_id(conn);
 
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
-			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_DEVICE_INFO);
+			display_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
 	if (!cmd_buf) {
 		SDE_ERROR("failed to get command buf\n");
 		return -EINVAL;
