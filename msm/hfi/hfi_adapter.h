@@ -109,6 +109,8 @@ struct hfi_adapter_t {
 	struct kthread_worker cb_event_ssr_worker;
 	struct task_struct *cb_event_worker_thread;
 	struct task_struct *cb_event_worker_ssr_thread;
+	struct kthread_work hfi_thread_priority_work;
+
 	enum hfi_adapter_event_type event_type;
 	bool blocking;
 	struct idr client_ids;

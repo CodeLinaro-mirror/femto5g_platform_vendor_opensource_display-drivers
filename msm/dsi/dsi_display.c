@@ -1989,7 +1989,7 @@ static ssize_t debugfs_update_cmd_scheduling_params(struct file *file,
 
 	buf[len] = '\0'; /* terminate the string */
 
-	if (sscanf(buf, "%d %d", &line, &window) != 2)
+	if (sscanf(buf, "%u %u", &line, &window) != 2)
 		return -EFAULT;
 
 	display_for_each_ctrl(i, display) {
@@ -4226,9 +4226,9 @@ set_default:
 	return 0;
 }
 
-static int dsi_display_get_phandle_index(
-			struct dsi_display *display,
-			const char *propname, int count, int index)
+int dsi_display_get_phandle_index(
+		struct dsi_display *display,
+		const char *propname, int count, int index)
 {
 	struct device_node *disp_node = display->panel_node;
 	u32 *val = NULL;
@@ -9448,7 +9448,7 @@ int dsi_display_pre_commit(void *display,
 	int rc = 0;
 	struct dsi_display *dsi_display = display;
 
-	if (!display || !params) {
+	if (!dsi_display || !dsi_display->panel || !params) {
 		pr_err("Invalid params\n");
 		return -EINVAL;
 	}
@@ -9456,8 +9456,7 @@ int dsi_display_pre_commit(void *display,
 	if (!params->cmd_bit_mask && params->qsync_update) {
 		enable = (params->qsync_mode > 0) ? true : false;
 
-		if (dsi_display->panel &&
-			dsi_display->panel->vrr_caps.arp_support) {
+		if (dsi_display->panel->vrr_caps.arp_support) {
 			rc = dsi_display_arp(display, enable, params->arp_t2_in_us);
 			if (rc) {
 				DSI_ERR("%s failed to send arp commands\n",
