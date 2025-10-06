@@ -7357,6 +7357,7 @@ void sde_encoder_kickoff(struct drm_encoder *drm_enc, bool config_changed)
 		if (ret)
 			SDE_ERROR("kickoff halop failed ret:%d\n", ret);
 
+		SDE_ATRACE_END("encoder_kickoff");
 		return;
 	}
 
