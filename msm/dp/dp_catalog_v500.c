@@ -192,6 +192,7 @@ static void dp_catalog_aux_setup_v500(struct dp_catalog_aux *aux,
 	else
 		dp_write(DP_PHY_MODE, 0xfc);
 
+	dp_write(DP_PHY_PD_CTL_V500, 0x02); /* Properly power down EDP port during adb reboot. */
 	dp_write(DP_PHY_PD_CTL_V500, 0x7d);
 	wmb(); /* make sure PD programming happened */
 

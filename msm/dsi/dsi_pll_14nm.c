@@ -669,7 +669,7 @@ static void dsi_pll_commit(struct dsi_pll_14nm *pll,
          * 2: divided by 4
          * 3: divided by 8
          */
-        data = (((reg->pll_postdiv - 1) << 4) | config->pll_lpf_res1);
+        data = (((reg->pll_postdiv) << 4) | config->pll_lpf_res1);
         DSI_PLL_REG_W(pll_base, PLL_PLL_LPF2_POSTDIV, data);
 
 	wmb();  /* make sure register committed */
