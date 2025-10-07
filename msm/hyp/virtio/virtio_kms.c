@@ -522,14 +522,6 @@ static int virtio_connector_get_modes(struct drm_connector *connector,
 
 	priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base);
 
-	if (hyp_display->info->display_info.width_mm > 0 &&
-				hyp_display->info->display_info.height_mm > 0) {
-		connector->display_info.width_mm =
-					hyp_display->info->display_info.width_mm;
-		connector->display_info.height_mm =
-					hyp_display->info->display_info.height_mm;
-	}
-
 	for (i = 0; i < priv->mode_count; i++) {
 		m = drm_mode_duplicate(connector->dev, &priv->modes[i]);
 		if (!m)
@@ -539,6 +531,14 @@ static int virtio_connector_get_modes(struct drm_connector *connector,
 
 	msm_hyp_connector_init_edid(connector, priv->panel_name);
 	virtio_connector_get_hdr_info(priv, sde_conn);
+
+	if (hyp_display->info->display_info.width_mm > 0 &&
+				hyp_display->info->display_info.height_mm > 0) {
+		connector->display_info.width_mm =
+					hyp_display->info->display_info.width_mm;
+		connector->display_info.height_mm =
+					hyp_display->info->display_info.height_mm;
+	}
 
 	return priv->mode_count;
 }
