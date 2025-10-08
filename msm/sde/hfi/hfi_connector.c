@@ -85,6 +85,33 @@ void sde_connector_add_roi_v1(u32 hfi_prop, struct sde_connector *conn,
 		HFI_ERROR_CONN(hfi_conn, "failed adding HFI KV prop:0x%x\n", hfi_prop);
 }
 
+void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
+		struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf,
+		bool is_cont_splash)
+{
+	struct hfi_connector *hfi_conn;
+	struct hfi_display_autorefresh_cfg payload;
+	u32 key;
+	int ret = 0;
+
+	if (!conn || !cmd_buf || !old_state)
+		return;
+
+	hfi_conn = to_hfi_connector(conn);
+
+	/* For HFI cont-splash - disable autorefresh */
+	if (is_cont_splash) {
+		payload.enable = false;
+		payload.frame_count = 0;
+	}
+
+	key = HFI_PACKKEY(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG, 0, sizeof(payload));
+
+	ret = hfi_util_kv_helper_add(hfi_conn->kv_props, key, (u32 *)&payload);
+	if (ret)
+		HFI_ERROR_CONN(hfi_conn, "failed adding HFI KV prop:0x%x\n", hfi_prop);
+}
+
 int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn,
 		struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
@@ -199,12 +226,22 @@ int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *conn, u3
 	struct hfi_prop_map *setter;
 	int i, ret = 0;
 	struct hfi_connector *hfi_conn = to_hfi_connector(conn);
+	struct sde_kms *sde_kms;
+	struct msm_kms *msm_kms;
 	u32 kv_count;
+	bool is_cont_splash = false;
 
 	if (!hfi_conn || !old_cstate || !cmd_buf) {
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
 	}
+
+	sde_kms = sde_connector_get_kms(&conn->base);
+	if (!sde_kms)
+		return -EINVAL;
+	msm_kms = &sde_kms->base;
+	if (!msm_kms)
+		return -EINVAL;
 
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_kv_helper_reset(hfi_conn->kv_props);
@@ -219,6 +256,14 @@ int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *conn, u3
 		if (setter->add_hfi_prop)
 			setter->add_hfi_prop(setter->hfi_prop, conn, old_cstate, cmd_buf);
 	}
+
+	/* Check continuous splash HFI for autorefresh disable */
+	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
+		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
+
+	if (is_cont_splash)
+		sde_connector_add_autorefresh(HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG,
+				conn, old_cstate, cmd_buf, is_cont_splash);
 
 	kv_count = hfi_util_kv_helper_get_count(hfi_conn->kv_props);
 	if (!kv_count)
@@ -324,6 +369,7 @@ static int _hfi_conn_add_init_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
 	mutex_lock(&hfi_conn->hfi_lock);
 
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
 
 	if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
 		// Avoid populating noedid modes.
@@ -398,6 +444,7 @@ static int _hfi_conn_add_timing_caps_cmd(struct hfi_cmdbuf_t *cmd_buf,
 
 	drm_conn = &conn->base;
 	mutex_lock(&hfi_conn->hfi_lock);
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
 
 	list_for_each_entry(mode, &drm_conn->modes, head) {
 		if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL &&
@@ -454,6 +501,7 @@ int hfi_conn_send_panel_init(struct drm_connector *conn)
 	struct hfi_kms *hfi_kms;
 	struct sde_connector *c_conn;
 	struct hfi_cmdbuf_t *cmd_buf;
+	int display_id;
 
 	if (!conn) {
 		SDE_ERROR("invalid args\n");
@@ -470,9 +518,10 @@ int hfi_conn_send_panel_init(struct drm_connector *conn)
 
 	sde_kms = sde_connector_get_kms(conn);
 	hfi_kms = to_hfi_kms(sde_kms);
+	display_id = sde_conn_get_display_obj_id(conn);
 
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
-			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_DEVICE_INFO);
+			display_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
 	if (!cmd_buf) {
 		SDE_ERROR("failed to get command buf\n");
 		return -EINVAL;

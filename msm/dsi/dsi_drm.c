@@ -264,7 +264,7 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 	struct dsi_display *display;
 
-	if (!bridge) {
+	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
@@ -282,10 +282,9 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 		DSI_ERR("[%d] DSI display post enabled failed, rc=%d\n",
 		       c_bridge->id, rc);
 
-	if (display)
-		display->enabled = true;
+	display->enabled = true;
 
-	if (display && display->drm_conn) {
+	if (display->drm_conn) {
 		sde_connector_helper_bridge_enable(display->drm_conn);
 		if (display->poms_pending) {
 			display->poms_pending = false;
@@ -302,16 +301,15 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 	struct sde_connector_state *conn_state;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 
-	if (!bridge) {
+	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
 	display = c_bridge->display;
 
-	if (display)
-		display->enabled = false;
+	display->enabled = false;
 
-	if (display && display->drm_conn) {
+	if (display->drm_conn) {
 		conn_state = to_sde_connector_state(display->drm_conn->state);
 		if (!conn_state) {
 			DSI_ERR("invalid params\n");
@@ -327,8 +325,9 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 	rc = display->display_ops.pre_disable[display->ctrl[0].ctrl->disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display pre disable failed, rc=%d\n",
-		       c_bridge->id, rc);
+			c_bridge->id, rc);
 	}
+
 }
 
 static void dsi_bridge_post_disable(struct drm_bridge *bridge)
@@ -338,7 +337,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 	enum msm_disp_op disp_op;
 
-	if (!bridge) {
+	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
@@ -347,8 +346,8 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 
 	SDE_ATRACE_BEGIN("dsi_bridge_post_disable");
 	SDE_ATRACE_BEGIN("dsi_display_disable");
-	disp_op = display->ctrl[0].ctrl->disp_op;
 
+	disp_op = display->ctrl[0].ctrl->disp_op;
 	rc = display->display_ops.display_disable[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display disable failed, rc=%d\n",
@@ -358,7 +357,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	}
 	SDE_ATRACE_END("dsi_display_disable");
 
-	if (display && display->drm_conn)
+	if (display->drm_conn)
 		sde_connector_helper_bridge_post_disable(display->drm_conn);
 
 	rc = display->display_ops.display_unprepare[disp_op](c_bridge->display);
