@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1217,7 +1217,8 @@ static void _sde_plane_setup_pixel_ext(struct sde_plane *psde,
 	}
 }
 
-static inline void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate)
+static inline void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate,
+	bool format_is_yuv)
 {
 	static const struct sde_csc_cfg sde_csc_YUV2RGB_601L = {
 		{
@@ -1254,12 +1255,19 @@ static inline void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane
 	}
 
 	/* revert to kernel default if override not available */
+	mutex_lock(&psde->property_info.property_lock);
+	if (!format_is_yuv) {
+		pstate->csc_ptr = 0;
+		mutex_unlock(&psde->property_info.property_lock);
+		return;
+	}
 	if (pstate->csc_usr_ptr)
 		pstate->csc_ptr = pstate->csc_usr_ptr;
 	else if (BIT(SDE_SSPP_CSC_10BIT) & psde->features)
 		pstate->csc_ptr = (struct sde_csc_cfg *)&sde_csc10_YUV2RGB_601L;
 	else
 		pstate->csc_ptr = (struct sde_csc_cfg *)&sde_csc_YUV2RGB_601L;
+	mutex_unlock(&psde->property_info.property_lock);
 
 	SDE_DEBUG_PLANE(psde, "using 0x%X 0x%X 0x%X...\n",
 			pstate->csc_ptr->csc_mv[0],
@@ -1679,7 +1687,8 @@ static int _sde_plane_color_fill(struct sde_plane *psde,
 			psde->pipe_hw->ops.setup_format(psde->pipe_hw,
 					fmt, blend_enable,
 					SDE_SSPP_SOLID_FILL,
-					pstate->multirect_index);
+					pstate->multirect_index,
+					SDE_COLOR_MASK_NONE);
 
 		if (psde->pipe_hw->ops.setup_rects)
 			psde->pipe_hw->ops.setup_rects(psde->pipe_hw,
@@ -3323,7 +3332,8 @@ static void _sde_plane_map_prop_to_dirty_bits(void)
 	plane_prop_array[PLANE_PROP_ALPHA] =
 	plane_prop_array[PLANE_PROP_INPUT_FENCE] =
 	plane_prop_array[PLANE_PROP_BLEND_OP] =
-	plane_prop_array[PLANE_PROP_BG_ALPHA] = 0;
+	plane_prop_array[PLANE_PROP_BG_ALPHA] =
+	plane_prop_array[PLANE_PROP_COLOR_MASK_OVERRIDE] = 0;
 
 	plane_prop_array[PLANE_PROP_FB_TRANSLATION_MODE] =
 		SDE_PLANE_DIRTY_FB_TRANSLATION_MODE;
@@ -3637,9 +3647,11 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	struct sde_plane_state *pstate, const struct sde_format *fmt)
 {
 	uint32_t src_flags = 0;
+	uint32_t color_mask = sde_plane_get_property(pstate, PLANE_PROP_COLOR_MASK_OVERRIDE);
 	u32 cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
 	bool fov_en = false;
 	u32 pp_idx;
+	bool format_is_yuv;
 
 	SDE_DEBUG_PLANE(psde, "rotation 0x%X\n", pstate->rotation);
 	if (pstate->rotation & DRM_MODE_REFLECT_X)
@@ -3652,7 +3664,7 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	/* update format */
 	psde->pipe_hw->ops.setup_format(psde->pipe_hw, fmt,
 	   pstate->const_alpha_en, src_flags,
-	   pstate->multirect_index);
+	   pstate->multirect_index, color_mask);
 
 	if (psde->pipe_hw->ops.setup_cdp) {
 		struct sde_hw_pipe_cdp_cfg *cdp_cfg = &pstate->cdp_cfg;
@@ -3675,10 +3687,8 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	_sde_plane_sspp_setup_sys_cache(psde, pstate);
 
 	/* update csc */
-	if (SDE_FORMAT_IS_YUV(fmt))
-		_sde_plane_setup_csc(psde, pstate);
-	else
-		pstate->csc_ptr = 0;
+	format_is_yuv = SDE_FORMAT_IS_YUV(fmt) ? true : false;
+	_sde_plane_setup_csc(psde, pstate, format_is_yuv);
 
 	if (psde->pipe_hw->ops.setup_inverse_pma) {
 		uint32_t pma_mode = 0;
@@ -4480,6 +4490,12 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		{SDE_CAC_LOOPBACK_UNPACK, "cac_loopback_unpack"},
 		{SDE_CAC_LOOPBACK_FETCH, "cac_loopback_fetch"},
 	};
+	static const struct drm_prop_enum_list e_color_mask[] = {
+		{C0_G_Y, "green"},
+		{C1_B_Cb, "blue"},
+		{C2_R_Cr, "red"},
+		{C3_ALPHA, "alpha"},
+	};
 
 	struct sde_kms_info *info;
 	struct sde_plane *psde = to_sde_plane(plane);
@@ -4574,6 +4590,10 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		msm_property_install_volatile_range(&psde->property_info,
 			"dst_rect_extn", 0x0, 0, ~0, 0, PLANE_PROP_DST_RECT_EXT);
 	}
+
+	msm_property_install_enum(&psde->property_info,
+		"color_mask_override", 0x0, 1, e_color_mask,
+		ARRAY_SIZE(e_color_mask), 0, PLANE_PROP_COLOR_MASK_OVERRIDE);
 
 	if (psde->pipe_hw->ops.setup_solidfill)
 		msm_property_install_range(&psde->property_info, "color_fill",

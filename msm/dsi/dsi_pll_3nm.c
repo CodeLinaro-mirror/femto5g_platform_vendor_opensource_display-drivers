@@ -1612,18 +1612,6 @@ void dsi_pll_3nm_trigger_resets_pre_enable(struct dsi_pll_resource *rsc)
 	int i;
 
 	/*
-	 * Assert power on reset on DSI PHY Analog immeditately
-	 * after 0P9 resume to make sure PHY starts in a
-	 * clean state
-	 */
-	dsi_pll_phy_analog_reset(rsc);
-	for (i = 0; i < MAX_DSI_PLL_SLAVE_NUM; i++) {
-		if (!rsc->slave[i])
-			continue;
-		dsi_pll_phy_analog_reset(rsc->slave[i]);
-	}
-
-	/*
 	 * Trigger PLL reset as well to clear out any jitter
 	 * introduced as result of 0p9 collapse
 	 */

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -3740,6 +3740,8 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 
 	if ((crtc->state->active_changed || cont_splash_enabled) && crtc->state->active)
 		sde_crtc_event_notify(crtc, DRM_EVENT_CRTC_POWER, &power_on, sizeof(u32));
+
+	sde_crtc->kickoff_in_progress = false;
 }
 
 /**
@@ -4518,6 +4520,7 @@ static inline bool _is_vid_power_on_frame(struct drm_crtc *crtc)
 static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct drm_encoder *encoder = NULL;
 	bool ipcc_input_signal_wait = false;
 	struct dma_fence *dma_hw_fences[MAX_HW_FENCES] = {0};
 	int num_hw_fences = 0;
@@ -4528,6 +4531,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	enum sde_crtc_vm_req vm_req;
 	bool disable_hw_fences = false;
 	bool trigger_sw_override = false;
+	bool video_psr_support = false;
 
 	SDE_DEBUG("\n");
 
@@ -4549,10 +4553,23 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 		return false;
 	}
 
+	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+		if (sde_encoder_in_clone_mode(encoder))
+			continue;
+
+		if (sde_encoder_is_built_in_display(encoder)) {
+			video_psr_support = sde_encoder_is_psr_supported(encoder);
+			break;
+		}
+	}
+
 	/* if this is the last frame on vm transition, disable hw fences */
-	vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc->state), CRTC_PROP_VM_REQ_STATE);
-	if (vm_req == VM_REQ_RELEASE)
-		disable_hw_fences = true;
+	if (!video_psr_support) {
+		vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc->state),
+				CRTC_PROP_VM_REQ_STATE);
+		if (vm_req == VM_REQ_RELEASE)
+			disable_hw_fences = true;
+	}
 
 	/* update ctl hw to wait for ipcc input signal before fetch */
 	if (test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
@@ -5497,7 +5514,6 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 
 		sde_encoder_kickoff(encoder, true);
 	}
-	sde_crtc->kickoff_in_progress = false;
 
 	/* store the event after frame trigger */
 	if (sde_crtc->event) {
