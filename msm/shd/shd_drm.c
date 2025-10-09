@@ -380,7 +380,7 @@ static int shd_display_set_default_clock(struct drm_crtc_state *crtc_state,
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
 	struct sde_connector *sde_conn;
-	struct msm_mode_info mode_info;
+	struct msm_mode_info mode_info = { 0 };
 	struct drm_property *drm_prop;
 	u64 core_clk;
 	int ret;
