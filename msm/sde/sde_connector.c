@@ -1440,10 +1440,10 @@ static bool sde_connector_power_on_off_frame(struct drm_connector *connector)
 int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
+	struct sde_connector_state *c_state;
 	struct msm_freq_step_pattern *freq_pattern;
 	struct sde_encoder_virt *sde_enc;
 	enum sde_crtc_vm_req vm_req;
-	struct sde_connector_state *c_state;
 	u64 cmd_bit_mask = 0;
 	int rc = 0;
 
@@ -1453,8 +1453,8 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	}
 
 	c_conn = to_sde_connector(connector);
-	sde_enc = to_sde_encoder_virt(c_conn->encoder);
 	c_state = to_sde_connector_state(connector->state);
+	sde_enc = to_sde_encoder_virt(c_conn->encoder);
 
 	if (sde_enc)
 		sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
@@ -1502,6 +1502,11 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 		cmd_bit_mask |= BIT(DSI_CMD_SET_EM_PULSE_SWITCH);
 	}
 
+	if(c_state->privacy_layer_updated)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_PRIVACY_LAYER);
+	else
+		cmd_bit_mask &= ~BIT(DSI_CMD_SET_PRIVACY_LAYER);
+
 	if (cmd_bit_mask) {
 		mutex_lock(&c_conn->bl_vrr.bl_lock);
 		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
@@ -1517,6 +1522,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 
 	c_conn->freq_pattern_updated = false;
 	c_conn->freq_pattern_type_changed = false;
+	c_state->privacy_layer_updated = false;
 
 
 	return rc;
@@ -1639,6 +1645,9 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	}
 
 	display = (struct dsi_display *)c_conn->display;
+
+	if (c_state->privacy_layer_updated)
+		params.privacy_v1 = &c_state->privacy_v1;
 
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
 
@@ -1799,6 +1808,7 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 
 	params.cmd_bit_mask = cmd_bit_mask;
 	params.peripheral_flush = peripheral_flush;
+	params.privacy_v1 = &c_state->privacy_v1;
 
 	rc = c_conn->ops.process_dcs_cmd_bitmask(c_conn->display, &params);
 
@@ -2175,6 +2185,9 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 		c_state->dyn_hdr_meta.dynamic_hdr_payload_size = 0;
 	}
 
+	/* Clear privacy layer info from prev state */
+	c_state->privacy_layer_updated = false;
+
 	return &c_state->base;
 }
 
@@ -2304,6 +2317,56 @@ static int _sde_connector_set_roi_v1(
 				c_state->rois.roi[i].y1,
 				c_state->rois.roi[i].x2,
 				c_state->rois.roi[i].y2);
+	}
+
+	return 0;
+}
+
+static int _sde_connector_set_privacy_layer_v1(
+		struct sde_connector *c_conn,
+		struct sde_connector_state *c_state,
+		void __user *usr_ptr)
+{
+	struct sde_drm_privacy_layer_v1 privacy_v1;
+	int i = 0;
+
+	if (!c_conn || !c_state) {
+		SDE_ERROR("invalid args\n");
+		return -EINVAL;
+	}
+
+	memset(&c_state->privacy_v1, 0, sizeof(c_state->privacy_v1));
+
+	if (!usr_ptr) {
+		SDE_DEBUG_CONN(c_conn, "privacy layers v1 cleared\n");
+		return 0;
+	}
+
+	if (copy_from_user(&privacy_v1, usr_ptr, sizeof(privacy_v1))) {
+		SDE_ERROR_CONN(c_conn, "failed to copy privacy layer v1 data\n");
+		return -EINVAL;
+	}
+
+	SDE_DEBUG_CONN(c_conn, "num privacy layers %d\n", privacy_v1.no_of_layers);
+
+	if (privacy_v1.no_of_layers > MAX_PRIVACY_LAYERS) {
+		SDE_ERROR_CONN(c_conn, "num privacy layers more than supported: %d",
+				privacy_v1.no_of_layers);
+		return -EINVAL;
+	}
+
+	c_state->privacy_v1.no_of_layers = privacy_v1.no_of_layers;
+	c_state->privacy_v1.reserved = privacy_v1.reserved;
+	c_state->privacy_layer_updated = true;
+
+	for (i = 0; i < privacy_v1.no_of_layers; i++) {
+		c_state->privacy_v1.privacy_list[i] = privacy_v1.privacy_list[i];
+		SDE_DEBUG_CONN(c_conn, "list%d: c_radius-%d privacy region (%d,%d) (%d,%d)\n", i,
+				c_state->privacy_v1.privacy_list[i].corner_radius,
+				c_state->privacy_v1.privacy_list[i].left,
+				c_state->privacy_v1.privacy_list[i].top,
+				c_state->privacy_v1.privacy_list[i].right,
+				c_state->privacy_v1.privacy_list[i].bottom);
 	}
 
 	return 0;
@@ -2636,6 +2699,12 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 		break;
 	case CONNECTOR_PROP_DYN_TRANSFER_TIME:
 		_sde_connector_set_prop_dyn_transfer_time(c_conn, val);
+		break;
+	case CONNECTOR_PROP_PRIVACY_LAYER_V1:
+		rc = _sde_connector_set_privacy_layer_v1(c_conn, c_state,
+				(void *)(uintptr_t)val);
+		if (rc)
+			SDE_ERROR_CONN(c_conn, "invalid privacy_layer_v1, rc: %d\n", rc);
 		break;
 	case CONNECTOR_PROP_LP:
 		/* suspend case: clear stale MISR */
@@ -4085,6 +4154,11 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 				sizeof(dsi_display->panel->hdr_props),
 				CONNECTOR_PROP_HDR_INFO);
 		}
+
+		if(dsi_display && dsi_display->panel->privacy_feature_enabled)
+			msm_property_install_volatile_range(
+				&c_conn->property_info, "privacy_layers_v1", 0x0,
+				0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V1);
 
 		if (dsi_display && dsi_display->panel &&
 				dsi_display->panel->dyn_clk_caps.dyn_clk_support)
