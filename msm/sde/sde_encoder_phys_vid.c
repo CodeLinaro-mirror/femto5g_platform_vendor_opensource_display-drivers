@@ -547,6 +547,11 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 	memset(&avr_params, 0, sizeof(avr_params));
 	avr_params.avr_mode = sde_connector_get_qsync_mode(phys_enc->connector);
 
+	if (!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable && sde_enc->cesta_client &&
+			phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op])
+		phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op](phys_enc->hw_ctl, true, true,
+				0, avr_params.avr_mode, false);
+
 	if (sde_enc->disp_info.vrr_caps.video_psr_support ||
 			sde_enc->disp_info.vrr_caps.arp_support)
 		avr_step_state = AVR_STEP_ENABLE;
