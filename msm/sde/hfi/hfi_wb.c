@@ -12,6 +12,7 @@
 #include "hfi_catalog.h"
 #include "hfi_defs_display.h"
 #include "hfi_wb.h"
+#include "hfi_defs_lsr.h"
 
 static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 		struct sde_connector_state *cstate,
@@ -114,6 +115,7 @@ static int _hfi_wb_set_props_base(struct sde_wb_device *wb_dev, u32 disp_id,
 	int flags = 0;
 	struct sde_connector *sde_conn;
 	struct hfi_connector *hfi_conn;
+	enum wb_opmode opmode = WB_DPU;
 
 	if (!wb_dev || !wb_dev->connector || !cmd_buf) {
 		SDE_ERROR("invalid wb device\n");
@@ -131,10 +133,22 @@ static int _hfi_wb_set_props_base(struct sde_wb_device *wb_dev, u32 disp_id,
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
 
-	ret = _hfi_wb_add_drm_props(wb_dev, hfi_conn, cstate, hfi_conn->base_props, disp_id);
-	if (ret) {
-		SDE_ERROR("failed to add drm-prop HFI prop\n");
-		goto end;
+	if (wb_dev->wb_cfg)
+		opmode = wb_dev->wb_cfg->opmode;
+
+	if (opmode == WB_DPU) {
+		ret = _hfi_wb_add_drm_props(wb_dev, hfi_conn,
+				cstate, hfi_conn->base_props, disp_id);
+		if (ret) {
+			SDE_ERROR("failed to add drm-prop HFI prop\n");
+			goto end;
+		}
+	} else if (opmode == WB_CSC || opmode == WB_REPRO) {
+		ret = hfi_wb_lsr_add_props(wb_dev, hfi_conn, cstate, disp_id, cmd_buf);
+		if (ret) {
+			SDE_ERROR("Failed to add LSR HFI WB prop\n");
+			goto end;
+		}
 	}
 
 	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props))
