@@ -366,6 +366,7 @@ enum dsi_video_traffic_mode {
  * @post_wait_ms:        post wait duration
  * @ctrl:                index of DSI controller
  * @ctrl_flags:          controller flags
+ * @ts:                  dsi command time stamp in nano-seconds.
  */
 struct dsi_cmd_desc {
 	struct mipi_dsi_msg msg;
@@ -373,6 +374,7 @@ struct dsi_cmd_desc {
 	u32  post_wait_ms;
 	u32 ctrl;
 	u32 ctrl_flags;
+	ktime_t ts;
 };
 
 /**
