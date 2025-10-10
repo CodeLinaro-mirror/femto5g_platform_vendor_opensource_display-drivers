@@ -2796,6 +2796,7 @@ int reg_dmav1_deinit_dspp_ops(struct sde_hw_dspp *ctx)
 {
 	int i;
 	struct sde_hw_reg_dma_ops *dma_ops;
+	const struct sde_reg_dma_cfg *dma_cfg;
 
 	if (ctx->idx >= DSPP_MAX || ctx->dpu_idx >= DPU_MAX) {
 		DRM_ERROR("invalid dspp idx %x max %xd dpu idx %x max %xd\n",
@@ -2807,10 +2808,13 @@ int reg_dmav1_deinit_dspp_ops(struct sde_hw_dspp *ctx)
 	if (IS_ERR_OR_NULL(dma_ops))
 		return -EOPNOTSUPP;
 
+	dma_cfg = sde_reg_dma_get_cfg(ctx->dpu_idx);
+
 	for (i = 0; i < REG_DMA_FEATURES_MAX; i++) {
 		if (!dspp_buf[i][ctx->idx][ctx->dpu_idx])
 			continue;
-		dma_ops->dealloc_reg_dma(dspp_buf[i][ctx->idx][ctx->dpu_idx], ctx->dpu_idx);
+		if (!dma_cfg || !dma_cfg->vq_supported)
+			dma_ops->dealloc_reg_dma(dspp_buf[i][ctx->idx][ctx->dpu_idx], ctx->dpu_idx);
 		dspp_buf[i][ctx->idx][ctx->dpu_idx] = NULL;
 	}
 	return 0;
@@ -4003,6 +4007,7 @@ int reg_dmav1_deinit_sspp_ops(struct sde_hw_pipe *ctx)
 {
 	u32 i, j;
 	struct sde_hw_reg_dma_ops *dma_ops;
+	const struct sde_reg_dma_cfg *dma_cfg;
 
 	if ((ctx->idx >= SSPP_MAX) || (ctx->dpu_idx >= DPU_MAX)) {
 		DRM_ERROR("invalid sspp idx %x max %x dpu idx %x max %x\n",
@@ -4014,11 +4019,14 @@ int reg_dmav1_deinit_sspp_ops(struct sde_hw_pipe *ctx)
 	if (IS_ERR_OR_NULL(dma_ops))
 		return -EOPNOTSUPP;
 
+	dma_cfg = sde_reg_dma_get_cfg(ctx->dpu_idx);
+
 	for (i = SDE_SSPP_RECT_SOLO; i < SDE_SSPP_RECT_MAX; i++) {
 		for (j = 0; j < REG_DMA_FEATURES_MAX; j++) {
 			if (!sspp_buf[i][j][ctx->idx][ctx->dpu_idx])
 				continue;
-			dma_ops->dealloc_reg_dma(sspp_buf[i][j][ctx->idx][ctx->dpu_idx],
+			if (!dma_cfg || !dma_cfg->vq_supported)
+				dma_ops->dealloc_reg_dma(sspp_buf[i][j][ctx->idx][ctx->dpu_idx],
 									ctx->dpu_idx);
 			sspp_buf[i][j][ctx->idx][ctx->dpu_idx] = NULL;
 		}
@@ -4680,6 +4688,7 @@ int reg_dmav1_deinit_ltm_ops(struct sde_hw_dspp *ctx)
 {
 	int i;
 	struct sde_hw_reg_dma_ops *dma_ops;
+	const struct sde_reg_dma_cfg *dma_cfg;
 	/* LTM blocks are hardwired to DSPP blocks */
 	enum sde_ltm idx = (enum sde_ltm)ctx->idx;
 
@@ -4692,10 +4701,13 @@ int reg_dmav1_deinit_ltm_ops(struct sde_hw_dspp *ctx)
 		return -EINVAL;
 	}
 
+	dma_cfg = sde_reg_dma_get_cfg(ctx->dpu_idx);
+
 	for (i = 0; i < REG_DMA_FEATURES_MAX; i++) {
 		if (!ltm_buf[i][idx][ctx->dpu_idx])
 			continue;
-		dma_ops->dealloc_reg_dma(ltm_buf[i][idx][ctx->dpu_idx], ctx->dpu_idx);
+		if (!dma_cfg || !dma_cfg->vq_supported)
+			dma_ops->dealloc_reg_dma(ltm_buf[i][idx][ctx->dpu_idx], ctx->dpu_idx);
 		ltm_buf[i][idx][ctx->dpu_idx] = NULL;
 	}
 	return 0;
