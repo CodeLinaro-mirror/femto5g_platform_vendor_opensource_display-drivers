@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -114,7 +114,6 @@ int sde_wb_connector_get_modes(struct drm_connector *connector, void *display,
 		const struct msm_resource_caps_info *avail_res)
 {
 	struct sde_wb_device *wb_dev;
-	u32 max_width = SDE_WB_MODE_MAX_WIDTH;
 	int num_modes = 0;
 
 	if (!connector || !display)
@@ -126,7 +125,6 @@ int sde_wb_connector_get_modes(struct drm_connector *connector, void *display,
 
 	mutex_lock(&wb_dev->wb_lock);
 	if (wb_dev->count_modes && wb_dev->modes) {
-#if defined(drm_mode_convert_umode)
 		struct drm_display_mode *mode;
 		int i, ret = 0;
 
@@ -137,7 +135,7 @@ int sde_wb_connector_get_modes(struct drm_connector *connector, void *display,
 				break;
 			}
 			ret = drm_mode_convert_umode(wb_dev->drm_dev, mode,
-					&wb_dev->modes[i])
+					&wb_dev->modes[i]);
 			if (ret) {
 				SDE_ERROR("failed to convert mode %d\n", ret);
 				break;
@@ -146,26 +144,20 @@ int sde_wb_connector_get_modes(struct drm_connector *connector, void *display,
 			drm_mode_probed_add(connector, mode);
 			num_modes++;
 		}
-#else
-		goto custom_modes;
-#endif
 	} else {
-		goto custom_modes;
-	}
+		u32 max_width = SDE_WB_MODE_MAX_WIDTH;
 
-	mutex_unlock(&wb_dev->wb_lock);
-	return num_modes;
-custom_modes:
-
-	if (wb_dev->wb_cfg && wb_dev->wb_cfg->sblk)
-		max_width = max(wb_dev->wb_cfg->sblk->maxlinewidth,
+		if (wb_dev->wb_cfg && wb_dev->wb_cfg->sblk)
+			max_width = max(wb_dev->wb_cfg->sblk->maxlinewidth,
 			wb_dev->wb_cfg->sblk->maxlinewidth_linear);
 
-	num_modes = drm_add_modes_noedid(connector, max_width,
+		num_modes = drm_add_modes_noedid(connector, max_width,
 			SDE_WB_MODE_MAX_HEIGHT);
 
-	num_modes += sde_wb_connector_add_custom_modes(connector, max_width,
+		num_modes += sde_wb_connector_add_custom_modes(connector, max_width,
 			SDE_WB_MODE_MAX_HEIGHT);
+	}
+
 	mutex_unlock(&wb_dev->wb_lock);
 	return num_modes;
 }
@@ -230,7 +222,6 @@ int sde_wb_connector_set_modes(struct sde_wb_device *wb_dev,
 	SDE_DEBUG("\n");
 
 	if (connected) {
-#if defined(drm_mode_convert_umode)
 		struct drm_mode_modeinfo *modeinfo = NULL;
 		int i;
 		SDE_DEBUG("connect\n");
@@ -299,10 +290,6 @@ int sde_wb_connector_set_modes(struct sde_wb_device *wb_dev,
 		wb_dev->count_modes = count_modes;
 		wb_dev->modes = modeinfo;
 		wb_dev->detect_status = connector_status_connected;
-#else
-		SDE_ERROR("failed to set mode\n");
-		goto error;
-#endif
 	} else {
 		SDE_DEBUG("disconnect\n");
 
