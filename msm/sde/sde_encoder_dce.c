@@ -939,14 +939,61 @@ void sde_encoder_dce_set_bpp(struct msm_mode_info mode_info,
 void sde_encoder_dce_disable(struct sde_encoder_virt *sde_enc)
 {
 	enum msm_display_compression_type comp_type;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct sde_kms *sde_kms;
+	struct drm_connector *conn;
+	struct sde_connector_state *conn_state;
+	struct msm_drm_private *priv;
+	int i;
+	bool dsc_disable_flag = true;
+#endif
 
 	if (!sde_enc)
 		return;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if (sde_enc->disp_info.display_type != SDE_CONNECTOR_PRIMARY) {
+
+		sde_kms = sde_encoder_get_kms(&sde_enc->base);
+		if (!sde_kms)
+			return;
+
+		conn = sde_encoder_get_connector(sde_kms->dev, &sde_enc->base);
+		if (!conn || !conn->state)
+			return;
+
+		conn_state = to_sde_connector_state(conn->state);
+
+		priv = (struct msm_drm_private*)(sde_enc->base.dev->dev_private);
+		if (priv && (conn_state->old_topology_name ==
+					SDE_RM_TOPOLOGY_SINGLEPIPE_DSC ||
+					conn_state->old_topology_name ==
+					SDE_RM_TOPOLOGY_DUALPIPE_3DMERGE_DSC)) {
+			for(i = 0; i < MAX_ENCODERS; i++){
+				if (priv->encoders[i]){
+					if (priv->encoders[i]->base.id == sde_enc->base.base.id){
+						continue;
+					}
+
+					if (sde_encoder_is_enabled(priv->encoders[i])){
+						dsc_disable_flag = false;
+					}
+				}
+			}
+		}
+	}
+#endif
+
 	comp_type = sde_enc->mode_info.comp_info.comp_type;
 
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	if ((comp_type == MSM_DISPLAY_COMPRESSION_DSC ||
+		sde_encoder_needs_dsc_disable(&sde_enc->base)) &&
+		dsc_disable_flag)
+#else
 	if (comp_type == MSM_DISPLAY_COMPRESSION_DSC ||
 		sde_encoder_needs_dsc_disable(&sde_enc->base))
+#endif
 		_dce_dsc_disable(sde_enc);
 	else if (comp_type == MSM_DISPLAY_COMPRESSION_VDC)
 		_dce_vdc_disable(sde_enc);
