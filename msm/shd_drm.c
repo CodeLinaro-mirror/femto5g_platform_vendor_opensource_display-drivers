@@ -394,10 +394,17 @@ static int shd_crtc_atomic_set_property(struct drm_crtc *crtc, struct drm_crtc_s
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
 	struct shd_crtc *shd_crtc = sde_crtc->priv_handle;
+	struct sde_cp_node_dummy *prop_node;
 
 	if (!crtc || !state || !property) {
 		SDE_ERROR("invalid argument(s)\n");
 		return -EINVAL;
+	}
+
+	/* ignore all the dspp properties */
+	list_for_each_entry(prop_node, &sde_crtc->cp_feature_list, cp_feature_list) {
+		if (property->base.id == prop_node->property_id)
+			return 0;
 	}
 
 	return shd_crtc->orig_funcs->atomic_set_property(crtc, state, property, val);

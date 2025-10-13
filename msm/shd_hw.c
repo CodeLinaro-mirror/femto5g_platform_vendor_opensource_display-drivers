@@ -330,6 +330,16 @@ static void _sde_shd_flush_cwb_cfg(struct sde_shd_hw_ctl *hw_ctl)
 	hw_ctl->cwb_changed = false;
 }
 
+static void _sde_shd_flush_hw_dsc_config(struct sde_hw_ctl *ctl_ctx)
+{
+	struct sde_shd_hw_ctl *hw_ctl;
+
+	hw_ctl = container_of(ctl_ctx, struct sde_shd_hw_ctl, base);
+
+	if (hw_ctl->orig && hw_ctl->orig->ops.update_intf_cfg)
+		hw_ctl->orig->ops.update_intf_cfg(ctl_ctx, &hw_ctl->dsc_cfg, true);
+}
+
 static int _sde_shd_update_intf_cfg(struct sde_hw_ctl *ctx,
 		struct sde_hw_intf_cfg_v1 *cfg, bool enable)
 {
@@ -675,6 +685,8 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 
 	for (i = 0; i < lm_num; i++)
 		_sde_shd_flush_hw_lm(lm_ctx[i]);
+
+	_sde_shd_flush_hw_dsc_config(ctl_ctx);
 
 	for (i = 0; i < dspp_num; i++)
 		_sde_shd_flush_hw_dspp(dspp_ctx[i]);
