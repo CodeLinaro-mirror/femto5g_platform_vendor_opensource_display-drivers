@@ -380,7 +380,7 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_HW_RECOVERY,
 				enable, defer_to_commit);
 		break;
-	case HFI_EVENT_DISPLAY_POWER:
+	case MSM_ENC_DISPLAY_POWER:
 		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_DISPLAY_POWER,
 				enable, defer_to_commit);
 		break;
@@ -396,7 +396,7 @@ static int hfi_enc_register_pwr_event(struct sde_encoder_virt *enc, bool enable)
 {
 	int ret = 0;
 
-	ret = _hfi_enc_register_hw_event(enc, HFI_EVENT_DISPLAY_POWER, enable, false);
+	ret = _hfi_enc_register_hw_event(enc, MSM_ENC_DISPLAY_POWER, enable, false);
 	if (ret)
 		SDE_ERROR("failed to register for idle-pc power event\n");
 
