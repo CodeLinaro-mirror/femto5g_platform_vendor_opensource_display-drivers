@@ -3946,8 +3946,8 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 					mode_info.mdp_transfer_time_us_max);
 		}
 
-		sde_kms_info_add_keyint(info, "allowed_mode_switch",
-			mode_info.allowed_mode_switches);
+		sde_kms_info_add_list(info, "allowed_mode_switch", mode_info.allowed_mode_switches,
+			ARRAY_SIZE(mode_info.allowed_mode_switches));
 
 		if (!mode_info.roi_caps.num_roi)
 			continue;
