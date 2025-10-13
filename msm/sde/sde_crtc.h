@@ -498,6 +498,7 @@ struct sde_crtc_hal_funcs {
  * @static_cache_read_work: delayed worker to transition cache state to read
  * @cache_state     : Current static image cache state
  * @cache_type      : Current static image cache type to use
+ * @llcc_stale_frame_trigger : bool to check if previous commit requested stale frame handling
  * @dspp_blob_info  : blob containing dspp hw capability information
  * @cached_encoder_mask : cached encoder_mask for vblank work
  * @line_time_in_ns : current mode line time in nano sec is needed for QOS update
@@ -615,6 +616,7 @@ struct sde_crtc {
 	bool reinit_crtc_mixers;
 	int hist_irq_idx;
 	bool disable_pending_cp;
+	bool llcc_stale_frame_trigger;
 
 	int src_bpp;
 	int target_bpp;

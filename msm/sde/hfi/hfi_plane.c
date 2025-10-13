@@ -51,6 +51,18 @@ struct dcp_rot_map {
 	u32 drm_rot;
 };
 
+/*
+ * dcp_cache_attr - attributes for dcp cache
+ *
+ * @cache_state		Cache type
+ * @cache_op_type	Cache op type
+ */
+
+struct dcp_cache_attr {
+	u32 cache_state;
+	u32 cache_op_type;
+};
+
 static const struct dcp_rot_map dpu_rot_map[] = {
 	{HFI_DISPLAY_ROTATION_0, DRM_MODE_ROTATE_0},
 	{HFI_DISPLAY_ROTATION_90, DRM_MODE_ROTATE_90},
@@ -284,20 +296,23 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 		struct sde_plane_state *pstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
-	u32 prop_id, hfi_format, supported_rot;
+	u32 prop_id, hfi_format, supported_rot, llcc_scid;
 	struct hfi_display_roi src, dst;
 	struct drm_plane_state *state;
 	struct hfi_plane *phfi;
 	struct drm_framebuffer *fb;
 	struct sde_format_extended fmt = {0,};
+	struct dcp_cache_attr attr;
+	struct sde_sc_cfg *sc_cfg;
 	bool format_is_yuv;
 	int rc = 0;
 
-	if (!plane || !prop_collector || !pstate)
+	if (!plane || !prop_collector || !pstate || !plane->catalog)
 		return -EINVAL;
 
 	state = &pstate->base;
 	phfi = to_hfi_plane(plane);
+	sc_cfg = &plane->catalog->sc_cfg[SDE_SYS_CACHE_DISP];
 
 	fb = state->fb;
 	fmt.fourcc_format = fb->format->format;
@@ -351,6 +366,26 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	SDE_EVT32(prop_id, supported_rot, phfi->hfi_pipe_id);
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &supported_rot, sizeof(u32));
+
+	prop_id = HFI_PROPERTY_LAYER_CACHE_ATTR;
+	attr.cache_op_type = HFI_CACHE_OP_TYPE_NONE;
+	if (pstate->cache_state_prop && sc_cfg)
+		attr.cache_state = HFI_CACHE_STATE_READ;
+	else
+		attr.cache_state = HFI_CACHE_STATE_DISABLE;
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
+			HFI_VAL_U32_ARRAY, &attr, sizeof(struct dcp_cache_attr));
+
+	if (attr.cache_state != HFI_CACHE_STATE_DISABLE) {
+		prop_id = HFI_PROPERTY_LAYER_LLCC_SCID;
+		if (!sc_cfg) {
+			HFI_ERROR_PLANE(phfi, "Invalid sc_cfg\n");
+			return -EINVAL;
+		}
+		llcc_scid = sc_cfg->llcc_scid;
+		hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
+			HFI_VAL_U32_ARRAY, &llcc_scid, sizeof(u32));
+	}
 
 	HFI_DEBUG_PLANE(phfi, "done adding drm props\n");
 
@@ -732,6 +767,8 @@ static int hfi_plane_atomic_update(struct sde_plane *plane, struct sde_plane_sta
 	struct sde_plane_state *pstate;
 	struct hfi_kms *hfi_kms;
 	struct drm_crtc *crtc = NULL;
+	struct drm_crtc_state *drm_state = NULL;
+	struct sde_crtc_state *cstate = NULL;
 	u32 disp_id;
 
 	if (!plane || !(plane->base.state))  {
@@ -752,6 +789,10 @@ static int hfi_plane_atomic_update(struct sde_plane *plane, struct sde_plane_sta
 		crtc = old_pstate->base.crtc;
 	else
 		return -EINVAL;
+
+	drm_state = crtc->state;
+	cstate = to_sde_crtc_state(drm_state);
+	pstate->cache_state_prop = sde_crtc_get_property(cstate, CRTC_PROP_CACHE_STATE);
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
 	if (disp_id == U32_MAX) {
