@@ -41,16 +41,19 @@ enum hfi_display_blend_ops {
 
 /*
  * enum hfi_display_power_mode - extended power modes supported by the Display
+ * @HFI_MODE_DPMS_OFF     :   OFF
  * @HFI_MODE_DPMS_ON      :   ON
  * @HFI_MODE_DPMS_LP1     :   Low power mode 1
  * @HFI_MODE_DPMS_LP2     :   Low power mode 2
- * @HFI_MODE_DPMS_OFF     :   OFF
+ * @HFI_MODE_DPMS_NOLP    :   Normal mode or No Low Power mode
  */
 enum hfi_display_power_mode {
-	HFI_MODE_DPMS_ON        = 0x0,
-	HFI_MODE_DPMS_LP1       = 0x1,
-	HFI_MODE_DPMS_LP2       = 0x2,
-	HFI_MODE_DPMS_OFF       = 0x3,
+	HFI_MODE_DPMS_INVALID   = 0,
+	HFI_MODE_DPMS_OFF       = 0x1,
+	HFI_MODE_DPMS_ON        = 0x2,
+	HFI_MODE_DPMS_LP1       = 0x3,
+	HFI_MODE_DPMS_LP2       = 0x4,
+	HFI_MODE_DPMS_NOLP      = 0x5,
 };
 
 /*
@@ -111,6 +114,38 @@ struct hfi_display_frame_event_data {
 	u32 timestamp_lo;
 	u32 timestamp_hi;
 	u32 bufferflip_index;
+};
+
+/*
+ * enum hfi_layer_cache_state - Layer cache states.
+ *
+ * HFI_CACHE_STATE_DISABLE: Disable cache read/write.
+ * HFI_CACHE_STATE_READ: Read from DDR and allocate into system cache, in subsequent frames
+ *                       read from cache (GPU Idle fallback)
+ * HFI_CACHE_STATE_WRITE: Write into system cache during the last composition frame, in
+ *                        subsequent frames read from cache (CWB based idle fallback)
+ */
+enum hfi_layer_cache_state {
+	HFI_CACHE_STATE_DISABLE = 0x0,
+	HFI_CACHE_STATE_READ = 0x1,
+	HFI_CACHE_STATE_WRITE = 0x2,
+};
+
+/*
+ * enum hfi_layer_cache_op_type - System cache read op type
+ *
+ * HFI_CACHE_OP_TYPE_NONE          : No SW overwrite and driven by hardware
+ * HFI_CACHE_NORMAL_CACHEABLE_READ : Normal Cacheable Read
+ * HFI_CACHE_READ_INVALIDATE       : Read With Invalidate (RWI)
+ * HFI_CACHE_READ_EVICT            : Read With Evict (RWE)
+ * HFI_CACHE_PREFETCH_READ         : Prefetch Read (PRE)
+ */
+enum hfi_layer_cache_op_type {
+	HFI_CACHE_OP_TYPE_NONE = 0x0,
+	HFI_CACHE_NORMAL_CACHEABLE_READ = 0x1,
+	HFI_CACHE_READ_INVALIDATE = 0x2,
+	HFI_CACHE_READ_EVICT = 0x3,
+	HFI_CACHE_PREFETCH_READ = 0x4,
 };
 
 /*

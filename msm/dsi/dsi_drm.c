@@ -485,6 +485,25 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 		return false;
 	}
 
+	/* Reject non-supported mode switches in HFI.*/
+	if (adj_mode->dsi_mode_flags &&  display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HWIO) {
+		if (adj_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) {
+			bool matching = (cur_dsi_mode.timing.h_active == adj_mode->timing.h_active)
+			       && (cur_dsi_mode.timing.v_active == adj_mode->timing.v_active);
+
+			if (!matching) {
+				DSI_INFO("Mode switch %u is not supported\n",
+					adj_mode->dsi_mode_flags);
+				adj_mode->dsi_mode_flags &= ~DSI_MODE_FLAG_DMS;
+				return true;
+			}
+		} else {
+			DSI_INFO("Mode switch %u is not supported\n", adj_mode->dsi_mode_flags);
+			adj_mode->dsi_mode_flags = 0;
+			return true;
+		}
+	}
+
 	return rc;
 }
 
@@ -750,8 +769,8 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 			sizeof(dsi_mode->priv_info->roi_caps));
 	}
 
-	mode_info->allowed_mode_switches =
-		dsi_mode->priv_info->allowed_mode_switch;
+	memcpy(mode_info->allowed_mode_switches, dsi_mode->priv_info->allowed_mode_switch,
+			sizeof(mode_info->allowed_mode_switches));
 
 	return 0;
 }
@@ -945,6 +964,8 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 			msm_spr_pack_type_mode_str[panel->spr_info.pack_type_mode]);
 	}
 
+	sde_kms_info_add_keystr(info, "privacy layer support",
+			panel->privacy_feature_enabled ? "true" : "false");
 	/**
 	 * Set partial update props in hwio mode only, this disables the feature in hfi mode as
 	 * a temporal workaround until this feature is implemented in fw.
@@ -1565,6 +1586,14 @@ static bool is_valid_poms_switch(struct dsi_display_mode *mode_a,
 			(mode_a->timing.h_active == mode_b->timing.h_active));
 }
 
+static inline void set_allowed_mode_switch_bit(uint32_t *bitmap_array, int mode_idx)
+{
+	int arr_idx = mode_idx / MODE_SWITCH_BITS_PER_WORD;
+	int bit_idx = mode_idx % MODE_SWITCH_BITS_PER_WORD;
+
+	bitmap_array[arr_idx] |= BIT(bit_idx);
+}
+
 void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 		void *display)
 {
@@ -1597,12 +1626,13 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 			return;
 
 		dsi_mode_info =  panel_dsi_mode->priv_info;
-		dsi_mode_info->allowed_mode_switch |= BIT(mode_idx);
+		set_allowed_mode_switch_bit(dsi_mode_info->allowed_mode_switch, mode_idx);
+
 		if (mode_idx == mode_count - 1)
 			break;
 
 		mode_list = mode_list->next;
-		cmp_mode_idx = 1;
+		cmp_mode_idx = mode_idx + 1;
 		list_for_each_entry(cmp_drm_mode, mode_list, head) {
 			if (&cmp_drm_mode->head == &connector->modes)
 				continue;
@@ -1638,13 +1668,13 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 			}
 
 			if (allow_switch) {
-				dsi_mode_info->allowed_mode_switch |=
-					BIT(mode_idx + cmp_mode_idx);
-				cmp_dsi_mode_info->allowed_mode_switch |=
-					BIT(mode_idx);
+				set_allowed_mode_switch_bit(dsi_mode_info->allowed_mode_switch,
+					cmp_mode_idx);
+				set_allowed_mode_switch_bit(cmp_dsi_mode_info->allowed_mode_switch,
+					mode_idx);
 			}
 
-			if ((mode_idx + cmp_mode_idx) >= mode_count - 1)
+			if (cmp_mode_idx == mode_count - 1)
 				break;
 
 			cmp_mode_idx++;

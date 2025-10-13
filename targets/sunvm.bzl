@@ -21,6 +21,8 @@ def define_sunvm():
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",
                     "CONFIG_DRM_SDE_VM",
                     "CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT",
+                    "CONFIG_MDSS_HFI_ADAPTER",
+                    "CONFIG_MDSS_HFI",
                 ],
                 vm_target = True,
             )

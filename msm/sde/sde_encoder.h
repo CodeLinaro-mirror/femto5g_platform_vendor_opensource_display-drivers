@@ -465,6 +465,7 @@ struct sde_encoder_hal_funcs {
  * @base:		drm_encoder base class for registration with DRM
  * @enc_spin_lock:	Virtual-Encoder-Wide Spin Lock for IRQ purposes
  * @bus_scaling_client:	Client handle to the bus scaling interface
+ * @cached_connector:	Pointer to cached drm_connector object.
  * @te_source:		vsync source pin information
  * @num_phys_encs:	Actual number of physical encoders contained.
  * @phys_encs:		Container of physical encoders managed.
@@ -567,6 +568,7 @@ struct sde_encoder_virt {
 	spinlock_t enc_spinlock;
 	struct mutex vblank_ctl_lock;
 	uint32_t bus_scaling_client;
+	struct drm_connector *cached_connector;
 
 	uint32_t display_num_of_h_tiles;
 	uint32_t te_source;

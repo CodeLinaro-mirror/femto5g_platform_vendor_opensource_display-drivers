@@ -1425,6 +1425,65 @@
 #define HFI_PROPERTY_OUTPUT_LAYER_ROTATION                           0x00030023
 
 /*
+ * HFI_PROPERTY_LAYER_CACHE_ATTR - Gets sys cache related attributes for each layer.
+ *                               Host is expected to send this packet
+ *                               of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                               command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_CACHE_ATTR
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_CACHE_ATTR \|
+ *                                 (version=0 << 20) \| (dsize=3 << 24 )
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2]   : one of the enum values in hfi_layer_cache_state
+ *     (u32_value) payload [3]   : one of the enum values in hfi_layer_cache_op_type
+ */
+#define HFI_PROPERTY_LAYER_CACHE_ATTR                                0x00030024
+
+/*
+ * HFI_PROPERTY_LAYER_LLCC_SCID - Gets LLCC scid of the system cache to be used
+ *                                      Host is expected to send this packet as part
+ *                                      of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                      command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LLCC_SCID
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_LLCC_SCID \|
+ *                                 (version=0 << 20) \| (dsize=2 << 24 )
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2]   : LLCC scid
+ */
+#define HFI_PROPERTY_LAYER_LLCC_SCID                                 0x00030025
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_CACHE_ATTR - Gets sys cache related attributes for each
+ *                                        output layer.
+ *                               Host is expected to send this packet
+ *                               of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                               command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_CACHE_ATTR
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_CACHE_ATTR \|
+ *                                 (version=0 << 20) \| (dsize=3 << 24 )
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2]   : one of the enum values in hfi_layer_cache_state
+ *     (u32_value) payload [3]   : one of the enum values in hfi_layer_cache_op_type
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_CACHE_ATTR                         0x00030026
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID - Gets LLCC scid of the system cache to be used for
+ *                                      output layer. Host is expected to send this packet as part
+ *                                      of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                      command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID \|
+ *                                 (version=0 << 20) \| (dsize=2 << 24 )
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2]   : LLCC scid
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID                          0x00030027
+
+/*
  * All layer color properties begin here
  */
 #define HFI_PROPERTY_LAYER_COLOR_BEGIN                               0x00030100

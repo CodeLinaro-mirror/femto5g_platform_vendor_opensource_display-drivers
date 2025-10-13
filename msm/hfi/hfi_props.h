@@ -16,10 +16,12 @@
 #include "hfi_defs_device.h"
 #include "hfi_defs_display.h"
 #include "hfi_defs_panel.h"
+#include "hfi_defs_lsr.h"
 #include "hfi_packet.h"
 #include "hfi_properties_device.h"
 #include "hfi_properties_display.h"
 #include "hfi_properties_panel.h"
 #include "hfi_properties_debug.h"
+#include "hfi_properties_lsr_internal.h"
 
 #endif  // _HFI_PROPS_H_

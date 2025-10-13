@@ -83,6 +83,14 @@ struct msm_gem_vma;
 #define MAX_BRIDGES    16
 #define MAX_CONNECTORS 16
 
+#if IS_ENABLED(CONFIG_DSI_EXTENDED_MODES)
+#define DSI_MODE_MAX 256
+#else
+#define DSI_MODE_MAX 32
+#endif
+#define MODE_SWITCH_BITS_PER_WORD 32
+#define MODE_SWITCH_BITMAP_SIZE (DSI_MODE_MAX / MODE_SWITCH_BITS_PER_WORD)
+
 #define MSM_RGB 0x0
 #define MSM_YUV 0x1
 
@@ -156,6 +164,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_UCSC_ALPHA_DITHER,
 	PLANE_PROP_BG_ALPHA,
 	PLANE_PROP_SRC_IMG_SIZE,
+	PLANE_PROP_SRC_SYS_CACHE_ID,
 
 	/* enum/bitmask properties */
 	PLANE_PROP_BLEND_OP,
@@ -168,6 +177,16 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_SRC_RECT_EXT,
 	PLANE_PROP_DST_RECT_EXT,
 	PLANE_PROP_COLOR_MASK_OVERRIDE,
+
+	/* LSR plane properties */
+	PLANE_PROP_IN_BBOX,
+	PLANE_PROP_REPROJ_RENDER_TYPE,
+	PLANE_PROP_REPROJ_LOCK_TYPE,
+	PLANE_PROP_REPROJ_RENDER_POSE,
+	PLANE_PROP_REPROJ_PLANE_EQUATION,
+	PLANE_PROP_REPROJ_RENDER_FRUSTUM,
+	PLANE_PROP_REPROJ_ALPHA_BUFFER,
+	PLANE_PROP_REPROJ_LAYER_GAMMA,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -230,6 +249,13 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_DNSC_BLUR,
 	CONNECTOR_PROP_WB_CSC_CONFIG,
 
+	/* reprojection blob properties */
+	CONNECTOR_PROP_REPROJ_SPARSE_GRID,
+	CONNECTOR_PROP_REPROJ_RADIAL_DISTORTION_GRID,
+	CONNECTOR_PROP_REPROJ_DISPLAY_GAMMA,
+	CONNECTOR_PROP_REPROJ_GCX_SESSION_CONFIG,
+	CONNECTOR_PROP_REPROJ_GCX_SESSION_CONFIG_DATA,
+
 	/* # of blob properties */
 	CONNECTOR_PROP_BLOBCOUNT,
 
@@ -252,6 +278,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_DYN_TRANSFER_TIME,
 	CONNECTOR_PROP_BRIGHTNESS,
 	CONNECTOR_PROP_EMSYNC_FPS,
+	CONNECTOR_PROP_PRIVACY_LAYER_V1,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -273,6 +300,28 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_WB_ROT_TYPE,
 	CONNECTOR_PROP_WB_ROT_BYTES_PER_CLK,
 	CONNECTOR_PROP_BPP_MODE,
+
+	/* LSR connector properties*/
+	CONNECTOR_PROP_OUT_FB_LIST,
+	CONNECTOR_PROP_LSR_WB_NUM_VIEWS,
+	CONNECTOR_PROP_LSR_WB_REPROJ_SYNC_TO,
+	CONNECTOR_PROP_LSR_WB_REPROJ_CONFIG_MATRIX,
+	CONNECTOR_PROP_REPROJ_OPTICAL_AXIS_OFFSET,
+	CONNECTOR_PROP_REPROJ_FUNCTIONAL_MODE,
+	CONNECTOR_PROP_REPROJ_DISTORT_RESOLUTION,
+	CONNECTOR_PROP_REPROJ_GRID_SIZE,
+	CONNECTOR_PROP_REPROJ_GRID_WIDTH,
+	CONNECTOR_PROP_REPROJ_GRID_HEIGHT,
+	CONNECTOR_PROP_REPROJ_R_MAX,
+	CONNECTOR_PROP_REPROJ_TO_LRGB_LEFT,
+	CONNECTOR_PROP_REPROJ_TO_LRGB_RIGHT,
+	CONNECTOR_PROP_REPROJ_ERROR_TO_L,
+	CONNECTOR_PROP_REPROJ_DISP_IM_W,
+	CONNECTOR_PROP_REPROJ_TILE_W,
+	CONNECTOR_PROP_REPROJ_MIN_BBOX_W,
+	CONNECTOR_PROP_REPROJ_DISP_IM_H,
+	CONNECTOR_PROP_REPROJ_TILE_H,
+	CONNECTOR_PROP_REPROJ_MIN_BBOX_H,
 
 	/* total # of properties */
 	CONNECTOR_PROP_COUNT
@@ -385,6 +434,8 @@ static const char *msm_spr_pack_type_mode_str[MSM_DISPLAY_SPR_PACK_TYPE_MODE_MAX
  * @MSM_DISPLAY_CAP_MST_MODE:           Display with MST support
  * @MSM_DISPLAY_SPLIT_LINK:             Split Link enabled
  * @MSM_DISPLAY_LOOPBACK_MODE:          Display in loopback mode
+ * @MSM_DISPLAY_REPROJ_CSC:		Display in reprojection CSC mode
+ * @MSM_DISPLAY_REPROJ_REPRO:		Display in reprojection REPRO mode
  */
 enum msm_display_caps {
 	MSM_DISPLAY_CAP_VID_MODE	= BIT(0),
@@ -395,6 +446,8 @@ enum msm_display_caps {
 	MSM_DISPLAY_CAP_MST_MODE	= BIT(5),
 	MSM_DISPLAY_SPLIT_LINK		= BIT(6),
 	MSM_DISPLAY_LOOPBACK_MODE	= BIT(7),
+	MSM_DISPLAY_REPROJ_CSC		= BIT(8),
+	MSM_DISPLAY_REPROJ_REPRO	= BIT(9),
 };
 
 /**
@@ -474,6 +527,7 @@ struct msm_ratio {
  * @MSM_ENC_VBLANK - wait for the HW VBLANK event (for driver-internal waiters)
  * @MSM_ENC_ACTIVE_REGION - wait for the TG to be in active pixel region
  * @MSM_ENC_HW_RECOVERY - wait for the HW to recover from error
+ * @MSM_ENC_DISPLAY_POWER - notify display power event
  * @MSM_ENC_EVENT_MAX - maximum value for events related to frame
  */
 enum msm_event_wait {
@@ -482,6 +536,7 @@ enum msm_event_wait {
 	MSM_ENC_VBLANK,
 	MSM_ENC_ACTIVE_REGION,
 	MSM_ENC_HW_RECOVERY,
+	MSM_ENC_DISPLAY_POWER,
 	MSM_ENC_EVENT_MAX,
 };
 
@@ -1017,7 +1072,7 @@ struct msm_mode_info {
 	u32 mdp_transfer_time_us;
 	u32 mdp_transfer_time_us_min;
 	u32 mdp_transfer_time_us_max;
-	u32 allowed_mode_switches;
+	u32 allowed_mode_switches[MODE_SWITCH_BITMAP_SIZE];
 	bool disable_rsc_solver;
 	struct msm_dyn_clk_list dyn_clk_list;
 	struct msm_freq_step_list *freq_step_list;
@@ -1167,6 +1222,7 @@ struct msm_display_kickoff_params {
  * @freq_pattern: Frequency pattern to be set
  * @arp_t2_in_us: Time when TE shall be asserted relative to next frame
  *		  update deadline(T1) in case of ARP
+ * @privacy_v1: Privacy layer info
  */
 struct msm_display_conn_params {
 	uint32_t qsync_mode;
@@ -1175,6 +1231,7 @@ struct msm_display_conn_params {
 	bool peripheral_flush;
 	struct msm_freq_step_pattern *freq_pattern;
 	uint16_t arp_t2_in_us;
+	struct sde_drm_privacy_layer_v1 *privacy_v1;
 };
 
 /**
