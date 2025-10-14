@@ -45,6 +45,7 @@
 #endif
 
 #define MAX_DSI_DISPLAYS		2
+#define MAX_SPLASH_DISPLAYS		2
 #define MAX_DATA_PATH_PER_DSIPLAY	4
 
 enum sde_format_flags {
@@ -58,6 +59,7 @@ enum sde_format_flags {
 	SDE_FORMAT_FLAG_CAC_BIT,
 	SDE_FORMAT_FLAG_DMA_BIT,
 	SDE_FORMAT_FLAG_FSC_BIT,
+	SDE_FORMAT_FLAG_FSC_4R_BIT,
 	SDE_FORMAT_FLAG_BIT_MAX,
 };
 
@@ -71,10 +73,13 @@ enum sde_format_flags {
 #define SDE_FORMAT_FLAG_CAC		BIT(SDE_FORMAT_FLAG_CAC_BIT)
 #define SDE_FORMAT_FLAG_DMA		BIT(SDE_FORMAT_FLAG_DMA_BIT)
 #define SDE_FORMAT_FLAG_FSC		BIT(SDE_FORMAT_FLAG_FSC_BIT)
+#define SDE_FORMAT_FLAG_FSC_4R		BIT(SDE_FORMAT_FLAG_FSC_4R_BIT)
 #define SDE_FORMAT_IS_YUV(X)		\
 	(test_bit(SDE_FORMAT_FLAG_YUV_BIT, (X)->flag))
 #define SDE_FORMAT_IS_FSC(X)		\
 	(test_bit(SDE_FORMAT_FLAG_FSC_BIT, (X)->flag))
+#define SDE_FORMAT_IS_FSC_4R(X)		\
+	(test_bit(SDE_FORMAT_FLAG_FSC_4R_BIT, (X)->flag))
 #define SDE_FORMAT_IS_DX(X)		\
 	(test_bit(SDE_FORMAT_FLAG_DX_BIT, (X)->flag))
 #define SDE_FORMAT_IS_LINEAR(X)		((X)->fetch_mode == SDE_FETCH_LINEAR)

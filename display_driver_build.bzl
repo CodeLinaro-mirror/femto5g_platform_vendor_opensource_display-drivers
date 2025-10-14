@@ -78,7 +78,7 @@ def display_module_entry(hdrs = []):
 def define_target_variant_modules(target, variant, registry, modules, config_options = [], vm_target = False):
     kernel_build_tv = "{}_{}".format(target, variant)
     deps = select({
-            "//build/kernel/kleaf:socrepo_true": [
+            "//build/qcom_build_extensions:qtisocrepo_true": [
             "//soc-repo:all_headers",
             "//soc-repo:{}/drivers/firmware/qcom/qcom-scm".format(kernel_build_tv),
             "//soc-repo:{}/drivers/pinctrl/qcom/pinctrl-msm".format(kernel_build_tv),
@@ -94,20 +94,20 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
             "//soc-repo:{}/drivers/soc/qcom/socinfo".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/panel_event_notifier".format(kernel_build_tv),
         ],
-        "//build/kernel/kleaf:socrepo_false": ["//msm-kernel:all_headers"],
+        "//build/qcom_build_extensions:qtisocrepo_false": ["//msm-kernel:all_headers"],
         })
 
     if not vm_target:
         deps += select({
-           "//build/kernel/kleaf:socrepo_true": ["//soc-repo:{}/drivers/soc/qcom/qcom_va_minidump".format(kernel_build_tv)],
-           "//build/kernel/kleaf:socrepo_false": [],
+           "//build/qcom_build_extensions:qtisocrepo_true": ["//soc-repo:{}/drivers/soc/qcom/qcom_va_minidump".format(kernel_build_tv)],
+           "//build/qcom_build_extensions:qtisocrepo_false": [],
         })
 
         deps += [
             "//vendor/qcom/opensource/mm-drivers:mm_drivers_headers",
         ]
         deps += select({
-            "//build/kernel/kleaf:socrepo_true": [
+            "//build/qcom_build_extensions:qtisocrepo_true": [
                 "//soc-repo:{}/drivers/gpu/drm/display/drm_display_helper".format(kernel_build_tv),
                 "//soc-repo:{}/drivers/soc/qcom/crm-v2".format(kernel_build_tv),
                 "//soc-repo:{}/drivers/soc/qcom/llcc-qcom".format(kernel_build_tv),
@@ -116,12 +116,12 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
                 "//soc-repo:{}/drivers/usb/dwc3/dwc3-msm".format(kernel_build_tv),
                 "//soc-repo:{}/drivers/soc/qcom/wcd_usbss_i2c".format(kernel_build_tv),
             ],
-            "//build/kernel/kleaf:socrepo_false": [],
+            "//build/qcom_build_extensions:qtisocrepo_false": [],
         })
 
     kernel_build = select({
-        "//build/kernel/kleaf:socrepo_true": "//soc-repo:{}_base_kernel".format(kernel_build_tv),
-        "//build/kernel/kleaf:socrepo_false": "//msm-kernel:{}".format(kernel_build_tv),
+        "//build/qcom_build_extensions:qtisocrepo_true": "//soc-repo:{}_base_kernel".format(kernel_build_tv),
+        "//build/qcom_build_extensions:qtisocrepo_false": "//msm-kernel:{}".format(kernel_build_tv),
     })
     modules = [registry.get(module_name) for module_name in modules]
     options = _get_kernel_build_options(modules, config_options)

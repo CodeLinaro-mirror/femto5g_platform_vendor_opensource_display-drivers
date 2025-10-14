@@ -103,6 +103,29 @@ extern "C" {
  */
 #define DRM_FORMAT_MOD_QCOM_FSC_TILE	fourcc_mod_code(QCOM, 0x800)
 
+
+/**
+ * @DRM_FORMAT_MOD_QCOM_FSC_4R_TILE:	Refers to a tile variant of the
+ *					planar format. Implementation may be
+ *					platform and base-format specific.
+ */
+#define DRM_FORMAT_MOD_QCOM_FSC_4R_TILE	fourcc_mod_code(QCOM, 0x1000)
+
+/**
+ * @DRM_FORMAT_MOD_QCOM_FSC_ALPHA:	Refers to a alpha variant of the
+ *					planar format. Implementation may be
+ *					platform and base-format specific.
+ */
+#define DRM_FORMAT_MOD_QCOM_FSC_ALPHA	fourcc_mod_code(QCOM, 0x2000)
+
+/**
+ * @DRM_FORMAT_MOD_QCOM_NV12_4R_Y_4:	Refers to a RGBA variant of the
+ *					stitched NV12_4R(Y only) layers as
+ *					planar format. Implementation may be
+ *					platform and base-format specific.
+ */
+#define DRM_FORMAT_MOD_QCOM_NV12_4R_4Y	fourcc_mod_code(QCOM, 0x4000)
+
 /**
  * Blend operations for "blend_op" property
  *
@@ -180,6 +203,15 @@ extern "C" {
  */
 #define SDE_DRM_SEC_NON_SEC            0
 #define SDE_DRM_SEC_ONLY               1
+
+/**
+ * WB panel modes for "wb_panel_type" Connector property.
+ *                        Connector property used to identify the type of LSR display panel.
+ * @ SDE_DRM_WB_PANEL_TYPE_RGB: RGB panel.
+ * @ SDE_DRM_WB_PANEL_TYPE_FSD: FSD panel.
+ */
+#define SDE_DRM_WB_PANEL_TYPE_RGB            0
+#define SDE_DRM_WB_PANEL_TYPE_FSD            1
 
 /**
  * struct sde_drm_pix_ext_v1 - version 1 of pixel ext structure
@@ -1050,6 +1082,21 @@ struct sde_drm_dnsc_blur_cfg {
 	__u32 dither_matrix[DNSC_BLUR_DITHER_MATRIX_SZ];
 };
 
+/**
+ * struct drm_msm_opaque_config - Opaque configuration
+ * @size: Size of the payload.
+ * @data: opaque data from the client.
+ * @flags: Flags to indicate features enabled.
+ * @crc: CRC for data validation.
+ */
+struct drm_msm_opaque_config {
+	__u64 size;
+	__u64 flags;
+	__u32 crc;
+	__u64 data;
+};
+
+
 #define DRM_SDE_WB_CONFIG              0x40
 #define DRM_MSM_REGISTER_EVENT         0x41
 #define DRM_MSM_DEREGISTER_EVENT       0x42
@@ -1103,6 +1150,178 @@ struct sde_drm_dnsc_blur_cfg {
 #define DRM_MSM_DISPLAY_MODE_CHANGE_HINT          0x08
 
 #define DRM_MSM_WAKE_UP_ALL_DISPLAYS        0xFFFFFFFF
+
+/* Reprojection flags*/
+#define MAX_VIEWS 2
+#define MAX_BUFFERS_PER_VIEW 8
+
+#define SDE_VISIBILITY_LEFT 0
+#define SDE_VISIBILITY_RIGHT 1
+
+/**
+ * struct sde_drm_view_descriptor - View descriptor structure
+ * @view_index: View index.
+ * @num_fbs: Number of FBs per view.
+ * @fb_id: Array of FB IDs.
+ */
+struct sde_drm_view_descriptor {
+	__u32 view_index;
+	__u32 num_fbs;
+	__u32 fb_id[MAX_BUFFERS_PER_VIEW];
+};
+
+/**
+ * struct sde_drm_fb_id_list - FB ID list structure
+ * @views: - Array of view descriptors for front view.
+ * @back_views: Array of view descriptors for back view.
+ */
+struct sde_drm_fb_id_list {
+	struct sde_drm_view_descriptor views[MAX_VIEWS];
+	struct sde_drm_view_descriptor back_views[MAX_VIEWS];
+};
+
+/**
+ * struct sde_drm_point - Point structure
+ * @x: x.
+ * @y: y.
+ */
+struct sde_drm_point {
+	__u32 x;
+	__u32 y;
+};
+
+/**
+ * struct sde_drm_lsr_point - LSR Point structure
+ * @points: Array of Points.
+ */
+struct sde_drm_lsr_point {
+	struct sde_drm_point points[MAX_VIEWS];
+};
+
+#define REPROJ_MATRIX_ROWS 4
+#define REPROJ_MATRIX_COLS 4
+
+/**
+ * struct sde_drm_reproj_matrix - Reprojection structure
+ * @view_index: View index.
+ * @is_inverse: Indicates if it is inverse.
+ * @reproj_matrix: 2D array of reproj matrix.
+ */
+struct sde_drm_reproj_matrix {
+	__u32 view_index;
+	__u32 is_inverse;
+	__u32 reproj_matrix[REPROJ_MATRIX_ROWS][REPROJ_MATRIX_COLS];
+};
+
+/**
+ * struct sde_drm_reproj_matrix_list - Reproj Matrix List structure
+ * @matrix_list: Array of Reproj matrices.
+ */
+struct sde_drm_reproj_matrix_list {
+	struct sde_drm_reproj_matrix matrix_list[MAX_VIEWS * 2];
+};
+
+ /**
+  * enum sde_drm_lsr_layer_type - App local/remote layer type hint
+  * @SDE_LSR_LAYER_LOCAL: Local layer.
+  * @SDE_LSR_LAYER_REMOTE: Remote layer.
+  */
+enum sde_drm_lsr_layer_type {
+	SDE_LSR_LAYER_LOCAL = 0,
+	SDE_LSR_LAYER_REMOTE
+};
+
+/**
+ * enum sde_drm_lsr_layer_lock_type - App layer lock type
+ * @SDE_LSR_LAYER_LOCK_WORLD_LOCK  : World locked layer.
+ * @SDE_LSR_LAYER_LOCK_HEAD_LOCK   : Head locked layer.
+ * @SDE_LSR_LAYER_LOCK_SPHERE_LOCK : Sphere locked layer.
+ */
+enum sde_drm_lsr_layer_lock_type {
+	SDE_LSR_LAYER_LOCK_WORLD_LOCK = 0,
+	SDE_LSR_LAYER_LOCK_HEAD_LOCK,
+	SDE_LSR_LAYER_LOCK_SPHERE_LOCK
+};
+
+/*
+ * enum sde_drm_layer_gamma_type - Layer Gamma type
+ * @SDE_LAYER_GAMMA_NONE     : None
+ * @SDE_LAYER_GAMMA_1_0      : 1.0
+ * @SDE_LAYER_GAMMA_2_2      : 2.2
+ * @SDE_LAYER_GAMMA_2_6      : 2.6
+ * @SDE_LAYER_GAMMA_REC_601  : Rec. 601
+ * @SDE_LAYER_GAMMA_REC_709  : Rec. 709
+ * @SDE_LAYER_GAMMA_REC_SRGB : SRGB
+ */
+enum sde_drm_layer_gamma_type {
+	SDE_LAYER_GAMMA_NONE = 0,
+	SDE_LAYER_GAMMA_1_0,
+	SDE_LAYER_GAMMA_2_2,
+	SDE_LAYER_GAMMA_2_6,
+	SDE_LAYER_GAMMA_REC_601,
+	SDE_LAYER_GAMMA_REC_709,
+	SDE_LAYER_GAMMA_REC_SRGB
+};
+
+/**
+ * struct sde_drm_plane_equation - Plane equation structure
+ * @a: a.
+ * @b: b.
+ * @c: c
+ * @d: d.
+ */
+struct sde_drm_plane_equation {
+	__u32 a;
+	__u32 b;
+	__u32 c;
+	__u32 d;
+};
+
+/**
+ * struct sde_drm_render_pose - Render Pose structure
+ * @x_position: x_position.
+ * @y_position: y_position.
+ * @z_position: z_position.
+ * @x_orientation: x_orientation.
+ * @y_orientation: y_orientation.
+ * @z_orientation: z_orientation.
+ * @w_orientation: w_orientation.
+ */
+struct sde_drm_render_pose {
+	__u32 x_position;
+	__u32 y_position;
+	__u32 z_position;
+	__u32 x_orientation;
+	__u32 y_orientation;
+	__u32 z_orientation;
+	__u32 w_orientation;
+};
+
+/**
+ * struct sde_drm_render_frustum - Render Frustum structure
+ * @angle_left: Left angle.
+ * @angle_right: Right angle.
+ * @angle_up: Up angle.
+ * @angle_down: Down angle.
+ */
+struct sde_drm_render_frustum {
+	__u32 angle_left;
+	__u32 angle_right;
+	__u32 angle_up;
+	__u32 angle_down;
+};
+
+/**
+ * enum sde_drm_wb_functional_mode - WB Functional modes
+ * @SDE_LSR_WB_RENDER_MODE - Render mode.
+ * @SDE_LSR_WB_REPROJECTION_MODE - Reprojection mode.
+ * @SDE_LSR_WB_FUNCTIONAL_MODE_MAX - Used to track max possible modes.
+ */
+enum sde_drm_wb_functional_mode {
+	SDE_LSR_WB_RENDER_MODE = 0,
+	SDE_LSR_WB_REPROJECTION_MODE,
+	SDE_LSR_WB_FUNCTIONAL_MODE_MAX,
+};
 
 #define DRM_IOCTL_SDE_WB_CONFIG \
 	DRM_IOW((DRM_COMMAND_BASE + DRM_SDE_WB_CONFIG), struct sde_drm_wb_cfg)

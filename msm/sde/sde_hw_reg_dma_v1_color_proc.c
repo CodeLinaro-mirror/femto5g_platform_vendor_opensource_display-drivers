@@ -137,6 +137,10 @@ int log_sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off,
 		REG_DMA_HEADERS_BUFFER_SZ)
 #define AIQE_SSRC_DATA_MEM_SIZE ((sizeof(struct drm_msm_ssrc_data)) + \
 		REG_DMA_HEADERS_BUFFER_SZ)
+#define AIQE_ABC_MEM_SIZE ((sizeof(struct drm_msm_abc)) + \
+		REG_DMA_HEADERS_BUFFER_SZ)
+#define AIQE_AI_SCALER_MEM_SIZE ((sizeof(struct drm_msm_ai_scaler)) + \
+		REG_DMA_HEADERS_BUFFER_SZ)
 
 #define APPLY_MASK_AND_SHIFT(x, n, shift) ((x & (REG_MASK(n))) << (shift))
 #define REG_DMA_VIG_GAMUT_OP_MASK 0x300
@@ -221,6 +225,7 @@ static u32 feature_map[SDE_DSPP_MAX] = {
 	[SDE_DSPP_DEMURA] = DEMURA_CFG,
 	[SDE_DSPP_DEMURA_CFG0_PARAM2] = DEMURA_CFG0_PARAM2,
 	[SDE_DSPP_AIQE] = AIQE_MDNIE,
+	[SDE_DSPP_AI_SCALER] = AIQE_AI_SCALER,
 };
 
 static u32 sspp_feature_map[SDE_SSPP_MAX] = {
@@ -253,6 +258,7 @@ static u32 feature_reg_dma_sz[SDE_DSPP_MAX] = {
 	[SDE_DSPP_DEMURA] = DEMURA_MEM_SIZE,
 	[SDE_DSPP_DEMURA_CFG0_PARAM2] = DEMURA_CFG0_PARAM2_MEM_SIZE,
 	[SDE_DSPP_AIQE] = AIQE_MDNIE_SIZE,
+	[SDE_DSPP_AI_SCALER] = AIQE_AI_SCALER_MEM_SIZE,
 };
 
 static u32 sspp_feature_reg_dma_sz[SDE_SSPP_MAX] = {
@@ -619,6 +625,15 @@ static int _reg_dma_init_dspp_feature_buf(int feature, struct sde_hw_dspp *ctx)
 		if (rc)
 			return rc;
 
+		rc = reg_dma_buf_init(
+			&dspp_buf[AIQE_ABC][ctx->idx][ctx->dpu_idx],
+			AIQE_ABC_MEM_SIZE,
+			ctx->dpu_idx);
+	} else if (feature == SDE_DSPP_AI_SCALER) {
+		rc = reg_dma_buf_init(
+			&dspp_buf[AIQE_AI_SCALER][ctx->idx][ctx->dpu_idx],
+			feature_reg_dma_sz[feature],
+			ctx->dpu_idx);
 	} else {
 		rc = reg_dma_buf_init(
 			&dspp_buf[feature_map[feature]][ctx->idx][ctx->dpu_idx],

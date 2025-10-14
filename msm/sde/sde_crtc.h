@@ -522,6 +522,8 @@ struct sde_crtc_hal_funcs {
  * @hfi_crtc: Pointer to hfi crtc struct
  * @hal_ops: Local callback hal function pointer table
  * @dspp_pa_mode: top-level bitmask maintaining state of PA block
+ * @is_waiting_for_hw_fence: true if hw-fence backed input fence is not signaled prior to
+ *                           commit prepare
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -652,6 +654,7 @@ struct sde_crtc {
 	struct sde_crtc_hal_funcs hal_ops;
 
 	struct cp_pa_mode dspp_pa_mode;
+	bool is_waiting_for_hw_fence;
 };
 
 enum sde_crtc_dirty_flags {

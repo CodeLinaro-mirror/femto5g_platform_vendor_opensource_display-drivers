@@ -194,8 +194,6 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 	struct hfi_connector *hfi_conn;
 	struct sde_kms *sde_kms;
 	struct drm_device *ddev;
-	struct sde_crtc *crtc;
-	struct drm_crtc *dcrtc = NULL;
 
 	if (!hfi_client || !hfi_client->priv) {
 		SDE_ERROR("invalid params\n");
@@ -257,14 +255,10 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 		return rc;
 	}
 
-	drm_for_each_crtc(dcrtc, ddev) {
-		crtc = to_sde_crtc(dcrtc);
-		/* destroy fw mapped buffers for crtc */
-		rc = hfi_crtc_destroy_shared_map_buffers(crtc);
-		if (rc) {
-			SDE_ERROR("failed to destroy fw mapped buffers for crtc\n");
-			return rc;
-		}
+	rc = hfi_adapter_ssr_unmap_device_addr(hfi_client);
+	if (rc) {
+		DSI_ERR("failed to unmap fw mapped buffers, rc: %d\n", rc);
+		return rc;
 	}
 
 	/* Release all command buffers associated with DPU driver hfi client */
@@ -284,8 +278,6 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 	struct hfi_connector *hfi_conn;
 	struct sde_kms *sde_kms;
 	struct drm_device *ddev;
-	struct sde_crtc *crtc;
-	struct drm_crtc *dcrtc = NULL;
 
 	SDE_DEBUG("process ssr end called\n");
 
@@ -312,21 +304,17 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 	priv = ddev->dev_private;
 	mp = &priv->phandle.mp;
 
+	rc = hfi_adapter_ssr_map_device_addr(hfi_client);
+	if (rc) {
+		DSI_ERR("failed to unmap fw mapped buffers, rc: %d\n", rc);
+		return rc;
+	}
+
 	/* re configure fw with lut dma configs */
 	rc = sde_kms_reinit_device_lut_dma(sde_kms);
 	if (rc) {
 		SDE_ERROR("failed lut dma configuration rc=%d\n", rc);
 		return rc;
-	}
-
-	drm_for_each_crtc(dcrtc, ddev) {
-		crtc = to_sde_crtc(dcrtc);
-		/* allocate fw mapped buffers for crtc */
-		rc = hfi_crtc_alloc_shared_map_buffers(crtc);
-		if (rc) {
-			SDE_ERROR("failed to allocate fw mapped buffers for crtc\n");
-			return rc;
-		}
 	}
 
 	/* Resume all connected displays */

@@ -420,8 +420,14 @@ static const struct dp_drm_mst_fw_helper_ops drm_dp_mst_fw_helper_ops = {
 
 /* DP MST Bridge OPs */
 
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 static int dp_mst_bridge_attach(struct drm_bridge *dp_bridge,
 				enum drm_bridge_attach_flags flags)
+#else
+static int dp_mst_bridge_attach(struct drm_bridge *dp_bridge,
+				struct drm_encoder *encoder,
+				enum drm_bridge_attach_flags flags)
+#endif
 {
 	struct dp_mst_bridge *bridge;
 
@@ -1261,6 +1267,8 @@ void dp_mst_clear_edid_cache(void *dp_display) {
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		c_conn = to_sde_connector(conn);
 		if (!c_conn->mst_port)
+			continue;
+		if (conn->status == connector_status_connected)
 			continue;
 
 		mutex_lock(&mst->edid_lock);

@@ -515,7 +515,6 @@ struct sde_kms {
 
 	struct hfi_kms *hfi_kms;
 	struct sde_kms_hal_funcs hal_ops;
-	bool hfi_session_start;
 	enum msm_disp_op debugfs_display_op;
 	enum msm_disp_op frame_trigger_state;
 };

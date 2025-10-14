@@ -91,8 +91,8 @@ struct hfi_display_roi {
 
 /*
  * struct hfi_display_vsync_data - vsync data
- * @timestamp_lo    :  lower value of 64bit vsync timestamp
- * @timestamp_hi    :  higher value of 64bit vsync timestamp
+ * @timestamp_lo    :  lower value of 64bit vsync timestamp in ns
+ * @timestamp_hi    :  higher value of 64bit vsync timestamp in ns
  * @vsync_index     :  vsync index for the timestamp
  */
 struct hfi_display_vsync_data {
@@ -103,14 +103,78 @@ struct hfi_display_vsync_data {
 
 /*
  * struct hfi_display_frame_event_data - frame event data
- * @timestamp_lo         :  lower value of 64bit Buffer flip timestamp
- * @timestamp_hi         :  higher value of 64bit Buffer flip timestamp
+ * @timestamp_lo         :  lower value of 64bit Buffer flip timestamp in ns
+ * @timestamp_hi         :  higher value of 64bit Buffer flip timestamp in ns
  * @bufferflip_index     :  bufferflip index for the timestamp
  */
 struct hfi_display_frame_event_data {
 	u32 timestamp_lo;
 	u32 timestamp_hi;
 	u32 bufferflip_index;
+};
+
+/*
+ * struct hfi_display_autorefresh_cfg - autorefresh config data.
+ * @enable        :  autorefresh enable/disable.
+ * @frame_count   :  autorefresh frame number for controlling frame rate.
+ */
+struct hfi_display_autorefresh_cfg {
+	u32 enable;
+	u32 frame_count;
+};
+
+/*
+ * @struct hfi_display_idle_event_data
+ * @brief Idle event data
+ *
+ * @var timestamp_lo
+ *   Lower 32 bits of the 64-bit idle event timestamp in ns.
+ * @var timestamp_hi
+ *   Higher 32 bits of the 64-bit idle event timestamp in ns.
+ * @var idle_index
+ *   Idle index for the timestamp.
+ */
+struct hfi_display_idle_event_data {
+	u32 timestamp_lo;
+	u32 timestamp_hi;
+	u32 idle_index;
+};
+
+/*
+ * @struct hfi_display_power_event_data
+ * @brief Power event data
+ *
+ * @var timestamp_lo
+ *   Lower 32 bits of the 64-bit power event timestamp in ns.
+ * @var timestamp_hi
+ *   Higher 32 bits of the 64-bit power event timestamp in ns.
+ * @var power_state
+ *   power_state corresponding to which power mode we are in.
+ */
+struct hfi_display_power_event_data {
+	u32 timestamp_lo;
+	u32 timestamp_hi;
+	enum hfi_display_power_mode power_state;
+};
+
+/*
+ * @enum hfi_display_idle_timer_control
+ * @brief Enum to control idle timer.
+ *
+ * @var HFI_DEFAULT
+ *   Restore idle timer to default state
+ * @var HFI_WAKEUP
+ *   Restore the display from power collapse state.
+ * @var HFI_BLOCK_TIMER
+ *   Block the idle timer from expiring
+ * @var HFI_UNBLOCK_TIMER
+ *   Unblock the idle timer from expiring
+ */
+enum hfi_display_idle_timer_control {
+	HFI_DEFAULT          = 0x0,
+	HFI_WAKEUP           = 0x1,
+	HFI_BLOCK_TIMER      = 0x2,
+	HFI_UNBLOCK_TIMER    = 0x3,
 };
 
 /*

@@ -64,23 +64,6 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc);
  * Return: display ID
  */
 u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state);
-
-/**
- * hfi_crtc_destroy_shared_map_buffers - Destroy shared buffers mapped to
- *                                       firmware for crtc
- * @crtc: Pointer to sde crtc struct
- * @Returns: 0 on success, or error code on failure
- */
-int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc);
-
-/**
- * hfi_crtc_alloc_shared_map_buffers - Allocate shared buffers mapped to
- *                                     firmware for crtc
- * @crtc: Pointer to sde crtc struct
- * @Returns: 0 on success, or error code on failure
- */
-int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc);
-
 #else
 int hfi_crtc_init(struct sde_crtc *sde_crtc)
 {
@@ -94,15 +77,6 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 
 void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask)
 {
-}
-int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc)
-{
-	return 0;
-}
-
-int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc)
-{
-	return 0;
 }
 
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)

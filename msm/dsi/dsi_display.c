@@ -541,7 +541,7 @@ static int dsi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 	struct dsi_display_ctrl *display_ctrl;
 
 	display->tx_cmd_buf = msm_gem_new(display->drm_dev,
-			SZ_4K,
+			DSI_TX_CMD_BUF_SIZE,
 			MSM_BO_UNCACHED);
 
 	if ((display->tx_cmd_buf) == NULL) {
@@ -550,7 +550,7 @@ static int dsi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 		goto error;
 	}
 
-	display->cmd_buffer_size = SZ_4K;
+	display->cmd_buffer_size = DSI_TX_CMD_BUF_SIZE;
 
 	display->aspace = msm_gem_smmu_address_space_get(
 			display->drm_dev, MSM_SMMU_DOMAIN_UNSECURE);
@@ -1313,6 +1313,24 @@ int dsi_display_cmd_receive(void *display, const char *cmd_buf,
 		goto end;
 	}
 
+	if (dsi_display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI) {
+		if (!dsi_display->panel->panel_initialized) {
+			DSI_DEBUG("panel not initialized\n");
+			goto end;
+		}
+
+		/* acquire panel_lock to make sure no commands are in progress */
+		dsi_panel_acquire_panel_lock(dsi_display->panel);
+
+		cmd.ctrl_flags = DSI_CTRL_CMD_READ;
+		if (!dsi_hfi_host_transfer_sub(&dsi_display->host, &cmd))
+			rc = cmd.msg.rx_len;
+
+		dsi_panel_release_panel_lock(dsi_display->panel);
+
+		goto end;
+	}
+
 	rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
 
 	/**
@@ -1971,7 +1989,7 @@ static ssize_t debugfs_update_cmd_scheduling_params(struct file *file,
 
 	buf[len] = '\0'; /* terminate the string */
 
-	if (sscanf(buf, "%d %d", &line, &window) != 2)
+	if (sscanf(buf, "%u %u", &line, &window) != 2)
 		return -EFAULT;
 
 	display_for_each_ctrl(i, display) {
@@ -3563,6 +3581,10 @@ static ssize_t dsi_host_transfer(struct mipi_dsi_host *host, const struct mipi_d
 	cmd.post_wait_ms = 0;
 	cmd.ctrl_flags = 0;
 
+	if (msg->rx_buf && msg->rx_len > 0)
+		cmd.ctrl_flags |= DSI_CTRL_CMD_READ;
+
+
 	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
 		rc = dsi_hfi_host_transfer_sub(host, &cmd);
 	else
@@ -4204,9 +4226,9 @@ set_default:
 	return 0;
 }
 
-static int dsi_display_get_phandle_index(
-			struct dsi_display *display,
-			const char *propname, int count, int index)
+int dsi_display_get_phandle_index(
+		struct dsi_display *display,
+		const char *propname, int count, int index)
 {
 	struct device_node *disp_node = display->panel_node;
 	u32 *val = NULL;
@@ -6238,6 +6260,13 @@ static void dsi_display_unbind(struct device *dev,
 		       display->name,
 		       rc);
 
+	if (display->panel) {
+		rc = display->panel->panel_ops.gpio_release(display->panel);
+		if (rc)
+			DSI_ERR("[%s] failed to release gpios, rc=%d\n", display->panel->name,
+			       rc);
+	}
+
 	display_for_each_ctrl(i, display) {
 		display_ctrl = &display->ctrl[i];
 
@@ -7843,8 +7872,10 @@ exit:
 	rc = 0;
 
 error:
-	if (rc)
+	if (rc) {
 		kfree(display->modes);
+		display->modes = NULL;
+	}
 
 	mutex_unlock(&display->display_lock);
 	return rc;
@@ -8449,7 +8480,10 @@ int dsi_display_set_mode(struct dsi_display *display,
 
 	adj_mode = *mode;
 	timing = adj_mode.timing;
-	adjust_timing_by_ctrl_count(display, &adj_mode);
+
+	/* hfi interface expects full horizontal timings, therefore skip adjustment */
+	if (display->panel->disp_op != MSM_DISP_OP_HFI)
+		adjust_timing_by_ctrl_count(display, &adj_mode);
 
 	if (!display->panel->cur_mode) {
 		display->panel->cur_mode =
@@ -9414,7 +9448,7 @@ int dsi_display_pre_commit(void *display,
 	int rc = 0;
 	struct dsi_display *dsi_display = display;
 
-	if (!display || !params) {
+	if (!dsi_display || !dsi_display->panel || !params) {
 		pr_err("Invalid params\n");
 		return -EINVAL;
 	}
@@ -9422,8 +9456,7 @@ int dsi_display_pre_commit(void *display,
 	if (!params->cmd_bit_mask && params->qsync_update) {
 		enable = (params->qsync_mode > 0) ? true : false;
 
-		if (dsi_display->panel &&
-			dsi_display->panel->vrr_caps.arp_support) {
+		if (dsi_display->panel->vrr_caps.arp_support) {
 			rc = dsi_display_arp(display, enable, params->arp_t2_in_us);
 			if (rc) {
 				DSI_ERR("%s failed to send arp commands\n",

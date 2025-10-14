@@ -12,6 +12,8 @@
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 #include "hfi_interface.h"
 #endif
+#include "sde_dbg.h"
+#include <uapi/linux/sched/types.h>
 
 #define HFI_AD_INFO(fmt, ...)  \
 	pr_info("[hfi_ad_info] %s:%d " fmt, __func__, __LINE__, ##__VA_ARGS__)
@@ -51,6 +53,24 @@ static u32 hfi_cmd_type_map[HFI_CMDBUF_TYPE_MAX] = {
 };
 
 static atomic_t id_counter = ATOMIC_INIT(0);
+
+static void hfi_thread_priority_worker(struct kthread_work *work)
+{
+	int ret = 0;
+	struct sched_param param = { 0 };
+	struct task_struct *task = current->group_leader;
+
+	/**
+	 * this priority was found during empiric testing to have appropriate
+	 * realtime scheduling to process display updates and interact with
+	 * other real time and normal priority task
+	 */
+	param.sched_priority = 16;
+	ret = sched_setscheduler(task, SCHED_FIFO, &param);
+	if (ret)
+		pr_warn("pid:%d name:%s priority update failed: %d\n",
+			current->tgid, task->comm, ret);
+}
 
 static u32 _create_buffer_id(u32 ctx_id)
 {
@@ -110,6 +130,12 @@ static struct hfi_buffer_pool *get_avail_buffer(struct hfi_adapter_t *host)
 		return NULL;
 	}
 
+	/* Check if adapter is shutting down */
+	if (atomic_read(&host->shutdown_in_progress)) {
+		HFI_AD_DEBUG("adapter shutdown in progress, skipping buffer allocation\n");
+		return NULL;
+	}
+
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 	list_for_each(pos, &host->pool->node) {
 		pool = list_entry(pos, struct hfi_buffer_pool, node);
@@ -158,6 +184,12 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 	host = cb_cmd_buf_work->host;
 	if (!host) {
 		HFI_AD_ERROR("thread %d could not match host\n", cb_cmd_buf_work->index);
+		return;
+	}
+
+	/* Check if adapter is shutting down */
+	if (atomic_read(&host->shutdown_in_progress)) {
+		HFI_AD_DEBUG("adapter shutdown in progress, exiting worker\n");
 		return;
 	}
 
@@ -241,6 +273,7 @@ static void handle_ssr_start(struct hfi_adapter_t *adapter)
 				adapter->blocking);
 		}
 	}
+	HFI_AD_DEBUG("handling SSR start completed\n");
 }
 
 static void handle_ssr_end(struct hfi_adapter_t *adapter)
@@ -273,6 +306,7 @@ static void handle_ssr_end(struct hfi_adapter_t *adapter)
 		client->process_event(client, HFI_ADAPTER_EVENT_SSR_END,
 			adapter->blocking);
 	}
+	HFI_AD_DEBUG("handling SSR end completed\n");
 }
 
 static void _process_cb_ssr_work(struct kthread_work *work)
@@ -314,6 +348,12 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		if (atomic_read(&adapter->ssr_in_progress))
 			break;
 
+		/* Don't queue new work if shutdown is in progress */
+		if (atomic_read(&adapter->shutdown_in_progress)) {
+			HFI_AD_DEBUG("adapter shutdown in progress, skipping work queue\n");
+			break;
+		}
+
 		atomic_fetch_add_unless(&work_queue_pos_wr, 1,
 				HFI_ADAPTER_WORK_QUEUE_SIZE);
 		work_queue_idx = atomic_read(&work_queue_pos_wr);
@@ -324,6 +364,7 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		}
 
 		cb_cmd_buf_work = &adapter->cb_cmd_buf_work[work_queue_idx];
+		SDE_EVT32(event_type, SDE_EVTLOG_FUNC_CASE1);
 
 		ret = kthread_queue_work(&adapter->cb_event_worker, &cb_cmd_buf_work->work);
 		if (!ret)
@@ -443,6 +484,11 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 		goto fail;
 	}
 
+	kthread_init_work(&hfi_host->hfi_thread_priority_work,
+			  hfi_thread_priority_worker);
+	kthread_queue_work(&hfi_host->cb_event_worker, &hfi_host->hfi_thread_priority_work);
+	kthread_flush_work(&hfi_host->hfi_thread_priority_work);
+
 	kthread_init_work(&hfi_host->cb_ssr_work, _process_cb_ssr_work);
 	kthread_init_worker(&hfi_host->cb_event_ssr_worker);
 	hfi_host->cb_event_worker_ssr_thread = kthread_run(kthread_worker_fn,
@@ -458,6 +504,7 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	mutex_init(&hfi_host->hfi_adapter_cmd_buf_list_lock);
 
 	atomic_set(&hfi_host->ssr_in_progress, 0);
+	atomic_set(&hfi_host->shutdown_in_progress, 0);
 
 	/* Initialize buffers */
 	pool = kmalloc(sizeof(struct hfi_buffer_pool), GFP_KERNEL);
@@ -521,6 +568,15 @@ int hfi_adapter_client_register(struct hfi_adapter_t *host, struct hfi_client_t 
 	/* Initialize client's packet litener list */
 	INIT_LIST_HEAD(&ctx->packet_listeners.list_ptr);
 
+	/* Initialise shared addr data lock and list */
+	spin_lock_init(&ctx->shared_addr_data.slock);
+	INIT_LIST_HEAD(&ctx->shared_addr_data.list);
+
+	/* Initialize sgt shared addr data lock and list */
+	spin_lock_init(&ctx->sgt_addr_data.slock);
+	INIT_LIST_HEAD(&ctx->sgt_addr_data.list);
+
+	mutex_init(&ctx->listener_lock);
 	ctx->host = host;
 	list_add_tail(&ctx->node, &host->client_list);
 
@@ -848,7 +904,7 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 	buff_client_ctx = cmd_buf->ctx;
 
 	/* Create new listener_list structure to insert. */
-	struct listener_list *listener_entry = kmalloc(sizeof(struct listener_list), GFP_KERNEL);
+	struct listener_list *listener_entry = kzalloc(sizeof(struct listener_list), GFP_KERNEL);
 
 	if (!listener_entry) {
 		HFI_AD_ERROR("failed to allocate memory for listener_entry\n");
@@ -859,8 +915,10 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 	listener_entry->listener_obj = listener;
 
 	/* Add listener based on packet obj_id  */
+	mutex_lock(&buff_client_ctx->listener_lock);
 	list_add_tail(&listener_entry->list_ptr,
 			&buff_client_ctx->packet_listeners.list_ptr);
+	mutex_unlock(&buff_client_ctx->listener_lock);
 
 	return rc;
 }
@@ -1127,6 +1185,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		}
 
 		/* Find the client's listener attached to the packet-id */
+		mutex_lock(&ctx->listener_lock);
 		list_for_each(pos, &ctx->packet_listeners.list_ptr) {
 			listener_entry = list_entry(pos, struct listener_list, list_ptr);
 			if (!listener_entry)
@@ -1157,6 +1216,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 				}
 			}
 		}
+		mutex_unlock(&ctx->listener_lock);
 	}
 
 	/* Loop through clients list and if matching unique_id then release */
@@ -1242,6 +1302,36 @@ int hfi_adapter_release_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *c
 	return rc;
 }
 
+/**
+ * hfi_adapter_flush_workers - Flush all pending work from HFI worker threads
+ * @host: HFI adapter instance
+ *
+ * This function ensures all pending work is completed before proceeding
+ * with adapter cleanup to avoid mutex deadlocks.
+ */
+static void hfi_adapter_flush_workers(struct hfi_adapter_t *host)
+{
+	if (!host) {
+		HFI_AD_ERROR("invalid host pointer\n");
+		return;
+	}
+
+	HFI_AD_DEBUG("flushing HFI worker threads\n");
+
+	/* Set shutdown flag to prevent new work from being queued */
+	atomic_set(&host->shutdown_in_progress, 1);
+
+	/* Flush all pending work in the event worker */
+	HFI_AD_DEBUG("flushing cb_event_worker\n");
+	kthread_flush_worker(&host->cb_event_worker);
+
+	/* Flush all pending work in the SSR worker */
+	HFI_AD_DEBUG("flushing cb_event_ssr_worker\n");
+	kthread_flush_worker(&host->cb_event_ssr_worker);
+
+	HFI_AD_DEBUG("HFI worker flush complete\n");
+}
+
 void hfi_adapter_deinit(struct hfi_client_t *ctx)
 {
 	struct list_head *pos, *updated_pos;
@@ -1250,6 +1340,11 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx)
 
 	if (!ctx || !ctx->host)
 		return;
+
+	HFI_AD_DEBUG("starting HFI adapter deinit for client %d\n", ctx->client_id);
+
+	/* Flush all pending work to prevent mutex contention */
+	hfi_adapter_flush_workers(ctx->host);
 
 	mutex_lock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
 	if (!list_empty(&ctx->cmd_buf_list)) {
@@ -1266,12 +1361,40 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx)
 	HFI_AD_DEBUG("Freeing %d buffers on close\n", i);
 }
 
+static int remove_addr_map_node(struct hfi_fw_shared_addr_info *addr_map_list, unsigned long iova)
+{
+	bool found = false;
+	struct hfi_shared_addr_map *addr_map_pos, *addr_map_next;
+
+	if (!iova) {
+		HFI_AD_ERROR("invalid input param\n");
+		return -EINVAL;
+	}
+
+	spin_lock(&addr_map_list->slock);
+	list_for_each_entry_safe(addr_map_pos, addr_map_next, &addr_map_list->list, node) {
+		if (addr_map_pos->alloc_info.mapped_iova == iova) {
+			list_del(&addr_map_pos->node);
+			found = true;
+			break;
+		}
+	}
+	spin_unlock(&addr_map_list->slock);
+
+	if (!found) {
+		HFI_AD_ERROR("failed to find entry to delete (IOVA: %lx)\n", iova);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 int hfi_adapter_buffer_alloc(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map)
 {
 	int ret = 0;
 
-	if (!ctx) {
-		HFI_AD_ERROR("invalid client\n");
+	if (!ctx || !addr_map) {
+		HFI_AD_ERROR("invalid client ctx: %d or add_map: %d\n", !ctx, !addr_map);
 		return -EINVAL;
 	}
 
@@ -1295,6 +1418,12 @@ int hfi_adapter_buffer_alloc(struct hfi_client_t *ctx, struct hfi_shared_addr_ma
 		HFI_AD_ERROR("failed to allocate shared buffer\n");
 		return -EINVAL;
 	}
+
+	INIT_LIST_HEAD(&addr_map->node);
+	/* save the details in client context list for possible future ssr sequence cleanup */
+	spin_lock(&ctx->shared_addr_data.slock);
+	list_add_tail(&addr_map->node, &ctx->shared_addr_data.list);
+	spin_unlock(&ctx->shared_addr_data.slock);
 
 	return ret;
 }
@@ -1323,22 +1452,69 @@ int hfi_adapter_buffer_dealloc(struct hfi_client_t *ctx, struct hfi_shared_addr_
 	if (ret)
 		HFI_AD_ERROR("failed to deallocate shared buffer, ret: %d\n", ret);
 
+	/* remove from client context list */
+	ret = remove_addr_map_node(&ctx->shared_addr_data, alloc_info->mapped_iova);
+	if (ret)
+		HFI_AD_ERROR("failed to find entry to delete, ret: %d\n", ret);
+
 	alloc_info->mapped_iova = 0;
 	alloc_info->cpu_va = NULL;
 
 	return ret;
 }
 
-int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt, size_t size,
-		unsigned long *mapped_iova)
+int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
+		struct hfi_shared_addr_map *addr_map)
 {
+	int ret = 0;
+
+	if (!ctx || !sgt) {
+		HFI_AD_ERROR("invalid client ctx: %d or sgt: %d\n", !ctx, !sgt);
+		return -EINVAL;
+	}
+
+	addr_map->sgt = sgt;
+	addr_map->aligned_size = ALIGN(addr_map->size, HFI_CORE_IOMMU_MAP_SIZE_ALIGNMENT);
+	ret = hfi_core_map_sg_table(&addr_map->alloc_info, sgt, addr_map->aligned_size,
+		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+	if (ret) {
+		HFI_AD_ERROR("failed to map sg table to iova, ret:%d\n", ret);
+		return ret;
+	}
+	addr_map->remote_addr = addr_map->alloc_info.mapped_iova;
+
+	/* save the details in client context list for possible future ssr sequence cleanup */
+	INIT_LIST_HEAD(&addr_map->node);
+	spin_lock(&ctx->sgt_addr_data.slock);
+	list_add_tail(&addr_map->node, &ctx->sgt_addr_data.list);
+	spin_unlock(&ctx->sgt_addr_data.slock);
+
+	return ret;
+}
+
+int hfi_adapter_unmap_sg_table(struct hfi_client_t *ctx, unsigned long iova, size_t size)
+{
+	int ret = 0;
+
 	if (!ctx) {
 		HFI_AD_ERROR("invalid client\n");
 		return -EINVAL;
 	}
 
-	return hfi_core_map_sg_table(sgt, size, mapped_iova,
-		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+	ret = hfi_core_unmap_iova(iova, size);
+	if (ret) {
+		HFI_AD_ERROR("failed to unmap iova, ret:%d\n", ret);
+		return ret;
+	}
+
+	/* remove from client context list */
+	ret = remove_addr_map_node(&ctx->sgt_addr_data, iova);
+	if (ret) {
+		HFI_AD_ERROR("failed to find entry to delete, ret: %d\n", ret);
+		return ret;
+	}
+
+	return ret;
 }
 
 size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_client_t *ctx,
@@ -1357,14 +1533,132 @@ size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_client_t *ctx,
 	return addr_map->alloc_info.size_allocated;
 }
 
+int hfi_adapter_map_iova(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map)
+{
+	int ret = 0;
+
+	if (!ctx || !addr_map) {
+		HFI_AD_ERROR("invalid client ctx: %d or addr_map: %d\n", !ctx, !addr_map);
+		return -EINVAL;
+	}
+
+	ret = hfi_core_map_iova(&addr_map->alloc_info, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+	if (ret) {
+		HFI_AD_ERROR("failed to map iova, ret:%d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
 int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t size)
 {
+	int ret = 0;
+
 	if (!ctx) {
 		HFI_AD_ERROR("invalid client\n");
 		return -EINVAL;
 	}
 
-	return hfi_core_unmap_iova(iova, size);
+	ret = hfi_core_unmap_iova(iova, size);
+	if (ret) {
+		HFI_AD_ERROR("failed to unmap iova, ret:%d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
+int hfi_adapter_ssr_unmap_device_addr(struct hfi_client_t *ctx)
+{
+	int ret = 0;
+	struct hfi_shared_addr_map *addr_map_pos, *addr_map_next;
+
+	if (!ctx) {
+		HFI_AD_ERROR("invalid client\n");
+		return -EINVAL;
+	}
+
+	/* unmap device address for shared memory */
+	list_for_each_entry_safe(addr_map_pos, addr_map_next,
+			&ctx->shared_addr_data.list, node) {
+		if (!addr_map_pos || !addr_map_pos->alloc_info.mapped_iova)
+			continue;
+
+		ret = hfi_core_unmap_iova(addr_map_pos->alloc_info.mapped_iova,
+			addr_map_pos->alloc_info.size_allocated);
+		if (ret) {
+			HFI_AD_ERROR(
+				"failed to unmap shared buffer at iova: 0x%lx, ret: %d\n",
+				addr_map_pos->alloc_info.mapped_iova, ret);
+			return -EINVAL;
+		}
+	}
+
+	/* unmap device address for sgt table shared memory */
+	list_for_each_entry_safe(addr_map_pos, addr_map_next,
+			&ctx->sgt_addr_data.list, node) {
+		if (!addr_map_pos || !addr_map_pos->alloc_info.mapped_iova)
+			continue;
+
+		ret = hfi_core_unmap_iova(addr_map_pos->alloc_info.mapped_iova,
+			addr_map_pos->alloc_info.size_allocated);
+		if (ret) {
+			HFI_AD_ERROR(
+				"failed to unmap sgt shared buffer at iova: 0x%lx, ret: %d\n",
+				addr_map_pos->alloc_info.mapped_iova, ret);
+			return -EINVAL;
+		}
+	}
+
+	return ret;
+}
+
+int hfi_adapter_ssr_map_device_addr(struct hfi_client_t *ctx)
+{
+	int ret = 0;
+	struct hfi_shared_addr_map *addr_map_pos, *addr_map_next;
+
+	if (!ctx) {
+		HFI_AD_ERROR("invalid client\n");
+		return -EINVAL;
+	}
+
+	/* re-map device address for shared memory */
+	list_for_each_entry_safe(addr_map_pos, addr_map_next,
+			&ctx->shared_addr_data.list, node) {
+		if (!addr_map_pos || !addr_map_pos->alloc_info.mapped_iova)
+			continue;
+
+		ret = hfi_core_map_iova(&addr_map_pos->alloc_info,
+			HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+		if (ret) {
+			HFI_AD_ERROR(
+				"failed to map shared buffer at iova: 0x%lx, ret: %d\n",
+				addr_map_pos->alloc_info.mapped_iova, ret);
+			return -EINVAL;
+		}
+		addr_map_pos->remote_addr = addr_map_pos->alloc_info.mapped_iova;
+	}
+
+	/* re-map device address for sgt table shared memory */
+	list_for_each_entry_safe(addr_map_pos, addr_map_next,
+			&ctx->sgt_addr_data.list, node) {
+		if (!addr_map_pos || !addr_map_pos->alloc_info.mapped_iova)
+			continue;
+
+		ret = hfi_core_map_sg_table(&addr_map_pos->alloc_info, addr_map_pos->sgt,
+			addr_map_pos->aligned_size, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+		if (ret) {
+			HFI_AD_ERROR(
+				"failed to map sgt shared buffer at iova: 0x%lx, ret: %d\n",
+				addr_map_pos->alloc_info.mapped_iova, ret);
+			return -EINVAL;
+		}
+		addr_map_pos->remote_addr = addr_map_pos->alloc_info.mapped_iova;
+	}
+
+	return ret;
 }
 
 int hfi_adapter_release_all_cmd_bufs(struct hfi_client_t *client)

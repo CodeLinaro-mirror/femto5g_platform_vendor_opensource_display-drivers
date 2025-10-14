@@ -48,13 +48,13 @@ static bool _sde_vbif_setup_clk_supported(struct sde_kms *sde_kms, enum sde_clk_
 {
 	bool supported = false;
 	bool has_split_vbif = test_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_kms->catalog->features);
+	enum msm_disp_op disp_op = sde_kms->hw_mdp->hw.disp_op;
 
 	if (!SDE_CLK_CTRL_VALID(clk_ctrl))
 		return false;
 
-	if ((has_split_vbif && VBIF_CLK_CLIENT(clk_ctrl).ops.setup_clk_force_ctrl) ||
-		(!has_split_vbif &&
-		 sde_kms->hw_mdp->ops.setup_clk_force_ctrl[sde_kms->hw_mdp->hw.disp_op]))
+	if ((has_split_vbif && VBIF_CLK_CLIENT(clk_ctrl).ops.setup_clk_force_ctrl[disp_op]) ||
+		(!has_split_vbif && sde_kms->hw_mdp->ops.setup_clk_force_ctrl[disp_op]))
 		supported = true;
 
 	SDE_DEBUG("split_vbif:%d type:%s supported:%d\n", has_split_vbif,
@@ -73,10 +73,10 @@ static bool _sde_vbif_get_clk_supported(struct sde_kms *sde_kms, enum sde_clk_ct
 {
 	bool supported = false;
 	bool has_split_vbif = test_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_kms->catalog->features);
+	enum msm_disp_op disp_op = sde_kms->hw_mdp->hw.disp_op;
 
-	if ((has_split_vbif && VBIF_CLK_CLIENT(clk_ctrl).ops.get_clk_ctrl_status) ||
-		(!has_split_vbif &&
-		 sde_kms->hw_mdp->ops.get_clk_ctrl_status[sde_kms->hw_mdp->hw.disp_op]))
+	if ((has_split_vbif && VBIF_CLK_CLIENT(clk_ctrl).ops.get_clk_ctrl_status[disp_op]) ||
+		(!has_split_vbif && sde_kms->hw_mdp->ops.get_clk_ctrl_status[disp_op]))
 		supported = true;
 
 	SDE_DEBUG("split_vbif:%d type:%s supported:%d\n", has_split_vbif,
@@ -98,11 +98,13 @@ static int _sde_vbif_setup_clk_force_ctrl(struct sde_kms *sde_kms, enum sde_clk_
 	int rc = 0;
 	struct sde_hw_blk_reg_map *hw = VBIF_CLK_CLIENT(clk_ctrl).hw;
 	bool has_split_vbif = test_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_kms->catalog->features);
+	enum msm_disp_op disp_op = sde_kms->hw_mdp->hw.disp_op;
 
-	if (has_split_vbif)
-		rc = VBIF_CLK_CLIENT(clk_ctrl).ops.setup_clk_force_ctrl(hw, clk_ctrl, enable);
-	else if (sde_kms->hw_mdp->ops.setup_clk_force_ctrl[sde_kms->hw_mdp->hw.disp_op])
-		rc = sde_kms->hw_mdp->ops.setup_clk_force_ctrl[sde_kms->hw_mdp->hw.disp_op](
+	if (has_split_vbif && VBIF_CLK_CLIENT(clk_ctrl).ops.setup_clk_force_ctrl[disp_op])
+		rc = VBIF_CLK_CLIENT(clk_ctrl).ops.setup_clk_force_ctrl[disp_op](
+			hw, clk_ctrl, enable);
+	else if (sde_kms->hw_mdp->ops.setup_clk_force_ctrl[disp_op])
+		rc = sde_kms->hw_mdp->ops.setup_clk_force_ctrl[disp_op](
 			sde_kms->hw_mdp, clk_ctrl, enable);
 
 	SDE_DEBUG("split_vbif:%d type:%s en:%d rc:%d\n", has_split_vbif,
@@ -124,11 +126,13 @@ static int _sde_vbif_get_clk_ctrl_status(struct sde_kms *sde_kms, enum sde_clk_c
 	int rc = 0;
 	struct sde_hw_blk_reg_map *hw = VBIF_CLK_CLIENT(clk_ctrl).hw;
 	bool has_split_vbif = test_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_kms->catalog->features);
+	enum msm_disp_op disp_op = sde_kms->hw_mdp->hw.disp_op;
 
-	if (has_split_vbif)
-		rc = VBIF_CLK_CLIENT(clk_ctrl).ops.get_clk_ctrl_status(hw, clk_ctrl, status);
-	else if (sde_kms->hw_mdp->ops.get_clk_ctrl_status[sde_kms->hw_mdp->hw.disp_op])
-		rc = sde_kms->hw_mdp->ops.get_clk_ctrl_status[sde_kms->hw_mdp->hw.disp_op](
+	if (has_split_vbif && VBIF_CLK_CLIENT(clk_ctrl).ops.get_clk_ctrl_status[disp_op])
+		rc = VBIF_CLK_CLIENT(clk_ctrl).ops.get_clk_ctrl_status[disp_op](
+			hw, clk_ctrl, status);
+	else if (sde_kms->hw_mdp->ops.get_clk_ctrl_status[disp_op])
+		rc = sde_kms->hw_mdp->ops.get_clk_ctrl_status[disp_op](
 			sde_kms->hw_mdp, clk_ctrl, status);
 
 	SDE_DEBUG("split_vbif:%d type:%s status:%d rc:%d\n", has_split_vbif,
@@ -687,6 +691,7 @@ int sde_vbif_axi_halt_request(struct sde_kms *sde_kms)
 			mutex_lock(&vbif->mutex);
 			vbif->ops.set_axi_halt[vbif->hw.disp_op](vbif);
 			rc = _sde_vbif_wait_for_axi_halt(vbif);
+			sde_hw_vbif_clear_axi_halt(vbif);
 			mutex_unlock(&vbif->mutex);
 		}
 	}

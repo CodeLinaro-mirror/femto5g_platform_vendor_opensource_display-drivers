@@ -681,7 +681,7 @@ static int dp_ctrl_enable_link_clock(struct dp_ctrl_private *ctrl)
 		}
 	}
 
-	ret = ctrl->power->clk_enable(ctrl->power, type, true);
+	ret = ctrl->power->clk_enable(ctrl->power, type, true, false);
 	if (ret) {
 		DP_ERR("Unabled to start link clocks\n");
 		ret = -EINVAL;
@@ -694,7 +694,7 @@ static void dp_ctrl_disable_link_clock(struct dp_ctrl_private *ctrl)
 {
 	int rc = 0;
 
-	ctrl->power->clk_enable(ctrl->power, DP_LINK_PM, false);
+	ctrl->power->clk_enable(ctrl->power, DP_LINK_PM, false, false);
 	if (ctrl->pll->pll_unprepare) {
 		rc = ctrl->pll->pll_unprepare(ctrl->pll);
 		if (rc < 0)
@@ -731,13 +731,16 @@ end:
 	ctrl->training_2_pattern = pattern;
 }
 
-static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
+static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow, bool skip_op)
 {
 	int rc = -EINVAL;
 	bool downgrade = false;
 	u32 link_train_max_retries = 100;
 	struct dp_catalog_ctrl *catalog;
 	struct dp_link_params *link_params;
+
+	if (skip_op)
+		return 0;
 
 	catalog = ctrl->catalog;
 	link_params = &ctrl->link->link_params;
@@ -787,7 +790,7 @@ static int dp_ctrl_link_setup(struct dp_ctrl_private *ctrl, bool shallow)
 
 		if (rc != -EAGAIN) {
 			dp_ctrl_link_rate_down_shift(ctrl);
-			ctrl->panel->init(ctrl->panel);
+			ctrl->panel->init(ctrl->panel, false);
 		}
 
 		dp_ctrl_configure_source_link_params(ctrl, false);
@@ -830,7 +833,7 @@ static int dp_ctrl_enable_stream_clocks(struct dp_ctrl_private *ctrl,
 
 	dp_ctrl_set_clock_rate(ctrl, clk_name, clk_type, pclk);
 
-	ret = ctrl->power->clk_enable(ctrl->power, clk_type, true);
+	ret = ctrl->power->clk_enable(ctrl->power, clk_type, true, false);
 	if (ret) {
 		DP_ERR("Unabled to start stream:%d clocks\n",
 				dp_panel->stream_id);
@@ -847,10 +850,10 @@ static int dp_ctrl_disable_stream_clocks(struct dp_ctrl_private *ctrl,
 
 	if (dp_panel->stream_id == DP_STREAM_0) {
 		return ctrl->power->clk_enable(ctrl->power,
-				DP_STREAM0_PM, false);
+				DP_STREAM0_PM, false, false);
 	} else if (dp_panel->stream_id == DP_STREAM_1) {
 		return ctrl->power->clk_enable(ctrl->power,
-				DP_STREAM1_PM, false);
+				DP_STREAM1_PM, false, false);
 	} else {
 		DP_ERR("Invalid stream:%d for clk disable\n",
 				dp_panel->stream_id);
@@ -1041,10 +1044,10 @@ static void dp_ctrl_process_phy_test_request(struct dp_ctrl *dp_ctrl)
 	ctrl->dp_ctrl.stream_off(&ctrl->dp_ctrl, ctrl->panel);
 	ctrl->dp_ctrl.off(&ctrl->dp_ctrl);
 
-	ctrl->aux->init(ctrl->aux, ctrl->parser->aux_cfg);
+	ctrl->aux->init(ctrl->aux, ctrl->parser->aux_cfg, false);
 
 	ret = ctrl->dp_ctrl.on(&ctrl->dp_ctrl, ctrl->mst_mode,
-			ctrl->fec_mode, ctrl->dsc_mode, false);
+			ctrl->fec_mode, ctrl->dsc_mode, false, false);
 	if (ret)
 		DP_ERR("failed to enable DP controller\n");
 
@@ -1324,7 +1327,7 @@ static void dp_ctrl_stream_off(struct dp_ctrl *dp_ctrl, struct dp_panel *panel)
 }
 
 static int dp_ctrl_on(struct dp_ctrl *dp_ctrl, bool mst_mode,
-		bool fec_mode, bool dsc_mode, bool shallow)
+		bool fec_mode, bool dsc_mode, bool shallow, bool skip_op)
 {
 	int rc = 0;
 	struct dp_ctrl_private *ctrl;
@@ -1370,7 +1373,7 @@ static int dp_ctrl_on(struct dp_ctrl *dp_ctrl, bool mst_mode,
 	ctrl->initial_lane_count = ctrl->link->link_params.lane_count;
 	ctrl->initial_bw_code = ctrl->link->link_params.bw_code;
 
-	rc = dp_ctrl_link_setup(ctrl, shallow);
+	rc = dp_ctrl_link_setup(ctrl, shallow, skip_op);
 	if (!rc)
 		ctrl->power_on = true;
 end:

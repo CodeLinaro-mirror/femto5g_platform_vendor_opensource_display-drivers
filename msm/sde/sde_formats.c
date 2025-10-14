@@ -639,6 +639,20 @@ static const struct sde_format sde_format_map_fsc_tile[] = {
 		SDE_FETCH_UBWC, 2, SDE_TILE_HEIGHT_TILED),
 };
 
+static const struct sde_format sde_format_map_fsc_tile_4r[] = {
+	PLANAR_RGB_FMT_TILED(C8,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C1_B_Cb, C2_R_Cr, C0_G_Y, 0, 3,
+		false, 1, (SDE_FORMAT_FLAG_FSC_4R | SDE_FORMAT_FLAG_COMPRESSED),
+		SDE_FETCH_UBWC, 2, SDE_TILE_HEIGHT_TILED),
+
+	PLANAR_RGB_FMT_TILED(ABGR8888,
+		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
+		C3_ALPHA, C1_B_Cb, C0_G_Y, C2_R_Cr, 4,
+		true, 4, (SDE_FORMAT_FLAG_FSC_4R | SDE_FORMAT_FLAG_COMPRESSED),
+		SDE_FETCH_UBWC, 2, SDE_TILE_HEIGHT_TILED),
+};
+
 static const struct sde_format sde_format_map_fsc_tile_linear[] = {
 	PLANAR_RGB_FMT_TILED(C8,
 		COLOR_8BIT, COLOR_8BIT, COLOR_8BIT, COLOR_8BIT,
@@ -886,6 +900,16 @@ static int _sde_format_get_media_color_ubwc(const struct sde_format *fmt)
 		return color_fmt;
 	}
 
+	if (SDE_FORMAT_IS_FSC_4R(fmt)) {
+		if (fmt->base.pixel_format == DRM_FORMAT_C8 ||
+				fmt->base.pixel_format == DRM_FORMAT_ABGR8888)
+			color_fmt = MMM_COLOR_FMT_NV124R_UBWC;
+		else
+			DRM_ERROR("FSC format not supported for fmt: %4.4s\n",
+				(char *)&fmt->base.pixel_format);
+		return color_fmt;
+	}
+
 	if (fmt->base.pixel_format == DRM_FORMAT_NV12) {
 		if (SDE_FORMAT_IS_DX(fmt)) {
 			if (fmt->unpack_tight)
@@ -975,7 +999,7 @@ static int _sde_format_get_plane_sizes_ubwc(
 			MMM_COLOR_FMT_ALIGN(layout->plane_pitch[3] *
 			uv_meta_scanlines, SDE_UBWC_PLANE_SIZE_ALIGNMENT);
 
-	} else if (SDE_FORMAT_IS_FSC(layout->format)) {
+	} else if (SDE_FORMAT_IS_FSC(layout->format) || SDE_FORMAT_IS_FSC_4R(layout->format)) {
 		uint32_t rgb_scanlines, rgb_meta_scanlines;
 
 		layout->num_planes = 1;
@@ -983,6 +1007,10 @@ static int _sde_format_get_plane_sizes_ubwc(
 		rgb_scanlines = MMM_COLOR_FMT_Y_SCANLINES(color, height);
 		layout->plane_size[0] = MMM_COLOR_FMT_ALIGN(layout->plane_pitch[0] *
 			rgb_scanlines, SDE_UBWC_PLANE_SIZE_ALIGNMENT);
+
+		if (fmt->base.pixel_format == DRM_FORMAT_ABGR8888)
+			layout->plane_size[0] = layout->plane_size[0] * 4;
+
 		if (!meta)
 			goto done;
 
@@ -991,6 +1019,9 @@ static int _sde_format_get_plane_sizes_ubwc(
 		rgb_meta_scanlines = MMM_COLOR_FMT_Y_META_SCANLINES(color, height);
 		layout->plane_size[2] = MMM_COLOR_FMT_ALIGN(layout->plane_pitch[2] *
 			rgb_meta_scanlines, SDE_UBWC_PLANE_SIZE_ALIGNMENT);
+
+		if (fmt->base.pixel_format == DRM_FORMAT_ABGR8888)
+			layout->plane_size[2] = layout->plane_size[2] * 4;
 	} else {
 		uint32_t rgb_scanlines, rgb_meta_scanlines;
 
@@ -1483,8 +1514,25 @@ const struct sde_format *sde_get_sde_format_ext(
 			DRM_FORMAT_MOD_QCOM_COMPRESSED):
 	case (DRM_FORMAT_MOD_QCOM_CAC_B | DRM_FORMAT_MOD_QCOM_FSC_TILE |
 			DRM_FORMAT_MOD_QCOM_COMPRESSED):
+	case (DRM_FORMAT_MOD_QCOM_FSC_ALPHA | DRM_FORMAT_MOD_QCOM_FSC_TILE |
+			DRM_FORMAT_MOD_QCOM_COMPRESSED):
 		map = sde_format_map_fsc_tile;
 		map_size = ARRAY_SIZE(sde_format_map_fsc_tile);
+		SDE_DEBUG(
+			"found fsc fmt: %4.4s DRM_FORMAT_MOD_QCOM_FSC_TILE/COMPRRESSED\n",
+				(char *)&format);
+		break;
+	case (DRM_FORMAT_MOD_QCOM_CAC_R | DRM_FORMAT_MOD_QCOM_FSC_4R_TILE |
+			DRM_FORMAT_MOD_QCOM_COMPRESSED):
+	case (DRM_FORMAT_MOD_QCOM_CAC_G | DRM_FORMAT_MOD_QCOM_FSC_4R_TILE |
+			DRM_FORMAT_MOD_QCOM_COMPRESSED):
+	case (DRM_FORMAT_MOD_QCOM_CAC_B | DRM_FORMAT_MOD_QCOM_FSC_4R_TILE |
+			DRM_FORMAT_MOD_QCOM_COMPRESSED):
+	case (DRM_FORMAT_MOD_QCOM_FSC_ALPHA | DRM_FORMAT_MOD_QCOM_FSC_4R_TILE |
+			DRM_FORMAT_MOD_QCOM_COMPRESSED):
+	case (DRM_FORMAT_MOD_QCOM_NV12_4R_4Y | DRM_FORMAT_MOD_QCOM_COMPRESSED):
+		map = sde_format_map_fsc_tile_4r;
+		map_size = ARRAY_SIZE(sde_format_map_fsc_tile_4r);
 		SDE_DEBUG(
 			"found fsc fmt: %4.4s DRM_FORMAT_MOD_QCOM_FSC_TILE/COMPRRESSED\n",
 				(char *)&format);
@@ -1492,6 +1540,7 @@ const struct sde_format *sde_get_sde_format_ext(
 	case (DRM_FORMAT_MOD_QCOM_CAC_R | DRM_FORMAT_MOD_QCOM_FSC_TILE):
 	case (DRM_FORMAT_MOD_QCOM_CAC_G | DRM_FORMAT_MOD_QCOM_FSC_TILE):
 	case (DRM_FORMAT_MOD_QCOM_CAC_B | DRM_FORMAT_MOD_QCOM_FSC_TILE):
+	case (DRM_FORMAT_MOD_QCOM_FSC_ALPHA | DRM_FORMAT_MOD_QCOM_FSC_TILE):
 		map = sde_format_map_fsc_tile_linear;
 		map_size = ARRAY_SIZE(sde_format_map_fsc_tile_linear);
 		SDE_DEBUG(
@@ -1514,11 +1563,12 @@ const struct sde_format *sde_get_sde_format_ext(
 		SDE_ERROR("unsupported fmt: %4.4s modifier 0x%llX\n",
 				(char *)&format, modifier);
 	else
-		SDE_DEBUG("fmt %4.4s mod 0x%llX ubwc %d yuv %d fsc %d\n",
+		SDE_DEBUG("fmt %4.4s mod 0x%llX ubwc %d yuv %d fsc %d fsc_4r %d\n",
 				(char *)&format, modifier,
 				SDE_FORMAT_IS_UBWC(fmt),
 				SDE_FORMAT_IS_YUV(fmt),
-				SDE_FORMAT_IS_FSC(fmt));
+				SDE_FORMAT_IS_FSC(fmt),
+				SDE_FORMAT_IS_FSC_4R(fmt));
 
 	return fmt;
 }

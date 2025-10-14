@@ -568,13 +568,16 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 			c->ops.read_copr_status[MSM_DISP_OP_HWIO] = sde_read_copr_status;
 		}
 
-		if (c->cap->sblk->aiqe.abc_supported)
+		if (c->cap->sblk->aiqe.abc_supported) {
 			c->ops.setup_aiqe_abc[MSM_DISP_OP_HWIO] = sde_setup_aiqe_abc_v1;
+			c->ops.setup_aiqe_abc[MSM_DISP_OP_HFI] = reg_dmav1_setup_aiqe_abc_v1;
+		}
 	}
 }
 
 static void dspp_ai_scaler(struct sde_hw_dspp *c)
 {
+	int ret = 0;
 	if (!c) {
 		SDE_ERROR("invalid arguments\n");
 		return;
@@ -592,6 +595,12 @@ static void dspp_ai_scaler(struct sde_hw_dspp *c)
 		if (c->cap->sblk->ai_scaler.ai_scaler_supported) {
 			c->ops.check_ai_scaler[MSM_DISP_OP_HWIO] = sde_check_ai_scaler_v1;
 			c->ops.setup_ai_scaler[MSM_DISP_OP_HWIO] = sde_setup_ai_scaler_v1;
+
+			ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_AI_SCALER, c);
+			if (ret)
+				return;
+			c->ops.check_ai_scaler[MSM_DISP_OP_HFI] = sde_check_ai_scaler_v1;
+			c->ops.setup_ai_scaler[MSM_DISP_OP_HFI] = reg_dma_setup_ai_scaler_v1;
 		}
 	}
 }

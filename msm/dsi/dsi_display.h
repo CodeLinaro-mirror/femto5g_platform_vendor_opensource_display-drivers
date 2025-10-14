@@ -36,6 +36,7 @@
 #define DSI_MODE_MATCH_DSC_CONFIG (1 << 2)
 #define DSI_MODE_MATCH_NONDSC_BPP_CONFIG (1 << 3)
 #define DSI_MODE_MATCH_EMSYNC_FPS (1 << 4)
+#define DSI_TX_CMD_BUF_SIZE (SZ_4K * 4)
 
 /*
  * DSI Validate Mode modifiers
@@ -1097,5 +1098,18 @@ int dsi_display_ctl_post_transition(void *display);
  */
 int dsi_display_get_phandle_count(struct dsi_display *display,
 			const char *propname);
+
+/**
+ * dsi_display_get_phandle_index() - get phandle index for DT property
+ * @display:    Handle to display
+ * @propname:   DT property name
+ * @count:      Count of phandle in DT property
+ * @index:      Index of phandle in DT property
+ *
+ * return: error code in case of failure or 0 for success.
+ */
+int dsi_display_get_phandle_index(
+		struct dsi_display *display,
+		const char *propname, int count, int index);
 
 #endif /* _DSI_DISPLAY_H_ */
