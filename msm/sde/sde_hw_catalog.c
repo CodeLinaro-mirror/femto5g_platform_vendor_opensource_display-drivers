@@ -5884,6 +5884,18 @@ static void _sde_get_hw_caps_for_bengal(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
 }
 
+static void _sde_get_hw_caps_for_khaje(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	sde_cfg->perf.min_prefill_lines = 24;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	sde_cfg->sui_block_xin_mask = 0xC01;
+	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+}
+
 static void _sde_get_hw_caps_for_lagoon(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_CWB, sde_cfg->features);
@@ -6619,6 +6631,7 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_660, _sde_get_hw_caps_for_holi},
 	{SDE_HW_VER_670, _sde_get_hw_caps_for_shima},
 	{SDE_HW_VER_680, _sde_get_hw_caps_for_monaco},
+	{SDE_HW_VER_6100, _sde_get_hw_caps_for_khaje},
 	{SDE_HW_VER_700, _sde_get_hw_caps_for_lahaina},
 	{SDE_HW_VER_720, _sde_get_hw_caps_for_yupik},
 	{SDE_HW_VER_810, _sde_get_hw_caps_for_waipio},
