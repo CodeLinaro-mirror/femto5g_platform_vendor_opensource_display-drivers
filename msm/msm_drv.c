@@ -933,7 +933,7 @@ static int msm_drm_device_init(struct platform_device *pdev,
 
 	ret = hfi_msm_drv_init(ddev);
 	if (ret)
-		goto priv_alloc_fail;
+		goto hfi_alloc_fail;
 
 	if (get_mdp_ver(pdev) == KMS_SDE_HFI)
 		priv->disp_op = MSM_DISP_OP_HFI;
@@ -991,8 +991,9 @@ pm_runtime_error:
 dbg_init_fail:
 	sde_power_resource_deinit(pdev, &priv->phandle);
 power_init_fail:
-priv_alloc_fail:
+hfi_alloc_fail:
 	kfree(priv->hfi_priv);
+priv_alloc_fail:
 	drm_dev_put(ddev);
 	return ret;
 }
