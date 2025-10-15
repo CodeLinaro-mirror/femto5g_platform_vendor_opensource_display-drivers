@@ -42,6 +42,11 @@ struct scanout_attrib {
 	uint32_t width_mm;
 	uint32_t height_mm;
 	uint32_t panel_orientation;
+	/* HDR */
+	uint32_t panel_colorspace;
+	uint32_t hdr_max_luminance;
+	uint32_t hdr_avg_luminance;
+	uint32_t hdr_min_luminance;
 };
 
 struct virtio_plane_caps {

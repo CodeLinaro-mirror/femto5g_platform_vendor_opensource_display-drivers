@@ -209,8 +209,12 @@ struct virtio_gpu_resp_scanout_atttributes {
 	__le32 connection_status;
 	__le32 width_mm;
 	__le32 height_mm;
-    __le32 panel_orientation;
+	__le32 panel_orientation;
 	__le32 padding;
+	__le32 panel_colorspace;
+	__le32 hdr_max_luminance;
+	__le32 hdr_avg_luminance;
+	__le32 hdr_min_luminance;
 };
 
 struct virtio_gpu_get_scanout_planes {
@@ -253,6 +257,17 @@ struct virtio_gpu_resp_planes_caps {
 };
 
 struct virtio_gpu_set_scanout_properties {
+	struct virtio_gpu_ctrl_hdr hdr;
+	__le32 scanout_id;
+	__le32 power_mode;
+	__le32 mode_index;
+	__le32 rotation;
+	struct virtio_gpu_rect r; //dest_rect
+	__le32 padding;
+	__le32 color_space;
+};
+
+struct virtio_gpu_set_scanout_properties_dup {
 	struct virtio_gpu_ctrl_hdr hdr;
 	__le32 scanout_id;
 	__le32 power_mode;

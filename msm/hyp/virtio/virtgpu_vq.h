@@ -37,7 +37,8 @@ int virtio_gpu_cmd_set_scanout_properties(struct virtio_kms *kms,
 		uint32_t power_mode,
 		uint32_t mode_index,
 		uint32_t rotation,
-		struct virtio_gpu_rect dest_rect);
+		struct virtio_gpu_rect dest_rect,
+		uint32_t color_space);
 
 int virtio_gpu_cmd_set_scanout(struct virtio_kms *kms,
 		uint32_t scanout,
