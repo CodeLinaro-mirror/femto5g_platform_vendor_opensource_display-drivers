@@ -127,13 +127,18 @@ bool sde_encoder_vm_primary_vhm_prepare_helper(struct sde_encoder_virt *sde_enc)
 	enum msm_disp_op disp_op;
 	struct sde_hw_intf *hw_intf;
 	struct sde_hw_ctl *ctl;
+	bool enable;
 
 	if (!sde_encoder_is_psr_supported(&sde_enc->base))
 		return false;
 
 	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
 			CRTC_PROP_VM_REQ_STATE);
-	if (vm_req != VM_REQ_RELEASE)
+	if (vm_req == VM_REQ_RELEASE)
+		enable = true;
+	else if (vm_req == VM_REQ_ACQUIRE)
+		enable = false;
+	else
 		return false;
 
 	hw_intf = sde_enc->cur_master->hw_intf;
@@ -141,7 +146,7 @@ bool sde_encoder_vm_primary_vhm_prepare_helper(struct sde_encoder_virt *sde_enc)
 	disp_op = sde_encoder_get_disp_op(&sde_enc->base);
 
 	if (hw_intf && hw_intf->ops.enable_infinite_vfp[disp_op])
-		hw_intf->ops.enable_infinite_vfp[disp_op](hw_intf, true);
+		hw_intf->ops.enable_infinite_vfp[disp_op](hw_intf, enable);
 	if (ctl && ctl->ops.update_bitmask[disp_op])
 		ctl->ops.update_bitmask[disp_op](ctl, SDE_HW_FLUSH_INTF,
 			hw_intf->idx, true);
