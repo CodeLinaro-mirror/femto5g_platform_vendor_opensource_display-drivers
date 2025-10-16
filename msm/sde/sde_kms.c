@@ -4053,7 +4053,6 @@ static int sde_kms_get_mixer_count(const struct msm_kms *kms,
 	s64 mdp_fudge_factor = 0;
 	s64 num_lm_fp = 0;
 	s64 lm_clk_fp = 0;
-	s64 lm_width_fp = 0;
 	int rc = 0;
 
 	if (!num_lm) {
@@ -4083,22 +4082,19 @@ static int sde_kms_get_mixer_count(const struct msm_kms *kms,
 	mode_clock_hz = drm_fixp_mul(mode_clock_hz, vrefresh_fp);
 	mode_clock_hz = drm_fixp_mul(mode_clock_hz, mdp_fudge_factor);
 
-	if (mode_clock_hz > max_mdp_clock_hz ||
-			hdisplay_fp > max_lm_width) {
+	if (mode_clock_hz > max_mdp_clock_hz) {
 		*num_lm = 0;
 		do {
 			*num_lm += 2;
 			num_lm_fp = drm_int2fixp(*num_lm);
 			lm_clk_fp = drm_fixp_div(mode_clock_hz, num_lm_fp);
-			lm_width_fp = drm_fixp_div(hdisplay_fp, num_lm_fp);
 
 			if (*num_lm > 4) {
 				rc = -EINVAL;
 				goto error;
 			}
 
-		} while (lm_clk_fp > max_mdp_clock_hz ||
-				lm_width_fp > max_lm_width);
+		} while (lm_clk_fp > max_mdp_clock_hz);
 
 		mode_clock_hz = lm_clk_fp;
 	}
