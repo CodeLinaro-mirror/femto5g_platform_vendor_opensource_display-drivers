@@ -686,11 +686,9 @@ void *sde_debugfs_get_root(struct sde_kms *sde_kms);
  * containing one or more "key=value\n" entries.
  */
 #if IS_ENABLED(CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT)
-#define SDE_KMS_INFO_MAX_SIZE (1 << 12)
-#elif IS_ENABLED(CONFIG_DSI_EXTENDED_MODES)
-#define SDE_KMS_INFO_MAX_SIZE (6 * (1 << 14))
+#define SDE_KMS_INFO_MAX_SIZE	(1 << 12)
 #else
-#define SDE_KMS_INFO_MAX_SIZE (1 << 14)
+#define SDE_KMS_INFO_MAX_SIZE	(1 << 14)
 #endif
 
 /**

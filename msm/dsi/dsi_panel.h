@@ -30,6 +30,7 @@
 #define DSI_CMD_PPS_SIZE 135
 
 #define DSI_CMD_PPS_HDR_SIZE 7
+#define DSI_MODE_MAX 32
 
 /*
  * Defining custom dsi msg flag.
