@@ -1934,7 +1934,12 @@ static int dsi_panel_parse_vrr_caps(struct dsi_panel *panel,
 	int rc = 0;
 	struct dsi_parser_utils *utils = &panel->utils;
 
-	/* "qcom,has-vrr-enable" is true for CMD mode panels
+	/* required only for VMH TUI */
+	panel->vrr_caps.has_vhm_capability =
+		utils->read_bool(utils->data, "qcom,has-vhm-capability");
+
+	/*
+	 * "qcom,has-vrr-enable" is true for CMD mode panels
 	 * that has AVR-step/EM pulse, ARP Panel, Video PSR Panel
 	 */
 	panel->vrr_caps.vrr_support = utils->read_bool(utils->data, "qcom,vrr-enable");

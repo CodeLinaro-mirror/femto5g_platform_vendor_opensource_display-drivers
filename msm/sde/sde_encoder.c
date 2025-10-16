@@ -9540,7 +9540,9 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
 	struct drm_device *dev;
 	struct sde_encoder_virt *sde_enc;
 	struct sde_encoder_phys *cur_master;
+	struct sde_connector *sde_conn;
 	enum msm_disp_op disp_op;
+	bool is_cmd, is_vid;
 
 	if (!kms || !crtc || !crtc->state || !crtc->dev) {
 		SDE_ERROR("invalid params\n");
@@ -9553,15 +9555,17 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
 		if (encoder->crtc != crtc)
 			continue;
 
+		is_cmd = sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_CMD_MODE);
+		is_vid = sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE);
 		sde_enc = to_sde_encoder_virt(encoder);
-		cur_master = sde_enc->phys_encs[0];
+		cur_master = sde_enc->cur_master;
 
 		if (!cur_master || !cur_master->hw_ctl)
 			return;
 
 		disp_op = sde_encoder_get_disp_op(cur_master->parent);
 
-		if (cur_master->hw_ctl->ops.get_scheduler_status[disp_op]) {
+		if (is_cmd && cur_master->hw_ctl->ops.get_scheduler_status[disp_op]) {
 			if (cur_master->hw_ctl->ops.get_scheduler_status[disp_op](
 				cur_master->hw_ctl) & BIT(0))
 				return;
@@ -9569,7 +9573,23 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
 			if (!atomic_read(&cur_master->pending_kickoff_cnt))
 				sde_encoder_phys_inc_pending(cur_master);
 		}
-		return;
+
+		if (cur_master && cur_master->connector) {
+			sde_conn = to_sde_connector(cur_master->connector);
+
+			if (is_vid && sde_conn && sde_conn->vrr_caps.has_vhm_capability)
+				sde_encoder_phys_inc_pending(cur_master);
+		}
+
+		int ret = sde_encoder_wait_for_event(encoder, MSM_ENC_TX_COMPLETE);
+
+		if (ret && ret != -EWOULDBLOCK) {
+			SDE_INFO(
+			"[crtc: %d][enc: %d][vhm_cap: %d][panel:%d][ret: %d]\n",
+			crtc->base.id, encoder->base.id, sde_conn->vrr_caps.has_vhm_capability,
+			is_vid, ret);
+			break;
+		}
 	}
 }
 
