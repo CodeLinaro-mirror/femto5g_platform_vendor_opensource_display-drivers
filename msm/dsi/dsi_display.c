@@ -7224,6 +7224,7 @@ int dsi_display_get_info(struct drm_connector *connector,
 	info->vrr_caps.video_psr_support = display->panel->vrr_caps.video_psr_support;
 	info->vrr_caps.video_mrr_support = display->panel->vrr_caps.video_mrr_support;
 	info->vrr_caps.arp_support = display->panel->vrr_caps.arp_support;
+	info->vrr_caps.has_vhm_capability = display->panel->vrr_caps.has_vhm_capability;
 	info->poms_align_vsync = display->panel->poms_align_vsync;
 	info->is_te_using_watchdog_timer = is_sim_panel(display);
 	info->event_notification_disabled = display->panel->event_notification_disabled;
