@@ -175,13 +175,20 @@ int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn
 		break;
 	case HFI_PROPERTY_DISPLAY_POWER_MODE:
 		drm_lp_val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_LP);
-		if (drm_lp_val == SDE_MODE_DPMS_LP1) {
+		switch (drm_lp_val) {
+		case SDE_MODE_DPMS_LP1:
 			val = HFI_MODE_DPMS_LP1;
-		} else if (drm_lp_val == SDE_MODE_DPMS_LP2) {
+			break;
+		case SDE_MODE_DPMS_LP2:
 			val = HFI_MODE_DPMS_LP2;
-		} else if (drm_lp_val == SDE_MODE_DPMS_ON) {
+			break;
+		case SDE_MODE_DPMS_ON:
 			val = HFI_MODE_DPMS_NOLP;
-		} else {
+			break;
+		case SDE_MODE_DPMS_OFF:
+			val = HFI_MODE_DPMS_OFF;
+			break;
+		default:
 			SDE_ERROR("unsupported LP mode val %d\n", drm_lp_val);
 			return 0;
 		}
