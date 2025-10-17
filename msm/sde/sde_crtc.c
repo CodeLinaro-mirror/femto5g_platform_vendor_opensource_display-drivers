@@ -5254,7 +5254,8 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			 * during crtc commit kickoff. This will delay the new vote request and
 			 * allows intra frame idle entry.
 			 */
-			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_CMD_MODE))
+			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_CMD_MODE) ||
+				sde_encoder_is_psr_supported(encoder))
 				continue;
 
 			sde_encoder_begin_commit(encoder);
@@ -5923,7 +5924,8 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 				continue;
 
 			/* early return for video mode, as votes are updated*/
-			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE))
+			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE) &&
+				!sde_encoder_is_psr_supported(encoder))
 				continue;
 
 			sde_encoder_begin_commit(encoder);
