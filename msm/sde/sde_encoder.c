@@ -2174,7 +2174,11 @@ static void sde_encoder_cesta_update_on_ept(struct drm_encoder *drm_enc,
 	if (!cur_master || !cur_master->connector)
 		return;
 
-	is_cmd = sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE);
+	if (sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) ||
+		(sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_VIDEO_MODE) &&
+		sde_encoder_is_psr_supported(drm_enc)))
+		is_cmd = true;
+
 	drm_conn = cur_master->connector;
 	if (sde_enc->crtc)
 		needs_modeset = msm_atomic_needs_modeset(sde_enc->crtc->state, drm_conn->state);
