@@ -58,6 +58,7 @@ static int dp_drv_bind(struct device *dev, struct device *master, void *data)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct msm_drm_private *priv = NULL;
 	int index;
+	const char *op_mode;
 
 	if (!dev || !pdev || !master) {
 		DP_ERR("invalid param(s), dev %pK, pdev %pK, master %pK\n",
@@ -67,6 +68,27 @@ static int dp_drv_bind(struct device *dev, struct device *master, void *data)
 	}
 
 	drm = dev_get_drvdata(master);
+	if (!drm) {
+		DP_ERR("invalid drm object\n");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	priv = drm->dev_private;
+	if (!priv) {
+		DP_ERR("invalid param(s)\n");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	op_mode = of_get_property(dev->of_node, "qcom,op-label", NULL);
+	if (op_mode && strlen(op_mode) &&
+		((IS_DISP_OP_HWIO(priv->disp_op) && strcmp(op_mode, "hwio")) ||
+		(IS_DISP_OP_HFI(priv->disp_op) && strcmp(op_mode, "hfi")))) {
+		DP_DEBUG("skip mode: %s\n", op_mode);
+		goto end;
+	}
+
 	dp = platform_get_drvdata(pdev);
 	if (!drm || !dp) {
 		DP_ERR("invalid param(s), drm %pK, dp %pK\n", drm, dp);
@@ -79,13 +101,6 @@ static int dp_drv_bind(struct device *dev, struct device *master, void *data)
 	index = dp_drv_get_num_of_displays(NULL);
 	if (index >= MAX_DP_ACTIVE_DISPLAY) {
 		DP_ERR("exceeds max dp count\n");
-		rc = -EINVAL;
-		goto end;
-	}
-
-	priv = drm->dev_private;
-	if (!priv) {
-		DP_ERR("invalid param(s)\n");
 		rc = -EINVAL;
 		goto end;
 	}
