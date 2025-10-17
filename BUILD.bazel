@@ -129,3 +129,6 @@ define_seraph()
 
 load(":targets/x1p42100.bzl", "define_x1p42100")
 define_x1p42100()
+
+load(":targets/bengal.bzl", "define_bengal")
+define_bengal()
