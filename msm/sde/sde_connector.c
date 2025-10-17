@@ -1355,8 +1355,10 @@ static int _sde_connector_update_dirty_properties(
 {
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
+	enum msm_disp_op disp_op;
 	int idx;
 	u32 b_lvl;
+	bool is_roi_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1365,6 +1367,7 @@ static int _sde_connector_update_dirty_properties(
 
 	c_conn = to_sde_connector(connector);
 	c_state = to_sde_connector_state(connector->state);
+	disp_op = sde_connector_get_disp_op(connector);
 
 	mutex_lock(&c_conn->property_info.property_lock);
 	while ((idx = msm_property_pop_dirty(&c_conn->property_info,
@@ -1385,12 +1388,20 @@ static int _sde_connector_update_dirty_properties(
 						CONNECTOR_PROP_BRIGHTNESS);
 			backlight_device_set_brightness(c_conn->bl_device, b_lvl);
 			break;
+		case CONNECTOR_PROP_ROI_V1:
+			is_roi_dirty = true;
+			break;
 		default:
 			/* nothing to do for most properties */
 			break;
 		}
 	}
 	mutex_unlock(&c_conn->property_info.property_lock);
+
+	if (disp_op == MSM_DISP_OP_HFI && is_roi_dirty) {
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_ROI_V1);
+	}
 
 	/* if colorspace needs to be updated do it first */
 	if (c_conn->colorspace_updated) {
