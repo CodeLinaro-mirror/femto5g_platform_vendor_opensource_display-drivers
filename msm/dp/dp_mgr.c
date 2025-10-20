@@ -24,6 +24,7 @@
 #include "dp_power.h"
 #include "dp_catalog.h"
 #include "dp_aux.h"
+#include "dp_aux_switch.h"
 #include "dp_link.h"
 #include "dp_panel.h"
 #include "dp_ctrl.h"
@@ -174,10 +175,7 @@ struct dp_mgr_priv {
 	struct list_head panel_list_head;
 
 	enum dp_mgr_states state;
-	enum dp_aux_switch_type switch_type;
-
 	struct platform_device *pdev;
-	struct device_node *aux_switch_node;
 	bool aux_switch_ready;
 	struct dp_aux_bridge *aux_bridge;
 	struct dentry *root;
@@ -189,6 +187,7 @@ struct dp_mgr_priv {
 	struct dp_power   *power;
 	struct dp_catalog *catalog;
 	struct dp_aux     *aux;
+	struct dp_aux_switch *aux_switch;
 	struct dp_link    *link;
 	struct dp_panel   *panel;
 	struct dp_ctrl    *ctrl;
@@ -211,7 +210,6 @@ struct dp_mgr_priv {
 	struct mutex session_lock;
 	struct mutex accounting_lock;
 	bool hdcp_delayed_off;
-	bool no_aux_switch;
 
 	u32 active_stream_cnt;
 	struct dp_mst mst;
@@ -1340,9 +1338,10 @@ static int dp_mgr_process_hpd_high(struct dp_mgr_priv *mgr)
 	mgr->client.max_pclk_khz = min(mgr->parser->max_pclk_khz,
 					mgr->debug->max_pclk_khz);
 
-	if (!mgr->debug->sim_mode && !mgr->no_aux_switch && !mgr->parser->gpio_aux_switch
-			&& mgr->aux_switch_node && mgr->aux->switch_configure) {
-		rc = mgr->aux->switch_configure(mgr->aux, true, mgr->hpd->orientation);
+	if (!mgr->debug->sim_mode &&
+		!mgr->parser->gpio_aux_switch &&
+		mgr->aux_switch) {
+		rc = mgr->aux_switch->configure(mgr->aux_switch, true, mgr->hpd->orientation);
 		if (rc)
 			goto err_state;
 	}
@@ -1506,59 +1505,6 @@ static int dp_mgr_process_hpd_low(struct dp_mgr_priv *mgr, bool skip_wait)
 	return rc;
 }
 
-static int dp_mgr_aux_switch_callback(struct notifier_block *self,
-		unsigned long event, void *data)
-{
-	return 0;
-}
-
-static int dp_mgr_init_aux_switch(struct dp_mgr_priv *mgr)
-{
-	int rc = 0;
-	struct notifier_block nb;
-	const u32 max_retries = 50;
-	u32 retry;
-
-	if (mgr->aux_switch_ready)
-		return rc;
-
-	if (!mgr->aux->switch_register_notifier)
-		return rc;
-
-	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
-
-	nb.notifier_call = dp_mgr_aux_switch_callback;
-	nb.priority = 0;
-
-	/*
-	 * Iteratively wait for reg notifier which confirms that fsa driver is probed.
-	 * Bootup DP with cable connected usecase can hit this scenario.
-	 */
-	for (retry = 0; retry < max_retries; retry++) {
-		rc = mgr->aux->switch_register_notifier(&nb, mgr->aux_switch_node);
-		if (rc == 0) {
-			DP_DEBUG("registered notifier successfully\n");
-			mgr->aux_switch_ready = true;
-			break;
-		}
-
-		DP_DEBUG("failed to register notifier retry=%d rc=%d\n", retry, rc);
-		msleep(100);
-	}
-
-	if (retry == max_retries) {
-		DP_WARN("Failed to register fsa notifier\n");
-		mgr->aux_switch_ready = false;
-		return rc;
-	}
-
-	if (mgr->aux->switch_unregister_notifier)
-		mgr->aux->switch_unregister_notifier(&nb, mgr->aux_switch_node);
-
-	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, rc);
-	return rc;
-}
-
 static int dp_mgr_usbpd_configure_cb(void *data)
 {
 	int rc = 0;
@@ -1591,14 +1537,14 @@ static int dp_mgr_usbpd_configure_cb(void *data)
 		}
 	}
 
-	if (!mgr->debug->sim_mode && !mgr->no_aux_switch
-	    && !mgr->parser->gpio_aux_switch && mgr->aux_switch_node &&
-			mgr->aux->switch_configure) {
-		rc = dp_mgr_init_aux_switch(mgr);
+	if (!mgr->debug->sim_mode &&
+	    !mgr->parser->gpio_aux_switch && mgr->aux_switch) {
+		rc = mgr->aux_switch->init(mgr->aux_switch);
 		if (rc)
 			return rc;
 
-		rc = mgr->aux->switch_configure(mgr->aux, true, mgr->hpd->orientation);
+		rc = mgr->aux_switch->configure(mgr->aux_switch,
+			true, mgr->hpd->orientation);
 		if (rc)
 			return rc;
 	}
@@ -1854,9 +1800,10 @@ static int dp_mgr_usbpd_disconnect_cb(void *data)
 	mgr->ctrl->abort(mgr->ctrl, true);
 	mgr->aux->abort(mgr->aux, true);
 
-	if (!mgr->debug->sim_mode && !mgr->no_aux_switch
-	    && !mgr->parser->gpio_aux_switch && mgr->aux->switch_configure)
-		mgr->aux->switch_configure(mgr->aux, false, ORIENTATION_NONE);
+	if (!mgr->debug->sim_mode &&
+	    !mgr->parser->gpio_aux_switch &&
+	    mgr->aux_switch && mgr->aux_switch->configure)
+		mgr->aux_switch->configure(mgr->aux_switch, false, ORIENTATION_NONE);
 
 	dp_mgr_disconnect_sync(mgr);
 
@@ -2211,7 +2158,6 @@ static int dp_mgr_init_sub_modules(struct dp_mgr_priv *mgr)
 	int rc = 0;
 	u32 dp_core_revision = 0;
 	bool hdcp_disabled;
-	const char *phandle = "qcom,dp-aux-switch";
 	struct device *dev = &mgr->pdev->dev;
 	struct dp_hpd_cb *cb = &mgr->hpd_cb;
 	struct dp_ctrl_in ctrl_in = {
@@ -2263,24 +2209,16 @@ static int dp_mgr_init_sub_modules(struct dp_mgr_priv *mgr)
 	mgr->catalog->hpd.set_edp_mode(&mgr->catalog->hpd, mgr->client.is_edp);
 	dp_core_revision = dp_catalog_get_dp_core_version(mgr->catalog);
 
-	mgr->aux_switch_node = of_parse_phandle(mgr->pdev->dev.of_node, phandle, 0);
-	if (!mgr->aux_switch_node) {
-		DP_DEBUG("cannot parse %s handle\n", phandle);
-		mgr->no_aux_switch = true;
-	} else {
-		if (!strcmp(mgr->aux_switch_node->name, "fsa4480"))
-			mgr->switch_type = DP_AUX_SWITCH_FSA4480;
-		else if (!strcmp(mgr->aux_switch_node->name, "wcd939x_i2c"))
-			mgr->switch_type = DP_AUX_SWITCH_WCD939x;
-		else
-			mgr->switch_type = DP_AUX_SWITCH_BYPASS;
-
-		DP_ERR("aux_switch_name :%s\n", mgr->aux_switch_node->name);
+	mgr->aux_switch = dp_aux_switch_get(dev);
+	if (IS_ERR(mgr->aux_switch)) {
+		rc = PTR_ERR(mgr->aux_switch);
+		DP_ERR("failed to initialize aux, rc = %d\n", rc);
+		mgr->aux_switch = NULL;
+		goto error_aux_switch;
 	}
 
 	mgr->aux = dp_aux_get(dev, &mgr->catalog->aux, mgr->parser,
-			mgr->aux_switch_node, mgr->aux_bridge, mgr->client.dp_aux_ipc_log,
-			mgr->switch_type);
+			mgr->aux_bridge, mgr->client.dp_aux_ipc_log);
 	if (IS_ERR(mgr->aux)) {
 		rc = PTR_ERR(mgr->aux);
 		DP_ERR("failed to initialize aux, rc = %d\n", rc);
@@ -2453,6 +2391,8 @@ error_power:
 error_pll:
 	dp_aux_put(mgr->aux);
 error_aux:
+	dp_aux_switch_put(mgr->aux_switch);
+error_aux_switch:
 	dp_catalog_put(mgr->catalog);
 error_catalog:
 	dp_parser_put(mgr->parser);

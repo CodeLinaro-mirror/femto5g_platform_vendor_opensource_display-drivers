@@ -67,6 +67,7 @@ module_entry(
             "msm/dp/edp_pll_5nm.c",
             "msm/dp/edp_pll_4nm.c",
             "msm/dp/dp_mgr.c",
+            "msm/dp/dp_aux_switch.c",
         ],
         "CONFIG_DRM_MSM_DP_MST": [
             "msm/dp/dp_mst_drm.c",
