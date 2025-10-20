@@ -9,7 +9,6 @@
 #include <linux/list_sort.h>
 #include "linux/sde_rsc.h"
 #include "dsi/dsi_display.h"
-#include "dp/dp_display.h"
 #include "sde_kms.h"
 #include "sde_vm_common.h"
 #include "sde_crtc.h"

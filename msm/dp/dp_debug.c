@@ -20,7 +20,7 @@
 #include "dp_debug.h"
 #include "drm/drm_connector.h"
 #include "sde_connector.h"
-#include "dp_display.h"
+#include "dp_mgr.h"
 #include "dp_pll.h"
 #include "dp_hpd.h"
 #include "dp_mst_sim.h"
@@ -55,9 +55,9 @@ struct dp_debug_private {
 	struct dp_parser *parser;
 	struct dp_ctrl *ctrl;
 	struct dp_pll *pll;
-	struct dp_display *display;
 	struct mutex lock;
 	struct dp_aux_bridge *sim_bridge;
+	struct dp_client *client;
 };
 
 static int dp_debug_sim_hpd_cb(void *arg, bool hpd, bool hpd_irq)
@@ -188,7 +188,7 @@ static ssize_t dp_debug_write_edid(struct file *file,
 	}
 
 	dp_debug_enable_sim_mode(debug, DP_SIM_MODE_EDID);
-	dp_mst_clear_edid_cache(debug->display);
+	dp_mst_clear_edid_cache(debug->client);
 	dp_sim_update_port_edid(debug->sim_bridge, debug->mst_edid_idx,
 			edid, edid_size);
 bail:
@@ -373,7 +373,6 @@ static ssize_t dp_debug_read_crc(struct file *file, char __user *user_buff, size
 	struct drm_connector *drm_conn;
 	struct sde_connector *sde_conn;
 	struct dp_panel *panel;
-	struct dp_display *display;
 	int i;
 	int rc;
 
@@ -400,8 +399,7 @@ static ssize_t dp_debug_read_crc(struct file *file, char __user *user_buff, size
 		}
 
 		sde_conn = to_sde_connector(drm_conn);
-		display = sde_conn->display;
-		panel = dp_display_get_panel(display, sde_conn->panel_id);
+		panel = dp_mgr_get_panel(debug->client, sde_conn->panel_id);
 		drm_connector_put(drm_conn);
 
 		if (!panel)
@@ -495,7 +493,7 @@ static ssize_t dp_debug_write_hpd(struct file *file,
 	 * only while running in debug mode which is manually
 	 * triggered by a tester or a script.
 	 */
-	DP_INFO("%s\n", debug->hotplug ? "[CONNECT]" : "[DISCONNECT]");
+	DP_DEBUG("%s\n", debug->hotplug ? "[CONNECT]" : "[DISCONNECT]");
 
 	debug->hpd->simulate_connect(debug->hpd, debug->hotplug);
 end:
@@ -534,10 +532,14 @@ static ssize_t dp_debug_write_edid_modes(struct file *file,
 		goto clear;
 
 	panel->mode_override = true;
-	panel->hdisplay = hdisplay;
-	panel->vdisplay = vdisplay;
-	panel->vrefresh = vrefresh;
-	panel->aspect_ratio = aspect_ratio;
+
+	panel->mode.override_timing.h_active = hdisplay;
+	panel->mode.override_timing.v_active = vdisplay;
+	panel->mode.override_timing.refresh_rate = vrefresh;
+	panel->mode.override_timing.aspect_ratio = aspect_ratio;
+
+	DP_DEBUG("x: %d, y: %d, fps: %d, ar: %d\n",
+		hdisplay, vdisplay, vrefresh, aspect_ratio);
 	goto end;
 clear:
 	DP_DEBUG("clearing debug modes\n");
@@ -552,7 +554,6 @@ static ssize_t dp_debug_write_edid_modes_mst(struct file *file,
 	struct dp_debug_private *debug = file->private_data;
 	struct drm_connector *connector;
 	struct sde_connector *sde_conn;
-	struct dp_display *display;
 	struct dp_panel *panel = NULL;
 	char buf[SZ_512];
 	char *read_buf;
@@ -583,14 +584,13 @@ static ssize_t dp_debug_write_edid_modes_mst(struct file *file,
 				NULL, con_id);
 		if (connector) {
 			sde_conn = to_sde_connector(connector);
-			display = sde_conn->display;
-			panel = dp_display_get_panel(display, sde_conn->panel_id);
+			panel = dp_mgr_get_panel(debug->client, sde_conn->panel_id);
 			if (panel && sde_conn->mst_port) {
-				panel->mode_override = debug_en;
-				panel->hdisplay = hdisplay;
-				panel->vdisplay = vdisplay;
-				panel->vrefresh = vrefresh;
-				panel->aspect_ratio = aspect_ratio;
+				panel->mode_override = true;
+				panel->mode.override_timing.h_active = hdisplay;
+				panel->mode.override_timing.v_active = vdisplay;
+				panel->mode.override_timing.refresh_rate = vrefresh;
+				panel->mode.override_timing.aspect_ratio = aspect_ratio;
 			} else {
 				DP_ERR("connector id %d is not mst\n", con_id);
 			}
@@ -613,7 +613,6 @@ static ssize_t dp_debug_write_mst_con_id(struct file *file,
 	struct drm_connector *connector;
 	struct sde_connector *sde_conn;
 	struct drm_dp_mst_port *mst_port;
-	struct dp_display *display;
 	struct dp_panel *dp_panel;
 	char buf[SZ_32];
 	size_t len = 0;
@@ -660,13 +659,12 @@ static ssize_t dp_debug_write_mst_con_id(struct file *file,
 		goto out;
 
 	if (status == connector_status_connected)
-		DP_INFO("plug mst connector %d\n", con_id);
+		DP_DEBUG("plug mst connector %d\n", con_id);
 	else if (status == connector_status_disconnected)
-		DP_INFO("unplug mst connector %d\n", con_id);
+		DP_DEBUG("unplug mst connector %d\n", con_id);
 
 	mst_port = sde_conn->mst_port;
-	display = sde_conn->display;
-	dp_panel = dp_display_get_panel(display, sde_conn->panel_id);
+	dp_panel = dp_mgr_get_panel(debug->client, sde_conn->panel_id);
 	if (!dp_panel)
 		goto out;
 
@@ -777,7 +775,8 @@ static ssize_t dp_debug_mmrm_clk_cb_write(struct file *file,
 	size_t len = 0;
 	struct dss_clk_mmrm_cb mmrm_cb_data;
 	struct mmrm_client_notifier_data notifier_data;
-	struct dp_display *dp_display;
+	struct dp_drv *dp_drv;
+	struct sde_connector *sde_conn;
 	int cb_type;
 
 	if (!debug)
@@ -785,7 +784,8 @@ static ssize_t dp_debug_mmrm_clk_cb_write(struct file *file,
 	if (*ppos)
 		return 0;
 
-	dp_display = debug->display;
+	sde_conn = to_sde_connector(*debug->connector);
+	dp_drv = sde_conn->display;
 
 	len = min_t(size_t, count, SZ_8 - 1);
 	if (copy_from_user(buf, user_buff, len))
@@ -799,10 +799,10 @@ static ssize_t dp_debug_mmrm_clk_cb_write(struct file *file,
 		return 0;
 
 	notifier_data.cb_type = MMRM_CLIENT_RESOURCE_VALUE_CHANGE;
-	mmrm_cb_data.phandle = (void *)dp_display;
+	mmrm_cb_data.phandle = (void *)dp_drv;
 	notifier_data.pvt_data = (void *)&mmrm_cb_data;
 
-	dp_display_mmrm_callback(&notifier_data);
+	dp_mgr_mmrm_callback(&notifier_data);
 
 	return len;
 }
@@ -1318,7 +1318,6 @@ static ssize_t dp_debug_read_mst_conn_info(struct file *file,
 	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *connector;
 	struct sde_connector *sde_conn;
-	struct dp_display *display;
 	char *buf;
 	u32 len = 0, ret = 0, max_size = SZ_4K;
 	int rc = 0;
@@ -1341,9 +1340,8 @@ static ssize_t dp_debug_read_mst_conn_info(struct file *file,
 	drm_connector_list_iter_begin((*debug->connector)->dev, &conn_iter);
 	drm_for_each_connector_iter(connector, &conn_iter) {
 		sde_conn = to_sde_connector(connector);
-		display = sde_conn->display;
 		if (!sde_conn->mst_port ||
-				display->base_connector != (*debug->connector))
+				debug->client->base_connector != (*debug->connector))
 			continue;
 		ret = scnprintf(buf + len, max_size,
 				"conn name:%s, conn id:%d state:%d\n",
@@ -1764,7 +1762,6 @@ static void dp_debug_set_sim_mode(struct dp_debug_private *debug, bool sim)
 	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *connector;
 	struct sde_connector *sde_conn;
-	struct dp_display *display;
 	struct dp_panel *panel;
 
 	if (sim) {
@@ -1789,9 +1786,9 @@ static void dp_debug_set_sim_mode(struct dp_debug_private *debug, bool sim)
 	drm_connector_list_iter_begin((*debug->connector)->dev, &conn_iter);
 	drm_for_each_connector_iter(connector, &conn_iter) {
 		sde_conn = to_sde_connector(connector);
-		display = sde_conn->display;
-		if (display->base_connector == (*debug->connector)) {
-			panel = dp_display_get_panel(display, sde_conn->panel_id);
+		if (debug->client->base_connector &&
+			(debug->client->base_connector == (*debug->connector))) {
+			panel = dp_mgr_get_panel(debug->client, sde_conn->panel_id);
 			if (panel) {
 				panel->mode_override = false;
 				panel->mst_hide = false;
@@ -1805,7 +1802,7 @@ static void dp_debug_set_sim_mode(struct dp_debug_private *debug, bool sim)
 	 * only while running in debug mode which is manually
 	 * triggered by a tester or a script.
 	 */
-	DP_INFO("%s\n", sim ? "[ON]" : "[OFF]");
+	DP_DEBUG("%s\n", sim ? "[ON]" : "[OFF]");
 }
 
 static ssize_t dp_debug_write_sim(struct file *file,
@@ -2536,7 +2533,7 @@ static void dp_debug_set_mst_con(struct dp_debug *dp_debug, int con_id)
 	mutex_lock(&debug->lock);
 	debug->mst_con_id = con_id;
 	mutex_unlock(&debug->lock);
-	DP_INFO("Selecting mst connector %d\n", con_id);
+	DP_DEBUG("Selecting mst connector %d\n", con_id);
 }
 
 struct dp_debug *dp_debug_get(struct dp_debug_in *in)
@@ -2568,7 +2565,7 @@ struct dp_debug *dp_debug_get(struct dp_debug_in *in)
 	debug->parser = in->parser;
 	debug->ctrl = in->ctrl;
 	debug->pll = in->pll;
-	debug->display = in->display;
+	debug->client = in->client;
 
 	dp_debug = &debug->dp_debug;
 

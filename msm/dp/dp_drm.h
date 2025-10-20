@@ -12,14 +12,14 @@
 #include <drm/drm_bridge.h>
 
 #include "msm_drv.h"
-#include "dp_display.h"
+#include "dp_drv.h"
 
 struct dp_bridge {
 	struct drm_bridge base;
 	u32 id;
 
 	struct drm_connector *connector;
-	struct dp_display *display;
+	struct dp_drv *drv;
 	struct dp_display_mode dp_mode;
 	int panel_id;
 };
@@ -194,6 +194,18 @@ void init_failsafe_mode(struct dp_display_mode *dp_mode);
  */
 int dp_connector_add_custom_mode(struct drm_connector *conn, struct dp_display_mode *dp_mode);
 
+/**
+ * dp_connector_cont_splash_config - configure dp for continuous splash.
+ * @display: Pointer to dp display object.
+ */
+int dp_connector_cont_splash_config(void *display);
+
+/**
+ * dp_connector_cont_splash_res_disable - disable continuous splash for dp.
+ * @display: Pointer to dp display object.
+ */
+int dp_connector_cont_splash_res_disable(void *display);
+
 #else
 static inline int dp_connector_config_hdr(struct drm_connector *connector,
 		void *display, struct sde_connector_state *c_state)
@@ -285,6 +297,16 @@ static inline void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
 
 static inline int dp_connector_install_properties(void *display,
 		struct drm_connector *conn)
+{
+	return 0;
+}
+
+static inline int dp_connector_cont_splash_config(void *dp_display)
+{
+	return 0;
+}
+
+static inline int dp_connector_cont_splash_res_disable(void *dp_display)
 {
 	return 0;
 }

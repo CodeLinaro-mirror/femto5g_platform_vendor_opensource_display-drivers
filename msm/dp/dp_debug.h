@@ -11,8 +11,9 @@
 #include "dp_ctrl.h"
 #include "dp_link.h"
 #include "dp_aux.h"
-#include "dp_display.h"
+#include "dp_mgr.h"
 #include "dp_pll.h"
+#include "dp_drv.h"
 #include <linux/ipc_logging.h>
 
 #define DP_IPC_LOG(fmt, ...) \
@@ -137,7 +138,7 @@ struct dp_debug {
  * @parser: instance of parser module
  * @ctrl: instance of controller module
  * @pll: instance of pll module
- * @display: instance of display module
+ * @client: instance of underlaying DP object
  */
 struct dp_debug_in {
 	struct device *dev;
@@ -150,7 +151,7 @@ struct dp_debug_in {
 	struct dp_parser *parser;
 	struct dp_ctrl *ctrl;
 	struct dp_pll *pll;
-	struct dp_display *display;
+	struct dp_client *client;
 };
 
 /**

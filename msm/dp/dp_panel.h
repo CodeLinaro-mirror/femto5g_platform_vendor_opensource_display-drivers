@@ -15,6 +15,7 @@
 #include "sde_connector.h"
 #include "msm_drv.h"
 #include "dp_panel_tu.h"
+#include "dp_client.h"
 
 #define DP_RECEIVER_DSC_CAP_SIZE    15
 #define DP_RECEIVER_FEC_STATUS_SIZE 3
@@ -37,52 +38,7 @@ enum dp_lane_count {
 	DP_LANE_COUNT_4	= 4,
 };
 
-enum dp_output_format {
-	DP_OUTPUT_FORMAT_RGB,
-	DP_OUTPUT_FORMAT_YCBCR420,
-	DP_OUTPUT_FORMAT_YCBCR422,
-	DP_OUTPUT_FORMAT_YCBCR444,
-	DP_OUTPUT_FORMAT_INVALID,
-};
-
 #define DP_MAX_DOWNSTREAM_PORTS 0x10
-
-struct dp_panel_info {
-	u32 h_active;
-	u32 v_active;
-	u32 h_back_porch;
-	u32 h_front_porch;
-	u32 h_sync_width;
-	u32 h_active_low;
-	u32 v_back_porch;
-	u32 v_front_porch;
-	u32 v_sync_width;
-	u32 v_active_low;
-	u32 h_skew;
-	u32 refresh_rate;
-	u32 pixel_clk_khz;
-	u32 bpp;
-	bool widebus_en;
-	struct msm_compression_info comp_info;
-	s64 dsc_overhead_fp;
-	u32 pbn_no_overhead;
-	u32 pbn;
-};
-
-struct dp_display_mode {
-	struct dp_panel_info timing;
-	u32 capabilities;
-	s64 fec_overhead_fp;
-	s64 dsc_overhead_fp;
-	/**
-	 * @output_format:
-	 *
-	 * This is used to indicate DP output format.
-	 * The output format can be read from drm_mode.
-	 */
-	enum dp_output_format output_format;
-	u32 lm_count;
-};
 
 struct dp_panel;
 
@@ -94,7 +50,6 @@ struct dp_panel_in {
 	struct drm_connector *connector;
 	struct dp_panel *base_panel;
 	struct dp_parser *parser;
-	struct dp_panel *head;
 };
 
 struct dp_dsc_caps {
@@ -168,14 +123,16 @@ struct dp_panel {
 	/* override debug option */
 	bool mst_hide;
 	bool mode_override;
-	int hdisplay;
-	int vdisplay;
-	int vrefresh;
-	int aspect_ratio;
+	int override_h;
+	int override_v;
+	int override_fps;
+	int override_ar;
 
 	s64 fec_overhead_fp;
 
 	int (*init)(struct dp_panel *dp_panel, bool skip_op);
+	struct dp_display_mode mode;
+
 	int (*deinit)(struct dp_panel *dp_panel, u32 flags);
 	int (*hw_cfg)(struct dp_panel *dp_panel, bool enable);
 	int (*read_sink_caps)(struct dp_panel *dp_panel,
@@ -210,6 +167,7 @@ struct dp_panel {
 	int (*get_sink_crc)(struct dp_panel *dp_panel, u16 *crc);
 	bool (*get_panel_on)(struct dp_panel *dp_panel);
 	void (*set_lttpr_mode)(struct dp_panel *dp_panel, bool is_transparent);
+	struct dp_display_mode *(*get_mode)(struct dp_panel *dp_panel);
 };
 
 struct dp_vc_tu_mapping_table {
