@@ -151,7 +151,7 @@ struct dp_mst_bridge {
 	struct drm_display_mode drm_mode;
 	struct dp_display_mode dp_mode;
 	struct drm_connector *connector;
-	void *dp_panel;
+	int panel_id;
 
 	int vcpi;
 	int pbn;
@@ -166,7 +166,7 @@ struct dp_mst_bridge {
 struct dp_mst_bridge_state {
 	struct drm_private_state base;
 	struct drm_connector *connector;
-	void *dp_panel;
+	int panel_id;
 	int num_slots;
 };
 
@@ -477,16 +477,10 @@ static bool dp_mst_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 		goto end;
 	}
 
-	if (!bridge_state->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
-		ret = false;
-		goto end;
-	}
-
 	dp = bridge->display;
 
-	dp->convert_to_dp_mode(dp, bridge_state->dp_panel, mode, &dp_mode);
-	dp->clear_reservation(dp, bridge_state->dp_panel);
+	dp->convert_to_dp_mode(dp, bridge_state->panel_id, mode, &dp_mode);
+	dp->clear_reservation(dp, bridge_state->panel_id);
 	convert_to_drm_mode(&dp_mode, adjusted_mode);
 
 	DP_MST_DEBUG("mst bridge [%d] mode:%s fixup\n", bridge->id, mode->name);
@@ -609,7 +603,7 @@ static void _dp_mst_update_timeslots(struct dp_mst_private *mst,
 			dp_bridge->start_slot -= prev_slots;
 		}
 
-		mst->dp_display->set_stream_info(mst->dp_display, dp_bridge->dp_panel,
+		mst->dp_display->set_stream_info(mst->dp_display, dp_bridge->panel_id,
 				dp_bridge->id, dp_bridge->start_slot, dp_bridge->num_slots,
 				dp_bridge->pbn, dp_bridge->vcpi);
 		DP_INFO("conn:%d vcpi:%d start_slot:%d num_slots:%d, pbn:%d\n",
@@ -639,7 +633,7 @@ static void _dp_mst_update_timeslots(struct dp_mst_private *mst,
 			dp_bridge->num_slots = num_slots;
 
 		mst->dp_display->set_stream_info(mst->dp_display,
-				dp_bridge->dp_panel,
+				dp_bridge->panel_id,
 				dp_bridge->id, start_slot, num_slots, pbn,
 				dp_bridge->vcpi);
 
@@ -666,7 +660,7 @@ static void _dp_mst_update_single_timeslot(struct dp_mst_private *mst,
 		mst_bridge->num_slots = num_slots;
 
 		mst->dp_display->set_stream_info(mst->dp_display,
-				mst_bridge->dp_panel,
+				mst_bridge->panel_id,
 				mst_bridge->id, start_slot, num_slots, pbn,
 				mst_bridge->vcpi);
 	}
@@ -918,14 +912,14 @@ static void dp_mst_bridge_pre_enable(struct drm_bridge *drm_bridge)
 	mutex_lock(&mst->mst_lock);
 
 	/* By this point mode should have been validated through mode_fixup */
-	rc = dp->set_mode(dp, bridge->dp_panel, &bridge->dp_mode);
+	rc = dp->set_mode(dp, bridge->panel_id, &bridge->dp_mode);
 	if (rc) {
 		DP_ERR("[%d] failed to perform a mode set, rc=%d\n",
 		       bridge->id, rc);
 		goto end;
 	}
 
-	rc = dp->prepare(dp, bridge->dp_panel);
+	rc = dp->prepare(dp, bridge->panel_id);
 	if (rc) {
 		DP_ERR("[%d] DP display prepare failed, rc=%d\n",
 		       bridge->id, rc);
@@ -935,15 +929,15 @@ static void dp_mst_bridge_pre_enable(struct drm_bridge *drm_bridge)
 	rc = _dp_mst_bridge_pre_enable_part1(bridge);
 	if (rc) {
 		DP_ERR("[%d] DP display pre-enable failed, rc=%d\n", bridge->id, rc);
-		dp->unprepare(dp, bridge->dp_panel);
+		dp->unprepare(dp, bridge->panel_id);
 		goto end;
 	}
 
-	rc = dp->enable(dp, bridge->dp_panel);
+	rc = dp->enable(dp, bridge->panel_id);
 	if (rc) {
 		DP_ERR("[%d] DP display enable failed, rc=%d\n",
 		       bridge->id, rc);
-		dp->unprepare(dp, bridge->dp_panel);
+		dp->unprepare(dp, bridge->panel_id);
 		goto end;
 	} else {
 		_dp_mst_bridge_pre_enable_part2(bridge);
@@ -982,7 +976,7 @@ static void dp_mst_bridge_enable(struct drm_bridge *drm_bridge)
 
 	dp = bridge->display;
 
-	rc = dp->post_enable(dp, bridge->dp_panel);
+	rc = dp->post_enable(dp, bridge->panel_id);
 	if (rc) {
 		DP_ERR("mst bridge [%d] post enable failed, rc=%d\n",
 		       bridge->id, rc);
@@ -1025,7 +1019,7 @@ static void dp_mst_bridge_disable(struct drm_bridge *drm_bridge)
 
 	_dp_mst_bridge_pre_disable_part1(bridge);
 
-	rc = dp->pre_disable(dp, bridge->dp_panel);
+	rc = dp->pre_disable(dp, bridge->panel_id);
 	if (rc)
 		DP_ERR("[%d] DP display pre disable failed, rc=%d\n",
 		       bridge->id, rc);
@@ -1064,18 +1058,18 @@ static void dp_mst_bridge_post_disable(struct drm_bridge *drm_bridge)
 	dp = bridge->display;
 	mst = dp->dp_mst_prv_info;
 
-	rc = dp->disable(dp, bridge->dp_panel);
+	rc = dp->disable(dp, bridge->panel_id);
 	if (rc)
 		DP_MST_INFO("bridge:%d conn:%d display disable failed, rc=%d\n",
 				bridge->id, conn, rc);
 
-	rc = dp->unprepare(dp, bridge->dp_panel);
+	rc = dp->unprepare(dp, bridge->panel_id);
 	if (rc)
 		DP_MST_INFO("bridge:%d conn:%d display unprepare failed, rc=%d\n",
 				bridge->id, conn, rc);
 
 	bridge->connector = NULL;
-	bridge->dp_panel =  NULL;
+	bridge->panel_id =  -1;
 
 	DP_MST_INFO("mst bridge:%d conn:%d post disable complete\n",
 			bridge->id, conn);
@@ -1101,16 +1095,22 @@ static void dp_mst_bridge_mode_set(struct drm_bridge *drm_bridge,
 
 	dp_bridge_state = to_dp_mst_bridge_state(bridge);
 	bridge->connector = dp_bridge_state->connector;
-	bridge->dp_panel = dp_bridge_state->dp_panel;
+
+	if (dp_bridge_state->panel_id < 0) {
+		DP_ERR("invalid panel_id: %d\n", dp_bridge_state->panel_id);
+		return;
+	}
+
+	bridge->panel_id = dp_bridge_state->panel_id;
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, DP_MST_CONN_ID(bridge));
 
 	dp = bridge->display;
 
 	memset(&bridge->dp_mode, 0x0, sizeof(struct dp_display_mode));
 	memcpy(&bridge->drm_mode, adjusted_mode, sizeof(bridge->drm_mode));
-	dp->convert_to_dp_mode(dp, bridge->dp_panel, adjusted_mode,
+	dp->convert_to_dp_mode(dp, bridge->panel_id, adjusted_mode,
 			&bridge->dp_mode);
-	dp->clear_reservation(dp, dp_bridge_state->dp_panel);
+	dp->clear_reservation(dp, dp_bridge_state->panel_id);
 
 	DP_MST_INFO("mst bridge:%d conn:%d mode set complete %s\n", bridge->id,
 			DP_MST_CONN_ID(bridge), mode->name);
@@ -1232,7 +1232,11 @@ dp_mst_connector_detect(struct drm_connector *connector,
 	DP_MST_DEBUG_V("enter:\n");
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
 
-	dp_panel = c_conn->drv_panel;
+	dp_panel = dp_display_get_panel(dp_display, c_conn->panel_id);
+	if (!dp_panel) {
+		DP_ERR("invalid panel\n");
+		return -EINVAL;
+	}
 
 	if (dp_panel->mst_hide)
 		return connector_status_disconnected;
@@ -1371,7 +1375,11 @@ enum drm_mode_status dp_mst_connector_mode_valid(
 	mst = dp_display->dp_mst_prv_info;
 	c_conn = to_sde_connector(connector);
 	mst_port = c_conn->mst_port;
-	dp_panel = c_conn->drv_panel;
+	dp_panel = dp_display_get_panel(dp_display, c_conn->panel_id);
+	if (!dp_panel) {
+		DP_ERR("invalid panel\n");
+		return MODE_ERROR;
+	}
 
 	if (!dp_panel || !mst_port)
 		return MODE_ERROR;
@@ -1406,7 +1414,7 @@ enum drm_mode_status dp_mst_connector_mode_valid(
 		return MODE_BAD;
 	}
 
-	dp_display->convert_to_dp_mode(dp_display, c_conn->drv_panel,
+	dp_display->convert_to_dp_mode(dp_display, c_conn->panel_id,
 			mode, &dp_mode);
 
 	required_pbn = mst->mst_fw_cbs->calc_pbn_mode(&dp_mode);
@@ -1421,7 +1429,8 @@ enum drm_mode_status dp_mst_connector_mode_valid(
 	}
 
 validate_mode:
-	return dp_display->validate_mode(dp_display, dp_panel, mode, avail_res);
+	return dp_display->validate_mode(dp_display, c_conn->panel_id,
+		mode, avail_res);
 }
 
 int dp_mst_connector_get_mode_info(struct drm_connector *connector,
@@ -1483,7 +1492,7 @@ dp_mst_atomic_best_encoder(struct drm_connector *connector,
 
 		if (!bridge_state->connector) {
 			bridge_state->connector = connector;
-			bridge_state->dp_panel = conn->drv_panel;
+			bridge_state->panel_id = conn->panel_id;
 			enc = mst->mst_bridge[i].encoder;
 			break;
 		}
@@ -1587,7 +1596,7 @@ static int dp_mst_connector_atomic_check(struct drm_connector *connector,
 
 		if (!new_conn_state->crtc && mst->state != PM_SUSPEND) {
 			bridge_state->connector = NULL;
-			bridge_state->dp_panel = NULL;
+			bridge_state->panel_id = -1;
 
 			DP_MST_DEBUG("clear best encoder: %d\n", bridge->id);
 		}
@@ -1640,7 +1649,7 @@ mode_set:
 			goto end;
 		}
 
-		dp_display->convert_to_dp_mode(dp_display, c_conn->drv_panel,
+		dp_display->convert_to_dp_mode(dp_display, c_conn->panel_id,
 				&crtc_state->mode, &dp_mode);
 
 		slots = _dp_mst_compute_config(state, mst, connector, &dp_mode);
@@ -1844,7 +1853,7 @@ dp_mst_fixed_atomic_best_encoder(struct drm_connector *connector,
 				goto end;
 
 			bridge_state->connector = connector;
-			bridge_state->dp_panel = conn->drv_panel;
+			bridge_state->panel_id = conn->panel_id;
 			enc = mst->mst_bridge[i].encoder;
 			break;
 		}

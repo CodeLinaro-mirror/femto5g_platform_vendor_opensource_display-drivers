@@ -94,6 +94,7 @@ struct dp_panel_in {
 	struct drm_connector *connector;
 	struct dp_panel *base_panel;
 	struct dp_parser *parser;
+	struct dp_panel *head;
 };
 
 struct dp_dsc_caps {
@@ -108,6 +109,8 @@ struct dp_audio;
 #define DP_PANEL_CAPS_DSC	BIT(0)
 
 struct dp_panel {
+	struct list_head list_node;
+
 	/* dpcd raw data */
 	u8 dpcd[DP_RECEIVER_CAP_SIZE + DP_RECEIVER_EXT_CAP_SIZE + 1];
 	u8 lttpr_common_caps[DP_LTTPR_COMMON_CAP_SIZE];
@@ -125,6 +128,7 @@ struct dp_panel {
 	u32 vic;
 	u32 max_pclk_khz;
 	s64 mst_target_sc;
+	u32 id;
 
 	/* debug */
 	u32 max_bw_code;

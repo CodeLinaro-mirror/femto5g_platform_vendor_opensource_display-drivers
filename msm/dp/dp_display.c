@@ -174,6 +174,8 @@ struct dp_display_private {
 	char *name;
 	int irq;
 
+	struct list_head panel_list_head;
+
 	enum dp_display_states state;
 	enum dp_aux_switch_type switch_type;
 
@@ -1640,12 +1642,19 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 	return 0;
 }
 
-static void dp_display_clear_reservation(struct dp_display *dp, struct dp_panel *panel)
+static void dp_display_clear_reservation(struct dp_display *dp, int panel_id)
 {
 	struct dp_display_private *dp_display;
+	struct dp_panel *panel;
 
-	if (!dp || !panel) {
+	if (!dp) {
 		DP_ERR("invalid params\n");
+		return;
+	}
+
+	panel = dp_display_get_panel(dp, panel_id);
+	if (!panel || !panel->connector) {
+		DP_ERR("invalid panel info\n");
 		return;
 	}
 
@@ -1756,7 +1765,7 @@ static void dp_display_clean(struct dp_display_private *dp, bool skip_wait)
 		if (!skip_wait)
 			dp_display_stream_pre_disable(dp, dp_panel);
 		dp_display_stream_disable(dp, dp_panel);
-		dp_display_clear_reservation(&dp->dp_display, dp_panel);
+		dp_display_clear_reservation(&dp->dp_display, dp_panel->id);
 		dp_panel->deinit(dp_panel, 0);
 	}
 
@@ -2199,8 +2208,13 @@ static void dp_display_deinit_sub_modules(struct dp_display_private *dp)
 {
 	dp_debug_put(dp->debug);
 	dp_hpd_put(dp->hpd);
-	if (dp->panel)
+	if (dp->panel) {
 		dp_audio_put(dp->panel->audio);
+
+		if (!list_empty(&dp->panel_list_head))
+			list_del(&dp->panel->list_node);
+	}
+
 	dp_ctrl_put(dp->ctrl);
 	dp_panel_put(dp->panel);
 	dp_link_put(dp->link);
@@ -2346,6 +2360,7 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	panel_in.connector = dp->dp_display.base_connector;
 	panel_in.base_panel = NULL;
 	panel_in.parser = dp->parser;
+	panel_in.head = NULL;
 
 	dp->panel = dp_panel_get(&panel_in);
 	if (IS_ERR(dp->panel)) {
@@ -2354,6 +2369,9 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 		dp->panel = NULL;
 		goto error_panel;
 	}
+
+	dp->panel->id = 0;
+	list_add_tail(&dp->panel->list_node, &dp->panel_list_head);
 
 	ctrl_in.link = dp->link;
 	ctrl_in.panel = dp->panel;
@@ -2578,7 +2596,33 @@ end:
 	return rc;
 }
 
-static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
+struct dp_panel *dp_display_get_panel(struct dp_display *dp_display,
+		int panel_id)
+{
+	struct dp_display_private *dp;
+	struct dp_panel *node;
+
+	if (!dp_display) {
+		DP_ERR("invalid input\n");
+		return NULL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	node = dp->panel;
+	if (!node) {
+		DP_ERR("no panel found\n");
+		return NULL;
+	}
+
+	list_for_each_entry(node, &dp->panel_list_head, list_node) {
+		if (node->id == panel_id)
+			return node;
+	}
+
+	return NULL;
+}
+
+static int dp_display_set_mode(struct dp_display *dp_display, int panel_id,
 		struct dp_display_mode *mode)
 {
 	const u32 num_components = 3, default_bpp = 24;
@@ -2586,14 +2630,8 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 	struct dp_panel *dp_panel;
 	bool dsc_en = (mode->capabilities & DP_PANEL_CAPS_DSC) ? true : false;
 
-	if (!dp_display || !panel) {
+	if (!dp_display) {
 		DP_ERR("invalid input\n");
-		return -EINVAL;
-	}
-
-	dp_panel = panel;
-	if (!dp_panel->connector) {
-		DP_ERR("invalid connector input\n");
 		return -EINVAL;
 	}
 
@@ -2601,6 +2639,12 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state,
 			mode->timing.h_active, mode->timing.v_active,
 			mode->timing.refresh_rate);
+
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
+		return -EINVAL;
+	}
 
 	mutex_lock(&dp->session_lock);
 	mode->timing.bpp =
@@ -2621,25 +2665,25 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 	return 0;
 }
 
-static int dp_display_prepare(struct dp_display *dp_display, void *panel)
+static int dp_display_prepare(struct dp_display *dp_display, int panel_id)
 {
 	struct dp_display_private *dp;
 	struct dp_panel *dp_panel;
 	int rc = 0;
 	bool shallow_mode = true;
 
-	if (!dp_display || !panel) {
+	if (!dp_display) {
 		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
 
-	dp_panel = panel;
-	if (!dp_panel->connector) {
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
 		DP_ERR("invalid connector input\n");
 		return -EINVAL;
 	}
-
-	dp = container_of(dp_display, struct dp_display_private, dp_display);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
@@ -2739,7 +2783,7 @@ end:
 }
 
 static int dp_display_set_stream_info(struct dp_display *dp_display,
-			void *panel, u32 strm_id, u32 start_slot,
+			int panel_id, u32 strm_id, u32 start_slot,
 			u32 num_slots, u32 pbn, int vcpi)
 {
 	int rc = 0;
@@ -2767,16 +2811,19 @@ static int dp_display_set_stream_info(struct dp_display *dp_display,
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state, strm_id,
 			start_slot, num_slots);
 
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
+		return -EINVAL;
+	}
+
 	mutex_lock(&dp->session_lock);
 
 	dp->ctrl->set_mst_channel_info(dp->ctrl, strm_id,
 			start_slot, num_slots);
 
-	if (panel) {
-		dp_panel = panel;
-		dp_panel->set_stream_info(dp_panel, strm_id, start_slot,
-				num_slots, pbn, vcpi);
-	}
+	dp_panel->set_stream_info(dp_panel, strm_id, start_slot,
+			num_slots, pbn, vcpi);
 
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, rc);
@@ -2784,17 +2831,23 @@ static int dp_display_set_stream_info(struct dp_display *dp_display,
 	return rc;
 }
 
-static int dp_display_enable(struct dp_display *dp_display, void *panel)
+static int dp_display_enable(struct dp_display *dp_display, int panel_id)
 {
 	int rc = 0;
 	struct dp_display_private *dp;
+	struct dp_panel *panel = NULL;
 
-	if (!dp_display || !panel) {
+	if (!dp_display) {
 		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
 
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	panel = dp_display_get_panel(dp_display, panel_id);
+	if (!panel || !panel->connector) {
+		DP_ERR("invalid connector input\n");
+		return -EINVAL;
+	}
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
@@ -2858,19 +2911,23 @@ static void dp_display_stream_post_enable(struct dp_display_private *dp,
 	dp_panel->setup_hdr(dp_panel, NULL, false, 0, true);
 }
 
-static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
+static int dp_display_post_enable(struct dp_display *dp_display, int panel_id)
 {
 	struct dp_display_private *dp;
 	struct dp_panel *dp_panel;
 	int rc = 0;
 
-	if (!dp_display || !panel) {
+	if (!dp_display) {
 		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
 
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
-	dp_panel = panel;
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
+		return -EINVAL;
+	}
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
@@ -2942,20 +2999,25 @@ static void dp_display_clear_colorspaces(struct dp_display *dp_display)
 	sde_conn->color_enc_fmt = 0;
 }
 
-static int dp_display_pre_disable(struct dp_display *dp_display, void *panel)
+static int dp_display_pre_disable(struct dp_display *dp_display, int panel_id)
 {
 	struct dp_display_private *dp;
-	struct dp_panel *dp_panel = panel;
+	struct dp_panel *dp_panel;
 	struct dp_link_hdcp_status *status;
 	int rc = 0;
 	size_t i;
 
-	if (!dp_display || !panel) {
+	if (!dp_display) {
 		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
 
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
+		return -EINVAL;
+	}
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
@@ -3021,20 +3083,25 @@ end:
 	return 0;
 }
 
-static int dp_display_disable(struct dp_display *dp_display, void *panel)
+static int dp_display_disable(struct dp_display *dp_display, int panel_id)
 {
 	int i, rc = 0;
 	struct dp_display_private *dp = NULL;
 	struct dp_panel *dp_panel = NULL;
 	struct dp_link_hdcp_status *status;
 
-	if (!dp_display || !panel) {
+	if (!dp_display) {
 		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
 
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
-	dp_panel = panel;
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
+		return -EINVAL;
+	}
+
 	status = &dp->link->hdcp_status;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
@@ -3122,19 +3189,24 @@ static struct dp_debug *dp_get_debug(struct dp_display *dp_display)
 	return dp->debug;
 }
 
-static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
+static int dp_display_unprepare(struct dp_display *dp_display, int panel_id)
 {
 	struct dp_display_private *dp;
-	struct dp_panel *dp_panel = panel;
+	struct dp_panel *dp_panel = NULL;
 	u32 flags = 0;
 	int rc = 0;
 
-	if (!dp_display || !panel) {
+	if (!dp_display) {
 		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
 
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
+		return -EINVAL;
+	}
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
@@ -3336,7 +3408,7 @@ end:
 
 static enum drm_mode_status dp_display_validate_mode(
 		struct dp_display *dp_display,
-		void *panel, struct drm_display_mode *mode,
+		int panel_id, struct drm_display_mode *mode,
 		const struct msm_resource_caps_info *avail_res)
 {
 	struct dp_display_private *dp;
@@ -3346,9 +3418,15 @@ static enum drm_mode_status dp_display_validate_mode(
 	struct dp_display_mode dp_mode;
 	int rc = 0;
 
-	if (!dp_display || !mode || !panel ||
+	if (!dp_display || !mode ||
 			!avail_res || !avail_res->max_mixer_width) {
 		DP_ERR("invalid params\n");
+		return mode_status;
+	}
+
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
 		return mode_status;
 	}
 
@@ -3356,17 +3434,11 @@ static enum drm_mode_status dp_display_validate_mode(
 
 	mutex_lock(&dp->session_lock);
 
-	dp_panel = panel;
-	if (!dp_panel->connector) {
-		DP_ERR("invalid connector\n");
-		goto end;
-	}
-
 	debug = dp->debug;
 	if (!debug)
 		goto end;
 
-	dp_display->convert_to_dp_mode(dp_display, panel, mode, &dp_mode);
+	dp_display->convert_to_dp_mode(dp_display, panel_id, mode, &dp_mode);
 
 	/* As per spec, 640x480 mode should always be present as fail-safe */
 	if ((dp_mode.timing.h_active == 640) && (dp_mode.timing.v_active == 480) &&
@@ -3440,34 +3512,32 @@ static int dp_display_get_available_dp_resources(struct dp_display *dp_display,
 	return 0;
 }
 
-static int dp_display_get_modes(struct dp_display *dp, void *panel,
+static int dp_display_get_modes(struct dp_display *dp, int panel_id,
 	struct dp_display_mode *dp_mode)
 {
-	struct dp_display_private *dp_display;
 	struct dp_panel *dp_panel;
 	int ret = 0;
 
-	if (!dp || !panel) {
+	if (!dp) {
 		DP_ERR("invalid params\n");
 		return 0;
 	}
 
-	dp_panel = panel;
-	if (!dp_panel->connector) {
-		DP_ERR("invalid connector\n");
-		return 0;
+	dp_panel = dp_display_get_panel(dp, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
+		return -EINVAL;
 	}
-
-	dp_display = container_of(dp, struct dp_display_private, dp_display);
 
 	ret = dp_panel->get_modes(dp_panel, dp_panel->connector, dp_mode);
 	if (dp_mode->timing.pixel_clk_khz)
 		dp->max_pclk_khz = dp_mode->timing.pixel_clk_khz;
+
 	return ret;
 }
 
 static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
-		void *panel,
+		int panel_id,
 		const struct drm_display_mode *drm_mode,
 		struct dp_display_mode *dp_mode)
 {
@@ -3476,13 +3546,18 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 	struct dp_panel *dp_panel;
 	u32 free_dsc_blks = 0, required_dsc_blks = 0, curr_dsc = 0, new_dsc = 0;
 
-	if (!dp_display || !drm_mode || !dp_mode || !panel) {
+	if (!dp_display || !drm_mode || !dp_mode) {
 		DP_ERR("invalid input\n");
 		return;
 	}
 
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
+		return;
+	}
+
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
-	dp_panel = panel;
 
 	memset(dp_mode, 0, sizeof(*dp_mode));
 
@@ -3525,7 +3600,7 @@ static void dp_display_convert_to_dp_mode(struct dp_display *dp_display,
 	}
 }
 
-static int dp_display_config_hdr(struct dp_display *dp_display, void *panel,
+static int dp_display_config_hdr(struct dp_display *dp_display, int panel_id,
 			struct drm_msm_ext_hdr_metadata *hdr, bool dhdr_update)
 {
 	struct dp_panel *dp_panel;
@@ -3534,14 +3609,19 @@ static int dp_display_config_hdr(struct dp_display *dp_display, void *panel,
 	u64 core_clk_rate;
 	bool flush_hdr;
 
-	if (!dp_display || !panel) {
+	if (!dp_display) {
 		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
 
-	dp_panel = panel;
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
+		return -EINVAL;
+	}
+
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
-	sde_conn =  to_sde_connector(dp_panel->connector);
+	sde_conn = to_sde_connector(dp_panel->connector);
 
 	if (sde_cesta_is_enabled(DPUID(dp_display->drm_dev)))
 		core_clk_rate = sde_cesta_get_core_clk_rate(DPUID(dp_display->drm_dev));
@@ -3574,14 +3654,19 @@ static int dp_display_config_hdr(struct dp_display *dp_display, void *panel,
 }
 
 static int dp_display_setup_colospace(struct dp_display *dp_display,
-		void *panel,
-		u32 colorspace)
+		int panel_id, u32 colorspace)
 {
 	struct dp_panel *dp_panel;
 	struct dp_display_private *dp;
 
-	if (!dp_display || !panel) {
+	if (!dp_display) {
 		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp_panel = dp_display_get_panel(dp_display, panel_id);
+	if (!dp_panel || !dp_panel->connector) {
+		DP_ERR("invalid connector input\n");
 		return -EINVAL;
 	}
 
@@ -3591,8 +3676,6 @@ static int dp_display_setup_colospace(struct dp_display *dp_display,
 		dp_display_state_show("[not enabled]");
 		return 0;
 	}
-
-	dp_panel = panel;
 
 	return dp_panel->set_colorspace(dp_panel, colorspace);
 }
@@ -3729,8 +3812,11 @@ static int dp_display_mst_connector_install(struct dp_display *dp_display,
 {
 	int rc = 0;
 	struct dp_panel_in panel_in;
-	struct dp_panel *dp_panel;
+	struct dp_panel *panel;
+	struct dp_panel *node = NULL;
 	struct dp_display_private *dp;
+	struct sde_connector *sde_conn;
+	int last_panel_id = 0;
 
 	if (!dp_display || !connector) {
 		DP_ERR("invalid input\n");
@@ -3738,6 +3824,7 @@ static int dp_display_mst_connector_install(struct dp_display *dp_display,
 	}
 
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	node = dp->panel;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
@@ -3756,18 +3843,27 @@ static int dp_display_mst_connector_install(struct dp_display *dp_display,
 	panel_in.base_panel = dp->panel;
 	panel_in.parser = dp->parser;
 
-	dp_panel = dp_panel_get(&panel_in);
-	if (IS_ERR(dp_panel)) {
-		rc = PTR_ERR(dp_panel);
+	panel = dp_panel_get(&panel_in);
+	if (IS_ERR(panel)) {
+		rc = PTR_ERR(panel);
 		DP_ERR("failed to initialize panel, rc = %d\n", rc);
 		goto end;
 	}
 
-	dp_panel->audio = dp_audio_get(dp->pdev, dp_panel, &dp->catalog->audio);
-	if (IS_ERR(dp_panel->audio)) {
-		rc = PTR_ERR(dp_panel->audio);
+	/* add the newly created panel to the end of the panel list */
+	list_for_each_entry(node, &dp->panel_list_head, list_node) {
+		last_panel_id = node->id;
+	}
+
+	sde_conn = to_sde_connector(connector);
+	sde_conn->panel_id = panel->id = last_panel_id + 1;
+	list_add_tail(&panel->list_node, &dp->panel_list_head);
+
+	panel->audio = dp_audio_get(dp->pdev, panel, &dp->catalog->audio);
+	if (IS_ERR(panel->audio)) {
+		rc = PTR_ERR(panel->audio);
 		DP_ERR("[mst] failed to initialize audio, rc = %d\n", rc);
-		dp_panel->audio = NULL;
+		panel->audio = NULL;
 		goto end;
 	}
 
@@ -3788,7 +3884,6 @@ static int dp_display_mst_connector_uninstall(struct dp_display *dp_display,
 	struct sde_connector *sde_conn;
 	struct dp_panel *dp_panel;
 	struct dp_display_private *dp;
-	struct dp_audio *audio = NULL;
 
 	if (!dp_display || !connector) {
 		DP_ERR("invalid input\n");
@@ -3807,16 +3902,17 @@ static int dp_display_mst_connector_uninstall(struct dp_display *dp_display,
 	}
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
+	dp_panel = dp_display_get_panel(dp_display, sde_conn->panel_id);
+	if (!dp_panel) {
 		DP_ERR("invalid panel for connector:%d\n", connector->base.id);
 		mutex_unlock(&dp->session_lock);
 		return -EINVAL;
 	}
 
-	dp_panel = sde_conn->drv_panel;
+	if (!list_empty(&dp->panel_list_head))
+		list_del(&dp_panel->list_node);
 
-	/* Make a copy of audio structure to call into dp_audio_put later */
-	audio = dp_panel->audio;
+	dp_audio_put(dp_panel->audio);
 	dp_panel_put(dp_panel);
 
 	DP_MST_DEBUG("dp mst connector uninstalled. conn:%d\n",
@@ -3824,7 +3920,6 @@ static int dp_display_mst_connector_uninstall(struct dp_display *dp_display,
 
 	mutex_unlock(&dp->session_lock);
 
-	dp_audio_put(audio);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
 	return rc;
@@ -3852,12 +3947,12 @@ static int dp_display_mst_connector_update_edid(struct dp_display *dp_display,
 	}
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
+	dp_panel = dp_display_get_panel(dp_display, sde_conn->panel_id);
+	if (!dp_panel) {
 		DP_ERR("invalid panel for connector:%d\n", connector->base.id);
 		return -EINVAL;
 	}
 
-	dp_panel = sde_conn->drv_panel;
 	rc = dp_panel->update_edid(dp_panel, edid);
 
 	DP_MST_DEBUG("dp mst connector:%d edid updated. mode_cnt:%d\n",
@@ -3876,7 +3971,8 @@ static int dp_display_update_pps(struct dp_display *dp_display,
 	dp = container_of(dp_display, struct dp_display_private, dp_display);
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
+	dp_panel = dp_display_get_panel(dp_display, sde_conn->panel_id);
+	if (!dp_panel) {
 		DP_ERR("invalid panel for connector:%d\n", connector->base.id);
 		return -EINVAL;
 	}
@@ -3886,7 +3982,6 @@ static int dp_display_update_pps(struct dp_display *dp_display,
 		return 0;
 	}
 
-	dp_panel = sde_conn->drv_panel;
 	dp_panel->update_pps(dp_panel, pps_cmd);
 	return 0;
 }
@@ -3913,12 +4008,11 @@ static int dp_display_mst_connector_update_link_info(
 	}
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
+	dp_panel = dp_display_get_panel(dp_display, sde_conn->panel_id);
+	if (!dp_panel) {
 		DP_ERR("invalid panel for connector:%d\n", connector->base.id);
 		return -EINVAL;
 	}
-
-	dp_panel = sde_conn->drv_panel;
 
 	memcpy(dp_panel->dpcd, dp->panel->dpcd,
 			DP_RECEIVER_CAP_SIZE + 1);
@@ -4148,6 +4242,8 @@ static int dp_display_probe(struct platform_device *pdev)
 
 	init_completion(&dp->notification_comp);
 	init_completion(&dp->attention_comp);
+
+	INIT_LIST_HEAD(&dp->panel_list_head);
 
 	dp->pdev = pdev;
 	dp->name = "drm_dp";

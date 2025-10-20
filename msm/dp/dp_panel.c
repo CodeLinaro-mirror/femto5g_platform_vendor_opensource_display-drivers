@@ -2241,7 +2241,6 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	int rc = 0;
 	struct dp_panel_private *panel;
 	struct dp_panel *dp_panel;
-	struct sde_connector *sde_conn;
 
 	if (!in->dev || !in->catalog || !in->aux ||
 			!in->link || !in->connector) {
@@ -2319,9 +2318,6 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->sink_crc_enable = dp_panel_sink_crc_enable;
 	dp_panel->get_panel_on = dp_panel_get_panel_on;
 
-	sde_conn = to_sde_connector(dp_panel->connector);
-	sde_conn->drv_panel = dp_panel;
-
 	dp_panel_edid_register(panel);
 
 	return dp_panel;
@@ -2342,7 +2338,7 @@ void dp_panel_put(struct dp_panel *dp_panel)
 	dp_panel_edid_deregister(panel);
 	sde_conn = to_sde_connector(dp_panel->connector);
 	if (sde_conn)
-		sde_conn->drv_panel = NULL;
+		sde_conn->panel_id = -1;
 
 	devm_kfree(panel->dev, panel);
 }

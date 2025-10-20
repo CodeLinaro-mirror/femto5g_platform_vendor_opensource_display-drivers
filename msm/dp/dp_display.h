@@ -83,28 +83,28 @@ struct dp_display {
 	bool ctl_op_sync;
 	bool is_cont_splash_enabled;
 
-	int (*enable)(struct dp_display *dp_display, void *panel);
-	int (*post_enable)(struct dp_display *dp_display, void *panel);
+	int (*enable)(struct dp_display *dp_display, int panel_id);
+	int (*post_enable)(struct dp_display *dp_display, int panel_id);
 
-	int (*pre_disable)(struct dp_display *dp_display, void *panel);
-	int (*disable)(struct dp_display *dp_display, void *panel);
+	int (*pre_disable)(struct dp_display *dp_display, int panel_id);
+	int (*disable)(struct dp_display *dp_display, int panel_id);
 
-	int (*set_mode)(struct dp_display *dp_display, void *panel,
+	int (*set_mode)(struct dp_display *dp_display, int panel_id,
 			struct dp_display_mode *mode);
 	enum drm_mode_status (*validate_mode)(struct dp_display *dp_display,
-			void *panel, struct drm_display_mode *mode,
+			int panel_id, struct drm_display_mode *mode,
 			const struct msm_resource_caps_info *avail_res);
-	int (*get_modes)(struct dp_display *dp_display, void *panel,
+	int (*get_modes)(struct dp_display *dp_display, int panel_id,
 		struct dp_display_mode *dp_mode);
-	int (*prepare)(struct dp_display *dp_display, void *panel);
-	int (*unprepare)(struct dp_display *dp_display, void *panel);
+	int (*prepare)(struct dp_display *dp_display, int panel_id);
+	int (*unprepare)(struct dp_display *dp_display, int panel_id);
 	int (*request_irq)(struct dp_display *dp_display);
 	struct dp_debug *(*get_debug)(struct dp_display *dp_display);
 	void (*post_open)(struct dp_display *dp_display);
-	int (*config_hdr)(struct dp_display *dp_display, void *panel,
+	int (*config_hdr)(struct dp_display *dp_display, int panel_id,
 				struct drm_msm_ext_hdr_metadata *hdr_meta,
 				bool dhdr_update);
-	int (*set_colorspace)(struct dp_display *dp_display, void *panel,
+	int (*set_colorspace)(struct dp_display *dp_display, int panel_id,
 				u32 colorspace);
 	int (*post_init)(struct dp_display *dp_display);
 	int (*mst_install)(struct dp_display *dp_display,
@@ -123,10 +123,10 @@ struct dp_display {
 			u32 strm_id, u32 *port_num);
 	int (*get_mst_caps)(struct dp_display *dp_display,
 			struct dp_mst_caps *mst_caps);
-	int (*set_stream_info)(struct dp_display *dp_display, void *panel,
+	int (*set_stream_info)(struct dp_display *dp_display, int panel_id,
 			u32 strm_id, u32 start_slot, u32 num_slots, u32 pbn,
 			int vcpi);
-	void (*convert_to_dp_mode)(struct dp_display *dp_display, void *panel,
+	void (*convert_to_dp_mode)(struct dp_display *dp_display, int panel_id,
 			const struct drm_display_mode *drm_mode,
 			struct dp_display_mode *dp_mode);
 	int (*update_pps)(struct dp_display *dp_display,
@@ -136,7 +136,7 @@ struct dp_display {
 	int (*get_available_dp_resources)(struct dp_display *dp_display,
 			const struct msm_resource_caps_info *avail_res,
 			struct msm_resource_caps_info *max_dp_avail_res);
-	void (*clear_reservation)(struct dp_display *dp, struct dp_panel *panel);
+	void (*clear_reservation)(struct dp_display *dp, int panel_id);
 	int (*get_mst_pbn_div)(struct dp_display *dp);
 	int (*get_display_type)(struct dp_display *dp_display,
 			const char **display_type);
@@ -156,6 +156,8 @@ int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data);
 int edp_display_get_num_of_displays(struct drm_device *dev);
 int dp_display_cont_splash_config(void *display);
 int dp_display_cont_splash_res_disable(void *display);
+struct dp_panel *dp_display_get_panel(struct dp_display *dp_display,
+		int panel_id);
 #else
 static inline int dp_display_get_num_of_displays(struct drm_device *dev)
 {
@@ -193,6 +195,11 @@ static inline int dp_display_cont_splash_config(void *dp_display)
 static inline int dp_display_cont_splash_res_disable(void *dp_display)
 {
 	return 0;
+}
+static struct dp_panel *dp_display_get_panel(struct dp_display *dp_display,
+		int panel_id)
+{
+	return NULL;
 }
 #endif /* CONFIG_DRM_MSM_DP */
 #endif /* _DP_DISPLAY_H_ */

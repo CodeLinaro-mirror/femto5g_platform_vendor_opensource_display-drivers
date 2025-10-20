@@ -99,20 +99,15 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
-		return;
-	}
-
 	/* By this point mode should have been validated through mode_fixup */
-	rc = dp->set_mode(dp, bridge->dp_panel, &bridge->dp_mode);
+	rc = dp->set_mode(dp, bridge->panel_id, &bridge->dp_mode);
 	if (rc) {
 		DP_ERR("[%d] failed to perform a mode set, rc=%d\n",
 		       bridge->id, rc);
 		return;
 	}
 
-	rc = dp->prepare(dp, bridge->dp_panel);
+	rc = dp->prepare(dp, bridge->panel_id);
 	if (rc) {
 		DP_ERR("[%d] DP display prepare failed, rc=%d\n",
 		       bridge->id, rc);
@@ -120,9 +115,9 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 	}
 
 	/* for SST force stream id, start slot and total slots to 0 */
-	dp->set_stream_info(dp, bridge->dp_panel, 0, 0, 0, 0, 0);
+	dp->set_stream_info(dp, bridge->panel_id, 0, 0, 0, 0, 0);
 
-	rc = dp->enable(dp, bridge->dp_panel);
+	rc = dp->enable(dp, bridge->panel_id);
 	if (rc)
 		DP_ERR("[%d] DP display enable failed, rc=%d\n",
 		       bridge->id, rc);
@@ -145,14 +140,9 @@ static void dp_bridge_enable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
-		return;
-	}
-
 	dp = bridge->display;
 
-	rc = dp->post_enable(dp, bridge->dp_panel);
+	rc = dp->post_enable(dp, bridge->panel_id);
 	if (rc)
 		DP_ERR("[%d] DP display post enable failed, rc=%d\n",
 		       bridge->id, rc);
@@ -175,11 +165,6 @@ static void dp_bridge_disable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
-		return;
-	}
-
 	dp = bridge->display;
 
 	if (!dp) {
@@ -190,7 +175,7 @@ static void dp_bridge_disable(struct drm_bridge *drm_bridge)
 	if (dp)
 		sde_connector_helper_bridge_disable(bridge->connector);
 
-	rc = dp->pre_disable(dp, bridge->dp_panel);
+	rc = dp->pre_disable(dp, bridge->panel_id);
 	if (rc) {
 		DP_ERR("[%d] DP display pre disable failed, rc=%d\n",
 		       bridge->id, rc);
@@ -214,21 +199,16 @@ static void dp_bridge_post_disable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
-		return;
-	}
-
 	dp = bridge->display;
 
-	rc = dp->disable(dp, bridge->dp_panel);
+	rc = dp->disable(dp, bridge->panel_id);
 	if (rc) {
 		DP_ERR("[%d] DP display disable failed, rc=%d\n",
 		       bridge->id, rc);
 		return;
 	}
 
-	rc = dp->unprepare(dp, bridge->dp_panel);
+	rc = dp->unprepare(dp, bridge->panel_id);
 	if (rc) {
 		DP_ERR("[%d] DP display unprepare failed, rc=%d\n",
 		       bridge->id, rc);
@@ -254,17 +234,12 @@ static void dp_bridge_mode_set(struct drm_bridge *drm_bridge,
 		return;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
-		return;
-	}
-
 	dp = bridge->display;
 
-	dp->convert_to_dp_mode(dp, bridge->dp_panel, adjusted_mode,
+	dp->convert_to_dp_mode(dp, bridge->panel_id, adjusted_mode,
 			&bridge->dp_mode);
 
-	dp->clear_reservation(dp, bridge->dp_panel);
+	dp->clear_reservation(dp, bridge->panel_id);
 }
 
 static bool dp_bridge_mode_fixup(struct drm_bridge *drm_bridge,
@@ -289,16 +264,10 @@ static bool dp_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 		goto end;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
-		ret = false;
-		goto end;
-	}
-
 	dp = bridge->display;
 
-	dp->convert_to_dp_mode(dp, bridge->dp_panel, mode, &dp_mode);
-	dp->clear_reservation(dp, bridge->dp_panel);
+	dp->convert_to_dp_mode(dp, bridge->panel_id, mode, &dp_mode);
+	dp->clear_reservation(dp, bridge->panel_id);
 	convert_to_drm_mode(&dp_mode, adjusted_mode);
 end:
 	return ret;
@@ -367,12 +336,8 @@ int dp_connector_config_hdr(struct drm_connector *connector, void *display,
 	}
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
-		DP_ERR("invalid dp panel\n");
-		return -EINVAL;
-	}
 
-	return dp->config_hdr(dp, sde_conn->drv_panel, &c_state->hdr_meta,
+	return dp->config_hdr(dp, sde_conn->panel_id, &c_state->hdr_meta,
 			c_state->dyn_hdr_meta.dynamic_hdr_update);
 }
 
@@ -386,13 +351,9 @@ int dp_connector_set_colorspace(struct drm_connector *connector,
 		return -EINVAL;
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
-		pr_err("invalid dp panel\n");
-		return -EINVAL;
-	}
 
 	return dp_display->set_colorspace(dp_display,
-		sde_conn->drv_panel, connector->state->colorspace);
+		sde_conn->panel_id, connector->state->colorspace);
 }
 
 int dp_connector_post_init(struct drm_connector *connector, void *display)
@@ -414,7 +375,7 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	}
 
 	sde_conn = to_sde_connector(connector);
-	dp_display->bridge->dp_panel = sde_conn->drv_panel;
+	dp_display->bridge->panel_id = sde_conn->panel_id;
 
 	rc = dp_mst_init(dp_display);
 
@@ -452,7 +413,12 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 	memset(mode_info, 0, sizeof(*mode_info));
 
 	sde_conn = to_sde_connector(connector);
-	dp_panel = sde_conn->drv_panel;
+	dp_panel = dp_display_get_panel(dp_disp, sde_conn->panel_id);
+	if (!dp_panel) {
+		DP_ERR("invalid panel\n");
+		return -EINVAL;
+	}
+
 	priv = connector->dev->dev_private;
 
 	topology = &mode_info->topology;
@@ -485,7 +451,8 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 	mode_info->wide_bus_en = dp_panel->widebus_en;
 	mode_info->pclk_factor = dp_panel->pclk_factor;
 
-	dp_disp->convert_to_dp_mode(dp_disp, dp_panel, drm_mode, &dp_mode);
+	dp_disp->convert_to_dp_mode(dp_disp, sde_conn->panel_id,
+		drm_mode, &dp_mode);
 
 	if (dp_mode.timing.comp_info.enabled) {
 		memcpy(&mode_info->comp_info,
@@ -650,11 +617,6 @@ int dp_connector_get_modes(struct drm_connector *connector,
 		return 0;
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
-		DP_ERR("invalid dp panel\n");
-		return 0;
-	}
-
 	dp = display;
 
 	dp_mode = kzalloc(sizeof(*dp_mode),  GFP_KERNEL);
@@ -669,7 +631,7 @@ int dp_connector_get_modes(struct drm_connector *connector,
 		 *    a. if mode query succeeds rc >= 0, valid modes will be added to connector
 		 *    b. if edid read failed, then connector mode list will be empty and rc <= 0
 		 */
-		rc = dp->get_modes(dp, sde_conn->drv_panel, dp_mode);
+		rc = dp->get_modes(dp, sde_conn->panel_id, dp_mode);
 		if (!rc) {
 			DP_WARN("failed to get DP sink modes, adding failsafe");
 			init_failsafe_mode(dp_mode);
@@ -774,13 +736,13 @@ enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 	}
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
-		DP_ERR("invalid dp panel\n");
-		return MODE_ERROR;
-	}
 
 	dp_disp = display;
-	dp_panel = sde_conn->drv_panel;
+	dp_panel = dp_display_get_panel(dp_disp, sde_conn->panel_id);
+	if (!dp_panel) {
+		DP_ERR("invalid panel\n");
+		return -EINVAL;
+	}
 
 	vrefresh = drm_mode_vrefresh(mode);
 
@@ -804,7 +766,7 @@ enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 		mode->type |= DRM_MODE_TYPE_PREFERRED;
 
 validate_mode:
-	return dp_disp->validate_mode(dp_disp, sde_conn->drv_panel,
+	return dp_disp->validate_mode(dp_disp, sde_conn->panel_id,
 			mode, &avail_dp_res);
 }
 
@@ -812,17 +774,10 @@ int dp_connector_update_pps(struct drm_connector *connector,
 		char *pps_cmd, void *display)
 {
 	struct dp_display *dp_disp;
-	struct sde_connector *sde_conn;
 
 	if (!display || !connector) {
 		DP_ERR("invalid params\n");
 		return -EINVAL;
-	}
-
-	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
-		DP_ERR("invalid dp panel\n");
-		return MODE_ERROR;
 	}
 
 	dp_disp = display;

@@ -373,6 +373,7 @@ static ssize_t dp_debug_read_crc(struct file *file, char __user *user_buff, size
 	struct drm_connector *drm_conn;
 	struct sde_connector *sde_conn;
 	struct dp_panel *panel;
+	struct dp_display *display;
 	int i;
 	int rc;
 
@@ -399,7 +400,8 @@ static ssize_t dp_debug_read_crc(struct file *file, char __user *user_buff, size
 		}
 
 		sde_conn = to_sde_connector(drm_conn);
-		panel = sde_conn->drv_panel;
+		display = sde_conn->display;
+		panel = dp_display_get_panel(display, sde_conn->panel_id);
 		drm_connector_put(drm_conn);
 
 		if (!panel)
@@ -550,6 +552,7 @@ static ssize_t dp_debug_write_edid_modes_mst(struct file *file,
 	struct dp_debug_private *debug = file->private_data;
 	struct drm_connector *connector;
 	struct sde_connector *sde_conn;
+	struct dp_display *display;
 	struct dp_panel *panel = NULL;
 	char buf[SZ_512];
 	char *read_buf;
@@ -580,7 +583,8 @@ static ssize_t dp_debug_write_edid_modes_mst(struct file *file,
 				NULL, con_id);
 		if (connector) {
 			sde_conn = to_sde_connector(connector);
-			panel = sde_conn->drv_panel;
+			display = sde_conn->display;
+			panel = dp_display_get_panel(display, sde_conn->panel_id);
 			if (panel && sde_conn->mst_port) {
 				panel->mode_override = debug_en;
 				panel->hdisplay = hdisplay;
@@ -609,6 +613,7 @@ static ssize_t dp_debug_write_mst_con_id(struct file *file,
 	struct drm_connector *connector;
 	struct sde_connector *sde_conn;
 	struct drm_dp_mst_port *mst_port;
+	struct dp_display *display;
 	struct dp_panel *dp_panel;
 	char buf[SZ_32];
 	size_t len = 0;
@@ -644,7 +649,7 @@ static ssize_t dp_debug_write_mst_con_id(struct file *file,
 
 	sde_conn = to_sde_connector(connector);
 
-	if (!sde_conn->drv_panel || !sde_conn->mst_port) {
+	if (!sde_conn->mst_port) {
 		DP_ERR("invalid connector state %d\n", con_id);
 		goto out;
 	}
@@ -660,7 +665,8 @@ static ssize_t dp_debug_write_mst_con_id(struct file *file,
 		DP_INFO("unplug mst connector %d\n", con_id);
 
 	mst_port = sde_conn->mst_port;
-	dp_panel = sde_conn->drv_panel;
+	display = sde_conn->display;
+	dp_panel = dp_display_get_panel(display, sde_conn->panel_id);
 	if (!dp_panel)
 		goto out;
 
@@ -1785,7 +1791,7 @@ static void dp_debug_set_sim_mode(struct dp_debug_private *debug, bool sim)
 		sde_conn = to_sde_connector(connector);
 		display = sde_conn->display;
 		if (display->base_connector == (*debug->connector)) {
-			panel = sde_conn->drv_panel;
+			panel = dp_display_get_panel(display, sde_conn->panel_id);
 			if (panel) {
 				panel->mode_override = false;
 				panel->mst_hide = false;
