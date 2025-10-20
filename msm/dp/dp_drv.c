@@ -14,14 +14,16 @@
 #include <linux/usb/phy.h>
 #include <linux/jiffies.h>
 #include <linux/pm_qos.h>
-#include <linux/ipc_logging.h>
 #include <linux/version.h>
 
 #include "sde_connector.h"
 
 #include "dp_drv.h"
 #include "dp_debug.h"
+#include "dp_debug_client.h"
 #include "dp_client.h"
+#include "dp_mgr.h"
+#include "dp_pll.h"
 
 #define MAX_DP_ACTIVE_DISPLAY 8
 #define HPD_STRING_SIZE 30
@@ -105,8 +107,15 @@ static int dp_drv_bind(struct device *dev, struct device *master, void *data)
 		goto end;
 	}
 
+	dp->debug = dp_debug_get(dev, priv->disp_op);
+	if (IS_ERR(dp->debug)) {
+		rc = PTR_ERR(dp->debug);
+		DP_WARN("failed to initialize debug, rc = %d\n", rc);
+		dp->debug = NULL;
+	}
+
 	if (IS_DISP_OP_HWIO(priv->disp_op))
-		dp->client = dp_mgr_init(pdev);
+		dp->client = dp_mgr_init(pdev, dp->debug);
 
 	if (dp->client == NULL) {
 		DP_ERR("Error initializing HWIO DP");

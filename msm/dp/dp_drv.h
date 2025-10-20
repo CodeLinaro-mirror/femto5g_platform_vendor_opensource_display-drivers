@@ -33,6 +33,7 @@ struct dp_drv {
 	struct drm_device *drm_dev;
 	struct drm_connector *base_connector;
 	struct dp_client *client;
+	struct dp_debug_client *debug;
 };
 
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
