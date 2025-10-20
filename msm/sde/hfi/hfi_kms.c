@@ -406,12 +406,14 @@ struct hfi_cmdbuf_t *hfi_kms_get_cmd_buf(struct hfi_kms *hfi_kms,
 
 	hfi_client = &hfi_kms->hfi_client;
 
+	mutex_lock(&hfi_client->lock);
 	list_for_each_entry(buf, &hfi_client->cmd_buf_list, node) {
 		if (buf->cmd_type == cmd_type && buf->obj_id == display_id) {
 			ret_buf = buf;
 			break;
 		}
 	}
+	mutex_unlock(&hfi_client->lock);
 
 	return ret_buf;
 }
