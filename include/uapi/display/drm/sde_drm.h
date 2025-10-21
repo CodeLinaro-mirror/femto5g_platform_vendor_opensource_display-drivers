@@ -1043,6 +1043,37 @@ struct sde_drm_dnsc_blur_cfg {
 	__u32 dither_matrix[DNSC_BLUR_DITHER_MATRIX_SZ];
 };
 
+/* Max privacy layers */
+#define MAX_PRIVACY_LAYERS 16
+
+/**
+ * struct sde_privacy - Defines a rectangular privacy region with optional corner radius
+ * @corner_radius: Radius for rounded corners of the privacy region
+ * @left: Left coordinate of the privacy region
+ * @top: Top coordinate of the privacy region
+ * @right: Right coordinate of the privacy region
+ * @bottom: Bottom coordinate of the privacy region
+ **/
+struct sde_privacy {
+	__u32 corner_radius;
+	__u32 left;
+	__u32 top;
+	__u32 right;
+	__u32 bottom;
+};
+
+/**
+ * struct sde_drm_privacy_layer_v1 - Defines root structure to hold all privacy layer info.
+ * @no_of_layers: Number of active privacy layers in use
+ * @reserved: Reserved for future use or alignment
+ * @privacy_list: Array of privacy layer configurations, up to MAX_PRIVACY_LAYERS
+ **/
+struct sde_drm_privacy_layer_v1 {
+	__u32 no_of_layers;
+	__u32 reserved;
+	struct sde_privacy privacy_list[MAX_PRIVACY_LAYERS];
+};
+
 #define DRM_SDE_WB_CONFIG              0x40
 #define DRM_MSM_REGISTER_EVENT         0x41
 #define DRM_MSM_DEREGISTER_EVENT       0x42
