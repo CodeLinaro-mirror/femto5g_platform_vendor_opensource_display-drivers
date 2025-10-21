@@ -105,6 +105,33 @@
  */
 #define HFI_COMMAND_PANEL_INIT_GENERIC_CAPS                          0x03000003
 
+/*
+ * HFI_COMMAND_PANEL_DEINIT - This command from Host to DCP will de-initialize panel attributes. As
+ *                            part of the payload, it carries flags for properties to be applied
+ *                            during the deinitialization.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets              : 1
+ *
+ * hfi_packet.payload_info.size        : sizeof(hfi_packet)
+ *                                       (including payload size)
+ *           .payload_info.type        : HFI_PAYLOAD_U32
+ *           .cmd                      : HFI_COMMAND_PANEL_DEINIT
+ *           .flags                    : HFI_TX_FLAGS_INTR_REQUIRED |
+ *                                       HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                       HFI_TX_FLAGS_NON_DISCARDABLE
+ *           .payload                  : u32 flag representing bitmask of enum
+ *                                       hfi_panel_deinit_prop
+ *
+ * DCP to Host:
+ * hfi_header.num_packets              : 1
+ *
+ * hfi_packet.payload_info (type)      : HFI_PAYLOAD_NONE
+ * hfi_packet.cmd                      : HFI_COMMAND_PANEL_DEINIT
+ * hfi_packet.flags                    : HFI_RX_FLAGS_SUCCESS
+ */
+#define HFI_COMMAND_PANEL_DEINIT                                     0x03000004
+
 #define HFI_COMMAND_PANEL_END                                        0x03FFFFFF
 
 #endif // __H_HFI_COMMANDS_PANEL_H__

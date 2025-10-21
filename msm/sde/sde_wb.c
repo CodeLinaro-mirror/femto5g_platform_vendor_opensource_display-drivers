@@ -14,6 +14,7 @@
 #include "sde_kms.h"
 #include "sde_wb.h"
 #include "sde_formats.h"
+#include "sde_wb_lsr.h"
 
 /* maximum display mode resolution if not available from catalog */
 #define SDE_WB_MODE_MAX_WIDTH	5120
@@ -414,12 +415,15 @@ int sde_wb_connector_set_property(struct drm_connector *connector,
 		struct drm_connector_state *state, int idx, uint64_t value, void *display)
 {
 	struct sde_wb_device *wb_dev = display;
+	struct sde_connector *c_conn;
 	int rc = 0;
 
 	if (!connector || !state || !wb_dev) {
 		SDE_ERROR("invalid argument(s)\n");
 		return -EINVAL;
 	}
+
+	c_conn = to_sde_connector(connector);
 
 	switch (idx) {
 	case CONNECTOR_PROP_OUT_FB:
@@ -433,6 +437,14 @@ int sde_wb_connector_set_property(struct drm_connector *connector,
 		/* nothing to do */
 		break;
 	}
+
+	if (c_conn->reproj_conn && (c_conn->reproj_conn->type == WB_CSC ||
+				c_conn->reproj_conn->type == WB_REPRO))
+		rc = sde_wb_lsr_connector_set_property(connector,
+					state,
+					idx,
+					value,
+					display);
 
 	return rc;
 }
@@ -511,6 +523,10 @@ int sde_wb_get_scan_out_info(struct sde_wb_device *wb_dev,
 	uint32_t ret;
 
 	sde_kms = sde_connector_get_kms(wb_dev->connector);
+	if (!sde_kms) {
+		SDE_ERROR("failed to get sde_kms\n");
+		return -EINVAL;
+	}
 
 	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
 	if (!aspace) {
@@ -562,6 +578,7 @@ int sde_wb_connector_set_info_blob(struct drm_connector *connector,
 	struct sde_kms *sde_kms;
 	struct sde_mdss_cfg *catalog;
 	int i;
+	enum wb_opmode opmode;
 
 	if (!connector || !info || !display || !wb_dev->wb_cfg) {
 		SDE_ERROR("invalid params\n");
@@ -624,6 +641,16 @@ int sde_wb_connector_set_info_blob(struct drm_connector *connector,
 		sde_kms_info_stop(info);
 	}
 
+	if (test_bit(SDE_FEATURE_LSR, catalog->features)) {
+		opmode = wb_dev->wb_cfg->opmode;
+		if (opmode == WB_CSC)
+			sde_kms_info_add_keystr(info, "wb_opmode", "csc");
+		else if (opmode == WB_REPRO)
+			sde_kms_info_add_keystr(info, "wb_opmode", "repro");
+		else
+			sde_kms_info_add_keystr(info, "wb_opmode", "dpu");
+	}
+
 	return 0;
 }
 
@@ -663,6 +690,7 @@ int sde_wb_connector_post_init(struct drm_connector *connector, void *display)
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
 	struct sde_mdss_cfg *catalog;
+
 	static const struct drm_prop_enum_list e_fb_translation_mode[] = {
 		{SDE_DRM_FB_NON_SEC, "non_sec"},
 		{SDE_DRM_FB_SEC, "sec"},
@@ -754,6 +782,11 @@ int sde_wb_connector_post_init(struct drm_connector *connector, void *display)
 			DRM_MODE_PROP_BLOB, CONNECTOR_PROP_WB_CSC_CONFIG);
 
 	_sde_wb_connector_install_dither_property(wb_dev);
+
+	if (test_bit(SDE_FEATURE_LSR, catalog->features)) {
+		if (wb_dev->wb_cfg->opmode == WB_CSC || wb_dev->wb_cfg->opmode == WB_REPRO)
+			sde_wb_lsr_install_properties(connector, wb_dev);
+	}
 
 	return 0;
 }
@@ -1025,6 +1058,13 @@ int sde_wb_drm_init(struct sde_wb_device *wb_dev, struct drm_encoder *encoder)
 		if (wb_dev->index < sde_kms->catalog->wb_count) {
 			wb_dev->wb_idx = sde_kms->catalog->wb[wb_dev->index].id;
 			wb_dev->wb_cfg = &sde_kms->catalog->wb[wb_dev->index];
+
+			if (!strcmp(wb_dev->name, "wb_csc_display"))
+				wb_dev->wb_cfg->opmode = WB_CSC;
+			else if (!strcmp(wb_dev->name, "wb_gcx_display"))
+				wb_dev->wb_cfg->opmode = WB_REPRO;
+			else
+				wb_dev->wb_cfg->opmode = WB_DPU;
 		}
 	}
 

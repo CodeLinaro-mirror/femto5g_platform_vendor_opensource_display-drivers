@@ -43,6 +43,14 @@ enum hfi_panel_bpp {
 };
 
 /*
+ * hfi_panel_deinit_prop - Bitmask values to enable different properties during panel de-init.
+ * HFI_PANEL_DEINIT_CONT_SPLASH : Keep splash screen in enable state when device deinit
+ */
+enum hfi_panel_deinit_prop {
+	HFI_PANEL_DEINIT_CONT_SPLASH = 0x00000001,
+};
+
+/*
  * hfi_panel_lane_enable - This is bitmask values to enable required panel
  * data lanes
  * HFI_PANEL_LANE_0 : Enables panel data lane 0

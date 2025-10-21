@@ -22,9 +22,6 @@
 
 #define to_hfi_connector(x) x->hfi_conn
 
-#define HFI_CONNECTOR_MAX_PROPS 128
-#define HFI_CONNECTOR_BASE_PROP_MAX_SIZE 1024
-
 struct hfi_prop_map {
 	u32 drm_prop;
 	u32 hfi_prop;
@@ -45,6 +42,7 @@ struct base_prop_lookup hfi_connector_base_props_map[] = {
 	{ CONNECTOR_PROP_DYN_BIT_CLK, HFI_PROPERTY_DISPLAY_DYN_CLK_SUPPORT },
 	{ CONNECTOR_PROP_QSYNC_MODE, HFI_PROPERTY_DISPLAY_QSYNC },
 	{ CONNECTOR_PROP_AVR_STEP_STATE, HFI_PROPERTY_DISPLAY_AVR_STEP },
+	{ CONNECTOR_PROP_LP, HFI_PROPERTY_DISPLAY_POWER_MODE },
 
 	// wb specific properties
 	{ CONNECTOR_PROP_PP_CWB_DITHER, HFI_PROPERTY_DISPLAY_WB_CWB_DITHER },
@@ -116,13 +114,18 @@ int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn
 		struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
-	u32 val;
+	u32 val = 0;
 	struct sde_connector_state *state;
 	struct hfi_connector *hfi_conn;
 	int ret = 0;
+	int drm_lp_val;
+	bool add_hfi_by_obj = true;
 
-	if (!conn || !old_cstate || !prop_collector || conn->base.state)
+	if (!conn || !old_cstate || !prop_collector || !conn->base.state) {
+		SDE_ERROR("invalid params conn[%d] old_sate[%d] prop_collec[%d] base state[%d]\n",
+			!conn, !old_cstate, !prop_collector, !(conn->base.state));
 		return -EINVAL;
+	}
 
 	state = (struct sde_connector_state *)conn->base.state;
 	hfi_conn = to_hfi_connector(conn);
@@ -143,16 +146,37 @@ int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn
 	case HFI_PROPERTY_DISPLAY_WB_LINEAR_ROTATION:
 		val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_WB_ROT_TYPE);
 		break;
+	case HFI_PROPERTY_DISPLAY_POWER_MODE:
+		drm_lp_val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_LP);
+		if (drm_lp_val == SDE_MODE_DPMS_LP1) {
+			val = HFI_MODE_DPMS_LP1;
+		} else if (drm_lp_val == SDE_MODE_DPMS_LP2) {
+			val = HFI_MODE_DPMS_LP2;
+		} else if (drm_lp_val == SDE_MODE_DPMS_ON) {
+			val = HFI_MODE_DPMS_NOLP;
+		} else {
+			SDE_ERROR("unsupported LP mode val %d\n", drm_lp_val);
+			return 0;
+		}
+		add_hfi_by_obj = false;
+		break;
 	default:
 		HFI_ERROR_CONN(hfi_conn, "failed to send HFI commands\n");
 		return -EINVAL;
 	}
 
-	ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
+	if (add_hfi_by_obj)
+		/* add hfi property with object id in property payload */
+		ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
 			hfi_prop, conn->base.base.id, HFI_VAL_U32, &val, sizeof(u32));
-	if (ret)
+	else
+		/* add hfi property without object id in property payload */
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+			HFI_VAL_U32, &val, sizeof(u32));
+	if (ret) {
 		HFI_ERROR_CONN(hfi_conn, "failed adding HFI prop:0x%x\n", hfi_prop);
-
+		return ret;
+	}
 	HFI_DEBUG_CONN(hfi_conn, "done adding HFI prop:0x%x\n", hfi_prop);
 
 	return 0;
@@ -343,6 +367,10 @@ static int hfi_conn_add_hfi_cmds(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 	}
 
 	ret = _hfi_connector_populate_props(cmd_buf, disp_id, conn, cstate);
+	if (ret) {
+		SDE_ERROR("failed to populate hfi properties, ret: %d\n", ret);
+		return ret;
+	}
 
 	return ret;
 }
@@ -517,6 +545,11 @@ int hfi_conn_send_panel_init(struct drm_connector *conn)
 		return ret;
 
 	sde_kms = sde_connector_get_kms(conn);
+	if (!sde_kms) {
+		SDE_ERROR("failed to get sde_kms\n");
+		return -EINVAL;
+	}
+
 	hfi_kms = to_hfi_kms(sde_kms);
 	display_id = sde_conn_get_display_obj_id(conn);
 
@@ -621,8 +654,10 @@ int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 	int rc = 0;
 	struct sde_kms *sde_kms = sde_connector_get_kms(&c_conn->base);
 	struct hfi_kms *hfi_kms;
+	struct sde_wb_device *wb_dev;
+	enum wb_opmode opmode;
 
-	if (!sde_kms)
+	if (!sde_kms || !c_conn)
 		return -EINVAL;
 
 	hfi_kms = sde_kms->hfi_kms;
@@ -646,6 +681,20 @@ int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 	if (IS_ERR(hfi_conn->base_props)) {
 		SDE_ERROR("failed to allocate memory for base prop collector\n");
 		goto free_kv;
+	}
+
+	if ((test_bit(SDE_FEATURE_LSR, sde_kms->catalog->features)) &&
+			c_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
+		wb_dev = (struct sde_wb_device *)c_conn->display;
+		if (wb_dev && wb_dev->wb_cfg) {
+			opmode = wb_dev->wb_cfg->opmode;
+			if (opmode == WB_CSC || opmode == WB_REPRO)
+				rc = hfi_wb_lsr_prop_helper_alloc(hfi_conn);
+			if (rc) {
+				SDE_ERROR("failed to allocate memory for LSR prop collectors\n");
+				return rc;
+			}
+		}
 	}
 
 	rc = sde_connector_get_info(&c_conn->base, &display_info);

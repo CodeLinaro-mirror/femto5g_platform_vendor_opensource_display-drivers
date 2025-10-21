@@ -2,7 +2,9 @@ targets = [
     # keep sorted
     "canoe",
     "gen3auto",
+    "bengal",
     "sun",
+    "parrot",
     "vienna",
     "niobe",
     "seraph",

@@ -2726,9 +2726,11 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 	struct drm_connector_list_iter conn_iter;
 	struct msm_drm_private *priv;
 	struct drm_plane *plane;
+	struct hfi_catalog_base *hfi_catalog;
 	int ret = 0;
-	int wb_idx = 0;
+	int wb_idx = 0, csc_wb_idx = 0, repro_wb_idx = 0;
 	int dsi_idx = 0;
+	enum wb_opmode opmode;
 
 	if (!sde_kms) {
 		SDE_ERROR("invalid arguments\n");
@@ -2738,18 +2740,30 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 	dev = sde_kms->dev;
 	priv = dev->dev_private;
 
+	if (sde_kms->hfi_kms)
+		hfi_catalog = sde_kms->hfi_kms->catalog;
+
 	drm_connector_list_iter_begin(dev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		struct sde_connector *sde_conn;
 
 		sde_conn = to_sde_connector(conn);
+		if (sde_conn->reproj_conn)
+			opmode = sde_conn->reproj_conn->type;
 
 		if (sde_conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL) {
-			sde_connector_setup_obj_id(conn,
-				sde_kms->hfi_kms->catalog->wb_indices[wb_idx++]);
+			if (opmode == WB_DPU)
+				sde_connector_setup_obj_id(conn,
+					hfi_catalog->wb_indices[wb_idx++]);
+			else if (opmode == WB_CSC)
+				sde_connector_setup_obj_id(conn,
+					hfi_catalog->csc_wb_indices[csc_wb_idx++]);
+			else if (opmode == WB_REPRO)
+				sde_connector_setup_obj_id(conn,
+					hfi_catalog->repro_wb_indices[repro_wb_idx++]);
 		} else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DSI) {
 			sde_connector_setup_obj_id(conn,
-				sde_kms->hfi_kms->catalog->dsi_indices[dsi_idx++]);
+				hfi_catalog->dsi_indices[dsi_idx++]);
 			c_conn = to_sde_connector(conn);
 			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
 			c_conn->ops.ctl_pre_transition(c_conn->display);
@@ -2916,8 +2930,12 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 	}
 
 	/* All CRTCs are compatible with all encoders */
-	for (i = 0; i < priv->num_encoders; i++)
+	for (i = 0; i < priv->num_encoders; i++) {
 		priv->encoders[i]->possible_crtcs = (1 << priv->num_crtcs) - 1;
+		if (catalog->max_cwb > 0)
+			priv->encoders[i]->possible_clones =
+				sde_encoder_get_clones(priv->encoders[i]);
+	}
 
 	return 0;
 fail:

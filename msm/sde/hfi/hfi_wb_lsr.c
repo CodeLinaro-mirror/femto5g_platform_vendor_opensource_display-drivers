@@ -1,0 +1,566 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ */
+
+#include "hfi_wb.h"
+#include "hfi_defs_lsr.h"
+#include "hfi_connector.h"
+#include "sde_wb_lsr.h"
+
+#define DSI_DISPLAY 0
+#define BLOB_PROPERTY_HEADER_SIZE 2
+#define MATRICES_PER_VIEW 2
+
+struct base_prop_lookup {
+	u32 drm_prop;
+	u32 hfi_prop;
+};
+
+struct base_prop_lookup hfi_wb_repro_lsr_custom_props_map[] = {
+	{ CONNECTOR_PROP_REPROJ_FUNCTIONAL_MODE,
+			LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_FUNCTIONAL_MODE },
+	{ CONNECTOR_PROP_REPROJ_DISTORT_RESOLUTION,
+			LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_DISTORT_RESOLUTION },
+	{ CONNECTOR_PROP_REPROJ_GRID_WIDTH, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID_WIDTH },
+	{ CONNECTOR_PROP_REPROJ_GRID_HEIGHT, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID_HEIGHT },
+	{ CONNECTOR_PROP_REPROJ_R_MAX, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_R_MAX },
+	{ CONNECTOR_PROP_REPROJ_TO_LRGB_LEFT, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_TO_LRGB },
+	{ CONNECTOR_PROP_REPROJ_ERROR_TO_L, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_ERROR_TO_L },
+	{ CONNECTOR_PROP_REPROJ_DISP_IM_W, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_IMAGE_WIDTH },
+	{ CONNECTOR_PROP_REPROJ_TILE_W, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_TILE_WIDTH },
+	{ CONNECTOR_PROP_REPROJ_MIN_BBOX_W, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_MIN_BBOX_WIDTH },
+	{ CONNECTOR_PROP_REPROJ_DISP_IM_H, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_IMAGE_HEIGHT },
+	{ CONNECTOR_PROP_REPROJ_TILE_H, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_TILE_HEIGHT },
+	{ CONNECTOR_PROP_REPROJ_MIN_BBOX_H, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_MIN_BBOX_HEIGHT },
+	{ CONNECTOR_PROP_LSR_WB_REPROJ_SYNC_TO, HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_SYNC_TO },
+	{ CONNECTOR_PROP_LSR_WB_REPROJ_CONFIG_MATRIX,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_MATRIX },
+	{CONNECTOR_PROP_REPROJ_OPTICAL_AXIS_OFFSET,
+			LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_OPTICAL_AXIS_OFFSET },
+};
+
+struct base_prop_lookup hfi_wb_repro_lsr_blob_props_map[] = {
+	{ CONNECTOR_PROP_REPROJ_SPARSE_GRID, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID },
+	{ CONNECTOR_PROP_REPROJ_RADIAL_DISTORTION_GRID,
+				LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_RADIAL_DISTORTION_GRID },
+	{ CONNECTOR_PROP_REPROJ_DISPLAY_GAMMA, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_DISPLAY_GAMMA },
+	{ CONNECTOR_PROP_REPROJ_GCX_SESSION_CONFIG,
+				LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_GCX_SESSION_CONFIG },
+	{ CONNECTOR_PROP_REPROJ_GCX_SESSION_CONFIG_DATA,
+				LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_GCX_SESSION_CONFIG_DATA },
+};
+
+static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
+	struct sde_connector_state *cstate,
+	struct hfi_util_u32_prop_helper *prop_collector,
+	u32 disp_id)
+{
+	struct sde_view_descriptor *view_desc = NULL;
+	struct sde_view_descriptor *back_view_desc = NULL;
+	struct hfi_wb_out_buff *out_buffers;
+	void *payload;
+	int ret = 0, i;
+	bool is_back_view_en = false;
+	u32 prop_id, num_fbs = 0;
+
+	if (!wb_dev || !cstate || !prop_collector) {
+		SDE_ERROR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	view_desc = cstate->view_descriptor;
+	back_view_desc = cstate->back_view_descriptor;
+
+	for (i = 0; i < MAX_VIEWS; i++) {
+		if (view_desc[i].num_fbs > 0 && view_desc[i].num_fbs <= MAX_BUFFERS_PER_VIEW)
+			num_fbs += view_desc[i].num_fbs;
+		if (back_view_desc[i].num_fbs > 0 &&
+				back_view_desc[i].num_fbs <= MAX_BUFFERS_PER_VIEW) {
+			num_fbs += back_view_desc[i].num_fbs;
+			is_back_view_en = true;
+		}
+	}
+	out_buffers = kcalloc(num_fbs, sizeof(struct hfi_wb_out_buff), GFP_KERNEL);
+	if (!out_buffers) {
+		SDE_ERROR("failed to allocate memory for out_buffers\n");
+		return -ENOMEM;
+	}
+
+	sde_wb_lsr_get_fb_id_list(wb_dev, out_buffers, view_desc,
+			back_view_desc, is_back_view_en);
+
+	payload = kmalloc(sizeof(u32) + num_fbs * sizeof(struct hfi_wb_out_buff), GFP_KERNEL);
+	if (!payload) {
+		SDE_ERROR("failed to allocate memory for payload\n");
+		kfree(out_buffers);
+		return -ENOMEM;
+	}
+	*(u32 *)payload = num_fbs;
+	memcpy((char *)payload + sizeof(u32), out_buffers,
+			num_fbs * sizeof(struct hfi_wb_out_buff));
+
+	prop_id = HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS;
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, payload, sizeof(u32) + num_fbs * sizeof(struct hfi_wb_out_buff));
+
+	kfree(out_buffers);
+	kfree(payload);
+	return ret;
+}
+
+int _hfi_wb_lsr_out_buffer_prop_helper(struct sde_wb_device *wb_dev,
+	struct sde_connector_state *cstate,
+	struct hfi_util_u32_prop_helper *prop_collector,
+	u32 disp_id)
+{
+	int ret = 0;
+
+	if (!wb_dev || !cstate || !prop_collector)
+		return -EINVAL;
+
+	ret = _hfi_wb_lsr_add_fb_id_list_prop(wb_dev, cstate, prop_collector, disp_id);
+
+	return ret;
+}
+
+int _hfi_wb_lsr_repro_custom_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_dev,
+	struct sde_connector_state *cstate,
+	struct hfi_util_u32_prop_helper *prop_collector,
+	u32 disp_id)
+{
+	struct sde_drm_reproj_matrix_list *reproj_matrix_list;
+	struct sde_drm_lsr_point *optical_axis_offset;
+	enum sde_drm_wb_functional_mode func_mode;
+	u32 payload_size = 0, payload_lrgb[4], payload[3];
+	int ret = 0, i, val = 0, view_index;
+
+	if (!wb_dev || !cstate || !prop_collector)
+		return -EINVAL;
+
+	reproj_matrix_list = &cstate->repro_conn_cfg.reproj_matrix_list;
+	optical_axis_offset = &cstate->optical_axis_offset;
+
+	payload[0] = hfi_prop;
+	payload[1] = 1;
+	switch (hfi_prop) {
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_FUNCTIONAL_MODE:
+		func_mode = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_FUNCTIONAL_MODE);
+		payload[2] = func_mode;
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+				HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_DISTORT_RESOLUTION:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_DISTORT_RESOLUTION);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+				HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID_WIDTH:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_GRID_WIDTH);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+				HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID_HEIGHT:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_GRID_HEIGHT);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+				HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_R_MAX:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_R_MAX);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+				HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_TO_LRGB:
+		payload_lrgb[0] = hfi_prop;
+		payload_lrgb[1] = 2;
+		payload_lrgb[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_TO_LRGB_LEFT);
+		payload_lrgb[3] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_TO_LRGB_RIGHT);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload_lrgb, sizeof(payload_lrgb));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_ERROR_TO_L:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_ERROR_TO_L);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_IMAGE_WIDTH:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_DISP_IM_W);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_TILE_WIDTH:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_TILE_W);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_MIN_BBOX_WIDTH:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_MIN_BBOX_W);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_IMAGE_HEIGHT:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_DISP_IM_H);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_TILE_HEIGHT:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_TILE_H);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_MIN_BBOX_HEIGHT:
+		payload[2] = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_REPROJ_MIN_BBOX_H);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
+	case HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_SYNC_TO:
+		/* TODO, will have to get property from CONNECTOR_PROP_LSR_WB_REPROJ_SYNC_TO */
+		val = DSI_DISPLAY;
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			hfi_prop, HFI_VAL_U32, &val, sizeof(u32));
+		break;
+	case HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_MATRIX:
+		if (!reproj_matrix_list) {
+			SDE_ERROR("Invalid reproj_matrix_list\n");
+			return -EINVAL;
+		}
+
+		for (view_index = 0; view_index < MAX_VIEWS; view_index++)	{
+			payload_size = sizeof(u32) +
+					MATRICES_PER_VIEW * sizeof(struct hfi_lsr_reproj_matrix);
+			void *matrix_payload = kzalloc(payload_size, GFP_KERNEL);
+
+			if (!matrix_payload) {
+				SDE_ERROR("failed to allocate memory for matrix_payload\n");
+				return -ENOMEM;
+			}
+			u32 *view_index_ptr = (u32 *) matrix_payload;
+			*view_index_ptr = view_index;
+			u32 *matrix_base = (u32 *)((char *)matrix_payload + sizeof(u32));
+			bool is_inverse = false;
+
+			for (i = 0; i < (MAX_VIEWS * MATRICES_PER_VIEW); i++) {
+				if ((reproj_matrix_list->matrix_list[i].view_index != view_index) ||
+					(reproj_matrix_list->matrix_list[i].is_inverse !=
+						is_inverse)) {
+					continue;
+				}
+				memcpy(matrix_base,
+					&reproj_matrix_list->matrix_list[i].reproj_matrix,
+					sizeof(struct hfi_lsr_reproj_matrix));
+			}
+
+			matrix_base = (u32 *)((char *)matrix_payload + sizeof(u32) +
+					sizeof(struct hfi_lsr_reproj_matrix));
+			is_inverse = true;
+			for (i = 0; i < (MAX_VIEWS * MATRICES_PER_VIEW); i++) {
+				if ((reproj_matrix_list->matrix_list[i].view_index != view_index) ||
+					(reproj_matrix_list->matrix_list[i].is_inverse !=
+						is_inverse)) {
+					continue;
+				}
+				memcpy(matrix_base,
+					&reproj_matrix_list->matrix_list[i].reproj_matrix,
+					sizeof(struct hfi_lsr_reproj_matrix));
+				break;
+			}
+			ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+				hfi_prop, HFI_VAL_U32_ARRAY, matrix_payload, payload_size);
+
+			kfree(matrix_payload);
+		}
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_OPTICAL_AXIS_OFFSET:
+			if (!optical_axis_offset) {
+				SDE_ERROR("Invalid optical_axis_offset\n");
+				return -EINVAL;
+			}
+
+			payload_size = (MAX_VIEWS * sizeof(u32)) + sizeof(struct sde_drm_lsr_point);
+			void *optical_axis_payload = kzalloc(payload_size, GFP_KERNEL);
+
+			if (!optical_axis_payload) {
+				SDE_ERROR("failed to allocate memory for optical axis payload\n");
+				return -ENOMEM;
+			}
+			u32 *oa_base = (u32 *) optical_axis_payload;
+			*oa_base = hfi_prop;
+			oa_base = (u32 *)((char *)optical_axis_payload + sizeof(u32));
+			*oa_base = sizeof(struct sde_drm_lsr_point)/sizeof(u32);
+			oa_base = (u32 *)((char *)optical_axis_payload + (MAX_VIEWS * sizeof(u32)));
+			memcpy(oa_base, optical_axis_offset, sizeof(struct sde_drm_lsr_point));
+			ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+				HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+				HFI_VAL_U32_ARRAY, optical_axis_payload, payload_size);
+
+			kfree(optical_axis_payload);
+		break;
+	default:
+		SDE_ERROR("Failed to send HFI commands\n");
+		return -EINVAL;
+	}
+
+	if (ret)
+		SDE_ERROR("Failed adding HFI prop:0x%x\n", hfi_prop);
+
+	SDE_DEBUG("Done adding HFI prop:0x%x\n", hfi_prop);
+
+	return ret;
+}
+
+int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_dev,
+	struct sde_connector_state *cstate,
+	struct hfi_util_u32_prop_helper *prop_collector,
+	u32 disp_id)
+{
+	struct sde_drm_opaque_config *opq_cfg = NULL;
+	int ret = 0;
+	u32 size;
+	u32 *payload = NULL;
+
+	if (!wb_dev || !cstate || !prop_collector)
+		return -EINVAL;
+
+	size = BLOB_PROPERTY_HEADER_SIZE + (sizeof(struct hfi_buff) / sizeof(u32));
+	payload = kcalloc(size, sizeof(u32), GFP_KERNEL);
+
+	if (!payload) {
+		SDE_ERROR("failed to allocate memory for payload\n");
+		return -ENOMEM;
+	}
+
+	payload[0] = hfi_prop;
+	payload[1] = sizeof(struct hfi_buff)/sizeof(u32);
+	struct hfi_buff *buff = (struct hfi_buff *)&payload[2];
+
+	switch (hfi_prop) {
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID:
+		opq_cfg = &cstate->reproj_sparse_grid;
+		buff->size = opq_cfg->usr_cfg.size;
+		buff->addr_l = opq_cfg->remote_iova;
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_RADIAL_DISTORTION_GRID:
+		opq_cfg = &cstate->reproj_radial_dis_grid;
+		buff->size = opq_cfg->usr_cfg.size;
+		buff->addr_l = opq_cfg->remote_iova;
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_DISPLAY_GAMMA:
+		opq_cfg = &cstate->reproj_display_gamma;
+		buff->size = opq_cfg->usr_cfg.size;
+		buff->addr_l = opq_cfg->remote_iova;
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_GCX_SESSION_CONFIG:
+		opq_cfg = &cstate->reproj_gcx_session_config;
+		buff->size = opq_cfg->usr_cfg.size;
+		buff->addr_l = opq_cfg->remote_iova;
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
+		break;
+	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_GCX_SESSION_CONFIG_DATA:
+		opq_cfg = &cstate->reproj_gcx_session_config_data;
+		buff->size = opq_cfg->usr_cfg.size;
+		buff->addr_l = opq_cfg->remote_iova;
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
+			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
+		break;
+	default:
+		SDE_ERROR("Failed to send HFI commands\n");
+		return -EINVAL;
+	}
+
+	if (ret)
+		SDE_ERROR("Failed adding HFI prop:0x%x\n", hfi_prop);
+
+	SDE_DEBUG("Done adding HFI prop:0x%x\n", hfi_prop);
+	kfree(payload);
+
+	return 0;
+}
+
+int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi_conn,
+		struct sde_connector_state *cstate,
+		u32 disp_id, struct hfi_cmdbuf_t *cmd_buf)
+{
+	u32 drm_prop, hfi_prop;
+	int i, ret = 0;
+	int flags = 0;
+
+	if (!wb_dev || !hfi_conn || !cstate || !cmd_buf) {
+		SDE_ERROR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	hfi_util_u32_prop_helper_reset(hfi_conn->lsr_props);
+	hfi_util_u32_prop_helper_reset(hfi_conn->lsr_blob_props);
+	hfi_util_u32_prop_helper_reset(hfi_conn->lsr_out_buffer_props);
+
+	ret = _hfi_wb_lsr_out_buffer_prop_helper(wb_dev, cstate,
+			hfi_conn->lsr_out_buffer_props, disp_id);
+	if (ret) {
+		SDE_ERROR("Failed to set HFI out buffers :%d\n", ret);
+		goto end;
+	}
+
+	if (wb_dev->wb_cfg->opmode == WB_REPRO) {
+		for (i = 0; i < ARRAY_SIZE(hfi_wb_repro_lsr_custom_props_map); i++) {
+			drm_prop = hfi_wb_repro_lsr_custom_props_map[i].drm_prop;
+			hfi_prop = hfi_wb_repro_lsr_custom_props_map[i].hfi_prop;
+			/* TODO Need to add dirty check */
+			ret = _hfi_wb_lsr_repro_custom_prop_helper(hfi_prop, wb_dev, cstate,
+				 hfi_conn->lsr_props, disp_id);
+			if (ret) {
+				SDE_ERROR("Failed to set HFI REPRO custom properties :%d\n", ret);
+				goto end;
+			}
+		}
+
+		for (i = 0; i < ARRAY_SIZE(hfi_wb_repro_lsr_blob_props_map); i++) {
+			drm_prop = hfi_wb_repro_lsr_blob_props_map[i].drm_prop;
+			hfi_prop = hfi_wb_repro_lsr_blob_props_map[i].hfi_prop;
+			/* TODO Need to add dirty check */
+			ret = _hfi_wb_lsr_repro_blob_prop_helper(hfi_prop, wb_dev, cstate,
+				 hfi_conn->lsr_blob_props, disp_id);
+			if (ret) {
+				SDE_ERROR("Failed to set HFI REPRO blob properties :%d\n", ret);
+				goto end;
+			}
+		}
+	}
+
+	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->lsr_out_buffer_props))
+		goto lsr_props;
+
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+		cmd_buf,
+		HFI_COMMAND_DISPLAY_SET_PROPERTY,
+		disp_id,
+		HFI_PAYLOAD_TYPE_U32_ARRAY,
+		hfi_util_u32_prop_helper_get_payload_addr(hfi_conn->lsr_out_buffer_props),
+		hfi_util_u32_prop_helper_get_size(hfi_conn->lsr_out_buffer_props),
+		flags);
+
+	if (ret) {
+		SDE_ERROR("failed to send HFI commands\n");
+		goto end;
+	}
+
+lsr_props:
+	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->lsr_props))
+		goto lsr_blob_props;
+
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+		cmd_buf,
+		HFI_COMMAND_DISPLAY_SET_PROPERTY,
+		disp_id,
+		HFI_PAYLOAD_TYPE_U32_ARRAY,
+		hfi_util_u32_prop_helper_get_payload_addr(hfi_conn->lsr_props),
+		hfi_util_u32_prop_helper_get_size(hfi_conn->lsr_props),
+		flags);
+
+	if (ret) {
+		SDE_ERROR("failed to send HFI commands\n");
+		goto end;
+	}
+
+lsr_blob_props:
+	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->lsr_blob_props))
+		goto end;
+
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+		cmd_buf,
+		HFI_COMMAND_DISPLAY_SET_PROPERTY,
+		disp_id,
+		HFI_PAYLOAD_TYPE_U32_ARRAY,
+		hfi_util_u32_prop_helper_get_payload_addr(hfi_conn->lsr_blob_props),
+		hfi_util_u32_prop_helper_get_size(hfi_conn->lsr_blob_props),
+		flags);
+
+	if (ret) {
+		SDE_ERROR("failed to send HFI commands\n");
+		goto end;
+	}
+
+end:
+	return ret;
+}
+
+int hfi_wb_lsr_prop_helper_alloc(struct hfi_connector *hfi_conn)
+{
+	int rc = 0;
+
+	if (!hfi_conn) {
+		SDE_ERROR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	hfi_conn->lsr_props =
+			hfi_util_u32_prop_helper_alloc(HFI_CONNECTOR_BASE_PROP_MAX_SIZE);
+	if (IS_ERR(hfi_conn->lsr_props)) {
+		SDE_ERROR("failed to allocate memory for lsr prop collection\n");
+		goto free_lsr;
+	}
+
+	hfi_conn->lsr_blob_props =
+			hfi_util_u32_prop_helper_alloc(HFI_CONNECTOR_BASE_PROP_MAX_SIZE);
+	if (IS_ERR(hfi_conn->lsr_blob_props)) {
+		SDE_ERROR("failed to allocate memory for lsr blob prop collection\n");
+		goto free_lsr_blob;
+	}
+
+	hfi_conn->lsr_out_buffer_props =
+			hfi_util_u32_prop_helper_alloc(HFI_CONNECTOR_BASE_PROP_MAX_SIZE);
+	if (IS_ERR(hfi_conn->lsr_out_buffer_props)) {
+		SDE_ERROR("failed to allocate memory for lsr out buffer prop collection\n");
+		goto free_lsr_out_buffer;
+	}
+
+	return rc;
+
+free_lsr_out_buffer:
+	kfree(hfi_conn->lsr_out_buffer_props);
+free_lsr_blob:
+	kfree(hfi_conn->lsr_blob_props);
+free_lsr:
+	kfree(hfi_conn->lsr_props);
+
+	return -ENOMEM;
+}

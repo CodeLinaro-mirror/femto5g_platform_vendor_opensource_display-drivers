@@ -18,6 +18,7 @@
 #include "sde_kms.h"
 #include "sde_fence.h"
 #include "dsi_display.h"
+#include "sde_connector_lsr.h"
 
 #define SDE_CONNECTOR_NAME_SIZE	16
 #define SDE_CONNECTOR_DHDR_MEMPOOL_MAX_SIZE	SZ_32
@@ -721,6 +722,18 @@ struct sde_backlight_vrr_update {
 };
 
 /**
+ * struct sde_drm_opaque_config - Opaque config structure
+ * @usr_cfg: Opaque config
+ * @buf: DRM gem object
+ * @remote_iova: Remote iova
+ */
+struct sde_drm_opaque_config {
+	struct drm_msm_opaque_config usr_cfg;
+	struct drm_gem_object *buf;
+	uint64_t remote_iova;
+};
+
+/**
  * struct sde_connector - local sde connector structure
  * @base: Base drm connector structure
  * @connector_type: Set to one of DRM_MODE_CONNECTOR_ types
@@ -805,6 +818,7 @@ struct sde_backlight_vrr_update {
  * @hfi_conn: Pointer to hfi connector struct
  * @hal_ops: hal ops for hfi communication
  * @dpu_dma_enabled: Indicates if dpu dma mode is enabled
+ * @reproj_conn: Pointer to sde_reproj
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -912,6 +926,7 @@ struct sde_connector {
 	struct sde_connector_hal_funcs hal_ops;
 
 	bool dpu_dma_enabled;
+	struct sde_reproj *reproj_conn;
 };
 
 /**
@@ -975,11 +990,37 @@ struct sde_connector {
  * @msm_mode: struct containing drm_mode and downstream private variables
  * @old_topology_name: topology of previous atomic state. remove this in later
  *	kernel versions which provide drm_atomic_state old_state pointers
+ * @privacy_v1: Privacy layer info
+ * @privacy_layer_updated: Privacy layer is updated
  * @cont_splash_populated: State was populated as part of cont. splash
  * @dnsc_blur_count: Number of downscale blur blocks used
  * @dnsc_blur_cfg: Configs for the downscale blur block
  * @dnsc_blur_lut: LUT idx used for the Gaussian filter LUTs in downscale blur block
  * @usage_type: WB connector usage type
+ * @repro_conn_cfg: Reprojection connector config
+ * @fb_id_list: FB ID list
+ * @view_descriptor: View descriptor
+ * @back_view_descriptor: Back view descriptor
+ * @reproj_sparse_grid: Opaque config for Sparse grid
+ * @reproj_radial_dis_grid: Opaque config for Radial Distortion grid
+ * @reproj_display_gamma: Opaque config for Display gamma
+ * @reproj_gcx_session_config: Opaque config for GCX session config
+ * @reproj_gcx_session_config_data: Opaque config for GCX session config data
+ * @reproj_mode: Reprojection mode
+ * @reproj_grid_size: Reprojection grid size
+ * @reproj_grid_w: Reprojection grid width
+ * @reproj_grid_h: Reprojection grid height
+ * @distort_resolution: Distort resolution
+ * @reproj_r_max: Reprojection r_max value
+ * @reproj_to_lrgb_left: Reprojection tolerance to RGB for left view
+ * @reproj_to_lrgb_right: Reprojection tolerance to RGB for right view
+ * @reproj_error_to_l: Reprojection error_to_l value
+ * @reproj_disp_im_w: Reprojection display image width
+ * @reproj_tile_w: Reprojection tile width
+ * @reproj_min_bbox_w: Reprojection minimum bbox width
+ * @reproj_disp_im_h: Reprojection display image height
+ * @reproj_tile_h: Reprojection tile height
+ * @reproj_min_bbox_h: Reprojection minimum bbox height
  */
 struct sde_connector_state {
 	struct drm_connector_state base;
@@ -994,13 +1035,44 @@ struct sde_connector_state {
 	struct sde_connector_dyn_hdr_metadata dyn_hdr_meta;
 	struct msm_display_mode msm_mode;
 	enum sde_rm_topology_name old_topology_name;
-
+	struct sde_drm_privacy_layer_v1 privacy_v1;
+	bool privacy_layer_updated;
 	bool cont_splash_populated;
 
 	u32 dnsc_blur_count;
 	struct sde_drm_dnsc_blur_cfg dnsc_blur_cfg[DNSC_BLUR_MAX_COUNT];
 	u32 dnsc_blur_lut;
 	enum sde_wb_usage_type usage_type;
+
+	struct sde_hw_repro_conn_cfg repro_conn_cfg;
+	struct sde_drm_fb_id_list fb_id_list;
+	struct sde_drm_lsr_point optical_axis_offset;
+	struct sde_view_descriptor view_descriptor[MAX_VIEWS];
+	struct sde_view_descriptor back_view_descriptor[MAX_VIEWS];
+
+	struct sde_drm_opaque_config reproj_sparse_grid;
+	struct sde_drm_opaque_config reproj_radial_dis_grid;
+	struct sde_drm_opaque_config reproj_display_gamma;
+	struct sde_drm_opaque_config reproj_gcx_session_config;
+	struct sde_drm_opaque_config reproj_gcx_session_config_data;
+
+	u32 reproj_mode;
+	u32 reproj_grid_size;
+	u32 reproj_grid_w;
+	u32 reproj_grid_h;
+	u32 distort_resolution;
+	u32 reproj_r_max;
+
+	u32 reproj_to_lrgb_left;
+	u32 reproj_to_lrgb_right;
+	u32 reproj_error_to_l;
+
+	u32 reproj_disp_im_w;
+	u32 reproj_tile_w;
+	u32 reproj_min_bbox_w;
+	u32 reproj_disp_im_h;
+	u32 reproj_tile_h;
+	u32 reproj_min_bbox_h;
 };
 
 /**

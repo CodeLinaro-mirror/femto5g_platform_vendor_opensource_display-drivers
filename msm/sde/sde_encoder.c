@@ -75,6 +75,9 @@
 		(p) ? ((p)->hw_pp ? (p)->hw_pp->idx - PINGPONG_0 : -1) : -1, \
 		##__VA_ARGS__)
 
+#define SDE_WARN_ENC(e, fmt, ...) SDE_WARN("enc%d " fmt,\
+		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
+
 #define SEC_TO_MILLI_SEC		1000
 
 #define MISR_BUFF_SIZE			256
@@ -3484,15 +3487,34 @@ struct drm_connector *sde_encoder_get_connector(
 {
 	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *conn = NULL, *conn_search;
+	struct drm_encoder *enc_search;
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (!sde_enc)
+		return NULL;
 
 	drm_connector_list_iter_begin(dev, &conn_iter);
 	drm_for_each_connector_iter(conn_search, &conn_iter) {
-		if (conn_search->encoder == drm_enc) {
+		if (conn_search->state && conn_search->state->best_encoder)
+			enc_search = conn_search->state->best_encoder;
+		else
+			enc_search = conn_search->encoder;
+
+		if (enc_search == drm_enc) {
 			conn = conn_search;
 			break;
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
+
+
+	if (!conn) {
+		SDE_DEBUG_ENC(sde_enc, "failed to get connector - trying cached connector\n");
+		if (!sde_enc->cached_connector)
+			SDE_WARN_ENC(sde_enc, "failed to get cached connector\n");
+		else
+			conn = sde_enc->cached_connector;
+	}
 
 	return conn;
 }
@@ -4390,6 +4412,10 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 
 	_sde_encoder_virt_enable_helper(drm_enc);
 	sde_encoder_control_te(sde_enc, true);
+
+	sde_enc->cached_connector = sde_encoder_get_connector(drm_enc->dev, drm_enc);
+	if (!sde_enc->cached_connector)
+		SDE_ERROR_ENC(sde_enc, "failed to cache connector\n");
 }
 
 void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
@@ -4577,6 +4603,9 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 
 	if (!sde_encoder_in_clone_mode(drm_enc))
 		sde_encoder_virt_reset(drm_enc);
+
+	/* Reset cached connector to NULL on disable */
+	sde_enc->cached_connector = NULL;
 }
 
 static void _trigger_encoder_hw_fences_override(struct sde_kms *sde_kms, struct sde_hw_ctl *ctl)
@@ -8367,6 +8396,38 @@ static int sde_encoder_virt_add_phys_encs(
 	++sde_enc->num_phys_encs;
 
 	return 0;
+}
+
+/**
+ * sde_encoder_get_clones - Calculate the possible_clones for SDE encoder
+ * @sde_enc:        DRM encoder pointer
+ * Returns:         possible_clones mask
+ */
+uint32_t sde_encoder_get_clones(struct drm_encoder *drm_enc)
+{
+	struct drm_encoder *curr;
+	int type = drm_enc->encoder_type;
+	uint32_t clone_mask = drm_encoder_mask(drm_enc);
+
+	/*
+	 * Set writeback as possible clones of real-time DSI encoders and vice
+	 * versa
+	 *
+	 * Writeback encoders can't be clones of each other and DSI
+	 * encoders can't be clones of each other.
+	 *
+	 * TODO: Add DP encoders as valid possible clones for writeback encoders
+	 * (and vice versa) once concurrent writeback has been validated for DP
+	 */
+	drm_for_each_encoder(curr, drm_enc->dev) {
+		if ((type == DRM_MODE_ENCODER_VIRTUAL &&
+				curr->encoder_type != DRM_MODE_ENCODER_VIRTUAL) ||
+				(type != DRM_MODE_ENCODER_VIRTUAL &&
+				curr->encoder_type == DRM_MODE_ENCODER_VIRTUAL))
+			clone_mask |= drm_encoder_mask(curr);
+	}
+
+	return clone_mask;
 }
 
 static int sde_encoder_virt_add_phys_enc_wb(struct sde_encoder_virt *sde_enc,
