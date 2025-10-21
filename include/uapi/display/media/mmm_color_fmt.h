@@ -1142,7 +1142,171 @@ enum mmm_color_fmts {
 	 * Total size = align(Y_Stride * Y_Scanlines
 	 *          + UV_Stride * UV_Scanlines, 4096)
 	 */
-	MMM_COLOR_FMT_P210
+	MMM_COLOR_FMT_P210,
+	/* Venus P010_Y:
+	 * YUV 4:2:0 image with a plane of 10 bit Y samples with
+	 * no following UV plane.
+	 *
+	 * <-------- Y/UV_Stride -------->
+	 * <------- Width ------->
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  ^           ^
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  |           |
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  Height      |
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  |          Y_Scanlines
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  |           |
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  |           |
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  |           |
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  V           |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .              V
+	 * . . . . . . . . . . . . . . . .  --> Buffer size alignment
+	 *
+	 * Y_Stride : Width * 2 aligned to 256
+	 * UV_Stride : Width * 2 aligned to 256
+	 * Y_Scanlines: Height aligned to 32
+	 * UV_Scanlines: Height/2 aligned to 16
+	 * Total size = align(Y_Stride * Y_Scanlines
+	 *          + UV_Stride * UV_Scanlines, 4096)
+	 */
+	MMM_COLOR_FMT_P010_Y,
+	/* Venus P010_A:
+	 * YUV 4:2:0 image with a plane of 10 bit A samples with
+	 *
+	 * <-------- Y/UV_Stride -------->
+	 * <------- Width ------->
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  ^           ^
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  |           |
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  Height      |
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  |          Y_Scanlines
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  |           |
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  |           |
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  |           |
+	 * Y Y Y Y Y Y Y Y Y Y Y Y . . . .  V           |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .              V
+	 * . . . . . . . . . . . . . . . .  --> Buffer size alignment
+	 *
+	 * Y_Stride : Width * 2 aligned to 256
+	 * UV_Stride : Width * 2 aligned to 256
+	 * Y_Scanlines: Height aligned to 32
+	 * UV_Scanlines: Height/2 aligned to 16
+	 * Total size = align(Y_Stride * Y_Scanlines
+	 *          + UV_Stride * UV_Scanlines, 4096)
+	 */
+	MMM_COLOR_FMT_P010_A,
+	/* P010_Y UBWC:
+	 * Contains A planes in the following order -
+	 * (A) Y_Meta_Plane
+	 * (B) Y_UBWC_Plane
+	 *
+	 * Y_Meta_Plane consists of meta information to decode compressed
+	 * tile data in Y_UBWC_Plane.
+	 * Y_UBWC_Plane consists of Y data in compressed macro-tile format.
+	 * UBWC decoder block will use the Y_Meta_Plane data together with
+	 * Y_UBWC_Plane data to produce loss-less uncompressed 10 bit Y samples.
+	 *
+	 * Each tile in Y_UBWC_Plane/UV_UBWC_Plane is independently decodable
+	 * and randomly accessible. There is no dependency between tiles.
+	 *
+	 * <----- Y_Meta_Stride ----->
+	 * <-------- Width ------>
+	 * M M M M M M M M M M M M . .      ^           ^
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      Height      |
+	 * M M M M M M M M M M M M . .      |         Meta_Y_Scanlines
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      V           |
+	 * . . . . . . . . . . . . . .                  |
+	 * . . . . . . . . . . . . . .                  |
+	 * . . . . . . . . . . . . . .      -------> Buffer size aligned to 4k
+	 * . . . . . . . . . . . . . .                  V
+	 * <--Compressed tile Y Stride--->
+	 * <------- Width ------->
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  ^           ^
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  |           |
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  Height      |
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  |        Macro_tile_Y_Scanlines
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  |           |
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  |           |
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  |           |
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  V           |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .  -------> Buffer size aligned to 4k
+	 * . . . . . . . . . . . . . . . .              V
+	 *
+	 * Y_Stride = align(Width * 2, 256)
+	 * Y_Scanlines = align(Height, 16)
+	 * Y_UBWC_Plane_Size = align(Y_Stride * Y_Scanlines, 4096)
+	 * Y_Meta_Stride = align(roundup(Width, Y_TileWidth), 64)
+	 * Y_Meta_Scanlines = align(roundup(Height, Y_TileHeight), 16)
+	 * Y_Meta_Plane_size = align(Y_Meta_Stride * Y_Meta_Scanlines, 4096)
+	 *
+	 * Total size = align(Y_UBWC_Plane_size + UV_UBWC_Plane_size +
+	 *           Y_Meta_Plane_size + UV_Meta_Plane_size, 4096)
+	 */
+	MMM_COLOR_FMT_P010_Y_UBWC,
+	/* P010_A UBWC:
+	 * Compressed Macro-tile format for NV12.
+	 * Contains 4 planes in the following order -
+	 * (A) Y_Meta_Plane
+	 * (B) Y_UBWC_Plane
+	 *
+	 * Y_Meta_Plane consists of meta information to decode compressed
+	 * tile data in Y_UBWC_Plane.
+	 * Y_UBWC_Plane consists of Y data in compressed macro-tile format.
+	 * UBWC decoder block will use the Y_Meta_Plane data together with
+	 * Y_UBWC_Plane data to produce loss-less uncompressed 10 bit Y samples.
+	 *
+	 * Each tile in Y_UBWC_Plane/UV_UBWC_Plane is independently decodable
+	 * and randomly accessible. There is no dependency between tiles.
+	 *
+	 * <----- Y_Meta_Stride ----->
+	 * <-------- Width ------>
+	 * M M M M M M M M M M M M . .      ^           ^
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      Height      |
+	 * M M M M M M M M M M M M . .      |         Meta_Y_Scanlines
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      |           |
+	 * M M M M M M M M M M M M . .      V           |
+	 * . . . . . . . . . . . . . .                  |
+	 * . . . . . . . . . . . . . .                  |
+	 * . . . . . . . . . . . . . .      -------> Buffer size aligned to 4k
+	 * . . . . . . . . . . . . . .                  V
+	 * <--Compressed tile Y Stride--->
+	 * <------- Width ------->
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  ^           ^
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  |           |
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  Height      |
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  |        Macro_tile_Y_Scanlines
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  |           |
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  |           |
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  |           |
+	 * Y* Y* Y* Y* Y* Y* Y* Y* . . . .  V           |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .              |
+	 * . . . . . . . . . . . . . . . .  -------> Buffer size aligned to 4k
+	 * . . . . . . . . . . . . . . . .              V
+	 *
+	 * Y_Stride = align(Width * 2, 256)
+	 * Y_Scanlines = align(Height, 16)
+	 * Y_UBWC_Plane_Size = align(Y_Stride * Y_Scanlines, 4096)
+	 * Y_Meta_Stride = align(roundup(Width, Y_TileWidth), 64)
+	 * Y_Meta_Scanlines = align(roundup(Height, Y_TileHeight), 16)
+	 * Y_Meta_Plane_size = align(Y_Meta_Stride * Y_Meta_Scanlines, 4096)
+	 *
+	 * Total size = align(Y_UBWC_Plane_size + UV_UBWC_Plane_size +
+	 *           Y_Meta_Plane_size + UV_Meta_Plane_size, 4096)
+	 */
+	MMM_COLOR_FMT_P010_A_UBWC,
 };
 
 /*
@@ -1197,8 +1361,12 @@ static inline unsigned int MMM_COLOR_FMT_Y_STRIDE(unsigned int color_fmt,
 		break;
 	case MMM_COLOR_FMT_P010_UBWC:
 	case MMM_COLOR_FMT_P010:
+	case MMM_COLOR_FMT_P010_A:
+	case MMM_COLOR_FMT_P010_Y:
 	case MMM_COLOR_FMT_P210:
 	case MMM_COLOR_FMT_P210_UBWC:
+	case MMM_COLOR_FMT_P010_A_UBWC:
+	case MMM_COLOR_FMT_P010_Y_UBWC:
 		alignment = 256;
 		stride = MMM_COLOR_FMT_ALIGN(width * 2, alignment);
 		break;
@@ -1290,11 +1458,15 @@ static inline unsigned int MMM_COLOR_FMT_Y_SCANLINES(unsigned int color_fmt,
 	case MMM_COLOR_FMT_NV21:
 	case MMM_COLOR_FMT_NV12_UBWC:
 	case MMM_COLOR_FMT_P010:
+	case MMM_COLOR_FMT_P010_Y:
+	case MMM_COLOR_FMT_P010_A:
 		alignment = 32;
 		break;
 	case MMM_COLOR_FMT_NV124R_UBWC:
 	case MMM_COLOR_FMT_NV12_BPP10_UBWC:
 	case MMM_COLOR_FMT_P010_UBWC:
+	case MMM_COLOR_FMT_P010_Y_UBWC:
+	case MMM_COLOR_FMT_P010_A_UBWC:
 	case MMM_COLOR_FMT_P210_UBWC:
 	case MMM_COLOR_FMT_P210:
 		alignment = 16;
@@ -1371,6 +1543,8 @@ static inline unsigned int MMM_COLOR_FMT_Y_META_STRIDE(unsigned int color_fmt,
 	switch (color_fmt) {
 	case MMM_COLOR_FMT_NV12_UBWC:
 	case MMM_COLOR_FMT_P010_UBWC:
+	case MMM_COLOR_FMT_P010_A_UBWC:
+	case MMM_COLOR_FMT_P010_Y_UBWC:
 	case MMM_COLOR_FMT_P210_UBWC:
 		y_tile_width = 32;
 		break;
@@ -1413,6 +1587,8 @@ static inline unsigned int MMM_COLOR_FMT_Y_META_SCANLINES(
 	case MMM_COLOR_FMT_NV12_BPP10_UBWC:
 	case MMM_COLOR_FMT_NV124R_UBWC:
 	case MMM_COLOR_FMT_P010_UBWC:
+	case MMM_COLOR_FMT_P010_Y_UBWC:
+	case MMM_COLOR_FMT_P010_A_UBWC:
 	case MMM_COLOR_FMT_P210_UBWC:
 		y_tile_height = 4;
 		break;
@@ -1764,6 +1940,21 @@ static inline unsigned int MMM_COLOR_FMT_BUFFER_SIZE(unsigned int color_fmt,
 		rgb_meta_plane = MMM_COLOR_FMT_ALIGN(rgb_meta_stride *
 					rgb_meta_scanlines, 4096);
 		size = rgb_ubwc_plane + rgb_meta_plane;
+		break;
+	case MMM_COLOR_FMT_P010_Y:
+	case MMM_COLOR_FMT_P010_A:
+		y_plane = y_stride * y_sclines;
+		size = y_plane;
+		break;
+	case MMM_COLOR_FMT_P010_Y_UBWC:
+	case MMM_COLOR_FMT_P010_A_UBWC:
+		y_ubwc_plane = MMM_COLOR_FMT_ALIGN(y_stride * y_sclines, 4096);
+		y_meta_stride = MMM_COLOR_FMT_Y_META_STRIDE(color_fmt, width);
+		y_meta_scanlines = MMM_COLOR_FMT_Y_META_SCANLINES(color_fmt,
+									height);
+		y_meta_plane = MMM_COLOR_FMT_ALIGN(
+				y_meta_stride * y_meta_scanlines, 4096);
+		size = y_ubwc_plane + y_meta_plane;
 		break;
 	default:
 		break;
