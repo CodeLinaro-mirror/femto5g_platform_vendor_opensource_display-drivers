@@ -644,7 +644,8 @@ struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
 
 	hfi_kms = to_hfi_kms(sde_kms);
 
-	return hfi_kms_get_cmd_buf(hfi_kms, sde_conn->conn_id, cmd_buf_type);
+	return hfi_kms_get_cmd_buf(hfi_kms,
+		sde_conn_get_display_obj_id(drm_conn), cmd_buf_type);
 }
 
 int hfi_connector_init(int connector_type, struct sde_connector *c_conn)

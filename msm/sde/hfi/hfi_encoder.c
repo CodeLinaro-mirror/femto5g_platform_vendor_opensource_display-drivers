@@ -127,10 +127,17 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	ts = hfi_enc_unpack_frame_event(payload, NULL, sde_enc);
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
-	new_cnt = atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
+	if (event & SDE_ENCODER_FRAME_EVENT_DONE || sde_encoder_in_clone_mode(&sde_enc->base))
+		new_cnt = atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
+	if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE) && sde_enc->cur_master)
+		atomic_add_unless(&sde_enc->cur_master->pending_retire_fence_cnt, -1, 0);
+	if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE) && sde_enc->cur_master)
+		atomic_add_unless(&sde_enc->cur_master->pending_release_fence_cnt, -1, 0);
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
-	SDE_EVT32(atomic_read(&sde_enc->pending_commit_cnt));
+	SDE_EVT32(event, atomic_read(&sde_enc->pending_commit_cnt),
+		&sde_enc->cur_master->pending_retire_fence_cnt,
+		&sde_enc->cur_master->pending_release_fence_cnt);
 
 	sde_enc->crtc_frame_event_cb_data.connector = sde_enc->cur_master->connector;
 
@@ -215,6 +222,36 @@ static void hfi_encoder_hw_recovery_callback(struct sde_encoder_virt *sde_enc, v
 	}
 }
 
+static int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc)
+{
+	struct sde_encoder_phys *phys_enc;
+
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	phys_enc = sde_enc->cur_master;
+	atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
+
+	return 0;
+}
+
+static int sde_encoder_update_pending_release_fence_cnt(struct sde_encoder_virt *sde_enc)
+{
+	struct sde_encoder_phys *phys_enc;
+
+	if (!sde_enc || !sde_enc->cur_master) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	phys_enc = sde_enc->cur_master;
+	atomic_inc(&phys_enc->pending_release_fence_cnt);
+
+	return 0;
+}
+
 static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		void *payload, u32 size, struct hfi_prop_listener *listener)
 {
@@ -234,24 +271,35 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 
 	switch (cmd_id) {
 	case HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_START:
-		if (sde_encoder_is_wb_display(&sde_enc->base))
+		if (sde_encoder_is_wb_display(&sde_enc->base) &&
+			!sde_encoder_in_clone_mode(&sde_enc->base))
 			break;
+		event = SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
+			SDE_ENCODER_FRAME_EVENT_DONE;
+		if (!hfi_enc->hw_events_state[MSM_ENC_TX_COMPLETE].state)
+			event |= SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
+		else
+			sde_encoder_update_pending_release_fence_cnt(hfi_enc->sde_base);
 
-		event = SDE_ENCODER_FRAME_EVENT_DONE |
-			SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
-			SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
 		sde_encoder_update_pending_kickoff_cnt(hfi_enc->sde_base);
 		hfi_encoder_frame_event_callback(hfi_enc->sde_base,
 				payload, event);
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_FRAME_SCAN_COMPLETE:
-		event = SDE_ENCODER_FRAME_EVENT_DONE;
+		event = SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
 		if (sde_encoder_is_wb_display(&sde_enc->base)) {
-			event |= SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
-				SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
+			event |= SDE_ENCODER_FRAME_EVENT_DONE |
+				SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE;
 			sde_encoder_update_pending_kickoff_cnt(hfi_enc->sde_base);
 		}
 
+		hfi_encoder_frame_event_callback(hfi_enc->sde_base,
+				payload, event);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_FRAME_CAPTURE_COMPLETE:
+		event = SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
+			SDE_ENCODER_FRAME_EVENT_CWB_DONE;
+		sde_encoder_update_pending_kickoff_cnt(hfi_enc->sde_base);
 		hfi_encoder_frame_event_callback(hfi_enc->sde_base,
 				payload, event);
 		break;
@@ -370,6 +418,10 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 		break;
 	case MSM_ENC_TX_COMPLETE:
 		ret = _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_FRAME_SCAN_COMPLETE,
+			enable, defer_to_commit);
+		break;
+	case MSM_ENC_CAPTURE_COMPLETE:
+		ret = _hfi_enc_hw_event_set_buff(enc, HFI_EVENT_FRAME_CAPTURE_COMPLETE,
 			enable, defer_to_commit);
 		break;
 	case MSM_ENC_VBLANK:
@@ -498,6 +550,15 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 	return rc;
 }
 
+static void sde_encoder_set_atomic_cnt(struct sde_encoder_wait_info *wait_info,
+		struct sde_encoder_virt *sde_enc, struct sde_encoder_phys *phys_enc)
+{
+	if (sde_encoder_is_wb_display(&sde_enc->base))
+		wait_info->atomic_cnt = &sde_enc->pending_commit_cnt;
+	else
+		wait_info->atomic_cnt = &phys_enc->pending_release_fence_cnt;
+}
+
 static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 {
 	int ret;
@@ -514,6 +575,33 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	return ret;
 }
 
+static int _hfi_enc_wait_for_tx_complete(struct hfi_encoder *hfi_enc)
+{
+	int ret;
+	struct sde_encoder_wait_info wait_info = {0};
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *phys_enc;
+	enum hfi_display_event_id event;
+
+	sde_enc = hfi_enc->sde_base;
+	phys_enc = sde_enc->cur_master;
+	if (!phys_enc)
+		return 1;
+
+	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
+		return 1;
+
+	wait_info.wq = &hfi_enc->pending_kickoff_wq;
+	sde_encoder_set_atomic_cnt(&wait_info, sde_enc, phys_enc);
+	wait_info.timeout_ms = TIMEOUT_MAX;
+
+	event = sde_encoder_in_clone_mode(&sde_enc->base) ? HFI_EVENT_FRAME_CAPTURE_COMPLETE :
+				HFI_EVENT_FRAME_SCAN_COMPLETE;
+	ret = hfi_encoder_helper_wait_for_event(hfi_enc, &wait_info, event);
+
+	return ret;
+}
+
 static int hfi_enc_wait_for_event(struct sde_encoder_virt *enc, u32 event)
 {
 	int (*fn_wait)(struct hfi_encoder *hfi_enc) = NULL;
@@ -525,8 +613,7 @@ static int hfi_enc_wait_for_event(struct sde_encoder_virt *enc, u32 event)
 		fn_wait = _hfi_enc_wait_for_commit_done;
 		break;
 	case MSM_ENC_TX_COMPLETE:
-		fn_wait = NULL;
-		ret = 1;
+		fn_wait = _hfi_enc_wait_for_tx_complete;
 		break;
 	default:
 		SDE_ERROR("unknown wait event %d\n", event);
@@ -548,7 +635,8 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 		return -EINVAL;
 
 	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE ||
-			event == MSM_ENC_HW_RECOVERY || event == MSM_ENC_TX_COMPLETE) {
+			event == MSM_ENC_HW_RECOVERY || event == MSM_ENC_TX_COMPLETE ||
+			event == MSM_ENC_CAPTURE_COMPLETE) {
 		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("failed to send event register ret:%d\n", ret);
@@ -680,19 +768,36 @@ static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 		return ret;
 	}
 
-	ret = hfi_enc_enable_hw_event(enc, MSM_ENC_COMMIT_DONE, true);
-	if (ret) {
-		SDE_ERROR("failed to send commit wait command\n");
-		return ret;
-	}
-
-	if (sde_encoder_is_wb_display(&enc->base)) {
-		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, true);
+	/* Skip commit done events for clone mode encoders */
+	if (!sde_encoder_in_clone_mode(&enc->base)) {
+		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_COMMIT_DONE, true);
 		if (ret) {
-			SDE_ERROR("failed to send tx complete command\n");
+			SDE_ERROR("failed to send commit wait command\n");
 			return ret;
 		}
+	}
 
+	if ((sde_encoder_check_curr_mode(&enc->base, MSM_DISPLAY_CMD_MODE)) ||
+			sde_encoder_is_wb_display(&enc->base)) {
+		if (sde_encoder_in_clone_mode(&enc->base)) {
+			/* For CWB: Register for frame capture complete */
+			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_CAPTURE_COMPLETE, true);
+			if (ret) {
+				SDE_ERROR("failed to send capture complete command\n");
+				return ret;
+			}
+		} else {
+			/* For regular WB: Register for TX complete */
+			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, true);
+			if (ret) {
+				SDE_ERROR("failed to send tx complete command\n");
+				return ret;
+			}
+		}
+	}
+
+	if (sde_encoder_is_wb_display(&enc->base) &&
+			!sde_encoder_in_clone_mode(&enc->base)) {
 		ret = _hfi_enc_send_display_ctrl_cmd(enc, true);
 		if (ret) {
 			SDE_ERROR("failed to send display enable cmd\n");
@@ -701,6 +806,75 @@ static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 	}
 
 	return 0;
+}
+
+static int _hfi_enc_send_wb_detach_output_layer(struct sde_encoder_virt *enc)
+{
+	struct hfi_kms *hfi_kms;
+	struct drm_connector *conn;
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct sde_connector *sde_conn;
+	struct hfi_connector *hfi_conn;
+	u32 display_id, wb_id;
+	int ret = 0;
+
+	if (!enc)
+		return -EINVAL;
+
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return -EINVAL;
+	}
+
+	conn = sde_encoder_get_connector(enc->base.dev, &enc->base);
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	sde_conn = to_sde_connector(conn);
+	hfi_conn = sde_conn->hfi_conn;
+	if (!hfi_conn) {
+		SDE_ERROR("failed to get hfi connector\n");
+		return -EINVAL;
+	}
+
+	wb_id = sde_conn->conn_id;
+	display_id = sde_conn_get_display_obj_id(conn);
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, display_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get valid command buffer\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&hfi_conn->hfi_lock);
+	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
+
+	/* Add the detach output layer property */
+	hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props,
+		HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER,
+		HFI_VAL_U32, &wb_id, sizeof(u32));
+
+	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props)) {
+		mutex_unlock(&hfi_conn->hfi_lock);
+		return 0;
+	}
+
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+		cmd_buf,
+		HFI_COMMAND_DISPLAY_SET_PROPERTY,
+		display_id,
+		HFI_PAYLOAD_TYPE_U32_ARRAY,
+		hfi_util_u32_prop_helper_get_payload_addr(hfi_conn->base_props),
+		hfi_util_u32_prop_helper_get_size(hfi_conn->base_props),
+		HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret)
+		SDE_ERROR("failed to send HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER\n");
+
+	mutex_unlock(&hfi_conn->hfi_lock);
+	return ret;
 }
 
 static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
@@ -712,10 +886,13 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 		return -EINVAL;
 	}
 
-	ret = hfi_enc_enable_hw_event(enc, MSM_ENC_COMMIT_DONE, false);
-	if (ret) {
-		SDE_ERROR("failed to send commit wait command\n");
-		return ret;
+	/* Skip commit done events for clone mode encoders - mirror of enable */
+	if (!sde_encoder_in_clone_mode(&enc->base)) {
+		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_COMMIT_DONE, false);
+		if (ret) {
+			SDE_ERROR("failed to send commit wait command\n");
+			return ret;
+		}
 	}
 
 	ret = hfi_enc_set_panic_events(enc, false);
@@ -724,17 +901,42 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 		return ret;
 	}
 
+	if ((sde_encoder_check_curr_mode(&enc->base, MSM_DISPLAY_CMD_MODE)) ||
+		sde_encoder_is_wb_display(&enc->base)) {
+		/* Disable exactly what we enabled in the enable path */
+		if (sde_encoder_in_clone_mode(&enc->base)) {
+			/* For CWB: Disable frame capture complete */
+			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_CAPTURE_COMPLETE, false);
+			if (ret) {
+				SDE_ERROR("failed to send capture complete command\n");
+				return ret;
+			}
+		} else {
+			/* For regular WB: Disable TX complete */
+			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, false);
+			if (ret) {
+				SDE_ERROR("failed to send tx complete command\n");
+				return ret;
+			}
+		}
+	}
+
 	if (sde_encoder_is_wb_display(&enc->base)) {
-		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, false);
+
+		/* Send detach output layer command for wb display */
+		ret = _hfi_enc_send_wb_detach_output_layer(enc);
 		if (ret) {
-			SDE_ERROR("failed to send tx complete command\n");
+			SDE_ERROR("failed to send wb detach output layer command\n");
 			return ret;
 		}
 
-		ret = _hfi_enc_send_display_ctrl_cmd(enc, false);
-		if (ret) {
-			SDE_ERROR("failed to send display disable cmd\n");
-			return ret;
+		/* Skip display control commands for clone mode encoders - mirror of enable */
+		if (!sde_encoder_in_clone_mode(&enc->base)) {
+			ret = _hfi_enc_send_display_ctrl_cmd(enc, false);
+			if (ret) {
+				SDE_ERROR("failed to send display disable cmd\n");
+				return ret;
+			}
 		}
 	}
 
@@ -790,6 +992,12 @@ static int hfi_encoder_mode_set(struct sde_encoder_virt *enc, struct drm_display
 
 	if (!sde_encoder_is_wb_display(&enc->base))
 		return ret;
+
+	/* Skip mode set for clone mode encoders */
+	if (sde_encoder_in_clone_mode(&enc->base)) {
+		SDE_DEBUG("encoder in clone mode, skipping mode set\n");
+		return 0;
+	}
 
 	hfi_enc = to_hfi_encoder(enc);
 	kms = sde_encoder_get_kms(&enc->base);
@@ -854,6 +1062,12 @@ static int hfi_enc_debugfs_dump_status(struct sde_encoder_virt *sde_enc, struct 
 	if (!s || !s->private || !sde_enc || (sde_enc != s->private))
 		return -EINVAL;
 
+	/* Skip status dump for clone mode encoders */
+	if (sde_encoder_in_clone_mode(&sde_enc->base)) {
+		seq_puts(s, "encoder in clone mode - status not applicable\n");
+		return 0;
+	}
+
 	hfi_enc = to_hfi_encoder(sde_enc);
 	if (!hfi_enc)
 		return -EINVAL;
@@ -902,6 +1116,17 @@ static int hfi_enc_debugfs_misr_setup(struct sde_encoder_virt *enc)
 	struct drm_connector *drm_connector;
 	struct misr_setup_data misr_data;
 	u32 disp_id;
+
+	if (!enc) {
+		SDE_ERROR("Invalid encoder\n");
+		return -EINVAL;
+	}
+
+	/* Skip MISR setup for clone mode encoders */
+	if (sde_encoder_in_clone_mode(&enc->base)) {
+		SDE_DEBUG("encoder in clone mode, skipping MISR setup\n");
+		return 0;
+	}
 
 	crtc = enc->crtc;
 	if (!crtc)
@@ -1020,6 +1245,12 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 		return -EINVAL;
 	}
 
+	/* Skip MISR read for clone mode encoders */
+	if (sde_encoder_in_clone_mode(&enc->base)) {
+		SDE_DEBUG("encoder in clone mode, skipping MISR read\n");
+		return 0;
+	}
+
 	crtc = enc->crtc;
 	if (!crtc) {
 		SDE_ERROR("failed to get crtc\n");
@@ -1086,6 +1317,12 @@ u32 hfi_enc_get_vblank_count(struct sde_encoder_virt *enc)
 	if (!enc)
 		return cnt;
 
+	/* Vblank count not applicable for clone mode encoders */
+	if (sde_encoder_in_clone_mode(&enc->base)) {
+		SDE_DEBUG("encoder in clone mode, vblank count not applicable\n");
+		return 0;
+	}
+
 	hfi_enc = to_hfi_encoder(enc);
 	cnt = atomic_read(&hfi_enc->hfi_vsync_cnt);
 
@@ -1099,6 +1336,12 @@ ktime_t hfi_enc_get_vblank_timestamp(struct sde_encoder_virt *enc)
 
 	if (!enc)
 		return ts;
+
+	/* Vblank timestamp not applicable for clone mode encoders */
+	if (sde_encoder_in_clone_mode(&enc->base)) {
+		SDE_DEBUG("encoder in clone mode, vblank timestamp not applicable\n");
+		return 0;
+	}
 
 	hfi_enc = to_hfi_encoder(enc);
 	ts = hfi_enc->vblank_ts;

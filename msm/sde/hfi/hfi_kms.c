@@ -62,7 +62,7 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 
 		drm_for_each_encoder_mask(encoder, kms->dev, encoder_mask) {
 			disp_id = hfi_crtc_get_display_id(crtc, cstate);
-			if (disp_id == U32_MAX) {
+			if (disp_id == U32_MAX || sde_encoder_in_clone_mode(encoder)) {
 				SDE_DEBUG("no display for encoder%p\n", encoder);
 				continue;
 			}

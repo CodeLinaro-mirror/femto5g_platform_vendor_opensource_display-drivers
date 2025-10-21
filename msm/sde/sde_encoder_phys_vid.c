@@ -3217,6 +3217,7 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
 	atomic_set(&phys_enc->pending_te_deassert_cnt, 0);
+	atomic_set(&phys_enc->pending_release_fence_cnt, 0);
 	init_waitqueue_head(&phys_enc->pending_kickoff_wq);
 
 skip_irq_init:
