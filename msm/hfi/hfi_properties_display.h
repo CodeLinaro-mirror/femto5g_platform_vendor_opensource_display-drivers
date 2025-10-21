@@ -904,6 +904,22 @@
 #define HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT                  0x00020114
 
 /*
+ * HFI_PROPERTY_DISPLAY_DEST_SCALER - This property is to setup destination scaler.
+ *                                  Host is expected to send this packet of
+ *                                  HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_DEST_SCALER
+ *   (u32_key) payload       : HFI_PROPERTY_DISPLAY_DEST_SCALER |
+ *                             (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload     : struct hfi_buff_dpu
+ *
+ * | Major        | Minor        | Payload               |
+ * |--------------|--------------|-----------------------|
+ * | 4            | 0            | hfi_buff_dpu          |
+ */
+#define HFI_PROPERTY_DISPLAY_DEST_SCALER                             0x00020115
+
+/*
  * All display color properties end here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_END                               0x000201FF
