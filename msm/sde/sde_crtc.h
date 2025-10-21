@@ -1465,4 +1465,16 @@ void sde_crtc_transition_handle_events(struct drm_crtc *crtc, bool enable);
 bool sde_crtc_property_is_dirty(struct sde_crtc_state *cstate,
 		uint32_t property_idx);
 
+/**
+ * sde_crtc_check_for_lsr_opmode - Returns opmode if crtc is for LSR display
+ * @crtc: pointer to drm crtc
+ */
+int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc);
+
+/**
+ * sde_crtc_update_lsr_perf - Updates lsr perf vote to LSR driver
+ * @crtc: pointer to drm crtc
+ */
+int sde_crtc_update_lsr_perf(struct drm_crtc *crtc);
+
 #endif /* _SDE_CRTC_H_ */

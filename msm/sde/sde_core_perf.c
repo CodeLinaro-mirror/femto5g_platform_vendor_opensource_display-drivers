@@ -1117,6 +1117,9 @@ void sde_core_perf_crtc_update(struct drm_crtc *crtc, enum sde_perf_commit_state
 		return;
 	}
 
+	if (sde_crtc_check_for_lsr_opmode(crtc))
+		sde_crtc_update_lsr_perf(crtc);
+
 	kms = _sde_crtc_get_kms(crtc);
 	if (!kms || !kms->catalog) {
 		SDE_ERROR("invalid kms\n");

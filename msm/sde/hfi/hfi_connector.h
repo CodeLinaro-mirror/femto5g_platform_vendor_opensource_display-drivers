@@ -23,6 +23,7 @@
  * @lsr_props: prop helper object for lsr property collection
  * @lsr_blob_props: prop helper object for lsr blob property collection
  * @lsr_out_buff_props: prop helper object for lsr out buffer property collection
+ * @disable_listener: listener api for display disable response
  */
 struct hfi_connector {
 	struct sde_connector *sde_base;
@@ -32,6 +33,7 @@ struct hfi_connector {
 	struct hfi_util_u32_prop_helper *lsr_props;
 	struct hfi_util_u32_prop_helper *lsr_blob_props;
 	struct hfi_util_u32_prop_helper *lsr_out_buffer_props;
+	struct hfi_prop_listener disable_listener;
 };
 
 /**

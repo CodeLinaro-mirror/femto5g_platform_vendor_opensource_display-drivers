@@ -689,8 +689,11 @@ int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 		wb_dev = (struct sde_wb_device *)c_conn->display;
 		if (wb_dev && wb_dev->wb_cfg) {
 			opmode = wb_dev->wb_cfg->opmode;
-			if (opmode == WB_CSC || opmode == WB_REPRO)
+			if (opmode == WB_CSC || opmode == WB_REPRO) {
+				hfi_conn->disable_listener.hfi_prop_handler =
+						hfi_lsr_display_disable_handler;
 				rc = hfi_wb_lsr_prop_helper_alloc(hfi_conn);
+			}
 			if (rc) {
 				SDE_ERROR("failed to allocate memory for LSR prop collectors\n");
 				return rc;

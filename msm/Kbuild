@@ -123,6 +123,7 @@ CDEFINES +=	-DANI_LITTLE_BYTE_ENDIAN \
 KBUILD_CPPFLAGS += $(CDEFINES)
 
 ccflags-y += $(LINUX_INC)
+ccflags-y += -I$(srctree)/drivers/media/platform/msm/synx/
 
 ifeq ($(call cc-option-yn, -Wmaybe-uninitialized),y)
 EXTRA_CFLAGS += -Wmaybe-uninitialized
@@ -272,7 +273,17 @@ msm_drm-$(CONFIG_DRM_MSM_SDE) += sde/sde_crtc.o \
 				 sde/sde_color_proc_feature_state_helper.o
 
 msm_drm-$(CONFIG_DRM_SDE_LSR) += sde/sde_wb_lsr.o \
-				sde/hfi/hfi_wb_lsr.o
+				sde/hfi/hfi_wb_lsr.o \
+				../lsr/lsr.c \
+				../lsr/lsr_core.c \
+				../lsr/lsr_hfi.c \
+				../lsr/lsr_smem.c \
+				../lsr/msm_lsr_clocks.c \
+				../lsr/msm_lsr_core.c \
+				../lsr/msm_lsr_debug.c \
+				../lsr/msm_lsr_platform.c \
+				../lsr/msm_lsr_res_parse.c \
+				../lsr/lsr_main.c
 
 msm_drm-$(CONFIG_DRM_SDE_WB) += sde/sde_wb.o \
 				sde/sde_encoder_phys_wb.o
