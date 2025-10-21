@@ -3161,6 +3161,33 @@ static int _sde_validate_hw_resources(struct sde_crtc *sde_crtc,
 	return 0;
 }
 
+static struct hfi_cmdbuf_t *_sde_crtc_get_cmd_buf(struct drm_crtc *crtc)
+{
+	u32 disp_id = 0;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_kms *hfi_kms = NULL;
+	struct msm_drm_private *priv = NULL;
+
+	if (crtc && crtc->dev && crtc->dev->dev_private) {
+		priv = crtc->dev->dev_private;
+		hfi_kms = ((priv && priv->kms) ?
+				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
+	}
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
+		return NULL;
+	}
+
+	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return NULL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	return cmd_buf;
+}
+
 /**
  * _sde_crtc_dest_scaler_setup - Set up dest scaler block
  * @crtc: Pointer to drm crtc
@@ -3172,12 +3199,17 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 	struct sde_hw_mixer *hw_lm;
 	struct sde_hw_ctl *hw_ctl;
 	struct sde_hw_ds *hw_ds;
+	struct sde_hw_dspp *hw_dspp;
 	struct sde_hw_ds_cfg *cfg;
 	struct sde_kms *kms;
 	u32 op_mode = 0;
 	u32 lm_idx = 0, num_mixers = 0;
 	int i, count = 0;
 	enum msm_disp_op disp_op;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_util_u32_prop_helper *color_props = NULL;
+	u32 disp_id = 0, ret = 0, dspp_start_idx = DSPP_MAX;
+	bool dest_scaler_set = false;
 
 	if (!crtc)
 		return;
@@ -3212,9 +3244,29 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 				continue;
 
 			lm_idx = cfg->idx;
+			hw_dspp = sde_crtc->mixers[lm_idx].hw_dspp;
+			if (hw_dspp && hw_dspp->idx < dspp_start_idx) {
+				dspp_start_idx = hw_dspp->idx;
+			}
+		}
+		for (i = 0; i < count; i++) {
+			cfg = &cstate->ds_cfg[i];
+
+			if (!cfg->flags)
+				continue;
+
+			lm_idx = cfg->idx;
 			hw_lm  = sde_crtc->mixers[lm_idx].hw_lm;
 			hw_ctl = sde_crtc->mixers[lm_idx].hw_ctl;
 			hw_ds  = sde_crtc->mixers[lm_idx].hw_ds;
+			hw_dspp = sde_crtc->mixers[lm_idx].hw_dspp;
+
+			hw_ds->ctl = hw_ctl;
+			if (IS_DISP_OP_HFI(disp_op))
+				hw_ds->prop_helper = sde_crtc->hfi_crtc->color_props;
+			hw_ds->dspp_idx = hw_dspp->idx;
+			hw_ds->dspp_start_idx = dspp_start_idx;
+			hw_ds->num_mixers = num_mixers;
 
 			/* Setup op mode - Dual/single */
 			if (cfg->flags & SDE_DRM_DESTSCALER_ENABLE)
@@ -3231,10 +3283,12 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 			if ((cfg->flags & SDE_DRM_DESTSCALER_SCALE_UPDATE) ||
 				(cfg->flags &
 					SDE_DRM_DESTSCALER_ENHANCER_UPDATE)) {
-				if (hw_ds->ops.setup_scaler[disp_op])
+				if (hw_ds->ops.setup_scaler[disp_op]) {
 					hw_ds->ops.setup_scaler[disp_op](hw_ds,
 						&cfg->scl3_cfg,
-						&cstate->scl3_lut_cfg);
+						&cstate->scl3_lut_cfg, disp_op, cfg->merge_mode);
+					dest_scaler_set = true;
+				}
 
 			}
 
@@ -3244,6 +3298,26 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 			if (hw_ctl && hw_ctl->ops.update_bitmask_mixer[disp_op])
 				hw_ctl->ops.update_bitmask_mixer[disp_op](
 						hw_ctl, hw_lm->idx, 1);
+		}
+
+		if (disp_op == MSM_DISP_OP_HFI && dest_scaler_set) {
+			cmd_buf = _sde_crtc_get_cmd_buf(crtc);
+			disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+			color_props = hw_ds->prop_helper;
+
+			ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+				cmd_buf,
+				HFI_COMMAND_DISPLAY_SET_PROPERTY,
+				disp_id,
+				HFI_PAYLOAD_TYPE_U32_ARRAY,
+				hfi_util_u32_prop_helper_get_payload_addr(color_props),
+				hfi_util_u32_prop_helper_get_size(color_props),
+				HFI_HOST_FLAGS_NONE);
+
+			if (ret)
+				SDE_ERROR("failed to set HFI prop\n");
+
+			hfi_util_u32_prop_helper_reset(color_props);
 		}
 	}
 }
@@ -5147,33 +5221,6 @@ static void _sde_crtc_clear_all_blend_stages(struct sde_crtc *sde_crtc)
 		if (hw_lm && hw_lm->ops.clear_all_blendstages[disp_op])
 			hw_lm->ops.clear_all_blendstages[disp_op](hw_lm);
 	}
-}
-
-static struct hfi_cmdbuf_t *_sde_crtc_get_cmd_buf(struct drm_crtc *crtc)
-{
-	u32 disp_id = 0;
-	struct hfi_cmdbuf_t *cmd_buf = NULL;
-	struct hfi_kms *hfi_kms = NULL;
-	struct msm_drm_private *priv = NULL;
-
-	if (crtc && crtc->dev && crtc->dev->dev_private) {
-		priv = crtc->dev->dev_private;
-		hfi_kms = ((priv && priv->kms) ?
-				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
-	}
-	if (!hfi_kms) {
-		SDE_ERROR("invalid hfi_kms\n");
-		return NULL;
-	}
-
-	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
-	if (disp_id == U32_MAX) {
-		SDE_ERROR("invalid display id\n");
-		return NULL;
-	}
-
-	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
-	return cmd_buf;
 }
 
 static void _sde_crtc_validate_lm_rois(struct drm_crtc *crtc)

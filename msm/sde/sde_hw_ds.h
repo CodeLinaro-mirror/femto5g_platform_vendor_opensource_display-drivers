@@ -10,6 +10,7 @@
 #include "sde_hw_mdss.h"
 #include "sde_hw_util.h"
 #include "sde_hw_catalog.h"
+#include "sde_kms.h"
 
 struct sde_hw_ds;
 
@@ -54,10 +55,14 @@ struct sde_hw_ds_ops {
 	 * @hw_ds          : Pointer to ds context
 	 * @scaler_cfg     : Pointer to scaler data
 	 * @scaler_lut_cfg : Pointer to scaler lut
+	 * @disp_op        : Display operation mode
+	 * @merge_mode     : Specify pipe merge mode for each DS block
 	 */
 	void (*setup_scaler[MSM_DISP_OP_MAX])(struct sde_hw_ds *hw_ds,
 				void *scaler_cfg,
-				void *scaler_lut_cfg);
+				void *scaler_lut_cfg,
+				enum msm_disp_op disp_op,
+				u32 merge_mode);
 };
 
 /**
@@ -69,12 +74,28 @@ struct sde_hw_ds_ops {
  *          - scaler offset relative to top offset
  *          - capabilities
  * @ops  : Pointer to operations for this DS
+ * @ctl  : Pointer to ctl path
+ * @dpu_idx       : DPU index
+ * @prop_helper   : Property helper for color processing features
+ * @num_mixers    : Number of mixers
+ * @dspp_idx      : DSPP index related to this DS
+ * @dspp_start_idx: Starting dspp index for physical display
  */
 struct sde_hw_ds {
 	struct sde_hw_blk_reg_map hw;
 	enum sde_ds idx;
 	struct sde_ds_cfg *scl;
 	struct sde_hw_ds_ops ops;
+	struct sde_hw_ctl *ctl;
+	u32 dpu_idx;
+
+	/* HFI */
+	struct hfi_util_u32_prop_helper *prop_helper;
+	u32 num_mixers;
+	u32 dspp_idx;
+	u32 dspp_start_idx;
+
+	bool is_qseed3_lite;
 };
 
 /**
@@ -94,11 +115,13 @@ static inline struct sde_hw_ds *to_sde_hw_ds(struct sde_hw_blk_reg_map *hw)
  * @idx : DS index for which driver object is required
  * @addr: Mapped register io address of MDP
  * @m   : MDSS catalog information
+ * @sde_kms: Pointer to SDE KMS structure
  * @Return: pointer to structure or ERR_PTR
  */
 struct sde_hw_blk_reg_map *sde_hw_ds_init(enum sde_ds idx,
 			void __iomem *addr,
-			struct sde_mdss_cfg *m);
+			struct sde_mdss_cfg *m,
+			struct sde_kms *sde_kms);
 
 /**
  * sde_hw_ds_destroy - destroys destination scaler driver context
