@@ -2168,6 +2168,10 @@ static int _sde_crtc_validate_src_split_order(struct drm_crtc *crtc,
 
 		if (prv_pstate->stage != cur_pstate->stage ||
 				prev_layout != cur_layout ||
+				SDE_SSPP_VALID_CSC(prv_pstate->pipe_id) ||
+				SDE_SSPP_VALID_CSC(cur_pstate->pipe_id) ||
+				SDE_SSPP_VALID_REPRO(prv_pstate->pipe_id) ||
+				SDE_SSPP_VALID_REPRO(cur_pstate->pipe_id) ||
 			sde_plane_is_cac_enabled(prv_pstate->sde_pstate) ||
 			sde_plane_is_cac_enabled(cur_pstate->sde_pstate))
 			continue;
