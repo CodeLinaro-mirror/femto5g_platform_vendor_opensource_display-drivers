@@ -1550,10 +1550,17 @@ int sde_connector_set_dyn_bit_clk(struct drm_connector *conn, uint64_t value);
 
 /**
  * sde_connector_schedule_status_work - manage ESD thread
- * conn: Pointer to drm_connector struct
+ * @conn: Pointer to drm_connector struct
  * @en: flag to start/stop ESD thread
  */
 void sde_connector_schedule_status_work(struct drm_connector *conn, bool en);
+
+/**
+ * sde_connector_report_panel_dead - report panel dead
+ * @conn: Pointer to sde_connector struct
+ * @skip_pre_kickoff: flag to skip_pre_kickoff
+ */
+void sde_connector_report_panel_dead(struct sde_connector *conn, bool skip_pre_kickoff);
 
 /**
  * sde_connector_helper_reset_properties - reset properties to default values in

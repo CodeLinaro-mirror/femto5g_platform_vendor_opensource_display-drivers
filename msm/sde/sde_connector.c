@@ -3706,7 +3706,7 @@ static int sde_connector_atomic_check(struct drm_connector *connector,
 	return 0;
 }
 
-static void _sde_connector_report_panel_dead(struct sde_connector *conn,
+void sde_connector_report_panel_dead(struct sde_connector *conn,
 	bool skip_pre_kickoff)
 {
 	struct drm_event event;
@@ -3717,6 +3717,7 @@ static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 	/* Panel dead notification can come:
 	 * 1) ESD thread
 	 * 2) Commit thread (if TE stops coming)
+	 * 3) HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD event from HFI
 	 * So such case, avoid failure notification twice.
 	 */
 	if (conn->panel_dead)
@@ -3724,8 +3725,9 @@ static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 
 	SDE_EVT32(SDE_EVTLOG_ERROR);
 	conn->panel_dead = true;
-	sde_encoder_display_failure_notification(conn->encoder,
-		skip_pre_kickoff);
+
+	if (sde_connector_get_disp_op(&conn->base) != MSM_DISP_OP_HFI)
+		sde_encoder_display_failure_notification(conn->encoder, skip_pre_kickoff);
 
 	event.type = DRM_EVENT_PANEL_DEAD;
 	event.length = sizeof(bool);
@@ -3792,7 +3794,7 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	if (ret <= 0) {
 		/* cancel if any pending esd work */
 		sde_connector_schedule_status_work(conn, false);
-		_sde_connector_report_panel_dead(sde_conn, true);
+		sde_connector_report_panel_dead(sde_conn, true);
 		ret = -ETIMEDOUT;
 	} else {
 		SDE_DEBUG("Successfully received TE from panel\n");
@@ -3843,7 +3845,7 @@ static void sde_connector_check_status_work(struct work_struct *work)
 		return;
 	}
 
-	_sde_connector_report_panel_dead(conn, false);
+	sde_connector_report_panel_dead(conn, false);
 }
 
 static const struct drm_connector_helper_funcs sde_connector_helper_ops = {
