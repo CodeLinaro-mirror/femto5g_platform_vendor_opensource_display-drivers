@@ -999,6 +999,9 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	if (!hfi_kms)
 		return -EINVAL;
 
+	if (atomic_read(&display->panel->esd_recovery_pending))
+		return 0;
+
 	hfi_client = &hfi_kms->hfi_client;
 
 	display_hfi = display->dsi_hfi_info;

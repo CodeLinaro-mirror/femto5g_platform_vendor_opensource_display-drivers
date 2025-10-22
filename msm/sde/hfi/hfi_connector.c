@@ -723,3 +723,21 @@ free_conn:
 
 	return -ENOMEM;
 }
+
+void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)
+{
+	struct dsi_panel *panel;
+
+	if (!c_conn || !c_conn->display)
+		return;
+
+	panel = ((struct dsi_display *)(c_conn->display))->panel;
+	if (!panel) {
+		SDE_ERROR("invalid DSI panel\n");
+		return;
+	}
+
+	atomic_set(&panel->esd_recovery_pending, 1);
+
+	sde_connector_report_panel_dead(c_conn, skip_pre_kickoff);
+}

@@ -521,6 +521,7 @@ struct msm_ratio {
  * @MSM_ENC_HW_RECOVERY - wait for the HW to recover from error
  * @MSM_ENC_DISPLAY_POWER - notify display power event
  * @MSM_ENC_CAPTURE_COMPLETE - wait for the HW to complete frame capture (CWB)
+ * @MSM_ENC_PANEL_DEAD - wait for panel dead event to occur
  * @MSM_ENC_EVENT_MAX - maximum value for events related to frame
  */
 enum msm_event_wait {
@@ -531,6 +532,7 @@ enum msm_event_wait {
 	MSM_ENC_HW_RECOVERY,
 	MSM_ENC_DISPLAY_POWER,
 	MSM_ENC_CAPTURE_COMPLETE,
+	MSM_ENC_PANEL_DEAD,
 	MSM_ENC_EVENT_MAX,
 };
 
