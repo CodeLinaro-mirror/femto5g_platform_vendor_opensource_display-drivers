@@ -5072,6 +5072,26 @@ void sde_encoder_register_display_power_event_callback(struct drm_encoder *drm_e
 	}
 }
 
+void sde_encoder_register_panel_dead_event_callback(struct drm_encoder *drm_enc, bool enable)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	enum msm_disp_op disp_op;
+	int rc = 0;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return;
+	}
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	/* Register for panel dead event notification */
+	if (sde_enc->hal_ops.register_panel_dead_event_notify[disp_op]) {
+		rc = sde_enc->hal_ops.register_panel_dead_event_notify[disp_op](sde_enc, enable);
+		if (rc)
+			SDE_ERROR_ENC(sde_enc, "failed to send panel dead notification register\n");
+	}
+}
+
 static void sde_encoder_frame_done_callback(
 		struct drm_encoder *drm_enc,
 		struct sde_encoder_phys *ready_phys, u32 event)
@@ -8884,22 +8904,6 @@ fail:
 		sde_encoder_destroy(drm_enc);
 
 	return ERR_PTR(ret);
-}
-
-int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc)
-{
-	struct sde_encoder_phys *phys_enc;
-
-	if (!sde_enc || !sde_enc->cur_master) {
-		SDE_ERROR("invalid encoder\n");
-		return -EINVAL;
-	}
-
-	phys_enc = sde_enc->cur_master;
-	atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
-	atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0);
-
-	return 0;
 }
 
 int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,

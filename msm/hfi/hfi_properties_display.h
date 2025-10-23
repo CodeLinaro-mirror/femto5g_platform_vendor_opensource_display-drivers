@@ -598,6 +598,46 @@
 #define HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG                            0x00020028
 
 /*
+ * HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER - This property is to attach output layer before
+ *                                            setting output layer properties.
+ *                                            The corresponding wb_id will be passed as the
+ *                                            payload.
+ *                                            Host is expected to send this packet as part of
+ *                                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                            payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER \|
+ * ^                             | (version=0 << 20) \| (dsize=1 << 24 ) \|
+ *   (u32_value) payload [1]     | wb_id
+ */
+#define HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER                     0x00020029
+
+/*
+ * HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER - This property is to detach the output layer, which
+ *                                            must be received at the end of a CWB session.
+ *                                            The corresponding wb_id will be passed as the
+ *                                            payload.
+ *                                            Output layer dirty flag will be set to perform the
+ *                                            required cleanup in host.
+ *                                            Host is expected to send this packet as part of
+ *                                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                            payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER \|
+ * ^                             | (version=0 << 20) \| (dsize=1 << 24 ) \|
+ *   (u32_value) payload [1]     | wb_id
+ */
+#define HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER                     0x0002002A
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
@@ -1482,6 +1522,23 @@
  *     (u32_value) payload [2]   : LLCC scid
  */
 #define HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID                          0x00030027
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT - Gets the CWB tap point for output layer.
+ *                                           Host is expected to send this packet
+ *                                           of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                           command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT \|
+ * ^                             | (version=0 << 20) \| (dsize=2 << 24)
+ *     (u32_value) payload [1]   | wb_id
+ *     (u32_value) payload [2]   | one of the values from enum hfi_cwb_tap_points
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT                      0x00030028
 
 /*
  * All layer color properties begin here

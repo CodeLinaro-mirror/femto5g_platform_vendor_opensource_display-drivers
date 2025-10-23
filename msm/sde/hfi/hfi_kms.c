@@ -62,7 +62,7 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 
 		drm_for_each_encoder_mask(encoder, kms->dev, encoder_mask) {
 			disp_id = hfi_crtc_get_display_id(crtc, cstate);
-			if (disp_id == U32_MAX) {
+			if (disp_id == U32_MAX || sde_encoder_in_clone_mode(encoder)) {
 				SDE_DEBUG("no display for encoder%p\n", encoder);
 				continue;
 			}
@@ -406,12 +406,14 @@ struct hfi_cmdbuf_t *hfi_kms_get_cmd_buf(struct hfi_kms *hfi_kms,
 
 	hfi_client = &hfi_kms->hfi_client;
 
+	mutex_lock(&hfi_client->lock);
 	list_for_each_entry(buf, &hfi_client->cmd_buf_list, node) {
 		if (buf->cmd_type == cmd_type && buf->obj_id == display_id) {
 			ret_buf = buf;
 			break;
 		}
 	}
+	mutex_unlock(&hfi_client->lock);
 
 	return ret_buf;
 }

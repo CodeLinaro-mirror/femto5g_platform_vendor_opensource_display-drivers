@@ -6,7 +6,7 @@
 #include "hfi_wb.h"
 #include "hfi_defs_lsr.h"
 #include "hfi_connector.h"
-#include "sde_wb_lsr.h"
+#include "hfi_kms.h"
 
 #define DSI_DISPLAY 0
 #define BLOB_PROPERTY_HEADER_SIZE 2
@@ -563,4 +563,177 @@ free_lsr:
 	kfree(hfi_conn->lsr_props);
 
 	return -ENOMEM;
+}
+
+int hfi_wb_add_lsr_init_props(struct sde_wb_device *wb_dev, struct drm_connector *drm_conn,
+			struct hfi_util_u32_prop_helper *prop_collector)
+{
+	int ret = 0;
+	struct sde_connector *sde_conn;
+	struct sde_reproj *reproj_conn = NULL;
+	struct hfi_buff lsr_hfi_config, arp_buf;
+	struct hfi_buff scratch_mem[2];
+
+	sde_conn = to_sde_connector(drm_conn);
+	if (sde_conn)
+		reproj_conn = sde_conn->reproj_conn;
+
+	if (!reproj_conn) {
+		SDE_ERROR("Invalid reprojection connector");
+		return -EINVAL;
+	}
+
+	lsr_hfi_config.addr_l = reproj_conn->queue_table_dcp_addr;
+	lsr_hfi_config.size = reproj_conn->queue_table_size;
+	arp_buf.addr_l = reproj_conn->arp_buf_lsr_addr;
+	arp_buf.size = reproj_conn->arp_buf_size;
+
+	if (reproj_conn->type == WB_CSC) {
+		scratch_mem[0].addr_l = reproj_conn->csc_scratch_dcp_addr;
+		scratch_mem[0].size = reproj_conn->csc_scratch_size;
+		scratch_mem[1].addr_l = reproj_conn->csc_scratch_lsr_addr;
+		scratch_mem[1].size = reproj_conn->csc_scratch_size;
+	} else if (reproj_conn->type == WB_REPRO) {
+		scratch_mem[0].addr_l = reproj_conn->gcx_scratch_dcp_addr;
+		scratch_mem[0].size = reproj_conn->gcx_scratch_size;
+		scratch_mem[1].addr_l = reproj_conn->gcx_scratch_lsr_addr;
+		scratch_mem[1].size = reproj_conn->gcx_scratch_size;
+	}
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+		HFI_PROPERTY_DISPLAY_LSR_WB_HFI_CONFIG, HFI_VAL_U32_ARRAY,
+		&lsr_hfi_config, sizeof(struct hfi_buff));
+	if (ret)
+		goto end;
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_SET_SCRATCH_MEM, HFI_VAL_U32_ARRAY,
+			&scratch_mem, sizeof(struct hfi_buff)*2);
+	if (ret)
+		goto end;
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_LSR_WB_CVP_BUFF,
+			HFI_VAL_U32_ARRAY, &arp_buf, sizeof(struct hfi_buff));
+	if (ret)
+		goto end;
+
+	return ret;
+end:
+	SDE_ERROR("Failed setting enable lsr properties on HFI with ret = %d", ret);
+	return ret;
+}
+
+int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
+{
+	int ret = 0;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct sde_connector *sde_conn;
+	struct sde_wb_device *wb_dev;
+	struct hfi_connector *hfi_conn = NULL;
+	struct sde_reproj *reproj_conn = NULL;
+	u32 disp_id;
+	int flags = 0;
+
+	sde_conn = to_sde_connector(drm_conn);
+	wb_dev = sde_conn->display;
+	disp_id = sde_conn_get_display_obj_id(drm_conn);
+	reproj_conn = sde_conn->reproj_conn;
+
+	if (!reproj_conn) {
+		SDE_ERROR("Invalid reroj connector");
+		return -EINVAL;
+	}
+
+	if (enable) {
+		if (reproj_conn->on)
+			reproj_conn->on(reproj_conn);
+
+		cmd_buf = hfi_connector_get_cmd_buf(drm_conn, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+		hfi_conn = sde_conn->hfi_conn;
+		mutex_lock(&hfi_conn->hfi_lock);
+		hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
+
+		ret = hfi_wb_add_lsr_init_props(wb_dev, drm_conn, hfi_conn->base_props);
+		if (ret) {
+			SDE_ERROR("failed to add drm-prop HFI prop\n");
+			goto end;
+		}
+
+		if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props))
+			goto end;
+
+		ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+			cmd_buf, HFI_COMMAND_DISPLAY_SET_PROPERTY, disp_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			hfi_util_u32_prop_helper_get_payload_addr(hfi_conn->base_props),
+			hfi_util_u32_prop_helper_get_size(hfi_conn->base_props), flags);
+		if (ret)
+			SDE_ERROR("failed to send HFI commands\n");
+
+end:
+		mutex_unlock(&hfi_conn->hfi_lock);
+	} else {
+		if (reproj_conn->off)
+			reproj_conn->off(reproj_conn, true);
+	}
+	return ret;
+}
+
+int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_connector *hfi_conn,
+		struct hfi_cmdbuf_t *cmd_buf, u32 *flags, bool enable)
+{
+	u32 display_id;
+	int ret = 0;
+	struct sde_connector *sde_conn = NULL;
+	struct drm_connector *conn = NULL;
+
+	sde_conn = hfi_conn->sde_base;
+	if (!sde_conn)
+		return -EINVAL;
+
+	conn = &sde_conn->base;
+	display_id = sde_conn_get_display_obj_id(conn);
+
+	if (enable) {
+		ret = hfi_wb_display_lsr_enable(conn, true);
+	} else {
+		*flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+		ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+				HFI_COMMAND_DISPLAY_DISABLE, display_id, HFI_PAYLOAD_TYPE_NONE,
+				NULL, 0, &hfi_conn->disable_listener, *flags);
+		if (ret) {
+			SDE_ERROR("failed to register LSR-WB disable response listener\n");
+			return ret;
+		}
+	}
+	return 0;
+}
+
+void hfi_lsr_display_disable_handler(u32 obj_id, u32 cmd_id,
+		void *payload, u32 size, struct hfi_prop_listener *listener)
+{
+	struct drm_connector *conn;
+	struct hfi_connector *hfi_conn;
+	struct sde_connector *sde_conn;
+	int ret = 0;
+
+	hfi_conn = container_of(listener, struct hfi_connector, disable_listener);
+	if (!hfi_conn) {
+		SDE_ERROR("Invalid HFI connector\n");
+		return;
+	}
+
+	sde_conn = hfi_conn->sde_base;
+	if (!sde_conn) {
+		SDE_ERROR("Invalid SDE connector\n");
+		return;
+	}
+	conn = &sde_conn->base;
+
+	if (sde_conn->conn_id == obj_id)
+		ret = hfi_wb_display_lsr_enable(conn, false);
+
+	SDE_DEBUG("LSR disable response received for obj_id:%d with cmd_id:0x%x\n",
+			obj_id, cmd_id);
 }

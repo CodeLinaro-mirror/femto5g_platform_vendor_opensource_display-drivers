@@ -523,6 +523,10 @@ int sde_wb_get_scan_out_info(struct sde_wb_device *wb_dev,
 	uint32_t ret;
 
 	sde_kms = sde_connector_get_kms(wb_dev->connector);
+	if (!sde_kms) {
+		SDE_ERROR("failed to get sde_kms\n");
+		return -EINVAL;
+	}
 
 	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
 	if (!aspace) {
@@ -779,9 +783,10 @@ int sde_wb_connector_post_init(struct drm_connector *connector, void *display)
 
 	_sde_wb_connector_install_dither_property(wb_dev);
 
-	if (test_bit(SDE_FEATURE_LSR, catalog->features)) {
-		if (wb_dev->wb_cfg->opmode == WB_CSC || wb_dev->wb_cfg->opmode == WB_REPRO)
-			sde_wb_lsr_install_properties(connector, wb_dev);
+	if (test_bit(SDE_FEATURE_LSR, catalog->features) &&
+			(wb_dev->wb_cfg->opmode == WB_CSC || wb_dev->wb_cfg->opmode == WB_REPRO)) {
+		sde_wb_lsr_install_properties(connector, wb_dev);
+		sde_wb_connector_reproj_setup(c_conn, wb_dev);
 	}
 
 	return 0;

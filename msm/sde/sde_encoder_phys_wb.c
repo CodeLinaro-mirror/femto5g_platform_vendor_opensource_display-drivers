@@ -1667,7 +1667,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 			if (hw_wb->ops.program_dcwb_ctrl[disp_op] && phys_enc->quad_cwb_roi)
 				hw_wb->ops.program_dcwb_ctrl[disp_op](hw_wb, dcwb_idx,
 					src_pp_cwb_idx, cwb_capture_mode, enable);
-			else
+			else if (hw_wb->ops.program_dcwb_ctrl[disp_op])
 				hw_wb->ops.program_dcwb_ctrl[disp_op](hw_wb, dcwb_idx,
 					src_pp_idx, cwb_capture_mode, enable);
 			if (hw_ctl->ops.update_bitmask[disp_op])
@@ -2354,6 +2354,7 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 	phys_enc->in_clone_mode = false;
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
+	atomic_set(&phys_enc->pending_release_fence_cnt, 0);
 	atomic_set(&phys_enc->pending_ctl_start_cnt, 0);
 }
 
@@ -3063,6 +3064,7 @@ struct sde_encoder_phys *sde_encoder_phys_wb_init(struct sde_enc_phys_init_param
 	phys_enc->intf_idx = p->intf_idx;
 	phys_enc->enc_spinlock = p->enc_spinlock;
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
+	atomic_set(&phys_enc->pending_release_fence_cnt, 0);
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_ctl_start_cnt, 0);
 	init_waitqueue_head(&phys_enc->pending_kickoff_wq);

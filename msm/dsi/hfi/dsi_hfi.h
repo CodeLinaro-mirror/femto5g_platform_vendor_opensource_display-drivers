@@ -180,6 +180,7 @@ struct dsi_panel_timing_caps {
  * @ctrl_nums:                      HFI_PROPERTY_PANEL_CTRL_NUM
  * @phy_nums:                       HFI_PROPERTY_PANEL_PHY_NUM
  * @cphy_enabled:                   HFI_PROPERTY_PANEL_CPHY_MODE
+ * @esd_config:                     HFI_PROPERTY_PANEL_ESD_CONFIG
  */
 struct dsi_panel_generic_caps {
 	int valid_gen_caps_cnt;
@@ -213,6 +214,7 @@ struct dsi_panel_generic_caps {
 	u32 ctrl_nums[MAX_NUM_CTRLS_AND_LENGTH];
 	u32 phy_nums[MAX_NUM_PHYS_AND_LENGTH];
 	bool cphy_enabled;
+	struct hfi_panel_esd_config esd_config;
 };
 
 /**

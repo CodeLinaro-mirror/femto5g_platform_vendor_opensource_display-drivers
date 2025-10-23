@@ -545,6 +545,11 @@ int hfi_conn_send_panel_init(struct drm_connector *conn)
 		return ret;
 
 	sde_kms = sde_connector_get_kms(conn);
+	if (!sde_kms) {
+		SDE_ERROR("failed to get sde_kms\n");
+		return -EINVAL;
+	}
+
 	hfi_kms = to_hfi_kms(sde_kms);
 	display_id = sde_conn_get_display_obj_id(conn);
 
@@ -639,7 +644,8 @@ struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
 
 	hfi_kms = to_hfi_kms(sde_kms);
 
-	return hfi_kms_get_cmd_buf(hfi_kms, sde_conn->conn_id, cmd_buf_type);
+	return hfi_kms_get_cmd_buf(hfi_kms,
+		sde_conn_get_display_obj_id(drm_conn), cmd_buf_type);
 }
 
 int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
@@ -683,8 +689,11 @@ int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 		wb_dev = (struct sde_wb_device *)c_conn->display;
 		if (wb_dev && wb_dev->wb_cfg) {
 			opmode = wb_dev->wb_cfg->opmode;
-			if (opmode == WB_CSC || opmode == WB_REPRO)
+			if (opmode == WB_CSC || opmode == WB_REPRO) {
+				hfi_conn->disable_listener.hfi_prop_handler =
+						hfi_lsr_display_disable_handler;
 				rc = hfi_wb_lsr_prop_helper_alloc(hfi_conn);
+			}
 			if (rc) {
 				SDE_ERROR("failed to allocate memory for LSR prop collectors\n");
 				return rc;
@@ -713,4 +722,22 @@ free_conn:
 	kfree(hfi_conn);
 
 	return -ENOMEM;
+}
+
+void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)
+{
+	struct dsi_panel *panel;
+
+	if (!c_conn || !c_conn->display)
+		return;
+
+	panel = ((struct dsi_display *)(c_conn->display))->panel;
+	if (!panel) {
+		SDE_ERROR("invalid DSI panel\n");
+		return;
+	}
+
+	atomic_set(&panel->esd_recovery_pending, 1);
+
+	sde_connector_report_panel_dead(c_conn, skip_pre_kickoff);
 }
