@@ -94,6 +94,7 @@ enum sde_reg_dma_features {
 	AIQE_SSRC_DATA,
 	AIQE_ABC,
 	AIQE_AI_SCALER,
+	DESTINATION_SCALER,
 	REG_DMA_FEATURES_MAX,
 };
 
