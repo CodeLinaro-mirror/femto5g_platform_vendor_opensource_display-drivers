@@ -5867,6 +5867,8 @@ static void ltm_vlutv1_2_disable(struct sde_hw_dspp *ctx, void *cfg, u32 dither_
 		return;
 	}
 
+	SDE_EVT32(idx);
+
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
 		return;
@@ -5882,14 +5884,16 @@ static void ltm_vlutv1_2_disable(struct sde_hw_dspp *ctx, void *cfg, u32 dither_
 		return;
 	}
 
-	offset = ctx->cap->sblk->ltm.base + 0x4;
-	ltm_vlut_ops_mask[ctx->idx][ctx->dpu_idx] &= ~ltm_vlut;
-	opmode = SDE_REG_READ(&ctx->hw, offset);
-	if (opmode & BIT(0))
-		/* disable VLUT/INIT/ROI */
-		opmode &= (REG_DMA_LTM_VLUT_DISABLE_OP_MASK & (~dither_clip_mask));
-	else
-		opmode &= 0x0;
+	if (IS_DISP_OP_HWIO(ctx->hw.disp_op)) {
+		offset = ctx->cap->sblk->ltm.base + 0x4;
+		ltm_vlut_ops_mask[ctx->idx][ctx->dpu_idx] &= ~ltm_vlut;
+		opmode = SDE_REG_READ(&ctx->hw, offset);
+		if (opmode & BIT(0))
+			/* disable VLUT/INIT/ROI */
+			opmode &= (REG_DMA_LTM_VLUT_DISABLE_OP_MASK & (~dither_clip_mask));
+		else
+			opmode &= 0x0;
+	}
 
 	REG_DMA_SETUP_OPS(dma_write_cfg, offset, &opmode,
 		sizeof(opmode), REG_SINGLE_WRITE, 0, 0, 0);
@@ -5931,11 +5935,12 @@ static int reg_dmav1_setup_ltm_vlutv1_common(struct sde_hw_dspp *ctx, void *cfg,
 		return -EINVAL;
 	}
 
-	/* vlut is set before ltm init */
-	if (!(ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] & ltm_init)) {
-		DRM_DEBUG_DRIVER("vlut is set before ltm init\n");
-		SDE_EVT32(ctx->idx, 0x2222);
-		return -EINVAL;
+	if (IS_DISP_OP_HWIO(ctx->hw.disp_op)) {
+		/* vlut is set before ltm init */
+		if (!(ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] & ltm_init)) {
+			DRM_ERROR("vlut is set before ltm init\n");
+			return -EINVAL;
+		}
 	}
 
 	if (hw_cfg->len != sizeof(struct drm_msm_ltm_data)) {
@@ -5944,11 +5949,13 @@ static int reg_dmav1_setup_ltm_vlutv1_common(struct sde_hw_dspp *ctx, void *cfg,
 		return -EINVAL;
 	}
 
-	offset = ctx->cap->sblk->ltm.base + 0x5c;
-	crs = SDE_REG_READ(&ctx->hw, offset);
-	if (!(crs & BIT(3))) {
-		DRM_ERROR("LTM VLUT buffer is not ready: crs = %d\n", crs);
-		return -EINVAL;
+	if (IS_DISP_OP_HWIO(ctx->hw.disp_op)) {
+		offset = ctx->cap->sblk->ltm.base + 0x5c;
+		crs = SDE_REG_READ(&ctx->hw, offset);
+		if (!(crs & BIT(3))) {
+			DRM_ERROR("LTM VLUT buffer is not ready: crs = %d\n", crs);
+			return -EINVAL;
+		}
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
@@ -5977,7 +5984,7 @@ static int reg_dmav1_setup_ltm_vlutv1_common(struct sde_hw_dspp *ctx, void *cfg,
 	payload = hw_cfg->payload;
 	len = sizeof(u32) * LTM_DATA_SIZE_0 * LTM_DATA_SIZE_3;
 	REG_DMA_SETUP_OPS(*dma_write_cfg, 0x3c, &payload->data[0][0],
-			len, REG_BLK_WRITE_INC, 0, 0, 0);
+		len, REG_BLK_WRITE_INC, 0, 0, 0);
 	rc = dma_ops->setup_payload(dma_write_cfg);
 	if (rc) {
 		DRM_ERROR("write VLUT data failed rc %d\n", rc);
@@ -6129,40 +6136,47 @@ static void reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(struct sde_hw_dspp *ctx, vo
 	if (rc)
 		goto vlut_exit;
 
-	sde_ltm_get_phase_info(hw_cfg, &phase);
-	for (i = 0; i < num_mixers; i++) {
-		dma_write_cfg.blk = ltm_mapping[dspp_idx[i]];
-		REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0,
-				0, 0);
-		rc = dma_ops->setup_payload(&dma_write_cfg);
-		if (rc) {
-			DRM_ERROR("write decode select failed ret %d\n", rc);
-			goto vlut_exit;
-		}
+	if (IS_DISP_OP_HWIO(ctx->hw.disp_op)) {
+		for (i = 0; i < num_mixers; i++) {
+			dma_write_cfg.blk = ltm_mapping[dspp_idx[i]];
+			REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0,
+					0, 0);
+			rc = dma_ops->setup_payload(&dma_write_cfg);
+			if (rc) {
+				DRM_ERROR("write decode select failed ret %d\n", rc);
+				goto vlut_exit;
+			}
 
-		if (phase.merge_en)
-			merge_mode = BIT(0);
-		else
-			merge_mode = 0x0;
-		REG_DMA_SETUP_OPS(dma_write_cfg, 0x18, &merge_mode, sizeof(u32),
-				REG_SINGLE_MODIFY, 0, 0,
-				0xFFFFFFFC);
-		rc = dma_ops->setup_payload(&dma_write_cfg);
-		if (rc) {
-			DRM_ERROR("write merge_ctrl failed ret %d\n", rc);
-			goto vlut_exit;
-		}
 
-		REG_DMA_SETUP_OPS(dma_write_cfg, 0x4, &opmode[i], sizeof(u32),
-				REG_SINGLE_MODIFY, 0, 0,
-				REG_DMA_LTM_VLUT_ENABLE_OP_MASK);
-		rc = dma_ops->setup_payload(&dma_write_cfg);
-		if (rc) {
-			DRM_ERROR("write opmode failed ret %d\n", rc);
-			goto vlut_exit;
+			sde_ltm_get_phase_info(hw_cfg, &phase);
+			if (phase.merge_en)
+				merge_mode = BIT(0);
+			else
+				merge_mode = 0x0;
+			REG_DMA_SETUP_OPS(dma_write_cfg, 0x18, &merge_mode, sizeof(u32),
+					REG_SINGLE_MODIFY, 0, 0,
+					0xFFFFFFFC);
+			rc = dma_ops->setup_payload(&dma_write_cfg);
+			if (rc) {
+				DRM_ERROR("write merge_ctrl failed ret %d\n", rc);
+				goto vlut_exit;
+			}
+
+			REG_DMA_SETUP_OPS(dma_write_cfg, 0x4, &opmode[i], sizeof(u32),
+					REG_SINGLE_MODIFY, 0, 0,
+					REG_DMA_LTM_VLUT_ENABLE_OP_MASK);
+			rc = dma_ops->setup_payload(&dma_write_cfg);
+			if (rc) {
+				DRM_ERROR("write opmode failed ret %d\n", rc);
+				goto vlut_exit;
+			}
 		}
 	}
 
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, ltm_buf[LTM_VLUT][idx][ctx->dpu_idx],
 				REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 				LTM_VLUT);
@@ -6183,6 +6197,12 @@ void reg_dmav1_setup_ltm_vlutv1_2(struct sde_hw_dspp *ctx, void *cfg)
 
 void reg_dmav1_setup_ltm_vlutv1_4(struct sde_hw_dspp *ctx, void *cfg)
 {
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 4, HFI_PROPERTY_DISPLAY_COLOR_LTM_VLUT);
+	hw_cfg->flags = HFI_BUFF_FEATURE_BROADCAST;
+#endif
 	reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(ctx, cfg, BIT(10) | BIT(11));
 }
 
