@@ -23,6 +23,7 @@
  * @lsr_props: prop helper object for lsr property collection
  * @lsr_blob_props: prop helper object for lsr blob property collection
  * @lsr_out_buff_props: prop helper object for lsr out buffer property collection
+ * @disable_listener: listener api for display disable response
  */
 struct hfi_connector {
 	struct sde_connector *sde_base;
@@ -32,6 +33,7 @@ struct hfi_connector {
 	struct hfi_util_u32_prop_helper *lsr_props;
 	struct hfi_util_u32_prop_helper *lsr_blob_props;
 	struct hfi_util_u32_prop_helper *lsr_out_buffer_props;
+	struct hfi_prop_listener disable_listener;
 };
 
 /**
@@ -73,8 +75,16 @@ void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
  * Return: error on failure to send or 0 on success
  */
 int hfi_conn_send_panel_init(struct drm_connector *drm_conn);
+
+/**
+ * hfi_connector_report_panel_dead - report panel dead
+ * @c_conn: Pointer to sde_connector struct
+ * @skip_pre_kickoff: flag to skip_pre_kickoff
+ */
+void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff);
+
 #else
-int hfi_connector_init(int connector_type, struct sde_connector *c_conn);
+int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 {
 	return -HFI_ERROR;
 }
@@ -88,6 +98,10 @@ struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
 int hfi_conn_send_panel_init(struct drm_connector *drm_conn)
 {
 	return 0;
+}
+
+void hfi_connector_report_panel_dead(struct sde_connector *sde_conn, bool skip_pre_kickoff)
+{
 }
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
 

@@ -93,6 +93,14 @@ struct hfi_display_roi {
 };
 
 /*
+ * enum hfi_display_roi_type - type of destination ROI programming
+ * @PANEL_ROI: ROI is panel ROI
+ */
+enum hfi_display_roi_type {
+	PANEL_ROI = 0x0,
+};
+
+/*
  * struct hfi_display_vsync_data - vsync data
  * @timestamp_lo    :  lower value of 64bit vsync timestamp in ns
  * @timestamp_hi    :  higher value of 64bit vsync timestamp in ns
@@ -220,6 +228,8 @@ enum hfi_display_idle_timer_control {
  * @HFI_EVENT_FRAME_IDLE              : Event ID for frame idle
  * @HFI_EVENT_DISPLAY_POWER           : Event ID for display power
  * @HFI_EVENT_HW_RECOVERY             : Event ID for hw recovery
+ * @HFI_EVENT_FRAME_CAPTURE_COMPLETE  : Event ID for frame capture complete.
+ * @HFI_EVENT_PANEL_DEAD              : Event ID for panel dead
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC                     = 0x1,
@@ -228,6 +238,8 @@ enum hfi_display_event_id {
 	HFI_EVENT_FRAME_IDLE                = 0x4,
 	HFI_EVENT_DISPLAY_POWER             = 0x5,
 	HFI_EVENT_HW_RECOVERY               = 0x6,
+	HFI_EVENT_FRAME_CAPTURE_COMPLETE    = 0x7,
+	HFI_EVENT_PANEL_DEAD                = 0x8,
 };
 
 /*
@@ -416,5 +428,21 @@ enum hfi_layer_security_policy {
  * @brief Set when layer is reflected along Y-axis.
  */
 #define HFI_DISPLAY_REFLECT_Y   (1 << 5)
+
+/**
+ * @enum hfi_cwb_tap_points - CWB tap points.
+ * @HFI_TAP_POINT_NONE    :  CWB is disabled
+ * @HFI_TAP_POINT_LM    :  Tap point at the LM stage
+ * @HFI_TAP_POINT_DSPP    :  Tap point at the DSPP stage
+ * @HFI_TAP_POINT_DEMURA   :  Tap point after Demura correction
+ * @HFI_TAP_POINT_MAX    :  Maximum number of tap points
+ */
+enum hfi_cwb_tap_points {
+	HFI_TAP_POINT_NONE,
+	HFI_TAP_POINT_LM,
+	HFI_TAP_POINT_DSPP,
+	HFI_TAP_POINT_DEMURA,
+	HFI_TAP_POINT_MAX,
+};
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

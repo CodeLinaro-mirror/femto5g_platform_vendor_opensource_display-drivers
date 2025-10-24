@@ -598,6 +598,66 @@
 #define HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG                            0x00020028
 
 /*
+ * HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER - This property is to attach output layer before
+ *                                            setting output layer properties.
+ *                                            The corresponding wb_id will be passed as the
+ *                                            payload.
+ *                                            Host is expected to send this packet as part of
+ *                                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                            payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER \|
+ * ^                             | (version=0 << 20) \| (dsize=1 << 24 ) \|
+ *   (u32_value) payload [1]     | wb_id
+ */
+#define HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER                     0x00020029
+
+/*
+ * HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER - This property is to detach the output layer, which
+ *                                            must be received at the end of a CWB session.
+ *                                            The corresponding wb_id will be passed as the
+ *                                            payload.
+ *                                            Output layer dirty flag will be set to perform the
+ *                                            required cleanup in host.
+ *                                            Host is expected to send this packet as part of
+ *                                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                            payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER \|
+ * ^                             | (version=0 << 20) \| (dsize=1 << 24 ) \|
+ *   (u32_value) payload [1]     | wb_id
+ */
+#define HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER                     0x0002002A
+
+/*!
+ * HFI_PROPERTY_DISPLAY_DEST_ROI - This property is used to set destination ROI for display.
+ *                                 Host is expected to send this packet as part of
+ *                                 HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                 command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_DEST_ROI
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_DEST_ROI |
+ *                               | (version=0 << 20) |
+ *                               | (dsize=2 + (count x struct hfi_display_roi) << 24)
+ *     (u32_value) payload [1]   | obj id
+ *     (u32_value) payload [2]   | roi_type (default value is PANEL_ROI)
+ *     (u32_value) payload [3]   | num of rois
+ *     (u32_value) payload [4-..]| array of struct hfi_display_roi
+ */
+#define HFI_PROPERTY_DISPLAY_DEST_ROI                                0x0002002B
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
@@ -862,6 +922,22 @@
  * | 4            | 0            | u32                   |
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT                  0x00020114
+
+/*
+ * HFI_PROPERTY_DISPLAY_DEST_SCALER - This property is to setup destination scaler.
+ *                                  Host is expected to send this packet of
+ *                                  HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_DEST_SCALER
+ *   (u32_key) payload       : HFI_PROPERTY_DISPLAY_DEST_SCALER |
+ *                             (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload     : struct hfi_buff_dpu
+ *
+ * | Major        | Minor        | Payload               |
+ * |--------------|--------------|-----------------------|
+ * | 4            | 0            | hfi_buff_dpu          |
+ */
+#define HFI_PROPERTY_DISPLAY_DEST_SCALER                             0x00020115
 
 /*
  * All display color properties end here
@@ -1482,6 +1558,23 @@
  *     (u32_value) payload [2]   : LLCC scid
  */
 #define HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID                          0x00030027
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT - Gets the CWB tap point for output layer.
+ *                                           Host is expected to send this packet
+ *                                           of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                           command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT \|
+ * ^                             | (version=0 << 20) \| (dsize=2 << 24)
+ *     (u32_value) payload [1]   | wb_id
+ *     (u32_value) payload [2]   | one of the values from enum hfi_cwb_tap_points
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT                      0x00030028
 
 /*
  * All layer color properties begin here

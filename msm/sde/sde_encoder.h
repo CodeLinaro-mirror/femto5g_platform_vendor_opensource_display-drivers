@@ -454,6 +454,15 @@ struct sde_encoder_hal_funcs {
 	 */
 	int (*register_power_event_notify[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
 			bool enable);
+
+	/**
+	 * register_panel_dead_event_notify - register panel dead event notification
+	 * @enc: Pointer to sde encoder structure
+	 * @enable: flag to regitser/deregister event.
+	 * Returns: status of registration/deregistration.
+	 */
+	int (*register_panel_dead_event_notify[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+			bool enable);
 };
 
 /**
@@ -730,6 +739,14 @@ void sde_encoder_register_frame_event_callback(struct drm_encoder *encoder,
  */
 void sde_encoder_register_display_power_event_callback(struct drm_encoder *encoder,
 		void (*cb)(void *, u32 event), struct drm_crtc *crtc);
+
+/**
+ * sde_encoder_register_panel_dead_event_callback - provide callback to encoder that
+ *	will be called after receiving panel dead event.
+ * @drm_enc:	encoder pointer
+ * @enable:		flag to register or deregister panel deadcall back.
+ */
+void sde_encoder_register_panel_dead_event_callback(struct drm_encoder *drm_enc, bool enable);
 
 /**
  * sde_encoder_get_rsc_client - gets the rsc client state for primary
@@ -1441,12 +1458,6 @@ inline enum msm_disp_op sde_encoder_get_disp_op(struct drm_encoder *drm_enc);
  * @drm_enc: pointer to drm encoder
  */
 int sde_encoder_helper_inc_pending(struct drm_encoder *drm_enc);
-
-/**
- * sde_encoder_update_pending_kickoff_cnt - increment pending kickoff cnt and retire fence cnt
- * @sde_enc: pointer to sde encoder
- */
-int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc);
 
 /**
  * sde_encoder_cancel_vrr_timers - cancel vrr timers

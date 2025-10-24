@@ -555,3 +555,49 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 	kfree(layout);
 	return 0;
 }
+
+int sde_wb_update_lsr_perf(struct drm_connector *connector,
+		void *display, struct sde_lsr_perf perf)
+{
+	int rc = 0;
+	struct sde_connector *sde_conn;
+	struct sde_reproj *reproj_conn = NULL;
+
+	sde_conn = to_sde_connector(connector);
+	reproj_conn = sde_conn->reproj_conn;
+
+	if (reproj_conn) {
+		rc = reproj_conn->update_lsr_perf(reproj_conn, reproj_conn->type, perf);
+		SDE_DEBUG("lsr perf clk vote = %lld, bw vote = %lld for display type = %d",
+			perf.bw_vote, perf.clk_vote, reproj_conn->type);
+	}
+
+	return rc;
+}
+
+int sde_wb_connector_reproj_setup(struct sde_connector *conn, struct sde_wb_device *wb_dev)
+{
+	int rc = 0;
+
+	if (!wb_dev->wb_cfg) {
+		SDE_ERROR("wb_cfg isn't populated\n");
+		return -EINVAL;
+	}
+
+	conn->reproj_conn = kzalloc(sizeof(*conn->reproj_conn), GFP_KERNEL);
+	if (!conn->reproj_conn) {
+		rc = -ENOMEM;
+		goto end;
+	}
+
+	conn->reproj_conn->type = wb_dev->wb_cfg->opmode;
+	rc = msm_reproj_disp_register_intf(conn->reproj_conn);
+	if (rc)
+		SDE_ERROR("failed to register reproj disp\n");
+
+	rc = conn->reproj_conn->get_info(conn->reproj_conn, conn->reproj_conn->type);
+	if (rc)
+		SDE_ERROR("failed to get LSR info for reproj disp\n");
+end:
+	return rc;
+}

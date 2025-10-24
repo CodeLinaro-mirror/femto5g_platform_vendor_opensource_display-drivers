@@ -16,11 +16,16 @@ struct lsr_perf {
 	u32 lsr_repro_clk;
 };
 
+struct sde_lsr_perf {
+	unsigned long bw_vote;
+	unsigned long clk_vote;
+};
+
 struct sde_reproj {
 	bool engine_pwr_state;
 	atomic_t *ref_count;
 	u32 type;
-	struct lsr_perf perf;
+	struct sde_lsr_perf perf;
 	u32 queue_table_dcp_addr;
 	u32 queue_table_size;
 	u32 csc_scratch_dcp_addr;
@@ -76,7 +81,7 @@ struct sde_reproj {
 	 * Returns the error code in case of failure, 0 in success case.
 	 */
 	int (*update_lsr_perf)(struct sde_reproj *reproj_inst, int repro_info,
-			struct lsr_perf perf);
+			struct sde_lsr_perf perf);
 };
 
 int msm_reproj_disp_register_intf(struct sde_reproj *reproj_inst);

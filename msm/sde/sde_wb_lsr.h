@@ -65,6 +65,56 @@ int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi
  */
 void sde_wb_lsr_destroy_fb_list(struct sde_connector *c_conn,
 	struct sde_connector_state *c_state);
+
+/**
+ * hfi_wb_add_lsr_init_props - set lsr properties required for lsr sys init
+ * @wb_dev: pointer to wb device structure
+ * @drm_conn: pointer to drm connector
+ * @prop_collector: property utility structure for hfi properties
+ */
+int hfi_wb_add_lsr_init_props(struct sde_wb_device *wb_dev, struct drm_connector *drm_conn,
+			struct hfi_util_u32_prop_helper *prop_collector);
+
+/**
+ * hfi_wb_display_lsr_enable - enable/disable lsr display
+ * @drm_conn: pointer to drm connector
+ * @enable: boolean variable to set enable/disable
+ */
+int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable);
+
+/**
+ * sde_wb_update_lsr_perf - set lsr perf votes
+ * @drm_conn: pointer to drm connector
+ * @perf: sde_lsr_perf structure to add clock/bus votes
+ */
+int sde_wb_update_lsr_perf(struct drm_connector *connector, void *display,
+		struct sde_lsr_perf perf);
+/**
+ * sde_wb_connector_reproj_setup - setup sde connector with reprojection/lsr info
+ * @conn: pointer to sde_connector
+ * @wb_dev: pointer to sde_wb_device
+ */
+int sde_wb_connector_reproj_setup(struct sde_connector *conn, struct sde_wb_device *wb_dev);
+
+/**
+ * hfi_lsr_display_disable_handler - lsr display disable handler
+ * @obj_id: hfi object id for the response received
+ * @cmd_id: hfi command for the response
+ * @listener: pointer to the listener object of the response
+ */
+void hfi_lsr_display_disable_handler(u32 obj_id, u32 cmd_id,
+		void *payload, u32 size, struct hfi_prop_listener *listener);
+
+/**
+ * hfi_conn_send_lsr_display_ctrl_cmd - set lsr enable/disable commands
+ * @hfi_kms: pointer to hfi kms
+ * @hfi_conn: pointer to hfi connector
+ * @cmd_buf: pointer to disapla enable/disabe cmd buf
+ * @flags: pointer to flags for lsr display commands
+ * @enable: boolean variable to be set enable/disable
+ */
+int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_connector *hfi_conn,
+		struct hfi_cmdbuf_t *cmd_buf, u32 *flags, bool enable);
 #else
 static inline
 int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
@@ -96,8 +146,7 @@ int hfi_wb_lsr_prop_helper_alloc(struct hfi_connector *hfi_conn)
 
 static inline
 int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi_conn,
-		struct sde_connector_state *cstate,
-		u32 disp_id, struct hfi_cmdbuf_t *cmd_buf)
+	struct sde_connector_state *cstate, u32 disp_id, struct hfi_cmdbuf_t *cmd_buf)
 {
 	return 0;
 }
@@ -105,6 +154,39 @@ int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi
 static inline void sde_wb_lsr_destroy_fb_list(struct sde_connector *c_conn,
 	struct sde_connector_state *c_state)
 {
+}
+static inline int hfi_wb_add_lsr_init_props(struct sde_wb_device *wb_dev,
+	struct drm_connector *drm_conn, struct hfi_util_u32_prop_helper *prop_collector)
+{
+	return 0;
+}
+
+static inline int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
+{
+	return 0;
+}
+
+static inline int sde_wb_update_lsr_perf(struct drm_connector *connector, void *display,
+	struct sde_lsr_perf perf)
+{
+	return 0;
+}
+
+static inline int sde_wb_connector_reproj_setup(struct sde_connector *conn,
+	struct sde_wb_device *wb_dev)
+{
+	return 0;
+}
+
+static inline void hfi_lsr_display_disable_handler(u32 obj_id, u32 cmd_id, void *payload, u32 size,
+	struct hfi_prop_listener *listener)
+{
+}
+
+static inline int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms,
+	struct hfi_connector *hfi_conn, struct hfi_cmdbuf_t *cmd_buf, u32 *flags, bool enable)
+{
+	return 0;
 }
 #endif /* CONFIG_DRM_SDE_LSR */
 #endif /* __SDE_WB_LSR_H__ */

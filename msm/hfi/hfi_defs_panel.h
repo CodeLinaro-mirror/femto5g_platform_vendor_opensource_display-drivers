@@ -290,6 +290,25 @@ enum hfi_panel_dcs_command_type {
 	HFI_DCS_CMD_QSYNC_OFFS                  = 0x00000024,
 	HFI_DCS_CMD_MAX                         = 0x00000025
 };
+
+/**
+ * hfi_panel_esd_status_mode - ESD status checking modes
+ * HFI_PANEL_ESD_STATUS_MODE_REG_READ: Register read mode for ESD status checking.
+ * HFI_PANEL_ESD_STATUS_MODE_SW_BTA: Software BTA mode for ESD status checking. Not supported yet.
+ * HFI_PANEL_ESD_STATUS_MODE_PANEL_TE: ESD check using panel TE. Not supported yet.
+ * HFI_PANEL_ESD_STATUS_MODE_PANEL_RW: ESD check using panel read/write. Not supported yet.
+ * HFI_PANEL_ESD_STATUS_MODE_SW_SIM_SUCCESS: ESD check software simulation with success.
+ * HFI_PANEL_ESD_STATUS_MODE_SW_SIM_FAILURE: ESD check software simulation with failure.
+ */
+enum hfi_panel_esd_status_mode {
+	HFI_PANEL_ESD_STATUS_MODE_REG_READ       = 0x1,
+	HFI_PANEL_ESD_STATUS_MODE_SW_BTA         = 0x2,
+	HFI_PANEL_ESD_STATUS_MODE_PANEL_TE       = 0x3,
+	HFI_PANEL_ESD_STATUS_MODE_PANEL_RW       = 0x4,
+	HFI_PANEL_ESD_STATUS_MODE_SW_SIM_SUCCESS = 0x5,
+	HFI_PANEL_ESD_STATUS_MODE_SW_SIM_FAILURE = 0x6
+};
+
 /**
  * struct hfi_panel_res_data - Panel resolution data
  * @active_width: Panel active width
@@ -400,6 +419,37 @@ struct hfi_panel_compression_rc_override {
 	u8 padding2;
 	u8 offsets[15];
 	u8 padding3;
+};
+
+/**
+ * struct hfi_panel_esd_config - HFI Panel ESD configuration data
+ * @size:                   Size of this struct used for backward compatibility.
+ * @status_mode:            ESD status checking mode
+ * @count:                  Number of ESD commands
+ * @groups:                 Number of ESD command groups
+ * @hfi_dsi_cmd_desc_lsb:   Array of struct hfi_dsi_cmd_desc for ESD status check commands (lo)
+ * @hfi_dsi_cmd_desc_msb:   Array of struct hfi_dsi_cmd_desc for ESD status check commands (hi)
+ * @valid_params_lsb:       Array of valid returned values, address location (lo)
+ * @valid_params_msb:       Array of valid returned values, address location (hi)
+ * @status_values_lsb:      Array of values of the panel status register, address location (lo)
+ * @status_values_msb:      Array of values of the panel status register, address location (hi)
+ */
+struct hfi_panel_esd_config {
+	u32 size;
+	enum hfi_panel_esd_status_mode status_mode;
+
+	/* Fields below are valid only for HFI_PANEL_ESD_STATUS_MODE_REG_READ */
+	u32 count;
+	u32 groups;
+
+	u32 hfi_dsi_cmd_desc_lsb;
+	u32 hfi_dsi_cmd_desc_msb;
+
+	u32 valid_params_lsb;
+	u32 valid_params_msb;
+
+	u32 status_values_lsb;
+	u32 status_values_msb;
 };
 
 #endif // __H_HFI_DEFS_PANEL_H__

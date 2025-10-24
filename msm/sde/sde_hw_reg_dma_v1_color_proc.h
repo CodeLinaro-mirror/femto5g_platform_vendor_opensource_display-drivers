@@ -11,6 +11,7 @@
 #include "sde_hw_catalog.h"
 #include "sde_hw_dspp.h"
 #include "sde_hw_sspp.h"
+#include "sde_hw_ds.h"
 
 #define LOG_FEATURE_OFF SDE_EVT32(ctx->idx, ctx->dpu_idx, ctx->hw.disp_op, 0)
 #define LOG_FEATURE_ON SDE_EVT32(ctx->idx, ctx->dpu_idx, ctx->hw.disp_op, 1)
@@ -304,10 +305,20 @@ int reg_dmav1_setup_pe_config(
  * @scaler_cfg: pointer to scaler config
  * @pre_down: Pointer to pre-downscaler configuration
  */
-
 void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 	struct sde_hw_pipe_cfg *sspp, struct sde_hw_pixel_ext *pe,
 	void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down);
+
+/**
+ * reg_dmav1_setup_ds_qseed3 - Destination scaler Qseed3 implementation using reg dma v1.
+ * @hw_ds: destination scaler context
+ * @scaler_cfg: pointer to scaler configuration
+ * @format: pixel format for scaler configuration
+ * @de_lpf: detail enhancer low pass filter enable flag
+ * @merge_mode: merge mode for multi-pipe configurations
+ */
+void reg_dmav1_setup_ds_qseed3(struct sde_hw_ds *hw_ds,
+	void *scaler_cfg, const struct sde_format *format, bool de_lpf, u32 merge_mode);
 
 /**reg_dmav1_setup_scaler3_lut - Qseed3 lut coefficient programming
  * @buf: defines structure for reg dma ops on the reg dma buffer.
@@ -337,6 +348,22 @@ void reg_dmav1_setup_scaler3lite_lut(struct sde_reg_dma_setup_ops_cfg *buf,
  * @ctx: sspp instance
  */
 int reg_dmav1_deinit_sspp_ops(struct sde_hw_pipe *ctx);
+
+/**
+ * reg_dmav1_init_ds_ops() - initialize destination scaler operations for reg dma v1
+ * @hw_ds: destination scaler context
+ *
+ * Returns: 0 on success, negative error code on failure
+ */
+int reg_dmav1_init_ds_ops(struct sde_hw_ds *hw_ds);
+
+/**
+ * reg_dmav1_deinit_ds_ops() - deinitialize destination scaler operations for reg dma v1
+ * @hw_ds: destination scaler context
+ *
+ * Returns: 0 on success, negative error code on failure
+ */
+int reg_dmav1_deinit_ds_ops(struct sde_hw_ds *hw_ds);
 
 /**
  * reg_dmav1_init_ltm_op_v6() - initialize the ltm feature op for sde v6

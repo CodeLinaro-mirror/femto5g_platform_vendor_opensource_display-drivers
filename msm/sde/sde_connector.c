@@ -1355,8 +1355,11 @@ static int _sde_connector_update_dirty_properties(
 {
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
+	enum msm_disp_op disp_op;
 	int idx;
 	u32 b_lvl;
+	bool is_roi_dirty = false;
+	bool is_lp_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1365,17 +1368,22 @@ static int _sde_connector_update_dirty_properties(
 
 	c_conn = to_sde_connector(connector);
 	c_state = to_sde_connector_state(connector->state);
+	disp_op = sde_connector_get_disp_op(connector);
 
 	mutex_lock(&c_conn->property_info.property_lock);
 	while ((idx = msm_property_pop_dirty(&c_conn->property_info,
 					&c_state->property_state)) >= 0) {
 		switch (idx) {
 		case CONNECTOR_PROP_LP:
-			mutex_lock(&c_conn->lock);
-			c_conn->lp_mode = sde_connector_get_property(
-					connector->state, CONNECTOR_PROP_LP);
-			_sde_connector_update_power_locked(c_conn);
-			mutex_unlock(&c_conn->lock);
+			if (disp_op == MSM_DISP_OP_HWIO) {
+				mutex_lock(&c_conn->lock);
+				c_conn->lp_mode = sde_connector_get_property(
+						connector->state, CONNECTOR_PROP_LP);
+				_sde_connector_update_power_locked(c_conn);
+				mutex_unlock(&c_conn->lock);
+			} else {
+				is_lp_dirty = true;
+			}
 			break;
 		case CONNECTOR_PROP_HDR_METADATA:
 			_sde_connector_update_hdr_metadata(c_conn, c_state);
@@ -1385,12 +1393,25 @@ static int _sde_connector_update_dirty_properties(
 						CONNECTOR_PROP_BRIGHTNESS);
 			backlight_device_set_brightness(c_conn->bl_device, b_lvl);
 			break;
+		case CONNECTOR_PROP_ROI_V1:
+			is_roi_dirty = true;
+			break;
 		default:
 			/* nothing to do for most properties */
 			break;
 		}
 	}
 	mutex_unlock(&c_conn->property_info.property_lock);
+
+	if (disp_op == MSM_DISP_OP_HFI && is_roi_dirty) {
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_ROI_V1);
+	}
+
+	/* If HFI mode and LP property is dirty - add to the dirty list */
+	if ((disp_op == MSM_DISP_OP_HFI) && is_lp_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+				&c_state->property_state, CONNECTOR_PROP_LP);
 
 	/* if colorspace needs to be updated do it first */
 	if (c_conn->colorspace_updated) {
@@ -1565,12 +1586,10 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		display->queue_cmd_waits = true;
 	}
 
-	if (disp_op == MSM_DISP_OP_HWIO) {
-		rc = _sde_connector_update_dirty_properties(connector);
-		if (rc) {
-			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
-			goto end;
-		}
+	rc = _sde_connector_update_dirty_properties(connector);
+	if (rc) {
+		SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+		goto end;
 	}
 
 	/* Send VHM commands post BRIGHTNESS updates */
@@ -3706,7 +3725,7 @@ static int sde_connector_atomic_check(struct drm_connector *connector,
 	return 0;
 }
 
-static void _sde_connector_report_panel_dead(struct sde_connector *conn,
+void sde_connector_report_panel_dead(struct sde_connector *conn,
 	bool skip_pre_kickoff)
 {
 	struct drm_event event;
@@ -3717,6 +3736,7 @@ static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 	/* Panel dead notification can come:
 	 * 1) ESD thread
 	 * 2) Commit thread (if TE stops coming)
+	 * 3) HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD event from HFI
 	 * So such case, avoid failure notification twice.
 	 */
 	if (conn->panel_dead)
@@ -3724,8 +3744,9 @@ static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 
 	SDE_EVT32(SDE_EVTLOG_ERROR);
 	conn->panel_dead = true;
-	sde_encoder_display_failure_notification(conn->encoder,
-		skip_pre_kickoff);
+
+	if (sde_connector_get_disp_op(&conn->base) != MSM_DISP_OP_HFI)
+		sde_encoder_display_failure_notification(conn->encoder, skip_pre_kickoff);
 
 	event.type = DRM_EVENT_PANEL_DEAD;
 	event.length = sizeof(bool);
@@ -3792,7 +3813,7 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	if (ret <= 0) {
 		/* cancel if any pending esd work */
 		sde_connector_schedule_status_work(conn, false);
-		_sde_connector_report_panel_dead(sde_conn, true);
+		sde_connector_report_panel_dead(sde_conn, true);
 		ret = -ETIMEDOUT;
 	} else {
 		SDE_DEBUG("Successfully received TE from panel\n");
@@ -3843,7 +3864,7 @@ static void sde_connector_check_status_work(struct work_struct *work)
 		return;
 	}
 
-	_sde_connector_report_panel_dead(conn, false);
+	sde_connector_report_panel_dead(conn, false);
 }
 
 static const struct drm_connector_helper_funcs sde_connector_helper_ops = {
@@ -4797,4 +4818,81 @@ bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
 
 	return msm_property_is_dirty(&conn->property_info,
 			&cstate->property_state, property_idx);
+}
+
+/**
+ * sde_conn_get_display_obj_id - helper to provide display object unique id
+ * @conn: Pointer to drm_connector struct
+ */
+u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
+{
+	struct sde_connector *sde_conn;
+	struct drm_encoder *encoder;
+	struct drm_crtc *crtc;
+	struct drm_encoder *other_enc = NULL;
+	struct drm_connector *other_conn = NULL;
+	struct sde_connector *other_sde_conn = NULL;
+	struct drm_connector_list_iter conn_iter;
+	u32 conn_id = U32_MAX;
+
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return U32_MAX;
+	}
+
+	/* Get the connector's own conn_id as default return value */
+	sde_conn = to_sde_connector(conn);
+	if (!sde_conn)
+		return U32_MAX;
+
+	conn_id = sde_conn->conn_id;
+
+	/* Get encoder */
+	encoder = sde_conn->encoder;
+	if (!encoder) {
+		SDE_DEBUG("no encoder for connector %d\n", conn->base.id);
+		return conn_id;
+	}
+
+	/* If not in clone mode, return the connector's own ID */
+	if (!sde_encoder_in_clone_mode(encoder)) {
+		SDE_DEBUG("not in clone mode, using own conn_id %d\n", conn_id);
+		return conn_id;
+	}
+
+	/* Handle clone mode - get CRTC */
+	crtc = encoder->crtc;
+	if (!crtc) {
+		SDE_DEBUG("no crtc for encoder %d\n", encoder->base.id);
+		return conn_id;
+	}
+
+	/* Find another encoder attached to this CRTC */
+	drm_for_each_encoder_mask(other_enc, crtc->dev, crtc->state->encoder_mask) {
+		/* Skip the current encoder */
+		if (other_enc == encoder)
+			continue;
+
+		/* Found another encoder on same CRTC */
+		/* Find connector attached to this encoder */
+		drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+		drm_for_each_connector_iter(other_conn, &conn_iter) {
+			if (other_conn->encoder == other_enc) {
+				other_sde_conn = to_sde_connector(other_conn);
+				if (other_sde_conn) {
+					conn_id = other_sde_conn->conn_id;
+					SDE_DEBUG("clone mode: using other connector %d\n",
+							other_conn->base.id);
+					break;
+				}
+			}
+		}
+		drm_connector_list_iter_end(&conn_iter);
+
+		/* If we found a connector, break out of the encoder loop too */
+		if (other_sde_conn)
+			break;
+	}
+
+	return conn_id;
 }

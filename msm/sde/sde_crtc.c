@@ -275,6 +275,52 @@ enum sde_wb_usage_type sde_crtc_get_wb_usage_type(struct drm_crtc *crtc)
 	return usage_type;
 }
 
+int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc)
+{
+	struct drm_connector *conn;
+	struct drm_connector_list_iter conn_iter;
+	struct sde_connector *sde_conn = NULL;
+
+	drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		sde_conn = to_sde_connector(conn);
+		if (conn->state && (conn->state->crtc == crtc))
+			return sde_conn->reproj_conn ? sde_conn->reproj_conn->type : 0;
+	}
+	drm_connector_list_iter_end(&conn_iter);
+	return 0;
+}
+
+int sde_crtc_update_lsr_perf(struct drm_crtc *crtc)
+{
+	struct drm_connector *conn;
+	struct sde_connector *c_conn = NULL;
+	struct drm_connector_list_iter conn_iter;
+	struct sde_lsr_perf perf = {0};
+	bool is_lsr = false;
+	struct sde_crtc_state *sde_cstate = NULL;
+
+	drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		if (conn->state && (conn->state->crtc == crtc)) {
+			c_conn = to_sde_connector(conn);
+			is_lsr = c_conn->reproj_conn ? true : false;
+			break;
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	if (is_lsr && crtc->state) {
+		sde_cstate = to_sde_crtc_state(crtc->state);
+		perf.bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_DRAM_AB);
+		perf.clk_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_CORE_CLK);
+		sde_wb_update_lsr_perf(conn, c_conn->display, perf);
+	}
+
+	return 0;
+}
+
+
 static void _sde_crtc_check_loopback_pstates(struct drm_crtc_state *crtc_state)
 {
 	struct drm_plane *plane;
@@ -3115,6 +3161,33 @@ static int _sde_validate_hw_resources(struct sde_crtc *sde_crtc,
 	return 0;
 }
 
+static struct hfi_cmdbuf_t *_sde_crtc_get_cmd_buf(struct drm_crtc *crtc)
+{
+	u32 disp_id = 0;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_kms *hfi_kms = NULL;
+	struct msm_drm_private *priv = NULL;
+
+	if (crtc && crtc->dev && crtc->dev->dev_private) {
+		priv = crtc->dev->dev_private;
+		hfi_kms = ((priv && priv->kms) ?
+				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
+	}
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
+		return NULL;
+	}
+
+	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return NULL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	return cmd_buf;
+}
+
 /**
  * _sde_crtc_dest_scaler_setup - Set up dest scaler block
  * @crtc: Pointer to drm crtc
@@ -3126,12 +3199,17 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 	struct sde_hw_mixer *hw_lm;
 	struct sde_hw_ctl *hw_ctl;
 	struct sde_hw_ds *hw_ds;
+	struct sde_hw_dspp *hw_dspp;
 	struct sde_hw_ds_cfg *cfg;
 	struct sde_kms *kms;
 	u32 op_mode = 0;
 	u32 lm_idx = 0, num_mixers = 0;
 	int i, count = 0;
 	enum msm_disp_op disp_op;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_util_u32_prop_helper *color_props = NULL;
+	u32 disp_id = 0, ret = 0, dspp_start_idx = DSPP_MAX;
+	bool dest_scaler_set = false;
 
 	if (!crtc)
 		return;
@@ -3166,9 +3244,29 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 				continue;
 
 			lm_idx = cfg->idx;
+			hw_dspp = sde_crtc->mixers[lm_idx].hw_dspp;
+			if (hw_dspp && hw_dspp->idx < dspp_start_idx) {
+				dspp_start_idx = hw_dspp->idx;
+			}
+		}
+		for (i = 0; i < count; i++) {
+			cfg = &cstate->ds_cfg[i];
+
+			if (!cfg->flags)
+				continue;
+
+			lm_idx = cfg->idx;
 			hw_lm  = sde_crtc->mixers[lm_idx].hw_lm;
 			hw_ctl = sde_crtc->mixers[lm_idx].hw_ctl;
 			hw_ds  = sde_crtc->mixers[lm_idx].hw_ds;
+			hw_dspp = sde_crtc->mixers[lm_idx].hw_dspp;
+
+			hw_ds->ctl = hw_ctl;
+			if (IS_DISP_OP_HFI(disp_op))
+				hw_ds->prop_helper = sde_crtc->hfi_crtc->color_props;
+			hw_ds->dspp_idx = hw_dspp->idx;
+			hw_ds->dspp_start_idx = dspp_start_idx;
+			hw_ds->num_mixers = num_mixers;
 
 			/* Setup op mode - Dual/single */
 			if (cfg->flags & SDE_DRM_DESTSCALER_ENABLE)
@@ -3185,10 +3283,12 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 			if ((cfg->flags & SDE_DRM_DESTSCALER_SCALE_UPDATE) ||
 				(cfg->flags &
 					SDE_DRM_DESTSCALER_ENHANCER_UPDATE)) {
-				if (hw_ds->ops.setup_scaler[disp_op])
+				if (hw_ds->ops.setup_scaler[disp_op]) {
 					hw_ds->ops.setup_scaler[disp_op](hw_ds,
 						&cfg->scl3_cfg,
-						&cstate->scl3_lut_cfg);
+						&cstate->scl3_lut_cfg, disp_op, cfg->merge_mode);
+					dest_scaler_set = true;
+				}
 
 			}
 
@@ -3198,6 +3298,26 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 			if (hw_ctl && hw_ctl->ops.update_bitmask_mixer[disp_op])
 				hw_ctl->ops.update_bitmask_mixer[disp_op](
 						hw_ctl, hw_lm->idx, 1);
+		}
+
+		if (disp_op == MSM_DISP_OP_HFI && dest_scaler_set) {
+			cmd_buf = _sde_crtc_get_cmd_buf(crtc);
+			disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+			color_props = hw_ds->prop_helper;
+
+			ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+				cmd_buf,
+				HFI_COMMAND_DISPLAY_SET_PROPERTY,
+				disp_id,
+				HFI_PAYLOAD_TYPE_U32_ARRAY,
+				hfi_util_u32_prop_helper_get_payload_addr(color_props),
+				hfi_util_u32_prop_helper_get_size(color_props),
+				HFI_HOST_FLAGS_NONE);
+
+			if (ret)
+				SDE_ERROR("failed to set HFI prop\n");
+
+			hfi_util_u32_prop_helper_reset(color_props);
 		}
 	}
 }
@@ -5103,33 +5223,6 @@ static void _sde_crtc_clear_all_blend_stages(struct sde_crtc *sde_crtc)
 	}
 }
 
-static struct hfi_cmdbuf_t *_sde_crtc_get_cmd_buf(struct drm_crtc *crtc)
-{
-	u32 disp_id = 0;
-	struct hfi_cmdbuf_t *cmd_buf = NULL;
-	struct hfi_kms *hfi_kms = NULL;
-	struct msm_drm_private *priv = NULL;
-
-	if (crtc && crtc->dev && crtc->dev->dev_private) {
-		priv = crtc->dev->dev_private;
-		hfi_kms = ((priv && priv->kms) ?
-				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
-	}
-	if (!hfi_kms) {
-		SDE_ERROR("invalid hfi_kms\n");
-		return NULL;
-	}
-
-	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
-	if (disp_id == U32_MAX) {
-		SDE_ERROR("invalid display id\n");
-		return NULL;
-	}
-
-	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
-	return cmd_buf;
-}
-
 static void _sde_crtc_validate_lm_rois(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc;
@@ -6448,8 +6541,13 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	drm_for_each_encoder_mask(encoder, crtc->dev,
 			crtc->state->encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, NULL, NULL);
+
 		if (IS_DISP_OP_HFI(priv->disp_op))
 			sde_encoder_register_display_power_event_callback(encoder, NULL, NULL);
+
+		if (IS_DISP_OP_HFI(priv->disp_op))
+			sde_encoder_register_panel_dead_event_callback(encoder, false);
+
 		cstate->rsc_client = NULL;
 		cstate->rsc_update = false;
 
@@ -6608,9 +6706,14 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 
 	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, sde_crtc_frame_event_cb, crtc);
+
 		if (IS_DISP_OP_HFI(priv->disp_op))
 			sde_encoder_register_display_power_event_callback(encoder,
 					sde_crtc_power_event_cb, crtc);
+
+		if (IS_DISP_OP_HFI(priv->disp_op))
+			sde_encoder_register_panel_dead_event_callback(encoder, true);
+
 		sde_crtc_static_img_control(crtc, CACHE_STATE_NORMAL,
 				sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE));
 	}
@@ -7455,6 +7558,22 @@ static int _sde_crtc_atomic_check(struct drm_crtc *crtc,
 	}
 
 	disp_op = sde_crtc_get_disp_op(crtc);
+
+	/*
+	 * Copy the capture mode to wb connector state, so that it can be
+	 * used by the hfi property mappings.
+	 */
+	if (disp_op == MSM_DISP_OP_HFI) {
+		struct sde_connector_state *sde_conn_state;
+
+		sde_conn_state = _sde_crtc_get_sde_connector_state(crtc, state->state);
+		if (sde_conn_state &&
+			sde_conn_state->base.connector->connector_type ==
+			DRM_MODE_CONNECTOR_VIRTUAL)
+			sde_conn_state->capture_mode =
+				sde_crtc_get_property(cstate, CRTC_PROP_CAPTURE_OUTPUT);
+	}
+
 	if (sde_crtc->hal_ops.atomic_check[disp_op]) {
 		rc = sde_crtc->hal_ops.atomic_check[disp_op](sde_crtc, cstate);
 		if (rc)

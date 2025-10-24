@@ -1021,6 +1021,7 @@ struct sde_connector {
  * @reproj_disp_im_h: Reprojection display image height
  * @reproj_tile_h: Reprojection tile height
  * @reproj_min_bbox_h: Reprojection minimum bbox height
+ * @capture_mode: capture mode for WB
  */
 struct sde_connector_state {
 	struct drm_connector_state base;
@@ -1073,6 +1074,7 @@ struct sde_connector_state {
 	u32 reproj_disp_im_h;
 	u32 reproj_tile_h;
 	u32 reproj_min_bbox_h;
+	u32 capture_mode;
 };
 
 /**
@@ -1548,10 +1550,17 @@ int sde_connector_set_dyn_bit_clk(struct drm_connector *conn, uint64_t value);
 
 /**
  * sde_connector_schedule_status_work - manage ESD thread
- * conn: Pointer to drm_connector struct
+ * @conn: Pointer to drm_connector struct
  * @en: flag to start/stop ESD thread
  */
 void sde_connector_schedule_status_work(struct drm_connector *conn, bool en);
+
+/**
+ * sde_connector_report_panel_dead - report panel dead
+ * @conn: Pointer to sde_connector struct
+ * @skip_pre_kickoff: flag to skip_pre_kickoff
+ */
+void sde_connector_report_panel_dead(struct sde_connector *conn, bool skip_pre_kickoff);
 
 /**
  * sde_connector_helper_reset_properties - reset properties to default values in
@@ -1716,15 +1725,7 @@ int sde_connector_get_mode_info(struct drm_connector *conn,
  * sde_conn_get_display_obj_id - helper to provide display object unique id
  * @conn: Pointer to drm_connector struct
  */
-static inline u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
-{
-	struct sde_connector *sde_conn = to_sde_connector(conn);
-
-	if (!sde_conn)
-		return U32_MAX;
-
-	return sde_conn->conn_id;
-}
+u32 sde_conn_get_display_obj_id(struct drm_connector *conn);
 
 /**
  * sde_conn_timeline_status - current buffer timeline status

@@ -2604,6 +2604,7 @@ static int __init msm_drm_register(void)
 		return -EINVAL;
 
 	DBG("init");
+	msm_lsr_init();
 	sde_rsc_rpmh_register();
 	sde_rsc_register();
 	sde_cesta_register();
@@ -2638,6 +2639,7 @@ static void __exit msm_drm_unregister(void)
 	sde_cesta_unregister();
 	sde_rsc_unregister();
 	sde_shd_unregister();
+	msm_lsr_exit();
 	platform_driver_unregister(&msm_platform_driver);
 }
 
