@@ -8,7 +8,7 @@
 #include "sde_hw_ds.h"
 #include "sde_formats.h"
 #include "sde_dbg.h"
-#include "sde_kms.h"
+#include "sde_hw_color_processing.h"
 
 /* Destination scaler TOP registers */
 #define DEST_SCALER_OP_MODE     0x00
@@ -53,12 +53,11 @@ static void sde_hw_ds_setup_opmode_v1(struct sde_hw_ds *hw_ds, u32 op_mode,
 	SDE_REG_WRITE(hw, DEST_SCALER_MERGE_CTRL + hw_ds->scl->base, op_mode);
 }
 
-static void sde_hw_ds_setup_scaler3(struct sde_hw_ds *hw_ds,
-			void *scaler_cfg, void *scaler_lut_cfg)
+static void sde_hw_ds_setup_scaler3(struct sde_hw_ds *hw_ds, void *scaler_cfg, void *scaler_lut_cfg,
+	enum msm_disp_op disp_op, u32 merge_mode)
 {
 	struct sde_hw_scaler3_cfg *scl3_cfg = scaler_cfg;
 	struct sde_hw_scaler3_lut_cfg *scl3_lut_cfg = scaler_lut_cfg;
-
 	bool de_lpf_en = false;
 
 	if (!hw_ds || !hw_ds->scl || !scl3_cfg || !scl3_lut_cfg)
@@ -76,16 +75,30 @@ static void sde_hw_ds_setup_scaler3(struct sde_hw_ds *hw_ds,
 		scl3_cfg->sep_len = scl3_lut_cfg->sep_len;
 	}
 
-
 	if (test_bit(SDE_DS_DE_LPF_BLEND, &hw_ds->scl->features))
 		de_lpf_en = true;
-	sde_hw_setup_scaler3(&hw_ds->hw, scl3_cfg, hw_ds->scl->version,
-			 hw_ds->scl->base,
-			 sde_get_sde_format(DRM_FORMAT_XBGR2101010), de_lpf_en);
+
+	if (disp_op == MSM_DISP_OP_HWIO) {
+		sde_hw_setup_scaler3(&hw_ds->hw, scl3_cfg, hw_ds->scl->version,
+			hw_ds->scl->base, sde_get_sde_format(DRM_FORMAT_XBGR2101010),
+			de_lpf_en);
+	} else if (disp_op == MSM_DISP_OP_HFI) {
+		reg_dmav1_setup_ds_qseed3(hw_ds, scl3_cfg,
+			sde_get_sde_format(DRM_FORMAT_XBGR2101010), de_lpf_en, merge_mode);
+	}
 }
 
-static void _setup_ds_ops(struct sde_hw_ds_ops *ops, unsigned long features)
+static void _setup_opmode_null_imp(struct sde_hw_ds *hw_ds, u32 op_mode, u32 merge_mode)
+{}
+
+static void _setup_scaler3_null_imp(struct sde_hw_ds *hw_ds, void *scaler_cfg, void *scaler_lut_cfg,
+	enum msm_disp_op disp_op, u32 merge_mode)
+{}
+
+static void _setup_ds_ops(struct sde_hw_ds_ops *ops, unsigned long features,
+	struct sde_hw_ds *hw_ds)
 {
+	int ret;
 
 	if (test_bit(SDE_DS_MERGE_CTRL, &features))
 		ops->setup_opmode[MSM_DISP_OP_HWIO] = sde_hw_ds_setup_opmode_v1;
@@ -95,6 +108,13 @@ static void _setup_ds_ops(struct sde_hw_ds_ops *ops, unsigned long features)
 	if (test_bit(SDE_SSPP_SCALER_QSEED3, &features) ||
 			test_bit(SDE_SSPP_SCALER_QSEED3LITE, &features))
 		ops->setup_scaler[MSM_DISP_OP_HWIO] = sde_hw_ds_setup_scaler3;
+
+	ops->setup_opmode[MSM_DISP_OP_HFI] = _setup_opmode_null_imp;
+	ops->setup_scaler[MSM_DISP_OP_HFI] = sde_hw_ds_setup_scaler3;
+
+	ret = reg_dmav1_init_ds_ops(hw_ds);
+	if (ret)
+		ops->setup_scaler[MSM_DISP_OP_HFI] = _setup_scaler3_null_imp;
 }
 
 static struct sde_ds_cfg *_ds_offset(enum sde_ds ds,
@@ -124,12 +144,13 @@ static struct sde_ds_cfg *_ds_offset(enum sde_ds ds,
 
 struct sde_hw_blk_reg_map *sde_hw_ds_init(enum sde_ds idx,
 			void __iomem *addr,
-			struct sde_mdss_cfg *m)
+			struct sde_mdss_cfg *m,
+			struct sde_kms *sde_kms)
 {
 	struct sde_hw_ds *hw_ds;
 	struct sde_ds_cfg *cfg;
 
-	if (!addr || !m)
+	if (!addr || !m || !sde_kms || !sde_kms->dev || !sde_kms->dev->primary)
 		return ERR_PTR(-EINVAL);
 
 	hw_ds = kzalloc(sizeof(*hw_ds), GFP_KERNEL);
@@ -145,8 +166,12 @@ struct sde_hw_blk_reg_map *sde_hw_ds_init(enum sde_ds idx,
 
 	/* Assign ops */
 	hw_ds->idx = idx;
+	hw_ds->dpu_idx = sde_kms->dev->primary->index;
 	hw_ds->scl = cfg;
-	_setup_ds_ops(&hw_ds->ops, hw_ds->scl->features);
+	hw_ds->is_qseed3_lite = ((m->qseed_sw_lib_rev == SDE_SSPP_SCALER_QSEED3LITE) ?
+			true : false);
+
+	_setup_ds_ops(&hw_ds->ops, hw_ds->scl->features, hw_ds);
 
 	if (m->qseed_hw_rev)
 		hw_ds->scl->version = m->qseed_hw_rev;
@@ -163,6 +188,8 @@ struct sde_hw_blk_reg_map *sde_hw_ds_init(enum sde_ds idx,
 
 void sde_hw_ds_destroy(struct sde_hw_blk_reg_map *hw)
 {
-	if (hw)
+	if (hw) {
+		reg_dmav1_deinit_ds_ops(to_sde_hw_ds(hw));
 		kfree(to_sde_hw_ds(hw));
+	}
 }

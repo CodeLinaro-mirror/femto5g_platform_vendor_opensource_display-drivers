@@ -1355,8 +1355,11 @@ static int _sde_connector_update_dirty_properties(
 {
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
+	enum msm_disp_op disp_op;
 	int idx;
 	u32 b_lvl;
+	bool is_roi_dirty = false;
+	bool is_lp_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1365,17 +1368,22 @@ static int _sde_connector_update_dirty_properties(
 
 	c_conn = to_sde_connector(connector);
 	c_state = to_sde_connector_state(connector->state);
+	disp_op = sde_connector_get_disp_op(connector);
 
 	mutex_lock(&c_conn->property_info.property_lock);
 	while ((idx = msm_property_pop_dirty(&c_conn->property_info,
 					&c_state->property_state)) >= 0) {
 		switch (idx) {
 		case CONNECTOR_PROP_LP:
-			mutex_lock(&c_conn->lock);
-			c_conn->lp_mode = sde_connector_get_property(
-					connector->state, CONNECTOR_PROP_LP);
-			_sde_connector_update_power_locked(c_conn);
-			mutex_unlock(&c_conn->lock);
+			if (disp_op == MSM_DISP_OP_HWIO) {
+				mutex_lock(&c_conn->lock);
+				c_conn->lp_mode = sde_connector_get_property(
+						connector->state, CONNECTOR_PROP_LP);
+				_sde_connector_update_power_locked(c_conn);
+				mutex_unlock(&c_conn->lock);
+			} else {
+				is_lp_dirty = true;
+			}
 			break;
 		case CONNECTOR_PROP_HDR_METADATA:
 			_sde_connector_update_hdr_metadata(c_conn, c_state);
@@ -1385,12 +1393,25 @@ static int _sde_connector_update_dirty_properties(
 						CONNECTOR_PROP_BRIGHTNESS);
 			backlight_device_set_brightness(c_conn->bl_device, b_lvl);
 			break;
+		case CONNECTOR_PROP_ROI_V1:
+			is_roi_dirty = true;
+			break;
 		default:
 			/* nothing to do for most properties */
 			break;
 		}
 	}
 	mutex_unlock(&c_conn->property_info.property_lock);
+
+	if (disp_op == MSM_DISP_OP_HFI && is_roi_dirty) {
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_ROI_V1);
+	}
+
+	/* If HFI mode and LP property is dirty - add to the dirty list */
+	if ((disp_op == MSM_DISP_OP_HFI) && is_lp_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+				&c_state->property_state, CONNECTOR_PROP_LP);
 
 	/* if colorspace needs to be updated do it first */
 	if (c_conn->colorspace_updated) {
@@ -1565,12 +1586,10 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		display->queue_cmd_waits = true;
 	}
 
-	if (disp_op == MSM_DISP_OP_HWIO) {
-		rc = _sde_connector_update_dirty_properties(connector);
-		if (rc) {
-			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
-			goto end;
-		}
+	rc = _sde_connector_update_dirty_properties(connector);
+	if (rc) {
+		SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+		goto end;
 	}
 
 	/* Send VHM commands post BRIGHTNESS updates */

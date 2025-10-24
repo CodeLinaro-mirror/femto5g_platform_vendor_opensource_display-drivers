@@ -93,6 +93,14 @@ struct hfi_display_roi {
 };
 
 /*
+ * enum hfi_display_roi_type - type of destination ROI programming
+ * @PANEL_ROI: ROI is panel ROI
+ */
+enum hfi_display_roi_type {
+	PANEL_ROI = 0x0,
+};
+
+/*
  * struct hfi_display_vsync_data - vsync data
  * @timestamp_lo    :  lower value of 64bit vsync timestamp in ns
  * @timestamp_hi    :  higher value of 64bit vsync timestamp in ns
