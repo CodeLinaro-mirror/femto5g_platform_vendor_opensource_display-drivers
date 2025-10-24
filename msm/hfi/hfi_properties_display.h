@@ -959,6 +959,120 @@
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG                       0x00020116
 
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_INIT - This property is to setup LTM initialization params.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_INIT
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_INIT \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_ltm_init_param)/4)
+ * ^                             | * num_dspps) << 24)
+ *   (u32_value) payload [1]     | array of struct hfi_display_ltm_init_param
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_INIT                          0x00020117
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_CFG - This property is to setup LTM configuration params.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_CFG
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_CFG \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_ltm_cfg_param)/4)
+ * ^                             | * num_dspps) << 24)
+ *   (u32_value) payload [1]     | array of struct hfi_display_ltm_cfg_param
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_CFG                           0x00020118
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_NOISE_THRESH - This property is to setup LTM noise threshold.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_NOISE_THRESH
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_NOISE_THRESH \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) * num_dspps) << 24)
+ *   (u32_value) payload [1]     | array of u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_NOISE_THRESH                  0x00020119
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_HIST_CTRL - This property is to setup LTM histogram control.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_HIST_CTRL
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_HIST_CTRL \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4 * num_dspps) << 24)
+ *   (u32_value) payload [1]     | array of u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_HIST_CTRL                     0x0002011A
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_VLUT - This property is to setup LTM VLUT table.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_VLUT
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_VLUT \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_VLUT                          0x0002011B
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_QUEUE_BUF - This property is to setup LTM initial params.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_QUEUE_BUF
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_QUEUE_BUF \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_ltm_buffer)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_display_ltm_buffer
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_QUEUE_BUF                     0x0002011C
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS - This property is to setup LTM initial params.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS                    0x0002011D
+
 /*
  * All display color properties end here
  */

@@ -190,4 +190,127 @@ struct hfi_qrtc_config {
 	u32 format;
 };
 
+/**
+ * @brief LTM stats data sizes
+ *
+ * @details
+ * - HFI_LTM_DATA_SIZE_0: LTM data size for stats 0
+ * - HFI_LTM_DATA_SIZE_1: LTM data size for stats 1
+ * - HFI_LTM_DATA_SIZE_2: LTM data size for stats 2
+ * - HFI_LTM_BLOCK_MAX: Maximum number of LTM blocks
+ */
+#define HFI_LTM_DATA_SIZE_0        32
+#define HFI_LTM_DATA_SIZE_1        128
+#define HFI_LTM_DATA_SIZE_2        256
+#define HFI_LTM_BLOCK_MAX          4
+
+/**
+ * @brief LTM stats status_flag bitmask used in hfi_display_ltm_stats_data
+ *
+ * @details
+ * - HFI_LTM_STATS_SAT: LTM stats saturation
+ * - HFI_LTM_STATS_MERGE_SAT: LTM stats merge saturation
+ */
+#define HFI_LTM_STATS_SAT          (1 << 1)
+#define HFI_LTM_STATS_MERGE_SAT    (1 << 2)
+
+#define HFI_LTM_HIST_DONE                   (1 << 0)
+#define HFI_LTM_WB_PB                       (1 << 1)
+#define HFI_LTM_HIST_OFF                    (1 << 2)
+
+/**
+ * struct hfi_display_ltm_init_param - LTM init params structure
+ * @flags: for customizing operations
+ * @init_param_01: init param 1
+ * @init_param_02: init param 2
+ * @init_param_03: init param 3
+ * @init_param_04: init param 4
+ */
+struct hfi_display_ltm_init_param {
+	u32 flags;
+	u32 init_param_01;
+	u32 init_param_02;
+	u32 init_param_03;
+	u32 init_param_04;
+};
+
+/**
+ * struct hfi_display_ltm_cfg_param - LTM cfg params structure
+ * @flags: for customizing operations
+ * @cfg_param_01: cfg param 1
+ * @cfg_param_02: cfg param 2
+ * @cfg_param_03: cfg param 3
+ * @cfg_param_04: cfg param 4
+ * @cfg_param_05: cfg param 5
+ * @cfg_param_06: cfg param 6
+ */
+struct hfi_display_ltm_cfg_param {
+	u32 flags;
+	u32 cfg_param_01;
+	u32 cfg_param_02;
+	u32 cfg_param_03;
+	u32 cfg_param_04;
+	u32 cfg_param_05;
+	u32 cfg_param_06;
+};
+
+/**
+ * struct hfi_display_ltm_buffer - LTM buffer structure.
+ * This struct is maintained in firmware and will be passed between HLOS driver and DCP firmware
+ * for sharing LTM stats data.
+ * @flags: for customizing operations
+ * @dpu_iova: dpu virtual address of the buffer
+ * @dcp_addr: dcp address of the buffer
+ * @size: size of hfi_display_ltm_stats_data
+ */
+struct hfi_display_ltm_buffer {
+	u32 flags;
+	u32 dpu_iova_l;
+	u32 dpu_iova_h;
+	u32 dcp_addr_l;
+	u32 dcp_addr_h;
+	u32 size;
+};
+
+/**
+ * struct hfi_display_ltm_stats_data - LTM stats data structure.
+ */
+struct hfi_display_ltm_stats_data {
+	u32 stats_01[HFI_LTM_DATA_SIZE_0][HFI_LTM_DATA_SIZE_1];
+	u32 stats_02[HFI_LTM_DATA_SIZE_2];
+	u32 stats_03[HFI_LTM_DATA_SIZE_0];
+	u32 stats_04[HFI_LTM_DATA_SIZE_0];
+	u32 stats_05[HFI_LTM_DATA_SIZE_0];
+	u32 status_flag;
+	u32 display_h;
+	u32 display_v;
+	u32 init_h[HFI_LTM_BLOCK_MAX];
+	u32 init_v;
+	u32 inc_h;
+	u32 inc_v;
+	u32 portrait_en;
+	u32 merge_en;
+	u32 cfg_param_01;
+	u32 cfg_param_02;
+	u32 cfg_param_03;
+	u32 cfg_param_04;
+	u32 feature_flag;
+	u32 checksum;
+};
+
+/*!
+ * @struct hfi_display_ltm_event_resp
+ * @brief LTM event struct. This structure will be used to send the DCP address of stats buffer
+ * which must match the DCP address of one of the LTM buffers in circulation.
+ *
+ * @event_type: type of LTM event i.e. HIST_DONE, WB_PB, HIST_OFF
+ * @dcp_addr_h: higher value of 64bit dcp address of LTM stats buffer
+ * @dcp_addr_l: lower value of 64bit dcp address of LTM stats buffer
+ */
+struct hfi_display_ltm_event_resp {
+	u32 event_type;
+	u32 dcp_addr_h;
+	u32 dcp_addr_l;
+};
+
 #endif // __H_HFI_DEFS_DISPLAY_COLOR_H__
