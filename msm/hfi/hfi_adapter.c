@@ -593,14 +593,6 @@ int hfi_adapter_client_register(struct hfi_adapter_t *host, struct hfi_client_t 
 	/* Initialize client's packet litener list */
 	INIT_LIST_HEAD(&ctx->packet_listeners.list_ptr);
 
-	/* Initialise shared addr data lock and list */
-	spin_lock_init(&ctx->shared_addr_data.slock);
-	INIT_LIST_HEAD(&ctx->shared_addr_data.list);
-
-	/* Initialize sgt shared addr data lock and list */
-	spin_lock_init(&ctx->sgt_addr_data.slock);
-	INIT_LIST_HEAD(&ctx->sgt_addr_data.list);
-
 	mutex_init(&ctx->listener_lock);
 	ctx->host = host;
 	list_add_tail(&ctx->node, &host->client_list);
@@ -1427,34 +1419,6 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx)
 	HFI_AD_DEBUG("Freeing %d buffers on close\n", i);
 }
 
-static int remove_addr_map_node(struct hfi_fw_shared_addr_info *addr_map_list, unsigned long iova)
-{
-	bool found = false;
-	struct hfi_shared_addr_map *addr_map_pos, *addr_map_next;
-
-	if (!iova) {
-		HFI_AD_ERROR("invalid input param\n");
-		return -EINVAL;
-	}
-
-	spin_lock(&addr_map_list->slock);
-	list_for_each_entry_safe(addr_map_pos, addr_map_next, &addr_map_list->list, node) {
-		if (addr_map_pos->alloc_info.mapped_iova == iova) {
-			list_del(&addr_map_pos->node);
-			found = true;
-			break;
-		}
-	}
-	spin_unlock(&addr_map_list->slock);
-
-	if (!found) {
-		HFI_AD_ERROR("failed to find entry to delete (IOVA: %lx)\n", iova);
-		return -EINVAL;
-	}
-
-	return 0;
-}
-
 int hfi_adapter_buffer_alloc(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map)
 {
 	int ret = 0;
@@ -1485,12 +1449,6 @@ int hfi_adapter_buffer_alloc(struct hfi_client_t *ctx, struct hfi_shared_addr_ma
 		return -EINVAL;
 	}
 
-	INIT_LIST_HEAD(&addr_map->node);
-	/* save the details in client context list for possible future ssr sequence cleanup */
-	spin_lock(&ctx->shared_addr_data.slock);
-	list_add_tail(&addr_map->node, &ctx->shared_addr_data.list);
-	spin_unlock(&ctx->shared_addr_data.slock);
-
 	return ret;
 }
 
@@ -1518,11 +1476,6 @@ int hfi_adapter_buffer_dealloc(struct hfi_client_t *ctx, struct hfi_shared_addr_
 	if (ret)
 		HFI_AD_ERROR("failed to deallocate shared buffer, ret: %d\n", ret);
 
-	/* remove from client context list */
-	ret = remove_addr_map_node(&ctx->shared_addr_data, alloc_info->mapped_iova);
-	if (ret)
-		HFI_AD_ERROR("failed to find entry to delete, ret: %d\n", ret);
-
 	alloc_info->mapped_iova = 0;
 	alloc_info->cpu_va = NULL;
 
@@ -1549,12 +1502,6 @@ int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
 	}
 	addr_map->remote_addr = addr_map->alloc_info.mapped_iova;
 
-	/* save the details in client context list for possible future ssr sequence cleanup */
-	INIT_LIST_HEAD(&addr_map->node);
-	spin_lock(&ctx->sgt_addr_data.slock);
-	list_add_tail(&addr_map->node, &ctx->sgt_addr_data.list);
-	spin_unlock(&ctx->sgt_addr_data.slock);
-
 	return ret;
 }
 
@@ -1570,13 +1517,6 @@ int hfi_adapter_unmap_sg_table(struct hfi_client_t *ctx, unsigned long iova, siz
 	ret = hfi_core_unmap_iova(iova, size);
 	if (ret) {
 		HFI_AD_ERROR("failed to unmap iova, ret:%d\n", ret);
-		return ret;
-	}
-
-	/* remove from client context list */
-	ret = remove_addr_map_node(&ctx->sgt_addr_data, iova);
-	if (ret) {
-		HFI_AD_ERROR("failed to find entry to delete, ret: %d\n", ret);
 		return ret;
 	}
 
@@ -1630,98 +1570,6 @@ int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t 
 	if (ret) {
 		HFI_AD_ERROR("failed to unmap iova, ret:%d\n", ret);
 		return ret;
-	}
-
-	return ret;
-}
-
-int hfi_adapter_ssr_unmap_device_addr(struct hfi_client_t *ctx)
-{
-	int ret = 0;
-	struct hfi_shared_addr_map *addr_map_pos, *addr_map_next;
-
-	if (!ctx) {
-		HFI_AD_ERROR("invalid client\n");
-		return -EINVAL;
-	}
-
-	/* unmap device address for shared memory */
-	list_for_each_entry_safe(addr_map_pos, addr_map_next,
-			&ctx->shared_addr_data.list, node) {
-		if (!addr_map_pos || !addr_map_pos->alloc_info.mapped_iova)
-			continue;
-
-		ret = hfi_core_unmap_iova(addr_map_pos->alloc_info.mapped_iova,
-			addr_map_pos->alloc_info.size_allocated);
-		if (ret) {
-			HFI_AD_ERROR(
-				"failed to unmap shared buffer at iova: 0x%lx, ret: %d\n",
-				addr_map_pos->alloc_info.mapped_iova, ret);
-			return -EINVAL;
-		}
-	}
-
-	/* unmap device address for sgt table shared memory */
-	list_for_each_entry_safe(addr_map_pos, addr_map_next,
-			&ctx->sgt_addr_data.list, node) {
-		if (!addr_map_pos || !addr_map_pos->alloc_info.mapped_iova)
-			continue;
-
-		ret = hfi_core_unmap_iova(addr_map_pos->alloc_info.mapped_iova,
-			addr_map_pos->alloc_info.size_allocated);
-		if (ret) {
-			HFI_AD_ERROR(
-				"failed to unmap sgt shared buffer at iova: 0x%lx, ret: %d\n",
-				addr_map_pos->alloc_info.mapped_iova, ret);
-			return -EINVAL;
-		}
-	}
-
-	return ret;
-}
-
-int hfi_adapter_ssr_map_device_addr(struct hfi_client_t *ctx)
-{
-	int ret = 0;
-	struct hfi_shared_addr_map *addr_map_pos, *addr_map_next;
-
-	if (!ctx) {
-		HFI_AD_ERROR("invalid client\n");
-		return -EINVAL;
-	}
-
-	/* re-map device address for shared memory */
-	list_for_each_entry_safe(addr_map_pos, addr_map_next,
-			&ctx->shared_addr_data.list, node) {
-		if (!addr_map_pos || !addr_map_pos->alloc_info.mapped_iova)
-			continue;
-
-		ret = hfi_core_map_iova(&addr_map_pos->alloc_info,
-			HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
-		if (ret) {
-			HFI_AD_ERROR(
-				"failed to map shared buffer at iova: 0x%lx, ret: %d\n",
-				addr_map_pos->alloc_info.mapped_iova, ret);
-			return -EINVAL;
-		}
-		addr_map_pos->remote_addr = addr_map_pos->alloc_info.mapped_iova;
-	}
-
-	/* re-map device address for sgt table shared memory */
-	list_for_each_entry_safe(addr_map_pos, addr_map_next,
-			&ctx->sgt_addr_data.list, node) {
-		if (!addr_map_pos || !addr_map_pos->alloc_info.mapped_iova)
-			continue;
-
-		ret = hfi_core_map_sg_table(&addr_map_pos->alloc_info, addr_map_pos->sgt,
-			addr_map_pos->aligned_size, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
-		if (ret) {
-			HFI_AD_ERROR(
-				"failed to map sgt shared buffer at iova: 0x%lx, ret: %d\n",
-				addr_map_pos->alloc_info.mapped_iova, ret);
-			return -EINVAL;
-		}
-		addr_map_pos->remote_addr = addr_map_pos->alloc_info.mapped_iova;
 	}
 
 	return ret;

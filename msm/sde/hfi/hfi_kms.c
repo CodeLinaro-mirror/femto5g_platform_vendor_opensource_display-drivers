@@ -258,12 +258,6 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 		return rc;
 	}
 
-	rc = hfi_adapter_ssr_unmap_device_addr(hfi_client);
-	if (rc) {
-		DSI_ERR("failed to unmap fw mapped buffers, rc: %d\n", rc);
-		return rc;
-	}
-
 	/* Release all command buffers associated with DPU driver hfi client */
 	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
 	if (rc)
@@ -306,12 +300,6 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 
 	priv = ddev->dev_private;
 	mp = &priv->phandle.mp;
-
-	rc = hfi_adapter_ssr_map_device_addr(hfi_client);
-	if (rc) {
-		DSI_ERR("failed to unmap fw mapped buffers, rc: %d\n", rc);
-		return rc;
-	}
 
 	/* re configure fw with lut dma configs */
 	rc = sde_kms_reinit_device_lut_dma(sde_kms);
