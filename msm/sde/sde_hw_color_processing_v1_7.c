@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.​
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2019, 2021 The Linux Foundation. All rights reserved.
  */
 
@@ -923,7 +923,12 @@ void sde_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 	base = ctx->cap->sblk->hist.base;
 	offset = base + PA_HIST_CTRL_DSPP_OFF;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	op_mode = ctx->pa_opcode;
+#else
 	op_mode = SDE_REG_READ(&ctx->hw, base);
+#endif
+
 	if (!feature_enabled) {
 		op_mode &= ~DSPP_OP_PA_HIST_EN;
 		if (PA_DSPP_DISABLE_REQUIRED(op_mode))
@@ -933,7 +938,13 @@ void sde_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	SDE_REG_WRITE(&ctx->hw, offset, 0);
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	ctx->pa_opcode = op_mode;
+	SDE_REG_MODIFY(&ctx->hw, base,
+			(u32)(DSPP_OP_PA_HIST_EN | DSPP_OP_PA_EN), op_mode);
+#else
 	SDE_REG_WRITE(&ctx->hw, base, op_mode);
+#endif
 }
 
 void sde_read_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg)

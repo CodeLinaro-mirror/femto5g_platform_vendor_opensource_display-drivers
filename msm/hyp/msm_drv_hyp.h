@@ -62,6 +62,14 @@ enum msm_hyp_panel_rotation {
 	PANEL_ROTATE_V_FLIP
 };
 
+enum msm_hyp_panel_colorspace {
+	PANEL_COLORSPACE_NONE	= 0,
+	PANEL_COLORSPACE_SRGB	= 1 << 0,
+	PANEL_COLORSPACE_PQ	= 1 << 1,
+	PANEL_COLORSPACE_GAMMA2_2	= 1 << 2,
+	PANEL_COLORSPACE_HLG	= 1 << 3,
+};
+
 struct display_hw_assigment {
 	uint32_t dpu_id;
 	bool ctl_owner;
@@ -131,6 +139,11 @@ struct msm_hyp_connector_info {
 	const char *display_type;
 	const char *extra_caps;
 	const struct display_hw_assigment *hw_assign;
+	/* HDR */
+	uint32_t panel_colorspace;
+	uint32_t hdr_max_luminance;
+	uint32_t hdr_avg_luminance;
+	uint32_t hdr_min_luminance;
 };
 
 struct msm_hyp_plane_info {

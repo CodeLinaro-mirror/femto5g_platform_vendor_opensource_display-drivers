@@ -52,8 +52,33 @@ enum virq_type_t {
 	VIRQ_TYPE_LUTDMA_VQ,
 	VIRQ_TYPE_ROI_CRC,
 	VIRQ_TYPE_UNDER_RUN,
-	VIRQ_TYPE_MAX,
+	VIRQ_TYPE_STATUS1_INTF_DONE,
+	VIRQ_TYPE_STATUS1_INTF_IRQ,
+	VIRQ_TYPE_STATUS2_DSI,
+	VIRQ_TYPE_STATUS2_DP,
+	VIRQ_TYPE_STATUS2_ROT,
+	VIRQ_TYPE_STATUS3_DSPP_DONE,
+	VIRQ_TYPE_STATUS3_LTM,
+	VIRQ_TYPE_STATUS3_WB1_DONE,
+	VIRQ_TYPE_STATUS3_WB1,
+	VIRQ_TYPE_STATUS3_WB2_DONE,
+	VIRQ_TYPE_STATUS3_WB2,
+	VIRQ_TYPE_STATUS3_CWB_OVERFLOW,
+	VIRQ_TYPE_STATUS3_CWB_2_3OVERFLOW,
+	VIRQ_TYPE_STATUS4_CTL_START,
+	VIRQ_TYPE_STATUS4_DONE,
+	VIRQ_TYPE_STATUS4_FENCE_ERROR,
+	VIRQ_TYPE_STATUS4_PINGPONG_DONE,
+	VIRQ_TYPE_STATUS4_DSC_ENC,
+	VIRQ_TYPE_STATUS5_DSC_CRC_SLICE,
+	VIRQ_TYPE_STATUS6_FETCH_DMA,
+	VIRQ_TYPE_STATUS6_FETCH_VIG,
+	VIRQ_TYPE_STATUS7_VIG_HIST,
+	VIRQ_TYPE_STATUS3_DSPP_RESET_SEQ_DONE,
+	VIRQ_TYPE_STATUS4_VDC_ENC,
+	VIRQ_TYPE_STATUS4_VDC_CRC_SLICE,
 	VIRQ_TYPE_NOT_SUPPORTED,
+	VIRQ_TYPE_MAX,
 };
 
 /**
@@ -169,22 +194,56 @@ struct msm_hyp_irq roi_crc_irqs[] = {
 	{ 0x0080, ROI_CRC_7, SDE_IRQ_TYPE_ROI_MISR, 0 },
 };
 
+/**
+ * Histogram DSPP done interrupt status bit definitions
+ */
+#define SDE_INTR_HIST_DSPP_0_DONE BIT(12)
+#define SDE_INTR_HIST_DSPP_1_DONE BIT(16)
+#define SDE_INTR_HIST_DSPP_2_DONE BIT(20)
+#define SDE_INTR_HIST_DSPP_3_DONE BIT(22)
+
 struct msm_hyp_irq dspp_hist_irqs[] = {
-	{ 0x0001, DSPP_0, 0, 0, },
-	{ 0x0002, DSPP_1, 0, 0, },
-	{ 0x0004, DSPP_2, 0, 0, },
-	{ 0x0008, DSPP_3, 0, 0, },
-	{ 0x0010, DSPP_4, 0, 0, },
-	{ 0x0020, DSPP_5, 0, 0, },
-	{ 0x0040, DSPP_6, 0, 0, },
-	{ 0x0080, DSPP_7, 0, 0, },
+	{ 0x0001, DSPP_0, SDE_IRQ_TYPE_HIST_DSPP_DONE, SDE_INTR_HIST_DSPP_0_DONE, },
+	{ 0x0002, DSPP_1, SDE_IRQ_TYPE_HIST_DSPP_DONE, SDE_INTR_HIST_DSPP_1_DONE, },
+	{ 0x0004, DSPP_2, SDE_IRQ_TYPE_HIST_DSPP_DONE, SDE_INTR_HIST_DSPP_2_DONE, },
+	{ 0x0008, DSPP_3, SDE_IRQ_TYPE_HIST_DSPP_DONE, SDE_INTR_HIST_DSPP_3_DONE, },
+	{ 0x0010, DSPP_4, SDE_IRQ_TYPE_HIST_DSPP_DONE, 0, },
+	{ 0x0020, DSPP_5, SDE_IRQ_TYPE_HIST_DSPP_DONE, 0, },
+	{ 0x0040, DSPP_6, SDE_IRQ_TYPE_HIST_DSPP_DONE, 0, },
+	{ 0x0080, DSPP_7, SDE_IRQ_TYPE_HIST_DSPP_DONE, 0, },
 };
 
 enum sde_intr_type virq_to_sde_irq_map[VIRQ_TYPE_MAX] = {
 	SDE_IRQ_TYPE_INTF_VSYNC,
 	SDE_IRQ_TYPE_LUTDMA_DB,
 	SDE_IRQ_TYPE_ROI_MISR,
-	SDE_IRQ_TYPE_INTF_UNDER_RUN
+	SDE_IRQ_TYPE_INTF_UNDER_RUN,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_HIST_DSPP_DONE,
+	SDE_IRQ_TYPE_LTM_STATS_DONE,
+	SDE_IRQ_TYPE_LTM_STATS_WB_PB,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_HIST_DSPP_RSTSEQ,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED,
+	SDE_IRQ_TYPE_RESERVED
 };
 
 enum virq_type_t sde_irq_to_virq_map[] = {
@@ -201,8 +260,8 @@ enum virq_type_t sde_irq_to_virq_map[] = {
 	/* SDE_IRQ_TYPE_CWB_OVERFLOW			*/ VIRQ_TYPE_NOT_SUPPORTED,
 	/* SDE_IRQ_TYPE_HIST_VIG_DONE			*/ VIRQ_TYPE_NOT_SUPPORTED,
 	/* SDE_IRQ_TYPE_HIST_VIG_RSTSEQ			*/ VIRQ_TYPE_NOT_SUPPORTED,
-	/* SDE_IRQ_TYPE_HIST_DSPP_DONE			*/ VIRQ_TYPE_NOT_SUPPORTED,
-	/* SDE_IRQ_TYPE_HIST_DSPP_RSTSEQ		*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_HIST_DSPP_DONE			*/ VIRQ_TYPE_STATUS3_DSPP_DONE,
+	/* SDE_IRQ_TYPE_HIST_DSPP_RSTSEQ		*/ VIRQ_TYPE_STATUS3_DSPP_RESET_SEQ_DONE,
 	/* SDE_IRQ_TYPE_WD_TIMER				*/ VIRQ_TYPE_NOT_SUPPORTED,
 	/* SDE_IRQ_TYPE_WD_TIMER_1				*/ VIRQ_TYPE_NOT_SUPPORTED,
 	/* SDE_IRQ_TYPE_SFI_VIDEO_IN			*/ VIRQ_TYPE_NOT_SUPPORTED,
@@ -333,7 +392,7 @@ static int msm_hyp_irq_idx_lookup(struct sde_hw_intr *intr,
 
 static int msm_hyp_enable_irq_nolock(struct sde_hw_intr *intr, int irq_idx)
 {
-	SDE_ERROR("msm hyp irq enable\n");
+	SDE_DEBUG("msm hyp irq enable irq_idx %d\n", irq_idx);
 	volatile struct virq_data_t *virq_data = get_virq_shmem_vaddr(intr);
 	if (virq_data == NULL) {
 		SDE_ERROR("virq_data is NULL\n");
@@ -356,7 +415,7 @@ static int msm_hyp_enable_irq_nolock(struct sde_hw_intr *intr, int irq_idx)
 
 static int msm_hyp_disable_irq_nolock(struct sde_hw_intr *intr, int irq_idx)
 {
-	SDE_ERROR("msm hyp irq disable\n");
+	SDE_DEBUG("msm hyp irq disable irq_idx %d\n", irq_idx);
 	volatile struct virq_data_t *virq_data = get_virq_shmem_vaddr(intr);
 	if (virq_data == NULL) {
 		SDE_ERROR("virq_data is NULL\n");
@@ -379,7 +438,7 @@ static int msm_hyp_disable_irq_nolock(struct sde_hw_intr *intr, int irq_idx)
 
 static int msm_hyp_clear_all_irqs(struct sde_hw_intr *intr)
 {
-	SDE_ERROR("msm hyp irq clear all\n");
+	SDE_DEBUG("msm hyp irq clear all\n");
 	volatile struct virq_data_t *virq_data = get_virq_shmem_vaddr(intr);
 	if (virq_data == NULL) {
 		SDE_ERROR("virq_data is NULL\n");
@@ -394,7 +453,7 @@ static int msm_hyp_clear_all_irqs(struct sde_hw_intr *intr)
 
 static int msm_hyp_disable_all_irqs(struct sde_hw_intr *intr)
 {
-	SDE_ERROR("msm hyp irq disable all\n");
+	SDE_DEBUG("msm hyp irq disable all\n");
 	volatile struct virq_data_t *virq_data = get_virq_shmem_vaddr(intr);
 	if (virq_data == NULL) {
 		SDE_ERROR("virq_data is NULL\n");
@@ -458,6 +517,8 @@ static void msm_hyp_dispatch_irqs(struct sde_hw_intr *intr,
 				irq_instance_bitmask &= ~(1u<<(irq_instance_idx - 1));
 				irq_idx = intr->ops.irq_idx_lookup(intr,
 							virq_to_sde_irq_map[irq_payload->irq_type], irq_instance_idx);
+				SDE_DEBUG("irq instance %d irq_idx %d\n", irq_instance_idx,
+						irq_idx);
 				if (irq_idx != -EINVAL)
 				{
 					if (msm_hyp_cbfunc)
@@ -513,7 +574,7 @@ static int msm_hyp_get_interrupt_sources(struct sde_hw_intr *intr, uint32_t *sou
 
 void msm_hyp_irq_update(struct msm_kms *msm_kms, bool enable)
 {
-	SDE_DEBUG("msm hyp irq update\n");
+	SDE_DEBUG("msm hyp irq update enable %d\n", enable);
 	struct sde_kms *sde_kms = to_sde_kms(msm_kms);
 
 	if (!sde_kms) {

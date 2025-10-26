@@ -285,9 +285,7 @@ static int _msm_hyp_planes_init(struct drm_device *ddev)
 	struct msm_hyp_kms *hyp_kms = sde_kms->hyp_kms;
 	struct sde_mdss_cfg *catalog;
 	struct msm_hyp_plane_info *plane_infos[MAX_PLANES];
-	struct msm_hyp_connector_info *connector_infos[MAX_CONNECTORS];
 	struct drm_plane *plane;
-	int conn_num;
 	int num = 0, i;
 	u32 sspp_id[MAX_PLANES];
 	u32 master_plane_id[MAX_PLANES];
@@ -311,10 +309,6 @@ static int _msm_hyp_planes_init(struct drm_device *ddev)
 		return -EINVAL;
 
 	ret = hyp_kms->funcs->get_plane_infos(sde_kms, plane_infos, &num);
-	if (ret)
-		return ret;
-
-	ret = hyp_kms->funcs->get_connector_infos(sde_kms, connector_infos, &conn_num);
 	if (ret)
 		return ret;
 
@@ -549,10 +543,6 @@ void msm_hyp_crtc_commit_done(struct drm_crtc *crtc)
 
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc)
 {
-	if (WARN_ON(!crtc))
-		return;
-
-	drm_crtc_handle_vblank(crtc);
 }
 
 #ifdef CONFIG_PM_SLEEP

@@ -631,6 +631,8 @@ static void sde_encoder_phys_hyp_handle_post_kickoff(
 		struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_hyp *hyp_enc;
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	u32 avr_mode;
 
 	if (!phys_enc) {
 		SDE_ERROR("invalid encoder\n");
@@ -654,6 +656,17 @@ static void sde_encoder_phys_hyp_handle_post_kickoff(
 			phys_enc->enable_state = SDE_ENC_ENABLED;
 		/* Slave DPU Timing engine mux select from Master DPU */
 		}
+	}
+
+	avr_mode = sde_connector_get_qsync_mode(phys_enc->connector);
+	if (avr_mode && hyp_enc->base.hw_intf->ops.avr_trigger &&
+			!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable) {
+		hyp_enc->base.hw_intf->ops.avr_trigger(hyp_enc->base.hw_intf);
+		SDE_EVT32(DRMID(phys_enc->parent),
+				phys_enc->hw_intf->idx - INTF_0,
+				SDE_EVTLOG_FUNC_CASE9);
+		if (sde_enc->disp_info.vrr_caps.video_psr_support)
+			SDE_ERROR("HW fence is disabled. Overriding TE monitor VHM case.\n");
 	}
 }
 

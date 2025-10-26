@@ -1031,14 +1031,23 @@ static int msm_drm_component_init(struct device *dev)
 
 	/* create drm client only when fbdev is not supported */
 	if (!priv->fbdev) {
-		ret = drm_client_init(ddev, &kms->client, "kms_client", NULL);
-		if (ret) {
-			DRM_ERROR("failed to init kms_client: %d\n", ret);
-			kms->client.dev = NULL;
+		kms->client = kzalloc(sizeof(struct drm_client_dev), GFP_KERNEL);
+		if (!kms->client) {
+			ret = -ENOMEM;
+			DRM_ERROR("failed to create kms_client\n");
 			goto fail;
 		}
 
-		drm_client_register(&kms->client);
+		ret = drm_client_init(ddev, kms->client, "kms_client", NULL);
+		if (ret) {
+			DRM_ERROR("failed to init kms_client: %d\n", ret);
+			kms->client->dev = NULL;
+			kfree(kms->client);
+			kms->client = NULL;
+			goto fail;
+		}
+
+		drm_client_register(kms->client);
 	}
 
 	ret = sde_dbg_debugfs_register(dev);
@@ -1202,8 +1211,8 @@ static void msm_lastclose(struct drm_device *dev)
 		rc = drm_fb_helper_restore_fbdev_mode_unlocked(priv->fbdev);
 		if (rc)
 			DRM_ERROR("restore FBDEV mode failed: %d\n", rc);
-	} else if (kms && kms->client.dev) {
-		rc = drm_client_modeset_commit_locked(&kms->client);
+	} else if (kms && kms->client->dev) {
+		rc = drm_client_modeset_commit_locked(kms->client);
 		if (rc)
 			DRM_ERROR("client modeset commit failed: %d\n", rc);
 	}

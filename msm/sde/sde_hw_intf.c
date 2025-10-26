@@ -1577,6 +1577,7 @@ static void _setup_virtual_intf_ops(struct sde_hw_intf_ops *ops,
 	ops->get_underrun_line_count = sde_hw_intf_get_underrun_line_count;
 	ops->get_intr_status = sde_hw_intf_get_intr_status;
 	ops->is_te_32bit_supported = sde_hw_intf_is_te_32bit_supported;
+	ops->avr_trigger = sde_hw_intf_avr_trigger;
 
 	if (cap & BIT(SDE_INTF_STATUS))
 		ops->get_status = sde_hw_intf_v1_get_status;
