@@ -90,6 +90,8 @@ struct virtio_kms_output {
 	bool vblank_enabled;
 	bool hpd_enabled;
 	struct completion commit_done;
+	uint32_t offset_x;
+	uint32_t offset_y;
 };
 
 struct channel_map {
