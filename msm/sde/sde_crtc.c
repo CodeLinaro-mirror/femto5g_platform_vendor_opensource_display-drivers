@@ -1887,7 +1887,8 @@ static int _sde_crtc_check_rois(struct drm_crtc *crtc,
 				  "%s: invalid 3d-merge_w - mixer_w:%d, crtc_w:%d, num_mixers:%d\n",
 					sde_crtc->name, mixer_width,
 					crtc_width, num_mixers);
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 		}
 	}
