@@ -4941,6 +4941,44 @@ end:
 	return ret;
 }
 
+int sde_kms_wait_for_display_off(struct sde_kms *kms)
+{
+	int rc = 0;
+	struct drm_crtc *crtc;
+	struct drm_device *dev;
+	struct drm_crtc_state *crtc_state;
+	bool any_crtc_active = false;
+	int wait_count = 0;
+
+	if (!kms || !kms->dev) {
+		SDE_ERROR("invalid kms\n");
+		return -EINVAL;
+	}
+	dev = kms->dev;
+
+	do {
+		if (any_crtc_active) {
+			if (wait_count++ > 200) {
+				SDE_ERROR("timeout waiting for display off\n");
+				rc = -ETIMEDOUT;
+				break;
+			}
+			usleep_range(1000, 1000 + 10);
+			any_crtc_active = false;
+		}
+		drm_for_each_crtc(crtc, dev) {
+			if (crtc->state && crtc->state->active) {
+				crtc_state = crtc->state;
+				if (crtc_state->active && crtc_state->enable) {
+					any_crtc_active = true;
+					break;
+				}
+			}
+		}
+	} while (any_crtc_active);
+
+	return rc;
+}
 
 void sde_kms_display_early_wakeup(struct drm_device *dev,
 				const int32_t connector_id)

@@ -152,10 +152,12 @@ static int hfi_kms_commit(struct sde_kms *kms,
 	int i, ret = 0;
 	struct drm_crtc *crtc;
 	struct drm_crtc_state *crtc_state;
+	struct hfi_kms *hfi_kms;
 
 	if (!kms || !state)
 		return -EINVAL;
 
+	hfi_kms = to_hfi_kms(kms);
 	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
 		if (crtc->state->active || crtc_state->active) {
 			SDE_DEBUG(" crtc:%d\n", DRMID(crtc));
@@ -251,17 +253,19 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 		return rc;
 	}
 
-	/* Suspend all active displays */
-	rc = sde_kms_suspend_helper(sde_kms);
-	if (rc) {
-		SDE_ERROR("failed sde_kms_suspend_helper rc=%d\n", rc);
-		return rc;
-	}
-
 	/* Release all command buffers associated with DPU driver hfi client */
 	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
 	if (rc)
 		SDE_ERROR("[WARNING] Failed to release command buffers\n");
+
+	/* wait for all display off */
+	rc = sde_kms_wait_for_display_off(sde_kms);
+	if (rc) {
+		SDE_ERROR("failed to wait for display off rc=%d\n", rc);
+		//return rc;
+	}
+
+	SDE_DEBUG("ssr start processing completed\n");
 
 	return rc;
 }
@@ -308,13 +312,6 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 		return rc;
 	}
 
-	/* Resume all connected displays */
-	rc = sde_kms_resume_helper(sde_kms);
-	if (rc) {
-		SDE_ERROR("failed sde_kms_suspend_helper rc=%d\n", rc);
-		return rc;
-	}
-
 	/* Disable MMCX vote for HLOS driver */
 	rc = msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, false);
 	if (rc)
@@ -327,6 +324,8 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 		SDE_ERROR("[WARNING] Failed to notify ssr end event to user mode driver\n");
 
 	atomic_set(&hfi_kms->ssr_in_progress, 0);
+
+	SDE_DEBUG("ssr end processing completed\n");
 
 	return rc;
 }

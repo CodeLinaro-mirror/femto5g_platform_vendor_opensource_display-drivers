@@ -561,6 +561,16 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 	ktime_t cur_ktime;
 	ktime_t exp_ktime = ktime_add_ms(ktime_get(), timeout_ms);
 	u32 curr_atomic_cnt = atomic_read(info->atomic_cnt);
+	struct hfi_kms *hfi_kms;
+	struct sde_kms *sde_kms;
+	struct sde_encoder_virt *sde_enc = hfi_enc->sde_base;
+
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return -EINVAL;
+	}
 
 	do {
 		rc = wait_event_timeout(*(info->wq),
@@ -575,6 +585,10 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 		if ((atomic_read(info->atomic_cnt) <= info->count_check) &&
 			(info->count_check < curr_atomic_cnt)) {
 			rc = true;
+			break;
+		}
+		if (atomic_read(&hfi_kms->ssr_in_progress)) {
+			SDE_ERROR("ssr in progress, return timeout\n");
 			break;
 		}
 	} while ((atomic_read(info->atomic_cnt) != info->count_check) &&
