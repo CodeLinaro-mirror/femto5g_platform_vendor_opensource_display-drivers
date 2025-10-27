@@ -75,6 +75,9 @@
 		(p) ? ((p)->hw_pp ? (p)->hw_pp->idx - PINGPONG_0 : -1) : -1, \
 		##__VA_ARGS__)
 
+#define SDE_WARN_ENC(e, fmt, ...) SDE_WARN("enc%d " fmt,\
+		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
+
 #define SEC_TO_MILLI_SEC		1000
 
 #define MISR_BUFF_SIZE			256
@@ -3484,15 +3487,34 @@ struct drm_connector *sde_encoder_get_connector(
 {
 	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *conn = NULL, *conn_search;
+	struct drm_encoder *enc_search;
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (!sde_enc)
+		return NULL;
 
 	drm_connector_list_iter_begin(dev, &conn_iter);
 	drm_for_each_connector_iter(conn_search, &conn_iter) {
-		if (conn_search->encoder == drm_enc) {
+		if (conn_search->state && conn_search->state->best_encoder)
+			enc_search = conn_search->state->best_encoder;
+		else
+			enc_search = conn_search->encoder;
+
+		if (enc_search == drm_enc) {
 			conn = conn_search;
 			break;
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
+
+
+	if (!conn) {
+		SDE_DEBUG_ENC(sde_enc, "failed to get connector - trying cached connector\n");
+		if (!sde_enc->cached_connector)
+			SDE_WARN_ENC(sde_enc, "failed to get cached connector\n");
+		else
+			conn = sde_enc->cached_connector;
+	}
 
 	return conn;
 }
@@ -4390,6 +4412,10 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 
 	_sde_encoder_virt_enable_helper(drm_enc);
 	sde_encoder_control_te(sde_enc, true);
+
+	sde_enc->cached_connector = sde_encoder_get_connector(drm_enc->dev, drm_enc);
+	if (!sde_enc->cached_connector)
+		SDE_ERROR_ENC(sde_enc, "failed to cache connector\n");
 }
 
 void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
@@ -4577,6 +4603,9 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 
 	if (!sde_encoder_in_clone_mode(drm_enc))
 		sde_encoder_virt_reset(drm_enc);
+
+	/* Reset cached connector to NULL on disable */
+	sde_enc->cached_connector = NULL;
 }
 
 static void _trigger_encoder_hw_fences_override(struct sde_kms *sde_kms, struct sde_hw_ctl *ctl)
