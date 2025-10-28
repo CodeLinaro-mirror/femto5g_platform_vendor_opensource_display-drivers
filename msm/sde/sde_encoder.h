@@ -1460,6 +1460,13 @@ inline enum msm_disp_op sde_encoder_get_disp_op(struct drm_encoder *drm_enc);
 int sde_encoder_helper_inc_pending(struct drm_encoder *drm_enc);
 
 /**
+ * sde_encoder_check_frame_pending - increment pending count on the encoder
+ * @msm_kms: pointer to kms
+ * #drm_crtc: pointer to drm crtc
+ */
+void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc);
+
+/**
  * sde_encoder_cancel_vrr_timers - cancel vrr timers
  * @encoder: pointer to drm_encoder
  */
