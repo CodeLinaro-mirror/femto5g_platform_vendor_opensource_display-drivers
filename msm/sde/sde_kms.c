@@ -2820,6 +2820,10 @@ static int sde_kms_hfi_boot_init(struct sde_kms *sde_kms)
 		return -EPROBE_DEFER;
 	}
 
+	ret = sde_dbg_setup(sde_kms->dev->dev);
+	if (ret)
+		SDE_ERROR("debug setup failed ret: %d\n", ret);
+
 	return ret;
 }
 
