@@ -378,6 +378,8 @@ static void _sde_encoder_phys_vid_raw_te_setup(
 	vid_enc = to_sde_encoder_phys_vid(phys_enc);
 
 	if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable &&
+			(sde_enc->disp_info.vrr_caps.video_psr_support ||
+			sde_enc->disp_info.vrr_caps.arp_support) &&
 		phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op])
 		phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op](phys_enc->hw_ctl, true, true, 1,
 			enable, enable && sde_enc->disp_info.vrr_caps.arp_support);
@@ -528,6 +530,49 @@ static void _sde_encoder_phys_flush_snapshot_setup(struct sde_encoder_phys *phys
 		snapshot_val, enable);
 }
 
+static void sde_encoder_phys_vid_avr_post_kickoff(struct sde_encoder_phys *phys_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_phys_vid *vid_enc;
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
+	u32 avr_mode, qsync_updated, avr_enable;
+
+	vid_enc = to_sde_encoder_phys_vid(phys_enc);
+	avr_mode = sde_connector_get_qsync_mode(phys_enc->connector);
+	qsync_updated = sde_connector_is_qsync_updated(phys_enc->connector);
+	avr_enable = (avr_mode == SDE_RM_QSYNC_DISABLED) ? false : true;
+
+	if (qsync_updated) {
+		/* Enable HW to ARM AVR trigger */
+		if (sde_encoder_phys_vid_is_master(phys_enc) &&
+			phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op] &&
+			phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
+			phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op](phys_enc->hw_ctl, true, true,
+			1, avr_enable, avr_enable && sde_enc->disp_info.vrr_caps.arp_support);
+
+		/* Enable AVR */
+		if (!(sde_enc->disp_info.vrr_caps.video_psr_support ||
+			sde_enc->disp_info.vrr_caps.arp_support) &&
+			(phys_enc->hw_intf &&
+			phys_enc->hw_intf->ops.avr_enable[disp_op]))
+			phys_enc->hw_intf->ops.avr_enable[disp_op](phys_enc->hw_intf, avr_enable);
+	}
+
+	/* ARM SW AVR trigger */
+	if (avr_mode && vid_enc->base.hw_intf->ops.avr_trigger[disp_op] &&
+		!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable && !sde_enc->cesta_client) {
+		vid_enc->base.hw_intf->ops.avr_trigger[disp_op](vid_enc->base.hw_intf);
+		SDE_EVT32(DRMID(phys_enc->parent),
+			phys_enc->hw_intf->idx - INTF_0,
+			SDE_EVTLOG_FUNC_CASE9);
+		if (sde_enc->disp_info.vrr_caps.video_psr_support)
+			SDE_ERROR("HW fence is disabled. Overriding TE monitor VHM case.\n");
+	}
+
+	if (qsync_updated)
+		SDE_EVT32(avr_mode, qsync_updated, avr_enable);
+}
+
 static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 {
 	struct intf_avr_params avr_params;
@@ -572,6 +617,12 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 
 	if (intf->ops.avr_ctrl[disp_op])
 		intf->ops.avr_ctrl[disp_op](intf, &avr_params);
+
+	if ((sde_enc->disp_info.vrr_caps.video_psr_support ||
+			sde_enc->disp_info.vrr_caps.arp_support) &&
+		intf->ops.avr_enable[disp_op])
+		intf->ops.avr_enable[disp_op](phys_enc->hw_intf,
+				avr_params.avr_mode ? true : false);
 
 	if (sde_encoder_vm_primary_vhm_prepare_helper(sde_enc))
 		avr_params.infinite_mode = true;
@@ -1349,7 +1400,7 @@ static void sde_encoder_phys_vid_vblank_irq(void *arg, int irq_idx)
 	u32 flush_register = ~0;
 	u32 reset_status = 0;
 	int new_cnt = -1, old_cnt = -1;
-	u32 event = 0;
+	u32 event = 0, avr_status = 0xebad;
 	int pend_ret_fence_cnt = 0;
 	u32 fence_ready = -1;
 	enum msm_disp_op disp_op;
@@ -1408,6 +1459,8 @@ not_flushed:
 	if (phys_enc->hw_intf->ops.get_status[disp_op])
 		phys_enc->hw_intf->ops.get_status[disp_op](phys_enc->hw_intf,
 			&intf_status);
+	if (phys_enc->hw_intf->ops.get_avr_status[disp_op])
+		avr_status = phys_enc->hw_intf->ops.get_avr_status[disp_op](phys_enc->hw_intf);
 
 	if (flush_register && hw_ctl->ops.get_hw_fence_status[disp_op])
 		fence_ready = hw_ctl->ops.get_hw_fence_status[disp_op](hw_ctl);
@@ -1418,7 +1471,7 @@ not_flushed:
 			flush_register, event,
 			atomic_read(&phys_enc->pending_retire_fence_cnt),
 			intf_status.frame_count, intf_status.line_count,
-			fence_ready, DPUID(phys_enc->parent->dev));
+			fence_ready, avr_status, DPUID(phys_enc->parent->dev));
 
 	if (cesta_client)
 		sde_cesta_get_status(cesta_client, &scc_status);
@@ -2342,6 +2395,7 @@ static void sde_encoder_phys_vid_enact_updated_qsync_state(struct sde_encoder_ph
 	struct sde_cesta_client *cesta_client;
 	enum msm_disp_op disp_op;
 	u32 qsync_min_fps = 0;
+	int power_off_frame = false;
 
 	if (!phys_enc || !phys_enc->parent) {
 		SDE_ERROR("invalid encoder parameters\n");
@@ -2356,6 +2410,10 @@ static void sde_encoder_phys_vid_enact_updated_qsync_state(struct sde_encoder_ph
 			SDE_ERROR("invalid connector state\n");
 			return;
 		}
+
+		if (sde_connector_get_property(phys_enc->connector->state, CONNECTOR_PROP_LP)
+				== SDE_MODE_DPMS_OFF)
+			power_off_frame = true;
 
 		if (sde_enc && sde_enc->disp_info.vrr_caps.arp_support)
 			_sde_encoder_phys_vid_arp_ctrl(phys_enc);
@@ -2373,7 +2431,9 @@ static void sde_encoder_phys_vid_enact_updated_qsync_state(struct sde_encoder_ph
 				 * to active once the avr_ctrl is disabled.
 				 * Add a cesta flush to get the votes active during disable of avr.
 				 */
-				if (!sde_connector_get_qsync_mode(phys_enc->connector)) {
+				if (sde_encoder_phys_vid_is_master(phys_enc) &&
+					!power_off_frame &&
+					!sde_connector_get_qsync_mode(phys_enc->connector)) {
 					cfg.index = cesta_client->scc_index;
 					cfg.vote_state = SDE_CESTA_BW_CLK_NOCHANGE;
 
@@ -2535,7 +2595,6 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 {
 	struct intf_status intf_status = {0};
 	unsigned long lock_flags;
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
 	spin_lock_irqsave(phys_enc->enc_spinlock, lock_flags);
@@ -2574,7 +2633,18 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 	if (phys_enc->hw_intf->ops.enable_timing[disp_op])
 		phys_enc->hw_intf->ops.enable_timing[disp_op](phys_enc->hw_intf, false);
 	sde_encoder_phys_inc_pending(phys_enc);
-	if (sde_enc->disp_info.vrr_caps.video_psr_support)
+
+	if (sde_encoder_phys_vid_is_master(phys_enc) &&
+			phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op]) {
+		if (phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable)
+			phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op](phys_enc->hw_ctl, true, true,
+				1, false, false);
+		else
+			phys_enc->hw_ctl->ops.hw_fence_ctrl[disp_op](phys_enc->hw_ctl, false, false,
+				0, false, false);
+	}
+
+	if (phys_enc->hw_intf->ops.avr_enable[disp_op])
 		phys_enc->hw_intf->ops.avr_enable[disp_op](phys_enc->hw_intf, false);
 
 	spin_unlock_irqrestore(phys_enc->enc_spinlock, lock_flags);
@@ -2820,7 +2890,6 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 	struct drm_connector *drm_conn = phys_enc->connector;
 	struct sde_connector *sde_conn = to_sde_connector(drm_conn);
 	struct drm_connector_state *drm_conn_state = drm_conn->state;
-	u32 avr_mode;
 	u32 ret;
 	enum msm_disp_op disp_op;
 
@@ -2899,17 +2968,7 @@ static void sde_encoder_phys_vid_handle_post_kickoff(
 		phys_enc->esync_pc_exit = false;
 	}
 
-	avr_mode = sde_connector_get_qsync_mode(phys_enc->connector);
-
-	if (avr_mode && vid_enc->base.hw_intf->ops.avr_trigger[disp_op] &&
-			!phys_enc->sde_kms->catalog->is_vrr_hw_fence_enable) {
-		vid_enc->base.hw_intf->ops.avr_trigger[disp_op](vid_enc->base.hw_intf);
-		SDE_EVT32(DRMID(phys_enc->parent),
-				phys_enc->hw_intf->idx - INTF_0,
-				SDE_EVTLOG_FUNC_CASE9);
-		if (sde_enc->disp_info.vrr_caps.video_psr_support)
-			SDE_ERROR("HW fence is disabled. Overriding TE monitor VHM case.\n");
-	}
+	sde_encoder_phys_vid_avr_post_kickoff(phys_enc);
 }
 
 static void sde_encoder_phys_vid_prepare_for_commit(
@@ -3070,6 +3129,7 @@ void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 	bool disable_hw_sleep = sde_enc->disp_info.disable_cesta_hw_sleep;
 
 	cfg->enable = true;
+	cfg->is_vid = true;
 	cfg->avr_enable = qsync_en;
 	cfg->intf = phys_enc->intf_idx - INTF_0;
 	cfg->auto_active_on_panic = true;
@@ -3081,7 +3141,7 @@ void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))
 		cfg->dual_dsi = true;
 
-	*req_flush = qsync_en;
+	*req_flush = qsync_en || sde_connector_is_qsync_updated(phys_enc->connector);
 	*req_scc = sde_connector_is_qsync_updated(phys_enc->connector);
 }
 
