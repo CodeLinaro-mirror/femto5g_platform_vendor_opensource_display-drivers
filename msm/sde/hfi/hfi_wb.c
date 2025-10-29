@@ -242,7 +242,8 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	/* This should be the index which this WB device received as part of init caps */
 	u32 wb_id = sde_conn->conn_id;
 	u32 format_payload[2], width_payload[2], height_payload[2];
-	u32 addr_payload[1 + SDE_MAX_PLANES], stride_payload[1 + SDE_MAX_PLANES];
+	u32 addr_payload[1 + (sizeof(struct hfi_plane_buff)/sizeof(u32))],
+		stride_payload[1 + SDE_MAX_PLANES];
 	u32 tap_point, tap_payload[2], cache_attr_payload[3], llcc_scid_payload[2];
 	u32 sec_policy, sec_payload[2];
 
@@ -313,6 +314,7 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	}
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR;
+	memset(addr_payload, 0, sizeof(addr_payload));
 	addr_payload[0] = wb_id;
 	memcpy(&addr_payload[1], &wb_cfg.dest.plane_addr[0], sizeof(u32) * SDE_MAX_PLANES);
 	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
