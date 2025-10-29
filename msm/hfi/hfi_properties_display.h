@@ -1571,12 +1571,9 @@
  *
  * @BasicFuntionality - HFI_PROPERTY_LAYER_SRC_ADDR
  *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_SRC_ADDR |
- *                                 (version=0 << 20) | (dsize=2 << 16 )
+ *                                 (version=0 << 20) | (dsize=13 << 16 )
  *     (u32_value) payload [1]   : layer id
- *     (u32_value) payload [2]   : Plane start address for Plane 0
- *     (u32_value) payload [3]   : Plane start address for Plane 1
- *     (u32_value) payload [4]   : Plane start address for Plane 2
- *     (u32_value) payload [5]   : Plane start address for Plane 3
+ *     (u32_value) payload [2-13]: struct hfi_plane_buff
  */
 #define HFI_PROPERTY_LAYER_SRC_ADDR                                  0x0003000A
 
@@ -1707,13 +1704,9 @@
  *
  * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR
  *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR |
- *                                 (version=0 << 20) | (dsize=6 << 24)
+ *                                 (version=0 << 20) | (dsize=13 << 24)
  *     (u32_value) payload [1]   : output layer id
- *     (u32_value) payload [2]   : output buffer start address
- *     (u32_value) payload [3]   : Plane start address for Plane 0
- *     (u32_value) payload [4]   : Plane start address for Plane 1
- *     (u32_value) payload [5]   : Plane start address for Plane 2
- *     (u32_value) payload [6]   : Plane start address for Plane 3
+ *     (u32_value) payload [2-13]: struct hfi_plane_buff
  */
 #define HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR                            0x00030013
 
