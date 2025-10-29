@@ -530,21 +530,6 @@
 #define HFI_PROPERTY_DISPLAY_REUSABLE_FENCE                          0x00020023
 
 /*
- * HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO - This property is to configure the sys cache info of LSR
- *                                       WB displays. Syscache info includes number of entries,
- *                                       cache ID's and the size of cache associated with it.
- *                                       Host is expected to send this packet as part of
- *                                       HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
- *
- * @BasicFuntionality @Display - HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO
- *     (u32_key) payload [0]    : HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO |
- *                               (version=0 << 20) | (dsize=1 + (2 x count) << 24)
- *   (u32_value) payload [1]    : No. of entries in the system cache
- *   (u32_value) payload [2-..] : struct hfi_display_sys_cache_info
- */
-#define HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO                       0x00020024
-
-/*
  * HFI_PROPERTY_DISPLAY_LSR_WB_CVP_BUFF - This property is set to configure the HFI queue
  *                                        parameters of the LSR WB CSC/Reprojection displays.
  *                                        Host is expected to send this packet as part of
@@ -568,9 +553,9 @@
  * @BasicFuntionality - HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS
  *     (u32_key) payload [0]      : HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS |
  *                                  (version=0 << 20) |
- *                                         (dsize=1 + (count x struct hfi_wb_out_buff) << 24)
- *     (u32_value) payload [1]    : count of hfi_wb_out_buff buffers (Number of color fields)
- *     (u32_value) payload [2-..] : struct hfi_wb_out_buff
+ *                                         (dsize=1 + (count x struct hfi_plane_buff) << 24)
+ *     (u32_value) payload [1]    : count of hfi_plane_buff buffers (Number of color fields)
+ *     (u32_value) payload [2-..] : struct hfi_plane_buff
  */
 #define HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS                       0x00020026
 
@@ -1809,18 +1794,6 @@
  */
 #define HFI_PROPERTY_LAYER_LSR_IN_A_BUFFER                           0x00030018
 
-/*
- * HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID - Sets the System Cache ID of the source/input layer.
- *                                       Host is expected to send this packet as part of
- *                                       HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
- *
- * @BasicFuntionality - HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID
- *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID |
- *                                 (version=0 << 20) | (dsize=2 << 16 )
- *     (u32_value) payload [1]   : layer id
- *     (u32_value) payload [2]   : System Cache ID
- */
-#define HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID                          0x00030019
 /*
  * HFI_PROPERTY_LAYER_LSR_REPROJ_PLANE_EQ - Sets the LSR Reprojection layer's plane equation.
  *                                          Host is expected to send this packet as part of
