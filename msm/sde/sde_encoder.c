@@ -3775,7 +3775,8 @@ static void sde_encoder_virt_mode_set(struct drm_encoder *drm_enc,
 	if (ret)
 		return;
 
-	if (sde_enc->disp_info.vrr_caps.video_psr_support && sde_encoder_in_cont_splash(drm_enc))
+	if (sde_enc->disp_info.vrr_caps.video_psr_support && (sde_encoder_in_cont_splash(drm_enc) ||
+		msm_is_mode_seamless_emsync_fps_switch(msm_mode)))
 		sde_connector_set_vrr_params(sde_enc->cur_master->connector);
 
 	if ((sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_VIRTUAL) &&
