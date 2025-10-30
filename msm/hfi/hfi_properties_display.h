@@ -939,6 +939,26 @@
  */
 #define HFI_PROPERTY_DISPLAY_DEST_SCALER                             0x00020115
 
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG - This property is to setup QRTC config.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG \|
+ * ^                             | (version=0 << 20) \|
+ * ^                             | (dsize=(sizeof(struct hfi_qrtc_config)/4 * num_of_dspps) << 24)
+ *   (u32_value) payload [1]     | array of struct hfi_qrtc_config
+ *
+ * | Major        | Minor        | Payload                         |
+ * |--------------|--------------|---------------------------------|
+ * | 1            | 0            | array of struct hfi_qrtc_config |
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG                       0x00020116
+
 /*
  * All display color properties end here
  */
