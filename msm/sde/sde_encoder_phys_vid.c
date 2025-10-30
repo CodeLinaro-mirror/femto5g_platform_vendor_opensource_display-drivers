@@ -648,13 +648,23 @@ void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
 	struct intf_timing_params *timing = &vid_enc->timing_params;
 	struct intf_panic_ctrl_cfg cfg = {0, };
 	struct intf_status intf_status = {0};
+	struct sde_connector *sde_conn;
 	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
 	u32 bw_update_time_lines, avr_cutoff, fps, min_fps;
-	u32 vsync_slow_period, prefill_lines;
+	u32 vsync_slow_period, prefill_lines, pattern_min_fps;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
 	fps = vid_enc->timing_params.vrefresh;
 	min_fps = info->qsync_min_fps;
+
+	sde_conn = to_sde_connector(phys_enc->connector);
+	if (sde_conn && sde_conn->vrr_caps.video_psr_support) {
+		if (sde_conn->freq_pattern &&
+			sde_conn->freq_pattern->freq_stepping_seq) {
+			pattern_min_fps = sde_conn->freq_pattern->freq_stepping_seq[0];
+			min_fps = pattern_min_fps / 1000;
+		}
+	}
 
 	cfg.enable = true;
 	/* set based on fast fps vfp */
