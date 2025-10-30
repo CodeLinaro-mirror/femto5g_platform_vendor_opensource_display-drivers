@@ -125,6 +125,8 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 		struct drm_crtc_state *state,
 		struct drm_property *property,
 		uint64_t val);
+static void _sde_crtc_register_event_callback(struct sde_crtc *sde_crtc,
+			void (*event_cb)(void *data, u32 event, void *event_payload));
 
 static struct sde_crtc_custom_events custom_events[] = {
 	{DRM_EVENT_AD_BACKLIGHT, sde_cp_ad_interrupt},
@@ -6502,6 +6504,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	SDE_EVT32(DRMID(crtc), sde_crtc->enabled, crtc->state->active,
 			crtc->state->enable, sde_crtc->cached_encoder_mask);
 	sde_crtc->enabled = false;
+	_sde_crtc_register_event_callback(sde_crtc, NULL);
 	sde_crtc->cached_encoder_mask = 0;
 
 	/* Try to disable uidle */
@@ -6619,6 +6622,26 @@ void sde_crtc_transition_handle_events(struct drm_crtc *crtc, bool enable)
 	}
 }
 
+void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
+{
+
+	switch (event) {
+	default:
+		return;
+	}
+}
+
+void _sde_crtc_register_event_callback(struct sde_crtc *sde_crtc,
+			void (*event_cb)(void *data, u32 event, void *event_payload))
+{
+	if (!sde_crtc) {
+		SDE_ERROR("invalid crtc\n");
+		return;
+	}
+
+	sde_crtc->crtc_event_cb = event_cb;
+}
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 static void sde_crtc_enable(struct drm_crtc *crtc,
 		struct drm_atomic_state *old_state)
@@ -6721,6 +6744,7 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 				sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE));
 	}
 
+	_sde_crtc_register_event_callback(sde_crtc, sde_crtc_event_cb);
 	sde_crtc->enabled = true;
 	sde_cp_crtc_enable(crtc);
 	/* update color processing on resume */
