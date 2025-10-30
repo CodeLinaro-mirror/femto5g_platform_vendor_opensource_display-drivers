@@ -808,6 +808,14 @@ int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe,
 
 fail:
 	*hfi_pipe_id = 0xffffff;
+	if (csc_pipe || repro_pipe) {
+		SDE_DEBUG("LSR pipe indices are not populated from FW");
+		/*
+		 * Avoiding post init failure and crash to remove tight coupling with FW,
+		 * LSR commits will be failed until FW populates the proper indices.
+		 */
+		return 0;
+	}
 	return -EINVAL;
 }
 
