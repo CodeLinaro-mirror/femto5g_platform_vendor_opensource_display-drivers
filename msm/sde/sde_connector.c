@@ -3952,7 +3952,7 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 			}
 		}
 
-		if (c_conn->vrr_caps.video_psr_support)
+		if (c_conn->vrr_caps.video_psr_support || c_conn->vrr_caps.has_vhm_capability)
 			sde_kms_info_add_keyint(info, "has_vhm_support", 1);
 
 		if (c_conn->dpu_dma_enabled)

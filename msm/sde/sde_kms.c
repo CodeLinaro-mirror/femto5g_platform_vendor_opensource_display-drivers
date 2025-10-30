@@ -1343,6 +1343,10 @@ int sde_kms_vm_trusted_prepare_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+
+	if (vm_req == VM_REQ_RELEASE)
+		sde_encoder_check_frame_pending(&sde_kms->base, crtc);
+
 	if (vm_req != VM_REQ_ACQUIRE)
 		return 0;
 
@@ -1602,9 +1606,6 @@ int sde_kms_vm_pre_release(struct sde_kms *sde_kms,
 	if (!crtc)
 		return 0;
 	priv = sde_kms->dev->dev_private;
-
-	if (!is_primary)
-		sde_encoder_check_frame_pending(&sde_kms->base, crtc);
 
 	/* if vm_req is enabled, once CRTC on the commit is guaranteed */
 	sde_kms_wait_for_frame_transfer_complete(&sde_kms->base, crtc);
