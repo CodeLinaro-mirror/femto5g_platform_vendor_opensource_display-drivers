@@ -917,3 +917,38 @@ free_plane:
 
 	return -ENOMEM;
 }
+
+struct hfi_cmdbuf_t *hfi_plane_get_cmd_buf(struct drm_plane *plane)
+{
+	u32 disp_id = 0;
+	struct drm_crtc *drm_crtc = NULL;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_kms *hfi_kms = NULL;
+	struct msm_drm_private *priv = NULL;
+
+	if (plane && plane->dev && plane->dev->dev_private) {
+		priv = plane->dev->dev_private;
+		hfi_kms = ((priv && priv->kms) ?
+				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
+	}
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
+		return NULL;
+	}
+
+	if (plane->state && plane->state->crtc) {
+		drm_crtc = plane->state->crtc;
+		if (!drm_crtc) {
+			SDE_ERROR("invalid drm_crtc\n");
+			return NULL;
+		}
+	}
+	disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return NULL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	return cmd_buf;
+}

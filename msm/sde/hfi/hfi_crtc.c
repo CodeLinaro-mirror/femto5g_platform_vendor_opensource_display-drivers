@@ -889,3 +889,65 @@ free_crtc:
 
 	return -ENOMEM;
 }
+
+struct hfi_cmdbuf_t *hfi_crtc_get_cmd_buf(struct drm_crtc *crtc)
+{
+	u32 disp_id = 0;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_kms *hfi_kms = NULL;
+	struct msm_drm_private *priv = NULL;
+
+	if (crtc && crtc->dev && crtc->dev->dev_private) {
+		priv = crtc->dev->dev_private;
+		hfi_kms = ((priv && priv->kms) ?
+				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
+	}
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
+		return NULL;
+	}
+
+	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return NULL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	return cmd_buf;
+}
+
+int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_buf,
+		struct hfi_util_u32_prop_helper *color_props)
+{
+	u32 disp_id = 0, ret = 0;
+
+	if (!crtc || !cmd_buf || !color_props) {
+		SDE_ERROR("invalid input: crtc=%p, cmd_buf=%p, color_props=%p\n",
+			crtc, cmd_buf, color_props);
+		return -EINVAL;
+	}
+
+	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * Once all the color processing properties are collected, invoke
+	 * adapter api to add all these properties as a single HFI Packet
+	 */
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+		cmd_buf,
+		HFI_COMMAND_DISPLAY_SET_PROPERTY,
+		disp_id,
+		HFI_PAYLOAD_TYPE_U32_ARRAY,
+		hfi_util_u32_prop_helper_get_payload_addr(color_props),
+		hfi_util_u32_prop_helper_get_size(color_props),
+		HFI_HOST_FLAGS_NONE);
+
+	if (ret)
+		SDE_ERROR("failed to set HFI prop\n");
+	return ret;
+}
