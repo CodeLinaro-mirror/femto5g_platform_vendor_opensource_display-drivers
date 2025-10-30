@@ -61,6 +61,7 @@
 #include "hfi_crtc.h"
 #include "hfi_kms.h"
 #include "hfi_commands_display.h"
+#include "hfi_defs_display_color.h"
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
@@ -322,6 +323,42 @@ int sde_crtc_update_lsr_perf(struct drm_crtc *crtc)
 	return 0;
 }
 
+void sde_crtc_cp_unmap_ltm_buffers(struct sde_crtc *sde_crtc, int num)
+{
+	if (!sde_crtc) {
+		SDE_ERROR("invalid parameters sde_crtc %pK\n", sde_crtc);
+		return;
+	}
+
+	if (num > LTM_BUFFER_SIZE) {
+		SDE_ERROR("invalid parameters num %d\n", num);
+		return;
+	}
+
+	for (int i = 0; i < num; i++) {
+		if (!sde_crtc->ltm_buffers[i])
+			continue;
+		if (sde_crtc->ltm_buffers[i]->aspace)
+			msm_gem_put_iova(sde_crtc->ltm_buffers[i]->gem,
+				sde_crtc->ltm_buffers[i]->aspace);
+		if (sde_crtc->ltm_buffers[i]->gem)
+			msm_gem_put_vaddr(sde_crtc->ltm_buffers[i]->gem);
+		if (sde_crtc->ltm_buffers[i]->fb)
+			drm_framebuffer_put(sde_crtc->ltm_buffers[i]->fb);
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
+		if (sde_crtc->ltm_buffers[i]->addr_map.alloc_info.mapped_iova) {
+			hfi_adapter_unmap_sg_table(
+			    sde_crtc->hfi_client,
+			    sde_crtc->ltm_buffers[i]->addr_map.alloc_info.mapped_iova,
+			    sde_crtc->ltm_buffers[i]->addr_map.aligned_size);
+			sde_crtc->ltm_buffers[i]->addr_map.alloc_info.mapped_iova = 0;
+			sde_crtc->ltm_buffers[i]->dcp_iova = 0;
+		}
+#endif
+		kfree(sde_crtc->ltm_buffers[i]);
+		sde_crtc->ltm_buffers[i] = NULL;
+	}
+}
 
 static void _sde_crtc_check_loopback_pstates(struct drm_crtc_state *crtc_state)
 {
@@ -5401,6 +5438,7 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 				SDE_ERROR("failed to get cmd_buf for crtc:%d\n", DRMID(crtc));
 				goto skip_cp;
 			}
+			sde_crtc->hfi_client = cmd_buf->ctx;
 			if (sde_crtc->hfi_crtc)
 				hfi_util_u32_prop_helper_reset(sde_crtc->hfi_crtc->color_props);
 		}
@@ -6328,6 +6366,24 @@ static void sde_crtc_mmrm_cb_notification(struct drm_crtc *crtc)
 		crtc->base.id, requested_clk);
 }
 
+static bool skip_event_handling_required(struct drm_crtc *crtc, u32 event)
+{
+	enum msm_disp_op disp_op;
+
+	disp_op = sde_crtc_get_disp_op(crtc);
+	if (IS_DISP_OP_HWIO(disp_op))
+		return false;
+
+	switch (event) {
+	case DRM_EVENT_LTM_HIST:
+	case DRM_EVENT_LTM_WB_PB:
+	case DRM_EVENT_LTM_OFF:
+		return true;
+	default:
+		return false;
+	}
+}
+
 static void sde_crtc_handle_power_event(u32 event_type, void *arg)
 {
 	struct drm_crtc *crtc = arg;
@@ -6337,13 +6393,14 @@ static void sde_crtc_handle_power_event(u32 event_type, void *arg)
 	unsigned long flags;
 	struct sde_crtc_irq_info *node = NULL;
 	int ret = 0;
+	enum msm_disp_op disp_op;
 
 	if (!crtc) {
 		SDE_ERROR("invalid crtc\n");
 		return;
 	}
+	disp_op = sde_crtc_get_disp_op(crtc);
 	sde_crtc = to_sde_crtc(crtc);
-
 	mutex_lock(&sde_crtc->crtc_lock);
 
 	SDE_EVT32(DRMID(crtc), event_type);
@@ -6353,6 +6410,8 @@ static void sde_crtc_handle_power_event(u32 event_type, void *arg)
 		spin_lock_irqsave(&sde_crtc->spin_lock, flags);
 		list_for_each_entry(node, &sde_crtc->user_event_list, list) {
 			ret = 0;
+			if (skip_event_handling_required(crtc, node->event))
+				continue;
 			if (node->func)
 				ret = node->func(crtc, true, &node->irq);
 			if (ret)
@@ -6372,6 +6431,8 @@ static void sde_crtc_handle_power_event(u32 event_type, void *arg)
 		node = NULL;
 		list_for_each_entry(node, &sde_crtc->user_event_list, list) {
 			ret = 0;
+			if (skip_event_handling_required(crtc, node->event))
+				continue;
 			if (node->func)
 				ret = node->func(crtc, false, &node->irq);
 			if (ret)
@@ -6459,7 +6520,6 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	int ret, i;
 	enum sde_intf_mode intf_mode;
 	struct sde_hw_ctl *hw_ctl = NULL;
-
 	if (!crtc || !crtc->dev || !crtc->dev->dev_private || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
 		return;
@@ -6522,6 +6582,8 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	spin_lock_irqsave(&sde_crtc->spin_lock, flags);
 	list_for_each_entry(node, &sde_crtc->user_event_list, list) {
 		ret = 0;
+		if (skip_event_handling_required(crtc, node->event))
+			continue;
 		if (node->func)
 			ret = node->func(crtc, false, &node->irq);
 		if (ret)
@@ -6624,10 +6686,41 @@ void sde_crtc_transition_handle_events(struct drm_crtc *crtc, bool enable)
 
 void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
 {
+	struct sde_crtc *sde_crtc = (struct sde_crtc *)data;
+	int idx = 0, i = 0;
+	struct hfi_display_ltm_event_resp *resp;
+
+	if (!sde_crtc)
+		return;
 
 	switch (event) {
-	default:
-		return;
+	case DRM_EVENT_LTM_HIST:
+		resp = (struct hfi_display_ltm_event_resp *)event_payload;
+		if (!resp)
+			return;
+
+		for (i = 0; i < sde_crtc->ltm_buffer_cnt; i++) {
+			if (((sde_crtc->ltm_buffers[i]->dcp_iova & 0xFFFFFFFF) ==
+					resp->dcp_addr_l) &&
+			   (((sde_crtc->ltm_buffers[i]->dcp_iova >> 32) & 0xFFFFFFFF) ==
+					resp->dcp_addr_h)) {
+				idx = i;
+				break;
+			}
+		}
+
+		if (i == sde_crtc->ltm_buffer_cnt)
+			return;
+
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_ltm_hist,
+			sde_crtc->ltm_buffers[idx], true);
+		break;
+	case DRM_EVENT_LTM_WB_PB:
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_ltm_wb_pb, NULL, true);
+		break;
+	case DRM_EVENT_LTM_OFF:
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_ltm_off, NULL, true);
+		break;
 	}
 }
 
@@ -6755,6 +6848,8 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 	spin_lock_irqsave(&sde_crtc->spin_lock, flags);
 	list_for_each_entry(node, &sde_crtc->user_event_list, list) {
 		ret = 0;
+		if (skip_event_handling_required(crtc, node->event))
+			continue;
 		if (node->func)
 			ret = node->func(crtc, true, &node->irq);
 		if (ret)
@@ -9619,6 +9714,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 
 	sde_crtc->enabled = false;
 	sde_crtc->kickoff_in_progress = false;
+	sde_crtc->do_clear_buf = false;
 
 	/* Below parameters are for fps calculation for sysfs node */
 	sde_crtc->fps_info.fps_periodic_duration = DEFAULT_FPS_PERIOD_1_SEC;

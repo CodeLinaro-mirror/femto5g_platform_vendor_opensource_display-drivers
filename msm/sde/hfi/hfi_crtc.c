@@ -676,6 +676,7 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 	struct hfi_crtc *hfi_crtc = container_of(listener,
 			struct hfi_crtc, hfi_cb_obj);
 	struct sde_crtc *sde_crtc = NULL;
+	struct hfi_display_ltm_event_resp *event_payload = NULL;
 
 	if (!hfi_crtc) {
 		SDE_ERROR("hfi_crtc is NULL\n");
@@ -689,6 +690,17 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 	}
 
 	switch (cmd_id) {
+	case HFI_COMMAND_DISPLAY_EVENT_LTM:
+		event_payload = (struct hfi_display_ltm_event_resp *)payload;
+		if (event_payload->event_type == HFI_LTM_HIST_DONE)
+			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_LTM_HIST, event_payload);
+		else if (event_payload->event_type == HFI_LTM_WB_PB)
+			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_LTM_WB_PB, event_payload);
+		else if (event_payload->event_type == HFI_LTM_HIST_OFF)
+			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_LTM_OFF, event_payload);
+		else
+			SDE_ERROR("unknown LTM event type %d\n", event_payload->event_type);
+		break;
 	default:
 		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
 	}
@@ -723,8 +735,9 @@ static int _hfi_crtc_hw_event_set_buff(struct sde_crtc *crtc, u32 payload,
 	}
 
 	cmd = enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER : HFI_COMMAND_DISPLAY_EVENT_DEREGISTER;
-	ret = hfi_adapter_add_get_property(cmd_buf->ctx, cmd_buf, cmd, display_id,
-			HFI_PAYLOAD_TYPE_U32, &payload, sizeof(payload), &hfi_crtc->hfi_cb_obj,
+	ret = hfi_adapter_add_get_property(cmd_buf->ctx, cmd_buf, cmd,
+			display_id, HFI_PAYLOAD_TYPE_U32,
+			&payload, sizeof(payload), &hfi_crtc->hfi_cb_obj,
 			HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (ret) {
 		SDE_ERROR("failed to update event: 0x%x\n", payload);
@@ -744,19 +757,24 @@ static int _hfi_crtc_hw_event_set_buff(struct sde_crtc *crtc, u32 payload,
 	return 0;
 }
 
-
 static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enable)
 {
 	int ret = 0;
-	struct hfi_crtc *hfi_crtc = to_hfi_crtc(crtc);
+	struct hfi_crtc *hfi_crtc = NULL;
 
 	if (!crtc || event < HFI_EVENT_VSYNC) {
 		SDE_ERROR("invalid crtc:%pK or event id: %d\n", crtc, event);
 		return -EINVAL;
 	}
 
+	hfi_crtc = to_hfi_crtc(crtc);
+	if (!hfi_crtc) {
+		SDE_ERROR("invalid hfi_crtc:%p\n", hfi_crtc);
+		return -EINVAL;
+	}
+
 	switch (event) {
-	case DRM_EVENT_LTM_HIST:
+	case HFI_EVENT_LTM:
 		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("event registration failed: event %d, enable %d\n",
@@ -764,14 +782,11 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 			return ret;
 		}
 
-		hfi_crtc->hw_events_state[event].state = enable;
-		hfi_crtc->hw_events_state[event].pending = false;
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_LTM].state = enable;
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_LTM].pending = false;
 		break;
 	default:
-		if (hfi_crtc->hw_events_state[event].state != enable) {
-			hfi_crtc->hw_events_state[event].state = enable;
-			hfi_crtc->hw_events_state[event].pending = true;
-		}
+		break;
 	}
 
 	return ret;
