@@ -1567,6 +1567,7 @@ void msm_gem_put_pages(struct drm_gem_object *obj);
 void msm_gem_put_iova(struct drm_gem_object *obj,
 		struct msm_gem_address_space *aspace);
 dma_addr_t msm_gem_get_dma_addr(struct drm_gem_object *obj);
+struct sg_table *msm_gem_get_sgt(struct drm_gem_object *obj);
 int msm_gem_dumb_create(struct drm_file *file, struct drm_device *dev,
 		struct drm_mode_create_dumb *args);
 int msm_gem_dumb_map_offset(struct drm_file *file, struct drm_device *dev,
