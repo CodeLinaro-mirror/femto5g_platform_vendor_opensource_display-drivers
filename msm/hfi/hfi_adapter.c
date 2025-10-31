@@ -734,7 +734,9 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	return buffer;
 
 error:
-	atomic_set(&pool->available, 1);
+	if (pool)
+		atomic_set(&pool->available, 1);
+
 	mutex_unlock(&adapter->hfi_adapter_cmd_buf_list_lock);
 	return NULL;
 }
