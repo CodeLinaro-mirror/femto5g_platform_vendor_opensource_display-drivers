@@ -606,7 +606,7 @@ int sde_wb_lsr_install_properties(struct drm_connector *connector,
 	return 0;
 }
 
-int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_buff *out_buffers,
+int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_plane_buff *out_buffers,
 		struct sde_view_descriptor *view_desc, struct sde_view_descriptor *back_view_desc,
 		bool is_back_view_en)
 {
