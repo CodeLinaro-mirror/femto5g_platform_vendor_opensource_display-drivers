@@ -2100,6 +2100,7 @@ error:
 		continue; \
 	}
 #define DUMP_PARSED_VALUE(option)	VIRTGPU_VQ_RSP_DBG("\t" #option " = %X\n", assign->option)
+#define DUMP_PARSED(option)	VIRTGPU_VQ_RSP_DBG("\t" #option " = %X\n", output->option)
 
 struct topology_name_list {
 	enum sde_rm_topology_name name;
@@ -2254,6 +2255,9 @@ static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 		PARSE_VALUE(lm_stage_start, assign->lm_stage_start)
 		PARSE_VALUE(lm_stages, assign->lm_stages)
 
+		PARSE_VALUE(offset_x, output->offset_x)
+		PARSE_VALUE(offset_y, output->offset_y)
+
 		PARSE_MASK(roi_crc_engine_mask, assign->roi_crc_engine_mask)
 		PARSE_OWNER(roi_crc_owner, assign->roi_crc_owner)
 		PARSE_MASK(roi_bypass_engine_mask, assign->roi_bypass_engine_mask)
@@ -2333,6 +2337,8 @@ static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 	DUMP_PARSED_VALUE(lm_mask);
 	DUMP_PARSED_VALUE(lm_stage_start);
 	DUMP_PARSED_VALUE(lm_stages);
+	DUMP_PARSED(offset_x);
+	DUMP_PARSED(offset_y);
 
 	DUMP_PARSED_VALUE(roi_crc_owner);
 	DUMP_PARSED_VALUE(roi_crc_engine_mask);

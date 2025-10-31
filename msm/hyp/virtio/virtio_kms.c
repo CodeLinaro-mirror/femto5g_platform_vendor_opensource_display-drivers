@@ -1643,6 +1643,9 @@ static int virtio_kms_get_crtc_infos(struct sde_kms *sde_kms,
 		_virtio_kms_set_crtc_limit(kms, priv);
 		crtc_infos[num_crtc] = &priv->base;
 		num_crtc++;
+
+		crtc_infos[i]->offset_x = output->offset_x;
+		crtc_infos[i]->offset_y = output->offset_y;
 	}
 	*crtc_num = num_crtc;
 
