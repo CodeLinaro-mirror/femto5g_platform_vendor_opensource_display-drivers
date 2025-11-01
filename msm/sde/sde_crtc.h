@@ -526,6 +526,7 @@ struct sde_crtc_hal_funcs {
  * @mdnie_art_frame_count: number of frames required for mdnie art to converge.
  * @hfi_crtc: Pointer to hfi crtc struct
  * @hfi_client: Pointer to hfi client
+ * @cwb_idle: CWB idle fallback is active
  * @hal_ops: Local callback hal function pointer table
  * @crtc_event_cb: CRTC event callback when hw event is received
  * @do_clear_buf: Request LTM buffer clear when true
@@ -595,6 +596,7 @@ struct sde_crtc {
 	bool misr_enable_debugfs;
 	bool misr_reconfigure;
 	u32 misr_frame_count;
+	bool cwb_idle;
 	struct sde_misr_values misr_vals;
 
 	struct sde_power_event *power_event;
@@ -845,6 +847,23 @@ static inline void sde_crtc_set_needs_hw_reset(struct drm_crtc *crtc)
 
 	sde_crtc = to_sde_crtc(crtc);
 	sde_crtc->needs_hw_reset = true;
+}
+
+/**
+ * sde_crtc_set_cwb_idle - set during cwb idle fallback
+ * @crtc: Pointer to DRM crtc instance
+ */
+static inline void sde_crtc_set_cwb_idle(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+
+	if (!crtc)
+		return;
+
+	sde_crtc = to_sde_crtc(crtc);
+	sde_crtc->cwb_idle = true;
+	sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] = true;
+	sde_core_perf_crtc_update_llcc(crtc);
 }
 
 /**

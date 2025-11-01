@@ -8,11 +8,15 @@
 #include "hfi_crtc.h"
 #include "hfi_props.h"
 #include "sde_wb.h"
+#include "sde_encoder_phys.h"
 #include "hfi_plane.h"
 #include "hfi_catalog.h"
 #include "hfi_defs_display.h"
 #include "hfi_wb.h"
 #include "hfi_defs_lsr.h"
+
+#define to_sde_encoder_phys_wb(x) \
+	container_of(x, struct sde_encoder_phys_wb, base)
 
 static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 		struct sde_connector_state *cstate,
@@ -59,16 +63,40 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	int ret = 0;
 	u32 hfi_format;
 	u32 wb_rotate_type;
-	u32 rotation_flags, rot_payload[2];
+	u32 rotation_flags, connector_cache_state_prop = 0, rot_payload[2];
 	struct drm_framebuffer *fb;
 	struct sde_hw_wb_cfg wb_cfg = {0,};
+	struct sde_sc_cfg *sc_cfg = NULL;
+	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys_wb *wb_enc;
+	struct sde_hw_wb *hw_wb;
 	struct sde_format_extended fmt = {0,};
 	struct sde_connector *sde_conn = to_sde_connector(wb_dev->connector);
 	/* This should be the index which this WB device received as part of init caps */
 	u32 wb_id = sde_conn->conn_id;
 	u32 format_payload[2], width_payload[2], height_payload[2];
 	u32 addr_payload[1 + SDE_MAX_PLANES], stride_payload[1 + SDE_MAX_PLANES];
-	u32 tap_point, tap_payload[2];
+	u32 tap_point, tap_payload[2], cache_attr_payload[3], llcc_scid_payload[2];
+
+	sde_enc = to_sde_encoder_virt(wb_dev->encoder);
+
+	if (!sde_enc) {
+		SDE_ERROR("failed to get sde encoder\n");
+		return -EINVAL;
+	}
+
+	wb_enc = to_sde_encoder_phys_wb(sde_enc->phys_encs[0]);
+	if (!wb_enc) {
+		SDE_ERROR("failed to get wb encoder\n");
+		return -EINVAL;
+	}
+
+	hw_wb = wb_enc->hw_wb;
+
+	connector_cache_state_prop = sde_connector_get_property(&cstate->base,
+		CONNECTOR_PROP_CACHE_STATE);
+	if (connector_cache_state_prop && hw_wb && hw_wb->catalog)
+		sc_cfg = &hw_wb->catalog->sc_cfg[SDE_SYS_CACHE_DISP];
 
 	prop_id = HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER;
 	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
@@ -121,6 +149,31 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	memcpy(&stride_payload[1], &wb_cfg.dest.plane_pitch[0], sizeof(u32) * SDE_MAX_PLANES);
 	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
 		HFI_VAL_U32_ARRAY, stride_payload, sizeof(stride_payload));
+
+	prop_id = HFI_PROPERTY_OUTPUT_LAYER_CACHE_ATTR;
+	cache_attr_payload[0] = wb_id;
+	if (connector_cache_state_prop && sc_cfg)
+		cache_attr_payload[1] = HFI_CACHE_STATE_WRITE;
+	else
+		cache_attr_payload[1] = HFI_CACHE_STATE_DISABLE;
+	cache_attr_payload[2] = HFI_CACHE_OP_TYPE_NONE;
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id, HFI_VAL_U32_ARRAY,
+		cache_attr_payload, sizeof(cache_attr_payload));
+
+	if (cache_attr_payload[1] != HFI_CACHE_STATE_DISABLE) {
+		prop_id = HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID;
+		if (!sc_cfg) {
+			SDE_ERROR("Invalid sc_cfg\n");
+			return -EINVAL;
+		}
+		llcc_scid_payload[0] = wb_id;
+		llcc_scid_payload[1] = sc_cfg->llcc_scid;
+		hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id, HFI_VAL_U32_ARRAY,
+			llcc_scid_payload, sizeof(llcc_scid_payload));
+	}
+
+	if (connector_cache_state_prop)
+		sde_crtc_set_cwb_idle(sde_conn->base.state->crtc);
 
 	tap_point = HFI_TAP_POINT_NONE;
 

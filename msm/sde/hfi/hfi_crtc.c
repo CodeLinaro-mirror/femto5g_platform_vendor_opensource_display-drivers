@@ -202,8 +202,10 @@ static void _hfi_crtc_setup_sys_cache(struct sde_crtc_state *cstate, struct sde_
 		sde_crtc->llcc_stale_frame_trigger = false;
 	}
 
-	sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] =
-		sde_crtc_get_property(cstate, CRTC_PROP_CACHE_STATE) ? true : false;
+	if (sde_crtc_get_property(cstate, CRTC_PROP_CACHE_STATE) || sde_crtc->cwb_idle)
+		sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] = true;
+	else
+		sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] = false;
 
 	if (sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP])
 		sde_crtc->llcc_stale_frame_trigger = true;

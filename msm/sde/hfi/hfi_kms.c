@@ -55,6 +55,7 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 
 	for_each_new_crtc_in_state(state, crtc, cstate, i) {
 		sde_crtc = to_sde_crtc(crtc);
+		sde_crtc->cwb_idle = 0;
 
 		encoder_mask = cstate->encoder_mask ?
 			cstate->encoder_mask : sde_crtc->cached_encoder_mask;
