@@ -70,6 +70,7 @@
 #define SDE_HW_VER_C40	SDE_HW_VER(12, 4, 0) /* kera */
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 #define SDE_HW_VER_D10	SDE_HW_VER(13, 1, 0) /* alor */
+#define SDE_HW_VER_E00  SDE_HW_VER(14, 0, 0) /* art */
 
 #define SDE_QULTIVATE_SW_REV1 0x1
 
@@ -115,6 +116,7 @@
 #define IS_KERA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C40)
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 #define IS_ALOR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D10)
+#define IS_ART_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E00)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
