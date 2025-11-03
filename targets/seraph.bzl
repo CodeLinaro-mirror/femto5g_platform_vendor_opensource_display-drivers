@@ -27,6 +27,7 @@ def define_seraph():
                     "CONFIG_QCOM_WCD939X_I2C",
                     "CONFIG_THERMAL_OF",
                     "CONFIG_QCOM_SPEC_SYNC",
+                    "CONFIG_DRM_SDE_LSR",
                     "CONFIG_LSR_SERAPH",
                 ],
             )
