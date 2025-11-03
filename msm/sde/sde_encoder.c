@@ -659,6 +659,56 @@ void sde_encoder_helper_report_irq_timeout(struct sde_encoder_phys *phys_enc,
 				SDE_ENCODER_FRAME_EVENT_ERROR);
 }
 
+int sde_encoder_set_offload_mode(struct drm_encoder *drm_enc, int enable)
+{
+
+	struct sde_encoder_virt *sde_enc;
+	enum msm_disp_op disp_op;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde encoder\n");
+		return -EINVAL;
+	}
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (!sde_enc->hal_ops.enable_hw_event[disp_op]) {
+		SDE_ERROR("enable_hw_event not available for disp_op %d\n", disp_op);
+		return -EOPNOTSUPP;
+	}
+
+	if (!enable) {
+		msleep(50);
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			HFI_EVENT_DISPLAY_POWER, true);
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			MSM_ENC_VBLANK, true);
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			MSM_ENC_COMMIT_DONE, true);
+		sde_enc->hal_ops.enable_hw_event[disp_op] (sde_enc,
+			MSM_ENC_TX_COMPLETE, true);
+		SDE_DEBUG("register HW events for offload\n");
+	} else {
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			MSM_ENC_VBLANK, false);
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			MSM_ENC_COMMIT_DONE, false);
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			MSM_ENC_TX_COMPLETE, false);
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			HFI_EVENT_DISPLAY_POWER, false);
+		SDE_DEBUG("deregister HW events for offload\n");
+	}
+
+	return 0;
+}
+
 int sde_encoder_helper_wait_for_irq(struct sde_encoder_phys *phys_enc,
 		enum sde_intr_idx intr_idx,
 		struct sde_encoder_wait_info *wait_info)
