@@ -1805,7 +1805,8 @@ static int _sde_rm_reserve_dsc(
 	drm_for_each_encoder(encoder, rm->dev) {
 		/* backwards allocate DSC modules for non built-in case */
 		if (encoder->base.id == rsvp ->enc_id)
-			list_forward = sde_encoder_is_dsi_display(encoder);
+			list_forward = (sde_encoder_is_dsi_display(encoder) ||
+					sde_encoder_is_edp_display(encoder));
 	}
 
 	un_paired_dsc_id = _sde_rm_reserve_un_paired_dsc(rsvp, reqs, rm);

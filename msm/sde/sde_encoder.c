@@ -605,6 +605,14 @@ bool sde_encoder_is_dsi_display(struct drm_encoder *drm_enc)
 		(sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_DSI);
 }
 
+bool sde_encoder_is_edp_display(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc &&
+		(sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_eDP);
+}
+
 int sde_encoder_in_cont_splash(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
