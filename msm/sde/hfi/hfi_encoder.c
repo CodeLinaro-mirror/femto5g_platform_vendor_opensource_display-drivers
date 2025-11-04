@@ -598,6 +598,7 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	int ret;
 	struct sde_encoder_wait_info wait_info = {0};
 	struct sde_encoder_virt *sde_enc;
+	u32 event;
 
 	sde_enc = hfi_enc->sde_base;
 
@@ -606,6 +607,13 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	wait_info.timeout_ms = TIMEOUT_MAX;
 
 	ret = hfi_encoder_helper_wait_for_event(hfi_enc, &wait_info, HFI_EVENT_FRAME_SCAN_START);
+	if (ret <= 0) {
+		event = SDE_ENCODER_FRAME_EVENT_ERROR |
+			SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE |
+			SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
+
+		hfi_encoder_frame_event_callback(hfi_enc->sde_base, NULL, event);
+	}
 	return ret;
 }
 
@@ -697,7 +705,7 @@ static int hfi_enc_register_panel_dead_event(struct sde_encoder_virt *enc, bool 
 
 	ret = _hfi_enc_register_hw_event(enc, MSM_ENC_PANEL_DEAD, enable, false);
 	if (ret)
-		SDE_ERROR("failed to send event register ret:%d\n", ret);
+		SDE_ERROR("failed to register panel dead event ret:%d\n", ret);
 
 	return ret;
 }
