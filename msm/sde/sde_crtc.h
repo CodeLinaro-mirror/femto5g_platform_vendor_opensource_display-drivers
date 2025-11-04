@@ -294,6 +294,18 @@ enum sde_crtc_hw_fence_flags {
 	HW_FENCE_FEATURES_MAX,
 };
 
+struct sde_rgb_hist_buffer {
+	struct drm_framebuffer *fb[RGB_COMPONENT_SIZE];
+	struct drm_gem_object *gem[RGB_COMPONENT_SIZE];
+	struct msm_gem_address_space *aspace[RGB_COMPONENT_SIZE];
+	u32 drm_fb_id[RGB_COMPONENT_SIZE];
+	u32 offset[RGB_COMPONENT_SIZE];
+	u64 dpu_iova[RGB_COMPONENT_SIZE];
+	void *kva[RGB_COMPONENT_SIZE];
+	u64 dcp_iova[RGB_COMPONENT_SIZE];
+	struct hfi_shared_addr_map addr_map[RGB_COMPONENT_SIZE];
+};
+
 /**
  * struct sde_crtc_hal_funcs - interface api for sde crtc hal
  */
@@ -532,6 +544,10 @@ struct sde_crtc_hal_funcs {
  * @dspp_pa_mode: top-level bitmask maintaining state of PA block
  * @is_waiting_for_hw_fence: true if hw-fence backed input fence is not signaled prior to
  *                           commit prepare
+ * @rgb_hist_en: Enable collection of RGB histogram data when true
+ * @do_clear_rgb_hist_buf: Request to clear RGB histogram buffers
+ * @rgb_hist_buffers: Array of pointers to RGB histogram buffer structures
+ * @rgb_hist_buffer_lock: Mutex to protect access to RGB histogram buffers
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -667,6 +683,11 @@ struct sde_crtc {
 
 	struct cp_pa_mode dspp_pa_mode;
 	bool is_waiting_for_hw_fence;
+
+	bool rgb_hist_en;
+	bool do_clear_rgb_hist_buf;
+	struct sde_rgb_hist_buffer *rgb_hist_buffers[RGB_HISTOGRAM_BUFFER_SIZE];
+	struct mutex rgb_hist_buffer_lock;
 };
 
 enum sde_crtc_dirty_flags {
@@ -1493,5 +1514,12 @@ int sde_crtc_update_lsr_perf(struct drm_crtc *crtc);
  * @num: Number of buffers to unmap
  */
 void sde_crtc_cp_unmap_ltm_buffers(struct sde_crtc *sde_crtc, int num);
+
+/**
+ * sde_crtc_cp_unmap_rgb_hist_buffers - unmap rgb hist buffers
+ * @sde_crtc: Pointer to sde_crtc context
+ */
+void sde_crtc_cp_unmap_rgb_hist_buffers(struct sde_crtc *sde_crtc);
+
 
 #endif /* _SDE_CRTC_H_ */

@@ -577,6 +577,7 @@ enum {
 	SDE_DSPP_AIQE_DITHER,
 	SDE_DSPP_AIQE_WRAPPER,
 	SDE_DSPP_AI_SCALER,
+	SDE_DSPP_RGB_HIST,
 	SDE_DSPP_MAX
 };
 
@@ -1354,6 +1355,7 @@ struct sde_dspp_sub_blks {
 	struct sde_pp_blk aiqe_dither;
 	struct sde_pp_blk aiqe_wrapper;
 	struct sde_dspp_aiqe ai_scaler;
+	struct sde_pp_blk rgb_hist;
 };
 
 struct sde_pingpong_sub_blks {
@@ -2308,6 +2310,7 @@ struct sde_mdss_cfg {
 	u32 ai_scaler_count;
 	bool ssip_allowed;
 	u32 abc_count;
+	u32 rgb_hist_count;
 
 	/* Secure & Trusted UI */
 	bool trusted_vm_env;

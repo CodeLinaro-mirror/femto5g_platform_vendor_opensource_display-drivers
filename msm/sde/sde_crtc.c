@@ -147,6 +147,9 @@ static struct sde_crtc_custom_events custom_events[] = {
 	{DRM_EVENT_MDNIE_ART, sde_crtc_mdnie_art_event_handler},
 	{DRM_EVENT_COPR, sde_crtc_copr_status_event_handler},
 	{DRM_EVENT_VM_RECLAIM, sde_crtc_vm_reclaim_handler},
+	{DRM_EVENT_RGB_HIST, sde_crtc_rgb_hist_interrupt_handler},
+	{DRM_EVENT_RGB_HIST_WB_ERR, sde_crtc_rgb_hist_wb_err_interrupt_handler},
+	{DRM_EVENT_RGB_HIST_OFF, sde_crtc_rgb_hist_off_interrupt_handler},
 };
 
 /* default input fence timeout, in ms */
@@ -351,6 +354,30 @@ void sde_crtc_cp_unmap_ltm_buffers(struct sde_crtc *sde_crtc, int num)
 		sde_crtc->ltm_buffers[i]->dcp_iova = 0;
 		kfree(sde_crtc->ltm_buffers[i]);
 		sde_crtc->ltm_buffers[i] = NULL;
+	}
+}
+
+void sde_crtc_cp_unmap_rgb_hist_buffers(struct sde_crtc *sde_crtc)
+{
+	struct sde_rgb_hist_buffer *buffer;
+
+	for (int i = 0; i < RGB_HISTOGRAM_BUFFER_SIZE; i++) {
+		buffer = sde_crtc->rgb_hist_buffers[i];
+		if (!buffer)
+			continue;
+
+		for (int j = 0; j < RGB_COMPONENT_SIZE; j++) {
+			if (buffer->aspace[j])
+				msm_gem_put_iova(buffer->gem[j], buffer->aspace[j]);
+			if (buffer->gem[j])
+				msm_gem_put_vaddr(buffer->gem[j]);
+			if (buffer->fb[j])
+				drm_framebuffer_put(buffer->fb[j]);
+			hfi_cp_crtc_unmap_sg_table(&(buffer->addr_map[j]), sde_crtc->hfi_client);
+			buffer->dcp_iova[j] = 0;
+		}
+		kfree(sde_crtc->rgb_hist_buffers[i]);
+		sde_crtc->rgb_hist_buffers[i] = NULL;
 	}
 }
 
@@ -6333,6 +6360,9 @@ static bool skip_event_handling_required(struct drm_crtc *crtc, u32 event)
 	case DRM_EVENT_LTM_HIST:
 	case DRM_EVENT_LTM_WB_PB:
 	case DRM_EVENT_LTM_OFF:
+	case DRM_EVENT_RGB_HIST:
+	case DRM_EVENT_RGB_HIST_WB_ERR:
+	case DRM_EVENT_RGB_HIST_OFF:
 		return true;
 	default:
 		return false;
@@ -6675,6 +6705,27 @@ void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
 		break;
 	case DRM_EVENT_LTM_OFF:
 		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_ltm_off, NULL, true);
+		break;
+	case DRM_EVENT_RGB_HIST: {
+		int idx = 0;
+		bool found = false;
+
+		found = sde_cp_validate_rgb_hist_event_resp(data, event_payload, &idx);
+		if (!found) {
+			SDE_ERROR("RGB Hist buffer from HFI not found in driver\n");
+			return;
+		}
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_rgb_hist,
+				sde_crtc->rgb_hist_buffers[idx], true);
+		break;
+	}
+	case DRM_EVENT_RGB_HIST_WB_ERR:
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_rgb_hist_wb_err,
+				NULL, true);
+		break;
+	case DRM_EVENT_RGB_HIST_OFF:
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_rgb_hist_off,
+				NULL, true);
 		break;
 	}
 }
@@ -9670,6 +9721,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	sde_crtc->enabled = false;
 	sde_crtc->kickoff_in_progress = false;
 	sde_crtc->do_clear_buf = false;
+	sde_crtc->do_clear_rgb_hist_buf = false;
 
 	/* Below parameters are for fps calculation for sysfs node */
 	sde_crtc->fps_info.fps_periodic_duration = DEFAULT_FPS_PERIOD_1_SEC;

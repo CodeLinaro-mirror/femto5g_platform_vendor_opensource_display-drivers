@@ -3,6 +3,8 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
+#define pr_fmt(fmt) "[drm:%s:%d] " fmt, __func__, __LINE__
+
 #include "hfi_color_proc.h"
 #include "hfi_defs_layer_color.h"
 #include "hfi_defs_display_color.h"
@@ -16,6 +18,10 @@ static struct hfi_display_ltm_init_param hfi_ltm_init_cached[DPU_MAX][DSPP_MAX] 
 static struct hfi_display_ltm_cfg_param hfi_ltm_roi_cached[DPU_MAX][DSPP_MAX] = {};
 static u32 hfi_ltm_hist_ctrl_cached[DPU_MAX][DSPP_MAX] = {};
 static u32 hfi_ltm_thresh_cached[DPU_MAX][DSPP_MAX] = {};
+static struct hfi_display_rgb_hist_ctrl hfi_rgb_hist_ctrl_cached[DPU_MAX][DSPP_MAX] = {};
+
+#define U32_MASK_LOW 0xFFFFFFFFU
+#define U32_SHIFT_BITS 32
 
 void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data, enum msm_disp_op disp_op)
 {
@@ -846,5 +852,328 @@ void hfi_cp_crtc_unmap_sg_table(struct hfi_shared_addr_map *addr_map, struct hfi
 		hfi_adapter_unmap_sg_table(client, *mapped_iova,
 			addr_map->aligned_size);
 		*mapped_iova = 0;
+	}
+}
+
+void hfi_cp_crtc_set_rgb_hist_buffers(struct sde_crtc *sde_crtc,
+		struct sde_hw_dspp *ctx, void *data)
+{
+	int ret = 0;
+	struct sde_hw_cp_cfg *hw_cfg = data;
+	struct drm_msm_rgb_hist_buffers_ctrl *input_cfg;
+	struct hfi_display_rgb_hist_buffer hfi_cfg[RGB_HISTOGRAM_BUFFER_SIZE];
+	struct sde_rgb_hist_buffer *hist_buf = NULL;
+	struct hfi_display_rgb_hist_buffer *hfi_buf = NULL;
+	struct sg_table *sgt = NULL;
+	u32 clear_buffs_prop_id = HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS;
+	u32 payload = 0;
+
+	if (!sde_crtc || !data) {
+		SDE_ERROR("Invalid sde_crtc: %pK data: %pK\n", sde_crtc, data);
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	if (sde_crtc->do_clear_rgb_hist_buf) {
+		clear_buffs_prop_id = HFI_PACK_VERSION(2, 0,
+			HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS);
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper, clear_buffs_prop_id,
+				HFI_VAL_U32_ARRAY, &payload, sizeof(u32));
+		sde_crtc->do_clear_rgb_hist_buf = false;
+	}
+
+	hw_cfg->prop_id = HFI_PACK_VERSION(
+		2, 0, HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER);
+
+	if (!hw_cfg->payload) {
+		SDE_DEBUG("Disable case\n");
+		for (int i = 0; i < RGB_HISTOGRAM_BUFFER_SIZE; i++)
+			hfi_cfg[i].flags = 0;
+	} else {
+		if (hw_cfg->len != sizeof(struct drm_msm_rgb_hist_buffers_ctrl)) {
+			SDE_ERROR("Invalid len: %d\n", hw_cfg->len);
+			return;
+		}
+
+		input_cfg = hw_cfg->payload;
+		for (int i = 0; i < RGB_HISTOGRAM_BUFFER_SIZE; i++) {
+			sde_crtc->rgb_hist_buffers[i] =
+				kzalloc(sizeof(struct sde_rgb_hist_buffer), GFP_KERNEL);
+			if (!sde_crtc->rgb_hist_buffers[i]) {
+				SDE_ERROR("Failed to kzalloc hist_buf[%d]\n", i);
+				goto exit;
+			}
+			hist_buf = sde_crtc->rgb_hist_buffers[i];
+			hfi_buf = &hfi_cfg[i];
+
+			for (int j = 0; j < RGB_COMPONENT_SIZE; j++) {
+				// Map buffer to kva, dup_iova and dcp_iova
+				ret = map_single_rgb_hist_buffer(sde_crtc, i, j,
+					input_cfg->fds[i][j]);
+				if (ret) {
+					SDE_ERROR("Failed to map buffer, fd %d, ret %d\n",
+						input_cfg->fds[i][j], ret);
+					goto exit;
+				}
+				sgt = msm_gem_get_sgt(hist_buf->gem[j]);
+				hist_buf->addr_map[j].size = hist_buf->gem[j]->size;
+				ret = hfi_adapter_map_sg_table(sde_crtc->hfi_client, sgt,
+						&hist_buf->addr_map[j]);
+				if (ret) {
+					SDE_ERROR("Failed to map buffer to dcp_iova ret %d\n", ret);
+					goto exit;
+				}
+				hist_buf->dcp_iova[j] =
+					hist_buf->addr_map[j].alloc_info.mapped_iova;
+
+				// Add to hfi struct
+				hfi_buf->dpu_iova_lo[j] =
+					(u32)(hist_buf->dpu_iova[j] & U32_MASK_LOW);
+				hfi_buf->dpu_iova_hi[j] =
+					(u32)(hist_buf->dpu_iova[j] >> U32_SHIFT_BITS);
+				hfi_buf->dcp_addr_lo[j] =
+					(u32)(hist_buf->dcp_iova[j] & U32_MASK_LOW);
+				hfi_buf->dcp_addr_hi[j] =
+					(u32)(hist_buf->dcp_iova[j] >> U32_SHIFT_BITS);
+			}
+			hfi_buf->flags = HFI_DISPLAY_COLOR_FLAGS_FEATURE_ENABLE;
+			hfi_buf->size = sizeof(struct hfi_display_rgb_hist_buffer);
+		}
+	}
+
+	for (int i = 0; i < RGB_HISTOGRAM_BUFFER_SIZE; i++) {
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				hw_cfg->prop_id, HFI_VAL_U32_ARRAY, &hfi_cfg[i],
+				sizeof(struct hfi_display_rgb_hist_buffer));
+		if (ret)
+			SDE_ERROR("failed to add HFI prop: %d ret: %d\n", hw_cfg->prop_id, ret);
+	}
+	return;
+
+exit:
+	sde_crtc_cp_unmap_rgb_hist_buffers(sde_crtc);
+}
+
+static int hfi_cp_crtc_validate_rgb_hist_params(struct drm_msm_rgb_hist_ctrl *hist_ctrl,
+		u32 disp_h, u32 disp_v)
+{
+
+	if (!hist_ctrl) {
+		SDE_ERROR("invalid parameter hist_ctrl: %pK\n", hist_ctrl);
+		return -EINVAL;
+	}
+
+	// Check tap_point
+	if (hist_ctrl->tap_point != RGB_HIST_TAP_POINT_AFTER_DSPP &&
+		hist_ctrl->tap_point != RGB_HIST_TAP_POINT_BEFORE_DSPP) {
+		SDE_ERROR("invalid tap point: %d\n", hist_ctrl->tap_point);
+		return -EINVAL;
+	}
+
+	// Check colorspace_mode
+	if (hist_ctrl->colorspace_mode != RGB_HIST_COLORMODE_Y &&
+		hist_ctrl->colorspace_mode != RGB_HIST_COLORMODE_V &&
+		hist_ctrl->colorspace_mode != RGB_HIST_COLORMODE_RGB) {
+		SDE_ERROR("invalid colorspace mode: %d\n", hist_ctrl->colorspace_mode);
+		return -EINVAL;
+	}
+
+	// Check roi
+	if (hist_ctrl->flags | RGB_HIST_ROI_ENABLE) {
+		if (hist_ctrl->roi_mode != ROI_MODE_WITHIN &&
+			hist_ctrl->roi_mode != ROI_MODE_OUTSIDE) {
+			SDE_ERROR("invalid roi mode: %d\n", hist_ctrl->roi_mode);
+			return -EINVAL;
+		}
+
+		if (hist_ctrl->roi_x + hist_ctrl->roi_width > disp_h) {
+			SDE_ERROR("invalid roi x input = [%u,%u], disp_h = %u\n",
+				hist_ctrl->roi_x, hist_ctrl->roi_width, disp_h);
+			return -EINVAL;
+		}
+
+		if (hist_ctrl->roi_y + hist_ctrl->roi_height > disp_v) {
+			SDE_ERROR("invalid roi y input = [%u,%u], disp_v = %u\n",
+				hist_ctrl->roi_y, hist_ctrl->roi_height, disp_v);
+			return -EINVAL;
+		}
+	}
+
+	return 0;
+}
+
+void hfi_cp_crtc_queue_rgb_hist_buffer(struct sde_crtc *sde_crtc,
+		struct sde_hw_dspp *ctx, void *data)
+{
+	int ret = 0;
+	struct sde_hw_cp_cfg *hw_cfg = data;
+	struct drm_msm_rgb_hist_buffer *input_cfg;
+	struct hfi_display_rgb_hist_buffer hfi_buf;
+	struct sde_rgb_hist_buffer *hist_buf = NULL;
+	bool found = false;
+	int i = 0;
+
+	if (!sde_crtc || !data) {
+		SDE_ERROR("invalid sde_crtc: %pK data: %pK\n", sde_crtc, data);
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	if (!hw_cfg->payload ||
+		hw_cfg->len != sizeof(struct drm_msm_rgb_hist_buffer)) {
+		SDE_ERROR("invalid payload: %pK len: %d\n", hw_cfg->payload, hw_cfg->len);
+		return;
+	}
+
+	input_cfg = (struct drm_msm_rgb_hist_buffer *)(hw_cfg->payload);
+	for (i = 0; i < RGB_HISTOGRAM_BUFFER_SIZE; i++) {
+		hist_buf = sde_crtc->rgb_hist_buffers[i];
+		if (!hist_buf)
+			continue;
+
+		found = true;
+		for (int j = 0; j < RGB_COMPONENT_SIZE; j++) {
+			if (hist_buf->drm_fb_id[j] != input_cfg->fd[j]) {
+				found = false;
+				break;
+			}
+		}
+
+		if (found)
+			break;
+	}
+
+	if (!found) {
+		SDE_ERROR("hist buffer not found\n");
+		return;
+	}
+
+	hw_cfg->prop_id = HFI_PACK_VERSION(
+		2, 0, HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER);
+
+	hfi_buf.flags = HFI_DISPLAY_COLOR_FLAGS_FEATURE_ENABLE;
+	hfi_buf.size = sizeof(struct hfi_display_rgb_hist_buffer);
+
+	for (int j = 0; j < RGB_COMPONENT_SIZE; j++) {
+		hfi_buf.dpu_iova_lo[j] = (u32)(hist_buf->dpu_iova[j] & U32_MASK_LOW);
+		hfi_buf.dpu_iova_hi[j] = (u32)(hist_buf->dpu_iova[j] >> U32_SHIFT_BITS);
+		hfi_buf.dcp_addr_lo[j] = (u32)(hist_buf->dcp_iova[j] & U32_MASK_LOW);
+		hfi_buf.dcp_addr_hi[j] = (u32)(hist_buf->dcp_iova[j] >> U32_SHIFT_BITS);
+	}
+
+	ret = hfi_util_u32_prop_helper_add_prop(
+		hw_cfg->prop_helper, hw_cfg->prop_id, HFI_VAL_U32_ARRAY, &hfi_buf,
+		sizeof(struct hfi_display_rgb_hist_buffer));
+	if (ret)
+		SDE_ERROR("failed to add HFI prop: %d ret: %d\n", hw_cfg->prop_id, ret);
+}
+
+int hfi_setup_dspp_rgb_hist_ctrlv2(struct sde_hw_dspp *ctx, void *data)
+{
+	struct sde_hw_cp_cfg *hw_cfg = data;
+	struct drm_msm_rgb_hist_ctrl *hist_ctrl;
+	struct hfi_display_rgb_hist_ctrl *hfi_cfg;
+	int ret = 0;
+
+	// Check input
+	if (!ctx || !hw_cfg) {
+		SDE_ERROR("invalid parameter ctx: %pK hw_cfg: %pK\n", ctx, hw_cfg);
+		return -EINVAL;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return -EINVAL;
+	}
+
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CTRL);
+
+	hfi_cfg = &hfi_rgb_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
+	if (!hw_cfg->payload) {
+		SDE_DEBUG("Disable RGB hist feature\n");
+		hfi_cfg->flags = 0;
+	} else {
+		SDE_DEBUG("Enable RGB hist feature\n");
+		hist_ctrl = (struct drm_msm_rgb_hist_ctrl *)(hw_cfg->payload);
+		if (hw_cfg->len != sizeof(struct drm_msm_rgb_hist_ctrl)) {
+			SDE_ERROR("invalid rgb hist ctrl len %u exp: %lu\n",
+				hw_cfg->len, sizeof(struct drm_msm_rgb_hist_ctrl));
+			return -EINVAL;
+		}
+
+		// Validate input patams
+		ret = hfi_cp_crtc_validate_rgb_hist_params(hist_ctrl,
+			hw_cfg->displayh, hw_cfg->displayv);
+		if (ret) {
+			SDE_ERROR("Invalid rgb hist params, ret: %d\n", ret);
+			return ret;
+		}
+
+		// Config data
+		hfi_cfg->flags = HFI_DISPLAY_COLOR_FLAGS_FEATURE_ENABLE;
+		hfi_cfg->tap_point = hist_ctrl->tap_point;
+		hfi_cfg->colorspace_mode = hist_ctrl->colorspace_mode;
+		hfi_cfg->roi_mode = 0;
+		hfi_cfg->roi_x = 0;
+		hfi_cfg->roi_y = 0;
+		hfi_cfg->roi_width = 0;
+		hfi_cfg->roi_height = 0;
+
+		// Check ROI
+		if (hist_ctrl->flags | RGB_HIST_ROI_ENABLE) {
+			hfi_cfg->flags |= HFI_RGB_HIST_ROI_ENABLE;
+			hfi_cfg->roi_mode = hist_ctrl->roi_mode;
+			hfi_cfg->roi_x = hist_ctrl->roi_x;
+			hfi_cfg->roi_y = hist_ctrl->roi_y;
+			hfi_cfg->roi_width = hist_ctrl->roi_width;
+			hfi_cfg->roi_height = hist_ctrl->roi_height;
+		}
+	}
+
+	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
+		ret = hfi_util_u32_prop_helper_add_prop(
+			hw_cfg->prop_helper, hw_cfg->prop_id, HFI_VAL_U32_ARRAY, hfi_cfg,
+			sizeof(struct hfi_display_rgb_hist_ctrl));
+		if (ret)
+			SDE_ERROR("failed to add HFI prop: %d ret: %d\n", hw_cfg->prop_id, ret);
+	}
+	return ret;
+}
+
+void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc, void *cfg)
+{
+	u32 hfi_cfg = 0;
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	int ret = 0;
+
+	if (!sde_crtc || !cfg) {
+		DRM_ERROR("invalid parameters sde_crtc %pK, cfg %pK\n", sde_crtc, cfg);
+		return;
+	}
+
+	if (sde_crtc->rgb_hist_en) {
+		DRM_ERROR("cannot free buffers when rgb hist is enabled\n");
+		return;
+	}
+
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS);
+
+	// unmap buffers
+	sde_crtc_cp_unmap_rgb_hist_buffers(sde_crtc);
+
+	// Add prop to hfi
+	ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper, hw_cfg->prop_id,
+		HFI_VAL_U32, &hfi_cfg, sizeof(u32));
+	if (ret) {
+		SDE_ERROR("Failed to send free rgb hist buffer prop ret: %d\n", ret);
+		return;
 	}
 }
