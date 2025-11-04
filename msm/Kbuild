@@ -58,6 +58,16 @@ else
 endif
 endif
 
+ifeq ($(CONFIG_ARCH_ART), y)
+ifeq ($(CONFIG_ARCH_QTI_VM), y)
+    include $(DISPLAY_ROOT)/config/gki_artdisptui.conf
+    LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_artdisptuiconf.h
+else
+	include $(DISPLAY_ROOT)/config/gki_artdisp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_artdispconf.h
+endif
+endif
+
 ifeq ($(CONFIG_ARCH_MONACO), y)
 	include $(DISPLAY_ROOT)/config/gki_monacodisp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_monacodispconf.h
