@@ -240,6 +240,7 @@ enum hfi_display_event_id {
 	HFI_EVENT_HW_RECOVERY               = 0x6,
 	HFI_EVENT_FRAME_CAPTURE_COMPLETE    = 0x7,
 	HFI_EVENT_PANEL_DEAD                = 0x8,
+	HFI_EVENT_LTM                       = 0x9,
 };
 
 /*

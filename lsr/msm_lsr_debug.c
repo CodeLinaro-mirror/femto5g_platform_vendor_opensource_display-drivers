@@ -10,7 +10,7 @@
 
 #define MAX_SSR_STRING_LEN 10
 
-int msm_lsr_debug = LSR_ERR | LSR_WARN;
+int msm_lsr_debug = !1;
 EXPORT_SYMBOL_GPL(msm_lsr_debug);
 
 int msm_lsr_debug_out = LSR_OUT_PRINTK;

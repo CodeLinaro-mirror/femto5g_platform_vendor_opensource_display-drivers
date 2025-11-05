@@ -211,6 +211,30 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD                                    0x04000008
 
+/*!
+ * HFI_COMMAND_DISPLAY_EVENT_LTM - This is a DCP event notify command sent to host for LTM events
+ *                                 HIST_DONE, WB_PB, and HIST_OFF.
+ *
+ * Data layout:
+ * struct hfi_display_ltm_event_resp- stats buffer and event type
+ * @event_type      :  type of LTM event i.e. HIST_DONE, WB_PB, HIST_OFF
+ * @dcp_addr_h      :  higher value of 64bit dcp address of LTM stats buffer
+ * @dcp_addr_l      :  lower value of 64bit dcp address of LTM stats buffer
+ *
+ * struct hfi_display_ltm_event_resp {
+ *         u32 event_type;
+ *         u32 dcp_addr_h;
+ *         u32 dcp_addr_l;
+ * }
+ * hfi_packet.payload_info.type           : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                         : HFI_COMMAND_DISPLAY_EVENT_LTM
+ *           .flags                       : HFI_RX_FLAGS_NONE
+ *           .id                          : BITS 0:15 carry the display id for which the event
+ *                                          is applicable
+ *           .payload[0-2]                : struct hfi_display_ltm_event_resp
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_LTM                                           0x04000009
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H
