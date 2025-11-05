@@ -182,6 +182,8 @@ static void sde_hw_intf_avr_trigger(struct sde_hw_intf *ctx)
 	c = &ctx->hw;
 	SDE_REG_WRITE(c, INTF_AVR_TRIGGER, 0x1);
 	SDE_DEBUG("AVR Triggered\n");
+	/* ensure written */
+	wmb();
 }
 
 static int sde_hw_intf_avr_setup(struct sde_hw_intf *ctx,
@@ -235,6 +237,8 @@ static void sde_hw_intf_avr_enable(struct sde_hw_intf *ctx, bool enable)
 		avr_ctrl = BIT(0);
 
 	SDE_REG_WRITE(c, INTF_AVR_CONTROL, avr_ctrl);
+	/* ensure written */
+	wmb();
 }
 
 static void sde_hw_intf_avr_ctrl(struct sde_hw_intf *ctx,
@@ -242,14 +246,12 @@ static void sde_hw_intf_avr_ctrl(struct sde_hw_intf *ctx,
 {
 	struct sde_hw_blk_reg_map *c;
 	u32 avr_mode = 0;
-	u32 avr_ctrl = 0;
 
 	if (!ctx || !avr_params)
 		return;
 
 	c = &ctx->hw;
 	if (avr_params->avr_mode) {
-		avr_ctrl = BIT(0);
 		avr_mode = (avr_params->avr_mode == SDE_RM_QSYNC_ONE_SHOT_MODE) ?
 				(BIT(0) | BIT(8)) : 0x0;
 		if (avr_params->avr_step_lines)
@@ -262,7 +264,6 @@ static void sde_hw_intf_avr_ctrl(struct sde_hw_intf *ctx,
 	if (avr_params->hw_avr_trigger)
 		avr_mode = avr_mode | BIT(10);
 
-	SDE_REG_WRITE(c, INTF_AVR_CONTROL, avr_ctrl);
 	SDE_REG_WRITE(c, INTF_AVR_MODE, avr_mode);
 }
 

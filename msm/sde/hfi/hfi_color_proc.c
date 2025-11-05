@@ -12,6 +12,10 @@
 
 static struct hfi_display_pa_dither hfi_pa_dither_cached[DPU_MAX][DSPP_MAX] = {};
 static u32 hfi_demura_backlight_cached[DPU_MAX][DSPP_MAX] = {};
+static struct hfi_display_ltm_init_param hfi_ltm_init_cached[DPU_MAX][DSPP_MAX] = {};
+static struct hfi_display_ltm_cfg_param hfi_ltm_roi_cached[DPU_MAX][DSPP_MAX] = {};
+static u32 hfi_ltm_hist_ctrl_cached[DPU_MAX][DSPP_MAX] = {};
+static u32 hfi_ltm_thresh_cached[DPU_MAX][DSPP_MAX] = {};
 
 void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data, enum msm_disp_op disp_op)
 {
@@ -455,4 +459,351 @@ void hfi_setup_demura_backlight_cfg_v4(struct sde_hw_dspp *ctx, struct sde_hw_cp
 			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
 				HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT);
 	}
+}
+
+void hfi_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_ltm_init_param *ltm_init = NULL;
+	int ret = 0;
+	struct hfi_display_ltm_init_param *hfi_cfg;
+	u32 payload_size = sizeof(struct hfi_display_ltm_init_param);
+
+	if (!hw_cfg || (hw_cfg->len != sizeof(struct drm_msm_ltm_init_param) &&
+			hw_cfg->payload)) {
+		SDE_ERROR("invalid params hw_cfg %pK payload %pK size %d expected sz %zd\n",
+			hw_cfg, ((hw_cfg) ? hw_cfg->payload : NULL),
+			((hw_cfg) ? hw_cfg->len : 0),
+			sizeof(struct drm_msm_ltm_init_param));
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	hfi_cfg = &hfi_ltm_init_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 4, hw_cfg->prop_id);
+
+	if (!hw_cfg->payload) {
+		/* Turn off feature */
+		SDE_DEBUG("Disable LTM feature\n");
+		hfi_cfg->flags = 0;
+	} else {
+		/* Turn on feature */
+		SDE_DEBUG("Enable LTM feature\n");
+		hfi_cfg->flags = HFI_DISPLAY_COLOR_FLAGS_FEATURE_ENABLE;
+		ltm_init = hw_cfg->payload;
+		hfi_cfg->init_param_01 = ltm_init->init_param_01;
+		hfi_cfg->init_param_02 = ltm_init->init_param_02;
+		hfi_cfg->init_param_03 = ltm_init->init_param_03;
+		hfi_cfg->init_param_04 = ltm_init->init_param_04;
+	}
+
+	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
+		/* non-broadcast and it is the last dspp idx - send the payload */
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				hw_cfg->prop_id, HFI_VAL_U32_ARRAY,
+				&hfi_ltm_init_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx],
+				payload_size * hw_cfg->num_of_mixers);
+		if (ret)
+			SDE_ERROR("Failed to add hfi prop for LTM INIT %d ret %d\n",
+				hw_cfg->prop_id, ret);
+		else
+			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
+				hw_cfg->prop_id);
+		/* reset the cached struct for current dpu_idx after submitting to FW */
+		memset(&hfi_ltm_init_cached[ctx->dpu_idx], 0,
+			   sizeof(hfi_ltm_init_cached[ctx->dpu_idx]));
+	}
+}
+
+void hfi_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_ltm_cfg_param *ltm_cfg = NULL;
+	int ret = 0;
+	struct hfi_display_ltm_cfg_param *hfi_cfg;
+	u32 payload_size = sizeof(struct hfi_display_ltm_cfg_param);
+
+	if (!hw_cfg || (hw_cfg->len != sizeof(struct drm_msm_ltm_cfg_param) &&
+			hw_cfg->payload)) {
+		SDE_ERROR("invalid params hw_cfg %pK payload %pK size %d expected sz %zd\n",
+			hw_cfg, ((hw_cfg) ? hw_cfg->payload : NULL),
+			((hw_cfg) ? hw_cfg->len : 0),
+			sizeof(struct drm_msm_ltm_cfg_param));
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	hfi_cfg = &hfi_ltm_roi_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 3, HFI_PROPERTY_DISPLAY_COLOR_LTM_CFG);
+	if (!hw_cfg->payload) {
+		/* Turn off feature */
+		hfi_cfg->flags = 0;
+		SDE_DEBUG("Disable LTM ROI feature\n");
+	} else {
+		/* Turn on feature */
+		SDE_DEBUG("Enable LTM ROI feature\n");
+		hfi_cfg->flags = HFI_DISPLAY_COLOR_FLAGS_FEATURE_ENABLE;
+		ltm_cfg = hw_cfg->payload;
+		hfi_cfg->cfg_param_01 = ltm_cfg->cfg_param_01;
+		hfi_cfg->cfg_param_02 = ltm_cfg->cfg_param_02;
+		hfi_cfg->cfg_param_03 = ltm_cfg->cfg_param_03;
+		hfi_cfg->cfg_param_04 = ltm_cfg->cfg_param_04;
+		hfi_cfg->cfg_param_05 = ltm_cfg->cfg_param_05;
+		hfi_cfg->cfg_param_06 = ltm_cfg->cfg_param_06;
+	}
+
+	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
+		/* non-broadcast and it is the last dspp idx - send the payload */
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				hw_cfg->prop_id, HFI_VAL_U32_ARRAY,
+				&hfi_ltm_roi_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx],
+				payload_size * hw_cfg->num_of_mixers);
+		if (ret)
+			SDE_ERROR("Failed to add hfi prop for LTM ROI %d ret %d\n",
+				hw_cfg->prop_id, ret);
+		else
+			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
+				hw_cfg->prop_id);
+
+		/* reset the cached struct for current dpu_idx after submitting to FW */
+		memset(&hfi_ltm_roi_cached[ctx->dpu_idx], 0,
+			   sizeof(hfi_ltm_roi_cached[ctx->dpu_idx]));
+	}
+}
+
+void hfi_setup_dspp_ltm_hist_ctrlv1_2(struct sde_hw_dspp *ctx, void *cfg,
+				    bool enable, u64 addr)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	int ret = 0;
+	u32 *hfi_cfg;
+	u32 payload_size = sizeof(u32);
+
+	if (!hw_cfg || !ctx) {
+		DRM_ERROR("invalid params hw_cfg %pK\n", hw_cfg);
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+
+	hfi_cfg = &hfi_ltm_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 2, hw_cfg->prop_id);
+
+	*hfi_cfg = enable;
+	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
+		/* non-broadcast and it is the last dspp idx - send the payload */
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				hw_cfg->prop_id, HFI_VAL_U32_ARRAY,
+				&hfi_ltm_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx],
+				payload_size * hw_cfg->num_of_mixers);
+		if (ret)
+			SDE_ERROR("Failed to add hfi prop for LTM HIST CTRL %d ret %d\n",
+				hw_cfg->prop_id, ret);
+		else
+			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
+				hw_cfg->prop_id);
+
+		/* reset the cached struct for current dpu_idx after submitting to FW */
+		memset(&hfi_ltm_hist_ctrl_cached[ctx->dpu_idx], 0,
+			   sizeof(hfi_ltm_hist_ctrl_cached[ctx->dpu_idx]));
+	}
+}
+
+void hfi_setup_dspp_ltm_threshv1(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	int ret = 0;
+	u32 *hfi_cfg;
+	u32 payload_size = sizeof(u32);
+
+	if (!hw_cfg) {
+		SDE_ERROR("invalid params hw_cfg %pK\n", hw_cfg);
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	hfi_cfg = &hfi_ltm_thresh_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 0, hw_cfg->prop_id);
+	if (!hw_cfg->payload) {
+		SDE_DEBUG("Disable LTM noise thresh feature\n");
+		*hfi_cfg = 0;
+	} else {
+		SDE_DEBUG("Enable LTM noise thresh feature\n");
+		*hfi_cfg = *((u64 *)hw_cfg->payload);
+	}
+
+	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
+		/* non-broadcast and it is the last dspp idx - send the payload */
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				hw_cfg->prop_id, HFI_VAL_U32_ARRAY,
+				&hfi_ltm_thresh_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx],
+				payload_size * hw_cfg->num_of_mixers);
+		if (ret)
+			SDE_ERROR("Failed to add hfi prop for LTM NOISE THRESH %d ret %d\n",
+				hw_cfg->prop_id, ret);
+		else
+			SDE_DEBUG("non-broadcast feature %d: submitted to prop_helper\n",
+				hw_cfg->prop_id);
+
+		/* reset the cached struct for current dpu_idx after submitting to FW */
+		memset(&hfi_ltm_thresh_cached[ctx->dpu_idx], 0,
+			   sizeof(hfi_ltm_thresh_cached[ctx->dpu_idx]));
+	}
+
+}
+
+void hfi_cp_crtc_set_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct drm_msm_ltm_buffers_ctrl *buf_cfg = NULL;
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
+	struct sg_table *sgt = NULL;
+#endif
+	u32 i = 0, num = 0;
+	int ret = 0;
+	u32 payload = 0;
+	u32 clear_buffs_prop_id = HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS;
+
+	if (!sde_crtc || !cfg) {
+		SDE_ERROR("invalid parameters sde_crtc %pK cfg %pK\n", sde_crtc,
+				cfg);
+		return;
+	}
+
+	if (sde_crtc->do_clear_buf) {
+		clear_buffs_prop_id = HFI_PACK_VERSION(1, 0,
+			HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS);
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper, clear_buffs_prop_id,
+				HFI_VAL_U32_ARRAY, &payload, sizeof(u32));
+		sde_crtc->do_clear_buf = false;
+	}
+
+	buf_cfg = hw_cfg->payload;
+	num = buf_cfg->num_of_buffers;
+	if (num == 0 || num > LTM_BUFFER_SIZE) {
+		SDE_ERROR("invalid buffer size %d\n", num);
+		return;
+	}
+
+	if (sde_crtc->ltm_buffer_cnt) {
+		SDE_DEBUG("%d ltm_buffers already allocated\n",
+			sde_crtc->ltm_buffer_cnt);
+		return;
+	}
+
+	for (i = 0; i < num; i++) {
+		ret = map_single_ltm_buffer(sde_crtc, i, buf_cfg->fds[i]);
+		if (ret)
+			goto exit;
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
+		sgt = msm_gem_get_sgt(sde_crtc->ltm_buffers[i]->gem);
+		sde_crtc->ltm_buffers[i]->addr_map.size = sde_crtc->ltm_buffers[i]->gem->size;
+		ret = hfi_adapter_map_sg_table(sde_crtc->hfi_client, sgt,
+			&sde_crtc->ltm_buffers[i]->addr_map);
+		if (ret)
+			goto exit;
+		sde_crtc->ltm_buffers[i]->dcp_iova =
+			sde_crtc->ltm_buffers[i]->addr_map.alloc_info.mapped_iova;
+#endif
+		if (!(sde_crtc->ltm_buffers[i]->dcp_iova))
+			goto exit;
+	}
+
+	/* Add buffers to ltm_buf_free list */
+	for (i = 0; i < num; i++) {
+		ret = hfi_cp_crtc_queue_ltm_buffer(sde_crtc->ltm_buffers[i], cfg);
+		if (ret) {
+			SDE_ERROR("Failed to queue ltm buffer %d\n", buf_cfg->fds[i]);
+			goto exit;
+		}
+	}
+
+	sde_crtc->ltm_buffer_cnt = num;
+
+	return;
+exit:
+	sde_crtc_cp_unmap_ltm_buffers(sde_crtc, i);
+}
+
+int hfi_cp_crtc_queue_ltm_buffer(struct sde_ltm_buffer *ltm_buff, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct hfi_display_ltm_buffer hfi_cfg;
+	int ret = 0;
+
+	if (!ltm_buff) {
+		SDE_ERROR("invalid parameters ltm_buff %pK\n", ltm_buff);
+		return -EINVAL;
+	}
+
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 0, HFI_PROPERTY_DISPLAY_COLOR_LTM_QUEUE_BUF);
+	hfi_cfg.flags = 0;
+	hfi_cfg.dcp_addr_l = (ltm_buff->dcp_iova & ~((u32)0));
+	hfi_cfg.dcp_addr_h = ((ltm_buff->dcp_iova >> 32) & ~((u32)0));
+	hfi_cfg.dpu_iova_l = (ltm_buff->iova & ~((u32)0));
+	hfi_cfg.dpu_iova_h = ((ltm_buff->iova >> 32) & ~((u32)0));
+	hfi_cfg.size = sizeof(struct hfi_display_ltm_buffer);
+
+	ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper, hw_cfg->prop_id,
+			HFI_VAL_U32_ARRAY, &hfi_cfg, sizeof(struct hfi_display_ltm_buffer));
+
+	if (ret) {
+		SDE_ERROR("Failed to send queue ltm buffer prop ret: %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
+void hfi_cp_crtc_free_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	int ret = 0;
+	u32 buffer_count = 0;
+	u32 hfi_cfg = 1;
+	u32 prop_id = HFI_PACK_VERSION(1, 0, HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS);
+
+	if (!sde_crtc || !cfg) {
+		DRM_ERROR("invalid parameters sde_crtc %pK, cfg %pK\n", sde_crtc, cfg);
+		return;
+	}
+
+	if (sde_crtc->ltm_hist_en) {
+		DRM_ERROR("cannot free LTM buffers when hist is enabled\n");
+		return;
+	}
+
+	if (!sde_crtc->ltm_buffer_cnt) {
+		/* ltm_buffers are already freed */
+		return;
+	}
+
+	buffer_count = sde_crtc->ltm_buffer_cnt;
+	sde_crtc->ltm_buffer_cnt = 0;
+	sde_crtc_cp_unmap_ltm_buffers(sde_crtc, buffer_count);
+
+	ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper, prop_id,
+			HFI_VAL_U32, &hfi_cfg, sizeof(u32));
+
+	if (ret) {
+		SDE_ERROR("Failed to send free ltm buffer prop ret: %d\n", ret);
+		return;
+	}
+
 }

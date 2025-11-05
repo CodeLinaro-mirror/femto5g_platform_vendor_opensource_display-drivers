@@ -7,6 +7,7 @@
 #define _HFI_COLOR_PROC_H_
 
 #include "sde_hw_sspp.h"
+#include "sde_crtc.h"
 
 /**
  * hfi_sspp_setup_csc - setup color space conversion in HFI path
@@ -82,5 +83,60 @@ void hfi_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx, void *cfg);
  * @hw_cfg: pointer to sde_hw_cp_cfg containing u32 backlight data
  */
 void hfi_setup_demura_backlight_cfg_v4(struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg);
+
+
+/**
+ * hfi_setup_ltm_initv1_4 - setup LTM init feature in HFI path
+ * @ctx: Pointer to DSPP context
+ * @cfg: Pointer to sde_hw_cp_cfg object containing ltm init data
+ */
+void hfi_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * hfi_setup_ltm_roiv1_3 - setup LTM ROI feature in HFI path
+ * @ctx: Pointer to DSPP context
+ * @cfg: Pointer to sde_hw_cp_cfg object containing ltm roi data
+ */
+void hfi_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * hfi_setup_dspp_ltm_hist_ctrlv1_2 - setup LTM hist ctrl programming in HFI path
+ * @ctx: Pointer to DSPP context
+ * @cfg: Pointer to sde_hw_cp_cfg object containing ltm hist ctrl data
+ * @enable: Enable/disable LTM hist ctrl
+ * @addr: aligned iova address
+ */
+void hfi_setup_dspp_ltm_hist_ctrlv1_2(struct sde_hw_dspp *ctx, void *cfg,
+				    bool enable, u64 addr);
+
+/**
+ * hfi_setup_dspp_ltm_threshv1 - setup LTM threshold programming in HFI path
+ * @ctx: Pointer to DSPP context
+ * @cfg: Pointer to sde_hw_cp_cfg object containing ltm threshold data
+ */
+void hfi_setup_dspp_ltm_threshv1(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
+ * hfi_cp_crtc_set_ltm_buffer - setup LTM buffer programming in HFI path
+ * @sde_crtc: Pointer to sde_crtc context
+ * @cfg: Pointer to hw config structure
+ */
+void hfi_cp_crtc_set_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg);
+
+/**
+ * hfi_cp_crtc_queue_ltm_buffer - send LTM buffer to FW in HFI path
+ * @ltm_buff: Pointer to sde ltm buffer
+ * @cfg: Pointer to hw config structure
+ *
+ * Return: 0 on success, error code otherwise
+ */
+int hfi_cp_crtc_queue_ltm_buffer(struct sde_ltm_buffer *ltm_buff, void *cfg);
+
+/**
+ * hfi_cp_crtc_free_ltm_buffer - free LTM buffer in HFI path
+ * @sde_crtc: Pointer to sde_crtc context
+ * @cfg: Pointer to hw config structure
+ */
+void hfi_cp_crtc_free_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg);
 
 #endif /* _HFI_COLOR_PROC_H_ */

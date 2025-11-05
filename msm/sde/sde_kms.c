@@ -1343,6 +1343,10 @@ int sde_kms_vm_trusted_prepare_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+
+	if (vm_req == VM_REQ_RELEASE)
+		sde_encoder_check_frame_pending(&sde_kms->base, crtc);
+
 	if (vm_req != VM_REQ_ACQUIRE)
 		return 0;
 
@@ -2819,6 +2823,10 @@ static int sde_kms_hfi_boot_init(struct sde_kms *sde_kms)
 		SDE_ERROR("HFI get catalog data failed\n");
 		return -EPROBE_DEFER;
 	}
+
+	ret = sde_dbg_setup(sde_kms->dev->dev);
+	if (ret)
+		SDE_ERROR("debug setup failed ret: %d\n", ret);
 
 	return ret;
 }

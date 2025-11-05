@@ -439,4 +439,37 @@ void _sde_cp_check_mdnie_art_done(struct drm_crtc *crtc);
  */
 void sde_cp_get_ai_scaler_io_res(struct drm_crtc_state *crtc_state);
 
+/**
+ * sde_cp_notify_ltm_hist: function to notify userspace that ltm hist done
+ * hw event is received
+ * @crtc_drm: pointer to drm crtc
+ * @arg: args for function
+ */
+void sde_cp_notify_ltm_hist(struct drm_crtc *crtc_drm, void *arg);
+
+/**
+ * sde_cp_notify_ltm_wb_pb: function to notify userspace that ltm writeback
+ * hw event is received
+ * @crtc_drm: pointer to drm crtc
+ * @arg: args for function
+ */
+void sde_cp_notify_ltm_wb_pb(struct drm_crtc *crtc_drm, void *arg);
+
+/**
+ * sde_cp_notify_ltm_off: function to notify userspace that ltm off
+ * hw event is received
+ * @crtc_drm: pointer to drm crtc
+ * @arg: args for function
+ */
+void sde_cp_notify_ltm_off(struct drm_crtc *crtc_drm, void *arg);
+
+/**
+ * map_single_ltm_buffer - map a single ltm buffer to FW domain
+ * @sde_crtc: pointer to sde crtc object
+ * @i: LTM buffer index
+ * @fd_id: file descriptor ID to use for mapping
+ *
+ */
+int map_single_ltm_buffer(void *crtc, u32 i, u32 fd_id);
+
 #endif /*_SDE_COLOR_PROCESSING_H */
