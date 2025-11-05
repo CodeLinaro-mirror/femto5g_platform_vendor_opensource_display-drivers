@@ -651,8 +651,7 @@ static enum hfi_panel_trigger_type dsi_get_panel_trigger_type_helper(enum dsi_tr
 	}
 }
 
-static enum hfi_panel_esd_status_mode dsi_get_esd_status_mode_helper(
-	enum esd_check_status_mode mode)
+enum hfi_panel_esd_status_mode dsi_get_esd_status_mode_helper(enum esd_check_status_mode mode)
 {
 	switch (mode) {
 	case ESD_MODE_REG_READ:
