@@ -940,6 +940,8 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 			msm_spr_pack_type_mode_str[panel->spr_info.pack_type_mode]);
 	}
 
+	sde_kms_info_add_keystr(info, "privacy layer support",
+			panel->privacy_feature_enabled ? "true" : "false");
 	/**
 	 * Set partial update props in hwio mode only, this disables the feature in hfi mode as
 	 * a temporal workaround until this feature is implemented in fw.
@@ -1623,7 +1625,8 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 				allow_switch = true;
 			} else if ((common_mode_caps & DSI_OP_VIDEO_MODE) &&
 				(panel->dfps_caps.dfps_support ||
-				panel->dyn_clk_caps.dyn_clk_support)) {
+				panel->dyn_clk_caps.dyn_clk_support ||
+				panel->esync_caps.emsync_switch_enabled)) {
 				allow_switch = true;
 			} else {
 				if (is_valid_poms_switch(panel_dsi_mode,
