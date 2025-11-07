@@ -1121,6 +1121,124 @@
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS          0x00020120
 
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_AI_SCALER - This property is to setup AI Scaler.
+ *                                             Host is expected to send this packet
+ *                                             of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                             command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_AI_SCALER
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_AI_SCALER |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_AI_SCALER                    0x00020121
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG - This property is to setup SSRC configuration.
+ *                                               Host is expected to send this packet
+ *                                               of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                               command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG                  0x00020122
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA - This property is to setup SSRC data.
+ *                                             Host is expected to send this packet
+ *                                             of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                             command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA |
+ * ^                             | (version=0 << 20) |
+ * ^                             |(dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA                    0x00020123
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE - This property is to setup MDNIE.
+ *                                         Host is expected to send this packet
+ *                                         of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                         command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE                        0x00020124
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC - This property is to setup IPC.
+ *                                             Host is expected to send this packet
+ *                                             of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                             command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC                    0x00020125
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART - This property is to setup ART.
+ *                                             Host is expected to send this packet
+ *                                             of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                             command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART                    0x00020126
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC - This property is to setup ABC.
+ *                                       Host is expected to send this packet
+ *                                       of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                       command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC                          0x00020127
+
 /*
  * All display color properties end here
  */
