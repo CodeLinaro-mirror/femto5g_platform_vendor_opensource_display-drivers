@@ -2005,10 +2005,16 @@ static int msm_pm_suspend(struct device *dev)
 		return -ENODEV;
 	}
 
+	/**
+	 * If "priv" exists but priv->registered is false,
+	 * it means PM function already registered but the whole driver not ready.
+	 * In this case, there is nothing to suspend/resume yet,
+	 * so directly return 0 to indicate success.
+	 */
 	priv = ddev->dev_private;
 	if (!priv->registered) {
-		DRM_ERROR("drm not registered, skipping suspend\n");
-		return -ENODEV;
+		DRM_ERROR("drm not fully registered, skipping suspend\n");
+		return 0;
 	}
 	kms = priv->kms;
 
@@ -2038,10 +2044,16 @@ static int msm_pm_resume(struct device *dev)
 		return -ENODEV;
 	}
 
+	/**
+	 * If "priv" exists but priv->registered is false,
+	 * it means PM function already registered but the whole driver not ready.
+	 * In this case, there is nothing to suspend/resume yet,
+	 * so directly return 0 to indicate success.
+	 */
 	priv = ddev->dev_private;
 	if (!priv->registered) {
-		DRM_ERROR("drm not registered, skipping resume\n");
-		return -ENODEV;
+		DRM_ERROR("drm not fully registered, skipping resume\n");
+		return 0;
 	}
 	kms = priv->kms;
 
