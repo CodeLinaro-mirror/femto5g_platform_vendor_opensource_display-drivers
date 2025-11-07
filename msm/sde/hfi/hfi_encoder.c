@@ -18,8 +18,6 @@
 
 #include <linux/sched/clock.h>
 
-#define TIMEOUT_MAX	80
-
 static ktime_t hfi_enc_unpack_frame_event(void *payload, u32 *idx, struct sde_encoder_virt *sde_enc)
 {
 	u32 read = 0;
@@ -615,12 +613,16 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	struct sde_encoder_wait_info wait_info = {0};
 	struct sde_encoder_virt *sde_enc;
 	u32 event;
+	struct drm_encoder *drm_enc;
 
 	sde_enc = hfi_enc->sde_base;
 
 	wait_info.wq = &hfi_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &sde_enc->pending_commit_cnt;
-	wait_info.timeout_ms = TIMEOUT_MAX;
+
+	drm_enc = &sde_enc->base;
+	wait_info.timeout_ms =
+			sde_encoder_helper_get_kickoff_timeout_ms(drm_enc);
 
 	ret = hfi_encoder_helper_wait_for_event(hfi_enc, &wait_info, HFI_EVENT_FRAME_SCAN_START);
 	if (ret <= 0) {
