@@ -404,6 +404,45 @@ int dp_connector_config_hdr(struct drm_connector *connector, void *display,
 			c_state->dyn_hdr_meta.dynamic_hdr_update);
 }
 
+int dp_connector_register_pose_queue(struct drm_connector *connector, void *display,
+	int pose_queue_handle, int data_offset)
+{
+	struct dp_display *dp = display;
+	struct sde_connector *sde_conn;
+
+	if (!display || !connector) {
+		DP_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	sde_conn = to_sde_connector(connector);
+	if (!sde_conn->drv_panel) {
+		DP_ERR("invalid dp panel\n");
+		return -EINVAL;
+	}
+
+	return dp->register_pose_queue(dp, sde_conn->drv_panel, pose_queue_handle, data_offset);
+}
+
+int dp_connector_send_pose_data(struct drm_connector *connector, void *display)
+{
+	struct dp_display *dp = display;
+	struct sde_connector *sde_conn;
+
+	if (!display || !connector) {
+		DP_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	sde_conn = to_sde_connector(connector);
+	if (!sde_conn->drv_panel) {
+		DP_ERR("invalid dp panel\n");
+		return -EINVAL;
+	}
+
+	return dp->send_pose_data(dp, sde_conn->drv_panel);
+}
+
 int dp_connector_set_colorspace(struct drm_connector *connector,
 	void *display)
 {

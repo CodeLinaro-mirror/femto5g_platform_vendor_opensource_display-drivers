@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #include <linux/module.h>
@@ -3373,6 +3373,52 @@ static int dp_display_config_hdr(struct dp_display *dp_display, void *panel,
 		core_clk_rate, flush_hdr);
 }
 
+static int dp_display_register_pose_queue(struct dp_display *dp_display, void *panel,
+			int pose_queue_handle, int data_offset)
+{
+	struct dp_panel *dp_panel;
+	struct sde_connector *sde_conn;
+	struct dp_display_private *dp;
+
+	if (!dp_display || !panel) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp_panel = panel;
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	sde_conn =  to_sde_connector(dp_panel->connector);
+
+	if (!dp_display_state_is(DP_STATE_ENABLED)) {
+		dp_display_state_log("[not enabled]");
+		return -EINVAL;
+	}
+
+	return dp_panel->register_pose_queue(dp_panel, pose_queue_handle, data_offset);
+}
+
+static int dp_display_send_pose_data(struct dp_display *dp_display, void *panel)
+{
+	struct dp_panel *dp_panel;
+	struct dp_display_private *dp;
+
+	if (!dp_display || !panel) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+
+	if (!dp_display_state_is(DP_STATE_ENABLED)) {
+		dp_display_state_log("[not enabled]");
+		return 0;
+	}
+
+	dp_panel = panel;
+
+	return dp_panel->send_pose_data(dp_panel);
+}
+
 static int dp_display_setup_colospace(struct dp_display *dp_display,
 		void *panel,
 		u32 colorspace)
@@ -3974,6 +4020,8 @@ static int dp_display_probe(struct platform_device *pdev)
 	dp_display->post_open     = NULL;
 	dp_display->post_init     = dp_display_post_init;
 	dp_display->config_hdr    = dp_display_config_hdr;
+	dp_display->register_pose_queue = dp_display_register_pose_queue;
+	dp_display->send_pose_data = dp_display_send_pose_data;
 	dp_display->mst_install   = dp_display_mst_install;
 	dp_display->mst_uninstall = dp_display_mst_uninstall;
 	dp_display->mst_connector_install = dp_display_mst_connector_install;

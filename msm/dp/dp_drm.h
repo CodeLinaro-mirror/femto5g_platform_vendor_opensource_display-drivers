@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #ifndef _DP_DRM_H_
@@ -36,6 +36,25 @@ struct dp_bridge {
 int dp_connector_config_hdr(struct drm_connector *connector,
 		void *display,
 		struct sde_connector_state *c_state);
+
+/**
+ * dp_connector_register_pose_queue - callback to register pose queue
+ * @connector: Pointer to drm connector structure
+ * @display: Pointer to private display handle
+ * @pose_queue_handle: pose queue handle
+ * @data_offset: data offset of the queue buffer
+ * Returns: Zero on success
+ */
+int dp_connector_register_pose_queue(struct drm_connector *connector, void *display,
+		int pose_queue_handle, int data_offset);
+
+/**
+ * dp_connector_send_pose_data - callback to send pose data
+ * @connector: Pointer to drm connector structure
+ * @display: Pointer to private display handle
+ * Returns: Zero on success
+ */
+int dp_connector_send_pose_data(struct drm_connector *connector, void *display);
 
 /**
  * dp_connector_atomic_check - callback to perform atomic
@@ -208,6 +227,17 @@ bool dp_connector_yuv_support(void *display);
 #else
 static inline int dp_connector_config_hdr(struct drm_connector *connector,
 		void *display, struct sde_connector_state *c_state)
+{
+	return 0;
+}
+
+static inline int dp_connector_register_pose_queue(struct drm_connector *connector, void *display,
+		int pose_queue_handle, int data_offset)
+{
+	return 0;
+}
+
+static inline int dp_connector_send_pose_data(struct drm_connector *connector, void *display)
 {
 	return 0;
 }

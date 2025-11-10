@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #ifndef _DP_PANEL_H_
@@ -192,6 +192,9 @@ struct dp_panel {
 	int (*setup_hdr)(struct dp_panel *dp_panel,
 		struct drm_msm_ext_hdr_metadata *hdr_meta,
 			bool dhdr_update, u64 core_clk_rate, bool flush);
+	int (*register_pose_queue)(struct dp_panel *dp_panel,
+			int pose_queue_handle, int data_offset);
+	int (*send_pose_data)(struct dp_panel *dp_panel);
 	int (*set_colorspace)(struct dp_panel *dp_panel,
 		u32 colorspace);
 	void (*tpg_config)(struct dp_panel *dp_panel, bool enable);

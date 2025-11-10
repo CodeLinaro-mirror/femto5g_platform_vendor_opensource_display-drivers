@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #ifndef _SDE_CONNECTOR_H_
@@ -329,6 +329,25 @@ struct sde_connector_ops {
 		struct sde_connector_state *c_state);
 
 	/**
+	 * register_pose_queue - register pose queue
+	 * @connector: Pointer to drm connector structure
+	 * @display: Pointer to private display handle
+	 * @pose_queue_handle: handle of the pose queue buffer
+	 * @data_offset: data offset of the queue buffer
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	int (*register_pose_queue)(struct drm_connector *connector, void *display,
+			int pose_queue_handle, int data_offset);
+
+	/**
+	 * send_pose_data - send pose data
+	 * @connector: Pointer to drm connector structure
+	 * @display: Pointer to private display handle
+	 * Returns: Zero on success, negative error code for failures
+	 */
+	int (*send_pose_data)(struct drm_connector *connector, void *display);
+
+	/**
 	 * atomic_best_encoder - atomic best encoder selection for connector
 	 * @connector: Pointer to drm connector structure
 	 * @display: Pointer to private display handle
@@ -563,6 +582,7 @@ struct sde_connector_dyn_hdr_metadata {
  * @bool rgb_qs: Flag to indicate if connector supports quantization select in rgb format
  * @bool yuv_qs: Flag to indicate if connector supports quantization select in yuv format
  * @colorspace: store previous colorspace
+ * @bool pose_queue_registered: Flag to indicate if connector has pose queue registered
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -643,6 +663,7 @@ struct sde_connector {
 
 	bool rgb_qs;
 	bool yuv_qs;
+	bool pose_queue_registered;
 };
 
 /**
@@ -675,6 +696,14 @@ struct sde_connector {
  */
 #define sde_connector_is_qsync_updated(C) \
 	((C) ? to_sde_connector((C))->qsync_updated : 0)
+
+/**
+ * sde_connector_qsync_updated - indicates if connector updated qsync
+ * @C: Pointer to drm connector structure
+ * Returns: True if pose queue is registered, false otherwise
+ */
+#define sde_connector_is_pose_queue_registered(C) \
+	((C) ? to_sde_connector((C))->pose_queue_registered : 0)
 
 /**
  * sde_connector_get_qsync_mode - get sde connector's qsync_mode

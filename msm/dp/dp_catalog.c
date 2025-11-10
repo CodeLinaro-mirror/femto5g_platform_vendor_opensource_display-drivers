@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 
@@ -45,6 +45,8 @@
 	(DP_INTR_MST_DP0_VCPF_SENT | DP_INTR_MST_DP1_VCPF_SENT)
 
 #define DP_INTR_MASK5		(DP_INTERRUPT_STATUS5 << 2)
+
+#define DP_POSE_DATA_PAYLOAD_SIZE 32
 
 #define dp_catalog_fill_io(x) { \
 	catalog->io.x = parser->get_io(parser, #x); \
@@ -1623,6 +1625,94 @@ static bool dp_catalog_panel_dhdr_busy(struct dp_catalog_panel *panel)
 	return dp_flush & BIT(DP_DHDR_FLUSH) ? true : false;
 }
 
+static int dp_catalog_panel_send_pose_data(struct dp_catalog_panel *panel)
+{
+	struct dp_catalog_private *catalog;
+	struct dp_io_data *io_data;
+	struct dp_catalog_pose_info *pose_info;
+	u32 cfg5, header, parity, data, *d;
+	u32 sdp_cfg5_off = 0, reg_offset = 0, mst_offset = 0;
+	int i = 0;
+	u8 *pose_data;
+
+	if (!panel) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	pose_info = &panel->pose_info;
+
+	if (!pose_info->kbuf) {
+		DP_WARN("pose queue buffer not mapped yet\n");
+		return -EINVAL;
+	}
+
+	if (panel->stream_id >= DP_STREAM_MAX) {
+		DP_ERR("invalid stream_id:%d\n", panel->stream_id);
+		return -EINVAL;
+	}
+
+	if (sizeof(struct aura_lsr_pose_t) != DP_POSE_DATA_PAYLOAD_SIZE) {
+		DP_WARN("pose data length is not 32 bytes\n");
+		return -EINVAL;
+	}
+
+	pose_data = (u8 *)(pose_info->kbuf + pose_info->data_offset);
+	d = (u32 *)pose_data;
+
+	catalog = dp_catalog_get_priv(panel);
+	io_data = catalog->io.dp_link;
+
+	if (panel->stream_id == DP_STREAM_1) {
+		sdp_cfg5_off = MMSS_DP1_SDP_CFG5 - MMSS_DP_SDP_CFG5;
+		mst_offset = MMSS_DP1_GENERIC3_0 - MMSS_DP_GENERIC3_0;
+	}
+
+	cfg5 = dp_read(MMSS_DP_SDP_CFG5 + sdp_cfg5_off);
+
+	/* GEN3_SDP_EN, GENERIC3_SDPSIZE */
+	cfg5 |= BIT(0);
+	cfg5 |= BIT(1);
+	dp_write(MMSS_DP_SDP_CFG5 + sdp_cfg5_off, cfg5);
+
+	/* HEADER BYTE 1 */
+	header = 0x04;
+	parity = dp_header_get_parity(header);
+	data   = ((header << HEADER_BYTE_1_BIT)
+			| (parity << PARITY_BYTE_1_BIT));
+	dp_write(MMSS_DP_GENERIC3_0 + mst_offset, data);
+	SDE_EVT32_IRQ(data);
+
+	/* HEADER BYTE 2 */
+	header = 0x47;
+	parity = dp_header_get_parity(header);
+	data   = ((header << HEADER_BYTE_2_BIT)
+			| (parity << PARITY_BYTE_2_BIT));
+	dp_write(MMSS_DP_GENERIC3_1 + mst_offset, data);
+
+	/* HEADER BYTE 3 */
+	header = 0x0F;
+	parity = dp_header_get_parity(header);
+	data   = ((header << HEADER_BYTE_3_BIT)
+			| (parity << PARITY_BYTE_3_BIT));
+	data |= dp_read(MMSS_DP_GENERIC3_1 + mst_offset);
+	dp_write(MMSS_DP_GENERIC3_1 + mst_offset, data);
+	SDE_EVT32_IRQ(data);
+
+	/* Config payload */
+	for (i = 0; i < DP_POSE_DATA_PAYLOAD_SIZE; i = i + 4) {
+		data = pose_data[i] | (pose_data[i + 1] << 8) |
+			(pose_data[i + 2] << 16) | (pose_data[i + 3] << 24);
+		dp_write(MMSS_DP_GENERIC3_2 + mst_offset + reg_offset, data);
+		reg_offset += 4;
+	}
+	SDE_EVT32_IRQ(d[0], d[1], d[2], d[3], d[4], d[5], d[6], d[7]);
+
+	dp_catalog_panel_sdp_update(panel);
+
+	return 0;
+}
+
 static void dp_catalog_ctrl_reset(struct dp_catalog_ctrl *ctrl)
 {
 	u32 sw_reset;
@@ -2977,6 +3067,7 @@ struct dp_catalog *dp_catalog_get(struct device *dev, struct dp_parser *parser)
 		.pps_flush = dp_catalog_panel_pps_flush,
 		.dhdr_flush = dp_catalog_panel_dhdr_flush,
 		.dhdr_busy = dp_catalog_panel_dhdr_busy,
+		.send_pose_data = dp_catalog_panel_send_pose_data,
 	};
 
 	if (!dev || !parser) {
