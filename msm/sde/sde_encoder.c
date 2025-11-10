@@ -4531,6 +4531,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 			SDE_ERROR_ENC(sde_enc, "encoder disable failure\n");
 	}
 
+	kthread_cancel_work_sync(&sde_enc->self_refresh_work);
 	sde_encoder_cancel_vrr_timers(drm_enc);
 
 	sde_encoder_vhm_wakelock(sde_enc, false);
