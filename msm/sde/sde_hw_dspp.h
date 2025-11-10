@@ -23,8 +23,9 @@ struct sde_hw_dspp_ops {
 	 * setup_histogram - setup dspp histogram
 	 * @ctx: Pointer to dspp context
 	 * @cfg: Pointer to configuration
+	 * @enable: feature enable/disable
 	 */
-	void (*setup_histogram[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg);
+	void (*setup_histogram[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg, bool enable);
 
 	/**
 	 * read_histogram - read dspp histogram

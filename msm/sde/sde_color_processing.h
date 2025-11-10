@@ -9,6 +9,8 @@
 #include "sde_hw_mdss.h"
 #include <drm/drm_crtc.h>
 
+#define PA_HIST_BUFFER_NUM 3
+
 /**
  * struct sde_cp_node - structure to define color processing
  *                      property info
@@ -556,5 +558,13 @@ void sde_cp_notify_rgb_hist_wb_err(struct drm_crtc *crtc, void *arg);
  * allowing cleanup or state update as needed.
  */
 void sde_cp_notify_rgb_hist_off(struct drm_crtc *crtc, void *arg);
+
+/**
+ * sde_cp_notify_hist_event - function to notify userspace that PA hist done
+ * hw event is received
+ * @crtc: Pointer to DRM CRTC structure.
+ * @arg: Pointer to event payload or context.
+ */
+void sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg);
 
 #endif /*_SDE_COLOR_PROCESSING_H */

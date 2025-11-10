@@ -79,8 +79,6 @@ static void _sde_cp_notify_ad_event(struct drm_crtc *crtc_drm, void *arg);
 static void _sde_cp_ad_set_prop(struct sde_crtc *sde_crtc,
 		enum ad_property ad_prop);
 
-static void _sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg);
-
 static void _sde_cp_crtc_set_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg);
 static void _sde_cp_crtc_free_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg);
 static void _sde_cp_crtc_queue_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg);
@@ -210,6 +208,8 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_MDNIE] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE,
 	[SDE_CP_CRTC_DSPP_MDNIE_ART] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART,
 	[SDE_CP_CRTC_DSPP_AIQE_ABC] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC,
+	[SDE_CP_CRTC_DSPP_HIST_CTRL] = HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL,
+	[SDE_CP_CRTC_DSPP_HIST_IRQ] = HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER,
 };
 
 static enum sde_cp_crtc_pu_features
@@ -250,7 +250,7 @@ do { \
 	func[SDE_CP_AIQE_CAPS] = _aiqe_caps_update; \
 } while (0)
 
-static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc);
+static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc, struct sde_hw_cp_cfg *hw_cfg);
 
 typedef int (*feature_wrapper)(struct sde_hw_dspp *hw_dspp,
 				   struct sde_hw_cp_cfg *hw_cfg,
@@ -468,15 +468,37 @@ static int _set_dspp_hist_ctrl_feature(struct sde_hw_dspp *hw_dspp,
 	int ret = 0;
 	bool feature_enabled;
 
-	if (!hw_dspp) {
-		ret = -EINVAL;
-	} else if (!hw_dspp->ops.setup_histogram[hw_dspp->hw.disp_op]) {
-		ret = IS_DISP_OP_HFI(hw_dspp->hw.disp_op) ? 0 : -EINVAL;
+	if (!hw_dspp || !hw_dspp->ops.setup_histogram[hw_dspp->hw.disp_op])
+		return -EINVAL;
+
+	feature_enabled = hw_cfg->payload &&
+		*((u64 *)hw_cfg->payload) != 0;
+
+	if (IS_DISP_OP_HWIO(hw_dspp->hw.disp_op)) {
+		hw_dspp->ops.setup_histogram[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
+					feature_enabled);
+		return 0;
+	}
+
+	/* HFI implementation */
+	if (feature_enabled) {
+		ret = hfi_cp_crtc_queue_pa_hist_buffer(hw_crtc, hw_dspp, hw_cfg);
+		if (ret) {
+			SDE_ERROR("failed to queue pa hist buffer\n");
+			return ret;
+		}
+
+		/* prop_id has been modified by hfi_cp_crtc_queue_pa_hist_buffer */
+		hw_cfg->prop_id = sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_DSPP_HIST_CTRL];
+		hw_dspp->ops.setup_histogram[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
+						feature_enabled);
 	} else {
-		feature_enabled = hw_cfg->payload &&
-			*((u64 *)hw_cfg->payload) != 0;
-		hw_dspp->ops.setup_histogram[hw_dspp->hw.disp_op](hw_dspp,
-						&feature_enabled);
+		/* disable histogram */
+		hw_dspp->ops.setup_histogram[hw_dspp->hw.disp_op](hw_dspp, hw_cfg,
+						feature_enabled);
+
+		/* clear PA histogram buffers */
+		hfi_cp_crtc_clear_pa_hist_buffers(hw_crtc, hw_cfg);
 	}
 	return ret;
 }
@@ -491,7 +513,7 @@ static int _set_dspp_hist_irq_feature(struct sde_hw_dspp *hw_dspp,
 	if (!hw_dspp)
 		ret = -EINVAL;
 	else if (!hw_lm->cfg.right_mixer)
-		_sde_cp_crtc_enable_hist_irq(hw_crtc);
+		_sde_cp_crtc_enable_hist_irq(hw_crtc, hw_cfg);
 	return ret;
 }
 
@@ -1690,7 +1712,7 @@ static struct sde_crtc_irq_info *_sde_cp_get_intr_node(u32 event,
 	return node;
 }
 
-static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc)
+static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc, struct sde_hw_cp_cfg *hw_cfg)
 {
 	struct drm_crtc *crtc_drm = &sde_crtc->base;
 	struct sde_kms *kms = NULL;
@@ -1705,6 +1727,11 @@ static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc)
 		return;
 	}
 
+	if (!hw_cfg) {
+		DRM_ERROR("invalid hw_cfg %pK\n", hw_cfg);
+		return;
+	}
+
 	kms = get_kms(crtc_drm);
 
 	for (i = 0; i < sde_crtc->num_mixers; i++) {
@@ -1716,6 +1743,14 @@ static void _sde_cp_crtc_enable_hist_irq(struct sde_crtc *sde_crtc)
 
 	if (!hw_dspp) {
 		DRM_ERROR("invalid dspp\n");
+		return;
+	}
+
+	if (IS_DISP_OP_HFI(hw_dspp->hw.disp_op)) {
+		/* repurpose IRQ enable for pa hist buffer queue */
+		ret = hfi_cp_crtc_queue_pa_hist_buffer(sde_crtc, hw_dspp, hw_cfg);
+		if (ret)
+			DRM_ERROR("buffer is not queued.\n");
 		return;
 	}
 
@@ -4241,13 +4276,14 @@ static void _sde_cp_hist_interrupt_cb(void *arg, int irq_idx)
 
 	crtc->hist_irq_idx = irq_idx;
 	/* notify histogram event */
-	sde_crtc_event_queue(crtc_drm, _sde_cp_notify_hist_event,
+	sde_crtc_event_queue(crtc_drm, sde_cp_notify_hist_event,
 						&crtc->hist_irq_idx, true);
 }
 
-static void _sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
+void sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
 {
 	struct sde_hw_dspp *hw_dspp = NULL;
+	struct sde_hw_mixer *hw_lm;
 	struct sde_crtc *crtc;
 	struct drm_event event;
 	struct drm_msm_hist *hist_data;
@@ -4256,7 +4292,9 @@ static void _sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
 	unsigned long flags, state_flags;
 	int ret, irq_idx;
 	u32 i, lock_hist = 0, num_mixers;
+	u32 *base_addr;
 	enum msm_disp_op disp_op;
+	struct sde_pa_hist_buffer *buf;
 
 	if (!crtc_drm || !arg) {
 		DRM_ERROR("invalid drm crtc %pK or arg %pK\n", crtc_drm, arg);
@@ -4267,6 +4305,35 @@ static void _sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
 	if (!crtc) {
 		DRM_ERROR("invalid sde_crtc %pK\n", crtc);
 		return;
+	}
+
+	num_mixers = _sde_cp_get_num_dspp_mixers(crtc);
+	for (i = 0; i < num_mixers; i++) {
+		hw_lm = crtc->mixers[i].hw_lm;
+		hw_dspp = crtc->mixers[i].hw_dspp;
+		if (!hw_lm->cfg.right_mixer)
+			break;
+	}
+
+	if (!hw_dspp) {
+		DRM_DEBUG_DRIVER("invalid dspp\n");
+		return;
+	}
+
+	if (IS_DISP_OP_HFI(hw_dspp->hw.disp_op)) {
+		buf = (struct sde_pa_hist_buffer *)arg;
+		if (!buf) {
+			SDE_ERROR("sde_pa_hist_buffer is NULL.\n");
+			return;
+		}
+
+		base_addr = (u32 *)buf->buffer.local_addr;
+		hist_data = (struct drm_msm_hist *)crtc->hist_blob->data;
+		memcpy((void *)hist_data->data, (void *)base_addr, HIST_V_SIZE*4);
+		memset(base_addr, 0, HIST_V_SIZE*4);
+		buf->is_available = true;
+		/* send histogram to userspace */
+		goto send_data;
 	}
 
 	kms = get_kms(crtc_drm);
@@ -4287,7 +4354,6 @@ static void _sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
 	spin_lock_irqsave(&crtc->spin_lock, flags);
 	node = _sde_cp_get_intr_node(DRM_EVENT_HISTOGRAM, crtc);
 
-	num_mixers = _sde_cp_get_num_dspp_mixers(crtc);
 	disp_op = sde_crtc_get_disp_op(crtc_drm);
 	if (!node) {
 		spin_unlock_irqrestore(&crtc->spin_lock, flags);
@@ -4371,6 +4437,8 @@ static void _sde_cp_notify_hist_event(struct drm_crtc *crtc_drm, void *arg)
 	}
 
 	pm_runtime_put_sync(kms->dev->dev);
+
+send_data:
 	/* send histogram event with blob id */
 	event.length = sizeof(u32);
 	event.type = DRM_EVENT_HISTOGRAM;
@@ -4414,6 +4482,15 @@ int sde_cp_hist_interrupt(struct drm_crtc *crtc_drm, bool en,
 	if (!hw_dspp) {
 		DRM_DEBUG_DRIVER("invalid dspp\n");
 		return -ENODEV;
+	}
+
+	if (IS_DISP_OP_HFI(hw_dspp->hw.disp_op)) {
+		/* Enable or Disable histogram event */
+		ret = crtc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI](crtc, HFI_EVENT_PA_HIST, en);
+		if (ret)
+			DRM_ERROR("failed to enable/disable pa hist event %d\n", ret);
+
+		return ret;
 	}
 
 	irq_idx = sde_core_irq_idx_lookup(kms, SDE_IRQ_TYPE_HIST_DSPP_DONE,

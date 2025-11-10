@@ -13,6 +13,7 @@
 #include "hfi_props.h"
 #include "hfi_adapter.h"
 #include "hfi_defs_display_color.h"
+#include "hfi_color_proc.h"
 
 #define HFI_CRTC_ID(c) ((c)->sde_base->base.base.id)
 
@@ -398,6 +399,10 @@ void hfi_crtc_destroy(struct sde_crtc *crtc)
 	if (ret)
 		SDE_ERROR("failed to deallocated hfi shared memory for dither\n");
 
+	ret = hfi_cp_crtc_dealloc_pa_hist_buffers(crtc);
+	if (ret)
+		SDE_ERROR("failed to dealloc pa hist buffers: %d\n", ret);
+
 	kfree(crtc_hfi->base_props);
 	kfree(crtc_hfi->color_props);
 	kfree(crtc_hfi->kv_props);
@@ -724,6 +729,21 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 			SDE_ERROR("Invalid RGB Hist event type %d\n", event_payload->event_type);
 		break;
 	}
+	case HFI_COMMAND_DISPLAY_EVENT_PA_HIST:
+	{
+		struct hfi_display_pa_hist_event_resp *event_payload;
+
+		event_payload = (struct hfi_display_pa_hist_event_resp *)payload;
+		if (size != sizeof(struct hfi_display_pa_hist_event_resp)) {
+			SDE_ERROR("Invalid size for pa hist event, size %d\n", size);
+			return;
+		}
+		if (event_payload)
+			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_HISTOGRAM, event_payload);
+		else
+			SDE_ERROR("Invalid PA Hist event payload\n");
+		break;
+	}
 	default:
 		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
 	}
@@ -819,6 +839,17 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_RGB_HIST].state = enable;
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_RGB_HIST].pending = false;
 		break;
+	case HFI_EVENT_PA_HIST:
+		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
+		if (ret) {
+			SDE_ERROR("event registration failed: event %d, enable %d\n",
+				event, enable);
+			return ret;
+		}
+
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_PA_HIST].state = enable;
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_PA_HIST].pending = false;
+		break;
 	default:
 		break;
 	}
@@ -908,6 +939,10 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc)
 	ret = _hfi_cp_crtc_allocate_dither(sde_crtc, crtc);
 	if (ret)
 		SDE_DEBUG("failed to allocated shared memory for dither payloads ret: %d\n", ret);
+
+	ret = hfi_cp_crtc_alloc_pa_hist_buffers(sde_crtc);
+	if (ret)
+		SDE_ERROR("failed to allocate pa hist buffers: %d\n", ret);
 
 	crtc->hfi_cb_obj.hfi_prop_handler = hfi_crtc_prop_handler;
 	crtc->sde_base = sde_crtc;
