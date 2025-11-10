@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -58,6 +58,10 @@
 
 /* below this fps limit, timeouts are adjusted based on fps */
 #define DEFAULT_TIMEOUT_FPS_THRESHOLD            24
+
+#define PROG_TIME_BEFORE_NEXT_VSYNC_MIN_MS 1
+#define PROG_TIME_BEFORE_NEXT_VSYNC_MAX_MS 4
+#define PROG_TIME_BEFORE_NEXT_VSYNC_DEFAULT_MS 3
 
 #define NUM_FSC_FIELDS 3
 #define PLANAR_RGB_PACKING 3
@@ -235,6 +239,7 @@ struct sde_encoder_virt {
 	bool misr_enable;
 	bool misr_reconfigure;
 	u32 misr_frame_count;
+	u32 prog_time_before_next_vsync_ms;
 
 	bool idle_pc_enabled;
 	bool input_event_enabled;

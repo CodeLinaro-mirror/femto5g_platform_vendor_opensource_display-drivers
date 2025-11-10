@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 #include <linux/iopoll.h>
 
@@ -690,6 +690,15 @@ static u32 sde_hw_intf_get_intr_status(struct sde_hw_intf *intf)
 	return SDE_REG_READ(&intf->hw, INTF_INTR_STATUS);
 }
 
+static int sde_hw_intf_set_prog_line_intr_config(struct sde_hw_intf *intf, u32 pix_count)
+{
+	if (!intf)
+	       return -EINVAL;
+
+	SDE_REG_WRITE(&intf->hw, INTF_PROG_LINE_INTR_CONF, pix_count);
+	return 0;
+}
+
 static int sde_hw_intf_setup_te_config(struct sde_hw_intf *intf,
 		struct sde_hw_tear_check *te)
 {
@@ -962,6 +971,7 @@ static void _setup_intf_ops(struct sde_hw_intf_ops *ops, unsigned long cap)
 	ops->avr_ctrl = sde_hw_intf_avr_ctrl;
 	ops->enable_compressed_input = sde_hw_intf_enable_compressed_input;
 	ops->enable_wide_bus = sde_hw_intf_enable_wide_bus;
+	ops->set_prog_line = sde_hw_intf_set_prog_line_intr_config;
 
 	if (cap & BIT(SDE_INTF_STATUS))
 		ops->get_status = sde_hw_intf_v1_get_status;

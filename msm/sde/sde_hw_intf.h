@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #ifndef _SDE_HW_INTF_H
@@ -276,6 +276,11 @@ struct sde_hw_intf_ops {
 	 */
 	void (*setup_dpu_sync_prog_skew_intf_offset)(struct sde_hw_intf *intf,
 			u32 curr_skew_offset_line);
+
+	/**
+	 * Set prog line interrupt configuration
+	 */
+	int (*set_prog_line)(struct sde_hw_intf *intf, u32 pix_count);
 };
 
 struct sde_hw_intf {

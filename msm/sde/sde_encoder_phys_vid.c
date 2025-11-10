@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -470,6 +470,50 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 			avr_params.avr_mode, avr_params.avr_step_lines, avr_step_fps);
 }
 
+static void _sde_encoder_phys_vid_setup_prog_line(struct sde_encoder_phys *phys_enc,
+		u32 time_before_next_vsync_ms)
+{
+	u32 fps, prog_line_pclk_count;
+	u64 total_pixs;
+	struct drm_display_mode mode;
+	struct sde_encoder_phys_vid *vid_enc = to_sde_encoder_phys_vid(phys_enc);
+
+	if (!phys_enc || !phys_enc->hw_intf || !phys_enc->hw_intf->ops.set_prog_line)
+		return;
+
+	/* Validate input range */
+	if (time_before_next_vsync_ms < PROG_TIME_BEFORE_NEXT_VSYNC_MIN_MS ||
+			time_before_next_vsync_ms > PROG_TIME_BEFORE_NEXT_VSYNC_MAX_MS) {
+			SDE_INFO("invalid prog_time %u, must be between %d and %d\n",
+					time_before_next_vsync_ms,
+					PROG_TIME_BEFORE_NEXT_VSYNC_MIN_MS,
+					PROG_TIME_BEFORE_NEXT_VSYNC_MAX_MS);
+			return;
+	}
+
+	fps = sde_encoder_get_fps(phys_enc->parent);
+	if (!fps) {
+		SDE_INFO("invalid fps %d\n", fps);
+		return;
+	}
+
+	if (time_before_next_vsync_ms  > 1000 / fps) {
+		SDE_INFO("prog line time:%u longer than one frame time:%u\n",
+			time_before_next_vsync_ms, 1000 / fps);
+		return;
+	}
+
+	mode = phys_enc->cached_mode;
+	total_pixs = mode.vtotal * mode.htotal;
+	prog_line_pclk_count = total_pixs - total_pixs * time_before_next_vsync_ms * fps / 1000;
+	prog_line_pclk_count /= vid_enc->timing_params.pclk_factor;
+
+	phys_enc->hw_intf->ops.set_prog_line(phys_enc->hw_intf, prog_line_pclk_count);
+
+	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->hw_intf->idx - INTF_0,
+		fps, prog_line_pclk_count);
+}
+
 static void sde_encoder_phys_vid_setup_timing_engine(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -666,6 +710,24 @@ static void sde_encoder_phys_vid_underrun_irq(void *arg, int irq_idx)
 			phys_enc);
 }
 
+static void sde_encoder_phys_vid_prog_line_irq(void *arg, int irq_idx)
+{
+	struct sde_encoder_phys *phys_enc = arg;
+	struct sde_connector *c_conn;
+
+	if (!phys_enc || !phys_enc->connector)
+		return;
+
+	c_conn = to_sde_connector(phys_enc->connector);
+
+	if (c_conn && !c_conn->pose_queue_registered)
+	  return;
+
+	SDE_ATRACE_BEGIN("prog_line_irq");
+	sde_connector_send_pose_data(phys_enc->connector);
+	SDE_ATRACE_END("prog_line_irq");
+}
+
 static void _sde_encoder_phys_vid_setup_irq_hw_idx(
 		struct sde_encoder_phys *phys_enc)
 {
@@ -682,6 +744,10 @@ static void _sde_encoder_phys_vid_setup_irq_hw_idx(
 		irq->hw_idx = phys_enc->intf_idx;
 
 	irq = &phys_enc->irq[INTR_IDX_UNDERRUN];
+	if (irq->irq_idx < 0)
+		irq->hw_idx = phys_enc->intf_idx;
+
+	irq = &phys_enc->irq[INTR_IDX_PROG_LINE];
 	if (irq->irq_idx < 0)
 		irq->hw_idx = phys_enc->intf_idx;
 }
@@ -919,6 +985,13 @@ static void sde_encoder_phys_vid_enable(struct sde_encoder_phys *phys_enc)
 				phys_enc->hw_intf->idx);
 
 	sde_encoder_phys_vid_setup_timing_engine(phys_enc);
+
+	if (phys_enc->hw_intf->cap->type == INTF_DP) {
+		int prog_time = sde_encoder_get_prog_time_before_next_vsync(phys_enc->parent);
+		if (prog_time == 0)
+			prog_time = PROG_TIME_BEFORE_NEXT_VSYNC_DEFAULT_MS;
+		_sde_encoder_phys_vid_setup_prog_line(phys_enc, prog_time);
+	}
 
 	/*
 	 * For cases where both the interfaces are connected to same ctl,
@@ -1498,9 +1571,16 @@ static void sde_encoder_phys_vid_irq_control(struct sde_encoder_phys *phys_enc,
 			return;
 
 		sde_encoder_helper_register_irq(phys_enc, INTR_IDX_UNDERRUN);
+		if (phys_enc->hw_intf->cap->type == INTF_DP &&
+				sde_connector_is_pose_queue_registered(phys_enc->connector))
+			sde_encoder_helper_register_irq(phys_enc, INTR_IDX_PROG_LINE);
 	} else {
 		sde_encoder_phys_vid_control_vblank_irq(phys_enc, false);
 		sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_UNDERRUN);
+		if (phys_enc->hw_intf->cap->type == INTF_DP &&
+				sde_connector_is_pose_queue_registered(phys_enc->connector))
+			sde_encoder_helper_unregister_irq(phys_enc, INTR_IDX_PROG_LINE);
+
 	}
 }
 
@@ -1694,6 +1774,12 @@ struct sde_encoder_phys *sde_encoder_phys_vid_init(
 	irq->intr_type = SDE_IRQ_TYPE_INTF_UNDER_RUN;
 	irq->intr_idx = INTR_IDX_UNDERRUN;
 	irq->cb.func = sde_encoder_phys_vid_underrun_irq;
+
+	irq = &phys_enc->irq[INTR_IDX_PROG_LINE];
+	irq->intr_idx = INTR_IDX_PROG_LINE;
+	irq->name = "prog_line";
+	irq->intr_type = SDE_IRQ_TYPE_PROG_LINE;
+	irq->cb.func = sde_encoder_phys_vid_prog_line_irq;
 
 	atomic_set(&phys_enc->vblank_refcount, 0);
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);

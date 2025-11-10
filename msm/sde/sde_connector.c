@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -884,6 +884,30 @@ void sde_connector_set_colorspace(struct sde_connector *c_conn)
 	if (rc)
 		SDE_ERROR_CONN(c_conn, "cannot apply new colorspace %d\n", rc);
 
+}
+
+int sde_connector_send_pose_data(struct drm_connector *conn)
+{
+	int rc = 0;
+
+	struct sde_connector *c_conn;
+
+	if (!conn) {
+		SDE_ERROR("invalid argument");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(conn);
+
+	if (!c_conn->display) {
+		SDE_ERROR("invalid display");
+		return -EINVAL;
+	}
+
+	if (c_conn->ops.send_pose_data)
+		rc = c_conn->ops.send_pose_data(&c_conn->base, c_conn->display);
+
+	return rc;
 }
 
 enum sde_csc_type sde_connector_get_csc_type(struct drm_connector *conn)

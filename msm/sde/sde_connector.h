@@ -1321,4 +1321,10 @@ void sde_connector_post_switch_cmd(struct drm_connector *connector);
  */
 void sde_connector_set_colorspace(struct sde_connector *connector);
 
+/**
+ * sde_connector_send_pose_data - send pose data on the connector
+ * @connector: Pointer to drm_connector struct
+ */
+int sde_connector_send_pose_data(struct drm_connector *connector);
+
 #endif /* _SDE_CONNECTOR_H_ */
