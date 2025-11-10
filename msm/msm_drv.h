@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -164,6 +164,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_CAC_TYPE,
 	PLANE_PROP_SRC_RECT_EXT,
 	PLANE_PROP_DST_RECT_EXT,
+	PLANE_PROP_COLOR_MASK_OVERRIDE,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -1528,15 +1529,13 @@ void msm_fbdev_free(struct drm_device *dev);
 
 struct hdmi;
 #if IS_ENABLED(CONFIG_DRM_MSM_HDMI)
-int msm_hdmi_modeset_init(struct hdmi *hdmi, struct drm_device *dev,
-		struct drm_encoder *encoder);
-void __init msm_hdmi_register(void);
-void __exit msm_hdmi_unregister(void);
+void __init hdmi_display_register(void);
+void __exit hdmi_display_unregister(void);
 #else
-static inline void __init msm_hdmi_register(void)
+static inline void __init hdmi_display_register(void)
 {
 }
-static inline void __exit msm_hdmi_unregister(void)
+static inline void __exit hdmi_display_unregister(void)
 {
 }
 #endif /* CONFIG_DRM_MSM_HDMI */
