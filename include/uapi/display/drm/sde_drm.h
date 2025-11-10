@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
+ * ​​​​Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #ifndef _SDE_DRM_H_
@@ -850,12 +850,35 @@ struct drm_msm_noise_layer_cfg {
 	__u32 alpha_noise;
 };
 
+/**
+ * struct drm_msm_register_pose_queue: payload for registering pose queue
+ * @flags: reserved for future use, should be 0.
+ * @fm_handle: File descriptor for the Fast Message Queue.
+ */
+struct drm_msm_register_pose_queue {
+	__u32 flags;
+	__s32 fm_handle;
+};
+
+/**
+ * struct aura_lsr_pose_t: SDP payload for render pose and timestamp (32 bytes).
+ * @render_orientation: 16 bytes render pose (w, x, y, z)
+ * @render_position: 12 bytes render position (x, y, z)
+ * @padding: 4 bytes padding
+ */
+struct aura_lsr_pose_t {
+	__u32 render_orientation[4];
+	__u32 render_position[3];
+	__u32 padding;
+};
+
 #define DRM_SDE_WB_CONFIG              0x40
 #define DRM_MSM_REGISTER_EVENT         0x41
 #define DRM_MSM_DEREGISTER_EVENT       0x42
 #define DRM_MSM_RMFB2                  0x43
 #define DRM_MSM_POWER_CTRL             0x44
 #define DRM_MSM_DISPLAY_HINT           0x45
+#define DRM_MSM_REGISTER_POSE_QUEUE    0x46
 
 /* sde custom events */
 #define DRM_EVENT_HISTOGRAM 0x80000000
@@ -901,7 +924,8 @@ struct drm_msm_noise_layer_cfg {
 			DRM_MSM_POWER_CTRL), struct drm_msm_power_ctrl)
 #define DRM_IOCTL_MSM_DISPLAY_HINT DRM_IOW((DRM_COMMAND_BASE + \
 			DRM_MSM_DISPLAY_HINT), struct drm_msm_display_hint)
-
+#define DRM_IOCTL_MSM_REGISTER_POSE_QUEUE DRM_IOWR(DRM_COMMAND_BASE +  \
+			DRM_MSM_REGISTER_POSE_QUEUE, struct drm_msm_register_pose_queue)
 #if defined(__cplusplus)
 }
 #endif
