@@ -2374,7 +2374,6 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 	wb_enc->crtc = NULL;
 	phys_enc->hw_cdm = NULL;
 	phys_enc->hw_ctl = NULL;
-	phys_enc->in_clone_mode = false;
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
 	atomic_set(&phys_enc->pending_release_fence_cnt, 0);
