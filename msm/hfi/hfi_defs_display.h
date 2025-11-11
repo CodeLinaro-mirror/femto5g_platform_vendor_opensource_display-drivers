@@ -146,6 +146,36 @@ enum hfi_layer_cache_op_type {
 };
 
 /*
+ * @enum hfi_display_idle_timer_control
+ * @brief Enum to control idle timer.
+ *
+ * @var HFI_DEFAULT
+ *   Restore idle timer to default state
+ * @var HFI_WAKEUP
+ *   Restore the display from power collapse state.
+ * @var HFI_BLOCK_TIMER
+ *   Block the idle timer from expiring
+ * @var HFI_UNBLOCK_TIMER
+ *   Unblock the idle timer from expiring
+ */
+enum hfi_display_idle_timer_control {
+	HFI_DEFAULT          = 0x0,
+	HFI_WAKEUP           = 0x1,
+	HFI_BLOCK_TIMER      = 0x2,
+	HFI_UNBLOCK_TIMER    = 0x3,
+};
+
+/*
+ * struct hfi_display_autorefresh_cfg - autorefresh config data.
+ * @enable        :  autorefresh enable/disable.
+ * @frame_count   :  autorefresh frame number for controlling frame rate.
+ */
+struct hfi_display_autorefresh_cfg {
+	u32 enable;
+	u32 frame_count;
+};
+
+/*
  * hfi_display_event_id - HFI event ID
  * @HFI_EVENT_VSYNC                   : Event ID for vsync
  * @HFI_EVENT_FRAME_SCAN_START        : Event ID for frame scan start
