@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  */
 
@@ -41,6 +41,8 @@ struct shd_display_base {
 	bool mst_port;
 	bool dynamic_mode;
 	bool fill_ops;
+
+	bool is_dspp_used;
 };
 
 struct shd_display {
@@ -66,6 +68,8 @@ struct shd_display {
 	struct list_head head;
 	struct notifier_block notifier;
 	struct drm_crtc *crtc;
+
+	bool is_dspp_enable;
 };
 
 void *sde_encoder_phys_shd_init(enum sde_intf_type type, u32 controller_id,
