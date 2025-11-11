@@ -5046,6 +5046,35 @@ void sde_encoder_register_frame_event_callback(struct drm_encoder *drm_enc,
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 }
 
+void sde_encoder_register_display_power_event_callback(struct drm_encoder *drm_enc,
+		void (*power_event_cb)(void *, u32 event), struct drm_crtc *crtc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+	bool enable;
+	enum msm_disp_op disp_op;
+	int rc = 0;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return;
+	}
+
+	enable = power_event_cb ? true : false;
+
+	sde_enc->crtc_power_event_cb = power_event_cb;
+	sde_enc->crtc_power_event_cb_data.crtc = crtc;
+	sde_enc->crtc_power_event_cb_data.connector = sde_encoder_get_connector(drm_enc->dev,
+			drm_enc);
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	/* Register for idle event power notification */
+	if (sde_enc->hal_ops.register_power_event_notify[disp_op]) {
+		rc = sde_enc->hal_ops.register_power_event_notify[disp_op](sde_enc, enable);
+		if (rc)
+			SDE_ERROR_ENC(sde_enc, "failed to send pwr event notification register\n");
+	}
+}
+
 static void sde_encoder_frame_done_callback(
 		struct drm_encoder *drm_enc,
 		struct sde_encoder_phys *ready_phys, u32 event)
