@@ -1,5 +1,7 @@
 /*
- * Copyright (c) 2021-2023, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ *
  * Copyright (c) 2018-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -756,7 +758,12 @@ static void *get_vaddr(struct drm_gem_object *obj, unsigned madv)
 					goto fail;
 			}
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+			ret = dma_buf_vmap_unlocked(obj->import_attach->dmabuf, &map);
+			if (ret)
+				goto fail;
+			msm_obj->vaddr = map.vaddr;
+#elif (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 			ret = dma_buf_vmap(obj->import_attach->dmabuf, &map);
 			if (ret)
 				goto fail;
@@ -918,7 +925,9 @@ void msm_gem_free_object(struct drm_gem_object *obj)
 
 	if (obj->import_attach) {
 		if (msm_obj->vaddr)
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+			dma_buf_vunmap_unlocked(obj->import_attach->dmabuf, &map);
+#elif (KERNEL_VERSION(5, 15, 0) <= LINUX_VERSION_CODE)
 			dma_buf_vunmap(obj->import_attach->dmabuf, &map);
 #else
 			dma_buf_vunmap(obj->import_attach->dmabuf, msm_obj->vaddr);
