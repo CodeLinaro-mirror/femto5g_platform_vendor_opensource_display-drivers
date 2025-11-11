@@ -16,6 +16,8 @@
 #include "hfi_dbg.h"
 #include <drm/drm_edid.h>
 
+#include <linux/sched/clock.h>
+
 #define TIMEOUT_MAX	80
 
 static ktime_t hfi_enc_unpack_frame_event(void *payload, u32 *idx, struct sde_encoder_virt *sde_enc)
@@ -721,6 +723,7 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 	struct hfi_kms *hfi_kms;
 	u32 scan_id_prop[3] = {0,};
 	u32 num_props = 1;
+	u64 cur_timestamp_hw, local_clock_ts;
 
 	if (!enc)
 		return -EINVAL;
@@ -763,7 +766,12 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 		return ret;
 	}
 
-	SDE_EVT32(atomic_read(&hfi_enc->hfi_commit_cnt));
+	/* convert from arch_timer ticks to qtimer hw ticks (192MHz) and adjust to microseconds */
+	cur_timestamp_hw = DIV_ROUND_UP(arch_timer_read_counter() * 1000 * 10, 192);
+	local_clock_ts = local_clock();
+
+	SDE_EVT32(atomic_read(&hfi_enc->hfi_commit_cnt), cur_timestamp_hw >> 32, cur_timestamp_hw,
+			local_clock_ts >> 32, local_clock_ts);
 
 	return ret;
 }
