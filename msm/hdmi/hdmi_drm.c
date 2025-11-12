@@ -5,6 +5,7 @@
 
 
 #include <drm/drm_bridge.h>
+#include <linux/version.h>
 #include "hdmi_drm.h"
 #include "hdmi_debug.h"
 
@@ -400,8 +401,14 @@ int hdmi_connector_install_properties(void *display, struct drm_connector *conn)
 	return 0;
 }
 
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 static int hdmi_bridge_attach(struct drm_bridge *hdmi_bridge,
 				enum drm_bridge_attach_flags flags)
+#else
+static int hdmi_bridge_attach(struct drm_bridge *hdmi_bridge,
+				struct drm_encoder *encoder,
+				enum drm_bridge_attach_flags flags)
+#endif
 {
 	struct hdmi_bridge *bridge = to_hdmi_bridge(hdmi_bridge);
 
