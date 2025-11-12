@@ -2385,7 +2385,7 @@ void reg_dmav1_setup_dspp_pa_hsicv17(struct sde_hw_dspp *ctx, void *cfg)
 		}
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
-		ctx->pa_opcode |= local_opcode;
+		dspp_list[i]->pa_opcode |= local_opcode;
 #endif
 
 		REG_DMA_SETUP_OPS(dma_write_cfg,
@@ -2573,7 +2573,7 @@ void reg_dmav1_setup_dspp_sixzonev17(struct sde_hw_dspp *ctx, void *cfg)
 		}
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
-		ctx->pa_opcode |= local_opcode;
+		dspp_list[i]->pa_opcode |= local_opcode;
 #endif
 		REG_DMA_SETUP_OPS(dma_write_cfg,
 			ctx->cap->sblk->hsic.base, &local_opcode,
@@ -2772,7 +2772,7 @@ void reg_dmav2_setup_dspp_sixzonev2(struct sde_hw_dspp *ctx, void *cfg)
 		}
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
-		ctx->pa_opcode |= local_opcode;
+		dspp_list[i]->pa_opcode |= local_opcode;
 #endif
 		REG_DMA_SETUP_OPS(dma_write_cfg,
 			ctx->cap->sblk->hsic.base, &local_opcode,
@@ -2951,7 +2951,7 @@ static void __setup_dspp_memcol(struct sde_hw_dspp *ctx,
 		}
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
-		ctx->pa_opcode |= opcode;
+		dspp_list[i]->pa_opcode |= opcode;
 #endif
 		REG_DMA_SETUP_OPS(dma_write_cfg,
 			ctx->cap->sblk->hsic.base, &opcode, sizeof(opcode),
