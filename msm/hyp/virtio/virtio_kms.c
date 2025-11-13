@@ -1640,14 +1640,13 @@ static int virtio_kms_get_crtc_infos(struct sde_kms *sde_kms,
 		priv->base.max_bandwidth_low = 9600000000LL;
 		priv->base.max_bandwidth_high = 9600000000LL;
 		priv->base.has_src_split = true;
+		priv->base.offset_y = output->offset_y;
+		priv->base.offset_x = output->offset_x;
 		priv->scanout = i;
 		priv->kms = kms;
 		_virtio_kms_set_crtc_limit(kms, priv);
 		crtc_infos[num_crtc] = &priv->base;
 		num_crtc++;
-
-		crtc_infos[i]->offset_x = output->offset_x;
-		crtc_infos[i]->offset_y = output->offset_y;
 	}
 	*crtc_num = num_crtc;
 
