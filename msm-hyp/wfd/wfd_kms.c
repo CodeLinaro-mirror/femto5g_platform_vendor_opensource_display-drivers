@@ -2028,6 +2028,7 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 
 			if (_wfd_kms_create_image(fb)) {
 				pr_err("failed to create wfd image\n");
+				priv->committed = false;
 				return;
 			}
 
@@ -2051,6 +2052,7 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 
 			if (!fb_priv->wfd_source) {
 				pr_err("failed to create wfd source\n");
+				priv->committed = false;
 				return;
 			}
 		}
@@ -2064,28 +2066,22 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 	}
 
 	if (_wfd_kms_plane_is_rect_changed(
-		old_state, plane->state, true)) {
+		old_state, plane->state, true) || !priv->committed) {
 		src_rect[0] = plane->state->src_x >> 16;
 		src_rect[1] = plane->state->src_y >> 16;
 		src_rect[2] = plane->state->src_w >> 16;
 		src_rect[3] = plane->state->src_h >> 16;
 
-		fb = to_msm_hyp_fb(plane->state->fb);
-		if (fb != NULL) {
-			/* rect dimension must not be greater than source image dimension */
-			if ((fb->base.width >= src_rect[2]) && (fb->base.height >= src_rect[3])) {
-				wfdSetPipelineAttribiv_User(
-					priv->wfd_device,
-					priv->wfd_pipeline,
-					WFD_PIPELINE_SOURCE_RECTANGLE,
-					4,
-					src_rect);
-			}
-		}
+		wfdSetPipelineAttribiv_User(
+			priv->wfd_device,
+			priv->wfd_pipeline,
+			WFD_PIPELINE_SOURCE_RECTANGLE,
+			4,
+			src_rect);
 	}
 
 	if (_wfd_kms_plane_is_rect_changed(
-		old_state, plane->state, false)) {
+		old_state, plane->state, false) || !priv->committed) {
 		dst_rect[0] = plane->state->crtc_x;
 		dst_rect[1] = plane->state->crtc_y;
 		dst_rect[2] = plane->state->crtc_w;
@@ -2128,7 +2124,7 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 	}
 
 	if (_wfd_kms_plane_is_csc_matrix_changed(
-		old_pstate, new_pstate, &color_space)) {
+		old_pstate, new_pstate, &color_space) || !priv->committed) {
 		wfdSetPipelineAttribi_User(
 			priv->wfd_device,
 			priv->wfd_pipeline,
