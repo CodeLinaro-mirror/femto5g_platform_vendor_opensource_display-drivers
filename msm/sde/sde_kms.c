@@ -3493,6 +3493,18 @@ end:
 	drm_modeset_acquire_fini(&ctx);
 }
 
+static void _sde_kms_helper_reset_color_properties(struct sde_kms *sde_kms)
+
+{
+	struct drm_device *dev = sde_kms->dev;
+	struct drm_crtc *crtc;
+
+	drm_for_each_crtc(crtc, dev) {
+		sde_cp_crtc_clear(crtc);
+	}
+}
+
+
 static int _sde_kms_helper_reset_custom_properties(struct sde_kms *sde_kms,
 		struct drm_atomic_state *state)
 {
@@ -3771,6 +3783,7 @@ out_state:
 		goto backoff;
 
 	drm_atomic_state_put(state);
+	_sde_kms_helper_reset_color_properties(sde_kms);
 out_ctx:
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
