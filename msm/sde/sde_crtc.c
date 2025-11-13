@@ -7631,6 +7631,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 	sde_kms_info_add_keyint(info, "use_baselayer_for_stage",
 				test_bit(SDE_FEATURE_BASE_LAYER, catalog->features));
 
+	if (catalog->mixer_count)
+		sde_kms_info_add_keyint(info, "mixer_count",
+				catalog->mixer_count);
+
 	msm_property_set_blob(&sde_crtc->property_info, &sde_crtc->blob_info,
 			info->data, SDE_KMS_INFO_DATALEN(info),
 			CRTC_PROP_INFO);
