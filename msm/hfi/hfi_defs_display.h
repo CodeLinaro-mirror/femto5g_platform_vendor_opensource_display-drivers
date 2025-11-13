@@ -288,6 +288,10 @@ enum hfi_display_idle_timer_control {
  *     Event ID for Hot Plug Detect Status
  * @HFI_EVENT_DISPLAY_EDID_INFO:
  *     Event ID for EDID info
+ * @var HFI_EVENT_SPR_OPR
+ *   EVENT ID for SPR OPR
+ * @var HFI_EVENT_INTF_MISR
+ *   EVENT ID for Interface MISR
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC               = 0x1,
@@ -303,6 +307,8 @@ enum hfi_display_event_id {
 	HFI_EVENT_PA_HIST             = 0xb,
 	HFI_EVENT_HPD_STATUS          = 0xc,
 	HFI_EVENT_DISPLAY_EDID_INFO   = 0xd,
+	HFI_EVENT_SPR_OPR             = 0xe,
+	HFI_EVENT_INTF_MISR           = 0xf,
 };
 
 /*
@@ -760,6 +766,40 @@ enum hfi_colorimetry {
 	HFI_COLORIMETRY_BT2020_YCC         = 10,
 	HFI_COLORIMETRY_DCI_P3_RGB_D65     = 11,
 	HFI_COLORIMETRY_DCI_P3_RGB_THEATER = 12,
+};
+
+/*!
+ * @enum hfi_misr_block
+ * @brief Module to setup MISR (Multiple Input Signature Register).
+ *
+ * @var HFI_MISR_DSI
+ *   DSI module.
+ * @var HFI_MISR_MIXER
+ *   Mixer module.
+ * @var HFI_MISR_INTF
+ *   Interface module.
+ */
+enum hfi_misr_block {
+	HFI_MISR_DSI   = 0x0,
+	HFI_MISR_MIXER = 0x1,
+	HFI_MISR_INTF  = 0x2,
+};
+
+/*!
+ * @struct hfi_misr_config
+ * @brief MISR setup config information
+ *
+ * @var enable
+ *   Enable MISR
+ * @var frame_count
+ *   Number of frames to run before capturing
+ * @var block
+ *   module to obtain MISR value from
+ */
+struct hfi_misr_config {
+	u32 enable;
+	u32 frame_count;
+	enum hfi_misr_block block;
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

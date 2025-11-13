@@ -693,6 +693,22 @@
  */
 #define HFI_PROPERTY_DISPLAY_DIM_LAYER                               0x0002002D
 
+/*!
+ * @def HFI_PROPERTY_DISPLAY_MISR_CONFIG
+ * @brief This property is used to setup MISR config. Host is expected to send this packet of
+ *        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFunctionality - HFI_PROPERTY_DISPLAY_MISR_CONFIG
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_MISR_CONFIG  \|
+ * ^                             | (version=0 << 20)  \|
+ * ^                             | (dsize=(sizeof(struct hfi_misr_config)/4) << 24)
+ *     (u32_value) payload [1-3] | struct hfi_misr_config
+ */
+#define HFI_PROPERTY_DISPLAY_MISR_CONFIG                             0x0002002E
+
 /*
  * HFI_PROPERTY_DISPLAY_QSYNC_MODE - Sets QSYNC mode for video/command mode panels.
  *                          Host sends this to configure QSYNC mode which requires sending
