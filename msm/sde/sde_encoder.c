@@ -4434,6 +4434,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 			sde_enc->phys_encs[i]->cont_splash_enabled = false;
 			sde_enc->phys_encs[i]->connector = NULL;
 			sde_enc->phys_encs[i]->hw_ctl = NULL;
+			sde_enc->phys_encs[i]->in_clone_mode = false;
 		}
 		atomic_set(&sde_enc->frame_done_cnt[i], 0);
 	}
@@ -4482,6 +4483,8 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	enum sde_intf_mode intf_mode;
 	struct drm_crtc *drm_crtc;
 	struct msm_drm_private *priv;
+	struct drm_encoder *encoder;
+	struct sde_crtc *sde_crtc;
 	enum msm_disp_op disp_op;
 	int ret, i = 0;
 
@@ -4516,6 +4519,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	intf_mode = sde_encoder_get_intf_mode(drm_enc);
 
 	drm_crtc = drm_enc->crtc;
+	sde_crtc = to_sde_crtc(drm_crtc);
 	priv = drm_crtc->dev->dev_private;
 
 	SDE_EVT32(DRMID(drm_enc));
@@ -4531,6 +4535,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 			SDE_ERROR_ENC(sde_enc, "encoder disable failure\n");
 	}
 
+	kthread_cancel_work_sync(&sde_enc->self_refresh_work);
 	sde_encoder_cancel_vrr_timers(drm_enc);
 
 	sde_encoder_vhm_wakelock(sde_enc, false);
@@ -4603,8 +4608,14 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		}
 	}
 
-	if (!sde_encoder_in_clone_mode(drm_enc))
-		sde_encoder_virt_reset(drm_enc);
+	/*
+	 * In case of primary and cwb disable virt reset for both the encoders
+	 * should be done once primary completes the disable commit.
+	 */
+	if (!sde_encoder_in_clone_mode(drm_enc)) {
+		drm_for_each_encoder_mask(encoder, drm_enc->dev, sde_crtc->cached_encoder_mask)
+			sde_encoder_virt_reset(encoder);
+	}
 
 	/* Reset cached connector to NULL on disable */
 	sde_enc->cached_connector = NULL;

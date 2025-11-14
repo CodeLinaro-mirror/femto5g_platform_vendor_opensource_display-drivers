@@ -114,7 +114,7 @@ int msm_lsr_set_clocks_impl(struct lsr_device *device, u32 freq)
 {
 	struct clock_info *cl;
 	int rc = 0;
-	int fsrc2clk = 3;
+	u32 scaled_freq = 0;
 
 	dprintk(LSR_PWR, "%s: entering with freq : %ld\n", __func__, freq);
 
@@ -124,19 +124,22 @@ int msm_lsr_set_clocks_impl(struct lsr_device *device, u32 freq)
 			if (msm_lsr_clock_voting)
 				freq = msm_lsr_clock_voting;
 
-			freq = freq * fsrc2clk;
+			scaled_freq = freq;
+			// scale tensilica core clk by factor of 2
+			// Recommended by LSR FW team as Work around
+			if (!strcmp(cl->name, "lsr_clk"))
+				scaled_freq *= 2;
 			dprintk(LSR_PWR, "%s: clock source rate set to: %ld\n",
-				__func__, freq);
+				__func__, scaled_freq);
 
-			dprintk(LSR_PWR, "%s: set clock with clk_set_rate\n", __func__);
-			rc = clk_set_rate(cl->clk, freq);
+			rc = clk_set_rate(cl->clk, scaled_freq);
 			if (rc) {
 				dprintk(LSR_ERR, "Failed set clock %u %s: %d\n",
-					freq, cl->name, rc);
+					scaled_freq, cl->name, rc);
 				return rc;
 			}
 
-			dprintk(LSR_PWR, "Scaling clock %s to %u\n", cl->name, freq);
+			dprintk(LSR_PWR, "Scaling clock %s to %u\n", cl->name, scaled_freq);
 		}
 	}
 	return 0;
