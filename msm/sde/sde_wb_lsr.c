@@ -601,3 +601,21 @@ int sde_wb_connector_reproj_setup(struct sde_connector *conn, struct sde_wb_devi
 end:
 	return rc;
 }
+
+void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state)
+{
+	if (!c_state)
+		return;
+
+	c_state->reproj_sparse_grid.usr_cfg.size = 0;
+	c_state->reproj_radial_dis_grid.usr_cfg.size = 0;
+	c_state->reproj_display_gamma.usr_cfg.size = 0;
+	c_state->reproj_gcx_session_config.usr_cfg.size = 0;
+	c_state->reproj_gcx_session_config_data.usr_cfg.size = 0;
+
+	c_state->reproj_sparse_grid.remote_iova = 0;
+	c_state->reproj_radial_dis_grid.remote_iova = 0;
+	c_state->reproj_display_gamma.remote_iova = 0;
+	c_state->reproj_gcx_session_config.remote_iova = 0;
+	c_state->reproj_gcx_session_config_data.remote_iova = 0;
+}

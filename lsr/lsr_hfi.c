@@ -2442,6 +2442,7 @@ static int __lsr_power_on(struct lsr_device *device)
 			device->bus_vote.data_count);
 	if (rc) {
 		dprintk(LSR_ERR, "Failed to vote buses, err: %d\n", rc);
+		mutex_unlock(&core->clk_lock);
 		goto fail_vote_buses;
 	}
 	mutex_unlock(&core->clk_lock);
