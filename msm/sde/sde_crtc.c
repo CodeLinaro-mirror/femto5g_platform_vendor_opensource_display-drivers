@@ -4871,12 +4871,14 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 	uint32_t wait_ms = 1;
 	struct msm_display_mode *msm_mode;
 	bool mode_switch, is_wb = false;
+	bool is_lsr = false;
 	int i, status = 0, rc = 0;
 
 	msm_mode = sde_crtc_get_msm_mode(crtc->state);
 	mode_switch = msm_is_mode_seamless_poms(msm_mode);
 
 	is_wb = _is_crtc_intf_mode_wb(crtc);
+	is_lsr = sde_crtc_check_for_lsr_opmode(crtc) > 0 ? true : false;
 
 	/* use monotonic timer to limit total fence wait time */
 	kt_end = ktime_add_ns(ktime_get(),
@@ -4911,7 +4913,7 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 				/*
 				 * go to next, to skip sw-wait for hw-fences not for writeback path.
 				 */
-				if (!is_wb)
+				if (!is_wb || is_lsr)
 					continue;
 			}
 		}
