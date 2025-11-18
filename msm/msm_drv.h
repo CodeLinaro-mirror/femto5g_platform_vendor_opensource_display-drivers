@@ -252,6 +252,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_DYN_TRANSFER_TIME,
 	CONNECTOR_PROP_BRIGHTNESS,
 	CONNECTOR_PROP_EMSYNC_FPS,
+	CONNECTOR_PROP_PRIVACY_LAYER_V1,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -1167,6 +1168,7 @@ struct msm_display_kickoff_params {
  * @freq_pattern: Frequency pattern to be set
  * @arp_t2_in_us: Time when TE shall be asserted relative to next frame
  *		  update deadline(T1) in case of ARP
+ * @privacy_v1: Privacy layer info
  */
 struct msm_display_conn_params {
 	uint32_t qsync_mode;
@@ -1175,6 +1177,7 @@ struct msm_display_conn_params {
 	bool peripheral_flush;
 	struct msm_freq_step_pattern *freq_pattern;
 	uint16_t arp_t2_in_us;
+	struct sde_drm_privacy_layer_v1 *privacy_v1;
 };
 
 /**

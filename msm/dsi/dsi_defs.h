@@ -297,6 +297,7 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_TRIGGER_SELF_REFRESH:      Trigger self refresh from Gram
  * @DSI_CMD_SET_FPS_SWITCH:		   FPS Switch
  * @DSI_CMD_SET_EM_PULSE_SWITCH:           EM pulse switch cmd
+ * @DSI_CMD_SET_PRIVACY_LAYER:		   Command to update panel on Privacy layer config
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -342,6 +343,7 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_TRIGGER_SELF_REFRESH,
 	DSI_CMD_SET_FPS_SWITCH,
 	DSI_CMD_SET_EM_PULSE_SWITCH,
+	DSI_CMD_SET_PRIVACY_LAYER,
 	DSI_CMD_SET_MAX
 };
 
