@@ -279,7 +279,8 @@ static void _sde_plane_set_qos_lut(struct drm_plane *plane,
 		fmt = sde_get_sde_format_ext(fb->format->format, fb->modifier);
 	        inline_rot = (pstate->rotation & DRM_MODE_ROTATE_90);
 
-		if (inline_rot && SDE_IS_IN_ROT_RESTRICTED_FMT(psde->catalog, fmt))
+		if (inline_rot && IS_SDE_INLINE_ROT_REV_201(psde->catalog->true_inline_rot_rev) &&
+				SDE_IS_IN_ROT_RESTRICTED_FMT(psde->catalog, fmt))
 			lut_index = SDE_QOS_LUT_USAGE_INLINE_RESTRICTED_FMTS;
 		else if (inline_rot)
 			lut_index = SDE_QOS_LUT_USAGE_INLINE;
