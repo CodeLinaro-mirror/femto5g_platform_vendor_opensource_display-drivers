@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1648,7 +1648,7 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 		}
 
 		if (ret) {
-			DRM_ERROR("failed to %s feature %d\n",
+			DRM_DEBUG_DRIVER("failed to %s feature %d\n",
 				((feature_enabled) ? "enable" : "disable"),
 				prop_node->feature);
 			goto disable_feature;
