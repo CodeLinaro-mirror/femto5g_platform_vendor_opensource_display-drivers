@@ -1034,4 +1034,10 @@ int sde_kms_suspend_helper(struct sde_kms *sde_kms);
  */
 int sde_kms_resume_helper(struct sde_kms *sde_kms);
 
+/*
+ * sde_kms_wait_for_display_off - function to wait for all displays to be off
+ * @sde_kms: Pointer to sde kms object
+ */
+int sde_kms_wait_for_display_off(struct sde_kms *kms);
+
 #endif /* __sde_kms_H__ */
