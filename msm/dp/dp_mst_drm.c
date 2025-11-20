@@ -420,8 +420,14 @@ static const struct dp_drm_mst_fw_helper_ops drm_dp_mst_fw_helper_ops = {
 
 /* DP MST Bridge OPs */
 
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 static int dp_mst_bridge_attach(struct drm_bridge *dp_bridge,
 				enum drm_bridge_attach_flags flags)
+#else
+static int dp_mst_bridge_attach(struct drm_bridge *dp_bridge,
+				struct drm_encoder *encoder,
+				enum drm_bridge_attach_flags flags)
+#endif
 {
 	struct dp_mst_bridge *bridge;
 

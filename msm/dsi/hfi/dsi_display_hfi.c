@@ -25,12 +25,26 @@
 
 int dsi_display_hfi_panel_enable_supplies(struct dsi_display *display, bool enable)
 {
+	struct sde_kms *sde_kms;
+	struct msm_kms *msm_kms;
+	bool is_cont_splash = false;
 	int rc = 0;
 
 	if (!display->panel) {
 		DSI_ERR("invalid panel\n");
 		return -EINVAL;
 	}
+
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms)
+		return -EINVAL;
+
+	msm_kms = &sde_kms->base;
+	if (!msm_kms)
+		return -EINVAL;
+
+	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
+		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
 
 	mutex_lock(&display->panel->panel_lock);
 
@@ -39,7 +53,7 @@ int dsi_display_hfi_panel_enable_supplies(struct dsi_display *display, bool enab
 			goto error;
 
 		DSI_DEBUG("powering on panel\n");
-		rc = dsi_panel_power_on(display->panel);
+		rc = dsi_panel_power_on(display->panel, is_cont_splash);
 		if (rc) {
 			DSI_ERR("dsi panel failed to enable power supplies\n");
 			goto error;
@@ -426,7 +440,7 @@ int dsi_hfi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 	int rc = 0;
 
 	display->tx_cmd_buf = msm_gem_new(display->drm_dev,
-			SZ_4K,
+			DSI_TX_CMD_BUF_SIZE,
 			MSM_BO_UNCACHED);
 
 	if ((display->tx_cmd_buf) == NULL) {
@@ -435,7 +449,7 @@ int dsi_hfi_host_alloc_cmd_tx_buffer(struct dsi_display *display)
 		goto error;
 	}
 
-	display->cmd_buffer_size = SZ_4K;
+	display->cmd_buffer_size = DSI_TX_CMD_BUF_SIZE;
 
 	display->aspace = msm_gem_smmu_address_space_get(
 			display->drm_dev, MSM_SMMU_DOMAIN_UNSECURE);

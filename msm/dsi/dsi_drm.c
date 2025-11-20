@@ -8,6 +8,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_edid.h>
+#include <linux/version.h>
 
 #include "msm_kms.h"
 #include "sde_connector.h"
@@ -172,8 +173,13 @@ static void dsi_convert_to_msm_mode(const struct dsi_display_mode *dsi_mode,
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_EMSYNC_FPS_SWITCH;
 }
 
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 static int dsi_bridge_attach(struct drm_bridge *bridge,
 			enum drm_bridge_attach_flags flags)
+#else
+static int dsi_bridge_attach(struct drm_bridge *bridge,
+		struct drm_encoder *encoder, enum drm_bridge_attach_flags flags)
+#endif
 {
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 
@@ -258,7 +264,7 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 	struct dsi_display *display;
 
-	if (!bridge) {
+	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
@@ -276,10 +282,9 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 		DSI_ERR("[%d] DSI display post enabled failed, rc=%d\n",
 		       c_bridge->id, rc);
 
-	if (display)
-		display->enabled = true;
+	display->enabled = true;
 
-	if (display && display->drm_conn) {
+	if (display->drm_conn) {
 		sde_connector_helper_bridge_enable(display->drm_conn);
 		if (display->poms_pending) {
 			display->poms_pending = false;
@@ -296,16 +301,15 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 	struct sde_connector_state *conn_state;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 
-	if (!bridge) {
+	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
 	display = c_bridge->display;
 
-	if (display)
-		display->enabled = false;
+	display->enabled = false;
 
-	if (display && display->drm_conn) {
+	if (display->drm_conn) {
 		conn_state = to_sde_connector_state(display->drm_conn->state);
 		if (!conn_state) {
 			DSI_ERR("invalid params\n");
@@ -321,8 +325,9 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 	rc = display->display_ops.pre_disable[display->ctrl[0].ctrl->disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display pre disable failed, rc=%d\n",
-		       c_bridge->id, rc);
+			c_bridge->id, rc);
 	}
+
 }
 
 static void dsi_bridge_post_disable(struct drm_bridge *bridge)
@@ -332,7 +337,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 	enum msm_disp_op disp_op;
 
-	if (!bridge) {
+	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
@@ -341,8 +346,8 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 
 	SDE_ATRACE_BEGIN("dsi_bridge_post_disable");
 	SDE_ATRACE_BEGIN("dsi_display_disable");
-	disp_op = display->ctrl[0].ctrl->disp_op;
 
+	disp_op = display->ctrl[0].ctrl->disp_op;
 	rc = display->display_ops.display_disable[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display disable failed, rc=%d\n",
@@ -352,7 +357,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	}
 	SDE_ATRACE_END("dsi_display_disable");
 
-	if (display && display->drm_conn)
+	if (display->drm_conn)
 		sde_connector_helper_bridge_post_disable(display->drm_conn);
 
 	rc = display->display_ops.display_unprepare[disp_op](c_bridge->display);
@@ -478,6 +483,25 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 		adj_mode->dsi_mode_flags &= ~DSI_MODE_FLAG_DYN_CLK;
 		DSI_ERR("DMS and dyn clk not supported in same commit\n");
 		return false;
+	}
+
+	/* Reject non-supported mode switches in HFI.*/
+	if (adj_mode->dsi_mode_flags &&  display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HWIO) {
+		if (adj_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) {
+			bool matching = (cur_dsi_mode.timing.h_active == adj_mode->timing.h_active)
+			       && (cur_dsi_mode.timing.v_active == adj_mode->timing.v_active);
+
+			if (!matching) {
+				DSI_INFO("Mode switch %u is not supported\n",
+					adj_mode->dsi_mode_flags);
+				adj_mode->dsi_mode_flags &= ~DSI_MODE_FLAG_DMS;
+				return true;
+			}
+		} else {
+			DSI_INFO("Mode switch %u is not supported\n", adj_mode->dsi_mode_flags);
+			adj_mode->dsi_mode_flags = 0;
+			return true;
+		}
 	}
 
 	return rc;
@@ -735,18 +759,13 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 		}
 	}
 
-	/**
-	 * Set partial update in hwio mode only, this disables the feature in hfi mode as
-	 * a temporal workaround until this feature is implemented in fw.
-	 */
-	if (dsi_mode->priv_info->roi_caps.enabled &&
-			dsi_display->panel->disp_op == MSM_DISP_OP_HWIO) {
+	if (dsi_mode->priv_info->roi_caps.enabled) {
 		memcpy(&mode_info->roi_caps, &dsi_mode->priv_info->roi_caps,
 			sizeof(dsi_mode->priv_info->roi_caps));
 	}
 
-	mode_info->allowed_mode_switches =
-		dsi_mode->priv_info->allowed_mode_switch;
+	memcpy(mode_info->allowed_mode_switches, dsi_mode->priv_info->allowed_mode_switch,
+			sizeof(mode_info->allowed_mode_switches));
 
 	return 0;
 }
@@ -940,12 +959,10 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 			msm_spr_pack_type_mode_str[panel->spr_info.pack_type_mode]);
 	}
 
-	/**
-	 * Set partial update props in hwio mode only, this disables the feature in hfi mode as
-	 * a temporal workaround until this feature is implemented in fw.
-	 */
-	if (mode_info && mode_info->roi_caps.enabled
-			&& dsi_display->panel->disp_op == MSM_DISP_OP_HWIO) {
+	sde_kms_info_add_keystr(info, "privacy layer support",
+			panel->privacy_feature_enabled ? "true" : "false");
+
+	if (mode_info && mode_info->roi_caps.enabled) {
 		sde_kms_info_add_keyint(info, "partial_update_num_roi",
 				mode_info->roi_caps.num_roi);
 		sde_kms_info_add_keyint(info, "partial_update_xstart",
@@ -1560,6 +1577,14 @@ static bool is_valid_poms_switch(struct dsi_display_mode *mode_a,
 			(mode_a->timing.h_active == mode_b->timing.h_active));
 }
 
+static inline void set_allowed_mode_switch_bit(uint32_t *bitmap_array, int mode_idx)
+{
+	int arr_idx = mode_idx / MODE_SWITCH_BITS_PER_WORD;
+	int bit_idx = mode_idx % MODE_SWITCH_BITS_PER_WORD;
+
+	bitmap_array[arr_idx] |= BIT(bit_idx);
+}
+
 void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 		void *display)
 {
@@ -1592,12 +1617,13 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 			return;
 
 		dsi_mode_info =  panel_dsi_mode->priv_info;
-		dsi_mode_info->allowed_mode_switch |= BIT(mode_idx);
+		set_allowed_mode_switch_bit(dsi_mode_info->allowed_mode_switch, mode_idx);
+
 		if (mode_idx == mode_count - 1)
 			break;
 
 		mode_list = mode_list->next;
-		cmp_mode_idx = 1;
+		cmp_mode_idx = mode_idx + 1;
 		list_for_each_entry(cmp_drm_mode, mode_list, head) {
 			if (&cmp_drm_mode->head == &connector->modes)
 				continue;
@@ -1633,13 +1659,13 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 			}
 
 			if (allow_switch) {
-				dsi_mode_info->allowed_mode_switch |=
-					BIT(mode_idx + cmp_mode_idx);
-				cmp_dsi_mode_info->allowed_mode_switch |=
-					BIT(mode_idx);
+				set_allowed_mode_switch_bit(dsi_mode_info->allowed_mode_switch,
+					cmp_mode_idx);
+				set_allowed_mode_switch_bit(cmp_dsi_mode_info->allowed_mode_switch,
+					mode_idx);
 			}
 
-			if ((mode_idx + cmp_mode_idx) >= mode_count - 1)
+			if (cmp_mode_idx == mode_count - 1)
 				break;
 
 			cmp_mode_idx++;

@@ -1,6 +1,6 @@
 load(":display_driver_build.bzl", "display_module_entry")
 
-display_driver_modules = display_module_entry([":display_drivers_headers"])
+display_driver_modules = display_module_entry([":display_drivers_uapi_headers"])
 module_entry = display_driver_modules.register
 
 #---------- MSM-DRM MODULE -------------------------
@@ -153,6 +153,20 @@ module_entry(
             "msm/sde/sde_aiqe_common.c",
             "msm/sde/sde_loopback.c",
             "msm/sde/sde_color_proc_feature_state_helper.c"
+        ],
+        "CONFIG_DRM_SDE_LSR": [
+            "msm/sde/sde_wb_lsr.c",
+            "msm/sde/hfi/hfi_wb_lsr.c",
+            "lsr/lsr.c",
+            "lsr/lsr_core.c",
+            "lsr/lsr_hfi.c",
+            "lsr/lsr_smem.c",
+            "lsr/msm_lsr_clocks.c",
+            "lsr/msm_lsr_core.c",
+            "lsr/msm_lsr_debug.c",
+            "lsr/msm_lsr_platform.c",
+            "lsr/msm_lsr_res_parse.c",
+            "lsr/lsr_main.c",
         ],
         "CONFIG_DRM_SDE_WB": [
             "msm/sde/sde_wb.c",

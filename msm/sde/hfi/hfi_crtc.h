@@ -10,6 +10,17 @@
 #include "sde_crtc.h"
 #include "hfi_utils.h"
 #include "hfi_adapter.h"
+#include "hfi_defs_display.h"
+
+enum hfi_crtc_event {
+	HFI_CRTC_EVENT_LTM,
+	HFI_CRTC_EVENT_MAX,
+};
+
+struct crtc_hw_event_state {
+	u32 state;
+	u32 pending;
+};
 
 /**
  * struct hfi_crtc - virtualized hfi CRTC data structure
@@ -22,6 +33,8 @@
  * @hfi_buff_map_dither: hfi_buff map object for SPR dither
  * @prev_plane_mask: tracks the previous plane mask
  * @pending_enc_mask: encoder_mask that has pending commit on the drm_crtc
+ * @hw_events_state: tracks the state of the hw events
+ * @hfi_cb_obj: hfi callback object for crtc events from hfi
  */
 struct hfi_crtc {
 	struct sde_crtc *sde_base;
@@ -33,6 +46,8 @@ struct hfi_crtc {
 	struct hfi_shared_addr_map hfi_buff_map_dither;
 	uint32_t prev_plane_mask;
 	u32 pending_enc_mask;
+	struct crtc_hw_event_state hw_events_state[HFI_CRTC_EVENT_MAX];
+	struct hfi_prop_listener hfi_cb_obj;
 };
 
 /**
@@ -64,23 +79,6 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc);
  * Return: display ID
  */
 u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state);
-
-/**
- * hfi_crtc_destroy_shared_map_buffers - Destroy shared buffers mapped to
- *                                       firmware for crtc
- * @crtc: Pointer to sde crtc struct
- * @Returns: 0 on success, or error code on failure
- */
-int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc);
-
-/**
- * hfi_crtc_alloc_shared_map_buffers - Allocate shared buffers mapped to
- *                                     firmware for crtc
- * @crtc: Pointer to sde crtc struct
- * @Returns: 0 on success, or error code on failure
- */
-int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc);
-
 #else
 int hfi_crtc_init(struct sde_crtc *sde_crtc)
 {
@@ -94,15 +92,6 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 
 void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask)
 {
-}
-int hfi_crtc_destroy_shared_map_buffers(struct sde_crtc *crtc)
-{
-	return 0;
-}
-
-int hfi_crtc_alloc_shared_map_buffers(struct sde_crtc *crtc)
-{
-	return 0;
 }
 
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)

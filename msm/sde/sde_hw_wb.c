@@ -862,8 +862,10 @@ struct sde_hw_blk_reg_map *sde_hw_wb_init(enum sde_wb idx,
 		if (SDE_CLK_CTRL_WB_VALID(cfg->clk_ctrl)) {
 			clk_client->hw = &c->hw;
 			clk_client->clk_ctrl = cfg->clk_ctrl;
-			clk_client->ops.get_clk_ctrl_status = sde_hw_wb_get_clk_ctrl_status;
-			clk_client->ops.setup_clk_force_ctrl = sde_hw_wb_setup_clk_force_ctrl;
+			clk_client->ops.get_clk_ctrl_status[MSM_DISP_OP_HWIO] =
+				sde_hw_wb_get_clk_ctrl_status;
+			clk_client->ops.setup_clk_force_ctrl[MSM_DISP_OP_HWIO] =
+				sde_hw_wb_setup_clk_force_ctrl;
 		} else {
 			SDE_ERROR("invalid wb clk ctrl type %d\n", cfg->clk_ctrl);
 		}

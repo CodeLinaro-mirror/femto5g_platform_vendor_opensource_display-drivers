@@ -7,6 +7,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_crtc.h>
+#include <linux/version.h>
 
 #include "msm_drv.h"
 #include "msm_kms.h"
@@ -59,8 +60,13 @@ void convert_to_drm_mode(const struct dp_display_mode *dp_mode,
 	drm_mode_set_name(drm_mode);
 }
 
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 static int dp_bridge_attach(struct drm_bridge *dp_bridge,
 				enum drm_bridge_attach_flags flags)
+#else
+static int dp_bridge_attach(struct drm_bridge *dp_bridge,
+		struct drm_encoder *encoder, enum drm_bridge_attach_flags flags)
+#endif
 {
 	struct dp_bridge *bridge = to_dp_bridge(dp_bridge);
 
@@ -509,10 +515,19 @@ int dp_connector_get_info(struct drm_connector *connector,
 
 	display->get_display_type(display, &display_type);
 	if (display_type) {
-		if (!strcmp(display_type, "primary"))
+		if (!strcmp(display_type, "primary")) {
+			if (display->ctl_op_sync) {
+				info->ctl_op_sync = true;
+				info->is_master = true;
+			}
 			conn_disp_type = SDE_CONNECTOR_PRIMARY;
-		else if (!strcmp(display_type, "secondary"))
+		} else if (!strcmp(display_type, "secondary")) {
+			if (display->ctl_op_sync) {
+				info->ctl_op_sync = true;
+				info->is_master = false;
+			}
 			conn_disp_type = SDE_CONNECTOR_SECONDARY;
+		}
 	}
 
 	info->num_of_h_tiles = 1;
@@ -556,7 +571,8 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 		return connector_status_disconnected;
 	}
 
-	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG) {
+	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG &&
+			!dp_disp->is_cont_splash_enabled) {
 		status = (info.is_connected ? connector_status_connected :
 					      connector_status_disconnected);
 	} else {
@@ -679,6 +695,11 @@ int dp_connector_set_info_blob(struct drm_connector *connector,
 
 	if ((dp_display->is_edp) && (dp_display->ext_hpd_en))
 		sde_kms_info_add_keystr(info, "ext bridge hpd support", "true");
+
+	if (dp_display->ctl_op_sync) {
+		sde_kms_info_add_keystr(info, "has_disp_in_other_core", "true");
+		sde_kms_info_add_keystr(info, "dpu_ctl_op_sync", "true");
+	}
 
 	return 0;
 }

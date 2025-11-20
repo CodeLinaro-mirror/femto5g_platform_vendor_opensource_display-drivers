@@ -32,7 +32,8 @@
 #define HFI_PACKKEY(property_id, version, dsize) \
 	(property_id | (version << 20) | (dsize << 24))
 
-#define HFI_ADAPTER_WORK_QUEUE_SIZE 4
+#define HFI_ADAPTER_WORK_QUEUE_SIZE 4 //Queue size must be a power of 2.
+#define HFI_ADAPTER_WORK_QUEUE_MASK (HFI_ADAPTER_WORK_QUEUE_SIZE - 1)
 
 /**
  * @brief Type of virtqueue event
@@ -73,7 +74,7 @@ enum hfi_adapter_event_type {
 struct callback_work {
 	struct kthread_work work;
 	struct hfi_adapter_t *host;
-	u32 index;
+	int index;
 };
 
 /**
@@ -109,6 +110,8 @@ struct hfi_adapter_t {
 	struct kthread_worker cb_event_ssr_worker;
 	struct task_struct *cb_event_worker_thread;
 	struct task_struct *cb_event_worker_ssr_thread;
+	struct kthread_work hfi_thread_priority_work;
+
 	enum hfi_adapter_event_type event_type;
 	bool blocking;
 	struct idr client_ids;
@@ -116,6 +119,9 @@ struct hfi_adapter_t {
 	spinlock_t packet_id_lock;
 	struct mutex hfi_adapter_cmd_buf_list_lock;
 	atomic_t ssr_in_progress;
+
+	/* Shutdown coordination */
+	atomic_t shutdown_in_progress;
 };
 
 /**
@@ -268,6 +274,7 @@ struct hfi_client_t {
 	struct list_head node;
 	struct mutex lock;
 	struct list_head cmd_buf_list;
+	struct mutex listener_lock;
 	struct listener_list packet_listeners;
 	int (*process_cmd_buf)(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t *cmd_buf);
 	int (*process_event)(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
@@ -286,6 +293,7 @@ struct hfi_client_t {
  *@alloc_info: hfi structure to store memory allocation information
  */
 struct hfi_shared_addr_map {
+	struct sg_table *sgt;
 	unsigned long remote_addr;
 	void __iomem *local_addr;
 	u32 size;
@@ -453,8 +461,18 @@ void hfi_adapter_deinit(struct hfi_client_t *ctx);
  * @size: Size of the memory.
  * @mapped_iova: Pointer to store resulting virtual address.
  */
-int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt, size_t size,
-		unsigned long *mapped_iova);
+int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
+		struct hfi_shared_addr_map *addr_map);
+
+/**
+ * hfi_adapter_unmap_sg_table - Unmaps a previously mapped scatter-gather table
+ * from DCP.
+ * @ctx: Pointer to the HFI client context.
+ * @iova: I/O virtual address that was previously mapped.
+ * @size: Size of the memory region to unmap.
+ */
+int hfi_adapter_unmap_sg_table(struct hfi_client_t *ctx, unsigned long iova,
+		size_t size);
 
 /**
  * hfi_adapter_get_shared_mem_allocated_size - API to return the size of shared memory allocated
@@ -564,8 +582,13 @@ static inline void hfi_adapter_deinit(struct hfi_client_t *ctx)
 }
 
 static inline int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
-		size_t size, unsigned long *mapped_iova)
+		struct hfi_shared_addr_map *addr_map)
 {
+	return 0;
+}
+
+static inline int hfi_adapter_unmap_sg_table(struct hfi_client_t *ctx,
+		unsigned long iova, size_t size) {
 	return 0;
 }
 

@@ -173,7 +173,7 @@ static const u32 wb_flush_tbl[WB_MAX] = {SDE_NONE, SDE_NONE, 1, 2};
 /**
  * list of INTF bits in CTL_INTF_FLUSH
  */
-static const u32 intf_flush_tbl[INTF_MAX] = {SDE_NONE, 0, 1, 2, 3, 4, 5, 6, 7, 8};
+static const u32 intf_flush_tbl[INTF_MAX] = {SDE_NONE, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11};
 
 /**
  * list of DSC bits in CTL_DSC_FLUSH
@@ -426,6 +426,8 @@ static inline void sde_hw_ctl_hw_fence_ctrl(struct sde_hw_ctl *ctx, bool sw_over
 		val &= ~BIT(0);
 		if (!sw_avr_set)
 			val &= ~BIT(8);
+		else
+			val |= BIT(8);
 		if (!sw_arp_set)
 			val &= ~BIT(9);
 	} else {
@@ -1774,6 +1776,7 @@ static void sde_hw_hyp_ctl_cesta_reserve(struct sde_hw_ctl *ctx, u32 scc_index)
 static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		unsigned long cap, unsigned long mdss_cap)
 {
+	ops->hw_fence_ctrl[MSM_DISP_OP_HWIO] = sde_hw_ctl_hw_fence_ctrl;
 	if (cap & BIT(SDE_CTL_ACTIVE_CFG)) {
 		ops->update_pending_flush[MSM_DISP_OP_HWIO] =
 			sde_hw_ctl_update_pending_flush_v1;

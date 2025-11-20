@@ -26,9 +26,17 @@
  * @vig_indices		VIG layer indices
  * @dma_count		Number of DMA layers
  * @dma_indices		DMA layer indices
+ * @csc_count		Number of CSC layers
+ * @csc_indices		CSC layer indices
+ * @repro_count		Number of Repro layers
+ * @repro_indices	Repro layer indices
  * @max_display_count	Max display count
  * @wb_count		Number of writeback blocks
  * @wb_indices		Writeback block indices
+ * @csc_wb_count	Number of CSC writeback blocks
+ * @csc_wb_indices	CSC writeback block indices
+ * @repro_wb_count	Number of Repro writeback blocks
+ * @repro_wb_indices	Repro writeback block indices
  * @max_wb_linear_resolution	Max writeback linear resolution
  * @max_wb_ubwc_resolution	Max writeback UBWC resolution
  * @dsi_count		Number of DSI blocks
@@ -54,9 +62,17 @@ struct hfi_catalog_base {
 	u32 dma_indices[SDE_MAX_SSPP_COUNT];
 	u32 virt_dma_count;
 	u32 dma_r1_indices[SDE_MAX_SSPP_COUNT];
+	u32 csc_count;
+	u32 csc_indices[SDE_MAX_SSPP_COUNT];
+	u32 repro_count;
+	u32 repro_indices[SDE_MAX_SSPP_COUNT];
 	u32 max_display_count;
 	u32 wb_count;
 	u32 wb_indices[MAX_BLOCKS];
+	u32 csc_wb_count;
+	u32 csc_wb_indices[MAX_BLOCKS];
+	u32 repro_wb_count;
+	u32 repro_wb_indices[MAX_BLOCKS];
 	u32 max_wb_linear_resolution;
 	u32 max_wb_ubwc_resolution;
 	u32 dsi_count;
@@ -181,10 +197,12 @@ int hfi_kms_send_trace_cfg(struct hfi_kms *hfi_kms, u32 enable);
  * @pipe_idx: sde pipe id
  * @rect1: true if rect1
  * @hfi_pipe_id: func updates hfi pipe idx for pipe_idx
+ * @csc_pipe: True if CSC pipe
+ * @repro_pipe: True if Repro pipe
  * Returns: 0 on success, or error code on failure
  */
 int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe, uint32_t pipe_idx,
-		bool rect1, uint32_t *hfi_pipe_id);
+		bool rect1, uint32_t *hfi_pipe_id, bool csc_pipe, bool repro_pipe);
 
 /**
  * hfi_kms_set_reg_dma_buffer - send LUT DMA last command buffer to FW

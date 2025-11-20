@@ -58,8 +58,10 @@ static void dspp_igc(struct sde_hw_dspp *c)
 	} else if (c->cap->sblk->igc.version ==
 			SDE_COLOR_PROCESS_VER(0x4, 0x0)) {
 		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_IGC, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_igc[MSM_DISP_OP_HWIO] = reg_dmav2_setup_dspp_igcv4;
+			c->ops.setup_igc[MSM_DISP_OP_HFI] = reg_dmav2_setup_dspp_igcv4;
+		}
 	} else if (c->cap->sblk->igc.version ==
 			SDE_COLOR_PROCESS_VER(0x5, 0x0)) {
 		ret = reg_dmav2_init_dspp_op_v4(SDE_DSPP_IGC, c);
@@ -84,10 +86,12 @@ static void dspp_pcc(struct sde_hw_dspp *c)
 	} else if (c->cap->sblk->pcc.version ==
 			SDE_COLOR_PROCESS_VER(0x4, 0x0)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_PCC, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_pcc[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_pccv4;
-		else
+			c->ops.setup_pcc[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_pccv4;
+		} else {
 			c->ops.setup_pcc[MSM_DISP_OP_HWIO] = sde_setup_dspp_pccv4;
+		}
 	} else if (c->cap->sblk->pcc.version ==
 			SDE_COLOR_PROCESS_VER(0x5, 0x0) ||
 			c->cap->sblk->pcc.version ==
@@ -106,8 +110,10 @@ static void dspp_gc(struct sde_hw_dspp *c)
 
 	if (c->cap->sblk->gc.version == SDE_COLOR_PROCESS_VER(0x1, 8)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_GC, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_gc[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_gcv18;
+			c->ops.setup_gc[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_gcv18;
+		}
 		/**
 		 * programming for v18 through ahb is same as v17,
 		 * hence assign v17 function
@@ -181,8 +187,10 @@ static void dspp_sixzone(struct sde_hw_dspp *c)
 
 	if (c->cap->sblk->sixzone.version == SDE_COLOR_PROCESS_VER(0x1, 0x7)) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_SIXZONE, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_sixzone[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_sixzonev17;
+			c->ops.setup_sixzone[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_sixzonev17;
+		}
 		else
 			c->ops.setup_sixzone[MSM_DISP_OP_HWIO] = sde_setup_dspp_sixzone_v17;
 	} else if (c->cap->sblk->sixzone.version ==
@@ -253,8 +261,10 @@ static void dspp_vlut(struct sde_hw_dspp *c)
 	} else if (c->cap->sblk->vlut.version ==
 			(SDE_COLOR_PROCESS_VER(0x1, 0x8))) {
 		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_VLUT, c);
-		if (!ret)
+		if (!ret) {
 			c->ops.setup_vlut[MSM_DISP_OP_HWIO] = reg_dmav1_setup_dspp_vlutv18;
+			c->ops.setup_vlut[MSM_DISP_OP_HFI] = reg_dmav1_setup_dspp_vlutv18;
+		}
 		else
 			c->ops.setup_vlut[MSM_DISP_OP_HWIO] = sde_setup_dspp_pa_vlut_v1_8;
 	}
@@ -293,6 +303,13 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 					sde_setup_dspp_ltm_hist_ctrlv1_2;
 				c->ops.clear_ltm_merge_mode[MSM_DISP_OP_HWIO]  =
 					sde_ltm_clear_merge_modev1_2;
+
+				c->ops.setup_ltm_vlut[MSM_DISP_OP_HFI]  =
+					reg_dmav1_setup_ltm_vlutv1_4;
+				c->ops.setup_ltm_hist_ctrl[MSM_DISP_OP_HFI]  =
+					hfi_setup_dspp_ltm_hist_ctrlv1_2;
+				c->ops.clear_ltm_merge_mode[MSM_DISP_OP_HFI]  =
+					NULL;
 			} else if (c->cap->sblk->ltm.version ==
 				SDE_COLOR_PROCESS_VER(0x1, 0x2) ||
 				c->cap->sblk->ltm.version ==
@@ -320,6 +337,11 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 						reg_dmav1_setup_ltm_roiv1_3;
 				c->ops.validate_ltm_roi[MSM_DISP_OP_HWIO] =
 						sde_validate_ltm_roiv1_3;
+
+				c->ops.setup_ltm_roi[MSM_DISP_OP_HFI] =
+						hfi_setup_ltm_roiv1_3;
+				c->ops.validate_ltm_roi[MSM_DISP_OP_HFI] =
+						sde_validate_ltm_roiv1_3;
 			} else {
 				c->ops.setup_ltm_roi[MSM_DISP_OP_HWIO] = reg_dmav1_setup_ltm_roiv1;
 			}
@@ -328,6 +350,9 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 				SDE_COLOR_PROCESS_VER(0x1, 0x4)) {
 				c->ops.setup_ltm_init[MSM_DISP_OP_HWIO] =
 						reg_dmav1_setup_ltm_initv1_4;
+
+				c->ops.setup_ltm_init[MSM_DISP_OP_HFI] =
+						hfi_setup_ltm_initv1_4;
 			} else {
 				c->ops.setup_ltm_init[MSM_DISP_OP_HWIO] =
 						reg_dmav1_setup_ltm_initv1;
@@ -336,6 +361,10 @@ static void dspp_ltm(struct sde_hw_dspp *c)
 			c->ops.setup_ltm_hist_buffer[MSM_DISP_OP_HWIO]  =
 				sde_setup_dspp_ltm_hist_bufferv1;
 			c->ops.ltm_read_intr_status[MSM_DISP_OP_HWIO]  = sde_ltm_read_intr_status;
+
+			c->ops.setup_ltm_thresh[MSM_DISP_OP_HFI]  = hfi_setup_dspp_ltm_threshv1;
+			c->ops.setup_ltm_hist_buffer[MSM_DISP_OP_HFI]  = NULL;
+			c->ops.ltm_read_intr_status[MSM_DISP_OP_HFI]  = NULL;
 		}
 
 		if (!ret && (c->cap->sblk->ltm.version ==
@@ -558,13 +587,16 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 			c->ops.read_copr_status[MSM_DISP_OP_HWIO] = sde_read_copr_status;
 		}
 
-		if (c->cap->sblk->aiqe.abc_supported)
+		if (c->cap->sblk->aiqe.abc_supported) {
 			c->ops.setup_aiqe_abc[MSM_DISP_OP_HWIO] = sde_setup_aiqe_abc_v1;
+			c->ops.setup_aiqe_abc[MSM_DISP_OP_HFI] = reg_dmav1_setup_aiqe_abc_v1;
+		}
 	}
 }
 
 static void dspp_ai_scaler(struct sde_hw_dspp *c)
 {
+	int ret = 0;
 	if (!c) {
 		SDE_ERROR("invalid arguments\n");
 		return;
@@ -582,6 +614,12 @@ static void dspp_ai_scaler(struct sde_hw_dspp *c)
 		if (c->cap->sblk->ai_scaler.ai_scaler_supported) {
 			c->ops.check_ai_scaler[MSM_DISP_OP_HWIO] = sde_check_ai_scaler_v1;
 			c->ops.setup_ai_scaler[MSM_DISP_OP_HWIO] = sde_setup_ai_scaler_v1;
+
+			ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_AI_SCALER, c);
+			if (ret)
+				return;
+			c->ops.check_ai_scaler[MSM_DISP_OP_HFI] = sde_check_ai_scaler_v1;
+			c->ops.setup_ai_scaler[MSM_DISP_OP_HFI] = reg_dma_setup_ai_scaler_v1;
 		}
 	}
 }

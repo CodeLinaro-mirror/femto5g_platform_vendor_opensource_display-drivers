@@ -320,6 +320,141 @@
  */
 #define HFI_COMMAND_DEVICE_LUT_DMA_LAST_CMD                          0x0100000C
 
+/**
+ * HFI_COMMAND_DEVICE_DEINIT - This command is used to de-initialize the device.
+ *
+ * Host to DCP:
+ *
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info (type)         : HFI_PAYLOAD_U32
+ *           .cmd                         : HFI_COMMAND_DEVICE_DEINIT
+ *           .flags                       : HFI_TX_FLAGS_INTR_REQUIRED |
+ *                                        : HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *           .payload                     : 32-bits reserved field
+ *
+ * DCP to Host:
+ *
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info (type)         : HFI_PAYLOAD_NONE
+ *           .cmd                         : HFI_COMMAND_DEVICE_DEINIT
+ *           .flags                       : HFI_RX_FLAGS_SUCCESS
+ */
+#define HFI_COMMAND_DEVICE_DEINIT                                    0x0100000D
+
+/*
+ * HFI_COMMAND_DEVICE_INIT_LSR_WB_CSC_LAYER_CAPS - Response packet [10] of
+ *                                                         HFI_COMMAND_DEVICE_INIT. This command
+ *                                                         carries data specific to LSR WB CSC
+ *                                                         layers.
+ * Data Contents:
+ *  - HFI_DISPLAY_LSR_WB_CSC_LAYER_PROPERTY_XXX
+ * Data layout (Array sizes are variable and determined at runtime):
+ *  @num_of_lsr_wb_csc_layer_formats: Number of formats supported by LSR WB CSC layers.
+ *  @lsr_wb_csc_layer_format: Array of formats supported by LSR WB CSC layers.
+ *  @display_lsr_wb_csc_layer_props: Array of writeback LSR WB CSC layer
+ *                                               properties <key, value> pairs.
+ *  struct display_lsr_wb_csc_layer_data {
+ *      u32 num_of_lsr_wb_csc_layer_formats;
+ *      enum hfi_color_formats lsr_wb_csc_layer_format[num_of_lsr_wb_csc_layer_formats];
+ *      struct property_data display_lsr_wb_csc_layer_props;
+ *  }
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                      : HFI_COMMAND_DEVICE_INIT_LSR_WB_CSC_LAYER_CAPS
+ *           .flags                    : HFI_RX_FLAGS_SUCCESS
+ *           .payload                  : struct display_lsr_wb_csc_layer_data
+ */
+#define HFI_COMMAND_DEVICE_INIT_LSR_WB_CSC_LAYER_CAPS        0x0100000E
+
+/*
+ * HFI_COMMAND_DEVICE_INIT_LSR_WB_REPROJ_LAYER_CAPS - Response packet [11] of
+ *                                                            HFI_COMMAND_DEVICE_INIT. This command
+ *                                                            carries data specific to LSR WB
+ *                                                            REPROJ layers.
+ * Data Contents:
+ *  - HFI_DISPLAY_LSR_WB_REPROJ_LAYER_PROPERTY_XXX
+ * Data layout (Array sizes are variable and determined at runtime):
+ *  @num_of_lsr_wb_reproj_layer_formats: Number of formats supported by LSR WB REPROJ layers.
+ *  @lsr_wb_reproj_layer_format: Array of formats supported by LSR WB REPROJ layers.
+ *  @display_lsr_wb_reproj_layer_props: Array of LSR WB REPROJ layer properties <key, value> pairs.
+ *  struct display_lsr_wb_reproj_layer_data {
+ *      u32 num_of_lsr_wb_reproj_layer_formats;
+ *      enum hfi_color_formats lsr_wb_reproj_layer_format[num_of_lsr_wb_reproj_layer_formats];
+ *      struct property_data display_lsr_wb_reproj_layer_props;
+ *  }
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                      : HFI_COMMAND_DEVICE_INIT_LSR_WB_REPROJ_LAYER_CAPS
+ *           .flags                    : HFI_RX_FLAGS_SUCCESS
+ *           .payload                  : struct display_lsr_wb_reproj_layer_data
+ */
+#define HFI_COMMAND_DEVICE_INIT_LSR_WB_REPROJ_LAYER_CAPS             0x0100000F
+
+
+/*
+ * HFI_COMMAND_DEVICE_INIT_DISPLAY_LSR_WB_CSC_CAPS - Response packet [12] of
+ *                                                   HFI_COMMAND_DEVICE_INIT. This command carries
+ *                                                   data specific to display writeback LSR WB CSC
+ *                                                   block output format.
+ * Data Contents:
+ *  - HFI_DISPLAY_LSR_WB_CSC_PROPERTY_XXX
+ * Data layout (Array sizes are variable and determined at runtime):
+ *  @num_of_lsr_wb_csc_formats: Number of formats supported by LSR WB CSC block.
+ *  @lsr_wb_csc_format: Array of formats supported by LSR WB CSC block.
+ *  @display_lsr_wb_csc_props: Array of LSR WB CSC block properties <key, value> pairs.
+ *  struct display_lsr_wb_csc_data {
+ *      u32 num_of_lsr_wb_csc_formats;
+ *      enum hfi_color_formats lsr_wb_csc_format[num_of_lsr_wb_csc_formats];
+ *      struct property_data display_lsr_wb_csc_props;
+ *  }
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                      : HFI_COMMAND_DEVICE_INIT_DISPLAY_LSR_WB_CSC_CAPS
+ *           .flags                    : HFI_RX_FLAGS_SUCCESS
+ *           .payload                  : struct display_lsr_wb_csc_data
+ */
+#define HFI_COMMAND_DEVICE_INIT_DISPLAY_LSR_WB_CSC_CAPS              0x01000010
+
+/*
+ * HFI_COMMAND_DEVICE_INIT_DISPLAY_LSR_WB_REPROJ_CAPS - Response packet [13] of
+ *                                                      HFI_COMMAND_DEVICE_INIT. This command
+ *                                                      carries data specific to display writeback
+ *                                                      LSR WB REPROJ block output format.
+ * Data Contents:
+ *  - HFI_DISPLAY_LSR_WB_REPROJ_PROPERTY_XXX
+ * Data layout (Array sizes are variable and determined at runtime):
+ *  @num_of_lsr_wb_reproj_formats: Number of formats supported by LSR WB REPROJ block.
+ *  @lsr_wb_reproj_format: Array of formats supported by LSR WB REPROJ block.
+ *  @display_lsr_wb_reproj_props: Array of LSR WB REPROJ block properties <key, value> pairs.
+ *  struct display_lsr_wb_reproj_data {
+ *      u32 num_of_lsr_wb_reproj_formats;
+ *      enum hfi_color_formats lsr_wb_reproj_format[num_of_lsr_wb_reproj_formats];
+ *      struct property_data display_lsr_wb_reproj_props;
+ *  }
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                      : HFI_COMMAND_DEVICE_INIT_DISPLAY_LSR_WB_REPROJ_CAPS
+ *           .flags                    : HFI_RX_FLAGS_SUCCESS
+ *           .payload                  : struct display_lsr_wb_reproj_data
+ */
+#define HFI_COMMAND_DEVICE_INIT_DISPLAY_LSR_WB_REPROJ_CAPS           0x01000011
+
+/*
+ * HFI_COMMAND_DEVICE_HWFENCE_HFI_CONFIG - This is a host command sent to DCP to configure the
+ *                                         HFI queue for HW Fence. This command is sent to
+ *                                         DCP as part of device initialization process.
+ * Data layout:
+ *  struct hfi_buff
+ *
+ * hfi_header.num_packets              : 1
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_U32
+ *           .cmd                      : HFI_COMMAND_DEVICE_HWFENCE_HFI_CONFIG
+ *           .flags                    : HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ *           .payload                  : struct hfi_buff
+ */
+#define HFI_COMMAND_DEVICE_HWFENCE_HFI_CONFIG                        0x01000012
+
 #define HFI_COMMAND_DEVICE_END                                       0x01FFFFFF
 
 #endif // __H_HFI_COMMANDS_DEVICE_H__

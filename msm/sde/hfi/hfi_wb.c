@@ -12,11 +12,11 @@
 #include "hfi_catalog.h"
 #include "hfi_defs_display.h"
 #include "hfi_wb.h"
+#include "hfi_defs_lsr.h"
 
 static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 		struct sde_connector_state *cstate,
-		struct hfi_util_u32_prop_helper *prop_collector,
-		u32 disp_id)
+		struct hfi_util_u32_prop_helper *prop_collector)
 {
 	u32 prop_id;
 	const struct drm_display_mode *mode = cstate->msm_mode.base;
@@ -30,12 +30,20 @@ static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 	HFI_POPULATE_RECT(&dst_roi, roi.x, roi.y, roi.w, roi.h, false);
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SRC_ROI;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, disp_id,
-		HFI_VAL_U32_ARRAY, &src_roi, sizeof(struct hfi_display_roi));
+	u32 src_roi_payload[1 + (sizeof(struct hfi_display_roi) / sizeof(u32))];
+
+	src_roi_payload[0] = to_sde_connector(wb_dev->connector)->conn_id;
+	memcpy(&src_roi_payload[1], &src_roi, sizeof(struct hfi_display_roi));
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, src_roi_payload, sizeof(src_roi_payload));
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DST_ROI;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, disp_id,
-		HFI_VAL_U32_ARRAY, &dst_roi, sizeof(struct hfi_display_roi));
+	u32 dst_roi_payload[1 + (sizeof(struct hfi_display_roi) / sizeof(u32))];
+
+	dst_roi_payload[0] = to_sde_connector(wb_dev->connector)->conn_id;
+	memcpy(&dst_roi_payload[1], &dst_roi, sizeof(struct hfi_display_roi));
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, dst_roi_payload, sizeof(dst_roi_payload));
 
 	return ret;
 }
@@ -50,28 +58,51 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	int width, height;
 	int ret = 0;
 	u32 hfi_format;
+	u32 wb_rotate_type;
+	u32 rotation_flags, rot_payload[2];
 	struct drm_framebuffer *fb;
 	struct sde_hw_wb_cfg wb_cfg = {0,};
 	struct sde_format_extended fmt = {0,};
+	struct sde_connector *sde_conn = to_sde_connector(wb_dev->connector);
+	/* This should be the index which this WB device received as part of init caps */
+	u32 wb_id = sde_conn->conn_id;
+	u32 format_payload[2], width_payload[2], height_payload[2];
+	u32 addr_payload[1 + SDE_MAX_PLANES], stride_payload[1 + SDE_MAX_PLANES];
+	u32 tap_point, tap_payload[2];
+
+	prop_id = HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER;
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32, &wb_id, sizeof(u32));
 
 	fb = sde_wb_get_output_fb(wb_dev);
+	if (!fb) {
+		SDE_ERROR("failed to get output buffer\n");
+		return -EINVAL;
+	}
+
 	fmt.fourcc_format = fb->format->format;
 	fmt.modifier = fb->modifier;
 
 	hfi_format = hfi_catalog_get_hfi_format(&fmt);
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DST_FORMAT;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, disp_id,
-		HFI_VAL_U32_ARRAY, &hfi_format, sizeof(u32));
+	format_payload[0] = wb_id;
+	format_payload[1] = hfi_format;
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, format_payload, sizeof(format_payload));
 
 	width = fb->width;
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_W;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, disp_id,
-		HFI_VAL_U32, &width, sizeof(u32));
+	width_payload[0] = wb_id;
+	width_payload[1] = width;
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, width_payload, sizeof(width_payload));
 
 	height = fb->height;
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_H;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, disp_id,
-		HFI_VAL_U32, &height, sizeof(u32));
+	height_payload[0] = wb_id;
+	height_payload[1] = height;
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, height_payload, sizeof(height_payload));
 
 	ret = sde_wb_get_scan_out_info(wb_dev, cstate, fb, &wb_cfg);
 	if (ret) {
@@ -80,15 +111,51 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	}
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, disp_id,
-		HFI_VAL_U32_ARRAY, &wb_cfg.dest.plane_addr[0], (sizeof(u32) * SDE_MAX_PLANES));
+	addr_payload[0] = wb_id;
+	memcpy(&addr_payload[1], &wb_cfg.dest.plane_addr[0], sizeof(u32) * SDE_MAX_PLANES);
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, addr_payload, sizeof(addr_payload));
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_STRIDE;
-	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, disp_id,
-			HFI_VAL_U32_ARRAY, &wb_cfg.dest.plane_pitch[0],
-			(sizeof(u32) * SDE_MAX_PLANES));
+	stride_payload[0] = wb_id;
+	memcpy(&stride_payload[1], &wb_cfg.dest.plane_pitch[0], sizeof(u32) * SDE_MAX_PLANES);
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, stride_payload, sizeof(stride_payload));
 
-	_hfi_wb_add_roi_prop(wb_dev, cstate, hfi_conn->base_props, disp_id);
+	tap_point = HFI_TAP_POINT_NONE;
+
+	_hfi_wb_add_roi_prop(wb_dev, cstate, hfi_conn->base_props);
+
+	wb_rotate_type = sde_connector_get_property(&cstate->base, CONNECTOR_PROP_WB_ROT_TYPE);
+
+	/* Only set rotation property if WB rotation is enabled */
+	if (wb_rotate_type != WB_ROT_NONE) {
+		rotation_flags = HFI_DISPLAY_ROTATION_90;
+		prop_id = HFI_PROPERTY_OUTPUT_LAYER_ROTATION;
+		rot_payload[0] = wb_id;
+		rot_payload[1] = rotation_flags;
+		hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+			HFI_VAL_U32_ARRAY, rot_payload, sizeof(rot_payload));
+	}
+
+	if (cstate->capture_mode == CAPTURE_MIXER_OUT)
+		tap_point = HFI_TAP_POINT_LM;
+	else if (cstate->capture_mode == CAPTURE_DSPP_OUT)
+		tap_point = HFI_TAP_POINT_DSPP;
+	else if (cstate->capture_mode == CAPTURE_DEMURA_OUT)
+		tap_point = HFI_TAP_POINT_DEMURA;
+
+	if (tap_point != HFI_TAP_POINT_NONE) {
+		prop_id = HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT;
+		tap_payload[0] = wb_id;
+		tap_payload[1] = tap_point;
+		hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+			HFI_VAL_U32_ARRAY, tap_payload, sizeof(tap_payload));
+	}
+
+	prop_id = HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT;
+	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+		wb_id, HFI_VAL_U32, &tap_point, sizeof(u32));
 
 	SDE_DEBUG("Done adding hfi props for wb\n");
 
@@ -102,6 +169,7 @@ static int _hfi_wb_set_props_base(struct sde_wb_device *wb_dev, u32 disp_id,
 	int flags = 0;
 	struct sde_connector *sde_conn;
 	struct hfi_connector *hfi_conn;
+	enum wb_opmode opmode = WB_DPU;
 
 	if (!wb_dev || !wb_dev->connector || !cmd_buf) {
 		SDE_ERROR("invalid wb device\n");
@@ -119,10 +187,22 @@ static int _hfi_wb_set_props_base(struct sde_wb_device *wb_dev, u32 disp_id,
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
 
-	ret = _hfi_wb_add_drm_props(wb_dev, hfi_conn, cstate, hfi_conn->base_props, disp_id);
-	if (ret) {
-		SDE_ERROR("failed to add drm-prop HFI prop\n");
-		goto end;
+	if (wb_dev->wb_cfg)
+		opmode = wb_dev->wb_cfg->opmode;
+
+	if (opmode == WB_DPU) {
+		ret = _hfi_wb_add_drm_props(wb_dev, hfi_conn,
+				cstate, hfi_conn->base_props, disp_id);
+		if (ret) {
+			SDE_ERROR("failed to add drm-prop HFI prop\n");
+			goto end;
+		}
+	} else if (opmode == WB_CSC || opmode == WB_REPRO) {
+		ret = hfi_wb_lsr_add_props(wb_dev, hfi_conn, cstate, disp_id, cmd_buf);
+		if (ret) {
+			SDE_ERROR("Failed to add LSR HFI WB prop\n");
+			goto end;
+		}
 	}
 
 	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props))
@@ -164,7 +244,7 @@ int hfi_wb_display_prepare_commit(struct sde_wb_device *wb_dev,
 {
 	int ret = 0;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
-	struct drm_connector *drm_conn = wb_dev->connector;
+	struct drm_connector *drm_conn;
 	u32 disp_id;
 
 	if (!wb_dev) {
@@ -172,6 +252,7 @@ int hfi_wb_display_prepare_commit(struct sde_wb_device *wb_dev,
 		return -EINVAL;
 	}
 
+	drm_conn = wb_dev->connector;
 	disp_id = sde_conn_get_display_obj_id(drm_conn);
 
 	cmd_buf = hfi_connector_get_cmd_buf(drm_conn, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
@@ -188,4 +269,3 @@ int hfi_wb_display_prepare_commit(struct sde_wb_device *wb_dev,
 
 	return ret;
 }
-

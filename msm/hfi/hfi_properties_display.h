@@ -385,6 +385,279 @@
 #define HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID                        0x0002001A
 
 /*
+ * HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG  - This property is to enable/disable auto-refresh for the
+ *                                         interface block. Host is expected to send this packet
+ *                                         as part of HFI_COMMAND_DISPLAY_SET_PROPERTY command
+ *                                         packet.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG
+ * (u32_key) payload [0]         : HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG |
+ *                                (version=0 << 20) | (dsize=2 << 24 )
+ * (u32_value) payload [1-2]     : struct hfi_display_autorefresh_cfg
+ */
+#define HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG                         0x0002001B
+
+/**
+ * HFI_PROPERTY_DISPLAY_LSR_WB_HFI_CONFIG - This property is set to configure the HFI queue
+ *                                          parameters of the LSR WB CSC/Reprojection displays.
+ *                                          Host is expected to send this packet as part of
+ *                                          HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                          payload. HFI_PROPERTY_DISPLAY_LSR_WB_NEEDS_SCRATCH_MEM
+ *                                          must be set before this property is set.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_LSR_WB_HFI_CONFIG
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_LSR_WB_HFI_CONFIG
+ *                                 (version=0 << 20) | (dsize=5 << 24)
+ *     (u32_value) payload [1-6] : struct hfi_buff
+ */
+#define HFI_PROPERTY_DISPLAY_LSR_WB_HFI_CONFIG                       0x0002001C
+
+/*
+ * HFI_PROPERTY_DISPLAY_LSR_WB_NEEDS_SCRATCH_MEM - This property is to get the size of scratch
+ *                                                 buffer needed by LSR WB CSC/Reprojection
+ *                                                 displays. Host is expected to send this
+ *                                                 property as part of response to the
+ *                                                 HFI_COMMAND_DISPLAY_GET_PROPERTY command packed
+ *                                                 payload. The scratch memory should be allocated
+ *                                                 and mapped using the firmware addresses
+ *                                                 with the HFI_PROPERTY_DISPLAY_SET_SCRATCH_MEM.
+ *                                                 The scratch memory should be freed after the
+ *                                                 display is closed.
+ *
+ * @BasicFuntionality @DeviceInit - HFI_PROPERTY_DISPLAY_LSR_WB_NEEDS_SCRATCH_MEM
+ *     (u32_key) payload [0]    : HFI_PROPERTY_DISPLAY_LSR_WB_NEEDS_SCRATCH_MEM |
+ *                                (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload [1]    : scratch_buff_size_in_bytes
+ */
+#define HFI_PROPERTY_DISPLAY_LSR_WB_NEEDS_SCRATCH_MEM            0x0002001D
+
+/*
+ * HFI_PROPERTY_DISPLAY_SET_SCRATCH_MEM - This property is set to configure the scratch memory
+ *                                        that can be used by LSR WB CSC/Reprojection displays.
+ *                                        Host is expected to send this packet as part of
+ *                                        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *                                        Host needs to query the scratch memory size requirement
+ *                                        as part of HFI_COMMAND_DISPLAY_GET_PROPERTY, before
+ *                                        setting the scratch memory.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_SET_SCRATCH_MEM
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_SET_SCRATCH_MEM
+ *                                 (version=0 << 20) | (dsize=5 << 24)
+ *     (u32_value) payload [1-6] : struct hfi_buff
+ */
+#define HFI_PROPERTY_DISPLAY_SET_SCRATCH_MEM                         0x0002001E
+
+/*
+ * HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_SYNC_TO - This property is set to configure the sync display
+ *                                              for LSR WB Reprojection display.
+ *                                              Host is expected to send this packet as part of
+ *                                              HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                              payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_SYNC_TO
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_SYNC_TO
+ *                                 (version=0 << 20) | (dsize=1 << 24)
+ *     (u32_value) payload [1]   : display id to sync with
+ */
+#define HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_SYNC_TO                   0x0002001F
+
+/*
+ * HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_MATRIX - This property is set to configure the LSR
+ *                                                    WB Reprojection display's reprojection
+ *                                                    matrices. Host is expected to send
+ *                                                    this packet as part of
+ *                                                    HFI_COMMAND_DISPLAY_SET_PROPERTY command
+ *                                                    packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_MATRIX
+ *     (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_MATRIX |
+ *                                   (version=0 << 20) | (dsize=33 << 24)
+ *     (u32_value) payload [1]     : View Number (0 = left (or mono), 1 = right, ...)
+ *     (u32_value) payload [2-17]  : struct hfi_lsr_reproj_matrix
+ *     (u32_value) payload [18-33] : struct hfi_lsr_reproj_matrix - Inverse
+ */
+#define HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_MATRIX                0x00020020
+
+/*
+ * HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT - This property is set to configure
+ *                                                 the reprojection display configuration
+ *                                                 for LSR WB Reprojection display.
+ *                                                 Host is expected to send this packet
+ *                                                 as part of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                                 command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT
+ *     (u32_key) payload [0]      : HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT |
+ *                                  (version=0 << 20) | (dsize=(2 + count) << 24)
+ *     (u32_value) payload [1]    : lsr_reproj_display_config_ext.key
+ *     (u32_value) payload [2]    : lsr_reproj_display_config_ext.count
+ *     (u32_value) payload [3-..] : lsr_reproj_display_config_ext.values
+ */
+#define HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT                0x00020021
+
+/*
+ * HFI_PROPERTY_DISPLAY_INPUT_FENCE - This property is set to provide the input/acquire fence
+ *                                    representing every input frame layer of the
+ *                                    LSR WB CSC/Reprojection displays.
+ *                                    Host is expected to send this packet of
+ *                                    HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_INPUT_FENCE
+ *     (u32_key) payload [0]   : HFI_PROPERTY_DISPLAY_INPUT_FENCE |
+ *                               (version=0 << 20) | (dsize=2 << 24)
+ *     (u32_value) payload [1] : Acquire Fence Low
+ *     (u32_value) payload [2] : Acquire Fence High
+ */
+#define HFI_PROPERTY_DISPLAY_INPUT_FENCE                             0x00020022
+
+/*
+ * HFI_PROPERTY_DISPLAY_REUSABLE_FENCE - This property is set to provide a reusable fence
+ *                                       of LSR WB CSC/Reprojection displays.
+ *                                       Host is expected to send this packet as part of
+ *                                       HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_REUSABLE_FENCE
+ *     (u32_key) payload [0]      : HFI_PROPERTY_DISPLAY_REUSABLE_FENCE |
+ *                                  (version=0 << 20) | (dsize = 1 + (2 x count) << 24)
+ *     (u32_value) payload [1]    : Reusable Fence Count
+ *     (u32_value) payload [2]    : Reusable Fence Low
+ *     (u32_value) payload [3-..] : Reusable Fence High
+ */
+#define HFI_PROPERTY_DISPLAY_REUSABLE_FENCE                          0x00020023
+
+/*
+ * HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO - This property is to configure the sys cache info of LSR
+ *                                       WB displays. Syscache info includes number of entries,
+ *                                       cache ID's and the size of cache associated with it.
+ *                                       Host is expected to send this packet as part of
+ *                                       HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality @Display - HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO
+ *     (u32_key) payload [0]    : HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO |
+ *                               (version=0 << 20) | (dsize=1 + (2 x count) << 24)
+ *   (u32_value) payload [1]    : No. of entries in the system cache
+ *   (u32_value) payload [2-..] : struct hfi_display_sys_cache_info
+ */
+#define HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO                       0x00020024
+
+/*
+ * HFI_PROPERTY_DISPLAY_LSR_WB_CVP_BUFF - This property is set to configure the HFI queue
+ *                                        parameters of the LSR WB CSC/Reprojection displays.
+ *                                        Host is expected to send this packet as part of
+ *                                        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                        payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_LSR_WB_CVP_BUFF
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_LSR_WB_CVP_BUFF
+ *                                 (version=0 << 20) | (dsize=5 << 24)
+ *     (u32_value) payload [1-6] : struct hfi_buff
+ */
+#define HFI_PROPERTY_DISPLAY_LSR_WB_CVP_BUFF                       0x00020025
+
+/*
+ * HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS - This property is set to configure the output buffers
+ *                                           of LSR WB CSC/Reprojection displays. Host is expected
+ *                                           to send this packet as part of
+ *                                           HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                           command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS
+ *     (u32_key) payload [0]      : HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS |
+ *                                  (version=0 << 20) |
+ *                                         (dsize=1 + (count x struct hfi_wb_out_buff) << 24)
+ *     (u32_value) payload [1]    : count of hfi_wb_out_buff buffers (Number of color fields)
+ *     (u32_value) payload [2-..] : struct hfi_wb_out_buff
+ */
+#define HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS                       0x00020026
+
+/*
+ * HFI_PROPERTY_DISPLAY_LSR_MAPPED_HFI_BASE_ADDR - This property is set to configure the LSR
+ *                                                 mapped HFI queue base address. Host is
+ *                                                 expected to send this packet of as part of
+ *                                                 HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                                 command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_LSR_MAPPED_HFI_BASE_ADDR
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_LSR_MAPPED_HFI_BASE_ADDR
+ *                                 (version=0 << 20) | (dsize=5 << 24)
+ *     (u32_value) payload [1-6] : struct hfi_buff
+ */
+#define HFI_PROPERTY_DISPLAY_LSR_MAPPED_HFI_BASE_ADDR                  0x00020027
+
+/*
+ * HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG - This property is set to configure the shared memory
+ *                                       between DCP and HRP. Host is expected to send this
+ *                                       packet as part of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                       command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG
+ *                                 (version=0 << 20) | (dsize=5 << 24)
+ *     (u32_value) payload [1-6] : struct hfi_buff
+ */
+#define HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG                            0x00020028
+
+/*
+ * HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER - This property is to attach output layer before
+ *                                            setting output layer properties.
+ *                                            The corresponding wb_id will be passed as the
+ *                                            payload.
+ *                                            Host is expected to send this packet as part of
+ *                                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                            payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER \|
+ * ^                             | (version=0 << 20) \| (dsize=1 << 24 ) \|
+ *   (u32_value) payload [1]     | wb_id
+ */
+#define HFI_PROPERTY_DISPLAY_ATTACH_OUTPUT_LAYER                     0x00020029
+
+/*
+ * HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER - This property is to detach the output layer, which
+ *                                            must be received at the end of a CWB session.
+ *                                            The corresponding wb_id will be passed as the
+ *                                            payload.
+ *                                            Output layer dirty flag will be set to perform the
+ *                                            required cleanup in host.
+ *                                            Host is expected to send this packet as part of
+ *                                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                            payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER \|
+ * ^                             | (version=0 << 20) \| (dsize=1 << 24 ) \|
+ *   (u32_value) payload [1]     | wb_id
+ */
+#define HFI_PROPERTY_DISPLAY_DETACH_OUTPUT_LAYER                     0x0002002A
+
+/*!
+ * HFI_PROPERTY_DISPLAY_DEST_ROI - This property is used to set destination ROI for display.
+ *                                 Host is expected to send this packet as part of
+ *                                 HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                 command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_DEST_ROI
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_DEST_ROI |
+ *                               | (version=0 << 20) |
+ *                               | (dsize=2 + (count x struct hfi_display_roi) << 24)
+ *     (u32_value) payload [1]   | obj id
+ *     (u32_value) payload [2]   | roi_type (default value is PANEL_ROI)
+ *     (u32_value) payload [3]   | num of rois
+ *     (u32_value) payload [4-..]| array of struct hfi_display_roi
+ */
+#define HFI_PROPERTY_DISPLAY_DEST_ROI                                0x0002002B
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
@@ -468,7 +741,6 @@
  *                                           Host is expected to send this packet of
  *                                           HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
  *                                           payload.
- *
  * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKY
  *   (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_COLOR_MEMCOLOR_SKY |
  *                                 (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
@@ -650,6 +922,156 @@
  * | 4            | 0            | u32                   |
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_DEMURA_BACKLIGHT                  0x00020114
+
+/*
+ * HFI_PROPERTY_DISPLAY_DEST_SCALER - This property is to setup destination scaler.
+ *                                  Host is expected to send this packet of
+ *                                  HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_DEST_SCALER
+ *   (u32_key) payload       : HFI_PROPERTY_DISPLAY_DEST_SCALER |
+ *                             (version=0 << 20) | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload     : struct hfi_buff_dpu
+ *
+ * | Major        | Minor        | Payload               |
+ * |--------------|--------------|-----------------------|
+ * | 4            | 0            | hfi_buff_dpu          |
+ */
+#define HFI_PROPERTY_DISPLAY_DEST_SCALER                             0x00020115
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG - This property is to setup QRTC config.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG \|
+ * ^                             | (version=0 << 20) \|
+ * ^                             | (dsize=(sizeof(struct hfi_qrtc_config)/4 * num_of_dspps) << 24)
+ *   (u32_value) payload [1]     | array of struct hfi_qrtc_config
+ *
+ * | Major        | Minor        | Payload                         |
+ * |--------------|--------------|---------------------------------|
+ * | 1            | 0            | array of struct hfi_qrtc_config |
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG                       0x00020116
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_INIT - This property is to setup LTM initialization params.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_INIT
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_INIT \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_ltm_init_param)/4)
+ * ^                             | * num_dspps) << 24)
+ *   (u32_value) payload [1]     | array of struct hfi_display_ltm_init_param
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_INIT                          0x00020117
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_CFG - This property is to setup LTM configuration params.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_CFG
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_CFG \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_ltm_cfg_param)/4)
+ * ^                             | * num_dspps) << 24)
+ *   (u32_value) payload [1]     | array of struct hfi_display_ltm_cfg_param
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_CFG                           0x00020118
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_NOISE_THRESH - This property is to setup LTM noise threshold.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_NOISE_THRESH
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_NOISE_THRESH \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) * num_dspps) << 24)
+ *   (u32_value) payload [1]     | array of u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_NOISE_THRESH                  0x00020119
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_HIST_CTRL - This property is to setup LTM histogram control.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_HIST_CTRL
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_HIST_CTRL \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4 * num_dspps) << 24)
+ *   (u32_value) payload [1]     | array of u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_HIST_CTRL                     0x0002011A
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_VLUT - This property is to setup LTM VLUT table.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_VLUT
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_VLUT \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_VLUT                          0x0002011B
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_QUEUE_BUF - This property is to setup LTM initial params.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_QUEUE_BUF
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_QUEUE_BUF \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_ltm_buffer)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_display_ltm_buffer
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_QUEUE_BUF                     0x0002011C
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS - This property is to setup LTM initial params.
+ *                                     Host is expected to send this packet of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS                    0x0002011D
 
 /*
  * All display color properties end here
@@ -1042,6 +1464,251 @@
  *     (u32_value) payload [2]   | one of the enum values in hfi_layer_security_policy
  */
 #define HFI_PROPERTY_LAYER_SECURITY_POLICY                           0x00030017
+
+/*
+ * HFI_PROPERTY_LAYER_LSR_IN_A_BUFFER - Sets the LSR alpha buffer properties of the input layer.
+ *                                      Host is expected to send this packet as part of
+ *                                      HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LSR_IN_A_BUFFER
+ *     (u32_key) payload [0]      : HFI_PROPERTY_LAYER_LSR_IN_A_BUFFER |
+ *                                  (version=0 << 20) | (dsize=6 << 24)
+ *     (u32_value) payload [1]    : layer id
+ *     (u32_value) payload [2-6]  : struct hfi_buff
+ */
+#define HFI_PROPERTY_LAYER_LSR_IN_A_BUFFER                           0x00030018
+
+/*
+ * HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID - Sets the System Cache ID of the source/input layer.
+ *                                       Host is expected to send this packet as part of
+ *                                       HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID |
+ *                                 (version=0 << 20) | (dsize=2 << 16 )
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2]   : System Cache ID
+ */
+#define HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID                          0x00030019
+/*
+ * HFI_PROPERTY_LAYER_LSR_REPROJ_PLANE_EQ - Sets the LSR Reprojection layer's plane equation.
+ *                                          Host is expected to send this packet as part of
+ *                                          HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                          payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LSR_REPROJ_PLANE_EQ
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_LSR_REPROJ_PLANE_EQ |
+ *                                 (version=0 << 20) | (dsize=5 << 24)
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2-5] : struct hfi_lsr_plane_equation
+ */
+#define HFI_PROPERTY_LAYER_LSR_REPROJ_PLANE_EQ                       0x0003001A
+
+/*
+ * HFI_PROPERTY_LAYER_GAMMA - Sets the layer's gamma type.
+ *                            Host is expected to send this packet as part of
+ *                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_GAMMA
+ *     (u32_key) payload [0]   : HFI_PROPERTY_LAYER_GAMMA |
+ *                               (version=0 << 20) | (dsize=2 << 24)
+ *     (u32_value) payload [1] : layer id
+ *     (u32_value) payload [2] : enum hfi_layer_gamma_type
+ */
+#define HFI_PROPERTY_LAYER_GAMMA                                     0x0003001B
+
+/*
+ * HFI_PROPERTY_LAYER_LSR_LAYER_TYPE - Sets the LSR layer's local/remote/other type.
+ *                                     Host is expected to send this packet as part of
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LSR_LAYER_TYPE
+ *     (u32_key) payload [0]   : HFI_PROPERTY_LAYER_LSR_LAYER_TYPE |
+ *                               (version=0 << 20) | (dsize=2 << 24)
+ *     (u32_value) payload [1] : layer id
+ *     (u32_value) payload [2] : enum hfi_lsr_layer_type
+ */
+#define HFI_PROPERTY_LAYER_LSR_LAYER_TYPE                            0x0003001C
+
+/*
+ * HFI_PROPERTY_LAYER_LSR_LOCK_TYPE - Sets the LSR layer's lock type.
+ *                                    Host is expected to send this packet as part of
+ *                                    HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LSR_LOCK_TYPE
+ *     (u32_key) payload [0]   : HFI_PROPERTY_LAYER_LSR_LOCK_TYPE |
+ *                               (version=0 << 20) | (dsize=2 << 24)
+ *     (u32_value) payload [1] : layer id
+ *     (u32_value) payload [2] : enum hfi_lsr_layer_lock_type
+ */
+#define HFI_PROPERTY_LAYER_LSR_LOCK_TYPE                             0x0003001D
+
+/*
+ * HFI_PROPERTY_LAYER_LSR_RENDER_POSE - Sets the LSR reprojection render pose properties of the
+ *                                      layer.
+ *                                      Host is expected to send this packet as part of
+ *                                      HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LSR_RENDER_POSE
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_LSR_RENDER_POSE |
+ *                                 (version=0 << 20) | (dsize=8 << 24)
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2-8] : struct hfi_lsr_render_pose
+ */
+#define HFI_PROPERTY_LAYER_LSR_RENDER_POSE                           0x0003001E
+
+/*
+ * HFI_PROPERTY_LAYER_LSR_RENDER_FRUSTUM - Sets the LSR render frustum properties of the layer.
+ *                                         Host is expected to send this packet as part of
+ *                                         HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LSR_RENDER_FRUSTUM
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_LSR_RENDER_FRUSTUM |
+ *                                 (version=0 << 20) | (dsize=5 << 24)
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2-5] : struct hfi_lsr_render_frustum
+ */
+#define HFI_PROPERTY_LAYER_LSR_RENDER_FRUSTUM                        0x0003001F
+
+/*
+ * HFI_PROPERTY_LAYER_LSR_X_BUFFER - Sets custom buffers for this layer.
+ *                                   Host is expected to send this packet as part of
+ *                                   HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LSR_X_BUFFER
+ *     (u32_key) payload [0]      : HFI_PROPERTY_LAYER_LSR_X_BUFFER |
+ *                                  (version=0 << 20) | (dsize=3 + count << 24)
+ *     (u32_value) payload [1]    : layer id
+ *     (u32_value) payload [2]    : lsr_x_buffer.key
+ *     (u32_value) payload [3]    : lsr_x_buffer.count
+ *     (u32_value) payload [4-..] : lsr_x_buffer.values
+ */
+#define HFI_PROPERTY_LAYER_LSR_X_BUFFER                              0x00030020
+
+/*
+ * HFI_PROPERTY_LAYER_LSR_REPROJ_POSE - Sets the LSR Reprojection pose properties of the layer.
+ *                                      Reprojection pose represents raster scan correction. In
+ *                                      case of FSD display, Start, Mid and End poses will be
+ *                                      repurposed as R, G and B poses.
+ *                                      Host is expected to send this packet as part of
+ *                                      HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LSR_REPROJ_POSE
+ *     (u32_key) payload [0]       : HFI_PROPERTY_LAYER_LSR_REPROJ_POSE |
+ *                                   (version=0 << 20) | (dsize=22 << 24)
+ *     (u32_value) payload [1]     : layer id
+ *     (u32_value) payload [2-8]   : struct hfi_lsr_render_pose - Start Pose for view
+ *     (u32_value) payload [9-15]  : struct hfi_lsr_render_pose - Mid Pose for view
+ *     (u32_value) payload [16-22] : struct hfi_lsr_render_pose - End Pose for view
+ */
+#define HFI_PROPERTY_LAYER_LSR_REPROJ_POSE                           0x00030021
+
+/*
+ * HFI_PROPERTY_LAYER_SRC_IMAGE_SIZE - Sets Source image size of each layer in bytes.
+ *                                     Host is expected to send this packet
+ *                                     as part of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                     command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_SRC_IMAGE_SIZE
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_SRC_IMAGE_SIZE |
+ *                                 (version=0 << 20) | (dsize=2 << 16 )
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2]   : size of the source image in bytes
+ */
+#define HFI_PROPERTY_LAYER_SRC_IMAGE_SIZE                           0x00030022
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_ROTATION - Gets rotation for output layer.
+ *                                      Host is expected to send this packet
+ *                                      of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                      command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_ROTATION
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_OUTPUT_LAYER_ROTATION \|
+ *                               | (version=0 << 20) | (dsize=2 << 24 )
+ *     (u32_value) payload [1]   | output layer id
+ *     (u32_value) payload [2]   | bitwise OR of rotation flags
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_ROTATION                           0x00030023
+
+/*
+ * HFI_PROPERTY_LAYER_CACHE_ATTR - Gets sys cache related attributes for each layer.
+ *                               Host is expected to send this packet
+ *                               of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                               command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_CACHE_ATTR
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_CACHE_ATTR \|
+ *                                 (version=0 << 20) \| (dsize=3 << 24 )
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2]   : one of the enum values in hfi_layer_cache_state
+ *     (u32_value) payload [3]   : one of the enum values in hfi_layer_cache_op_type
+ */
+#define HFI_PROPERTY_LAYER_CACHE_ATTR                                0x00030024
+
+/*
+ * HFI_PROPERTY_LAYER_LLCC_SCID - Gets LLCC scid of the system cache to be used
+ *                                      Host is expected to send this packet as part
+ *                                      of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                      command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LLCC_SCID
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_LLCC_SCID \|
+ *                                 (version=0 << 20) \| (dsize=2 << 24 )
+ *     (u32_value) payload [1]   : layer id
+ *     (u32_value) payload [2]   : LLCC scid
+ */
+#define HFI_PROPERTY_LAYER_LLCC_SCID                                 0x00030025
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_CACHE_ATTR - Gets sys cache related attributes for each
+ *                                        output layer.
+ *                               Host is expected to send this packet
+ *                               of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                               command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_CACHE_ATTR
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_CACHE_ATTR \|
+ *                                 (version=0 << 20) \| (dsize=3 << 24 )
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2]   : one of the enum values in hfi_layer_cache_state
+ *     (u32_value) payload [3]   : one of the enum values in hfi_layer_cache_op_type
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_CACHE_ATTR                         0x00030026
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID - Gets LLCC scid of the system cache to be used for
+ *                                      output layer. Host is expected to send this packet as part
+ *                                      of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                      command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID
+ *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID \|
+ *                                 (version=0 << 20) \| (dsize=2 << 24 )
+ *     (u32_value) payload [1]   : output layer id
+ *     (u32_value) payload [2]   : LLCC scid
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_LLCC_SCID                          0x00030027
+
+/*
+ * HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT - Gets the CWB tap point for output layer.
+ *                                           Host is expected to send this packet
+ *                                           of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                           command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT \|
+ * ^                             | (version=0 << 20) \| (dsize=2 << 24)
+ *     (u32_value) payload [1]   | wb_id
+ *     (u32_value) payload [2]   | one of the values from enum hfi_cwb_tap_points
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT                      0x00030028
 
 /*
  * All layer color properties begin here

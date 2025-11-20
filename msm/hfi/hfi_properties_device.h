@@ -414,6 +414,94 @@
  */
 #define HFI_PROPERTY_DEVICE_DRAM_IB                                  0x00010016
 
+/*
+ * HFI_PROPERTY_DEVICE_INIT_LSR_WB_CSC_INDICES - Gets LSR WB CSC block count and indices.
+ *                                               Firmware is expected to send this property
+ *                                               as part of HFI_COMMAND_DEVICE_INIT_DEVICE_CAPS
+ *                                               command packet payload.
+ * Data layout:
+ *  struct property_array lsr_wb_csc_indices;
+ *  lsr_wb_csc_indices.values = {0, ..}
+ *
+ * @BasicFuntionality @DeviceInit - HFI_PROPERTY_DEVICE_INIT_LSR_WB_CSC_INDICES
+ *     (u32_key) payload [0]    : HFI_PROPERTY_DEVICE_INIT_LSR_WB_CSC_INDICES |
+ *                                (version=0 << 20) | (dsize=1 + count << 24 )
+ *   (u32_value) payload [1]    : lsr_wb_csc_indices.count
+ *   (u32_value) payload [2-..] : lsr_wb_csc_indices.values[]
+ */
+#define HFI_PROPERTY_DEVICE_INIT_LSR_WB_CSC_INDICES                  0x00010017
+
+/*
+ * HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_INDICES - Gets LSR WB REPROJ block count and indices.
+ *                                                  Firmware is expected to send this property
+ *                                                  as part of HFI_COMMAND_DEVICE_INIT_DEVICE_CAPS
+ *                                                  command packet payload.
+ * Data layout:
+ *  struct property_array lsr_wb_reproj_indices;
+ *  lsr_wb_reproj_indices.values = {0, ..}
+ *
+ * @BasicFuntionality @DeviceInit - HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_INDICES
+ *     (u32_key) payload [0]    : HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_INDICES |
+ *                                (version=0 << 20) | (dsize=1 + count << 24 )
+ *   (u32_value) payload [1]    : lsr_wb_reproj_indices.count
+ *   (u32_value) payload [2-..] : lsr_wb_reproj_indices.values[]
+ */
+#define HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_INDICES               0x00010018
+
+/*
+ * HFI_PROPERTY_DEVICE_INIT_LSR_WB_CSC_LAYER_INDICES - Gets LSR WB CSC layer count and indices.
+ *                                                     Firmware is expected to send this property
+ *                                                     as part of
+ *                                                     HFI_COMMAND_DEVICE_INIT_DEVICE_CAPS command
+ *                                                     packet payload.
+ * Data layout:
+ *  struct property_array lsr_wb_csc_layer_indices;
+ *  lsr_wb_csc_layer_indices.values = {0, ..}
+ *
+ * @BasicFuntionality @DeviceInit - HFI_PROPERTY_DEVICE_INIT_LSR_WB_CSC_LAYER_INDICES
+ *     (u32_key) payload [0]    : HFI_PROPERTY_DEVICE_INIT_LSR_WB_CSC_LAYER_INDICES |
+ *                                (version=0 << 20) | (dsize=2 + count << 24 )
+ *   (u32_value) payload [1]    : lsr_wb_csc_index LSR WB CSC block/display index
+ *   (u32_value) payload [2]    : lsr_wb_csc_layer_indices.count
+ *   (u32_value) payload [3-..] : lsr_wb_csc_layer_indices.values[]
+ */
+#define HFI_PROPERTY_DEVICE_INIT_LSR_WB_CSC_LAYER_INDICES            0x00010019
+
+/*
+ * HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_LAYER_INDICES - Gets LSR WB CSC layer count and indices.
+ *                                                        Firmware is expected to send this
+ *                                                        property as part of
+ *                                                        HFI_COMMAND_DEVICE_INIT_DEVICE_CAPS
+ *                                                        command packet payload.
+ * Data layout:
+ *  struct property_array lsr_wb_reproj_layer_indices;
+ *  lsr_wb_reproj_layer_indices.values = {0, ..}
+ *
+ * @BasicFuntionality @DeviceInit - HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_LAYER_INDICES
+ *     (u32_key) payload [0]    : HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_LAYER_INDICES |
+ *                                (version=0 << 20) | (dsize=2 + count << 24 )
+ *   (u32_value) payload [1]    : lsr_wb_reproj_index LSR WB REPROJ block/display index
+ *   (u32_value) payload [2]    : lsr_wb_reproj_layer_indices.count
+ *   (u32_value) payload [3-..] : lsr_wb_reproj_layer_indices.values[]
+ */
+#define HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_LAYER_INDICES         0x0001001A
+
+/*
+ * HFI_PROPERTY_DEVICE_INIT_SYS_CACHE_STALING - This property is set to indicate
+ *                                  support for system cache staling feature.
+ *                                  Firmware is expected to send this property
+ *                                  as part of
+ *                                  HFI_COMMAND_DEVICE_INIT_DEVICE_CAPS
+ *                                  command packet payload.
+ *
+ * @BasicFuntionality @DeviceInit - HFI_PROPERTY_DEVICE_INIT_SYS_CACHE_STALING
+ *     (u32_key) payload [0]   : HFI_PROPERTY_DEVICE_INIT_SYS_CACHE_STALING \|
+ *                               (version=0 << 20) \|
+ *                               (dsize=1 << 24)
+ *   (u32_value) payload [1]   : HFI_TRUE or HFI_FALSE
+ */
+#define HFI_PROPERTY_DEVICE_INIT_SYS_CACHE_STALING                   0x0001001B
+
 /* Device Resource Property IDs end here */
 
 /*

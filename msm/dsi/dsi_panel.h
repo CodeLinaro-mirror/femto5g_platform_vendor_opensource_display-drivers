@@ -30,7 +30,6 @@
 #define DSI_CMD_PPS_SIZE 135
 
 #define DSI_CMD_PPS_HDR_SIZE 7
-#define DSI_MODE_MAX 32
 
 /*
  * Defining custom dsi msg flag.
@@ -213,6 +212,18 @@ struct dsi_panel_spr_info {
 	enum msm_display_spr_pack_type_mode pack_type_mode;
 };
 
+struct privacy_cmd_cfg {
+    u8 privacy_en_cmd[4];     // Enable privacy layer
+    u8 lkey_enable_cmd[3];    // LKEY enable
+    u8 lkey_disable_cmd[3];   // LKEY disable
+};
+
+static const struct privacy_cmd_cfg privacy_cmd_cfg_v1 = {
+    .privacy_en_cmd     = {0xb0, 0x00, 0x3a, 0x66},
+    .lkey_enable_cmd    = {0xf0, 0x5a, 0x5a},
+    .lkey_disable_cmd   = {0xf0, 0xa5, 0xa5},
+};
+
 struct dsi_panel;
 
 struct dsi_panel_ops {
@@ -272,9 +283,12 @@ struct dsi_panel {
 	bool ulps_suspend_enabled;
 	bool allow_phy_power_off;
 	bool reset_gpio_always_on;
+	bool privacy_feature_enabled;
 	atomic_t esd_recovery_pending;
 
 	bool skip_panel_off;
+	bool skip_pwr;
+	bool ttw_enabled;
 	bool panel_initialized;
 	bool te_using_watchdog_timer;
 	bool disable_cesta_hw_sleep;
@@ -413,6 +427,8 @@ int dsi_panel_send_qsync_off_dcs(struct dsi_panel *panel,
 
 int dsi_panel_send_roi_dcs(struct dsi_panel *panel, int ctrl_idx,
 		struct dsi_rect *roi);
+int dsi_panel_send_privacy_dcs(struct dsi_panel *panel, int ctrl_idx,
+		struct sde_drm_privacy_layer_v1 *privacy_v1);
 
 int dsi_panel_dcs_cmd_tx(struct dsi_panel *panel, enum dsi_cmd_set_type cmd);
 
@@ -465,7 +481,7 @@ int dsi_panel_send_cmd(struct dsi_panel *panel,
 int dsi_panel_parse_freq_step_table(struct dsi_display_mode *mode,
 				struct dsi_parser_utils *utils);
 
-int dsi_panel_power_on(struct dsi_panel *panel);
+int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash);
 
 int dsi_panel_power_off(struct dsi_panel *panel);
 

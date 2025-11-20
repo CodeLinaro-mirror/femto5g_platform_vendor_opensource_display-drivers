@@ -84,6 +84,8 @@
 
 #define SDE_ERROR(fmt, ...) pr_err("%s[sde error]" fmt, __func__, ##__VA_ARGS__)
 
+#define SDE_WARN(fmt, ...) pr_warn("%s[sde warn]" fmt, __func__, ##__VA_ARGS__)
+
 #define POPULATE_RECT(rect, a, b, c, d, Q16_flag) \
 	do {						\
 		(rect)->x = (Q16_flag) ? (a) >> 16 : (a);    \
@@ -684,9 +686,11 @@ void *sde_debugfs_get_root(struct sde_kms *sde_kms);
  * containing one or more "key=value\n" entries.
  */
 #if IS_ENABLED(CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT)
-#define SDE_KMS_INFO_MAX_SIZE	(1 << 12)
+#define SDE_KMS_INFO_MAX_SIZE (1 << 12)
+#elif IS_ENABLED(CONFIG_DSI_EXTENDED_MODES)
+#define SDE_KMS_INFO_MAX_SIZE (6 * (1 << 14))
 #else
-#define SDE_KMS_INFO_MAX_SIZE	(1 << 14)
+#define SDE_KMS_INFO_MAX_SIZE (1 << 14)
 #endif
 
 /**
@@ -1031,5 +1035,11 @@ int sde_kms_suspend_helper(struct sde_kms *sde_kms);
  * @sde_kms: Pointer to sde kms object
  */
 int sde_kms_resume_helper(struct sde_kms *sde_kms);
+
+/*
+ * sde_kms_wait_for_display_off - function to wait for all displays to be off
+ * @sde_kms: Pointer to sde kms object
+ */
+int sde_kms_wait_for_display_off(struct sde_kms *kms);
 
 #endif /* __sde_kms_H__ */

@@ -27,6 +27,21 @@ struct dp_display_info {
 	u32 stream_cnt;
 };
 
+/**
+ * struct dp_display_pair - Structure to track master and slave eDP displays
+ * @m_pll_display: Pointer to the master eDP display (eDP1)
+ * @s_pll_display: Pointer to the slave eDP display (eDP0)
+ *
+ * This structure is used to synchronize operations between primary and
+ * secondary eDP displays, particularly for shared PLL operations.
+ */
+struct dp_display_pair {
+	struct dp_display *m_pll_display; /* eDP1 */
+	struct dp_display *s_pll_display;  /* eDP0 */
+};
+
+extern struct dp_display_pair g_edp_pair;
+
 struct dp_mst_drm_cbs {
 	void (*hpd)(void *display, bool hpd_status);
 	void (*hpd_irq)(void *display);
@@ -65,6 +80,8 @@ struct dp_display {
 	void *dp_aux_ipc_log;
 	bool no_backlight_support;
 	bool ext_hpd_en;
+	bool ctl_op_sync;
+	bool is_cont_splash_enabled;
 
 	int (*enable)(struct dp_display *dp_display, void *panel);
 	int (*post_enable)(struct dp_display *dp_display, void *panel);
@@ -137,6 +154,8 @@ int dp_display_get_num_of_streams(struct drm_device *dev);
 int dp_display_get_info(void *dp_display, struct dp_display_info *dp_info);
 int dp_display_mmrm_callback(struct mmrm_client_notifier_data *notifier_data);
 int edp_display_get_num_of_displays(struct drm_device *dev);
+int dp_display_cont_splash_config(void *display);
+int dp_display_cont_splash_res_disable(void *display);
 #else
 static inline int dp_display_get_num_of_displays(struct drm_device *dev)
 {
@@ -164,6 +183,14 @@ static inline int dp_display_mmrm_callback(struct mmrm_client_notifier_data *not
 	return 0;
 }
 static inline int edp_display_get_num_of_displays(struct drm_device *dev)
+{
+	return 0;
+}
+static inline int dp_display_cont_splash_config(void *dp_display)
+{
+	return 0;
+}
+static inline int dp_display_cont_splash_res_disable(void *dp_display)
 {
 	return 0;
 }

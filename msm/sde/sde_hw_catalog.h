@@ -23,6 +23,7 @@
 #define MAX_REG_SIZE_ENTRIES 14
 #define MAX_CWB_BLOCKS    2
 #define MAX_CWB_BLOCKSIZE    2
+#define DPU_MAX_SSPP_COUNT   32
 
 #define SDE_HW_VER(MAJOR, MINOR, STEP) ((u32)((MAJOR & 0xF) << 28)    |\
 		((MINOR & 0xFFF) << 16)  |\
@@ -50,13 +51,17 @@
 #define SDE_HW_VER_660	SDE_HW_VER(6, 6, 0) /* holi */
 #define SDE_HW_VER_670	SDE_HW_VER(6, 7, 0) /* shima */
 #define SDE_HW_VER_680	SDE_HW_VER(6, 8, 0) /* monaco */
+#define SDE_HW_VER_6100 SDE_HW_VER(6, 10, 0) /* khaje */
 #define SDE_HW_VER_700	SDE_HW_VER(7, 0, 0) /* lahaina */
 #define SDE_HW_VER_720	SDE_HW_VER(7, 2, 0) /* yupik */
 #define SDE_HW_VER_810	SDE_HW_VER(8, 1, 0) /* waipio */
 #define SDE_HW_VER_820	SDE_HW_VER(8, 2, 0) /* diwali */
+#define SDE_HW_VER_830	SDE_HW_VER(8,  3, 0) /* parrot*/
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
 #define SDE_HW_VER_880  SDE_HW_VER(8, 8, 0) /* vienna */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
+#define SDE_HW_VER_920  SDE_HW_VER(9, 2, 0) /* x1e80100 */
+#define SDE_HW_VER_970  SDE_HW_VER(9, 7, 0) /* x1p42100 */
 #define SDE_HW_VER_980	SDE_HW_VER(9, 8, 0) /* seraph */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
@@ -65,6 +70,7 @@
 #define SDE_HW_VER_C40	SDE_HW_VER(12, 4, 0) /* kera */
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 #define SDE_HW_VER_D10	SDE_HW_VER(13, 1, 0) /* alor */
+#define SDE_HW_VER_E00  SDE_HW_VER(14, 0, 0) /* art */
 
 #define SDE_QULTIVATE_SW_REV1 0x1
 
@@ -91,12 +97,17 @@
 #define IS_HOLI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_660)
 #define IS_SHIMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_670)
 #define IS_MONACO_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_680)
+#define IS_KHAJE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_6100)
 #define IS_LAHAINA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_700)
 #define IS_YUPIK_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_720)
 #define IS_WAIPIO_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_810)
 #define IS_DIWALI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_820)
+#define IS_PARROT_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_830)
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
+#define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
+#define IS_X1E80100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_920)
+#define IS_X1P42100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_970)
 #define IS_SERAPH_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_980)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
@@ -105,7 +116,7 @@
 #define IS_KERA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C40)
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 #define IS_ALOR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D10)
-#define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
+#define IS_ART_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E00)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -478,6 +489,8 @@ enum {
  * @SDE_MIXER_CAC_PRIMARY     Layer mixer preferred for primary during two pass CAC
  * @SDE_MIXER_CAC_LB          Layer mixer preferred for loopback during two pass CAC
  * @SDE_MIXER_MAX             maximum value
+ * @SDE_MIXER_IS_VIRTUAL      Layer mixer which is removed but used for proper
+ *                            Dedicated CWB allocation
  */
 enum {
 	SDE_MIXER_LAYER = 0x1,
@@ -495,6 +508,7 @@ enum {
 	SDE_MIXER_10_BITS_COLOR,
 	SDE_MIXER_CAC_PRIMARY,
 	SDE_MIXER_CAC_LB,
+	SDE_MIXER_IS_VIRTUAL,
 	SDE_MIXER_MAX
 };
 
@@ -922,6 +936,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
  * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
  * @SDE_FEATURE_DISP_OP        Support Display OP switch
+ * @SDE_FEATURE_LSR            Support Display LSR
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -977,6 +992,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_MIXER_OP_V1,
 	SDE_FEATURE_SSIP_CLK,
 	SDE_FEATURE_DISP_OP,
+	SDE_FEATURE_LSR,
 	SDE_FEATURE_MAX
 };
 
@@ -1406,6 +1422,8 @@ enum sde_clk_ctrl_type {
 	SDE_CLK_CTRL_WB0,
 	SDE_CLK_CTRL_WB1,
 	SDE_CLK_CTRL_WB2,
+	SDE_CLK_CTRL_WB3,
+	SDE_CLK_CTRL_WB4,
 	SDE_CLK_CTRL_LUTDMA,
 	SDE_CLK_CTRL_IPCC_MSI,
 	SDE_CLK_CTRL_MAX,
@@ -1796,6 +1814,7 @@ struct sde_intf_cfg  {
  * @vbif_idx           vbif identifier
  * @xin_id             client interface identifier
  * @clk_ctrl           clock control identifier
+ * opmode:             opmode is used to distinguish LSR / DPU WB blocks.
  */
 struct sde_wb_cfg {
 	SDE_HW_BLK_INFO;
@@ -1805,6 +1824,7 @@ struct sde_wb_cfg {
 	u32 vbif_idx;
 	u32 xin_id;
 	enum sde_clk_ctrl_type clk_ctrl;
+	enum wb_opmode opmode;
 };
 
 /**
@@ -2187,7 +2207,11 @@ struct sde_perf_cfg {
  * @features            bitmap of supported SDE_FEATUREs
  * @dma_formats         supported formats for dma pipe
  * @vig_formats         supported formats for vig pipe
+ * @csc_formats         supported formats for csc pipe
+ * @repro_formats       supported formats for repro pipe
  * @wb_formats          supported formats for wb
+ * @wb_csc_formats      supported formats for wb csc
+ * @wb_repro_formats    supported formats for wb repro
  * @wb_rot_formats      supported output formats for wb rotation operation
  * @virt_vig_formats    supported formats for virtual vig pipe
  * @inline_rot_formats  supported formats for inline rotation
@@ -2206,6 +2230,7 @@ struct sde_perf_cfg {
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
  * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
  *                      If not set it is immediate self refresh
+ * @virtual_mixers_mask bitmask of virtual mixers
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -2236,9 +2261,10 @@ struct sde_mdss_cfg {
 	struct sde_ctl_cfg ctl[MAX_BLOCKS];
 	struct sde_ctl_hyp_cfg ctl_hyp;
 	u32 sspp_count;
-	struct sde_sspp_cfg sspp[MAX_BLOCKS];
+	struct sde_sspp_cfg sspp[DPU_MAX_SSPP_COUNT];
 	u32 mixer_count;
 	struct sde_lm_cfg mixer[MAX_BLOCKS];
+	u32 virtual_mixers_mask;
 	struct sde_dspp_top_cfg dspp_top;
 	u32 dspp_count;
 	struct sde_dspp_cfg dspp[MAX_BLOCKS];
@@ -2329,7 +2355,11 @@ struct sde_mdss_cfg {
 	/* Supported Pixel Format Lists */
 	struct sde_format_extended *dma_formats;
 	struct sde_format_extended *vig_formats;
+	struct sde_format_extended *csc_formats;
+	struct sde_format_extended *repro_formats;
 	struct sde_format_extended *wb_formats;
+	struct sde_format_extended *wb_csc_formats;
+	struct sde_format_extended *wb_repro_formats;
 	struct sde_format_extended *wb_rot_formats;
 	struct sde_format_extended *virt_vig_formats;
 	struct sde_format_extended *inline_rot_formats;
@@ -2350,6 +2380,8 @@ struct sde_mdss_cfg {
 	u32 ppb_buf_max_lines;
 	u32 controlled_SR;
 	u32 early_EPT_handling;
+
+	bool disable_multirect;
 };
 
 struct sde_mdss_hw_cfg_handler {

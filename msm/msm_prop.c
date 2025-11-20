@@ -93,6 +93,32 @@ int msm_property_pop_dirty(struct msm_property_info *info,
 	return rc;
 }
 
+int msm_property_clear_dirty_list(struct msm_property_info *info,
+		struct msm_property_state *property_state)
+{
+	struct msm_property_value *property_state_entry, *tmp;
+	int rc = 0;
+
+	if (!info || !property_state || !property_state->values) {
+		DRM_ERROR("invalid argument(s)\n");
+		return -EINVAL;
+	}
+
+	WARN_ON(!mutex_is_locked(&info->property_lock));
+
+	if (list_empty(&property_state->dirty_list))
+		return rc;
+
+	list_for_each_entry_safe(property_state_entry, tmp, &property_state->dirty_list,
+		dirty_node) {
+		if (!property_state_entry)
+			continue;
+		list_del_init(&property_state_entry->dirty_node);
+	}
+
+	return rc;
+}
+
 /**
  * _msm_property_set_dirty_no_lock - flag given property as being dirty
  *                                   This function doesn't mutex protect the

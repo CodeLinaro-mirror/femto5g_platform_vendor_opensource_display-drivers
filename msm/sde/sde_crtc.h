@@ -213,6 +213,8 @@ struct sde_crtc_fps_info {
  * @iova: device address
  * @kva: kernel virtual address
  * @node: list node for LTM buffer list;
+ * @dcp_iova: dcp virtual address of the buffer
+ * @addr_map: shared memory address map structure for LTM buffer
  */
 struct sde_ltm_buffer {
 	struct drm_framebuffer *fb;
@@ -223,6 +225,8 @@ struct sde_ltm_buffer {
 	u64 iova;
 	void *kva;
 	struct list_head node;
+	u64 dcp_iova;
+	struct hfi_shared_addr_map addr_map;
 };
 
 /**
@@ -498,6 +502,7 @@ struct sde_crtc_hal_funcs {
  * @static_cache_read_work: delayed worker to transition cache state to read
  * @cache_state     : Current static image cache state
  * @cache_type      : Current static image cache type to use
+ * @llcc_stale_frame_trigger : bool to check if previous commit requested stale frame handling
  * @dspp_blob_info  : blob containing dspp hw capability information
  * @cached_encoder_mask : cached encoder_mask for vblank work
  * @line_time_in_ns : current mode line time in nano sec is needed for QOS update
@@ -520,8 +525,13 @@ struct sde_crtc_hal_funcs {
  * @sde_cesta_client: Pointer to sde_cesta client for the encoder.
  * @mdnie_art_frame_count: number of frames required for mdnie art to converge.
  * @hfi_crtc: Pointer to hfi crtc struct
+ * @hfi_client: Pointer to hfi client
  * @hal_ops: Local callback hal function pointer table
+ * @crtc_event_cb: CRTC event callback when hw event is received
+ * @do_clear_buf: Request LTM buffer clear when true
  * @dspp_pa_mode: top-level bitmask maintaining state of PA block
+ * @is_waiting_for_hw_fence: true if hw-fence backed input fence is not signaled prior to
+ *                           commit prepare
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -613,6 +623,7 @@ struct sde_crtc {
 	bool reinit_crtc_mixers;
 	int hist_irq_idx;
 	bool disable_pending_cp;
+	bool llcc_stale_frame_trigger;
 
 	int src_bpp;
 	int target_bpp;
@@ -649,9 +660,13 @@ struct sde_crtc {
 	u32 mdnie_art_frame_count;
 
 	struct hfi_crtc *hfi_crtc;
+	struct hfi_client_t *hfi_client;
 	struct sde_crtc_hal_funcs hal_ops;
+	void (*crtc_event_cb)(void *data, u32 event, void *event_payload);
+	bool do_clear_buf;
 
 	struct cp_pa_mode dspp_pa_mode;
+	bool is_waiting_for_hw_fence;
 };
 
 enum sde_crtc_dirty_flags {
@@ -1459,5 +1474,24 @@ void sde_crtc_transition_handle_events(struct drm_crtc *crtc, bool enable);
  */
 bool sde_crtc_property_is_dirty(struct sde_crtc_state *cstate,
 		uint32_t property_idx);
+
+/**
+ * sde_crtc_check_for_lsr_opmode - Returns opmode if crtc is for LSR display
+ * @crtc: pointer to drm crtc
+ */
+int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc);
+
+/**
+ * sde_crtc_update_lsr_perf - Updates lsr perf vote to LSR driver
+ * @crtc: pointer to drm crtc
+ */
+int sde_crtc_update_lsr_perf(struct drm_crtc *crtc);
+
+/**
+ * sde_crtc_cp_unmap_ltm_buffers - unmap LTM buffers
+ * @sde_crtc: Pointer to sde_crtc context
+ * @num: Number of buffers to unmap
+ */
+void sde_crtc_cp_unmap_ltm_buffers(struct sde_crtc *sde_crtc, int num);
 
 #endif /* _SDE_CRTC_H_ */

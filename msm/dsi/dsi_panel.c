@@ -48,6 +48,8 @@ static int isl97900_led_event(struct device_node *node, enum isl_function event,
 #define TOPOLOGY_SET_LEN 3
 #define MAX_TOPOLOGY 5
 
+#define PRIVACY_V1_CMD_LEN 146
+
 #define DSI_PANEL_DEFAULT_LABEL  "Default dsi panel"
 
 #define DEFAULT_PANEL_JITTER_NUMERATOR		2
@@ -427,7 +429,7 @@ int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel)
 	return rc;
 }
 
-static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
+static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable, bool is_cont_splash)
 {
 	int rc = 0;
 	struct pinctrl_state *state;
@@ -447,38 +449,53 @@ static int dsi_panel_set_pinctrl_state(struct dsi_panel *panel, bool enable)
 		state = panel->pinctrl.suspend;
 	}
 
-	rc = pinctrl_select_state(panel->pinctrl.pinctrl, state);
-	if (rc)
-		DSI_ERR("[%s] failed to set pin state, rc=%d\n",
-				panel->name, rc);
+	if (is_cont_splash && panel->disp_op == MSM_DISP_OP_HFI) {
+		DSI_DEBUG("Skipping pintctrl_select_state in HFI cont-splash case\n");
+	} else {
+		rc = pinctrl_select_state(panel->pinctrl.pinctrl, state);
+		if (rc)
+			DSI_ERR("[%s] failed to set pin state, rc=%d\n",
+					panel->name, rc);
+	}
 
 	panel->pinctrl.cur_state = state;
 
 	return rc;
 }
 
-int dsi_panel_power_on(struct dsi_panel *panel)
+int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash)
 {
 	int rc = 0;
 
-	rc = dsi_pwr_enable_regulator(&panel->power_info, true);
-	if (rc) {
-		DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
-				panel->name, rc);
-		goto exit;
+	if (!panel->skip_pwr) {
+		/* avoid reg vote, if disable vote is skipped */
+		rc = dsi_pwr_enable_regulator(&panel->power_info, true);
+		if (rc) {
+			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
+					panel->name, rc);
+			goto exit;
+		}
 	}
 
-	rc = dsi_panel_set_pinctrl_state(panel, true);
+	rc = dsi_panel_set_pinctrl_state(panel, true, is_cont_splash);
 	if (rc) {
 		DSI_ERR("[%s] failed to set pinctrl, rc=%d\n", panel->name, rc);
 		goto error_disable_vregs;
 	}
 
-	rc = dsi_panel_reset(panel);
-	if (rc) {
-		DSI_ERR("[%s] failed to reset panel, rc=%d\n", panel->name, rc);
-		goto error_disable_gpio;
+	/* For HFI continuous splash case - avoid panel-reset GPIO */
+	if (is_cont_splash && panel->disp_op == MSM_DISP_OP_HFI) {
+		DSI_DEBUG("[%s] skipping panel reset in hfi path with cont-splash\n", panel->name);
+	} else {
+		rc = dsi_panel_reset(panel);
+		if (rc) {
+			DSI_ERR("[%s] failed to reset panel, rc=%d\n", panel->name, rc);
+			goto error_disable_gpio;
+		}
 	}
+
+	if (panel->skip_pwr)
+		panel->skip_pwr = false;
 
 	goto exit;
 
@@ -489,7 +506,7 @@ error_disable_gpio:
 	if (gpio_is_valid(panel->bl_config.en_gpio))
 		gpio_set_value(panel->bl_config.en_gpio, 0);
 
-	(void)dsi_panel_set_pinctrl_state(panel, false);
+	(void)dsi_panel_set_pinctrl_state(panel, false, is_cont_splash);
 
 error_disable_vregs:
 	(void)dsi_pwr_enable_regulator(&panel->power_info, false);
@@ -504,6 +521,7 @@ int dsi_panel_power_off(struct dsi_panel *panel)
 
 	if (panel->skip_panel_off) {
 		DSI_DEBUG("skip panel power off\n");
+		panel->skip_pwr = true;
 		return rc;
 	}
 
@@ -524,7 +542,7 @@ int dsi_panel_power_off(struct dsi_panel *panel)
 				 rc);
 	}
 
-	rc = dsi_panel_set_pinctrl_state(panel, false);
+	rc = dsi_panel_set_pinctrl_state(panel, false, false);
 	if (rc) {
 		DSI_ERR("[%s] failed set pinctrl state, rc=%d\n", panel->name,
 		       rc);
@@ -1916,7 +1934,12 @@ static int dsi_panel_parse_vrr_caps(struct dsi_panel *panel,
 	int rc = 0;
 	struct dsi_parser_utils *utils = &panel->utils;
 
-	/* "qcom,has-vrr-enable" is true for CMD mode panels
+	/* required only for VMH TUI */
+	panel->vrr_caps.has_vhm_capability =
+		utils->read_bool(utils->data, "qcom,has-vhm-capability");
+
+	/*
+	 * "qcom,has-vrr-enable" is true for CMD mode panels
 	 * that has AVR-step/EM pulse, ARP Panel, Video PSR Panel
 	 */
 	panel->vrr_caps.vrr_support = utils->read_bool(utils->data, "qcom,vrr-enable");
@@ -2452,6 +2475,7 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-trigger_self_refresh-command",
 	"qcom,mdss-dsi-fps-switch-command",
 	"qcom,mdss-dsi-em-pulse-switch-command",
+	"Privacy layer not parsed from DTSI, generated dynamically",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -2497,6 +2521,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-trigger_self_refresh-command-state",
 	"qcom,mdss-dsi-fps-switch-command-state",
 	"qcom,mdss-dsi-em-pulse-switch-command-state",
+	"Privacy layer not parsed from DTSI, generated dynamically",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -2529,6 +2554,7 @@ int dsi_panel_create_cmd_packets(const char *data,
 					struct dsi_cmd_desc *cmd)
 {
 	int rc = 0;
+	u32 ctrl_idx;
 	int i, j;
 	u8 *payload;
 
@@ -2538,10 +2564,16 @@ int dsi_panel_create_cmd_packets(const char *data,
 		cmd[i].msg.type = data[0];
 		cmd[i].msg.channel = data[2];
 		cmd[i].msg.flags |= data[3];
-		/* Use the two MSBs of data[1] to specify the DSI ctrl index */
-		cmd[i].ctrl = data[1] >> 6;
 		cmd[i].post_wait_ms = data[4];
 		cmd[i].msg.tx_len = ((data[5] << 8) | (data[6]));
+
+		/* Use the two MSBs of data[1] to specify the DSI ctrl index */
+		ctrl_idx = data[1] >> 6;
+
+		if (cmd[i].msg.flags & MIPI_DSI_MSG_UNICAST_COMMAND && ctrl_idx < MAX_DSI_CTRL)
+			cmd[i].ctrl = ctrl_idx;
+		else
+			cmd[i].ctrl = 0;
 
 		if (cmd[i].msg.flags & MIPI_DSI_MSG_BATCH_COMMAND)
 			cmd[i].last_command = false;
@@ -2807,6 +2839,12 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 
 	panel->skip_panel_off = utils->read_bool(utils->data,
 			"qcom,skip-panel-power-off");
+
+	panel->privacy_feature_enabled = utils->read_bool(utils->data,
+			"qcom,mdss-dsi-panel-privacy-enabled");
+
+	DSI_DEBUG("%s: privacy feature %s\n", __func__,
+		(panel->privacy_feature_enabled ? "enabled" : "disabled"));
 
 	panel->spr_info.enable = false;
 	panel->spr_info.pack_type = MSM_DISPLAY_SPR_TYPE_MAX;
@@ -4471,6 +4509,7 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	panel->parent = parent;
 	panel->type = type;
 	panel->post_power_enable_status = false;
+	panel->skip_pwr = false;
 
 	dsi_panel_update_util(panel, parser_node);
 	utils = &panel->utils;
@@ -5298,7 +5337,7 @@ int dsi_panel_pre_prepare(struct dsi_panel *panel)
 	if (panel->lp11_init)
 		goto error;
 
-	rc = dsi_panel_power_on(panel);
+	rc = dsi_panel_power_on(panel, false);
 	if (rc) {
 		DSI_ERR("[%s] panel power on failed, rc=%d\n", panel->name, rc);
 		goto error;
@@ -5483,7 +5522,7 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 	mutex_lock(&panel->panel_lock);
 
 	if (panel->lp11_init) {
-		rc = dsi_panel_power_on(panel);
+		rc = dsi_panel_power_on(panel, false);
 		if (rc) {
 			DSI_ERR("[%s] panel power on failed, rc=%d\n",
 			       panel->name, rc);
@@ -5500,6 +5539,133 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 
 error:
 	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
+
+static int dsi_panel_privacy_v1_prepare_dcs_cmds(struct dsi_panel_cmd_set *set,
+		struct sde_drm_privacy_layer_v1 *privacy_v1, int ctrl_idx, int unicast)
+{
+	static const int PRIVACY_CMD_LEN = PRIVACY_V1_CMD_LEN;
+	static const int PRIVACY_CMD_ENABLE_LEN = sizeof(privacy_cmd_cfg_v1.privacy_en_cmd);
+	static const int LKEY_ENABLE_CMD_LEN = sizeof(privacy_cmd_cfg_v1.lkey_enable_cmd);
+	static const int LKEY_DISABLE_CMD_LEN = sizeof(privacy_cmd_cfg_v1.lkey_disable_cmd);
+
+	int rc = 0, cnt=0;
+	char *privacy = NULL, *privacy_en = NULL;
+	char *lkey_en = NULL, *lkey_dis = NULL;
+
+	if (set == NULL) {
+		DSI_ERR("Panel command set for Privacy is NULL\n");
+		return -EINVAL;
+	}
+	set->cmds = NULL;
+
+	//Enabling privacy in layer mode
+	privacy_en = kmemdup(privacy_cmd_cfg_v1.privacy_en_cmd, PRIVACY_CMD_ENABLE_LEN, GFP_KERNEL);
+	if (!privacy_en) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	privacy = kzalloc(PRIVACY_CMD_LEN, GFP_KERNEL);
+	if (!privacy) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	privacy[0] = 0x66;//Privacy layer index
+	privacy[1] = privacy_v1->no_of_layers;
+
+	for (cnt=0; cnt < (privacy_v1->no_of_layers); cnt++) {
+		int offset = (cnt * 9) + 2;
+		privacy[offset+0] = (privacy_v1->privacy_list[cnt].left & 0xFF00) >> 8;
+		privacy[offset+1] = (privacy_v1->privacy_list[cnt].left & 0xFF);
+		privacy[offset+2] = (privacy_v1->privacy_list[cnt].top & 0xFF00) >> 8;
+		privacy[offset+3] = (privacy_v1->privacy_list[cnt].top & 0xFF);
+		privacy[offset+4] = (privacy_v1->privacy_list[cnt].right & 0xFF00) >> 8;
+		privacy[offset+5] = (privacy_v1->privacy_list[cnt].right & 0xFF);
+		privacy[offset+6] = (privacy_v1->privacy_list[cnt].bottom & 0xFF00) >> 8;
+		privacy[offset+7] = (privacy_v1->privacy_list[cnt].bottom & 0xFF);
+		privacy[offset+8] = (privacy_v1->privacy_list[cnt].corner_radius & 0xFF);
+	}
+
+	lkey_en = kmemdup(privacy_cmd_cfg_v1.lkey_enable_cmd, LKEY_ENABLE_CMD_LEN, GFP_KERNEL);
+	if (!lkey_en) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	lkey_dis = kmemdup(privacy_cmd_cfg_v1.lkey_disable_cmd, LKEY_DISABLE_CMD_LEN, GFP_KERNEL);
+	if (!lkey_dis) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	set->type = DSI_CMD_SET_PRIVACY_LAYER;
+	set->state = DSI_CMD_SET_STATE_HS;
+	set->count = 4;
+	set->cmds = kcalloc(set->count, sizeof(*set->cmds), GFP_KERNEL);
+	if (!set->cmds) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[0].msg.channel = 0;
+	set->cmds[0].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[0].msg.flags = 0;
+	set->cmds[0].msg.tx_len = LKEY_ENABLE_CMD_LEN;
+	set->cmds[0].msg.tx_buf = lkey_en;
+	set->cmds[0].msg.rx_len = 0;
+	set->cmds[0].msg.rx_buf = 0;
+	set->cmds[0].last_command = 0;
+	set->cmds[0].post_wait_ms = 0;
+	set->cmds[0].ctrl = 0;
+
+	set->cmds[1].msg.channel = 0;
+	set->cmds[1].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[1].msg.flags = 0;
+	set->cmds[1].msg.tx_len = PRIVACY_CMD_ENABLE_LEN;
+	set->cmds[1].msg.tx_buf = privacy_en;
+	set->cmds[1].msg.rx_len = 0;
+	set->cmds[1].msg.rx_buf = 0;
+	set->cmds[1].last_command = 0;
+	set->cmds[1].post_wait_ms = 0;
+	set->cmds[1].ctrl = 0;
+
+	set->cmds[2].msg.channel = 0;
+	set->cmds[2].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[2].msg.flags = 0;
+	set->cmds[2].msg.tx_len = PRIVACY_CMD_LEN;
+	set->cmds[2].msg.tx_buf = privacy;
+	set->cmds[2].msg.rx_len = 0;
+	set->cmds[2].msg.rx_buf = 0;
+	set->cmds[2].last_command = 0;
+	set->cmds[2].post_wait_ms = 0;
+	set->cmds[2].ctrl = 0;
+
+	set->cmds[3].msg.channel = 0;
+	set->cmds[3].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[3].msg.flags = 0;
+	set->cmds[3].msg.tx_len = LKEY_DISABLE_CMD_LEN;
+	set->cmds[3].msg.tx_buf = lkey_dis;
+	set->cmds[3].msg.rx_len = 0;
+	set->cmds[3].msg.rx_buf = 0;
+	set->cmds[3].last_command = 1;
+	set->cmds[3].post_wait_ms = 0;
+	set->cmds[3].ctrl = 0;
+	goto exit;
+
+error_free_mem:
+	if (set->cmds)
+		kfree(set->cmds);
+	if (privacy_en)
+		kfree(privacy_en);
+	if (privacy)
+		kfree(privacy);
+	if (lkey_en)
+		kfree(lkey_en);
+	if (lkey_dis)
+		kfree(lkey_dis);
+exit:
 	return rc;
 }
 
@@ -5627,11 +5793,11 @@ int dsi_panel_send_qsync_off_dcs(struct dsi_panel *panel,
 static int dsi_panel_prepare_cmd(struct dsi_panel *panel,
 		struct msm_display_conn_params *params, enum dsi_cmd_set_type type,
 		bool last_command)
-
 {
 	int i;
 	struct dsi_panel_cmd_set *set;
 	struct dsi_display_mode_priv_info *priv_info;
+	int rc = 0;
 
 	if (!panel || !panel->cur_mode) {
 		DSI_ERR("Invalid params\n");
@@ -5640,6 +5806,10 @@ static int dsi_panel_prepare_cmd(struct dsi_panel *panel,
 
 	priv_info = panel->cur_mode->priv_info;
 	set = &priv_info->cmd_sets[type];
+
+	// Prepare the privacy buffer content dynamically.
+	if (type == DSI_CMD_SET_PRIVACY_LAYER)
+		rc = dsi_panel_privacy_v1_prepare_dcs_cmds(set, params->privacy_v1, 0, true);
 
 	if (!set->cmds) {
 		DSI_ERR("Invalid params cmds NULL, type %x, last_command %d\n",
@@ -5691,6 +5861,45 @@ int dsi_panel_send_cmd(struct dsi_panel *panel,
 		       panel->name, type, rc);
 
 	mutex_unlock(&panel->panel_lock);
+
+	return rc;
+}
+
+int dsi_panel_send_privacy_dcs(struct dsi_panel *panel, int ctrl_idx,
+		struct sde_drm_privacy_layer_v1 *privacy_v1)
+{
+	int rc = 0;
+
+	struct dsi_panel_cmd_set *set;
+	struct dsi_display_mode_priv_info *priv_info;
+
+	if (!panel->cur_mode || !panel->cur_mode->priv_info) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	priv_info = panel->cur_mode->priv_info;
+	set = &priv_info->cmd_sets[DSI_CMD_SET_PRIVACY_LAYER];
+
+	rc = dsi_panel_privacy_v1_prepare_dcs_cmds(set, privacy_v1, ctrl_idx, true);
+	if (rc) {
+		DSI_ERR("[%s] failed to prepare Privacy cmds, rc=%d\n",
+				panel->name, rc);
+		return rc;
+	}
+
+	mutex_lock(&panel->panel_lock);
+
+	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_PRIVACY_LAYER, false);
+
+	if (rc)
+		DSI_ERR("[%s] failed to send DSI_CMD_SET_PRIVACY_LAYER cmds, rc=%d\n",
+				panel->name, rc);
+
+	mutex_unlock(&panel->panel_lock);
+
+	dsi_panel_destroy_cmd_packets(set);
+	dsi_panel_dealloc_cmd_packets(set);
 
 	return rc;
 }

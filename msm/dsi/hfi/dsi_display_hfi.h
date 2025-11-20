@@ -24,10 +24,14 @@
  * @kv_props:             Pointer to hfi util kv helper structure
  * @cmd_buf_worker:       kthread worker
  * @shared_addr_map:      Pointer to hold dcp shared buffer map addr
+ * @esd_addr_map:         Pointer to hold esd shared buffer map addr
  * @mode_valid:           Indicate whether mode is valid
  * @tx_cmd_buf_dva:       DCP virtual address of the DCS cmd tx buffer
  * @tx_cmd_buf_fill_level:Tracks fill level of the DCS cmd tx buffer
  * @tx_cmd_buf_map:       Address map of DCS command payload HFI buffer
+ * @rx_cmd_buf_map:       Address map of DCS command read HFI buffer
+ * @running_sde_offset: Offset for sde virtual address for dcs cmds.
+ * @running_hfi_offset: Offset for hfi shared memory address for dcs cmds.
  */
 struct dsi_display_hfi {
 	struct hfi_adapter_t *hfi_adapter;
@@ -36,11 +40,16 @@ struct dsi_display_hfi {
 
 	struct kthread_worker cmd_buf_worker;
 	struct hfi_shared_addr_map *shared_addr_map;
+	struct hfi_shared_addr_map *esd_addr_map;
 
 	bool mode_valid;
-	unsigned long tx_cmd_buf_dva;
+	struct hfi_shared_addr_map sgt_tx_cmd_buf_map;
 	u32 tx_cmd_buf_fill_level;
 	struct hfi_shared_addr_map tx_cmd_buf_map;
+	struct hfi_shared_addr_map rx_cmd_buf_map;
+
+	u32 running_sde_offset;
+	u32 running_hfi_offset;
 };
 
 /**

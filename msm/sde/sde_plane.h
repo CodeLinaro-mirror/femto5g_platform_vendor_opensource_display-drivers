@@ -251,6 +251,7 @@ enum sde_plane_sclcheck_state {
  * @sc_cfg:		system cache configuration
  * @rotation:		rotation cache state
  * @static_cache_state:	plane cache state for static image
+ * @cache_state_prop: value of CRTC_PROP_CACHE_STATE property
  * @cdp_cfg:	CDP configuration
  * @cont_splash_populated: State was populated as part of cont. splash
  * @ubwc_stats_roi: cached roi for ubwc stats
@@ -263,6 +264,7 @@ enum sde_plane_sclcheck_state {
  * @src_rect_extn: extension source rect values
  * @dst_rect_extn: extension destination rect values
  * @pref_lm: preferred lm for each plane in cac loopback usecase
+ * @repro_sspp_cfg: SSPP config for Reprojection
  */
 struct sde_plane_state {
 	struct drm_plane_state base;
@@ -294,6 +296,7 @@ struct sde_plane_state {
 	uint32_t rotation;
 	uint32_t static_cache_state;
 	uint32_t static_cache_type;
+	uint32_t cache_state_prop;
 
 	struct sde_hw_pipe_cdp_cfg cdp_cfg;
 
@@ -310,6 +313,7 @@ struct sde_plane_state {
 	struct sde_rect src_rect_extn;
 	struct sde_rect dst_rect_extn;
 	int pref_lm;
+	struct sde_hw_repro_sspp_cfg repro_sspp_cfg;
 };
 
 /**
@@ -595,4 +599,14 @@ static inline bool sde_plane_enabled(const struct drm_plane_state *state)
  * @plane: pointer to drm_plane
  */
 int sde_plane_post_init(struct drm_plane *plane);
+
+/** sde_plane_is_lsr_enabled - Indicates if it is an CSC/Repro plane
+ * @pstate: Pointer to sde plane
+ * Returns true if it is an LSR plane, otherwise false.
+ */
+static inline bool sde_plane_is_lsr_enabled(struct sde_plane *psde)
+{
+	return (((psde->pipe >= SSPP_CSC0) && (psde->pipe <= SSPP_CSC_MAX)) ||
+			((psde->pipe >= SSPP_REPRO0) && (psde->pipe <= SSPP_REPRO_MAX)));
+}
 #endif /* _SDE_PLANE_H_ */

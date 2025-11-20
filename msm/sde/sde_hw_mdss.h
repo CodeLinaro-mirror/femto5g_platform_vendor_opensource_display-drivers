@@ -45,6 +45,7 @@
 #endif
 
 #define MAX_DSI_DISPLAYS		2
+#define MAX_SPLASH_DISPLAYS		2
 #define MAX_DATA_PATH_PER_DSIPLAY	4
 
 enum sde_format_flags {
@@ -57,6 +58,8 @@ enum sde_format_flags {
 	SDE_FORMAT_FLAG_LOSSY_2_1_BIT,
 	SDE_FORMAT_FLAG_CAC_BIT,
 	SDE_FORMAT_FLAG_DMA_BIT,
+	SDE_FORMAT_FLAG_FSC_BIT,
+	SDE_FORMAT_FLAG_FSC_4R_BIT,
 	SDE_FORMAT_FLAG_BIT_MAX,
 };
 
@@ -69,8 +72,14 @@ enum sde_format_flags {
 #define SDE_FORMAT_FLAG_LOSSY_2_1	BIT(SDE_FORMAT_FLAG_LOSSY_2_1_BIT)
 #define SDE_FORMAT_FLAG_CAC		BIT(SDE_FORMAT_FLAG_CAC_BIT)
 #define SDE_FORMAT_FLAG_DMA		BIT(SDE_FORMAT_FLAG_DMA_BIT)
+#define SDE_FORMAT_FLAG_FSC		BIT(SDE_FORMAT_FLAG_FSC_BIT)
+#define SDE_FORMAT_FLAG_FSC_4R		BIT(SDE_FORMAT_FLAG_FSC_4R_BIT)
 #define SDE_FORMAT_IS_YUV(X)		\
 	(test_bit(SDE_FORMAT_FLAG_YUV_BIT, (X)->flag))
+#define SDE_FORMAT_IS_FSC(X)		\
+	(test_bit(SDE_FORMAT_FLAG_FSC_BIT, (X)->flag))
+#define SDE_FORMAT_IS_FSC_4R(X)		\
+	(test_bit(SDE_FORMAT_FLAG_FSC_4R_BIT, (X)->flag))
 #define SDE_FORMAT_IS_DX(X)		\
 	(test_bit(SDE_FORMAT_FLAG_DX_BIT, (X)->flag))
 #define SDE_FORMAT_IS_LINEAR(X)		((X)->fetch_mode == SDE_FETCH_LINEAR)
@@ -181,12 +190,34 @@ enum sde_sspp {
 	SSPP_DMA4,
 	SSPP_DMA5,
 	SSPP_DMA_MAX = SSPP_DMA5,
+	SSPP_CSC0,
+	SSPP_CSC1,
+	SSPP_CSC_MAX = SSPP_CSC1,
+	SSPP_REPRO0,
+	SSPP_REPRO1,
+	SSPP_REPRO2,
+	SSPP_REPRO3,
+	SSPP_REPRO4,
+	SSPP_REPRO5,
+	SSPP_REPRO6,
+	SSPP_REPRO7,
+	SSPP_REPRO8,
+	SSPP_REPRO9,
+	SSPP_REPRO10,
+	SSPP_REPRO11,
+	SSPP_REPRO12,
+	SSPP_REPRO13,
+	SSPP_REPRO14,
+	SSPP_REPRO15,
+	SSPP_REPRO_MAX = SSPP_REPRO15,
 	SSPP_MAX
 };
 
 #define SDE_SSPP_VALID(x) ((x) > SSPP_NONE && (x) < SSPP_MAX)
 #define SDE_SSPP_VALID_VIG(x) ((x) >= SSPP_VIG0 && (x) <= SSPP_VIG_MAX)
 #define SDE_SSPP_VALID_DMA(x) ((x) >= SSPP_DMA0 && (x) <= SSPP_DMA_MAX)
+#define SDE_SSPP_VALID_CSC(x) ((x) >= SSPP_CSC0 && (x) <= SSPP_CSC_MAX)
+#define SDE_SSPP_VALID_REPRO(x) ((x) >= SSPP_REPRO0 && (x) <= SSPP_REPRO_MAX)
 
 enum sde_dpu {
 	DPU_0,
@@ -197,6 +228,8 @@ enum sde_dpu {
 enum sde_sspp_type {
 	SSPP_TYPE_VIG,
 	SSPP_TYPE_DMA,
+	SSPP_TYPE_CSC,
+	SSPP_TYPE_REPRO,
 	SSPP_TYPE_MAX
 };
 
@@ -352,6 +385,9 @@ enum sde_intf {
 	INTF_6,
 	INTF_7,
 	INTF_8,
+	INTF_9,
+	INTF_10,
+	INTF_11,
 	INTF_MAX
 };
 
@@ -383,7 +419,20 @@ enum sde_wb {
 	WB_1,
 	WB_2,
 	WB_3,
+	WB_4,
 	WB_MAX
+};
+
+/**
+ * enum wb_opmode - opmode for a WB block
+ * @WB_DPU: DPU WB
+ * @WB_CSC: CSC WB
+ * @WB_REPRO: REPRO WB
+ */
+enum wb_opmode {
+	WB_DPU,
+	WB_CSC,
+	WB_REPRO,
 };
 
 enum sde_ad {
@@ -1025,5 +1074,50 @@ struct sde_hw_noise_layer_cfg {
 	u32 attn_factor;
 	u32 strength;
 	u32 alpha_noise;
+};
+
+/**
+ * struct sde_hw_repro_sspp_cfg: Contains config details for LSR plane setup
+ * @bounding_box:      Rect for bounding box
+ * @render_pose:       Render_pose details
+ * @render_frustum:    Render frustum details
+ * @plane_equation:    Plane equation details
+ * @reproj_matrix:     Reproj matrix details
+ * @alpha_fb:          Pointer to alpha frame buffer
+ * @repro_render_type: LSR layer type
+ * @repro_lock_type:   LSR layer lock type
+ */
+struct sde_hw_repro_sspp_cfg {
+	struct sde_rect bounding_box;
+	struct sde_drm_render_pose render_pose;
+	struct sde_drm_render_frustum render_frustum;
+	struct sde_drm_plane_equation plane_equation;
+	struct drm_framebuffer *alpha_fb;
+	enum sde_drm_lsr_layer_type repro_render_type;
+	enum sde_drm_lsr_layer_lock_type repro_lock_type;
+};
+
+/**
+ * struct sde_hw_repro_conn_cfg: Contains config details for LSR connector setup
+ * @num_views:          Number of views
+ * @wb_panel_type:      Type of panel
+ * @reproj_matrix_list: Reprojection Matrix details
+ */
+struct sde_hw_repro_conn_cfg {
+	u32 num_views;
+	u32 wb_panel_type;
+	struct sde_drm_reproj_matrix_list reproj_matrix_list;
+};
+
+/**
+ * struct sde_view_descriptor: Contains buffer/framebuffer details for each view
+ * @num_views: Number of views
+ * @num_fbs:   Number of frame buffers
+ * @fb_id:     Array of pointers to frame buffers
+ */
+struct sde_view_descriptor {
+	u32 num_views;
+	u32 num_fbs;
+	struct drm_framebuffer *fb_id[MAX_BUFFERS_PER_VIEW];
 };
 #endif  /* _SDE_HW_MDSS_H */

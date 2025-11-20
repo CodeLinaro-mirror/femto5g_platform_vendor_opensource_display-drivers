@@ -2964,6 +2964,8 @@ static void dp_catalog_get_io_buf(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io_buf(hdcp_physical);
 	dp_catalog_fill_io_buf(dp_p1);
 	dp_catalog_fill_io_buf(dp_tcsr);
+	dp_catalog_fill_io_buf(m_dp_phy);
+	dp_catalog_fill_io_buf(m_dp_pll);
 }
 
 static void dp_catalog_get_io(struct dp_catalog_private *catalog)
@@ -2983,6 +2985,8 @@ static void dp_catalog_get_io(struct dp_catalog_private *catalog)
 	dp_catalog_fill_io(hdcp_physical);
 	dp_catalog_fill_io(dp_p1);
 	dp_catalog_fill_io(dp_tcsr);
+	dp_catalog_fill_io(m_dp_phy);
+	dp_catalog_fill_io(m_dp_pll);
 }
 
 static void dp_catalog_set_exe_mode(struct dp_catalog *dp_catalog, char *mode)

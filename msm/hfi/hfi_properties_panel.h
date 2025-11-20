@@ -691,6 +691,30 @@
 #define HFI_PROPERTY_PANEL_COMPRESSION_RC_OVERRIDE                   0x0004002E
 
 /*
+ * HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE - Provides the line number after vertical active region for
+ *                                   video mode panels and line number after TE for command mode
+ *                                   panels, at which DSI command DMA needs to be triggered.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : u32 dma_sched_line
+ */
+#define HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE                         0x0004002F
+
+/*
+ * HFI_PROPERTY_PANEL_ESD_CONFIG - Provides the panel ESD config data required for ESD status
+ *                                 check to the DCP. This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_ESD_CONFIG
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_ESD_CONFIG |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : struct hfi_panel_esd_config
+ */
+#define HFI_PROPERTY_PANEL_ESD_CONFIG                                0x00040030
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF
