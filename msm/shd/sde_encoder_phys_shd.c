@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt)	"[drm-shd:%s:%d] " fmt, __func__, __LINE__
@@ -516,7 +516,7 @@ static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
 		phys_enc->hw_ctl = to_sde_hw_ctl(iter.hw);
 
 	if (IS_ERR_OR_NULL(phys_enc->hw_ctl)) {
-		SDE_DEBUG("failed to init ctl, %ld\n", PTR_ERR(phys_enc->hw_ctl));
+		SDE_INFO("failed to init ctl, %ld\n", PTR_ERR(phys_enc->hw_ctl));
 
 		phys_enc->hw_ctl = NULL;
 		return;
@@ -526,7 +526,7 @@ static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
 	if (sde_rm_get_hw(rm, &iter))
 		phys_enc->hw_intf = to_sde_hw_intf(iter.hw);
 	if (IS_ERR_OR_NULL(phys_enc->hw_intf)) {
-		SDE_DEBUG("failed to init intf: %ld\n", PTR_ERR(phys_enc->hw_intf));
+		SDE_INFO("failed to init intf: %ld\n", PTR_ERR(phys_enc->hw_intf));
 
 		phys_enc->hw_intf = NULL;
 		return;
@@ -536,7 +536,7 @@ static void sde_encoder_phys_shd_mode_set(struct sde_encoder_phys *phys_enc,
 	if (sde_rm_get_hw(rm, &iter))
 		phys_enc->hw_pp =  to_sde_hw_pingpong(iter.hw);
 	if (IS_ERR_OR_NULL(phys_enc->hw_pp)) {
-		SDE_DEBUG("failed to init pingpong: %ld\n", PTR_ERR(phys_enc->hw_pp));
+		SDE_INFO("failed to init pingpong: %ld\n", PTR_ERR(phys_enc->hw_pp));
 
 		phys_enc->hw_pp = NULL;
 		return;
