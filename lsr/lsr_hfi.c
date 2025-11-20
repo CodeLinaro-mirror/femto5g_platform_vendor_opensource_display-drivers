@@ -2155,6 +2155,7 @@ static int __init_subcaches(struct lsr_device *device)
 	return 0;
 
 err_subcache_get:
+	msm_lsr_syscache_disable = true;
 	__deinit_subcaches(device);
 	return 0;
 }
