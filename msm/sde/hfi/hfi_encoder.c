@@ -642,18 +642,21 @@ static int _hfi_enc_wait_for_tx_complete(struct hfi_encoder *hfi_enc)
 	struct sde_encoder_virt *sde_enc;
 	struct sde_encoder_phys *phys_enc;
 	enum hfi_display_event_id event;
-
+	struct drm_encoder *drm_enc;
 	sde_enc = hfi_enc->sde_base;
 	phys_enc = sde_enc->cur_master;
+
 	if (!phys_enc)
 		return 1;
 
 	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
 		return 1;
 
+	drm_enc = &sde_enc->base;
+
 	wait_info.wq = &hfi_enc->pending_kickoff_wq;
 	sde_encoder_set_atomic_cnt(&wait_info, sde_enc, phys_enc);
-	wait_info.timeout_ms = TIMEOUT_MAX;
+	wait_info.timeout_ms = sde_encoder_helper_get_kickoff_timeout_ms(drm_enc);
 
 	event = sde_encoder_in_clone_mode(&sde_enc->base) ? HFI_EVENT_FRAME_CAPTURE_COMPLETE :
 				HFI_EVENT_FRAME_SCAN_COMPLETE;
