@@ -24,8 +24,8 @@
 #define HFI_AD_DEBUG(fmt, ...)  \
 	pr_debug("[hfi_ad_debug] %s:%d " fmt, __func__, __LINE__, ##__VA_ARGS__)
 
-#define HFI_APADTER_STEP_US 10000
-#define MAX_TRY_COUNT 200
+#define HFI_APADTER_STEP_US 50
+#define MAX_TRY_COUNT 40000
 #define MAX_BUFFERS 10
 #define MAX_U32 0xFFFFFFFF
 #define MAX_POOL_SIZE 8
