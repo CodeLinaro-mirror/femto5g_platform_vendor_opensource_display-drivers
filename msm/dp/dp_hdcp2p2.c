@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/delay.h>
@@ -21,12 +21,15 @@
 
 #include "sde_hdcp_2x.h"
 #include "dp_debug.h"
+#include <linux/sched.h>
+#include <uapi/linux/sched/types.h>
 
 #define DP_INTR_STATUS2				(0x00000024)
 #define DP_INTR_STATUS3				(0x00000028)
 #define dp_read(offset) readl_relaxed((offset))
 #define dp_write(offset, data) writel_relaxed((data), (offset))
 #define DP_HDCP_RXCAPS_LENGTH 3
+#define RXINFO_LENGTH 2
 
 enum dp_hdcp2p2_sink_status {
 	SINK_DISCONNECTED,
@@ -56,6 +59,7 @@ struct dp_hdcp2p2_ctrl {
 	struct sde_hdcp_2x_msg_part msg_part[HDCP_MAX_MESSAGE_PARTS];
 	u8 sink_rx_status;
 	u8 rx_status;
+	u8 rx_info[2];
 	char abort_mask;
 	u32 downstream_version;
 	u8 min_enc_level;
@@ -111,7 +115,6 @@ static int dp_hdcp2p2_copy_buf(struct dp_hdcp2p2_ctrl *ctrl,
 {
 	int i = 0;
 	uint32_t num_messages = 0;
-
 	if (!data || !data->message_data)
 		return 0;
 
@@ -242,6 +245,7 @@ static int dp_hdcp2p2_wakeup(struct hdcp_transport_wakeup_data *data)
 		ctrl->response.length = data->buf_len;
 		ctrl->request.data = data->buf;
 		ctrl->request.length = ctrl->total_message_length;
+		memcpy(ctrl->rx_info, &data->buf[0], RXINFO_LENGTH);
 		kfifo_put(&ctrl->cmd_q, data->cmd);
 		wake_up(&ctrl->wait_q);
 		break;
@@ -986,7 +990,7 @@ static int dp_hdcp2p2_main(void *data)
 			dp_hdcp2p2_start_auth(ctrl);
 			break;
 		case HDCP_TRANSPORT_CMD_RX_INFO:
-			ctrl->downstream_version = ctrl->request.data[1] & 0x3;
+			ctrl->downstream_version = ctrl->rx_info[1] & 0x3;
 			dp_hdcp2p2_rx_info_done(ctrl);
 			break;
 		case HDCP_TRANSPORT_CMD_FORCED_ENCRYPTION:
@@ -1014,6 +1018,7 @@ void *sde_dp_hdcp2p2_init(struct sde_hdcp_init_data *init_data)
 {
 	int rc;
 	struct dp_hdcp2p2_ctrl *ctrl;
+	static struct sched_param param = {.sched_priority = 1};
 	static struct sde_hdcp_ops ops = {
 		.isr = dp_hdcp2p2_isr,
 		.reauthenticate = dp_hdcp2p2_reauthenticate,
@@ -1101,6 +1106,11 @@ void *sde_dp_hdcp2p2_init(struct sde_hdcp_init_data *init_data)
 		rc = PTR_ERR(ctrl->thread);
 		ctrl->thread = NULL;
 		goto error;
+	}
+
+	rc = sched_setscheduler(ctrl->thread, SCHED_FIFO, &param);
+	if (rc) {
+		DP_ERR("sched_setscheduler failed for dp_hdcp2p2\n");
 	}
 
 	return ctrl;
