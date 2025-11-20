@@ -1763,6 +1763,7 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 {
 	struct sde_hw_pipe *hw_pipe;
 	struct sde_sspp_cfg *cfg;
+	bool lsr_pipe;
 
 	if (!addr || !catalog)
 		return ERR_PTR(-EINVAL);
@@ -1783,6 +1784,12 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 	hw_pipe->idx = idx;
 	hw_pipe->cap = cfg;
 	hw_pipe->dpu_idx = dpu_idx;
+
+	if (test_bit(SDE_FEATURE_LSR, catalog->features)) {
+		lsr_pipe = ((cfg->type == SSPP_TYPE_CSC) || (cfg->type == SSPP_TYPE_REPRO));
+		if (lsr_pipe)
+			return hw_pipe;
+	}
 
 	if (test_bit(SDE_SSPP_REC_SWI_SEPARATION, &hw_pipe->cap->features))
 		setup_layer_ops_v1(hw_pipe, hw_pipe->cap->features,

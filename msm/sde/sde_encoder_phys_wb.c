@@ -43,6 +43,22 @@ static const u32 cwb_irq_tbl[PINGPONG_MAX] = {SDE_NONE, INTR_IDX_PP1_OVFL,
 	INTR_IDX_PP5_OVFL, SDE_NONE, SDE_NONE};
 
 /**
+ * sde_rgb2yuv_601l - rgb to yuv color space conversion matrix
+ *
+ */
+static struct sde_csc_cfg sde_encoder_phys_wb_rgb2yuv_601l = {
+	{
+		TO_S15D16(0x0083), TO_S15D16(0x0102), TO_S15D16(0x0032),
+		TO_S15D16(0x1fb5), TO_S15D16(0x1f6c), TO_S15D16(0x00e1),
+		TO_S15D16(0x00e1), TO_S15D16(0x1f45), TO_S15D16(0x1fdc)
+	},
+	{ 0x00, 0x00, 0x00 },
+	{ 0x0040, 0x0200, 0x0200 },
+	{ 0x000, 0x3ff, 0x000, 0x3ff, 0x000, 0x3ff },
+	{ 0x040, 0x3ac, 0x040, 0x3c0, 0x040, 0x3c0 },
+};
+
+/**
  * sde_encoder_phys_wb_is_master - report wb always as master encoder
  */
 static bool sde_encoder_phys_wb_is_master(struct sde_encoder_phys *phys_enc)
@@ -311,24 +327,27 @@ void sde_encoder_phys_setup_cdm(struct sde_encoder_phys *phys_enc, struct drm_fr
 
 	if (hw_cdm && hw_cdm->ops.setup_csc_data[disp_op]) {
 		wb_csc = msm_property_get_blob(&sde_conn->property_info,
-			&sde_conn_state->property_state, &csc_size, CONNECTOR_PROP_WB_CSC_CONFIG);
-		if (!wb_csc) {
-			SDE_ERROR("[enc:%d wb:%d] invalid CSC to setup;\n",
-					DRMID(phys_enc->parent), WBID(wb_enc));
-			return;
+				&sde_conn_state->property_state, &csc_size,
+				CONNECTOR_PROP_WB_CSC_CONFIG);
+		if (wb_csc) {
+			for (i = 0; i < SDE_CSC_MATRIX_COEFF_SIZE; i++)
+				wb_csc_cfg.csc_mv[i] =
+					(uint32_t)(wb_csc->ctm_coeff[i] & 0xffffffff);
+			for (i = 0; i < SDE_CSC_BIAS_SIZE; i++) {
+				wb_csc_cfg.csc_pre_bv[i] = wb_csc->pre_bias[i];
+				wb_csc_cfg.csc_post_bv[i] = wb_csc->post_bias[i];
+			}
+			for (i = 0; i < SDE_CSC_CLAMP_SIZE; i++) {
+				wb_csc_cfg.csc_pre_lv[i] = wb_csc->pre_clamp[i];
+				wb_csc_cfg.csc_post_lv[i] = wb_csc->post_clamp[i];
+			}
+			ret = hw_cdm->ops.setup_csc_data[disp_op](hw_cdm,
+					&wb_csc_cfg, disp_op);
+		} else {
+			ret = hw_cdm->ops.setup_csc_data[disp_op](hw_cdm,
+					&sde_encoder_phys_wb_rgb2yuv_601l, disp_op);
 		}
-		for (i = 0; i < SDE_CSC_MATRIX_COEFF_SIZE; i++)
-			wb_csc_cfg.csc_mv[i] = (uint32_t)(wb_csc->ctm_coeff[i] & 0xffffffff);
-		for (i = 0; i < SDE_CSC_BIAS_SIZE; i++) {
-			wb_csc_cfg.csc_pre_bv[i] = wb_csc->pre_bias[i];
-			wb_csc_cfg.csc_post_bv[i] = wb_csc->post_bias[i];
-		}
-		for (i = 0; i < SDE_CSC_CLAMP_SIZE; i++) {
-			wb_csc_cfg.csc_pre_lv[i] = wb_csc->pre_clamp[i];
-			wb_csc_cfg.csc_post_lv[i] = wb_csc->post_clamp[i];
-		}
-		ret = hw_cdm->ops.setup_csc_data[disp_op](hw_cdm,
-			&wb_csc_cfg, disp_op);
+
 		if (ret < 0) {
 			SDE_ERROR("[enc:%d wb:%d] failed to setup CSC; ret:%d\n",
 					DRMID(phys_enc->parent), WBID(wb_enc), ret);
@@ -1318,11 +1337,12 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 	struct sde_rect wb_roi;
 	u32 out_width = 0, out_height = 0;
 	const struct drm_display_mode *mode = &crtc_state->mode;
-	int rc;
+	int rc = 0;
 	bool clone_mode_curr = false;
 	enum sde_wb_rot_type rotation_type;
 	struct sde_drm_csc_v1 *wb_csc;
 	size_t csc_size = 0;
+	enum wb_opmode opmode;
 
 	SDE_DEBUG("[enc:%d wb:%d] atomic_check:\"%s\",%d,%d]\n", DRMID(phys_enc->parent),
 			WBID(wb_enc), mode->name, mode->hdisplay, mode->vdisplay);
@@ -1347,6 +1367,16 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 		SDE_ERROR("[enc:%d wb:%d] WB commit before CWB disable\n",
 				DRMID(phys_enc->parent), WBID(wb_enc));
 		return -EINVAL;
+	}
+
+	if (hw_wb->catalog && test_bit(SDE_FEATURE_LSR, hw_wb->catalog->features)) {
+		opmode = wb_cfg->opmode;
+
+		if (opmode == WB_CSC || opmode == WB_REPRO) {
+			SDE_DEBUG("Default out layer properties are not	set for WB type:%d\n",
+				opmode);
+			return rc;
+		}
 	}
 
 	memset(&wb_roi, 0, sizeof(struct sde_rect));
@@ -1393,12 +1423,16 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 
 	if (SDE_FORMAT_IS_YUV(fmt) && phys_enc->hw_cdm) {
 		wb_csc = msm_property_get_blob(&sde_conn->property_info,
-			 &sde_conn_state->property_state, &csc_size, CONNECTOR_PROP_WB_CSC_CONFIG);
+				&sde_conn_state->property_state, &csc_size,
+				CONNECTOR_PROP_WB_CSC_CONFIG);
 		if (!wb_csc) {
-			SDE_ERROR("[enc:%d wb:%d fb:%u fmt:0x%x] invalid CSC to setup;\n",
-					DRMID(phys_enc->parent), WBID(wb_enc), fb->base.id,
-					fb->format->format);
-			return -EINVAL;
+			/*
+			 * CSC blob missing – do not fail.
+			 * Fallback to default CSC will be handled in setup_cdm().
+			 */
+			SDE_INFO("[enc:%d wb:%d fb:%u fmt:0x%x] No CSC blob, default used\n",
+					DRMID(phys_enc->parent), WBID(wb_enc),
+					fb->base.id, fb->format->format);
 		}
 	}
 
@@ -1656,7 +1690,7 @@ static void _sde_encoder_phys_wb_update_cwb_flush_helper(
 			if (hw_wb->ops.program_dcwb_ctrl[disp_op] && phys_enc->quad_cwb_roi)
 				hw_wb->ops.program_dcwb_ctrl[disp_op](hw_wb, dcwb_idx,
 					src_pp_cwb_idx, cwb_capture_mode, enable);
-			else
+			else if (hw_wb->ops.program_dcwb_ctrl[disp_op])
 				hw_wb->ops.program_dcwb_ctrl[disp_op](hw_wb, dcwb_idx,
 					src_pp_idx, cwb_capture_mode, enable);
 			if (hw_ctl->ops.update_bitmask[disp_op])
@@ -2343,6 +2377,7 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 	phys_enc->in_clone_mode = false;
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
+	atomic_set(&phys_enc->pending_release_fence_cnt, 0);
 	atomic_set(&phys_enc->pending_ctl_start_cnt, 0);
 }
 
@@ -3052,6 +3087,7 @@ struct sde_encoder_phys *sde_encoder_phys_wb_init(struct sde_enc_phys_init_param
 	phys_enc->intf_idx = p->intf_idx;
 	phys_enc->enc_spinlock = p->enc_spinlock;
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
+	atomic_set(&phys_enc->pending_release_fence_cnt, 0);
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_ctl_start_cnt, 0);
 	init_waitqueue_head(&phys_enc->pending_kickoff_wq);

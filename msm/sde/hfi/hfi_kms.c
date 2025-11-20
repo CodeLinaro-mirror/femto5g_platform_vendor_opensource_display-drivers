@@ -32,6 +32,9 @@
  */
 #define MIN_BYTES_FOR_PIPE_CAPS(x) DWORDS_TO_BYTES(1 + x[0] +  1)
 
+static u32 _hfi_kms_read_lsr_init_caps(struct hfi_catalog_base *catalog,
+		u32 hfi_prop, u32 *payload, u32 max_words);
+
 static int hfi_kms_prepare_commit(struct sde_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -59,7 +62,7 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 
 		drm_for_each_encoder_mask(encoder, kms->dev, encoder_mask) {
 			disp_id = hfi_crtc_get_display_id(crtc, cstate);
-			if (disp_id == U32_MAX) {
+			if (disp_id == U32_MAX || sde_encoder_in_clone_mode(encoder)) {
 				SDE_DEBUG("no display for encoder%p\n", encoder);
 				continue;
 			}
@@ -403,12 +406,14 @@ struct hfi_cmdbuf_t *hfi_kms_get_cmd_buf(struct hfi_kms *hfi_kms,
 
 	hfi_client = &hfi_kms->hfi_client;
 
+	mutex_lock(&hfi_client->lock);
 	list_for_each_entry(buf, &hfi_client->cmd_buf_list, node) {
 		if (buf->cmd_type == cmd_type && buf->obj_id == display_id) {
 			ret_buf = buf;
 			break;
 		}
 	}
+	mutex_unlock(&hfi_client->lock);
 
 	return ret_buf;
 }
@@ -599,7 +604,10 @@ static int _hfi_kms_init_device_caps(struct hfi_catalog_base *catalog,
 
 	while (prop && payload) {
 		last_read = _hfi_kms_read_init_caps(catalog, prop, value_ptr, max_words);
-		if (!last_read) {
+
+		ret = _hfi_kms_read_lsr_init_caps(catalog, prop, value_ptr, max_words);
+
+		if (!last_read || (ret < 0)) {
 			SDE_ERROR("failed to get next prop\n");
 			return ret;
 		}
@@ -648,6 +656,10 @@ static void hfi_kms_populate_catalog(u32 display_id, u32 cmd_id,
 	case HFI_COMMAND_DEVICE_CALLBACK_RESOURCE_VOTE:
 	case HFI_COMMAND_DEVICE_INIT_VIG_R1_CAPS:
 	case HFI_COMMAND_DEVICE_INIT_DMA_R1_CAPS:
+	case HFI_COMMAND_DEVICE_INIT_LSR_WB_CSC_LAYER_CAPS:
+	case HFI_COMMAND_DEVICE_INIT_LSR_WB_REPROJ_LAYER_CAPS:
+	case HFI_COMMAND_DEVICE_INIT_DISPLAY_LSR_WB_CSC_CAPS:
+	case HFI_COMMAND_DEVICE_INIT_DISPLAY_LSR_WB_REPROJ_CAPS:
 		break;
 	default:
 		SDE_ERROR("command:0x%x not supported\n", cmd_id);
@@ -755,7 +767,8 @@ int hfi_kms_send_trace_cfg(struct hfi_kms *hfi_kms, u32 enable)
 }
 
 int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe,
-		uint32_t pipe_idx, bool rect1, uint32_t *hfi_pipe_id)
+		uint32_t pipe_idx, bool rect1, uint32_t *hfi_pipe_id,
+		bool csc_pipe, bool repro_pipe)
 {
 	if (vig_pipe && !rect1) {
 		if (hfi_kms->catalog->vig_count >= pipe_idx)
@@ -765,6 +778,16 @@ int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe,
 	} else if (vig_pipe && rect1) {
 		if (hfi_kms->catalog->virt_vig_count >= pipe_idx)
 			*hfi_pipe_id = hfi_kms->catalog->vig_r1_indices[pipe_idx];
+		else
+			goto fail;
+	} else if (csc_pipe) {
+		if (hfi_kms->catalog->csc_count >= pipe_idx)
+			*hfi_pipe_id = hfi_kms->catalog->csc_indices[pipe_idx];
+		else
+			goto fail;
+	} else if (repro_pipe) {
+		if (hfi_kms->catalog->repro_count >= pipe_idx)
+			*hfi_pipe_id = hfi_kms->catalog->repro_indices[pipe_idx];
 		else
 			goto fail;
 	} else if (!vig_pipe && !rect1) {
@@ -785,6 +808,14 @@ int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe,
 
 fail:
 	*hfi_pipe_id = 0xffffff;
+	if (csc_pipe || repro_pipe) {
+		SDE_DEBUG("LSR pipe indices are not populated from FW");
+		/*
+		 * Avoiding post init failure and crash to remove tight coupling with FW,
+		 * LSR commits will be failed until FW populates the proper indices.
+		 */
+		return 0;
+	}
 	return -EINVAL;
 }
 
@@ -945,3 +976,67 @@ void hfi_kms_resource_vote_hfi_prop_handler(u32 obj_uid, u32 CMD_ID, void *paylo
 		}
 	}
 }
+
+#if IS_ENABLED(CONFIG_DRM_SDE_LSR)
+static u32 _hfi_kms_read_lsr_init_caps(struct hfi_catalog_base *catalog,
+		u32 hfi_prop, u32 *payload, u32 max_words)
+{
+	u32 read = 0;
+	u32 prop_id = HFI_PROP_ID(hfi_prop);
+
+	if (!catalog || !payload)
+		return -EINVAL;
+
+	switch (prop_id) {
+	case HFI_PROPERTY_DEVICE_INIT_LSR_WB_CSC_LAYER_INDICES:
+		if (!max_words || max_words <= payload[0] || payload[0] > DPU_MAX_SSPP_COUNT) {
+			SDE_ERROR("invalid csc indices in the packet\n");
+			return read;
+		}
+
+		catalog->csc_count = payload[read++];
+		for (int i = 0; i < catalog->csc_count; i++, read++)
+			catalog->csc_indices[i] = payload[read];
+		break;
+	case HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_LAYER_INDICES:
+		if (!max_words || max_words <= payload[0] || payload[0] > DPU_MAX_SSPP_COUNT) {
+			SDE_ERROR("invalid gcx indices in the packet\n");
+			return read;
+		}
+
+		catalog->repro_count = payload[read++];
+		for (int i = 0; i < catalog->repro_count; i++, read++)
+			catalog->repro_indices[i] = payload[read];
+		break;
+	case HFI_PROPERTY_DEVICE_INIT_LSR_WB_CSC_INDICES:
+		if (payload[0] > MAX_BLOCKS) {
+			SDE_ERROR("invalid csc wb indices in the packet\n");
+			return read;
+		}
+
+		catalog->csc_wb_count = payload[read++];
+		for (int i = 0; i < catalog->csc_wb_count; i++, read++)
+			catalog->csc_wb_indices[i] = payload[read];
+
+		break;
+	case HFI_PROPERTY_DEVICE_INIT_LSR_WB_REPROJ_INDICES:
+		if (payload[0] > MAX_BLOCKS) {
+			SDE_ERROR("invalid repro wb indices in the packet\n");
+			return read;
+		}
+
+		catalog->repro_wb_count = payload[read++];
+		for (int i = 0; i < catalog->repro_wb_count; i++, read++)
+			catalog->repro_wb_indices[i] = payload[read];
+		break;
+	}
+
+	return read;
+}
+#else
+static u32 _hfi_kms_read_lsr_init_caps(struct hfi_catalog_base *catalog,
+		u32 hfi_prop, u32 *payload, u32 max_words)
+{
+	return 0;
+}
+#endif

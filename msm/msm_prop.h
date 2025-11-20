@@ -177,6 +177,19 @@ int msm_property_pop_dirty(struct msm_property_info *info,
 		struct msm_property_state *property_state);
 
 /**
+ * msm_property_clear_dirty_list - Clears all the dirty properties in the
+ *                        the dirty list. Caller needs to acquire property
+ *			  lock before calling this function and release
+ *			  the lock when finished.
+ * @info: Pointer to property info container struct
+ * @property_state: Pointer to property state container struct
+ * Returns: O on success,
+ *          -EINVAL for an error case
+ */
+int msm_property_clear_dirty_list(struct msm_property_info *info,
+		struct msm_property_state *property_state);
+
+/**
  * msm_property_init - initialize property info structure
  * @info: Pointer to property info container struct
  * @base: Pointer to base drm object (plane/crtc/etc.)

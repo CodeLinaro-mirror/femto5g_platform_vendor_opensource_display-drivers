@@ -174,6 +174,67 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_HW_RECOVERY                                   0x04000006
 
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_FRAME_CAPTURE_COMPLETE - This is a DCP event command sent to Host to
+ *                                                    notify when the frame capture (CWB) is
+ *                                                    complete.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in @ref disp_events_header_data_page)
+ *
+ * Hfi packet layout                      | Value
+ *----------------------------------------|---------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                         | HFI_COMMAND_DISPLAY_EVENT_FRAME_CAPTURE_COMPLETE
+ * hfi_packet.flags                       | HFI_RX_FLAGS_NONE (on success)
+ * ^                                      | HFI_RX_FLAGS_DEVICE_ERROR (on failure)
+ * hfi_packet.id                          | BITS 0:15 carry the display id for which the
+ *                                        | event is applicable.
+ * hfi_packet.payload[0-3]                | struct hfi_display_frame_event_data
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_FRAME_CAPTURE_COMPLETE                        0x04000007
+
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD event is sent from DCP to the host for a given display to
+ * indicate that the panel has entered a critical failure state, typically caused by ESD-related
+ * damage, hardware faults, or software misconfigurations. In this state, the panel becomes
+ * unresponsive or fails to function, and the event signals the need for recovery or diagnostic
+ * action.
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_NONE
+ *           .cmd                      : HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD
+ *           .flags                    : HFI_RX_FLAGS_NONE
+ *           .id                       : BITS 0:15 carry the display id for which the event
+ *                                          is applicable
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD                                    0x04000008
+
+/*!
+ * HFI_COMMAND_DISPLAY_EVENT_LTM - This is a DCP event notify command sent to host for LTM events
+ *                                 HIST_DONE, WB_PB, and HIST_OFF.
+ *
+ * Data layout:
+ * struct hfi_display_ltm_event_resp- stats buffer and event type
+ * @event_type      :  type of LTM event i.e. HIST_DONE, WB_PB, HIST_OFF
+ * @dcp_addr_h      :  higher value of 64bit dcp address of LTM stats buffer
+ * @dcp_addr_l      :  lower value of 64bit dcp address of LTM stats buffer
+ *
+ * struct hfi_display_ltm_event_resp {
+ *         u32 event_type;
+ *         u32 dcp_addr_h;
+ *         u32 dcp_addr_l;
+ * }
+ * hfi_packet.payload_info.type           : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                         : HFI_COMMAND_DISPLAY_EVENT_LTM
+ *           .flags                       : HFI_RX_FLAGS_NONE
+ *           .id                          : BITS 0:15 carry the display id for which the event
+ *                                          is applicable
+ *           .payload[0-2]                : struct hfi_display_ltm_event_resp
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_LTM                                           0x04000009
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H

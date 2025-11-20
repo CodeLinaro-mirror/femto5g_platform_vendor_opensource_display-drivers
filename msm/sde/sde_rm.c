@@ -756,7 +756,7 @@ static int _sde_rm_hw_blk_create(
 		hw = sde_hw_dspp_init(id, mmio, cat, sde_kms);
 		break;
 	case SDE_HW_BLK_DS:
-		hw = sde_hw_ds_init(id, mmio, cat);
+		hw = sde_hw_ds_init(id, mmio, cat, sde_kms);
 		break;
 	case SDE_HW_BLK_CTL:
 		hw = sde_hw_ctl_init(id, mmio, cat, sde_kms->dev->primary->index,
@@ -1307,6 +1307,11 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 	*dspp = NULL;
 	*ds = NULL;
 	*pp = NULL;
+	if (lm_cfg->features & BIT(SDE_MIXER_IS_VIRTUAL)) {
+		SDE_DEBUG("lm %d hw block is removed and it is a virtual mixer",
+				lm_cfg->id);
+		return false;
+	}
 
 	lm_primary_pref = lm_cfg->features & BIT(SDE_DISP_PRIMARY_PREF);
 	lm_secondary_pref = lm_cfg->features & BIT(SDE_DISP_SECONDARY_PREF);
@@ -1567,6 +1572,7 @@ static int _sde_rm_reserve_ctls(
 	struct sde_rm_hw_blk *ctls[MAX_BLOCKS];
 	struct sde_rm_hw_iter iter, curr;
 	int i = 0;
+	bool curr_avail = false;
 
 	if (!top->num_ctl) {
 		SDE_DEBUG("invalid number of ctl: %d\n", top->num_ctl);
@@ -1576,6 +1582,8 @@ static int _sde_rm_reserve_ctls(
 	memset(&ctls, 0, sizeof(ctls));
 
 	sde_rm_init_hw_iter(&curr, rsvp->enc_id, SDE_HW_BLK_CTL);
+	curr_avail = _sde_rm_get_hw_locked(rm, &curr, true);
+
 	sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_CTL);
 	while (_sde_rm_get_hw_locked(rm, &iter, true)) {
 		const struct sde_hw_ctl *ctl = to_sde_hw_ctl(iter.blk->hw);
@@ -1611,7 +1619,7 @@ static int _sde_rm_reserve_ctls(
 			continue;
 		}
 
-		if (_sde_rm_get_hw_locked(rm, &curr, true) && (curr.blk->id != iter.blk->id)) {
+		if (curr_avail && (curr.blk->id != iter.blk->id)) {
 			SDE_EVT32(curr.blk->id, iter.blk->id, SDE_EVTLOG_FUNC_CASE1);
 			SDE_DEBUG("ctl in use:%d avoiding new:%d\n", curr.blk->id, iter.blk->id);
 			continue;

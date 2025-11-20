@@ -1215,7 +1215,8 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 
 	c_conn->freq_pattern_updated = false;
 	c_conn->freq_pattern_type_changed = false;
-	if (usecase_idx_updated || frame_interval_updated || !c_conn->freq_pattern) {
+	if (usecase_idx_updated || frame_interval_updated || !c_conn->freq_pattern ||
+		msm_is_mode_seamless_emsync_fps_switch(&c_state->msm_mode)) {
 		new_freq_pattern = sde_encoder_get_freq_pattern(drm_enc, c_conn->frame_interval,
 				c_conn->usecase_idx);
 		if (!new_freq_pattern) {
@@ -1239,6 +1240,10 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 			SDE_EVT32(new_freq_pattern->frame_interval,
 				old_freq_pattern->frame_interval, new_freq_pattern->usecase_idx,
 				old_freq_pattern->usecase_idx);
+		} else if (msm_is_mode_seamless_emsync_fps_switch(&c_state->msm_mode)) {
+			c_conn->freq_pattern = new_freq_pattern;
+			c_conn->freq_pattern_updated = true;
+			SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
 		}
 
 		if (new_freq_pattern && old_freq_pattern &&
@@ -1246,7 +1251,7 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 				old_freq_pattern->freq_stepping_seq[0])) {
 			c_conn->qsync_updated = true;
 			SDE_EVT32(
-					SDE_EVTLOG_FUNC_CASE1,
+					SDE_EVTLOG_FUNC_CASE2,
 					new_freq_pattern->freq_stepping_seq[0],
 					old_freq_pattern->freq_stepping_seq[0]);
 		}
@@ -1355,8 +1360,11 @@ static int _sde_connector_update_dirty_properties(
 {
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
+	enum msm_disp_op disp_op;
 	int idx;
 	u32 b_lvl;
+	bool is_roi_dirty = false;
+	bool is_lp_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1365,17 +1373,22 @@ static int _sde_connector_update_dirty_properties(
 
 	c_conn = to_sde_connector(connector);
 	c_state = to_sde_connector_state(connector->state);
+	disp_op = sde_connector_get_disp_op(connector);
 
 	mutex_lock(&c_conn->property_info.property_lock);
 	while ((idx = msm_property_pop_dirty(&c_conn->property_info,
 					&c_state->property_state)) >= 0) {
 		switch (idx) {
 		case CONNECTOR_PROP_LP:
-			mutex_lock(&c_conn->lock);
-			c_conn->lp_mode = sde_connector_get_property(
-					connector->state, CONNECTOR_PROP_LP);
-			_sde_connector_update_power_locked(c_conn);
-			mutex_unlock(&c_conn->lock);
+			if (disp_op == MSM_DISP_OP_HWIO) {
+				mutex_lock(&c_conn->lock);
+				c_conn->lp_mode = sde_connector_get_property(
+						connector->state, CONNECTOR_PROP_LP);
+				_sde_connector_update_power_locked(c_conn);
+				mutex_unlock(&c_conn->lock);
+			} else {
+				is_lp_dirty = true;
+			}
 			break;
 		case CONNECTOR_PROP_HDR_METADATA:
 			_sde_connector_update_hdr_metadata(c_conn, c_state);
@@ -1385,12 +1398,25 @@ static int _sde_connector_update_dirty_properties(
 						CONNECTOR_PROP_BRIGHTNESS);
 			backlight_device_set_brightness(c_conn->bl_device, b_lvl);
 			break;
+		case CONNECTOR_PROP_ROI_V1:
+			is_roi_dirty = true;
+			break;
 		default:
 			/* nothing to do for most properties */
 			break;
 		}
 	}
 	mutex_unlock(&c_conn->property_info.property_lock);
+
+	if (disp_op == MSM_DISP_OP_HFI && is_roi_dirty) {
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_ROI_V1);
+	}
+
+	/* If HFI mode and LP property is dirty - add to the dirty list */
+	if ((disp_op == MSM_DISP_OP_HFI) && is_lp_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+				&c_state->property_state, CONNECTOR_PROP_LP);
 
 	/* if colorspace needs to be updated do it first */
 	if (c_conn->colorspace_updated) {
@@ -1440,10 +1466,10 @@ static bool sde_connector_power_on_off_frame(struct drm_connector *connector)
 int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
+	struct sde_connector_state *c_state;
 	struct msm_freq_step_pattern *freq_pattern;
 	struct sde_encoder_virt *sde_enc;
 	enum sde_crtc_vm_req vm_req;
-	struct sde_connector_state *c_state;
 	u64 cmd_bit_mask = 0;
 	int rc = 0;
 
@@ -1453,8 +1479,8 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	}
 
 	c_conn = to_sde_connector(connector);
-	sde_enc = to_sde_encoder_virt(c_conn->encoder);
 	c_state = to_sde_connector_state(connector->state);
+	sde_enc = to_sde_encoder_virt(c_conn->encoder);
 
 	if (sde_enc)
 		sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
@@ -1502,6 +1528,11 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 		cmd_bit_mask |= BIT(DSI_CMD_SET_EM_PULSE_SWITCH);
 	}
 
+	if(c_state->privacy_layer_updated)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_PRIVACY_LAYER);
+	else
+		cmd_bit_mask &= ~BIT(DSI_CMD_SET_PRIVACY_LAYER);
+
 	if (cmd_bit_mask) {
 		mutex_lock(&c_conn->bl_vrr.bl_lock);
 		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
@@ -1517,6 +1548,7 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 
 	c_conn->freq_pattern_updated = false;
 	c_conn->freq_pattern_type_changed = false;
+	c_state->privacy_layer_updated = false;
 
 
 	return rc;
@@ -1535,6 +1567,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		SDE_ERROR("invalid argument\n");
 		return -EINVAL;
 	}
+	disp_op = sde_connector_get_disp_op(connector);
 
 	c_conn = to_sde_connector(connector);
 	c_state = to_sde_connector_state(connector->state);
@@ -1580,13 +1613,24 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
 	}
 
-	disp_op = sde_connector_get_disp_op(connector);
 	if (c_conn->hal_ops.prepare_commit[disp_op]) {
 		rc = c_conn->hal_ops.prepare_commit[disp_op](connector, c_state);
 		if (rc) {
 			SDE_ERROR("prepare_commit HAL op failed, rc: %d\n", rc);
 			return rc;
 		}
+	}
+	if (disp_op == MSM_DISP_OP_HFI) {
+		/*
+		 * clear dirty list after all properties
+		 * are processed during the prepartion of commit
+		 */
+		mutex_lock(&c_conn->property_info.property_lock);
+		rc = msm_property_clear_dirty_list(&c_conn->property_info,
+			&c_state->property_state);
+		mutex_unlock(&c_conn->property_info.property_lock);
+		if (rc)
+			SDE_ERROR("failed to clear dirty list, rc: %d\n", rc);
 	}
 
 	if (!c_conn->ops.pre_kickoff)
@@ -1639,6 +1683,9 @@ int sde_connector_prepare_commit(struct drm_connector *connector)
 	}
 
 	display = (struct dsi_display *)c_conn->display;
+
+	if (c_state->privacy_layer_updated)
+		params.privacy_v1 = &c_state->privacy_v1;
 
 	rc = c_conn->ops.prepare_commit(c_conn->display, &params);
 
@@ -1799,6 +1846,7 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 
 	params.cmd_bit_mask = cmd_bit_mask;
 	params.peripheral_flush = peripheral_flush;
+	params.privacy_v1 = &c_state->privacy_v1;
 
 	rc = c_conn->ops.process_dcs_cmd_bitmask(c_conn->display, &params);
 
@@ -2175,6 +2223,9 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 		c_state->dyn_hdr_meta.dynamic_hdr_payload_size = 0;
 	}
 
+	/* Clear privacy layer info from prev state */
+	c_state->privacy_layer_updated = false;
+
 	return &c_state->base;
 }
 
@@ -2304,6 +2355,56 @@ static int _sde_connector_set_roi_v1(
 				c_state->rois.roi[i].y1,
 				c_state->rois.roi[i].x2,
 				c_state->rois.roi[i].y2);
+	}
+
+	return 0;
+}
+
+static int _sde_connector_set_privacy_layer_v1(
+		struct sde_connector *c_conn,
+		struct sde_connector_state *c_state,
+		void __user *usr_ptr)
+{
+	struct sde_drm_privacy_layer_v1 privacy_v1;
+	int i = 0;
+
+	if (!c_conn || !c_state) {
+		SDE_ERROR("invalid args\n");
+		return -EINVAL;
+	}
+
+	memset(&c_state->privacy_v1, 0, sizeof(c_state->privacy_v1));
+
+	if (!usr_ptr) {
+		SDE_DEBUG_CONN(c_conn, "privacy layers v1 cleared\n");
+		return 0;
+	}
+
+	if (copy_from_user(&privacy_v1, usr_ptr, sizeof(privacy_v1))) {
+		SDE_ERROR_CONN(c_conn, "failed to copy privacy layer v1 data\n");
+		return -EINVAL;
+	}
+
+	SDE_DEBUG_CONN(c_conn, "num privacy layers %d\n", privacy_v1.no_of_layers);
+
+	if (privacy_v1.no_of_layers > MAX_PRIVACY_LAYERS) {
+		SDE_ERROR_CONN(c_conn, "num privacy layers more than supported: %d",
+				privacy_v1.no_of_layers);
+		return -EINVAL;
+	}
+
+	c_state->privacy_v1.no_of_layers = privacy_v1.no_of_layers;
+	c_state->privacy_v1.reserved = privacy_v1.reserved;
+	c_state->privacy_layer_updated = true;
+
+	for (i = 0; i < privacy_v1.no_of_layers; i++) {
+		c_state->privacy_v1.privacy_list[i] = privacy_v1.privacy_list[i];
+		SDE_DEBUG_CONN(c_conn, "list%d: c_radius-%d privacy region (%d,%d) (%d,%d)\n", i,
+				c_state->privacy_v1.privacy_list[i].corner_radius,
+				c_state->privacy_v1.privacy_list[i].left,
+				c_state->privacy_v1.privacy_list[i].top,
+				c_state->privacy_v1.privacy_list[i].right,
+				c_state->privacy_v1.privacy_list[i].bottom);
 	}
 
 	return 0;
@@ -2636,6 +2737,12 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 		break;
 	case CONNECTOR_PROP_DYN_TRANSFER_TIME:
 		_sde_connector_set_prop_dyn_transfer_time(c_conn, val);
+		break;
+	case CONNECTOR_PROP_PRIVACY_LAYER_V1:
+		rc = _sde_connector_set_privacy_layer_v1(c_conn, c_state,
+				(void *)(uintptr_t)val);
+		if (rc)
+			SDE_ERROR_CONN(c_conn, "invalid privacy_layer_v1, rc: %d\n", rc);
 		break;
 	case CONNECTOR_PROP_LP:
 		/* suspend case: clear stale MISR */
@@ -3623,7 +3730,7 @@ static int sde_connector_atomic_check(struct drm_connector *connector,
 	return 0;
 }
 
-static void _sde_connector_report_panel_dead(struct sde_connector *conn,
+void sde_connector_report_panel_dead(struct sde_connector *conn,
 	bool skip_pre_kickoff)
 {
 	struct drm_event event;
@@ -3634,6 +3741,7 @@ static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 	/* Panel dead notification can come:
 	 * 1) ESD thread
 	 * 2) Commit thread (if TE stops coming)
+	 * 3) HFI_COMMAND_DISPLAY_EVENT_PANEL_DEAD event from HFI
 	 * So such case, avoid failure notification twice.
 	 */
 	if (conn->panel_dead)
@@ -3641,8 +3749,9 @@ static void _sde_connector_report_panel_dead(struct sde_connector *conn,
 
 	SDE_EVT32(SDE_EVTLOG_ERROR);
 	conn->panel_dead = true;
-	sde_encoder_display_failure_notification(conn->encoder,
-		skip_pre_kickoff);
+
+	if (sde_connector_get_disp_op(&conn->base) != MSM_DISP_OP_HFI)
+		sde_encoder_display_failure_notification(conn->encoder, skip_pre_kickoff);
 
 	event.type = DRM_EVENT_PANEL_DEAD;
 	event.length = sizeof(bool);
@@ -3709,7 +3818,7 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	if (ret <= 0) {
 		/* cancel if any pending esd work */
 		sde_connector_schedule_status_work(conn, false);
-		_sde_connector_report_panel_dead(sde_conn, true);
+		sde_connector_report_panel_dead(sde_conn, true);
 		ret = -ETIMEDOUT;
 	} else {
 		SDE_DEBUG("Successfully received TE from panel\n");
@@ -3760,7 +3869,7 @@ static void sde_connector_check_status_work(struct work_struct *work)
 		return;
 	}
 
-	_sde_connector_report_panel_dead(conn, false);
+	sde_connector_report_panel_dead(conn, false);
 }
 
 static const struct drm_connector_helper_funcs sde_connector_helper_ops = {
@@ -3848,7 +3957,7 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 			}
 		}
 
-		if (c_conn->vrr_caps.video_psr_support)
+		if (c_conn->vrr_caps.video_psr_support || c_conn->vrr_caps.has_vhm_capability)
 			sde_kms_info_add_keyint(info, "has_vhm_support", 1);
 
 		if (c_conn->dpu_dma_enabled)
@@ -4085,6 +4194,11 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 				sizeof(dsi_display->panel->hdr_props),
 				CONNECTOR_PROP_HDR_INFO);
 		}
+
+		if(dsi_display && dsi_display->panel->privacy_feature_enabled)
+			msm_property_install_volatile_range(
+				&c_conn->property_info, "privacy_layers_v1", 0x0,
+				0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V1);
 
 		if (dsi_display && dsi_display->panel &&
 				dsi_display->panel->dyn_clk_caps.dyn_clk_support)
@@ -4709,4 +4823,81 @@ bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
 
 	return msm_property_is_dirty(&conn->property_info,
 			&cstate->property_state, property_idx);
+}
+
+/**
+ * sde_conn_get_display_obj_id - helper to provide display object unique id
+ * @conn: Pointer to drm_connector struct
+ */
+u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
+{
+	struct sde_connector *sde_conn;
+	struct drm_encoder *encoder;
+	struct drm_crtc *crtc;
+	struct drm_encoder *other_enc = NULL;
+	struct drm_connector *other_conn = NULL;
+	struct sde_connector *other_sde_conn = NULL;
+	struct drm_connector_list_iter conn_iter;
+	u32 conn_id = U32_MAX;
+
+	if (!conn) {
+		SDE_ERROR("invalid connector\n");
+		return U32_MAX;
+	}
+
+	/* Get the connector's own conn_id as default return value */
+	sde_conn = to_sde_connector(conn);
+	if (!sde_conn)
+		return U32_MAX;
+
+	conn_id = sde_conn->conn_id;
+
+	/* Get encoder */
+	encoder = sde_conn->encoder;
+	if (!encoder) {
+		SDE_DEBUG("no encoder for connector %d\n", conn->base.id);
+		return conn_id;
+	}
+
+	/* If not in clone mode, return the connector's own ID */
+	if (!sde_encoder_in_clone_mode(encoder)) {
+		SDE_DEBUG("not in clone mode, using own conn_id %d\n", conn_id);
+		return conn_id;
+	}
+
+	/* Handle clone mode - get CRTC */
+	crtc = encoder->crtc;
+	if (!crtc) {
+		SDE_DEBUG("no crtc for encoder %d\n", encoder->base.id);
+		return conn_id;
+	}
+
+	/* Find another encoder attached to this CRTC */
+	drm_for_each_encoder_mask(other_enc, crtc->dev, crtc->state->encoder_mask) {
+		/* Skip the current encoder */
+		if (other_enc == encoder)
+			continue;
+
+		/* Found another encoder on same CRTC */
+		/* Find connector attached to this encoder */
+		drm_connector_list_iter_begin(crtc->dev, &conn_iter);
+		drm_for_each_connector_iter(other_conn, &conn_iter) {
+			if (other_conn->encoder == other_enc) {
+				other_sde_conn = to_sde_connector(other_conn);
+				if (other_sde_conn) {
+					conn_id = other_sde_conn->conn_id;
+					SDE_DEBUG("clone mode: using other connector %d\n",
+							other_conn->base.id);
+					break;
+				}
+			}
+		}
+		drm_connector_list_iter_end(&conn_iter);
+
+		/* If we found a connector, break out of the encoder loop too */
+		if (other_sde_conn)
+			break;
+	}
+
+	return conn_id;
 }

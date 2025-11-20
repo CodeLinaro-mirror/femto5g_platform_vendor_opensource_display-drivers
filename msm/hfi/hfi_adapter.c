@@ -42,6 +42,7 @@
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 static u32 unique_id_counter = 1;
 static atomic_t work_queue_pos_wr = ATOMIC_INIT(0);
+static DECLARE_BITMAP(wq_inuse_bitmap, HFI_ADAPTER_WORK_QUEUE_SIZE);
 
 static u32 hfi_cmd_type_map[HFI_CMDBUF_TYPE_MAX] = {
 	[HFI_CMDBUF_TYPE_ATOMIC_CHECK] = HFI_CMD_BUFF_DISPLAY,
@@ -136,11 +137,10 @@ static struct hfi_buffer_pool *get_avail_buffer(struct hfi_adapter_t *host)
 		return NULL;
 	}
 
-	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
+	/* Note: This function now expects the caller to hold hfi_adapter_cmd_buf_list_lock */
 	list_for_each(pos, &host->pool->node) {
 		pool = list_entry(pos, struct hfi_buffer_pool, node);
 		if (!pool) {
-			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 			HFI_AD_ERROR("pool is not initialized\n");
 			return NULL;
 		}
@@ -152,7 +152,6 @@ static struct hfi_buffer_pool *get_avail_buffer(struct hfi_adapter_t *host)
 			break;
 		}
 	}
-	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 
 	if (!ret_pool)
 		HFI_AD_ERROR("could not get buffer\n");
@@ -173,6 +172,7 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 	struct hfi_header *virtio_hdr;
 	struct hfi_buffer_pool *pool;
 	bool client_found = false;
+	int index;
 	int i = 0;
 
 	if (!work) {
@@ -182,6 +182,7 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 
 	cb_cmd_buf_work = container_of(work, struct callback_work, work);
 	host = cb_cmd_buf_work->host;
+	index = cb_cmd_buf_work->index;
 	if (!host) {
 		HFI_AD_ERROR("thread %d could not match host\n", cb_cmd_buf_work->index);
 		return;
@@ -194,28 +195,32 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 	}
 
 	do {
+		mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 		pool = get_avail_buffer(host);
 		if (!pool) {
 			HFI_AD_ERROR("failed to get buffer pool\n");
-			return;
+			goto error;
 		}
 
 		rx_buffer = &pool->buffer_t.buf;
 		if (!rx_buffer) {
 			HFI_AD_ERROR("buffer descriptor is null\n");
 			atomic_set(&pool->available, 1);
-			return;
+			goto error;
 		}
 
 		if (hfi_core_cmds_rx_buf_get(host->session, rx_buffer)) {
 			atomic_set(&pool->available, 1);
-			return;
+			goto error;
 		}
 
 		hfi_buff = &pool->buffer_t;
 		virtio_hdr = (struct hfi_header *)rx_buffer->pbuf_vaddr;
-		if (!virtio_hdr)
-			return;
+		if (!virtio_hdr) {
+			HFI_AD_ERROR("virtio_hdr is null\n");
+			goto error;
+		}
+		mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 
 		obj_id_rx = virtio_hdr->object_id;
 
@@ -235,7 +240,9 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 
 		if (!client_found) {
 			HFI_AD_ERROR("could not match buffer client id to a client\n");
+			mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 			release_rx_buffer_fail(hfi_buff, host);
+			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 			return;
 		}
 
@@ -247,13 +254,21 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 			ctx->process_cmd_buf(ctx, hfi_buff);
 		}  else {
 			HFI_AD_ERROR("could not match buffer to a client\n");
+			mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 			release_rx_buffer_fail(hfi_buff, host);
+			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 		}
 	} while (i++ <= MAX_TRY_COUNT);
 
 	if (i >= MAX_TRY_COUNT)
 		HFI_AD_ERROR("max retries exceeded: %d\n", i);
 
+	clear_bit(index, wq_inuse_bitmap);
+	return;
+error:
+	clear_bit(index, wq_inuse_bitmap);
+	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
+	return;
 }
 
 static void handle_ssr_start(struct hfi_adapter_t *adapter)
@@ -336,7 +351,8 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 	struct hfi_adapter_t *adapter = (struct hfi_adapter_t *)cb_data;
 	struct callback_work *cb_cmd_buf_work;
 	int ret;
-	u32 work_queue_idx;
+	int tries, slot_found = -1;
+	int work_queue_idx;
 
 	if (!cb_data)
 		return -EINVAL;
@@ -354,21 +370,30 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 			break;
 		}
 
-		atomic_fetch_add_unless(&work_queue_pos_wr, 1,
-				HFI_ADAPTER_WORK_QUEUE_SIZE);
-		work_queue_idx = atomic_read(&work_queue_pos_wr);
-		if (work_queue_idx >= HFI_ADAPTER_WORK_QUEUE_SIZE) {
-			/* If exceeds index limit, reset to 0 */
-			atomic_set(&work_queue_pos_wr, 0);
-			work_queue_idx = 0;
+		work_queue_idx = atomic_fetch_inc(&work_queue_pos_wr) &
+				HFI_ADAPTER_WORK_QUEUE_MASK;
+
+		/* Try to claim a free slot */
+		for (tries = 0; tries < HFI_ADAPTER_WORK_QUEUE_SIZE; tries++) {
+			int try_index = (work_queue_idx + tries) & HFI_ADAPTER_WORK_QUEUE_MASK;
+			/* test_and_set_bit returns prev value: 0 means we successfully set it */
+			if (!test_and_set_bit(try_index, wq_inuse_bitmap)) {
+				slot_found = try_index;
+				break;
+			}
 		}
 
-		cb_cmd_buf_work = &adapter->cb_cmd_buf_work[work_queue_idx];
+		if (slot_found < 0) {
+			HFI_AD_WARN("failed to find a free slot to queue work\n");
+			return -EINVAL;
+		}
+
+		cb_cmd_buf_work = &adapter->cb_cmd_buf_work[slot_found];
 		SDE_EVT32(event_type, SDE_EVTLOG_FUNC_CASE1);
 
 		ret = kthread_queue_work(&adapter->cb_event_worker, &cb_cmd_buf_work->work);
 		if (!ret)
-			HFI_AD_WARN("failed to queue work at index:%d\n", work_queue_idx);
+			HFI_AD_WARN("failed to queue work at index:%d\n", slot_found);
 		break;
 	case HFI_CORE_EVENT_SSR_START:
 		HFI_AD_DEBUG("SSR has been initiated\n");
@@ -598,7 +623,7 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	struct hfi_core_cmds_buf_desc *buff_desc;
 	struct hfi_cmd_buff_hdl buff_handle;
 	struct hfi_header_info header_info;
-	struct hfi_buffer_pool *pool;
+	struct hfi_buffer_pool *pool, *old_pool;
 	struct hfi_adapter_t *adapter;
 	int ret = 0;
 	static u32 counter;
@@ -610,9 +635,12 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	}
 	adapter = ctx->host;
 
+	/* Acquire lock to protect the entire critical section including pool->available */
+	mutex_lock(&adapter->hfi_adapter_cmd_buf_list_lock);
 	pool = get_avail_buffer(adapter);
 	if (!pool) {
 		HFI_AD_ERROR("failed to get available buffer pool\n");
+		mutex_unlock(&adapter->hfi_adapter_cmd_buf_list_lock);
 		return NULL;
 	}
 
@@ -629,9 +657,42 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	do {
 		if (atomic_read(&adapter->ssr_in_progress))
 			break;
+
+		old_pool = pool;
 		ret = hfi_core_cmds_tx_buf_get(adapter->session, buff_desc);
 		if (ret) {
 			failed_loop++;
+
+			/* If we've exhausted 3 retries with current pool, try a different pool */
+			if (failed_loop % (GET_BUF_RETRY/MAX_POOL_SIZE) == 3) {
+
+				buffer = &old_pool->buffer_t;
+				/* If adapter cmd buffer alloc fails, release VIRTIO buffer */
+				if (!buffer) {
+					HFI_AD_ERROR("failed to alloc memory for cmd buffer\n");
+					ret = hfi_core_release_tx_buffer(adapter->session,
+						&buff_desc, 1);
+					if (ret)
+						HFI_AD_ERROR("failed to release buffer\n");
+					atomic_set(&old_pool->available, 1);
+				}
+				/* Try to get a different available pool */
+				pool = get_avail_buffer(adapter);
+				if (!pool) {
+					HFI_AD_ERROR("no more available buffer pools\n");
+					ret = -ENOMEM;
+					break;
+				}
+
+				buff_desc = &pool->buffer_t.buf;
+				if (!buff_desc) {
+					HFI_AD_ERROR("failed to get buffer descriptor\n");
+					goto error;
+				}
+				buff_desc->prio_info = HFI_CORE_PRIO_0;
+				HFI_AD_DEBUG("Trying with new pool %p\n", &pool->buffer_t);
+			}
+
 			HFI_AD_ERROR("failed to get tx buff counter:%d retry:%d ret:%d\n",
 				counter, failed_loop, ret);
 			usleep_range(MIN_USLEEP_RANGE, MAX_USLEEP_RANGE);
@@ -684,10 +745,12 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	buffer->ctx = ctx;
 	buffer->virtq_type = HFI_VIRTQUEUE_TYPE_TX;
 
+	mutex_unlock(&adapter->hfi_adapter_cmd_buf_list_lock);
 	return buffer;
 
 error:
 	atomic_set(&pool->available, 1);
+	mutex_unlock(&adapter->hfi_adapter_cmd_buf_list_lock);
 	return NULL;
 }
 
@@ -1203,6 +1266,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 					(listener_entry->listener_obj);
 				if (!listener)
 					continue;
+				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd);
 				listener->hfi_prop_handler(packet_info.id,
 						packet_info.cmd, packet_info.payload_ptr,
 						packet_info.payload_size, listener);

@@ -485,6 +485,25 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 		return false;
 	}
 
+	/* Reject non-supported mode switches in HFI.*/
+	if (adj_mode->dsi_mode_flags &&  display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HWIO) {
+		if (adj_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS) {
+			bool matching = (cur_dsi_mode.timing.h_active == adj_mode->timing.h_active)
+			       && (cur_dsi_mode.timing.v_active == adj_mode->timing.v_active);
+
+			if (!matching) {
+				DSI_INFO("Mode switch %u is not supported\n",
+					adj_mode->dsi_mode_flags);
+				adj_mode->dsi_mode_flags &= ~DSI_MODE_FLAG_DMS;
+				return true;
+			}
+		} else {
+			DSI_INFO("Mode switch %u is not supported\n", adj_mode->dsi_mode_flags);
+			adj_mode->dsi_mode_flags = 0;
+			return true;
+		}
+	}
+
 	return rc;
 }
 
@@ -740,12 +759,7 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 		}
 	}
 
-	/**
-	 * Set partial update in hwio mode only, this disables the feature in hfi mode as
-	 * a temporal workaround until this feature is implemented in fw.
-	 */
-	if (dsi_mode->priv_info->roi_caps.enabled &&
-			dsi_display->panel->disp_op == MSM_DISP_OP_HWIO) {
+	if (dsi_mode->priv_info->roi_caps.enabled) {
 		memcpy(&mode_info->roi_caps, &dsi_mode->priv_info->roi_caps,
 			sizeof(dsi_mode->priv_info->roi_caps));
 	}
@@ -945,12 +959,10 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 			msm_spr_pack_type_mode_str[panel->spr_info.pack_type_mode]);
 	}
 
-	/**
-	 * Set partial update props in hwio mode only, this disables the feature in hfi mode as
-	 * a temporal workaround until this feature is implemented in fw.
-	 */
-	if (mode_info && mode_info->roi_caps.enabled
-			&& dsi_display->panel->disp_op == MSM_DISP_OP_HWIO) {
+	sde_kms_info_add_keystr(info, "privacy layer support",
+			panel->privacy_feature_enabled ? "true" : "false");
+
+	if (mode_info && mode_info->roi_caps.enabled) {
 		sde_kms_info_add_keyint(info, "partial_update_num_roi",
 				mode_info->roi_caps.num_roi);
 		sde_kms_info_add_keyint(info, "partial_update_xstart",

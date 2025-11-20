@@ -16,8 +16,10 @@
 #include "sde_dbg.h"
 #include "sde_hw_util.h"
 #include "sde_kms.h"
+#include "sde_hw_ds.h"
 #include <drm/msm_drm_aiqe.h>
 #include "hfi_properties_display.h"
+#include "hfi_defs_display_color.h"
 
 #define DIVCEIL(a, b)  (((a) + (b) - 1) / (b))
 
@@ -141,6 +143,9 @@ int log_sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off,
 		REG_DMA_HEADERS_BUFFER_SZ)
 #define AIQE_AI_SCALER_MEM_SIZE ((sizeof(struct drm_msm_ai_scaler)) + \
 		REG_DMA_HEADERS_BUFFER_SZ)
+#define DESTINATION_SCALER_SIZE (sizeof(struct sde_hw_scaler3_cfg) + \
+		(450 * sizeof(u32)) + \
+		REG_DMA_HEADERS_BUFFER_SZ)
 
 #define APPLY_MASK_AND_SHIFT(x, n, shift) ((x & (REG_MASK(n))) << (shift))
 #define REG_DMA_VIG_GAMUT_OP_MASK 0x300
@@ -204,6 +209,7 @@ struct sde_reg_dma_buffer *dspp_buf[REG_DMA_FEATURES_MAX][DSPP_MAX][DPU_MAX];
 static struct sde_reg_dma_buffer
 	*sspp_buf[SDE_SSPP_RECT_MAX][REG_DMA_FEATURES_MAX][SSPP_MAX][DPU_MAX];
 static struct sde_reg_dma_buffer *ltm_buf[REG_DMA_FEATURES_MAX][LTM_MAX][DPU_MAX];
+static struct sde_reg_dma_buffer *ds_buf[REG_DMA_FEATURES_MAX][DS_MAX][DPU_MAX];
 
 static u32 feature_map[SDE_DSPP_MAX] = {
 	[SDE_DSPP_VLUT] = VLUT,
@@ -4556,15 +4562,13 @@ static int reg_dmav1_setup_scaler3_adaptive_de(
 	return 0;
 }
 
-static int reg_dmav1_setup_scaler3_de(struct sde_reg_dma_setup_ops_cfg *buf,
-	struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset, bool de_lpf,
-	u32 dpu_idx)
+static int reg_dmav1_setup_scaler3_de_config(struct sde_reg_dma_setup_ops_cfg *buf,
+	struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset, bool de_lpf, u32 dpu_idx)
 {
 	u32 de_config[7];
 	struct sde_hw_reg_dma_ops *dma_ops;
 	int rc;
 	struct sde_hw_scaler3_de_cfg *de_cfg = &scaler3_cfg->de;
-	u32 de_lpf_config;
 
 	dma_ops = sde_reg_dma_get_ops(dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
@@ -4603,6 +4607,20 @@ static int reg_dmav1_setup_scaler3_de(struct sde_reg_dma_setup_ops_cfg *buf,
 		DRM_ERROR("de write failed ret %d\n", rc);
 		return rc;
 	}
+
+	return 0;
+}
+
+static int reg_dmav1_setup_scaler3_de_lpf(struct sde_reg_dma_setup_ops_cfg *buf,
+	struct sde_hw_scaler3_cfg *scaler3_cfg, u32 offset, bool de_lpf, u32 dpu_idx)
+{
+	struct sde_hw_reg_dma_ops *dma_ops;
+	int rc;
+	u32 de_lpf_config;
+
+	dma_ops = sde_reg_dma_get_ops(dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return -EOPNOTSUPP;
 
 	if (de_lpf) {
 		if (scaler3_cfg->de_lpf_flags & SDE_DE_LPF_BLEND_FLAG_EN)
@@ -4763,6 +4781,92 @@ static int _reg_dmav1_setup_pe_pre_downscale(struct sde_hw_pipe *ctx,
 	return rc;
 }
 
+static void reg_dmav1_qseed3_cmn(u32 *op_mode, struct sde_hw_scaler3_cfg *scaler3_cfg,
+		const struct sde_format *format, u32 offset, u32 dpu_idx,
+		struct sde_reg_dma_setup_ops_cfg *dma_write_cfg, bool is_qseed3_lite)
+{
+	struct sde_hw_reg_dma_ops *dma_ops;
+	u32 preload, src_y_rgb, src_uv, dst;
+	u32 cache[4];
+	int rc = 0;
+
+	dma_ops = sde_reg_dma_get_ops(dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
+	/* Configure operation mode */
+	*op_mode = BIT(0);
+	*op_mode |= (scaler3_cfg->y_rgb_filter_cfg & 0x3) << 16;
+
+	if (format && SDE_FORMAT_IS_YUV(format)) {
+		*op_mode |= BIT(12);
+		*op_mode |= (scaler3_cfg->uv_filter_cfg & 0x3) << 24;
+	}
+
+	*op_mode |= (scaler3_cfg->blend_cfg & 1) << 31;
+	*op_mode |= (scaler3_cfg->dir_en) ? BIT(4) : 0;
+	*op_mode |= (scaler3_cfg->dyn_exp_disabled) ? BIT(13) : 0;
+
+	/* Configure preload values */
+	preload = ((scaler3_cfg->preload_x[0] & 0x7F) << 0) |
+		  ((scaler3_cfg->preload_y[0] & 0x7F) << 8) |
+		  ((scaler3_cfg->preload_x[1] & 0x7F) << 16) |
+		  ((scaler3_cfg->preload_y[1] & 0x7F) << 24);
+
+	/* Configure source and destination dimensions */
+	src_y_rgb = (scaler3_cfg->src_width[0] & 0xFFFF) |
+		    ((scaler3_cfg->src_height[0] & 0xFFFF) << 16);
+
+	src_uv = (scaler3_cfg->src_width[1] & 0xFFFF) |
+		 ((scaler3_cfg->src_height[1] & 0xFFFF) << 16);
+
+	dst = (scaler3_cfg->dst_width & 0xFFFF) |
+	      ((scaler3_cfg->dst_height & 0xFFFF) << 16);
+
+	/* Setup scaler LUT */
+	if (is_qseed3_lite)
+		reg_dmav1_setup_scaler3lite_lut(dma_write_cfg, scaler3_cfg, offset, dpu_idx);
+	else
+		reg_dmav1_setup_scaler3_lut(dma_write_cfg, scaler3_cfg, offset, dpu_idx);
+
+
+	/* Setup initial phase values */
+	cache[0] = scaler3_cfg->init_phase_x[0] & 0x1FFFFF;
+	cache[1] = scaler3_cfg->init_phase_y[0] & 0x1FFFFF;
+	cache[2] = scaler3_cfg->init_phase_x[1] & 0x1FFFFF;
+	cache[3] = scaler3_cfg->init_phase_y[1] & 0x1FFFFF;
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x90, cache, sizeof(cache),
+			REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting phase failed ret %d\n", rc);
+		return;
+	}
+
+	/* Setup preload register */
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x20, &preload, sizeof(u32),
+			REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting preload failed ret %d\n", rc);
+		return;
+	}
+
+	/* Setup source and destination size registers */
+	cache[0] = src_y_rgb;
+	cache[1] = src_uv;
+	cache[2] = dst;
+
+	REG_DMA_SETUP_OPS(*dma_write_cfg, offset + 0x40, cache, 3 * sizeof(u32),
+			REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting sizes failed ret %d\n", rc);
+		return;
+	}
+}
+
 void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 	struct sde_hw_pipe_cfg *sspp, struct sde_hw_pixel_ext *pe,
 	void *scaler_cfg, struct sde_hw_inline_pre_downscale_cfg *pre_down)
@@ -4773,11 +4877,9 @@ void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	struct sde_reg_dma_kickoff_cfg kick_off;
 	struct sde_hw_cp_cfg hw_cfg = {};
-	u32 op_mode = 0, offset;
-	u32 preload, src_y_rgb, src_uv, dst, dir_weight;
-	u32 cache[4];
+	u32 op_mode = 0, offset, dir_weight;
 	enum sde_sspp_multirect_index idx = SDE_SSPP_RECT_0;
-	bool de_lpf_cap = false;
+	bool de_lpf_cap = false, is_qseed3_lite = false;
 
 	if (!ctx || !pe || !scaler_cfg) {
 		DRM_ERROR("invalid params ctx %pK pe %pK scaler_cfg %pK",
@@ -4827,96 +4929,36 @@ void reg_dmav1_setup_vig_qseed3(struct sde_hw_pipe *ctx,
 		LOG_FEATURE_ON;
 	}
 
-	op_mode = BIT(0);
-	op_mode |= (scaler3_cfg->y_rgb_filter_cfg & 0x3) << 16;
-
-	if (sspp->layout.format && SDE_FORMAT_IS_YUV(sspp->layout.format)) {
-		op_mode |= BIT(12);
-		op_mode |= (scaler3_cfg->uv_filter_cfg & 0x3) << 24;
-	}
-
-	op_mode |= (scaler3_cfg->blend_cfg & 1) << 31;
-	op_mode |= (scaler3_cfg->dir_en) ? BIT(4) : 0;
+	is_qseed3_lite = is_qseed3_rev_qseed3lite(ctx->catalog);
+	reg_dmav1_qseed3_cmn(&op_mode, scaler_cfg,
+			sspp->layout.format, offset, ctx->dpu_idx, &dma_write_cfg, is_qseed3_lite);
 	op_mode |= (scaler3_cfg->dir_en && scaler3_cfg->cor_en) ? BIT(5) : 0;
 	op_mode |= (scaler3_cfg->dir_en && scaler3_cfg->dir45_en) ? BIT(6) : 0;
-	op_mode |= (scaler3_cfg->dyn_exp_disabled) ? BIT(13) : 0;
 	if (test_bit(SDE_SSPP_SCALER_QSEED_EBS, &ctx->cap->features))
 		op_mode |= (scaler3_cfg->edge_bleed_sup_en) ? BIT(7) : 0;
-
-	preload =
-		((scaler3_cfg->preload_x[0] & 0x7F) << 0) |
-		((scaler3_cfg->preload_y[0] & 0x7F) << 8) |
-		((scaler3_cfg->preload_x[1] & 0x7F) << 16) |
-		((scaler3_cfg->preload_y[1] & 0x7F) << 24);
-
-	src_y_rgb = (scaler3_cfg->src_width[0] & 0xFFFF) |
-		((scaler3_cfg->src_height[0] & 0xFFFF) << 16);
-
-	src_uv = (scaler3_cfg->src_width[1] & 0xFFFF) |
-		((scaler3_cfg->src_height[1] & 0xFFFF) << 16);
-
-	dst = (scaler3_cfg->dst_width & 0xFFFF) |
-		((scaler3_cfg->dst_height & 0xFFFF) << 16);
 
 	if (scaler3_cfg->de.enable) {
 		if (test_bit(SDE_SSPP_SCALER_DE_LPF_BLEND, &ctx->cap->features))
 			de_lpf_cap = true;
-		rc = reg_dmav1_setup_scaler3_de(&dma_write_cfg,
+		rc = reg_dmav1_setup_scaler3_de_config(&dma_write_cfg,
 			scaler3_cfg, offset, de_lpf_cap, ctx->dpu_idx);
+		if (!rc)
+			rc = reg_dmav1_setup_scaler3_de_lpf(&dma_write_cfg,
+				scaler3_cfg, offset, de_lpf_cap, ctx->dpu_idx);
 		if (!rc) {
 			op_mode |= BIT(8);
 			if (test_bit(SDE_SSPP_SCALER_QSEED_ADE, &ctx->cap->features))
 				reg_dmav1_setup_scaler3_adaptive_de(&dma_write_cfg,
 					scaler3_cfg, offset, &op_mode, ctx->dpu_idx);
-
 		}
 	}
 
-	if (ctx->ops.setup_scaler_lut[ctx->hw.disp_op])
-		ctx->ops.setup_scaler_lut[ctx->hw.disp_op](
-			&dma_write_cfg, scaler3_cfg, offset, ctx->dpu_idx);
-
-	cache[0] = scaler3_cfg->init_phase_x[0] & 0x1FFFFF;
-	cache[1] = scaler3_cfg->init_phase_y[0] & 0x1FFFFF;
-	cache[2] = scaler3_cfg->init_phase_x[1] & 0x1FFFFF;
-	cache[3] = scaler3_cfg->init_phase_y[1] & 0x1FFFFF;
-	REG_DMA_SETUP_OPS(dma_write_cfg,
-		offset + 0x90, cache, sizeof(cache),
-		REG_BLK_WRITE_SINGLE, 0, 0, 0);
-	rc = dma_ops->setup_payload(&dma_write_cfg);
-	if (rc) {
-		DRM_ERROR("setting phase failed ret %d\n", rc);
-		return;
-	}
-
-	REG_DMA_SETUP_OPS(dma_write_cfg,
-		offset + 0x20, &preload, sizeof(u32),
-		REG_SINGLE_WRITE, 0, 0, 0);
-	rc = dma_ops->setup_payload(&dma_write_cfg);
-	if (rc) {
-		DRM_ERROR("setting preload failed ret %d\n", rc);
-		return;
-	}
-
-	cache[0] = src_y_rgb;
-	cache[1] = src_uv;
-	cache[2] = dst;
-
-	REG_DMA_SETUP_OPS(dma_write_cfg,
-		offset + 0x40, cache, 3 * sizeof(u32),
-		REG_BLK_WRITE_SINGLE, 0, 0, 0);
-	rc = dma_ops->setup_payload(&dma_write_cfg);
-	if (rc) {
-		DRM_ERROR("setting sizes failed ret %d\n", rc);
-		return;
-	}
-
-	if (is_qseed3_rev_qseed3lite(ctx->catalog)) {
+	if (is_qseed3_lite) {
 		dir_weight = (scaler3_cfg->dir_weight & 0xFF);
 
 		REG_DMA_SETUP_OPS(dma_write_cfg,
-				offset + 0x60, &dir_weight, sizeof(u32),
-				REG_SINGLE_WRITE, 0, 0, 0);
+			offset + 0x60, &dir_weight, sizeof(u32),
+			REG_SINGLE_WRITE, 0, 0, 0);
 		rc = dma_ops->setup_payload(&dma_write_cfg);
 		if (rc) {
 			DRM_ERROR("lut write failed ret %d\n", rc);
@@ -4954,6 +4996,239 @@ end:
 		if (rc)
 			DRM_ERROR("failed to kick off ret %d\n", rc);
 	}
+}
+
+void reg_dmav1_setup_ds_qseed3(struct sde_hw_ds *hw_ds,
+	void *scaler_cfg, const struct sde_format *format, bool de_lpf, u32 merge_mode)
+{
+	struct sde_hw_scaler3_cfg *scaler3_cfg = scaler_cfg;
+	int rc;
+	struct sde_hw_reg_dma_ops *dma_ops;
+	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
+	struct sde_reg_dma_kickoff_cfg kick_off;
+	struct sde_hw_cp_cfg hw_cfg = {};
+	u32 cache[4];
+	u32 op_mode = 0, merge_ctrl_setting = 0, offset;
+	u32 phase_step_y_h, phase_step_y_v, phase_step_uv_h, phase_step_uv_v;
+	struct sde_reg_dma_buffer *buf = NULL;
+
+	if (!hw_ds || !hw_ds->ctl || !scaler_cfg) {
+		DRM_ERROR("invalid params hw_ds %pK ctl %pK scaler_cfg %pK\n", hw_ds, hw_ds->ctl,
+			scaler_cfg);
+		return;
+	}
+
+	hw_cfg.ctl = hw_ds->ctl;
+	hw_cfg.payload = scaler_cfg;
+	hw_cfg.len = sizeof(*scaler3_cfg);
+#ifdef HFI_PROPERTY_DISPLAY_DEST_SCALER
+	hw_cfg.prop_id = HFI_PROPERTY_DISPLAY_DEST_SCALER;
+	hw_cfg.prop_id = HFI_PACK_VERSION(1, 0, hw_cfg.prop_id);
+	hw_cfg.prop_helper = hw_ds->prop_helper;
+	hw_cfg.num_of_mixers = hw_ds->num_mixers;
+	hw_cfg.dspp_start_idx = hw_ds->dspp_start_idx;
+	hw_cfg.dspp_idx = hw_ds->dspp_idx;
+#endif
+
+	if (!ds_buf[DESTINATION_SCALER][hw_ds->idx][hw_ds->dpu_idx]) {
+		DRM_ERROR("invalid dma buf for ds idx %d dpu_idx %d\n", hw_ds->idx, hw_ds->dpu_idx);
+		return;
+	}
+
+	buf = ds_buf[DESTINATION_SCALER][hw_ds->idx][hw_ds->dpu_idx];
+	offset = hw_ds->hw.blk_off + hw_ds->scl->base;
+	dma_ops = sde_reg_dma_get_ops(hw_ds->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
+	dma_ops->reset_reg_dma_buf(buf);
+	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, DESTINATION_SCALER, buf);
+
+	REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("write decode select failed ret %d\n", rc);
+		return;
+	}
+
+	if (!scaler3_cfg->enable) {
+		hw_cfg.flags = 0;
+		SDE_EVT32(hw_ds->idx, hw_ds->dpu_idx, 0);
+		goto end;
+	} else {
+#ifdef HFI_BUFF_FEATURE_ENABLE
+		hw_cfg.flags =
+			HFI_DISPLAY_COLOR_FLAGS_FEATURE_ENABLE;
+#endif
+		SDE_EVT32(hw_ds->idx, hw_ds->dpu_idx, 1);
+	}
+
+	reg_dmav1_qseed3_cmn(&op_mode, scaler_cfg, format, offset, hw_ds->dpu_idx,
+		&dma_write_cfg, hw_ds->is_qseed3_lite);
+
+	if (scaler3_cfg->de.enable) {
+		rc = reg_dmav1_setup_scaler3_de_config(&dma_write_cfg, scaler3_cfg,
+			offset, de_lpf, hw_ds->dpu_idx);
+		op_mode |= BIT(8);
+	}
+
+	if (de_lpf)
+		rc = reg_dmav1_setup_scaler3_de_lpf(&dma_write_cfg, scaler3_cfg,
+			offset, de_lpf, hw_ds->dpu_idx);
+
+	if (hw_ds->scl->version >= 0x3005) {
+		op_mode |= (scaler3_cfg->dir_en && scaler3_cfg->cor_en) ? BIT(5) : 0;
+		op_mode |= (scaler3_cfg->dir_en && scaler3_cfg->dir45_en) ? BIT(6) : 0;
+		op_mode |= (scaler3_cfg->edge_bleed_sup_en) ? BIT(7) : 0;
+		if ((BIT(8) & op_mode) && scaler3_cfg->ade_cfg.adaptive_de_en)
+			reg_dmav1_setup_scaler3_adaptive_de(&dma_write_cfg,
+				scaler3_cfg, offset, &op_mode, hw_ds->dpu_idx);
+	}
+
+end:
+	if (format) {
+		if (!SDE_FORMAT_IS_DX(format))
+			op_mode |= BIT(14);
+		if (format->alpha_enable) {
+			op_mode |= BIT(10);
+			op_mode |= (scaler3_cfg->alpha_filter_cfg & 0x3) << 29;
+		}
+
+	}
+
+	switch (merge_mode) {
+	case DEST_SCALER_SINGLE_PIPE:
+		merge_ctrl_setting = 0;
+		break;
+	case DEST_SCALER_DUAL_PIPE:
+		merge_ctrl_setting = BIT(0);
+		break;
+	case DEST_SCALER_QUAD_PIPE:
+		merge_ctrl_setting = (BIT(0) | BIT(1));
+		break;
+	}
+
+	REG_DMA_SETUP_OPS(dma_write_cfg, offset + 0xc, &merge_ctrl_setting,
+		sizeof(merge_ctrl_setting), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting ds merge ctrl failed ret %d\n", rc);
+		return;
+	}
+
+	phase_step_y_h = scaler3_cfg->phase_step_x[0] & 0xFFFFFF;
+	phase_step_y_v = scaler3_cfg->phase_step_y[0] & 0xFFFFFF;
+	phase_step_uv_h = scaler3_cfg->phase_step_x[1] & 0xFFFFFF;
+	phase_step_uv_v = scaler3_cfg->phase_step_y[1] & 0xFFFFFF;
+
+	cache[0] = phase_step_y_h;
+	cache[1] = phase_step_y_v;
+	cache[2] = phase_step_uv_h;
+	cache[3] = phase_step_uv_v;
+
+	REG_DMA_SETUP_OPS(dma_write_cfg,
+		offset + 0x10, cache, sizeof(cache), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting phase failed ret %d\n", rc);
+		return;
+	}
+
+	REG_DMA_SETUP_OPS(dma_write_cfg,
+		offset + 0x4, &op_mode, sizeof(op_mode), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("setting opmode failed ret %d\n", rc);
+		return;
+	}
+
+	 REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg.ctl,
+		buf, REG_DMA_WRITE,
+		DMA_CTL_QUEUE0, WRITE_IMMEDIATE, DESTINATION_SCALER);
+	if (dma_ops->kick_off[hw_ds->hw.disp_op]) {
+		rc = dma_ops->kick_off[hw_ds->hw.disp_op](&kick_off, hw_ds->dpu_idx);
+		if (rc)
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+	}
+
+}
+
+int reg_dmav1_init_ds_ops(struct sde_hw_ds *hw_ds)
+{
+	int rc = -EOPNOTSUPP;
+	struct sde_hw_reg_dma_ops *dma_ops;
+	bool is_supported = false;
+	enum sde_ds idx;
+
+	if (!hw_ds) {
+		DRM_ERROR("invalid hw_ds structure %p\n", hw_ds);
+		return -EINVAL;
+	}
+	idx = (enum sde_ds)hw_ds->idx;
+
+	if (idx >= DS_MAX) {
+		DRM_ERROR("DS init: invalid idx %d >= DS_MAX %d\n", idx, DS_MAX);
+		return -EINVAL;
+	}
+
+	if (hw_ds->dpu_idx >= DPU_MAX) {
+		DRM_ERROR("DS init: invalid dpu_idx %d >= DPU_MAX %d\n", hw_ds->dpu_idx, DPU_MAX);
+		return -EINVAL;
+	}
+
+	dma_ops = sde_reg_dma_get_ops(hw_ds->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops)) {
+		DRM_ERROR("DS init: failed to get dma_ops for dpu_idx %d\n", hw_ds->dpu_idx);
+		return -EOPNOTSUPP;
+	}
+
+	rc = dma_ops->check_support(DESTINATION_SCALER, MDSS, &is_supported);
+	if (rc) {
+		DRM_ERROR("DS init: check_support failed, rc=%d\n", rc);
+		return rc;
+	}
+
+	if (!is_supported) {
+		DRM_ERROR("DS init: DESTINATION_SCALER not supported for MDSS\n");
+		return -EOPNOTSUPP;
+	}
+
+	rc = reg_dma_buf_init(&ds_buf[DESTINATION_SCALER][idx][hw_ds->dpu_idx],
+			DESTINATION_SCALER_SIZE, hw_ds->dpu_idx);
+	if (rc) {
+		DRM_ERROR("DS init: reg_dma_buf_init failed, rc=%d\n", rc);
+		return rc;
+	}
+
+	return 0;
+}
+
+int reg_dmav1_deinit_ds_ops(struct sde_hw_ds *hw_ds)
+{
+	int i;
+	struct sde_hw_reg_dma_ops *dma_ops;
+	enum sde_ds idx;
+
+	if (!hw_ds) {
+		DRM_ERROR("invalid hw_ds structure %p\n", hw_ds);
+		return -EINVAL;
+	}
+	idx = (enum sde_ds)hw_ds->idx;
+	dma_ops = sde_reg_dma_get_ops(hw_ds->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return -EOPNOTSUPP;
+
+	if (idx >= DS_MAX) {
+		DRM_DEBUG("invalid ds idx %x max %xd\n", idx, DS_MAX);
+		return -EINVAL;
+	}
+	for (i = 0; i < REG_DMA_FEATURES_MAX; i++) {
+		if (!ds_buf[i][idx][hw_ds->dpu_idx])
+			continue;
+		dma_ops->dealloc_reg_dma(ds_buf[i][idx][hw_ds->dpu_idx], hw_ds->dpu_idx);
+		ds_buf[i][idx][hw_ds->dpu_idx] = NULL;
+	}
+	return 0;
 }
 
 int reg_dmav1_init_ltm_op_v6(int feature, struct sde_hw_dspp *ctx)
@@ -5592,6 +5867,8 @@ static void ltm_vlutv1_2_disable(struct sde_hw_dspp *ctx, void *cfg, u32 dither_
 		return;
 	}
 
+	SDE_EVT32(idx);
+
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	if (IS_ERR_OR_NULL(dma_ops))
 		return;
@@ -5607,14 +5884,16 @@ static void ltm_vlutv1_2_disable(struct sde_hw_dspp *ctx, void *cfg, u32 dither_
 		return;
 	}
 
-	offset = ctx->cap->sblk->ltm.base + 0x4;
-	ltm_vlut_ops_mask[ctx->idx][ctx->dpu_idx] &= ~ltm_vlut;
-	opmode = SDE_REG_READ(&ctx->hw, offset);
-	if (opmode & BIT(0))
-		/* disable VLUT/INIT/ROI */
-		opmode &= (REG_DMA_LTM_VLUT_DISABLE_OP_MASK & (~dither_clip_mask));
-	else
-		opmode &= 0x0;
+	if (IS_DISP_OP_HWIO(ctx->hw.disp_op)) {
+		offset = ctx->cap->sblk->ltm.base + 0x4;
+		ltm_vlut_ops_mask[ctx->idx][ctx->dpu_idx] &= ~ltm_vlut;
+		opmode = SDE_REG_READ(&ctx->hw, offset);
+		if (opmode & BIT(0))
+			/* disable VLUT/INIT/ROI */
+			opmode &= (REG_DMA_LTM_VLUT_DISABLE_OP_MASK & (~dither_clip_mask));
+		else
+			opmode &= 0x0;
+	}
 
 	REG_DMA_SETUP_OPS(dma_write_cfg, offset, &opmode,
 		sizeof(opmode), REG_SINGLE_WRITE, 0, 0, 0);
@@ -5656,11 +5935,12 @@ static int reg_dmav1_setup_ltm_vlutv1_common(struct sde_hw_dspp *ctx, void *cfg,
 		return -EINVAL;
 	}
 
-	/* vlut is set before ltm init */
-	if (!(ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] & ltm_init)) {
-		DRM_DEBUG_DRIVER("vlut is set before ltm init\n");
-		SDE_EVT32(ctx->idx, 0x2222);
-		return -EINVAL;
+	if (IS_DISP_OP_HWIO(ctx->hw.disp_op)) {
+		/* vlut is set before ltm init */
+		if (!(ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] & ltm_init)) {
+			DRM_ERROR("vlut is set before ltm init\n");
+			return -EINVAL;
+		}
 	}
 
 	if (hw_cfg->len != sizeof(struct drm_msm_ltm_data)) {
@@ -5669,11 +5949,13 @@ static int reg_dmav1_setup_ltm_vlutv1_common(struct sde_hw_dspp *ctx, void *cfg,
 		return -EINVAL;
 	}
 
-	offset = ctx->cap->sblk->ltm.base + 0x5c;
-	crs = SDE_REG_READ(&ctx->hw, offset);
-	if (!(crs & BIT(3))) {
-		DRM_ERROR("LTM VLUT buffer is not ready: crs = %d\n", crs);
-		return -EINVAL;
+	if (IS_DISP_OP_HWIO(ctx->hw.disp_op)) {
+		offset = ctx->cap->sblk->ltm.base + 0x5c;
+		crs = SDE_REG_READ(&ctx->hw, offset);
+		if (!(crs & BIT(3))) {
+			DRM_ERROR("LTM VLUT buffer is not ready: crs = %d\n", crs);
+			return -EINVAL;
+		}
 	}
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
@@ -5702,7 +5984,7 @@ static int reg_dmav1_setup_ltm_vlutv1_common(struct sde_hw_dspp *ctx, void *cfg,
 	payload = hw_cfg->payload;
 	len = sizeof(u32) * LTM_DATA_SIZE_0 * LTM_DATA_SIZE_3;
 	REG_DMA_SETUP_OPS(*dma_write_cfg, 0x3c, &payload->data[0][0],
-			len, REG_BLK_WRITE_INC, 0, 0, 0);
+		len, REG_BLK_WRITE_INC, 0, 0, 0);
 	rc = dma_ops->setup_payload(dma_write_cfg);
 	if (rc) {
 		DRM_ERROR("write VLUT data failed rc %d\n", rc);
@@ -5854,40 +6136,47 @@ static void reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(struct sde_hw_dspp *ctx, vo
 	if (rc)
 		goto vlut_exit;
 
-	sde_ltm_get_phase_info(hw_cfg, &phase);
-	for (i = 0; i < num_mixers; i++) {
-		dma_write_cfg.blk = ltm_mapping[dspp_idx[i]];
-		REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0,
-				0, 0);
-		rc = dma_ops->setup_payload(&dma_write_cfg);
-		if (rc) {
-			DRM_ERROR("write decode select failed ret %d\n", rc);
-			goto vlut_exit;
-		}
+	if (IS_DISP_OP_HWIO(ctx->hw.disp_op)) {
+		for (i = 0; i < num_mixers; i++) {
+			dma_write_cfg.blk = ltm_mapping[dspp_idx[i]];
+			REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0,
+					0, 0);
+			rc = dma_ops->setup_payload(&dma_write_cfg);
+			if (rc) {
+				DRM_ERROR("write decode select failed ret %d\n", rc);
+				goto vlut_exit;
+			}
 
-		if (phase.merge_en)
-			merge_mode = BIT(0);
-		else
-			merge_mode = 0x0;
-		REG_DMA_SETUP_OPS(dma_write_cfg, 0x18, &merge_mode, sizeof(u32),
-				REG_SINGLE_MODIFY, 0, 0,
-				0xFFFFFFFC);
-		rc = dma_ops->setup_payload(&dma_write_cfg);
-		if (rc) {
-			DRM_ERROR("write merge_ctrl failed ret %d\n", rc);
-			goto vlut_exit;
-		}
 
-		REG_DMA_SETUP_OPS(dma_write_cfg, 0x4, &opmode[i], sizeof(u32),
-				REG_SINGLE_MODIFY, 0, 0,
-				REG_DMA_LTM_VLUT_ENABLE_OP_MASK);
-		rc = dma_ops->setup_payload(&dma_write_cfg);
-		if (rc) {
-			DRM_ERROR("write opmode failed ret %d\n", rc);
-			goto vlut_exit;
+			sde_ltm_get_phase_info(hw_cfg, &phase);
+			if (phase.merge_en)
+				merge_mode = BIT(0);
+			else
+				merge_mode = 0x0;
+			REG_DMA_SETUP_OPS(dma_write_cfg, 0x18, &merge_mode, sizeof(u32),
+					REG_SINGLE_MODIFY, 0, 0,
+					0xFFFFFFFC);
+			rc = dma_ops->setup_payload(&dma_write_cfg);
+			if (rc) {
+				DRM_ERROR("write merge_ctrl failed ret %d\n", rc);
+				goto vlut_exit;
+			}
+
+			REG_DMA_SETUP_OPS(dma_write_cfg, 0x4, &opmode[i], sizeof(u32),
+					REG_SINGLE_MODIFY, 0, 0,
+					REG_DMA_LTM_VLUT_ENABLE_OP_MASK);
+			rc = dma_ops->setup_payload(&dma_write_cfg);
+			if (rc) {
+				DRM_ERROR("write opmode failed ret %d\n", rc);
+				goto vlut_exit;
+			}
 		}
 	}
 
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, ltm_buf[LTM_VLUT][idx][ctx->dpu_idx],
 				REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
 				LTM_VLUT);
@@ -5908,6 +6197,12 @@ void reg_dmav1_setup_ltm_vlutv1_2(struct sde_hw_dspp *ctx, void *cfg)
 
 void reg_dmav1_setup_ltm_vlutv1_4(struct sde_hw_dspp *ctx, void *cfg)
 {
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 4, HFI_PROPERTY_DISPLAY_COLOR_LTM_VLUT);
+	hw_cfg->flags = HFI_BUFF_FEATURE_BROADCAST;
+#endif
 	reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(ctx, cfg, BIT(10) | BIT(11));
 }
 
@@ -6477,7 +6772,7 @@ void reg_dmav2_setup_vig_gamutv61(struct sde_hw_pipe *ctx, void *cfg)
 	u32 i, j, k = 0, len, table_select = 0;
 	u32 op_mode, scale_offset, scale_tbl_offset, transfer_size_bytes;
 	u16 *data;
-	u32 vig_gamut_mode;
+	u32 current_mode = 0;
 
 	rc = reg_dma_sspp_check(ctx, cfg, GAMUT, idx);
 	if (rc)
@@ -6508,15 +6803,21 @@ void reg_dmav2_setup_vig_gamutv61(struct sde_hw_pipe *ctx, void *cfg)
 		return;
 	}
 
-	cp_feature_get_curr_mode(CP_STATE_VIG_GAMUT,
-		hw_cfg->vig_gamut_mode, &vig_gamut_mode);
-	if (vig_gamut_mode == MODE_17_A) {
+	if (IS_DISP_OP_HFI(ctx->hw.disp_op)) {
+		cp_feature_get_curr_mode(CP_STATE_VIG_GAMUT,
+			hw_cfg->vig_gamut_mode, &current_mode);
+		table_select = (current_mode == MODE_17_B) ? 0 : 1;
+	} else {
+		current_mode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->gamut_blk.base);
+		current_mode = (current_mode & (BIT(5) - 1)) >> 2;
+		table_select = (current_mode == gamut_mode_17b) ? 0 : 1;
+	}
+
+	if (table_select == 0) {
 		op_mode = gamut_mode_17;
-		table_select = 0;
 		scale_offset = GAMUT_SCALEA_OFFSET_OFF;
 	} else {
 		op_mode = gamut_mode_17b;
-		table_select = 1;
 		scale_offset = GAMUT_SCALEB_OFFSET_OFF;
 	}
 

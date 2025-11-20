@@ -18,7 +18,7 @@
 #define MAX_NUM_CTRLS_AND_LENGTH 3
 #define MAX_NUM_PHYS_AND_LENGTH 3
 #define MIN_NUM_OF_GEN_CAPS 16
-#define NUM_PANEL_CMD_TYPES_SUPPORTED 4
+#define NUM_PANEL_CMD_TYPES_SUPPORTED 7
 #define CLK_RATE_SIZE 2
 #define JITTER_SIZE 2
 #define NUM_VARIABLE_DPHY_TIMINGS 14
@@ -180,6 +180,7 @@ struct dsi_panel_timing_caps {
  * @ctrl_nums:                      HFI_PROPERTY_PANEL_CTRL_NUM
  * @phy_nums:                       HFI_PROPERTY_PANEL_PHY_NUM
  * @cphy_enabled:                   HFI_PROPERTY_PANEL_CPHY_MODE
+ * @esd_config:                     HFI_PROPERTY_PANEL_ESD_CONFIG
  */
 struct dsi_panel_generic_caps {
 	int valid_gen_caps_cnt;
@@ -213,6 +214,7 @@ struct dsi_panel_generic_caps {
 	u32 ctrl_nums[MAX_NUM_CTRLS_AND_LENGTH];
 	u32 phy_nums[MAX_NUM_PHYS_AND_LENGTH];
 	bool cphy_enabled;
+	struct hfi_panel_esd_config esd_config;
 };
 
 /**
