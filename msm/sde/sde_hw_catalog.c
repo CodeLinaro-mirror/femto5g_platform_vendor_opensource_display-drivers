@@ -1150,6 +1150,31 @@ static struct sde_prop_type rgb_hist_prop[] = {
 	{RGB_HIST_VERSION, "qcom,sde-dspp-rgb-hist-version", false, PROP_TYPE_U32},
 };
 
+static u32 default_repro_excluded_props_crtc[] = {
+	CRTC_PROP_DRAM_IB,
+	CRTC_PROP_DRAM_AB,
+	CRTC_PROP_LLCC_IB,
+	CRTC_PROP_LLCC_AB,
+	CRTC_PROP_CORE_IB,
+	CRTC_PROP_CORE_AB,
+	CRTC_PROP_CORE_CLK,
+};
+
+static u32 default_repro_excluded_props_plane[] = {
+	PLANE_PROP_ALPHA,
+	PLANE_PROP_FB_TRANSLATION_MODE,
+};
+
+static u32 *default_repro_excluded_props[SDE_OBJ_MAX] = {
+	[SDE_OBJ_CRTC] = default_repro_excluded_props_crtc,
+	[SDE_OBJ_PLANE] = default_repro_excluded_props_plane,
+};
+
+static u32 default_repro_excluded_props_count[SDE_OBJ_MAX] = {
+	[SDE_OBJ_CRTC] = ARRAY_SIZE(default_repro_excluded_props_crtc),
+	[SDE_OBJ_PLANE] = ARRAY_SIZE(default_repro_excluded_props_plane),
+};
+
 /*************************************************************
  * static API list
  *************************************************************/
@@ -7011,6 +7036,11 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		rc = sde_hardware_format_caps(sde_cfg, hw_rev);
 
 	_sde_hw_setup_uidle(&sde_cfg->uidle_cfg);
+
+	if (IS_SERAPH_TARGET(hw_rev)) {
+		sde_cfg->repro_excluded_props = default_repro_excluded_props;
+		sde_cfg->repro_excluded_props_count = default_repro_excluded_props_count;
+	}
 
 	return rc;
 }

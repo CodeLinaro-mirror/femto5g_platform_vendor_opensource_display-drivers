@@ -68,6 +68,36 @@ static struct hfi_kms *sde_crtc_get_kms(struct sde_crtc *crtc)
 	return NULL;
 }
 
+#if IS_ENABLED(CONFIG_DRM_SDE_LSR)
+static bool _hfi_crtc_is_prop_excluded_for_repro(u32 drm_prop, enum wb_opmode opmode,
+	struct sde_mdss_cfg *catalog)
+{
+	int i;
+
+	if (opmode != WB_CSC && opmode != WB_REPRO)
+		return false;
+
+	if (!catalog || !catalog->repro_excluded_props ||
+			!catalog->repro_excluded_props[SDE_OBJ_CRTC] ||
+			!catalog->repro_excluded_props_count[SDE_OBJ_CRTC] ||
+			(catalog->repro_excluded_props_count[SDE_OBJ_CRTC]
+				> HFI_CRTC_MAX_PROPS))
+		return false;
+
+	for (i = 0; i < catalog->repro_excluded_props_count[SDE_OBJ_CRTC]; i++) {
+		if (catalog->repro_excluded_props[SDE_OBJ_CRTC][i] == drm_prop)
+			return true;
+	}
+	return false;
+}
+#else
+static bool _hfi_crtc_is_prop_excluded_for_repro(u32 drm_prop, enum wb_opmode opmode,
+	struct sde_mdss_cfg *catalog)
+{
+	return false;
+}
+#endif
+
 int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 		struct sde_crtc_state *cstate,
 		struct hfi_util_u32_prop_helper *prop_collector, u32 drm_prop)
@@ -75,11 +105,25 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 	u64 prop_val;
 	struct hfi_prop_u64 prop_u64;
 	struct hfi_crtc *crtc_hfi;
+	enum wb_opmode opmode;
+	struct hfi_kms *hfi_kms;
+	struct sde_mdss_cfg *sde_cfg;
 
 	if (!crtc || !cstate)
 		return -EINVAL;
 
 	crtc_hfi = to_hfi_crtc(crtc);
+	hfi_kms = sde_crtc_get_kms(crtc);
+
+	if (!hfi_kms || !hfi_kms->base)
+		return -EINVAL;
+
+	sde_cfg = hfi_kms->base->catalog;
+	opmode = sde_crtc_check_for_lsr_opmode(&crtc->base);
+	if (_hfi_crtc_is_prop_excluded_for_repro(drm_prop, opmode, sde_cfg)) {
+		HFI_DEBUG_CRTC(crtc_hfi, "Unsupported property for Repro drm_prop:%x\n", drm_prop);
+		return 0;
+	}
 
 	switch (hfi_prop) {
 	case HFI_PROPERTY_DISPLAY_DRAM_IB:

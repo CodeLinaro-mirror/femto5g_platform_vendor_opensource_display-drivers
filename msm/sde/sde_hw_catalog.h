@@ -2028,6 +2028,19 @@ enum autorefresh_disable_sequence {
 };
 
 /**
+ * sde_obj_type - defines SDE object type
+ * @SDE_OBJ_CRTC       - SDE crtc type
+ * @SDE_OBJ_PLANE      - SDE plane type
+ * @SDE_OBJ_CONNECTOR - SDE connector type
+ */
+enum sde_obj_type {
+	SDE_OBJ_CRTC = 0,
+	SDE_OBJ_PLANE,
+	SDE_OBJ_CONNECTOR,
+	SDE_OBJ_MAX,
+};
+
+/**
  * struct sde_perf_cfg - performance control settings
  * @max_bw_low         low threshold of maximum bandwidth (kbps)
  * @max_bw_high        high threshold of maximum bandwidth (kbps)
@@ -2238,6 +2251,9 @@ struct sde_perf_cfg {
  * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
  *                      If not set it is immediate self refresh
  * @virtual_mixers_mask bitmask of virtual mixers
+ * @repro_excluded_props   Pointer to 2D array [obj_type][props] of excluded
+			   properties for reprojection
+ * @repro_excluded_props_count  Array of property counts per object type for reprojection
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -2392,6 +2408,9 @@ struct sde_mdss_cfg {
 	u32 early_EPT_handling;
 
 	bool disable_multirect;
+
+	u32 **repro_excluded_props;
+	u32 *repro_excluded_props_count;
 };
 
 struct sde_mdss_hw_cfg_handler {
