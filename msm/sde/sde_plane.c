@@ -3556,8 +3556,8 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 	}
 
 	sde_crtc = to_sde_crtc(crtc);
-	dst.x = sde_crtc->offset_x;
-	dst.y = sde_crtc->offset_y;
+	dst.x += sde_crtc->offset_x;
+	dst.y += sde_crtc->offset_y;
 
 	/*
 	 * adjust layer mixer position of the sspp in the presence
