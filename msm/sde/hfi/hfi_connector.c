@@ -365,12 +365,35 @@ int _hfi_connector_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 void hfi_connector_destroy(struct sde_connector *conn)
 {
 	struct hfi_connector *conn_hfi = (struct hfi_connector *)to_hfi_connector(conn);
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	int ret, i = 0;
 
 	if (!conn_hfi) {
 		SDE_ERROR("invalid connector\n");
 		return;
 	}
 
+	sde_kms = sde_connector_get_kms(&conn->base);
+	if (!sde_kms) {
+		SDE_ERROR("failed to get sde_kms\n");
+		goto cleanup;
+	}
+
+	for (i = 0; i < HFI_BUFF_CONN_MAX; i++) {
+		if (!conn_hfi->hfi_buff_base_props[i].size)
+			continue;
+
+		hfi_kms = to_hfi_kms(sde_kms);
+		/* Deallocate shared buffer if allocated */
+		ret = hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client,
+				&conn_hfi->hfi_buff_base_props[i]);
+		if (ret)
+			SDE_ERROR("failed to deallocate %s buffer, ret: %d\n",
+				hfi_connector_buff_prop_to_string(i), ret);
+	}
+
+cleanup:
 	kfree(conn_hfi->base_props);
 	kfree(conn_hfi->kv_props);
 
@@ -680,6 +703,7 @@ int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 	struct hfi_kms *hfi_kms;
 	struct sde_wb_device *wb_dev;
 	enum wb_opmode opmode;
+	int i = 0;
 
 	if (!sde_kms || !c_conn)
 		return -EINVAL;
@@ -728,6 +752,31 @@ int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
 	if (rc) {
 		SDE_ERROR("failed to get display info %d\n", rc);
 		goto free_kv;
+	}
+
+	for (i = 0; i < HFI_BUFF_CONN_MAX; i++) {
+		if (c_conn->connector_type != DRM_MODE_CONNECTOR_VIRTUAL)
+			continue;
+
+		if (test_bit(SDE_FEATURE_LSR, sde_kms->catalog->features)) {
+			wb_dev = (struct sde_wb_device *)c_conn->display;
+			if (wb_dev && wb_dev->wb_cfg) {
+				opmode = wb_dev->wb_cfg->opmode;
+				if (opmode == WB_CSC || opmode == WB_REPRO)
+					continue;
+			}
+		}
+
+		/* Allocate shared buffer for DPU WB connectors */
+		hfi_conn->hfi_buff_base_props[i].size =
+			sizeof(struct hfi_dnsc_blur_cfg) * DNSC_BLUR_MAX_COUNT;
+		rc = hfi_adapter_buffer_alloc(&hfi_kms->hfi_client,
+				&hfi_conn->hfi_buff_base_props[i]);
+		if (rc) {
+			hfi_conn->hfi_buff_base_props[i].size = 0;
+			SDE_ERROR("failed to allocate shared memory for %s, ret: %d\n",
+					hfi_connector_buff_prop_to_string(i), rc);
+		}
 	}
 
 	if (display_info.display_type == SDE_CONNECTOR_PRIMARY)
