@@ -1140,8 +1140,9 @@ static int dp_panel_select_max_fps_mode(struct drm_connector *connector)
 {
 	struct drm_display_mode *drm_mode, *tmp;
 	struct drm_display_mode *best_mode = NULL;
-	struct drm_display_mode *new_mode = NULL;
+	struct drm_display_mode *new_mode = NULL, *fail_safe_mode = NULL, *new_fail_safe = NULL;
 	int max_pixels = 0, max_refresh = 0;
+	int mode_count = 0;
 
 	/* Find the best mode: highest resolution, and among them highest refresh rate */
 	list_for_each_entry(drm_mode, &connector->probed_modes, head) {
@@ -1154,26 +1155,42 @@ static int dp_panel_select_max_fps_mode(struct drm_connector *connector)
 			max_refresh = refresh;
 			best_mode = drm_mode;
 		}
+
+		if (drm_mode->hdisplay == 640 && drm_mode->vdisplay == 480)
+			fail_safe_mode = drm_mode;
 	}
 
-	if (best_mode) {
+	if (best_mode)
 		new_mode = drm_mode_duplicate(connector->dev, best_mode);
 
-		if (new_mode) {
-			list_for_each_entry_safe(drm_mode, tmp, &connector->probed_modes, head) {
-				list_del(&drm_mode->head);
-				drm_mode_destroy(connector->dev, drm_mode);
-			}
+	if (fail_safe_mode && fail_safe_mode != best_mode)
+		new_fail_safe = drm_mode_duplicate(connector->dev, fail_safe_mode);
 
-			new_mode->type |= DRM_MODE_TYPE_PREFERRED;
-			list_add_tail(&new_mode->head, &connector->probed_modes);
-			DP_INFO("Selected best mode: %dx%d@%dHz",
-				new_mode->hdisplay, new_mode->vdisplay, max_refresh);
-			return 1;
+	if (new_mode) {
+		list_for_each_entry_safe(drm_mode, tmp, &connector->probed_modes, head) {
+			list_del(&drm_mode->head);
+			drm_mode_destroy(connector->dev, drm_mode);
 		}
+
+		new_mode->type |= DRM_MODE_TYPE_PREFERRED;
+		list_add_tail(&new_mode->head, &connector->probed_modes);
+		mode_count++;
+
+		DP_INFO("Selected best mode: %dx%d@%dHz",
+			new_mode->hdisplay, new_mode->vdisplay, max_refresh);
 	}
 
-	return 0;
+	/* Add fail-safe mode */
+	if (new_fail_safe) {
+		new_fail_safe->type |= DRM_MODE_TYPE_PREFERRED;
+		list_add_tail(&new_fail_safe->head, &connector->probed_modes);
+		mode_count++;
+
+		DP_INFO("Added fail-safe mode: %dx%d",
+			new_fail_safe->hdisplay, new_fail_safe->vdisplay);
+	}
+
+	return mode_count;
 }
 
 static int dp_panel_get_modes(struct dp_panel *dp_panel,
