@@ -142,11 +142,18 @@ const struct msm_format *msm_framebuffer_format(struct drm_framebuffer *fb)
 	return fb ? (to_msm_framebuffer(fb))->format : NULL;
 }
 
+#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE)
+struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
+		struct drm_file *file, const struct drm_format_info *info,
+		const struct drm_mode_fb_cmd2 *mode_cmd)
+{
+#else
 struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
 		struct drm_file *file, const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	const struct drm_format_info *info = drm_get_format_info(dev,
 								mode_cmd);
+#endif
 	struct drm_gem_object *bos[4] = {0};
 	struct drm_framebuffer *fb;
 	int ret, i, n = info->num_planes;
@@ -177,8 +184,12 @@ struct drm_framebuffer *msm_framebuffer_init(struct drm_device *dev,
 		const struct drm_mode_fb_cmd2 *mode_cmd,
 		struct drm_gem_object **bos)
 {
-	const struct drm_format_info *info = drm_get_format_info(dev,
-								mode_cmd);
+#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE)
+	const struct drm_format_info *info = drm_get_format_info(dev, mode_cmd->pixel_format,
+								mode_cmd->modifier[0]);
+#else
+	const struct drm_format_info *info = drm_get_format_info(dev, mode_cmd);
+#endif
 	struct msm_drm_private *priv = dev->dev_private;
 	struct msm_kms *kms = priv->kms;
 	struct msm_framebuffer *msm_fb = NULL;
@@ -267,7 +278,11 @@ struct drm_framebuffer *msm_framebuffer_init(struct drm_device *dev,
 	for (i = 0; i < num_planes; i++)
 		msm_fb->base.obj[i] = bos[i];
 
+#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE)
+	drm_helper_mode_fill_fb_struct(dev, fb, info, mode_cmd);
+#else
 	drm_helper_mode_fill_fb_struct(dev, fb, mode_cmd);
+#endif
 
 	ret = drm_framebuffer_init(dev, fb, &msm_framebuffer_funcs);
 	if (ret) {
