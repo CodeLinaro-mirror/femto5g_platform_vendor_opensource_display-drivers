@@ -202,8 +202,10 @@ static void _hfi_crtc_setup_sys_cache(struct sde_crtc_state *cstate, struct sde_
 		sde_crtc->llcc_stale_frame_trigger = false;
 	}
 
-	if (sde_crtc_get_property(cstate, CRTC_PROP_CACHE_STATE) || sde_crtc->cwb_idle)
+	if (sde_crtc_get_property(cstate, CRTC_PROP_CACHE_STATE) || sde_crtc->cwb_idle) {
 		sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] = true;
+		sde_crtc->cwb_idle = false;
+	}
 	else
 		sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] = false;
 
@@ -240,11 +242,11 @@ int hfi_crtc_populate_custom_kv_setter_props(struct sde_crtc *crtc, u32 disp_id,
 			setter->add_hfi_prop(setter->hfi_prop, crtc, cstate, cmd_buf);
 	}
 
+	_hfi_crtc_setup_sys_cache(cstate, crtc);
+
 	kv_count = hfi_util_kv_helper_get_count(crtc_hfi->kv_props);
 	if (!kv_count)
 		goto end;
-
-	_hfi_crtc_setup_sys_cache(cstate, crtc);
 
 	ret = hfi_adapter_add_prop_array(cmd_buf->ctx,
 			cmd_buf,

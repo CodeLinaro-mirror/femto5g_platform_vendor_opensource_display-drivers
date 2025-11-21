@@ -5616,7 +5616,8 @@ static void sde_crtc_atomic_flush_common(struct drm_crtc *crtc,
 				sde_crtc->new_perf.llcc_active[i] = true;
 		}
 	}
-	sde_core_perf_crtc_update_llcc(crtc);
+	if (IS_DISP_OP_HWIO(priv->disp_op))
+		sde_core_perf_crtc_update_llcc(crtc);
 
 	/* wait for acquire fences before anything else is done */
 	_sde_crtc_wait_for_fences(crtc);
