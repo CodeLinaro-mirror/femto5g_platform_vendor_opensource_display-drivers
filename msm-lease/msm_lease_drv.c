@@ -6,7 +6,6 @@
  * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
-// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Copyright © 2017 Keith Packard <keithp@keithp.com>
  *
