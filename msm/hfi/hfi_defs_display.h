@@ -247,6 +247,7 @@ enum hfi_display_idle_timer_control {
  * @HFI_EVENT_PANEL_DEAD              : Event ID for panel dead
  * @HFI_EVENT_LTM                     : Event ID for LTM event
  * @HFI_EVENT_RGB_HIST                : Event ID for RGB histogram event
+ * @HFI_EVENT_PA_HIST                 : Event ID for PA histogram event
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC                     = 0x1,
@@ -259,6 +260,7 @@ enum hfi_display_event_id {
 	HFI_EVENT_PANEL_DEAD                = 0x8,
 	HFI_EVENT_LTM                       = 0x9,
 	HFI_EVENT_RGB_HIST                  = 0xa,
+	HFI_EVENT_PA_HIST                   = 0xb,
 };
 
 /*

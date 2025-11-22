@@ -412,4 +412,39 @@ struct hfi_display_rgb_hist_event_resp {
 	u32 dcp_addr_lo[HFI_RGB_COMPONENT_SIZE];
 	u32 dcp_addr_hi[HFI_RGB_COMPONENT_SIZE];
 };
+
+/*!
+ * @struct hfi_display_pa_hist_buffer
+ * @brief PA histogram buffer addresses.
+ *
+ * @var flags
+ *   Flags for buffer configuration.
+ * @var dcp_addr_lo
+ *   Lower 32 bits of aligned DCP addresses.
+ * @var dcp_addr_hi
+ *   Upper 32 bits of aligned DCP addresses.
+ * @var size
+ *   Size of the histogram statistics data.
+ */
+struct hfi_display_pa_hist_buffer {
+	u32 flags;
+	u32 dcp_addr_lo;
+	u32 dcp_addr_hi;
+	u32 size;
+};
+
+/*!
+ * @struct hfi_display_pa_hist_event_resp
+ * @brief PA histogram event response.
+ *
+ * @var dcp_addr_lo
+ *   Lower 32 bits of buffer containing hist data.
+ * @var dcp_addr_hi
+ *   Upper 32 bits of buffer containing hist data.
+ */
+struct hfi_display_pa_hist_event_resp {
+	u32 dcp_addr_lo;
+	u32 dcp_addr_hi;
+};
+
 #endif // __H_HFI_DEFS_DISPLAY_COLOR_H__

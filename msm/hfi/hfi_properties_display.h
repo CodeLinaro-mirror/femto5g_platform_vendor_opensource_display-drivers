@@ -1256,6 +1256,54 @@
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_RC_PU                             0x00020128
 
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL - Property to configure PA hist control
+ *                                           parameters. Host sends this as part of
+ *                                           HFI_COMMAND_DISPLAY_SET_PROPERTY.
+ *
+ * @brief - HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL                      0x00020129
+
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER - Property to queue PA histogram
+ *                                                   buffer. Host sends this to provide buffer
+ *                                                   for histogram stats.
+ *
+ * @brief - HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_pa_hist_buffer)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_display_pa_hist_buffer
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER              0x0002012A
+
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS - Property to clear all queued PA
+ *                                                    hist buffers. Host sends this to reset
+ *                                                    histogram buffer state.
+ *
+ * @brief - HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS             0x0002012B
+
 /*
  * All display color properties end here
  */
