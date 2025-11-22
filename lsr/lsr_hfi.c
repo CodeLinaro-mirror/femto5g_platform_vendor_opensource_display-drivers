@@ -2151,8 +2151,10 @@ static int __init_subcaches(struct lsr_device *device)
 		return -EINVAL;
 	}
 
-	if (!is_sys_cache_present(device))
+	if (msm_lsr_syscache_disable || !is_sys_cache_present(device)) {
+		dprintk(LSR_ERR, "LLCC for LSR is disabled");
 		return 0;
+	}
 
 	iris_hfi_for_each_subcache(device, sinfo) {
 		if (!strcmp("llcc_gcx_to_dpu_left", sinfo->name)) {
