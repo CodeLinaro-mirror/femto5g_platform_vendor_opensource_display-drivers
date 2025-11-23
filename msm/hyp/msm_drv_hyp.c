@@ -366,6 +366,7 @@ static int _msm_hyp_crtcs_init(struct drm_device *ddev)
 	struct msm_hyp_crtc_info *crtc_infos[MAX_CRTCS];
 	uint32_t num = 0, i;
 	struct drm_crtc *crtc;
+	struct sde_crtc *sde_crtc;
 	int ret;
 
 	if (!hyp_kms->funcs || !hyp_kms->funcs->get_crtc_infos)
@@ -395,6 +396,14 @@ static int _msm_hyp_crtcs_init(struct drm_device *ddev)
 			ret = PTR_ERR(crtc);
 			goto fail;
 		}
+
+		//progagate x and y offest to sde_crtc
+		sde_crtc = to_sde_crtc(crtc);
+		sde_crtc->offset_x = crtc_infos[i]->offset_x;
+		sde_crtc->offset_y = crtc_infos[i]->offset_y;
+		pr_debug("crtc set to sde_crtc x: %d y: %d\n",
+			sde_crtc->offset_x, sde_crtc->offset_y);
+
 		priv->crtcs[priv->num_crtcs++] = crtc;
 	}
 
@@ -543,10 +552,6 @@ void msm_hyp_crtc_commit_done(struct drm_crtc *crtc)
 
 void msm_hyp_crtc_vblank_done(struct drm_crtc *crtc)
 {
-	if (WARN_ON(!crtc))
-		return;
-
-	drm_crtc_handle_vblank(crtc);
 }
 
 #ifdef CONFIG_PM_SLEEP

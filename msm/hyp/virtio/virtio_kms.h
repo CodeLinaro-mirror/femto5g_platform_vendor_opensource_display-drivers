@@ -47,6 +47,9 @@ struct scanout_attrib {
 	uint32_t hdr_max_luminance;
 	uint32_t hdr_avg_luminance;
 	uint32_t hdr_min_luminance;
+	uint32_t avr_supported;
+	uint32_t avr_min_fps;
+	uint32_t avr_step;
 };
 
 struct virtio_plane_caps {
@@ -86,6 +89,9 @@ struct virtio_kms_output {
 	struct drm_crtc *crtc;
 	bool vblank_enabled;
 	bool hpd_enabled;
+	struct completion commit_done;
+	uint32_t offset_x;
+	uint32_t offset_y;
 };
 
 struct channel_map {
@@ -163,6 +169,7 @@ struct virtio_connector_info_priv {
 	char panel_name[PANEL_NAME_LEN];
 	struct virtio_gpu_rect mode_rect;
 	uint32_t mode_index;
+	struct msm_freq_step_list freq_step_list;
 };
 
 struct virtio_crtc_info_priv {

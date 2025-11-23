@@ -3506,6 +3506,7 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 	struct sde_plane_state *pstate;
 	struct sde_rect src, dst;
 	const struct sde_rect *crtc_roi;
+	struct sde_crtc *sde_crtc;
 	bool q16_data = true;
 	int idx;
 	bool cac_pipe = false;
@@ -3553,6 +3554,10 @@ static void _sde_plane_update_roi_config(struct drm_plane *plane,
 		src.y  = DIV_ROUND_UP(src.y, 2);
 		src.y &= ~0x1;
 	}
+
+	sde_crtc = to_sde_crtc(crtc);
+	dst.x = sde_crtc->offset_x;
+	dst.y = sde_crtc->offset_y;
 
 	/*
 	 * adjust layer mixer position of the sspp in the presence

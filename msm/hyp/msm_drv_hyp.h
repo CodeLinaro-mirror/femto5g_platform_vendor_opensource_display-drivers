@@ -174,6 +174,8 @@ struct msm_hyp_crtc_info {
 	uint64_t max_mdp_clk;
 	uint64_t max_bandwidth_low;
 	uint64_t max_bandwidth_high;
+	uint32_t offset_x;
+	uint32_t offset_y;
 	const char *qseed_type;
 	const char *smart_dma_rev;
 	bool has_src_split;

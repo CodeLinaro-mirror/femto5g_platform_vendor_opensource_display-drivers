@@ -2155,7 +2155,9 @@ void sde_encoder_cancel_vrr_timers(struct drm_encoder *encoder)
 	sde_enc = to_sde_encoder_virt(encoder);
 	if (sde_enc && sde_enc->cur_master && sde_enc->disp_info.vrr_caps.vrr_support) {
 		phys_enc = sde_enc->cur_master;
-		hrtimer_cancel(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+		if (phys_enc->sde_vrr_cfg.self_refresh_timer.base) {
+			hrtimer_cancel(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+		}
 		SDE_EVT32(DRMID(encoder));
 	}
 }
@@ -6075,7 +6077,9 @@ void sde_encoder_early_ept_hint(struct drm_encoder *drm_enc, u64 frame_interval,
 
 		if (ktime_compare(hrtimer_get_expires(&phys_enc->sde_vrr_cfg.self_refresh_timer),
 			curr_time) > 0) {
-			hrtimer_cancel(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+			if (phys_enc->sde_vrr_cfg.self_refresh_timer.base) {
+				hrtimer_cancel(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+			}
 			SDE_EVT32(SDE_EVTLOG_FUNC_CASE3);
 			scheduled_timer = true;
 		}
@@ -6234,7 +6238,9 @@ static void sde_encoder_handle_collision_prior_EPT(struct sde_encoder_phys *phys
 			ns_to_ktime(collision_prevention_trigger), HRTIMER_MODE_REL);
 		SDE_ATRACE_END("cmd_self_refresh_avoid_collision");
 	} else  {
-		hrtimer_cancel(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+		if (phys_enc->sde_vrr_cfg.self_refresh_timer.base) {
+			hrtimer_cancel(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+		}
 	}
 
 }
@@ -6779,7 +6785,9 @@ int sde_encoder_prepare_for_kickoff(struct drm_encoder *drm_enc,
 			if (sde_enc->disp_info.vrr_caps.vrr_support &&
 				(ktime_compare(hrtimer_get_expires(
 			  &phys->sde_vrr_cfg.self_refresh_timer), ktime_get()) > 0)) {
-				hrtimer_cancel(&phys->sde_vrr_cfg.self_refresh_timer);
+				if (phys->sde_vrr_cfg.self_refresh_timer.base) {
+					hrtimer_cancel(&phys->sde_vrr_cfg.self_refresh_timer);
+				}
 				SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
 			}
 
