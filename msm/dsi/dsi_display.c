@@ -5876,13 +5876,15 @@ static int dsi_display_get_io_resources(struct msm_io_res *io_res, void *data)
 	if (!pdev)
 		return -EINVAL;
 
-	rc = dsi_ctrl_get_io_resources(io_res);
-	if (rc)
-		return rc;
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) {
+		rc = dsi_ctrl_get_io_resources(io_res);
+		if (rc)
+			return rc;
 
-	rc = dsi_phy_get_io_resources(io_res);
-	if (rc)
-		return rc;
+		rc = dsi_phy_get_io_resources(io_res);
+		if (rc)
+			return rc;
+	}
 
 	rc = dsi_panel_get_io_resources(display->panel, io_res);
 	if (rc)
@@ -5923,6 +5925,9 @@ static int dsi_display_pre_release(void *data)
 	display->hw_ownership = false;
 	mutex_unlock(&display->display_lock);
 
+	if (display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HWIO)
+		return 0;
+
 	/* flush work queues */
 	display_for_each_ctrl(i, display) {
 		struct dsi_display_ctrl *ctrl = &display->ctrl[i];
@@ -5950,6 +5955,9 @@ static int dsi_display_pre_acquire(void *data)
 	mutex_lock(&display->display_lock);
 	display->hw_ownership = true;
 	mutex_unlock(&display->display_lock);
+
+	if (display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HWIO)
+		return 0;
 
 	dsi_display_ctrl_irq_update((struct dsi_display *)data, true);
 
