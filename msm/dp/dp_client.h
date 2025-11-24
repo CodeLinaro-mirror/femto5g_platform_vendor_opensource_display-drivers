@@ -7,6 +7,8 @@
 #ifndef _DP_CLIENT_H_
 #define _DP_CLIENT_H_
 
+#include "msm_drv.h"
+
 #include <linux/types.h>
 #include <drm/drm_mode.h>
 #include <drm/sde_drm.h>

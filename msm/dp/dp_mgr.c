@@ -14,11 +14,11 @@
 #include <linux/usb/phy.h>
 #include <linux/jiffies.h>
 #include <linux/pm_qos.h>
-#include <linux/ipc_logging.h>
 
 #include "sde_connector.h"
 
 #include "msm_drv.h"
+#include "dp_mgr.h"
 #include "dp_hpd.h"
 #include "dp_parser.h"
 #include "dp_power.h"
@@ -191,8 +191,8 @@ struct dp_mgr_priv {
 	struct dp_link    *link;
 	struct dp_panel   *panel;
 	struct dp_ctrl    *ctrl;
-	struct dp_debug   *debug;
 	struct dp_pll     *pll;
+	struct dp_debug_client *debug;
 
 	struct dp_panel *active_panels[DP_STREAM_MAX];
 	struct dp_hdcp hdcp;
@@ -2132,7 +2132,6 @@ int dp_mgr_mmrm_callback(struct mmrm_client_notifier_data *notifier_data)
 
 static void dp_mgr_deinit_sub_modules(struct dp_mgr_priv *mgr)
 {
-	dp_debug_put(mgr->debug);
 	dp_hpd_put(mgr->hpd);
 
 	if (mgr->panel) {
@@ -2166,9 +2165,7 @@ static int dp_mgr_init_sub_modules(struct dp_mgr_priv *mgr)
 	struct dp_panel_in panel_in = {
 		.dev = dev,
 	};
-	struct dp_debug_in debug_in = {
-		.dev = dev,
-	};
+
 	struct dp_pll_in pll_in = {
 		.pdev = mgr->pdev,
 	};
@@ -2336,25 +2333,6 @@ static int dp_mgr_init_sub_modules(struct dp_mgr_priv *mgr)
 
 	hdcp_disabled = !!dp_mgr_initialize_hdcp(mgr);
 
-	debug_in.panel = mgr->panel;
-	debug_in.hpd = mgr->hpd;
-	debug_in.link = mgr->link;
-	debug_in.aux = mgr->aux;
-	debug_in.connector = &mgr->client.base_connector;
-	debug_in.catalog = mgr->catalog;
-	debug_in.parser = mgr->parser;
-	debug_in.ctrl = mgr->ctrl;
-	debug_in.pll = mgr->pll;
-	debug_in.client = &mgr->client;
-
-	mgr->debug = dp_debug_get(&debug_in);
-	if (IS_ERR(mgr->debug)) {
-		rc = PTR_ERR(mgr->debug);
-		DP_ERR("failed to initialize debug, rc = %d\n", rc);
-		mgr->debug = NULL;
-		goto error_debug;
-	}
-
 	mgr->tot_dsc_blks_in_use = 0;
 	mgr->tot_lm_blks_in_use = 0;
 
@@ -2367,13 +2345,11 @@ static int dp_mgr_init_sub_modules(struct dp_mgr_priv *mgr)
 		rc = mgr->hpd->register_hpd(mgr->hpd);
 		if (rc) {
 			DP_ERR("failed register hpd\n");
-			goto error_hpd_reg;
+			goto error_debug;
 		}
 	}
 
 	return rc;
-error_hpd_reg:
-	dp_debug_put(mgr->debug);
 error_debug:
 	dp_hpd_put(mgr->hpd);
 error_hpd:
@@ -2468,9 +2444,23 @@ static int dp_mgr_post_init(struct dp_client *client)
 	}
 
 	mgr = container_of(client, struct dp_mgr_priv, client);
+
 	rc = dp_mgr_init_sub_modules(mgr);
 	if (rc)
 		goto end;
+
+	/* update debug client's data */
+	if (mgr->debug) {
+		mgr->debug->connector = client->base_connector;
+		mgr->debug->aux = mgr->aux;
+		mgr->debug->panel = mgr->panel;
+		mgr->debug->ctrl = mgr->ctrl;
+		mgr->debug->link = mgr->link;
+		mgr->debug->hpd = mgr->hpd;
+		mgr->debug->parser = mgr->parser;
+		mgr->debug->catalog = mgr->catalog;
+		mgr->debug->max_pclk_khz = mgr->parser->max_pclk_khz;
+	}
 
 	client->drm_ops.post_init = NULL;
 end:
@@ -3301,7 +3291,6 @@ static enum drm_mode_status dp_mgr_validate_mode(
 {
 	struct dp_mgr_priv *mgr;
 	struct dp_panel *panel;
-	struct dp_debug *debug;
 	enum drm_mode_status mode_status = MODE_BAD;
 	struct dp_display_mode dp_mode;
 	int rc = 0;
@@ -3320,10 +3309,6 @@ static enum drm_mode_status dp_mgr_validate_mode(
 	}
 
 	mutex_lock(&mgr->session_lock);
-
-	debug = mgr->debug;
-	if (!debug)
-		goto end;
 
 	client->drm_ops.convert_to_dp_mode(client, panel_id, mode, &dp_mode);
 
@@ -4193,7 +4178,8 @@ void dp_mgr_post_open(struct dp_client *client)
 {
 }
 
-struct dp_client *dp_mgr_init(struct platform_device *pdev)
+struct dp_client *dp_mgr_init(struct platform_device *pdev,
+	struct dp_debug_client *debug)
 {
 	int rc = 0;
 	struct dp_mgr_priv *mgr;
@@ -4214,6 +4200,7 @@ struct dp_client *dp_mgr_init(struct platform_device *pdev)
 	}
 
 	mgr->pdev = pdev;
+	mgr->debug = debug;
 
 	init_completion(&mgr->notification_comp);
 	init_completion(&mgr->attention_comp);
