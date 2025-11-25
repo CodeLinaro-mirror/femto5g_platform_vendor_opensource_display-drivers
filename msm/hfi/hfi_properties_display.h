@@ -1239,6 +1239,23 @@
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC                          0x00020127
 
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_RC_PU - This property is to setup RC for PU.
+ *                                    Host is expected to send this packet
+ *                                    of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                    command packet payload.
+ *
+ * @brief - HFI_PROPERTY_DISPLAY_COLOR_RC_PU
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_RC_PU |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_RC_PU                             0x00020128
+
 /*
  * All display color properties end here
  */
