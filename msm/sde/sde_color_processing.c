@@ -211,6 +211,11 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_MDNIE_ART] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART,
 	[SDE_CP_CRTC_DSPP_AIQE_ABC] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC,
 };
+
+static enum sde_cp_crtc_pu_features
+	sde_cp_crtc_pu_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_PU_FEATURES] = {
+	[SDE_CP_CRTC_DSPP_RC_PU] = HFI_PROPERTY_DISPLAY_COLOR_RC_PU,
+};
 #endif
 
 typedef void (*dspp_cap_update_func_t)(struct sde_crtc *crtc,
@@ -1824,6 +1829,17 @@ static void _sde_cp_setup_hfi_config(enum sde_cp_crtc_features feature,
 #endif
 }
 
+static void _sde_cp_pu_setup_hfi_config(enum sde_cp_crtc_pu_features feature,
+		struct sde_crtc *sde_crtc, struct sde_hw_cp_cfg *hw_cfg)
+{
+#ifdef HFI_PROPERTY_DISPLAY_COLOR_BEGIN
+	hw_cfg->prop_id = sde_cp_crtc_pu_feat_to_hfi_prop_id[feature];
+	if (sde_crtc->hfi_crtc) {
+		hw_cfg->prop_helper = sde_crtc->hfi_crtc->color_props;
+	}
+#endif
+}
+
 static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 				   struct sde_crtc *sde_crtc)
 {
@@ -2305,8 +2321,16 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 	hw_cfg.broadcast_disabled = catalog->dma_cfg.broadcast_disabled;
 	hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
 	hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
-	for (i = 0; i < hw_cfg.num_of_mixers; i++)
-		hw_cfg.dspp[i] = sde_crtc->mixers[i].hw_dspp;
+	for (i = 0; i < hw_cfg.num_of_mixers; i++) {
+		hw_dspp = sde_crtc->mixers[i].hw_dspp;
+		if (!hw_dspp || i >= DSPP_MAX)
+			continue;
+		hw_cfg.dspp[i] = hw_dspp;
+		if (j == 0) {
+			hw_cfg.dspp_start_idx = hw_dspp->idx;
+			j++;
+		}
+	}
 
 	for (i = 0; i < SDE_CP_CRTC_MAX_PU_FEATURES; i++) {
 		feature_wrapper set_pu_feature =
@@ -2347,13 +2371,14 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 		for (j = 0; j < hw_cfg.num_of_mixers; j++) {
 			hw_lm = sde_crtc->mixers[j].hw_lm;
 			hw_dspp = sde_crtc->mixers[j].hw_dspp;
-
+			hw_cfg.dspp_idx = hw_dspp->idx;
 			hw_cfg.mixer_info = hw_lm;
 			hw_cfg.ctl = sde_crtc->mixers[j].hw_ctl;
 			hw_cfg.displayh = hw_cfg.num_of_mixers *
 					hw_lm->cfg.out_width;
 			hw_cfg.displayv = hw_lm->cfg.out_height;
 
+			_sde_cp_pu_setup_hfi_config(i, sde_crtc, &hw_cfg);
 			ret = set_pu_feature(hw_dspp, &hw_cfg, sde_crtc);
 			/* feature does not need flush when ret > 0 */
 			if (ret < 0) {
@@ -3081,6 +3106,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 
 	if (IS_DISP_OP_HFI(disp_op)) {
 		_sde_cp_mark_active_dirty_internal(sde_crtc);
+		_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_RC_PU, false);
 		return;
 	}
 
