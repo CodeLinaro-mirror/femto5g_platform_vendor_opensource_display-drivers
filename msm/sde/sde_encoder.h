@@ -1033,6 +1033,14 @@ static inline bool sde_encoder_check_ctl_done_support(struct drm_encoder *drm_en
 bool sde_encoder_is_dsi_display(struct drm_encoder *enc);
 
 /**
+ * sde_encoder_is_edp_display - checks if underlying display is EDP
+ *     display or not.
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true if it is a edp display. false otherwise
+ */
+bool sde_encoder_is_edp_display(struct drm_encoder *drm_enc);
+
+/**
  * sde_encoder_control_idle_pc - control enable/disable of idle power collapse
  * @drm_enc:    Pointer to drm encoder structure
  * @enable:	enable/disable flag

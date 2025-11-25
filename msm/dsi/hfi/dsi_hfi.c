@@ -73,12 +73,6 @@ static int _dsi_display_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 		return -EINVAL;
 	}
 
-	rc = hfi_adapter_ssr_unmap_device_addr(hfi_client);
-	if (rc) {
-		DSI_ERR("failed to unmap fw mapped buffers, rc: %d\n", rc);
-		return rc;
-	}
-
 	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
 	if (rc) {
 		DSI_ERR("failed to release command buffers, rc: %d\n", rc);
@@ -99,12 +93,6 @@ static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 	if (!display) {
 		DSI_ERR("invalid display\n");
 		return -EINVAL;
-	}
-
-	rc = hfi_adapter_ssr_map_device_addr(hfi_client);
-	if (rc) {
-		DSI_ERR("failed to map fw mapped buffers, rc: %d\n", rc);
-		return rc;
 	}
 
 	sde_kms = sde_connector_get_kms(display->drm_conn);

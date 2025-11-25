@@ -39,7 +39,7 @@
 #include "dsi_display.h"
 #include "dsi_drm.h"
 #include "sde_wb.h"
-#include "dp_display.h"
+#include "dp_drv.h"
 #include "dp_drm.h"
 #include "dp_mst_drm.h"
 #include "hdmi_display.h"
@@ -1924,11 +1924,11 @@ static void sde_kms_prepare_fence(struct msm_kms *kms,
 static void edp_display_get_displays(struct sde_kms *sde_kms)
 {
 	int i, count = 0;
-	struct dp_display *display;
+	struct dp_drv *display;
 
 	for (i = 0; i < sde_kms->dp_display_count; i++) {
-		display = (struct dp_display *)sde_kms->dp_displays[i];
-		if (display->is_edp)
+		display = (struct dp_drv *)sde_kms->dp_displays[i];
+		if (display->client->is_edp)
 			sde_kms->edp_displays[count++] = display;
 	}
 }
@@ -1952,7 +1952,7 @@ static int sde_get_builtin_disp_count(struct drm_device *dev)
 	if (dsi_display_count)
 		return dsi_display_count;
 
-	edp_display_count = edp_display_get_num_of_displays(dev);
+	edp_display_count = edp_drv_get_num_of_displays(dev);
 	if (edp_display_count)
 		return edp_display_count;
 
@@ -2007,7 +2007,7 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 
 	/* dp */
 	sde_kms->dp_displays = NULL;
-	sde_kms->dp_display_count = dp_display_get_num_of_displays(sde_kms->dev);
+	sde_kms->dp_display_count = dp_drv_get_num_of_displays(sde_kms->dev);
 	if (sde_kms->dp_display_count) {
 		sde_kms->dp_displays = kcalloc(sde_kms->dp_display_count,
 				sizeof(void *), GFP_KERNEL);
@@ -2016,16 +2016,16 @@ static int _sde_kms_get_displays(struct sde_kms *sde_kms)
 			goto exit_deinit_dp;
 		}
 		sde_kms->dp_display_count =
-			dp_display_get_displays(sde_kms->dev,
+			dp_drv_get_displays(sde_kms->dev,
 					sde_kms->dp_displays,
 					sde_kms->dp_display_count);
 
-		sde_kms->dp_stream_count = dp_display_get_num_of_streams(sde_kms->dev);
+		sde_kms->dp_stream_count = dp_drv_get_num_of_streams(sde_kms->dev);
 	}
 
 	/* edp */
 	sde_kms->edp_displays = NULL;
-	sde_kms->edp_display_count = edp_display_get_num_of_displays(sde_kms->dev);
+	sde_kms->edp_display_count = edp_drv_get_num_of_displays(sde_kms->dev);
 	if (sde_kms->edp_display_count) {
 		sde_kms->edp_displays = kcalloc(sde_kms->edp_display_count,
 				sizeof(void *), GFP_KERNEL);
@@ -2184,7 +2184,7 @@ int setup_hdmi_displays(struct drm_device *dev,
 		if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG)
 			connector_poll = DRM_CONNECTOR_POLL_HPD;
 		// FIXME; fix this
-		//info.h_tile_instance[0] = dp_info.intf_idx[0];
+		//info.h_tile_instance[0] = dp_info->intf_idx[0];
 
 		snprintf(cesta_client_name, sizeof(cesta_client_name), "hdmi%u", i);
 		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
@@ -2363,8 +2363,8 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.set_colorspace = dp_connector_set_colorspace,
 		.config_hdr = dp_connector_config_hdr,
 		.cmd_transfer = NULL,
-		.cont_splash_config = dp_display_cont_splash_config,
-		.cont_splash_res_disable = dp_display_cont_splash_res_disable,
+		.cont_splash_config = dp_connector_cont_splash_config,
+		.cont_splash_res_disable = dp_connector_cont_splash_res_disable,
 		.get_panel_vfp = NULL,
 		.update_pps = dp_connector_update_pps,
 		.cmd_receive = NULL,
@@ -2534,7 +2534,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 	for (i = 0; i < sde_kms->dp_display_count &&
 			priv->num_encoders < max_encoders; ++i) {
 		int idx;
-		struct dp_display_info dp_info = {0};
+		struct dp_intf_info *dp_info;
 		struct sde_cesta_client *sst_cesta_client;
 		display = sde_kms->dp_displays[i];
 		encoder = NULL;
@@ -2544,12 +2544,12 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			SDE_ERROR("dp get_info %d failed\n", i);
 			continue;
 		}
-		rc = dp_display_get_info(display, &dp_info);
-		if (rc) {
+		dp_info = dp_drv_get_info(display);
+		if (!dp_info) {
 			SDE_ERROR("failed to read dp info, %d\n", rc);
 			continue;
 		}
-		info.h_tile_instance[0] = dp_info.intf_idx[0];
+		info.h_tile_instance[0] = dp_info->intf_idx[0];
 		snprintf(cesta_client_name, sizeof(cesta_client_name), "dp%u", i);
 		cesta_client = sde_cesta_create_client(DPUID(dev), cesta_client_name);
 		sst_cesta_client = cesta_client;
@@ -2583,9 +2583,9 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		}
 		/* update display cap to MST_MODE for DP MST encoders */
 		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
-		for (idx = 0; idx < dp_info.stream_cnt &&
+		for (idx = 0; idx < dp_info->stream_cnt &&
 				priv->num_encoders < max_encoders; idx++) {
-			info.h_tile_instance[0] = dp_info.intf_idx[idx];
+			info.h_tile_instance[0] = dp_info->intf_idx[idx];
 			/*
 			 * use same sst cesta client for first mst encoder as sst/mst are
 			 * mutually exclusive and can use the same cesta client
@@ -2940,7 +2940,7 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 	/* All CRTCs are compatible with all encoders */
 	for (i = 0; i < priv->num_encoders; i++) {
 		priv->encoders[i]->possible_crtcs = (1 << priv->num_crtcs) - 1;
-		if (catalog->max_cwb > 0)
+		if (catalog->max_cwb > 0 || (catalog->cac_version == SDE_SSPP_CAC_LOOPBACK))
 			priv->encoders[i]->possible_clones =
 				sde_encoder_get_clones(priv->encoders[i]);
 	}
@@ -4399,7 +4399,7 @@ static int sde_kms_inform_cont_splash_res_disable(struct msm_kms *kms,
 	struct drm_connector *connector = NULL;
 	struct sde_connector *sde_conn = NULL;
 	struct dsi_display *dsi_display = NULL;
-	struct dp_display *dp_display = NULL;
+	struct dp_drv *dp_display = NULL;
 	int rc = 0;
 
 	sde_kms = to_sde_kms(kms);
@@ -4411,9 +4411,9 @@ static int sde_kms_inform_cont_splash_res_disable(struct msm_kms *kms,
 			if (dsi_display->bridge->base.encoder)
 				encoder = dsi_display->bridge->base.encoder;
 		} else if (splash_type == INTF_EDP) {
-			dp_display = (struct dp_display *)display;
-			if (dp_display->bridge->base.encoder)
-				encoder = dp_display->bridge->base.encoder;
+			dp_display = display;
+			if (dp_display->client->bridge->base.encoder)
+				encoder = dp_display->client->bridge->base.encoder;
 		}
 
 	}
@@ -4578,7 +4578,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 		return -EINVAL;
 	}
 
-	intf_type = edp_display_get_num_of_displays(sde_kms->dev) ? INTF_EDP : INTF_DSI;
+	intf_type = edp_drv_get_num_of_displays(sde_kms->dev) ? INTF_EDP : INTF_DSI;
 
 	if (((sde_kms->splash_data.type == SDE_SPLASH_HANDOFF)
 		&& (!sde_kms->splash_data.num_splash_regions)) ||
@@ -4612,7 +4612,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 
 		} else if (intf_type == INTF_EDP) {
 			display = sde_kms->edp_displays[i];
-			encoder = ((struct dp_display *)display)->bridge->base.encoder;
+			encoder = ((struct dp_drv *)display)->client->bridge->base.encoder;
 			display_name = "edp_display";
 		}
 
@@ -4941,6 +4941,44 @@ end:
 	return ret;
 }
 
+int sde_kms_wait_for_display_off(struct sde_kms *kms)
+{
+	int rc = 0;
+	struct drm_crtc *crtc;
+	struct drm_device *dev;
+	struct drm_crtc_state *crtc_state;
+	bool any_crtc_active = false;
+	int wait_count = 0;
+
+	if (!kms || !kms->dev) {
+		SDE_ERROR("invalid kms\n");
+		return -EINVAL;
+	}
+	dev = kms->dev;
+
+	do {
+		if (any_crtc_active) {
+			if (wait_count++ > 200) {
+				SDE_ERROR("timeout waiting for display off\n");
+				rc = -ETIMEDOUT;
+				break;
+			}
+			usleep_range(1000, 1000 + 10);
+			any_crtc_active = false;
+		}
+		drm_for_each_crtc(crtc, dev) {
+			if (crtc->state && crtc->state->active) {
+				crtc_state = crtc->state;
+				if (crtc_state->active && crtc_state->enable) {
+					any_crtc_active = true;
+					break;
+				}
+			}
+		}
+	} while (any_crtc_active);
+
+	return rc;
+}
 
 void sde_kms_display_early_wakeup(struct drm_device *dev,
 				const int32_t connector_id)

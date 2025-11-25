@@ -3382,16 +3382,18 @@ void sde_plane_flush(struct drm_plane *plane)
 		else
 			hfi_client = cmd_buf->ctx;
 
-		ret = hfi_adapter_add_set_property(hfi_client,
-				cmd_buf,
-				HFI_COMMAND_DISPLAY_SET_PROPERTY,
-				disp_id,
-				HFI_PAYLOAD_TYPE_U32_ARRAY,
-				hfi_util_u32_prop_helper_get_payload_addr(color_props),
-				hfi_util_u32_prop_helper_get_size(color_props),
-				HFI_HOST_FLAGS_NONE);
-		if (ret)
-			SDE_ERROR("failed to set HFI prop\n");
+		if (hfi_client && cmd_buf) {
+			ret = hfi_adapter_add_set_property(hfi_client,
+					cmd_buf,
+					HFI_COMMAND_DISPLAY_SET_PROPERTY,
+					disp_id,
+					HFI_PAYLOAD_TYPE_U32_ARRAY,
+					hfi_util_u32_prop_helper_get_payload_addr(color_props),
+					hfi_util_u32_prop_helper_get_size(color_props),
+					HFI_HOST_FLAGS_NONE);
+			if (ret)
+				SDE_ERROR("failed to set HFI prop\n");
+		}
 
 		hfi_util_u32_prop_helper_reset(color_props);
 	}

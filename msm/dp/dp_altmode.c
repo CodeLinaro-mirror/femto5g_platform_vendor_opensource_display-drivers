@@ -152,7 +152,7 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 			altmode->dp_altmode.base.alt_mode_cfg_done = false;
 			altmode->dp_altmode.base.orientation = ORIENTATION_NONE;
 			if (altmode->dp_cb && altmode->dp_cb->disconnect)
-				altmode->dp_cb->disconnect(altmode->dev);
+				altmode->dp_cb->disconnect(altmode->dp_cb->data);
 
 			rc = dp_altmode_set_usb_dp_mode(altmode);
 			if (rc)
@@ -195,7 +195,7 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 			goto ack;
 
 		if (altmode->dp_cb && altmode->dp_cb->configure)
-			altmode->dp_cb->configure(altmode->dev);
+			altmode->dp_cb->configure(altmode->dp_cb->data);
 		goto ack;
 	}
 
@@ -204,7 +204,7 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 		goto ack;
 
 	if (altmode->dp_cb && altmode->dp_cb->attention)
-		altmode->dp_cb->attention(altmode->dev);
+		altmode->dp_cb->attention(altmode->dp_cb->data);
 ack:
 	dp_altmode_send_pan_ack(altmode->amclient, port_index);
 	return rc;
@@ -243,9 +243,9 @@ static int dp_altmode_simulate_connect(struct dp_hpd *dp_hpd, bool hpd)
 	altmode->dp_altmode.base.alt_mode_cfg_done = hpd;
 
 	if (hpd)
-		altmode->dp_cb->configure(altmode->dev);
+		altmode->dp_cb->configure(altmode->dp_cb->data);
 	else
-		altmode->dp_cb->disconnect(altmode->dev);
+		altmode->dp_cb->disconnect(altmode->dp_cb->data);
 
 	return 0;
 }
@@ -266,7 +266,7 @@ static int dp_altmode_simulate_attention(struct dp_hpd *dp_hpd, int vdo)
 	status->base.hpd_irq   = (vdo & BIT(8)) ? true : false;
 
 	if (altmode->dp_cb && altmode->dp_cb->attention)
-		altmode->dp_cb->attention(altmode->dev);
+		altmode->dp_cb->attention(altmode->dp_cb->data);
 
 	return 0;
 }

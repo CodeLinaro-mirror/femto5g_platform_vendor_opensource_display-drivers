@@ -5569,6 +5569,13 @@ static void sde_crtc_atomic_flush_common(struct drm_crtc *crtc,
 		return;
 	}
 
+	if (sde_kms->hfi_kms) {
+		if (atomic_read(&sde_kms->hfi_kms->ssr_in_progress)) {
+			SDE_ERROR("SSR in progress, returning..\n");
+			return;
+		}
+	}
+
 	SDE_DEBUG("crtc%d\n", crtc->base.id);
 
 	sde_crtc = to_sde_crtc(crtc);

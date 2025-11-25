@@ -3986,8 +3986,8 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 					mode_info.mdp_transfer_time_us_max);
 		}
 
-		sde_kms_info_add_keyint(info, "allowed_mode_switch",
-			mode_info.allowed_mode_switches);
+		sde_kms_info_add_list(info, "allowed_mode_switch", mode_info.allowed_mode_switches,
+			ARRAY_SIZE(mode_info.allowed_mode_switches));
 
 		if (!mode_info.roi_caps.num_roi)
 			continue;
@@ -4020,7 +4020,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 	struct sde_kms_info *info;
 	struct sde_connector *c_conn = NULL;
 	struct sde_connector_state *sde_conn_state = NULL;
-	struct msm_mode_info mode_info;
+	struct msm_mode_info *mode_info = NULL;
 	struct drm_property_blob **blob = NULL;
 	int rc = 0;
 
@@ -4030,19 +4030,23 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 		return -EINVAL;
 	}
 
-	info = vzalloc(sizeof(*info));
-	if (!info)
+	mode_info = kzalloc(sizeof(*mode_info), GFP_KERNEL);
+	if (!mode_info)
 		return -ENOMEM;
+
+	info = vzalloc(sizeof(*info));
+	if (!info) {
+		kfree(mode_info);
+		return -ENOMEM;
+	}
 
 	sde_kms_info_reset(info);
 
 	switch (prop_id) {
 	case CONNECTOR_PROP_SDE_INFO:
-		memset(&mode_info, 0, sizeof(mode_info));
-
 		if (state) {
 			sde_conn_state = to_sde_connector_state(state);
-			memcpy(&mode_info, &sde_conn_state->mode_info,
+			memcpy(mode_info, &sde_conn_state->mode_info,
 					sizeof(sde_conn_state->mode_info));
 		} else {
 			/**
@@ -4056,7 +4060,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 
 		if (c_conn->ops.set_info_blob) {
 			rc = c_conn->ops.set_info_blob(conn, info,
-					c_conn->display, &mode_info);
+					c_conn->display, mode_info);
 			if (rc) {
 				SDE_ERROR_CONN(c_conn,
 						"set_info_blob failed, %d\n",
@@ -4089,6 +4093,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 			prop_id);
 exit:
 	vfree(info);
+	kfree(mode_info);
 
 	return rc;
 }

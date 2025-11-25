@@ -741,6 +741,7 @@ struct sde_drm_opaque_config {
  * @encoder: Pointer to preferred drm encoder
  * @panel: Pointer to drm panel, if present
  * @display: Pointer to private display data structure
+ * @panel_id: panel id of the attached panel, if any.
  * @drv_panel: Pointer to interface driver's panel module, if present
  * @mst_port: Pointer to mst port, if present
  * @mmu_secure: MMU id for secure buffers
@@ -829,6 +830,7 @@ struct sde_connector {
 	struct drm_encoder *encoder;
 	struct drm_panel *panel;
 	void *display;
+	int panel_id;
 	void *drv_panel;
 	void *mst_port;
 

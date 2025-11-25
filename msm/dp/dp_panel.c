@@ -1198,6 +1198,7 @@ static int dp_panel_get_modes(struct dp_panel *dp_panel,
 		if (panel->parser->max_fps_mode_en)
 			rc = dp_panel_select_max_fps_mode(connector);
 	}
+
 	return rc;
 }
 
@@ -2236,12 +2237,23 @@ bool dp_panel_get_panel_on(struct dp_panel *dp_panel)
 	return panel->panel_on;
 }
 
+struct dp_display_mode *dp_panel_get_mode(struct dp_panel *dp_panel)
+{
+	dp_panel->mode.timing = dp_panel->pinfo;
+	dp_panel->mode.mst_hide = dp_panel->mst_hide;
+	dp_panel->mode.mode_override = dp_panel->mode_override;
+	dp_panel->mode.pclk_factor = dp_panel->pclk_factor;
+	dp_panel->mode.widebus_en = dp_panel->widebus_en;
+	dp_panel->mode.fec_overhead_fp = dp_panel->fec_overhead_fp;
+
+	return &dp_panel->mode;
+}
+
 struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 {
 	int rc = 0;
 	struct dp_panel_private *panel;
 	struct dp_panel *dp_panel;
-	struct sde_connector *sde_conn;
 
 	if (!in->dev || !in->catalog || !in->aux ||
 			!in->link || !in->connector) {
@@ -2263,6 +2275,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	panel->parser = in->parser;
 
 	dp_panel = &panel->dp_panel;
+
 	dp_panel->max_bw_code = DP_LINK_BW_8_1;
 	dp_panel->spd_enabled = true;
 	dp_panel->link_bw_code = 0;
@@ -2318,9 +2331,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->get_sink_crc = dp_panel_get_sink_crc;
 	dp_panel->sink_crc_enable = dp_panel_sink_crc_enable;
 	dp_panel->get_panel_on = dp_panel_get_panel_on;
-
-	sde_conn = to_sde_connector(dp_panel->connector);
-	sde_conn->drv_panel = dp_panel;
+	dp_panel->get_mode = dp_panel_get_mode;
 
 	dp_panel_edid_register(panel);
 
@@ -2342,7 +2353,7 @@ void dp_panel_put(struct dp_panel *dp_panel)
 	dp_panel_edid_deregister(panel);
 	sde_conn = to_sde_connector(dp_panel->connector);
 	if (sde_conn)
-		sde_conn->drv_panel = NULL;
+		sde_conn->panel_id = -1;
 
 	devm_kfree(panel->dev, panel);
 }

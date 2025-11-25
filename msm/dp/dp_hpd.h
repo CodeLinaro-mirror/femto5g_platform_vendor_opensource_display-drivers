@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -45,14 +46,16 @@ enum dp_hpd_type {
 /**
  * struct dp_hpd_cb - callback functions provided by the client
  *
+ * @data: caller data
  * @configure: called when dp connection is ready.
  * @disconnect: notify the cable disconnect event.
  * @attention: notify any attention message event.
  */
 struct dp_hpd_cb {
-	int (*configure)(struct device *dev);
-	int (*disconnect)(struct device *dev);
-	int (*attention)(struct device *dev);
+	void *data;
+	int (*configure)(void *data);
+	int (*disconnect)(void *data);
+	int (*attention)(void *data);
 };
 
 /**
