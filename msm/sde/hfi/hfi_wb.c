@@ -18,6 +18,37 @@
 #define to_sde_encoder_phys_wb(x) \
 	container_of(x, struct sde_encoder_phys_wb, base)
 
+/**
+ * _hfi_wb_get_out_resolution - get output resolution considering DNSC
+ * @cstate: connector state
+ * @out_width: pointer to populate output width
+ * @out_height: pointer to populate output height
+ * @dnsc_blur_res: pointer to the output struct to populate the src/dst
+ */
+static void _hfi_wb_get_out_resolution(struct sde_connector_state *cstate,
+		u32 *out_width, u32 *out_height, struct sde_io_res *dnsc_blur_res)
+{
+	const struct drm_display_mode *mode = cstate->msm_mode.base;
+	enum sde_wb_rot_type rotation_type;
+
+	if (!cstate || !dnsc_blur_res || !out_width || !out_height)
+		return;
+
+	sde_connector_get_dnsc_blur_io_res(&cstate->base, dnsc_blur_res);
+	rotation_type = sde_connector_get_property(&cstate->base, CONNECTOR_PROP_WB_ROT_TYPE);
+
+	if (dnsc_blur_res->enabled) {
+		*out_width = dnsc_blur_res->dst_w;
+		*out_height = dnsc_blur_res->dst_h;
+	} else {
+		*out_width = mode->hdisplay;
+		*out_height = mode->vdisplay;
+	}
+
+	if (rotation_type != WB_ROT_NONE)
+		swap(*out_width, *out_height);
+}
+
 static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 		struct sde_connector_state *cstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
@@ -26,11 +57,32 @@ static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 	const struct drm_display_mode *mode = cstate->msm_mode.base;
 	struct hfi_display_roi src_roi, dst_roi;
 	struct sde_rect roi;
+	struct sde_io_res dnsc_blur_res = {0, };
+	u32 out_width = 0, out_height = 0;
 	int ret = 0;
 
-	HFI_POPULATE_RECT(&src_roi, 0, 0, mode->hdisplay, mode->vdisplay, false);
+	/* Get output resolution considering DNSC */
+	_hfi_wb_get_out_resolution(cstate, &out_width, &out_height, &dnsc_blur_res);
+
+	if (dnsc_blur_res.enabled) {
+		/* For DNSC enabled case, source ROI is DNSC source dimensions */
+		HFI_POPULATE_RECT(&src_roi, 0, 0, dnsc_blur_res.src_w,
+				dnsc_blur_res.src_h, false);
+	} else {
+		/* For non-DNSC case, source ROI is mode dimensions */
+		HFI_POPULATE_RECT(&src_roi, 0, 0, mode->hdisplay, mode->vdisplay, false);
+	}
 
 	sde_wb_get_output_roi(wb_dev, &roi);
+
+	/* If ROI is not set, use output resolution */
+	if (!roi.w || !roi.h) {
+		roi.x = 0;
+		roi.y = 0;
+		roi.w = out_width;
+		roi.h = out_height;
+	}
+
 	HFI_POPULATE_RECT(&dst_roi, roi.x, roi.y, roi.w, roi.h, false);
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SRC_ROI;
@@ -118,14 +170,20 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
 		HFI_VAL_U32_ARRAY, format_payload, sizeof(format_payload));
 
+	/*
+	 * Use framebuffer dimensions for SRC_IMG_SIZE properties
+	 * This matches the HWIO path behavior in sde_encoder_phys_wb_setup_fb()
+	 * where wb_cfg->dest.width/height are set to fb->width/height
+	 */
 	width = fb->width;
+	height = fb->height;
+
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_W;
 	width_payload[0] = wb_id;
 	width_payload[1] = width;
 	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
 		HFI_VAL_U32_ARRAY, width_payload, sizeof(width_payload));
 
-	height = fb->height;
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SRC_IMG_SIZE_H;
 	height_payload[0] = wb_id;
 	height_payload[1] = height;
@@ -177,6 +235,7 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 
 	tap_point = HFI_TAP_POINT_NONE;
 
+	/* Add ROI properties with DNSC consideration */
 	_hfi_wb_add_roi_prop(wb_dev, cstate, hfi_conn->base_props);
 
 	wb_rotate_type = sde_connector_get_property(&cstate->base, CONNECTOR_PROP_WB_ROT_TYPE);
