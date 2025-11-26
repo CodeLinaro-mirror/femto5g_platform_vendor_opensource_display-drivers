@@ -930,7 +930,7 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 		data->srcp_table = sgt;
 
 		data->len = 0;
-		for_each_sg(sgt->sgl, sg, sgt->nents, i) {
+		for_each_sgtable_sg(sgt, sg, i) {
 			data->len += sg->length;
 		}
 
@@ -1184,18 +1184,6 @@ static void sde_rot_dmabuf_unmap(struct dma_buf_attachment *attach,
 	kfree(sgt);
 }
 
-static void *sde_rot_dmabuf_no_map(struct dma_buf *buf, unsigned long n)
-{
-	SDEROT_WARN("NOT SUPPORTING dmabuf map\n");
-	return NULL;
-}
-
-static void sde_rot_dmabuf_no_unmap(struct dma_buf *buf, unsigned long n,
-		void *addr)
-{
-	SDEROT_WARN("NOT SUPPORTING dmabuf unmap\n");
-}
-
 static void sde_rot_dmabuf_release(struct dma_buf *buf)
 {
 	SDEROT_DBG("Release dmabuf:%pK\n", buf);
@@ -1212,8 +1200,6 @@ static const struct dma_buf_ops sde_rot_dmabuf_ops = {
 	.map_dma_buf	= sde_rot_dmabuf_map_tiny,
 	.unmap_dma_buf	= sde_rot_dmabuf_unmap,
 	.release	= sde_rot_dmabuf_release,
-	.map		= sde_rot_dmabuf_no_map,
-	.unmap		= sde_rot_dmabuf_no_unmap,
 	.mmap		= sde_rot_dmabuf_no_mmap,
 };
 
