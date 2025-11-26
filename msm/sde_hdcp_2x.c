@@ -257,9 +257,6 @@ static void sde_hdcp_2x_wait_for_response(struct sde_hdcp_2x_ctrl *hdcp)
 		else
 			hdcp->wait_timeout_ms = 0;
 		break;
-	case REP_CONFIG_VERSION:
-		hdcp->wait_timeout_ms = HZ;
-		break;
 	default:
 		hdcp->wait_timeout_ms = 0;
 	}
