@@ -143,17 +143,21 @@ static bool dsi_phy_hw_v7_2_is_split_link_enabled(struct dsi_phy_hw *phy)
 static void dsi_phy_hw_v7_2_config_lpcdrx(struct dsi_phy_hw *phy,
 	struct dsi_phy_cfg *cfg, bool enable)
 {
+	bool split_link_enabled = dsi_phy_hw_v7_2_is_split_link_enabled(phy);
+
 	int phy_lane_0 = dsi_phy_conv_logical_to_phy_lane(&cfg->lane_map, DSI_LOGICAL_LANE_0);
+	int phy_lane_2 = dsi_phy_conv_logical_to_phy_lane(&cfg->lane_map, DSI_LOGICAL_LANE_2);
 
 	/*
 	 * LPRX and CDRX need to enabled only for physical data lane
-	 * corresponding to the logical data lane 0
+	 * corresponding to the logical data lane 0 and data lane 2
 	 */
 
-	if (enable)
-		DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(phy_lane_0), cfg->strength.lane[phy_lane_0][1]);
-	else
-		DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(phy_lane_0), 0);
+	DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(phy_lane_0),
+			enable ? cfg->strength.lane[phy_lane_0][1] : 0);
+	if (split_link_enabled)
+		DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(phy_lane_2),
+				enable ? cfg->strength.lane[phy_lane_2][1] : 0);
 }
 
 static void dsi_phy_hw_v7_2_lane_swap_config(struct dsi_phy_hw *phy,

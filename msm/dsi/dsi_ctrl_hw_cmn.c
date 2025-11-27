@@ -1057,8 +1057,10 @@ void dsi_ctrl_hw_cmn_trigger_command_dma(struct dsi_ctrl_hw *ctrl)
 void dsi_ctrl_hw_cmn_clear_rdbk_reg(struct dsi_ctrl_hw *ctrl)
 {
 	DSI_W32(ctrl, DSI_RDBK_DATA_CTRL, 0x1);
+	DSI_W32(ctrl, DSI_SUBLINK1_RDBK_DATA_CTRL, 0x1);
 	wmb(); /* ensure read back register is reset */
 	DSI_W32(ctrl, DSI_RDBK_DATA_CTRL, 0x0);
+	DSI_W32(ctrl, DSI_SUBLINK1_RDBK_DATA_CTRL, 0x0);
 	wmb(); /* ensure read back register is cleared */
 }
 
@@ -1067,6 +1069,7 @@ void dsi_ctrl_hw_cmn_clear_rdbk_reg(struct dsi_ctrl_hw *ctrl)
  * @ctrl:           Pointer to the controller host hardware.
  * @rd_buf:         Buffer where data will be read into.
  * @total_read_len: Number of bytes to read.
+ * @flags:          Controller flags of the command.
  *
  * return: number of bytes read.
  */
@@ -1075,7 +1078,8 @@ u32 dsi_ctrl_hw_cmn_get_cmd_read_data(struct dsi_ctrl_hw *ctrl,
 				     u32 read_offset,
 				     u32 rx_byte,
 				     u32 pkt_size,
-				     u32 *hw_read_cnt)
+				     u32 *hw_read_cnt,
+				     u32 flags)
 {
 	u32 *lp, *temp, data;
 	int i, j = 0, cnt, off;
@@ -1091,7 +1095,9 @@ u32 dsi_ctrl_hw_cmn_get_cmd_read_data(struct dsi_ctrl_hw *ctrl,
 	if (cnt > 4)
 		cnt = 4;
 
-	read_cnt = (DSI_R32(ctrl, DSI_RDBK_DATA_CTRL) >> 16);
+	read_cnt = (flags & DSI_CTRL_CMD_SUBLINK1) ?
+			(DSI_R32(ctrl, DSI_SUBLINK1_RDBK_DATA_CTRL) >> 16) :
+			(DSI_R32(ctrl, DSI_RDBK_DATA_CTRL) >> 16);
 	ack_err = (rx_byte == 4) ? (read_cnt == 8) :
 			((read_cnt - 4) == (pkt_size + 6));
 
@@ -1132,7 +1138,7 @@ u32 dsi_ctrl_hw_cmn_get_cmd_read_data(struct dsi_ctrl_hw *ctrl,
 		repeated_bytes = (read_offset - 4) - data_lost + rem_header;
 	}
 
-	off = DSI_RDBK_DATA0;
+	off = (flags & DSI_CTRL_CMD_SUBLINK1) ? DSI_SUBLINK1_RDBK_DATA0 : DSI_RDBK_DATA0;
 	off += ((cnt - 1) * 4);
 
 	for (i = 0; i < cnt; i++) {
