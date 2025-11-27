@@ -4578,6 +4578,8 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		zpos_def = drm_plane_index(plane) + 1;
 	}
 
+	zpos_max = SDE_STAGE_MAX - SDE_STAGE_0 - 1;
+
 	msm_property_install_range(&psde->property_info, "zpos",
 		0x0, 0, zpos_max, zpos_def, PLANE_PROP_ZPOS);
 

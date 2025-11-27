@@ -1700,6 +1700,7 @@ void virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg, unsigned l
 struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 {
 	int i, j, k;
+	int scanout_index;
 	struct msm_hyp_kms *hyp_kms = sde_kms->hyp_kms;
 	struct sde_mdss_cfg *sde_cfg = sde_kms->catalog;
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
@@ -1760,6 +1761,8 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 	hyp_cfg->aiqe_count = 0;
 	hyp_cfg->ai_scaler_count = 0;
 	hyp_cfg->abc_count = 0;
+	/* scanout index on each core */
+	scanout_index = 0;
 
 	/* Re-link all HW blocks assigned to GVM */
 	for (i = 0; i < kms->num_scanouts; i++) {
@@ -1771,6 +1774,15 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 
+		if (scanout_index < MAX_CRTCS) {
+			hyp_cfg->max_hyp_mixer_blendstages[scanout_index] =
+				output->hw_assign.lm_stages;
+			VIRTIO_KMS_DBG("scanout_index %d max_hyp_mixer_blendstages %d",
+				scanout_index, hyp_cfg->max_hyp_mixer_blendstages[scanout_index]);
+		} else {
+			VIRTIO_KMS_ERR("scanout_index %d exceeds MAX_CRTCS %d\n", scanout_index, MAX_CRTCS);
+		}
+		scanout_index++;
 		/* SSPP */
 		VIRTIO_KMS_DBG("SSPP %d  planes %d\n", sde_cfg->sspp_count, output->plane_cnt);
 		for (k = 0; k < output->plane_cnt; k++) {
