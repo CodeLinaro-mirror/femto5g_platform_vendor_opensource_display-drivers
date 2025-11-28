@@ -7,6 +7,7 @@
 #define pr_fmt(fmt)	"%s:%d: " fmt, __func__, __LINE__
 
 #include <linux/platform_device.h>
+#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/file.h>
@@ -17,7 +18,6 @@
 #include <linux/dma-buf.h>
 #include <linux/clk.h>
 #include <linux/clk/qcom.h>
-#include <linux/msm_rtb.h>
 
 #include "sde_rotator_core.h"
 #include "sde_rotator_util.h"
@@ -62,12 +62,12 @@
 	do { \
 		SDEROT_DBG("SDEREG.W:[%s:0x%X] <= 0x%X\n", #off, (off),\
 				(u32)(data));\
-		writel_relaxed_no_log( \
+		writel_relaxed( \
 				(REGDMA_OP_REGWRITE | \
 				 ((off) & REGDMA_ADDR_OFFSET_MASK)), \
 				p); \
 		p += sizeof(u32); \
-		writel_relaxed_no_log(data, p); \
+		writel_relaxed(data, p); \
 		p += sizeof(u32); \
 	} while (0)
 
@@ -75,14 +75,14 @@
 	do { \
 		SDEROT_DBG("SDEREG.M:[%s:0x%X] <= 0x%X\n", #off, (off),\
 				(u32)(data));\
-		writel_relaxed_no_log( \
+		writel_relaxed( \
 				(REGDMA_OP_REGMODIFY | \
 				 ((off) & REGDMA_ADDR_OFFSET_MASK)), \
 				p); \
 		p += sizeof(u32); \
-		writel_relaxed_no_log(mask, p); \
+		writel_relaxed(mask, p); \
 		p += sizeof(u32); \
-		writel_relaxed_no_log(data, p); \
+		writel_relaxed(data, p); \
 		p += sizeof(u32); \
 	} while (0)
 
@@ -90,25 +90,25 @@
 	do { \
 		SDEROT_DBG("SDEREG.B:[%s:0x%X:0x%X]\n", #off, (off),\
 				(u32)(len));\
-		writel_relaxed_no_log( \
+		writel_relaxed( \
 				(REGDMA_OP_BLKWRITE_INC | \
 				 ((off) & REGDMA_ADDR_OFFSET_MASK)), \
 				p); \
 		p += sizeof(u32); \
-		writel_relaxed_no_log(len, p); \
+		writel_relaxed(len, p); \
 		p += sizeof(u32); \
 	} while (0)
 
 #define SDE_REGDMA_BLKWRITE_DATA(p, data) \
 	do { \
 		SDEROT_DBG("SDEREG.I:[:] <= 0x%X\n", (u32)(data));\
-		writel_relaxed_no_log(data, p); \
+		writel_relaxed(data, p); \
 		p += sizeof(u32); \
 	} while (0)
 
 #define SDE_REGDMA_READ(p, data) \
 	do { \
-		data = readl_relaxed_no_log(p); \
+		data = readl_relaxed(p); \
 		p += sizeof(u32); \
 	} while (0)
 
@@ -1243,7 +1243,7 @@ static void sde_hw_rotator_map_vaddr(struct sde_dbg_buf *dbgbuf,
 static void sde_hw_rotator_unmap_vaddr(struct sde_dbg_buf *dbgbuf)
 {
 	if (dbgbuf->vaddr) {
-		dma_buf_kunmap(dbgbuf->dmabuf, 0, dbgbuf->vaddr);
+		dma_buf_vunmap(dbgbuf->dmabuf, dbgbuf->vaddr);
 		dma_buf_end_cpu_access(dbgbuf->dmabuf, DMA_FROM_DEVICE);
 	}
 
@@ -2055,7 +2055,7 @@ static u32 sde_hw_rotator_start_no_regdma(struct sde_hw_rotator_context *ctx,
 	/* Write all command stream to Rotator blocks */
 	/* Rotator will start right away after command stream finish writing */
 	while (mem_rdptr < wrptr) {
-		u32 op = REGDMA_OP_MASK & readl_relaxed_no_log(mem_rdptr);
+		u32 op = REGDMA_OP_MASK & readl_relaxed(mem_rdptr);
 
 		switch (op) {
 		case REGDMA_OP_NOP:
@@ -2516,9 +2516,13 @@ static int sde_hw_rotator_swts_create(struct sde_hw_rotator *rot)
 		rc = -ENOMEM;
 		goto err_put;
 	}
-
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	data->srcp_table = dma_buf_map_attachment_unlocked(data->srcp_attachment,
+			DMA_BIDIRECTIONAL);
+#else
 	data->srcp_table = dma_buf_map_attachment(data->srcp_attachment,
 			DMA_BIDIRECTIONAL);
+#endif
 	if (IS_ERR_OR_NULL(data->srcp_table)) {
 		SDEROT_ERR("dma_buf_map_attachment error\n");
 		rc = -ENOMEM;
@@ -2541,8 +2545,13 @@ static int sde_hw_rotator_swts_create(struct sde_hw_rotator *rot)
 
 	return rc;
 err_unmap:
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	dma_buf_unmap_attachment_unlocked(data->srcp_attachment,
+			data->srcp_table, DMA_FROM_DEVICE);
+#else
 	dma_buf_unmap_attachment(data->srcp_attachment, data->srcp_table,
 			DMA_FROM_DEVICE);
+#endif
 err_detach:
 	dma_buf_detach(data->srcp_dma_buf, data->srcp_attachment);
 err_put:
@@ -2564,8 +2573,14 @@ static void sde_hw_rotator_swts_destroy(struct sde_hw_rotator *rot)
 
 	sde_smmu_unmap_dma_buf(data->srcp_table, SDE_IOMMU_DOMAIN_ROT_UNSECURE,
 			DMA_FROM_DEVICE, data->srcp_dma_buf);
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	dma_buf_unmap_attachment_unlocked(data->srcp_attachment,
+		data->srcp_table, DMA_FROM_DEVICE);
+#else
 	dma_buf_unmap_attachment(data->srcp_attachment, data->srcp_table,
-			DMA_FROM_DEVICE);
+		DMA_FROM_DEVICE);
+#endif
+
 	dma_buf_detach(data->srcp_dma_buf, data->srcp_attachment);
 	dma_buf_put(data->srcp_dma_buf);
 	data->addr = 0;
