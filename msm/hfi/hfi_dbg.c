@@ -181,7 +181,7 @@ ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
 	ssize_t rd_buf_offset;
 	ssize_t rd_buf_cpy, evtlog_cpy;
 
-	if (!hfi_dbg->base->evtlog || !hfi_dbg->base->evtlog->dumped_evtlog ||
+	if (!hfi_dbg || !hfi_dbg->base->evtlog || !hfi_dbg->base->evtlog->dumped_evtlog ||
 		!hfi_dbg->base->read_buf)
 		return 0;
 
@@ -282,6 +282,9 @@ static void _hfi_dump_all(bool do_panic, const char *name, bool dump_secure)
 {
 	ktime_t start, end;
 	u32 in_dump;
+
+	if (!hfi_dbg)
+		return;
 
 	in_dump = (hfi_dbg->base->dump_option);
 
@@ -456,6 +459,11 @@ void hfi_dbg_destroy(void)
 	struct msm_drm_private *priv = NULL;
 	struct sde_kms *kms;
 	struct hfi_kms *hfi_kms;
+
+	if (!hfi_dbg) {
+		SDE_ERROR("hfi_dbg not initialized\n");
+		return;
+	}
 
 	dev = hfi_dbg->dev;
 	if (!dev) {

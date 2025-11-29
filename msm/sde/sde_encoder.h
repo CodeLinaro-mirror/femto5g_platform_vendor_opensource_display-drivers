@@ -446,6 +446,14 @@ struct sde_encoder_hal_funcs {
 	 * Returns: timestamp of last known vblank event occurrence
 	 */
 	ktime_t (*get_vblank_timestamp[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
+
+	/**
+	 * register_power_event_notify - Register for display power event notification
+	 * @enc: Pointer to sde encoder structure
+	 * @enable: Flag to indicate whether notification is being enabled/disabled
+	 */
+	int (*register_power_event_notify[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
+			bool enable);
 };
 
 /**
@@ -489,6 +497,8 @@ struct sde_encoder_hal_funcs {
  *				done with frame processing
  * @crtc_frame_event_cb:	callback handler for frame event
  * @crtc_frame_event_cb_data:	callback handler private data
+ * @crtc_power_event_cb:	callback into CRTC for power event notification
+ * @crtc_power_event_cb_data:	callback handler private_data
  * @rsc_client:			rsc client pointer
  * @rsc_state_init:		boolean to indicate rsc config init
  * @disp_info:			local copy of msm_display_info struct
@@ -588,6 +598,8 @@ struct sde_encoder_virt {
 	atomic_t pending_commit_cnt;
 	void (*crtc_frame_event_cb)(void *data, u32 event, ktime_t ts);
 	struct sde_kms_frame_event_cb_data crtc_frame_event_cb_data;
+	void (*crtc_power_event_cb)(void *data, u32 event);
+	struct sde_kms_frame_event_cb_data crtc_power_event_cb_data;
 
 	struct sde_rsc_client *rsc_client;
 	bool rsc_state_init;
@@ -708,6 +720,16 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *encoder,
  */
 void sde_encoder_register_frame_event_callback(struct drm_encoder *encoder,
 		void (*cb)(void *, u32, ktime_t), struct drm_crtc *crtc);
+
+/**
+ * sde_encoder_register_display_power_event_callback - provide callback to encoder that will be
+ *	called after the display power event request is complete.
+ * @encoder: encoder pointer
+ * @cb: callback pointer, provide NULL to de-register
+ * @crtc: pointer ot drm_crtc object interested in powercollapse events
+ */
+void sde_encoder_register_display_power_event_callback(struct drm_encoder *encoder,
+		void (*cb)(void *, u32 event), struct drm_crtc *crtc);
 
 /**
  * sde_encoder_get_rsc_client - gets the rsc client state for primary
@@ -1425,6 +1447,13 @@ int sde_encoder_helper_inc_pending(struct drm_encoder *drm_enc);
  * @sde_enc: pointer to sde encoder
  */
 int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc);
+ 
+/**
+ * sde_encoder_check_frame_pending - increment pending count on the encoder
+ * @msm_kms: pointer to kms
+ * #drm_crtc: pointer to drm crtc
+ */
+void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc);
 
 /**
  * sde_encoder_cancel_vrr_timers - cancel vrr timers

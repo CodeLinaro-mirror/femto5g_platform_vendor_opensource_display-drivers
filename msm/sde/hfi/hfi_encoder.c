@@ -163,6 +163,33 @@ static void hfi_encoder_vblank_callback(struct hfi_encoder *hfi_enc, void *paylo
 		sde_enc->crtc_vblank_cb(sde_enc->crtc_vblank_cb_data, ts);
 }
 
+static void hfi_encoder_power_event_callback(struct hfi_encoder *hfi_enc, void *payload)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct hfi_display_power_event_data *payload_data;
+	enum hfi_display_power_mode power_state;
+
+	if (!hfi_enc || !payload)
+		return;
+
+	/* Parse payload and only notify when entering idle power collapse. */
+	payload_data = (struct hfi_display_power_event_data *)payload;
+	power_state = payload_data->power_state;
+
+	sde_enc = hfi_enc->sde_base;
+	if (sde_enc && sde_enc->crtc_power_event_cb) {
+		if (power_state == HFI_MODE_DPMS_OFF) {
+			sde_enc->crtc_power_event_cb(&sde_enc->crtc_power_event_cb_data,
+					SDE_POWER_EVENT_PRE_DISABLE);
+			sde_enc->crtc_power_event_cb(&sde_enc->crtc_power_event_cb_data,
+					SDE_POWER_EVENT_POST_DISABLE);
+		} else if (power_state == HFI_MODE_DPMS_ON) {
+			sde_enc->crtc_power_event_cb(&sde_enc->crtc_power_event_cb_data,
+					SDE_POWER_EVENT_POST_ENABLE);
+		}
+	}
+}
+
 static void hfi_encoder_hw_recovery_callback(struct sde_encoder_virt *sde_enc, void *payload)
 {
 	struct drm_encoder *drm_enc;
@@ -263,6 +290,9 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 			}
 		}
 		break;
+	case HFI_COMMAND_DISPLAY_EVENT_POWER:
+		hfi_encoder_power_event_callback(hfi_enc, payload);
+		break;
 	case HFI_COMMAND_DISPLAY_EVENT_REGISTER:
 	case HFI_COMMAND_DISPLAY_EVENT_DEREGISTER:
 		break;
@@ -350,10 +380,25 @@ static int _hfi_enc_register_hw_event(struct sde_encoder_virt *enc,
 		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_HW_RECOVERY,
 				enable, defer_to_commit);
 		break;
+	case HFI_EVENT_DISPLAY_POWER:
+		_hfi_enc_hw_event_set_buff(enc, HFI_EVENT_DISPLAY_POWER,
+				enable, defer_to_commit);
+		break;
 	default:
 		SDE_ERROR("invalid sde event %d\n", event);
 		return -EINVAL;
 	}
+
+	return ret;
+}
+
+static int hfi_enc_register_pwr_event(struct sde_encoder_virt *enc, bool enable)
+{
+	int ret = 0;
+
+	ret = _hfi_enc_register_hw_event(enc, HFI_EVENT_DISPLAY_POWER, enable, false);
+	if (ret)
+		SDE_ERROR("failed to register for idle-pc power event\n");
 
 	return ret;
 }
@@ -1087,6 +1132,7 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 	sde_enc->hal_ops.debugfs_dump_status[MSM_DISP_OP_HFI] = hfi_enc_debugfs_dump_status;
 	sde_enc->hal_ops.get_vblank_count[MSM_DISP_OP_HFI] = hfi_enc_get_vblank_count;
 	sde_enc->hal_ops.get_vblank_timestamp[MSM_DISP_OP_HFI] = hfi_enc_get_vblank_timestamp;
+	sde_enc->hal_ops.register_power_event_notify[MSM_DISP_OP_HFI] = hfi_enc_register_pwr_event;
 }
 
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)

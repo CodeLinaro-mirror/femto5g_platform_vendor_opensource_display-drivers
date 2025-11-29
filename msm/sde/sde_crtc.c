@@ -1841,7 +1841,8 @@ static int _sde_crtc_check_rois(struct drm_crtc *crtc,
 				  "%s: invalid 3d-merge_w - mixer_w:%d, crtc_w:%d, num_mixers:%d\n",
 					sde_crtc->name, mixer_width,
 					crtc_width, num_mixers);
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 		}
 	}
@@ -2218,8 +2219,11 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 			if ((!nxt_pstate)
 				    || (nxt_pstate->stage != cur_pstate->stage)
 				    || (nxt_pstate->sde_pstate->layout !=
-					cur_pstate->sde_pstate->layout))
+					cur_pstate->sde_pstate->layout)) {
+				mutex_lock(&sde_crtc->property_info.property_lock);
 				cur_pstate->sde_pstate->pipe_order_flags = 0;
+				mutex_unlock(&sde_crtc->property_info.property_lock);
+			}
 
 			continue;
 		}
@@ -2244,8 +2248,10 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 			swap(prv_pstate, cur_pstate);
 		}
 
+		mutex_lock(&sde_crtc->property_info.property_lock);
 		cur_pstate->sde_pstate->pipe_order_flags = SDE_SSPP_RIGHT;
 		prv_pstate->sde_pstate->pipe_order_flags = 0;
+		mutex_unlock(&sde_crtc->property_info.property_lock);
 	}
 
 	for (i = 0; i < cnt; i++) {
@@ -5197,7 +5203,8 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			 * during crtc commit kickoff. This will delay the new vote request and
 			 * allows intra frame idle entry.
 			 */
-			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_CMD_MODE))
+			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_CMD_MODE) ||
+				sde_encoder_is_psr_supported(encoder))
 				continue;
 
 			sde_encoder_begin_commit(encoder);
@@ -5866,7 +5873,8 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 				continue;
 
 			/* early return for video mode, as votes are updated*/
-			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE))
+			if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE) &&
+				!sde_encoder_is_psr_supported(encoder))
 				continue;
 
 			sde_encoder_begin_commit(encoder);
@@ -6245,6 +6253,30 @@ static void sde_crtc_handle_power_event(u32 event_type, void *arg)
 	mutex_unlock(&sde_crtc->crtc_lock);
 }
 
+static void sde_crtc_power_event_cb(void *data, u32 event)
+{
+	struct drm_crtc *crtc;
+	struct sde_crtc *sde_crtc;
+	struct sde_kms_frame_event_cb_data *cb_data;
+
+	cb_data = (struct sde_kms_frame_event_cb_data *)data;
+	if (!cb_data) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	crtc = cb_data->crtc;
+	if (!crtc || !crtc->dev || !crtc->dev->dev_private) {
+		SDE_ERROR("invalid params\n");
+		return;
+	}
+
+	sde_crtc = to_sde_crtc(crtc);
+
+	/* Notify client */
+	sde_crtc_handle_power_event(event, crtc);
+}
+
 static void _sde_crtc_reset(struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
@@ -6365,6 +6397,8 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	drm_for_each_encoder_mask(encoder, crtc->dev,
 			crtc->state->encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, NULL, NULL);
+		if (IS_DISP_OP_HFI(priv->disp_op))
+			sde_encoder_register_display_power_event_callback(encoder, NULL, NULL);
 		cstate->rsc_client = NULL;
 		cstate->rsc_update = false;
 
@@ -6523,6 +6557,9 @@ static void sde_crtc_enable(struct drm_crtc *crtc,
 
 	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, sde_crtc_frame_event_cb, crtc);
+		if (IS_DISP_OP_HFI(priv->disp_op))
+			sde_encoder_register_display_power_event_callback(encoder,
+					sde_crtc_power_event_cb, crtc);
 		sde_crtc_static_img_control(crtc, CACHE_STATE_NORMAL,
 				sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE));
 	}

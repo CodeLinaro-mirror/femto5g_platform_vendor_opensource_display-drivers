@@ -6438,7 +6438,7 @@ void reg_dmav2_setup_vig_gamutv61(struct sde_hw_pipe *ctx, void *cfg)
 	u32 i, j, k = 0, len, table_select = 0;
 	u32 op_mode, scale_offset, scale_tbl_offset, transfer_size_bytes;
 	u16 *data;
-	u32 vig_gamut_mode;
+	u32 current_mode = 0;
 
 	rc = reg_dma_sspp_check(ctx, cfg, GAMUT, idx);
 	if (rc)
@@ -6469,15 +6469,21 @@ void reg_dmav2_setup_vig_gamutv61(struct sde_hw_pipe *ctx, void *cfg)
 		return;
 	}
 
-	cp_feature_get_curr_mode(CP_STATE_VIG_GAMUT,
-		hw_cfg->vig_gamut_mode, &vig_gamut_mode);
-	if (vig_gamut_mode == MODE_17_A) {
+	if (IS_DISP_OP_HFI(ctx->hw.disp_op)) {
+		cp_feature_get_curr_mode(CP_STATE_VIG_GAMUT,
+			hw_cfg->vig_gamut_mode, &current_mode);
+		table_select = (current_mode == MODE_17_B) ? 0 : 1;
+	} else {
+		current_mode = SDE_REG_READ(&ctx->hw, ctx->cap->sblk->gamut_blk.base);
+		current_mode = (current_mode & (BIT(5) - 1)) >> 2;
+		table_select = (current_mode == gamut_mode_17b) ? 0 : 1;
+	}
+
+	if (table_select == 0) {
 		op_mode = gamut_mode_17;
-		table_select = 0;
 		scale_offset = GAMUT_SCALEA_OFFSET_OFF;
 	} else {
 		op_mode = gamut_mode_17b;
-		table_select = 1;
 		scale_offset = GAMUT_SCALEB_OFFSET_OFF;
 	}
 

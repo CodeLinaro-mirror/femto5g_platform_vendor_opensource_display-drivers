@@ -151,6 +151,7 @@ struct sde_cesta_ctrl_cfg {
 	bool auto_active_on_panic;
 	bool hw_sleep_enable;
 	enum sde_cesta_ctrl_pwr_req_mode req_mode;
+	bool is_vid;
 };
 
 /**

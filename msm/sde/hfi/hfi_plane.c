@@ -154,6 +154,14 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	HFI_POPULATE_RECT(&src, state->src_x, state->src_y,	state->src_w, state->src_h, true);
 	HFI_POPULATE_RECT(&dst, state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h, false);
 
+	hfi_format = hfi_catalog_get_hfi_format(&fmt);
+
+	if (hfi_format == U32_MAX) {
+		HFI_ERROR_PLANE(phfi, "unsupported SDE format: 0x%x mod: 0x%llx\n",
+				fmt.fourcc_format, fmt.modifier);
+		return -EINVAL;
+	}
+
 	prop_id = HFI_PROPERTY_LAYER_SRC_ROI;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 			phfi->hfi_pipe_id, HFI_VAL_U32_ARRAY, &src, sizeof(struct hfi_display_roi));
@@ -177,7 +185,6 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 			HFI_VAL_U32_ARRAY, &plane->pipe_cfg.layout.plane_pitch[0],
 			(sizeof(u32) * SDE_MAX_PLANES));
 
-	hfi_format = hfi_catalog_get_hfi_format(&fmt);
 	format_is_yuv = HFI_IS_YUV_FORMAT(hfi_format) ? true : false;
 	_sde_plane_setup_csc(plane, pstate, format_is_yuv);
 

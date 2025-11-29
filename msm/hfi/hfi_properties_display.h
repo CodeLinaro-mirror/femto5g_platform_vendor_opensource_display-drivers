@@ -385,6 +385,19 @@
 #define HFI_PROPERTY_DISPLAY_SCAN_SEQUENCE_ID                        0x0002001A
 
 /*
+ * HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG  - This property is to enable/disable auto-refresh for the
+ *                                         interface block. Host is expected to send this packet
+ *                                         as part of HFI_COMMAND_DISPLAY_SET_PROPERTY command
+ *                                         packet.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG
+ * (u32_key) payload [0]         : HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG |
+ *                                (version=0 << 20) | (dsize=2 << 24 )
+ * (u32_value) payload [1-2]     : struct hfi_display_autorefresh_cfg
+ */
+#define HFI_PROPERTY_DISPLAY_AUTOREFRESH_CFG                         0x0002001B
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
