@@ -21,8 +21,9 @@
 #include <linux/io.h>
 #include <linux/iopoll.h>
 #include <linux/regulator/consumer.h>
+#include <linux/version.h>
 #include <linux/module.h>
-#include <media/msm_media_info.h>
+#include <media/mmm_color_fmt.h>
 #include <linux/videodev2.h>
 #include <linux/ion.h>
 
@@ -350,13 +351,13 @@ int sde_mdp_get_plane_sizes(struct sde_mdp_format_params *fmt, u32 w, u32 h,
 
 			switch (fmt->format) {
 			case SDE_PIX_FMT_Y_CBCR_H2V2_VENUS:
-				cf = COLOR_FMT_NV12;
+				cf = MMM_COLOR_FMT_NV12;
 				break;
 			case SDE_PIX_FMT_Y_CRCB_H2V2_VENUS:
-				cf = COLOR_FMT_NV21;
+				cf = MMM_COLOR_FMT_NV21;
 				break;
 			case SDE_PIX_FMT_Y_CBCR_H2V2_P010_VENUS:
-				cf = COLOR_FMT_P010;
+				cf = MMM_COLOR_FMT_P010;
 				break;
 			default:
 				SDEROT_ERR("unknown color format %d\n",
@@ -365,11 +366,11 @@ int sde_mdp_get_plane_sizes(struct sde_mdp_format_params *fmt, u32 w, u32 h,
 			}
 
 			ps->num_planes = 2;
-			ps->ystride[0] = VENUS_Y_STRIDE(cf, w);
-			ps->ystride[1] = VENUS_UV_STRIDE(cf, w);
-			ps->plane_size[0] = VENUS_Y_SCANLINES(cf, h) *
+			ps->ystride[0] = MMM_COLOR_FMT_Y_STRIDE(cf, w);
+			ps->ystride[1] = MMM_COLOR_FMT_UV_STRIDE(cf, w);
+			ps->plane_size[0] = MMM_COLOR_FMT_Y_SCANLINES(cf, h) *
 				ps->ystride[0];
-			ps->plane_size[1] = VENUS_UV_SCANLINES(cf, h) *
+			ps->plane_size[1] = MMM_COLOR_FMT_UV_SCANLINES(cf, h) *
 				ps->ystride[1];
 		} else if (fmt->format == SDE_PIX_FMT_Y_CBCR_H2V2_P010) {
 			/*
@@ -798,8 +799,13 @@ static int sde_mdp_put_img(struct sde_mdp_img_data *data, bool rotator,
 		if (!data->skip_detach) {
 			data->srcp_attachment->dma_map_attrs |=
 				DMA_ATTR_DELAYED_UNMAP;
-			dma_buf_unmap_attachment(data->srcp_attachment,
-				data->srcp_table, dir);
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+			dma_buf_unmap_attachment_unlocked(data->srcp_attachment,
+					data->srcp_table, dir);
+#else
+			dma_buf_unmap_attachment(data->srcp_attachment, data->srcp_table,
+					dir);
+#endif
 			dma_buf_detach(data->srcp_dma_buf,
 					data->srcp_attachment);
 			if (!(data->flags & SDE_ROT_EXT_DMA_BUF)) {
@@ -918,9 +924,12 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 				}
 			}
 		}
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	sgt = dma_buf_map_attachment_unlocked(data->srcp_attachment, dir);
+#else
+	sgt = dma_buf_map_attachment(data->srcp_attachment, dir);
+#endif
 
-		sgt = dma_buf_map_attachment(
-				data->srcp_attachment, dir);
 		if (IS_ERR_OR_NULL(sgt) ||
 				IS_ERR_OR_NULL(sgt->sgl)) {
 			SDEROT_ERR("Failed to map attachment\n");
@@ -930,7 +939,7 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 		data->srcp_table = sgt;
 
 		data->len = 0;
-		for_each_sg(sgt->sgl, sg, sgt->nents, i) {
+		for_each_sgtable_sg(sgt, sg, i) {
 			data->len += sg->length;
 		}
 
@@ -984,7 +993,13 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 	return ret;
 
 err_unmap:
-	dma_buf_unmap_attachment(data->srcp_attachment, data->srcp_table, dir);
+#if (KERNEL_VERSION(6, 2, 0) <= LINUX_VERSION_CODE)
+	dma_buf_unmap_attachment_unlocked(data->srcp_attachment,
+			data->srcp_table, dir);
+#else
+	dma_buf_unmap_attachment(data->srcp_attachment, data->srcp_table,
+			dir);
+#endif
 err_detach:
 	dma_buf_detach(data->srcp_dma_buf, data->srcp_attachment);
 	if (!(data->flags & SDE_ROT_EXT_DMA_BUF)) {
@@ -1184,18 +1199,6 @@ static void sde_rot_dmabuf_unmap(struct dma_buf_attachment *attach,
 	kfree(sgt);
 }
 
-static void *sde_rot_dmabuf_no_map(struct dma_buf *buf, unsigned long n)
-{
-	SDEROT_WARN("NOT SUPPORTING dmabuf map\n");
-	return NULL;
-}
-
-static void sde_rot_dmabuf_no_unmap(struct dma_buf *buf, unsigned long n,
-		void *addr)
-{
-	SDEROT_WARN("NOT SUPPORTING dmabuf unmap\n");
-}
-
 static void sde_rot_dmabuf_release(struct dma_buf *buf)
 {
 	SDEROT_DBG("Release dmabuf:%pK\n", buf);
@@ -1212,8 +1215,6 @@ static const struct dma_buf_ops sde_rot_dmabuf_ops = {
 	.map_dma_buf	= sde_rot_dmabuf_map_tiny,
 	.unmap_dma_buf	= sde_rot_dmabuf_unmap,
 	.release	= sde_rot_dmabuf_release,
-	.map		= sde_rot_dmabuf_no_map,
-	.unmap		= sde_rot_dmabuf_no_unmap,
 	.mmap		= sde_rot_dmabuf_no_mmap,
 };
 

@@ -7887,7 +7887,7 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 	int h_active, int v_active)
 {
 	int i, rc = 0;
-	u32 count, refresh_rate = 0;
+	u32 count, refresh_rate = 0, overlap = 0;
 	struct dsi_dfps_capabilities dfps_caps;
 	struct dsi_display *display = (struct dsi_display *)dsi_display;
 	struct dsi_host_common_cfg *host;
@@ -7913,10 +7913,16 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 	}
 
 	host = &display->panel->host_config;
-	if (host->split_link.enabled)
+	overlap = display->modes->timing.overlap;
+	if (host->split_link.enabled) {
+		if (overlap > 0)
+			h_active += overlap;
 		h_active *= host->split_link.num_sublinks;
-	else
+	} else {
+		if (overlap > 0)
+			h_active += dsi_get_overlap_total(display->modes);
 		h_active *= display->ctrl_count;
+	}
 
 	for (i = 0; i < count; i++) {
 		struct dsi_display_mode *m = &display->modes[i];

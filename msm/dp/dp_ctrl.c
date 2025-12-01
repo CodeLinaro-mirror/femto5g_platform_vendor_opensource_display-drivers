@@ -560,6 +560,8 @@ static int dp_ctrl_link_train(struct dp_ctrl_private *ctrl)
 	link_info.rate = drm_dp_bw_code_to_link_rate(
 		ctrl->link->link_params.bw_code);
 	link_info.capabilities = ctrl->panel->link_info.capabilities;
+	link_info.use_rate_select = ctrl->panel->link_info.use_rate_select;
+	link_info.index = ctrl->panel->link_info.index;
 
 	ret = dp_link_configure(ctrl->aux->drm_aux, &link_info);
 	if (ret)

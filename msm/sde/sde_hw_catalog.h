@@ -64,6 +64,7 @@
 #define SDE_HW_VER_970  SDE_HW_VER(9, 7, 0) /* x1p42100 */
 #define SDE_HW_VER_980	SDE_HW_VER(9, 8, 0) /* seraph */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
+#define SDE_HW_VER_A30  SDE_HW_VER(10, 3, 0) /* chora */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
 #define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */

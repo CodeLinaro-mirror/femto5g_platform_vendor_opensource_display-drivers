@@ -283,15 +283,18 @@ int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc)
 	struct drm_connector *conn;
 	struct drm_connector_list_iter conn_iter;
 	struct sde_connector *sde_conn = NULL;
+	int ret = 0;
 
 	drm_connector_list_iter_begin(crtc->dev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		sde_conn = to_sde_connector(conn);
-		if (conn->state && (conn->state->crtc == crtc))
-			return sde_conn->reproj_conn ? sde_conn->reproj_conn->type : 0;
+		if (conn->state && (conn->state->crtc == crtc)) {
+			ret = sde_conn->reproj_conn ? sde_conn->reproj_conn->type : 0;
+			break;
+		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
-	return 0;
+	return ret;
 }
 
 int sde_crtc_update_lsr_perf(struct drm_crtc *crtc)
