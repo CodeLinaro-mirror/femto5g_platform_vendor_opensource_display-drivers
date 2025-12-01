@@ -1410,6 +1410,7 @@ static inline bool sde_hw_ctl_read_active_status(struct sde_hw_ctl *ctx,
 	return false;
 }
 
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 {
 	struct sde_hw_reg_dma_ops *ops = sde_reg_dma_get_ops();
@@ -1424,6 +1425,7 @@ static int sde_hw_reg_dma_flush(struct sde_hw_ctl *ctx, bool blocking)
 	return 0;
 
 }
+#endif
 
 static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		unsigned long cap)
@@ -1470,7 +1472,9 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 	ops->get_staged_sspp = sde_hw_ctl_get_staged_sspp;
 	ops->update_bitmask_sspp = sde_hw_ctl_update_bitmask_sspp;
 	ops->update_bitmask_mixer = sde_hw_ctl_update_bitmask_mixer;
+#if !IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	ops->reg_dma_flush = sde_hw_reg_dma_flush;
+#endif
 	ops->get_start_state = sde_hw_ctl_get_start_state;
 
 	if (cap & BIT(SDE_CTL_UNIFIED_DSPP_FLUSH)) {
