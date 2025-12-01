@@ -1041,7 +1041,7 @@ static void sde_encoder_phys_vid_connect_te(
 	if (phys_enc->hw_intf->ops.connect_external_te[disp_op]) {
 		phys_enc->hw_intf->ops.connect_external_te[disp_op](phys_enc->hw_intf, enable);
 
-		if (sde_enc->disp_info.vrr_caps.video_psr_support)
+		if (sde_enc->disp_info.vrr_caps.video_psr_support && enable)
 			c_conn->ops.toggle_te(c_conn->display);
 	}
 
