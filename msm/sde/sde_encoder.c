@@ -3951,7 +3951,8 @@ void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
 		is_vid_mode = true;
 	is_regdma_blocking = (is_vid_mode ||
 			_sde_encoder_is_autorefresh_enabled(sde_enc));
-	ctl->ops.reg_dma_flush(ctl, is_regdma_blocking);
+	if (ctl->ops.reg_dma_flush)
+		ctl->ops.reg_dma_flush(ctl, is_regdma_blocking);
 	ctl->ops.get_pending_flush(ctl, &cfg);
 	SDE_EVT32(DRMID(phys_enc->parent), cfg.pending_flush_mask);
 	ctl->ops.trigger_flush(ctl);
