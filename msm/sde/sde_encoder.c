@@ -685,8 +685,8 @@ int sde_encoder_set_offload_mode(struct drm_encoder *drm_enc, int enable)
 
 	if (!enable) {
 		msleep(50);
-		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
-			HFI_EVENT_DISPLAY_POWER, true);
+		sde_enc->hal_ops.register_power_event_notify[disp_op](sde_enc,
+			true);
 		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
 			MSM_ENC_VBLANK, true);
 		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
@@ -701,8 +701,8 @@ int sde_encoder_set_offload_mode(struct drm_encoder *drm_enc, int enable)
 			MSM_ENC_COMMIT_DONE, false);
 		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
 			MSM_ENC_TX_COMPLETE, false);
-		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
-			HFI_EVENT_DISPLAY_POWER, false);
+		sde_enc->hal_ops.register_power_event_notify[disp_op](sde_enc,
+			false);
 		SDE_DEBUG("deregister HW events for offload\n");
 	}
 
