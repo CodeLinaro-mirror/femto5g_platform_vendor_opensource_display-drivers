@@ -4423,11 +4423,15 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 			sizeof(sde_enc->cur_master->intf_cfg_v1));
 
 	/* turn off vsync_in to update tear check configuration */
-	sde_encoder_control_te(sde_enc, false);
+	if (!sde_enc->disp_info.vrr_caps.video_psr_support ||
+			sde_enc->crtc->state->active_changed)
+		sde_encoder_control_te(sde_enc, false);
 	sde_encoder_populate_encoder_phys(drm_enc, sde_enc, msm_mode);
 
 	_sde_encoder_virt_enable_helper(drm_enc);
-	sde_encoder_control_te(sde_enc, true);
+	if (!sde_enc->disp_info.vrr_caps.video_psr_support ||
+			sde_enc->crtc->state->active_changed)
+		sde_encoder_control_te(sde_enc, true);
 
 	sde_enc->cached_connector = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 	if (!sde_enc->cached_connector)
