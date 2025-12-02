@@ -2226,6 +2226,8 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 	/* Clear privacy layer info from prev state */
 	c_state->privacy_layer_updated = false;
 
+	sde_wb_connector_reset_reproj_state(c_state);
+
 	return &c_state->base;
 }
 

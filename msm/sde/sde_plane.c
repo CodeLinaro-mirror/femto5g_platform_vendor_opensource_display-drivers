@@ -5804,6 +5804,7 @@ sde_plane_duplicate_state(struct drm_plane *plane)
 
 	pstate->dirty = 0x0;
 	pstate->pending = false;
+	pstate->repro_sspp_cfg.alpha_fb = NULL;
 
 	__drm_atomic_helper_plane_duplicate_state(plane, &pstate->base);
 

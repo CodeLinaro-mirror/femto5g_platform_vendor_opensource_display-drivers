@@ -217,7 +217,6 @@ int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
 	u32 prop_id, temp_val;
-	struct sde_plane_state *state;
 	struct hfi_plane *phfi;
 	struct drm_framebuffer *alpha_fb;
 	struct sde_rect *bbox;
@@ -225,23 +224,24 @@ int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct hfi_buff *buff = NULL;
 	int rc = 0;
 
-	if (!plane || !prop_collector || !plane->base.state)
+	if (!plane || !prop_collector || !plane->base.state || !pstate)
 		return -EINVAL;
 
 	phfi = to_hfi_plane(plane);
-	state = (struct sde_plane_state *)plane->base.state;
-	alpha_fb = state->repro_sspp_cfg.alpha_fb;
-	bbox = &state->repro_sspp_cfg.bounding_box;
+	alpha_fb = pstate->repro_sspp_cfg.alpha_fb;
+	bbox = &pstate->repro_sspp_cfg.bounding_box;
 
 	switch (hfi_prop) {
 
 	case HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID:
 		prop_id = HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID;
-		temp_val = sde_plane_get_property(state, PLANE_PROP_SRC_SYS_CACHE_ID);
+		temp_val = sde_plane_get_property(pstate, PLANE_PROP_SRC_SYS_CACHE_ID);
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
 	case HFI_PROPERTY_LAYER_LSR_IN_A_BUFFER:
 		prop_id = HFI_PROPERTY_LAYER_LSR_IN_A_BUFFER;
+		if (!alpha_fb)
+			break;
 		alpha_pipe_cfg = kzalloc(sizeof(*alpha_pipe_cfg), GFP_KERNEL);
 		buff = kzalloc(sizeof(struct hfi_buff), GFP_KERNEL);
 		if (!alpha_pipe_cfg || !buff) {

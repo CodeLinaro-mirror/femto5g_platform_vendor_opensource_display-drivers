@@ -78,19 +78,19 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 
 	hdev->clk_freq = core->curr_freq;
 	core->bw_sum = bw_sum;
-	mutex_unlock(&core->clk_lock);
-	if (rc)
-		goto adjust_exit;
 
 	rc = msm_lsr_set_clocks(core);
 	if (rc) {
 		dprintk(LSR_ERR, "Failed to set clock rate %u %s: %d %s\n",
 			core->curr_freq, cl->name, rc, __func__);
 		core->curr_freq = core->orig_core_sum;
+		mutex_unlock(&core->clk_lock);
 		goto adjust_exit;
 	}
 	rc = msm_lsr_set_bw(core, bus, core->bw_sum);
 
+	core->old_perf = core->new_perf;
+	mutex_unlock(&core->clk_lock);
 adjust_exit:
 	return rc;
 }

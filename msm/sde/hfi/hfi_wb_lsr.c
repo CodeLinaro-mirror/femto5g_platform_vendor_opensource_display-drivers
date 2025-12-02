@@ -366,6 +366,13 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_sparse_grid;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
+		if (!buff->size)
+			break;
+		else if (!buff->addr_l) {
+			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
+			kfree(payload);
+			return -EINVAL;
+		}
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
 			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
@@ -374,6 +381,13 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_radial_dis_grid;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
+		if (!buff->size)
+			break;
+		else if (!buff->addr_l) {
+			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
+			kfree(payload);
+			return -EINVAL;
+		}
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
 			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
@@ -382,6 +396,13 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_display_gamma;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
+		if (!buff->size)
+			break;
+		else if (!buff->addr_l) {
+			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
+			kfree(payload);
+			return -EINVAL;
+		}
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
 			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
@@ -390,6 +411,13 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_gcx_session_config;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
+		if (!buff->size)
+			break;
+		else if (!buff->addr_l) {
+			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
+			kfree(payload);
+			return -EINVAL;
+		}
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
 			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
@@ -398,6 +426,13 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_gcx_session_config_data;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
+		if (!buff->size)
+			break;
+		else if (!buff->addr_l) {
+			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
+			kfree(payload);
+			return -EINVAL;
+		}
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
 			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
