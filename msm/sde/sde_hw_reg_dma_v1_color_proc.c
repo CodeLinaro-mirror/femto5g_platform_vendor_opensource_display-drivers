@@ -7608,7 +7608,8 @@ cleanup:
 
 int reg_dmav1_setup_spr_pu_config(struct sde_hw_dspp *ctx,
 	struct msm_roi_list *roi_list,
-	struct sde_hw_reg_dma_ops *dma_ops, struct sde_reg_dma_buffer *buffer)
+	struct sde_hw_reg_dma_ops *dma_ops, struct sde_reg_dma_buffer *buffer,
+	struct sde_hw_cp_cfg *hw_cfg)
 {
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	uint32_t reg_off, base_off;
@@ -7636,6 +7637,26 @@ int reg_dmav1_setup_spr_pu_config(struct sde_hw_dspp *ctx,
 	if (rc) {
 		DRM_ERROR("write pu config failed ret %d\n", rc);
 		return rc;
+	}
+
+	if (IS_DISP_OP_HFI(ctx->hw.disp_op) && (ctx->spr_cfg_18_default != 0)) {
+		uint32_t reg = ctx->spr_cfg_18_default;
+
+		//No ROI list means full screen update so apply without modification
+		if (roi_list && roi_list->spr_roi[0].y1 != 0)
+			reg &= 0xFFFFFFFC;
+
+		if (roi_list && roi_list->spr_roi[0].y2 != hw_cfg->panel_height)
+			reg &= 0xFFFFFFCF;
+
+		reg_off = base_off + 0x7c;
+		REG_DMA_SETUP_OPS(dma_write_cfg, reg_off, &reg,
+			sizeof(uint32_t), REG_SINGLE_WRITE, 0, 0, 0);
+		rc = dma_ops->setup_payload(&dma_write_cfg);
+		if (rc) {
+			DRM_ERROR("write spr cfg18 failed ret %d\n", rc);
+			return rc;
+		}
 	}
 
 	return rc;
@@ -7755,11 +7776,18 @@ void reg_dmav1_setup_spr_pu_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 	if (hw_cfg->payload && hw_cfg->len == sizeof(struct sde_drm_roi_v1))
 		roi_list = hw_cfg->payload;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	if (roi_list)
+		hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
+
 	rc = reg_dmav1_setup_spr_pu_common(ctx, cfg, roi_list, dma_ops, buffer);
 	if (rc)
 		return;
 
-	rc = reg_dmav1_setup_spr_pu_config(ctx, roi_list, dma_ops, buffer);
+	rc = reg_dmav1_setup_spr_pu_config(ctx, roi_list, dma_ops, buffer, hw_cfg);
 	if (rc)
 		return;
 
@@ -7773,7 +7801,8 @@ void reg_dmav1_setup_spr_pu_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 		if (roi_list && roi_list->spr_roi[0].y2 != hw_cfg->panel_height)
 			reg &= 0xFFFFFFCF;
 
-		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->spr.base + 0x7C, reg);
+		if (IS_DISP_OP_HWIO(ctx->hw.disp_op))
+			SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->spr.base + 0x7C, reg);
 	}
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,

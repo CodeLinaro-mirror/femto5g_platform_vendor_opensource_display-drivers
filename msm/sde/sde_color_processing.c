@@ -220,6 +220,7 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 static enum sde_cp_crtc_pu_features
 	sde_cp_crtc_pu_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_PU_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_RC_PU] = HFI_PROPERTY_DISPLAY_COLOR_RC_PU,
+	[SDE_CP_CRTC_DSPP_SPR_PU] = HFI_PROPERTY_DISPLAY_COLOR_SPR_PU,
 };
 #endif
 
@@ -3324,6 +3325,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 	if (IS_DISP_OP_HFI(disp_op)) {
 		_sde_cp_mark_active_dirty_internal(sde_crtc);
 		_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_RC_PU, false);
+		_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_SPR_PU, false);
 		return;
 	}
 
