@@ -302,6 +302,37 @@ static void sde_hw_sspp_setup_ubwc_v1(struct sde_hw_pipe *ctx, struct sde_hw_blk
 	}
 }
 
+static u32 sde_hw_sspp_override_unpack_v1(enum sde_color_component_mask color_mask, u32 unpack)
+{
+	u32 shift = 0, val = 0, color_mask_val = 0, result = 0;
+
+	/**
+	 * if color_mask & SDE_COLOR_MASK_ALPHA but color_mask != SDE_COLOR_MASK_ALPHA
+	 * then invalid mask (could be sending alpha and another color to same channel)
+	 */
+	if (color_mask > SDE_COLOR_MASK_ALPHA)
+		return unpack;
+
+	while (unpack > 0) {
+		val = (unpack & 0xff);
+		color_mask_val = BIT(val);
+
+		/**
+		 * if val == C3_ALPHA then color_mask_val = SDE_COLOR_MASK_ALPHA so if
+		 * color_mask == SDE_COLOR_MASK_ALPHA then we replace C3_ALPHA with C2_R_Cr
+		 * in result and rest is replaced with C3_ALPHA
+		 */
+		if (val == C3_ALPHA)
+			val = C2_R_Cr;
+
+		result |= (((color_mask & color_mask_val) ? val : C3_ALPHA) << shift);
+		unpack >>= 8;
+		shift += 8;
+	}
+
+	return result;
+}
+
 /**
  * Setup source pixel format, flip,
  */
@@ -355,6 +386,9 @@ static void sde_hw_sspp_setup_format_v1(struct sde_hw_pipe *ctx,
 
 	unpack = (fmt->element[3] << 24) | (fmt->element[2] << 16) |
 		(fmt->element[1] << 8) | (fmt->element[0] << 0);
+	if (color_mask != SDE_COLOR_MASK_NONE)
+		unpack = sde_hw_sspp_override_unpack_v1(color_mask, unpack);
+
 	src_format |= ((fmt->unpack_count - 1) << 12) |
 		(fmt->unpack_tight << 17) |
 		(fmt->unpack_align_msb << 18);
