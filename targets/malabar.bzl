@@ -21,7 +21,9 @@ def define_malabar():
                      "CONFIG_DRM_MSM_REGISTER_LOGGING",
                      "CONFIG_QCOM_MDSS_PLL",
                      "CONFIG_THERMAL_OF",
+                     "CONFIG_MSM_SDE_ROTATOR",
                      "CONFIG_SYNC_FILE",
+                     "CONFIG_MSM_SDE_ROTATOR_EVTLOG_DEBUG",
                      "CONFIG_DEBUG_FS",
                 ],
         )
