@@ -60,6 +60,7 @@
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
 #define SDE_HW_VER_980	SDE_HW_VER(9, 8, 0) /* seraph */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
+#define SDE_HW_VER_A30  SDE_HW_VER(10, 3, 0) /* chora */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
 #define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
@@ -479,6 +480,8 @@ enum {
  * @SDE_MIXER_10_BITS_COLOR   Layer mixer supports 10 bits color border and color fill
  * @SDE_MIXER_CAC_PRIMARY     Layer mixer preferred for primary during two pass CAC
  * @SDE_MIXER_CAC_LB          Layer mixer preferred for loopback during two pass CAC
+ * @SDE_MIXER_IS_VIRTUAL      Layer mixer which is removed but used for proper
+ *                            Dedicated CWB allocation
  * @SDE_MIXER_MAX             maximum value
  */
 enum {
@@ -497,6 +500,7 @@ enum {
 	SDE_MIXER_10_BITS_COLOR,
 	SDE_MIXER_CAC_PRIMARY,
 	SDE_MIXER_CAC_LB,
+	SDE_MIXER_IS_VIRTUAL,
 	SDE_MIXER_MAX
 };
 
@@ -2241,6 +2245,8 @@ struct sde_mdss_cfg {
 	struct sde_sspp_cfg sspp[MAX_BLOCKS];
 	u32 mixer_count;
 	struct sde_lm_cfg mixer[MAX_BLOCKS];
+	u32 virtual_mixers_mask;
+
 	struct sde_dspp_top_cfg dspp_top;
 	u32 dspp_count;
 	struct sde_dspp_cfg dspp[MAX_BLOCKS];
