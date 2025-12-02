@@ -592,8 +592,10 @@ int sde_wb_connector_reproj_setup(struct sde_connector *conn, struct sde_wb_devi
 
 	conn->reproj_conn->type = wb_dev->wb_cfg->opmode;
 	rc = msm_reproj_disp_register_intf(conn->reproj_conn);
-	if (rc)
+	if (rc) {
 		SDE_ERROR("failed to register reproj disp\n");
+		return -ENODEV;
+	}
 
 	rc = conn->reproj_conn->get_info(conn->reproj_conn, conn->reproj_conn->type);
 	if (rc)
