@@ -841,9 +841,8 @@ void hfi_cp_crtc_unmap_sg_table(struct hfi_shared_addr_map *addr_map, struct hfi
 {
 	unsigned long *mapped_iova = NULL;
 
-	if (!addr_map || !client) {
-		SDE_ERROR("Invalid parameters addr_map %pK, client %pK\n",
-				addr_map, client);
+	if (!addr_map) {
+		SDE_ERROR("Invalid parameters addr_map %pK\n", addr_map);
 		return;
 	}
 
@@ -865,6 +864,7 @@ void hfi_cp_crtc_set_rgb_hist_buffers(struct sde_crtc *sde_crtc,
 	struct sde_rgb_hist_buffer *hist_buf = NULL;
 	struct hfi_display_rgb_hist_buffer *hfi_buf = NULL;
 	struct sg_table *sgt = NULL;
+	unsigned long *mapped_iova = NULL;
 	u32 clear_buffs_prop_id = HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS;
 	u32 payload = 0;
 
@@ -927,8 +927,15 @@ void hfi_cp_crtc_set_rgb_hist_buffers(struct sde_crtc *sde_crtc,
 					SDE_ERROR("Failed to map buffer to dcp_iova ret %d\n", ret);
 					goto exit;
 				}
-				hist_buf->dcp_iova[j] =
-					hist_buf->addr_map[j].alloc_info.mapped_iova;
+
+				mapped_iova = NULL;
+				mapped_iova = _hfi_cp_crtc_get_mapped_iova(
+						&(hist_buf->addr_map[j]));
+				if (!mapped_iova) {
+					SDE_ERROR("failed to get mapped iova, i %d j %d\n", i, j);
+					goto exit;
+				}
+				hist_buf->dcp_iova[j] = *mapped_iova;
 
 				// Add to hfi struct
 				hfi_buf->dpu_iova_lo[j] =
