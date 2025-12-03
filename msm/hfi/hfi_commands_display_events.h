@@ -474,6 +474,25 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_HDCP_FEATURE_SUPPORTED                        0x04000017
 
+/*!
+ * @def HFI_COMMAND_DISPLAY_EVENT_AIQE_COPR_READ
+ * @brief This is a DCP event command sent to Host to provide copr status data.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in @ref disp_events_header_data_page)
+ *
+ * Hfi packet layout                      | Value
+ *----------------------------------------|---------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                         | HFI_COMMAND_DISPLAY_EVENT_AIQE_COPR_READ
+ * hfi_packet.flags                       | HFI_RX_FLAGS_NONE
+ * hfi_packet.id                          | BITS 0:15 carry the display id for which the event
+ * ^                                      | is applicable
+ * hfi_packet.payload[0]                  | number of COPR values
+ * hfi_packet.payload[1-n]                | COPR values
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_AIQE_COPR_READ                                0x04000018
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H

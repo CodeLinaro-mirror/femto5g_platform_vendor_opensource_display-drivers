@@ -332,6 +332,8 @@ enum hfi_display_idle_timer_control {
  *     Event ID for HDCP 2.x timeout.
  * @HFI_EVENT_HDCP_FEATURE_SUPPORTED:
  *     Event ID for HDCP feature support query.
+ * @var HFI_EVENT_AIQE_COPR
+ *   EVENT ID for AIQE COPR.
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC               = 0x1,
@@ -357,6 +359,7 @@ enum hfi_display_event_id {
 	HFI_EVENT_HDCP2X_PROCESS_MSG  = 0x15,
 	HFI_EVENT_HDCP2X_TIMEOUT      = 0x16,
 	HFI_EVENT_HDCP_FEATURE_SUPPORTED = 0x17,
+	HFI_EVENT_AIQE_COPR           = 0x18,
 };
 
 /*
