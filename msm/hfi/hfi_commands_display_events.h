@@ -235,6 +235,32 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_LTM                                           0x04000009
 
+/*!
+ * HFI_COMMAND_DISPLAY_EVENT_RGB_HIST - This is a DCP event notify command sent to the host
+ *                                       for RGB Histogram-related events.
+ *
+ * Data layout:
+ * struct hfi_display_rgb_hist_event_resp - stats buffer and event type
+ * @event_type       : Type of RGB Histogram event (e.g., HIST_DONE, WB_ERR, HIST_OFF)
+ * @dcp_addr_lo[]    : Lower 32 bits of 64-bit DCP addresses for RGB histogram stats buffers
+ *                      (one address per RGB component)
+ * @dcp_addr_hi[]    : Upper 32 bits of 64-bit DCP addresses for RGB histogram stats buffers
+ *                      (one address per RGB component)
+ *
+ * struct hfi_display_rgb_hist_event_resp {
+ *         u32 event_type;
+ *         u32 dcp_addr_lo[HFI_RGB_COMPONENT_SIZE];
+ *         u32 dcp_addr_hi[HFI_RGB_COMPONENT_SIZE];
+ * }
+ * hfi_packet.payload_info.type           : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                         : HFI_COMMAND_DISPLAY_EVENT_RGB_HIST
+ *           .flags                       : HFI_RX_FLAGS_NONE
+ *           .id                          : Bits 0:15 carry the display ID for which the event
+ *                                          is applicable
+ *           .payload[0-2]               : struct hfi_display_rgb_hist_event_resp
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_RGB_HIST                                      0x0400000A
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H

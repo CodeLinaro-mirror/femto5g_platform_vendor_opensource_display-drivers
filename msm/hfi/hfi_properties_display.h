@@ -1073,6 +1073,54 @@
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS                    0x0002011D
 
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CTRL - Property to configure RGB hist control
+ *                                          parameters. Host sends this as part of
+ *                                          HFI_COMMAND_DISPLAY_SET_PROPERTY.
+ *
+ * @BasicFunctionality - HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CTRL
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CTRL \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_rgb_hist_ctrl)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_display_rgb_hist_ctrl
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CTRL                   0x0002011E
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER - Property to queue RGB histogram
+ *                                                  buffer. Host sends this to provide
+ *                                                  buffer for histogram stats.
+ *
+ * @BasicFunctionality - HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_rgb_hist_buffer)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_display_rgb_hist_buffer
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER           0x0002011F
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS - Property to clear all queued RGB
+ *                                                   hist buffers. Host sends this to reset
+ *                                                   histogram buffer state.
+ *
+ * @BasicFunctionality - HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS          0x00020120
+
 /*
  * All display color properties end here
  */

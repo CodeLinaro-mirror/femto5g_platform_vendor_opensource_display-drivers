@@ -672,9 +672,8 @@ void hfi_cp_crtc_set_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
 {
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
 	struct drm_msm_ltm_buffers_ctrl *buf_cfg = NULL;
-#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 	struct sg_table *sgt = NULL;
-#endif
+	unsigned long *mapped_iova = NULL;
 	u32 i = 0, num = 0;
 	int ret = 0;
 	u32 payload = 0;
@@ -711,18 +710,25 @@ void hfi_cp_crtc_set_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
 		ret = map_single_ltm_buffer(sde_crtc, i, buf_cfg->fds[i]);
 		if (ret)
 			goto exit;
-#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
+
 		sgt = msm_gem_get_sgt(sde_crtc->ltm_buffers[i]->gem);
 		sde_crtc->ltm_buffers[i]->addr_map.size = sde_crtc->ltm_buffers[i]->gem->size;
 		ret = hfi_adapter_map_sg_table(sde_crtc->hfi_client, sgt,
 			&sde_crtc->ltm_buffers[i]->addr_map);
 		if (ret)
 			goto exit;
-		sde_crtc->ltm_buffers[i]->dcp_iova =
-			sde_crtc->ltm_buffers[i]->addr_map.alloc_info.mapped_iova;
-#endif
-		if (!(sde_crtc->ltm_buffers[i]->dcp_iova))
+
+		mapped_iova = _hfi_cp_crtc_get_mapped_iova(&(sde_crtc->ltm_buffers[i]->addr_map));
+		if (!mapped_iova) {
+			SDE_ERROR("failed to get mapped iova for buffer %d\n", i);
 			goto exit;
+		}
+		sde_crtc->ltm_buffers[i]->dcp_iova = *mapped_iova;
+
+		if (!(sde_crtc->ltm_buffers[i]->dcp_iova)) {
+			SDE_ERROR("invalid dcp_iova for buffer %d\n", i);
+			goto exit;
+		}
 	}
 
 	/* Add buffers to ltm_buf_free list */
@@ -805,5 +811,40 @@ void hfi_cp_crtc_free_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
 		SDE_ERROR("Failed to send free ltm buffer prop ret: %d\n", ret);
 		return;
 	}
+}
 
+void hfi_cp_crtc_reset_color_props(struct hfi_util_u32_prop_helper *color_props)
+{
+	if (!color_props) {
+		SDE_ERROR("Invalid color_props is null\n");
+		return;
+	}
+	hfi_util_u32_prop_helper_reset(color_props);
+}
+
+int hfi_cp_crtc_get_color_props_count(struct hfi_util_u32_prop_helper *color_props)
+{
+	if (!color_props) {
+		SDE_ERROR("Invalid color_props is null\n");
+		return 0;
+	}
+	return hfi_util_u32_prop_helper_prop_count(color_props);
+}
+
+void hfi_cp_crtc_unmap_sg_table(struct hfi_shared_addr_map *addr_map, struct hfi_client_t *client)
+{
+	unsigned long *mapped_iova = NULL;
+
+	if (!addr_map || !client) {
+		SDE_ERROR("Invalid parameters addr_map %pK, client %pK\n",
+				addr_map, client);
+		return;
+	}
+
+	mapped_iova = _hfi_cp_crtc_get_mapped_iova(addr_map);
+	if (mapped_iova && *mapped_iova) {
+		hfi_adapter_unmap_sg_table(client, *mapped_iova,
+			addr_map->aligned_size);
+		*mapped_iova = 0;
+	}
 }

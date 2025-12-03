@@ -313,4 +313,103 @@ struct hfi_display_ltm_event_resp {
 	u32 dcp_addr_l;
 };
 
+#define HFI_RGB_HISTOGRAM_BIN_COUNT 1024
+#define HFI_RGB_COMPONENT_SIZE 3
+
+#define HFI_RGB_HIST_ROI_ENABLE (1 << 1)
+
+#define HFI_RGB_HIST_DONE (1 << 0)
+#define HFI_RGB_HIST_WB_ERR (1 << 1)
+#define HFI_RGB_HIST_OFF (1 << 2)
+
+/**
+ * struct hfi_display_rgb_hist_ctrl - RGB histogram control parameters
+ * @flags: Flags for operation control
+ * @roi_mode: Region of interest mode
+ * @roi_x: X-coordinate of ROI
+ * @roi_y: Y-coordinate of ROI
+ * @roi_width: Width of ROI
+ * @roi_height: Height of ROI
+ * @tap_point: Tap point for histogram collection
+ * @colorspace_mode: Colorspace mode used for histogram
+ */
+struct hfi_display_rgb_hist_ctrl {
+	u32 flags;
+	u32 roi_mode;
+	u32 roi_x;
+	u32 roi_y;
+	u32 roi_width;
+	u32 roi_height;
+	u32 tap_point;
+	u32 colorspace_mode;
+};
+
+/**
+ * struct hfi_display_rgb_hist_stats_data - RGB histogram statistics data
+ * @hist: Histogram bin data for each component
+ * @hist_min: Minimum histogram value
+ * @hist_max: Maximum histogram value
+ * @hist_sum_lsb: Lower 32 bits of histogram sum
+ * @hist_sum_msb: Upper 32 bits of histogram sum
+ * @hcount: hist count
+ * @crc: CRC value
+ * @status_flags: Status flags
+ * @roi_mode: Region of interest mode
+ * @roi_x: X-coordinate of ROI
+ * @roi_y: Y-coordinate of ROI
+ * @roi_width: Width of ROI
+ * @roi_height: Height of ROI
+ * @tap_point: Tap point for histogram collection
+ * @colorspace_mode: Colorspace mode used for histogram
+ */
+struct hfi_display_rgb_hist_stats_data {
+	u32 hist[HFI_RGB_HISTOGRAM_BIN_COUNT];
+	u32 hist_min;
+	u32 hist_max;
+	u32 hist_sum_lsb;
+	u32 hist_sum_msb;
+	u32 hcount;
+	u32 crc;
+	u32 status_flags;
+	u32 roi_mode;
+	u32 roi_x;
+	u32 roi_y;
+	u32 roi_width;
+	u32 roi_height;
+	u32 tap_point;
+	u32 colorspace_mode;
+};
+
+/**
+ * struct hfi_display_rgb_hist_buffer - RGB histogram buffer addresses
+ * @flags: Flags for buffer configuration
+ * @dpu_iova_lo: Lower 32 bits of aligned DPU IOVA addresses
+ * @dpu_iova_hi: Upper 32 bits of aligned DPU IOVA addresses
+ * @dcp_addr_lo: Lower 32 bits of aligned DCP addresses
+ * @dcp_addr_hi: Upper 32 bits of aligned DCP addresses
+ * @size: Size of the histogram statistics data
+ */
+struct hfi_display_rgb_hist_buffer {
+	u32 flags;
+	u32 dpu_iova_lo[HFI_RGB_COMPONENT_SIZE];
+	u32 dpu_iova_hi[HFI_RGB_COMPONENT_SIZE];
+	u32 dcp_addr_lo[HFI_RGB_COMPONENT_SIZE];
+	u32 dcp_addr_hi[HFI_RGB_COMPONENT_SIZE];
+	u32 size;
+};
+
+/*!
+ * struct hfi_display_rgb_hist_event_resp
+ * @brief RGB histogram event struct. This struct is used to pass RGB histogram
+ * buffer addresses from FW to HLOS driver.
+ *
+ * @event_type: Type of the RGB histogram event.
+ * @dcp_addr_lo: Lower 32 bits of the DCP buffer address for each RGB component.
+ * @dcp_addr_hi: Upper 32 bits of the DCP buffer address for each RGB component.
+ */
+struct hfi_display_rgb_hist_event_resp {
+	u32 event_type;
+	u32 dcp_addr_lo[HFI_RGB_COMPONENT_SIZE];
+	u32 dcp_addr_hi[HFI_RGB_COMPONENT_SIZE];
+};
 #endif // __H_HFI_DEFS_DISPLAY_COLOR_H__
