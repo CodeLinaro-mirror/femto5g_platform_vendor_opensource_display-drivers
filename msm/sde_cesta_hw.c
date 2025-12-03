@@ -127,6 +127,7 @@ void _sde_cesta_hw_override_ctrl_setup(struct sde_cesta *cesta, u32 idx, u32 for
 void _sde_cesta_hw_ctrl_setup(struct sde_cesta *cesta, u32 idx, struct sde_cesta_ctrl_cfg *cfg)
 {
 	u32 val = 0;
+	u32 misc_cmd_r, misc_cmd_w;
 
 	if (!cfg || !cfg->enable) {
 		dss_reg_w(&cesta->scc_io[idx], SCC_CTRL, 0xf0, cesta->debug_mode);
@@ -134,8 +135,24 @@ void _sde_cesta_hw_ctrl_setup(struct sde_cesta *cesta, u32 idx, struct sde_cesta
 		return;
 	}
 
+	misc_cmd_r = dss_reg_r(&cesta->disp_cc_io, DISP_CC_MISC_CMD, cesta->debug_mode);
+	misc_cmd_w = misc_cmd_r;
+
 	if (cfg->avr_enable)
 		val |= BIT(9);
+
+	if (cfg->is_vid) {
+		if (cfg->avr_enable)
+			misc_cmd_w &= ~BIT(4);
+		else
+			misc_cmd_w |= BIT(4);
+
+		if (misc_cmd_r != misc_cmd_w) {
+			dss_reg_w(&cesta->disp_cc_io, DISP_CC_MISC_CMD,	misc_cmd_w,
+					cesta->debug_mode);
+			wmb(); /* finish setting this */
+		}
+	}
 
 	val |= BIT(8);
 

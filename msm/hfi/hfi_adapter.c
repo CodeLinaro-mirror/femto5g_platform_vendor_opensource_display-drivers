@@ -40,6 +40,7 @@
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
 static u32 unique_id_counter = 1;
 static atomic_t work_queue_pos_wr = ATOMIC_INIT(0);
+static DECLARE_BITMAP(wq_inuse_bitmap, HFI_ADAPTER_WORK_QUEUE_SIZE);
 
 static u32 hfi_cmd_type_map[HFI_CMDBUF_TYPE_MAX] = {
 	[HFI_CMDBUF_TYPE_ATOMIC_CHECK] = HFI_CMD_BUFF_DISPLAY,
@@ -147,6 +148,7 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 	struct hfi_header *virtio_hdr;
 	struct hfi_buffer_pool *pool;
 	bool client_found = false;
+	int index;
 	int i = 0;
 
 	if (!work) {
@@ -156,6 +158,7 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 
 	cb_cmd_buf_work = container_of(work, struct callback_work, work);
 	host = cb_cmd_buf_work->host;
+	index = cb_cmd_buf_work->index;
 	if (!host) {
 		HFI_AD_ERROR("thread %d could not match host\n", cb_cmd_buf_work->index);
 		return;
@@ -177,6 +180,7 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 
 		if (hfi_core_cmds_rx_buf_get(host->session, rx_buffer)) {
 			atomic_set(&pool->available, 1);
+			clear_bit(index, wq_inuse_bitmap);
 			return;
 		}
 
@@ -218,6 +222,8 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 			release_rx_buffer_fail(hfi_buff, host);
 		}
 	} while (i++ <= MAX_TRY_COUNT);
+
+	clear_bit(index, wq_inuse_bitmap);
 
 	if (i >= MAX_TRY_COUNT)
 		HFI_AD_ERROR("max retries exceeded: %d\n", i);
@@ -302,7 +308,8 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 	struct hfi_adapter_t *adapter = (struct hfi_adapter_t *)cb_data;
 	struct callback_work *cb_cmd_buf_work;
 	int ret;
-	u32 work_queue_idx;
+	int tries, slot_found = -1;
+	int work_queue_idx;
 
 	if (!cb_data)
 		return -EINVAL;
@@ -314,20 +321,28 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		if (atomic_read(&adapter->ssr_in_progress))
 			break;
 
-		atomic_fetch_add_unless(&work_queue_pos_wr, 1,
-				HFI_ADAPTER_WORK_QUEUE_SIZE);
-		work_queue_idx = atomic_read(&work_queue_pos_wr);
-		if (work_queue_idx >= HFI_ADAPTER_WORK_QUEUE_SIZE) {
-			/* If exceeds index limit, reset to 0 */
-			atomic_set(&work_queue_pos_wr, 0);
-			work_queue_idx = 0;
+		work_queue_idx = atomic_fetch_inc(&work_queue_pos_wr) &
+				HFI_ADAPTER_WORK_QUEUE_MASK;
+		/* Try to claim a free slot */
+		for (tries = 0; tries < HFI_ADAPTER_WORK_QUEUE_SIZE; tries++) {
+			int try_index = (work_queue_idx + tries) & HFI_ADAPTER_WORK_QUEUE_MASK;
+			/* test_and_set_bit returns prev value: 0 means we successfully set it */
+			if (!test_and_set_bit(try_index, wq_inuse_bitmap)) {
+				slot_found = try_index;
+				break;
+			}
 		}
 
-		cb_cmd_buf_work = &adapter->cb_cmd_buf_work[work_queue_idx];
+		if (slot_found < 0) {
+			HFI_AD_WARN("failed to find a free slot to queue work\n");
+			return -EINVAL;
+		}
+
+		cb_cmd_buf_work = &adapter->cb_cmd_buf_work[slot_found];
 
 		ret = kthread_queue_work(&adapter->cb_event_worker, &cb_cmd_buf_work->work);
 		if (!ret)
-			HFI_AD_WARN("failed to queue work at index:%d\n", work_queue_idx);
+			HFI_AD_WARN("failed to queue work at index:%d\n", slot_found);
 		break;
 	case HFI_CORE_EVENT_SSR_START:
 		HFI_AD_DEBUG("SSR has been initiated\n");

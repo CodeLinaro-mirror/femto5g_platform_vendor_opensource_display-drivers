@@ -1215,7 +1215,8 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 
 	c_conn->freq_pattern_updated = false;
 	c_conn->freq_pattern_type_changed = false;
-	if (usecase_idx_updated || frame_interval_updated || !c_conn->freq_pattern) {
+	if (usecase_idx_updated || frame_interval_updated || !c_conn->freq_pattern ||
+		msm_is_mode_seamless_emsync_fps_switch(&c_state->msm_mode)) {
 		new_freq_pattern = sde_encoder_get_freq_pattern(drm_enc, c_conn->frame_interval,
 				c_conn->usecase_idx);
 		if (!new_freq_pattern) {
@@ -1239,6 +1240,10 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 			SDE_EVT32(new_freq_pattern->frame_interval,
 				old_freq_pattern->frame_interval, new_freq_pattern->usecase_idx,
 				old_freq_pattern->usecase_idx);
+		} else if (msm_is_mode_seamless_emsync_fps_switch(&c_state->msm_mode)) {
+			c_conn->freq_pattern = new_freq_pattern;
+			c_conn->freq_pattern_updated = true;
+			SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
 		}
 
 		if (new_freq_pattern && old_freq_pattern &&
@@ -1246,7 +1251,7 @@ void sde_connector_set_vrr_params(struct drm_connector *connector)
 				old_freq_pattern->freq_stepping_seq[0])) {
 			c_conn->qsync_updated = true;
 			SDE_EVT32(
-					SDE_EVTLOG_FUNC_CASE1,
+					SDE_EVTLOG_FUNC_CASE2,
 					new_freq_pattern->freq_stepping_seq[0],
 					old_freq_pattern->freq_stepping_seq[0]);
 		}
@@ -3917,7 +3922,7 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 			}
 		}
 
-		if (c_conn->vrr_caps.video_psr_support)
+		if (c_conn->vrr_caps.video_psr_support || c_conn->vrr_caps.has_vhm_capability)
 			sde_kms_info_add_keyint(info, "has_vhm_support", 1);
 
 		if (c_conn->dpu_dma_enabled)
@@ -3946,8 +3951,8 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 					mode_info.mdp_transfer_time_us_max);
 		}
 
-		sde_kms_info_add_keyint(info, "allowed_mode_switch",
-			mode_info.allowed_mode_switches);
+		sde_kms_info_add_list(info, "allowed_mode_switch", mode_info.allowed_mode_switches,
+			ARRAY_SIZE(mode_info.allowed_mode_switches));
 
 		if (!mode_info.roi_caps.num_roi)
 			continue;
@@ -3980,7 +3985,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 	struct sde_kms_info *info;
 	struct sde_connector *c_conn = NULL;
 	struct sde_connector_state *sde_conn_state = NULL;
-	struct msm_mode_info mode_info;
+	struct msm_mode_info *mode_info = NULL;
 	struct drm_property_blob **blob = NULL;
 	int rc = 0;
 
@@ -3990,19 +3995,23 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 		return -EINVAL;
 	}
 
-	info = vzalloc(sizeof(*info));
-	if (!info)
+	mode_info = kzalloc(sizeof(*mode_info), GFP_KERNEL);
+	if (!mode_info)
 		return -ENOMEM;
+
+	info = vzalloc(sizeof(*info));
+	if (!info) {
+		kfree(mode_info);
+		return -ENOMEM;
+	}
 
 	sde_kms_info_reset(info);
 
 	switch (prop_id) {
 	case CONNECTOR_PROP_SDE_INFO:
-		memset(&mode_info, 0, sizeof(mode_info));
-
 		if (state) {
 			sde_conn_state = to_sde_connector_state(state);
-			memcpy(&mode_info, &sde_conn_state->mode_info,
+			memcpy(mode_info, &sde_conn_state->mode_info,
 					sizeof(sde_conn_state->mode_info));
 		} else {
 			/**
@@ -4016,7 +4025,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 
 		if (c_conn->ops.set_info_blob) {
 			rc = c_conn->ops.set_info_blob(conn, info,
-					c_conn->display, &mode_info);
+					c_conn->display, mode_info);
 			if (rc) {
 				SDE_ERROR_CONN(c_conn,
 						"set_info_blob failed, %d\n",
@@ -4049,6 +4058,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 			prop_id);
 exit:
 	vfree(info);
+	kfree(mode_info);
 
 	return rc;
 }

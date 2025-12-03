@@ -32,7 +32,8 @@
 #define HFI_PACKKEY(property_id, version, dsize) \
 	(property_id | (version << 20) | (dsize << 24))
 
-#define HFI_ADAPTER_WORK_QUEUE_SIZE 4
+#define HFI_ADAPTER_WORK_QUEUE_SIZE 4 //Queue size must be a power of 2.
+#define HFI_ADAPTER_WORK_QUEUE_MASK (HFI_ADAPTER_WORK_QUEUE_SIZE - 1)
 
 /**
  * @brief Type of virtqueue event
