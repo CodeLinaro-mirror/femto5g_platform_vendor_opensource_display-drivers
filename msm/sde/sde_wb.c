@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
- * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries. All rights reserved.
+ * Confidential and Proprietary - Qualcomm Technologies, Inc.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -254,6 +254,8 @@ int sde_wb_connector_set_modes(struct sde_wb_device *wb_dev,
 			memset(&dispmode, 0, sizeof(dispmode));
 			ret = drm_mode_convert_umode(wb_dev->drm_dev,
 					&dispmode, &modeinfo[i]);
+			/* null terminate the string */
+			modeinfo[i].name[DRM_DISPLAY_MODE_LEN - 1] = '\0';
 			if (ret) {
 				SDE_ERROR(
 					"failed to convert mode %d:\"%s\" %d %d %d %d %d %d %d %d %d %d 0x%x 0x%x status:%d rc:%d\n",
