@@ -1279,7 +1279,8 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf
 			break;
 		}
 		response_ack = atomic_read(&cmd_buf->buffer_send_done);
-		HFI_AD_INFO("response_ack = 0x%08X\n", response_ack);
+		HFI_AD_DEBUG("[info] cmd_type:0x%08x response_ack = 0x%x\n",
+				cmd_buf->cmd_type, response_ack);
 	} while (!response_ack);
 	atomic_set(&cmd_buf->waiting_for_rsp, 0);
 
