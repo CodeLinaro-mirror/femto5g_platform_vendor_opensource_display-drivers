@@ -701,6 +701,25 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 		else
 			SDE_ERROR("unknown LTM event type %d\n", event_payload->event_type);
 		break;
+	case HFI_COMMAND_DISPLAY_EVENT_RGB_HIST: {
+		struct hfi_display_rgb_hist_event_resp *event_payload;
+
+		event_payload = payload;
+		if (size != sizeof(struct hfi_display_rgb_hist_event_resp)) {
+			SDE_ERROR("Invalid size for rgb hist event, size %d\n", size);
+			return;
+		}
+
+		if (event_payload->event_type == HFI_RGB_HIST_DONE)
+			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_RGB_HIST, event_payload);
+		else if (event_payload->event_type == HFI_RGB_HIST_WB_ERR)
+			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_RGB_HIST_WB_ERR, event_payload);
+		else if (event_payload->event_type == HFI_RGB_HIST_OFF)
+			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_RGB_HIST_OFF, event_payload);
+		else
+			SDE_ERROR("Invalid RGB Hist event type %d\n", event_payload->event_type);
+		break;
+	}
 	default:
 		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
 	}
@@ -784,6 +803,17 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_LTM].state = enable;
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_LTM].pending = false;
+		break;
+	case HFI_EVENT_RGB_HIST:
+		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
+		if (ret) {
+			SDE_ERROR("event registration failed: event %d, enable %d\n",
+				event, enable);
+			return ret;
+		}
+
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_RGB_HIST].state = enable;
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_RGB_HIST].pending = false;
 		break;
 	default:
 		break;

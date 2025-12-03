@@ -597,6 +597,13 @@ enum {
 	AI_SCALER_PROP_MAX,
 };
 
+enum {
+	RGB_HIST_OFF,
+	RGB_HIST_LEN,
+	RGB_HIST_VERSION,
+	RGB_HIST_PROP_MAX,
+};
+
 /*************************************************************
  * dts property definition
  *************************************************************/
@@ -1133,6 +1140,12 @@ static struct sde_prop_type ai_scaler_prop[] = {
 	{AI_SCALER_VERSION, "qcom,sde-dspp-aiqe-aiscaler-version", false, PROP_TYPE_U32},
 	{AI_SCALER_LEN, "qcom,sde-dspp-aiqe-aiscaler-size", false, PROP_TYPE_U32},
 	{AI_SCALER, "qcom,sde-aiqe-has-feature-aiscaler", false, PROP_TYPE_BOOL},
+};
+
+static struct sde_prop_type rgb_hist_prop[] = {
+	{RGB_HIST_OFF, "qcom,sde-dspp-rgb-hist-off", false, PROP_TYPE_U32_ARRAY},
+	{RGB_HIST_LEN, "qcom,sde-dspp-rgb-hist-size", false, PROP_TYPE_U32},
+	{RGB_HIST_VERSION, "qcom,sde-dspp-rgb-hist-version", false, PROP_TYPE_U32},
 };
 
 /*************************************************************
@@ -3446,6 +3459,46 @@ static int _sde_ai_scaler_parse_dt(struct device_node *np,
 	return 0;
 }
 
+static int _sde_dspp_rgb_hist_parse_dt(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	int off_count, i;
+	struct sde_dt_props *props;
+	struct sde_dspp_cfg *dspp;
+	struct sde_dspp_sub_blks *sblk;
+
+	props = sde_get_dt_props(np, RGB_HIST_PROP_MAX, rgb_hist_prop,
+			ARRAY_SIZE(rgb_hist_prop), &off_count);
+	if (IS_ERR(props))
+		return PTR_ERR(props);
+
+	sde_cfg->rgb_hist_count = off_count;
+	if (off_count > sde_cfg->dspp_count) {
+		SDE_ERROR("limiting %d RGB hist blocks to %d DSPP instances\n",
+				off_count, sde_cfg->dspp_count);
+		sde_cfg->rgb_hist_count = sde_cfg->dspp_count;
+	}
+
+	for (i = 0; i < sde_cfg->rgb_hist_count; i++) {
+		dspp = &sde_cfg->dspp[i];
+		sblk = sde_cfg->dspp[i].sblk;
+
+		sblk->rgb_hist.id = SDE_DSPP_RGB_HIST;
+		if (props->exists[RGB_HIST_OFF] && i < off_count) {
+			sblk->rgb_hist.base =
+				PROP_VALUE_ACCESS(props->values, RGB_HIST_OFF, i);
+			sblk->rgb_hist.len =
+				PROP_VALUE_ACCESS(props->values, RGB_HIST_LEN, 0);
+			sblk->rgb_hist.version =
+				PROP_VALUE_ACCESS(props->values, RGB_HIST_VERSION, 0);
+		}
+		set_bit(SDE_DSPP_RGB_HIST, &dspp->features);
+	}
+
+	sde_put_dt_props(props);
+	return 0;
+}
+
 static void _sde_init_dspp_sblk(struct sde_dspp_cfg *dspp,
 		struct sde_pp_blk *pp_blk, int prop_id, int blk_id,
 		struct sde_dt_props *props)
@@ -3601,6 +3654,11 @@ static int sde_dspp_parse_dt(struct device_node *np,
 	rc = _sde_ai_scaler_parse_dt(np, sde_cfg);
 	if (rc)
 		goto end;
+
+	rc = _sde_dspp_rgb_hist_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
 end:
 	return rc;
 }

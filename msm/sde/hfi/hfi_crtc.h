@@ -14,6 +14,7 @@
 
 enum hfi_crtc_event {
 	HFI_CRTC_EVENT_LTM,
+	HFI_CRTC_EVENT_RGB_HIST,
 	HFI_CRTC_EVENT_MAX,
 };
 

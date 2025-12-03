@@ -370,6 +370,12 @@ void reg_dmav1_setup_mdnie_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 		return;
 	}
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+#endif
+
 	rc = _reg_dmav1_setup_mdnie_common(ctx, cfg, aiqe_top, dma_ops, &dma_write_cfg);
 	if (rc) {
 		DRM_ERROR("Setup of common mdnie feature failed");
@@ -541,6 +547,12 @@ void reg_dmav1_setup_aiqe_ssrc_config_v1(struct sde_hw_dspp *ctx, void *cfg, voi
 		return;
 	}
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+#endif
+
 	ssrc_config = hw_cfg->payload;
 	if (!ssrc_config || (ssrc_config->config[0] & BIT(0)) == 0) {
 		_aiqe_ssrc_config_off_v1(&dma_cfg, ctx, hw_cfg, dma_ops, aiqe_tl);
@@ -606,6 +618,12 @@ void reg_dmav1_setup_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void 
 		DRM_ERROR("write decode select failed ret %d\n", rc);
 		return;
 	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+#endif
 
 	ssrc_data = hw_cfg->payload;
 	if (!ssrc_data) {
@@ -953,7 +971,7 @@ void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 	struct sde_reg_dma_setup_ops_cfg dma_cfg;
 	struct sde_reg_dma_kickoff_cfg dma_kickoff;
 	int rc = -EINVAL;
-	u32 aiqe_base;
+	u32 aiqe_base, aiqe_wrapper_base;
 	enum msm_disp_op disp_op = ctx->hw.disp_op;
 
 	rc = reg_dma_dspp_check(ctx, cfg, AIQE_ABC);
@@ -982,6 +1000,12 @@ void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 		return;
 	}
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+#endif
+
 	aiqe_abc = (struct drm_msm_abc *)(hw_cfg->payload);
 
 	if (!hw_cfg->payload || !valid_abc_v1_en_cfg(aiqe_abc, hw_cfg)) {
@@ -996,7 +1020,8 @@ void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 		return;
 	}
 
-	REG_DMA_SETUP_OPS(dma_cfg, ctx->cap->sblk->aiqe_wrapper.base + 0x4,
+	aiqe_wrapper_base = ctx->hw.blk_off + ctx->cap->sblk->aiqe_wrapper.base;
+	REG_DMA_SETUP_OPS(dma_cfg, aiqe_wrapper_base + 0x4,
 		&aiqe_abc->src_sel, sizeof(u32), REG_SINGLE_WRITE, 0, 0, 0);
 	rc = dma_ops->setup_payload(&dma_cfg);
 	if (rc) {
@@ -1107,6 +1132,12 @@ int reg_dma_setup_ai_scaler_v1(struct sde_hw_dspp *ctx, void *cfg)
 		SDE_ERROR("write decode select failed ret %d\n", rc);
 		return -EINVAL;
 	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+#endif
 
 	ai_scaler_cfg = (struct drm_msm_ai_scaler *)(hw_cfg->payload);
 	if (!ai_scaler_cfg) {

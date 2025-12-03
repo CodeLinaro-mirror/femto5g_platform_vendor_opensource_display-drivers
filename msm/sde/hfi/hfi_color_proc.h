@@ -160,6 +160,46 @@ int hfi_cp_crtc_get_color_props_count(struct hfi_util_u32_prop_helper *color_pro
  */
 void hfi_cp_crtc_unmap_sg_table(struct hfi_shared_addr_map *addr_map, struct hfi_client_t *client);
 
+/**
+ * hfi_cp_crtc_set_rgb_hist_buffers - Set RGB histogram buffers
+ * @sde_crtc: Pointer to sde_crtc context
+ * @ctx: Pointer to DSPP context
+ * @data: Pointer to RGB histogram buffer configuration
+ */
+void hfi_cp_crtc_set_rgb_hist_buffers(struct sde_crtc *sde_crtc,
+		struct sde_hw_dspp *ctx, void *data);
+
+/**
+ * hfi_cp_crtc_queue_rgb_hist_buffer - Queue RGB histogram buffer
+ * @sde_crtc: Pointer to sde_crtc context
+ * @ctx: Pointer to DSPP context
+ * @data: Pointer to RGB histogram buffer fd
+ */
+void hfi_cp_crtc_queue_rgb_hist_buffer(struct sde_crtc *sde_crtc,
+		struct sde_hw_dspp *ctx, void *data);
+
+/**
+ * hfi_setup_dspp_rgb_hist_ctrlv2 - Setup DSPP RGB histogram control
+ * @hw_dspp: Pointer to DSPP hardware context
+ * @data: Pointer to histogram control configuration
+ */
+int hfi_setup_dspp_rgb_hist_ctrlv2(struct sde_hw_dspp *hw_dspp, void *data);
+
+/**
+ * hfi_cp_crtc_free_rgb_hist_buffers - free RGB Hist buffers in HFI path
+ * @sde_crtc: Pointer to sde_crtc context
+ * @cfg: Pointer to hw config structure
+ */
+void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc, void *cfg);
+
+/**
+ * hfi_setup_mdnie_art_v1 - api to setup mdnie art programming
+ * @ctx: pointer to dspp object.
+ * @cfg: Pointer to sde_hw_cp_cfg.
+ * @aiqe_top: Pointer to aiqe top level structure
+ */
+void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
+
 #else
 
 void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
@@ -247,6 +287,29 @@ void hfi_cp_crtc_unmap_sg_table(struct hfi_shared_addr_map *addr_map, struct hfi
 {
 }
 
+void hfi_cp_crtc_set_rgb_hist_buffers(struct sde_crtc *sde_crtc,
+		struct sde_hw_dspp *ctx, void *data)
+{
+}
+
+void hfi_cp_crtc_queue_rgb_hist_buffer(struct sde_crtc *sde_crtc,
+	struct sde_hw_dspp *ctx, void *data)
+{
+}
+
+int hfi_setup_dspp_rgb_hist_ctrlv2(struct sde_hw_dspp *hw_dspp, void *data)
+{
+	return 0;
+}
+
+void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc, void *cfg)
+{
+}
+
+void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
+{
+}
+
 #endif // CONFIG_MDSS_HFI
 
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
@@ -268,7 +331,6 @@ static inline unsigned long *_hfi_cp_crtc_get_mapped_iova(struct hfi_shared_addr
 {
 	return NULL;
 }
-
 #endif // CONFIG_QTI_HFI_CORE
 
 #endif /* _HFI_COLOR_PROC_H_ */
