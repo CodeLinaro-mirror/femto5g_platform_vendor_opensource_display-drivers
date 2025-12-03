@@ -301,6 +301,7 @@ void _dspp_ai_scaler_install_property(struct drm_crtc *crtc)
 		"SDE_DSPP_AIQE_AI_SCALER_V", major_version);
 	switch (major_version) {
 	case 1:
+	case 2:
 		if (catalog->dspp[0].sblk->ai_scaler.ai_scaler_supported)
 			_sde_cp_crtc_install_blob_property(crtc, feature_name,
 				SDE_CP_CRTC_DSPP_AI_SCALER, sizeof(struct drm_msm_ai_scaler));

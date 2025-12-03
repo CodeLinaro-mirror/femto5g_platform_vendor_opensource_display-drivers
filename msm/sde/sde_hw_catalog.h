@@ -2171,6 +2171,7 @@ struct sde_perf_cfg {
  * @ai_scaler_count     number of ai scaler hardware instances
  * @ssip_allowed        indicates if ssip register access is allowed
  * @abc_count           number of aiqe hardware instances
+ * @is_udc_supported	indicates if UDC is supported
  * @trusted_vm_env      true if the driver is executing in the trusted VM
  * @tvm_reg_count	number of sub-driver register ranges that need to be included
  *					for trusted vm for accepting the resources
@@ -2312,6 +2313,7 @@ struct sde_mdss_cfg {
 	bool ssip_allowed;
 	u32 abc_count;
 	u32 rgb_hist_count;
+	bool is_udc_supported;
 
 	/* Secure & Trusted UI */
 	bool trusted_vm_env;
