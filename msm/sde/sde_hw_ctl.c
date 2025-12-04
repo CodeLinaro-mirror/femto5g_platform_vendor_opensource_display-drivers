@@ -570,9 +570,17 @@ static inline u32 sde_hw_ctl_get_flush_register(struct sde_hw_ctl *ctx)
 
 	/* rotate flush bit is undefined if offline mode, so ignore it */
 	if (rot_op_mode == SDE_CTL_ROT_OP_MODE_OFFLINE)
+#if ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		return SDE_REG_READ_VATRAN(c, CTL_FLUSH) & ~CTL_FLUSH_MASK_ROT;
+#else
 		return SDE_REG_READ(c, CTL_FLUSH) & ~CTL_FLUSH_MASK_ROT;
+#endif
 
+#if ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	return SDE_REG_READ_VATRAN(c, CTL_FLUSH);
+#else
 	return SDE_REG_READ(c, CTL_FLUSH);
+#endif
 }
 
 static inline u32 sde_hw_ctl_get_flush_register_no_rot(struct sde_hw_ctl *ctx)
@@ -584,7 +592,11 @@ static inline u32 sde_hw_ctl_get_flush_register_no_rot(struct sde_hw_ctl *ctx)
 
 	c = &ctx->hw;
 
+#if ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	return SDE_REG_READ_VATRAN(c, CTL_FLUSH);
+#else
 	return SDE_REG_READ(c, CTL_FLUSH);
+#endif
 }
 
 static inline void sde_hw_ctl_uidle_enable(struct sde_hw_ctl *ctx, bool enable)
