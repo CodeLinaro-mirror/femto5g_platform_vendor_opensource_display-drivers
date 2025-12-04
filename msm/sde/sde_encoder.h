@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -550,6 +550,13 @@ void sde_encoder_trigger_kickoff_pending(struct drm_encoder *encoder);
  * @config_changed: if true new configuration is applied on the control path
  */
 void sde_encoder_kickoff(struct drm_encoder *encoder, bool config_changed);
+
+/**
+ * sde_encoder_post_kickoff - increase pending_kickoff_cnt after flush
+ * @encoder: Pointer to drm encoder structure
+ * @config_changed: if true new configuration is applied on the control path
+ */
+void sde_encoder_post_kickoff(struct drm_encoder *encoder, bool config_changed);
 
 /**
  * sde_encoder_wait_for_event - Waits for encoder events
