@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #ifndef __VIRTIO_EXT_H__
 #define __VIRTIO_EXT_H__
@@ -17,6 +17,7 @@
 #define VIRTIO_GPU_PORT_DSI 1
 #define VIRTIO_GPU_PORT_DP 2
 #define VIRTIO_GPU_PORT_VIRTUAL 3
+#define VIRTIO_GPU_MAX_COLOR_BUFF 2
 
 enum virtio_gpu_ctrl_type_ext {
 	VIRTIO_GPU_CMD_GET_DISPLAY_INFO_EXT = 0x904,
@@ -270,6 +271,9 @@ enum plane_property_mask {
 	CONTRAST = (1<<10),
 	BRIGHTNESS = (1<<11),
 	ROTATION = (1<<12),
+	COLOR_BUFFER = (1<<13),
+	COLOR_BLOCKS = (1<<14),
+	COLOR_CLEAR = (1<<15),
 };
 
 struct virtio_gpu_set_plane_properties {
@@ -290,6 +294,9 @@ struct virtio_gpu_set_plane_properties {
 	__le32 contrast;
 	__le32 brightness;
 	__le32 rotation;
+	__le32 color_buf[VIRTIO_GPU_MAX_COLOR_BUFF];
+	__le32 export_id;
+	__le32 color_clear;
 	__le32 padding;
 };
 

@@ -1,6 +1,6 @@
-/* SPDX-License-Identifier: GPL-2.0-only
- *
- * Copyright (c) 2023-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+/* SPDX-License-Identifier: GPL-2.0-only */
+/*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef __VIRTIOGPU_VQ_H__
@@ -23,6 +23,9 @@ struct plane_properties {
 	uint32_t rotation;
 	struct virtio_gpu_rect src_rect;
 	struct virtio_gpu_rect dst_rect;
+	uint32_t color_buf[VIRTIO_GPU_MAX_COLOR_BUFF];
+	uint32_t export_id;
+	uint32_t color_clear;
 };
 
 int virtio_gpu_cmd_set_scanout_pic_adjust(struct virtio_kms *kms,
