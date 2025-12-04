@@ -2127,7 +2127,7 @@ static int dsi_panel_parse_dfps_caps(struct dsi_panel *panel)
 	supported = utils->read_bool(utils->data,
 			"qcom,mdss-dsi-pan-enable-dynamic-fps");
 
-	if (!supported) {
+	if (!supported || (panel->disp_op == MSM_DISP_OP_HFI)) {
 		DSI_DEBUG("[%s] DFPS is not supported\n", name);
 		dfps_caps->dfps_support = false;
 		return rc;
