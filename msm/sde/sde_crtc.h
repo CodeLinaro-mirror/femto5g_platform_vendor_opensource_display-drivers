@@ -500,6 +500,7 @@ struct sde_crtc {
 	u32 back_light;
 	u32 back_light_max;
 	u32 back_light_pending;
+	int base_reset;
 };
 
 enum sde_crtc_dirty_flags {
@@ -531,6 +532,7 @@ struct sde_line_insertion_param {
  * @connectors    : Currently associated drm connectors
  * @num_connectors: Number of associated drm connectors
  * @rsc_client    : sde rsc client when mode is valid
+ * @topology_name : Current topology name
  * @is_ppsplit    : Whether current topology requires PPSplit special handling
  * @bw_control    : true if bw/clk controlled by core bw/clk properties
  * @bw_split_vote : true if bw controlled by llcc/dram bw properties
@@ -574,6 +576,8 @@ struct sde_crtc_state {
 	bool bw_control;
 	bool bw_split_vote;
 
+	enum sde_rm_topology_name topology_name;
+	u32 num_mixers;
 	bool is_ppsplit;
 	struct sde_rect crtc_roi;
 	struct sde_rect lm_bounds[MAX_MIXERS_PER_CRTC];
@@ -1215,5 +1219,23 @@ void sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, u32 
  * @bl_max: Max backlight value.
  */
 void sde_crtc_backlight_notify(struct drm_crtc *crtc, u32 bl_val, u32 bl_max);
+
+/**
+ * sde_crtc_state_set_topology_name - set current topology name
+ * @state: Pointer to crtc_state
+ */
+static inline void sde_crtc_state_set_topology_name(
+		struct drm_crtc_state *state,
+		enum sde_rm_topology_name topology_name)
+{
+	struct sde_crtc_state *cstate;
+
+	if (!state)
+		return;
+
+	cstate = to_sde_crtc_state(state);
+
+	cstate->topology_name = topology_name;
+}
 
 #endif /* _SDE_CRTC_H_ */

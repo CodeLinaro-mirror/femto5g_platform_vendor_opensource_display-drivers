@@ -331,11 +331,12 @@ static int shd_crtc_atomic_check(struct drm_crtc *crtc, struct drm_atomic_state 
 {
 	struct drm_crtc_state *state = drm_atomic_get_new_crtc_state(atomic_state, crtc);
 	struct sde_crtc *sde_crtc = to_sde_crtc(crtc);
+	struct sde_crtc_state *cstate = to_sde_crtc_state(state);
 	struct shd_crtc *shd_crtc = sde_crtc->priv_handle;
-	int rc;
 	struct drm_crtc_state *base_drm_crtc_state = NULL;
 	struct sde_crtc_state *base_sde_cstate;
 	struct sde_crtc *base_sde_crtc;
+	int rc;
 
 	base_drm_crtc_state =
 		drm_atomic_get_existing_crtc_state(state->state,
@@ -346,9 +347,13 @@ static int shd_crtc_atomic_check(struct drm_crtc *crtc, struct drm_atomic_state 
 	base_sde_cstate = to_sde_crtc_state(base_drm_crtc_state);
 	base_sde_crtc = to_sde_crtc(base_drm_crtc_state->crtc);
 
+	if (base_sde_crtc->base_reset)
+		cstate->num_mixers = 0;
+
 	/* update topology name */
-	if (sde_crtc->num_mixers == SDE_RM_TOPOLOGY_NONE || base_sde_crtc->num_mixers == 0)
-		sde_crtc->num_mixers = base_sde_crtc->num_mixers;
+	if (cstate->num_mixers == SDE_RM_TOPOLOGY_NONE)
+		sde_crtc_state_set_topology_name(state,
+			base_sde_cstate->topology_name);
 
 	rc = shd_crtc->orig_helper_funcs->atomic_check(crtc, atomic_state);
 	if (rc)
