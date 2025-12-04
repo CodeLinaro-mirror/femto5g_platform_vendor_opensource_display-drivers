@@ -104,6 +104,121 @@ static int _hfi_wb_add_roi_prop(struct sde_wb_device *wb_dev,
 	return ret;
 }
 
+static int _hfi_wb_add_dnsc_prop(struct sde_wb_device *wb_dev,
+		struct sde_connector_state *cstate,
+		struct hfi_util_u32_prop_helper *prop_collector)
+{
+	u32 prop_id;
+	int ret = 0;
+	int i, j;
+	struct sde_drm_dnsc_blur_cfg *src_cfg;
+	struct hfi_dnsc_blur_cfg hfi_cfg;
+	struct sde_connector *sde_conn;
+	struct hfi_connector *hfi_conn;
+	struct hfi_shared_addr_map *hfi_buff_map = NULL;
+	u32 payload_size;
+	struct hfi_buff prop_hfi_buff;
+	u64 fw_buff_addr;
+	u32 dnsc_payload[1 + (sizeof(struct hfi_buff) / sizeof(u32))];
+
+	if (!cstate->dnsc_blur_count)
+		return ret;
+
+	sde_conn = to_sde_connector(wb_dev->connector);
+	hfi_conn = sde_conn->hfi_conn;
+
+	if (!hfi_conn) {
+		SDE_ERROR("hfi_conn is NULL\n");
+		return -EINVAL;
+	}
+
+	hfi_buff_map = &hfi_conn->hfi_buff_base_props[HFI_BUFF_CONN_DNSC];
+	payload_size = sizeof(struct hfi_dnsc_blur_cfg);
+
+	if (!hfi_buff_map || !hfi_buff_map->remote_addr ||
+		!hfi_buff_map->local_addr) {
+		SDE_ERROR("Invalid hfi_buff_map: %pK, remote_addr %lu, local_addr %pK\n",
+			hfi_buff_map ? hfi_buff_map : NULL, (hfi_buff_map->remote_addr ?
+			hfi_buff_map->remote_addr : 0), (hfi_buff_map->local_addr ?
+			hfi_buff_map->local_addr : NULL));
+		return -EINVAL;
+	}
+
+	for (i = 0; i < cstate->dnsc_blur_count; i++) {
+		src_cfg = &cstate->dnsc_blur_cfg[i];
+		memset(&hfi_cfg, 0, sizeof(struct hfi_dnsc_blur_cfg));
+
+		/* Copy basic configuration fields */
+		hfi_cfg.flags = (u32)src_cfg->flags;
+		hfi_cfg.src_width = src_cfg->src_width;
+		hfi_cfg.src_height = src_cfg->src_height;
+		hfi_cfg.dst_width = src_cfg->dst_width;
+		hfi_cfg.dst_height = src_cfg->dst_height;
+
+		/* Copy filter flags */
+		hfi_cfg.flags_h = src_cfg->flags_h;
+		hfi_cfg.flags_v = src_cfg->flags_v;
+
+		/* Copy phase and scaling parameters */
+		hfi_cfg.phase_init_h = src_cfg->phase_init_h;
+		hfi_cfg.phase_step_h = src_cfg->phase_step_h;
+		hfi_cfg.phase_init_v = src_cfg->phase_init_v;
+		hfi_cfg.phase_step_v = src_cfg->phase_step_v;
+
+		/* Copy normalization and ratio parameters */
+		hfi_cfg.norm_h = src_cfg->norm_h;
+		hfi_cfg.ratio_h = src_cfg->ratio_h;
+		hfi_cfg.norm_v = src_cfg->norm_v;
+		hfi_cfg.ratio_v = src_cfg->ratio_v;
+
+		/* Copy coefficient arrays */
+		for (j = 0; j < HFI_DNSC_BLUR_COEF_NUM; j++) {
+			hfi_cfg.coef_hori[j] = src_cfg->coef_hori[j];
+			hfi_cfg.coef_vert[j] = src_cfg->coef_vert[j];
+		}
+
+		hfi_cfg.dither_cfg.flags = (u32)src_cfg->dither_flags;
+		hfi_cfg.dither_cfg.feature_flags = (u32)(src_cfg->dither_flags >> 32);
+		hfi_cfg.dither_cfg.temporal_en = src_cfg->temporal_en;
+		hfi_cfg.dither_cfg.c0_bitdepth = src_cfg->c0_bitdepth;
+		hfi_cfg.dither_cfg.c1_bitdepth = src_cfg->c1_bitdepth;
+		hfi_cfg.dither_cfg.c2_bitdepth = src_cfg->c2_bitdepth;
+		hfi_cfg.dither_cfg.c3_bitdepth = src_cfg->c3_bitdepth;
+
+		/* Copy dither matrix */
+		for (j = 0; j < HFI_DNSC_DITHER_MATRIX_SZ; j++)
+			hfi_cfg.dither_cfg.matrix[j] = src_cfg->dither_matrix[j];
+
+		/* Copy data to shared buffer using local address */
+		if (i * payload_size + payload_size > hfi_buff_map->size) {
+			SDE_ERROR("Not enough memory, remaining size %u, payload_size %u\n",
+				hfi_buff_map->size - (i * payload_size), payload_size);
+			return -EINVAL;
+		}
+		memcpy(hfi_buff_map->local_addr + (i * payload_size), &hfi_cfg, payload_size);
+	}
+
+	/* Send hfi_buff with remote address to firmware */
+	fw_buff_addr = (u64)hfi_buff_map->remote_addr;
+	prop_hfi_buff.addr_l = (fw_buff_addr & 0xFFFFFFFF);
+	prop_hfi_buff.addr_h = (fw_buff_addr >> 32);
+	prop_hfi_buff.size = (payload_size / sizeof(u32)) * cstate->dnsc_blur_count;
+	prop_hfi_buff.version = 0;
+	prop_hfi_buff.flags = 0;
+
+	/* Create payload with wb_id followed by hfi_buff structure */
+	dnsc_payload[0] = sde_conn->conn_id;
+	memcpy(&dnsc_payload[1], &prop_hfi_buff, sizeof(struct hfi_buff));
+
+	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG;
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, dnsc_payload, sizeof(dnsc_payload));
+	if (ret)
+		SDE_ERROR("Failed to add hfi prop %d ret %d\n", prop_id, ret);
+
+	return ret;
+}
+
 static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 		struct hfi_connector *hfi_conn,
 		struct sde_connector_state *cstate,
@@ -268,6 +383,8 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 		wb_id, HFI_VAL_U32, &tap_point, sizeof(u32));
+
+	_hfi_wb_add_dnsc_prop(wb_dev, cstate, hfi_conn->base_props);
 
 	SDE_DEBUG("Done adding hfi props for wb\n");
 
