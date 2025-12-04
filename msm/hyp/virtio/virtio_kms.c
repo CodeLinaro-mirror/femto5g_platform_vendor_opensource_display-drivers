@@ -29,7 +29,9 @@
 #define VIRTIO_KMS_WARN(fmt, ...)		pr_warn(fmt, ##__VA_ARGS__)
 #define VIRTIO_KMS_ERR(fmt, ...)		pr_err(fmt, ##__VA_ARGS__)
 
-#define CLIENT_ID_LEN_IN_CHARS 5
+#define HAB_MMID_CREATE(major, minor) ((major&0xFFFF) | ((minor&0xFF)<<16))
+
+#define CLIENT_HAB_ID_LEN_IN_CHARS 2 /* the length includes null terminating char */
 
 #define DISPLAY_DEVICE_MAX_WIDTH      10240
 #define DISPLAY_DEVICE_MAX_HEIGHT     4096
@@ -2668,35 +2670,33 @@ error:
 	return rc;
 }
 
-#if 0
-static int _virtio_kms_parse_client_id(struct device_node *node,
-		uint32_t *client_id)
+/**
+ * _virtio_kms_parse_client_hab_id() - function to parse client-hab-id from device tree
+ * @node: pointer to device tree node
+ * @client_hab_id: pointer to client hab id
+ *
+ * Return: integer error code
+ *
+ */
+static int _virtio_kms_parse_client_hab_id(struct device_node *node, uint32_t *client_hab_id)
 {
 	int len = 0;
 	int ret = 0;
-	const char *client_id_str;
+	const char *client_hab_id_str = NULL;
 
-	client_id_str = of_get_property(node, "qcom,client-id", &len);
-	if (!client_id_str || len != CLIENT_ID_LEN_IN_CHARS) {
-		VIRTIO_KMS_ERR("client_id_str len(%d) is invalid\n", len);
+	client_hab_id_str = of_get_property(node, "qcom,client-hab-id", &len);
+	if (!client_hab_id_str || len != CLIENT_HAB_ID_LEN_IN_CHARS) {
+		VIRTIO_KMS_ERR("client_hab_id_str len(%d) is invalid\n", len);
 		ret = -EINVAL;
 	} else {
-		/* Try node as a hex value */
-		ret = kstrtouint(client_id_str, 16, client_id);
+		ret = kstrtouint(client_hab_id_str, 10, client_hab_id);
 		if (ret) {
-			/* Otherwise, treat at 4cc code */
-			*client_id = fourcc_code(client_id_str[0],
-					client_id_str[1],
-					client_id_str[2],
-					client_id_str[3]);
-
-			ret = 0;
+			VIRTIO_KMS_ERR("error parsing client hab id\n");
 		}
 	}
 
 	return ret;
 }
-#endif
 
 static int virtio_gpu_hab_open(struct virtio_kms *kms)
 {
@@ -3319,14 +3319,14 @@ static int virtio_kms_probe(struct platform_device *pdev)
 	if (!kms)
 		return -ENOMEM;
 
-//	ret = _virtio_kms_parse_client_id(dev->of_node, &kms->client_id);
-//	if (ret)
-//		return ret;
+	ret = _virtio_kms_parse_client_hab_id(dev->of_node, &kms->client_hab_id);
+	if (ret)
+		return ret;
 
 	kms->client_id = 0;
 
-	kms->mmid_cmd = MM_DISP_1;
-	kms->mmid_event = MM_DISP_3;
+	kms->mmid_cmd = HAB_MMID_CREATE(MM_DISP_1, kms->client_hab_id);
+	kms->mmid_event = HAB_MMID_CREATE(MM_DISP_3, kms->client_hab_id);
 
 //	ret = _virtio_kms_parse_capsets(dev->of_node, &kms->num_capsets);
 //	if (ret)
