@@ -147,7 +147,7 @@ struct sde_hw_fence_data {
 	u32 ipcc_out_client;
 	u32 ipcc_this_client;
 	u64 dma_context;
-	u32 hw_fence_array_seqno;
+	atomic_t hw_fence_array_seqno;
 	u32 input_h_synx;
 	struct sde_hw_fence_error_cb_data sde_hw_fence_error_cb_data;
 };
@@ -232,6 +232,7 @@ void sde_fence_deinit(struct sde_fence_context *fence);
  * Returns: Zero on success
  */
 void sde_fence_prepare(struct sde_fence_context *fence);
+
 /**
  * sde_fence_create - create output fence object
  * @fence: Pointer fence container
@@ -242,6 +243,17 @@ void sde_fence_prepare(struct sde_fence_context *fence);
  */
 int sde_fence_create(struct sde_fence_context *fence, uint64_t *val,
 				uint32_t offset, struct sde_hw_ctl *hw_ctl);
+
+/**
+ * sde_fence_create_with_handle - create output fence object for given hwfence-data
+ * @fence: Pointer fence container
+ * @val: Pointer to output value variable, fence fd will be placed here
+ * @offset: Fence signal commit offset, e.g., +1 to signal on next commit
+ * @hw_fence_handle: hw_fence_handle for client creating hw-fence
+ * Returns: Zero on success
+ */
+int sde_fence_create_with_handle(struct sde_fence_context *fence, uint64_t *val,
+				uint32_t offset, void *hw_fence_handle);
 
 /**
  * sde_fence_signal - advance fence timeline to signal outstanding fences
@@ -337,6 +349,12 @@ static inline int sde_fence_create(struct sde_fence_context *fence,
 	return 0;
 }
 
+static inline int sde_fence_create_with_handle(struct sde_fence_context *fence, uint64_t *val,
+				uint32_t offset, void *hw_fence_handle)
+{
+	return 0;
+}
+
 static inline void sde_fence_timeline_status(struct sde_fence_context *ctx,
 					struct drm_mode_object *drm_obj);
 {
@@ -393,6 +411,24 @@ void sde_hw_fence_deinit(struct sde_hw_ctl *hw_ctl);
  */
 int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fence **fences,
 	u32 num_fences);
+
+/**
+ * sde_fence_register_hw_fences_wait_with_handle - registers given hw-fence client for wait on
+ *                                               hw fence or fences
+ *
+ * @hw_fence_handle: handle corresponding to hw-fence client to register for wait
+ * @fences: list of dma-fences that have hw-fence support to wait-on
+ * @num_fences: number of fences in the above list
+ * @dma_context: dma-fence context used for temp array creation if necessary
+ * @temp_array_seqno: dma-fence seqno used for temp array creation if necessary; incremented if
+ *                    fence array was created
+ * @h_synx: h_synx value corresponding to fence wait; old value (if valid) is released by this
+ *          function call and new value is updated in this pointer
+ *
+ * Returns: Zero on success, otherwise returns an error code.
+ */
+int sde_fence_register_hw_fences_wait_with_handle(void *hw_fence_handle, struct dma_fence **fences,
+	u32 num_fences, u64 dma_context, atomic_t *temp_array_seqno, u32 *h_synx);
 
 /**
  * sde_fence_output_hw_fence_dir_write_init - update addr, mask and size for output fence dir write
@@ -452,6 +488,13 @@ static inline void sde_hw_fence_deinit(struct sde_hw_ctl *hw_ctl)
 
 static inline int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl,
 	struct dma_fence **fences, u32 num_fences)
+{
+	return -EINVAL;
+}
+
+static inline int sde_fence_register_hw_fences_wait_with_handle(void *hw_fence_handle,
+	struct dma_fence **fences, u32 num_fences, u64 dma_context, atomic_t *temp_array_seqno,
+	u32 *h_synx)
 {
 	return -EINVAL;
 }
