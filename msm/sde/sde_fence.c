@@ -77,17 +77,17 @@ enum sde_hw_fence_clients {
  */
 struct sde_hw_fence_data hw_fence_data_no_dpu[SDE_HW_FENCE_CLIENT_MAX] = {
 	{SDE_HW_FENCE_CLIENT_CTL_0, SYNX_CLIENT_HW_FENCE_DPU0_CTL0, NULL, {0}, NULL, NULL, 8, 14,
-		{2, 3}, 0, 8, 8, 0, 0},
+		{2, 3}, 0, 8, 8, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_1, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 1, NULL, {0}, NULL, NULL, 8,
-		15, {4, 5}, 0, 8, 8, 0, 0},
+		15, {4, 5}, 0, 8, 8, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_2, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 2, NULL, {0}, NULL, NULL, 8,
-		16, {6, 7}, 0, 8, 8, 0, 0},
+		16, {6, 7}, 0, 8, 8, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_3, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 3, NULL, {0}, NULL, NULL, 8,
-		17, {8, 9}, 0, 8, 8, 0, 0},
+		17, {8, 9}, 0, 8, 8, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_4, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 4, NULL, {0}, NULL, NULL, 8,
-		18, {10, 11}, 0, 8, 8, 0, 0},
+		18, {10, 11}, 0, 8, 8, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_5, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 5, NULL, {0}, NULL, NULL, 8,
-		19, {12, 13}, 0, 8, 8, 0, 0}
+		19, {12, 13}, 0, 8, 8, 0, 0, 0}
 };
 
 /**
@@ -99,17 +99,17 @@ struct sde_hw_fence_data hw_fence_data_no_dpu[SDE_HW_FENCE_CLIENT_MAX] = {
  */
 struct sde_hw_fence_data hw_fence_data_dpu_client[SDE_HW_FENCE_CLIENT_MAX] = {
 	{SDE_HW_FENCE_CLIENT_CTL_0, SYNX_CLIENT_HW_FENCE_DPU0_CTL0, NULL, {0}, NULL, NULL, 8, 0,
-		{0, 6}, 0, 8, 25, 0, 0},
+		{0, 6}, 0, 8, 25, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_1, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 1, NULL, {0}, NULL, NULL, 8, 1,
-		{1, 7}, 0, 8, 25, 0, 0},
+		{1, 7}, 0, 8, 25, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_2, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 2, NULL, {0}, NULL, NULL, 8, 2,
-		{2, 8}, 0, 8, 25, 0, 0},
+		{2, 8}, 0, 8, 25, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_3, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 3, NULL, {0}, NULL, NULL, 8, 3,
-		{3, 9}, 0, 8, 25, 0, 0},
+		{3, 9}, 0, 8, 25, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_4, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 4, NULL, {0}, NULL, NULL, 8, 4,
-		{4, 10}, 0, 8, 25, 0, 0},
+		{4, 10}, 0, 8, 25, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_5, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 5, NULL, {0}, NULL, NULL, 8, 5,
-		{5, 11}, 0, 8, 25, 0, 0}
+		{5, 11}, 0, 8, 25, 0, 0, 0}
 };
 
 /**
@@ -122,17 +122,17 @@ struct sde_hw_fence_data hw_fence_data_dpu_client[SDE_HW_FENCE_CLIENT_MAX] = {
  */
 struct sde_hw_fence_data hw_fence_data_dpu_client_with_soccp[SDE_HW_FENCE_CLIENT_MAX] = {
 	{SDE_HW_FENCE_CLIENT_CTL_0, SYNX_CLIENT_HW_FENCE_DPU0_CTL0, NULL, {0}, NULL, NULL, 0, 0,
-		{0, 6}, 0, 46, 25, 0, 0},
+		{0, 6}, 0, 46, 25, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_1, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 1, NULL, {0}, NULL, NULL, 0, 1,
-		{1, 7}, 0, 46, 25, 0, 0},
+		{1, 7}, 0, 46, 25, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_2, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 2, NULL, {0}, NULL, NULL, 0, 2,
-		{2, 8}, 0, 46, 25, 0, 0},
+		{2, 8}, 0, 46, 25, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_3, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 3, NULL, {0}, NULL, NULL, 0, 3,
-		{3, 9}, 0, 46, 25, 0, 0},
+		{3, 9}, 0, 46, 25, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_4, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 4, NULL, {0}, NULL, NULL, 0, 4,
-		{4, 10}, 0, 46, 25, 0, 0},
+		{4, 10}, 0, 46, 25, 0, 0, 0},
 	{SDE_HW_FENCE_CLIENT_CTL_5, SYNX_CLIENT_HW_FENCE_DPU0_CTL0 + 5, NULL, {0}, NULL, NULL, 0, 5,
-		{5, 11}, 0, 46, 25, 0, 0}
+		{5, 11}, 0, 46, 25, 0, 0, 0}
 };
 
 void msm_hw_fence_error_cb(u32 handle, int error, void *cb_data)
@@ -281,6 +281,7 @@ int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms, bool u
 void sde_hw_fence_deinit(struct sde_hw_ctl *hw_ctl)
 {
 	struct sde_hw_fence_data *hwfence_data;
+	int ret;
 
 	if (!hw_ctl)
 		return;
@@ -291,10 +292,22 @@ void sde_hw_fence_deinit(struct sde_hw_ctl *hw_ctl)
 	if (IS_ERR_OR_NULL(hwfence_data->hw_fence_handle))
 		return;
 
-	SDE_DEBUG("hwfence deregister ctl_id:%d hw_fence_client_id:%d\n",
-		hw_ctl->idx - CTL_0, hwfence_data->hw_fence_client_id);
+	SDE_DEBUG("hwfence deregister ctl_id:%d hw_fence_client_id:%d input_h_synx:%u\n",
+		hw_ctl->idx - CTL_0, hwfence_data->hw_fence_client_id,
+		hwfence_data->input_h_synx);
 
-	synx_uninitialize(hwfence_data->hw_fence_handle);
+	if (hwfence_data->input_h_synx) {
+		ret = synx_release(hwfence_data->hw_fence_handle, hwfence_data->input_h_synx);
+		if (ret)
+			SDE_ERROR("failed to rel ctl_id:%d hw_fence_client:%d input_h_synx:%u\n",
+				hw_ctl->idx - CTL_0, hwfence_data->hw_fence_client_id,
+				hwfence_data->input_h_synx);
+	}
+
+	ret = synx_uninitialize(hwfence_data->hw_fence_handle);
+	if (ret)
+		SDE_ERROR("failed to uninitialize ctl_id:%d hw_fence_client_id:%d\n",
+			hw_ctl->idx - CTL_0, hwfence_data->hw_fence_client_id);
 
 	hwfence_data->hw_fence_handle = NULL;
 }
@@ -386,6 +399,8 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 	int array_count = 0;
 	int fence_list_index = 0;
 	u64 seqno;
+	bool is_signaled;
+	struct dma_fence *base_fence;
 
 	if (!hw_ctl) {
 		SDE_ERROR("wrong ctl\n");
@@ -490,16 +505,31 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 	params.indv.new_h_synx = &handle;
 	params.indv.flags = SYNX_IMPORT_DMA_FENCE;
 
+	/* release reference held by synx_import for previous input fence */
+	if (data->input_h_synx) {
+		ret = synx_release(data->hw_fence_handle, data->input_h_synx);
+		if (ret)
+			SDE_ERROR("failed to rel wait fences ctl_id:%d hsynx:%d ret:%d\n",
+				ctl_id, data->input_h_synx, ret);
+		data->input_h_synx = SYNX_INVALID_HANDLE;
+	}
+
 	/* register for wait */
 	ret = synx_import(data->hw_fence_handle, &params);
+	base_fence = (struct dma_fence *)params.indv.fence;
+	is_signaled = test_bit(SYNX_HW_FENCE_FLAG_SIGNALED_BIT, &base_fence->flags);
+
 	if (ret) {
 		SDE_ERROR("failed to register wait fences for ctl_id:%d ret:%d\n", ctl_id, ret);
-	} else {
-		/* release reference held by synx_import */
+	} else if (is_signaled) {
+		/* release fence immediately if already signaled */
 		ret = synx_release(data->hw_fence_handle, handle);
 		if (ret)
-			SDE_ERROR("failed to release wait fences for ctl_id:%d ret:%d\n", ctl_id,
-				ret);
+			SDE_ERROR("failed to rel wait fences ctl_id:%d hsynx:%d ret:%d\n",
+				ctl_id, handle, ret);
+	} else {
+		/* save fence handle to be released by subsequent synx_import call */
+		data->input_h_synx = handle;
 	}
 
 	/* fence-array put will release each individual extra refcount during array release */
@@ -508,7 +538,7 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 	else
 		dma_fence_put(fences[0]);
 
-	SDE_EVT32_VERBOSE(ctl_id, num_fences, ret);
+	SDE_EVT32_VERBOSE(ctl_id, data->input_h_synx, num_fences, ret);
 
 	return ret;
 }
@@ -758,7 +788,15 @@ static int _reset_hw_fence_timeline(struct sde_hw_ctl *hw_ctl)
 	data = &hw_ctl->hwfence_data;
 
 	if (!IS_ERR_OR_NULL(data->hw_fence_handle)) {
-		SDE_EVT32(data->hw_fence_client_id);
+		SDE_EVT32(data->hw_fence_client_id, data->input_h_synx);
+
+		if (data->input_h_synx) {
+			ret = synx_release(data->hw_fence_handle, data->input_h_synx);
+			if (ret)
+				SDE_ERROR("failed to rel client:%u fence:%u\n",
+					data->hw_fence_client_id, data->input_h_synx);
+			data->input_h_synx = SYNX_INVALID_HANDLE;
+		}
 		ret = synx_recover(data->hw_fence_handle->type);
 		if (ret) {
 			pr_err("failed to reset client %d\n", data->hw_fence_client_id);

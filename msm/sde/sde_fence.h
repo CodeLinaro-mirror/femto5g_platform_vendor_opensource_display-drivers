@@ -128,6 +128,7 @@ enum sde_fence_event {
  * @ipcc_this_client: ipcc dpu client id (For Waipio: APPS, For Kailua: DPU HW)
  * @dma_context: per client dma context used to create join fences
  * @hw_fence_array_seqno: per-client seq number counter for join fences
+ * @input_h_synx: input hw-fence handle; used to release refcount wiht a delay
  * @sde_hw_fence_error_cb_data: data needed for hw fence cb function.
  */
 struct sde_hw_fence_data {
@@ -147,6 +148,7 @@ struct sde_hw_fence_data {
 	u32 ipcc_this_client;
 	u64 dma_context;
 	u32 hw_fence_array_seqno;
+	u32 input_h_synx;
 	struct sde_hw_fence_error_cb_data sde_hw_fence_error_cb_data;
 };
 
