@@ -34,7 +34,6 @@
 #endif
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_probe_helper.h>
-#include <linux/pm_opp.h>
 
 #include "msm_drv.h"
 #include "msm_mmu.h"
@@ -5295,9 +5294,6 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 {
 	struct msm_drm_private *priv;
 	struct sde_kms *sde_kms;
-	int ret = 0;
-	struct dev_pm_opp *opp;
-	unsigned long max_freq = ULONG_MAX;
 
 	if (!dev || !dev->dev_private) {
 		SDE_ERROR("drm device node invalid\n");
@@ -5311,22 +5307,6 @@ struct msm_kms *sde_kms_init(struct drm_device *dev)
 		SDE_ERROR("failed to allocate sde kms\n");
 		return ERR_PTR(-ENOMEM);
 	}
-
-	ret = devm_pm_opp_set_clkname(dev->dev, "core_clk");
-	if (ret)
-		return ERR_PTR(ret);
-	/* OPP table is optional */
-	ret = devm_pm_opp_of_add_table(dev->dev);
-	if (ret && ret != -ENODEV) {
-		dev_err(dev->dev, "invalid OPP table in device tree\n");
-		return ERR_PTR(ret);
-	}
-
-	opp = dev_pm_opp_find_freq_floor(dev->dev, &max_freq);
-	if (!IS_ERR(opp))
-		dev_pm_opp_put(opp);
-
-	dev_pm_opp_set_rate(dev->dev, max_freq);
 
 	msm_kms_init(&sde_kms->base, &kms_funcs);
 	sde_kms->dev = dev;
