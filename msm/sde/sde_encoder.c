@@ -4953,7 +4953,9 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 	struct sde_hw_ctl *ctl;
 	unsigned long lock_flags;
 	struct sde_encoder_virt *sde_enc;
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	int pend_ret_fence_cnt;
+#endif
 	struct sde_connector *c_conn;
 	bool is_dp;
 	bool is_vid_mode;
@@ -5026,12 +5028,14 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 		ctl->ops.set_intf_master(ctl, 0);
 	}
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	if (phys->ops.is_master && phys->ops.is_master(phys) && config_changed) {
 		atomic_inc(&phys->pending_retire_fence_cnt);
 		atomic_inc(&phys->pending_ctl_start_cnt);
 	}
 
 	pend_ret_fence_cnt = atomic_read(&phys->pending_retire_fence_cnt);
+#endif
 
 	if (is_dp && ctl->ops.update_bitmask) {
 		/* perform peripheral flush on every frame update for dp dsc */
@@ -5056,6 +5060,7 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	if (ctl->ops.get_pending_flush) {
 		struct sde_ctl_flush_cfg pending_flush = {0,};
 
@@ -5069,6 +5074,7 @@ static inline void _sde_encoder_trigger_flush(struct drm_encoder *drm_enc,
 				pend_ret_fence_cnt, sde_enc->cesta_reset_intf_master,
 				sde_enc->intf_master, DPUID(phys->sde_kms), SDE_EVTLOG_FUNC_CASE2);
 	}
+#endif
 }
 
 /**
@@ -5260,6 +5266,56 @@ u32 sde_encoder_helper_calc_vsync_count(struct drm_encoder *drm_enc, u32 vtotal,
 	return vsync_count;
 }
 
+void sde_encoder_post_kickoff(struct drm_encoder *encoder,
+		bool config_changed)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(encoder);
+	struct sde_hw_ctl *ctl;
+	uint32_t i;
+	struct sde_ctl_flush_cfg pending_flush = {0,};
+	u32 pending_kickoff_cnt;
+	int pend_ret_fence_cnt;
+
+	for (i = 0; i < sde_enc->num_phys_encs; i++) {
+		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
+
+		if (!phys || phys->enable_state == SDE_ENC_DISABLED)
+			continue;
+
+		ctl = phys->hw_ctl;
+		if (!ctl)
+			continue;
+
+		if (phys->ops.is_master && phys->ops.is_master(phys) && config_changed) {
+			atomic_inc(&phys->pending_retire_fence_cnt);
+			atomic_inc(&phys->pending_ctl_start_cnt);
+		}
+
+		pend_ret_fence_cnt = atomic_read(&phys->pending_retire_fence_cnt);
+
+		if (ctl->ops.get_pending_flush) {
+			ctl->ops.get_pending_flush(ctl, &pending_flush);
+			SDE_EVT32(DRMID(encoder), phys->intf_idx - INTF_0, ctl->idx - CTL_0,
+					pending_flush.pending_flush_mask, pend_ret_fence_cnt,
+					sde_enc->cesta_reset_intf_master, sde_enc->intf_master,
+					DPUID(phys->sde_kms), SDE_EVTLOG_FUNC_CASE1);
+		} else {
+			SDE_EVT32(DRMID(encoder), phys->intf_idx - INTF_0, ctl->idx - CTL_0,
+					pend_ret_fence_cnt, sde_enc->cesta_reset_intf_master,
+					sde_enc->intf_master, DPUID(phys->sde_kms), SDE_EVTLOG_FUNC_CASE2);
+		}
+
+		pending_kickoff_cnt =
+				sde_encoder_phys_inc_pending(phys);
+		if (!phys->ops.needs_single_flush ||
+				!phys->ops.needs_single_flush(phys))
+			SDE_EVT32(pending_kickoff_cnt, SDE_EVTLOG_FUNC_CASE1);
+		else
+			SDE_EVT32(pending_kickoff_cnt,
+					pending_flush.pending_flush_mask, SDE_EVTLOG_FUNC_CASE2);
+	}
+}
+
 /**
  * _sde_encoder_kickoff_phys - handle physical encoder kickoff
  *	Iterate through the physical encoders and perform consolidated flush
@@ -5277,7 +5333,9 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 	struct sde_hw_ctl *ctl;
 	uint32_t i;
 	struct sde_ctl_flush_cfg pending_flush = {0,};
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	u32 pending_kickoff_cnt;
+#endif
 	struct msm_drm_private *priv = NULL;
 	struct sde_kms *sde_kms = NULL;
 	struct sde_encoder_phys *phys_enc;
@@ -5344,6 +5402,7 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 						config_changed);
 	}
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	/* update pending_kickoff_cnt AFTER flush but before trigger start */
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
@@ -5363,6 +5422,7 @@ static void _sde_encoder_kickoff_phys(struct sde_encoder_virt *sde_enc,
 					pending_flush.pending_flush_mask, SDE_EVTLOG_FUNC_CASE2);
 		}
 	}
+#endif
 
 	if (atomic_read(&sde_enc->misr_enable))
 		sde_encoder_misr_configure(&sde_enc->base, true,
