@@ -717,6 +717,25 @@ void sde_reg_modify_reg_dma(struct sde_hw_blk_reg_map *c,
 			val, c->blk_off + reg_off);
 }
 
+uint32_t read_reg_vatran(struct sde_hw_blk_reg_map *hw, uint32_t reg_off, const char *name)
+{
+	struct sde_reg_dma_buffer **vq_bufs;
+	struct sde_hw_vatran *vatran;
+	u32 map_addr = (u32)-1;
+
+	vq_bufs = hw->vq_ctx;
+	vatran = sde_hw_get_vatran(vq_bufs[REG_DMA_MDSS_DB]->dpu_idx);
+	if (vatran)
+		map_addr = vatran->ops.remap(vatran, vq_bufs[REG_DMA_MDSS_DB]->vq_idx, hw, reg_off);
+	if (map_addr != (u32)-1) {
+		/* Register remapped to VA_TRAN space */
+		hw = &vatran->hw;
+		return sde_reg_read(hw, map_addr - vatran->caps->base_off, name);
+	} else {
+		return sde_reg_read(hw, reg_off, name);
+	}
+}
+
 #endif
 
 const char *buf_type_str[] =
