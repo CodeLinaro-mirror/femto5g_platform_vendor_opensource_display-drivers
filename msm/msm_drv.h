@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -237,6 +237,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_SET_PANEL_MODE,
 	CONNECTOR_PROP_AVR_STEP,
 	CONNECTOR_PROP_DSC_MODE,
+	CONNECTOR_PROP_EXT_COLOR_FORMAT,
 
 	/* total # of properties */
 	CONNECTOR_PROP_COUNT
@@ -328,6 +329,18 @@ enum msm_display_dsc_mode {
 	MSM_DISPLAY_DSC_MODE_NONE,
 	MSM_DISPLAY_DSC_MODE_ENABLED,
 	MSM_DISPLAY_DSC_MODE_DISABLED,
+};
+
+/**
+ * enum msm_display_ext_color_format - external display color format
+ * @MSM_DISPLAY_EXT_COLOR_FORMAT_NONE: No operation
+ * @MSM_DISPLAY_EXT_COLOR_FORMAT_DEFAULT: Default color format
+ * @MSM_DISPLAY_EXT_COLOR_FORMAT_YUV422: YUV422 color format
+ */
+enum msm_display_ext_color_format {
+	MSM_DISPLAY_EXT_COLOR_FORMAT_NONE,
+	MSM_DISPLAY_EXT_COLOR_FORMAT_DEFAULT,
+	MSM_DISPLAY_EXT_COLOR_FORMAT_YUV422,
 };
 
 /**

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
@@ -16,6 +16,7 @@
 #include <linux/string.h>
 #include "dsi_drm.h"
 #include "dsi_display.h"
+#include "dp_display.h"
 #include "dsi_display_manager.h"
 #include "sde_crtc.h"
 #include "sde_rm.h"
@@ -82,6 +83,12 @@ static const struct drm_prop_enum_list e_panel_mode[] = {
 	{MSM_DISPLAY_VIDEO_MODE, "video_mode"},
 	{MSM_DISPLAY_CMD_MODE, "command_mode"},
 	{MSM_DISPLAY_MODE_MAX, "none"},
+};
+
+static const struct drm_prop_enum_list e_ext_color_format[] = {
+	{MSM_DISPLAY_EXT_COLOR_FORMAT_NONE,	"none"},
+	{MSM_DISPLAY_EXT_COLOR_FORMAT_DEFAULT,	"default"},
+	{MSM_DISPLAY_EXT_COLOR_FORMAT_YUV422,	"yuv422"},
 };
 
 static inline struct sde_kms *_sde_connector_get_kms(struct drm_connector *conn)
@@ -871,6 +878,30 @@ static int _sde_connector_update_bl_scale(struct sde_connector *c_conn)
 	c_conn->unset_bl_level = 0;
 
 	return rc;
+}
+
+static int _sde_connector_set_ext_color_format(struct sde_connector *c_conn,
+		struct sde_connector_state *c_state, uint64_t val)
+{
+	struct dp_display *display;
+
+	if (!c_conn || !c_state) {
+		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	if (c_conn->connector_type != DRM_MODE_CONNECTOR_DisplayPort)
+		return 0;
+
+	display = (struct dp_display *) c_conn->display;
+	if (display) {
+		if (val == MSM_DISPLAY_EXT_COLOR_FORMAT_YUV422)
+			display->yuv422_enable = true;
+		else if (val == MSM_DISPLAY_EXT_COLOR_FORMAT_DEFAULT)
+			display->yuv422_enable = false;
+	}
+
+	return 0;
 }
 
 void sde_connector_set_colorspace(struct sde_connector *c_conn)
@@ -1920,6 +1951,9 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 	case CONNECTOR_PROP_QSYNC_MODE:
 		msm_property_set_dirty(&c_conn->property_info,
 				&c_state->property_state, idx);
+		break;
+	case CONNECTOR_PROP_EXT_COLOR_FORMAT:
+		rc = _sde_connector_set_ext_color_format(c_conn, c_state, val);
 		break;
 	case CONNECTOR_PROP_SET_PANEL_MODE:
 		if (val == DRM_MODE_FLAG_VID_MODE_PANEL)
@@ -3300,11 +3334,18 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	c_conn->bl_scale = MAX_BL_SCALE_LEVEL;
 	c_conn->bl_scale_sv = MAX_SV_BL_SCALE_LEVEL;
 
-	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort)
+	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort) {
 		msm_property_install_range(&c_conn->property_info,
-			"supported_colorspaces",
-			DRM_MODE_PROP_IMMUTABLE, 0, 0xffff, 0,
-			CONNECTOR_PROP_SUPPORTED_COLORSPACES);
+				"supported_colorspaces",
+				DRM_MODE_PROP_IMMUTABLE, 0, 0xffff, 0,
+				CONNECTOR_PROP_SUPPORTED_COLORSPACES);
+
+		msm_property_install_enum(&c_conn->property_info,
+				"ext_color_format", 0, 0,
+				e_ext_color_format,
+				ARRAY_SIZE(e_ext_color_format), 0,
+				CONNECTOR_PROP_EXT_COLOR_FORMAT);
+	}
 
 	/* enum/bitmask properties */
 	msm_property_install_enum(&c_conn->property_info, "topology_name",
