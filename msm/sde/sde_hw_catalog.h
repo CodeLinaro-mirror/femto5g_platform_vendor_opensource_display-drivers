@@ -58,6 +58,7 @@
 #define SDE_HW_VER_820	SDE_HW_VER(8, 2, 0) /* diwali */
 #define SDE_HW_VER_830	SDE_HW_VER(8,  3, 0) /* parrot*/
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
+#define SDE_HW_VER_870	SDE_HW_VER(8, 7, 0) /* malabar */
 #define SDE_HW_VER_880  SDE_HW_VER(8, 8, 0) /* vienna */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
 #define SDE_HW_VER_920  SDE_HW_VER(9, 2, 0) /* x1e80100 */
@@ -105,6 +106,7 @@
 #define IS_DIWALI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_820)
 #define IS_PARROT_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_830)
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
+#define IS_MALABAR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_870)
 #define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
 #define IS_X1E80100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_920)
