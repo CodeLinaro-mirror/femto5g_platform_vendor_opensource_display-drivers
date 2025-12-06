@@ -1901,6 +1901,23 @@
 #define HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG                      0x00030029
 
 /*
+ * @def HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY - Gets the security policy for output layer.
+ *                                           Host is expected to send this packet
+ *                                           of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                           command packet payload.
+ *
+ * @brief - HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY \|
+ * ^                             | (version=0 << 20) \| (dsize=2 << 24)
+ *     (u32_value) payload [1]   | wb_id
+ *     (u32_value) payload [2]   | one of the enum values in hfi_layer_security_policy
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY                    0x00030031
+
+/*
  * All layer color properties begin here
  */
 #define HFI_PROPERTY_LAYER_COLOR_BEGIN                               0x00030100
