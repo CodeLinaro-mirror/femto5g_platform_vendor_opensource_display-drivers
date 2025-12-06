@@ -188,8 +188,6 @@ void sde_encoder_vm_primary_vhm_prepare(struct drm_encoder *drm_enc,
 
 	if (enable)
 		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
-	else
-		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
 
 	rc = sde_connector_update_cmd(sde_enc->cur_master->connector,
 			cmd_bit_mask, true);
