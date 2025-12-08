@@ -7825,6 +7825,12 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		rc = dsi_panel_get_mode(display->panel, mode_idx,
 						&display_mode,
 						topology_override);
+
+		if (display->cmdline_timing == NO_OVERRIDE && display_mode.is_preferred) {
+			display->cmdline_timing = display_mode.mode_idx;
+			is_preferred = true;
+		}
+
 		if (rc) {
 			DSI_ERR("[%s] failed to get mode idx %d from panel\n",
 				   display->name, mode_idx);
