@@ -962,7 +962,7 @@ static int hfi_kms_set_hw_fence_config(struct hfi_kms *hfi_kms)
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &hw_fence_cfg, sizeof(hw_fence_cfg),
 			HFI_TX_FLAGS_RESPONSE_REQUIRED | HFI_TX_FLAGS_NON_DISCARDABLE);
 	if (ret) {
-		SDE_ERROR("failed to set hfi property for hw fence config\n\n");
+		SDE_ERROR("failed to set hfi property for hw fence config\n");
 		return -EINVAL;
 	}
 
@@ -1000,7 +1000,7 @@ int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde_kms *sde_kms)
 	if (ret)
 		SDE_ERROR("failed to send HFI HW FENCE config to FW\n");
 
-	return 0;
+	return ret;
 }
 #endif
 
