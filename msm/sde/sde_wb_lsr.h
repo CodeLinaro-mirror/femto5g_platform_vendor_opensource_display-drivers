@@ -115,6 +115,12 @@ void hfi_lsr_display_disable_handler(u32 obj_id, u32 cmd_id,
  */
 int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_connector *hfi_conn,
 		struct hfi_cmdbuf_t *cmd_buf, u32 *flags, bool enable);
+
+/**
+ * sde_wb_connector_reset_reproj_state- reset reprojection state config
+ * c_state: pointer to sde_connector_state
+ */
+void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state);
 #else
 static inline
 int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
@@ -187,6 +193,10 @@ static inline int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms,
 	struct hfi_connector *hfi_conn, struct hfi_cmdbuf_t *cmd_buf, u32 *flags, bool enable)
 {
 	return 0;
+}
+
+static inline void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state)
+{
 }
 #endif /* CONFIG_DRM_SDE_LSR */
 #endif /* __SDE_WB_LSR_H__ */

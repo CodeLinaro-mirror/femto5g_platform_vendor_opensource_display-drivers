@@ -71,6 +71,9 @@ struct sde_crtc_state;
 #define DEVIATION_NS 500000
 #define EPT_TIMEOUT_NS 44000000
 
+/* Trigger sysfs commands before the final reserved lines at the end of Vtotal. */
+#define VTOTAL_RESERVE_LINES 500
+
 /*
  * flags to indicate the type of mode switch
  * @SDE_MODE_SWITCH_NONE: not a switch frame
@@ -1033,6 +1036,14 @@ static inline bool sde_encoder_check_ctl_done_support(struct drm_encoder *drm_en
 bool sde_encoder_is_dsi_display(struct drm_encoder *enc);
 
 /**
+ * sde_encoder_is_edp_display - checks if underlying display is EDP
+ *     display or not.
+ * @drm_enc:    Pointer to drm encoder structure
+ * @Return:     true if it is a edp display. false otherwise
+ */
+bool sde_encoder_is_edp_display(struct drm_encoder *drm_enc);
+
+/**
  * sde_encoder_control_idle_pc - control enable/disable of idle power collapse
  * @drm_enc:    Pointer to drm encoder structure
  * @enable:	enable/disable flag
@@ -1471,5 +1482,11 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
  * @encoder: pointer to drm_encoder
  */
 void sde_encoder_cancel_vrr_timers(struct drm_encoder *encoder);
+
+/**
+ * sde_encoder_phys_delay_dcs - delay the sysfs node for triggering
+ * @sde_enc: pointer to drm encoder
+ */
+u32 sde_encoder_phys_delay_dcs(struct drm_encoder *drm_enc);
 
 #endif /* __SDE_ENCODER_H__ */

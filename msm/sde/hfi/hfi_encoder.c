@@ -16,6 +16,8 @@
 #include "hfi_dbg.h"
 #include <drm/drm_edid.h>
 
+#include <linux/sched/clock.h>
+
 #define TIMEOUT_MAX	80
 
 static ktime_t hfi_enc_unpack_frame_event(void *payload, u32 *idx, struct sde_encoder_virt *sde_enc)
@@ -561,6 +563,16 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 	ktime_t cur_ktime;
 	ktime_t exp_ktime = ktime_add_ms(ktime_get(), timeout_ms);
 	u32 curr_atomic_cnt = atomic_read(info->atomic_cnt);
+	struct hfi_kms *hfi_kms;
+	struct sde_kms *sde_kms;
+	struct sde_encoder_virt *sde_enc = hfi_enc->sde_base;
+
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return -EINVAL;
+	}
 
 	do {
 		rc = wait_event_timeout(*(info->wq),
@@ -575,6 +587,10 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 		if ((atomic_read(info->atomic_cnt) <= info->count_check) &&
 			(info->count_check < curr_atomic_cnt)) {
 			rc = true;
+			break;
+		}
+		if (atomic_read(&hfi_kms->ssr_in_progress)) {
+			SDE_ERROR("ssr in progress, return timeout\n");
 			break;
 		}
 	} while ((atomic_read(info->atomic_cnt) != info->count_check) &&
@@ -721,6 +737,7 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 	struct hfi_kms *hfi_kms;
 	u32 scan_id_prop[3] = {0,};
 	u32 num_props = 1;
+	u64 cur_timestamp_hw, local_clock_ts;
 
 	if (!enc)
 		return -EINVAL;
@@ -763,7 +780,12 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 		return ret;
 	}
 
-	SDE_EVT32(atomic_read(&hfi_enc->hfi_commit_cnt));
+	/* convert from arch_timer ticks to qtimer hw ticks (192MHz) and adjust to microseconds */
+	cur_timestamp_hw = DIV_ROUND_UP(arch_timer_read_counter() * 1000 * 10, 192);
+	local_clock_ts = local_clock();
+
+	SDE_EVT32(atomic_read(&hfi_enc->hfi_commit_cnt), cur_timestamp_hw >> 32, cur_timestamp_hw,
+			local_clock_ts >> 32, local_clock_ts);
 
 	return ret;
 }

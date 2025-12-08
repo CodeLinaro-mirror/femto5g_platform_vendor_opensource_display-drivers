@@ -102,7 +102,7 @@ void sde_kms_info_add_list(struct sde_kms_info *info, const char *key, uint32_t 
 	sde_kms_info_start(info, key);
 	for (i = 0; i < size; i++) {
 		len = scnprintf(info->data + info->staged_len,
-				SDE_KMS_INFO_MAX_SIZE - info->len, "%d ",
+				SDE_KMS_INFO_MAX_SIZE - info->len, "%u ",
 				value[i]);
 
 		/* check if snprintf truncated the string */

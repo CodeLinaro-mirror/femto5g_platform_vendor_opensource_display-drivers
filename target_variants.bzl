@@ -4,6 +4,8 @@ targets = [
     "canoe",
     "gen3auto",
     "bengal",
+    "monaco",
+    "malabar",
     "sun",
     "parrot",
     "vienna",
@@ -21,11 +23,13 @@ la_variants = [
 
 le_targets = [
     # keep sorted
+    "alor-le",
     "sun-allyes",
 ]
 
 le_variants = [
     # keep sorted
+    "debug-defconfig",
     "perf-defconfig",
 ]
 

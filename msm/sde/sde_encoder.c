@@ -188,8 +188,6 @@ void sde_encoder_vm_primary_vhm_prepare(struct drm_encoder *drm_enc,
 
 	if (enable)
 		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_EN);
-	else
-		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
 
 	rc = sde_connector_update_cmd(sde_enc->cur_master->connector,
 			cmd_bit_mask, true);
@@ -603,6 +601,14 @@ bool sde_encoder_is_dsi_display(struct drm_encoder *drm_enc)
 
 	return sde_enc &&
 		(sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_DSI);
+}
+
+bool sde_encoder_is_edp_display(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
+
+	return sde_enc &&
+		(sde_enc->disp_info.intf_type == DRM_MODE_CONNECTOR_eDP);
 }
 
 int sde_encoder_in_cont_splash(struct drm_encoder *drm_enc)
@@ -1467,7 +1473,6 @@ static int sde_encoder_virt_atomic_check(
 	enum sde_rm_topology_name old_top;
 	enum sde_rm_topology_name top_name;
 	struct msm_display_info *disp_info;
-	struct msm_display_mode *msm_mode;
 	int ret = 0;
 
 	if (!drm_enc || !crtc_state || !conn_state) {
@@ -1530,13 +1535,6 @@ static int sde_encoder_virt_atomic_check(
 					 top_name);
 			return -EINVAL;
 		}
-	}
-
-	msm_mode = &sde_conn_state->msm_mode;
-	if (msm_is_mode_seamless_emsync_fps_switch(msm_mode) &&
-		sde_enc->rc_state & SDE_ENC_RC_STATE_IDLE) {
-		SDE_EVT32(SDE_EVTLOG_ERROR);
-		SDE_INFO("emsync can't be switched in idle power collapse\n");
 	}
 
 	ret = sde_connector_roi_v1_check_roi(conn_state);
@@ -1606,7 +1604,11 @@ static int _sde_encoder_update_roi(struct drm_encoder *drm_enc)
 
 	_sde_encoder_get_connector_roi(sde_enc, &roi);
 	if (sde_kms_rect_is_null(&roi)) {
-		roi.w = adj_mode->hdisplay;
+		// Use the actual active width including overlap for internal calculations
+		if (sde_enc && sde_enc->mode_info.overlap)
+			roi.w = adj_mode->hdisplay + sde_enc->mode_info.overlap;
+		else
+			roi.w = adj_mode->hdisplay;
 		roi.h = adj_mode->vdisplay;
 	}
 
@@ -1672,6 +1674,8 @@ static void _sde_encoder_update_ppb_size(struct drm_encoder *drm_enc)
 		}
 
 		if (hw_pp->ops.set_ppb_fifo_size[disp_op]) {
+			hw_pp->overlap_per_pp = sde_enc->mode_info.overlap
+								/ sde_enc->cur_channel_cnt;
 			pixels_per_pp = mult_frac(mode->hdisplay, latency_lines, num_lm_or_pp);
 			hw_pp->ops.set_ppb_fifo_size[disp_op](hw_pp, pixels_per_pp);
 
@@ -4442,6 +4446,7 @@ void sde_encoder_virt_reset(struct drm_encoder *drm_enc)
 			sde_enc->phys_encs[i]->cont_splash_enabled = false;
 			sde_enc->phys_encs[i]->connector = NULL;
 			sde_enc->phys_encs[i]->hw_ctl = NULL;
+			sde_enc->phys_encs[i]->in_clone_mode = false;
 		}
 		atomic_set(&sde_enc->frame_done_cnt[i], 0);
 	}
@@ -4490,6 +4495,8 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	enum sde_intf_mode intf_mode;
 	struct drm_crtc *drm_crtc;
 	struct msm_drm_private *priv;
+	struct drm_encoder *encoder;
+	struct sde_crtc *sde_crtc;
 	enum msm_disp_op disp_op;
 	int ret, i = 0;
 
@@ -4524,6 +4531,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 	intf_mode = sde_encoder_get_intf_mode(drm_enc);
 
 	drm_crtc = drm_enc->crtc;
+	sde_crtc = to_sde_crtc(drm_crtc);
 	priv = drm_crtc->dev->dev_private;
 
 	SDE_EVT32(DRMID(drm_enc));
@@ -4539,6 +4547,7 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 			SDE_ERROR_ENC(sde_enc, "encoder disable failure\n");
 	}
 
+	kthread_cancel_work_sync(&sde_enc->self_refresh_work);
 	sde_encoder_cancel_vrr_timers(drm_enc);
 
 	sde_encoder_vhm_wakelock(sde_enc, false);
@@ -4611,8 +4620,14 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		}
 	}
 
-	if (!sde_encoder_in_clone_mode(drm_enc))
-		sde_encoder_virt_reset(drm_enc);
+	/*
+	 * In case of primary and cwb disable virt reset for both the encoders
+	 * should be done once primary completes the disable commit.
+	 */
+	if (!sde_encoder_in_clone_mode(drm_enc)) {
+		drm_for_each_encoder_mask(encoder, drm_enc->dev, sde_crtc->cached_encoder_mask)
+			sde_encoder_virt_reset(encoder);
+	}
 
 	/* Reset cached connector to NULL on disable */
 	sde_enc->cached_connector = NULL;
@@ -5016,8 +5031,9 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 			continue;
 
 		if (sde_enc->disp_info.vrr_caps.vrr_support) {
-			if (sde_enc->disp_info.vrr_caps.video_mrr_support &&
-					phys->ops.control_esync_vsync_irq)
+			if ((sde_enc->disp_info.vrr_caps.video_mrr_support ||
+				 sde_enc->disp_info.emsync_switch_enabled) &&
+				 phys->ops.control_esync_vsync_irq)
 				phys->ops.control_esync_vsync_irq(phys, enable, true);
 			else if (phys->ops.control_empulse_irq)
 				phys->ops.control_empulse_irq(phys, enable);
@@ -5228,6 +5244,7 @@ static void sde_encoder_wait_for_esync_vsync(struct sde_encoder_phys *phys)
 	u32 empulse_irq_refcount;
 	u32 empulse_notification_sim;
 	bool video_mrr_support = false;
+	bool emsync_switch_enabled = false;
 
 	if (!phys || !phys->parent) {
 		SDE_ERROR("invalid params\n");
@@ -5240,14 +5257,16 @@ static void sde_encoder_wait_for_esync_vsync(struct sde_encoder_phys *phys)
 		return;
 
 	video_mrr_support = sde_enc->disp_info.vrr_caps.video_mrr_support;
+	emsync_switch_enabled = sde_enc->disp_info.emsync_switch_enabled;
 	mutex_lock(phys->vblank_ctl_lock);
 
 	empulse_irq_refcount = atomic_read(&phys->empulse_irq_refcount);
 	empulse_notification_sim = phys->empulse_notification_sim;
 
-	SDE_EVT32(video_mrr_support, empulse_notification_sim, empulse_irq_refcount);
+	SDE_EVT32(video_mrr_support, empulse_notification_sim, empulse_irq_refcount,
+		emsync_switch_enabled);
 
-	if (video_mrr_support && empulse_notification_sim &&
+	if ((video_mrr_support || emsync_switch_enabled) && empulse_notification_sim &&
 			empulse_irq_refcount == 1) {
 		/* Force Remove sim refcount*/
 		if (phys->ops.control_esync_vsync_irq)
@@ -5255,7 +5274,7 @@ static void sde_encoder_wait_for_esync_vsync(struct sde_encoder_phys *phys)
 		/*Enable proper esync irq */
 		if (phys->ops.control_esync_vsync_irq)
 			phys->ops.control_esync_vsync_irq(phys, true, false);
-	} else if (video_mrr_support && empulse_irq_refcount > 1)
+	} else if ((video_mrr_support || emsync_switch_enabled) && empulse_irq_refcount > 1)
 		SDE_EVT32(empulse_notification_sim, empulse_irq_refcount, 0xebad);
 
 	/*acquire refcount to wait on interrupt*/
@@ -7421,6 +7440,7 @@ void sde_encoder_kickoff(struct drm_encoder *drm_enc, bool config_changed)
 		if (ret)
 			SDE_ERROR("kickoff halop failed ret:%d\n", ret);
 
+		SDE_ATRACE_END("encoder_kickoff");
 		return;
 	}
 
@@ -8919,6 +8939,53 @@ fail:
 		sde_encoder_destroy(drm_enc);
 
 	return ERR_PTR(ret);
+}
+
+u32 sde_encoder_phys_delay_dcs(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct msm_mode_info *mode_info;
+	struct sde_encoder_phys *phys_enc;
+	enum msm_disp_op disp_op;
+	u32 linecount = 0xffff;
+	u32 reserve_lines = VTOTAL_RESERVE_LINES;
+	u32 fps, height;
+	u32 line_time_us, delay_time, end_time, start_time;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc || !sde_enc->cur_master)
+		return 0;
+	phys_enc = sde_enc->cur_master;
+	mode_info = &sde_enc->mode_info;
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+
+	fps = sde_encoder_get_fps(&sde_enc->base);
+	if (!fps)
+		return 0;
+
+	height = mode_info->vtotal;
+	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_line_count[disp_op])
+		linecount = phys_enc->hw_intf->ops.get_line_count[disp_op](phys_enc->hw_intf);
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, linecount, fps);
+	if (linecount <= 1 || linecount > (height - reserve_lines)) {
+		SDE_EVT32(linecount, height);
+		return 0;
+	}
+
+	line_time_us = DIV_ROUND_UP(USEC_PER_SEC, fps * height);
+	delay_time = line_time_us * (height - reserve_lines - linecount);
+	start_time = ktime_get();
+	usleep_range(delay_time, delay_time + 100);
+	end_time = ktime_get();
+
+	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_line_count[disp_op])
+		linecount = phys_enc->hw_intf->ops.get_line_count[disp_op](phys_enc->hw_intf);
+	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, linecount, height,
+		ktime_sub(end_time, start_time), line_time_us);
+
+	return delay_time;
 }
 
 int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,

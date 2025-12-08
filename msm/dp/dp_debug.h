@@ -7,13 +7,8 @@
 #ifndef _DP_DEBUG_H_
 #define _DP_DEBUG_H_
 
-#include "dp_panel.h"
-#include "dp_ctrl.h"
-#include "dp_link.h"
-#include "dp_aux.h"
-#include "dp_display.h"
-#include "dp_pll.h"
-#include <linux/ipc_logging.h>
+#include "dp_drv.h"
+#include "dp_debug_client.h"
 
 #define DP_IPC_LOG(fmt, ...) \
 	do {  \
@@ -87,89 +82,21 @@
 #define MAX_CONNECT_NOTIFICATION_DELAY_MS 5000
 
 /**
- * struct dp_debug
- * @sim_mode: specifies whether sim mode enabled
- * @psm_enabled: specifies whether psm enabled
- * @hdcp_disabled: specifies if hdcp is disabled
- * @hdcp_wait_sink_sync: used to wait for sink synchronization before HDCP auth
- * @tpg_pattern: selects tpg pattern on the controller
- * @max_pclk_khz: max pclk supported
- * @force_encryption: enable/disable forced encryption for HDCP 2.2
- * @skip_uevent: skip hotplug uevent to the user space
- * @hdcp_status: string holding hdcp status information
- * @mst_sim_add_con: specifies whether new sim connector is to be added
- * @mst_sim_remove_con: specifies whether sim connector is to be removed
- * @mst_sim_remove_con_id: specifies id of sim connector to be removed
- * @connect_notification_delay_ms: time (in ms) to wait for any attention
- *              messages before sending the connect notification uevent
- * @disconnect_delay_ms: time (in ms) to wait before turning off the mainlink
- *              in response to HPD low of cable disconnect event
- */
-struct dp_debug {
-	bool sim_mode;
-	bool psm_enabled;
-	bool hdcp_disabled;
-	bool hdcp_wait_sink_sync;
-	u32 tpg_pattern;
-	u32 max_pclk_khz;
-	bool force_encryption;
-	bool skip_uevent;
-	char hdcp_status[SZ_128];
-	bool mst_sim_add_con;
-	bool mst_sim_remove_con;
-	int mst_sim_remove_con_id;
-	unsigned long connect_notification_delay_ms;
-	u32 disconnect_delay_ms;
-
-	void (*abort)(struct dp_debug *dp_debug);
-	void (*set_mst_con)(struct dp_debug *dp_debug, int con_id);
-};
-
-/**
- * struct dp_debug_in
- * @dev: device instance of the caller
- * @panel: instance of panel module
- * @hpd: instance of hpd module
- * @link: instance of link module
- * @aux: instance of aux module
- * @connector: double pointer to display connector
- * @catalog: instance of catalog module
- * @parser: instance of parser module
- * @ctrl: instance of controller module
- * @pll: instance of pll module
- * @display: instance of display module
- */
-struct dp_debug_in {
-	struct device *dev;
-	struct dp_panel *panel;
-	struct dp_hpd *hpd;
-	struct dp_link *link;
-	struct dp_aux *aux;
-	struct drm_connector **connector;
-	struct dp_catalog *catalog;
-	struct dp_parser *parser;
-	struct dp_ctrl *ctrl;
-	struct dp_pll *pll;
-	struct dp_display *display;
-};
-
-/**
  * dp_debug_get() - configure and get the DisplayPlot debug module data
  *
- * @in: input structure containing data to initialize the debug module
- * return: pointer to allocated debug module data
+ * @dev: associated device
  *
  * This function sets up the debug module and provides a way
  * for debugfs input to be communicated with existing modules
  */
-struct dp_debug *dp_debug_get(struct dp_debug_in *in);
+struct dp_debug_client *dp_debug_get(struct device *dev, u32 disp_op);
 
 /**
  * dp_debug_put()
  *
  * Cleans up dp_debug instance
  *
- * @dp_debug: instance of dp_debug
+ * @client: instance of dp_debug
  */
-void dp_debug_put(struct dp_debug *dp_debug);
+void dp_debug_put(struct dp_debug_client *client);
 #endif /* _DP_DEBUG_H_ */

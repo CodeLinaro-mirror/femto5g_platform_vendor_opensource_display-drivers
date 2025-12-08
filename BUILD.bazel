@@ -146,3 +146,6 @@ define_bengal()
 
 load(":targets/parrot.bzl", "define_parrot")
 define_parrot()
+
+load(":targets/malabar.bzl", "define_malabar")
+define_malabar()

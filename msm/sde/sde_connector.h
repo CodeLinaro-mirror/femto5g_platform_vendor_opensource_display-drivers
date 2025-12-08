@@ -741,6 +741,7 @@ struct sde_drm_opaque_config {
  * @encoder: Pointer to preferred drm encoder
  * @panel: Pointer to drm panel, if present
  * @display: Pointer to private display data structure
+ * @panel_id: panel id of the attached panel, if any.
  * @drv_panel: Pointer to interface driver's panel module, if present
  * @mst_port: Pointer to mst port, if present
  * @mmu_secure: MMU id for secure buffers
@@ -819,6 +820,9 @@ struct sde_drm_opaque_config {
  * @hal_ops: hal ops for hfi communication
  * @dpu_dma_enabled: Indicates if dpu dma mode is enabled
  * @reproj_conn: Pointer to sde_reproj
+ * @bl_dirty_change: Indicates if brightness prop is changed
+ * @b_lvl: brightness property value
+ * @bl_dirty_value: brightness final to be set
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -829,6 +833,7 @@ struct sde_connector {
 	struct drm_encoder *encoder;
 	struct drm_panel *panel;
 	void *display;
+	int panel_id;
 	void *drv_panel;
 	void *mst_port;
 
@@ -927,6 +932,9 @@ struct sde_connector {
 
 	bool dpu_dma_enabled;
 	struct sde_reproj *reproj_conn;
+	bool bl_dirty_change;
+	u32 b_lvl;
+	u32 bl_dirty_value;
 };
 
 /**
@@ -1026,6 +1034,7 @@ struct sde_connector {
 struct sde_connector_state {
 	struct drm_connector_state base;
 	struct drm_framebuffer *out_fb;
+	struct drm_framebuffer *pose_fb;
 	struct msm_property_state property_state;
 	struct msm_property_value property_values[CONNECTOR_PROP_COUNT];
 
@@ -1075,6 +1084,9 @@ struct sde_connector_state {
 	u32 reproj_tile_h;
 	u32 reproj_min_bbox_h;
 	u32 capture_mode;
+
+	u32 reproj_pose_iova;
+	u32 reproj_pose_size;
 };
 
 /**

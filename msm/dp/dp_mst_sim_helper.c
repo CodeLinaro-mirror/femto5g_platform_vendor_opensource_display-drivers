@@ -1202,4 +1202,3 @@ int dp_mst_sim_destroy(void *mst_sim_context)
 
 	return 0;
 }
-

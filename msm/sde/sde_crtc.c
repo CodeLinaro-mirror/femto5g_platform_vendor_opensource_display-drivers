@@ -62,6 +62,7 @@
 #include "hfi_kms.h"
 #include "hfi_commands_display.h"
 #include "hfi_defs_display_color.h"
+#include "hfi_color_proc.h"
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
@@ -146,6 +147,9 @@ static struct sde_crtc_custom_events custom_events[] = {
 	{DRM_EVENT_MDNIE_ART, sde_crtc_mdnie_art_event_handler},
 	{DRM_EVENT_COPR, sde_crtc_copr_status_event_handler},
 	{DRM_EVENT_VM_RECLAIM, sde_crtc_vm_reclaim_handler},
+	{DRM_EVENT_RGB_HIST, sde_crtc_rgb_hist_interrupt_handler},
+	{DRM_EVENT_RGB_HIST_WB_ERR, sde_crtc_rgb_hist_wb_err_interrupt_handler},
+	{DRM_EVENT_RGB_HIST_OFF, sde_crtc_rgb_hist_off_interrupt_handler},
 };
 
 /* default input fence timeout, in ms */
@@ -283,15 +287,18 @@ int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc)
 	struct drm_connector *conn;
 	struct drm_connector_list_iter conn_iter;
 	struct sde_connector *sde_conn = NULL;
+	int ret = 0;
 
 	drm_connector_list_iter_begin(crtc->dev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
 		sde_conn = to_sde_connector(conn);
-		if (conn->state && (conn->state->crtc == crtc))
-			return sde_conn->reproj_conn ? sde_conn->reproj_conn->type : 0;
+		if (conn->state && (conn->state->crtc == crtc)) {
+			ret = sde_conn->reproj_conn ? sde_conn->reproj_conn->type : 0;
+			break;
+		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
-	return 0;
+	return ret;
 }
 
 int sde_crtc_update_lsr_perf(struct drm_crtc *crtc)
@@ -345,18 +352,35 @@ void sde_crtc_cp_unmap_ltm_buffers(struct sde_crtc *sde_crtc, int num)
 			msm_gem_put_vaddr(sde_crtc->ltm_buffers[i]->gem);
 		if (sde_crtc->ltm_buffers[i]->fb)
 			drm_framebuffer_put(sde_crtc->ltm_buffers[i]->fb);
-#if IS_ENABLED(CONFIG_QTI_HFI_CORE)
-		if (sde_crtc->ltm_buffers[i]->addr_map.alloc_info.mapped_iova) {
-			hfi_adapter_unmap_sg_table(
-			    sde_crtc->hfi_client,
-			    sde_crtc->ltm_buffers[i]->addr_map.alloc_info.mapped_iova,
-			    sde_crtc->ltm_buffers[i]->addr_map.aligned_size);
-			sde_crtc->ltm_buffers[i]->addr_map.alloc_info.mapped_iova = 0;
-			sde_crtc->ltm_buffers[i]->dcp_iova = 0;
-		}
-#endif
+		hfi_cp_crtc_unmap_sg_table(&(sde_crtc->ltm_buffers[i]->addr_map),
+			sde_crtc->hfi_client);
+		sde_crtc->ltm_buffers[i]->dcp_iova = 0;
 		kfree(sde_crtc->ltm_buffers[i]);
 		sde_crtc->ltm_buffers[i] = NULL;
+	}
+}
+
+void sde_crtc_cp_unmap_rgb_hist_buffers(struct sde_crtc *sde_crtc)
+{
+	struct sde_rgb_hist_buffer *buffer;
+
+	for (int i = 0; i < RGB_HISTOGRAM_BUFFER_SIZE; i++) {
+		buffer = sde_crtc->rgb_hist_buffers[i];
+		if (!buffer)
+			continue;
+
+		for (int j = 0; j < RGB_COMPONENT_SIZE; j++) {
+			if (buffer->aspace[j])
+				msm_gem_put_iova(buffer->gem[j], buffer->aspace[j]);
+			if (buffer->gem[j])
+				msm_gem_put_vaddr(buffer->gem[j]);
+			if (buffer->fb[j])
+				drm_framebuffer_put(buffer->fb[j]);
+			hfi_cp_crtc_unmap_sg_table(&(buffer->addr_map[j]), sde_crtc->hfi_client);
+			buffer->dcp_iova[j] = 0;
+		}
+		kfree(sde_crtc->rgb_hist_buffers[i]);
+		sde_crtc->rgb_hist_buffers[i] = NULL;
 	}
 }
 
@@ -2308,8 +2332,11 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 			if ((!nxt_pstate)
 				    || (nxt_pstate->stage != cur_pstate->stage)
 				    || (nxt_pstate->sde_pstate->layout !=
-					cur_pstate->sde_pstate->layout))
+					cur_pstate->sde_pstate->layout)) {
+				mutex_lock(&sde_crtc->property_info.property_lock);
 				cur_pstate->sde_pstate->pipe_order_flags = 0;
+				mutex_unlock(&sde_crtc->property_info.property_lock);
+			}
 
 			continue;
 		}
@@ -2334,8 +2361,10 @@ static void _sde_crtc_set_src_split_order(struct drm_crtc *crtc,
 			swap(prv_pstate, cur_pstate);
 		}
 
+		mutex_lock(&sde_crtc->property_info.property_lock);
 		cur_pstate->sde_pstate->pipe_order_flags = SDE_SSPP_RIGHT;
 		prv_pstate->sde_pstate->pipe_order_flags = 0;
+		mutex_unlock(&sde_crtc->property_info.property_lock);
 	}
 
 	for (i = 0; i < cnt; i++) {
@@ -3205,33 +3234,6 @@ static int _sde_validate_hw_resources(struct sde_crtc *sde_crtc,
 	return 0;
 }
 
-static struct hfi_cmdbuf_t *_sde_crtc_get_cmd_buf(struct drm_crtc *crtc)
-{
-	u32 disp_id = 0;
-	struct hfi_cmdbuf_t *cmd_buf = NULL;
-	struct hfi_kms *hfi_kms = NULL;
-	struct msm_drm_private *priv = NULL;
-
-	if (crtc && crtc->dev && crtc->dev->dev_private) {
-		priv = crtc->dev->dev_private;
-		hfi_kms = ((priv && priv->kms) ?
-				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
-	}
-	if (!hfi_kms) {
-		SDE_ERROR("invalid hfi_kms\n");
-		return NULL;
-	}
-
-	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
-	if (disp_id == U32_MAX) {
-		SDE_ERROR("invalid display id\n");
-		return NULL;
-	}
-
-	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
-	return cmd_buf;
-}
-
 /**
  * _sde_crtc_dest_scaler_setup - Set up dest scaler block
  * @crtc: Pointer to drm crtc
@@ -3252,7 +3254,7 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 	enum msm_disp_op disp_op;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	struct hfi_util_u32_prop_helper *color_props = NULL;
-	u32 disp_id = 0, ret = 0, dspp_start_idx = DSPP_MAX;
+	u32 ret = 0, dspp_start_idx = DSPP_MAX;
 	bool dest_scaler_set = false;
 
 	if (!crtc)
@@ -3345,23 +3347,13 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 		}
 
 		if (disp_op == MSM_DISP_OP_HFI && dest_scaler_set) {
-			cmd_buf = _sde_crtc_get_cmd_buf(crtc);
-			disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+			cmd_buf = hfi_crtc_get_cmd_buf(crtc);
 			color_props = hw_ds->prop_helper;
 
-			ret = hfi_adapter_add_set_property(cmd_buf->ctx,
-				cmd_buf,
-				HFI_COMMAND_DISPLAY_SET_PROPERTY,
-				disp_id,
-				HFI_PAYLOAD_TYPE_U32_ARRAY,
-				hfi_util_u32_prop_helper_get_payload_addr(color_props),
-				hfi_util_u32_prop_helper_get_size(color_props),
-				HFI_HOST_FLAGS_NONE);
-
+			ret = hfi_crtc_add_set_property(crtc, cmd_buf, color_props);
 			if (ret)
-				SDE_ERROR("failed to set HFI prop\n");
-
-			hfi_util_u32_prop_helper_reset(color_props);
+				SDE_ERROR("failed to set and add HFI crtc prop\n");
+			hfi_cp_crtc_reset_color_props(color_props);
 		}
 	}
 }
@@ -4866,12 +4858,14 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 	uint32_t wait_ms = 1;
 	struct msm_display_mode *msm_mode;
 	bool mode_switch, is_wb = false;
+	bool is_lsr = false;
 	int i, status = 0, rc = 0;
 
 	msm_mode = sde_crtc_get_msm_mode(crtc->state);
 	mode_switch = msm_is_mode_seamless_poms(msm_mode);
 
 	is_wb = _is_crtc_intf_mode_wb(crtc);
+	is_lsr = sde_crtc_check_for_lsr_opmode(crtc) > 0 ? true : false;
 
 	/* use monotonic timer to limit total fence wait time */
 	kt_end = ktime_add_ns(ktime_get(),
@@ -4906,7 +4900,7 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 				/*
 				 * go to next, to skip sw-wait for hw-fences not for writeback path.
 				 */
-				if (!is_wb)
+				if (!is_wb || is_lsr)
 					continue;
 			}
 		}
@@ -5323,7 +5317,6 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	bool cont_splash_enabled = false;
 	size_t i;
 	int ret = 0;
-	u32 disp_id = 0;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 	struct hfi_util_u32_prop_helper *color_props = NULL;
@@ -5434,17 +5427,16 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			cont_splash_enabled = true;
 	}
 
-
 	if (sde_kms_is_cp_operation_allowed(sde_kms)) {
 		if (IS_DISP_OP_HFI(disp_op)) {
-			cmd_buf = _sde_crtc_get_cmd_buf(crtc);
+			cmd_buf = hfi_crtc_get_cmd_buf(crtc);
 			if (!cmd_buf) {
 				SDE_ERROR("failed to get cmd_buf for crtc:%d\n", DRMID(crtc));
 				goto skip_cp;
 			}
 			sde_crtc->hfi_client = cmd_buf->ctx;
 			if (sde_crtc->hfi_crtc)
-				hfi_util_u32_prop_helper_reset(sde_crtc->hfi_crtc->color_props);
+				hfi_cp_crtc_reset_color_props(sde_crtc->hfi_crtc->color_props);
 		}
 
 		sde_cp_crtc_apply_properties(crtc);
@@ -5453,29 +5445,13 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 			if (!sde_crtc->hfi_crtc)
 				goto skip_cp;
 			color_props = sde_crtc->hfi_crtc->color_props;
-			if (!hfi_util_u32_prop_helper_prop_count(color_props)) {
+			if (!hfi_cp_crtc_get_color_props_count(color_props)) {
 				SDE_DEBUG("cmd_buf %pK, prop_count %d\n", cmd_buf,
-					hfi_util_u32_prop_helper_prop_count(color_props));
+					hfi_cp_crtc_get_color_props_count(color_props));
 				goto skip_cp;
 			}
 
-			disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
-			if (disp_id == U32_MAX) {
-				SDE_ERROR("invalid display id\n");
-				goto skip_cp;
-			}
-
-			/*
-			 * Once all the color processing properties are collected, invoke adapter
-			 * api to add all these properties as a single HFI Packet
-			 */
-			ret = hfi_adapter_add_set_property(cmd_buf->ctx,
-				cmd_buf,
-				HFI_COMMAND_DISPLAY_SET_PROPERTY, disp_id,
-				HFI_PAYLOAD_TYPE_U32_ARRAY,
-				hfi_util_u32_prop_helper_get_payload_addr(color_props),
-				hfi_util_u32_prop_helper_get_size(color_props),
-				HFI_HOST_FLAGS_NONE);
+			ret = hfi_crtc_add_set_property(crtc, cmd_buf, color_props);
 			if (ret) {
 				SDE_ERROR("failed to send HFI commands\n");
 				goto skip_cp;
@@ -5564,6 +5540,13 @@ static void sde_crtc_atomic_flush_common(struct drm_crtc *crtc,
 		return;
 	}
 
+	if (sde_kms->hfi_kms) {
+		if (atomic_read(&sde_kms->hfi_kms->ssr_in_progress)) {
+			SDE_ERROR("SSR in progress, returning..\n");
+			return;
+		}
+	}
+
 	SDE_DEBUG("crtc%d\n", crtc->base.id);
 
 	sde_crtc = to_sde_crtc(crtc);
@@ -5620,7 +5603,8 @@ static void sde_crtc_atomic_flush_common(struct drm_crtc *crtc,
 				sde_crtc->new_perf.llcc_active[i] = true;
 		}
 	}
-	sde_core_perf_crtc_update_llcc(crtc);
+	if (IS_DISP_OP_HWIO(priv->disp_op))
+		sde_core_perf_crtc_update_llcc(crtc);
 
 	/* wait for acquire fences before anything else is done */
 	_sde_crtc_wait_for_fences(crtc);
@@ -6382,6 +6366,9 @@ static bool skip_event_handling_required(struct drm_crtc *crtc, u32 event)
 	case DRM_EVENT_LTM_HIST:
 	case DRM_EVENT_LTM_WB_PB:
 	case DRM_EVENT_LTM_OFF:
+	case DRM_EVENT_RGB_HIST:
+	case DRM_EVENT_RGB_HIST_WB_ERR:
+	case DRM_EVENT_RGB_HIST_OFF:
 		return true;
 	default:
 		return false;
@@ -6724,6 +6711,27 @@ void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
 		break;
 	case DRM_EVENT_LTM_OFF:
 		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_ltm_off, NULL, true);
+		break;
+	case DRM_EVENT_RGB_HIST: {
+		int idx = 0;
+		bool found = false;
+
+		found = sde_cp_validate_rgb_hist_event_resp(data, event_payload, &idx);
+		if (!found) {
+			SDE_ERROR("RGB Hist buffer from HFI not found in driver\n");
+			return;
+		}
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_rgb_hist,
+				sde_crtc->rgb_hist_buffers[idx], true);
+		break;
+	}
+	case DRM_EVENT_RGB_HIST_WB_ERR:
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_rgb_hist_wb_err,
+				NULL, true);
+		break;
+	case DRM_EVENT_RGB_HIST_OFF:
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_rgb_hist_off,
+				NULL, true);
 		break;
 	}
 }
@@ -8249,9 +8257,12 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			sde_kms_info_add_keyint(info, "ai_scaler_count",
 					catalog->ai_scaler_count);
 
-		if ((catalog->abc_count) && (catalog->ssip_allowed))
+		if ((catalog->abc_count) && (catalog->ssip_allowed)) {
 			sde_kms_info_add_keyint(info, "abc_count",
 					catalog->abc_count);
+			sde_kms_info_add_keyint(info, "is_udc_supported",
+					catalog->is_udc_supported);
+		}
 	}
 
 	sde_kms_info_add_keyint(info, "dsc_block_count", catalog->dsc_count);
@@ -8618,8 +8629,6 @@ int sde_crtc_helper_reset_custom_properties(struct drm_crtc *crtc,
 
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(crtc_state);
-
-	sde_cp_crtc_clear(crtc);
 
 	for (prop_idx = 0; prop_idx < CRTC_PROP_COUNT; prop_idx++) {
 		uint64_t val = cstate->property_values[prop_idx].value;
@@ -9719,6 +9728,7 @@ struct drm_crtc *sde_crtc_init(struct drm_device *dev, struct drm_plane *plane)
 	sde_crtc->enabled = false;
 	sde_crtc->kickoff_in_progress = false;
 	sde_crtc->do_clear_buf = false;
+	sde_crtc->do_clear_rgb_hist_buf = false;
 
 	/* Below parameters are for fps calculation for sysfs node */
 	sde_crtc->fps_info.fps_periodic_duration = DEFAULT_FPS_PERIOD_1_SEC;

@@ -452,4 +452,14 @@ struct hfi_panel_esd_config {
 	u32 status_values_msb;
 };
 
+/**
+ * struct hfi_qsync_params - Qsync parameters
+ * @avr_step_fps:	AVR step fps
+ * @qsync_min_fps:	QSYNC min fps
+ */
+struct hfi_qsync_params {
+	u32 avr_step_fps;
+	u32 qsync_min_fps;
+};
+
 #endif // __H_HFI_DEFS_PANEL_H__

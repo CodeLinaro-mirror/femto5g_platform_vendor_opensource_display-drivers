@@ -4,7 +4,7 @@ load(":target_variants.bzl", "get_all_variants")
 
 def define_canoe():
     for (t, v) in get_all_variants():
-        if t == "canoe":
+        if t == "canoe" or t == "alor-le":
             define_target_variant_modules(
                 target = t,
                 variant = v,
@@ -32,6 +32,7 @@ def define_canoe():
                     "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_MSM_EXT_DISPLAY",
                     "CONFIG_DRM_SDE_CESTA",
-                    "CONFIG_QTI_HW_FENCE"
+                    "CONFIG_QTI_HW_FENCE",
+                    "CONFIG_DSI_EXTENDED_MODES"
                 ],
             )

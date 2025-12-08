@@ -298,6 +298,7 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_FPS_SWITCH:		   FPS Switch
  * @DSI_CMD_SET_EM_PULSE_SWITCH:           EM pulse switch cmd
  * @DSI_CMD_SET_PRIVACY_LAYER:		   Command to update panel on Privacy layer config
+ * @DSI_CMD_SET_BRIGHTNESS:		   Command to update backlight
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -344,6 +345,7 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_FPS_SWITCH,
 	DSI_CMD_SET_EM_PULSE_SWITCH,
 	DSI_CMD_SET_PRIVACY_LAYER,
+	DSI_CMD_SET_BRIGHTNESS,
 	DSI_CMD_SET_MAX
 };
 
@@ -470,6 +472,7 @@ struct dsi_panel_cmd_set {
  * @avr_step_fps:     AVR step fps rate
  * @esync_emsync_fps: esync EM pulse rate
  * @te_pulse_width_us:         Pulse width of TE in microseconds
+ * @overlap:          Overlap pixel within pingpong buffer
  */
 struct dsi_mode_info {
 	u32 h_active;
@@ -500,6 +503,7 @@ struct dsi_mode_info {
 	u32 avr_step_fps;
 	u32 esync_emsync_fps;
 	u32 te_pulse_width_us;
+	u32 overlap;
 };
 
 /**
@@ -730,7 +734,7 @@ struct dsi_display_mode_priv_info {
 	struct msm_ratio pclk_scale;
 	struct msm_roi_caps roi_caps;
 	bool widebus_support;
-	u32 allowed_mode_switch;
+	u32 allowed_mode_switch[MODE_SWITCH_BITMAP_SIZE];
 	bool disable_rsc_solver;
 };
 

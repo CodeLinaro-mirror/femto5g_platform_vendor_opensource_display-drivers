@@ -151,6 +151,11 @@ enum sde_cp_crtc_features {
 	SDE_CP_CRTC_DSPP_COPR,
 	SDE_CP_CRTC_DSPP_AI_SCALER,
 	SDE_CP_CRTC_DSPP_AIQE_ABC,
+	SDE_CP_CRTC_DSPP_RGB_HIST_SET_BUF,
+	SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF,
+	SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF2,
+	SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF3,
+	SDE_CP_CRTC_DSPP_RGB_HIST_CTRL,
 	SDE_CP_CRTC_DSPP_MAX,
 	/* DSPP features end */
 
@@ -468,8 +473,88 @@ void sde_cp_notify_ltm_off(struct drm_crtc *crtc_drm, void *arg);
  * @sde_crtc: pointer to sde crtc object
  * @i: LTM buffer index
  * @fd_id: file descriptor ID to use for mapping
- *
  */
 int map_single_ltm_buffer(void *crtc, u32 i, u32 fd_id);
+
+/**
+ * map_single_rgb_hist_buffer - map a single rgb hsit buffer to FW domain
+ * @sde_crtc: pointer to sde crtc object
+ * @i: rgb hsit buffer index
+ * @j: rgb hsit component index
+ * @fd_id: file descriptor ID to use for mapping
+ */
+int map_single_rgb_hist_buffer(void *crtc, u32 i, u32 j, u32 fd);
+
+/**
+ * sde_crtc_rgb_hist_interrupt_handler: API to enable/disable RGB hist interrupt
+ * @crtc: Pointer to crtc.
+ * @en: Variable to enable/disable interrupt.
+ * @irq: Pointer to irq callback
+ */
+int sde_crtc_rgb_hist_interrupt_handler(struct drm_crtc *crtc, bool en,
+		struct sde_irq_callback *irq);
+
+/**
+ * sde_crtc_rgb_hist_wb_err_interrupt_handler: API to enable/disable RGB hist wb
+ * err interrupt
+ * @crtc: Pointer to crtc.
+ * @en: Variable to enable/disable interrupt.
+ * @irq: Pointer to irq callback
+ */
+int sde_crtc_rgb_hist_wb_err_interrupt_handler(
+	struct drm_crtc *crtc, bool en, struct sde_irq_callback *irq);
+
+/**
+ * sde_crtc_rgb_hist_off_interrupt_handler: API to enable/disable RGB hist off
+ * interrupt
+ * @crtc: Pointer to crtc.
+ * @en: Variable to enable/disable interrupt.
+ * @irq: Pointer to irq callback
+ */
+int sde_crtc_rgb_hist_off_interrupt_handler(
+	struct drm_crtc *crtc, bool en, struct sde_irq_callback *irq);
+
+/**
+ * sde_cp_validate_rgb_hist_event_resp - Validate RGB histogram event response
+ * @data: Pointer to the sde ctrc
+ * @event_payload: Pointer to the event payload containing histogram response data
+ * @idx: Pointer to store the index of the matching RGB histogram buffer
+ *
+ * This function validates the RGB histogram event response by comparing the
+ * response data with existing histogram buffers. If a matching buffer is found,
+ * its index is returned via @idx. Returns true if validation succeeds, false otherwise.
+ */
+bool sde_cp_validate_rgb_hist_event_resp(void *data, void *event_payload, int *idx);
+
+/**
+ * sde_cp_notify_rgb_hist - Notify RGB histogram data availability
+ * @crtc: Pointer to DRM CRTC structure.
+ * @arg: Pointer to event payload or context.
+ *
+ * This function is called when RGB histogram data is ready and needs to be
+ * processed or forwarded to user space.
+ */
+void sde_cp_notify_rgb_hist(struct drm_crtc *crtc, void *arg);
+
+/**
+ * sde_cp_notify_rgb_hist_wb_err - Notify writeback error during RGB histogram
+ * capture
+ * @crtc: Pointer to DRM CRTC structure.
+ * @arg: Pointer to event payload or context.
+ *
+ * This function handles error notifications related to writeback failures
+ * during RGB histogram data collection.
+ */
+void sde_cp_notify_rgb_hist_wb_err(struct drm_crtc *crtc, void *arg);
+
+/**
+ * sde_cp_notify_rgb_hist_off - Notify RGB histogram feature turned off
+ * @crtc: Pointer to DRM CRTC structure.
+ * @arg: Pointer to event payload or context.
+ *
+ * This function is called when the RGB histogram feature is disabled,
+ * allowing cleanup or state update as needed.
+ */
+void sde_cp_notify_rgb_hist_off(struct drm_crtc *crtc, void *arg);
 
 #endif /*_SDE_COLOR_PROCESSING_H */

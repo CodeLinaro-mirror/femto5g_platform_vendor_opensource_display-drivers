@@ -58,7 +58,7 @@ module_entry(
             "msm/dp/dp_mst_sim_helper.c",
             "msm/dp/dp_gpio_hpd.c",
             "msm/dp/dp_lphw_hpd.c",
-            "msm/dp/dp_display.c",
+            "msm/dp/dp_drv.c",
             "msm/dp/dp_drm.c",
             "msm/dp/dp_pll.c",
             "msm/dp/dp_pll_5nm.c",
@@ -66,6 +66,9 @@ module_entry(
             "msm/dp/dp_pll_3nm.c",
             "msm/dp/edp_pll_5nm.c",
             "msm/dp/edp_pll_4nm.c",
+            "msm/dp/dp_mgr.c",
+            "msm/dp/dp_aux_switch.c",
+            "msm/dp/dp_debug_client.c",
         ],
         "CONFIG_DRM_MSM_DP_MST": [
             "msm/dp/dp_mst_drm.c",
@@ -226,13 +229,13 @@ module_entry(
             True: [
                 "rotator/sde_rotator_dev.c",
                 "rotator/sde_rotator_core.c",
-                "rotator/sde_rotator_base.c ",
+                "rotator/sde_rotator_base.c",
                 "rotator/sde_rotator_formats.c",
                 "rotator/sde_rotator_util.c",
                 "rotator/sde_rotator_io_util.c",
                 "rotator/sde_rotator_smmu.c",
                 "rotator/sde_rotator_r1_wb.c",
-                "rotator/sde_rotator_r1_pipe.c ",
+                "rotator/sde_rotator_r1_pipe.c",
                 "rotator/sde_rotator_r1_ctl.c",
                 "rotator/sde_rotator_r1.c",
                 "rotator/sde_rotator_r3.c",
@@ -271,6 +274,7 @@ module_entry(
         ],
         "CONFIG_QTI_HFI_CORE": [
             "//vendor/qcom/opensource/mm-drivers/hfi_core:%b_msm_hfi_core",
+            "//vendor/qcom/opensource/mm-drivers/hfi_core:hfi_core_headers"
         ],
     },
 )

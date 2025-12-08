@@ -21,12 +21,14 @@
 #include <linux/spinlock.h>
 #include <linux/shmem_fs.h>
 #include <linux/dma-buf.h>
-#include <linux/pfn_t.h>
 #include <linux/version.h>
 #include <linux/vmalloc.h>
 #include <linux/module.h>
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 #include <linux/ion.h>
+#endif
+#if (KERNEL_VERSION(6, 17, 0) > LINUX_VERSION_CODE)
+#include <linux/pfn_t.h>
 #endif
 
 #include "msm_drv.h"
@@ -311,7 +313,11 @@ vm_fault_t msm_gem_fault(struct vm_fault *vmf)
 	VERB("Inserting %pK pfn %lx, pa %lx", (void *)vmf->address,
 			pfn, pfn << PAGE_SHIFT);
 
+#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE)
+	ret = vmf_insert_mixed(vma, vmf->address, pfn);
+#else
 	ret = vmf_insert_mixed(vma, vmf->address, __pfn_to_pfn_t(pfn, PFN_DEV));
+#endif
 out_unlock:
 	mutex_unlock(&msm_obj->lock);
 out:

@@ -2374,7 +2374,6 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 	wb_enc->crtc = NULL;
 	phys_enc->hw_cdm = NULL;
 	phys_enc->hw_ctl = NULL;
-	phys_enc->in_clone_mode = false;
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
 	atomic_set(&phys_enc->pending_release_fence_cnt, 0);
@@ -2635,7 +2634,7 @@ static int _sde_encoder_phys_wb_init_internal_fb(struct sde_encoder_phys_wb *wb_
 		uint32_t pixel_format, uint32_t width, uint32_t height, uint32_t pitch)
 {
 	struct drm_device *dev;
-	struct drm_framebuffer *fb;
+	struct drm_framebuffer *fb = NULL;
 	struct drm_mode_fb_cmd2 mode_cmd;
 	uint32_t size;
 	int nplanes, i, ret;
@@ -2675,7 +2674,11 @@ static int _sde_encoder_phys_wb_init_internal_fb(struct sde_encoder_phys_wb *wb_
 	}
 
 	/* allocate gem tracking object */
+#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE)
+	info = drm_get_format_info(dev, mode_cmd.pixel_format, mode_cmd.modifier[0]);
+#else
 	info = drm_get_format_info(dev, &mode_cmd);
+#endif
 	nplanes = info->num_planes;
 	if (nplanes >= SDE_MAX_PLANES) {
 		SDE_ERROR("[enc:%d wb:%d] requested format has too many planes:%d\n",
