@@ -1879,11 +1879,7 @@
 /*!
  * @def HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG - This property is used to configure downscale blur
  *                                      (DNSC BLUR) settings for display. The configuration data
- *                                      is passed via a shared buffer using the hfi_buff
- *                                      approach. The shared buffer contains struct
- *                                      hfi_dnsc_blur_cfg with source/destination dimensions,
- *                                      phase initialization, scaling ratios, and blur
- *                                      coefficients for both horizontal and vertical directions.
+ *                                      is passed via a shared buffer using the hfi_buff approach.
  *                                      Host is expected to send this packet as part of
  *                                      HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
  *
@@ -1895,8 +1891,7 @@
  *                               | (version=0 << 20) |
  *                               | (dsize=1 + (sizeof(struct hfi_buff)/4) << 24)
  *     (u32_value) payload [1]   | wb_id
- *     (u32_value) payload [2-6] | struct hfi_buff (contains remote address to
- *                               | shared buffer with hfi_dnsc_blur_cfg data)
+ *     (u32_value) payload [2-6] | struct hfi_buff
  */
 #define HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG                      0x00030029
 
