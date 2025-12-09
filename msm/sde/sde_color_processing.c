@@ -5049,7 +5049,15 @@ static void _rc_caps_update(struct sde_crtc *crtc, struct sde_kms_info *info)
 		if (crtc->mixers[i].hw_dspp) {
 			struct sde_hw_dspp *dspp = crtc->mixers[i].hw_dspp;
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
+			/* HYP design may assign any dspp to VM, it will no
+			 * longer be required that idx must be less than rc_count
+			 */
 			if (!dspp || (dspp->idx - DSPP_0) >= catalog->rc_count)
+#else
+			if (!dspp)
+
+#endif
 				continue;
 			snprintf(blk_name, sizeof(blk_name), "rc%u",
 					(dspp->idx - DSPP_0));
