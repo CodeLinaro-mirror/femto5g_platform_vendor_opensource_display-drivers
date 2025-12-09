@@ -14,6 +14,7 @@
 
 #include <linux/tracepoint.h>
 #include <sde_rotator_core.h>
+#include <linux/version.h>
 
 DECLARE_EVENT_CLASS(rot_entry_template,
 	TP_PROTO(u32 ss_id, u32 sq_id, struct sde_rot_trace_entry *rot),
@@ -226,7 +227,11 @@ TRACE_EVENT(rot_mark_write,
 	),
 	TP_fast_assign(
 			__entry->pid = pid;
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+			__assign_str(trace_name);
+#else
 			__assign_str(trace_name, name);
+#endif
 			__entry->trace_begin = trace_begin;
 	),
 	TP_printk("%s|%d|%s", __entry->trace_begin ? "B" : "E",
@@ -243,7 +248,11 @@ TRACE_EVENT(rot_trace_counter,
 	),
 	TP_fast_assign(
 			__entry->pid = current->tgid;
-			__assign_str(counter_name, name);
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+                        __assign_str(counter_name);
+#else
+                        __assign_str(counter_name, name);
+#endif
 			__entry->value = value;
 	),
 	TP_printk("%d|%s|%lld", __entry->pid,
@@ -276,7 +285,11 @@ TRACE_EVENT(sde_rot_evtlog,
 	),
 	TP_fast_assign(
 			__entry->pid = current->tgid;
-			__assign_str(evtlog_tag, tag);
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+                        __assign_str(evtlog_tag);
+#else
+                        __assign_str(evtlog_tag, tag);
+#endif
 			__entry->tag_id = tag_id;
 			if (cnt > SDE_ROT_TRACE_EVTLOG_SIZE)
 				cnt = SDE_ROT_TRACE_EVTLOG_SIZE;

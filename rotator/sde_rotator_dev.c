@@ -15,7 +15,7 @@
 #include <linux/wait.h>
 #include <linux/of.h>
 #include <linux/dma-mapping.h>
-#include <linux/module.h>
+#include <linux/version.h>
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-event.h>
 #include <media/videobuf2-v4l2.h>
@@ -531,14 +531,13 @@ static const struct vb2_ops sde_rotator_vb2_q_ops = {
 
 /*
  * sde_rotator_get_userptr - Map and get buffer handler for user pointer buffer.
+ * @vb: video buffer
  * @dev: device allocated in buf_setup.
  * @vaddr: Virtual addr passed from userpsace (in our case ion fd)
  * @size: Size of the buffer
- * @dma_dir: DMA data direction of the given buffer.
  */
-static void *sde_rotator_get_userptr(struct device *dev,
-	unsigned long vaddr, unsigned long size,
-	enum dma_data_direction dma_dir)
+static void *sde_rotator_get_userptr(struct vb2_buffer *vb, struct device *dev,
+	unsigned long vaddr, unsigned long size)
 {
 	struct sde_rotator_ctx *ctx = (struct sde_rotator_ctx *)dev;
 	struct sde_rotator_device *rot_dev = ctx->rot_dev;
@@ -825,7 +824,6 @@ static int sde_rotator_queue_init(void *priv, struct vb2_queue *src_vq,
 	src_vq->buf_struct_size = sizeof(struct v4l2_m2m_buffer);
 	src_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
 	src_vq->lock = &ctx->rot_dev->lock;
-	src_vq->min_buffers_needed = 1;
 	src_vq->dev = ctx->rot_dev->dev;
 
 	ret = vb2_queue_init(src_vq);
@@ -843,7 +841,6 @@ static int sde_rotator_queue_init(void *priv, struct vb2_queue *src_vq,
 	dst_vq->buf_struct_size = sizeof(struct v4l2_m2m_buffer);
 	dst_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
 	dst_vq->lock = &ctx->rot_dev->lock;
-	dst_vq->min_buffers_needed = 1;
 	src_vq->dev = ctx->rot_dev->dev;
 
 	ret = vb2_queue_init(dst_vq);
@@ -3479,13 +3476,13 @@ static int sde_rotator_probe(struct platform_device *pdev)
 	vdev->release = video_device_release;
 	vdev->v4l2_dev = &rot_dev->v4l2_dev;
 	vdev->vfl_dir = VFL_DIR_M2M;
-	vdev->vfl_type = VFL_TYPE_GRABBER;
+	vdev->vfl_type = VFL_TYPE_VIDEO;
 	vdev->device_caps = V4L2_CAP_STREAMING | V4L2_CAP_VIDEO_M2M |
 		V4L2_CAP_VIDEO_OUTPUT | V4L2_CAP_VIDEO_CAPTURE;
 
 	strscpy(vdev->name, SDE_ROTATOR_DRV_NAME, sizeof(vdev->name));
 
-	ret = video_register_device(vdev, VFL_TYPE_GRABBER,
+	ret = video_register_device(vdev, VFL_TYPE_VIDEO,
 			SDE_ROTATOR_BASE_DEVICE_NUMBER);
 	if (ret < 0) {
 		SDEDEV_ERR(&pdev->dev, "fail register video device %d\n",
@@ -3540,7 +3537,11 @@ error_rotator_base_init:
  * sde_rotator_remove - rotator device remove method.
  * @pdev: Pointer rotator platform device.
  */
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void sde_rotator_remove(struct platform_device *pdev)
+#else
 static int sde_rotator_remove(struct platform_device *pdev)
+#endif
 {
 	struct sde_rotator_device *rot_dev;
 	int i;
@@ -3548,7 +3549,11 @@ static int sde_rotator_remove(struct platform_device *pdev)
 	rot_dev = platform_get_drvdata(pdev);
 	if (rot_dev == NULL) {
 		SDEDEV_ERR(&pdev->dev, "fail get rotator drvdata\n");
-		return 0;
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+                return 0;
+#else
+                return;
+#endif
 	}
 
 	for (i = MAX_ROT_OPEN_SESSION - 1; i >= 0; i--)
@@ -3561,7 +3566,9 @@ static int sde_rotator_remove(struct platform_device *pdev)
 	sde_rotator_core_destroy(rot_dev->mgr);
 	sde_rotator_base_destroy(rot_dev->mdata);
 	kfree(rot_dev);
-	return 0;
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+        return 0;
+#endif
 }
 
 static const struct dev_pm_ops sde_rotator_pm_ops = {
@@ -3598,9 +3605,15 @@ static int sde_rotator_probe(struct platform_device *pdev)
  * sde_rotator_remove - rotator device remove method.
  * @pdev: Pointer rotator platform device.
  */
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+static void sde_rotator_remove(struct platform_device *pdev)
+#else
 static int sde_rotator_remove(struct platform_device *pdev)
+#endif
 {
-	return 0;
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+        return 0;
+#endif
 }
 
 /* SDE Rotator platform driver definition */

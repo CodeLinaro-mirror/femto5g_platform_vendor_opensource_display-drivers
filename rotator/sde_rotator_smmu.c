@@ -9,6 +9,7 @@
 #include <linux/clk.h>
 #include <linux/debugfs.h>
 #include <linux/kernel.h>
+#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/iommu.h>
 #include <linux/of.h>
@@ -24,6 +25,7 @@
 #include "sde_rotator_io_util.h"
 #include "sde_rotator_smmu.h"
 #include "sde_rotator_debug.h"
+#include <linux/of_device.h>
 
 #define SMMU_SDE_ROT_SEC	"qcom,smmu_sde_rot_sec"
 #define SMMU_SDE_ROT_UNSEC	"qcom,smmu_sde_rot_unsec"
@@ -610,7 +612,7 @@ int sde_smmu_probe(struct platform_device *pdev)
 		dev->dma_parms = devm_kzalloc(dev,
 				sizeof(*dev->dma_parms), GFP_KERNEL);
 
-	dma_set_max_seg_size(dev, DMA_BIT_MASK(32));
+	dma_set_max_seg_size(dev, (unsigned int)DMA_BIT_MASK(32));
 	dma_set_seg_boundary(dev, (unsigned long)DMA_BIT_MASK(64));
 
 	iommu_set_fault_handler(sde_smmu->rot_domain,
@@ -637,7 +639,11 @@ release_vreg:
 	return rc;
 }
 
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+void sde_smmu_remove(struct platform_device *pdev)
+#else
 int sde_smmu_remove(struct platform_device *pdev)
+#endif
 {
 	int i;
 	struct sde_smmu_client *sde_smmu;
@@ -659,7 +665,9 @@ int sde_smmu_remove(struct platform_device *pdev)
 		sde_smmu->mp.vreg_config = NULL;
 		sde_smmu->mp.num_vreg = 0;
 	}
-	return 0;
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
+        return 0;
+#endif
 }
 
 static struct platform_driver sde_smmu_driver = {
