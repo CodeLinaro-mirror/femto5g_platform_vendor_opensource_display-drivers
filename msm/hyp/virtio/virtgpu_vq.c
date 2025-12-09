@@ -2163,6 +2163,8 @@ static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 		PARSE_MASK(dspp_mask, assign->dspp_mask)
 		PARSE_OWNER(dspp_owner, assign->dspp_owner)
 
+		PARSE_MASK(rc_mask, assign->rc_mask)
+
 		PARSE_MASK(ds_mask, assign->ds_mask)
 		PARSE_OWNER(ds_owner, assign->ds_owner)
 
@@ -2244,6 +2246,8 @@ static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 
 	DUMP_PARSED_VALUE(dspp_owner);
 	DUMP_PARSED_VALUE(dspp_mask);
+
+	DUMP_PARSED_VALUE(rc_mask);
 
 	DUMP_PARSED_VALUE(ds_owner);
 	DUMP_PARSED_VALUE(ds_mask);

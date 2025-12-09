@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -189,7 +189,7 @@ enum sde_reg_dma_setup_ops {
 	REG_DMA_SETUP_OPS_MAX,
 };
 
-#define REG_DMA_BLK_MAX 32
+#define REG_DMA_BLK_MAX 63
 
 /**
  * enum sde_reg_dma_blk - defines blocks for which reg dma op should be

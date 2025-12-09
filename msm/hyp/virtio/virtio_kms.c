@@ -445,6 +445,7 @@ static int virtio_connector_set_info_blob(struct drm_connector *connector,
 	struct virtio_kms_output *output = NULL;
 	struct msm_hyp_display *hyp_display = display;
 	struct virtio_connector_info_priv *priv = NULL;
+	int rc_pos = 0, rc_offset = 0;
 
 	if (!display || !connector || !(priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base)) ||
 		!(drm_dev = connector->dev) || !(msm_drm_priv = drm_dev->dev_private) || !(msm_kms = msm_drm_priv->kms) ||
@@ -467,6 +468,18 @@ static int virtio_connector_set_info_blob(struct drm_connector *connector,
 		sde_kms_info_add_keystr(info, "qsync support", "true");
 		sde_kms_info_add_keyint(info, "qsync_fps", output->attr.avr_min_fps);
 	}
+
+	if (output->rc_enabled)
+		sde_kms_info_add_keystr(info, "rc enable", "true");
+	else
+		sde_kms_info_add_keystr(info, "rc enable", "false");
+
+	rc_pos = ffs(priv->base.hw_assign->rc_mask);
+	if (rc_pos && (rc_pos < RC_MAX)) {
+		rc_offset = (rc_pos - 1) * RC_DATA_SIZE_MAX / (RC_MAX - RC_0);
+		sde_kms_info_add_keyint(info, "rc offset", rc_offset);
+	} else
+		sde_kms_info_add_keyint(info, "rc offset", 0);
 
 	switch (hyp_display->info->panel_orientation) {
 	case PANEL_ROTATE_NONE:
@@ -1897,8 +1910,6 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		}
 		VIRTIO_KMS_DBG("HYP_LM %d\n", hyp_cfg->mixer_count);
 
-
-
 		/* DSPP */
 		VIRTIO_KMS_DBG("DSPP %d  mask %X\n", sde_cfg->dspp_count, output->hw_assign.dspp_mask);
 		for (j = 0; j < sde_cfg->dspp_count; j++) {
@@ -1915,6 +1926,17 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 			}
 		}
 		VIRTIO_KMS_DBG("HYP_DSPP %d\n", hyp_cfg->dspp_count);
+
+		/* RC */
+		VIRTIO_KMS_DBG("RC %d  mask %X\n", sde_cfg->rc_count, output->hw_assign.rc_mask);
+		for (j = 0; j < sde_cfg->rc_count; j++) {
+			/* RC bind to DSPP_0 ~ DSPP_4 */
+			if (output->hw_assign.rc_mask & (1 << (sde_cfg->dspp[j].id - DSPP_0))) {
+				hyp_cfg->rc_count++;
+				output->rc_enabled = true;
+			}
+		}
+		VIRTIO_KMS_DBG("HYP_RC %d rc_enabled %d\n", hyp_cfg->rc_count, output->rc_enabled);
 
 		/* DS */
 		VIRTIO_KMS_DBG("DS %d  mask %X\n", sde_cfg->ds_count, output->hw_assign.ds_mask);
