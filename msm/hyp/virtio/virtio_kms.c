@@ -1937,7 +1937,8 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		VIRTIO_KMS_DBG("Pingpong %d  mask %X\n", sde_cfg->pingpong_count,
 				output->hw_assign.pingpong_mask);
 		for (j = 0; j < sde_cfg->pingpong_count; j++) {
-			if (output->hw_assign.pingpong_mask & (1 << (sde_cfg->pingpong[j].id - DS_0))) {
+			if (output->hw_assign.pingpong_mask &
+					(1 << (sde_cfg->pingpong[j].id - PINGPONG_0))) {
 				hyp_cfg->pingpong[hyp_cfg->pingpong_count] = sde_cfg->pingpong[j];
 				if (!output->hw_assign.pingpong_owner)
 					hyp_cfg->pingpong[hyp_cfg->pingpong_count].virtual = true;
@@ -1949,7 +1950,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 				hyp_cfg->pingpong_count++;
 			}
 		}
-		VIRTIO_KMS_DBG("HYP_DS %d\n", hyp_cfg->pingpong_count);
+		VIRTIO_KMS_DBG("HYP_PP %d\n", hyp_cfg->pingpong_count);
 
 		/* DSC */
 		VIRTIO_KMS_DBG("DSC %d  mask %X\n", sde_cfg->dsc_count, output->hw_assign.dsc_mask);
@@ -2229,21 +2230,6 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 			}
 		}
 
-		/* Pingpong */
-		for (j = 0; j < sde_cfg->pingpong_count; j++) {
-			if (output->hw_assign.pingpong_mask & (1 << (sde_cfg->pingpong[j].id - DS_0))) {
-				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
-				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->ds[j].id) {
-						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
-						VIRTIO_KMS_DBG("Update PP%d  %X  id %d  fixed enc %d  vq_ctx %pK\n",
-								j, sde_cfg->ds[j].id, iter.hw->blk_off, enc_id, iter.hw->vq_ctx);
-						break;
-					}
-				}
-			}
-		}
-
 		/* DSC */
 		for (j = 0; j < sde_cfg->dsc_count; j++) {
 			if (output->hw_assign.dsc_mask & (1 << (sde_cfg->dsc[j].id - DSC_0))) {
@@ -2306,7 +2292,8 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 
 		/* Pingpong */
 		for (j = 0; j < sde_cfg->pingpong_count; j++) {
-			if (output->hw_assign.pingpong_mask & (1 << (sde_cfg->pingpong[j].id - INTF_0))) {
+			if (output->hw_assign.pingpong_mask &
+					(1 << (sde_cfg->pingpong[j].id - PINGPONG_0))) {
 				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
 				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
 					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->pingpong[j].id) {
