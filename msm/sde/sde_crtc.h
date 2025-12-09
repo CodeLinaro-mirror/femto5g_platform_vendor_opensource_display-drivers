@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -509,6 +509,10 @@ struct sde_crtc {
 
 	struct sde_cesta_client *cesta_client;
 	u32 mdnie_art_frame_count;
+
+	/* Display node */
+	u32 offset_x;
+	u32 offset_y;
 };
 
 enum sde_crtc_dirty_flags {

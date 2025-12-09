@@ -509,12 +509,14 @@ void virtio_connector_get_hdr_info(struct virtio_connector_info_priv *priv,
 		/* EOTF: HDR Luminance Range */
 		if (panel_colorspace & PANEL_COLORSPACE_GAMMA2_2) {
 			sde_conn->hdr_eotf |= 0x02;
+			sde_conn->color_enc_fmt |= DRM_EDID_CLRMETRY_DCI_P3;
 			hdr_support = true;
 		}
 
 		/* EOTF: SMPTE ST 2084 */
 		if (panel_colorspace & PANEL_COLORSPACE_PQ) {
 			sde_conn->hdr_eotf |= 0x04;
+			sde_conn->color_enc_fmt |= DRM_EDID_CLRMETRY_BT2020_RGB;
 			hdr_support = true;
 		}
 
@@ -554,8 +556,8 @@ static int virtio_connector_get_modes(struct drm_connector *connector,
 		drm_mode_probed_add(connector, m);
 	}
 
-	msm_hyp_connector_init_edid(connector, priv->panel_name);
 	virtio_connector_get_hdr_info(priv, sde_conn);
+	msm_hyp_connector_init_edid(connector, priv->panel_name);
 
 	if (hyp_display->info->display_info.width_mm > 0 &&
 				hyp_display->info->display_info.height_mm > 0) {
@@ -1638,6 +1640,8 @@ static int virtio_kms_get_crtc_infos(struct sde_kms *sde_kms,
 		priv->base.max_bandwidth_low = 9600000000LL;
 		priv->base.max_bandwidth_high = 9600000000LL;
 		priv->base.has_src_split = true;
+		priv->base.offset_y = output->offset_y;
+		priv->base.offset_x = output->offset_x;
 		priv->scanout = i;
 		priv->kms = kms;
 		_virtio_kms_set_crtc_limit(kms, priv);
@@ -1696,6 +1700,7 @@ void virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg, unsigned l
 struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 {
 	int i, j, k;
+	int scanout_index;
 	struct msm_hyp_kms *hyp_kms = sde_kms->hyp_kms;
 	struct sde_mdss_cfg *sde_cfg = sde_kms->catalog;
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
@@ -1756,6 +1761,8 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 	hyp_cfg->aiqe_count = 0;
 	hyp_cfg->ai_scaler_count = 0;
 	hyp_cfg->abc_count = 0;
+	/* scanout index on each core */
+	scanout_index = 0;
 
 	/* Re-link all HW blocks assigned to GVM */
 	for (i = 0; i < kms->num_scanouts; i++) {
@@ -1767,6 +1774,15 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 
+		if (scanout_index < MAX_CRTCS) {
+			hyp_cfg->max_hyp_mixer_blendstages[scanout_index] =
+				output->hw_assign.lm_stages;
+			VIRTIO_KMS_DBG("scanout_index %d max_hyp_mixer_blendstages %d",
+				scanout_index, hyp_cfg->max_hyp_mixer_blendstages[scanout_index]);
+		} else {
+			VIRTIO_KMS_ERR("scanout_index %d exceeds MAX_CRTCS %d\n", scanout_index, MAX_CRTCS);
+		}
+		scanout_index++;
 		/* SSPP */
 		VIRTIO_KMS_DBG("SSPP %d  planes %d\n", sde_cfg->sspp_count, output->plane_cnt);
 		for (k = 0; k < output->plane_cnt; k++) {
@@ -2657,8 +2673,11 @@ static int _virtio_kms_hw_init(struct virtio_kms *kms)
 
 	for (scanout = 0; scanout < kms->num_scanouts; scanout++) {
 		rc = virtio_kms_scanout_init(kms, scanout);
-		if (rc)
-			VIRTIO_KMS_ERR("scanout init failed %d\n", scanout);
+		if (rc) {
+			VIRTIO_KMS_ERR("scanout %d init failed, rc: %d\n",
+								scanout, rc);
+			goto error;
+		}
 	}
 error:
 	return rc;

@@ -2192,6 +2192,7 @@ struct sde_perf_cfg {
  * @max_dsc_width       max dsc line width
  * @max_mixer_width     max layer mixer line width
  * @max_mixer_blendstages       max layer mixer blend stages (z orders)
+ * @max_hyp_mixer_blendstages   max layer mixer blend stages for each display (z orders)
  * @max_cwb             max number of dcwb/cwb supported
  * @max_bw_upvote_threshold_ns bandwidth upvote threshold with cesta/rscc
  * @vbif_qos_nlvl       number of vbif QoS priority levels
@@ -2326,6 +2327,9 @@ struct sde_mdss_cfg {
 	u32 max_dsc_width;
 	u32 max_mixer_width;
 	u32 max_mixer_blendstages;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	u32 max_hyp_mixer_blendstages[MAX_CRTCS];
+#endif
 	u32 max_cwb;
 	u32 max_bw_upvote_threshold_ns;
 
