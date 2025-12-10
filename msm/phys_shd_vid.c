@@ -626,11 +626,12 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 	struct sde_encoder_wait_info wait_info;
 	struct sde_encoder_phys_shd *shd_enc;
 	struct shd_display *display;
-	int ret = 0;
+	int ret = 0, new_cnt = 0;
 	u32 event = 0;
 	u32 event_helper = 0;
 	enum sde_intr_idx intr_idx;
 	struct drm_connector *conn;
+	bool is_skip = false;
 
 	if (!phys_enc) {
 		pr_err("invalid encoder\n");
@@ -655,6 +656,7 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 		if (sde_crtc && !sde_crtc->enabled) {
 			SDE_INFO("Skipped, base CRTC%d is already disabled\n",
 					DRMID(&sde_crtc->base));
+			is_skip = true;
 			goto skip;
 		}
 
@@ -662,12 +664,14 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 		if (!sde_encoder_is_enabled(base_enc)) {
 			SDE_INFO("Skipped, base enc%d is already disabled\n",
 					DRMID(base_enc));
+			is_skip = true;
 			goto skip;
 		}
 
 		if (!sde_encoder_is_bridge_enabled(base_enc)) {
 			SDE_INFO("Skipped, base enc%d bridge is not enabled\n",
 					DRMID(base_enc));
+			is_skip = true;
 			goto skip;
 		}
 	}
@@ -693,6 +697,9 @@ skip:
 					wait_info.timeout_ms);
 			if (atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0))
 				event |= event_helper;
+		} else if (is_skip) {
+			new_cnt = atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
+			SDE_EVT32(DRMID(phys_enc->parent), new_cnt, ret, SDE_EVTLOG_FUNC_CASE2);
 		}
 	}
 
