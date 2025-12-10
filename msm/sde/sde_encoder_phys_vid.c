@@ -981,9 +981,11 @@ static int _sde_encoder_phys_vid_wait_for_vblank(
 	wait_info.atomic_cnt = &phys_enc->pending_kickoff_cnt;
 	wait_info.timeout_ms = phys_enc->kickoff_timeout_ms;
 
+	mutex_lock(phys_enc->vblank_ctl_lock);
 	/* Wait for kickoff to complete */
 	ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC,
 			&wait_info);
+	mutex_unlock(phys_enc->vblank_ctl_lock);
 
 skip:
 	/*

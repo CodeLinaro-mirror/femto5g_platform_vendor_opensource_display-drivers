@@ -683,8 +683,10 @@ static int _sde_encoder_phys_shd_wait_for_vblank(struct sde_encoder_phys *phys_e
 	intr_idx = sde_encoder_check_ctl_done_support(phys_enc->parent) ?
 					INTR_IDX_CTL_DONE : INTR_IDX_PINGPONG;
 
+	mutex_lock(phys_enc->vblank_ctl_lock);
 	/* Wait for kickoff to complete */
 	ret = sde_encoder_helper_wait_for_irq(phys_enc, INTR_IDX_VSYNC, &wait_info);
+	mutex_unlock(phys_enc->vblank_ctl_lock);
 
 skip:
 	event_helper = SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE
@@ -824,6 +826,7 @@ static void sde_encoder_phys_shd_enable(struct sde_encoder_phys *phys_enc)
 	if (phys_enc->enable_state == SDE_ENC_DISABLED)
 		phys_enc->enable_state = SDE_ENC_ENABLING;
 
+	sde_encoder_phys_shd_control_vblank_irq(phys_enc, true);
 	SDE_EVT32(DRMID(phys_enc->parent), atomic_read(&phys_enc->pending_retire_fence_cnt));
 }
 
@@ -898,6 +901,7 @@ static void sde_encoder_phys_shd_disable(struct sde_encoder_phys *phys_enc)
 
 next:
 	phys_enc->enable_state = SDE_ENC_DISABLED;
+	sde_encoder_phys_shd_control_vblank_irq(phys_enc, false);
 
 	SDE_EVT32(DRMID(phys_enc->parent), atomic_read(&phys_enc->pending_retire_fence_cnt));
 }
