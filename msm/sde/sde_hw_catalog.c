@@ -597,6 +597,13 @@ enum {
 	AI_SCALER_PROP_MAX,
 };
 
+enum {
+	RGB_HIST_OFF,
+	RGB_HIST_LEN,
+	RGB_HIST_VERSION,
+	RGB_HIST_PROP_MAX,
+};
+
 /*************************************************************
  * dts property definition
  *************************************************************/
@@ -1133,6 +1140,12 @@ static struct sde_prop_type ai_scaler_prop[] = {
 	{AI_SCALER_VERSION, "qcom,sde-dspp-aiqe-aiscaler-version", false, PROP_TYPE_U32},
 	{AI_SCALER_LEN, "qcom,sde-dspp-aiqe-aiscaler-size", false, PROP_TYPE_U32},
 	{AI_SCALER, "qcom,sde-aiqe-has-feature-aiscaler", false, PROP_TYPE_BOOL},
+};
+
+static struct sde_prop_type rgb_hist_prop[] = {
+	{RGB_HIST_OFF, "qcom,sde-dspp-rgb-hist-off", false, PROP_TYPE_U32_ARRAY},
+	{RGB_HIST_LEN, "qcom,sde-dspp-rgb-hist-size", false, PROP_TYPE_U32},
+	{RGB_HIST_VERSION, "qcom,sde-dspp-rgb-hist-version", false, PROP_TYPE_U32},
 };
 
 /*************************************************************
@@ -3339,6 +3352,12 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 				sde_cfg->abc_count++;
 				sblk->aiqe.abc_supported = true;
 			}
+			// udc is not supported for aiqe v2.1.0
+			if (sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x1))
+				sde_cfg->is_udc_supported = false;
+			else
+				sde_cfg->is_udc_supported = true;
+
 			if (PROP_VALUE_ACCESS(props->values, SSRC, 0))
 				sblk->aiqe.ssrc_supported = true;
 			if (PROP_VALUE_ACCESS(props->values, COPR, 0))
@@ -3440,6 +3459,46 @@ static int _sde_ai_scaler_parse_dt(struct device_node *np,
 			set_bit(SDE_DSPP_AI_SCALER, &dspp->features);
 			sde_cfg->ai_scaler_count = sde_cfg->ai_scaler_count + 1;
 		}
+	}
+
+	sde_put_dt_props(props);
+	return 0;
+}
+
+static int _sde_dspp_rgb_hist_parse_dt(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	int off_count, i;
+	struct sde_dt_props *props;
+	struct sde_dspp_cfg *dspp;
+	struct sde_dspp_sub_blks *sblk;
+
+	props = sde_get_dt_props(np, RGB_HIST_PROP_MAX, rgb_hist_prop,
+			ARRAY_SIZE(rgb_hist_prop), &off_count);
+	if (IS_ERR(props))
+		return PTR_ERR(props);
+
+	sde_cfg->rgb_hist_count = off_count;
+	if (off_count > sde_cfg->dspp_count) {
+		SDE_ERROR("limiting %d RGB hist blocks to %d DSPP instances\n",
+				off_count, sde_cfg->dspp_count);
+		sde_cfg->rgb_hist_count = sde_cfg->dspp_count;
+	}
+
+	for (i = 0; i < sde_cfg->rgb_hist_count; i++) {
+		dspp = &sde_cfg->dspp[i];
+		sblk = sde_cfg->dspp[i].sblk;
+
+		sblk->rgb_hist.id = SDE_DSPP_RGB_HIST;
+		if (props->exists[RGB_HIST_OFF] && i < off_count) {
+			sblk->rgb_hist.base =
+				PROP_VALUE_ACCESS(props->values, RGB_HIST_OFF, i);
+			sblk->rgb_hist.len =
+				PROP_VALUE_ACCESS(props->values, RGB_HIST_LEN, 0);
+			sblk->rgb_hist.version =
+				PROP_VALUE_ACCESS(props->values, RGB_HIST_VERSION, 0);
+		}
+		set_bit(SDE_DSPP_RGB_HIST, &dspp->features);
 	}
 
 	sde_put_dt_props(props);
@@ -3601,6 +3660,11 @@ static int sde_dspp_parse_dt(struct device_node *np,
 	rc = _sde_ai_scaler_parse_dt(np, sde_cfg);
 	if (rc)
 		goto end;
+
+	rc = _sde_dspp_rgb_hist_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
 end:
 	return rc;
 }
@@ -6274,6 +6338,27 @@ static void _sde_get_hw_caps_for_x1e80100(struct sde_mdss_cfg *sde_cfg, uint32_t
 	sde_cfg->has_line_insertion = true;
 }
 
+static void _sde_get_hw_caps_for_malabar(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	sde_cfg->perf.min_prefill_lines = 40;
+	sde_cfg->has_reduced_ob_max = true;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	sde_cfg->mdss_hw_block_size = 0x158;
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+}
+
+
 static void _sde_get_hw_caps_for_pineapple(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
@@ -6858,6 +6943,7 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_810, _sde_get_hw_caps_for_waipio},
 	{SDE_HW_VER_820, _sde_get_hw_caps_for_diwali},
 	{SDE_HW_VER_850, _sde_get_hw_caps_for_cape},
+	{SDE_HW_VER_870, _sde_get_hw_caps_for_malabar},
 	{SDE_HW_VER_880, _sde_get_hw_caps_for_vienna},
 	{SDE_HW_VER_900, _sde_get_hw_caps_for_kalama},
 	{SDE_HW_VER_920, _sde_get_hw_caps_for_x1e80100},

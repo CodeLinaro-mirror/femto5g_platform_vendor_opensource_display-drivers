@@ -14,6 +14,12 @@
 
 #define AIQE_MDNIE_PARAM_A_EXT_FLAG (1 << 0)
 #define AIQE_MDNIE_PARAM_E_FLAG (1 << 1)
+
+/**
+ * AIQE_AI_SCALER_PSM_FLAG: Bit flag (0th bit) indicating
+ * Power Save Mode (PSM) for the AIQE's AI Scaler.
+ */
+#define AIQE_AI_SCALER_PSM_FLAG  (1 << 0)
 /**
  * struct drm_msm_mdnie - mDNIe feature structure
  * @flags - Setting flags for mDNIe feature
@@ -106,6 +112,7 @@ struct drm_msm_copr_status {
  * @dst_w - AI Scaler output width
  * @dst_h - AI Scaler output height
  * @param - parameter data
+ * @psm - Power Saving Mode
  */
 struct drm_msm_ai_scaler {
 	__u64 flags;
@@ -115,10 +122,12 @@ struct drm_msm_ai_scaler {
 	__u32 dst_w;
 	__u32 dst_h;
 	__u32 param[AIQE_AI_SCALER_PARAM_LEN];
+	__u32 psm;
 };
 
 #define AIQE_ABC_SUPPORTED
 #define AIQE_ABC_PARAM_LEN 44
+#define AIQE_ABC_UDC_PARAM_LEN 20
 #define AIQE_ABC_SRC_SEL_DMA1 1
 #define AIQE_ABC_SRC_SEL_DMA3 3
 /**

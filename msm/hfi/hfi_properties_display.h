@@ -1073,6 +1073,172 @@
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_LTM_CLEAR_BUFS                    0x0002011D
 
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CTRL - Property to configure RGB hist control
+ *                                          parameters. Host sends this as part of
+ *                                          HFI_COMMAND_DISPLAY_SET_PROPERTY.
+ *
+ * @BasicFunctionality - HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CTRL
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CTRL \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_rgb_hist_ctrl)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_display_rgb_hist_ctrl
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CTRL                   0x0002011E
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER - Property to queue RGB histogram
+ *                                                  buffer. Host sends this to provide
+ *                                                  buffer for histogram stats.
+ *
+ * @BasicFunctionality - HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_rgb_hist_buffer)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_display_rgb_hist_buffer
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_QUEUE_BUFFER           0x0002011F
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS - Property to clear all queued RGB
+ *                                                   hist buffers. Host sends this to reset
+ *                                                   histogram buffer state.
+ *
+ * @BasicFunctionality - HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS \|
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_RGB_HIST_CLEAR_BUFFERS          0x00020120
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_AI_SCALER - This property is to setup AI Scaler.
+ *                                             Host is expected to send this packet
+ *                                             of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                             command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_AI_SCALER
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_AI_SCALER |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_AI_SCALER                    0x00020121
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG - This property is to setup SSRC configuration.
+ *                                               Host is expected to send this packet
+ *                                               of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                               command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG                  0x00020122
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA - This property is to setup SSRC data.
+ *                                             Host is expected to send this packet
+ *                                             of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                             command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA |
+ * ^                             | (version=0 << 20) |
+ * ^                             |(dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA                    0x00020123
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE - This property is to setup MDNIE.
+ *                                         Host is expected to send this packet
+ *                                         of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                         command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE                        0x00020124
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC - This property is to setup IPC.
+ *                                             Host is expected to send this packet
+ *                                             of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                             command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC                    0x00020125
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART - This property is to setup ART.
+ *                                             Host is expected to send this packet
+ *                                             of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                             command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART                    0x00020126
+
+/*!
+ * HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC - This property is to setup ABC.
+ *                                       Host is expected to send this packet
+ *                                       of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                       command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC                          0x00020127
+
 /*
  * All display color properties end here
  */
@@ -1709,6 +1875,47 @@
  *     (u32_value) payload [2]   | one of the values from enum hfi_cwb_tap_points
  */
 #define HFI_PROPERTY_OUTPUT_LAYER_CWB_TAP_POINT                      0x00030028
+
+/*!
+ * @def HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG - This property is used to configure downscale blur
+ *                                      (DNSC BLUR) settings for display. The configuration data
+ *                                      is passed via a shared buffer using the hfi_buff
+ *                                      approach. The shared buffer contains struct
+ *                                      hfi_dnsc_blur_cfg with source/destination dimensions,
+ *                                      phase initialization, scaling ratios, and blur
+ *                                      coefficients for both horizontal and vertical directions.
+ *                                      Host is expected to send this packet as part of
+ *                                      HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @brief - HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG |
+ *                               | (version=0 << 20) |
+ *                               | (dsize=1 + (sizeof(struct hfi_buff)/4) << 24)
+ *     (u32_value) payload [1]   | wb_id
+ *     (u32_value) payload [2-6] | struct hfi_buff (contains remote address to
+ *                               | shared buffer with hfi_dnsc_blur_cfg data)
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG                      0x00030029
+
+/*
+ * @def HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY - Gets the security policy for output layer.
+ *                                           Host is expected to send this packet
+ *                                           of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                           command packet payload.
+ *
+ * @brief - HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY \|
+ * ^                             | (version=0 << 20) \| (dsize=2 << 24)
+ *     (u32_value) payload [1]   | wb_id
+ *     (u32_value) payload [2]   | one of the enum values in hfi_layer_security_policy
+ */
+#define HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY                    0x00030031
 
 /*
  * All layer color properties begin here

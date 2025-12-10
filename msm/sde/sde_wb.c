@@ -528,9 +528,28 @@ int sde_wb_get_scan_out_info(struct sde_wb_device *wb_dev,
 		return -EINVAL;
 	}
 
-	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
-	if (!aspace) {
-		SDE_ERROR("invalid aspace\n");
+	fb_mode = sde_connector_get_property(wb_dev->connector->state,
+		CONNECTOR_PROP_FB_TRANSLATION_MODE);
+
+	switch (fb_mode) {
+	case SDE_DRM_FB_NON_SEC:
+		aspace = sde_kms->aspace[MSM_SMMU_DOMAIN_UNSECURE];
+		if (!aspace) {
+			SDE_ERROR("invalid aspace\n");
+			return -EINVAL;
+		}
+		wb_cfg->is_secure = false;
+		break;
+	case SDE_DRM_FB_SEC:
+		aspace = sde_kms->aspace[MSM_SMMU_DOMAIN_SECURE];
+		if (!aspace) {
+			SDE_ERROR("invalid aspace\n");
+			return -EINVAL;
+		}
+		wb_cfg->is_secure = true;
+		break;
+	default:
+		SDE_ERROR("invalid fb_translation mode:%d\n", fb_mode);
 		return -EINVAL;
 	}
 
@@ -546,11 +565,6 @@ int sde_wb_get_scan_out_info(struct sde_wb_device *wb_dev,
 		SDE_ERROR("invalid fb fmt\n");
 		return -EINVAL;
 	}
-
-	fb_mode = sde_connector_get_property(wb_dev->connector->state,
-		CONNECTOR_PROP_FB_TRANSLATION_MODE);
-	wb_cfg->is_secure = ((fb_mode == SDE_DRM_FB_SEC) || (fb_mode == SDE_DRM_FB_SEC_DIR_TRANS)) ?
-		true : false;
 
 	wb_cfg->dest.format = sde_get_sde_format_ext(format->pixel_format, fb->modifier);
 	if (!wb_cfg->dest.format) {

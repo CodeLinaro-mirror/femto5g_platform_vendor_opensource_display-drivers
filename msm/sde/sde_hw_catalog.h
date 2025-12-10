@@ -58,6 +58,7 @@
 #define SDE_HW_VER_820	SDE_HW_VER(8, 2, 0) /* diwali */
 #define SDE_HW_VER_830	SDE_HW_VER(8,  3, 0) /* parrot*/
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
+#define SDE_HW_VER_870	SDE_HW_VER(8, 7, 0) /* malabar */
 #define SDE_HW_VER_880  SDE_HW_VER(8, 8, 0) /* vienna */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
 #define SDE_HW_VER_920  SDE_HW_VER(9, 2, 0) /* x1e80100 */
@@ -105,6 +106,7 @@
 #define IS_DIWALI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_820)
 #define IS_PARROT_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_830)
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
+#define IS_MALABAR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_870)
 #define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
 #define IS_X1E80100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_920)
@@ -578,6 +580,7 @@ enum {
 	SDE_DSPP_AIQE_DITHER,
 	SDE_DSPP_AIQE_WRAPPER,
 	SDE_DSPP_AI_SCALER,
+	SDE_DSPP_RGB_HIST,
 	SDE_DSPP_MAX
 };
 
@@ -1355,6 +1358,7 @@ struct sde_dspp_sub_blks {
 	struct sde_pp_blk aiqe_dither;
 	struct sde_pp_blk aiqe_wrapper;
 	struct sde_dspp_aiqe ai_scaler;
+	struct sde_pp_blk rgb_hist;
 };
 
 struct sde_pingpong_sub_blks {
@@ -2169,6 +2173,7 @@ struct sde_perf_cfg {
  * @ai_scaler_count     number of ai scaler hardware instances
  * @ssip_allowed        indicates if ssip register access is allowed
  * @abc_count           number of aiqe hardware instances
+ * @is_udc_supported	indicates if UDC is supported
  * @trusted_vm_env      true if the driver is executing in the trusted VM
  * @tvm_reg_count	number of sub-driver register ranges that need to be included
  *					for trusted vm for accepting the resources
@@ -2309,6 +2314,8 @@ struct sde_mdss_cfg {
 	u32 ai_scaler_count;
 	bool ssip_allowed;
 	u32 abc_count;
+	u32 rgb_hist_count;
+	bool is_udc_supported;
 
 	/* Secure & Trusted UI */
 	bool trusted_vm_env;

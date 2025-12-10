@@ -274,6 +274,7 @@ module_entry(
         ],
         "CONFIG_QTI_HFI_CORE": [
             "//vendor/qcom/opensource/mm-drivers/hfi_core:%b_msm_hfi_core",
+            "//vendor/qcom/opensource/mm-drivers/hfi_core:hfi_core_headers"
         ],
     },
 )

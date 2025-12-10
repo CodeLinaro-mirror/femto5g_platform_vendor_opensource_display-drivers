@@ -15,6 +15,7 @@
 #include <linux/types.h>
 #include <linux/version.h>
 #include <linux/io.h>
+#include <linux/component.h>
 #include "msm_lsr_core.h"
 #include "msm_lsr_debug.h"
 #include "msm_lsr_res_parse.h"
@@ -25,6 +26,22 @@
 #define DRIVER_NAME             "lsr"
 
 struct msm_lsr_drv *lsr_driver;
+
+static int msm_lsr_bind(struct device *dev, struct device *master, void *data)
+{
+	pr_info("msm_lsr : LSR component bind successful\n");
+	return 0;
+}
+
+static void msm_lsr_unbind(struct device *dev, struct device *master, void *data)
+{
+	pr_info("msm_lsr : LSR component unbind\n");
+}
+
+static const struct component_ops msm_lsr_comp_ops = {
+	.bind = msm_lsr_bind,
+	.unbind = msm_lsr_unbind,
+};
 
 static int read_platform_resources(struct msm_lsr_core *core,
 		struct platform_device *pdev)
@@ -153,7 +170,18 @@ static int msm_probe_lsr_device(struct platform_device *pdev)
 		goto err_fail_sub_device_probe;
 	}
 
+	/* Register as component for MSM DRM */
+	rc = component_add(&pdev->dev, &msm_lsr_comp_ops);
+	if (rc) {
+		dprintk(LSR_ERR, "component add failed: %d\n", rc);
+		goto err_component_add;
+	}
+
+	dprintk(LSR_CORE, "LSR component registration successful\n");
 	return rc;
+
+err_component_add:
+	of_platform_depopulate(&pdev->dev);
 
 err_fail_sub_device_probe:
 	lsr_hfi_deinitialize(core->dev_ops);
@@ -209,6 +237,12 @@ static int msm_lsr_remove(struct platform_device *pdev)
 	if (!pdev) {
 		dprintk(LSR_ERR, "%s invalid input %pK", __func__, pdev);
 		return -EINVAL;
+	}
+
+	/* Remove component for LSR device */
+	if (of_device_is_compatible(pdev->dev.of_node, "qcom,msm-lsr")) {
+		component_del(&pdev->dev, &msm_lsr_comp_ops);
+		dprintk(LSR_CORE, "LSR component removed\n");
 	}
 
 	if (of_device_is_compatible(pdev->dev.of_node, "qcom,msm-lsr"))

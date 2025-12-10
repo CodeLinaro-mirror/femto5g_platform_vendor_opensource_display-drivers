@@ -9,6 +9,7 @@
 
 #define AIQE_VER_1_0 0x00010000
 #define AIQE_VER_2_0 0x00020000
+#define AIQE_VER_2_1 0x00020001
 
 void (*aiqe_get_common_values_func)(struct sde_hw_cp_cfg *cfg,
 		struct sde_aiqe_top_level *aiqe_top, struct aiqe_reg_common *aiqe_cmn);
@@ -24,6 +25,7 @@ void aiqe_init(u32 aiqe_version, struct sde_aiqe_top_level *aiqe_top)
 	switch (aiqe_version) {
 	case AIQE_VER_1_0:
 	case AIQE_VER_2_0:
+	case AIQE_VER_2_1:
 		aiqe_get_common_values_func = &aiqe_get_common_values_v1;
 		break;
 	default:

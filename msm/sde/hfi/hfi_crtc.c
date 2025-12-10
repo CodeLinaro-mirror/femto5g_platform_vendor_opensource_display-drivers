@@ -202,8 +202,12 @@ static void _hfi_crtc_setup_sys_cache(struct sde_crtc_state *cstate, struct sde_
 		sde_crtc->llcc_stale_frame_trigger = false;
 	}
 
-	sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] =
-		sde_crtc_get_property(cstate, CRTC_PROP_CACHE_STATE) ? true : false;
+	if (sde_crtc_get_property(cstate, CRTC_PROP_CACHE_STATE) || sde_crtc->cwb_idle) {
+		sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] = true;
+		sde_crtc->cwb_idle = false;
+	}
+	else
+		sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] = false;
 
 	if (sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP])
 		sde_crtc->llcc_stale_frame_trigger = true;
@@ -238,11 +242,11 @@ int hfi_crtc_populate_custom_kv_setter_props(struct sde_crtc *crtc, u32 disp_id,
 			setter->add_hfi_prop(setter->hfi_prop, crtc, cstate, cmd_buf);
 	}
 
+	_hfi_crtc_setup_sys_cache(cstate, crtc);
+
 	kv_count = hfi_util_kv_helper_get_count(crtc_hfi->kv_props);
 	if (!kv_count)
 		goto end;
-
-	_hfi_crtc_setup_sys_cache(cstate, crtc);
 
 	ret = hfi_adapter_add_prop_array(cmd_buf->ctx,
 			cmd_buf,
@@ -701,6 +705,25 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 		else
 			SDE_ERROR("unknown LTM event type %d\n", event_payload->event_type);
 		break;
+	case HFI_COMMAND_DISPLAY_EVENT_RGB_HIST: {
+		struct hfi_display_rgb_hist_event_resp *event_payload;
+
+		event_payload = payload;
+		if (size != sizeof(struct hfi_display_rgb_hist_event_resp)) {
+			SDE_ERROR("Invalid size for rgb hist event, size %d\n", size);
+			return;
+		}
+
+		if (event_payload->event_type == HFI_RGB_HIST_DONE)
+			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_RGB_HIST, event_payload);
+		else if (event_payload->event_type == HFI_RGB_HIST_WB_ERR)
+			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_RGB_HIST_WB_ERR, event_payload);
+		else if (event_payload->event_type == HFI_RGB_HIST_OFF)
+			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_RGB_HIST_OFF, event_payload);
+		else
+			SDE_ERROR("Invalid RGB Hist event type %d\n", event_payload->event_type);
+		break;
+	}
 	default:
 		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
 	}
@@ -784,6 +807,17 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_LTM].state = enable;
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_LTM].pending = false;
+		break;
+	case HFI_EVENT_RGB_HIST:
+		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
+		if (ret) {
+			SDE_ERROR("event registration failed: event %d, enable %d\n",
+				event, enable);
+			return ret;
+		}
+
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_RGB_HIST].state = enable;
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_RGB_HIST].pending = false;
 		break;
 	default:
 		break;
@@ -888,4 +922,66 @@ free_crtc:
 	kfree(crtc);
 
 	return -ENOMEM;
+}
+
+struct hfi_cmdbuf_t *hfi_crtc_get_cmd_buf(struct drm_crtc *crtc)
+{
+	u32 disp_id = 0;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_kms *hfi_kms = NULL;
+	struct msm_drm_private *priv = NULL;
+
+	if (crtc && crtc->dev && crtc->dev->dev_private) {
+		priv = crtc->dev->dev_private;
+		hfi_kms = ((priv && priv->kms) ?
+				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
+	}
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
+		return NULL;
+	}
+
+	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return NULL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	return cmd_buf;
+}
+
+int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_buf,
+		struct hfi_util_u32_prop_helper *color_props)
+{
+	u32 disp_id = 0, ret = 0;
+
+	if (!crtc || !cmd_buf || !color_props) {
+		SDE_ERROR("invalid input: crtc=%p, cmd_buf=%p, color_props=%p\n",
+			crtc, cmd_buf, color_props);
+		return -EINVAL;
+	}
+
+	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * Once all the color processing properties are collected, invoke
+	 * adapter api to add all these properties as a single HFI Packet
+	 */
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+		cmd_buf,
+		HFI_COMMAND_DISPLAY_SET_PROPERTY,
+		disp_id,
+		HFI_PAYLOAD_TYPE_U32_ARRAY,
+		hfi_util_u32_prop_helper_get_payload_addr(color_props),
+		hfi_util_u32_prop_helper_get_size(color_props),
+		HFI_HOST_FLAGS_NONE);
+
+	if (ret)
+		SDE_ERROR("failed to set HFI prop\n");
+	return ret;
 }

@@ -306,6 +306,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_LSR_WB_NUM_VIEWS,
 	CONNECTOR_PROP_LSR_WB_REPROJ_SYNC_TO,
 	CONNECTOR_PROP_LSR_WB_REPROJ_CONFIG_MATRIX,
+	CONNECTOR_PROP_LSR_WB_REPROJ_POSE_FB,
 	CONNECTOR_PROP_REPROJ_OPTICAL_AXIS_OFFSET,
 	CONNECTOR_PROP_REPROJ_FUNCTIONAL_MODE,
 	CONNECTOR_PROP_REPROJ_DISTORT_RESOLUTION,
@@ -1232,6 +1233,7 @@ struct msm_display_kickoff_params {
  * @arp_t2_in_us: Time when TE shall be asserted relative to next frame
  *		  update deadline(T1) in case of ARP
  * @privacy_v1: Privacy layer info
+ * @b_lvl: Brightness value to be set
  */
 struct msm_display_conn_params {
 	uint32_t qsync_mode;
@@ -1241,6 +1243,7 @@ struct msm_display_conn_params {
 	struct msm_freq_step_pattern *freq_pattern;
 	uint16_t arp_t2_in_us;
 	struct sde_drm_privacy_layer_v1 *privacy_v1;
+	u32 b_lvl;
 };
 
 /**

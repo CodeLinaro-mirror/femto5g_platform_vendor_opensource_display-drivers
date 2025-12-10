@@ -23,6 +23,7 @@ def define_canoevm():
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",
                     "CONFIG_DRM_SDE_VM",
                     "CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT",
+                    "CONFIG_QTI_HFI_CORE",
                 ],
                 vm_target = True,
             )
