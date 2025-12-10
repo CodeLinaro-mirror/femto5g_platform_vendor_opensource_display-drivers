@@ -135,6 +135,14 @@ void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	}
 
 	switch (prop) {
+	case HFI_COMMAND_DISPLAY_AUDIO_CONFIG:
+		DP_DEBUG("Audio config command acknowledged\n");
+		break;
+
+	case HFI_COMMAND_DISPLAY_AUDIO_CONTROL:
+		DP_DEBUG("Audio control command acknowledged\n");
+		break;
+
 	case HFI_COMMAND_DISPLAY_MODE_VALIDATE:
 		if (payload && hfi)
 			hfi->mode_valid = true;

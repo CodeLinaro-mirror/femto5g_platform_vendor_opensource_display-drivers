@@ -30,6 +30,7 @@
 #include "hfi_defs_display.h"
 #include "dp_panel_tu.h"
 #include "dp_debug_client_hfi.h"
+#include "dp_hfi_audio.h"
 
 #define DRM_DP_IPC_NUM_PAGES 10
 #define HPD_STRING_SIZE	    30
@@ -464,6 +465,53 @@ static int _hfi_power_deinit(struct dp_mgr_hfi_priv *hfi_priv)
 	pm_runtime_disable(dev);
 
 	return rc;
+}
+
+int dp_mgr_hfi_send_audio_config(struct dp_client *client, struct hfi_audio_config *audio_config)
+{
+	struct hfi_client_t *hfi_client;
+	struct dp_mgr_hfi_priv *hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_AUDIO_CONFIG;
+	int rc = 0;
+
+	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	if (!hfi_client)
+		return -EINVAL;
+
+	/* Send HFI_COMMAND_DEVICE_HOT_PLUG_DETECT command with config as payload */
+	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+			HFI_PAYLOAD_TYPE_U32_ARRAY, (void *)audio_config,
+			sizeof(struct hfi_audio_config), (HFI_HOST_FLAGS_NON_DISCARDABLE));
+
+	if (rc) {
+		DP_ERR("Could not send HFI_COMMAND_DISPLAY_AUDIO_CONFIG, rc=%d\n", rc);
+		return rc;
+	}
+
+	return 0;
+}
+
+int dp_mgr_hfi_send_audio_control(struct dp_client *client, u32 enable)
+{
+	struct hfi_client_t *hfi_client;
+	struct dp_mgr_hfi_priv *hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_AUDIO_CONTROL;
+	int rc = 0;
+
+	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	if (!hfi_client)
+		return -EINVAL;
+
+	/* Send HFI_COMMAND_DISPLAY_AUDIO_CONTROL command with config as payload */
+	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &enable, sizeof(enable),
+			(HFI_HOST_FLAGS_NON_DISCARDABLE));
+	if (rc) {
+		DP_ERR("Could not send HFI_COMMAND_DISPLAY_AUDIO_CONTROL, rc=%d\n", rc);
+		return rc;
+	}
+
+	return 0;
 }
 
 int dp_mgr_hfi_clk_init(struct dp_mgr_hfi_priv *hfi_priv)
@@ -1131,6 +1179,10 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_mgr_hfi_priv *hfi_priv, void *pa
 	}
 end:
 	_hfi_notify_hpd_user(hfi_priv, hfi_priv->connected);
+	if (hfi_priv->audio) {
+		int ret = hfi_priv->audio->on(hfi_priv->audio);
+		(void)ret;
+	}
 }
 
 static void dp_mgr_hfi_handle_hpd_status(struct dp_mgr_hfi_priv *hfi_priv, void *payload, u32 size)
@@ -1233,6 +1285,16 @@ static int dp_mgr_hfi_post_init(struct dp_client *client)
 		goto clear_aux_switch;
 	}
 
+	/* Initialize HFI audio subsystem */
+	hfi_priv->audio = dp_hfi_audio_get(hfi_priv->pdev, client);
+	if (IS_ERR(hfi_priv->audio)) {
+		rc = PTR_ERR(hfi_priv->audio);
+		DP_ERR("dp_hfi_audio_get failed: %d\n", rc);
+		hfi_priv->audio = NULL;
+	} else {
+		DP_DEBUG("HFI audio initialized successfully\n");
+	}
+
 	return 0;
 
 clear_aux_switch:
@@ -1246,6 +1308,7 @@ clear_hpd:
 		dp_hpd_put(hfi_priv->hpd);
 		hfi_priv->hpd = NULL;
 	}
+
 end:
 	return rc;
 }

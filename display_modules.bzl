@@ -98,6 +98,7 @@ module_entry(
             "msm/dp/hfi/dp_mgr_hfi.c",
             "msm/dp/hfi/dp_hfi.c",
             "msm/dp/hfi/dp_debug_client_hfi.c",
+            "msm/dp/hfi/dp_hfi_audio.c",
         ],
         "CONFIG_DRM_MSM_SDE": [
             "msm/sde/sde_crtc.c",

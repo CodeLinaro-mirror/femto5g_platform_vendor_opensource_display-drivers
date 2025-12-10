@@ -139,8 +139,15 @@ struct dp_mgr_hfi_priv {
 	bool connected;
 	bool configured;
 
+	struct dp_audio *audio;
+
 	/* Mode override */
 	struct dp_mode_override mode_ovr;
 };
+
+int dp_mgr_hfi_send_audio_config(struct dp_client *client,
+		struct hfi_audio_config *audio_config);
+
+int dp_mgr_hfi_send_audio_control(struct dp_client *client, u32 enable);
 
 #endif /* _DP_MGR_HFI_H_ */
