@@ -294,6 +294,7 @@ struct dp_parser {
 	bool has_mst;
 	bool has_mst_sideband;
 	bool dsc_feature_enable;
+	u32 dsc_slice_per_pkt;
 	bool fec_feature_enable;
 	bool dsc_continuous_pps;
 	bool fifo_error_enable;
