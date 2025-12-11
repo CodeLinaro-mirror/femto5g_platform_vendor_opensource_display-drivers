@@ -7065,9 +7065,12 @@ int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 		sde_enc = to_sde_encoder_virt(drm_enc);
 
 		/* Clear per plane active_fectch_pipe and active_pipe */
-		if (sde_enc && sde_enc->old_state) {
+		if (sde_enc && sde_enc->old_state && sde_enc->old_state->planes) {
 			for_each_oldnew_plane_in_state(sde_enc->old_state, plane, old_plane_state, new_plane_state, i) {
 				bool disabling;
+
+				if (!plane || !old_plane_state || !new_plane_state)
+					continue;
 
 				/* Clear per plane active_fectch_pipe and active_pipe */
 				disabling = drm_atomic_plane_disabling(old_plane_state,
