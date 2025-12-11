@@ -804,6 +804,10 @@ struct sde_backlight_vrr_update {
  * @hfi_conn: Pointer to hfi connector struct
  * @hal_ops: hal ops for hfi communication
  * @dpu_dma_enabled: Indicates if dpu dma mode is enabled
+ * @reproj_conn: Pointer to sde_reproj
+ * @bl_dirty_change: Indicates if brightness prop is changed
+ * @b_lvl: brightness property value
+ * @bl_dirty_value: brightness final to be set
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -910,6 +914,10 @@ struct sde_connector {
 	struct sde_connector_hal_funcs hal_ops;
 
 	bool dpu_dma_enabled;
+	struct sde_reproj *reproj_conn;
+	bool bl_dirty_change;
+	u32 b_lvl;
+	u32 bl_dirty_value;
 };
 
 /**

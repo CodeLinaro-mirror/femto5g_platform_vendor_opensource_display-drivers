@@ -2475,6 +2475,7 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-fps-switch-command",
 	"qcom,mdss-dsi-em-pulse-switch-command",
 	"Privacy layer not parsed from DTSI, generated dynamically",
+	"Brightness not parsed from DTSI, generated dynamically"
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -2521,6 +2522,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-fps-switch-command-state",
 	"qcom,mdss-dsi-em-pulse-switch-command-state",
 	"Privacy layer not parsed from DTSI, generated dynamically",
+	"Brightness not parsed from DTSI, generated dynamically",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)
@@ -5660,6 +5662,66 @@ exit:
 	return rc;
 }
 
+static int dsi_panel_set_brightness_prepare_dcs_cmds(struct dsi_panel *panel,
+		struct dsi_panel_cmd_set *set, u32 bl_lvl)
+{
+	u8 *tx = NULL;
+	int rc = 0;
+	u8 bl_default_payload[2];
+
+	if (!set) {
+		DSI_ERR("Panel command set for Brightness is NULL\n");
+		return -EINVAL;
+	}
+
+	if (!panel || bl_lvl > 0xffff) {
+		DSI_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	set->cmds = NULL;
+	set->type = DSI_CMD_SET_BRIGHTNESS;
+	set->state = DSI_CMD_SET_STATE_HS;
+	set->count = 1;
+	set->cmds = kcalloc(set->count, sizeof(*set->cmds), GFP_KERNEL);
+	if (!set->cmds) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	if (panel->bl_config.bl_inverted_dbv)
+		bl_lvl = (((bl_lvl & 0xff) << 8) | (bl_lvl >> 8));
+
+	bl_default_payload[0] = bl_lvl & 0xff;
+	bl_default_payload[1] = bl_lvl >> 8;
+	tx = kmalloc(1 + sizeof(bl_default_payload), GFP_KERNEL);
+	if (!tx) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	tx[0] = MIPI_DCS_SET_DISPLAY_BRIGHTNESS;
+	memcpy(&tx[1], bl_default_payload, sizeof(bl_default_payload));
+	set->cmds[0].msg.channel = 0;
+	set->cmds[0].msg.flags = 0;
+	set->cmds[0].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[0].msg.tx_buf = tx;
+	set->cmds[0].msg.tx_len = 1 + sizeof(bl_default_payload);
+	set->cmds[0].msg.rx_len = 0;
+	set->cmds[0].msg.rx_buf = 0;
+	set->cmds[0].last_command = 0;
+	set->cmds[0].post_wait_ms = 0;
+	set->cmds[0].ctrl = 0;
+
+	goto exit;
+
+error_free_mem:
+	kfree(set->cmds);
+	kfree(tx);
+exit:
+	return rc;
+}
+
 static int dsi_panel_roi_prepare_dcs_cmds(struct dsi_panel_cmd_set *set,
 		struct dsi_rect *roi, int ctrl_idx, int unicast)
 {
@@ -5801,6 +5863,8 @@ static int dsi_panel_prepare_cmd(struct dsi_panel *panel,
 	// Prepare the privacy buffer content dynamically.
 	if (type == DSI_CMD_SET_PRIVACY_LAYER)
 		rc = dsi_panel_privacy_v1_prepare_dcs_cmds(set, params->privacy_v1, 0, true);
+	if (type == DSI_CMD_SET_BRIGHTNESS)
+		rc = dsi_panel_set_brightness_prepare_dcs_cmds(panel, set, params->b_lvl);
 
 	if (!set->cmds) {
 		DSI_ERR("Invalid params cmds NULL, type %x, last_command %d\n",
