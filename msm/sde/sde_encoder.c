@@ -6080,6 +6080,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	struct sde_hw_ctl *ctl;
 	struct sde_ctl_flush_cfg cfg;
 	u32 pf_time_in_us;
+	u64 avr_step_in_ns;
 	struct drm_crtc *crtc;
 	struct sde_connector *sde_conn;
 	struct sde_crtc *sde_crtc;
@@ -6087,6 +6088,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	ktime_t current_time, sr_timer_expires, diff;
 	enum msm_disp_op disp_op;
 	enum sde_crtc_vm_req vm_req;
+	char atrace_buf[64];
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, send_still_cmd);
 	if (!sde_enc || !sde_enc->cur_master)
@@ -6144,6 +6146,21 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 		}
 
 		_sde_encoder_avoid_prog_fetch_region(phys_enc, sde_enc);
+	}
+
+	current_time = ktime_get();
+	avr_step_in_ns = SEC_TO_NS / sde_enc->mode_info.avr_step_fps;
+	sr_timer_expires = hrtimer_get_expires(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+	/* Self refresh timer scheduled early case and within avr step*/
+	if (ktime_compare(sr_timer_expires, current_time) > 0 &&
+			(ktime_sub(sr_timer_expires, current_time) < avr_step_in_ns)) {
+		diff = ktime_sub(sr_timer_expires, current_time);
+		snprintf(atrace_buf, sizeof(atrace_buf), "timeout_%llu", ktime_to_us(diff));
+		SDE_ATRACE_BEGIN(atrace_buf);
+		usleep_range(ktime_to_us(diff), ktime_to_us(diff) + 10);
+		SDE_ATRACE_END(atrace_buf);
+		SDE_EVT32(ktime_to_us(diff), ktime_to_us(sr_timer_expires),
+				ktime_to_us(ktime_get()), SDE_EVTLOG_FUNC_EXIT);
 	}
 
 	ctl = phys_enc->hw_ctl;
