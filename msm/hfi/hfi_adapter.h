@@ -252,11 +252,17 @@ struct hfi_prop_listener {
  * Clients listener implementation pointers cached in a list
  * @list_ptr: List head
  * @packet_id: ID of HFI Packet used a key for listener list
+ * @cmd_id: Command ID that created this listener (for identifying deregister listeners)
+ * @event_id: Event ID from payload that created this listener (for cleanup purposes)
+ * @obj_id: Object ID associated with this listener (for cleanup purposes)
  * @listener_obj: Void Pointer of listener object
  */
 struct listener_list {
 	struct list_head list_ptr;
 	u32 packet_id;
+	u32 cmd_id;
+	u32 event_id;
+	u32 obj_id;
 	void *listener_obj;
 };
 
