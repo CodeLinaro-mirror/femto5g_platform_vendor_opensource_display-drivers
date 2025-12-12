@@ -6369,6 +6369,7 @@ static bool skip_event_handling_required(struct drm_crtc *crtc, u32 event)
 	case DRM_EVENT_RGB_HIST:
 	case DRM_EVENT_RGB_HIST_WB_ERR:
 	case DRM_EVENT_RGB_HIST_OFF:
+	case DRM_EVENT_HISTOGRAM:
 		return true;
 	default:
 		return false;
@@ -6680,6 +6681,8 @@ void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
 	struct sde_crtc *sde_crtc = (struct sde_crtc *)data;
 	int idx = 0, i = 0;
 	struct hfi_display_ltm_event_resp *resp;
+	struct sde_pa_hist_buffer cur_pa_hist_buff;
+	struct hfi_display_pa_hist_event_resp *pa_hist_resp;
 
 	if (!sde_crtc)
 		return;
@@ -6732,6 +6735,38 @@ void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
 	case DRM_EVENT_RGB_HIST_OFF:
 		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_rgb_hist_off,
 				NULL, true);
+		break;
+	case DRM_EVENT_HISTOGRAM:
+		pa_hist_resp = (struct hfi_display_pa_hist_event_resp *)event_payload;
+
+		if (!pa_hist_resp) {
+			SDE_ERROR("pa_hist_resp is NULL\n");
+			return;
+		}
+
+		/* Find the matching buffer based on dcp_addr */
+		for (idx = 0; idx < PA_HIST_BUFFER_NUM; idx++) {
+			cur_pa_hist_buff = sde_crtc->pa_hist_buffers[idx];
+			if (!cur_pa_hist_buff.buffer.remote_addr)
+				continue;
+
+			u32 dcp_addr_lo = (u32)((u64)cur_pa_hist_buff.buffer.remote_addr
+							& 0xffffffff);
+			u32 dcp_addr_hi = (u32)((u64)cur_pa_hist_buff.buffer.remote_addr
+						>> 32);
+			if (dcp_addr_lo == pa_hist_resp->dcp_addr_lo &&
+				dcp_addr_hi == pa_hist_resp->dcp_addr_hi)
+				break;
+		}
+
+		if (idx == PA_HIST_BUFFER_NUM) {
+			SDE_ERROR("invalid PA histogram buffer\n");
+			return;
+		}
+
+		/* give event back */
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_hist_event,
+				&sde_crtc->pa_hist_buffers[idx], true);
 		break;
 	}
 }

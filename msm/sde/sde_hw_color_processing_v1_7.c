@@ -902,23 +902,21 @@ void sde_setup_dspp_gc_v1_7(struct sde_hw_dspp *ctx, void *cfg)
 	SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->gc.base, i);
 }
 
-void sde_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg)
+void sde_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg, bool enable)
 {
 	u32 base, offset;
 	u32 op_mode;
-	bool feature_enabled;
 
 	if (!ctx || !cfg) {
 		DRM_ERROR("invalid parameters ctx %pK cfg %pK", ctx, cfg);
 		return;
 	}
 
-	feature_enabled = *(bool *)cfg;
 	base = ctx->cap->sblk->hist.base;
 	offset = base + PA_HIST_CTRL_DSPP_OFF;
 
 	op_mode = SDE_REG_READ(&ctx->hw, base);
-	if (!feature_enabled) {
+	if (!enable) {
 		op_mode &= ~DSPP_OP_PA_HIST_EN;
 		if (PA_DSPP_DISABLE_REQUIRED(op_mode))
 			op_mode &= ~DSPP_OP_PA_EN;
