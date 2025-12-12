@@ -1142,9 +1142,11 @@ static void context_close(struct msm_file_private *ctx)
 static void msm_drm_release(struct drm_device *dev)
 {
 	struct msm_drm_private *priv = dev->dev_private;
+	struct platform_device *pdev = to_platform_device(dev->dev);
 
 	dev->dev_private = NULL;
 	kfree(priv);
+	platform_set_drvdata(pdev, NULL);
 }
 
 static void msm_preclose(struct drm_device *dev, struct drm_file *file)

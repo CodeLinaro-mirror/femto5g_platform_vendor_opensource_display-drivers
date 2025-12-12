@@ -7351,16 +7351,33 @@ static void sde_crtc_install_perf_properties(struct sde_crtc *sde_crtc,
 				sde_kms->perf.max_core_clk_rate);
 }
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
+		struct sde_mdss_cfg *catalog, u32 index)
+#else
 static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
 		struct sde_mdss_cfg *catalog)
+#endif
 {
 	sde_kms_info_reset(info);
 
 	sde_kms_info_add_keyint(info, "hw_version", catalog->hw_rev);
 	sde_kms_info_add_keyint(info, "max_linewidth",
 			catalog->max_mixer_width);
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	if (index < MAX_CRTCS) {
+		sde_kms_info_add_keyint(info, "max_blendstages",
+			catalog->max_hyp_mixer_blendstages[index]);
+	} else {
+		SDE_ERROR("crtc index %d exceeds MAX_CRTCS %d\n", index,
+				MAX_CRTCS);
+		sde_kms_info_add_keyint(info, "max_blendstages",
+				catalog->max_mixer_blendstages);
+	}
+#else
 	sde_kms_info_add_keyint(info, "max_blendstages",
 			catalog->max_mixer_blendstages);
+#endif
 
 	if (catalog->qseed_sw_lib_rev == SDE_SSPP_SCALER_QSEED2)
 		sde_kms_info_add_keystr(info, "qseed_type", "qseed2");
@@ -7521,8 +7538,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		return;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	sde_crtc_setup_capabilities_blob(info, catalog, crtc->index);
+#else
 	sde_crtc_setup_capabilities_blob(info, catalog);
-
+#endif
 	msm_property_install_range(&sde_crtc->property_info,
 		"input_fence_timeout", 0x0, 0,
 		SDE_CRTC_MAX_INPUT_FENCE_TIMEOUT, SDE_CRTC_INPUT_FENCE_TIMEOUT,
