@@ -1030,6 +1030,8 @@ struct sde_connector {
  * @reproj_tile_h: Reprojection tile height
  * @reproj_min_bbox_h: Reprojection minimum bbox height
  * @capture_mode: capture mode for WB
+ * @gcx_session_dirty: all marked properties are needed
+ *                     to be set in commit where GCX session is reset
  */
 struct sde_connector_state {
 	struct drm_connector_state base;
@@ -1087,6 +1089,7 @@ struct sde_connector_state {
 
 	u32 reproj_pose_iova;
 	u32 reproj_pose_size;
+	bool gcx_session_dirty;
 };
 
 /**
