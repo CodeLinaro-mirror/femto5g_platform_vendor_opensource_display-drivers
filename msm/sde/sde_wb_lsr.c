@@ -33,10 +33,10 @@ void _sde_wb_lsr_destroy_fb_list(struct sde_connector *c_conn,
 		c_state->property_values[CONNECTOR_PROP_OUT_FB_LIST].value = ~0;
 }
 
-static struct sde_view_descriptor _sde_wb_lsr_get_view_descriptor(struct drm_connector *connector,
-		struct drm_connector_state *state, struct sde_drm_view_descriptor *view_desc)
+static int _sde_wb_lsr_get_view_descriptor(struct drm_connector *connector,
+		struct drm_connector_state *state, struct sde_drm_view_descriptor *view_desc,
+		struct sde_view_descriptor *desc)
 {
-	struct sde_view_descriptor *desc = NULL;
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
 	const struct msm_format *format;
@@ -46,13 +46,10 @@ static struct sde_view_descriptor _sde_wb_lsr_get_view_descriptor(struct drm_con
 	c_conn = to_sde_connector(connector);
 	c_state = to_sde_connector_state(state);
 
-	if (!c_conn || !c_state || !view_desc) {
+	if (!c_conn || !c_state || !view_desc || !desc) {
 		SDE_ERROR("invalid args\n");
-		rc = -EINVAL;
-		goto exit;
+		return -EINVAL;
 	}
-
-	desc = kzalloc(sizeof(struct sde_view_descriptor), GFP_KERNEL);
 
 	desc->num_fbs = view_desc->num_fbs;
 	for (int j = 0; j < view_desc->num_fbs; j++) {
@@ -101,11 +98,7 @@ static struct sde_view_descriptor _sde_wb_lsr_get_view_descriptor(struct drm_con
 			}
 		}
 	}
-exit:
-	if (rc)
-		desc = NULL;
-
-	return *desc;
+	return rc;
 }
 
 static void _sde_wb_lsr_set_reproj_matrix(struct sde_connector *c_conn,
@@ -175,13 +168,18 @@ static int _sde_wb_lsr_set_prop_out_fb_list(struct drm_connector *connector,
 	for (iter = 0; iter < MAX_VIEWS * FLIP_VIEWS; iter++) {
 		view_idx = iter % MAX_VIEWS;
 		if ((iter / MAX_VIEWS) && is_back_view)
-			c_state->back_view_descriptor[view_idx] =
-						_sde_wb_lsr_get_view_descriptor(connector, state,
-								&fb_id_list.back_views[view_idx]);
+			rc = _sde_wb_lsr_get_view_descriptor(connector, state,
+					&fb_id_list.back_views[view_idx],
+					&c_state->back_view_descriptor[view_idx]);
 		else if (iter < MAX_VIEWS)
-			c_state->view_descriptor[view_idx] =
-						_sde_wb_lsr_get_view_descriptor(connector, state,
-								&fb_id_list.views[view_idx]);
+			rc = _sde_wb_lsr_get_view_descriptor(connector, state,
+					&fb_id_list.views[view_idx],
+					&c_state->view_descriptor[view_idx]);
+
+		if (rc) {
+			SDE_ERROR("failed to get view descriptor %d\n", rc);
+			return rc;
+		}
 	}
 	return rc;
 }
@@ -334,7 +332,7 @@ int _sde_wb_lsr_set_reproj_info(
 					&(opq_state_config->remote_iova));
 	if (rc) {
 		SDE_ERROR("failed to get iova rc %d\n", rc);
-		goto put_iova;
+		goto free_gem;
 	}
 
 	opq_state_config->usr_cfg.data =
@@ -543,7 +541,7 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 	struct drm_framebuffer *fb;
 	struct sde_hw_fmt_layout *layout;
 	uint32_t ret;
-	int count = 0, view_idx = 0;
+	int count = 0, view_idx = 0, rc = 0;
 	u32 flags, hfi_format, modifier;
 	struct sde_format_extended fmt;
 	bool is_back_view = false;
@@ -569,7 +567,8 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
 	if (!aspace) {
 		SDE_ERROR("invalid aspace\n");
-		return -EINVAL;
+		rc = -EINVAL;
+		goto end;
 	}
 
 	for (int i = 0; i < MAX_VIEWS * FLIP_VIEWS; i++) {
@@ -587,12 +586,14 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 			fb = desc->fb_id[j];
 			if (!fb) {
 				SDE_ERROR("invalid fb\n");
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 			ret = msm_framebuffer_prepare(fb, aspace);
 			if (ret) {
 				SDE_ERROR("failed to prepare framebuffer %d\n", ret);
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 			drm_framebuffer_get(fb);
 			format = msm_framebuffer_format(fb);
@@ -600,12 +601,14 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 			fmt.modifier = fb->modifier;
 			if (!format) {
 				SDE_ERROR("invalid fb fmt\n");
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 			layout->format = sde_get_sde_format_ext(format->pixel_format, fb->modifier);
 			if (!layout->format) {
 				SDE_ERROR("invalid fb format\n");
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 
 			layout->width = fb->width;
@@ -614,7 +617,8 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 			ret = sde_format_populate_layout(aspace, fb, layout);
 			if (ret) {
 				SDE_ERROR("failed SDE_format_populate_layout\n");
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 
 			modifier = fb->modifier & 0x00000000ffffffff;
@@ -649,8 +653,9 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 			count++;
 		}
 	}
+end:
 	kfree(layout);
-	return 0;
+	return rc;
 }
 
 int sde_wb_update_lsr_perf(struct drm_connector *connector,
@@ -691,6 +696,8 @@ int sde_wb_connector_reproj_setup(struct sde_connector *conn, struct sde_wb_devi
 	rc = msm_reproj_disp_register_intf(conn->reproj_conn);
 	if (rc) {
 		SDE_ERROR("failed to register reproj disp\n");
+		kfree(conn->reproj_conn);
+		conn->reproj_conn = NULL;
 		return -ENODEV;
 	}
 
