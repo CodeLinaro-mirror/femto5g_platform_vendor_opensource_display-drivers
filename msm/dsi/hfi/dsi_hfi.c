@@ -1588,6 +1588,10 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 	if (!display)
 		return -EINVAL;
 
+
+	if (display->trusted_vm_env)
+		return rc;
+
 	obj_id = sde_conn_get_display_obj_id(display->drm_conn);
 
 	display_hfi = display->dsi_hfi_info;
