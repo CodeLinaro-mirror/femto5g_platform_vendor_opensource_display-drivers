@@ -496,17 +496,21 @@
 #define HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT                0x00020021
 
 /*
- * HFI_PROPERTY_DISPLAY_INPUT_FENCE - This property is set to provide the input/acquire fence
- *                                    representing every input frame layer of the
- *                                    LSR WB CSC/Reprojection displays.
- *                                    Host is expected to send this packet of
- *                                    HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ * @def HFI_PROPERTY_DISPLAY_INPUT_FENCE
+ * @brief This property is to configure the input fence for scan start/complete.
+ *        DCP waits on this fence for scan start and signals this fence for scan
+ *        complete. Host is expected to send this packet as part of
+ *        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
  *
  * @BasicFuntionality - HFI_PROPERTY_DISPLAY_INPUT_FENCE
- *     (u32_key) payload [0]   : HFI_PROPERTY_DISPLAY_INPUT_FENCE |
- *                               (version=0 << 20) | (dsize=2 << 24)
- *     (u32_value) payload [1] : Acquire Fence Low
- *     (u32_value) payload [2] : Acquire Fence High
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_INPUT_FENCE \|
+ * ^                             | (version=0 << 20) \|
+ * ^                             | (dsize=2 << 24)
+ *   (u32_value) payload [1]     | one of the flags from enum hfi_fence_type
+ *   (u32_value) payload [2]     | Input fence handle
  */
 #define HFI_PROPERTY_DISPLAY_INPUT_FENCE                             0x00020022
 
@@ -656,6 +660,25 @@
  *     (u32_value) payload [4-..]| array of struct hfi_display_roi
  */
 #define HFI_PROPERTY_DISPLAY_DEST_ROI                                0x0002002B
+
+/*!
+ * @def HFI_PROPERTY_DISPLAY_OUTPUT_FENCE
+ * @brief This property configures the output fence used for synchronization.
+ *        The fence is signaled by the display to indicate that frame buffer
+ *        processing is complete. The host is expected to send this property as part of the
+ *        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_OUTPUT_FENCE
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_OUTPUT_FENCE  \|
+ * ^                             | (version=0 << 20)  \|
+ * ^                             | (dsize=2 << 24)
+ *   (u32_value) payload [1]     | Reserved for future use
+ *   (u32_value) payload [2]     | Output fence handle
+ */
+#define HFI_PROPERTY_DISPLAY_OUTPUT_FENCE                            0x0002002C
 
 /*
  * All display color properties begin here

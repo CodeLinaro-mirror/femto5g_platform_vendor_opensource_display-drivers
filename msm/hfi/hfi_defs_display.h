@@ -451,4 +451,21 @@ enum hfi_cwb_tap_points {
 	HFI_TAP_POINT_MAX,
 };
 
+/*!
+ * @enum hfi_fence_type
+ * @brief Defines the types of fences used for synchronization.
+ *
+ * Fence types indicate specific synchronization points in the pipeline.
+ *
+ * @var HFI_FENCE_SCAN_START
+ * Fence that signals that the frame is picked up by hardware.
+ *
+ * @var HFI_FENCE_SCAN_COMPLETE
+ * Fence that signals the release of input buffers.
+ */
+enum hfi_fence_type {
+	HFI_FENCE_SCAN_START,
+	HFI_FENCE_SCAN_COMPLETE,
+};
+
 #endif // __H_HFI_DEFS_DISPLAY_H__
