@@ -856,7 +856,7 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_MDSS_HFI) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
 static int hfi_kms_set_hw_fence_config(struct hfi_kms *hfi_kms)
 {
 	int ret;
