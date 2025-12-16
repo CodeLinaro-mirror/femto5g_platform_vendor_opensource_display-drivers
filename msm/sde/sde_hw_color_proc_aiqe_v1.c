@@ -373,7 +373,7 @@ void reg_dmav1_setup_mdnie_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 #ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
 	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
-	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
 #endif
 
 	rc = _reg_dmav1_setup_mdnie_common(ctx, cfg, aiqe_top, dma_ops, &dma_write_cfg);
@@ -408,6 +408,10 @@ void reg_dmav1_setup_mdnie_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 			return;
 		}
 	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
 			dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx],
@@ -550,7 +554,7 @@ void reg_dmav1_setup_aiqe_ssrc_config_v1(struct sde_hw_dspp *ctx, void *cfg, voi
 #ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
 	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
-	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
 #endif
 
 	ssrc_config = hw_cfg->payload;
@@ -572,6 +576,10 @@ void reg_dmav1_setup_aiqe_ssrc_config_v1(struct sde_hw_dspp *ctx, void *cfg, voi
 		DRM_ERROR("write config failed ret %d\n", rc);
 		return;
 	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
@@ -622,7 +630,7 @@ void reg_dmav1_setup_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void 
 #ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
 	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
-	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
 #endif
 
 	ssrc_data = hw_cfg->payload;
@@ -653,6 +661,10 @@ void reg_dmav1_setup_aiqe_ssrc_data_v1(struct sde_hw_dspp *ctx, void *cfg, void 
 
 		index += region_size;
 	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, AIQE_SSRC_DATA);
@@ -1038,6 +1050,10 @@ void _reg_dma_setup_common_aiqe_abc(struct sde_hw_dspp *ctx,
 		return;
 	}
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
+
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
 			WRITE_IMMEDIATE, AIQE_ABC);
@@ -1061,7 +1077,7 @@ void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 #ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
 	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
-	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
 #endif
 
 	/*
@@ -1082,7 +1098,7 @@ void reg_dmav1_setup_aiqe_abc_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 #ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(2, 1, hw_cfg->prop_id);
 	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
-	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
 #endif
 
 	/*
@@ -1249,13 +1265,17 @@ int reg_dma_setup_ai_scaler_v1(struct sde_hw_dspp *ctx, void *cfg)
 #ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(1, 0, hw_cfg->prop_id);
 	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
-	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
 #endif
 
 	/* common ai_scaler setup*/
 	rc = _reg_dma_setup_common_ai_scaler(&dma_cfg, ctx, hw_cfg, dma_ops);
 	if (rc || !hw_cfg->payload)
 		return rc;
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, AIQE_AI_SCALER);
@@ -1318,7 +1338,7 @@ int reg_dma_setup_ai_scaler_v2(struct sde_hw_dspp *ctx, void *cfg)
 #ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
 	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
-	hw_cfg->flags |=  HFI_BUFF_FEATURE_ENABLE | HFI_BUFF_FEATURE_BROADCAST;
+	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
 #endif
 
 	/* common ai_scaler setup*/
@@ -1340,6 +1360,10 @@ int reg_dma_setup_ai_scaler_v2(struct sde_hw_dspp *ctx, void *cfg)
 
 	SDE_DEBUG("Enable AI Scaler: psm:0x%X\n", ai_scaler_cfg->psm);
 	SDE_EVT32(ai_scaler_cfg->psm);
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, AIQE_AI_SCALER);
