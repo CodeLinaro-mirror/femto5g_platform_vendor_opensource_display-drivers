@@ -4060,9 +4060,12 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 	struct sde_splash_display *splash_display = NULL;
 	struct sde_kms *sde_kms;
 	struct drm_encoder *encoder;
+	struct sde_encoder_virt *sde_enc = NULL;
 	bool cont_splash_enabled = false;
 	int i;
 	u32 power_on = 1;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
+	u32 lsr_mode;
 
 	if (!crtc || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
@@ -4100,6 +4103,21 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 		sde_crtc_event_notify(crtc, DRM_EVENT_CRTC_POWER, &power_on, sizeof(u32));
 
 	sde_crtc->kickoff_in_progress = false;
+	lsr_mode = sde_crtc_get_property(to_sde_crtc_state(crtc->state), CRTC_PROP_LSR_MODE);
+
+	if (lsr_mode == MSM_DISP_LSR_MODE_ENABLED) {
+		drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			sde_enc = to_sde_encoder_virt(encoder);
+			if (sde_enc->hal_ops.enable_hw_event[disp_op])
+				sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+					MSM_ENC_COMMIT_DONE, false);
+			SDE_DEBUG("LSR mode enabled on enc%d, deregistering commit done event\n",
+				DRMID(encoder));
+		}
+	}
 }
 
 /**
@@ -8248,6 +8266,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		{MSM_DISP_OP_HYP, "disp_op_hyp"},
 	};
 
+	static const struct drm_prop_enum_list e_lsr_mode[] = {
+		{MSM_DISP_LSR_MODE_DISABLED, "lsr_mode_disabled"},
+		{MSM_DISP_LSR_MODE_ENABLED, "lsr_mode_enabled"},
+	};
+
 	SDE_DEBUG("\n");
 
 	if (!crtc || !catalog) {
@@ -8320,6 +8343,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			0x0, 0, e_secure_level,
 			ARRAY_SIZE(e_secure_level), 0,
 			CRTC_PROP_SECURITY_LEVEL);
+
+	msm_property_install_enum(&sde_crtc->property_info,
+			"lsr_mode", 0, 0, e_lsr_mode, ARRAY_SIZE(e_lsr_mode),
+			MSM_DISP_LSR_MODE_DISABLED, CRTC_PROP_LSR_MODE);
 
 	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map))
 		msm_property_install_enum(&sde_crtc->property_info, "cache_state",
