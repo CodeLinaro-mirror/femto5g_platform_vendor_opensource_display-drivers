@@ -40,7 +40,9 @@
 #define QDSS_IOVA_START 0x80001000
 #define MIN_PAYLOAD_SIZE 3
 
-#define SCRATCH_BUF_SIZE 0x1000
+#define CSC_SCRATCH_BUF_SIZE 0x1000
+/* GCX needs 16K of scratch memory to accommodate up to 16 UI layers*/
+#define GCX_SCRATCH_BUF_SIZE 0x4000
 #define ARP_BUF_SIZE     0x800000
 
 /* Poll interval in uS */
@@ -1137,10 +1139,10 @@ csc_scratch_init:
 
 	if (dev->csc_scratch_pad.align_virtual_addr) {
 		memset((void *)dev->csc_scratch_pad.align_virtual_addr,
-				0, SCRATCH_BUF_SIZE);
+				0, dev->csc_scratch_pad.mem_size);
 		goto gcx_scratch_init;
 	}
-	rc = __smem_alloc(dev, mem_addr, SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
+	rc = __smem_alloc(dev, mem_addr, CSC_SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
 	if (rc) {
 		dprintk(LSR_ERR, "iface_q_table_alloc_fail\n");
 		goto fail_alloc_queue;
@@ -1150,16 +1152,16 @@ csc_scratch_init:
 	dev->csc_scratch_pad.align_device_addr = mem_addr->align_device_addr -
 					fw_bias;
 	dev->csc_scratch_pad.align_dcp_device_addr = mem_addr->align_dcp_device_addr;
-	dev->csc_scratch_pad.mem_size = SCRATCH_BUF_SIZE;
+	dev->csc_scratch_pad.mem_size = CSC_SCRATCH_BUF_SIZE;
 	dev->csc_scratch_pad.mem_data = mem_addr->mem_data;
 
 gcx_scratch_init:
 	if (dev->gcx_scratch_pad.align_virtual_addr) {
 		memset((void *)dev->gcx_scratch_pad.align_virtual_addr,
-				0, SCRATCH_BUF_SIZE);
+				0, dev->gcx_scratch_pad.mem_size);
 		goto hfi_queue_init;
 	}
-	rc = __smem_alloc(dev, mem_addr, SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
+	rc = __smem_alloc(dev, mem_addr, GCX_SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
 	if (rc) {
 		dprintk(LSR_ERR, "iface_q_table_alloc_fail\n");
 		goto fail_alloc_queue;
@@ -1169,7 +1171,7 @@ gcx_scratch_init:
 	dev->gcx_scratch_pad.align_device_addr = mem_addr->align_device_addr -
 					fw_bias;
 	dev->gcx_scratch_pad.align_dcp_device_addr = mem_addr->align_dcp_device_addr;
-	dev->gcx_scratch_pad.mem_size = SCRATCH_BUF_SIZE;
+	dev->gcx_scratch_pad.mem_size = GCX_SCRATCH_BUF_SIZE;
 	dev->gcx_scratch_pad.mem_data = mem_addr->mem_data;
 
 hfi_queue_init:
