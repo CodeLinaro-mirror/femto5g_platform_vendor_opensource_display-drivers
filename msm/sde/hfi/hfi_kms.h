@@ -110,7 +110,9 @@ struct hfi_kms {
 	struct hfi_catalog_base *catalog;
 	struct hfi_connector *primary_connector;
 	atomic_t ssr_in_progress;
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
 	struct hfi_hwfence_data *hfi_hw_fence_data;
+#endif
 };
 
 /**
@@ -136,7 +138,7 @@ int hfi_kms_reg_client(struct drm_device *dev);
 int hfi_kms_reg_client(struct drm_device *dev);
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
 
-#if IS_ENABLED(CONFIG_MDSS_HFI) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
 /**
  * sde_hfi_hw_fence_init - initialize sde hfi hw fence data
  * @priv:        Pointer to msm_drm_private
