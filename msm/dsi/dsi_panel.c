@@ -5822,6 +5822,744 @@ error:
 	return rc;
 }
 
+static int dsi_panel_privacy_v2_prepare_area_dcs_r0_enable(struct dsi_panel_cmd_set *set,
+		struct sde_drm_privacy_layer_v2 *privacy_v2, int ctrl_idx, int unicast, u8 r0_index)
+{
+	int rc = 0;
+	char *cmd0 = NULL, *cmd1 = NULL, *cmd2 = NULL, *cmd3 = NULL;
+	char *cmd4 = NULL, *cmd5 = NULL, *cmd6 = NULL, *cmd7 = NULL;
+	struct sde_privacy_v2 *p = &privacy_v2->privacy_list[r0_index];
+
+	if (p->right <= p->left || p->bottom <= p->top) {
+		DSI_ERR("Invalid privacy region coordinates: left=%d, top=%d, right=%d, bottom=%d\n",
+		       p->left, p->top, p->right, p->bottom);
+		return -EINVAL;
+	}
+	if (p->left > 0xFFFF || p->top > 0xFFFF || p->right > 0xFFFF || p->bottom > 0xFFFF) {
+		DSI_ERR("Privacy region coordinates exceed maximum value\n");
+		return -EINVAL;
+	}
+
+	cmd0 = kmemdup(privacy_area_reg1_on_v2.cmd0, 3, GFP_KERNEL);
+	if (!cmd0) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[0].msg.channel = 0;
+	set->cmds[0].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[0].msg.flags = 0;
+	set->cmds[0].msg.tx_len = 3;
+	set->cmds[0].msg.tx_buf = cmd0;
+	set->cmds[0].msg.rx_len = 0;
+	set->cmds[0].msg.rx_buf = 0;
+	set->cmds[0].last_command = 0;
+	set->cmds[0].post_wait_ms = 0;
+	set->cmds[0].ctrl = 0;
+
+	cmd1 = kmemdup(privacy_area_reg1_on_v2.cmd1, 4, GFP_KERNEL);
+	if (!cmd1) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[1].msg.channel = 0;
+	set->cmds[1].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[1].msg.flags = 0;
+	set->cmds[1].msg.tx_len = 4;
+	set->cmds[1].msg.tx_buf = cmd1;
+	set->cmds[1].msg.rx_len = 0;
+	set->cmds[1].msg.rx_buf = 0;
+	set->cmds[1].last_command = 0;
+	set->cmds[1].post_wait_ms = 0;
+	set->cmds[1].ctrl = 0;
+
+	cmd2 = kmemdup(privacy_area_reg1_on_v2.cmd2, 5, GFP_KERNEL);
+	if (!cmd2) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[2].msg.channel = 0;
+	set->cmds[2].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[2].msg.flags = 0;
+	set->cmds[2].msg.tx_len = 5;
+	set->cmds[2].msg.tx_buf = cmd2;
+	set->cmds[2].msg.rx_len = 0;
+	set->cmds[2].msg.rx_buf = 0;
+	set->cmds[2].last_command = 0;
+	set->cmds[2].post_wait_ms = 0;
+	set->cmds[2].ctrl = 0;
+
+	cmd3 = kmemdup(privacy_area_reg1_on_v2.cmd3, 4, GFP_KERNEL);
+	if (!cmd3) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[3].msg.channel = 0;
+	set->cmds[3].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[3].msg.flags = 0;
+	set->cmds[3].msg.tx_len = 4;
+	set->cmds[3].msg.tx_buf = cmd3;
+	set->cmds[3].msg.rx_len = 0;
+	set->cmds[3].msg.rx_buf = 0;
+	set->cmds[3].last_command = 0;
+	set->cmds[3].post_wait_ms = 0;
+	set->cmds[3].ctrl = 0;
+
+	// Apply your packing logic as per panel neccessity.
+	u8 temp_cmd4[11];
+	memcpy(temp_cmd4, privacy_area_reg1_on_v2.cmd4, 11);
+	temp_cmd4[2] = (p->left & 0xFF00) >> 8;
+	temp_cmd4[3] = (p->left & 0xFF);
+	temp_cmd4[4] = (p->top & 0xFF00) >> 8;
+	temp_cmd4[5] = (p->top & 0xFF);
+	temp_cmd4[6] = (p->right & 0xFF00) >> 8;
+	temp_cmd4[7] = (p->right & 0xFF);
+	temp_cmd4[8] = (p->bottom & 0xFF00) >> 8;
+	temp_cmd4[9] = (p->bottom & 0xFF);
+	temp_cmd4[10] = (p->corner_radius & 0xFF);
+
+	cmd4 = kmemdup(temp_cmd4, 11, GFP_KERNEL);
+	if (!cmd4) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	set->cmds[4].msg.channel = 0;
+	set->cmds[4].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[4].msg.flags = 0;
+	set->cmds[4].msg.tx_len = 11;
+	set->cmds[4].msg.tx_buf = cmd4;
+	set->cmds[4].msg.rx_len = 0;
+	set->cmds[4].msg.rx_buf = 0;
+	set->cmds[4].last_command = 0;
+	set->cmds[4].post_wait_ms = 0;
+	set->cmds[4].ctrl = 0;
+
+	cmd5 = kmemdup(privacy_area_reg1_on_v2.cmd5, 4, GFP_KERNEL);
+	if (!cmd5) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[5].msg.channel = 0;
+	set->cmds[5].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[5].msg.flags = 0;
+	set->cmds[5].msg.tx_len = 4;
+	set->cmds[5].msg.tx_buf = cmd5;
+	set->cmds[5].msg.rx_len = 0;
+	set->cmds[5].msg.rx_buf = 0;
+	set->cmds[5].last_command = 0;
+	set->cmds[5].post_wait_ms = 0;
+	set->cmds[5].ctrl = 0;
+
+	// Apply your packing logic as per panel neccessity.
+	privacy_area_reg1_on_v2.cmd6[1] = (p->left & 0xFF00) >> 8;
+	privacy_area_reg1_on_v2.cmd6[2] = (p->left & 0xFF);
+	privacy_area_reg1_on_v2.cmd6[3] = (p->top & 0xFF00) >> 8;
+	privacy_area_reg1_on_v2.cmd6[4] = (p->top & 0xFF);
+	privacy_area_reg1_on_v2.cmd6[5] = (p->right & 0xFF00) >> 8;
+	privacy_area_reg1_on_v2.cmd6[6] = (p->right & 0xFF);
+	privacy_area_reg1_on_v2.cmd6[7] = (p->bottom & 0xFF00) >> 8;
+	privacy_area_reg1_on_v2.cmd6[8] = (p->bottom & 0xFF);
+	privacy_area_reg1_on_v2.cmd6[9] = (p->corner_radius & 0xFF);
+
+	cmd6 = kmemdup(privacy_area_reg1_on_v2.cmd6, 10, GFP_KERNEL);
+	if (!cmd6) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	set->cmds[6].msg.channel = 0;
+	set->cmds[6].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[6].msg.flags = 0;
+	set->cmds[6].msg.tx_len = 10;
+	set->cmds[6].msg.tx_buf = cmd6;
+	set->cmds[6].msg.rx_len = 0;
+	set->cmds[6].msg.rx_buf = 0;
+	set->cmds[6].last_command = 0;
+	set->cmds[6].post_wait_ms = 0;
+	set->cmds[6].ctrl = 0;
+
+	cmd7 = kmemdup(privacy_area_reg1_on_v2.cmd7, 3, GFP_KERNEL);
+	if (!cmd7) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[7].msg.channel = 0;
+	set->cmds[7].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[7].msg.flags = 0;
+	set->cmds[7].msg.tx_len = 3;
+	set->cmds[7].msg.tx_buf = cmd7;
+	set->cmds[7].msg.rx_len = 0;
+	set->cmds[7].msg.rx_buf = 0;
+	set->cmds[7].last_command = 0;
+	set->cmds[7].post_wait_ms = 0;
+	set->cmds[7].ctrl = 0;
+	goto exit;
+
+error_free_mem:
+	if (cmd0)
+		kfree(cmd0);
+	if (cmd1)
+		kfree(cmd1);
+	if (cmd2)
+		kfree(cmd2);
+	if (cmd3)
+		kfree(cmd3);
+	if (cmd4)
+		kfree(cmd4);
+	if (cmd5)
+		kfree(cmd5);
+	if (cmd6)
+		kfree(cmd6);
+	if (cmd7)
+		kfree(cmd7);
+exit:
+	return rc;
+}
+
+static int dsi_panel_privacy_v2_prepare_area_dcs_r0_disable(struct dsi_panel_cmd_set *set,
+		struct sde_drm_privacy_layer_v2 *privacy_v2, int ctrl_idx, int unicast)
+{
+	int rc = 0;
+	char *cmd0 = NULL, *cmd1 = NULL, *cmd2 = NULL, *cmd3 = NULL;
+	char *cmd4 = NULL, *cmd5 = NULL, *cmd6 = NULL, *cmd7 = NULL;
+
+	cmd0 = kmemdup(privacy_area_reg1_off_v2.cmd0, 3, GFP_KERNEL);
+	if (!cmd0) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[0].msg.channel = 0;
+	set->cmds[0].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[0].msg.flags = 0;
+	set->cmds[0].msg.tx_len = 3;
+	set->cmds[0].msg.tx_buf = cmd0;
+	set->cmds[0].msg.rx_len = 0;
+	set->cmds[0].msg.rx_buf = 0;
+	set->cmds[0].last_command = 0;
+	set->cmds[0].post_wait_ms = 0;
+	set->cmds[0].ctrl = 0;
+
+	cmd1 = kmemdup(privacy_area_reg1_off_v2.cmd1, 4, GFP_KERNEL);
+	if (!cmd1) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[1].msg.channel = 0;
+	set->cmds[1].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[1].msg.flags = 0;
+	set->cmds[1].msg.tx_len = 4;
+	set->cmds[1].msg.tx_buf = cmd1;
+	set->cmds[1].msg.rx_len = 0;
+	set->cmds[1].msg.rx_buf = 0;
+	set->cmds[1].last_command = 0;
+	set->cmds[1].post_wait_ms = 0;
+	set->cmds[1].ctrl = 0;
+
+	cmd2 = kmemdup(privacy_area_reg1_off_v2.cmd2, 5, GFP_KERNEL);
+	if (!cmd2) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[2].msg.channel = 0;
+	set->cmds[2].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[2].msg.flags = 0;
+	set->cmds[2].msg.tx_len = 5;
+	set->cmds[2].msg.tx_buf = cmd2;
+	set->cmds[2].msg.rx_len = 0;
+	set->cmds[2].msg.rx_buf = 0;
+	set->cmds[2].last_command = 0;
+	set->cmds[2].post_wait_ms = 0;
+	set->cmds[2].ctrl = 0;
+
+	cmd3 = kmemdup(privacy_area_reg1_off_v2.cmd3, 4, GFP_KERNEL);
+	if (!cmd3) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[3].msg.channel = 0;
+	set->cmds[3].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[3].msg.flags = 0;
+	set->cmds[3].msg.tx_len = 4;
+	set->cmds[3].msg.tx_buf = cmd3;
+	set->cmds[3].msg.rx_len = 0;
+	set->cmds[3].msg.rx_buf = 0;
+	set->cmds[3].last_command = 0;
+	set->cmds[3].post_wait_ms = 0;
+	set->cmds[3].ctrl = 0;
+
+	cmd4 = kmemdup(privacy_area_reg1_off_v2.cmd4, 2, GFP_KERNEL);
+	if (!cmd4) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[4].msg.channel = 0;
+	set->cmds[4].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[4].msg.flags = 0;
+	set->cmds[4].msg.tx_len = 2;
+	set->cmds[4].msg.tx_buf = cmd4;
+	set->cmds[4].msg.rx_len = 0;
+	set->cmds[4].msg.rx_buf = 0;
+	set->cmds[4].last_command = 0;
+	set->cmds[4].post_wait_ms = 0;
+	set->cmds[4].ctrl = 0;
+
+	cmd5 = kmemdup(privacy_area_reg1_off_v2.cmd5, 4, GFP_KERNEL);
+	if (!cmd5) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[5].msg.channel = 0;
+	set->cmds[5].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[5].msg.flags = 0;
+	set->cmds[5].msg.tx_len = 4;
+	set->cmds[5].msg.tx_buf = cmd5;
+	set->cmds[5].msg.rx_len = 0;
+	set->cmds[5].msg.rx_buf = 0;
+	set->cmds[5].last_command = 0;
+	set->cmds[5].post_wait_ms = 0;
+	set->cmds[5].ctrl = 0;
+
+	cmd6 = kmemdup(privacy_area_reg1_off_v2.cmd6, 10, GFP_KERNEL);
+	if (!cmd6) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[6].msg.channel = 0;
+	set->cmds[6].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[6].msg.flags = 0;
+	set->cmds[6].msg.tx_len = 10;
+	set->cmds[6].msg.tx_buf = cmd6;
+	set->cmds[6].msg.rx_len = 0;
+	set->cmds[6].msg.rx_buf = 0;
+	set->cmds[6].last_command = 0;
+	set->cmds[6].post_wait_ms = 0;
+	set->cmds[6].ctrl = 0;
+
+	cmd7 = kmemdup(privacy_area_reg1_off_v2.cmd7, 3, GFP_KERNEL);
+	if (!cmd7) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[7].msg.channel = 0;
+	set->cmds[7].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[7].msg.flags = 0;
+	set->cmds[7].msg.tx_len = 3;
+	set->cmds[7].msg.tx_buf = cmd7;
+	set->cmds[7].msg.rx_len = 0;
+	set->cmds[7].msg.rx_buf = 0;
+	set->cmds[7].last_command = 0;
+	set->cmds[7].post_wait_ms = 0;
+	set->cmds[7].ctrl = 0;
+	goto exit;
+
+error_free_mem:
+	if (cmd0)
+		kfree(cmd0);
+	if (cmd1)
+		kfree(cmd1);
+	if (cmd2)
+		kfree(cmd2);
+	if (cmd3)
+		kfree(cmd3);
+	if (cmd4)
+		kfree(cmd4);
+	if (cmd5)
+		kfree(cmd5);
+	if (cmd6)
+		kfree(cmd6);
+	if (cmd7)
+		kfree(cmd7);
+exit:
+	return rc;
+}
+
+static int dsi_panel_privacy_v2_prepare_area_dcs_r1_enable(struct dsi_panel_cmd_set *set,
+		struct sde_drm_privacy_layer_v2 *privacy_v2, int ctrl_idx, int unicast, u8 r1_index)
+{
+	int rc = 0, cnt = 8;
+	char *cmd0 = NULL, *cmd1 = NULL, *cmd2 = NULL, *cmd3 = NULL;
+	char *cmd4 = NULL, *cmd5 = NULL, *cmd6 = NULL, *cmd7 = NULL;
+	struct sde_privacy_v2 *p = &privacy_v2->privacy_list[r1_index];
+
+	cmd0 = kmemdup(privacy_area_reg2_on_v2.cmd0, 3, GFP_KERNEL);
+	if (!cmd0) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 3;
+	set->cmds[cnt].msg.tx_buf = cmd0;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd1 = kmemdup(privacy_area_reg2_on_v2.cmd1, 4, GFP_KERNEL);
+	if (!cmd1) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 4;
+	set->cmds[cnt].msg.tx_buf = cmd1;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd2 = kmemdup(privacy_area_reg2_on_v2.cmd2, 5, GFP_KERNEL);
+	if (!cmd2) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 5;
+	set->cmds[cnt].msg.tx_buf = cmd2;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd3 = kmemdup(privacy_area_reg2_on_v2.cmd3, 4, GFP_KERNEL);
+	if (!cmd3) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 4;
+	set->cmds[cnt].msg.tx_buf = cmd3;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	// Apply your packing logic as per panel neccessity.
+	u8 temp_cmd4[11];
+	memcpy(temp_cmd4, privacy_area_reg2_on_v2.cmd4, 11);
+	temp_cmd4[2] = (p->left & 0xFF00) >> 8;
+	temp_cmd4[3] = (p->left & 0xFF);
+	temp_cmd4[4] = (p->top & 0xFF00) >> 8;
+	temp_cmd4[5] = (p->top & 0xFF);
+	temp_cmd4[6] = (p->right & 0xFF00) >> 8;
+	temp_cmd4[7] = (p->right & 0xFF);
+	temp_cmd4[8] = (p->bottom & 0xFF00) >> 8;
+	temp_cmd4[9] = (p->bottom & 0xFF);
+	temp_cmd4[10] = (p->corner_radius & 0xFF);
+
+	cmd4 = kmemdup(temp_cmd4, 11, GFP_KERNEL);
+	if (!cmd4) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 11;
+	set->cmds[cnt].msg.tx_buf = cmd4;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd5 = kmemdup(privacy_area_reg2_on_v2.cmd5, 4, GFP_KERNEL);
+	if (!cmd5) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 4;
+	set->cmds[cnt].msg.tx_buf = cmd5;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd6 = kmemdup(privacy_area_reg2_on_v2.cmd6, 2, GFP_KERNEL);
+	if (!cmd6) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 2;
+	set->cmds[cnt].msg.tx_buf = cmd6;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd7 = kmemdup(privacy_area_reg2_on_v2.cmd7, 3, GFP_KERNEL);
+	if (!cmd7) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 3;
+	set->cmds[cnt].msg.tx_buf = cmd7;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 1;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	goto exit;
+
+error_free_mem:
+	if (cmd0)
+		kfree(cmd0);
+	if (cmd1)
+		kfree(cmd1);
+	if (cmd2)
+		kfree(cmd2);
+	if (cmd3)
+		kfree(cmd3);
+	if (cmd4)
+		kfree(cmd4);
+	if (cmd5)
+		kfree(cmd5);
+	if (cmd6)
+		kfree(cmd6);
+	if (cmd7)
+		kfree(cmd7);
+exit:
+	return rc;
+}
+
+static int dsi_panel_privacy_v2_prepare_area_dcs_r1_disable(struct dsi_panel_cmd_set *set,
+		struct sde_drm_privacy_layer_v2 *privacy_v2, int ctrl_idx, int unicast)
+{
+	int rc = 0, cnt = 8;
+	char *cmd0 = NULL, *cmd1 = NULL, *cmd2 = NULL, *cmd3 = NULL;
+	char *cmd4 = NULL, *cmd5 = NULL;
+
+	cmd0 = kmemdup(privacy_area_reg2_off_v2.cmd0, 3, GFP_KERNEL);
+	if (!cmd0) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 3;
+	set->cmds[cnt].msg.tx_buf = cmd0;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd1 = kmemdup(privacy_area_reg2_off_v2.cmd1, 4, GFP_KERNEL);
+	if (!cmd1) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 4;
+	set->cmds[cnt].msg.tx_buf = cmd1;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd2 = kmemdup(privacy_area_reg2_off_v2.cmd2, 5, GFP_KERNEL);
+	if (!cmd2) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 5;
+	set->cmds[cnt].msg.tx_buf = cmd2;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd3 = kmemdup(privacy_area_reg2_off_v2.cmd3, 4, GFP_KERNEL);
+	if (!cmd3) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 4;
+	set->cmds[cnt].msg.tx_buf = cmd3;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd4 = kmemdup(privacy_area_reg2_off_v2.cmd4, 2, GFP_KERNEL);
+	if (!cmd4) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 2;
+	set->cmds[cnt].msg.tx_buf = cmd4;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 0;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	cnt++;
+
+	cmd5 = kmemdup(privacy_area_reg2_off_v2.cmd5, 3, GFP_KERNEL);
+	if (!cmd5) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+	set->cmds[cnt].msg.channel = 0;
+	set->cmds[cnt].msg.type = MIPI_DSI_DCS_LONG_WRITE;
+	set->cmds[cnt].msg.flags = 0;
+	set->cmds[cnt].msg.tx_len = 3;
+	set->cmds[cnt].msg.tx_buf = cmd5;
+	set->cmds[cnt].msg.rx_len = 0;
+	set->cmds[cnt].msg.rx_buf = 0;
+	set->cmds[cnt].last_command = 1;
+	set->cmds[cnt].post_wait_ms = 0;
+	set->cmds[cnt].ctrl = 0;
+	goto exit;
+
+error_free_mem:
+	if (cmd0)
+		kfree(cmd0);
+	if (cmd1)
+		kfree(cmd1);
+	if (cmd2)
+		kfree(cmd2);
+	if (cmd3)
+		kfree(cmd3);
+	if (cmd4)
+		kfree(cmd4);
+	if (cmd5)
+		kfree(cmd5);
+exit:
+	return rc;
+}
+
+static int dsi_panel_privacy_v2_prepare_area_dcs_cmds(struct dsi_panel_cmd_set *set,
+		struct sde_drm_privacy_layer_v2 *privacy_v2, int ctrl_idx, int unicast)
+{
+	int rc = 0, cmd_cnt = 0, cnt = 0;
+	bool r0_valid = false, r1_valid = false;
+	u8 r0_index = 0, r1_index = 0;
+
+	if (!privacy_v2 || privacy_v2->no_of_layers > MAX_PRIVACY_LAYERS) {
+		DSI_ERR("Invalid privacy_v2 parameters\n");
+		return -EINVAL;
+	}
+
+	for (cnt = 0; cnt < privacy_v2->no_of_layers; cnt++) {
+		if (privacy_v2->privacy_list[cnt].index == 0) {
+			r0_valid = (privacy_v2->privacy_list[cnt].right) ? true : false;
+			r0_index = cnt;
+		}
+		if (privacy_v2->privacy_list[cnt].index == 1) {
+			r1_valid = (privacy_v2->privacy_list[cnt].right) ? true : false;
+			r1_index = cnt;
+		}
+	}
+	DSI_DEBUG("r0_valid=%d, r0_index=%d\n", r0_valid, r0_index);
+	DSI_DEBUG("r1_valid=%d, r1_index=%d\n", r1_valid, r1_index);
+	cmd_cnt = r1_valid ? 16 : 14;
+
+	if (set == NULL) {
+		DSI_ERR("Panel command set for Privacy is NULL\n");
+		return -EINVAL;
+	}
+	set->cmds = NULL;
+	set->type = DSI_CMD_SET_PRIVACY_LAYER;
+	set->state = DSI_CMD_SET_STATE_HS;
+	set->count = cmd_cnt;
+	set->cmds = kcalloc(set->count, sizeof(*set->cmds), GFP_KERNEL);
+	if (!set->cmds) {
+		rc = -ENOMEM;
+		goto error_free_mem;
+	}
+
+	if (r0_valid) {
+		rc = dsi_panel_privacy_v2_prepare_area_dcs_r0_enable(set,
+					privacy_v2, 0, true, r0_index);
+		if (rc) {
+			DSI_ERR("Failed to prepare R0 enable commands, rc=%d\n", rc);
+			goto error_free_mem;
+		}
+	} else {
+		rc = dsi_panel_privacy_v2_prepare_area_dcs_r0_disable(set, privacy_v2, 0, true);
+		if (rc) {
+			DSI_ERR("Failed to prepare R0 disable commands, rc=%d\n", rc);
+			goto error_free_mem;
+		}
+	}
+
+	if (r1_valid) {
+		rc = dsi_panel_privacy_v2_prepare_area_dcs_r1_enable(set,
+					privacy_v2, 0, true, r1_index);
+		if (rc) {
+			DSI_ERR("Failed to prepare R1 enable commands, rc=%d\n", rc);
+			goto error_free_mem;
+		}
+	} else {
+		rc = dsi_panel_privacy_v2_prepare_area_dcs_r1_disable(set, privacy_v2, 0, true);
+		if (rc) {
+			DSI_ERR("Failed to prepare R1 disable commands, rc=%d\n", rc);
+			goto error_free_mem;
+		}
+	}
+	goto exit;
+
+error_free_mem:
+	if (set->cmds)
+		kfree(set->cmds);
+exit:
+	return rc;
+}
+
 static int dsi_panel_privacy_v1_prepare_dcs_cmds(struct dsi_panel_cmd_set *set,
 		struct sde_drm_privacy_layer_v1 *privacy_v1, int ctrl_idx, int unicast)
 {
@@ -6148,8 +6886,14 @@ static int dsi_panel_prepare_cmd(struct dsi_panel *panel,
 	set = &priv_info->cmd_sets[type];
 
 	// Prepare the privacy buffer content dynamically.
-	if (type == DSI_CMD_SET_PRIVACY_LAYER)
-		rc = dsi_panel_privacy_v1_prepare_dcs_cmds(set, params->privacy_v1, 0, true);
+	if (type == DSI_CMD_SET_PRIVACY_LAYER) {
+		if (params->privacy_v2->mode == LAYER_MODE)
+			rc = dsi_panel_privacy_v1_prepare_dcs_cmds(set,
+						params->privacy_v1, 0, true);
+		else
+			rc = dsi_panel_privacy_v2_prepare_area_dcs_cmds(set,
+						params->privacy_v2, 0, true);
+	}
 	if (type == DSI_CMD_SET_BRIGHTNESS)
 		rc = dsi_panel_set_brightness_prepare_dcs_cmds(panel, set, params->b_lvl);
 
