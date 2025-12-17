@@ -281,7 +281,7 @@ static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	ret = hfi_core_map_sg_table(&addr_map.alloc_info, msm_obj->sgt, addr_map.aligned_size,
 		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
 	if (ret) {
-		SDE_ERROR("SAIL: failed to map sg table to iova, ret:%d\n", ret);
+		SDE_ERROR("failed to map sg table to iova, ret:%d\n", ret);
 		return;
 	}
 
