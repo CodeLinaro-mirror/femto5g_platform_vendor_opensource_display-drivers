@@ -175,25 +175,25 @@ int dsi_catalog_ctrl_setup(struct dsi_ctrl_hw *ctrl,
  */
 static void dsi_catalog_phy_2_0_init(struct dsi_phy_hw *phy)
 {
-	phy->ops.regulator_enable = dsi_phy_hw_v2_0_regulator_enable;
-	phy->ops.regulator_disable = dsi_phy_hw_v2_0_regulator_disable;
-	phy->ops.enable = dsi_phy_hw_v2_0_enable;
-	phy->ops.disable = dsi_phy_hw_v2_0_disable;
-	phy->ops.calculate_timing_params =
+	phy->ops.regulator_enable[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_regulator_enable;
+	phy->ops.regulator_disable [MSM_DISP_OP_HWIO]= dsi_phy_hw_v2_0_regulator_disable;
+	phy->ops.enable[MSM_DISP_OP_HWIO]= dsi_phy_hw_v2_0_enable;
+	phy->ops.disable[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_disable;
+	phy->ops.calculate_timing_params[MSM_DISP_OP_HWIO] =
 		dsi_phy_hw_calculate_timing_params;
-	phy->ops.phy_idle_on = dsi_phy_hw_v2_0_idle_on;
-	phy->ops.phy_idle_off = dsi_phy_hw_v2_0_idle_off;
-	phy->ops.calculate_timing_params =
+	phy->ops.phy_idle_on[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_idle_on;
+	phy->ops.phy_idle_off[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_idle_off;
+	phy->ops.calculate_timing_params[MSM_DISP_OP_HWIO] =
 		dsi_phy_hw_calculate_timing_params;
-	phy->ops.phy_timing_val = dsi_phy_hw_timing_val_v2_0;
-	phy->ops.clamp_ctrl = dsi_phy_hw_v2_0_clamp_ctrl;
-	phy->ops.dyn_refresh_ops.dyn_refresh_config =
+	phy->ops.phy_timing_val[MSM_DISP_OP_HWIO] = dsi_phy_hw_timing_val_v2_0;
+	phy->ops.clamp_ctrl[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_clamp_ctrl;
+	phy->ops.dyn_refresh_ops.dyn_refresh_config[MSM_DISP_OP_HWIO] =
 		dsi_phy_hw_v2_0_dyn_refresh_config;
-	phy->ops.dyn_refresh_ops.dyn_refresh_pipe_delay =
+	phy->ops.dyn_refresh_ops.dyn_refresh_pipe_delay[MSM_DISP_OP_HWIO] =
 		dsi_phy_hw_v2_0_dyn_refresh_pipe_delay;
-	phy->ops.dyn_refresh_ops.dyn_refresh_helper =
+	phy->ops.dyn_refresh_ops.dyn_refresh_helper[MSM_DISP_OP_HWIO] =
 		dsi_phy_hw_v2_0_dyn_refresh_helper;
-	phy->ops.dyn_refresh_ops.cache_phy_timings =
+	phy->ops.dyn_refresh_ops.cache_phy_timings[MSM_DISP_OP_HWIO] =
 		dsi_phy_hw_v2_0_cache_phy_timings;
 }
 
@@ -426,8 +426,8 @@ int dsi_catalog_phy_pll_setup(struct dsi_phy_hw *phy, u32 pll_ver)
 		phy->ops.pll_toggle[MSM_DISP_OP_HWIO] = dsi_pll_3nm_toggle;
 		break;
 	case DSI_PLL_VERSION_14NM:
-		phy->ops.configure = dsi_pll_14nm_configure;
-		phy->ops.pll_toggle = dsi_pll_14nm_toggle;
+		phy->ops.configure[MSM_DISP_OP_HWIO] = dsi_pll_14nm_configure;
+		phy->ops.pll_toggle[MSM_DISP_OP_HWIO] = dsi_pll_14nm_toggle;
 		break;
 	default:
 		break;
