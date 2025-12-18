@@ -129,3 +129,6 @@ define_seraph()
 
 load(":targets/bengal.bzl", "define_bengal")
 define_bengal()
+
+load(":targets/malabar.bzl", "define_malabar")
+define_malabar()

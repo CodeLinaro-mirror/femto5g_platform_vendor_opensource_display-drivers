@@ -342,11 +342,11 @@ struct dsi_ctrl {
 	bool dsi_ctrl_shared;
 	u32 cmd_trigger_line;
 	u32 cmd_trigger_frame;
-	u32 cmd_success_line;
-	u32 cmd_success_frame;
+	atomic_t cmd_success_line;
+	atomic_t cmd_success_frame;
 	u32 cmd_engine_refcount;
 	u32 pending_cmd_flags;
-	ktime_t cmd_success_ts;
+	atomic64_t cmd_success_ts;
 };
 
 /**

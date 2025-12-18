@@ -81,7 +81,15 @@ static void drm_mode_to_intf_timing_params(
 	 * <---------------------------- [hv]total ------------->
 	 */
 	timing->poms_align_vsync = phys_enc->poms_align_vsync;
-	timing->width = mode->hdisplay;	/* active width */
+	if (vid_enc->timing_params.overlap > 0) {	/* active width */
+		if (phys_enc->hw_intf->cfg.split_link_en &&
+			vid_enc->timing_params.cur_channel_cnt > 0)
+			timing->width = mode->hdisplay + vid_enc->timing_params.overlap
+							/ vid_enc->timing_params.cur_channel_cnt;
+		else
+			timing->width = mode->hdisplay + vid_enc->timing_params.overlap;
+	} else
+		timing->width = mode->hdisplay;
 	timing->height = mode->vdisplay;	/* active height */
 	timing->xres = timing->width;
 	timing->yres = timing->height;
@@ -780,6 +788,11 @@ static void sde_encoder_phys_vid_setup_timing_engine(
 			sde_connector_get_panel_vfp(phys_enc->connector, &mode);
 		if (phys_enc->vfp_cached <= 0)
 			phys_enc->vfp_cached = mode.vsync_start - mode.vdisplay;
+	}
+
+	if (sde_enc->mode_info.overlap > 0) {
+		vid_enc->timing_params.overlap = sde_enc->mode_info.overlap;
+		vid_enc->timing_params.cur_channel_cnt = sde_enc->cur_channel_cnt;
 	}
 
 	drm_mode_to_intf_timing_params(vid_enc, &mode, &timing_params);
