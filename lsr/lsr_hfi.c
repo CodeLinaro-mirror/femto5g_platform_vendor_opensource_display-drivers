@@ -1460,6 +1460,7 @@ int iris_hfi_core_init(void *device)
 		int err = 0;
 		u32 i, cpu;
 
+		dprintk(LSR_PWR, "Enabling pm_qos_hdls\n");
 		dev->res->pm_qos.pm_qos_hdls = kcalloc(
 				dev->res->pm_qos.silver_count,
 				sizeof(struct dev_pm_qos_request),
@@ -1485,6 +1486,9 @@ int iris_hfi_core_init(void *device)
 					__func__, i);
 		}
 	}
+
+	if (dev->res->pm_qos.latency_us && dev->res->pm_qos.pm_qos_hdls)
+		lsr_pm_qos_update(dev, PM_QOS_RESUME_LATENCY_DEFAULT_VALUE);
 
 pm_qos_bail:
 	mutex_unlock(&dev->lock);
@@ -2608,8 +2612,6 @@ int __resume(struct lsr_device *device)
 	}
 
 	core = lsr_driver->lsr_core;
-	WARN_ON(1);
-
 	dprintk(LSR_PWR, "Resuming from power collapse\n");
 	rc = __lsr_power_on(device);
 	if (rc) {
