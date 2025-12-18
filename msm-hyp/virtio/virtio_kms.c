@@ -2078,6 +2078,7 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 {
 	int rc = 0;
 	int i = 0;
+	bool drm_iter_initialized = false;
 	struct drm_device *dev;
 	struct drm_connector *connector;
 	struct msm_hyp_connector *c_conn;
@@ -2089,38 +2090,39 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 
 	if (scanout >= VIRTIO_GPU_MAX_SCANOUTS) {
 		pr_err("HPDLOG: Wrong Scanout ID\n");
-		goto error;
+		goto exit;
 	}
 
 	if (!kms) {
 		pr_err("HPDLOG: invalid kms\n");
 		rc = -1;
-		goto error;
+		goto exit;
 	}
 
 	dev = kms->dev;
 	if (!dev) {
 		pr_err("HPDLOG: invalid dev\n");
 		rc = -1;
-		goto error;
+		goto exit;
 	}
 
 	/* Get connector information */
 	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_iter_initialized = true;
 	drm_for_each_connector_iter(
 		connector, &conn_iter) {
 		c_conn = to_msm_hyp_connector(connector);
 		if (!c_conn) {
 			pr_err("HPDLOG: No msm hyp connector\n");
 			rc = -1;
-			goto error;
+			goto exit;
 		}
 
 		priv = container_of(c_conn->info, struct virtio_connector_info_priv, base);
 		if (!priv) {
 			pr_err("HPDLOG:NULL priv\n");
 			rc = -1;
-			goto error;
+			goto exit;
 		}
 
 		if (priv->scanout != scanout) {
@@ -2146,12 +2148,12 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 			if (rc) {
 				pr_err("HPDLOG: get_display_info_ext failed %d\n",
 						scanout);
-				goto error;
+				goto exit;
 			}
 
 			rc = virtio_gpu_cmd_get_scanout_attributes(kms, scanout);
 			if (rc) {
-				goto error;
+				goto exit;
 			}
 
 			attr = &kms->outputs[scanout].attr;
@@ -2164,7 +2166,7 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 				kfree(priv);
 				pr_err("HPDLOG: number of modes is 0\n");
 				rc = -1;
-				goto error;
+				goto exit;
 			}
 
 			if (kms->outputs[scanout].num_modes > 0) {
@@ -2180,7 +2182,7 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 					pr_err("HPDLOG: Mode allocation failed\n");
 					kfree(priv);
 					rc = -1;
-					goto error;
+					goto exit;
 				}
 			}
 
@@ -2226,9 +2228,12 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 		}
 	}
 
-error:
+exit:
+	if (drm_iter_initialized)
+		drm_connector_list_iter_end(&conn_iter);
+
 	if (rc)
-		 pr_err("HPD event handle failed %d\n", scanout);
+		pr_err("HPD event handle failed %d\n", scanout);
 }
 
 static void virtio_kms_vsync(struct virtio_kms *kms, uint32_t scanout)

@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 /* Copyright (C) 2014 Red Hat
@@ -487,9 +487,12 @@ static void wfd_kms_handle_hpd_event(union event_info *info, void *params)
 								kms->port_ids[j],
 								disp_event->event_infos.hotplug_info.status,
 								connector);
-						if (ret)
+						if (ret) {
+							drm_connector_list_iter_end(&conn_iter);
 							return;
+						}
 					}
+					drm_connector_list_iter_end(&conn_iter);
 				}
 			}
 			return;
