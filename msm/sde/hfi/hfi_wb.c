@@ -55,6 +55,11 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	struct sde_format_extended fmt = {0,};
 
 	fb = sde_wb_get_output_fb(wb_dev);
+	if (!fb) {
+		SDE_ERROR("failed to get output buffer\n");
+		return -EINVAL;
+	}
+
 	fmt.fourcc_format = fb->format->format;
 	fmt.modifier = fb->modifier;
 
@@ -164,7 +169,7 @@ int hfi_wb_display_prepare_commit(struct sde_wb_device *wb_dev,
 {
 	int ret = 0;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
-	struct drm_connector *drm_conn = wb_dev->connector;
+	struct drm_connector *drm_conn;
 	u32 disp_id;
 
 	if (!wb_dev) {
@@ -172,6 +177,7 @@ int hfi_wb_display_prepare_commit(struct sde_wb_device *wb_dev,
 		return -EINVAL;
 	}
 
+	drm_conn = wb_dev->connector;
 	disp_id = sde_conn_get_display_obj_id(drm_conn);
 
 	cmd_buf = hfi_connector_get_cmd_buf(drm_conn, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
