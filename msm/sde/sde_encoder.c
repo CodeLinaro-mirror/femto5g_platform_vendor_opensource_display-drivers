@@ -384,7 +384,7 @@ static void _sde_encoder_control_fal10_veto(struct drm_encoder *drm_enc, bool ve
 	}
 }
 
-static void _sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
+void sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	struct msm_drm_private *priv;
@@ -428,7 +428,7 @@ static void _sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 	}
 }
 
-static void _sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
+void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	struct device *cpu_dev;
@@ -2547,10 +2547,10 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 				sde_conn->vrr_cmd_state = VRR_CMD_IDLE_EXIT;
 		}
 
-		_sde_encoder_pm_qos_add_request(drm_enc);
+		sde_encoder_pm_qos_add_request(drm_enc);
 
 	} else {
-		_sde_encoder_pm_qos_remove_request(drm_enc);
+		sde_encoder_pm_qos_remove_request(drm_enc);
 
 		if (req == REQ_ENTER_IDLE && is_video_mode && info->esync_enabled) {
 			if (sde_conn)
@@ -3103,7 +3103,7 @@ static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 
 	if (is_vid_mode && !info->esync_enabled && sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE) {
 		sde_encoder_irq_control(drm_enc, true);
-		_sde_encoder_pm_qos_add_request(drm_enc);
+		sde_encoder_pm_qos_add_request(drm_enc);
 	} else {
 		/* enable all the clks and resources */
 		ret = _sde_encoder_resource_control_helper(drm_enc,
@@ -3247,7 +3247,7 @@ static int _sde_encoder_rc_pre_modeset(struct drm_encoder *drm_enc,
 		SDE_ENC_RC_STATE_MODESET, SDE_EVTLOG_FUNC_CASE5);
 
 	sde_enc->rc_state = SDE_ENC_RC_STATE_MODESET;
-	_sde_encoder_pm_qos_remove_request(drm_enc);
+	sde_encoder_pm_qos_remove_request(drm_enc);
 
 end:
 	mutex_unlock(&sde_enc->rc_lock);
@@ -3291,7 +3291,7 @@ static int _sde_encoder_rc_post_modeset(struct drm_encoder *drm_enc,
 			SDE_ENC_RC_STATE_ON, SDE_EVTLOG_FUNC_CASE6);
 
 	sde_enc->rc_state = SDE_ENC_RC_STATE_ON;
-	_sde_encoder_pm_qos_add_request(drm_enc);
+	sde_encoder_pm_qos_add_request(drm_enc);
 
 end:
 	mutex_unlock(&sde_enc->rc_lock);
@@ -3349,7 +3349,7 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 	crtc_id = drm_crtc_index(crtc);
 	if (is_vid_mode && !info->esync_enabled) {
 		sde_encoder_irq_control(drm_enc, false);
-		_sde_encoder_pm_qos_remove_request(drm_enc);
+		sde_encoder_pm_qos_remove_request(drm_enc);
 	} else {
 		if (priv->event_thread[crtc_id].thread)
 			kthread_flush_worker(&priv->event_thread[crtc_id].worker);
