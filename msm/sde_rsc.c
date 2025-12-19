@@ -1908,14 +1908,20 @@ static int sde_rsc_rpmh_probe(struct platform_device *pdev)
 	return 0;
 }
 
-int sde_rsc_rpmh_remove(struct platform_device *pdev)
+#if (KERNEL_VERSION(6, 10, 0) <= LINUX_VERSION_CODE)
+void  sde_rsc_rpmh_remove(struct platform_device *pdev)
+#else
+int  sde_rsc_rpmh_remove(struct platform_device *pdev)
+#endif
 {
 	int i;
 
 	for (i = 0; i < MAX_RSC_COUNT; i++)
 		rpmh_dev[i] = NULL;
 
+#if (KERNEL_VERSION(6, 10, 0) > LINUX_VERSION_CODE)
 	return 0;
+#endif
 }
 
 static const struct of_device_id dt_match[] = {
