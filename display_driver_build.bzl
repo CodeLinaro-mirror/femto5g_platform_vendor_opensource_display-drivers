@@ -93,6 +93,7 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
             "//soc-repo:{}/drivers/iommu/msm_dma_iommu_mapping".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/socinfo".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/panel_event_notifier".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/soc/qcom/qcom_rpmh".format(kernel_build_tv),
         ],
         "//build/qcom_build_extensions:qtisocrepo_false": ["//msm-kernel:all_headers"],
         })
