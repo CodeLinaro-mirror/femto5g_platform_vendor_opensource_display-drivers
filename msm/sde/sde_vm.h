@@ -191,6 +191,7 @@ struct sde_vm_ops {
  * @vm_work - kthread work obj for msgq
  * @msgq_handle - handle to display msgq
  * @crtc: pointer to crtc
+ * @mem_accepted - flag to indicate that vm accepted the memory
  */
 struct sde_vm {
 	struct mutex vm_res_lock;
@@ -203,6 +204,7 @@ struct sde_vm {
 	struct sde_vm_msg_work vm_work;
 	void *msgq_handle;
 	struct drm_crtc *crtc;
+	bool mem_accepted;
 };
 
 /**

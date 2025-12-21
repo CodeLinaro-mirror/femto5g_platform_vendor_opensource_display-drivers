@@ -6417,10 +6417,12 @@ int sde_kms_get_io_resources(struct sde_kms *sde_kms, struct msm_io_res *io_res)
 		return rc;
 	}
 
-	rc = msm_dss_get_io_irq(pdev, &io_res->irq, GH_IRQ_LABEL_SDE);
-	if (rc) {
-		SDE_ERROR("failed to get io irq for KMS");
-		return rc;
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms))) {
+		rc = msm_dss_get_io_irq(pdev, &io_res->irq, GH_IRQ_LABEL_SDE);
+		if (rc) {
+			SDE_ERROR("failed to get io irq for KMS");
+			return rc;
+		}
 	}
 
 	rc = _sde_kms_get_tvm_inclusion_mem(sde_kms->catalog, &io_res->mem);
@@ -6606,6 +6608,9 @@ int sde_kms_vm_trusted_resource_init(struct sde_kms *sde_kms,
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
+
+	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)))
+		return 0;
 
 	dev = sde_kms->dev;
 	priv = dev->dev_private;
