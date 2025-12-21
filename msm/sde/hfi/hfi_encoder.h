@@ -55,10 +55,29 @@ struct hfi_encoder {
  * @Returns:    0 on success, or error code on failure
  */
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc);
+
+/**
+ * sde_encoder_check_hfi_hw_fence_support - check if HFI HW fence is supported
+ * @enc:        Pointer to virtual sde encoder structure
+ * @Returns:    true if supported, false otherwise
+ */
+bool sde_encoder_check_hfi_hw_fence_support(struct sde_encoder_virt *enc);
+
+/**
+ * hfi_set_power_vote - set power vote for HFI HW fence resources
+ * @enable:     true to enable, false to disable
+ * @Returns:    0 on success, error code on failure
+ */
+int hfi_set_power_vote(bool enable);
 #else
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
 {
 	return -HFI_ERROR;
+}
+
+bool sde_encoder_check_hfi_hw_fence_support(struct sde_encoder_virt *enc)
+{
+	return false;
 }
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
 

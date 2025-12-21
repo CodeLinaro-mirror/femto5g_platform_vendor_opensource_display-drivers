@@ -28,7 +28,7 @@
 #define MAX_TRY_COUNT 40000
 #define MAX_BUFFERS 10
 #define MAX_U32 0xFFFFFFFF
-#define MAX_POOL_SIZE 8
+#define MAX_POOL_SIZE 32
 #define GET_BUF_RETRY 35
 #define MIN_USLEEP_RANGE 30000
 #define MAX_USLEEP_RANGE 40000
@@ -516,6 +516,26 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 	return 0;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
+{
+	int ret = 0;
+
+	ret = hfi_core_hw_fence_init(hfi_handle);
+	if (ret) {
+		HFI_AD_ERROR("failed to init DCP hw fence client\n");
+		ret = hfi_core_hw_fence_deinit(hfi_handle);
+		if (ret)
+			HFI_AD_ERROR("failed to deinit DCP hw fence client\n");
+	}
+}
+#else
+static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
+{
+	HFI_AD_ERROR("HFI hw fence not enabled\n");
+}
+#endif
+
 struct hfi_adapter_t *hfi_adapter_init(int instance)
 {
 	struct hfi_adapter_t *hfi_host;
@@ -549,6 +569,9 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 		HFI_AD_ERROR("failed to open hfi core session\n");
 		goto fail;
 	}
+
+	/* Initialize DCP hw fence client */
+	_hfi_core_hw_fence_init(hfi_handle);
 
 	/* Initialize hfi_adapter_t after core session is created */
 	hfi_host->sde_or_vm_instance = instance;
@@ -1311,6 +1334,10 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 	int rc = 0;
 	int ret = 0;
 
+	/* Local list for collecting listeners */
+	LIST_HEAD(local_listener_list);
+	struct listener_list *temp_entry, *temp_next;
+
 	if (!ctx || !cmd_buf || !ctx->host) {
 		HFI_AD_ERROR("invalid param\n");
 		return -EINVAL;
@@ -1343,12 +1370,14 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 			continue;
 		}
 
-		/* Find the client's listener attached to the packet-id */
+		/* Phase 1: Collect matching listeners into local list under lock */
 		mutex_lock(&ctx->listener_lock);
 		list_for_each(pos, &ctx->packet_listeners.list_ptr) {
 			listener_entry = list_entry(pos, struct listener_list, list_ptr);
-			if (!listener_entry)
+			if (!listener_entry) {
+				HFI_AD_DEBUG("listener_entry is NULL\n");
 				continue;
+			}
 
 			if (!listener_entry->listener_obj) {
 				HFI_AD_ERROR("[warning] no listener's attached\n");
@@ -1356,27 +1385,48 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 				continue;
 			}
 
-			/* If packet_id's match for the response packet(s), invoke listener */
+			/* If packet_id's match for the response packet(s), add to local list */
 			if (packet_info.packet_id == listener_entry->packet_id) {
 				listener = (struct hfi_prop_listener *)
 					(listener_entry->listener_obj);
 				if (!listener)
 					continue;
-				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd);
-				listener->hfi_prop_handler(packet_info.id,
-						packet_info.cmd, packet_info.payload_ptr,
-						packet_info.payload_size, listener);
 
-				if (packet_info.flags != HFI_RX_FLAGS_NONE &&
-						packet_info.flags != HFI_RX_FLAGS_SUCCESS) {
-					HFI_AD_ERROR("response packet error. cmd:0x%x resp:0x%x\n",
-							packet_info.cmd, packet_info.flags);
-					ret = -HFI_ERROR;
+				/* Allocate temporary listener_list entry and add to local list */
+				temp_entry = kzalloc(sizeof(struct listener_list), GFP_KERNEL);
+				if (!temp_entry) {
+					HFI_AD_ERROR("failed to allocate temp listener entry\n");
+					ret = -ENOMEM;
 					continue;
 				}
+				temp_entry->listener_obj = listener;
+				temp_entry->packet_id = packet_info.packet_id;
+				list_add_tail(&temp_entry->list_ptr, &local_listener_list);
 			}
 		}
 		mutex_unlock(&ctx->listener_lock);
+
+		/* Phase 2: Invoke callbacks without holding lock */
+		list_for_each_entry_safe(temp_entry, temp_next,
+					 &local_listener_list, list_ptr) {
+			listener = (struct hfi_prop_listener *)temp_entry->listener_obj;
+
+			SDE_EVT32(num_packets, packet_info.id, packet_info.cmd);
+			listener->hfi_prop_handler(packet_info.id,
+					packet_info.cmd, packet_info.payload_ptr,
+					packet_info.payload_size, listener);
+
+			if (packet_info.flags != HFI_RX_FLAGS_NONE &&
+					packet_info.flags != HFI_RX_FLAGS_SUCCESS) {
+				HFI_AD_ERROR("response packet error. cmd:0x%x resp:0x%x\n",
+						packet_info.cmd, packet_info.flags);
+				ret = -HFI_ERROR;
+			}
+
+			/* Remove and free the temporary entry */
+			list_del(&temp_entry->list_ptr);
+			kfree(temp_entry);
+		}
 	}
 
 	/* Loop through clients list and if matching unique_id then release */

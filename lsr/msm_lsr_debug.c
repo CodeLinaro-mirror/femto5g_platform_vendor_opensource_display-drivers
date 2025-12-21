@@ -26,7 +26,7 @@ bool msm_lsr_fw_coverage = !true;
 bool msm_lsr_cacheop_enabled = true;
 bool msm_lsr_cacheop_disabled = !true;
 int msm_lsr_clock_voting = !1;
-bool msm_lsr_syscache_disable = !true;
+bool msm_lsr_syscache_disable = true;
 
 bool msm_lsr_dcvs_disable = !true;
 int msm_lsr_hw_wd_recovery = 1;

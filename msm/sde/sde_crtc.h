@@ -294,6 +294,28 @@ enum sde_crtc_hw_fence_flags {
 	HW_FENCE_FEATURES_MAX,
 };
 
+struct sde_rgb_hist_buffer {
+	struct drm_framebuffer *fb[RGB_COMPONENT_SIZE];
+	struct drm_gem_object *gem[RGB_COMPONENT_SIZE];
+	struct msm_gem_address_space *aspace[RGB_COMPONENT_SIZE];
+	u32 drm_fb_id[RGB_COMPONENT_SIZE];
+	u32 offset[RGB_COMPONENT_SIZE];
+	u64 dpu_iova[RGB_COMPONENT_SIZE];
+	void *kva[RGB_COMPONENT_SIZE];
+	u64 dcp_iova[RGB_COMPONENT_SIZE];
+	struct hfi_shared_addr_map addr_map[RGB_COMPONENT_SIZE];
+};
+
+/**
+ * struct sde_pa_hist_buffer - PA histogram buffer information
+ * @buffer:        Shared address map for the PA histogram buffer
+ * @is_available:  Flag indicating if the buffer is currently available
+ */
+struct sde_pa_hist_buffer {
+	struct hfi_shared_addr_map buffer;
+	bool is_available;
+};
+
 /**
  * struct sde_crtc_hal_funcs - interface api for sde crtc hal
  */
@@ -526,12 +548,17 @@ struct sde_crtc_hal_funcs {
  * @mdnie_art_frame_count: number of frames required for mdnie art to converge.
  * @hfi_crtc: Pointer to hfi crtc struct
  * @hfi_client: Pointer to hfi client
+ * @cwb_idle: CWB idle fallback is active
  * @hal_ops: Local callback hal function pointer table
  * @crtc_event_cb: CRTC event callback when hw event is received
  * @do_clear_buf: Request LTM buffer clear when true
  * @dspp_pa_mode: top-level bitmask maintaining state of PA block
  * @is_waiting_for_hw_fence: true if hw-fence backed input fence is not signaled prior to
  *                           commit prepare
+ * @rgb_hist_en: Enable collection of RGB histogram data when true
+ * @do_clear_rgb_hist_buf: Request to clear RGB histogram buffers
+ * @rgb_hist_buffers: Array of pointers to RGB histogram buffer structures
+ * @rgb_hist_buffer_lock: Mutex to protect access to RGB histogram buffers
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -595,6 +622,7 @@ struct sde_crtc {
 	bool misr_enable_debugfs;
 	bool misr_reconfigure;
 	u32 misr_frame_count;
+	bool cwb_idle;
 	struct sde_misr_values misr_vals;
 
 	struct sde_power_event *power_event;
@@ -667,6 +695,12 @@ struct sde_crtc {
 
 	struct cp_pa_mode dspp_pa_mode;
 	bool is_waiting_for_hw_fence;
+
+	bool rgb_hist_en;
+	bool do_clear_rgb_hist_buf;
+	struct sde_rgb_hist_buffer *rgb_hist_buffers[RGB_HISTOGRAM_BUFFER_SIZE];
+	struct mutex rgb_hist_buffer_lock;
+	struct sde_pa_hist_buffer pa_hist_buffers[PA_HIST_BUFFER_NUM];
 };
 
 enum sde_crtc_dirty_flags {
@@ -845,6 +879,23 @@ static inline void sde_crtc_set_needs_hw_reset(struct drm_crtc *crtc)
 
 	sde_crtc = to_sde_crtc(crtc);
 	sde_crtc->needs_hw_reset = true;
+}
+
+/**
+ * sde_crtc_set_cwb_idle - set during cwb idle fallback
+ * @crtc: Pointer to DRM crtc instance
+ */
+static inline void sde_crtc_set_cwb_idle(struct drm_crtc *crtc)
+{
+	struct sde_crtc *sde_crtc;
+
+	if (!crtc)
+		return;
+
+	sde_crtc = to_sde_crtc(crtc);
+	sde_crtc->cwb_idle = true;
+	sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP] = true;
+	sde_core_perf_crtc_update_llcc(crtc);
 }
 
 /**
@@ -1493,5 +1544,12 @@ int sde_crtc_update_lsr_perf(struct drm_crtc *crtc);
  * @num: Number of buffers to unmap
  */
 void sde_crtc_cp_unmap_ltm_buffers(struct sde_crtc *sde_crtc, int num);
+
+/**
+ * sde_crtc_cp_unmap_rgb_hist_buffers - unmap rgb hist buffers
+ * @sde_crtc: Pointer to sde_crtc context
+ */
+void sde_crtc_cp_unmap_rgb_hist_buffers(struct sde_crtc *sde_crtc);
+
 
 #endif /* _SDE_CRTC_H_ */

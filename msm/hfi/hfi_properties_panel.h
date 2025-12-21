@@ -715,6 +715,30 @@
 #define HFI_PROPERTY_PANEL_ESD_CONFIG                                0x00040030
 
 /*
+ * HFI_PROPERTY_PANEL_QSYNC_PARAMS - Specifies the QSYNC parameters of the panel.
+ *                                 This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_QSYNC_PARAMS
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_QSYNC_PARAMS \|
+				(version=0 << 20) \| (dsize=2 << 24 )
+ *   (u32_value) payload[1..2] : struct hfi_qsync_params
+ */
+#define HFI_PROPERTY_PANEL_QSYNC_PARAMS                              0x00040031
+
+/*
+ * HFI_PROPERTY_PANEL_ESYNC_CAPS - Provides esync properties for VHM panel.
+ *                                 This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_ESYNC_CAPS
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_ESYNC_CAPS |
+ *                               (version=0 << 20) | (dsize=5 << 24 )
+ *   (u32 value) payload[1..5] : struct hfi_panel_esync_caps
+ */
+#define HFI_PROPERTY_PANEL_ESYNC_CAPS				     0x00040032
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF

@@ -276,7 +276,6 @@ void _hfi_dump_buff(void __iomem *local_addr, u32 size, char *evt_type)
  * @do_panic: whether to trigger a panic after dumping
  * @name: string indicating origin of dump
  * @dump_secure: flag to indicate dumping in secure-session
- * @dump_blk_mask: mask of all the hw blk-ids that has to be dumped
  */
 static void _hfi_dump_all(bool do_panic, const char *name, bool dump_secure)
 {
@@ -485,7 +484,7 @@ void hfi_dbg_destroy(void)
 
 	hfi_kms = to_hfi_kms(kms);
 
-	if (!hfi_dbg || !hfi_kms)
+	if (!hfi_kms)
 		return;
 
 	hfi_dbg->buff_map.reg_addr.local_addr = NULL;
@@ -501,7 +500,11 @@ void hfi_dbg_destroy(void)
 	hfi_dbg->base->read_buf = NULL;
 	hfi_dbg->base->buff_sz = 0;
 
-	hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client, &hfi_dbg->buff_map.reg_addr);
+	hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client, &hfi_dbg->base_buf_addr);
 
+	kfree(hfi_dbg->base_props);
 	kvfree(hfi_dbg);
+
+	hfi_dbg = NULL;
+	hfi_dbg->base_props = NULL;
 }

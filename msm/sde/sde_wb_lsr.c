@@ -5,6 +5,8 @@
 
 #include "sde_kms.h"
 #include "sde_wb_lsr.h"
+#include "hfi/hfi_kms.h"
+#include "hfi/hfi_adapter.h"
 
 #define FLIP_VIEWS 2
 
@@ -208,8 +210,97 @@ static void _sde_wb_lsr_set_optical_axis_offset(struct sde_connector *c_conn,
 	SDE_DEBUG("optical_axis_offset: set\n");
 }
 
-int _sde_wb_lsr_set_reproj_info(struct sde_connector *c_conn,
-	struct sde_connector_state *c_state, int idx,
+static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
+	struct sde_connector_state *cstate, uint64_t val)
+{
+	struct msm_gem_address_space *aspace = NULL;
+	struct sde_kms *sde_kms;
+	struct hfi_shared_addr_map addr_map = {0};
+	struct drm_gem_object *gem_obj = NULL;
+	struct msm_gem_object *msm_obj;
+	void *cpu_va = NULL;
+	dma_addr_t phys_addr;
+	struct page **pages;
+	int npages;
+	int ret = 0;
+
+	if (!connector || !cstate || !val) {
+		SDE_ERROR("invalid args\n");
+		return;
+	}
+
+	sde_kms = sde_connector_get_kms(connector);
+	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
+
+	cstate->pose_fb = drm_framebuffer_lookup(connector->dev, NULL, val);
+	if (!cstate->pose_fb) {
+		SDE_ERROR("failed to lookup framebuffer\n");
+		return;
+	}
+
+	ret = msm_framebuffer_prepare(cstate->pose_fb, aspace);
+	if (ret) {
+		SDE_ERROR("failed to prepare framebuffer %d\n", ret);
+		goto cleanup_fb;
+	}
+
+	gem_obj = msm_framebuffer_bo(cstate->pose_fb, 0);
+	if (IS_ERR_OR_NULL(gem_obj)) {
+		SDE_ERROR("failed to get gem object from framebuffer\n");
+		ret = PTR_ERR(gem_obj);
+		goto cleanup_fb;
+	}
+
+	msm_obj = to_msm_bo(gem_obj);
+	npages = gem_obj->size >> PAGE_SHIFT;
+	SDE_DEBUG("HRP gem object size: %zu, expected pages: %d\n", gem_obj->size, npages);
+
+	pages = msm_gem_get_pages(gem_obj);
+	if (IS_ERR(pages)) {
+		SDE_ERROR("msm_gem_get_pages for HRP buffer failed with ret = %ld\n",
+			PTR_ERR(pages));
+		return;
+	}
+
+	cpu_va = msm_gem_get_vaddr(gem_obj);
+	if (IS_ERR_OR_NULL(cpu_va)) {
+		SDE_ERROR("failed to get CPU virtual address from gem object\n");
+		ret = PTR_ERR(cpu_va);
+		goto cleanup_fb;
+	}
+
+	phys_addr = msm_framebuffer_phys(cstate->pose_fb, 0);
+
+	addr_map.alloc_info.phy_addr = phys_addr;
+	addr_map.alloc_info.size_allocated = cstate->pose_fb->obj[0]->size;
+	addr_map.alloc_info.cpu_va = cpu_va;
+	addr_map.alloc_info.mapped_iova = 0;
+	addr_map.aligned_size = ALIGN(addr_map.alloc_info.size_allocated,
+			HFI_CORE_IOMMU_MAP_SIZE_ALIGNMENT);
+
+	ret = hfi_core_map_sg_table(&addr_map.alloc_info, msm_obj->sgt, addr_map.aligned_size,
+		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+	if (ret) {
+		SDE_ERROR("failed to map sg table to iova, ret:%d\n", ret);
+		return;
+	}
+
+	SDE_DEBUG("HRP buffer mapped to FW with iova = 0x%x\n", addr_map.alloc_info.mapped_iova);
+	cstate->reproj_pose_iova = addr_map.alloc_info.mapped_iova;
+	cstate->reproj_pose_size = addr_map.alloc_info.size_allocated;
+	return;
+
+cleanup_fb:
+	if (cstate->pose_fb) {
+		drm_framebuffer_put(cstate->pose_fb);
+		cstate->pose_fb = NULL;
+	}
+}
+
+int _sde_wb_lsr_set_reproj_info(
+	struct sde_connector *c_conn,
+	struct sde_connector_state *c_state,
+	int idx,
 	struct sde_drm_opaque_config *opq_state_config)
 {
 	struct drm_msm_opaque_config *opq_blob;
@@ -296,6 +387,9 @@ int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
 		_sde_wb_lsr_set_reproj_matrix(c_conn, c_state,
 			(void *)(uintptr_t)val);
 		break;
+	case CONNECTOR_PROP_LSR_WB_REPROJ_POSE_FB:
+		_sde_wb_lsr_set_reproj_pose_fb(connector, c_state, val);
+		break;
 	case CONNECTOR_PROP_OUT_FB_LIST:
 		rc = _sde_wb_lsr_set_prop_out_fb_list(connector, state,
 				(void *)(uintptr_t)val);
@@ -360,6 +454,9 @@ int sde_wb_lsr_install_properties(struct drm_connector *connector,
 
 		msm_property_install_volatile_range(&conn->property_info, "config_matrix",
 				0, 0, ~0, 0, CONNECTOR_PROP_LSR_WB_REPROJ_CONFIG_MATRIX);
+
+		msm_property_install_volatile_range(&conn->property_info, "reproj_pose_fb",
+				0, 0, ~0, 0, CONNECTOR_PROP_LSR_WB_REPROJ_POSE_FB);
 
 		msm_property_install_volatile_range(&conn->property_info,
 				"reproj_optical_axis_offset",
@@ -592,12 +689,32 @@ int sde_wb_connector_reproj_setup(struct sde_connector *conn, struct sde_wb_devi
 
 	conn->reproj_conn->type = wb_dev->wb_cfg->opmode;
 	rc = msm_reproj_disp_register_intf(conn->reproj_conn);
-	if (rc)
+	if (rc) {
 		SDE_ERROR("failed to register reproj disp\n");
+		return -ENODEV;
+	}
 
 	rc = conn->reproj_conn->get_info(conn->reproj_conn, conn->reproj_conn->type);
 	if (rc)
 		SDE_ERROR("failed to get LSR info for reproj disp\n");
 end:
 	return rc;
+}
+
+void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state)
+{
+	if (!c_state)
+		return;
+
+	c_state->reproj_sparse_grid.usr_cfg.size = 0;
+	c_state->reproj_radial_dis_grid.usr_cfg.size = 0;
+	c_state->reproj_display_gamma.usr_cfg.size = 0;
+	c_state->reproj_gcx_session_config.usr_cfg.size = 0;
+	c_state->reproj_gcx_session_config_data.usr_cfg.size = 0;
+
+	c_state->reproj_sparse_grid.remote_iova = 0;
+	c_state->reproj_radial_dis_grid.remote_iova = 0;
+	c_state->reproj_display_gamma.remote_iova = 0;
+	c_state->reproj_gcx_session_config.remote_iova = 0;
+	c_state->reproj_gcx_session_config_data.remote_iova = 0;
 }

@@ -856,6 +856,71 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+static int hfi_kms_set_hw_fence_config(struct hfi_kms *hfi_kms)
+{
+	int ret;
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_buff  hw_fence_cfg = {};
+
+	if (!hfi_kms)
+		return -EINVAL;
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_DEVICE_INFO);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	hw_fence_cfg.addr_l =
+			(u32)(uintptr_t)hfi_kms->hfi_hw_fence_data->mem_descriptor.vaddr;
+	hw_fence_cfg.size = hfi_kms->hfi_hw_fence_data->mem_descriptor.size;
+
+	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEVICE_HWFENCE_HFI_CONFIG, MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &hw_fence_cfg, sizeof(hw_fence_cfg),
+			HFI_TX_FLAGS_RESPONSE_REQUIRED | HFI_TX_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		SDE_ERROR("failed to set hfi property for hw fence config\n\n");
+		return -EINVAL;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+	if (ret) {
+		SDE_ERROR("failed to send DEVICE_HWFENCE_HFI_CONFIG\n");
+		return ret;
+	}
+
+	return ret;
+}
+
+int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde_kms *sde_kms)
+{
+	struct hfi_adapter_t *hfi_adapter;
+	int ret;
+
+	if (!priv || !priv->hfi_priv || !priv->hfi_priv->hfi_adapter
+		|| !priv->hfi_priv->hfi_adapter->session) {
+		SDE_ERROR("HFI session not initialized\n");
+		return -EINVAL;
+	}
+
+	hfi_adapter = priv->hfi_priv->hfi_adapter;
+
+	/* Store adapter hwfence data in sde kms */
+	sde_kms->hfi_kms->hfi_hw_fence_data = &hfi_adapter->session->hwfence_data;
+
+	SDE_DEBUG("sde hfi hwfence init allocated successfully\n");
+
+	ret = hfi_kms_set_hw_fence_config(sde_kms->hfi_kms);
+	if (ret)
+		SDE_ERROR("failed to send HFI HW FENCE config to FW\n");
+
+	return 0;
+}
+#endif
+
 int hfi_kms_init(struct sde_kms *sde_kms)
 {
 	struct hfi_kms *hfi_kms;

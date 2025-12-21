@@ -279,6 +279,9 @@ struct lsr_device {
 	unsigned int skip_pc_count;
 	struct lsr_hal_ops *hal_ops;
 	u32 ref_count;
+	struct msm_lsr_synx_ops *synx_ftbl;
+	struct sde_lsr_hw_fence_data hwfence_data;
+	u32 lsr_reusable_hsynx;
 };
 
 int msm_lsr_init_reg_and_irq(struct lsr_device *device,	struct msm_lsr_platform_resources *res);
@@ -288,5 +291,8 @@ irqreturn_t iris_hfi_core_work_handler(int irq, void *data);
 void lsr_iris_hfi_delete_device(void *device);
 int load_lsr_fw_impl(struct lsr_device *device);
 int unload_lsr_fw_impl(struct lsr_device *device);
+
+int lsr_iommu_map(struct iommu_domain *domain, unsigned long iova, phys_addr_t paddr, size_t size,
+		int prot);
 
 #endif  //__H_LSR_CORE_HFI_H__

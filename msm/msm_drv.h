@@ -306,6 +306,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_LSR_WB_NUM_VIEWS,
 	CONNECTOR_PROP_LSR_WB_REPROJ_SYNC_TO,
 	CONNECTOR_PROP_LSR_WB_REPROJ_CONFIG_MATRIX,
+	CONNECTOR_PROP_LSR_WB_REPROJ_POSE_FB,
 	CONNECTOR_PROP_REPROJ_OPTICAL_AXIS_OFFSET,
 	CONNECTOR_PROP_REPROJ_FUNCTIONAL_MODE,
 	CONNECTOR_PROP_REPROJ_DISTORT_RESOLUTION,
@@ -1058,6 +1059,7 @@ struct esync_params {
  * @wd_jitter:         Info for WD jitter.
  * @vpadding:        panel stacking height
  * @te_pulse_width_ns: pulse width of the TE in microseconds
+ * @overlap:           Overlap pixel within pingpong buffer
  */
 struct msm_mode_info {
 	uint32_t frame_rate;
@@ -1088,6 +1090,7 @@ struct msm_mode_info {
 	struct msm_display_wd_jitter_config wd_jitter;
 	u32 vpadding;
 	u32 te_pulse_width_us;
+	u32 overlap;
 };
 
 /**
@@ -1230,6 +1233,7 @@ struct msm_display_kickoff_params {
  * @arp_t2_in_us: Time when TE shall be asserted relative to next frame
  *		  update deadline(T1) in case of ARP
  * @privacy_v1: Privacy layer info
+ * @b_lvl: Brightness value to be set
  */
 struct msm_display_conn_params {
 	uint32_t qsync_mode;
@@ -1239,6 +1243,7 @@ struct msm_display_conn_params {
 	struct msm_freq_step_pattern *freq_pattern;
 	uint16_t arp_t2_in_us;
 	struct sde_drm_privacy_layer_v1 *privacy_v1;
+	u32 b_lvl;
 };
 
 /**
@@ -1636,8 +1641,14 @@ const struct msm_format *msm_framebuffer_format(struct drm_framebuffer *fb);
 struct drm_framebuffer *msm_framebuffer_init(struct drm_device *dev,
 		const struct drm_mode_fb_cmd2 *mode_cmd,
 		struct drm_gem_object **bos);
+#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE)
+struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
+		struct drm_file *file, const struct drm_format_info *info,
+		const struct drm_mode_fb_cmd2 *mode_cmd);
+#else
 struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
 		struct drm_file *file, const struct drm_mode_fb_cmd2 *mode_cmd);
+#endif
 int msm_framebuffer_set_cache_hint(struct drm_framebuffer *fb,
 		u32 flags, u32 rd_type, u32 wr_type);
 int msm_framebuffer_get_cache_hint(struct drm_framebuffer *fb,
@@ -1791,13 +1802,13 @@ static inline void __exit msm_hdcp_unregister(void)
 #endif /* CONFIG_HDCP_QSEECOM */
 
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
-void __init dp_display_register(void);
-void __exit dp_display_unregister(void);
+void __init dp_drv_register(void);
+void __exit dp_drv_unregister(void);
 #else
-static inline void __init dp_display_register(void)
+static inline void __init dp_drv_register(void)
 {
 }
-static inline void __exit dp_display_unregister(void)
+static inline void __exit dp_drv_unregister(void)
 {
 }
 #endif /* CONFIG_DRM_MSM_DP */

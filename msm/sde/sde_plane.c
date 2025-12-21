@@ -44,6 +44,7 @@
 #include "hfi_commands_display.h"
 #include "hfi_plane.h"
 #include "hfi_properties_display.h"
+#include "hfi_color_proc.h"
 
 #define SDE_DEBUG_PLANE(pl, fmt, ...) SDE_DEBUG("plane%d " fmt,\
 		(pl) ? (pl)->base.base.id : -1, ##__VA_ARGS__)
@@ -3297,41 +3298,6 @@ static int sde_plane_atomic_check(struct drm_plane *plane,
 }
 #endif
 
-static struct hfi_cmdbuf_t *_sde_plane_get_cmd_buf(struct drm_plane *plane)
-{
-	u32 disp_id = 0;
-	struct drm_crtc *drm_crtc = NULL;
-	struct hfi_cmdbuf_t *cmd_buf = NULL;
-	struct hfi_kms *hfi_kms = NULL;
-	struct msm_drm_private *priv = NULL;
-
-	if (plane && plane->dev && plane->dev->dev_private) {
-		priv = plane->dev->dev_private;
-		hfi_kms = ((priv && priv->kms) ?
-				to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
-	}
-	if (!hfi_kms) {
-		SDE_ERROR("invalid hfi_kms\n");
-		return NULL;
-	}
-
-	if (plane->state && plane->state->crtc) {
-		drm_crtc = plane->state->crtc;
-		if (!drm_crtc) {
-			SDE_ERROR("invalid drm_crtc\n");
-			return NULL;
-		}
-	}
-	disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
-	if (disp_id == U32_MAX) {
-		SDE_ERROR("invalid display id\n");
-		return NULL;
-	}
-
-	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
-	return cmd_buf;
-}
-
 void sde_plane_flush(struct drm_plane *plane)
 {
 	struct sde_plane *psde;
@@ -3339,10 +3305,8 @@ void sde_plane_flush(struct drm_plane *plane)
 	struct msm_drm_private *priv;
 	enum msm_disp_op disp_op;
 	struct drm_crtc *drm_crtc =  NULL;
-	u32 disp_id = U32_MAX;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	struct hfi_util_u32_prop_helper *color_props = NULL;
-	struct hfi_client_t *hfi_client = NULL;
 	int ret = 0;
 
 	if (!plane || !plane->state || !plane->state->crtc) {
@@ -3355,7 +3319,6 @@ void sde_plane_flush(struct drm_plane *plane)
 	priv = plane->dev->dev_private;
 	disp_op = sde_plane_get_disp_op(&psde->base);
 	drm_crtc = plane->state->crtc;
-	disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
 
 	/*
 	 * These updates have to be done immediately before the plane flush
@@ -3376,26 +3339,15 @@ void sde_plane_flush(struct drm_plane *plane)
 
 	if (disp_op == MSM_DISP_OP_HFI) {
 		color_props = psde->pipe_hw->prop_helper;
-		cmd_buf = _sde_plane_get_cmd_buf(plane);
-		if (!cmd_buf)
+		cmd_buf = hfi_plane_get_cmd_buf(plane);
+		if (!cmd_buf) {
 			SDE_ERROR("failed to get cmd_buf for plane:%d\n", DRMID(plane));
-		else
-			hfi_client = cmd_buf->ctx;
-
-		if (hfi_client && cmd_buf) {
-			ret = hfi_adapter_add_set_property(hfi_client,
-					cmd_buf,
-					HFI_COMMAND_DISPLAY_SET_PROPERTY,
-					disp_id,
-					HFI_PAYLOAD_TYPE_U32_ARRAY,
-					hfi_util_u32_prop_helper_get_payload_addr(color_props),
-					hfi_util_u32_prop_helper_get_size(color_props),
-					HFI_HOST_FLAGS_NONE);
+		} else {
+			ret = hfi_crtc_add_set_property(drm_crtc, cmd_buf, color_props);
 			if (ret)
 				SDE_ERROR("failed to set HFI prop\n");
 		}
-
-		hfi_util_u32_prop_helper_reset(color_props);
+		hfi_cp_crtc_reset_color_props(color_props);
 	}
 
 	/* flag h/w flush complete */
@@ -3967,7 +3919,6 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 	struct sde_kms *sde_kms = NULL;
 	enum msm_disp_op disp_op = sde_plane_get_disp_op(plane);
 	int ret;
-	u32 disp_id = 0;
 	struct drm_crtc *drm_crtc = NULL;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	struct hfi_util_u32_prop_helper *color_props = NULL;
@@ -3982,12 +3933,12 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 	}
 
 	if (IS_DISP_OP_HFI(disp_op)) {
-		cmd_buf = _sde_plane_get_cmd_buf(plane);
+		cmd_buf = hfi_plane_get_cmd_buf(plane);
 		if (!cmd_buf)
 			SDE_ERROR("failed to get cmd_buf for plane:%d\n", DRMID(plane));
 
 		if (psde->hfi_plane)
-			hfi_util_u32_prop_helper_reset(psde->hfi_plane->color_props);
+			hfi_cp_crtc_reset_color_props(psde->hfi_plane->color_props);
 	}
 
 	msm_fmt = msm_framebuffer_format(fb);
@@ -4045,9 +3996,9 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 		if (!psde->hfi_plane)
 			goto end;
 		color_props = psde->hfi_plane->color_props;
-		if (!hfi_util_u32_prop_helper_prop_count(color_props) || !cmd_buf) {
+		if (!hfi_cp_crtc_get_color_props_count(color_props) || !cmd_buf) {
 			SDE_DEBUG("prop_helper_prop_count = %d cmd_buf = %pK\n",
-				hfi_util_u32_prop_helper_prop_count(color_props), cmd_buf);
+				hfi_cp_crtc_get_color_props_count(color_props), cmd_buf);
 			goto end;
 		}
 
@@ -4058,29 +4009,17 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 				goto end;
 			}
 		}
-		disp_id = hfi_crtc_get_display_id(drm_crtc, drm_crtc->state);
-		if (disp_id == U32_MAX) {
-			SDE_ERROR("invalid display id\n");
-			goto end;
-		}
 
 		/*
 		 * Once all the color processing properties are collected, invoke adapter api
 		 * to add all these properties as a single HFI Packet
 		 */
-		ret = hfi_adapter_add_set_property(cmd_buf->ctx,
-				cmd_buf,
-				HFI_COMMAND_DISPLAY_SET_PROPERTY,
-				disp_id,
-				HFI_PAYLOAD_TYPE_U32_ARRAY,
-				hfi_util_u32_prop_helper_get_payload_addr(color_props),
-				hfi_util_u32_prop_helper_get_size(color_props),
-				HFI_HOST_FLAGS_NONE);
+		ret = hfi_crtc_add_set_property(drm_crtc, cmd_buf, color_props);
 		if (ret)
 			SDE_ERROR("failed to set HFI prop\n");
 
 		if (psde->hfi_plane)
-			hfi_util_u32_prop_helper_reset(psde->hfi_plane->color_props);
+			hfi_cp_crtc_reset_color_props(psde->hfi_plane->color_props);
 	}
 end:
 	return;
@@ -5804,6 +5743,7 @@ sde_plane_duplicate_state(struct drm_plane *plane)
 
 	pstate->dirty = 0x0;
 	pstate->pending = false;
+	pstate->repro_sspp_cfg.alpha_fb = NULL;
 
 	__drm_atomic_helper_plane_duplicate_state(plane, &pstate->base);
 

@@ -267,7 +267,7 @@ static void dp_usbpd_disconnect_cb(struct usbpd_svid_handler *hdlr)
 	DP_DEBUG("\n");
 
 	if (pd->dp_cb && pd->dp_cb->disconnect)
-		pd->dp_cb->disconnect(pd->dev);
+		pd->dp_cb->disconnect(pd->dp_cb->data);
 }
 
 static int dp_usbpd_validate_callback(u8 cmd,
@@ -387,7 +387,7 @@ static void dp_usbpd_response_cb(struct usbpd_svid_handler *hdlr, u8 cmd,
 		}
 
 		if (pd->dp_cb && pd->dp_cb->attention)
-			pd->dp_cb->attention(pd->dev);
+			pd->dp_cb->attention(pd->dp_cb->data);
 
 		break;
 	case DP_USBPD_VDM_STATUS:
@@ -417,7 +417,7 @@ static void dp_usbpd_response_cb(struct usbpd_svid_handler *hdlr, u8 cmd,
 		}
 
 		if (pd->dp_cb && pd->dp_cb->configure)
-			pd->dp_cb->configure(pd->dev);
+			pd->dp_cb->configure(pd->dp_cb->data);
 		break;
 	default:
 		DP_ERR("unknown cmd: %d\n", cmd);
@@ -448,9 +448,9 @@ static int dp_usbpd_simulate_connect(struct dp_hpd *dp_hpd, bool hpd)
 			dp_usbpd->base.hpd_high, pd->forced_disconnect,
 			pd->dp_usbpd.base.orientation);
 	if (hpd)
-		pd->dp_cb->configure(pd->dev);
+		pd->dp_cb->configure(pd->dp_cb->data);
 	else
-		pd->dp_cb->disconnect(pd->dev);
+		pd->dp_cb->disconnect(pd->dp_cb->data);
 
 error:
 	return rc;
@@ -475,7 +475,7 @@ static int dp_usbpd_simulate_attention(struct dp_hpd *dp_hpd, int vdo)
 	dp_usbpd_get_status(pd);
 
 	if (pd->dp_cb && pd->dp_cb->attention)
-		pd->dp_cb->attention(pd->dev);
+		pd->dp_cb->attention(pd->dp_cb->data);
 error:
 	return rc;
 }

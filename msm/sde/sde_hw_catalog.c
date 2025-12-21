@@ -195,6 +195,7 @@
 enum {
 	SDE_HW_VERSION,
 	SDE_HW_FENCE_VERSION,
+	SDE_LSR_HW_FENCE_VERSION,
 	SDE_HW_UBWC_VERSION,
 	SDE_HW_QULTIVATE_VERSION,
 	SDE_HW_PROP_MAX,
@@ -597,6 +598,13 @@ enum {
 	AI_SCALER_PROP_MAX,
 };
 
+enum {
+	RGB_HIST_OFF,
+	RGB_HIST_LEN,
+	RGB_HIST_VERSION,
+	RGB_HIST_PROP_MAX,
+};
+
 /*************************************************************
  * dts property definition
  *************************************************************/
@@ -649,6 +657,7 @@ struct sde_dt_props {
 static struct sde_prop_type sde_hw_prop[] = {
 	{SDE_HW_VERSION, "qcom,sde-hw-version", false, PROP_TYPE_U32},
 	{SDE_HW_FENCE_VERSION, "qcom,hw-fence-sw-version", false, PROP_TYPE_U32},
+	{SDE_LSR_HW_FENCE_VERSION, "qcom,lsr-hw-fence-sw-version", false, PROP_TYPE_U32},
 	{SDE_HW_UBWC_VERSION, "qcom,sde-ubwc-version", false, PROP_TYPE_U32},
 	{SDE_HW_QULTIVATE_VERSION, "qcom,sde-qultiv-sw-version", false, PROP_TYPE_U32},
 };
@@ -1133,6 +1142,37 @@ static struct sde_prop_type ai_scaler_prop[] = {
 	{AI_SCALER_VERSION, "qcom,sde-dspp-aiqe-aiscaler-version", false, PROP_TYPE_U32},
 	{AI_SCALER_LEN, "qcom,sde-dspp-aiqe-aiscaler-size", false, PROP_TYPE_U32},
 	{AI_SCALER, "qcom,sde-aiqe-has-feature-aiscaler", false, PROP_TYPE_BOOL},
+};
+
+static struct sde_prop_type rgb_hist_prop[] = {
+	{RGB_HIST_OFF, "qcom,sde-dspp-rgb-hist-off", false, PROP_TYPE_U32_ARRAY},
+	{RGB_HIST_LEN, "qcom,sde-dspp-rgb-hist-size", false, PROP_TYPE_U32},
+	{RGB_HIST_VERSION, "qcom,sde-dspp-rgb-hist-version", false, PROP_TYPE_U32},
+};
+
+static u32 default_repro_excluded_props_crtc[] = {
+	CRTC_PROP_DRAM_IB,
+	CRTC_PROP_DRAM_AB,
+	CRTC_PROP_LLCC_IB,
+	CRTC_PROP_LLCC_AB,
+	CRTC_PROP_CORE_IB,
+	CRTC_PROP_CORE_AB,
+	CRTC_PROP_CORE_CLK,
+};
+
+static u32 default_repro_excluded_props_plane[] = {
+	PLANE_PROP_ALPHA,
+	PLANE_PROP_FB_TRANSLATION_MODE,
+};
+
+static u32 *default_repro_excluded_props[SDE_OBJ_MAX] = {
+	[SDE_OBJ_CRTC] = default_repro_excluded_props_crtc,
+	[SDE_OBJ_PLANE] = default_repro_excluded_props_plane,
+};
+
+static u32 default_repro_excluded_props_count[SDE_OBJ_MAX] = {
+	[SDE_OBJ_CRTC] = ARRAY_SIZE(default_repro_excluded_props_crtc),
+	[SDE_OBJ_PLANE] = ARRAY_SIZE(default_repro_excluded_props_plane),
 };
 
 /*************************************************************
@@ -2586,13 +2626,15 @@ static int sde_mixer_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_c
 
 		of_property_read_string_index(np,
 			mixer_prop[MIXER_DCWB].prop_name, i, &dcwb_pref);
-		if (dcwb_pref && !strcmp(dcwb_pref, "dcwb")) {
+		if (dcwb_pref && !strcmp(dcwb_pref, "dcwb"))
 			set_bit(SDE_DISP_DCWB_PREF, &mixer->features);
-			if (mixer->base == DUMMY_SDE_BLOCK_BASE) {
-				mixer->base = 0x0;
-				mixer->len = 0;
-				mixer->dummy_mixer = true;
-			}
+
+		if ((mixer->features & BIT(SDE_MIXER_IS_VIRTUAL) ||
+				mixer->features & BIT(SDE_DISP_DCWB_PREF)) &&
+				(mixer->base == DUMMY_SDE_BLOCK_BASE)) {
+			mixer->base = 0x0;
+			mixer->len = 0;
+			mixer->dummy_mixer = true;
 		}
 
 		mixer->pingpong = pp_count > 0 ? pp_idx + PINGPONG_0
@@ -3337,6 +3379,12 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 				sde_cfg->abc_count++;
 				sblk->aiqe.abc_supported = true;
 			}
+			// udc is not supported for aiqe v2.1.0
+			if (sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x1))
+				sde_cfg->is_udc_supported = false;
+			else
+				sde_cfg->is_udc_supported = true;
+
 			if (PROP_VALUE_ACCESS(props->values, SSRC, 0))
 				sblk->aiqe.ssrc_supported = true;
 			if (PROP_VALUE_ACCESS(props->values, COPR, 0))
@@ -3438,6 +3486,46 @@ static int _sde_ai_scaler_parse_dt(struct device_node *np,
 			set_bit(SDE_DSPP_AI_SCALER, &dspp->features);
 			sde_cfg->ai_scaler_count = sde_cfg->ai_scaler_count + 1;
 		}
+	}
+
+	sde_put_dt_props(props);
+	return 0;
+}
+
+static int _sde_dspp_rgb_hist_parse_dt(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	int off_count, i;
+	struct sde_dt_props *props;
+	struct sde_dspp_cfg *dspp;
+	struct sde_dspp_sub_blks *sblk;
+
+	props = sde_get_dt_props(np, RGB_HIST_PROP_MAX, rgb_hist_prop,
+			ARRAY_SIZE(rgb_hist_prop), &off_count);
+	if (IS_ERR(props))
+		return PTR_ERR(props);
+
+	sde_cfg->rgb_hist_count = off_count;
+	if (off_count > sde_cfg->dspp_count) {
+		SDE_ERROR("limiting %d RGB hist blocks to %d DSPP instances\n",
+				off_count, sde_cfg->dspp_count);
+		sde_cfg->rgb_hist_count = sde_cfg->dspp_count;
+	}
+
+	for (i = 0; i < sde_cfg->rgb_hist_count; i++) {
+		dspp = &sde_cfg->dspp[i];
+		sblk = sde_cfg->dspp[i].sblk;
+
+		sblk->rgb_hist.id = SDE_DSPP_RGB_HIST;
+		if (props->exists[RGB_HIST_OFF] && i < off_count) {
+			sblk->rgb_hist.base =
+				PROP_VALUE_ACCESS(props->values, RGB_HIST_OFF, i);
+			sblk->rgb_hist.len =
+				PROP_VALUE_ACCESS(props->values, RGB_HIST_LEN, 0);
+			sblk->rgb_hist.version =
+				PROP_VALUE_ACCESS(props->values, RGB_HIST_VERSION, 0);
+		}
+		set_bit(SDE_DSPP_RGB_HIST, &dspp->features);
 	}
 
 	sde_put_dt_props(props);
@@ -3599,6 +3687,11 @@ static int sde_dspp_parse_dt(struct device_node *np,
 	rc = _sde_ai_scaler_parse_dt(np, sde_cfg);
 	if (rc)
 		goto end;
+
+	rc = _sde_dspp_rgb_hist_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
 end:
 	return rc;
 }
@@ -6272,6 +6365,27 @@ static void _sde_get_hw_caps_for_x1e80100(struct sde_mdss_cfg *sde_cfg, uint32_t
 	sde_cfg->has_line_insertion = true;
 }
 
+static void _sde_get_hw_caps_for_malabar(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	sde_cfg->perf.min_prefill_lines = 40;
+	sde_cfg->has_reduced_ob_max = true;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	sde_cfg->mdss_hw_block_size = 0x158;
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+}
+
+
 static void _sde_get_hw_caps_for_pineapple(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
@@ -6791,6 +6905,47 @@ static void _sde_get_hw_caps_for_x1p42100(struct sde_mdss_cfg *sde_cfg, uint32_t
 	sde_cfg->has_line_insertion = true;
 }
 
+static void _sde_get_hw_caps_for_chora(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_CROP, sde_cfg->features);
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
+	set_bit(SDE_FEATURE_HDR_PLUS, sde_cfg->features);
+	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+	set_bit(SDE_MDP_DHDR_MEMPOOL_4K, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
+	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
+	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+	set_bit(SDE_FEATURE_CTL_DONE, sde_cfg->features);
+	set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+	sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
+	sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
+	/* if pingpong block supports it this should not be set on top block */
+	sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_TOP;
+	sde_cfg->perf.min_prefill_lines = 40;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->qos_target_time_ns = 18600;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+	sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_4;
+	sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
+	sde_cfg->mdss_hw_block_size = 0x158;
+	sde_cfg->has_line_insertion = true;
+	sde_cfg->virtual_mixers_mask = 0x2;
+}
+
 static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_170, _sde_get_hw_caps_for_msm8996},
 	{SDE_HW_VER_300, _sde_get_hw_caps_for_msm8998},
@@ -6815,12 +6970,14 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_810, _sde_get_hw_caps_for_waipio},
 	{SDE_HW_VER_820, _sde_get_hw_caps_for_diwali},
 	{SDE_HW_VER_850, _sde_get_hw_caps_for_cape},
+	{SDE_HW_VER_870, _sde_get_hw_caps_for_malabar},
 	{SDE_HW_VER_880, _sde_get_hw_caps_for_vienna},
 	{SDE_HW_VER_900, _sde_get_hw_caps_for_kalama},
 	{SDE_HW_VER_920, _sde_get_hw_caps_for_x1e80100},
 	{SDE_HW_VER_970, _sde_get_hw_caps_for_x1p42100},
 	{SDE_HW_VER_980, _sde_get_hw_caps_for_seraph},
 	{SDE_HW_VER_A00, _sde_get_hw_caps_for_pineapple},
+	{SDE_HW_VER_A30, _sde_get_hw_caps_for_chora},
 	{SDE_HW_VER_B00, _sde_get_hw_caps_for_niobe},
 	{SDE_HW_VER_C00, _sde_get_hw_caps_for_sun},
 	{SDE_HW_VER_C30, _sde_get_hw_caps_for_tuna},
@@ -6879,6 +7036,11 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 		rc = sde_hardware_format_caps(sde_cfg, hw_rev);
 
 	_sde_hw_setup_uidle(&sde_cfg->uidle_cfg);
+
+	if (IS_SERAPH_TARGET(hw_rev)) {
+		sde_cfg->repro_excluded_props = default_repro_excluded_props;
+		sde_cfg->repro_excluded_props_count = default_repro_excluded_props_count;
+	}
 
 	return rc;
 }
@@ -7095,6 +7257,11 @@ static int sde_hw_ver_parse_dt(struct drm_device *dev, struct device_node *np,
 		cfg->hw_fence_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_FENCE_VERSION, 0);
 	else
 		cfg->hw_fence_rev = 0; /* disable hw-fences */
+
+	if (prop_exists[SDE_LSR_HW_FENCE_VERSION])
+		cfg->lsr_hw_fence_rev = PROP_VALUE_ACCESS(prop_value, SDE_LSR_HW_FENCE_VERSION, 0);
+	else
+		cfg->lsr_hw_fence_rev = 0; /* disable lsr-hw-fences */
 
 	if (prop_exists[SDE_HW_UBWC_VERSION])
 		cfg->ubwc_rev = PROP_VALUE_ACCESS(prop_value, SDE_HW_UBWC_VERSION, 0);

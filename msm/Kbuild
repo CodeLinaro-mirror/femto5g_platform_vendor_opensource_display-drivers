@@ -210,14 +210,17 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 				dp/dp_mst_sim_helper.o \
 				dp/dp_gpio_hpd.o \
 				dp/dp_lphw_hpd.o \
-				dp/dp_display.o \
+				dp/dp_drv.o \
 				dp/dp_drm.o \
 				dp/dp_pll.o \
 				dp/dp_pll_5nm.o \
 				dp/dp_pll_4nm.o \
 				dp/dp_pll_3nm.o \
 				dp/edp_pll_4nm.o \
-				dp/edp_pll_5nm.o
+				dp/edp_pll_5nm.o \
+				dp/dp_mgr.o \
+				dp/dp_aux_switch.o \
+				dp/dp_debug_client.o
 
 msm_drm-$(CONFIG_DRM_MSM_DP_MST) += dp/dp_mst_drm.o
 

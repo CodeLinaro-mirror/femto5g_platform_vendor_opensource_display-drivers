@@ -14,6 +14,8 @@
 
 enum hfi_crtc_event {
 	HFI_CRTC_EVENT_LTM,
+	HFI_CRTC_EVENT_RGB_HIST,
+	HFI_CRTC_EVENT_PA_HIST,
 	HFI_CRTC_EVENT_MAX,
 };
 
@@ -79,6 +81,24 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc);
  * Return: display ID
  */
 u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state);
+
+/**
+ * hfi_crtc_add_set_property - Add display properties to HFI command buffer
+ * @crtc: Pointer to the DRM CRTC structure
+ * @cmd_buf: Pointer to the HFI command buffer structure
+ * @color_props: Pointer to the helper structure containing color properties
+ * Return: 0 on success, or a negative error code on failure
+ */
+int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_buf,
+		struct hfi_util_u32_prop_helper *color_props);
+
+/**
+ * hfi_crtc_get_cmd_buf - Get the HFI command buffer for a given CRTC
+ * @crtc: Pointer to the DRM CRTC structure
+ * Return: Pointer to the HFI command buffer structure, or NULL on failure
+ */
+struct hfi_cmdbuf_t *hfi_crtc_get_cmd_buf(struct drm_crtc *crtc);
+
 #else
 int hfi_crtc_init(struct sde_crtc *sde_crtc)
 {
@@ -92,6 +112,17 @@ u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_s
 
 void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask)
 {
+}
+
+int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_buf,
+		struct hfi_util_u32_prop_helper *color_props)
+{
+	return 0;
+}
+
+struct hfi_cmdbuf_t *hfi_crtc_get_cmd_buf(struct drm_crtc *crtc)
+{
+	return NULL;
 }
 
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)

@@ -4,7 +4,7 @@ load(":target_variants.bzl", "get_all_variants")
 
 def define_canoe():
     for (t, v) in get_all_variants():
-        if t == "canoe":
+        if t == "canoe" or t == "alor-le":
             define_target_variant_modules(
                 target = t,
                 variant = v,

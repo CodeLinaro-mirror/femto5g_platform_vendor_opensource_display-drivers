@@ -1,16 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
+
 #define pr_fmt(fmt)	"[drm-dp] %s: " fmt, __func__
 
 #include <linux/interrupt.h>
@@ -56,9 +49,9 @@ static int dp_bridge_hpd_connect(struct dp_bridge_hpd_private *bridge_hpd,
 	}
 
 	if (hpd)
-		rc = bridge_hpd->cb->configure(bridge_hpd->dev);
+		rc = bridge_hpd->cb->configure(bridge_hpd->cb->data);
 	else
-		rc = bridge_hpd->cb->disconnect(bridge_hpd->dev);
+		rc = bridge_hpd->cb->disconnect(bridge_hpd->cb->data);
 
 error:
 	return rc;
@@ -77,7 +70,7 @@ static int dp_bridge_hpd_attention(struct dp_bridge_hpd_private *bridge_hpd)
 	bridge_hpd->base.hpd_irq = true;
 
 	if (bridge_hpd->cb && bridge_hpd->cb->attention)
-		rc = bridge_hpd->cb->attention(bridge_hpd->dev);
+		rc = bridge_hpd->cb->attention(bridge_hpd->cb->data);
 
 error:
 	return rc;

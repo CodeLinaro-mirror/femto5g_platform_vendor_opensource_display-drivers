@@ -19,5 +19,7 @@ def define_monaco():
 		    "CONFIG_DRM_MSM_REGISTER_LOGGING",
 		    "CONFIG_QCOM_MDSS_PLL",
 		    "CONFIG_THERMAL_OF",
+		    "CONFIG_MDSS_HFI_ADAPTER",
+		    "CONFIG_MDSS_HFI",
 	    ],
 	)

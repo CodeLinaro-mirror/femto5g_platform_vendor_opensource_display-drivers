@@ -323,8 +323,10 @@ static u32 sde_hw_sspp_override_unpack(enum sde_color_component_mask color_mask,
 {
 	u32 shift = 0, val = 0, color_mask_val = 0, result = 0;
 
-	// if color_mask & SDE_COLOR_MASK_ALPHA but color_mask != SDE_COLOR_MASK_ALPHA
-	// then invalid mask (could be sending alpha and another color to same channel)
+	/**
+	 * if color_mask & SDE_COLOR_MASK_ALPHA but color_mask != SDE_COLOR_MASK_ALPHA
+	 * then invalid mask (could be sending alpha and another color to same channel)
+	 */
 	if (color_mask > SDE_COLOR_MASK_ALPHA)
 		return unpack;
 
@@ -332,9 +334,11 @@ static u32 sde_hw_sspp_override_unpack(enum sde_color_component_mask color_mask,
 		val = (unpack & 0xff);
 		color_mask_val = BIT(val);
 
-		// if val == C3_ALPHA then color_mask_val = SDE_COLOR_MASK_ALPHA so if
-		// color_mask == SDE_COLOR_MASK_ALPHA then we replace C3_ALPHA with C0_G_Y
-		// in result and rest is replaced with C3_ALPHA
+		/**
+		 * if val == C3_ALPHA then color_mask_val = SDE_COLOR_MASK_ALPHA so if
+		 * color_mask == SDE_COLOR_MASK_ALPHA then we replace C3_ALPHA with C2_R_Cr
+		 * in result and rest is replaced with C3_ALPHA
+		 */
 		if (val == C3_ALPHA)
 			val = C2_R_Cr;
 

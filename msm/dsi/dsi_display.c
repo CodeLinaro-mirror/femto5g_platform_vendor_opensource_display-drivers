@@ -241,6 +241,7 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 		void *display, u32 bl_lvl)
 {
 	struct dsi_display *dsi_display = display;
+	struct sde_connector *sde_conn;
 	struct dsi_panel *panel;
 	u32 bl_scale, bl_scale_sv;
 	u64 bl_temp;
@@ -250,8 +251,10 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 		return -EINVAL;
 
 	panel = dsi_display->panel;
+	sde_conn = to_sde_connector(connector);
 
 	mutex_lock(&panel->panel_lock);
+
 	if (!dsi_panel_initialized(panel)) {
 		rc = -EINVAL;
 		goto error;
@@ -279,6 +282,13 @@ int dsi_display_set_backlight(struct drm_connector *connector,
 
 	if (bl_temp && (bl_temp < panel->bl_config.bl_min_level))
 		bl_temp = panel->bl_config.bl_min_level;
+
+	// if bl_dirty_change, will sent backlight dcs with vhm update
+	if (sde_conn->bl_dirty_change) {
+		rc = 0;
+		sde_conn->bl_dirty_value = bl_temp;
+		goto error;
+	}
 
 	DSI_DEBUG("bl_scale = %u, bl_scale_sv = %u, bl_lvl = %u\n",
 		bl_scale, bl_scale_sv, (u32)bl_temp);
@@ -7887,7 +7897,7 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 	int h_active, int v_active)
 {
 	int i, rc = 0;
-	u32 count, refresh_rate = 0;
+	u32 count, refresh_rate = 0, overlap = 0;
 	struct dsi_dfps_capabilities dfps_caps;
 	struct dsi_display *display = (struct dsi_display *)dsi_display;
 	struct dsi_host_common_cfg *host;
@@ -7913,10 +7923,16 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 	}
 
 	host = &display->panel->host_config;
-	if (host->split_link.enabled)
+	overlap = display->modes->timing.overlap;
+	if (host->split_link.enabled) {
+		if (overlap > 0)
+			h_active += overlap;
 		h_active *= host->split_link.num_sublinks;
-	else
+	} else {
+		if (overlap > 0)
+			h_active += dsi_get_overlap_total(display->modes);
 		h_active *= display->ctrl_count;
+	}
 
 	for (i = 0; i < count; i++) {
 		struct dsi_display_mode *m = &display->modes[i];

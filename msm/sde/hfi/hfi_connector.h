@@ -11,8 +11,30 @@
 #include "hfi_utils.h"
 #include "sde_wb_lsr.h"
 
+/**
+ * enum hfi_buff_prop - type of the hfi_buff property
+ * @HFI_BUFF_CONN_DNSC:  hfi_buff to pack DNSC Blur configuration
+ * @HFI_BUFF_CONN_MAX:   max value
+ */
+enum hfi_buff_prop {
+	HFI_BUFF_CONN_DNSC,
+	HFI_BUFF_CONN_MAX,
+};
+
 #define HFI_CONNECTOR_MAX_PROPS 128
 #define HFI_CONNECTOR_BASE_PROP_MAX_SIZE 1024
+
+#define HFI_BUFF_PROP_TO_STRING(x)       #x
+
+static inline char *hfi_connector_buff_prop_to_string(u32 buff_prop)
+{
+	switch (buff_prop) {
+	case HFI_BUFF_CONN_DNSC:
+		return HFI_BUFF_PROP_TO_STRING(HFI_BUFF_CONN_DNSC);
+	default:
+		return "unknown";
+	}
+}
 
 /**
  * struct hfi_connector - local sde connector hfi structure
@@ -24,6 +46,7 @@
  * @lsr_blob_props: prop helper object for lsr blob property collection
  * @lsr_out_buff_props: prop helper object for lsr out buffer property collection
  * @disable_listener: listener api for display disable response
+ * @hfi_buff_base_props: hfi_buff map array for passing HFI properties
  */
 struct hfi_connector {
 	struct sde_connector *sde_base;
@@ -34,6 +57,7 @@ struct hfi_connector {
 	struct hfi_util_u32_prop_helper *lsr_blob_props;
 	struct hfi_util_u32_prop_helper *lsr_out_buffer_props;
 	struct hfi_prop_listener disable_listener;
+	struct hfi_shared_addr_map hfi_buff_base_props[HFI_BUFF_CONN_MAX];
 };
 
 /**

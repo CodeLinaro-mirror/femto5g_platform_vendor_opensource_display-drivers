@@ -150,12 +150,24 @@ enum hfi_panel_fps_traffic_mode {
  *                             for 8 bit.
  * HFI_PANEL_CMD_MODE_10_BIT : Indicates the panel works in cmd mode
  *                             for 10 bit.
+ * HFI_PANEL_VIDEO_MODE_PSR_8_BIT : Indicates the panel works in video psr mode
+ *                              for 8 bit.
+ * HFI_PANEL_VIDEO_MODE_PSR_10_BIT : Indicates the panel works in video psr mode
+ *                              for 10 bit.
+ * HFI_PANEL_VIDEO_LTPO_8_BIT : Indicates the panel works in ltpo mode
+ *                              for 8 bit.
+ * HFI_PANEL_VIDEO_LTPO_10_BIT : Indicates the panel works in ltpo mode
+ *                              for 10 bit.
  */
 enum hfi_panel_modes {
 	HFI_PANEL_VIDEO_MODE_8_BIT      = 0x1,
 	HFI_PANEL_VIDEO_MODE_10_BIT     = 0x2,
 	HFI_PANEL_CMD_MODE_8_BIT        = 0x4,
 	HFI_PANEL_CMD_MODE_10_BIT       = 0x8,
+	HFI_PANEL_VIDEO_MODE_PSR_8_BIT	= 0x10,
+	HFI_PANEL_VIDEO_MODE_PSR_10_BIT	= 0x20,
+	HFI_PANEL_VIDEO_LTPO_8_BIT	= 0x40,
+	HFI_PANEL_VIDEO_LTPO_10_BIT	= 0x80
 };
 
 /*
@@ -452,4 +464,30 @@ struct hfi_panel_esd_config {
 	u32 status_values_msb;
 };
 
+/**
+ * struct hfi_qsync_params - Qsync parameters
+ * @avr_step_fps:	AVR step fps
+ * @qsync_min_fps:	QSYNC min fps
+ */
+struct hfi_qsync_params {
+	u32 avr_step_fps;
+	u32 qsync_min_fps;
+};
+
+/**
+ * @struct hfi_panel_esync_caps - Panel esync values
+ *
+ * @esync_support:		esync is supported
+ * @esync_milli_skew:		esync skew, in 1/1000ths of a line
+ * @hsync_milli_pulse_width:	esync's hsync pulse width, in 1/1000ths of a line
+ * @vemsync_milli_pulse_width:	esync's EM pulse width, in 1/1000ths of a line
+ * @emsync_fps:			esync's EM pulse rate in Hz
+ */
+struct hfi_panel_esync_caps {
+	u32 esync_support;
+	u32 esync_milli_skew;
+	u32 hsync_milli_pulse_width;
+	u32 emsync_milli_pulse_width;
+	u32 emsync_fps;
+};
 #endif // __H_HFI_DEFS_PANEL_H__

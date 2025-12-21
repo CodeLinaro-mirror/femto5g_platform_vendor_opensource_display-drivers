@@ -49,7 +49,7 @@ static void dp_lphw_hpd_attention(struct work_struct *work)
 	lphw_hpd->base.hpd_irq = true;
 
 	if (lphw_hpd->cb && lphw_hpd->cb->attention)
-		lphw_hpd->cb->attention(lphw_hpd->dev);
+		lphw_hpd->cb->attention(lphw_hpd->cb->data);
 }
 
 static void dp_lphw_hpd_connect(struct work_struct *work)
@@ -67,7 +67,7 @@ static void dp_lphw_hpd_connect(struct work_struct *work)
 	lphw_hpd->base.hpd_irq = false;
 
 	if (lphw_hpd->cb && lphw_hpd->cb->configure)
-		lphw_hpd->cb->configure(lphw_hpd->dev);
+		lphw_hpd->cb->configure(lphw_hpd->cb->data);
 }
 
 static void dp_lphw_hpd_disconnect(struct work_struct *work)
@@ -85,7 +85,7 @@ static void dp_lphw_hpd_disconnect(struct work_struct *work)
 	lphw_hpd->base.hpd_irq = false;
 
 	if (lphw_hpd->cb && lphw_hpd->cb->disconnect)
-		lphw_hpd->cb->disconnect(lphw_hpd->dev);
+		lphw_hpd->cb->disconnect(lphw_hpd->cb->data);
 }
 
 static irqreturn_t dp_tlmm_isr(int unused, void *data)
@@ -219,9 +219,9 @@ static int dp_lphw_hpd_simulate_connect(struct dp_hpd *dp_hpd, bool hpd)
 	}
 
 	if (hpd)
-		lphw_hpd->cb->configure(lphw_hpd->dev);
+		lphw_hpd->cb->configure(lphw_hpd->cb->data);
 	else
-		lphw_hpd->cb->disconnect(lphw_hpd->dev);
+		lphw_hpd->cb->disconnect(lphw_hpd->cb->data);
 
 	return 0;
 }
@@ -240,7 +240,7 @@ static int dp_lphw_hpd_simulate_attention(struct dp_hpd *dp_hpd, int vdo)
 	lphw_hpd->base.hpd_irq = true;
 
 	if (lphw_hpd->cb && lphw_hpd->cb->attention)
-		lphw_hpd->cb->attention(lphw_hpd->dev);
+		lphw_hpd->cb->attention(lphw_hpd->cb->data);
 
 	return 0;
 }
