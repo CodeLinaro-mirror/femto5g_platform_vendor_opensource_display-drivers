@@ -1020,14 +1020,20 @@ skip:
 		SDE_EVT32(DRMID(phys_enc->parent), new_cnt, ret, SDE_EVTLOG_FUNC_CASE2);
 	}
 
-	if (notify && timeout && atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0)
+	if (notify && (timeout || is_skip) && atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0)
 			&& phys_enc->parent_ops.handle_frame_done) {
 		phys_enc->parent_ops.handle_frame_done(phys_enc->parent, phys_enc, event);
 
-		/* notify only on actual timeout cases */
-		if ((ret == -ETIMEDOUT) && sde_encoder_recovery_events_enabled(phys_enc->parent))
-			sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
-				sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
+		if (ret == -ETIMEDOUT) {
+			SDE_INFO("enc%d Wait for vblank timeout %dms\n", DRMID(phys_enc->parent),
+								wait_info.timeout_ms);
+			/* notify only on actual timeout cases */
+			if (sde_encoder_recovery_events_enabled(phys_enc->parent)) {
+				SDE_INFO("enc%d notify hw recovery.\n", DRMID(phys_enc->parent));
+				sde_connector_event_notify(conn, DRM_EVENT_SDE_HW_RECOVERY,
+					sizeof(uint8_t), SDE_RECOVERY_HARD_RESET);
+			}
+		}
 	}
 
 	SDE_EVT32(DRMID(phys_enc->parent), event, notify, timeout, ret,
