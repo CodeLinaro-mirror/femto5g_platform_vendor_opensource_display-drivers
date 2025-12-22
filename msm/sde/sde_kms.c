@@ -6227,7 +6227,8 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto power_error;
 	}
 
-	if (IS_DISP_OP_HFI(priv->disp_op)) {
+	sde_kms->hfi_tvm_start = false;
+	if (IS_DISP_OP_HFI(priv->disp_op) && !sde_in_trusted_vm(sde_kms)) {
 		rc = sde_kms_hfi_boot_init(sde_kms);
 		if (rc) {
 			SDE_ERROR("hfi boot init failed: %d\n", rc);
@@ -6520,7 +6521,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		goto error;
 	}
 
-	if (IS_DISP_OP_HFI(priv->disp_op)) {
+	if (IS_DISP_OP_HFI(priv->disp_op) && !sde_in_trusted_vm(sde_kms)) {
 		rc = sde_kms_hfi_post_boot(sde_kms);
 		if (rc) {
 			SDE_ERROR("hfi post boot failed: %d\n", rc);
@@ -6609,11 +6610,29 @@ int sde_kms_vm_trusted_resource_init(struct sde_kms *sde_kms,
 		return -EINVAL;
 	}
 
+	dev = sde_kms->dev;
+	priv = dev->dev_private;
+
+	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)) &&
+		!sde_kms->hfi_tvm_start) {
+		ret = sde_kms_hfi_boot_init(sde_kms);
+		if (ret) {
+			SDE_ERROR("hfi boot init failed: %d\n", ret);
+			return ret;
+		}
+
+		ret = sde_kms_hfi_post_boot(sde_kms);
+		if (ret) {
+			SDE_ERROR("hfi post boot failed: %d\n", ret);
+			return ret;
+		}
+
+		sde_kms->hfi_tvm_start = true;
+	}
+
 	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)))
 		return 0;
 
-	dev = sde_kms->dev;
-	priv = dev->dev_private;
 	sde_kms->splash_data.type = SDE_VM_HANDOFF;
 	sde_kms->splash_data.num_splash_displays = sde_kms->dsi_display_count;
 
