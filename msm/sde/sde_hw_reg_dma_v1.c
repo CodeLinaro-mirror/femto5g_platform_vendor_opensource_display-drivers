@@ -1647,9 +1647,13 @@ free_aspace_cb:
 	msm_gem_address_space_unregister_cb(aspace,
 			sde_reg_dma_aspace_cb_locked, dma_buf);
 free_gem:
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_lock(&reg_dma[dpu_idx]->drm_dev->struct_mutex);
+#endif
 	msm_gem_free_object(dma_buf->buf);
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&reg_dma[dpu_idx]->drm_dev->struct_mutex);
+#endif
 fail:
 	kfree(dma_buf);
 	return ERR_PTR(rc);
@@ -1671,9 +1675,13 @@ static int dealloc_reg_dma_v1(struct sde_reg_dma_buffer *dma_buf, u32 dpu_idx)
 		msm_gem_put_iova(dma_buf->buf, 0);
 		msm_gem_address_space_unregister_cb(dma_buf->aspace,
 				sde_reg_dma_aspace_cb_locked, dma_buf);
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 		mutex_lock(&reg_dma[dpu_idx]->drm_dev->struct_mutex);
+#endif
 		msm_gem_free_object(dma_buf->buf);
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 		mutex_unlock(&reg_dma[dpu_idx]->drm_dev->struct_mutex);
+#endif
 	}
 
 	kfree(dma_buf);

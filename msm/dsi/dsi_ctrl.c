@@ -2090,10 +2090,13 @@ static int dsi_ctrl_buffer_deinit(struct dsi_ctrl *dsi_ctrl)
 		}
 
 		msm_gem_put_iova(dsi_ctrl->tx_cmd_buf, aspace);
-
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 		mutex_lock(&dsi_ctrl->drm_dev->struct_mutex);
+#endif
 		msm_gem_free_object(dsi_ctrl->tx_cmd_buf);
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 		mutex_unlock(&dsi_ctrl->drm_dev->struct_mutex);
+#endif
 		dsi_ctrl->tx_cmd_buf = NULL;
 	}
 
