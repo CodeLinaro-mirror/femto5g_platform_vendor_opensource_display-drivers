@@ -92,6 +92,8 @@ struct display_hw_assigment {
 	bool dspp_owner;
 	uint32_t dspp_mask;
 
+	uint32_t rc_mask;
+
 	bool ds_owner;
 	uint32_t ds_mask;
 
