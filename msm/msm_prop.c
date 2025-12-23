@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -60,8 +61,12 @@ void msm_property_destroy(struct msm_property_info *info)
 		return;
 
 	/* free state cache */
-	while (info->state_cache_size > 0)
+	mutex_lock(&info->property_lock);
+	while (info->state_cache_size > 0) {
 		kfree(info->state_cache[--(info->state_cache_size)]);
+		info->state_cache[info->state_cache_size] = NULL;
+	}
+	mutex_unlock(&info->property_lock);
 
 	mutex_destroy(&info->property_lock);
 }
@@ -448,11 +453,11 @@ void *msm_property_alloc_state(struct msm_property_info *info)
 	}
 
 	mutex_lock(&info->property_lock);
-	if (info->state_cache_size)
+	if (info->state_cache_size > 0)
 		state = info->state_cache[--(info->state_cache_size)];
 	mutex_unlock(&info->property_lock);
 
-	if (!state && info->state_size)
+	if (!state && info->state_size > 0)
 		state = kzalloc(info->state_size, GFP_KERNEL);
 
 	if (!state)
@@ -468,14 +473,28 @@ void *msm_property_alloc_state(struct msm_property_info *info)
  */
 static void _msm_property_free_state(struct msm_property_info *info, void *st)
 {
+	uint32_t i, found = 0;
 	if (!info || !st)
 		return;
 
 	mutex_lock(&info->property_lock);
+	for (i = 0; i < info->state_cache_size; i++) {
+		if (info->state_cache[i] == st) {
+			found = 1;
+			break;
+		}
+	}
+
+	if (found) {
+		goto exit;
+	}
+
 	if (info->state_cache_size < MSM_PROP_STATE_CACHE_SIZE)
 		info->state_cache[(info->state_cache_size)++] = st;
 	else
 		kfree(st);
+
+exit:
 	mutex_unlock(&info->property_lock);
 }
 
