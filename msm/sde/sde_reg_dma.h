@@ -479,6 +479,10 @@ void sde_reg_write_reg_dma_multiple(struct sde_hw_blk_reg_map *c,
 
 void sde_reg_modify_reg_dma(struct sde_hw_blk_reg_map *c,
 		u32 reg_off, u32 mask, u32 val, const char *name);
+
+uint32_t read_reg_vatran(struct sde_hw_blk_reg_map *hw, uint32_t reg_off, const char *name);
+
+#define SDE_REG_READ_VATRAN(c, off) read_reg_vatran(c, off, #off)
 #endif
 
 
