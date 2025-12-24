@@ -739,6 +739,10 @@ static bool _sde_rm_get_hw_locked(struct sde_rm *rm, struct sde_rm_hw_iter *i)
 #if IS_ENABLED(CONFIG_DRM_SDE_SHD)
 	if (list_forward) {
 		list_for_each_entry_continue(i->blk, blk_list, list) {
+			if (i->blk->type >= SDE_HW_BLK_MAX) {
+				SDE_ERROR("found invalid HW block type %d\n", i->blk->type);
+				return false;
+			}
 
 			if (i->blk->type != i->type) {
 				SDE_ERROR("found incorrect block type %d on %d list\n",
@@ -755,6 +759,10 @@ static bool _sde_rm_get_hw_locked(struct sde_rm *rm, struct sde_rm_hw_iter *i)
 		}
 	} else {
 		list_for_each_entry_continue_reverse(i->blk, blk_list, list) {
+			if (i->blk->type >= SDE_HW_BLK_MAX) {
+				SDE_ERROR("found invalid HW block type %d\n", i->blk->type);
+				return false;
+			}
 
 			if (i->blk->type != i->type) {
 				SDE_ERROR("found incorrect block type %d on %d list\n",
@@ -774,6 +782,10 @@ static bool _sde_rm_get_hw_locked(struct sde_rm *rm, struct sde_rm_hw_iter *i)
 #else
 	list_for_each_entry_continue(i->blk, blk_list, list) {
 		struct sde_rm_rsvp *rsvp = i->blk->rsvp;
+		if (i->blk->type >= SDE_HW_BLK_MAX) {
+			SDE_ERROR("found invalid HW block type %d\n", i->blk->type);
+			return false;
+		}
 
 		if (i->blk->type != i->type) {
 			SDE_ERROR("found incorrect block type %d on %d list\n",
