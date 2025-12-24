@@ -10,7 +10,6 @@
 #include "hfi_kms.h"
 #include "hfi_encoder.h"
 
-#define DSI_DISPLAY 0
 #define BLOB_PROPERTY_HEADER_SIZE 2
 #define MATRICES_PER_VIEW 2
 
@@ -164,7 +163,7 @@ int _hfi_wb_lsr_repro_custom_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_
 	struct sde_drm_reproj_matrix_list *reproj_matrix_list;
 	struct sde_drm_lsr_point *optical_axis_offset;
 	enum sde_drm_wb_functional_mode func_mode;
-	u32 payload_size = 0, payload_lrgb[4], payload[3];
+	u32 payload_size = 0, payload_lrgb[4], payload[3], drm_conn_id;
 	int ret = 0, i, val = 0, view_index;
 
 	if (!wb_dev || !cstate || !prop_collector)
@@ -273,8 +272,21 @@ int _hfi_wb_lsr_repro_custom_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_
 			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
 		break;
 	case HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_SYNC_TO:
-		/* TODO, will have to get property from CONNECTOR_PROP_LSR_WB_REPROJ_SYNC_TO */
-		val = DSI_DISPLAY;
+		drm_conn_id = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_LSR_WB_REPROJ_SYNC_TO);
+		struct drm_connector_list_iter conn_iter;
+		struct drm_connector *drm_conn;
+
+		drm_connector_list_iter_begin(cstate->base.connector->dev, &conn_iter);
+		drm_for_each_connector_iter(drm_conn, &conn_iter) {
+			if (drm_conn->base.id == drm_conn_id) {
+				val = sde_conn_get_display_obj_id(drm_conn);
+				SDE_DEBUG("Reprojection is synced to display_id:%d\n", val);
+				break;
+			}
+		}
+		drm_connector_list_iter_end(&conn_iter);
+		SDE_EVT32(val);
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			hfi_prop, HFI_VAL_U32, &val, sizeof(u32));
 		break;
@@ -400,9 +412,7 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_sparse_grid;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
-		if (!buff->size)
-			break;
-		else if (!buff->addr_l) {
+		if (!buff->addr_l) {
 			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
 			kfree(payload);
 			return -EINVAL;
@@ -415,9 +425,7 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_radial_dis_grid;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
-		if (!buff->size)
-			break;
-		else if (!buff->addr_l) {
+		if (!buff->addr_l) {
 			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
 			kfree(payload);
 			return -EINVAL;
@@ -430,9 +438,7 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_display_gamma;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
-		if (!buff->size)
-			break;
-		else if (!buff->addr_l) {
+		if (!buff->addr_l) {
 			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
 			kfree(payload);
 			return -EINVAL;
@@ -445,9 +451,7 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_gcx_session_config;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
-		if (!buff->size)
-			break;
-		else if (!buff->addr_l) {
+		if (!buff->addr_l) {
 			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
 			kfree(payload);
 			return -EINVAL;
@@ -460,9 +464,7 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_gcx_session_config_data;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
-		if (!buff->size)
-			break;
-		else if (!buff->addr_l) {
+		if (!buff->addr_l) {
 			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
 			kfree(payload);
 			return -EINVAL;
@@ -513,7 +515,8 @@ int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi
 		for (i = 0; i < ARRAY_SIZE(hfi_wb_repro_lsr_custom_props_map); i++) {
 			drm_prop = hfi_wb_repro_lsr_custom_props_map[i].drm_prop;
 			hfi_prop = hfi_wb_repro_lsr_custom_props_map[i].hfi_prop;
-			/* TODO Need to add dirty check */
+			if (!cstate->gcx_session_dirty)
+				continue;
 			ret = _hfi_wb_lsr_repro_custom_prop_helper(hfi_prop, wb_dev, cstate,
 				 hfi_conn->lsr_props, disp_id);
 			if (ret) {
@@ -525,7 +528,8 @@ int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi
 		for (i = 0; i < ARRAY_SIZE(hfi_wb_repro_lsr_blob_props_map); i++) {
 			drm_prop = hfi_wb_repro_lsr_blob_props_map[i].drm_prop;
 			hfi_prop = hfi_wb_repro_lsr_blob_props_map[i].hfi_prop;
-			/* TODO Need to add dirty check */
+			if (!cstate->gcx_session_dirty)
+				continue;
 			ret = _hfi_wb_lsr_repro_blob_prop_helper(hfi_prop, wb_dev, cstate,
 				 hfi_conn->lsr_blob_props, disp_id);
 			if (ret) {
