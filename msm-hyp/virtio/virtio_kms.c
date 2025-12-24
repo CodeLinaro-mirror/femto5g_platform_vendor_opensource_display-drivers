@@ -1454,7 +1454,7 @@ static void virtio_check_framebuffer_contents(struct dma_buf *dma_buf_dump)
 
 	dma_buf_begin_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
 
-	ret =  dma_buf_vmap(dma_buf_dump, &map);
+	ret =  dma_buf_vmap_unlocked(dma_buf_dump, &map);
 	if (ret) {
 		DRM_DEBUG_KMS(" virtio : mmap failed for dma_buf_vmap\n");
 	} else {
@@ -1466,7 +1466,7 @@ static void virtio_check_framebuffer_contents(struct dma_buf *dma_buf_dump)
 	}
 
 	DRM_DEBUG_KMS("virtio : framebuffer dma_buf_vmap done %p\n", map.vaddr);
-	dma_buf_vunmap(dma_buf_dump, &map);
+	dma_buf_vunmap_unlocked(dma_buf_dump, &map);
 	dma_buf_end_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
 }
 
