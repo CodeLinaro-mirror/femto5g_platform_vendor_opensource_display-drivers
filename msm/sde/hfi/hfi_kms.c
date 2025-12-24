@@ -910,9 +910,12 @@ int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde_kms *sde_kms)
 
 	/* Store adapter hwfence data in sde kms */
 	sde_kms->hfi_kms->hfi_hw_fence_data = &hfi_adapter->session->hwfence_data;
+	if (!sde_kms->hfi_kms->hfi_hw_fence_data->hw_fence_handle) {
+		SDE_ERROR("HFI hwfence handle is NULL\n");
+		return -EINVAL;
+	}
 
 	SDE_DEBUG("sde hfi hwfence init allocated successfully\n");
-
 	ret = hfi_kms_set_hw_fence_config(sde_kms->hfi_kms);
 	if (ret)
 		SDE_ERROR("failed to send HFI HW FENCE config to FW\n");

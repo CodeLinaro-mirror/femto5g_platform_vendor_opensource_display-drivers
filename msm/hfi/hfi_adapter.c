@@ -523,16 +523,16 @@ static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
 
 	ret = hfi_core_hw_fence_init(hfi_handle);
 	if (ret) {
-		HFI_AD_ERROR("failed to init DCP hw fence client\n");
+		HFI_AD_INFO("failed to init DCP hw fence client\n");
 		ret = hfi_core_hw_fence_deinit(hfi_handle);
 		if (ret)
-			HFI_AD_ERROR("failed to deinit DCP hw fence client\n");
+			HFI_AD_INFO("failed to deinit DCP hw fence client\n");
 	}
 }
 #else
 static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
 {
-	HFI_AD_ERROR("HFI hw fence not enabled\n");
+	HFI_AD_INFO("HFI hw fence not enabled\n");
 }
 #endif
 

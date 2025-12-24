@@ -883,9 +883,10 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 	/* we must support sw_override as well, so check both functions */
 	if (!hw_ctl->ops.hw_fence_update_input_fence[hw_ctl->hw.disp_op] ||
 			!hw_ctl->ops.hw_fence_trigger_sw_override[hw_ctl->hw.disp_op]) {
-		if (IS_DISP_OP_HWIO(hw_ctl->hw.disp_op))
+		if (IS_DISP_OP_HWIO(hw_ctl->hw.disp_op)) {
 			SDE_ERROR("missing ctl/override/update fence %d\n", !hw_ctl);
 			return -EINVAL;
+		}
 		return 0;
 	}
 
