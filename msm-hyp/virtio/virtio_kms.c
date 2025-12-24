@@ -1446,30 +1446,6 @@ static void virtio_gpu_resource_id_get(uint32_t *resid)
 	*resid = handle + 1;
 }
 
-static void virtio_check_framebuffer_contents(struct dma_buf *dma_buf_dump)
-{
-	int ret = 0;
-	char *ptr;
-	struct iosys_map map = {0};
-
-	dma_buf_begin_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
-
-	ret =  dma_buf_vmap(dma_buf_dump, &map);
-	if (ret) {
-		DRM_DEBUG_KMS(" virtio : mmap failed for dma_buf_vmap\n");
-	} else {
-		ptr = (char *)map.vaddr;
-		if (!ptr)
-			DRM_DEBUG_KMS(" virtio : no memry map for da buffer\n");
-		else
-			DUMP_FRAME_CONTENT(0, DBG_BUF_COUNT, ptr);
-	}
-
-	DRM_DEBUG_KMS("virtio : framebuffer dma_buf_vmap done %p\n", map.vaddr);
-	dma_buf_vunmap(dma_buf_dump, &map);
-	dma_buf_end_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
-}
-
 static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 		struct msm_hyp_framebuffer *fb)
 {
@@ -1511,8 +1487,6 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 
 		if (fb->base.obj[idx]->import_attach) {
 			dma_bufs[idx] = fb->base.obj[idx]->import_attach->dmabuf;
-			if (!fb_priv->secure)
-				virtio_check_framebuffer_contents(dma_bufs[idx]);
 			get_dma_buf(dma_bufs[idx]);
 		} else if (fb->base.obj[idx]->dma_buf) {
 			dma_bufs[idx] = fb->base.obj[idx]->dma_buf;
