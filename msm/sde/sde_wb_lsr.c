@@ -337,9 +337,10 @@ int _sde_wb_lsr_set_reproj_info(
 	opq_state_config->usr_cfg.crc = opq_blob->crc;
 
 	if (opq_state_config->buf) {
-		msm_gem_put_iova(opq_state_config->buf,
-			c_conn->aspace[SDE_IOMMU_DOMAIN_UNSECURE]);
+		msm_gem_put_buffer(opq_state_config->buf);
+		mutex_lock(&dev->struct_mutex);
 		msm_gem_free_object(opq_state_config->buf);
+		mutex_unlock(&dev->struct_mutex);
 		opq_state_config->buf = NULL;
 	}
 
@@ -382,10 +383,11 @@ int _sde_wb_lsr_set_reproj_info(
 	return rc;
 
 put_iova:
-	msm_gem_put_iova(opq_state_config->buf, c_conn->aspace[SDE_IOMMU_DOMAIN_UNSECURE]);
+	msm_gem_put_buffer(opq_state_config->buf);
 free_gem:
+	mutex_lock(&dev->struct_mutex);
 	msm_gem_free_object(opq_state_config->buf);
-
+	mutex_unlock(&dev->struct_mutex);
 	return rc;
 }
 
