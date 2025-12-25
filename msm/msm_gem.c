@@ -839,9 +839,9 @@ int msm_gem_madvise(struct drm_gem_object *obj, unsigned madv)
 	struct msm_gem_object *msm_obj = to_msm_bo(obj);
 
 	mutex_lock(&msm_obj->lock);
-
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	WARN_ON(!mutex_is_locked(&obj->dev->struct_mutex));
-
+#endif
 	if (msm_obj->madv != __MSM_MADV_PURGED)
 		msm_obj->madv = madv;
 
