@@ -1906,8 +1906,8 @@ skip_edid:
 			dp_panel_read_sink_dsc_caps(dp_panel);
 	}
 
-	DP_INFO("fec_en=%d, dsc_en=%d, widebus_en=%d\n", dp_panel->fec_en,
-			dp_panel->dsc_en, dp_panel->widebus_en);
+	DP_INFO("fec_en=%d, dsc_en=%d, widebus_en=%d, dp_panel->sink_dsc_caps.version = %d\n", dp_panel->fec_en,
+			dp_panel->dsc_en, dp_panel->widebus_en, dp_panel->sink_dsc_caps.version);
 end:
 	return rc;
 }

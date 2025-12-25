@@ -3601,6 +3601,7 @@ static int dp_display_mst_connector_update_link_info(
 	dp_panel->fec_en = dp->panel->fec_en;
 	dp_panel->dsc_en = dp->panel->dsc_en;
 	dp_panel->fec_overhead_fp = dp->panel->fec_overhead_fp;
+	dp_panel->sink_dsc_caps.version = dp->panel->sink_dsc_caps.version;
 
 	DP_MST_DEBUG("dp mst connector:%d link info updated\n",
 		connector->base.id);
