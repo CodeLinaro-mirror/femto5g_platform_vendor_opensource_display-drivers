@@ -4443,6 +4443,85 @@ static ssize_t twm_enable_show(struct device *device,
 	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->twm_en);
 }
 
+static ssize_t offload_enable_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+	struct drm_encoder *drm_enc;
+	int rc;
+	int data;
+	bool new_state, old_state;
+
+	conn = dev_get_drvdata(device);
+	sde_conn = to_sde_connector(conn);
+
+	rc = kstrtoint(buf, 10, &data);
+	if (rc) {
+		SDE_ERROR("kstrtoint failed, rc = %d\n", rc);
+		return -EINVAL;
+	}
+
+	new_state = data ? true : false;
+
+	/**
+	 * State is accessed from multiple contexts (sysfs write, encoder operations),
+	 * there's a potential race condition where the state could be read
+	 * inconsistently or modified concurrently.
+	 */
+	mutex_lock(&sde_conn->lock);
+	old_state = sde_conn->offload_en;
+
+	/* Handle data population based on state change */
+	if (old_state != new_state) {
+		/* Check for best_encoder first */
+		if (conn->state && conn->state->best_encoder)
+			drm_enc = conn->state->best_encoder;
+		else
+			drm_enc = sde_conn->encoder;
+
+		if (!drm_enc) {
+			SDE_ERROR("DRM encoder is NULL !!");
+			mutex_unlock(&sde_conn->lock);
+			return -EINVAL;
+		}
+
+		sde_conn->offload_en = new_state;
+		rc = sde_encoder_set_offload_mode(drm_enc, sde_conn->offload_en);
+
+		if (rc) {
+			SDE_ERROR("Failed to set offload mode: %d\n", rc);
+			/* Revert state on failure */
+			sde_conn->offload_en = old_state;
+			mutex_unlock(&sde_conn->lock);
+			return rc;
+		}
+
+		SDE_DEBUG("OFFLOAD: state changed from %s to %s\n",
+					old_state ? "ENABLED" : "DISABLED",
+					new_state ? "ENABLED" : "DISABLED");
+	} else {
+		SDE_DEBUG("OFFLOAD: no state change, already %s\n",
+			old_state ? "ENABLED" : "DISABLED");
+	}
+
+	mutex_unlock(&sde_conn->lock);
+	return count;
+}
+
+static ssize_t offload_enable_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+
+	conn = dev_get_drvdata(device);
+	sde_conn = to_sde_connector(conn);
+
+	SDE_DEBUG("OFFLOAD: %s\n", sde_conn->offload_en ? "ENABLED" : "DISABLED");
+	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->offload_en);
+}
+
 static ssize_t skip_panel_power_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -4484,11 +4563,13 @@ static ssize_t skip_panel_power_show(struct device *device,
 
 static DEVICE_ATTR_RO(panel_power_state);
 static DEVICE_ATTR_RW(twm_enable);
+static DEVICE_ATTR_RW(offload_enable);
 static DEVICE_ATTR_RW(skip_panel_power);
 
 static struct attribute *sde_connector_dev_attrs[] = {
 	&dev_attr_panel_power_state.attr,
 	&dev_attr_twm_enable.attr,
+	&dev_attr_offload_enable.attr,
 	&dev_attr_skip_panel_power.attr,
 	NULL
 };
