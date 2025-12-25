@@ -11,6 +11,7 @@
 #include "hfi_properties_display.h"
 #include "sde_kms.h"
 #include "sde_hw_dspp.h"
+#include "hfi_kms.h"
 
 static struct hfi_display_pa_dither hfi_pa_dither_cached[DPU_MAX][DSPP_MAX] = {};
 static u32 hfi_demura_backlight_cached[DPU_MAX][DSPP_MAX] = {};
@@ -19,9 +20,11 @@ static struct hfi_display_ltm_cfg_param hfi_ltm_roi_cached[DPU_MAX][DSPP_MAX] = 
 static u32 hfi_ltm_hist_ctrl_cached[DPU_MAX][DSPP_MAX] = {};
 static u32 hfi_ltm_thresh_cached[DPU_MAX][DSPP_MAX] = {};
 static struct hfi_display_rgb_hist_ctrl hfi_rgb_hist_ctrl_cached[DPU_MAX][DSPP_MAX] = {};
+static u32 hfi_pa_hist_ctrl_cached[DPU_MAX][DSPP_MAX] = {};
 
 #define U32_MASK_LOW 0xFFFFFFFFU
 #define U32_SHIFT_BITS 32
+#define HFI_PA_HIST_BUFFER_SIZE 2048
 
 void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data, enum msm_disp_op disp_op)
 {
@@ -1224,4 +1227,204 @@ void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 	else
 		SDE_DEBUG("feature %d: submitted to prop_helper\n",
 			HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART);
+}
+
+int hfi_cp_crtc_alloc_pa_hist_buffers(struct sde_crtc *sde_crtc)
+{
+	u32 i = 0;
+	int ret = 0;
+	struct hfi_kms *hfi_kms = NULL;
+	struct sde_pa_hist_buffer *pa_hist_buff = NULL;
+	struct msm_drm_private *priv = NULL;
+
+	if (!sde_crtc) {
+		SDE_ERROR("invalid parameters sde_crtc %pK\n", sde_crtc);
+		return -EINVAL;
+	}
+
+	if (sde_crtc->base.dev && sde_crtc->base.dev->dev_private) {
+		priv = sde_crtc->base.dev->dev_private;
+		hfi_kms = ((priv && priv->kms) ? to_hfi_kms(to_sde_kms(priv->kms)) : NULL);
+	}
+
+	if (!hfi_kms) {
+		SDE_ERROR("%s: failed to get hfi kms\n", __func__);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < PA_HIST_BUFFER_NUM; i++) {
+		pa_hist_buff = &sde_crtc->pa_hist_buffers[i];
+
+		/* Set the required size */
+		pa_hist_buff->buffer.size = HFI_PA_HIST_BUFFER_SIZE;
+
+		/* Allocate shared memory via HFI adapter */
+		ret = hfi_adapter_buffer_alloc(&hfi_kms->hfi_client, &pa_hist_buff->buffer);
+		if (ret) {
+			SDE_ERROR("hfi_adapter_buffer_alloc failed for PA hist buffer %d\n", i);
+			goto cleanup;
+		}
+
+		pa_hist_buff->is_available = true;
+	}
+	return ret;
+
+cleanup:
+	/* deallocate previous allocated buffers */
+	for (i = 0; i < PA_HIST_BUFFER_NUM; i++) {
+		/* free buffer if buffer is available */
+		if (sde_crtc->pa_hist_buffers[i].is_available) {
+			ret = hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client,
+						&sde_crtc->pa_hist_buffers[i].buffer);
+			sde_crtc->pa_hist_buffers[i].is_available = false;
+		}
+	}
+
+	return -ENOMEM;
+}
+
+int hfi_cp_crtc_dealloc_pa_hist_buffers(struct sde_crtc *sde_crtc)
+{
+	u32 i = 0;
+	int ret = 0;
+
+	if (!sde_crtc) {
+		SDE_ERROR("invalid parameters sde_crtc %pK\n", sde_crtc);
+		return -EINVAL;
+	}
+
+	for (i = 0; i < PA_HIST_BUFFER_NUM; i++) {
+		/* deallocate buffer */
+		if (sde_crtc->pa_hist_buffers[i].is_available) {
+			ret = hfi_adapter_buffer_dealloc(sde_crtc->hfi_client,
+						&sde_crtc->pa_hist_buffers[i].buffer);
+			if (ret) {
+				SDE_ERROR("Failed to dealloc pa hist buffer %d\n", i);
+				return ret;
+			}
+		}
+		sde_crtc->pa_hist_buffers[i].is_available = false;
+	}
+
+	return ret;
+}
+
+int hfi_cp_crtc_queue_pa_hist_buffer(struct sde_crtc *sde_crtc, struct sde_hw_dspp *ctx,
+				void *data)
+{
+	struct sde_hw_cp_cfg *hw_cfg = (struct sde_hw_cp_cfg *)data;
+	struct sde_hw_mixer *hw_lm;
+	struct hfi_display_pa_hist_buffer hfi_buf;
+	int ret = 0;
+	int i;
+
+	if (!sde_crtc || !ctx || !hw_cfg) {
+		SDE_ERROR("invalid parameters sde_crtc %pK ctx %pK hw_cfg %pK\n", sde_crtc,
+			ctx, hw_cfg);
+		return -EINVAL;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return -EINVAL;
+	}
+
+	hw_lm = hw_cfg->mixer_info;
+	if (hw_lm->cfg.right_mixer)
+		return 0;
+
+	for (i = 0; i < PA_HIST_BUFFER_NUM; i++) {
+		struct sde_pa_hist_buffer *pa_hist_buff = &sde_crtc->pa_hist_buffers[i];
+		/* if buffer is available, send to FW */
+		if (!pa_hist_buff->is_available)
+			continue;
+
+		hw_cfg->prop_id = HFI_PACK_VERSION(1, 7,
+				HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER);
+		hfi_buf.flags = HFI_DISPLAY_COLOR_FLAGS_FEATURE_ENABLE;
+		hfi_buf.dcp_addr_lo = (u32)(pa_hist_buff->buffer.remote_addr & U32_MASK_LOW);
+		hfi_buf.dcp_addr_hi = (u32)(pa_hist_buff->buffer.remote_addr >>
+						U32_SHIFT_BITS);
+		hfi_buf.size = sizeof(struct hfi_display_pa_hist_buffer);
+
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+						hw_cfg->prop_id, HFI_VAL_U32_ARRAY, &hfi_buf,
+						sizeof(struct hfi_display_pa_hist_buffer));
+
+		if (ret) {
+			SDE_ERROR("Failed to send queue pa hist buffer prop ret: %d\n", ret);
+			return ret;
+		}
+		pa_hist_buff->is_available = false;
+	}
+
+	return ret;
+}
+
+void hfi_cp_crtc_clear_pa_hist_buffers(struct sde_crtc *sde_crtc, void *data)
+{
+	struct sde_hw_cp_cfg *hw_cfg = data;
+	u32 i = 0;
+	u32 hfi_cfg = 0;
+	int ret = 0;
+
+	if (!sde_crtc || !hw_cfg) {
+		SDE_ERROR("invalid parameters sde_crtc %pK, data %pK\n", sde_crtc, data);
+		return;
+	}
+
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 7,
+					HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS);
+
+	/* Add prop to hfi */
+	ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper, hw_cfg->prop_id,
+			HFI_VAL_U32, &hfi_cfg, sizeof(u32));
+
+	if (ret) {
+		SDE_ERROR("Failed to send free ltm buffer prop ret: %d\n", ret);
+		return;
+	}
+	/* mark all the buffers available */
+	for (i = 0; i < PA_HIST_BUFFER_NUM; i++)
+		sde_crtc->pa_hist_buffers[i].is_available = true;
+}
+
+void hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *data, bool enable)
+{
+	struct sde_hw_cp_cfg *hw_cfg = (struct sde_hw_cp_cfg *) data;
+	int ret = 0;
+	u32 *hfi_cfg;
+	u32 payload_size = sizeof(u32);
+
+	if (!ctx || !hw_cfg) {
+		SDE_ERROR("invalid parameters ctx %pK, hw_cfg %pK\n",
+				ctx, hw_cfg);
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	hfi_cfg = &hfi_pa_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_idx];
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 7, hw_cfg->prop_id);
+	*hfi_cfg = enable;
+
+	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
+		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+				hw_cfg->prop_id, HFI_VAL_U32,
+				&hfi_pa_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx],
+				payload_size * hw_cfg->num_of_mixers);
+
+		if (ret) {
+			SDE_ERROR("Failed to add hfi prop for PA hist ctrl %d ret %d\n",
+				hw_cfg->prop_id, ret);
+			return;
+		}
+
+		/* reset the cached struct for current dpu_idx after submitting to FW */
+		memset(&hfi_pa_hist_ctrl_cached[ctx->dpu_idx], 0,
+			   sizeof(hfi_pa_hist_ctrl_cached[ctx->dpu_idx]));
+	}
 }

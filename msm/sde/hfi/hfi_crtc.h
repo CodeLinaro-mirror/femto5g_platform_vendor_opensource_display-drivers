@@ -15,6 +15,7 @@
 enum hfi_crtc_event {
 	HFI_CRTC_EVENT_LTM,
 	HFI_CRTC_EVENT_RGB_HIST,
+	HFI_CRTC_EVENT_PA_HIST,
 	HFI_CRTC_EVENT_MAX,
 };
 
@@ -59,6 +60,16 @@ struct hfi_crtc_state {
 	struct sde_crtc_state *sde_base;
 };
 
+/*
+ * struct hfi_hw_fence - hfi hw fence prop
+ * @flags    :  flags for input/output fence
+ * @h_synx    : fence handle 32 bit id
+ */
+struct hfi_hw_fence {
+	u32 flags;
+	u32 h_synx;
+};
+
 /**
  * hfi_crtc_set_pending_enc_mask - helper to set/reset the enc mask for caching
  * @sde_crtc: Pointer to sde crtc struct
@@ -98,6 +109,15 @@ int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_bu
  */
 struct hfi_cmdbuf_t *hfi_crtc_get_cmd_buf(struct drm_crtc *crtc);
 
+/**
+ * hfi_crtc_set_input_wait_hw_fence - Send input fence property to firmware
+ * @crtc: Pointer to sde crtc struct
+ * @synx_handle: 32-bit synx handle for the input fence
+ * @prop: hfi property of input fence
+ * @Returns: 0 on success, or error code on failure
+ */
+int hfi_crtc_set_input_wait_hw_fence(struct sde_crtc *crtc, u32 synx_handle, u32 prop);
+
 #else
 int hfi_crtc_init(struct sde_crtc *sde_crtc)
 {
@@ -122,6 +142,11 @@ int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_bu
 struct hfi_cmdbuf_t *hfi_crtc_get_cmd_buf(struct drm_crtc *crtc)
 {
 	return NULL;
+}
+
+static inline int hfi_crtc_set_input_wait_hw_fence(struct sde_crtc *crtc, u32 synx_handle, u32 prop)
+{
+	return 0;
 }
 
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)

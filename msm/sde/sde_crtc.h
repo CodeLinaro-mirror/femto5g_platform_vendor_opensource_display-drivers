@@ -307,6 +307,16 @@ struct sde_rgb_hist_buffer {
 };
 
 /**
+ * struct sde_pa_hist_buffer - PA histogram buffer information
+ * @buffer:        Shared address map for the PA histogram buffer
+ * @is_available:  Flag indicating if the buffer is currently available
+ */
+struct sde_pa_hist_buffer {
+	struct hfi_shared_addr_map buffer;
+	bool is_available;
+};
+
+/**
  * struct sde_crtc_hal_funcs - interface api for sde crtc hal
  */
 struct sde_crtc_hal_funcs {
@@ -690,6 +700,7 @@ struct sde_crtc {
 	bool do_clear_rgb_hist_buf;
 	struct sde_rgb_hist_buffer *rgb_hist_buffers[RGB_HISTOGRAM_BUFFER_SIZE];
 	struct mutex rgb_hist_buffer_lock;
+	struct sde_pa_hist_buffer pa_hist_buffers[PA_HIST_BUFFER_NUM];
 };
 
 enum sde_crtc_dirty_flags {

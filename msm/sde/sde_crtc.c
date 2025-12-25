@@ -4940,6 +4940,66 @@ static inline bool _is_vid_power_on_frame(struct drm_crtc *crtc)
 	return  is_vid_mode && sde_crtc_is_power_on_frame(crtc);
 }
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+static int _hfi_mode_register_hw_fences_wait(struct sde_crtc *sde_crtc, struct sde_kms *sde_kms,
+	struct dma_fence **dma_hw_fences, u32 num_hw_fences)
+{
+	struct hfi_hwfence_data *hwfence_data;
+	u32 display_id = U32_MAX;
+	u32 h_synx;
+	int ret;
+
+	if (!sde_crtc || !sde_kms || !sde_kms->hfi_kms) {
+		SDE_ERROR("invalid sde_crtc:%pK sde_kms:%pK hfi_kms:%pK\n", sde_crtc, sde_kms,
+			sde_kms ? sde_kms->hfi_kms : NULL);
+		return -EINVAL;
+	}
+
+	hwfence_data = sde_kms->hfi_kms->hfi_hw_fence_data;
+	display_id = hfi_crtc_get_display_id(&sde_crtc->base, sde_crtc->base.state);
+	if (!hwfence_data || display_id >= hwfence_data->max_displays) {
+		SDE_ERROR("invalid data:%p display:%u max:%u\n", hwfence_data,
+			display_id, hwfence_data ? hwfence_data->max_displays : 0);
+		return -EINVAL;
+	}
+
+	ret = sde_fence_register_hw_fences_wait_with_handle(hwfence_data->hw_fence_handle,
+		dma_hw_fences, num_hw_fences, hwfence_data->dma_context,
+		&hwfence_data->hw_fence_array_seqno, &hwfence_data->input_h_synx_array[display_id]);
+	h_synx = hwfence_data->input_h_synx_array[display_id];
+
+	if (ret) {
+		SDE_ERROR("failed to register %u hwfences wait for display:%u hsynx:%u\n",
+			num_hw_fences, display_id, h_synx);
+		return ret;
+	}
+
+	if (!h_synx) {
+		SDE_DEBUG("no unsignaled fence to wait on for disp:%u\n", display_id);
+		return 0;
+	}
+
+	ret = hfi_crtc_set_input_wait_hw_fence(sde_crtc, h_synx, HFI_PROPERTY_DISPLAY_INPUT_FENCE);
+
+	if (ret) {
+		SDE_ERROR("failed to send display:%u fence:%u hfi property ret:%d\n", display_id,
+			h_synx, ret);
+	} else {
+		SDE_DEBUG("display:%u fence:%u ret:%u", display_id, h_synx, ret);
+		SDE_EVT32(display_id, h_synx, ret);
+	}
+
+	return ret;
+}
+#else
+static int _hfi_mode_register_hw_fences_wait(struct sde_crtc *sde_crtc, struct sde_kms *sde_kms,
+	struct dma_fence **dma_hw_fences, u32 num_hw_fences)
+{
+	SDE_ERROR("hwfences not supported\n");
+	return -EINVAL;
+}
+#endif
+
 /**
  * _sde_crtc_wait_for_fences - wait for incoming framebuffer sync fences or register hw-fences
  * @crtc: Pointer to CRTC object
@@ -4956,7 +5016,8 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	struct sde_hw_ctl *hw_ctl;
 	bool input_hw_fences_enable;
 	struct sde_kms *sde_kms = _sde_crtc_get_kms(crtc);
-	int ret;
+	int ret = 0;
+	int is_lsr;
 	enum sde_crtc_vm_req vm_req;
 	bool disable_hw_fences = false;
 	bool trigger_sw_override = false;
@@ -4971,6 +5032,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	}
 	disp_op = sde_crtc_get_disp_op(crtc);
 	hw_ctl = _sde_crtc_get_hw_ctl(crtc);
+	is_lsr = sde_crtc_check_for_lsr_opmode(crtc);
 
 	SDE_ATRACE_BEGIN("plane_wait_input_fence");
 
@@ -5004,10 +5066,13 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	}
 
 	/* update ctl hw to wait for ipcc input signal before fetch */
-	if (test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
+	if (is_lsr || test_bit(HW_FENCE_IN_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
 			trigger_sw_override) {
-		ret = sde_fence_update_input_hw_fence_signal(hw_ctl, sde_kms->debugfs_hw_fence,
-			sde_kms->hw_mdp, disable_hw_fences, trigger_sw_override);
+		if (disp_op == MSM_DISP_OP_HWIO)
+			ret = sde_fence_update_input_hw_fence_signal(hw_ctl,
+				sde_kms->debugfs_hw_fence, sde_kms->hw_mdp,
+				disable_hw_fences, trigger_sw_override);
+
 		ipcc_input_signal_wait = (ret == 0);
 	}
 
@@ -5021,7 +5086,13 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	/* register the hw-fences for hw-wait */
 	if (num_hw_fences > 0 && num_hw_fences <= MAX_HW_FENCES) {
 
-		ret = sde_fence_register_hw_fences_wait(hw_ctl, dma_hw_fences, num_hw_fences);
+		if (disp_op == MSM_DISP_OP_HFI)
+			ret = _hfi_mode_register_hw_fences_wait(sde_crtc, sde_kms, dma_hw_fences,
+				num_hw_fences);
+		else
+			ret = sde_fence_register_hw_fences_wait(hw_ctl, dma_hw_fences,
+					num_hw_fences);
+
 		if (ret) {
 			SDE_ERROR("failed to register for hw-fence wait, will wait in sw\n");
 			SDE_EVT32(SDE_EVTLOG_ERROR, num_hw_fences,
@@ -6369,6 +6440,7 @@ static bool skip_event_handling_required(struct drm_crtc *crtc, u32 event)
 	case DRM_EVENT_RGB_HIST:
 	case DRM_EVENT_RGB_HIST_WB_ERR:
 	case DRM_EVENT_RGB_HIST_OFF:
+	case DRM_EVENT_HISTOGRAM:
 		return true;
 	default:
 		return false;
@@ -6680,6 +6752,8 @@ void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
 	struct sde_crtc *sde_crtc = (struct sde_crtc *)data;
 	int idx = 0, i = 0;
 	struct hfi_display_ltm_event_resp *resp;
+	struct sde_pa_hist_buffer cur_pa_hist_buff;
+	struct hfi_display_pa_hist_event_resp *pa_hist_resp;
 
 	if (!sde_crtc)
 		return;
@@ -6732,6 +6806,38 @@ void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
 	case DRM_EVENT_RGB_HIST_OFF:
 		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_rgb_hist_off,
 				NULL, true);
+		break;
+	case DRM_EVENT_HISTOGRAM:
+		pa_hist_resp = (struct hfi_display_pa_hist_event_resp *)event_payload;
+
+		if (!pa_hist_resp) {
+			SDE_ERROR("pa_hist_resp is NULL\n");
+			return;
+		}
+
+		/* Find the matching buffer based on dcp_addr */
+		for (idx = 0; idx < PA_HIST_BUFFER_NUM; idx++) {
+			cur_pa_hist_buff = sde_crtc->pa_hist_buffers[idx];
+			if (!cur_pa_hist_buff.buffer.remote_addr)
+				continue;
+
+			u32 dcp_addr_lo = (u32)((u64)cur_pa_hist_buff.buffer.remote_addr
+							& 0xffffffff);
+			u32 dcp_addr_hi = (u32)((u64)cur_pa_hist_buff.buffer.remote_addr
+						>> 32);
+			if (dcp_addr_lo == pa_hist_resp->dcp_addr_lo &&
+				dcp_addr_hi == pa_hist_resp->dcp_addr_hi)
+				break;
+		}
+
+		if (idx == PA_HIST_BUFFER_NUM) {
+			SDE_ERROR("invalid PA histogram buffer\n");
+			return;
+		}
+
+		/* give event back */
+		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_hist_event,
+				&sde_crtc->pa_hist_buffers[idx], true);
 		break;
 	}
 }

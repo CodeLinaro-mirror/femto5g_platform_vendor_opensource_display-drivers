@@ -122,8 +122,9 @@ void sde_setup_dspp_gc_v1_7(struct sde_hw_dspp *ctx, void *cfg);
  * sde_setup_dspp_hist_v1_7 - setup DSPP histogram feature in v1.7 hardware
  * @ctx: Pointer to DSPP context
  * @cfg: Pointer to histogram control data
+ * @enable: histogram enable/disable
  */
-void sde_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg);
+void sde_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *cfg, bool enable);
 
 /**
  * sde_read_dspp_hist_v1_7 - read DSPP histogram data in v1.7 hardware

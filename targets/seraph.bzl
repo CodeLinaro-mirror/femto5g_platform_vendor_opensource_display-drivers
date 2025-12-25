@@ -29,5 +29,6 @@ def define_seraph():
                     "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_DRM_SDE_LSR",
                     "CONFIG_LSR_SERAPH",
+                    "CONFIG_QTI_HW_FENCE",
                 ],
             )

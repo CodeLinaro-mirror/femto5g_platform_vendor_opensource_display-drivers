@@ -168,6 +168,7 @@ module_entry(
             "lsr/msm_lsr_core.c",
             "lsr/msm_lsr_debug.c",
             "lsr/msm_lsr_platform.c",
+            "lsr/msm_lsr_synx.c",
             "lsr/msm_lsr_res_parse.c",
             "lsr/lsr_main.c",
         ],
