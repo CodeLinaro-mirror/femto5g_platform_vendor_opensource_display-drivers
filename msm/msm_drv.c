@@ -1323,12 +1323,14 @@ static void msm_postclose(struct drm_device *dev, struct drm_file *file)
 
 	if (kms->funcs && kms->funcs->postclose)
 		kms->funcs->postclose(kms, file);
-
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_lock(&dev->struct_mutex);
+#endif
 	if (ctx == priv->lastctx)
 		priv->lastctx = NULL;
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&dev->struct_mutex);
-
+#endif
 	mutex_lock(&ctx->power_lock);
 	if (ctx->enable_refcnt) {
 		SDE_EVT32(ctx->enable_refcnt);
@@ -1424,11 +1426,11 @@ static int msm_ioctl_gem_madvise(struct drm_device *dev, void *data,
 	default:
 		return -EINVAL;
 	}
-
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	ret = mutex_lock_interruptible(&dev->struct_mutex);
 	if (ret)
 		return ret;
-
+#endif
 	obj = drm_gem_object_lookup(file, args->handle);
 	if (!obj) {
 		ret = -ENOENT;
@@ -1444,7 +1446,9 @@ static int msm_ioctl_gem_madvise(struct drm_device *dev, void *data,
 	drm_gem_object_put(obj);
 
 unlock:
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&dev->struct_mutex);
+#endif
 	return ret;
 }
 
