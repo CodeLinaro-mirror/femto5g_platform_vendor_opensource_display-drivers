@@ -282,22 +282,28 @@ enum sde_wb_usage_type sde_crtc_get_wb_usage_type(struct drm_crtc *crtc)
 	return usage_type;
 }
 
-int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc)
+int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc,
+		struct drm_crtc_state *state)
 {
 	struct drm_connector *conn;
-	struct drm_connector_list_iter conn_iter;
 	struct sde_connector *sde_conn = NULL;
 	int ret = 0;
 
+	if (!state)
+		state = crtc->state;
+
+	struct drm_connector_list_iter conn_iter;
+
 	drm_connector_list_iter_begin(crtc->dev, &conn_iter);
 	drm_for_each_connector_iter(conn, &conn_iter) {
-		sde_conn = to_sde_connector(conn);
-		if (conn->state && (conn->state->crtc == crtc)) {
+		if ((state->connector_mask) & drm_connector_mask(conn)) {
+			sde_conn = to_sde_connector(conn);
 			ret = sde_conn->reproj_conn ? sde_conn->reproj_conn->type : 0;
 			break;
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
+
 	return ret;
 }
 
@@ -4865,7 +4871,7 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 	mode_switch = msm_is_mode_seamless_poms(msm_mode);
 
 	is_wb = _is_crtc_intf_mode_wb(crtc);
-	is_lsr = sde_crtc_check_for_lsr_opmode(crtc) > 0 ? true : false;
+	is_lsr = sde_crtc_check_for_lsr_opmode(crtc, crtc->state) > 0 ? true : false;
 
 	/* use monotonic timer to limit total fence wait time */
 	kt_end = ktime_add_ns(ktime_get(),
@@ -5032,7 +5038,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	}
 	disp_op = sde_crtc_get_disp_op(crtc);
 	hw_ctl = _sde_crtc_get_hw_ctl(crtc);
-	is_lsr = sde_crtc_check_for_lsr_opmode(crtc);
+	is_lsr = sde_crtc_check_for_lsr_opmode(crtc, crtc->state);
 
 	SDE_ATRACE_BEGIN("plane_wait_input_fence");
 
@@ -8400,21 +8406,37 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 	vfree(info);
 }
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+void *_get_hfi_hw_data_from_kms(struct sde_kms *sde_kms)
+{
+	if (!sde_kms || !sde_kms->hfi_kms || !sde_kms->hfi_kms->hfi_hw_fence_data) {
+		SDE_ERROR("sde_kms/hfi_kms not initialized\n");
+		return NULL;
+	}
+
+	return sde_kms->hfi_kms->hfi_hw_fence_data->hw_fence_handle;
+}
+#endif
+
 static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	const struct drm_crtc_state *state, uint64_t *val)
 {
 	struct sde_crtc *sde_crtc;
 	struct sde_crtc_state *cstate;
+	struct sde_kms *sde_kms;
 	uint32_t offset;
 	bool is_vid = false;
 	bool is_wb = false;
+	int lsr_opmode;
 	struct drm_encoder *encoder;
 	struct sde_hw_ctl *hw_ctl = NULL;
 	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 	static u32 count;
+	void *hfi_hw_fence_handle = NULL;
 
 	sde_crtc = to_sde_crtc(crtc);
 	cstate = to_sde_crtc_state(state);
+	sde_kms = _sde_crtc_get_kms(crtc);
 
 	drm_for_each_encoder_mask(encoder, crtc->dev, state->encoder_mask) {
 		if (sde_encoder_check_curr_mode(encoder, MSM_DISPLAY_VIDEO_MODE))
@@ -8425,6 +8447,8 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 		if (is_vid || is_wb)
 			break;
 	}
+
+	lsr_opmode = sde_crtc_check_for_lsr_opmode(crtc, (struct drm_crtc_state *)state);
 
 	/*
 	 * If hw-fence is enabled, find hw_ctl and pass it to sde_fence_create, this will attempt
@@ -8446,8 +8470,12 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	 * get signaled along with the next frame update, this reduces the overhead of
 	 * multiple hfi-events (i.e. one for vsync and one for pp-done), which are
 	 * unnecessary.
+	 *
+	 * Increment trigger offset for GCX lsr mode as its release fence
+	 * can be triggered only after the next frame-update.
 	 */
-	if (is_vid || (IS_DISP_OP_HFI(disp_op) && !is_wb))
+	if (is_vid || lsr_opmode == WB_REPRO ||
+				(IS_DISP_OP_HFI(disp_op) && !is_wb && !lsr_opmode))
 		offset++;
 
 	/*
@@ -8456,6 +8484,14 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	 * which will be incremented during the prepare commit phase
 	 */
 	offset++;
+
+	/* Update DCP hw fence data for displays having HW fence support */
+	if (IS_DISP_OP_HFI(disp_op) && lsr_opmode == WB_CSC)
+		hfi_hw_fence_handle = _get_hfi_hw_data_from_kms(sde_kms);
+
+	if (IS_DISP_OP_HFI(disp_op))
+		return sde_fence_create_with_handle(sde_crtc->output_fence, val,
+					offset, hfi_hw_fence_handle);
 
 	return sde_fence_create(sde_crtc->output_fence, val, offset, hw_ctl);
 }
@@ -10458,6 +10494,15 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint3
 	SDE_DEBUG("crtc:%d padding_y:%d padding_start:%d padding_height:%d\n",
 		  DRMID(cstate->base.crtc), *padding_y, *padding_start, *padding_height);
 	return 0;
+
+}
+
+bool sde_crtc_out_hw_fences_enabled(struct sde_crtc *sde_crtc)
+{
+	/* check for out fences enable or is LSR CSC display */
+	return test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
+		(sde_crtc_check_for_lsr_opmode(&sde_crtc->base,
+			sde_crtc->base.state) == WB_CSC);
 
 }
 

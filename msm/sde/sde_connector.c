@@ -11,6 +11,7 @@
 #include "sde_kms.h"
 #include "sde_connector.h"
 #include "sde_encoder.h"
+#include "sde_fence.h"
 #include "msm_cooling_device.h"
 #include <linux/backlight.h>
 #include <linux/string.h>
@@ -24,6 +25,7 @@
 #include <shd_drm.h>
 #include "sde_trace.h"
 #include "hfi_connector.h"
+#include "msm_lsr_synx.h"
 
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
@@ -2582,11 +2584,16 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 {
 	int rc = 0;
 	struct sde_connector *c_conn;
+	struct sde_kms *sde_kms;
 	uint64_t fence_user_fd;
 	uint64_t __user prev_user_fd;
 	struct sde_hw_ctl *hw_ctl = NULL;
+	void *hfi_hw_fence_handle = NULL;
+	struct msm_drm_private *priv;
+	enum msm_disp_op disp_op;
 
 	c_conn = to_sde_connector(connector);
+	sde_kms = sde_connector_get_kms(connector);
 
 	rc = copy_from_user(&prev_user_fd, (void __user *)val,
 			sizeof(uint64_t));
@@ -2619,11 +2626,32 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 				hw_ctl = sde_encoder_get_hw_ctl(c_conn);
 		}
 
-		rc = sde_fence_create(c_conn->retire_fence,
-					&fence_user_fd, offset, hw_ctl);
-		if (rc) {
-			SDE_ERROR("fence create failed rc:%d\n", rc);
-			goto end;
+		/* Get disp_op from msm_drm_private */
+		priv = connector->dev->dev_private;
+		disp_op = priv ? priv->disp_op : MSM_DISP_OP_HWIO;
+
+		if (disp_op == MSM_DISP_OP_HFI) {
+			if (sde_connector_out_hw_fences_enabled(c_conn))
+				hfi_hw_fence_handle = _get_hfi_hw_data_from_kms(sde_kms);
+
+			if (c_conn->reproj_conn && c_conn->reproj_conn->type == WB_CSC)
+				rc = lsr_sde_fence_create_and_import(c_conn->retire_fence,
+						&fence_user_fd, offset, hfi_hw_fence_handle);
+			else
+				rc = sde_fence_create_with_handle(c_conn->retire_fence,
+						&fence_user_fd, offset, hfi_hw_fence_handle);
+
+			if (rc) {
+				SDE_ERROR("fence create failed rc:%d\n", rc);
+				goto end;
+			}
+		} else {
+			rc = sde_fence_create(c_conn->retire_fence, &fence_user_fd,
+						offset, hw_ctl);
+			if (rc) {
+				SDE_ERROR("fence create failed rc:%d\n", rc);
+				goto end;
+			}
 		}
 
 		rc = copy_to_user((uint64_t __user *)(uintptr_t)val,
@@ -4937,6 +4965,12 @@ bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
 
 	return msm_property_is_dirty(&conn->property_info,
 			&cstate->property_state, property_idx);
+}
+
+bool sde_connector_out_hw_fences_enabled(struct sde_connector *sde_conn)
+{
+	/* is LSR CSC display */
+	return (sde_conn->reproj_conn && sde_conn->reproj_conn->type == WB_CSC);
 }
 
 /**

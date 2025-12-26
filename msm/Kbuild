@@ -106,6 +106,7 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(KERNEL_SRC)/drivers/clk/qcom \
 	-I$(DISPLAY_ROOT)/include/linux \
 	-I$(DISPLAY_ROOT)/rotator \
+	-I$(DISPLAY_ROOT)/lsr \
 	-I$(DISPLAY_ROOT)/msm \
 	-I$(DISPLAY_ROOT)/msm/dp \
 	-I$(DISPLAY_ROOT)/msm/hdmi \
@@ -295,6 +296,7 @@ msm_drm-$(CONFIG_DRM_SDE_LSR) += sde/sde_wb_lsr.o \
 				../lsr/msm_lsr_core.c \
 				../lsr/msm_lsr_debug.c \
 				../lsr/msm_lsr_platform.c \
+				../lsr/msm_lsr_synx.c \
 				../lsr/msm_lsr_res_parse.c \
 				../lsr/lsr_main.c
 
