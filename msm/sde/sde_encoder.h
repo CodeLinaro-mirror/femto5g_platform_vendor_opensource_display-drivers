@@ -1482,6 +1482,13 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
  * @encoder: pointer to drm_encoder
  */
 void sde_encoder_cancel_vrr_timers(struct drm_encoder *encoder);
+/**
+ * sde_encoder_set_offload_mode - sets resgiter/unregister hfi hw events when
+ * in entry/exit of offload mode.
+ * @drm_enc: pointer to drm encoder
+ * enable: 1:enter / 0:exit to offload mode
+ */
+int sde_encoder_set_offload_mode(struct drm_encoder *encoder, int enable);
 
 /**
  * sde_encoder_phys_delay_dcs - delay the sysfs node for triggering
