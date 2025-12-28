@@ -185,6 +185,7 @@ struct sde_power_mmrm_reserve {
  * @mmrm_reserve: mmrm resource reservation
  * @wakelock_count: wakelock coint to avoid pm suspend
  * @bool cesta_pd: boolean to indicate if power domains are cesta controlled
+ * @bool rsc_pd: boolean to indicate if power domains are rsc controlled
  * @num_power_domains: number of powerdomains
  * @power_domain_handles: array of power domains
  */
