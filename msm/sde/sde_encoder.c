@@ -3716,11 +3716,6 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 				return ret;
 			}
 
-			/*
-			 * Disable dce before switching the mode and after pre-
-			 * modeset to guarantee previous kickoff has finished.
-			 */
-			sde_encoder_dce_disable(sde_enc);
 		} else if (msm_is_mode_seamless_poms(msm_mode)) {
 			_sde_encoder_modeset_helper_locked(drm_enc,
 					SDE_ENC_RC_EVENT_PRE_MODESET);
@@ -4653,14 +4648,6 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
 	}
 
-	/*
-	 * disable dce after the transfer is complete (for command mode)
-	 * and after physical encoder is disabled, to make sure timing
-	 * engine is already disabled (for video mode).
-	 */
-	if (!sde_in_trusted_vm(sde_kms))
-		sde_encoder_dce_disable(sde_enc);
-
 	sde_encoder_resource_control(drm_enc, SDE_ENC_RC_EVENT_STOP);
 
 	/* reset connector topology name property */
@@ -4773,16 +4760,12 @@ void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
 				phys_enc->hw_pp->merge_3d ?
 				phys_enc->hw_pp->merge_3d->idx : 0);
 
+	sde_encoder_dce_disable(sde_enc);
 	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
 		hw_dsc = sde_enc->hw_dsc[i];
-
-		if (hw_dsc && hw_dsc->ops.bind_pingpong_blk[disp_op]) {
-			hw_dsc->ops.bind_pingpong_blk[disp_op](hw_dsc, false, PINGPONG_MAX);
-
-			if (ctl->ops.update_bitmask[disp_op])
-				ctl->ops.update_bitmask[disp_op](ctl, SDE_HW_FLUSH_DSC,
-					hw_dsc->idx, true);
-		}
+		if (hw_dsc && ctl->ops.update_bitmask[disp_op])
+			ctl->ops.update_bitmask[disp_op](ctl, SDE_HW_FLUSH_DSC,
+				hw_dsc->idx, true);
 	}
 
 	_trigger_encoder_hw_fences_override(phys_enc->sde_kms, ctl);
@@ -7261,8 +7244,6 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 			ret = rc;
 		}
 	}
-
-	sde_encoder_dce_flush(sde_enc);
 
 	if (sde_enc->cur_master && !sde_enc->cur_master->cont_splash_enabled)
 		sde_configure_qdss(sde_enc, sde_enc->cur_master->hw_qdss,
