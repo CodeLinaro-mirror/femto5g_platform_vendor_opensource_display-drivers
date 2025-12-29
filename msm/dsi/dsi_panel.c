@@ -5324,6 +5324,60 @@ void dsi_panel_calc_dsi_transfer_time(struct dsi_host_common_cfg *config,
 	display_mode->pixel_clk_khz =  display_mode->pixel_clk_khz / 1000;
 }
 
+int dsi_panel_get_mode_cell_index(struct dsi_panel *panel, u32 index,
+				  struct dsi_display_mode *mode)
+{
+	struct device_node *timings_np, *child_np;
+	struct dsi_parser_utils *utils;
+	u32 child_idx = 0;
+	int rc = 0, num_timings;
+	void *utils_data = NULL;
+
+	if (!panel || !mode)
+		return -EINVAL;
+
+	mutex_lock(&panel->panel_lock);
+
+	utils = &panel->utils;
+	utils_data = utils->data;
+	timings_np = utils->get_child_by_name(utils->data,
+			"qcom,mdss-dsi-display-timings");
+	if (!timings_np) {
+		DSI_ERR("no display timing nodes defined\n");
+		rc = -EINVAL;
+		goto error;
+	}
+
+	num_timings = utils->get_child_count(timings_np);
+	if (!num_timings || num_timings > DSI_MODE_MAX) {
+		DSI_ERR("invalid count of timing nodes: %d\n", num_timings);
+		rc = -EINVAL;
+		goto error;
+	}
+
+	if (index >= num_timings) {
+		DSI_ERR("timing index out of range: %u >= %d\n", index, num_timings);
+		rc = -EINVAL;
+		goto error;
+	}
+
+	dsi_for_each_child_node(timings_np, child_np) {
+		if (index != child_idx++)
+			continue;
+
+		utils->data = child_np;
+
+		if (utils->read_u32(utils->data, "cell-index", &mode->mode_idx))
+			mode->mode_idx = index;
+
+		break;
+	}
+
+error:
+	utils->data = utils_data;
+	mutex_unlock(&panel->panel_lock);
+	return rc;
+}
 
 int dsi_panel_get_mode(struct dsi_panel *panel,
 			u32 index, struct dsi_display_mode *mode,
