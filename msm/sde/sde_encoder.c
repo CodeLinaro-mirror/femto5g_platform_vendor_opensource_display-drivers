@@ -659,6 +659,56 @@ void sde_encoder_helper_report_irq_timeout(struct sde_encoder_phys *phys_enc,
 				SDE_ENCODER_FRAME_EVENT_ERROR);
 }
 
+int sde_encoder_set_offload_mode(struct drm_encoder *drm_enc, int enable)
+{
+
+	struct sde_encoder_virt *sde_enc;
+	enum msm_disp_op disp_op;
+
+	if (!drm_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid sde encoder\n");
+		return -EINVAL;
+	}
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (!sde_enc->hal_ops.enable_hw_event[disp_op]) {
+		SDE_ERROR("enable_hw_event not available for disp_op %d\n", disp_op);
+		return -EOPNOTSUPP;
+	}
+
+	if (!enable) {
+		msleep(50);
+		sde_enc->hal_ops.register_power_event_notify[disp_op](sde_enc,
+			true);
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			MSM_ENC_VBLANK, true);
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			MSM_ENC_COMMIT_DONE, true);
+		sde_enc->hal_ops.enable_hw_event[disp_op] (sde_enc,
+			MSM_ENC_TX_COMPLETE, true);
+		SDE_DEBUG("register HW events for offload\n");
+	} else {
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			MSM_ENC_VBLANK, false);
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			MSM_ENC_COMMIT_DONE, false);
+		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+			MSM_ENC_TX_COMPLETE, false);
+		sde_enc->hal_ops.register_power_event_notify[disp_op](sde_enc,
+			false);
+		SDE_DEBUG("deregister HW events for offload\n");
+	}
+
+	return 0;
+}
+
 int sde_encoder_helper_wait_for_irq(struct sde_encoder_phys *phys_enc,
 		enum sde_intr_idx intr_idx,
 		struct sde_encoder_wait_info *wait_info)
@@ -3666,11 +3716,6 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 				return ret;
 			}
 
-			/*
-			 * Disable dce before switching the mode and after pre-
-			 * modeset to guarantee previous kickoff has finished.
-			 */
-			sde_encoder_dce_disable(sde_enc);
 		} else if (msm_is_mode_seamless_poms(msm_mode)) {
 			_sde_encoder_modeset_helper_locked(drm_enc,
 					SDE_ENC_RC_EVENT_PRE_MODESET);
@@ -4421,11 +4466,15 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 			sizeof(sde_enc->cur_master->intf_cfg_v1));
 
 	/* turn off vsync_in to update tear check configuration */
-	sde_encoder_control_te(sde_enc, false);
+	if (!sde_enc->disp_info.vrr_caps.video_psr_support ||
+			sde_enc->crtc->state->active_changed)
+		sde_encoder_control_te(sde_enc, false);
 	sde_encoder_populate_encoder_phys(drm_enc, sde_enc, msm_mode);
 
 	_sde_encoder_virt_enable_helper(drm_enc);
-	sde_encoder_control_te(sde_enc, true);
+	if (!sde_enc->disp_info.vrr_caps.video_psr_support ||
+			sde_enc->crtc->state->active_changed)
+		sde_encoder_control_te(sde_enc, true);
 
 	sde_enc->cached_connector = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 	if (!sde_enc->cached_connector)
@@ -4599,14 +4648,6 @@ static void sde_encoder_virt_disable(struct drm_encoder *drm_enc)
 		kthread_flush_worker(&priv->event_thread[drm_crtc->index].worker);
 	}
 
-	/*
-	 * disable dce after the transfer is complete (for command mode)
-	 * and after physical encoder is disabled, to make sure timing
-	 * engine is already disabled (for video mode).
-	 */
-	if (!sde_in_trusted_vm(sde_kms))
-		sde_encoder_dce_disable(sde_enc);
-
 	sde_encoder_resource_control(drm_enc, SDE_ENC_RC_EVENT_STOP);
 
 	/* reset connector topology name property */
@@ -4719,16 +4760,12 @@ void sde_encoder_helper_phys_disable(struct sde_encoder_phys *phys_enc,
 				phys_enc->hw_pp->merge_3d ?
 				phys_enc->hw_pp->merge_3d->idx : 0);
 
+	sde_encoder_dce_disable(sde_enc);
 	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
 		hw_dsc = sde_enc->hw_dsc[i];
-
-		if (hw_dsc && hw_dsc->ops.bind_pingpong_blk[disp_op]) {
-			hw_dsc->ops.bind_pingpong_blk[disp_op](hw_dsc, false, PINGPONG_MAX);
-
-			if (ctl->ops.update_bitmask[disp_op])
-				ctl->ops.update_bitmask[disp_op](ctl, SDE_HW_FLUSH_DSC,
-					hw_dsc->idx, true);
-		}
+		if (hw_dsc && ctl->ops.update_bitmask[disp_op])
+			ctl->ops.update_bitmask[disp_op](ctl, SDE_HW_FLUSH_DSC,
+				hw_dsc->idx, true);
 	}
 
 	_trigger_encoder_hw_fences_override(phys_enc->sde_kms, ctl);
@@ -6119,6 +6156,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	struct sde_hw_ctl *ctl;
 	struct sde_ctl_flush_cfg cfg;
 	u32 pf_time_in_us;
+	u64 avr_step_in_ns;
 	struct drm_crtc *crtc;
 	struct sde_connector *sde_conn;
 	struct sde_crtc *sde_crtc;
@@ -6126,6 +6164,7 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 	ktime_t current_time, sr_timer_expires, diff;
 	enum msm_disp_op disp_op;
 	enum sde_crtc_vm_req vm_req;
+	char atrace_buf[64];
 
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, send_still_cmd);
 	if (!sde_enc || !sde_enc->cur_master)
@@ -6183,6 +6222,21 @@ void sde_encoder_handle_video_psr_self_refresh(struct sde_encoder_virt *sde_enc,
 		}
 
 		_sde_encoder_avoid_prog_fetch_region(phys_enc, sde_enc);
+	}
+
+	current_time = ktime_get();
+	avr_step_in_ns = SEC_TO_NS / sde_enc->mode_info.avr_step_fps;
+	sr_timer_expires = hrtimer_get_expires(&phys_enc->sde_vrr_cfg.self_refresh_timer);
+	/* Self refresh timer scheduled early case and within avr step*/
+	if (ktime_compare(sr_timer_expires, current_time) > 0 &&
+			(ktime_sub(sr_timer_expires, current_time) < avr_step_in_ns)) {
+		diff = ktime_sub(sr_timer_expires, current_time);
+		snprintf(atrace_buf, sizeof(atrace_buf), "timeout_%llu", ktime_to_us(diff));
+		SDE_ATRACE_BEGIN(atrace_buf);
+		usleep_range(ktime_to_us(diff), ktime_to_us(diff) + 10);
+		SDE_ATRACE_END(atrace_buf);
+		SDE_EVT32(ktime_to_us(diff), ktime_to_us(sr_timer_expires),
+				ktime_to_us(ktime_get()), SDE_EVTLOG_FUNC_EXIT);
 	}
 
 	ctl = phys_enc->hw_ctl;
@@ -7190,8 +7244,6 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 			ret = rc;
 		}
 	}
-
-	sde_encoder_dce_flush(sde_enc);
 
 	if (sde_enc->cur_master && !sde_enc->cur_master->cont_splash_enabled)
 		sde_configure_qdss(sde_enc, sde_enc->cur_master->hw_qdss,

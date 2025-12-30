@@ -200,6 +200,46 @@ void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc, void *cfg);
  */
 void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
 
+/**
+ * hfi_cp_crtc_alloc_pa_hist_buffers - allocate PA histogram buffers
+ * @sde_crtc: Pointer to sde_crtc context
+ *
+ * Return: 0 on success, error code otherwise
+ */
+int hfi_cp_crtc_alloc_pa_hist_buffers(struct sde_crtc *sde_crtc);
+
+/**
+ * hfi_cp_crtc_dealloc_pa_hist_buffers - deallocate PA histogram buffers
+ * @sde_crtc: Pointer to sde_crtc context
+ *
+ * Return: 0 on success, error code otherwise
+ */
+int hfi_cp_crtc_dealloc_pa_hist_buffers(struct sde_crtc *sde_crtc);
+
+/**
+ * hfi_cp_crtc_queue_pa_hist_buffer - Queue PA histogram buffer
+ * @sde_crtc: Pointer to sde_crtc context
+ * @ctx: Pointer to DSPP context
+ * @data: Pointer to PA histogram buffer fd
+ */
+int hfi_cp_crtc_queue_pa_hist_buffer(struct sde_crtc *sde_crtc,
+		struct sde_hw_dspp *ctx, void *data);
+
+/**
+ * hfi_cp_crtc_clear_pa_hist_buffers - free PA Hist buffers in HFI path
+ * @sde_crtc: Pointer to sde_crtc context
+ * @data: Pointer to hw config structure
+ */
+void hfi_cp_crtc_clear_pa_hist_buffers(struct sde_crtc *sde_crtc, void *data);
+
+/**
+ * hfi_setup_dspp_hist_v1_7 - Setup DSPP PA histogram control
+ * @hw_dspp: Pointer to DSPP hardware context
+ * @data: Pointer to histogram control configuration
+ * @enable: Enable/disable PA hist ctrl
+ */
+void hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *hw_dspp, void *data, bool enable);
+
 #else
 
 void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
@@ -309,6 +349,32 @@ void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc, void *cfg)
 void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 {
 }
+
+int hfi_cp_crtc_alloc_pa_hist_buffers(struct sde_crtc *sde_crtc)
+{
+	return 0;
+}
+
+int hfi_cp_crtc_dealloc_pa_hist_buffers(struct sde_crtc *sde_crtc)
+{
+	return 0;
+}
+
+int hfi_cp_crtc_queue_pa_hist_buffer(struct sde_crtc *sde_crtc,
+		struct sde_hw_dspp *ctx, void *data)
+{
+	return 0;
+}
+
+void hfi_cp_crtc_clear_pa_hist_buffers(struct sde_crtc *sde_crtc, void *data)
+{
+}
+
+int hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *hw_dspp, void *data, bool enable)
+{
+	return 0;
+}
+
 
 #endif // CONFIG_MDSS_HFI
 

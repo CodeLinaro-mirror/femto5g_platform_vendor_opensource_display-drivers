@@ -13,6 +13,9 @@
 #include <linux/kthread.h>
 #include <linux/spinlock.h>
 #include <linux/scatterlist.h>
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+#include <synx_api.h>
+#endif /* CONFIG_QTI_HW_FENCE */
 #if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
 #include "hfi_pack_unpack_common.h"
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
@@ -249,11 +252,17 @@ struct hfi_prop_listener {
  * Clients listener implementation pointers cached in a list
  * @list_ptr: List head
  * @packet_id: ID of HFI Packet used a key for listener list
+ * @cmd_id: Command ID that created this listener (for identifying deregister listeners)
+ * @event_id: Event ID from payload that created this listener (for cleanup purposes)
+ * @obj_id: Object ID associated with this listener (for cleanup purposes)
  * @listener_obj: Void Pointer of listener object
  */
 struct listener_list {
 	struct list_head list_ptr;
 	u32 packet_id;
+	u32 cmd_id;
+	u32 event_id;
+	u32 obj_id;
 	void *listener_obj;
 };
 

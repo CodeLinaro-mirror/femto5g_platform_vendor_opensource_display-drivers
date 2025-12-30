@@ -496,17 +496,21 @@
 #define HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT                0x00020021
 
 /*
- * HFI_PROPERTY_DISPLAY_INPUT_FENCE - This property is set to provide the input/acquire fence
- *                                    representing every input frame layer of the
- *                                    LSR WB CSC/Reprojection displays.
- *                                    Host is expected to send this packet of
- *                                    HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ * @def HFI_PROPERTY_DISPLAY_INPUT_FENCE
+ * @brief This property is to configure the input fence for scan start/complete.
+ *        DCP waits on this fence for scan start and signals this fence for scan
+ *        complete. Host is expected to send this packet as part of
+ *        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
  *
  * @BasicFuntionality - HFI_PROPERTY_DISPLAY_INPUT_FENCE
- *     (u32_key) payload [0]   : HFI_PROPERTY_DISPLAY_INPUT_FENCE |
- *                               (version=0 << 20) | (dsize=2 << 24)
- *     (u32_value) payload [1] : Acquire Fence Low
- *     (u32_value) payload [2] : Acquire Fence High
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_INPUT_FENCE \|
+ * ^                             | (version=0 << 20) \|
+ * ^                             | (dsize=2 << 24)
+ *   (u32_value) payload [1]     | one of the flags from enum hfi_fence_type
+ *   (u32_value) payload [2]     | Input fence handle
  */
 #define HFI_PROPERTY_DISPLAY_INPUT_FENCE                             0x00020022
 
@@ -656,6 +660,25 @@
  *     (u32_value) payload [4-..]| array of struct hfi_display_roi
  */
 #define HFI_PROPERTY_DISPLAY_DEST_ROI                                0x0002002B
+
+/*!
+ * @def HFI_PROPERTY_DISPLAY_OUTPUT_FENCE
+ * @brief This property configures the output fence used for synchronization.
+ *        The fence is signaled by the display to indicate that frame buffer
+ *        processing is complete. The host is expected to send this property as part of the
+ *        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_OUTPUT_FENCE
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_OUTPUT_FENCE  \|
+ * ^                             | (version=0 << 20)  \|
+ * ^                             | (dsize=2 << 24)
+ *   (u32_value) payload [1]     | Reserved for future use
+ *   (u32_value) payload [2]     | Output fence handle
+ */
+#define HFI_PROPERTY_DISPLAY_OUTPUT_FENCE                            0x0002002C
 
 /*
  * All display color properties begin here
@@ -1238,6 +1261,71 @@
  *   (u32_value) payload [1]     | struct hfi_buff_dpu
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC                          0x00020127
+
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_RC_PU - This property is to setup RC for PU.
+ *                                    Host is expected to send this packet
+ *                                    of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                    command packet payload.
+ *
+ * @brief - HFI_PROPERTY_DISPLAY_COLOR_RC_PU
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_RC_PU |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_RC_PU                             0x00020128
+
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL - Property to configure PA hist control
+ *                                           parameters. Host sends this as part of
+ *                                           HFI_COMMAND_DISPLAY_SET_PROPERTY.
+ *
+ * @brief - HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL                      0x00020129
+
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER - Property to queue PA histogram
+ *                                                   buffer. Host sends this to provide buffer
+ *                                                   for histogram stats.
+ *
+ * @brief - HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_display_pa_hist_buffer)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_display_pa_hist_buffer
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER              0x0002012A
+
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS - Property to clear all queued PA
+ *                                                    hist buffers. Host sends this to reset
+ *                                                    histogram buffer state.
+ *
+ * @brief - HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(u32)/4) << 24)
+ *   (u32_value) payload [1]     | u32
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS             0x0002012B
 
 /*
  * All display color properties end here
@@ -1879,11 +1967,7 @@
 /*!
  * @def HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG - This property is used to configure downscale blur
  *                                      (DNSC BLUR) settings for display. The configuration data
- *                                      is passed via a shared buffer using the hfi_buff
- *                                      approach. The shared buffer contains struct
- *                                      hfi_dnsc_blur_cfg with source/destination dimensions,
- *                                      phase initialization, scaling ratios, and blur
- *                                      coefficients for both horizontal and vertical directions.
+ *                                      is passed via a shared buffer using the hfi_buff approach.
  *                                      Host is expected to send this packet as part of
  *                                      HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
  *
@@ -1895,8 +1979,7 @@
  *                               | (version=0 << 20) |
  *                               | (dsize=1 + (sizeof(struct hfi_buff)/4) << 24)
  *     (u32_value) payload [1]   | wb_id
- *     (u32_value) payload [2-6] | struct hfi_buff (contains remote address to
- *                               | shared buffer with hfi_dnsc_blur_cfg data)
+ *     (u32_value) payload [2-6] | struct hfi_buff
  */
 #define HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG                      0x00030029
 

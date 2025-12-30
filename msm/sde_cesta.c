@@ -1101,7 +1101,7 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sde_cesta *cesta;
-	int i;
+	int i, scc_client_start = 0;
 	struct msm_vm_ops vm_event_ops = {
 		.vm_get_io_resources = sde_cesta_get_io_resources,
 	};
@@ -1126,7 +1126,10 @@ int sde_cesta_bind(struct device *dev, struct device *master, void *data)
 	sde_dbg_reg_register_base("disp_cc", cesta->disp_cc_io.base,
 			cesta->disp_cc_io.len, msm_get_phys_addr(pdev, "disp_cc"), SDE_DBG_RSC);
 
-	for (i = 0; i < cesta->scc_count; i++) {
+	if (cesta->hw_drv_ver >= (SDE_CESTA_HW_MAJOR_MINOR_STEP(4, 3, 0)))
+		scc_client_start = 1;
+
+	for (i = scc_client_start; i < cesta->scc_count; i++) {
 		char blk_name[32];
 
 		snprintf(blk_name, sizeof(blk_name), "scc_%u", cesta->scc_index[i]);

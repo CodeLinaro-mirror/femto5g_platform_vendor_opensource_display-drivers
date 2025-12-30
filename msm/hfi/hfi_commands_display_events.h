@@ -261,6 +261,26 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_RGB_HIST                                      0x0400000A
 
+/*!
+ * @def HFI_COMMAND_DISPLAY_EVENT_PA_HIST - This is a DCP event notify command sent to the host
+ * for PA Histogram event.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is
+ * listed below, other fields can be found in @ref disp_events_header_data_page)
+ *
+ * @brief - HFI_COMMAND_DISPLAY_EVENT_PA_HIST
+ *
+ * Hfi packet layout                      | Value
+ *----------------------------------------|---------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                         | HFI_COMMAND_DISPLAY_EVENT_PA_HIST
+ * hfi_packet.flags                       | HFI_RX_FLAGS_NONE
+ * hfi_packet.id                          | BITS 0:15 carry the display id for which the event
+ * ^                                      | is applicable.
+ * hfi_packet.payload[0-3]                | struct hfi_display_pa_hist_event_resp
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_PA_HIST                                       0x0400000B
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H

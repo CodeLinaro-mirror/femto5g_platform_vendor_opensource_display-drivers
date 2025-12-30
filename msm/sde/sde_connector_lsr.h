@@ -8,6 +8,19 @@
 
 #include <linux/types.h>
 #include <drm/drm_atomic.h>
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+#include <synx_api.h>
+#endif /* CONFIG_QTI_HW_FENCE */
+
+struct sde_lsr_hw_fence_data {
+	int client_id;
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+	enum synx_client_id hw_fence_client_id;
+	struct synx_session *hw_fence_handle;
+	struct synx_queue_desc mem_descriptor;
+#endif /* CONFIG_QTI_HW_FENCE */
+	u64 dma_context;
+};
 
 struct lsr_perf {
 	u32 lsr_csc_bw;
@@ -26,6 +39,8 @@ struct sde_reproj {
 	atomic_t *ref_count;
 	u32 type;
 	struct sde_lsr_perf perf;
+	u32 lsr_reusable_hsynx;
+	u32 reusable_fence_cnt;
 	u32 queue_table_dcp_addr;
 	u32 queue_table_size;
 	u32 csc_scratch_dcp_addr;
@@ -87,4 +102,3 @@ struct sde_reproj {
 int msm_reproj_disp_register_intf(struct sde_reproj *reproj_inst);
 
 #endif
-

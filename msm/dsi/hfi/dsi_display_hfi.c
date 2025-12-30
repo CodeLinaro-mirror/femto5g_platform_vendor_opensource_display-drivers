@@ -495,9 +495,13 @@ free_aspace_cb:
 	msm_gem_address_space_unregister_cb(display->aspace,
 			dsi_display_aspace_cb_locked, display);
 free_gem:
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_lock(&display->drm_dev->struct_mutex);
+#endif
 	msm_gem_free_object(display->tx_cmd_buf);
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&display->drm_dev->struct_mutex);
+#endif
 error:
 	return rc;
 }

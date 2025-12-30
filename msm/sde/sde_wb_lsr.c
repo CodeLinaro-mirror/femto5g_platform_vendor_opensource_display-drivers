@@ -33,10 +33,10 @@ void _sde_wb_lsr_destroy_fb_list(struct sde_connector *c_conn,
 		c_state->property_values[CONNECTOR_PROP_OUT_FB_LIST].value = ~0;
 }
 
-static struct sde_view_descriptor _sde_wb_lsr_get_view_descriptor(struct drm_connector *connector,
-		struct drm_connector_state *state, struct sde_drm_view_descriptor *view_desc)
+static int _sde_wb_lsr_get_view_descriptor(struct drm_connector *connector,
+		struct drm_connector_state *state, struct sde_drm_view_descriptor *view_desc,
+		struct sde_view_descriptor *desc)
 {
-	struct sde_view_descriptor *desc = NULL;
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
 	const struct msm_format *format;
@@ -46,13 +46,10 @@ static struct sde_view_descriptor _sde_wb_lsr_get_view_descriptor(struct drm_con
 	c_conn = to_sde_connector(connector);
 	c_state = to_sde_connector_state(state);
 
-	if (!c_conn || !c_state || !view_desc) {
+	if (!c_conn || !c_state || !view_desc || !desc) {
 		SDE_ERROR("invalid args\n");
-		rc = -EINVAL;
-		goto exit;
+		return -EINVAL;
 	}
-
-	desc = kzalloc(sizeof(struct sde_view_descriptor), GFP_KERNEL);
 
 	desc->num_fbs = view_desc->num_fbs;
 	for (int j = 0; j < view_desc->num_fbs; j++) {
@@ -101,11 +98,7 @@ static struct sde_view_descriptor _sde_wb_lsr_get_view_descriptor(struct drm_con
 			}
 		}
 	}
-exit:
-	if (rc)
-		desc = NULL;
-
-	return *desc;
+	return rc;
 }
 
 static void _sde_wb_lsr_set_reproj_matrix(struct sde_connector *c_conn,
@@ -175,13 +168,18 @@ static int _sde_wb_lsr_set_prop_out_fb_list(struct drm_connector *connector,
 	for (iter = 0; iter < MAX_VIEWS * FLIP_VIEWS; iter++) {
 		view_idx = iter % MAX_VIEWS;
 		if ((iter / MAX_VIEWS) && is_back_view)
-			c_state->back_view_descriptor[view_idx] =
-						_sde_wb_lsr_get_view_descriptor(connector, state,
-								&fb_id_list.back_views[view_idx]);
+			rc = _sde_wb_lsr_get_view_descriptor(connector, state,
+					&fb_id_list.back_views[view_idx],
+					&c_state->back_view_descriptor[view_idx]);
 		else if (iter < MAX_VIEWS)
-			c_state->view_descriptor[view_idx] =
-						_sde_wb_lsr_get_view_descriptor(connector, state,
-								&fb_id_list.views[view_idx]);
+			rc = _sde_wb_lsr_get_view_descriptor(connector, state,
+					&fb_id_list.views[view_idx],
+					&c_state->view_descriptor[view_idx]);
+
+		if (rc) {
+			SDE_ERROR("failed to get view descriptor %d\n", rc);
+			return rc;
+		}
 	}
 	return rc;
 }
@@ -232,6 +230,24 @@ static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	sde_kms = sde_connector_get_kms(connector);
 	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
 
+	if (cstate->pose_fb) {
+		if (cstate->reproj_pose_iova) {
+			ret = hfi_core_unmap_iova(cstate->reproj_pose_iova,
+					cstate->reproj_pose_size);
+			if (ret)
+				SDE_ERROR("failed to unmap pose fb iova, ret:%d\n", ret);
+			cstate->reproj_pose_iova = 0;
+			cstate->reproj_pose_size = 0;
+		}
+		gem_obj = msm_framebuffer_bo(cstate->pose_fb, 0);
+		if (!IS_ERR_OR_NULL(gem_obj))
+			msm_gem_put_vaddr(gem_obj);
+
+		msm_framebuffer_cleanup(cstate->pose_fb, aspace);
+		drm_framebuffer_put(cstate->pose_fb);
+		cstate->pose_fb = NULL;
+	}
+
 	cstate->pose_fb = drm_framebuffer_lookup(connector->dev, NULL, val);
 	if (!cstate->pose_fb) {
 		SDE_ERROR("failed to lookup framebuffer\n");
@@ -281,7 +297,7 @@ static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	ret = hfi_core_map_sg_table(&addr_map.alloc_info, msm_obj->sgt, addr_map.aligned_size,
 		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
 	if (ret) {
-		SDE_ERROR("SAIL: failed to map sg table to iova, ret:%d\n", ret);
+		SDE_ERROR("failed to map sg table to iova, ret:%d\n", ret);
 		return;
 	}
 
@@ -320,6 +336,13 @@ int _sde_wb_lsr_set_reproj_info(
 	opq_state_config->usr_cfg.flags = opq_blob->flags;
 	opq_state_config->usr_cfg.crc = opq_blob->crc;
 
+	if (opq_state_config->buf) {
+		msm_gem_put_iova(opq_state_config->buf,
+			c_conn->aspace[SDE_IOMMU_DOMAIN_UNSECURE]);
+		msm_gem_free_object(opq_state_config->buf);
+		opq_state_config->buf = NULL;
+	}
+
 	opq_state_config->buf =  msm_gem_new(dev, opq_blob->size, MSM_BO_UNCACHED);
 	if (!opq_state_config->buf) {
 		SDE_ERROR("Failed to allocate reproj buf memory\n");
@@ -334,7 +357,7 @@ int _sde_wb_lsr_set_reproj_info(
 					&(opq_state_config->remote_iova));
 	if (rc) {
 		SDE_ERROR("failed to get iova rc %d\n", rc);
-		goto put_iova;
+		goto free_gem;
 	}
 
 	opq_state_config->usr_cfg.data =
@@ -386,9 +409,11 @@ int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
 	case CONNECTOR_PROP_LSR_WB_REPROJ_CONFIG_MATRIX:
 		_sde_wb_lsr_set_reproj_matrix(c_conn, c_state,
 			(void *)(uintptr_t)val);
+		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_LSR_WB_REPROJ_POSE_FB:
 		_sde_wb_lsr_set_reproj_pose_fb(connector, c_state, val);
+		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_OUT_FB_LIST:
 		rc = _sde_wb_lsr_set_prop_out_fb_list(connector, state,
@@ -397,26 +422,48 @@ int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
 	case CONNECTOR_PROP_REPROJ_SPARSE_GRID:
 		_sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
 			&c_state->reproj_sparse_grid);
+		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_REPROJ_RADIAL_DISTORTION_GRID:
 		_sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
 			&c_state->reproj_radial_dis_grid);
+		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_REPROJ_OPTICAL_AXIS_OFFSET:
 		_sde_wb_lsr_set_optical_axis_offset(c_conn, c_state,
 			(void *)(uintptr_t)val);
+		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_REPROJ_DISPLAY_GAMMA:
 		_sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
 			&c_state->reproj_display_gamma);
+		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_REPROJ_GCX_SESSION_CONFIG:
 		_sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
 			&c_state->reproj_gcx_session_config);
+		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_REPROJ_GCX_SESSION_CONFIG_DATA:
 		_sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
 			&c_state->reproj_gcx_session_config_data);
+		c_state->gcx_session_dirty = true;
+		break;
+	case CONNECTOR_PROP_REPROJ_FUNCTIONAL_MODE:
+	case CONNECTOR_PROP_REPROJ_DISTORT_RESOLUTION:
+	case CONNECTOR_PROP_REPROJ_GRID_WIDTH:
+	case CONNECTOR_PROP_REPROJ_GRID_HEIGHT:
+	case CONNECTOR_PROP_REPROJ_R_MAX:
+	case CONNECTOR_PROP_REPROJ_TO_LRGB_LEFT:
+	case CONNECTOR_PROP_REPROJ_ERROR_TO_L:
+	case CONNECTOR_PROP_REPROJ_MIN_BBOX_H:
+	case CONNECTOR_PROP_REPROJ_TO_LRGB_RIGHT:
+	case CONNECTOR_PROP_REPROJ_DISP_IM_W:
+	case CONNECTOR_PROP_REPROJ_TILE_W:
+	case CONNECTOR_PROP_REPROJ_MIN_BBOX_W:
+	case CONNECTOR_PROP_REPROJ_DISP_IM_H:
+	case CONNECTOR_PROP_REPROJ_TILE_H:
+		c_state->gcx_session_dirty = true;
 		break;
 	}
 
@@ -543,7 +590,7 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 	struct drm_framebuffer *fb;
 	struct sde_hw_fmt_layout *layout;
 	uint32_t ret;
-	int count = 0, view_idx = 0;
+	int count = 0, view_idx = 0, rc = 0;
 	u32 flags, hfi_format, modifier;
 	struct sde_format_extended fmt;
 	bool is_back_view = false;
@@ -569,7 +616,8 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
 	if (!aspace) {
 		SDE_ERROR("invalid aspace\n");
-		return -EINVAL;
+		rc = -EINVAL;
+		goto end;
 	}
 
 	for (int i = 0; i < MAX_VIEWS * FLIP_VIEWS; i++) {
@@ -587,12 +635,14 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 			fb = desc->fb_id[j];
 			if (!fb) {
 				SDE_ERROR("invalid fb\n");
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 			ret = msm_framebuffer_prepare(fb, aspace);
 			if (ret) {
 				SDE_ERROR("failed to prepare framebuffer %d\n", ret);
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 			drm_framebuffer_get(fb);
 			format = msm_framebuffer_format(fb);
@@ -600,12 +650,14 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 			fmt.modifier = fb->modifier;
 			if (!format) {
 				SDE_ERROR("invalid fb fmt\n");
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 			layout->format = sde_get_sde_format_ext(format->pixel_format, fb->modifier);
 			if (!layout->format) {
 				SDE_ERROR("invalid fb format\n");
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 
 			layout->width = fb->width;
@@ -614,7 +666,8 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 			ret = sde_format_populate_layout(aspace, fb, layout);
 			if (ret) {
 				SDE_ERROR("failed SDE_format_populate_layout\n");
-				return -EINVAL;
+				rc = -EINVAL;
+				goto end;
 			}
 
 			modifier = fb->modifier & 0x00000000ffffffff;
@@ -649,8 +702,9 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 			count++;
 		}
 	}
+end:
 	kfree(layout);
-	return 0;
+	return rc;
 }
 
 int sde_wb_update_lsr_perf(struct drm_connector *connector,
@@ -691,6 +745,8 @@ int sde_wb_connector_reproj_setup(struct sde_connector *conn, struct sde_wb_devi
 	rc = msm_reproj_disp_register_intf(conn->reproj_conn);
 	if (rc) {
 		SDE_ERROR("failed to register reproj disp\n");
+		kfree(conn->reproj_conn);
+		conn->reproj_conn = NULL;
 		return -ENODEV;
 	}
 
@@ -706,15 +762,5 @@ void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state)
 	if (!c_state)
 		return;
 
-	c_state->reproj_sparse_grid.usr_cfg.size = 0;
-	c_state->reproj_radial_dis_grid.usr_cfg.size = 0;
-	c_state->reproj_display_gamma.usr_cfg.size = 0;
-	c_state->reproj_gcx_session_config.usr_cfg.size = 0;
-	c_state->reproj_gcx_session_config_data.usr_cfg.size = 0;
-
-	c_state->reproj_sparse_grid.remote_iova = 0;
-	c_state->reproj_radial_dis_grid.remote_iova = 0;
-	c_state->reproj_display_gamma.remote_iova = 0;
-	c_state->reproj_gcx_session_config.remote_iova = 0;
-	c_state->reproj_gcx_session_config_data.remote_iova = 0;
+	c_state->gcx_session_dirty = false;
 }

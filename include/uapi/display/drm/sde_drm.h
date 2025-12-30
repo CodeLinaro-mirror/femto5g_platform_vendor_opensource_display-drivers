@@ -127,6 +127,22 @@ extern "C" {
 #define DRM_FORMAT_MOD_QCOM_NV12_4R_4Y	fourcc_mod_code(QCOM, 0x4000)
 
 /**
+ * @DRM_FORMAT_MOD_QCOM_ALPHA_ONLY : Refers to a single-plane RGB format that
+ *					only contains 'alpha' content
+ */
+#define DRM_FORMAT_MOD_QCOM_ALPHA_ONLY	fourcc_mod_code(QCOM, 0x8000)
+
+/**
+ * @DRM_FORMAT_MOD_QCOM_LUMA_ONLY : Refers to a single-plane YUV format that
+ *					only contains 'luma' content
+ */
+#define DRM_FORMAT_MOD_QCOM_LUMA_ONLY	fourcc_mod_code(QCOM, 0x10000)
+
+/**
+ * @DRM_FORMAT_MOD_QCOM_MSB_ALIGN : Refers to a MSB aligned format
+ */
+#define DRM_FORMAT_MOD_QCOM_MSB_ALIGN	fourcc_mod_code(QCOM, 0x20000)
+/**
  * Blend operations for "blend_op" property
  *
  * @SDE_DRM_BLEND_OP_NOT_DEFINED:   No blend operation defined for the layer.

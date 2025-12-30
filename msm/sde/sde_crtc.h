@@ -307,6 +307,16 @@ struct sde_rgb_hist_buffer {
 };
 
 /**
+ * struct sde_pa_hist_buffer - PA histogram buffer information
+ * @buffer:        Shared address map for the PA histogram buffer
+ * @is_available:  Flag indicating if the buffer is currently available
+ */
+struct sde_pa_hist_buffer {
+	struct hfi_shared_addr_map buffer;
+	bool is_available;
+};
+
+/**
  * struct sde_crtc_hal_funcs - interface api for sde crtc hal
  */
 struct sde_crtc_hal_funcs {
@@ -690,6 +700,7 @@ struct sde_crtc {
 	bool do_clear_rgb_hist_buf;
 	struct sde_rgb_hist_buffer *rgb_hist_buffers[RGB_HISTOGRAM_BUFFER_SIZE];
 	struct mutex rgb_hist_buffer_lock;
+	struct sde_pa_hist_buffer pa_hist_buffers[PA_HIST_BUFFER_NUM];
 };
 
 enum sde_crtc_dirty_flags {
@@ -1053,6 +1064,18 @@ u32 sde_crtc_get_dfps_maxfps(struct drm_crtc *crtc);
  */
 enum sde_wb_usage_type sde_crtc_get_wb_usage_type(struct drm_crtc *crtc);
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+/**
+ * _get_hfi_hw_data_from_kms - get hw_fence_data from hfi kms
+ * @sde_kms: Pointer to sde_kms
+ */
+void *_get_hfi_hw_data_from_kms(struct sde_kms *sde_kms);
+#else
+static inline void *_get_hfi_hw_data_from_kms(struct sde_kms *sde_kms)
+{
+	return NULL;
+}
+#endif
 /**
  * sde_crtc_get_client_type - check the crtc type- rt, rsc_rt, etc.
  * @crtc: Pointer to crtc
@@ -1518,14 +1541,22 @@ bool sde_crtc_property_is_dirty(struct sde_crtc_state *cstate,
 /**
  * sde_crtc_check_for_lsr_opmode - Returns opmode if crtc is for LSR display
  * @crtc: pointer to drm crtc
+ * @state: pointer to drm crtc state
  */
-int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc);
+int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc,
+		struct drm_crtc_state *state);
 
 /**
  * sde_crtc_update_lsr_perf - Updates lsr perf vote to LSR driver
  * @crtc: pointer to drm crtc
  */
 int sde_crtc_update_lsr_perf(struct drm_crtc *crtc);
+
+/*
+ * sde_crtc_out_hw_fences_enabled - check if output hw fences are enabled
+ * @crtc: pointer to drm crtc
+ */
+bool sde_crtc_out_hw_fences_enabled(struct sde_crtc *crtc);
 
 /**
  * sde_crtc_cp_unmap_ltm_buffers - unmap LTM buffers

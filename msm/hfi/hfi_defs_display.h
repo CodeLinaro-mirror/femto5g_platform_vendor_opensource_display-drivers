@@ -12,21 +12,6 @@
  * This is documentation file. Not used for header inclusion.
  */
 
-/* Downscale Blur (DNSC Blur) - number of gaussian coefficient LUTs */
-#define HFI_DNSC_BLUR_COEF_NUM              64
-
-/* Downscale Blur flags */
-#define HFI_DNSC_BLUR_EN                    (1 << 0)
-#define HFI_DNSC_BLUR_RND_8B_EN             (1 << 1)
-#define HFI_DNSC_BLUR_DITHER_EN             (1 << 2)
-
-/* Downscale Blur horizontal/vertical filter flags */
-#define HFI_DNSC_BLUR_GAUS_FILTER           (1 << 0)
-#define HFI_DNSC_BLUR_PCMN_FILTER           (1 << 1)
-
-/* Downscale Blur dither matrix size (4x4 matrix = 16 elements) */
-#define HFI_DNSC_DITHER_MATRIX_SZ           16
-
 /*
  * enum hfi_display_blend_ops - Different blend operations
  * @HFI_BLEND_OP_NOT_DEFINED     :    No blend operation defined for the layer.
@@ -247,6 +232,7 @@ enum hfi_display_idle_timer_control {
  * @HFI_EVENT_PANEL_DEAD              : Event ID for panel dead
  * @HFI_EVENT_LTM                     : Event ID for LTM event
  * @HFI_EVENT_RGB_HIST                : Event ID for RGB histogram event
+ * @HFI_EVENT_PA_HIST                 : Event ID for PA histogram event
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC                     = 0x1,
@@ -259,6 +245,7 @@ enum hfi_display_event_id {
 	HFI_EVENT_PANEL_DEAD                = 0x8,
 	HFI_EVENT_LTM                       = 0x9,
 	HFI_EVENT_RGB_HIST                  = 0xa,
+	HFI_EVENT_PA_HIST                   = 0xb,
 };
 
 /*
@@ -465,69 +452,20 @@ enum hfi_cwb_tap_points {
 };
 
 /*!
- * struct hfi_display_dnsc_dither - dither feature structure for downscaler blur (DNSC Blur)
- * @brief DNSC Blur dither config.
- * @var flags          flags representing enable and broadcast setting
- * @var feature_flags  flags for the feature customization
- * @var temporal_en    temporal dither enable
- * @var c0_bitdepth    c0 component bit depth
- * @var c1_bitdepth    c1 component bit depth
- * @var c2_bitdepth    c2 component bit depth
- * @var c3_bitdepth    c3 component bit depth
- * @var matrix         dither strength matrix
+ * @enum hfi_fence_type
+ * @brief Defines the types of fences used for synchronization.
+ *
+ * Fence types indicate specific synchronization points in the pipeline.
+ *
+ * @var HFI_FENCE_SCAN_START
+ * Fence that signals that the frame is picked up by hardware.
+ *
+ * @var HFI_FENCE_SCAN_COMPLETE
+ * Fence that signals the release of input buffers.
  */
-struct hfi_display_dnsc_dither {
-	u32 flags;
-	u32 feature_flags;
-	u32 temporal_en;
-	u32 c0_bitdepth;
-	u32 c1_bitdepth;
-	u32 c2_bitdepth;
-	u32 c3_bitdepth;
-	u32 matrix[HFI_DNSC_DITHER_MATRIX_SZ];
-};
-
-/*!
- * struct hfi_dnsc_blur_cfg - hfi downscale blur config.
- * @brief Downscale blur config. Passed through hfi_buff mechanism.
- * @var flags         Configuration flags for the downscaler blur.
- * @var src_width     Source image width in pixels.
- * @var src_height    Source image height in pixels.
- * @var dst_width     Destination image width in pixels.
- * @var dst_height    Destination image height in pixels.
- * @var flags_h       Horizontal filter flags (Gaussian/PCMN).
- * @var flags_v       Vertical filter flags (Gaussian/PCMN).
- * @var phase_init_h  Initial horizontal phase value.
- * @var phase_step_h  Horizontal phase step value.
- * @var phase_init_v  Initial vertical phase value.
- * @var phase_step_v  Vertical phase step value.
- * @var norm_h        Horizontal normalization factor.
- * @var ratio_h       Horizontal scaling ratio.
- * @var norm_v        Vertical normalization factor.
- * @var ratio_v       Vertical scaling ratio.
- * @var coef_hori     Horizontal blur coefficients array.
- * @var coef_vert     Vertical blur coefficients array.
- * @var dither_cfg    Dither configuration settings.
- */
-struct hfi_dnsc_blur_cfg {
-	u32 flags;
-	u32 src_width;
-	u32 src_height;
-	u32 dst_width;
-	u32 dst_height;
-	u32 flags_h;
-	u32 flags_v;
-	u32 phase_init_h;
-	u32 phase_step_h;
-	u32 phase_init_v;
-	u32 phase_step_v;
-	u32 norm_h;
-	u32 ratio_h;
-	u32 norm_v;
-	u32 ratio_v;
-	u32 coef_hori[HFI_DNSC_BLUR_COEF_NUM];
-	u32 coef_vert[HFI_DNSC_BLUR_COEF_NUM];
-	struct hfi_display_dnsc_dither dither_cfg;
+enum hfi_fence_type {
+	HFI_FENCE_SCAN_START,
+	HFI_FENCE_SCAN_COMPLETE,
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

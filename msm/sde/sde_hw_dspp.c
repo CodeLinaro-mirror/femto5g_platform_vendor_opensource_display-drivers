@@ -249,6 +249,7 @@ static void dspp_hist(struct sde_hw_dspp *c)
 		c->ops.setup_histogram[MSM_DISP_OP_HWIO] = sde_setup_dspp_hist_v1_7;
 		c->ops.read_histogram[MSM_DISP_OP_HWIO] = sde_read_dspp_hist_v1_7;
 		c->ops.lock_histogram[MSM_DISP_OP_HWIO] = sde_lock_dspp_hist_v1_7;
+		c->ops.setup_histogram[MSM_DISP_OP_HFI] = hfi_setup_dspp_hist_v1_7;
 	}
 }
 
@@ -403,6 +404,7 @@ static void dspp_rc(struct sde_hw_dspp *c)
 			c->ops.setup_rc_mask[MSM_DISP_OP_HWIO] = reg_dmav1_setup_rc_mask_configv1;
 			c->ops.setup_rc_pu_roi[MSM_DISP_OP_HWIO] = reg_dmav1_setup_rc_pu_configv1;
 			c->ops.setup_rc_mask[MSM_DISP_OP_HFI] = reg_dmav1_setup_rc_mask_configv1;
+			c->ops.setup_rc_pu_roi[MSM_DISP_OP_HFI] = reg_dmav1_setup_rc_pu_configv1;
 		} else {
 			c->ops.setup_rc_mask[MSM_DISP_OP_HWIO] = sde_hw_rc_setup_mask;
 			c->ops.setup_rc_pu_roi[MSM_DISP_OP_HWIO] = sde_hw_rc_setup_pu_roi;
@@ -411,6 +413,7 @@ static void dspp_rc(struct sde_hw_dspp *c)
 		c->ops.validate_rc_mask[MSM_DISP_OP_HWIO] = sde_hw_rc_check_mask;
 		c->ops.validate_rc_pu_roi[MSM_DISP_OP_HWIO] = sde_hw_rc_check_pu_roi;
 		c->ops.validate_rc_mask[MSM_DISP_OP_HFI] = sde_hw_rc_check_mask;
+		c->ops.validate_rc_pu_roi[MSM_DISP_OP_HFI] = sde_hw_rc_check_pu_roi;
 	}
 }
 
@@ -570,7 +573,8 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 			c->ops.reset_mdnie_art[MSM_DISP_OP_HWIO] = sde_reset_mdnie_art;
 			c->ops.setup_mdnie_psr[MSM_DISP_OP_HWIO] = sde_setup_mdnie_psr;
 
-			if (c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) {
+			if ((c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x0)) ||
+				(c->cap->sblk->aiqe.version == SDE_COLOR_PROCESS_VER(0x2, 0x1))) {
 				c->ops.setup_mdnie[MSM_DISP_OP_HWIO] = reg_dmav1_setup_mdnie_v2;
 
 				c->ops.setup_mdnie[MSM_DISP_OP_HFI] = reg_dmav1_setup_mdnie_v2;

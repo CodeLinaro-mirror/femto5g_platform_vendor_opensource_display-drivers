@@ -271,16 +271,6 @@ static void sde_kms_wait_for_frame_transfer_complete(struct msm_kms *kms,
 		return;
 	}
 
-	if (!crtc->state->enable) {
-		SDE_DEBUG("[crtc:%d] not enable\n", crtc->base.id);
-		return;
-	}
-
-	if (!crtc->state->active) {
-		SDE_DEBUG("[crtc:%d] not active\n", crtc->base.id);
-		return;
-	}
-
 	dev = crtc->dev;
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
@@ -740,7 +730,7 @@ static int sde_kms_prepare_secure_transition(struct msm_kms *kms,
 	struct sde_kms_smmu_state_data *smmu_state = &sde_kms->smmu_state;
 
 	for_each_old_crtc_in_state(state, crtc, old_crtc_state, i) {
-		if (!crtc->state || !crtc->state->active)
+		if (!old_crtc_state)
 			continue;
 		/*
 		 * It is safe to assume only one active crtc,
@@ -763,6 +753,9 @@ static int sde_kms_prepare_secure_transition(struct msm_kms *kms,
 			}
 		}
 
+		if (old_crtc_state->plane_mask)
+			old_valid_fb = true;
+
 		/*
 		 * 2.Get the operations needed to be performed before
 		 * secure transition can be initiated.
@@ -781,7 +774,7 @@ static int sde_kms_prepare_secure_transition(struct msm_kms *kms,
 
 		SDE_DEBUG("%d:secure operations(%x) started on state:%pK\n",
 				crtc->base.id, ops, crtc->state);
-		SDE_EVT32(DRMID(crtc), ops, crtc->state, old_valid_fb);
+		SDE_EVT32(DRMID(crtc), ops, crtc->state, old_valid_fb, old_crtc_state->plane_mask);
 
 		/* 3. Perform operations needed for secure transition */
 		if  (ops & SDE_KMS_OPS_WAIT_FOR_TX_DONE) {
@@ -6528,6 +6521,10 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 			SDE_ERROR("hfi post boot failed: %d\n", rc);
 			return rc;
 		}
+
+		rc = sde_hfi_hw_fence_init(priv, sde_kms);
+		if (rc)
+			SDE_ERROR("sde hfi hw fence data init failed: %d\n", rc);
 	}
 
 	return 0;

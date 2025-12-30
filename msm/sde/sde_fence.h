@@ -34,6 +34,30 @@ struct sde_hw_ctl;
 struct sde_hw_mdp;
 
 /**
+ * struct sde_fence - release/retire fence structure
+ * @base: base fence structure
+ * @ctx: fence context
+ * @name: name of each fence- it is fence timeline + commit_count
+ * @fence_list: list to associated this fence on timeline/context
+ * @fd: fd attached to this fence - debugging purpose.
+ * @hwfence_out_ctl: optional hw ctl for the output fence
+ * @hwfence_index: hw fence index for this fence
+ * @txq_updated_fence: flag to indicate that a fence has been updated in txq
+ * @hw_fence_handle: optional pointer to hw-fence handle used to create and release this fence
+ */
+struct sde_fence {
+	struct dma_fence base;
+	struct sde_fence_context *ctx;
+	char name[SDE_FENCE_NAME_SIZE];
+	struct list_head fence_list;
+	int fd;
+	struct sde_hw_ctl *hwfence_out_ctl;
+	u64 hwfence_index;
+	bool txq_updated_fence;
+	void *hw_fence_handle;
+};
+
+/**
  * enum sde_fence_error_state - fence error state handled in _sde_fence_trigger
  * @NO_ERROR: no fence error
  * @SET_ERROR_ONLY_CMD_RELEASE: cmd panel release fence error state
@@ -128,6 +152,7 @@ enum sde_fence_event {
  * @ipcc_this_client: ipcc dpu client id (For Waipio: APPS, For Kailua: DPU HW)
  * @dma_context: per client dma context used to create join fences
  * @hw_fence_array_seqno: per-client seq number counter for join fences
+ * @input_h_synx: input hw-fence handle; used to release refcount wiht a delay
  * @sde_hw_fence_error_cb_data: data needed for hw fence cb function.
  */
 struct sde_hw_fence_data {
@@ -146,9 +171,13 @@ struct sde_hw_fence_data {
 	u32 ipcc_out_client;
 	u32 ipcc_this_client;
 	u64 dma_context;
-	u32 hw_fence_array_seqno;
+	atomic_t hw_fence_array_seqno;
+	u32 input_h_synx;
 	struct sde_hw_fence_error_cb_data sde_hw_fence_error_cb_data;
 };
+
+/* External declaration for sde_fence_ops */
+extern struct dma_fence_ops sde_fence_ops;
 
 #if IS_ENABLED(CONFIG_SYNC_FILE)
 /**
@@ -230,6 +259,7 @@ void sde_fence_deinit(struct sde_fence_context *fence);
  * Returns: Zero on success
  */
 void sde_fence_prepare(struct sde_fence_context *fence);
+
 /**
  * sde_fence_create - create output fence object
  * @fence: Pointer fence container
@@ -240,6 +270,17 @@ void sde_fence_prepare(struct sde_fence_context *fence);
  */
 int sde_fence_create(struct sde_fence_context *fence, uint64_t *val,
 				uint32_t offset, struct sde_hw_ctl *hw_ctl);
+
+/**
+ * sde_fence_create_with_handle - create output fence object for given hwfence-data
+ * @fence: Pointer fence container
+ * @val: Pointer to output value variable, fence fd will be placed here
+ * @offset: Fence signal commit offset, e.g., +1 to signal on next commit
+ * @hw_fence_handle: hw_fence_handle for client creating hw-fence
+ * Returns: Zero on success
+ */
+int sde_fence_create_with_handle(struct sde_fence_context *fence, uint64_t *val,
+				uint32_t offset, void *hw_fence_handle);
 
 /**
  * sde_fence_signal - advance fence timeline to signal outstanding fences
@@ -335,6 +376,12 @@ static inline int sde_fence_create(struct sde_fence_context *fence,
 	return 0;
 }
 
+static inline int sde_fence_create_with_handle(struct sde_fence_context *fence, uint64_t *val,
+				uint32_t offset, void *hw_fence_handle)
+{
+	return 0;
+}
+
 static inline void sde_fence_timeline_status(struct sde_fence_context *ctx,
 					struct drm_mode_object *drm_obj);
 {
@@ -393,6 +440,24 @@ int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl, struct dma_fenc
 	u32 num_fences);
 
 /**
+ * sde_fence_register_hw_fences_wait_with_handle - registers given hw-fence client for wait on
+ *                                               hw fence or fences
+ *
+ * @hw_fence_handle: handle corresponding to hw-fence client to register for wait
+ * @fences: list of dma-fences that have hw-fence support to wait-on
+ * @num_fences: number of fences in the above list
+ * @dma_context: dma-fence context used for temp array creation if necessary
+ * @temp_array_seqno: dma-fence seqno used for temp array creation if necessary; incremented if
+ *                    fence array was created
+ * @h_synx: h_synx value corresponding to fence wait; old value (if valid) is released by this
+ *          function call and new value is updated in this pointer
+ *
+ * Returns: Zero on success, otherwise returns an error code.
+ */
+int sde_fence_register_hw_fences_wait_with_handle(void *hw_fence_handle, struct dma_fence **fences,
+	u32 num_fences, u64 dma_context, atomic_t *temp_array_seqno, u32 *h_synx);
+
+/**
  * sde_fence_output_hw_fence_dir_write_init - update addr, mask and size for output fence dir write
  * @hw_ctl: hw ctl client to init dir write regs for
  */
@@ -436,6 +501,13 @@ int sde_fence_update_input_fence_id(struct sde_hw_ctl *ctl);
 int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *ctl, u32 debugfs_hw_fence,
 	struct sde_hw_mdp *hw_mdp, bool disable, bool override);
 
+/**
+ * sde_fence_get_hwfence_index - get the latest hardware fence index from connector
+ * @ctx: pointer to fence context
+ * Returns: Hardware fence index, or 0 if no valid fence found
+ */
+u64 sde_fence_get_hwfence_index(struct sde_fence_context *ctx);
+
 #else
 static inline int sde_hw_fence_init(struct sde_hw_ctl *hw_ctl, struct sde_kms *sde_kms,
 	bool use_dpu_ipcc, bool use_soccp, struct msm_mmu *mmu)
@@ -450,6 +522,13 @@ static inline void sde_hw_fence_deinit(struct sde_hw_ctl *hw_ctl)
 
 static inline int sde_fence_register_hw_fences_wait(struct sde_hw_ctl *hw_ctl,
 	struct dma_fence **fences, u32 num_fences)
+{
+	return -EINVAL;
+}
+
+static inline int sde_fence_register_hw_fences_wait_with_handle(void *hw_fence_handle,
+	struct dma_fence **fences, u32 num_fences, u64 dma_context, atomic_t *temp_array_seqno,
+	u32 *h_synx)
 {
 	return -EINVAL;
 }
@@ -474,6 +553,11 @@ static inline int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *ctl,
 	u32 debugfs_hw_fence, struct sde_hw_mdp *hw_mdp, bool disable, bool override)
 {
 	return -EINVAL;
+}
+
+static inline u64 sde_fence_get_hwfence_index(struct sde_fence_context *ctx)
+{
+	return 0;
 }
 #endif /* CONFIG_SYNC_FILE && CONFIG_QTI_HW_FENCE */
 

@@ -773,6 +773,7 @@ struct sde_drm_opaque_config {
  * @panel_dead: Flag to indicate if panel has gone bad
  * @esd_status_check: Flag to indicate if ESD thread is scheduled or not
  * @twm_en: Flag to indicate if TWM mode is enabled or not.
+ * @offload_en: Flag to indicate if offload mode is enabled or not.
  * @skip_panel_power: Flag to indicate if skip panel power is enabled or not.
  * @bl_scale_dirty: Flag to indicate PP BL scale value(s) is changed
  * @bl_scale: BL scale value for ABA feature
@@ -870,6 +871,7 @@ struct sde_connector {
 	bool panel_dead;
 	bool esd_status_check;
 	bool twm_en;
+	bool offload_en;
 	bool skip_panel_power;
 	enum panel_op_mode expected_panel_mode;
 
@@ -1030,6 +1032,8 @@ struct sde_connector {
  * @reproj_tile_h: Reprojection tile height
  * @reproj_min_bbox_h: Reprojection minimum bbox height
  * @capture_mode: capture mode for WB
+ * @gcx_session_dirty: all marked properties are needed
+ *                     to be set in commit where GCX session is reset
  */
 struct sde_connector_state {
 	struct drm_connector_state base;
@@ -1087,6 +1091,7 @@ struct sde_connector_state {
 
 	u32 reproj_pose_iova;
 	u32 reproj_pose_size;
+	bool gcx_session_dirty;
 };
 
 /**
@@ -1837,6 +1842,13 @@ static inline void sde_connector_backlight_lock(struct sde_connector *c_conn, bo
 
 bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
 		uint32_t property_idx);
+
+/*
+ * sde_connector_out_hw_fences_enabled - check if output hardware fences are enabled
+ * @c_conn: Pointer to sde connector
+ * Return: true if output hardware fences are enabled, false otherwise
+ */
+bool sde_connector_out_hw_fences_enabled(struct sde_connector *sde_conn);
 
 /**
  * sde_connector_state_get_sub_mode - get sub mode from connector state

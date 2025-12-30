@@ -979,7 +979,7 @@ static int _sde_enc_phys_wb_validate_dnsc_blur_filters(struct drm_crtc_state *cr
 
 static int _sde_enc_phys_wb_validate_dnsc_blur_ds(struct drm_crtc_state *crtc_state,
 			struct drm_connector_state *conn_state, const struct sde_format *fmt,
-			struct sde_rect *wb_roi)
+			struct sde_rect *wb_roi, struct sde_encoder_phys *phys_enc)
 {
 	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
 	const struct drm_display_mode *mode = &crtc_state->mode;
@@ -1004,6 +1004,16 @@ static int _sde_enc_phys_wb_validate_dnsc_blur_ds(struct drm_crtc_state *crtc_st
 
 	if (!dnsc_blur_res.enabled)
 		return 0;
+
+	if (!phys_enc) {
+		SDE_ERROR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	if (!msm_atomic_needs_modeset(crtc_state, conn_state) && !phys_enc->hw_dnsc_blur) {
+		SDE_DEBUG("hw_dnsc_blur block reservation is needed, requesting mode_set\n");
+		crtc_state->mode_changed = true;
+	}
 
 	if (!dnsc_blur_res.src_w || !dnsc_blur_res.src_h
 			|| !dnsc_blur_res.dst_w || !dnsc_blur_res.dst_h
@@ -1436,7 +1446,8 @@ static int sde_encoder_phys_wb_atomic_check(struct sde_encoder_phys *phys_enc,
 		}
 	}
 
-	rc = _sde_enc_phys_wb_validate_dnsc_blur_ds(crtc_state, conn_state, fmt, &wb_roi);
+	rc = _sde_enc_phys_wb_validate_dnsc_blur_ds(crtc_state, conn_state, fmt, &wb_roi,
+			phys_enc);
 	if (rc) {
 		SDE_ERROR("[enc:%d wb:%d] failed dnsc_blur/ds validation; ret:%d\n",
 				DRMID(phys_enc->parent), WBID(wb_enc), rc);

@@ -244,6 +244,7 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 	u32 format_payload[2], width_payload[2], height_payload[2];
 	u32 addr_payload[1 + SDE_MAX_PLANES], stride_payload[1 + SDE_MAX_PLANES];
 	u32 tap_point, tap_payload[2], cache_attr_payload[3], llcc_scid_payload[2];
+	u32 sec_policy, sec_payload[2];
 
 	sde_enc = to_sde_encoder_virt(wb_dev->encoder);
 
@@ -386,6 +387,22 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 
 	_hfi_wb_add_dnsc_prop(wb_dev, cstate, hfi_conn->base_props);
 
+	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY;
+	sec_policy = sde_connector_get_property(&cstate->base,
+		CONNECTOR_PROP_FB_TRANSLATION_MODE);
+
+	switch (sec_policy) {
+	case SDE_DRM_FB_SEC:
+		sec_policy = (u32)HFI_LAYER_SECURITY_POLICY_SECURE;
+		break;
+	default:
+		sec_policy = (u32)HFI_LAYER_SECURITY_POLICY_NON_SECURE;
+	}
+	sec_payload[0] = wb_id;
+	sec_payload[1] = sec_policy;
+	hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, sec_payload, sizeof(sec_payload));
+
 	SDE_DEBUG("Done adding hfi props for wb\n");
 
 	return ret;
@@ -433,6 +450,10 @@ static int _hfi_wb_set_props_base(struct sde_wb_device *wb_dev, u32 disp_id,
 			goto end;
 		}
 	}
+
+	if (opmode == WB_CSC)
+		hfi_set_hw_fence_prop(sde_conn->retire_fence, HFI_FENCE_SCAN_START,
+				hfi_conn->base_props, disp_id, HFI_PROPERTY_DISPLAY_OUTPUT_FENCE);
 
 	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props))
 		goto end;

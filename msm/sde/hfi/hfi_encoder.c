@@ -842,6 +842,70 @@ static int _hfi_enc_send_display_ctrl_cmd(struct sde_encoder_virt *enc, bool ena
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+bool sde_encoder_check_hfi_hw_fence_support(struct sde_encoder_virt *enc)
+{
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct sde_mdss_cfg *catalog;
+	struct hfi_hwfence_data *hfi_hw_fence_data;
+
+	if (!enc) {
+		SDE_ERROR("invalid encoder\n");
+		return false;
+	}
+
+	/* Get the KMS structure from the encoder */
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("failed to get sde_kms\n");
+		return false;
+	}
+
+	/* Fetch the catalog struct from KMS */
+	catalog = sde_kms->catalog;
+	if (!catalog) {
+		SDE_ERROR("catalog is NULL\n");
+		return false;
+	}
+
+	/* Get hfi_kms and check hw_fence_handle */
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return false;
+	}
+
+	hfi_hw_fence_data = hfi_kms->hfi_hw_fence_data;
+	if (!hfi_hw_fence_data || !hfi_hw_fence_data->hw_fence_handle) {
+		SDE_DEBUG("hfi hw_fence_handle is NULL\n");
+		return false;
+	}
+
+	/* Check for lsr_hw_fence_rev and soccp_ph */
+	if ((catalog->hw_fence_rev || catalog->lsr_hw_fence_rev) && catalog->soccp_ph) {
+		SDE_DEBUG("DCP HW Fence support available. lsr_hw_fence_rev=0x%x, soccp_ph=%u\n",
+			 catalog->lsr_hw_fence_rev, catalog->soccp_ph);
+		return true;
+	}
+
+	return false;
+}
+#endif
+
+int hfi_set_power_vote(bool enable)
+{
+	int ret = -EINVAL;
+
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+	ret = synx_enable_resources(SYNX_CLIENT_HW_FENCE_DCP0_CTX0, SYNX_RESOURCE_SOCCP, enable);
+	if (ret)
+		SDE_ERROR("failed to %s hfi hw fence resources\n", enable ? "enable" : "disable");
+#endif
+
+	return ret;
+}
+
 static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 {
 	int ret;
@@ -890,6 +954,14 @@ static int hfi_enc_encoder_enable(struct sde_encoder_virt *enc)
 		ret = _hfi_enc_send_display_ctrl_cmd(enc, true);
 		if (ret) {
 			SDE_ERROR("failed to send display enable cmd\n");
+			return ret;
+		}
+	}
+
+	if (sde_encoder_check_hfi_hw_fence_support(enc)) {
+		ret = hfi_set_power_vote(true);
+		if (ret) {
+			SDE_ERROR("failed to enable hfi hw fence resources\n");
 			return ret;
 		}
 	}
@@ -1029,6 +1101,13 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 		}
 	}
 
+	if (sde_encoder_check_hfi_hw_fence_support(enc)) {
+		ret = hfi_set_power_vote(false);
+		if (ret) {
+			SDE_ERROR("failed to disable hfi hw fence resources\n");
+			return ret;
+		}
+	}
 	return 0;
 }
 
