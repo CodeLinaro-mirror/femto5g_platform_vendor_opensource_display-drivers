@@ -511,6 +511,10 @@ int sde_wb_get_scan_out_info(struct sde_wb_device *wb_dev,
 	uint32_t ret;
 
 	sde_kms = sde_connector_get_kms(wb_dev->connector);
+	if (!sde_kms) {
+		SDE_ERROR("failed to get sde_kms\n");
+		return -EINVAL;
+	}
 
 	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
 	if (!aspace) {

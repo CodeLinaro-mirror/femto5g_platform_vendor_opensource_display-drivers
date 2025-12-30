@@ -103,6 +103,7 @@ static void msm_parse_mode_priv_info(const struct msm_display_mode *msm_mode,
 void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
 				struct drm_display_mode *drm_mode)
 {
+	u32 overlap_total = 0;
 	char *panel_caps = "vid";
 
 	if ((dsi_mode->panel_mode_caps & DSI_OP_VIDEO_MODE) &&
@@ -115,7 +116,11 @@ void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
 
 	memset(drm_mode, 0, sizeof(*drm_mode));
 
-	drm_mode->hdisplay = dsi_mode->timing.h_active;
+	overlap_total = dsi_get_overlap_total(dsi_mode);
+	if (overlap_total)
+		drm_mode->hdisplay = dsi_mode->timing.h_active - overlap_total;
+	else
+		drm_mode->hdisplay = dsi_mode->timing.h_active;
 	drm_mode->hsync_start = drm_mode->hdisplay +
 				dsi_mode->timing.h_front_porch;
 	drm_mode->hsync_end = drm_mode->hsync_start +
@@ -258,7 +263,7 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 	struct dsi_display *display;
 
-	if (!bridge) {
+	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
@@ -276,10 +281,9 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 		DSI_ERR("[%d] DSI display post enabled failed, rc=%d\n",
 		       c_bridge->id, rc);
 
-	if (display)
-		display->enabled = true;
+	display->enabled = true;
 
-	if (display && display->drm_conn) {
+	if (display->drm_conn) {
 		sde_connector_helper_bridge_enable(display->drm_conn);
 		if (display->poms_pending) {
 			display->poms_pending = false;
@@ -296,16 +300,15 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 	struct sde_connector_state *conn_state;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 
-	if (!bridge) {
+	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
 	display = c_bridge->display;
 
-	if (display)
-		display->enabled = false;
+	display->enabled = false;
 
-	if (display && display->drm_conn) {
+	if (display->drm_conn) {
 		conn_state = to_sde_connector_state(display->drm_conn->state);
 		if (!conn_state) {
 			DSI_ERR("invalid params\n");
@@ -321,8 +324,9 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 	rc = display->display_ops.pre_disable[display->ctrl[0].ctrl->disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display pre disable failed, rc=%d\n",
-		       c_bridge->id, rc);
+			c_bridge->id, rc);
 	}
+
 }
 
 static void dsi_bridge_post_disable(struct drm_bridge *bridge)
@@ -332,7 +336,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
 	enum msm_disp_op disp_op;
 
-	if (!bridge) {
+	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
@@ -341,8 +345,8 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 
 	SDE_ATRACE_BEGIN("dsi_bridge_post_disable");
 	SDE_ATRACE_BEGIN("dsi_display_disable");
-	disp_op = display->ctrl[0].ctrl->disp_op;
 
+	disp_op = display->ctrl[0].ctrl->disp_op;
 	rc = display->display_ops.display_disable[disp_op](c_bridge->display);
 	if (rc) {
 		DSI_ERR("[%d] DSI display disable failed, rc=%d\n",
@@ -352,7 +356,7 @@ static void dsi_bridge_post_disable(struct drm_bridge *bridge)
 	}
 	SDE_ATRACE_END("dsi_display_disable");
 
-	if (display && display->drm_conn)
+	if (display->drm_conn)
 		sde_connector_helper_bridge_post_disable(display->drm_conn);
 
 	rc = display->display_ops.display_unprepare[disp_op](c_bridge->display);
@@ -393,6 +397,7 @@ static void dsi_bridge_mode_set(struct drm_bridge *bridge,
 
 	memset(&(c_bridge->dsi_mode), 0x0, sizeof(struct dsi_display_mode));
 	convert_to_dsi_mode(adjusted_mode, &(c_bridge->dsi_mode));
+	drm_to_dsi_update_overlap(display, &(c_bridge->dsi_mode));
 	conn = sde_encoder_get_connector(bridge->dev, bridge->encoder);
 	if (!conn)
 		return;
@@ -426,6 +431,7 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 	old_conn_state = to_sde_connector_state(display->drm_conn->state);
 
 	convert_to_dsi_mode(cur_mode, &cur_dsi_mode);
+	drm_to_dsi_update_overlap(display, &cur_dsi_mode);
 	msm_parse_mode_priv_info(&old_conn_state->msm_mode, &cur_dsi_mode);
 	cur_dsi_mode.pixel_format_caps = display->panel->host_config.dst_format;
 
@@ -530,6 +536,7 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 	}
 
 	convert_to_dsi_mode(mode, &dsi_mode);
+	drm_to_dsi_update_overlap(display, &dsi_mode);
 	msm_parse_mode_priv_info(&conn_state->msm_mode, &dsi_mode);
 	rc = sde_connector_state_get_sub_mode(drm_conn_state, &new_sub_mode);
 	if (rc) {
@@ -631,6 +638,7 @@ int dsi_conn_get_lm_from_mode(void *display, const struct drm_display_mode *drm_
 	}
 
 	convert_to_dsi_mode(drm_mode, &dsi_mode);
+	drm_to_dsi_update_overlap(dsi_display, &dsi_mode);
 
 	rc = dsi_display_find_mode(dsi_display, &dsi_mode, NULL, &panel_dsi_mode);
 	if (rc) {
@@ -657,6 +665,7 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 		return -EINVAL;
 
 	convert_to_dsi_mode(drm_mode, &partial_dsi_mode);
+	drm_to_dsi_update_overlap(dsi_display, &partial_dsi_mode);
 	rc = dsi_display_find_mode(dsi_display, &partial_dsi_mode, sub_mode, &dsi_mode);
 	if (rc || !dsi_mode->priv_info || !dsi_display || !dsi_display->panel)
 		return -EINVAL;
@@ -681,6 +690,7 @@ int dsi_conn_get_mode_info(struct drm_connector *connector,
 	mode_info->avr_step_fps = dsi_mode->timing.avr_step_fps;
 	mode_info->wd_jitter = dsi_mode->priv_info->wd_jitter;
 	mode_info->te_pulse_width_us = dsi_mode->timing.te_pulse_width_us;
+	mode_info->overlap = dsi_mode->timing.overlap * dsi_mode->priv_info->topology.num_lm;
 
 	memcpy(&mode_info->esync_params, &dsi_mode->priv_info->esync_params,
 			sizeof(struct esync_params));
@@ -1008,6 +1018,7 @@ void dsi_conn_set_submode_blob_info(struct drm_connector *conn,
 	}
 
 	convert_to_dsi_mode(drm_mode, &partial_dsi_mode);
+	drm_to_dsi_update_overlap(dsi_display, &partial_dsi_mode);
 
 	mutex_lock(&dsi_display->display_lock);
 	count = dsi_display->panel->num_display_modes;
@@ -1336,6 +1347,7 @@ enum drm_mode_status dsi_conn_mode_valid(struct drm_connector *connector,
 	}
 
 	convert_to_dsi_mode(mode, &dsi_mode);
+	drm_to_dsi_update_overlap(display, &dsi_mode);
 
 	conn_state = to_sde_connector_state(connector->state);
 	if (conn_state)
@@ -1596,6 +1608,7 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 	list_for_each_entry(drm_mode, &connector->modes, head) {
 
 		convert_to_dsi_mode(drm_mode, &dsi_mode);
+		drm_to_dsi_update_overlap(disp, &dsi_mode);
 
 		rc = dsi_display_find_mode(display, &dsi_mode, NULL, &panel_dsi_mode);
 		if (rc)
@@ -1613,6 +1626,7 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 			if (&cmp_drm_mode->head == &connector->modes)
 				continue;
 			convert_to_dsi_mode(cmp_drm_mode, &dsi_mode);
+			drm_to_dsi_update_overlap(disp, &dsi_mode);
 
 			rc = dsi_display_find_mode(display, &dsi_mode,
 					NULL, &cmp_panel_dsi_mode);
@@ -1679,4 +1693,37 @@ int dsi_conn_set_dyn_bit_clk(struct drm_connector *connector, uint64_t value)
 	DSI_DEBUG("update dynamic bit clock rate to %u\n", display->dyn_bit_clk);
 
 	return 0;
+}
+
+void drm_to_dsi_update_overlap(void *display, struct dsi_display_mode *convert_dsi_mode)
+{
+	struct dsi_display *dsi_display = display;
+	int count, i;
+	u32 overlap_total = 0;
+
+	if (!dsi_display || !convert_dsi_mode) {
+		DSI_ERR("invalid parameters\n");
+		return;
+	}
+
+	mutex_lock(&dsi_display->display_lock);
+	count = dsi_display->panel->num_display_modes;
+	for (i = 0; i < count; i++) {
+		struct dsi_display_mode *dsi_mode = &dsi_display->modes[i];
+
+		overlap_total = dsi_get_overlap_total(dsi_mode);
+
+		if (dsi_mode->timing.overlap) {
+			struct dsi_display_mode match_dsi_mode = *convert_dsi_mode;
+
+			match_dsi_mode.timing.h_active += overlap_total;
+			if (!dsi_display_mode_match(&match_dsi_mode, dsi_mode,
+					DSI_MODE_MATCH_FULL_TIMINGS))
+				continue;
+
+			convert_dsi_mode->timing.overlap = dsi_mode->timing.overlap;
+			convert_dsi_mode->timing.h_active += overlap_total;
+		}
+	}
+	mutex_unlock(&dsi_display->display_lock);
 }

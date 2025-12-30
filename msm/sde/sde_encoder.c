@@ -1598,7 +1598,11 @@ static int _sde_encoder_update_roi(struct drm_encoder *drm_enc)
 
 	_sde_encoder_get_connector_roi(sde_enc, &roi);
 	if (sde_kms_rect_is_null(&roi)) {
-		roi.w = adj_mode->hdisplay;
+		// Use the actual active width including overlap for internal calculations
+		if (sde_enc && sde_enc->mode_info.overlap)
+			roi.w = adj_mode->hdisplay + sde_enc->mode_info.overlap;
+		else
+			roi.w = adj_mode->hdisplay;
 		roi.h = adj_mode->vdisplay;
 	}
 
@@ -1664,6 +1668,8 @@ static void _sde_encoder_update_ppb_size(struct drm_encoder *drm_enc)
 		}
 
 		if (hw_pp->ops.set_ppb_fifo_size[disp_op]) {
+			hw_pp->overlap_per_pp = sde_enc->mode_info.overlap
+								/ sde_enc->cur_channel_cnt;
 			pixels_per_pp = mult_frac(mode->hdisplay, latency_lines, num_lm_or_pp);
 			hw_pp->ops.set_ppb_fifo_size[disp_op](hw_pp, pixels_per_pp);
 
@@ -4409,11 +4415,15 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 			sizeof(sde_enc->cur_master->intf_cfg_v1));
 
 	/* turn off vsync_in to update tear check configuration */
-	sde_encoder_control_te(sde_enc, false);
+	if (!sde_enc->disp_info.vrr_caps.video_psr_support ||
+			sde_enc->crtc->state->active_changed)
+		sde_encoder_control_te(sde_enc, false);
 	sde_encoder_populate_encoder_phys(drm_enc, sde_enc, msm_mode);
 
 	_sde_encoder_virt_enable_helper(drm_enc);
-	sde_encoder_control_te(sde_enc, true);
+	if (!sde_enc->disp_info.vrr_caps.video_psr_support ||
+			sde_enc->crtc->state->active_changed)
+		sde_encoder_control_te(sde_enc, true);
 
 	sde_enc->cached_connector = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 	if (!sde_enc->cached_connector)
@@ -8923,6 +8933,53 @@ int sde_encoder_update_pending_kickoff_cnt(struct sde_encoder_virt *sde_enc)
 	atomic_add_unless(&phys_enc->pending_retire_fence_cnt, -1, 0);
 
 	return 0;
+}
+
+u32 sde_encoder_phys_delay_dcs(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct msm_mode_info *mode_info;
+	struct sde_encoder_phys *phys_enc;
+	enum msm_disp_op disp_op;
+	u32 linecount = 0xffff;
+	u32 reserve_lines = VTOTAL_RESERVE_LINES;
+	u32 fps, height;
+	u32 line_time_us, delay_time, end_time, start_time;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	if (!sde_enc || !sde_enc->cur_master)
+		return 0;
+	phys_enc = sde_enc->cur_master;
+	mode_info = &sde_enc->mode_info;
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+
+	fps = sde_encoder_get_fps(&sde_enc->base);
+	if (!fps)
+		return 0;
+
+	height = mode_info->vtotal;
+	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_line_count[disp_op])
+		linecount = phys_enc->hw_intf->ops.get_line_count[disp_op](phys_enc->hw_intf);
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, linecount, fps);
+	if (linecount <= 1 || linecount > (height - reserve_lines)) {
+		SDE_EVT32(linecount, height);
+		return 0;
+	}
+
+	line_time_us = DIV_ROUND_UP(USEC_PER_SEC, fps * height);
+	delay_time = line_time_us * (height - reserve_lines - linecount);
+	start_time = ktime_get();
+	usleep_range(delay_time, delay_time + 100);
+	end_time = ktime_get();
+
+	if (phys_enc->hw_intf && phys_enc->hw_intf->ops.get_line_count[disp_op])
+		linecount = phys_enc->hw_intf->ops.get_line_count[disp_op](phys_enc->hw_intf);
+	SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, linecount, height,
+		ktime_sub(end_time, start_time), line_time_us);
+
+	return delay_time;
 }
 
 int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
