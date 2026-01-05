@@ -132,6 +132,9 @@ define_canoe()
 load(":targets/art.bzl", "define_art")
 define_art()
 
+load(":targets/artvm.bzl", "define_artvm")
+define_artvm()
+
 load(":targets/vienna.bzl", "define_vienna")
 define_vienna()
 
