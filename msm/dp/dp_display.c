@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/module.h>
@@ -1695,11 +1695,6 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp)
 
 	dp_display_host_unready(dp);
 
-
-	/* clear yuv422_enable flag on each hpd disconnect event
-	 * and let it set based on the required flags on hpd connect.
-	 */
-	dp->dp_display.yuv422_enable = false;
 	connector = dp->dp_display.base_connector;
 	sde_conn = to_sde_connector(connector);
 	connector->state->colorspace = DRM_MODE_COLORIMETRY_DEFAULT;
@@ -2136,6 +2131,8 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 	dp->dp_display.is_mst_supported = dp->parser->has_mst;
 	dp->dp_display.dsc_cont_pps = dp->parser->dsc_continuous_pps;
 	dp->dp_display.is_yuv_supported = dp->parser->yuv422_support;
+	if (dp->parser->color_format_pref == MSM_DISPLAY_EXT_COLOR_FORMAT_YUV422)
+		dp->dp_display.yuv422_enable = true;
 
 	dp->catalog = dp_catalog_get(dev, dp->parser);
 	if (IS_ERR(dp->catalog)) {
