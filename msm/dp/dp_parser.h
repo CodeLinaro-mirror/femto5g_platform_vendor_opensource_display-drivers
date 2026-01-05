@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #ifndef _DP_PARSER_H_
@@ -234,6 +234,7 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @dsc_continuous_pps: PPS sent every frame by HW
  * @yuv422_support: YUV422 supported by HW
  * @has_widebus: widebus (2PPC) feature eanble status
+ * @color_format_pref: preferred color format
  * @mst_fixed_port: mst port_num reserved for fixed topology
  * @qos_cpu_mask: CPU mask for QOS
  * @qos_cpu_latency: CPU Latency setting for QOS
@@ -269,6 +270,7 @@ struct dp_parser {
 	bool has_4ppc_enabled;
 	bool gpio_aux_switch;
 	bool lphw_hpd;
+	u32 color_format_pref;
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;
