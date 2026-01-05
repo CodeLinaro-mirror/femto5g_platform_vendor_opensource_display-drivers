@@ -656,11 +656,9 @@ static void msm_atomic_commit_dispatch(struct drm_device *dev,
 		complete_commit(commit);
 	} else if (!nonblock) {
 		kthread_flush_work(&commit->commit_work);
-	}
-
-	/* free nonblocking commits in this context, after processing */
-	if (!nonblock)
+		/* free nonblocking commits in this context, after processing */
 		kfree(commit);
+	}
 }
 
 /**
