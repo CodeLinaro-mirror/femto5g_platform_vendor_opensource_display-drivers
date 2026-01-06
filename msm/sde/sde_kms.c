@@ -2655,13 +2655,16 @@ static void _sde_kms_drm_obj_destroy(struct sde_kms *sde_kms)
 int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
 {
 	int rc = 0;
+	struct sde_kms *sde_kms;
 
 	if (!priv || !dev) {
 		SDE_ERROR("invalid arg priv: %pK dev: %pK", priv, dev);
 		return -EINVAL;
 	}
 
-	rc = hfi_msm_drv_hfi_init(priv);
+	sde_kms = to_sde_kms(priv->kms);
+
+	rc = hfi_msm_drv_hfi_init(priv, sde_in_trusted_vm(sde_kms));
 	if (rc) {
 		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
 		return rc;

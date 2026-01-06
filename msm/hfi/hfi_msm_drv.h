@@ -43,7 +43,7 @@ struct hfi_resources_register {
 /**
  * hfi_msm_drv_hfi_init
  */
-int hfi_msm_drv_hfi_init(struct msm_drm_private *priv);
+int hfi_msm_drv_hfi_init(struct msm_drm_private *priv, bool in_trusted_vm);
 
 /**
  * hfi_msm_drv_init
