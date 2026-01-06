@@ -7634,6 +7634,9 @@ u32 sde_encoder_helper_get_kickoff_timeout_ms(struct drm_encoder *drm_enc)
 	if (!sde_kms)
 		return DEFAULT_KICKOFF_TIMEOUT_MS;
 
+	if (sde_kms->catalog->hw_fence_rev)
+		return HWFENCE_KICKOFF_TIMEOUT_MS;
+
 	if (sde_encoder_in_clone_mode(drm_enc))
 		src_enc = sde_crtc_get_src_encoder_of_clone(drm_enc->crtc);
 

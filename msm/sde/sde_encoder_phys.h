@@ -26,6 +26,9 @@
 /* wait for at most 2 vsync for lowest refresh rate (24hz) */
 #define DEFAULT_KICKOFF_TIMEOUT_MS		84
 
+/* wait for 10100 ms as input HW-fence signal may take up to 10 seconds */
+#define HWFENCE_KICKOFF_TIMEOUT_MS		10100
+
 /* if default timeout fails wait additional time in 1s increments */
 #define EXTENDED_KICKOFF_TIMEOUT_MS      1000
 #define EXTENDED_KICKOFF_TIMEOUT_ITERS   10
