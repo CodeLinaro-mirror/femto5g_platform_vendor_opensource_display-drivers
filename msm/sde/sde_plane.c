@@ -581,7 +581,9 @@ int sde_plane_wait_input_fence(struct drm_plane *plane, uint32_t wait_ms)
 				SDE_ERROR_PLANE(psde, "%ums timeout on %08X fd %lld\n",
 						wait_ms, prefix, sde_plane_get_property(pstate,
 						PLANE_PROP_INPUT_FENCE));
-				psde->is_error = true;
+				if (sde_plane_get_property(pstate, PLANE_PROP_BUFFER_MODE) !=
+						SDE_SINGLE_BUFFER_MODE)
+					psde->is_error = true;
 				sde_kms_timeline_status(plane->dev);
 				ret = -ETIMEDOUT;
 				break;
@@ -612,7 +614,7 @@ int sde_plane_wait_input_fence(struct drm_plane *plane, uint32_t wait_ms)
 				break;
 			}
 
-			SDE_EVT32_VERBOSE(DRMID(plane), -ret, prefix);
+			SDE_EVT32_VERBOSE(DRMID(plane), -ret, prefix, psde->is_error);
 		} else {
 			ret = 0;
 		}
@@ -3888,6 +3890,10 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 		{SDE_SSPP_MULTIRECT_PARALLEL, "parallel"},
 		{SDE_SSPP_MULTIRECT_TIME_MX,  "serial"},
 	};
+	static const struct drm_prop_enum_list e_buffer_mode[] = {
+		{SDE_INDEPENDENT_BUFFER_MODE, "independent"},
+		{SDE_SINGLE_BUFFER_MODE, "single"},
+	};
 	struct sde_kms_info *info;
 	struct sde_plane *psde = to_sde_plane(plane);
 	bool is_master;
@@ -3960,6 +3966,10 @@ static void _sde_plane_install_properties(struct drm_plane *plane,
 	msm_property_install_enum(&psde->property_info, "src_config", 0x0, 1,
 		e_src_config, ARRAY_SIZE(e_src_config), 0,
 		PLANE_PROP_SRC_CONFIG);
+
+	msm_property_install_enum(&psde->property_info, "buffer_mode", 0x0,
+		0, e_buffer_mode, ARRAY_SIZE(e_buffer_mode), 0,
+		PLANE_PROP_BUFFER_MODE);
 
 	if (psde->pipe_hw->ops.setup_solidfill)
 		msm_property_install_range(&psde->property_info, "color_fill",

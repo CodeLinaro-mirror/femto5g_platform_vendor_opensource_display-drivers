@@ -43,7 +43,7 @@ LOCAL_MODULE_DEBUG_ENABLE := true
 LOCAL_MODULE_PATH         := $(KERNEL_MODULES_OUT)
 
 # Enable KPIs to boot marker
-ifneq (,$(filter U UpsideDownCake 14 V VanillaIceCream 15 W Baklava 16, $(PLATFORM_VERSION)))
+ifneq (,$(filter U UpsideDownCake 14 V VanillaIceCream 15 W Baklava 16 CinnamonBun 17, $(PLATFORM_VERSION)))
 KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,platform_kernel_select-module-symvers)/Module.symvers
 LOCAL_REQUIRED_MODULES    += platform_kernel_select-module-symvers
 LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,platform_kernel_select-module-symvers)/Module.symvers
