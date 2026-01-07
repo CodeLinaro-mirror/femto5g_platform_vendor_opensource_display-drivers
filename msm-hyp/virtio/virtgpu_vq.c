@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 #include <linux/delay.h>
 #include <linux/kernel.h>
@@ -866,6 +866,9 @@ int virtio_gpu_cmd_event_wait(struct virtio_kms *kms,
 static int virtio_get_edid_block(struct virtio_kms *kms, uint32_t scanout,
 		void *buf, size_t len)
 {
+	if (kms->outputs[scanout].edid)
+		kfree(kms->outputs[scanout].edid);
+
 	kms->outputs[scanout].edid = kzalloc(len, GFP_KERNEL);
 	memcpy(kms->outputs[scanout].edid, buf, len);
 	return 0;
