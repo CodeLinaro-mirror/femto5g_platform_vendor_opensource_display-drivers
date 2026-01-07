@@ -269,7 +269,7 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 		}
 
 		if (!client_found) {
-			HFI_AD_ERROR("could not match buffer client id to a client\n");
+			HFI_AD_INFO("could not match buffer client id to a client\n");
 			mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 			release_rx_buffer_fail(hfi_buff, host);
 			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
