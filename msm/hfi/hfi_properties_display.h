@@ -681,6 +681,19 @@
 #define HFI_PROPERTY_DISPLAY_OUTPUT_FENCE                            0x0002002C
 
 /*
+ * HFI_PROPERTY_DISPLAY_DIM_LAYER - Sets the dim layer parameters for display output.
+ *                                  Host sends this packet as part of the
+ *                                  HFI_COMMAND_DISPLAY_SET_PROPERTY command payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_DIM_LAYER
+ *     (u32_key) payload [0]      : HFI_PROPERTY_DISPLAY_DIM_LAYER |
+ *                                  (version=0 << 20) |
+ *                                  (dsize=(count x struct hfi_display_dim_layer) << 24)
+ *     (u32_value) payload [1-..] : array of struct hfi_display_dim_layer
+ */
+#define HFI_PROPERTY_DISPLAY_DIM_LAYER                               0x0002002D
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
