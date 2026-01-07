@@ -6010,6 +6010,7 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	enum sde_crtc_idle_pc_state idle_pc_state;
 	struct sde_encoder_kickoff_params params = { 0 };
 	bool is_vid = false;
+	enum msm_disp_op disp_op;
 
 	if (!crtc) {
 		SDE_ERROR("invalid argument\n");
@@ -6106,13 +6107,17 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	}
 
 	/*
+	 * For legacy hwio path, update txq for output hw-fences from display.
+	 *
 	 * For cmd and wb modes, txq for incoming fences must be updated before flush to avoid race
 	 * condition between txq update and the hw signal during ctl-done for partial updates.
 	 *
 	 * For video mode, txq for incoming fences is updated before flush to correctly program the
 	 * output fence (this must be the second to most recently created output fence).
 	 */
-	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask))
+	disp_op = sde_crtc_get_disp_op(crtc);
+	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) &&
+			IS_DISP_OP_HWIO(disp_op))
 		sde_fence_update_hw_fences_txq(sde_crtc->output_fence, is_vid, 0,
 			sde_kms->debugfs_hw_fence);
 
