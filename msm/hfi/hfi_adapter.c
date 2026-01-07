@@ -1598,7 +1598,7 @@ static int hfi_adapter_release_cmd_buf_no_lock(struct hfi_client_t *ctx,
 	list_for_each_safe(pos, updated_pos, &cmd_buf->ctx->cmd_buf_list) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
 		if (buf_entry == cmd_buf) {
-			HFI_AD_ERROR("releasing buffer incorrectly\n");
+			HFI_AD_DEBUG("releasing buffer incorrectly\n");
 			list_del_init(pos);
 			if (cmd_buf->is_released || !cmd_buf->buf.pbuf_vaddr)
 				break;
