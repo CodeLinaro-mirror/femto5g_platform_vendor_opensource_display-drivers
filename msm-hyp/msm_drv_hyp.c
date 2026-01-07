@@ -3,7 +3,7 @@
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * Copyright (c) 2017-2018,2020-2021 The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License version 2 as published by
@@ -1246,7 +1246,7 @@ msm_hyp_plane_duplicate_state(struct drm_plane *plane)
 
 	p_oldstate = to_msm_hyp_plane_state(plane->state);
 
-	p_state = kmemdup(p_oldstate, sizeof(*p_oldstate), GFP_KERNEL);
+	p_state = vmemdup(p_oldstate, sizeof(*p_oldstate));
 	if (!p_state)
 		return NULL;
 
@@ -1276,7 +1276,7 @@ static void msm_hyp_plane_destroy_state(
 	if (p_state->input_fence)
 		msm_hyp_sync_put(p_state->input_fence);
 
-	kfree(p_state);
+	vfree(p_state);
 }
 
 static void msm_hyp_plane_reset(struct drm_plane *plane)
@@ -1286,7 +1286,7 @@ static void msm_hyp_plane_reset(struct drm_plane *plane)
 	uint64_t val;
 
 	struct msm_hyp_plane_state *p_state =
-		kzalloc(sizeof(*p_state), GFP_KERNEL);
+		vzalloc(sizeof(*p_state));
 
 	if (!p_state)
 		return;

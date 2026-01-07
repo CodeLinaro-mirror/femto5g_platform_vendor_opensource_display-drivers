@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"[sde-hdcp-2x] %s: " fmt, __func__
@@ -19,6 +19,8 @@
 #include <linux/errno.h>
 #include <linux/kthread.h>
 #include <linux/kfifo.h>
+#include <linux/sched.h>
+#include <uapi/linux/sched/types.h>
 
 #include "sde_hdcp_2x.h"
 
@@ -254,9 +256,6 @@ static void sde_hdcp_2x_wait_for_response(struct sde_hdcp_2x_ctrl *hdcp)
 			hdcp->wait_timeout_ms = HZ * 3;
 		else
 			hdcp->wait_timeout_ms = 0;
-		break;
-	case REP_CONFIG_VERSION:
-		hdcp->wait_timeout_ms = HZ;
 		break;
 	default:
 		hdcp->wait_timeout_ms = 0;
@@ -1136,6 +1135,7 @@ int sde_hdcp_2x_register(struct sde_hdcp_2x_register_data *data)
 {
 	int rc = 0;
 	struct sde_hdcp_2x_ctrl *hdcp = NULL;
+	static struct sched_param param = {.sched_priority = 1};
 
 	if (!data) {
 		pr_err("invalid input\n");
@@ -1189,6 +1189,11 @@ int sde_hdcp_2x_register(struct sde_hdcp_2x_register_data *data)
 		rc = PTR_ERR(hdcp->thread);
 		hdcp->thread = NULL;
 		goto error;
+	}
+
+	rc = sched_setscheduler(hdcp->thread, SCHED_FIFO, &param);
+	if (rc) {
+		pr_err("sched_setscheduler failed for hdcp_2x\n");
 	}
 
 	hdcp->force_encryption = false;

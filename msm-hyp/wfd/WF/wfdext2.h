@@ -312,6 +312,7 @@ enum WFDTranslationMode {
 /* QTI extension definitions - start at 50 */
 #define WFD_FORMAT_BGR565             50
 #define WFD_FORMAT_BGR888             51
+#define WFD_FORMAT_NV21               52
 
 struct WFD_EGLImageType {
 	WFDuint32 width;
