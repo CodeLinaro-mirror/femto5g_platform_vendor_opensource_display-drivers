@@ -843,11 +843,13 @@ static int dsi_display_read_status(struct dsi_display_ctrl *ctrl,
 	 * report a false ESD failure and hence we defer until next read
 	 * happen.
 	 */
-	if (!dsi_ctrl_validate_host_state(ctrl->ctrl))
-		return 1;
+	if (display->ctrl->ctrl->disp_op != MSM_DISP_OP_HFI) {
+		if (!dsi_ctrl_validate_host_state(ctrl->ctrl))
+			return 1;
 
-	if (phy_pll_bypass(display))
-		return 0;
+		if (phy_pll_bypass(display))
+			return 0;
+	}
 
 	config = &(panel->esd_config);
 	lenp = config->status_valid_params ?: config->status_cmds_rlen;
@@ -866,22 +868,38 @@ static int dsi_display_read_status(struct dsi_display_ctrl *ctrl,
 		cmds[i].msg.rx_len = config->status_cmds_rlen[i];
 		cmds[i].ctrl_flags = flags;
 		dsi_display_set_cmd_tx_ctrl_flags(display,&cmds[i]);
-		rc = dsi_ctrl_transfer_prepare(ctrl->ctrl, cmds[i].ctrl_flags);
-		if (rc) {
-			DSI_ERR("prepare for rx cmd transfer failed rc=%d\n", rc);
-			return rc;
-		}
 
-		rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmds[i], false);
-		if (rc <= 0) {
-			DSI_ERR("rx cmd transfer failed rc=%d\n", rc);
+		if (display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI) {
+
+			if (!dsi_hfi_host_transfer_sub(&display->host, &cmds[i])) {
+				rc = cmds[i].msg.rx_len;
+
+				memcpy(config->return_buf + start,
+					config->status_buf, lenp[i]);
+				start += lenp[i];
+			} else {
+				DSI_ERR("rx cmd transfer failed.\n");
+			}
+
 		} else {
-			memcpy(config->return_buf + start,
-				config->status_buf, lenp[i]);
-			start += lenp[i];
+			rc = dsi_ctrl_transfer_prepare(ctrl->ctrl, cmds[i].ctrl_flags);
+			if (rc) {
+				DSI_ERR("prepare for rx cmd transfer failed rc=%d\n", rc);
+				return rc;
+			}
+
+			rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmds[i], false);
+			if (rc <= 0) {
+				DSI_ERR("rx cmd transfer failed rc=%d\n", rc);
+			} else {
+				memcpy(config->return_buf + start,
+					config->status_buf, lenp[i]);
+				start += lenp[i];
+			}
+
+			dsi_ctrl_transfer_unprepare(ctrl->ctrl, cmds[i].ctrl_flags);
 		}
 
-		dsi_ctrl_transfer_unprepare(ctrl->ctrl, cmds[i].ctrl_flags);
 	}
 
 	return rc;
@@ -1062,7 +1080,9 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 
 	dsi_display_set_ctrl_esd_check_flag(dsi_display, true);
 
-	dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
+	if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO)
+		dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 
 	/* Disable error interrupts while doing an ESD check */
 	dsi_display_toggle_error_interrupt_status(dsi_display, false);
@@ -1097,7 +1117,10 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 		/* Enable error interrupts post an ESD success */
 		dsi_display_toggle_error_interrupt_status(dsi_display, true);
 
-	dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
+	if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO)
+		dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
+
 release_panel_lock:
 	dsi_panel_release_panel_lock(panel);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, rc);

@@ -868,12 +868,18 @@ void sde_connector_schedule_status_work(struct drm_connector *connector,
 {
 	struct sde_connector *c_conn;
 	struct msm_display_info info;
-
-	if (sde_connector_get_disp_op(connector) == MSM_DISP_OP_HFI)
-		return;
+	struct dsi_display *display;
 
 	c_conn = to_sde_connector(connector);
 	if (!c_conn)
+		return;
+
+	display = _sde_connector_get_display(c_conn);
+	if (!display)
+		return;
+
+	if (sde_connector_get_disp_op(connector) == MSM_DISP_OP_HFI &&
+		!display->panel->esd_config.esd_host_controlled)
 		return;
 
 	/* Return if there is no change in ESD status check condition */
@@ -3926,9 +3932,6 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	if (!conn)
 		return ret;
 
-	if (sde_connector_get_disp_op(conn) == MSM_DISP_OP_HFI)
-		return ret;
-
 	sde_conn = to_sde_connector(conn);
 	if (!sde_conn || !sde_conn->ops.check_status)
 		return ret;
@@ -3936,6 +3939,10 @@ int sde_connector_esd_status(struct drm_connector *conn)
 	display = _sde_connector_get_display(sde_conn);
 	if (!display)
 		return 0;
+
+	if (sde_connector_get_disp_op(conn) == MSM_DISP_OP_HFI &&
+		!display->panel->esd_config.esd_host_controlled)
+		return ret;
 
 	/* protect this call with ESD status check call */
 	mutex_lock(&sde_conn->lock);
