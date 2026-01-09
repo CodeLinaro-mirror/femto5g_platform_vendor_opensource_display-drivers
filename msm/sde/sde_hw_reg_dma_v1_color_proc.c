@@ -1699,11 +1699,6 @@ int reg_dmav1_setup_rc_pu_configv1(struct sde_hw_dspp *ctx, void *cfg)
 		return -ENOMEM;
 	}
 
-#ifdef HFI_BUFF_FEATURE_ENABLE
-	hw_cfg->prop_id = HFI_PACK_VERSION(1, 1, hw_cfg->prop_id);
-	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
-#endif
-
 	roi_list = hw_cfg->payload;
 	if (!roi_list) {
 		SDE_DEBUG("full frame update\n");

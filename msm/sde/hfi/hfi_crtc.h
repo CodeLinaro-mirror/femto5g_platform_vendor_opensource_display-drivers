@@ -118,6 +118,17 @@ struct hfi_cmdbuf_t *hfi_crtc_get_cmd_buf(struct drm_crtc *crtc);
  */
 int hfi_crtc_set_input_wait_hw_fence(struct sde_crtc *crtc, u32 synx_handle, u32 prop);
 
+/*
+ * hfi_set_hw_fence_prop - Add fence property to the property collector
+ * @ctx: Pointer to the sde fence context
+ * @hfi_fence_type: Type of fence
+ * @prop_collector: Pointer to the property collector
+ * @disp_id: Display ID
+ * @hfi_prop_id: HFI property ID
+ * Return: None
+ */
+void hfi_set_hw_fence_prop(struct sde_fence_context *ctx, enum hfi_fence_type hfi_fence_type,
+		struct hfi_util_u32_prop_helper *prop_collector, u32 disp_id, u32 hfi_prop_id);
 #else
 int hfi_crtc_init(struct sde_crtc *sde_crtc)
 {
