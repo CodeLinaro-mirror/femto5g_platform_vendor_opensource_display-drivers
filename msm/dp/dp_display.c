@@ -176,7 +176,6 @@ struct dp_display_private {
 	bool aux_switch_ready;
 	struct dp_aux_bridge *aux_bridge;
 	struct dentry *root;
-	struct completion notification_comp;
 	struct completion attention_comp;
 
 	struct dp_hpd     *hpd;
@@ -917,7 +916,7 @@ static bool dp_display_send_hpd_event(struct dp_display_private *dp)
 	return true;
 }
 
-static int dp_display_send_hpd_notification(struct dp_display_private *dp, bool skip_wait)
+static int dp_display_send_hpd_notification(struct dp_display_private *dp)
 {
 	int ret = 0;
 	bool hpd = !!dp_display_state_is(DP_STATE_CONNECTED);
@@ -935,26 +934,24 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp, bool 
 	 */
 	if (dp_display_state_is(DP_STATE_CONNECT_NOTIFIED) && hpd) {
 		DP_DEBUG("connection notified already, skip notification\n");
-		goto skip_wait;
+		goto skip;
 	} else if (dp_display_state_is(DP_STATE_DISCONNECT_NOTIFIED) && !hpd) {
 		DP_DEBUG("disonnect notified already, skip notification\n");
-		goto skip_wait;
+		goto skip;
 	}
 
 	dp->aux->state |= DP_STATE_NOTIFICATION_SENT;
-
-	reinit_completion(&dp->notification_comp);
 
 	if (!dp->mst.mst_active) {
 		dp->dp_display.is_sst_connected = hpd;
 
 		if (!dp_display_send_hpd_event(dp))
-			goto skip_wait;
+			goto skip;
 	} else {
 		dp->dp_display.is_sst_connected = false;
 
 		if (!dp->mst.cbs.hpd)
-			goto skip_wait;
+			goto skip;
 
 		dp->mst.cbs.hpd(&dp->dp_display, hpd);
 	}
@@ -967,39 +964,7 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp, bool 
 		dp_display_state_remove(DP_STATE_CONNECT_NOTIFIED);
 	}
 
-	/*
-	 * Skip the wait if TUI is active considering that the user mode will
-	 * not act on the notification until after the TUI session is over.
-	 */
-	if (dp_display_state_is(DP_STATE_TUI_ACTIVE)) {
-		dp_display_state_log("[TUI is active, skipping wait]");
-		goto skip_wait;
-	}
-
-	if (skip_wait || (hpd && dp->mst.mst_active))
-		goto skip_wait;
-
-	if (!dp->mst.mst_active &&
-			(!!dp_display_state_is(DP_STATE_ENABLED) == hpd))
-		goto skip_wait;
-
-	// wait 2 seconds
-	if (wait_for_completion_timeout(&dp->notification_comp, HZ * 2))
-		goto skip_wait;
-
-	//resend notification
-	if (dp->mst.mst_active)
-		dp->mst.cbs.hpd(&dp->dp_display, hpd);
-	else
-		dp_display_send_hpd_event(dp);
-
-	// wait another 3 seconds
-	if (!wait_for_completion_timeout(&dp->notification_comp, HZ * 3)) {
-		DP_WARN("%s timeout\n", hpd ? "connect" : "disconnect");
-		ret = -EINVAL;
-	}
-
-skip_wait:
+skip:
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, hpd, ret);
 	return ret;
 }
@@ -1342,7 +1307,7 @@ end:
 	}
 
 	if (!rc && !dp_display_state_is(DP_STATE_ABORTED))
-		dp_display_send_hpd_notification(dp, false);
+		dp_display_send_hpd_notification(dp);
 
 skip_notify:
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state,
@@ -1350,7 +1315,7 @@ skip_notify:
 	return rc;
 }
 
-static void dp_display_process_mst_hpd_low(struct dp_display_private *dp, bool skip_wait)
+static void dp_display_process_mst_hpd_low(struct dp_display_private *dp)
 {
 	int rc = 0;
 
@@ -1367,7 +1332,7 @@ static void dp_display_process_mst_hpd_low(struct dp_display_private *dp, bool s
 
 		if ((dp_display_state_is(DP_STATE_CONNECT_NOTIFIED) ||
 				dp_display_state_is(DP_STATE_ENABLED)))
-			rc = dp_display_send_hpd_notification(dp, skip_wait);
+			rc = dp_display_send_hpd_notification(dp);
 
 		dp_display_set_mst_mgr_state(dp, false);
 		dp_display_update_mst_state(dp, false);
@@ -1376,7 +1341,7 @@ static void dp_display_process_mst_hpd_low(struct dp_display_private *dp, bool s
 	DP_MST_DEBUG("mst_hpd_low. mst_active:%d\n", dp->mst.mst_active);
 }
 
-static int dp_display_process_hpd_low(struct dp_display_private *dp, bool skip_wait)
+static int dp_display_process_hpd_low(struct dp_display_private *dp)
 {
 	int rc = 0;
 
@@ -1385,17 +1350,12 @@ static int dp_display_process_hpd_low(struct dp_display_private *dp, bool skip_w
 	dp_audio_enable(dp, false);
 
 	if (dp->mst.mst_active) {
-		dp_display_process_mst_hpd_low(dp, skip_wait);
+		dp_display_process_mst_hpd_low(dp);
 	} else {
 		if ((dp_display_state_is(DP_STATE_CONNECT_NOTIFIED) ||
 				dp_display_state_is(DP_STATE_ENABLED)))
-			rc = dp_display_send_hpd_notification(dp, skip_wait);
+			rc = dp_display_send_hpd_notification(dp);
 	}
-
-	mutex_lock(&dp->session_lock);
-	if (!dp->active_stream_cnt)
-		dp->ctrl->off(dp->ctrl);
-	mutex_unlock(&dp->session_lock);
 
 	dp->panel->video_test = false;
 
@@ -1510,6 +1470,8 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 		return 0;
 	}
 
+	dp->aux->abort(dp->aux, false);
+	dp->ctrl->abort(dp->ctrl, false);
 	dp_display_state_remove(DP_STATE_ABORTED);
 	dp_display_state_add(DP_STATE_CONFIGURED);
 
@@ -1647,21 +1609,18 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 	int rc;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
-	rc = dp_display_process_hpd_low(dp, skip_wait);
-	if (rc) {
-		/* cancel any pending request */
-		dp->ctrl->abort(dp->ctrl, true);
-		dp->aux->abort(dp->aux, true);
-	}
+	rc = dp_display_process_hpd_low(dp);
+
+	/* cancel any pending request */
+	dp->ctrl->abort(dp->ctrl, true);
+	dp->aux->abort(dp->aux, true);
 
 	mutex_lock(&dp->session_lock);
-	if (dp_display_state_is(DP_STATE_ENABLED))
+	if (dp->active_stream_cnt)
 		dp_display_clean(dp, skip_wait);
 
 	dp_display_host_unready(dp);
-
 	dp->tot_lm_blks_in_use = 0;
-
 	mutex_unlock(&dp->session_lock);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
@@ -1985,7 +1944,7 @@ cp_irq:
 		 * account for that. This is not needed if this
 		 * attention work was handling a test request
 		 */
-		dp_display_send_hpd_notification(dp, false);
+		dp_display_send_hpd_notification(dp);
 	}
 
 mst_attention:
@@ -2055,6 +2014,7 @@ static void dp_display_connect_work(struct work_struct *work)
 	int rc = 0;
 	struct dp_display_private *dp = container_of(work,
 			struct dp_display_private, connect_work);
+	struct drm_connector *reset_connector = NULL;
 
 	if (dp_display_state_is(DP_STATE_TUI_ACTIVE)) {
 		dp_display_state_log("[TUI is active]");
@@ -2071,10 +2031,34 @@ static void dp_display_connect_work(struct work_struct *work)
 		return;
 	}
 
+	mutex_lock(&dp->session_lock);
+
+	/*
+	 * Reset panel as link param may change during link training.
+	 * MST panel or SST panel in video test mode will reset immediately.
+	 * SST panel in normal mode will reset by the mode change commit.
+	 */
+	if (dp->active_stream_cnt) {
+		if (dp->active_panels[DP_STREAM_0] == dp->panel &&
+				!dp->panel->video_test) {
+			dp->aux->abort(dp->aux, true);
+			dp->ctrl->abort(dp->ctrl, true);
+			reset_connector = dp->dp_display.base_connector;
+		} else {
+			dp_display_clean(dp, false);
+			dp_display_host_deinit(dp);
+		}
+	}
+
+	mutex_unlock(&dp->session_lock);
+
 	rc = dp_display_process_hpd_high(dp);
 
 	if (!rc && dp->panel->video_test)
 		dp->link->send_test_response(dp->link);
+
+	if (reset_connector)
+		sde_connector_helper_mode_change_commit(reset_connector);
 }
 
 static int dp_display_usb_notifier(struct notifier_block *nb,
@@ -2738,7 +2722,6 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 
 	dp->aux->state &= ~DP_STATE_CTRL_POWERED_OFF;
 	dp->aux->state |= DP_STATE_CTRL_POWERED_ON;
-	complete_all(&dp->notification_comp);
 	DP_DEBUG("display post enable complete. state: 0x%x\n", dp->state);
 end:
 	mutex_unlock(&dp->session_lock);
@@ -2905,16 +2888,17 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	 * Check if the power off sequence was triggered
 	 * by a source initialated action like framework
 	 * reboot or suspend-resume but not from normal
-	 * hot plug. If connector is in MST mode, skip
+	 * hot plug.
+	 */
+	 if (dp_display_is_ready(dp))
+		 flags |= DP_PANEL_SRC_INITIATED_POWER_DOWN;
+
+	/*
+	 * If connector is in MST mode, skip
 	 * powering down host as aux needs to be kept
 	 * alive to handle hot-plug sideband message.
 	 */
-	if (dp_display_is_ready(dp) &&
-		(dp_display_state_is(DP_STATE_SUSPENDED) ||
-		!dp->mst.mst_active))
-		flags |= DP_PANEL_SRC_INITIATED_POWER_DOWN;
-
-	if (dp->active_stream_cnt)
+	if (dp->active_stream_cnt || dp->mst.mst_active)
 		goto end;
 
 	if (flags & DP_PANEL_SRC_INITIATED_POWER_DOWN) {
@@ -2935,9 +2919,6 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	if (dp_display->base_connector)
 		sde_encoder_set_bridge_enabled(dp_display->base_connector->encoder,
 				false);
-
-	complete_all(&dp->notification_comp);
-
 	/* log this as it results from user action of cable dis-connection */
 	DP_INFO("[OK]\n");
 end:
@@ -3784,7 +3765,6 @@ static int dp_display_probe(struct platform_device *pdev)
 		goto bail;
 	}
 
-	init_completion(&dp->notification_comp);
 	init_completion(&dp->attention_comp);
 
 	dp->pdev = pdev;
