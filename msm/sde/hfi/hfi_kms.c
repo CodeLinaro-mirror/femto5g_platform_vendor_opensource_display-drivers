@@ -819,6 +819,69 @@ int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
+int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
+{
+	int ret = 0;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct hfi_device_resource_config hfi_res_cfg = {};
+	enum sde_crtc_vm_req vm_req;
+
+	if (!crtc || !crtc_state) {
+		SDE_ERROR("invalid crtc args\n");
+		return -EINVAL;
+	}
+
+	if (!crtc->dev || !crtc->dev->dev_private ||
+	    !((struct msm_drm_private *)crtc->dev->dev_private)->kms) {
+		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	sde_kms = to_sde_kms(((struct msm_drm_private *)crtc->dev->dev_private)->kms);
+	if (!sde_kms || !sde_kms->hfi_kms) {
+		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = sde_kms->hfi_kms;
+
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(crtc_state), CRTC_PROP_VM_REQ_STATE);
+	if (vm_req == VM_REQ_NONE)
+		return 0;
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_DEVICE_INFO);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	hfi_res_cfg.disp_mask = 0xF;
+	hfi_res_cfg.vm_state = (vm_req == VM_REQ_ACQUIRE) ?
+				HFI_DEVICE_RESOURCE_ACQUIRE : HFI_DEVICE_RESOURCE_RELEASE;
+	hfi_res_cfg.resource_type = HFI_DEVICE_RESOURCE_DISPLAY;
+
+	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEVICE_RESOURCE_CTRL, MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &hfi_res_cfg, sizeof(hfi_res_cfg),
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		SDE_ERROR("failed to add device resource control, vm_req:%u ret:%d\n",
+			  vm_req, ret);
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
+	if (ret) {
+		SDE_ERROR("failed to update device resource control\n");
+		return ret;
+	}
+
+	return ret;
+}
+
 int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffer *buffer)
 {
 	int ret;

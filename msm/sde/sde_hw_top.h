@@ -282,7 +282,7 @@ struct sde_hw_sid_ops {
 	 * @vm: vm id to set for SIDs
 	 * @m: Pointer to mdss catalog data
 	 */
-	void (*set_vm_sid)(struct sde_hw_sid *sid, u32 vm,
+	void (*set_vm_sid[MSM_DISP_OP_MAX])(struct sde_hw_sid *sid, u32 vm,
 		struct sde_mdss_cfg *m);
 };
 
