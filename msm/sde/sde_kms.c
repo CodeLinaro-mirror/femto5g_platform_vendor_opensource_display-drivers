@@ -1308,15 +1308,17 @@ void sde_kms_vm_set_sid(struct sde_kms *sde_kms, u32 vm)
 	struct drm_plane *plane;
 	struct drm_device *ddev;
 	struct sde_mdss_cfg *sde_cfg;
+	enum msm_disp_op disp_op;
 
 	ddev = sde_kms->dev;
 	sde_cfg = sde_kms->catalog;
 
+	disp_op = sde_kms_get_disp_op(sde_kms);
 	list_for_each_entry(plane, &ddev->mode_config.plane_list, head)
 		sde_plane_set_sid(plane, vm);
 
-	if (sde_kms->hw_sid && sde_kms->hw_sid->ops.set_vm_sid)
-		sde_kms->hw_sid->ops.set_vm_sid(sde_kms->hw_sid, vm, sde_kms->catalog);
+	if (sde_kms->hw_sid && sde_kms->hw_sid->ops.set_vm_sid[disp_op])
+		sde_kms->hw_sid->ops.set_vm_sid[disp_op](sde_kms->hw_sid, vm, sde_kms->catalog);
 }
 
 int sde_kms_vm_trusted_prepare_commit(struct sde_kms *sde_kms,
@@ -1642,6 +1644,7 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	struct drm_crtc_state *new_cstate;
 	enum sde_crtc_vm_req vm_req;
 	int rc = 0;
+	enum msm_disp_op disp_op;
 
 	if (!sde_kms || !sde_vm_is_enabled(sde_kms))
 		return -EINVAL;
@@ -1655,6 +1658,7 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+	disp_op = sde_kms_get_disp_op(sde_kms);
 	if (vm_req != VM_REQ_RELEASE)
 		return 0;
 
@@ -1668,6 +1672,14 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 
 	sde_vm_unlock(sde_kms);
 
+	if (IS_DISP_OP_HFI(disp_op)) {
+		rc = hfi_kms_set_vm_state(crtc, new_cstate);
+		if (rc) {
+			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
+			return rc;
+		}
+	}
+
 	return rc;
 }
 
@@ -1680,6 +1692,7 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	struct drm_crtc_state *new_cstate;
 	enum sde_crtc_vm_req vm_req;
 	int rc = 0;
+	enum msm_disp_op disp_op;
 
 	if (!sde_kms || !sde_vm_is_enabled(sde_kms))
 		return -EINVAL;
@@ -1693,6 +1706,7 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+	disp_op = sde_kms_get_disp_op(sde_kms);
 
 	sde_kms_vm_force_disable_idle_pc(sde_kms, vm_req);
 
@@ -1735,8 +1749,15 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	}
 	sde_vm_unlock(sde_kms);
 
-	_sde_crtc_vm_release_notify(crtc);
+	if (IS_DISP_OP_HFI(disp_op)) {
+		rc = hfi_kms_set_vm_state(crtc, new_cstate);
+		if (rc) {
+			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
+			return rc;
+		}
+	}
 
+	_sde_crtc_vm_release_notify(crtc);
 exit:
 	return rc;
 }
@@ -3955,6 +3976,7 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 	sde_kms = to_sde_kms(kms);
 	vm_ops = sde_vm_get_ops(sde_kms);
 	in_trusted_vm = sde_in_trusted_vm(sde_kms);
+
 	if (!vm_ops)
 		return 0;
 
@@ -4192,6 +4214,36 @@ static int sde_kms_check_cwb_concurreny(struct msm_kms *kms,
 	return 0;
 }
 
+static int sde_kms_vm_state_update(struct sde_kms *sde_kms,
+		struct drm_atomic_state *state)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *new_cstate;
+	enum msm_disp_op disp_op;
+	enum sde_crtc_vm_req vm_req;
+	struct sde_crtc_state *cstate;
+	int rc = 0;
+
+	crtc = sde_kms_vm_get_vm_crtc(state);
+	if (!crtc)
+		return 0;
+
+	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
+	disp_op = sde_kms_get_disp_op(sde_kms);
+	cstate = to_sde_crtc_state(new_cstate);
+	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+
+	if (IS_DISP_OP_HFI(disp_op) && (vm_req == VM_REQ_ACQUIRE)) {
+		rc = hfi_kms_set_vm_state(crtc, new_cstate);
+		if (rc) {
+			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
+			return rc;
+		}
+	}
+
+	return 0;
+}
+
 static int sde_kms_atomic_check(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -4241,6 +4293,12 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	ret = sde_kms_check_cwb_concurreny(kms, state);
 	if (ret)
 		goto vm_clean_up;
+
+	ret = sde_kms_vm_state_update(sde_kms, state);
+	if (ret) {
+		SDE_ERROR("VM state update failed ret =%d\n", ret);
+		goto vm_clean_up;
+	}
 
 	goto end;
 

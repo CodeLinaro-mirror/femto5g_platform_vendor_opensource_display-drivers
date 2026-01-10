@@ -12,6 +12,7 @@
 #define MAX_NUM_HFI_RESOURCES 8
 
 #define MSM_DRV_HFI_ID 0
+#define MSM_DRV_HFI_SEC_ID 1
 
 #define HFI_CMD_BUFF_DEVICE 0
 
