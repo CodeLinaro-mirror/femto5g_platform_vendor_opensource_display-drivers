@@ -8486,12 +8486,13 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	offset++;
 
 	/* Update DCP hw fence data for displays having HW fence support */
-	if (IS_DISP_OP_HFI(disp_op) && lsr_opmode == WB_CSC)
-		hfi_hw_fence_handle = _get_hfi_hw_data_from_kms(sde_kms);
+	if (IS_DISP_OP_HFI(disp_op)) {
+		if (lsr_opmode == WB_CSC || (sde_kms->catalog && sde_kms->catalog->hw_fence_rev))
+			hfi_hw_fence_handle = _get_hfi_hw_data_from_kms(sde_kms);
 
-	if (IS_DISP_OP_HFI(disp_op))
 		return sde_fence_create_with_handle(sde_crtc->output_fence, val,
 					offset, hfi_hw_fence_handle);
+	}
 
 	return sde_fence_create(sde_crtc->output_fence, val, offset, hw_ctl);
 }
@@ -10494,15 +10495,6 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint3
 	SDE_DEBUG("crtc:%d padding_y:%d padding_start:%d padding_height:%d\n",
 		  DRMID(cstate->base.crtc), *padding_y, *padding_start, *padding_height);
 	return 0;
-
-}
-
-bool sde_crtc_out_hw_fences_enabled(struct sde_crtc *sde_crtc)
-{
-	/* check for out fences enable or is LSR CSC display */
-	return test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
-		(sde_crtc_check_for_lsr_opmode(&sde_crtc->base,
-			sde_crtc->base.state) == WB_CSC);
 
 }
 

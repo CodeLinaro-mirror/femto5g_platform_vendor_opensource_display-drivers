@@ -920,6 +920,8 @@ u64 sde_fence_get_hwfence_index(struct sde_fence_context *ctx)
 
 end:
 	spin_unlock(&ctx->list_lock);
+	SDE_EVT32(SDE_EVTLOG_L32(hwfence_index), ctx->commit_count);
+
 	return hwfence_index;
 }
 #else
@@ -1530,4 +1532,3 @@ void sde_debugfs_timeline_dump(struct sde_fence_context *ctx,
 	}
 	spin_unlock(&ctx->list_lock);
 }
-
