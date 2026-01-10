@@ -120,6 +120,16 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 			return -EINVAL;
 		}
 
+		if (!crtc->state->active && sde_in_trusted_vm(kms)) {
+			SDE_DEBUG("crtc:%d inactive, skipping commit\n", DRMID(crtc));
+			ret = hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+			if (ret)
+				SDE_ERROR("failed to release commit buffer for crtc:%d\n",
+					  DRMID(crtc));
+			hfi_crtc_set_pending_enc_mask(to_sde_crtc(crtc), 0);
+			continue;
+		}
+
 		ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
 				HFI_COMMAND_DISPLAY_FRAME_TRIGGER, MSM_DRV_HFI_ID,
 				HFI_PAYLOAD_TYPE_U32, &payload, sizeof(u32), 0);
