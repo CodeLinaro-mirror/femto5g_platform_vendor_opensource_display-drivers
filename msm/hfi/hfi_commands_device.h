@@ -455,6 +455,25 @@
  */
 #define HFI_COMMAND_DEVICE_HWFENCE_HFI_CONFIG                        0x01000012
 
+/*
+ * HFI_COMMAND_DEVICE_RESOURCE_CTRL -   This command is used to support display virtualization.
+					This command is set to configure the resources that
+					needs to be lent across VMs
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Data layout:
+ *  struct hfi_device_resource_config
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                      : HFI_COMMAND_DEVICE_RESOURCE_CTRL
+ *           .flags                    : HFI_HOST_FLAGS_RESPONSE_REQUIRED |
+						HFI_HOST_FLAGS_NON_DISCARDABLE
+ *           .payload                  : struct hfi_device_resource_config
+ */
+#define HFI_COMMAND_DEVICE_RESOURCE_CTRL                             0x01000014
+
 #define HFI_COMMAND_DEVICE_END                                       0x01FFFFFF
 
 #endif // __H_HFI_COMMANDS_DEVICE_H__
