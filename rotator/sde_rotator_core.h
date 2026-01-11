@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2019, The Linux Foundation. All rights reserved.
  */
 
@@ -412,6 +413,7 @@ struct sde_rot_bus_data_type {
  * @device_suspended: 0 if device is not suspended; non-zero suspended
  * @pdev: pointer to controlling platform device
  * @device: pointer to controlling device
+ * @thread_priority_work: kthread work used to set priority for rotator thread
  * @queue_count: number of hardware queue/unit available
  * @commitq: array of rotator commit queue corresponding to hardware queue
  * @doneq: array of rotator done queue corresponding to hardware queue
@@ -444,6 +446,7 @@ struct sde_rot_mgr {
 	atomic_t device_suspended;
 	struct platform_device *pdev;
 	struct device *device;
+	struct kthread_work thread_priority_work;
 
 	/*
 	 * Managing rotation queues, depends on
