@@ -7,9 +7,7 @@
 
 #include "hfi_msm_drv.h"
 
-#define MSM_DRV_HFI_ADAPTER 1
-
-int hfi_msm_drv_hfi_init(struct msm_drm_private *priv)
+int hfi_msm_drv_hfi_init(struct msm_drm_private *priv, bool in_trusted_vm)
 {
 	struct msm_drm_hfi_private *hfi_priv = priv->hfi_priv;
 	int rc = 0;
@@ -17,7 +15,7 @@ int hfi_msm_drv_hfi_init(struct msm_drm_private *priv)
 	if (!hfi_priv)
 		return -EINVAL;
 
-	hfi_priv->hfi_adapter = hfi_adapter_init(MSM_DRV_HFI_ADAPTER);
+	hfi_priv->hfi_adapter = hfi_adapter_init(in_trusted_vm);
 	if (!hfi_priv->hfi_adapter) {
 		rc = -EINVAL;
 		DRM_ERROR("failed to initialize HFI adapter: %d\n", rc);
