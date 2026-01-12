@@ -5599,8 +5599,10 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	SDE_ATRACE_BEGIN("flush_event_thread");
 	_sde_crtc_flush_frame_events(crtc);
 	SDE_ATRACE_END("flush_event_thread");
-	sde_crtc->plane_mask_old = crtc->state->plane_mask;
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	/* For hypervision, flush is only done when LUTDMA VQ trigger and finish */
+	sde_crtc->plane_mask_old = crtc->state->plane_mask;
 	if (atomic_inc_return(&sde_crtc->frame_pending) == 1) {
 		/* acquire bandwidth and other resources */
 		SDE_DEBUG("crtc%d first commit\n", crtc->base.id);
@@ -5610,6 +5612,7 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 		SDE_EVT32(DRMID(crtc), SDE_EVTLOG_FUNC_CASE2);
 	}
 	sde_crtc->play_count++;
+#endif
 
 	sde_vbif_clear_errors(sde_kms);
 
@@ -5644,6 +5647,28 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 			/* Blocking until VQ is executed */
 			ctl->ops.reg_dma_flush(ctl, true);
 	}
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	/* Defer the pending_kickoff_cnt increamental after VQ done */
+	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+		if (encoder->crtc != crtc)
+			continue;
+
+		sde_encoder_post_kickoff(encoder, true);
+	}
+
+	/* Defer the plane_mask and frame_pending update after VQ done */
+	sde_crtc->plane_mask_old = crtc->state->plane_mask;
+	if (atomic_inc_return(&sde_crtc->frame_pending) == 1) {
+		/* acquire bandwidth and other resources */
+		SDE_DEBUG("crtc%d first commit\n", crtc->base.id);
+		SDE_EVT32(DRMID(crtc), SDE_EVTLOG_FUNC_CASE1);
+	} else {
+		SDE_DEBUG("crtc%d commit\n", crtc->base.id);
+		SDE_EVT32(DRMID(crtc), SDE_EVTLOG_FUNC_CASE2);
+	}
+	sde_crtc->play_count++;
+#endif
 
 	sde_crtc->kickoff_in_progress = false;
 
@@ -7351,16 +7376,33 @@ static void sde_crtc_install_perf_properties(struct sde_crtc *sde_crtc,
 				sde_kms->perf.max_core_clk_rate);
 }
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
+		struct sde_mdss_cfg *catalog, u32 index)
+#else
 static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
 		struct sde_mdss_cfg *catalog)
+#endif
 {
 	sde_kms_info_reset(info);
 
 	sde_kms_info_add_keyint(info, "hw_version", catalog->hw_rev);
 	sde_kms_info_add_keyint(info, "max_linewidth",
 			catalog->max_mixer_width);
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	if (index < MAX_CRTCS) {
+		sde_kms_info_add_keyint(info, "max_blendstages",
+			catalog->max_hyp_mixer_blendstages[index]);
+	} else {
+		SDE_ERROR("crtc index %d exceeds MAX_CRTCS %d\n", index,
+				MAX_CRTCS);
+		sde_kms_info_add_keyint(info, "max_blendstages",
+				catalog->max_mixer_blendstages);
+	}
+#else
 	sde_kms_info_add_keyint(info, "max_blendstages",
 			catalog->max_mixer_blendstages);
+#endif
 
 	if (catalog->qseed_sw_lib_rev == SDE_SSPP_SCALER_QSEED2)
 		sde_kms_info_add_keystr(info, "qseed_type", "qseed2");
@@ -7521,8 +7563,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		return;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	sde_crtc_setup_capabilities_blob(info, catalog, crtc->index);
+#else
 	sde_crtc_setup_capabilities_blob(info, catalog);
-
+#endif
 	msm_property_install_range(&sde_crtc->property_info,
 		"input_fence_timeout", 0x0, 0,
 		SDE_CRTC_MAX_INPUT_FENCE_TIMEOUT, SDE_CRTC_INPUT_FENCE_TIMEOUT,
@@ -7630,6 +7675,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 
 	sde_kms_info_add_keyint(info, "use_baselayer_for_stage",
 				test_bit(SDE_FEATURE_BASE_LAYER, catalog->features));
+
+	if (catalog->mixer_count)
+		sde_kms_info_add_keyint(info, "mixer_count",
+				catalog->mixer_count);
 
 	msm_property_set_blob(&sde_crtc->property_info, &sde_crtc->blob_info,
 			info->data, SDE_KMS_INFO_DATALEN(info),

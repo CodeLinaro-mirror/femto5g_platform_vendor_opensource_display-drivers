@@ -29,7 +29,9 @@
 #define VIRTIO_KMS_WARN(fmt, ...)		pr_warn(fmt, ##__VA_ARGS__)
 #define VIRTIO_KMS_ERR(fmt, ...)		pr_err(fmt, ##__VA_ARGS__)
 
-#define CLIENT_ID_LEN_IN_CHARS 5
+#define HAB_MMID_CREATE(major, minor) ((major&0xFFFF) | ((minor&0xFF)<<16))
+
+#define CLIENT_HAB_ID_LEN_IN_CHARS 2 /* the length includes null terminating char */
 
 #define DISPLAY_DEVICE_MAX_WIDTH      10240
 #define DISPLAY_DEVICE_MAX_HEIGHT     4096
@@ -445,6 +447,7 @@ static int virtio_connector_set_info_blob(struct drm_connector *connector,
 	struct virtio_kms_output *output = NULL;
 	struct msm_hyp_display *hyp_display = display;
 	struct virtio_connector_info_priv *priv = NULL;
+	int rc_pos = 0, rc_offset = 0;
 
 	if (!display || !connector || !(priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base)) ||
 		!(drm_dev = connector->dev) || !(msm_drm_priv = drm_dev->dev_private) || !(msm_kms = msm_drm_priv->kms) ||
@@ -467,6 +470,18 @@ static int virtio_connector_set_info_blob(struct drm_connector *connector,
 		sde_kms_info_add_keystr(info, "qsync support", "true");
 		sde_kms_info_add_keyint(info, "qsync_fps", output->attr.avr_min_fps);
 	}
+
+	if (output->rc_enabled)
+		sde_kms_info_add_keystr(info, "rc enable", "true");
+	else
+		sde_kms_info_add_keystr(info, "rc enable", "false");
+
+	rc_pos = ffs(priv->base.hw_assign->rc_mask);
+	if (rc_pos && (rc_pos < RC_MAX)) {
+		rc_offset = (rc_pos - 1) * RC_DATA_SIZE_MAX / (RC_MAX - RC_0);
+		sde_kms_info_add_keyint(info, "rc offset", rc_offset);
+	} else
+		sde_kms_info_add_keyint(info, "rc offset", 0);
 
 	switch (hyp_display->info->panel_orientation) {
 	case PANEL_ROTATE_NONE:
@@ -509,12 +524,14 @@ void virtio_connector_get_hdr_info(struct virtio_connector_info_priv *priv,
 		/* EOTF: HDR Luminance Range */
 		if (panel_colorspace & PANEL_COLORSPACE_GAMMA2_2) {
 			sde_conn->hdr_eotf |= 0x02;
+			sde_conn->color_enc_fmt |= DRM_EDID_CLRMETRY_DCI_P3;
 			hdr_support = true;
 		}
 
 		/* EOTF: SMPTE ST 2084 */
 		if (panel_colorspace & PANEL_COLORSPACE_PQ) {
 			sde_conn->hdr_eotf |= 0x04;
+			sde_conn->color_enc_fmt |= DRM_EDID_CLRMETRY_BT2020_RGB;
 			hdr_support = true;
 		}
 
@@ -554,8 +571,8 @@ static int virtio_connector_get_modes(struct drm_connector *connector,
 		drm_mode_probed_add(connector, m);
 	}
 
-	msm_hyp_connector_init_edid(connector, priv->panel_name);
 	virtio_connector_get_hdr_info(priv, sde_conn);
+	msm_hyp_connector_init_edid(connector, priv->panel_name);
 
 	if (hyp_display->info->display_info.width_mm > 0 &&
 				hyp_display->info->display_info.height_mm > 0) {
@@ -1638,6 +1655,8 @@ static int virtio_kms_get_crtc_infos(struct sde_kms *sde_kms,
 		priv->base.max_bandwidth_low = 9600000000LL;
 		priv->base.max_bandwidth_high = 9600000000LL;
 		priv->base.has_src_split = true;
+		priv->base.offset_y = output->offset_y;
+		priv->base.offset_x = output->offset_x;
 		priv->scanout = i;
 		priv->kms = kms;
 		_virtio_kms_set_crtc_limit(kms, priv);
@@ -1696,6 +1715,7 @@ void virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg, unsigned l
 struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 {
 	int i, j, k;
+	int scanout_index;
 	struct msm_hyp_kms *hyp_kms = sde_kms->hyp_kms;
 	struct sde_mdss_cfg *sde_cfg = sde_kms->catalog;
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
@@ -1756,6 +1776,8 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 	hyp_cfg->aiqe_count = 0;
 	hyp_cfg->ai_scaler_count = 0;
 	hyp_cfg->abc_count = 0;
+	/* scanout index on each core */
+	scanout_index = 0;
 
 	/* Re-link all HW blocks assigned to GVM */
 	for (i = 0; i < kms->num_scanouts; i++) {
@@ -1767,6 +1789,15 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 
+		if (scanout_index < MAX_CRTCS) {
+			hyp_cfg->max_hyp_mixer_blendstages[scanout_index] =
+				output->hw_assign.lm_stages;
+			VIRTIO_KMS_DBG("scanout_index %d max_hyp_mixer_blendstages %d",
+				scanout_index, hyp_cfg->max_hyp_mixer_blendstages[scanout_index]);
+		} else {
+			VIRTIO_KMS_ERR("scanout_index %d exceeds MAX_CRTCS %d\n", scanout_index, MAX_CRTCS);
+		}
+		scanout_index++;
 		/* SSPP */
 		VIRTIO_KMS_DBG("SSPP %d  planes %d\n", sde_cfg->sspp_count, output->plane_cnt);
 		for (k = 0; k < output->plane_cnt; k++) {
@@ -1881,8 +1912,6 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		}
 		VIRTIO_KMS_DBG("HYP_LM %d\n", hyp_cfg->mixer_count);
 
-
-
 		/* DSPP */
 		VIRTIO_KMS_DBG("DSPP %d  mask %X\n", sde_cfg->dspp_count, output->hw_assign.dspp_mask);
 		for (j = 0; j < sde_cfg->dspp_count; j++) {
@@ -1899,6 +1928,17 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 			}
 		}
 		VIRTIO_KMS_DBG("HYP_DSPP %d\n", hyp_cfg->dspp_count);
+
+		/* RC */
+		VIRTIO_KMS_DBG("RC %d  mask %X\n", sde_cfg->rc_count, output->hw_assign.rc_mask);
+		for (j = 0; j < sde_cfg->rc_count; j++) {
+			/* RC bind to DSPP_0 ~ DSPP_4 */
+			if (output->hw_assign.rc_mask & (1 << (sde_cfg->dspp[j].id - DSPP_0))) {
+				hyp_cfg->rc_count++;
+				output->rc_enabled = true;
+			}
+		}
+		VIRTIO_KMS_DBG("HYP_RC %d rc_enabled %d\n", hyp_cfg->rc_count, output->rc_enabled);
 
 		/* DS */
 		VIRTIO_KMS_DBG("DS %d  mask %X\n", sde_cfg->ds_count, output->hw_assign.ds_mask);
@@ -1921,7 +1961,8 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		VIRTIO_KMS_DBG("Pingpong %d  mask %X\n", sde_cfg->pingpong_count,
 				output->hw_assign.pingpong_mask);
 		for (j = 0; j < sde_cfg->pingpong_count; j++) {
-			if (output->hw_assign.pingpong_mask & (1 << (sde_cfg->pingpong[j].id - DS_0))) {
+			if (output->hw_assign.pingpong_mask &
+					(1 << (sde_cfg->pingpong[j].id - PINGPONG_0))) {
 				hyp_cfg->pingpong[hyp_cfg->pingpong_count] = sde_cfg->pingpong[j];
 				if (!output->hw_assign.pingpong_owner)
 					hyp_cfg->pingpong[hyp_cfg->pingpong_count].virtual = true;
@@ -1933,7 +1974,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 				hyp_cfg->pingpong_count++;
 			}
 		}
-		VIRTIO_KMS_DBG("HYP_DS %d\n", hyp_cfg->pingpong_count);
+		VIRTIO_KMS_DBG("HYP_PP %d\n", hyp_cfg->pingpong_count);
 
 		/* DSC */
 		VIRTIO_KMS_DBG("DSC %d  mask %X\n", sde_cfg->dsc_count, output->hw_assign.dsc_mask);
@@ -2213,21 +2254,6 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 			}
 		}
 
-		/* Pingpong */
-		for (j = 0; j < sde_cfg->pingpong_count; j++) {
-			if (output->hw_assign.pingpong_mask & (1 << (sde_cfg->pingpong[j].id - DS_0))) {
-				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
-				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->ds[j].id) {
-						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id);
-						VIRTIO_KMS_DBG("Update PP%d  %X  id %d  fixed enc %d  vq_ctx %pK\n",
-								j, sde_cfg->ds[j].id, iter.hw->blk_off, enc_id, iter.hw->vq_ctx);
-						break;
-					}
-				}
-			}
-		}
-
 		/* DSC */
 		for (j = 0; j < sde_cfg->dsc_count; j++) {
 			if (output->hw_assign.dsc_mask & (1 << (sde_cfg->dsc[j].id - DSC_0))) {
@@ -2290,7 +2316,8 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 
 		/* Pingpong */
 		for (j = 0; j < sde_cfg->pingpong_count; j++) {
-			if (output->hw_assign.pingpong_mask & (1 << (sde_cfg->pingpong[j].id - INTF_0))) {
+			if (output->hw_assign.pingpong_mask &
+					(1 << (sde_cfg->pingpong[j].id - PINGPONG_0))) {
 				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
 				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
 					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->pingpong[j].id) {
@@ -2657,42 +2684,43 @@ static int _virtio_kms_hw_init(struct virtio_kms *kms)
 
 	for (scanout = 0; scanout < kms->num_scanouts; scanout++) {
 		rc = virtio_kms_scanout_init(kms, scanout);
-		if (rc)
-			VIRTIO_KMS_ERR("scanout init failed %d\n", scanout);
+		if (rc) {
+			VIRTIO_KMS_ERR("scanout %d init failed, rc: %d\n",
+								scanout, rc);
+			goto error;
+		}
 	}
 error:
 	return rc;
 }
 
-#if 0
-static int _virtio_kms_parse_client_id(struct device_node *node,
-		uint32_t *client_id)
+/**
+ * _virtio_kms_parse_client_hab_id() - function to parse client-hab-id from device tree
+ * @node: pointer to device tree node
+ * @client_hab_id: pointer to client hab id
+ *
+ * Return: integer error code
+ *
+ */
+static int _virtio_kms_parse_client_hab_id(struct device_node *node, uint32_t *client_hab_id)
 {
 	int len = 0;
 	int ret = 0;
-	const char *client_id_str;
+	const char *client_hab_id_str = NULL;
 
-	client_id_str = of_get_property(node, "qcom,client-id", &len);
-	if (!client_id_str || len != CLIENT_ID_LEN_IN_CHARS) {
-		VIRTIO_KMS_ERR("client_id_str len(%d) is invalid\n", len);
+	client_hab_id_str = of_get_property(node, "qcom,client-hab-id", &len);
+	if (!client_hab_id_str || len != CLIENT_HAB_ID_LEN_IN_CHARS) {
+		VIRTIO_KMS_ERR("client_hab_id_str len(%d) is invalid\n", len);
 		ret = -EINVAL;
 	} else {
-		/* Try node as a hex value */
-		ret = kstrtouint(client_id_str, 16, client_id);
+		ret = kstrtouint(client_hab_id_str, 10, client_hab_id);
 		if (ret) {
-			/* Otherwise, treat at 4cc code */
-			*client_id = fourcc_code(client_id_str[0],
-					client_id_str[1],
-					client_id_str[2],
-					client_id_str[3]);
-
-			ret = 0;
+			VIRTIO_KMS_ERR("error parsing client hab id\n");
 		}
 	}
 
 	return ret;
 }
-#endif
 
 static int virtio_gpu_hab_open(struct virtio_kms *kms)
 {
@@ -3315,14 +3343,14 @@ static int virtio_kms_probe(struct platform_device *pdev)
 	if (!kms)
 		return -ENOMEM;
 
-//	ret = _virtio_kms_parse_client_id(dev->of_node, &kms->client_id);
-//	if (ret)
-//		return ret;
+	ret = _virtio_kms_parse_client_hab_id(dev->of_node, &kms->client_hab_id);
+	if (ret)
+		return ret;
 
 	kms->client_id = 0;
 
-	kms->mmid_cmd = MM_DISP_1;
-	kms->mmid_event = MM_DISP_3;
+	kms->mmid_cmd = HAB_MMID_CREATE(MM_DISP_1, kms->client_hab_id);
+	kms->mmid_event = HAB_MMID_CREATE(MM_DISP_3, kms->client_hab_id);
 
 //	ret = _virtio_kms_parse_capsets(dev->of_node, &kms->num_capsets);
 //	if (ret)

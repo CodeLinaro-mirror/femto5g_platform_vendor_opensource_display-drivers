@@ -89,7 +89,10 @@ struct virtio_kms_output {
 	struct drm_crtc *crtc;
 	bool vblank_enabled;
 	bool hpd_enabled;
+	bool rc_enabled;
 	struct completion commit_done;
+	uint32_t offset_x;
+	uint32_t offset_y;
 };
 
 struct channel_map {
@@ -117,6 +120,7 @@ struct virtio_kms {
 	struct msm_hyp_kms base;
 	struct channel_map channel[VIRTIO_MAX_CLIENTS];
 	struct virq_info_t *virq_info[VIRTIO_GPU_MAX_VIRQ];
+	uint32_t client_hab_id;
 	uint32_t mmid_cmd;
 	uint32_t mmid_buffer;
 	uint32_t mmid_event;

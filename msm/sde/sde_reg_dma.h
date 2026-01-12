@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -189,7 +189,7 @@ enum sde_reg_dma_setup_ops {
 	REG_DMA_SETUP_OPS_MAX,
 };
 
-#define REG_DMA_BLK_MAX 32
+#define REG_DMA_BLK_MAX 63
 
 /**
  * enum sde_reg_dma_blk - defines blocks for which reg dma op should be
@@ -479,6 +479,10 @@ void sde_reg_write_reg_dma_multiple(struct sde_hw_blk_reg_map *c,
 
 void sde_reg_modify_reg_dma(struct sde_hw_blk_reg_map *c,
 		u32 reg_off, u32 mask, u32 val, const char *name);
+
+uint32_t read_reg_vatran(struct sde_hw_blk_reg_map *hw, uint32_t reg_off, const char *name);
+
+#define SDE_REG_READ_VATRAN(c, off) read_reg_vatran(c, off, #off)
 #endif
 
 

@@ -15,11 +15,59 @@
 #include <drm/drm_plane.h>
 #include <drm/drm_modes.h>
 #include "msm_hyp_utils.h"
+#include "sde_connector.h"
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP_VIRTIO)
 #include "virtio/virtio_kms.h"
 #endif
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP_WFD)
 #include "wfd/wfd_kms.h"
+#endif
+
+/* CTA-861-H Table 60 - CTA Tag Codes */
+#ifndef CTA_DB_AUDIO
+#define CTA_DB_AUDIO	1
+#endif
+#ifndef CTA_DB_VIDEO
+#define CTA_DB_VIDEO	2
+#endif
+#ifndef CTA_DB_VENDOR
+#define CTA_DB_VENDOR	3
+#endif
+#ifndef CTA_DB_SPEAKER
+#define CTA_DB_SPEAKER	4
+#endif
+#ifndef CTA_DB_EXTENDED_TAG
+#define CTA_DB_EXTENDED_TAG	7
+#endif
+
+/* CTA-861-H Table 62 - CTA Extended Tag Codes */
+#ifndef CTA_EXT_DB_VIDEO_CAP
+#define CTA_EXT_DB_VIDEO_CAP	0
+#endif
+#ifndef CTA_EXT_DB_VENDOR
+#define CTA_EXT_DB_VENDOR	1
+#endif
+#ifndef CTA_EXT_DB_HDR_STATIC_METADATA
+#define CTA_EXT_DB_HDR_STATIC_METADATA	6
+#endif
+#ifndef CTA_EXT_DB_420_VIDEO_DATA
+#define CTA_EXT_DB_420_VIDEO_DATA	14
+#endif
+#ifndef CTA_EXT_DB_420_VIDEO_CAP_MAP
+#define CTA_EXT_DB_420_VIDEO_CAP_MAP	15
+#endif
+#ifndef CTA_EXT_DB_HF_EEODB
+#define CTA_EXT_DB_HF_EEODB	0x78
+#endif
+#ifndef CTA_EXT_DB_HF_SCDB
+#define CTA_EXT_DB_HF_SCDB	0x79
+#endif
+
+#ifndef VSVDB_HDR10_PLUS_IEEE_CODE
+#define VSVDB_HDR10_PLUS_IEEE_CODE	0x90848b
+#endif
+#ifndef VSVDB_HDR10_PLUS_APP_VER_MASK
+#define VSVDB_HDR10_PLUS_APP_VER_MASK	0x3
 #endif
 
 void msm_hyp_prop_info_append(
@@ -262,11 +310,80 @@ static void _msm_hyp_update_edid_name(struct edid *edid, const char *name)
 	memcpy(dtd + header_size, edid_name, dtd_size);
 }
 
+static int _msm_hyp_update_cea_extension(struct edid *edid, struct drm_connector *connector)
+{
+	struct sde_connector *sde_conn = to_sde_connector(connector);
+	uint8_t *p = (uint8_t *)edid + EDID_LENGTH;
+	int cea_ext_size = 0;
+
+	// CEA extension version 3
+	*p++ = CEA_EXT;
+	*p++ = 0x03;
+	// Byte number, not native DTD
+	*p++ = 0;
+	// 0 native DTD, no underscan, audio, 444 and 422 support
+	*p++ = 0;
+
+	if (sde_conn->hdr_supported) {
+		// Append VSDB for HDR10+ version
+		if (sde_conn->hdr_plus_app_ver) {
+			// VSVDB tag, length 5
+			*p++ = CTA_DB_EXTENDED_TAG << 5 | 5;
+			*p++ = CTA_EXT_DB_VENDOR;
+			// IEEE code
+			*p++ = (VSVDB_HDR10_PLUS_IEEE_CODE >> 16) & 0xFF;
+			*p++ = (VSVDB_HDR10_PLUS_IEEE_CODE >> 8) & 0xFF;
+			*p++ = VSVDB_HDR10_PLUS_IEEE_CODE & 0xFF;
+			// HDR10+ version
+			*p++ = sde_conn->hdr_plus_app_ver & VSVDB_HDR10_PLUS_APP_VER_MASK;
+		}
+
+		// Append HDR static metadata data block
+		if (sde_conn->hdr_metadata_type_one) {
+			// HDR static metadata tag, length 6
+			*p++ = CTA_DB_EXTENDED_TAG << 5 | 6;
+			*p++ = CTA_EXT_DB_HDR_STATIC_METADATA;
+
+			// EOTF supported, default is SDR
+			*p++ = sde_conn->hdr_eotf;
+
+			// Static metadata type 1
+			*p++ = BIT(0);
+
+			// Luminance
+			// (50.0f * powf(2.0f, (hdr_max_luminance / 32.0f)
+			*p++ = sde_conn->hdr_max_luminance;
+			// (50.0f * powf(2.0f, (hdr_avg_luminance / 32.0f)
+			*p++ = sde_conn->hdr_avg_luminance;
+			// (max_luminance * ((hdr_min_luminance / 255.0f)^2 / 100.0f)
+			*p++ = sde_conn->hdr_min_luminance;
+		}
+
+		// Append Colorimetry block
+		if (1) {
+			// Colorimetry data tag, length 3
+			*p++ = CTA_DB_EXTENDED_TAG << 5 | 3;
+			*p++ = 5;
+			// Support DCI-P3
+			if (sde_conn->color_enc_fmt & DRM_EDID_CLRMETRY_DCI_P3) {
+				*p++ = 0;
+				*p++ = BIT(7);
+			}
+		}
+	}
+
+	cea_ext_size = p - ((uint8_t *)edid + EDID_LENGTH);
+
+	// Ignore empty CEA extension
+	return cea_ext_size <= 4 ? 0 : cea_ext_size;
+}
+
 int msm_hyp_connector_init_edid(struct drm_connector *connector,
 		const char *name)
 {
-	uint32_t edid_size;
-	struct edid edid;
+	uint32_t cae_ext_size;
+	struct edid *edid;
+	int ret;
 
 	const uint8_t edid_buf[EDID_LENGTH] = {
 		0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x44, 0x6D,
@@ -277,13 +394,23 @@ int msm_hyp_connector_init_edid(struct drm_connector *connector,
 		0x01, 0x01, 0x01, 0x01,
 	};
 
-	edid_size = sizeof(edid) < EDID_LENGTH ? sizeof(edid) : EDID_LENGTH;
+	// Preserve CEA extension size
+	edid = kcalloc(2, EDID_LENGTH, GFP_KERNEL);
 
-	memcpy(&edid, edid_buf, edid_size);
+	memcpy(edid, edid_buf, EDID_LENGTH);
 
-	_msm_hyp_update_edid_name(&edid, name);
-	_msm_hyp_update_dtd(&edid, connector);
-	_msm_hyp_update_checksum(&edid);
+	_msm_hyp_update_edid_name(edid, name);
+	_msm_hyp_update_dtd(edid, connector);
 
-	return drm_connector_update_edid_property(connector, &edid);
+	cae_ext_size = _msm_hyp_update_cea_extension(edid, connector);
+	_msm_hyp_update_checksum(edid + 1);
+	edid->extensions += (cae_ext_size + EDID_LENGTH - 1) / EDID_LENGTH;
+
+	_msm_hyp_update_checksum(edid);
+
+	ret = drm_connector_update_edid_property(connector, edid);
+
+	kfree(edid);
+
+	return ret;
 }

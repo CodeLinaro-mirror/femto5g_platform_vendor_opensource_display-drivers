@@ -90,6 +90,18 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 	if (hw_ctl->ops.get_flush_register)
 		flush_register = hw_ctl->ops.get_flush_register(hw_ctl);
 
+	if (flush_register & hw_ctl->flush.pending_flush_mask)
+		goto not_flushed;
+
+	/*
+	 * When flush_mask is changed to 0, we need additional vsync
+	 * to make sure the detach flush is done
+	 */
+	if (flush_register && !hw_ctl->flush.pending_flush_mask && hw_ctl->flush.previous_flush_mask) {
+		hw_ctl->flush.previous_flush_mask = 0;
+		goto not_flushed;
+	}
+
 	new_cnt = atomic_add_unless(&phys_enc->pending_kickoff_cnt, -1, 0);
 	pend_ret_fence_cnt = atomic_read(&phys_enc->pending_retire_fence_cnt);
 
@@ -101,6 +113,7 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 			SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
 	}
 
+not_flushed:
 	if (hw_ctl->ops.get_reset)
 		reset_status = hw_ctl->ops.get_reset(hw_ctl);
 
@@ -130,6 +143,8 @@ static void sde_encoder_phys_hyp_vblank_irq(void *arg, int irq_idx)
 			fence_ready, DPUID(phys_enc->sde_kms));
 	if (cesta_client)
 		sde_cesta_get_status(cesta_client, &scc_status);
+
+	sde_encoder_handle_frequency_stepping(phys_enc, old_cnt);
 
 	/* Signal any waiting atomic commit thread */
 	wake_up_all(&phys_enc->pending_kickoff_wq);

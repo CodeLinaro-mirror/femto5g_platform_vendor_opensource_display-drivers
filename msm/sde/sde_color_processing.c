@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1648,7 +1648,7 @@ static void _sde_cp_crtc_commit_feature(struct sde_cp_node *prop_node,
 		}
 
 		if (ret) {
-			DRM_ERROR("failed to %s feature %d\n",
+			DRM_DEBUG_DRIVER("failed to %s feature %d\n",
 				((feature_enabled) ? "enable" : "disable"),
 				prop_node->feature);
 			goto disable_feature;
@@ -5049,7 +5049,15 @@ static void _rc_caps_update(struct sde_crtc *crtc, struct sde_kms_info *info)
 		if (crtc->mixers[i].hw_dspp) {
 			struct sde_hw_dspp *dspp = crtc->mixers[i].hw_dspp;
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
+			/* HYP design may assign any dspp to VM, it will no
+			 * longer be required that idx must be less than rc_count
+			 */
 			if (!dspp || (dspp->idx - DSPP_0) >= catalog->rc_count)
+#else
+			if (!dspp)
+
+#endif
 				continue;
 			snprintf(blk_name, sizeof(blk_name), "rc%u",
 					(dspp->idx - DSPP_0));
