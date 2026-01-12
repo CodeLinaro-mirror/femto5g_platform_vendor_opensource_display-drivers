@@ -313,6 +313,47 @@ static void _sde_crtc_check_loopback_pstates(struct drm_crtc_state *crtc_state)
 	}
 }
 
+static int _sde_crtc_check_modeset_dnsc_blur(struct drm_crtc *crtc,
+	struct drm_crtc_state *crtc_state)
+{
+	struct sde_crtc_state *cstate = to_sde_crtc_state(crtc_state);
+	struct msm_display_mode *msm_mode;
+	struct drm_connector *conn;
+	struct drm_connector_state *conn_state;
+	struct sde_connector_state *sde_conn_state;
+	int i;
+
+	if (!cstate->dnsc_res_changed)
+		return 0;
+
+	for (i = 0; i < cstate->num_connectors; i++) {
+		conn = cstate->connectors[i];
+		conn_state = drm_atomic_get_new_connector_state(crtc_state->state, conn);
+		sde_conn_state = to_sde_connector_state(conn_state);
+		msm_mode = &sde_conn_state->msm_mode;
+
+		/* Downscaler blur block can be enabled independently incase of
+		 * CWB Demura client request. It need not be coupled with CWB
+		 * enablement request. Dnsc blur modeset flag is added for
+		 * reservation of dnsc blur hw.
+		 */
+		if (msm_is_mode_seamless(msm_mode) ||
+			msm_is_mode_seamless_vrr(msm_mode) ||
+			msm_is_mode_seamless_emsync_fps_switch(msm_mode) ||
+			msm_is_mode_seamless_poms(msm_mode) ||
+			msm_is_mode_seamless_dyn_clk(msm_mode)) {
+			SDE_DEBUG("modeset flag already set\n");
+		} else if (!crtc_state->connectors_changed && !msm_mode->private_flags) {
+			msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DNSC_BLUR;
+			SDE_DEBUG("semaless cwb modeset flag set as dnsc resource requested\n");
+			SDE_EVT32(SDE_EVTLOG_FUNC_CASE1);
+		}
+	}
+
+	cstate->dnsc_res_changed = false;
+	return 0;
+}
+
 static int _sde_crtc_check_loopback_mode(struct drm_crtc *crtc,
 	struct drm_crtc_state *crtc_state)
 {
@@ -7378,6 +7419,13 @@ static int _sde_crtc_atomic_check(struct drm_crtc *crtc,
 	rc = _sde_crtc_check_loopback_mode(crtc, state);
 	if (rc) {
 		SDE_ERROR("crtc%d loopback validation failed rc%d\n",
+			crtc->base.id, rc);
+		goto end;
+	}
+
+	rc = _sde_crtc_check_modeset_dnsc_blur(crtc, state);
+	if (rc) {
+		SDE_ERROR("crtc%d check modeset dnsc blur failed rc%d\n",
 			crtc->base.id, rc);
 		goto end;
 	}
