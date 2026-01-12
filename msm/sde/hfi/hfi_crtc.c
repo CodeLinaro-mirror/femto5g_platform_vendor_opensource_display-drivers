@@ -29,6 +29,17 @@
 #define HFI_CRTC_BASE_PROP_MAX_SIZE 1024
 
 /*
+ * This macro ensures that operations on the dirty flags are protected
+ * by the property_lock mutex to prevent race conditions.
+ */
+#define CRTC_DIRTY_OP_LOCK(crtc, op_func, bit, dirty) \
+	do { \
+		mutex_lock(&(crtc)->property_info.property_lock); \
+		op_func((bit), (dirty)); \
+		mutex_unlock(&(crtc)->property_info.property_lock); \
+	} while (0)
+
+/*
  * struct base_prop_lookup: tuple of drm property ID to HFI property ID
  */
 struct base_prop_lookup {
@@ -44,6 +55,7 @@ struct base_prop_lookup hfi_crtc_base_props_map[] = {
 	{CRTC_PROP_CORE_IB, HFI_PROPERTY_DISPLAY_CORE_IB},
 	{CRTC_PROP_CORE_AB, HFI_PROPERTY_DISPLAY_CORE_AB},
 	{CRTC_PROP_CORE_CLK, HFI_PROPERTY_DISPLAY_CORE_CLK},
+	{CRTC_PROP_DIM_LAYER_V1, HFI_PROPERTY_DISPLAY_DIM_LAYER},
 };
 
 struct kv_prop_lookup {
@@ -108,6 +120,8 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 	enum wb_opmode opmode;
 	struct hfi_kms *hfi_kms;
 	struct sde_mdss_cfg *sde_cfg;
+	struct hfi_display_dim_layer *dim_layers;
+	int i;
 
 	if (!crtc || !cstate)
 		return -EINVAL;
@@ -141,7 +155,40 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 				HFI_VAL_U32_ARRAY, &prop_u64,
 				sizeof(struct hfi_prop_u64));
 		break;
+	case HFI_PROPERTY_DISPLAY_DIM_LAYER:
+		if (!test_bit(SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty))
+			break;
 
+		dim_layers = kzalloc(sizeof(struct hfi_display_dim_layer) * cstate->num_dim_layers,
+				GFP_KERNEL);
+		if (!dim_layers) {
+			SDE_ERROR("failed to allocate memory for hfi dim layers\n");
+			return -ENOMEM;
+		}
+
+		for (i = 0; i < cstate->num_dim_layers; i++) {
+			struct hfi_display_dim_layer *dst = &dim_layers[i];
+
+			dst->flags = cstate->dim_layer[i].flags;
+			dst->stage = cstate->dim_layer[i].stage;
+
+			dst->color_fill.color_0 = cstate->dim_layer[i].color_fill.color_0;
+			dst->color_fill.color_1 = cstate->dim_layer[i].color_fill.color_1;
+			dst->color_fill.color_2 = cstate->dim_layer[i].color_fill.color_2;
+			dst->color_fill.color_3 = cstate->dim_layer[i].color_fill.color_3;
+
+			dst->rect.x_pos = (u32)cstate->dim_layer[i].rect.x;
+			dst->rect.y_pos = (u32)cstate->dim_layer[i].rect.y;
+			dst->rect.width = (u32)cstate->dim_layer[i].rect.w;
+			dst->rect.height = (u32)cstate->dim_layer[i].rect.h;
+		}
+
+		hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop, HFI_VAL_U32_ARRAY,
+			dim_layers, sizeof(struct hfi_display_dim_layer) * cstate->num_dim_layers);
+
+		CRTC_DIRTY_OP_LOCK(crtc, clear_bit, SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty);
+		kfree(dim_layers);
+		break;
 	default:
 		HFI_ERROR_CRTC(crtc_hfi, "unsupported HFI property\n");
 		return -EINVAL;
