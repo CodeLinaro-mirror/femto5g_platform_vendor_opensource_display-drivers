@@ -3450,7 +3450,7 @@ error:
 		if (ret == -EDEADLK || ret == -ERESTARTSYS)
 			SDE_DEBUG("atomic commit failed in preclose, ret:%d\n", ret);
 		else
-			SDE_ERROR("atomic commit failed in preclose, ret:%d\n", ret);
+			SDE_INFO("atomic commit failed in preclose, ret:%d\n", ret);
 		goto end;
 	}
 
@@ -3815,7 +3815,7 @@ out_ctx:
 	drm_modeset_acquire_fini(&ctx);
 
 	if (ret)
-		SDE_ERROR("kms lastclose failed: %d\n", ret);
+		SDE_INFO("kms lastclose failed: %d\n", ret);
 
 	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)) && hfi_client) {
 		hfi_adapter_deinit(hfi_client);
@@ -4030,7 +4030,7 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 
 			rc = vm_ops->vm_request_valid(sde_kms, old_vm_req, new_vm_req);
 			if (rc) {
-				SDE_ERROR(
+				SDE_INFO(
 				"VM transition check failed; o_state:%d, n_state:%d, hw_owner:%d, rc:%d\n",
 						old_vm_req, new_vm_req, vm_owns_hw, rc);
 				sde_vm_unlock(sde_kms);
@@ -4281,7 +4281,7 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 
 	ret = sde_kms_check_vm_request(kms, state);
 	if (ret) {
-		SDE_ERROR("vm switch request checks failed\n");
+		SDE_INFO("vm switch request checks failed\n");
 		goto end;
 	}
 
