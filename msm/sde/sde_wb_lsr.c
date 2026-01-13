@@ -325,7 +325,7 @@ static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 		return;
 	}
 
-	SDE_DEBUG("HRP buffer mapped to FW with iova = 0x%x\n", addr_map.alloc_info.mapped_iova);
+	SDE_DEBUG("HRP buffer mapped to FW with iova = 0x%lx\n", addr_map.alloc_info.mapped_iova);
 	cstate->reproj_pose_iova = addr_map.alloc_info.mapped_iova;
 	cstate->reproj_pose_size = addr_map.alloc_info.size_allocated;
 	return;
@@ -744,7 +744,7 @@ int sde_wb_update_lsr_perf(struct drm_connector *connector,
 
 	if (reproj_conn) {
 		rc = reproj_conn->update_lsr_perf(reproj_conn, reproj_conn->type, perf);
-		SDE_DEBUG("lsr perf clk vote = %lld, bw vote = %lld for display type = %d",
+		SDE_DEBUG("lsr perf clk vote = %lu, bw vote = %lu for display type = %d",
 			perf.bw_vote, perf.clk_vote, reproj_conn->type);
 	}
 

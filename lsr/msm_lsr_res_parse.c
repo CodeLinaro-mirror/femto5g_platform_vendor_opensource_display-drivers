@@ -121,7 +121,7 @@ static int msm_lsr_load_ipcc_regs(struct msm_lsr_platform_resources *res)
 	res->ipcc_reg_size = reg_config[1];
 
 	dprintk(LSR_CORE,
-		"ipcc reg_base = %x, reg_size = %x\n",
+		"ipcc reg_base = %llx, reg_size = %x\n",
 		res->ipcc_reg_base,
 		res->ipcc_reg_size
 	);
@@ -179,7 +179,7 @@ static int msm_lsr_load_regspace_mapping(struct msm_lsr_platform_resources *res)
 	res->reg_mappings.timer_phyaddr = timer_config[2];
 
 	dprintk(LSR_CORE,
-	"reg mappings %#x %#x %#x %#x %#x %#X %#x %#x %#x %#x %#x %#x\n",
+	"reg mappings %#llx %#x %#llx %#llx %#x %#llX %#llx %#x %#llx %#llx %#x %#llx\n",
 	res->reg_mappings.ipclite_iova, res->reg_mappings.ipclite_size,
 	res->reg_mappings.ipclite_phyaddr, res->reg_mappings.hwmutex_iova,
 	res->reg_mappings.hwmutex_size, res->reg_mappings.hwmutex_phyaddr,

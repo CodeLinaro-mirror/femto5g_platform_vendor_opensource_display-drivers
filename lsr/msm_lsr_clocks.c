@@ -55,20 +55,20 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 	lsr_max_rate = tbl[tbl_size - 1].clock_rate;
 
 	mutex_lock(&core->clk_lock);
-	dprintk(LSR_PWR, "%s %lld %lld\n", __func__, core_sum, bw_sum);
+	dprintk(LSR_PWR, "%s %lu %lu\n", __func__, core_sum, bw_sum);
 
 	core_sum = core->new_perf.lsr_csc_clk > core->new_perf.lsr_repro_clk ?
 		core->new_perf.lsr_csc_clk : core->new_perf.lsr_repro_clk;
 
 	bw_sum = core->new_perf.lsr_csc_bw + core->new_perf.lsr_repro_bw;
 	bw_sum = (core->bw_sum > max_bw) ? max_bw : core->bw_sum;
-	dprintk(LSR_PWR, "%s %d : %lld %lld\n", __func__, __LINE__,	core_sum, bw_sum);
+	dprintk(LSR_PWR, "%s %d : %lu %lu\n", __func__, __LINE__,	core_sum, bw_sum);
 	bw_sum = max_bw;
 
-	dprintk(LSR_PWR, "%s %d : %lld %lld\n", __func__, __LINE__,	core_sum, bw_sum);
+	dprintk(LSR_PWR, "%s %d : %lu %lu\n", __func__, __LINE__,	core_sum, bw_sum);
 
 	if (core_sum > lsr_max_rate) {
-		dprintk(LSR_WARN, "%s clk vote out of range %lld\n", __func__, core_sum);
+		dprintk(LSR_WARN, "%s clk vote out of range %lu\n", __func__, core_sum);
 		core_sum = lsr_max_rate;
 	}
 
@@ -81,7 +81,7 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 
 	rc = msm_lsr_set_clocks(core);
 	if (rc) {
-		dprintk(LSR_ERR, "Failed to set clock rate %u %s: %d %s\n",
+		dprintk(LSR_ERR, "Failed to set clock rate %lu %s: %d %s\n",
 			core->curr_freq, cl->name, rc, __func__);
 		core->curr_freq = core->orig_core_sum;
 		mutex_unlock(&core->clk_lock);
@@ -116,7 +116,7 @@ int msm_lsr_set_clocks_impl(struct lsr_device *device, u32 freq)
 	int rc = 0;
 	u32 scaled_freq = 0;
 
-	dprintk(LSR_PWR, "%s: entering with freq : %ld\n", __func__, freq);
+	dprintk(LSR_PWR, "%s: entering with freq : %u\n", __func__, freq);
 
 	iris_hfi_for_each_clock(device, cl) {
 		if (cl->has_scaling) {/* has_scaling */
@@ -129,7 +129,7 @@ int msm_lsr_set_clocks_impl(struct lsr_device *device, u32 freq)
 			// Recommended by LSR FW team as Work around
 			if (!strcmp(cl->name, "lsr_clk"))
 				scaled_freq *= 2;
-			dprintk(LSR_PWR, "%s: clock source rate set to: %ld\n",
+			dprintk(LSR_PWR, "%s: clock source rate set to: %u\n",
 				__func__, scaled_freq);
 
 			rc = clk_set_rate(cl->clk, scaled_freq);
@@ -315,12 +315,12 @@ int lsr_set_bw(struct bus_info *bus, unsigned long bw)
 
 	if (!bus->client)
 		return -EINVAL;
-	dprintk(LSR_PWR, "bus->name = %s to bw = %u\n",
+	dprintk(LSR_PWR, "bus->name = %s to bw = %lu\n",
 			bus->name, bw);
 
 	rc = icc_set_bw(bus->client, bw, 0);
 	if (rc)
-		dprintk(LSR_ERR, "Failed voting bus %s to ab %u\n",
+		dprintk(LSR_ERR, "Failed voting bus %s to ab %lu\n",
 			bus->name, bw);
 
 	return rc;

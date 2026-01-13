@@ -393,7 +393,7 @@ static int __smem_alloc(struct lsr_device *dev, struct lsr_mem_addr *mem,
 		mem->align_dcp_device_addr = alloc->dcp_device_addr;
 
 	dprintk(LSR_MEM,
-		"%s: ptr = %pK, size = %d dev_addr : 0x%llx dcp_addr = 0x%llx flags = %d\n",
+		"%s: ptr = %pK, size = %d dev_addr : 0x%x dcp_addr = 0x%x flags = %d\n",
 		__func__, alloc->kvaddr, size, mem->align_device_addr, mem->align_dcp_device_addr,
 		smem_flags);
 
@@ -1308,7 +1308,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.ipclite_size,
 			IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map ipclite fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map ipclite fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.ipclite_iova,
 				device->res->reg_mappings.ipclite_phyaddr,
 				device->res->reg_mappings.ipclite_size);
@@ -1322,7 +1322,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.hwmutex_size,
 			IOMMU_MMIO | IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map hwmutex fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map hwmutex fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.hwmutex_iova,
 				device->res->reg_mappings.hwmutex_phyaddr,
 				device->res->reg_mappings.hwmutex_size);
@@ -1336,7 +1336,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.aon_size,
 			IOMMU_MMIO | IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map aon fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map aon fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.aon_iova,
 				device->res->reg_mappings.aon_phyaddr,
 				device->res->reg_mappings.aon_size);
@@ -1350,7 +1350,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.timer_size,
 			IOMMU_MMIO | IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map timer fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map timer fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.timer_iova,
 				device->res->reg_mappings.timer_phyaddr,
 				device->res->reg_mappings.timer_size);
@@ -1863,7 +1863,7 @@ static int __init_reset_clk(struct msm_lsr_platform_resources *res,
 			dprintk(LSR_ERR, "reset get exclusive fail %d\n", rc);
 			return rc;
 		}
-		dprintk(LSR_PWR, "reset_clk: name %s get exclusive rst %llx\n",
+		dprintk(LSR_PWR, "reset_clk: name %s get exclusive rst %p\n",
 				rst_set->reset_tbl[reset_index].name, rst);
 	} else if (rst_info->required_stage == LSR_ON_INIT) {
 		rst = devm_reset_control_get(&res->pdev->dev,
@@ -1873,7 +1873,7 @@ static int __init_reset_clk(struct msm_lsr_platform_resources *res,
 			dprintk(LSR_ERR, "reset get fail %d\n", rc);
 			return rc;
 		}
-		dprintk(LSR_PWR, "reset_clk: name %s get rst %llx\n",
+		dprintk(LSR_PWR, "reset_clk: name %s get rst %p\n",
 				rst_set->reset_tbl[reset_index].name, rst);
 	} else {
 		dprintk(LSR_ERR, "Invalid reset stage\n");
