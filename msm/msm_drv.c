@@ -1323,12 +1323,14 @@ static void msm_postclose(struct drm_device *dev, struct drm_file *file)
 
 	if (kms->funcs && kms->funcs->postclose)
 		kms->funcs->postclose(kms, file);
-
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_lock(&dev->struct_mutex);
+#endif
 	if (ctx == priv->lastctx)
 		priv->lastctx = NULL;
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&dev->struct_mutex);
-
+#endif
 	mutex_lock(&ctx->power_lock);
 	if (ctx->enable_refcnt) {
 		SDE_EVT32(ctx->enable_refcnt);
@@ -1424,11 +1426,11 @@ static int msm_ioctl_gem_madvise(struct drm_device *dev, void *data,
 	default:
 		return -EINVAL;
 	}
-
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	ret = mutex_lock_interruptible(&dev->struct_mutex);
 	if (ret)
 		return ret;
-
+#endif
 	obj = drm_gem_object_lookup(file, args->handle);
 	if (!obj) {
 		ret = -ENOENT;
@@ -1444,7 +1446,9 @@ static int msm_ioctl_gem_madvise(struct drm_device *dev, void *data,
 	drm_gem_object_put(obj);
 
 unlock:
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&dev->struct_mutex);
+#endif
 	return ret;
 }
 
@@ -2614,7 +2618,7 @@ static int __init msm_drm_register(void)
 	platform_driver_register(&msm_platform_driver);
 	dsi_display_register();
 	msm_hdcp_register();
-	dp_display_register();
+	dp_drv_register();
 	hdmi_display_register();
 	msm_dsi_register();
 	msm_edp_register();
@@ -2635,7 +2639,7 @@ static void __exit msm_drm_unregister(void)
 	msm_smmu_driver_cleanup();
 	msm_hdcp_unregister();
 	hdmi_display_unregister();
-	dp_display_unregister();
+	dp_drv_unregister();
 	dsi_display_unregister();
 	sde_cesta_unregister();
 	sde_rsc_unregister();

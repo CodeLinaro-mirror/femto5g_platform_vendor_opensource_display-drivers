@@ -1626,22 +1626,25 @@ int dp_link_configure(struct drm_dp_aux *aux, struct drm_dp_link *link)
 	if (link->capabilities & DP_LINK_CAP_ENHANCED_FRAMING)
 		values[1] |= DP_LANE_COUNT_ENHANCED_FRAME_EN;
 
-	ret = drm_dp_dpcd_write(aux, DP_LINK_BW_SET, values, sizeof(values));
-	if (ret != 2) {
-		DP_ERR("failed to configure link, ret:%d\n", ret);
-		return -EIO;
+	if (link->use_rate_select) {
+		ret = drm_dp_dpcd_writeb(aux, DP_LANE_COUNT_SET, values[1]);
+		if (ret != 1) {
+			DP_ERR("failed to write lane count, ret:%d\n", ret);
+			return -EIO;
+		}
+
+		ret = drm_dp_dpcd_writeb(aux, DP_LINK_RATE_SET, link->index);
+		if (ret != 1) {
+			DP_ERR("failed to write link rate, ret:%d\n", ret);
+			return -EIO;
+		}
+	} else {
+		ret = drm_dp_dpcd_write(aux, DP_LINK_BW_SET, values, sizeof(values));
+		if (ret != 2) {
+			DP_ERR("failed to configure link, ret:%d\n", ret);
+			return -EIO;
+		}
 	}
-
-	/*
-	 * Set eDP link rate to 5.4 Gbps (index 6) if the MAX_LINK_RATE is 0
-	 * TODO: Set eDP rate index based on rates stored from DPCD 0x10h - 0x1Fh
-	 */
-	ret = drm_dp_dpcd_readb(aux, DP_MAX_LINK_RATE, &values[0]);
-	if (ret < 0)
-		return ret;
-
-	if (!values[0])
-		drm_dp_dpcd_writeb(aux, 0x115, 6);
 
 	return 0;
 }

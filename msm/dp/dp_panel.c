@@ -20,6 +20,7 @@
 #define DP_PANEL_DEFAULT_BPP 24
 #define DP_MAX_DS_PORT_COUNT 1
 #define DP_PANEL_MAX_SUPPORTED_BPP 30
+#define DP_EDP_RATE_TABLE_SIZE  16
 
 #define DSC_TGT_BPP 8
 #define DPRX_FEATURE_ENUMERATION_LIST 0x2210
@@ -657,6 +658,49 @@ static int dp_panel_dsc_prepare_basic_params(
 	return 0;
 }
 
+static void dp_panel_get_edp_best_rate(struct drm_dp_aux *aux, struct drm_dp_link *link_info)
+{
+	u8 rate_table[DP_EDP_RATE_TABLE_SIZE] = {0};
+	int ret, best_index = -EINVAL;
+	u32 best_rate = 0;
+
+	/* Read rate table from DPCD */
+	ret = drm_dp_dpcd_read(aux, DP_SUPPORTED_LINK_RATES, rate_table, sizeof(rate_table));
+	if (ret < 0) {
+		DP_ERR("DP_SUPPORTED_LINK_RATES read failed\n");
+		return;
+	}
+
+	/* Parse up to 8 entries (each 2 bytes) */
+	for (int idx = 0; idx < DP_EDP_RATE_TABLE_SIZE / 2; idx++) {
+		u16 raw = rate_table[idx * 2] | (rate_table[idx * 2 + 1] << 8);
+
+		if (!raw)
+			break; /* End of valid entries */
+
+		u32 rate = raw * 20;
+
+		if (rate <= 810000 && rate > best_rate) {
+			best_rate = rate;
+			best_index = idx;
+		}
+	}
+
+	if (best_index < 0) {
+		/* No valid rate found, set default fallback */
+		link_info->rate = 540000; /* 5.4 Gbps default */
+		link_info->index = 0;
+		link_info->use_rate_select = false;
+		DP_DEBUG("No valid eDP rate found, using default: 540000\n");
+		return;
+	}
+
+	link_info->rate = best_rate;
+	link_info->index = best_index;
+	link_info->use_rate_select = true;
+	DP_DEBUG("eDP best rate: %u index %d\n", best_rate, best_index);
+}
+
 static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 {
 	int rlen, rc = 0;
@@ -737,13 +781,11 @@ static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 				panel->vscext_chaining_supported);
 	}
 
-	/*
-	 * Set eDP link rate to 5.4 Gbps if the dpcd[MAX_LINK_RATE] is 0
-	 * TODO: Get eDP link rates from DPCD 0x10h - 0x1Fh
-	 */
-	if (!dpcd[DP_MAX_LINK_RATE])
-		dpcd[DP_MAX_LINK_RATE] = 20;
-
+	/* If the dpcd[MAX_LINK_RATE] is 0, get eDP link rates from DPCD 0x10h - 0x1Fh */
+	if (!dpcd[DP_MAX_LINK_RATE] && panel->parser->is_edp) {
+		dp_panel_get_edp_best_rate(drm_aux, link_info);
+		dpcd[DP_MAX_LINK_RATE] = link_info->rate / 27000;
+	}
 
 	link_info->revision = dpcd[DP_DPCD_REV];
 	panel->major = (link_info->revision >> 4) & 0x0f;
@@ -1140,8 +1182,9 @@ static int dp_panel_select_max_fps_mode(struct drm_connector *connector)
 {
 	struct drm_display_mode *drm_mode, *tmp;
 	struct drm_display_mode *best_mode = NULL;
-	struct drm_display_mode *new_mode = NULL;
+	struct drm_display_mode *new_mode = NULL, *fail_safe_mode = NULL, *new_fail_safe = NULL;
 	int max_pixels = 0, max_refresh = 0;
+	int mode_count = 0;
 
 	/* Find the best mode: highest resolution, and among them highest refresh rate */
 	list_for_each_entry(drm_mode, &connector->probed_modes, head) {
@@ -1154,26 +1197,42 @@ static int dp_panel_select_max_fps_mode(struct drm_connector *connector)
 			max_refresh = refresh;
 			best_mode = drm_mode;
 		}
+
+		if (drm_mode->hdisplay == 640 && drm_mode->vdisplay == 480)
+			fail_safe_mode = drm_mode;
 	}
 
-	if (best_mode) {
+	if (best_mode)
 		new_mode = drm_mode_duplicate(connector->dev, best_mode);
 
-		if (new_mode) {
-			list_for_each_entry_safe(drm_mode, tmp, &connector->probed_modes, head) {
-				list_del(&drm_mode->head);
-				drm_mode_destroy(connector->dev, drm_mode);
-			}
+	if (fail_safe_mode && fail_safe_mode != best_mode)
+		new_fail_safe = drm_mode_duplicate(connector->dev, fail_safe_mode);
 
-			new_mode->type |= DRM_MODE_TYPE_PREFERRED;
-			list_add_tail(&new_mode->head, &connector->probed_modes);
-			DP_INFO("Selected best mode: %dx%d@%dHz",
-				new_mode->hdisplay, new_mode->vdisplay, max_refresh);
-			return 1;
+	if (new_mode) {
+		list_for_each_entry_safe(drm_mode, tmp, &connector->probed_modes, head) {
+			list_del(&drm_mode->head);
+			drm_mode_destroy(connector->dev, drm_mode);
 		}
+
+		new_mode->type |= DRM_MODE_TYPE_PREFERRED;
+		list_add_tail(&new_mode->head, &connector->probed_modes);
+		mode_count++;
+
+		DP_INFO("Selected best mode: %dx%d@%dHz",
+			new_mode->hdisplay, new_mode->vdisplay, max_refresh);
 	}
 
-	return 0;
+	/* Add fail-safe mode */
+	if (new_fail_safe) {
+		new_fail_safe->type |= DRM_MODE_TYPE_PREFERRED;
+		list_add_tail(&new_fail_safe->head, &connector->probed_modes);
+		mode_count++;
+
+		DP_INFO("Added fail-safe mode: %dx%d",
+			new_fail_safe->hdisplay, new_fail_safe->vdisplay);
+	}
+
+	return mode_count;
 }
 
 static int dp_panel_get_modes(struct dp_panel *dp_panel,
@@ -1198,6 +1257,7 @@ static int dp_panel_get_modes(struct dp_panel *dp_panel,
 		if (panel->parser->max_fps_mode_en)
 			rc = dp_panel_select_max_fps_mode(connector);
 	}
+
 	return rc;
 }
 
@@ -2236,12 +2296,23 @@ bool dp_panel_get_panel_on(struct dp_panel *dp_panel)
 	return panel->panel_on;
 }
 
+struct dp_display_mode *dp_panel_get_mode(struct dp_panel *dp_panel)
+{
+	dp_panel->mode.timing = dp_panel->pinfo;
+	dp_panel->mode.mst_hide = dp_panel->mst_hide;
+	dp_panel->mode.mode_override = dp_panel->mode_override;
+	dp_panel->mode.pclk_factor = dp_panel->pclk_factor;
+	dp_panel->mode.widebus_en = dp_panel->widebus_en;
+	dp_panel->mode.fec_overhead_fp = dp_panel->fec_overhead_fp;
+
+	return &dp_panel->mode;
+}
+
 struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 {
 	int rc = 0;
 	struct dp_panel_private *panel;
 	struct dp_panel *dp_panel;
-	struct sde_connector *sde_conn;
 
 	if (!in->dev || !in->catalog || !in->aux ||
 			!in->link || !in->connector) {
@@ -2263,6 +2334,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	panel->parser = in->parser;
 
 	dp_panel = &panel->dp_panel;
+
 	dp_panel->max_bw_code = DP_LINK_BW_8_1;
 	dp_panel->spd_enabled = true;
 	dp_panel->link_bw_code = 0;
@@ -2318,9 +2390,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->get_sink_crc = dp_panel_get_sink_crc;
 	dp_panel->sink_crc_enable = dp_panel_sink_crc_enable;
 	dp_panel->get_panel_on = dp_panel_get_panel_on;
-
-	sde_conn = to_sde_connector(dp_panel->connector);
-	sde_conn->drv_panel = dp_panel;
+	dp_panel->get_mode = dp_panel_get_mode;
 
 	dp_panel_edid_register(panel);
 
@@ -2342,7 +2412,7 @@ void dp_panel_put(struct dp_panel *dp_panel)
 	dp_panel_edid_deregister(panel);
 	sde_conn = to_sde_connector(dp_panel->connector);
 	if (sde_conn)
-		sde_conn->drv_panel = NULL;
+		sde_conn->panel_id = -1;
 
 	devm_kfree(panel->dev, panel);
 }

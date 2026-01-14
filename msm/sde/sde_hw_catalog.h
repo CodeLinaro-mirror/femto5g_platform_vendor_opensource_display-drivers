@@ -58,17 +58,21 @@
 #define SDE_HW_VER_820	SDE_HW_VER(8, 2, 0) /* diwali */
 #define SDE_HW_VER_830	SDE_HW_VER(8,  3, 0) /* parrot*/
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
+#define SDE_HW_VER_870	SDE_HW_VER(8, 7, 0) /* malabar */
 #define SDE_HW_VER_880  SDE_HW_VER(8, 8, 0) /* vienna */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
+#define SDE_HW_VER_920  SDE_HW_VER(9, 2, 0) /* x1e80100 */
 #define SDE_HW_VER_970  SDE_HW_VER(9, 7, 0) /* x1p42100 */
 #define SDE_HW_VER_980	SDE_HW_VER(9, 8, 0) /* seraph */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
+#define SDE_HW_VER_A30  SDE_HW_VER(10, 3, 0) /* chora */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
 #define SDE_HW_VER_C00	SDE_HW_VER(12, 0, 0) /* sun */
 #define SDE_HW_VER_C30	SDE_HW_VER(12, 3, 0) /* tuna */
 #define SDE_HW_VER_C40	SDE_HW_VER(12, 4, 0) /* kera */
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 #define SDE_HW_VER_D10	SDE_HW_VER(13, 1, 0) /* alor */
+#define SDE_HW_VER_E00  SDE_HW_VER(14, 0, 0) /* art */
 
 #define SDE_QULTIVATE_SW_REV1 0x1
 
@@ -102,7 +106,11 @@
 #define IS_DIWALI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_820)
 #define IS_PARROT_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_830)
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
+#define IS_MALABAR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_870)
+#define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
+#define IS_X1E80100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_920)
+#define IS_X1P42100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_970)
 #define IS_SERAPH_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_980)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
@@ -111,8 +119,7 @@
 #define IS_KERA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C40)
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 #define IS_ALOR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D10)
-#define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
-#define IS_X1P42100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_970)
+#define IS_ART_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E00)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -573,6 +580,7 @@ enum {
 	SDE_DSPP_AIQE_DITHER,
 	SDE_DSPP_AIQE_WRAPPER,
 	SDE_DSPP_AI_SCALER,
+	SDE_DSPP_RGB_HIST,
 	SDE_DSPP_MAX
 };
 
@@ -1350,6 +1358,7 @@ struct sde_dspp_sub_blks {
 	struct sde_pp_blk aiqe_dither;
 	struct sde_pp_blk aiqe_wrapper;
 	struct sde_dspp_aiqe ai_scaler;
+	struct sde_pp_blk rgb_hist;
 };
 
 struct sde_pingpong_sub_blks {
@@ -2019,6 +2028,19 @@ enum autorefresh_disable_sequence {
 };
 
 /**
+ * sde_obj_type - defines SDE object type
+ * @SDE_OBJ_CRTC       - SDE crtc type
+ * @SDE_OBJ_PLANE      - SDE plane type
+ * @SDE_OBJ_CONNECTOR - SDE connector type
+ */
+enum sde_obj_type {
+	SDE_OBJ_CRTC = 0,
+	SDE_OBJ_PLANE,
+	SDE_OBJ_CONNECTOR,
+	SDE_OBJ_MAX,
+};
+
+/**
  * struct sde_perf_cfg - performance control settings
  * @max_bw_low         low threshold of maximum bandwidth (kbps)
  * @max_bw_high        high threshold of maximum bandwidth (kbps)
@@ -2109,6 +2131,7 @@ struct sde_perf_cfg {
  * @true_inline_rot_rev inline rotator feature revision
  * @dnsc_blur_rev       downscale blur HW block version
  * @hw_fence_rev        hw fence feature revision
+ * @lsr_hw_fence_rev    lsr hw fence feature revision
  * @cac_version         CAC version supported by the target
  * @cwb_cfg_mask        configuration mask for the CWB module in use
  * @mdss_count          number of valid MDSS HW blocks
@@ -2164,6 +2187,7 @@ struct sde_perf_cfg {
  * @ai_scaler_count     number of ai scaler hardware instances
  * @ssip_allowed        indicates if ssip register access is allowed
  * @abc_count           number of aiqe hardware instances
+ * @is_udc_supported	indicates if UDC is supported
  * @trusted_vm_env      true if the driver is executing in the trusted VM
  * @tvm_reg_count	number of sub-driver register ranges that need to be included
  *					for trusted vm for accepting the resources
@@ -2227,6 +2251,9 @@ struct sde_perf_cfg {
  * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
  *                      If not set it is immediate self refresh
  * @virtual_mixers_mask bitmask of virtual mixers
+ * @repro_excluded_props   Pointer to 2D array [obj_type][props] of excluded
+			   properties for reprojection
+ * @repro_excluded_props_count  Array of property counts per object type for reprojection
  */
 struct sde_mdss_cfg {
 	/* Block Revisions */
@@ -2244,6 +2271,7 @@ struct sde_mdss_cfg {
 	u32 true_inline_rot_rev;
 	u32 dnsc_blur_rev;
 	u32 hw_fence_rev;
+	u32 lsr_hw_fence_rev;
 	u32 cac_version;
 	u32 cwb_cfg_mask;
 
@@ -2304,6 +2332,8 @@ struct sde_mdss_cfg {
 	u32 ai_scaler_count;
 	bool ssip_allowed;
 	u32 abc_count;
+	u32 rgb_hist_count;
+	bool is_udc_supported;
 
 	/* Secure & Trusted UI */
 	bool trusted_vm_env;
@@ -2378,6 +2408,9 @@ struct sde_mdss_cfg {
 	u32 early_EPT_handling;
 
 	bool disable_multirect;
+
+	u32 **repro_excluded_props;
+	u32 *repro_excluded_props_count;
 };
 
 struct sde_mdss_hw_cfg_handler {

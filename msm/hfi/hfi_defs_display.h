@@ -230,6 +230,9 @@ enum hfi_display_idle_timer_control {
  * @HFI_EVENT_HW_RECOVERY             : Event ID for hw recovery
  * @HFI_EVENT_FRAME_CAPTURE_COMPLETE  : Event ID for frame capture complete.
  * @HFI_EVENT_PANEL_DEAD              : Event ID for panel dead
+ * @HFI_EVENT_LTM                     : Event ID for LTM event
+ * @HFI_EVENT_RGB_HIST                : Event ID for RGB histogram event
+ * @HFI_EVENT_PA_HIST                 : Event ID for PA histogram event
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC                     = 0x1,
@@ -241,6 +244,8 @@ enum hfi_display_event_id {
 	HFI_EVENT_FRAME_CAPTURE_COMPLETE    = 0x7,
 	HFI_EVENT_PANEL_DEAD                = 0x8,
 	HFI_EVENT_LTM                       = 0x9,
+	HFI_EVENT_RGB_HIST                  = 0xa,
+	HFI_EVENT_PA_HIST                   = 0xb,
 };
 
 /*
@@ -444,6 +449,23 @@ enum hfi_cwb_tap_points {
 	HFI_TAP_POINT_DSPP,
 	HFI_TAP_POINT_DEMURA,
 	HFI_TAP_POINT_MAX,
+};
+
+/*!
+ * @enum hfi_fence_type
+ * @brief Defines the types of fences used for synchronization.
+ *
+ * Fence types indicate specific synchronization points in the pipeline.
+ *
+ * @var HFI_FENCE_SCAN_START
+ * Fence that signals that the frame is picked up by hardware.
+ *
+ * @var HFI_FENCE_SCAN_COMPLETE
+ * Fence that signals the release of input buffers.
+ */
+enum hfi_fence_type {
+	HFI_FENCE_SCAN_START,
+	HFI_FENCE_SCAN_COMPLETE,
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

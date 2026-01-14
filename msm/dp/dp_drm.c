@@ -14,7 +14,8 @@
 #include "sde_connector.h"
 #include "dp_drm.h"
 #include "dp_mst_drm.h"
-#include "dp_debug.h"
+#include "dp_debug_client.h"
+#include "dp_client.h"
 
 #define DP_MST_DEBUG(fmt, ...) DP_DEBUG(fmt, ##__VA_ARGS__)
 
@@ -84,7 +85,8 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 {
 	int rc = 0;
 	struct dp_bridge *bridge;
-	struct dp_display *dp;
+	struct dp_drv *drv;
+	struct dp_client_drm_ops *ops;
 
 	if (!drm_bridge) {
 		DP_ERR("Invalid params\n");
@@ -92,27 +94,29 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 	}
 
 	bridge = to_dp_bridge(drm_bridge);
-	dp = bridge->display;
+	drv = bridge->drv;
 
 	if (!bridge->connector) {
 		DP_ERR("Invalid connector\n");
 		return;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
+	if (!drv || !drv->client) {
+		DP_ERR("no dp client found\n");
 		return;
 	}
 
+	ops = &drv->client->drm_ops;
+
 	/* By this point mode should have been validated through mode_fixup */
-	rc = dp->set_mode(dp, bridge->dp_panel, &bridge->dp_mode);
+	rc = ops->set_mode(drv->client, bridge->panel_id, &bridge->dp_mode);
 	if (rc) {
 		DP_ERR("[%d] failed to perform a mode set, rc=%d\n",
 		       bridge->id, rc);
 		return;
 	}
 
-	rc = dp->prepare(dp, bridge->dp_panel);
+	rc = ops->prepare(drv->client, bridge->panel_id);
 	if (rc) {
 		DP_ERR("[%d] DP display prepare failed, rc=%d\n",
 		       bridge->id, rc);
@@ -120,9 +124,9 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 	}
 
 	/* for SST force stream id, start slot and total slots to 0 */
-	dp->set_stream_info(dp, bridge->dp_panel, 0, 0, 0, 0, 0);
+	ops->set_stream_info(drv->client, bridge->panel_id, 0, 0, 0, 0, 0);
 
-	rc = dp->enable(dp, bridge->dp_panel);
+	rc = ops->enable(drv->client, bridge->panel_id);
 	if (rc)
 		DP_ERR("[%d] DP display enable failed, rc=%d\n",
 		       bridge->id, rc);
@@ -132,7 +136,8 @@ static void dp_bridge_enable(struct drm_bridge *drm_bridge)
 {
 	int rc = 0;
 	struct dp_bridge *bridge;
-	struct dp_display *dp;
+	struct dp_drv *drv;
+	struct dp_client_drm_ops *ops;
 
 	if (!drm_bridge) {
 		DP_ERR("Invalid params\n");
@@ -145,14 +150,16 @@ static void dp_bridge_enable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
+	drv = bridge->drv;
+
+	if (!drv || !drv->client) {
+		DP_ERR("no dp client found\n");
 		return;
 	}
 
-	dp = bridge->display;
+	ops = &drv->client->drm_ops;
 
-	rc = dp->post_enable(dp, bridge->dp_panel);
+	rc = ops->post_enable(drv->client, bridge->panel_id);
 	if (rc)
 		DP_ERR("[%d] DP display post enable failed, rc=%d\n",
 		       bridge->id, rc);
@@ -162,7 +169,8 @@ static void dp_bridge_disable(struct drm_bridge *drm_bridge)
 {
 	int rc = 0;
 	struct dp_bridge *bridge;
-	struct dp_display *dp;
+	struct dp_drv *drv;
+	struct dp_client_drm_ops *ops;
 
 	if (!drm_bridge) {
 		DP_ERR("Invalid params\n");
@@ -175,22 +183,17 @@ static void dp_bridge_disable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
+	drv = bridge->drv;
+	if (!drv || !drv->client) {
+		DP_ERR("no dp client found\n");
 		return;
 	}
 
-	dp = bridge->display;
+	ops = &drv->client->drm_ops;
 
-	if (!dp) {
-		DP_ERR("dp is null\n");
-		return;
-	}
+	sde_connector_helper_bridge_disable(bridge->connector);
 
-	if (dp)
-		sde_connector_helper_bridge_disable(bridge->connector);
-
-	rc = dp->pre_disable(dp, bridge->dp_panel);
+	rc = ops->pre_disable(drv->client, bridge->panel_id);
 	if (rc) {
 		DP_ERR("[%d] DP display pre disable failed, rc=%d\n",
 		       bridge->id, rc);
@@ -201,7 +204,8 @@ static void dp_bridge_post_disable(struct drm_bridge *drm_bridge)
 {
 	int rc = 0;
 	struct dp_bridge *bridge;
-	struct dp_display *dp;
+	struct dp_drv *drv;
+	struct dp_client_drm_ops *ops;
 
 	if (!drm_bridge) {
 		DP_ERR("Invalid params\n");
@@ -214,21 +218,22 @@ static void dp_bridge_post_disable(struct drm_bridge *drm_bridge)
 		return;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
+	drv = bridge->drv;
+	if (!drv || !drv->client) {
+		DP_ERR("no dp client found\n");
 		return;
 	}
 
-	dp = bridge->display;
+	ops = &drv->client->drm_ops;
 
-	rc = dp->disable(dp, bridge->dp_panel);
+	rc = ops->disable(drv->client, bridge->panel_id);
 	if (rc) {
 		DP_ERR("[%d] DP display disable failed, rc=%d\n",
 		       bridge->id, rc);
 		return;
 	}
 
-	rc = dp->unprepare(dp, bridge->dp_panel);
+	rc = ops->unprepare(drv->client, bridge->panel_id);
 	if (rc) {
 		DP_ERR("[%d] DP display unprepare failed, rc=%d\n",
 		       bridge->id, rc);
@@ -241,7 +246,8 @@ static void dp_bridge_mode_set(struct drm_bridge *drm_bridge,
 				const struct drm_display_mode *adjusted_mode)
 {
 	struct dp_bridge *bridge;
-	struct dp_display *dp;
+	struct dp_drv *drv;
+	struct dp_client_drm_ops *ops;
 
 	if (!drm_bridge || !mode || !adjusted_mode) {
 		DP_ERR("Invalid params\n");
@@ -254,17 +260,17 @@ static void dp_bridge_mode_set(struct drm_bridge *drm_bridge,
 		return;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
+	drv = bridge->drv;
+	if (!drv || !drv->client) {
+		DP_ERR("no dp client found\n");
 		return;
 	}
 
-	dp = bridge->display;
+	ops = &drv->client->drm_ops;
+	ops->convert_to_dp_mode(drv->client, bridge->panel_id,
+		adjusted_mode, &bridge->dp_mode);
 
-	dp->convert_to_dp_mode(dp, bridge->dp_panel, adjusted_mode,
-			&bridge->dp_mode);
-
-	dp->clear_reservation(dp, bridge->dp_panel);
+	ops->clear_reservation(drv->client, bridge->panel_id);
 }
 
 static bool dp_bridge_mode_fixup(struct drm_bridge *drm_bridge,
@@ -274,7 +280,8 @@ static bool dp_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	bool ret = true;
 	struct dp_display_mode dp_mode;
 	struct dp_bridge *bridge;
-	struct dp_display *dp;
+	struct dp_drv *drv;
+	struct dp_client_drm_ops *ops;
 
 	if (!drm_bridge || !mode || !adjusted_mode) {
 		DP_ERR("Invalid params\n");
@@ -289,16 +296,17 @@ static bool dp_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 		goto end;
 	}
 
-	if (!bridge->dp_panel) {
-		DP_ERR("Invalid dp_panel\n");
-		ret = false;
-		goto end;
+	drv = bridge->drv;
+	if (!drv || !drv->client) {
+		DP_ERR("no dp client found\n");
+		return -EINVAL;
 	}
 
-	dp = bridge->display;
+	ops = &drv->client->drm_ops;
 
-	dp->convert_to_dp_mode(dp, bridge->dp_panel, mode, &dp_mode);
-	dp->clear_reservation(dp, bridge->dp_panel);
+	ops->convert_to_dp_mode(drv->client, bridge->panel_id,
+		mode, &dp_mode);
+	ops->clear_reservation(drv->client, bridge->panel_id);
 	convert_to_drm_mode(&dp_mode, adjusted_mode);
 end:
 	return ret;
@@ -358,67 +366,71 @@ void init_failsafe_mode(struct dp_display_mode *dp_mode)
 int dp_connector_config_hdr(struct drm_connector *connector, void *display,
 	struct sde_connector_state *c_state)
 {
-	struct dp_display *dp = display;
+	struct dp_drv *drv = display;
 	struct sde_connector *sde_conn;
+	struct dp_client_drm_ops *ops;
 
 	if (!display || !c_state || !connector) {
 		DP_ERR("invalid params\n");
 		return -EINVAL;
 	}
 
-	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
-		DP_ERR("invalid dp panel\n");
+	if (!drv->client) {
+		DP_ERR("no dp client found\n");
 		return -EINVAL;
 	}
 
-	return dp->config_hdr(dp, sde_conn->drv_panel, &c_state->hdr_meta,
+	ops = &drv->client->drm_ops;
+
+	sde_conn = to_sde_connector(connector);
+
+	return ops->config_hdr(drv->client, sde_conn->panel_id, &c_state->hdr_meta,
 			c_state->dyn_hdr_meta.dynamic_hdr_update);
 }
 
 int dp_connector_set_colorspace(struct drm_connector *connector,
 	void *display)
 {
-	struct dp_display *dp_display = display;
+	struct dp_drv *drv = display;
 	struct sde_connector *sde_conn;
+	struct dp_client_drm_ops *ops;
 
-	if (!dp_display || !connector)
+	if (!drv || !connector)
 		return -EINVAL;
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
-		pr_err("invalid dp panel\n");
-		return -EINVAL;
-	}
 
-	return dp_display->set_colorspace(dp_display,
-		sde_conn->drv_panel, connector->state->colorspace);
+	ops = &drv->client->drm_ops;
+	return ops->set_colorspace(drv->client,
+		sde_conn->panel_id, connector->state->colorspace);
 }
 
 int dp_connector_post_init(struct drm_connector *connector, void *display)
 {
 	int rc;
-	struct dp_display *dp_display = display;
+	struct dp_drv *drv = display;
 	struct sde_connector *sde_conn;
+	struct dp_client_drm_ops *ops;
 
-	if (!dp_display || !connector)
+	if (!drv || !connector || !drv->client || !drv->client->bridge) {
+		DP_ERR("Invalid data\n");
 		return -EINVAL;
-
-	dp_display->base_connector = connector;
-	dp_display->bridge->connector = connector;
-
-	if (dp_display->post_init) {
-		rc = dp_display->post_init(dp_display);
-		if (rc)
-			goto end;
 	}
 
+	drv->client->base_connector = connector;
+	drv->client->bridge->connector = connector;
+
+	ops = &drv->client->drm_ops;
+	rc = ops->post_init(drv->client);
+	if (rc)
+		goto end;
+
 	sde_conn = to_sde_connector(connector);
-	dp_display->bridge->dp_panel = sde_conn->drv_panel;
+	drv->client->bridge->panel_id = sde_conn->panel_id;
 
-	rc = dp_mst_init(dp_display);
+	rc = dp_mst_init(drv);
 
-	if (dp_display->dsc_cont_pps)
+	if (drv->client->dsc_cont_pps)
 		sde_conn->ops.update_pps = NULL;
 
 end:
@@ -435,11 +447,12 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 	const u32 no_enc = 0;
 	struct msm_display_topology *topology;
 	struct sde_connector *sde_conn;
-	struct dp_panel *dp_panel;
 	struct dp_display_mode dp_mode;
-	struct dp_display *dp_disp = display;
+	struct dp_drv *drv = display;
 	struct msm_drm_private *priv;
 	struct msm_resource_caps_info avail_dp_res;
+	struct dp_client_drm_ops *ops;
+	struct dp_display_mode *mode;
 	int rc = 0;
 
 	if (!drm_mode || !mode_info || !avail_res ||
@@ -450,14 +463,20 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 	}
 
 	memset(mode_info, 0, sizeof(*mode_info));
+	ops = &drv->client->drm_ops;
 
 	sde_conn = to_sde_connector(connector);
-	dp_panel = sde_conn->drv_panel;
+	mode = ops->get_display_mode(drv->client, sde_conn->panel_id);
+	if (!mode) {
+		DP_ERR("invalid panel\n");
+		return -EINVAL;
+	}
+
 	priv = connector->dev->dev_private;
 
 	topology = &mode_info->topology;
 
-	rc = dp_disp->get_available_dp_resources(dp_disp, avail_res,
+	rc = ops->get_available_dp_resources(drv->client, avail_res,
 			&avail_dp_res);
 	if (rc) {
 		DP_ERR("error getting max dp resources. rc:%d\n", rc);
@@ -482,10 +501,11 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 	mode_info->frame_rate = drm_mode_vrefresh(drm_mode);
 	mode_info->vtotal = drm_mode->vtotal;
 
-	mode_info->wide_bus_en = dp_panel->widebus_en;
-	mode_info->pclk_factor = dp_panel->pclk_factor;
+	mode_info->wide_bus_en = mode->widebus_en;
+	mode_info->pclk_factor = mode->pclk_factor;
 
-	dp_disp->convert_to_dp_mode(dp_disp, dp_panel, drm_mode, &dp_mode);
+	drv->client->drm_ops.convert_to_dp_mode(drv->client, sde_conn->panel_id,
+		drm_mode, &dp_mode);
 
 	if (dp_mode.timing.comp_info.enabled) {
 		memcpy(&mode_info->comp_info,
@@ -502,27 +522,29 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 int dp_connector_get_info(struct drm_connector *connector,
 		struct msm_display_info *info, void *data)
 {
-	struct dp_display *display = data;
+	struct dp_drv *drv = data;
 	const char *display_type = NULL;
 	u32 conn_disp_type = SDE_CONNECTOR_PRIMARY;
+	struct dp_client_drm_ops *ops;
 
-	if (!info || !display || !display->drm_dev) {
+	if (!info || !drv || !drv->drm_dev) {
 		DP_ERR("invalid params\n");
 		return -EINVAL;
 	}
 
 	info->intf_type = DRM_MODE_CONNECTOR_DisplayPort;
 
-	display->get_display_type(display, &display_type);
+	ops = &drv->client->drm_ops;
+	ops->get_display_type(drv->client, &display_type);
 	if (display_type) {
 		if (!strcmp(display_type, "primary")) {
-			if (display->ctl_op_sync) {
+			if (drv->client->ctl_op_sync) {
 				info->ctl_op_sync = true;
 				info->is_master = true;
 			}
 			conn_disp_type = SDE_CONNECTOR_PRIMARY;
 		} else if (!strcmp(display_type, "secondary")) {
-			if (display->ctl_op_sync) {
+			if (drv->client->ctl_op_sync) {
 				info->ctl_op_sync = true;
 				info->is_master = false;
 			}
@@ -532,14 +554,14 @@ int dp_connector_get_info(struct drm_connector *connector,
 
 	info->num_of_h_tiles = 1;
 	info->h_tile_instance[0] = 0;
-	info->is_connected = display->is_sst_connected;
+	info->is_connected = drv->client->is_sst_connected;
 	info->curr_panel_mode = MSM_DISPLAY_VIDEO_MODE;
 	info->capabilities = MSM_DISPLAY_CAP_VID_MODE | MSM_DISPLAY_CAP_EDID;
 
-	if (display && display->is_edp) {
+	if (drv && drv->client->is_edp) {
 		info->intf_type = DRM_MODE_CONNECTOR_eDP;
 		info->display_type = conn_disp_type;
-		if (display->ext_hpd_en)
+		if (drv->client->ext_hpd_en)
 			info->capabilities |= MSM_DISPLAY_CAP_HOT_PLUG;
 		else
 			info->is_connected = true;
@@ -556,13 +578,13 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 {
 	enum drm_connector_status status = connector_status_unknown;
 	struct msm_display_info info;
-	struct dp_display *dp_disp;
+	struct dp_drv *drv;
 	int rc;
 
 	if (!conn || !display)
 		return status;
 
-	dp_disp = display;
+	drv = display;
 	/* get display dp_info */
 	memset(&info, 0x0, sizeof(info));
 	rc = dp_connector_get_info(conn, &info, display);
@@ -572,13 +594,13 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 	}
 
 	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG &&
-			!dp_disp->is_cont_splash_enabled) {
+			!drv->client->is_cont_splash_enabled) {
 		status = (info.is_connected ? connector_status_connected :
 					      connector_status_disconnected);
 	} else {
 		status = connector_status_connected;
 
-		rc = dp_disp->edp_detect(dp_disp);
+		rc = drv->client->drm_ops.edp_detect(drv->client);
 		if (rc) {
 			DP_ERR("error in turning on panel power sequence rc:%d\n", rc);
 			return connector_status_unknown;
@@ -592,17 +614,24 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 
 void dp_connector_post_open(struct drm_connector *connector, void *display)
 {
-	struct dp_display *dp;
+	struct dp_drv *drv;
+	struct dp_client_drm_ops *ops;
 
 	if (!display) {
 		DP_ERR("invalid input\n");
 		return;
 	}
 
-	dp = display;
+	drv = display;
+	if (!drv || !drv->client) {
+		DP_ERR("no dp client found\n");
+		return;
+	}
 
-	if (dp->post_open)
-		dp->post_open(dp);
+	ops = &drv->client->drm_ops;
+
+	if (ops->post_open)
+		ops->post_open(drv->client);
 }
 
 int dp_connector_atomic_check(struct drm_connector *connector,
@@ -642,34 +671,37 @@ int dp_connector_get_modes(struct drm_connector *connector,
 		void *display, const struct msm_resource_caps_info *avail_res)
 {
 	int rc = 0;
-	struct dp_display *dp;
+	struct dp_drv *drv;
 	struct dp_display_mode *dp_mode = NULL;
 	struct sde_connector *sde_conn;
+	struct dp_client_drm_ops *ops;
 
 	if (!connector || !display)
 		return 0;
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
-		DP_ERR("invalid dp panel\n");
-		return 0;
+	drv = display;
+
+	if (!drv || !drv->client) {
+		DP_ERR("no dp client found\n");
+		return -EINVAL;
 	}
 
-	dp = display;
+	ops = &drv->client->drm_ops;
 
 	dp_mode = kzalloc(sizeof(*dp_mode),  GFP_KERNEL);
 	if (!dp_mode)
 		return 0;
 
 	/* pluggable case assumes EDID is read when HPD */
-	if (dp->is_sst_connected) {
+	if (drv->client->is_sst_connected) {
 		/*
 		 * 1. for test request, rc = 1, and dp_mode will have test mode populated
 		 * 2. During normal operation, dp_mode will be untouched
 		 *    a. if mode query succeeds rc >= 0, valid modes will be added to connector
 		 *    b. if edid read failed, then connector mode list will be empty and rc <= 0
 		 */
-		rc = dp->get_modes(dp, sde_conn->drv_panel, dp_mode);
+		rc = ops->get_modes(drv->client, sde_conn->panel_id, dp_mode);
 		if (!rc) {
 			DP_WARN("failed to get DP sink modes, adding failsafe");
 			init_failsafe_mode(dp_mode);
@@ -687,16 +719,18 @@ int dp_connector_get_modes(struct drm_connector *connector,
 int dp_connector_set_info_blob(struct drm_connector *connector,
 		void *info, void *display, struct msm_mode_info *mode_info)
 {
-	struct dp_display *dp_display = display;
+	struct dp_drv *drv = display;
 	const char *display_type = NULL;
+	struct dp_client_drm_ops *ops;
 
-	dp_display->get_display_type(dp_display, &display_type);
+	ops = &drv->client->drm_ops;
+	ops->get_display_type(drv->client, &display_type);
 	sde_kms_info_add_keystr(info, "display type", display_type);
 
-	if ((dp_display->is_edp) && (dp_display->ext_hpd_en))
+	if ((drv->client->is_edp) && (drv->client->ext_hpd_en))
 		sde_kms_info_add_keystr(info, "ext bridge hpd support", "true");
 
-	if (dp_display->ctl_op_sync) {
+	if (drv->client->ctl_op_sync) {
 		sde_kms_info_add_keystr(info, "has_disp_in_other_core", "true");
 		sde_kms_info_add_keystr(info, "dpu_ctl_op_sync", "true");
 	}
@@ -710,7 +744,7 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	int rc = 0;
 	struct dp_bridge *bridge;
 	struct drm_device *dev;
-	struct dp_display *display = data;
+	struct dp_drv *drv = data;
 	struct msm_drm_private *priv = NULL;
 
 	bridge = kzalloc(sizeof(*bridge), GFP_KERNEL);
@@ -719,8 +753,8 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 		goto error;
 	}
 
-	dev = display->drm_dev;
-	bridge->display = display;
+	dev = drv->drm_dev;
+	bridge->drv = drv;
 	bridge->base.funcs = &dp_bridge_ops;
 	bridge->base.encoder = encoder;
 
@@ -732,16 +766,16 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 		goto error_free_bridge;
 	}
 
-	rc = display->request_irq(display);
+	rc = drv->client->drm_ops.request_irq(drv->client);
 	if (rc) {
 		DP_ERR("request_irq failed, rc=%d\n", rc);
 		goto error;
 	}
 
 	priv->bridges[priv->num_bridges++] = &bridge->base;
-	display->bridge = bridge;
-	display->max_mixer_count = max_mixer_count;
-	display->max_dsc_count = max_dsc_count;
+	drv->client->bridge = bridge;
+	drv->client->max_mixer_count = max_mixer_count;
+	drv->client->max_dsc_count = max_dsc_count;
 
 	return 0;
 error_free_bridge:
@@ -752,8 +786,8 @@ error:
 
 void dp_drm_bridge_deinit(void *data)
 {
-	struct dp_display *display = data;
-	struct dp_bridge *bridge = display->bridge;
+	struct dp_drv *drv = data;
+	struct dp_bridge *bridge = drv->client->bridge;
 
 	kfree(bridge);
 }
@@ -763,10 +797,11 @@ enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 		const struct msm_resource_caps_info *avail_res)
 {
 	int rc = 0, vrefresh;
-	struct dp_display *dp_disp;
+	struct dp_drv *drv;
 	struct sde_connector *sde_conn;
 	struct msm_resource_caps_info avail_dp_res;
-	struct dp_panel *dp_panel;
+	struct dp_client_drm_ops *ops;
+	struct dp_display_mode *dp_mode;
 
 	if (!mode || !display || !connector) {
 		DP_ERR("invalid params\n");
@@ -774,17 +809,18 @@ enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 	}
 
 	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
-		DP_ERR("invalid dp panel\n");
+
+	drv = display;
+	ops = &drv->client->drm_ops;
+	dp_mode = ops->get_display_mode(drv->client, sde_conn->panel_id);
+	if (!dp_mode) {
+		DP_ERR("invalid panel\n");
 		return MODE_ERROR;
 	}
 
-	dp_disp = display;
-	dp_panel = sde_conn->drv_panel;
-
 	vrefresh = drm_mode_vrefresh(mode);
 
-	rc = dp_disp->get_available_dp_resources(dp_disp, avail_res,
+	rc = drv->client->drm_ops.get_available_dp_resources(drv->client, avail_res,
 			&avail_dp_res);
 	if (rc) {
 		DP_ERR("error getting max dp resources. rc:%d\n", rc);
@@ -795,43 +831,37 @@ enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
 	if ((mode->hdisplay == 640) && (mode->vdisplay == 480) && (mode->clock == 25175))
 		goto validate_mode;
 
-	if (dp_panel->mode_override && (mode->hdisplay != dp_panel->hdisplay ||
-			mode->vdisplay != dp_panel->vdisplay ||
-			vrefresh != dp_panel->vrefresh ||
-			mode->picture_aspect_ratio != dp_panel->aspect_ratio))
+	if (dp_mode->mode_override &&
+			(dp_mode->override_timing.h_active != mode->hdisplay ||
+			 dp_mode->override_timing.v_active != mode->vdisplay ||
+			 dp_mode->override_timing.refresh_rate !=  vrefresh ||
+			 dp_mode->override_timing.aspect_ratio != mode->picture_aspect_ratio))
 		return MODE_BAD;
-	else if (dp_panel->mode_override)
+	else if (dp_mode->mode_override)
 		mode->type |= DRM_MODE_TYPE_PREFERRED;
 
 validate_mode:
-	return dp_disp->validate_mode(dp_disp, sde_conn->drv_panel,
+	return drv->client->drm_ops.validate_mode(drv->client, sde_conn->panel_id,
 			mode, &avail_dp_res);
 }
 
 int dp_connector_update_pps(struct drm_connector *connector,
 		char *pps_cmd, void *display)
 {
-	struct dp_display *dp_disp;
-	struct sde_connector *sde_conn;
+	struct dp_drv *drv;
 
 	if (!display || !connector) {
 		DP_ERR("invalid params\n");
 		return -EINVAL;
 	}
 
-	sde_conn = to_sde_connector(connector);
-	if (!sde_conn->drv_panel) {
-		DP_ERR("invalid dp panel\n");
-		return MODE_ERROR;
-	}
-
-	dp_disp = display;
-	return dp_disp->update_pps(dp_disp, connector, pps_cmd);
+	drv = display;
+	return drv->client->drm_ops.update_pps(drv->client, connector, pps_cmd);
 }
 
 int dp_connector_install_properties(void *display, struct drm_connector *conn)
 {
-	struct dp_display *dp_display = display;
+	struct dp_drv *drv = display;
 	struct drm_connector *base_conn;
 	int rc;
 
@@ -840,7 +870,7 @@ int dp_connector_install_properties(void *display, struct drm_connector *conn)
 		return -EINVAL;
 	}
 
-	base_conn = dp_display->base_connector;
+	base_conn = drv->client->base_connector;
 
 	/*
 	 * Create the property on the base connector during probe time and then
@@ -862,4 +892,30 @@ int dp_connector_install_properties(void *display, struct drm_connector *conn)
 	drm_object_attach_property(&conn->base, conn->colorspace_property, 0);
 
 	return 0;
+}
+
+int dp_connector_cont_splash_config(void *display)
+{
+	struct dp_drv *drv;
+
+	if (!display) {
+		DP_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	drv = display;
+	return drv->client->drm_ops.cont_splash_config(drv->client);
+}
+
+int dp_connector_cont_splash_res_disable(void *display)
+{
+	struct dp_drv *drv;
+
+	if (!display) {
+		DP_ERR("invalid params\n");
+		return -EINVAL;
+	}
+
+	drv = display;
+	return drv->client->drm_ops.cont_splash_disable(drv->client);
 }

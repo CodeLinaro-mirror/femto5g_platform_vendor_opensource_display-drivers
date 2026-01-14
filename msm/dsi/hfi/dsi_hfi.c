@@ -73,12 +73,6 @@ static int _dsi_display_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 		return -EINVAL;
 	}
 
-	rc = hfi_adapter_ssr_unmap_device_addr(hfi_client);
-	if (rc) {
-		DSI_ERR("failed to unmap fw mapped buffers, rc: %d\n", rc);
-		return rc;
-	}
-
 	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
 	if (rc) {
 		DSI_ERR("failed to release command buffers, rc: %d\n", rc);
@@ -99,12 +93,6 @@ static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 	if (!display) {
 		DSI_ERR("invalid display\n");
 		return -EINVAL;
-	}
-
-	rc = hfi_adapter_ssr_map_device_addr(hfi_client);
-	if (rc) {
-		DSI_ERR("failed to map fw mapped buffers, rc: %d\n", rc);
-		return rc;
 	}
 
 	sde_kms = sde_connector_get_kms(display->drm_conn);
@@ -787,14 +775,22 @@ static enum hfi_panel_fps_traffic_mode dsi_get_panel_traffic_mode_helper(struct 
 
 static enum hfi_panel_modes dsi_get_panel_op_mode_helper(struct dsi_panel *panel)
 {
+	enum hfi_panel_modes mode = 0;
 	switch (panel->panel_mode) {
 	case DSI_OP_VIDEO_MODE:
-		return HFI_PANEL_VIDEO_MODE_8_BIT;
+		mode = HFI_PANEL_VIDEO_MODE_8_BIT;
+		break;
 	case DSI_OP_CMD_MODE:
-		return HFI_PANEL_CMD_MODE_8_BIT;
+		mode = HFI_PANEL_CMD_MODE_8_BIT;
+		break;
 	default:
-		return HFI_PANEL_VIDEO_MODE_8_BIT;
+		mode = HFI_PANEL_VIDEO_MODE_8_BIT;
 	}
+
+	if (panel->vrr_caps.video_psr_support)
+		mode = HFI_PANEL_VIDEO_MODE_PSR_8_BIT;
+
+	return mode;
 }
 
 static enum hfi_panel_vsync_source dsi_get_panel_vsync_src(struct dsi_display *display)
@@ -871,6 +867,23 @@ static enum hfi_panel_backlight_ctrl dsi_get_panel_backlight_type(struct dsi_pan
 		return HFI_PANEL_BACKLIGHT_CTRL_EXTERNAL;
 	else
 		return HFI_PANEL_BACKLIGHT_CTRL_UNKNOWN;
+}
+
+static void dsi_hfi_populate_esync_caps(struct dsi_panel *panel,
+					struct hfi_panel_esync_caps *hfi_esync_caps)
+{
+	if (!panel || !hfi_esync_caps) {
+		DSI_ERR("null pointer");
+		return;
+	}
+
+	struct esync_params *eparams = &panel->esync_caps.default_esync_params;
+
+	hfi_esync_caps->esync_support = panel->esync_caps.esync_support;
+	hfi_esync_caps->emsync_fps = eparams->emsync_fps;
+	hfi_esync_caps->emsync_milli_pulse_width = eparams->emsync_milli_pulse_width;
+	hfi_esync_caps->esync_milli_skew = eparams->milli_skew;
+	hfi_esync_caps->hsync_milli_pulse_width = eparams->hsync_milli_pulse_width;
 }
 
 int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
@@ -1176,6 +1189,11 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 		dsi_get_panel_esd_config_helper(display, &panel_generic_caps->esd_config);
 		panel_generic_caps->valid_gen_caps_cnt++;
 	}
+
+	if (panel->esync_caps.esync_support) {
+		dsi_hfi_populate_esync_caps(panel, &panel_generic_caps->esync_caps);
+		panel_generic_caps->valid_gen_caps_cnt++;
+	}
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -1412,6 +1430,15 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 				(sizeof(panel_generic_caps.esd_config) / sizeof(u32))),
 				(void *)&panel_generic_caps.esd_config);
 		kv_size += sizeof(panel_generic_caps.esd_config);
+	}
+
+
+	if (panel_generic_caps.esync_caps.esync_support) {
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_ESYNC_CAPS, 0,
+					(sizeof(panel_generic_caps.esync_caps) / sizeof(u32))),
+					(void *)&panel_generic_caps.esync_caps);
+		kv_size += sizeof(panel_generic_caps.esync_caps);
 	}
 
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);

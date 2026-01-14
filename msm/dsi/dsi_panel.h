@@ -12,6 +12,7 @@
 #include <linux/bitops.h>
 #include <linux/errno.h>
 #include <linux/backlight.h>
+#include <linux/i2c.h>
 #include <drm/drm_panel.h>
 #include <drm/msm_drm.h>
 #include <drm/msm_drm_pp.h>
@@ -30,7 +31,6 @@
 #define DSI_CMD_PPS_SIZE 135
 
 #define DSI_CMD_PPS_HDR_SIZE 7
-#define DSI_MODE_MAX 32
 
 /*
  * Defining custom dsi msg flag.
@@ -225,6 +225,25 @@ static const struct privacy_cmd_cfg privacy_cmd_cfg_v1 = {
     .lkey_disable_cmd   = {0xf0, 0xa5, 0xa5},
 };
 
+struct dsi_panel_i2c_cmd {
+	const u8 *data;
+	u32 len;
+	u32 post_wait_ms;
+	u8 slave_addr;
+};
+
+struct dsi_panel_i2c_cmd_set {
+	struct dsi_panel_i2c_cmd *cmds;
+	u32 count;
+};
+
+struct dsi_panel_i2c_config {
+	bool i2c_support;
+	struct i2c_adapter *left_adapter;
+	struct i2c_adapter *right_adapter;
+	struct dsi_panel_i2c_cmd_set cmd_set;
+};
+
 struct dsi_panel;
 
 struct dsi_panel_ops {
@@ -321,6 +340,7 @@ struct dsi_panel {
 	bool post_power_enable_status;
 
 	struct dsi_panel_ops panel_ops;
+	struct dsi_panel_i2c_config i2c_config;
 };
 
 static inline bool dsi_panel_ulps_feature_enabled(struct dsi_panel *panel)

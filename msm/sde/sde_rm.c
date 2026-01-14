@@ -1313,6 +1313,12 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 		return false;
 	}
 
+	if (lm_cfg->features & BIT(SDE_MIXER_IS_VIRTUAL)) {
+		SDE_DEBUG("lm %d hw block is removed and it is a virtual mixer",
+				lm_cfg->id);
+		return false;
+	}
+
 	lm_primary_pref = lm_cfg->features & BIT(SDE_DISP_PRIMARY_PREF);
 	lm_secondary_pref = lm_cfg->features & BIT(SDE_DISP_SECONDARY_PREF);
 	cwb_pref = lm_cfg->features & BIT(SDE_DISP_CWB_PREF);
@@ -1805,7 +1811,8 @@ static int _sde_rm_reserve_dsc(
 	drm_for_each_encoder(encoder, rm->dev) {
 		/* backwards allocate DSC modules for non built-in case */
 		if (encoder->base.id == rsvp ->enc_id)
-			list_forward = sde_encoder_is_dsi_display(encoder);
+			list_forward = (sde_encoder_is_dsi_display(encoder) ||
+					sde_encoder_is_edp_display(encoder));
 	}
 
 	un_paired_dsc_id = _sde_rm_reserve_un_paired_dsc(rsvp, reqs, rm);

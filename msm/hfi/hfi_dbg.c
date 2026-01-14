@@ -181,7 +181,7 @@ ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
 	ssize_t rd_buf_offset;
 	ssize_t rd_buf_cpy, evtlog_cpy;
 
-	if (!hfi_dbg->base->evtlog || !hfi_dbg->base->evtlog->dumped_evtlog ||
+	if (!hfi_dbg || !hfi_dbg->base->evtlog || !hfi_dbg->base->evtlog->dumped_evtlog ||
 		!hfi_dbg->base->read_buf)
 		return 0;
 
@@ -276,12 +276,14 @@ void _hfi_dump_buff(void __iomem *local_addr, u32 size, char *evt_type)
  * @do_panic: whether to trigger a panic after dumping
  * @name: string indicating origin of dump
  * @dump_secure: flag to indicate dumping in secure-session
- * @dump_blk_mask: mask of all the hw blk-ids that has to be dumped
  */
 static void _hfi_dump_all(bool do_panic, const char *name, bool dump_secure)
 {
 	ktime_t start, end;
 	u32 in_dump;
+
+	if (!hfi_dbg)
+		return;
 
 	in_dump = (hfi_dbg->base->dump_option);
 
@@ -457,6 +459,11 @@ void hfi_dbg_destroy(void)
 	struct sde_kms *kms;
 	struct hfi_kms *hfi_kms;
 
+	if (!hfi_dbg) {
+		SDE_ERROR("hfi_dbg not initialized\n");
+		return;
+	}
+
 	dev = hfi_dbg->dev;
 	if (!dev) {
 		SDE_ERROR("could not obtained device\n");
@@ -477,7 +484,7 @@ void hfi_dbg_destroy(void)
 
 	hfi_kms = to_hfi_kms(kms);
 
-	if (!hfi_dbg || !hfi_kms)
+	if (!hfi_kms)
 		return;
 
 	hfi_dbg->buff_map.reg_addr.local_addr = NULL;
@@ -493,7 +500,11 @@ void hfi_dbg_destroy(void)
 	hfi_dbg->base->read_buf = NULL;
 	hfi_dbg->base->buff_sz = 0;
 
-	hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client, &hfi_dbg->buff_map.reg_addr);
+	hfi_adapter_buffer_dealloc(&hfi_kms->hfi_client, &hfi_dbg->base_buf_addr);
 
+	kfree(hfi_dbg->base_props);
 	kvfree(hfi_dbg);
+
+	hfi_dbg = NULL;
+	hfi_dbg->base_props = NULL;
 }

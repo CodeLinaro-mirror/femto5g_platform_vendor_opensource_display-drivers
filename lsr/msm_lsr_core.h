@@ -13,6 +13,7 @@
 #include <linux/refcount.h>
 #include "sde_wb_lsr.h"
 #include "msm_lsr_res_parse.h"
+#include "msm_lsr_synx.h"
 
 #define MAX_DEBUGFS_NAME 50
 

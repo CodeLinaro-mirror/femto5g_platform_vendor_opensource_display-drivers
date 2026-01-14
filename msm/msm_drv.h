@@ -83,6 +83,14 @@ struct msm_gem_vma;
 #define MAX_BRIDGES    16
 #define MAX_CONNECTORS 16
 
+#if IS_ENABLED(CONFIG_DSI_EXTENDED_MODES)
+#define DSI_MODE_MAX 256
+#else
+#define DSI_MODE_MAX 32
+#endif
+#define MODE_SWITCH_BITS_PER_WORD 32
+#define MODE_SWITCH_BITMAP_SIZE (DSI_MODE_MAX / MODE_SWITCH_BITS_PER_WORD)
+
 #define MSM_RGB 0x0
 #define MSM_YUV 0x1
 
@@ -298,6 +306,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_LSR_WB_NUM_VIEWS,
 	CONNECTOR_PROP_LSR_WB_REPROJ_SYNC_TO,
 	CONNECTOR_PROP_LSR_WB_REPROJ_CONFIG_MATRIX,
+	CONNECTOR_PROP_LSR_WB_REPROJ_POSE_FB,
 	CONNECTOR_PROP_REPROJ_OPTICAL_AXIS_OFFSET,
 	CONNECTOR_PROP_REPROJ_FUNCTIONAL_MODE,
 	CONNECTOR_PROP_REPROJ_DISTORT_RESOLUTION,
@@ -1050,6 +1059,7 @@ struct esync_params {
  * @wd_jitter:         Info for WD jitter.
  * @vpadding:        panel stacking height
  * @te_pulse_width_ns: pulse width of the TE in microseconds
+ * @overlap:           Overlap pixel within pingpong buffer
  */
 struct msm_mode_info {
 	uint32_t frame_rate;
@@ -1070,7 +1080,7 @@ struct msm_mode_info {
 	u32 mdp_transfer_time_us;
 	u32 mdp_transfer_time_us_min;
 	u32 mdp_transfer_time_us_max;
-	u32 allowed_mode_switches;
+	u32 allowed_mode_switches[MODE_SWITCH_BITMAP_SIZE];
 	bool disable_rsc_solver;
 	struct msm_dyn_clk_list dyn_clk_list;
 	struct msm_freq_step_list *freq_step_list;
@@ -1080,6 +1090,7 @@ struct msm_mode_info {
 	struct msm_display_wd_jitter_config wd_jitter;
 	u32 vpadding;
 	u32 te_pulse_width_us;
+	u32 overlap;
 };
 
 /**
@@ -1171,6 +1182,7 @@ struct msm_display_info {
 	bool hwfence_sw_override_always;
 
 	bool esync_enabled;
+	bool emsync_switch_enabled;
 
 	bool event_notification_disabled;
 
@@ -1221,6 +1233,7 @@ struct msm_display_kickoff_params {
  * @arp_t2_in_us: Time when TE shall be asserted relative to next frame
  *		  update deadline(T1) in case of ARP
  * @privacy_v1: Privacy layer info
+ * @b_lvl: Brightness value to be set
  */
 struct msm_display_conn_params {
 	uint32_t qsync_mode;
@@ -1230,6 +1243,7 @@ struct msm_display_conn_params {
 	struct msm_freq_step_pattern *freq_pattern;
 	uint16_t arp_t2_in_us;
 	struct sde_drm_privacy_layer_v1 *privacy_v1;
+	u32 b_lvl;
 };
 
 /**
@@ -1627,8 +1641,14 @@ const struct msm_format *msm_framebuffer_format(struct drm_framebuffer *fb);
 struct drm_framebuffer *msm_framebuffer_init(struct drm_device *dev,
 		const struct drm_mode_fb_cmd2 *mode_cmd,
 		struct drm_gem_object **bos);
+#if (KERNEL_VERSION(6, 17, 0) <= LINUX_VERSION_CODE)
+struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
+		struct drm_file *file, const struct drm_format_info *info,
+		const struct drm_mode_fb_cmd2 *mode_cmd);
+#else
 struct drm_framebuffer *msm_framebuffer_create(struct drm_device *dev,
 		struct drm_file *file, const struct drm_mode_fb_cmd2 *mode_cmd);
+#endif
 int msm_framebuffer_set_cache_hint(struct drm_framebuffer *fb,
 		u32 flags, u32 rd_type, u32 wr_type);
 int msm_framebuffer_get_cache_hint(struct drm_framebuffer *fb,
@@ -1782,13 +1802,13 @@ static inline void __exit msm_hdcp_unregister(void)
 #endif /* CONFIG_HDCP_QSEECOM */
 
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
-void __init dp_display_register(void);
-void __exit dp_display_unregister(void);
+void __init dp_drv_register(void);
+void __exit dp_drv_unregister(void);
 #else
-static inline void __init dp_display_register(void)
+static inline void __init dp_drv_register(void)
 {
 }
-static inline void __exit dp_display_unregister(void)
+static inline void __exit dp_drv_unregister(void)
 {
 }
 #endif /* CONFIG_DRM_MSM_DP */

@@ -23,8 +23,9 @@ struct sde_hw_dspp_ops {
 	 * setup_histogram - setup dspp histogram
 	 * @ctx: Pointer to dspp context
 	 * @cfg: Pointer to configuration
+	 * @enable: feature enable/disable
 	 */
-	void (*setup_histogram[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg);
+	void (*setup_histogram[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg, bool enable);
 
 	/**
 	 * read_histogram - read dspp histogram
@@ -438,6 +439,13 @@ struct sde_hw_dspp_ops {
 	 * @aiqe_top: Pointer to aiqe top level structure
 	 */
 	void (*setup_aiqe_abc[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
+
+	/**
+	 * setup_rgb_hist_ctrl - Function to configure RGB histogram control
+	 * @ctx: Pointer to DSPP context
+	 * @cfg: Pointer to histogram control configuration
+	 */
+	int (*setup_rgb_hist_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg);
 };
 
 /**

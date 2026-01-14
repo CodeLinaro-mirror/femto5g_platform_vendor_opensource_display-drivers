@@ -53,9 +53,9 @@ static int dp_gpio_hpd_connect(struct dp_gpio_hpd_private *gpio_hpd, bool hpd)
 	}
 
 	if (hpd)
-		rc = gpio_hpd->cb->configure(gpio_hpd->dev);
+		rc = gpio_hpd->cb->configure(gpio_hpd->cb->data);
 	else
-		rc = gpio_hpd->cb->disconnect(gpio_hpd->dev);
+		rc = gpio_hpd->cb->disconnect(gpio_hpd->cb->data);
 
 error:
 	return rc;
@@ -74,7 +74,7 @@ static int dp_gpio_hpd_attention(struct dp_gpio_hpd_private *gpio_hpd)
 	gpio_hpd->base.hpd_irq = true;
 
 	if (gpio_hpd->cb && gpio_hpd->cb->attention)
-		rc = gpio_hpd->cb->attention(gpio_hpd->dev);
+		rc = gpio_hpd->cb->attention(gpio_hpd->cb->data);
 
 error:
 	return rc;

@@ -3,12 +3,13 @@
  * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
+#include "hfi_kms.h"
 #include "hfi_wb.h"
 #include "hfi_defs_lsr.h"
 #include "hfi_connector.h"
 #include "hfi_kms.h"
+#include "hfi_encoder.h"
 
-#define DSI_DISPLAY 0
 #define BLOB_PROPERTY_HEADER_SIZE 2
 #define MATRICES_PER_VIEW 2
 
@@ -24,6 +25,7 @@ struct base_prop_lookup hfi_wb_repro_lsr_custom_props_map[] = {
 			LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_DISTORT_RESOLUTION },
 	{ CONNECTOR_PROP_REPROJ_GRID_WIDTH, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID_WIDTH },
 	{ CONNECTOR_PROP_REPROJ_GRID_HEIGHT, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID_HEIGHT },
+	{ CONNECTOR_PROP_LSR_WB_REPROJ_POSE_FB, HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG },
 	{ CONNECTOR_PROP_REPROJ_R_MAX, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_R_MAX },
 	{ CONNECTOR_PROP_REPROJ_TO_LRGB_LEFT, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_TO_LRGB },
 	{ CONNECTOR_PROP_REPROJ_ERROR_TO_L, LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_ERROR_TO_L },
@@ -125,6 +127,34 @@ int _hfi_wb_lsr_out_buffer_prop_helper(struct sde_wb_device *wb_dev,
 	return ret;
 }
 
+static int _hfi_wb_lsr_repro_set_hrp(struct sde_connector_state *cstate,
+	struct hfi_util_u32_prop_helper *prop_collector)
+{
+	struct hfi_buff *pose_buff = NULL;
+	u32 payload_size = sizeof(struct hfi_buff);
+	u32 ret = 0;
+
+	if (cstate->reproj_pose_size == 0)
+		return 0;
+
+	pose_buff = kzalloc(payload_size, GFP_KERNEL);
+	if (!pose_buff)
+		return -ENOMEM;
+
+	pose_buff->addr_l = cstate->reproj_pose_iova;
+	pose_buff->size = cstate->reproj_pose_size;
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+		HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG, HFI_VAL_U32_ARRAY, pose_buff, payload_size);
+
+	if (!ret)
+		SDE_DEBUG("HRP buffer set with iova = 0x%x\n", pose_buff->addr_l);
+	else
+		SDE_ERROR("Failed to set HRP HFI config property");
+
+	kfree(pose_buff);
+	return ret;
+}
+
 int _hfi_wb_lsr_repro_custom_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_dev,
 	struct sde_connector_state *cstate,
 	struct hfi_util_u32_prop_helper *prop_collector,
@@ -133,7 +163,7 @@ int _hfi_wb_lsr_repro_custom_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_
 	struct sde_drm_reproj_matrix_list *reproj_matrix_list;
 	struct sde_drm_lsr_point *optical_axis_offset;
 	enum sde_drm_wb_functional_mode func_mode;
-	u32 payload_size = 0, payload_lrgb[4], payload[3];
+	u32 payload_size = 0, payload_lrgb[4], payload[3], drm_conn_id;
 	int ret = 0, i, val = 0, view_index;
 
 	if (!wb_dev || !cstate || !prop_collector)
@@ -242,8 +272,21 @@ int _hfi_wb_lsr_repro_custom_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_
 			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
 		break;
 	case HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_SYNC_TO:
-		/* TODO, will have to get property from CONNECTOR_PROP_LSR_WB_REPROJ_SYNC_TO */
-		val = DSI_DISPLAY;
+		drm_conn_id = sde_connector_get_property(&cstate->base,
+					CONNECTOR_PROP_LSR_WB_REPROJ_SYNC_TO);
+		struct drm_connector_list_iter conn_iter;
+		struct drm_connector *drm_conn;
+
+		drm_connector_list_iter_begin(cstate->base.connector->dev, &conn_iter);
+		drm_for_each_connector_iter(drm_conn, &conn_iter) {
+			if (drm_conn->base.id == drm_conn_id) {
+				val = sde_conn_get_display_obj_id(drm_conn);
+				SDE_DEBUG("Reprojection is synced to display_id:%d\n", val);
+				break;
+			}
+		}
+		drm_connector_list_iter_end(&conn_iter);
+		SDE_EVT32(val);
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			hfi_prop, HFI_VAL_U32, &val, sizeof(u32));
 		break;
@@ -323,6 +366,9 @@ int _hfi_wb_lsr_repro_custom_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_
 
 			kfree(optical_axis_payload);
 		break;
+	case HFI_PROPERTY_DISPLAY_HRP_HFI_CONFIG:
+			ret = _hfi_wb_lsr_repro_set_hrp(cstate, prop_collector);
+		break;
 	default:
 		SDE_ERROR("Failed to send HFI commands\n");
 		return -EINVAL;
@@ -366,6 +412,11 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_sparse_grid;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
+		if (!buff->addr_l) {
+			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
+			kfree(payload);
+			return -EINVAL;
+		}
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
 			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
@@ -374,6 +425,11 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_radial_dis_grid;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
+		if (!buff->addr_l) {
+			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
+			kfree(payload);
+			return -EINVAL;
+		}
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
 			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
@@ -382,6 +438,11 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_display_gamma;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
+		if (!buff->addr_l) {
+			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
+			kfree(payload);
+			return -EINVAL;
+		}
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
 			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
@@ -390,6 +451,11 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_gcx_session_config;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
+		if (!buff->addr_l) {
+			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
+			kfree(payload);
+			return -EINVAL;
+		}
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
 			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
@@ -398,6 +464,11 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		opq_cfg = &cstate->reproj_gcx_session_config_data;
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
+		if (!buff->addr_l) {
+			SDE_ERROR("Invalid buffer address for property:%x\n", hfi_prop);
+			kfree(payload);
+			return -EINVAL;
+		}
 		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
 			HFI_PROPERTY_DISPLAY_LSR_WB_REPROJ_CONFIG_EXT,
 			HFI_VAL_U32_ARRAY, payload, size * sizeof(u32));
@@ -444,7 +515,8 @@ int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi
 		for (i = 0; i < ARRAY_SIZE(hfi_wb_repro_lsr_custom_props_map); i++) {
 			drm_prop = hfi_wb_repro_lsr_custom_props_map[i].drm_prop;
 			hfi_prop = hfi_wb_repro_lsr_custom_props_map[i].hfi_prop;
-			/* TODO Need to add dirty check */
+			if (!cstate->gcx_session_dirty)
+				continue;
 			ret = _hfi_wb_lsr_repro_custom_prop_helper(hfi_prop, wb_dev, cstate,
 				 hfi_conn->lsr_props, disp_id);
 			if (ret) {
@@ -456,7 +528,8 @@ int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi
 		for (i = 0; i < ARRAY_SIZE(hfi_wb_repro_lsr_blob_props_map); i++) {
 			drm_prop = hfi_wb_repro_lsr_blob_props_map[i].drm_prop;
 			hfi_prop = hfi_wb_repro_lsr_blob_props_map[i].hfi_prop;
-			/* TODO Need to add dirty check */
+			if (!cstate->gcx_session_dirty)
+				continue;
 			ret = _hfi_wb_lsr_repro_blob_prop_helper(hfi_prop, wb_dev, cstate,
 				 hfi_conn->lsr_blob_props, disp_id);
 			if (ret) {
@@ -624,6 +697,79 @@ end:
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
+		struct sde_reproj *reproj_conn, u32 *new_h_synx,
+		struct hfi_util_u32_prop_helper *base_props)
+{
+	struct synx_import_params import_params = {0};
+	struct synx_session *session = NULL;
+	u32 lsr_h_synx, ret = 0;
+	void *dcp_hw_fence_handle = NULL;
+	struct msm_drm_private *priv;
+	struct hfi_adapter_t *adapter;
+	int reusable_fence_count = 0;
+	u32 *payload;
+	u32 size = 0;
+
+	priv = drm_conn->dev->dev_private;
+	adapter = priv->hfi_priv->hfi_adapter;
+
+	if (!adapter || !adapter->session) {
+		SDE_ERROR("hfi adapter or session is not initialized\n");
+		return -EINVAL;
+	}
+
+	/* Setup reusable fence only once per device bootup */
+	if (!reproj_conn->reusable_fence_cnt) {
+		dcp_hw_fence_handle = adapter->session->hwfence_data.hw_fence_handle;
+		session = (struct synx_session *)dcp_hw_fence_handle;
+		lsr_h_synx = reproj_conn->lsr_reusable_hsynx;
+		SDE_DEBUG("lsr reusable h_synx: %d\n", lsr_h_synx);
+
+		/* Setup individual params for reusable fence */
+		import_params.indv.new_h_synx = new_h_synx;
+		import_params.indv.flags = SYNX_IMPORT_REUSABLE | SYNX_IMPORT_SYNX_FENCE;
+		import_params.indv.fence = (void *)&lsr_h_synx;
+		import_params.type = SYNX_IMPORT_INDV_PARAMS;
+
+		ret = synx_import(session, &import_params);
+		if (ret) {
+			SDE_ERROR("dcp failed to import lsr reusable hw fence: %d\n", ret);
+			return ret;
+		}
+
+		SDE_DEBUG("dcp imported lsr reusable hw fence: %d\n", *new_h_synx);
+		reproj_conn->reusable_fence_cnt++;
+	}
+
+	reusable_fence_count = reproj_conn->reusable_fence_cnt;
+	if (reusable_fence_count) {
+		u64 val = *new_h_synx;
+
+		size = 2 * sizeof(u32) + reusable_fence_count * 2 * sizeof(u32);
+		payload = kzalloc(size, GFP_KERNEL);
+		payload[0] = HFI_LSR_REUSABLE_FENCE_GCX_OUT_BUFFERS;
+		payload[1] = reusable_fence_count;
+		payload[2] = HFI_VAL_L32(val);
+		payload[3] =  HFI_VAL_H32(val);
+		hfi_util_u32_prop_helper_add_prop(base_props,
+				HFI_PROPERTY_DISPLAY_REUSABLE_FENCE,
+				HFI_VAL_U32_ARRAY, payload, size);
+		kfree(payload);
+	}
+
+	return ret;
+}
+#else
+static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
+		struct sde_reproj *reproj_conn, u32 *new_h_synx,
+		struct hfi_util_u32_prop_helper *base_props)
+{
+	return -EINVAL;
+}
+#endif
+
 int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 {
 	int ret = 0;
@@ -632,6 +778,8 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 	struct sde_wb_device *wb_dev;
 	struct hfi_connector *hfi_conn = NULL;
 	struct sde_reproj *reproj_conn = NULL;
+	struct drm_encoder *drm_enc;
+	struct sde_encoder_virt *sde_enc = NULL;
 	u32 disp_id;
 	int flags = 0;
 
@@ -640,12 +788,33 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 	disp_id = sde_conn_get_display_obj_id(drm_conn);
 	reproj_conn = sde_conn->reproj_conn;
 
+	/* Get the encoder connected to this connector */
+	list_for_each_entry(drm_enc, &drm_conn->dev->mode_config.encoder_list, head) {
+		if (drm_enc->crtc) {
+			struct drm_connector *conn;
+
+			conn = sde_encoder_get_connector(drm_conn->dev, drm_enc);
+			if (conn == drm_conn) {
+				sde_enc = to_sde_encoder_virt(drm_enc);
+				break;
+			}
+		}
+	}
+
 	if (!reproj_conn) {
 		SDE_ERROR("Invalid reroj connector");
 		return -EINVAL;
 	}
 
 	if (enable) {
+		u32 new_h_synx = 0;
+
+		ret = reproj_conn->get_info(reproj_conn, wb_dev->wb_cfg->opmode);
+		if (ret) {
+			SDE_ERROR("Failed to get reproj info\n");
+			return ret;
+		}
+
 		if (reproj_conn->on)
 			reproj_conn->on(reproj_conn);
 
@@ -660,6 +829,14 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 			goto end;
 		}
 
+		if (wb_dev->wb_cfg->opmode == WB_REPRO) {
+			ret = _hfi_wb_setup_reusable_fence(drm_conn, reproj_conn,
+					&new_h_synx, hfi_conn->base_props);
+
+			if (ret)
+				SDE_ERROR("Failed to setup reusable fence\n");
+		}
+
 		if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props))
 			goto end;
 
@@ -671,11 +848,26 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 		if (ret)
 			SDE_ERROR("failed to send HFI commands\n");
 
+		/* LSR usecases always have hw-fences enabled */
+		ret =  synx_enable_resources(SYNX_CLIENT_HW_FENCE_LSR0_CTX0, SYNX_RESOURCE_SOCCP,
+				true);
+		if (ret) {
+			SDE_ERROR("failed to enable hw-fence resources for lsr: %d\n", ret);
+			return ret;
+		}
+
 end:
 		mutex_unlock(&hfi_conn->hfi_lock);
 	} else {
 		if (reproj_conn->off)
 			reproj_conn->off(reproj_conn, true);
+
+		ret =  synx_enable_resources(SYNX_CLIENT_HW_FENCE_LSR0_CTX0, SYNX_RESOURCE_SOCCP,
+				false);
+		if (ret) {
+			SDE_ERROR("failed to disable hw-fence resources for lsr: %d\n", ret);
+			return ret;
+		}
 	}
 	return ret;
 }

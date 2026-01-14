@@ -15,7 +15,6 @@
 #include "dp_catalog.h"
 #include "dp_debug.h"
 #include "dp_pll.h"
-#include "dp_display.h"
 
 #define DP_CLIENT_NAME_SIZE	20
 #define XO_CLK_KHZ	19200
@@ -635,7 +634,7 @@ static int dp_power_config_gpios(struct dp_power_private *power, bool flip,
 }
 
 static int dp_power_mmrm_init(struct dp_power *dp_power, struct sde_power_handle *phandle, void *dp,
-	int (*dp_display_mmrm_callback)(struct mmrm_client_notifier_data *notifier_data))
+	int (*dp_mgr_mmrm_callback)(struct mmrm_client_notifier_data *notifier_data))
 {
 	int rc = 0;
 	enum dp_pm_type module;
@@ -647,7 +646,7 @@ static int dp_power_mmrm_init(struct dp_power *dp_power, struct sde_power_handle
 		if (!pm->num_clk)
 			continue;
 
-		rc = msm_dss_mmrm_register(dev, pm, dp_display_mmrm_callback,
+		rc = msm_dss_mmrm_register(dev, pm, dp_mgr_mmrm_callback,
 					dp, &phandle->mmrm_enable);
 		if (rc)
 			DP_ERR("mmrm register failed rc=%d\n", rc);

@@ -11,6 +11,7 @@
 #include "sde_kms.h"
 #include "sde_connector.h"
 #include "sde_encoder.h"
+#include "sde_fence.h"
 #include "msm_cooling_device.h"
 #include <linux/backlight.h>
 #include <linux/string.h>
@@ -24,6 +25,7 @@
 #include <shd_drm.h>
 #include "sde_trace.h"
 #include "hfi_connector.h"
+#include "msm_lsr_synx.h"
 
 #define BL_NODE_NAME_SIZE 32
 #define HDR10_PLUS_VSIF_TYPE_CODE      0x81
@@ -1396,6 +1398,11 @@ static int _sde_connector_update_dirty_properties(
 		case CONNECTOR_PROP_BRIGHTNESS:
 			b_lvl = sde_connector_get_property(connector->state,
 						CONNECTOR_PROP_BRIGHTNESS);
+			if (c_conn->vrr_caps.video_psr_support) {
+				c_conn->b_lvl = b_lvl;
+				c_conn->bl_dirty_change = true;
+				break;
+			}
 			backlight_device_set_brightness(c_conn->bl_device, b_lvl);
 			break;
 		case CONNECTOR_PROP_ROI_V1:
@@ -1533,6 +1540,14 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	else
 		cmd_bit_mask &= ~BIT(DSI_CMD_SET_PRIVACY_LAYER);
 
+	if (c_conn->bl_dirty_change) {
+		backlight_device_set_brightness(c_conn->bl_device, c_conn->b_lvl);
+		cmd_bit_mask |= BIT(DSI_CMD_SET_BRIGHTNESS);
+	}
+
+	if (vm_req == VM_REQ_ACQUIRE)
+		cmd_bit_mask |= BIT(DSI_CMD_SET_STICKY_STILL_DISABLE);
+
 	if (cmd_bit_mask) {
 		mutex_lock(&c_conn->bl_vrr.bl_lock);
 		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
@@ -1549,7 +1564,6 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	c_conn->freq_pattern_updated = false;
 	c_conn->freq_pattern_type_changed = false;
 	c_state->privacy_layer_updated = false;
-
 
 	return rc;
 }
@@ -1644,6 +1658,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	rc = c_conn->ops.pre_kickoff(connector, c_conn->display, &params);
 
 end:
+	c_conn->bl_dirty_change = false;
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI && display)
 		display->queue_cmd_waits = false;
 
@@ -1847,6 +1862,7 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 	params.cmd_bit_mask = cmd_bit_mask;
 	params.peripheral_flush = peripheral_flush;
 	params.privacy_v1 = &c_state->privacy_v1;
+	params.b_lvl = c_conn->bl_dirty_value;
 
 	rc = c_conn->ops.process_dcs_cmd_bitmask(c_conn->display, &params);
 
@@ -2226,6 +2242,8 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 	/* Clear privacy layer info from prev state */
 	c_state->privacy_layer_updated = false;
 
+	sde_wb_connector_reset_reproj_state(c_state);
+
 	return &c_state->base;
 }
 
@@ -2566,11 +2584,16 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 {
 	int rc = 0;
 	struct sde_connector *c_conn;
+	struct sde_kms *sde_kms;
 	uint64_t fence_user_fd;
 	uint64_t __user prev_user_fd;
 	struct sde_hw_ctl *hw_ctl = NULL;
+	void *hfi_hw_fence_handle = NULL;
+	struct msm_drm_private *priv;
+	enum msm_disp_op disp_op;
 
 	c_conn = to_sde_connector(connector);
+	sde_kms = sde_connector_get_kms(connector);
 
 	rc = copy_from_user(&prev_user_fd, (void __user *)val,
 			sizeof(uint64_t));
@@ -2603,11 +2626,32 @@ static int _sde_connector_set_prop_retire_fence(struct drm_connector *connector,
 				hw_ctl = sde_encoder_get_hw_ctl(c_conn);
 		}
 
-		rc = sde_fence_create(c_conn->retire_fence,
-					&fence_user_fd, offset, hw_ctl);
-		if (rc) {
-			SDE_ERROR("fence create failed rc:%d\n", rc);
-			goto end;
+		/* Get disp_op from msm_drm_private */
+		priv = connector->dev->dev_private;
+		disp_op = priv ? priv->disp_op : MSM_DISP_OP_HWIO;
+
+		if (disp_op == MSM_DISP_OP_HFI) {
+			if (sde_connector_out_hw_fences_enabled(c_conn))
+				hfi_hw_fence_handle = _get_hfi_hw_data_from_kms(sde_kms);
+
+			if (c_conn->reproj_conn && c_conn->reproj_conn->type == WB_CSC)
+				rc = lsr_sde_fence_create_and_import(c_conn->retire_fence,
+						&fence_user_fd, offset, hfi_hw_fence_handle);
+			else
+				rc = sde_fence_create_with_handle(c_conn->retire_fence,
+						&fence_user_fd, offset, hfi_hw_fence_handle);
+
+			if (rc) {
+				SDE_ERROR("fence create failed rc:%d\n", rc);
+				goto end;
+			}
+		} else {
+			rc = sde_fence_create(c_conn->retire_fence, &fence_user_fd,
+						offset, hw_ctl);
+			if (rc) {
+				SDE_ERROR("fence create failed rc:%d\n", rc);
+				goto end;
+			}
 		}
 
 		rc = copy_to_user((uint64_t __user *)(uintptr_t)val,
@@ -3183,18 +3227,25 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 {
 	struct drm_connector *connector = file->private_data;
 	struct sde_connector *c_conn = NULL;
+	struct drm_encoder *drm_enc;
 	struct sde_kms *sde_kms;
 	char *input, *token, *input_copy, *input_dup = NULL;
 	const char *delim = " ";
 	char buffer[MAX_CMD_PAYLOAD_SIZE] = {0};
 	int rc = 0, strtoint = 0;
 	u32 buf_size = 0;
+	u32 delay_time = 0;
 
 	if (*ppos || !connector) {
 		SDE_ERROR("invalid argument(s), conn %d\n", connector != NULL);
 		return -EINVAL;
 	}
 	c_conn = to_sde_connector(connector);
+
+	if (connector->state && connector->state->best_encoder)
+		drm_enc = connector->state->best_encoder;
+	else
+		drm_enc = connector->encoder;
 
 	sde_kms = sde_connector_get_kms(&c_conn->base);
 	if (!sde_kms) {
@@ -3227,6 +3278,11 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 	input[count] = '\0';
 
 	SDE_INFO("Command requested for transfer to panel: %s\n", input);
+
+	if (c_conn->vrr_caps.video_psr_support) {
+		delay_time = sde_encoder_phys_delay_dcs(drm_enc);
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, delay_time);
+	}
 
 	input_copy = kstrdup(input, GFP_KERNEL);
 	if (!input_copy) {
@@ -3986,8 +4042,8 @@ static int sde_connector_populate_mode_info(struct drm_connector *conn,
 					mode_info.mdp_transfer_time_us_max);
 		}
 
-		sde_kms_info_add_keyint(info, "allowed_mode_switch",
-			mode_info.allowed_mode_switches);
+		sde_kms_info_add_list(info, "allowed_mode_switch", mode_info.allowed_mode_switches,
+			ARRAY_SIZE(mode_info.allowed_mode_switches));
 
 		if (!mode_info.roi_caps.num_roi)
 			continue;
@@ -4020,7 +4076,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 	struct sde_kms_info *info;
 	struct sde_connector *c_conn = NULL;
 	struct sde_connector_state *sde_conn_state = NULL;
-	struct msm_mode_info mode_info;
+	struct msm_mode_info *mode_info = NULL;
 	struct drm_property_blob **blob = NULL;
 	int rc = 0;
 
@@ -4030,19 +4086,23 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 		return -EINVAL;
 	}
 
-	info = vzalloc(sizeof(*info));
-	if (!info)
+	mode_info = kzalloc(sizeof(*mode_info), GFP_KERNEL);
+	if (!mode_info)
 		return -ENOMEM;
+
+	info = vzalloc(sizeof(*info));
+	if (!info) {
+		kfree(mode_info);
+		return -ENOMEM;
+	}
 
 	sde_kms_info_reset(info);
 
 	switch (prop_id) {
 	case CONNECTOR_PROP_SDE_INFO:
-		memset(&mode_info, 0, sizeof(mode_info));
-
 		if (state) {
 			sde_conn_state = to_sde_connector_state(state);
-			memcpy(&mode_info, &sde_conn_state->mode_info,
+			memcpy(mode_info, &sde_conn_state->mode_info,
 					sizeof(sde_conn_state->mode_info));
 		} else {
 			/**
@@ -4056,7 +4116,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 
 		if (c_conn->ops.set_info_blob) {
 			rc = c_conn->ops.set_info_blob(conn, info,
-					c_conn->display, &mode_info);
+					c_conn->display, mode_info);
 			if (rc) {
 				SDE_ERROR_CONN(c_conn,
 						"set_info_blob failed, %d\n",
@@ -4089,6 +4149,7 @@ int sde_connector_set_blob_data(struct drm_connector *conn,
 			prop_id);
 exit:
 	vfree(info);
+	kfree(mode_info);
 
 	return rc;
 }
@@ -4410,6 +4471,85 @@ static ssize_t twm_enable_show(struct device *device,
 	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->twm_en);
 }
 
+static ssize_t offload_enable_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+	struct drm_encoder *drm_enc;
+	int rc;
+	int data;
+	bool new_state, old_state;
+
+	conn = dev_get_drvdata(device);
+	sde_conn = to_sde_connector(conn);
+
+	rc = kstrtoint(buf, 10, &data);
+	if (rc) {
+		SDE_ERROR("kstrtoint failed, rc = %d\n", rc);
+		return -EINVAL;
+	}
+
+	new_state = data ? true : false;
+
+	/**
+	 * State is accessed from multiple contexts (sysfs write, encoder operations),
+	 * there's a potential race condition where the state could be read
+	 * inconsistently or modified concurrently.
+	 */
+	mutex_lock(&sde_conn->lock);
+	old_state = sde_conn->offload_en;
+
+	/* Handle data population based on state change */
+	if (old_state != new_state) {
+		/* Check for best_encoder first */
+		if (conn->state && conn->state->best_encoder)
+			drm_enc = conn->state->best_encoder;
+		else
+			drm_enc = sde_conn->encoder;
+
+		if (!drm_enc) {
+			SDE_ERROR("DRM encoder is NULL !!");
+			mutex_unlock(&sde_conn->lock);
+			return -EINVAL;
+		}
+
+		sde_conn->offload_en = new_state;
+		rc = sde_encoder_set_offload_mode(drm_enc, sde_conn->offload_en);
+
+		if (rc) {
+			SDE_ERROR("Failed to set offload mode: %d\n", rc);
+			/* Revert state on failure */
+			sde_conn->offload_en = old_state;
+			mutex_unlock(&sde_conn->lock);
+			return rc;
+		}
+
+		SDE_DEBUG("OFFLOAD: state changed from %s to %s\n",
+					old_state ? "ENABLED" : "DISABLED",
+					new_state ? "ENABLED" : "DISABLED");
+	} else {
+		SDE_DEBUG("OFFLOAD: no state change, already %s\n",
+			old_state ? "ENABLED" : "DISABLED");
+	}
+
+	mutex_unlock(&sde_conn->lock);
+	return count;
+}
+
+static ssize_t offload_enable_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+{
+	struct drm_connector *conn;
+	struct sde_connector *sde_conn;
+
+	conn = dev_get_drvdata(device);
+	sde_conn = to_sde_connector(conn);
+
+	SDE_DEBUG("OFFLOAD: %s\n", sde_conn->offload_en ? "ENABLED" : "DISABLED");
+	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->offload_en);
+}
+
 static ssize_t skip_panel_power_store(struct device *device,
 	struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -4451,11 +4591,13 @@ static ssize_t skip_panel_power_show(struct device *device,
 
 static DEVICE_ATTR_RO(panel_power_state);
 static DEVICE_ATTR_RW(twm_enable);
+static DEVICE_ATTR_RW(offload_enable);
 static DEVICE_ATTR_RW(skip_panel_power);
 
 static struct attribute *sde_connector_dev_attrs[] = {
 	&dev_attr_panel_power_state.attr,
 	&dev_attr_twm_enable.attr,
+	&dev_attr_offload_enable.attr,
 	&dev_attr_skip_panel_power.attr,
 	NULL
 };
@@ -4823,6 +4965,12 @@ bool sde_connector_property_is_dirty(struct sde_connector_state *cstate,
 
 	return msm_property_is_dirty(&conn->property_info,
 			&cstate->property_state, property_idx);
+}
+
+bool sde_connector_out_hw_fences_enabled(struct sde_connector *sde_conn)
+{
+	/* is LSR CSC display */
+	return (sde_conn->reproj_conn && sde_conn->reproj_conn->type == WB_CSC);
 }
 
 /**

@@ -46,6 +46,8 @@ struct drm_dp_link {
 	unsigned int rate;
 	unsigned int num_lanes;
 	unsigned long capabilities;
+	int index;
+	bool use_rate_select;
 };
 
 int dp_link_probe(struct drm_dp_aux *aux, struct drm_dp_link *link);

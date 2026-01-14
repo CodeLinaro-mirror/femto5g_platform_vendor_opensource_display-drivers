@@ -34,12 +34,15 @@
 #include "lsr_hw_io.h"
 #include "msm_lsr_clocks.h"
 #include <linux/clk/qcom.h>
+#include "msm_lsr_synx.h"
 
 #define REG_ADDR_OFFSET_BITMASK	0x000FFFFF
 #define QDSS_IOVA_START 0x80001000
 #define MIN_PAYLOAD_SIZE 3
 
-#define SCRATCH_BUF_SIZE 0x1000
+#define CSC_SCRATCH_BUF_SIZE 0x1000
+/* GCX needs 16K of scratch memory to accommodate up to 16 UI layers*/
+#define GCX_SCRATCH_BUF_SIZE 0x4000
 #define ARP_BUF_SIZE     0x800000
 
 /* Poll interval in uS */
@@ -86,8 +89,8 @@ static int __reset_control_deassert_name(struct lsr_device *device, const char *
 static int __reset_control_acquire(struct lsr_device *device, const char *name);
 static int __reset_control_release(struct lsr_device *device, const char *name);
 
-static int lsr_iommu_map(struct iommu_domain *domain, unsigned long iova, phys_addr_t paddr,
-	size_t size, int prot)
+int lsr_iommu_map(struct iommu_domain *domain, unsigned long iova, phys_addr_t paddr, size_t size,
+		int prot)
 {
 	int rc = 0;
 #if (KERNEL_VERSION(6, 2, 0) > LINUX_VERSION_CODE)
@@ -591,9 +594,7 @@ static int iris_hfi_vote_buses(void *dev, struct bus_info *bus, unsigned long bw
 	if (!device)
 		return -EINVAL;
 
-	mutex_lock(&device->lock);
 	rc = lsr_set_bw(bus, bw);
-	mutex_unlock(&device->lock);
 
 	return rc;
 }
@@ -833,9 +834,7 @@ static int iris_hfi_scale_clocks(void *dev, u32 freq)
 		return -EINVAL;
 	}
 
-	mutex_lock(&device->lock);
 	rc = msm_lsr_set_clocks_impl(device, freq);
-	mutex_unlock(&device->lock);
 
 	return rc;
 }
@@ -1140,10 +1139,10 @@ csc_scratch_init:
 
 	if (dev->csc_scratch_pad.align_virtual_addr) {
 		memset((void *)dev->csc_scratch_pad.align_virtual_addr,
-				0, SCRATCH_BUF_SIZE);
+				0, dev->csc_scratch_pad.mem_size);
 		goto gcx_scratch_init;
 	}
-	rc = __smem_alloc(dev, mem_addr, SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
+	rc = __smem_alloc(dev, mem_addr, CSC_SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
 	if (rc) {
 		dprintk(LSR_ERR, "iface_q_table_alloc_fail\n");
 		goto fail_alloc_queue;
@@ -1153,16 +1152,16 @@ csc_scratch_init:
 	dev->csc_scratch_pad.align_device_addr = mem_addr->align_device_addr -
 					fw_bias;
 	dev->csc_scratch_pad.align_dcp_device_addr = mem_addr->align_dcp_device_addr;
-	dev->csc_scratch_pad.mem_size = SCRATCH_BUF_SIZE;
+	dev->csc_scratch_pad.mem_size = CSC_SCRATCH_BUF_SIZE;
 	dev->csc_scratch_pad.mem_data = mem_addr->mem_data;
 
 gcx_scratch_init:
 	if (dev->gcx_scratch_pad.align_virtual_addr) {
 		memset((void *)dev->gcx_scratch_pad.align_virtual_addr,
-				0, SCRATCH_BUF_SIZE);
+				0, dev->gcx_scratch_pad.mem_size);
 		goto hfi_queue_init;
 	}
-	rc = __smem_alloc(dev, mem_addr, SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
+	rc = __smem_alloc(dev, mem_addr, GCX_SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
 	if (rc) {
 		dprintk(LSR_ERR, "iface_q_table_alloc_fail\n");
 		goto fail_alloc_queue;
@@ -1172,7 +1171,7 @@ gcx_scratch_init:
 	dev->gcx_scratch_pad.align_device_addr = mem_addr->align_device_addr -
 					fw_bias;
 	dev->gcx_scratch_pad.align_dcp_device_addr = mem_addr->align_dcp_device_addr;
-	dev->gcx_scratch_pad.mem_size = SCRATCH_BUF_SIZE;
+	dev->gcx_scratch_pad.mem_size = GCX_SCRATCH_BUF_SIZE;
 	dev->gcx_scratch_pad.mem_data = mem_addr->mem_data;
 
 hfi_queue_init:
@@ -1463,6 +1462,7 @@ int iris_hfi_core_init(void *device)
 		int err = 0;
 		u32 i, cpu;
 
+		dprintk(LSR_PWR, "Enabling pm_qos_hdls\n");
 		dev->res->pm_qos.pm_qos_hdls = kcalloc(
 				dev->res->pm_qos.silver_count,
 				sizeof(struct dev_pm_qos_request),
@@ -1488,6 +1488,9 @@ int iris_hfi_core_init(void *device)
 					__func__, i);
 		}
 	}
+
+	if (dev->res->pm_qos.latency_us && dev->res->pm_qos.pm_qos_hdls)
+		lsr_pm_qos_update(dev, PM_QOS_RESUME_LATENCY_DEFAULT_VALUE);
 
 pm_qos_bail:
 	mutex_unlock(&dev->lock);
@@ -2151,8 +2154,10 @@ static int __init_subcaches(struct lsr_device *device)
 		return -EINVAL;
 	}
 
-	if (!is_sys_cache_present(device))
+	if (msm_lsr_syscache_disable || !is_sys_cache_present(device)) {
+		dprintk(LSR_ERR, "LLCC for LSR is disabled");
 		return 0;
+	}
 
 	iris_hfi_for_each_subcache(device, sinfo) {
 		if (!strcmp("llcc_gcx_to_dpu_left", sinfo->name)) {
@@ -2185,6 +2190,20 @@ static int __init_subcaches(struct lsr_device *device)
 err_subcache_get:
 	__deinit_subcaches(device);
 	return 0;
+}
+
+static int __init_synx(struct lsr_device *device)
+{
+	int rc = 0;
+
+	if (!device) {
+		dprintk(LSR_ERR, "init_synx: invalid device %pK\n", device);
+		return -EINVAL;
+	}
+
+	lsr_synx_ftbl_init(device);
+	rc = device->synx_ftbl->lsr_sess_init_synx(device);
+	return rc;
 }
 
 static int __init_resources(struct lsr_device *device,
@@ -2223,6 +2242,10 @@ static int __init_resources(struct lsr_device *device,
 	rc = __init_subcaches(device);
 	if (rc)
 		dprintk(LSR_WARN, "Failed to init subcaches: %d\n", rc);
+
+	rc = __init_synx(device);
+	if (rc)
+		dprintk(LSR_ERR, "Failed to init synx %d\n", rc);
 
 	return rc;
 
@@ -2433,18 +2456,23 @@ static void interrupt_init_iris2(struct lsr_device *device)
 static int __lsr_power_on(struct lsr_device *device)
 {
 	int rc = 0;
+	struct msm_lsr_core *core;
 
 	if (device->power_enabled)
 		return 0;
 
 	dprintk(LSR_PWR, "LSR Power on\n");
+	core = lsr_driver->lsr_core;
 	/* Vote for all hardware resources */
+	mutex_lock(&core->clk_lock);
 	rc = __vote_buses(device, device->bus_vote.data,
 			device->bus_vote.data_count);
 	if (rc) {
 		dprintk(LSR_ERR, "Failed to vote buses, err: %d\n", rc);
+		mutex_unlock(&core->clk_lock);
 		goto fail_vote_buses;
 	}
+	mutex_unlock(&core->clk_lock);
 
 	rc = call_iris_op(device, power_on_controller, device);
 	if (rc)
@@ -2454,6 +2482,7 @@ static int __lsr_power_on(struct lsr_device *device)
 	if (rc)
 		goto fail_enable_core;
 
+	mutex_lock(&core->clk_lock);
 	rc = msm_lsr_scale_clocks(device);
 	if (rc) {
 		dprintk(LSR_WARN, "Failed to scale clocks, perf may regress\n");
@@ -2461,6 +2490,7 @@ static int __lsr_power_on(struct lsr_device *device)
 	} else {
 		dprintk(LSR_PWR, "Done with scaling\n");
 	}
+	mutex_unlock(&core->clk_lock);
 
 	/*Do not access registers before this point!*/
 	device->power_enabled = true;
@@ -2584,8 +2614,6 @@ int __resume(struct lsr_device *device)
 	}
 
 	core = lsr_driver->lsr_core;
-	WARN_ON(1);
-
 	dprintk(LSR_PWR, "Resuming from power collapse\n");
 	rc = __lsr_power_on(device);
 	if (rc) {

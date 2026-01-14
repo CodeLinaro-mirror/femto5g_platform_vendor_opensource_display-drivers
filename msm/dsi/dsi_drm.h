@@ -205,4 +205,22 @@ int dsi_conn_get_avr_step_fps(struct drm_connector_state *conn_state);
  * Return: Zero or -ve error code.
  */
 int dsi_conn_dcs_cmd_tx(struct drm_connector_state *conn_state, enum dsi_cmd_set_type cmd);
+
+/**
+ * drm_to_dsi_update_overlap() - update overlap for given mode
+ * @display: Pointer to private display handle
+ * @convert_dsi_mode: input parameter. structure having dsi mode information.
+ */
+void drm_to_dsi_update_overlap(void *display, struct dsi_display_mode *convert_dsi_mode);
+
+/**
+ * dsi_get_overlap_total() - calculate total overlap pixel
+ * @dsi_mode: input parameter. structure having dsi mode information.
+ */
+static inline u32 dsi_get_overlap_total(const struct dsi_display_mode *dsi_mode)
+{
+	if (!dsi_mode || !dsi_mode->priv_info)
+		return 0;
+	return dsi_mode->timing.overlap * dsi_mode->priv_info->topology.num_lm;
+}
 #endif /* _DSI_DRM_H_ */

@@ -63,6 +63,14 @@ int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu);
  */
 void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
 	bool use_lock);
+
+/**
+ * hfi_crtc_get_cmd_buf - Get the HFI command buffer for a given CRTC
+ * @plane: Pointer to the drm plane structure
+ * Return: Pointer to the HFI command buffer structure, or NULL on failure
+ */
+struct hfi_cmdbuf_t *hfi_plane_get_cmd_buf(struct drm_plane *plane);
+
 #else
 int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)
 {
@@ -74,6 +82,12 @@ void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_pla
 {
 	return -HFI_ERROR;
 }
+
+struct hfi_cmdbuf_t *hfi_plane_get_cmd_buf(struct drm_plane *plane)
+{
+	return NULL;
+}
+
 #endif // CONFIG_MDSS_HFI
 
 #endif  // _SDE_PLANE_HFI_H_

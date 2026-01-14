@@ -868,4 +868,62 @@ struct drm_msm_misr_sign {
 
 typedef struct drm_msm_fp16_csc drm_msm_ucsc_csc;
 
+/* RGB Histogram */
+#define RGB_HISTOGRAM_BIN_COUNT 1024
+#define RGB_HISTOGRAM_BUFFER_SIZE 3
+#define RGB_COMPONENT_SIZE 3
+#define RGB_HIST_GUARD_BYTES 255
+
+#define RGB_HIST_ROI_ENABLE (1 << 0)
+
+#define ROI_MODE_WITHIN 0
+#define ROI_MODE_OUTSIDE 1
+
+#define RGB_HIST_TAP_POINT_AFTER_DSPP 0
+#define RGB_HIST_TAP_POINT_BEFORE_DSPP 1
+
+#define RGB_HIST_COLORMODE_Y 0
+#define RGB_HIST_COLORMODE_V 1
+#define RGB_HIST_COLORMODE_RGB 2
+
+struct drm_msm_rgb_hist_ctrl {
+	__u32 flags;
+	__u32 roi_mode;
+	__u32 roi_x;
+	__u32 roi_y;
+	__u32 roi_width;
+	__u32 roi_height;
+	__u32 tap_point;
+	__u32 colorspace_mode;
+};
+
+/* RGB histogram data per component */
+struct drm_msm_rgb_hist_stats_data {
+	__u32 hist[RGB_HISTOGRAM_BIN_COUNT];
+	__u32 hist_min;
+	__u32 hist_max;
+	__u32 hist_sum_lsb;
+	__u32 hist_sum_msb;
+	__u32 hcount;
+	__u32 crc;
+	__u32 status_flags;
+	__u32 roi_mode;
+	__u32 roi_x;
+	__u32 roi_y;
+	__u32 roi_width;
+	__u32 roi_height;
+	__u32 tap_point;
+	__u32 colorspace_mode;
+};
+
+struct drm_msm_rgb_hist_buffers_ctrl {
+	__u32 fds[RGB_HISTOGRAM_BUFFER_SIZE][RGB_COMPONENT_SIZE];
+};
+
+struct drm_msm_rgb_hist_buffer {
+	__u32 fd[RGB_COMPONENT_SIZE];
+	__u32 offset[RGB_COMPONENT_SIZE];
+	__u32 status;
+};
+
 #endif /* _MSM_DRM_PP_H_ */
