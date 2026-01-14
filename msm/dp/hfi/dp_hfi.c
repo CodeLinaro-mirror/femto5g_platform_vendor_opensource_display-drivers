@@ -130,7 +130,6 @@ void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	hfi = container_of(listener, struct dp_hfi, hfi_cb_obj);
 
 	dp_display_obj_id = sde_conn_get_display_obj_id(hfi->connector);
-
 	if (dp_display_obj_id != hfi_uid) {
 		DP_ERR("Component and HFI ID mismatch (%d != %d)\n",
 				dp_display_obj_id, hfi_uid);
@@ -142,20 +141,9 @@ void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 		if (payload && hfi)
 			hfi->mode_valid = true;
 		break;
-	case HFI_COMMAND_DISPLAY_POWER_CONTROL:
-		/* DP power control handling would go here */
-		break;
-	case HFI_COMMAND_DISPLAY_DISABLE:
-		msleep(20);
-		break;
-	case HFI_COMMAND_DISPLAY_POST_DISABLE:
-	case HFI_COMMAND_DISPLAY_ENABLE:
-	case HFI_COMMAND_DISPLAY_POST_ENABLE:
-	case HFI_COMMAND_DISPLAY_SET_MODE:
-	case HFI_COMMAND_DISPLAY_POWER_REGISTER:
-		break;
 	default:
-		DP_ERR("Invalid HFI property 0x%x\n", prop);
+		hfi->handle_event(hfi->cb_data, prop, payload, size);
+		break;
 	}
 }
 
@@ -199,10 +187,9 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
 {
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	struct drm_connector *drm_conn;
-	enum hfi_cmdbuf_type cmd_buf_type = HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING;
-
+	enum hfi_cmdbuf_type cmd_buf_type = HFI_CMDBUF_TYPE_DISPLAY_INFO_NO_BLOCK;
 	int rc = 0;
-	u32 obj_id = 0;
+	u32 obj_id;
 
 	if (!hfi || !hfi_client) {
 		DP_ERR("invalid input\n");
@@ -215,21 +202,27 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
 	switch (hfi_cmd) {
 	case HFI_COMMAND_DEVICE_HOT_PLUG_DETECT:
 		cmd_buf_type = HFI_CMDBUF_TYPE_DEVICE_INFO;
-		obj_id = 0;
+		obj_id = 0; // this is sent to device 0
 		break;
 	case HFI_COMMAND_DISPLAY_MODE_VALIDATE:
+		if (payload && hfi)
+			hfi->mode_valid = true;
 		flags = HFI_HOST_FLAGS_NONE;
 		break;
 	case HFI_COMMAND_DISPLAY_SET_MODE:
 	case HFI_COMMAND_DISPLAY_ENABLE:
 	case HFI_COMMAND_DISPLAY_POST_ENABLE:
-	case HFI_COMMAND_DISPLAY_POST_DISABLE:
 	case HFI_COMMAND_DISPLAY_DISABLE:
+	case HFI_COMMAND_DISPLAY_POST_DISABLE:
+	case HFI_COMMAND_DISPLAY_EVENT_REGISTER:
 		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
 		break;
 	default:
 		break;
 	}
+
+	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED)
+		cmd_buf_type = HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING;
 
 	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id, cmd_buf_type);
 	if (!cmd_buf) {
@@ -270,7 +263,7 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
  *
  * Return: pointer to dp_mgr_hfi structure on success, ERR_PTR on failure.
  */
-struct dp_hfi *dp_hfi_setup(struct dp_client *client)
+struct dp_hfi *dp_hfi_setup(struct dp_client *client, void *cb_data)
 {
 	struct msm_drm_private *priv;
 	struct drm_device *dev;
@@ -311,6 +304,7 @@ struct dp_hfi *dp_hfi_setup(struct dp_client *client)
 	}
 
 	hfi->connector = client->base_connector;
+	hfi->cb_data = cb_data;
 
 	/* Call dp_hfi_setup_client to setup DP-specific HFI and get hfi */
 	rc = dp_hfi_setup_client(hfi, hfi_host);
