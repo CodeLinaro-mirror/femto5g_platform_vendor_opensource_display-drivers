@@ -180,6 +180,46 @@ int dp_hfi_setup_client(struct dp_hfi *hfi,	struct hfi_adapter_t *hfi_host)
 	return 0;
 }
 
+static int _pack_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client,
+		struct hfi_cmdbuf_t *cmd_buf, u32 hfi_cmd, u32 obj_id,
+		u32 hfi_payload_type, void *payload, u32 payload_size, u32 flags)
+{
+	int rc = 0;
+
+	switch (hfi_cmd) {
+	case HFI_COMMAND_DISPLAY_MODE_VALIDATE:
+		if (payload && hfi)
+			hfi->mode_valid = true;
+		flags = HFI_HOST_FLAGS_NONE;
+		break;
+	case HFI_COMMAND_DISPLAY_SET_MODE:
+	case HFI_COMMAND_DISPLAY_ENABLE:
+	case HFI_COMMAND_DISPLAY_POST_ENABLE:
+	case HFI_COMMAND_DISPLAY_DISABLE:
+	case HFI_COMMAND_DISPLAY_POST_DISABLE:
+	case HFI_COMMAND_DISPLAY_EVENT_REGISTER:
+	case HFI_COMMAND_DISPLAY_EVENT_DEREGISTER:
+		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+		break;
+	default:
+		break;
+	}
+
+	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED) {
+		rc = hfi_adapter_add_get_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
+			hfi_payload_type, payload, payload_size, &hfi->hfi_cb_obj, flags);
+		if (rc)
+			DP_ERR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
+	} else {
+		rc = hfi_adapter_add_set_property(hfi_client, cmd_buf, hfi_cmd,
+			obj_id, hfi_payload_type, payload, payload_size, flags);
+		if (rc)
+			DP_ERR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
+	}
+
+	return rc;
+}
+
 int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
 	struct hfi_client_t *hfi_client, u32 hfi_cmd,
 	const char *display_type, u32 hfi_payload_type,
@@ -253,6 +293,84 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
 		DP_ERR("failed to send hfi_cmd 0x%x\n", hfi_cmd);
 		return rc;
 	}
+
+	return rc;
+}
+
+int dp_hfi_start_batch_cmd(struct dp_hfi *hfi,
+				struct hfi_client_t *hfi_client, u32 hfi_cmd,
+				const char *display_type, u32 hfi_payload_type,
+				void *payload, u32 payload_size, u32 flags)
+{
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	struct drm_connector *drm_conn;
+	enum hfi_cmdbuf_type cmd_buf_type = HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING;
+	u32 obj_id;
+
+	if (!hfi || !hfi_client) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	drm_conn = hfi->connector;
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
+	flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id, cmd_buf_type);
+	if (!cmd_buf) {
+		DP_ERR("could not get cmd_buf for hfi_cmd 0x%x\n", hfi_cmd);
+		return -ENODEV;
+	}
+	hfi->batch_cmd_buf = cmd_buf;
+
+	return _pack_cmd(hfi, hfi_client, hfi->batch_cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
+			payload, payload_size, flags);
+
+}
+
+int dp_hfi_append_batch_cmd(struct dp_hfi *hfi,
+				struct hfi_client_t *hfi_client, u32 hfi_cmd,
+				const char *display_type, u32 hfi_payload_type,
+				void *payload, u32 payload_size, u32 flags)
+{
+	struct drm_connector *drm_conn;
+	u32 obj_id;
+
+	if (!hfi || !hfi_client) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	drm_conn = hfi->connector;
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
+
+	return _pack_cmd(hfi, hfi_client, hfi->batch_cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
+			payload, payload_size, flags);
+}
+
+int dp_hfi_end_batch_cmd(struct dp_hfi *hfi,
+				struct hfi_client_t *hfi_client, u32 hfi_cmd,
+				const char *display_type, u32 hfi_payload_type,
+				void *payload, u32 payload_size, u32 flags)
+{
+	struct drm_connector *drm_conn;
+	int rc = 0;
+	u32 obj_id;
+
+	if (!hfi || !hfi_client) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	drm_conn = hfi->connector;
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
+	flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+
+	rc = _pack_cmd(hfi, hfi_client, hfi->batch_cmd_buf, hfi_cmd, obj_id, hfi_payload_type,
+			payload, payload_size, flags);
+
+	SDE_EVT32(obj_id, hfi_cmd, SDE_EVTLOG_FUNC_CASE1);
+	rc = hfi_adapter_set_cmd_buf_blocking(hfi_client, hfi->batch_cmd_buf);
+	SDE_EVT32(obj_id, hfi_cmd, rc, SDE_EVTLOG_FUNC_CASE2);
 
 	return rc;
 }
