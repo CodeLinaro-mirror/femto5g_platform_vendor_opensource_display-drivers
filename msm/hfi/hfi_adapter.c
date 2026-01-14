@@ -1782,6 +1782,8 @@ int hfi_adapter_buffer_dealloc(struct hfi_client_t *ctx, struct hfi_shared_addr_
 
 	alloc_info->mapped_iova = 0;
 	alloc_info->cpu_va = NULL;
+	addr_map->local_addr = 0;
+	addr_map->remote_addr = 0;
 
 	return ret;
 }

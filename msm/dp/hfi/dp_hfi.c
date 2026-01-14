@@ -19,9 +19,7 @@
 #include "hfi_props.h"
 #include "hfi_kms.h"
 #include "hfi_commands_device.h"
-
-#define DP_ERR(fmt, ...) pr_err("[dp-hfi-error]: " fmt, ##__VA_ARGS__)
-#define DP_DEBUG(fmt, ...) pr_debug("[dp-hfi-debug]: " fmt, ##__VA_ARGS__)
+#include "dp_debug.h"
 
 static int _dp_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 {
