@@ -221,31 +221,101 @@ enum hfi_display_idle_timer_control {
 };
 
 /*
- * hfi_display_event_id - HFI event ID
- * @HFI_EVENT_VSYNC                   : Event ID for vsync
- * @HFI_EVENT_FRAME_SCAN_START        : Event ID for frame scan start
- * @HFI_EVENT_FRAME_SCAN_COMPLETE     : Event ID for frame scan complete
- * @HFI_EVENT_FRAME_IDLE              : Event ID for frame idle
- * @HFI_EVENT_DISPLAY_POWER           : Event ID for display power
- * @HFI_EVENT_HW_RECOVERY             : Event ID for hw recovery
- * @HFI_EVENT_FRAME_CAPTURE_COMPLETE  : Event ID for frame capture complete.
- * @HFI_EVENT_PANEL_DEAD              : Event ID for panel dead
- * @HFI_EVENT_LTM                     : Event ID for LTM event
- * @HFI_EVENT_RGB_HIST                : Event ID for RGB histogram event
- * @HFI_EVENT_PA_HIST                 : Event ID for PA histogram event
+ * HFI event ID.
+ *
+ * @HFI_EVENT_VSYNC:
+ *     Event ID for vsync.
+ * @HFI_EVENT_FRAME_SCAN_START:
+ *     Event ID for frame scan start.
+ * @HFI_EVENT_FRAME_SCAN_COMPLETE:
+ *     Event ID for frame scan complete.
+ * @HFI_EVENT_FRAME_IDLE:
+ *     Event ID for frame idle.
+ * @HFI_EVENT_DISPLAY_POWER:
+ *     Event ID for display power.
+ * @HFI_EVENT_FRAME_CAPTURE_COMPLETE:
+ *     Event ID for frame capture complete.
+ * @HFI_EVENT_PANEL_DEAD:
+ *     Event ID for panel dead.
+ * @HFI_EVENT_LTM:
+ *     Event ID for LTM.
+ * @HFI_EVENT_RGB_HIST:
+ *     Event ID for RGB histogram.
+ * @HFI_EVENT_PA_HIST:
+ *     Event ID for PA histogram.
+ * @HFI_EVENT_HPD_STATUS:
+ *     Event ID for Hot Plug Detect Status
+ * @HFI_EVENT_DISPLAY_EDID_INFO:
+ *     Event ID for EDID info
  */
 enum hfi_display_event_id {
-	HFI_EVENT_VSYNC                     = 0x1,
-	HFI_EVENT_FRAME_SCAN_START          = 0x2,
-	HFI_EVENT_FRAME_SCAN_COMPLETE       = 0x3,
-	HFI_EVENT_FRAME_IDLE                = 0x4,
-	HFI_EVENT_DISPLAY_POWER             = 0x5,
-	HFI_EVENT_HW_RECOVERY               = 0x6,
-	HFI_EVENT_FRAME_CAPTURE_COMPLETE    = 0x7,
-	HFI_EVENT_PANEL_DEAD                = 0x8,
-	HFI_EVENT_LTM                       = 0x9,
-	HFI_EVENT_RGB_HIST                  = 0xa,
-	HFI_EVENT_PA_HIST                   = 0xb,
+	HFI_EVENT_VSYNC               = 0x1,
+	HFI_EVENT_FRAME_SCAN_START    = 0x2,
+	HFI_EVENT_FRAME_SCAN_COMPLETE = 0x3,
+	HFI_EVENT_FRAME_IDLE          = 0x4,
+	HFI_EVENT_DISPLAY_POWER       = 0x5,
+	HFI_EVENT_HW_RECOVERY         = 0x6,
+	HFI_EVENT_FRAME_CAPTURE_COMPLETE = 0x7,
+	HFI_EVENT_PANEL_DEAD          = 0x8,
+	HFI_EVENT_LTM                 = 0x9,
+	HFI_EVENT_RGB_HIST            = 0xa,
+	HFI_EVENT_PA_HIST             = 0xb,
+	HFI_EVENT_HPD_STATUS          = 0xc,
+	HFI_EVENT_DISPLAY_EDID_INFO   = 0xd,
+};
+
+/*
+ * DP event types for HFI display notifications
+ *
+ * @HFI_DP_EVENT_NONE:
+ *     No DP event (value: 0)
+ * @HFI_DP_EVENT_HPD_PLUGGED:
+ *     Hot plug detect - display connected (value: 1)
+ * @HFI_DP_EVENT_IRQ_HPD:
+ *     Interrupt request hot plug detect - display interrupt (value: 2)
+ * @HFI_DP_EVENT_SET_MODE:
+ *     Set mode event (value: 3)
+ * @HFI_DP_EVENT_HPD_UNPLUGGED:
+ *     Hot plug detect - display disconnected (value: 4)
+ */
+enum hfi_display_dp_event {
+	HFI_DP_EVENT_NONE         = 0x0,
+	HFI_DP_EVENT_HPD_PLUGGED  = 0x1,
+	HFI_DP_EVENT_IRQ_HPD      = 0x2,
+	HFI_DP_EVENT_SET_MODE     = 0x3,
+	HFI_DP_EVENT_HPD_UNPLUGGED = 0x4,
+};
+
+/*
+ * DP states for HFI display notifications
+ *
+ * @HFI_DP_STATE_DISCONNECTED:
+ *     Display is disconnected (value: 0)
+ * @HFI_DP_STATE_HPD_IN:
+ *     Hot plug detect in (value: 1)
+ * @HFI_DP_STATE_CONNECTED:
+ *     Display is connected and ready (value: 2)
+ * @HFI_DP_STATE_HPD_OUT:
+ *     Hot plug detect out (value: 3)
+ */
+enum hfi_display_dp_state {
+	HFI_DP_STATE_DISCONNECTED = 0x0,
+	HFI_DP_STATE_HPD_IN       = 0x1,
+	HFI_DP_STATE_CONNECTED    = 0x2,
+	HFI_DP_STATE_HPD_OUT      = 0x3,
+};
+
+/*
+ * Display connection data for DP
+ *
+ * @dp_evt:
+ *     DP event type
+ * @dp_state:
+ *     DP state
+ */
+struct hfi_display_hpd_status {
+	enum hfi_display_dp_event dp_evt;
+	enum hfi_display_dp_state dp_state;
 };
 
 /*
@@ -466,6 +536,57 @@ enum hfi_cwb_tap_points {
 enum hfi_fence_type {
 	HFI_FENCE_SCAN_START,
 	HFI_FENCE_SCAN_COMPLETE,
+};
+
+/*
+ * DP Event data after HPD.
+ *
+ * @controller_id:
+ *     Assigned controller id
+ * @stream_id:
+ *     Assigned stream/display id
+ * @link_rate:
+ *     Link rate from DPCD
+ * @lane_count:
+ *     Number of lanes from DPCD
+ * @bits_per_pixel:
+ *     Uncompressed bits per pixel supported for this
+ * @fec_enabled:
+ *     Forward Error Correction enabled flag
+ * @edid_buf:
+ *     EDID buffer: This buffer is populated by DCP with the raw EDID data.
+ *     For this buffer to be populated, the Host must provide it through the parameters of the HFI
+ *     command: HFI_COMMAND_DEVICE_HOT_PLUG_DETECT.
+ * @modes_buf:
+ *     Modes buffer: This buffer is populated by DCP with display modes parsed from the EDID.
+ *     For this buffer to be populated, the Host must provide it through the parameters of the HFI
+ *     command: HFI_COMMAND_DEVICE_HOT_PLUG_DETECT.
+ */
+struct hfi_display_event_edid_info {
+	u32 controller_id;
+	u32 stream_id;
+	u32 link_rate;
+	u32 lane_count;
+	u32 bits_per_pixel;
+	u32 fec_enabled;
+	struct hfi_buff edid_buf;
+	struct hfi_buff modes_buf;
+};
+
+/*
+ * DP TU params sent during set mode.
+ *
+ * @dp_tu:
+ *     DP tu size value
+ * @valid_boundary:
+ *     DP valid boundary limit
+ * @valid_boundary2:
+ *     DP valid boundary 2 limit
+ */
+struct hfi_display_dp_tu {
+	u32 dp_tu;
+	u32 valid_boundary;
+	u32 valid_boundary2;
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

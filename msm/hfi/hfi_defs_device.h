@@ -10,7 +10,103 @@
  * This is documentation file. Not used for header inclusion.
  */
 
+#include "hfi_defs_common.h"
 
+/*
+ * Generic hot-plug detection configuration structure for dynamic display interfaces.
+ *
+ * This structure provides comprehensive configuration details for newly connected devices
+ * on interfaces that support dynamic connection changes. It serves as a unified interface
+ * for various display connection types including DisplayPort, USB-C, and other pluggable
+ * display technologies.
+ *
+ * The structure is designed to be interface-agnostic while providing specific context
+ * through its field values. Different interface types interpret the fields according
+ * to their specific requirements and capabilities.
+ *
+ * Usage Examples:
+ *   - DisplayPort (DP): @orientation indicates CC1/CC2 for USB-C connectors,
+ *     @pin_config maps to DP pin assignments A-F, @hpd_irq indicates HPD IRQ events.
+ *   - USB-C Alt Mode: @orientation specifies connector orientation,
+ *     @pin_config defines lane configuration and capabilities.
+ *
+ * @orientation:
+ *     Cable orientation or connector role identifier.
+ *     - For USB-C/DP: CC1 (0) or CC2 (1) orientation
+ *     - For other interfaces: connector-specific orientation value
+ *     - Range: Interface-dependent, typically 0-1 for USB-C
+ * @port_index:
+ *     Physical port identifier for the display interface.
+ *     - Identifies which physical port/connector the device is connected to
+ *     - Used for multi-port systems to distinguish between different connectors
+ *     - Range: 0 to (max_ports - 1), where max_ports is system-dependent
+ * @pin_config:
+ *     Connector pin configuration or lane mapping specification.
+ *     - For DP: Pin assignment configuration (A, B, C, D, E, F)
+ *     - For USB-C: Alt mode pin assignment and lane allocation
+ *     - Defines how data lanes are allocated between USB and display functions
+ *     - Range: Interface-specific enumerated values
+ * @hpd_state:
+ *     Current hot-plug detection state of the interface connection.
+ *     - Indicates whether a device is currently connected or disconnected
+ *     - Values: 0 = disconnected, 1 = connected
+ *     - Updated whenever connection state changes
+ * @hpd_irq:
+ *     Hot-plug detection interrupt or attention signal indicator.
+ *     - Signals interrupt or attention events from the connected device
+ *     - For DP: Indicates HPD IRQ pulse (short pulse vs. long pulse)
+ *     - Used to trigger EDID re-read, capability negotiation, or link training
+ *     - Values: 0 = no IRQ, 1 = IRQ/attention signal present
+ */
+struct hfi_device_hotplug_config {
+	u32 orientation;
+	u32 port_index;
+	u32 pin_config;
+	u32 hpd_state;
+	u32 hpd_irq;
+};
+
+/*
+ * Hot-plug detection information structure for display interface status reporting.
+ *
+ * This structure encapsulates detailed information about hot-plug detection events
+ * and the current state of display interface connections. It provides comprehensive
+ * status reporting for dynamic display connections, including connection state,
+ * device capabilities, and event notifications.
+ *
+ * The structure is used primarily for status reporting and event notification
+ * between the display controller and host system, providing real-time information
+ * about connection changes and device capabilities.
+ *
+ * Usage Context:
+ *   - Event notification when devices are connected/disconnected
+ *   - Status queries for current connection state
+ *   - Capability reporting for newly connected devices
+ *   - Error reporting for connection issues
+ *
+ * @config:
+ *     Hot-plug configuration details for the connected device.
+ *     - Contains orientation, port, pin configuration, and state information
+ *     - Provides interface-specific connection parameters
+ *     - Updated whenever connection parameters change
+ * @edid_buf:
+ *     Buffer containing Extended Display Identification Data (EDID) from connected device.
+ *     - Contains display capabilities, supported resolutions, and timing information
+ *     - Populated when device is connected and EDID is successfully read
+ *     - Used for display mode negotiation and capability determination
+ *     - Buffer may be empty if EDID read fails or device doesn't support EDID
+ * @modes_buf:
+ *     Buffer containing list of supported display modes and resolutions.
+ *     - Derived from EDID data and device capabilities
+ *     - Contains timing parameters, refresh rates, and format information
+ *     - Used by display subsystem for mode selection and validation
+ *     - May include both standard and custom display modes
+ */
+struct hfi_device_hotplug_info {
+	struct hfi_device_hotplug_config config;
+	struct hfi_buff edid_buf;
+	struct hfi_buff modes_buf;
+};
 
 /*!
  * @enum hfi_device_res_state
