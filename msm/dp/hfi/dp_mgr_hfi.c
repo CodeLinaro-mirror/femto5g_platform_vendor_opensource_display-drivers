@@ -229,7 +229,7 @@ static bool _hfi_notify_hpd_user(struct dp_mgr_hfi_priv *hfi_priv, bool connecti
 	snprintf(bpp, HPD_STRING_SIZE, "bpp=%d", 0);
 	snprintf(pattern, HPD_STRING_SIZE, "pattern=%d", 0);
 
-	DP_ERR("[%s]:[%s] [%s] [%s]\n", name, status, bpp, pattern);
+	DP_INFO("[%s]:[%s] [%s] [%s]\n", name, status, bpp, pattern);
 	envp[0] = name;
 	envp[1] = status;
 	envp[2] = bpp;
@@ -238,7 +238,10 @@ static bool _hfi_notify_hpd_user(struct dp_mgr_hfi_priv *hfi_priv, bool connecti
 	envp[5] = NULL;
 
 	rc = kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
-	DP_ERR("uevent %s: %d\n", rc ? "failure" : "success", rc);
+	if  (rc)
+		DP_ERR("uevent failed, rc=%d\n", rc);
+	else
+		DP_DEBUG("uevent successful!\n");
 
 	return true;
 }
@@ -1533,7 +1536,7 @@ int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 
 	hfi_client = &hfi_kms->hfi_client;
 
-	DP_ERR("Sending DISPLAY_DISABLE command to DCP, panel_id=%d\n", panel_id);
+	DP_DEBUG("Sending DISPLAY_DISABLE command to DCP, panel_id=%d\n", panel_id);
 
 	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
