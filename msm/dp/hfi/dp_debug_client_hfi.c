@@ -194,10 +194,10 @@ static struct dp_drv *dp_debug_hfi_get_dp_drv(struct dp_debug_client_hfi_priv *p
 {
 	struct platform_device *pdev;
 
-	if (!priv || !priv->client.dev)
+	if (!priv || !priv->dev)
 		return NULL;
 
-	pdev = to_platform_device(priv->client.dev);
+	pdev = to_platform_device(priv->dev);
 	return platform_get_drvdata(pdev);
 }
 
@@ -221,8 +221,8 @@ static int dp_debug_hfi_send_cmd(struct dp_debug_client_hfi_priv *priv,
 	}
 
 	/* Get obj_id from connector using sde_conn_get_display_obj_id() */
-	if (priv->client.dev) {
-		pdev = to_platform_device(priv->client.dev);
+	if (priv->dev) {
+		pdev = to_platform_device(priv->dev);
 		dp_drv = platform_get_drvdata(pdev);
 		if (dp_drv && dp_drv->client && dp_drv->client->base_connector) {
 			connector = dp_drv->client->base_connector;
@@ -282,17 +282,17 @@ static int dp_debug_hfi_create_client(struct dp_debug_client_hfi_priv *priv)
 		return 0;
 	}
 
-	if (!priv->client.dev) {
+	if (!priv->dev) {
 		DP_ERR("No device available for HFI client creation\n");
 		return -ENODEV;
 	}
 
 	/* Get HFI client directly from the device */
-	pdev = to_platform_device(priv->client.dev);
+	pdev = to_platform_device(priv->dev);
 	dp_drv = platform_get_drvdata(pdev);
 
-	DP_DEBUG("Getting HFI client from device: dev=%pK, pdev=%pK, dp_drv=%pK\n",
-		priv->client.dev, pdev, dp_drv);
+	DP_DEBUG("Getting HFI client from device: dev=%p, pdev=%p, dp_drv=%p\n",
+		priv->dev, pdev, dp_drv);
 
 	if (!dp_drv) {
 		DP_ERR("No dp_drv found in platform device data\n");
@@ -330,35 +330,13 @@ static int dp_debug_hfi_create_client(struct dp_debug_client_hfi_priv *priv)
 		return -ENODEV;
 	}
 
-	DP_INFO("Found existing HFI client from device: %pK\n", existing_hfi_client);
+	DP_INFO("Found existing HFI client from device: %p\n", existing_hfi_client);
 
 	/* Use the existing HFI client instead of creating our own */
 	priv->hfi_client = existing_hfi_client;
 
-	DP_INFO("Successfully using existing HFI client: %pK\n", priv->hfi_client);
+	DP_INFO("Successfully using existing HFI client: %p\n", priv->hfi_client);
 	return 0;
-}
-
-/* Helper function to validate HFI client pointer */
-static bool dp_debug_hfi_is_client_valid(struct hfi_client_t *hfi_client)
-{
-	unsigned long ptr_val;
-
-	if (!hfi_client)
-		return false;
-
-	ptr_val = (unsigned long)hfi_client;
-
-	/* Check for common corruption patterns and invalid addresses */
-	if (ptr_val < 0x1000 ||
-	    (ptr_val & 0xFFFFFFFF00000000ULL) == 0xdead4ead00000000ULL ||
-	    (ptr_val & 0xFFFFFFFF00000000ULL) == 0xdeadbeef00000000ULL ||
-	    (ptr_val & 0xFFFFFFFF00000000ULL) == 0xdeaddead00000000ULL ||
-	    (ptr_val & 0xFFFFFFFF00000000ULL) == 0xbaadf00d00000000ULL) {
-		return false;
-	}
-
-	return true;
 }
 
 /* Helper function to get or create HFI client for simulation mode
@@ -368,42 +346,17 @@ static struct hfi_client_t *dp_debug_hfi_get_client(struct dp_debug_client_hfi_p
 {
 	struct platform_device *pdev;
 	struct dp_drv *dp_drv;
-	struct msm_drm_private *drm_priv;
-	static int corruption_count;
-	struct sde_kms *sde_kms;
 
-	if (!priv) {
-		DP_ERR("Invalid priv pointer\n");
+	if (!priv || !priv->dev) {
+		DP_ERR("Invalid state\n");
 		return NULL;
 	}
 
-	/* If we already have a client, validate it's not corrupted */
 	if (priv->hfi_client) {
-		if (dp_debug_hfi_is_client_valid(priv->hfi_client))
-			/* Client looks valid, return it */
-			return priv->hfi_client;
-
-		/* Client is corrupted */
-		corruption_count++;
-		DP_ERR("HFI client pointer corrupted: %lx, count=%d, recreating\n",
-			(unsigned long)priv->hfi_client, corruption_count);
-		priv->hfi_client = NULL;
-
-		/* If we see too many corruptions, something is seriously wrong */
-		if (corruption_count > 10) {
-			DP_ERR("Too many HFI client corruptions (%d), system may be unstable\n",
-				corruption_count);
-			return NULL;
-		}
+		return priv->hfi_client;
 	}
 
-	/* Check if HFI system is properly initialized before trying to get client */
-	if (!priv->client.dev) {
-		DP_DEBUG("No device available for HFI client\n");
-		return NULL;
-	}
-
-	pdev = to_platform_device(priv->client.dev);
+	pdev = to_platform_device(priv->dev);
 	dp_drv = platform_get_drvdata(pdev);
 	if (!dp_drv || !dp_drv->client) {
 		DP_DEBUG("DP driver not properly initialized yet\n");
@@ -416,36 +369,12 @@ static struct hfi_client_t *dp_debug_hfi_get_client(struct dp_debug_client_hfi_p
 		return NULL;
 	}
 
-	sde_kms = sde_connector_get_kms(dp_drv->client->base_connector);
-	if (!sde_kms) {
-		DP_DEBUG("SDE KMS not available - HFI system not ready\n");
+	if (dp_debug_hfi_create_client(priv) != 0) {
+		DP_DEBUG("Failed to create HFI client - HFI system may not be ready\n");
 		return NULL;
 	}
 
-	/* Check if we're in HFI mode */
-	drm_priv = sde_kms->dev->dev_private;
-	if (!drm_priv || !IS_DISP_OP_HFI(drm_priv->disp_op)) {
-		DP_DEBUG("Not in HFI mode - cannot use HFI debug client\n");
-		return NULL;
-	}
-
-	/* Try to create HFI client if we don't have one or it was corrupted */
-	if (!priv->hfi_client) {
-		DP_DEBUG("HFI client not initialized, attempting to create now\n");
-		if (dp_debug_hfi_create_client(priv) != 0) {
-			DP_DEBUG("Failed to create HFI client - HFI system may not be ready\n");
-			return NULL;
-		}
-		if (priv->hfi_client) {
-			DP_INFO("Successfully created HFI client: %pK\n", priv->hfi_client);
-			/* Reset corruption count on successful creation */
-			corruption_count = 0;
-			return priv->hfi_client;
-		}
-	}
-
-	DP_DEBUG("HFI client still not available - HFI system not ready\n");
-	return NULL;
+	return priv->hfi_client;
 }
 
 
@@ -455,7 +384,7 @@ static void dp_debug_hfi_destroy_client(struct dp_debug_client_hfi_priv *priv)
 	if (!priv || !priv->hfi_client)
 		return;
 
-	DP_DEBUG("Releasing reference to existing HFI client: %pK\n", priv->hfi_client);
+	DP_DEBUG("Releasing reference to existing HFI client: %p\n", priv->hfi_client);
 
 	/* We're using the existing HFI client from dp_client, so we don't free it.
 	 * Just clear our reference to it.
@@ -490,7 +419,7 @@ static void dp_debug_hfi_response_handler(u32 obj_id, u32 cmd_id, void *payload,
 		return;
 	}
 
-	DP_DEBUG("Received HFI response: obj_id=0x%x, cmd_id=0x%x, payload_size=%u, priv=%pK\n",
+	DP_DEBUG("Received HFI response: obj_id=0x%x, cmd_id=0x%x, payload_size=%u, priv=%p\n",
 		obj_id, cmd_id, payload_size, priv);
 
 	mutex_lock(&priv->response_data.response_lock);
@@ -577,8 +506,8 @@ static int dp_debug_hfi_send_cmd_with_response(struct dp_debug_client_hfi_priv *
 		return -EINVAL;
 
 	/* Get obj_id from connector */
-	if (priv->client.dev) {
-		pdev = to_platform_device(priv->client.dev);
+	if (priv->dev) {
+		pdev = to_platform_device(priv->dev);
 		dp_drv = platform_get_drvdata(pdev);
 		if (dp_drv && dp_drv->client && dp_drv->client->base_connector) {
 			connector = dp_drv->client->base_connector;
@@ -641,7 +570,7 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 	if (!client || !dpcd)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 	hfi_client = dp_debug_hfi_get_client(priv);
 	if (!hfi_client) {
 		DP_ERR("HFI client not available\n");
@@ -655,7 +584,7 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 		return -ENOMEM;
 	}
 
-	DP_INFO("Allocated DPCD buffer: local=%pK, remote=0x%llx, size=%u\n",
+	DP_INFO("Allocated DPCD buffer: local=%p, remote=0x%llx, size=%u\n",
 		dpcd_addr_map->local_addr, (u64) dpcd_addr_map->remote_addr,
 		dpcd_addr_map->size);
 
@@ -704,7 +633,7 @@ static int dp_debug_client_hfi_read_crc(struct dp_debug_client *client,
 	if (!client || !buf)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 	hfi_client = dp_debug_hfi_get_client(priv);
 	if (!hfi_client)
 		return -ENODEV;
@@ -786,7 +715,7 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 	if (!client || !buf)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 	hfi_client = dp_debug_hfi_get_client(priv);
 	if (!hfi_client) {
 		DP_ERR("HFI client not available\n");
@@ -800,7 +729,7 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 		return -ENOMEM;
 	}
 
-	DP_INFO("Allocated info buffer: local=%pK, remote=0x%llx, size=%u\n",
+	DP_INFO("Allocated info buffer: local=%p, remote=0x%llx, size=%u\n",
 		info_addr_map->local_addr, (u64) info_addr_map->remote_addr,
 		info_addr_map->size);
 
@@ -888,7 +817,7 @@ static int dp_debug_client_hfi_read_bw_code(struct dp_debug_client *client,
 	if (!client || !buf)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 	hfi_client = dp_debug_hfi_get_client(priv);
 	if (!hfi_client) {
 		/* Fallback: return default value if HFI client not available */
@@ -978,7 +907,7 @@ static int dp_debug_client_hfi_read_hdr(struct dp_debug_client *client,
 	if (!client || !buf)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
 	/* Get connector from device */
 	dp_drv = dp_debug_hfi_get_dp_drv(priv);
@@ -1031,7 +960,7 @@ static int dp_debug_client_hfi_read_edid_modes(struct dp_debug_client *client,
 	if (!client || !buf)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
 	/* Get dp_drv to access base connector (equivalent to legacy client->connector) */
 	dp_drv = dp_debug_hfi_get_dp_drv(priv);
@@ -1079,13 +1008,13 @@ static int dp_debug_client_hfi_read_edid_modes_mst(struct dp_debug_client *clien
 	if (!client || !buf)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
-	if (!priv->client.dev)
+	if (!priv->dev)
 		return -ENODEV;
 
 	/* Get base dp_drv / base connector (equivalent to legacy client->connector) */
-	pdev = to_platform_device(priv->client.dev);
+	pdev = to_platform_device(priv->dev);
 	dp_drv = platform_get_drvdata(pdev);
 	if (!dp_drv || !dp_drv->client || !dp_drv->client->base_connector)
 		return -ENODEV;
@@ -1139,12 +1068,12 @@ static int dp_debug_client_hfi_read_mst_conn_info(struct dp_debug_client *client
 	if (!client || !buf)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
-	if (!priv->client.dev)
+	if (!priv->dev)
 		return -ENODEV;
 
-	pdev = to_platform_device(priv->client.dev);
+	pdev = to_platform_device(priv->dev);
 	dp_drv = platform_get_drvdata(pdev);
 	if (!dp_drv || !dp_drv->client || !dp_drv->client->base_connector)
 		return -ENODEV;
@@ -1186,7 +1115,7 @@ static int dp_debug_client_hfi_write_edid(struct dp_debug_client *client,
 	if (!client || !buf)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
 	hfi_client = dp_debug_hfi_get_client(priv);
 	if (!hfi_client) {
@@ -1283,7 +1212,7 @@ static int dp_debug_client_hfi_write_dpcd(struct dp_debug_client *client,
 	if (!client || !buf || count < 4)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
 	size = min_t(size_t, count, SZ_2K);
 
@@ -1374,16 +1303,16 @@ static struct dp_mgr_hfi_priv *dp_debug_hfi_get_mgr_priv(struct dp_debug_client_
 	struct platform_device *pdev;
 	struct dp_drv *dp_drv;
 
-	if (!priv || !priv->client.dev)
+	if (!priv || !priv->dev)
 		return NULL;
 
-	pdev = to_platform_device(priv->client.dev);
+	pdev = to_platform_device(priv->dev);
 	dp_drv = platform_get_drvdata(pdev);
 
 	if (!dp_drv || !dp_drv->client)
 		return NULL;
 
-	/* dp_drv->client is actually dp_mgr_hfi_priv->client, so we can get the container */
+	/* dp_drv->client is actually dp_mgr_hfi_priv.client, so we can get the container */
 	return container_of(dp_drv->client, struct dp_mgr_hfi_priv, client);
 }
 
@@ -1401,7 +1330,7 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 	if (kstrtoint(buf, 10, &hpd) != 0)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
 	client->hotplug = !!(hpd & BIT(0));
 	client->psm_enabled = !!(hpd & BIT(1));
@@ -1415,7 +1344,7 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 		return -ENODEV;
 	}
 
-	DP_INFO("Successfully accessed dp_mgr_hfi_priv: %pK\n", mgr_priv);
+	DP_INFO("Successfully accessed dp_mgr_hfi_priv: %p\n", mgr_priv);
 
 	/* Call dp_mgr_hfi_hpd_configure_cb() instead of sending HFI command directly */
 	if (client->hotplug) {
@@ -1426,10 +1355,20 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 
 		/* Update HPD structure with simulation values */
 		if (mgr_priv->hpd) {
+			/*
+			 * For real monitor pin config comes from altmode driver which was cached
+			 * on unlug
+			 */
+			if (client->sim_enable) {
+				mgr_priv->hpd->pin_config = 5;
+				if (mgr_priv->hpd->orientation == ORIENTATION_NONE)
+					mgr_priv->hpd->orientation = ORIENTATION_CC1;
+			} else {
+				/* restore cached values */
+				mgr_priv->hpd->pin_config = priv->hpd_pin_config;
+				mgr_priv->hpd->orientation = priv->hpd_orientation;
+			}
 			mgr_priv->hpd->hpd_high = true;
-			mgr_priv->hpd->pin_config = 5;
-			if (mgr_priv->hpd->orientation == ORIENTATION_NONE)
-				mgr_priv->hpd->orientation = ORIENTATION_CC1;
 		}
 
 		/*
@@ -1449,6 +1388,10 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 
 		/* Update HPD structure */
 		if (mgr_priv->hpd) {
+			/* cache hpd values */
+			priv->hpd_pin_config = mgr_priv->hpd->pin_config;
+			priv->hpd_orientation = mgr_priv->hpd->orientation;
+
 			mgr_priv->hpd->hpd_high = false;
 			mgr_priv->hpd->pin_config = 0;
 			mgr_priv->hpd->orientation = ORIENTATION_NONE;
@@ -1475,7 +1418,7 @@ static int dp_debug_client_hfi_write_edid_modes(struct dp_debug_client *client,
 	if (!client || !buf)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
 	/* Parse input */
 	if (sscanf(buf, "%d %d %d %d", &hdisplay, &vdisplay, &vrefresh, &aspect_ratio) != 4)
@@ -1525,12 +1468,12 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 	if (!client || !buf)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
-	if (!priv->client.dev)
+	if (!priv->dev)
 		return -ENODEV;
 
-	pdev = to_platform_device(priv->client.dev);
+	pdev = to_platform_device(priv->dev);
 	dp_drv = platform_get_drvdata(pdev);
 	if (!dp_drv || !dp_drv->client || !dp_drv->client->base_connector)
 		return -ENODEV;
@@ -1616,7 +1559,7 @@ static int dp_debug_client_hfi_write_bw_code(struct dp_debug_client *client,
 	if (kstrtoint(buf, 10, &max_bw_code) != 0)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
 	/* In HFI mode, DCP firmware handles bandwidth validation */
 	DP_DEBUG("Setting bw_code: %d (validation handled by DCP)\n", max_bw_code);
@@ -1675,7 +1618,7 @@ static int dp_debug_client_hfi_write_tpg(struct dp_debug_client *client, u32 tpg
 	if (!client)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 	hfi_client = dp_debug_hfi_get_client(priv);
 	if (!hfi_client)
 		return -ENODEV;
@@ -1714,7 +1657,7 @@ static int dp_debug_client_hfi_write_hdcp(struct dp_debug_client *client,
 	if (kstrtoint(buf, 10, &hdcp) != 0)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 	client->hdcp_disabled = !hdcp;
 
 	/* Send immediately - no batching */
@@ -1806,13 +1749,13 @@ static int dp_debug_client_hfi_write_mmrm_clk_cb(struct dp_debug_client *client,
 
 	DP_DEBUG("MMRM clock callback: type=%d\n", cb_type);
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
 	/* Get the dp_drv instance from the platform device */
-	if (!priv->client.dev)
+	if (!priv->dev)
 		return -ENODEV;
 
-	pdev = to_platform_device(priv->client.dev);
+	pdev = to_platform_device(priv->dev);
 	dp_drv = platform_get_drvdata(pdev);
 
 	if (!dp_drv) {
@@ -1841,7 +1784,7 @@ static int dp_debug_client_hfi_write_sim_mode(struct dp_debug_client *client, bo
 	if (!client)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 	client->sim_enable = sim;
 
 	DP_INFO("Simulation mode %s\n", sim ? "[ON]" : "[OFF]");
@@ -1895,7 +1838,7 @@ static int dp_debug_client_hfi_simulate_attention(struct dp_debug_client *client
 	if (!client)
 		return -EINVAL;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 	hfi_client = dp_debug_hfi_get_client(priv);
 	if (!hfi_client)
 		return -ENODEV;
@@ -1943,9 +1886,6 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 
 	/* Initialize HFI callback object - embedded directly like dp_hfi does */
 	priv->hfi_cb_obj.hfi_prop_handler = dp_debug_hfi_response_handler;
-
-	/* Copy client structure so we have access to dev and other fields */
-	memcpy(&priv->client, client, sizeof(*client));
 
 	/*
 	 * Don't create HFI client during initialization - it will be created lazily when first
@@ -2014,6 +1954,8 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 
 	client->abort = dp_debug_client_hfi_abort;
 
+	client->priv = priv;
+
 	DP_INFO("DP HFI debug client initialized successfully\n");
 	return 0;
 }
@@ -2027,14 +1969,14 @@ void dp_debug_client_hfi_put(struct dp_debug_client *client)
 	if (!client)
 		return;
 
-	priv = container_of(client, struct dp_debug_client_hfi_priv, client);
+	priv = client->priv;
 
 	/* CRITICAL: Remove all registered listeners before freeing priv structure
 	 * to prevent use-after-free when responses arrive after cleanup
 	 */
 	hfi_client = priv->hfi_client;
 	if (hfi_client) {
-		DP_INFO("Unregistering all listeners for HFI client %pK before cleanup\n",
+		DP_INFO("Unregistering all listeners for HFI client %p before cleanup\n",
 				hfi_client);
 
 		mutex_lock(&hfi_client->listener_lock);
@@ -2057,7 +1999,7 @@ void dp_debug_client_hfi_put(struct dp_debug_client *client)
 	/* Clean up response handling */
 	mutex_destroy(&priv->response_data.response_lock);
 
-	DP_INFO("Freeing dp_debug_client_hfi_priv structure: %pK\n", priv);
+	DP_INFO("Freeing dp_debug_client_hfi_priv structure. \n");
 	kfree(priv);
 }
 
