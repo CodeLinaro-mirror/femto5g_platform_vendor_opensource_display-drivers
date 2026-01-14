@@ -411,6 +411,9 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	struct dp_drv *drv = display;
 	struct sde_connector *sde_conn;
 	struct dp_client_drm_ops *ops;
+	struct msm_drm_private *priv;
+
+	priv = connector->dev->dev_private;
 
 	if (!drv || !connector || !drv->client || !drv->client->bridge) {
 		DP_ERR("Invalid data\n");
@@ -428,7 +431,8 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	sde_conn = to_sde_connector(connector);
 	drv->client->bridge->panel_id = sde_conn->panel_id;
 
-	rc = dp_mst_init(drv);
+	if (IS_DISP_OP_HWIO(priv->disp_op))
+		rc = dp_mst_init(drv);
 
 	if (drv->client->dsc_cont_pps)
 		sde_conn->ops.update_pps = NULL;
@@ -897,6 +901,7 @@ int dp_connector_install_properties(void *display, struct drm_connector *conn)
 int dp_connector_cont_splash_config(void *display)
 {
 	struct dp_drv *drv;
+	int rc = 0;
 
 	if (!display) {
 		DP_ERR("invalid params\n");
@@ -904,12 +909,16 @@ int dp_connector_cont_splash_config(void *display)
 	}
 
 	drv = display;
-	return drv->client->drm_ops.cont_splash_config(drv->client);
+	if (drv->client && drv->client->drm_ops.cont_splash_config)
+		rc = drv->client->drm_ops.cont_splash_config(drv->client);
+
+	return rc;
 }
 
 int dp_connector_cont_splash_res_disable(void *display)
 {
 	struct dp_drv *drv;
+	int rc = 0;
 
 	if (!display) {
 		DP_ERR("invalid params\n");
@@ -917,5 +926,8 @@ int dp_connector_cont_splash_res_disable(void *display)
 	}
 
 	drv = display;
-	return drv->client->drm_ops.cont_splash_disable(drv->client);
+	if (drv->client && drv->client->drm_ops.cont_splash_disable)
+		rc = drv->client->drm_ops.cont_splash_disable(drv->client);
+
+	return rc;
 }
