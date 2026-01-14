@@ -20,8 +20,10 @@
 #include "dp_client.h"
 #include "dp_hfi.h"
 #include "dp_debug.h"
+#include "dp_hpd.h"
 #include "sde_connector.h"
 #include "sde_dbg.h"
+#include "hfi_commands_device.h"
 
 struct dp_mgr_hfi_priv {
 	char *name;
@@ -30,7 +32,213 @@ struct dp_mgr_hfi_priv {
 	struct msm_drm_private *priv;
 	struct dp_hfi *hfi;
 	struct dp_intf_info intf_info;
+	struct dp_hpd *hpd;
+	struct dp_hpd_cb hpd_cb;
+
+	struct hfi_shared_addr_map *edid_addr_map;
+	struct hfi_shared_addr_map *modes_addr_map;
 };
+
+struct hfi_shared_addr_map *dp_mgr_hfi_init_shared_addr(struct hfi_client_t *ctx, u32 size)
+{
+	struct hfi_shared_addr_map *map = kvzalloc(sizeof(struct hfi_shared_addr_map), GFP_KERNEL);
+	int rc;
+
+	if (!map)
+		return NULL;
+
+	map->size = size;
+
+	rc = hfi_adapter_buffer_alloc(ctx, map);
+	if (rc) {
+		kfree(map);
+		return NULL;
+	}
+
+	return map;
+}
+
+void dp_mgr_init_deinit_shared_addr(struct hfi_client_t *ctx, struct hfi_shared_addr_map *map)
+{
+	if (!ctx || !map)
+		return;
+
+	hfi_adapter_buffer_dealloc(ctx, map);
+	kfree(map);
+}
+
+void dp_mgr_hfi_init_hfi_buff(struct hfi_buff *buff, struct hfi_shared_addr_map *map)
+{
+	u64 remote_addr;
+
+	if (!buff || !map)
+		return;
+
+	remote_addr = (u64)map->remote_addr;
+
+	buff->addr_l = HFI_VAL_L32(remote_addr);
+	buff->addr_h = HFI_VAL_H32(remote_addr);
+	buff->size = map->size;
+}
+
+static struct hfi_client_t *dp_mgr_hfi_get_hfi_client(struct dp_mgr_hfi_priv *hfi_priv)
+{
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+
+	/* Get HFI client from the client structure */
+	if (!hfi_priv->client.base_connector) {
+		DP_ERR("Invalid base connector\n");
+		goto err;
+	}
+
+	sde_kms = sde_connector_get_kms(hfi_priv->client.base_connector);
+	if (!sde_kms) {
+		DP_ERR("Failed to get SDE KMS\n");
+		goto err;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		DP_ERR("Failed to get HFI KMS\n");
+		goto err;
+	}
+
+	return &hfi_kms->hfi_client;
+err:
+	return NULL;
+}
+
+static int dp_mgr_hfi_send_hot_plug(struct dp_mgr_hfi_priv *hfi_priv,
+		struct hfi_device_hotplug_config *config)
+{
+	struct hfi_client_t *hfi_client;
+	struct hfi_buff edid_buf = {0};
+	struct hfi_buff modes_buf = {0};
+	struct hfi_device_hotplug_info payload = {0};
+	u32 hfi_cmd = HFI_COMMAND_DEVICE_HOT_PLUG_DETECT;
+	int rc = 0;
+
+	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	if (!hfi_client)
+		return -EINVAL;
+
+	dp_mgr_hfi_init_hfi_buff(&edid_buf, hfi_priv->edid_addr_map);
+	dp_mgr_hfi_init_hfi_buff(&modes_buf, hfi_priv->modes_addr_map);
+
+	payload.config = *config;
+	payload.edid_buf = edid_buf;
+	payload.modes_buf = modes_buf;
+
+	/* Send HFI_COMMAND_DEVICE_HOT_PLUG_DETECT command with config as payload */
+	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+			HFI_PAYLOAD_TYPE_U32_ARRAY, (void *)&payload, sizeof(payload),
+			(HFI_HOST_FLAGS_NON_DISCARDABLE));
+	if (rc) {
+		DP_ERR("Could not send HFI_COMMAND_DEVICE_HOT_PLUG_DETECT, rc=%d\n", rc);
+		return rc;
+	}
+
+	return 0;
+}
+
+static void dp_mgr_hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
+		struct hfi_device_hotplug_config *config)
+{
+	if (!hfi_priv || !hfi_priv->hpd || !config)
+		return;
+
+	config->orientation = hfi_priv->hpd->orientation;
+	config->port_index = hfi_priv->hpd->port_id;
+	config->pin_config = hfi_priv->hpd->pin_config;
+	config->hpd_state = hfi_priv->hpd->hpd_high;
+	config->hpd_irq = hfi_priv->hpd->hpd_irq;
+
+	DP_DEBUG("orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u\n",
+		config->orientation, config->port_index, config->pin_config,
+		config->hpd_state, config->hpd_irq);
+}
+
+/* HPD callback functions */
+static int dp_mgr_hfi_hpd_configure_cb(void *data)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = data;
+	struct hfi_client_t *hfi_client;
+	struct hfi_device_hotplug_config config = {0};
+
+	if (!hfi_priv) {
+		DP_ERR("Invalid hfi_priv data\n");
+		return -EINVAL;
+	}
+
+	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	if (!hfi_client)
+		return -EINVAL;
+
+	dp_mgr_hfi_update_config(hfi_priv, &config);
+
+	hfi_priv->edid_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
+	if (!hfi_priv->edid_addr_map) {
+		DP_ERR("failed to allocate remote address for edid\n");
+		return -ENOMEM;
+	}
+
+	hfi_priv->modes_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
+	if (!hfi_priv->modes_addr_map) {
+		DP_ERR("failed to allocate remote address for modes\n");
+		dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->edid_addr_map);
+		return -ENOMEM;
+	}
+
+	return dp_mgr_hfi_send_hot_plug(hfi_priv, &config);
+}
+
+static int dp_mgr_hfi_hpd_disconnect_cb(void *data)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = data;
+	struct hfi_device_hotplug_config config = {0};
+	struct hfi_client_t *hfi_client;
+
+	if (!hfi_priv) {
+		DP_ERR("Invalid hfi_priv data\n");
+		return -EINVAL;
+	}
+
+	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	if (!hfi_client)
+		return -EINVAL;
+
+	dp_mgr_hfi_update_config(hfi_priv, &config);
+
+	dp_mgr_hfi_send_hot_plug(hfi_priv, &config);
+
+	/* Clean up shared address maps with null checks */
+	if (hfi_priv->edid_addr_map) {
+		dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->edid_addr_map);
+		hfi_priv->edid_addr_map = NULL;
+	}
+	if (hfi_priv->modes_addr_map) {
+		dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->modes_addr_map);
+		hfi_priv->modes_addr_map = NULL;
+	}
+
+	return 0;
+}
+
+static int dp_mgr_hfi_hpd_attention_cb(void *data)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = data;
+	struct hfi_device_hotplug_config config;
+
+	if (!hfi_priv) {
+		DP_ERR("Invalid hfi_priv data\n");
+		return -EINVAL;
+	}
+
+	dp_mgr_hfi_update_config(hfi_priv, &config);
+
+	return dp_mgr_hfi_send_hot_plug(hfi_priv, &config);
+}
 
 static int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp_display_mode *mode)
 {
@@ -159,6 +367,30 @@ static int dp_mgr_hfi_post_init(struct dp_client *client)
 		DP_ERR("dp_hfi_setup failed: %d\n", rc);
 		hfi_priv->hfi = NULL;
 		goto end;
+	}
+
+	/* Initialize HPD callback structure */
+	hfi_priv->hpd_cb.data = hfi_priv;
+	hfi_priv->hpd_cb.configure = dp_mgr_hfi_hpd_configure_cb;
+	hfi_priv->hpd_cb.disconnect = dp_mgr_hfi_hpd_disconnect_cb;
+	hfi_priv->hpd_cb.attention = dp_mgr_hfi_hpd_attention_cb;
+
+	/* Call dp_hpd_get with NULL for parser, catalog and aux_bridge, but pass callback */
+	hfi_priv->hpd = dp_hpd_get(&hfi_priv->pdev->dev,
+		NULL, NULL, NULL, &hfi_priv->hpd_cb);
+	if (IS_ERR(hfi_priv->hpd)) {
+		rc = PTR_ERR(hfi_priv->hpd);
+		DP_ERR("dp_hpd_get failed: %d\n", rc);
+		hfi_priv->hpd = NULL;
+		/* Clean up HFI resources on error */
+		if (hfi_priv->hfi && hfi_priv->hfi->hfi_client) {
+			hfi_adapter_deinit(hfi_priv->hfi->hfi_client);
+			kfree(hfi_priv->hfi->hfi_client);
+		}
+		if (hfi_priv->hfi) {
+			kfree(hfi_priv->hfi);
+			hfi_priv->hfi = NULL;
+		}
 	}
 end:
 	return rc;
@@ -403,10 +635,11 @@ end:
 }
 
 static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
-		struct dp_client *client)
+        struct dp_client *client)
 {
 	struct dp_mgr_hfi_priv *hfi_priv;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct hfi_client_t *hfi_client;
 
 	if (!dev || !pdev) {
 		DP_ERR("invalid param(s)\n");
@@ -417,6 +650,34 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 	if (!hfi_priv) {
 		DP_ERR("Invalid params\n");
 		return;
+	}
+
+	/* Clean up any remaining shared address maps */
+	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	if (hfi_client) {
+		if (hfi_priv->edid_addr_map) {
+			dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->edid_addr_map);
+			hfi_priv->edid_addr_map = NULL;
+		}
+		if (hfi_priv->modes_addr_map) {
+			dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->modes_addr_map);
+			hfi_priv->modes_addr_map = NULL;
+		}
+	}
+
+	/* Clean up HPD and HFI resources */
+	if (hfi_priv->hpd) {
+		dp_hpd_put(hfi_priv->hpd);
+		hfi_priv->hpd = NULL;
+	}
+
+	if (hfi_priv->hfi) {
+		if (hfi_priv->hfi->hfi_client) {
+			hfi_adapter_deinit(hfi_priv->hfi->hfi_client);
+			kfree(hfi_priv->hfi->hfi_client);
+		}
+		kfree(hfi_priv->hfi);
+		hfi_priv->hfi = NULL;
 	}
 }
 

@@ -62,6 +62,8 @@ struct dp_hpd_cb {
  * struct dp_hpd - DisplayPort HPD status
  *
  * @type: type of HPD
+ * @port_id: physical port id of DP
+ * @pin_config: assigned pin configuration of the DP connection.
  * @orientation: plug orientation configuration, USBPD type only.
  * @hpd_high: Hot Plug Detect signal is high.
  * @hpd_irq: Change in the status since last message
@@ -79,6 +81,8 @@ struct dp_hpd_cb {
  */
 struct dp_hpd {
 	enum dp_hpd_type type;
+	u32 port_id;
+	u32 pin_config;
 	u32 orientation;
 	bool hpd_high;
 	bool hpd_irq;
