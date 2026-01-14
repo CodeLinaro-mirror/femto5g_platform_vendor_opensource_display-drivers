@@ -8,6 +8,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/component.h>
+#include <linux/clk.h>
 
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
@@ -24,6 +25,7 @@
 #include "sde_connector.h"
 #include "sde_dbg.h"
 #include "hfi_commands_device.h"
+#include "dp_aux_switch.h"
 
 struct dp_mgr_hfi_priv {
 	char *name;
@@ -37,6 +39,12 @@ struct dp_mgr_hfi_priv {
 
 	struct hfi_shared_addr_map *edid_addr_map;
 	struct hfi_shared_addr_map *modes_addr_map;
+
+	struct dp_aux_switch *aux_switch;
+	struct dp_debug_client *debug;
+
+	struct clk *usb3_tcsr_clk;
+	struct clk *usb3_pipe_clk;
 };
 
 struct hfi_shared_addr_map *dp_mgr_hfi_init_shared_addr(struct hfi_client_t *ctx, u32 size)
@@ -142,6 +150,80 @@ static int dp_mgr_hfi_send_hot_plug(struct dp_mgr_hfi_priv *hfi_priv,
 	return 0;
 }
 
+int dp_mgr_hfi_clk_init(struct dp_mgr_hfi_priv *hfi_priv)
+{
+	int num_clk = 0;
+	int rc = 0;
+	struct device *dev = &hfi_priv->pdev->dev;
+
+	num_clk = of_property_count_strings(dev->of_node, "clock-names");
+	if (num_clk <= 0) {
+		DP_ERR("no clocks are defined\n");
+		rc = -EINVAL;
+		goto exit;
+	}
+
+	hfi_priv->usb3_tcsr_clk = clk_get(dev, "usb3_tcsr_clk");
+	if (IS_ERR(hfi_priv->usb3_tcsr_clk)) {
+		DP_ERR("Unable to get usb3_tcsr_clk: %ld\n", PTR_ERR(hfi_priv->usb3_tcsr_clk));
+		rc = PTR_ERR(hfi_priv->usb3_tcsr_clk);
+		hfi_priv->usb3_tcsr_clk = NULL;
+		goto exit;
+	}
+
+	hfi_priv->usb3_pipe_clk = clk_get(dev, "usb3_pipe_clk");
+	if (IS_ERR(hfi_priv->usb3_pipe_clk)) {
+		DP_ERR("Unable to get usb3_pipe_clk: %ld\n", PTR_ERR(hfi_priv->usb3_pipe_clk));
+		rc = PTR_ERR(hfi_priv->usb3_pipe_clk);
+		hfi_priv->usb3_pipe_clk = NULL;
+		goto exit;
+	}
+exit:
+	return rc;
+}
+
+void dp_mgr_hfi_clk_deinit(struct dp_mgr_hfi_priv *hfi_priv)
+{
+	if (hfi_priv->usb3_tcsr_clk) {
+		clk_put(hfi_priv->usb3_tcsr_clk);
+		hfi_priv->usb3_tcsr_clk = NULL;
+	}
+
+	if (hfi_priv->usb3_pipe_clk) {
+		clk_put(hfi_priv->usb3_pipe_clk);
+		hfi_priv->usb3_pipe_clk = NULL;
+	}
+}
+
+int dp_mgr_hfi_clk_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
+{
+	int rc = 0;
+
+	if (!hfi_priv || !hfi_priv->usb3_tcsr_clk || !hfi_priv->usb3_pipe_clk) {
+		DP_ERR("Required clocks not found\n");
+		return -EINVAL;
+	}
+
+	if (enable) {
+		rc = clk_prepare_enable(hfi_priv->usb3_tcsr_clk);
+		if (rc) {
+			DEV_ERR("Failed to enable usb3_tcsr_clk\n");
+			return rc;
+		}
+
+		rc = clk_prepare_enable(hfi_priv->usb3_pipe_clk);
+		if (rc) {
+			DEV_ERR("Failed to enable usb3_pipe_clk\n");
+			return rc;
+		}
+	} else {
+		clk_disable_unprepare(hfi_priv->usb3_pipe_clk);
+		clk_disable_unprepare(hfi_priv->usb3_tcsr_clk);
+	}
+
+	return 0;
+}
+
 static void dp_mgr_hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 		struct hfi_device_hotplug_config *config)
 {
@@ -165,6 +247,7 @@ static int dp_mgr_hfi_hpd_configure_cb(void *data)
 	struct dp_mgr_hfi_priv *hfi_priv = data;
 	struct hfi_client_t *hfi_client;
 	struct hfi_device_hotplug_config config = {0};
+	int rc = 0;
 
 	if (!hfi_priv) {
 		DP_ERR("Invalid hfi_priv data\n");
@@ -190,6 +273,23 @@ static int dp_mgr_hfi_hpd_configure_cb(void *data)
 		return -ENOMEM;
 	}
 
+	if (hfi_priv->aux_switch) {
+		rc = hfi_priv->aux_switch->init(hfi_priv->aux_switch);
+		if (rc)
+			return -EINVAL;
+
+		rc = hfi_priv->aux_switch->configure(hfi_priv->aux_switch, true,
+				config.orientation);
+		if (rc)
+			return -EINVAL;
+	}
+
+	rc = dp_mgr_hfi_clk_enable(hfi_priv, true);
+	if (rc) {
+		DP_ERR("failed to enable core clocks\n");
+		return -EINVAL;
+	}
+
 	return dp_mgr_hfi_send_hot_plug(hfi_priv, &config);
 }
 
@@ -198,6 +298,7 @@ static int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 	struct dp_mgr_hfi_priv *hfi_priv = data;
 	struct hfi_device_hotplug_config config = {0};
 	struct hfi_client_t *hfi_client;
+	int rc = 0;
 
 	if (!hfi_priv) {
 		DP_ERR("Invalid hfi_priv data\n");
@@ -210,7 +311,6 @@ static int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 
 	dp_mgr_hfi_update_config(hfi_priv, &config);
 
-	dp_mgr_hfi_send_hot_plug(hfi_priv, &config);
 
 	/* Clean up shared address maps with null checks */
 	if (hfi_priv->edid_addr_map) {
@@ -221,6 +321,16 @@ static int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->modes_addr_map);
 		hfi_priv->modes_addr_map = NULL;
 	}
+
+	if (hfi_priv->aux_switch) {
+		rc = hfi_priv->aux_switch->configure(hfi_priv->aux_switch,
+				false, ORIENTATION_NONE);
+		if (rc)
+			return -EINVAL;
+	}
+
+	dp_mgr_hfi_send_hot_plug(hfi_priv, &config);
+	dp_mgr_hfi_clk_enable(hfi_priv, false);
 
 	return 0;
 }
@@ -391,6 +501,33 @@ static int dp_mgr_hfi_post_init(struct dp_client *client)
 			kfree(hfi_priv->hfi);
 			hfi_priv->hfi = NULL;
 		}
+	}
+
+	hfi_priv->aux_switch = dp_aux_switch_get(&hfi_priv->pdev->dev);
+	if (IS_ERR(hfi_priv->aux_switch)) {
+		rc = PTR_ERR(hfi_priv->aux_switch);
+		DP_ERR("failed to initialize aux, rc = %d\n", rc);
+		hfi_priv->aux_switch = NULL;
+		goto clear_hpd;
+	}
+
+	rc = dp_mgr_hfi_clk_init(hfi_priv);
+	if (rc) {
+		DP_ERR("failed to init clocks\n");
+		goto clear_all;
+	}
+
+	return 0;
+
+clear_all:
+	if (hfi_priv->aux_switch) {
+		dp_aux_switch_put(hfi_priv->aux_switch);
+		hfi_priv->aux_switch = NULL;
+	}
+clear_hpd:
+	if (hfi_priv->hpd) {
+		dp_hpd_put(hfi_priv->hpd);
+		hfi_priv->hpd = NULL;
 	}
 end:
 	return rc;
