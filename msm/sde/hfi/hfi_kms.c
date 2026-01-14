@@ -991,7 +991,7 @@ int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde_kms *sde_kms)
 	/* Store adapter hwfence data in sde kms */
 	sde_kms->hfi_kms->hfi_hw_fence_data = &hfi_adapter->session->hwfence_data;
 	if (!sde_kms->hfi_kms->hfi_hw_fence_data->hw_fence_handle) {
-		SDE_ERROR("HFI hwfence handle is NULL\n");
+		SDE_INFO("HFI hwfence handle is NULL\n");
 		return -EINVAL;
 	}
 

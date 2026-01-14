@@ -6589,7 +6589,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 
 		rc = sde_hfi_hw_fence_init(priv, sde_kms);
 		if (rc) {
-			SDE_ERROR("sde hfi hw fence data init failed: %d\n", rc);
+			SDE_INFO("sde hfi hw fence data init failed: %d\n", rc);
 			sde_kms->catalog->hw_fence_rev = 0;
 		}
 	}
