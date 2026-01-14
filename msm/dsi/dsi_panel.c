@@ -4657,8 +4657,8 @@ static int dsi_panel_i2c_parse_config(struct dsi_panel *panel)
 	u32 ncmds = 0;
 
 	if (!panel || !panel->panel_of_node) {
-		DSI_ERR("invalid params\n");
-		return -EINVAL;
+		DSI_INFO("invalid params\n");
+		return 0;
 	}
 
 	cfg = &panel->i2c_config;
