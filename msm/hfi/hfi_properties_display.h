@@ -726,6 +726,22 @@
 #define HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA                       0x00020030
 
 /*
+ * HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS - This property is to set VRR (Variable Refresh Rate)
+ *                                         parameters for the current frame. Host is expected
+ *                                         to send this packet as part of
+ *                                         HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                         payload.
+ *
+ * @BasicFunctionality - HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS |
+ *                                 (version=0 << 20) | (dsize=2 << 24)
+ *     (u32_value) payload [1]   : Frame interval (in units of Hz*1000)
+ *                                 Calculated as: (NSEC_PER_SEC / frame_interval_ns) * 1000
+ *     (u32_value) payload [2]   : Usecase index (identifies the frequency stepping pattern)
+ */
+#define HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS                        0x00020031
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100

@@ -523,4 +523,17 @@ struct hfi_panel_dfps_caps {
 	u32 max_refresh_rate;
 	enum hfi_panel_dfps_type type;
 };
+
+/**
+ * @struct hfi_display_vrr_frame_params - VRR parameters for current frame
+ *
+ * @frame_interval_ns_lo: Frame interval in nanoseconds (lower 32 bits)
+ * @frame_interval_ns_hi: Frame interval in nanoseconds (upper 32 bits)
+ * @usecase_idx:          Usecase index
+ */
+struct hfi_display_vrr_frame_params {
+	u32 frame_interval_ns_lo;
+	u32 frame_interval_ns_hi;
+	u32 usecase_idx;
+};
 #endif // __H_HFI_DEFS_PANEL_H__
