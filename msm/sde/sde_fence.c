@@ -767,6 +767,9 @@ exit:
 
 static void _sde_hw_fence_release(struct sde_fence *f)
 {
+#if (KERNEL_VERSION(6, 16, 0) <= LINUX_VERSION_CODE)
+	struct synx_signal_n_params signal_params;
+#endif /* KERNEL_VERSION(6, 16, 0) >= LINUX_VERSION_CODE */
 	void *hw_fence_handle;
 	struct sde_hw_ctl *hw_ctl = f->hwfence_out_ctl;
 	struct dma_fence *fence = &f->base;
@@ -784,8 +787,22 @@ static void _sde_hw_fence_release(struct sde_fence *f)
 		return;
 	}
 
-	SDE_DEBUG("destroy hw fence ctl_id:%d ctx:%llu seqno:%llu name:%s\n",
-		ctl_id, f->base.context, f->base.seqno, f->name);
+	SDE_DEBUG("destroy hw fence ctl_id:%d ctx:%llu seqno:%llu name:%s txq_updated:%d\n",
+		ctl_id, f->base.context, f->base.seqno, f->name, f->txq_updated_fence);
+
+#if (KERNEL_VERSION(6, 16, 0) <= LINUX_VERSION_CODE)
+	/* clean up signal refcount on fence */
+	if (!f->txq_updated_fence) {
+		signal_params.type = SYNX_SIGNAL_INDV_PARAMS;
+		signal_params.indv.h_synx = (u32)f->hwfence_index;
+		signal_params.indv.flags = SYNX_SIGNAL_IMMEDIATE;
+		signal_params.indv.status = SYNX_STATE_SIGNALED_SUCCESS;
+		ret = synx_signal_n(hw_fence_handle, &signal_params);
+		if (ret)
+			SDE_ERROR("failed to signal ctl_id:%d ctx:%llu seqno:%llu hash:0x%llx\n",
+				ctl_id, f->base.context, f->base.seqno, f->hwfence_index);
+	}
+#endif /* KERNEL_VERSION(6, 16, 0) >= LINUX_VERSION_CODE */
 
 	/* Delete the HW fence */
 	ret = synx_release(hw_fence_handle, f->hwfence_index);
@@ -913,7 +930,13 @@ u64 sde_fence_get_hwfence_index(struct sde_fence_context *ctx)
 
 		if (test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags) &&
 					fence->seqno == ctx->commit_count) {
+			if (fc->txq_updated_fence) {
+				SDE_ERROR("ctx:%llu seqno:%llu hwfence_index:0x%llx already sent\n",
+					fence->context, fence->seqno, fc->hwfence_index);
+				goto end;
+			}
 			hwfence_index = fc->hwfence_index;
+			fc->txq_updated_fence = true;
 			goto end;
 		}
 	}
