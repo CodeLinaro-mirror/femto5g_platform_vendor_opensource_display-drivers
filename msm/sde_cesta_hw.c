@@ -30,11 +30,15 @@
 
 void _sde_cesta_hw_init(struct sde_cesta *cesta)
 {
-	int i;
+	int i, scc_client_start = 0;
 
 	cesta->hw_drv_ver = dss_reg_r(&cesta->rscc_io, RSCC_SEQ_RSC_ID_DRV, cesta->debug_mode);
 
-	for (i = 0; i < cesta->scc_count; i++) {
+	/* Restrict access to hw client 0, as vote tables are stubbed out new for canoe*/
+	if (cesta->hw_drv_ver >= (SDE_CESTA_HW_MAJOR_MINOR_STEP(4, 3, 0)))
+		scc_client_start = 1;
+
+	for (i = scc_client_start; i < cesta->scc_count; i++) {
 		dss_reg_w(&cesta->scc_io[i], SCC_CLK_GATE_SEL, 0x1, cesta->debug_mode);
 		dss_reg_w(&cesta->wrapper_io, RSCC_WRAPPER_SCC_CLK_GATE_ALLOW + (0x4 * i),
 				0x1, cesta->debug_mode);
