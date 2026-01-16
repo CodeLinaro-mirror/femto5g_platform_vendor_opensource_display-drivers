@@ -704,6 +704,7 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
 	struct virtio_connector_info_priv *conn_priv = container_of(hyp_display->info, struct virtio_connector_info_priv, base);
 	struct virtio_kms_output *output = &kms->outputs[conn_priv->scanout];
+	u32 num_dsc = 0;
 
 	if (!drm_mode || !mode_info || !avail_res ||
 			!avail_res->max_mixer_width || !connector || !display ||
@@ -730,6 +731,25 @@ static int virtio_connector_get_mode_info(struct drm_connector *connector,
 	if (rc) {
 		VIRTIO_KMS_ERR("error getting mixer count. rc:%d\n", rc);
 		return rc;
+	}
+	if (topology->num_lm > avail_dp_res.num_lm) {
+		VIRTIO_KMS_ERR("exceed lm count %d > %d\n",
+				topology->num_lm, avail_dp_res.num_lm);
+		return -EINVAL;
+	}
+	/* Handle DSC merge */
+	if (info->dsc_count) {
+		rc = msm_get_dsc_count(priv, drm_mode->hdisplay, &num_dsc);
+		if (rc) {
+			VIRTIO_KMS_ERR("error getting dsc count. rc:%d\n", rc);
+			return rc;
+		}
+		if (num_dsc > avail_dp_res.num_dsc) {
+			VIRTIO_KMS_ERR("exceed dsc count %d > %d\n", num_dsc, avail_dp_res.num_dsc);
+			return -EINVAL;
+		}
+		topology->num_lm = max(topology->num_lm, num_dsc);
+		topology->num_enc = num_dsc;
 	}
 	/* reset connector lm_mask for every connection event and
 	 * this will get re-populated in resource manager based on
