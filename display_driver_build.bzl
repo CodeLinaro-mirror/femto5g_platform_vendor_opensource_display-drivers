@@ -1,5 +1,6 @@
 load("//build/kernel/kleaf:kernel.bzl", "ddk_module")
-load("//build/bazel_common_rules/dist:dist.bzl", "copy_to_dist_dir")
+load("@rules_pkg//pkg:install.bzl", "pkg_install")
+load("@rules_pkg//pkg:mappings.bzl", "pkg_files", "strip_prefix")
 
 def _register_module_to_map(module_map, name, path, config_option, srcs, config_srcs, deps, config_deps):
     processed_config_srcs = {}
@@ -148,13 +149,15 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
         )
         all_module_rules.append(rule_name)
 
-    copy_to_dist_dir(
+    pkg_files(
+        name = kernel_build_tv + "_dist_files",
+        srcs = all_module_rules,
+        visibility = ["//visibility:private"],
+        strip_prefix = strip_prefix.files_only(),
+    )
+
+    pkg_install(
         name = "{}_display_drivers_dist".format(kernel_build_tv),
-        data = all_module_rules,
-        dist_dir = "out/target/product/{}/dlkm/lib/modules/".format(target),
-        flat = True,
-        wipe_dist_dir = False,
-        allow_duplicate_filenames = False,
-        mode_overrides = {"**/*": "644"},
-        log = "info",
+        srcs = [":{}_dist_files".format(kernel_build_tv)],
+        destdir = "out/target/product/{}/dlkm/lib/modules/".format(target),
     )
