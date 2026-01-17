@@ -673,6 +673,7 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	struct sde_encoder_virt *sde_enc;
 	u32 event;
 	struct drm_encoder *drm_enc;
+	struct drm_connector *conn;
 
 	sde_enc = hfi_enc->sde_base;
 
@@ -690,6 +691,9 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 			SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE;
 
 		hfi_encoder_frame_event_callback(hfi_enc->sde_base, NULL, event);
+
+		conn = sde_encoder_get_connector(sde_enc->base.dev, &sde_enc->base);
+		sde_connector_esd_status(conn);
 	}
 	return ret;
 }
