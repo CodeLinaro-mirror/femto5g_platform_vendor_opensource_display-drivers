@@ -560,6 +560,13 @@ out:
 static long msm_lease_ioctl(struct file *filp,
 		unsigned int cmd, unsigned long arg)
 {
+	struct drm_file *file_priv = filp->private_data;
+
+	if (!file_priv) {
+		DRM_ERROR("invalid parameter, drm_file is null\n");
+		return -EINVAL;
+	}
+
 	if (cmd == DRM_IOCTL_VERSION) {
 		struct drm_version v;
 
@@ -574,6 +581,9 @@ static long msm_lease_ioctl(struct file *filp,
 
 		return 0;
 	} else if (cmd == DRM_IOCTL_DROP_MASTER) {
+		return -EINVAL;
+	} else if (cmd == DRM_IOCTL_GET_UNIQUE && !file_priv->master) {
+		DRM_ERROR("invalid parameter, drm_master is null\n");
 		return -EINVAL;
 	}
 
