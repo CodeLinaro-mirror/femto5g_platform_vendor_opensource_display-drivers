@@ -69,18 +69,20 @@ static struct sde_csc_cfg rgb2yuv_cfg = {
 static struct sde_cdm_cfg *_cdm_offset(enum sde_cdm cdm,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
+		u32 display_idx,
 		struct sde_hw_blk_reg_map *b)
 {
 	int i;
 
 	for (i = 0; i < m->cdm_count; i++) {
-		if (cdm == m->cdm[i].id) {
+		if (cdm == m->cdm[i].id && display_idx == m->cdm[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->cdm[i].base;
 			b->length = m->cdm[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_CDM;
 			b->virtual = m->cdm[i].virtual;
+			b->display_idx = display_idx;
 			return &m->cdm[i];
 		}
 	}
@@ -304,7 +306,8 @@ static void _setup_cdm_ops(struct sde_hw_cdm_ops *ops,
 struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
-		struct sde_hw_mdp *hw_mdp)
+		struct sde_hw_mdp *hw_mdp,
+		u32 display_idx)
 {
 	struct sde_hw_cdm *c;
 	struct sde_cdm_cfg *cfg;
@@ -313,7 +316,7 @@ struct sde_hw_blk_reg_map *sde_hw_cdm_init(enum sde_cdm idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _cdm_offset(idx, m, addr, &c->hw);
+	cfg = _cdm_offset(idx, m, addr, display_idx, &c->hw);
 	if (IS_ERR_OR_NULL(cfg)) {
 		kfree(c);
 		return ERR_PTR(-EINVAL);

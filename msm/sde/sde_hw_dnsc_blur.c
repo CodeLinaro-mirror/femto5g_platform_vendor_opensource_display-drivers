@@ -41,18 +41,20 @@
 #define DNSC_BLUR_OPMODE_OUT_RND_8B_EN	BIT(16)
 
 static struct sde_dnsc_blur_cfg *_dnsc_blur_offset(enum sde_dnsc_blur idx,
-		struct sde_mdss_cfg *m, void __iomem *addr, struct sde_hw_blk_reg_map *b)
+		struct sde_mdss_cfg *m, void __iomem *addr, u32 display_idx,
+		struct sde_hw_blk_reg_map *b)
 {
 	int i;
 
 	for (i = 0; i < m->dnsc_blur_count; i++) {
-		if (idx == m->dnsc_blur[i].id) {
+		if (idx == m->dnsc_blur[i].id && display_idx == m->mixer[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->dnsc_blur[i].base;
 			b->length = m->dnsc_blur[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_DNSC_BLUR;
 			b->virtual = m->dnsc_blur[i].virtual;
+			b->display_idx = display_idx;
 			return &m->dnsc_blur[i];
 		}
 	}
@@ -240,7 +242,8 @@ static void _setup_dnsc_blur_ops(struct sde_hw_dnsc_blur_ops *ops, unsigned long
 }
 
 struct sde_hw_blk_reg_map *sde_hw_dnsc_blur_init(enum sde_dnsc_blur idx,
-		void __iomem *addr, struct sde_mdss_cfg *m)
+		void __iomem *addr, struct sde_mdss_cfg *m,
+		u32 display_idx)
 {
 	struct sde_hw_dnsc_blur *c;
 	struct sde_dnsc_blur_cfg *cfg;
@@ -252,7 +255,7 @@ struct sde_hw_blk_reg_map *sde_hw_dnsc_blur_init(enum sde_dnsc_blur idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _dnsc_blur_offset(idx, m, addr, &c->hw);
+	cfg = _dnsc_blur_offset(idx, m, addr, display_idx, &c->hw);
 	if (IS_ERR_OR_NULL(cfg)) {
 		kfree(c);
 		return ERR_PTR(-EINVAL);

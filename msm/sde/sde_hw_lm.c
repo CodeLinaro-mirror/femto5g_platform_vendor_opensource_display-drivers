@@ -55,18 +55,20 @@
 static struct sde_lm_cfg *_lm_offset(enum sde_lm mixer,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
+		u32 display_idx,
 		struct sde_hw_blk_reg_map *b)
 {
 	int i;
 
 	for (i = 0; i < m->mixer_count; i++) {
-		if (mixer == m->mixer[i].id) {
+		if (mixer == m->mixer[i].id && display_idx == m->mixer[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->mixer[i].base;
 			b->length = m->mixer[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_LM;
 			b->virtual = m->mixer[i].virtual;
+			b->display_idx = display_idx;
 			return &m->mixer[i];
 		}
 	}
@@ -1076,7 +1078,7 @@ static void _setup_virtual_mixer_ops(struct sde_mdss_cfg *m,
 
 struct sde_hw_blk_reg_map *sde_hw_lm_init(enum sde_lm idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m)
+		struct sde_mdss_cfg *m, u32 display_idx)
 {
 	struct sde_hw_mixer *c;
 	struct sde_lm_cfg *cfg;
@@ -1085,7 +1087,7 @@ struct sde_hw_blk_reg_map *sde_hw_lm_init(enum sde_lm idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _lm_offset(idx, m, addr, &c->hw);
+	cfg = _lm_offset(idx, m, addr, display_idx, &c->hw);
 	if (IS_ERR_OR_NULL(cfg)) {
 		kfree(c);
 		return ERR_PTR(-EINVAL);
@@ -1095,6 +1097,7 @@ struct sde_hw_blk_reg_map *sde_hw_lm_init(enum sde_lm idx,
 	c->idx = idx;
 	c->cap = cfg;
 	c->global_flush = true;
+	c->display_idx = display_idx;
 
 	/* Dummy mixers should not setup ops nor add to dump ranges */
 	if (cfg->dummy_mixer)
