@@ -56,6 +56,8 @@
 #include "sde_aiqe_common.h"
 #include "dsi_display.h"
 #include "hfi_encoder.h"
+#include "hfi_kms.h"
+#include "hfi_defs_common.h"
 
 #define SDE_DEBUG_ENC(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
@@ -664,6 +666,7 @@ int sde_encoder_set_offload_mode(struct drm_encoder *drm_enc, int enable)
 
 	struct sde_encoder_virt *sde_enc;
 	enum msm_disp_op disp_op;
+	struct sde_kms *sde_kms;
 
 	if (!drm_enc) {
 		SDE_ERROR("invalid encoder\n");
@@ -677,6 +680,17 @@ int sde_encoder_set_offload_mode(struct drm_encoder *drm_enc, int enable)
 		return -EINVAL;
 	}
 
+	sde_kms = sde_encoder_get_kms(drm_enc);
+	if (!sde_kms) {
+		SDE_ERROR("sde kms is not available\n");
+		return -EINVAL;
+	}
+
+	if (!sde_kms->hfi_kms) {
+		SDE_ERROR("hfi_kms is not available for trace_event cfg\n");
+		return -EOPNOTSUPP;
+	}
+
 	disp_op = sde_encoder_get_disp_op(drm_enc);
 	if (!sde_enc->hal_ops.enable_hw_event[disp_op]) {
 		SDE_ERROR("enable_hw_event not available for disp_op %d\n", disp_op);
@@ -684,7 +698,7 @@ int sde_encoder_set_offload_mode(struct drm_encoder *drm_enc, int enable)
 	}
 
 	if (!enable) {
-		msleep(50);
+		hfi_kms_send_trace_cfg(sde_kms->hfi_kms, HFI_TRUE);
 		sde_enc->hal_ops.register_power_event_notify[disp_op](sde_enc,
 			true);
 		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
@@ -703,6 +717,7 @@ int sde_encoder_set_offload_mode(struct drm_encoder *drm_enc, int enable)
 			MSM_ENC_TX_COMPLETE, false);
 		sde_enc->hal_ops.register_power_event_notify[disp_op](sde_enc,
 			false);
+		hfi_kms_send_trace_cfg(sde_kms->hfi_kms, HFI_FALSE);
 		SDE_DEBUG("deregister HW events for offload\n");
 	}
 

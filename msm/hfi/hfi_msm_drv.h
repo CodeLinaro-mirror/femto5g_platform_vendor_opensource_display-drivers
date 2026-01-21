@@ -12,6 +12,7 @@
 #define MAX_NUM_HFI_RESOURCES 8
 
 #define MSM_DRV_HFI_ID 0
+#define MSM_DRV_HFI_SEC_ID 1
 
 #define HFI_CMD_BUFF_DEVICE 0
 
@@ -43,7 +44,7 @@ struct hfi_resources_register {
 /**
  * hfi_msm_drv_hfi_init
  */
-int hfi_msm_drv_hfi_init(struct msm_drm_private *priv);
+int hfi_msm_drv_hfi_init(struct msm_drm_private *priv, bool in_trusted_vm);
 
 /**
  * hfi_msm_drv_init

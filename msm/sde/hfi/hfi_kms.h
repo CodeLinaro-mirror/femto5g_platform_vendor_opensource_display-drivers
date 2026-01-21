@@ -202,6 +202,14 @@ struct hfi_cmdbuf_t *hfi_kms_get_cmd_buf(struct hfi_kms *hfi_kms,
 int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms);
 
 /**
+ * hfi_kms_set_vm_state - set vm state for display
+ * @crtc: Pointer to DRM CRTC
+ * @crtc_state: Pointer to DRM CRTC state
+ * Return: 0 on success or error code
+ */
+int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state);
+
+/**
  * hfi_kms_send_trace_cfg - enable/disable trace logs
  * @hfi_kms: Pointer to hfi_kms structure
  * @enable: HFI_TRUE to enable, HFI_FALSE to disable

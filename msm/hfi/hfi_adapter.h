@@ -320,7 +320,7 @@ struct hfi_shared_addr_map {
  * top level callback for processing HFI command from HFI Core(@ struct hfi_core_cb_ops)
  * @instance: Specifies this is a primary or secondary vm instance
  */
-struct hfi_adapter_t *hfi_adapter_init(int instance);
+struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance);
 
 /**
  * hfi_adapter_client_register - Register a HFI adapter client implementation that would use

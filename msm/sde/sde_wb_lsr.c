@@ -33,6 +33,32 @@ void _sde_wb_lsr_destroy_fb_list(struct sde_connector *c_conn,
 		c_state->property_values[CONNECTOR_PROP_OUT_FB_LIST].value = ~0;
 }
 
+static void _sde_wb_lsr_reset_out_fb_list(struct sde_connector_state *c_state)
+{
+	int i, j;
+
+	if (!c_state) {
+		SDE_ERROR("Invalid SDE connector state\n");
+		return;
+	}
+
+	for (i = 0; i < MAX_VIEWS; i++) {
+		for (j = 0; j < c_state->view_descriptor[i].num_fbs; j++) {
+			if (c_state->view_descriptor[i].fb_id[j])
+				drm_framebuffer_put(c_state->view_descriptor[i].fb_id[j]);
+		}
+	}
+
+	for (i = 0; i < MAX_VIEWS; i++) {
+		for (j = 0; j < c_state->back_view_descriptor[i].num_fbs; j++) {
+			if (c_state->back_view_descriptor[i].fb_id[j])
+				drm_framebuffer_put(c_state->back_view_descriptor[i].fb_id[j]);
+		}
+	}
+
+	memset(&c_state->fb_id_list, 0, sizeof(c_state->fb_id_list));
+}
+
 static int _sde_wb_lsr_get_view_descriptor(struct drm_connector *connector,
 		struct drm_connector_state *state, struct sde_drm_view_descriptor *view_desc,
 		struct sde_view_descriptor *desc)
@@ -83,7 +109,6 @@ static int _sde_wb_lsr_get_view_descriptor(struct drm_connector *connector,
 			rc = -EINVAL;
 		}
 
-		drm_framebuffer_get(desc->fb_id[j]);
 		format = msm_framebuffer_format(desc->fb_id[j]);
 		if (!format) {
 			SDE_ERROR("invalid fb fmt\n");
@@ -143,8 +168,6 @@ static int _sde_wb_lsr_set_prop_out_fb_list(struct drm_connector *connector,
 		return -EINVAL;
 	}
 
-	memset(&c_state->fb_id_list, 0, sizeof(c_state->fb_id_list));
-
 	if (!usr_ptr) {
 		SDE_DEBUG("fb_id_list cleared\n");
 		return 0;
@@ -155,6 +178,7 @@ static int _sde_wb_lsr_set_prop_out_fb_list(struct drm_connector *connector,
 		return -EINVAL;
 	}
 
+	_sde_wb_lsr_reset_out_fb_list(c_state);
 	memcpy(&c_state->fb_id_list, &fb_id_list, sizeof(fb_id_list));
 	SDE_DEBUG("fb_id_list is set\n");
 
@@ -337,9 +361,10 @@ int _sde_wb_lsr_set_reproj_info(
 	opq_state_config->usr_cfg.crc = opq_blob->crc;
 
 	if (opq_state_config->buf) {
-		msm_gem_put_iova(opq_state_config->buf,
-			c_conn->aspace[SDE_IOMMU_DOMAIN_UNSECURE]);
+		msm_gem_put_buffer(opq_state_config->buf);
+		mutex_lock(&dev->struct_mutex);
 		msm_gem_free_object(opq_state_config->buf);
+		mutex_unlock(&dev->struct_mutex);
 		opq_state_config->buf = NULL;
 	}
 
@@ -382,10 +407,11 @@ int _sde_wb_lsr_set_reproj_info(
 	return rc;
 
 put_iova:
-	msm_gem_put_iova(opq_state_config->buf, c_conn->aspace[SDE_IOMMU_DOMAIN_UNSECURE]);
+	msm_gem_put_buffer(opq_state_config->buf);
 free_gem:
+	mutex_lock(&dev->struct_mutex);
 	msm_gem_free_object(opq_state_config->buf);
-
+	mutex_unlock(&dev->struct_mutex);
 	return rc;
 }
 
@@ -644,7 +670,6 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 				rc = -EINVAL;
 				goto end;
 			}
-			drm_framebuffer_get(fb);
 			format = msm_framebuffer_format(fb);
 			fmt.fourcc_format = fb->format->format;
 			fmt.modifier = fb->modifier;
