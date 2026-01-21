@@ -96,9 +96,15 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
             "//soc-repo:{}/drivers/soc/qcom/socinfo".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/panel_event_notifier".format(kernel_build_tv),
             "//soc-repo:{}/drivers/soc/qcom/qcom_rpmh".format(kernel_build_tv),
-	    "//soc-repo:{}/drivers/soc/qcom/fsa4480_i2c".format(kernel_build_tv),
+            "//soc-repo:{}/drivers/soc/qcom/fsa4480_i2c".format(kernel_build_tv),
         ],
         "//build/qcom_build_extensions:qtisocrepo_false": ["//msm-kernel:all_headers"],
+        })
+
+    if target == "seraph":
+        deps += select({
+           "//build/qcom_build_extensions:qtisocrepo_true": ["//soc-repo:{}/drivers/misc/isl97900_led/isl97900_led".format(kernel_build_tv)],
+           "//build/qcom_build_extensions:qtisocrepo_false": ["//msm-kernel:all_headers"],
         })
 
     if not vm_target:
