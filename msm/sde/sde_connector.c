@@ -1367,6 +1367,7 @@ static int _sde_connector_update_dirty_properties(
 	u32 b_lvl;
 	bool is_roi_dirty = false;
 	bool is_lp_dirty = false;
+	bool is_qsync_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1408,6 +1409,9 @@ static int _sde_connector_update_dirty_properties(
 		case CONNECTOR_PROP_ROI_V1:
 			is_roi_dirty = true;
 			break;
+		case CONNECTOR_PROP_QSYNC_MODE:
+			is_qsync_dirty = true;
+			break;
 		default:
 			/* nothing to do for most properties */
 			break;
@@ -1424,6 +1428,11 @@ static int _sde_connector_update_dirty_properties(
 	if ((disp_op == MSM_DISP_OP_HFI) && is_lp_dirty)
 		msm_property_set_dirty(&c_conn->property_info,
 				&c_state->property_state, CONNECTOR_PROP_LP);
+
+	/* If HFI mode and LP property is dirty - add to the dirty list */
+	if ((disp_op == MSM_DISP_OP_HFI) && is_qsync_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+				&c_state->property_state, CONNECTOR_PROP_QSYNC_MODE);
 
 	/* if colorspace needs to be updated do it first */
 	if (c_conn->colorspace_updated) {

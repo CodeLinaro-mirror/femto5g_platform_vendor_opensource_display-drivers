@@ -1441,6 +1441,19 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		kv_size += sizeof(panel_generic_caps.esync_caps);
 	}
 
+	if (display->panel->qsync_caps.qsync_support) {
+		struct hfi_qsync_params qsync_params;
+
+		qsync_params.qsync_min_fps = display->panel->qsync_caps.qsync_min_fps;
+		qsync_params.avr_step_fps = display->panel->avr_caps.avr_step_fps;
+
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_QSYNC_PARAMS, 0,
+					(sizeof(qsync_params) / sizeof(u32))),
+					(void *)&qsync_params);
+		kv_size += sizeof(qsync_params);
+	}
+
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
 
 	payload_size = (kv_count * sizeof(u32)) + kv_size;
