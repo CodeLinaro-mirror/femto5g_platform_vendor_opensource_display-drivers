@@ -406,6 +406,7 @@ static void dspp_rc(struct sde_hw_dspp *c)
 			c->ops.setup_rc_mask[MSM_DISP_OP_HWIO] = reg_dmav1_setup_rc_mask_configv1;
 			c->ops.setup_rc_pu_roi[MSM_DISP_OP_HWIO] = reg_dmav1_setup_rc_pu_configv1;
 			c->ops.setup_rc_mask[MSM_DISP_OP_HFI] = reg_dmav1_setup_rc_mask_configv1;
+			c->ops.setup_rc_pu_roi[MSM_DISP_OP_HFI] = reg_dmav1_setup_rc_pu_configv1;
 		} else {
 			c->ops.setup_rc_mask[MSM_DISP_OP_HWIO] = sde_hw_rc_setup_mask;
 			c->ops.setup_rc_pu_roi[MSM_DISP_OP_HWIO] = sde_hw_rc_setup_pu_roi;
@@ -414,6 +415,7 @@ static void dspp_rc(struct sde_hw_dspp *c)
 		c->ops.validate_rc_mask[MSM_DISP_OP_HWIO] = sde_hw_rc_check_mask;
 		c->ops.validate_rc_pu_roi[MSM_DISP_OP_HWIO] = sde_hw_rc_check_pu_roi;
 		c->ops.validate_rc_mask[MSM_DISP_OP_HFI] = sde_hw_rc_check_mask;
+		c->ops.validate_rc_pu_roi[MSM_DISP_OP_HFI] = sde_hw_rc_check_pu_roi;
 	}
 }
 
