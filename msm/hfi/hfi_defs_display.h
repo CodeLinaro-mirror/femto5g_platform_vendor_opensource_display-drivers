@@ -125,6 +125,47 @@ struct hfi_display_frame_event_data {
 };
 
 /*
+ * struct hfi_display_color - color description
+ *
+ * @color_0      : Green
+ * @color_1      : Blue
+ * @color_2      : Red
+ * @color_3      : Alpha
+ */
+struct hfi_display_color {
+	u16 color_0;
+	u16 color_1;
+	u16 color_2;
+	u16 color_3;
+};
+
+/*
+ * enum hfi_display_dim_layer_flag - Dim layer flags
+ *
+ * HFI_DIM_LAYER_INCLUSIVE : The color fill will be applied inside the bounds of the specified ROI
+ * HFI_DIM_LAYER_EXCLUSIVE : The color fill will be applied outside the bounds of the specified ROI
+ */
+enum hfi_display_dim_layer_flag {
+	HFI_DIM_LAYER_INCLUSIVE = 0x1,
+	HFI_DIM_LAYER_EXCLUSIVE = 0x2,
+};
+
+/*
+ * struct hfi_display_dim_layer - dim layer config
+ *
+ * @flags        : Flag to represent INCLUSIVE/EXCLUSIVE
+ * @stage        : Blending stage of dim layer
+ * @color_fill   : Color fill to be used for the layer
+ * @rect         : Dim layer coordinates
+ */
+struct hfi_display_dim_layer {
+	enum hfi_display_dim_layer_flag flags;
+	u32 stage;
+	struct hfi_display_color color_fill;
+	struct hfi_display_roi rect;
+};
+
+/*
  * enum hfi_layer_cache_state - Layer cache states.
  *
  * HFI_CACHE_STATE_DISABLE: Disable cache read/write.
