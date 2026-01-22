@@ -27,6 +27,7 @@
 #include "dsi_parser.h"
 #include "dsi_display_manager.h"
 #include "dsi_hfi.h"
+#include "hfi_kms.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -6310,6 +6311,90 @@ static void dsi_display_unbind(struct device *dev,
 	mutex_unlock(&display->display_lock);
 }
 
+#if IS_ENABLED(CONFIG_HIBERNATE)
+static int dsi_display_pm_freeze(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct dsi_display *display;
+	struct dsi_display_hfi *display_hfi;
+	struct hfi_client_t *hfi_client;
+	int rc = 0;
+
+	display = platform_get_drvdata(pdev);
+	display_hfi = display->dsi_hfi_info;
+	if (!display_hfi) {
+		DSI_ERR("invalid display hfi handle\n");
+		return -EINVAL;
+	}
+
+	hfi_client = display_hfi->hfi_client;
+	if (!hfi_client) {
+		DSI_ERR("invalid hfi client\n");
+		return -EINVAL;
+	}
+
+	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
+	if (rc) {
+		DSI_ERR("failed to release command buffers, rc: %d\n", rc);
+		return rc;
+	}
+
+	return rc;
+}
+
+static int dsi_display_pm_restore(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct dsi_display *display;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	int rc = 0;
+
+	display = platform_get_drvdata(pdev);
+	if (!display) {
+		DSI_ERR("invalid display handle\n");
+		return -EINVAL;
+	}
+
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms)
+		return -EINVAL;
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	rc = hfi_kms_send_trace_cfg(hfi_kms, HFI_TRUE);
+	if (rc) {
+		DSI_ERR("failed to send trace config to DCP, rc: %d\n", rc);
+		return rc;
+	}
+
+	/* Verify panel power rails are stable */
+	if (display->panel && display->panel->power_info.refcount > 0) {
+		rc = dsi_pwr_enable_regulator(&display->panel->power_info, true);
+		if (rc) {
+			DSI_ERR("failed to verify panel power rails, rc=%d\n", rc);
+			return rc;
+		}
+	}
+
+	/* Re-send panel initialization commands */
+	rc = dsi_hfi_panel_init(display, display->panel);
+	if (rc) {
+		DSI_ERR("failed to send panel init to DCP: %d", rc);
+		hfi_kms_send_trace_cfg(hfi_kms, HFI_FALSE);
+		return rc;
+	}
+
+	return rc;
+}
+static const struct dev_pm_ops dsi_display_pm_ops = {
+	.freeze = dsi_display_pm_freeze,
+	.restore = dsi_display_pm_restore,
+};
+#endif /* CONFIG_HIBERNATE */
+
 static const struct component_ops dsi_display_comp_ops = {
 	.bind = dsi_display_bind,
 	.unbind = dsi_display_unbind,
@@ -6321,6 +6406,9 @@ static struct platform_driver dsi_display_driver = {
 	.driver = {
 		.name = "msm-dsi-display",
 		.of_match_table = dsi_display_dt_match,
+#if IS_ENABLED(CONFIG_HIBERNATE)
+		.pm = &dsi_display_pm_ops,
+#endif /* CONFIG_HIBERNATE */
 		.suppress_bind_attrs = true,
 	},
 };
