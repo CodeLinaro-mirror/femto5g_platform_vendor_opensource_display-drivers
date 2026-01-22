@@ -1202,24 +1202,29 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 		transfer = true;
 
 	mutex_lock(&dsi_display->display_lock);
-	rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
 
-	/**
-	 * Handle scenario where a command transfer is initiated through
-	 * sysfs interface when device is in suepnd state.
-	 */
-	if (!rc && !state) {
-		pr_warn_ratelimited("Command xfer attempted while device is in suspend state\n"
-				);
-		rc = -EPERM;
-		goto end;
+	if (dsi_display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HFI) {
+		rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
+
+		/**
+		 * Handle scenario where a command transfer is initiated through
+		 * sysfs interface when device is in suepnd state.
+		 */
+		if (!rc && !state) {
+			pr_warn_ratelimited("Command xfer attempted while device is in suspend state\n"
+					);
+			rc = -EPERM;
+			goto end;
+		}
+
+		if (rc || !state) {
+			DSI_ERR("[DSI] Invalid host state %d rc %d\n",
+					state, rc);
+			rc = -EPERM;
+			goto end;
+		}
 	}
-	if (rc || !state) {
-		DSI_ERR("[DSI] Invalid host state %d rc %d\n",
-				state, rc);
-		rc = -EPERM;
-		goto end;
-	}
+
 
 	SDE_EVT32(dsi_display->tx_cmd_buf_ndx, cmd_buf_len);
 
@@ -1258,7 +1263,11 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 
 		dsi_panel_acquire_panel_lock(dsi_display->panel);
 		for (i = 0; i < cnt; i++) {
-			rc = dsi_host_transfer_sub(&dsi_display->host, cmds, do_peripheral_flush);
+			if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+				rc = dsi_hfi_host_transfer_sub(&dsi_display->host, cmds);
+			else
+				rc = dsi_host_transfer_sub(&dsi_display->host, cmds,
+							do_peripheral_flush);
 			if (rc < 0) {
 				DSI_ERR("failed to send command, rc=%d\n", rc);
 				break;
