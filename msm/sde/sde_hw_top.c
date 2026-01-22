@@ -536,9 +536,9 @@ struct sde_hw_sid *sde_hw_sid_init(void __iomem *addr,
 	c->hw.log_mask = SDE_DBG_MASK_SID;
 
 	if (IS_SDE_SID_REV_200(m->sid_rev))
-		c->ops.set_vm_sid = sde_hw_set_vm_sid_v2;
+		c->ops.set_vm_sid[MSM_DISP_OP_HWIO] = sde_hw_set_vm_sid_v2;
 	else
-		c->ops.set_vm_sid = sde_hw_set_vm_sid;
+		c->ops.set_vm_sid[MSM_DISP_OP_HWIO] = sde_hw_set_vm_sid;
 
 	return c;
 }

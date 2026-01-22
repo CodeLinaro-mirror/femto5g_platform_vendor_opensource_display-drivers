@@ -993,7 +993,7 @@ static int hfi_cp_crtc_validate_rgb_hist_params(struct drm_msm_rgb_hist_ctrl *hi
 	}
 
 	// Check roi
-	if (hist_ctrl->flags | RGB_HIST_ROI_ENABLE) {
+	if (hist_ctrl->flags & RGB_HIST_ROI_ENABLE) {
 		if (hist_ctrl->roi_mode != ROI_MODE_WITHIN &&
 			hist_ctrl->roi_mode != ROI_MODE_OUTSIDE) {
 			SDE_ERROR("invalid roi mode: %d\n", hist_ctrl->roi_mode);
@@ -1138,7 +1138,7 @@ int hfi_setup_dspp_rgb_hist_ctrlv2(struct sde_hw_dspp *ctx, void *data)
 		hfi_cfg->roi_height = 0;
 
 		// Check ROI
-		if (hist_ctrl->flags | RGB_HIST_ROI_ENABLE) {
+		if (hist_ctrl->flags & RGB_HIST_ROI_ENABLE) {
 			hfi_cfg->flags |= HFI_RGB_HIST_ROI_ENABLE;
 			hfi_cfg->roi_mode = hist_ctrl->roi_mode;
 			hfi_cfg->roi_x = hist_ctrl->roi_x;

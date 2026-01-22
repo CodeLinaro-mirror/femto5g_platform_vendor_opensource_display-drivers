@@ -18,8 +18,6 @@
 
 #include <linux/sched/clock.h>
 
-#define TIMEOUT_MAX	80
-
 static ktime_t hfi_enc_unpack_frame_event(void *payload, u32 *idx, struct sde_encoder_virt *sde_enc)
 {
 	u32 read = 0;
@@ -615,12 +613,16 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	struct sde_encoder_wait_info wait_info = {0};
 	struct sde_encoder_virt *sde_enc;
 	u32 event;
+	struct drm_encoder *drm_enc;
 
 	sde_enc = hfi_enc->sde_base;
 
 	wait_info.wq = &hfi_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &sde_enc->pending_commit_cnt;
-	wait_info.timeout_ms = TIMEOUT_MAX;
+
+	drm_enc = &sde_enc->base;
+	wait_info.timeout_ms =
+			sde_encoder_helper_get_kickoff_timeout_ms(drm_enc);
 
 	ret = hfi_encoder_helper_wait_for_event(hfi_enc, &wait_info, HFI_EVENT_FRAME_SCAN_START);
 	if (ret <= 0) {
@@ -640,18 +642,21 @@ static int _hfi_enc_wait_for_tx_complete(struct hfi_encoder *hfi_enc)
 	struct sde_encoder_virt *sde_enc;
 	struct sde_encoder_phys *phys_enc;
 	enum hfi_display_event_id event;
-
+	struct drm_encoder *drm_enc;
 	sde_enc = hfi_enc->sde_base;
 	phys_enc = sde_enc->cur_master;
+
 	if (!phys_enc)
 		return 1;
 
 	if (sde_encoder_check_curr_mode(&sde_enc->base, MSM_DISPLAY_VIDEO_MODE))
 		return 1;
 
+	drm_enc = &sde_enc->base;
+
 	wait_info.wq = &hfi_enc->pending_kickoff_wq;
 	sde_encoder_set_atomic_cnt(&wait_info, sde_enc, phys_enc);
-	wait_info.timeout_ms = TIMEOUT_MAX;
+	wait_info.timeout_ms = sde_encoder_helper_get_kickoff_timeout_ms(drm_enc);
 
 	event = sde_encoder_in_clone_mode(&sde_enc->base) ? HFI_EVENT_FRAME_CAPTURE_COMPLETE :
 				HFI_EVENT_FRAME_SCAN_COMPLETE;
@@ -842,10 +847,13 @@ static int _hfi_enc_send_display_ctrl_cmd(struct sde_encoder_virt *enc, bool ena
 	return ret;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
 bool sde_encoder_check_hfi_hw_fence_support(struct sde_encoder_virt *enc)
 {
 	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
 	struct sde_mdss_cfg *catalog;
+	struct hfi_hwfence_data *hfi_hw_fence_data;
 
 	if (!enc) {
 		SDE_ERROR("invalid encoder\n");
@@ -866,6 +874,19 @@ bool sde_encoder_check_hfi_hw_fence_support(struct sde_encoder_virt *enc)
 		return false;
 	}
 
+	/* Get hfi_kms and check hw_fence_handle */
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return false;
+	}
+
+	hfi_hw_fence_data = hfi_kms->hfi_hw_fence_data;
+	if (!hfi_hw_fence_data || !hfi_hw_fence_data->hw_fence_handle) {
+		SDE_DEBUG("hfi hw_fence_handle is NULL\n");
+		return false;
+	}
+
 	/* Check for lsr_hw_fence_rev and soccp_ph */
 	if ((catalog->hw_fence_rev || catalog->lsr_hw_fence_rev) && catalog->soccp_ph) {
 		SDE_DEBUG("DCP HW Fence support available. lsr_hw_fence_rev=0x%x, soccp_ph=%u\n",
@@ -875,6 +896,7 @@ bool sde_encoder_check_hfi_hw_fence_support(struct sde_encoder_virt *enc)
 
 	return false;
 }
+#endif
 
 int hfi_set_power_vote(bool enable)
 {

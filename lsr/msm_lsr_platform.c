@@ -28,10 +28,6 @@ static struct msm_lsr_common_data default_common_data[] = {
 
 static struct msm_lsr_common_data seraph_common_data[] = {
 	{
-		.key = "qcom,pm-qos-latency-us",
-		.value = 50,
-	},
-	{
 		.key = "qcom,sw-power-collapse",
 		.value = 1,
 	},

@@ -25,10 +25,15 @@ static bool _sde_vm_owns_hw(struct sde_kms *sde_kms)
 
 	sde_vm = to_vm_primary(sde_kms->vm);
 
-	owns_irq = !atomic_read(&sde_vm->base.n_irq_lent);
-	owns_mem_io = (sde_vm->base.io_mem_handle < 0);
+	owns_mem_io = (sde_vm->base.io_mem_handle < 0 &&
+				sde_vm->base.mem_accepted);
 
-	return (owns_irq & owns_mem_io);
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms))) {
+		owns_irq = !atomic_read(&sde_vm->base.n_irq_lent);
+		return owns_irq && owns_mem_io;
+	} else {
+		return owns_mem_io;
+	}
 }
 
 void sde_vm_irq_release_notification_handler(void *req,
@@ -71,6 +76,7 @@ int _sde_vm_reclaim_mem(struct sde_kms *sde_kms)
 	SDE_INFO("mem reclaim succeeded\n");
 
 	sde_vm->base.io_mem_handle = -1;
+	sde_vm->base.mem_accepted = true;
 
 	return rc;
 }
@@ -119,9 +125,11 @@ static int _sde_vm_reclaim(struct sde_kms *sde_kms)
 		goto end;
 	}
 
-	rc = _sde_vm_reclaim_irq(sde_kms);
-	if (rc)
-		SDE_ERROR("vm reclaim irq failed, rc=%d\n", rc);
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms))) {
+		rc = _sde_vm_reclaim_irq(sde_kms);
+		if (rc)
+			SDE_ERROR("vm reclaim irq failed, rc=%d\n", rc);
+	}
 
 end:
 	return rc;
@@ -169,6 +177,7 @@ static int _sde_vm_lend_mem(struct sde_vm *vm,
 	}
 
 	sde_vm->base.io_mem_handle = mem_handle;
+	sde_vm->base.mem_accepted = false;
 
 #if (KERNEL_VERSION(6, 1, 0) <= LINUX_VERSION_CODE)
 	ghd_rm_get_vmid(GH_TRUSTED_VM, &trusted_vmid);
@@ -265,10 +274,13 @@ static int _sde_vm_release(struct sde_kms *kms)
 		goto res_lend_fail;
 	}
 
-	rc = _sde_vm_lend_irq(kms->vm, &io_res);
-	if (rc) {
-		SDE_ERROR("failed to lend irq's\n");
-		goto res_lend_fail;
+
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(kms))) {
+		rc = _sde_vm_lend_irq(kms->vm, &io_res);
+		if (rc) {
+			SDE_ERROR("failed to lend irq's\n");
+			goto res_lend_fail;
+		}
 	}
 
 	goto done;
@@ -343,6 +355,7 @@ int sde_vm_primary_init(struct sde_kms *kms)
 	sde_vm->base.mem_notification_cookie = cookie;
 	sde_vm->base.sde_kms = kms;
 	sde_vm->base.io_mem_handle = -1; // 0 is a valid handle
+	sde_vm->base.mem_accepted = true;
 	kms->vm = &sde_vm->base;
 
 	mutex_init(&sde_vm->base.vm_res_lock);

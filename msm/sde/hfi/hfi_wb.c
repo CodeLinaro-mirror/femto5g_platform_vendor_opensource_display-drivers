@@ -451,6 +451,10 @@ static int _hfi_wb_set_props_base(struct sde_wb_device *wb_dev, u32 disp_id,
 		}
 	}
 
+	if (opmode == WB_CSC)
+		hfi_set_hw_fence_prop(sde_conn->retire_fence, HFI_FENCE_SCAN_START,
+				hfi_conn->base_props, disp_id, HFI_PROPERTY_DISPLAY_OUTPUT_FENCE);
+
 	if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props))
 		goto end;
 

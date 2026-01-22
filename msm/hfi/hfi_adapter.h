@@ -252,11 +252,17 @@ struct hfi_prop_listener {
  * Clients listener implementation pointers cached in a list
  * @list_ptr: List head
  * @packet_id: ID of HFI Packet used a key for listener list
+ * @cmd_id: Command ID that created this listener (for identifying deregister listeners)
+ * @event_id: Event ID from payload that created this listener (for cleanup purposes)
+ * @obj_id: Object ID associated with this listener (for cleanup purposes)
  * @listener_obj: Void Pointer of listener object
  */
 struct listener_list {
 	struct list_head list_ptr;
 	u32 packet_id;
+	u32 cmd_id;
+	u32 event_id;
+	u32 obj_id;
 	void *listener_obj;
 };
 
@@ -314,7 +320,7 @@ struct hfi_shared_addr_map {
  * top level callback for processing HFI command from HFI Core(@ struct hfi_core_cb_ops)
  * @instance: Specifies this is a primary or secondary vm instance
  */
-struct hfi_adapter_t *hfi_adapter_init(int instance);
+struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance);
 
 /**
  * hfi_adapter_client_register - Register a HFI adapter client implementation that would use

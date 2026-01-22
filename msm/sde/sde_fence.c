@@ -30,30 +30,6 @@
 #define HW_FENCE_HFI_MMAP_DPU_BA	0x200000
 
 /**
- * struct sde_fence - release/retire fence structure
- * @base: base fence structure
- * @ctx: fence context
- * @name: name of each fence- it is fence timeline + commit_count
- * @fence_list: list to associated this fence on timeline/context
- * @fd: fd attached to this fence - debugging purpose.
- * @hwfence_out_ctl: optional hw ctl for the output fence
- * @hwfence_index: hw fence index for this fence
- * @txq_updated_fence: flag to indicate that a fence has been updated in txq
- * @hw_fence_handle: optional pointer to hw-fence handle used to create and release this fence
- */
-struct sde_fence {
-	struct dma_fence base;
-	struct sde_fence_context *ctx;
-	char name[SDE_FENCE_NAME_SIZE];
-	struct list_head fence_list;
-	int fd;
-	struct sde_hw_ctl *hwfence_out_ctl;
-	u64 hwfence_index;
-	bool txq_updated_fence;
-	void *hw_fence_handle;
-};
-
-/**
  * enum sde_hw_fence_clients - sde clients for the hw-fence feature
  *
  * Do not modify the order of this struct and/or add more elements
@@ -363,7 +339,7 @@ static int sde_fence_create_hw_fence(struct sde_hw_ctl *hw_ctl, struct sde_fence
 		/* store ctl and index for this fence */
 		sde_fence->hwfence_out_ctl = hw_ctl;
 
-		SDE_DEBUG("create hfence index:%llu ctl:%d ctx:%llu seqno:%llu name:%s\n",
+		SDE_DEBUG("created hfence index:0x%llx ctl:%d ctx:%llu seqno:%llu name:%s\n",
 			sde_fence->hwfence_index, ctl_id, sde_fence->base.context,
 			sde_fence->base.seqno, sde_fence->name);
 	}
@@ -883,9 +859,10 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 	/* we must support sw_override as well, so check both functions */
 	if (!hw_ctl->ops.hw_fence_update_input_fence[hw_ctl->hw.disp_op] ||
 			!hw_ctl->ops.hw_fence_trigger_sw_override[hw_ctl->hw.disp_op]) {
-		if (IS_DISP_OP_HWIO(hw_ctl->hw.disp_op))
+		if (IS_DISP_OP_HWIO(hw_ctl->hw.disp_op)) {
 			SDE_ERROR("missing ctl/override/update fence %d\n", !hw_ctl);
 			return -EINVAL;
+		}
 		return 0;
 	}
 
@@ -913,6 +890,37 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *hw_ctl, u32 debugf
 			false);
 
 	return 0;
+}
+
+u64 sde_fence_get_hwfence_index(struct sde_fence_context *ctx)
+{
+	struct sde_fence *fc, *next;
+	u64 hwfence_index = 0;
+
+	if (!ctx) {
+		SDE_ERROR("fence context is NULL\n");
+		return 0;
+	}
+
+	spin_lock(&ctx->list_lock);
+	if (list_empty(&ctx->fence_list_head)) {
+		spin_unlock(&ctx->list_lock);
+		return 0;
+	}
+
+	list_for_each_entry_safe(fc, next, &ctx->fence_list_head, fence_list) {
+		struct dma_fence *fence = &fc->base;
+
+		if (test_bit(SYNX_HW_FENCE_FLAG_ENABLED_BIT, &fence->flags) &&
+					fence->seqno == ctx->commit_count) {
+			hwfence_index = fc->hwfence_index;
+			goto end;
+		}
+	}
+
+end:
+	spin_unlock(&ctx->list_lock);
+	return hwfence_index;
 }
 #else
 static int sde_fence_create_hw_fence(struct sde_hw_ctl *hw_ctl, struct sde_fence *sde_fence)
@@ -1149,7 +1157,7 @@ static void sde_fence_timeline_value_str(struct dma_fence *fence, char *str,
 }
 #endif
 
-static struct dma_fence_ops sde_fence_ops = {
+struct dma_fence_ops sde_fence_ops = {
 	.get_driver_name = sde_fence_get_driver_name,
 	.get_timeline_name = sde_fence_get_timeline_name,
 	.enable_signaling = sde_fence_enable_signaling,
@@ -1522,3 +1530,4 @@ void sde_debugfs_timeline_dump(struct sde_fence_context *ctx,
 	}
 	spin_unlock(&ctx->list_lock);
 }
+

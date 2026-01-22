@@ -6864,6 +6864,7 @@ static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
 	sde_cfg->mdss_hw_block_size = 0x158;
 	sde_cfg->disable_multirect = true;
+	sde_cfg->hfi_cfg.perf_max_core_clk_rate = 532000000;
 }
 
 static void _sde_get_hw_caps_for_x1p42100(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)

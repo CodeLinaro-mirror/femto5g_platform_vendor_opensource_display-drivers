@@ -40,7 +40,9 @@
 #define QDSS_IOVA_START 0x80001000
 #define MIN_PAYLOAD_SIZE 3
 
-#define SCRATCH_BUF_SIZE 0x1000
+#define CSC_SCRATCH_BUF_SIZE 0x1000
+/* GCX needs 16K of scratch memory to accommodate up to 16 UI layers*/
+#define GCX_SCRATCH_BUF_SIZE 0x4000
 #define ARP_BUF_SIZE     0x800000
 
 /* Poll interval in uS */
@@ -1137,10 +1139,10 @@ csc_scratch_init:
 
 	if (dev->csc_scratch_pad.align_virtual_addr) {
 		memset((void *)dev->csc_scratch_pad.align_virtual_addr,
-				0, SCRATCH_BUF_SIZE);
+				0, dev->csc_scratch_pad.mem_size);
 		goto gcx_scratch_init;
 	}
-	rc = __smem_alloc(dev, mem_addr, SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
+	rc = __smem_alloc(dev, mem_addr, CSC_SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
 	if (rc) {
 		dprintk(LSR_ERR, "iface_q_table_alloc_fail\n");
 		goto fail_alloc_queue;
@@ -1150,16 +1152,16 @@ csc_scratch_init:
 	dev->csc_scratch_pad.align_device_addr = mem_addr->align_device_addr -
 					fw_bias;
 	dev->csc_scratch_pad.align_dcp_device_addr = mem_addr->align_dcp_device_addr;
-	dev->csc_scratch_pad.mem_size = SCRATCH_BUF_SIZE;
+	dev->csc_scratch_pad.mem_size = CSC_SCRATCH_BUF_SIZE;
 	dev->csc_scratch_pad.mem_data = mem_addr->mem_data;
 
 gcx_scratch_init:
 	if (dev->gcx_scratch_pad.align_virtual_addr) {
 		memset((void *)dev->gcx_scratch_pad.align_virtual_addr,
-				0, SCRATCH_BUF_SIZE);
+				0, dev->gcx_scratch_pad.mem_size);
 		goto hfi_queue_init;
 	}
-	rc = __smem_alloc(dev, mem_addr, SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
+	rc = __smem_alloc(dev, mem_addr, GCX_SCRATCH_BUF_SIZE, 1, SMEM_UNCACHED, SMEM_QUEUE_TABLE);
 	if (rc) {
 		dprintk(LSR_ERR, "iface_q_table_alloc_fail\n");
 		goto fail_alloc_queue;
@@ -1169,7 +1171,7 @@ gcx_scratch_init:
 	dev->gcx_scratch_pad.align_device_addr = mem_addr->align_device_addr -
 					fw_bias;
 	dev->gcx_scratch_pad.align_dcp_device_addr = mem_addr->align_dcp_device_addr;
-	dev->gcx_scratch_pad.mem_size = SCRATCH_BUF_SIZE;
+	dev->gcx_scratch_pad.mem_size = GCX_SCRATCH_BUF_SIZE;
 	dev->gcx_scratch_pad.mem_data = mem_addr->mem_data;
 
 hfi_queue_init:
@@ -1460,6 +1462,7 @@ int iris_hfi_core_init(void *device)
 		int err = 0;
 		u32 i, cpu;
 
+		dprintk(LSR_PWR, "Enabling pm_qos_hdls\n");
 		dev->res->pm_qos.pm_qos_hdls = kcalloc(
 				dev->res->pm_qos.silver_count,
 				sizeof(struct dev_pm_qos_request),
@@ -1485,6 +1488,9 @@ int iris_hfi_core_init(void *device)
 					__func__, i);
 		}
 	}
+
+	if (dev->res->pm_qos.latency_us && dev->res->pm_qos.pm_qos_hdls)
+		lsr_pm_qos_update(dev, PM_QOS_RESUME_LATENCY_DEFAULT_VALUE);
 
 pm_qos_bail:
 	mutex_unlock(&dev->lock);
@@ -2608,8 +2614,6 @@ int __resume(struct lsr_device *device)
 	}
 
 	core = lsr_driver->lsr_core;
-	WARN_ON(1);
-
 	dprintk(LSR_PWR, "Resuming from power collapse\n");
 	rc = __lsr_power_on(device);
 	if (rc) {

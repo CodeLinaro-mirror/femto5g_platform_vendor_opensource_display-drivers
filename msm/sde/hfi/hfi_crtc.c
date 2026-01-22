@@ -29,6 +29,17 @@
 #define HFI_CRTC_BASE_PROP_MAX_SIZE 1024
 
 /*
+ * This macro ensures that operations on the dirty flags are protected
+ * by the property_lock mutex to prevent race conditions.
+ */
+#define CRTC_DIRTY_OP_LOCK(crtc, op_func, bit, dirty) \
+	do { \
+		mutex_lock(&(crtc)->property_info.property_lock); \
+		op_func((bit), (dirty)); \
+		mutex_unlock(&(crtc)->property_info.property_lock); \
+	} while (0)
+
+/*
  * struct base_prop_lookup: tuple of drm property ID to HFI property ID
  */
 struct base_prop_lookup {
@@ -44,6 +55,7 @@ struct base_prop_lookup hfi_crtc_base_props_map[] = {
 	{CRTC_PROP_CORE_IB, HFI_PROPERTY_DISPLAY_CORE_IB},
 	{CRTC_PROP_CORE_AB, HFI_PROPERTY_DISPLAY_CORE_AB},
 	{CRTC_PROP_CORE_CLK, HFI_PROPERTY_DISPLAY_CORE_CLK},
+	{CRTC_PROP_DIM_LAYER_V1, HFI_PROPERTY_DISPLAY_DIM_LAYER},
 };
 
 struct kv_prop_lookup {
@@ -108,6 +120,8 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 	enum wb_opmode opmode;
 	struct hfi_kms *hfi_kms;
 	struct sde_mdss_cfg *sde_cfg;
+	struct hfi_display_dim_layer *dim_layers;
+	int i;
 
 	if (!crtc || !cstate)
 		return -EINVAL;
@@ -119,7 +133,7 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 		return -EINVAL;
 
 	sde_cfg = hfi_kms->base->catalog;
-	opmode = sde_crtc_check_for_lsr_opmode(&crtc->base);
+	opmode = sde_crtc_check_for_lsr_opmode(&crtc->base, &cstate->base);
 	if (_hfi_crtc_is_prop_excluded_for_repro(drm_prop, opmode, sde_cfg)) {
 		HFI_DEBUG_CRTC(crtc_hfi, "Unsupported property for Repro drm_prop:%x\n", drm_prop);
 		return 0;
@@ -141,7 +155,40 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 				HFI_VAL_U32_ARRAY, &prop_u64,
 				sizeof(struct hfi_prop_u64));
 		break;
+	case HFI_PROPERTY_DISPLAY_DIM_LAYER:
+		if (!test_bit(SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty))
+			break;
 
+		dim_layers = kzalloc(sizeof(struct hfi_display_dim_layer) * cstate->num_dim_layers,
+				GFP_KERNEL);
+		if (!dim_layers) {
+			SDE_ERROR("failed to allocate memory for hfi dim layers\n");
+			return -ENOMEM;
+		}
+
+		for (i = 0; i < cstate->num_dim_layers; i++) {
+			struct hfi_display_dim_layer *dst = &dim_layers[i];
+
+			dst->flags = cstate->dim_layer[i].flags;
+			dst->stage = cstate->dim_layer[i].stage;
+
+			dst->color_fill.color_0 = cstate->dim_layer[i].color_fill.color_0;
+			dst->color_fill.color_1 = cstate->dim_layer[i].color_fill.color_1;
+			dst->color_fill.color_2 = cstate->dim_layer[i].color_fill.color_2;
+			dst->color_fill.color_3 = cstate->dim_layer[i].color_fill.color_3;
+
+			dst->rect.x_pos = (u32)cstate->dim_layer[i].rect.x;
+			dst->rect.y_pos = (u32)cstate->dim_layer[i].rect.y;
+			dst->rect.width = (u32)cstate->dim_layer[i].rect.w;
+			dst->rect.height = (u32)cstate->dim_layer[i].rect.h;
+		}
+
+		hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop, HFI_VAL_U32_ARRAY,
+			dim_layers, sizeof(struct hfi_display_dim_layer) * cstate->num_dim_layers);
+
+		CRTC_DIRTY_OP_LOCK(crtc, clear_bit, SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty);
+		kfree(dim_layers);
+		break;
 	default:
 		HFI_ERROR_CRTC(crtc_hfi, "unsupported HFI property\n");
 		return -EINVAL;
@@ -151,6 +198,43 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 
 	return 0;
 }
+
+void hfi_set_hw_fence_prop(struct sde_fence_context *ctx,
+			enum hfi_fence_type hfi_fence_type,
+			struct hfi_util_u32_prop_helper *prop_collector,
+			u32 disp_id, u32 hfi_prop_id)
+{
+	u64 hwfence_index = 0;
+	struct hfi_hw_fence fence_prop;
+	int ret = 0;
+
+	if (!ctx) {
+		SDE_ERROR("Invalid fence ctx\n");
+		return;
+	}
+
+	hwfence_index = sde_fence_get_hwfence_index(ctx);
+
+	if (!hwfence_index) {
+		SDE_ERROR("Invalid hwfence index: %llu, cannot set prop\n", hwfence_index);
+		return;
+	}
+
+	fence_prop.h_synx = hwfence_index;
+	fence_prop.flags = hfi_fence_type;
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+		hfi_prop_id, HFI_VAL_U32_ARRAY, &fence_prop,
+		sizeof(struct hfi_hw_fence));
+	if (ret) {
+		SDE_ERROR("hfi set fence prop failed %d\n", ret);
+		return;
+	}
+
+	SDE_DEBUG("disp_id = %d, prop = 0x%x, h_synx = 0x%x, flags = 0x%x\n", disp_id,
+		hfi_prop_id, fence_prop.h_synx, fence_prop.flags);
+}
+
 
 static int _hfi_crtc_set_props_base(struct sde_crtc *crtc, u32 disp_id,
 		struct sde_crtc_state *cstate, struct hfi_cmdbuf_t *cmd_buf)
@@ -180,6 +264,10 @@ static int _hfi_crtc_set_props_base(struct sde_crtc *crtc, u32 disp_id,
 		_hfi_crtc_add_base_prop_helper(hfi_prop, crtc, cstate,
 			crtc_hfi->base_props, drm_prop);
 	}
+
+	if (sde_crtc_out_hw_fences_enabled(crtc))
+		hfi_set_hw_fence_prop(crtc->output_fence, HFI_FENCE_SCAN_COMPLETE,
+				crtc_hfi->base_props, disp_id, HFI_PROPERTY_DISPLAY_INPUT_FENCE);
 
 	if (!hfi_util_u32_prop_helper_prop_count(crtc_hfi->base_props))
 		goto end;
@@ -1062,5 +1150,87 @@ int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_bu
 
 	if (ret)
 		SDE_ERROR("failed to set HFI prop\n");
+	return ret;
+}
+
+int hfi_crtc_set_input_wait_hw_fence(struct sde_crtc *crtc, u32 h_synx, u32 prop)
+{
+	struct hfi_kms *hfi_kms;
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_crtc *crtc_hfi;
+	u32 disp_id;
+	struct hfi_hw_fence fence_prop;
+	int ret = 0;
+
+	if (!crtc) {
+		SDE_ERROR("invalid crtc\n");
+		return -EINVAL;
+	}
+
+	if (!h_synx) {
+		SDE_DEBUG("h_synx is 0, skipping fence send\n");
+		return 0;
+	}
+
+	crtc_hfi = to_hfi_crtc(crtc);
+	if (!crtc_hfi) {
+		SDE_ERROR("hfi_crtc is null\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = sde_crtc_get_kms(crtc);
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi kms\n");
+		return -EINVAL;
+	}
+
+	disp_id = hfi_crtc_get_display_id(&crtc->base, crtc->base.state);
+	if (disp_id == U32_MAX) {
+		SDE_ERROR("invalid display id\n");
+		return -EINVAL;
+	}
+
+	cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id, HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get cmd_buf for crtc:%d disp_id:%d\n",
+				DRMID(&crtc->base), disp_id);
+		return -EINVAL;
+	}
+
+	/* Format the fence property according to HFI specification */
+	fence_prop.h_synx = h_synx;
+	fence_prop.flags = HFI_FENCE_SCAN_START;
+
+	if (!crtc_hfi->base_props)
+		return -EINVAL;
+
+	mutex_lock(&crtc_hfi->hfi_lock);
+	hfi_util_u32_prop_helper_reset(crtc_hfi->base_props);
+
+	ret = hfi_util_u32_prop_helper_add_prop(crtc_hfi->base_props,
+			prop, HFI_VAL_U32_ARRAY, &fence_prop, sizeof(struct hfi_hw_fence));
+
+	if (!hfi_util_u32_prop_helper_prop_count(crtc_hfi->base_props))
+		goto end;
+
+	/* Send the property to firmware */
+	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+			cmd_buf,
+			HFI_COMMAND_DISPLAY_SET_PROPERTY,
+			disp_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			hfi_util_u32_prop_helper_get_payload_addr(crtc_hfi->base_props),
+			hfi_util_u32_prop_helper_get_size(crtc_hfi->base_props),
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (ret) {
+		HFI_ERROR_CRTC(crtc_hfi, "failed to send fence property: %d\n", ret);
+		goto end;
+	}
+
+	HFI_DEBUG_CRTC(crtc_hfi, "payload: disp_id = %d, prop = 0x%x, h_synx = 0x%x, flags = 0x%x",
+			disp_id, prop, fence_prop.h_synx, fence_prop.flags);
+
+end:
+	mutex_unlock(&crtc_hfi->hfi_lock);
 	return ret;
 }

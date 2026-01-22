@@ -519,6 +519,7 @@ struct sde_kms {
 	struct sde_kms_hal_funcs hal_ops;
 	enum msm_disp_op debugfs_display_op;
 	enum msm_disp_op frame_trigger_state;
+	bool hfi_tvm_start;
 };
 
 struct vsync_info {

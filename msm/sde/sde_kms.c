@@ -271,16 +271,6 @@ static void sde_kms_wait_for_frame_transfer_complete(struct msm_kms *kms,
 		return;
 	}
 
-	if (!crtc->state->enable) {
-		SDE_DEBUG("[crtc:%d] not enable\n", crtc->base.id);
-		return;
-	}
-
-	if (!crtc->state->active) {
-		SDE_DEBUG("[crtc:%d] not active\n", crtc->base.id);
-		return;
-	}
-
 	dev = crtc->dev;
 
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
@@ -740,7 +730,7 @@ static int sde_kms_prepare_secure_transition(struct msm_kms *kms,
 	struct sde_kms_smmu_state_data *smmu_state = &sde_kms->smmu_state;
 
 	for_each_old_crtc_in_state(state, crtc, old_crtc_state, i) {
-		if (!crtc->state || !crtc->state->active)
+		if (!old_crtc_state)
 			continue;
 		/*
 		 * It is safe to assume only one active crtc,
@@ -763,6 +753,9 @@ static int sde_kms_prepare_secure_transition(struct msm_kms *kms,
 			}
 		}
 
+		if (old_crtc_state->plane_mask)
+			old_valid_fb = true;
+
 		/*
 		 * 2.Get the operations needed to be performed before
 		 * secure transition can be initiated.
@@ -781,7 +774,7 @@ static int sde_kms_prepare_secure_transition(struct msm_kms *kms,
 
 		SDE_DEBUG("%d:secure operations(%x) started on state:%pK\n",
 				crtc->base.id, ops, crtc->state);
-		SDE_EVT32(DRMID(crtc), ops, crtc->state, old_valid_fb);
+		SDE_EVT32(DRMID(crtc), ops, crtc->state, old_valid_fb, old_crtc_state->plane_mask);
 
 		/* 3. Perform operations needed for secure transition */
 		if  (ops & SDE_KMS_OPS_WAIT_FOR_TX_DONE) {
@@ -1315,15 +1308,17 @@ void sde_kms_vm_set_sid(struct sde_kms *sde_kms, u32 vm)
 	struct drm_plane *plane;
 	struct drm_device *ddev;
 	struct sde_mdss_cfg *sde_cfg;
+	enum msm_disp_op disp_op;
 
 	ddev = sde_kms->dev;
 	sde_cfg = sde_kms->catalog;
 
+	disp_op = sde_kms_get_disp_op(sde_kms);
 	list_for_each_entry(plane, &ddev->mode_config.plane_list, head)
 		sde_plane_set_sid(plane, vm);
 
-	if (sde_kms->hw_sid && sde_kms->hw_sid->ops.set_vm_sid)
-		sde_kms->hw_sid->ops.set_vm_sid(sde_kms->hw_sid, vm, sde_kms->catalog);
+	if (sde_kms->hw_sid && sde_kms->hw_sid->ops.set_vm_sid[disp_op])
+		sde_kms->hw_sid->ops.set_vm_sid[disp_op](sde_kms->hw_sid, vm, sde_kms->catalog);
 }
 
 int sde_kms_vm_trusted_prepare_commit(struct sde_kms *sde_kms,
@@ -1649,6 +1644,7 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	struct drm_crtc_state *new_cstate;
 	enum sde_crtc_vm_req vm_req;
 	int rc = 0;
+	enum msm_disp_op disp_op;
 
 	if (!sde_kms || !sde_vm_is_enabled(sde_kms))
 		return -EINVAL;
@@ -1662,6 +1658,7 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+	disp_op = sde_kms_get_disp_op(sde_kms);
 	if (vm_req != VM_REQ_RELEASE)
 		return 0;
 
@@ -1675,6 +1672,14 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 
 	sde_vm_unlock(sde_kms);
 
+	if (IS_DISP_OP_HFI(disp_op)) {
+		rc = hfi_kms_set_vm_state(crtc, new_cstate);
+		if (rc) {
+			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
+			return rc;
+		}
+	}
+
 	return rc;
 }
 
@@ -1687,6 +1692,7 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	struct drm_crtc_state *new_cstate;
 	enum sde_crtc_vm_req vm_req;
 	int rc = 0;
+	enum msm_disp_op disp_op;
 
 	if (!sde_kms || !sde_vm_is_enabled(sde_kms))
 		return -EINVAL;
@@ -1700,6 +1706,7 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
 	cstate = to_sde_crtc_state(new_cstate);
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+	disp_op = sde_kms_get_disp_op(sde_kms);
 
 	sde_kms_vm_force_disable_idle_pc(sde_kms, vm_req);
 
@@ -1742,8 +1749,15 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	}
 	sde_vm_unlock(sde_kms);
 
-	_sde_crtc_vm_release_notify(crtc);
+	if (IS_DISP_OP_HFI(disp_op)) {
+		rc = hfi_kms_set_vm_state(crtc, new_cstate);
+		if (rc) {
+			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
+			return rc;
+		}
+	}
 
+	_sde_crtc_vm_release_notify(crtc);
 exit:
 	return rc;
 }
@@ -2662,13 +2676,16 @@ static void _sde_kms_drm_obj_destroy(struct sde_kms *sde_kms)
 int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev)
 {
 	int rc = 0;
+	struct sde_kms *sde_kms;
 
 	if (!priv || !dev) {
 		SDE_ERROR("invalid arg priv: %pK dev: %pK", priv, dev);
 		return -EINVAL;
 	}
 
-	rc = hfi_msm_drv_hfi_init(priv);
+	sde_kms = to_sde_kms(priv->kms);
+
+	rc = hfi_msm_drv_hfi_init(priv, sde_in_trusted_vm(sde_kms));
 	if (rc) {
 		SDE_ERROR("error with hfi_msm_drv_hfi_init rc: %d\n", rc);
 		return rc;
@@ -3959,6 +3976,7 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 	sde_kms = to_sde_kms(kms);
 	vm_ops = sde_vm_get_ops(sde_kms);
 	in_trusted_vm = sde_in_trusted_vm(sde_kms);
+
 	if (!vm_ops)
 		return 0;
 
@@ -4196,6 +4214,36 @@ static int sde_kms_check_cwb_concurreny(struct msm_kms *kms,
 	return 0;
 }
 
+static int sde_kms_vm_state_update(struct sde_kms *sde_kms,
+		struct drm_atomic_state *state)
+{
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *new_cstate;
+	enum msm_disp_op disp_op;
+	enum sde_crtc_vm_req vm_req;
+	struct sde_crtc_state *cstate;
+	int rc = 0;
+
+	crtc = sde_kms_vm_get_vm_crtc(state);
+	if (!crtc)
+		return 0;
+
+	new_cstate = drm_atomic_get_new_crtc_state(state, crtc);
+	disp_op = sde_kms_get_disp_op(sde_kms);
+	cstate = to_sde_crtc_state(new_cstate);
+	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
+
+	if (IS_DISP_OP_HFI(disp_op) && (vm_req == VM_REQ_ACQUIRE)) {
+		rc = hfi_kms_set_vm_state(crtc, new_cstate);
+		if (rc) {
+			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
+			return rc;
+		}
+	}
+
+	return 0;
+}
+
 static int sde_kms_atomic_check(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -4245,6 +4293,12 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 	ret = sde_kms_check_cwb_concurreny(kms, state);
 	if (ret)
 		goto vm_clean_up;
+
+	ret = sde_kms_vm_state_update(sde_kms, state);
+	if (ret) {
+		SDE_ERROR("VM state update failed ret =%d\n", ret);
+		goto vm_clean_up;
+	}
 
 	goto end;
 
@@ -6231,7 +6285,8 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto power_error;
 	}
 
-	if (IS_DISP_OP_HFI(priv->disp_op)) {
+	sde_kms->hfi_tvm_start = false;
+	if (IS_DISP_OP_HFI(priv->disp_op) && !sde_in_trusted_vm(sde_kms)) {
 		rc = sde_kms_hfi_boot_init(sde_kms);
 		if (rc) {
 			SDE_ERROR("hfi boot init failed: %d\n", rc);
@@ -6421,10 +6476,12 @@ int sde_kms_get_io_resources(struct sde_kms *sde_kms, struct msm_io_res *io_res)
 		return rc;
 	}
 
-	rc = msm_dss_get_io_irq(pdev, &io_res->irq, GH_IRQ_LABEL_SDE);
-	if (rc) {
-		SDE_ERROR("failed to get io irq for KMS");
-		return rc;
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms))) {
+		rc = msm_dss_get_io_irq(pdev, &io_res->irq, GH_IRQ_LABEL_SDE);
+		if (rc) {
+			SDE_ERROR("failed to get io irq for KMS");
+			return rc;
+		}
 	}
 
 	rc = _sde_kms_get_tvm_inclusion_mem(sde_kms->catalog, &io_res->mem);
@@ -6522,7 +6579,7 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		goto error;
 	}
 
-	if (IS_DISP_OP_HFI(priv->disp_op)) {
+	if (IS_DISP_OP_HFI(priv->disp_op) && !sde_in_trusted_vm(sde_kms)) {
 		rc = sde_kms_hfi_post_boot(sde_kms);
 		if (rc) {
 			SDE_ERROR("hfi post boot failed: %d\n", rc);
@@ -6613,6 +6670,27 @@ int sde_kms_vm_trusted_resource_init(struct sde_kms *sde_kms,
 
 	dev = sde_kms->dev;
 	priv = dev->dev_private;
+
+	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)) &&
+		!sde_kms->hfi_tvm_start) {
+		ret = sde_kms_hfi_boot_init(sde_kms);
+		if (ret) {
+			SDE_ERROR("hfi boot init failed: %d\n", ret);
+			return ret;
+		}
+
+		ret = sde_kms_hfi_post_boot(sde_kms);
+		if (ret) {
+			SDE_ERROR("hfi post boot failed: %d\n", ret);
+			return ret;
+		}
+
+		sde_kms->hfi_tvm_start = true;
+	}
+
+	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)))
+		return 0;
+
 	sde_kms->splash_data.type = SDE_VM_HANDOFF;
 	sde_kms->splash_data.num_splash_displays = sde_kms->dsi_display_count;
 

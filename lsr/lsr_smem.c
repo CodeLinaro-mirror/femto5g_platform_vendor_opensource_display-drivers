@@ -337,9 +337,9 @@ static int alloc_dma_mem(size_t size, u32 align, int map_kernel,
 	}
 
 	dprintk(LSR_MEM,
-		"%s: dma_buf=%pK,iova=%x,size=%d,kvaddr=%pK,flags=%#lx\n",
+		"%s: dma_buf=%pK, iova=%x, size=%d, kvaddr=%pK, dcp_addr = 0x%x, flags=%#lx\n",
 		__func__, mem->dma_buf, mem->device_addr, mem->size,
-		mem->kvaddr, mem->flags);
+		mem->kvaddr, mem->dcp_device_addr, mem->flags);
 	return rc;
 
 fail_map:

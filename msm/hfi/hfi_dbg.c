@@ -339,6 +339,15 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 	priv = ddev->dev_private;
 	debugfs_root = priv->debug_root;
 
+	kms = to_sde_kms(priv->kms);
+	/*
+	 * Skip adding HFI debug support until the firmware includes
+	 * functionality to send debug init params for low-memory
+	 * usecases such as TVM.
+	 */
+	if (sde_in_trusted_vm(kms))
+		return 0;
+
 	hfi_dbg = kvzalloc(sizeof(struct hfi_dbg), GFP_KERNEL);
 	if (!hfi_dbg) {
 		SDE_ERROR("failed to allocate hfi_dbg\n");
@@ -358,7 +367,6 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 	dbg->hal_ops.devcoredump_read[MSM_DISP_OP_HFI] = hfi_devcoredump_read;
 	dbg->hal_ops.add_minidump_va[MSM_DISP_OP_HFI] = hfi_dbg_add_va_region;
 
-	kms = to_sde_kms(priv->kms);
 	hfi_kms = to_hfi_kms(kms);
 
 	hfi_dbg->base_props = hfi_util_u32_prop_helper_alloc(HFI_DBG_BASE_PROP_MAX_SIZE);

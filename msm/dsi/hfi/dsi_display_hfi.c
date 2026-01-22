@@ -144,6 +144,9 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 		goto end;
 	}
 
+	if (display->trusted_vm_env)
+		return rc;
+
 	rc = dsi_display_hfi_panel_enable_supplies(display, hfi_power_enable);
 	if (rc) {
 		DSI_ERR("[%s] dsi panel power supply %s failed, rc=%d\n", display->name,
@@ -167,6 +170,9 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 	struct hfi_client_t *hfi_client;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_ENABLE;
 	int rc = 0;
+
+	if (display->trusted_vm_env)
+		return rc;
 
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
@@ -200,6 +206,9 @@ int dsi_display_hfi_post_enable(struct dsi_display *display)
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_POST_ENABLE;
 	int rc = 0;
 
+	if (display->trusted_vm_env)
+		return rc;
+
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
 		return -EINVAL;
@@ -227,6 +236,9 @@ int dsi_display_hfi_pre_disable(struct dsi_display *display)
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_DISABLE;
 	int rc = 0;
 
+	if (display->trusted_vm_env)
+		return rc;
+
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
 		return -EINVAL;
@@ -253,6 +265,9 @@ int dsi_display_hfi_disable(struct dsi_display *display)
 	struct hfi_client_t *hfi_client;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_POST_DISABLE;
 	int rc = 0;
+
+	if (display->trusted_vm_env)
+		return rc;
 
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
@@ -287,6 +302,9 @@ int dsi_display_hfi_unprepare(struct dsi_display *display)
 		DSI_ERR("Invalid params\n");
 		goto end;
 	}
+
+	if (display->trusted_vm_env)
+		return rc;
 
 	rc = dsi_display_hfi_panel_enable_supplies(display, hfi_power_enable);
 	if (rc) {
@@ -495,9 +513,13 @@ free_aspace_cb:
 	msm_gem_address_space_unregister_cb(display->aspace,
 			dsi_display_aspace_cb_locked, display);
 free_gem:
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_lock(&display->drm_dev->struct_mutex);
+#endif
 	msm_gem_free_object(display->tx_cmd_buf);
+#if KERNEL_VERSION(6, 18, 0) > LINUX_VERSION_CODE
 	mutex_unlock(&display->drm_dev->struct_mutex);
+#endif
 error:
 	return rc;
 }

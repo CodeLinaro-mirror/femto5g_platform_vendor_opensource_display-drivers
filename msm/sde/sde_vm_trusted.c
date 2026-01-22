@@ -159,6 +159,7 @@ static int _sde_vm_release_mem(struct sde_vm *vm)
 	}
 
 	sde_vm->base.io_mem_handle = -1;
+	sde_vm->base.mem_accepted = false;
 
 	SDE_INFO("sde vm mem release succeeded\n");
 done:
@@ -178,9 +179,11 @@ static int _sde_vm_release(struct sde_kms *kms)
 
 	sde_kms_vm_trusted_resource_deinit(kms);
 
-	rc = _sde_vm_release_irq(kms->vm);
-	if (rc)
-		SDE_ERROR("irq_release failed, rc = %d\n", rc);
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(kms))) {
+		rc = _sde_vm_release_irq(kms->vm);
+		if (rc)
+			SDE_ERROR("irq_release failed, rc = %d\n", rc);
+	}
 
 	rc = _sde_vm_release_mem(kms->vm);
 	if (rc) {
@@ -224,14 +227,17 @@ int _sde_vm_populate_res(struct sde_kms *sde_kms, struct sde_vm_trusted *vm)
 		return PTR_ERR(vm->sgl_desc);
 	}
 
-	vm->irq_desc = sde_vm_populate_irq(&io_res);
-	if (IS_ERR_OR_NULL(vm->irq_desc)) {
-		SDE_ERROR("failed to parse irq list\n");
-		return PTR_ERR(vm->irq_desc);
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms))) {
+		vm->irq_desc = sde_vm_populate_irq(&io_res);
+		if (IS_ERR_OR_NULL(vm->irq_desc)) {
+			SDE_ERROR("failed to parse irq list\n");
+			return PTR_ERR(vm->irq_desc);
+		}
+
+		sort(vm->irq_desc->irq_entries, vm->irq_desc->n_irq,
+			sizeof(vm->irq_desc->irq_entries[0]), __irq_cmp, NULL);
 	}
 
-	sort(vm->irq_desc->irq_entries, vm->irq_desc->n_irq,
-		sizeof(vm->irq_desc->irq_entries[0]), __irq_cmp, NULL);
 	sort(vm->sgl_desc->sgl_entries, vm->sgl_desc->n_sgl_entries,
 		sizeof(vm->sgl_desc->sgl_entries[0]), __sgl_cmp, NULL);
 
@@ -245,11 +251,16 @@ static bool _sde_vm_owns_hw(struct sde_kms *sde_kms)
 
 	sde_vm = to_vm_trusted(sde_kms->vm);
 
-	owns_irq = (sde_vm->irq_desc->n_irq ==
-			atomic_read(&sde_vm->base.n_irq_lent));
-	owns_mem_io = (sde_vm->base.io_mem_handle >= 0);
+	owns_mem_io = (sde_vm->base.io_mem_handle >= 0 &&
+				sde_vm->base.mem_accepted);
 
-	return (owns_irq && owns_mem_io);
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms))) {
+		owns_irq = (sde_vm->irq_desc->n_irq ==
+			atomic_read(&sde_vm->base.n_irq_lent));
+		return owns_mem_io && owns_irq;
+	} else {
+		return owns_mem_io;
+	}
 }
 
 static void  _sde_vm_deinit(struct sde_kms *kms, struct sde_vm_ops *ops)
@@ -321,6 +332,7 @@ static int _sde_vm_accept_mem(struct sde_vm *vm)
 	}
 
 	SDE_INFO("mem accept succeeded for SDE_VM_MEM_LABEL label\n");
+	sde_vm->base.mem_accepted = true;
 
 sgl_done:
 	kvfree(sgl_desc);
@@ -393,9 +405,11 @@ static int _sde_vm_accept(struct sde_kms *kms)
 	if (rc)
 		goto res_accept_fail;
 
-	rc = _sde_vm_accept_irq(kms->vm);
-	if (rc)
-		goto res_accept_fail;
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(kms))) {
+		rc = _sde_vm_accept_irq(kms->vm);
+		if (rc)
+			goto res_accept_fail;
+	}
 
 	return 0;
 
@@ -460,23 +474,28 @@ int sde_vm_trusted_init(struct sde_kms *kms)
 	}
 	sde_vm->base.mem_notification_cookie = cookie;
 
-	rc = gh_irq_wait_for_lend_v2(GH_IRQ_LABEL_SDE, GH_PRIMARY_VM,
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(kms))) {
+		rc = gh_irq_wait_for_lend_v2(GH_IRQ_LABEL_SDE, GH_PRIMARY_VM,
 				  sde_vm_irq_lend_notification_handler,
 				  (void *)sde_vm);
-	if (rc) {
-		SDE_ERROR("wait for irq lend on label: %d failed, rc=%d\n",
+		if (rc) {
+			SDE_ERROR("wait for irq lend on label: %d failed, rc=%d\n",
 			   GH_IRQ_LABEL_SDE, rc);
-		goto init_fail;
+			goto init_fail;
+		}
 	}
 
 	kms->vm = &sde_vm->base;
 
 	atomic_set(&sde_vm->base.n_irq_lent, 0);
+	sde_vm->base.mem_accepted = false;
 
-	rc = sde_vm_msgq_init(kms->vm);
-	if (rc) {
-		SDE_ERROR("failed to initialize the msgq, rc=%d\n", rc);
-		goto init_fail;
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(kms))) {
+		rc = sde_vm_msgq_init(kms->vm);
+		if (rc) {
+			SDE_ERROR("failed to initialize the msgq, rc=%d\n", rc);
+			goto init_fail;
+		}
 	}
 
 	return 0;
