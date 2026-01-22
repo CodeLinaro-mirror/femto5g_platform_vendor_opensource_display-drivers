@@ -529,10 +529,12 @@ static int __unvote_buses(struct lsr_device *device)
 {
 	int rc = 0;
 	struct bus_info *bus = NULL;
+	struct msm_lsr_core *core;
 
 	kfree(device->bus_vote.data);
 	device->bus_vote.data = NULL;
 	device->bus_vote.data_count = 0;
+	core = lsr_driver->lsr_core;
 
 	iris_hfi_for_each_bus(device, bus) {
 		rc = lsr_set_bw(bus, 0);
@@ -543,48 +545,10 @@ static int __unvote_buses(struct lsr_device *device)
 		}
 	}
 
+	core->old_perf.lsr_csc_bw = 0;
+	core->old_perf.lsr_repro_bw = 0;
+
 err_unknown_device:
-	return rc;
-}
-
-static int __vote_buses(struct lsr_device *device,
-		struct lsr_bus_vote_data *data, int num_data)
-{
-	int rc = 0;
-	struct bus_info *bus = NULL;
-	struct lsr_bus_vote_data *new_data = NULL;
-
-	if (!num_data) {
-		dprintk(LSR_PWR, "No vote data available\n");
-		goto no_data_count;
-	} else if (!data) {
-		dprintk(LSR_ERR, "Invalid voting data\n");
-		return -EINVAL;
-	}
-
-	new_data = kmemdup(data, num_data * sizeof(*new_data), GFP_KERNEL);
-	if (!new_data) {
-		dprintk(LSR_ERR, "Can't alloc memory to cache bus votes\n");
-		rc = -ENOMEM;
-		goto err_no_mem;
-	}
-
-no_data_count:
-	kfree(device->bus_vote.data);
-	device->bus_vote.data = new_data;
-	device->bus_vote.data_count = num_data;
-
-	iris_hfi_for_each_bus(device, bus) {
-		if (bus) {
-			rc = lsr_set_bw(bus, bus->range[1]);
-			if (rc)
-				dprintk(LSR_ERR,
-				"Failed voting bus %s to ab %u\n",
-				bus->name, bus->range[1]*1000);
-		}
-	}
-
-err_no_mem:
 	return rc;
 }
 
@@ -2662,6 +2626,29 @@ static void interrupt_init_iris2(struct lsr_device *device)
 			CVP_SS_IRQ_MASK, mask_val);
 }
 
+static int __vote_cfg_bus(struct lsr_device *device)
+{
+	int rc = 0;
+	struct bus_info *bus = NULL;
+	struct msm_lsr_core *core;
+	u32 bus_count;
+
+	core = lsr_driver->lsr_core;
+	if (!core) {
+		dprintk(LSR_ERR, "Invalid LSR core");
+		return -EINVAL;
+	}
+
+	for (bus_count = 0; bus_count < core->resources.bus_set.count; bus_count++) {
+		if (!strcmp(core->resources.bus_set.bus_tbl[bus_count].name, "lsr-cfg")) {
+			bus = &core->resources.bus_set.bus_tbl[bus_count];
+			rc = lsr_set_bw(bus, bus->range[1]);
+		}
+	}
+
+	return 0;
+}
+
 static int __lsr_power_on(struct lsr_device *device)
 {
 	int rc = 0;
@@ -2674,10 +2661,9 @@ static int __lsr_power_on(struct lsr_device *device)
 	core = lsr_driver->lsr_core;
 	/* Vote for all hardware resources */
 	mutex_lock(&core->clk_lock);
-	rc = __vote_buses(device, device->bus_vote.data,
-			device->bus_vote.data_count);
+	rc = __vote_cfg_bus(device);
 	if (rc) {
-		dprintk(LSR_ERR, "Failed to vote buses, err: %d\n", rc);
+		dprintk(LSR_ERR, "Failed to vote LSR cfg bus, err: %d\n", rc);
 		mutex_unlock(&core->clk_lock);
 		goto fail_vote_buses;
 	}

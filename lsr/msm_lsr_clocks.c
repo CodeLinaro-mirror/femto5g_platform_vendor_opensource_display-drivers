@@ -55,16 +55,11 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 	lsr_max_rate = tbl[tbl_size - 1].clock_rate;
 
 	mutex_lock(&core->clk_lock);
-	dprintk(LSR_PWR, "%s %lu %lu\n", __func__, core_sum, bw_sum);
-
 	core_sum = core->new_perf.lsr_csc_clk > core->new_perf.lsr_repro_clk ?
 		core->new_perf.lsr_csc_clk : core->new_perf.lsr_repro_clk;
 
 	bw_sum = core->new_perf.lsr_csc_bw + core->new_perf.lsr_repro_bw;
-	bw_sum = (core->bw_sum > max_bw) ? max_bw : core->bw_sum;
-	dprintk(LSR_PWR, "%s %d : %lu %lu\n", __func__, __LINE__,	core_sum, bw_sum);
-	bw_sum = max_bw;
-
+	bw_sum = Bps_to_icc(bw_sum);
 	dprintk(LSR_PWR, "%s %d : %lu %lu\n", __func__, __LINE__,	core_sum, bw_sum);
 
 	if (core_sum > lsr_max_rate) {
@@ -78,6 +73,10 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 
 	hdev->clk_freq = core->curr_freq;
 	core->bw_sum = bw_sum;
+
+	core->bw_sum = (core->bw_sum > max_bw) ? max_bw : core->bw_sum;
+	dprintk(LSR_PWR, "%s %d : clk : %lu bw : %lu kBps\n", __func__, __LINE__,
+		core->curr_freq, core->bw_sum);
 
 	rc = msm_lsr_set_clocks(core);
 	if (rc) {
@@ -315,8 +314,7 @@ int lsr_set_bw(struct bus_info *bus, unsigned long bw)
 
 	if (!bus->client)
 		return -EINVAL;
-	dprintk(LSR_PWR, "bus->name = %s to bw = %lu\n",
-			bus->name, bw);
+	dprintk(LSR_PWR, "bus->name = %s to bw = %lu KBps\n", bus->name, bw);
 
 	rc = icc_set_bw(bus->client, bw, 0);
 	if (rc)
