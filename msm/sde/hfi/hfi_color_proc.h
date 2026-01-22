@@ -242,135 +242,150 @@ void hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *hw_dspp, void *data, bool enab
 
 #else
 
-void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
+static inline void hfi_sspp_setup_csc(struct sde_hw_pipe *ctx, struct sde_csc_cfg *data,
 	enum msm_disp_op disp_op)
 {
 }
 
-void hfi_setup_ucsc_igcv1(struct sde_hw_pipe *ctx,
+static inline void hfi_setup_ucsc_igcv1(struct sde_hw_pipe *ctx,
 	enum sde_sspp_multirect_index index, void *data)
 {
 }
 
-void hfi_setup_ucsc_gcv1(struct sde_hw_pipe *ctx,
+static inline void hfi_setup_ucsc_gcv1(struct sde_hw_pipe *ctx,
 	enum sde_sspp_multirect_index index, void *data)
 {
 }
 
-void hfi_setup_ucsc_cscv1(struct sde_hw_pipe *ctx,
+static inline void hfi_setup_ucsc_cscv1(struct sde_hw_pipe *ctx,
 	enum sde_sspp_multirect_index index, void *data)
 {
 }
 
-void hfi_setup_ucsc_unmultv1(struct sde_hw_pipe *ctx,
+static inline void hfi_setup_ucsc_unmultv1(struct sde_hw_pipe *ctx,
 	enum sde_sspp_multirect_index index, void *data)
 {
 }
 
-void hfi_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
+static inline void hfi_setup_ucsc_alpha_ditherv1(struct sde_hw_pipe *ctx,
 	enum sde_sspp_multirect_index index, void *data)
 {
 }
 
-void hfi_setup_dspp_pa_dither_v1_7(struct sde_hw_dspp *ctx, void *cfg)
+static inline void hfi_setup_dspp_pa_dither_v1_7(struct sde_hw_dspp *ctx,
+	void *cfg)
 {
 }
 
-void hfi_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx, void *cfg)
+static inline void hfi_setup_dspp_spr_dither_v2(struct sde_hw_dspp *ctx,
+	void *cfg)
 {
 }
 
-void hfi_setup_demura_backlight_cfg_v4(struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg)
+static inline void hfi_setup_demura_backlight_cfg_v4(struct sde_hw_dspp *ctx,
+	struct sde_hw_cp_cfg *hw_cfg)
 {
 }
 
-void hfi_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg)
+static inline void hfi_setup_ltm_initv1_4(struct sde_hw_dspp *ctx, void *cfg)
 {
 }
 
-void hfi_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
+static inline void hfi_setup_ltm_roiv1_3(struct sde_hw_dspp *ctx, void *cfg)
 {
 }
 
-void hfi_setup_dspp_ltm_hist_ctrlv1_2(struct sde_hw_dspp *ctx, void *cfg,
-	bool enable, u64 addr)
+static inline void hfi_setup_dspp_ltm_hist_ctrlv1_2(struct sde_hw_dspp *ctx,
+	void *cfg, bool enable, u64 addr)
 {
 }
 
-void hfi_setup_dspp_ltm_threshv1(struct sde_hw_dspp *ctx, void *cfg)
+static inline void hfi_setup_dspp_ltm_threshv1(struct sde_hw_dspp *ctx,
+	void *cfg)
 {
 }
 
-void hfi_cp_crtc_set_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
+static inline void hfi_cp_crtc_set_ltm_buffer(struct sde_crtc *sde_crtc,
+	void *cfg)
 {
 }
 
-int hfi_cp_crtc_queue_ltm_buffer(struct sde_ltm_buffer *ltm_buff, void *cfg)
+static inline int hfi_cp_crtc_queue_ltm_buffer(struct sde_ltm_buffer *ltm_buff,
+	void *cfg)
 {
 	return 0;
 }
 
-void hfi_cp_crtc_free_ltm_buffer(struct sde_crtc *sde_crtc, void *cfg)
+static inline void hfi_cp_crtc_free_ltm_buffer(struct sde_crtc *sde_crtc,
+	void *cfg)
 {
 }
 
-void hfi_cp_crtc_reset_color_props(struct hfi_util_u32_prop_helper *color_props)
+static inline void hfi_cp_crtc_reset_color_props(
+	struct hfi_util_u32_prop_helper *color_props)
 {
 }
 
-int hfi_cp_crtc_get_color_props_count(struct hfi_util_u32_prop_helper *color_props)
+static inline int hfi_cp_crtc_get_color_props_count(
+	struct hfi_util_u32_prop_helper *color_props)
 {
 	return 0;
 }
 
-void hfi_cp_crtc_unmap_sg_table(struct hfi_shared_addr_map *addr_map, struct hfi_client_t *client)
+static inline void hfi_cp_crtc_unmap_sg_table(
+	struct hfi_shared_addr_map *addr_map, struct hfi_client_t *client)
 {
 }
 
-void hfi_cp_crtc_set_rgb_hist_buffers(struct sde_crtc *sde_crtc,
+static inline void hfi_cp_crtc_set_rgb_hist_buffers(struct sde_crtc *sde_crtc,
 		struct sde_hw_dspp *ctx, void *data)
 {
 }
 
-void hfi_cp_crtc_queue_rgb_hist_buffer(struct sde_crtc *sde_crtc,
+static inline void hfi_cp_crtc_queue_rgb_hist_buffer(struct sde_crtc *sde_crtc,
 	struct sde_hw_dspp *ctx, void *data)
 {
 }
 
-int hfi_setup_dspp_rgb_hist_ctrlv2(struct sde_hw_dspp *hw_dspp, void *data)
+static inline int hfi_setup_dspp_rgb_hist_ctrlv2(struct sde_hw_dspp *hw_dspp,
+	void *data)
 {
 	return 0;
 }
 
-void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc, void *cfg)
+static inline void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc,
+	void *cfg)
 {
 }
 
-void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
+static inline void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg,
+	void *aiqe_top)
 {
 }
 
-int hfi_cp_crtc_alloc_pa_hist_buffers(struct sde_crtc *sde_crtc)
-{
-	return 0;
-}
-
-int hfi_cp_crtc_dealloc_pa_hist_buffers(struct sde_crtc *sde_crtc)
+static inline int hfi_cp_crtc_alloc_pa_hist_buffers(struct sde_crtc *sde_crtc)
 {
 	return 0;
 }
 
-int hfi_cp_crtc_queue_pa_hist_buffer(struct sde_crtc *sde_crtc,
+static inline int hfi_cp_crtc_dealloc_pa_hist_buffers(struct sde_crtc *sde_crtc)
+{
+	return 0;
+}
+
+static inline int hfi_cp_crtc_queue_pa_hist_buffer(struct sde_crtc *sde_crtc,
 		struct sde_hw_dspp *ctx, void *data)
 {
 	return 0;
 }
 
-void hfi_cp_crtc_clear_pa_hist_buffers(struct sde_crtc *sde_crtc, void *data)
+static inline void hfi_cp_crtc_clear_pa_hist_buffers(struct sde_crtc *sde_crtc,
+	void *data)
 {
 }
 
-int hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *hw_dspp, void *data, bool enable)
+static inline int hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *hw_dspp,
+	void *data, bool enable)
 {
 	return 0;
 }

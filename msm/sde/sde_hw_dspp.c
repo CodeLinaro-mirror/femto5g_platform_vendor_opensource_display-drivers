@@ -249,7 +249,9 @@ static void dspp_hist(struct sde_hw_dspp *c)
 		c->ops.setup_histogram[MSM_DISP_OP_HWIO] = sde_setup_dspp_hist_v1_7;
 		c->ops.read_histogram[MSM_DISP_OP_HWIO] = sde_read_dspp_hist_v1_7;
 		c->ops.lock_histogram[MSM_DISP_OP_HWIO] = sde_lock_dspp_hist_v1_7;
+#if IS_ENABLED(CONFIG_MDSS_HFI)
 		c->ops.setup_histogram[MSM_DISP_OP_HFI] = hfi_setup_dspp_hist_v1_7;
+#endif
 	}
 }
 
