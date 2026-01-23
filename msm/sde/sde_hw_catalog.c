@@ -6858,6 +6858,7 @@ static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
 	set_bit(SDE_FEATURE_LSR, sde_cfg->features);
+	set_bit(SDE_FEATURE_FRAME_SEQ_CHECK, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->vbif_qos_nlvl = 8;
 	sde_cfg->ts_prefill_rev = 2;

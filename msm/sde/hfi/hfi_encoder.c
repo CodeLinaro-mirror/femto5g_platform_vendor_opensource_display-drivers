@@ -105,6 +105,30 @@ static ktime_t hfi_enc_unpack_vsync_event(void *payload, u32 *idx, struct sde_en
 	return ts;
 }
 
+static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_enc)
+{
+	struct sde_kms *sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	struct hfi_encoder *hfi_enc = to_hfi_encoder(sde_enc);
+	struct sde_mdss_cfg *catalog;
+
+	if (!sde_kms || !hfi_enc || !sde_kms->catalog)
+		return true;
+
+	catalog = sde_kms->catalog;
+	if (test_bit(SDE_FEATURE_FRAME_SEQ_CHECK, catalog->features) &&
+			!sde_encoder_is_wb_display(&sde_enc->base)) {
+		/* Trigger callback only if HFI frame done count increased from current seqno */
+		if (atomic_read(&hfi_enc->hfi_frame_done_cnt) >
+				atomic_read(&hfi_enc->hfi_frame_done_seqno))
+			atomic_set(&hfi_enc->hfi_frame_done_seqno,
+				atomic_read(&hfi_enc->hfi_frame_done_cnt));
+		else
+			return false;
+	}
+
+	return true;
+}
+
 static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 		void *payload, u32 event)
 {
@@ -113,6 +137,7 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	ktime_t ts = 0;
 	unsigned long lock_flags;
 	int new_cnt = -1;
+	bool frame_event_trigger;
 
 	if (!sde_kms || !hfi_enc) {
 		SDE_ERROR("invalid param: sde_kms %pK\n", sde_kms);
@@ -125,6 +150,7 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	}
 
 	ts = hfi_enc_unpack_frame_event(payload, NULL, sde_enc);
+	frame_event_trigger = _hfi_encoder_check_frame_event_trigger(sde_enc);
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
 	if (event & SDE_ENCODER_FRAME_EVENT_DONE || sde_encoder_in_clone_mode(&sde_enc->base))
@@ -141,7 +167,7 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 
 	sde_enc->crtc_frame_event_cb_data.connector = sde_enc->cur_master->connector;
 
-	if (sde_enc->crtc_frame_event_cb)
+	if (sde_enc->crtc_frame_event_cb && frame_event_trigger)
 		sde_enc->crtc_frame_event_cb(&sde_enc->crtc_frame_event_cb_data, event, ts);
 
 	/* if vsync is not enabled by client, increment local vsync counter on scan-start */
@@ -759,6 +785,18 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 	if (!conn) {
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
+	}
+
+	/* Re-register scan start event if it's disabled */
+	if (!sde_encoder_in_clone_mode(&enc->base) &&
+	    !hfi_enc->hw_events_state[MSM_ENC_COMMIT_DONE].state) {
+		SDE_DEBUG("Scan start event disabled, re-registering\n");
+		ret = hfi_enc_enable_hw_event(enc, MSM_ENC_COMMIT_DONE, true);
+		if (ret) {
+			SDE_ERROR("failed to re-register scan start event\n");
+			return ret;
+		}
+		hfi_enc->hw_events_state[MSM_ENC_COMMIT_DONE].state = true;
 	}
 
 	display_id = sde_conn_get_display_obj_id(conn);

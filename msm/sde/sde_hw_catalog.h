@@ -941,6 +941,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
  * @SDE_FEATURE_DISP_OP        Support Display OP switch
  * @SDE_FEATURE_LSR            Support Display LSR
+ * @SDE_FEATURE_FRAME_SEQ_CHECK	 Add check on frame sequence number to avoid duplicate frame events
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -997,6 +998,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_SSIP_CLK,
 	SDE_FEATURE_DISP_OP,
 	SDE_FEATURE_LSR,
+	SDE_FEATURE_FRAME_SEQ_CHECK,
 	SDE_FEATURE_MAX
 };
 
