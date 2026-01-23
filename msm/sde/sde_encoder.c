@@ -7166,6 +7166,8 @@ int sde_encoder_helper_reset_mixers(struct sde_encoder_phys *phys_enc,
 					sde_plane_ctl_flush(plane, phys_enc->hw_ctl, true);
 				}
 			}
+			sde_enc->old_state = NULL;
+			SDE_DEBUG("sde enc reset mixers done, clear old_state\n");
 		}
 #endif
 	}
