@@ -22,7 +22,9 @@
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 
-#define DSI_HFI_MAPPED_ADDR_SIZE (SZ_4K * 4)
+#define DSI_HFI_MAPPED_BASE_SIZE (SZ_4K * 4)
+#define DSI_HFI_MAPPED_MAX_SIZE (SZ_4K * 12)
+#define MAX_TIMING_PER_PACKET  32
 
 static int dsi_display_hfi_power_supplies(struct dsi_display *display,
 					  u32 hfi_power_control, bool hfi_power_enable)
@@ -707,7 +709,7 @@ static void dsi_get_panel_esd_config_helper(struct dsi_display *display,
 
 		cmds = display->panel->esd_config.status_cmd.cmds;
 
-		/* Populate commmand descriptor for ESD commands.*/
+		/* Populate command descriptor for ESD commands.*/
 		for (int i = 0 ; i < display->panel->esd_config.status_cmd.count ; i++) {
 			cmd_desc->tx_len =       cmds[i].msg.tx_len;
 			cmd_desc->type =         cmds[i].msg.type;
@@ -900,24 +902,30 @@ static void dsi_hfi_populate_dfps_caps(struct dsi_panel *panel,
 	hfi_dfps_caps->type = (enum hfi_panel_dfps_type)panel->dfps_caps.type;
 }
 
-int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
-				struct dsi_panel_timing_caps *panel_timing_caps,
-				struct dsi_hfi_panel_per_cmd_type *per_type,
+static int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 				struct dsi_panel_cmd_set *cmd_set,
-				u32 *size_of_cmds_by_type, void **sde_vaddr, void **hfi_vaddr)
+				void **sde_vaddr, void **hfi_vaddr)
 {
 	struct dsi_hfi_panel_cmd_info *panel_cmd_info = *hfi_vaddr;
 	struct dsi_display_hfi *dsi_hfi;
 	int i, rc = 0;
 	u32 size_of_indv_cmd;
+	size_t hfi_map_size;
 
 	dsi_hfi = display->dsi_hfi_info;
-	if (!dsi_hfi) {
+	if (!dsi_hfi || !dsi_hfi->shared_addr_map) {
 		DSI_ERR("failed to get DSI HFI\n");
 		return -EINVAL;
 	}
 
-	for (i = 0; i < per_type->count_cmds; i++) {
+	hfi_map_size = dsi_hfi->shared_addr_map->size;
+	if (dsi_hfi->running_hfi_offset + (sizeof(struct dsi_hfi_panel_cmd_info)
+			* cmd_set->count) > hfi_map_size) {
+		DSI_ERR("over HFI mapped buffer size\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < cmd_set->count; i++) {
 		size_of_indv_cmd = 0;
 
 		panel_cmd_info->delay = cmd_set->cmds[i].post_wait_ms;
@@ -935,9 +943,9 @@ int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 		size_of_indv_cmd = (((size_of_indv_cmd+7)>>3)<<3);
 		*sde_vaddr += size_of_indv_cmd;
 
-		panel_cmd_info->cmd_offset = *size_of_cmds_by_type + display->cmd_buffer_iova;
+		panel_cmd_info->cmd_offset = dsi_hfi->running_sde_offset + display->cmd_buffer_iova;
 
-		*size_of_cmds_by_type += size_of_indv_cmd;
+		dsi_hfi->running_sde_offset += size_of_indv_cmd;
 
 		panel_cmd_info++;
 		dsi_hfi->running_hfi_offset += sizeof(struct dsi_hfi_panel_cmd_info);
@@ -949,10 +957,10 @@ error:
 	return rc;
 }
 
-int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
-			    struct dsi_display_mode_priv_info *priv_info,
-			    struct dsi_panel_timing_caps *panel_timing_caps,
-			    void **sde_vaddr, void **hfi_vaddr)
+static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
+				struct dsi_display_mode_priv_info *priv_info,
+				struct dsi_panel_timing_caps *panel_timing_caps,
+				void **sde_vaddr, void **hfi_vaddr)
 {
 	struct dsi_display_hfi *dsi_hfi;
 	int i;
@@ -983,10 +991,8 @@ int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 		panel_timing_caps->payload.hfi_per_type_array[j].count_cmds =
 							priv_info->cmd_sets[i].count;
 
-		rc = hfi_panel_fill_dcs_cmds_sub(display, panel_timing_caps,
-				&panel_timing_caps->payload.hfi_per_type_array[j],
-				&priv_info->cmd_sets[i], &dsi_hfi->running_sde_offset, sde_vaddr,
-				hfi_vaddr);
+		rc = hfi_panel_fill_dcs_cmds_sub(display, &priv_info->cmd_sets[i],
+				sde_vaddr, hfi_vaddr);
 		if (rc)
 			DSI_ERR("Failed to fill panel cmds into memory for cmd type %d", i);
 
@@ -1111,7 +1117,7 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 			HFI_PAYLOAD_TYPE_U32_ARRAY, dsi_cmd_desc, sizeof(struct hfi_dsi_cmd_desc),
 			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
 	if (rc)
-		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_SEND_DCS_CMD, rc=%d\n", rc);
+		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD, rc=%d\n", rc);
 
 	if ((!rc) && (cmd->ctrl_flags & DSI_CTRL_CMD_READ)) {
 		if (cmd->msg.rx_buf) {
@@ -1504,24 +1510,17 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	return rc;
 }
 
-static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
-						struct dsi_display *display,
-						struct dsi_panel_timing_caps *timing_caps_array,
-						void *sde_vaddr)
+static int _dsi_hfi_append_panel_timing_caps(struct dsi_display_hfi *display_hfi,
+		struct hfi_cmdbuf_t *buffer, u32 chunk, u32 start,
+		struct dsi_panel_timing_caps *timing_caps_array)
 {
 	int rc = 0;
 	int i;
 	u32 object_id = 0x0;
-	struct dsi_display_hfi *display_hfi;
 
-	if (!display)
-		return -EINVAL;
-
-	display_hfi = display->dsi_hfi_info;
-	if (!display_hfi)
-		return -EINVAL;
-
-	for (i = 0; i < display->panel->num_display_modes; i++) {
+	for (i = 0; i < chunk; ++i) {
+		u32 idx = start + i;
+		struct dsi_panel_timing_caps *timing_caps = &timing_caps_array[idx];
 		u32 kv_count;
 		u32 kv_size = 0;
 		u32 payload_size = 0;
@@ -1529,75 +1528,74 @@ static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
 		hfi_util_kv_helper_reset(display_hfi->kv_props);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_INDEX, 0,
-				(sizeof(timing_caps_array[i].panel_index) / sizeof(u32))),
-				(void *)&timing_caps_array[i].panel_index);
-		kv_size += sizeof(timing_caps_array[i].panel_index);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_INDEX, idx,
+			sizeof(timing_caps->panel_index) / sizeof(u32)),
+			(void *)&timing_caps->panel_index);
+		kv_size += sizeof(timing_caps->panel_index);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_CLOCKRATE, 0,
-				(sizeof(timing_caps_array[i].clockrate) / sizeof(u32))),
-				(void *)&timing_caps_array[i].clockrate);
-		kv_size += sizeof(timing_caps_array[i].clockrate);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_CLOCKRATE, idx,
+			sizeof(timing_caps->clockrate) / sizeof(u32)),
+			(void *)&timing_caps->clockrate);
+		kv_size += sizeof(timing_caps->clockrate);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_FRAMERATE, 0,
-				(sizeof(timing_caps_array[i].framerate) / sizeof(u32))),
-				(void *)&timing_caps_array[i].framerate);
-		kv_size += sizeof(timing_caps_array[i].framerate);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_FRAMERATE, idx,
+			sizeof(timing_caps->framerate) / sizeof(u32)),
+			(void *)&timing_caps->framerate);
+		kv_size += sizeof(timing_caps->framerate);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_JITTER, 0,
-				(sizeof(timing_caps_array[i].panel_jitter) / sizeof(u32))),
-				(void *)&timing_caps_array[i].panel_jitter);
-		kv_size += sizeof(timing_caps_array[i].panel_jitter);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_JITTER, idx,
+			sizeof(timing_caps->panel_jitter) / sizeof(u32)),
+			(void *)&timing_caps->panel_jitter);
+		kv_size += sizeof(timing_caps->panel_jitter);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_RESOLUTION_DATA, 0,
-				(sizeof(timing_caps_array[i].res_data) / sizeof(u32))),
-				(void *)&timing_caps_array[i].res_data);
-		kv_size += sizeof(timing_caps_array[i].res_data);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_RESOLUTION_DATA, idx,
+			sizeof(timing_caps->res_data) / sizeof(u32)),
+			(void *)&timing_caps->res_data);
+		kv_size += sizeof(timing_caps->res_data);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_DATA, 0,
-				(sizeof(timing_caps_array[i].compression_params) / sizeof(u32))),
-				(void *)&timing_caps_array[i].compression_params);
-		kv_size += sizeof(timing_caps_array[i].compression_params);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_DATA, idx,
+			sizeof(timing_caps->compression_params) / sizeof(u32)),
+			(void *)&timing_caps->compression_params);
+		kv_size += sizeof(timing_caps->compression_params);
 
-		if (timing_caps_array[i].rc_override_enabled) {
+		if (timing_caps->rc_override_enabled) {
 			hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_RC_OVERRIDE, 0,
-				(sizeof(timing_caps_array[i].rc_override) / sizeof(u32))),
-				(void *)&timing_caps_array[i].rc_override);
-			kv_size += sizeof(timing_caps_array[i].rc_override);
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_RC_OVERRIDE, idx,
+				sizeof(timing_caps->rc_override) / sizeof(u32)),
+				(void *)&timing_caps->rc_override);
+			kv_size += sizeof(timing_caps->rc_override);
 		}
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_DISPLAY_TOPOLOGY, 0,
-				(sizeof(timing_caps_array[i].topology) / sizeof(u32))),
-				(void *)&timing_caps_array[i].topology);
-		kv_size += sizeof(timing_caps_array[i].topology);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DISPLAY_TOPOLOGY, idx,
+			sizeof(timing_caps->topology) / sizeof(u32)),
+			(void *)&timing_caps->topology);
+		kv_size += sizeof(timing_caps->topology);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_DEFAULT_TOPOLOGY_INDEX, 0,
-				(sizeof(timing_caps_array[i].top_index) / sizeof(u32))),
-				(void *)&timing_caps_array[i].top_index);
-		kv_size += sizeof(timing_caps_array[i].top_index);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DEFAULT_TOPOLOGY_INDEX, idx,
+			sizeof(timing_caps->top_index) / sizeof(u32)),
+			(void *)&timing_caps->top_index);
+		kv_size += sizeof(timing_caps->top_index);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_DCS_CMD_INFO, 0,
-				(sizeof(timing_caps_array[i].payload) / sizeof(u32))),
-				(void *)&timing_caps_array[i].payload);
-		kv_size += sizeof(timing_caps_array[i].payload);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DCS_CMD_INFO, idx,
+			sizeof(timing_caps->payload) / sizeof(u32)),
+			(void *)&timing_caps->payload);
+		kv_size += sizeof(timing_caps->payload);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_DPHY_TIMINGS, 0,
-				(sizeof(timing_caps_array[i].phy_timings_payload) / sizeof(u32))),
-				(void *)&timing_caps_array[i].phy_timings_payload);
-		kv_size += sizeof(timing_caps_array[i].phy_timings_payload);
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DPHY_TIMINGS, idx,
+			sizeof(timing_caps->phy_timings_payload) / sizeof(u32)),
+			(void *)&timing_caps->phy_timings_payload);
+		kv_size += sizeof(timing_caps->phy_timings_payload);
 
 		kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
-
 		payload_size = (kv_count * sizeof(u32)) + kv_size;
 
 		rc = hfi_adapter_add_prop_array(buffer->ctx,
@@ -1613,6 +1611,71 @@ static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
 			DSI_ERR("Failed to add caps for timing node:%d, rc = %d",
 					i, rc);
 	}
+	return rc;
+}
+
+static int dsi_hfi_send_panel_timing_modes(struct dsi_display *display,
+		struct dsi_panel_timing_caps *timing_caps_array)
+{
+	int rc = 0;
+	struct dsi_display_hfi *display_hfi;
+	u32 obj_id = 0;
+
+	if (!display)
+		return -EINVAL;
+
+	obj_id = sde_conn_get_display_obj_id(display->drm_conn);
+
+	display_hfi = display->dsi_hfi_info;
+	if (!display_hfi)
+		return -EINVAL;
+
+	/* Init timing mode cap cmd send */
+	const u32 total_modes = display->panel->num_timing_nodes;
+	u32 start = 0;
+	u32 batch_idx = 0;
+	struct hfi_cmdbuf_t *buffer;
+
+	while (start < total_modes) {
+		const u32 chunk = min(MAX_TIMING_PER_PACKET, total_modes - start);
+
+		SDE_EVT32(HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS, SDE_EVTLOG_FUNC_CASE2);
+		buffer = hfi_adapter_get_cmd_buf(display_hfi->hfi_client,
+				obj_id,	HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+
+		if (!buffer) {
+			DSI_ERR("get_cmd_buf failed, batch=%u start=%u chunk=%u\n",
+					batch_idx, start, chunk);
+			rc = -ENOMEM;
+			break;
+		}
+
+		rc = _dsi_hfi_append_panel_timing_caps(display_hfi, buffer, chunk,
+				start, timing_caps_array);
+		if (rc) {
+			DSI_ERR("append timing caps failed, batch=%u start=%u chunk=%u rc=%d\n",
+					batch_idx, start, chunk, rc);
+			goto error_append;
+		}
+
+		rc = hfi_adapter_set_cmd_buf(display_hfi->hfi_client, buffer);
+		if (rc) {
+			DSI_ERR("Batch %u (start=%u, count=%u) failed, rc=%d\n",
+					batch_idx, start, chunk, rc);
+			goto error_append;
+		}
+
+		start     += chunk;
+		batch_idx += 1;
+	}
+
+	return rc;
+
+error_append:
+	rc = hfi_adapter_release_cmd_buf(display_hfi->hfi_client, buffer);
+	if (rc)
+		DSI_ERR("failed to release command buffer\n");
+
 	return rc;
 }
 
@@ -1692,7 +1755,8 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		}
 		display_hfi->shared_addr_map = addr_map;
 
-		addr_map->size = DSI_HFI_MAPPED_ADDR_SIZE;
+		addr_map->size = panel_init_caps.num_timing_modes > MAX_TIMING_PER_PACKET ?
+				DSI_HFI_MAPPED_MAX_SIZE : DSI_HFI_MAPPED_BASE_SIZE;
 
 		hfi_adapter_buffer_alloc(display_hfi->hfi_client, addr_map);
 		if (!addr_map->remote_addr || !addr_map->local_addr)
@@ -1752,13 +1816,6 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		goto error_array;
 	}
 
-	SDE_EVT32(HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS, SDE_EVTLOG_FUNC_CASE2);
-	rc = dsi_hfi_append_panel_timing_caps(buffer, display, timing_caps_array, display->vaddr);
-	if (rc) {
-		DSI_ERR("failed to append HFI_COMMAND_PANEL_INIT_TIMING_CAPS: rc = %d", rc);
-		goto error_array;
-	}
-
 	SDE_EVT32(HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, SDE_EVTLOG_FUNC_CASE3);
 	rc = dsi_hfi_append_panel_generic_caps(buffer, display, panel_generic_caps);
 	if (rc) {
@@ -1767,12 +1824,20 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 	}
 
 	rc = hfi_adapter_set_cmd_buf(display_hfi->hfi_client, buffer);
-	SDE_EVT32(HFI_COMMAND_PANEL_INIT_PANEL_CAPS, HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS,
-			HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, rc, SDE_EVTLOG_FUNC_CASE4);
+	SDE_EVT32(HFI_COMMAND_PANEL_INIT_PANEL_CAPS, HFI_COMMAND_PANEL_INIT_GENERIC_CAPS,
+				rc, SDE_EVTLOG_FUNC_CASE4);
 	if (rc) {
 		DSI_ERR("failed to send panel init: rc = %d", rc);
 		goto error_array;
 	}
+
+	rc = dsi_hfi_send_panel_timing_modes(display, timing_caps_array);
+	if (rc) {
+		DSI_ERR("failed to append timing modes: rc = %d", rc);
+		goto error_array;
+	}
+
+	SDE_EVT32(HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS, rc, SDE_EVTLOG_FUNC_CASE5);
 
 	kfree(timing_caps_array);
 	return rc;
