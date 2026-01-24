@@ -5640,7 +5640,8 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 			}
 		}
 
-		if (i == MSM_SMMU_DOMAIN_UNSECURE && sde_kms->catalog->hw_fence_rev) {
+		if (i == MSM_SMMU_DOMAIN_UNSECURE && sde_kms->catalog->hw_fence_rev &&
+				IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms))) {
 			pdev = to_platform_device(sde_kms->dev->dev);
 			res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ipcc_reg");
 			if (!res) {
@@ -6393,7 +6394,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (test_bit(SDE_FEATURE_HW_VSYNC_TS, sde_kms->catalog->features))
 		dev->vblank_disable_immediate = true;
 
-	if (!priv->phandle.hw_fence_enable) {
+	if (IS_DISP_OP_HWIO(priv->disp_op) && !priv->phandle.hw_fence_enable) {
 		SDE_INFO("power vote failed, disabling hw-fencing\n");
 		sde_kms->catalog->hw_fence_rev = 0;
 	}
@@ -6587,8 +6588,10 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		}
 
 		rc = sde_hfi_hw_fence_init(priv, sde_kms);
-		if (rc)
-			SDE_ERROR("sde hfi hw fence data init failed: %d\n", rc);
+		if (rc) {
+			SDE_INFO("sde hfi hw fence data init failed: %d\n", rc);
+			sde_kms->catalog->hw_fence_rev = 0;
+		}
 	}
 
 	return 0;

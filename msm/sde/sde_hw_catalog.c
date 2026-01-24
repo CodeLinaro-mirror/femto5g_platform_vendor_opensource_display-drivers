@@ -4754,9 +4754,11 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 	cfg->ipcc_protocol_offset = PROP_VALUE_ACCESS(props->values, IPCC_PROTOCOL_OFFSET, 0);
 	if (!cfg->ipcc_protocol_offset)
 		cfg->ipcc_protocol_offset = HW_FENCE_DEFAULT_IPCC_PROTOCOL_OFFSET;
-	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id) {
-		SDE_INFO("disabling hw-fence because invalid protocol_id:%d client_phys_id:%d\n",
-			cfg->ipcc_protocol_id, cfg->ipcc_client_phys_id);
+	if (!cfg->hfi_cfg.perf_sys_cache_enable &&
+			(!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id)) {
+		SDE_ERROR("disabling hwfence, protocol_id:%d, client_phys_id:%d, hfi enable:%d\n",
+			cfg->ipcc_protocol_id, cfg->ipcc_client_phys_id,
+			cfg->hfi_cfg.perf_sys_cache_enable);
 		cfg->hw_fence_rev = 0;
 	}
 	cfg->ipcc_client_out_phys_id = PROP_VALUE_ACCESS(props->values, IPCC_CLIENT_OUT_PHYS_ID, 0);
@@ -6858,6 +6860,7 @@ static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
 	set_bit(SDE_FEATURE_LSR, sde_cfg->features);
+	set_bit(SDE_FEATURE_FRAME_SEQ_CHECK, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->vbif_qos_nlvl = 8;
 	sde_cfg->ts_prefill_rev = 2;

@@ -27,6 +27,7 @@ struct hw_event_state {
  * @hfi_commit_cnt: Atomic counter for tracking frame commits to FW
  * @hfi_frame_done_cnt: Atomic counter for tracking which enc is
  *				done with frame processing
+ * @hfi_frame_done_seqno: Atomic counter for number of frames processed with events handling
  * @hw_events_state: maintains state of HW events
  * @pending_kickoff_wq: Wait queue for blocking until kickoff completes
  * @hfi_cb_obj: hfi listener call back object
@@ -39,6 +40,7 @@ struct hfi_encoder {
 	atomic_t hfi_vsync_cnt;
 	atomic_t hfi_commit_cnt;
 	atomic_t hfi_frame_done_cnt;
+	atomic_t hfi_frame_done_seqno;
 
 	struct hw_event_state hw_events_state[MSM_ENC_EVENT_MAX];
 	wait_queue_head_t pending_kickoff_wq;

@@ -1552,12 +1552,6 @@ int sde_crtc_check_for_lsr_opmode(struct drm_crtc *crtc,
  */
 int sde_crtc_update_lsr_perf(struct drm_crtc *crtc);
 
-/*
- * sde_crtc_out_hw_fences_enabled - check if output hw fences are enabled
- * @crtc: pointer to drm crtc
- */
-bool sde_crtc_out_hw_fences_enabled(struct sde_crtc *crtc);
-
 /**
  * sde_crtc_cp_unmap_ltm_buffers - unmap LTM buffers
  * @sde_crtc: Pointer to sde_crtc context
