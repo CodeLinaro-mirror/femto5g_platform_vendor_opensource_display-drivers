@@ -29,9 +29,9 @@ def define_art():
                     "CONFIG_DRM_SDE_VM",
                     "CONFIG_QCOM_WCD939X_I2C",
                     "CONFIG_THERMAL_OF",
-                    # "CONFIG_QCOM_SPEC_SYNC", /* Enabled when sync_fence is available */
+                    "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_MSM_EXT_DISPLAY",
                     "CONFIG_DRM_SDE_CESTA",
-                    # "CONFIG_QTI_HW_FENCE" /* Enabled when synx-kernel is available */
+                    "CONFIG_QTI_HW_FENCE"
                 ],
             )
