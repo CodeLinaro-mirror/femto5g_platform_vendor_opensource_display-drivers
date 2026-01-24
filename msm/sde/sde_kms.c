@@ -6394,7 +6394,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (test_bit(SDE_FEATURE_HW_VSYNC_TS, sde_kms->catalog->features))
 		dev->vblank_disable_immediate = true;
 
-	if (!priv->phandle.hw_fence_enable) {
+	if (IS_DISP_OP_HWIO(priv->disp_op) && !priv->phandle.hw_fence_enable) {
 		SDE_INFO("power vote failed, disabling hw-fencing\n");
 		sde_kms->catalog->hw_fence_rev = 0;
 	}
