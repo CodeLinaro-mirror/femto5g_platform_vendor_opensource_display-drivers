@@ -1281,6 +1281,10 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 		dsi_hfi_populate_dfps_caps(panel, &panel_generic_caps->dfps_caps);
 		panel_generic_caps->valid_gen_caps_cnt++;
 	}
+
+	panel_generic_caps->lp11_init = panel->lp11_init;
+	if (panel_generic_caps->lp11_init)
+		panel_generic_caps->valid_gen_caps_cnt++;
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -1474,6 +1478,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		{panel_generic_caps.backlight_ctrl_sec,
 						HFI_PROPERTY_PANEL_SEC_BL_PMIC_CONTROL_TYPE},
 		{panel_generic_caps.is_bl_inverted, HFI_PROPERTY_PANEL_BL_INVERTED_DBV},
+		{panel_generic_caps.lp11_init, HFI_PROPERTY_PANEL_LP11_INIT},
 	};
 
 	/* Populate properties that will take on a default value, even if not present */
