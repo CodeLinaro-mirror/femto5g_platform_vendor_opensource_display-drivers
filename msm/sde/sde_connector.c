@@ -4089,6 +4089,7 @@ static ssize_t twm_enable_store(struct device *device,
 		return -EINVAL;
 	}
 	sde_conn->twm_en = data ? true : false;
+	dsi_display->panel->is_twm_en = sde_conn->twm_en;
 	dsi_display->twm_enabled = sde_conn->twm_en;
 	sde_conn->allow_bl_update = data ? false : true;
 
