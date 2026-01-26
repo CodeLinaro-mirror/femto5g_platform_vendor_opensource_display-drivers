@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2021-2025 Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -7454,7 +7454,10 @@ int dsi_display_get_default_lms(void *dsi_display, u32 *num_lm)
 
 		*num_lm = max(m->priv_info->topology.num_lm, *num_lm);
 	}
-	mutex_unlock(&display->display_lock);
+	if (display->panel->host_config.ext_bridge_mode && count == 0)
+		*num_lm = display->ctrl_count;
+
+	 mutex_unlock(&display->display_lock);
 
 	return rc;
 }

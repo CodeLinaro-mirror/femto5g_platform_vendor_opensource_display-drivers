@@ -1,10 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2020-2021, The Linux Foundation. All rights reserved.
- */
-
-/*
- * Copyright (c) 2022-2024, 2025 Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
@@ -1252,6 +1249,7 @@ static int lt9611_parse_dt(struct device *dev,
 	struct device_node *end_node;
 	int ret = 0;
 	int rc = 0;
+	bool cont_splash_en_property = false;
 
 	end_node = of_graph_get_endpoint_by_regs(dev->of_node, 0, 0);
 	if (!end_node) {
@@ -1336,6 +1334,11 @@ static int lt9611_parse_dt(struct device *dev,
 
 	pdata->cec_hw_support = of_property_read_bool(np, "lt,cec-support");
 	pr_debug("HW cec support %d\n", pdata->cec_hw_support);
+
+	cont_splash_en_property = of_property_read_bool(np, "lt,cont-splash-en");
+	pr_debug("HW cont splash support %d\n", cont_splash_en_property);
+	if (cont_splash_en_property)
+		cont_splash_en = 1;
 
 	/* get display modes from device tree */
 	INIT_LIST_HEAD(&pdata->mode_list);
@@ -2475,12 +2478,15 @@ static void lt9611_bridge_mode_set(struct drm_bridge *bridge,
 		adj_mode->hdisplay, adj_mode->vdisplay,
 		adj_mode->clock);
 
-	mutex_lock(&pdata->lock);
-	lt9611_ctl_en(pdata);
-	lt9611_video_setup(pdata, adj_mode);
-	lt9611_ctl_disable(pdata);
-	mutex_unlock(&pdata->lock);
+	if (!cont_splash_en) {
+		mutex_lock(&pdata->lock);
+		lt9611_ctl_en(pdata);
+		lt9611_video_setup(pdata, adj_mode);
+		lt9611_ctl_disable(pdata);
+		mutex_unlock(&pdata->lock);
+	}
 
+	cont_splash_en = 0;
 	drm_mode_copy(&pdata->curr_mode, adj_mode);
 }
 
