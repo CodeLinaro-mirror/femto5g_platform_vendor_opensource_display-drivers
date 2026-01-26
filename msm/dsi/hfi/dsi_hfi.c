@@ -1363,7 +1363,6 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	u32 payload_size = 0;
 	u32 object_id = 0x0;
 	u32 dfps_payload[5]; /* 1 + (sizeof(panel_generic_caps.dfps_caps)/sizeof(u32)) */
-	int num_caps = panel_generic_caps.valid_gen_caps_cnt;
 	struct dsi_display_hfi *display_hfi;
 
 	if (!display)
@@ -1417,7 +1416,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	}
 
 	/* Populate properties that need to be checked for presence */
-	for (i = MIN_NUM_OF_GEN_CAPS; i < (num_caps-3); i++) {
+	for (i = MIN_NUM_OF_GEN_CAPS; i < ARRAY_SIZE(dsi_hfi_gen_props_map); i++) {
 		if (dsi_hfi_gen_props_map[i].value) {
 			hfi_util_kv_helper_add(display_hfi->kv_props,
 					HFI_PACKKEY(dsi_hfi_gen_props_map[i].hfi_prop, 0,
