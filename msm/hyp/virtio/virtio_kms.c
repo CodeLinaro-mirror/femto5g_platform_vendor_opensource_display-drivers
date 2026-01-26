@@ -1729,8 +1729,40 @@ static int virtio_kms_get_mode_info(struct sde_kms *sde_kms,
 	return 0;
 }
 
-void virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg,
-		unsigned long *avail_pipes, u32 display_idx)
+/* Helper function to validate and set mixer blend stages */
+static void _validate_and_set_mixer_blend_stages(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int scanout_index)
+{
+	if (scanout_index >= MAX_CRTCS) {
+		VIRTIO_KMS_ERR("scanout %d exceeds MAX_CRTCS %d\n", scanout_index, MAX_CRTCS);
+		return;
+	}
+
+	if (output->hw_assign.lm_stage_start >= sde_cfg->max_mixer_blendstages) {
+		VIRTIO_KMS_ERR("scanout %d lm_stage_start %d >= %d",
+			scanout_index, output->hw_assign.lm_stage_start,
+			sde_cfg->max_mixer_blendstages);
+		hyp_cfg->max_hyp_mixer_blendstages[scanout_index] = 0;
+	} else if (output->hw_assign.lm_stage_start + output->hw_assign.lm_stages
+		> sde_cfg->max_mixer_blendstages) {
+		VIRTIO_KMS_WARN("scanout %d LM start %d + stages %d > %d",
+			scanout_index, output->hw_assign.lm_stage_start,
+			output->hw_assign.lm_stages, sde_cfg->max_mixer_blendstages);
+		hyp_cfg->max_hyp_mixer_blendstages[scanout_index] =
+			sde_cfg->max_mixer_blendstages - output->hw_assign.lm_stage_start;
+	} else {
+		hyp_cfg->max_hyp_mixer_blendstages[scanout_index] =
+			output->hw_assign.lm_stages;
+	}
+
+	VIRTIO_KMS_DBG("scanout %d max_hyp_mixer_blendstages %d",
+		scanout_index, hyp_cfg->max_hyp_mixer_blendstages[scanout_index]);
+}
+
+static void _virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg,
+		unsigned long *avail_pipes, u32 disp_idx)
 {
 	int i;
 
@@ -1739,21 +1771,467 @@ void virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg,
 
 	for (i = 0; i < SSPP_MAX; i++) {
 		if (test_bit(i, avail_pipes) && pipe_active_tbl[i] != CTL_INVALID_BIT)
-			hyp_cfg->pipe_active_mask[display_idx] |= BIT(pipe_active_tbl[i]);
+			hyp_cfg->pipe_active_mask[disp_idx] |= BIT(pipe_active_tbl[i]);
+	}
+}
+
+/* Helper function to process SSPP blocks */
+static void _process_sspp_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		unsigned long *avail_pipes,
+		int disp_idx)
+{
+	int j, k;
+	unsigned long features;
+
+	VIRTIO_KMS_DBG("SSPP %d  planes %d\n", sde_cfg->sspp_count, output->plane_cnt);
+
+	for (k = 0; k < output->plane_cnt; k++) {
+		for (j = 0; j < sde_cfg->sspp_count; j++) {
+			if (output->plane_caps[k].sspp_id != sde_cfg->sspp[j].id)
+				continue;
+
+			hyp_cfg->sspp[hyp_cfg->sspp_count] = sde_cfg->sspp[j];
+
+			if (output->plane_caps[k].rect_mask & 0x3) {
+				// Keep original smart dma feature
+				/*
+				 * hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
+				 *		~(BIT(SDE_SSPP_SMART_DMA_V1) |
+				 *		BIT(SDE_SSPP_SMART_DMA_V2) |
+				 *		BIT(SDE_SSPP_SMART_DMA_V2p5));
+				 * hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
+				 *		BIT(SDE_SSPP_SMART_DMA_V2p5);
+				 */
+			} else if (output->plane_caps[k].rect_mask & 0x1) {
+				hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
+						~(BIT(SDE_SSPP_SMART_DMA_V1) |
+						BIT(SDE_SSPP_SMART_DMA_V2) |
+						BIT(SDE_SSPP_SMART_DMA_V2p5));
+				hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
+						BIT(SDE_SSPP_SMART_DMA_REC0_ONLY);
+			} else if (output->plane_caps[k].rect_mask & 0x2) {
+				hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
+						~(BIT(SDE_SSPP_SMART_DMA_V1) |
+						BIT(SDE_SSPP_SMART_DMA_V2) |
+						BIT(SDE_SSPP_SMART_DMA_V2p5));
+				hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
+						BIT(SDE_SSPP_SMART_DMA_REC1_ONLY);
+			} else {
+				VIRTIO_KMS_WARN("plane invalid rect mask %X\n",
+						output->plane_caps[k].rect_mask);
+			}
+
+			hyp_cfg->sspp[hyp_cfg->sspp_count].fixed_ctl_id = output->hw_assign.ctl_id;
+			hyp_cfg->sspp[hyp_cfg->sspp_count].display_idx = disp_idx;
+			set_bit(output->plane_caps[k].sspp_id, avail_pipes);
+			features = hyp_cfg->sspp[hyp_cfg->sspp_count].features;
+
+			VIRTIO_KMS_DBG("  HYP_SSPP%d=SSPP%d->CTL%d rect_mask %X feature %lX\n",
+					hyp_cfg->sspp_count, sde_cfg->sspp[j].id,
+					output->hw_assign.ctl_id,
+					output->plane_caps[k].rect_mask, features);
+			hyp_cfg->sspp_count++;
+			break;
+		}
+	}
+}
+
+/* Helper function to process CTL blocks */
+static void _process_ctl_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	VIRTIO_KMS_DBG("CTL %d\n", sde_cfg->ctl_count);
+
+	for (j = 0; j < sde_cfg->ctl_count; j++) {
+		if (output->hw_assign.ctl_id != sde_cfg->ctl[j].id)
+			continue;
+
+		hyp_cfg->ctl[hyp_cfg->ctl_count] = sde_cfg->ctl[j];
+		if (!output->hw_assign.ctl_owner)
+			hyp_cfg->ctl[hyp_cfg->ctl_count].virtual = true;
+
+		hyp_cfg->ctl[hyp_cfg->ctl_count].fixed_ctl_id = output->hw_assign.ctl_id;
+		hyp_cfg->ctl[hyp_cfg->ctl_count].vq_idx = output->hw_assign.vq_id;
+		hyp_cfg->ctl[hyp_cfg->ctl_count].pipe_active_mask =
+				hyp_cfg->pipe_active_mask[disp_idx];
+		hyp_cfg->ctl[hyp_cfg->ctl_count].display_idx = disp_idx;
+
+		VIRTIO_KMS_ERR("  HYP_CTL%d=CTL%d virtual %s VQ %d pipe mask 0x%x ctl_id %d %d\n",
+				hyp_cfg->ctl_count, output->hw_assign.ctl_id,
+				hyp_cfg->ctl[hyp_cfg->ctl_count].virtual ? "Yes" : "No",
+				output->hw_assign.vq_id,
+				hyp_cfg->ctl[hyp_cfg->ctl_count].pipe_active_mask,
+				hyp_cfg->ctl[hyp_cfg->ctl_count].fixed_ctl_id, disp_idx);
+		hyp_cfg->ctl_count++;
+		break;
+	}
+}
+
+/* Helper function to process Layer Mixer blocks */
+static void _process_lm_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+	struct sde_lm_cfg *lm_cfg;
+	struct sde_lm_sub_blks *new_sblk;
+
+	VIRTIO_KMS_DBG("LM %d  mask %X\n", sde_cfg->mixer_count, output->hw_assign.lm_mask);
+
+	for (j = 0; j < sde_cfg->mixer_count; j++) {
+		if (!(output->hw_assign.lm_mask & (1 << (sde_cfg->mixer[j].id - LM_0))))
+			continue;
+
+		hyp_cfg->mixer[hyp_cfg->mixer_count] = sde_cfg->mixer[j];
+		lm_cfg = &hyp_cfg->mixer[hyp_cfg->mixer_count];
+		new_sblk = kvzalloc(sizeof(*new_sblk), GFP_KERNEL);
+
+		memcpy(new_sblk, lm_cfg->sblk, sizeof(struct sde_lm_sub_blks));
+		lm_cfg->sblk = new_sblk;
+
+		if (!output->hw_assign.lm_owner) {
+			lm_cfg->virtual = true;
+			lm_cfg->features &= ~SDE_MIXER_NOISE_LAYER;
+		}
+
+		lm_cfg->fixed_ctl_id = output->hw_assign.ctl_id;
+		lm_cfg->sblk->zpos_off = output->hw_assign.lm_stage_start;
+		lm_cfg->sblk->maxblendstages = output->hw_assign.lm_stages;
+
+		if (lm_cfg->sblk->zpos_off >= sde_cfg->max_mixer_blendstages) {
+			VIRTIO_KMS_ERR("zpos %d >= %d\n", lm_cfg->sblk->zpos_off,
+					sde_cfg->max_mixer_blendstages);
+			lm_cfg->sblk->maxblendstages = 0;
+		} else if ((lm_cfg->sblk->maxblendstages + lm_cfg->sblk->zpos_off)
+				> sde_cfg->max_mixer_blendstages) {
+			VIRTIO_KMS_WARN("zpos %d + stages %d > %d\n",
+					lm_cfg->sblk->zpos_off, lm_cfg->sblk->maxblendstages,
+					sde_cfg->max_mixer_blendstages);
+			lm_cfg->sblk->maxblendstages = sde_cfg->max_mixer_blendstages -
+					lm_cfg->sblk->zpos_off;
+		}
+
+		if (!(output->hw_assign.dspp_mask & (1 << (sde_cfg->mixer[j].id - LM_0))))
+			lm_cfg->dspp = DSPP_MAX;
+		if (!(output->hw_assign.ds_mask & (1 << (sde_cfg->mixer[j].id - LM_0))))
+			lm_cfg->ds = DS_MAX;
+		if (!(output->hw_assign.pingpong_mask & (1 << (sde_cfg->mixer[j].id - LM_0))))
+			lm_cfg->pingpong = PINGPONG_MAX;
+		if (!output->hw_assign.merge3d_mask)
+			lm_cfg->merge_3d = MERGE_3D_MAX;
+
+		lm_cfg->display_idx = disp_idx;
+
+		VIRTIO_KMS_DBG("  HYP_LM%d=LM%d->CTL%d virtual %s z-order %d+%d\n",
+				hyp_cfg->mixer_count, sde_cfg->mixer[j].id,
+				output->hw_assign.ctl_id,
+				lm_cfg->virtual ? "Yes" : "No", output->hw_assign.lm_stage_start,
+				output->hw_assign.lm_stages);
+		VIRTIO_KMS_DBG("    ctl_id %d scanout %d, mixer %pK, sblk %pK\n",
+				lm_cfg->fixed_ctl_id,
+				disp_idx, lm_cfg, lm_cfg->sblk);
+		hyp_cfg->mixer_count++;
+	}
+}
+
+/* Helper function to process DSPP blocks */
+static void _process_dspp_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	VIRTIO_KMS_DBG("DSPP %d  mask %X\n", sde_cfg->dspp_count, output->hw_assign.dspp_mask);
+
+	for (j = 0; j < sde_cfg->dspp_count; j++) {
+		if (!(output->hw_assign.dspp_mask & (1 << (sde_cfg->dspp[j].id - DSPP_0))))
+			continue;
+
+		hyp_cfg->dspp[hyp_cfg->dspp_count] = sde_cfg->dspp[j];
+		if (!output->hw_assign.dspp_owner)
+			hyp_cfg->dspp[hyp_cfg->dspp_count].virtual = true;
+		hyp_cfg->dspp[hyp_cfg->dspp_count].fixed_ctl_id = output->hw_assign.ctl_id;
+		hyp_cfg->dspp[hyp_cfg->dspp_count].display_idx = disp_idx;
+		VIRTIO_KMS_DBG("  HYP_DSPP%d=DSPP%d->CTL%d  virtual %s\n",
+				hyp_cfg->dspp_count, sde_cfg->dspp[j].id,
+				output->hw_assign.ctl_id,
+				hyp_cfg->dspp[hyp_cfg->dspp_count].virtual ? "Yes" : "No");
+		hyp_cfg->dspp_count++;
+	}
+}
+
+/* Helper function to process DS blocks */
+static void _process_ds_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	for (j = 0; j < sde_cfg->ds_count; j++) {
+		if (!(output->hw_assign.ds_mask & (1 << (sde_cfg->ds[j].id - DS_0))))
+			continue;
+
+		hyp_cfg->ds[hyp_cfg->ds_count] = sde_cfg->ds[j];
+		if (!output->hw_assign.ds_owner)
+			hyp_cfg->ds[hyp_cfg->ds_count].virtual = true;
+		hyp_cfg->ds[hyp_cfg->ds_count].fixed_ctl_id = output->hw_assign.ctl_id;
+		hyp_cfg->ds[hyp_cfg->ds_count].display_idx = disp_idx;
+		VIRTIO_KMS_DBG("  HYP_DS%d=DS%d->CTL%d  virtual %s\n",
+				hyp_cfg->ds_count, sde_cfg->ds[j].id,
+				output->hw_assign.ctl_id,
+				hyp_cfg->ds[hyp_cfg->ds_count].virtual ? "Yes" : "No");
+		hyp_cfg->ds_count++;
+	}
+}
+
+/* Helper function to process Pingpong blocks */
+static void _process_pingpong_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	for (j = 0; j < sde_cfg->pingpong_count; j++) {
+		if (!(output->hw_assign.pingpong_mask &
+			 (1 << (sde_cfg->pingpong[j].id - PINGPONG_0))))
+			continue;
+
+		hyp_cfg->pingpong[hyp_cfg->pingpong_count] = sde_cfg->pingpong[j];
+		if (!output->hw_assign.pingpong_owner)
+			hyp_cfg->pingpong[hyp_cfg->pingpong_count].virtual = true;
+		hyp_cfg->pingpong[hyp_cfg->pingpong_count].fixed_ctl_id = output->hw_assign.ctl_id;
+		hyp_cfg->pingpong[hyp_cfg->pingpong_count].display_idx = disp_idx;
+		VIRTIO_KMS_DBG("  HYP_PINGPONG%d=PINGPONG%d->CTL%d  virtual %s\n",
+				hyp_cfg->pingpong_count, sde_cfg->pingpong[j].id,
+				output->hw_assign.ctl_id,
+				hyp_cfg->pingpong[hyp_cfg->pingpong_count].virtual ? "Yes" : "No");
+		hyp_cfg->pingpong_count++;
+	}
+}
+
+/* Helper function to process DSC blocks */
+static void _process_dsc_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	for (j = 0; j < sde_cfg->dsc_count; j++) {
+		if (!(output->hw_assign.dsc_mask & (1 << (sde_cfg->dsc[j].id - DSC_0))))
+			continue;
+
+		hyp_cfg->dsc[hyp_cfg->dsc_count] = sde_cfg->dsc[j];
+		if (!output->hw_assign.dsc_owner)
+			hyp_cfg->dsc[hyp_cfg->dsc_count].virtual = true;
+		hyp_cfg->dsc[hyp_cfg->dsc_count].fixed_ctl_id = output->hw_assign.ctl_id;
+		hyp_cfg->dsc[hyp_cfg->dsc_count].display_idx = disp_idx;
+		VIRTIO_KMS_DBG("  HYP_DSC%d=DSC%d->CTL%d  virtual %s\n",
+				hyp_cfg->dsc_count, sde_cfg->dsc[j].id,
+				output->hw_assign.ctl_id,
+				hyp_cfg->dsc[hyp_cfg->dsc_count].virtual ? "Yes" : "No");
+		hyp_cfg->dsc_count++;
+	}
+}
+
+/* Helper function to process VDC blocks */
+static void _process_vdc_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	for (j = 0; j < sde_cfg->vdc_count; j++) {
+		if (!(output->hw_assign.vdc_mask & (1 << (sde_cfg->vdc[j].id - VDC_0))))
+			continue;
+
+		hyp_cfg->vdc[hyp_cfg->vdc_count] = sde_cfg->vdc[j];
+		if (!output->hw_assign.vdc_owner)
+			hyp_cfg->vdc[hyp_cfg->vdc_count].virtual = true;
+		hyp_cfg->vdc[hyp_cfg->vdc_count].fixed_ctl_id = output->hw_assign.ctl_id;
+		hyp_cfg->vdc[hyp_cfg->vdc_count].display_idx = disp_idx;
+		VIRTIO_KMS_DBG("  HYP_VDC%d=VDC%d->CTL%d  virtual %s\n",
+				hyp_cfg->vdc_count, sde_cfg->vdc[j].id,
+				output->hw_assign.ctl_id,
+				hyp_cfg->vdc[hyp_cfg->vdc_count].virtual ? "Yes" : "No");
+		hyp_cfg->vdc_count++;
+	}
+}
+
+/* Helper function to process CDM blocks */
+static void _process_cdm_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	for (j = 0; j < sde_cfg->cdm_count; j++) {
+		if (!(output->hw_assign.cdm_mask & (1 << (sde_cfg->cdm[j].id - CDM_0))))
+			continue;
+
+		hyp_cfg->cdm[hyp_cfg->cdm_count] = sde_cfg->cdm[j];
+		if (!output->hw_assign.cdm_owner)
+			hyp_cfg->cdm[hyp_cfg->cdm_count].virtual = true;
+		hyp_cfg->cdm[hyp_cfg->cdm_count].fixed_ctl_id = output->hw_assign.ctl_id;
+		hyp_cfg->cdm[hyp_cfg->cdm_count].display_idx = disp_idx;
+		VIRTIO_KMS_DBG("  HYP_CDM%d=CDM%d->CTL%d  virtual %s\n",
+				hyp_cfg->cdm_count, sde_cfg->cdm[j].id,
+				output->hw_assign.ctl_id,
+				hyp_cfg->cdm[hyp_cfg->cdm_count].virtual ? "Yes" : "No");
+		hyp_cfg->cdm_count++;
+	}
+}
+
+/* Helper function to process DNSC_BLUR blocks */
+static void _process_dnsc_blur_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	for (j = 0; j < sde_cfg->dnsc_blur_count; j++) {
+		if (!(output->hw_assign.dnsc_blur_mask &
+			(1 << (sde_cfg->dnsc_blur[j].id - DNSC_BLUR_0))))
+			continue;
+
+		hyp_cfg->dnsc_blur[hyp_cfg->dnsc_blur_count] = sde_cfg->dnsc_blur[j];
+		if (!output->hw_assign.dnsc_blur_owner)
+			hyp_cfg->dnsc_blur[hyp_cfg->dnsc_blur_count].virtual = true;
+		hyp_cfg->dnsc_blur[hyp_cfg->dnsc_blur_count].fixed_ctl_id =
+				output->hw_assign.ctl_id;
+		hyp_cfg->dnsc_blur[hyp_cfg->dnsc_blur_count].display_idx = disp_idx;
+		VIRTIO_KMS_DBG("  HYP_DNSC_BLUR%d=DNSC_BLUR%d->CTL%d  virtual %s\n",
+				hyp_cfg->dnsc_blur_count, sde_cfg->dnsc_blur[j].id,
+				output->hw_assign.ctl_id,
+				hyp_cfg->dnsc_blur[hyp_cfg->dnsc_blur_count].virtual ?
+				 "Yes" : "No");
+		hyp_cfg->dnsc_blur_count++;
+	}
+}
+
+/* Helper function to process INTF blocks */
+static void _process_intf_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	for (j = 0; j < sde_cfg->intf_count; j++) {
+		if (!(output->hw_assign.intf_mask & (1 << (sde_cfg->intf[j].id - INTF_0))))
+			continue;
+
+		hyp_cfg->intf[hyp_cfg->intf_count] = sde_cfg->intf[j];
+		if (!output->hw_assign.intf_owner)
+			hyp_cfg->intf[hyp_cfg->intf_count].virtual = true;
+		hyp_cfg->intf[hyp_cfg->intf_count].fixed_ctl_id = output->hw_assign.ctl_id;
+		hyp_cfg->intf[hyp_cfg->intf_count].dp_ctrl_id = sde_cfg->intf[j].dp_ctrl_id;
+		hyp_cfg->intf[hyp_cfg->intf_count].dp_stream_id = sde_cfg->intf[j].dp_stream_id;
+		output->hw_assign.dp_ctrl_id = sde_cfg->intf[j].dp_ctrl_id;
+		output->hw_assign.dp_stream_id = sde_cfg->intf[j].dp_stream_id;
+		hyp_cfg->intf[hyp_cfg->intf_count].display_idx = disp_idx;
+		VIRTIO_KMS_DBG("  HYP_INTF%d=INTF%d->CTL%d  virtual %s\n",
+				hyp_cfg->intf_count, sde_cfg->intf[j].id,
+				output->hw_assign.ctl_id,
+				hyp_cfg->intf[hyp_cfg->intf_count].virtual ? "Yes" : "No");
+		hyp_cfg->intf_count++;
+	}
+}
+
+/* Helper function to process WB blocks */
+static void _process_wb_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	for (j = 0; j < sde_cfg->wb_count; j++) {
+		if (!(output->hw_assign.wb_mask & (1 << (sde_cfg->wb[j].id - WB_0))))
+			continue;
+
+		hyp_cfg->wb[hyp_cfg->wb_count] = sde_cfg->wb[j];
+		if (!output->hw_assign.wb_owner)
+			hyp_cfg->wb[hyp_cfg->wb_count].virtual = true;
+		hyp_cfg->wb[hyp_cfg->wb_count].fixed_ctl_id = output->hw_assign.ctl_id;
+		hyp_cfg->wb[hyp_cfg->wb_count].display_idx = disp_idx;
+		VIRTIO_KMS_DBG("  HYP_WB%d=WB%d->CTL%d  virtual %s\n",
+				hyp_cfg->wb_count, sde_cfg->wb[j].id,
+				output->hw_assign.ctl_id,
+				hyp_cfg->wb[hyp_cfg->wb_count].virtual ? "Yes" : "No");
+		hyp_cfg->wb_count++;
+	}
+}
+
+/* Helper function to process MERGE_3D blocks */
+static void _process_merge_3d_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output,
+		int disp_idx)
+{
+	int j;
+
+	/* Calculate merge3d_mask based on pingpong_mask */
+	for (j = 0; j < sde_cfg->pingpong_count / 2; j++) {
+		if (output->hw_assign.pingpong_mask & (3 << (j * 2)))
+			output->hw_assign.merge3d_mask |= 1 << j;
+	}
+
+	for (j = 0; j < sde_cfg->merge_3d_count; j++) {
+		if (!(output->hw_assign.merge3d_mask &
+				(1 << (sde_cfg->merge_3d[j].id - MERGE_3D_0))))
+			continue;
+
+		hyp_cfg->merge_3d[hyp_cfg->merge_3d_count] = sde_cfg->merge_3d[j];
+		if (!output->hw_assign.merge3d_owner)
+			hyp_cfg->merge_3d[hyp_cfg->merge_3d_count].virtual = true;
+		hyp_cfg->merge_3d[hyp_cfg->merge_3d_count].fixed_ctl_id = output->hw_assign.ctl_id;
+		hyp_cfg->merge_3d[hyp_cfg->merge_3d_count].display_idx = disp_idx;
+		VIRTIO_KMS_DBG("  HYP_MERGE_3D%d=MERGE_3D%d->CTL%d  virtual %s\n",
+				hyp_cfg->merge_3d_count, sde_cfg->merge_3d[j].id,
+				output->hw_assign.ctl_id,
+				hyp_cfg->merge_3d[hyp_cfg->merge_3d_count].virtual ? "Yes" : "No");
+		hyp_cfg->merge_3d_count++;
+	}
+}
+
+/* Helper function to process RC blocks */
+static void _process_rc_blocks(struct sde_mdss_cfg *hyp_cfg,
+		struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output)
+{
+	int j;
+
+	for (j = 0; j < sde_cfg->rc_count; j++) {
+		if (output->hw_assign.rc_mask & (1 << (sde_cfg->dspp[j].id - DSPP_0))) {
+			hyp_cfg->rc_count++;
+			output->rc_enabled = true;
+		}
 	}
 }
 
 struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 {
-	int i, j, k;
+	int i;
 	int scanout_index;
 	struct msm_hyp_kms *hyp_kms = sde_kms->hyp_kms;
 	struct sde_mdss_cfg *sde_cfg = sde_kms->catalog;
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
 	struct sde_mdss_cfg *hyp_cfg;
 	struct virtio_kms_output *output;
-	unsigned long features;
-	// DECLARE_BITMAP(avail_pipes, SSPP_MAX);
 	static unsigned long avail_pipes[MAX_DISPLAYNODES][32];
 
 	VIRTIO_KMS_DBG("Enter virtio_kms_hw_catalog_init\n");
@@ -1762,24 +2240,17 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 		return ERR_PTR(-ENOMEM);
 
 	memcpy(hyp_cfg, sde_cfg, sizeof(struct sde_mdss_cfg));
-
 	memset(avail_pipes, 0, sizeof(avail_pipes));
 
-	/* REGDMA (LUTDMA) remain not changed */
-
-	/* Keep MDSS, MDP, VBIF, QDSS, UIDLE to be vritual by default */
+	/* Keep MDSS, MDP, VBIF, QDSS, UIDLE to be virtual by default */
 	for (i = 0; i < hyp_cfg->mdss_count; i++)
 		hyp_cfg->mdss[i].virtual = true;
-
 	for (i = 0; i < hyp_cfg->mdp_count; i++)
 		hyp_cfg->mdp[i].virtual = true;
-
 	for (i = 0; i < hyp_cfg->vbif_count; i++)
 		hyp_cfg->vbif[i].virtual = true;
-
 	for (i = 0; i < hyp_cfg->qdss_count; i++)
 		hyp_cfg->qdss[i].virtual = true;
-
 	hyp_cfg->uidle_cfg.virtual = true;
 
 	/* Clear all other HW blocks */
@@ -1808,387 +2279,493 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 	hyp_cfg->aiqe_count = 0;
 	hyp_cfg->ai_scaler_count = 0;
 	hyp_cfg->abc_count = 0;
-	/* scanout index on each core */
+
 	scanout_index = 0;
 
 	/* Re-link all HW blocks assigned to GVM */
 	for (i = 0; i < kms->num_scanouts; i++) {
 		output = &kms->outputs[i];
-		VIRTIO_KMS_DBG("scanout %d dpu %d ctl %d\n", output->index, output->hw_assign.dpu_id,
-				output->hw_assign.ctl_id);
+		VIRTIO_KMS_DBG("scanout %d dpu %d ctl %d\n", output->index,
+				output->hw_assign.dpu_id, output->hw_assign.ctl_id);
 
-		/* Check DPU id first */
 		if (output->hw_assign.dpu_id != DPUID(sde_kms))
 			continue;
 
-		if (scanout_index < MAX_CRTCS) {
-			hyp_cfg->max_hyp_mixer_blendstages[scanout_index] =
-				output->hw_assign.lm_stages;
-			VIRTIO_KMS_DBG("scanout_index %d max_hyp_mixer_blendstages %d",
-				scanout_index, hyp_cfg->max_hyp_mixer_blendstages[scanout_index]);
-		} else {
-			VIRTIO_KMS_ERR("scanout_index %d exceeds MAX_CRTCS %d\n", scanout_index, MAX_CRTCS);
-		}
+		/* Validate and set mixer blend stages */
+		_validate_and_set_mixer_blend_stages(hyp_cfg, sde_cfg, output, scanout_index);
+
 		scanout_index++;
 		hyp_cfg->display_count++;
 
-		/* SSPP */
-		VIRTIO_KMS_DBG("SSPP %d  planes %d\n", sde_cfg->sspp_count, output->plane_cnt);
-		for (k = 0; k < output->plane_cnt; k++) {
-			for (j = 0; j < sde_cfg->sspp_count; j++) {
-				// FIXME: how to distinguish DMA/VIG pipe?
-				if (output->plane_caps[k].sspp_id == sde_cfg->sspp[j].id) {
-					hyp_cfg->sspp[hyp_cfg->sspp_count] = sde_cfg->sspp[j];
-					if (output->plane_caps[k].rect_mask & 0x3) {
-						// Keep original smart dma feature
-						/*
-						 * hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
-						 *		~(BIT(SDE_SSPP_SMART_DMA_V1) |
-						 *		BIT(SDE_SSPP_SMART_DMA_V2) |
-						 *		BIT(SDE_SSPP_SMART_DMA_V2p5));
-						 * hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
-						 *		BIT(SDE_SSPP_SMART_DMA_V2p5);
-						 */
-					} else if (output->plane_caps[k].rect_mask & 0x1) {
-						hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
-								~(BIT(SDE_SSPP_SMART_DMA_V1) |
-								BIT(SDE_SSPP_SMART_DMA_V2) |
-								BIT(SDE_SSPP_SMART_DMA_V2p5));
-						hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
-								BIT(SDE_SSPP_SMART_DMA_REC0_ONLY);
-					} else if (output->plane_caps[k].rect_mask & 0x2) {
-						hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
-								~(BIT(SDE_SSPP_SMART_DMA_V1) |
-								BIT(SDE_SSPP_SMART_DMA_V2) |
-								BIT(SDE_SSPP_SMART_DMA_V2p5));
-						hyp_cfg->sspp[hyp_cfg->sspp_count].features |=
-								BIT(SDE_SSPP_SMART_DMA_REC1_ONLY);
-					} else {
-						VIRTIO_KMS_WARN("plane invalid rect mask %X\n",
-								output->plane_caps[k].rect_mask);
-					}
-					hyp_cfg->sspp[hyp_cfg->sspp_count].fixed_ctl_id =
-							output->hw_assign.ctl_id;
-					hyp_cfg->sspp[hyp_cfg->sspp_count].display_idx = i;
-					set_bit(output->plane_caps[k].sspp_id, avail_pipes[i]);
-					features = hyp_cfg->sspp[hyp_cfg->sspp_count].features;
-					VIRTIO_KMS_DBG(
-							"  HYP_SSPP%d=SSPP%d->CTL%d rect_mask %X feature %lX\n",
-							hyp_cfg->sspp_count, sde_cfg->sspp[j].id,
-							output->hw_assign.ctl_id,
-							output->plane_caps[k].rect_mask,
-							features);
+		/* Process hardware blocks using helper functions */
+		_process_sspp_blocks(hyp_cfg, sde_cfg, output, avail_pipes[i], i);
+		_virtio_kms_update_pipe_active_mask(hyp_cfg, avail_pipes[i], i);
+		VIRTIO_KMS_DBG("HYP_SSPP %d, active mask 0x%x, i %d\n",
+				hyp_cfg->sspp_count, hyp_cfg->pipe_active_mask[i], i);
 
-					hyp_cfg->sspp_count++;
+		_process_ctl_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_CTL %d\n", hyp_cfg->ctl_count);
+
+		_process_lm_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_LM %d\n", hyp_cfg->mixer_count);
+
+		_process_dspp_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_DSPP %d\n", hyp_cfg->dspp_count);
+
+		_process_rc_blocks(hyp_cfg, sde_cfg, output);
+		VIRTIO_KMS_DBG("HYP_RC %d\n", hyp_cfg->rc_count);
+
+		_process_ds_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_DS %d\n", hyp_cfg->ds_count);
+
+		_process_pingpong_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_PINGPONG %d\n", hyp_cfg->pingpong_count);
+
+		_process_dsc_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_DSC %d\n", hyp_cfg->dsc_count);
+
+		_process_vdc_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_VDC %d\n", hyp_cfg->vdc_count);
+
+		_process_cdm_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_CDM %d\n", hyp_cfg->cdm_count);
+
+		_process_dnsc_blur_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_DNSC_BLUR %d\n", hyp_cfg->dnsc_blur_count);
+
+		_process_intf_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_INTF %d\n", hyp_cfg->intf_count);
+
+		_process_wb_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_WB %d\n", hyp_cfg->wb_count);
+
+		_process_merge_3d_blocks(hyp_cfg, sde_cfg, output, i);
+		VIRTIO_KMS_DBG("HYP_MERGE_3D %d\n", hyp_cfg->merge_3d_count);
+	}
+
+	sde_kms->perf.max_core_clk_rate = kms->device_info.max_mdp_clk * 1000000LLU;
+	VIRTIO_KMS_DBG("Exit virtio_kms_hw_catalog_init\n");
+
+	return hyp_cfg;
+}
+
+/* Helper function to find encoder ID for a scanout */
+static int _find_encoder_id_for_scanout(struct sde_kms *sde_kms, int scanout_idx, u32 intf_mask)
+{
+	struct drm_connector *conn;
+	struct drm_connector_list_iter conn_iter;
+	struct sde_connector *sde_conn;
+	struct sde_encoder_virt *sde_enc;
+	int enc_id = -1;
+	int j;
+
+	drm_connector_list_iter_begin(sde_kms->dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		sde_conn = to_sde_connector(conn);
+		if (((struct msm_hyp_display *)sde_conn->display)->id == scanout_idx) {
+			if (sde_conn->encoder) {
+				sde_enc = to_sde_encoder_virt(sde_conn->encoder);
+				for (j = 0; j < sde_enc->num_phys_encs; j++) {
+					if (intf_mask & (1 <<
+						(sde_enc->phys_encs[j]->intf_idx - INTF_0))) {
+						enc_id = sde_enc->base.base.id;
+						break;
+					}
+				}
+			}
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	return enc_id;
+}
+
+/* Helper function to update CTL blocks reservation */
+static void _update_ctl_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
+
+	/* CTL */
+	for (j = 0; j < sde_cfg->ctl_count; j++) {
+		if (disp_idx == sde_cfg->ctl[j].display_idx) {
+			sde_cfg->ctl[j].fixed_enc_id = enc_id;
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_CTL);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == ctl_id &&
+					iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update CTL%d %X id %d enc %d vq %pK %d\n",
+							j, ctl_id,
+							iter.hw->blk_off, enc_id,
+							iter.hw->vq_ctx,
+							disp_idx);
 					break;
 				}
 			}
 		}
+	}
+}
 
-		virtio_kms_update_pipe_active_mask(hyp_cfg, avail_pipes[i], i);
-		VIRTIO_KMS_DBG("HYP_SSPP %d, active mask 0x%x, i  %d\n",
-				hyp_cfg->sspp_count, hyp_cfg->pipe_active_mask[i], i);
+/* Helper function to update LayerMixer blocks reservation */
+static void _update_lm_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
 
-		/* CTL */
-		VIRTIO_KMS_DBG("CTL %d\n", sde_cfg->ctl_count);
-		for (j = 0; j < sde_cfg->ctl_count; j++) {
-			if (output->hw_assign.ctl_id == sde_cfg->ctl[j].id) {
-				hyp_cfg->ctl[hyp_cfg->ctl_count] = sde_cfg->ctl[j];
-				if (!output->hw_assign.ctl_owner)
-					hyp_cfg->ctl[hyp_cfg->ctl_count].virtual = true;
-				hyp_cfg->ctl[hyp_cfg->ctl_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->ctl[hyp_cfg->ctl_count].vq_idx = output->hw_assign.vq_id;
-				hyp_cfg->ctl[hyp_cfg->ctl_count].pipe_active_mask =
-						hyp_cfg->pipe_active_mask[i];
-				hyp_cfg->ctl[hyp_cfg->ctl_count].display_idx = i;
+	/* LayerMixer */
+	for (j = 0; j < sde_cfg->mixer_count; j++) {
+		// if (lm_mask & (1 << (sde_cfg->mixer[j].id - LM_0))) {
+		if (disp_idx == sde_cfg->mixer[j].display_idx) {
+			sde_cfg->mixer[j].fixed_enc_id = enc_id;
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_LM);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->mixer[j].id &&
+					iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update LM%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->mixer[j].id, iter.hw->blk_off,
+							enc_id, iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
+}
 
-				VIRTIO_KMS_ERR(
-						"  HYP_CTL%d=CTL%d virtual %s VQ %d pipe mask 0x%x,"
-						" fixed_ctl_id %d for scanout %d\n",
-						hyp_cfg->ctl_count, output->hw_assign.ctl_id,
-						hyp_cfg->ctl[hyp_cfg->ctl_count].virtual ? "Yes" : "No",
-						output->hw_assign.vq_id,
-						hyp_cfg->ctl[hyp_cfg->ctl_count].pipe_active_mask,
-						hyp_cfg->ctl[hyp_cfg->ctl_count].fixed_ctl_id, i);
-				hyp_cfg->ctl_count++;
+/* Helper function to update SSPP blocks reservation */
+static void _update_sspp_reservation(struct sde_kms *sde_kms,
+		struct msm_drm_private *priv, struct virtio_kms_output *output,
+		int disp_idx, int ctl_id, int dpu_id)
+{
+	struct sde_plane *plane;
+	struct sde_rm_hw_iter iter;
+	int j, k;
+
+	/* SSPP */
+	for (j = 0; j < priv->num_planes; j++) {
+		for (k = 0; k < output->plane_cnt; k++) {
+			plane = to_sde_plane(priv->planes[j]);
+			if (plane->pipe == output->plane_caps[k].sspp_id) {
+				plane->pipe_hw->hw.vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+				VIRTIO_KMS_DBG("Update SSPP%d/%d %X id %d vq %pK\n",
+						j, k, output->plane_caps[k].sspp_id,
+						iter.hw->blk_off,
+						plane->pipe_hw->hw.vq_ctx);
 				break;
 			}
 		}
-		VIRTIO_KMS_DBG("HYP_CTL %d\n", hyp_cfg->ctl_count);
-
-		/* LayerMixer */
-		VIRTIO_KMS_DBG("LM %d  mask %X\n", sde_cfg->mixer_count, output->hw_assign.lm_mask);
-		for (j = 0; j < sde_cfg->mixer_count; j++) {
-			if (output->hw_assign.lm_mask & (1 << (sde_cfg->mixer[j].id - LM_0))) {
-				hyp_cfg->mixer[hyp_cfg->mixer_count] = sde_cfg->mixer[j];
-				struct sde_lm_sub_blks *new_sblk = kvzalloc(sizeof(*new_sblk),
-									GFP_KERNEL);
-
-				memcpy(new_sblk, hyp_cfg->mixer[hyp_cfg->mixer_count].sblk,
-					sizeof(struct sde_lm_sub_blks));
-				hyp_cfg->mixer[hyp_cfg->mixer_count].sblk = new_sblk;
-				if (!output->hw_assign.lm_owner) {
-					hyp_cfg->mixer[hyp_cfg->mixer_count].virtual = true;
-					/* Shared display shall disable noise layer */
-					hyp_cfg->mixer[hyp_cfg->mixer_count].features &= ~SDE_MIXER_NOISE_LAYER;
-				}
-				hyp_cfg->mixer[hyp_cfg->mixer_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->mixer[hyp_cfg->mixer_count].sblk->zpos_off =
-						output->hw_assign.lm_stage_start;
-				hyp_cfg->mixer[hyp_cfg->mixer_count].sblk->maxblendstages =
-						output->hw_assign.lm_stages;
-				if (!(output->hw_assign.dspp_mask & (1 << (sde_cfg->mixer[j].id - LM_0))))
-					hyp_cfg->mixer[hyp_cfg->mixer_count].dspp = DSPP_MAX;
-				if (!(output->hw_assign.ds_mask & (1 << (sde_cfg->mixer[j].id - LM_0))))
-					hyp_cfg->mixer[hyp_cfg->mixer_count].ds = DS_MAX;
-				if (!(output->hw_assign.pingpong_mask & (1 << (sde_cfg->mixer[j].id - LM_0))))
-					hyp_cfg->mixer[hyp_cfg->mixer_count].pingpong = PINGPONG_MAX;
-				if (!output->hw_assign.merge3d_mask)
-					hyp_cfg->mixer[hyp_cfg->mixer_count].merge_3d = MERGE_3D_MAX;
-				hyp_cfg->mixer[hyp_cfg->mixer_count].display_idx = i;
-				VIRTIO_KMS_DBG("  HYP_LM%d=LM%d->CTL%d  virtual %s  z-order %d+%d,"
-						" fixed_ctl_id %d for scanout %d, mixer %pK, "
-						"sblk %pK\n", hyp_cfg->mixer_count,
-						sde_cfg->mixer[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->mixer[hyp_cfg->mixer_count].virtual ? "Yes" : "No",
-						output->hw_assign.lm_stage_start,
-						output->hw_assign.lm_stages,
-						hyp_cfg->mixer[hyp_cfg->mixer_count].fixed_ctl_id,
-						i, &hyp_cfg->mixer[hyp_cfg->mixer_count],
-						hyp_cfg->mixer[hyp_cfg->mixer_count].sblk);
-				hyp_cfg->mixer_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_LM %d\n", hyp_cfg->mixer_count);
-
-		/* DSPP */
-		VIRTIO_KMS_DBG("DSPP %d  mask %X\n", sde_cfg->dspp_count, output->hw_assign.dspp_mask);
-		for (j = 0; j < sde_cfg->dspp_count; j++) {
-			if (output->hw_assign.dspp_mask & (1 << (sde_cfg->dspp[j].id - DSPP_0))) {
-				hyp_cfg->dspp[hyp_cfg->dspp_count] = sde_cfg->dspp[j];
-				if (!output->hw_assign.dspp_owner)
-					hyp_cfg->dspp[hyp_cfg->dspp_count].virtual = true;
-				hyp_cfg->dspp[hyp_cfg->dspp_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->dspp[hyp_cfg->dspp_count].display_idx = i;
-				VIRTIO_KMS_DBG("  HYP_DSPP%d=DSPP%d->CTL%d  virtual %s\n", hyp_cfg->sspp_count,
-						sde_cfg->dspp[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->dspp[hyp_cfg->dspp_count].virtual ? "Yes" : "No");
-				hyp_cfg->dspp_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_DSPP %d\n", hyp_cfg->dspp_count);
-
-		/* RC */
-		VIRTIO_KMS_DBG("RC %d  mask %X\n", sde_cfg->rc_count, output->hw_assign.rc_mask);
-		for (j = 0; j < sde_cfg->rc_count; j++) {
-			/* RC bind to DSPP_0 ~ DSPP_4 */
-			if (output->hw_assign.rc_mask & (1 << (sde_cfg->dspp[j].id - DSPP_0))) {
-				hyp_cfg->rc_count++;
-				output->rc_enabled = true;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_RC %d rc_enabled %d\n", hyp_cfg->rc_count, output->rc_enabled);
-
-		/* DS */
-		VIRTIO_KMS_DBG("DS %d  mask %X\n", sde_cfg->ds_count, output->hw_assign.ds_mask);
-		for (j = 0; j < sde_cfg->ds_count; j++) {
-			if (output->hw_assign.ds_mask & (1 << (sde_cfg->ds[j].id - DS_0))) {
-				hyp_cfg->ds[hyp_cfg->ds_count] = sde_cfg->ds[j];
-				if (!output->hw_assign.ds_owner)
-					hyp_cfg->ds[hyp_cfg->ds_count].virtual = true;
-				hyp_cfg->ds[hyp_cfg->ds_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->ds[hyp_cfg->ds_count].display_idx = i;
-				VIRTIO_KMS_DBG("  HYP_DS%d=DS%d->CTL%d  virtual %s\n", hyp_cfg->ds_count,
-						sde_cfg->ds[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->ds[hyp_cfg->ds_count].virtual ? "Yes" : "No");
-				hyp_cfg->ds_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_DS %d\n", hyp_cfg->ds_count);
-
-		/* Pingpong */
-		VIRTIO_KMS_DBG("Pingpong %d  mask %X\n", sde_cfg->pingpong_count,
-				output->hw_assign.pingpong_mask);
-		for (j = 0; j < sde_cfg->pingpong_count; j++) {
-			if (output->hw_assign.pingpong_mask &
-					(1 << (sde_cfg->pingpong[j].id - PINGPONG_0))) {
-				hyp_cfg->pingpong[hyp_cfg->pingpong_count] = sde_cfg->pingpong[j];
-				if (!output->hw_assign.pingpong_owner)
-					hyp_cfg->pingpong[hyp_cfg->pingpong_count].virtual = true;
-				hyp_cfg->pingpong[hyp_cfg->pingpong_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->pingpong[hyp_cfg->pingpong_count].display_idx = i;
-				VIRTIO_KMS_DBG("  HYP_PP%d=PP%d->CTL%d  virtual %s\n", hyp_cfg->pingpong_count,
-						sde_cfg->pingpong[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->pingpong[hyp_cfg->pingpong_count].virtual ? "Yes" : "No");
-				hyp_cfg->pingpong_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_PP %d\n", hyp_cfg->pingpong_count);
-
-		/* DSC */
-		VIRTIO_KMS_DBG("DSC %d  mask %X\n", sde_cfg->dsc_count, output->hw_assign.dsc_mask);
-		for (j = 0; j < sde_cfg->dsc_count; j++) {
-			if (output->hw_assign.dsc_mask & (1 << (sde_cfg->dsc[j].id - DSC_0))) {
-				hyp_cfg->dsc[hyp_cfg->dsc_count] = sde_cfg->dsc[j];
-				if (!output->hw_assign.dsc_owner)
-					hyp_cfg->dsc[hyp_cfg->dsc_count].virtual = true;
-				hyp_cfg->dsc[hyp_cfg->dsc_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->dsc[hyp_cfg->dsc_count].display_idx = i;
-				VIRTIO_KMS_DBG("  HYP_DSC%d=DSC%d->CTL%d  virtual %s\n", hyp_cfg->dsc_count,
-						sde_cfg->dsc[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->dsc[hyp_cfg->dsc_count].virtual ? "Yes" : "No");
-				hyp_cfg->dsc_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_DSC %d\n", hyp_cfg->dsc_count);
-
-		/* VDC */
-		VIRTIO_KMS_DBG("VDC %d  mask %X\n", sde_cfg->vdc_count, output->hw_assign.vdc_mask);
-		for (j = 0; j < sde_cfg->vdc_count; j++) {
-			if (output->hw_assign.vdc_mask & (1 << (sde_cfg->vdc[j].id - VDC_0))) {
-				hyp_cfg->vdc[hyp_cfg->vdc_count] = sde_cfg->vdc[j];
-				if (!output->hw_assign.vdc_owner)
-					hyp_cfg->vdc[hyp_cfg->vdc_count].virtual = true;
-				hyp_cfg->vdc[hyp_cfg->vdc_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->vdc[hyp_cfg->vdc_count].display_idx = i;
-				VIRTIO_KMS_DBG("  HYP_VDC%d=VDC%d->CTL%d  virtual %s\n", hyp_cfg->vdc_count,
-						sde_cfg->vdc[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->vdc[hyp_cfg->vdc_count].virtual ? "Yes" : "No");
-				hyp_cfg->vdc_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_VDC %d\n", hyp_cfg->vdc_count);
-
-		/* CDM */
-		VIRTIO_KMS_DBG("CDM %d  mask %X\n", sde_cfg->cdm_count, output->hw_assign.cdm_mask);
-		for (j = 0; j < sde_cfg->cdm_count; j++) {
-			if (output->hw_assign.cdm_mask & (1 << (sde_cfg->cdm[j].id - CDM_0))) {
-				hyp_cfg->cdm[hyp_cfg->cdm_count] = sde_cfg->cdm[j];
-				if (!output->hw_assign.cdm_owner)
-					hyp_cfg->cdm[hyp_cfg->cdm_count].virtual = true;
-				hyp_cfg->cdm[hyp_cfg->cdm_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->cdm[hyp_cfg->cdm_count].display_idx = i;
-				VIRTIO_KMS_DBG("HYP_CDM%d=CDM%d->CTL%d  virtual %s\n", hyp_cfg->cdm_count,
-						sde_cfg->cdm[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->cdm[hyp_cfg->cdm_count].virtual ? "Yes" : "No");
-				hyp_cfg->cdm_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_CDM %d\n", hyp_cfg->cdm_count);
-
-		/* DNSC_BLUR */
-		VIRTIO_KMS_DBG("DNSC BLUR %d  mask %X\n", sde_cfg->dnsc_blur_count,
-				output->hw_assign.dnsc_blur_mask);
-		for (j = 0; j < sde_cfg->dnsc_blur_count; j++) {
-			if (output->hw_assign.dnsc_blur_mask & (1 << (sde_cfg->dnsc_blur[j].id - DNSC_BLUR_0))) {
-				hyp_cfg->dnsc_blur[hyp_cfg->dnsc_blur_count] = sde_cfg->dnsc_blur[j];
-				if (!output->hw_assign.dnsc_blur_owner)
-					hyp_cfg->dnsc_blur[hyp_cfg->dnsc_blur_count].virtual = true;
-				hyp_cfg->dnsc_blur[hyp_cfg->dnsc_blur_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->dnsc_blur[hyp_cfg->dnsc_blur_count].display_idx = i;
-				VIRTIO_KMS_DBG("  HYP_DNSC_BLURM%d=DNSC_BLUR%d->CTL%d  virtual %s\n", hyp_cfg->dnsc_blur_count,
-						sde_cfg->dnsc_blur[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->dnsc_blur[hyp_cfg->dnsc_blur_count].virtual ? "Yes" : "No");
-				hyp_cfg->dnsc_blur_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_DNSC_BLUR %d\n", hyp_cfg->dnsc_blur_count);
-
-		/* INTF */
-		VIRTIO_KMS_DBG("INTF %d  mask %X\n", sde_cfg->intf_count, output->hw_assign.intf_mask);
-		for (j = 0; j < sde_cfg->intf_count; j++) {
-			if (output->hw_assign.intf_mask & (1 << (sde_cfg->intf[j].id - INTF_0))) {
-				hyp_cfg->intf[hyp_cfg->intf_count] = sde_cfg->intf[j];
-				if (!output->hw_assign.intf_owner)
-					hyp_cfg->intf[hyp_cfg->intf_count].virtual = true;
-				hyp_cfg->intf[hyp_cfg->intf_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->intf[hyp_cfg->intf_count].dp_ctrl_id =
-					sde_cfg->intf[j].dp_ctrl_id;
-				hyp_cfg->intf[hyp_cfg->intf_count].dp_stream_id =
-					sde_cfg->intf[j].dp_stream_id;
-				output->hw_assign.dp_ctrl_id = sde_cfg->intf[j].dp_ctrl_id;
-				output->hw_assign.dp_stream_id = sde_cfg->intf[j].dp_stream_id;
-				hyp_cfg->intf[hyp_cfg->intf_count].display_idx = i;
-
-				VIRTIO_KMS_DBG("  HYP_INTF%d=INTF%d->CTL%d  virtual %s\n", hyp_cfg->cdm_count,
-						sde_cfg->intf[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->cdm[hyp_cfg->cdm_count].virtual ? "Yes" : "No");
-				VIRTIO_KMS_DBG("dpu %d, intf %d, ctrl id %u, stream id %u\n",
-						output->hw_assign.dpu_id,
-						j,
-						output->hw_assign.dp_ctrl_id,
-						output->hw_assign.dp_stream_id);
-
-				hyp_cfg->intf_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_INTF %d\n", hyp_cfg->intf_count);
-
-		/* WB */
-		VIRTIO_KMS_DBG("WB %d  mask %X\n", sde_cfg->wb_count, output->hw_assign.wb_mask);
-		for (j = 0; j < sde_cfg->wb_count; j++) {
-			if (output->hw_assign.wb_mask & (1 << (sde_cfg->wb[j].id - WB_0))) {
-				hyp_cfg->wb[hyp_cfg->wb_count] = sde_cfg->wb[j];
-				if (!output->hw_assign.wb_owner)
-					hyp_cfg->wb[hyp_cfg->wb_count].virtual = true;
-				hyp_cfg->wb[hyp_cfg->wb_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->wb[hyp_cfg->wb_count].display_idx = i;
-				VIRTIO_KMS_DBG("  HYP_WB%d=WB%d->CTL%d  virtual %s\n", hyp_cfg->wb_count,
-						sde_cfg->wb[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->wb[hyp_cfg->wb_count].virtual ? "Yes" : "No");
-				hyp_cfg->wb_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_WB %d\n", hyp_cfg->wb_count);
-
-		/* MERGE 3D */
-		/* Porpagate PP to Merge3D */
-		for (j = 0; j < sde_cfg->pingpong_count / 2; j++)
-			if (output->hw_assign.pingpong_mask & (3 << (j * 2)))
-				output->hw_assign.merge3d_mask |= 1 << j;
-		VIRTIO_KMS_DBG("Merge3D %d  mask %X\n", sde_cfg->merge_3d_count,
-				output->hw_assign.merge3d_mask);
-		for (j = 0; j < sde_cfg->merge_3d_count; j++) {
-			if (output->hw_assign.merge3d_mask & (1 << (sde_cfg->merge_3d[j].id - MERGE_3D_0))) {
-				hyp_cfg->merge_3d[hyp_cfg->merge_3d_count] = sde_cfg->merge_3d[j];
-				if (!output->hw_assign.merge3d_owner)
-					hyp_cfg->merge_3d[hyp_cfg->merge_3d_count].virtual = true;
-				hyp_cfg->merge_3d[hyp_cfg->merge_3d_count].fixed_ctl_id =
-						output->hw_assign.ctl_id;
-				hyp_cfg->merge_3d[hyp_cfg->merge_3d_count].display_idx = i;
-				VIRTIO_KMS_DBG("  HYP_3dMerge%d=3dMerge%d->CTL%d  virtual %s\n", hyp_cfg->merge_3d_count,
-						sde_cfg->merge_3d[j].id, output->hw_assign.ctl_id,
-						hyp_cfg->merge_3d[hyp_cfg->merge_3d_count].virtual ? "Yes" : "No");
-				hyp_cfg->merge_3d_count++;
-			}
-		}
-		VIRTIO_KMS_DBG("HYP_3dMerge %d\n", hyp_cfg->merge_3d_count);
-
-		/* CWB */
-		VIRTIO_KMS_DBG("DCWB %d\n", sde_cfg->dcwb_count);
-		for (j = 0; j < sde_cfg->dcwb_count; j++) {
-			// TODO
-		}
-
-		/* TODO: other HW blocks */
 	}
+}
 
-	sde_kms->perf.max_core_clk_rate = kms->device_info.max_mdp_clk * 1000000LLU;
+/* Helper function to update DSPP blocks reservation */
+static void _update_dspp_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output, int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
 
-	VIRTIO_KMS_DBG("Exit virtio_kms_hw_catalog_init\n");
+	/* DSPP */
+	for (j = 0; j < sde_cfg->dspp_count; j++) {
+		if (disp_idx == sde_cfg->dspp[j].display_idx &&
+				(output->hw_assign.dspp_mask &
+				(1 << (sde_cfg->dspp[j].id - DSPP_0)))) {
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DSPP);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->dspp[j].id &&
+						iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update DSPP%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->dspp[j].id,
+							iter.hw->blk_off, enc_id,
+							iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
+}
 
-	return hyp_cfg;
+/* Helper function to update DS blocks reservation */
+static void _update_ds_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output, int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
+
+	/* DS */
+	for (j = 0; j < sde_cfg->ds_count; j++) {
+		if (disp_idx == sde_cfg->ds[j].display_idx &&
+				(output->hw_assign.ds_mask &
+				(1 << (sde_cfg->ds[j].id - DS_0)))) {
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DS);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->ds[j].id &&
+						iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update DS%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->ds[j].id,
+							iter.hw->blk_off, enc_id,
+							iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
+}
+
+/* Helper function to update DSC blocks reservation */
+static void _update_dsc_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output, int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
+
+	/* DSC */
+	for (j = 0; j < sde_cfg->dsc_count; j++) {
+		if (disp_idx == sde_cfg->dsc[j].display_idx &&
+				(output->hw_assign.dsc_mask &
+				(1 << (sde_cfg->dsc[j].id - DSC_0)))) {
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DSC);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->dsc[j].id &&
+						iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update DSC%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->dsc[j].id,
+							iter.hw->blk_off, enc_id,
+							iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
+}
+
+/* Helper function to update VDC blocks reservation */
+static void _update_vdc_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output, int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
+
+	/* VDC */
+	for (j = 0; j < sde_cfg->vdc_count; j++) {
+		if (disp_idx == sde_cfg->vdc[j].display_idx &&
+				(output->hw_assign.vdc_mask &
+				(1 << (sde_cfg->vdc[j].id - VDC_0)))) {
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_VDC);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->vdc[j].id &&
+						iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update VDC%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->vdc[j].id,
+							iter.hw->blk_off, enc_id,
+							iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
+}
+
+/* Helper function to update CDM blocks reservation */
+static void _update_cdm_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output, int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
+
+	/* CDM */
+	for (j = 0; j < sde_cfg->cdm_count; j++) {
+		if (disp_idx == sde_cfg->cdm[j].display_idx &&
+				(output->hw_assign.cdm_mask &
+				(1 << (sde_cfg->cdm[j].id - CDM_0)))) {
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_CDM);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->cdm[j].id &&
+						iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update CDM%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->cdm[j].id, iter.hw->blk_off,
+							enc_id, iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
+}
+
+/* Helper function to update DNSC_BLUR blocks reservation */
+static void _update_dnsc_blur_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output, int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
+
+	/* DNSC_BLUR */
+	for (j = 0; j < sde_cfg->dnsc_blur_count; j++) {
+		if (disp_idx == sde_cfg->dnsc_blur[j].display_idx &&
+				(output->hw_assign.dnsc_blur_mask &
+				(1 << (sde_cfg->dnsc_blur[j].id - DNSC_BLUR_0)))) {
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DNSC_BLUR);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->dnsc_blur[j].id &&
+						iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update BLUR%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->dnsc_blur[j].id,
+							iter.hw->blk_off,
+							enc_id, iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
+}
+
+/* Helper function to update Pingpong blocks reservation */
+static void _update_pingpong_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output, int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
+
+	/* Pingpong */
+	for (j = 0; j < sde_cfg->pingpong_count; j++) {
+		if (disp_idx == sde_cfg->pingpong[j].display_idx &&
+				(output->hw_assign.pingpong_mask &
+				(1 << (sde_cfg->pingpong[j].id - PINGPONG_0)))) {
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->pingpong[j].id &&
+						iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update PP%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->pingpong[j].id,
+							iter.hw->blk_off,
+							enc_id, iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
+}
+
+/* Helper function to update INTF blocks reservation */
+static void _update_intf_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output, int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
+
+	/* INTF */
+	for (j = 0; j < sde_cfg->intf_count; j++) {
+		if (disp_idx == sde_cfg->intf[j].display_idx &&
+				(output->hw_assign.intf_mask &
+				(1 << (sde_cfg->intf[j].id - INTF_0)))) {
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_INTF);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->intf[j].id &&
+						iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update INTF%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->intf[j].id,
+							iter.hw->blk_off,
+							enc_id, iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
+}
+
+/* Helper function to update WB blocks reservation */
+static void _update_wb_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output, int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_rm_hw_iter iter;
+	int j;
+
+	/* WB */
+	for (j = 0; j < sde_cfg->wb_count; j++) {
+		if (disp_idx == sde_cfg->wb[j].display_idx &&
+				(output->hw_assign.wb_mask &
+				(1 << (sde_cfg->wb[j].id - WB_0)))) {
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_WB);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->wb[j].id &&
+						iter.hw->display_idx == disp_idx) {
+					iter.hw->vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update WB%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->wb[j].id,
+							iter.hw->blk_off, enc_id,
+							iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
+}
+
+/* Helper function to update MERGE_3D blocks reservation */
+static void _update_merge_3d_reservation(struct sde_kms *sde_kms, struct sde_mdss_cfg *sde_cfg,
+		struct virtio_kms_output *output, int disp_idx, int ctl_id, int dpu_id, int enc_id)
+{
+	struct sde_hw_pingpong *pingpong;
+	struct sde_rm_hw_iter iter;
+	int j;
+
+	/* MERGE 3D */
+	for (j = 0; j < sde_cfg->merge_3d_count; j++) {
+		if (disp_idx == sde_cfg->merge_3d[j].display_idx &&
+				(output->hw_assign.merge3d_mask &
+				(1 << (sde_cfg->merge_3d[j].id - MERGE_3D_0)))) {
+			sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
+			while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
+				pingpong = to_sde_hw_pingpong(iter.hw);
+				if (!pingpong->merge_3d)
+					continue;
+				if (pingpong->merge_3d->idx == sde_cfg->merge_3d[j].id &&
+						iter.hw->display_idx == disp_idx) {
+					pingpong->merge_3d->hw.vq_ctx =
+						get_reg_dma_vq_ctx(dpu_id, ctl_id, disp_idx);
+					iter.hw->fixed_enc_id = enc_id;
+					VIRTIO_KMS_DBG("Update 3DMerge%d %X id %d enc %d vq %pK\n",
+							j, sde_cfg->merge_3d[j].id,
+							iter.hw->blk_off,
+							enc_id, iter.hw->vq_ctx);
+					break;
+				}
+			}
+		}
+	}
 }
 
 int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
@@ -2198,28 +2775,21 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 	struct sde_mdss_cfg *sde_cfg = sde_kms->catalog;
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
 	struct virtio_kms_output *output;
-	struct drm_connector *conn;
-	struct drm_connector_list_iter conn_iter;
-	struct sde_connector *sde_conn;
-	struct sde_encoder_virt *sde_enc;
-	struct sde_plane *plane;
-	struct sde_hw_pingpong *pingpong;
-	struct sde_rm_hw_iter iter;
 	int enc_id;
 	int ctl_id;
 	int dpu_id;
 	u32 lm_mask;
 	u32 intf_mask;
-	int i, j, k;
+	int i, j;
 
-	VIRTIO_KMS_DBG("Enter virtio_kms_update_hw_reservation\n");
 	if (!sde_cfg)
 		return -EINVAL;
 
 	/* Re-link all HW blocks assigned to GVM */
 	for (i = 0; i < kms->num_scanouts; i++) {
 		output = &kms->outputs[i];
-		VIRTIO_KMS_DBG("scanout %d dpu %d ctl %d\n", output->index, output->hw_assign.dpu_id,
+		VIRTIO_KMS_DBG("scanout %d dpu %d ctl %d\n",
+				output->index, output->hw_assign.dpu_id,
 				output->hw_assign.ctl_id);
 
 		/* Check DPU id first */
@@ -2231,301 +2801,29 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 		lm_mask = output->hw_assign.lm_mask;
 		intf_mask = output->hw_assign.intf_mask;
 
-		enc_id = -1;
-		drm_connector_list_iter_begin(sde_kms->dev, &conn_iter);
-		drm_for_each_connector_iter(conn, &conn_iter) {
-			sde_conn = to_sde_connector(conn);
-			if (((struct msm_hyp_display *)sde_conn->display)->id == i) {
-				if (sde_conn->encoder) {
-					sde_enc = to_sde_encoder_virt(sde_conn->encoder);
-					for (j = 0; j < sde_enc->num_phys_encs; j++) {
-						if (intf_mask & (1 <<
-							(sde_enc->phys_encs[j]->intf_idx - INTF_0))) {
-							enc_id = sde_enc->base.base.id;
-							break;
-						}
-					}
-				}
-			}
-		}
-		drm_connector_list_iter_end(&conn_iter);
+		enc_id = _find_encoder_id_for_scanout(sde_kms, i, intf_mask);
 		if (enc_id < 0) {
-			VIRTIO_KMS_WARN("Can't find INTF mask %X match encoder for output %d", intf_mask, i);
+			VIRTIO_KMS_WARN("Can't find INTF mask %X match encoder for output %d",
+					intf_mask, i);
 			continue;
 		} else {
-			VIRTIO_KMS_DBG("INTF mask=%X  fixed enc %d\n", lm_mask, enc_id);
+			VIRTIO_KMS_DBG("INTF mask=%X enc %d\n", lm_mask, enc_id);
 		}
 
-		/* CTL */
-		for (j = 0; j < sde_cfg->ctl_count; j++) {
-			if (i == sde_cfg->ctl[j].display_idx) {
-				sde_cfg->ctl[j].fixed_enc_id = enc_id;
-				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_CTL);
-				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-					if (sde_rm_get_hw_iter_id(&iter) == ctl_id &&
-						iter.hw->display_idx == i) {
-						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-						iter.hw->fixed_enc_id = enc_id;
-						VIRTIO_KMS_DBG("Update CTL%d  %X  id %d "
-							"fixed enc %d  vq_ctx %pK, i %d , "
-							"fixed_enc_id %d\n", j, ctl_id,
-							iter.hw->blk_off, enc_id, iter.hw->vq_ctx,
-							i, iter.hw->fixed_enc_id);
-						break;
-					}
-				}
-			}
-		}
-
-		/* LayerMixer */
-		for (j = 0; j < sde_cfg->mixer_count; j++) {
-			// if (lm_mask & (1 << (sde_cfg->mixer[j].id - LM_0))) {
-			if (i == sde_cfg->mixer[j].display_idx) {
-				sde_cfg->mixer[j].fixed_enc_id = enc_id;
-				sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_LM);
-				while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-					if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->mixer[j].id &&
-						iter.hw->display_idx == i) {
-						iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id,
-									i);
-						iter.hw->fixed_enc_id = enc_id;
-						VIRTIO_KMS_DBG("Update LM%d  %X  id %d  fixed enc %d  vq_ctx %pK\n",
-								j, sde_cfg->mixer[j].id, iter.hw->blk_off, enc_id, iter.hw->vq_ctx);
-						break;
-					}
-				}
-			}
-		}
-
-		/* SSPP */
-		for (j = 0; j < priv->num_planes; j++) {
-			for (k = 0; k < output->plane_cnt; k++) {
-				plane = to_sde_plane(priv->planes[j]);
-				if (plane->pipe == output->plane_caps[k].sspp_id) {
-					plane->pipe_hw->hw.vq_ctx =
-							get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-				VIRTIO_KMS_DBG("Update SSPP%d/%d %X id %d vq_ctx %pK\n",
-						j, k, output->plane_caps[k].sspp_id,
-						iter.hw->blk_off,
-						plane->pipe_hw->hw.vq_ctx);
-					break;
-				}
-			}
-		}
-
-		/* DSPP */
-		for (j = 0; j < sde_cfg->dspp_count; j++) {
-			if (i == sde_cfg->dspp[j].display_idx) {
-				if (output->hw_assign.dspp_mask & (1 << (sde_cfg->dspp[j].id - DSPP_0))) {
-					sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DSPP);
-					while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-						if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->dspp[j].id && iter.hw->display_idx == i) {
-							iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-							iter.hw->fixed_enc_id = enc_id;
-							VIRTIO_KMS_DBG("Update DSPP%d  %X  id %d  fixed enc %d"
-									" vq_ctx %pK\n",
-									j, sde_cfg->dspp[j].id, iter.hw->blk_off, enc_id,
-									iter.hw->vq_ctx);
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		/* DS */
-		for (j = 0; j < sde_cfg->ds_count; j++) {
-			if (i == sde_cfg->ds[j].display_idx) {
-				if (output->hw_assign.ds_mask & (1 << (sde_cfg->ds[j].id - DS_0))) {
-					sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DS);
-					while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-						if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->ds[j].id &&
-								iter.hw->display_idx == i) {
-							iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-							iter.hw->fixed_enc_id = enc_id;
-							VIRTIO_KMS_DBG("Update DS%d  %X  id %d  fixed enc %d  vq_ctx %pK\n",
-									j, sde_cfg->ds[j].id, iter.hw->blk_off, enc_id,
-									iter.hw->vq_ctx);
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		/* DSC */
-		for (j = 0; j < sde_cfg->dsc_count; j++) {
-			if (i == sde_cfg->dsc[j].display_idx) {
-				if (output->hw_assign.dsc_mask &
-						(1 << (sde_cfg->dsc[j].id - DSC_0))) {
-					sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DSC);
-					while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-						if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->dsc[j].id &&
-								iter.hw->display_idx == i) {
-							iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-							iter.hw->fixed_enc_id = enc_id;
-							VIRTIO_KMS_DBG("Update DSC%d  %X  id %d  fixed enc %d "
-									"vq_ctx %pK\n", j, sde_cfg->dsc[j].id,
-									iter.hw->blk_off, enc_id, iter.hw->vq_ctx);
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		/* VDC */
-		for (j = 0; j < sde_cfg->vdc_count; j++) {
-			if (i == sde_cfg->vdc[j].display_idx) {
-				if (output->hw_assign.vdc_mask &
-						(1 << (sde_cfg->vdc[j].id - VDC_0))) {
-					sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_VDC);
-					while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-						if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->vdc[j].id &&
-								iter.hw->display_idx == i) {
-							iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-							iter.hw->fixed_enc_id = enc_id;
-							VIRTIO_KMS_DBG("Update VDC%d  %X  id %d  fixed enc %d "
-									"vq_ctx %pK\n", j, sde_cfg->vdc[j].id,
-									iter.hw->blk_off, enc_id, iter.hw->vq_ctx);
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		/* CDM */
-		for (j = 0; j < sde_cfg->cdm_count; j++) {
-			if (i == sde_cfg->cdm[j].display_idx) {
-				if (output->hw_assign.cdm_mask &
-						(1 << (sde_cfg->cdm[j].id - CDM_0))) {
-					sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_CDM);
-					while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-						if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->cdm[j].id &&
-								iter.hw->display_idx == i) {
-							iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-							iter.hw->fixed_enc_id = enc_id;
-							VIRTIO_KMS_DBG("Update CDM%d  %X  id %d "
-									"fixed enc %d vq_ctx %pK\n",
-									j, sde_cfg->cdm[j].id, iter.hw->blk_off,
-									enc_id, iter.hw->vq_ctx);
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		/* DNSC_BLUR */
-		for (j = 0; j < sde_cfg->dnsc_blur_count; j++) {
-			if (i == sde_cfg->dnsc_blur[j].display_idx) {
-				if (output->hw_assign.dnsc_blur_mask &
-						(1 << (sde_cfg->dnsc_blur[j].id - DNSC_BLUR_0))) {
-					sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_DNSC_BLUR);
-					while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-						if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->dnsc_blur[j].id &&
-								iter.hw->display_idx == i) {
-							iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-							iter.hw->fixed_enc_id = enc_id;
-							VIRTIO_KMS_DBG("Update BLUR%d  %X  id %d "
-									"fixed enc %d  vq_ctx %pK\n",
-									j, sde_cfg->dnsc_blur[j].id, iter.hw->blk_off,
-									enc_id, iter.hw->vq_ctx);
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		/* Pingpong */
-		for (j = 0; j < sde_cfg->pingpong_count; j++) {
-			if (i == sde_cfg->pingpong[j].display_idx) {
-				if (output->hw_assign.pingpong_mask &
-					(1 << (sde_cfg->pingpong[j].id - PINGPONG_0))) {
-					sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
-					while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-						if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->pingpong[j].id &&
-								iter.hw->display_idx == i) {
-							iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-							iter.hw->fixed_enc_id = enc_id;
-							VIRTIO_KMS_DBG("Update PP%d  %X  id %d "
-									"fixed enc %d  vq_ctx %pK\n",
-									j, sde_cfg->pingpong[j].id, iter.hw->blk_off, enc_id, iter.hw->vq_ctx);
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		/* INTF */
-		for (j = 0; j < sde_cfg->intf_count; j++) {
-			if (i == sde_cfg->intf[j].display_idx) {
-				if (output->hw_assign.intf_mask &
-						(1 << (sde_cfg->intf[j].id - INTF_0))) {
-					sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_INTF);
-					while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-						if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->intf[j].id &&
-								iter.hw->display_idx == i) {
-							iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-							iter.hw->fixed_enc_id = enc_id;
-							VIRTIO_KMS_DBG("Update INTF%d  %X  id %d "
-									"fixed enc %d  vq_ctx %pK\n",
-									j, sde_cfg->intf[j].id, iter.hw->blk_off, enc_id, iter.hw->vq_ctx);
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		/* WB */
-		for (j = 0; j < sde_cfg->wb_count; j++) {
-			if (i == sde_cfg->wb[j].display_idx) {
-				if (output->hw_assign.wb_mask & (1 << (sde_cfg->wb[j].id - WB_0))) {
-					sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_WB);
-					while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-						if (sde_rm_get_hw_iter_id(&iter) == sde_cfg->wb[j].id &&
-								iter.hw->display_idx == i) {
-							iter.hw->vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-							iter.hw->fixed_enc_id = enc_id;
-							VIRTIO_KMS_DBG("Update WB%d  %X  id %d "
-									"fixed enc %d  vq_ctx %pK\n",
-									j, sde_cfg->wb[j].id, iter.hw->blk_off, enc_id,
-									iter.hw->vq_ctx);
-							break;
-						}
-					}
-				}
-			}
-		}
-
-		/* MERGE 3D */
-		for (j = 0; j < sde_cfg->merge_3d_count; j++) {
-			if (i == sde_cfg->merge_3d[j].display_idx) {
-				if (output->hw_assign.merge3d_mask &
-						(1 << (sde_cfg->merge_3d[j].id - MERGE_3D_0))) {
-					sde_rm_init_hw_iter(&iter, 0, SDE_HW_BLK_PINGPONG);
-					while (sde_rm_get_hw(&sde_kms->rm, &iter)) {
-						pingpong = to_sde_hw_pingpong(iter.hw);
-						if (!pingpong->merge_3d)
-							continue;
-						if (pingpong->merge_3d->idx == sde_cfg->merge_3d[j].id &&
-								iter.hw->display_idx == i) {
-							pingpong->merge_3d->hw.vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-							iter.hw->fixed_enc_id = enc_id;
-							VIRTIO_KMS_DBG("Update 3d Merge%d  %X  id %d "
-									"fixed enc %d  vq_ctx %pK\n",
-									j, sde_cfg->merge_3d[j].id, iter.hw->blk_off,
-									enc_id, iter.hw->vq_ctx);
-							break;
-						}
-					}
-				}
-			}
-		}
+		/* Update all hardware block reservations using helper functions */
+		_update_ctl_reservation(sde_kms, sde_cfg, i, ctl_id, dpu_id, enc_id);
+		_update_lm_reservation(sde_kms, sde_cfg, i, ctl_id, dpu_id, enc_id);
+		_update_sspp_reservation(sde_kms, priv, output, i, ctl_id, dpu_id);
+		_update_dspp_reservation(sde_kms, sde_cfg, output, i, ctl_id, dpu_id, enc_id);
+		_update_ds_reservation(sde_kms, sde_cfg, output, i, ctl_id, dpu_id, enc_id);
+		_update_dsc_reservation(sde_kms, sde_cfg, output, i, ctl_id, dpu_id, enc_id);
+		_update_vdc_reservation(sde_kms, sde_cfg, output, i, ctl_id, dpu_id, enc_id);
+		_update_cdm_reservation(sde_kms, sde_cfg, output, i, ctl_id, dpu_id, enc_id);
+		_update_dnsc_blur_reservation(sde_kms, sde_cfg, output, i, ctl_id, dpu_id, enc_id);
+		_update_pingpong_reservation(sde_kms, sde_cfg, output, i, ctl_id, dpu_id, enc_id);
+		_update_intf_reservation(sde_kms, sde_cfg, output, i, ctl_id, dpu_id, enc_id);
+		_update_wb_reservation(sde_kms, sde_cfg, output, i, ctl_id, dpu_id, enc_id);
+		_update_merge_3d_reservation(sde_kms, sde_cfg, output, i, ctl_id, dpu_id, enc_id);
 
 		/* CWB */
 		for (j = 0; j < sde_cfg->dcwb_count; j++) {
@@ -3632,4 +3930,3 @@ void virtio_kms_unregister(void)
 #if (KERNEL_VERSION(5, 19, 0) <= LINUX_VERSION_CODE)
 MODULE_IMPORT_NS(DMA_BUF);
 #endif
-
