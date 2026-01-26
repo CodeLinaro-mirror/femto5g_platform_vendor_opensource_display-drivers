@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -640,7 +640,7 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	rc = display->request_irq(display);
 	if (rc) {
 		DP_ERR("request_irq failed, rc=%d\n", rc);
-		goto error_free_bridge;
+		goto error;
 	}
 
 	priv->bridges[priv->num_bridges++] = &bridge->base;
@@ -649,6 +649,11 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	display->max_dsc_count = max_dsc_count;
 
 	return 0;
+
+	/* Fix use after free in dp_drm_bridge_init failure case.
+	 * If the bridge is already attached, it will be freed as part of
+	 * encoder cleanup else dp_drm_bridge_init will take care of clean up.
+	 */
 error_free_bridge:
 	kfree(bridge);
 error:
