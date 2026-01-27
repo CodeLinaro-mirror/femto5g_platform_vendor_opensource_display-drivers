@@ -886,6 +886,20 @@ static void dsi_hfi_populate_esync_caps(struct dsi_panel *panel,
 	hfi_esync_caps->hsync_milli_pulse_width = eparams->hsync_milli_pulse_width;
 }
 
+static void dsi_hfi_populate_dfps_caps(struct dsi_panel *panel,
+					struct hfi_panel_dfps_caps *hfi_dfps_caps)
+{
+	if (!panel || !hfi_dfps_caps) {
+		DSI_ERR("null pointer");
+		return;
+	}
+
+	hfi_dfps_caps->dfps_support = panel->dfps_caps.dfps_support;
+	hfi_dfps_caps->min_refresh_rate = panel->dfps_caps.min_refresh_rate;
+	hfi_dfps_caps->max_refresh_rate = panel->dfps_caps.max_refresh_rate;
+	hfi_dfps_caps->type = (enum hfi_panel_dfps_type)panel->dfps_caps.type;
+}
+
 int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 				struct dsi_panel_timing_caps *panel_timing_caps,
 				struct dsi_hfi_panel_per_cmd_type *per_type,
@@ -1194,6 +1208,11 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 		dsi_hfi_populate_esync_caps(panel, &panel_generic_caps->esync_caps);
 		panel_generic_caps->valid_gen_caps_cnt++;
 	}
+
+	if (panel->dfps_caps.dfps_support) {
+		dsi_hfi_populate_dfps_caps(panel, &panel_generic_caps->dfps_caps);
+		panel_generic_caps->valid_gen_caps_cnt++;
+	}
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -1343,6 +1362,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	u32 kv_size = 0;
 	u32 payload_size = 0;
 	u32 object_id = 0x0;
+	u32 dfps_payload[5]; /* 1 + (sizeof(panel_generic_caps.dfps_caps)/sizeof(u32)) */
 	int num_caps = panel_generic_caps.valid_gen_caps_cnt;
 	struct dsi_display_hfi *display_hfi;
 
@@ -1452,6 +1472,17 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 					(sizeof(qsync_params) / sizeof(u32))),
 					(void *)&qsync_params);
 		kv_size += sizeof(qsync_params);
+	}
+
+	if (panel_generic_caps.dfps_caps.dfps_support) {
+		dfps_payload[0] = 1; /* Currently we support only single dfps struct */
+		memcpy(&dfps_payload[1], &panel_generic_caps.dfps_caps,
+			sizeof(panel_generic_caps.dfps_caps));
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DFPS_CAPS, 0,
+			((ARRAY_SIZE(dfps_payload) * sizeof(dfps_payload[0])) / sizeof(u32))),
+					(void *)dfps_payload);
+		kv_size += sizeof(dfps_payload);
 	}
 
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
