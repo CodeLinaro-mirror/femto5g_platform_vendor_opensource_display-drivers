@@ -1827,7 +1827,7 @@ static int dp_debug_init(struct dp_debug_private *priv)
 	/* Get priv client instance */
 	if (IS_DISP_OP_HWIO(priv->disp_op))
 		rc = dp_debug_client_get(&priv->client);
-	else if (IS_DISP_OP_HFI(priv->disp_op))
+	else if (IS_DISP_OP_HFI(priv->disp_op) && IS_ENABLED(CONFIG_DRM_MSM_DP_HFI))
 		rc = dp_debug_client_hfi_get(&priv->client);
 
 	if (rc)

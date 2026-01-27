@@ -117,7 +117,7 @@ static int dp_drv_bind(struct device *dev, struct device *master, void *data)
 
 	if (IS_DISP_OP_HWIO(priv->disp_op))
 		dp->client = dp_mgr_init(pdev, dp->debug);
-	else if (IS_DISP_OP_HFI(priv->disp_op))
+	else if (IS_DISP_OP_HFI(priv->disp_op) && IS_ENABLED(CONFIG_DRM_MSM_DP_HFI))
 		dp->client = dp_mgr_hfi_init(pdev);
 
 	if (dp->client == NULL) {
