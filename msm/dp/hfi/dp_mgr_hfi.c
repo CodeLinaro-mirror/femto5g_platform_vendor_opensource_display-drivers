@@ -229,7 +229,7 @@ static bool _hfi_notify_hpd_user(struct dp_mgr_hfi_priv *hfi_priv, bool connecti
 	snprintf(bpp, HPD_STRING_SIZE, "bpp=%d", 0);
 	snprintf(pattern, HPD_STRING_SIZE, "pattern=%d", 0);
 
-	DP_ERR("[%s]:[%s] [%s] [%s]\n", name, status, bpp, pattern);
+	DP_INFO("[%s]:[%s] [%s] [%s]\n", name, status, bpp, pattern);
 	envp[0] = name;
 	envp[1] = status;
 	envp[2] = bpp;
@@ -238,7 +238,10 @@ static bool _hfi_notify_hpd_user(struct dp_mgr_hfi_priv *hfi_priv, bool connecti
 	envp[5] = NULL;
 
 	rc = kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
-	DP_ERR("uevent %s: %d\n", rc ? "failure" : "success", rc);
+	if  (rc)
+		DP_ERR("uevent failed, rc=%d\n", rc);
+	else
+		DP_DEBUG("uevent successful!\n");
 
 	return true;
 }
@@ -1319,16 +1322,80 @@ static int dp_mgr_hfi_ctl_init(struct dp_client *client)
 }
 
 static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
-		struct drm_msm_ext_hdr_metadata *hdr_meta, bool dhdr_update)
+			struct drm_msm_ext_hdr_metadata *hdr_meta, bool dhdr_update)
 {
+	struct dp_mgr_hfi_priv *hfi_priv;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct hfi_display_hdr_cfg hdr_cfg;
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_CONFIG_HDR;
+	int rc = 0;
+
 	if (!client) {
 		DP_ERR("Invalid params\n");
 		return -EINVAL;
 	}
 
-	DP_DEBUG("HFI config HDR for panel_id: %d, dhdr_update: %d\n", panel_id, dhdr_update);
-	/* HDR configuration can be added later if needed */
-	return 0;
+	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+
+	/* Get HFI client */
+	sde_kms = sde_connector_get_kms(client->base_connector);
+	if (!sde_kms) {
+		DP_ERR("Failed to get SDE KMS\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		DP_ERR("Failed to get HFI KMS\n");
+		return -EINVAL;
+	}
+
+	hfi_client = &hfi_kms->hfi_client;
+
+	/* Check if display is enabled */
+	if (!hfi_priv->connected) {
+		DP_DEBUG("Display not connected, skipping HDR config\n");
+		return 0;
+	}
+
+	/* Populate HDR configuration payload */
+	memset(&hdr_cfg, 0, sizeof(hdr_cfg));
+	hdr_cfg.dhdr_update = dhdr_update ? 1 : 0;
+
+	if (hdr_meta) {
+		hdr_cfg.hdr_meta.hdr_state = hdr_meta->hdr_state;
+		hdr_cfg.hdr_meta.eotf = hdr_meta->eotf;
+		hdr_cfg.hdr_meta.hdr_supported = hdr_meta->hdr_supported;
+		memcpy(hdr_cfg.hdr_meta.display_primaries_x, hdr_meta->display_primaries_x,
+			sizeof(hdr_cfg.hdr_meta.display_primaries_x));
+		memcpy(hdr_cfg.hdr_meta.display_primaries_y, hdr_meta->display_primaries_y,
+			sizeof(hdr_cfg.hdr_meta.display_primaries_y));
+		hdr_cfg.hdr_meta.white_point_x = hdr_meta->white_point_x;
+		hdr_cfg.hdr_meta.white_point_y = hdr_meta->white_point_y;
+		hdr_cfg.hdr_meta.max_luminance = hdr_meta->max_luminance;
+		hdr_cfg.hdr_meta.min_luminance = hdr_meta->min_luminance;
+		hdr_cfg.hdr_meta.max_content_light_level = hdr_meta->max_content_light_level;
+		hdr_cfg.hdr_meta.max_average_light_level = hdr_meta->max_average_light_level;
+
+		DP_DEBUG("HDR config: state=%u, eotf=%u, supported=%u\n",
+			hdr_cfg.hdr_meta.hdr_state, hdr_cfg.hdr_meta.eotf,
+			hdr_cfg.hdr_meta.hdr_supported);
+	}
+
+	/* Send HFI command */
+	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &hdr_cfg, sizeof(hdr_cfg),
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (rc) {
+		DP_ERR("Failed to send CONFIG_HDR command, rc=%d\n", rc);
+	} else {
+		DP_DEBUG("Successfully sent HDR config for panel_id=%d, dhdr_update=%d\n",
+			panel_id, dhdr_update);
+	}
+
+	return rc;
 }
 
 static struct dp_display_mode *dp_mgr_hfi_get_display_mode(struct dp_client *client, int panel_id)
@@ -1469,7 +1536,7 @@ int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 
 	hfi_client = &hfi_kms->hfi_client;
 
-	DP_ERR("Sending DISPLAY_DISABLE command to DCP, panel_id=%d\n", panel_id);
+	DP_DEBUG("Sending DISPLAY_DISABLE command to DCP, panel_id=%d\n", panel_id);
 
 	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
@@ -1716,6 +1783,22 @@ static int dp_mgr_hfi_update_pps(struct dp_client *client,
 static int dp_mgr_hfi_setup_colospace(struct dp_client *client,
 		int panel_id, u32 colorspace)
 {
+	struct hfi_client_t *hfi_client;
+	struct dp_mgr_hfi_priv *hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_SET_COLORSPACE;
+	int rc = 0;
+
+	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	if (!hfi_client)
+		return -EINVAL;
+
+	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+			HFI_PAYLOAD_TYPE_U32_ARRAY, (void *)&colorspace,
+			sizeof(colorspace), (HFI_HOST_FLAGS_NON_DISCARDABLE));
+
+	if (rc)
+		DP_ERR("Could not send HFI_COMMAND_DISPLAY_SET_COLORSPACE, rc=%d\n", rc);
+
 	return 0;
 }
 

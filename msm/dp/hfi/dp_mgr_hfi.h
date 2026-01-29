@@ -143,6 +143,7 @@ struct dp_mgr_hfi_priv {
 
 	/* Mode override */
 	struct dp_mode_override mode_ovr;
+	struct hfi_device_hotplug_config hpd_config;
 };
 
 int dp_mgr_hfi_send_audio_config(struct dp_client *client,

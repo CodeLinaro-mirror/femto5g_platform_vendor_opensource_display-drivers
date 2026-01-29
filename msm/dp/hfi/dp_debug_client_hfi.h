@@ -33,11 +33,12 @@ struct dp_hfi_response_data {
 };
 
 struct dp_debug_client_hfi_priv {
-	struct dp_debug_client client;
 	struct device *dev;
 	struct hfi_client_t *hfi_client;
 	struct dp_hfi_response_data response_data;
 	struct hfi_prop_listener hfi_cb_obj;  /* HFI callback listener object */
+	u32 hpd_pin_config;              /* Cached HPD pin config */
+	u32 hpd_orientation;             /* Cached HPD orientation */
 };
 
 /**
