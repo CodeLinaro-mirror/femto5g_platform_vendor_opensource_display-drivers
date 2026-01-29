@@ -29,49 +29,11 @@
 #include "dp_aux_switch.h"
 #include "hfi_defs_display.h"
 #include "dp_panel_tu.h"
+#include "dp_debug_client_hfi.h"
 
 #define DRM_DP_IPC_NUM_PAGES 10
 #define HPD_STRING_SIZE	    30
 #define MAX_MODES           32
-
-struct dpcd_info {
-	u32 lane_count;
-	u32 link_rate_khz;
-	u32 pclk_factor;
-	bool fec_en;
-};
-
-struct dp_mgr_hfi_priv {
-	char *name;
-	struct platform_device *pdev;
-	struct dp_client client;
-	struct msm_drm_private *priv;
-	struct dp_hfi *hfi;
-	struct dp_intf_info intf_info;
-	struct dp_hpd *hpd;
-	struct dp_hpd_cb hpd_cb;
-	struct dpcd_info dpcd;
-
-	struct hfi_shared_addr_map *edid_addr_map;
-	struct hfi_shared_addr_map *modes_addr_map;
-
-	struct dp_aux_switch *aux_switch;
-	struct dp_debug_client *debug;
-	struct dp_display_mode default_mode;
-
-	struct sde_edid_ctrl *edid_ctrl;
-	struct hfi_display_mode_info mode_list[MAX_MODES];
-	u32 mode_count;
-	u32 link_rate;
-	u32 lane_count;
-
-	struct device *pd_dp_phy_gdsc;
-	struct clk *usb3_tcsr_clk;
-	struct clk *usb3_pipe_clk;
-
-	bool connected;
-	bool configured;
-};
 
 struct hfi_shared_addr_map *dp_mgr_hfi_init_shared_addr(struct hfi_client_t *ctx, u32 size)
 {
@@ -166,6 +128,11 @@ static int _hfi_process_edid(struct dp_mgr_hfi_priv *hfi_priv, u32 buffer_size)
 
 	if (!hfi_priv)
 		return -EINVAL;
+
+	if (!hfi_priv->edid_addr_map) {
+		DP_ERR("EDID buffer not available, cannot process EDID\n");
+		return -EINVAL;
+	}
 
 	raw_edid_addr = hfi_priv->edid_addr_map->local_addr;
 
@@ -284,6 +251,11 @@ static int _hfi_parse_supported_modes(struct dp_mgr_hfi_priv *hfi_priv)
 
 	if (!hfi_priv) {
 		DP_ERR("Invalid hfi_priv\n");
+		return -EINVAL;
+	}
+
+	if (!hfi_priv->modes_addr_map) {
+		DP_ERR("Modes buffer not available, cannot parse modes\n");
 		return -EINVAL;
 	}
 
@@ -588,7 +560,7 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 }
 
 /* HPD callback functions */
-static int dp_mgr_hfi_hpd_configure_cb(void *data)
+int dp_mgr_hfi_hpd_configure_cb(void *data)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = data;
 	struct hfi_client_t *hfi_client;
@@ -611,17 +583,32 @@ static int dp_mgr_hfi_hpd_configure_cb(void *data)
 
 	_hfi_update_config(hfi_priv, &config);
 
-	hfi_priv->edid_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
+	/* Allocate buffers only if they don't already exist */
 	if (!hfi_priv->edid_addr_map) {
-		DP_ERR("failed to allocate remote address for edid\n");
-		return -ENOMEM;
+		hfi_priv->edid_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
+		if (!hfi_priv->edid_addr_map) {
+			DP_ERR("failed to allocate remote address for edid\n");
+			return -ENOMEM;
+		}
+		DP_DEBUG("Allocated new EDID buffer\n");
+	} else {
+		DP_DEBUG("Reusing existing EDID buffer\n");
 	}
 
-	hfi_priv->modes_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
 	if (!hfi_priv->modes_addr_map) {
-		DP_ERR("failed to allocate remote address for modes\n");
-		dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->edid_addr_map);
-		return -ENOMEM;
+		hfi_priv->modes_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
+		if (!hfi_priv->modes_addr_map) {
+			DP_ERR("failed to allocate remote address for modes\n");
+			/* Only free EDID buffer if we just allocated it */
+			if (hfi_priv->edid_addr_map) {
+				dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->edid_addr_map);
+				hfi_priv->edid_addr_map = NULL;
+			}
+			return -ENOMEM;
+		}
+		DP_DEBUG("Allocated new modes buffer\n");
+	} else {
+		DP_DEBUG("Reusing existing modes buffer\n");
 	}
 
 	if (hfi_priv->aux_switch) {
@@ -670,7 +657,7 @@ end:
 	return rc;
 }
 
-static int dp_mgr_hfi_hpd_disconnect_cb(void *data)
+int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = data;
 	struct hfi_device_hotplug_config config = {0};
@@ -721,10 +708,17 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv)
 		goto end;
 	}
 
-	dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->edid_addr_map);
-	dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->modes_addr_map);
-
 	_register_hpd_events(hfi_priv, false);
+
+	/* Free shared buffers */
+	if (hfi_priv->edid_addr_map) {
+		dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->edid_addr_map);
+		hfi_priv->edid_addr_map = NULL;
+	}
+	if (hfi_priv->modes_addr_map) {
+		dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->modes_addr_map);
+		hfi_priv->modes_addr_map = NULL;
+	}
 
 	dp_mgr_hfi_clk_enable(hfi_priv, false);
 
@@ -782,11 +776,11 @@ static void dp_mgr_hfi_calc_tu_parameters(struct dp_mgr_hfi_priv *hfi_priv,
 	in.hporch = pinfo->h_back_porch + pinfo->h_front_porch +
 				pinfo->h_sync_width;
 
-	in.bpp = 24 ; // #TODO# add support for other bpps. (pinfo->bpp)
+	in.bpp = pinfo->bpp;
 	in.pixel_enc = 444;
 	in.dsc_en = pinfo->comp_info.enabled;
 	in.async_en = 0;
-	in.fec_en = hfi_priv->dpcd.fec_en;
+	in.fec_en = hfi_priv->fec_en;
 	in.num_of_dsc_slices = pinfo->comp_info.dsc_info.slice_per_pkt;
 	in.ppc_div_factor = 2; /*hfi_priv->dpcd.pclk_factor;*/
 
@@ -857,7 +851,7 @@ static int dp_mgr_hfi_send_transfer_unit(struct dp_mgr_hfi_priv *hfi_priv,
 		HFI_HOST_FLAGS_NON_DISCARDABLE);
 }
 
-static int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp_display_mode *mode)
+int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp_display_mode *mode)
 {
 	struct sde_kms *sde_kms;
 	struct hfi_kms *hfi_kms;
@@ -905,8 +899,13 @@ static int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp
 	rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &hfi_mode_info, hfi_mode_info.size,
 			HFI_HOST_FLAGS_NON_DISCARDABLE);
-	if (rc)
+	if (rc) {
 		DP_ERR("Could not send HFI_COMMAND_DISPLAY_SET_MODE, rc=%d\n", rc);
+	} else {
+		DP_DEBUG("Successfully set mode %ux%u@%uHz for panel_id=%d\n",
+				mode->timing.h_active, mode->timing.v_active,
+				mode->timing.refresh_rate, panel_id);
+	}
 
 	return rc;
 }
@@ -924,13 +923,48 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 	}
 
 	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	drm_refresh_rate = drm_mode_vrefresh(mode);
+
+	/*
+	 * If override is enabled, only accept the override mode and reject
+	 * all others, even if they exist in the EDID/DCP mode list. This
+	 * ensures that any cached or previously selected mode (like 720x480)
+	 * is rejected while override is active.
+	 */
+	if (hfi_priv->mode_ovr.enabled) {
+		bool aspect_match = true;
+
+		/* If override aspect is non-zero, enforce aspect match.
+		 * If override aspect is 0, treat it as "don't care".
+		 */
+		if (hfi_priv->mode_ovr.aspect_ratio != 0 &&
+		    mode->picture_aspect_ratio != hfi_priv->mode_ovr.aspect_ratio)
+			aspect_match = false;
+
+		if (mode->hdisplay != hfi_priv->mode_ovr.h_active ||
+				mode->vdisplay != hfi_priv->mode_ovr.v_active ||
+				drm_refresh_rate != hfi_priv->mode_ovr.refresh_rate ||
+				!aspect_match) {
+			DP_DEBUG("invalid ovr %dx%d@%d %d vs %dx%d@%d %d\n",
+				 mode->hdisplay, mode->vdisplay, drm_refresh_rate,
+				 mode->picture_aspect_ratio, hfi_priv->mode_ovr.h_active,
+				 hfi_priv->mode_ovr.v_active, hfi_priv->mode_ovr.refresh_rate,
+				 hfi_priv->mode_ovr.aspect_ratio);
+			return MODE_BAD;
+		}
+
+		mode->type |= DRM_MODE_TYPE_PREFERRED;
+		DP_DEBUG("Mode override: %dx%d@%d (aspect=%d, mode_aspect=%d)\n",
+			 mode->hdisplay, mode->vdisplay, drm_refresh_rate,
+			 hfi_priv->mode_ovr.aspect_ratio,
+			 mode->picture_aspect_ratio);
+		return MODE_OK;
+	}
 
 	if (hfi_priv->mode_count == 0) {
 		DP_WARN("No modes available from DCP for validation\n");
 		return MODE_ERROR;
 	}
-
-	drm_refresh_rate = drm_mode_vrefresh(mode);
 
 	for (i = 0; i < hfi_priv->mode_count; i++) {
 		struct hfi_display_mode_info *hfi_mode = &hfi_priv->mode_list[i];
@@ -952,6 +986,10 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 {
 	int rc = 0;
 	struct dp_mgr_hfi_priv *hfi_priv;
+	struct drm_connector *connector;
+	struct drm_display_mode *mode, *tmp;
+	struct drm_display_mode *override_mode = NULL;
+	u32 ovr_h, ovr_v, ovr_fps;
 
 	if (!client) {
 		DP_ERR("Invalid params\n");
@@ -961,13 +999,65 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 	DP_DEBUG("HFI get modes for panel_id: %d\n", panel_id);
 
 	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	connector = client->base_connector;
 
-	rc = _sde_edid_update_modes(client->base_connector, hfi_priv->edid_ctrl);
+	/* Now populate fresh modes from EDID */
+	rc = _sde_edid_update_modes(connector, hfi_priv->edid_ctrl);
 
 	if (dp_mode->timing.pixel_clk_khz)
 		hfi_priv->client.max_pclk_khz = dp_mode->timing.pixel_clk_khz;
 
-	return rc;
+	/* If no override is enabled, just return the EDID modes */
+	if (!hfi_priv->mode_ovr.enabled) {
+		DP_DEBUG("HFI get_modes: override disabled, returning rc=%d\n", rc);
+		return rc;
+	}
+
+	/*
+	 * Override is enabled: keep only the EDID mode that matches
+	 * the override timing. The override mode must be one of the
+	 * EDID modes, so we do not synthesize any timing here.
+	 */
+	ovr_h   = hfi_priv->mode_ovr.h_active;
+	ovr_v   = hfi_priv->mode_ovr.v_active;
+	ovr_fps = hfi_priv->mode_ovr.refresh_rate;
+
+	DP_DEBUG("HFI get_modes: override requested %ux%u@%uHz\n", ovr_h, ovr_v, ovr_fps);
+
+	/* Find the matching mode in the connector's mode list */
+	list_for_each_entry(mode, &connector->modes, head) {
+		u32 mode_fps = drm_mode_vrefresh(mode);
+
+		if ((mode->hdisplay == ovr_h) && (mode->vdisplay == ovr_v) &&
+				(mode_fps == ovr_fps)) {
+			override_mode = mode;
+			break;
+		}
+	}
+
+	if (!override_mode) {
+		DP_ERR("HFI get_modes: override %ux%u@%uHz not found. disabling override. rc=%d\n",
+			ovr_h, ovr_v, ovr_fps, rc);
+		return rc;
+	}
+
+	/*
+	 * Remove all other modes from the list, leaving only the override
+	 * mode exposed to user space. This mirrors the requirement that
+	 * when override is set, only that mode should be reported.
+	 */
+	list_for_each_entry_safe(mode, tmp, &connector->modes, head) {
+		if (mode != override_mode) {
+			list_del(&mode->head);
+			drm_mode_destroy(connector->dev, mode);
+		}
+	}
+
+	DP_DEBUG("HFI get_modes: override enabled, exposing only %ux%u@%uHz, returning 1\n",
+		override_mode->hdisplay, override_mode->vdisplay, ovr_fps);
+
+	/* We now have exactly one mode; return 1 to indicate this */
+	return 1;
 }
 
 static int dp_mgr_hfi_request_irq(struct dp_client *client)
@@ -996,21 +1086,50 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_mgr_hfi_priv *hfi_priv, void *pa
 {
 	struct hfi_display_event_edid_info *info = payload;
 	struct hfi_buff *edid_buf = &info->edid_buf;
+	int i;
 
-	if (hfi_priv->connected) {
-		print_hex_dump(KERN_INFO, "EDID(Little Endian): ",
-			DUMP_PREFIX_NONE, 16, 4, hfi_priv->edid_addr_map->local_addr,
-			edid_buf->size, false);
-
-		_hfi_process_edid(hfi_priv, edid_buf->size);
-		_hfi_parse_supported_modes(hfi_priv);
-		hfi_priv->link_rate = info->link_rate;
-		hfi_priv->lane_count = info->lane_count;
+	DP_INFO("EDID Info received: size=%u, link_rate=%u, lane_count=%u, bpp=%u\n",
+			edid_buf->size, info->link_rate,
+			info->lane_count, info->bits_per_pixel);
+	/* Connection status is not in the payload - set connected=1 based on receiving EDID info */
+	if (edid_buf->size > 0) {
+		hfi_priv->connected = true;
+	} else {
+		hfi_priv->connected = false;
+		DP_INFO("Setting connected=0 due to empty EDID buffer\n");
+		goto end;
 	}
 
 	hfi_priv->link_rate = info->link_rate;
 	hfi_priv->lane_count = info->lane_count;
+	hfi_priv->tgt_bpp = info->bits_per_pixel;
+	hfi_priv->fec_en = info->fec_enabled;
 
+	print_hex_dump(KERN_INFO, "EDID(Little Endian): ",
+		DUMP_PREFIX_NONE, 16, 4, hfi_priv->edid_addr_map->local_addr,
+		edid_buf->size, false);
+
+	if (_hfi_process_edid(hfi_priv, edid_buf->size)) {
+		DP_ERR("Failed to process EDID, skipping modes parsing\n");
+		goto end;
+	}
+	_hfi_parse_supported_modes(hfi_priv);
+	/* Print the list of modes received from DCP */
+	if (!hfi_priv->mode_count) {
+		DP_ERR("No modes received from DCP\n");
+		goto end;
+	}
+	DP_INFO("Received %u modes from DCP:\n",
+			hfi_priv->mode_count);
+	for (i = 0; i < hfi_priv->mode_count; i++) {
+		struct hfi_display_mode_info *mode = &hfi_priv->mode_list[i];
+
+		DP_INFO("Mode[%d]: %ux%u@%uHz hb:(%u %u %u) vb:(%u %u %u)\n",
+				i, mode->h_active, mode->v_active, mode->refresh_rate,
+				mode->h_front_porch, mode->h_sync_width, mode->h_back_porch,
+				mode->v_front_porch, mode->v_sync_width, mode->v_back_porch);
+	}
+end:
 	_hfi_notify_hpd_user(hfi_priv, hfi_priv->connected);
 }
 
@@ -1198,6 +1317,9 @@ int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
 
 	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
 
+	DP_DEBUG("Initiating DISPLAY ENABLE HFI command to DCP, panel_id=%d\n",
+			panel_id);
+
 	sde_kms = sde_connector_get_kms(client->base_connector);
 	if (!sde_kms)
 		return -EINVAL;
@@ -1210,9 +1332,14 @@ int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
 
 	rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0, HFI_HOST_FLAGS_NON_DISCARDABLE);
-	if (rc)
-		DP_ERR("Could not send HFI_COMMAND_DISPLAY_ENABLE, rc=%d\n", rc);
+	if (rc) {
+		DP_ERR("failed to send enable, rc=%d\n", rc);
+		goto error;
+	} else {
+		DP_DEBUG("enable successful for panel_id=%d\n", panel_id);
+	}
 
+error:
 	return rc;
 }
 
@@ -1269,8 +1396,6 @@ int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 
 	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
 
-	DP_DEBUG("HFI pre disable for panel_id: %d\n", panel_id);
-
 	sde_kms = sde_connector_get_kms(client->base_connector);
 	if (!sde_kms)
 		return -EINVAL;
@@ -1281,11 +1406,17 @@ int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 
 	hfi_client = &hfi_kms->hfi_client;
 
+	DP_ERR("Sending DISPLAY_DISABLE command to DCP, panel_id=%d\n", panel_id);
+
 	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 			(HFI_HOST_FLAGS_NON_DISCARDABLE));
-	if (rc)
-		DP_ERR("Could not send HFI_COMMAND_DISPLAY_DISABLE, rc=%d\n", rc);
+	if (rc) {
+		DP_ERR("failed to send disable, rc=%d\n", rc);
+	} else {
+		DP_DEBUG("disable successful for panel_id=%d\n",
+				panel_id);
+	}
 
 	return rc;
 }
@@ -1306,8 +1437,6 @@ int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
 
-	DP_DEBUG("HFI disable for panel_id: %d\n", panel_id);
-
 	sde_kms = sde_connector_get_kms(client->base_connector);
 	if (!sde_kms)
 		return -EINVAL;
@@ -1318,11 +1447,19 @@ int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	hfi_client = &hfi_kms->hfi_client;
 
+	DP_DEBUG("Sending DISPLAY_POST_DISABLE command to DCP, panel_id=%d\n",
+			panel_id);
+
 	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 			(HFI_HOST_FLAGS_NON_DISCARDABLE));
-	if (rc)
-		DP_ERR("Could not send HFI_COMMAND_DISPLAY_POST_DISABLE, rc=%d\n", rc);
+	if (rc) {
+		DP_ERR("failed to send post disable, rc=%d, panel_id=%d\n",
+				rc, panel_id);
+	} else {
+		DP_DEBUG("post disable successful for panel_id=%d\n",
+				panel_id);
+	}
 
 	return rc;
 }
@@ -1462,10 +1599,16 @@ static void dp_mgr_hfi_convert_to_dp_mode(struct dp_client *client,
 		const struct drm_display_mode *drm_mode,
 		struct dp_display_mode *dp_mode)
 {
-	const u32 num_components = 3, default_bpp = 24;
+	struct dp_mgr_hfi_priv *hfi_priv;
 
 	if (!client || !dp_mode || !drm_mode)
 		return;
+
+	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	if (!hfi_priv) {
+		DP_ERR("invalid param(s), hfi_priv %pK\n", hfi_priv);
+		return;
+	}
 
 	dp_mode->timing.h_active = drm_mode->hdisplay;
 	dp_mode->timing.h_back_porch = drm_mode->htotal - drm_mode->hsync_end;
@@ -1488,9 +1631,7 @@ static void dp_mgr_hfi_convert_to_dp_mode(struct dp_client *client,
 
 	dp_mode->timing.h_active_low = !!(drm_mode->flags & DRM_MODE_FLAG_NHSYNC);
 
-	dp_mode->timing.bpp = client->base_connector->display_info.bpc * num_components;
-	if (!dp_mode->timing.bpp)
-		dp_mode->timing.bpp = default_bpp;
+	dp_mode->timing.bpp = hfi_priv->tgt_bpp;
 
 	/* As YUV was not supported now, so set the default format to RGB */
 	dp_mode->output_format = DP_OUTPUT_FORMAT_RGB;
