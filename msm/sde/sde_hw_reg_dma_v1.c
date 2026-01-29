@@ -1417,6 +1417,8 @@ int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx)
 	v1_supported[AIQE_ABC] = MDSS | DSPP0 | DSPP2;
 	v1_supported[AIQE_AI_SCALER] = MDSS | DSPP0;
 
+	v1_supported[AIQE_COPR] = MDSS | DSPP0 | DSPP2;
+
 	rc = write_last_cmd_buffer(dpu_idx);
 	if (rc) {
 		dealloc_reg_dma_v1(last_cmd_buf[dpu_idx], dpu_idx);
