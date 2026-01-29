@@ -59,6 +59,7 @@ struct dp_debug_client {
 
 	void *tpg_config;
 	void *pll;
+	void *priv;
 
 	int (*read_dpcd)(struct dp_debug_client *client, u8 *dpcd, u32 size, u32 offset);
 	int (*read_crc)(struct dp_debug_client *client, char *buf, u32 size);

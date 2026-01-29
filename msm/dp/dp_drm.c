@@ -108,6 +108,11 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 
 	ops = &drv->client->drm_ops;
 
+	DP_DEBUG("SET MODE:: x: %d, y: %d, fps: %d\n",
+		bridge->dp_mode.timing.h_active,
+		bridge->dp_mode.timing.v_active,
+		bridge->dp_mode.timing.refresh_rate);
+
 	/* By this point mode should have been validated through mode_fixup */
 	rc = ops->set_mode(drv->client, bridge->panel_id, &bridge->dp_mode);
 	if (rc) {
@@ -299,13 +304,13 @@ static bool dp_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	drv = bridge->drv;
 	if (!drv || !drv->client) {
 		DP_ERR("no dp client found\n");
-		return -EINVAL;
+		ret = false;
+		goto end;
 	}
 
 	ops = &drv->client->drm_ops;
 
-	ops->convert_to_dp_mode(drv->client, bridge->panel_id,
-		mode, &dp_mode);
+	ops->convert_to_dp_mode(drv->client, bridge->panel_id, mode, &dp_mode);
 	ops->clear_reservation(drv->client, bridge->panel_id);
 	convert_to_drm_mode(&dp_mode, adjusted_mode);
 end:
@@ -411,6 +416,9 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	struct dp_drv *drv = display;
 	struct sde_connector *sde_conn;
 	struct dp_client_drm_ops *ops;
+	struct msm_drm_private *priv;
+
+	priv = connector->dev->dev_private;
 
 	if (!drv || !connector || !drv->client || !drv->client->bridge) {
 		DP_ERR("Invalid data\n");
@@ -428,11 +436,33 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	sde_conn = to_sde_connector(connector);
 	drv->client->bridge->panel_id = sde_conn->panel_id;
 
-	rc = dp_mst_init(drv);
+	if (IS_DISP_OP_HWIO(priv->disp_op))
+		rc = dp_mst_init(drv);
 
 	if (drv->client->dsc_cont_pps)
 		sde_conn->ops.update_pps = NULL;
 
+end:
+	return rc;
+}
+
+int dp_connector_ctl_init(void *display, void *hfi_priv)
+{
+	int rc = 0;
+	struct dp_drv *drv = display;
+	struct dp_client_drm_ops *ops;
+
+	if (!drv) {
+		DP_ERR("Invalid data\n");
+		return -EINVAL;
+	}
+
+	ops = &drv->client->drm_ops;
+	if (ops->ctl_init) {
+		rc = ops->ctl_init(drv->client);
+		if (rc)
+			goto end;
+	}
 end:
 	return rc;
 }
@@ -897,6 +927,7 @@ int dp_connector_install_properties(void *display, struct drm_connector *conn)
 int dp_connector_cont_splash_config(void *display)
 {
 	struct dp_drv *drv;
+	int rc = 0;
 
 	if (!display) {
 		DP_ERR("invalid params\n");
@@ -904,12 +935,16 @@ int dp_connector_cont_splash_config(void *display)
 	}
 
 	drv = display;
-	return drv->client->drm_ops.cont_splash_config(drv->client);
+	if (drv->client && drv->client->drm_ops.cont_splash_config)
+		rc = drv->client->drm_ops.cont_splash_config(drv->client);
+
+	return rc;
 }
 
 int dp_connector_cont_splash_res_disable(void *display)
 {
 	struct dp_drv *drv;
+	int rc = 0;
 
 	if (!display) {
 		DP_ERR("invalid params\n");
@@ -917,5 +952,8 @@ int dp_connector_cont_splash_res_disable(void *display)
 	}
 
 	drv = display;
-	return drv->client->drm_ops.cont_splash_disable(drv->client);
+	if (drv->client && drv->client->drm_ops.cont_splash_disable)
+		rc = drv->client->drm_ops.cont_splash_disable(drv->client);
+
+	return rc;
 }

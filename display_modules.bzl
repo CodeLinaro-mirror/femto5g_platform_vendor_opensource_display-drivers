@@ -70,6 +70,12 @@ module_entry(
             "msm/dp/dp_aux_switch.c",
             "msm/dp/dp_debug_client.c",
         ],
+        "CONFIG_DRM_MSM_DP_HFI": [
+            "msm/dp/hfi/dp_mgr_hfi.c",
+            "msm/dp/hfi/dp_hfi.c",
+            "msm/dp/hfi/dp_debug_client_hfi.c",
+            "msm/dp/hfi/dp_hfi_audio.c",
+        ],
         "CONFIG_DRM_MSM_DP_MST": [
             "msm/dp/dp_mst_drm.c",
         ],
@@ -95,8 +101,8 @@ module_entry(
             "msm/dsi/hfi/dsi_display_hfi.c",
             "msm/dsi/hfi/dsi_hfi.c",
             "msm/sde/hfi/hfi_wb.c",
-         ],
-         "CONFIG_DRM_MSM_SDE" : [
+        ],
+        "CONFIG_DRM_MSM_SDE": [
             "msm/sde/sde_crtc.c",
             "msm/sde/sde_encoder.c",
             "msm/sde/sde_encoder_dce.c",

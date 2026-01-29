@@ -24,6 +24,7 @@
 #include "dp_client.h"
 #include "dp_mgr.h"
 #include "dp_pll.h"
+#include "dp_mgr_hfi.h"
 
 #define MAX_DP_ACTIVE_DISPLAY 8
 #define HPD_STRING_SIZE 30
@@ -116,6 +117,8 @@ static int dp_drv_bind(struct device *dev, struct device *master, void *data)
 
 	if (IS_DISP_OP_HWIO(priv->disp_op))
 		dp->client = dp_mgr_init(pdev, dp->debug);
+	else if (IS_DISP_OP_HFI(priv->disp_op) && IS_ENABLED(CONFIG_DRM_MSM_DP_HFI))
+		dp->client = dp_mgr_hfi_init(pdev);
 
 	if (dp->client == NULL) {
 		DP_ERR("Error initializing HWIO DP");
@@ -200,7 +203,8 @@ int edp_drv_get_num_of_displays(struct drm_device *dev)
 		if (!g_dp_drv[i])
 			break;
 
-		if ((g_dp_drv[i]->drm_dev == dev) && g_dp_drv[i]->client->is_edp)
+		if ((g_dp_drv[i]->drm_dev == dev) &&
+				g_dp_drv[i]->client && g_dp_drv[i]->client->is_edp)
 			j++;
 	}
 
@@ -236,6 +240,9 @@ int dp_drv_get_num_of_streams(struct drm_device *dev)
 			continue;
 
 		dp = g_dp_drv[i];
+
+		if (!dp->client)
+			continue;
 
 		dp_info = dp->client->get_intf_info(dp->client);
 		if (dp_info)
