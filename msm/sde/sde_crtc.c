@@ -5599,8 +5599,10 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	SDE_ATRACE_BEGIN("flush_event_thread");
 	_sde_crtc_flush_frame_events(crtc);
 	SDE_ATRACE_END("flush_event_thread");
-	sde_crtc->plane_mask_old = crtc->state->plane_mask;
 
+#if !IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	/* For hypervision, flush is only done when LUTDMA VQ trigger and finish */
+	sde_crtc->plane_mask_old = crtc->state->plane_mask;
 	if (atomic_inc_return(&sde_crtc->frame_pending) == 1) {
 		/* acquire bandwidth and other resources */
 		SDE_DEBUG("crtc%d first commit\n", crtc->base.id);
@@ -5610,6 +5612,7 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 		SDE_EVT32(DRMID(crtc), SDE_EVTLOG_FUNC_CASE2);
 	}
 	sde_crtc->play_count++;
+#endif
 
 	sde_vbif_clear_errors(sde_kms);
 
@@ -5644,6 +5647,28 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 			/* Blocking until VQ is executed */
 			ctl->ops.reg_dma_flush(ctl, true);
 	}
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	/* Defer the pending_kickoff_cnt increamental after VQ done */
+	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+		if (encoder->crtc != crtc)
+			continue;
+
+		sde_encoder_post_kickoff(encoder, true);
+	}
+
+	/* Defer the plane_mask and frame_pending update after VQ done */
+	sde_crtc->plane_mask_old = crtc->state->plane_mask;
+	if (atomic_inc_return(&sde_crtc->frame_pending) == 1) {
+		/* acquire bandwidth and other resources */
+		SDE_DEBUG("crtc%d first commit\n", crtc->base.id);
+		SDE_EVT32(DRMID(crtc), SDE_EVTLOG_FUNC_CASE1);
+	} else {
+		SDE_DEBUG("crtc%d commit\n", crtc->base.id);
+		SDE_EVT32(DRMID(crtc), SDE_EVTLOG_FUNC_CASE2);
+	}
+	sde_crtc->play_count++;
+#endif
 
 	sde_crtc->kickoff_in_progress = false;
 
