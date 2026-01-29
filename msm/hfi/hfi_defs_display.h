@@ -630,4 +630,136 @@ struct hfi_display_dp_tu {
 	u32 valid_boundary2;
 };
 
+/*!
+ * @struct hfi_audio_config
+ * @brief HFI external display audio configuration structure.
+ *
+ * @var sample_rate
+ *   Audio sample rate in Hz (e.g., 48000, 96000, 192000).
+ * @var num_of_channels
+ *   Number of audio channels (2, 6, 8).
+ * @var channel_allocation
+ *   Channel allocation as per CEA-861 standard.
+ * @var level_shift
+ *   Level shift value for dynamic range control.
+ * @var down_mix
+ *   Down mix inhibit flag.
+ * @var sample_present
+ *   Sample present flag indicating audio sample availability.
+ * @var stream_id
+ *   Audio stream identifier for multi-stream scenarios.
+ */
+struct hfi_audio_config {
+	u32 sample_rate;
+	u32 num_of_channels;
+	u32 channel_allocation;
+	u32 level_shift;
+	u32 down_mix;
+	u32 sample_present;
+	u32 stream_id;
+};
+
+/*!
+ * @struct hfi_hdr_metadata
+ * @brief HDR metadata structure for HFI communication
+ *
+ * @var hdr_state
+ *   Current HDR state
+ * @var eotf
+ *   Electro-optical transfer function
+ * @var hdr_supported
+ *   HDR support indicator
+ * @var display_primaries_x
+ *   Display primaries x coordinates array
+ * @var display_primaries_y
+ *   Display primaries y coordinates array
+ * @var white_point_x
+ *   White point x coordinate
+ * @var white_point_y
+ *   White point y coordinate
+ * @var max_luminance
+ *   Maximum luminance value
+ * @var min_luminance
+ *   Minimum luminance value
+ * @var max_content_light_level
+ *   Maximum content light level
+ * @var max_average_light_level
+ *   Maximum average light level
+ */
+struct hfi_hdr_metadata {
+	/* Static HDR */
+	u32 hdr_state;
+	u32 eotf;
+	u32 hdr_supported;
+	u32 display_primaries_x[HFI_MAX_COLOR_COMPONENTS];
+	u32 display_primaries_y[HFI_MAX_COLOR_COMPONENTS];
+	u32 white_point_x;
+	u32 white_point_y;
+	u32 max_luminance;
+	u32 min_luminance;
+	u32 max_content_light_level;
+	u32 max_average_light_level;
+};
+
+/*!
+ * @struct hfi_display_hdr_cfg
+ * @brief HDR configuration payload for HFI_COMMAND_DISPLAY_CONFIG_HDR
+ *
+ * @var dhdr_update
+ *   Dynamic HDR update flag
+ * @var hdr_meta
+ *   HDR metadata structure
+ */
+struct hfi_display_hdr_cfg {
+	u32 dhdr_update;
+	struct hfi_hdr_metadata hdr_meta;
+};
+
+/*!
+ * @enum hfi_colorimetry
+ * @brief Colorimetry standards for display content
+ *
+ * @var HFI_COLORIMETRY_DEFAULT
+ *   No colorimetry specified (value: 0)
+ * @var HFI_COLORIMETRY_SMPTE_170M_YCC
+ *   SMPTE 170M YCC colorimetry (value: 1)
+ * @var HFI_COLORIMETRY_BT709_YCC
+ *   BT.709 YCC colorimetry (value: 2)
+ * @var HFI_COLORIMETRY_XVYCC_601
+ *   xvYCC 601 colorimetry (value: 3)
+ * @var HFI_COLORIMETRY_XVYCC_709
+ *   xvYCC 709 colorimetry (value: 4)
+ * @var HFI_COLORIMETRY_SYCC_601
+ *  sYCC 601 colorimetry (value: 5)
+ * @var HFI_COLORIMETRY_OPYCC_601
+ *  opYCC 601 colorimetry (value: 6)
+ * @var HFI_COLORIMETRY_OPRGB
+ * opRGB colorimetry (value: 7)
+ * @var HFI_COLORIMETRY_BT2020_CYCC
+ *  BT.2020 CYCC colorimetry (value: 8)
+ * @var HFI_COLORIMETRY_BT2020_RGB
+ * BT.2020 RGB colorimetry (value: 9)
+ * @var HFI_COLORIMETRY_BT2020_YCC
+ * BT.2020 YCC colorimetry (value: 10)
+ * @var HFI_COLORIMETRY_DCI_P3_RGB_D65
+ * DCI-P3 RGB D65 colorimetry (value: 11)
+ * @var HFI_COLORIMETRY_DCI_P3_RGB_THEATER
+ * DCI-P3 RGB Theater colorimetry (value: 12)
+ */
+enum hfi_colorimetry {
+	HFI_COLORIMETRY_DEFAULT            = 0,
+	HFI_COLORIMETRY_SMPTE_170M_YCC     = 1,
+	HFI_COLORIMETRY_BT709_YCC          = 2,
+	HFI_COLORIMETRY_XVYCC_601          = 3,
+	HFI_COLORIMETRY_XVYCC_709          = 4,
+	HFI_COLORIMETRY_SYCC_601           = 5,
+	HFI_COLORIMETRY_OPYCC_601          = 6,
+	HFI_COLORIMETRY_OPRGB              = 7,
+	HFI_COLORIMETRY_BT2020_CYCC        = 8,
+	HFI_COLORIMETRY_BT2020_RGB         = 9,
+	HFI_COLORIMETRY_BT2020_YCC         = 10,
+	HFI_COLORIMETRY_DCI_P3_RGB_D65     = 11,
+	HFI_COLORIMETRY_DCI_P3_RGB_THEATER = 12,
+};
+
 #endif // __H_HFI_DEFS_DISPLAY_H__
