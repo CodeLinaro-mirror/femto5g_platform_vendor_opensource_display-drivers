@@ -47,7 +47,7 @@
 #define SDE_HW_VER_610	SDE_HW_VER(6, 1, 0) /* sm7250 */
 #define SDE_HW_VER_630	SDE_HW_VER(6, 3, 0) /* bengal */
 #define SDE_HW_VER_640	SDE_HW_VER(6, 4, 0) /* lagoon */
-#define SDE_HW_VER_650	SDE_HW_VER(6, 5, 0) /* scuba */
+#define SDE_HW_VER_650	SDE_HW_VER(6, 5, 0) /* scuba & shikra */
 #define SDE_HW_VER_660	SDE_HW_VER(6, 6, 0) /* holi */
 #define SDE_HW_VER_670	SDE_HW_VER(6, 7, 0) /* shima */
 #define SDE_HW_VER_680	SDE_HW_VER(6, 8, 0) /* monaco */
