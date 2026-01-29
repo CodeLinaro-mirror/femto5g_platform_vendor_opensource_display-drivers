@@ -318,7 +318,7 @@ static inline int dp_connector_cont_splash_res_disable(void *dp_display)
 	return 0;
 }
 
-static int dp_connector_ctl_init(void *display, void *hfi_priv)
+static inline int dp_connector_ctl_init(void *display, void *hfi_priv)
 {
 	return 0;
 }
