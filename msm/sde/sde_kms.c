@@ -2541,9 +2541,6 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 	if (sde_kms->catalog->allowed_dsc_reservation_switch &
 			SDE_DP_DSC_RESERVATION_SWITCH)
 		max_dp_dsc_count = sde_kms->catalog->dsc_count;
-	/* dp */
-	if (IS_DISP_OP_HFI(priv->disp_op))
-		goto skip_dp;
 
 	for (i = 0; i < sde_kms->dp_display_count &&
 			priv->num_encoders < max_encoders; ++i) {
@@ -2595,6 +2592,10 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			sde_encoder_destroy(encoder);
 			continue;
 		}
+
+		if (IS_DISP_OP_HFI(priv->disp_op))
+			goto skip_dp_mst;
+
 		/* update display cap to MST_MODE for DP MST encoders */
 		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
 		for (idx = 0; idx < dp_info->stream_cnt &&
@@ -2628,7 +2629,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		}
 	}
 
-skip_dp:
+skip_dp_mst:
 	setup_hdmi_displays(dev, priv, sde_kms, max_encoders,
 				max_dp_mixer_count, max_dp_dsc_count);
 

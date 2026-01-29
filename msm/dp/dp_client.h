@@ -104,7 +104,6 @@ struct dp_client {
 	struct drm_device *drm_dev;
 	struct dp_bridge *bridge;
 	struct drm_connector *base_connector;
-	void *base_dp_panel;
 	bool is_sst_connected;
 	bool is_mst_supported;
 	bool is_edp;

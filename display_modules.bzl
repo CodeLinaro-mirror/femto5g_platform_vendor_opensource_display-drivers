@@ -95,8 +95,10 @@ module_entry(
             "msm/dsi/hfi/dsi_display_hfi.c",
             "msm/dsi/hfi/dsi_hfi.c",
             "msm/sde/hfi/hfi_wb.c",
-         ],
-         "CONFIG_DRM_MSM_SDE" : [
+            "msm/dp/hfi/dp_mgr_hfi.c",
+            "msm/dp/hfi/dp_hfi.c",
+        ],
+        "CONFIG_DRM_MSM_SDE": [
             "msm/sde/sde_crtc.c",
             "msm/sde/sde_encoder.c",
             "msm/sde/sde_encoder_dce.c",
