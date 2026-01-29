@@ -281,6 +281,41 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_PA_HIST                                       0x0400000B
 
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_HPD_STATUS - This is a DCP event notify command sent to host with
+ * display notifications about connection status.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in disp_events_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_EVENT_HPD_STATUS
+ *     hfi_packet.flags         : HFI_RX_FLAGS_NONE
+ *     hfi_packet.id            : BITS 0:15 carry the display id for which the event
+ *     ^                        : is applicable
+ *     hfi_packet.payload[0-1]  : struct hfi_display_hpd_status
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_HPD_STATUS                                    0x0400000C
+
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_EDID_INFO - This is a DCP event notify command sent to host after HPD
+ *                                       to notify EDID information and supported display modes for
+ *                                       the connected display.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in disp_events_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_EVENT_EDID_INFO
+ *     hfi_packet.flags         : HFI_RX_FLAGS_NONE
+ *     hfi_packet.id            : BITS 0:15 carry the display id for which the event
+ *     ^                        : is applicable
+ *     hfi_packet.payload[0-11] : struct hfi_display_event_edid_info
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_EDID_INFO                                     0x0400000D
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H

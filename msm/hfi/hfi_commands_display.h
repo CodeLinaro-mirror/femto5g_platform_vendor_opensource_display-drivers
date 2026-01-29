@@ -332,6 +332,23 @@
  */
 #define HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL                        0x0200000F
 
+/*
+ * HFI_COMMAND_DISPLAY_SET_DP_TU   -        From Host to DCP, this command tells DCP to modify the
+ *                                          TU (Transfer Unit) params to the below payload.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info.type: HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_SET_DP_TU
+ *     hfi_packet.flags         : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : struct hfi_display_dp_tu
+ */
+#define HFI_COMMAND_DISPLAY_SET_DP_TU                                 0x02000010
+
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_H__

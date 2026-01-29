@@ -456,6 +456,23 @@
 #define HFI_COMMAND_DEVICE_HWFENCE_HFI_CONFIG                        0x01000012
 
 /*
+ * HFI_COMMAND_DEVICE_HOT_PLUG_DETECT
+ * Host command sent to DCP to update pluggable display about hot plug configuration
+ *
+ * Host to DCP:
+ *
+ * hfi_header.num_packets             : 1
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32
+ *     hfi_packet.cmd           : HFI_COMMAND_DEVICE_HOT_PLUG_DETECT
+ *     hfi_packet.flags         : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ * HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.payload       : struct hfi_device_hotplug_info
+ */
+#define HFI_COMMAND_DEVICE_HOT_PLUG_DETECT                           0x01000013
+
+/*
  * HFI_COMMAND_DEVICE_RESOURCE_CTRL -   This command is used to support display virtualization.
 					This command is set to configure the resources that
 					needs to be lent across VMs
