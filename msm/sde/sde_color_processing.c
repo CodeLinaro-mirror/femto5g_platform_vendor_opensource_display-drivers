@@ -4144,6 +4144,7 @@ void sde_cp_crtc_pre_ipc(struct drm_crtc *drm_crtc)
 	struct sde_crtc *sde_crtc = NULL;
 	struct sde_mdss_cfg *catalog = NULL;
 	struct msm_drm_private *dev_private = NULL;
+	struct sde_hw_dspp *hw_dspp = NULL;
 	bool aiqe_enable = false;
 
 	if (!drm_crtc || !drm_crtc->dev || !drm_crtc->dev->dev_private) {
@@ -4159,6 +4160,15 @@ void sde_cp_crtc_pre_ipc(struct drm_crtc *drm_crtc)
 	}
 
 	_sde_cp_ad_set_prop(sde_crtc, AD_IPC_SUSPEND);
+
+	hw_dspp = sde_crtc->mixers[0].hw_dspp;
+	if (!hw_dspp) {
+		DRM_ERROR("invalid dspp\n");
+		return;
+	}
+
+	if (IS_DISP_OP_HFI(hw_dspp->hw.disp_op))
+		return;
 
 	/* enable clock retention if AIQE features are enabled */
 	aiqe_enable =
@@ -4189,6 +4199,7 @@ void sde_cp_crtc_post_ipc(struct drm_crtc *drm_crtc)
 	struct sde_crtc *sde_crtc = NULL;
 	struct sde_mdss_cfg *catalog = NULL;
 	struct msm_drm_private *dev_private = NULL;
+	struct sde_hw_dspp *hw_dspp = NULL;
 	bool aiqe_enable = false;
 
 	if (!drm_crtc || !drm_crtc->dev || !drm_crtc->dev->dev_private) {
@@ -4205,6 +4216,16 @@ void sde_cp_crtc_post_ipc(struct drm_crtc *drm_crtc)
 
 	_sde_cp_ad_set_prop(sde_crtc, AD_IPC_RESUME);
 	sde_set_mdnie_psr(sde_crtc);
+
+
+	hw_dspp = sde_crtc->mixers[0].hw_dspp;
+	if (!hw_dspp) {
+		DRM_ERROR("invalid dspp\n");
+		return;
+	}
+
+	if (IS_DISP_OP_HFI(hw_dspp->hw.disp_op))
+		return;
 
 	/* disable clock retention if AIQE features are enabled */
 	aiqe_enable =
