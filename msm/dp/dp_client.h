@@ -155,6 +155,8 @@ struct dp_client {
 
 		int (*post_init)(struct dp_client *client);
 
+		int (*ctl_init)(struct dp_client *client);
+
 		int (*set_stream_info)(struct dp_client *client, int panel_id,
 				u32 strm_id, u32 start_slot, u32 num_slots, u32 pbn,
 				int vcpi);

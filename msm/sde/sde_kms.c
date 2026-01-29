@@ -2386,6 +2386,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.set_allowed_mode_switch = NULL,
 		.set_dyn_bit_clk = NULL,
 		.update_transfer_time = NULL,
+		.ctl_init = dp_connector_ctl_init,
 	};
 	struct msm_display_info info;
 	struct drm_encoder *encoder;
@@ -2753,6 +2754,7 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 	int wb_idx = 0, csc_wb_idx = 0, repro_wb_idx = 0;
 	int dsi_idx = 0;
 	enum wb_opmode opmode;
+	int dp_idx = 0;
 
 	if (!sde_kms) {
 		SDE_ERROR("invalid arguments\n");
@@ -2789,6 +2791,12 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 			c_conn = to_sde_connector(conn);
 			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
 			c_conn->ops.ctl_pre_transition(c_conn->display);
+		} else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort) {
+			sde_connector_setup_obj_id(conn,
+					sde_kms->hfi_kms->catalog->dp_indices[dp_idx++]);
+
+			c_conn = to_sde_connector(conn);
+			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);

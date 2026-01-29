@@ -29,6 +29,8 @@
  * @tx_cmd_buf_dva:       DCP virtual address of the DCS cmd tx buffer
  * @tx_cmd_buf_fill_level:Tracks fill level of the DCS cmd tx buffer
  * @tx_cmd_buf_map:       Address map of DCS command payload HFI buffer
+ * @cb_data:              callback data for display_update callback function
+ * @display_update:       callback function to update dp mgr about dcp updates
  */
 struct dp_hfi {
 	struct hfi_adapter_t *hfi_adapter;
@@ -44,6 +46,9 @@ struct dp_hfi {
 	unsigned long tx_cmd_buf_dva;
 	u32 tx_cmd_buf_fill_level;
 	struct hfi_shared_addr_map tx_cmd_buf_map;
+
+	void *cb_data;
+	void (*handle_event)(void *cb_data, u32 event, void *payload, u32 size);
 };
 
 /**
@@ -67,9 +72,10 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
 /**
  * dp_hfi_setup() - setup dp hfi interface
  * @client: handle to dp client structure
+ * @cb_data: callback data
  *
  * Return: pointer to dp_mgr_hfi structure on success, ERR_PTR on failure.
  */
-struct dp_hfi *dp_hfi_setup(struct dp_client *client);
+struct dp_hfi *dp_hfi_setup(struct dp_client *client, void *cb_data);
 
 #endif /* _DP_HFI_HEADER_H_ */

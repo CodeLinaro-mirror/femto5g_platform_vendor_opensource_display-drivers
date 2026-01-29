@@ -108,6 +108,11 @@ static void dp_bridge_pre_enable(struct drm_bridge *drm_bridge)
 
 	ops = &drv->client->drm_ops;
 
+	DP_DEBUG("SET MODE:: x: %d, y: %d, fps: %d\n",
+		bridge->dp_mode.timing.h_active,
+		bridge->dp_mode.timing.v_active,
+		bridge->dp_mode.timing.refresh_rate);
+
 	/* By this point mode should have been validated through mode_fixup */
 	rc = ops->set_mode(drv->client, bridge->panel_id, &bridge->dp_mode);
 	if (rc) {
@@ -299,13 +304,13 @@ static bool dp_bridge_mode_fixup(struct drm_bridge *drm_bridge,
 	drv = bridge->drv;
 	if (!drv || !drv->client) {
 		DP_ERR("no dp client found\n");
-		return -EINVAL;
+		ret = false;
+		goto end;
 	}
 
 	ops = &drv->client->drm_ops;
 
-	ops->convert_to_dp_mode(drv->client, bridge->panel_id,
-		mode, &dp_mode);
+	ops->convert_to_dp_mode(drv->client, bridge->panel_id, mode, &dp_mode);
 	ops->clear_reservation(drv->client, bridge->panel_id);
 	convert_to_drm_mode(&dp_mode, adjusted_mode);
 end:
@@ -437,6 +442,27 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	if (drv->client->dsc_cont_pps)
 		sde_conn->ops.update_pps = NULL;
 
+end:
+	return rc;
+}
+
+int dp_connector_ctl_init(void *display, void *hfi_priv)
+{
+	int rc = 0;
+	struct dp_drv *drv = display;
+	struct dp_client_drm_ops *ops;
+
+	if (!drv) {
+		DP_ERR("Invalid data\n");
+		return -EINVAL;
+	}
+
+	ops = &drv->client->drm_ops;
+	if (ops->ctl_init) {
+		rc = ops->ctl_init(drv->client);
+		if (rc)
+			goto end;
+	}
 end:
 	return rc;
 }
