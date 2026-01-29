@@ -28,10 +28,18 @@
 #include "hfi_commands_device.h"
 #include "dp_aux_switch.h"
 #include "hfi_defs_display.h"
+#include "dp_panel_tu.h"
 
 #define DRM_DP_IPC_NUM_PAGES 10
 #define HPD_STRING_SIZE	    30
 #define MAX_MODES           32
+
+struct dpcd_info {
+	u32 lane_count;
+	u32 link_rate_khz;
+	u32 pclk_factor;
+	bool fec_en;
+};
 
 struct dp_mgr_hfi_priv {
 	char *name;
@@ -42,6 +50,7 @@ struct dp_mgr_hfi_priv {
 	struct dp_intf_info intf_info;
 	struct dp_hpd *hpd;
 	struct dp_hpd_cb hpd_cb;
+	struct dpcd_info dpcd;
 
 	struct hfi_shared_addr_map *edid_addr_map;
 	struct hfi_shared_addr_map *modes_addr_map;
@@ -310,7 +319,7 @@ static int _hfi_parse_supported_modes(struct dp_mgr_hfi_priv *hfi_priv)
 	/* Copy modes to hfi_priv */
 	for (i = 0; i < mode_count; i++) {
 		memcpy(&hfi_priv->mode_list[i], &modes_array[i],
-		       sizeof(struct hfi_display_mode_info));
+				sizeof(struct hfi_display_mode_info));
 	}
 
 	hfi_priv->mode_count = mode_count;
@@ -326,15 +335,15 @@ static int _hfi_parse_supported_modes(struct dp_mgr_hfi_priv *hfi_priv)
 	return 0;
 }
 
-static int _hfi_register_for_events(struct dp_mgr_hfi_priv *hfi_priv, u32 hfi_event,
-		u32 enable)
+static int _register_hpd_events(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 {
+	int rc = 0;
 	struct sde_kms *sde_kms;
 	struct hfi_kms *hfi_kms;
 	struct hfi_client_t *hfi_client;
 	u32 hfi_cmd = (enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER :
 			HFI_COMMAND_DISPLAY_EVENT_DEREGISTER);
-	int rc = 0;
+	u32 hfi_event;
 
 	/* Get HFI client from the client structure */
 	if (!hfi_priv->client.base_connector) {
@@ -356,31 +365,22 @@ static int _hfi_register_for_events(struct dp_mgr_hfi_priv *hfi_priv, u32 hfi_ev
 
 	hfi_client = &hfi_kms->hfi_client;
 
-	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+	hfi_event = HFI_EVENT_HPD_STATUS;
+	rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 		HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32), HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Could not register for updates from DCP, rc=%d\n", rc);
-		return rc;
-	}
-
-	return 0;
-}
-
-static int _register_hpd_events(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
-{
-	int rc = 0;
-
-	rc = _hfi_register_for_events(hfi_priv, HFI_EVENT_HPD_STATUS, enable);
-	if (rc) {
-		DP_ERR("failed to register display update event\n");
 		goto end;
 	}
 
-	rc = _hfi_register_for_events(hfi_priv, HFI_EVENT_DISPLAY_EDID_INFO, enable);
+	hfi_event = HFI_EVENT_DISPLAY_EDID_INFO;
+	rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+		HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32), HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
-		DP_ERR("failed to register dp info event\n");
+		DP_ERR("Could not register for updates from DCP, rc=%d\n", rc);
 		goto end;
 	}
+
 end:
 	return rc;
 }
@@ -769,6 +769,94 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	return rc;
 }
 
+static void dp_mgr_hfi_calc_tu_parameters(struct dp_mgr_hfi_priv *hfi_priv,
+		struct dp_panel_info *pinfo, struct dp_vc_tu_mapping_table *tu_table)
+{
+	struct dp_tu_calc_input in;
+	struct dp_tu_calc_output out;
+
+	in.lclk = hfi_priv->link_rate / 1000;
+	in.nlanes = hfi_priv->lane_count;
+	in.pclk_khz = pinfo->pixel_clk_khz;
+	in.hactive = pinfo->h_active;
+	in.hporch = pinfo->h_back_porch + pinfo->h_front_porch +
+				pinfo->h_sync_width;
+
+	in.bpp = 24 ; // #TODO# add support for other bpps. (pinfo->bpp)
+	in.pixel_enc = 444;
+	in.dsc_en = pinfo->comp_info.enabled;
+	in.async_en = 0;
+	in.fec_en = hfi_priv->dpcd.fec_en;
+	in.num_of_dsc_slices = pinfo->comp_info.dsc_info.slice_per_pkt;
+	in.ppc_div_factor = 2; /*hfi_priv->dpcd.pclk_factor;*/
+
+	if (pinfo->comp_info.enabled) {
+		in.compress_ratio = mult_frac(100, pinfo->comp_info.src_bpp,
+				pinfo->comp_info.tgt_bpp);
+		in.comp_bpp = pinfo->comp_info.tgt_bpp;
+	} else {
+		in.compress_ratio = 100;
+		in.comp_bpp = in.bpp;
+	}
+
+	DP_INFO("tu in1: %x %x %x %x %x %x %x %x\n", (u32)in.lclk, (u32)in.pclk_khz,
+			(u32)in.hactive, (u32)in.hporch, in.nlanes, in.bpp, in.pixel_enc,
+			(u32)in.comp_bpp);
+
+	DP_INFO("tu in2: %x %x %x %x %x %x\n", in.dsc_en, in.async_en, in.fec_en,
+			(u32)in.compress_ratio, in.num_of_dsc_slices,
+			in.ppc_div_factor);
+
+	dp_tu_calculate(&in, &out);
+
+	/* Log output results */
+	DP_INFO("tu out: %x %x %x %x %x %x %x\n", out.valid_boundary_link, out.delay_start_link,
+			out.boundary_moderation_en, out.valid_lower_boundary_link,
+			out.upper_boundary_count, out.lower_boundary_count,
+			out.tu_size_minus1);
+
+	tu_table->valid_boundary_link       = out.valid_boundary_link;
+	tu_table->delay_start_link          = out.delay_start_link;
+	tu_table->boundary_moderation_en    = out.boundary_moderation_en;
+	tu_table->valid_lower_boundary_link = out.valid_lower_boundary_link;
+	tu_table->upper_boundary_count      = out.upper_boundary_count;
+	tu_table->lower_boundary_count      = out.lower_boundary_count;
+	tu_table->tu_size_minus1            = out.tu_size_minus1;
+}
+
+static int dp_mgr_hfi_send_transfer_unit(struct dp_mgr_hfi_priv *hfi_priv,
+	struct hfi_client_t *hfi_client, struct dp_display_mode *mode)
+{
+	struct dp_vc_tu_mapping_table tu_calc_table;
+	struct hfi_display_dp_tu tu;
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_SET_DP_TU;
+
+	if (!hfi_priv || !hfi_client || !mode) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	dp_mgr_hfi_calc_tu_parameters(hfi_priv, &mode->timing, &tu_calc_table);
+
+	tu.dp_tu = tu_calc_table.tu_size_minus1;
+	tu.valid_boundary = tu_calc_table.valid_boundary_link;
+	tu.valid_boundary |= (tu_calc_table.delay_start_link << 16);
+
+	tu.valid_boundary2 = (tu_calc_table.valid_lower_boundary_link << 1);
+	tu.valid_boundary2 |= (tu_calc_table.upper_boundary_count << 16);
+	tu.valid_boundary2 |= (tu_calc_table.lower_boundary_count << 20);
+
+	if (tu_calc_table.boundary_moderation_en)
+		tu.valid_boundary2 |= BIT(0);
+
+	DP_DEBUG("dp_tu=0x%x, valid_boundary=0x%x, valid_boundary2=0x%x\n",
+			tu.dp_tu, tu.valid_boundary, tu.valid_boundary2);
+
+	return dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+		HFI_PAYLOAD_TYPE_U32_ARRAY, &tu, sizeof(struct hfi_display_dp_tu),
+		HFI_HOST_FLAGS_NON_DISCARDABLE);
+}
+
 static int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp_display_mode *mode)
 {
 	struct sde_kms *sde_kms;
@@ -796,6 +884,10 @@ static int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp
 
 	hfi_client = &hfi_kms->hfi_client;
 
+	rc = dp_mgr_hfi_send_transfer_unit(hfi_priv, hfi_client, mode);
+	if (rc)
+		DP_WARN("couldn't send TU data\n");
+
 	hfi_mode_info.size            = sizeof(struct hfi_display_mode_info);
 	hfi_mode_info.h_active        =	mode->timing.h_active;
 	hfi_mode_info.h_back_porch    =	mode->timing.h_back_porch;
@@ -810,7 +902,7 @@ static int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp
 	hfi_mode_info.v_sync_polarity =	mode->timing.v_active_low ? 0 : 1;
 	hfi_mode_info.refresh_rate    =	mode->timing.refresh_rate;
 
-	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+	rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &hfi_mode_info, hfi_mode_info.size,
 			HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc)
@@ -912,6 +1004,8 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_mgr_hfi_priv *hfi_priv, void *pa
 
 		_hfi_process_edid(hfi_priv, edid_buf->size);
 		_hfi_parse_supported_modes(hfi_priv);
+		hfi_priv->link_rate = info->link_rate;
+		hfi_priv->lane_count = info->lane_count;
 	}
 
 	hfi_priv->link_rate = info->link_rate;
@@ -1114,7 +1208,7 @@ int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
 
 	hfi_client = &hfi_kms->hfi_client;
 
-	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+	rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0, HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc)
 		DP_ERR("Could not send HFI_COMMAND_DISPLAY_ENABLE, rc=%d\n", rc);
@@ -1249,8 +1343,6 @@ int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 		rc = -EINVAL;
 		goto end;
 	}
-
-	_register_hpd_events(hfi_priv, false);
 
 	dp_mgr_hfi_hpd_cleanup(hfi_priv);
 
