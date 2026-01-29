@@ -78,9 +78,9 @@ int hfi_plane_init(uint32_t pipe_id, struct sde_plane *pdpu)
 }
 
 void hfi_plane_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_plane *plane,
-	bool use_lock);
+	bool use_lock)
 {
-	return -HFI_ERROR;
+	return;
 }
 
 struct hfi_cmdbuf_t *hfi_plane_get_cmd_buf(struct drm_plane *plane)
