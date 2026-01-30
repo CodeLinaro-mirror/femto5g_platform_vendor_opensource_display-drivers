@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2025, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -9,7 +9,6 @@
 #include <linux/regulator/consumer.h>
 #include <linux/clk.h>
 #include <linux/of_irq.h>
-#include <linux/pm_opp.h>
 #include <video/mipi_display.h>
 
 #ifdef CONFIG_UIO
@@ -236,10 +235,10 @@ static ssize_t debugfs_line_count_read(struct file *file,
 			dsi_ctrl->cmd_trigger_frame);
 	len += scnprintf((buf + len), max_len - len,
 			"Command successful at line: %04x\n",
-			dsi_ctrl->cmd_success_line);
+			atomic_read(&dsi_ctrl->cmd_success_line));
 	len += scnprintf((buf + len), max_len - len,
 			"Command successful at frame: %04x\n",
-			dsi_ctrl->cmd_success_frame);
+			atomic_read(&dsi_ctrl->cmd_success_frame));
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 
@@ -2141,20 +2140,6 @@ static int dsi_ctrl_dev_probe(struct platform_device *pdev)
 		goto fail_supplies;
 	}
 
-	rc = devm_pm_opp_set_clkname(&pdev->dev, "byte_clk");
-	if (rc) {
-		DSI_CTRL_ERR(dsi_ctrl, "Failed to set clock name, rc = %d\n",
-				rc);
-		return rc;
-	}
-
-	/* OPP table is optional */
-	rc = devm_pm_opp_of_add_table(&pdev->dev);
-	if (rc && rc != -ENODEV) {
-		dev_err(&pdev->dev, "invalid OPP table in device tree\n");
-		return ENODEV;
-	}
-
 	rc = dsi_catalog_ctrl_setup(&dsi_ctrl->hw, dsi_ctrl->version,
 		dsi_ctrl->cell_index, dsi_ctrl->phy_pll_bypass,
 		dsi_ctrl->null_insertion_enabled);
@@ -2896,14 +2881,14 @@ static irqreturn_t dsi_ctrl_isr(int irq, void *ptr)
 		if (dsi_ctrl->enable_cmd_dma_stats) {
 			u32 reg = dsi_ctrl->hw.ops.log_line_count(&dsi_ctrl->hw,
 						dsi_ctrl->cmd_mode);
-			dsi_ctrl->cmd_success_line = (reg & 0xFFFF);
-			dsi_ctrl->cmd_success_frame = ((reg >> 16) & 0xFFFF);
+			atomic_set(&dsi_ctrl->cmd_success_line, (reg & 0xFFFF));
+			atomic_set(&dsi_ctrl->cmd_success_frame, ((reg >> 16) & 0xFFFF));
 			SDE_EVT32(dsi_ctrl->cell_index,	SDE_EVTLOG_FUNC_CASE1,
 					dsi_ctrl->cmd_success_line,
 					dsi_ctrl->cmd_success_frame);
 		}
 
-		dsi_ctrl->cmd_success_ts =  ktime_get();
+		atomic64_set(&dsi_ctrl->cmd_success_ts, ktime_get());
 		atomic_set(&dsi_ctrl->dma_irq_trig, 1);
 		dsi_ctrl_disable_status_interrupt(dsi_ctrl,
 					DSI_SINT_CMD_MODE_DMA_DONE);
@@ -3550,7 +3535,7 @@ int dsi_ctrl_cmd_transfer(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd)
 					rc);
 	}
 
-	cmd->ts = dsi_ctrl->cmd_success_ts;
+	cmd->ts = atomic64_read(&dsi_ctrl->cmd_success_ts);
 	dsi_ctrl_update_state(dsi_ctrl, DSI_CTRL_OP_CMD_TX, 0x0);
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
