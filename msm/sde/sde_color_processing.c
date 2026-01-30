@@ -837,6 +837,7 @@ static int _set_ltm_hist_crtl_feature(struct sde_hw_dspp *hw_dspp,
 				if (!hw_lm->cfg.right_mixer && sde_crtc->ltm_hist_en) {
 					/* histogram is already enabled */
 					DRM_DEBUG("LTM hist is already enabled");
+					mutex_unlock(&sde_crtc->ltm_buffer_lock);
 					return 0;
 				}
 
