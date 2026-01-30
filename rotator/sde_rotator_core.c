@@ -3149,8 +3149,8 @@ int sde_rotator_core_init(struct sde_rot_mgr **pmgr,
 			SDE_MDP_HW_REV_500) ||
 		IS_SDE_MAJOR_SAME(mdata->mdss_version,
 			SDE_MDP_HW_REV_600) ||
-		IS_SDE_MAJOR_SAME(mdata->mdss_version,
-			SDE_MDP_HW_REV_870)) {
+		IS_SDE_MAJOR_SAME((u32)(mdata->mdss_version),
+			(u32)SDE_MDP_HW_REV_870)) {
 		mgr->ops_hw_init = sde_rotator_r3_init;
 		mgr->min_rot_clk = ROT_MIN_ROT_CLK;
 
@@ -3164,7 +3164,7 @@ int sde_rotator_core_init(struct sde_rot_mgr **pmgr,
 			mgr->max_rot_clk = ROT_R3_MAX_ROT_CLK;
 
 		if (!(IS_SDE_MAJOR_SAME(mdata->mdss_version, SDE_MDP_HW_REV_600) ||
-			IS_SDE_MAJOR_SAME(mdata->mdss_version, SDE_MDP_HW_REV_870)) &&
+			IS_SDE_MAJOR_SAME((u32)(mdata->mdss_version), (u32)SDE_MDP_HW_REV_870)) &&
 				!sde_rotator_get_clk(mgr,
 					SDE_ROTATOR_CLK_MDSS_AXI)) {
 			SDEROT_ERR("unable to get mdss_axi_clk\n");
