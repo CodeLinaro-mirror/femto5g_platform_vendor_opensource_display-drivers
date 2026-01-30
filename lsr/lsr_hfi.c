@@ -537,7 +537,7 @@ static int __unvote_buses(struct lsr_device *device)
 	core = lsr_driver->lsr_core;
 
 	iris_hfi_for_each_bus(device, bus) {
-		rc = lsr_set_bw(bus, 0);
+		rc = lsr_set_bw(bus, 0, 0);
 		if (rc) {
 			dprintk(LSR_ERR,
 			"%s: Failed unvoting bus\n", __func__);
@@ -552,7 +552,8 @@ err_unknown_device:
 	return rc;
 }
 
-static int iris_hfi_vote_buses(void *dev, struct bus_info *bus, unsigned long bw)
+static int iris_hfi_vote_buses(void *dev, struct bus_info *bus, unsigned long bw,
+	unsigned long peak_bw)
 {
 	int rc = 0;
 	struct lsr_device *device = dev;
@@ -560,7 +561,7 @@ static int iris_hfi_vote_buses(void *dev, struct bus_info *bus, unsigned long bw
 	if (!device)
 		return -EINVAL;
 
-	rc = lsr_set_bw(bus, bw);
+	rc = lsr_set_bw(bus, bw, peak_bw);
 
 	return rc;
 }
@@ -2642,7 +2643,7 @@ static int __vote_cfg_bus(struct lsr_device *device)
 	for (bus_count = 0; bus_count < core->resources.bus_set.count; bus_count++) {
 		if (!strcmp(core->resources.bus_set.bus_tbl[bus_count].name, "lsr-cfg")) {
 			bus = &core->resources.bus_set.bus_tbl[bus_count];
-			rc = lsr_set_bw(bus, bus->range[1]);
+			rc = lsr_set_bw(bus, bus->range[1], bus->range[1]);
 		}
 	}
 

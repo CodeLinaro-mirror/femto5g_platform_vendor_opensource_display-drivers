@@ -20,6 +20,7 @@ int msm_lsr_disable_unprepare_clk(struct lsr_device *device,
 		const char *name);
 int msm_lsr_init_clocks(struct lsr_device *device);
 void msm_lsr_deinit_clocks(struct lsr_device *device);
-int msm_lsr_set_bw(struct msm_lsr_core *core, struct bus_info *bus, unsigned long bw);
-int lsr_set_bw(struct bus_info *bus, unsigned long bw);
+int msm_lsr_set_bw(struct msm_lsr_core *core, struct bus_info *bus, unsigned long bw,
+		unsigned long peak_bw);
+int lsr_set_bw(struct bus_info *bus, unsigned long bw, unsigned long peak_bw);
 #endif
