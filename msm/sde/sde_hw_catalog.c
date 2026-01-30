@@ -4754,9 +4754,11 @@ static void _sde_top_parse_dt_helper(struct sde_mdss_cfg *cfg,
 	cfg->ipcc_protocol_offset = PROP_VALUE_ACCESS(props->values, IPCC_PROTOCOL_OFFSET, 0);
 	if (!cfg->ipcc_protocol_offset)
 		cfg->ipcc_protocol_offset = HW_FENCE_DEFAULT_IPCC_PROTOCOL_OFFSET;
-	if (!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id) {
-		SDE_INFO("disabling hw-fence because invalid protocol_id:%d client_phys_id:%d\n",
-			cfg->ipcc_protocol_id, cfg->ipcc_client_phys_id);
+	if (!cfg->hfi_cfg.perf_sys_cache_enable &&
+			(!cfg->ipcc_protocol_id || !cfg->ipcc_client_phys_id)) {
+		SDE_ERROR("disabling hwfence, protocol_id:%d, client_phys_id:%d, hfi enable:%d\n",
+			cfg->ipcc_protocol_id, cfg->ipcc_client_phys_id,
+			cfg->hfi_cfg.perf_sys_cache_enable);
 		cfg->hw_fence_rev = 0;
 	}
 	cfg->ipcc_client_out_phys_id = PROP_VALUE_ACCESS(props->values, IPCC_CLIENT_OUT_PHYS_ID, 0);
@@ -6073,6 +6075,17 @@ static void _sde_get_hw_caps_for_scuba(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 }
 
+static void _sde_get_hw_caps_for_shikra(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	sde_cfg->perf.min_prefill_lines = 24;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	sde_cfg->sui_block_xin_mask = 0x1;
+	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
+}
+
 static void _sde_get_hw_caps_for_monaco(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
@@ -6858,6 +6871,7 @@ static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
 	set_bit(SDE_FEATURE_LSR, sde_cfg->features);
+	set_bit(SDE_FEATURE_FRAME_SEQ_CHECK, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->vbif_qos_nlvl = 8;
 	sde_cfg->ts_prefill_rev = 2;
@@ -6962,6 +6976,7 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_630, _sde_get_hw_caps_for_bengal},
 	{SDE_HW_VER_640, _sde_get_hw_caps_for_lagoon},
 	{SDE_HW_VER_650, _sde_get_hw_caps_for_scuba},
+	{SDE_HW_VER_650, _sde_get_hw_caps_for_shikra},
 	{SDE_HW_VER_660, _sde_get_hw_caps_for_holi},
 	{SDE_HW_VER_670, _sde_get_hw_caps_for_shima},
 	{SDE_HW_VER_680, _sde_get_hw_caps_for_monaco},

@@ -7530,7 +7530,7 @@ void sde_encoder_kickoff(struct drm_encoder *drm_enc, bool config_changed)
 		SDE_ERROR("invalid sde_kms\n");
 		return;
 	}
-	if (sde_enc->cur_master)
+	if (sde_enc->cur_master && IS_DISP_OP_HWIO(disp_op))
 		_sde_encoder_update_retire_txq(sde_enc->cur_master, sde_kms);
 
 	/* delay frame kickoff based on expected present time */
@@ -7633,6 +7633,9 @@ u32 sde_encoder_helper_get_kickoff_timeout_ms(struct drm_encoder *drm_enc)
 	sde_kms = sde_encoder_get_kms(drm_enc);
 	if (!sde_kms)
 		return DEFAULT_KICKOFF_TIMEOUT_MS;
+
+	if (sde_kms->catalog->hw_fence_rev)
+		return HWFENCE_KICKOFF_TIMEOUT_MS;
 
 	if (sde_encoder_in_clone_mode(drm_enc))
 		src_enc = sde_crtc_get_src_encoder_of_clone(drm_enc->crtc);
@@ -9741,4 +9744,3 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
 		}
 	}
 }
-

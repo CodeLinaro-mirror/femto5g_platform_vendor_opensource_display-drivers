@@ -19,6 +19,8 @@
 
 #define HFI_MAX_PLANES  4 /* Maximum number of planes supported */
 
+#define HFI_MAX_COLOR_COMPONENTS  3 /* Maximum number of color components supported */
+
 /*
  * Note: 1st MSB byte determines the type of color format
  * // Interleaved RGB (MSB byte = 0x01)

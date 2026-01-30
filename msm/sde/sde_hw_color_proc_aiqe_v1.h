@@ -52,6 +52,14 @@ void sde_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
 void sde_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
 
 /**
+ * reg_dmav1_setup_copr_v1 - api to setup copr programming
+ * @ctx: pointer to dspp object.
+ * @cfg: Pointer to sde_hw_cp_cfg.
+ * @aiqe_top: Pointer to aiqe top level structure
+ */
+void reg_dmav1_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
+
+/**
  * sde_setup_mdnie_psr - api to setup mdnie psr programming
  * @ctx: pointer to dspp object.
  */

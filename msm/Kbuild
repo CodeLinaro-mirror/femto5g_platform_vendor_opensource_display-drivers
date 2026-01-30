@@ -351,7 +351,9 @@ msm_drm-$(CONFIG_MDSS_HFI) += hfi/hfi_utils.o \
 				 sde/hfi/hfi_color_proc.o \
 				 dsi/hfi/dsi_display_hfi.o \
 				 dsi/hfi/dsi_hfi.o \
-				 sde/hfi/hfi_wb.o
+				 sde/hfi/hfi_wb.o \
+				 dp/hfi/dp_mgr_hfi.o \
+				 dp/hfi/dp_hfi.o
 
 msm_drm-$(CONFIG_DSI_PARSER) += dsi/dsi_parser.o
 

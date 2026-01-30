@@ -19,6 +19,7 @@
 #include "dp_mst_sim.h"
 #include "dp_mst_drm.h"
 #include "dp_debug_client.h"
+#include "hfi/dp_debug_client_hfi.h"
 
 #define DEBUG_NAME "drm_dp"
 
@@ -1826,6 +1827,8 @@ static int dp_debug_init(struct dp_debug_private *priv)
 	/* Get priv client instance */
 	if (IS_DISP_OP_HWIO(priv->disp_op))
 		rc = dp_debug_client_get(&priv->client);
+	else if (IS_DISP_OP_HFI(priv->disp_op) && IS_ENABLED(CONFIG_DRM_MSM_DP_HFI))
+		rc = dp_debug_client_hfi_get(&priv->client);
 
 	if (rc)
 		goto error_remove_dir;
@@ -1864,11 +1867,14 @@ struct dp_debug_client *dp_debug_get(struct device *dev, u32 disp_op)
 
 	mutex_init(&priv->lock);
 
-	rc = dp_debug_init(priv);
-	if (rc)
-		goto error;
-
 	priv->client.dev = dev;
+
+	rc = dp_debug_init(priv);
+	if (rc) {
+		devm_kfree(dev, priv);
+		goto error;
+	}
+
 	if (priv->client.read_max_pclk_khz) {
 		priv->client.read_max_pclk_khz(&priv->client, buf, buf_size);
 		priv->client.max_pclk_khz = *buf;

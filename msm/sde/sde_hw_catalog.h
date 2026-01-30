@@ -47,7 +47,7 @@
 #define SDE_HW_VER_610	SDE_HW_VER(6, 1, 0) /* sm7250 */
 #define SDE_HW_VER_630	SDE_HW_VER(6, 3, 0) /* bengal */
 #define SDE_HW_VER_640	SDE_HW_VER(6, 4, 0) /* lagoon */
-#define SDE_HW_VER_650	SDE_HW_VER(6, 5, 0) /* scuba */
+#define SDE_HW_VER_650	SDE_HW_VER(6, 5, 0) /* scuba & shikra */
 #define SDE_HW_VER_660	SDE_HW_VER(6, 6, 0) /* holi */
 #define SDE_HW_VER_670	SDE_HW_VER(6, 7, 0) /* shima */
 #define SDE_HW_VER_680	SDE_HW_VER(6, 8, 0) /* monaco */
@@ -941,6 +941,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
  * @SDE_FEATURE_DISP_OP        Support Display OP switch
  * @SDE_FEATURE_LSR            Support Display LSR
+ * @SDE_FEATURE_FRAME_SEQ_CHECK	 Add check on frame sequence number to avoid duplicate frame events
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -997,6 +998,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_SSIP_CLK,
 	SDE_FEATURE_DISP_OP,
 	SDE_FEATURE_LSR,
+	SDE_FEATURE_FRAME_SEQ_CHECK,
 	SDE_FEATURE_MAX
 };
 

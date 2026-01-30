@@ -9,6 +9,9 @@
 /*
  * This is documentation file. Not used for header inclusion.
  */
+
+#include "hfi_defs_common.h"
+
 /**
  * @brief Definitions for display panic events.
  */
@@ -102,6 +105,78 @@ struct misr_setup_data {
 struct misr_read_data {
 	u32 display_id;
 	enum hfi_debug_misr_module_type module_type;
+};
+
+/*
+ * HFI data structure definitions for DP Simulation commands.
+ * These structures define the payload formats for commands and responses.
+ */
+
+/*
+ * Read DPCD registers
+ *
+ * @buffer:
+ *     Shared buffer info
+ * @dpcd_offset:
+ *     DPCD register offset
+ * @bytes:
+ *     Number of bytes to read
+ */
+struct hfi_dp_dpcd_request {
+	struct hfi_buff buffer;
+	u32 dpcd_offset;
+	u32 bytes;
+};
+
+/*
+ * Write DPCD registers
+ *
+ * @offset:
+ *     DPCD register offset
+ * @size:
+ *     Number of bytes to write (up to 256 bytes)
+ * @data:
+ *     DPCD register data
+ */
+struct hfi_dp_dpcd_data {
+	u32 offset;
+	u32 size;
+	u8  data[256];
+};
+
+/*
+ * Set display mode
+ *
+ * @hdisplay:
+ *     Horizontal display resolution
+ * @vdisplay:
+ *     Vertical display resolution
+ * @vrefresh:
+ *     Refresh rate in Hz
+ * @aspect_ratio:
+ *     Aspect ratio
+ */
+struct hfi_dp_mode_select_info {
+	u32 hdisplay;
+	u32 vdisplay;
+	u32 vrefresh;
+	u32 aspect_ratio;
+};
+
+/*
+ * Read CRC values response
+ *
+ * @status:
+ *     Status code (0 = success)
+ * @src_crc:
+ *     RGB CRC values from source
+ * @sink_crc:
+ *     RGB CRC values from sink
+ */
+struct hfi_dp_crc_info {
+	u32 status;
+	uint16_t src_crc[HFI_MAX_COLOR_COMPONENTS];
+	uint16_t sink_crc[HFI_MAX_COLOR_COMPONENTS];
 };
 
 #endif // __H_HFI_DEFS_DEBUG_H__

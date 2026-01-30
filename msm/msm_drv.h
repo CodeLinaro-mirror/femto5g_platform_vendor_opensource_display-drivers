@@ -230,6 +230,7 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_UBWC_CLK,
 	CRTC_PROP_FLUSH_SYNC_EN,
 	CRTC_PROP_DISPLAY_OP,
+	CRTC_PROP_LSR_MODE,
 
 	/* total # of properties */
 	CRTC_PROP_COUNT
@@ -1298,6 +1299,16 @@ enum msm_disp_op {
 	MSM_DISP_OP_HFI,
 	MSM_DISP_OP_HYP,
 	MSM_DISP_OP_MAX,
+};
+
+/**
+ * enum lsr_mode: LSR mode status on primary display
+ * @MSM_DISP_LSR_MODE_DISABLED: LSR is disabled.
+ * @MSM_DISP_LSR_MODE_ENABLED: LSR is enabled and reprojection buffers are queued on primary path.
+ */
+enum lsr_mode {
+	MSM_DISP_LSR_MODE_DISABLED,
+	MSM_DISP_LSR_MODE_ENABLED,
 };
 
 struct msm_drm_private {
