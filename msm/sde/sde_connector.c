@@ -3140,6 +3140,13 @@ static int _sde_connector_lm_preference(struct sde_connector *sde_conn,
 static void _sde_connector_init_hw_fence(struct sde_connector *c_conn,
 		struct msm_display_info *display_info, struct sde_kms *sde_kms)
 {
+	/*
+	 * HW-fence override is not supported if this is hfi mode.
+	 * Check sde_kms because connector does not store this info at init time.
+	 */
+	if (sde_kms_get_disp_op(sde_kms) == MSM_DISP_OP_HFI)
+		return;
+
 	/* enable hw-fence override if hw-fencing is disabled but vrr is supported */
 	if (display_info->vrr_caps.video_psr_support || display_info->vrr_caps.arp_support ||
 			sde_kms->catalog->hw_fence_rev)

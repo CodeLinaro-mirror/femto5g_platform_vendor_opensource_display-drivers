@@ -64,6 +64,7 @@ enum sde_reg_dma_read_sel {
  * @RC_MASK_CFG: Rounded corner config and mask
  * @RC_PU_CFG: Rounded corner partial update
  * @DEMURA_CFG: Demura feature
+ * @QRTC: QRTC feature
  * @REG_DMA_FEATURES_MAX: invalid selection
  */
 enum sde_reg_dma_features {
@@ -95,6 +96,8 @@ enum sde_reg_dma_features {
 	AIQE_ABC,
 	AIQE_AI_SCALER,
 	DESTINATION_SCALER,
+	AIQE_COPR,
+	QRTC,
 	REG_DMA_FEATURES_MAX,
 };
 
@@ -333,6 +336,9 @@ struct sde_reg_dma_setup_ops_cfg {
  * @num_of_mixers: number of mixers
  * @dspp_start_idx: starting index of dspp block
  * @dspp_idx: current dspp's index
+ * @valid_extended_data: flag indicating whether extended data is valid
+ * @extended_data: pointer to extended data
+ * @extended_data_size: size of extended data
  */
 struct sde_reg_dma_kickoff_cfg {
 	struct sde_hw_ctl *ctl;
@@ -351,6 +357,9 @@ struct sde_reg_dma_kickoff_cfg {
 	u32 num_of_mixers;
 	u32 dspp_start_idx;
 	u32 dspp_idx;
+	bool valid_extended_data;
+	void *extended_data;
+	u32 extended_data_size;
 };
 
 /**

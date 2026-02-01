@@ -30,7 +30,7 @@ ifneq ($(TARGET_BOARD_AUTO),true)
 ifeq ($(CONFIG_MSM_MMRM), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
 endif
-ifneq ($(call is-board-platform-in-list, taro monaco vienna), true)
+ifneq ($(call is-board-platform-in-list, taro monaco vienna shikra), true)
 ifeq ($(CONFIG_QCOM_SPEC_SYNC), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,sync-fence-module-symvers)/Module.symvers
 endif
@@ -71,7 +71,7 @@ ifeq ($(CONFIG_MSM_MMRM), y)
 	LOCAL_REQUIRED_MODULES    += mmrm-module-symvers
 	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
 endif
-ifneq ($(call is-board-platform-in-list, taro monaco vienna), true)
+ifneq ($(call is-board-platform-in-list, taro monaco vienna shikra), true)
 
 ifeq ($(CONFIG_QCOM_SPEC_SYNC), y)
 	LOCAL_REQUIRED_MODULES    += sync-fence-module-symvers

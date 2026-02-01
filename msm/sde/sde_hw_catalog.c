@@ -499,6 +499,13 @@ enum {
 };
 
 enum {
+	QRTC_OFF,
+	QRTC_LEN,
+	QRTC_VERSION,
+	QRTC_PROP_MAX,
+};
+
+enum {
 	MIXER_OFF,
 	MIXER_LEN,
 	MIXER_PAIR_MASK,
@@ -1105,6 +1112,15 @@ static struct sde_prop_type demura_prop[] = {
 	[DEMURA_LEN] = {DEMURA_LEN, "qcom,sde-dspp-demura-size", false,
 			PROP_TYPE_U32},
 	[DEMURA_VERSION] = {DEMURA_VERSION, "qcom,sde-dspp-demura-version",
+			false, PROP_TYPE_U32},
+};
+
+static struct sde_prop_type qrtc_prop[] = {
+	[QRTC_OFF] = {QRTC_OFF, "qcom,sde-dspp-qrtc-off", false,
+			PROP_TYPE_U32_ARRAY},
+	[QRTC_LEN] = {QRTC_LEN, "qcom,sde-dspp-qrtc-size", false,
+			PROP_TYPE_U32},
+	[QRTC_VERSION] = {QRTC_VERSION, "qcom,sde-dspp-qrtc-version",
 			false, PROP_TYPE_U32},
 };
 
@@ -3196,6 +3212,45 @@ static int _sde_dspp_demura_parse_dt(struct device_node *np,
 	return 0;
 }
 
+static int _sde_dspp_qrtc_parse_dt(struct device_node *np,
+		struct sde_mdss_cfg *sde_cfg)
+{
+	int off_count = 0, i;
+	struct sde_dt_props *props;
+	struct sde_dspp_cfg *dspp;
+	struct sde_dspp_sub_blks *sblk;
+
+	props = sde_get_dt_props(np, QRTC_PROP_MAX, qrtc_prop,
+			ARRAY_SIZE(qrtc_prop), &off_count);
+	if (IS_ERR(props))
+		return PTR_ERR(props);
+
+	sde_cfg->qrtc_count = off_count;
+	if (off_count > sde_cfg->dspp_count) {
+		SDE_ERROR("limiting %d qrtc blocks to %d DSPP instances\n",
+				off_count, sde_cfg->dspp_count);
+		sde_cfg->qrtc_count = sde_cfg->dspp_count;
+	}
+
+	for (i = 0; i < sde_cfg->dspp_count; i++) {
+		dspp = &sde_cfg->dspp[i];
+		sblk = sde_cfg->dspp[i].sblk;
+
+		sblk->qrtc.id = SDE_DSPP_QRTC;
+		if (props->exists[QRTC_OFF] && i < off_count) {
+			sblk->qrtc.base = PROP_VALUE_ACCESS(props->values,
+					QRTC_OFF, i);
+			sblk->qrtc.len = PROP_VALUE_ACCESS(props->values,
+					QRTC_LEN, 0);
+			sblk->qrtc.version = PROP_VALUE_ACCESS(props->values,
+					QRTC_VERSION, 0);
+			set_bit(SDE_DSPP_QRTC, &dspp->features);
+		}
+	}
+	sde_put_dt_props(props);
+	return 0;
+}
+
 static int _sde_dspp_spr_parse_dt(struct device_node *np,
 		struct sde_mdss_cfg *sde_cfg)
 {
@@ -3689,6 +3744,10 @@ static int sde_dspp_parse_dt(struct device_node *np,
 		goto end;
 
 	rc = _sde_dspp_rgb_hist_parse_dt(np, sde_cfg);
+	if (rc)
+		goto end;
+
+	rc = _sde_dspp_qrtc_parse_dt(np, sde_cfg);
 	if (rc)
 		goto end;
 
@@ -6075,6 +6134,17 @@ static void _sde_get_hw_caps_for_scuba(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 }
 
+static void _sde_get_hw_caps_for_shikra(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	sde_cfg->perf.min_prefill_lines = 24;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	sde_cfg->sui_block_xin_mask = 0x1;
+	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
+}
+
 static void _sde_get_hw_caps_for_monaco(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
@@ -6671,6 +6741,7 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
 	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 	set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
+	set_bit(SDE_FEATURE_QRTC, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
 	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
 	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
@@ -6702,6 +6773,10 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
 	sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
 	sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
+	sde_cfg->qrtc_supported[SSPP_DMA1][0] = BIT(QRTC_0) | BIT(QRTC_2);
+	sde_cfg->qrtc_supported[SSPP_DMA1][1] = BIT(QRTC_1) | BIT(QRTC_3);
+	sde_cfg->qrtc_supported[SSPP_DMA3][0] = BIT(QRTC_0) | BIT(QRTC_2);
+	sde_cfg->qrtc_supported[SSPP_DMA3][1] = BIT(QRTC_1) | BIT(QRTC_3);
 	sde_cfg->has_line_insertion = true;
 	sde_cfg->osc_clk_rate = 38400000;
 }
@@ -6965,6 +7040,7 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_630, _sde_get_hw_caps_for_bengal},
 	{SDE_HW_VER_640, _sde_get_hw_caps_for_lagoon},
 	{SDE_HW_VER_650, _sde_get_hw_caps_for_scuba},
+	{SDE_HW_VER_650, _sde_get_hw_caps_for_shikra},
 	{SDE_HW_VER_660, _sde_get_hw_caps_for_holi},
 	{SDE_HW_VER_670, _sde_get_hw_caps_for_shima},
 	{SDE_HW_VER_680, _sde_get_hw_caps_for_monaco},
@@ -7015,6 +7091,8 @@ static int _sde_hardware_pre_caps(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 	for (i = 0; i < SSPP_MAX; i++) {
 		sde_cfg->demura_supported[i][0] = ~0x0;
 		sde_cfg->demura_supported[i][1] = ~0x0;
+		sde_cfg->qrtc_supported[i][0] = ~0x0;
+		sde_cfg->qrtc_supported[i][1] = ~0x0;
 	}
 
 	/* target specific settings */
@@ -7337,7 +7415,8 @@ static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *s
 	if (IS_SUN_TARGET(sde_cfg->hw_rev)) {
 		disable = (fuse & BIT(1)) >> 1;
 		polarity = fuse & BIT(0);
-	} else if (IS_CANOE_TARGET(sde_cfg->hw_rev)) {
+	} else if (IS_CANOE_TARGET(sde_cfg->hw_rev) ||
+			IS_ART_TARGET(sde_cfg->hw_rev)) {
 		disable = (fuse & BIT(5)) >> 5;
 		polarity = (fuse & BIT(3)) >> 3;
 	} else {

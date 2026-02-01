@@ -212,6 +212,7 @@ static void hfi_encoder_power_event_callback(struct hfi_encoder *hfi_enc, void *
 	sde_enc = hfi_enc->sde_base;
 	if (sde_enc && sde_enc->crtc_power_event_cb) {
 		if (power_state == HFI_MODE_DPMS_OFF) {
+			sde_encoder_pm_qos_remove_request(&sde_enc->base);
 			sde_enc->crtc_power_event_cb(&sde_enc->crtc_power_event_cb_data,
 					SDE_POWER_EVENT_PRE_DISABLE);
 			sde_enc->crtc_power_event_cb(&sde_enc->crtc_power_event_cb_data,
@@ -219,6 +220,7 @@ static void hfi_encoder_power_event_callback(struct hfi_encoder *hfi_enc, void *
 		} else if (power_state == HFI_MODE_DPMS_ON) {
 			sde_enc->crtc_power_event_cb(&sde_enc->crtc_power_event_cb_data,
 					SDE_POWER_EVENT_POST_ENABLE);
+			sde_encoder_pm_qos_add_request(&sde_enc->base);
 		}
 	}
 }

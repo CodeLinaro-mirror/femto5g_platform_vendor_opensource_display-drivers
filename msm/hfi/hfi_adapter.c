@@ -537,7 +537,7 @@ static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
 }
 #endif
 
-struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance)
+struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance, bool hw_fence_enabled)
 {
 	struct hfi_adapter_t *hfi_host;
 	struct hfi_core_open_params open_params;
@@ -588,7 +588,8 @@ struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance)
 	}
 
 	/* Initialize DCP hw fence client */
-	_hfi_core_hw_fence_init(hfi_handle);
+	if (hw_fence_enabled)
+		_hfi_core_hw_fence_init(hfi_handle);
 
 	/* Initialize hfi_adapter_t after core session is created */
 	hfi_host->sde_or_vm_instance = instance;
