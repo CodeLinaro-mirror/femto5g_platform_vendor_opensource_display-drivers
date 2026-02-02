@@ -269,7 +269,7 @@ static void _process_cb_cmd_buf_work(struct kthread_work *work)
 		}
 
 		if (!client_found) {
-			HFI_AD_ERROR("could not match buffer client id to a client\n");
+			HFI_AD_INFO("could not match buffer client id to a client\n");
 			mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 			release_rx_buffer_fail(hfi_buff, host);
 			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
@@ -537,7 +537,7 @@ static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
 }
 #endif
 
-struct hfi_adapter_t *hfi_adapter_init(int instance)
+struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance)
 {
 	struct hfi_adapter_t *hfi_host;
 	struct hfi_core_open_params open_params;
@@ -545,6 +545,8 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	struct hfi_core_session *hfi_handle;
 	struct hfi_buffer_pool *pool, *link;
 	int i;
+	u32 client_id;
+	enum msm_drv_hfi_adapter instance;
 
 	hfi_host = kmalloc(sizeof(struct hfi_adapter_t), GFP_KERNEL);
 	if (!hfi_host) {
@@ -562,7 +564,21 @@ struct hfi_adapter_t *hfi_adapter_init(int instance)
 	cb_ops->hfi_cb_fn = &callback_function_hfi;
 	cb_ops->cb_data = hfi_host;
 
-	open_params.client_id = HFI_CORE_CLIENT_ID_0;
+	instance = is_tvm_instance ? TVM_HFI_ADAPTER : AVM_HFI_ADAPTER;
+	/* Select client ID based on instance */
+	switch (instance) {
+	case AVM_HFI_ADAPTER:
+		client_id = HFI_CORE_CLIENT_ID_0;
+		break;
+	case TVM_HFI_ADAPTER:
+		client_id = HFI_CORE_CLIENT_ID_1;
+		break;
+	default:
+		client_id = HFI_CORE_CLIENT_ID_0;
+		break;
+	}
+
+	open_params.client_id = client_id;
 	open_params.ops = cb_ops;
 
 	hfi_handle = hfi_core_open_session(&open_params);
@@ -1582,7 +1598,7 @@ static int hfi_adapter_release_cmd_buf_no_lock(struct hfi_client_t *ctx,
 	list_for_each_safe(pos, updated_pos, &cmd_buf->ctx->cmd_buf_list) {
 		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
 		if (buf_entry == cmd_buf) {
-			HFI_AD_ERROR("releasing buffer incorrectly\n");
+			HFI_AD_DEBUG("releasing buffer incorrectly\n");
 			list_del_init(pos);
 			if (cmd_buf->is_released || !cmd_buf->buf.pbuf_vaddr)
 				break;
