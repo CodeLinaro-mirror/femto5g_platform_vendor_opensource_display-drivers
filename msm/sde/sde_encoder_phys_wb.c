@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2187,6 +2187,7 @@ static void _sde_encoder_phys_wb_destroy_internal_fb(
 		drm_framebuffer_unregister_private(wb_enc->fb_disable);
 		drm_framebuffer_remove(wb_enc->fb_disable);
 		wb_enc->fb_disable = NULL;
+		wb_enc->bo_disable[0] = NULL;
 	}
 
 	if (wb_enc->bo_disable[0]) {

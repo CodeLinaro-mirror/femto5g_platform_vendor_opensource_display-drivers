@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -2449,6 +2449,10 @@ static int dp_display_set_mode(struct dp_display *dp_display, void *panel,
 	if (dp_panel->output_format == DP_OUTPUT_FORMAT_YCBCR422)
 		get_yuv_config(&dsc_en, &yuv422);
 
+	if (dp_panel->connector->display_info.max_tmds_clock > 0)
+		dp->panel->connector->display_info.max_tmds_clock =
+			dp_panel->connector->display_info.max_tmds_clock;
+
 	mode->timing.bpp =
 		dp_panel->connector->display_info.bpc * num_components;
 	if (!mode->timing.bpp)
@@ -3099,7 +3103,7 @@ static enum drm_mode_status dp_display_validate_mode(
 	struct dp_debug *debug;
 	enum drm_mode_status mode_status = MODE_BAD;
 	struct dp_display_mode dp_mode;
-	int rc = 0;
+	int rc = 0, max_tmds_clock = 0;
 
 	if (!dp_display || !mode || !panel ||
 			!avail_res || !avail_res->max_mixer_width) {
@@ -3123,6 +3127,8 @@ static enum drm_mode_status dp_display_validate_mode(
 
 	dp_display->convert_to_dp_mode(dp_display, panel, mode, &dp_mode);
 
+	max_tmds_clock = dp_panel->connector->display_info.max_tmds_clock;
+
 	rc = dp_display_validate_topology(dp, dp_panel, mode, &dp_mode, avail_res);
 	if (rc == -EAGAIN) {
 		dp_panel->convert_to_dp_mode(dp_panel, mode, &dp_mode);
@@ -3139,6 +3145,12 @@ static enum drm_mode_status dp_display_validate_mode(
 	rc = dp_display_validate_pixel_clock(dp_mode, dp_display->max_pclk_khz);
 	if (rc)
 		goto end;
+
+	if (max_tmds_clock > 0 && mode->clock > max_tmds_clock) {
+		DP_DEBUG_V("mode clk:%d is greater than max tmds:%d\n",
+				mode->clock, max_tmds_clock);
+		goto end;
+	}
 
 	mode_status = MODE_OK;
 end:
