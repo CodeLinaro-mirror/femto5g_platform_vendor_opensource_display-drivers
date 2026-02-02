@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #ifndef _DP_CATALOG_H_
@@ -173,6 +173,17 @@ struct dp_dsc_cfg_data {
 	u32 dto_count;
 };
 
+struct dp_catalog_pose_info {
+	int queue_handle;
+	struct file *file;
+	struct page **pages;
+	int npages;
+	unsigned long uaddr;
+	unsigned char *kbuf;
+	int size;
+	int data_offset;
+};
+
 struct dp_catalog_panel {
 	u32 total;
 	u32 sync_start;
@@ -185,6 +196,7 @@ struct dp_catalog_panel {
 	struct dp_sdp_header dhdr_vsif_sdp;
 	struct dp_sdp_header shdr_if_sdp;
 	struct drm_msm_ext_hdr_metadata hdr_meta;
+	struct dp_catalog_pose_info pose_info;
 
 	/* TPG */
 	u32 hsync_period;
@@ -226,6 +238,7 @@ struct dp_catalog_panel {
 	void (*pps_flush)(struct dp_catalog_panel *panel);
 	void (*dhdr_flush)(struct dp_catalog_panel *panel);
 	bool (*dhdr_busy)(struct dp_catalog_panel *panel);
+	int (*send_pose_data)(struct dp_catalog_panel *panel);
 };
 
 struct dp_catalog;

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/of_gpio.h>
@@ -159,6 +159,11 @@ static int dp_parser_misc(struct dp_parser *parser)
 
 	parser->yuv422_support = of_property_read_bool(of_node,
 				"qcom,yuv422-supported");
+
+	rc = of_property_read_u32(of_node,
+		"qcom,dp-color-format-pref", &parser->color_format_pref);
+	if (rc)
+		parser->color_format_pref = MSM_DISPLAY_EXT_COLOR_FORMAT_NONE;
 
 	rc = of_property_read_u32(of_node,
 		"qcom,max-pclk-frequency-khz", &parser->max_pclk_khz);

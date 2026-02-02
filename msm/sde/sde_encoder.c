@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -67,6 +67,8 @@
 #define TO_S15D16(_x_)  ((_x_) << 7)
 
 #define MISR_BUFF_SIZE			256
+
+#define PROG_TIME_BUFF_SIZE			10
 
 #define IDLE_SHORT_TIMEOUT	1
 
@@ -5207,6 +5209,19 @@ void sde_encoder_get_transfer_time(struct drm_encoder *drm_enc,
 	*transfer_time_us = info->mdp_transfer_time_us;
 }
 
+u32 sde_encoder_get_prog_time_before_next_vsync(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+
+	if (!drm_enc) {
+		SDE_ERROR("bad arg: encoder:%d\n", !drm_enc);
+		return PROG_TIME_BEFORE_NEXT_VSYNC_DEFAULT_MS;
+	}
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+	return sde_enc->prog_time_before_next_vsync_ms;
+}
+
 u32 sde_encoder_helper_get_kickoff_timeout_ms(struct drm_encoder *drm_enc)
 {
 	struct drm_encoder *src_enc = drm_enc;
@@ -5573,6 +5588,44 @@ end:
 	return len;
 }
 
+static ssize_t _sde_encoder_prog_time_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct sde_encoder_virt *sde_enc;
+	char buf[PROG_TIME_BUFF_SIZE + 1];
+	size_t buff_copy;
+	u32 time_before_next_vsync_ms;
+
+	if (!file || !file->private_data)
+		return -EINVAL;
+
+	sde_enc = file->private_data;
+	if (!sde_enc)
+		return -EINVAL;
+
+	buff_copy = min_t(size_t, count, PROG_TIME_BUFF_SIZE);
+	if (copy_from_user(buf, user_buf, buff_copy))
+		return -EINVAL;
+
+	buf[buff_copy] = 0; /* end of string */
+
+	if (sscanf(buf, "%u", &time_before_next_vsync_ms) != 1)
+		return -EINVAL;
+
+	if (time_before_next_vsync_ms < PROG_TIME_BEFORE_NEXT_VSYNC_MIN_MS ||
+		time_before_next_vsync_ms > PROG_TIME_BEFORE_NEXT_VSYNC_MAX_MS) {
+		SDE_ERROR_ENC(sde_enc,
+				"invalid input, min:%d max:%d\n",
+				PROG_TIME_BEFORE_NEXT_VSYNC_MIN_MS,
+				PROG_TIME_BEFORE_NEXT_VSYNC_MAX_MS);
+		return -EINVAL;
+	}
+
+	sde_enc->prog_time_before_next_vsync_ms = time_before_next_vsync_ms;
+
+	return count;
+}
+
 static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc;
@@ -5590,6 +5643,11 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 		.open = simple_open,
 		.read = _sde_encoder_misr_read,
 		.write = _sde_encoder_misr_setup,
+	};
+
+	static const struct file_operations debugfs_prog_time_fops = {
+		.open = simple_open,
+		.write = _sde_encoder_prog_time_write,
 	};
 
 	char name[SDE_NAME_SIZE];
@@ -5620,6 +5678,9 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 
 	debugfs_create_file("misr_data", 0600,
 		sde_enc->debugfs_root, sde_enc, &debugfs_misr_fops);
+
+	debugfs_create_file("prog_time", 0600,
+		sde_enc->debugfs_root, sde_enc, &debugfs_prog_time_fops);
 
 	debugfs_create_bool("idle_power_collapse", 0600, sde_enc->debugfs_root,
 			&sde_enc->idle_pc_enabled);

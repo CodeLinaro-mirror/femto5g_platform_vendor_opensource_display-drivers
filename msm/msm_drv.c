@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
+ * ​​​​Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -1722,6 +1722,40 @@ int msm_ioctl_display_hint_ops(struct drm_device *dev, void *data,
 	return 0;
 }
 
+/**
+ * msm_ioctl_register_pose_queue - register pose queue.
+ * @dev: drm device for the ioctl
+ * @data: data pointer for the ioctl
+ * @file_priv: drm file for the ioctl call
+ */
+int msm_ioctl_register_pose_queue(struct drm_device *dev, void *data, struct drm_file *file_priv)
+{
+	struct drm_msm_register_pose_queue *pose_queue = (struct drm_msm_register_pose_queue *)data;
+	struct msm_drm_private *priv;
+	struct msm_kms *kms;
+	int rc = 0, handle, data_offset;
+
+	if (!dev || !dev->dev_private)
+		return -EINVAL;
+
+	priv = dev->dev_private;
+	kms = priv->kms;
+
+	if (unlikely(!pose_queue)) {
+		DRM_WARN("invalid pose queue\n");
+		return -EINVAL;
+	}
+
+	if (!kms || !kms->funcs || !kms->funcs->display_register_pose_queue)
+		return -EINVAL;
+
+	data_offset = pose_queue->flags;
+	handle = pose_queue->fm_handle;
+	rc = kms->funcs->display_register_pose_queue(dev, handle, data_offset);
+
+	return rc;
+}
+
 static const struct drm_ioctl_desc msm_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(MSM_GEM_NEW,      msm_ioctl_gem_new,      DRM_AUTH|DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MSM_GEM_CPU_PREP, msm_ioctl_gem_cpu_prep, DRM_AUTH|DRM_RENDER_ALLOW),
@@ -1736,6 +1770,8 @@ static const struct drm_ioctl_desc msm_ioctls[] = {
 	DRM_IOCTL_DEF_DRV(MSM_POWER_CTRL, msm_ioctl_power_ctrl,
 			DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(MSM_DISPLAY_HINT, msm_ioctl_display_hint_ops,
+			DRM_UNLOCKED),
+	DRM_IOCTL_DEF_DRV(MSM_REGISTER_POSE_QUEUE, msm_ioctl_register_pose_queue,
 			DRM_UNLOCKED),
 };
 

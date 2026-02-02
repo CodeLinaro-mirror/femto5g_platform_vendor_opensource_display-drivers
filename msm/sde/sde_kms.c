@@ -1,6 +1,6 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2014-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
  *
@@ -1911,6 +1911,8 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.check_status = NULL,
 		.set_colorspace = dp_connector_set_colorspace,
 		.config_hdr = dp_connector_config_hdr,
+		.register_pose_queue = dp_connector_register_pose_queue,
+		.send_pose_data = dp_connector_send_pose_data,
 		.cmd_transfer = NULL,
 		.cont_splash_config = NULL,
 		.cont_splash_res_disable = NULL,
@@ -3885,6 +3887,57 @@ void sde_kms_display_early_wakeup(struct drm_device *dev,
 
 	drm_connector_list_iter_end(&conn_iter);
 }
+
+static int sde_kms_display_register_pose_queue(struct drm_device *dev,
+	int pose_queue_handle, int data_offset)
+{
+	struct drm_connector_list_iter conn_iter;
+	struct drm_connector *conn;
+	struct sde_connector *c_conn;
+	bool dp_connector_found = false;
+	int rc = 0;
+
+	if (pose_queue_handle <= 0) {
+		SDE_INFO("invalid pose queue handle\n");
+		return -EINVAL;
+	}
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		c_conn = to_sde_connector(conn);
+		if (!c_conn || c_conn->connector_type != DRM_MODE_CONNECTOR_DisplayPort)
+			continue;
+
+		dp_connector_found = true;
+
+		if (c_conn->pose_queue_registered) {
+			SDE_INFO("connector %s already registered pose queue\n", c_conn->name);
+			continue;
+		}
+
+		if (c_conn->ops.register_pose_queue) {
+			rc = c_conn->ops.register_pose_queue(conn, c_conn->display,
+					pose_queue_handle, data_offset);
+			if (rc) {
+				SDE_INFO("conn %s register pose queue failed\n", c_conn->name);
+				drm_connector_list_iter_end(&conn_iter);
+				return -EINVAL;
+			}
+
+			c_conn->pose_queue_registered = true;
+			sde_encoder_irq_control(c_conn->encoder, true);
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	if (!dp_connector_found) {
+		SDE_INFO("No DP connector found\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int sde_kms_trigger_null_flush(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
@@ -4228,6 +4281,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_format      = sde_get_msm_format,
 	.round_pixclk    = sde_kms_round_pixclk,
 	.display_early_wakeup = sde_kms_display_early_wakeup,
+	.display_register_pose_queue = sde_kms_display_register_pose_queue,
 	.pm_suspend      = sde_kms_pm_suspend,
 	.pm_resume       = sde_kms_pm_resume,
 	.destroy         = sde_kms_destroy,

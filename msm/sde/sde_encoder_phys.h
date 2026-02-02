@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2023 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #ifndef __SDE_ENCODER_PHYS_H__
@@ -215,6 +215,7 @@ struct sde_encoder_phys_ops {
  * @INTR_IDX_AUTOREFRESH_DONE:  Autorefresh done for cmd mode panel meaning
  *                              autorefresh has triggered a double buffer flip
  * @INTR_IDX_WRPTR:    Writepointer start interrupt for cmd mode panel
+ * @INTR_IDX_PROG_LINE: Programmable lineptr interrupt
  */
 enum sde_intr_idx {
 	INTR_IDX_VSYNC,
@@ -231,6 +232,7 @@ enum sde_intr_idx {
 	INTR_IDX_PP5_OVFL,
 	INTR_IDX_PP_CWB_OVFL,
 	INTR_IDX_WRPTR,
+	INTR_IDX_PROG_LINE,
 	INTR_IDX_MAX,
 };
 
@@ -569,6 +571,13 @@ void sde_encoder_helper_get_pp_line_count(struct drm_encoder *drm_enc,
  * Returns: Kickoff timeout in milli seconds
  */
 u32 sde_encoder_helper_get_kickoff_timeout_ms(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_get_prog_time_before_next_vsync- get the prog time before next vsync
+ * @drm_enc: Pointer to drm encoder structure
+ * Returns: prog time before next vsync in milli seconds
+ */
+u32 sde_encoder_get_prog_time_before_next_vsync(struct drm_encoder *drm_enc);
 
 /**
  * sde_encoder_helper_trigger_flush - control flush helper function

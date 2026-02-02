@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #include "dp_panel.h"
 #include <linux/unistd.h>
+#include <linux/mman.h>
 #include <drm/drm_fixed.h>
 #include "dp_debug.h"
 #include <drm/drm_dsc.h>
@@ -415,6 +416,78 @@ static s64 fixp_subtract(s64 a, s64 b)
 static inline int fixp2int_ceil(s64 a)
 {
 	return (a ? drm_fixp2int_ceil(a) : 0);
+}
+
+static int map_pose_buffer(struct dp_catalog_pose_info *pose_info)
+{
+	struct file *file;
+	struct page **pages = NULL;
+	int npages;
+	long pined = 0;
+	unsigned long uaddr;
+	void *kbuf = NULL;
+	int rc;
+
+	if (!pose_info) {
+		pr_err("invalid parameter\n");
+		return -EINVAL;
+	}
+
+	file = fget(pose_info->queue_handle);
+	if (IS_ERR(file)) {
+		DP_ERR("fail to get pose buffer file from handle\n");
+		rc = -EINVAL;
+		goto err_fget;
+	}
+	pose_info->file = file;
+
+	pose_info->size = PAGE_ALIGN(pose_info->size);
+	npages = pose_info->size >> PAGE_SHIFT;
+	pose_info->npages = npages;
+
+	uaddr = vm_mmap(file, 0, pose_info->size, PROT_READ | PROT_WRITE, MAP_SHARED, 0);
+	if (IS_ERR((void *)uaddr)) {
+		DP_ERR("fail to do vm_mmap for pose buffer\n");
+		rc =  -EINVAL;
+		goto err_vm_mmap;
+	}
+	pose_info->uaddr = uaddr;
+
+	pages = kmalloc_array(npages, sizeof(*pages), GFP_KERNEL);
+	if (!pages) {
+		DP_ERR("fail to alloc pages for pose buffer\n");
+		rc = -ENOMEM;
+		goto err_kmalloc_array;
+	}
+	pose_info->pages = pages;
+
+	pined = pin_user_pages(uaddr, npages, 0, pages, NULL);
+	if (pined < npages) {
+		DP_ERR("fail to pin user pages for pose buffer, pined %d\n", pined);
+		rc = pined;
+		goto err_pin_user_pages;
+	}
+
+	kbuf = vmap(pages, npages, VM_MAP, PAGE_KERNEL);
+	if (!kbuf) {
+		DP_ERR("fail to do vmap for pose buffer\n");
+		rc = -EINVAL;
+		goto err_vmap;
+	}
+	pose_info->kbuf = (unsigned char *)kbuf;
+
+	return 0;
+
+err_vmap:
+	unpin_user_pages(pose_info->pages, pose_info->npages);
+err_pin_user_pages:
+	kfree(pose_info->pages);
+err_kmalloc_array:
+	vm_munmap(pose_info->uaddr, pose_info->size);
+err_vm_mmap:
+	fput(pose_info->file);
+err_fget:
+	return rc;
 }
 
 static void dp_panel_update_tu_timings(struct dp_tu_calc_input *in,
@@ -2860,6 +2933,57 @@ end:
 	return rc;
 }
 
+static int dp_panel_register_pose_queue(struct dp_panel *dp_panel,
+		int pose_queue_handle, int data_offset)
+{
+	struct dp_panel_private *panel;
+	struct dp_catalog_pose_info *pose_info;
+	int rc;
+
+	if (!dp_panel) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
+
+	pose_info = &panel->catalog->pose_info;
+	pose_info->queue_handle = pose_queue_handle;
+	pose_info->data_offset = data_offset;
+	pose_info->size = sizeof(struct aura_lsr_pose_t) / sizeof(u8);
+
+	rc = map_pose_buffer(pose_info);
+	if (rc) {
+		DP_WARN("fail to map pose buffer to kernel\n");
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int dp_panel_send_pose_data(struct dp_panel *dp_panel)
+{
+	struct dp_panel_private *panel;
+	struct drm_connector *connector;
+	struct sde_connector *sde_conn;
+
+	if (!dp_panel) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
+	connector = dp_panel->connector;
+	sde_conn = to_sde_connector(connector);
+
+	if (!sde_conn->pose_queue_registered) {
+		DP_WARN("pose queue not registered yet\n");
+		return -EINVAL;
+	}
+
+	return panel->catalog->send_pose_data(panel->catalog);
+}
+
 static int dp_panel_spd_config(struct dp_panel *dp_panel)
 {
 	int rc = 0;
@@ -3304,6 +3428,8 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->tpg_config = dp_panel_tpg_config;
 	dp_panel->spd_config = dp_panel_spd_config;
 	dp_panel->setup_hdr = dp_panel_setup_hdr;
+	dp_panel->register_pose_queue = dp_panel_register_pose_queue;
+	dp_panel->send_pose_data = dp_panel_send_pose_data;
 	dp_panel->set_colorspace = dp_panel_set_colorspace;
 	dp_panel->hdr_supported = dp_panel_hdr_supported;
 	dp_panel->set_stream_info = dp_panel_set_stream_info;

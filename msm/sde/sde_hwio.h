@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022 Qualcomm Innovation Center, Inc. All rights reserved.
  * Copyright (c) 2015-2020, The Linux Foundation. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.​
  */
 
 #ifndef _SDE_HWIO_H
@@ -25,6 +25,7 @@
 #define INTF_INTR_EN                    0x1C0
 #define INTF_INTR_STATUS                0x1C4
 #define INTF_INTR_CLEAR                 0x1C8
+#define INTF_PROG_LINE_INTR_CONF        0x250
 #define SPLIT_DISPLAY_EN                0x2F4
 #define SPLIT_DISPLAY_UPPER_PIPE_CTRL   0x2F8
 #define DSPP_IGC_COLOR0_RAM_LUTN        0x300
