@@ -50,9 +50,9 @@ static const u8 ldo_config_v1[TX_DRIVE_MODE_MAX] = {
 };
 
 static const u8 ldo_config_v2[TX_DRIVE_MODE_MAX] = {
-	0xc1,	/* 600mV */
+	0x51,	/* 550mV */
 	0x00,	/* off */
-	0x91,	/* 650mV */
+	0x91,	/* 600mV */
 	0x00,	/* off */
 	0x00,	/* off */
 	0x00,	/* off */
