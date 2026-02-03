@@ -220,6 +220,10 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 		}
 
 		display->panel->powered = true;
+
+		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_SET_CUSTOM_ON, false);
+		if (rc)
+			DSI_ERR("Could not send custom dcs on cmd, rc=%d\n", rc);
 	}
 	mutex_unlock(&display->panel->panel_lock);
 
