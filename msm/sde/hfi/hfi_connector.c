@@ -41,7 +41,7 @@ struct base_prop_lookup {
 
 struct base_prop_lookup hfi_connector_base_props_map[] = {
 	{ CONNECTOR_PROP_DYN_BIT_CLK, HFI_PROPERTY_DISPLAY_DYN_CLK_SUPPORT },
-	{ CONNECTOR_PROP_QSYNC_MODE, HFI_PROPERTY_DISPLAY_QSYNC },
+	{ CONNECTOR_PROP_QSYNC_MODE, HFI_PROPERTY_DISPLAY_QSYNC_MODE },
 	{ CONNECTOR_PROP_AVR_STEP_STATE, HFI_PROPERTY_DISPLAY_AVR_STEP },
 	{ CONNECTOR_PROP_LP, HFI_PROPERTY_DISPLAY_POWER_MODE },
 
@@ -153,10 +153,10 @@ int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn
 		ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
 			hfi_prop, conn->base.base.id, HFI_VAL_U32, &val, sizeof(u32));
 		break;
-	case HFI_PROPERTY_DISPLAY_QSYNC:
+	case HFI_PROPERTY_DISPLAY_QSYNC_MODE:
 		val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_QSYNC_MODE);
-		ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
-			hfi_prop, conn->base.base.id, HFI_VAL_U32, &val, sizeof(u32));
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+				HFI_VAL_U32, &val, sizeof(u32));
 		break;
 	case HFI_PROPERTY_DISPLAY_AVR_STEP:
 		val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_AVR_STEP_STATE);
