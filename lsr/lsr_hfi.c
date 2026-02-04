@@ -29,6 +29,8 @@
 #include <linux/dma-mapping.h>
 #include <linux/reset.h>
 #include <linux/pm_wakeup.h>
+#include <linux/pm_domain.h>
+#include <linux/pm_runtime.h>
 #include "msm_lsr_debug.h"
 #include "lsr_core.h"
 #include "lsr_hw_io.h"
@@ -393,7 +395,7 @@ static int __smem_alloc(struct lsr_device *dev, struct lsr_mem_addr *mem,
 		mem->align_dcp_device_addr = alloc->dcp_device_addr;
 
 	dprintk(LSR_MEM,
-		"%s: ptr = %pK, size = %d dev_addr : 0x%llx dcp_addr = 0x%llx flags = %d\n",
+		"%s: ptr = %pK, size = %d dev_addr : 0x%x dcp_addr = 0x%x flags = %d\n",
 		__func__, alloc->kvaddr, size, mem->align_device_addr, mem->align_dcp_device_addr,
 		smem_flags);
 
@@ -1308,7 +1310,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.ipclite_size,
 			IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map ipclite fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map ipclite fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.ipclite_iova,
 				device->res->reg_mappings.ipclite_phyaddr,
 				device->res->reg_mappings.ipclite_size);
@@ -1322,7 +1324,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.hwmutex_size,
 			IOMMU_MMIO | IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map hwmutex fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map hwmutex fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.hwmutex_iova,
 				device->res->reg_mappings.hwmutex_phyaddr,
 				device->res->reg_mappings.hwmutex_size);
@@ -1336,7 +1338,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.aon_size,
 			IOMMU_MMIO | IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map aon fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map aon fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.aon_iova,
 				device->res->reg_mappings.aon_phyaddr,
 				device->res->reg_mappings.aon_size);
@@ -1350,7 +1352,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.timer_size,
 			IOMMU_MMIO | IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map timer fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map timer fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.timer_iova,
 				device->res->reg_mappings.timer_phyaddr,
 				device->res->reg_mappings.timer_size);
@@ -1863,7 +1865,7 @@ static int __init_reset_clk(struct msm_lsr_platform_resources *res,
 			dprintk(LSR_ERR, "reset get exclusive fail %d\n", rc);
 			return rc;
 		}
-		dprintk(LSR_PWR, "reset_clk: name %s get exclusive rst %llx\n",
+		dprintk(LSR_PWR, "reset_clk: name %s get exclusive rst %p\n",
 				rst_set->reset_tbl[reset_index].name, rst);
 	} else if (rst_info->required_stage == LSR_ON_INIT) {
 		rst = devm_reset_control_get(&res->pdev->dev,
@@ -1873,7 +1875,7 @@ static int __init_reset_clk(struct msm_lsr_platform_resources *res,
 			dprintk(LSR_ERR, "reset get fail %d\n", rc);
 			return rc;
 		}
-		dprintk(LSR_PWR, "reset_clk: name %s get rst %llx\n",
+		dprintk(LSR_PWR, "reset_clk: name %s get rst %p\n",
 				rst_set->reset_tbl[reset_index].name, rst);
 	} else {
 		dprintk(LSR_ERR, "Invalid reset stage\n");
@@ -2206,14 +2208,217 @@ static int __init_synx(struct lsr_device *device)
 	return rc;
 }
 
+static void __deinit_power_domains(struct lsr_device *device)
+{
+	struct power_domain_info *pd_info = NULL;
+
+	iris_hfi_for_each_power_domain_reverse(device, pd_info) {
+		if (pd_info->pd_dev) {
+			dprintk(LSR_PWR, "Detaching power domain: %s\n",
+				pd_info->name);
+			dev_pm_domain_detach(pd_info->pd_dev, true);
+			pd_info->pd_dev = NULL;
+		}
+	}
+}
+
+static int __init_power_domains(struct lsr_device *device)
+{
+	int rc = 0;
+	struct power_domain_info *pd_info = NULL;
+
+	iris_hfi_for_each_power_domain(device, pd_info) {
+		pd_info->pd_dev = dev_pm_domain_attach_by_name(
+				&device->res->pdev->dev, pd_info->name);
+
+		if (IS_ERR_OR_NULL(pd_info->pd_dev)) {
+			rc = PTR_ERR(pd_info->pd_dev) ?: -EBADHANDLE;
+			dprintk(LSR_ERR, "Failed to attach power domain: %s, rc=%d\n",
+					pd_info->name, rc);
+			pd_info->pd_dev = NULL;
+			goto err_pd_attach;
+		}
+
+		dprintk(LSR_PWR, "Attached to power domain: %s\n", pd_info->name);
+	}
+
+	return 0;
+
+err_pd_attach:
+	__deinit_power_domains(device);
+	return rc;
+}
+
+static int __acquire_power_domain(struct power_domain_info *pd_info,
+				struct lsr_device *device)
+{
+	int rc = 0;
+
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	if (pd_info->has_hw_power_collapse) {
+		rc = dev_pm_genpd_set_hwmode(pd_info->pd_dev, false);
+		if (rc)
+			dprintk(LSR_WARN, "Failed to acquire power domain control: %s\n",
+				pd_info->name);
+		else
+			dprintk(LSR_PWR, "Acquired power domain control from HW: %s\n",
+				pd_info->name);
+	}
+#else
+	dprintk(LSR_ERR, "%s: not supported", __func__);
+	rc = -EOPNOTSUPP;
+#endif
+
+	return rc;
+}
+
+static int __hand_off_power_domain(struct power_domain_info *pd_info)
+{
+	int rc = 0;
+
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	if (pd_info->has_hw_power_collapse) {
+		rc = dev_pm_genpd_set_hwmode(pd_info->pd_dev, true);
+		if (rc)
+			dprintk(LSR_WARN, "Failed to hand off power domain control: %s\n",
+				pd_info->name);
+		else
+			dprintk(LSR_PWR, "Hand off power domain control to HW: %s\n",
+				pd_info->name);
+	}
+#else
+	dprintk(LSR_ERR, "%s: not supported", __func__);
+	rc = -EOPNOTSUPP;
+#endif
+
+	return rc;
+}
+
+static int __hand_off_power_domains(struct lsr_device *device)
+{
+	struct power_domain_info *pd_info;
+	int rc = 0, c = 0;
+
+	iris_hfi_for_each_power_domain(device, pd_info) {
+		rc = __hand_off_power_domain(pd_info);
+		if (rc)
+			goto err_pd_handoff_failed;
+		c++;
+	}
+
+	return rc;
+
+err_pd_handoff_failed:
+	iris_hfi_for_each_power_domain_reverse_continue(device, pd_info, c)
+		__acquire_power_domain(pd_info, device);
+
+	return rc;
+}
+
+static int __take_back_power_domains(struct lsr_device *device)
+{
+	struct power_domain_info *pd_info;
+	int rc = 0;
+
+	iris_hfi_for_each_power_domain(device, pd_info) {
+		rc = __acquire_power_domain(pd_info, device);
+		if (rc)
+			return rc;
+	}
+
+	return rc;
+}
+
+static int __enable_power_domain(struct lsr_device *device, const char *name)
+{
+	int rc = 0;
+	struct power_domain_info *pd_info;
+
+	iris_hfi_for_each_power_domain(device, pd_info) {
+		if (strcmp(pd_info->name, name))
+			continue;
+
+		rc = pm_runtime_get_sync(pd_info->pd_dev);
+		if (rc < 0) {
+			dprintk(LSR_ERR, "Failed to enable power domain %s: %d\n",
+					pd_info->name, rc);
+			pm_runtime_put_noidle(pd_info->pd_dev);
+			return rc;
+		}
+
+		dprintk(LSR_PWR, "Enabled power domain %s\n", pd_info->name);
+		return 0;
+	}
+
+	dprintk(LSR_ERR, "Power domain %s not found\n", name);
+	return -EINVAL;
+}
+
+static int __disable_power_domain(struct lsr_device *device, const char *name)
+{
+	struct power_domain_info *pd_info;
+	int rc = 0;
+
+	iris_hfi_for_each_power_domain_reverse(device, pd_info) {
+		if (strcmp(pd_info->name, name))
+			continue;
+
+		rc = pm_runtime_put_sync(pd_info->pd_dev);
+		if (rc < 0) {
+			dprintk(LSR_WARN, "Failed to disable power domain %s: %d\n",
+					pd_info->name, rc);
+		}
+
+		dprintk(LSR_PWR, "Disabled power domain %s\n", name);
+		return 0;
+	}
+
+	dprintk(LSR_ERR, "Power domain %s not found\n", name);
+	return -EINVAL;
+}
+
+static int __init_power_resources(struct lsr_device *device)
+{
+	int rc = 0;
+
+	dprintk(LSR_PWR, "Initializing power resources, framework_type:%d\n",
+		device->res->framework_type);
+
+	if (device->res->framework_type) {
+		/* Generic Power Domain framework */
+		rc = __init_power_domains(device);
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to initialize power domains\n");
+			return -ENODEV;
+		}
+	} else {
+		/* Regulator framework */
+		rc = __init_regulators(device);
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to get all regulators\n");
+			return -ENODEV;
+		}
+	}
+
+	return rc;
+}
+
+static void __deinit_power_resources(struct lsr_device *device)
+{
+	if (device->res->framework_type)
+		__deinit_power_domains(device);
+	else
+		__deinit_regulators(device);
+}
+
 static int __init_resources(struct lsr_device *device,
 				struct msm_lsr_platform_resources *res)
 {
 	int i, rc = 0;
 
-	rc = __init_regulators(device);
+	rc = __init_power_resources(device);
 	if (rc) {
-		dprintk(LSR_ERR, "Failed to get all regulators\n");
+		dprintk(LSR_ERR, "Failed to init power resources\n");
 		return -ENODEV;
 	}
 
@@ -2253,7 +2458,7 @@ err_init_reset_clk:
 err_init_bus:
 	msm_lsr_deinit_clocks(device);
 err_init_clocks:
-	__deinit_regulators(device);
+	__deinit_power_resources(device);
 	return rc;
 }
 
@@ -2262,7 +2467,7 @@ static void __deinit_resources(struct lsr_device *device)
 	__deinit_subcaches(device);
 	__deinit_bus(device);
 	msm_lsr_deinit_clocks(device);
-	__deinit_regulators(device);
+	__deinit_power_resources(device);
 }
 
 static int __disable_regulator_impl(struct regulator_info *rinfo,
@@ -2314,7 +2519,11 @@ static int __disable_hw_power_collapse(struct lsr_device *device)
 		return 0;
 	}
 
-	rc = __take_back_regulators(device);
+	if (device->res->framework_type)
+		rc = __take_back_power_domains(device);
+	else
+		rc = __take_back_regulators(device);
+
 	if (rc)
 		dprintk(LSR_WARN,
 			"%s : Failed to disable HW power collapse %d\n",
@@ -2856,10 +3065,20 @@ static int __power_on_controller_v1(struct lsr_device *device)
 {
 	int rc = 0;
 
-	rc = __enable_regulator(device, "lsr");
-	if (rc) {
-		dprintk(LSR_ERR, "Failed to enable ctrler: %d\n", rc);
-		return rc;
+	if (device->res->framework_type) {
+		/* Using GenPD - enable controller power domain */
+		rc = __enable_power_domain(device, "lsr_mvs0c_gdsc");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable controller PD: %d\n", rc);
+			return rc;
+		}
+	} else {
+		/* Using regulators */
+		rc = __enable_regulator(device, "lsr");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable ctrler: %d\n", rc);
+			return rc;
+		}
 	}
 
 	rc = msm_lsr_prepare_enable_clk(device, "sleep_clk");
@@ -2904,7 +3123,11 @@ fail_enable_axi0c:
 fail_enable_axi0:
 	msm_lsr_disable_unprepare_clk(device, "sleep_clk");
 fail_reset_sleep:
-	__disable_regulator(device, "lsr");
+	if (device->res->framework_type)
+		__disable_power_domain(device, "lsr_mvs0c_gdsc");
+	else
+		__disable_regulator(device, "lsr");
+
 	return rc;
 }
 
@@ -2919,16 +3142,32 @@ static int __power_on_core_v1(struct lsr_device *device)
 		// This will fail always, calling once as a workaround
 	}
 
-	rc = __enable_regulator(device, "lsr-noc");
-	if (rc) {
-		dprintk(LSR_ERR, "Failed to enable noc: %d\n", rc);
-		return rc;
-	}
+	if (device->res->framework_type) {
+		/* Using GenPD */
+		rc = __enable_power_domain(device, "lsr_noc_gdsc");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable NOC PD: %d\n", rc);
+			return rc;
+		}
 
-	rc = __enable_regulator(device, "lsr-core");
-	if (rc) {
-		dprintk(LSR_ERR, "Failed to enable core: %d\n", rc);
-		return rc;
+		rc = __enable_power_domain(device, "lsr_mvs0_gdsc");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable core PD: %d\n", rc);
+			return rc;
+		}
+	} else {
+		/* Using regulators */
+		rc = __enable_regulator(device, "lsr-noc");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable noc: %d\n", rc);
+			return rc;
+		}
+
+		rc = __enable_regulator(device, "lsr-core");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable core: %d\n", rc);
+			return rc;
+		}
 	}
 
 	rc = msm_lsr_prepare_enable_clk(device, "lsr_cc_mvs0_clk_src");
@@ -2958,8 +3197,13 @@ fail_enable_freerun:
 fail_enable_core:
 	msm_lsr_disable_unprepare_clk(device, "lsr_cc_mvs0_clk_src");
 fail_enable_clk_src:
-	__disable_regulator(device, "lsr-core");
-	__disable_regulator(device, "lsr-noc");
+	if (device->res->framework_type) {
+		__disable_power_domain(device, "lsr_noc_gdsc");
+		__disable_power_domain(device, "lsr_mvs0_gdsc");
+	} else {
+		__disable_regulator(device, "lsr-core");
+		__disable_regulator(device, "lsr-noc");
+	}
 	return rc;
 }
 
@@ -2981,8 +3225,13 @@ static int __power_off_core_v1(struct lsr_device *device)
 			dprintk(LSR_WARN, "Core off with NOC RESET ACK non-zero %x\n", value);
 			call_iris_op(device, print_sbm_regs, device);
 		}
-		__disable_regulator(device, "lsr-core");
-		__disable_regulator(device, "lsr-noc");
+		if (device->res->framework_type) {
+			__disable_power_domain(device, "lsr_mvs0_gdsc");
+			__disable_power_domain(device, "lsr_noc_gdsc");
+		} else {
+			__disable_regulator(device, "lsr-core");
+			__disable_regulator(device, "lsr-noc");
+		}
 		msm_lsr_disable_unprepare_clk(device, "core_clk");
 		return 0;
 	} else if (!(value & 0x2) && msm_lsr_fw_low_power_mode) {
@@ -2990,8 +3239,13 @@ static int __power_off_core_v1(struct lsr_device *device)
 		 * HW_CONTROL PC disabled, then core is powered on for
 		 * CVP NoC access
 		 */
-		__disable_regulator(device, "lsr-core");
-		__disable_regulator(device, "lsr-noc");
+		if (device->res->framework_type) {
+			__disable_power_domain(device, "lsr_mvs0_gdsc");
+			__disable_power_domain(device, "lsr_noc_gdsc");
+		} else {
+			__disable_regulator(device, "lsr-core");
+			__disable_regulator(device, "lsr-noc");
+		}
 		msm_lsr_disable_unprepare_clk(device, "core_clk");
 		return 0;
 	}
@@ -3030,8 +3284,13 @@ static int __power_off_core_v1(struct lsr_device *device)
 	/* HPG 3.4.4 step 6-7 */
 	__disable_hw_power_collapse(device);
 	usleep_range(100, 200);
-	__disable_regulator(device, "lsr-core");
-	__disable_regulator(device, "lsr-noc");
+	if (device->res->framework_type) {
+		__disable_power_domain(device, "lsr_mvs0_gdsc");
+		__disable_power_domain(device, "lsr_noc_gdsc");
+	} else {
+		__disable_regulator(device, "lsr-core");
+		__disable_regulator(device, "lsr-noc");
+	}
 	msm_lsr_disable_unprepare_clk(device, "core_clk");
 	return 0;
 }
@@ -3079,7 +3338,10 @@ static int __power_off_controller_v1(struct lsr_device *device)
 		dprintk(LSR_ERR, "Failed to disable sleep clk: %d\n", rc);
 
 	/* HPG 3.7 Step 13 and 14 */
-	__disable_regulator(device, "lsr");
+	if (device->res->framework_type)
+		__disable_power_domain(device, "lsr_mvs0c_gdsc");
+	else
+		__disable_regulator(device, "lsr");
 
 	/* Step #28: Override ARCG control to allow AXI0 clock pass through */
 	__write_register(device, LSR_AON_WRAPPER_CVP_NOC_ARCG_CONTROL, 0x1);
@@ -3204,7 +3466,11 @@ static int __enable_hw_power_collapse_v1(struct lsr_device *device)
 		return 0;
 	}
 
-	rc = __hand_off_regulators(device);
+	if (device->res->framework_type)
+		rc = __hand_off_power_domains(device);
+	else
+		rc = __hand_off_regulators(device);
+
 	if (rc) {
 		dprintk(LSR_WARN,
 			"%s : Failed to enable HW power collapse %d\n",
