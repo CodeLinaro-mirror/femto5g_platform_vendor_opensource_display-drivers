@@ -388,6 +388,9 @@ int dsi_panel_get_mode_count(struct dsi_panel *panel);
 
 void dsi_panel_put_mode(struct dsi_display_mode *mode);
 
+int dsi_panel_get_mode_cell_index(struct dsi_panel *panel, u32 index,
+				  struct dsi_display_mode *mode);
+
 int dsi_panel_get_mode(struct dsi_panel *panel,
 		       u32 index,
 		       struct dsi_display_mode *mode,
