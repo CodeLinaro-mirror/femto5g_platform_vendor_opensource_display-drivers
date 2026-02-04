@@ -1007,6 +1007,7 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 	return ret;
 }
 
+#if !(IS_ENABLED(CONFIG_LSR_SERAPH))
 int hfi_crtc_set_idle_pc_timer(struct sde_crtc *sde_crtc, u32 val)
 {
 	struct hfi_cmdbuf_t *cmd_buf;
@@ -1061,6 +1062,12 @@ int hfi_crtc_set_idle_pc_timer(struct sde_crtc *sde_crtc, u32 val)
 
 	return rc;
 }
+#else
+int hfi_crtc_set_idle_pc_timer(struct sde_crtc *sde_crtc, u32 val)
+{
+	return 0;
+}
+#endif
 
 int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 {
