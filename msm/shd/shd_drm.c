@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #define pr_fmt(fmt)	"[drm-shd] %s: " fmt, __func__
@@ -433,15 +433,47 @@ static int shd_crtc_atomic_set_property(struct drm_crtc *crtc,
 	struct shd_crtc *shd_crtc = sde_crtc->priv_handle;
 	struct sde_cp_node_dummy *prop_node;
 
+	struct shd_display *display = shd_crtc->display;
+	struct shd_display_base *base = display->base;
+	struct sde_crtc *sde_crtc_base = NULL;
+	const struct drm_crtc_funcs *orig_funcs = shd_crtc->orig_funcs;
+
 	if (!crtc || !state || !property) {
 		SDE_ERROR("invalid argument(s)\n");
 		return -EINVAL;
 	}
 
-	/* ignore all the dspp properties */
+	if (!base || !base->crtc) {
+		SDE_ERROR("base display not initialized\n");
+		return -EINVAL;
+	}
+
+	sde_crtc_base = to_sde_crtc(base->crtc);
+
+	if (!sde_crtc_base) {
+		SDE_ERROR("sde_crct_base is NULL\n");
+		return -EINVAL;
+	}
+
+	/* For the PA properties assign the dspp */
 	list_for_each_entry(prop_node, &sde_crtc->cp_feature_list, cp_feature_list) {
-		if (property->base.id == prop_node->property_id)
-			return 0;
+		if (property->base.id == prop_node->property_id) {
+			if (display->is_dspp_enable) {
+				if ((sde_crtc_base->num_mixers > 0) &&
+				     sde_crtc_base->mixers[0].hw_dspp) {
+					sde_crtc->mixers[0].hw_dspp =
+					sde_crtc_base->mixers[0].hw_dspp;
+					return orig_funcs->atomic_set_property(
+						crtc, state, property, val);
+				} else {
+					SDE_ERROR(
+					"DSPP HW unavailable on base CRTC\n");
+					return -EINVAL;
+				}
+			} else {
+				return 0;
+			}
+		}
 	}
 
 	return shd_crtc->orig_funcs->atomic_set_property(crtc,
@@ -1612,6 +1644,8 @@ next:
 	if (rc)
 		SDE_ERROR("Failed to parse shared ROI range\n");
 
+	display->is_dspp_enable = of_property_read_bool(of_node, "qcom,dspp-enable");
+
 error:
 	return rc;
 }
@@ -1791,6 +1825,8 @@ static int shd_display_notifier(struct notifier_block *nb, unsigned long action,
 	INIT_LIST_HEAD(&base->disp_list);
 	base->of_node = shd_dev->base_of;
 
+	base->is_dspp_used = false;
+
 	rc = shd_parse_base(shd_dev->drm_dev, base);
 	if (rc) {
 		SDE_ERROR("failed to parse shared display base\n");
@@ -1805,13 +1841,33 @@ static int shd_display_notifier(struct notifier_block *nb, unsigned long action,
 	list_add_tail(&base->head, &g_base_list);
 
 next:
+	if (shd_dev->is_dspp_enable) {
+		/**
+		 * Check if the dspp is already allocated for other shared
+		 * display of this base display
+		 */
+		if (base->is_dspp_used) {
+			SDE_ERROR("DSPP already allocated on other shared display\n");
+			rc = -EINVAL;
+			goto error;
+		}
+		base->is_dspp_used = true;
+	}
+
 	shd_dev->base = base;
 
 	rc = shd_drm_obj_init(shd_dev);
 	if (rc) {
 		SDE_ERROR("failed to init shared drm objects\n");
+		if (shd_dev->is_dspp_enable)
+			base->is_dspp_used = false;
 		goto error;
 	}
+	/*
+	 * If new checks are introduced between DSPP allocation and the above
+	 * check the DSPP resource may not be released correctly.
+	 * TODO: restructure the error handling to use a single cleanup path.
+	 */
 
 	list_add_tail(&shd_dev->head, &base->disp_list);
 
@@ -1875,6 +1931,10 @@ static void shd_display_unbind(struct device *dev, struct device *master,   void
 	}
 
 	msm_drm_unregister_component(shd_dev->drm_dev, &shd_dev->notifier);
+
+	// Release DSPP allocation if this display was using it
+	if (shd_dev->is_dspp_enable && shd_dev->base)
+		shd_dev->base->is_dspp_used = false;
 
 	list_del_init(&shd_dev->head);
 	if (list_empty(&shd_dev->base->disp_list))
