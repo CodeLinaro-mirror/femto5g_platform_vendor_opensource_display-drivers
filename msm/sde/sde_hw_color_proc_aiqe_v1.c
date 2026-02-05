@@ -185,7 +185,7 @@ void sde_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 	LOG_FEATURE_ON;
 }
 
-void _aiqe_copr_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
+static void _aiqe_copr_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 		struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg,
 		struct sde_hw_reg_dma_ops *dma_ops,
 		struct sde_aiqe_top_level *aiqe_top)
@@ -1318,7 +1318,7 @@ void reg_dmav1_setup_aiqe_abc_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 	}
 }
 
-int _ai_scaler_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
+static int _ai_scaler_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 	struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg,
 	struct sde_hw_reg_dma_ops *dma_ops)
 {

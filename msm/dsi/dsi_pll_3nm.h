@@ -312,3 +312,9 @@ struct dsi_pll_div_table pll_3nm_cphy_hb[] = {
 	{750000000, 1500000000, 2, 1},
 	{1500000000, 5000000000, 1, 1}
 };
+
+int dsi_pll_3nm_configure(void *pll, bool commit);
+
+int dsi_pll_3nm_toggle(void *pll, bool prepare);
+
+int dsi_pll_3nm_program_slave(struct dsi_pll_resource *pll, bool skip_op);

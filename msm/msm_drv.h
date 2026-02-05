@@ -2023,4 +2023,22 @@ bool msm_iommu_present_on_bus(const struct bus_type *bus);
  * Return: true if the IOMMU is present, false otherwise.
  */
 bool mdss_iommu_present(struct drm_device *dev);
+
+/**
+ * msm_ioctl_rmfb2 - Handle RMFB2 DRM ioctl request
+ * @dev: Pointer to the DRM device
+ * @data: Pointer to the ioctl-specific data structure
+ * @file_priv: DRM file private data associated with the caller
+ *
+ * This function handles the RMFB2 (remove framebuffer) ioctl issued
+ * from userspace. It validates the input parameters and performs the
+ * necessary cleanup to remove the specified framebuffer object from
+ * the DRM subsystem.
+ *
+ * The function is typically used to release framebuffer resources
+ * that were previously created via the ADD_FB2 ioctl.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
+int msm_ioctl_rmfb2(struct drm_device *dev, void *data, struct drm_file *file_priv);
 #endif /* __MSM_DRV_H__ */

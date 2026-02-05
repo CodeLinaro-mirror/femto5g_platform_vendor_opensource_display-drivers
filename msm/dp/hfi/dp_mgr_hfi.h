@@ -147,4 +147,6 @@ int dp_mgr_hfi_send_audio_config(struct dp_client *client,
 
 int dp_mgr_hfi_send_audio_control(struct dp_client *client, u32 enable);
 
+void dp_mgr_hfi_clk_deinit(struct dp_mgr_hfi_priv *hfi_priv);
+
 #endif /* _DP_MGR_HFI_H_ */

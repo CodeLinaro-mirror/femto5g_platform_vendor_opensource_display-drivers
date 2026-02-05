@@ -120,7 +120,7 @@ static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 	return rc;
 }
 
-int dsi_hfi_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
+static int dsi_hfi_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
 			bool blocking)
 {
 	if (!hfi_client) {
@@ -219,7 +219,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 	return rc;
 }
 
-void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
+static void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
 {
 	struct misr_read_data_ret *misr_data;
 	struct dsi_misr_values *misr_read_values;

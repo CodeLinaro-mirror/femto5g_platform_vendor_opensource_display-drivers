@@ -156,7 +156,7 @@ static u32 hfi_rot_lookup(u32 drm_rot)
 }
 
 #if IS_ENABLED(CONFIG_DRM_SDE_LSR)
-int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -212,7 +212,7 @@ int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	return 0;
 }
 
-int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -292,14 +292,14 @@ static bool _hfi_plane_is_prop_excluded_for_repro(u32 drm_prop, struct sde_plane
 	return false;
 }
 #else
-int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
 	return 0;
 }
 
-int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -423,7 +423,7 @@ end:
 	return rc;
 }
 
-int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		struct sde_plane_state *pstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -660,7 +660,7 @@ end:
  * hfi_plane_populate_custom_kv_setter_props:  this is for large payloads.
  * Collects all listed props to provide as key-value pairs and adapter does memcopy
  */
-int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u32 disp_id,
+static int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u32 disp_id,
 		struct sde_plane_state *pstate, struct hfi_cmdbuf_t *cmd_buf)
 {
 	int i, ret = 0;
@@ -711,7 +711,7 @@ end:
 	return ret;
 }
 
-int _hfi_plane_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
+static int _hfi_plane_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 		struct sde_plane *plane, struct sde_plane_state *pstate)
 {
 	int ret = 0;
