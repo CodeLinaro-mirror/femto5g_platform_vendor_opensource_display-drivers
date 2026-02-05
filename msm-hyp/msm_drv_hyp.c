@@ -307,7 +307,7 @@ static int _msm_hyp_mode_create_properties(struct drm_device *ddev)
 	priv->prop_alpha = prop;
 
 	prop = drm_property_create_range(ddev, 0,
-				"input_fence", 0, 4096);
+				"input_fence", 0, ~0);
 	if (!prop)
 		return -ENOMEM;
 	priv->prop_input_fence = prop;
