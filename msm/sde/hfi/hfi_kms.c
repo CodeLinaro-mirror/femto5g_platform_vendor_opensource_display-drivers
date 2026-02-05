@@ -946,6 +946,45 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
 	return ret;
 }
 
+int hfi_kms_send_idle_timer_ctrl(struct hfi_kms *hfi_kms, bool timer_state)
+{
+	int ret = 0;
+	struct hfi_cmdbuf_t *cmd_buf;
+	enum hfi_display_idle_timer_control payload;
+	u32 disp_id = 0; //Use primary display ID.
+
+	if (!hfi_kms)
+		return -EINVAL;
+
+	SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, SDE_EVTLOG_FUNC_ENTRY);
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			disp_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, -EINVAL, SDE_EVTLOG_ERROR);
+		return -ENOMEM;
+	}
+
+	payload = timer_state ? HFI_BLOCK_TIMER : HFI_UNBLOCK_TIMER;
+
+	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+		HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, disp_id, HFI_PAYLOAD_TYPE_U32,
+		&payload, sizeof(payload), HFI_HOST_FLAGS_RESPONSE_REQUIRED);
+	if (ret) {
+		SDE_ERROR("Failed to add property ret:%d\n", ret);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		return ret;
+	}
+
+	SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, SDE_EVTLOG_FUNC_CASE1);
+	ret = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("Failed to send idle pc timer control request: %d\n", ret);
+
+	SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, SDE_EVTLOG_FUNC_EXIT);
+	return ret;
+}
+
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
 static int hfi_kms_set_hw_fence_config(struct hfi_kms *hfi_kms)
 {
