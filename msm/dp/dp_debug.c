@@ -22,6 +22,7 @@
 #include "hfi/dp_debug_client_hfi.h"
 
 #define DEBUG_NAME "drm_dp"
+#define DPCD_CAP_SIZE 16
 
 struct dp_debug_private {
 	struct dentry *root;
@@ -96,6 +97,9 @@ static ssize_t dp_debug_write_dpcd(struct file *file,
 	struct dp_debug_private *priv = file->private_data;
 	char *buf;
 	ssize_t rc = count;
+	size_t size = 0;
+	char offset_ch[5];
+	u32 offset;
 
 	if (!priv || !priv->client.write_dpcd)
 		return -ENODEV;
@@ -114,11 +118,25 @@ static ssize_t dp_debug_write_dpcd(struct file *file,
 
 	buf[count] = '\0';
 
-	mutex_lock(&priv->lock);
-	if (priv->client.write_dpcd)
-		priv->client.write_dpcd(&priv->client, buf, count);
-	rc = count;
-	mutex_unlock(&priv->lock);
+	size = min_t(size_t, count, SZ_2K);
+	if (size > 5) {
+		mutex_lock(&priv->lock);
+		if (priv->client.write_dpcd)
+			priv->client.write_dpcd(&priv->client, buf, count);
+		rc = count;
+		mutex_unlock(&priv->lock);
+	} else {
+		/* this is part of a read operation where just the address is set */
+		memcpy(offset_ch, buf, 4);
+		offset_ch[4] = '\0';
+
+		if (kstrtoint(offset_ch, 16, &offset)) {
+			DP_ERR("offset kstrtoint error\n");
+			rc = -EINVAL;
+			goto bail;
+		}
+		priv->dpcd_offset = offset;
+	}
 
 bail:
 	kfree(buf);
@@ -129,10 +147,11 @@ static ssize_t dp_debug_read_dpcd(struct file *file,
 		char __user *user_buff, size_t count, loff_t *ppos)
 {
 	struct dp_debug_private *priv = file->private_data;
-	char *buf;
+	char *buf, *str_buf;
 	int const buf_size = SZ_4K;
 	u32 len = 0;
-	int rc;
+	u32 offset = 0;
+	u32 bytes = 0;
 
 	if (!priv || !priv->client.read_dpcd)
 		return -ENODEV;
@@ -144,17 +163,41 @@ static ssize_t dp_debug_read_dpcd(struct file *file,
 	if (!buf)
 		return -ENOMEM;
 
+	str_buf = kzalloc(buf_size, GFP_KERNEL);
+	if (!str_buf) {
+		kfree(buf);
+		return -ENOMEM;
+	}
+
+	/*
+	 * For DPCD address 0, return the full capability set
+	 * for the rest, just read one register at a time
+	 */
+	priv->dpcd_size = priv->dpcd_offset ? 1 : DPCD_CAP_SIZE;
+
 	mutex_lock(&priv->lock);
 	if (priv->client.read_dpcd)
-		priv->client.read_dpcd(&priv->client, (u8 *)buf,
-							buf_size, priv->dpcd_offset);
-	rc = count;
+		bytes = priv->client.read_dpcd(&priv->client, (u8 *)buf, priv->dpcd_size,
+				priv->dpcd_offset);
 	mutex_unlock(&priv->lock);
 
-	len = min_t(size_t, count, rc);
-	if (len > 0 && !copy_to_user(user_buff, buf, len))
+	if (!bytes) {
+		DP_WARN("DPCD read returned 0 bytes at offset 0x%x\n", priv->dpcd_offset);
+		len = 0;
+		goto exit;
+	}
+
+	len += scnprintf(str_buf + len, buf_size - len, "%04x: ", priv->dpcd_offset);
+	while (offset < bytes)
+		len += scnprintf(str_buf + len, buf_size - len, "%02x ", buf[offset++]);
+	len += scnprintf(str_buf + len, buf_size - len, "\n");
+
+	len = min_t(size_t, count, len);
+	if (len > 0 && !copy_to_user(user_buff, str_buf, len))
 		*ppos += len;
 
+exit:
+	kfree(str_buf);
 	kfree(buf);
 	return len;
 }
