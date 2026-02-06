@@ -17,7 +17,7 @@
 /* SDE_ROT_ROTTOP:
  * OFFSET=0x0A9000
  */
-#define SDE_ROT_ROTTOP_OFFSET                   0x0A9000
+#define SDE_ROT_ROTTOP_OFFSET                   (sde_rot_get_mdata()->rottop_offset)
 #define ROTTOP_HW_VERSION                       (SDE_ROT_ROTTOP_OFFSET+0x00)
 #define ROTTOP_CLK_CTRL                         (SDE_ROT_ROTTOP_OFFSET+0x10)
 #define ROTTOP_CLK_STATUS                       (SDE_ROT_ROTTOP_OFFSET+0x14)
@@ -54,7 +54,7 @@
 /* SDE_ROT_SSPP:
  * OFFSET=0x0A9100
  */
-#define SDE_ROT_SSPP_OFFSET                     0x0A9100
+#define SDE_ROT_SSPP_OFFSET                     (sde_rot_get_mdata()->sspp_offset)
 #define ROT_SSPP_SRC_SIZE                       (SDE_ROT_SSPP_OFFSET+0x00)
 #define ROT_SSPP_SRC_IMG_SIZE                   (SDE_ROT_SSPP_OFFSET+0x04)
 #define ROT_SSPP_SRC_XY                         (SDE_ROT_SSPP_OFFSET+0x08)
@@ -144,7 +144,7 @@
 /* SDE_ROT_WB:
  * OFFSET=0x0A9300
  */
-#define SDE_ROT_WB_OFFSET                       0x0A9300
+#define SDE_ROT_WB_OFFSET                       (sde_rot_get_mdata()->wb_offset)
 #define ROT_WB_DST_FORMAT                       (SDE_ROT_WB_OFFSET+0x000)
 #define ROT_WB_DST_OP_MODE                      (SDE_ROT_WB_OFFSET+0x004)
 #define ROT_WB_DST_PACK_PATTERN                 (SDE_ROT_WB_OFFSET+0x008)
@@ -203,14 +203,14 @@
 /* SDE_ROT_REGDMA_RAM:
  * OFFSET=0x0A9600
  */
-#define SDE_ROT_REGDMA_RAM_OFFSET              0x0A9600
+#define SDE_ROT_REGDMA_RAM_OFFSET              (sde_rot_get_mdata()->regdma_ram_offset)
 #define REGDMA_RAM_REGDMA_CMD_RAM              (SDE_ROT_REGDMA_RAM_OFFSET+0x00)
 
 
 /* SDE_ROT_REGDMA_CSR:
  * OFFSET=0x0AB600
  */
-#define SDE_ROT_REGDMA_OFFSET                    0x0AB600
+#define SDE_ROT_REGDMA_OFFSET                    (sde_rot_get_mdata()->regdma_offset)
 #define REGDMA_CSR_REGDMA_VERSION                (SDE_ROT_REGDMA_OFFSET+0x00)
 #define REGDMA_CSR_REGDMA_OP_MODE                (SDE_ROT_REGDMA_OFFSET+0x04)
 #define REGDMA_CSR_REGDMA_QUEUE_0_SUBMIT         (SDE_ROT_REGDMA_OFFSET+0x10)
