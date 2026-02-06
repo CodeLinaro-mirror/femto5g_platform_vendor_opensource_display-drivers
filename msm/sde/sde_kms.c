@@ -5446,7 +5446,7 @@ unlock:
 	pm_runtime_get_noresume(ddev->dev);
 
 	/* dump clock state before entering suspend */
-	if (sde_kms->pm_suspend_clk_dump)
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms)) && sde_kms->pm_suspend_clk_dump)
 		_sde_kms_dump_clks_state(sde_kms);
 
 	return ret;
