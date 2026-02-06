@@ -31,10 +31,19 @@
 #include "dp_panel_tu.h"
 #include "dp_debug_client_hfi.h"
 #include "dp_hfi_audio.h"
+#include "dp_hdcp.h"
+#if IS_ENABLED(CONFIG_HDCP_QSEECOM)
+#include "linux/msm_hdcp.h"
+#endif
 
 #define DRM_DP_IPC_NUM_PAGES 10
 #define HPD_STRING_SIZE	    30
 #define MAX_MODES           32
+
+/* HDCP 2.x message IDs */
+#define SKE_SEND_EKS            11
+#define REP_STREAM_READY        17
+#define SKE_SEND_TYPE_ID        18
 
 struct hfi_shared_addr_map *dp_mgr_hfi_init_shared_addr(struct hfi_client_t *ctx, u32 size)
 {
@@ -104,6 +113,27 @@ static struct hfi_client_t *dp_mgr_hfi_get_hfi_client(struct dp_mgr_hfi_priv *hf
 	return &hfi_kms->hfi_client;
 err:
 	return NULL;
+}
+
+static void dp_mgr_hfi_update_hdcp_info(struct dp_mgr_hfi_priv *mgr, bool reset)
+{
+	if (!mgr || !mgr->debug) {
+		DP_ERR("Invalid mgr or debug structure\n");
+		return;
+	}
+
+	if (reset) {
+		mgr->hdcp_info.hdcp_state = HDCP_STATE_INACTIVE;
+		mgr->hdcp_info.hdcp_version = HDCP_VERSION_NONE;
+	}
+
+	memset(mgr->debug->hdcp_status, 0, sizeof(mgr->debug->hdcp_status));
+
+	snprintf(mgr->debug->hdcp_status, sizeof(mgr->debug->hdcp_status),
+		"%s: %s\ncaps: %d\n",
+		sde_hdcp_version(mgr->hdcp_info.hdcp_version),
+		sde_hdcp_state_name(mgr->hdcp_info.hdcp_state),
+		mgr->hdcp_info.source_cap);
 }
 
 /**
@@ -345,19 +375,134 @@ static int _register_hpd_events(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 	rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 		HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32), HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
-		DP_ERR("Could not register for updates from DCP, rc=%d\n", rc);
+		DP_ERR("Could not register for HPD status from DCP, rc=%d\n", rc);
 		goto end;
 	}
 
 	hfi_event = HFI_EVENT_DISPLAY_EDID_INFO;
-	rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+	rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 		HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32), HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
-		DP_ERR("Could not register for updates from DCP, rc=%d\n", rc);
+		DP_ERR("Could not register for EDID info from DCP, rc=%d\n", rc);
 		goto end;
 	}
 
+	hfi_event = HFI_EVENT_HDCP_FEATURE_SUPPORTED;
+	rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+		HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32), HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (rc)
+		DP_ERR("Could not register HDCP feature supported event, rc=%d\n", rc);
+
 end:
+	return rc;
+}
+
+static int _register_hdcp_events(struct dp_mgr_hfi_priv *hfi_priv,
+				  bool enable,
+				  u32 hdcp_version)
+{
+	struct hfi_client_t *hfi_client;
+	u32 hfi_cmd = (enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER :
+		       HFI_COMMAND_DISPLAY_EVENT_DEREGISTER);
+	u32 hfi_event;
+	int rc = 0;
+
+	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	if (!hfi_client)
+		return -EINVAL;
+	if (hdcp_version == HDCP_VERSION_2P2) {
+		hfi_event = HFI_EVENT_HDCP2X_START;
+		if (enable)
+			rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
+						"DisplayPort",
+						HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+						HFI_HOST_FLAGS_NON_DISCARDABLE);
+		else
+			rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
+						"DisplayPort",
+						HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+						HFI_HOST_FLAGS_NON_DISCARDABLE);
+		if (rc) {
+			DP_ERR("Could not register HDCP2x start, rc=%d\n", rc);
+			return rc;
+		}
+
+		hfi_event = HFI_EVENT_HDCP2X_PROCESS_MSG;
+		rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+					HFI_HOST_FLAGS_NON_DISCARDABLE);
+		if (rc) {
+			DP_ERR("Could not register HDCP2x process msg, rc=%d\n", rc);
+			return rc;
+		}
+
+		hfi_event = HFI_EVENT_HDCP2X_TIMEOUT;
+		if (enable)
+			rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
+					"DisplayPort",
+					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+					HFI_HOST_FLAGS_NON_DISCARDABLE);
+		else
+			rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+					HFI_HOST_FLAGS_NON_DISCARDABLE);
+
+
+		if (rc) {
+			DP_ERR("Could not register HDCP2x timeout, rc=%d\n", rc);
+			return rc;
+		}
+	} else if (hdcp_version == HDCP_VERSION_1X) {
+		hfi_event = HFI_EVENT_HDCP1X_START;
+		if (enable)
+			rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
+						"DisplayPort",
+						HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+						HFI_HOST_FLAGS_NON_DISCARDABLE);
+		else
+			rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
+						"DisplayPort",
+						HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+						HFI_HOST_FLAGS_NON_DISCARDABLE);
+		if (rc) {
+			DP_ERR("Could not register HDCP1x start, rc=%d\n", rc);
+			return rc;
+		}
+
+		hfi_event = HFI_EVENT_HDCP1X_STOP;
+		rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+					HFI_HOST_FLAGS_NON_DISCARDABLE);
+		if (rc) {
+			DP_ERR("Could not register HDCP1x stop, rc=%d\n", rc);
+			return rc;
+		}
+
+		hfi_event = HFI_EVENT_HDCP1X_ENC;
+		rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+					HFI_HOST_FLAGS_NON_DISCARDABLE);
+		if (rc) {
+			DP_ERR("Could not register HDCP1x ENC, rc=%d\n", rc);
+			return rc;
+		}
+
+		hfi_event = HFI_EVENT_HDCP1X_TOPOLOGY_UPDATE;
+		if (enable)
+			rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
+					"DisplayPort",
+					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+					HFI_HOST_FLAGS_NON_DISCARDABLE);
+		else
+			rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+					HFI_HOST_FLAGS_NON_DISCARDABLE);
+		if (rc) {
+			DP_ERR("Could not register HDCP1x topology, rc=%d\n", rc);
+			return rc;
+		}
+	}
+
 	return rc;
 }
 
@@ -849,6 +994,21 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	return rc;
 }
 
+static void dp_mgr_hfi_min_level_change(void *client_ctx, u8 min_enc_level)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = client_ctx;
+
+	if (!hfi_priv) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	DP_DEBUG("min_enc_level changed from %u to %u\n",
+		 hfi_priv->min_enc_level, min_enc_level);
+
+	hfi_priv->min_enc_level = min_enc_level;
+}
+
 static void dp_mgr_hfi_calc_tu_parameters(struct dp_mgr_hfi_priv *hfi_priv,
 		struct dp_panel_info *pinfo, struct dp_vc_tu_mapping_table *tu_table)
 {
@@ -1236,6 +1396,621 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_mgr_hfi_priv *hfi_priv, void 
 	}
 }
 
+static void dp_mgr_hfi_handle_hdcp1x_start(struct dp_mgr_hfi_priv *hfi_priv,
+					     void *payload, u32 size)
+{
+	u32 response[2];  // Array to hold aksv_lsb and aksv_msb
+	u32 aksv_msb, aksv_lsb;
+	struct hfi_client_t *hfi_client;
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_HDCP1X_AKSV;
+	int rc;
+
+	DP_DEBUG("Received HDCP1X_START request from DCP\n");
+
+	/* Clean up any previous feature supported requests/contexts if needed */
+	/* This ensures we start fresh for each authentication attempt */
+
+	/* Call dp_hdcp to get AKSV from TrustZone */
+	if (!hfi_priv->hdcp1x_ctx) {
+		DP_ERR("HDCP context not initialized\n");
+		return;
+	}
+
+	DP_DEBUG("HDCP1x is supported");
+
+	rc = dp_hdcp1x_start(hfi_priv->hdcp1x_ctx, &aksv_msb, &aksv_lsb);
+	if (rc) {
+		DP_ERR("Failed to get AKSV from TZ, rc=%d\n", rc);
+
+		hfi_priv->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
+		dp_mgr_hfi_update_hdcp_info(hfi_priv, false);
+		return;
+	}
+
+	/* Update status on success */
+	hfi_priv->hdcp_info.hdcp_version = HDCP_VERSION_1X;
+	hfi_priv->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATING;
+	dp_mgr_hfi_update_hdcp_info(hfi_priv, false);
+
+	/* Get HFI client */
+	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	if (!hfi_client) {
+		DP_ERR("Failed to get HFI client\n");
+		return;
+	}
+
+	/* Populate response payload with AKSV for DCP */
+	response[0] = aksv_lsb;
+	response[1] = aksv_msb;
+
+	/* Send HFI_COMMAND_DISPLAY_HDCP1X_AKSV command with AKSV values */
+	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+			HFI_PAYLOAD_TYPE_U32_ARRAY, response, sizeof(response),
+			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
+	if (rc) {
+		DP_ERR("Failed to send HDCP1X_AKSV command, rc=%d\n", rc);
+		return;
+	}
+
+	DP_DEBUG("Successfully sent AKSV to DCP: msb=0x%x, lsb=0x%x\n", aksv_msb, aksv_lsb);
+}
+
+
+static void dp_mgr_hfi_handle_hdcp1x_stop(struct dp_mgr_hfi_priv *hfi_priv,
+					    void *payload, u32 size)
+{
+	DP_DEBUG("Received HDCP1X_STOP request from DCP\n");
+
+	/* Call dp_hdcp to notify TrustZone */
+	if (!hfi_priv->hdcp1x_ctx) {
+		DP_ERR("HDCP context not initialized\n");
+		return;
+	}
+
+	dp_hdcp1x_stop(hfi_priv->hdcp1x_ctx);
+
+	dp_mgr_hfi_update_hdcp_info(hfi_priv, true);
+
+	DP_DEBUG("HDCP stopped\n");
+}
+
+static void dp_mgr_hfi_handle_hdcp1x_enc(struct dp_mgr_hfi_priv *hfi_priv,
+					  void *payload, u32 size)
+{
+	u32 *data = (u32 *)payload;
+	bool enable;
+
+	if (size < sizeof(u32)) {
+		DP_ERR("Invalid payload size: %u\n", size);
+		return;
+	}
+
+	enable = (data[0] != 0);
+
+	DP_DEBUG("Received HDCP1X_ENC request from DCP: enable=%d\n", enable);
+
+	/* Call dp_hdcp to notify TrustZone */
+	if (!hfi_priv->hdcp1x_ctx) {
+		DP_ERR("HDCP context not initialized\n");
+		return;
+	}
+
+	dp_hdcp1x_set_enc(hfi_priv->hdcp1x_ctx, enable);
+
+	if (enable) {
+		hfi_priv->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
+		dp_mgr_hfi_update_hdcp_info(hfi_priv, false);
+	}
+
+	DP_DEBUG("HDCP encryption %s\n", enable ? "enabled" : "disabled");
+}
+
+static void dp_mgr_hfi_handle_hdcp1x_topology(struct dp_mgr_hfi_priv *hfi_priv,
+						void *payload, u32 size)
+{
+	u32 *data = (u32 *)payload;
+	u32 depth, device_count, max_devices_exceeded, max_cascade_exceeded;
+
+	if (size < 4 * sizeof(u32)) {
+		DP_ERR("Invalid payload size: %u\n", size);
+		return;
+	}
+
+	depth = data[0];
+	device_count = data[1];
+	max_devices_exceeded = data[2];
+	max_cascade_exceeded = data[3];
+
+	DP_DEBUG("topology update: depth=%u, devices=%u, max_dev=%u, max_cascade=%u\n",
+		 depth, device_count, max_devices_exceeded, max_cascade_exceeded);
+
+	/* Call dp_hdcp to notify TrustZone */
+	if (!hfi_priv->hdcp1x_ctx) {
+		DP_ERR("HDCP context not initialized\n");
+		return;
+	}
+
+	dp_hdcp1x_topology_update(hfi_priv->hdcp1x_ctx, depth, device_count,
+				max_devices_exceeded, max_cascade_exceeded);
+
+	DP_DEBUG("HDCP topology updated\n");
+}
+
+static int dp_mgr_hfi_send_type_id_to_sink(struct dp_mgr_hfi_priv *priv,
+					    uint8_t stream_type)
+{
+	struct hfi_hdcp2_message response = {0};
+	struct hfi_client_t *hfi_client;
+	uint8_t type_id_msg[2];
+	int rc;
+
+	hfi_client = dp_mgr_hfi_get_hfi_client(priv);
+	if (!hfi_client)
+		return -EINVAL;
+
+	DP_DEBUG("Sending TYPE_ID to sink, stream_type=%u\n", stream_type);
+
+	/* Construct TYPE_ID message */
+	type_id_msg[0] = SKE_SEND_TYPE_ID;
+	type_id_msg[1] = stream_type;
+
+	/* Copy to shared response buffer */
+	memcpy(priv->hdcp2x_resp_map->local_addr, type_id_msg, 2);
+
+	/* Prepare HFI response */
+	dp_mgr_hfi_init_hfi_buff(&response.request, priv->hdcp2x_req_map);
+	response.request.size = 0;
+
+	dp_mgr_hfi_init_hfi_buff(&response.response, priv->hdcp2x_resp_map);
+	response.response.size = 2;
+
+	response.timeout_ms = 100;
+	response.repeater_flag = 0;
+
+	/* Send TYPE_ID to sink via HFI */
+	rc = dp_hfi_send_cmd_buf(priv->hfi, hfi_client,
+				 HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE,
+				 "DisplayPort", HFI_PAYLOAD_TYPE_U32_ARRAY,
+				 &response, sizeof(response),
+				 HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (rc)
+		DP_ERR("Failed to send TYPE_ID to sink: %d\n", rc);
+	else
+		DP_DEBUG("TYPE_ID sent to sink successfully\n");
+
+	return rc;
+}
+
+static void dp_mgr_hfi_handle_hdcp2x_start(struct dp_mgr_hfi_priv *priv, void *payload, u32 size)
+{
+	struct hfi_hdcp2_message response = {0};
+	struct hfi_client_t *hfi_client;
+	uint8_t *ake_init;
+	uint32_t ake_init_len;
+	int rc;
+
+	DP_DEBUG("HDCP2X_START event received from DCP\n");
+
+	/* Clean up any previous feature supported requests/contexts if needed */
+	/* This ensures we start fresh for each authentication attempt */
+
+	if (!priv || !priv->hdcp2x_ctx) {
+		DP_ERR("Invalid HDCP 2.x context\n");
+		return;
+	}
+
+	/* Check if shared buffers are allocated */
+	if (!priv->hdcp2x_req_map || !priv->hdcp2x_resp_map) {
+		DP_ERR("HDCP 2.x shared buffers not allocated\n");
+		return;
+	}
+
+	/* Call dp_hdcp to start and get AKE_INIT */
+	rc = dp_hdcp2x_start(priv->hdcp2x_ctx, &ake_init, &ake_init_len);
+	if (rc) {
+		DP_ERR("dp_hdcp2x_start failed: %d\n", rc);
+		return;
+	}
+
+	priv->hdcp_info.hdcp_version = HDCP_VERSION_2P2;
+	priv->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATING;
+	dp_mgr_hfi_update_hdcp_info(priv, false);
+
+	DP_DEBUG("HDCP2X_START: ake_init=%p, ake_init_len=%u\n", ake_init, ake_init_len);
+
+	/* Copy AKE_INIT to shared response buffer */
+	if (ake_init_len > priv->hdcp2x_resp_map->size) {
+		DP_ERR("AKE_INIT too large: %u > %u\n",
+		       ake_init_len, priv->hdcp2x_resp_map->size);
+		return;
+	}
+
+	memcpy(priv->hdcp2x_resp_map->local_addr, ake_init, ake_init_len);
+
+	/* Prepare HFI response */
+	hfi_client = dp_mgr_hfi_get_hfi_client(priv);
+	if (!hfi_client)
+		return;
+
+	/* Initialize request buffer (empty for START event) */
+	dp_mgr_hfi_init_hfi_buff(&response.request, priv->hdcp2x_req_map);
+
+	/* Initialize response buffer with AKE_INIT */
+	dp_mgr_hfi_init_hfi_buff(&response.response, priv->hdcp2x_resp_map);
+	response.response.size = ake_init_len;
+
+	/* Set timeout and repeater flag */
+	response.timeout_ms = 0;
+	response.repeater_flag = 0;
+
+	/* Send HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE back to DCP */
+	rc = dp_hfi_send_cmd_buf(priv->hfi, hfi_client,
+				 HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE,
+				 "DisplayPort", HFI_PAYLOAD_TYPE_U32_ARRAY,
+				 &response, sizeof(response),
+				 HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (rc)
+		DP_ERR("Failed to send HDCP2X_RESPONSE: %d\n", rc);
+	else
+		DP_DEBUG("AKE_INIT sent to DCP via HDCP2X_RESPONSE, length=%u\n", ake_init_len);
+}
+
+static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_mgr_hfi_priv *priv,
+						 void *payload, u32 size)
+{
+	struct hfi_hdcp2_message *hfi_data = payload;
+	struct hfi_hdcp2_message response = {0};
+	struct hfi_client_t *hfi_client;
+	uint8_t *req_buf;
+	uint8_t *resp_buf;
+	uint32_t resp_len;
+	uint8_t msg_id = 0;
+	bool is_repeater;
+	uint8_t stream_type;
+	int rc;
+
+	DP_DEBUG("HDCP2X_PROCESS_MSG event received from DCP\n");
+
+	if (!priv || !priv->hdcp2x_ctx || !hfi_data) {
+		DP_ERR("Invalid parameters\n");
+		return;
+	}
+
+	/* Check if shared buffers are allocated */
+	if (!priv->hdcp2x_req_map || !priv->hdcp2x_resp_map) {
+		DP_ERR("HDCP 2.x shared buffers not allocated\n");
+		return;
+	}
+
+	/* Get request buffer from shared memory */
+	req_buf = priv->hdcp2x_req_map->local_addr;
+	if (!req_buf || hfi_data->request.size > priv->hdcp2x_req_map->size) {
+		DP_ERR("Invalid request buffer\n");
+		return;
+	}
+
+	/* Validate request size is reasonable */
+	if (hfi_data->request.size > 0 && hfi_data->request.size < sizeof(uint8_t)) {
+		DP_ERR("Invalid request size: %u\n", hfi_data->request.size);
+		return;
+	}
+
+	is_repeater = hfi_data->repeater_flag;
+
+	DP_DEBUG("Processing message: request_length=%u, repeater=%d\n",
+		 hfi_data->request.size, is_repeater);
+
+	/* Process message through dp_hdcp (TZ) */
+	rc = dp_hdcp2x_process_msg(priv->hdcp2x_ctx,
+				   req_buf, hfi_data->request.size,
+				   &resp_buf, &resp_len);
+	if (rc) {
+		DP_ERR("dp_hdcp2x_process_msg failed: %d\n", rc);
+		return;
+	}
+
+	/* Copy response to shared buffer (if any) */
+	if (resp_len > 0) {
+		if (resp_len > priv->hdcp2x_resp_map->size) {
+			DP_ERR("Response too large: %u > %u\n",
+			       resp_len, priv->hdcp2x_resp_map->size);
+			return;
+		}
+		memcpy(priv->hdcp2x_resp_map->local_addr, resp_buf, resp_len);
+
+		msg_id = resp_buf[0];
+		DP_DEBUG("Response message ID: 0x%02x\n", msg_id);
+	}
+
+	/* Prepare HFI response */
+	hfi_client = dp_mgr_hfi_get_hfi_client(priv);
+	if (!hfi_client)
+		return;
+
+	/* Initialize request buffer (empty for response) */
+	dp_mgr_hfi_init_hfi_buff(&response.request, priv->hdcp2x_req_map);
+	response.request.size = 0;
+
+	/* Initialize response buffer with TZ response */
+	dp_mgr_hfi_init_hfi_buff(&response.response, priv->hdcp2x_resp_map);
+	response.response.size = resp_len;
+
+	/* Copy timeout and repeater flag from incoming message */
+	response.timeout_ms = hfi_data->timeout_ms;
+	response.repeater_flag = hfi_data->repeater_flag;
+
+	/* Send HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE back to DCP */
+	rc = dp_hfi_send_cmd_buf(priv->hfi, hfi_client,
+				 HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE,
+				 "DisplayPort", HFI_PAYLOAD_TYPE_U32_ARRAY,
+				 &response, sizeof(response),
+				 HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (rc)
+		DP_ERR("Failed to send HDCP2X_RESPONSE: %d\n", rc);
+	else
+		DP_DEBUG("Response sent to DCP, length=%u\n", resp_len);
+
+	if (msg_id == SKE_SEND_EKS && !is_repeater) {
+		switch (priv->min_enc_level) {
+		case 0:
+		case 1:
+			stream_type = 0;  /* Type 0: Standard content */
+			break;
+		case 2:
+			stream_type = 1;  /* Type 1: Premium content (4K HDR, etc.) */
+			break;
+		default:
+			stream_type = 0;
+			break;
+		}
+
+		DP_DEBUG("Using stream_type=%u (min_enc_level=%u)\n",
+			 stream_type, priv->min_enc_level);
+
+		/* Step 1: Send SKE_SEND_TYPE_ID directly to sink via HFI */
+		rc = dp_mgr_hfi_send_type_id_to_sink(priv, stream_type);
+		if (rc) {
+			DP_ERR("Failed to send TYPE_ID to sink: %d\n", rc);
+			priv->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
+			dp_mgr_hfi_update_hdcp_info(priv, false);
+			return;
+		}
+
+		/* Step 2: Enable encryption in TZ */
+		rc = dp_hdcp2x_enable_encryption(priv->hdcp2x_ctx);
+		if (rc) {
+			DP_ERR("Failed to enable encryption: %d\n", rc);
+			priv->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
+			dp_mgr_hfi_update_hdcp_info(priv, false);
+			return;
+		}
+
+		/* Step 3: Update status */
+		priv->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
+		dp_mgr_hfi_update_hdcp_info(priv, false);
+
+		DP_DEBUG("HDCP 2.x authentication completed (non-repeater)\n");
+	} else if (msg_id == REP_STREAM_READY && is_repeater) {
+		rc = dp_hdcp2x_enable_encryption(priv->hdcp2x_ctx);
+		if (rc) {
+			DP_ERR("Failed to enable encryption: %d\n", rc);
+			priv->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
+		} else {
+			priv->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
+		}
+		dp_mgr_hfi_update_hdcp_info(priv, false);
+
+		DP_DEBUG("HDCP 2.x authentication completed (repeater)\n");
+	}
+}
+
+static void dp_mgr_hfi_handle_hdcp2x_timeout(struct dp_mgr_hfi_priv *priv,
+					      void *payload, u32 size)
+{
+	struct hfi_hdcp2_message response = {0};
+	struct hfi_client_t *hfi_client;
+	uint8_t *req_buf;
+	uint8_t *resp_buf;
+	uint32_t resp_len;
+	int rc;
+
+	DP_DEBUG("HDCP2X_TIMEOUT event received from DCP\n");
+
+	if (!priv || !priv->hdcp2x_ctx) {
+		DP_ERR("Invalid HDCP 2.x context\n");
+		return;
+	}
+
+	/* Payload should be empty for timeout event */
+	if (payload || size != 0) {
+		DP_ERR("Unexpected payload for timeout event\n");
+		return;
+	}
+
+	/* Check if shared buffers are allocated */
+	if (!priv->hdcp2x_req_map || !priv->hdcp2x_resp_map) {
+		DP_ERR("HDCP 2.x shared buffers not allocated\n");
+		return;
+	}
+
+	/* Get buffer pointers from shared memory */
+	req_buf = priv->hdcp2x_req_map->local_addr;
+
+	/* Call TZ with TIMEOUT - pass buffer pointers so TZ can populate response */
+	rc = dp_hdcp2x_timeout(priv->hdcp2x_ctx,
+			       req_buf, 0,  /* request is empty (length=0) but pass pointer */
+			       &resp_buf, &resp_len);
+	if (rc) {
+		DP_ERR("dp_hdcp2x_timeout failed: %d\n", rc);
+
+		priv->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
+		dp_mgr_hfi_update_hdcp_info(priv, false);
+		return;
+	}
+
+	/* Copy response to shared buffer if TZ returned something */
+	if (resp_len > 0) {
+		if (resp_len > priv->hdcp2x_resp_map->size) {
+			DP_ERR("Response too large: %u > %u\n",
+			       resp_len, priv->hdcp2x_resp_map->size);
+			return;
+		}
+		memcpy(priv->hdcp2x_resp_map->local_addr, resp_buf, resp_len);
+	}
+
+	/* Get HFI client */
+	hfi_client = dp_mgr_hfi_get_hfi_client(priv);
+	if (!hfi_client)
+		return;
+
+	/* Prepare HFI response with whatever TZ put in app_data */
+	dp_mgr_hfi_init_hfi_buff(&response.request, priv->hdcp2x_req_map);
+	response.request.size = 0;
+
+	dp_mgr_hfi_init_hfi_buff(&response.response, priv->hdcp2x_resp_map);
+	response.response.size = resp_len;
+
+	response.timeout_ms = 0;
+	response.repeater_flag = 0;
+
+	/* Send response back to DCP */
+	rc = dp_hfi_send_cmd_buf(priv->hfi, hfi_client,
+				 HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE,
+				 "DisplayPort", HFI_PAYLOAD_TYPE_U32_ARRAY,
+				 &response, sizeof(response),
+				 HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (rc)
+		DP_ERR("Failed to send timeout response: %d\n", rc);
+	else
+		DP_DEBUG("Timeout response sent to DCP, length=%u\n", resp_len);
+}
+
+static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_mgr_hfi_priv *hfi_priv,
+						     void *payload, u32 size)
+{
+	struct hfi_client_t *hfi_client;
+	u32 response[2] = {0, 0}; // [hdcp1x_supported, hdcp2x_supported]
+	bool hdcp1x_tz_support = false;
+	bool hdcp2x_tz_support = false;
+	int rc;
+	u32 *hdcp_support = (u32 *)payload;
+	u32 hfi_event;
+
+	/* Get HFI client first as we'll need it for buffer allocation */
+	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	if (!hfi_client) {
+		DP_ERR("Failed to get HFI client\n");
+		return;
+	}
+
+	hfi_priv->hdcp_info.source_cap = 0;
+	if (hdcp_support[0])
+		hfi_priv->hdcp_info.source_cap |= HDCP_VERSION_1X;
+	if (hdcp_support[1])
+		hfi_priv->hdcp_info.source_cap |= HDCP_VERSION_2P2;
+
+	/* Initialize HDCP contexts if not already done */
+	if (!hfi_priv->hdcp1x_ctx && hdcp_support[0]) {
+		struct sde_hdcp_init_data init_data = {
+			.msm_hdcp_dev = &hfi_priv->pdev->dev,
+			.client_id = HDCP_CLIENT_DP,
+		};
+
+		hfi_priv->hdcp1x_ctx = dp_hdcp1x_init(&init_data);
+		if (!hfi_priv->hdcp1x_ctx) {
+			DP_WARN("HDCP init failed, continuing without HDCP\n");
+			hfi_priv->hdcp_info.source_cap &= ~HDCP_VERSION_1X;
+		} else {
+			DP_INFO("HDCP initialized successfully\n");
+		}
+	}
+	if (!hfi_priv->hdcp2x_ctx && hdcp_support[1]) {
+		hfi_priv->hdcp2x_ctx = dp_hdcp2x_init();
+		if (!hfi_priv->hdcp2x_ctx) {
+			DP_WARN("HDCP 2.x init failed, continuing without HDCP 2.x\n");
+			hfi_priv->hdcp_info.source_cap &= ~HDCP_VERSION_2P2;
+		} else {
+			DP_INFO("HDCP 2.x initialized successfully\n");
+
+			/* Allocate shared memory buffers for HDCP 2.x message exchange */
+			hfi_priv->hdcp2x_req_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
+			if (!hfi_priv->hdcp2x_req_map) {
+				DP_ERR("Failed to allocate HDCP 2.x request buffer\n");
+				dp_hdcp2x_deinit(hfi_priv->hdcp2x_ctx);
+				hfi_priv->hdcp2x_ctx = NULL;
+				hfi_priv->hdcp_info.source_cap &= ~HDCP_VERSION_2P2;
+			} else {
+				hfi_priv->hdcp2x_resp_map = dp_mgr_hfi_init_shared_addr(hfi_client,
+					SZ_4K);
+				if (!hfi_priv->hdcp2x_resp_map) {
+					DP_ERR("Failed to allocate HDCP 2.x response buffer\n");
+					dp_mgr_init_deinit_shared_addr(hfi_client,
+						hfi_priv->hdcp2x_req_map);
+					hfi_priv->hdcp2x_req_map = NULL;
+					dp_hdcp2x_deinit(hfi_priv->hdcp2x_ctx);
+					hfi_priv->hdcp2x_ctx = NULL;
+					hfi_priv->hdcp_info.source_cap &= ~HDCP_VERSION_2P2;
+				} else {
+					DP_DEBUG("HDCP 2.x shared buffers allocated\n");
+				}
+			}
+		}
+	}
+
+	/* Check TrustZone support for both versions */
+	if (hfi_priv->hdcp1x_ctx)
+		hdcp1x_tz_support = dp_hdcp1x_feature_supported(hfi_priv->hdcp1x_ctx);
+	if (hfi_priv->hdcp2x_ctx)
+		hdcp2x_tz_support = dp_hdcp2x_feature_supported(hfi_priv->hdcp2x_ctx);
+
+	response[0] = hdcp1x_tz_support ? 1 : 0;
+	response[1] = hdcp2x_tz_support ? 1 : 0;
+
+	/* Set version based on priority: prefer HDCP 2.2 if both supported */
+	if (hdcp2x_tz_support)
+		hfi_priv->hdcp_info.hdcp_version = HDCP_VERSION_2P2;
+	else if (hdcp1x_tz_support)
+		hfi_priv->hdcp_info.hdcp_version = HDCP_VERSION_1X;
+	else {
+		hfi_priv->hdcp_info.hdcp_version = HDCP_VERSION_NONE;
+		hfi_priv->hdcp_info.hdcp_state = HDCP_STATE_INACTIVE;
+	}
+
+	/* Update debug buffer */
+	dp_mgr_hfi_update_hdcp_info(hfi_priv, false);
+
+
+	if (hfi_priv->hdcp_info.hdcp_version != HDCP_VERSION_NONE) {
+		rc = _register_hdcp_events(hfi_priv, true, hfi_priv->hdcp_info.hdcp_version);
+		if (rc) {
+			DP_ERR("Failed to register HDCP events, rc=%d\n", rc);
+			return;
+		}
+	} else {
+		hfi_event = HFI_EVENT_HDCP_FEATURE_SUPPORTED;
+		rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client,
+						HFI_COMMAND_DISPLAY_EVENT_DEREGISTER,
+						"DisplayPort", HFI_PAYLOAD_TYPE_U32,
+						&hfi_event, sizeof(u32),
+						HFI_HOST_FLAGS_NON_DISCARDABLE);
+		if (rc)
+			DP_ERR("Failed to deregister HDCP feature supported event, rc=%d\n", rc);
+	}
+
+	rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client,
+					     HFI_COMMAND_DISPLAY_HDCP_FEATURE_SUPPORTED,
+					     "DisplayPort", HFI_PAYLOAD_TYPE_U32_ARRAY,
+					     response, sizeof(response),
+					     HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (rc) {
+		DP_ERR("Failed to start batch for feature supported response\n");
+		return;
+	}
+
+	DP_DEBUG("HDCP feature supported response sent: 1x=%d, 2x=%d\n",
+		 response[0], response[1]);
+}
+
 static void dp_mgr_hfi_handle_event(void *cb_data, u32 event, void *payload, u32 size)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = cb_data;
@@ -1247,6 +2022,30 @@ static void dp_mgr_hfi_handle_event(void *cb_data, u32 event, void *payload, u32
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_EDID_INFO:
 		dp_mgr_hfi_handle_dp_info(hfi_priv, payload, size);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_HDCP1X_START:
+		dp_mgr_hfi_handle_hdcp1x_start(hfi_priv, payload, size);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_HDCP1X_STOP:
+		dp_mgr_hfi_handle_hdcp1x_stop(hfi_priv, payload, size);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_HDCP1X_ENC:
+		dp_mgr_hfi_handle_hdcp1x_enc(hfi_priv, payload, size);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_HDCP1X_TOPOLOGY_UPDATE:
+		dp_mgr_hfi_handle_hdcp1x_topology(hfi_priv, payload, size);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_HDCP2X_START:
+		dp_mgr_hfi_handle_hdcp2x_start(hfi_priv, payload, size);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_HDCP2X_PROCESS_MSG:
+		dp_mgr_hfi_handle_hdcp2x_process_msg(hfi_priv, payload, size);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_HDCP2X_TIMEOUT:
+		dp_mgr_hfi_handle_hdcp2x_timeout(hfi_priv, payload, size);
+		break;
+	case HFI_COMMAND_DISPLAY_EVENT_HDCP_FEATURE_SUPPORTED:
+		dp_mgr_hfi_handle_hdcp_feature_supported(hfi_priv, payload, size);
 		break;
 	default:
 		break;
@@ -1331,6 +2130,13 @@ static int dp_mgr_hfi_post_init(struct dp_client *client)
 		hfi_priv->audio = NULL;
 	} else {
 		DP_DEBUG("HFI audio initialized successfully\n");
+	}
+
+	/* Register min_enc_level callback */
+	if (IS_ENABLED(CONFIG_HDCP_QSEECOM)) {
+		msm_hdcp_register_cb(&hfi_priv->pdev->dev, hfi_priv,
+				    dp_mgr_hfi_min_level_change);
+		DP_DEBUG("Registered HDCP min_enc_level callback\n");
 	}
 
 	return 0;
@@ -1529,7 +2335,8 @@ int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
 	hfi_client = &hfi_kms->hfi_client;
 
 	rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
-			HFI_PAYLOAD_TYPE_NONE, NULL, 0, HFI_HOST_FLAGS_NON_DISCARDABLE);
+				  HFI_PAYLOAD_TYPE_NONE, NULL, 0,
+				  HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("failed to send enable, rc=%d\n", rc);
 		goto error;
@@ -1649,18 +2456,61 @@ int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	hfi_client = &hfi_kms->hfi_client;
 
+	/* Deinitialize HDCP */
+	if (hfi_priv->hdcp1x_ctx) {
+		dp_hdcp1x_deinit(hfi_priv->hdcp1x_ctx);
+		hfi_priv->hdcp1x_ctx = NULL;
+		DP_DEBUG("HDCP deinitialized\n");
+	}
+
+	/* Deinitialize HDCP 2.x and free shared buffers */
+	if (hfi_priv->hdcp2x_ctx) {
+		dp_hdcp2x_deinit(hfi_priv->hdcp2x_ctx);
+		hfi_priv->hdcp2x_ctx = NULL;
+		DP_DEBUG("HDCP 2.x deinitialized\n");
+	}
+
+	/* Free HDCP 2.x shared buffers */
+	if (hfi_priv->hdcp2x_req_map) {
+		dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->hdcp2x_req_map);
+		hfi_priv->hdcp2x_req_map = NULL;
+		DP_DEBUG("HDCP 2.x request buffer freed\n");
+	}
+	if (hfi_priv->hdcp2x_resp_map) {
+		dp_mgr_init_deinit_shared_addr(hfi_client, hfi_priv->hdcp2x_resp_map);
+		hfi_priv->hdcp2x_resp_map = NULL;
+		DP_DEBUG("HDCP 2.x response buffer freed\n");
+	}
+
 	DP_DEBUG("Sending DISPLAY_POST_DISABLE command to DCP, panel_id=%d\n",
 			panel_id);
 
-	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
-			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
-			(HFI_HOST_FLAGS_NON_DISCARDABLE));
-	if (rc) {
-		DP_ERR("failed to send post disable, rc=%d, panel_id=%d\n",
-				rc, panel_id);
+	if (hfi_priv->hdcp_info.hdcp_version != HDCP_VERSION_NONE) {
+		rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+				HFI_PAYLOAD_TYPE_NONE, NULL, 0,
+				(HFI_HOST_FLAGS_NON_DISCARDABLE));
+		if (rc) {
+			DP_ERR("failed to send post disable, rc=%d, panel_id=%d\n",
+					rc, panel_id);
+		} else {
+			DP_DEBUG("post disable successful for panel_id=%d\n",
+					panel_id);
+		}
+
+		rc = _register_hdcp_events(hfi_priv, false, hfi_priv->hdcp_info.hdcp_version);
+		if (rc)
+			DP_ERR("Failed to deregister HDCP events, rc=%d\n", rc);
 	} else {
-		DP_DEBUG("post disable successful for panel_id=%d\n",
-				panel_id);
+		rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+				HFI_PAYLOAD_TYPE_NONE, NULL, 0,
+				(HFI_HOST_FLAGS_NON_DISCARDABLE));
+		if (rc) {
+			DP_ERR("failed to send post disable, rc=%d, panel_id=%d\n",
+					rc, panel_id);
+		} else {
+			DP_DEBUG("post disable successful for panel_id=%d\n",
+					panel_id);
+		}
 	}
 
 	return rc;
@@ -1906,7 +2756,7 @@ static int dp_mgr_hfi_edp_detect(struct dp_client *client)
 	return 0;
 }
 
-struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev)
+struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_client *debug)
 {
 	int rc = 0;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -1931,6 +2781,8 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev)
 
 	client = &hfi_priv->client;
 	drm_ops = &client->drm_ops;
+
+	hfi_priv->debug = debug;
 
 	client->dp_ipc_log = ipc_log_context_create(DRM_DP_IPC_NUM_PAGES, "drm_dp", 0);
 	if (!client->dp_ipc_log)
@@ -1970,6 +2822,12 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev)
 	client->pm_complete = dp_mgr_hfi_pm_complete;
 
 	init_completion(&hfi_priv->hpd_comp);
+	hfi_priv->hdcp_info.hdcp_state = HDCP_STATE_INACTIVE;
+	hfi_priv->hdcp_info.hdcp_version = HDCP_VERSION_NONE;
+	hfi_priv->hdcp_info.source_cap = 0;
+
+	/* Initialize min_enc_level to default (standard content) */
+	hfi_priv->min_enc_level = 0;
 
 	DP_INFO("DP HFI display initialized successfully\n");
 	return client;
