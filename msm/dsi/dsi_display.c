@@ -7654,7 +7654,7 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		/* Setup widebus support */
 		display_mode.priv_info->widebus_support = ctrl->ctrl->hw.widebus_support;
 
-		if (display->cmdline_timing == mode_idx) {
+		if (display->cmdline_timing == display_mode.mode_idx) {
 			topology_override = display->cmdline_topology;
 			is_preferred = true;
 		}
