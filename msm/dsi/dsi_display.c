@@ -7645,6 +7645,14 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 
 		memset(&display_mode, 0, sizeof(display_mode));
 
+		rc = dsi_panel_get_mode_cell_index(display->panel, mode_idx, &display_mode);
+		if (rc) {
+			DSI_ERR("[%s] failed to get mode idx %d from panel\n",
+				   display->name, mode_idx);
+			rc = -EINVAL;
+			return rc;
+		}
+
 		display_mode.priv_info = kzalloc(sizeof(*display_mode.priv_info), GFP_KERNEL);
 		if (!display_mode.priv_info) {
 			rc = -ENOMEM;

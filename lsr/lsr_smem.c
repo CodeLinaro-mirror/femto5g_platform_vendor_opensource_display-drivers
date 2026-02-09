@@ -136,8 +136,8 @@ static int msm_dma_get_device_address(struct dma_buf *dbuf, u32 align,
 
 		table = __lsr_dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
 		if (IS_ERR_OR_NULL(table)) {
-			dprintk(LSR_ERR, "Failed to map table %d\n", PTR_ERR(table));
-			dprintk(LSR_ERR, "Mapping detail dma_buf 0x%llx, %s, size %#x\n",
+			dprintk(LSR_ERR, "Failed to map table %ld\n", PTR_ERR(table));
+			dprintk(LSR_ERR, "Mapping detail dma_buf 0x%p, %s, size %#zx\n",
 				dbuf, dbuf->name, dbuf->size);
 			rc = PTR_ERR(table) ?: -ENOMEM;
 			goto mem_map_table_failed;
@@ -278,7 +278,7 @@ static int alloc_dma_mem(size_t size, u32 align, int map_kernel,
 	dbuf = dma_heap_buffer_alloc(heap, size, 0, 0);
 	if (IS_ERR_OR_NULL(dbuf)) {
 		dprintk(LSR_ERR,
-			"Failed to allocate shared memory = %x bytes, %x %x\n",
+			"Failed to allocate shared memory = %zx bytes, %x %lx\n",
 			size, mem->flags, PTR_ERR(dbuf));
 		rc = -ENOMEM;
 		goto fail_shared_mem_alloc;
@@ -337,7 +337,7 @@ static int alloc_dma_mem(size_t size, u32 align, int map_kernel,
 	}
 
 	dprintk(LSR_MEM,
-		"%s: dma_buf=%pK, iova=%x, size=%d, kvaddr=%pK, dcp_addr = 0x%x, flags=%#lx\n",
+		"%s: dma_buf=%pK, iova=%x, size=%d, kvaddr=%pK, dcp_addr = 0x%x, flags=%#x\n",
 		__func__, mem->dma_buf, mem->device_addr, mem->size,
 		mem->kvaddr, mem->dcp_device_addr, mem->flags);
 	return rc;
