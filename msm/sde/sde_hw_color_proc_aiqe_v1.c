@@ -953,8 +953,8 @@ static bool valid_abc_main_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
 	tempw = aiqe_abc->param[1] & ((1 << 12) - 1);
 
 	if (w != tempw || h != temph) {
-		DRM_ERROR("invalid plane param h %d w %d exp h %d exp w %d\n", tempw,
-		temph, h, w);
+		DRM_ERROR("invalid plane param h %d w %d exp h %d exp w %d\n", temph,
+		tempw, h, w);
 		return false;
 	}
 
