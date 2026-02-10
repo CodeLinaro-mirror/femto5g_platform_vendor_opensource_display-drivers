@@ -14,6 +14,7 @@
 #define MARKER_BUFF_LENGTH 256
 #define NO_SPIN_LOCK_CHANNEL 0x00
 #define SPIN_LOCK_CHANNEL 0x01
+#define MAX_PORT_NAME_LENGTH (PANEL_NAME_LEN - 1)
 
 #define to_virtio_kms(x)\
 		container_of((x), struct virtio_kms, base)
@@ -93,6 +94,7 @@ struct virtio_kms_output {
 	struct completion commit_done;
 	uint32_t offset_x;
 	uint32_t offset_y;
+	char port_name[MAX_PORT_NAME_LENGTH];
 };
 
 struct channel_map {
@@ -168,7 +170,7 @@ struct virtio_connector_info_priv {
 	uint32_t scanout;
 	uint32_t mode_count;
 	struct drm_display_mode *modes;
-	char panel_name[PANEL_NAME_LEN];
+	char panel_name[MAX_PORT_NAME_LENGTH];
 	struct virtio_gpu_rect mode_rect;
 	uint32_t mode_index;
 	struct msm_freq_step_list freq_step_list;
