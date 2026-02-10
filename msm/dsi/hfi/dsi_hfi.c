@@ -1490,7 +1490,7 @@ static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
 	if (!display_hfi)
 		return -EINVAL;
 
-	for (i = 0; i < display->panel->num_timing_nodes; i++) {
+	for (i = 0; i < display->panel->num_display_modes; i++) {
 		u32 kv_count;
 		u32 kv_size = 0;
 		u32 payload_size = 0;
@@ -1623,7 +1623,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
-	panel_init_caps.num_timing_modes = panel->num_timing_nodes;
+	panel_init_caps.num_timing_modes = panel->num_display_modes;
 	if (!panel_init_caps.num_timing_modes) {
 		DSI_ERR("No timing modes - panel init failed");
 		goto error_buff;
