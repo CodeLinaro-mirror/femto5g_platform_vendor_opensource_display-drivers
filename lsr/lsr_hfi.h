@@ -26,6 +26,8 @@
 	(__t + __tsz >= __a + __asz) \
 )
 
+#define LSR_STATUS_SYS_ERROR 1
+
 #define LSR_IFACEQ_MAX_PKT_SIZE       1024
 #define CVP_IFACEQ_MED_PKT_SIZE       768
 #define CVP_IFACEQ_MIN_PKT_SIZE       8
