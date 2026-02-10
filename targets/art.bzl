@@ -4,7 +4,7 @@ load(":target_variants.bzl", "get_all_variants")
 
 def define_art():
     for (t, v) in get_all_variants():
-        if t == "art":
+        if t == "art" or t == "art16k":
             define_target_variant_modules(
                 target = t,
                 variant = v,
