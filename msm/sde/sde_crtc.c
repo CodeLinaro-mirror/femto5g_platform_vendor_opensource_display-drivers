@@ -328,7 +328,8 @@ int sde_crtc_update_lsr_perf(struct drm_crtc *crtc)
 
 	if (is_lsr && crtc->state) {
 		sde_cstate = to_sde_crtc_state(crtc->state);
-		perf.bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_DRAM_AB);
+		perf.bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_LLCC_AB);
+		perf.ib_bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_LLCC_IB);
 		perf.clk_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_CORE_CLK);
 		sde_wb_update_lsr_perf(conn, c_conn->display, perf);
 	}
