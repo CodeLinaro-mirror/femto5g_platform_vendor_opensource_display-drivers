@@ -280,6 +280,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_BRIGHTNESS,
 	CONNECTOR_PROP_EMSYNC_FPS,
 	CONNECTOR_PROP_PRIVACY_LAYER_V1,
+	CONNECTOR_PROP_PRIVACY_LAYER_V2,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -1244,6 +1245,7 @@ struct msm_display_conn_params {
 	struct msm_freq_step_pattern *freq_pattern;
 	uint16_t arp_t2_in_us;
 	struct sde_drm_privacy_layer_v1 *privacy_v1;
+	struct sde_drm_privacy_layer_v2 *privacy_v2;
 	u32 b_lvl;
 };
 
