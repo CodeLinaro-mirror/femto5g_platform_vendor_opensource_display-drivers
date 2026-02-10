@@ -2148,9 +2148,14 @@ static int msm_pm_resume(struct device *dev)
 static int msm_runtime_suspend(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_drm_private *priv = ddev->dev_private;
+	struct msm_drm_private *priv = NULL;
 
 	DBG("");
+
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
 
 	if (priv->mdss)
 		msm_mdss_disable(priv->mdss);
@@ -2163,10 +2168,15 @@ static int msm_runtime_suspend(struct device *dev)
 static int msm_runtime_resume(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_drm_private *priv = ddev->dev_private;
+	struct msm_drm_private *priv = NULL;
 	int ret = 0;
 
 	DBG("");
+
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
 
 	if (priv->mdss)
 		ret = msm_mdss_enable(priv->mdss);
