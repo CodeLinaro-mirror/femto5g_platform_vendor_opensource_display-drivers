@@ -1746,7 +1746,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 	struct virtio_kms_output *output;
 	unsigned long features;
 	// DECLARE_BITMAP(avail_pipes, SSPP_MAX);
-	unsigned long avail_pipes[MAX_DISPLAYNODES][32];
+	static unsigned long avail_pipes[MAX_DISPLAYNODES][32];
 
 	VIRTIO_KMS_DBG("Enter virtio_kms_hw_catalog_init\n");
 	hyp_cfg = kvzalloc(sizeof(*sde_cfg), GFP_KERNEL);
@@ -2278,18 +2278,16 @@ int virtio_kms_update_hw_reservation(struct sde_kms *sde_kms)
 
 		/* SSPP */
 		for (j = 0; j < priv->num_planes; j++) {
-			if (i == sde_cfg->sspp[j].display_idx) {
-				for (k = 0; k < output->plane_cnt; k++) {
-					plane = to_sde_plane(priv->planes[j]);
-					if (plane->pipe == output->plane_caps[k].sspp_id) {
-						plane->pipe_hw->hw.vq_ctx = get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
-						VIRTIO_KMS_DBG("Update SSPP%d/%d  %X  id %d "
-								"fixed enc %d  vq_ctx %pK\n",
-								j, k, output->plane_caps[k].sspp_id,
-								iter.hw->blk_off, enc_id,
-								plane->pipe_hw->hw.vq_ctx);
-						break;
-					}
+			for (k = 0; k < output->plane_cnt; k++) {
+				plane = to_sde_plane(priv->planes[j]);
+				if (plane->pipe == output->plane_caps[k].sspp_id) {
+					plane->pipe_hw->hw.vq_ctx =
+							get_reg_dma_vq_ctx(dpu_id, ctl_id, i);
+				VIRTIO_KMS_DBG("Update SSPP%d/%d %X id %d vq_ctx %pK\n",
+						j, k, output->plane_caps[k].sspp_id,
+						iter.hw->blk_off,
+						plane->pipe_hw->hw.vq_ctx);
+					break;
 				}
 			}
 		}
