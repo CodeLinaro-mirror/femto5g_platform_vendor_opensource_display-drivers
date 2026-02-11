@@ -228,6 +228,11 @@ static int lsr_sess_init_synx_v2(struct lsr_device *dev)
 
 	hwfence_data = &dev->hwfence_data;
 
+	if (hwfence_data->hw_fence_handle) {
+		dprintk(LSR_WARN, "synx already initialized, skipping re-init\n");
+		return 0;
+	}
+
 	params.name = "lsr-kernel-client";
 	params.id = SYNX_CLIENT_HW_FENCE_LSR0_CTX0;
 	params.ptr = &hwfence_data->mem_descriptor;

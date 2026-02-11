@@ -286,6 +286,12 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 		//return rc;
 	}
 
+	if (test_bit(SDE_FEATURE_LSR, sde_kms->catalog->features)) {
+		rc = lsr_fw_reset();
+		if (rc)
+			SDE_ERROR("LSR FW reset failed:%d\n", rc);
+	}
+
 	SDE_DEBUG("ssr start processing completed\n");
 
 	return rc;
