@@ -120,7 +120,7 @@ static int dp_hfi_audio_config(struct dp_hfi_audio_private *audio, u32 state)
 	rc = ext->intf_ops.audio_config(audio->ext_pdev,
 			&ext->codec, state);
 	if (rc)
-		DP_ERR("failed to config audio, err=%d\n", rc);
+		DP_WARN("failed to config audio, err=%d\n", rc);
 end:
 	return rc;
 }
