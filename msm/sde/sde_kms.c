@@ -5939,6 +5939,7 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 	struct msm_mmu *mmu;
 	struct resource *res;
 	struct platform_device *pdev;
+	struct device *iommu_dev;
 	int i, ret;
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
@@ -6008,21 +6009,26 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 		 * bootup by smmu through the device-tree hint for cont-spash
 		 */
 
+		iommu_dev = mmu->funcs->get_dev(mmu);
+
+		if (iommu_dev && iommu_dev->of_node &&
+			of_property_read_bool(iommu_dev->of_node, "qcom,iommu-earlymap")) {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
-		ret = mmu->funcs->enable_smmu_translations(mmu);
-		if (ret) {
-			SDE_ERROR("failed to enable_s1_translations ret:%d\n", ret);
-			goto enable_trans_fail;
-		}
+			ret = mmu->funcs->enable_smmu_translations(mmu);
+			if (ret) {
+				SDE_ERROR("failed to enable_s1_translations ret:%d\n", ret);
+				goto enable_trans_fail;
+			}
 #else
-		ret = mmu->funcs->set_attribute(mmu, DOMAIN_ATTR_EARLY_MAP,
-				 &early_map);
-		if (ret) {
-			SDE_ERROR("failed to set_att ret:%d, early_map:%d\n",
-					ret, early_map);
-			goto enable_trans_fail;
-		}
+			ret = mmu->funcs->set_attribute(mmu, DOMAIN_ATTR_EARLY_MAP,
+					 &early_map);
+			if (ret) {
+				SDE_ERROR("failed to set_att ret:%d, early_map:%d\n",
+						ret, early_map);
+				goto enable_trans_fail;
+			}
 #endif
+		}
 	}
 
 	sde_kms->base.aspace = sde_kms->aspace[0];
