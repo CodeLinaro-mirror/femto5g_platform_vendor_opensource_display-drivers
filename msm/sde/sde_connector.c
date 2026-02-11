@@ -1390,6 +1390,8 @@ static int _sde_connector_update_dirty_properties(
 				_sde_connector_update_power_locked(c_conn);
 				mutex_unlock(&c_conn->lock);
 			} else {
+				c_conn->lp_mode = sde_connector_get_property(
+						connector->state, CONNECTOR_PROP_LP);
 				is_lp_dirty = true;
 			}
 			break;
@@ -4504,11 +4506,32 @@ static ssize_t panel_power_state_show(struct device *device,
 {
 	struct drm_connector *conn;
 	struct sde_connector *sde_conn;
+	int mode = 0;
 
 	conn = dev_get_drvdata(device);
 	sde_conn = to_sde_connector(conn);
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->last_panel_power_mode);
+	switch (sde_conn->dpms_mode) {
+	case DRM_MODE_DPMS_ON:
+		mode = sde_conn->lp_mode;
+		break;
+	case DRM_MODE_DPMS_STANDBY:
+		mode = SDE_MODE_DPMS_STANDBY;
+		break;
+	case DRM_MODE_DPMS_SUSPEND:
+		mode = SDE_MODE_DPMS_SUSPEND;
+		break;
+	case DRM_MODE_DPMS_OFF:
+		mode = SDE_MODE_DPMS_OFF;
+		break;
+	default:
+		mode = sde_conn->lp_mode;
+		break;
+	}
+
+	SDE_DEBUG("conn %d - dpms %d, lp %d, panel %d\n", conn->base.id,
+			sde_conn->dpms_mode, sde_conn->lp_mode, mode);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", mode);
 }
 
 static ssize_t twm_enable_store(struct device *device,
