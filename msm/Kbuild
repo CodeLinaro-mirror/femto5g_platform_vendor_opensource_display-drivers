@@ -224,6 +224,11 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 				dp/dp_aux_switch.o \
 				dp/dp_debug_client.o
 
+msm_drm-$(CONFIG_DRM_MSM_DP_HFI) += dp/hfi/dp_mgr_hfi.o \
+				    dp/hfi/dp_hfi.o \
+				    dp/hfi/dp_debug_client_hfi.o \
+				    dp/hfi/dp_hfi_audio.o
+
 msm_drm-$(CONFIG_DRM_MSM_DP_MST) += dp/dp_mst_drm.o
 
 msm_drm-$(CONFIG_DRM_MSM_DP_USBPD_LEGACY) += dp/dp_usbpd.o
@@ -352,10 +357,7 @@ msm_drm-$(CONFIG_MDSS_HFI) += hfi/hfi_utils.o \
 				 sde/hfi/hfi_color_proc.o \
 				 dsi/hfi/dsi_display_hfi.o \
 				 dsi/hfi/dsi_hfi.o \
-				 sde/hfi/hfi_wb.o \
-				 dp/hfi/dp_mgr_hfi.o \
-				 dp/hfi/dp_hfi.o \
-				 dp/hfi/dp_hfi_audio.o
+				 sde/hfi/hfi_wb.o
 
 msm_drm-$(CONFIG_DSI_PARSER) += dsi/dsi_parser.o
 
