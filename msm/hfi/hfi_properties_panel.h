@@ -828,6 +828,22 @@
 #define HFI_PROPERTY_PANEL_LP11_INIT                                 0x00040035
 
 /*
+ * HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW - Specifies the width of the DMA scheduling window,
+ *                                 expressed in number of display lines. Within this window,
+ *                                 the hardware automatically triggers DSI commands for
+ *                                 command‑mode panels. This property allows precise control
+ *                                 over when command transfers occur relative to the panel’s
+ *                                 refresh cycle. This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : u32 dma_sched_window
+ */
+#define HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW                       0x00040036
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF
