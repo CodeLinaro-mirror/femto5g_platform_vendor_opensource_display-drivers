@@ -930,6 +930,7 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 		if (ret)
 			SDE_ERROR("failed to send HFI commands\n");
 
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 		/* LSR usecases always have hw-fences enabled */
 		ret =  synx_enable_resources(SYNX_CLIENT_HW_FENCE_LSR0_CTX0, SYNX_RESOURCE_SOCCP,
 				true);
@@ -937,6 +938,7 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 			SDE_ERROR("failed to enable hw-fence resources for lsr: %d\n", ret);
 			return ret;
 		}
+#endif
 
 end:
 		mutex_unlock(&hfi_conn->hfi_lock);
@@ -944,12 +946,14 @@ end:
 		if (reproj_conn->off)
 			reproj_conn->off(reproj_conn, true);
 
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 		ret =  synx_enable_resources(SYNX_CLIENT_HW_FENCE_LSR0_CTX0, SYNX_RESOURCE_SOCCP,
 				false);
 		if (ret) {
 			SDE_ERROR("failed to disable hw-fence resources for lsr: %d\n", ret);
 			return ret;
 		}
+#endif
 	}
 	return ret;
 }
