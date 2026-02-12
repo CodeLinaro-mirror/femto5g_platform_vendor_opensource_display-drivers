@@ -1207,6 +1207,7 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 		dsi_get_panel_trigger_type_helper(panel->host_config.mdp_cmd_trigger);
 	panel_generic_caps->te_mode = panel->host_config.te_mode;
 	panel_generic_caps->dma_sched_line = panel->host_config.dma_sched_line;
+	panel_generic_caps->dma_sched_window = panel->host_config.dma_sched_window;
 	panel_generic_caps->traffic_mode = dsi_get_panel_traffic_mode_helper(panel);
 	panel_generic_caps->virtual_channel_id = panel->video_config.vc_id;
 	panel_generic_caps->wr_mem_start = panel->cmd_config.wr_mem_start;
@@ -1455,6 +1456,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		{panel_generic_caps.mdp_trigger_type, HFI_PROPERTY_PANEL_STREAM_TRIGGER},
 		{panel_generic_caps.te_mode, HFI_PROPERTY_PANEL_TE_MODE},
 		{panel_generic_caps.dma_sched_line, HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE},
+		{panel_generic_caps.dma_sched_window, HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW},
 		{panel_generic_caps.traffic_mode, HFI_PROPERTY_PANEL_TRAFFIC_MODE},
 		{panel_generic_caps.virtual_channel_id, HFI_PROPERTY_PANEL_VIRTUAL_CHANNEL_ID},
 		{panel_generic_caps.wr_mem_start, HFI_PROPERTY_PANEL_WR_MEM_START},
