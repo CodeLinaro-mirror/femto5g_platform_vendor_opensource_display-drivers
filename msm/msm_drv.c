@@ -1863,6 +1863,8 @@ int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
 	struct msm_file_private *ctx = file_priv->driver_priv;
 	struct msm_drm_private *priv;
 	struct drm_msm_power_ctrl *power_ctrl = data;
+	struct msm_kms *kms;
+	const struct msm_kms_funcs *funcs;
 	bool vote_req = false;
 	int old_cnt;
 	int rc = 0;
@@ -1873,6 +1875,13 @@ int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
 	}
 
 	priv = dev->dev_private;
+	kms = priv->kms;
+	if (!kms)
+		return -EINVAL;
+
+	funcs = kms->funcs;
+	if (!funcs || !funcs->idle_timer_control)
+		return -EINVAL;
 
 	mutex_lock(&ctx->power_lock);
 
@@ -1890,10 +1899,15 @@ int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
 	}
 
 	if (vote_req) {
-		if (power_ctrl->enable)
+		if (power_ctrl->enable) {
 			rc = pm_runtime_resume_and_get(dev->dev);
-		else
+			if (IS_DISP_OP_HFI(priv->disp_op))
+				rc = funcs->idle_timer_control(kms, true);
+		} else {
 			pm_runtime_put_sync(dev->dev);
+			if (IS_DISP_OP_HFI(priv->disp_op))
+				rc = funcs->idle_timer_control(kms, false);
+		}
 
 		if (rc < 0)
 			ctx->enable_refcnt = old_cnt;
@@ -2134,9 +2148,14 @@ static int msm_pm_resume(struct device *dev)
 static int msm_runtime_suspend(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_drm_private *priv = ddev->dev_private;
+	struct msm_drm_private *priv = NULL;
 
 	DBG("");
+
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
 
 	if (priv->mdss)
 		msm_mdss_disable(priv->mdss);
@@ -2149,10 +2168,15 @@ static int msm_runtime_suspend(struct device *dev)
 static int msm_runtime_resume(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_drm_private *priv = ddev->dev_private;
+	struct msm_drm_private *priv = NULL;
 	int ret = 0;
 
 	DBG("");
+
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
 
 	if (priv->mdss)
 		ret = msm_mdss_enable(priv->mdss);

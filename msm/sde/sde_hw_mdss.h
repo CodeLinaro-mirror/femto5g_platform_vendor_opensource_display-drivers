@@ -310,6 +310,14 @@ enum sde_demura {
 	DEMURA_MAX
 };
 
+enum sde_qrtc {
+	QRTC_0,
+	QRTC_1,
+	QRTC_2,
+	QRTC_3,
+	QRTC_MAX
+};
+
 enum sde_ds {
 	DS_TOP,
 	DS_0,

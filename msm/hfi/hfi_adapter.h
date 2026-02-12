@@ -319,8 +319,9 @@ struct hfi_shared_addr_map {
  * Adapter registers with HFI driver as a client (@hfi_device_open) and provides/registers
  * top level callback for processing HFI command from HFI Core(@ struct hfi_core_cb_ops)
  * @instance: Specifies this is a primary or secondary vm instance
+ * @hw_fence_enabled: True if this adapter must initialize hw-fence resources, false otherwise
  */
-struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance);
+struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance, bool hw_fence_enabled);
 
 /**
  * hfi_adapter_client_register - Register a HFI adapter client implementation that would use
@@ -501,7 +502,7 @@ int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t 
 
 #else
 
-static inline struct hfi_adapter_t *hfi_adapter_init(int instance)
+static inline struct hfi_adapter_t *hfi_adapter_init(int instance, bool hw_fence_enabled)
 {
 	return NULL;
 }

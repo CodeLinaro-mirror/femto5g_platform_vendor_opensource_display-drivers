@@ -4731,6 +4731,7 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 				byte_intf_clk_rate;
 		u32 bits_per_symbol = 16, num_of_symbols = 7; /* For Cphy */
 		struct dsi_host_common_cfg *host_cfg;
+		bool is_split_link;
 
 		mutex_lock(&ctrl->ctrl_lock);
 
@@ -4743,6 +4744,10 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 			num_of_lanes++;
 		if (host_cfg->data_lanes & DSI_DATA_LANE_3)
 			num_of_lanes++;
+
+		is_split_link = host_cfg->split_link.enabled;
+		if (is_split_link)
+			num_of_lanes = host_cfg->split_link.lanes_per_sublink;
 
 		if (num_of_lanes == 0) {
 			DSI_ERR("Invalid lane count\n");
@@ -7644,6 +7649,14 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		struct msm_dyn_clk_list *bit_clk_list;
 
 		memset(&display_mode, 0, sizeof(display_mode));
+
+		rc = dsi_panel_get_mode_cell_index(display->panel, mode_idx, &display_mode);
+		if (rc) {
+			DSI_ERR("[%s] failed to get mode idx %d from panel\n",
+				   display->name, mode_idx);
+			rc = -EINVAL;
+			return rc;
+		}
 
 		display_mode.priv_info = kzalloc(sizeof(*display_mode.priv_info), GFP_KERNEL);
 		if (!display_mode.priv_info) {

@@ -3450,7 +3450,7 @@ error:
 		if (ret == -EDEADLK || ret == -ERESTARTSYS)
 			SDE_DEBUG("atomic commit failed in preclose, ret:%d\n", ret);
 		else
-			SDE_ERROR("atomic commit failed in preclose, ret:%d\n", ret);
+			SDE_INFO("atomic commit failed in preclose, ret:%d\n", ret);
 		goto end;
 	}
 
@@ -3815,7 +3815,7 @@ out_ctx:
 	drm_modeset_acquire_fini(&ctx);
 
 	if (ret)
-		SDE_ERROR("kms lastclose failed: %d\n", ret);
+		SDE_INFO("kms lastclose failed: %d\n", ret);
 
 	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)) && hfi_client) {
 		hfi_adapter_deinit(hfi_client);
@@ -4030,7 +4030,7 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 
 			rc = vm_ops->vm_request_valid(sde_kms, old_vm_req, new_vm_req);
 			if (rc) {
-				SDE_ERROR(
+				SDE_INFO(
 				"VM transition check failed; o_state:%d, n_state:%d, hw_owner:%d, rc:%d\n",
 						old_vm_req, new_vm_req, vm_owns_hw, rc);
 				sde_vm_unlock(sde_kms);
@@ -4281,7 +4281,7 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 
 	ret = sde_kms_check_vm_request(kms, state);
 	if (ret) {
-		SDE_ERROR("vm switch request checks failed\n");
+		SDE_INFO("vm switch request checks failed\n");
 		goto end;
 	}
 
@@ -5214,6 +5214,23 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	msm_atomic_flush_display_threads(priv);
 }
 
+int sde_kms_idle_timer_control(struct msm_kms *kms, bool timer_state)
+{
+	struct sde_kms *sde_kms = to_sde_kms(kms);
+	int ret = 0;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde_kms\n");
+		return -EINVAL;
+	}
+
+	ret = hfi_kms_send_idle_timer_ctrl(sde_kms->hfi_kms, timer_state);
+	if (ret)
+		SDE_ERROR("Failed to set idle timer state ret:%d\n", ret);
+
+	return ret;
+}
+
 void sde_kms_cancel_vrr_timers(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
@@ -5586,6 +5603,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_dsc_count = sde_kms_get_dsc_count,
 	.in_trusted_vm = sde_kms_in_trusted_vm,
 	.in_loopback_mode = sde_kms_in_loopback_mode,
+	.idle_timer_control = sde_kms_idle_timer_control,
 };
 
 static int _sde_kms_mmu_destroy(struct sde_kms *sde_kms)

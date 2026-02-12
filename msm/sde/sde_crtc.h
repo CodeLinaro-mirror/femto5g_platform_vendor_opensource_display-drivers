@@ -442,6 +442,13 @@ struct sde_crtc_hal_funcs {
 	 * @crtc: Pointer to sde crtc structure
 	 */
 	int (*debugfs_misr_read[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
+
+	/**
+	 * set_idle_pc_timer - Update idle pc control timer based on drm property
+	 * @crtc: Pointer to sde crtc structure
+	 * @value: Value of enum for idle timer control
+	 */
+	int (*set_idle_pc_timer[MSM_DISP_OP_MAX])(struct sde_crtc *crtc, u32 value);
 };
 
 /**
@@ -559,6 +566,7 @@ struct sde_crtc_hal_funcs {
  * @do_clear_rgb_hist_buf: Request to clear RGB histogram buffers
  * @rgb_hist_buffers: Array of pointers to RGB histogram buffer structures
  * @rgb_hist_buffer_lock: Mutex to protect access to RGB histogram buffers
+ * @qrtc_buffer     : struct stores qrtc buffer related data
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -701,6 +709,8 @@ struct sde_crtc {
 	struct sde_rgb_hist_buffer *rgb_hist_buffers[RGB_HISTOGRAM_BUFFER_SIZE];
 	struct mutex rgb_hist_buffer_lock;
 	struct sde_pa_hist_buffer pa_hist_buffers[PA_HIST_BUFFER_NUM];
+
+	struct sde_qrtc_buffer qrtc_buffer;
 };
 
 enum sde_crtc_dirty_flags {

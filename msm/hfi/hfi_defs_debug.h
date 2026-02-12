@@ -83,6 +83,41 @@ enum hfi_debug_misr_module_type {
 	HFI_DEBUG_MISR_INTF                    = 0x2,
 };
 
+/*!
+ * @enum hfi_debug_feature
+ * @brief Features for which DCP supports different debug levels
+ *
+ * @var HFI_DEBUG_FEATURE_LSR: Setup debug logs levels for LSR feature
+ */
+enum hfi_debug_feature {
+	HFI_DEBUG_FEATURE_LSR = 0x0,
+};
+
+/*!
+ * @enum hfi_debug_log_level
+ * @brief Defines the log levels set to DCP.
+ *
+ * Log levels set to DCP to get the debugs logs.
+ *
+ * @var HFI_DEBUG_LOG_LEVEL_NONE
+ *   No debug logs.
+ * @var HFI_DEBUG_LOG_LEVEL_LOW
+ *   Low level debug logs.
+ * @var HFI_DEBUG_LOG_LEVEL_MEDIUM
+ *   Medium level debug logs.
+ * @var HFI_DEBUG_LOG_LEVEL_HIGH
+ *   High level debug logs.
+ * @var HFI_DEBUG_LOG_LEVEL_ERROR
+ *   Error level debug logs.
+ */
+enum hfi_debug_log_level {
+	HFI_DEBUG_LOG_LEVEL_NONE      = 0,
+	HFI_DEBUG_LOG_LEVEL_LOW       = 1,
+	HFI_DEBUG_LOG_LEVEL_MEDIUM    = 2,
+	HFI_DEBUG_LOG_LEVEL_HIGH      = 3,
+	HFI_DEBUG_LOG_LEVEL_ERROR     = 4
+};
+
 /*
  * struct misr_setup_data - MISR setup information
  * @display_id      : display_id of required display
@@ -177,6 +212,20 @@ struct hfi_dp_crc_info {
 	u32 status;
 	uint16_t src_crc[HFI_MAX_COLOR_COMPONENTS];
 	uint16_t sink_crc[HFI_MAX_COLOR_COMPONENTS];
+};
+
+/*!
+ * @struct hfi_debug_log_level_info
+ * @brief Struct to configure different debug levels across features.
+ *
+ * @var feature
+ *   Feature to enable the debug logs.
+ * @var hfi_debug_log_level
+ *   Log level to be enabled for a feature.
+ */
+struct hfi_debug_log_level_info {
+	enum hfi_debug_feature feature;
+	enum hfi_debug_log_level level;
 };
 
 #endif // __H_HFI_DEFS_DEBUG_H__

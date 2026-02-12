@@ -613,13 +613,15 @@ struct dsi_ctrl_hw_ops {
 	 * @rx_byte:        Number of bytes to be read.
 	 * @pkt_size:        Size of response expected.
 	 * @hw_read_cnt:    Actual number of bytes read by HW.
+	 * @flags:          Controller flags of the command.
 	 */
 	u32 (*get_cmd_read_data[MSM_DISP_OP_MAX])(struct dsi_ctrl_hw *ctrl,
 				 u8 *rd_buf,
 				 u32 read_offset,
 				 u32 rx_byte,
 				 u32 pkt_size,
-				 u32 *hw_read_cnt);
+				 u32 *hw_read_cnt,
+				 u32 flags);
 
 	/**
 	 * wait_for_lane_idle() - wait for DSI lanes to go to idle state

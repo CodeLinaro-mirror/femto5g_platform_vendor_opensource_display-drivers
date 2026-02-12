@@ -98,6 +98,8 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 	struct drm_encoder *encoder;
 	struct drm_device *dev;
 	u32 pending_commit_count;
+	u32 lsr_mode;
+	bool avoid_frame_trigger = false;
 
 	if (!kms || !state)
 		return -EINVAL;
@@ -107,11 +109,18 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 	SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, SDE_EVTLOG_FUNC_ENTRY);
 	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
 		disp_id = hfi_crtc_get_display_id(crtc, crtc_state);
+		lsr_mode = sde_crtc_get_property(to_sde_crtc_state(crtc_state),
+			CRTC_PROP_LSR_MODE);
+
 		if (disp_id == U32_MAX) {
 			SDE_DEBUG("no valid display for crtc:%d\n", DRMID(crtc));
 			continue;
 		}
 		SDE_DEBUG("getting cmd buffer for disp_id:%d\n", disp_id);
+
+		/* Avoid Frame trigger command on LSR mode commits on primary display*/
+		if (lsr_mode == MSM_DISP_LSR_MODE_ENABLED)
+			avoid_frame_trigger = true;
 
 		cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id,
 				HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
@@ -131,9 +140,10 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 			continue;
 		}
 
-		ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
-				HFI_COMMAND_DISPLAY_FRAME_TRIGGER, MSM_DRV_HFI_ID,
-				HFI_PAYLOAD_TYPE_U32, &payload, sizeof(u32), 0);
+		if (!avoid_frame_trigger)
+			ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+					HFI_COMMAND_DISPLAY_FRAME_TRIGGER, MSM_DRV_HFI_ID,
+					HFI_PAYLOAD_TYPE_U32, &payload, sizeof(u32), 0);
 
 		dev = crtc->dev;
 		list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
@@ -153,7 +163,7 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 		hfi_crtc_set_pending_enc_mask(to_sde_crtc(crtc), 0);
 	}
 
-	SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, SDE_EVTLOG_FUNC_EXIT);
+	SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, avoid_frame_trigger, SDE_EVTLOG_FUNC_EXIT);
 	return ret;
 }
 
@@ -936,6 +946,45 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
 	return ret;
 }
 
+int hfi_kms_send_idle_timer_ctrl(struct hfi_kms *hfi_kms, bool timer_state)
+{
+	int ret = 0;
+	struct hfi_cmdbuf_t *cmd_buf;
+	enum hfi_display_idle_timer_control payload;
+	u32 disp_id = 0; //Use primary display ID.
+
+	if (!hfi_kms)
+		return -EINVAL;
+
+	SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, SDE_EVTLOG_FUNC_ENTRY);
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			disp_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, -EINVAL, SDE_EVTLOG_ERROR);
+		return -ENOMEM;
+	}
+
+	payload = timer_state ? HFI_BLOCK_TIMER : HFI_UNBLOCK_TIMER;
+
+	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+		HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, disp_id, HFI_PAYLOAD_TYPE_U32,
+		&payload, sizeof(payload), HFI_HOST_FLAGS_RESPONSE_REQUIRED);
+	if (ret) {
+		SDE_ERROR("Failed to add property ret:%d\n", ret);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		return ret;
+	}
+
+	SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, SDE_EVTLOG_FUNC_CASE1);
+	ret = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("Failed to send idle pc timer control request: %d\n", ret);
+
+	SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, SDE_EVTLOG_FUNC_EXIT);
+	return ret;
+}
+
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
 static int hfi_kms_set_hw_fence_config(struct hfi_kms *hfi_kms)
 {
@@ -989,13 +1038,15 @@ int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde_kms *sde_kms)
 	hfi_adapter = priv->hfi_priv->hfi_adapter;
 
 	/* Store adapter hwfence data in sde kms */
-	sde_kms->hfi_kms->hfi_hw_fence_data = &hfi_adapter->session->hwfence_data;
-	if (!sde_kms->hfi_kms->hfi_hw_fence_data->hw_fence_handle) {
-		SDE_INFO("HFI hwfence handle is NULL\n");
+	if (IS_ERR_OR_NULL(hfi_adapter->session->hwfence_data.hw_fence_handle)) {
+		SDE_INFO("HFI hwfence handle is invalid:%ld\n",
+			PTR_ERR(hfi_adapter->session->hwfence_data.hw_fence_handle));
 		return -EINVAL;
 	}
 
+	sde_kms->hfi_kms->hfi_hw_fence_data = &hfi_adapter->session->hwfence_data;
 	SDE_DEBUG("sde hfi hwfence init allocated successfully\n");
+
 	ret = hfi_kms_set_hw_fence_config(sde_kms->hfi_kms);
 	if (ret)
 		SDE_ERROR("failed to send HFI HW FENCE config to FW\n");

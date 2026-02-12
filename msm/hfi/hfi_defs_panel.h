@@ -219,6 +219,24 @@ enum hfi_panel_color_space_type {
 	HFI_PANEL_COLOR_SPACE_YUV     = 2,
 };
 
+/**
+ * enum hfi_panel_dfps_type - Dynamic FPS support type
+ * @HFI_PANEL_DFPS_NONE:           Dynamic FPS is not supported.
+ * @HFI_PANEL_DFPS_SUSPEND_RESUME: DFPS Suspend Resume type
+ * @HFI_PANEL_DFPS_IMMEDIATE_CLK:  DFPS Immediate clock type
+ * @HFI_PANEL_DFPS_IMMEDIATE_HFP:  Horizontal Front Porch Method
+ * @HFI_PANEL_DFPS_IMMEDIATE_VFP:  Vertical Front Porch Method
+ * @HFI_PANEL_DFPS_MAX:
+ */
+enum hfi_panel_dfps_type {
+	HFI_PANEL_DFPS_NONE = 0,
+	HFI_PANEL_DFPS_SUSPEND_RESUME,
+	HFI_PANEL_DFPS_IMMEDIATE_CLK,
+	HFI_PANEL_DFPS_IMMEDIATE_HFP,
+	HFI_PANEL_DFPS_IMMEDIATE_VFP,
+	HFI_PANEL_DFPS_MAX
+};
+
 /*
  * struct hfi_panel_topology
  * @mixer_count   :  number of mixers
@@ -489,5 +507,20 @@ struct hfi_panel_esync_caps {
 	u32 hsync_milli_pulse_width;
 	u32 emsync_milli_pulse_width;
 	u32 emsync_fps;
+};
+
+/**
+ * @struct hfi_panel_dfps_caps - Panel dfps capabilities
+ *
+ * @dfps_support    : is dfps supported
+ * @min_refresh_rate: min refresh rate when dfps is enabled
+ * @max_refresh_rate: max refresh rate when dfps is enabled
+ * @type            : DFPS type
+ */
+struct hfi_panel_dfps_caps {
+	u32 dfps_support;
+	u32 min_refresh_rate;
+	u32 max_refresh_rate;
+	enum hfi_panel_dfps_type type;
 };
 #endif // __H_HFI_DEFS_PANEL_H__

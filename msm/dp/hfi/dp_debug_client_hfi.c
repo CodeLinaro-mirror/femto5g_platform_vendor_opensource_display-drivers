@@ -591,6 +591,7 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 	/* Prepare command payload with buffer address for DCP to write to */
 	dpcd_request.buffer.addr_l = HFI_VAL_L32(dpcd_addr_map->remote_addr);
 	dpcd_request.buffer.addr_h = HFI_VAL_H32(dpcd_addr_map->remote_addr);
+	dpcd_request.buffer.size = dpcd_addr_map->size;
 	dpcd_request.dpcd_offset = offset;
 	dpcd_request.bytes = size;
 

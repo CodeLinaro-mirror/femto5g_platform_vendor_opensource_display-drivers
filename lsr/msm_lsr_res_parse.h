@@ -158,6 +158,17 @@ struct lsr_fw_reg_mappings {
 	uint32_t timer_size;
 };
 
+struct power_domain_info {
+	struct device *pd_dev;
+	const char *name;
+	u32 has_hw_power_collapse;
+};
+
+struct power_domain_set {
+	struct power_domain_info *power_domain_tbl;
+	u32 count;
+};
+
 struct msm_lsr_platform_resources {
 	phys_addr_t firmware_base;
 	phys_addr_t register_base;
@@ -194,6 +205,8 @@ struct msm_lsr_platform_resources {
 	uint32_t msm_lsr_pwr_collapse_delay;
 	bool non_fatal_pagefaults;
 	uint32_t fw_cycles;
+	uint32_t framework_type;
+	struct power_domain_set power_domain_set;
 };
 
 static inline bool is_iommu_present(struct msm_lsr_platform_resources *res)

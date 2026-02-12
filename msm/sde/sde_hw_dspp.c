@@ -675,6 +675,22 @@ static void dspp_rgb_hist(struct sde_hw_dspp *c)
 		c->ops.setup_rgb_hist_ctrl[MSM_DISP_OP_HFI] = hfi_setup_dspp_rgb_hist_ctrlv2;
 }
 
+static void dspp_qrtc(struct sde_hw_dspp *c)
+{
+	int ret = 0;
+
+	if (!c) {
+		SDE_ERROR("invalid arguments\n");
+		return;
+	}
+
+	if (c->cap->sblk->qrtc.version == SDE_COLOR_PROCESS_VER(0x1, 0x0)) {
+		ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_QRTC, c);
+		if (!ret)
+			c->ops.setup_qrtc_cfg[MSM_DISP_OP_HFI] = reg_dmav1_setup_qrtc_config_v1;
+	}
+}
+
 static void (*dspp_blocks[SDE_DSPP_MAX])(struct sde_hw_dspp *c);
 
 static void _init_dspp_ops(void)
@@ -697,6 +713,7 @@ static void _init_dspp_ops(void)
 	dspp_blocks[SDE_DSPP_AIQE] = dspp_aiqe;
 	dspp_blocks[SDE_DSPP_AI_SCALER] = dspp_ai_scaler;
 	dspp_blocks[SDE_DSPP_RGB_HIST] = dspp_rgb_hist;
+	dspp_blocks[SDE_DSPP_QRTC] = dspp_qrtc;
 }
 
 static void _setup_dspp_ops(struct sde_hw_dspp *c, unsigned long features)
