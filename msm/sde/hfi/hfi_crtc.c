@@ -1007,68 +1007,6 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 	return ret;
 }
 
-#if !(IS_ENABLED(CONFIG_LSR_SERAPH))
-int hfi_crtc_set_idle_pc_timer(struct sde_crtc *sde_crtc, u32 val)
-{
-	struct hfi_cmdbuf_t *cmd_buf;
-	struct hfi_kms *hfi_kms;
-	struct drm_crtc *crtc;
-	enum hfi_display_idle_timer_control payload;
-	u32 disp_id;
-	int rc = 0;
-
-	if (!sde_crtc)
-		return -EINVAL;
-
-	hfi_kms = sde_crtc_get_kms(sde_crtc);
-	if (!hfi_kms)
-		return -EINVAL;
-
-	crtc = &sde_crtc->base;
-	if (!crtc->state)
-		return -EINVAL;
-
-	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
-	if (disp_id == U32_MAX) {
-		SDE_ERROR("invalid display id\n");
-		return -EINVAL;
-	}
-
-	//Validate that value provided is in the range of enum.
-	if (val > HFI_UNBLOCK_TIMER)
-		return -EINVAL;
-
-	payload = val;
-
-	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
-			disp_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
-	if (!cmd_buf) {
-		SDE_ERROR("Failed to get valid command buffer\n");
-		return -EINVAL;
-	}
-
-	rc = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
-		HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, disp_id, HFI_PAYLOAD_TYPE_U32,
-		&payload, sizeof(payload), HFI_HOST_FLAGS_RESPONSE_REQUIRED);
-	if (rc) {
-		SDE_ERROR("Failed to add property rc:%d\n", rc);
-		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
-		return rc;
-	}
-
-	rc = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
-	if (rc)
-		SDE_ERROR("Failed to send idle pc timer control rc:%d\n", rc);
-
-	return rc;
-}
-#else
-int hfi_crtc_set_idle_pc_timer(struct sde_crtc *sde_crtc, u32 val)
-{
-	return 0;
-}
-#endif
-
 int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 {
 	if (!crtc) {
@@ -1081,7 +1019,6 @@ int _sde_crtc_hal_funcs_install(struct sde_crtc *crtc)
 	crtc->hal_ops.debugfs_misr_setup[MSM_DISP_OP_HFI] = hfi_crtc_debugfs_misr_setup;
 	crtc->hal_ops.debugfs_misr_read[MSM_DISP_OP_HFI] = hfi_crtc_debugfs_misr_read;
 	crtc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI] = hfi_crtc_enable_hw_event;
-	crtc->hal_ops.set_idle_pc_timer[MSM_DISP_OP_HFI] = hfi_crtc_set_idle_pc_timer;
 
 	return 0;
 }
