@@ -1388,6 +1388,11 @@ static int _sde_connector_update_dirty_properties(
 		case CONNECTOR_PROP_BRIGHTNESS:
 			b_lvl = sde_connector_get_property(connector->state,
 						CONNECTOR_PROP_BRIGHTNESS);
+			if (c_conn->vrr_caps.video_psr_support) {
+				c_conn->b_lvl = b_lvl;
+				c_conn->bl_dirty_change = true;
+				break;
+			}
 			backlight_device_set_brightness(c_conn->bl_device, b_lvl);
 			break;
 		default:
@@ -1512,6 +1517,11 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	else
 		cmd_bit_mask &= ~BIT(DSI_CMD_SET_PRIVACY_LAYER);
 
+	if (c_conn->bl_dirty_change) {
+		backlight_device_set_brightness(c_conn->bl_device, c_conn->b_lvl);
+		cmd_bit_mask |= BIT(DSI_CMD_SET_BRIGHTNESS);
+	}
+
 	if (cmd_bit_mask) {
 		mutex_lock(&c_conn->bl_vrr.bl_lock);
 		rc = sde_connector_update_cmd(connector, cmd_bit_mask, true);
@@ -1528,7 +1538,6 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	c_conn->freq_pattern_updated = false;
 	c_conn->freq_pattern_type_changed = false;
 	c_state->privacy_layer_updated = false;
-
 
 	return rc;
 }
@@ -1611,6 +1620,7 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 	rc = c_conn->ops.pre_kickoff(connector, c_conn->display, &params);
 
 end:
+	c_conn->bl_dirty_change = false;
 	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DSI && display)
 		display->queue_cmd_waits = false;
 
@@ -1814,6 +1824,7 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 	params.cmd_bit_mask = cmd_bit_mask;
 	params.peripheral_flush = peripheral_flush;
 	params.privacy_v1 = &c_state->privacy_v1;
+	params.b_lvl = c_conn->bl_dirty_value;
 
 	rc = c_conn->ops.process_dcs_cmd_bitmask(c_conn->display, &params);
 
@@ -3150,18 +3161,25 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 {
 	struct drm_connector *connector = file->private_data;
 	struct sde_connector *c_conn = NULL;
+	struct drm_encoder *drm_enc;
 	struct sde_kms *sde_kms;
 	char *input, *token, *input_copy, *input_dup = NULL;
 	const char *delim = " ";
 	char buffer[MAX_CMD_PAYLOAD_SIZE] = {0};
 	int rc = 0, strtoint = 0;
 	u32 buf_size = 0;
+	u32 delay_time = 0;
 
 	if (*ppos || !connector) {
 		SDE_ERROR("invalid argument(s), conn %d\n", connector != NULL);
 		return -EINVAL;
 	}
 	c_conn = to_sde_connector(connector);
+
+	if (connector->state && connector->state->best_encoder)
+		drm_enc = connector->state->best_encoder;
+	else
+		drm_enc = connector->encoder;
 
 	sde_kms = sde_connector_get_kms(&c_conn->base);
 	if (!sde_kms) {
@@ -3194,6 +3212,11 @@ static ssize_t _sde_debugfs_conn_cmd_tx_write(struct file *file,
 	input[count] = '\0';
 
 	SDE_INFO("Command requested for transfer to panel: %s\n", input);
+
+	if (c_conn->vrr_caps.video_psr_support) {
+		delay_time = sde_encoder_phys_delay_dcs(drm_enc);
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, delay_time);
+	}
 
 	input_copy = kstrdup(input, GFP_KERNEL);
 	if (!input_copy) {

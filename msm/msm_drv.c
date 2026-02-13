@@ -512,7 +512,6 @@ static int msm_drm_uninit(struct device *dev)
 
 	sde_dbg_destroy();
 	debugfs_remove_recursive(priv->debug_root);
-	drm_mode_config_cleanup(ddev);
 
 	if (priv->registered) {
 		drm_dev_unregister(ddev);
@@ -523,7 +522,12 @@ static int msm_drm_uninit(struct device *dev)
 	if (fbdev && priv->fbdev)
 		msm_fbdev_free(ddev);
 #endif /* CONFIG_DRM_FBDEV_EMULATION */
-	drm_atomic_helper_shutdown(ddev);
+
+	if (ddev->mode_config.num_crtc > 0)
+		drm_atomic_helper_shutdown(ddev);
+
+	drm_mode_config_cleanup(ddev);
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(5, 15, 0))
 	msm_irq_uninstall(ddev);
 #else

@@ -115,6 +115,7 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
                 "//soc-repo:{}/kernel/trace/qcom_ipc_logging".format(kernel_build_tv),
                 "//soc-repo:{}/drivers/usb/dwc3/dwc3-msm".format(kernel_build_tv),
                 "//soc-repo:{}/drivers/soc/qcom/wcd_usbss_i2c".format(kernel_build_tv),
+		"//soc-repo:{}/drivers/soc/qcom/fsa4480_i2c".format(kernel_build_tv),
             ],
             "//build/kernel/kleaf:socrepo_false": [],
         })

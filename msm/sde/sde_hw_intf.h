@@ -42,6 +42,8 @@ struct intf_timing_params {
 	bool poms_pending;
 	u32 dce_bytes_per_line;
 	u32 vrefresh;
+	u32 overlap;
+	u32 cur_channel_cnt;
 };
 
 struct intf_prog_fetch {

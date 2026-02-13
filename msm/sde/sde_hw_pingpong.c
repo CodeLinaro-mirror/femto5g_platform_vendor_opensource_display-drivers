@@ -46,6 +46,7 @@
 
 #define PPB_FIFO_SIZE_CFG               0x01C
 #define PPB_FIFO_SIZE_MASK              0x0FFF
+#define PPB_SIZE_OVERLAP                0x018
 
 static struct sde_merge_3d_cfg *_merge_3d_offset(enum sde_merge_3d idx,
 		struct sde_mdss_cfg *m,
@@ -565,7 +566,7 @@ line_count_exit:
 static void sde_hw_pp_set_ppb_fifo_size(struct sde_hw_pingpong *pp, u32 pixels)
 {
 	struct sde_hw_blk_reg_map *c;
-	u32 val;
+	u32 val, overlap_val;
 
 	if (!pp)
 		return;
@@ -574,8 +575,10 @@ static void sde_hw_pp_set_ppb_fifo_size(struct sde_hw_pingpong *pp, u32 pixels)
 
 	/* covert to fifo units, 4 pixels can be stored per fifo */
 	val = (pixels / MDP_PPB_FIFO_ENTRY_SIZE) & 0x0FFF;
-
 	SDE_REG_WRITE(c, PPB_FIFO_SIZE_CFG, val);
+
+	overlap_val = pp->overlap_per_pp & PPB_FIFO_SIZE_MASK;
+	SDE_REG_WRITE(c, PPB_SIZE_OVERLAP, overlap_val);
 }
 
 static void sde_hw_pp_setup_3d_merge_mode(struct sde_hw_pingpong *pp,

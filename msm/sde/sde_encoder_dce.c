@@ -793,22 +793,14 @@ static void _dce_dsc_disable(struct sde_encoder_virt *sde_enc)
 					0, 0, hw_dsc_pp,
 					BLEND_3D_NONE, false, false, false);
 
-		if (hw_dsc) {
-			sde_enc->dirty_dsc_ids[i] = hw_dsc->idx;
+		if (hw_dsc)
 			cfg.dsc[cfg.dsc_count++] = hw_dsc->idx;
-		}
 	}
 
 	/* Clear the DSC ACTIVE config for this CTL */
 	if (hw_ctl && hw_ctl->ops.update_intf_cfg[disp_op])
 		hw_ctl->ops.update_intf_cfg[disp_op](hw_ctl, &cfg, false);
 
-	/**
-	 * Since pending flushes from previous commit get cleared
-	 * sometime after this point, setting DSC flush bits now
-	 * will have no effect. Therefore dirty_dsc_ids track which
-	 * DSC blocks must be flushed for the next trigger.
-	 */
 }
 
 
@@ -895,46 +887,6 @@ bool _dce_vdc_is_dirty(struct sde_encoder_virt *sde_enc)
 	return false;
 }
 
-static void _dce_helper_flush_dsc(struct sde_encoder_virt *sde_enc)
-{
-	int i;
-	struct sde_hw_ctl *hw_ctl = NULL;
-	enum sde_dsc dsc_idx;
-	enum msm_disp_op disp_op = sde_encoder_get_disp_op(&sde_enc->base);
-
-	if (sde_enc->cur_master)
-		hw_ctl = sde_enc->cur_master->hw_ctl;
-
-	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
-		dsc_idx = sde_enc->dirty_dsc_ids[i];
-		if (dsc_idx && hw_ctl && hw_ctl->ops.update_bitmask[disp_op])
-			hw_ctl->ops.update_bitmask[disp_op](hw_ctl, SDE_HW_FLUSH_DSC,
-					dsc_idx, 1);
-
-		sde_enc->dirty_dsc_ids[i] = DSC_NONE;
-	}
-}
-
-void _dce_helper_flush_vdc(struct sde_encoder_virt *sde_enc)
-{
-	int i;
-	struct sde_hw_ctl *hw_ctl = NULL;
-	enum sde_vdc vdc_idx;
-	enum msm_disp_op disp_op = sde_encoder_get_disp_op(&sde_enc->base);
-
-	if (sde_enc->cur_master)
-		hw_ctl = sde_enc->cur_master->hw_ctl;
-
-	for (i = 0; i < MAX_CHANNELS_PER_ENC; i++) {
-		vdc_idx = sde_enc->dirty_vdc_ids[i];
-		if (vdc_idx && hw_ctl && hw_ctl->ops.update_bitmask[disp_op])
-			hw_ctl->ops.update_bitmask[disp_op](hw_ctl, SDE_HW_FLUSH_VDC,
-					vdc_idx, 1);
-
-		sde_enc->dirty_vdc_ids[i] = VDC_NONE;
-	}
-}
-
 void sde_encoder_dce_set_bpp(struct msm_mode_info mode_info,
 		struct drm_crtc *crtc)
 {
@@ -989,21 +941,6 @@ void sde_encoder_dce_disable(struct sde_encoder_virt *sde_enc)
 		_dce_dsc_disable(sde_enc);
 	else if (comp_type == MSM_DISPLAY_COMPRESSION_VDC)
 		_dce_vdc_disable(sde_enc);
-}
-
-int sde_encoder_dce_flush(struct sde_encoder_virt *sde_enc)
-{
-	int rc = 0;
-
-	if (!sde_enc)
-		return -EINVAL;
-
-	if (_dce_dsc_is_dirty(sde_enc))
-		_dce_helper_flush_dsc(sde_enc);
-	else if (_dce_vdc_is_dirty(sde_enc))
-		_dce_helper_flush_vdc(sde_enc);
-
-	return rc;
 }
 
 int sde_encoder_dce_setup(struct sde_encoder_virt *sde_enc,

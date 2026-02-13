@@ -627,6 +627,7 @@ static int _hfi_enc_send_display_ctrl_cmd(struct sde_encoder_virt *enc, bool ena
 {
 	struct hfi_kms *hfi_kms;
 	struct hfi_encoder *hfi_enc;
+	struct sde_kms *kms = NULL;
 	struct drm_connector *conn;
 	struct hfi_cmdbuf_t *cmd_buf;
 	u32 display_id, hfi_cmd;
@@ -636,7 +637,13 @@ static int _hfi_enc_send_display_ctrl_cmd(struct sde_encoder_virt *enc, bool ena
 		return -EINVAL;
 
 	hfi_enc = to_hfi_encoder(enc);
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	kms = sde_encoder_get_kms(&enc->base);
+	if (!kms) {
+		SDE_ERROR("failed to get sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(kms);
 
 	conn = sde_encoder_get_connector(enc->base.dev, &enc->base);
 	if (!conn) {
@@ -769,6 +776,7 @@ static int hfi_encoder_mode_set(struct sde_encoder_virt *enc, struct drm_display
 {
 	struct drm_connector *conn;
 	struct hfi_encoder *hfi_enc;
+	struct sde_kms *kms = NULL;
 	struct hfi_kms *hfi_kms;
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct hfi_display_mode_info hfi_mode;
@@ -784,7 +792,13 @@ static int hfi_encoder_mode_set(struct sde_encoder_virt *enc, struct drm_display
 		return ret;
 
 	hfi_enc = to_hfi_encoder(enc);
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	kms = sde_encoder_get_kms(&enc->base);
+	if (!kms) {
+		SDE_ERROR("failed to get sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(kms);
 
 	if (!hfi_kms) {
 		SDE_ERROR("invalid dcp kms obj\n");
