@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022, 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (C) 2014-2021 The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
@@ -1145,7 +1145,8 @@ static void _sde_plane_setup_pixel_ext(struct sde_plane *psde,
 	}
 }
 
-static inline void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate)
+static inline void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane_state *pstate,
+	bool format_is_yuv)
 {
 	static const struct sde_csc_cfg sde_csc_YUV2RGB_601L = {
 		{
@@ -1182,12 +1183,19 @@ static inline void _sde_plane_setup_csc(struct sde_plane *psde, struct sde_plane
 	}
 
 	/* revert to kernel default if override not available */
+	mutex_lock(&psde->property_info.property_lock);
+	if (!format_is_yuv) {
+		pstate->csc_ptr = 0;
+		mutex_unlock(&psde->property_info.property_lock);
+		return;
+	}
 	if (pstate->csc_usr_ptr)
 		pstate->csc_ptr = pstate->csc_usr_ptr;
 	else if (BIT(SDE_SSPP_CSC_10BIT) & psde->features)
 		pstate->csc_ptr = (struct sde_csc_cfg *)&sde_csc10_YUV2RGB_601L;
 	else
 		pstate->csc_ptr = (struct sde_csc_cfg *)&sde_csc_YUV2RGB_601L;
+	mutex_unlock(&psde->property_info.property_lock);
 
 	SDE_DEBUG_PLANE(psde, "using 0x%X 0x%X 0x%X...\n",
 			pstate->csc_ptr->csc_mv[0],
@@ -3262,6 +3270,7 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	struct sde_plane_state *pstate, const struct sde_format *fmt)
 {
 	uint32_t src_flags = 0;
+	bool format_is_yuv;
 
 	SDE_DEBUG_PLANE(psde, "rotation 0x%X\n", pstate->rotation);
 	if (pstate->rotation & DRM_MODE_REFLECT_X)
@@ -3297,10 +3306,8 @@ static void _sde_plane_update_format_and_rects(struct sde_plane *psde,
 	_sde_plane_sspp_setup_sys_cache(psde, pstate);
 
 	/* update csc */
-	if (SDE_FORMAT_IS_YUV(fmt))
-		_sde_plane_setup_csc(psde, pstate);
-	else
-		pstate->csc_ptr = 0;
+	format_is_yuv = SDE_FORMAT_IS_YUV(fmt) ? true : false;
+	_sde_plane_setup_csc(psde, pstate, format_is_yuv);
 
 	if (psde->pipe_hw->ops.setup_inverse_pma) {
 		uint32_t pma_mode = 0;
