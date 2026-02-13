@@ -19,6 +19,87 @@
 
 static u64 lsr_fw_debug_val;
 
+
+int hfi_lsr_trigger_ssr(u64 val, struct drm_device *dev)
+{
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_debug_subsystem_property payload;
+	int ret = 0;
+	struct hfi_client_t *lsr_hfi_client;
+	struct msm_drm_private *priv;
+	struct msm_kms *kms;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+
+	if (!dev) {
+		SDE_ERROR("Invalid drm device");
+		return -EINVAL;
+	}
+
+	priv = dev->dev_private;
+	if (!priv) {
+		SDE_ERROR("Invalid msm_drm priv");
+		return -EINVAL;
+	}
+
+	kms = priv->kms;
+	if (!kms) {
+		SDE_ERROR("Invalid msm_kms");
+		return -EINVAL;
+	}
+
+	sde_kms = to_sde_kms(kms);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("Invalid hfi_kms\n");
+		return -EINVAL;
+	}
+
+	lsr_hfi_client = &hfi_kms->hfi_client;
+	if (!lsr_hfi_client) {
+		SDE_ERROR("Invalid HFI client\n");
+		return -EINVAL;
+	}
+
+	cmd_buf = hfi_adapter_get_cmd_buf(lsr_hfi_client,
+		MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	payload.subsystem_type = HFI_SUBSYSTEM_TYPE_LSR;
+	payload.prop_id = HFI_DEBUG_SUBSYSTEM_PROPERTY_TRIGGER_ERROR;
+	payload.value_lsb = (enum lsr_subsytem_error_type)val;
+
+	ret = hfi_adapter_add_set_property(lsr_hfi_client,
+			cmd_buf,
+			HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY,
+			MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			&payload,
+			sizeof(payload),
+			HFI_HOST_FLAGS_NONE);
+
+	if (ret) {
+		SDE_ERROR("failed to set SSR trigger command\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(lsr_hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("failed to send SSR trigger command\n");
+
+	SDE_DEBUG("SSR trigger value is %llu\n", val);
+	SDE_EVT32(val);
+	return ret;
+}
+
 int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
 {
 	struct hfi_cmdbuf_t *cmd_buf;

@@ -10,6 +10,7 @@
 #include "hfi_catalog.h"
 #include "hfi_connector.h"
 #include "hfi_utils.h"
+#include "msm_lsr_core.h"
 
 #if IS_ENABLED(CONFIG_DRM_SDE_LSR)
 /**
@@ -59,6 +60,13 @@ int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev);
  * @val: pointer to store value
  */
 int hfi_lsr_fw_debug_get(u64 *val);
+
+/**
+ * hfi_lsr_trigger_ssr - Triggers LSR SSR
+ * @val: Type of SSR trigger
+ * @dev: pointer to drm device
+ */
+int hfi_lsr_trigger_ssr(u64 val, struct drm_device *dev);
 
 /**
  * hfi_wb_lsr_add_props - Adds LSR properties on WB connector
@@ -186,6 +194,12 @@ int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
 
 static inline
 int hfi_lsr_fw_debug_get(u64 *val)
+{
+	return 0;
+}
+
+static inline
+int hfi_lsr_trigger_ssr(u64 val, struct drm_device *dev)
 {
 	return 0;
 }
