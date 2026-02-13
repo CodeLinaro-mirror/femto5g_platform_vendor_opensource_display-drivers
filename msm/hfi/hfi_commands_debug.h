@@ -429,6 +429,22 @@
  */
 #define HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY                       0xFF000012
 
+/*!
+ * HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY is sent from Host to DCP to
+ * set debug property of a subsystem.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi packet layout                   | Value
+ *-------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (type)      | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                      | HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY
+ * hfi_packet.flags                    | HFI_TX_FLAGS_RESPONSE_REQUIRED(optional)
+ * hfi_packet.payload[0..n]            | struct hfi_debug_subsystem_property
+ */
+#define HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY                       0xFF000013
+
 /*
  * DP Simulation HFI commands
  */
