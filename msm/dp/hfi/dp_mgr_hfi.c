@@ -591,13 +591,35 @@ int dp_mgr_hfi_clk_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 	return 0;
 }
 
+static u32 _remap_orientation(u32 orientation)
+{
+	switch (orientation) {
+	case ORIENTATION_CC1:
+		return 0;
+	case ORIENTATION_CC2:
+		return 1;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
 static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 		struct hfi_device_hotplug_config *config)
 {
 	if (!hfi_priv || !hfi_priv->hpd || !config)
 		return;
+	/*
+	 * Handling of orientation - DP altmode driver receives the orientation as a 0-based value
+	 * from PD driver but then it converts it to 1-based value on the first notification. The
+	 * usb switch configuration, which is done on the first notification, uses the 1-based
+	 * value. But, we send HFI, only when HPD HIGH is set, which could be either on the first
+	 * or second. So to keep it consistent, we will remap the hpd orientation here. So the
+	 * orientation in the hfi_device_hotplug_config is always 1-based.
+	 */
 
-	config->orientation = hfi_priv->hpd->orientation;
+	config->orientation = _remap_orientation(hfi_priv->hpd->orientation);
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
 	config->hpd_state = hfi_priv->hpd->hpd_high;
@@ -605,9 +627,28 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
 
-	DP_DEBUG("orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u\n",
+	DP_INFO("rsdbg: orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u\n",
 		config->orientation, config->port_index, config->pin_config,
 		config->hpd_state, config->hpd_irq);
+}
+
+static int _aux_switch_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
+{
+	int rc;
+	u32 orientation = enable ? hfi_priv->hpd->orientation : ORIENTATION_NONE;
+
+	if (!hfi_priv->aux_switch)
+		return 0;
+
+	if (enable) {
+		rc = hfi_priv->aux_switch->init(hfi_priv->aux_switch);
+		if (rc)
+			return rc;
+	}
+
+	DP_DEBUG("aux switch %sable with orientation:%d\n", (enable ? "en":"dis"),
+			hfi_priv->hpd->orientation);
+	return hfi_priv->aux_switch->configure(hfi_priv->aux_switch, enable, orientation);
 }
 
 /* HPD callback functions */
@@ -629,10 +670,10 @@ int dp_mgr_hfi_hpd_configure_cb(void *data)
 		goto end;
 	}
 
+	_aux_switch_enable(hfi_priv, true);
+
 	if (hfi_priv->configured)
 		goto end;
-
-	_hfi_update_config(hfi_priv, &config);
 
 	/* Allocate buffers only if they don't already exist */
 	if (!hfi_priv->edid_addr_map) {
@@ -662,21 +703,6 @@ int dp_mgr_hfi_hpd_configure_cb(void *data)
 		DP_DEBUG("Reusing existing modes buffer\n");
 	}
 
-	if (hfi_priv->aux_switch) {
-		rc = hfi_priv->aux_switch->init(hfi_priv->aux_switch);
-		if (rc) {
-			rc = -EINVAL;
-			goto end;
-		}
-
-		rc = hfi_priv->aux_switch->configure(hfi_priv->aux_switch, true,
-				config.orientation);
-		if (rc) {
-			rc = -EINVAL;
-			goto end;
-		}
-	}
-
 	rc = _hfi_power_init(hfi_priv);
 	if (rc) {
 		DP_ERR("failed to init dp phy power\n");
@@ -698,13 +724,15 @@ int dp_mgr_hfi_hpd_configure_cb(void *data)
 	hfi_priv->configured = true;
 	DP_INFO("configured\n");
 
-	if (config.hpd_state) {
+end:
+	if (hfi_priv->hpd->hpd_high && !hfi_priv->connected) {
 		hfi_priv->connected = true;
+
+		_hfi_update_config(hfi_priv, &config);
 		rc = _hfi_send_hot_plug(hfi_priv, &config);
 		DP_INFO("connected\n");
 	}
 
-end:
 	return rc;
 }
 
@@ -726,16 +754,10 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		goto end;
 	}
 
-	_hfi_update_config(hfi_priv, &config);
-
-	if (hfi_priv->aux_switch) {
-		rc = hfi_priv->aux_switch->configure(hfi_priv->aux_switch,
-				false, ORIENTATION_NONE);
-		if (rc)
-			goto end;
-	}
+	_aux_switch_enable(hfi_priv, false);
 
 	hfi_priv->connected = false;
+	_hfi_update_config(hfi_priv, &config);
 	_hfi_send_hot_plug(hfi_priv, &config);
 	DP_INFO("disconnected\n");
 
@@ -777,6 +799,7 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv)
 
 	DP_INFO("cleanup\n");
 	hfi_priv->configured = false;
+	complete_all(&hfi_priv->hpd_comp);
 end:
 	return rc;
 }
@@ -794,6 +817,10 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 		return -EINVAL;
 	}
 
+	/* Ignore attention calls during soft replug */
+	if (hfi_priv->soft_unplug)
+		return 0;
+
 	hpd_state = hfi_priv->hpd->hpd_high;
 	hpd_irq = hfi_priv->hpd->hpd_irq;
 
@@ -805,9 +832,10 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 
 	if (hpd_state && !hfi_priv->configured)
 		dp_mgr_hfi_hpd_configure_cb(data);
+	else if (!hfi_priv->connected && hpd_state)
+		_aux_switch_enable(hfi_priv, true);
 
 	_hfi_update_config(hfi_priv, &config);
-
 	hfi_priv->connected = hpd_state;
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
 
@@ -1896,6 +1924,8 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev)
 	client->get_intf_info = dp_mgr_hfi_get_info;
 	client->pm_prepare = dp_mgr_hfi_pm_prepare;
 	client->pm_complete = dp_mgr_hfi_pm_complete;
+
+	init_completion(&hfi_priv->hpd_comp);
 
 	DP_INFO("DP HFI display initialized successfully\n");
 	return client;

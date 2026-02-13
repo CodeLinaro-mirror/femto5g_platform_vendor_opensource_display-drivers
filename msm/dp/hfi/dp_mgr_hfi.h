@@ -121,6 +121,8 @@ struct dp_mgr_hfi_priv {
 	struct dp_aux_switch *aux_switch;
 	struct dp_display_mode default_mode;
 
+	struct completion hpd_comp;
+
 	struct sde_edid_ctrl *edid_ctrl;
 	struct hfi_display_mode_info mode_list[32]; /* MAX_MODES */
 	u32 mode_count;
@@ -138,6 +140,7 @@ struct dp_mgr_hfi_priv {
 
 	bool connected;
 	bool configured;
+	bool soft_unplug;
 
 	struct dp_audio *audio;
 
