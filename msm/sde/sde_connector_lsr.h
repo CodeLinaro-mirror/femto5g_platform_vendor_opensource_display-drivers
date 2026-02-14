@@ -27,11 +27,15 @@ struct lsr_perf {
 	u32 lsr_repro_bw;
 	u32 lsr_csc_clk;
 	u32 lsr_repro_clk;
+	u32 lsr_csc_ib_bw;
+	u32 lsr_repro_ib_bw;
 };
 
 struct sde_lsr_perf {
 	unsigned long bw_vote;
+	unsigned long ib_bw_vote;
 	unsigned long clk_vote;
+	unsigned long ddr_vote;
 };
 
 struct sde_reproj {

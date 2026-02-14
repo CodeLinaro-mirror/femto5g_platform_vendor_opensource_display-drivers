@@ -744,8 +744,8 @@ int sde_wb_update_lsr_perf(struct drm_connector *connector,
 
 	if (reproj_conn) {
 		rc = reproj_conn->update_lsr_perf(reproj_conn, reproj_conn->type, perf);
-		SDE_DEBUG("lsr perf clk vote = %lu, bw vote = %lu for display type = %d",
-			perf.bw_vote, perf.clk_vote, reproj_conn->type);
+		SDE_DEBUG("lsr perf clk = %lu, bw = %lu peak_bw = %lu for display type = %d",
+			perf.clk_vote, perf.bw_vote, perf.ib_bw_vote, reproj_conn->type);
 	}
 
 	return rc;

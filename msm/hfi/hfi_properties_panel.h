@@ -739,6 +739,19 @@
 #define HFI_PROPERTY_PANEL_ESYNC_CAPS				     0x00040032
 
 /*
+ * HFI_PROPERTY_PANEL_DFPS_CAPS - Specifies the DFPS capabilities supported by the panel.
+ *                                 This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DFPS_CAPS
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DFPS_CAPS |
+ *                               (version=0 << 20) | (dsize=(4*count+1) << 24 )
+ *   (u32_value) payload[1]    : count of DFPS method supported
+ *   (u32_value) payload[2..]  : struct hfi_panel_dfps_caps for each count
+ */
+#define HFI_PROPERTY_PANEL_DFPS_CAPS                                 0x00040033
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF

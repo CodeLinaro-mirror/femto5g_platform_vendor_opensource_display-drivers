@@ -1390,6 +1390,8 @@ static int _sde_connector_update_dirty_properties(
 				_sde_connector_update_power_locked(c_conn);
 				mutex_unlock(&c_conn->lock);
 			} else {
+				c_conn->lp_mode = sde_connector_get_property(
+						connector->state, CONNECTOR_PROP_LP);
 				is_lp_dirty = true;
 			}
 			break;
@@ -2437,6 +2439,58 @@ static int _sde_connector_set_privacy_layer_v1(
 	return 0;
 }
 
+static int _sde_connector_set_privacy_layer_v2(
+		struct sde_connector *c_conn,
+		struct sde_connector_state *c_state,
+		void __user *usr_ptr)
+{
+	struct sde_drm_privacy_layer_v2 privacy_v2;
+	int i = 0;
+
+	if (!c_conn || !c_state) {
+		SDE_ERROR("invalid args\n");
+		return -EINVAL;
+	}
+
+	memset(&c_state->privacy_v2, 0, sizeof(c_state->privacy_v2));
+
+	if (!usr_ptr) {
+		SDE_DEBUG_CONN(c_conn, "privacy layers v2 cleared\n");
+		return 0;
+	}
+
+	if (copy_from_user(&privacy_v2, usr_ptr, sizeof(privacy_v2))) {
+		SDE_ERROR_CONN(c_conn, "failed to copy privacy layer v2 data\n");
+		return -EINVAL;
+	}
+
+	SDE_DEBUG_CONN(c_conn, "num privacy layers %d, mode %d\n",
+			privacy_v2.no_of_layers, privacy_v2.mode);
+
+	if (privacy_v2.no_of_layers > MAX_PRIVACY_LAYERS) {
+		SDE_ERROR_CONN(c_conn, "num privacy layers more than supported: %d",
+				privacy_v2.no_of_layers);
+		return -EINVAL;
+	}
+
+	c_state->privacy_v2.no_of_layers = privacy_v2.no_of_layers;
+	c_state->privacy_v2.mode = privacy_v2.mode;
+	c_state->privacy_layer_updated = true;
+
+	for (i = 0; i < privacy_v2.no_of_layers; i++) {
+		c_state->privacy_v2.privacy_list[i] = privacy_v2.privacy_list[i];
+		SDE_DEBUG_CONN(c_conn, "list%d: c_radius-%d privacy region(%d,%d) (%d,%d) idx-%d\n",
+				i, c_state->privacy_v2.privacy_list[i].corner_radius,
+				c_state->privacy_v2.privacy_list[i].left,
+				c_state->privacy_v2.privacy_list[i].top,
+				c_state->privacy_v2.privacy_list[i].right,
+				c_state->privacy_v2.privacy_list[i].bottom,
+				c_state->privacy_v2.privacy_list[i].index);
+	}
+
+	return 0;
+}
+
 static int _sde_connector_set_ext_hdr_info(
 	struct sde_connector *c_conn,
 	struct sde_connector_state *c_state,
@@ -2796,6 +2850,12 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 				(void *)(uintptr_t)val);
 		if (rc)
 			SDE_ERROR_CONN(c_conn, "invalid privacy_layer_v1, rc: %d\n", rc);
+		break;
+	case CONNECTOR_PROP_PRIVACY_LAYER_V2:
+		rc = _sde_connector_set_privacy_layer_v2(c_conn, c_state,
+				(void *)(uintptr_t)val);
+		if (rc)
+			SDE_ERROR_CONN(c_conn, "invalid privacy_layer_v2, rc: %d\n", rc);
 		break;
 	case CONNECTOR_PROP_LP:
 		/* suspend case: clear stale MISR */
@@ -4272,10 +4332,14 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 				CONNECTOR_PROP_HDR_INFO);
 		}
 
-		if(dsi_display && dsi_display->panel->privacy_feature_enabled)
+		if (dsi_display && dsi_display->panel->privacy_feature_enabled) {
 			msm_property_install_volatile_range(
 				&c_conn->property_info, "privacy_layers_v1", 0x0,
 				0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V1);
+			msm_property_install_volatile_range(
+				&c_conn->property_info, "privacy_layers_v2", 0x0,
+				0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V2);
+		}
 
 		if (dsi_display && dsi_display->panel &&
 				dsi_display->panel->dyn_clk_caps.dyn_clk_support)
@@ -4442,11 +4506,32 @@ static ssize_t panel_power_state_show(struct device *device,
 {
 	struct drm_connector *conn;
 	struct sde_connector *sde_conn;
+	int mode = 0;
 
 	conn = dev_get_drvdata(device);
 	sde_conn = to_sde_connector(conn);
 
-	return scnprintf(buf, PAGE_SIZE, "%d\n", sde_conn->last_panel_power_mode);
+	switch (sde_conn->dpms_mode) {
+	case DRM_MODE_DPMS_ON:
+		mode = sde_conn->lp_mode;
+		break;
+	case DRM_MODE_DPMS_STANDBY:
+		mode = SDE_MODE_DPMS_STANDBY;
+		break;
+	case DRM_MODE_DPMS_SUSPEND:
+		mode = SDE_MODE_DPMS_SUSPEND;
+		break;
+	case DRM_MODE_DPMS_OFF:
+		mode = SDE_MODE_DPMS_OFF;
+		break;
+	default:
+		mode = sde_conn->lp_mode;
+		break;
+	}
+
+	SDE_DEBUG("conn %d - dpms %d, lp %d, panel %d\n", conn->base.id,
+			sde_conn->dpms_mode, sde_conn->lp_mode, mode);
+	return scnprintf(buf, PAGE_SIZE, "%d\n", mode);
 }
 
 static ssize_t twm_enable_store(struct device *device,
