@@ -8456,6 +8456,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			sde_kms_info_add_keyint(info, "is_udc_supported",
 					catalog->is_udc_supported);
 		}
+
+		if (catalog->qrtc_count)
+			sde_kms_info_add_keyint(info, "qrtc_count",
+					catalog->qrtc_count);
 	}
 
 	sde_kms_info_add_keyint(info, "dsc_block_count", catalog->dsc_count);

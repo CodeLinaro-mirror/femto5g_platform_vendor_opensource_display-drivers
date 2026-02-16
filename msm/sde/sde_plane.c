@@ -4649,6 +4649,11 @@ static void _sde_plane_setup_capabilities_blob(struct sde_plane *psde,
 		sde_kms_info_add_keyint(info, "demura_block",
 			catalog->demura_supported[psde->pipe][index]);
 
+	if (test_bit(SDE_FEATURE_QRTC, catalog->features) &&
+	    catalog->qrtc_supported[psde->pipe][index] != ~0x0)
+		sde_kms_info_add_keyint(info, "qrtc_block",
+			catalog->qrtc_supported[psde->pipe][index]);
+
 	if (psde->features & BIT(SDE_SSPP_SEC_UI_ALLOWED))
 		sde_kms_info_add_keyint(info, "sec_ui_allowed", 1);
 	if (psde->features & BIT(SDE_SSPP_BLOCK_SEC_UI))
