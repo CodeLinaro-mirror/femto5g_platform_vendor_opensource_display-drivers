@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -98,7 +98,8 @@ static inline struct sde_hw_ds *to_sde_hw_ds(struct sde_hw_blk_reg_map *hw)
  */
 struct sde_hw_blk_reg_map *sde_hw_ds_init(enum sde_ds idx,
 			void __iomem *addr,
-			struct sde_mdss_cfg *m);
+			struct sde_mdss_cfg *m,
+			u32 display_idx);
 
 /**
  * sde_hw_ds_destroy - destroys destination scaler driver context

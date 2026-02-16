@@ -1538,6 +1538,7 @@ struct sde_ctl_cfg {
 	int fixed_enc_id;
 	int vq_idx;
 	u32 pipe_active_mask;
+	u32 display_idx;
 };
 
 /**
@@ -1560,6 +1561,7 @@ struct sde_sspp_cfg {
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
 	u32 possible_crtc;
 #endif
+	u32 display_idx;
 };
 
 /**
@@ -1588,6 +1590,7 @@ struct sde_lm_cfg {
 	unsigned long lm_pair_mask;
 	u32 parent_mixer_id;
 	int fixed_enc_id;
+	u32 display_idx;
 };
 
 /**
@@ -1612,6 +1615,7 @@ struct sde_dspp_top_cfg  {
 struct sde_dspp_cfg  {
 	SDE_HW_BLK_INFO;
 	struct sde_dspp_sub_blks *sblk;
+	u32 display_idx;
 };
 
 /**
@@ -1644,6 +1648,7 @@ struct sde_ds_cfg {
 	SDE_HW_BLK_INFO;
 	u32 version;
 	const struct sde_ds_top_cfg *top;
+	u32 display_idx;
 };
 
 /**
@@ -1660,6 +1665,7 @@ struct sde_pingpong_cfg  {
 	const struct sde_pingpong_sub_blks *sblk;
 	int merge_3d_id;
 	u32 dcwb_id;
+	u32 display_idx;
 };
 
 /**
@@ -1674,6 +1680,7 @@ struct sde_dsc_cfg {
 	SDE_HW_BLK_INFO;
 	DECLARE_BITMAP(dsc_pair_mask, DSC_MAX);
 	struct sde_dsc_sub_blks *sblk;
+	u32 display_idx;
 };
 
 /**
@@ -1688,6 +1695,7 @@ struct sde_dsc_cfg {
 struct sde_vdc_cfg {
 	SDE_HW_BLK_INFO;
 	struct sde_vdc_sub_blks *sblk;
+	u32 display_idx;
 };
 
 /**
@@ -1702,6 +1710,7 @@ struct sde_cdm_cfg   {
 	SDE_HW_BLK_INFO;
 	unsigned long intf_connect;
 	unsigned long wb_connect;
+	u32 display_idx;
 };
 
 /**
@@ -1716,6 +1725,7 @@ struct sde_dnsc_blur_cfg   {
 	SDE_HW_BLK_INFO;
 	struct sde_dnsc_blur_sub_blks *sblk;
 	unsigned long wb_connect;
+	u32 display_idx;
 };
 
 /**
@@ -1762,6 +1772,7 @@ struct sde_intf_cfg  {
 	u32 prog_fetch_lines_worst_case;
 	u32 te_irq_offset;
 	u32 hw_flush_sync_val;
+	u32 display_idx;
 };
 
 /**
@@ -1784,6 +1795,7 @@ struct sde_wb_cfg {
 	u32 vbif_idx;
 	u32 xin_id;
 	enum sde_clk_ctrl_type clk_ctrl;
+	u32 display_idx;
 };
 
 /**
@@ -1795,6 +1807,7 @@ struct sde_wb_cfg {
  */
 struct sde_merge_3d_cfg {
 	SDE_HW_BLK_INFO;
+	u32 display_idx;
 };
 
 /**
@@ -1806,6 +1819,7 @@ struct sde_merge_3d_cfg {
  */
 struct sde_qdss_cfg {
 	SDE_HW_BLK_INFO;
+	u32 display_idx;
 };
 
 /*
@@ -2249,6 +2263,7 @@ struct sde_mdss_cfg {
 	u32 cac_version;
 
 	/* HW Blocks */
+	u32 display_count;
 	u32 mdss_count;
 	struct sde_mdss_base_cfg mdss[MAX_BLOCKS];
 	u32 mdss_hw_block_size;
@@ -2374,7 +2389,7 @@ struct sde_mdss_cfg {
 	u32 controlled_SR;
 	u32 early_EPT_handling;
 
-	u32 pipe_active_mask;
+	u32 pipe_active_mask[MAX_DISPLAYNODES];
 };
 
 struct sde_mdss_hw_cfg_handler {

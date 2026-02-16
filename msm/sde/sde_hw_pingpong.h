@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2022-2023 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2015-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -199,7 +199,8 @@ static inline struct sde_hw_pingpong *to_sde_hw_pingpong(struct sde_hw_blk_reg_m
  */
 struct sde_hw_blk_reg_map *sde_hw_pingpong_init(enum sde_pingpong idx,
 		void __iomem *addr,
-		struct sde_mdss_cfg *m);
+		struct sde_mdss_cfg *m,
+		u32 display_idx);
 
 /**
  * sde_hw_pingpong_destroy - destroys pingpong driver context

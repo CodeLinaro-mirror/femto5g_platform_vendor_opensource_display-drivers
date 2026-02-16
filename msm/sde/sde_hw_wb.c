@@ -58,18 +58,20 @@
 static struct sde_wb_cfg *_wb_offset(enum sde_wb wb,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
+		u32 display_idx,
 		struct sde_hw_blk_reg_map *b)
 {
 	int i;
 
 	for (i = 0; i < m->wb_count; i++) {
-		if (wb == m->wb[i].id) {
+		if (wb == m->wb[i].id && display_idx == m->wb[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->wb[i].base;
 			b->length = m->wb[i].len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_WB;
 			b->virtual = m->wb[i].virtual;
+			b->display_idx = display_idx;
 			return &m->wb[i];
 		}
 	}
@@ -664,7 +666,8 @@ struct sde_hw_blk_reg_map *sde_hw_wb_init(enum sde_wb idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
 		struct sde_hw_mdp *hw_mdp,
-		struct sde_vbif_clk_client *clk_client)
+		struct sde_vbif_clk_client *clk_client,
+		u32 display_idx)
 {
 	struct sde_hw_wb *c;
 	struct sde_wb_cfg *cfg;
@@ -676,7 +679,7 @@ struct sde_hw_blk_reg_map *sde_hw_wb_init(enum sde_wb idx,
 	if (!c)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _wb_offset(idx, m, addr, &c->hw);
+	cfg = _wb_offset(idx, m, addr, display_idx, &c->hw);
 	if (IS_ERR(cfg)) {
 		WARN(1, "Unable to find wb idx=%d\n", idx);
 		kfree(c);

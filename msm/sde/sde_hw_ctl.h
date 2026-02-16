@@ -718,6 +718,7 @@ struct sde_hw_ctl {
 	struct sde_hw_ctl_ops ops;
 
 	u32 dpu_idx;
+	u32 display_idx;
 };
 
 /**
@@ -741,7 +742,7 @@ static inline struct sde_hw_ctl *to_sde_hw_ctl(struct sde_hw_blk_reg_map *hw)
 struct sde_hw_blk_reg_map *sde_hw_ctl_init(enum sde_ctl idx,
 		void __iomem *addr,
 		struct sde_mdss_cfg *m,
-		u32 dpu_idx);
+		u32 dpu_idx, u32 display_idx);
 
 /**
  * sde_hw_ctl_destroy(): Destroys ctl driver context
