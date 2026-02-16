@@ -63,7 +63,7 @@ int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
 	}
 
 	payload.feature = HFI_DEBUG_FEATURE_LSR;
-	payload.level = (enum hfi_debug_log_level)val;
+	payload.level_bitmask = val;
 
 	ret = hfi_adapter_add_set_property(lsr_hfi_client,
 			cmd_buf,
@@ -83,7 +83,7 @@ int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
 	if (ret)
 		SDE_ERROR("failed to send debug command\n");
 
-	SDE_DEBUG("LSR FW debug level is set to %llu\n", val);
+	SDE_DEBUG("LSR FW debug level is set to 0x%llx\n", val);
 	SDE_EVT32(val);
 	return ret;
 }
