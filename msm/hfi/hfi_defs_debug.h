@@ -220,12 +220,13 @@ struct hfi_dp_crc_info {
  *
  * @var feature
  *   Feature to enable the debug logs.
- * @var hfi_debug_log_level
- *   Log level to be enabled for a feature.
+ * @var level_bitmask
+ *   Log level bitmask to be enabled for a feature. Refer hfi_debug_log_level which represents
+ *   the bit number to be set to enable/disable the particular debug log level.
  */
 struct hfi_debug_log_level_info {
 	enum hfi_debug_feature feature;
-	enum hfi_debug_log_level level;
+	uint32_t level_bitmask;
 };
 
 #endif // __H_HFI_DEFS_DEBUG_H__
