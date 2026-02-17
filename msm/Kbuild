@@ -109,6 +109,7 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(DISPLAY_ROOT)/lsr \
 	-I$(DISPLAY_ROOT)/msm \
 	-I$(DISPLAY_ROOT)/msm/dp \
+	-I$(DISPLAY_ROOT)/msm/dp/hfi \
 	-I$(DISPLAY_ROOT)/msm/hdmi \
 	-I$(DISPLAY_ROOT)/msm/dsi \
 	-I$(DISPLAY_ROOT)/msm/hfi \
@@ -353,7 +354,8 @@ msm_drm-$(CONFIG_MDSS_HFI) += hfi/hfi_utils.o \
 				 dsi/hfi/dsi_hfi.o \
 				 sde/hfi/hfi_wb.o \
 				 dp/hfi/dp_mgr_hfi.o \
-				 dp/hfi/dp_hfi.o
+				 dp/hfi/dp_hfi.o \
+				 dp/hfi/dp_hfi_audio.o
 
 msm_drm-$(CONFIG_DSI_PARSER) += dsi/dsi_parser.o
 
