@@ -328,7 +328,8 @@ int sde_crtc_update_lsr_perf(struct drm_crtc *crtc)
 
 	if (is_lsr && crtc->state) {
 		sde_cstate = to_sde_crtc_state(crtc->state);
-		perf.bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_DRAM_AB);
+		perf.bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_LLCC_AB);
+		perf.ib_bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_LLCC_IB);
 		perf.clk_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_CORE_CLK);
 		sde_wb_update_lsr_perf(conn, c_conn->display, perf);
 	}
@@ -4060,9 +4061,12 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 	struct sde_splash_display *splash_display = NULL;
 	struct sde_kms *sde_kms;
 	struct drm_encoder *encoder;
+	struct sde_encoder_virt *sde_enc = NULL;
 	bool cont_splash_enabled = false;
 	int i;
 	u32 power_on = 1;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
+	u32 lsr_mode;
 
 	if (!crtc || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
@@ -4100,6 +4104,21 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 		sde_crtc_event_notify(crtc, DRM_EVENT_CRTC_POWER, &power_on, sizeof(u32));
 
 	sde_crtc->kickoff_in_progress = false;
+	lsr_mode = sde_crtc_get_property(to_sde_crtc_state(crtc->state), CRTC_PROP_LSR_MODE);
+
+	if (lsr_mode == MSM_DISP_LSR_MODE_ENABLED) {
+		drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			sde_enc = to_sde_encoder_virt(encoder);
+			if (sde_enc->hal_ops.enable_hw_event[disp_op])
+				sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+					MSM_ENC_COMMIT_DONE, false);
+			SDE_DEBUG("LSR mode enabled on enc%d, deregistering commit done event\n",
+				DRMID(encoder));
+		}
+	}
 }
 
 /**
@@ -6010,6 +6029,7 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	enum sde_crtc_idle_pc_state idle_pc_state;
 	struct sde_encoder_kickoff_params params = { 0 };
 	bool is_vid = false;
+	enum msm_disp_op disp_op;
 
 	if (!crtc) {
 		SDE_ERROR("invalid argument\n");
@@ -6106,13 +6126,17 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	}
 
 	/*
+	 * For legacy hwio path, update txq for output hw-fences from display.
+	 *
 	 * For cmd and wb modes, txq for incoming fences must be updated before flush to avoid race
 	 * condition between txq update and the hw signal during ctl-done for partial updates.
 	 *
 	 * For video mode, txq for incoming fences is updated before flush to correctly program the
 	 * output fence (this must be the second to most recently created output fence).
 	 */
-	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask))
+	disp_op = sde_crtc_get_disp_op(crtc);
+	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) &&
+			IS_DISP_OP_HWIO(disp_op))
 		sde_fence_update_hw_fences_txq(sde_crtc->output_fence, is_vid, 0,
 			sde_kms->debugfs_hw_fence);
 
@@ -8248,6 +8272,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		{MSM_DISP_OP_HYP, "disp_op_hyp"},
 	};
 
+	static const struct drm_prop_enum_list e_lsr_mode[] = {
+		{MSM_DISP_LSR_MODE_DISABLED, "lsr_mode_disabled"},
+		{MSM_DISP_LSR_MODE_ENABLED, "lsr_mode_enabled"},
+	};
+
 	SDE_DEBUG("\n");
 
 	if (!crtc || !catalog) {
@@ -8320,6 +8349,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			0x0, 0, e_secure_level,
 			ARRAY_SIZE(e_secure_level), 0,
 			CRTC_PROP_SECURITY_LEVEL);
+
+	msm_property_install_enum(&sde_crtc->property_info,
+			"lsr_mode", 0, 0, e_lsr_mode, ARRAY_SIZE(e_lsr_mode),
+			MSM_DISP_LSR_MODE_DISABLED, CRTC_PROP_LSR_MODE);
 
 	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map))
 		msm_property_install_enum(&sde_crtc->property_info, "cache_state",
@@ -8486,14 +8519,34 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	offset++;
 
 	/* Update DCP hw fence data for displays having HW fence support */
-	if (IS_DISP_OP_HFI(disp_op) && lsr_opmode == WB_CSC)
-		hfi_hw_fence_handle = _get_hfi_hw_data_from_kms(sde_kms);
+	if (IS_DISP_OP_HFI(disp_op)) {
+		if (lsr_opmode == WB_CSC || (sde_kms->catalog && sde_kms->catalog->hw_fence_rev))
+			hfi_hw_fence_handle = _get_hfi_hw_data_from_kms(sde_kms);
 
-	if (IS_DISP_OP_HFI(disp_op))
 		return sde_fence_create_with_handle(sde_crtc->output_fence, val,
 					offset, hfi_hw_fence_handle);
+	}
 
 	return sde_fence_create(sde_crtc->output_fence, val, offset, hw_ctl);
+}
+
+static void _sde_crtc_set_idle_pc_state(struct drm_crtc *crtc, struct sde_crtc *sde_crtc,
+		uint64_t val)
+{
+	enum msm_disp_op disp_op;
+	int ret;
+
+	//Make sure u64 is not narrowing
+	if (val > U32_MAX)
+		return;
+
+	disp_op = sde_crtc_get_disp_op(crtc);
+
+	if (sde_crtc->hal_ops.set_idle_pc_timer[disp_op]) {
+		ret = sde_crtc->hal_ops.set_idle_pc_timer[disp_op](sde_crtc, (u32)val);
+		if (ret)
+			SDE_ERROR("Failed to update idle pc timer to %u: %d\n", (u32)val, ret);
+	}
 }
 
 /**
@@ -8609,6 +8662,9 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 		break;
 	case CRTC_PROP_FRAME_DATA_BUF:
 		_sde_crtc_set_frame_data_buffers(crtc, cstate, (void __user *)(uintptr_t)val);
+		break;
+	case CRTC_PROP_IDLE_PC_STATE:
+		_sde_crtc_set_idle_pc_state(crtc, sde_crtc, val);
 		break;
 	default:
 		/* nothing to do */
@@ -10494,15 +10550,6 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint3
 	SDE_DEBUG("crtc:%d padding_y:%d padding_start:%d padding_height:%d\n",
 		  DRMID(cstate->base.crtc), *padding_y, *padding_start, *padding_height);
 	return 0;
-
-}
-
-bool sde_crtc_out_hw_fences_enabled(struct sde_crtc *sde_crtc)
-{
-	/* check for out fences enable or is LSR CSC display */
-	return test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
-		(sde_crtc_check_for_lsr_opmode(&sde_crtc->base,
-			sde_crtc->base.state) == WB_CSC);
 
 }
 

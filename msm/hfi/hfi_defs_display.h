@@ -125,6 +125,47 @@ struct hfi_display_frame_event_data {
 };
 
 /*
+ * struct hfi_display_color - color description
+ *
+ * @color_0      : Green
+ * @color_1      : Blue
+ * @color_2      : Red
+ * @color_3      : Alpha
+ */
+struct hfi_display_color {
+	u16 color_0;
+	u16 color_1;
+	u16 color_2;
+	u16 color_3;
+};
+
+/*
+ * enum hfi_display_dim_layer_flag - Dim layer flags
+ *
+ * HFI_DIM_LAYER_INCLUSIVE : The color fill will be applied inside the bounds of the specified ROI
+ * HFI_DIM_LAYER_EXCLUSIVE : The color fill will be applied outside the bounds of the specified ROI
+ */
+enum hfi_display_dim_layer_flag {
+	HFI_DIM_LAYER_INCLUSIVE = 0x1,
+	HFI_DIM_LAYER_EXCLUSIVE = 0x2,
+};
+
+/*
+ * struct hfi_display_dim_layer - dim layer config
+ *
+ * @flags        : Flag to represent INCLUSIVE/EXCLUSIVE
+ * @stage        : Blending stage of dim layer
+ * @color_fill   : Color fill to be used for the layer
+ * @rect         : Dim layer coordinates
+ */
+struct hfi_display_dim_layer {
+	enum hfi_display_dim_layer_flag flags;
+	u32 stage;
+	struct hfi_display_color color_fill;
+	struct hfi_display_roi rect;
+};
+
+/*
  * enum hfi_layer_cache_state - Layer cache states.
  *
  * HFI_CACHE_STATE_DISABLE: Disable cache read/write.
@@ -221,31 +262,101 @@ enum hfi_display_idle_timer_control {
 };
 
 /*
- * hfi_display_event_id - HFI event ID
- * @HFI_EVENT_VSYNC                   : Event ID for vsync
- * @HFI_EVENT_FRAME_SCAN_START        : Event ID for frame scan start
- * @HFI_EVENT_FRAME_SCAN_COMPLETE     : Event ID for frame scan complete
- * @HFI_EVENT_FRAME_IDLE              : Event ID for frame idle
- * @HFI_EVENT_DISPLAY_POWER           : Event ID for display power
- * @HFI_EVENT_HW_RECOVERY             : Event ID for hw recovery
- * @HFI_EVENT_FRAME_CAPTURE_COMPLETE  : Event ID for frame capture complete.
- * @HFI_EVENT_PANEL_DEAD              : Event ID for panel dead
- * @HFI_EVENT_LTM                     : Event ID for LTM event
- * @HFI_EVENT_RGB_HIST                : Event ID for RGB histogram event
- * @HFI_EVENT_PA_HIST                 : Event ID for PA histogram event
+ * HFI event ID.
+ *
+ * @HFI_EVENT_VSYNC:
+ *     Event ID for vsync.
+ * @HFI_EVENT_FRAME_SCAN_START:
+ *     Event ID for frame scan start.
+ * @HFI_EVENT_FRAME_SCAN_COMPLETE:
+ *     Event ID for frame scan complete.
+ * @HFI_EVENT_FRAME_IDLE:
+ *     Event ID for frame idle.
+ * @HFI_EVENT_DISPLAY_POWER:
+ *     Event ID for display power.
+ * @HFI_EVENT_FRAME_CAPTURE_COMPLETE:
+ *     Event ID for frame capture complete.
+ * @HFI_EVENT_PANEL_DEAD:
+ *     Event ID for panel dead.
+ * @HFI_EVENT_LTM:
+ *     Event ID for LTM.
+ * @HFI_EVENT_RGB_HIST:
+ *     Event ID for RGB histogram.
+ * @HFI_EVENT_PA_HIST:
+ *     Event ID for PA histogram.
+ * @HFI_EVENT_HPD_STATUS:
+ *     Event ID for Hot Plug Detect Status
+ * @HFI_EVENT_DISPLAY_EDID_INFO:
+ *     Event ID for EDID info
  */
 enum hfi_display_event_id {
-	HFI_EVENT_VSYNC                     = 0x1,
-	HFI_EVENT_FRAME_SCAN_START          = 0x2,
-	HFI_EVENT_FRAME_SCAN_COMPLETE       = 0x3,
-	HFI_EVENT_FRAME_IDLE                = 0x4,
-	HFI_EVENT_DISPLAY_POWER             = 0x5,
-	HFI_EVENT_HW_RECOVERY               = 0x6,
-	HFI_EVENT_FRAME_CAPTURE_COMPLETE    = 0x7,
-	HFI_EVENT_PANEL_DEAD                = 0x8,
-	HFI_EVENT_LTM                       = 0x9,
-	HFI_EVENT_RGB_HIST                  = 0xa,
-	HFI_EVENT_PA_HIST                   = 0xb,
+	HFI_EVENT_VSYNC               = 0x1,
+	HFI_EVENT_FRAME_SCAN_START    = 0x2,
+	HFI_EVENT_FRAME_SCAN_COMPLETE = 0x3,
+	HFI_EVENT_FRAME_IDLE          = 0x4,
+	HFI_EVENT_DISPLAY_POWER       = 0x5,
+	HFI_EVENT_HW_RECOVERY         = 0x6,
+	HFI_EVENT_FRAME_CAPTURE_COMPLETE = 0x7,
+	HFI_EVENT_PANEL_DEAD          = 0x8,
+	HFI_EVENT_LTM                 = 0x9,
+	HFI_EVENT_RGB_HIST            = 0xa,
+	HFI_EVENT_PA_HIST             = 0xb,
+	HFI_EVENT_HPD_STATUS          = 0xc,
+	HFI_EVENT_DISPLAY_EDID_INFO   = 0xd,
+};
+
+/*
+ * DP event types for HFI display notifications
+ *
+ * @HFI_DP_EVENT_NONE:
+ *     No DP event (value: 0)
+ * @HFI_DP_EVENT_HPD_PLUGGED:
+ *     Hot plug detect - display connected (value: 1)
+ * @HFI_DP_EVENT_IRQ_HPD:
+ *     Interrupt request hot plug detect - display interrupt (value: 2)
+ * @HFI_DP_EVENT_SET_MODE:
+ *     Set mode event (value: 3)
+ * @HFI_DP_EVENT_HPD_UNPLUGGED:
+ *     Hot plug detect - display disconnected (value: 4)
+ */
+enum hfi_display_dp_event {
+	HFI_DP_EVENT_NONE         = 0x0,
+	HFI_DP_EVENT_HPD_PLUGGED  = 0x1,
+	HFI_DP_EVENT_IRQ_HPD      = 0x2,
+	HFI_DP_EVENT_SET_MODE     = 0x3,
+	HFI_DP_EVENT_HPD_UNPLUGGED = 0x4,
+};
+
+/*
+ * DP states for HFI display notifications
+ *
+ * @HFI_DP_STATE_DISCONNECTED:
+ *     Display is disconnected (value: 0)
+ * @HFI_DP_STATE_HPD_IN:
+ *     Hot plug detect in (value: 1)
+ * @HFI_DP_STATE_CONNECTED:
+ *     Display is connected and ready (value: 2)
+ * @HFI_DP_STATE_HPD_OUT:
+ *     Hot plug detect out (value: 3)
+ */
+enum hfi_display_dp_state {
+	HFI_DP_STATE_DISCONNECTED = 0x0,
+	HFI_DP_STATE_HPD_IN       = 0x1,
+	HFI_DP_STATE_CONNECTED    = 0x2,
+	HFI_DP_STATE_HPD_OUT      = 0x3,
+};
+
+/*
+ * Display connection data for DP
+ *
+ * @dp_evt:
+ *     DP event type
+ * @dp_state:
+ *     DP state
+ */
+struct hfi_display_hpd_status {
+	enum hfi_display_dp_event dp_evt;
+	enum hfi_display_dp_state dp_state;
 };
 
 /*
@@ -466,6 +577,189 @@ enum hfi_cwb_tap_points {
 enum hfi_fence_type {
 	HFI_FENCE_SCAN_START,
 	HFI_FENCE_SCAN_COMPLETE,
+};
+
+/*
+ * DP Event data after HPD.
+ *
+ * @controller_id:
+ *     Assigned controller id
+ * @stream_id:
+ *     Assigned stream/display id
+ * @link_rate:
+ *     Link rate from DPCD
+ * @lane_count:
+ *     Number of lanes from DPCD
+ * @bits_per_pixel:
+ *     Uncompressed bits per pixel supported for this
+ * @fec_enabled:
+ *     Forward Error Correction enabled flag
+ * @edid_buf:
+ *     EDID buffer: This buffer is populated by DCP with the raw EDID data.
+ *     For this buffer to be populated, the Host must provide it through the parameters of the HFI
+ *     command: HFI_COMMAND_DEVICE_HOT_PLUG_DETECT.
+ * @modes_buf:
+ *     Modes buffer: This buffer is populated by DCP with display modes parsed from the EDID.
+ *     For this buffer to be populated, the Host must provide it through the parameters of the HFI
+ *     command: HFI_COMMAND_DEVICE_HOT_PLUG_DETECT.
+ */
+struct hfi_display_event_edid_info {
+	u32 controller_id;
+	u32 stream_id;
+	u32 link_rate;
+	u32 lane_count;
+	u32 bits_per_pixel;
+	u32 fec_enabled;
+	struct hfi_buff edid_buf;
+	struct hfi_buff modes_buf;
+};
+
+/*
+ * DP TU params sent during set mode.
+ *
+ * @dp_tu:
+ *     DP tu size value
+ * @valid_boundary:
+ *     DP valid boundary limit
+ * @valid_boundary2:
+ *     DP valid boundary 2 limit
+ */
+struct hfi_display_dp_tu {
+	u32 dp_tu;
+	u32 valid_boundary;
+	u32 valid_boundary2;
+};
+
+/*!
+ * @struct hfi_audio_config
+ * @brief HFI external display audio configuration structure.
+ *
+ * @var sample_rate
+ *   Audio sample rate in Hz (e.g., 48000, 96000, 192000).
+ * @var num_of_channels
+ *   Number of audio channels (2, 6, 8).
+ * @var channel_allocation
+ *   Channel allocation as per CEA-861 standard.
+ * @var level_shift
+ *   Level shift value for dynamic range control.
+ * @var down_mix
+ *   Down mix inhibit flag.
+ * @var sample_present
+ *   Sample present flag indicating audio sample availability.
+ * @var stream_id
+ *   Audio stream identifier for multi-stream scenarios.
+ */
+struct hfi_audio_config {
+	u32 sample_rate;
+	u32 num_of_channels;
+	u32 channel_allocation;
+	u32 level_shift;
+	u32 down_mix;
+	u32 sample_present;
+	u32 stream_id;
+};
+
+/*!
+ * @struct hfi_hdr_metadata
+ * @brief HDR metadata structure for HFI communication
+ *
+ * @var hdr_state
+ *   Current HDR state
+ * @var eotf
+ *   Electro-optical transfer function
+ * @var hdr_supported
+ *   HDR support indicator
+ * @var display_primaries_x
+ *   Display primaries x coordinates array
+ * @var display_primaries_y
+ *   Display primaries y coordinates array
+ * @var white_point_x
+ *   White point x coordinate
+ * @var white_point_y
+ *   White point y coordinate
+ * @var max_luminance
+ *   Maximum luminance value
+ * @var min_luminance
+ *   Minimum luminance value
+ * @var max_content_light_level
+ *   Maximum content light level
+ * @var max_average_light_level
+ *   Maximum average light level
+ */
+struct hfi_hdr_metadata {
+	/* Static HDR */
+	u32 hdr_state;
+	u32 eotf;
+	u32 hdr_supported;
+	u32 display_primaries_x[HFI_MAX_COLOR_COMPONENTS];
+	u32 display_primaries_y[HFI_MAX_COLOR_COMPONENTS];
+	u32 white_point_x;
+	u32 white_point_y;
+	u32 max_luminance;
+	u32 min_luminance;
+	u32 max_content_light_level;
+	u32 max_average_light_level;
+};
+
+/*!
+ * @struct hfi_display_hdr_cfg
+ * @brief HDR configuration payload for HFI_COMMAND_DISPLAY_CONFIG_HDR
+ *
+ * @var dhdr_update
+ *   Dynamic HDR update flag
+ * @var hdr_meta
+ *   HDR metadata structure
+ */
+struct hfi_display_hdr_cfg {
+	u32 dhdr_update;
+	struct hfi_hdr_metadata hdr_meta;
+};
+
+/*!
+ * @enum hfi_colorimetry
+ * @brief Colorimetry standards for display content
+ *
+ * @var HFI_COLORIMETRY_DEFAULT
+ *   No colorimetry specified (value: 0)
+ * @var HFI_COLORIMETRY_SMPTE_170M_YCC
+ *   SMPTE 170M YCC colorimetry (value: 1)
+ * @var HFI_COLORIMETRY_BT709_YCC
+ *   BT.709 YCC colorimetry (value: 2)
+ * @var HFI_COLORIMETRY_XVYCC_601
+ *   xvYCC 601 colorimetry (value: 3)
+ * @var HFI_COLORIMETRY_XVYCC_709
+ *   xvYCC 709 colorimetry (value: 4)
+ * @var HFI_COLORIMETRY_SYCC_601
+ *  sYCC 601 colorimetry (value: 5)
+ * @var HFI_COLORIMETRY_OPYCC_601
+ *  opYCC 601 colorimetry (value: 6)
+ * @var HFI_COLORIMETRY_OPRGB
+ * opRGB colorimetry (value: 7)
+ * @var HFI_COLORIMETRY_BT2020_CYCC
+ *  BT.2020 CYCC colorimetry (value: 8)
+ * @var HFI_COLORIMETRY_BT2020_RGB
+ * BT.2020 RGB colorimetry (value: 9)
+ * @var HFI_COLORIMETRY_BT2020_YCC
+ * BT.2020 YCC colorimetry (value: 10)
+ * @var HFI_COLORIMETRY_DCI_P3_RGB_D65
+ * DCI-P3 RGB D65 colorimetry (value: 11)
+ * @var HFI_COLORIMETRY_DCI_P3_RGB_THEATER
+ * DCI-P3 RGB Theater colorimetry (value: 12)
+ */
+enum hfi_colorimetry {
+	HFI_COLORIMETRY_DEFAULT            = 0,
+	HFI_COLORIMETRY_SMPTE_170M_YCC     = 1,
+	HFI_COLORIMETRY_BT709_YCC          = 2,
+	HFI_COLORIMETRY_XVYCC_601          = 3,
+	HFI_COLORIMETRY_XVYCC_709          = 4,
+	HFI_COLORIMETRY_SYCC_601           = 5,
+	HFI_COLORIMETRY_OPYCC_601          = 6,
+	HFI_COLORIMETRY_OPRGB              = 7,
+	HFI_COLORIMETRY_BT2020_CYCC        = 8,
+	HFI_COLORIMETRY_BT2020_RGB         = 9,
+	HFI_COLORIMETRY_BT2020_YCC         = 10,
+	HFI_COLORIMETRY_DCI_P3_RGB_D65     = 11,
+	HFI_COLORIMETRY_DCI_P3_RGB_THEATER = 12,
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

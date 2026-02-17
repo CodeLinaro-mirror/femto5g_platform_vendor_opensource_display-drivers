@@ -198,6 +198,18 @@ struct lsr_iface_q_info {
 #define iris_hfi_for_each_subcache_reverse(__device, __sinfo) \
 	iris_hfi_for_each_thing_reverse(__device, __sinfo, subcache)
 
+/* Power domain set helpers */
+#define iris_hfi_for_each_power_domain(__device, __pdinfo) \
+	iris_hfi_for_each_thing(__device, __pdinfo, power_domain)
+
+#define iris_hfi_for_each_power_domain_reverse(__device, __pdinfo) \
+	iris_hfi_for_each_thing_reverse(__device, __pdinfo, power_domain)
+
+#define iris_hfi_for_each_power_domain_reverse_continue(__device, __pdinfo, \
+		__from) \
+	iris_hfi_for_each_thing_reverse_continue(__device, __pdinfo, \
+			power_domain, __from)
+
 #define call_iris_op(d, op, args...)			\
 	(((d) && (d)->hal_ops && (d)->hal_ops->op) ? \
 	((d)->hal_ops->op(args)):0)

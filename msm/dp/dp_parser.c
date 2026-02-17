@@ -778,15 +778,21 @@ static int dp_parser_mst(struct dp_parser *parser)
 static void dp_parser_dsc(struct dp_parser *parser)
 {
 	struct device *dev = &parser->pdev->dev;
+	int rc;
 
 	parser->dsc_feature_enable = of_property_read_bool(dev->of_node,
 			"qcom,dsc-feature-enable");
 
+	rc = of_property_read_u32(dev->of_node, "qcom,dsc-slice-per-pkt",
+				&parser->dsc_slice_per_pkt);
+	if (rc)
+		parser->dsc_slice_per_pkt = 0;
+
 	parser->dsc_continuous_pps = of_property_read_bool(dev->of_node,
 			"qcom,dsc-continuous-pps");
 
-	DP_DEBUG("dsc parsing successful. dsc:%d\n",
-			parser->dsc_feature_enable);
+	DP_DEBUG("dsc parsing successful. dsc:%d slice_per_pkt:%d\n",
+			parser->dsc_feature_enable, parser->dsc_slice_per_pkt);
 	DP_DEBUG("cont_pps:%d\n",
 			parser->dsc_continuous_pps);
 }

@@ -3339,6 +3339,11 @@ void sde_plane_flush(struct drm_plane *plane)
 
 	if (disp_op == MSM_DISP_OP_HFI) {
 		color_props = psde->pipe_hw->prop_helper;
+		if (!hfi_cp_crtc_get_color_props_count(color_props)) {
+			SDE_DEBUG("prop_helper_prop_count is empty\n");
+			goto skip_prop;
+		}
+
 		cmd_buf = hfi_plane_get_cmd_buf(plane);
 		if (!cmd_buf) {
 			SDE_ERROR("failed to get cmd_buf for plane:%d\n", DRMID(plane));
@@ -3347,6 +3352,7 @@ void sde_plane_flush(struct drm_plane *plane)
 			if (ret)
 				SDE_ERROR("failed to set HFI prop\n");
 		}
+skip_prop:
 		hfi_cp_crtc_reset_color_props(color_props);
 	}
 
@@ -3932,14 +3938,8 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 		return;
 	}
 
-	if (IS_DISP_OP_HFI(disp_op)) {
-		cmd_buf = hfi_plane_get_cmd_buf(plane);
-		if (!cmd_buf)
-			SDE_ERROR("failed to get cmd_buf for plane:%d\n", DRMID(plane));
-
-		if (psde->hfi_plane)
-			hfi_cp_crtc_reset_color_props(psde->hfi_plane->color_props);
-	}
+	if (IS_DISP_OP_HFI(disp_op) && psde->hfi_plane)
+		hfi_cp_crtc_reset_color_props(psde->hfi_plane->color_props);
 
 	msm_fmt = msm_framebuffer_format(fb);
 	if (!msm_fmt) {
@@ -3996,9 +3996,14 @@ static void _sde_plane_update_properties(struct drm_plane *plane,
 		if (!psde->hfi_plane)
 			goto end;
 		color_props = psde->hfi_plane->color_props;
-		if (!hfi_cp_crtc_get_color_props_count(color_props) || !cmd_buf) {
-			SDE_DEBUG("prop_helper_prop_count = %d cmd_buf = %pK\n",
-				hfi_cp_crtc_get_color_props_count(color_props), cmd_buf);
+		if (!hfi_cp_crtc_get_color_props_count(color_props)) {
+			SDE_DEBUG("prop_helper_prop_count is empty\n");
+			goto end;
+		}
+
+		cmd_buf = hfi_plane_get_cmd_buf(plane);
+		if (!cmd_buf) {
+			SDE_ERROR("failed to get cmd_buf for plane:%d\n", DRMID(plane));
 			goto end;
 		}
 

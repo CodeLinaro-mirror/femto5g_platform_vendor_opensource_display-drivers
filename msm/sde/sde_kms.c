@@ -2386,6 +2386,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		.set_allowed_mode_switch = NULL,
 		.set_dyn_bit_clk = NULL,
 		.update_transfer_time = NULL,
+		.ctl_init = dp_connector_ctl_init,
 	};
 	struct msm_display_info info;
 	struct drm_encoder *encoder;
@@ -2541,9 +2542,6 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 	if (sde_kms->catalog->allowed_dsc_reservation_switch &
 			SDE_DP_DSC_RESERVATION_SWITCH)
 		max_dp_dsc_count = sde_kms->catalog->dsc_count;
-	/* dp */
-	if (IS_DISP_OP_HFI(priv->disp_op))
-		goto skip_dp;
 
 	for (i = 0; i < sde_kms->dp_display_count &&
 			priv->num_encoders < max_encoders; ++i) {
@@ -2595,6 +2593,10 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			sde_encoder_destroy(encoder);
 			continue;
 		}
+
+		if (IS_DISP_OP_HFI(priv->disp_op))
+			goto skip_dp_mst;
+
 		/* update display cap to MST_MODE for DP MST encoders */
 		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
 		for (idx = 0; idx < dp_info->stream_cnt &&
@@ -2628,7 +2630,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 		}
 	}
 
-skip_dp:
+skip_dp_mst:
 	setup_hdmi_displays(dev, priv, sde_kms, max_encoders,
 				max_dp_mixer_count, max_dp_dsc_count);
 
@@ -2752,6 +2754,7 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 	int wb_idx = 0, csc_wb_idx = 0, repro_wb_idx = 0;
 	int dsi_idx = 0;
 	enum wb_opmode opmode;
+	int dp_idx = 0;
 
 	if (!sde_kms) {
 		SDE_ERROR("invalid arguments\n");
@@ -2788,6 +2791,12 @@ static int sde_kms_hfi_post_boot(struct sde_kms *sde_kms)
 			c_conn = to_sde_connector(conn);
 			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
 			c_conn->ops.ctl_pre_transition(c_conn->display);
+		} else if (sde_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort) {
+			sde_connector_setup_obj_id(conn,
+					sde_kms->hfi_kms->catalog->dp_indices[dp_idx++]);
+
+			c_conn = to_sde_connector(conn);
+			c_conn->ops.ctl_init(c_conn->display, priv->hfi_priv);
 		}
 	}
 	drm_connector_list_iter_end(&conn_iter);
@@ -3441,7 +3450,7 @@ error:
 		if (ret == -EDEADLK || ret == -ERESTARTSYS)
 			SDE_DEBUG("atomic commit failed in preclose, ret:%d\n", ret);
 		else
-			SDE_ERROR("atomic commit failed in preclose, ret:%d\n", ret);
+			SDE_INFO("atomic commit failed in preclose, ret:%d\n", ret);
 		goto end;
 	}
 
@@ -3806,7 +3815,7 @@ out_ctx:
 	drm_modeset_acquire_fini(&ctx);
 
 	if (ret)
-		SDE_ERROR("kms lastclose failed: %d\n", ret);
+		SDE_INFO("kms lastclose failed: %d\n", ret);
 
 	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)) && hfi_client) {
 		hfi_adapter_deinit(hfi_client);
@@ -4021,7 +4030,7 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 
 			rc = vm_ops->vm_request_valid(sde_kms, old_vm_req, new_vm_req);
 			if (rc) {
-				SDE_ERROR(
+				SDE_INFO(
 				"VM transition check failed; o_state:%d, n_state:%d, hw_owner:%d, rc:%d\n",
 						old_vm_req, new_vm_req, vm_owns_hw, rc);
 				sde_vm_unlock(sde_kms);
@@ -4272,7 +4281,7 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 
 	ret = sde_kms_check_vm_request(kms, state);
 	if (ret) {
-		SDE_ERROR("vm switch request checks failed\n");
+		SDE_INFO("vm switch request checks failed\n");
 		goto end;
 	}
 
@@ -5205,6 +5214,23 @@ static void _sde_kms_pm_suspend_idle_helper(struct sde_kms *sde_kms,
 	msm_atomic_flush_display_threads(priv);
 }
 
+int sde_kms_idle_timer_control(struct msm_kms *kms, bool timer_state)
+{
+	struct sde_kms *sde_kms = to_sde_kms(kms);
+	int ret = 0;
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde_kms\n");
+		return -EINVAL;
+	}
+
+	ret = hfi_kms_send_idle_timer_ctrl(sde_kms->hfi_kms, timer_state);
+	if (ret)
+		SDE_ERROR("Failed to set idle timer state ret:%d\n", ret);
+
+	return ret;
+}
+
 void sde_kms_cancel_vrr_timers(struct msm_kms *kms)
 {
 	struct sde_kms *sde_kms;
@@ -5577,6 +5603,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.get_dsc_count = sde_kms_get_dsc_count,
 	.in_trusted_vm = sde_kms_in_trusted_vm,
 	.in_loopback_mode = sde_kms_in_loopback_mode,
+	.idle_timer_control = sde_kms_idle_timer_control,
 };
 
 static int _sde_kms_mmu_destroy(struct sde_kms *sde_kms)
@@ -5640,7 +5667,8 @@ static int _sde_kms_mmu_init(struct sde_kms *sde_kms)
 			}
 		}
 
-		if (i == MSM_SMMU_DOMAIN_UNSECURE && sde_kms->catalog->hw_fence_rev) {
+		if (i == MSM_SMMU_DOMAIN_UNSECURE && sde_kms->catalog->hw_fence_rev &&
+				IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms))) {
 			pdev = to_platform_device(sde_kms->dev->dev);
 			res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ipcc_reg");
 			if (!res) {
@@ -6393,7 +6421,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	if (test_bit(SDE_FEATURE_HW_VSYNC_TS, sde_kms->catalog->features))
 		dev->vblank_disable_immediate = true;
 
-	if (!priv->phandle.hw_fence_enable) {
+	if (IS_DISP_OP_HWIO(priv->disp_op) && !priv->phandle.hw_fence_enable) {
 		SDE_INFO("power vote failed, disabling hw-fencing\n");
 		sde_kms->catalog->hw_fence_rev = 0;
 	}
@@ -6587,8 +6615,10 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 		}
 
 		rc = sde_hfi_hw_fence_init(priv, sde_kms);
-		if (rc)
-			SDE_ERROR("sde hfi hw fence data init failed: %d\n", rc);
+		if (rc) {
+			SDE_INFO("sde hfi hw fence data init failed: %d\n", rc);
+			sde_kms->catalog->hw_fence_rev = 0;
+		}
 	}
 
 	return 0;

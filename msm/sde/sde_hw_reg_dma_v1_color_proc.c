@@ -146,6 +146,10 @@ int log_sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off,
 #define DESTINATION_SCALER_SIZE (sizeof(struct sde_hw_scaler3_cfg) + \
 		(450 * sizeof(u32)) + \
 		REG_DMA_HEADERS_BUFFER_SZ)
+#define AIQE_COPR_MEM_SIZE ((sizeof(struct drm_msm_copr)) + \
+		REG_DMA_HEADERS_BUFFER_SZ)
+#define QRTC_MEM_SIZE ((sizeof(struct drm_msm_qrtc_config)) + \
+		REG_DMA_HEADERS_BUFFER_SZ)
 
 #define APPLY_MASK_AND_SHIFT(x, n, shift) ((x & (REG_MASK(n))) << (shift))
 #define REG_DMA_VIG_GAMUT_OP_MASK 0x300
@@ -194,6 +198,12 @@ int log_sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off,
 /* Offsets from base register */
 #define REG_DMA_SSPP_REC0_OFFSET_FROM_SSPP_CMN 0x1000
 
+/* QRTC */
+#define QRTC_LPF_DATA_SZ   27
+#define QRTC_LPF_LEN       (QRTC_LPF_DATA_SZ * sizeof(u32))
+#define QRTC_HPF_DATA_SZ   41
+#define QRTC_HPF_LEN       (QRTC_HPF_DATA_SZ * sizeof(u32))
+
 enum ltm_vlut_ops_bitmask {
 	ltm_unsharp = BIT(0),
 	ltm_dither = BIT(1),
@@ -232,6 +242,7 @@ static u32 feature_map[SDE_DSPP_MAX] = {
 	[SDE_DSPP_DEMURA_CFG0_PARAM2] = DEMURA_CFG0_PARAM2,
 	[SDE_DSPP_AIQE] = AIQE_MDNIE,
 	[SDE_DSPP_AI_SCALER] = AIQE_AI_SCALER,
+	[SDE_DSPP_QRTC] = QRTC,
 };
 
 static u32 sspp_feature_map[SDE_SSPP_MAX] = {
@@ -265,6 +276,7 @@ static u32 feature_reg_dma_sz[SDE_DSPP_MAX] = {
 	[SDE_DSPP_DEMURA_CFG0_PARAM2] = DEMURA_CFG0_PARAM2_MEM_SIZE,
 	[SDE_DSPP_AIQE] = AIQE_MDNIE_SIZE,
 	[SDE_DSPP_AI_SCALER] = AIQE_AI_SCALER_MEM_SIZE,
+	[SDE_DSPP_QRTC] = QRTC_MEM_SIZE,
 };
 
 static u32 sspp_feature_reg_dma_sz[SDE_SSPP_MAX] = {
@@ -634,6 +646,13 @@ static int _reg_dma_init_dspp_feature_buf(int feature, struct sde_hw_dspp *ctx)
 		rc = reg_dma_buf_init(
 			&dspp_buf[AIQE_ABC][ctx->idx][ctx->dpu_idx],
 			AIQE_ABC_MEM_SIZE,
+			ctx->dpu_idx);
+		if (rc)
+			return rc;
+
+		rc = reg_dma_buf_init(
+			&dspp_buf[AIQE_COPR][ctx->idx][ctx->dpu_idx],
+			AIQE_COPR_MEM_SIZE,
 			ctx->dpu_idx);
 	} else if (feature == SDE_DSPP_AI_SCALER) {
 		rc = reg_dma_buf_init(
@@ -9124,4 +9143,238 @@ void reg_dmav1_setup_demurav4(struct sde_hw_dspp *ctx, void *cfx)
 		if (rc)
 			DRM_ERROR("failed to kick off demurav3 ret %d\n", rc);
 	}
+}
+
+static void reg_dma_qrtc_off(struct sde_hw_dspp *ctx,
+		struct sde_hw_cp_cfg *hw_cfg)
+{
+	struct sde_hw_reg_dma_ops *dma_ops;
+	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
+	struct sde_reg_dma_kickoff_cfg kick_off;
+	struct hfi_qrtc_config hfi_cfg = {};
+	u32 qrtc_base = ctx->cap->sblk->qrtc.base;
+	u32 op_mode = 0;
+	int rc;
+
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
+	dma_ops->reset_reg_dma_buf(dspp_buf[QRTC][ctx->idx][ctx->dpu_idx]);
+
+	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, QRTC,
+			dspp_buf[QRTC][ctx->idx][ctx->dpu_idx]);
+
+	REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("write decode select failed ret %d\n", rc);
+		return;
+	}
+
+	REG_DMA_SETUP_OPS(dma_write_cfg, ctx->hw.blk_off + qrtc_base + 0x4,
+		&op_mode, sizeof(op_mode), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("off(0x4): REG_SINGLE_WRITE failed ret %d\n", rc);
+		return;
+	}
+
+	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY);
+	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
+			dspp_buf[QRTC][ctx->idx][ctx->dpu_idx],
+			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
+			QRTC);
+
+	hfi_cfg.flags = hw_cfg->flags;
+	hfi_cfg.lut_dma_flags = hw_cfg->flags;
+	hfi_cfg.iova_l = (kick_off.dma_buf->iova & 0xFFFFFFFF);
+	hfi_cfg.iova_h = (kick_off.dma_buf->iova >> 32) & 0xFFFFFFFF;
+	kick_off.valid_extended_data = true;
+	kick_off.extended_data = &hfi_cfg;
+	kick_off.extended_data_size = sizeof(hfi_cfg);
+
+	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
+		if (rc)
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+	}
+}
+
+void reg_dmav1_setup_qrtc_config_v1(struct sde_hw_dspp *ctx, void *cfg, void *buffer)
+{
+	int rc = 0;
+	struct drm_msm_qrtc_config *qrtc_cfg;
+	struct sde_qrtc_buffer *qrtc_buffer = buffer;
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct sde_hw_reg_dma_ops *dma_ops;
+	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
+	struct sde_reg_dma_kickoff_cfg kick_off;
+	u32 qrtc_base = ctx->cap->sblk->qrtc.base;
+	u32 i = 0, j = 0, k = 0, data_ctrl;
+	u32 *data = NULL;
+	struct hfi_qrtc_config hfi_cfg = {0};
+
+	rc = reg_dma_dspp_check(ctx, cfg, QRTC);
+	if (rc)
+		return;
+
+	if (!qrtc_buffer)
+		return;
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(1, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	if (hw_cfg->payload)
+		hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
+
+	if (!hw_cfg->payload) {
+		LOG_FEATURE_OFF;
+		reg_dma_qrtc_off(ctx, hw_cfg);
+		return;
+	}
+
+	if (qrtc_buffer->drm_fb_id < 0) {
+		DRM_ERROR("invalid qrtc buffer fd_id %d\n", qrtc_buffer->drm_fb_id);
+		return;
+	}
+
+	if (hw_cfg->len != sizeof(struct drm_msm_qrtc_config)) {
+		DRM_ERROR("invalid sz of payload len %d exp %zd\n",
+				hw_cfg->len, sizeof(struct drm_msm_qrtc_config));
+		return;
+	}
+
+	qrtc_cfg = hw_cfg->payload;
+	/* Validate buffer size, check for overflow */
+	if (qrtc_cfg->cwb_width > (UINT_MAX / 4) ||
+		qrtc_cfg->cwb_height > (UINT_MAX / (qrtc_cfg->cwb_width * 4))) {
+		DRM_ERROR("QRTC dimensions too large: %u x %u\n",
+			qrtc_cfg->cwb_width, qrtc_cfg->cwb_height);
+		return;
+	}
+
+	/* QRTC buffer pixel format is ARGB2101010, hence cpp is 4 */
+	if (qrtc_buffer->len < qrtc_cfg->cwb_width * qrtc_cfg->cwb_height * 4) {
+		DRM_ERROR("insufficient buffer size %u for dimensions %u x %u\n",
+			qrtc_buffer->len, qrtc_cfg->cwb_width, qrtc_cfg->cwb_height);
+		return;
+	}
+
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
+	dma_ops->reset_reg_dma_buf(dspp_buf[QRTC][ctx->idx][ctx->dpu_idx]);
+
+	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, QRTC,
+			dspp_buf[QRTC][ctx->idx][ctx->dpu_idx]);
+
+	REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("write decode select failed ret %d\n", rc);
+		return;
+	}
+
+	data = kvzalloc(QRTC_HPF_LEN, GFP_KERNEL);
+	if (!data)
+		return;
+
+	for (i = 0; i < QRTC_NUM_LUTS; i++) {
+		/* LPF data control */
+		data_ctrl = (i << 2) | 0x2;
+		REG_DMA_SETUP_OPS(dma_write_cfg, ctx->hw.blk_off + qrtc_base + 0x30, &data_ctrl,
+				sizeof(data_ctrl), REG_SINGLE_WRITE, 0, 0, 0);
+		rc = dma_ops->setup_payload(&dma_write_cfg);
+		if (rc) {
+			DRM_ERROR("write LPF data control reg failed ret %d\n", rc);
+			goto exit;
+		}
+		for (k = 0, j = 0; k < QRTC_LPF_DATA_SZ; k++, j += 3) {
+			data[k] = (qrtc_cfg->lpf[i][j] & 0x3FF) |
+				((qrtc_cfg->lpf[i][j + 1] & 0x3FF) << 10) |
+				((qrtc_cfg->lpf[i][j + 2] & 0x3FF) << 20);
+		}
+		REG_DMA_SETUP_OPS(dma_write_cfg, ctx->hw.blk_off + qrtc_base + 0x34, data,
+				QRTC_LPF_LEN, REG_BLK_WRITE_INC, 0, 0, 0);
+		rc = dma_ops->setup_payload(&dma_write_cfg);
+		if (rc) {
+			DRM_ERROR("write LPF reg failed ret %d\n", rc);
+			goto exit;
+		}
+	}
+
+	for (i = 0; i < QRTC_NUM_LUTS; i++) {
+		/* HPF data control */
+		data_ctrl = (i << 2) | 0x2;
+		REG_DMA_SETUP_OPS(dma_write_cfg, ctx->hw.blk_off + qrtc_base + 0x38, &data_ctrl,
+				sizeof(data_ctrl), REG_SINGLE_WRITE, 0, 0, 0);
+		rc = dma_ops->setup_payload(&dma_write_cfg);
+		if (rc) {
+			DRM_ERROR("write HPF data control reg failed ret %d\n", rc);
+			goto exit;
+		}
+		for (k = 0, j = 0; k < QRTC_HPF_DATA_SZ; k++, j += 2) {
+			if (k == 40)
+				data[k] = qrtc_cfg->hpf[i][80] & 0x7FF;
+			else
+				data[k] = (qrtc_cfg->hpf[i][j] & 0x7FF) |
+					((qrtc_cfg->hpf[i][j + 1] & 0x7FF) << 11);
+		}
+
+		REG_DMA_SETUP_OPS(dma_write_cfg, ctx->hw.blk_off + qrtc_base + 0x3C, data,
+				QRTC_HPF_LEN, REG_BLK_WRITE_INC, 0, 0, 0);
+		rc = dma_ops->setup_payload(&dma_write_cfg);
+		if (rc) {
+			DRM_ERROR("write HPF reg failed ret %d\n", rc);
+			goto exit;
+		}
+	}
+
+	/* LUT DB control */
+	data_ctrl = 0x3;
+	REG_DMA_SETUP_OPS(dma_write_cfg, ctx->hw.blk_off + qrtc_base + 0x40, &data_ctrl,
+			sizeof(data_ctrl), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("write QRTC LUT DB control reg failed ret %d\n", rc);
+		goto exit;
+	}
+
+	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, dspp_buf[QRTC][ctx->idx][ctx->dpu_idx],
+			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, QRTC);
+
+	hfi_cfg.flags = hw_cfg->flags;
+	hfi_cfg.lut_dma_flags = hw_cfg->flags;
+	hfi_cfg.iova_l = (kick_off.dma_buf->iova & 0xFFFFFFFF);
+	hfi_cfg.iova_h = (kick_off.dma_buf->iova >> 32) & 0xFFFFFFFF;
+	hfi_cfg.coring_en = qrtc_cfg->coring_en;
+	hfi_cfg.coring_pos = qrtc_cfg->coring_pos;
+	hfi_cfg.coring_neg = qrtc_cfg->coring_neg;
+	hfi_cfg.lpf_en = qrtc_cfg->lpf_en;
+	hfi_cfg.subsample_mode = qrtc_cfg->subsample_mode;
+	hfi_cfg.dma_sel = qrtc_cfg->dma_sel;
+	hfi_cfg.rect_sel = qrtc_cfg->rect_sel;
+	hfi_cfg.wb_sel = qrtc_cfg->wb_sel;
+
+	hfi_cfg.cwb_iova_l = (qrtc_buffer->iova & 0xFFFFFFFF);
+	hfi_cfg.cwb_iova_h = (qrtc_buffer->iova >> 32) & 0xFFFFFFFF;
+	hfi_cfg.cwb_len = qrtc_buffer->len;
+	hfi_cfg.cwb_width = qrtc_cfg->cwb_width;
+	hfi_cfg.cwb_height = qrtc_cfg->cwb_height;
+	hfi_cfg.format = qrtc_buffer->format;
+
+	kick_off.valid_extended_data = true;
+	kick_off.extended_data = &hfi_cfg;
+	kick_off.extended_data_size = sizeof(hfi_cfg);
+	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
+		if (rc)
+			DRM_ERROR("failed to kick off qrtcv1 ret %d\n", rc);
+	}
+	LOG_FEATURE_ON;
+exit:
+	kvfree(data);
 }

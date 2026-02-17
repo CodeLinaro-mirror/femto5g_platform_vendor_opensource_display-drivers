@@ -1,16 +1,18 @@
 targets = [
     # keep sorted
     "art",
+    "bengal",
+    "art16k",
     "canoe",
     "gen3auto",
-    "bengal",
-    "monaco",
     "malabar",
-    "sun",
-    "parrot",
-    "vienna",
+    "monaco",
     "niobe",
+    "parrot",
     "seraph",
+    "shikra",
+    "sun",
+    "vienna",
     "x1p42100",
 ]
 
@@ -41,6 +43,7 @@ vm_types = [
 
 vm_target_bases = [
     "art",
+    "shikra",
     "sun",
     "canoe",
 ]

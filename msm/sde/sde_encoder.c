@@ -384,7 +384,7 @@ static void _sde_encoder_control_fal10_veto(struct drm_encoder *drm_enc, bool ve
 	}
 }
 
-static void _sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
+void sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	struct msm_drm_private *priv;
@@ -428,7 +428,7 @@ static void _sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 	}
 }
 
-static void _sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
+void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	struct device *cpu_dev;
@@ -1100,7 +1100,8 @@ void sde_encoder_helper_update_intf_cfg(
 
 void sde_encoder_helper_split_config(
 		struct sde_encoder_phys *phys_enc,
-		enum sde_intf interface)
+		enum sde_intf interface,
+		bool skip_cont_splash)
 {
 	struct sde_encoder_virt *sde_enc;
 	struct split_pipe_cfg *cfg;
@@ -1126,6 +1127,9 @@ void sde_encoder_helper_split_config(
 
 	if (disp_info->capabilities & MSM_DISPLAY_SPLIT_LINK)
 		cfg->split_link_en = true;
+
+	if (phys_enc->cont_splash_enabled && skip_cont_splash)
+		return;
 
 	/**
 	 * disable split modes since encoder will be operating in as the only
@@ -2547,10 +2551,10 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 				sde_conn->vrr_cmd_state = VRR_CMD_IDLE_EXIT;
 		}
 
-		_sde_encoder_pm_qos_add_request(drm_enc);
+		sde_encoder_pm_qos_add_request(drm_enc);
 
 	} else {
-		_sde_encoder_pm_qos_remove_request(drm_enc);
+		sde_encoder_pm_qos_remove_request(drm_enc);
 
 		if (req == REQ_ENTER_IDLE && is_video_mode && info->esync_enabled) {
 			if (sde_conn)
@@ -3103,7 +3107,7 @@ static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 
 	if (is_vid_mode && !info->esync_enabled && sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE) {
 		sde_encoder_irq_control(drm_enc, true);
-		_sde_encoder_pm_qos_add_request(drm_enc);
+		sde_encoder_pm_qos_add_request(drm_enc);
 	} else {
 		/* enable all the clks and resources */
 		ret = _sde_encoder_resource_control_helper(drm_enc,
@@ -3247,7 +3251,7 @@ static int _sde_encoder_rc_pre_modeset(struct drm_encoder *drm_enc,
 		SDE_ENC_RC_STATE_MODESET, SDE_EVTLOG_FUNC_CASE5);
 
 	sde_enc->rc_state = SDE_ENC_RC_STATE_MODESET;
-	_sde_encoder_pm_qos_remove_request(drm_enc);
+	sde_encoder_pm_qos_remove_request(drm_enc);
 
 end:
 	mutex_unlock(&sde_enc->rc_lock);
@@ -3291,7 +3295,7 @@ static int _sde_encoder_rc_post_modeset(struct drm_encoder *drm_enc,
 			SDE_ENC_RC_STATE_ON, SDE_EVTLOG_FUNC_CASE6);
 
 	sde_enc->rc_state = SDE_ENC_RC_STATE_ON;
-	_sde_encoder_pm_qos_add_request(drm_enc);
+	sde_encoder_pm_qos_add_request(drm_enc);
 
 end:
 	mutex_unlock(&sde_enc->rc_lock);
@@ -3349,7 +3353,7 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 	crtc_id = drm_crtc_index(crtc);
 	if (is_vid_mode && !info->esync_enabled) {
 		sde_encoder_irq_control(drm_enc, false);
-		_sde_encoder_pm_qos_remove_request(drm_enc);
+		sde_encoder_pm_qos_remove_request(drm_enc);
 	} else {
 		if (priv->event_thread[crtc_id].thread)
 			kthread_flush_worker(&priv->event_thread[crtc_id].worker);
@@ -7530,7 +7534,7 @@ void sde_encoder_kickoff(struct drm_encoder *drm_enc, bool config_changed)
 		SDE_ERROR("invalid sde_kms\n");
 		return;
 	}
-	if (sde_enc->cur_master)
+	if (sde_enc->cur_master && IS_DISP_OP_HWIO(disp_op))
 		_sde_encoder_update_retire_txq(sde_enc->cur_master, sde_kms);
 
 	/* delay frame kickoff based on expected present time */
@@ -7633,6 +7637,9 @@ u32 sde_encoder_helper_get_kickoff_timeout_ms(struct drm_encoder *drm_enc)
 	sde_kms = sde_encoder_get_kms(drm_enc);
 	if (!sde_kms)
 		return DEFAULT_KICKOFF_TIMEOUT_MS;
+
+	if (sde_kms->catalog->hw_fence_rev)
+		return HWFENCE_KICKOFF_TIMEOUT_MS;
 
 	if (sde_encoder_in_clone_mode(drm_enc))
 		src_enc = sde_crtc_get_src_encoder_of_clone(drm_enc->crtc);
@@ -9741,4 +9748,3 @@ void sde_encoder_check_frame_pending(struct msm_kms *kms, struct drm_crtc *crtc)
 		}
 	}
 }
-

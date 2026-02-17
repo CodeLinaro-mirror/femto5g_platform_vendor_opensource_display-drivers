@@ -653,6 +653,21 @@ int dsi_ctrl_cmd_transfer(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd,
 			  bool do_peripheral_flush);
 
 /**
+ * dsi_ctrl_cmd_transfer_rx() - Transfer commands to call dsi_message_rx
+ * @dsi_ctrl:             DSI controller handle.
+ * @cmd:                  Command description to transfer on DSI link.
+ * @flags:                Controller flags of the command.
+ *
+ * Transfer commands to call dsi_message_rx with sublinks independent reads.
+ * If the trigger is deferred, it will return without triggering the transfer.
+ * Command parameters are programmed to hardware.
+ *
+ * Return: error code.
+ */
+int dsi_ctrl_cmd_transfer_rx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd,
+			  u32 flags);
+
+/**
  * dsi_ctrl_transfer_unprepare() - Clean up post a command transfer
  * @dsi_ctrl:                 DSI controller handle.
  * @flags:                    Controller flags of the command

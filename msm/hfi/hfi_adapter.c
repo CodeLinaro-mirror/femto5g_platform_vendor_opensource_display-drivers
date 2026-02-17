@@ -537,7 +537,7 @@ static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
 }
 #endif
 
-struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance)
+struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance, bool hw_fence_enabled)
 {
 	struct hfi_adapter_t *hfi_host;
 	struct hfi_core_open_params open_params;
@@ -588,7 +588,8 @@ struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance)
 	}
 
 	/* Initialize DCP hw fence client */
-	_hfi_core_hw_fence_init(hfi_handle);
+	if (hw_fence_enabled)
+		_hfi_core_hw_fence_init(hfi_handle);
 
 	/* Initialize hfi_adapter_t after core session is created */
 	hfi_host->sde_or_vm_instance = instance;
@@ -1080,8 +1081,7 @@ static void _hfi_adapter_remove_listeners_by_event(struct hfi_client_t *ctx,
 		 * for this purpose.
 		 */
 		if (listener_entry->event_id == event_id &&
-		    (obj_id == 0 || listener_entry->obj_id == obj_id)) {
-
+			listener_entry->obj_id == obj_id) {
 			HFI_AD_DEBUG("%s: event_id:0x%x obj_id:0x%x packet_id:0x%x\n",
 				__func__, listener_entry->event_id, listener_entry->obj_id,
 				listener_entry->packet_id);
@@ -1108,6 +1108,7 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 	struct hfi_client_t *buff_client_ctx;
 	u32 packet_id;
 	int rc = 0;
+	bool add_listener = true;
 
 	if (!ctx || !cmd_buf) {
 		HFI_AD_ERROR("invalid client\n");
@@ -1123,6 +1124,7 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 		u32 event_id = *(u32 *)payload;
 
 		_hfi_adapter_remove_listeners_by_event(ctx, event_id, obj_id);
+		add_listener = false;
 	}
 
 	/* Continue with normal listener creation for deregister command to get response */
@@ -1137,30 +1139,35 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 		return rc;
 	}
 
-	buff_client_ctx = cmd_buf->ctx;
+	if (add_listener) {
+		buff_client_ctx = cmd_buf->ctx;
 
-	/* Create new listener_list structure to insert. */
-	struct listener_list *listener_entry = kzalloc(sizeof(struct listener_list), GFP_KERNEL);
+		/* Create new listener_list structure to insert. */
+		struct listener_list *listener_entry =
+			kzalloc(sizeof(struct listener_list), GFP_KERNEL);
 
-	if (!listener_entry) {
-		HFI_AD_ERROR("failed to allocate memory for listener_entry\n");
-		return -ENOMEM;
-	}
+		if (!listener_entry) {
+			HFI_AD_ERROR("failed to allocate memory for listener_entry\n");
+			return -ENOMEM;
+		}
 
-	listener_entry->packet_id = packet_id;
-	listener_entry->listener_obj = listener;
-	listener_entry->cmd_id = cmd_id;  /* Store command ID to identify deregister listeners */
-	listener_entry->obj_id = obj_id;  /* Store object ID for later cleanup */
+		listener_entry->packet_id = packet_id;
+		listener_entry->listener_obj = listener;
+		/* Store command ID to identify deregister listeners */
+		listener_entry->cmd_id = cmd_id;
+		/* Store object ID for later cleanup */
+		listener_entry->obj_id = obj_id;
 
-	/* Extract and store the event ID from payload for registration listeners cleanup */
-	if (payload && size >= sizeof(u32))
-		listener_entry->event_id = *(u32 *)payload;
+		/* Extract and store the event ID from payload for registration listeners cleanup */
+		if (payload && size >= sizeof(u32))
+			listener_entry->event_id = *(u32 *)payload;
 
-	/* Add listener based on packet obj_id  */
-	mutex_lock(&buff_client_ctx->listener_lock);
-	list_add_tail(&listener_entry->list_ptr,
+		/* Add listener based on packet obj_id  */
+		mutex_lock(&buff_client_ctx->listener_lock);
+		list_add_tail(&listener_entry->list_ptr,
 			&buff_client_ctx->packet_listeners.list_ptr);
-	mutex_unlock(&buff_client_ctx->listener_lock);
+		mutex_unlock(&buff_client_ctx->listener_lock);
+	}
 
 	return rc;
 }
@@ -1415,8 +1422,6 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 	struct hfi_prop_listener *listener = NULL;
 	struct listener_list *listener_entry = NULL;
 	struct hfi_cmd_buff_hdl buff_handle;
-	struct list_head *pos_to_remove = NULL;
-	struct listener_list *entry_to_remove = NULL;
 	struct hfi_header_info header_info;
 	struct hfi_packet_info packet_info;
 	struct list_head *pos = NULL;
@@ -1466,7 +1471,6 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		/* Phase 1: Collect matching listeners into local list under lock */
 		mutex_lock(&ctx->listener_lock);
 		list_for_each(pos, &ctx->packet_listeners.list_ptr) {
-			pos_to_remove = NULL;
 			listener_entry = list_entry(pos, struct listener_list, list_ptr);
 			if (!listener_entry) {
 				HFI_AD_DEBUG("listener_entry is NULL\n");
@@ -1480,26 +1484,12 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 			}
 
 			/* If packet_id's match for the response packet(s), add to local list */
-			if (packet_info.packet_id == listener_entry->packet_id) {
+			if (packet_info.packet_id == listener_entry->packet_id &&
+					packet_info.id == listener_entry->obj_id) {
 				listener = (struct hfi_prop_listener *)
-					(listener_entry->listener_obj);
+					listener_entry->listener_obj;
 				if (!listener)
 					continue;
-
-				/*
-				 * If this listener was created for a deregister command,
-				 * mark it for removal after we finish processing to avoid
-				 * modifying list while iterating.
-				 * Note: packet_info.cmd contains the event ID from response,
-				 * not the original command.
-				 */
-				if (listener_entry->cmd_id ==
-						HFI_COMMAND_DISPLAY_EVENT_DEREGISTER) {
-					pos_to_remove = pos;
-					entry_to_remove = listener_entry;
-					HFI_AD_DEBUG("listener for removal packet:%x event:%x\n",
-						listener_entry->packet_id, packet_info.cmd);
-				}
 
 				/* Allocate temporary listener_list entry and add to local list */
 				temp_entry = kzalloc(sizeof(struct listener_list), GFP_KERNEL);
@@ -1535,12 +1525,6 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 			/* Remove and free the temporary entry */
 			list_del(&temp_entry->list_ptr);
 			kfree(temp_entry);
-		}
-
-		/* Remove deregister listener after processing, outside the iteration */
-		if (pos_to_remove && entry_to_remove) {
-			list_del(pos_to_remove);
-			kfree(entry_to_remove);
 		}
 	}
 
@@ -1782,6 +1766,8 @@ int hfi_adapter_buffer_dealloc(struct hfi_client_t *ctx, struct hfi_shared_addr_
 
 	alloc_info->mapped_iova = 0;
 	alloc_info->cpu_va = NULL;
+	addr_map->local_addr = 0;
+	addr_map->remote_addr = 0;
 
 	return ret;
 }

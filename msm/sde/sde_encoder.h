@@ -1496,4 +1496,16 @@ int sde_encoder_set_offload_mode(struct drm_encoder *encoder, int enable);
  */
 u32 sde_encoder_phys_delay_dcs(struct drm_encoder *drm_enc);
 
+/**
+ * sde_encoder_pm_qos_add_request - add a vote on pm qos
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc);
+
+/**
+ * sde_encoder_pm_qos_remove_request - remove vote on pm qos
+ * @drm_enc: pointer to drm encoder
+ */
+void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc);
+
 #endif /* __SDE_ENCODER_H__ */

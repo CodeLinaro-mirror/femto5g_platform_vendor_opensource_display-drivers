@@ -681,6 +681,38 @@
 #define HFI_PROPERTY_DISPLAY_OUTPUT_FENCE                            0x0002002C
 
 /*
+ * HFI_PROPERTY_DISPLAY_DIM_LAYER - Sets the dim layer parameters for display output.
+ *                                  Host sends this packet as part of the
+ *                                  HFI_COMMAND_DISPLAY_SET_PROPERTY command payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_DIM_LAYER
+ *     (u32_key) payload [0]      : HFI_PROPERTY_DISPLAY_DIM_LAYER |
+ *                                  (version=0 << 20) |
+ *                                  (dsize=(count x struct hfi_display_dim_layer) << 24)
+ *     (u32_value) payload [1-..] : array of struct hfi_display_dim_layer
+ */
+#define HFI_PROPERTY_DISPLAY_DIM_LAYER                               0x0002002D
+
+/*
+ * HFI_PROPERTY_DISPLAY_QSYNC_MODE - Sets QSYNC mode for video/command mode panels.
+ *                          Host sends this to configure QSYNC mode which requires sending
+ *                          QSYNC ON/OFF commands to the panel in case of command mode. For video
+ *                          mode, in one shot mode, the vertical blanking region is extended only
+ *                          for the current frame till the frame is ready to be displayed (or)
+ *                          until blanking extends till qsync min fps. In case of continuous mode,
+ *                          the blanking region is extended for every vsync until qsync is
+ *                          disabled. Host is expected to send this packet as part of the
+ *                          HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *                          Note: qsync min fps is sent through another property.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_QSYNC_MODE
+ *     (u32_key) payload [0]       : HFI_PROPERTY_DISPLAY_QSYNC_MODE |
+ *                                   (version=0 << 20) | (dsize=1 << 24 )
+ *     (u32_value) payload [1]     : u32 mode (0=none, 1=continuous, 2=oneshot)
+ */
+#define HFI_PROPERTY_DISPLAY_QSYNC_MODE                              0x0002002F
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
@@ -1982,6 +2014,22 @@
  *     (u32_value) payload [2-6] | struct hfi_buff
  */
 #define HFI_PROPERTY_OUTPUT_LAYER_DNSC_BLUR_CFG                      0x00030029
+
+/*
+ * HFI_PROPERTY_LAYER_EXCLUSION_RECTANGLE_ROI - Gets source exclusion rectangle region of
+ *                                              the output layer, defining the area within
+ *                                              the source buffer that is not to be fetched.
+ *                                              Host is expected to send this packet
+ *                                              of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                              command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_EXCLUSION_RECTANGLE_ROI
+ *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_EXCLUSION_RECTANGLE_ROI |
+ *                                 (version=0 << 20) | (dsize=5 << 24 )
+ *     (u32_value) payload [1]   : layer_id
+ *     (u32_value) payload [2-5] : struct hfi_display_roi
+ */
+#define HFI_PROPERTY_LAYER_EXCLUSION_RECTANGLE_ROI                   0x0003002A
 
 /*
  * @def HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY - Gets the security policy for output layer.
