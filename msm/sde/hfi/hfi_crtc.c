@@ -56,6 +56,7 @@ struct base_prop_lookup hfi_crtc_base_props_map[] = {
 	{CRTC_PROP_CORE_AB, HFI_PROPERTY_DISPLAY_CORE_AB},
 	{CRTC_PROP_CORE_CLK, HFI_PROPERTY_DISPLAY_CORE_CLK},
 	{CRTC_PROP_DIM_LAYER_V1, HFI_PROPERTY_DISPLAY_DIM_LAYER},
+	{CRTC_PROP_DEST_SCALER, HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA},
 };
 
 struct kv_prop_lookup {
@@ -109,6 +110,33 @@ static bool _hfi_crtc_is_prop_excluded_for_repro(u32 drm_prop, enum wb_opmode op
 	return false;
 }
 #endif
+
+static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate,
+		struct hfi_util_u32_prop_helper *prop_collector, u32 hfi_prop)
+{
+	struct hfi_resource_cfg lm_cfg;
+	int rc = 0;
+
+	/*
+	 * DS Config (Other types of configs can also be added below with respective checks and
+	 * their corresponding res_type)
+	 */
+	if (cstate->num_ds > 0) {
+		lm_cfg.res_type = HFI_RESOURCE_LM;
+		lm_cfg.resource_idx = cstate->ds_cfg[0].idx;
+		lm_cfg.width = cstate->ds_cfg[0].lm_width;
+		lm_cfg.height = cstate->ds_cfg[0].lm_height;
+
+		if (lm_cfg.width && lm_cfg.height) {
+			rc = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+				HFI_VAL_U32_ARRAY, &lm_cfg, sizeof(struct hfi_resource_cfg));
+
+			return rc;
+		}
+	}
+
+	return 0;
+}
 
 int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 		struct sde_crtc_state *cstate,
@@ -188,6 +216,9 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 
 		CRTC_DIRTY_OP_LOCK(crtc, clear_bit, SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty);
 		kfree(dim_layers);
+		break;
+	case HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA:
+		hfi_crtc_setup_resource_cfg(cstate, prop_collector, hfi_prop);
 		break;
 	default:
 		HFI_ERROR_CRTC(crtc_hfi, "unsupported HFI property\n");
