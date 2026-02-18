@@ -8190,10 +8190,19 @@ static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
 				catalog->mdp[0].ubwc_swizzle);
 	}
 
-	if (of_fdt_get_ddrtype() == LP_DDR4_TYPE)
+	switch (of_fdt_get_ddrtype()) {
+	case LP_DDR4_TYPE:
 		sde_kms_info_add_keystr(info, "DDR version", "DDR4");
-	else
+		break;
+	case LP_DDR5_TYPE:
 		sde_kms_info_add_keystr(info, "DDR version", "DDR5");
+		break;
+	case LP_DDR6_TYPE:
+		sde_kms_info_add_keystr(info, "DDR version", "DDR6");
+		break;
+	default:
+		sde_kms_info_add_keystr(info, "DDR version", "DDR5");
+	}
 
 	if (sde_is_custom_client()) {
 		/* No support for SMART_DMA_V1 yet */
