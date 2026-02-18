@@ -405,6 +405,7 @@ static int sde_rsc_resource_disable(struct sde_rsc_priv *rsc)
 {
 	struct sde_power_handle *phandle;
 	struct dss_module_power *mp;
+	int ret = 0;
 
 	if (!rsc) {
 		pr_err("invalid drv data\n");
@@ -425,6 +426,24 @@ static int sde_rsc_resource_disable(struct sde_rsc_priv *rsc)
 	msm_dss_enable_clk(mp->clk_config, mp->num_clk, false);
 	sde_power_scale_reg_bus(phandle, VOTE_INDEX_DISABLE, false);
 	msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, false);
+
+	/* Ignored if a single power domain present */
+	ret = sde_power_enable_power_domain(phandle,
+		SDE_POWER_PD_ID_INT2_GDSC, false);
+	if (ret) {
+		pr_err("gdsc2 power disable failed, ret:%d\n", ret);
+		return ret;
+	}
+
+	if (rsc->phandle.num_power_domains > 1) {
+	/* If multiple power domains, gdsc removed last */
+		ret = sde_power_enable_power_domain(phandle,
+			SDE_POWER_PD_ID_GDSC, false);
+		if (ret) {
+			pr_err("gdsc power disable failed, ret:%d\n", ret);
+			return ret;
+		}
+	}
 
 	return 0;
 }
@@ -448,6 +467,13 @@ static int sde_rsc_resource_enable(struct sde_rsc_priv *rsc)
 	rc = msm_dss_enable_vreg(mp->vreg_config, mp->num_vreg, true);
 	if (rc) {
 		pr_err("failed to enable vregs rc=%d\n", rc);
+		goto end;
+	}
+
+	rc = sde_power_enable_power_domain(&rsc->phandle,
+		SDE_POWER_PD_ID_INT2_GDSC, true);
+	if (rc) {
+		pr_err("gdsc2 power enable failed, rc:%d\n", rc);
 		goto end;
 	}
 
@@ -1595,13 +1621,26 @@ static void sde_rsc_deinit(struct platform_device *pdev,
 	if (rsc->sw_fs_enabled) {
 		if (rsc->pd_fs)
 			pm_runtime_put_sync(rsc->pd_fs);
-		if (rsc->fs)
+		else if (rsc->fs)
 			regulator_disable(rsc->fs);
+		else if (rsc->phandle.num_power_domains > 1) {
+			sde_power_enable_power_domain(&rsc->phandle,
+				SDE_POWER_PD_ID_INT2_GDSC, false);
+			sde_power_enable_power_domain(&rsc->phandle,
+				SDE_POWER_PD_ID_GDSC, false);
+
+		}
 	}
 	if (rsc->pd_fs)
 		dev_pm_domain_detach(rsc->pd_fs, false);
-	if (rsc->fs)
+	else if (rsc->fs)
 		devm_regulator_put(rsc->fs);
+	else if (rsc->phandle.num_power_domains > 1) {
+		sde_power_detach_power_domain(&rsc->phandle,
+			SDE_POWER_PD_ID_INT2_GDSC);
+		sde_power_detach_power_domain(&rsc->phandle,
+			SDE_POWER_PD_ID_GDSC);
+	}
 	if (rsc->wrapper_io.base)
 		msm_dss_iounmap(&rsc->wrapper_io);
 	if (rsc->drv_io.base)
@@ -1810,7 +1849,7 @@ static int sde_rsc_probe(struct platform_device *pdev)
 		pm_runtime_enable(&pdev->dev);
 		rsc->pd_fs = &pdev->dev;
 		rsc->fs = NULL;
-	} else {
+	} else if (rsc->phandle.num_power_domains == 0) {
 		rsc->fs = devm_regulator_get(&pdev->dev, "vdd");
 		if (IS_ERR_OR_NULL(rsc->fs)) {
 			rsc->fs = NULL;
@@ -1818,6 +1857,8 @@ static int sde_rsc_probe(struct platform_device *pdev)
 		}
 		rsc->pd_fs = NULL;
 	}
+
+	rsc->phandle.rsc_pd = true;
 
 	if (rsc->version >= SDE_RSC_REV_3)
 		ret = sde_rsc_hw_register_v3(rsc);
@@ -1833,6 +1874,9 @@ static int sde_rsc_probe(struct platform_device *pdev)
 		ret = pm_runtime_get_sync(rsc->pd_fs);
 	else if (rsc->fs)
 		ret = regulator_enable(rsc->fs);
+	else
+		ret = sde_power_enable_power_domain(&rsc->phandle,
+				SDE_POWER_PD_ID_GDSC, true);
 	if (ret) {
 		pr_err("sde rsc: fs on failed ret:%d\n", ret);
 		goto sde_rsc_fail;
