@@ -110,6 +110,8 @@ struct display_hw_assigment {
 
 	bool intf_owner;
 	uint32_t intf_mask;
+	uint32_t dp_ctrl_id;
+	uint32_t dp_stream_id;
 
 	bool wb_owner;
 	uint32_t wb_mask;

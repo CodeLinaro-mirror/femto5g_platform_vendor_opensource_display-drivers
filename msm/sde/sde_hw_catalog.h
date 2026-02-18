@@ -1761,6 +1761,8 @@ struct sde_dnsc_blur_filter_info {
  * @features           bit mask identifying sub-blocks/features
  * @type:              Interface type(DSI, DP, HDMI)
  * @controller_id:     Controller Instance ID in case of multiple of intf type
+ * @dp_ctrl_id:        Controller ID for DP Interface
+ * @dp_stream_id:      Stream ID within a DP Controller
  * @prog_fetch_lines_worst_case	Worst case latency num lines needed to prefetch
  * @te_irq_offset:     Register offset for INTF TE IRQ block
  * @hw_flush_sync_val   flush sync value at which snapshot should be captured
@@ -1769,6 +1771,8 @@ struct sde_intf_cfg  {
 	SDE_HW_BLK_INFO;
 	u32 type;   /* interface type*/
 	u32 controller_id;
+	u32 dp_ctrl_id;
+	u32 dp_stream_id;
 	u32 prog_fetch_lines_worst_case;
 	u32 te_irq_offset;
 	u32 hw_flush_sync_val;

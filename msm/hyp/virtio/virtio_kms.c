@@ -2104,10 +2104,23 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 					hyp_cfg->intf[hyp_cfg->intf_count].virtual = true;
 				hyp_cfg->intf[hyp_cfg->intf_count].fixed_ctl_id =
 						output->hw_assign.ctl_id;
+				hyp_cfg->intf[hyp_cfg->intf_count].dp_ctrl_id =
+					sde_cfg->intf[j].dp_ctrl_id;
+				hyp_cfg->intf[hyp_cfg->intf_count].dp_stream_id =
+					sde_cfg->intf[j].dp_stream_id;
+				output->hw_assign.dp_ctrl_id = sde_cfg->intf[j].dp_ctrl_id;
+				output->hw_assign.dp_stream_id = sde_cfg->intf[j].dp_stream_id;
 				hyp_cfg->intf[hyp_cfg->intf_count].display_idx = i;
+
 				VIRTIO_KMS_DBG("  HYP_INTF%d=INTF%d->CTL%d  virtual %s\n", hyp_cfg->cdm_count,
 						sde_cfg->intf[j].id, output->hw_assign.ctl_id,
 						hyp_cfg->cdm[hyp_cfg->cdm_count].virtual ? "Yes" : "No");
+				VIRTIO_KMS_DBG("dpu %d, intf %d, ctrl id %u, stream id %u\n",
+						output->hw_assign.dpu_id,
+						j,
+						output->hw_assign.dp_ctrl_id,
+						output->hw_assign.dp_stream_id);
+
 				hyp_cfg->intf_count++;
 			}
 		}

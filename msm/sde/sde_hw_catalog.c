@@ -350,6 +350,8 @@ enum {
 	INTF_LEN,
 	INTF_PREFETCH,
 	INTF_TYPE,
+	INTF_DP_CTRL_ID,
+	INTF_DP_STREAM_ID,
 	INTF_TE_IRQ,
 	INTF_PROP_MAX,
 };
@@ -1005,6 +1007,8 @@ static struct sde_prop_type intf_prop[] = {
 	{INTF_PREFETCH, "qcom,sde-intf-max-prefetch-lines", false,
 						PROP_TYPE_U32_ARRAY},
 	{INTF_TYPE, "qcom,sde-intf-type", false, PROP_TYPE_STRING_ARRAY},
+	{INTF_DP_CTRL_ID, "qcom,sde-intf-ctrl", false, PROP_TYPE_U32_ARRAY},
+	{INTF_DP_STREAM_ID, "qcom,sde-intf-stream", false, PROP_TYPE_U32_ARRAY},
 	{INTF_TE_IRQ, "qcom,sde-intf-tear-irq-off", false, PROP_TYPE_U32_ARRAY},
 };
 
@@ -2643,6 +2647,9 @@ static int sde_intf_parse_dt(struct device_node *np,
 		if (test_bit(SDE_MDP_HW_FLUSH_SYNC, &sde_cfg->mdp[0].features))
 			intf->hw_flush_sync_val = DEFAULT_HW_FLUSH_SYNC_VAL;
 
+		intf->dp_ctrl_id = 0xFFFFFFFF;
+		intf->dp_stream_id = 0xFFFFFFFF;
+
 		of_property_read_string_index(np,
 				intf_prop[INTF_TYPE].prop_name, i, &type);
 		if (!strcmp(type, "dsi")) {
@@ -2657,6 +2664,14 @@ static int sde_intf_parse_dt(struct device_node *np,
 			intf->type = INTF_DP;
 			intf->controller_id = dp_count;
 			dp_count++;
+
+			if (prop_exists[INTF_DP_CTRL_ID])
+				intf->dp_ctrl_id =
+					PROP_VALUE_ACCESS(prop_value, INTF_DP_CTRL_ID, i);
+
+			if (prop_exists[INTF_DP_STREAM_ID])
+				intf->dp_stream_id =
+					PROP_VALUE_ACCESS(prop_value, INTF_DP_STREAM_ID, i);
 		} else {
 			intf->type = INTF_NONE;
 			intf->controller_id = none_count;
