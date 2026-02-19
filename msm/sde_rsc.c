@@ -1952,13 +1952,14 @@ static int sde_rsc_rpmh_probe(struct platform_device *pdev)
 	return 0;
 }
 
-void sde_rsc_rpmh_remove(struct platform_device *pdev)
+int sde_rsc_rpmh_remove(struct platform_device *pdev)
 {
 	int i;
 
 	for (i = 0; i < MAX_RSC_COUNT; i++)
 		rpmh_dev[i] = NULL;
 
+	return 0;
 }
 
 static const struct of_device_id dt_match[] = {
