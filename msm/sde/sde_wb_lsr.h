@@ -136,6 +136,19 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
 void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state);
 
 extern int lsr_fw_reset(void);
+
+/**
+ * hfi_lsr_notify_ssr_event - notify lsr ssr events
+ * @ssr_event: type of ssr event
+ * @dev: pointer to drm_device
+ */
+int hfi_lsr_notify_ssr_event(enum hfi_device_ssr_event ssr_event, struct drm_device *dev);
+
+/**
+ * hfi_lsr_wait_for_display_off - wait for lsr displays to turn off
+ * @dev: pointer to drm_device
+ */
+int hfi_lsr_wait_for_display_off(struct drm_device *dev);
 #else
 static inline
 int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
@@ -227,6 +240,17 @@ static inline void sde_wb_connector_reset_reproj_state(struct sde_connector_stat
 }
 
 static inline int lsr_fw_reset(void)
+{
+	return 0;
+}
+
+static inline int hfi_lsr_notify_ssr_event(enum hfi_device_ssr_event ssr_event,
+	struct drm_device *dev)
+{
+	return 0;
+}
+
+static inline int hfi_lsr_wait_for_display_off(struct drm_device *dev)
 {
 	return 0;
 }

@@ -5148,6 +5148,9 @@ int sde_connector_register_custom_event(struct sde_kms *kms,
 		atomic_set(&c_conn->ssr_notify_enabled, (val ? 1 : 0));
 		ret = 0;
 		break;
+	case DRM_EVENT_LSR_SSR:
+		ret = 0;
+		break;
 	default:
 		break;
 	}
@@ -5172,6 +5175,7 @@ int sde_connector_event_notify(struct drm_connector *connector, uint32_t type,
 	case DRM_EVENT_PANEL_DEAD:
 	case DRM_EVENT_SDE_HW_RECOVERY:
 	case DRM_EVENT_MISR_SIGN:
+	case DRM_EVENT_LSR_SSR:
 		break;
 	case DRM_EVENT_SSR:
 		c_conn = to_sde_connector(connector);

@@ -55,6 +55,7 @@ struct sde_reproj {
 	u32 gcx_scratch_size;
 	u32 arp_buf_lsr_addr;
 	u32 arp_buf_size;
+	atomic_t *lsr_ssr_in_progress;
 
 	/**
 	 * on()
