@@ -8354,10 +8354,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			"lsr_mode", 0, 0, e_lsr_mode, ARRAY_SIZE(e_lsr_mode),
 			MSM_DISP_LSR_MODE_DISABLED, CRTC_PROP_LSR_MODE);
 
-	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map))
+	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map) ||
+			test_bit(SDE_FEATURE_LSR, catalog->features))
 		msm_property_install_enum(&sde_crtc->property_info, "cache_state",
-			0x0, 0, e_cache_state,
-			ARRAY_SIZE(e_cache_state), 0,
+			0x0, 0, e_cache_state, ARRAY_SIZE(e_cache_state), 0,
 			CRTC_PROP_CACHE_STATE);
 
 	if (test_bit(SDE_FEATURE_DIM_LAYER, catalog->features)) {

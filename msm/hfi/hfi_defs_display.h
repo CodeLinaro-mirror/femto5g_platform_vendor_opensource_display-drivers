@@ -79,6 +79,30 @@ enum hfi_display_commit_flag {
 };
 
 /*
+ * enum hfi_display_res_type - resource types
+ * @HFI_RESOURCE_LM   :  Layer Mixer
+ */
+enum hfi_display_res_type {
+	HFI_RESOURCE_LM = 0x1,
+};
+
+/**
+ * struct hfi_resource_cfg - resource output configuration
+ * @res_type: resource type (LM, Ai Scaler etc)
+ * @resource_idx: resource index
+ * @width: resource output width
+ * @height: resource output height
+ * @reserved: reserved field for future
+ */
+struct hfi_resource_cfg {
+	u32 res_type;
+	u32 resource_idx;
+	u32 width;
+	u32 height;
+	u32 reserved;
+};
+
+/*
  * struct hfi_display_roi
  * @x_pos    :  x position of the roi
  * @y_pos    :  y position of the roi
