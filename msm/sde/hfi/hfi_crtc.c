@@ -449,7 +449,6 @@ int _hfi_crtc_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 void _hfi_crtc_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_crtc *crtc,
 		struct sde_crtc_state *cstate)
 {
-	int ret;
 	struct hfi_crtc *crtc_hfi;
 
 	if (!crtc || !cstate) {
@@ -460,23 +459,7 @@ void _hfi_crtc_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_crt
 	crtc_hfi = to_hfi_crtc(crtc);
 
 	mutex_lock(&crtc_hfi->hfi_lock);
-
 	hfi_util_u32_prop_helper_reset(crtc_hfi->base_props);
-
-	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
-			cmd_buf,
-			HFI_COMMAND_DISPLAY_SET_PROPERTY,
-			disp_id,
-			HFI_PAYLOAD_TYPE_U32_ARRAY,
-			hfi_util_u32_prop_helper_get_payload_addr(crtc_hfi->base_props),
-			hfi_util_u32_prop_helper_get_size(crtc_hfi->base_props),
-			HFI_HOST_FLAGS_NON_DISCARDABLE);
-	if (ret) {
-		HFI_ERROR_CRTC(crtc_hfi, "failed to send HFI commands\n");
-		goto end;
-	}
-
-end:
 	mutex_unlock(&crtc_hfi->hfi_lock);
 }
 
@@ -1208,6 +1191,17 @@ int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_bu
 		SDE_ERROR("invalid input: crtc=%p, cmd_buf=%p, color_props=%p\n",
 			crtc, cmd_buf, color_props);
 		return -EINVAL;
+	}
+
+	/*
+	 * Do not send a SET_PROPERTY packet with zero properties. When the
+	 * prop helper is empty, get_size() still returns 4 (the count field),
+	 * which would produce a packet with payload=0x0 (num_props=0). The
+	 * firmware rejects such packets with a "packet with no props" warning.
+	 */
+	if (!hfi_util_u32_prop_helper_prop_count(color_props)) {
+		SDE_DEBUG("no color props to send, skipping\n");
+		return 0;
 	}
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
