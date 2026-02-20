@@ -97,43 +97,22 @@ struct dpcd_info {
 	bool fec_en;
 };
 
-/* Mode override structure */
-struct dp_mode_override {
-	bool enabled;
-	u32 h_active;
-	u32 v_active;
-	u32 refresh_rate;
-	int aspect_ratio;
-};
-
-/* Structure to contain hdcp info printed by debugfs*/
-struct dp_hdcp_info {
-	int hdcp_state;
-	int hdcp_version;
-	u32 source_cap;
-};
-
 /* Forward declaration of dp_mgr_hfi_priv for cross-component access */
 struct dp_mgr_hfi_priv {
 	char *name;
 	struct platform_device *pdev;
 	struct dp_client client;
 	struct msm_drm_private *priv;
-	struct dp_hfi *hfi;
+	struct dp_hfi *hfi[DP_STREAMS_MAX];
 	struct dp_intf_info intf_info;
 	struct dp_hpd *hpd;
 	struct dp_hpd_cb hpd_cb;
-
-	struct hfi_shared_addr_map *edid_addr_map;
-	struct hfi_shared_addr_map *modes_addr_map;
 
 	struct dp_aux_switch *aux_switch;
 	struct dp_display_mode default_mode;
 
 	struct completion hpd_comp;
 
-	struct sde_edid_ctrl *edid_ctrl;
-	struct hfi_display_mode_info mode_list[64]; /* MAX_MODES */
 	u32 mode_count;
 	u32 link_rate;
 	u32 lane_count;
@@ -152,20 +131,10 @@ struct dp_mgr_hfi_priv {
 	bool soft_unplug;
 
 	struct dp_audio *audio;
-
-	/* Mode override */
 	struct dp_mode_override mode_ovr;
-	struct hfi_device_hotplug_config hpd_config;
-
-	struct dp_hdcp_info hdcp_info;
 	u8 min_enc_level;
-	/* HDCP 1.x context */
-	void *hdcp1x_ctx;
 
-	/* HDCP 2.x context */
-	void *hdcp2x_ctx;
-	struct hfi_shared_addr_map *hdcp2x_req_map;
-	struct hfi_shared_addr_map *hdcp2x_resp_map;
+	u32 active_streams;
 
 	/* TUI state */
 	bool tui_active;

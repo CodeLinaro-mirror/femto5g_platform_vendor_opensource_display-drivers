@@ -20,6 +20,7 @@
 #include "hfi_kms.h"
 #include "hfi_commands_device.h"
 #include "dp_debug.h"
+#include "sde_hdcp.h"
 
 static int _dp_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 {
@@ -200,9 +201,7 @@ static int _pack_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client,
 		break;
 	case HFI_COMMAND_DISPLAY_SET_MODE:
 	case HFI_COMMAND_DISPLAY_ENABLE:
-	case HFI_COMMAND_DISPLAY_POST_ENABLE:
 	case HFI_COMMAND_DISPLAY_DISABLE:
-	case HFI_COMMAND_DISPLAY_POST_DISABLE:
 	case HFI_COMMAND_DISPLAY_EVENT_REGISTER:
 	case HFI_COMMAND_DISPLAY_EVENT_DEREGISTER:
 		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
@@ -408,7 +407,7 @@ int dp_hfi_send_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client, b
  *
  * Return: pointer to dp_mgr_hfi structure on success, ERR_PTR on failure.
  */
-struct dp_hfi *dp_hfi_setup(struct dp_client *client, void *cb_data)
+struct dp_hfi *dp_hfi_setup(struct dp_client *client, void *hfi_priv)
 {
 	struct msm_drm_private *priv;
 	struct drm_device *dev;
@@ -448,8 +447,7 @@ struct dp_hfi *dp_hfi_setup(struct dp_client *client, void *cb_data)
 		return ERR_PTR(-ENOMEM);
 	}
 
-	hfi->connector = client->base_connector;
-	hfi->cb_data = cb_data;
+	hfi->priv = hfi_priv;
 
 	/* Call dp_hfi_setup_client to setup DP-specific HFI and get hfi */
 	rc = dp_hfi_setup_client(hfi, hfi_host);
@@ -458,6 +456,13 @@ struct dp_hfi *dp_hfi_setup(struct dp_client *client, void *cb_data)
 		vfree(hfi);
 		return ERR_PTR(rc);
 	}
+
+	hfi->hdcp_info.hdcp_state = HDCP_STATE_INACTIVE;
+	hfi->hdcp_info.hdcp_version = HDCP_VERSION_NONE;
+	hfi->hdcp_info.source_cap = 0;
+
+	/* Initialize min_enc_level to default (standard content) */
+	hfi->min_enc_level = 0;
 
 	return hfi;
 }

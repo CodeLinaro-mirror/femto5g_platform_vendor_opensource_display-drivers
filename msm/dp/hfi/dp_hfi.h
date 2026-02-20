@@ -16,6 +16,22 @@
 #include "hfi_utils.h"
 #include "hfi_defs_panel.h"
 
+/* Mode override structure */
+struct dp_mode_override {
+	bool enabled;
+	u32 h_active;
+	u32 v_active;
+	u32 refresh_rate;
+	int aspect_ratio;
+};
+
+/* Structure to contain hdcp info printed by debugfs*/
+struct dp_hdcp_info {
+	int hdcp_state;
+	int hdcp_version;
+	u32 source_cap;
+};
+
 /**
  * struct dp_hfi - dp display hfi structure
  * @hfi_adapter:          Pointer to hfi adapter structure
@@ -44,12 +60,34 @@ struct dp_hfi {
 	struct kthread_worker cmd_buf_worker;
 	struct hfi_shared_addr_map *shared_addr_map;
 
+	struct hfi_shared_addr_map *edid_addr_map;
+	struct hfi_shared_addr_map *modes_addr_map;
+	u32 mode_count;
+	struct sde_edid_ctrl *edid_ctrl;
+	struct hfi_display_mode_info mode_list[64]; /* MAX_MODES */
+
 	bool mode_valid;
 	unsigned long tx_cmd_buf_dva;
 	u32 tx_cmd_buf_fill_level;
 	struct hfi_shared_addr_map tx_cmd_buf_map;
+	u32 stream_id;
+	bool connected;
 
-	void *cb_data;
+	/* Mode override */
+	struct dp_mode_override mode_ovr;
+	struct hfi_device_hotplug_config hpd_config;
+
+	struct dp_hdcp_info hdcp_info;
+	u8 min_enc_level;
+	/* HDCP 1.x context */
+	void *hdcp1x_ctx;
+
+	/* HDCP 2.x context */
+	void *hdcp2x_ctx;
+	struct hfi_shared_addr_map *hdcp2x_req_map;
+	struct hfi_shared_addr_map *hdcp2x_resp_map;
+
+	void *priv;
 	void (*handle_event)(void *cb_data, u32 event, void *payload, u32 size);
 };
 
