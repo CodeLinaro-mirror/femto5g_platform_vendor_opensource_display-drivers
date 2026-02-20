@@ -966,10 +966,19 @@ int virtio_connector_get_avr_step_fps(struct drm_connector_state *conn_state)
 	return sde_conn_state->mode_info.avr_step_fps;
 }
 
+int virtio_connector_set_backlight(struct drm_connector *connector,
+		void *display, u32 bl_lvl)
+{
+	VIRTIO_KMS_DBG("connector: %p, display: %p, level: %d\n", connector, display, bl_lvl);
+
+	return 0;
+}
+
 static const struct sde_connector_ops virtio_conn_ops = {
 	.set_info_blob = virtio_connector_set_info_blob,
 	.post_init	= virtio_connector_post_init,
 	.detect_ctx	= virtio_connector_detect_ctx,
+	.set_backlight	= virtio_connector_set_backlight,
 	.get_modes	= virtio_connector_get_modes,
 	.atomic_check = virtio_connector_atomic_check,
 	.mode_valid = virtio_connector_mode_valid,

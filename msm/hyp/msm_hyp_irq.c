@@ -384,7 +384,7 @@ static int msm_hyp_irq_idx_lookup(struct sde_hw_intr *intr,
 	int i;
 
 	for (i = 0; i < intr->sde_irq_map_size; i++) {
-		if ((intr_type == intr->sde_irq_map[i].intr_type) && 
+		if ((intr_type == intr->sde_irq_map[i].intr_type) &&
 			(instance_idx == intr->sde_irq_map[i].instance_idx))
 			return i;
 	}

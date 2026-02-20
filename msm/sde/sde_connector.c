@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -144,6 +144,85 @@ static void sde_dimming_bl_notify(struct sde_connector *conn, struct dsi_backlig
 	msm_mode_object_event_notify(&conn->base.base, conn->base.dev, &event, (u8 *)&bl_info);
 }
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+static int sde_hyp_backlight_device_update_status(struct backlight_device *bd)
+{
+	return 0;
+}
+
+static int sde_hyp_backlight_device_get_brightness(struct backlight_device *bd)
+{
+	return 0;
+}
+
+static const struct backlight_ops sde_hyp_backlight_device_ops = {
+	.update_status = sde_hyp_backlight_device_update_status,
+	.get_brightness = sde_hyp_backlight_device_get_brightness,
+};
+
+static int sde_hyp_backlight_cooling_cb(struct notifier_block *nb,
+					unsigned long val, void *data)
+{
+	struct sde_connector *c_conn;
+	struct backlight_device *bd = (struct backlight_device *)data;
+
+	c_conn = bl_get_data(bd);
+	SDE_DEBUG("bl: thermal max brightness cap:%lu\n", val);
+	c_conn->thermal_max_brightness = val;
+
+	sde_hyp_backlight_device_update_status(bd);
+	return 0;
+}
+
+static int sde_hyp_backlight_setup(struct sde_connector *c_conn,
+					struct drm_device *dev)
+{
+	struct backlight_properties props;
+	struct sde_kms *sde_kms;
+	static int display_count;
+
+	char bl_node_name[BL_NODE_NAME_SIZE];
+
+	sde_kms = sde_connector_get_kms(&c_conn->base);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return -EINVAL;
+	} else if (!c_conn->ops.set_backlight) {
+		return 0;
+	}
+
+	memset(&props, 0, sizeof(props));
+	props.type = BACKLIGHT_RAW;
+	props.power = FB_BLANK_UNBLANK;
+	props.max_brightness = 255; //bl_config->brightness_max_level;
+	props.brightness = 200; //bl_config->brightness_max_level;
+	snprintf(bl_node_name, BL_NODE_NAME_SIZE, "panel%u-backlight",
+							display_count);
+	c_conn->bl_device = backlight_device_register(bl_node_name, dev->dev, c_conn,
+			&sde_hyp_backlight_device_ops, &props);
+	if (IS_ERR_OR_NULL(c_conn->bl_device)) {
+		SDE_ERROR("Failed to register backlight: %ld\n",
+				    PTR_ERR(c_conn->bl_device));
+		c_conn->bl_device = NULL;
+		return -ENODEV;
+	}
+
+	c_conn->thermal_max_brightness = 255; //bl_config->brightness_max_level;
+
+	c_conn->n.notifier_call = sde_hyp_backlight_cooling_cb;
+	c_conn->cdev = backlight_cdev_register(dev->dev, c_conn->bl_device,
+							&c_conn->n);
+	if (IS_ERR_OR_NULL(c_conn->cdev)) {
+		SDE_INFO("Failed to register backlight cdev: %ld\n",
+				    PTR_ERR(c_conn->cdev));
+		c_conn->cdev = NULL;
+	}
+
+	display_count++;
+
+	return 0;
+}
+#endif
 static int sde_backlight_set_notify(struct sde_connector *c_conn, int brightness, u32 bl_lvl)
 {
 	struct drm_event event;
@@ -455,10 +534,12 @@ static int sde_backlight_setup(struct sde_connector *c_conn,
 	}
 
 	display = _sde_connector_get_display(c_conn);
-	if (!display)
+	if (!display || !display->panel)
 		return 0;
 
 	bl_config = &display->panel->bl_config;
+	if (!bl_config)
+		return 0;
 
 	if (bl_config->type != DSI_BACKLIGHT_DCS &&
 		sde_in_trusted_vm(sde_kms))
@@ -4241,6 +4322,9 @@ struct drm_connector *sde_connector_init(struct drm_device *dev,
 	}
 
 	rc = sde_backlight_setup(c_conn, dev);
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	rc = sde_hyp_backlight_setup(c_conn, dev);
+#endif
 	if (rc) {
 		SDE_ERROR("failed to setup backlight, rc=%d\n", rc);
 		goto error_cleanup_fence;
