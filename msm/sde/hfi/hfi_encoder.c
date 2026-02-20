@@ -51,7 +51,7 @@ static ktime_t hfi_enc_unpack_frame_event(void *payload, u32 *idx, struct sde_en
 	ts =  ts | (ts_low);
 
 	/* convert into qtimer hw ticks & adjust */
-	ts = (ts * 192) / (10 * 1000);
+	ts = NS_TO_QTIMER(ts);
 	ts = sde_encoder_event_timestamp_adjust(DRMID(drm_enc), fps, ts);
 
 	SDE_EVT32(DRMID(drm_enc), atomic_read(&hfi_enc->hfi_commit_cnt),
@@ -94,7 +94,7 @@ static ktime_t hfi_enc_unpack_vsync_event(void *payload, u32 *idx, struct sde_en
 	ts =  ts | (ts_low);
 
 	/* convert into qtimer hw ticks & adjust */
-	ts = (ts * 192) / (10 * 1000);
+	ts = NS_TO_QTIMER(ts);
 	ts = sde_encoder_event_timestamp_adjust(DRMID(drm_enc), fps, ts);
 
 	atomic_inc_return(&hfi_enc->hfi_vsync_cnt);

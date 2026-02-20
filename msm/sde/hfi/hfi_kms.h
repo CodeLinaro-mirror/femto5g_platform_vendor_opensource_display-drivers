@@ -22,6 +22,14 @@
 #define HFI_HWFENCE_MAX_DISPLAYS 10
 
 /*
+ * Qtimer runs at 19.2 MHz timer, the accurate conversion to ns is
+ * (qtimer * 10 * 1000) / 192
+ */
+#define QTIMER_TO_NS(qtimer) (((qtimer) * 10 * 1000) / 192)
+#define QTIMER_TO_US(qtimer) (QTIMER_TO_NS(qtimer)  / 1000)
+#define NS_TO_QTIMER(ns) (((ns) * 192) / (10 * 1000))
+
+/*
  * hfi_catalog_base - base struct for sde HW information
  *
  * @hw_rev	    HW version
