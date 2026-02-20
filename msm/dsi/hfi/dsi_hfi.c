@@ -922,6 +922,7 @@ int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 
 		panel_cmd_info->delay = cmd_set->cmds[i].post_wait_ms;
 		panel_cmd_info->ctrl_flags = cmd_set->cmds[i].ctrl_flags;
+		panel_cmd_info->reserved1 = cmd_set->cmds[i].msg.flags;
 		panel_cmd_info->mode = cmd_set->state;
 
 		rc = dsi_hfi_packetize_panel_cmd(&cmd_set->cmds[i], &size_of_indv_cmd, *sde_vaddr);
