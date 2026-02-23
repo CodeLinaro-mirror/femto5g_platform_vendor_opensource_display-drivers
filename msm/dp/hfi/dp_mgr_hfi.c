@@ -754,9 +754,13 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		goto end;
 	}
 
+	hfi_priv->connected = false;
+
 	_aux_switch_enable(hfi_priv, false);
 
-	hfi_priv->connected = false;
+	if (hfi_priv->audio)
+		hfi_priv->audio->off(hfi_priv->audio, false);
+
 	_hfi_update_config(hfi_priv, &config);
 	_hfi_send_hot_plug(hfi_priv, &config);
 	DP_INFO("disconnected\n");
@@ -830,10 +834,13 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	if ((hpd_state == hfi_priv->connected) && !hpd_irq)
 		return 0;
 
-	if (hpd_state && !hfi_priv->configured)
-		dp_mgr_hfi_hpd_configure_cb(data);
-	else if (!hfi_priv->connected && hpd_state)
+	if (hpd_state && !hfi_priv->configured) {
+		rc = dp_mgr_hfi_hpd_configure_cb(data);
+		if (rc)
+			return rc;
+	} else if (!hfi_priv->connected && hpd_state) {
 		_aux_switch_enable(hfi_priv, true);
+	}
 
 	_hfi_update_config(hfi_priv, &config);
 	hfi_priv->connected = hpd_state;
@@ -1563,6 +1570,10 @@ int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 		return -EINVAL;
 
 	hfi_client = &hfi_kms->hfi_client;
+
+	/* turn off audio if still enabled */
+	if (hfi_priv->audio)
+		hfi_priv->audio->off(hfi_priv->audio, false);
 
 	DP_DEBUG("Sending DISPLAY_DISABLE command to DCP, panel_id=%d\n", panel_id);
 
