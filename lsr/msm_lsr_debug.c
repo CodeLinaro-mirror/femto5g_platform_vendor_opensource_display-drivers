@@ -46,7 +46,7 @@ static int _lsr_fw_debug_get(void *data, u64 *val)
 	return hfi_lsr_fw_debug_get(val);
 }
 
-DEFINE_DEBUGFS_ATTRIBUTE(lsr_fw_debug_fops, _lsr_fw_debug_get, _lsr_fw_debug_set, "%llu\n");
+DEFINE_DEBUGFS_ATTRIBUTE(lsr_fw_debug_fops, _lsr_fw_debug_get, _lsr_fw_debug_set, "0x%llx\n");
 
 struct dentry *msm_lsr_debugfs_init_drv(void)
 {
