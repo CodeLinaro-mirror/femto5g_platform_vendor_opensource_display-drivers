@@ -6613,6 +6613,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	int ret, i;
 	enum sde_intf_mode intf_mode;
 	struct sde_hw_ctl *hw_ctl = NULL;
+	u32 encoder_mask = 0;
 	if (!crtc || !crtc->dev || !crtc->dev->dev_private || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
 		return;
@@ -6658,7 +6659,6 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 			crtc->state->enable, sde_crtc->cached_encoder_mask);
 	sde_crtc->enabled = false;
 	_sde_crtc_register_event_callback(sde_crtc, NULL);
-	sde_crtc->cached_encoder_mask = 0;
 
 	/* Try to disable uidle */
 	sde_core_perf_crtc_update_uidle(crtc, false);
@@ -6699,15 +6699,22 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 
 	sde_crtc->cesta_client = NULL;
 
-	drm_for_each_encoder_mask(encoder, crtc->dev,
-			crtc->state->encoder_mask) {
+	/* If enc mask not available, use cached mask to de-register events */
+	if (crtc->state->encoder_mask)
+		encoder_mask = crtc->state->encoder_mask;
+	else
+		encoder_mask = sde_crtc->cached_encoder_mask;
+
+	if (!encoder_mask)
+		SDE_WARN("unable to de-register events\n");
+
+	drm_for_each_encoder_mask(encoder, crtc->dev, encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, NULL, NULL);
 
-		if (IS_DISP_OP_HFI(priv->disp_op))
+		if (IS_DISP_OP_HFI(priv->disp_op)) {
 			sde_encoder_register_display_power_event_callback(encoder, NULL, NULL);
-
-		if (IS_DISP_OP_HFI(priv->disp_op))
 			sde_encoder_register_panel_dead_event_callback(encoder, false);
+		}
 
 		cstate->rsc_client = NULL;
 		cstate->rsc_update = false;
@@ -6719,6 +6726,8 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 		if (test_bit(SDE_FEATURE_IDLE_PC, sde_kms->catalog->features))
 			sde_encoder_control_idle_pc(encoder, true);
 	}
+
+	sde_crtc->cached_encoder_mask = 0;
 
 	if (sde_crtc->power_event) {
 		if (IS_DISP_OP_HWIO(priv->disp_op))
