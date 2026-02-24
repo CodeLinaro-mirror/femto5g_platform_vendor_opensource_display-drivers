@@ -307,4 +307,6 @@ int unload_lsr_fw_impl(struct lsr_device *device);
 int lsr_iommu_map(struct iommu_domain *domain, unsigned long iova, phys_addr_t paddr, size_t size,
 		int prot);
 
+irqreturn_t lsr_wd_handler(int irq, void *data);
+
 #endif  //__H_LSR_CORE_HFI_H__

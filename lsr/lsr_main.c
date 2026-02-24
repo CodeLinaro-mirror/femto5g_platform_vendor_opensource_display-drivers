@@ -116,12 +116,21 @@ int msm_lsr_init_reg_and_irq(struct lsr_device *device,
 		goto error_irq_fail;
 	}
 
+	rc = request_threaded_irq(res->irq_wd, lsr_hfi_isr, lsr_wd_handler,
+			IRQF_TRIGGER_HIGH, "msm_lsr_ssr", device);
+	if (unlikely(rc)) {
+		dprintk(LSR_ERR, "%s: request_irq failed rc: %d\n", __func__, rc);
+		goto error_irq_wd_fail;
+	}
+
 	disable_irq_nosync(res->irq);
 	dprintk(LSR_INFO,
 		"firmware_base = %pa, register_base = %pa, size = %d, remapped reg base = %pK\n",
 		&res->firmware_base, &res->register_base, res->register_size, hal->register_base);
 	return rc;
 
+error_irq_wd_fail:
+	free_irq(res->irq, device);
 error_irq_fail:
 	kfree(hal);
 err_core_init:

@@ -32,6 +32,8 @@ bool msm_lsr_dcvs_disable = !true;
 int msm_lsr_hw_wd_recovery = 1;
 int msm_lsr_smmu_fault_recovery = !1;
 
+bool msm_lsr_enable_ssr = !true;
+
 #define MAX_DBG_BUF_SIZE 4096
 
 static int _lsr_fw_debug_set(void *data, u64 val)
@@ -71,6 +73,7 @@ struct dentry *msm_lsr_debugfs_init_drv(void)
 	debugfs_create_bool("disable_dcvs", 0644, dir,
 			&msm_lsr_dcvs_disable);
 	debugfs_create_file("lsr_fw_debug", 0644, dir, NULL, &lsr_fw_debug_fops);
+	debugfs_create_bool("enable_ssr", 0644, dir, &msm_lsr_enable_ssr);
 
 	return dir;
 
