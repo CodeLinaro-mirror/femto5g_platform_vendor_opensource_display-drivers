@@ -17,7 +17,6 @@
 
 #define MAX_NUM_CTRLS_AND_LENGTH 3
 #define MAX_NUM_PHYS_AND_LENGTH 3
-#define MIN_NUM_OF_GEN_CAPS 16
 #define NUM_PANEL_CMD_TYPES_SUPPORTED 9
 #define CLK_RATE_SIZE 2
 #define JITTER_SIZE 2
@@ -28,10 +27,13 @@
  *                                   corresponding values
  * @value:               value
  * @hfi_prop:            hfi property
+ * @use_default_val:     if true, property takes default value even if not present;
+ *                       if false, property needs to be checked for presence
  */
 struct dsi_value_to_prop_lookup {
 	u32 value;
 	u32 hfi_prop;
+	bool use_default_val;
 };
 
 /**
@@ -150,7 +152,6 @@ struct dsi_panel_timing_caps {
 /**
  * struct dsi_panel_generic_caps - contains properties to be sent as part of
  * HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
- * @valid_gen_caps_cnt:             number of caps with valid parameters
  * @panel_name:                     HFI_PROPERTY_PANEL_NAME
  * @panel_type:                     HFI_PROPERTY_PANEL_PHYSICAL_TYPE
  * @panel_bpp:                      HFI_PROPERTY_PANEL_BPP
@@ -188,8 +189,6 @@ struct dsi_panel_timing_caps {
  * @poms_caps:                      HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY
  */
 struct dsi_panel_generic_caps {
-	int valid_gen_caps_cnt;
-
 	u32 panel_name;
 	enum hfi_panel_phy_type panel_type;
 	enum hfi_panel_bpp panel_bpp;

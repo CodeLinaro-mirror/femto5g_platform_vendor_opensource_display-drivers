@@ -1216,7 +1216,6 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 					struct dsi_panel *panel,
 					struct dsi_panel_generic_caps *panel_generic_caps)
 {
-	panel_generic_caps->valid_gen_caps_cnt = MIN_NUM_OF_GEN_CAPS;
 	panel_generic_caps->panel_type = dsi_get_panel_type_helper(panel);
 	panel_generic_caps->color_order_type = dsi_get_panel_color_order_type(panel);
 	panel_generic_caps->dma_trigger_type =
@@ -1237,78 +1236,36 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->max_brightness_level = panel->hdr_props.peak_brightness;
 	panel_generic_caps->vsync_src = dsi_get_panel_vsync_src(display);
 	panel_generic_caps->cphy_enabled = (panel->host_config.phy_type == DSI_PHY_TYPE_CPHY);
-
 	panel_generic_caps->panel_name = (*(u32 *)panel->name);
-	if (panel_generic_caps->panel_name)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->panel_bpp = dsi_get_panel_bpp_helper(panel);
-	if (panel_generic_caps->panel_bpp)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->panels_lanes_state = dsi_get_panel_lane_state_helper(panel);
-	if (panel_generic_caps->panels_lanes_state)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->panel_lane_map = dsi_get_panel_lane_map_helper(panel);
-	if (panel_generic_caps->panel_lane_map)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->tx_eot_append = (u32)(panel->host_config.append_tx_eot);
-	if (panel_generic_caps->tx_eot_append)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->eof_power_mode = panel->video_config.eof_bllp_lp11_en;
-	if (panel_generic_caps->eof_power_mode)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->bllp_power_mode = panel->video_config.bllp_lp11_en;
-	if (panel_generic_caps->bllp_power_mode)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->backlight_ctrl_prim = dsi_get_panel_backlight_type(panel, "primary");
-	if (panel_generic_caps->backlight_ctrl_prim)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->backlight_ctrl_sec = dsi_get_panel_backlight_type(panel, "secondary");
-	if (panel_generic_caps->backlight_ctrl_sec)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->is_bl_inverted = panel->bl_config.bl_inverted_dbv;
-	if (panel_generic_caps->is_bl_inverted)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	dsi_get_panel_ctrl_nums_helper(display, panel_generic_caps->ctrl_nums);
-	if (panel_generic_caps->ctrl_nums[0])
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	dsi_get_panel_phy_nums_helper(display, panel_generic_caps->phy_nums);
-	if (panel_generic_caps->phy_nums[0])
-		panel_generic_caps->valid_gen_caps_cnt++;
 
 	if (display->panel->esd_config.esd_enabled &&
 		!display->panel->esd_config.esd_host_controlled) {
 		dsi_get_panel_esd_config_helper(display, &panel_generic_caps->esd_config);
-		panel_generic_caps->valid_gen_caps_cnt++;
 	}
 
 	if (panel->esync_caps.esync_support) {
 		dsi_hfi_populate_esync_caps(panel, &panel_generic_caps->esync_caps);
-		panel_generic_caps->valid_gen_caps_cnt++;
 	}
 
 	if (panel->dfps_caps.dfps_support) {
 		dsi_hfi_populate_dfps_caps(panel, &panel_generic_caps->dfps_caps);
-		panel_generic_caps->valid_gen_caps_cnt++;
 	}
 
 	panel_generic_caps->lp11_init = panel->lp11_init;
-	if (panel_generic_caps->lp11_init)
-		panel_generic_caps->valid_gen_caps_cnt++;
 
 	if (panel->panel_mode_switch_enabled) {
 		dsi_hfi_populate_poms_caps(panel, &panel_generic_caps->poms_caps);
-		panel_generic_caps->valid_gen_caps_cnt++;
 	}
 }
 
@@ -1473,52 +1430,55 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 
 	hfi_util_kv_helper_reset(display_hfi->kv_props);
 
+	/*
+	 * Property mapping for panel generic capabilities
+	 *
+	 * use_default_val behavior:
+	 * - true:  Property is always sent to firmware, even if value is 0.
+	 *          These are mandatory properties required by the HFI protocol.
+	 * - false: Property is only sent if value is non-zero.
+	 *          These are optional properties that may not be present on all panels.
+	 */
 	struct dsi_value_to_prop_lookup dsi_hfi_gen_props_map[] = {
-		{panel_generic_caps.panel_type, HFI_PROPERTY_PANEL_PHYSICAL_TYPE},
-		{panel_generic_caps.color_order_type, HFI_PROPERTY_PANEL_COLOR_ORDER},
-		{panel_generic_caps.dma_trigger_type, HFI_PROPERTY_PANEL_DMA_TRIGGER},
-		{panel_generic_caps.mdp_trigger_type, HFI_PROPERTY_PANEL_STREAM_TRIGGER},
-		{panel_generic_caps.te_mode, HFI_PROPERTY_PANEL_TE_MODE},
-		{panel_generic_caps.dma_sched_line, HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE},
-		{panel_generic_caps.dma_sched_window, HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW},
-		{panel_generic_caps.traffic_mode, HFI_PROPERTY_PANEL_TRAFFIC_MODE},
-		{panel_generic_caps.virtual_channel_id, HFI_PROPERTY_PANEL_VIRTUAL_CHANNEL_ID},
-		{panel_generic_caps.wr_mem_start, HFI_PROPERTY_PANEL_WR_MEM_START},
-		{panel_generic_caps.wr_mem_continue, HFI_PROPERTY_PANEL_WR_MEM_CONTINUE},
-		{panel_generic_caps.te_dcs_command, HFI_PROPERTY_PANEL_TE_DCS_COMMAND},
-		{panel_generic_caps.panel_op_mode, HFI_PROPERTY_PANEL_OPERATING_MODE},
-		{panel_generic_caps.min_backlight_level, HFI_PROPERTY_PANEL_BL_MIN_LEVEL},
-		{panel_generic_caps.max_backlight_level, HFI_PROPERTY_PANEL_BL_MAX_LEVEL},
-		{panel_generic_caps.vsync_src, HFI_PROPERTY_PANEL_VSYNC_SOURCE},
-		{panel_generic_caps.max_brightness_level, HFI_PROPERTY_PANEL_BRIGHTNESS_MAX_LEVEL},
-		{panel_generic_caps.cphy_enabled, HFI_PROPERTY_PANEL_CPHY_MODE},
-		/*Cutoff for properties that take on default value*/
-		{panel_generic_caps.panel_name, HFI_PROPERTY_PANEL_NAME},
-		{panel_generic_caps.panel_bpp, HFI_PROPERTY_PANEL_BPP},
-		{panel_generic_caps.panels_lanes_state, HFI_PROPERTY_PANEL_LANES_STATE},
-		{panel_generic_caps.panel_lane_map, HFI_PROPERTY_PANEL_LANE_MAP},
-		{panel_generic_caps.tx_eot_append, HFI_PROPERTY_PANEL_TX_EOT_APPEND},
-		{panel_generic_caps.eof_power_mode, HFI_PROPERTY_PANEL_BLLP_EOF_POWER_MODE},
-		{panel_generic_caps.bllp_power_mode, HFI_PROPERTY_PANEL_BLLP_POWER_MODE},
-		{panel_generic_caps.backlight_ctrl_prim, HFI_PROPERTY_PANEL_BL_PMIC_CONTROL_TYPE},
+		{panel_generic_caps.panel_type, HFI_PROPERTY_PANEL_PHYSICAL_TYPE, true},
+		{panel_generic_caps.color_order_type, HFI_PROPERTY_PANEL_COLOR_ORDER, true},
+		{panel_generic_caps.dma_trigger_type, HFI_PROPERTY_PANEL_DMA_TRIGGER, true},
+		{panel_generic_caps.mdp_trigger_type, HFI_PROPERTY_PANEL_STREAM_TRIGGER, true},
+		{panel_generic_caps.te_mode, HFI_PROPERTY_PANEL_TE_MODE, true},
+		{panel_generic_caps.dma_sched_line, HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE, true},
+		{panel_generic_caps.dma_sched_window, HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW, true},
+		{panel_generic_caps.traffic_mode, HFI_PROPERTY_PANEL_TRAFFIC_MODE, true},
+		{panel_generic_caps.virtual_channel_id, HFI_PROPERTY_PANEL_VIRTUAL_CHANNEL_ID,
+			true},
+		{panel_generic_caps.wr_mem_start, HFI_PROPERTY_PANEL_WR_MEM_START, true},
+		{panel_generic_caps.wr_mem_continue, HFI_PROPERTY_PANEL_WR_MEM_CONTINUE, true},
+		{panel_generic_caps.te_dcs_command, HFI_PROPERTY_PANEL_TE_DCS_COMMAND, true},
+		{panel_generic_caps.panel_op_mode, HFI_PROPERTY_PANEL_OPERATING_MODE, true},
+		{panel_generic_caps.min_backlight_level, HFI_PROPERTY_PANEL_BL_MIN_LEVEL, true},
+		{panel_generic_caps.max_backlight_level, HFI_PROPERTY_PANEL_BL_MAX_LEVEL, true},
+		{panel_generic_caps.vsync_src, HFI_PROPERTY_PANEL_VSYNC_SOURCE, true},
+		{panel_generic_caps.max_brightness_level, HFI_PROPERTY_PANEL_BRIGHTNESS_MAX_LEVEL,
+			true},
+		{panel_generic_caps.cphy_enabled, HFI_PROPERTY_PANEL_CPHY_MODE, true},
+		{panel_generic_caps.panel_name, HFI_PROPERTY_PANEL_NAME, false},
+		{panel_generic_caps.panel_bpp, HFI_PROPERTY_PANEL_BPP, false},
+		{panel_generic_caps.panels_lanes_state, HFI_PROPERTY_PANEL_LANES_STATE, false},
+		{panel_generic_caps.panel_lane_map, HFI_PROPERTY_PANEL_LANE_MAP, false},
+		{panel_generic_caps.tx_eot_append, HFI_PROPERTY_PANEL_TX_EOT_APPEND, false},
+		{panel_generic_caps.eof_power_mode, HFI_PROPERTY_PANEL_BLLP_EOF_POWER_MODE, false},
+		{panel_generic_caps.bllp_power_mode, HFI_PROPERTY_PANEL_BLLP_POWER_MODE, false},
+		{panel_generic_caps.backlight_ctrl_prim, HFI_PROPERTY_PANEL_BL_PMIC_CONTROL_TYPE,
+			false},
 		{panel_generic_caps.backlight_ctrl_sec,
-						HFI_PROPERTY_PANEL_SEC_BL_PMIC_CONTROL_TYPE},
-		{panel_generic_caps.is_bl_inverted, HFI_PROPERTY_PANEL_BL_INVERTED_DBV},
-		{panel_generic_caps.lp11_init, HFI_PROPERTY_PANEL_LP11_INIT},
+						HFI_PROPERTY_PANEL_SEC_BL_PMIC_CONTROL_TYPE, false},
+		{panel_generic_caps.is_bl_inverted, HFI_PROPERTY_PANEL_BL_INVERTED_DBV, false},
+		{panel_generic_caps.lp11_init, HFI_PROPERTY_PANEL_LP11_INIT, false},
 	};
 
-	/* Populate properties that will take on a default value, even if not present */
-	for (i = 0; i < MIN_NUM_OF_GEN_CAPS; i++) {
-		hfi_util_kv_helper_add(display_hfi->kv_props,
-					HFI_PACKKEY(dsi_hfi_gen_props_map[i].hfi_prop, 0,
-					(sizeof(dsi_hfi_gen_props_map[i].value) / sizeof(u32))),
-					(void *)&dsi_hfi_gen_props_map[i].value);
-		kv_size += sizeof(dsi_hfi_gen_props_map[i].value);
-	}
-
-	/* Populate properties that need to be checked for presence */
-	for (i = MIN_NUM_OF_GEN_CAPS; i < ARRAY_SIZE(dsi_hfi_gen_props_map); i++) {
-		if (dsi_hfi_gen_props_map[i].value) {
+	/* populate properties based on use_default_val flag */
+	for (i = 0; i < ARRAY_SIZE(dsi_hfi_gen_props_map); i++) {
+		/* add the property based on default‑value usage or a non‑zero value. */
+		if (dsi_hfi_gen_props_map[i].use_default_val || dsi_hfi_gen_props_map[i].value) {
 			hfi_util_kv_helper_add(display_hfi->kv_props,
 					HFI_PACKKEY(dsi_hfi_gen_props_map[i].hfi_prop, 0,
 					(sizeof(dsi_hfi_gen_props_map[i].value) / sizeof(u32))),
