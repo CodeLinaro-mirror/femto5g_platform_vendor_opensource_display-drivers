@@ -26,13 +26,25 @@ bool msm_lsr_fw_coverage = !true;
 bool msm_lsr_cacheop_enabled = true;
 bool msm_lsr_cacheop_disabled = !true;
 int msm_lsr_clock_voting = !1;
-bool msm_lsr_syscache_disable = true;
+bool msm_lsr_syscache_disable = !true;
 
 bool msm_lsr_dcvs_disable = !true;
 int msm_lsr_hw_wd_recovery = 1;
 int msm_lsr_smmu_fault_recovery = !1;
 
 #define MAX_DBG_BUF_SIZE 4096
+
+static int _lsr_fw_debug_set(void *data, u64 val)
+{
+	return hfi_lsr_fw_debug_set(val, lsr_driver->drm_dev);
+}
+
+static int _lsr_fw_debug_get(void *data, u64 *val)
+{
+	return hfi_lsr_fw_debug_get(val);
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(lsr_fw_debug_fops, _lsr_fw_debug_get, _lsr_fw_debug_set, "%llu\n");
 
 struct dentry *msm_lsr_debugfs_init_drv(void)
 {
@@ -58,6 +70,7 @@ struct dentry *msm_lsr_debugfs_init_drv(void)
 			&msm_lsr_syscache_disable);
 	debugfs_create_bool("disable_dcvs", 0644, dir,
 			&msm_lsr_dcvs_disable);
+	debugfs_create_file("lsr_fw_debug", 0644, dir, NULL, &lsr_fw_debug_fops);
 
 	return dir;
 

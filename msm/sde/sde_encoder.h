@@ -457,6 +457,11 @@ struct sde_encoder_hal_funcs {
 	 */
 	int (*register_power_event_notify[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
 			bool enable);
+	/**
+	 * early_wakeup_call - Command to exit idle power collapse with early wakeup hint
+	 * @enc: Pointer to sde encoder structure
+	 */
+	int (*early_wakeup_call[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc);
 
 	/**
 	 * register_panel_dead_event_notify - register panel dead event notification

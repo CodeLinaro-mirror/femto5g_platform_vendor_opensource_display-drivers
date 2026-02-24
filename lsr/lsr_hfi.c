@@ -1720,6 +1720,37 @@ static void __flush_debug_queue(struct lsr_device *device, u8 *packet)
 #define _INVALID_STATE_ "Ignore responses from %d to %d invalid state\n"
 #define _DEVFREQ_FAIL_ "Failed to add devfreq device bus %s governor %s: %d\n"
 
+static void __dump_sfr_log(struct lsr_device *device)
+{
+	struct lsr_hfi_sfr_struct *vsfr = NULL;
+
+	if (!device) {
+		dprintk(LSR_ERR, "Invalid device pointer\n");
+		return;
+	}
+
+	vsfr = (struct lsr_hfi_sfr_struct *)device->sfr.align_virtual_addr;
+	if (vsfr) {
+		u32 sfr_buf_size = 0;
+
+		sfr_buf_size = vsfr->bufSize;
+		if (sfr_buf_size > 0 && sfr_buf_size <= ALIGNED_SFR_SIZE) {
+			void *p = memchr(vsfr->rg_data, '\0', sfr_buf_size);
+			/*
+			 * SFR isn't guaranteed to be NULL terminated
+			 * since SYS_ERROR indicates that LSR is in the
+			 * process of crashing.
+			 */
+			if (p == NULL)
+				vsfr->rg_data[sfr_buf_size - 1] = '\0';
+
+			dprintk(LSR_ERR, "SFR Message from FW: %s\n", vsfr->rg_data);
+		}
+	} else {
+		dprintk(LSR_ERR, "Error: vsfr is null\n");
+	}
+}
+
 int __response_handler(struct lsr_device *device)
 {
 	int lsr_status = 0;
@@ -1728,6 +1759,8 @@ int __response_handler(struct lsr_device *device)
 		return 0;
 
 	lsr_status = __read_register(device, LSR_CTRL_STATUS);
+	if (lsr_status & BIT(LSR_STATUS_SYS_ERROR))
+		__dump_sfr_log(device);
 
 	if (device->intr_status & CVP_FATAL_INTR_BMSK) {
 		if (device->intr_status & LSR_WRAPPER_INTR_MASK_CPU_NOC_BMSK)
@@ -2155,6 +2188,7 @@ static int __init_subcaches(struct lsr_device *device)
 	return 0;
 
 err_subcache_get:
+	msm_lsr_syscache_disable = true;
 	__deinit_subcaches(device);
 	return 0;
 }

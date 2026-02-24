@@ -29,8 +29,32 @@ struct msm_lsr_drv *lsr_driver;
 
 static int msm_lsr_bind(struct device *dev, struct device *master, void *data)
 {
-	pr_info("msm_lsr : LSR component bind successful\n");
-	return 0;
+	struct drm_device *drm = NULL;
+	int rc = 0;
+
+	if (!dev || !master) {
+		dprintk(LSR_ERR, "invalid param(s), dev %pK, master %pK\n", dev, master);
+		rc = -EINVAL;
+		goto end;
+	}
+
+	drm = dev_get_drvdata(master);
+	if (!drm) {
+		dprintk(LSR_ERR, "invalid drm object\n");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	if (lsr_driver) {
+		lsr_driver->drm_dev = drm;
+		pr_info("msm_lsr : LSR component bind successful\n");
+	} else {
+		dprintk(LSR_ERR, "LSR driver init failed\n");
+		rc = -EINVAL;
+	}
+
+end:
+	return rc;
 }
 
 static void msm_lsr_unbind(struct device *dev, struct device *master, void *data)

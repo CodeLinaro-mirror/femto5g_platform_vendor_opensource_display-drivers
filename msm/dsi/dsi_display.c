@@ -4697,11 +4697,29 @@ void dsi_display_update_byte_intf_div(struct dsi_display *display)
 	struct dsi_display_ctrl *m_ctrl;
 	int phy_ver;
 
+	if (!display || !display->panel) {
+		DSI_ERR("Invalid display or panel\n");
+		return;
+	}
+
+	if (display->cmd_master_idx >= display->ctrl_count) {
+		DSI_ERR("Invalid cmd_master_idx\n");
+		return;
+	}
+
 	m_ctrl = &display->ctrl[display->cmd_master_idx];
+	if (!m_ctrl->phy) {
+		DSI_ERR("Invalid phy\n");
+		return;
+	}
+
 	config = &display->panel->host_config;
 
 	phy_ver = dsi_phy_get_version(m_ctrl->phy);
-	config->byte_intf_clk_div = 2;
+	if (phy_ver <= DSI_PHY_VERSION_2_0)
+		config->byte_intf_clk_div = 1;
+	else
+		config->byte_intf_clk_div = 2;
 }
 
 static int dsi_display_update_dsi_bitrate(struct dsi_display *display,

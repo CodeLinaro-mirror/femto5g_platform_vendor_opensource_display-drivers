@@ -63,6 +63,7 @@ struct msm_lsr_drv {
 	struct mutex lock;
 	struct msm_lsr_core *lsr_core;
 	struct dentry *debugfs_root;
+	struct drm_device *drm_dev;
 };
 
 struct smem_data {

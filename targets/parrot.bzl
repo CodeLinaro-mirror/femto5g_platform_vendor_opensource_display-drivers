@@ -19,6 +19,7 @@ def define_parrot():
 	            "CONFIG_MDSS_HFI_ADAPTER",
 	            "CONFIG_MDSS_HFI",
 	            "CONFIG_DRM_MSM_DP",
+                    "CONFIG_DRM_SDE_RSC",
 	            "CONFIG_DRM_MSM_DP_MST",
 	            "CONFIG_DSI_PARSER",
 	            "CONFIG_DRM_SDE_WB",

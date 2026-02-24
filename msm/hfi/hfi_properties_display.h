@@ -713,6 +713,19 @@
 #define HFI_PROPERTY_DISPLAY_QSYNC_MODE                              0x0002002F
 
 /*
+ * HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA - This property is used to configure resource output.
+ *                                          Host is expected to send this packet as part of
+ *                                          HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA |
+ *                                 (version=0 << 20) |
+ *                                 (dsize=(sizeof(struct hfi_resource_cfg)/4) << 24)
+ *     (u32_value) payload [1-5] : struct hfi_resource_cfg
+ */
+#define HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA                       0x00020030
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
