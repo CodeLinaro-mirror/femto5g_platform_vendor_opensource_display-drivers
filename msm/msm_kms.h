@@ -116,9 +116,13 @@ struct msm_kms_funcs {
 				const int32_t connector_id);
 	void (*display_early_ept_hint)(struct drm_device *dev,
 				const int32_t connector_id, u64 frame_interval, u64 ept_ns);
-	/* pm suspend/resume hooks */
+	/* pm suspend/resume/freeze/restore hooks */
 	int (*pm_suspend)(struct device *dev);
 	int (*pm_resume)(struct device *dev);
+#if IS_ENABLED(CONFIG_HIBERNATE)
+	int (*pm_freeze)(struct device *dev);
+	int (*pm_restore)(struct device *dev);
+#endif /* CONFIG_HIBERNATE */
 	int (*idle_timer_control)(struct msm_kms *kms, bool timer_state);
 	/* cleanup: */
 	void (*destroy)(struct msm_kms *kms);
