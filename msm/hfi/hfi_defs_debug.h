@@ -234,10 +234,12 @@ struct hfi_debug_log_level_info {
  *
  * @HFI_DISPLAY_DEBUG_ESD_CHECK_MODE     :  Property ID for esd check mode update
  * @HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL :  Property ID for status check interval update.
+ * @HFI_DISPLAY_DEBUG_UIDLE              :  Property ID for micro-idle (uidle) state query.
  */
 enum hfi_display_dbg_property_id {
 	HFI_DISPLAY_DEBUG_ESD_CHECK_MODE           = 0x1,
 	HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL       = 0x2,
+	HFI_DISPLAY_DEBUG_UIDLE                    = 0x3,
 };
 
 /**
