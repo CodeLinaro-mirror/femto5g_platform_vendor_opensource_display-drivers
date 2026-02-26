@@ -488,7 +488,9 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) &&
 		(!crtc_state->active_changed ||
 		 display->is_cont_splash_enabled)) {
-		adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS;
+			/* DMS should be enabled on cmd mode panel only. */
+			if (display->panel->panel_mode & DSI_OP_CMD_MODE)
+				adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS;
 
 		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2,
 			adj_mode->timing.h_active,
