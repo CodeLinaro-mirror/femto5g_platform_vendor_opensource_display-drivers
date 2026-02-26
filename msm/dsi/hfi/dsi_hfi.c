@@ -1513,7 +1513,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		kv_size += sizeof(panel_generic_caps.phy_nums);
 	}
 
-	if (display->panel->esd_config.esd_enabled) {
+	if (display->panel->esd_config.esd_enabled && !is_sim_panel(display)) {
 		hfi_util_kv_helper_add(display_hfi->kv_props,
 				HFI_PACKKEY(HFI_PROPERTY_PANEL_ESD_CONFIG, 0,
 				(sizeof(panel_generic_caps.esd_config) / sizeof(u32))),
