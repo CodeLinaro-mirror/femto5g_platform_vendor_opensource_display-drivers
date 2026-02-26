@@ -2460,6 +2460,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			SDE_ERROR("wb %d connector init failed\n", i);
 			sde_wb_drm_deinit(display);
 			sde_encoder_destroy(encoder);
+			continue;
 		}
 	}
 
@@ -2520,6 +2521,7 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			dsi_display_drm_bridge_deinit(display);
 			sde_connector_destroy(connector);
 			sde_encoder_destroy(encoder);
+			continue;
 		}
 
 		dsc_count += info.dsc_count;
