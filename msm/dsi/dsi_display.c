@@ -4705,6 +4705,7 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 				byte_intf_clk_rate;
 		u32 bits_per_symbol = 16, num_of_symbols = 7; /* For Cphy */
 		struct dsi_host_common_cfg *host_cfg;
+		bool is_split_link;
 
 		mutex_lock(&ctrl->ctrl_lock);
 
@@ -4717,6 +4718,10 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 			num_of_lanes++;
 		if (host_cfg->data_lanes & DSI_DATA_LANE_3)
 			num_of_lanes++;
+
+		is_split_link = host_cfg->split_link.enabled;
+		if (is_split_link)
+			num_of_lanes = host_cfg->split_link.lanes_per_sublink;
 
 		if (num_of_lanes == 0) {
 			DSI_ERR("Invalid lane count\n");
@@ -7855,8 +7860,10 @@ exit:
 	rc = 0;
 
 error:
-	if (rc)
+	if (rc) {
 		kfree(display->modes);
+		display->modes = NULL;
+	}
 
 	mutex_unlock(&display->display_lock);
 	return rc;

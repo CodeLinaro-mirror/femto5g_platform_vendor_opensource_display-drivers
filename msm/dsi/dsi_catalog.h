@@ -242,7 +242,7 @@ u32 dsi_ctrl_hw_cmn_get_cmd_read_data(struct dsi_ctrl_hw *ctrl,
 				     u8 *rd_buf,
 				     u32 read_offset,
 				     u32 rx_byte,
-				     u32 pkt_size, u32 *hw_read_cnt);
+				     u32 pkt_size, u32 *hw_read_cnt, u32 flags);
 void dsi_ctrl_hw_cmn_clear_rdbk_reg(struct dsi_ctrl_hw *ctrl);
 void dsi_ctrl_hw_22_schedule_dma_cmd(struct dsi_ctrl_hw *ctrl, int line_on,
 			bool do_peripheral_flush);
