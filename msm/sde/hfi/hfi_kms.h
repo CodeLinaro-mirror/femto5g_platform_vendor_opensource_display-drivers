@@ -284,4 +284,14 @@ int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe, uint32_t p
  */
 int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffer *buffer);
 
+/**
+ * hfi_kms_get_uidle_status - query uidle status from FW via HFI
+ * @hfi_kms: Pointer to hfi kms structure
+ * @uidle_enabled: Output - uidle enabled flag returned by FW
+ * @uidle_state: Output - uidle state returned by FW
+ *
+ * Returns 0 on success, negative error code on failure.
+ */
+int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *uidle_state);
+
 #endif // _HFI_KMS_H_
