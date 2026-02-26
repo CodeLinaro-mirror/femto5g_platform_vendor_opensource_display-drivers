@@ -118,6 +118,11 @@ struct dsi_dyn_clk_caps {
 	bool maintain_const_fps;
 };
 
+struct dsi_dms_vid_caps {
+	enum dsi_dms_vid_type type;
+	bool maintain_const_clk;
+};
+
 struct dsi_pinctrl_info {
 	struct pinctrl *pinctrl;
 	struct pinctrl_state *cur_state;
@@ -377,6 +382,7 @@ struct dsi_panel {
 
 	struct dsi_dfps_capabilities dfps_caps;
 	struct dsi_dyn_clk_caps dyn_clk_caps;
+	struct dsi_dms_vid_caps dms_vid_caps;
 	struct dsi_panel_phy_props phy_props;
 	bool dsc_switch_supported;
 
