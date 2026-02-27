@@ -850,6 +850,8 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 			struct hfi_crtc, hfi_cb_obj);
 	struct sde_crtc *sde_crtc = NULL;
 	struct hfi_display_ltm_event_resp *event_payload = NULL;
+	u32 ex_size = 0;
+	u32 *data;
 
 	if (!hfi_crtc) {
 		SDE_ERROR("hfi_crtc is NULL\n");
@@ -906,6 +908,23 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_HISTOGRAM, event_payload);
 		else
 			SDE_ERROR("Invalid PA Hist event payload\n");
+		break;
+	}
+	case HFI_COMMAND_DISPLAY_EVENT_SPR_OPR: {
+		if (!payload) {
+			SDE_ERROR("Invalid SPR OPR event payload %pK\n", payload);
+			return;
+		}
+
+		data = (u32 *)payload;
+		ex_size = (1 + data[0]) * sizeof(u32);
+		if (size != ex_size) {
+			SDE_ERROR("Invalid SPR OPR event payload size %d expected size %d\n",
+				size, ex_size);
+			return;
+		}
+
+		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_OPR_VALUE, data);
 		break;
 	}
 	default:
@@ -1013,6 +1032,17 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_PA_HIST].state = enable;
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_PA_HIST].pending = false;
+		break;
+	case HFI_EVENT_SPR_OPR:
+		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
+		if (ret) {
+			SDE_ERROR("event registration failed: event %d, enable %d\n",
+				event, enable);
+			return ret;
+		}
+
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_SPR_OPR].state = enable;
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_SPR_OPR].pending = false;
 		break;
 	default:
 		break;
