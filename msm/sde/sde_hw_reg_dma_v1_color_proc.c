@@ -9356,7 +9356,11 @@ void reg_dmav1_setup_qrtc_config_v1(struct sde_hw_dspp *ctx, void *cfg, void *bu
 	hfi_cfg.lpf_en = qrtc_cfg->lpf_en;
 	hfi_cfg.subsample_mode = qrtc_cfg->subsample_mode;
 	hfi_cfg.dma_sel = qrtc_cfg->dma_sel;
-	hfi_cfg.rect_sel = qrtc_cfg->rect_sel;
+	if (qrtc_cfg->flags & QRTC_PIPE_MODE)
+		hfi_cfg.rect_sel = (hw_cfg->dspp_idx == hw_cfg->dspp_start_idx) ?
+			HFI_QRTC_RECT0 : HFI_QRTC_RECT1;
+	else
+		hfi_cfg.rect_sel = qrtc_cfg->rect_sel;
 	hfi_cfg.wb_sel = qrtc_cfg->wb_sel;
 
 	hfi_cfg.cwb_iova_l = (qrtc_buffer->iova & 0xFFFFFFFF);

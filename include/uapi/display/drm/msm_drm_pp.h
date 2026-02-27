@@ -947,6 +947,10 @@ struct drm_msm_rgb_hist_buffer {
 #define WRITE_BACK_1 0x1
 #define WRITE_BACK_2 0x2
 
+/* Bit 0 of drm_msm_qrtc_config.flags will be used to indicate pipe or rect mode */
+#define QRTC_RECT_MODE 0x0
+#define QRTC_PIPE_MODE 0x1
+
 struct drm_msm_qrtc_buffer {
 	__u32 fd;
 	__u32 width;
