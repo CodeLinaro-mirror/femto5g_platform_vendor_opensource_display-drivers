@@ -43,6 +43,16 @@ else
 endif
 endif
 
+ifeq ($(CONFIG_ARCH_SHIKRA), y)
+ifeq ($(CONFIG_ARCH_QTI_VM), y)
+	include $(DISPLAY_ROOT)/config/gki_shikradisptui.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_shikradisptuiconf.h
+else
+	include $(DISPLAY_ROOT)/config/gki_shikradisp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_shikradispconf.h
+endif
+endif
+
 ifeq ($(or $(CONFIG_ARCH_SUN), $(CONFIG_ARCH_KERA)), y)
 ifeq ($(CONFIG_ARCH_QTI_VM), y)
     include $(DISPLAY_ROOT)/config/gki_sundisptui.conf
