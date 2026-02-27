@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2022, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2018-2019, The Linux Foundation. All rights reserved.
  */
 
@@ -190,6 +190,20 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 		rc = queue_work(lphw_hpd->connect_wq, &lphw_hpd->attention);
 		if (!rc)
 			DP_DEBUG("attention not queued\n");
+	} else if (isr & DP_HPD_PLUG_INT_STATUS) {
+
+		DP_DEBUG("connect interrupt, hpd isr state: 0x%x\n", isr);
+
+		if (!lphw_hpd->hpd) {
+			lphw_hpd->hpd = true;
+			rc = queue_work(lphw_hpd->connect_wq,
+					&lphw_hpd->connect);
+			if (!rc)
+				DP_DEBUG("connect not queued\n");
+		} else {
+			DP_ERR("already connected\n");
+		}
+
 	}
 }
 
