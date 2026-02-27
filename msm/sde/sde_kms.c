@@ -3255,6 +3255,9 @@ static void sde_kms_destroy(struct msm_kms *kms)
 		return;
 	}
 
+	if (sde_kms->hfi_kms)
+		hfi_kms_destroy(sde_kms);
+
 	_sde_kms_hw_destroy(sde_kms, to_platform_device(dev->dev));
 	kfree(sde_kms);
 }
@@ -6924,9 +6927,9 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 			return rc;
 		}
 
-		rc = sde_hfi_hw_fence_init(priv, sde_kms);
+		rc = hfi_kms_init_hw_fence_config(sde_kms->hfi_kms);
 		if (rc) {
-			SDE_INFO("sde hfi hw fence data init failed: %d\n", rc);
+			SDE_INFO("hfi hw fence config init failed: %d\n", rc);
 			sde_kms->catalog->hw_fence_rev = 0;
 		}
 	}

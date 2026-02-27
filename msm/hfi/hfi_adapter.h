@@ -13,9 +13,6 @@
 #include <linux/kthread.h>
 #include <linux/spinlock.h>
 #include <linux/scatterlist.h>
-#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
-#include <synx_api.h>
-#endif /* CONFIG_QTI_HW_FENCE */
 #if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
 #include "hfi_pack_unpack_common.h"
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
@@ -319,9 +316,8 @@ struct hfi_shared_addr_map {
  * Adapter registers with HFI driver as a client (@hfi_device_open) and provides/registers
  * top level callback for processing HFI command from HFI Core(@ struct hfi_core_cb_ops)
  * @instance: Specifies this is a primary or secondary vm instance
- * @hw_fence_enabled: True if this adapter must initialize hw-fence resources, false otherwise
  */
-struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance, bool hw_fence_enabled);
+struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance);
 
 /**
  * hfi_adapter_client_register - Register a HFI adapter client implementation that would use
@@ -475,6 +471,20 @@ int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
 		struct hfi_shared_addr_map *addr_map);
 
 /**
+ * hfi_adapter_map_iova - API to map given address map to DCP
+ * @ctx: Pointer to hfi_client struct.
+ * @addr_map: Pointer to store address info and resultant virtual address.
+ */
+int hfi_adapter_map_iova(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map);
+
+/**
+ * hfi_adapter_map_iova_cached - API to map given address map to DCP with caching enabled
+ * @ctx: Pointer to hfi_client struct.
+ * @addr_map: Pointer to store address info and resultant virtual address.
+ */
+int hfi_adapter_map_iova_cached(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map);
+
+/**
  * hfi_adapter_unmap_sg_table - Unmaps a previously mapped scatter-gather table
  * from DCP.
  * @ctx: Pointer to the HFI client context.
@@ -502,7 +512,7 @@ int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t 
 
 #else
 
-static inline struct hfi_adapter_t *hfi_adapter_init(int instance, bool hw_fence_enabled)
+static inline struct hfi_adapter_t *hfi_adapter_init(int instance)
 {
 	return NULL;
 }
@@ -592,6 +602,18 @@ static inline void hfi_adapter_deinit(struct hfi_client_t *ctx)
 }
 
 static inline int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
+		struct hfi_shared_addr_map *addr_map)
+{
+	return 0;
+}
+
+static inline int hfi_adapter_map_iova(struct hfi_client_t *ctx,
+		struct hfi_shared_addr_map *addr_map)
+{
+	return 0;
+}
+
+static inline int hfi_adapter_map_iova_cached(struct hfi_client_t *ctx,
 		struct hfi_shared_addr_map *addr_map)
 {
 	return 0;
