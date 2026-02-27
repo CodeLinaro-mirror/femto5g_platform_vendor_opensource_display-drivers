@@ -4671,7 +4671,21 @@ void dsi_display_update_byte_intf_div(struct dsi_display *display)
 	struct dsi_display_ctrl *m_ctrl;
 	int phy_ver;
 
+	if (!display || !display->panel) {
+		DSI_ERR("Invalid display or panel\n");
+		return;
+	}
+
+	if (display->cmd_master_idx >= display->ctrl_count) {
+		DSI_ERR("Invalid cmd_master_idx\n");
+		return;
+	}
+
 	m_ctrl = &display->ctrl[display->cmd_master_idx];
+	if (!m_ctrl->phy) {
+		DSI_ERR("Invalid phy\n");
+		return;
+	}
 	config = &display->panel->host_config;
 
 	phy_ver = dsi_phy_get_version(m_ctrl->phy);

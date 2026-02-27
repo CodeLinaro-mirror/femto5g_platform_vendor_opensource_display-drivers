@@ -218,6 +218,8 @@ static struct dsi_pll_14nm plls[DSI_PLL_MAX];
 static void dsi_pll_setup_config(struct dsi_pll_14nm *pll,
 		struct dsi_pll_resource *rsc)
 {
+	/* Initialize structure to zero first */
+	memset(&pll->in, 0, sizeof(struct dsi_pll_input));
 
 	pll->in.fref = 19200000;        /* 19.2 Mhz*/
 	pll->in.fdata = 0;              /* bit clock rate */
@@ -1099,7 +1101,7 @@ static int dsi_pll_14nm_enable(struct dsi_pll_resource *rsc)
 
 	rc = dsi_pll_14nm_lock_status(rsc);
 	if (!rc) {
-		DSI_PLL_ERR(rsc, "DSI PLL ndx=%d lock failed\n",rc);
+		DSI_PLL_ERR(rsc, "DSI PLL ndx=%d lock failed\n", rc);
 		rc = -EINVAL;
 		goto init_lock_err;
 	}

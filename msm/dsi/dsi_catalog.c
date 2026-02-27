@@ -183,8 +183,6 @@ static void dsi_catalog_phy_2_0_init(struct dsi_phy_hw *phy)
 		dsi_phy_hw_calculate_timing_params;
 	phy->ops.phy_idle_on[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_idle_on;
 	phy->ops.phy_idle_off[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_idle_off;
-	phy->ops.calculate_timing_params[MSM_DISP_OP_HWIO] =
-		dsi_phy_hw_calculate_timing_params;
 	phy->ops.phy_timing_val[MSM_DISP_OP_HWIO] = dsi_phy_hw_timing_val_v2_0;
 	phy->ops.clamp_ctrl[MSM_DISP_OP_HWIO] = dsi_phy_hw_v2_0_clamp_ctrl;
 	phy->ops.dyn_refresh_ops.dyn_refresh_config[MSM_DISP_OP_HWIO] =
