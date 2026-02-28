@@ -952,6 +952,8 @@ struct drm_msm_qrtc_buffer {
 	__u32 width;
 	__u32 height;
 	__u32 format;
+	__u32 aligned_height;
+	__u32 aligned_width;
 };
 
 struct drm_msm_qrtc_config {
@@ -973,6 +975,8 @@ struct drm_msm_qrtc_config {
 
 	__u32 cwb_height;
 	__u32 cwb_width;
+	__u32 aligned_cwb_height;
+	__u32 aligned_cwb_width;
 };
 
 #endif /* _MSM_DRM_PP_H_ */
