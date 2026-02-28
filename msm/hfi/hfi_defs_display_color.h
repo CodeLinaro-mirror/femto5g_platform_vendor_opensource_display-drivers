@@ -165,6 +165,10 @@ struct hfi_display_pa_dither {
  *   CWB buffer width.
  * @var format
  *   Buffer format.
+ * @var aligned_cwb_height
+ *   aligned CWB buffer height.
+ * @var aligned_cwb_width
+ *   aligned CWB buffer width.
  */
 struct hfi_qrtc_config {
 	u32 flags;
@@ -188,6 +192,8 @@ struct hfi_qrtc_config {
 	u32 cwb_height;
 	u32 cwb_width;
 	u32 format;
+	u32 aligned_cwb_height;
+	u32 aligned_cwb_width;
 };
 
 /**
