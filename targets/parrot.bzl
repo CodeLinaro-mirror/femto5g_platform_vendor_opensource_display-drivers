@@ -26,6 +26,7 @@ def define_parrot():
 	            "CONFIG_DRM_MSM_REGISTER_LOGGING",
 	            "CONFIG_QCOM_MDSS_PLL",
 	            "CONFIG_QCOM_WCD939X_I2C",
-	            "CONFIG_THERMAL_OF"
+	            "CONFIG_THERMAL_OF",
+		    "CONFIG_MSM_EXT_DISPLAY"
                 ],
             )
