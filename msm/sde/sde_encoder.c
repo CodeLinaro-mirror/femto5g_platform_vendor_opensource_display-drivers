@@ -421,9 +421,13 @@ void sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 			return;
 		}
 		cpumask_set_cpu(cpu, &sde_enc->valid_cpu_mask);
-		dev_pm_qos_add_request(cpu_dev,
-				&sde_enc->pm_qos_cpu_req[cpu],
-				DEV_PM_QOS_RESUME_LATENCY, cpu_dma_latency);
+
+		if (dev_pm_qos_request_active(&sde_enc->pm_qos_cpu_req[cpu]))
+			dev_pm_qos_update_request(&sde_enc->pm_qos_cpu_req[cpu], cpu_dma_latency);
+		else
+			dev_pm_qos_add_request(cpu_dev,
+					&sde_enc->pm_qos_cpu_req[cpu],
+					DEV_PM_QOS_RESUME_LATENCY, cpu_dma_latency);
 		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu_dma_latency, cpu);
 	}
 }
@@ -441,7 +445,9 @@ void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
 					cpu);
 			continue;
 		}
-		dev_pm_qos_remove_request(&sde_enc->pm_qos_cpu_req[cpu]);
+
+		if (dev_pm_qos_request_active(&sde_enc->pm_qos_cpu_req[cpu]))
+			dev_pm_qos_remove_request(&sde_enc->pm_qos_cpu_req[cpu]);
 		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu);
 	}
 	cpumask_clear(&sde_enc->valid_cpu_mask);
