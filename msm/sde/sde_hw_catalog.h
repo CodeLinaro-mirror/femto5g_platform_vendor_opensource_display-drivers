@@ -64,6 +64,7 @@
 #define SDE_HW_VER_920  SDE_HW_VER(9, 2, 0) /* x1e80100 */
 #define SDE_HW_VER_970  SDE_HW_VER(9, 7, 0) /* x1p42100 */
 #define SDE_HW_VER_980	SDE_HW_VER(9, 8, 0) /* seraph */
+#define SDE_HW_VER_990	SDE_HW_VER(9, 9, 0) /* pikachu */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_A30  SDE_HW_VER(10, 3, 0) /* chora */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
@@ -113,6 +114,7 @@
 #define IS_X1E80100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_920)
 #define IS_X1P42100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_970)
 #define IS_SERAPH_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_980)
+#define IS_PIKACHU_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_990)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
