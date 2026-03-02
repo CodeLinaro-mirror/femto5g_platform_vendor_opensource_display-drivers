@@ -754,9 +754,13 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		goto end;
 	}
 
+	hfi_priv->connected = false;
+
 	_aux_switch_enable(hfi_priv, false);
 
-	hfi_priv->connected = false;
+	if (hfi_priv->audio)
+		hfi_priv->audio->off(hfi_priv->audio, false);
+
 	_hfi_update_config(hfi_priv, &config);
 	_hfi_send_hot_plug(hfi_priv, &config);
 	DP_INFO("disconnected\n");
@@ -830,10 +834,13 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	if ((hpd_state == hfi_priv->connected) && !hpd_irq)
 		return 0;
 
-	if (hpd_state && !hfi_priv->configured)
-		dp_mgr_hfi_hpd_configure_cb(data);
-	else if (!hfi_priv->connected && hpd_state)
+	if (hpd_state && !hfi_priv->configured) {
+		rc = dp_mgr_hfi_hpd_configure_cb(data);
+		if (rc)
+			return rc;
+	} else if (!hfi_priv->connected && hpd_state) {
 		_aux_switch_enable(hfi_priv, true);
+	}
 
 	_hfi_update_config(hfi_priv, &config);
 	hfi_priv->connected = hpd_state;
@@ -1354,6 +1361,7 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 {
 	struct dp_mgr_hfi_priv *hfi_priv;
 	struct sde_kms *sde_kms;
+	struct sde_connector *sde_conn;
 	struct hfi_kms *hfi_kms;
 	struct hfi_client_t *hfi_client;
 	struct hfi_display_hdr_cfg hdr_cfg;
@@ -1382,6 +1390,12 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 
 	hfi_client = &hfi_kms->hfi_client;
 
+	sde_conn = to_sde_connector(client->base_connector);
+	if (!sde_conn) {
+		DP_ERR("Failed to get SDE connector\n");
+		return -EINVAL;
+	}
+
 	/* Check if display is enabled */
 	if (!hfi_priv->connected) {
 		DP_DEBUG("Display not connected, skipping HDR config\n");
@@ -1390,7 +1404,6 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 
 	/* Populate HDR configuration payload */
 	memset(&hdr_cfg, 0, sizeof(hdr_cfg));
-	hdr_cfg.dhdr_update = dhdr_update ? 1 : 0;
 
 	if (hdr_meta) {
 		hdr_cfg.hdr_meta.hdr_state = hdr_meta->hdr_state;
@@ -1410,6 +1423,32 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 		DP_DEBUG("HDR config: state=%u, eotf=%u, supported=%u\n",
 			hdr_cfg.hdr_meta.hdr_state, hdr_cfg.hdr_meta.eotf,
 			hdr_cfg.hdr_meta.hdr_supported);
+
+		/* Copy dynamic HDR (HDR10+) payload if dhdr_update is true */
+		if (dhdr_update && client->base_connector) {
+			struct sde_connector_state *c_state = to_sde_connector_state(
+				client->base_connector->state);
+
+			if (c_state && c_state->dyn_hdr_meta.dynamic_hdr_payload_size > 0) {
+				u32 payload_size = min_t(u32,
+					c_state->dyn_hdr_meta.dynamic_hdr_payload_size,
+					HFI_DHDR_PAYLOAD_MAX_SIZE);
+
+				hdr_cfg.dynamic_hdr_payload_size = payload_size;
+				memcpy(hdr_cfg.dynamic_hdr_payload,
+				       c_state->dyn_hdr_meta.dynamic_hdr_payload,
+				       payload_size);
+
+				DP_DEBUG("Copied %u bytes of dynamic HDR metadata to HFI payload\n",
+					payload_size);
+			} else {
+				DP_DEBUG("No dynamic HDR payload available in connector state\n");
+			}
+		}
+	} else {
+		DP_ERR("Not sending CONFIG_HDR command, null hdr static metadata\n");
+		rc = -EINVAL;
+		goto out;
 	}
 
 	/* Send HFI command */
@@ -1423,6 +1462,7 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 			panel_id, dhdr_update);
 	}
 
+out:
 	return rc;
 }
 
@@ -1563,6 +1603,10 @@ int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 		return -EINVAL;
 
 	hfi_client = &hfi_kms->hfi_client;
+
+	/* turn off audio if still enabled */
+	if (hfi_priv->audio)
+		hfi_priv->audio->off(hfi_priv->audio, false);
 
 	DP_DEBUG("Sending DISPLAY_DISABLE command to DCP, panel_id=%d\n", panel_id);
 

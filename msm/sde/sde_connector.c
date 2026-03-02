@@ -1572,7 +1572,8 @@ int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 		c_conn->freq_pattern_type_changed, freq_pattern->needs_ap_refresh,
 		c_conn->vrr_cmd_state, c_conn->freq_pattern_updated);
 
-	c_conn->freq_pattern_updated = false;
+	if (sde_connector_get_disp_op(connector) == MSM_DISP_OP_HWIO)
+		c_conn->freq_pattern_updated = false;
 	c_conn->freq_pattern_type_changed = false;
 	c_state->privacy_layer_updated = false;
 

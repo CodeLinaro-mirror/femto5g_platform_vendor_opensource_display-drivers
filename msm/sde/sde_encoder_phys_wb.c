@@ -1902,7 +1902,8 @@ static void _sde_encoder_phys_wb_setup_dnsc_blur(struct sde_encoder_phys *phys_e
 	 * disable dnsc_blur case - safe to update the opmode as dynamic switching of
 	 * dnsc_blur hw block between WBs are not supported currently.
 	 */
-	if (hw_dnsc_blur && !sde_conn_state->dnsc_blur_count) {
+	if (hw_dnsc_blur && !sde_conn_state->dnsc_blur_count &&
+		hw_dnsc_blur->ops.setup_dnsc_blur[disp_op]) {
 		hw_dnsc_blur->ops.setup_dnsc_blur[disp_op](hw_dnsc_blur, NULL, 0);
 		SDE_EVT32(DRMID(phys_enc->parent), WBID(wb_enc), SDE_EVTLOG_FUNC_CASE1);
 		return;
@@ -1912,8 +1913,9 @@ static void _sde_encoder_phys_wb_setup_dnsc_blur(struct sde_encoder_phys *phys_e
 		cfg = &sde_conn_state->dnsc_blur_cfg[i];
 
 		enable = (cfg->flags & DNSC_BLUR_EN);
-		hw_dnsc_blur->ops.setup_dnsc_blur[disp_op](hw_dnsc_blur, cfg,
-			sde_conn_state->dnsc_blur_lut);
+		if (hw_dnsc_blur->ops.setup_dnsc_blur[disp_op])
+			hw_dnsc_blur->ops.setup_dnsc_blur[disp_op](hw_dnsc_blur, cfg,
+				sde_conn_state->dnsc_blur_lut);
 
 		if (hw_dnsc_blur->ops.setup_dither[disp_op])
 			hw_dnsc_blur->ops.setup_dither[disp_op](hw_dnsc_blur, cfg);

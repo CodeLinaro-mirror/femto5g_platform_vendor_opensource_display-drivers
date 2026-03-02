@@ -693,6 +693,22 @@
  */
 #define HFI_PROPERTY_DISPLAY_DIM_LAYER                               0x0002002D
 
+/*!
+ * @def HFI_PROPERTY_DISPLAY_MISR_CONFIG
+ * @brief This property is used to setup MISR config. Host is expected to send this packet of
+ *        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFunctionality - HFI_PROPERTY_DISPLAY_MISR_CONFIG
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_MISR_CONFIG  \|
+ * ^                             | (version=0 << 20)  \|
+ * ^                             | (dsize=(sizeof(struct hfi_misr_config)/4) << 24)
+ *     (u32_value) payload [1-3] | struct hfi_misr_config
+ */
+#define HFI_PROPERTY_DISPLAY_MISR_CONFIG                             0x0002002E
+
 /*
  * HFI_PROPERTY_DISPLAY_QSYNC_MODE - Sets QSYNC mode for video/command mode panels.
  *                          Host sends this to configure QSYNC mode which requires sending
@@ -724,6 +740,22 @@
  *     (u32_value) payload [1-5] : struct hfi_resource_cfg
  */
 #define HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA                       0x00020030
+
+/*
+ * HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS - This property is to set VRR (Variable Refresh Rate)
+ *                                         parameters for the current frame. Host is expected
+ *                                         to send this packet as part of
+ *                                         HFI_COMMAND_DISPLAY_SET_PROPERTY command packet
+ *                                         payload.
+ *
+ * @BasicFunctionality - HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS |
+ *                                 (version=0 << 20) | (dsize=2 << 24)
+ *     (u32_value) payload [1]   : Frame interval (in units of Hz*1000)
+ *                                 Calculated as: (NSEC_PER_SEC / frame_interval_ns) * 1000
+ *     (u32_value) payload [2]   : Usecase index (identifies the frequency stepping pattern)
+ */
+#define HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS                        0x00020031
 
 /*
  * All display color properties begin here
