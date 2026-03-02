@@ -446,6 +446,7 @@ static int _msm_hyp_setup_displays(struct drm_device *ddev)
 	struct msm_hyp_connector_info *conn_info, *connector_infos[MAX_CONNECTORS];
 	int conn_num;
 	void *displays[MAX_CONNECTORS];
+	int display_id[MAX_CONNECTORS];
 	struct msm_hyp_display *display;
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
@@ -461,7 +462,7 @@ static int _msm_hyp_setup_displays(struct drm_device *ddev)
 	if (!hyp_kms->funcs || !hyp_kms->funcs->get_connector_infos)
 		return -EINVAL;
 
-	ret = hyp_kms->funcs->get_displays(sde_kms, NULL, &sde_kms->hyp_display_count);
+	ret = hyp_kms->funcs->get_displays(sde_kms, NULL, NULL, &sde_kms->hyp_display_count);
 	if (ret)
 		return ret;
 
@@ -476,7 +477,8 @@ static int _msm_hyp_setup_displays(struct drm_device *ddev)
 		return -EINVAL;
 	}
 
-	ret = hyp_kms->funcs->get_displays(sde_kms, displays, &sde_kms->hyp_display_count);
+	ret = hyp_kms->funcs->get_displays(sde_kms, displays, display_id,
+					&sde_kms->hyp_display_count);
 
 	if (sde_kms->hyp_display_count <= 0) {
 		SDE_ERROR("invalid number of displays %d\n", sde_kms->hyp_display_count);
@@ -518,6 +520,7 @@ static int _msm_hyp_setup_displays(struct drm_device *ddev)
 				conn_info->display_info.intf_type, false);
 		if (connector) {
 			display->display = displays[i];
+			display->id = display_id[i];
 			display->connector = connector;
 			display->encoder = encoder;
 			display->sde_kms = sde_kms;

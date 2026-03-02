@@ -121,7 +121,7 @@ static uint32_t reg_dma_ctl_queue1_off[DPU_MAX][CTL_MAX];
 static uint32_t reg_dma_intr_5_enable_offset[DPU_MAX][CTL_MAX][DMA_CTL_QUEUE_MAX];
 static uint32_t reg_dma_intr_5_status_offset[DPU_MAX][CTL_MAX][DMA_CTL_QUEUE_MAX];
 static uint32_t reg_dma_intr_5_clear_offset[DPU_MAX][CTL_MAX][DMA_CTL_QUEUE_MAX];
-static int reg_dma_ctl_to_vq_map[DPU_MAX][CTL_MAX];
+static int reg_dma_ctl_to_vq_map[DPU_MAX][CTL_MAX][MAX_DISPLAYNODES];
 
 typedef int (*reg_dma_internal_ops) (struct sde_reg_dma_setup_ops_cfg *cfg);
 typedef int (*validate_queue_type)(struct sde_reg_dma_kickoff_cfg *cfg);
@@ -164,34 +164,106 @@ static u64 v1_supported[REG_DMA_FEATURES_MAX]  = {
 	[PCC] = GRP_DSPP_HW_BLK_SELECT,
 };
 
-static u32 ctl_trigger_done_mask[DPU_MAX][CTL_MAX][DMA_CTL_QUEUE_MAX] = {
+static u32 ctl_trigger_done_mask[DPU_MAX][CTL_MAX][MAX_DISPLAYNODES][DMA_CTL_QUEUE_MAX] = {
 	{
-		[CTL_0][0] = BIT(16),
-		[CTL_0][1] = BIT(21),
-		[CTL_1][0] = BIT(17),
-		[CTL_1][1] = BIT(22),
-		[CTL_2][0] = BIT(18),
-		[CTL_2][1] = BIT(23),
-		[CTL_3][0] = BIT(19),
-		[CTL_3][1] = BIT(24),
-		[CTL_4][0] = BIT(25),
-		[CTL_4][1] = BIT(27),
-		[CTL_5][0] = BIT(26),
-		[CTL_5][1] = BIT(28),
+		[CTL_0][0][0] = BIT(16),
+		[CTL_0][1][0] = BIT(16),
+		[CTL_0][2][0] = BIT(16),
+		[CTL_0][3][0] = BIT(16),
+		[CTL_0][0][1] = BIT(21),
+		[CTL_0][1][1] = BIT(21),
+		[CTL_0][2][1] = BIT(21),
+		[CTL_0][3][1] = BIT(21),
+		[CTL_1][0][0] = BIT(17),
+		[CTL_1][1][0] = BIT(17),
+		[CTL_1][2][0] = BIT(17),
+		[CTL_1][3][0] = BIT(17),
+		[CTL_1][0][1] = BIT(22),
+		[CTL_1][1][1] = BIT(22),
+		[CTL_1][2][1] = BIT(22),
+		[CTL_1][3][1] = BIT(22),
+		[CTL_2][0][0] = BIT(18),
+		[CTL_2][1][0] = BIT(18),
+		[CTL_2][2][0] = BIT(18),
+		[CTL_2][3][0] = BIT(18),
+		[CTL_2][0][1] = BIT(23),
+		[CTL_2][1][1] = BIT(23),
+		[CTL_2][2][1] = BIT(23),
+		[CTL_2][3][1] = BIT(23),
+		[CTL_3][0][0] = BIT(19),
+		[CTL_3][1][0] = BIT(19),
+		[CTL_3][2][0] = BIT(19),
+		[CTL_3][3][0] = BIT(19),
+		[CTL_3][0][1] = BIT(24),
+		[CTL_3][1][1] = BIT(24),
+		[CTL_3][2][1] = BIT(24),
+		[CTL_3][3][1] = BIT(24),
+		[CTL_4][0][0] = BIT(25),
+		[CTL_4][1][0] = BIT(25),
+		[CTL_4][2][0] = BIT(25),
+		[CTL_4][3][0] = BIT(25),
+		[CTL_4][0][1] = BIT(27),
+		[CTL_4][1][1] = BIT(27),
+		[CTL_4][2][1] = BIT(27),
+		[CTL_4][3][1] = BIT(27),
+		[CTL_5][0][0] = BIT(26),
+		[CTL_5][1][0] = BIT(26),
+		[CTL_5][2][0] = BIT(26),
+		[CTL_5][3][0] = BIT(26),
+		[CTL_5][0][1] = BIT(28),
+		[CTL_5][1][1] = BIT(28),
+		[CTL_5][2][1] = BIT(28),
+		[CTL_5][3][1] = BIT(28),
 	},
 	{
-		[CTL_0][0] = BIT(16),
-		[CTL_0][1] = BIT(21),
-		[CTL_1][0] = BIT(17),
-		[CTL_1][1] = BIT(22),
-		[CTL_2][0] = BIT(18),
-		[CTL_2][1] = BIT(23),
-		[CTL_3][0] = BIT(19),
-		[CTL_3][1] = BIT(24),
-		[CTL_4][0] = BIT(25),
-		[CTL_4][1] = BIT(27),
-		[CTL_5][0] = BIT(26),
-		[CTL_5][1] = BIT(28),
+		[CTL_0][0][0] = BIT(16),
+		[CTL_0][1][0] = BIT(16),
+		[CTL_0][2][0] = BIT(16),
+		[CTL_0][3][0] = BIT(16),
+		[CTL_0][0][1] = BIT(21),
+		[CTL_0][1][1] = BIT(21),
+		[CTL_0][2][1] = BIT(21),
+		[CTL_0][3][1] = BIT(21),
+		[CTL_1][0][0] = BIT(17),
+		[CTL_1][1][0] = BIT(17),
+		[CTL_1][2][0] = BIT(17),
+		[CTL_1][3][0] = BIT(17),
+		[CTL_1][0][1] = BIT(22),
+		[CTL_1][1][1] = BIT(22),
+		[CTL_1][2][1] = BIT(22),
+		[CTL_1][3][1] = BIT(22),
+		[CTL_2][0][0] = BIT(18),
+		[CTL_2][1][0] = BIT(18),
+		[CTL_2][2][0] = BIT(18),
+		[CTL_2][3][0] = BIT(18),
+		[CTL_2][0][1] = BIT(23),
+		[CTL_2][1][1] = BIT(23),
+		[CTL_2][2][1] = BIT(23),
+		[CTL_2][3][1] = BIT(23),
+		[CTL_3][0][0] = BIT(19),
+		[CTL_3][1][0] = BIT(19),
+		[CTL_3][2][0] = BIT(19),
+		[CTL_3][3][0] = BIT(19),
+		[CTL_3][0][1] = BIT(24),
+		[CTL_3][1][1] = BIT(24),
+		[CTL_3][2][1] = BIT(24),
+		[CTL_3][3][1] = BIT(24),
+		[CTL_4][0][0] = BIT(25),
+		[CTL_4][1][0] = BIT(25),
+		[CTL_4][2][0] = BIT(25),
+		[CTL_4][3][0] = BIT(25),
+		[CTL_4][0][1] = BIT(27),
+		[CTL_4][1][1] = BIT(27),
+		[CTL_4][2][1] = BIT(27),
+		[CTL_4][3][1] = BIT(27),
+		[CTL_5][0][0] = BIT(26),
+		[CTL_5][1][0] = BIT(26),
+		[CTL_5][2][0] = BIT(26),
+		[CTL_5][3][0] = BIT(26),
+		[CTL_5][0][1] = BIT(28),
+		[CTL_5][1][1] = BIT(28),
+		[CTL_5][2][1] = BIT(28),
+		[CTL_5][3][1] = BIT(28),
 	},
 };
 
@@ -251,7 +323,7 @@ static void reg_dma_submit_queue_v4(struct sde_reg_dma_kickoff_cfg *cfg,
 
 static struct sde_reg_dma_buffer *get_reg_dma_vq_buf_v4(struct sde_kms *sde_kms,
 		enum sde_reg_dma_buffer_type type,
-		enum sde_hw_blk_type hw_type, u32 idx, u32 dpu_idx);
+		enum sde_hw_blk_type hw_type, u32 idx, u32 dpu_idx, u32 display_idx);
 static int reset_reg_dma_buffer_v4(struct sde_reg_dma_buffer *lut_buf);
 static int validate_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
 static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx);
@@ -1345,7 +1417,8 @@ static void reg_dma_trigger_v1_to_v3(struct sde_reg_dma_kickoff_cfg *cfg,
 {
 	u32 mask, dpu_idx = cfg->dma_buf->dpu_idx;
 
-	mask = ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx][cfg->queue_select];
+	mask = ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx]
+		[cfg->ctl->display_idx][cfg->queue_select];
 	SDE_REG_WRITE(hw, reg_dma_intr_0_clear_offset[dpu_idx][cfg->ctl->idx][cfg->queue_select],
 				mask);
 	/* DB LUTDMA use SW trigger while SB LUTDMA uses DSPP_SB
@@ -1794,7 +1867,8 @@ static void reg_dma_trigger_v4(struct sde_reg_dma_kickoff_cfg *cfg,
 {
 	u32 mask, dpu_idx = cfg->dma_buf->dpu_idx;
 
-	mask = ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx][cfg->queue_select];
+	mask = ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx]
+		[cfg->ctl->display_idx][cfg->queue_select];
 	SDE_REG_WRITE(hw, reg_dma_intr_0_clear_offset[dpu_idx][cfg->ctl->idx][cfg->queue_select],
 				mask);
 	/* DB LUTDMA use SW trigger while SB LUTDMA uses DSPP_SB
@@ -1802,11 +1876,13 @@ static void reg_dma_trigger_v4(struct sde_reg_dma_kickoff_cfg *cfg,
 	 */
 	if (cfg->dma_type == REG_DMA_TYPE_DB) {
 		SDE_REG_WRITE(&cfg->ctl->hw, reg_dma_ctl_trigger_offset,
-				ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx][DMA_CTL_QUEUE0]);
+				ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx][cfg->ctl->display_idx]
+							[DMA_CTL_QUEUE0]);
 	}
 
 	SDE_DEBUG("tigger CTL%d VQ%d %s %s  DPU%d\n", cfg->ctl->idx,
-			ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx][DMA_CTL_QUEUE0],
+			ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx]
+			[cfg->ctl->display_idx][DMA_CTL_QUEUE0],
 			(cfg->dma_type == REG_DMA_TYPE_DB) ? "DB" : "SB",
 			cfg->queue_select ? "Q0" : "Q1",
 			cfg->dma_buf->dpu_idx);
@@ -2141,8 +2217,14 @@ int init_v3(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 	}
 
 	for (i = CTL_0; i < CTL_MAX; i++) {
-		ctl_trigger_done_mask[dpu_idx][i][DMA_CTL_QUEUE0] = BIT(3);
-		ctl_trigger_done_mask[dpu_idx][i][DMA_CTL_QUEUE1] = BIT(4);
+		ctl_trigger_done_mask[dpu_idx][i][0][DMA_CTL_QUEUE0] = BIT(3);
+		ctl_trigger_done_mask[dpu_idx][i][1][DMA_CTL_QUEUE0] = BIT(3);
+		ctl_trigger_done_mask[dpu_idx][i][2][DMA_CTL_QUEUE0] = BIT(3);
+		ctl_trigger_done_mask[dpu_idx][i][3][DMA_CTL_QUEUE0] = BIT(3);
+		ctl_trigger_done_mask[dpu_idx][i][0][DMA_CTL_QUEUE1] = BIT(4);
+		ctl_trigger_done_mask[dpu_idx][i][1][DMA_CTL_QUEUE1] = BIT(4);
+		ctl_trigger_done_mask[dpu_idx][i][2][DMA_CTL_QUEUE1] = BIT(4);
+		ctl_trigger_done_mask[dpu_idx][i][3][DMA_CTL_QUEUE1] = BIT(4);
 		reg_dma_intr_0_status_offset[dpu_idx][i][DMA_CTL_QUEUE0] = 4096 * i + 0x44;
 		reg_dma_intr_0_status_offset[dpu_idx][i][DMA_CTL_QUEUE1] = 4096 * i + 0x44;
 		reg_dma_intr_0_clear_offset[dpu_idx][i][DMA_CTL_QUEUE0] =
@@ -2166,7 +2248,7 @@ int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx, struct sde_mdss_cfg *m)
 {
 	char name[20];
 	int rc, i, j, k;
-	int ctl_idx, vq_idx;
+	int ctl_idx, vq_idx, display_idx;
 	struct sde_reg_dma_cfg *cfg = (struct sde_reg_dma_cfg *)reg_dma->caps;
 	struct sde_reg_dma_buffer *reg_dma_buf;
 	u32 off_db, off_sb;
@@ -2197,19 +2279,20 @@ int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx, struct sde_mdss_cfg *m)
 	reg_dma_intr_4_clear_offset = 0xc0;
 
 	memset(vq_reg_dma_bufs[dpu_idx], 0, sizeof(vq_reg_dma_bufs[dpu_idx]));
-
 	for (i = 0; i < m->ctl_count; i ++) {
 		ctl_idx = m->ctl[i].id;
+		display_idx = m->ctl[i].display_idx;
 		vq_idx = m->ctl[i].vq_idx;
 		off_db = m->dma_cfg.reg_dma_vq_blks[vq_idx][REG_DMA_TYPE_DB].base;
 		off_sb = m->dma_cfg.reg_dma_vq_blks[vq_idx][REG_DMA_TYPE_SB].base;
-		DRM_DEBUG("Config LUTDMA for dpu %d  ctl %d  VQ %d  base %X %X\n",
+		DRM_DEBUG("[%d] Config LUTDMA for dpu %d  ctl %d  VQ %d  base %X %X\n", i,
 				dpu_idx, ctl_idx, vq_idx, off_db, off_sb);
-		reg_dma_ctl_to_vq_map[dpu_idx][ctl_idx] = vq_idx;
+		reg_dma_ctl_to_vq_map[dpu_idx][ctl_idx][display_idx] = vq_idx;
 		reg_dma_ctl_queue_off[dpu_idx][ctl_idx] = 0x0;
 		reg_dma_ctl_queue1_off[dpu_idx][ctl_idx] = 0x0;
 
-		ctl_trigger_done_mask[dpu_idx][ctl_idx][DMA_CTL_QUEUE0] = BIT(vq_idx - REG_DMA_VQ_0);
+		ctl_trigger_done_mask[dpu_idx][ctl_idx][display_idx][DMA_CTL_QUEUE0] =
+					BIT(vq_idx - REG_DMA_VQ_0);
 		reg_dma_intr_0_enable_offset[dpu_idx][ctl_idx][REG_DMA_TYPE_DB] = 0x40;
 		reg_dma_intr_0_enable_offset[dpu_idx][ctl_idx][REG_DMA_TYPE_SB] = 0x40;
 		reg_dma_intr_0_status_offset[dpu_idx][ctl_idx][REG_DMA_TYPE_DB] = 0x44;
@@ -2631,11 +2714,14 @@ static int last_cmd_v1(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 			kick_off.dma_type, kick_off.op, ctl->dpu_idx);
 	if (mode == REG_DMA_WAIT4_COMP) {
 		rc = read_poll_timeout(sde_reg_read, val,
-				(val & ctl_trigger_done_mask[ctl->dpu_idx][ctl->idx][q]), 10, false, 20000,
-				&hw, reg_dma_intr_0_status_offset[ctl->dpu_idx][ctl->idx][q], "INTR_0_STATUS");
+				(val & ctl_trigger_done_mask[ctl->dpu_idx]
+				[ctl->idx][ctl->display_idx][q]), 10, false, 20000,
+				&hw, reg_dma_intr_0_status_offset[ctl->dpu_idx][ctl->idx][q],
+				"INTR_0_STATUS");
 		if (rc)
 			DRM_ERROR("poll wait failed %d val %x mask %x\n",
-			    rc, val, ctl_trigger_done_mask[ctl->dpu_idx][ctl->idx][q]);
+			    rc, val, ctl_trigger_done_mask[ctl->dpu_idx][ctl->idx]
+			    [ctl->display_idx][q]);
 		SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, mode, ctl->dpu_idx, rc);
 	}
 
@@ -2730,7 +2816,7 @@ static int last_cmd_sb_v2(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	return rc;
 }
 
-struct sde_reg_dma_buffer **get_reg_dma_vq_ctx(u32 dpu_idx, u32 ctl_idx)
+struct sde_reg_dma_buffer **get_reg_dma_vq_ctx(u32 dpu_idx, u32 ctl_idx, u32 display_idx)
 {
 	int vq_idx;
 
@@ -2744,7 +2830,7 @@ struct sde_reg_dma_buffer **get_reg_dma_vq_ctx(u32 dpu_idx, u32 ctl_idx)
 		return NULL;
 	}
 
-	vq_idx = reg_dma_ctl_to_vq_map[dpu_idx][ctl_idx];
+	vq_idx = reg_dma_ctl_to_vq_map[dpu_idx][ctl_idx][display_idx];
 	if (vq_idx < REG_DMA_VQ_0 || vq_idx >= REG_DMA_VQ_MAX) {
 		SDE_ERROR("Invalid vq id %d  for dpu %d ctl %d\n", vq_idx, ctl_idx, dpu_idx);
 		return NULL;
@@ -2761,7 +2847,7 @@ static int reset_reg_dma_buffer_v4(struct sde_reg_dma_buffer *lut_buf)
 
 static struct sde_reg_dma_buffer *get_reg_dma_vq_buf_v4(struct sde_kms *sde_kms,
 		enum sde_reg_dma_buffer_type type,
-		enum sde_hw_blk_type hw_type, u32 idx, u32 dpu_idx)
+		enum sde_hw_blk_type hw_type, u32 idx, u32 dpu_idx, u32 display_idx)
 {
 	int ctl_idx = -1, i, vq_idx;
 
@@ -2795,13 +2881,13 @@ static struct sde_reg_dma_buffer *get_reg_dma_vq_buf_v4(struct sde_kms *sde_kms,
 		return NULL;
 	}
 
-	vq_idx = reg_dma_ctl_to_vq_map[dpu_idx][ctl_idx];
+	vq_idx = reg_dma_ctl_to_vq_map[dpu_idx][ctl_idx][display_idx];
 	if (vq_idx < REG_DMA_VQ_0 || vq_idx >= REG_DMA_VQ_MAX) {
 		SDE_ERROR("Invalid vq id %d  for dpu %d ctl %d\n", vq_idx, ctl_idx, dpu_idx);
 		return NULL;
 	}
 
-	return vq_reg_dma_bufs[dpu_idx][0][reg_dma_ctl_to_vq_map[dpu_idx][ctl_idx]][type];
+	return vq_reg_dma_bufs[dpu_idx][0][vq_idx][type];
 }
 
 static int validate_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
@@ -2924,7 +3010,7 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 		return -EINVAL;
 	}
 
-	vq_idx = reg_dma_ctl_to_vq_map[dpu_idx][cfg->ctl->idx];
+	vq_idx = reg_dma_ctl_to_vq_map[dpu_idx][cfg->ctl->idx][cfg->ctl->display_idx];
 
 	vatran = sde_hw_get_vatran(dpu_idx);
 
@@ -3000,7 +3086,8 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 			if (map_addr != (u32)-1) {
 				/* Register remapped to VA_TRAN space, for CPU access need remove the base_off */
 				SDE_REG_WRITE_CPU(&vatran->hw, map_addr - vatran->caps->base_off,
-						ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx][cfg->queue_select]);
+						ctl_trigger_done_mask[dpu_idx][cfg->ctl->idx]
+							[cfg->ctl->display_idx][cfg->queue_select]);
 				wmb();
 
 				if (SDE_DBG_MASK_REGDMA & sde_hw_util_log_mask)
@@ -3101,7 +3188,7 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 		return -EINVAL;
 	}
 
-	vq_idx = reg_dma_ctl_to_vq_map[dpu_idx][ctl->idx];
+	vq_idx = reg_dma_ctl_to_vq_map[dpu_idx][ctl->idx][ctl->display_idx];
 
 #if !SEND_SEPARATED_LAST_CMD
 	i = 0;
@@ -3109,7 +3196,7 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	last_sb_idx = -1;
 	/* Find which buffer mark last command */
 	while (vq_kickoff[i].type != REG_DMA_TYPE_MAX) {
-		SDE_DEBUG("Check buffer %s\n", vq_kickoff[i].name);
+		SDE_DEBUG("Check buffer %s, vq_reg_dma_bufs[%d][0][%d][%d] = %pK\n", vq_kickoff[i].name, dpu_idx, vq_idx, vq_kickoff[i].buf_type, vq_reg_dma_bufs[dpu_idx][0][vq_idx][vq_kickoff[i].buf_type]);
 		buf = vq_reg_dma_bufs[dpu_idx][0][vq_idx][vq_kickoff[i].buf_type];
 		if (buf && buf->index) {
 			if ((buf->buffer_type == REG_DMA_MDSS_DB) || (buf->buffer_type == REG_DMA_TABLE_DB))
@@ -3131,7 +3218,8 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 	/* Enqueue each buffer queue is not empty */
 	while (vq_kickoff[i].type != REG_DMA_TYPE_MAX) {
 		buf = vq_reg_dma_bufs[dpu_idx][0][vq_idx][vq_kickoff[i].buf_type];
-		SDE_DEBUG("Check buffer %s %X\n", vq_kickoff[i].name, buf ? buf->index : 0);
+		SDE_DEBUG("Check buffer %s %X, buf %pK [%d][0][%d][%d]\n", vq_kickoff[i].name,
+			buf ? buf->index : 0, buf, dpu_idx, vq_idx, vq_kickoff[i].buf_type);
 		if (buf && buf->index) {
 			SDE_DEBUG("Enqueue buffer %s %X  dpu %d  vq %d  i %d  type %d  buf %pK  0x%llX\n",
 					vq_kickoff[i].name, buf->index, dpu_idx, vq_idx, i, vq_kickoff[i].buf_type, buf, buf->iova);
@@ -3246,7 +3334,7 @@ static int last_cmd_v4(struct sde_hw_ctl *ctl, enum sde_reg_dma_queue q,
 				kick_off.dma_buf = buf;
 				kick_off.feature = vq_kickoff[i].features;
 				kick_off.last_command = (i == last_db_idx) || (i == last_sb_idx);
-				//reg_dma_workload_dump(&kick_off);
+				// reg_dma_workload_dump(&kick_off);
 				reg_dma_readback_payload(&kick_off);
 			}
 			i++;
@@ -3284,7 +3372,7 @@ int reset_v4(struct sde_hw_ctl *ctl)
 	for (k = 0; k < REG_DMA_TYPE_MAX; k++) {
 		memset(&hw, 0, sizeof(hw));
 		SET_UP_REG_DMA_VQ_REG(hw, reg_dma[ctl->dpu_idx], k,
-				reg_dma_ctl_to_vq_map[ctl->dpu_idx][ctl->idx]);
+				reg_dma_ctl_to_vq_map[ctl->dpu_idx][ctl->idx][ctl->display_idx]);
 		if (hw.hw_rev == 0)
 			continue;
 

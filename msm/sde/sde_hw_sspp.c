@@ -327,8 +327,13 @@ static void sde_hw_sspp_setup_ubwc(struct sde_hw_pipe *ctx, struct sde_hw_blk_re
 
 	if (SDE_HW_MAJOR(ctx->catalog->ubwc_rev) >= SDE_HW_MAJOR(SDE_HW_UBWC_VER_50)) {
 		if (!SDE_FORMAT_IS_YUV(fmt))
-			ctrl_val |= (SDE_FORMAT_IS_DX(fmt) || SDE_FORMAT_IS_FP16(fmt)) ?
-					BIT(30) : (BIT(31) | BIT(30));
+			ctrl_val |= BIT(30);
+		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_2_1(fmt) ? (0x3 << 16) : 0;
+		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_8_5(fmt) ? BIT(16) : 0;
+		SDE_REG_WRITE(c, ubwc_ctrl_off, ctrl_val);
+        } else if (IS_UBWC_43_SUPPORTED(ctx->catalog->ubwc_rev)) {
+                if (!SDE_FORMAT_IS_YUV(fmt))
+			ctrl_val |= BIT(30);
 		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_2_1(fmt) ? (0x3 << 16) : 0;
 		ctrl_val |= SDE_FORMAT_IS_UBWC_LOSSY_8_5(fmt) ? BIT(16) : 0;
 		SDE_REG_WRITE(c, ubwc_ctrl_off, ctrl_val);
@@ -1345,7 +1350,7 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 {
 	int ret = 0;
 
-	pr_err("Enter %s  idx %d  %s%d\n", __func__, c->idx,
+	pr_info("Enter %s  idx %d  %s%d\n", __func__, c->idx,
 			(c->idx > SSPP_VIG_MAX) ? "DMA" : "VIG",
 			(c->idx > SSPP_VIG_MAX) ? (c->idx - SSPP_DMA0) : (c->idx - SSPP_VIG0));
 	if (is_virtual_pipe) {
@@ -1357,7 +1362,7 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 	if (test_bit(SDE_SSPP_HSIC, &features)) {
 		if (c->cap->sblk->hsic_blk.version ==
 			(SDE_COLOR_PROCESS_VER(0x1, 0x7))) {
-			pr_err("Set HISC v1.7\n");
+			pr_info("Set HISC v1.7\n");
 			c->ops.setup_pa_hue = sde_setup_pipe_pa_hue_v1_7;
 			c->ops.setup_pa_sat = sde_setup_pipe_pa_sat_v1_7;
 			c->ops.setup_pa_val = sde_setup_pipe_pa_val_v1_7;
@@ -1370,20 +1375,20 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x1, 0x7))) {
 			c->ops.setup_pa_memcolor =
 				sde_setup_pipe_pa_memcol_v1_7;
-				pr_err("Set PA v1.7\n");
-			}
+			pr_info("Set PA v1.7\n");
+		}
 	}
 
 	if (test_bit(SDE_SSPP_VIG_GAMUT, &features)) {
 		if (c->cap->sblk->gamut_blk.version ==
 			(SDE_COLOR_PROCESS_VER(0x5, 0x0))) {
-			pr_err("Setup LUTDMA SSPP v4\n");
+			pr_info("Setup LUTDMA SSPP v4\n");
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
 							c);
 			if (!ret) {
 				c->ops.setup_vig_gamut =
 					reg_dmav1_setup_vig_gamutv5;
-				pr_err("Set VIG GAMUT V5\n");
+				pr_info("Set VIG GAMUT V5\n");
 			} else {
 				c->ops.setup_vig_gamut = NULL;
 				pr_err("Set VIG GAMUT NULL\n");
@@ -1394,11 +1399,11 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x6, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
 							c);
-			pr_err("Setup LUTDMA SSPP v4\n");
+			pr_info("Setup LUTDMA SSPP v4\n");
 			if (!ret) {
 				c->ops.setup_vig_gamut =
 					reg_dmav1_setup_vig_gamutv6;
-				pr_err("Set VIG GAMUT V6\n");
+				pr_info("Set VIG GAMUT V6\n");
 			} else {
 				c->ops.setup_vig_gamut = NULL;
 				pr_err("Set VIG GAMUT NULL\n");
@@ -1407,11 +1412,11 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x6, 0x1))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_GAMUT,
 							c);
-			pr_err("Setup LUTDMA SSPP v4\n");
+			pr_info("Setup LUTDMA SSPP v4\n");
 			if (!ret) {
 				c->ops.setup_vig_gamut =
 					reg_dmav2_setup_vig_gamutv61;
-				pr_err("Set VIG GAMUT V61\n");
+				pr_info("Set VIG GAMUT V61\n");
 			} else {
 				c->ops.setup_vig_gamut = NULL;
 				pr_err("Set VIG GAMUT NULL\n");
@@ -1424,11 +1429,11 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x5, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_IGC,
 							c);
-			pr_err("Setup LUTDMA SSPP v4\n");
+			pr_info("Setup LUTDMA SSPP v4\n");
 			if (!ret) {
 				c->ops.setup_vig_igc =
 					reg_dmav1_setup_vig_igcv5;
-				pr_err("Set VIG IGC V5\n");
+				pr_info("Set VIG IGC V5\n");
 			} else {
 				c->ops.setup_vig_igc = NULL;
 				pr_err("Set VIG IGC NULL\n");
@@ -1439,11 +1444,11 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x6, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_VIG_IGC,
 							c);
-			pr_err("Setup LUTDMA SSPP v4\n");
+			pr_info("Setup LUTDMA SSPP v4\n");
 			if (!ret) {
 				c->ops.setup_vig_igc =
 					reg_dmav1_setup_vig_igcv6;
-				pr_err("Set VIG IGC V6\n");
+				pr_info("Set VIG IGC V6\n");
 			} else {
 				c->ops.setup_vig_igc = NULL;
 				pr_err("Set VIG IGC NULL\n");
@@ -1456,11 +1461,11 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x5, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_DMA_IGC,
 							c);
-			pr_err("Setup LUTDMA SSPP v4\n");
+			pr_info("Setup LUTDMA SSPP v4\n");
 			if (!ret) {
 				c->ops.setup_dma_igc =
 					reg_dmav1_setup_dma_igcv5;
-				pr_err("Set DMA IGC V5\n");
+				pr_info("Set DMA IGC V5\n");
 			} else {
 				c->ops.setup_dma_igc = NULL;
 				pr_err("Set DMA IGC NULL\n");
@@ -1473,11 +1478,11 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 			(SDE_COLOR_PROCESS_VER(0x5, 0x0))) {
 			ret = reg_dmav1_init_sspp_op_v4(SDE_SSPP_DMA_GC,
 							c);
-			pr_err("Setup LUTDMA SSPP v4\n");
+			pr_info("Setup LUTDMA SSPP v4\n");
 			if (!ret) {
 				c->ops.setup_dma_gc =
 					reg_dmav1_setup_dma_gcv5;
-				pr_err("Set DMA GC V5\n");
+				pr_info("Set DMA GC V5\n");
 			} else {
 				c->ops.setup_dma_gc = NULL;
 				pr_err("Set DMA GC NULL\n");
@@ -1488,35 +1493,35 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 	if (test_bit(SDE_SSPP_FP16_IGC, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_igc_blk[0].version)) {
 		c->ops.setup_fp16_igc = sde_setup_fp16_igcv1;
-		pr_err("Set FP16 IGC V1\n");
+		pr_info("Set FP16 IGC V1\n");
 	}
 
 	if (test_bit(SDE_SSPP_FP16_GC, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_gc_blk[0].version)) {
 		c->ops.setup_fp16_gc = sde_setup_fp16_gcv1;
-		pr_err("Set FP16 GC V1\n");
+		pr_info("Set FP16 GC V1\n");
 	}
 
 	if (test_bit(SDE_SSPP_FP16_CSC, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_csc_blk[0].version)) {
 		c->ops.setup_fp16_csc = sde_setup_fp16_cscv1;
-		pr_err("Set FP16 CSC V1\n");
+		pr_info("Set FP16 CSC V1\n");
 	}
 
 	if (test_bit(SDE_SSPP_FP16_UNMULT, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->fp16_unmult_blk[0].version)) {
 		c->ops.setup_fp16_unmult = sde_setup_fp16_unmultv1;
-		pr_err("Set FP16 UNMULT V1\n");
+		pr_info("Set FP16 UNMULT V1\n");
 	}
 
 	if (test_bit(SDE_SSPP_UCSC_IGC, &features)) {
 		if (c->cap->sblk->ucsc_igc_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_igc = sde_setup_ucsc_igcv1_1;
-			pr_err("Set UCSC IGC V1.1\n");
+			pr_info("Set UCSC IGC V1.1\n");
 		} else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_igc_blk[0].version)) {
 			c->ops.setup_ucsc_igc = sde_setup_ucsc_igcv1;
-			pr_err("Set UCSC IGC V1\n");
+			pr_info("Set UCSC IGC V1\n");
 		} else {
 			c->ops.setup_ucsc_igc = NULL;
 			pr_err("Set UCSC IGC NULL\n");
@@ -1527,10 +1532,10 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 		if (c->cap->sblk->ucsc_gc_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_gc = sde_setup_ucsc_gcv1_1;
-			pr_err("Set UCSC IGC V1.1\n");
+			pr_info("Set UCSC IGC V1.1\n");
 		} else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_gc_blk[0].version)) {
 			c->ops.setup_ucsc_gc = sde_setup_ucsc_gcv1;
-			pr_err("Set UCSC GC V1\n");
+			pr_info("Set UCSC GC V1\n");
 		} else {
 			c->ops.setup_ucsc_gc = NULL;
 			pr_err("Set UCSC GC NULL\n");
@@ -1541,10 +1546,10 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 		if (c->cap->sblk->ucsc_csc_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_csc = sde_setup_ucsc_cscv1_1;
-			pr_err("Set UCSC CSC V1.1\n");
+			pr_info("Set UCSC CSC V1.1\n");
 		} else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_csc_blk[0].version)) {
 			c->ops.setup_ucsc_csc = sde_setup_ucsc_cscv1;
-			pr_err("Set UCSC CSC V1\n");
+			pr_info("Set UCSC CSC V1\n");
 		} else {
 			c->ops.setup_ucsc_csc = NULL;
 			pr_err("Set UCSC CSC NULL\n");
@@ -1555,10 +1560,10 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 		if (c->cap->sblk->ucsc_unmult_blk[0].version ==
 			SDE_COLOR_PROCESS_VER(0x1, 0x1)) {
 			c->ops.setup_ucsc_unmult = sde_setup_ucsc_unmultv1_1;
-			pr_err("Set UCSC UNMULT V1.1\n");
+			pr_info("Set UCSC UNMULT V1.1\n");
 		} else if (IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_unmult_blk[0].version)) {
 			c->ops.setup_ucsc_unmult = sde_setup_ucsc_unmultv1;
-			pr_err("Set UCSC UNMULT V1\n");
+			pr_info("Set UCSC UNMULT V1\n");
 		} else {
 			c->ops.setup_ucsc_unmult = NULL;
 			pr_err("Set UCSC UNMULT NULL\n");
@@ -1568,9 +1573,9 @@ void setup_layer_ops_colorproc(struct sde_hw_pipe *c,
 	if (test_bit(SDE_SSPP_UCSC_ALPHA_DITHER, &features) &&
 			IS_SDE_CP_VER_1_0(c->cap->sblk->ucsc_alpha_dither_blk[0].version)) {
 		c->ops.setup_ucsc_alpha_dither = sde_setup_ucsc_alpha_ditherv1;
-		pr_err("Set UCSC ALPHA DITHER V1\n");
+		pr_info("Set UCSC ALPHA DITHER V1\n");
 	}
-	pr_err("Exit %s\n", __func__);
+	pr_info("Exit %s\n", __func__);
 }
 
 void sde_hw_sspp_setup_inverse_pma(struct sde_hw_pipe *ctx,
@@ -1992,7 +1997,7 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 	struct sde_hw_pipe *hw_pipe;
 	struct sde_sspp_cfg *cfg;
 
-	pr_err("Enter %s\n", __func__);
+	pr_info("Enter %s\n", __func__);
 	if (!addr || !catalog)
 		return ERR_PTR(-EINVAL);
 
@@ -2099,7 +2104,7 @@ struct sde_hw_pipe *sde_hw_sspp_init(enum sde_sspp idx,
 		}
 	}
 
-	pr_err("Exit %s  idx=%d  %s%d\n", __func__, hw_pipe->idx,
+	pr_info("Exit %s  idx=%d  %s%d\n", __func__, hw_pipe->idx,
 			(hw_pipe->idx > SSPP_VIG_MAX) ? "DMA" : "VIG",
 			(hw_pipe->idx > SSPP_VIG_MAX) ? (hw_pipe->idx - SSPP_DMA0) : (hw_pipe->idx - SSPP_VIG0));
 	return hw_pipe;

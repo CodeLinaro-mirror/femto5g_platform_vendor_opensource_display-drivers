@@ -100,6 +100,7 @@ static void _setup_ds_ops(struct sde_hw_ds_ops *ops, unsigned long features)
 static struct sde_ds_cfg *_ds_offset(enum sde_ds ds,
 		struct sde_mdss_cfg *m,
 		void __iomem *addr,
+		u32 display_idx,
 		struct sde_hw_blk_reg_map *b)
 {
 	int i;
@@ -109,13 +110,14 @@ static struct sde_ds_cfg *_ds_offset(enum sde_ds ds,
 
 	for (i = 0; i < m->ds_count; i++) {
 		if ((ds == m->ds[i].id) &&
-			 (m->ds[i].top)) {
+			 (m->ds[i].top) && display_idx == m->ds[i].display_idx) {
 			b->base_off = addr;
 			b->blk_off = m->ds[i].top->base;
 			b->length = m->ds[i].top->len;
 			b->hw_rev = m->hw_rev;
 			b->log_mask = SDE_DBG_MASK_DS;
 			b->virtual = m->ds[i].virtual;
+			b->display_idx = display_idx;
 			return &m->ds[i];
 		}
 	}
@@ -125,7 +127,8 @@ static struct sde_ds_cfg *_ds_offset(enum sde_ds ds,
 
 struct sde_hw_blk_reg_map *sde_hw_ds_init(enum sde_ds idx,
 			void __iomem *addr,
-			struct sde_mdss_cfg *m)
+			struct sde_mdss_cfg *m,
+			u32 display_idx)
 {
 	struct sde_hw_ds *hw_ds;
 	struct sde_ds_cfg *cfg;
@@ -137,7 +140,7 @@ struct sde_hw_blk_reg_map *sde_hw_ds_init(enum sde_ds idx,
 	if (!hw_ds)
 		return ERR_PTR(-ENOMEM);
 
-	cfg = _ds_offset(idx, m, addr, &hw_ds->hw);
+	cfg = _ds_offset(idx, m, addr, display_idx, &hw_ds->hw);
 	if (IS_ERR_OR_NULL(cfg)) {
 		SDE_ERROR("failed to get ds cfg\n");
 		kfree(hw_ds);
