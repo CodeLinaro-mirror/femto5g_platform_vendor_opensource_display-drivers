@@ -1720,6 +1720,42 @@ static void __flush_debug_queue(struct lsr_device *device, u8 *packet)
 #define _INVALID_STATE_ "Ignore responses from %d to %d invalid state\n"
 #define _DEVFREQ_FAIL_ "Failed to add devfreq device bus %s governor %s: %d\n"
 
+static void lsr_panic(void)
+{
+	panic("LSR firmware panic\n");
+}
+
+static void __dump_sfr_log(struct lsr_device *device)
+{
+	struct lsr_hfi_sfr_struct *vsfr = NULL;
+
+	if (!device) {
+		dprintk(LSR_ERR, "Invalid device pointer\n");
+		return;
+	}
+
+	vsfr = (struct lsr_hfi_sfr_struct *)device->sfr.align_virtual_addr;
+	if (vsfr) {
+		u32 sfr_buf_size = 0;
+
+		sfr_buf_size = vsfr->bufSize;
+		if (sfr_buf_size > 0 && sfr_buf_size <= ALIGNED_SFR_SIZE) {
+			void *p = memchr(vsfr->rg_data, '\0', sfr_buf_size);
+			/*
+			 * SFR isn't guaranteed to be NULL terminated
+			 * since SYS_ERROR indicates that LSR is in the
+			 * process of crashing.
+			 */
+			if (p == NULL)
+				vsfr->rg_data[sfr_buf_size - 1] = '\0';
+
+			dprintk(LSR_ERR, "SFR Message from FW: %s\n", vsfr->rg_data);
+		}
+	} else {
+		dprintk(LSR_ERR, "Error: vsfr is null\n");
+	}
+}
+
 int __response_handler(struct lsr_device *device)
 {
 	int lsr_status = 0;
@@ -1739,6 +1775,15 @@ int __response_handler(struct lsr_device *device)
 	}
 
 	__flush_debug_queue(device, NULL);
+
+	if (lsr_status & BIT(LSR_STATUS_SYS_ERROR)) {
+		__dump_sfr_log(device);
+		if (!msm_lsr_enable_ssr) {
+			pr_err("LSR sys error detected\n");
+			lsr_panic();
+		}
+		/* TODO: Handle SSR cases once SSR is implemented */
+	}
 	return 0;
 }
 
@@ -1792,6 +1837,17 @@ err_no_work:
 	if (!(intr_status & LSR_WRAPPER_INTR_STATUS_A2HWD_BMSK))
 		enable_irq(device->lsr_hal_data->irq);
 	cur_irq_state = LSR_IRQ_CLEAR;
+	return IRQ_HANDLED;
+}
+
+irqreturn_t lsr_wd_handler(int irq, void *data)
+{
+	if (!msm_lsr_enable_ssr) {
+		pr_err("LSR watchdog is detected\n");
+		lsr_panic();
+	}
+	/* TODO: Handle SSR cases once SSR is implemented */
+
 	return IRQ_HANDLED;
 }
 
@@ -2155,6 +2211,7 @@ static int __init_subcaches(struct lsr_device *device)
 	return 0;
 
 err_subcache_get:
+	msm_lsr_syscache_disable = true;
 	__deinit_subcaches(device);
 	return 0;
 }
@@ -3003,6 +3060,7 @@ void lsr_iris_hfi_delete_device(void *device)
 	destroy_workqueue(dev->iris_pm_workq);
 
 	free_irq(dev->lsr_hal_data->irq, dev);
+	free_irq(dev->lsr_hal_data->irq_wd, dev);
 
 	iounmap(dev->lsr_hal_data->register_base);
 	iounmap(dev->lsr_hal_data->gcc_reg_base);

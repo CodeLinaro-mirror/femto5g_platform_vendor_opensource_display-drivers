@@ -421,9 +421,13 @@ void sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 			return;
 		}
 		cpumask_set_cpu(cpu, &sde_enc->valid_cpu_mask);
-		dev_pm_qos_add_request(cpu_dev,
-				&sde_enc->pm_qos_cpu_req[cpu],
-				DEV_PM_QOS_RESUME_LATENCY, cpu_dma_latency);
+
+		if (dev_pm_qos_request_active(&sde_enc->pm_qos_cpu_req[cpu]))
+			dev_pm_qos_update_request(&sde_enc->pm_qos_cpu_req[cpu], cpu_dma_latency);
+		else
+			dev_pm_qos_add_request(cpu_dev,
+					&sde_enc->pm_qos_cpu_req[cpu],
+					DEV_PM_QOS_RESUME_LATENCY, cpu_dma_latency);
 		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu_dma_latency, cpu);
 	}
 }
@@ -441,7 +445,9 @@ void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
 					cpu);
 			continue;
 		}
-		dev_pm_qos_remove_request(&sde_enc->pm_qos_cpu_req[cpu]);
+
+		if (dev_pm_qos_request_active(&sde_enc->pm_qos_cpu_req[cpu]))
+			dev_pm_qos_remove_request(&sde_enc->pm_qos_cpu_req[cpu]);
 		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu);
 	}
 	cpumask_clear(&sde_enc->valid_cpu_mask);
@@ -2649,11 +2655,17 @@ static void sde_encoder_misr_configure(struct drm_encoder *drm_enc,
 		return;
 
 	disp_op = sde_encoder_get_disp_op(drm_enc);
-	if (sde_enc->hal_ops.debugfs_misr_setup[disp_op]) {
-		ret = sde_enc->hal_ops.debugfs_misr_setup[disp_op](sde_enc);
+	if (sde_enc->hal_ops.misr_setup[disp_op]) {
+		ret = sde_enc->hal_ops.misr_setup[disp_op](sde_enc, enable, frame_count);
 		if (ret)
 			SDE_ERROR("misr setup failure\n");
-	} else {
+
+	} else if (sde_enc->hal_ops.debugfs_misr_setup[disp_op]) {
+		ret = sde_enc->hal_ops.debugfs_misr_setup[disp_op](sde_enc);
+		if (ret)
+			SDE_ERROR("debugfs misr setup failure\n");
+
+	} else if (IS_DISP_OP_HWIO(disp_op)) {
 		for (i = 0; i < sde_enc->num_phys_encs; i++) {
 			struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
@@ -2662,6 +2674,7 @@ static void sde_encoder_misr_configure(struct drm_encoder *drm_enc,
 
 			phys->ops.setup_misr(phys, enable, frame_count);
 		}
+
 	}
 
 	sde_enc->misr_reconfigure = false;
@@ -6438,6 +6451,8 @@ static void sde_encoder_early_wakeup_work_handler(struct kthread_work *work)
 	struct sde_encoder_virt *sde_enc = container_of(work,
 			struct sde_encoder_virt, early_wakeup_work);
 	struct sde_kms *sde_kms = to_sde_kms(ddev_to_msm_kms(sde_enc->base.dev));
+	enum msm_disp_op disp_op;
+	int rc = 0;
 
 	if (!sde_kms)
 		return;
@@ -6448,6 +6463,13 @@ static void sde_encoder_early_wakeup_work_handler(struct kthread_work *work)
 		SDE_DEBUG("skip early wakeup for ENC-%d, HW is owned by other VM\n",
 				DRMID(&sde_enc->base));
 		return;
+	}
+
+	disp_op = sde_encoder_get_disp_op(&sde_enc->base);
+	if (sde_enc->hal_ops.early_wakeup_call[disp_op]) {
+		rc = sde_enc->hal_ops.early_wakeup_call[disp_op](sde_enc);
+		if (rc)
+			SDE_ERROR_ENC(sde_enc, "failed to send early wakeup call hint\n");
 	}
 
 	SDE_ATRACE_BEGIN("encoder_early_wakeup");
@@ -9611,7 +9633,7 @@ void sde_encoder_add_data_to_minidump_va(struct drm_encoder *drm_enc)
 	}
 }
 
-void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
+void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc, void *args)
 {
 	struct drm_event event;
 	struct drm_connector *connector;
@@ -9623,6 +9645,8 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
 	int rc = 0, i = 0;
 	bool misr_updated = false, roi_updated = false;
 	struct msm_roi_list *prev_roi, *c_state_roi;
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(drm_enc);
+	u32 *misr_data;
 
 	if (!drm_enc)
 		return;
@@ -9643,21 +9667,42 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
 	c_state = to_sde_connector_state(connector->state);
 
 	atomic64_set(&c_conn->previous_misr_sign.num_valid_misr, 0);
-	for (i = 0; i < sde_enc->num_phys_encs; i++) {
-		phys = sde_enc->phys_encs[i];
+	if (IS_DISP_OP_HWIO(disp_op)) {
+		for (i = 0; i < sde_enc->num_phys_encs; i++) {
+			phys = sde_enc->phys_encs[i];
 
-		if (!phys || !phys->ops.collect_misr) {
-			SDE_DEBUG("invalid misr ops idx:%d\n", i);
-			continue;
+			if (!phys || !phys->ops.collect_misr) {
+				SDE_DEBUG("invalid misr ops idx:%d\n", i);
+				continue;
+			}
+
+			rc = phys->ops.collect_misr(phys, true, &current_misr_value[i]);
+			if (rc) {
+				SDE_ERROR("failed to collect misr %d\n", rc);
+				return;
+			}
+
+			atomic64_inc(&c_conn->previous_misr_sign.num_valid_misr);
 		}
-
-		rc = phys->ops.collect_misr(phys, true, &current_misr_value[i]);
-		if (rc) {
-			SDE_ERROR("failed to collect misr %d\n", rc);
+	} else if (IS_DISP_OP_HFI(disp_op)) {
+		if (!args) {
+			SDE_ERROR("invalid args sent in misr event cb\n");
 			return;
 		}
 
-		atomic64_inc(&c_conn->previous_misr_sign.num_valid_misr);
+		misr_data = (u32 *) args;
+
+		if (sde_enc->num_phys_encs != misr_data[0]) {
+			SDE_ERROR("Invalid params in misr_data num_valid_misr %d expected %d\n",
+			misr_data[0], sde_enc->num_phys_encs);
+			return;
+		}
+
+		for (i = 0; i < sde_enc->num_phys_encs; i++) {
+			current_misr_value[i] = misr_data[i+1];
+			atomic64_inc(&c_conn->previous_misr_sign.num_valid_misr);
+		}
+
 	}
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {

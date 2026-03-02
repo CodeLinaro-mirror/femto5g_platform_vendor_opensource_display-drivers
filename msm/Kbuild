@@ -224,6 +224,11 @@ msm_drm-$(CONFIG_DRM_MSM_DP) += dp/dp_altmode.o \
 				dp/dp_aux_switch.o \
 				dp/dp_debug_client.o
 
+msm_drm-$(CONFIG_DRM_MSM_DP_HFI) += dp/hfi/dp_mgr_hfi.o \
+				    dp/hfi/dp_hfi.o \
+				    dp/hfi/dp_debug_client_hfi.o \
+				    dp/hfi/dp_hfi_audio.o
+
 msm_drm-$(CONFIG_DRM_MSM_DP_MST) += dp/dp_mst_drm.o
 
 msm_drm-$(CONFIG_DRM_MSM_DP_USBPD_LEGACY) += dp/dp_usbpd.o
@@ -314,17 +319,20 @@ msm_drm-$(CONFIG_DRM_SDE_CESTA) += sde_cesta.o \
 msm_drm-$(CONFIG_DRM_MSM_DSI) += dsi/dsi_phy.o \
 				 dsi/dsi_pwr.o \
 				 dsi/dsi_phy.o \
+				 dsi/dsi_phy_hw_v2_0.o \
 				 dsi/dsi_phy_hw_v3_0.o \
 				 dsi/dsi_phy_hw_v4_0.o \
 				 dsi/dsi_phy_hw_v5_0.o \
 				 dsi/dsi_phy_hw_v7_2.o \
 				 dsi/dsi_phy_timing_calc.o \
+				 dsi/dsi_phy_timing_v2_0.o \
 				 dsi/dsi_phy_timing_v3_0.o \
 				 dsi/dsi_phy_timing_v4_0.o \
 				 dsi/dsi_pll.o \
 				 dsi/dsi_pll_5nm.o \
 				 dsi/dsi_pll_4nm.o \
 				 dsi/dsi_pll_3nm.o \
+				 dsi/dsi_pll_14nm.o \
 				 dsi/dsi_ctrl_hw_cmn.o \
 				 dsi/dsi_ctrl_hw_2_2.o \
 				 dsi/dsi_ctrl.o \
@@ -352,10 +360,7 @@ msm_drm-$(CONFIG_MDSS_HFI) += hfi/hfi_utils.o \
 				 sde/hfi/hfi_color_proc.o \
 				 dsi/hfi/dsi_display_hfi.o \
 				 dsi/hfi/dsi_hfi.o \
-				 sde/hfi/hfi_wb.o \
-				 dp/hfi/dp_mgr_hfi.o \
-				 dp/hfi/dp_hfi.o \
-				 dp/hfi/dp_hfi_audio.o
+				 sde/hfi/hfi_wb.o
 
 msm_drm-$(CONFIG_DSI_PARSER) += dsi/dsi_parser.o
 

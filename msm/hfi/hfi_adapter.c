@@ -27,10 +27,10 @@
 
 #define HFI_APADTER_STEP_US 50
 #define MAX_TRY_COUNT 40000
-#define MAX_BUFFERS 10
+#define MAX_BUFFERS 64
 #define MAX_U32 0xFFFFFFFF
-#define MAX_POOL_SIZE 32
-#define GET_BUF_RETRY 35
+#define MAX_POOL_SIZE 64
+#define GET_BUF_RETRY (3 + (3 * MAX_POOL_SIZE))
 #define MIN_USLEEP_RANGE 30000
 #define MAX_USLEEP_RANGE 40000
 #define HFI_CORE_SSR_ERROR -1
@@ -517,27 +517,7 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 	return 0;
 }
 
-#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
-static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
-{
-	int ret = 0;
-
-	ret = hfi_core_hw_fence_init(hfi_handle);
-	if (ret) {
-		HFI_AD_INFO("failed to init DCP hw fence client\n");
-		ret = hfi_core_hw_fence_deinit(hfi_handle);
-		if (ret)
-			HFI_AD_INFO("failed to deinit DCP hw fence client\n");
-	}
-}
-#else
-static void _hfi_core_hw_fence_init(struct hfi_core_session *hfi_handle)
-{
-	HFI_AD_INFO("HFI hw fence not enabled\n");
-}
-#endif
-
-struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance, bool hw_fence_enabled)
+struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance)
 {
 	struct hfi_adapter_t *hfi_host;
 	struct hfi_core_open_params open_params;
@@ -586,10 +566,6 @@ struct hfi_adapter_t *hfi_adapter_init(bool is_tvm_instance, bool hw_fence_enabl
 		HFI_AD_ERROR("failed to open hfi core session\n");
 		goto fail;
 	}
-
-	/* Initialize DCP hw fence client */
-	if (hw_fence_enabled)
-		_hfi_core_hw_fence_init(hfi_handle);
 
 	/* Initialize hfi_adapter_t after core session is created */
 	hfi_host->sde_or_vm_instance = instance;
@@ -1829,7 +1805,8 @@ size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_client_t *ctx,
 	return addr_map->alloc_info.size_allocated;
 }
 
-int hfi_adapter_map_iova(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map)
+static int hfi_adapter_map_iova_flags(struct hfi_client_t *ctx,
+	struct hfi_shared_addr_map *addr_map, u32 flags)
 {
 	int ret = 0;
 
@@ -1838,13 +1815,24 @@ int hfi_adapter_map_iova(struct hfi_client_t *ctx, struct hfi_shared_addr_map *a
 		return -EINVAL;
 	}
 
-	ret = hfi_core_map_iova(&addr_map->alloc_info, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+	ret = hfi_core_map_iova(&addr_map->alloc_info, flags);
 	if (ret) {
 		HFI_AD_ERROR("failed to map iova, ret:%d\n", ret);
 		return ret;
 	}
 
 	return ret;
+}
+
+int hfi_adapter_map_iova(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map)
+{
+	return hfi_adapter_map_iova_flags(ctx, addr_map, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+}
+
+int hfi_adapter_map_iova_cached(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map)
+{
+	return hfi_adapter_map_iova_flags(ctx, addr_map, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE
+		| HFI_CORE_MMAP_CACHE);
 }
 
 int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t size)

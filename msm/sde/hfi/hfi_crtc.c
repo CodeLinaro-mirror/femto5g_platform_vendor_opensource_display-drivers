@@ -56,6 +56,7 @@ struct base_prop_lookup hfi_crtc_base_props_map[] = {
 	{CRTC_PROP_CORE_AB, HFI_PROPERTY_DISPLAY_CORE_AB},
 	{CRTC_PROP_CORE_CLK, HFI_PROPERTY_DISPLAY_CORE_CLK},
 	{CRTC_PROP_DIM_LAYER_V1, HFI_PROPERTY_DISPLAY_DIM_LAYER},
+	{CRTC_PROP_DEST_SCALER, HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA},
 };
 
 struct kv_prop_lookup {
@@ -109,6 +110,33 @@ static bool _hfi_crtc_is_prop_excluded_for_repro(u32 drm_prop, enum wb_opmode op
 	return false;
 }
 #endif
+
+static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate,
+		struct hfi_util_u32_prop_helper *prop_collector, u32 hfi_prop)
+{
+	struct hfi_resource_cfg lm_cfg;
+	int rc = 0;
+
+	/*
+	 * DS Config (Other types of configs can also be added below with respective checks and
+	 * their corresponding res_type)
+	 */
+	if (cstate->num_ds > 0) {
+		lm_cfg.res_type = HFI_RESOURCE_LM;
+		lm_cfg.resource_idx = cstate->ds_cfg[0].idx;
+		lm_cfg.width = cstate->ds_cfg[0].lm_width;
+		lm_cfg.height = cstate->ds_cfg[0].lm_height;
+
+		if (lm_cfg.width && lm_cfg.height) {
+			rc = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+				HFI_VAL_U32_ARRAY, &lm_cfg, sizeof(struct hfi_resource_cfg));
+
+			return rc;
+		}
+	}
+
+	return 0;
+}
 
 int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 		struct sde_crtc_state *cstate,
@@ -188,6 +216,9 @@ int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 
 		CRTC_DIRTY_OP_LOCK(crtc, clear_bit, SDE_CRTC_DIRTY_DIM_LAYERS, cstate->dirty);
 		kfree(dim_layers);
+		break;
+	case HFI_PROPERTY_DISPLAY_SET_RESOURCE_DATA:
+		hfi_crtc_setup_resource_cfg(cstate, prop_collector, hfi_prop);
 		break;
 	default:
 		HFI_ERROR_CRTC(crtc_hfi, "unsupported HFI property\n");
@@ -449,7 +480,6 @@ int _hfi_crtc_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 void _hfi_crtc_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_crtc *crtc,
 		struct sde_crtc_state *cstate)
 {
-	int ret;
 	struct hfi_crtc *crtc_hfi;
 
 	if (!crtc || !cstate) {
@@ -460,23 +490,7 @@ void _hfi_crtc_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_crt
 	crtc_hfi = to_hfi_crtc(crtc);
 
 	mutex_lock(&crtc_hfi->hfi_lock);
-
 	hfi_util_u32_prop_helper_reset(crtc_hfi->base_props);
-
-	ret = hfi_adapter_add_set_property(cmd_buf->ctx,
-			cmd_buf,
-			HFI_COMMAND_DISPLAY_SET_PROPERTY,
-			disp_id,
-			HFI_PAYLOAD_TYPE_U32_ARRAY,
-			hfi_util_u32_prop_helper_get_payload_addr(crtc_hfi->base_props),
-			hfi_util_u32_prop_helper_get_size(crtc_hfi->base_props),
-			HFI_HOST_FLAGS_NON_DISCARDABLE);
-	if (ret) {
-		HFI_ERROR_CRTC(crtc_hfi, "failed to send HFI commands\n");
-		goto end;
-	}
-
-end:
 	mutex_unlock(&crtc_hfi->hfi_lock);
 }
 
@@ -836,6 +850,8 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 			struct hfi_crtc, hfi_cb_obj);
 	struct sde_crtc *sde_crtc = NULL;
 	struct hfi_display_ltm_event_resp *event_payload = NULL;
+	u32 ex_size = 0;
+	u32 *data;
 
 	if (!hfi_crtc) {
 		SDE_ERROR("hfi_crtc is NULL\n");
@@ -892,6 +908,23 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_HISTOGRAM, event_payload);
 		else
 			SDE_ERROR("Invalid PA Hist event payload\n");
+		break;
+	}
+	case HFI_COMMAND_DISPLAY_EVENT_SPR_OPR: {
+		if (!payload) {
+			SDE_ERROR("Invalid SPR OPR event payload %pK\n", payload);
+			return;
+		}
+
+		data = (u32 *)payload;
+		ex_size = (1 + data[0]) * sizeof(u32);
+		if (size != ex_size) {
+			SDE_ERROR("Invalid SPR OPR event payload size %d expected size %d\n",
+				size, ex_size);
+			return;
+		}
+
+		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_OPR_VALUE, data);
 		break;
 	}
 	default:
@@ -999,6 +1032,17 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_PA_HIST].state = enable;
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_PA_HIST].pending = false;
+		break;
+	case HFI_EVENT_SPR_OPR:
+		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
+		if (ret) {
+			SDE_ERROR("event registration failed: event %d, enable %d\n",
+				event, enable);
+			return ret;
+		}
+
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_SPR_OPR].state = enable;
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_SPR_OPR].pending = false;
 		break;
 	default:
 		break;
@@ -1208,6 +1252,17 @@ int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_bu
 		SDE_ERROR("invalid input: crtc=%p, cmd_buf=%p, color_props=%p\n",
 			crtc, cmd_buf, color_props);
 		return -EINVAL;
+	}
+
+	/*
+	 * Do not send a SET_PROPERTY packet with zero properties. When the
+	 * prop helper is empty, get_size() still returns 4 (the count field),
+	 * which would produce a packet with payload=0x0 (num_props=0). The
+	 * firmware rejects such packets with a "packet with no props" warning.
+	 */
+	if (!hfi_util_u32_prop_helper_prop_count(color_props)) {
+		SDE_DEBUG("no color props to send, skipping\n");
+		return 0;
 	}
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);

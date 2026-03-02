@@ -79,6 +79,30 @@ enum hfi_display_commit_flag {
 };
 
 /*
+ * enum hfi_display_res_type - resource types
+ * @HFI_RESOURCE_LM   :  Layer Mixer
+ */
+enum hfi_display_res_type {
+	HFI_RESOURCE_LM = 0x1,
+};
+
+/**
+ * struct hfi_resource_cfg - resource output configuration
+ * @res_type: resource type (LM, Ai Scaler etc)
+ * @resource_idx: resource index
+ * @width: resource output width
+ * @height: resource output height
+ * @reserved: reserved field for future
+ */
+struct hfi_resource_cfg {
+	u32 res_type;
+	u32 resource_idx;
+	u32 width;
+	u32 height;
+	u32 reserved;
+};
+
+/*
  * struct hfi_display_roi
  * @x_pos    :  x position of the roi
  * @y_pos    :  y position of the roi
@@ -288,6 +312,10 @@ enum hfi_display_idle_timer_control {
  *     Event ID for Hot Plug Detect Status
  * @HFI_EVENT_DISPLAY_EDID_INFO:
  *     Event ID for EDID info
+ * @var HFI_EVENT_SPR_OPR
+ *   EVENT ID for SPR OPR
+ * @var HFI_EVENT_INTF_MISR
+ *   EVENT ID for Interface MISR
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC               = 0x1,
@@ -303,6 +331,8 @@ enum hfi_display_event_id {
 	HFI_EVENT_PA_HIST             = 0xb,
 	HFI_EVENT_HPD_STATUS          = 0xc,
 	HFI_EVENT_DISPLAY_EDID_INFO   = 0xd,
+	HFI_EVENT_SPR_OPR             = 0xe,
+	HFI_EVENT_INTF_MISR           = 0xf,
 };
 
 /*
@@ -630,24 +660,23 @@ struct hfi_display_dp_tu {
 	u32 valid_boundary2;
 };
 
-/*!
- * @struct hfi_audio_config
- * @brief HFI external display audio configuration structure.
+/*
+ * HFI external display audio configuration structure.
  *
- * @var sample_rate
- *   Audio sample rate in Hz (e.g., 48000, 96000, 192000).
- * @var num_of_channels
- *   Number of audio channels (2, 6, 8).
- * @var channel_allocation
- *   Channel allocation as per CEA-861 standard.
- * @var level_shift
- *   Level shift value for dynamic range control.
- * @var down_mix
- *   Down mix inhibit flag.
- * @var sample_present
- *   Sample present flag indicating audio sample availability.
- * @var stream_id
- *   Audio stream identifier for multi-stream scenarios.
+ * @sample_rate:
+ *     Audio sample rate in Hz (e.g., 48000, 96000, 192000).
+ * @num_of_channels:
+ *     Number of audio channels (2, 6, 8).
+ * @channel_allocation:
+ *     Channel allocation as per CEA-861 standard.
+ * @level_shift:
+ *     Level shift value for dynamic range control.
+ * @down_mix:
+ *     Down mix inhibit flag.
+ * @sample_present:
+ *     Sample present flag indicating audio sample availability.
+ * @stream_id:
+ *     Audio stream identifier for multi-stream scenarios.
  */
 struct hfi_audio_config {
 	u32 sample_rate;
@@ -659,32 +688,31 @@ struct hfi_audio_config {
 	u32 stream_id;
 };
 
-/*!
- * @struct hfi_hdr_metadata
- * @brief HDR metadata structure for HFI communication
+/*
+ * HDR metadata structure for HFI communication
  *
- * @var hdr_state
- *   Current HDR state
- * @var eotf
- *   Electro-optical transfer function
- * @var hdr_supported
- *   HDR support indicator
- * @var display_primaries_x
- *   Display primaries x coordinates array
- * @var display_primaries_y
- *   Display primaries y coordinates array
- * @var white_point_x
- *   White point x coordinate
- * @var white_point_y
- *   White point y coordinate
- * @var max_luminance
- *   Maximum luminance value
- * @var min_luminance
- *   Minimum luminance value
- * @var max_content_light_level
- *   Maximum content light level
- * @var max_average_light_level
- *   Maximum average light level
+ * @hdr_state:
+ *     Current HDR state
+ * @eotf:
+ *     Electro-optical transfer function
+ * @hdr_supported:
+ *     HDR support indicator
+ * @display_primaries_x:
+ *     Display primaries x coordinates array
+ * @display_primaries_y:
+ *     Display primaries y coordinates array
+ * @white_point_x:
+ *     White point x coordinate
+ * @white_point_y:
+ *     White point y coordinate
+ * @max_luminance:
+ *     Maximum luminance value
+ * @min_luminance:
+ *     Minimum luminance value
+ * @max_content_light_level:
+ *     Maximum content light level
+ * @max_average_light_level:
+ *     Maximum average light level
  */
 struct hfi_hdr_metadata {
 	/* Static HDR */
@@ -701,50 +729,51 @@ struct hfi_hdr_metadata {
 	u32 max_average_light_level;
 };
 
-/*!
- * @struct hfi_display_hdr_cfg
- * @brief HDR configuration payload for HFI_COMMAND_DISPLAY_CONFIG_HDR
+/*
+ * HDR configuration payload for HFI_COMMAND_DISPLAY_CONFIG_HDR
  *
- * @var dhdr_update
- *   Dynamic HDR update flag
- * @var hdr_meta
- *   HDR metadata structure
+ * @hdr_meta:
+ *     HDR metadata structure
+ * @dynamic_hdr_payload_size:
+ *     Size of dynamic HDR payload in bytes (0 if not present)
+ * @dynamic_hdr_payload:
+ *     Dynamic HDR (HDR10+) metadata payload buffer
  */
 struct hfi_display_hdr_cfg {
-	u32 dhdr_update;
 	struct hfi_hdr_metadata hdr_meta;
+	u32 dynamic_hdr_payload_size;
+	u8 dynamic_hdr_payload[HFI_DHDR_PAYLOAD_MAX_SIZE];
 };
 
-/*!
- * @enum hfi_colorimetry
- * @brief Colorimetry standards for display content
+/*
+ * Colorimetry standards for display content
  *
- * @var HFI_COLORIMETRY_DEFAULT
- *   No colorimetry specified (value: 0)
- * @var HFI_COLORIMETRY_SMPTE_170M_YCC
- *   SMPTE 170M YCC colorimetry (value: 1)
- * @var HFI_COLORIMETRY_BT709_YCC
- *   BT.709 YCC colorimetry (value: 2)
- * @var HFI_COLORIMETRY_XVYCC_601
- *   xvYCC 601 colorimetry (value: 3)
- * @var HFI_COLORIMETRY_XVYCC_709
- *   xvYCC 709 colorimetry (value: 4)
- * @var HFI_COLORIMETRY_SYCC_601
- *  sYCC 601 colorimetry (value: 5)
- * @var HFI_COLORIMETRY_OPYCC_601
- *  opYCC 601 colorimetry (value: 6)
- * @var HFI_COLORIMETRY_OPRGB
- * opRGB colorimetry (value: 7)
- * @var HFI_COLORIMETRY_BT2020_CYCC
- *  BT.2020 CYCC colorimetry (value: 8)
- * @var HFI_COLORIMETRY_BT2020_RGB
- * BT.2020 RGB colorimetry (value: 9)
- * @var HFI_COLORIMETRY_BT2020_YCC
- * BT.2020 YCC colorimetry (value: 10)
- * @var HFI_COLORIMETRY_DCI_P3_RGB_D65
- * DCI-P3 RGB D65 colorimetry (value: 11)
- * @var HFI_COLORIMETRY_DCI_P3_RGB_THEATER
- * DCI-P3 RGB Theater colorimetry (value: 12)
+ * @HFI_COLORIMETRY_DEFAULT:
+ *     No colorimetry specified (value: 0)
+ * @HFI_COLORIMETRY_SMPTE_170M_YCC:
+ *     SMPTE 170M YCC colorimetry (value: 1)
+ * @HFI_COLORIMETRY_BT709_YCC:
+ *     BT.709 YCC colorimetry (value: 2)
+ * @HFI_COLORIMETRY_XVYCC_601:
+ *     xvYCC 601 colorimetry (value: 3)
+ * @HFI_COLORIMETRY_XVYCC_709:
+ *     xvYCC 709 colorimetry (value: 4)
+ * @HFI_COLORIMETRY_SYCC_601:
+ *    sYCC 601 colorimetry (value: 5)
+ * @HFI_COLORIMETRY_OPYCC_601:
+ *    opYCC 601 colorimetry (value: 6)
+ * @HFI_COLORIMETRY_OPRGB:
+ *   opRGB colorimetry (value: 7)
+ * @HFI_COLORIMETRY_BT2020_CYCC:
+ *    BT.2020 CYCC colorimetry (value: 8)
+ * @HFI_COLORIMETRY_BT2020_RGB:
+ *   BT.2020 RGB colorimetry (value: 9)
+ * @HFI_COLORIMETRY_BT2020_YCC:
+ *   BT.2020 YCC colorimetry (value: 10)
+ * @HFI_COLORIMETRY_DCI_P3_RGB_D65:
+ *   DCI-P3 RGB D65 colorimetry (value: 11)
+ * @HFI_COLORIMETRY_DCI_P3_RGB_THEATER:
+ *   DCI-P3 RGB Theater colorimetry (value: 12)
  */
 enum hfi_colorimetry {
 	HFI_COLORIMETRY_DEFAULT            = 0,
@@ -760,6 +789,40 @@ enum hfi_colorimetry {
 	HFI_COLORIMETRY_BT2020_YCC         = 10,
 	HFI_COLORIMETRY_DCI_P3_RGB_D65     = 11,
 	HFI_COLORIMETRY_DCI_P3_RGB_THEATER = 12,
+};
+
+/*!
+ * @enum hfi_misr_block
+ * @brief Module to setup MISR (Multiple Input Signature Register).
+ *
+ * @var HFI_MISR_DSI
+ *   DSI module.
+ * @var HFI_MISR_MIXER
+ *   Mixer module.
+ * @var HFI_MISR_INTF
+ *   Interface module.
+ */
+enum hfi_misr_block {
+	HFI_MISR_DSI   = 0x0,
+	HFI_MISR_MIXER = 0x1,
+	HFI_MISR_INTF  = 0x2,
+};
+
+/*!
+ * @struct hfi_misr_config
+ * @brief MISR setup config information
+ *
+ * @var enable
+ *   Enable MISR
+ * @var frame_count
+ *   Number of frames to run before capturing
+ * @var block
+ *   module to obtain MISR value from
+ */
+struct hfi_misr_config {
+	u32 enable;
+	u32 frame_count;
+	enum hfi_misr_block block;
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

@@ -845,6 +845,7 @@ static int _set_ltm_hist_crtl_feature(struct sde_hw_dspp *hw_dspp,
 				if (!hw_lm->cfg.right_mixer && sde_crtc->ltm_hist_en) {
 					/* histogram is already enabled */
 					DRM_DEBUG("LTM hist is already enabled");
+					mutex_unlock(&sde_crtc->ltm_buffer_lock);
 					return 0;
 				}
 
@@ -4371,10 +4372,8 @@ void sde_cp_crtc_pre_ipc(struct drm_crtc *drm_crtc)
 	_sde_cp_ad_set_prop(sde_crtc, AD_IPC_SUSPEND);
 
 	hw_dspp = sde_crtc->mixers[0].hw_dspp;
-	if (!hw_dspp) {
-		DRM_ERROR("invalid dspp\n");
+	if (!hw_dspp)
 		return;
-	}
 
 	if (IS_DISP_OP_HFI(hw_dspp->hw.disp_op))
 		return;
@@ -4428,10 +4427,8 @@ void sde_cp_crtc_post_ipc(struct drm_crtc *drm_crtc)
 
 
 	hw_dspp = sde_crtc->mixers[0].hw_dspp;
-	if (!hw_dspp) {
-		DRM_ERROR("invalid dspp\n");
+	if (!hw_dspp)
 		return;
-	}
 
 	if (IS_DISP_OP_HFI(hw_dspp->hw.disp_op))
 		return;

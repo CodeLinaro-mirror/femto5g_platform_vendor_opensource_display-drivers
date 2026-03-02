@@ -20,6 +20,7 @@
 #define HFI_MAX_PLANES  4 /* Maximum number of planes supported */
 
 #define HFI_MAX_COLOR_COMPONENTS  3 /* Maximum number of color components supported */
+#define HFI_DHDR_PAYLOAD_MAX_SIZE 32 /* Maximum dynamic HDR payload size */
 
 /*
  * Note: 1st MSB byte determines the type of color format

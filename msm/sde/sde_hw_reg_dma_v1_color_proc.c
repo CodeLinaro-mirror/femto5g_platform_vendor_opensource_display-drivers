@@ -9365,6 +9365,8 @@ void reg_dmav1_setup_qrtc_config_v1(struct sde_hw_dspp *ctx, void *cfg, void *bu
 	hfi_cfg.cwb_width = qrtc_cfg->cwb_width;
 	hfi_cfg.cwb_height = qrtc_cfg->cwb_height;
 	hfi_cfg.format = qrtc_buffer->format;
+	hfi_cfg.aligned_cwb_width = qrtc_cfg->aligned_cwb_width;
+	hfi_cfg.aligned_cwb_height = qrtc_cfg->aligned_cwb_height;
 
 	kick_off.valid_extended_data = true;
 	kick_off.extended_data = &hfi_cfg;

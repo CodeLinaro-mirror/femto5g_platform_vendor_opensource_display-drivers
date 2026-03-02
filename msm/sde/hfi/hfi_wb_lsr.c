@@ -9,9 +9,91 @@
 #include "hfi_connector.h"
 #include "hfi_kms.h"
 #include "hfi_encoder.h"
+#include "hfi_commands_debug.h"
+#include "hfi_defs_debug.h"
+#include "hfi_msm_drv.h"
 
 #define BLOB_PROPERTY_HEADER_SIZE 2
 #define MATRICES_PER_VIEW 2
+
+static u64 lsr_fw_debug_val;
+
+int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
+{
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_debug_log_level_info payload;
+	int ret = 0;
+	struct hfi_client_t *lsr_hfi_client;
+	struct msm_drm_private *priv;
+	struct msm_kms *kms;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+
+	if (!dev) {
+		SDE_ERROR("Invalid drm device");
+		return -EINVAL;
+	}
+
+	lsr_fw_debug_val = val;
+	priv = dev->dev_private;
+	if (!priv) {
+		SDE_ERROR("Invalid msm_drm priv");
+		return -EINVAL;
+	}
+
+	kms = priv->kms;
+	if (!kms) {
+		SDE_ERROR("Invalid msm_kms");
+		return -EINVAL;
+	}
+
+	sde_kms = to_sde_kms(kms);
+	hfi_kms = to_hfi_kms(sde_kms);
+	lsr_hfi_client = &hfi_kms->hfi_client;
+	if (!lsr_hfi_client) {
+		SDE_ERROR("Invalid HFI client\n");
+		return -EINVAL;
+	}
+
+	cmd_buf = hfi_adapter_get_cmd_buf(lsr_hfi_client,
+		MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	payload.feature = HFI_DEBUG_FEATURE_LSR;
+	payload.level_bitmask = val;
+
+	ret = hfi_adapter_add_set_property(lsr_hfi_client,
+			cmd_buf,
+			HFI_COMMAND_DEBUG_SET_LOG_LEVEL,
+			MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			&payload,
+			sizeof(payload),
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED);
+
+	if (ret) {
+		SDE_ERROR("failed to add debug command\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(lsr_hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("failed to send debug command\n");
+
+	SDE_DEBUG("LSR FW debug level is set to 0x%llx\n", val);
+	SDE_EVT32(val);
+	return ret;
+}
+
+int hfi_lsr_fw_debug_get(u64 *val)
+{
+	*val = lsr_fw_debug_val;
+	SDE_DEBUG("LSR FW debug level : %llu\n", *val);
+	return 0;
+}
 
 struct base_prop_lookup {
 	u32 drm_prop;
@@ -705,25 +787,27 @@ static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
 	struct synx_import_params import_params = {0};
 	struct synx_session *session = NULL;
 	u32 lsr_h_synx, ret = 0;
-	void *dcp_hw_fence_handle = NULL;
-	struct msm_drm_private *priv;
-	struct hfi_adapter_t *adapter;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_hwfence_data *hfi_hw_fence_data;
 	int reusable_fence_count = 0;
 	u32 *payload;
 	u32 size = 0;
 
-	priv = drm_conn->dev->dev_private;
-	adapter = priv->hfi_priv->hfi_adapter;
+	sde_kms = sde_connector_get_kms(drm_conn);
+	hfi_kms = sde_kms ? sde_kms->hfi_kms : NULL;
+	hfi_hw_fence_data = hfi_kms ? hfi_kms->hfi_hw_fence_data : NULL;
 
-	if (!adapter || !adapter->session) {
-		SDE_ERROR("hfi adapter or session is not initialized\n");
+	if (!hfi_hw_fence_data || !hfi_hw_fence_data->hw_fence_handle) {
+		SDE_ERROR("invalid sde_kms:%pK hfi_kms:%pK hwfence_data:%pK hw_fence_handle:%pK\n",
+			sde_kms, hfi_kms, hfi_hw_fence_data,
+			hfi_hw_fence_data ? hfi_hw_fence_data->hw_fence_handle : NULL);
 		return -EINVAL;
 	}
 
 	/* Setup reusable fence only once per device bootup */
 	if (!reproj_conn->reusable_fence_cnt) {
-		dcp_hw_fence_handle = adapter->session->hwfence_data.hw_fence_handle;
-		session = (struct synx_session *)dcp_hw_fence_handle;
+		session = hfi_hw_fence_data->hw_fence_handle;
 		lsr_h_synx = reproj_conn->lsr_reusable_hsynx;
 		SDE_DEBUG("lsr reusable h_synx: %d\n", lsr_h_synx);
 

@@ -591,13 +591,35 @@ int dp_mgr_hfi_clk_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 	return 0;
 }
 
+static u32 _remap_orientation(u32 orientation)
+{
+	switch (orientation) {
+	case ORIENTATION_CC1:
+		return 0;
+	case ORIENTATION_CC2:
+		return 1;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
 static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 		struct hfi_device_hotplug_config *config)
 {
 	if (!hfi_priv || !hfi_priv->hpd || !config)
 		return;
+	/*
+	 * Handling of orientation - DP altmode driver receives the orientation as a 0-based value
+	 * from PD driver but then it converts it to 1-based value on the first notification. The
+	 * usb switch configuration, which is done on the first notification, uses the 1-based
+	 * value. But, we send HFI, only when HPD HIGH is set, which could be either on the first
+	 * or second. So to keep it consistent, we will remap the hpd orientation here. So the
+	 * orientation in the hfi_device_hotplug_config is always 1-based.
+	 */
 
-	config->orientation = hfi_priv->hpd->orientation;
+	config->orientation = _remap_orientation(hfi_priv->hpd->orientation);
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
 	config->hpd_state = hfi_priv->hpd->hpd_high;
@@ -605,9 +627,28 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
 
-	DP_DEBUG("orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u\n",
+	DP_INFO("rsdbg: orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u\n",
 		config->orientation, config->port_index, config->pin_config,
 		config->hpd_state, config->hpd_irq);
+}
+
+static int _aux_switch_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
+{
+	int rc;
+	u32 orientation = enable ? hfi_priv->hpd->orientation : ORIENTATION_NONE;
+
+	if (!hfi_priv->aux_switch)
+		return 0;
+
+	if (enable) {
+		rc = hfi_priv->aux_switch->init(hfi_priv->aux_switch);
+		if (rc)
+			return rc;
+	}
+
+	DP_DEBUG("aux switch %sable with orientation:%d\n", (enable ? "en":"dis"),
+			hfi_priv->hpd->orientation);
+	return hfi_priv->aux_switch->configure(hfi_priv->aux_switch, enable, orientation);
 }
 
 /* HPD callback functions */
@@ -629,10 +670,10 @@ int dp_mgr_hfi_hpd_configure_cb(void *data)
 		goto end;
 	}
 
+	_aux_switch_enable(hfi_priv, true);
+
 	if (hfi_priv->configured)
 		goto end;
-
-	_hfi_update_config(hfi_priv, &config);
 
 	/* Allocate buffers only if they don't already exist */
 	if (!hfi_priv->edid_addr_map) {
@@ -662,21 +703,6 @@ int dp_mgr_hfi_hpd_configure_cb(void *data)
 		DP_DEBUG("Reusing existing modes buffer\n");
 	}
 
-	if (hfi_priv->aux_switch) {
-		rc = hfi_priv->aux_switch->init(hfi_priv->aux_switch);
-		if (rc) {
-			rc = -EINVAL;
-			goto end;
-		}
-
-		rc = hfi_priv->aux_switch->configure(hfi_priv->aux_switch, true,
-				config.orientation);
-		if (rc) {
-			rc = -EINVAL;
-			goto end;
-		}
-	}
-
 	rc = _hfi_power_init(hfi_priv);
 	if (rc) {
 		DP_ERR("failed to init dp phy power\n");
@@ -698,13 +724,15 @@ int dp_mgr_hfi_hpd_configure_cb(void *data)
 	hfi_priv->configured = true;
 	DP_INFO("configured\n");
 
-	if (config.hpd_state) {
+end:
+	if (hfi_priv->hpd->hpd_high && !hfi_priv->connected) {
 		hfi_priv->connected = true;
+
+		_hfi_update_config(hfi_priv, &config);
 		rc = _hfi_send_hot_plug(hfi_priv, &config);
 		DP_INFO("connected\n");
 	}
 
-end:
 	return rc;
 }
 
@@ -726,16 +754,14 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		goto end;
 	}
 
-	_hfi_update_config(hfi_priv, &config);
-
-	if (hfi_priv->aux_switch) {
-		rc = hfi_priv->aux_switch->configure(hfi_priv->aux_switch,
-				false, ORIENTATION_NONE);
-		if (rc)
-			goto end;
-	}
-
 	hfi_priv->connected = false;
+
+	_aux_switch_enable(hfi_priv, false);
+
+	if (hfi_priv->audio)
+		hfi_priv->audio->off(hfi_priv->audio, false);
+
+	_hfi_update_config(hfi_priv, &config);
 	_hfi_send_hot_plug(hfi_priv, &config);
 	DP_INFO("disconnected\n");
 
@@ -777,6 +803,7 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv)
 
 	DP_INFO("cleanup\n");
 	hfi_priv->configured = false;
+	complete_all(&hfi_priv->hpd_comp);
 end:
 	return rc;
 }
@@ -794,6 +821,10 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 		return -EINVAL;
 	}
 
+	/* Ignore attention calls during soft replug */
+	if (hfi_priv->soft_unplug)
+		return 0;
+
 	hpd_state = hfi_priv->hpd->hpd_high;
 	hpd_irq = hfi_priv->hpd->hpd_irq;
 
@@ -803,11 +834,15 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	if ((hpd_state == hfi_priv->connected) && !hpd_irq)
 		return 0;
 
-	if (hpd_state && !hfi_priv->configured)
-		dp_mgr_hfi_hpd_configure_cb(data);
+	if (hpd_state && !hfi_priv->configured) {
+		rc = dp_mgr_hfi_hpd_configure_cb(data);
+		if (rc)
+			return rc;
+	} else if (!hfi_priv->connected && hpd_state) {
+		_aux_switch_enable(hfi_priv, true);
+	}
 
 	_hfi_update_config(hfi_priv, &config);
-
 	hfi_priv->connected = hpd_state;
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
 
@@ -1326,6 +1361,7 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 {
 	struct dp_mgr_hfi_priv *hfi_priv;
 	struct sde_kms *sde_kms;
+	struct sde_connector *sde_conn;
 	struct hfi_kms *hfi_kms;
 	struct hfi_client_t *hfi_client;
 	struct hfi_display_hdr_cfg hdr_cfg;
@@ -1354,6 +1390,12 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 
 	hfi_client = &hfi_kms->hfi_client;
 
+	sde_conn = to_sde_connector(client->base_connector);
+	if (!sde_conn) {
+		DP_ERR("Failed to get SDE connector\n");
+		return -EINVAL;
+	}
+
 	/* Check if display is enabled */
 	if (!hfi_priv->connected) {
 		DP_DEBUG("Display not connected, skipping HDR config\n");
@@ -1362,7 +1404,6 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 
 	/* Populate HDR configuration payload */
 	memset(&hdr_cfg, 0, sizeof(hdr_cfg));
-	hdr_cfg.dhdr_update = dhdr_update ? 1 : 0;
 
 	if (hdr_meta) {
 		hdr_cfg.hdr_meta.hdr_state = hdr_meta->hdr_state;
@@ -1382,6 +1423,32 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 		DP_DEBUG("HDR config: state=%u, eotf=%u, supported=%u\n",
 			hdr_cfg.hdr_meta.hdr_state, hdr_cfg.hdr_meta.eotf,
 			hdr_cfg.hdr_meta.hdr_supported);
+
+		/* Copy dynamic HDR (HDR10+) payload if dhdr_update is true */
+		if (dhdr_update && client->base_connector) {
+			struct sde_connector_state *c_state = to_sde_connector_state(
+				client->base_connector->state);
+
+			if (c_state && c_state->dyn_hdr_meta.dynamic_hdr_payload_size > 0) {
+				u32 payload_size = min_t(u32,
+					c_state->dyn_hdr_meta.dynamic_hdr_payload_size,
+					HFI_DHDR_PAYLOAD_MAX_SIZE);
+
+				hdr_cfg.dynamic_hdr_payload_size = payload_size;
+				memcpy(hdr_cfg.dynamic_hdr_payload,
+				       c_state->dyn_hdr_meta.dynamic_hdr_payload,
+				       payload_size);
+
+				DP_DEBUG("Copied %u bytes of dynamic HDR metadata to HFI payload\n",
+					payload_size);
+			} else {
+				DP_DEBUG("No dynamic HDR payload available in connector state\n");
+			}
+		}
+	} else {
+		DP_ERR("Not sending CONFIG_HDR command, null hdr static metadata\n");
+		rc = -EINVAL;
+		goto out;
 	}
 
 	/* Send HFI command */
@@ -1395,6 +1462,7 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 			panel_id, dhdr_update);
 	}
 
+out:
 	return rc;
 }
 
@@ -1535,6 +1603,10 @@ int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 		return -EINVAL;
 
 	hfi_client = &hfi_kms->hfi_client;
+
+	/* turn off audio if still enabled */
+	if (hfi_priv->audio)
+		hfi_priv->audio->off(hfi_priv->audio, false);
 
 	DP_DEBUG("Sending DISPLAY_DISABLE command to DCP, panel_id=%d\n", panel_id);
 
@@ -1896,6 +1968,8 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev)
 	client->get_intf_info = dp_mgr_hfi_get_info;
 	client->pm_prepare = dp_mgr_hfi_pm_prepare;
 	client->pm_complete = dp_mgr_hfi_pm_complete;
+
+	init_completion(&hfi_priv->hpd_comp);
 
 	DP_INFO("DP HFI display initialized successfully\n");
 	return client;
