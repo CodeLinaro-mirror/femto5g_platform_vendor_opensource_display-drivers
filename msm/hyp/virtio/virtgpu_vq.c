@@ -1072,11 +1072,13 @@ void virio_get_scanout_numbers(struct virtio_kms *kms,
 {
 	int i;
 	for (i = 0; i < VIRTIO_GPU_MAX_SCANOUTS; i++) {
+		u32 width = le32_to_cpu(resp->pmodes[i].r.width);
+		u32 height = le32_to_cpu(resp->pmodes[i].r.height);
 		//intentionally not storing the nodes;
-		if (resp->pmodes[i].enabled) {
+		if (resp->pmodes[i].enabled && width && height) {
 			VIRTGPU_VQ_RSP_DBG("output %d: %dx%d+%d+%d\n", i,
-				le32_to_cpu(resp->pmodes[i].r.width),
-				le32_to_cpu(resp->pmodes[i].r.height),
+				width,
+				height,
 				le32_to_cpu(resp->pmodes[i].r.x),
 				le32_to_cpu(resp->pmodes[i].r.y));
 			kms->num_scanouts++;
