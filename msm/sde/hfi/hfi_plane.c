@@ -398,21 +398,20 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &attr, sizeof(struct dcp_cache_attr));
 
-	if (attr.cache_state != HFI_CACHE_STATE_DISABLE) {
+	if (sc_cfg) {
 		prop_id = HFI_PROPERTY_LAYER_LLCC_SCID;
-		if (!sc_cfg) {
-			HFI_ERROR_PLANE(phfi, "Invalid sc_cfg\n");
-			return -EINVAL;
-		}
 		llcc_scid = sc_cfg->llcc_scid;
-		SDE_EVT32(phfi->hfi_pipe_id, attr.cache_state, attr.cache_op_type, llcc_scid);
 		hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &llcc_scid, sizeof(u32));
+	} else if (attr.cache_state != HFI_CACHE_STATE_DISABLE) {
+		HFI_ERROR_PLANE(phfi, "Invalid sc_cfg when trying to enable LLCC\n");
+		rc = -EINVAL;
+		goto end;
 	}
 
 	HFI_DEBUG_PLANE(phfi, "done adding drm props\n");
-
-	return 0;
+end:
+	return rc;
 }
 
 int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
