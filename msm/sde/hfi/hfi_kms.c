@@ -16,6 +16,7 @@
 #include "sde_formats.h"
 #include "hfi_utils.h"
 #include "hfi_defs_debug.h"
+#include "hfi_dbg.h"
 
 #define DWORDS_TO_BYTES(x) (x * 4)
 #define BYTES_TO_DWORDS(x) (x / 4)
@@ -396,6 +397,11 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 	rc = hfi_kms_init_hw_fence_config(hfi_kms);
 	if (rc)
 		SDE_ERROR("failed to send HFI HW FENCE config to FW ret:%d\n", rc);
+
+	/* re configure debug setup configs */
+	rc = hfi_dbg_device_setup(hfi_kms);
+	if (rc)
+		SDE_ERROR("failed to send debug setup configs rc=%d\n", rc);
 
 	/* re configure fw with lut dma configs */
 	rc = sde_kms_reinit_device_lut_dma(sde_kms);
