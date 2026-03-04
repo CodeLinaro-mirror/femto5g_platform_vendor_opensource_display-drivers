@@ -471,6 +471,14 @@ struct sde_encoder_hal_funcs {
 	 */
 	int (*register_panel_dead_event_notify[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc,
 			bool enable);
+
+	/**
+	 * misr_setup - Setup MISR module
+	 * @enc: Pointer to sde encoder structure
+	 * @en: enable/disable flag
+	 * @frame_count: number of frames for which MISR needs to run
+	 */
+	int (*misr_setup[MSM_DISP_OP_MAX])(struct sde_encoder_virt *enc, bool en, u32 frame_count);
 };
 
 /**
@@ -1350,8 +1358,9 @@ struct msm_freq_step_pattern *sde_encoder_get_freq_pattern(struct drm_encoder *d
  * sde_encoder_misr_sign_event_notify - collect MISR, check with previous value
  * if change then notify to client with custom event
  * @drm_enc: pointer to drm encoder
+ * @args: callback data arguments for misr event
  */
-void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc);
+void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc, void *args);
 
 /**
  * sde_encoder_handle_dma_fence_out_of_order - sw dma fence out of order signal
@@ -1437,11 +1446,21 @@ static inline struct sde_cesta_client *sde_encoder_get_cesta_client(struct drm_e
 static inline int sde_encoder_register_misr_event(struct drm_encoder *drm_enc, bool val)
 {
 	struct sde_encoder_virt *sde_enc = NULL;
+	int ret = 0;
 
 	if (!drm_enc)
 		return -EINVAL;
 
 	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (sde_enc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI]) {
+		ret = sde_enc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI](sde_enc, MSM_ENC_MISR, val);
+		if (ret) {
+			DRM_ERROR("failed to enable MISR event\n");
+			return ret;
+		}
+	}
+
 	atomic_set(&sde_enc->misr_enable, val);
 
 	/*

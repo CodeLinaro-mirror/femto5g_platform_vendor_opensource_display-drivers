@@ -63,7 +63,7 @@ int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
 	}
 
 	payload.feature = HFI_DEBUG_FEATURE_LSR;
-	payload.level = (enum hfi_debug_log_level)val;
+	payload.level_bitmask = val;
 
 	ret = hfi_adapter_add_set_property(lsr_hfi_client,
 			cmd_buf,
@@ -83,7 +83,7 @@ int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
 	if (ret)
 		SDE_ERROR("failed to send debug command\n");
 
-	SDE_DEBUG("LSR FW debug level is set to %llu\n", val);
+	SDE_DEBUG("LSR FW debug level is set to 0x%llx\n", val);
 	SDE_EVT32(val);
 	return ret;
 }
@@ -787,25 +787,27 @@ static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
 	struct synx_import_params import_params = {0};
 	struct synx_session *session = NULL;
 	u32 lsr_h_synx, ret = 0;
-	void *dcp_hw_fence_handle = NULL;
-	struct msm_drm_private *priv;
-	struct hfi_adapter_t *adapter;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_hwfence_data *hfi_hw_fence_data;
 	int reusable_fence_count = 0;
 	u32 *payload;
 	u32 size = 0;
 
-	priv = drm_conn->dev->dev_private;
-	adapter = priv->hfi_priv->hfi_adapter;
+	sde_kms = sde_connector_get_kms(drm_conn);
+	hfi_kms = sde_kms ? sde_kms->hfi_kms : NULL;
+	hfi_hw_fence_data = hfi_kms ? hfi_kms->hfi_hw_fence_data : NULL;
 
-	if (!adapter || !adapter->session) {
-		SDE_ERROR("hfi adapter or session is not initialized\n");
+	if (!hfi_hw_fence_data || !hfi_hw_fence_data->hw_fence_handle) {
+		SDE_ERROR("invalid sde_kms:%pK hfi_kms:%pK hwfence_data:%pK hw_fence_handle:%pK\n",
+			sde_kms, hfi_kms, hfi_hw_fence_data,
+			hfi_hw_fence_data ? hfi_hw_fence_data->hw_fence_handle : NULL);
 		return -EINVAL;
 	}
 
 	/* Setup reusable fence only once per device bootup */
 	if (!reproj_conn->reusable_fence_cnt) {
-		dcp_hw_fence_handle = adapter->session->hwfence_data.hw_fence_handle;
-		session = (struct synx_session *)dcp_hw_fence_handle;
+		session = hfi_hw_fence_data->hw_fence_handle;
 		lsr_h_synx = reproj_conn->lsr_reusable_hsynx;
 		SDE_DEBUG("lsr reusable h_synx: %d\n", lsr_h_synx);
 
@@ -930,6 +932,7 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 		if (ret)
 			SDE_ERROR("failed to send HFI commands\n");
 
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 		/* LSR usecases always have hw-fences enabled */
 		ret =  synx_enable_resources(SYNX_CLIENT_HW_FENCE_LSR0_CTX0, SYNX_RESOURCE_SOCCP,
 				true);
@@ -937,6 +940,7 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 			SDE_ERROR("failed to enable hw-fence resources for lsr: %d\n", ret);
 			return ret;
 		}
+#endif
 
 end:
 		mutex_unlock(&hfi_conn->hfi_lock);
@@ -944,12 +948,14 @@ end:
 		if (reproj_conn->off)
 			reproj_conn->off(reproj_conn, true);
 
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 		ret =  synx_enable_resources(SYNX_CLIENT_HW_FENCE_LSR0_CTX0, SYNX_RESOURCE_SOCCP,
 				false);
 		if (ret) {
 			SDE_ERROR("failed to disable hw-fence resources for lsr: %d\n", ret);
 			return ret;
 		}
+#endif
 	}
 	return ret;
 }

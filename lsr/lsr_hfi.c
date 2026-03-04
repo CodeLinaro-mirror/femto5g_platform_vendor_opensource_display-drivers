@@ -1720,6 +1720,11 @@ static void __flush_debug_queue(struct lsr_device *device, u8 *packet)
 #define _INVALID_STATE_ "Ignore responses from %d to %d invalid state\n"
 #define _DEVFREQ_FAIL_ "Failed to add devfreq device bus %s governor %s: %d\n"
 
+static void lsr_panic(void)
+{
+	panic("LSR firmware panic\n");
+}
+
 static void __dump_sfr_log(struct lsr_device *device)
 {
 	struct lsr_hfi_sfr_struct *vsfr = NULL;
@@ -1759,8 +1764,6 @@ int __response_handler(struct lsr_device *device)
 		return 0;
 
 	lsr_status = __read_register(device, LSR_CTRL_STATUS);
-	if (lsr_status & BIT(LSR_STATUS_SYS_ERROR))
-		__dump_sfr_log(device);
 
 	if (device->intr_status & CVP_FATAL_INTR_BMSK) {
 		if (device->intr_status & LSR_WRAPPER_INTR_MASK_CPU_NOC_BMSK)
@@ -1772,6 +1775,15 @@ int __response_handler(struct lsr_device *device)
 	}
 
 	__flush_debug_queue(device, NULL);
+
+	if (lsr_status & BIT(LSR_STATUS_SYS_ERROR)) {
+		__dump_sfr_log(device);
+		if (!msm_lsr_enable_ssr) {
+			pr_err("LSR sys error detected\n");
+			lsr_panic();
+		}
+		/* TODO: Handle SSR cases once SSR is implemented */
+	}
 	return 0;
 }
 
@@ -1825,6 +1837,17 @@ err_no_work:
 	if (!(intr_status & LSR_WRAPPER_INTR_STATUS_A2HWD_BMSK))
 		enable_irq(device->lsr_hal_data->irq);
 	cur_irq_state = LSR_IRQ_CLEAR;
+	return IRQ_HANDLED;
+}
+
+irqreturn_t lsr_wd_handler(int irq, void *data)
+{
+	if (!msm_lsr_enable_ssr) {
+		pr_err("LSR watchdog is detected\n");
+		lsr_panic();
+	}
+	/* TODO: Handle SSR cases once SSR is implemented */
+
 	return IRQ_HANDLED;
 }
 
@@ -3037,6 +3060,7 @@ void lsr_iris_hfi_delete_device(void *device)
 	destroy_workqueue(dev->iris_pm_workq);
 
 	free_irq(dev->lsr_hal_data->irq, dev);
+	free_irq(dev->lsr_hal_data->irq_wd, dev);
 
 	iounmap(dev->lsr_hal_data->register_base);
 	iounmap(dev->lsr_hal_data->gcc_reg_base);
