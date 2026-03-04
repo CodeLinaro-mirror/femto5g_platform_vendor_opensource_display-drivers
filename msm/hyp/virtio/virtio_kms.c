@@ -2872,8 +2872,13 @@ static int virtio_gpu_hab_open(struct virtio_kms *kms)
 {
 	int ret = 0;
 	uint32_t client_id = kms->client_id;
-	if (!kms)
+	if (!kms) {
 		VIRTIO_KMS_ERR("kms NULL\n");
+		return -EINVAL;
+	}
+
+	spin_lock_init(&kms->channel[client_id].hyp_chl_spin_lock);
+	mutex_init(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 	ret = habmm_socket_open(
 			&kms->channel[client_id].hab_socket[CHANNEL_CMD],
 			kms->mmid_cmd,
@@ -2884,11 +2889,11 @@ static int virtio_gpu_hab_open(struct virtio_kms *kms)
 
 	} else {
 		VIRTIO_KMS_ERR("hab open failed mmid %d ret %d\n", kms->mmid_cmd, ret);
+		mutex_destroy(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 		goto exit;
 	}
-	spin_lock_init(&kms->channel[client_id].hyp_chl_spin_lock);
-	mutex_init(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 
+	mutex_init(&kms->channel[client_id].hyp_chl_lock[CHANNEL_EVENTS]);
 	ret = habmm_socket_open(
 			&kms->channel[client_id].hab_socket[CHANNEL_EVENTS],
 			kms->mmid_event,
@@ -2898,9 +2903,11 @@ static int virtio_gpu_hab_open(struct virtio_kms *kms)
 		VIRTIO_KMS_INFO("hab socket open mmid %d OK\n", kms->mmid_event);
 	} else {
 		VIRTIO_KMS_ERR("hab open failed mmid %d ret %d\n", kms->mmid_event, ret);
+		mutex_destroy(&kms->channel[client_id].hyp_chl_lock[CHANNEL_EVENTS]);
+		habmm_socket_close(kms->channel[client_id].hab_socket[CHANNEL_CMD]);
+		mutex_destroy(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
 	}
 
-	mutex_init(&kms->channel[client_id].hyp_chl_lock[CHANNEL_EVENTS]);
 exit:
 	return ret;
 }
@@ -3058,7 +3065,7 @@ static int create_virq_shmem(struct device *dev, struct virtio_kms *kms, uint32_
 	int rc = -1;
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
-	struct channel_map hab_channel = kms->channel[client_id];
+	struct channel_map *hab_channel = &kms->channel[client_id];
 
 	struct virq_shmem_t *virq_shmem = &(kms->base.virq_shmem[device_id]);
 	if (NULL != virq_shmem->vaddr) {
@@ -3077,7 +3084,7 @@ static int create_virq_shmem(struct device *dev, struct virtio_kms *kms, uint32_
 	virq_shmem->size = VIRQ_SHMEM_SIZE;
 	memset(virq_shmem->vaddr, 0, virq_shmem->size);
 
-	mutex_lock(&hab_channel.hyp_chl_lock[CHANNEL_CMD]);
+	mutex_lock(&hab_channel->hyp_chl_lock[CHANNEL_CMD]);
 
 	rc = habmm_export(
 			hab_socket,
@@ -3086,7 +3093,7 @@ static int create_virq_shmem(struct device *dev, struct virtio_kms *kms, uint32_
 			&virq_shmem->hab_export_id,
 			0);
 
-	mutex_unlock(&hab_channel.hyp_chl_lock[CHANNEL_CMD]);
+	mutex_unlock(&hab_channel->hyp_chl_lock[CHANNEL_CMD]);
 
 	if (rc) {
 		VIRTIO_KMS_ERR("virq_shmem habmm export failed\n");
@@ -3113,7 +3120,7 @@ static void destroy_virq_shmem(struct device *dev, struct virtio_kms *kms, uint3
 	int rc = -1;
 	uint32_t client_id = kms->client_id;
 	int32_t hab_socket = kms->channel[client_id].hab_socket[CHANNEL_CMD];
-	struct channel_map hab_channel = kms->channel[client_id];
+	struct channel_map *hab_channel = &kms->channel[client_id];
 	struct virq_shmem_t *virq_shmem = &(kms->base.virq_shmem[device_id]);
 
 	if (NULL == virq_shmem->vaddr) {
@@ -3121,11 +3128,11 @@ static void destroy_virq_shmem(struct device *dev, struct virtio_kms *kms, uint3
 		return;
 	}
 
-	mutex_lock(&hab_channel.hyp_chl_lock[CHANNEL_CMD]);
+	mutex_lock(&hab_channel->hyp_chl_lock[CHANNEL_CMD]);
 
 	rc = habmm_unexport(hab_socket, virq_shmem->hab_export_id, 0);
 
-	mutex_unlock(&hab_channel.hyp_chl_lock[CHANNEL_CMD]);
+	mutex_unlock(&hab_channel->hyp_chl_lock[CHANNEL_CMD]);
 
 	if (rc) {
 		VIRTIO_KMS_ERR("virq_shmem habmm unexport for device %d failed\n", device_id);
