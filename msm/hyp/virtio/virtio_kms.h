@@ -8,6 +8,7 @@
 #include <msm_drv_hyp.h>
 #include "virtio_ext.h"
 #include "sde_rm.h"
+#include "sde_edid_parser.h"
 
 #define PANEL_NAME_LEN 13
 #define VIRTIO_MAX_CLIENTS 10
@@ -85,6 +86,8 @@ struct virtio_kms_output {
 	bool enabled;
 	uint32_t type;
 	struct edid *edid;
+	struct sde_edid_ctrl *edid_ctrl;
+	struct mutex edid_lock;
 	uint32_t plane_cnt;
 	struct virtio_plane_caps plane_caps[VIRTIO_GPU_MAX_PLANES];
 	struct drm_crtc *crtc;

@@ -118,9 +118,19 @@ static int msm_hyp_dp_audio_get_edid_blk(struct platform_device *pdev,
 		goto end;
 	}
 
-	if (!audio->panel || !audio->panel->edid_ctrl) {
+	if (!audio->panel) {
 		DP_ERR("invalid panel data\n");
 		rc = -EINVAL;
+		goto end;
+	}
+
+	/* Acquire lock to safely access edid_ctrl */
+	mutex_lock(&audio->panel->edid_lock);
+
+	if (!audio->panel->edid_ctrl) {
+		DP_ERR("invalid edid_ctrl\n");
+		rc = -EINVAL;
+		mutex_unlock(&audio->panel->edid_lock);
 		goto end;
 	}
 
@@ -131,6 +141,9 @@ static int msm_hyp_dp_audio_get_edid_blk(struct platform_device *pdev,
 
 	blk->spk_alloc_data_blk = edid->spkr_alloc_data_block;
 	blk->spk_alloc_data_blk_size = edid->sadb_size;
+
+	mutex_unlock(&audio->panel->edid_lock);
+
 end:
 	return rc;
 }

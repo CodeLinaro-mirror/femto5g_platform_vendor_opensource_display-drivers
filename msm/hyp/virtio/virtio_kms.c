@@ -2965,6 +2965,22 @@ static int _virtio_kms_hw_deinit(struct virtio_kms *kms)
 				VIRTIO_KMS_ERR("plane destroy failed %d\n", plane_id);
 			}
 		}
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_DP_AUDIO)
+		mutex_lock(&output->edid_lock);
+		if (kms->outputs[scanout].edid_ctrl) {
+			if (kms->has_edid) {
+				// edid_ctrl->edid will be freed during
+				// virtio_get_edid_block
+				// just set it to NULL here
+				kms->outputs[scanout].edid_ctrl->edid = NULL;
+				kfree(kms->outputs[scanout].edid_ctrl);
+				kms->outputs[scanout].edid_ctrl = NULL;
+			}
+		}
+		mutex_unlock(&output->edid_lock);
+		mutex_destroy(&output->edid_lock);
+#endif
 	}
 	return rc;
 }
@@ -2984,6 +3000,9 @@ static int virtio_kms_scanout_init(struct virtio_kms *kms, uint32_t scanout)
 	VIRTIO_KMS_DBG("scanout init, id: %d\n", scanout);
 
 	output = &kms->outputs[scanout];
+
+	mutex_init(&output->edid_lock);
+
 	if (kms->has_edid)
 		virtio_gpu_cmd_get_edid(kms, scanout);
 
@@ -3642,6 +3661,20 @@ static int _virtio_kms_service_dp_hpd(struct virtio_kms *kms, uint32_t scanout, 
 
 				priv->connector_status = connector_status_disconnected;
 				connector->status = connector_status_disconnected;
+
+				mutex_lock(&kms->outputs[scanout].edid_lock);
+				if (kms->outputs[scanout].edid_ctrl) {
+					if (kms->has_edid) {
+						// edid_ctrl->edid will be freed during
+						// virtio_get_edid_block
+						// just set it to NULL here
+						kms->outputs[scanout].edid_ctrl->edid = NULL;
+						kfree(kms->outputs[scanout].edid_ctrl);
+						kms->outputs[scanout].edid_ctrl = NULL;
+					}
+				}
+				mutex_unlock(&kms->outputs[scanout].edid_lock);
+
 				msm_hyp_send_hpd_event(sde_kms->dev, connector);
 			} else {
 				VIRTIO_KMS_ERR("Error event scanout %d, event_type %d\n",
