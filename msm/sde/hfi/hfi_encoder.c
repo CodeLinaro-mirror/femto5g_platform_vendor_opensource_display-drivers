@@ -671,10 +671,19 @@ static int _hfi_enc_wait_for_commit_done(struct hfi_encoder *hfi_enc)
 	int ret;
 	struct sde_encoder_wait_info wait_info = {0};
 	struct sde_encoder_virt *sde_enc;
+	struct sde_encoder_phys *phys_enc;
 	u32 event;
 	struct drm_encoder *drm_enc;
 
 	sde_enc = hfi_enc->sde_base;
+	phys_enc = sde_enc->cur_master;
+
+	if (!phys_enc)
+		return 1;
+
+	if (sde_encoder_in_clone_mode(&sde_enc->base)
+		&& (atomic_read(&phys_enc->pending_kickoff_cnt) <= 1))
+		return 1;
 
 	wait_info.wq = &hfi_enc->pending_kickoff_wq;
 	wait_info.atomic_cnt = &sde_enc->pending_commit_cnt;
@@ -799,9 +808,11 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 	struct drm_connector *conn;
 	struct sde_kms *sde_kms;
 	struct hfi_kms *hfi_kms;
+	struct sde_encoder_phys *phys_enc;
 	u32 scan_id_prop[3] = {0,};
 	u32 num_props = 1;
 	u64 cur_timestamp_hw, local_clock_ts;
+	u32 pending_kickoff_cnt;
 
 	if (!enc)
 		return -EINVAL;
@@ -819,6 +830,12 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 		SDE_ERROR("invalid connector\n");
 		return -EINVAL;
 	}
+
+	phys_enc = enc->cur_master;
+	if (!phys_enc)
+		return -EINVAL;
+
+	pending_kickoff_cnt = sde_encoder_phys_inc_pending(phys_enc);
 
 	/* Re-register scan start event if it's disabled */
 	if (!sde_encoder_in_clone_mode(&enc->base) &&
@@ -861,7 +878,7 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 	local_clock_ts = local_clock();
 
 	SDE_EVT32(atomic_read(&hfi_enc->hfi_commit_cnt), cur_timestamp_hw >> 32, cur_timestamp_hw,
-			local_clock_ts >> 32, local_clock_ts);
+			local_clock_ts >> 32, local_clock_ts, pending_kickoff_cnt);
 
 	return ret;
 }
