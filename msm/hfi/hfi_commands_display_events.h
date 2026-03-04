@@ -358,6 +358,122 @@
  */
 #define HFI_COMMAND_DISPLAY_EVENT_INTERFACE_MISR                                0x0400000F
 
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_HDCP1X_START - This is a DCP event command sent to Host to request AKSV
+ *                                          to start HDCP 1.x authentication.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in disp_events_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_NONE
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_EVENT_HDCP1X_START
+ *     hfi_packet.flags         : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *     hfi_packet.id            : BITS 0:15 carry the display id
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_HDCP1X_START                                  0x04000010
+
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_HDCP1X_STOP - This is a DCP event command sent to Host to stop HDCP 1.x
+ *                                         authentication and disable encryption.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in disp_events_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_NONE
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_EVENT_HDCP1X_STOP
+ *     hfi_packet.flags         : HFI_TX_FLAGS_NONE
+ *     hfi_packet.id            : BITS 0:15 carry the display id
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_HDCP1X_STOP                                   0x04000011
+
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_HDCP1X_ENC - This is a DCP event command sent to Host to control
+ *                                        HDCP 1.x encryption state (enable/disable).
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in disp_events_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_EVENT_HDCP1X_ENC
+ *     hfi_packet.flags         : HFI_TX_FLAGS_NONE
+ *     hfi_packet.id            : BITS 0:15 carry the display id
+ *     hfi_packet.payload[0]    : enable flag
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_HDCP1X_ENC                                    0x04000012
+
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_HDCP1X_TOPOLOGY_UPDATE - This is a DCP event command sent to Host to
+ *                                                    update HDCP repeater topology information.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in disp_events_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_EVENT_HDCP1X_TOPOLOGY_UPDATE
+ *     hfi_packet.flags         : HFI_TX_FLAGS_NONE
+ *     hfi_packet.id            : BITS 0:15 carry the display id
+ *     hfi_packet.payload[0-3]  : struct hfi_hdcp1x_topology_data
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_HDCP1X_TOPOLOGY_UPDATE                        0x04000013
+
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_HDCP2X_START - This is a DCP event command sent to Host to start
+ *                                          HDCP2x sequence.
+ *
+ * Hfi packet layout             : Value
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_NONE
+ * hfi_packet.cmd                : HFI_COMMAND_DISPLAY_EVENT_HDCP2X_START
+ * hfi_packet.flags              : HFI_RX_FLAGS_NONE
+ * hfi_packet.id                 : BITS 0:15 carry the display id
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_HDCP2X_START                                  0x04000014
+
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_HDCP2X_PROCESS_MSG - This is a DCP event command sent to Host to
+ *                                                process HDCP2x message.
+ *
+ * Hfi packet layout             : Value
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                : HFI_COMMAND_DISPLAY_EVENT_HDCP2X_PROCESS_MSG
+ * hfi_packet.flags              : HFI_RX_FLAGS_NONE
+ * hfi_packet.id                 : BITS 0:15 carry the display id
+ * hfi_packet.payload[0-3]       : struct hfi_hdcp2_message
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_HDCP2X_PROCESS_MSG                            0x04000015
+
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_HDCP2X_TIMEOUT - This is a DCP event command sent to Host when
+ *                                            expected HDCP2x message times out.
+ *
+ * Hfi packet layout             : Value
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_NONE
+ * hfi_packet.cmd                : HFI_COMMAND_DISPLAY_EVENT_HDCP2X_TIMEOUT
+ * hfi_packet.flags              : HFI_RX_FLAGS_NONE
+ * hfi_packet.id                 : BITS 0:15 carry the display id
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_HDCP2X_TIMEOUT                                0x04000016
+
+/*
+ * HFI_COMMAND_DISPLAY_EVENT_HDCP_FEATURE_SUPPORTED - This is a DCP event command sent to Host to
+ *                                                    show sink HDCP capability.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in disp_events_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_EVENT_HDCP_FEATURE_SUPPORTED
+ *     hfi_packet.flags         : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *     hfi_packet.id            : BITS 0:15 carry the display id
+ *     hfi_packet.payload[0]    : hdcp1x_supported (boolean)
+ *     hfi_packet.payload[1]    : hdcp2x_supported (boolean)
+ */
+#define HFI_COMMAND_DISPLAY_EVENT_HDCP_FEATURE_SUPPORTED                        0x04000017
+
 #define HFI_COMMAND_DISPLAY_EVENT_END                                           0x04FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_EVENTS_H
