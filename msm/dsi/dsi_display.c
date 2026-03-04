@@ -74,7 +74,7 @@ bool is_skip_op_required(struct dsi_display *display)
 	return (display->is_cont_splash_enabled || display->trusted_vm_env);
 }
 
-static bool is_sim_panel(struct dsi_display *display)
+bool is_sim_panel(struct dsi_display *display)
 {
 	if (!display || !display->panel)
 		return false;
