@@ -1279,3 +1279,33 @@ int hfi_lsr_wait_for_display_off(struct drm_device *dev)
 
 	return rc;
 }
+
+int hfi_reset_hwfence(struct drm_device *dev)
+{
+	struct msm_drm_private *priv = NULL;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms = NULL;
+	int rc = 0;
+
+	if (!dev || !dev->dev_private) {
+		SDE_ERROR("Invalid drm device or device private\n");
+		return -EINVAL;
+	}
+
+	priv = dev->dev_private;
+	sde_kms = to_sde_kms(priv->kms);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("Invalid hfi_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms_recover_hwfence(hfi_kms);
+
+	return rc;
+}

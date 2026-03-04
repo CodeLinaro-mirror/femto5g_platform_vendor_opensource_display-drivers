@@ -212,7 +212,7 @@ static int hfi_kms_process_cmd_buf(struct hfi_client_t *client, struct hfi_cmdbu
 }
 
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
-static void _hfi_recover_hwfence(struct hfi_kms *hfi_kms)
+void hfi_kms_recover_hwfence(struct hfi_kms *hfi_kms)
 {
 	int rc, i;
 	struct hfi_hwfence_data *hwfence_data;
@@ -240,7 +240,7 @@ static void _hfi_recover_hwfence(struct hfi_kms *hfi_kms)
 		SDE_ERROR("failed to reset client %d\n", hwfence_data->client_id);
 }
 #else
-static void _hfi_recover_hwfence(struct hfi_kms *hfi_kms)
+void hfi_kms_recover_hwfence(struct hfi_kms *hfi_kms)
 {
 	SDE_INFO("skipping reset client, hw fence not enabled\n");
 }
@@ -317,7 +317,7 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 
 	/* reset hwfence timeline if hwfencing enabled */
 	if (sde_kms->catalog && sde_kms->catalog->hw_fence_rev)
-		_hfi_recover_hwfence(hfi_kms);
+		hfi_kms_recover_hwfence(hfi_kms);
 
 	/* wait for all display off */
 	rc = sde_kms_wait_for_display_off(sde_kms);
@@ -372,6 +372,10 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 
 	priv = ddev->dev_private;
 	mp = &priv->phandle.mp;
+
+	rc = hfi_kms_init_hw_fence_config(hfi_kms);
+	if (rc)
+		SDE_ERROR("failed to send HFI HW FENCE config to FW ret:%d\n", rc);
 
 	/* re configure fw with lut dma configs */
 	rc = sde_kms_reinit_device_lut_dma(sde_kms);
@@ -1213,7 +1217,7 @@ static int _set_hw_fence_config(struct hfi_kms *hfi_kms)
 	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
 			HFI_COMMAND_DEVICE_HWFENCE_HFI_CONFIG, MSM_DRV_HFI_ID,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &hw_fence_cfg, sizeof(hw_fence_cfg),
-			HFI_TX_FLAGS_RESPONSE_REQUIRED | HFI_TX_FLAGS_NON_DISCARDABLE);
+			HFI_TX_FLAGS_NON_DISCARDABLE);
 	if (ret) {
 		SDE_ERROR("failed to set hfi property for hw fence config\n");
 		return -EINVAL;

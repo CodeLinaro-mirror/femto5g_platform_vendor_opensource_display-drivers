@@ -294,4 +294,10 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
  */
 int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *uidle_state);
 
+/**
+ * hfi_kms_recover_hwfence - Recovers hwfence
+ * @hfi_kms: Pointer to hfi_kms structure
+ */
+void hfi_kms_recover_hwfence(struct hfi_kms *hfi_kms);
+
 #endif // _HFI_KMS_H_

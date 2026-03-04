@@ -157,6 +157,12 @@ int hfi_lsr_notify_ssr_event(enum hfi_device_ssr_event ssr_event, struct drm_dev
  * @dev: pointer to drm_device
  */
 int hfi_lsr_wait_for_display_off(struct drm_device *dev);
+
+/**
+ * hfi_reset_hwfence - Reset hwfence
+ * @dev: pointer to drm_device
+ */
+int hfi_reset_hwfence(struct drm_device *dev);
 #else
 static inline
 int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
@@ -265,6 +271,11 @@ static inline int hfi_lsr_notify_ssr_event(enum hfi_device_ssr_event ssr_event,
 }
 
 static inline int hfi_lsr_wait_for_display_off(struct drm_device *dev)
+{
+	return 0;
+}
+
+static inline int hfi_reset_hwfence(struct drm_device *dev)
 {
 	return 0;
 }
