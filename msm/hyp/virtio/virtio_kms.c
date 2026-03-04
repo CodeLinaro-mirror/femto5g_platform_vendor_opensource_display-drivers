@@ -10,15 +10,18 @@
 //#include <soc/qcom/boot_stats.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_edid.h>
 #include <sde_connector.h>
 #include <sde_encoder.h>
 #include <sde_plane.h>
 #include <sde_encoder_phys.h>
 #include <sde_rm.h>
 #include <sde_hw_pingpong.h>
+#include <sde_edid_parser.h>
 #include "msm_hyp_trace.h"
 #include "msm_hyp_utils.h"
 #include "msm_hyp_irq.h"
+#include "msm_hyp_dp_audio.h"
 #include "virtio_kms.h"
 #include "virtio_ext.h"
 #include "virtgpu_vq.h"
@@ -1072,6 +1075,11 @@ static void virtio_kms_bridge_enable(struct drm_bridge *drm_bridge)
 	int rc = 0;
 	struct virtio_kms *kms;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_DP_AUDIO)
+	struct virtio_kms_output *output = NULL;
+	bool is_audio_supported = false;
+#endif
+
 	display = container_of(drm_bridge, struct msm_hyp_display, bridge);
 	priv = container_of(display->info, struct virtio_connector_info_priv, base);
 	dest_rect.width = priv->mode_rect.width;
@@ -1103,8 +1111,49 @@ static void virtio_kms_bridge_enable(struct drm_bridge *drm_bridge)
 	if (rc)
 		VIRTIO_KMS_ERR("scanout power on failed\n");
 
-	virtio_gpu_cmd_scanout_flush(kms, scanout, true,
+	rc = virtio_gpu_cmd_scanout_flush(kms, scanout, true,
 			VIRTIO_SCANOUT_POWER_UP_TIMEOUT_MS);
+	if (rc)
+		VIRTIO_KMS_ERR("error in scanout flush\n");
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_DP_AUDIO)
+	output = &kms->outputs[scanout];
+
+	if (output->edid)
+		is_audio_supported = drm_detect_monitor_audio(output->edid);
+
+	VIRTIO_KMS_ERR("dp_audio scanout %u: audio %d, intf type %d\n",
+		scanout, is_audio_supported, output->attr.type);
+
+	// assume that all the interfaces are dp interfaces
+	// if this assumption is not true, then a check must be performed
+	if (is_audio_supported) {
+		VIRTIO_KMS_ERR("dp_audio is supported for scanout %u\n", scanout);
+
+		if (output->dp_audio) {
+			VIRTIO_KMS_ERR("dp_audio get not needed for scanout %u\n",
+				scanout);
+		} else {
+			output->dp_audio = msm_hyp_dp_audio_get(kms->pdev, output);
+			if (!output->dp_audio || !output->dp_audio->on) {
+				VIRTIO_KMS_ERR("dp_audio get for scanout %u failed\n",
+					scanout);
+				return;
+			}
+
+			VIRTIO_KMS_INFO("dp_audio get for scanout %u succeeded\n", scanout);
+		}
+
+		rc = output->dp_audio->on(output->dp_audio);
+		if (rc) {
+			VIRTIO_KMS_ERR("dp_audio on for scanout %u failed (err %u)\n",
+				scanout, rc);
+		} else {
+			VIRTIO_KMS_INFO("dp_audio on for scanout %u succeeded\n",
+				scanout);
+		}
+	}
+#endif
 }
 
 static void virtio_kms_bridge_disable(struct drm_bridge *drm_bridge)
@@ -1114,6 +1163,11 @@ static void virtio_kms_bridge_disable(struct drm_bridge *drm_bridge)
 	struct virtio_gpu_rect dest_rect;
 	uint32_t scanout;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_DP_AUDIO)
+	int rc = 0;
+	struct virtio_kms_output *output = NULL;
+#endif
+
 	display = container_of(drm_bridge, struct msm_hyp_display, bridge);
 	priv = container_of(display->info, struct virtio_connector_info_priv, base);
 	dest_rect.width = priv->mode_rect.width;
@@ -1122,6 +1176,25 @@ static void virtio_kms_bridge_disable(struct drm_bridge *drm_bridge)
 	dest_rect.y = priv->mode_rect.y;
 
 	scanout = priv->scanout;
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_DP_AUDIO)
+	output = &priv->kms->outputs[scanout];
+
+	if (output->dp_audio && output->dp_audio->off) {
+		rc = output->dp_audio->off(output->dp_audio, FALSE);
+		if (rc) {
+			VIRTIO_KMS_ERR("dp_audio off failed for scanout %u. err %d.\n",
+				scanout, rc);
+		} else {
+			VIRTIO_KMS_INFO("dp_audio off succeeded for scanout %u\n",
+				scanout);
+		}
+
+		msm_hyp_dp_audio_put(output->dp_audio);
+		output->dp_audio = NULL;
+	}
+#endif
+
 #if 0	// FIXME: SKIP FOR NOW
 	virtio_gpu_cmd_set_scanout_properties(priv->kms,
 			scanout,
@@ -1174,8 +1247,10 @@ static void virtio_kms_bridge_post_disable(struct drm_bridge *drm_bridge)
 	if (rc)
 		VIRTIO_KMS_ERR("scanout power off failed\n");
 
-	virtio_gpu_cmd_scanout_flush(kms, scanout, true,
+	rc = virtio_gpu_cmd_scanout_flush(kms, scanout, true,
 			VIRTIO_SCANOUT_POWER_DOWN_TIMEOUT_MS);
+	if (rc)
+		VIRTIO_KMS_ERR("Error in virtio_gpu_cmd_scanout_flush (%d)\n", rc);
 }
 
 static const struct drm_bridge_funcs virtio_bridge_ops = {
@@ -3838,6 +3913,7 @@ static int virtio_kms_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	kms->pdev = pdev;
 	kms->client_id = 0;
 
 	kms->mmid_cmd = HAB_MMID_CREATE(MM_DISP_1, kms->client_hab_id);

@@ -6,6 +6,7 @@
 #define __VIRTIO_KMS_H__
 #include <linux/virtio_gpu.h>
 #include <msm_drv_hyp.h>
+#include <msm_hyp_utils.h>
 #include "virtio_ext.h"
 #include "sde_rm.h"
 #include "sde_edid_parser.h"
@@ -36,6 +37,14 @@ enum hab_dbl_handle_t {
 enum virtio_hpd_connection_status {
 	VIRTIO_HPD_DISCONNECT = 1,
 	VIRTIO_HPD_CONNECT
+};
+
+enum dp_stream_id {
+	DP_STREAM_0,
+	DP_STREAM_1,
+	DP_STREAM_2,
+	DP_STREAM_3,
+	DP_STREAM_MAX,
 };
 
 struct scanout_attrib {
@@ -77,6 +86,8 @@ struct virtio_display_modes {
 	uint32_t flags;
 };
 
+struct msm_hyp_dp_audio;
+
 struct virtio_kms_output {
 	int index;
 	struct virtio_display_modes info[VIRTIO_GPU_MAX_MODES]; //modes
@@ -98,6 +109,7 @@ struct virtio_kms_output {
 	uint32_t offset_x;
 	uint32_t offset_y;
 	char port_name[MAX_PORT_NAME_LENGTH];
+	struct msm_hyp_dp_audio *dp_audio;
 };
 
 struct channel_map {
@@ -122,6 +134,7 @@ struct device_info_type {
 };
 
 struct virtio_kms {
+	struct platform_device *pdev;
 	struct msm_hyp_kms base;
 	struct channel_map channel[VIRTIO_MAX_CLIENTS];
 	struct virq_info_t *virq_info[VIRTIO_GPU_MAX_VIRQ];
