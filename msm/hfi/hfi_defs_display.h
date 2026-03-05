@@ -935,4 +935,29 @@ struct hfi_display_mode_extended_info {
 	u32 reserved2;
 };
 
+/*
+ * @struct hfi_cmd_set_remap
+ * @brief DSI command set remapping entry
+ *
+ * This structure represents a single mapping entry for DSI command set remapping.
+ * Used with HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP to inform DCP which
+ * hfi_panel_dcs_command_type values should be replaced with custom command types.
+ *
+ * @var cmd_type
+ *   hfi_panel_dcs_command_type value to be remapped
+ * @var custom_cmd_type
+ *   OEMs can define custom command types at host level which can be
+ *   used to remap hfi_panel_dcs_command_type values.
+ * @var flag
+ *   Reserved for future use
+ * @var reserved
+ *   Reserved for future use
+ */
+struct hfi_cmd_set_remap {
+	u32 cmd_type;
+	u32 custom_cmd_type;
+	u32 flag;
+	u32 reserved;
+};
+
 #endif // __H_HFI_DEFS_DISPLAY_H__
