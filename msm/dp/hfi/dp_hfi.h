@@ -75,19 +75,10 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
  * dp_hfi_start_batch_cmd() - first cmd of a batch cmd sequence
  * @hfi: handle to dp hfi structure
  * @hfi_client: handle to hfi client
- * @hfi_cmd: hfi command
- * @display_type: display type string
- * @hfi_payload_type: hfi payload type
- * @payload: handle to payload
- * @payload_size: payload size
- * @flags: flags
  *
  * Return: error code.
  */
-int dp_hfi_start_batch_cmd(struct dp_hfi *hfi,
-				struct hfi_client_t *hfi_client, u32 hfi_cmd,
-				const char *display_type, u32 hfi_payload_type,
-				void *payload, u32 payload_size, u32 flags);
+int dp_hfi_start_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client);
 
 /**
  * dp_hfi_append_batch_cmd() - middle cmds of a batch cmd sequence
@@ -124,6 +115,16 @@ int dp_hfi_end_batch_cmd(struct dp_hfi *hfi,
 				struct hfi_client_t *hfi_client, u32 hfi_cmd,
 				const char *display_type, u32 hfi_payload_type,
 				void *payload, u32 payload_size, u32 flags);
+
+/**
+ * dp_hfi_send_batch_cmd() - Trigger the HFI for the current batch of commands
+ * @hfi: handle to dp hfi structure
+ * @hfi_client: handle to hfi client
+ * @blocking: blocking hfi flag
+ *
+ * Return: error code.
+ */
+int dp_hfi_send_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client, bool blocking);
 
 /**
  * dp_hfi_setup() - setup dp hfi interface
