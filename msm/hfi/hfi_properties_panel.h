@@ -871,6 +871,23 @@
 #define HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY               0x00040039
 
 /*
+ * HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO - Specifies the DSI custom command set start
+ *                                                   index and count. OEMs can define custom command
+ *                                                   types at host level from which start index and
+ *                                                   count would be derived. This property is sent
+ *                                                   to DCP as part of
+ *                                                   HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command
+ *                                                   packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO |
+ *                               (version=0 << 20) | (dsize=2 << 24 )
+ *   (u32_value) payload[1]    : Custom command set start index
+ *   (u32_value) payload[2]    : Custom command set count
+ */
+#define HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO              0x00040040
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF
