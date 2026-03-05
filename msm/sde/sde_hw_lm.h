@@ -143,6 +143,8 @@ struct sde_hw_mixer {
 	struct sde_hw_mixer_cfg cfg;
 	bool global_flush;
 	u32 display_idx;
+	/* track each blendstage OP_MODE value for HW virtualization */
+	u32 op_mode[SDE_STAGE_MAX];
 };
 
 /**
