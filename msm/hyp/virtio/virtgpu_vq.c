@@ -1969,6 +1969,11 @@ error:
 			VIRTGPU_VQ_RSP_DBG("Unknown ownership str [%s]\n", value); \
 		continue; \
 	}
+#define PARSE_STRING(option, variable) \
+	if (sscanf(line, #option "=%11s", variable) == 1) { \
+		variable[MAX_PORT_NAME_LENGTH - 1] = '\0'; \
+		continue; \
+	}
 #define DUMP_PARSED_VALUE(option)	VIRTGPU_VQ_RSP_DBG("\t" #option " = %X\n", assign->option)
 #define DUMP_PARSED(option)	VIRTGPU_VQ_RSP_DBG("\t" #option " = %X\n", output->option)
 
@@ -2127,6 +2132,7 @@ static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 
 		PARSE_VALUE(offset_x, output->offset_x)
 		PARSE_VALUE(offset_y, output->offset_y)
+		PARSE_STRING(port_name, output->port_name)
 
 		PARSE_MASK(roi_crc_engine_mask, assign->roi_crc_engine_mask)
 		PARSE_OWNER(roi_crc_owner, assign->roi_crc_owner)

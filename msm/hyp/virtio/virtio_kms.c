@@ -1310,6 +1310,14 @@ static int virtio_kms_get_connector_infos(struct sde_kms *sde_kms,
 			virtio_kms_connector_get_type(attr->type,
 					i,
 					priv->panel_name);
+
+		if ('\0' != output->port_name[0]) {
+				snprintf(priv->panel_name, sizeof(priv->panel_name), "%s",
+						output->port_name);
+				VIRTIO_KMS_DBG("Using blob-provided port name: %s for scanout %d\n",
+								output->port_name, i);
+		}
+
 		priv->scanout = i;
 		priv->base.possible_crtcs = 1 << num_scanouts;
 		if (!output->num_modes) {
