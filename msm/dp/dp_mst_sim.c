@@ -606,6 +606,8 @@ static int dp_sim_parse_edid_from_node(struct dp_sim_device *sim_dev,
 		goto fail;
 	}
 
+	mode->hdisplay = hdisplay;
+	mode->vdisplay = vdisplay;
 	mode->hsync_start = mode->hdisplay + h_front_porch;
 	mode->hsync_end = mode->hsync_start + h_pulse_width;
 	mode->htotal = mode->hsync_end + h_back_porch;
