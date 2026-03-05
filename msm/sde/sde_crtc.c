@@ -7878,8 +7878,15 @@ static int _sde_crtc_atomic_check(struct drm_crtc *crtc,
 	 */
 	if (disp_op == MSM_DISP_OP_HFI) {
 		struct sde_connector_state *sde_conn_state;
+		struct drm_connector_state *drm_conn_state;
 
-		sde_conn_state = _sde_crtc_get_sde_connector_state(crtc, state->state);
+		drm_conn_state = _sde_crtc_get_virt_conn_state(crtc, state);
+
+		if (drm_conn_state)
+			sde_conn_state =  to_sde_connector_state(drm_conn_state);
+		else
+			sde_conn_state =  NULL;
+
 		if (sde_conn_state &&
 			sde_conn_state->base.connector->connector_type ==
 			DRM_MODE_CONNECTOR_VIRTUAL)
