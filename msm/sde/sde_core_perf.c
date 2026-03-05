@@ -1608,6 +1608,121 @@ static const struct file_operations sde_core_perf_uidle_perf_cnt_fops = {
 	.write = _sde_core_perf_uidle_perf_cnt_write,
 };
 
+static ssize_t _sde_core_perf_uidle_enable_read(struct file *file,
+		char __user *buff, size_t count, loff_t *ppos)
+{
+	struct sde_core_perf *perf = file->private_data;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	bool uidle_enabled = false;
+	u32 uidle_state = 0;
+	char buf[4];
+	int len;
+	int rc;
+
+	if (!perf)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0; /* EOF */
+
+	priv = perf->dev->dev_private;
+	if (!priv || !priv->kms)
+		return -EINVAL;
+
+	sde_kms = to_sde_kms(priv->kms);
+
+	/*
+	 * On the first read (before any write), query the FW for the actual
+	 * uidle state and initialize debugfs_ctrl to reflect it. This ensures
+	 * the first 'cat uidle_enable' returns the true FW state ('Y' if uidle
+	 * is active) rather than the uninitialized default.
+	 */
+	if (IS_DISP_OP_HFI(priv->disp_op) &&
+	    !sde_kms->catalog->uidle_cfg.debugfs_ctrl_initialized) {
+		hfi_kms = sde_kms->hfi_kms;
+		if (hfi_kms) {
+			rc = hfi_kms_get_uidle_status(hfi_kms, &uidle_enabled,
+					&uidle_state);
+			if (!rc) {
+				sde_kms->catalog->uidle_cfg.debugfs_ctrl =
+						uidle_enabled;
+				sde_kms->catalog->uidle_cfg.debugfs_ctrl_initialized =
+						true;
+			}
+		}
+	}
+
+	len = scnprintf(buf, sizeof(buf), "%c\n",
+			sde_kms->catalog->uidle_cfg.debugfs_ctrl ? 'Y' : 'N');
+
+	if (copy_to_user(buff, buf, len))
+		return -EFAULT;
+
+	*ppos += len;
+	return len;
+}
+
+static ssize_t _sde_core_perf_uidle_enable_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct sde_core_perf *perf = file->private_data;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	char buf[10];
+	u32 val;
+	int rc;
+
+	if (!perf)
+		return -ENODEV;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+	if (kstrtou32(buf, 0, &val))
+		return -EINVAL;
+
+	priv = perf->dev->dev_private;
+	if (!priv || !priv->kms)
+		return -EINVAL;
+
+	sde_kms = to_sde_kms(priv->kms);
+
+	if (!IS_DISP_OP_HFI(priv->disp_op)) {
+		SDE_ERROR("invalid display mode\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = sde_kms->hfi_kms;
+	if (!hfi_kms)
+		return -ENODEV;
+
+	/* val=1 means enable uidle, val=0 means disable uidle */
+	rc = hfi_kms_set_uidle_disable(hfi_kms, !val);
+	if (rc) {
+		SDE_ERROR("failed to set uidle enable val:%u via HFI rc:%d\n", val, rc);
+		return rc;
+	}
+
+	sde_kms->catalog->uidle_cfg.debugfs_ctrl = (bool)val;
+	sde_kms->catalog->uidle_cfg.debugfs_ctrl_initialized = true;
+
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY, val);
+	return count;
+}
+
+static const struct file_operations sde_core_perf_uidle_enable_fops = {
+	.open = simple_open,
+	.read = _sde_core_perf_uidle_enable_read,
+	.write = _sde_core_perf_uidle_enable_write,
+};
+
 static const struct file_operations sde_core_perf_uidle_status_fops = {
 	.open = simple_open,
 	.read = _sde_core_perf_uidle_status_read,
@@ -1686,8 +1801,13 @@ int sde_core_perf_debugfs_init(struct sde_core_perf *perf,
 			&sde_kms->catalog->uidle_cfg.fal10_threshold);
 	debugfs_create_u32("uidle_fal1_max_threshold", 0600, perf->debugfs_root,
 			&sde_kms->catalog->uidle_cfg.fal1_max_threshold);
-	debugfs_create_bool("uidle_enable", 0600, perf->debugfs_root,
-			&sde_kms->catalog->uidle_cfg.debugfs_ctrl);
+	if (!IS_DISP_OP_HFI(priv->disp_op)) {
+		debugfs_create_bool("uidle_enable", 0600, perf->debugfs_root,
+				&sde_kms->catalog->uidle_cfg.debugfs_ctrl);
+	} else {
+		debugfs_create_file("uidle_enable", 0600, perf->debugfs_root,
+				perf, &sde_core_perf_uidle_enable_fops);
+	}
 
 	if (!IS_DISP_OP_HFI(priv->disp_op)) {
 		debugfs_create_bool("uidle_status", 0400, perf->debugfs_root,
