@@ -184,6 +184,7 @@ struct dsi_panel_timing_caps {
  * HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
  * @panel_name:                     HFI_PROPERTY_PANEL_NAME
  * @panel_type:                     HFI_PROPERTY_PANEL_PHYSICAL_TYPE
+ * @display_type:                   HFI_PROPERTY_PANEL_DISPLAY_TYPE
  * @panel_bpp:                      HFI_PROPERTY_PANEL_BPP
  * @panels_lanes_state:             HFI_PROPERTY_PANEL_LANES_STATE
  * @panel_lane_map:                 HFI_PROPERTY_PANEL_LANE_MAP
@@ -222,6 +223,7 @@ struct dsi_panel_timing_caps {
 struct dsi_panel_generic_caps {
 	u32 panel_name;
 	enum hfi_panel_phy_type panel_type;
+	enum hfi_panel_display_type display_type;
 	enum hfi_panel_bpp panel_bpp;
 	enum hfi_panel_lane_enable panels_lanes_state;
 	enum hfi_panel_lane_map panel_lane_map;

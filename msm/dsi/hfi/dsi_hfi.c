@@ -795,6 +795,19 @@ static enum hfi_panel_modes dsi_get_panel_op_mode_helper(struct dsi_panel *panel
 	return mode;
 }
 
+static enum hfi_panel_display_type dsi_get_display_type_helper(struct dsi_display *display)
+{
+	if (!display || !display->display_type)
+		return HFI_PANEL_DISPLAY_TYPE_NONE;
+
+	if (!strcmp(display->display_type, "primary"))
+		return HFI_PANEL_DISPLAY_TYPE_BUILT_IN_0;
+	else if (!strcmp(display->display_type, "secondary"))
+		return HFI_PANEL_DISPLAY_TYPE_BUILT_IN_1;
+	else
+		return HFI_PANEL_DISPLAY_TYPE_BUILT_IN_2;
+}
+
 static enum hfi_panel_vsync_source dsi_get_panel_vsync_src(struct dsi_display *display)
 {
 	if (display->panel->te_using_watchdog_timer)
@@ -1365,6 +1378,7 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 					struct dsi_panel_generic_caps *panel_generic_caps)
 {
 	panel_generic_caps->panel_type = dsi_get_panel_type_helper(panel);
+	panel_generic_caps->display_type = dsi_get_display_type_helper(display);
 	panel_generic_caps->color_order_type = dsi_get_panel_color_order_type(panel);
 	panel_generic_caps->dma_trigger_type =
 		dsi_get_panel_trigger_type_helper(panel->host_config.dma_cmd_trigger);
@@ -1593,6 +1607,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	 */
 	struct dsi_value_to_prop_lookup dsi_hfi_gen_props_map[] = {
 		{panel_generic_caps.panel_type, HFI_PROPERTY_PANEL_PHYSICAL_TYPE, true},
+		{panel_generic_caps.display_type, HFI_PROPERTY_PANEL_DISPLAY_TYPE, true},
 		{panel_generic_caps.color_order_type, HFI_PROPERTY_PANEL_COLOR_ORDER, true},
 		{panel_generic_caps.dma_trigger_type, HFI_PROPERTY_PANEL_DMA_TRIGGER, true},
 		{panel_generic_caps.mdp_trigger_type, HFI_PROPERTY_PANEL_STREAM_TRIGGER, true},
