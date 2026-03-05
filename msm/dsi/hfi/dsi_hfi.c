@@ -1266,6 +1266,10 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	if (panel->panel_mode_switch_enabled) {
 		dsi_hfi_populate_poms_caps(panel, &panel_generic_caps->poms_caps);
 	}
+
+	/* Populate DSI custom command set info */
+	panel_generic_caps->custom_cmd_set_info[0] = DSI_CUSTOM_CMD_SET_START_IDX;
+	panel_generic_caps->custom_cmd_set_info[1] = DSI_CUSTOM_CMD_SET_COUNT;
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -1563,6 +1567,16 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 					(void *)freq_patterns);
 			kv_size += freq_pattern_size;
 		}
+	}
+
+	/* Add DSI custom command set info if custom commands are present */
+	if (panel_generic_caps.custom_cmd_set_info[1]) {
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO, 0,
+				((ARRAY_SIZE(panel_generic_caps.custom_cmd_set_info) *
+				sizeof(panel_generic_caps.custom_cmd_set_info[0])) / sizeof(u32))),
+				(void *)panel_generic_caps.custom_cmd_set_info);
+		kv_size += sizeof(panel_generic_caps.custom_cmd_set_info);
 	}
 
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);

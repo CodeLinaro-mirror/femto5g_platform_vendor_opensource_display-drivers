@@ -186,6 +186,7 @@ struct dsi_panel_timing_caps {
  * @dfps_caps:                      HFI_PROPERTY_PANEL_DFPS_CAPS
  * @lp11_init:                      HFI_PROPERTY_PANEL_LP11_INIT
  * @poms_caps:                      HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY
+ * @custom_cmd_set_info:            HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO
  */
 struct dsi_panel_generic_caps {
 	u32 panel_name;
@@ -223,6 +224,7 @@ struct dsi_panel_generic_caps {
 	struct hfi_panel_dfps_caps dfps_caps;
 	u32 lp11_init;
 	struct hfi_panel_operating_mode_caps poms_caps;
+	u32 custom_cmd_set_info[2]; /* [0]=start_index, [1]=count */
 };
 
 /**
