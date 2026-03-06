@@ -768,7 +768,14 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 		}
 
-		if (display->config.esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
+		/*
+		 * Set flag to send multiple DMA in a single HS burst.
+		 * NOT applicable in command non-embedded mode and should be disabled.
+		 */
+
+		if (!(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE) &&
+				(display->config.esync_enabled ||
+				display->panel->panel_mode == DSI_OP_VIDEO_MODE))
 			flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
 		else
 			flags &= ~DSI_CTRL_CMD_MULTI_DMA_BURST;
