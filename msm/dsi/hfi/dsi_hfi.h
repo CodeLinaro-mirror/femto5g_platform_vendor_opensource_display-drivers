@@ -17,7 +17,6 @@
 
 #define MAX_NUM_CTRLS_AND_LENGTH 3
 #define MAX_NUM_PHYS_AND_LENGTH 3
-#define NUM_PANEL_CMD_TYPES_SUPPORTED 9
 #define CLK_RATE_SIZE 2
 #define JITTER_SIZE 2
 #define NUM_VARIABLE_DPHY_TIMINGS 14
@@ -90,7 +89,7 @@ struct dsi_hfi_panel_per_cmd_type {
  */
 struct dsi_hfi_per_cmd_type_payload  {
 	u32 count;
-	struct dsi_hfi_panel_per_cmd_type hfi_per_type_array[NUM_PANEL_CMD_TYPES_SUPPORTED];
+	struct dsi_hfi_panel_per_cmd_type hfi_per_type_array[DSI_CMD_SET_MAX];
 };
 
 /**

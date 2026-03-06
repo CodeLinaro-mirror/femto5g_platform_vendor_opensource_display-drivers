@@ -986,9 +986,6 @@ static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 	}
 
 	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
-		if (j == NUM_PANEL_CMD_TYPES_SUPPORTED)
-			break;
-
 		if (i == DSI_CMD_SET_PPS || i == DSI_CMD_SET_ROI)
 			continue;
 
