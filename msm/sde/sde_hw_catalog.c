@@ -99,6 +99,7 @@
 #define LINE_MODE_WB_OFFSET		2
 
 #define QULTIV_DISP_GDSC2_DISABLED	0x7
+#define QULTIV_DISP_GDSC2_DISABLED_1	0x2
 #define SDE_PERF_MAX_CORE_CLK_RATE      650000000
 #define SDE_PERF_SYS_CACHE_ENABLE       0xffffffff
 
@@ -6986,7 +6987,9 @@ static int sde_hw_check_qultivate_fuse(struct drm_device *dev, struct sde_mdss_c
 			return -ENOMEM;
 		}
 		config_v1->enabled = (fuse & BIT(29) ||
-			(part_info != NULL && part_info[0] == QULTIV_DISP_GDSC2_DISABLED));
+			(part_info != NULL &&
+			 (part_info[0] == QULTIV_DISP_GDSC2_DISABLED ||
+			  part_info[0] == QULTIV_DISP_GDSC2_DISABLED_1)));
 		config_v1->vig_count = 2;
 		config_v1->dma_count = 4;
 		config_v1->gdsc2_blocked = true;
