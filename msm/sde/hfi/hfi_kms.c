@@ -893,7 +893,8 @@ int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
-int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
+int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state,
+	enum hfi_device_res_state vm_state)
 {
 	int ret = 0;
 	struct sde_kms *sde_kms;
@@ -935,8 +936,7 @@ int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_stat
 	}
 
 	hfi_res_cfg.disp_mask = 0xF;
-	hfi_res_cfg.vm_state = (vm_req == VM_REQ_ACQUIRE) ?
-				HFI_DEVICE_RESOURCE_ACQUIRE : HFI_DEVICE_RESOURCE_RELEASE;
+	hfi_res_cfg.vm_state = vm_state;
 	hfi_res_cfg.resource_type = HFI_DEVICE_RESOURCE_DISPLAY;
 
 	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
