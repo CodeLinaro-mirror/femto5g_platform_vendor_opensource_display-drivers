@@ -115,6 +115,19 @@ struct dsi_hfi_phy_timings_payload {
 };
 
 /**
+ * struct dsi_hfi_cmd_set_remap_payload - Complete payload for command set remapping
+ * @count: Number of remapping entries
+ * @entries: Array of remapping entries
+ *
+ * This structure encapsulates the complete payload for
+ * HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP.
+ */
+struct dsi_hfi_cmd_set_remap_payload {
+	u32 count;
+	struct hfi_cmd_set_remap entries[DSI_CMD_SET_MAX];
+};
+
+/**
  * struct dsi_panel_timing_caps - contains properties to be sent as part of
  * HFI_COMMAND_PANEL_INIT_TIMING_CAPS
  * @panel_index:                    HFI_PROPERTY_PANEL_INDEX
@@ -339,5 +352,28 @@ int dsi_hfi_misr_read(struct dsi_display *display);
  * Return: 0 on success, negative error code on failure
  */
 int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd);
+
+/**
+ * dsi_hfi_add_dsi_cmd_remap() - add DSI command set remapping entries
+ * @display: handle to dsi display structure
+ * @cmd_remap_table: pointer to array of size DSI_CMD_SET_MAX indexed by
+ *                   standard command type, where each entry holds the
+ *                   custom_cmd_type to remap to, or DSI_CMD_SET_MAX as a
+ *                   "no remap" sentinel.
+ * @table_size: size of cmd_remap_table; must equal DSI_CMD_SET_MAX
+ *
+ * This function validates each entry in cmd_remap_table and
+ * constructs an HFI payload which is sent to the DCP in a single operation.
+ *
+ * The function validates:
+ * - table_size equals DSI_CMD_SET_MAX
+ * - All custom_cmd_type values are within the valid range (< DSI_CUSTOM_CMD_SET_MAX)
+ * - Each custom_cmd_type is either in the custom range (>= DSI_CUSTOM_CMD_SET_START_IDX)
+ *   or equals the standard command type (pointing back to the original mapping)
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
+		u32 *cmd_remap_table, u32 table_size);
 
 #endif

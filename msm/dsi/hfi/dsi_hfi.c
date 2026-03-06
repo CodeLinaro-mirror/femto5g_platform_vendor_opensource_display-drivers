@@ -1143,6 +1143,132 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	return rc;
 }
 
+int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
+		u32 *cmd_remap_table, u32 table_size)
+{
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct dsi_display_mode_priv_info *priv_info;
+	struct dsi_hfi_cmd_set_remap_payload *hfi_remap_payload = NULL;
+	u32 hfi_payload_size;
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP;
+	u32 i, hfi_remap_count = 0;
+	int rc = 0;
+
+	if (!display || !display->dsi_hfi_info || !display->drm_conn) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	if (!cmd_remap_table || table_size != DSI_CMD_SET_MAX) {
+		DSI_ERR("Invalid cmd_remap_table: ptr=%p, table_size=%d, expected=%d\n",
+			cmd_remap_table, table_size, DSI_CMD_SET_MAX);
+		return -EINVAL;
+	}
+
+	/* Validate panel and mode configuration */
+	if (!display->panel || !display->panel->cur_mode || !display->panel->cur_mode->priv_info) {
+		DSI_ERR("Invalid panel or mode configuration\n");
+		return -EINVAL;
+	}
+
+	priv_info = display->panel->cur_mode->priv_info;
+
+	/*
+	 * Validate each entry and count valid mappings.
+	 * Entries set to DSI_CMD_SET_MAX are treated as "no remap" markers.
+	 */
+	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
+		u32 custom_cmd_type = cmd_remap_table[i];
+		int custom_idx;
+
+		if (custom_cmd_type == DSI_CMD_SET_MAX)
+			continue;
+
+		/* Validate custom_cmd_type is within valid range */
+		if (custom_cmd_type >= DSI_CUSTOM_CMD_SET_MAX) {
+			DSI_ERR("Entry %d: custom_cmd_type=%d out of range (max=%d)\n",
+				i, custom_cmd_type, DSI_CUSTOM_CMD_SET_MAX);
+			return -EINVAL;
+		}
+
+		/*
+		 * Validate custom command is in the custom range OR
+		 * equals the standard command (pointing back to original mapping)
+		 */
+		if (custom_cmd_type < DSI_CUSTOM_CMD_SET_START_IDX && custom_cmd_type != i) {
+			DSI_ERR("Entry %d: custom_cmd_type=%d must be >= %d or = to cmd_type=%d\n",
+				i, custom_cmd_type, DSI_CUSTOM_CMD_SET_START_IDX, i);
+			return -EINVAL;
+		}
+
+		/* Validate command set at custom_cmd_type exists and is non-empty */
+		custom_idx = dsi_cmd_type_to_index(custom_cmd_type);
+		if (custom_idx < 0 || custom_idx >= DSI_CMD_SET_TOTAL_SIZE ||
+				!priv_info->cmd_sets[custom_idx].count) {
+			DSI_ERR("Entry %d: empty cmd set at custom_idx=%d - custom_count=%d\n",
+				i, custom_idx, priv_info->cmd_sets[custom_idx].count);
+			return -EINVAL;
+		}
+
+		hfi_remap_count++;
+	}
+
+	if (!hfi_remap_count) {
+		DSI_INFO("No valid DSI cmd remap entries found\n");
+		return 0;
+	}
+
+	hfi_payload_size = sizeof(u32) + (hfi_remap_count * sizeof(struct hfi_cmd_set_remap));
+	hfi_remap_payload = kzalloc(hfi_payload_size, GFP_KERNEL);
+	if (!hfi_remap_payload) {
+		DSI_ERR("Failed to allocate HFI remap payload\n");
+		return -ENOMEM;
+	}
+
+	/* Build HFI payload from cmd_remap_table */
+	hfi_remap_payload->count = hfi_remap_count;
+	hfi_remap_count = 0;
+	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
+		if (cmd_remap_table[i] != DSI_CMD_SET_MAX) {
+			hfi_remap_payload->entries[hfi_remap_count].cmd_type = i;
+			hfi_remap_payload->entries[hfi_remap_count].custom_cmd_type =
+				cmd_remap_table[i];
+			hfi_remap_count++;
+		}
+	}
+
+	/* Get KMS and HFI client */
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms) {
+		DSI_ERR("Failed to get sde_kms\n");
+		rc = -EINVAL;
+		goto cleanup;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		DSI_ERR("Failed to get hfi_kms\n");
+		rc = -EINVAL;
+		goto cleanup;
+	}
+
+	hfi_client = &hfi_kms->hfi_client;
+
+	/* Send the HFI payload to firmware */
+	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd, display->display_type,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, hfi_remap_payload, hfi_payload_size,
+			(HFI_HOST_FLAGS_NON_DISCARDABLE));
+	if (rc)
+		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP, rc=%d\n",
+				rc);
+
+cleanup:
+	kfree(hfi_remap_payload);
+	return rc;
+}
+
 static u32 *dsi_hfi_pack_freq_patterns(struct dsi_display *display, u32 *total_size)
 {
 	struct dsi_display_mode_priv_info *priv_info;
