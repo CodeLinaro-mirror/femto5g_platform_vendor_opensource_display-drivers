@@ -98,6 +98,7 @@ retry_send_packet:
 	retry_times = 0;
 
 retry_recv_packet:
+	delay = jiffies + (HZ / 4);
 	do {
 		size = resp_size;
 		/* TODO: Need handle exit hab_receive during deinit */
