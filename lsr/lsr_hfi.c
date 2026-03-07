@@ -1365,7 +1365,7 @@ static int __hwfence_regs_unmap(struct lsr_device *device)
 int iris_hfi_core_init(void *device)
 {
 	int rc = 0;
-	u32 ipcc_iova;
+	u32 ipcc_iova = 0;
 	struct lsr_device *dev;
 
 	if (!device) {
@@ -1415,7 +1415,8 @@ int iris_hfi_core_init(void *device)
 	if (!rc) {
 		dprintk(LSR_CORE, "IPCC iova  : 0x%x\n", ipcc_iova);
 		__write_register(dev, CVP_MMAP_ADDR, ipcc_iova);
-	}
+	} else
+		goto err_core_init;
 
 	rc = __load_fw(dev);
 	if (rc) {
@@ -1466,6 +1467,7 @@ pm_qos_bail:
 	return 0;
 
 err_core_init:
+	msm_lsr_unmap_ipcc_regs(ipcc_iova);
 	__set_state(dev, IRIS_STATE_DEINIT);
 	__unload_fw(dev);
 err_load_fw:
@@ -1512,7 +1514,7 @@ static int iris_hfi_core_release(void *dev)
 
 	__disable_subcaches(device);
 	ipcc_iova = __read_register(device, CVP_MMAP_ADDR);
-	msm_lsr_unmap_ipcc_regs(ipcc_iova);
+
 	__unload_fw(device);
 	__hwfence_regs_unmap(device);
 
@@ -3578,5 +3580,43 @@ int lsr_iris_hfi_initialize(struct lsr_hfi_ops *ops_tbl,
 	lsr_init_hfi_callbacks(ops_tbl);
 
 err_iris_hfi_init:
+	return rc;
+}
+
+int lsr_fw_reset(void)
+{
+	struct msm_lsr_core *core;
+	struct lsr_device *device;
+	struct lsr_hfi_ops *ops_tbl;
+	int rc = 0;
+
+	core = lsr_driver->lsr_core;
+	if (core)
+		device = core->dev_ops->hfi_device_data;
+	else {
+		WARN_ONCE(true, "LSR Core is not created\n");
+		return -EINVAL;
+	}
+
+	ops_tbl = core->dev_ops;
+
+	rc = call_hfi_op(ops_tbl, core_release, ops_tbl->hfi_device_data);
+	if (rc) {
+		dprintk(LSR_ERR, "core_release failed: %d\n", rc);
+		return rc;
+	}
+
+	rc = synx_recover(device->hwfence_data.hw_fence_handle->type);
+	if (rc) {
+		dprintk(LSR_ERR, "failed to reset client %d\n", rc);
+		return rc;
+	}
+
+	rc = call_hfi_op(ops_tbl, core_init, ops_tbl->hfi_device_data);
+	if (rc) {
+		dprintk(LSR_ERR, "core_init failed: %d\n", rc);
+		return rc;
+	}
+
 	return rc;
 }
