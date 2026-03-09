@@ -3647,7 +3647,7 @@ static ssize_t _sde_debugfs_conn_esd_status_interval_write(struct file *file,
 	struct drm_connector *connector = file->private_data;
 	struct sde_connector *c_conn = NULL;
 	char *input;
-	int rc = 0, strtoint = 0;
+	int rc = 0, hfi_rc = 0, strtoint = 0;
 
 	if (*ppos || !connector) {
 		SDE_ERROR("invalid argument(s), conn %d\n", connector != NULL);
@@ -3689,6 +3689,18 @@ static ssize_t _sde_debugfs_conn_esd_status_interval_write(struct file *file,
 	mutex_lock(&c_conn->lock);
 	c_conn->esd_status_interval = strtoint;
 	mutex_unlock(&c_conn->lock);
+
+	if (sde_connector_get_disp_op(&c_conn->base) == MSM_DISP_OP_HFI) {
+		struct hfi_display_dbg_property dbg_prop = {
+			.prop_id = HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL,
+			.value_lsb = strtoint
+		};
+
+		hfi_rc = hfi_connector_set_debug_prop(connector, &dbg_prop);
+		if (hfi_rc)
+			SDE_ERROR("Failed to update status check interval via HFI, rc=%d\n",
+					hfi_rc);
+	}
 
 	kfree(input);
 	return count;

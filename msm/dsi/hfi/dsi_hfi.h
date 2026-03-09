@@ -236,6 +236,15 @@ struct dsi_hfi_cb {
 };
 
 /**
+ * dsi_get_esd_status_mode_helper() - translate esd check status mode
+ *		into enum hfi_panel_esd_status_mode.
+ * @mode:	enum esd_check_status_mode mode
+ *
+ * Return: enum hfi_panel_esd_status_mode.
+ */
+enum hfi_panel_esd_status_mode dsi_get_esd_status_mode_helper(enum esd_check_status_mode mode);
+
+/**
  * dsi_hfi_process_cmd_buf() - process hfi command buffer
  * @hfi_client:	handle to hfi client
  * @cmd_buf: handle to cmd buffer

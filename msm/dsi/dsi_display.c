@@ -15,6 +15,7 @@
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
 #include "sde_connector.h"
+#include "hfi_connector.h"
 #include "msm_mmu.h"
 #include "dsi_display.h"
 #include "dsi_panel.h"
@@ -1836,7 +1837,7 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 	struct dsi_display *display = file->private_data;
 	struct drm_panel_esd_config *esd_config;
 	char *buf;
-	int rc = 0;
+	int rc = 0, hfi_rc = 0;
 	size_t len;
 
 	if (!display)
@@ -1900,6 +1901,18 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 		esd_config->status_mode = ESD_MODE_SW_SIM_FAILURE;
 
 	rc = len;
+
+	if (display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI) {
+		struct hfi_display_dbg_property dbg_prop = {
+			.prop_id = HFI_DISPLAY_DEBUG_ESD_CHECK_MODE,
+			.value_lsb = dsi_get_esd_status_mode_helper(esd_config->status_mode)
+		};
+
+		hfi_rc = hfi_connector_set_debug_prop(display->drm_conn, &dbg_prop);
+		if (hfi_rc)
+			DSI_ERR("Failed to update ESD check mode via HFI, rc=%d\n", hfi_rc);
+	}
+
 error:
 	kfree(buf);
 	return rc;
