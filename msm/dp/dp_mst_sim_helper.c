@@ -947,33 +947,45 @@ int dp_mst_sim_transfer(void *mst_sim_context, struct drm_dp_aux_msg *msg)
 
 	if (msg->request == DP_AUX_NATIVE_WRITE) {
 		if (msg->address >= DP_SIDEBAND_MSG_DOWN_REQ_BASE &&
-		    msg->address < DP_SIDEBAND_MSG_DOWN_REQ_BASE + 256)
+			msg->address < DP_SIDEBAND_MSG_DOWN_REQ_BASE + 256)
 			return dp_mst_sim_down_req(mst_sim_context, msg);
 
 		if (msg->address >= DP_SIDEBAND_MSG_UP_REP_BASE &&
-		    msg->address < DP_SIDEBAND_MSG_UP_REP_BASE + 256)
+			msg->address < DP_SIDEBAND_MSG_UP_REP_BASE + 256)
 			return 0;
 
 		if (msg->address >= DP_SINK_COUNT_ESI &&
-		    msg->address < DP_SINK_COUNT_ESI + 14)
+			msg->address < DP_SINK_COUNT_ESI + 14)
 			return dp_mst_sim_clear_esi(mst_sim_context, msg);
 
 		if (msg->address == DP_MSTM_CTRL)
 			return dp_mst_sim_reset(mst_sim_context, msg);
 
+		if (msg->address >= DP_GUID &&
+			msg->address < DP_GUID + 16) {
+			memcpy(ctx->guid, msg->buffer, msg->size);
+			return 0;
+		}
+
 	} else if (msg->request == DP_AUX_NATIVE_READ) {
 		if (msg->address >= DP_SIDEBAND_MSG_DOWN_REP_BASE &&
-		    msg->address < DP_SIDEBAND_MSG_DOWN_REP_BASE + 256)
+			msg->address < DP_SIDEBAND_MSG_DOWN_REP_BASE + 256)
 			return dp_mst_sim_down_rep(mst_sim_context, msg);
 
 		if (msg->address >= DP_SIDEBAND_MSG_UP_REQ_BASE &&
-		    msg->address < DP_SIDEBAND_MSG_UP_REQ_BASE + 256)
+			msg->address < DP_SIDEBAND_MSG_UP_REQ_BASE + 256)
 			return dp_mst_sim_up_req(mst_sim_context, msg);
 
 		if (msg->address >= DP_SINK_COUNT_ESI &&
-		    msg->address < DP_SINK_COUNT_ESI + 14)
+			msg->address < DP_SINK_COUNT_ESI + 14)
 			return dp_mst_sim_read_esi(mst_sim_context, msg);
 	}
+
+		if (msg->address >= DP_GUID &&
+			msg->address < DP_GUID + 16) {
+			memcpy(msg->buffer, ctx->guid, msg->size);
+			return 0;
+		}
 
 	return -EINVAL;
 }
