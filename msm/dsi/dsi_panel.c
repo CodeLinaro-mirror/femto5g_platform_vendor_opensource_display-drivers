@@ -4762,7 +4762,7 @@ error:
 	return rc;
 }
 
-static int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel)
+int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel)
 {
 	struct dsi_panel_i2c_cmd_set *set;
 	u32 i;
