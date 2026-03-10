@@ -11,6 +11,7 @@
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 #include <synx_api.h>
 #endif /* CONFIG_QTI_HW_FENCE */
+#include "msm_lsr_synx.h"
 
 struct sde_lsr_hw_fence_data {
 	int client_id;
@@ -43,8 +44,8 @@ struct sde_reproj {
 	atomic_t *ref_count;
 	u32 type;
 	struct sde_lsr_perf perf;
-	u32 lsr_reusable_hsynx;
-	u32 reusable_fence_cnt;
+	u32 lsr_reusable_hsynx[LSR_REUSABLE_FENCE_MAX];
+	bool reusable_fence_imported;
 	u32 queue_table_dcp_addr;
 	u32 queue_table_size;
 	u32 csc_scratch_dcp_addr;

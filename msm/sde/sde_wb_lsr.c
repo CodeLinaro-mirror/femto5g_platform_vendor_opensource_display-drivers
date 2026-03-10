@@ -778,6 +778,14 @@ int sde_wb_connector_reproj_setup(struct sde_connector *conn, struct sde_wb_devi
 	rc = conn->reproj_conn->get_info(conn->reproj_conn, conn->reproj_conn->type);
 	if (rc)
 		SDE_ERROR("failed to get LSR info for reproj disp\n");
+
+	/* Create LSR reusable hw fences once at connector init for WB_REPRO */
+	if (conn->reproj_conn->type == WB_REPRO) {
+		rc = lsr_create_reusable_hsynx(conn->reproj_conn->lsr_reusable_hsynx);
+		if (rc)
+			SDE_ERROR("failed to create lsr reusable hw fences: %d\n", rc);
+		rc = 0;
+	}
 end:
 	return rc;
 }
