@@ -5575,7 +5575,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			return rc;
 	}
 
-	if (mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) {
+	if ((display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) &&
+	    (mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) {
 		if (display->panel->panel_mode == DSI_OP_VIDEO_MODE) {
 			rc = dsi_display_dynamic_clk_switch_vid(display, mode);
 			if (rc)
