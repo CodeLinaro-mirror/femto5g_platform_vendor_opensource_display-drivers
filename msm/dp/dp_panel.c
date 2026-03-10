@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -1661,6 +1661,8 @@ static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 			drm_dp_bw_code_to_link_rate(dpcd[DP_MAX_LINK_RATE]));
 
 	link_info->num_lanes = dpcd[DP_MAX_LANE_COUNT] & DP_MAX_LANE_COUNT_MASK;
+	link_info->num_lanes = min_t(unsigned int, link_info->num_lanes,
+			panel->parser->max_lane_count);
 
 	if (is_link_rate_valid(panel->dp_panel.link_bw_code)) {
 		DP_DEBUG("debug link bandwidth code: 0x%x\n",
