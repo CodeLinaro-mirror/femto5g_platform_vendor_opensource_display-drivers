@@ -15,6 +15,7 @@
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
 #include "sde_connector.h"
+#include "hfi_connector.h"
 #include "msm_mmu.h"
 #include "dsi_display.h"
 #include "dsi_panel.h"
@@ -768,7 +769,14 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 		}
 
-		if (display->config.esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
+		/*
+		 * Set flag to send multiple DMA in a single HS burst.
+		 * NOT applicable in command non-embedded mode and should be disabled.
+		 */
+
+		if (!(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE) &&
+				(display->config.esync_enabled ||
+				display->panel->panel_mode == DSI_OP_VIDEO_MODE))
 			flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
 		else
 			flags &= ~DSI_CTRL_CMD_MULTI_DMA_BURST;
@@ -1829,7 +1837,7 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 	struct dsi_display *display = file->private_data;
 	struct drm_panel_esd_config *esd_config;
 	char *buf;
-	int rc = 0;
+	int rc = 0, hfi_rc = 0;
 	size_t len;
 
 	if (!display)
@@ -1893,6 +1901,18 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 		esd_config->status_mode = ESD_MODE_SW_SIM_FAILURE;
 
 	rc = len;
+
+	if (display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI) {
+		struct hfi_display_dbg_property dbg_prop = {
+			.prop_id = HFI_DISPLAY_DEBUG_ESD_CHECK_MODE,
+			.value_lsb = dsi_get_esd_status_mode_helper(esd_config->status_mode)
+		};
+
+		hfi_rc = hfi_connector_set_debug_prop(display->drm_conn, &dbg_prop);
+		if (hfi_rc)
+			DSI_ERR("Failed to update ESD check mode via HFI, rc=%d\n", hfi_rc);
+	}
+
 error:
 	kfree(buf);
 	return rc;
@@ -2239,7 +2259,7 @@ static int dsi_display_debugfs_deinit(struct dsi_display *display)
 #endif /* CONFIG_DEBUG_FS */
 
 static void adjust_timing_by_ctrl_count(const struct dsi_display *display,
-					struct dsi_display_mode *mode)
+					struct dsi_display_mode *mode, bool mode_set)
 {
 	struct dsi_host_common_cfg *host = &display->panel->host_config;
 	bool is_split_link = host->split_link.enabled;
@@ -2253,7 +2273,7 @@ static void adjust_timing_by_ctrl_count(const struct dsi_display *display,
 		mode->timing.h_skew /= sublinks_count;
 		mode->pixel_clk_khz /= sublinks_count;
 	} else {
-		if (mode->priv_info->dsc_enabled)
+		if (mode->priv_info->dsc_enabled && mode_set)
 			mode->priv_info->dsc.config.pic_width =
 				mode->timing.h_active;
 		mode->timing.h_active /= display->ctrl_count;
@@ -5335,7 +5355,7 @@ static int dsi_display_get_dfps_timing(struct dsi_display *display,
 	}
 
 	per_ctrl_mode = *adj_mode;
-	adjust_timing_by_ctrl_count(display, &per_ctrl_mode);
+	adjust_timing_by_ctrl_count(display, &per_ctrl_mode, false);
 
 	if (!curr_refresh_rate) {
 		if (!dsi_display_is_seamless_dfps_possible(display,
@@ -8571,7 +8591,7 @@ int dsi_display_validate_mode(struct dsi_display *display,
 	mutex_lock(&display->display_lock);
 
 	adj_mode = *mode;
-	adjust_timing_by_ctrl_count(display, &adj_mode);
+	adjust_timing_by_ctrl_count(display, &adj_mode, false);
 
 	rc = dsi_panel_validate_mode(display->panel, &adj_mode);
 	if (rc) {
@@ -8632,7 +8652,7 @@ int dsi_display_set_mode(struct dsi_display *display,
 
 	/* hfi interface expects full horizontal timings, therefore skip adjustment */
 	if (display->panel->disp_op != MSM_DISP_OP_HFI)
-		adjust_timing_by_ctrl_count(display, &adj_mode);
+		adjust_timing_by_ctrl_count(display, &adj_mode, true);
 
 	if (!display->panel->cur_mode) {
 		display->panel->cur_mode =

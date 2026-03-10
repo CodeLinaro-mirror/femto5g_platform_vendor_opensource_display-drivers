@@ -134,6 +134,8 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
  * c_state: pointer to sde_connector_state
  */
 void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state);
+
+extern int lsr_fw_reset(void);
 #else
 static inline
 int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
@@ -222,6 +224,11 @@ static inline int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms,
 
 static inline void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state)
 {
+}
+
+static inline int lsr_fw_reset(void)
+{
+	return 0;
 }
 #endif /* CONFIG_DRM_SDE_LSR */
 #endif /* __SDE_WB_LSR_H__ */

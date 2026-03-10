@@ -9,6 +9,7 @@
 #include "sde_connector.h"
 #include "hfi_adapter.h"
 #include "hfi_utils.h"
+#include "hfi_props.h"
 #include "sde_wb_lsr.h"
 
 /**
@@ -102,6 +103,15 @@ void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
 int hfi_conn_send_panel_init(struct drm_connector *drm_conn);
 
 /**
+ * hfi_connector_set_debug_prop - send updated display debug properties to fw
+ * @drm_conn: pointer to the DRM connector structure
+ * @dbg_prop: pointer to struct hfi_display_dbg_property with updated property.
+ * Return: error on failure to send or 0 on success
+ */
+int hfi_connector_set_debug_prop(struct drm_connector *drm_conn,
+	struct hfi_display_dbg_property *dbg_prop);
+
+/**
  * hfi_connector_report_panel_dead - report panel dead
  * @c_conn: Pointer to sde_connector struct
  * @skip_pre_kickoff: flag to skip_pre_kickoff
@@ -131,6 +141,13 @@ static inline void hfi_connector_report_panel_dead(
 	struct sde_connector *sde_conn, bool skip_pre_kickoff)
 {
 }
+
+static inline int hfi_connector_set_debug_prop(
+	struct drm_connector *drm_conn, struct hfi_display_dbg_property *dbg_prop)
+{
+	return 0;
+}
+
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
 
 #endif  // _HFI_CONNECTOR_H_

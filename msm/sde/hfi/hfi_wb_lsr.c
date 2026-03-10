@@ -809,7 +809,7 @@ static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
 	if (!reproj_conn->reusable_fence_cnt) {
 		session = hfi_hw_fence_data->hw_fence_handle;
 		lsr_h_synx = reproj_conn->lsr_reusable_hsynx;
-		SDE_DEBUG("lsr reusable h_synx: %d\n", lsr_h_synx);
+		SDE_DEBUG("lsr reusable h_synx: 0x%x\n", lsr_h_synx);
 
 		/* Setup individual params for reusable fence */
 		import_params.indv.new_h_synx = new_h_synx;
@@ -829,7 +829,7 @@ static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
 
 	reusable_fence_count = reproj_conn->reusable_fence_cnt;
 	if (reusable_fence_count) {
-		u64 val = *new_h_synx;
+		u64 val = reproj_conn->lsr_reusable_hsynx;
 
 		size = 2 * sizeof(u32) + reusable_fence_count * 2 * sizeof(u32);
 		payload = kzalloc(size, GFP_KERNEL);
@@ -840,6 +840,8 @@ static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
 		hfi_util_u32_prop_helper_add_prop(base_props,
 				HFI_PROPERTY_DISPLAY_REUSABLE_FENCE,
 				HFI_VAL_U32_ARRAY, payload, size);
+
+		SDE_DEBUG("lsr reusable hw fence: 0x%llx\n", val);
 		kfree(payload);
 	}
 
