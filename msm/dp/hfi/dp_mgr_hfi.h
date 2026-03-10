@@ -133,7 +133,7 @@ struct dp_mgr_hfi_priv {
 	struct completion hpd_comp;
 
 	struct sde_edid_ctrl *edid_ctrl;
-	struct hfi_display_mode_info mode_list[32]; /* MAX_MODES */
+	struct hfi_display_mode_info mode_list[64]; /* MAX_MODES */
 	u32 mode_count;
 	u32 link_rate;
 	u32 lane_count;
