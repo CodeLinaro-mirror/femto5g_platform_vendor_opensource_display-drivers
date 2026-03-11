@@ -1886,7 +1886,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 		 * plane_cleanup. For example, wait for vsync in case of video
 		 * mode panels. This may be a no-op for command mode panels.
 		 */
-		SDE_EVT32_VERBOSE(DRMID(crtc));
+		SDE_EVT32_VERBOSE(DRMID(crtc), DRMID(encoder));
 		ret = sde_encoder_wait_for_event(encoder, cwb_disabling ?
 						MSM_ENC_TX_COMPLETE : MSM_ENC_COMMIT_DONE);
 		if (ret && ret != -EWOULDBLOCK) {
