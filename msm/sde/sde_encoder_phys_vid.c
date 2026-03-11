@@ -2053,9 +2053,7 @@ static void sde_encoder_phys_vid_enable(struct sde_encoder_phys *phys_enc)
 	if (WARN_ON(!phys_enc->hw_intf->ops.enable_timing[disp_op]))
 		return;
 
-	if (!phys_enc->cont_splash_enabled)
-		sde_encoder_helper_split_config(phys_enc,
-				phys_enc->hw_intf->idx);
+	sde_encoder_helper_split_config(phys_enc, phys_enc->hw_intf->idx, true);
 
 	sde_encoder_phys_vid_setup_timing_engine(phys_enc, false);
 

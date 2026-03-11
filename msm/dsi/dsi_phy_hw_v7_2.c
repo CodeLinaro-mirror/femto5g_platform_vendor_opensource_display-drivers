@@ -143,17 +143,21 @@ static bool dsi_phy_hw_v7_2_is_split_link_enabled(struct dsi_phy_hw *phy)
 static void dsi_phy_hw_v7_2_config_lpcdrx(struct dsi_phy_hw *phy,
 	struct dsi_phy_cfg *cfg, bool enable)
 {
+	bool split_link_enabled = dsi_phy_hw_v7_2_is_split_link_enabled(phy);
+
 	int phy_lane_0 = dsi_phy_conv_logical_to_phy_lane(&cfg->lane_map, DSI_LOGICAL_LANE_0);
+	int phy_lane_2 = dsi_phy_conv_logical_to_phy_lane(&cfg->lane_map, DSI_LOGICAL_LANE_2);
 
 	/*
 	 * LPRX and CDRX need to enabled only for physical data lane
-	 * corresponding to the logical data lane 0
+	 * corresponding to the logical data lane 0 and data lane 2
 	 */
 
-	if (enable)
-		DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(phy_lane_0), cfg->strength.lane[phy_lane_0][1]);
-	else
-		DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(phy_lane_0), 0);
+	DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(phy_lane_0),
+			enable ? cfg->strength.lane[phy_lane_0][1] : 0);
+	if (split_link_enabled)
+		DSI_W32(phy, DSIPHY_LNX_LPRX_CTRL(phy_lane_2),
+				enable ? cfg->strength.lane[phy_lane_2][1] : 0);
 }
 
 static void dsi_phy_hw_v7_2_lane_swap_config(struct dsi_phy_hw *phy,
@@ -249,6 +253,8 @@ static inline u32 dsi_phy_hw_calc_cmn_lane_ctrl0(struct dsi_phy_cfg *cfg)
 	cmn_lane_ctrl0 |= ((cfg->data_lanes & DSI_DATA_LANE_2) ? BIT(2) : 0);
 	cmn_lane_ctrl0 |= ((cfg->data_lanes & DSI_DATA_LANE_3) ? BIT(3) : 0);
 	cmn_lane_ctrl0 |= BIT(4);
+	if (cfg->split_link.enabled)
+		cmn_lane_ctrl0 |= BIT(5);
 
 	return cmn_lane_ctrl0;
 }
@@ -741,6 +747,7 @@ void dsi_phy_hw_v7_2_dyn_refresh_config(struct dsi_phy_hw *phy,
 {
 	u32 reg;
 	u32 cmn_lane_ctrl0 = dsi_phy_hw_calc_cmn_lane_ctrl0(cfg);
+	bool split_link_enabled = dsi_phy_hw_v7_2_is_split_link_enabled(phy);
 
 	if (is_master) {
 		DSI_DYN_REF_REG_W(phy->dyn_pll_base, DSI_DYN_REFRESH_PLL_CTRL19,
@@ -764,9 +771,14 @@ void dsi_phy_hw_v7_2_dyn_refresh_config(struct dsi_phy_hw *phy,
 		DSI_DYN_REF_REG_W(phy->dyn_pll_base, DSI_DYN_REFRESH_PLL_CTRL25,
 				DSIPHY_CMN_TIMING_CTRL_12, DSIPHY_CMN_TIMING_CTRL_13,
 				cfg->timing.lane_v4[12], cfg->timing.lane_v4[13]);
-		DSI_DYN_REF_REG_W(phy->dyn_pll_base, DSI_DYN_REFRESH_PLL_CTRL26,
-				DSIPHY_CMN_CTRL_0, DSIPHY_CMN_LANE_CTRL0, 0x7f,
-				cmn_lane_ctrl0);
+		if (split_link_enabled)
+			DSI_DYN_REF_REG_W(phy->dyn_pll_base, DSI_DYN_REFRESH_PLL_CTRL26,
+					DSIPHY_CMN_CTRL_0, DSIPHY_CMN_LANE_CTRL0, 0xff,
+					cmn_lane_ctrl0);
+		else
+			DSI_DYN_REF_REG_W(phy->dyn_pll_base, DSI_DYN_REFRESH_PLL_CTRL26,
+					DSIPHY_CMN_CTRL_0, DSIPHY_CMN_LANE_CTRL0, 0x7f,
+					cmn_lane_ctrl0);
 
 	} else {
 		reg = DSI_R32(phy, DSIPHY_CMN_CLK_CFG1);

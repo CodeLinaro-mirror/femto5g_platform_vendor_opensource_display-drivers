@@ -416,6 +416,13 @@ struct sde_crtc_hal_funcs {
 	 * @crtc: Pointer to sde crtc structure
 	 */
 	int (*debugfs_misr_read[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
+
+	/**
+	 * set_idle_pc_timer - Update idle pc control timer based on drm property
+	 * @crtc: Pointer to sde crtc structure
+	 * @value: Value of enum for idle timer control
+	 */
+	int (*set_idle_pc_timer[MSM_DISP_OP_MAX])(struct sde_crtc *crtc, u32 value);
 };
 
 /**

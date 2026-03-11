@@ -800,7 +800,8 @@ int sde_power_enable_power_domain(struct sde_power_handle *phandle,
 	}
 
 	/* Enable hardware mode for Cesta clients' power domains, only once */
-	if (phandle->cesta_pd && power_domain_id == SDE_POWER_PD_ID_GDSC
+	if (((phandle->cesta_pd && power_domain_id == SDE_POWER_PD_ID_GDSC) ||
+		(phandle->rsc_pd && power_domain_id == SDE_POWER_PD_ID_GDSC))
 			&& !hw_mode) {
 		hw_mode = true;
 #if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)

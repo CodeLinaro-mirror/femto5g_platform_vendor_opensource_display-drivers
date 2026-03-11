@@ -428,6 +428,9 @@ void sde_hw_reset_ubwc(struct sde_hw_mdp *mdp, struct sde_mdss_cfg *m)
 		} else if (IS_UBWC_43_SUPPORTED(ubwc_enc_version)) {
 			ver = 3;
 			mode = 1;
+		} else if (IS_UBWC_20_SUPPORTED(ubwc_enc_version)) {
+			ver = 0;
+			mode = 0;
 		} else {
 			ver = 2;
 			mode = 1;

@@ -1806,7 +1806,7 @@ static int dsi_parse_long_read_resp(const struct mipi_dsi_msg *msg,
 	return msg->rx_len;
 }
 
-static int dsi_message_rx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_desc)
+static int dsi_message_rx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_desc, u32 flags)
 {
 	int rc = 0;
 	u32 rd_pkt_size, total_read_len, hw_read_cnt;
@@ -1897,7 +1897,7 @@ static int dsi_message_rx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_de
 			dlen = dsi_ctrl->hw.ops.get_cmd_read_data[dsi_ctrl->disp_op](&dsi_ctrl->hw,
 						buff, total_bytes_read,
 						total_read_len, rd_pkt_size,
-						&hw_read_cnt);
+						&hw_read_cnt, flags);
 		if (!dlen)
 			goto error;
 
@@ -3698,6 +3698,7 @@ int dsi_ctrl_cmd_transfer(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd,
 			  bool do_peripheral_flush)
 {
 	int rc = 0;
+	u32 flags;
 
 	if (!dsi_ctrl || !cmd) {
 		DSI_CTRL_ERR(dsi_ctrl, "Invalid params\n");
@@ -3706,11 +3707,9 @@ int dsi_ctrl_cmd_transfer(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd,
 
 	mutex_lock(&dsi_ctrl->ctrl_lock);
 
+	flags = cmd->ctrl_flags;
 	if (cmd->ctrl_flags & DSI_CTRL_CMD_READ) {
-		rc = dsi_message_rx(dsi_ctrl, cmd);
-		if (rc <= 0)
-			DSI_CTRL_ERR(dsi_ctrl, "read message failed read length, rc=%d\n",
-					rc);
+		rc = dsi_ctrl_cmd_transfer_rx(dsi_ctrl, cmd, flags);
 	} else {
 		rc = dsi_message_tx(dsi_ctrl, cmd, do_peripheral_flush);
 		if (rc)
@@ -3722,6 +3721,61 @@ int dsi_ctrl_cmd_transfer(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd,
 	dsi_ctrl_update_state(dsi_ctrl, DSI_CTRL_OP_CMD_TX, 0x0);
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
+	return rc;
+}
+
+/**
+ * dsi_ctrl_cmd_transfer_rx() - Transfer commands to call dsi_message_rx
+ * @dsi_ctrl:             DSI controller handle.
+ * @cmd:                  Command description to transfer on DSI link.
+ * @flags:                Controller flags of the command.
+ *
+ * Transfer commands to call dsi_message_rx with sublinks independent reads.
+ * If the trigger is deferred, it will return without triggering the transfer.
+ * Command parameters are programmed to hardware.
+ *
+ * Return: error code.
+ */
+int dsi_ctrl_cmd_transfer_rx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd,
+			  u32 flags)
+{
+	int rc = 0;
+	struct dsi_split_link_config *split_link;
+
+	split_link = &(dsi_ctrl->host_config.common_config.split_link);
+
+	if (!split_link->enabled) {
+		rc = dsi_message_rx(dsi_ctrl, cmd, DSI_CTRL_CMD_SUBLINK0);
+		if (rc <= 0)
+			goto error_sublink0;
+	} else {
+		if (flags & DSI_CTRL_CMD_SUBLINK0) {
+			rc = dsi_message_rx(dsi_ctrl, cmd, DSI_CTRL_CMD_SUBLINK0);
+			if (rc <= 0)
+				goto error_sublink0;
+		} else if (flags & DSI_CTRL_CMD_SUBLINK1) {
+			rc = dsi_message_rx(dsi_ctrl, cmd, DSI_CTRL_CMD_SUBLINK1);
+			if (rc <= 0)
+				goto error_sublink1;
+		} else {
+			rc = dsi_message_rx(dsi_ctrl, cmd, DSI_CTRL_CMD_SUBLINK0);
+			if (rc <= 0)
+				goto error_sublink0;
+			rc = dsi_message_rx(dsi_ctrl, cmd, DSI_CTRL_CMD_SUBLINK1);
+			if (rc <= 0)
+				goto error_sublink1;
+		}
+	}
+	return rc;
+
+error_sublink0:
+	DSI_CTRL_ERR(dsi_ctrl, "read message failed read length, rc=%d\n",
+			rc);
+	return rc;
+
+error_sublink1:
+	DSI_CTRL_ERR(dsi_ctrl, "read message failed for sublink1 read length, rc=%d\n",
+			rc);
 	return rc;
 }
 

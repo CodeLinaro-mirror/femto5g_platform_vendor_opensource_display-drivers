@@ -1641,7 +1641,7 @@ static void sde_encoder_phys_cmd_enable_helper(
 	}
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 
-	sde_encoder_helper_split_config(phys_enc, phys_enc->intf_idx);
+	sde_encoder_helper_split_config(phys_enc, phys_enc->intf_idx, false);
 
 	_sde_encoder_phys_cmd_pingpong_config(phys_enc);
 
@@ -2364,7 +2364,7 @@ static void sde_encoder_phys_cmd_update_split_role(
 			(role == old_role || role == ENC_ROLE_SKIP))
 		return;
 
-	sde_encoder_helper_split_config(phys_enc, phys_enc->intf_idx);
+	sde_encoder_helper_split_config(phys_enc, phys_enc->intf_idx, false);
 	_sde_encoder_phys_cmd_pingpong_config(phys_enc);
 	_sde_encoder_phys_cmd_update_flush_mask(phys_enc);
 }

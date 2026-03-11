@@ -194,4 +194,11 @@ int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe, uint32_t p
  */
 int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffer *buffer);
 
+/**
+ * hfi_kms_send_idle_timer_ctrl - send HFI command to block/unblock idle timer
+ * @hfi_kms: Pointer to hfi kms structure
+ * @timer_state: True if block timer from expiring, False otherwise.
+ */
+int hfi_kms_send_idle_timer_ctrl(struct hfi_kms *hfi_kms, bool timer_state);
+
 #endif // _HFI_KMS_H_
