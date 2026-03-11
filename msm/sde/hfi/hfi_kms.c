@@ -211,6 +211,41 @@ static int hfi_kms_process_cmd_buf(struct hfi_client_t *client, struct hfi_cmdbu
 	return rc;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+static void _hfi_recover_hwfence(struct hfi_kms *hfi_kms)
+{
+	int rc, i;
+	struct hfi_hwfence_data *hwfence_data;
+
+	hwfence_data = hfi_kms->hfi_hw_fence_data;
+	if (!hwfence_data || !hwfence_data->hw_fence_handle) {
+		SDE_ERROR("failed to reset hwfence timeline, invalid hwfencedata\n");
+		return;
+	}
+
+	for (i = 0; i < hwfence_data->max_displays; i++) {
+		if (hwfence_data->input_h_synx_array[i]) {
+			rc = synx_release(hwfence_data->hw_fence_handle,
+				hwfence_data->input_h_synx_array[i]);
+			if (rc)
+				SDE_ERROR("failed to rel display:%d input_h_synx:%u\n",
+					i, hwfence_data->input_h_synx_array[i]);
+
+			hwfence_data->input_h_synx_array[i] = SYNX_INVALID_HANDLE;
+		}
+	}
+
+	rc = synx_recover(hwfence_data->client_id);
+	if (rc)
+		SDE_ERROR("failed to reset client %d\n", hwfence_data->client_id);
+}
+#else
+static void _hfi_recover_hwfence(struct hfi_kms *hfi_kms)
+{
+	SDE_INFO("skipping reset client, hw fence not enabled\n");
+}
+#endif /* CONFIG_QTI_HW_FENCE && CONFIG_QTI_HFI_CORE */
+
 static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 {
 	int rc;
@@ -279,6 +314,10 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
 	if (rc)
 		SDE_ERROR("[WARNING] Failed to release command buffers\n");
+
+	/* reset hwfence timeline if hwfencing enabled */
+	if (sde_kms->catalog && sde_kms->catalog->hw_fence_rev)
+		_hfi_recover_hwfence(hfi_kms);
 
 	/* wait for all display off */
 	rc = sde_kms_wait_for_display_off(sde_kms);
