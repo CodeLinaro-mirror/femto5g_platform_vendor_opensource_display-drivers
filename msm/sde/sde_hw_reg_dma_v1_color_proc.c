@@ -341,7 +341,7 @@ static u32 ltm_feature_vq_map[] = {
 	[0] = -1,
 	[SDE_LTM_INIT] = REG_DMA_MDSS_DB,
 	[SDE_LTM_ROI] = REG_DMA_MDSS_DB,
-	[SDE_LTM_VLUT] = REG_DMA_TABLE_SB,
+	[SDE_LTM_VLUT] = REG_DMA_TABLE_DB,
 };
 
 static u32 spr_feature_vq_map[] = {
