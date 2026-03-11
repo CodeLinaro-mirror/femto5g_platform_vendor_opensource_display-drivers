@@ -75,6 +75,13 @@ static void hfi_thread_priority_worker(struct kthread_work *work)
 			current->tgid, task->comm, ret);
 }
 
+static inline void hfi_init_buff_handle(struct hfi_cmd_buff_hdl *handle,
+		struct hfi_cmdbuf_t *cmd_buf)
+{
+	handle->cmd_buffer = cmd_buf->buf.pbuf_vaddr;
+	handle->size       = cmd_buf->buf.size;
+}
+
 static u32 _create_buffer_id(u32 ctx_id)
 {
 	u32 unique_id;
@@ -789,8 +796,7 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	}
 
 	/* Populate structs for HFI Packer */
-	buff_handle.cmd_buffer = buff_desc->pbuf_vaddr;
-	buff_handle.size = buff_desc->size;
+	hfi_init_buff_handle(&buff_handle, buffer);
 
 	header_info.num_packets = 0;
 	header_info.cmd_buff_type = hfi_cmd_type_map[cmdbuf_type];
@@ -812,7 +818,7 @@ static struct hfi_cmdbuf_t *_hfi_adapter_get_cmd_buf_helper(struct hfi_client_t 
 	buffer->cmd_type = cmdbuf_type;
 	buffer->unique_id = header_info.header_id;
 	buffer->obj_id = obj_id;
-	buffer->size = 32;
+	buffer->size = hfi_get_header_size(&buff_handle);
 	buffer->ctx = ctx;
 	buffer->virtq_type = HFI_VIRTQUEUE_TYPE_TX;
 	buffer->is_released = false;
@@ -878,7 +884,7 @@ static struct hfi_cmdbuf_t *_chain_new_buffer(struct hfi_cmdbuf_t *buffer_head)
 }
 
 static struct hfi_cmdbuf_t *_check_attached_buffer(struct hfi_cmdbuf_t *cmd_buf,
-		enum hfi_payload_type hfi_payload_type, u32 size)
+		enum hfi_payload_type hfi_payload_type, u32 size, bool is_prop_array)
 {
 	struct hfi_adapter_t *host;
 	struct hfi_cmdbuf_t *current_buffer = cmd_buf;
@@ -898,6 +904,12 @@ static struct hfi_cmdbuf_t *_check_attached_buffer(struct hfi_cmdbuf_t *cmd_buf,
 
 	/* 32 bytes for packet header */
 	u32 packet_size = 32;
+	if (is_prop_array)
+		/*
+		 * if adding prop array, packet allocate dword to
+		 * accommodate prop count info
+		 */
+		packet_size += 4;
 
 	/* If we have a payload, add the size of the payload to packet size */
 	if (hfi_payload_type != HFI_PAYLOAD_TYPE_NONE)
@@ -928,8 +940,6 @@ static struct hfi_cmdbuf_t *_check_attached_buffer(struct hfi_cmdbuf_t *cmd_buf,
 		return NULL;
 	}
 
-	current_buffer->size += packet_size;
-
 	return current_buffer;
 }
 
@@ -958,8 +968,7 @@ static u32 _hfi_adapter_add_prop_helper(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u
 		return rc;
 
 	/* Populate HFI packer structs */
-	buff_handle.cmd_buffer = cmd_buf->buf.pbuf_vaddr;
-	buff_handle.size = cmd_buf->buf.size;
+	hfi_init_buff_handle(&buff_handle, cmd_buf);
 
 	memset(&packet_info, 0, sizeof(struct hfi_packet_info));
 	packet_info.cmd = cmd;
@@ -994,6 +1003,7 @@ static u32 _hfi_adapter_add_prop_helper(struct hfi_cmdbuf_t *cmd_buf, u32 cmd, u
 	}
 
 	*packet_id = packet_info.packet_id;
+	cmd_buf->size = hfi_get_header_size(&buff_handle);
 
 	return rc;
 }
@@ -1011,7 +1021,7 @@ int hfi_adapter_add_set_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 		return -EINVAL;
 	}
 
-	current_buffer = _check_attached_buffer(cmd_buf, hfi_payload_type, size);
+	current_buffer = _check_attached_buffer(cmd_buf, hfi_payload_type, size, false);
 	if (!current_buffer)
 		return -EINVAL;
 
@@ -1104,7 +1114,7 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 	}
 
 	/* Continue with normal listener creation for deregister command to get response */
-	current_buffer = _check_attached_buffer(cmd_buf, hfi_payload_type, size);
+	current_buffer = _check_attached_buffer(cmd_buf, hfi_payload_type, size, false);
 	if (!current_buffer)
 		return -EINVAL;
 
@@ -1171,7 +1181,7 @@ int hfi_adapter_add_prop_array(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		return -EINVAL;
 	}
 
-	current_buffer = _check_attached_buffer(cmd_buf, payload_type, size);
+	current_buffer = _check_attached_buffer(cmd_buf, payload_type, size, true);
 	if (!current_buffer)
 		return -EINVAL;
 
@@ -1268,6 +1278,13 @@ int hfi_adapter_set_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_b
 	list_for_each(pos, &cmd_buf->cmd_buf_chain)
 		num_buffers++;
 
+	if (num_buffers > MAX_BUFFERS) {
+		HFI_AD_ERROR("number of buffers exceeds MAX_BUFFERS (num=%u, max=%u)\n",
+			     num_buffers, MAX_BUFFERS);
+		rc = -EINVAL;
+		goto exit;
+	}
+
 	HFI_AD_DEBUG("from %pS\n", __builtin_return_address(0));
 
 	buff_arr[0] = &cmd_buf->buf;
@@ -1334,6 +1351,13 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf
 	/* Append the number of chained buffers */
 	list_for_each(pos, &cmd_buf->cmd_buf_chain)
 		num_buffers++;
+
+	if (num_buffers > MAX_BUFFERS) {
+		HFI_AD_ERROR("number of buffers exceeds MAX_BUFFERS (num=%u, max=%u)\n",
+			     num_buffers, MAX_BUFFERS);
+		rc = -EINVAL;
+		goto exit;
+	}
 
 	HFI_AD_DEBUG("from %pS\n", __builtin_return_address(0));
 
@@ -1422,8 +1446,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 	}
 
 	/* Request header info to obtain the number of packets available in the buffer */
-	buff_handle.cmd_buffer = cmd_buf->buf.pbuf_vaddr;
-	buff_handle.size = cmd_buf->buf.size;
+	hfi_init_buff_handle(&buff_handle, cmd_buf);
 
 	rc = hfi_unpacker_get_header_info(&buff_handle, &header_info);
 
