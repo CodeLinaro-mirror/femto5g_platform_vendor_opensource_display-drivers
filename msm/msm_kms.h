@@ -123,7 +123,6 @@ struct msm_kms_funcs {
 	int (*pm_freeze)(struct device *dev);
 	int (*pm_restore)(struct device *dev);
 #endif /* CONFIG_HIBERNATE */
-	int (*idle_timer_control)(struct msm_kms *kms, bool timer_state);
 	/* cleanup: */
 	void (*destroy)(struct msm_kms *kms);
 	/* get address space */

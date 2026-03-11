@@ -3647,14 +3647,16 @@ enum sde_intf_mode sde_crtc_get_intf_mode(struct drm_crtc *crtc,
 		struct drm_crtc_state *cstate)
 {
 	struct drm_encoder *encoder;
+	struct sde_crtc *sde_crtc;
 
 	if (!crtc || !crtc->dev || !cstate) {
 		SDE_ERROR("invalid crtc\n");
 		return INTF_MODE_NONE;
 	}
 
+	sde_crtc = to_sde_crtc(crtc);
 	drm_for_each_encoder_mask(encoder, crtc->dev,
-			cstate->encoder_mask) {
+			sde_crtc->cached_encoder_mask) {
 		/* continue if copy encoder is encountered */
 		if (sde_crtc_state_in_clone_mode(encoder, cstate) ||
 			sde_encoder_is_loopback_display(encoder))
@@ -8573,25 +8575,6 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	return sde_fence_create(sde_crtc->output_fence, val, offset, hw_ctl);
 }
 
-static void _sde_crtc_set_idle_pc_state(struct drm_crtc *crtc, struct sde_crtc *sde_crtc,
-		uint64_t val)
-{
-	enum msm_disp_op disp_op;
-	int ret;
-
-	//Make sure u64 is not narrowing
-	if (val > U32_MAX)
-		return;
-
-	disp_op = sde_crtc_get_disp_op(crtc);
-
-	if (sde_crtc->hal_ops.set_idle_pc_timer[disp_op]) {
-		ret = sde_crtc->hal_ops.set_idle_pc_timer[disp_op](sde_crtc, (u32)val);
-		if (ret)
-			SDE_ERROR("Failed to update idle pc timer to %u: %d\n", (u32)val, ret);
-	}
-}
-
 /**
  * sde_crtc_atomic_set_property - atomically set a crtc drm property
  * @crtc: Pointer to drm crtc structure
@@ -8705,9 +8688,6 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 		break;
 	case CRTC_PROP_FRAME_DATA_BUF:
 		_sde_crtc_set_frame_data_buffers(crtc, cstate, (void __user *)(uintptr_t)val);
-		break;
-	case CRTC_PROP_IDLE_PC_STATE:
-		_sde_crtc_set_idle_pc_state(crtc, sde_crtc, val);
 		break;
 	default:
 		/* nothing to do */

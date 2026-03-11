@@ -18,6 +18,11 @@ ifeq ($(CONFIG_ARCH_NEO), y)
 	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_neodispconf.h
 endif
 
+ifeq ($(CONFIG_ARCH_SERAPH), y)
+	include $(DISPLAY_ROOT)/config/gki_seraphdisp.conf
+	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_seraphdispconf.h
+endif
+
 ifeq ($(CONFIG_ARCH_PARROT), y)
 	include $(DISPLAY_ROOT)/config/gki_parrotdisp.conf
 	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_parrotdispconf.h
@@ -294,17 +299,17 @@ msm_drm-$(CONFIG_DRM_MSM_SDE) += sde/sde_crtc.o \
 
 msm_drm-$(CONFIG_DRM_SDE_LSR) += sde/sde_wb_lsr.o \
 				sde/hfi/hfi_wb_lsr.o \
-				../lsr/lsr.c \
-				../lsr/lsr_core.c \
-				../lsr/lsr_hfi.c \
-				../lsr/lsr_smem.c \
-				../lsr/msm_lsr_clocks.c \
-				../lsr/msm_lsr_core.c \
-				../lsr/msm_lsr_debug.c \
-				../lsr/msm_lsr_platform.c \
-				../lsr/msm_lsr_synx.c \
-				../lsr/msm_lsr_res_parse.c \
-				../lsr/lsr_main.c
+				../lsr/lsr.o \
+				../lsr/lsr_core.o \
+				../lsr/lsr_hfi.o \
+				../lsr/lsr_smem.o \
+				../lsr/msm_lsr_clocks.o \
+				../lsr/msm_lsr_core.o \
+				../lsr/msm_lsr_debug.o \
+				../lsr/msm_lsr_platform.o \
+				../lsr/msm_lsr_synx.o \
+				../lsr/msm_lsr_res_parse.o \
+				../lsr/lsr_main.o
 
 msm_drm-$(CONFIG_DRM_SDE_WB) += sde/sde_wb.o \
 				sde/sde_encoder_phys_wb.o

@@ -21,6 +21,7 @@
 #include "sde_dsc_helper.h"
 #include "sde_vdc_helper.h"
 #include "sde_hw_catalog.h"
+#include "dsi_hfi.h"
 
 #if IS_ENABLED(CONFIG_ISL97900_LED)
 #include <misc/isl97900_led.h>
@@ -559,8 +560,8 @@ int dsi_panel_power_off(struct dsi_panel *panel)
 
 	return rc;
 }
-static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
-				enum dsi_cmd_set_type type, bool do_peripheral_flush)
+int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
+		enum dsi_cmd_set_type type, bool do_peripheral_flush)
 {
 	int rc = 0, i = 0;
 	ssize_t len;
@@ -594,11 +595,19 @@ static int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 		if (do_peripheral_flush || (type == DSI_CMD_SET_VID_SWITCH_OUT))
 			cmds->msg.flags |= MIPI_DSI_MSG_ASYNC_OVERRIDE;
 
-		len = dsi_host_transfer_sub(panel->host, cmds, do_peripheral_flush);
-		if (len < 0) {
-			rc = len;
-			DSI_ERR("failed to set cmds(%d), rc=%d\n", type, rc);
-			goto error;
+		if (panel->disp_op == MSM_DISP_OP_HFI) {
+			rc = dsi_hfi_host_transfer_sub(panel->host, cmds);
+			if (rc) {
+				DSI_ERR("failed to set cmds(%d), rc=%d\n", type, rc);
+				goto error;
+			}
+		} else {
+			len = dsi_host_transfer_sub(panel->host, cmds, do_peripheral_flush);
+			if (len < 0) {
+				rc = len;
+				DSI_ERR("failed to set cmds(%d), rc=%d\n", type, rc);
+				goto error;
+			}
 		}
 		if (cmds->post_wait_ms)
 			usleep_range(cmds->post_wait_ms*1000,
@@ -2486,7 +2495,8 @@ const char *cmd_set_prop_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-fps-switch-command",
 	"qcom,mdss-dsi-em-pulse-switch-command",
 	"Privacy layer not parsed from DTSI, generated dynamically",
-	"Brightness not parsed from DTSI, generated dynamically"
+	"Brightness not parsed from DTSI, generated dynamically",
+	"qcom,mdss-dsi-custom-on-command",
 };
 
 const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
@@ -2534,6 +2544,7 @@ const char *cmd_set_state_map[DSI_CMD_SET_MAX] = {
 	"qcom,mdss-dsi-em-pulse-switch-command-state",
 	"Privacy layer not parsed from DTSI, generated dynamically",
 	"Brightness not parsed from DTSI, generated dynamically",
+	"qcom,mdss-dsi-custom-on-command-state",
 };
 
 int dsi_panel_get_cmd_pkt_count(const char *data, u32 length, u32 *cnt)

@@ -471,7 +471,7 @@ int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		}
 
 		if (slot_found < 0) {
-			HFI_AD_WARN("failed to find a free slot to queue work\n");
+			HFI_AD_INFO("failed to find a free slot to queue work\n");
 			return -EINVAL;
 		}
 
@@ -1376,7 +1376,6 @@ int hfi_adapter_set_cmd_buf_blocking(struct hfi_client_t *ctx, struct hfi_cmdbuf
 			break;
 		}
 		response_ack = atomic_read(&cmd_buf->buffer_send_done);
-		HFI_AD_INFO("response_ack = 0x%08X\n", response_ack);
 	} while (!response_ack);
 	atomic_set(&cmd_buf->waiting_for_rsp, 0);
 

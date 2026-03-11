@@ -183,6 +183,7 @@ struct dsi_panel_timing_caps {
  * @esd_config:                     HFI_PROPERTY_PANEL_ESD_CONFIG
  * @esync_caps:                     HFI_PROPERTY_PANEL_ESYNC_CAPS
  * @dfps_caps:                      HFI_PROPERTY_PANEL_DFPS_CAPS
+ * @lp11_init:                      HFI_PROPERTY_PANEL_LP11_INIT
  */
 struct dsi_panel_generic_caps {
 	int valid_gen_caps_cnt;
@@ -219,6 +220,7 @@ struct dsi_panel_generic_caps {
 	struct hfi_panel_esd_config esd_config;
 	struct hfi_panel_esync_caps esync_caps;
 	struct hfi_panel_dfps_caps dfps_caps;
+	u32 lp11_init;
 };
 
 /**
@@ -232,6 +234,15 @@ struct dsi_hfi_cb {
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct kthread_work cmd_buff_work;
 };
+
+/**
+ * dsi_get_esd_status_mode_helper() - translate esd check status mode
+ *		into enum hfi_panel_esd_status_mode.
+ * @mode:	enum esd_check_status_mode mode
+ *
+ * Return: enum hfi_panel_esd_status_mode.
+ */
+enum hfi_panel_esd_status_mode dsi_get_esd_status_mode_helper(enum esd_check_status_mode mode);
 
 /**
  * dsi_hfi_process_cmd_buf() - process hfi command buffer

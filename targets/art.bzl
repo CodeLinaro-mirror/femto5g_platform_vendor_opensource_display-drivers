@@ -26,7 +26,7 @@ def define_art():
                     "CONFIG_DRM_SDE_WB",
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",
                     "CONFIG_QCOM_MDSS_PLL",
-                    # "CONFIG_HDCP_QSEECOM", /* Enabled when securemsm-kernel && synx-kernel is available */
+                    "CONFIG_HDCP_QSEECOM",
                     "CONFIG_DRM_SDE_VM",
                     "CONFIG_QCOM_WCD939X_I2C",
                     "CONFIG_THERMAL_OF",

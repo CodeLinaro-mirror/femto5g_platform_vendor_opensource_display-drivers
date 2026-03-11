@@ -375,6 +375,22 @@
 #define HFI_COMMAND_DEBUG_IDLE_TIMEOUT                               0xFF00000F
 
 /*!
+ * HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY is sent from Host to DCP to modify a display debug
+ * property.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi packet layout                      | Value
+ *----------------------------------------|---------------------------------
+ * hfi_packet.payload_info.type           | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                         | HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY
+ * hfi_packet.flags                       | HFI_TX_FLAGS_NONE
+ * hfi_packet.payload[0]                  | struct hfi_display_dbg_property
+ */
+#define HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY                       0xFF000010
+
+/*!
  * HFI_COMMAND_DEBUG_SET_LOG_LEVEL is sent from Host to DCP to set the
  * debug log level.
  *

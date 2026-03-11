@@ -96,4 +96,6 @@ struct msm_lsr_fw {
 struct lsr_hfi_ops *lsr_hfi_initialize(struct msm_lsr_platform_resources *res);
 void lsr_hfi_deinitialize(struct lsr_hfi_ops *hdev);
 
+int lsr_fw_reset(void);
+
 #endif

@@ -651,8 +651,7 @@ static enum hfi_panel_trigger_type dsi_get_panel_trigger_type_helper(enum dsi_tr
 	}
 }
 
-static enum hfi_panel_esd_status_mode dsi_get_esd_status_mode_helper(
-	enum esd_check_status_mode mode)
+enum hfi_panel_esd_status_mode dsi_get_esd_status_mode_helper(enum esd_check_status_mode mode)
 {
 	switch (mode) {
 	case ESD_MODE_REG_READ:
@@ -1281,6 +1280,10 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 		dsi_hfi_populate_dfps_caps(panel, &panel_generic_caps->dfps_caps);
 		panel_generic_caps->valid_gen_caps_cnt++;
 	}
+
+	panel_generic_caps->lp11_init = panel->lp11_init;
+	if (panel_generic_caps->lp11_init)
+		panel_generic_caps->valid_gen_caps_cnt++;
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -1474,6 +1477,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		{panel_generic_caps.backlight_ctrl_sec,
 						HFI_PROPERTY_PANEL_SEC_BL_PMIC_CONTROL_TYPE},
 		{panel_generic_caps.is_bl_inverted, HFI_PROPERTY_PANEL_BL_INVERTED_DBV},
+		{panel_generic_caps.lp11_init, HFI_PROPERTY_PANEL_LP11_INIT},
 	};
 
 	/* Populate properties that will take on a default value, even if not present */
@@ -1513,7 +1517,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		kv_size += sizeof(panel_generic_caps.phy_nums);
 	}
 
-	if (display->panel->esd_config.esd_enabled) {
+	if (display->panel->esd_config.esd_enabled && !is_sim_panel(display)) {
 		hfi_util_kv_helper_add(display_hfi->kv_props,
 				HFI_PACKKEY(HFI_PROPERTY_PANEL_ESD_CONFIG, 0,
 				(sizeof(panel_generic_caps.esd_config) / sizeof(u32))),
