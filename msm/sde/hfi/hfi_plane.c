@@ -316,7 +316,7 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 		struct sde_plane_state *pstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
-	u32 prop_id, hfi_format, supported_rot, llcc_scid;
+	u32 prop_id, hfi_format, supported_rot, llcc_scid, adjusted_crtc_x;
 	struct hfi_display_roi src, dst;
 	struct drm_plane_state *state;
 	struct hfi_plane *phfi;
@@ -338,8 +338,17 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	fmt.fourcc_format = fb->format->format;
 	fmt.modifier = fb->modifier;
 
-	HFI_POPULATE_RECT(&src, state->src_x, state->src_y,	state->src_w, state->src_h, true);
-	HFI_POPULATE_RECT(&dst, state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h, false);
+	/*
+	 * Adjust crtc_x back to global coordinates system in quadpipe usecase. This allows the
+	 * driver to split the coordinates system in 2 and figure out left and right layout.
+	 */
+	adjusted_crtc_x = state->crtc_x;
+	if (pstate->layout_offset > 0)
+		adjusted_crtc_x += pstate->layout_offset;
+
+	HFI_POPULATE_RECT(&src, state->src_x, state->src_y, state->src_w, state->src_h, true);
+	HFI_POPULATE_RECT(&dst, adjusted_crtc_x, state->crtc_y, state->crtc_w, state->crtc_h,
+			false);
 
 	hfi_format = hfi_catalog_get_hfi_format(&fmt);
 
