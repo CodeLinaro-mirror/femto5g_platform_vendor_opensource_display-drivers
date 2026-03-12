@@ -2879,14 +2879,17 @@ void sde_encoder_phys_vid_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 		struct sde_cesta_ctrl_cfg *cfg, bool *req_flush, bool *req_scc)
 {
+	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	bool qsync_en = sde_connector_get_qsync_mode(phys_enc->connector);
+	bool disable_hw_sleep = sde_enc->disp_info.disable_cesta_hw_sleep;
 
 	cfg->enable = true;
 	cfg->avr_enable = qsync_en;
 	cfg->intf = phys_enc->intf_idx - INTF_0;
 	cfg->auto_active_on_panic = true;
 	cfg->req_mode = qsync_en ? SDE_CESTA_CTRL_REQ_IMMEDIATE : SDE_CESTA_CTRL_REQ_PANIC_REGION;
-	cfg->hw_sleep_enable = !phys_enc->sde_kms->splash_data.num_splash_displays;
+	cfg->hw_sleep_enable = !(phys_enc->sde_kms->splash_data.num_splash_displays
+			|| disable_hw_sleep);
 
 	if ((phys_enc->split_role == DPU_MASTER_ENC_ROLE_MASTER)
 			|| (phys_enc->split_role == DPU_SLAVE_ENC_ROLE_MASTER))
