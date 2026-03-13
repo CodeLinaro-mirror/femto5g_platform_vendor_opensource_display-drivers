@@ -2883,10 +2883,15 @@ static bool dp_mgr_hfi_hpd_detect(struct dp_client *client, int panel_id)
 	if (!hfi)
 		return false;
 
-	if (!hfi->connector)
-		return false;
-	DP_DEBUG("conn %d panel %d stream %d status %d\n", hfi->connector->base.id, panel_id,
-		stream_id, hfi->connected);
+	/* if dp was unplugged mark all streams as disconnected */
+	if (!hfi_priv->connected)
+		hfi->connected = false;
+
+	if (hfi->connected)
+		DP_DEBUG("conn %d panel %d stream %d status %d\n",
+				(hfi->connector ? hfi->connector->base.id : -1), panel_id,
+				stream_id, hfi->connected);
+
 	return hfi->connected;
 }
 
