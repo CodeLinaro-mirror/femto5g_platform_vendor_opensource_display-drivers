@@ -2399,6 +2399,14 @@ static int dsi_panel_parse_panel_mode(struct dsi_panel *panel)
 
 	panel->panel_ack_disabled = utils->read_bool(utils->data,
 					"qcom,panel-ack-disabled");
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-shared-cmd-buf-page-size",
+			&panel->shared_cmd_buf_page_size);
+	if (rc) {
+		DSI_DEBUG("[%s] dsi-shared-cmd-buf-page-size is not defined\n", panel->name);
+		panel->shared_cmd_buf_page_size = 0;
+		rc = 0;
+	}
 error:
 	return rc;
 }
