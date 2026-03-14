@@ -146,6 +146,7 @@ struct dp_mgr_hfi_priv {
 	struct dpcd_info dpcd;
 	struct dp_debug_client *debug;
 	struct device *pd_dp_phy_gdsc;
+	struct device *msm_hdcp_dev;
 
 	bool connected;
 	bool configured;
