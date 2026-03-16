@@ -1321,9 +1321,8 @@ static int virtio_kms_get_connector_infos(struct sde_kms *sde_kms,
 		priv->scanout = i;
 		priv->base.possible_crtcs = 1 << num_scanouts;
 		if (!output->num_modes) {
-			kfree(priv);
-			VIRTIO_KMS_ERR("number of modes 0\n");
-			return -EINVAL;
+			priv->modes = NULL;
+			VIRTIO_KMS_ERR("scanout %d has 0 modes, using defaults\n", i);
 		}
 
 		if (output->num_modes > 0) {
@@ -3632,7 +3631,7 @@ static int _virtio_kms_service_dp_hpd(struct virtio_kms *kms, uint32_t scanout, 
 							mode->hdisplay, mode->vdisplay,
 							mode->clock);
 				}
-
+				priv->mode_count = kms->outputs[scanout].num_modes;
 				priv->connector_status = connector_status_connected;
 				connector->status = connector_status_connected;
 				msm_hyp_send_hpd_event(sde_kms->dev, connector);
