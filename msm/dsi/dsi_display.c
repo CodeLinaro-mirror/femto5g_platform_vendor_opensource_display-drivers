@@ -26,6 +26,7 @@
 #include "dsi_pwr.h"
 #include "sde_dbg.h"
 #include "dsi_parser.h"
+#include "dsi_sim_bridge.h"
 #include "dsi_display_manager.h"
 #include "dsi_hfi.h"
 #include "hfi_kms.h"
@@ -10247,12 +10248,14 @@ void __init dsi_display_register(void)
 
 	dsi_display_parse_boot_display_selection();
 
+	dsi_sim_bridge_register();
 	platform_driver_register(&dsi_display_driver);
 }
 
 void __exit dsi_display_unregister(void)
 {
 	platform_driver_unregister(&dsi_display_driver);
+	dsi_sim_bridge_unregister();
 	dsi_ctrl_drv_unregister();
 	dsi_phy_drv_unregister();
 }

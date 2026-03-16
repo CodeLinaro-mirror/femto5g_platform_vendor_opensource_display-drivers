@@ -15,6 +15,7 @@
 #include "sde_plane.h"
 #include "sde_formats.h"
 #include "hfi_utils.h"
+#include "hfi_defs_debug.h"
 
 #define DWORDS_TO_BYTES(x) (x * 4)
 #define BYTES_TO_DWORDS(x) (x / 4)
@@ -950,6 +951,95 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
 	}
 
 	return ret;
+}
+
+/**
+ * struct hfi_kms_uidle_status_ctx - context for uidle status HFI GET query
+ * @listener:        HFI property listener used to receive the FW response
+ * @uidle_enabled:   uidle enabled flag returned by FW (value_lsb)
+ * @uidle_state:     uidle state returned by FW (value_msb)
+ */
+struct hfi_kms_uidle_status_ctx {
+	struct hfi_prop_listener listener;
+	bool uidle_enabled;
+	u32 uidle_state;
+};
+
+static void _hfi_kms_uidle_status_handler(u32 obj_id, u32 cmd_id,
+		void *payload, u32 size, struct hfi_prop_listener *listener)
+{
+	struct hfi_kms_uidle_status_ctx *ctx;
+	struct hfi_display_dbg_property *prop;
+
+	if (!listener || !payload || size < sizeof(struct hfi_display_dbg_property)) {
+		SDE_ERROR("invalid uidle status response listener:%d payload:%d size:%d\n",
+			!listener, !payload, size);
+		return;
+	}
+
+	ctx = container_of(listener, struct hfi_kms_uidle_status_ctx, listener);
+	prop = (struct hfi_display_dbg_property *)payload;
+	ctx->uidle_enabled = (bool)prop->value_lsb;
+	ctx->uidle_state = prop->value_msb;
+
+	SDE_DEBUG("uidle_status response: enabled=%d state=%u\n",
+			ctx->uidle_enabled, ctx->uidle_state);
+}
+
+int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *uidle_state)
+{
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_display_dbg_property dbg_prop = {0};
+	struct hfi_kms_uidle_status_ctx *uidle_ctx;
+	int rc = 0;
+
+	if (!hfi_kms || !uidle_enabled || !uidle_state)
+		return -EINVAL;
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	dbg_prop.display_id = MSM_DRV_HFI_ID;
+	dbg_prop.prop_id = HFI_DISPLAY_DEBUG_UIDLE;
+
+	uidle_ctx = kzalloc(sizeof(*uidle_ctx), GFP_KERNEL);
+	if (!uidle_ctx)
+		return -ENOMEM;
+
+	uidle_ctx->listener.hfi_prop_handler = _hfi_kms_uidle_status_handler;
+
+	rc = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY, MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &dbg_prop, sizeof(dbg_prop),
+			&uidle_ctx->listener,
+			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
+	if (rc) {
+		SDE_ERROR("failed to add uidle status get property rc:%d\n", rc);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		goto end;
+	}
+
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY,
+			SDE_EVTLOG_FUNC_CASE1);
+	rc = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY, rc,
+			SDE_EVTLOG_FUNC_CASE2);
+	if (rc) {
+		SDE_ERROR("failed to send uidle status command rc:%d\n", rc);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		goto end;
+	}
+
+	*uidle_enabled = uidle_ctx->uidle_enabled;
+	*uidle_state = uidle_ctx->uidle_state;
+
+end:
+	kfree(uidle_ctx);
+	return rc;
 }
 
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)

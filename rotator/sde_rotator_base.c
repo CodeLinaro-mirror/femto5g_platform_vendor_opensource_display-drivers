@@ -749,6 +749,33 @@ static void sde_mdp_parse_inline_rot_lut_setting(struct platform_device *pdev,
 	}
 }
 
+static void sde_rot_parse_dt_offsets(struct platform_device *pdev,
+		struct sde_rot_data_type *mdata)
+{
+	int rc;
+	u32 data;
+
+	/* ROTTOP */
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,rottop-offset", &data);
+	mdata->rottop_offset = (!rc ? data : 0xA8800);
+
+	/* SSPP */
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,sspp-offset", &data);
+	mdata->sspp_offset = (!rc ? data : 0xA8900);
+
+	/* WB */
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,wb-offset", &data);
+	mdata->wb_offset = (!rc ? data : 0xA8B00);
+
+	/* REGDMA CSR/base */
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,regdma-offset", &data);
+	mdata->regdma_offset = (!rc ? data : 0xAAE00);
+
+	/* REGDMA RAM */
+	rc = of_property_read_u32(pdev->dev.of_node, "qcom,regdma-ram-offset", &data);
+	mdata->regdma_ram_offset = (!rc ? data : 0xA8E00);
+}
+
 static void sde_mdp_parse_rt_rotator(struct device_node *np)
 {
 	struct sde_rot_data_type *mdata = sde_rot_get_mdata();
@@ -813,6 +840,8 @@ static int sde_mdp_parse_dt_misc(struct platform_device *pdev,
 	sde_mdp_parse_rot_lut_setting(pdev, mdata);
 
 	sde_mdp_parse_inline_rot_lut_setting(pdev, mdata);
+
+	sde_rot_parse_dt_offsets(pdev, mdata);
 
 	rc = of_property_read_u32(pdev->dev.of_node,
 		"qcom,mdss-rot-qos-cpu-mask", &data);
