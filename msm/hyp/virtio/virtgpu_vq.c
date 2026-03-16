@@ -119,7 +119,6 @@ retry_send_packet:
 			VIRTGPU_VQ_DBG("send packet retry %d\n", retry_times);
 			goto retry_send_packet;
 		}
-		rc = -1;
 		VIRTGPU_VQ_ERR("virtio: habmm_socket_send failed <%d>\n", rc);
 		goto end;
 	}
@@ -168,7 +167,6 @@ retry_recv_packet:
 			delay = jiffies + offset;
 			goto retry_recv_packet;
 		}
-		rc = -1;
 		goto end;
 	}
 	if (resp_size != size) {
@@ -212,7 +210,6 @@ retry:
 	rc = habmm_socket_send(hab_socket, req, req_size, 0x00);
 	if (rc) {
 		VIRTGPU_VQ_ERR("habmm_socket_send failed <%d>\n", rc);
-		rc = -1;
 		goto end;
 	}
 	if (!resp)
