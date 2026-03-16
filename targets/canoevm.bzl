@@ -4,7 +4,7 @@ load(":target_variants.bzl", "get_all_variants")
 
 def define_canoevm():
     for (t, v) in get_all_variants():
-        if t == "canoe-tuivm" or t == "canoe-oevmm" or t == "malabar-tuivm" or t == "malabar-oevmm":
+        if t == "canoe-tuivm" or t == "canoe-oemvm":
             define_target_variant_modules(
                 target = t,
                 variant = v,
