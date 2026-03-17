@@ -1274,7 +1274,8 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	if (panel_generic_caps->phy_nums[0])
 		panel_generic_caps->valid_gen_caps_cnt++;
 
-	if (display->panel->esd_config.esd_enabled) {
+	if (display->panel->esd_config.esd_enabled &&
+		!display->panel->esd_config.esd_host_controlled) {
 		dsi_get_panel_esd_config_helper(display, &panel_generic_caps->esd_config);
 		panel_generic_caps->valid_gen_caps_cnt++;
 	}
@@ -1526,7 +1527,8 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		kv_size += sizeof(panel_generic_caps.phy_nums);
 	}
 
-	if (display->panel->esd_config.esd_enabled && !is_sim_panel(display)) {
+	if (display->panel->esd_config.esd_enabled && !is_sim_panel(display) &&
+		!display->panel->esd_config.esd_host_controlled) {
 		hfi_util_kv_helper_add(display_hfi->kv_props,
 				HFI_PACKKEY(HFI_PROPERTY_PANEL_ESD_CONFIG, 0,
 				(sizeof(panel_generic_caps.esd_config) / sizeof(u32))),
@@ -1855,7 +1857,8 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		addr_map = display_hfi->shared_addr_map;
 	}
 
-	if (panel->esd_config.esd_enabled && panel->esd_config.status_mode == ESD_MODE_REG_READ) {
+	if (panel->esd_config.esd_enabled && !panel->esd_config.esd_host_controlled
+			&& panel->esd_config.status_mode == ESD_MODE_REG_READ) {
 		if (!display_hfi->esd_addr_map) {
 			display_hfi->esd_addr_map = kvzalloc(sizeof(struct hfi_shared_addr_map),
 							GFP_KERNEL);
