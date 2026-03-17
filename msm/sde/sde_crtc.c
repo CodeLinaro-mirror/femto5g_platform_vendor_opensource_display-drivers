@@ -48,6 +48,7 @@
 #include "msm_drv.h"
 #include "sde_vm.h"
 #include "sde_roi_misr_helper.h"
+#include "shd_drm.h"
 
 #define SDE_PSTATES_MAX (SDE_STAGE_MAX * 4)
 #define SDE_MULTIRECT_PLANE_MAX (SDE_STAGE_MAX * 2)
@@ -6543,16 +6544,21 @@ static void sde_crtc_install_perf_properties(struct sde_crtc *sde_crtc,
 				sde_kms->perf.max_core_clk_rate);
 }
 
-static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
-		struct sde_mdss_cfg *catalog)
+static void sde_crtc_setup_capabilities_blob(struct drm_crtc *crtc,
+		struct sde_kms_info *info, struct sde_mdss_cfg *catalog)
 {
+	u32 max_blendstages = catalog->max_mixer_blendstages;
+
 	sde_kms_info_reset(info);
+
+	if (to_sde_crtc(crtc)->is_shared_crtc)
+		shd_crtc_get_max_blendstages(crtc, &max_blendstages);
 
 	sde_kms_info_add_keyint(info, "hw_version", catalog->hw_rev);
 	sde_kms_info_add_keyint(info, "max_linewidth",
 			catalog->max_mixer_width);
 	sde_kms_info_add_keyint(info, "max_blendstages",
-			catalog->max_mixer_blendstages);
+			max_blendstages);
 
 	if (catalog->qseed_sw_lib_rev == SDE_SSPP_SCALER_QSEED2)
 		sde_kms_info_add_keystr(info, "qseed_type", "qseed2");
@@ -6704,7 +6710,7 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		return;
 	}
 
-	sde_crtc_setup_capabilities_blob(info, catalog);
+	sde_crtc_setup_capabilities_blob(crtc, info, catalog);
 
 	msm_property_install_range(&sde_crtc->property_info,
 		"input_fence_timeout", 0x0, 0,

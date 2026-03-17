@@ -437,6 +437,27 @@ u32 shd_get_shared_crtc_mask(struct drm_crtc *src_crtc)
 	return crtc_mask;
 }
 
+int shd_crtc_get_max_blendstages(struct drm_crtc *crtc, u32 *max_blendstages)
+{
+	struct sde_crtc *sde_crtc;
+	struct shd_crtc *shd_crtc;
+
+	if (!crtc || !max_blendstages)
+		return -EINVAL;
+
+	sde_crtc = to_sde_crtc(crtc);
+	shd_crtc = sde_crtc->priv_handle;
+	if (!shd_crtc || !shd_crtc->display)
+		return -EINVAL;
+
+	*max_blendstages = shd_crtc->display->stage_range.size;
+	SDE_DEBUG("crtc%d shared display max_blendstages=%u\n",
+		DRMID(crtc), *max_blendstages);
+
+	return 0;
+}
+
+
 void shd_skip_shared_plane_update(struct drm_plane *plane, struct drm_crtc *crtc)
 {
 	struct sde_crtc *sde_crtc;
@@ -1329,6 +1350,7 @@ static int shd_drm_obj_init(struct shd_display *display)
 	shd_crtc->display = display;
 	sde_crtc = to_sde_crtc(crtc);
 	sde_crtc->priv_handle = shd_crtc;
+	sde_crtc->is_shared_crtc = true;
 	crtc->helper_private = &shd_crtc->helper_funcs;
 	crtc->funcs = &shd_crtc->funcs;
 	display->crtc = crtc;

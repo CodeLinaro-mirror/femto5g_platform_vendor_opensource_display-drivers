@@ -377,6 +377,7 @@ struct sde_crtc {
 	struct sde_hw_stage_cfg stage_cfg[MAX_LAYOUTS_PER_CRTC];
 	struct dentry *debugfs_root;
 	void *priv_handle;
+	bool is_shared_crtc;
 
 	u32 vblank_cb_count;
 	u64 play_count;

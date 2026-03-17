@@ -89,6 +89,7 @@ void sde_shd_hw_flush(struct sde_hw_ctl *ctl_ctx,
 
 u32 shd_get_shared_crtc_mask(struct drm_crtc *crtc);
 void shd_skip_shared_plane_update(struct drm_plane *plane, struct drm_crtc *crtc);
+int shd_crtc_get_max_blendstages(struct drm_crtc *crtc, u32 *max_blendstages);
 void sde_connector_get_avail_res_info_shd(struct drm_connector *conn,
 					  struct msm_resource_caps_info *avail_res);
 #endif /* _SHD_DRM_H_ */
