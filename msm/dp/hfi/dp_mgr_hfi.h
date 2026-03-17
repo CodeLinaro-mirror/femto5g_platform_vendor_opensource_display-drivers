@@ -50,11 +50,11 @@ int dp_mgr_hfi_deinit(struct platform_device *pdev);
 struct hfi_shared_addr_map *dp_mgr_hfi_init_shared_addr(struct hfi_client_t *ctx, u32 size);
 
 /**
- * dp_mgr_init_deinit_shared_addr() - free shared memory buffer
+ * dp_mgr_hfi_deinit_shared_addr() - free shared memory buffer
  * @ctx: HFI client context
  * @map: shared address map to free
  */
-void dp_mgr_init_deinit_shared_addr(struct hfi_client_t *ctx, struct hfi_shared_addr_map *map);
+void dp_mgr_hfi_deinit_shared_addr(struct hfi_client_t *ctx, struct hfi_shared_addr_map *map);
 
 /**
  * dp_mgr_hfi_init_hfi_buff() - initialize HFI buffer structure

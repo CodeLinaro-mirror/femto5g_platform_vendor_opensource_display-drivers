@@ -602,7 +602,7 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Failed to send READ_DPCD command to DCP, rc=%d\n", rc);
-		dp_mgr_init_deinit_shared_addr(hfi_client, dpcd_addr_map);
+		dp_mgr_hfi_deinit_shared_addr(hfi_client, dpcd_addr_map);
 		return rc;
 	}
 
@@ -615,7 +615,7 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 		memcpy(dpcd, dpcd_data, actual_size);
 
 	/* Free the shared buffer */
-	dp_mgr_init_deinit_shared_addr(hfi_client, dpcd_addr_map);
+	dp_mgr_hfi_deinit_shared_addr(hfi_client, dpcd_addr_map);
 
 	DP_DEBUG("Read %u bytes of DPCD data from offset 0x%x\n", actual_size, offset);
 	return actual_size;
@@ -745,7 +745,7 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Failed to send READ_INFO command to DCP, rc=%d\n", rc);
-		dp_mgr_init_deinit_shared_addr(hfi_client, info_addr_map);
+		dp_mgr_hfi_deinit_shared_addr(hfi_client, info_addr_map);
 		return rc;
 	}
 
@@ -800,7 +800,7 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 		len += scnprintf(buf + len, size - len, "\tp_level=%u\n", p_level);
 
 	/* Free the shared buffer */
-	dp_mgr_init_deinit_shared_addr(hfi_client, info_addr_map);
+	dp_mgr_hfi_deinit_shared_addr(hfi_client, info_addr_map);
 
 	DP_DEBUG("Returning DP info from DCP: state=0x%x, %ux%u@%uHz, %u lanes, rate=%u\n",
 		state, h_active, v_active, refresh_rate, lane_count, link_rate);
@@ -1103,7 +1103,7 @@ static int dp_debug_client_hfi_write_edid(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
 	struct dp_debug_client_hfi_priv *priv;
-	u8 *input_buf = NULL, *buf_t = NULL, *edid = NULL;
+	u8 *buf_t = NULL, *edid = NULL;
 	const int char_to_nib = 2;
 	size_t edid_size = 0;
 	size_t size = 0, edid_buf_index = 0;
@@ -1120,8 +1120,8 @@ static int dp_debug_client_hfi_write_edid(struct dp_debug_client *client,
 
 	hfi_client = dp_debug_hfi_get_client(priv);
 	if (!hfi_client) {
-		rc = -ENODEV;
-		goto bail;
+		DP_ERR("HFI client not available\n");
+		return -ENODEV;
 	}
 
 	/* Allocate shared buffer for DCP to populate with DPCD data */
@@ -1187,8 +1187,9 @@ static int dp_debug_client_hfi_write_edid(struct dp_debug_client *client,
 	}
 
 bail:
-	kfree(input_buf);
-	kfree(edid);
+	if (edid_addr_map)
+		dp_mgr_hfi_deinit_shared_addr(hfi_client, edid_addr_map);
+
 	return rc;
 }
 
