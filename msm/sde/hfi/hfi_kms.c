@@ -555,6 +555,7 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 	u32 dma_index_count;
 	u32 num_displays, display_id, pipe_mask;
 	u32 prop_sz;
+	u32 wb_downscale_count;
 
 	if (!catalog || !payload)
 		return -EINVAL;
@@ -613,6 +614,22 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 		catalog->wb_count = payload[read++];
 		for (int i = 0; i < catalog->wb_count; i++, read++)
 			catalog->wb_indices[i] = payload[read];
+		break;
+	case HFI_PROPERTY_DEVICE_INIT_WB_DNSC_SUPPORT_INDICES:
+		if (payload[0] > MAX_BLOCKS) {
+			SDE_ERROR("invalid wb dnsc support indices in packet, %d\n", payload[0]);
+			return read;
+		}
+
+		wb_downscale_count = payload[read++];
+		if (max_words < 1 + wb_downscale_count + 2) {
+			SDE_ERROR("wb dnsc payload too small: max_words=%u\n", max_words);
+			return read;
+		}
+		for (int i = 0; i < wb_downscale_count; i++, read++)
+			catalog->wb_dnsc_indices[i] = payload[read];
+		catalog->wb_dnsc_range = payload[read++];
+		catalog->wb_dnsc_integer_only = payload[read++];
 		break;
 	case HFI_PROPERTY_DEVICE_INIT_MAX_WB_LINEAR_RESOLUTION:
 		catalog->max_wb_linear_resolution = payload[read++];

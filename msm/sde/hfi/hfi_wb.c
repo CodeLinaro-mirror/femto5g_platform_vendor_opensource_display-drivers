@@ -221,6 +221,48 @@ static int _hfi_wb_add_dnsc_prop(struct sde_wb_device *wb_dev,
 	return ret;
 }
 
+static int _hfi_wb_add_wb_dnsc_prop(struct sde_wb_device *wb_dev,
+		struct sde_connector_state *cstate,
+		struct hfi_util_u32_prop_helper *prop_collector)
+{
+	u32 prop_id, hfi_flags = 0;
+	struct sde_connector *sde_conn;
+	struct sde_drm_wb_dnsc_cfg *wb_dnsc_cfg;
+	u32 wb_dnsc_payload[4];
+	int ret = 0;
+
+	if (!cstate)
+		return ret;
+
+	sde_conn = to_sde_connector(wb_dev->connector);
+	wb_dnsc_cfg = &cstate->wb_dnsc_cfg;
+
+	if (!wb_dnsc_cfg->dst_width && !wb_dnsc_cfg->dst_height &&
+			!(wb_dnsc_cfg->flags & WB_DNSC_DISABLE))
+		return 0;
+
+	if (wb_dnsc_cfg->flags & WB_DNSC_DISABLE)
+		hfi_flags |= HFI_WB_DNSC_CFG_DISABLE;
+
+	/* Populate payload: [wb_id, flags, dst_w, dst_h] */
+	wb_dnsc_payload[0] = sde_conn->conn_id;
+	wb_dnsc_payload[1] = hfi_flags;
+	wb_dnsc_payload[2] = wb_dnsc_cfg->dst_width;
+	wb_dnsc_payload[3] = wb_dnsc_cfg->dst_height;
+
+	prop_id = HFI_PROPERTY_OUTPUT_LAYER_DNSC_CFG;
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
+		HFI_VAL_U32_ARRAY, wb_dnsc_payload, sizeof(wb_dnsc_payload));
+	if (ret)
+		SDE_ERROR("Failed to add wb_dnsc hfi prop %d ret %d\n", prop_id, ret);
+
+	SDE_DEBUG("wb_dnsc config: dst=%ux%u flags=%u\n",
+		wb_dnsc_cfg->dst_width, wb_dnsc_cfg->dst_height,
+		wb_dnsc_cfg->flags);
+
+	return ret;
+}
+
 static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 		struct hfi_connector *hfi_conn,
 		struct sde_connector_state *cstate,
@@ -390,6 +432,7 @@ static int _hfi_wb_add_drm_props(struct sde_wb_device *wb_dev,
 		wb_id, HFI_VAL_U32, &tap_point, sizeof(u32));
 
 	_hfi_wb_add_dnsc_prop(wb_dev, cstate, hfi_conn->base_props);
+	_hfi_wb_add_wb_dnsc_prop(wb_dev, cstate, hfi_conn->base_props);
 
 	prop_id = HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY;
 	sec_policy = sde_connector_get_property(&cstate->base,
