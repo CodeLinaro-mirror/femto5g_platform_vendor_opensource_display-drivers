@@ -305,6 +305,13 @@ struct sde_rot_data_type {
 	struct sde_rot_lut_cfg inline_lut_cfg[SDE_ROT_OP_MAX];
 
 	bool clk_always_on;
+
+	/* rotator offset */
+	u32 rottop_offset;
+	u32 sspp_offset;
+	u32 wb_offset;
+	u32 regdma_offset;
+	u32 regdma_ram_offset;
 };
 
 int sde_rotator_base_init(struct sde_rot_data_type **pmdata,
