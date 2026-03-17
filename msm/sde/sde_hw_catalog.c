@@ -5599,6 +5599,8 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		dma_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		dma_list_size += ARRAY_SIZE(rgb_lossy_formats);
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		dma_list_size += ARRAY_SIZE(a10_y10_formats);
 
 	sde_cfg->dma_formats = kvcalloc(dma_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5615,6 +5617,9 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->dma_formats, dma_list_size,
 			index, rgb_lossy_formats, ARRAY_SIZE(rgb_lossy_formats));
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->dma_formats, dma_list_size,
+			index, a10_y10_formats, ARRAY_SIZE(a10_y10_formats));
 
 	/* ViG pipe input formats */
 	vig_list_size = ARRAY_SIZE(plane_formats_vig);
@@ -5626,6 +5631,8 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		vig_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		vig_list_size += ARRAY_SIZE(rgb_lossy_formats);
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		vig_list_size += ARRAY_SIZE(a10_y10_formats);
 
 	sde_cfg->vig_formats = kvcalloc(vig_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5650,6 +5657,9 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
 			index, rgb_lossy_formats, ARRAY_SIZE(rgb_lossy_formats));
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
+			index, a10_y10_formats, ARRAY_SIZE(a10_y10_formats));
 
 	/* Virtual ViG pipe input formats (all virt pipes use DMA formats) */
 	virt_vig_list_size = ARRAY_SIZE(plane_formats);
@@ -5657,6 +5667,8 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		virt_vig_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		virt_vig_list_size += ARRAY_SIZE(rgb_lossy_formats);
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		virt_vig_list_size += ARRAY_SIZE(a10_y10_formats);
 
 	sde_cfg->virt_vig_formats = kvcalloc(virt_vig_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5675,6 +5687,10 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		index += sde_copy_formats(sde_cfg->virt_vig_formats,
 				virt_vig_list_size, index, rgb_lossy_formats,
 				ARRAY_SIZE(rgb_lossy_formats));
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->virt_vig_formats,
+				virt_vig_list_size, index, a10_y10_formats,
+				ARRAY_SIZE(a10_y10_formats));
 
 	if (test_bit(SDE_FEATURE_LSR, sde_cfg->features)) {
 		csc_list_size = ARRAY_SIZE(plane_csc_formats);
@@ -6741,6 +6757,7 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
 	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
+	set_bit(SDE_FEATURE_A10_Y10, sde_cfg->features);
 	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 	set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
 	set_bit(SDE_FEATURE_QRTC, sde_cfg->features);
@@ -6801,6 +6818,7 @@ static void _sde_get_hw_caps_for_pebble(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
 	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
+	set_bit(SDE_FEATURE_A10_Y10, sde_cfg->features);
 	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 	set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
