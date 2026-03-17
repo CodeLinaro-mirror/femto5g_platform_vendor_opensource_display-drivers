@@ -118,6 +118,8 @@ struct dp_mgr_hfi_priv {
 	u32 lane_count;
 	u32 tgt_bpp;
 	u32 fec_en;
+	u32 mst_en;
+	u32 max_streams;
 
 	struct clk *usb3_tcsr_clk;
 	struct clk *usb3_pipe_clk;

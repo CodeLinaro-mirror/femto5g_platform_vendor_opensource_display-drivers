@@ -490,7 +490,7 @@ static int _send_plug(struct dp_mgr_hfi_priv *hfi_priv, struct hfi_device_hotplu
 	if (!hfi_client)
 		return -EINVAL;
 
-	for (i = 0; i < DP_STREAMS_MAX; i++) {
+	for (i = 0; i < hfi_priv->max_streams; i++) {
 		dp_mgr_hfi_init_hfi_buff(&edid_buf[i], hfi_priv->hfi[i]->edid_addr_map);
 		dp_mgr_hfi_init_hfi_buff(&modes_buf[i], hfi_priv->hfi[i]->modes_addr_map);
 	}
@@ -851,7 +851,8 @@ int dp_mgr_hfi_hpd_configure_cb(void *data)
 	if (hfi_priv->configured)
 		goto end;
 
-	for (i = 0; i < DP_STREAMS_MAX; i++) {
+	hfi_priv->max_streams = (hfi_priv->mst_en ? DP_STREAMS_MAX : 1);
+	for (i = 0; i < hfi_priv->max_streams; i++) {
 		rc = _init_addr_maps(hfi_priv->hfi[i]);
 		if (rc) {
 			while (--i >= 0)
@@ -872,7 +873,7 @@ int dp_mgr_hfi_hpd_configure_cb(void *data)
 		goto end;
 	}
 
-	for (i = 0; i < DP_STREAMS_MAX; i++) {
+	for (i = 0; i < hfi_priv->max_streams; i++) {
 		rc = _register_hpd_events(hfi_priv, i, true);
 		if (rc) {
 			DP_ERR("failed to register hpd events\n");
@@ -2706,7 +2707,7 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 	msm_unregister_vm_event(master, dev);
 
 	/* Cleanup EDID control structure */
-	for (i = 0; i < DP_STREAMS_MAX; i++) {
+	for (i = 0; i < hfi_priv->max_streams; i++) {
 		if (hfi_priv->hfi[i]->edid_ctrl)
 			sde_edid_deinit((void **)&hfi_priv->hfi[i]->edid_ctrl);
 
