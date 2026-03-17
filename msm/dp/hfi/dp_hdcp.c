@@ -11,6 +11,7 @@
 #include <linux/iopoll.h>
 #include <linux/version.h>
 #include <linux/msm_hdcp.h>
+#include <linux/of_platform.h>
 #include <drm/display/drm_dp_helper.h>
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 #include <linux/hdcp_qseecom.h>
@@ -61,6 +62,27 @@ struct dp_hdcp2x_ctx {
 	uint8_t *response_buf;
 	uint32_t buf_len;
 };
+
+struct device *dp_hdcp_get_msm_hdcp_dev(void)
+{
+	struct device_node *node;
+	struct platform_device *pdev;
+
+	node = of_find_compatible_node(NULL, NULL, "qcom,msm-hdcp");
+	if (!node) {
+		DP_WARN("couldn't find msm-hdcp node\n");
+		return NULL;
+	}
+
+	pdev = of_find_device_by_node(node);
+	of_node_put(node);
+	if (!pdev) {
+		DP_WARN("couldn't find msm-hdcp pdev\n");
+		return NULL;
+	}
+
+	return &pdev->dev;
+}
 
 /**
  * dp_hdcp1x_start() - Start HDCP authentication and get AKSV from TrustZone

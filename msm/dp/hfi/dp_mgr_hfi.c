@@ -1912,7 +1912,7 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_mgr_hfi_priv *hfi
 	/* Initialize HDCP contexts if not already done */
 	if (!hfi_priv->hdcp1x_ctx && hdcp_support[0]) {
 		struct sde_hdcp_init_data init_data = {
-			.msm_hdcp_dev = &hfi_priv->pdev->dev,
+			.msm_hdcp_dev = hfi_priv->msm_hdcp_dev,
 			.client_id = HDCP_CLIENT_DP,
 		};
 
@@ -2133,8 +2133,8 @@ static int dp_mgr_hfi_post_init(struct dp_client *client)
 	}
 
 	/* Register min_enc_level callback */
-	if (IS_ENABLED(CONFIG_HDCP_QSEECOM)) {
-		msm_hdcp_register_cb(&hfi_priv->pdev->dev, hfi_priv,
+	if (IS_ENABLED(CONFIG_HDCP_QSEECOM) && hfi_priv->msm_hdcp_dev) {
+		msm_hdcp_register_cb(hfi_priv->msm_hdcp_dev, hfi_priv,
 				    dp_mgr_hfi_min_level_change);
 		DP_DEBUG("Registered HDCP min_enc_level callback\n");
 	}
@@ -2778,6 +2778,7 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 	hfi_priv->intf_info.stream_cnt = 2;
 
 	hfi_priv->pdev = pdev;
+	hfi_priv->msm_hdcp_dev = dp_hdcp_get_msm_hdcp_dev();
 
 	client = &hfi_priv->client;
 	drm_ops = &client->drm_ops;
