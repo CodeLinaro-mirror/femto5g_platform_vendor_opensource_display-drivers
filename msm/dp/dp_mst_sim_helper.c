@@ -959,7 +959,7 @@ int dp_mst_sim_transfer(void *mst_sim_context, struct drm_dp_aux_msg *msg)
 			return dp_mst_sim_clear_esi(mst_sim_context, msg);
 
 		if (msg->address == DP_MSTM_CTRL)
-			return dp_mst_sim_reset(mst_sim_context, msg);
+			dp_mst_sim_reset(mst_sim_context, msg);
 
 		if (msg->address >= DP_GUID &&
 			msg->address < DP_GUID + 16) {
