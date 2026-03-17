@@ -103,7 +103,6 @@ static const struct sde_format_extended plane_formats[] = {
 	{DRM_FORMAT_ABGR8888, DRM_FORMAT_MOD_QCOM_NV12_4R_4Y | DRM_FORMAT_MOD_QCOM_COMPRESSED},
 	RGB_10BIT_FMTS,
 	{DRM_FORMAT_NV12, DRM_FORMAT_MOD_QCOM_DMA},
-	A10_Y10_FMTS,
 	{0, 0},
 };
 
@@ -144,7 +143,6 @@ static const struct sde_format_extended plane_formats_vig[] = {
 	TP10_UBWC_FMTS,
 	P010_FMTS,
 	P210_FMTS,
-	A10_Y10_FMTS,
 	{0, 0},
 };
 
@@ -209,6 +207,10 @@ static const struct sde_format_extended p010_ubwc_formats[] = {
 
 static const struct sde_format_extended p210_ubwc_formats[] = {
 	P210_UBWC_FMTS,
+};
+
+static const struct sde_format_extended a10_y10_formats[] = {
+	A10_Y10_FMTS,
 };
 
 static const struct sde_format_extended true_inline_rot_v1_fmts[] = {
