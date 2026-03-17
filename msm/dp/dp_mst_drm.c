@@ -469,6 +469,9 @@ static void _dp_mst_bridge_pre_enable_part1(struct dp_mst_bridge *dp_bridge)
 	DP_INFO("conn:%d pbn:%d, slots:%d\n", DP_MST_CONN_ID(dp_bridge),
 			dp_bridge->pbn,	dp_bridge->num_slots);
 
+	port->fixed_port_num = dp_bridge->fixed_port_num;
+	DP_INFO("conn:%d set port[%d] fixed_port_num:%d\n",
+			DP_MST_CONN_ID(dp_bridge), port->port_num , port->fixed_port_num);
 	ret = mst->mst_fw_cbs->allocate_vcpi(&mst->mst_mgr,
 				       port, pbn, slots);
 	if (!ret) {
