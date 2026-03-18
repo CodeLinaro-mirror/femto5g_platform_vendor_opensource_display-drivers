@@ -472,13 +472,18 @@ int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash)
 {
 	int rc = 0;
 
+	/* avoid reg vote, if disable vote is skipped */
 	if (!panel->skip_pwr) {
-		/* avoid reg vote, if disable vote is skipped */
-		rc = dsi_pwr_enable_regulator(&panel->power_info, true);
-		if (rc) {
-			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
-					panel->name, rc);
-			goto exit;
+		if (is_cont_splash && panel->disp_op == MSM_DISP_OP_HFI) {
+			DSI_DEBUG("[%s] skipping pwr enablement in hfi path with cont-splash\n",
+				panel->name);
+		} else {
+			rc = dsi_pwr_enable_regulator(&panel->power_info, true);
+			if (rc) {
+				DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
+						panel->name, rc);
+				goto exit;
+			}
 		}
 	}
 
