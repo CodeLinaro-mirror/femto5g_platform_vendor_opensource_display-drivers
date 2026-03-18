@@ -1482,8 +1482,12 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 			}
 
 			/* If packet_id's match for the response packet(s), add to local list */
-			if (packet_info.packet_id == listener_entry->packet_id &&
-					packet_info.id == listener_entry->obj_id) {
+			if (packet_info.packet_id == listener_entry->packet_id) {
+				if ((header_info.cmd_buff_type == HFI_CMD_BUFF_DISPLAY) &&
+					(packet_info.id != listener_entry->obj_id)) {
+					continue;
+				}
+
 				listener = (struct hfi_prop_listener *)
 					listener_entry->listener_obj;
 				if (!listener)
