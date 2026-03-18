@@ -1718,7 +1718,7 @@ void drm_to_dsi_update_overlap(void *display, struct dsi_display_mode *convert_d
 
 			match_dsi_mode.timing.h_active += overlap_total;
 			if (!dsi_display_mode_match(&match_dsi_mode, dsi_mode,
-					DSI_MODE_MATCH_FULL_TIMINGS))
+					DSI_MODE_MATCH_ACTIVE_TIMINGS))
 				continue;
 
 			convert_dsi_mode->timing.overlap = dsi_mode->timing.overlap;

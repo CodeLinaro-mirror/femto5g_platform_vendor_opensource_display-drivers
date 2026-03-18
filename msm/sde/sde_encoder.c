@@ -1029,7 +1029,8 @@ void sde_encoder_helper_update_intf_cfg(
 
 void sde_encoder_helper_split_config(
 		struct sde_encoder_phys *phys_enc,
-		enum sde_intf interface)
+		enum sde_intf interface,
+		bool skip_cont_splash)
 {
 	struct sde_encoder_virt *sde_enc;
 	struct split_pipe_cfg *cfg;
@@ -1055,6 +1056,9 @@ void sde_encoder_helper_split_config(
 
 	if (disp_info->capabilities & MSM_DISPLAY_SPLIT_LINK)
 		cfg->split_link_en = true;
+
+	if (phys_enc->cont_splash_enabled && skip_cont_splash)
+		return;
 
 	/**
 	 * disable split modes since encoder will be operating in as the only
