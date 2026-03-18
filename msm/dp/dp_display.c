@@ -1213,6 +1213,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 	int rc = -EINVAL;
 	unsigned long wait_timeout_ms;
 	unsigned long t;
+	u32 sim_mode = 0;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
@@ -1228,8 +1229,9 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 	dp->dp_display.max_pclk_khz = min(dp->parser->max_pclk_khz,
 					dp->debug->max_pclk_khz);
 
+	dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch && !dp->parser->gpio_aux_switch
-			&& dp->aux_switch_node && dp->aux->switch_configure) {
+			&& dp->aux_switch_node && dp->aux->switch_configure && !sim_mode) {
 		rc = dp->aux->switch_configure(dp->aux, true, dp->hpd->orientation);
 		if (rc) {
 			mutex_unlock(&dp->session_lock);
@@ -1467,6 +1469,7 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 {
 	int rc = 0;
 	struct dp_display_private *dp;
+	u32 sim_mode = 0;
 
 	if (!dev) {
 		DP_ERR("invalid dev\n");
@@ -1499,8 +1502,10 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 		}
 	}
 
+	dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
-	    && !dp->parser->gpio_aux_switch && dp->aux_switch_node && dp->aux->switch_configure) {
+	    && !dp->parser->gpio_aux_switch && dp->aux_switch_node && dp->aux->switch_configure
+		&& !sim_mode) {
 		rc = dp_display_init_aux_switch(dp);
 		if (rc)
 			return rc;
@@ -1622,6 +1627,11 @@ static void dp_display_clean(struct dp_display_private *dp, bool skip_wait)
 		return;
 	}
 
+	if (!dp_display_state_is(DP_STATE_ENABLED)) {
+		dp_display_state_show("[not enabled]");
+		return;
+	}
+
 	if (dp_display_is_hdcp_enabled(dp) &&
 			status->hdcp_state != HDCP_STATE_INACTIVE) {
 		cancel_delayed_work_sync(&dp->hdcp_cb_work);
@@ -1675,6 +1685,7 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 		 */
 		dp->aux->abort(dp->aux, false);
 		dp->ctrl->abort(dp->ctrl, false);
+		dp_display_state_remove(DP_STATE_ABORTED);
 
 		dp_display_send_force_connect_event(dp);
 
@@ -1745,6 +1756,7 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 {
 	int rc = 0;
 	struct dp_display_private *dp;
+	u32 sim_mode = 0;
 
 	if (!dev) {
 		DP_ERR("invalid dev\n");
@@ -1776,8 +1788,10 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 	dp->ctrl->abort(dp->ctrl, true);
 	dp->aux->abort(dp->aux, true);
 
+	dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
-	    && !dp->parser->gpio_aux_switch && dp->aux->switch_configure)
+	    && !dp->parser->gpio_aux_switch && dp->aux->switch_configure
+		&& !sim_mode)
 		dp->aux->switch_configure(dp->aux, false, ORIENTATION_NONE);
 
 	dp_display_disconnect_sync(dp);
@@ -2154,7 +2168,8 @@ static void dp_display_connect_work(struct work_struct *work)
 	if (!rc && dp->panel->video_test)
 		dp->link->send_test_response(dp->link);
 
-	if (reset_connector)
+	DP_INFO("DP process hpd high, rc: %d\n", rc);
+	if (!rc && reset_connector)
 		sde_connector_helper_mode_change_commit(reset_connector);
 }
 
@@ -2882,6 +2897,11 @@ static int dp_display_pre_disable(struct dp_display *dp_display, void *panel)
 		goto end;
 	}
 
+	if (!dp_display_state_is(DP_STATE_READY)) {
+		dp_display_state_show("[not ready]");
+		goto end;
+	}
+
 	if (dp_display_disable_hdcp(dp, dp_panel))
 		goto clean;
 
@@ -3006,6 +3026,10 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
 
+	if (!dp_display_state_is(DP_STATE_ENABLED)) {
+		dp_display_state_show("[not enabled]");
+		goto end;
+	}
 	/*
 	 * Check if the power off sequence was triggered
 	 * by a source initialated action like framework
