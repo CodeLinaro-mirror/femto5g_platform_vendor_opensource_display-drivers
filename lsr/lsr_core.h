@@ -294,6 +294,7 @@ struct lsr_device {
 	struct msm_lsr_synx_ops *synx_ftbl;
 	struct sde_lsr_hw_fence_data hwfence_data;
 	u32 lsr_reusable_hsynx;
+	atomic_t lsr_ssr_in_progress;
 };
 
 int msm_lsr_init_reg_and_irq(struct lsr_device *device,	struct msm_lsr_platform_resources *res);

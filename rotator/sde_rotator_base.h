@@ -33,7 +33,7 @@
 	(SDE_GET_MAJOR_MINOR(rev1) == SDE_GET_MAJOR_MINOR(rev2))
 
 #define SDE_MDP_REV(major, minor, step) \
-	((((major) & 0x000F) << 28) | \
+	((u32)(((major) & 0x000F) << 28) | \
 	 (((minor) & 0x0FFF) << 16) | \
 	  ((step)  & 0xFFFF))
 
@@ -50,6 +50,7 @@
 #define SDE_MDP_HW_REV_630	SDE_MDP_REV(6, 3, 0)	/* bengal v1.0 */
 #define SDE_MDP_HW_REV_660	SDE_MDP_REV(6, 6, 0)	/* holi */
 #define SDE_MDP_HW_REV_690	SDE_MDP_REV(6, 9, 0)	/* blair */
+#define SDE_MDP_HW_REV_860      SDE_MDP_REV(8, 6, 0)    /* Ravelin */
 #define SDE_MDP_HW_REV_870	SDE_MDP_REV(8, 7, 0)    /* malabar */
 
 #define SDE_MDP_VBIF_4_LEVEL_REMAPPER	4
@@ -305,6 +306,13 @@ struct sde_rot_data_type {
 	struct sde_rot_lut_cfg inline_lut_cfg[SDE_ROT_OP_MAX];
 
 	bool clk_always_on;
+
+	/* rotator offset */
+	u32 rottop_offset;
+	u32 sspp_offset;
+	u32 wb_offset;
+	u32 regdma_offset;
+	u32 regdma_ram_offset;
 };
 
 int sde_rotator_base_init(struct sde_rot_data_type **pmdata,

@@ -14,13 +14,20 @@ extern "C" {
 
 /**
  * HFI_PACK_KEY - Pack given property id, version and dsize to u32 key.
- * @key: Packed key with given property id, version and dsize
  * @property_id: Property ID to pack
- * @version : Property version to pack
+ * @version: Property version to pack
  * @dsize: Property value size in dwords
  */
 #define HFI_PACK_KEY(property_id, version, dsize) \
 	(property_id | (version << 20) | (dsize << 24))
+
+/**
+ * hfi_get_header_size() - Get current header section used size in bytes.
+ * @cmd_buf_hdl: Pointer to the command buffer handle.
+ *
+ * Returns: current header size in bytes (includes the HFI header and all appended packets).
+ */
+u32 hfi_get_header_size(struct hfi_cmd_buff_hdl *cmd_buf_hdl);
 
 /**
  * hfi_create_header() - Creates the header for the command buffer.

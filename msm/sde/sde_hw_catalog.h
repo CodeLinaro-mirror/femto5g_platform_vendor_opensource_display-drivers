@@ -64,6 +64,7 @@
 #define SDE_HW_VER_920  SDE_HW_VER(9, 2, 0) /* x1e80100 */
 #define SDE_HW_VER_970  SDE_HW_VER(9, 7, 0) /* x1p42100 */
 #define SDE_HW_VER_980	SDE_HW_VER(9, 8, 0) /* seraph */
+#define SDE_HW_VER_990	SDE_HW_VER(9, 9, 0) /* pikachu */
 #define SDE_HW_VER_A00	SDE_HW_VER(10, 0, 0) /* pineapple */
 #define SDE_HW_VER_A30  SDE_HW_VER(10, 3, 0) /* chora */
 #define SDE_HW_VER_B00  SDE_HW_VER(11, 0, 0) /* niobe */
@@ -113,6 +114,7 @@
 #define IS_X1E80100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_920)
 #define IS_X1P42100(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_970)
 #define IS_SERAPH_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_980)
+#define IS_PIKACHU_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_990)
 #define IS_PINEAPPLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_A00)
 #define IS_NIOBE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_B00)
 #define IS_SUN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_C00)
@@ -1534,6 +1536,7 @@ struct sde_mdp_cfg {
  * @debugfs_ctrl:           uidle is enabled/disabled through debugfs
  * @perf_cntr_en:           performance counters are enabled/disabled
  * @dirty:                  dirty flag for uidle update
+ * @fal10_override:         flag to override fal10 veto
  */
 struct sde_uidle_cfg {
 	SDE_HW_BLK_INFO;
@@ -1554,6 +1557,7 @@ struct sde_uidle_cfg {
 	bool debugfs_ctrl;
 	bool perf_cntr_en;
 	bool dirty;
+	bool fal10_override;
 };
 
 /* struct sde_mdp_cfg : MDP TOP-BLK instance info

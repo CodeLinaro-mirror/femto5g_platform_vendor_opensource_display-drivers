@@ -763,23 +763,23 @@ static struct sde_rot_debug_bus rot_dbgbus_r3[] = {
 };
 
 static struct sde_rot_regdump sde_rot_r3_regdump[] = {
-	{ "SDEROT_ROTTOP", SDE_ROT_ROTTOP_OFFSET, 0x100, SDE_ROT_REGDUMP_READ },
-	{ "SDEROT_SSPP", SDE_ROT_SSPP_OFFSET, 0x200, SDE_ROT_REGDUMP_READ },
-	{ "SDEROT_WB", SDE_ROT_WB_OFFSET, 0x300, SDE_ROT_REGDUMP_READ },
-	{ "SDEROT_REGDMA_CSR", SDE_ROT_REGDMA_OFFSET, 0x100,
+	{ "SDEROT_ROTTOP", 0, 0x100, SDE_ROT_REGDUMP_READ },
+	{ "SDEROT_SSPP", 0, 0x200, SDE_ROT_REGDUMP_READ },
+	{ "SDEROT_WB", 0, 0x300, SDE_ROT_REGDUMP_READ },
+	{ "SDEROT_REGDMA_CSR", 0, 0x100,
 		SDE_ROT_REGDUMP_READ },
 	/*
 	 * Need to perform a SW reset to REGDMA in order to access the
 	 * REGDMA RAM especially if REGDMA is waiting for Rotator IDLE.
 	 * REGDMA RAM should be dump at last.
 	 */
-	{ "SDEROT_REGDMA_RESET", ROTTOP_SW_RESET_OVERRIDE, 1,
+	{ "SDEROT_REGDMA_RESET", 0, 1,
 		SDE_ROT_REGDUMP_WRITE, 1 },
-	{ "SDEROT_REGDMA_RAM", SDE_ROT_REGDMA_RAM_OFFSET, 0x2000,
+	{ "SDEROT_REGDMA_RAM", 0, 0x2000,
 		SDE_ROT_REGDUMP_READ },
-	{ "SDEROT_VBIF_NRT", SDE_ROT_VBIF_NRT_OFFSET, 0x590,
+	{ "SDEROT_VBIF_NRT", 0, 0x590,
 		SDE_ROT_REGDUMP_VBIF },
-	{ "SDEROT_REGDMA_RESET", ROTTOP_SW_RESET_OVERRIDE, 1,
+	{ "SDEROT_REGDMA_RESET", 0, 1,
 		SDE_ROT_REGDUMP_WRITE, 0 },
 };
 
@@ -3634,6 +3634,23 @@ static int sde_rotator_hw_rev_init(struct sde_hw_rotator *rot)
 
 	mdata->regdump = sde_rot_r3_regdump;
 	mdata->regdump_size = ARRAY_SIZE(sde_rot_r3_regdump);
+
+	for (int i = 0; i < ARRAY_SIZE(sde_rot_r3_regdump); i++) {
+		if (strcmp(sde_rot_r3_regdump[i].name, "SDEROT_ROTTOP") == 0)
+			sde_rot_r3_regdump[i].offset = SDE_ROT_ROTTOP_OFFSET;
+		else if (strcmp(sde_rot_r3_regdump[i].name, "SDEROT_SSPP") == 0)
+			sde_rot_r3_regdump[i].offset = SDE_ROT_SSPP_OFFSET;
+		else if (strcmp(sde_rot_r3_regdump[i].name, "SDEROT_WB") == 0)
+			sde_rot_r3_regdump[i].offset = SDE_ROT_WB_OFFSET;
+		else if (strcmp(sde_rot_r3_regdump[i].name, "SDEROT_REGDMA_CSR") == 0)
+			sde_rot_r3_regdump[i].offset = SDE_ROT_REGDMA_OFFSET;
+		else if (strcmp(sde_rot_r3_regdump[i].name, "SDEROT_REGDMA_RESET") == 0)
+			sde_rot_r3_regdump[i].offset = ROTTOP_SW_RESET_OVERRIDE;
+		else if (strcmp(sde_rot_r3_regdump[i].name, "SDEROT_VBIF_NRT") == 0)
+			sde_rot_r3_regdump[i].offset = SDE_ROT_VBIF_NRT_OFFSET;
+		else if (strcmp(sde_rot_r3_regdump[i].name, "SDEROT_REGDMA_RAM") == 0)
+			sde_rot_r3_regdump[i].offset = SDE_ROT_REGDMA_RAM_OFFSET;
+	}
 	SDE_ROTREG_WRITE(rot->mdss_base, REGDMA_TIMESTAMP_REG, 0);
 
 	/* features exposed via mdss h/w version */
@@ -3814,6 +3831,22 @@ static int sde_rotator_hw_rev_init(struct sde_hw_rotator *rot)
 				sde_hw_rotator_v5_outpixfmts;
 		rot->num_outpixfmt[SDE_ROTATOR_MODE_OFFLINE] =
 				ARRAY_SIZE(sde_hw_rotator_v5_outpixfmts);
+		rot->downscale_caps =
+			"LINEAR/1.5/2/4/8/16/32/64 TILE/1.5/2/4 TP10/1.5/2";
+	} else if (IS_SDE_MAJOR_MINOR_SAME(mdata->mdss_version,
+				SDE_MDP_HW_REV_860)) {
+		SDEROT_DBG("Sys cache inline rotation not supported\n");
+		set_bit(SDE_CAPS_UBWC_2,  mdata->sde_caps_map);
+		set_bit(SDE_CAPS_PARTIALWR,  mdata->sde_caps_map);
+		set_bit(SDE_CAPS_HW_TIMESTAMP, mdata->sde_caps_map);
+		rot->inpixfmts[SDE_ROTATOR_MODE_OFFLINE] =
+				sde_hw_rotator_v4_inpixfmts;
+		rot->num_inpixfmt[SDE_ROTATOR_MODE_OFFLINE] =
+				ARRAY_SIZE(sde_hw_rotator_v4_inpixfmts);
+		rot->outpixfmts[SDE_ROTATOR_MODE_OFFLINE] =
+				sde_hw_rotator_v4_outpixfmts;
+		rot->num_outpixfmt[SDE_ROTATOR_MODE_OFFLINE] =
+				ARRAY_SIZE(sde_hw_rotator_v4_outpixfmts);
 		rot->downscale_caps =
 			"LINEAR/1.5/2/4/8/16/32/64 TILE/1.5/2/4 TP10/1.5/2";
 	} else {

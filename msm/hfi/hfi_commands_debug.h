@@ -407,6 +407,45 @@
 #define HFI_COMMAND_DEBUG_SET_LOG_LEVEL                               0xFF000011
 
 /*
+ * HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY is sent from Host to DCP to query a display debug
+ * property. DCP reads the requested property and sends the current value back to Host.
+ * See struct hfi_display_dbg_property for more info.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                      : HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY
+ *           .flags                    : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *           .payload (u32 values)     : struct hfi_display_dbg_property
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * hfi_packet.payload_info.type        : HFI_PAYLOAD_U32_ARRAY
+ *           .cmd                      : HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY
+ *           .flags                    : HFI_RX_FLAGS_SUCCESS
+ *           .payload (u32 values)     : struct hfi_display_dbg_property
+ */
+#define HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY                       0xFF000012
+
+/*!
+ * HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY is sent from Host to DCP to
+ * set debug property of a subsystem.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi packet layout                   | Value
+ *-------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (type)      | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                      | HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY
+ * hfi_packet.flags                    | HFI_TX_FLAGS_RESPONSE_REQUIRED(optional)
+ * hfi_packet.payload[0..n]            | struct hfi_debug_subsystem_property
+ */
+#define HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY                       0xFF000013
+
+/*
  * DP Simulation HFI commands
  */
 #define HFI_COMMAND_DEBUG_DP_BEGIN                                     0xFF000500

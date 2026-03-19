@@ -12,11 +12,93 @@
 #include "hfi_commands_debug.h"
 #include "hfi_defs_debug.h"
 #include "hfi_msm_drv.h"
+#include "hfi_crtc.h"
 
 #define BLOB_PROPERTY_HEADER_SIZE 2
 #define MATRICES_PER_VIEW 2
 
 static u64 lsr_fw_debug_val;
+
+
+int hfi_lsr_trigger_ssr(u64 val, struct drm_device *dev)
+{
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_debug_subsystem_property payload;
+	int ret = 0;
+	struct hfi_client_t *lsr_hfi_client;
+	struct msm_drm_private *priv;
+	struct msm_kms *kms;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+
+	if (!dev) {
+		SDE_ERROR("Invalid drm device");
+		return -EINVAL;
+	}
+
+	priv = dev->dev_private;
+	if (!priv) {
+		SDE_ERROR("Invalid msm_drm priv");
+		return -EINVAL;
+	}
+
+	kms = priv->kms;
+	if (!kms) {
+		SDE_ERROR("Invalid msm_kms");
+		return -EINVAL;
+	}
+
+	sde_kms = to_sde_kms(kms);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("Invalid hfi_kms\n");
+		return -EINVAL;
+	}
+
+	lsr_hfi_client = &hfi_kms->hfi_client;
+	if (!lsr_hfi_client) {
+		SDE_ERROR("Invalid HFI client\n");
+		return -EINVAL;
+	}
+
+	cmd_buf = hfi_adapter_get_cmd_buf(lsr_hfi_client,
+		MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	payload.subsystem_type = HFI_SUBSYSTEM_TYPE_LSR;
+	payload.prop_id = HFI_DEBUG_SUBSYSTEM_PROPERTY_TRIGGER_ERROR;
+	payload.value_lsb = (enum lsr_subsytem_error_type)val;
+
+	ret = hfi_adapter_add_set_property(lsr_hfi_client,
+			cmd_buf,
+			HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY,
+			MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			&payload,
+			sizeof(payload),
+			HFI_HOST_FLAGS_NONE);
+
+	if (ret) {
+		SDE_ERROR("failed to set SSR trigger command\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(lsr_hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("failed to send SSR trigger command\n");
+
+	SDE_DEBUG("SSR trigger value is %llu\n", val);
+	SDE_EVT32(val);
+	return ret;
+}
 
 int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
 {
@@ -969,6 +1051,7 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
 	int ret = 0;
 	struct sde_connector *sde_conn = NULL;
 	struct drm_connector *conn = NULL;
+	struct sde_reproj *reproj_conn = NULL;
 
 	sde_conn = hfi_conn->sde_base;
 	if (!sde_conn)
@@ -977,16 +1060,36 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
 	conn = &sde_conn->base;
 	display_id = sde_conn_get_display_obj_id(conn);
 
+	reproj_conn = sde_conn->reproj_conn;
+	if (!reproj_conn) {
+		SDE_ERROR("Invalid reproj connector\n");
+		return -EINVAL;
+	}
+
 	if (enable) {
 		ret = hfi_wb_display_lsr_enable(conn, true);
 	} else {
-		*flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
-		ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+		if ((atomic_read(reproj_conn->lsr_ssr_in_progress) > 0) ||
+						(atomic_read(&hfi_kms->ssr_in_progress) > 0)) {
+			if (reproj_conn->off)
+				reproj_conn->off(reproj_conn, true);
+
+			ret =  synx_enable_resources(SYNX_CLIENT_HW_FENCE_LSR0_CTX0,
+					SYNX_RESOURCE_SOCCP, false);
+			if (ret) {
+				SDE_ERROR("failed to disable hw-fence resources for lsr: %d\n",
+					ret);
+				return ret;
+			}
+		} else {
+			*flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+			ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
 				HFI_COMMAND_DISPLAY_DISABLE, display_id, HFI_PAYLOAD_TYPE_NONE,
 				NULL, 0, &hfi_conn->disable_listener, *flags);
-		if (ret) {
-			SDE_ERROR("failed to register LSR-WB disable response listener\n");
-			return ret;
+			if (ret) {
+				SDE_ERROR("failed to register LSR-WB disable response listener\n");
+				return ret;
+			}
 		}
 	}
 	return 0;
@@ -1018,4 +1121,161 @@ void hfi_lsr_display_disable_handler(u32 obj_id, u32 cmd_id,
 
 	SDE_DEBUG("LSR disable response received for obj_id:%d with cmd_id:0x%x\n",
 			obj_id, cmd_id);
+}
+
+int hfi_lsr_notify_ssr_event(enum hfi_device_ssr_event ssr_event, struct drm_device *dev)
+{
+	struct drm_connector *connector;
+	struct drm_connector_list_iter conn_iter;
+	int rc = 0;
+
+	if (!dev) {
+		SDE_ERROR("Invalid drm device\n");
+		return -EINVAL;
+	}
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(connector, &conn_iter) {
+		rc = sde_connector_event_notify(connector, DRM_EVENT_LSR_SSR, sizeof(uint8_t),
+			(ssr_event == HFI_DEVICE_SSR_EVENT_START) ? SDE_SSR_START : SDE_SSR_END);
+
+		if (rc) {
+			SDE_ERROR("Failed to notify LSR SSR %s on connector:%d rc:%d\n",
+				(ssr_event == HFI_DEVICE_SSR_EVENT_START) ? "ssr_start" : "ssr_end",
+				DRMID(connector), rc);
+			drm_connector_list_iter_end(&conn_iter);
+			goto end;
+		} else
+			SDE_DEBUG("UMD notified about %s on conn:%d\n",
+				(ssr_event == HFI_DEVICE_SSR_EVENT_START) ? "ssr_start" : "ssr_end",
+				DRMID(connector));
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	if (dev->dev_private) {
+		struct msm_drm_private *priv = NULL;
+		struct sde_kms *sde_kms;
+		struct hfi_kms *hfi_kms = NULL;
+		struct hfi_cmdbuf_t *cmd_buf;
+		struct hfi_client_t *lsr_hfi_client;
+		struct hfi_device_ssr_info *hfi_ssr;
+
+		priv = dev->dev_private;
+		sde_kms = to_sde_kms(priv->kms);
+		if (!sde_kms) {
+			SDE_ERROR("Invalid sde_kms\n");
+			return -EINVAL;
+		}
+
+		hfi_kms = to_hfi_kms(sde_kms);
+		if (!hfi_kms) {
+			SDE_ERROR("Invalid hfi_kms\n");
+			return -EINVAL;
+		}
+
+		lsr_hfi_client = &hfi_kms->hfi_client;
+		if (!lsr_hfi_client) {
+			SDE_ERROR("Invalid HFI client\n");
+			return -EINVAL;
+		}
+
+		cmd_buf = hfi_adapter_get_cmd_buf(lsr_hfi_client,
+					MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_DEVICE_INFO);
+		if (!cmd_buf) {
+			SDE_ERROR("Invalid cmd buf\n");
+			return -EINVAL;
+		}
+		hfi_ssr = kzalloc(sizeof(struct hfi_device_ssr_info), GFP_KERNEL);
+		hfi_ssr->subsystem_type = HFI_SUBSYSTEM_TYPE_LSR;
+		hfi_ssr->ssr_event =
+			(ssr_event == HFI_DEVICE_SSR_EVENT_START) ?
+				HFI_DEVICE_SSR_EVENT_START : HFI_DEVICE_SSR_EVENT_END;
+
+		rc = hfi_adapter_add_set_property(lsr_hfi_client, cmd_buf,
+				HFI_COMMAND_DEVICE_SUBSYSTEM_RESTART_NOTIFY,
+				MSM_DRV_HFI_ID,
+				HFI_PAYLOAD_TYPE_U32,
+				hfi_ssr, sizeof(struct hfi_device_ssr_info),
+				HFI_TX_FLAGS_NON_DISCARDABLE);
+
+		if (rc) {
+			SDE_ERROR("Failed to set hfi property for lsr sub system restart\n");
+			kfree(hfi_ssr);
+			return -EINVAL;
+		}
+
+		rc = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		if (rc) {
+			SDE_ERROR("Failed to send subsystem error command\n");
+			kfree(hfi_ssr);
+			return -EINVAL;
+		}
+
+		SDE_DEBUG("Notified DCP on %s\n",
+			(ssr_event == HFI_DEVICE_SSR_EVENT_START) ? "ssr_start" : "ssr_end");
+		SDE_EVT32(hfi_ssr->subsystem_type, hfi_ssr->ssr_event);
+
+		kfree(hfi_ssr);
+	} else {
+		SDE_ERROR("Invalid msm_drm priv\n");
+		return -EINVAL;
+	}
+end:
+	return rc;
+}
+
+int hfi_lsr_wait_for_display_off(struct drm_device *dev)
+{
+	int rc = 0;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
+	struct sde_kms *sde_kms = NULL;
+	bool any_crtc_active = false;
+	int wait_count = 0;
+
+	if (!dev) {
+		SDE_ERROR("Invalid drm device\n");
+		return -EINVAL;
+	}
+
+	if (dev->dev_private) {
+		struct msm_drm_private *priv = NULL;
+
+		priv = dev->dev_private;
+		if (!priv) {
+			SDE_ERROR("Invalid msm_drm priv\n");
+			return -EINVAL;
+		}
+		sde_kms = to_sde_kms(priv->kms);
+		if (!sde_kms) {
+			SDE_ERROR("Invalid sde_kms\n");
+			return -EINVAL;
+		}
+
+		do {
+			if (any_crtc_active) {
+				if (wait_count++ > 400) {
+					SDE_ERROR("timeout waiting for lsr display off\n");
+					rc = -ETIMEDOUT;
+					break;
+				}
+				usleep_range(1000, 1000 + 10);
+				any_crtc_active = false;
+			}
+			drm_for_each_crtc(crtc, dev) {
+				if (crtc->state && crtc->state->active &&
+					(sde_crtc_check_for_lsr_opmode(crtc, crtc->state))) {
+					crtc_state = crtc->state;
+					if (crtc_state->active && crtc_state->enable) {
+						any_crtc_active = true;
+						break;
+					}
+				}
+			}
+		} while (any_crtc_active);
+		SDE_DEBUG("any_crtc_active:%d\n", any_crtc_active);
+	} else
+		SDE_ERROR("drm dev priv is NULL\n");
+
+	return rc;
 }

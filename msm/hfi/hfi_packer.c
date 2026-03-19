@@ -13,8 +13,8 @@ static int hfi_validate_cmd_buff_size(struct hfi_header *hdr,
 	u32 bytes_used;
 
 	/*
-	 * check if alloacted command buffer size is at least
-	 * long enough for hfi_header
+	 * check if allocated command buffer size is at least
+	 * long enough for HFI header
 	 */
 	if (allocated_size < sizeof(struct hfi_header)) {
 		hfi_pk_printf(HFI_PACKER,
@@ -33,6 +33,22 @@ static int hfi_validate_cmd_buff_size(struct hfi_header *hdr,
 	}
 
 	return 0;
+}
+
+u32 hfi_get_header_size(struct hfi_cmd_buff_hdl *cmd_buf_hdl)
+{
+	u32 header_size;
+	struct hfi_header *hdr;
+
+	if (!cmd_buf_hdl || !cmd_buf_hdl->cmd_buffer) {
+		hfi_pk_printf(HFI_PACKER, "%s: invalid params\n", __func__);
+		return HFI_HEADER_SIZE_MAX;
+	}
+
+	hdr = (struct hfi_header *)cmd_buf_hdl->cmd_buffer;
+	header_size = GET_HEADER_SIZE(hdr->cmd_buff_info);
+
+	return header_size;
 }
 
 int hfi_create_header(struct hfi_cmd_buff_hdl *cmd_buf_hdl,
@@ -225,7 +241,7 @@ int hfi_append_packet_with_kv_pairs(struct hfi_cmd_buff_hdl *cmd_buf_hdl,
 	if (!packet_to_append_hdr)
 		return -HFI_ERROR;
 
-	// apend kv pairs at the end of last packet
+	// append kv pairs at the end of last packet
 	pkt_kv_pairs_counter_idx = (u32 *)((u8 *)packet_to_append_hdr +
 		(sizeof(struct hfi_packet) + kv_pairs_offset));
 	if (*pkt_kv_pairs_counter_idx == 0) {
@@ -245,7 +261,7 @@ int hfi_append_packet_with_kv_pairs(struct hfi_cmd_buff_hdl *cmd_buf_hdl,
 		value_size = ((*key & 0xFF000000) >> 24) * 4; // convert dwords to bytes
 		if (!kv_pairs[i].value_ptr) {
 			hfi_pk_printf(HFI_PACKER,
-				"%s: value ptr is null for key: %u\n", __func__, kv_pairs->key);
+				"%s: value ptr is null for key: %u\n", __func__, kv_pairs[i].key);
 			return -HFI_ERROR;
 		}
 		memcpy(value_ptr, kv_pairs[i].value_ptr, value_size);

@@ -48,7 +48,7 @@
  * enum dsi_display_selection_type - enumerates DSI display selection types
  * @DSI_PRIMARY:    primary DSI display selected from module parameter
  * @DSI_SECONDARY:  Secondary DSI display selected from module parameter
- * @MAX_DSI_ACTIVE_DISPLAY: Maximum acive displays that can be selected
+ * @MAX_DSI_ACTIVE_DISPLAY: Maximum active displays that can be selected
  */
 enum dsi_display_selection_type {
 	DSI_PRIMARY = 0,
@@ -723,7 +723,7 @@ int dsi_dispaly_static_frame(struct dsi_display *display, bool enable);
 /**
  * dsi_display_get_drm_panel() - get drm_panel from display.
  * @display:            Handle to display.
- * Get drm_panel which was inclued in dsi_display's dsi_panel.
+ * Get drm_panel which was included in dsi_display's dsi_panel.
  *
  * Return: drm_panel/NULL.
  */
