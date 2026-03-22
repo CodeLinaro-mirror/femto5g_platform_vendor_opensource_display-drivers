@@ -166,6 +166,9 @@ struct dp_mgr_hfi_priv {
 	void *hdcp2x_ctx;
 	struct hfi_shared_addr_map *hdcp2x_req_map;
 	struct hfi_shared_addr_map *hdcp2x_resp_map;
+
+	/* TUI state */
+	bool tui_active;
 };
 
 int dp_mgr_hfi_send_audio_config(struct dp_client *client,

@@ -817,6 +817,11 @@ int dp_mgr_hfi_hpd_configure_cb(void *data)
 
 	_aux_switch_enable(hfi_priv, true);
 
+	if (hfi_priv->tui_active) {
+		DP_INFO("TUI is active\n");
+		return 0;
+	}
+
 	if (hfi_priv->configured)
 		goto end;
 
@@ -891,6 +896,11 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 	if (!hfi_priv) {
 		DP_ERR("Invalid hfi_priv data\n");
 		return -EINVAL;
+	}
+
+	if (hfi_priv->tui_active) {
+		DP_INFO("TUI is active\n");
+		return 0;
 	}
 
 	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
@@ -985,6 +995,12 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 			return rc;
 	} else if (!hfi_priv->connected && hpd_state) {
 		_aux_switch_enable(hfi_priv, true);
+	}
+
+	/* allow HPD LOW when TUI is active, ignore all other attention messages */
+	if (hpd_state && hfi_priv->tui_active) {
+		DP_INFO("TUI is active\n");
+		return 0;
 	}
 
 	_hfi_update_config(hfi_priv, &config);
@@ -2540,6 +2556,65 @@ end:
 	return rc;
 }
 
+static int dp_mgr_hfi_pre_hw_release(void *data)
+{
+	struct dp_mgr_hfi_priv *mgr;
+	struct dp_client *client = data;
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
+
+	if (!client) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	mgr = container_of(client, struct dp_mgr_hfi_priv, client);
+
+	if (!mgr) {
+		DP_ERR("invalid mgr %p\n", mgr);
+		return -EINVAL;
+	}
+
+	mgr->tui_active = true;
+
+	DP_INFO("Successfully entered TUI mode\n");
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT);
+	return 0;
+}
+
+static int dp_mgr_hfi_post_hw_acquire(void *data)
+{
+	struct dp_mgr_hfi_priv *mgr;
+	struct dp_client *client = data;
+	int rc = 0;
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY);
+
+	if (!client) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	mgr = container_of(client, struct dp_mgr_hfi_priv, client);
+
+	if (!mgr) {
+		DP_ERR("invalid mgr %p\n", mgr);
+		return -EINVAL;
+	}
+
+	mgr->tui_active = false;
+
+	DP_INFO("Successfully exited TUI mode\n");
+
+	rc = dp_mgr_hfi_hpd_attention_cb(mgr);
+	if (rc)
+		return rc;
+
+	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT);
+	return rc;
+}
+
 static int dp_mgr_hfi_bind(struct device *dev, struct device *master,
 		struct dp_client *client)
 {
@@ -2547,6 +2622,10 @@ static int dp_mgr_hfi_bind(struct device *dev, struct device *master,
 	struct dp_mgr_hfi_priv *hfi_priv;
 	struct drm_device *drm;
 	struct platform_device *pdev = to_platform_device(dev);
+	struct msm_vm_ops vm_event_ops = {
+		.vm_pre_hw_release = dp_mgr_hfi_pre_hw_release,
+		.vm_post_hw_acquire = dp_mgr_hfi_post_hw_acquire,
+	};
 
 	if (!dev || !pdev || !master) {
 		DP_ERR("invalid param(s), dev %pK, pdev %pK, master %pK\n",
@@ -2566,6 +2645,10 @@ static int dp_mgr_hfi_bind(struct device *dev, struct device *master,
 
 	hfi_priv->client.drm_dev = drm;
 	hfi_priv->priv = drm->dev_private;
+	rc = msm_register_vm_event(master, dev, &vm_event_ops, (void *)&hfi_priv->client);
+
+	if (rc)
+		DP_ERR("Failed to register VM event callbacks:%d\n", rc);
 end:
 	return rc;
 }
@@ -2593,6 +2676,9 @@ static void dp_mgr_hfi_unbind(struct device *dev, struct device *master,
 		sde_edid_deinit((void **)&hfi_priv->edid_ctrl);
 		hfi_priv->edid_ctrl = NULL;
 	}
+
+	/* Unregister VM event callbacks */
+	msm_unregister_vm_event(master, dev);
 
 	/* Clean up any remaining shared address maps */
 	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
