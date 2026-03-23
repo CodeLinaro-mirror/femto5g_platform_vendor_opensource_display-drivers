@@ -5240,7 +5240,8 @@ static int dsi_display_dfps_update(struct dsi_display *display,
 	dsi_panel_get_dfps_caps(display->panel, &dfps_caps);
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 	if (!dfps_caps.dfps_support && !dyn_clk_caps->maintain_const_fps &&
-		!emsync_switch_support) {
+		!emsync_switch_support &&
+		!(dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_VID)) {
 		DSI_ERR("dfps or constant fps or emsync switch not supported\n");
 		return -ENOTSUPP;
 	}
@@ -5524,7 +5525,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 
 	if (mode->dsi_mode_flags &
-			(DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_VRR)) {
+			(DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_VRR
+			| DSI_MODE_FLAG_DMS_VID)) {
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 
@@ -7780,16 +7782,80 @@ static void _dsi_display_populate_esync_caps(struct dsi_display *display,
 			sizeof(struct esync_params));
 }
 
+static u64 dsi_display_caculate_dsi_clock(struct dsi_display *dsi_display,
+	struct dsi_display_mode *dsi_mode)
+{
+	struct dsi_mode_info *timing;
+	u64 bit_rate;
+	u64 bit_rate_per_lane;
+	u64 h_total;
+	u64 v_total;
+
+	if (!dsi_display || !dsi_display->panel || !dsi_mode) {
+		DSI_ERR("invalid parameters\n");
+		return 0;
+	}
+	timing = &dsi_mode->timing;
+
+	h_total = dsi_h_total_dce(timing);
+	v_total = DSI_V_TOTAL(timing);
+	bit_rate = h_total * v_total * timing->refresh_rate * dsi_mode->bpp;
+	bit_rate_per_lane =
+		do_div(bit_rate, dsi_display->panel->host_config.num_data_lanes);
+	return bit_rate_per_lane;
+}
+
+static int _dsi_display_check_dms_caps(struct dsi_display *display,
+	struct dsi_display_mode *display_mode,
+	struct dsi_dms_vid_caps *dms_vid_caps,
+	struct dsi_display_mode *display_mode_expected,
+	u64 dsi_clock_expected)
+{
+	int i;
+
+	if (!display || !display_mode || !dms_vid_caps || !display_mode_expected) {
+		DSI_ERR("invalid parameters\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * When qcom,dms-vid-maintain-const-clk is set, it needs the
+	 * same dsi clock and phy timing array in each timing node.
+	 */
+	if (dms_vid_caps->type && dms_vid_caps->maintain_const_clk) {
+		if (dsi_display_caculate_dsi_clock(display, display_mode) !=
+				dsi_clock_expected) {
+			DSI_ERR("qcom,dms-vid-maintain-const-clk needs same dsi clock\n");
+			return -EINVAL;
+		}
+		if (display_mode_expected->priv_info->phy_timing_len !=
+				display_mode->priv_info->phy_timing_len) {
+			DSI_ERR("qcom,dms-vid-maintain-const-clk needs same phy\n");
+			return -EINVAL;
+		}
+		for (i = 0; i < display_mode->priv_info->phy_timing_len; ++i) {
+			if (display_mode_expected->priv_info->phy_timing_val[i] !=
+					display_mode->priv_info->phy_timing_val[i]) {
+				DSI_ERR("qcom,dms-vid-maintain-const-clk needs same phy\n");
+				return -EINVAL;
+			}
+		}
+	}
+
+	return 0;
+}
+
 int dsi_display_get_modes_helper(struct dsi_display *display,
 	struct dsi_display_ctrl *ctrl, u32 timing_mode_count,
 	struct dsi_dfps_capabilities dfps_caps, struct dsi_qsync_capabilities *qsync_caps,
 	struct dsi_dyn_clk_caps *dyn_clk_caps, struct dsi_avr_capabilities *avr_caps,
-	struct dsi_esync_capabilities *esync_caps)
+	struct dsi_esync_capabilities *esync_caps, struct dsi_dms_vid_caps *dms_vid_caps)
 {
 	int dsc_modes = 0, nondsc_modes = 0, rc = 0, i, start, end;
 	u32 num_dfps_rates, mode_idx, sublinks_count, array_idx = 0;
 	bool is_split_link, support_cmd_mode, support_video_mode;
 	struct dsi_host_common_cfg *host = &display->panel->host_config;
+	u64 dsi_clock;
 
 	for (mode_idx = 0; mode_idx < timing_mode_count; mode_idx++) {
 		struct dsi_display_mode display_mode;
@@ -7892,6 +7958,8 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			display_mode.pixel_clk_khz *= display->ctrl_count;
 		}
 
+		dsi_clock = dsi_display_caculate_dsi_clock(display, &display->modes[0]);
+
 		start = array_idx;
 		for (i = 0; i < num_dfps_rates; i++) {
 			struct dsi_display_mode *sub_mode =
@@ -7978,6 +8046,13 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			display->modes[start].is_preferred = true;
 		}
 
+		rc = _dsi_display_check_dms_caps(display, &display_mode, dms_vid_caps,
+			&display->modes[0], dsi_clock);
+		if (rc) {
+			DSI_ERR("invalid dynamic mode setting configuration\n");
+			return rc;
+		}
+
 		bit_clk_list = &display_mode.priv_info->bit_clk_list;
 		if (support_video_mode && dfps_caps.dfps_support) {
 			if (dyn_clk_caps->dyn_clk_support) {
@@ -8007,6 +8082,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 	struct dsi_qsync_capabilities *qsync_caps;
 	struct dsi_avr_capabilities *avr_caps;
 	struct dsi_esync_capabilities *esync_caps;
+	struct dsi_dms_vid_caps *dms_vid_caps;
 
 	if (!display || !out_modes) {
 		DSI_ERR("Invalid params\n");
@@ -8041,6 +8117,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 	avr_caps = &(display->panel->avr_caps);
 	esync_caps = &(display->panel->esync_caps);
+	dms_vid_caps = &(display->panel->dms_vid_caps);
 
 	timing_mode_count = display->panel->num_timing_nodes;
 
@@ -8050,7 +8127,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 		display->cmdline_timing = NO_OVERRIDE;
 
 	rc = dsi_display_get_modes_helper(display, ctrl, timing_mode_count,
-			dfps_caps, qsync_caps, dyn_clk_caps, avr_caps, esync_caps);
+			dfps_caps, qsync_caps, dyn_clk_caps, avr_caps, esync_caps, dms_vid_caps);
 	if (rc)
 		goto error;
 

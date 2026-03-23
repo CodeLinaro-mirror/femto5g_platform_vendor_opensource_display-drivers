@@ -99,6 +99,8 @@ static void msm_parse_mode_priv_info(const struct msm_display_mode *msm_mode,
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_NONDSC_BPP_SWITCH;
 	if (msm_is_mode_seamless_emsync_fps_switch(msm_mode))
 		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_EMSYNC_FPS_SWITCH;
+	if (msm_is_mode_seamless_dms_vid(msm_mode))
+		dsi_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS_VID;
 }
 
 void dsi_convert_to_drm_mode(const struct dsi_display_mode *dsi_mode,
@@ -176,6 +178,8 @@ static void dsi_convert_to_msm_mode(const struct dsi_display_mode *dsi_mode,
 		msm_mode->private_flags |= MSM_MODE_FLAG_NONDSC_BPP_SWITCH;
 	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)
 		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_EMSYNC_FPS_SWITCH;
+	if (dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_VID)
+		msm_mode->private_flags |= MSM_MODE_FLAG_SEAMLESS_DMS_VID;
 }
 
 #if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
@@ -238,7 +242,8 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 
 	if (c_bridge->dsi_mode.dsi_mode_flags &
 		(DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
-		 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) {
+		 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH |
+		 DSI_MODE_FLAG_DMS_VID)) {
 		DSI_DEBUG("[%d] seamless pre-enable\n", c_bridge->id);
 		if ((c_bridge->dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) &&
 			(disp_op == MSM_DISP_OP_HFI)) {
@@ -290,7 +295,8 @@ static void dsi_bridge_enable(struct drm_bridge *bridge)
 
 	if (c_bridge->dsi_mode.dsi_mode_flags &
 			(DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
-			 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) {
+			 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH |
+			 DSI_MODE_FLAG_DMS_VID)) {
 		DSI_DEBUG("[%d] seamless enable\n", c_bridge->id);
 		return;
 	}
@@ -488,9 +494,19 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) &&
 		(!crtc_state->active_changed ||
 		 display->is_cont_splash_enabled)) {
-			/* DMS should be enabled on cmd mode panel only. */
+			/* DMS on cmd and video mode use different flag. */
 			if (display->panel->panel_mode & DSI_OP_CMD_MODE)
 				adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS;
+			else if (display->panel->panel_mode & DSI_OP_VIDEO_MODE)
+				adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS_VID;
+
+			if ((adj_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_VID) &&
+					(cur_dsi_mode.timing.refresh_rate !=
+					adj_mode->timing.refresh_rate)) {
+				DSI_ERR("[%s] DMS_VID doesn't support framerate change\n",
+					c_bridge->display->name);
+				return -EINVAL;
+			}
 
 		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2,
 			adj_mode->timing.h_active,
@@ -611,6 +627,7 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 	/* Reject seamless transition when active changed */
 	if (crtc_state->active_changed &&
 		((dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) ||
+		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DMS_VID) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH) ||
 		(dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_POMS_TO_VID) ||
@@ -1485,7 +1502,7 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 
 	pf_time_in_us = sde_encoder_get_programmed_fetch_time(encoder);
 
-	if (adj_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) {
+	if (adj_mode.dsi_mode_flags & (DSI_MODE_FLAG_VRR | DSI_MODE_FLAG_DMS_VID)) {
 		m_ctrl = &display->ctrl[display->clk_master_idx];
 		ctrl_version = m_ctrl->ctrl->version;
 		rc = dsi_ctrl_timing_db_update(m_ctrl->ctrl, false, pf_time_in_us);
@@ -1533,6 +1550,7 @@ int dsi_conn_post_kickoff(struct drm_connector *connector,
 		}
 
 		c_bridge->dsi_mode.dsi_mode_flags &= ~DSI_MODE_FLAG_VRR;
+		c_bridge->dsi_mode.dsi_mode_flags &= ~DSI_MODE_FLAG_DMS_VID;
 	}
 
 	/* ensure dynamic clk switch flag is reset */
