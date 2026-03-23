@@ -1704,7 +1704,7 @@ static void _sde_encoder_update_ppb_size(struct drm_encoder *drm_enc)
 	int i;
 	enum msm_disp_op disp_op;
 
-	if (!drm_enc) {
+	if (!drm_enc || !drm_enc->crtc || !drm_enc->crtc->state) {
 		SDE_ERROR("invalid encoder parameter\n");
 		return;
 	}
@@ -4205,7 +4205,8 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 		sde_encoder_control_te(sde_enc, true);
 
 update_ppb:
-	if (!sde_encoder_in_cont_splash(drm_enc))
+	/* PPB Size updates only needed for HWIO display operations */
+	if (IS_DISP_OP_HWIO(disp_op) && !sde_encoder_in_cont_splash(drm_enc))
 		_sde_encoder_update_ppb_size(drm_enc);
 
 	memset(&sde_enc->prv_conn_roi, 0, sizeof(sde_enc->prv_conn_roi));
