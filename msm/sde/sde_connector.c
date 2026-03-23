@@ -1598,6 +1598,14 @@ int sde_connector_pre_kickoff(struct drm_connector *connector)
 		rc = sde_connector_update_cmd(connector, BIT(DSI_CMD_SET_FPS_SWITCH), true);
 		if (rc)
 			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
+	} else if (msm_is_mode_seamless_dms_vid(&c_state->msm_mode) &&
+			c_conn->ops.check_cmd_defined(c_conn->display,
+			DSI_CMD_SET_TIMING_SWITCH) &&
+			!c_conn->vrr_caps.video_psr_support) {
+		rc = sde_connector_update_cmd(connector, BIT(DSI_CMD_SET_TIMING_SWITCH),
+				true);
+		if (rc)
+			SDE_EVT32(connector->base.id, SDE_EVTLOG_ERROR);
 	}
 
 	disp_op = sde_connector_get_disp_op(connector);
