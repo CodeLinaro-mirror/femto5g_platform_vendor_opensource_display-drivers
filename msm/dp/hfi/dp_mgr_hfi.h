@@ -133,7 +133,6 @@ struct dp_mgr_hfi_priv {
 	bool soft_unplug;
 
 	struct dp_audio *audio;
-	struct dp_mode_override mode_ovr;
 	u8 min_enc_level;
 
 	u32 active_streams;

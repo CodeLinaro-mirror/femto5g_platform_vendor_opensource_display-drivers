@@ -1420,18 +1420,12 @@ static int dp_debug_client_hfi_write_edid_modes(struct dp_debug_client *client,
 	struct dp_debug_client_hfi_priv *priv;
 	struct dp_mgr_hfi_priv *mgr_priv;
 	int hdisplay = 0, vdisplay = 0, vrefresh = 0, aspect_ratio = 0;
+	struct dp_hfi *hfi = NULL;
 
 	if (!client || !buf)
 		return -EINVAL;
 
 	priv = client->priv;
-
-	/* Parse input */
-	if (sscanf(buf, "%d %d %d %d", &hdisplay, &vdisplay, &vrefresh, &aspect_ratio) != 4)
-		goto clear;
-
-	if (!hdisplay || !vdisplay || !vrefresh)
-		goto clear;
 
 	/* Get dp_mgr_hfi_priv */
 	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
@@ -1440,23 +1434,29 @@ static int dp_debug_client_hfi_write_edid_modes(struct dp_debug_client *client,
 		return -ENODEV;
 	}
 
-	/* Set mode override */
-	mgr_priv->mode_ovr.enabled = true;
-	mgr_priv->mode_ovr.h_active = hdisplay;
-	mgr_priv->mode_ovr.v_active = vdisplay;
-	mgr_priv->mode_ovr.refresh_rate = vrefresh;
-	mgr_priv->mode_ovr.aspect_ratio = aspect_ratio;
+	hfi = mgr_priv->hfi[DP_STREAM_0];
 
-	DP_DEBUG("Set mode override: %dx%d@%dHz, aspect=%d\n",
-		hdisplay, vdisplay, vrefresh, aspect_ratio);
+	/* Parse input */
+	if (sscanf(buf, "%d %d %d %d", &hdisplay, &vdisplay, &vrefresh, &aspect_ratio) != 4)
+		goto clear;
+
+	if (!hdisplay || !vdisplay || !vrefresh)
+		goto clear;
+
+	/* Set mode override */
+	hfi->mode_ovr.enabled = true;
+	hfi->mode_ovr.h_active = hdisplay;
+	hfi->mode_ovr.v_active = vdisplay;
+	hfi->mode_ovr.refresh_rate = vrefresh;
+	hfi->mode_ovr.aspect_ratio = aspect_ratio;
+
+	DP_DEBUG("Set mode override: %dx%d@%dHz, aspect=%d\n", hdisplay, vdisplay, vrefresh,
+			aspect_ratio);
 	return count;
 
 clear:
 	DP_DEBUG("clearing debug modes\n");
-
-	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
-	if (mgr_priv)
-		memset(&mgr_priv->mode_ovr, 0, sizeof(mgr_priv->mode_ovr));
+	memset(&hfi->mode_ovr, 0, sizeof(hfi->mode_ovr));
 
 	return count;
 }
@@ -1470,6 +1470,8 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 	struct drm_connector *connector;
 	int con_id = 0, offset = 0, debug_en = 0;
 	int hdisplay, vdisplay, vrefresh, aspect_ratio;
+	struct dp_hfi *hfi;
+	struct dp_mgr_hfi_priv *mgr_priv;
 
 	if (!client || !buf)
 		return -EINVAL;
@@ -1484,11 +1486,18 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 	if (!dp_drv || !dp_drv->client || !dp_drv->client->base_connector)
 		return -ENODEV;
 
+	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
+	if (!mgr_priv) {
+		DP_ERR("Could not access dp_mgr_hfi_priv for MST override\n");
+		return -ENODEV;
+	}
+
+	hfi = mgr_priv->hfi[DP_STREAM_0];
+
 	while (sscanf(buf, "%d %d %d %d %d %d%n",
 		      &debug_en, &con_id,
 		      &hdisplay, &vdisplay, &vrefresh, &aspect_ratio,
 		      &offset) == 6) {
-		struct dp_mgr_hfi_priv *mgr_priv;
 
 		DP_DEBUG("MST EDID modes: debug_en=%d, con_id=%d, %dx%d@%dHz, aspect=%d\n",
 			 debug_en, con_id, hdisplay, vdisplay, vrefresh, aspect_ratio);
@@ -1501,26 +1510,15 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 			continue;
 		}
 
-		/* For now we use the same global override (mgr_priv->mode_ovr)
-		 * for both SST and MST. If needed, this can be extended to be
-		 * per-MST-connector in dp_mgr_hfi_priv.
-		 */
-		mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
-		if (!mgr_priv) {
-			DP_ERR("Could not access dp_mgr_hfi_priv for MST override\n");
-			drm_connector_put(connector);
-			return -ENODEV;
-		}
-
 		if (!debug_en || !hdisplay || !vdisplay || !vrefresh) {
 			DP_DEBUG("clearing MST override (con_id=%d)\n", con_id);
-			memset(&mgr_priv->mode_ovr, 0, sizeof(mgr_priv->mode_ovr));
+			memset(&hfi->mode_ovr, 0, sizeof(hfi->mode_ovr));
 		} else {
-			mgr_priv->mode_ovr.enabled = true;
-			mgr_priv->mode_ovr.h_active = hdisplay;
-			mgr_priv->mode_ovr.v_active = vdisplay;
-			mgr_priv->mode_ovr.refresh_rate = vrefresh;
-			mgr_priv->mode_ovr.aspect_ratio = aspect_ratio;
+			hfi->mode_ovr.enabled = true;
+			hfi->mode_ovr.h_active = hdisplay;
+			hfi->mode_ovr.v_active = vdisplay;
+			hfi->mode_ovr.refresh_rate = vrefresh;
+			hfi->mode_ovr.aspect_ratio = aspect_ratio;
 
 			DP_DEBUG("Set MST override: %dx%d@%dHz, aspect=%d (con_id=%d)\n",
 				 hdisplay, vdisplay, vrefresh, aspect_ratio, con_id);
