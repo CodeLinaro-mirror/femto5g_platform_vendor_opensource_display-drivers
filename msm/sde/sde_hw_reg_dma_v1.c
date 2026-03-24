@@ -3190,12 +3190,14 @@ static int write_kick_off_v4(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 				reg_dma_intr_5_clear_offset[dpu_idx][ctl_id][q_id],
 				0xF0007);
 
+#ifdef ENABLE_LUTDMA_INTERRUPTS
 		SDE_REG_WRITE_CPU(&hw,
 				reg_dma_intr_0_enable_offset[dpu_idx][ctl_id][q_id],
 				0x7F);
 		SDE_REG_WRITE_CPU(&hw,
 				reg_dma_intr_5_enable_offset[dpu_idx][ctl_id][q_id],
 				0xF0007);
+#endif
 		/* DB LUTDMA use SW trigger while SB LUTDMA uses DSPP_SB
 		 * flush as its trigger event.
 		 */
