@@ -1446,30 +1446,6 @@ static void virtio_gpu_resource_id_get(uint32_t *resid)
 	*resid = handle + 1;
 }
 
-static void virtio_check_framebuffer_contents(struct dma_buf *dma_buf_dump)
-{
-	int ret = 0;
-	char *ptr;
-	struct iosys_map map = {0};
-
-	dma_buf_begin_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
-
-	ret =  dma_buf_vmap(dma_buf_dump, &map);
-	if (ret) {
-		DRM_DEBUG_KMS(" virtio : mmap failed for dma_buf_vmap\n");
-	} else {
-		ptr = (char *)map.vaddr;
-		if (!ptr)
-			DRM_DEBUG_KMS(" virtio : no memry map for da buffer\n");
-		else
-			DUMP_FRAME_CONTENT(0, DBG_BUF_COUNT, ptr);
-	}
-
-	DRM_DEBUG_KMS("virtio : framebuffer dma_buf_vmap done %p\n", map.vaddr);
-	dma_buf_vunmap(dma_buf_dump, &map);
-	dma_buf_end_cpu_access(dma_buf_dump, DMA_BIDIRECTIONAL);
-}
-
 static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 		struct msm_hyp_framebuffer *fb)
 {
@@ -1511,8 +1487,6 @@ static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 
 		if (fb->base.obj[idx]->import_attach) {
 			dma_bufs[idx] = fb->base.obj[idx]->import_attach->dmabuf;
-			if (!fb_priv->secure)
-				virtio_check_framebuffer_contents(dma_bufs[idx]);
 			get_dma_buf(dma_bufs[idx]);
 		} else if (fb->base.obj[idx]->dma_buf) {
 			dma_bufs[idx] = fb->base.obj[idx]->dma_buf;
@@ -2078,6 +2052,7 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 {
 	int rc = 0;
 	int i = 0;
+	bool drm_iter_initialized = false;
 	struct drm_device *dev;
 	struct drm_connector *connector;
 	struct msm_hyp_connector *c_conn;
@@ -2089,38 +2064,39 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 
 	if (scanout >= VIRTIO_GPU_MAX_SCANOUTS) {
 		pr_err("HPDLOG: Wrong Scanout ID\n");
-		goto error;
+		goto exit;
 	}
 
 	if (!kms) {
 		pr_err("HPDLOG: invalid kms\n");
 		rc = -1;
-		goto error;
+		goto exit;
 	}
 
 	dev = kms->dev;
 	if (!dev) {
 		pr_err("HPDLOG: invalid dev\n");
 		rc = -1;
-		goto error;
+		goto exit;
 	}
 
 	/* Get connector information */
 	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_iter_initialized = true;
 	drm_for_each_connector_iter(
 		connector, &conn_iter) {
 		c_conn = to_msm_hyp_connector(connector);
 		if (!c_conn) {
 			pr_err("HPDLOG: No msm hyp connector\n");
 			rc = -1;
-			goto error;
+			goto exit;
 		}
 
 		priv = container_of(c_conn->info, struct virtio_connector_info_priv, base);
 		if (!priv) {
 			pr_err("HPDLOG:NULL priv\n");
 			rc = -1;
-			goto error;
+			goto exit;
 		}
 
 		if (priv->scanout != scanout) {
@@ -2146,12 +2122,12 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 			if (rc) {
 				pr_err("HPDLOG: get_display_info_ext failed %d\n",
 						scanout);
-				goto error;
+				goto exit;
 			}
 
 			rc = virtio_gpu_cmd_get_scanout_attributes(kms, scanout);
 			if (rc) {
-				goto error;
+				goto exit;
 			}
 
 			attr = &kms->outputs[scanout].attr;
@@ -2164,7 +2140,7 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 				kfree(priv);
 				pr_err("HPDLOG: number of modes is 0\n");
 				rc = -1;
-				goto error;
+				goto exit;
 			}
 
 			if (kms->outputs[scanout].num_modes > 0) {
@@ -2180,7 +2156,7 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 					pr_err("HPDLOG: Mode allocation failed\n");
 					kfree(priv);
 					rc = -1;
-					goto error;
+					goto exit;
 				}
 			}
 
@@ -2226,9 +2202,12 @@ static void virtio_kms_service_hpd(struct virtio_kms *kms, uint32_t scanout, uin
 		}
 	}
 
-error:
+exit:
+	if (drm_iter_initialized)
+		drm_connector_list_iter_end(&conn_iter);
+
 	if (rc)
-		 pr_err("HPD event handle failed %d\n", scanout);
+		pr_err("HPD event handle failed %d\n", scanout);
 }
 
 static void virtio_kms_vsync(struct virtio_kms *kms, uint32_t scanout)

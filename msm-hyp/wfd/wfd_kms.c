@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2017-2021, The Linux Foundation. All rights reserved.
- * Copyright (c) 2022-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 /* Copyright (C) 2014 Red Hat
@@ -271,7 +271,7 @@ static const struct {
 	{ DRM_FORMAT_XRGB4444, WFD_FORMAT_RGBX4444, WFD_FORMAT_RGBX4444 },
 	{ DRM_FORMAT_ARGB1555, WFD_FORMAT_RGBA5551, WFD_FORMAT_RGBA5551 },
 	{ DRM_FORMAT_XRGB1555, WFD_FORMAT_RGBX5551, WFD_FORMAT_RGBX5551 },
-	{ DRM_FORMAT_RGB565, WFD_FORMAT_RGB565, WFD_FORMAT_RGB565 },
+	{ DRM_FORMAT_RGB565, WFD_FORMAT_BGR565, WFD_FORMAT_BGR565 },
 	{ DRM_FORMAT_RGB888, WFD_FORMAT_RGB888, WFD_FORMAT_RGB888 },
 	{ DRM_FORMAT_ARGB8888, WFD_FORMAT_RGBA8888, WFD_FORMAT_RGBA8888 },
 	{ DRM_FORMAT_XRGB8888, WFD_FORMAT_RGBX8888, WFD_FORMAT_RGBX8888 },
@@ -288,7 +288,7 @@ static const struct {
 	{ DRM_FORMAT_NV12, WFD_FORMAT_NV12_QC_TP10, WFD_FORMAT_NV12_QC_TP10 },
 	{ DRM_FORMAT_ABGR8888, WFD_FORMAT_BGRA8888, WFD_FORMAT_RGBA8888 },
 	{ DRM_FORMAT_XBGR8888, WFD_FORMAT_BGRX8888, WFD_FORMAT_RGBA8888 },
-	{ DRM_FORMAT_BGR565, WFD_FORMAT_BGR565, WFD_FORMAT_RGB565 },
+	{ DRM_FORMAT_BGR565, WFD_FORMAT_RGB565, WFD_FORMAT_RGB565 },
 	{ DRM_FORMAT_ARGB2101010, WFD_FORMAT_RGBA1010102, WFD_FORMAT_RGBA1010102 },
 	{ DRM_FORMAT_XRGB2101010, WFD_FORMAT_RGBX1010102, WFD_FORMAT_RGBX1010102 },
 	{ DRM_FORMAT_ABGR2101010, WFD_FORMAT_BGRA1010102, WFD_FORMAT_RGBA1010102 },
@@ -487,9 +487,12 @@ static void wfd_kms_handle_hpd_event(union event_info *info, void *params)
 								kms->port_ids[j],
 								disp_event->event_infos.hotplug_info.status,
 								connector);
-						if (ret)
+						if (ret) {
+							drm_connector_list_iter_end(&conn_iter);
 							return;
+						}
 					}
+					drm_connector_list_iter_end(&conn_iter);
 				}
 			}
 			return;
@@ -2028,6 +2031,7 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 
 			if (_wfd_kms_create_image(fb)) {
 				pr_err("failed to create wfd image\n");
+				priv->committed = false;
 				return;
 			}
 
@@ -2051,6 +2055,7 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 
 			if (!fb_priv->wfd_source) {
 				pr_err("failed to create wfd source\n");
+				priv->committed = false;
 				return;
 			}
 		}
@@ -2064,28 +2069,22 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 	}
 
 	if (_wfd_kms_plane_is_rect_changed(
-		old_state, plane->state, true)) {
+		old_state, plane->state, true) || !priv->committed) {
 		src_rect[0] = plane->state->src_x >> 16;
 		src_rect[1] = plane->state->src_y >> 16;
 		src_rect[2] = plane->state->src_w >> 16;
 		src_rect[3] = plane->state->src_h >> 16;
 
-		fb = to_msm_hyp_fb(plane->state->fb);
-		if (fb != NULL) {
-			/* rect dimension must not be greater than source image dimension */
-			if ((fb->base.width >= src_rect[2]) && (fb->base.height >= src_rect[3])) {
-				wfdSetPipelineAttribiv_User(
-					priv->wfd_device,
-					priv->wfd_pipeline,
-					WFD_PIPELINE_SOURCE_RECTANGLE,
-					4,
-					src_rect);
-			}
-		}
+		wfdSetPipelineAttribiv_User(
+			priv->wfd_device,
+			priv->wfd_pipeline,
+			WFD_PIPELINE_SOURCE_RECTANGLE,
+			4,
+			src_rect);
 	}
 
 	if (_wfd_kms_plane_is_rect_changed(
-		old_state, plane->state, false)) {
+		old_state, plane->state, false) || !priv->committed) {
 		dst_rect[0] = plane->state->crtc_x;
 		dst_rect[1] = plane->state->crtc_y;
 		dst_rect[2] = plane->state->crtc_w;
@@ -2128,7 +2127,7 @@ static void wfd_kms_plane_atomic_update(struct drm_plane *plane,
 	}
 
 	if (_wfd_kms_plane_is_csc_matrix_changed(
-		old_pstate, new_pstate, &color_space)) {
+		old_pstate, new_pstate, &color_space) || !priv->committed) {
 		wfdSetPipelineAttribi_User(
 			priv->wfd_device,
 			priv->wfd_pipeline,
