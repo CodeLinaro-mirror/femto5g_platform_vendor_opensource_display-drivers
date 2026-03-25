@@ -2130,13 +2130,64 @@ static int msm_pm_resume(struct device *dev)
 }
 #endif /* CONFIG_PM_SLEEP */
 
+#if IS_ENABLED(CONFIG_HIBERNATE)
+static int msm_pm_freeze(struct device *dev)
+{
+	struct drm_device *ddev;
+	struct msm_drm_private *priv;
+	struct msm_kms *kms;
+
+	if (!dev)
+		return -EINVAL;
+
+	ddev = dev_get_drvdata(dev);
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
+	kms = priv->kms;
+
+	if (kms && kms->funcs && kms->funcs->pm_freeze)
+		return kms->funcs->pm_freeze(dev);
+
+	return 0;
+}
+
+static int msm_pm_restore(struct device *dev)
+{
+	struct drm_device *ddev;
+	struct msm_drm_private *priv;
+	struct msm_kms *kms;
+
+	if (!dev)
+		return -EINVAL;
+
+	ddev = dev_get_drvdata(dev);
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
+	kms = priv->kms;
+
+	if (kms && kms->funcs && kms->funcs->pm_restore)
+		return kms->funcs->pm_restore(dev);
+
+	return 0;
+}
+#endif /* CONFIG_HIBERNATE */
+
 #if IS_ENABLED(CONFIG_PM)
 static int msm_runtime_suspend(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_drm_private *priv = ddev->dev_private;
+	struct msm_drm_private *priv = NULL;
 
 	DBG("");
+
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
 
 	if (priv->mdss)
 		msm_mdss_disable(priv->mdss);
@@ -2149,10 +2200,15 @@ static int msm_runtime_suspend(struct device *dev)
 static int msm_runtime_resume(struct device *dev)
 {
 	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_drm_private *priv = ddev->dev_private;
+	struct msm_drm_private *priv = NULL;
 	int ret = 0;
 
 	DBG("");
+
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
 
 	if (priv->mdss)
 		ret = msm_mdss_enable(priv->mdss);
@@ -2164,7 +2220,14 @@ static int msm_runtime_resume(struct device *dev)
 #endif /* CONFIG_PM */
 
 static const struct dev_pm_ops msm_pm_ops = {
-	SET_SYSTEM_SLEEP_PM_OPS(msm_pm_suspend, msm_pm_resume)
+#ifdef CONFIG_PM_SLEEP
+	.suspend = msm_pm_suspend,
+	.resume = msm_pm_resume,
+#endif /* CONFIG_PM_SLEEP */
+#if IS_ENABLED(CONFIG_HIBERNATE)
+	.freeze = msm_pm_freeze,
+	.restore = msm_pm_restore,
+#endif /* CONFIG_HIBERNATE */
 	SET_RUNTIME_PM_OPS(msm_runtime_suspend, msm_runtime_resume, NULL)
 };
 

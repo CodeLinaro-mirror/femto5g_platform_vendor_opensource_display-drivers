@@ -405,6 +405,7 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 			return -EINVAL;
 		}
 		llcc_scid = sc_cfg->llcc_scid;
+		SDE_EVT32(phfi->hfi_pipe_id, attr.cache_state, attr.cache_op_type, llcc_scid);
 		hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &llcc_scid, sizeof(u32));
 	}

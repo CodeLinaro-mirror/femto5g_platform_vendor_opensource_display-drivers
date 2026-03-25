@@ -98,6 +98,8 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 	struct drm_encoder *encoder;
 	struct drm_device *dev;
 	u32 pending_commit_count;
+	u32 lsr_mode;
+	bool avoid_frame_trigger = false;
 
 	if (!kms || !state)
 		return -EINVAL;
@@ -107,11 +109,18 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 	SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, SDE_EVTLOG_FUNC_ENTRY);
 	for_each_new_crtc_in_state(state, crtc, crtc_state, i) {
 		disp_id = hfi_crtc_get_display_id(crtc, crtc_state);
+		lsr_mode = sde_crtc_get_property(to_sde_crtc_state(crtc_state),
+			CRTC_PROP_LSR_MODE);
+
 		if (disp_id == U32_MAX) {
 			SDE_DEBUG("no valid display for crtc:%d\n", DRMID(crtc));
 			continue;
 		}
 		SDE_DEBUG("getting cmd buffer for disp_id:%d\n", disp_id);
+
+		/* Avoid Frame trigger command on LSR mode commits on primary display*/
+		if (lsr_mode == MSM_DISP_LSR_MODE_ENABLED)
+			avoid_frame_trigger = true;
 
 		cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id,
 				HFI_CMDBUF_TYPE_ATOMIC_COMMIT);
@@ -131,9 +140,10 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 			continue;
 		}
 
-		ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
-				HFI_COMMAND_DISPLAY_FRAME_TRIGGER, MSM_DRV_HFI_ID,
-				HFI_PAYLOAD_TYPE_U32, &payload, sizeof(u32), 0);
+		if (!avoid_frame_trigger)
+			ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+					HFI_COMMAND_DISPLAY_FRAME_TRIGGER, MSM_DRV_HFI_ID,
+					HFI_PAYLOAD_TYPE_U32, &payload, sizeof(u32), 0);
 
 		dev = crtc->dev;
 		list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
@@ -153,7 +163,7 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 		hfi_crtc_set_pending_enc_mask(to_sde_crtc(crtc), 0);
 	}
 
-	SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, SDE_EVTLOG_FUNC_EXIT);
+	SDE_EVT32(HFI_COMMAND_DISPLAY_FRAME_TRIGGER, avoid_frame_trigger, SDE_EVTLOG_FUNC_EXIT);
 	return ret;
 }
 
@@ -274,6 +284,12 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 	if (rc) {
 		SDE_ERROR("failed to wait for display off rc=%d\n", rc);
 		//return rc;
+	}
+
+	if (test_bit(SDE_FEATURE_LSR, sde_kms->catalog->features)) {
+		rc = lsr_fw_reset();
+		if (rc)
+			SDE_ERROR("LSR FW reset failed:%d\n", rc);
 	}
 
 	SDE_DEBUG("ssr start processing completed\n");
@@ -937,14 +953,121 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
 }
 
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
-static int hfi_kms_set_hw_fence_config(struct hfi_kms *hfi_kms)
+static int hfi_kms_hw_fence_init(struct hfi_kms *hfi_kms)
+{
+	struct synx_initialization_params synx_params = {0};
+	struct hfi_shared_addr_map addr_map = {0};
+	struct hfi_hwfence_data *hwfence_data;
+	int ret, tmp_ret;
+
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi hwfence data\n");
+		return -EINVAL;
+	}
+
+	/* Initialize hwfence data structure */
+	hwfence_data = kzalloc(sizeof(struct hfi_hwfence_data), GFP_KERNEL);
+	if (!hwfence_data)
+		return -ENOMEM;
+
+	/* Initialize synx to get physical address and size */
+	synx_params.name = "hfi-core-client";
+	synx_params.id = SYNX_CLIENT_HW_FENCE_DCP0_CTX0;
+	synx_params.ptr = &hwfence_data->mem_descriptor;
+
+	hwfence_data->hw_fence_handle = synx_initialize(&synx_params);
+	if (IS_ERR_OR_NULL(hwfence_data->hw_fence_handle)) {
+		SDE_INFO("synx_initialize failed %ld\n", PTR_ERR(hwfence_data->hw_fence_handle));
+		ret = -EINVAL;
+		goto error;
+	}
+
+	/* Initialize hwfence data */
+	hwfence_data->dma_context = dma_fence_context_alloc(1);
+	hwfence_data->max_displays = HFI_HWFENCE_MAX_DISPLAYS;
+	atomic_set(&hwfence_data->hw_fence_array_seqno, 0);
+	hwfence_data->client_id = SYNX_CLIENT_HW_FENCE_DCP0_CTX0;
+
+	/* Map memory for hwfence using SMMU via hfi_adapter exported API */
+	addr_map.alloc_info.size_allocated = hwfence_data->mem_descriptor.size;
+	addr_map.alloc_info.phy_addr = hwfence_data->mem_descriptor.dev_addr;
+	addr_map.alloc_info.cpu_va = hwfence_data->mem_descriptor.vaddr;
+
+	ret = hfi_adapter_map_iova_cached(&hfi_kms->hfi_client, &addr_map);
+	if (ret) {
+		SDE_ERROR("failed to map DCP hw fence memory ret:%d\n", ret);
+		tmp_ret = synx_uninitialize(hwfence_data->hw_fence_handle);
+		if (tmp_ret)
+			SDE_ERROR("synx_uninitialize failed: %d\n", tmp_ret);
+		goto error;
+	}
+
+	/* Store mapped IOVA address in hwfence data for DCP firmware access */
+	hwfence_data->mem_descriptor.vaddr = (void *)addr_map.alloc_info.mapped_iova;
+	hfi_kms->hfi_hw_fence_data = hwfence_data;
+
+	return 0;
+
+error:
+	kfree(hwfence_data);
+	return ret;
+}
+
+static int hfi_kms_hw_fence_deinit(struct hfi_kms *hfi_kms)
+{
+	struct hfi_hwfence_data *hwfence_data;
+	int ret = 0;
+
+	if (!hfi_kms) {
+		SDE_INFO("invalid hfi hwfence data\n");
+		return -EINVAL;
+	}
+
+	hwfence_data = hfi_kms->hfi_hw_fence_data;
+
+	/* Check if hw_fence_handle is valid before attempting to deinitialize */
+	if (!hwfence_data || IS_ERR_OR_NULL(hwfence_data->hw_fence_handle)) {
+		SDE_INFO("HW fence handle is invalid, skipping deinit\n");
+		return 0;
+	}
+
+	/* Unmap memory for hwfence using smmu via hfi_adapter exported API */
+	if (hwfence_data->mem_descriptor.vaddr) {
+		ret = hfi_adapter_unmap_iova(&hfi_kms->hfi_client,
+			(unsigned long)hwfence_data->mem_descriptor.vaddr,
+			hwfence_data->mem_descriptor.size);
+		if (ret)
+			SDE_ERROR("failed to unmap DCP hw fence memory: %d\n", ret);
+
+		hwfence_data->mem_descriptor.vaddr = NULL;
+	}
+
+	/* Uninitialize synx */
+	ret = synx_uninitialize(hwfence_data->hw_fence_handle);
+	if (ret) {
+		SDE_ERROR("synx_uninitialize failed: %d\n", ret);
+		return ret;
+	}
+
+	/* Clear hwfence data */
+	hwfence_data->hw_fence_handle = NULL;
+	kfree(hfi_kms->hfi_hw_fence_data);
+	hfi_kms->hfi_hw_fence_data = NULL;
+
+	SDE_INFO("HW fence deinitialized successfully\n");
+	return 0;
+}
+
+static int _set_hw_fence_config(struct hfi_kms *hfi_kms)
 {
 	int ret;
 	struct hfi_cmdbuf_t *cmd_buf;
-	struct hfi_buff  hw_fence_cfg = {};
+	struct hfi_buff hw_fence_cfg = {};
 
-	if (!hfi_kms)
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
 		return -EINVAL;
+	}
 
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
 			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_DEVICE_INFO);
@@ -975,34 +1098,38 @@ static int hfi_kms_set_hw_fence_config(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
-int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde_kms *sde_kms)
+int hfi_kms_init_hw_fence_config(struct hfi_kms *hfi_kms)
 {
-	struct hfi_adapter_t *hfi_adapter;
+	struct hfi_hwfence_data *hwfence_data = NULL;
 	int ret;
 
-	if (!priv || !priv->hfi_priv || !priv->hfi_priv->hfi_adapter
-		|| !priv->hfi_priv->hfi_adapter->session) {
-		SDE_ERROR("HFI session not initialized\n");
+	if (!hfi_kms) {
+		SDE_ERROR("invalid hfi_kms\n");
 		return -EINVAL;
 	}
 
-	hfi_adapter = priv->hfi_priv->hfi_adapter;
-
-	/* Store adapter hwfence data in sde kms */
-	sde_kms->hfi_kms->hfi_hw_fence_data = &hfi_adapter->session->hwfence_data;
-	if (!sde_kms->hfi_kms->hfi_hw_fence_data->hw_fence_handle) {
-		SDE_INFO("HFI hwfence handle is NULL\n");
-		return -EINVAL;
+	if (!hfi_kms->hfi_hw_fence_data) { /* initialize hfi_hw_fence_data on first invocation */
+		ret = hfi_kms_hw_fence_init(hfi_kms);
+		if (ret || IS_ERR_OR_NULL(hfi_kms->hfi_hw_fence_data)) {
+			SDE_INFO("Failed to initialize hw-fence session info ret:%d\n", ret);
+			return -EINVAL;
+		}
 	}
 
-	SDE_DEBUG("sde hfi hwfence init allocated successfully\n");
-	ret = hfi_kms_set_hw_fence_config(sde_kms->hfi_kms);
+	hwfence_data = hfi_kms->hfi_hw_fence_data;
+	ret = _set_hw_fence_config(hfi_kms);
 	if (ret)
-		SDE_ERROR("failed to send HFI HW FENCE config to FW\n");
+		SDE_ERROR("failed to send HFI HW FENCE config to FW ret:%d\n", ret);
 
-	return ret;
+	return 0;
 }
-#endif
+#else
+static int hfi_kms_hw_fence_deinit(struct hfi_kms *hfi_kms)
+{
+	SDE_INFO("HFI hw fence not enabled\n");
+	return 0;
+}
+#endif /* CONFIG_QTI_HW_FENCE && CONFIG_QTI_HFI_CORE */
 
 int hfi_kms_init(struct sde_kms *sde_kms)
 {
@@ -1026,6 +1153,26 @@ int hfi_kms_init(struct sde_kms *sde_kms)
 	sde_kms->hfi_kms = hfi_kms;
 	sde_kms->hal_ops = hfi_hal_funcs;
 	hfi_kms->base = sde_kms;
+
+	return 0;
+}
+
+int hfi_kms_destroy(struct sde_kms *sde_kms)
+{
+	int ret;
+
+	if (!sde_kms || !sde_kms->hfi_kms || !sde_kms->hfi_kms->catalog) {
+		SDE_ERROR("invalid hfi kms for deinit\n");
+		return -EINVAL;
+	}
+
+	ret = hfi_kms_hw_fence_deinit(sde_kms->hfi_kms);
+	if (ret)
+		SDE_INFO("Failed to deinit hfi hw-fence ret:%d\n", ret);
+
+	kvfree(sde_kms->hfi_kms->catalog);
+	kvfree(sde_kms->hfi_kms);
+	sde_kms->hfi_kms = NULL;
 
 	return 0;
 }

@@ -591,6 +591,7 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 	/* Prepare command payload with buffer address for DCP to write to */
 	dpcd_request.buffer.addr_l = HFI_VAL_L32(dpcd_addr_map->remote_addr);
 	dpcd_request.buffer.addr_h = HFI_VAL_H32(dpcd_addr_map->remote_addr);
+	dpcd_request.buffer.size = dpcd_addr_map->size;
 	dpcd_request.dpcd_offset = offset;
 	dpcd_request.bytes = size;
 
@@ -1348,10 +1349,8 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 
 	/* Call dp_mgr_hfi_hpd_configure_cb() instead of sending HFI command directly */
 	if (client->hotplug) {
-		DP_INFO("SIM mode HPD in - calling dp_mgr_hfi_hpd_configure_cb()\n");
-
-		/* Set connected state before calling configure callback */
-		mgr_priv->connected = true;
+		DP_INFO("Soft HPD Plug Start\n");
+		mgr_priv->soft_unplug = false;
 
 		/* Update HPD structure with simulation values */
 		if (mgr_priv->hpd) {
@@ -1368,7 +1367,9 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 				mgr_priv->hpd->pin_config = priv->hpd_pin_config;
 				mgr_priv->hpd->orientation = priv->hpd_orientation;
 			}
+
 			mgr_priv->hpd->hpd_high = true;
+			mgr_priv->hpd->hpd_irq = false;
 		}
 
 		/*
@@ -1376,15 +1377,10 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 		 * command
 		 */
 		rc = dp_mgr_hfi_hpd_configure_cb(mgr_priv);
-		if (rc)
-			DP_ERR("Failed to call dp_mgr_hfi_hpd_configure_cb, rc=%d\n", rc);
-		else
-			DP_INFO("Successfully called dp_mgr_hfi_hpd_configure_cb()\n");
+		DP_INFO("Soft HPD Plug completed with rc:%d\n", rc);
 	} else {
-		DP_INFO("SIM mode HPD out - calling dp_mgr_hfi_hpd_disconnect_cb()\n");
-
-		/* Set disconnected state before calling disconnect callback */
-		mgr_priv->connected = false;
+		DP_INFO("Soft HPD Unplug Start\n");
+		mgr_priv->soft_unplug = true;
 
 		/* Update HPD structure */
 		if (mgr_priv->hpd) {
@@ -1392,17 +1388,27 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 			priv->hpd_pin_config = mgr_priv->hpd->pin_config;
 			priv->hpd_orientation = mgr_priv->hpd->orientation;
 
+			mgr_priv->hpd->hpd_irq = false;
 			mgr_priv->hpd->hpd_high = false;
 			mgr_priv->hpd->pin_config = 0;
 			mgr_priv->hpd->orientation = ORIENTATION_NONE;
 		}
 
-		/* Call the HPD disconnect callback */
+		reinit_completion(&mgr_priv->hpd_comp);
+
+		/*
+		 * Call the HPD disconnect callback and wait till all pending work is completed
+		 * before returning.
+		 */
 		rc = dp_mgr_hfi_hpd_disconnect_cb(mgr_priv);
-		if (rc)
-			DP_ERR("Failed to call dp_mgr_hfi_hpd_disconnect_cb, rc=%d\n", rc);
-		else
-			DP_INFO("Successfully called dp_mgr_hfi_hpd_disconnect_cb()\n");
+		if (rc) {
+			DP_ERR("disonnect cb failed with rc=%d\n", rc);
+		} else if (!wait_for_completion_timeout(&mgr_priv->hpd_comp, HZ)) {
+			DP_ERR("wait for hpd disconnect processing timeout\n");
+			rc = -ETIMEDOUT;
+		}
+
+		DP_INFO("Soft HPD Unplug completed with rc:%d\n", rc);
 	}
 
 	return rc ? rc : count;

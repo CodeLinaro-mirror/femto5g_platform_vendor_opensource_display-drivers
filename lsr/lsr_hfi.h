@@ -26,6 +26,8 @@
 	(__t + __tsz >= __a + __asz) \
 )
 
+#define LSR_STATUS_SYS_ERROR 1
+
 #define LSR_IFACEQ_MAX_PKT_SIZE       1024
 #define CVP_IFACEQ_MED_PKT_SIZE       768
 #define CVP_IFACEQ_MIN_PKT_SIZE       8
@@ -79,7 +81,7 @@ struct lsr_hfi_ops {
 	int (*core_init)(void *device);
 	int (*core_release)(void *device);
 	int (*scale_clocks)(void *dev, u32 freq);
-	int (*vote_bus)(void *dev, struct bus_info *bus, unsigned long bw);
+	int (*vote_bus)(void *dev, struct bus_info *bus, unsigned long bw, unsigned long peak_bw);
 	int (*get_fw_info)(void *dev, struct lsr_fw_info *fw_info);
 	int (*suspend)(void *dev);
 	int (*resume)(void *dev);
@@ -93,5 +95,7 @@ struct msm_lsr_fw {
 
 struct lsr_hfi_ops *lsr_hfi_initialize(struct msm_lsr_platform_resources *res);
 void lsr_hfi_deinitialize(struct lsr_hfi_ops *hdev);
+
+int lsr_fw_reset(void);
 
 #endif

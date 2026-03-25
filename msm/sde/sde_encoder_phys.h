@@ -951,10 +951,12 @@ static inline bool sde_encoder_phys_is_cwb_disabling(
  *	the split display related registers.
  * @phys_enc: Pointer to physical encoder structure
  * @interface: enum sde_intf setting
+ * @skip_cont_splash: only update split_link_en when continuous splash
  */
 void sde_encoder_helper_split_config(
 		struct sde_encoder_phys *phys_enc,
-		enum sde_intf interface);
+		enum sde_intf interface,
+		bool skip_cont_splash);
 
 /**
  * sde_encoder_helper_reset_mixers - reset mixers associated with phys enc

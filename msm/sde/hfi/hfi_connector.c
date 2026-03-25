@@ -41,9 +41,11 @@ struct base_prop_lookup {
 
 struct base_prop_lookup hfi_connector_base_props_map[] = {
 	{ CONNECTOR_PROP_DYN_BIT_CLK, HFI_PROPERTY_DISPLAY_DYN_CLK_SUPPORT },
-	{ CONNECTOR_PROP_QSYNC_MODE, HFI_PROPERTY_DISPLAY_QSYNC },
+	{ CONNECTOR_PROP_QSYNC_MODE, HFI_PROPERTY_DISPLAY_QSYNC_MODE },
 	{ CONNECTOR_PROP_AVR_STEP_STATE, HFI_PROPERTY_DISPLAY_AVR_STEP },
 	{ CONNECTOR_PROP_LP, HFI_PROPERTY_DISPLAY_POWER_MODE },
+	{ CONNECTOR_PROP_FRAME_INTERVAL, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS},
+	{ CONNECTOR_PROP_USECASE_IDX, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS },
 
 	// wb specific properties
 	{ CONNECTOR_PROP_PP_CWB_DITHER, HFI_PROPERTY_DISPLAY_WB_CWB_DITHER },
@@ -128,6 +130,53 @@ void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
 		HFI_ERROR_CONN(hfi_conn, "failed adding HFI KV prop:0x%x\n", hfi_prop);
 }
 
+static int _hfi_connector_add_vrr_frame_params(struct sde_connector *conn,
+					       struct hfi_util_u32_prop_helper *prop_collector,
+					       u32 hfi_prop)
+{
+	struct hfi_connector *hfi_conn;
+	struct hfi_display_vrr_frame_params vrr_params;
+	u64 frame_interval_ns;
+	int ret;
+
+	if (!conn || !prop_collector)
+		return -EINVAL;
+
+	hfi_conn = to_hfi_connector(conn);
+
+	/* check if VRR is supported */
+	if (!conn->vrr_caps.vrr_support) {
+		HFI_DEBUG_CONN(hfi_conn, "VRR not supported\n");
+		return 0;
+	}
+
+	frame_interval_ns = sde_connector_get_property(conn->base.state,
+			CONNECTOR_PROP_FRAME_INTERVAL);
+
+	/* validate frame_interval */
+	if (!frame_interval_ns) {
+		HFI_DEBUG_CONN(hfi_conn, "No frame_interval set\n");
+		return 0;
+	}
+
+	/* Split u64 frame_interval_ns into two u32 values using HFI macros */
+	vrr_params.frame_interval_ns_lo = HFI_VAL_L32(frame_interval_ns);
+	vrr_params.frame_interval_ns_hi = HFI_VAL_H32(frame_interval_ns);
+
+	vrr_params.usecase_idx = sde_connector_get_property(conn->base.state,
+					CONNECTOR_PROP_USECASE_IDX);
+
+	ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
+					hfi_prop, conn->base.base.id, HFI_VAL_U32_ARRAY,
+					&vrr_params, sizeof(vrr_params));
+	if (ret) {
+		HFI_ERROR_CONN(hfi_conn, "Failed to add VRR params, ret=%d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
+
 int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn,
 		struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
@@ -153,10 +202,10 @@ int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn
 		ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
 			hfi_prop, conn->base.base.id, HFI_VAL_U32, &val, sizeof(u32));
 		break;
-	case HFI_PROPERTY_DISPLAY_QSYNC:
+	case HFI_PROPERTY_DISPLAY_QSYNC_MODE:
 		val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_QSYNC_MODE);
-		ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
-			hfi_prop, conn->base.base.id, HFI_VAL_U32, &val, sizeof(u32));
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+				HFI_VAL_U32, &val, sizeof(u32));
 		break;
 	case HFI_PROPERTY_DISPLAY_AVR_STEP:
 		val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_AVR_STEP_STATE);
@@ -198,6 +247,11 @@ int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn
 	case HFI_PROPERTY_DISPLAY_DEST_ROI:
 		ret = _set_dest_roi(conn, old_cstate, prop_collector, hfi_prop, PANEL_ROI);
 		break;
+	case HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS:
+	{
+		ret = _hfi_connector_add_vrr_frame_params(conn, prop_collector, hfi_prop);
+		break;
+	}
 	default:
 		HFI_ERROR_CONN(hfi_conn, "failed to send HFI commands\n");
 		return -EINVAL;
@@ -230,6 +284,11 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 
 	mutex_lock(&hfi_conn->hfi_lock);
 	hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
+
+	if (conn->vrr_caps.vrr_support)
+		_hfi_connector_add_base_prop_helper(HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS,
+			conn, old_cstate, hfi_conn->base_props);
+
 
 	/* append msm properties */
 	for (i = 0; i < ARRAY_SIZE(hfi_connector_base_props_map); i++) {
@@ -801,6 +860,56 @@ free_conn:
 	kfree(hfi_conn);
 
 	return -ENOMEM;
+}
+
+int hfi_connector_set_debug_prop(struct drm_connector *drm_conn,
+	struct hfi_display_dbg_property *dbg_prop)
+{
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	u32 obj_id = 0x0;
+	u32 flags = HFI_HOST_FLAGS_NONE;
+	u32 hfi_cmd = HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY;
+	int rc = 0;
+
+	if (!drm_conn || !dbg_prop) {
+		SDE_ERROR("invalid args\n");
+		return -EINVAL;
+	}
+
+	dbg_prop->display_id = sde_conn_get_display_obj_id(drm_conn);
+
+	sde_kms = sde_connector_get_kms(drm_conn);
+	if (!sde_kms)
+		return -EINVAL;
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	hfi_client = &hfi_kms->hfi_client;
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			obj_id, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get command buf\n");
+		return -EINVAL;
+	}
+
+	rc = hfi_adapter_add_set_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
+		HFI_PAYLOAD_TYPE_U32_ARRAY, dbg_prop, sizeof(struct hfi_display_dbg_property),
+		flags);
+	if (rc)
+		SDE_ERROR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
+
+	rc = hfi_adapter_set_cmd_buf(hfi_client, cmd_buf);
+	if (rc)
+		SDE_ERROR("failed to send hfi_cmd 0x%x display_id: %d\n", hfi_cmd, obj_id);
+
+	return rc;
 }
 
 void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)

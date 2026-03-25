@@ -559,6 +559,7 @@ struct sde_crtc_hal_funcs {
  * @do_clear_rgb_hist_buf: Request to clear RGB histogram buffers
  * @rgb_hist_buffers: Array of pointers to RGB histogram buffer structures
  * @rgb_hist_buffer_lock: Mutex to protect access to RGB histogram buffers
+ * @qrtc_buffer     : struct stores qrtc buffer related data
  */
 struct sde_crtc {
 	struct drm_crtc base;
@@ -701,6 +702,8 @@ struct sde_crtc {
 	struct sde_rgb_hist_buffer *rgb_hist_buffers[RGB_HISTOGRAM_BUFFER_SIZE];
 	struct mutex rgb_hist_buffer_lock;
 	struct sde_pa_hist_buffer pa_hist_buffers[PA_HIST_BUFFER_NUM];
+
+	struct sde_qrtc_buffer qrtc_buffer;
 };
 
 enum sde_crtc_dirty_flags {

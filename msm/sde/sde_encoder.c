@@ -384,7 +384,7 @@ static void _sde_encoder_control_fal10_veto(struct drm_encoder *drm_enc, bool ve
 	}
 }
 
-static void _sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
+void sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	struct msm_drm_private *priv;
@@ -421,14 +421,18 @@ static void _sde_encoder_pm_qos_add_request(struct drm_encoder *drm_enc)
 			return;
 		}
 		cpumask_set_cpu(cpu, &sde_enc->valid_cpu_mask);
-		dev_pm_qos_add_request(cpu_dev,
-				&sde_enc->pm_qos_cpu_req[cpu],
-				DEV_PM_QOS_RESUME_LATENCY, cpu_dma_latency);
+
+		if (dev_pm_qos_request_active(&sde_enc->pm_qos_cpu_req[cpu]))
+			dev_pm_qos_update_request(&sde_enc->pm_qos_cpu_req[cpu], cpu_dma_latency);
+		else
+			dev_pm_qos_add_request(cpu_dev,
+					&sde_enc->pm_qos_cpu_req[cpu],
+					DEV_PM_QOS_RESUME_LATENCY, cpu_dma_latency);
 		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu_dma_latency, cpu);
 	}
 }
 
-static void _sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
+void sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(drm_enc);
 	struct device *cpu_dev;
@@ -441,7 +445,9 @@ static void _sde_encoder_pm_qos_remove_request(struct drm_encoder *drm_enc)
 					cpu);
 			continue;
 		}
-		dev_pm_qos_remove_request(&sde_enc->pm_qos_cpu_req[cpu]);
+
+		if (dev_pm_qos_request_active(&sde_enc->pm_qos_cpu_req[cpu]))
+			dev_pm_qos_remove_request(&sde_enc->pm_qos_cpu_req[cpu]);
 		SDE_EVT32_VERBOSE(DRMID(drm_enc), cpu);
 	}
 	cpumask_clear(&sde_enc->valid_cpu_mask);
@@ -1100,7 +1106,8 @@ void sde_encoder_helper_update_intf_cfg(
 
 void sde_encoder_helper_split_config(
 		struct sde_encoder_phys *phys_enc,
-		enum sde_intf interface)
+		enum sde_intf interface,
+		bool skip_cont_splash)
 {
 	struct sde_encoder_virt *sde_enc;
 	struct split_pipe_cfg *cfg;
@@ -1126,6 +1133,9 @@ void sde_encoder_helper_split_config(
 
 	if (disp_info->capabilities & MSM_DISPLAY_SPLIT_LINK)
 		cfg->split_link_en = true;
+
+	if (phys_enc->cont_splash_enabled && skip_cont_splash)
+		return;
 
 	/**
 	 * disable split modes since encoder will be operating in as the only
@@ -2547,10 +2557,10 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 				sde_conn->vrr_cmd_state = VRR_CMD_IDLE_EXIT;
 		}
 
-		_sde_encoder_pm_qos_add_request(drm_enc);
+		sde_encoder_pm_qos_add_request(drm_enc);
 
 	} else {
-		_sde_encoder_pm_qos_remove_request(drm_enc);
+		sde_encoder_pm_qos_remove_request(drm_enc);
 
 		if (req == REQ_ENTER_IDLE && is_video_mode && info->esync_enabled) {
 			if (sde_conn)
@@ -2645,11 +2655,17 @@ static void sde_encoder_misr_configure(struct drm_encoder *drm_enc,
 		return;
 
 	disp_op = sde_encoder_get_disp_op(drm_enc);
-	if (sde_enc->hal_ops.debugfs_misr_setup[disp_op]) {
-		ret = sde_enc->hal_ops.debugfs_misr_setup[disp_op](sde_enc);
+	if (sde_enc->hal_ops.misr_setup[disp_op]) {
+		ret = sde_enc->hal_ops.misr_setup[disp_op](sde_enc, enable, frame_count);
 		if (ret)
 			SDE_ERROR("misr setup failure\n");
-	} else {
+
+	} else if (sde_enc->hal_ops.debugfs_misr_setup[disp_op]) {
+		ret = sde_enc->hal_ops.debugfs_misr_setup[disp_op](sde_enc);
+		if (ret)
+			SDE_ERROR("debugfs misr setup failure\n");
+
+	} else if (IS_DISP_OP_HWIO(disp_op)) {
 		for (i = 0; i < sde_enc->num_phys_encs; i++) {
 			struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
@@ -2658,6 +2674,7 @@ static void sde_encoder_misr_configure(struct drm_encoder *drm_enc,
 
 			phys->ops.setup_misr(phys, enable, frame_count);
 		}
+
 	}
 
 	sde_enc->misr_reconfigure = false;
@@ -3103,7 +3120,7 @@ static int _sde_encoder_rc_kickoff(struct drm_encoder *drm_enc,
 
 	if (is_vid_mode && !info->esync_enabled && sde_enc->rc_state == SDE_ENC_RC_STATE_IDLE) {
 		sde_encoder_irq_control(drm_enc, true);
-		_sde_encoder_pm_qos_add_request(drm_enc);
+		sde_encoder_pm_qos_add_request(drm_enc);
 	} else {
 		/* enable all the clks and resources */
 		ret = _sde_encoder_resource_control_helper(drm_enc,
@@ -3247,7 +3264,7 @@ static int _sde_encoder_rc_pre_modeset(struct drm_encoder *drm_enc,
 		SDE_ENC_RC_STATE_MODESET, SDE_EVTLOG_FUNC_CASE5);
 
 	sde_enc->rc_state = SDE_ENC_RC_STATE_MODESET;
-	_sde_encoder_pm_qos_remove_request(drm_enc);
+	sde_encoder_pm_qos_remove_request(drm_enc);
 
 end:
 	mutex_unlock(&sde_enc->rc_lock);
@@ -3291,7 +3308,7 @@ static int _sde_encoder_rc_post_modeset(struct drm_encoder *drm_enc,
 			SDE_ENC_RC_STATE_ON, SDE_EVTLOG_FUNC_CASE6);
 
 	sde_enc->rc_state = SDE_ENC_RC_STATE_ON;
-	_sde_encoder_pm_qos_add_request(drm_enc);
+	sde_encoder_pm_qos_add_request(drm_enc);
 
 end:
 	mutex_unlock(&sde_enc->rc_lock);
@@ -3349,7 +3366,7 @@ static int _sde_encoder_rc_idle(struct drm_encoder *drm_enc,
 	crtc_id = drm_crtc_index(crtc);
 	if (is_vid_mode && !info->esync_enabled) {
 		sde_encoder_irq_control(drm_enc, false);
-		_sde_encoder_pm_qos_remove_request(drm_enc);
+		sde_encoder_pm_qos_remove_request(drm_enc);
 	} else {
 		if (priv->event_thread[crtc_id].thread)
 			kthread_flush_worker(&priv->event_thread[crtc_id].worker);
@@ -6434,6 +6451,8 @@ static void sde_encoder_early_wakeup_work_handler(struct kthread_work *work)
 	struct sde_encoder_virt *sde_enc = container_of(work,
 			struct sde_encoder_virt, early_wakeup_work);
 	struct sde_kms *sde_kms = to_sde_kms(ddev_to_msm_kms(sde_enc->base.dev));
+	enum msm_disp_op disp_op;
+	int rc = 0;
 
 	if (!sde_kms)
 		return;
@@ -6444,6 +6463,13 @@ static void sde_encoder_early_wakeup_work_handler(struct kthread_work *work)
 		SDE_DEBUG("skip early wakeup for ENC-%d, HW is owned by other VM\n",
 				DRMID(&sde_enc->base));
 		return;
+	}
+
+	disp_op = sde_encoder_get_disp_op(&sde_enc->base);
+	if (sde_enc->hal_ops.early_wakeup_call[disp_op]) {
+		rc = sde_enc->hal_ops.early_wakeup_call[disp_op](sde_enc);
+		if (rc)
+			SDE_ERROR_ENC(sde_enc, "failed to send early wakeup call hint\n");
 	}
 
 	SDE_ATRACE_BEGIN("encoder_early_wakeup");
@@ -9607,7 +9633,7 @@ void sde_encoder_add_data_to_minidump_va(struct drm_encoder *drm_enc)
 	}
 }
 
-void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
+void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc, void *args)
 {
 	struct drm_event event;
 	struct drm_connector *connector;
@@ -9619,6 +9645,8 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
 	int rc = 0, i = 0;
 	bool misr_updated = false, roi_updated = false;
 	struct msm_roi_list *prev_roi, *c_state_roi;
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(drm_enc);
+	u32 *misr_data;
 
 	if (!drm_enc)
 		return;
@@ -9639,21 +9667,42 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc)
 	c_state = to_sde_connector_state(connector->state);
 
 	atomic64_set(&c_conn->previous_misr_sign.num_valid_misr, 0);
-	for (i = 0; i < sde_enc->num_phys_encs; i++) {
-		phys = sde_enc->phys_encs[i];
+	if (IS_DISP_OP_HWIO(disp_op)) {
+		for (i = 0; i < sde_enc->num_phys_encs; i++) {
+			phys = sde_enc->phys_encs[i];
 
-		if (!phys || !phys->ops.collect_misr) {
-			SDE_DEBUG("invalid misr ops idx:%d\n", i);
-			continue;
+			if (!phys || !phys->ops.collect_misr) {
+				SDE_DEBUG("invalid misr ops idx:%d\n", i);
+				continue;
+			}
+
+			rc = phys->ops.collect_misr(phys, true, &current_misr_value[i]);
+			if (rc) {
+				SDE_ERROR("failed to collect misr %d\n", rc);
+				return;
+			}
+
+			atomic64_inc(&c_conn->previous_misr_sign.num_valid_misr);
 		}
-
-		rc = phys->ops.collect_misr(phys, true, &current_misr_value[i]);
-		if (rc) {
-			SDE_ERROR("failed to collect misr %d\n", rc);
+	} else if (IS_DISP_OP_HFI(disp_op)) {
+		if (!args) {
+			SDE_ERROR("invalid args sent in misr event cb\n");
 			return;
 		}
 
-		atomic64_inc(&c_conn->previous_misr_sign.num_valid_misr);
+		misr_data = (u32 *) args;
+
+		if (sde_enc->num_phys_encs != misr_data[0]) {
+			SDE_ERROR("Invalid params in misr_data num_valid_misr %d expected %d\n",
+			misr_data[0], sde_enc->num_phys_encs);
+			return;
+		}
+
+		for (i = 0; i < sde_enc->num_phys_encs; i++) {
+			current_misr_value[i] = misr_data[i+1];
+			atomic64_inc(&c_conn->previous_misr_sign.num_valid_misr);
+		}
+
 	}
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {

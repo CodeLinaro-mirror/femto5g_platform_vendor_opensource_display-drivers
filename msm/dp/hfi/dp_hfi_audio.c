@@ -120,7 +120,7 @@ static int dp_hfi_audio_config(struct dp_hfi_audio_private *audio, u32 state)
 	rc = ext->intf_ops.audio_config(audio->ext_pdev,
 			&ext->codec, state);
 	if (rc)
-		DP_ERR("failed to config audio, err=%d\n", rc);
+		DP_WARN("failed to config audio, err=%d\n", rc);
 end:
 	return rc;
 }
@@ -234,6 +234,8 @@ static int dp_hfi_audio_info_setup(struct platform_device *pdev,
 	struct dp_hfi_audio_private *audio;
 	struct hfi_audio_config audio_config;
 	u32 stream_id;
+	struct dp_client *client;
+	struct dp_mgr_hfi_priv *hfi_priv;
 
 	audio = dp_hfi_audio_get_data(pdev);
 	if (!audio) {
@@ -245,6 +247,11 @@ static int dp_hfi_audio_info_setup(struct platform_device *pdev,
 		DP_DEBUG("TUI session active\n");
 		return 0;
 	}
+
+	client = audio->client;
+	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	if (!hfi_priv->connected)
+		return 0;
 
 	mutex_lock(&audio->ops_lock);
 
@@ -276,7 +283,7 @@ static int dp_hfi_audio_info_setup(struct platform_device *pdev,
 	}
 
 	/* Enable audio on DCP via HFI */
-	// rc = dp_mgr_hfi_send_audio_control(audio->client, HFI_TRUE);
+	rc = dp_mgr_hfi_send_audio_control(audio->client, HFI_TRUE);
 	if (rc) {
 		DP_ERR("Failed to enable audio via HFI, rc=%d\n", rc);
 		mutex_unlock(&audio->ops_lock);

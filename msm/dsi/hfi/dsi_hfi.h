@@ -18,7 +18,7 @@
 #define MAX_NUM_CTRLS_AND_LENGTH 3
 #define MAX_NUM_PHYS_AND_LENGTH 3
 #define MIN_NUM_OF_GEN_CAPS 16
-#define NUM_PANEL_CMD_TYPES_SUPPORTED 7
+#define NUM_PANEL_CMD_TYPES_SUPPORTED 9
 #define CLK_RATE_SIZE 2
 #define JITTER_SIZE 2
 #define NUM_VARIABLE_DPHY_TIMINGS 14
@@ -182,6 +182,8 @@ struct dsi_panel_timing_caps {
  * @cphy_enabled:                   HFI_PROPERTY_PANEL_CPHY_MODE
  * @esd_config:                     HFI_PROPERTY_PANEL_ESD_CONFIG
  * @esync_caps:                     HFI_PROPERTY_PANEL_ESYNC_CAPS
+ * @dfps_caps:                      HFI_PROPERTY_PANEL_DFPS_CAPS
+ * @lp11_init:                      HFI_PROPERTY_PANEL_LP11_INIT
  */
 struct dsi_panel_generic_caps {
 	int valid_gen_caps_cnt;
@@ -217,6 +219,8 @@ struct dsi_panel_generic_caps {
 	bool cphy_enabled;
 	struct hfi_panel_esd_config esd_config;
 	struct hfi_panel_esync_caps esync_caps;
+	struct hfi_panel_dfps_caps dfps_caps;
+	u32 lp11_init;
 };
 
 /**
@@ -230,6 +234,15 @@ struct dsi_hfi_cb {
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct kthread_work cmd_buff_work;
 };
+
+/**
+ * dsi_get_esd_status_mode_helper() - translate esd check status mode
+ *		into enum hfi_panel_esd_status_mode.
+ * @mode:	enum esd_check_status_mode mode
+ *
+ * Return: enum hfi_panel_esd_status_mode.
+ */
+enum hfi_panel_esd_status_mode dsi_get_esd_status_mode_helper(enum esd_check_status_mode mode);
 
 /**
  * dsi_hfi_process_cmd_buf() - process hfi command buffer

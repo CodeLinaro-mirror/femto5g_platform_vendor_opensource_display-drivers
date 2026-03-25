@@ -25,10 +25,12 @@
 /**
  * dp_mgr_hfi_init() - initialize DP HFI display
  * @pdev: platform device pointer
+ * @debug: pointer to debug client
  *
  * Return: pointer to dp_client structure on success, ERR_PTR on failure
  */
-struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev);
+struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev,
+				struct dp_debug_client *debug);
 
 /**
  * dp_mgr_hfi_deinit() - deinitialize DP HFI display
@@ -104,6 +106,13 @@ struct dp_mode_override {
 	int aspect_ratio;
 };
 
+/* Structure to contain hdcp info printed by debugfs*/
+struct dp_hdcp_info {
+	int hdcp_state;
+	int hdcp_version;
+	u32 source_cap;
+};
+
 /* Forward declaration of dp_mgr_hfi_priv for cross-component access */
 struct dp_mgr_hfi_priv {
 	char *name;
@@ -120,6 +129,8 @@ struct dp_mgr_hfi_priv {
 
 	struct dp_aux_switch *aux_switch;
 	struct dp_display_mode default_mode;
+
+	struct completion hpd_comp;
 
 	struct sde_edid_ctrl *edid_ctrl;
 	struct hfi_display_mode_info mode_list[32]; /* MAX_MODES */
@@ -138,12 +149,23 @@ struct dp_mgr_hfi_priv {
 
 	bool connected;
 	bool configured;
+	bool soft_unplug;
 
 	struct dp_audio *audio;
 
 	/* Mode override */
 	struct dp_mode_override mode_ovr;
 	struct hfi_device_hotplug_config hpd_config;
+
+	struct dp_hdcp_info hdcp_info;
+	u8 min_enc_level;
+	/* HDCP 1.x context */
+	void *hdcp1x_ctx;
+
+	/* HDCP 2.x context */
+	void *hdcp2x_ctx;
+	struct hfi_shared_addr_map *hdcp2x_req_map;
+	struct hfi_shared_addr_map *hdcp2x_resp_map;
 };
 
 int dp_mgr_hfi_send_audio_config(struct dp_client *client,

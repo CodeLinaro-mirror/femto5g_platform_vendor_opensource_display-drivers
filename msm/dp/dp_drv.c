@@ -118,7 +118,7 @@ static int dp_drv_bind(struct device *dev, struct device *master, void *data)
 	if (IS_DISP_OP_HWIO(priv->disp_op))
 		dp->client = dp_mgr_init(pdev, dp->debug);
 	else if (IS_DISP_OP_HFI(priv->disp_op) && IS_ENABLED(CONFIG_DRM_MSM_DP_HFI))
-		dp->client = dp_mgr_hfi_init(pdev);
+		dp->client = dp_mgr_hfi_init(pdev, dp->debug);
 
 	if (dp->client == NULL) {
 		DP_ERR("Error initializing HWIO DP");
@@ -164,7 +164,7 @@ static void dp_drv_unbind(struct device *dev, struct device *master, void *data)
 
 	dp->client->unbind(dev, master, dp->client);
 
-	if (IS_DISP_OP_HFI(priv->disp_op))
+	if (IS_DISP_OP_HWIO(priv->disp_op))
 		dp_mgr_deinit(pdev);
 }
 

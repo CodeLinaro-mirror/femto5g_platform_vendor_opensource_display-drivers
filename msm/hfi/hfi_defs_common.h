@@ -20,6 +20,7 @@
 #define HFI_MAX_PLANES  4 /* Maximum number of planes supported */
 
 #define HFI_MAX_COLOR_COMPONENTS  3 /* Maximum number of color components supported */
+#define HFI_DHDR_PAYLOAD_MAX_SIZE 32 /* Maximum dynamic HDR payload size */
 
 /*
  * Note: 1st MSB byte determines the type of color format
@@ -320,6 +321,15 @@ struct hfi_buff_dpu {
 	u32 flags;
 	u32 iova;
 	u32 len;
+};
+
+/*
+ * enum hfi_subsystem_type - Subsystem type definition
+ *
+ * @HFI_SUBSYSTEM_TYPE_LSR : LSR subsystem.
+ */
+enum hfi_subsystem_type {
+	HFI_SUBSYSTEM_TYPE_LSR = 0
 };
 
 #endif // __H_HFI_DEFS_COMMON_H__

@@ -73,6 +73,7 @@
 #define SDE_HW_VER_D00	SDE_HW_VER(13, 0, 0) /* canoe */
 #define SDE_HW_VER_D10	SDE_HW_VER(13, 1, 0) /* alor */
 #define SDE_HW_VER_E00  SDE_HW_VER(14, 0, 0) /* art */
+#define SDE_HW_VER_E30  SDE_HW_VER(14, 3, 0) /* pebble */
 
 #define SDE_QULTIVATE_SW_REV1 0x1
 
@@ -120,6 +121,7 @@
 #define IS_CANOE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D00)
 #define IS_ALOR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_D10)
 #define IS_ART_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E00)
+#define IS_PEBBLE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_E30)
 
 #define SDE_HW_BLK_NAME_LEN	16
 
@@ -553,6 +555,7 @@ enum {
  * @SDE_DSPP_AIQE_DITHER     AIQE Dither Block
  * @SDE_DSPP_AIQE_WRAPPER    AIQE Wrapper Block
  * @SDE_DSPP_AI_SCALER       AI Scaler block
+ * @SDE_DSPP_QRTC            QRTC block
  * @SDE_DSPP_MAX             maximum value
  */
 enum {
@@ -581,6 +584,7 @@ enum {
 	SDE_DSPP_AIQE_WRAPPER,
 	SDE_DSPP_AI_SCALER,
 	SDE_DSPP_RGB_HIST,
+	SDE_DSPP_QRTC,
 	SDE_DSPP_MAX
 };
 
@@ -942,6 +946,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_DISP_OP        Support Display OP switch
  * @SDE_FEATURE_LSR            Support Display LSR
  * @SDE_FEATURE_FRAME_SEQ_CHECK	 Add check on frame sequence number to avoid duplicate frame events
+ * @SDE_FEATURE_QRTC           QRTC supported
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -999,6 +1004,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_DISP_OP,
 	SDE_FEATURE_LSR,
 	SDE_FEATURE_FRAME_SEQ_CHECK,
+	SDE_FEATURE_QRTC,
 	SDE_FEATURE_MAX
 };
 
@@ -1361,6 +1367,7 @@ struct sde_dspp_sub_blks {
 	struct sde_pp_blk aiqe_wrapper;
 	struct sde_dspp_aiqe ai_scaler;
 	struct sde_pp_blk rgb_hist;
+	struct sde_pp_blk qrtc;
 };
 
 struct sde_pingpong_sub_blks {
@@ -2190,6 +2197,8 @@ struct sde_perf_cfg {
  * @ssip_allowed        indicates if ssip register access is allowed
  * @abc_count           number of aiqe hardware instances
  * @is_udc_supported	indicates if UDC is supported
+ * @qrtc_count          number of qrtc hardware instances
+ * @qrtc_supported      indicates which SSPP/RECT combinations support qrtc
  * @trusted_vm_env      true if the driver is executing in the trusted VM
  * @tvm_reg_count	number of sub-driver register ranges that need to be included
  *					for trusted vm for accepting the resources
@@ -2336,6 +2345,8 @@ struct sde_mdss_cfg {
 	u32 abc_count;
 	u32 rgb_hist_count;
 	bool is_udc_supported;
+	u32 qrtc_count;
+	u32 qrtc_supported[SSPP_MAX][2];
 
 	/* Secure & Trusted UI */
 	bool trusted_vm_env;

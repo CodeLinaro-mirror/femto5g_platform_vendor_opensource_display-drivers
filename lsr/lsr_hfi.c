@@ -29,6 +29,8 @@
 #include <linux/dma-mapping.h>
 #include <linux/reset.h>
 #include <linux/pm_wakeup.h>
+#include <linux/pm_domain.h>
+#include <linux/pm_runtime.h>
 #include "msm_lsr_debug.h"
 #include "lsr_core.h"
 #include "lsr_hw_io.h"
@@ -393,7 +395,7 @@ static int __smem_alloc(struct lsr_device *dev, struct lsr_mem_addr *mem,
 		mem->align_dcp_device_addr = alloc->dcp_device_addr;
 
 	dprintk(LSR_MEM,
-		"%s: ptr = %pK, size = %d dev_addr : 0x%llx dcp_addr = 0x%llx flags = %d\n",
+		"%s: ptr = %pK, size = %d dev_addr : 0x%x dcp_addr = 0x%x flags = %d\n",
 		__func__, alloc->kvaddr, size, mem->align_device_addr, mem->align_dcp_device_addr,
 		smem_flags);
 
@@ -527,13 +529,15 @@ static int __unvote_buses(struct lsr_device *device)
 {
 	int rc = 0;
 	struct bus_info *bus = NULL;
+	struct msm_lsr_core *core;
 
 	kfree(device->bus_vote.data);
 	device->bus_vote.data = NULL;
 	device->bus_vote.data_count = 0;
+	core = lsr_driver->lsr_core;
 
 	iris_hfi_for_each_bus(device, bus) {
-		rc = lsr_set_bw(bus, 0);
+		rc = lsr_set_bw(bus, 0, 0);
 		if (rc) {
 			dprintk(LSR_ERR,
 			"%s: Failed unvoting bus\n", __func__);
@@ -541,52 +545,15 @@ static int __unvote_buses(struct lsr_device *device)
 		}
 	}
 
+	core->old_perf.lsr_csc_bw = 0;
+	core->old_perf.lsr_repro_bw = 0;
+
 err_unknown_device:
 	return rc;
 }
 
-static int __vote_buses(struct lsr_device *device,
-		struct lsr_bus_vote_data *data, int num_data)
-{
-	int rc = 0;
-	struct bus_info *bus = NULL;
-	struct lsr_bus_vote_data *new_data = NULL;
-
-	if (!num_data) {
-		dprintk(LSR_PWR, "No vote data available\n");
-		goto no_data_count;
-	} else if (!data) {
-		dprintk(LSR_ERR, "Invalid voting data\n");
-		return -EINVAL;
-	}
-
-	new_data = kmemdup(data, num_data * sizeof(*new_data), GFP_KERNEL);
-	if (!new_data) {
-		dprintk(LSR_ERR, "Can't alloc memory to cache bus votes\n");
-		rc = -ENOMEM;
-		goto err_no_mem;
-	}
-
-no_data_count:
-	kfree(device->bus_vote.data);
-	device->bus_vote.data = new_data;
-	device->bus_vote.data_count = num_data;
-
-	iris_hfi_for_each_bus(device, bus) {
-		if (bus) {
-			rc = lsr_set_bw(bus, bus->range[1]);
-			if (rc)
-				dprintk(LSR_ERR,
-				"Failed voting bus %s to ab %u\n",
-				bus->name, bus->range[1]*1000);
-		}
-	}
-
-err_no_mem:
-	return rc;
-}
-
-static int iris_hfi_vote_buses(void *dev, struct bus_info *bus, unsigned long bw)
+static int iris_hfi_vote_buses(void *dev, struct bus_info *bus, unsigned long bw,
+	unsigned long peak_bw)
 {
 	int rc = 0;
 	struct lsr_device *device = dev;
@@ -594,7 +561,7 @@ static int iris_hfi_vote_buses(void *dev, struct bus_info *bus, unsigned long bw
 	if (!device)
 		return -EINVAL;
 
-	rc = lsr_set_bw(bus, bw);
+	rc = lsr_set_bw(bus, bw, peak_bw);
 
 	return rc;
 }
@@ -1308,7 +1275,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.ipclite_size,
 			IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map ipclite fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map ipclite fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.ipclite_iova,
 				device->res->reg_mappings.ipclite_phyaddr,
 				device->res->reg_mappings.ipclite_size);
@@ -1322,7 +1289,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.hwmutex_size,
 			IOMMU_MMIO | IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map hwmutex fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map hwmutex fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.hwmutex_iova,
 				device->res->reg_mappings.hwmutex_phyaddr,
 				device->res->reg_mappings.hwmutex_size);
@@ -1336,7 +1303,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.aon_size,
 			IOMMU_MMIO | IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map aon fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map aon fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.aon_iova,
 				device->res->reg_mappings.aon_phyaddr,
 				device->res->reg_mappings.aon_size);
@@ -1350,7 +1317,7 @@ static int __hwfence_regs_map(struct lsr_device *device)
 			device->res->reg_mappings.timer_size,
 			IOMMU_MMIO | IOMMU_READ | IOMMU_WRITE);
 		if (rc) {
-			dprintk(LSR_ERR, "map timer fail %d %#x %#x %#x\n",
+			dprintk(LSR_ERR, "map timer fail %d %#llx %#llx %#x\n",
 				rc, device->res->reg_mappings.timer_iova,
 				device->res->reg_mappings.timer_phyaddr,
 				device->res->reg_mappings.timer_size);
@@ -1398,7 +1365,7 @@ static int __hwfence_regs_unmap(struct lsr_device *device)
 int iris_hfi_core_init(void *device)
 {
 	int rc = 0;
-	u32 ipcc_iova;
+	u32 ipcc_iova = 0;
 	struct lsr_device *dev;
 
 	if (!device) {
@@ -1448,7 +1415,8 @@ int iris_hfi_core_init(void *device)
 	if (!rc) {
 		dprintk(LSR_CORE, "IPCC iova  : 0x%x\n", ipcc_iova);
 		__write_register(dev, CVP_MMAP_ADDR, ipcc_iova);
-	}
+	} else
+		goto err_core_init;
 
 	rc = __load_fw(dev);
 	if (rc) {
@@ -1499,6 +1467,7 @@ pm_qos_bail:
 	return 0;
 
 err_core_init:
+	msm_lsr_unmap_ipcc_regs(ipcc_iova);
 	__set_state(dev, IRIS_STATE_DEINIT);
 	__unload_fw(dev);
 err_load_fw:
@@ -1545,7 +1514,7 @@ static int iris_hfi_core_release(void *dev)
 
 	__disable_subcaches(device);
 	ipcc_iova = __read_register(device, CVP_MMAP_ADDR);
-	msm_lsr_unmap_ipcc_regs(ipcc_iova);
+
 	__unload_fw(device);
 	__hwfence_regs_unmap(device);
 
@@ -1753,6 +1722,42 @@ static void __flush_debug_queue(struct lsr_device *device, u8 *packet)
 #define _INVALID_STATE_ "Ignore responses from %d to %d invalid state\n"
 #define _DEVFREQ_FAIL_ "Failed to add devfreq device bus %s governor %s: %d\n"
 
+static void lsr_panic(void)
+{
+	panic("LSR firmware panic\n");
+}
+
+static void __dump_sfr_log(struct lsr_device *device)
+{
+	struct lsr_hfi_sfr_struct *vsfr = NULL;
+
+	if (!device) {
+		dprintk(LSR_ERR, "Invalid device pointer\n");
+		return;
+	}
+
+	vsfr = (struct lsr_hfi_sfr_struct *)device->sfr.align_virtual_addr;
+	if (vsfr) {
+		u32 sfr_buf_size = 0;
+
+		sfr_buf_size = vsfr->bufSize;
+		if (sfr_buf_size > 0 && sfr_buf_size <= ALIGNED_SFR_SIZE) {
+			void *p = memchr(vsfr->rg_data, '\0', sfr_buf_size);
+			/*
+			 * SFR isn't guaranteed to be NULL terminated
+			 * since SYS_ERROR indicates that LSR is in the
+			 * process of crashing.
+			 */
+			if (p == NULL)
+				vsfr->rg_data[sfr_buf_size - 1] = '\0';
+
+			dprintk(LSR_ERR, "SFR Message from FW: %s\n", vsfr->rg_data);
+		}
+	} else {
+		dprintk(LSR_ERR, "Error: vsfr is null\n");
+	}
+}
+
 int __response_handler(struct lsr_device *device)
 {
 	int lsr_status = 0;
@@ -1772,6 +1777,15 @@ int __response_handler(struct lsr_device *device)
 	}
 
 	__flush_debug_queue(device, NULL);
+
+	if (lsr_status & BIT(LSR_STATUS_SYS_ERROR)) {
+		__dump_sfr_log(device);
+		if (!msm_lsr_enable_ssr) {
+			pr_err("LSR sys error detected\n");
+			lsr_panic();
+		}
+		/* TODO: Handle SSR cases once SSR is implemented */
+	}
 	return 0;
 }
 
@@ -1828,6 +1842,17 @@ err_no_work:
 	return IRQ_HANDLED;
 }
 
+irqreturn_t lsr_wd_handler(int irq, void *data)
+{
+	if (!msm_lsr_enable_ssr) {
+		pr_err("LSR watchdog is detected\n");
+		lsr_panic();
+	}
+	/* TODO: Handle SSR cases once SSR is implemented */
+
+	return IRQ_HANDLED;
+}
+
 irqreturn_t lsr_hfi_isr(int irq, void *dev)
 {
 
@@ -1863,7 +1888,7 @@ static int __init_reset_clk(struct msm_lsr_platform_resources *res,
 			dprintk(LSR_ERR, "reset get exclusive fail %d\n", rc);
 			return rc;
 		}
-		dprintk(LSR_PWR, "reset_clk: name %s get exclusive rst %llx\n",
+		dprintk(LSR_PWR, "reset_clk: name %s get exclusive rst %p\n",
 				rst_set->reset_tbl[reset_index].name, rst);
 	} else if (rst_info->required_stage == LSR_ON_INIT) {
 		rst = devm_reset_control_get(&res->pdev->dev,
@@ -1873,7 +1898,7 @@ static int __init_reset_clk(struct msm_lsr_platform_resources *res,
 			dprintk(LSR_ERR, "reset get fail %d\n", rc);
 			return rc;
 		}
-		dprintk(LSR_PWR, "reset_clk: name %s get rst %llx\n",
+		dprintk(LSR_PWR, "reset_clk: name %s get rst %p\n",
 				rst_set->reset_tbl[reset_index].name, rst);
 	} else {
 		dprintk(LSR_ERR, "Invalid reset stage\n");
@@ -2188,6 +2213,7 @@ static int __init_subcaches(struct lsr_device *device)
 	return 0;
 
 err_subcache_get:
+	msm_lsr_syscache_disable = true;
 	__deinit_subcaches(device);
 	return 0;
 }
@@ -2206,14 +2232,217 @@ static int __init_synx(struct lsr_device *device)
 	return rc;
 }
 
+static void __deinit_power_domains(struct lsr_device *device)
+{
+	struct power_domain_info *pd_info = NULL;
+
+	iris_hfi_for_each_power_domain_reverse(device, pd_info) {
+		if (pd_info->pd_dev) {
+			dprintk(LSR_PWR, "Detaching power domain: %s\n",
+				pd_info->name);
+			dev_pm_domain_detach(pd_info->pd_dev, true);
+			pd_info->pd_dev = NULL;
+		}
+	}
+}
+
+static int __init_power_domains(struct lsr_device *device)
+{
+	int rc = 0;
+	struct power_domain_info *pd_info = NULL;
+
+	iris_hfi_for_each_power_domain(device, pd_info) {
+		pd_info->pd_dev = dev_pm_domain_attach_by_name(
+				&device->res->pdev->dev, pd_info->name);
+
+		if (IS_ERR_OR_NULL(pd_info->pd_dev)) {
+			rc = PTR_ERR(pd_info->pd_dev) ?: -EBADHANDLE;
+			dprintk(LSR_ERR, "Failed to attach power domain: %s, rc=%d\n",
+					pd_info->name, rc);
+			pd_info->pd_dev = NULL;
+			goto err_pd_attach;
+		}
+
+		dprintk(LSR_PWR, "Attached to power domain: %s\n", pd_info->name);
+	}
+
+	return 0;
+
+err_pd_attach:
+	__deinit_power_domains(device);
+	return rc;
+}
+
+static int __acquire_power_domain(struct power_domain_info *pd_info,
+				struct lsr_device *device)
+{
+	int rc = 0;
+
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	if (pd_info->has_hw_power_collapse) {
+		rc = dev_pm_genpd_set_hwmode(pd_info->pd_dev, false);
+		if (rc)
+			dprintk(LSR_WARN, "Failed to acquire power domain control: %s\n",
+				pd_info->name);
+		else
+			dprintk(LSR_PWR, "Acquired power domain control from HW: %s\n",
+				pd_info->name);
+	}
+#else
+	dprintk(LSR_ERR, "%s: not supported", __func__);
+	rc = -EOPNOTSUPP;
+#endif
+
+	return rc;
+}
+
+static int __hand_off_power_domain(struct power_domain_info *pd_info)
+{
+	int rc = 0;
+
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	if (pd_info->has_hw_power_collapse) {
+		rc = dev_pm_genpd_set_hwmode(pd_info->pd_dev, true);
+		if (rc)
+			dprintk(LSR_WARN, "Failed to hand off power domain control: %s\n",
+				pd_info->name);
+		else
+			dprintk(LSR_PWR, "Hand off power domain control to HW: %s\n",
+				pd_info->name);
+	}
+#else
+	dprintk(LSR_ERR, "%s: not supported", __func__);
+	rc = -EOPNOTSUPP;
+#endif
+
+	return rc;
+}
+
+static int __hand_off_power_domains(struct lsr_device *device)
+{
+	struct power_domain_info *pd_info;
+	int rc = 0, c = 0;
+
+	iris_hfi_for_each_power_domain(device, pd_info) {
+		rc = __hand_off_power_domain(pd_info);
+		if (rc)
+			goto err_pd_handoff_failed;
+		c++;
+	}
+
+	return rc;
+
+err_pd_handoff_failed:
+	iris_hfi_for_each_power_domain_reverse_continue(device, pd_info, c)
+		__acquire_power_domain(pd_info, device);
+
+	return rc;
+}
+
+static int __take_back_power_domains(struct lsr_device *device)
+{
+	struct power_domain_info *pd_info;
+	int rc = 0;
+
+	iris_hfi_for_each_power_domain(device, pd_info) {
+		rc = __acquire_power_domain(pd_info, device);
+		if (rc)
+			return rc;
+	}
+
+	return rc;
+}
+
+static int __enable_power_domain(struct lsr_device *device, const char *name)
+{
+	int rc = 0;
+	struct power_domain_info *pd_info;
+
+	iris_hfi_for_each_power_domain(device, pd_info) {
+		if (strcmp(pd_info->name, name))
+			continue;
+
+		rc = pm_runtime_get_sync(pd_info->pd_dev);
+		if (rc < 0) {
+			dprintk(LSR_ERR, "Failed to enable power domain %s: %d\n",
+					pd_info->name, rc);
+			pm_runtime_put_noidle(pd_info->pd_dev);
+			return rc;
+		}
+
+		dprintk(LSR_PWR, "Enabled power domain %s\n", pd_info->name);
+		return 0;
+	}
+
+	dprintk(LSR_ERR, "Power domain %s not found\n", name);
+	return -EINVAL;
+}
+
+static int __disable_power_domain(struct lsr_device *device, const char *name)
+{
+	struct power_domain_info *pd_info;
+	int rc = 0;
+
+	iris_hfi_for_each_power_domain_reverse(device, pd_info) {
+		if (strcmp(pd_info->name, name))
+			continue;
+
+		rc = pm_runtime_put_sync(pd_info->pd_dev);
+		if (rc < 0) {
+			dprintk(LSR_WARN, "Failed to disable power domain %s: %d\n",
+					pd_info->name, rc);
+		}
+
+		dprintk(LSR_PWR, "Disabled power domain %s\n", name);
+		return 0;
+	}
+
+	dprintk(LSR_ERR, "Power domain %s not found\n", name);
+	return -EINVAL;
+}
+
+static int __init_power_resources(struct lsr_device *device)
+{
+	int rc = 0;
+
+	dprintk(LSR_PWR, "Initializing power resources, framework_type:%d\n",
+		device->res->framework_type);
+
+	if (device->res->framework_type) {
+		/* Generic Power Domain framework */
+		rc = __init_power_domains(device);
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to initialize power domains\n");
+			return -ENODEV;
+		}
+	} else {
+		/* Regulator framework */
+		rc = __init_regulators(device);
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to get all regulators\n");
+			return -ENODEV;
+		}
+	}
+
+	return rc;
+}
+
+static void __deinit_power_resources(struct lsr_device *device)
+{
+	if (device->res->framework_type)
+		__deinit_power_domains(device);
+	else
+		__deinit_regulators(device);
+}
+
 static int __init_resources(struct lsr_device *device,
 				struct msm_lsr_platform_resources *res)
 {
 	int i, rc = 0;
 
-	rc = __init_regulators(device);
+	rc = __init_power_resources(device);
 	if (rc) {
-		dprintk(LSR_ERR, "Failed to get all regulators\n");
+		dprintk(LSR_ERR, "Failed to init power resources\n");
 		return -ENODEV;
 	}
 
@@ -2253,7 +2482,7 @@ err_init_reset_clk:
 err_init_bus:
 	msm_lsr_deinit_clocks(device);
 err_init_clocks:
-	__deinit_regulators(device);
+	__deinit_power_resources(device);
 	return rc;
 }
 
@@ -2262,7 +2491,7 @@ static void __deinit_resources(struct lsr_device *device)
 	__deinit_subcaches(device);
 	__deinit_bus(device);
 	msm_lsr_deinit_clocks(device);
-	__deinit_regulators(device);
+	__deinit_power_resources(device);
 }
 
 static int __disable_regulator_impl(struct regulator_info *rinfo,
@@ -2314,7 +2543,11 @@ static int __disable_hw_power_collapse(struct lsr_device *device)
 		return 0;
 	}
 
-	rc = __take_back_regulators(device);
+	if (device->res->framework_type)
+		rc = __take_back_power_domains(device);
+	else
+		rc = __take_back_regulators(device);
+
 	if (rc)
 		dprintk(LSR_WARN,
 			"%s : Failed to disable HW power collapse %d\n",
@@ -2453,6 +2686,29 @@ static void interrupt_init_iris2(struct lsr_device *device)
 			CVP_SS_IRQ_MASK, mask_val);
 }
 
+static int __vote_cfg_bus(struct lsr_device *device)
+{
+	int rc = 0;
+	struct bus_info *bus = NULL;
+	struct msm_lsr_core *core;
+	u32 bus_count;
+
+	core = lsr_driver->lsr_core;
+	if (!core) {
+		dprintk(LSR_ERR, "Invalid LSR core");
+		return -EINVAL;
+	}
+
+	for (bus_count = 0; bus_count < core->resources.bus_set.count; bus_count++) {
+		if (!strcmp(core->resources.bus_set.bus_tbl[bus_count].name, "lsr-cfg")) {
+			bus = &core->resources.bus_set.bus_tbl[bus_count];
+			rc = lsr_set_bw(bus, bus->range[1], bus->range[1]);
+		}
+	}
+
+	return 0;
+}
+
 static int __lsr_power_on(struct lsr_device *device)
 {
 	int rc = 0;
@@ -2465,10 +2721,9 @@ static int __lsr_power_on(struct lsr_device *device)
 	core = lsr_driver->lsr_core;
 	/* Vote for all hardware resources */
 	mutex_lock(&core->clk_lock);
-	rc = __vote_buses(device, device->bus_vote.data,
-			device->bus_vote.data_count);
+	rc = __vote_cfg_bus(device);
 	if (rc) {
-		dprintk(LSR_ERR, "Failed to vote buses, err: %d\n", rc);
+		dprintk(LSR_ERR, "Failed to vote LSR cfg bus, err: %d\n", rc);
 		mutex_unlock(&core->clk_lock);
 		goto fail_vote_buses;
 	}
@@ -2807,6 +3062,7 @@ void lsr_iris_hfi_delete_device(void *device)
 	destroy_workqueue(dev->iris_pm_workq);
 
 	free_irq(dev->lsr_hal_data->irq, dev);
+	free_irq(dev->lsr_hal_data->irq_wd, dev);
 
 	iounmap(dev->lsr_hal_data->register_base);
 	iounmap(dev->lsr_hal_data->gcc_reg_base);
@@ -2856,10 +3112,20 @@ static int __power_on_controller_v1(struct lsr_device *device)
 {
 	int rc = 0;
 
-	rc = __enable_regulator(device, "lsr");
-	if (rc) {
-		dprintk(LSR_ERR, "Failed to enable ctrler: %d\n", rc);
-		return rc;
+	if (device->res->framework_type) {
+		/* Using GenPD - enable controller power domain */
+		rc = __enable_power_domain(device, "lsr_mvs0c_gdsc");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable controller PD: %d\n", rc);
+			return rc;
+		}
+	} else {
+		/* Using regulators */
+		rc = __enable_regulator(device, "lsr");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable ctrler: %d\n", rc);
+			return rc;
+		}
 	}
 
 	rc = msm_lsr_prepare_enable_clk(device, "sleep_clk");
@@ -2904,7 +3170,11 @@ fail_enable_axi0c:
 fail_enable_axi0:
 	msm_lsr_disable_unprepare_clk(device, "sleep_clk");
 fail_reset_sleep:
-	__disable_regulator(device, "lsr");
+	if (device->res->framework_type)
+		__disable_power_domain(device, "lsr_mvs0c_gdsc");
+	else
+		__disable_regulator(device, "lsr");
+
 	return rc;
 }
 
@@ -2919,16 +3189,32 @@ static int __power_on_core_v1(struct lsr_device *device)
 		// This will fail always, calling once as a workaround
 	}
 
-	rc = __enable_regulator(device, "lsr-noc");
-	if (rc) {
-		dprintk(LSR_ERR, "Failed to enable noc: %d\n", rc);
-		return rc;
-	}
+	if (device->res->framework_type) {
+		/* Using GenPD */
+		rc = __enable_power_domain(device, "lsr_noc_gdsc");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable NOC PD: %d\n", rc);
+			return rc;
+		}
 
-	rc = __enable_regulator(device, "lsr-core");
-	if (rc) {
-		dprintk(LSR_ERR, "Failed to enable core: %d\n", rc);
-		return rc;
+		rc = __enable_power_domain(device, "lsr_mvs0_gdsc");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable core PD: %d\n", rc);
+			return rc;
+		}
+	} else {
+		/* Using regulators */
+		rc = __enable_regulator(device, "lsr-noc");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable noc: %d\n", rc);
+			return rc;
+		}
+
+		rc = __enable_regulator(device, "lsr-core");
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to enable core: %d\n", rc);
+			return rc;
+		}
 	}
 
 	rc = msm_lsr_prepare_enable_clk(device, "lsr_cc_mvs0_clk_src");
@@ -2958,8 +3244,13 @@ fail_enable_freerun:
 fail_enable_core:
 	msm_lsr_disable_unprepare_clk(device, "lsr_cc_mvs0_clk_src");
 fail_enable_clk_src:
-	__disable_regulator(device, "lsr-core");
-	__disable_regulator(device, "lsr-noc");
+	if (device->res->framework_type) {
+		__disable_power_domain(device, "lsr_noc_gdsc");
+		__disable_power_domain(device, "lsr_mvs0_gdsc");
+	} else {
+		__disable_regulator(device, "lsr-core");
+		__disable_regulator(device, "lsr-noc");
+	}
 	return rc;
 }
 
@@ -2981,8 +3272,13 @@ static int __power_off_core_v1(struct lsr_device *device)
 			dprintk(LSR_WARN, "Core off with NOC RESET ACK non-zero %x\n", value);
 			call_iris_op(device, print_sbm_regs, device);
 		}
-		__disable_regulator(device, "lsr-core");
-		__disable_regulator(device, "lsr-noc");
+		if (device->res->framework_type) {
+			__disable_power_domain(device, "lsr_mvs0_gdsc");
+			__disable_power_domain(device, "lsr_noc_gdsc");
+		} else {
+			__disable_regulator(device, "lsr-core");
+			__disable_regulator(device, "lsr-noc");
+		}
 		msm_lsr_disable_unprepare_clk(device, "core_clk");
 		return 0;
 	} else if (!(value & 0x2) && msm_lsr_fw_low_power_mode) {
@@ -2990,8 +3286,13 @@ static int __power_off_core_v1(struct lsr_device *device)
 		 * HW_CONTROL PC disabled, then core is powered on for
 		 * CVP NoC access
 		 */
-		__disable_regulator(device, "lsr-core");
-		__disable_regulator(device, "lsr-noc");
+		if (device->res->framework_type) {
+			__disable_power_domain(device, "lsr_mvs0_gdsc");
+			__disable_power_domain(device, "lsr_noc_gdsc");
+		} else {
+			__disable_regulator(device, "lsr-core");
+			__disable_regulator(device, "lsr-noc");
+		}
 		msm_lsr_disable_unprepare_clk(device, "core_clk");
 		return 0;
 	}
@@ -3030,8 +3331,13 @@ static int __power_off_core_v1(struct lsr_device *device)
 	/* HPG 3.4.4 step 6-7 */
 	__disable_hw_power_collapse(device);
 	usleep_range(100, 200);
-	__disable_regulator(device, "lsr-core");
-	__disable_regulator(device, "lsr-noc");
+	if (device->res->framework_type) {
+		__disable_power_domain(device, "lsr_mvs0_gdsc");
+		__disable_power_domain(device, "lsr_noc_gdsc");
+	} else {
+		__disable_regulator(device, "lsr-core");
+		__disable_regulator(device, "lsr-noc");
+	}
 	msm_lsr_disable_unprepare_clk(device, "core_clk");
 	return 0;
 }
@@ -3079,7 +3385,10 @@ static int __power_off_controller_v1(struct lsr_device *device)
 		dprintk(LSR_ERR, "Failed to disable sleep clk: %d\n", rc);
 
 	/* HPG 3.7 Step 13 and 14 */
-	__disable_regulator(device, "lsr");
+	if (device->res->framework_type)
+		__disable_power_domain(device, "lsr_mvs0c_gdsc");
+	else
+		__disable_regulator(device, "lsr");
 
 	/* Step #28: Override ARCG control to allow AXI0 clock pass through */
 	__write_register(device, LSR_AON_WRAPPER_CVP_NOC_ARCG_CONTROL, 0x1);
@@ -3204,7 +3513,11 @@ static int __enable_hw_power_collapse_v1(struct lsr_device *device)
 		return 0;
 	}
 
-	rc = __hand_off_regulators(device);
+	if (device->res->framework_type)
+		rc = __hand_off_power_domains(device);
+	else
+		rc = __hand_off_regulators(device);
+
 	if (rc) {
 		dprintk(LSR_WARN,
 			"%s : Failed to enable HW power collapse %d\n",
@@ -3267,5 +3580,43 @@ int lsr_iris_hfi_initialize(struct lsr_hfi_ops *ops_tbl,
 	lsr_init_hfi_callbacks(ops_tbl);
 
 err_iris_hfi_init:
+	return rc;
+}
+
+int lsr_fw_reset(void)
+{
+	struct msm_lsr_core *core;
+	struct lsr_device *device;
+	struct lsr_hfi_ops *ops_tbl;
+	int rc = 0;
+
+	core = lsr_driver->lsr_core;
+	if (core)
+		device = core->dev_ops->hfi_device_data;
+	else {
+		WARN_ONCE(true, "LSR Core is not created\n");
+		return -EINVAL;
+	}
+
+	ops_tbl = core->dev_ops;
+
+	rc = call_hfi_op(ops_tbl, core_release, ops_tbl->hfi_device_data);
+	if (rc) {
+		dprintk(LSR_ERR, "core_release failed: %d\n", rc);
+		return rc;
+	}
+
+	rc = synx_recover(device->hwfence_data.hw_fence_handle->type);
+	if (rc) {
+		dprintk(LSR_ERR, "failed to reset client %d\n", rc);
+		return rc;
+	}
+
+	rc = call_hfi_op(ops_tbl, core_init, ops_tbl->hfi_device_data);
+	if (rc) {
+		dprintk(LSR_ERR, "core_init failed: %d\n", rc);
+		return rc;
+	}
+
 	return rc;
 }

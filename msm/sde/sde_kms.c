@@ -31,6 +31,7 @@
 #include <drm/drm_atomic_uapi.h>
 #include <drm/drm_probe_helper.h>
 #include <linux/version.h>
+#include <linux/sde_io_util.h>
 
 #include "msm_drv.h"
 #include "msm_mmu.h"
@@ -3254,6 +3255,9 @@ static void sde_kms_destroy(struct msm_kms *kms)
 		return;
 	}
 
+	if (sde_kms->hfi_kms)
+		hfi_kms_destroy(sde_kms);
+
 	_sde_kms_hw_destroy(sde_kms, to_platform_device(dev->dev));
 	kfree(sde_kms);
 }
@@ -3450,7 +3454,7 @@ error:
 		if (ret == -EDEADLK || ret == -ERESTARTSYS)
 			SDE_DEBUG("atomic commit failed in preclose, ret:%d\n", ret);
 		else
-			SDE_ERROR("atomic commit failed in preclose, ret:%d\n", ret);
+			SDE_INFO("atomic commit failed in preclose, ret:%d\n", ret);
 		goto end;
 	}
 
@@ -3815,7 +3819,7 @@ out_ctx:
 	drm_modeset_acquire_fini(&ctx);
 
 	if (ret)
-		SDE_ERROR("kms lastclose failed: %d\n", ret);
+		SDE_INFO("kms lastclose failed: %d\n", ret);
 
 	if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms)) && hfi_client) {
 		hfi_adapter_deinit(hfi_client);
@@ -4030,7 +4034,7 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 
 			rc = vm_ops->vm_request_valid(sde_kms, old_vm_req, new_vm_req);
 			if (rc) {
-				SDE_ERROR(
+				SDE_INFO(
 				"VM transition check failed; o_state:%d, n_state:%d, hw_owner:%d, rc:%d\n",
 						old_vm_req, new_vm_req, vm_owns_hw, rc);
 				sde_vm_unlock(sde_kms);
@@ -4281,7 +4285,7 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 
 	ret = sde_kms_check_vm_request(kms, state);
 	if (ret) {
-		SDE_ERROR("vm switch request checks failed\n");
+		SDE_INFO("vm switch request checks failed\n");
 		goto end;
 	}
 
@@ -5429,7 +5433,7 @@ unlock:
 	pm_runtime_get_noresume(ddev->dev);
 
 	/* dump clock state before entering suspend */
-	if (sde_kms->pm_suspend_clk_dump)
+	if (IS_DISP_OP_HWIO(sde_kms_get_disp_op(sde_kms)) && sde_kms->pm_suspend_clk_dump)
 		_sde_kms_dump_clks_state(sde_kms);
 
 	return ret;
@@ -5457,6 +5461,311 @@ static int sde_kms_pm_suspend(struct device *dev)
 
 	return ret;
 }
+
+#if IS_ENABLED(CONFIG_HIBERNATE)
+int sde_kms_freeze_helper(struct sde_kms *sde_kms)
+{
+	struct drm_device *ddev;
+	struct drm_modeset_acquire_ctx ctx;
+	struct drm_connector *conn;
+	struct drm_encoder *enc;
+	struct drm_connector_list_iter conn_iter;
+	struct drm_atomic_state *state = NULL;
+	int ret = 0, num_crtcs = 0;
+
+	if (!sde_kms || !sde_kms->dev)
+		return -EINVAL;
+
+	ddev = sde_kms->dev;
+	if (!ddev->dev)
+		return -EINVAL;
+
+	SDE_EVT32(0);
+
+	/* disable hot-plug polling */
+	drm_kms_helper_poll_disable(ddev);
+
+	/* if any built-in display is stuck in CS, skip PM freeze entry */
+	drm_for_each_encoder(enc, ddev) {
+		if (sde_encoder_in_cont_splash(enc) && enc->crtc) {
+			SDE_DEBUG("skip PM freeze, splash is enabled on enc:%d\n", DRMID(enc));
+			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_EXIT);
+			return -EINVAL;
+		}
+
+		if (sde_encoder_smooth_dimming_in_progress(enc)) {
+			SDE_DEBUG("skip PM freeze, smooth dimming in progress enc:%d\n",
+					DRMID(enc));
+			SDE_EVT32(DRMID(enc), SDE_EVTLOG_FUNC_CASE1, SDE_EVTLOG_FUNC_EXIT);
+			return -EINVAL;
+		}
+	}
+
+	/* acquire modeset lock(s) */
+	drm_modeset_acquire_init(&ctx, 0);
+
+retry:
+	ret = drm_modeset_lock_all_ctx(ddev, &ctx);
+	if (ret)
+		goto unlock;
+
+	/* save current state for thaw */
+	if (sde_kms->suspend_state)
+		drm_atomic_state_put(sde_kms->suspend_state);
+	sde_kms->suspend_state = drm_atomic_helper_duplicate_state(ddev, &ctx);
+	if (IS_ERR_OR_NULL(sde_kms->suspend_state)) {
+		ret = PTR_ERR(sde_kms->suspend_state);
+		DRM_ERROR("failed to back up suspend state, %d\n", ret);
+		sde_kms->suspend_state = NULL;
+		goto unlock;
+	}
+
+	/* create atomic state to disable all CRTCs */
+	state = drm_atomic_state_alloc(ddev);
+	if (!state) {
+		ret = -ENOMEM;
+		DRM_ERROR("failed to allocate crtc disable state, %d\n", ret);
+		goto unlock;
+	}
+
+	state->acquire_ctx = &ctx;
+	drm_connector_list_iter_begin(ddev, &conn_iter);
+	drm_for_each_connector_iter(conn, &conn_iter) {
+		struct drm_crtc_state *crtc_state;
+		uint64_t lp;
+		bool display_mode_active;
+
+		if (!conn->state || !conn->state->crtc ||
+			conn->dpms != DRM_MODE_DPMS_ON ||
+			sde_encoder_in_clone_mode(conn->encoder))
+			continue;
+
+		display_mode_active = sde_encoder_check_curr_mode(conn->encoder,
+			MSM_DISPLAY_VIDEO_MODE) && !sde_encoder_in_video_psr(conn->encoder);
+
+		lp = sde_connector_get_lp(conn);
+		if (lp == SDE_MODE_DPMS_LP1 && !display_mode_active) {
+			/* transition LP1->LP2 on pm freeze */
+			ret = sde_connector_set_property_for_commit(conn, state,
+					CONNECTOR_PROP_LP, SDE_MODE_DPMS_LP2);
+			if (ret) {
+				DRM_ERROR("failed to set lp2 for conn %d\n",
+						conn->base.id);
+				drm_connector_list_iter_end(&conn_iter);
+				goto unlock;
+			}
+		}
+
+		if (lp != SDE_MODE_DPMS_LP2 || display_mode_active) {
+			/* force CRTC to be inactive */
+			crtc_state = drm_atomic_get_crtc_state(state,
+					conn->state->crtc);
+			if (IS_ERR_OR_NULL(crtc_state)) {
+				DRM_ERROR("failed to get crtc %d state\n",
+						conn->state->crtc->base.id);
+				drm_connector_list_iter_end(&conn_iter);
+				ret = -EINVAL;
+				goto unlock;
+			}
+
+			if (lp != SDE_MODE_DPMS_LP1 || display_mode_active)
+				crtc_state->active = false;
+			++num_crtcs;
+		}
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	/* check for nothing to do */
+	if (num_crtcs == 0) {
+		DRM_DEBUG("all crtcs are already in the off state\n");
+		sde_kms->suspend_block = true;
+		_sde_kms_pm_suspend_idle_helper(sde_kms, ddev->dev);
+		goto unlock;
+	}
+
+	/* commit the "disable all" state */
+	ret = drm_atomic_commit(state);
+	if (ret < 0) {
+		DRM_ERROR("failed to disable crtcs, %d\n", ret);
+		goto unlock;
+	}
+
+	sde_kms->suspend_block = true;
+	_sde_kms_pm_suspend_idle_helper(sde_kms, ddev->dev);
+
+unlock:
+	if (state) {
+		drm_atomic_state_put(state);
+		state = NULL;
+	}
+
+	if (ret == -EDEADLK) {
+		drm_modeset_backoff(&ctx);
+		goto retry;
+	}
+
+	if ((ret || !num_crtcs) && sde_kms->suspend_state) {
+		drm_atomic_state_put(sde_kms->suspend_state);
+		sde_kms->suspend_state = NULL;
+	}
+
+	drm_modeset_drop_locks(&ctx);
+	drm_modeset_acquire_fini(&ctx);
+
+	/* dump clock state before entering freeze */
+	if (sde_kms->pm_suspend_clk_dump)
+		_sde_kms_dump_clks_state(sde_kms);
+
+	return ret;
+}
+
+static int sde_kms_pm_freeze(struct device *dev)
+{
+	struct drm_device *ddev;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	int ret = 0;
+
+	if (!dev)
+		return -EINVAL;
+
+	ddev = dev_get_drvdata(dev);
+	if (!ddev || !ddev_to_msm_kms(ddev))
+		return -EINVAL;
+
+	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	hfi_client = &hfi_kms->hfi_client;
+	SDE_EVT32(0);
+
+	/*
+	 * FREEZE SEQUENCE:
+	 * 1. Quiesce displays (stop all activity)
+	 * 2. Disable interrupts
+	 * 3. Release HFI command buffers
+	 *
+	 * Note: We use freeze_helper instead of suspend_helper to avoid
+	 * calling pm_runtime_put_sync() which would power down the device.
+	 */
+
+	/* Step 1: Quiesce all active displays */
+	ret = sde_kms_freeze_helper(sde_kms);
+	if (ret) {
+		SDE_ERROR("Failed sde_kms_freeze_helper: %d\n", ret);
+		return ret;
+	}
+
+	/* Step 2: Disable interrupts during freeze */
+	if (sde_kms->hw_intr) {
+		sde_core_irq_uninstall(sde_kms);
+		SDE_DEBUG("Disabled MDSS interrupts during freeze\n");
+	}
+
+	/* Step 3: Release all command buffers associated with DPU driver hfi client */
+	ret = hfi_adapter_release_all_cmd_bufs(hfi_client);
+	if (ret) {
+		SDE_ERROR("[WARNING] Failed to release command buffers\n");
+		/* Continue anyway - not fatal */
+	}
+
+	/* dump clock state before entering freeze */
+	if (sde_kms->pm_suspend_clk_dump)
+		_sde_kms_dump_clks_state(sde_kms);
+
+	return ret;
+}
+
+static int sde_kms_pm_restore(struct device *dev)
+{
+	struct drm_device *ddev;
+	struct msm_drm_private *priv;
+	struct dss_module_power *mp;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	enum msm_disp_op disp_op;
+	int ret;
+
+	if (!dev)
+		return -EINVAL;
+
+	ddev = dev_get_drvdata(dev);
+	if (!ddev || !ddev_to_msm_kms(ddev))
+		return -EINVAL;
+
+	priv = ddev->dev_private;
+	mp = &priv->phandle.mp;
+	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
+	hfi_kms = to_hfi_kms(sde_kms);
+	hfi_client = &hfi_kms->hfi_client;
+	disp_op = sde_kms_get_disp_op(sde_kms);
+
+	/*
+	 * HIBERNATE RESTORE SEQUENCE:
+	 * 1. Setup hfi
+	 * 2. Device-init
+	 * 3. Configure trace settings
+	 * 4. Re-configure LUT DMA
+	 * 5. Clear pending interrupts
+	 * 6. Re-enable and re-register interrupts
+	 * 7. Resume displays
+	 */
+
+	ret = sde_kms_setup_hfi(priv, ddev);
+	if (ret) {
+		SDE_ERROR("HFI setup failed\n");
+		return ret;
+	}
+
+	/* Device-init */
+	ret = hfi_kms_get_catalog_data(hfi_kms);
+	if (ret) {
+		SDE_ERROR("failed to get catalog data, ret: %d\n", ret);
+		return ret;
+	}
+
+	/* Configure trace settings */
+	ret = hfi_kms_send_trace_cfg(hfi_kms, HFI_TRUE);
+	if (ret) {
+		SDE_ERROR("failed to send trace config, ret: %d\n", ret);
+		return ret;
+	}
+
+	/* Re-configure LUT DMA with firmware */
+	ret = sde_kms_reinit_device_lut_dma(sde_kms);
+	if (ret) {
+		SDE_ERROR("failed lut dma configuration, ret: %d\n", ret);
+		return ret;
+	}
+
+	/* Clear any pending interrupts before restore */
+	if (sde_kms->hw_intr && sde_kms->hw_intr->ops.clear_all_irqs[disp_op]) {
+		sde_kms->hw_intr->ops.clear_all_irqs[disp_op](sde_kms->hw_intr);
+		SDE_DEBUG("Cleared pending interrupts before restore\n");
+	}
+
+	/* Re-enable and re-register interrupts during restore */
+	if (sde_kms->hw_intr) {
+		ret = sde_core_irq_postinstall(sde_kms);
+		if (ret) {
+			SDE_ERROR("failed to re-install interrupts, ret: %d\n", ret);
+			return ret;
+		}
+		SDE_DEBUG("Re-enabled and re-registered MDSS interrupts during restore\n");
+	}
+
+	/* Resume displays */
+	ret = sde_kms_resume_helper(sde_kms);
+	if (ret) {
+		SDE_ERROR("Failed sde_kms_resume_helper: %d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+#endif /* CONFIG_HIBERNATE */
 
 int sde_kms_resume_helper(struct sde_kms *sde_kms)
 {
@@ -5573,6 +5882,10 @@ static const struct msm_kms_funcs kms_funcs = {
 	.display_early_ept_hint = sde_kms_display_early_ept_hint,
 	.pm_suspend      = sde_kms_pm_suspend,
 	.pm_resume       = sde_kms_pm_resume,
+#if IS_ENABLED(CONFIG_HIBERNATE)
+	.pm_freeze      = sde_kms_pm_freeze,
+	.pm_restore       = sde_kms_pm_restore,
+#endif
 	.destroy         = sde_kms_destroy,
 	.debugfs_destroy = sde_kms_debugfs_destroy,
 	.cont_splash_config = sde_kms_cont_splash_config,
@@ -6596,9 +6909,9 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 			return rc;
 		}
 
-		rc = sde_hfi_hw_fence_init(priv, sde_kms);
+		rc = hfi_kms_init_hw_fence_config(sde_kms->hfi_kms);
 		if (rc) {
-			SDE_INFO("sde hfi hw fence data init failed: %d\n", rc);
+			SDE_INFO("hfi hw fence config init failed: %d\n", rc);
 			sde_kms->catalog->hw_fence_rev = 0;
 		}
 	}

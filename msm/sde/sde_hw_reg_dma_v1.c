@@ -13,6 +13,7 @@
 #include "sde_dbg.h"
 #include "sde_vbif.h"
 #include "hfi_defs_display.h"
+#include "hfi_defs_display_color.h"
 #include "hfi_properties_display.h"
 
 #define GUARD_BYTES (BIT(8) - 1)
@@ -232,6 +233,7 @@ static reg_dma_internal_ops validate_dma_op_params[REG_DMA_SETUP_OPS_MAX] = {
 
 static struct sde_reg_dma_buffer *last_cmd_buf[DPU_MAX];
 static struct hfi_buff_dpu hfi_cfg_cached[DPU_MAX][DSPP_MAX] = {};
+static struct hfi_qrtc_config hfi_qrtc_config_cached[DPU_MAX][DSPP_MAX] = {};
 
 static void get_decode_sel(unsigned long blk, u32 *decode_sel)
 {
@@ -742,12 +744,45 @@ static int validate_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx
 
 static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_idx)
 {
-	struct hfi_buff_dpu hfi_cfg = {};
+	struct hfi_buff_dpu hfi_cfg = {0};
 	int ret = 0;
 
 	if (!cfg || dpu_idx >= DPU_MAX) {
 		DRM_ERROR("invalid params cfg - %p, dpu idx %d\n", cfg, dpu_idx);
 		return -EINVAL;
+	}
+
+	if ((PROP_ID_MASK(cfg->prop_id) == HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG) &&
+			cfg->valid_extended_data) {
+		if (cfg->extended_data_size != sizeof(struct hfi_qrtc_config)) {
+			DRM_ERROR("invalid extened_data size %u, expected %lu\n",
+				cfg->extended_data_size, sizeof(struct hfi_qrtc_config));
+			return -EINVAL;
+		}
+
+		if (cfg->dspp_idx != (cfg->dspp_start_idx + cfg->num_of_mixers - 1)) {
+			/* non-broadcast and it is not the last dspp idx */
+			memcpy(&hfi_qrtc_config_cached[dpu_idx][cfg->dspp_idx], cfg->extended_data,
+				cfg->extended_data_size);
+			hfi_qrtc_config_cached[dpu_idx][cfg->dspp_idx].len = cfg->dma_buf->index;
+			return 0;
+		} else if (cfg->dspp_idx == (cfg->dspp_start_idx + cfg->num_of_mixers - 1)) {
+			hfi_cfg.len = cfg->dma_buf->index;
+			/* non-broadcast and it is the last dspp idx */
+			memcpy(&hfi_qrtc_config_cached[dpu_idx][cfg->dspp_idx], cfg->extended_data,
+				cfg->extended_data_size);
+			hfi_qrtc_config_cached[dpu_idx][cfg->dspp_idx].len = cfg->dma_buf->index;
+			ret = hfi_util_u32_prop_helper_add_prop(cfg->prop_helper, cfg->prop_id,
+				HFI_VAL_U32_ARRAY,
+				&hfi_qrtc_config_cached[dpu_idx][cfg->dspp_start_idx],
+				sizeof(struct hfi_qrtc_config) * cfg->num_of_mixers);
+			if (ret)
+				DRM_ERROR("Failed to add hfi prop %d ret %d\n", cfg->prop_id, ret);
+			/* reset the cached struct after submitting to FW */
+			memset(&hfi_qrtc_config_cached[dpu_idx][0], 0,
+				sizeof(hfi_qrtc_config_cached[dpu_idx]));
+			return ret;
+		}
 	}
 
 	if ((PROP_ID_MASK(cfg->prop_id) > HFI_PROPERTY_LAYER_COLOR_BEGIN) &&
@@ -1416,6 +1451,7 @@ int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx)
 
 	v1_supported[AIQE_ABC] = MDSS | DSPP0 | DSPP2;
 	v1_supported[AIQE_AI_SCALER] = MDSS | DSPP0;
+	v1_supported[QRTC] = GRP_MDSS_HW_BLK_SELECT | GRP_DSPP_HW_BLK_SELECT;
 
 	v1_supported[AIQE_COPR] = MDSS | DSPP0 | DSPP2;
 

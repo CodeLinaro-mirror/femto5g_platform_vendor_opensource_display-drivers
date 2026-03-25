@@ -1041,6 +1041,14 @@ int dsi_display_phy_pll_toggle(void *priv, bool enable);
 bool is_skip_op_required(struct dsi_display *display);
 
 /**
+ * is_sim_panel() - check if display is a sim panel
+ * @display: Handle to display
+ *
+ * Return: True if display is sim panel
+ */
+bool is_sim_panel(struct dsi_display *display);
+
+/**
  * dsi_display_set_clk_state() - set clk state request from MDP
  * @display:     Handle to display
  * @clk_type:   Clock which is being controlled.

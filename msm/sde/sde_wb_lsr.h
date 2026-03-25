@@ -48,6 +48,19 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 int hfi_wb_lsr_prop_helper_alloc(struct hfi_connector *hfi_conn);
 
 /**
+ * hfi_lsr_fw_debug_set - Sets LSR FW debug value
+ * @val: value to set
+ * @dev: pointer to drm device
+ */
+int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev);
+
+/**
+ * hfi_lsr_fw_debug_get - Gets LSR FW debug value
+ * @val: pointer to store value
+ */
+int hfi_lsr_fw_debug_get(u64 *val);
+
+/**
  * hfi_wb_lsr_add_props - Adds LSR properties on WB connector
  * @wb_dev: Pointer to sde_wb_device
  * @hfi_conn: Pointer to hfi_conector
@@ -121,6 +134,8 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
  * c_state: pointer to sde_connector_state
  */
 void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state);
+
+extern int lsr_fw_reset(void);
 #else
 static inline
 int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
@@ -146,6 +161,18 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 
 static inline
 int hfi_wb_lsr_prop_helper_alloc(struct hfi_connector *hfi_conn)
+{
+	return 0;
+}
+
+static inline
+int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
+{
+	return 0;
+}
+
+static inline
+int hfi_lsr_fw_debug_get(u64 *val)
 {
 	return 0;
 }
@@ -197,6 +224,11 @@ static inline int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms,
 
 static inline void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state)
 {
+}
+
+static inline int lsr_fw_reset(void)
+{
+	return 0;
 }
 #endif /* CONFIG_DRM_SDE_LSR */
 #endif /* __SDE_WB_LSR_H__ */

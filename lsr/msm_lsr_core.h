@@ -63,6 +63,7 @@ struct msm_lsr_drv {
 	struct mutex lock;
 	struct msm_lsr_core *lsr_core;
 	struct dentry *debugfs_root;
+	struct drm_device *drm_dev;
 };
 
 struct smem_data {
@@ -88,6 +89,7 @@ struct msm_lsr_core {
 	unsigned long curr_freq;
 	unsigned long orig_core_sum;
 	unsigned long bw_sum;
+	unsigned long peak_bw;
 	struct lsr_perf new_perf;
 	struct lsr_perf old_perf;
 };

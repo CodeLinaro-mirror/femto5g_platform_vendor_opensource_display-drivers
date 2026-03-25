@@ -90,7 +90,7 @@ static int lsr_sde_fence_create_hw_fence(struct sde_fence *sde_fence,
 	sde_fence->hw_fence_handle = lsr_hw_fence_handle;
 	sde_fence->hwfence_index = hwfence_index;
 
-	dprintk(LSR_SYNX, "created hfence index:0x%x client: %d, ctx:%llu seqno:%llu name:%s\n",
+	dprintk(LSR_SYNX, "created hfence index:0x%llx client: %d, ctx:%llu seqno:%llu name:%s\n",
 		sde_fence->hwfence_index, client_id, sde_fence->base.context,
 		sde_fence->base.seqno, sde_fence->name);
 
@@ -227,6 +227,11 @@ static int lsr_sess_init_synx_v2(struct lsr_device *dev)
 		return -EFAULT;
 
 	hwfence_data = &dev->hwfence_data;
+
+	if (hwfence_data->hw_fence_handle) {
+		dprintk(LSR_WARN, "synx already initialized, skipping re-init\n");
+		return 0;
+	}
 
 	params.name = "lsr-kernel-client";
 	params.id = SYNX_CLIENT_HW_FENCE_LSR0_CTX0;

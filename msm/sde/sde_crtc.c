@@ -328,7 +328,8 @@ int sde_crtc_update_lsr_perf(struct drm_crtc *crtc)
 
 	if (is_lsr && crtc->state) {
 		sde_cstate = to_sde_crtc_state(crtc->state);
-		perf.bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_DRAM_AB);
+		perf.bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_LLCC_AB);
+		perf.ib_bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_LLCC_IB);
 		perf.clk_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_CORE_CLK);
 		sde_wb_update_lsr_perf(conn, c_conn->display, perf);
 	}
@@ -3646,14 +3647,16 @@ enum sde_intf_mode sde_crtc_get_intf_mode(struct drm_crtc *crtc,
 		struct drm_crtc_state *cstate)
 {
 	struct drm_encoder *encoder;
+	struct sde_crtc *sde_crtc;
 
 	if (!crtc || !crtc->dev || !cstate) {
 		SDE_ERROR("invalid crtc\n");
 		return INTF_MODE_NONE;
 	}
 
+	sde_crtc = to_sde_crtc(crtc);
 	drm_for_each_encoder_mask(encoder, crtc->dev,
-			cstate->encoder_mask) {
+			sde_crtc->cached_encoder_mask) {
 		/* continue if copy encoder is encountered */
 		if (sde_crtc_state_in_clone_mode(encoder, cstate) ||
 			sde_encoder_is_loopback_display(encoder))
@@ -3820,31 +3823,58 @@ static void _sde_crtc_retire_event(struct drm_connector *connector,
 	SDE_ATRACE_END("signal_retire_fence");
 }
 
-void sde_crtc_opr_event_notify(struct drm_crtc *crtc)
+void sde_crtc_opr_event_notify(struct drm_crtc *crtc, void *args)
 {
 	struct sde_crtc *sde_crtc;
 	uint32_t current_opr_value[MAX_DSI_DISPLAYS] = {0};
 	int i, rc;
 	bool updated = false;
 	struct drm_event event;
-
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 	sde_crtc = to_sde_crtc(crtc);
+	u32 *opr_data;
 
 	atomic_set(&sde_crtc->previous_opr_value.num_valid_opr, 0);
-	for (i = 0; i < sde_crtc->num_mixers; i++) {
-		rc = sde_dspp_spr_read_opr_value(sde_crtc->mixers[i].hw_dspp,
-			&current_opr_value[i]);
-		if (rc) {
-			SDE_ERROR("failed to collect OPR idx: %d rc: %d\n", i, rc);
-			continue;
+
+	if (IS_DISP_OP_HFI(disp_op)) {
+		if (!args) {
+			SDE_ERROR("invalid args sent in opr event cb\n");
+			return;
 		}
 
-		atomic_inc(&sde_crtc->previous_opr_value.num_valid_opr);
-		if (current_opr_value[i] == sde_crtc->previous_opr_value.opr_value[i])
-			continue;
+		opr_data = (u32 *) args;
 
-		sde_crtc->previous_opr_value.opr_value[i] = current_opr_value[i];
-		updated = true;
+		if (sde_crtc->num_mixers != opr_data[0]) {
+			SDE_ERROR("num of valid opr doesn't match with number of mixers in crtc\n");
+			return;
+		}
+
+		atomic_set(&sde_crtc->previous_opr_value.num_valid_opr, opr_data[0]);
+		for (i = 0; i < sde_crtc->num_mixers; i++) {
+			if (opr_data[i+1] == sde_crtc->previous_opr_value.opr_value[i])
+				continue;
+
+			sde_crtc->previous_opr_value.opr_value[i] = opr_data[i+1];
+			updated = true;
+		}
+
+	} else {
+		for (i = 0; i < sde_crtc->num_mixers; i++) {
+			rc = sde_dspp_spr_read_opr_value(sde_crtc->mixers[i].hw_dspp,
+				&current_opr_value[i]);
+			if (rc) {
+				SDE_ERROR("failed to collect OPR idx: %d rc: %d\n", i, rc);
+				continue;
+			}
+
+			atomic_inc(&sde_crtc->previous_opr_value.num_valid_opr);
+			if (current_opr_value[i] == sde_crtc->previous_opr_value.opr_value[i])
+				continue;
+
+			sde_crtc->previous_opr_value.opr_value[i] = current_opr_value[i];
+			updated = true;
+		}
+
 	}
 
 	if (updated) {
@@ -3902,14 +3932,16 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 	struct sde_connector *sde_conn;
 	struct drm_encoder *encoder;
 	u32 frame_done = 1;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 
 	sde_crtc = to_sde_crtc(crtc);
-	if (sde_crtc->opr_event_notify_enabled)
-		sde_crtc_opr_event_notify(crtc);
+
+	if (IS_DISP_OP_HWIO(disp_op) && sde_crtc->opr_event_notify_enabled)
+		sde_crtc_opr_event_notify(crtc, NULL);
 
 	sde_conn = to_sde_connector(fevent->connector);
-	if (sde_conn && sde_conn->misr_event_notify_enabled)
-		sde_encoder_misr_sign_event_notify(fevent->connector->encoder);
+	if (IS_DISP_OP_HWIO(disp_op) && sde_conn && sde_conn->misr_event_notify_enabled)
+		sde_encoder_misr_sign_event_notify(fevent->connector->encoder, NULL);
 
 	if (sde_crtc->framedone_event_notify_enabled)
 		sde_crtc_event_notify(crtc, DRM_EVENT_FRAME_DONE, &frame_done, sizeof(u32));
@@ -6470,6 +6502,7 @@ static bool skip_event_handling_required(struct drm_crtc *crtc, u32 event)
 	case DRM_EVENT_RGB_HIST_WB_ERR:
 	case DRM_EVENT_RGB_HIST_OFF:
 	case DRM_EVENT_HISTOGRAM:
+	case DRM_EVENT_OPR_VALUE:
 		return true;
 	default:
 		return false;
@@ -6612,6 +6645,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	int ret, i;
 	enum sde_intf_mode intf_mode;
 	struct sde_hw_ctl *hw_ctl = NULL;
+	u32 encoder_mask = 0;
 	if (!crtc || !crtc->dev || !crtc->dev->dev_private || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
 		return;
@@ -6657,7 +6691,6 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 			crtc->state->enable, sde_crtc->cached_encoder_mask);
 	sde_crtc->enabled = false;
 	_sde_crtc_register_event_callback(sde_crtc, NULL);
-	sde_crtc->cached_encoder_mask = 0;
 
 	/* Try to disable uidle */
 	sde_core_perf_crtc_update_uidle(crtc, false);
@@ -6698,15 +6731,22 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 
 	sde_crtc->cesta_client = NULL;
 
-	drm_for_each_encoder_mask(encoder, crtc->dev,
-			crtc->state->encoder_mask) {
+	/* If enc mask not available, use cached mask to de-register events */
+	if (crtc->state->encoder_mask)
+		encoder_mask = crtc->state->encoder_mask;
+	else
+		encoder_mask = sde_crtc->cached_encoder_mask;
+
+	if (!encoder_mask)
+		SDE_WARN("unable to de-register events\n");
+
+	drm_for_each_encoder_mask(encoder, crtc->dev, encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, NULL, NULL);
 
-		if (IS_DISP_OP_HFI(priv->disp_op))
+		if (IS_DISP_OP_HFI(priv->disp_op)) {
 			sde_encoder_register_display_power_event_callback(encoder, NULL, NULL);
-
-		if (IS_DISP_OP_HFI(priv->disp_op))
 			sde_encoder_register_panel_dead_event_callback(encoder, false);
+		}
 
 		cstate->rsc_client = NULL;
 		cstate->rsc_update = false;
@@ -6718,6 +6758,8 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 		if (test_bit(SDE_FEATURE_IDLE_PC, sde_kms->catalog->features))
 			sde_encoder_control_idle_pc(encoder, true);
 	}
+
+	sde_crtc->cached_encoder_mask = 0;
 
 	if (sde_crtc->power_event) {
 		if (IS_DISP_OP_HWIO(priv->disp_op))
@@ -6867,6 +6909,10 @@ void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
 		/* give event back */
 		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_hist_event,
 				&sde_crtc->pa_hist_buffers[idx], true);
+		break;
+	case DRM_EVENT_OPR_VALUE:
+		sde_crtc_event_queue(&sde_crtc->base, sde_crtc_opr_event_notify,
+			event_payload, true);
 		break;
 	}
 }
@@ -8353,10 +8399,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			"lsr_mode", 0, 0, e_lsr_mode, ARRAY_SIZE(e_lsr_mode),
 			MSM_DISP_LSR_MODE_DISABLED, CRTC_PROP_LSR_MODE);
 
-	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map))
+	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map) ||
+			test_bit(SDE_FEATURE_LSR, catalog->features))
 		msm_property_install_enum(&sde_crtc->property_info, "cache_state",
-			0x0, 0, e_cache_state,
-			ARRAY_SIZE(e_cache_state), 0,
+			0x0, 0, e_cache_state, ARRAY_SIZE(e_cache_state), 0,
 			CRTC_PROP_CACHE_STATE);
 
 	if (test_bit(SDE_FEATURE_DIM_LAYER, catalog->features)) {
@@ -10226,10 +10272,21 @@ static int sde_crtc_opr_event_handler(struct drm_crtc *crtc_drm,
 	bool en, struct sde_irq_callback *irq)
 {
 	struct sde_crtc *sde_crtc;
+	int ret = 0;
 
 	sde_crtc = to_sde_crtc(crtc_drm);
 	if (!sde_crtc)
 		return -EINVAL;
+
+	if (sde_crtc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI]) {
+		ret = sde_crtc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI](sde_crtc,
+			HFI_EVENT_SPR_OPR, en);
+		if (ret) {
+			DRM_ERROR("failed to enable SPR OPR event\n");
+			return ret;
+		}
+
+	}
 
 	sde_crtc->opr_event_notify_enabled = en;
 	return 0;
