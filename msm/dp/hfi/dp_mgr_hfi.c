@@ -47,6 +47,15 @@
 #define SKE_SEND_TYPE_ID        18
 
 #define EDID_BLOCK_SIZE         128
+#define DEFAULT_MODE_WIDTH      640
+#define DEFAULT_MODE_HEIGHT     480
+#define DEFAULT_MODE_CLOCK      25175
+
+static inline bool _default_mode(struct drm_display_mode *mode)
+{
+	return (mode->hdisplay == DEFAULT_MODE_WIDTH) && (mode->vdisplay == DEFAULT_MODE_HEIGHT) &&
+			(mode->clock == DEFAULT_MODE_CLOCK);
+}
 
 struct hfi_shared_addr_map *dp_mgr_hfi_init_shared_addr(struct hfi_client_t *ctx, u32 size)
 {
@@ -266,18 +275,29 @@ static bool _hfi_notify_hpd_user(struct dp_hfi *hfi, bool connection)
 static int _hfi_parse_supported_modes(struct dp_hfi *hfi, char *buf_addr, int buf_size)
 {
 	u32 mode_count;
-	struct hfi_display_mode_info *modes_array;
-	int i, *ip;
+	int i;
+	char *p;
+	struct hfi_display_mode_extended_info *mode_info;
+	struct hfi_display_mode_info *mode;
+	int entry_size;
 
-	/* HFI_PROPERTY_SUPPORTED_MODES format:
-	 * payload[0]: count
-	 * payload[1..n]: array of struct hfi_display_mode_info[count]
+	/* Buffer layout:
+	 * [u32 num_modes]
+	 * per mode (num_modes times):
+	 *   [hfi_display_mode_extended_info]
 	 */
-	ip = (int *)buf_addr;
-	mode_count = *ip++;
+	if (buf_size < 8) {
+		DP_ERR("Modes payload too small: %d\n", buf_size);
+		return -EINVAL;
+	}
+
+	p = buf_addr;
+	mode_count = *(u32 *)p;
+	p += sizeof(u32);
 	buf_size -= 4;
 
-	DP_DEBUG("mode count: %d\n", mode_count);
+	DP_DEBUG("mode count: %u\n", mode_count);
+	entry_size = sizeof(struct hfi_display_mode_extended_info);
 
 	if (mode_count > MAX_MODES) {
 		DP_WARN("Mode count %u exceeds MAX_MODES %d, truncating\n",
@@ -291,31 +311,24 @@ static int _hfi_parse_supported_modes(struct dp_hfi *hfi, char *buf_addr, int bu
 		return 0;
 	}
 
-	/* Point to the start of the mode array (after count field) */
-	modes_array = (struct hfi_display_mode_info *)ip;
-
-	buf_size -= (sizeof(*modes_array) * mode_count);
-
-	if (buf_size < 0) {
-		DP_ERR("Invalid modes payload size\n");
+	if (buf_size < (int)(mode_count * entry_size)) {
+		DP_ERR("Invalid modes payload: have %d bytes, need %d\n",
+			buf_size, mode_count * entry_size);
 		return -EINVAL;
 	}
 
-	/* Copy modes to hfi_priv */
+	DP_DEBUG("Parsed %u display modes from DCP\n", mode_count);
+	mode_info = (struct hfi_display_mode_extended_info *)p;
 	for (i = 0; i < mode_count; i++) {
-		memcpy(&hfi->mode_list[i], &modes_array[i],
-				sizeof(struct hfi_display_mode_info));
+		memcpy(&hfi->mode_list[i], mode_info,
+				sizeof(struct hfi_display_mode_extended_info));
+		mode = &hfi->mode_list[i].base;
+		DP_DEBUG("Mode[%d]: %ux%u@%uHz\n", i, mode->h_active, mode->v_active,
+				mode->refresh_rate);
+		mode_info++;
 	}
 
 	hfi->mode_count = mode_count;
-
-	DP_DEBUG("Parsed %u display modes from DCP\n", mode_count);
-	for (i = 0; i < mode_count; i++) {
-		DP_DEBUG("Mode[%d]: %ux%u@%uHz\n", i,
-			 hfi->mode_list[i].h_active,
-			 hfi->mode_list[i].v_active,
-			 hfi->mode_list[i].refresh_rate);
-	}
 
 	return 0;
 }
@@ -1168,28 +1181,27 @@ static void dp_mgr_hfi_calc_tu_parameters(struct dp_mgr_hfi_priv *hfi_priv,
 {
 	struct dp_tu_calc_input in;
 	struct dp_tu_calc_output out;
+	struct msm_compression_info *cmpr = &pinfo->comp_info;
 
 	in.lclk = hfi_priv->link_rate / 1000;
 	in.nlanes = hfi_priv->lane_count;
 	in.pclk_khz = pinfo->pixel_clk_khz;
 	in.hactive = pinfo->h_active;
-	in.hporch = pinfo->h_back_porch + pinfo->h_front_porch +
-				pinfo->h_sync_width;
-
+	in.hporch = pinfo->h_back_porch + pinfo->h_front_porch + pinfo->h_sync_width;
 	in.bpp = pinfo->bpp;
 	in.pixel_enc = 444;
-	in.dsc_en = pinfo->comp_info.enabled;
+	in.dsc_en = cmpr->enabled;
 	in.async_en = 0;
 	in.fec_en = hfi_priv->fec_en;
-	in.num_of_dsc_slices = pinfo->comp_info.dsc_info.slice_per_pkt;
-	in.ppc_div_factor = 2; /*hfi_priv->dpcd.pclk_factor;*/
+	in.ppc_div_factor = (cmpr->dsc_info.num_active_ss_per_enc == 4) ?  4 : 2;
 
-	if (pinfo->comp_info.enabled) {
-		in.compress_ratio = mult_frac(100, pinfo->comp_info.src_bpp,
-				pinfo->comp_info.tgt_bpp);
-		in.comp_bpp = pinfo->comp_info.tgt_bpp;
+	if (in.dsc_en) {
+		in.compress_ratio = cmpr->comp_ratio;
+		in.num_of_dsc_slices = cmpr->dsc_info.num_active_ss_per_enc;
+		in.comp_bpp = cmpr->tgt_bpp;
 	} else {
 		in.compress_ratio = 100;
+		in.num_of_dsc_slices = 0;
 		in.comp_bpp = in.bpp;
 	}
 
@@ -1300,10 +1312,6 @@ int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp_displa
 			HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Could not send HFI_COMMAND_DISPLAY_SET_MODE, rc=%d\n", rc);
-	} else {
-		DP_DEBUG("Successfully set mode %ux%u@%uHz for panel_id=%d\n",
-				mode->timing.h_active, mode->timing.v_active,
-				mode->timing.refresh_rate, panel_id);
 	}
 
 	return rc;
@@ -1329,6 +1337,9 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 	hfi = hfi_priv->hfi[stream_id];
 	drm_refresh_rate = drm_mode_vrefresh(mode);
 
+	/* if its the default mode, then always return valid */
+	if (_default_mode(mode))
+		return MODE_OK;
 	/*
 	 * If override is enabled, only accept the override mode and reject
 	 * all others, even if they exist in the EDID/DCP mode list. This
@@ -1371,13 +1382,14 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 	}
 
 	for (i = 0; i < hfi->mode_count; i++) {
-		struct hfi_display_mode_info *hfi_mode = &hfi->mode_list[i];
+		struct hfi_display_mode_info *hfi_mode = &hfi->mode_list[i].base;
 
 		/* Compare resolution and refresh rate */
 		if ((hfi_mode->h_active == mode->hdisplay) &&
 		    (hfi_mode->v_active == mode->vdisplay) &&
 		    (hfi_mode->refresh_rate == drm_refresh_rate)) {
-			DP_DEBUG("Mode validated: matches HFI mode[%d]\n", i);
+			DP_DEBUG("Mode validated [%dx%d@%d]: matches HFI mode[%d]\n",
+				mode->hdisplay, mode->vdisplay, drm_refresh_rate, i);
 			return MODE_OK;
 		}
 	}
@@ -1396,6 +1408,7 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 	u32 ovr_h, ovr_v, ovr_fps;
 	u32 stream_id;
 	struct dp_hfi *hfi;
+	u32 cnt;
 
 	if (!client) {
 		DP_ERR("Invalid params\n");
@@ -1411,15 +1424,15 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 	connector = hfi->connector;
 
 	/* Now populate fresh modes from EDID */
-	rc = _sde_edid_update_modes(connector, hfi->edid_ctrl);
+	cnt = _sde_edid_update_modes(connector, hfi->edid_ctrl);
 
 	if (dp_mode->timing.pixel_clk_khz)
 		hfi_priv->client.max_pclk_khz = dp_mode->timing.pixel_clk_khz;
 
 	/* If no override is enabled, just return the EDID modes */
 	if (!hfi->mode_ovr.enabled) {
-		DP_DEBUG("HFI get_modes: override disabled, returning rc=%d\n", rc);
-		return rc;
+		DP_DEBUG("HFI get_modes: override disabled, mode_cnt=%d\n", cnt);
+		return cnt;
 	}
 
 	/*
@@ -1452,21 +1465,23 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 
 	/*
 	 * Remove all other modes from the list, leaving only the override
-	 * mode exposed to user space. This mirrors the requirement that
-	 * when override is set, only that mode should be reported.
+	 * mode exposed to user space and the mandatory default mode (640x480@60).
 	 */
+	cnt = 0;
 	list_for_each_entry_safe(mode, tmp, &connector->modes, head) {
-		if (mode != override_mode) {
+		if ((mode == override_mode) || _default_mode(mode)) {
+			cnt++;
+		} else {
+			/* remove mode */
 			list_del(&mode->head);
 			drm_mode_destroy(connector->dev, mode);
 		}
 	}
 
-	DP_DEBUG("HFI get_modes: override enabled, exposing only %ux%u@%uHz, returning 1\n",
-		override_mode->hdisplay, override_mode->vdisplay, ovr_fps);
+	DP_DEBUG("HFI get_modes: override enabled, exposing only %ux%u@%uHz, returning %d\n",
+		override_mode->hdisplay, override_mode->vdisplay, ovr_fps, cnt);
 
-	/* We now have exactly one mode; return 1 to indicate this */
-	return 1;
+	return cnt;
 }
 
 static int dp_mgr_hfi_request_irq(struct dp_client *client)
@@ -1522,10 +1537,10 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	if (info->stream_id == 0) {
 		hfi_priv->link_rate = info->link_rate;
 		hfi_priv->lane_count = info->lane_count;
+		hfi_priv->fec_en = info->fec_enabled;
 	}
 
-	hfi_priv->tgt_bpp = info->bits_per_pixel;
-	hfi_priv->fec_en = info->fec_enabled;
+	hfi->tgt_bpp = info->bits_per_pixel;
 
 	buf_addr = (char *)edid_map->local_addr;
 	buf_size = edid_buf->size;
@@ -1551,7 +1566,7 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	}
 	DP_INFO("Received %u modes from DCP:\n", hfi->mode_count);
 	for (i = 0; i < hfi->mode_count; i++) {
-		struct hfi_display_mode_info *mode = &hfi->mode_list[i];
+		struct hfi_display_mode_info *mode = &hfi->mode_list[i].base;
 
 		DP_INFO("Mode[%d]: %ux%u@%uHz hb:(%u %u %u) vb:(%u %u %u)\n",
 				i, mode->h_active, mode->v_active, mode->refresh_rate,
@@ -2824,6 +2839,23 @@ static struct dp_intf_info *dp_mgr_hfi_get_info(struct dp_client *client)
 	return &mgr->intf_info;
 }
 
+static int _find_mode_index(struct dp_hfi *hfi, const struct drm_display_mode *drm_mode)
+{
+	struct hfi_display_mode_info *m;
+	int i;
+
+	for (i = 0; i < hfi->mode_count; i++) {
+		m = &hfi->mode_list[i].base;
+		if (m->h_active == (u32)drm_mode->hdisplay &&
+				m->v_active == (u32)drm_mode->vdisplay &&
+				m->refresh_rate == (u32)drm_mode_vrefresh(drm_mode))
+			return i;
+	}
+
+	/* no match */
+	return -1;
+}
+
 static int dp_mgr_hfi_pm_prepare(struct dp_client *client)
 {
 	return 0;
@@ -2839,6 +2871,10 @@ static void dp_mgr_hfi_convert_to_dp_mode(struct dp_client *client,
 		struct dp_display_mode *dp_mode)
 {
 	struct dp_mgr_hfi_priv *hfi_priv;
+	struct dp_hfi *hfi;
+	u32 stream_id;
+	struct msm_compression_info *cmpr;
+	int i;
 
 	if (!client || !dp_mode || !drm_mode)
 		return;
@@ -2848,6 +2884,9 @@ static void dp_mgr_hfi_convert_to_dp_mode(struct dp_client *client,
 		DP_ERR("invalid param(s), hfi_priv %pK\n", hfi_priv);
 		return;
 	}
+
+	stream_id = panel_to_stream(hfi_priv, panel_id);
+	hfi = hfi_priv->hfi[stream_id];
 
 	dp_mode->timing.h_active = drm_mode->hdisplay;
 	dp_mode->timing.h_back_porch = drm_mode->htotal - drm_mode->hsync_end;
@@ -2867,13 +2906,89 @@ static void dp_mgr_hfi_convert_to_dp_mode(struct dp_client *client,
 	dp_mode->timing.pixel_clk_khz = drm_mode->clock;
 
 	dp_mode->timing.v_active_low = !!(drm_mode->flags & DRM_MODE_FLAG_NVSYNC);
-
 	dp_mode->timing.h_active_low = !!(drm_mode->flags & DRM_MODE_FLAG_NHSYNC);
 
-	dp_mode->timing.bpp = hfi_priv->tgt_bpp;
+	dp_mode->timing.bpp = hfi->tgt_bpp;
 
 	/* As YUV was not supported now, so set the default format to RGB */
 	dp_mode->output_format = DP_OUTPUT_FORMAT_RGB;
+
+	i = _find_mode_index(hfi, drm_mode);
+	if (i < 0) {
+		DP_ERR("mode not found %dx%d@%d\n", drm_mode->hdisplay, drm_mode->vdisplay,
+				dp_mode->timing.refresh_rate);
+		return;
+	}
+	/* matched */
+	cmpr = &dp_mode->timing.comp_info;
+	cmpr->enabled = hfi->mode_list[i].cmpr_enabled;
+	if (cmpr->enabled) {
+		cmpr->comp_type = MSM_DISPLAY_COMPRESSION_DSC;
+		cmpr->src_bpp = dp_mode->timing.bpp;
+		cmpr->tgt_bpp = hfi->mode_list[i].cmpr_bpp;
+		cmpr->comp_ratio = mult_frac(100, cmpr->src_bpp, cmpr->tgt_bpp);
+		cmpr->dsc_info.num_active_ss_per_enc = hfi->mode_list[i].cmpr_slice_count;
+	}
+}
+
+static int dp_mgr_hfi_get_mode_info(struct dp_client *client, int panel_id,
+		const struct drm_display_mode *drm_mode, struct msm_mode_info *mode_info)
+{
+	struct dp_mgr_hfi_priv *hfi_priv;
+	struct dp_hfi *hfi;
+	u32 stream_id;
+	struct msm_display_topology *topology;
+	struct msm_compression_info *cmpr;
+	int i;
+
+	if (!client || !mode_info || !drm_mode)
+		return -EINVAL;
+
+	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	if (!hfi_priv) {
+		DP_ERR("invalid param(s), hfi_priv %pK\n", hfi_priv);
+		return -EINVAL;
+	}
+
+	stream_id = panel_to_stream(hfi_priv, panel_id);
+	hfi = hfi_priv->hfi[stream_id];
+
+	memset(mode_info, 0, sizeof(*mode_info));
+
+	i = _find_mode_index(hfi, drm_mode);
+	if (i < 0) {
+		DP_ERR("mode not found %dx%d@%d\n", drm_mode->hdisplay, drm_mode->vdisplay,
+				(u32)drm_mode_vrefresh(drm_mode));
+		return -EINVAL;
+	}
+
+	topology = &mode_info->topology;
+	cmpr = &mode_info->comp_info;
+	cmpr->enabled = hfi->mode_list[i].cmpr_enabled;
+	if (cmpr->enabled) {
+		cmpr->comp_type = MSM_DISPLAY_COMPRESSION_DSC;
+		cmpr->src_bpp = hfi->tgt_bpp;
+		cmpr->tgt_bpp = hfi->mode_list[i].cmpr_bpp;
+		cmpr->comp_ratio = mult_frac(100, cmpr->src_bpp, cmpr->tgt_bpp);
+		cmpr->dsc_info.num_active_ss_per_enc = hfi->mode_list[i].cmpr_count;
+	}
+
+	topology->num_lm = hfi->mode_list[i].mixer_count;
+	topology->num_enc = hfi->mode_list[i].cmpr_count;
+	topology->num_intf = 1;
+	topology->comp_type = cmpr->comp_type;
+
+	mode_info->frame_rate = drm_mode_vrefresh(drm_mode);
+	mode_info->vtotal = drm_mode->vtotal;
+	mode_info->wide_bus_en = true;
+	mode_info->pclk_factor = (hfi->mode_list[i].cmpr_count == 4 ? 4 : 2);
+
+	DP_DEBUG("mode[%d] [%d %d %d] top [%d%d%d] ss:%d\n", i, drm_mode->hdisplay,
+			drm_mode->vdisplay, mode_info->frame_rate, topology->num_lm,
+			topology->num_enc, topology->num_intf,
+			cmpr->dsc_info.num_active_ss_per_enc);
+
+	return 0;
 }
 
 static int dp_mgr_hfi_set_stream_info(struct dp_client *client,
@@ -3035,6 +3150,7 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 	drm_ops->get_display_type = dp_mgr_hfi_get_display_type;
 	drm_ops->edp_detect = dp_mgr_hfi_edp_detect;
 	drm_ops->hpd_detect = dp_mgr_hfi_hpd_detect;
+	drm_ops->get_mode_info = dp_mgr_hfi_get_mode_info;
 
 	client->bind = dp_mgr_hfi_bind;
 	client->unbind = dp_mgr_hfi_unbind;
