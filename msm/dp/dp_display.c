@@ -3065,9 +3065,10 @@ static int dp_display_pre_disable(struct dp_display *dp_display, void *panel)
 		bool off = true;
 
 		if (dp_display_state_is(DP_STATE_SUSPENDED)) {
-			DP_DEBUG("DP%d Can't perform HDCP cleanup while suspended. Defer\n",
+			DP_DEBUG("DP%d Reset the HDCP Version, can't perform HDCP cleanup while suspended. Defer\n",
 					dp->cell_idx);
 			dp->hdcp_delayed_off = true;
+			dp->link->hdcp_status.hdcp_version = HDCP_VERSION_NONE;
 			goto clean;
 		}
 
