@@ -680,6 +680,7 @@ struct drm_msm_spr_udc_cfg {
 #define DEMURA_FLAG_1 (1 << 1)
 #define DEMURA_FLAG_2 (3 << 2)
 #define DEMURA_SKIP_CFG0_PARAM2 (1 << 4)
+#define DEMURA_SINGLE_REC (1 << 5)
 #define DEMURA_PRECISION_0 (0 << 2)
 #define DEMURA_PRECISION_1 (1 << 2)
 #define DEMURA_PRECISION_2 (2 << 2)

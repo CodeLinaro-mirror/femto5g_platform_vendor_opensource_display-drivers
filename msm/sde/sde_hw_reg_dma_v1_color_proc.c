@@ -240,6 +240,7 @@ static u32 feature_map[SDE_DSPP_MAX] = {
 	[SDE_DSPP_RC] = RC_MASK_CFG,
 	[SDE_DSPP_DEMURA] = DEMURA_CFG,
 	[SDE_DSPP_DEMURA_CFG0_PARAM2] = DEMURA_CFG0_PARAM2,
+	[SDE_DSPP_DEMURA_PU] = DEMURA_PU_CFG,
 	[SDE_DSPP_AIQE] = AIQE_MDNIE,
 	[SDE_DSPP_AI_SCALER] = AIQE_AI_SCALER,
 	[SDE_DSPP_QRTC] = QRTC,
@@ -274,6 +275,7 @@ static u32 feature_reg_dma_sz[SDE_DSPP_MAX] = {
 	[SDE_DSPP_SPR] = SPR_INIT_MEM_SIZE,
 	[SDE_DSPP_DEMURA] = DEMURA_MEM_SIZE,
 	[SDE_DSPP_DEMURA_CFG0_PARAM2] = DEMURA_CFG0_PARAM2_MEM_SIZE,
+	[SDE_DSPP_DEMURA_PU] = DEMURA_MEM_SIZE,
 	[SDE_DSPP_AIQE] = AIQE_MDNIE_SIZE,
 	[SDE_DSPP_AI_SCALER] = AIQE_AI_SCALER_MEM_SIZE,
 	[SDE_DSPP_QRTC] = QRTC_MEM_SIZE,
@@ -8322,7 +8324,10 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 	if (w % 32)
 		w = 32 - (w % 32) + w;
 	w = 2 * (w / 32);
-	w = w / (hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1);
+
+	if (!(dcfg->flags & DEMURA_SINGLE_REC)) {
+		w = w / (hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1);
+	}
 
 	if (h != (hw_cfg->skip_planes[SB_PLANE_REAL].plane_h + hw_cfg->overfetch_lines_on_top +
 			hw_cfg->overfetch_lines_on_bottom) ||
@@ -8952,6 +8957,7 @@ static int __reg_dmav1_setup_demura_en_v3_common(struct sde_hw_dspp *ctx,
 	u32 en = 0;
 	int rc, val;
 	u32 demura_base = ctx->cap->sblk->demura.base + ctx->hw.blk_off;
+	u32 hfc_pack_size = 0;
 
 	__reg_dmav1_setup_demura_common_en(ctx, dcfg, dma_write_cfg, dma_ops, hw_cfg, &en);
 
@@ -8985,11 +8991,33 @@ static int __reg_dmav1_setup_demura_en_v3_common(struct sde_hw_dspp *ctx,
 			SDE_EVT32(cfg0_param_7);
 		}
 
+		if (dcfg->flags & DEMURA_SINGLE_REC) {
+			en |= BIT(8);
+			hfc_pack_size =
+				((hw_cfg->skip_planes[SB_PLANE_REAL].plane_w /
+					(hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1)) &
+				REG_MASK(16));
+			hfc_pack_size |=
+				((hw_cfg->skip_planes[SB_PLANE_REAL].plane_h & REG_MASK(16)) << 16);
+			REG_DMA_SETUP_OPS(*dma_write_cfg, demura_base + 0x150,
+				&hfc_pack_size, sizeof(hfc_pack_size), REG_SINGLE_WRITE, 0, 0, 0);
+			rc = dma_ops->setup_payload(dma_write_cfg);
+			if (rc) {
+				DRM_ERROR("0x18: REG_SINGLE_WRITE failed ret %d\n", rc);
+				return rc;
+			}
+			ctx->demura_single_rec = true;
+		} else {
+			ctx->demura_single_rec = false;
+		}
+
 		REG_DMA_SETUP_OPS(*dma_write_cfg, demura_base + 0x18,
 			&en, sizeof(en), REG_SINGLE_WRITE, 0, 0, 0);
 		rc = dma_ops->setup_payload(dma_write_cfg);
-		if (rc)
+		if (rc) {
 			DRM_ERROR("0x18: REG_SINGLE_WRITE failed ret %d\n", rc);
+			return rc;
+		}
 	}
 
 	return rc;
@@ -9151,6 +9179,90 @@ void reg_dmav1_setup_demurav4(struct sde_hw_dspp *ctx, void *cfx)
 		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
 		if (rc)
 			DRM_ERROR("failed to kick off demurav3 ret %d\n", rc);
+	}
+}
+
+void reg_dmav1_setup_demura_pu_cfgv4(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	struct sde_reg_dma_kickoff_cfg kick_off;
+	struct sde_hw_reg_dma_ops *dma_ops;
+	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
+	struct sde_reg_dma_buffer *buffer;
+	struct msm_roi_list *roi_list = NULL;
+	int rc;
+	u32 hfc_pack_size;
+	u32 demura_base;
+	u32 temp;
+
+	rc = reg_dma_dspp_check(ctx, cfg, DEMURA_PU_CFG);
+	if (rc)
+		return;
+
+	buffer = dspp_buf[DEMURA_PU_CFG][ctx->idx][ctx->dpu_idx];
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	if (IS_ERR_OR_NULL(dma_ops))
+		return;
+
+	dma_ops->reset_reg_dma_buf(buffer);
+
+	REG_DMA_INIT_OPS(dma_write_cfg, MDSS, DEMURA_PU_CFG, buffer);
+	REG_DMA_SETUP_OPS(dma_write_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc) {
+		DRM_ERROR("write decode select failed ret %d\n", rc);
+		return;
+	}
+
+	demura_base = ctx->cap->sblk->demura.base + ctx->hw.blk_off;
+	if (!cfg || !hw_cfg->payload) {
+		temp = 0;
+	} else {
+		roi_list = hw_cfg->payload;
+		if (hw_cfg->panel_width < hw_cfg->panel_height)
+			temp = (16 * (1 << 21)) / hw_cfg->panel_height;
+		else
+			temp = (8 * (1 << 21)) / hw_cfg->panel_height;
+		temp = temp * (roi_list->roi[0].y1);
+	}
+
+	REG_DMA_SETUP_OPS(dma_write_cfg, demura_base + 0x60,
+		&temp, sizeof(temp), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_write_cfg);
+	if (rc)
+		DRM_ERROR("0x60: REG_SINGLE_WRITE failed ret %d\n", rc);
+
+	SDE_EVT32(0x60, temp, ctx->idx, ((roi_list) ? roi_list->roi[0].y1 : -1),
+			((roi_list) ? roi_list->roi[0].y2 : -1),
+			((hw_cfg) ? hw_cfg->panel_height : -1));
+
+	if (ctx->demura_single_rec) {
+		if (!hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
+			DRM_WARN("HFC plane not set\n");
+			return;
+		}
+		hfc_pack_size =
+			((hw_cfg->skip_planes[SB_PLANE_REAL].plane_w /
+				(hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1)) &
+			REG_MASK(16));
+		hfc_pack_size |=
+			((hw_cfg->skip_planes[SB_PLANE_REAL].plane_h & REG_MASK(16)) << 16);
+		REG_DMA_SETUP_OPS(dma_write_cfg, demura_base + 0x150,
+			&hfc_pack_size, sizeof(hfc_pack_size), REG_SINGLE_WRITE, 0, 0, 0);
+		rc = dma_ops->setup_payload(&dma_write_cfg);
+		if (rc)
+			DRM_ERROR("0x150: REG_SINGLE_WRITE failed ret %d\n", rc);
+	}
+
+	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, buffer,
+			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, DEMURA_PU_CFG);
+	LOG_FEATURE_ON;
+	if (dma_ops->kick_off[ctx->hw.disp_op]) {
+		rc = dma_ops->kick_off[ctx->hw.disp_op](&kick_off, ctx->dpu_idx);
+		if (rc) {
+			DRM_ERROR("failed to kick off ret %d\n", rc);
+			return;
+		}
 	}
 }
 
