@@ -555,6 +555,28 @@ static int dp_debug_hfi_send_cmd_with_response(struct dp_debug_client_hfi_priv *
 	return 0;
 }
 
+static int _alloc_addr_map(struct hfi_client_t *hfi_client, struct hfi_shared_addr_map **buf,
+		size_t size)
+{
+	if (*buf && size <= (*buf)->size) {
+		memset((*buf)->local_addr, 0, size);
+		return 0;
+	}
+
+	/* buffer exists but requested size is larger, so free first */
+	if (*buf)
+		dp_mgr_hfi_deinit_shared_addr(hfi_client, *buf);
+
+	/* allocate */
+	*buf = dp_mgr_hfi_init_shared_addr(hfi_client, size);
+	if (!*buf) {
+		DP_ERR("Failed to allocate shared buffer of size %zu\n", size);
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
 /* Read operations */
 static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 		u8 *dpcd, u32 size, u32 offset)
@@ -578,12 +600,11 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 	}
 
 	/* Allocate shared buffer for DCP to populate with DPCD data */
-	dpcd_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_1K);
-	if (!dpcd_addr_map) {
-		DP_ERR("Failed to allocate shared buffer for READ_DPCD\n");
-		return -ENOMEM;
-	}
+	rc = _alloc_addr_map(hfi_client, &priv->dpcd_addr_map, SZ_1K);
+	if (rc)
+		return rc;
 
+	dpcd_addr_map = priv->dpcd_addr_map;
 	DP_INFO("Allocated DPCD buffer: local=%p, remote=0x%llx, size=%u\n",
 		dpcd_addr_map->local_addr, (u64) dpcd_addr_map->remote_addr,
 		dpcd_addr_map->size);
@@ -602,7 +623,6 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Failed to send READ_DPCD command to DCP, rc=%d\n", rc);
-		dp_mgr_hfi_deinit_shared_addr(hfi_client, dpcd_addr_map);
 		return rc;
 	}
 
@@ -613,9 +633,6 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 	actual_size = min_t(u32, size, dpcd_addr_map->size);
 	if (actual_size > 0)
 		memcpy(dpcd, dpcd_data, actual_size);
-
-	/* Free the shared buffer */
-	dp_mgr_hfi_deinit_shared_addr(hfi_client, dpcd_addr_map);
 
 	DP_DEBUG("Read %u bytes of DPCD data from offset 0x%x\n", actual_size, offset);
 	return actual_size;
@@ -724,12 +741,11 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 	}
 
 	/* Allocate shared buffer for DCP to populate with info data */
-	info_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_1K);
-	if (!info_addr_map) {
-		DP_ERR("Failed to allocate shared buffer for READ_INFO\n");
-		return -ENOMEM;
-	}
+	rc = _alloc_addr_map(hfi_client, &priv->info_addr_map, SZ_1K);
+	if (rc)
+		return rc;
 
+	info_addr_map = priv->info_addr_map;
 	DP_INFO("Allocated info buffer: local=%p, remote=0x%llx, size=%u\n",
 		info_addr_map->local_addr, (u64) info_addr_map->remote_addr,
 		info_addr_map->size);
@@ -745,7 +761,6 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Failed to send READ_INFO command to DCP, rc=%d\n", rc);
-		dp_mgr_hfi_deinit_shared_addr(hfi_client, info_addr_map);
 		return rc;
 	}
 
@@ -798,9 +813,6 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 		len += scnprintf(buf + len, size - len, "\tv_level=%u\n", v_level);
 	if (len < size - 50)
 		len += scnprintf(buf + len, size - len, "\tp_level=%u\n", p_level);
-
-	/* Free the shared buffer */
-	dp_mgr_hfi_deinit_shared_addr(hfi_client, info_addr_map);
 
 	DP_DEBUG("Returning DP info from DCP: state=0x%x, %ux%u@%uHz, %u lanes, rate=%u\n",
 		state, h_active, v_active, refresh_rate, lane_count, link_rate);
@@ -1125,12 +1137,11 @@ static int dp_debug_client_hfi_write_edid(struct dp_debug_client *client,
 	}
 
 	/* Allocate shared buffer for DCP to populate with DPCD data */
-	edid_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_1K);
-	if (!edid_addr_map) {
-		DP_ERR("Failed to allocate shared buffer for READ_DPCD\n");
-		return -ENOMEM;
-	}
+	rc = _alloc_addr_map(hfi_client, &priv->edid_addr_map, SZ_1K);
+	if (rc)
+		return rc;
 
+	edid_addr_map = priv->edid_addr_map;
 	DP_INFO("Allocated EDID buffer: local=%pK, remote=0x%llx, size=%u\n",
 		edid_addr_map->local_addr, (u64) edid_addr_map->remote_addr,
 		edid_addr_map->size);
@@ -1187,9 +1198,6 @@ static int dp_debug_client_hfi_write_edid(struct dp_debug_client *client,
 	}
 
 bail:
-	if (edid_addr_map)
-		dp_mgr_hfi_deinit_shared_addr(hfi_client, edid_addr_map);
-
 	return rc;
 }
 
@@ -1996,6 +2004,13 @@ void dp_debug_client_hfi_put(struct dp_debug_client *client)
 			}
 		}
 		mutex_unlock(&hfi_client->listener_lock);
+
+		if (priv->dpcd_addr_map)
+			dp_mgr_hfi_deinit_shared_addr(priv->hfi_client, priv->dpcd_addr_map);
+		if (priv->edid_addr_map)
+			dp_mgr_hfi_deinit_shared_addr(priv->hfi_client, priv->edid_addr_map);
+		if (priv->info_addr_map)
+			dp_mgr_hfi_deinit_shared_addr(priv->hfi_client, priv->info_addr_map);
 	}
 
 	/* Destroy HFI client reference */
