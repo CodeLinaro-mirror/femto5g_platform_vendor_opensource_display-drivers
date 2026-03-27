@@ -3276,13 +3276,6 @@ static int __power_on_core_v1(struct lsr_device *device)
 {
 	int rc = 0;
 
-	rc = msm_lsr_prepare_enable_clk(device, "core_freerun_clk");
-	if (rc) {
-		dprintk(LSR_PWR, "Failed to enable core_freerun_clk: %d\n", rc);
-		// TODO: check with clk team for merge of fix
-		// This will fail always, calling once as a workaround
-	}
-
 	if (device->res->framework_type) {
 		/* Using GenPD */
 		rc = __enable_power_domain(device, "lsr_noc_gdsc");
