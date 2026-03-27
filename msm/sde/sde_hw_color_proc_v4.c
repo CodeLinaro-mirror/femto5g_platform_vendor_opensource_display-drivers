@@ -915,8 +915,6 @@ static void ucsc_setup_int2fp_fp2int(struct sde_hw_pipe *ctx,
 
 	mask = BIT(20) | BIT(21);
 	if (ctx->ucsc_cfg & UCSC_ANY_EN) {
-		if ((ctx->ucsc_cfg & UCSC_FP2INT_INT2FP_EN) == UCSC_FP2INT_INT2FP_EN)
-			return;
 		ctx->ucsc_cfg |= BIT(20) | BIT(21);
 	} else {
 		ctx->ucsc_cfg &= ~(BIT(20) | BIT(21));
