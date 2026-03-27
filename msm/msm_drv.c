@@ -535,6 +535,8 @@ static int msm_drm_uninit(struct device *dev)
 	drm_irq_uninstall(ddev);
 #endif
 
+	component_unbind_all(dev, ddev);
+
 	if (kms && kms->funcs) {
 		kms->funcs->destroy(kms);
 		priv->kms = NULL;
@@ -547,7 +549,6 @@ static int msm_drm_uninit(struct device *dev)
 			       priv->vram.paddr, attrs);
 	}
 
-	component_unbind_all(dev, ddev);
 	pm_runtime_put_sync(dev);
 
 	sde_power_resource_deinit(pdev, &priv->phandle);

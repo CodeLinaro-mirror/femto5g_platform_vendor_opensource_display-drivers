@@ -5768,7 +5768,6 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 
 	return 0;
 error:
-	_sde_kms_hw_destroy(sde_kms, platformdev);
 end:
 	return rc;
 }
