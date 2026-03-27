@@ -125,7 +125,8 @@ static void dp_lphw_hpd_host_init(struct dp_hpd *dp_hpd,
 	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
 	DP_INFO("DP lphw_hpd state = %d, new hpd state = %d\n",lphw_hpd->hpd, hpd);
 	if (lphw_hpd->hpd != hpd)
-		DP_INFO("DP HPD changes during suspension\n");
+		DP_INFO("DP HPD has changed, lphw_hpd state = %d, GPIO hpd state = %d\n",
+				lphw_hpd->hpd, hpd);
 
 	/*
 	 * When we init the HPD hardware, the hardware state machine starts from
@@ -285,6 +286,7 @@ int dp_lphw_hpd_register(struct dp_hpd *dp_hpd)
 
 	lphw_hpd->hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
 
+	DP_INFO("DP GPIO initial hpd = %d\n", lphw_hpd->hpd);
 	rc = devm_request_threaded_irq(lphw_hpd->dev, lphw_hpd->irq, NULL,
 		dp_tlmm_isr,
 		IRQF_TRIGGER_RISING | IRQF_ONESHOT,
@@ -299,6 +301,22 @@ int dp_lphw_hpd_register(struct dp_hpd *dp_hpd)
 		queue_work(lphw_hpd->connect_wq, &lphw_hpd->connect);
 
 	return rc;
+}
+
+static void dp_lphw_hpd_unregister(struct dp_hpd *dp_hpd)
+{
+	struct dp_lphw_hpd_private *lphw_hpd;
+
+	if (!dp_hpd) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	lphw_hpd = container_of(dp_hpd, struct dp_lphw_hpd_private, base);
+
+	disable_irq(lphw_hpd->irq);
+	DP_INFO("DP disable lphw_hpd irq.\n");
+	devm_free_irq(lphw_hpd->dev, lphw_hpd->irq, lphw_hpd);
 }
 
 static void dp_lphw_hpd_deinit(struct dp_lphw_hpd_private *lphw_hpd)
@@ -430,6 +448,7 @@ struct dp_hpd *dp_lphw_hpd_get(struct device *dev, struct dp_parser *parser,
 	lphw_hpd->base.simulate_connect = dp_lphw_hpd_simulate_connect;
 	lphw_hpd->base.simulate_attention = dp_lphw_hpd_simulate_attention;
 	lphw_hpd->base.register_hpd = dp_lphw_hpd_register;
+	lphw_hpd->base.unregister_hpd = dp_lphw_hpd_unregister;
 
 	dp_lphw_hpd_init(lphw_hpd);
 
