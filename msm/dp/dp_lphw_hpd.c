@@ -100,8 +100,7 @@ static irqreturn_t dp_tlmm_isr(int unused, void *data)
 
 	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
 
-	DP_DEBUG("lphw_hpd state = %d, new hpd state = %d\n",
-			lphw_hpd->hpd, hpd);
+	DP_INFO("DP lphw_hpd state = %d, new hpd state = %d\n", lphw_hpd->hpd, hpd);
 	if (!lphw_hpd->hpd && hpd) {
 		lphw_hpd->hpd = true;
 		queue_work(lphw_hpd->connect_wq, &lphw_hpd->connect);
@@ -114,6 +113,7 @@ static void dp_lphw_hpd_host_init(struct dp_hpd *dp_hpd,
 		struct dp_catalog_hpd *catalog)
 {
 	struct dp_lphw_hpd_private *lphw_hpd;
+	bool hpd;
 
 	if (!dp_hpd) {
 		DP_ERR("invalid input\n");
@@ -122,6 +122,24 @@ static void dp_lphw_hpd_host_init(struct dp_hpd *dp_hpd,
 
 	lphw_hpd = container_of(dp_hpd, struct dp_lphw_hpd_private, base);
 
+	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
+	DP_INFO("DP lphw_hpd state = %d, new hpd state = %d\n",lphw_hpd->hpd, hpd);
+	if (lphw_hpd->hpd != hpd)
+		DP_INFO("DP HPD changes during suspension\n");
+
+	/*
+	 * When we init the HPD hardware, the hardware state machine starts from
+	 * disconnected status.
+	 * Update the software cache HPD status to previous status, that will be
+	 * reset to low when going to suspend mode, since the sink device will
+	 * be powered down during suspension time.
+	 * The change of the sw HPD status to the new hardware status will be
+	 * identified as hotplug event, otherwise redundent interrupt shall be
+	 * ignored.
+	 */
+	DP_INFO("DP Init HPD state machine, sw status starts from %d\n",
+			lphw_hpd->base.hpd_high);
+	lphw_hpd->hpd = lphw_hpd->base.hpd_high;
 	lphw_hpd->catalog->config_hpd(lphw_hpd->catalog, true);
 
 	/*
