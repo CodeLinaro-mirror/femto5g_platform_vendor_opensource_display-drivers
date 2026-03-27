@@ -347,6 +347,7 @@ static int _register_hpd_events(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 	struct sde_kms *sde_kms;
 	struct hfi_kms *hfi_kms;
 	struct hfi_client_t *hfi_client;
+	struct dp_hfi *hfi = hfi_priv->hfi;
 	u32 hfi_cmd = (enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER :
 			HFI_COMMAND_DISPLAY_EVENT_DEREGISTER);
 	u32 hfi_event;
@@ -370,9 +371,14 @@ static int _register_hpd_events(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 	}
 
 	hfi_client = &hfi_kms->hfi_client;
+	rc = dp_hfi_start_batch_cmd(hfi, hfi_client);
+	if (rc) {
+		DP_ERR("failed to start batch cmds, rc=%d\n", rc);
+		goto end;
+	}
 
 	hfi_event = HFI_EVENT_HPD_STATUS;
-	rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+	rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
 		HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32), HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Could not register for HPD status from DCP, rc=%d\n", rc);
@@ -380,7 +386,7 @@ static int _register_hpd_events(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 	}
 
 	hfi_event = HFI_EVENT_DISPLAY_EDID_INFO;
-	rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+	rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
 		HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32), HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Could not register for EDID info from DCP, rc=%d\n", rc);
@@ -388,47 +394,42 @@ static int _register_hpd_events(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 	}
 
 	hfi_event = HFI_EVENT_HDCP_FEATURE_SUPPORTED;
-	rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+	rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
 		HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32), HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc)
 		DP_ERR("Could not register HDCP feature supported event, rc=%d\n", rc);
 
+	rc = dp_hfi_send_batch_cmd(hfi, hfi_client, false);
+	if (rc)
+		DP_ERR("trigger batch command failed, rc=%d\n", rc);
 end:
 	return rc;
 }
 
-static int _register_hdcp_events(struct dp_mgr_hfi_priv *hfi_priv,
-				  bool enable,
-				  u32 hdcp_version)
+static int _register_hdcp_events(struct dp_mgr_hfi_priv *hfi_priv, bool enable, u32 hdcp_version)
 {
 	struct hfi_client_t *hfi_client;
 	u32 hfi_cmd = (enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER :
 		       HFI_COMMAND_DISPLAY_EVENT_DEREGISTER);
 	u32 hfi_event;
 	int rc = 0;
+	struct dp_hfi *hfi = hfi_priv->hfi;
 
-	hfi_client = dp_mgr_hfi_get_hfi_client(hfi_priv);
+	hfi_client = hfi->hfi_client;
 	if (!hfi_client)
 		return -EINVAL;
 	if (hdcp_version == HDCP_VERSION_2P2) {
 		hfi_event = HFI_EVENT_HDCP2X_START;
-		if (enable)
-			rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
-						"DisplayPort",
-						HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
-						HFI_HOST_FLAGS_NON_DISCARDABLE);
-		else
-			rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
-						"DisplayPort",
-						HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
-						HFI_HOST_FLAGS_NON_DISCARDABLE);
+		rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
+					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+					HFI_HOST_FLAGS_NON_DISCARDABLE);
 		if (rc) {
 			DP_ERR("Could not register HDCP2x start, rc=%d\n", rc);
 			return rc;
 		}
 
 		hfi_event = HFI_EVENT_HDCP2X_PROCESS_MSG;
-		rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+		rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
 					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
 					HFI_HOST_FLAGS_NON_DISCARDABLE);
 		if (rc) {
@@ -437,66 +438,45 @@ static int _register_hdcp_events(struct dp_mgr_hfi_priv *hfi_priv,
 		}
 
 		hfi_event = HFI_EVENT_HDCP2X_TIMEOUT;
-		if (enable)
-			rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
-					"DisplayPort",
-					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
-					HFI_HOST_FLAGS_NON_DISCARDABLE);
-		else
-			rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
-					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
-					HFI_HOST_FLAGS_NON_DISCARDABLE);
-
-
+		rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
+				HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+				HFI_HOST_FLAGS_NON_DISCARDABLE);
 		if (rc) {
 			DP_ERR("Could not register HDCP2x timeout, rc=%d\n", rc);
 			return rc;
 		}
 	} else if (hdcp_version == HDCP_VERSION_1X) {
 		hfi_event = HFI_EVENT_HDCP1X_START;
-		if (enable)
-			rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
-						"DisplayPort",
-						HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
-						HFI_HOST_FLAGS_NON_DISCARDABLE);
-		else
-			rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
-						"DisplayPort",
-						HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
-						HFI_HOST_FLAGS_NON_DISCARDABLE);
+		rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
+				HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+				HFI_HOST_FLAGS_NON_DISCARDABLE);
 		if (rc) {
 			DP_ERR("Could not register HDCP1x start, rc=%d\n", rc);
 			return rc;
 		}
 
 		hfi_event = HFI_EVENT_HDCP1X_STOP;
-		rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
-					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
-					HFI_HOST_FLAGS_NON_DISCARDABLE);
+		rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
+				HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+				HFI_HOST_FLAGS_NON_DISCARDABLE);
 		if (rc) {
 			DP_ERR("Could not register HDCP1x stop, rc=%d\n", rc);
 			return rc;
 		}
 
 		hfi_event = HFI_EVENT_HDCP1X_ENC;
-		rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
-					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
-					HFI_HOST_FLAGS_NON_DISCARDABLE);
+		rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
+				HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+				HFI_HOST_FLAGS_NON_DISCARDABLE);
 		if (rc) {
 			DP_ERR("Could not register HDCP1x ENC, rc=%d\n", rc);
 			return rc;
 		}
 
 		hfi_event = HFI_EVENT_HDCP1X_TOPOLOGY_UPDATE;
-		if (enable)
-			rc = dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd,
-					"DisplayPort",
-					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
-					HFI_HOST_FLAGS_NON_DISCARDABLE);
-		else
-			rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
-					HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
-					HFI_HOST_FLAGS_NON_DISCARDABLE);
+		rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
+				HFI_PAYLOAD_TYPE_U32, &hfi_event, sizeof(u32),
+				HFI_HOST_FLAGS_NON_DISCARDABLE);
 		if (rc) {
 			DP_ERR("Could not register HDCP1x topology, rc=%d\n", rc);
 			return rc;
@@ -1108,7 +1088,7 @@ static int dp_mgr_hfi_send_transfer_unit(struct dp_mgr_hfi_priv *hfi_priv,
 	DP_DEBUG("dp_tu=0x%x, valid_boundary=0x%x, valid_boundary2=0x%x\n",
 			tu.dp_tu, tu.valid_boundary, tu.valid_boundary2);
 
-	return dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+	return dp_hfi_append_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 		HFI_PAYLOAD_TYPE_U32_ARRAY, &tu, sizeof(struct hfi_display_dp_tu),
 		HFI_HOST_FLAGS_NON_DISCARDABLE);
 }
@@ -1462,7 +1442,7 @@ static void dp_mgr_hfi_handle_hdcp1x_start(struct dp_mgr_hfi_priv *hfi_priv,
 	/* Send HFI_COMMAND_DISPLAY_HDCP1X_AKSV command with AKSV values */
 	rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 			HFI_PAYLOAD_TYPE_U32_ARRAY, response, sizeof(response),
-			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Failed to send HDCP1X_AKSV command, rc=%d\n", rc);
 		return;
@@ -1905,6 +1885,7 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_mgr_hfi_priv *hfi
 						     void *payload, u32 size)
 {
 	struct hfi_client_t *hfi_client;
+	struct dp_hfi *hfi = hfi_priv->hfi;
 	u32 response[2] = {0, 0}; // [hdcp1x_supported, hdcp2x_supported]
 	bool hdcp1x_tz_support = false;
 	bool hdcp2x_tz_support = false;
@@ -1995,6 +1976,11 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_mgr_hfi_priv *hfi
 	/* Update debug buffer */
 	dp_mgr_hfi_update_hdcp_info(hfi_priv, false);
 
+	rc = dp_hfi_start_batch_cmd(hfi, hfi_client);
+	if (rc) {
+		DP_ERR("failed to start batch cmds, rc=%d\n", rc);
+		return;
+	}
 
 	if (hfi_priv->hdcp_info.hdcp_version != HDCP_VERSION_NONE) {
 		rc = _register_hdcp_events(hfi_priv, true, hfi_priv->hdcp_info.hdcp_version);
@@ -2004,7 +1990,7 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_mgr_hfi_priv *hfi
 		}
 	} else {
 		hfi_event = HFI_EVENT_HDCP_FEATURE_SUPPORTED;
-		rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client,
+		rc = dp_hfi_append_batch_cmd(hfi, hfi_client,
 						HFI_COMMAND_DISPLAY_EVENT_DEREGISTER,
 						"DisplayPort", HFI_PAYLOAD_TYPE_U32,
 						&hfi_event, sizeof(u32),
@@ -2013,13 +1999,19 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_mgr_hfi_priv *hfi
 			DP_ERR("Failed to deregister HDCP feature supported event, rc=%d\n", rc);
 	}
 
-	rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client,
+	rc = dp_hfi_append_batch_cmd(hfi, hfi_client,
 					     HFI_COMMAND_DISPLAY_HDCP_FEATURE_SUPPORTED,
 					     "DisplayPort", HFI_PAYLOAD_TYPE_U32_ARRAY,
 					     response, sizeof(response),
 					     HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Failed to start batch for feature supported response\n");
+		return;
+	}
+
+	rc = dp_hfi_send_batch_cmd(hfi, hfi_client, false);
+	if (rc) {
+		DP_ERR("failed to send batch cmds, rc=%d\n", rc);
 		return;
 	}
 
@@ -2329,6 +2321,7 @@ int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
 	struct dp_mgr_hfi_priv *hfi_priv;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_ENABLE;
 	int rc = 0;
+	struct dp_hfi *hfi;
 
 	if (!client) {
 		DP_ERR("Invalid params\n");
@@ -2349,10 +2342,17 @@ int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
 		return -EINVAL;
 
 	hfi_client = &hfi_kms->hfi_client;
+	hfi = hfi_priv->hfi;
 
-	rc = dp_hfi_end_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
+	rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd, "DisplayPort",
 				  HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 				  HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (rc) {
+		DP_ERR("failed to add enable, rc=%d\n", rc);
+		goto error;
+	}
+
+	rc = dp_hfi_send_batch_cmd(hfi, hfi_client, true);
 	if (rc) {
 		DP_ERR("failed to send enable, rc=%d\n", rc);
 		goto error;
@@ -2454,6 +2454,7 @@ int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 	struct dp_mgr_hfi_priv *hfi_priv;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_POST_DISABLE;
 	int rc = 0;
+	struct dp_hfi *hfi;
 
 	if (!client) {
 		DP_ERR("Invalid params\n");
@@ -2461,6 +2462,7 @@ int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 	}
 
 	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	hfi = hfi_priv->hfi;
 
 	sde_kms = sde_connector_get_kms(client->base_connector);
 	if (!sde_kms)
@@ -2502,8 +2504,14 @@ int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 			panel_id);
 
 	if (hfi_priv->hdcp_info.hdcp_version != HDCP_VERSION_NONE) {
-		rc = dp_hfi_start_batch_cmd(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
-				HFI_PAYLOAD_TYPE_NONE, NULL, 0,
+		rc = dp_hfi_start_batch_cmd(hfi, hfi_client);
+		if (rc) {
+			DP_ERR("failed to start batch cmds, rc=%d\n", rc);
+			return rc;
+		}
+
+		rc = dp_hfi_append_batch_cmd(hfi, hfi_client, hfi_cmd,
+				"DisplayPort", HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 				(HFI_HOST_FLAGS_NON_DISCARDABLE));
 		if (rc) {
 			DP_ERR("failed to send post disable, rc=%d, panel_id=%d\n",
@@ -2516,6 +2524,12 @@ int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 		rc = _register_hdcp_events(hfi_priv, false, hfi_priv->hdcp_info.hdcp_version);
 		if (rc)
 			DP_ERR("Failed to deregister HDCP events, rc=%d\n", rc);
+
+		rc = dp_hfi_send_batch_cmd(hfi, hfi_client, false);
+		if (rc) {
+			DP_ERR("Could not send batch cmd, rc=%d\n", rc);
+			return rc;
+		}
 	} else {
 		rc = dp_hfi_send_cmd_buf(hfi_priv->hfi, hfi_client, hfi_cmd, "DisplayPort",
 				HFI_PAYLOAD_TYPE_NONE, NULL, 0,
