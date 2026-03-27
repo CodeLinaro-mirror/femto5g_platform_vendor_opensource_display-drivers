@@ -2800,6 +2800,7 @@ error:
 }
 
 static int dsi_panel_parse_cmd_sets(
+		struct dsi_panel *panel,
 		struct dsi_display_mode_priv_info *priv_info,
 		struct dsi_parser_utils *utils)
 {
@@ -2825,6 +2826,10 @@ static int dsi_panel_parse_cmd_sets(
 				DSI_ERR("failed to allocate cmd set %d, rc = %d\n",
 					i, rc);
 			set->state = DSI_CMD_SET_STATE_LP;
+		} else if (i == DSI_CMD_SET_BRIGHTNESS) {
+			rc = dsi_panel_set_brightness_prepare_dcs_cmds(panel, set, 0x00);
+			if (rc)
+				DSI_ERR("failed to allocate cmd set %d, rc = %d\n", i, rc);
 		} else {
 			rc = dsi_panel_parse_cmd_sets_sub(set, i, utils);
 			if (rc)
@@ -5607,7 +5612,7 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 			goto parse_fail;
 		}
 
-		rc = dsi_panel_parse_cmd_sets(prv_info, utils);
+		rc = dsi_panel_parse_cmd_sets(panel, prv_info, utils);
 		if (rc) {
 			DSI_ERR("failed to parse command sets, rc=%d\n", rc);
 			goto parse_fail;
@@ -6867,7 +6872,7 @@ exit:
 	return rc;
 }
 
-static int dsi_panel_set_brightness_prepare_dcs_cmds(struct dsi_panel *panel,
+int dsi_panel_set_brightness_prepare_dcs_cmds(struct dsi_panel *panel,
 		struct dsi_panel_cmd_set *set, u32 bl_lvl)
 {
 	u8 *tx = NULL;
