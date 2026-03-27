@@ -932,6 +932,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_DS_PU_SUPPORTED        Support Destination scaler Partial Update
  * @SDE_FEATURE_MIXER_OP_V1     Mixer ops V1 support
  * @SDE_FEATURE_DISP_OP        Support Display OP switch
+ * @SDE_FEATURE_RSC_CLK_STATE  use CLK state instead of CMD/VID state for RSC
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -987,6 +988,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_MIXER_OP_V1,
 	SDE_FEATURE_SSIP_CLK,
 	SDE_FEATURE_DISP_OP,
+	SDE_FEATURE_RSC_CLK_STATE,
 	SDE_FEATURE_MAX
 };
 
