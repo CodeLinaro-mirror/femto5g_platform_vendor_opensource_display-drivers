@@ -1801,6 +1801,12 @@ static int lsr_ssr_handler(struct lsr_device *device,
 		return rc;
 	}
 
+	rc = hfi_reset_hwfence(lsr_driver->drm_dev);
+	if (rc) {
+		dprintk(LSR_ERR, "failed to reset hwfence for DCP:%d\n", rc);
+		return rc;
+	}
+
 	do {
 		if (wait_count++ > 100) {
 			dprintk(LSR_ERR, "Timeout waiting for ref count to get to zero\n");
