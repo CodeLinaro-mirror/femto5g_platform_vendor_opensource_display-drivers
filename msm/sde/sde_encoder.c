@@ -2019,7 +2019,7 @@ static int _sde_encoder_update_rsc_client(
 			sde_enc->autorefresh_solver_disable || mode_info->disable_rsc_solver)
 		rsc_state = enable ? SDE_RSC_CLK_STATE : SDE_RSC_IDLE_STATE;
 	else if (sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE))
-		rsc_state = enable ? SDE_RSC_CMD_STATE : SDE_RSC_IDLE_STATE;
+		rsc_state = enable ? SDE_RSC_CLK_STATE : SDE_RSC_IDLE_STATE;
 	else if (sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_VIDEO_MODE))
 		rsc_state = enable ? SDE_RSC_VID_STATE : SDE_RSC_IDLE_STATE;
 
