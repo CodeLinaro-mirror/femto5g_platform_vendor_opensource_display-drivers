@@ -956,6 +956,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_FRAME_SEQ_CHECK	 Add check on frame sequence number to avoid duplicate frame events
  * @SDE_FEATURE_QRTC           QRTC supported
  * @SDE_FEATURE_A10_Y10        A10/Y10 pipe format supported
+ * @SDE_FEATURE_RSC_CLK_STATE  use CLK state instead of CMD/VID state for RSC
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -1018,6 +1019,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY,
 	SDE_FEATURE_BATCH_COMMIT,
 	SDE_FEATURE_GMU_REPROJ,
+	SDE_FEATURE_RSC_CLK_STATE,
 	SDE_FEATURE_MAX
 };
 
