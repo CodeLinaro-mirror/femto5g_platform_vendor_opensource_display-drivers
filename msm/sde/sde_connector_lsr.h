@@ -23,12 +23,12 @@ struct sde_lsr_hw_fence_data {
 };
 
 struct lsr_perf {
-	u32 lsr_csc_bw;
-	u32 lsr_repro_bw;
-	u32 lsr_csc_clk;
-	u32 lsr_repro_clk;
-	u32 lsr_csc_ib_bw;
-	u32 lsr_repro_ib_bw;
+	unsigned long lsr_csc_bw;
+	unsigned long lsr_repro_bw;
+	unsigned long lsr_csc_clk;
+	unsigned long lsr_repro_clk;
+	unsigned long lsr_csc_ib_bw;
+	unsigned long lsr_repro_ib_bw;
 };
 
 struct sde_lsr_perf {
