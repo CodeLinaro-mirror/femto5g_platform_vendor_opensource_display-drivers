@@ -133,15 +133,18 @@ int dp_hdcp2x_start(void *input, uint8_t **ake_init, uint32_t *ake_init_len);
  * @req_len: Length of request message
  * @resp_buf: Pointer to store response message buffer
  * @resp_len: Pointer to store response message length
+ * @repeater_flag: Pointer to store repeater flag as determined by TrustZone
+ * @timeout_ms: Pointer to store timeout value as determined by TrustZone
  *
  * Called when DCP sends HDCP2X_PROCESS_MSG event. Forwards the message
  * from the sink to TrustZone for processing and returns the response
- * message to be sent back to the sink.
+ * message to be sent back to the sink. The repeater_flag and timeout_ms
+ * are populated from app_data after TrustZone processes the message.
  *
  * Return: 0 on success, negative error code on failure
  */
 int dp_hdcp2x_process_msg(void *input, uint8_t *req_buf, uint32_t req_len, uint8_t **resp_buf,
-	uint32_t *resp_len);
+	uint32_t *resp_len, bool *repeater_flag, uint32_t *timeout_ms);
 
 /**
  * dp_hdcp2x_feature_supported() - Check if HDCP 2.x is supported

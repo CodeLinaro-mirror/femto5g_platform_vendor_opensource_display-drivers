@@ -544,12 +544,12 @@ int dp_hdcp2x_enable_encryption(void *input)
  * Return: 0 on success, negative error code on failure
  */
 int dp_hdcp2x_process_msg(void *input, uint8_t *req_buf, uint32_t req_len, uint8_t **resp_buf,
-	uint32_t *resp_len)
+	uint32_t *resp_len, bool *repeater_flag, uint32_t *timeout_ms)
 {
 	struct dp_hdcp2x_ctx *ctx = input;
 	int rc;
 
-	if (!ctx || !req_buf || !resp_buf || !resp_len) {
+	if (!ctx || !req_buf || !resp_buf || !resp_len || !repeater_flag || !timeout_ms) {
 		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
@@ -582,14 +582,16 @@ int dp_hdcp2x_process_msg(void *input, uint8_t *req_buf, uint32_t req_len, uint8
 
 	*resp_buf = ctx->app_data.response.data;
 	*resp_len = ctx->app_data.response.length;
+	*repeater_flag = ctx->app_data.repeater_flag;
+	*timeout_ms = ctx->app_data.timeout;
 #else
 	DP_ERR("HDCP QSEECOM not enabled\n");
 	ctx->state = HDCP_STATE_AUTH_FAIL;
 	return -ENODEV;
 #endif
 
-	DP_DEBUG("TZ response: length=%u, repeater_flag=%u\n",
-		 *resp_len, ctx->app_data.repeater_flag);
+	DP_DEBUG("TZ response: length=%u, repeater_flag=%u, timeout_ms=%u\n",
+		 *resp_len, *repeater_flag, *timeout_ms);
 
 	return 0;
 }

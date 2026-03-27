@@ -1750,6 +1750,8 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 	uint32_t resp_len;
 	uint8_t msg_id = 0;
 	bool is_repeater;
+	bool repeater_flag = false;
+	uint32_t timeout_ms = 0;
 	uint8_t stream_type;
 	int rc;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
@@ -1780,15 +1782,14 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 		return;
 	}
 
-	is_repeater = hfi_data->repeater_flag;
-
-	DP_DEBUG("Processing message: request_length=%u, repeater=%d\n",
-		 hfi_data->request.size, is_repeater);
+	DP_DEBUG("Processing message: request_length=%u, repeater_flag(hfi)=%d\n",
+		 hfi_data->request.size, hfi_data->repeater_flag);
 
 	/* Process message through dp_hdcp (TZ) */
 	rc = dp_hdcp2x_process_msg(hfi->hdcp2x_ctx,
 				   req_buf, hfi_data->request.size,
-				   &resp_buf, &resp_len);
+				   &resp_buf, &resp_len,
+				   &repeater_flag, &timeout_ms);
 	if (rc) {
 		DP_ERR("dp_hdcp2x_process_msg failed: %d\n", rc);
 		return;
@@ -1820,9 +1821,10 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 	dp_mgr_hfi_init_hfi_buff(&response.response, hfi->hdcp2x_resp_map);
 	response.response.size = resp_len;
 
-	/* Copy timeout and repeater flag from incoming message */
-	response.timeout_ms = hfi_data->timeout_ms;
-	response.repeater_flag = hfi_data->repeater_flag;
+	/* Use timeout and repeater flag as determined by TrustZone */
+	is_repeater = repeater_flag;
+	response.timeout_ms = timeout_ms;
+	response.repeater_flag = repeater_flag;
 
 	/* Send HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE back to DCP */
 	rc = dp_hfi_send_cmd_buf(hfi, hfi_client,
