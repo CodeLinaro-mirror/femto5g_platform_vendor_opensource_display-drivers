@@ -27,5 +27,6 @@ def define_malabar():
                      "CONFIG_MSM_SDE_ROTATOR_EVTLOG_DEBUG",
                      "CONFIG_DEBUG_FS",
                      "CONFIG_SMMU_PROXY",
+                     "CONFIG_QCOM_SPEC_SYNC",
                 ],
         )
