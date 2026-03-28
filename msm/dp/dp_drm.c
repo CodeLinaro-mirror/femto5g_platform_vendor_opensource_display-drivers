@@ -412,11 +412,12 @@ int dp_connector_set_colorspace(struct drm_connector *connector,
 
 int dp_connector_post_init(struct drm_connector *connector, void *display)
 {
-	int rc;
+	int rc = 0;
 	struct dp_drv *drv = display;
 	struct sde_connector *sde_conn;
 	struct dp_client_drm_ops *ops;
 	struct msm_drm_private *priv;
+	struct dp_client *client;
 
 	priv = connector->dev->dev_private;
 
@@ -425,21 +426,48 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 		return -EINVAL;
 	}
 
-	drv->client->base_connector = connector;
-	drv->client->bridge->connector = connector;
+	client = drv->client;
 
-	ops = &drv->client->drm_ops;
-	rc = ops->post_init(drv->client);
-	if (rc)
-		goto end;
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
+		client->base_connector = connector;
+		client->bridge->connector = connector;
 
-	sde_conn = to_sde_connector(connector);
-	drv->client->bridge->panel_id = sde_conn->panel_id;
+		ops = &client->drm_ops;
+		rc = ops->post_init(client);
+		if (rc)
+			goto end;
 
-	if (IS_DISP_OP_HWIO(priv->disp_op))
+		sde_conn = to_sde_connector(connector);
+		client->bridge->panel_id = sde_conn->panel_id;
 		rc = dp_mst_init(drv);
+	} else if (IS_DISP_OP_HFI(priv->disp_op)) {
+		if (!client->streams) {
+			client->base_connector = connector;
+			client->bridge->connector = connector;
+		}
 
-	if (drv->client->dsc_cont_pps)
+		client->connectors[client->streams] = connector;
+		if (client->bridges[client->streams])
+			client->bridges[client->streams]->connector = connector;
+
+		sde_conn = to_sde_connector(connector);
+
+		sde_conn->panel_id = client->streams;
+		if (!client->streams)
+			client->bridge->panel_id = sde_conn->panel_id;
+
+		if (client->bridges[client->streams])
+			client->bridges[client->streams]->panel_id = sde_conn->panel_id;
+
+		ops = &client->drm_ops;
+		rc = ops->post_init(client);
+		if (rc)
+			goto end;
+
+		client->streams++;
+	}
+
+	if (client->dsc_cont_pps)
 		sde_conn->ops.update_pps = NULL;
 
 end:
@@ -610,11 +638,16 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 	struct msm_display_info info;
 	struct dp_drv *drv;
 	int rc;
+	struct sde_connector *sde_conn;
+	bool connected;
+	struct msm_drm_private *priv;
 
 	if (!conn || !display)
 		return status;
 
 	drv = display;
+	priv = conn->dev->dev_private;
+
 	/* get display dp_info */
 	memset(&info, 0x0, sizeof(info));
 	rc = dp_connector_get_info(conn, &info, display);
@@ -625,8 +658,16 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 
 	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG &&
 			!drv->client->is_cont_splash_enabled) {
-		status = (info.is_connected ? connector_status_connected :
+		if (IS_DISP_OP_HWIO(priv->disp_op)) {
+			status = (info.is_connected ? connector_status_connected :
 					      connector_status_disconnected);
+		} else if (IS_DISP_OP_HFI(priv->disp_op)) {
+			sde_conn = to_sde_connector(conn);
+			connected = drv->client->drm_ops.hpd_detect(drv->client,
+					sde_conn->panel_id);
+			status = connected ? connector_status_connected :
+					connector_status_disconnected;
+		}
 	} else {
 		status = connector_status_connected;
 
@@ -803,6 +844,10 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	}
 
 	priv->bridges[priv->num_bridges++] = &bridge->base;
+
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		drv->client->bridges[drv->client->streams] = bridge;
+
 	drv->client->bridge = bridge;
 	drv->client->max_mixer_count = max_mixer_count;
 	drv->client->max_dsc_count = max_dsc_count;
