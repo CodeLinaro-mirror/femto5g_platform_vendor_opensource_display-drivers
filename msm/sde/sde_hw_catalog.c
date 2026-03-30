@@ -1857,8 +1857,8 @@ static int _sde_sspp_setup_vigs(struct device_node *np,
 		if (sde_cfg->true_inline_rot_rev > 0) {
 			set_bit(SDE_SSPP_TRUE_INLINE_ROT, &sspp->features);
 			sblk->in_rot_format_list = sde_cfg->inline_rot_formats;
-			sblk->in_rot_maxheight =
-					MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT;
+			sblk->in_rot_maxheight = sde_cfg->in_rot_maxheight ?
+				sde_cfg->in_rot_maxheight : MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT;
 		}
 
 		if (IS_SDE_INLINE_ROT_REV_200(sde_cfg->true_inline_rot_rev) ||
@@ -6771,16 +6771,25 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
 	sde_cfg->mdss_hw_block_size = 0x15c;
 	sde_cfg->max_bw_upvote_threshold_ns = DEFAULT_BW_UPVOTE_THRESHOLD_NS;
-	sde_cfg->demura_supported[SSPP_DMA1][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
-	sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
-	sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
-	sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
-	sde_cfg->qrtc_supported[SSPP_DMA1][0] = BIT(QRTC_0) | BIT(QRTC_2);
-	sde_cfg->qrtc_supported[SSPP_DMA1][1] = BIT(QRTC_1) | BIT(QRTC_3);
-	sde_cfg->qrtc_supported[SSPP_DMA3][0] = BIT(QRTC_0) | BIT(QRTC_2);
-	sde_cfg->qrtc_supported[SSPP_DMA3][1] = BIT(QRTC_1) | BIT(QRTC_3);
+	sde_cfg->demura_supported[SSPP_DMA1][0] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->qrtc_supported[SSPP_DMA1][0] = BIT(QRTC_0) |
+				BIT(QRTC_1) | BIT(QRTC_2) | BIT(QRTC_3);
+	sde_cfg->qrtc_supported[SSPP_DMA1][1] = BIT(QRTC_0) |
+				BIT(QRTC_1) | BIT(QRTC_2) | BIT(QRTC_3);
+	sde_cfg->qrtc_supported[SSPP_DMA3][0] = BIT(QRTC_0) |
+				BIT(QRTC_1) | BIT(QRTC_2) | BIT(QRTC_3);
+	sde_cfg->qrtc_supported[SSPP_DMA3][1] = BIT(QRTC_0) |
+				BIT(QRTC_1) | BIT(QRTC_2) | BIT(QRTC_3);
 	sde_cfg->has_line_insertion = true;
 	sde_cfg->osc_clk_rate = 38400000;
+	sde_cfg->has_demura_single_rect_support = true;
 }
 
 static void _sde_get_hw_caps_for_pebble(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
@@ -7108,6 +7117,32 @@ static void _sde_get_hw_caps_for_chora(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	sde_cfg->virtual_mixers_mask = 0x2;
 }
 
+static void _sde_get_hw_caps_for_ravelin(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	sde_cfg->perf.min_prefill_lines = 40;
+	sde_cfg->has_reduced_ob_max = true;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	set_bit(SDE_FEATURE_SUI_NS_ALLOWED, sde_cfg->features);
+	set_bit(SDE_FEATURE_SUI_MISR, sde_cfg->features);
+	set_bit(SDE_FEATURE_SUI_BLENDSTAGE, sde_cfg->features);
+	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+	sde_cfg->in_rot_maxheight = 1200;
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+	sde_cfg->mdss_hw_block_size = 0x158;
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+}
+
 static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_170, _sde_get_hw_caps_for_msm8996},
 	{SDE_HW_VER_300, _sde_get_hw_caps_for_msm8998},
@@ -7133,6 +7168,7 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_810, _sde_get_hw_caps_for_waipio},
 	{SDE_HW_VER_820, _sde_get_hw_caps_for_diwali},
 	{SDE_HW_VER_850, _sde_get_hw_caps_for_cape},
+	{SDE_HW_VER_860, _sde_get_hw_caps_for_ravelin},
 	{SDE_HW_VER_870, _sde_get_hw_caps_for_malabar},
 	{SDE_HW_VER_880, _sde_get_hw_caps_for_vienna},
 	{SDE_HW_VER_900, _sde_get_hw_caps_for_kalama},

@@ -158,8 +158,6 @@ static int lsr_display_get_info(struct sde_reproj *reproj_inst, int repro_info)
 	reproj_inst->arp_buf_lsr_addr = dev->lsr_arp_buf.align_device_addr;
 	reproj_inst->arp_buf_size = dev->lsr_arp_buf.mem_size;
 
-	reproj_inst->lsr_reusable_hsynx = dev->lsr_reusable_hsynx;
-
 	dprintk(LSR_CORE,
 		"LSR info for repro = %d, qtable= 0x%x dcp_addr = 0x%x, arp addr = 0x%x",
 			repro_info, reproj_inst->queue_table_dcp_addr,

@@ -1886,7 +1886,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 		 * plane_cleanup. For example, wait for vsync in case of video
 		 * mode panels. This may be a no-op for command mode panels.
 		 */
-		SDE_EVT32_VERBOSE(DRMID(crtc));
+		SDE_EVT32_VERBOSE(DRMID(crtc), DRMID(encoder));
 		ret = sde_encoder_wait_for_event(encoder, cwb_disabling ?
 						MSM_ENC_TX_COMPLETE : MSM_ENC_COMMIT_DONE);
 		if (ret && ret != -EWOULDBLOCK) {
@@ -2595,13 +2595,15 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			continue;
 		}
 
-		if (IS_DISP_OP_HFI(priv->disp_op))
-			goto skip_dp_mst;
-
 		/* update display cap to MST_MODE for DP MST encoders */
-		info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
+		if (IS_DISP_OP_HWIO(priv->disp_op))
+			info.capabilities |= MSM_DISPLAY_CAP_MST_MODE;
 		for (idx = 0; idx < dp_info->stream_cnt &&
 				priv->num_encoders < max_encoders; idx++) {
+
+			if (IS_DISP_OP_HFI(priv->disp_op) && !idx)
+				continue;  /* use sst connector for stream 0 */
+
 			info.h_tile_instance[0] = dp_info->intf_idx[idx];
 			/*
 			 * use same sst cesta client for first mst encoder as sst/mst are
@@ -2620,18 +2622,44 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 				SDE_ERROR("dp mst encoder init failed %d\n", i);
 				continue;
 			}
-			rc = dp_mst_drm_bridge_init(display, encoder);
-			if (rc) {
-				SDE_ERROR("dp mst bridge %d init failed, %d\n",
-						i, rc);
-				sde_encoder_destroy(encoder);
-				continue;
+
+			if (IS_DISP_OP_HFI(priv->disp_op)) {
+				rc = dp_drm_bridge_init(display, encoder,
+						max_dp_mixer_count, max_dp_dsc_count);
+				if (rc) {
+					SDE_ERROR("dp bridge %d init failed, %d\n", i, rc);
+					sde_encoder_destroy(encoder);
+					continue;
+				}
+				connector = sde_connector_init(dev,
+							encoder,
+							NULL,
+							display,
+							&dp_ops,
+							DRM_CONNECTOR_POLL_HPD,
+							info.intf_type, false);
+				if (!IS_ERR_OR_NULL(connector)) {
+					priv->encoders[priv->num_encoders++] = encoder;
+					priv->connectors[priv->num_connectors++] = connector;
+				} else {
+					SDE_ERROR("dp %d connector init failed\n", i);
+					dp_drm_bridge_deinit(display);
+					sde_encoder_destroy(encoder);
+					continue;
+				}
+			} else if (IS_DISP_OP_HWIO(priv->disp_op)) {
+				rc = dp_mst_drm_bridge_init(display, encoder);
+				if (rc) {
+					SDE_ERROR("dp mst bridge %d init failed, %d\n",
+							i, rc);
+					sde_encoder_destroy(encoder);
+					continue;
+				}
+				priv->encoders[priv->num_encoders++] = encoder;
 			}
-			priv->encoders[priv->num_encoders++] = encoder;
 		}
 	}
 
-skip_dp_mst:
 	setup_hdmi_displays(dev, priv, sde_kms, max_encoders,
 				max_dp_mixer_count, max_dp_dsc_count);
 

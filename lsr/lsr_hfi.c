@@ -1801,6 +1801,12 @@ static int lsr_ssr_handler(struct lsr_device *device,
 		return rc;
 	}
 
+	rc = hfi_reset_hwfence(lsr_driver->drm_dev);
+	if (rc) {
+		dprintk(LSR_ERR, "failed to reset hwfence for DCP:%d\n", rc);
+		return rc;
+	}
+
 	do {
 		if (wait_count++ > 100) {
 			dprintk(LSR_ERR, "Timeout waiting for ref count to get to zero\n");
@@ -3275,13 +3281,6 @@ fail_reset_sleep:
 static int __power_on_core_v1(struct lsr_device *device)
 {
 	int rc = 0;
-
-	rc = msm_lsr_prepare_enable_clk(device, "core_freerun_clk");
-	if (rc) {
-		dprintk(LSR_PWR, "Failed to enable core_freerun_clk: %d\n", rc);
-		// TODO: check with clk team for merge of fix
-		// This will fail always, calling once as a workaround
-	}
 
 	if (device->res->framework_type) {
 		/* Using GenPD */

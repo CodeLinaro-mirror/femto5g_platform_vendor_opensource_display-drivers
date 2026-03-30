@@ -13,9 +13,11 @@
 #include "hfi_defs_debug.h"
 #include "hfi_msm_drv.h"
 #include "hfi_crtc.h"
+#include "msm_lsr_synx.h"
 
 #define BLOB_PROPERTY_HEADER_SIZE 2
 #define MATRICES_PER_VIEW 2
+#define REUSABLE_FENCE_PAYLOAD_COUNT 4
 
 static u64 lsr_fw_debug_val;
 
@@ -868,13 +870,12 @@ static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
 {
 	struct synx_import_params import_params = {0};
 	struct synx_session *session = NULL;
-	u32 lsr_h_synx, ret = 0;
 	struct sde_kms *sde_kms;
 	struct hfi_kms *hfi_kms;
 	struct hfi_hwfence_data *hfi_hw_fence_data;
-	int reusable_fence_count = 0;
 	u32 *payload;
 	u32 size = 0;
+	int i, ret = 0;
 
 	sde_kms = sde_connector_get_kms(drm_conn);
 	hfi_kms = sde_kms ? sde_kms->hfi_kms : NULL;
@@ -887,44 +888,55 @@ static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
 		return -EINVAL;
 	}
 
-	/* Setup reusable fence only once per device bootup */
-	if (!reproj_conn->reusable_fence_cnt) {
+	/* Import LSR reusable fences into DCP session only once per device bootup */
+	if (!reproj_conn->reusable_fence_imported) {
 		session = hfi_hw_fence_data->hw_fence_handle;
-		lsr_h_synx = reproj_conn->lsr_reusable_hsynx;
-		SDE_DEBUG("lsr reusable h_synx: 0x%x\n", lsr_h_synx);
 
-		/* Setup individual params for reusable fence */
-		import_params.indv.new_h_synx = new_h_synx;
-		import_params.indv.flags = SYNX_IMPORT_REUSABLE | SYNX_IMPORT_SYNX_FENCE;
-		import_params.indv.fence = (void *)&lsr_h_synx;
-		import_params.type = SYNX_IMPORT_INDV_PARAMS;
+		/* Import each LSR reusable fence into DCP session */
+		for (i = 0; i < LSR_REUSABLE_FENCE_MAX; i++) {
+			SDE_DEBUG("h_synx[%d]: 0x%x\n", i,	reproj_conn->lsr_reusable_hsynx[i]);
 
-		ret = synx_import(session, &import_params);
-		if (ret) {
-			SDE_ERROR("dcp failed to import lsr reusable hw fence: %d\n", ret);
-			return ret;
+			import_params.indv.new_h_synx = &new_h_synx[i];
+			import_params.indv.flags = SYNX_IMPORT_REUSABLE | SYNX_IMPORT_SYNX_FENCE;
+			import_params.indv.fence = (void *)&reproj_conn->lsr_reusable_hsynx[i];
+			import_params.type = SYNX_IMPORT_INDV_PARAMS;
+
+			ret = synx_import(session, &import_params);
+			if (ret) {
+				SDE_ERROR("dcp failed to import lsr reusable hw fence[%d]: %d\n",
+					i, ret);
+				return ret;
+			}
+
+			SDE_DEBUG("dcp imported reusable fence[%d]: 0x%x\n", i, new_h_synx[i]);
 		}
 
-		SDE_DEBUG("dcp imported lsr reusable hw fence: %d\n", *new_h_synx);
-		reproj_conn->reusable_fence_cnt++;
+		reproj_conn->reusable_fence_imported = true;
 	}
 
-	reusable_fence_count = reproj_conn->reusable_fence_cnt;
-	if (reusable_fence_count) {
-		u64 val = reproj_conn->lsr_reusable_hsynx;
-
-		size = 2 * sizeof(u32) + reusable_fence_count * 2 * sizeof(u32);
+	if (reproj_conn->reusable_fence_imported) {
+		size = REUSABLE_FENCE_PAYLOAD_COUNT * sizeof(u32);
 		payload = kzalloc(size, GFP_KERNEL);
-		payload[0] = HFI_LSR_REUSABLE_FENCE_GCX_OUT_BUFFERS;
-		payload[1] = reusable_fence_count;
-		payload[2] = HFI_VAL_L32(val);
-		payload[3] =  HFI_VAL_H32(val);
-		hfi_util_u32_prop_helper_add_prop(base_props,
-				HFI_PROPERTY_DISPLAY_REUSABLE_FENCE,
-				HFI_VAL_U32_ARRAY, payload, size);
+		if (!payload)
+			return -ENOMEM;
 
-		SDE_DEBUG("lsr reusable hw fence: 0x%llx\n", val);
+		for (i = 0; i < LSR_REUSABLE_FENCE_MAX; i++) {
+			u64 val = reproj_conn->lsr_reusable_hsynx[i];
+
+			payload[0] = i; /* fence type index */
+			payload[1] = 1; /* fence count */
+			payload[2] = HFI_VAL_L32(val);
+			payload[3] = HFI_VAL_H32(val);
+			hfi_util_u32_prop_helper_add_prop(base_props,
+					HFI_PROPERTY_DISPLAY_REUSABLE_FENCE,
+					HFI_VAL_U32_ARRAY, payload, size);
+
+			SDE_EVT32(i, HFI_VAL_L32(val));
+		}
+
 		kfree(payload);
+	} else {
+		SDE_ERROR("Failed to setup reusable fences\n");
 	}
 
 	return ret;
@@ -975,7 +987,7 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 	}
 
 	if (enable) {
-		u32 new_h_synx = 0;
+		u32 new_h_synx[LSR_REUSABLE_FENCE_MAX] = {0};
 
 		ret = reproj_conn->get_info(reproj_conn, wb_dev->wb_cfg->opmode);
 		if (ret) {
@@ -999,7 +1011,7 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 
 		if (wb_dev->wb_cfg->opmode == WB_REPRO) {
 			ret = _hfi_wb_setup_reusable_fence(drm_conn, reproj_conn,
-					&new_h_synx, hfi_conn->base_props);
+					new_h_synx, hfi_conn->base_props);
 
 			if (ret)
 				SDE_ERROR("Failed to setup reusable fence\n");
@@ -1276,6 +1288,36 @@ int hfi_lsr_wait_for_display_off(struct drm_device *dev)
 		SDE_DEBUG("any_crtc_active:%d\n", any_crtc_active);
 	} else
 		SDE_ERROR("drm dev priv is NULL\n");
+
+	return rc;
+}
+
+int hfi_reset_hwfence(struct drm_device *dev)
+{
+	struct msm_drm_private *priv = NULL;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms = NULL;
+	int rc = 0;
+
+	if (!dev || !dev->dev_private) {
+		SDE_ERROR("Invalid drm device or device private\n");
+		return -EINVAL;
+	}
+
+	priv = dev->dev_private;
+	sde_kms = to_sde_kms(priv->kms);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("Invalid hfi_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms_recover_hwfence(hfi_kms);
 
 	return rc;
 }

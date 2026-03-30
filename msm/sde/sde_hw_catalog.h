@@ -58,6 +58,7 @@
 #define SDE_HW_VER_820	SDE_HW_VER(8, 2, 0) /* diwali */
 #define SDE_HW_VER_830	SDE_HW_VER(8,  3, 0) /* parrot*/
 #define SDE_HW_VER_850	SDE_HW_VER(8, 5, 0) /* cape */
+#define SDE_HW_VER_860  SDE_HW_VER(8, 6, 0) /* ravelin */
 #define SDE_HW_VER_870	SDE_HW_VER(8, 7, 0) /* malabar */
 #define SDE_HW_VER_880  SDE_HW_VER(8, 8, 0) /* vienna */
 #define SDE_HW_VER_900	SDE_HW_VER(9, 0, 0) /* kalama */
@@ -108,6 +109,7 @@
 #define IS_DIWALI_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_820)
 #define IS_PARROT_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_830)
 #define IS_CAPE_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_850)
+#define IS_RAVELIN_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_860)
 #define IS_MALABAR_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_870)
 #define IS_VIENNA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_880)
 #define IS_KALAMA_TARGET(rev) IS_SDE_MAJOR_MINOR_SAME((rev), SDE_HW_VER_900)
@@ -549,6 +551,7 @@ enum {
  * @SDE_DSPP_SPR_DITHER      SPR Dither block
  * @SDE_DSPP_SPR_DITHER_LUMA SPR Dither block (Luma supported)
  * @SDE_DSPP_DEMURA          Demura block
+ * @SDE_DSPP_DEMURA_PU       Demura block (pu)
  * @SDE_DSPP_RC              RC block (mask)
  * @SDE_DSPP_RC_PU           RC block (pu)
  * @SDE_DSPP_SB              SB LUT DMA
@@ -577,6 +580,7 @@ enum {
 	SDE_DSPP_SPR_DITHER,
 	SDE_DSPP_SPR_DITHER_LUMA,
 	SDE_DSPP_DEMURA,
+	SDE_DSPP_DEMURA_PU,
 	SDE_DSPP_RC,
 	SDE_DSPP_RC_PU,
 	SDE_DSPP_SB,
@@ -2216,6 +2220,7 @@ struct sde_perf_cfg {
  * @max_display_height  minimum display height
  * @min_display_width   maximum display width
  * @min_display_height  maximum display height
+ * @in_rot_maxheight    max pre rotated height for inline rotation.
  * @max_sspp_linewidth  max source pipe line width
  * @vig_sspp_linewidth  max vig source pipe line width support
  * @scaling_linewidth   max vig source pipe linewidth for scaling usecases
@@ -2265,6 +2270,7 @@ struct sde_perf_cfg {
  * @ppb_buf_max_lines   maximum lines needed for pingpong latency buffer size
  * @controlled_SR       Controls AP self refresh handling of early ept only when there is overlap.
  *                      If not set it is immediate self refresh
+ * @has_demura_single_rect_support   supported demura surface with single rect
  * @virtual_mixers_mask bitmask of virtual mixers
  * @repro_excluded_props   Pointer to 2D array [obj_type][props] of excluded
 			   properties for reprojection
@@ -2367,6 +2373,7 @@ struct sde_mdss_cfg {
 	u32 max_display_height;
 	u32 min_display_width;
 	u32 min_display_height;
+	u32 in_rot_maxheight;
 	u32 max_sspp_linewidth;
 	u32 vig_sspp_linewidth;
 	u32 scaling_linewidth;
@@ -2424,6 +2431,7 @@ struct sde_mdss_cfg {
 	u32 controlled_SR;
 	u32 early_EPT_handling;
 
+	bool has_demura_single_rect_support;
 	bool disable_multirect;
 
 	u32 **repro_excluded_props;

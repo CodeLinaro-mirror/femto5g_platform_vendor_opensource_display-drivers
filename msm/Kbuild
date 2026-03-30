@@ -33,6 +33,11 @@ ifeq ($(CONFIG_ARCH_NIOBE), y)
 	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_niobedispconf.h
 endif
 
+ifeq ($(CONFIG_ARCH_RAVELIN), y)
+	include $(DISPLAY_ROOT)/config/gki_ravelindisp.conf
+	LINUX_INC +=	-include $(DISPLAY_ROOT)/config/gki_ravelindispconf.h
+endif
+
 ifeq ($(CONFIG_ARCH_PINEAPPLE), y)
 ifeq ($(CONFIG_ARCH_QTI_VM), y)
     include $(DISPLAY_ROOT)/config/gki_pineappledisptui.conf
@@ -40,6 +45,16 @@ ifeq ($(CONFIG_ARCH_QTI_VM), y)
 else
 	include $(DISPLAY_ROOT)/config/gki_pineappledisp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_pineappledispconf.h
+endif
+endif
+
+ifeq ($(CONFIG_ARCH_SHIKRA), y)
+ifeq ($(CONFIG_ARCH_QTI_VM), y)
+	include $(DISPLAY_ROOT)/config/gki_shikradisptui.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_shikradisptuiconf.h
+else
+	include $(DISPLAY_ROOT)/config/gki_shikradisp.conf
+	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_shikradispconf.h
 endif
 endif
 
@@ -81,6 +96,11 @@ endif
 ifeq ($(CONFIG_ARCH_BENGAL), y)
 	include $(DISPLAY_ROOT)/config/gki_bengaldisp.conf
 	LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_bengaldispconf.h
+endif
+
+ifeq ($(CONFIG_ARCH_SCUBA), y)
+        include $(DISPLAY_ROOT)/config/gki_bengaldisp.conf
+        LINUX_INC += -include $(DISPLAY_ROOT)/config/gki_bengaldispconf.h
 endif
 
 ifeq ($(CONFIG_ARCH_KALAMA), y)
@@ -373,16 +393,17 @@ msm_drm-$(CONFIG_DSI_PARSER) += dsi/dsi_parser.o
 msm_drm-$(CONFIG_THERMAL_OF) += msm_cooling_device.o
 
 msm_drm-$(CONFIG_DRM_MSM_HDMI) += hdmi/hdmi_audio.o \
-				hdmi/hdmi_cec.o \
 				hdmi/hdmi_debug.o \
 				hdmi/hdmi_display.o \
 				hdmi/hdmi_drm.o \
 				hdmi/hdmi_hdcp2p2.o \
 				hdmi/hdmi_panel.o \
 				hdmi/hdmi_phy.o \
-				hdmi/hdmi_phy_snps.o \
+				hdmi/hdmi_parser.o \
 				hdmi/hdmi_pll.o \
 				hdmi/hdmi_pll_snps.o \
+				hdmi/hdmi_phy_snps.o \
+				hdmi/hdmi_power.o \
 				hdmi/hdmi_util.o
 
 msm_drm-$(CONFIG_DRM_MSM) += msm_atomic.o \
