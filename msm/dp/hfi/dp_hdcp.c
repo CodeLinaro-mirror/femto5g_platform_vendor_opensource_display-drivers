@@ -22,6 +22,8 @@
 #include "dp_debug.h"
 #include "sde_hdcp_2x.h"
 
+#define DP_HDCP2_MAX_RX_MSG_SIZE 534
+
 /**
  * struct dp_hdcp1x_ctx - DP HDCP 1.x context
  * @init_data: HDCP initialization data from sde_hdcp
@@ -557,8 +559,9 @@ int dp_hdcp2x_process_msg(void *input, uint8_t *req_buf, uint32_t req_len, uint8
 	DP_DEBUG("Processing HDCP 2.x message, req_len=%u\n", req_len);
 
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
-	if (req_len > ctx->buf_len) {
-		DP_ERR("Request too large: %u > %u\n", req_len, ctx->buf_len);
+	if (req_len > DP_HDCP2_MAX_RX_MSG_SIZE) {
+		DP_ERR("Request too large: %u > %u (TZ request buffer size)\n",
+			req_len, DP_HDCP2_MAX_RX_MSG_SIZE);
 		ctx->state = HDCP_STATE_AUTH_FAIL;
 		return -EINVAL;
 	}

@@ -1792,6 +1792,8 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 				   &repeater_flag, &timeout_ms);
 	if (rc) {
 		DP_ERR("dp_hdcp2x_process_msg failed: %d\n", rc);
+		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
+		dp_mgr_update_hdcp_info(hfi, false);
 		return;
 	}
 
