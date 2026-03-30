@@ -263,4 +263,43 @@ struct hfi_display_dbg_property {
 	u32 reserved2;
 };
 
+/*!
+ * @enum hfi_debug_subsystem_property_id
+ * @brief Subsystem property id's.
+ *
+ * @var HFI_DEBUG_SUBSYSTEM_PROPERTY_TRIGGER_ERROR
+ *   Trigger subsystem error.
+ */
+enum hfi_debug_subsystem_property_id  {
+	HFI_DEBUG_SUBSYSTEM_PROPERTY_TRIGGER_ERROR,
+};
+
+/*!
+ * @struct hfi_debug_subsystem_property
+ * @brief HFI DCP receive subsystem debug property.
+ *
+ * @var subsystem_type
+ *   Subsystem type specified in enum hfi_subsystem_type.
+ * @var prop_id
+ *   Property id specified in enum hfi_debug_subsystem_property_id.
+ * @var value_lsb
+ *   Data value / LSB of payload address.
+ * @var value_msb
+ *   Data value / MSB of payload address.
+ * @var reserved1
+ *   Reserved for future use.
+ * @var reserved2
+ *   Reserved for future use.
+ */
+struct hfi_debug_subsystem_property {
+	enum hfi_subsystem_type subsystem_type;
+	enum hfi_debug_subsystem_property_id prop_id;
+
+	u32 value_lsb;
+	u32 value_msb;
+
+	u32 reserved1;
+	u32 reserved2;
+};
+
 #endif // __H_HFI_DEFS_DEBUG_H__

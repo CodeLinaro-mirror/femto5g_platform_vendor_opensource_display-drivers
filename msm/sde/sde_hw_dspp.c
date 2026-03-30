@@ -526,12 +526,16 @@ static void dspp_demura(struct sde_hw_dspp *c)
 		if (!ret)
 			ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_DEMURA_CFG0_PARAM2, c);
 		if (!ret) {
+			ret = reg_dmav1_init_dspp_op_v4(SDE_DSPP_DEMURA_PU, c);
+		}
+		if (!ret) {
 			c->ops.setup_demura_cfg[MSM_DISP_OP_HWIO] = reg_dmav1_setup_demurav4;
 			c->ops.setup_demura_backlight_cfg[MSM_DISP_OP_HWIO] =
 					sde_demura_backlight_cfg;
 			c->ops.demura_read_plane_status[MSM_DISP_OP_HWIO] =
 					sde_demura_read_plane_status_v3;
-			c->ops.setup_demura_pu_config[MSM_DISP_OP_HWIO] = sde_demura_pu_cfg;
+			c->ops.setup_demura_pu_config[MSM_DISP_OP_HWIO] =
+					reg_dmav1_setup_demura_pu_cfgv4;
 			c->ops.setup_demura_cfg0_param2[MSM_DISP_OP_HWIO] =
 					reg_dmav1_setup_demura_cfg0_param2_v4;
 

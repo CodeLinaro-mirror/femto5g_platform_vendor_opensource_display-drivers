@@ -139,6 +139,8 @@ void dp_connector_post_open(struct drm_connector *connector, void *display);
  * @max_mixer_count: max available mixers for dp display
  * @max_dsc_count: max available dsc for dp display
  */
+int dp_drm_bridge_init(void *display, struct drm_encoder *encoder,
+	u32 max_mixer_count, u32 max_dsc_count);
 
 /**
  * dp_conn_set_info_blob - callback to perform info blob initialization
@@ -151,9 +153,10 @@ void dp_connector_post_open(struct drm_connector *connector, void *display);
 int dp_connector_set_info_blob(struct drm_connector *connector,
 		void *info, void *display, struct msm_mode_info *mode_info);
 
-int dp_drm_bridge_init(void *display, struct drm_encoder *encoder,
-	u32 max_mixer_count, u32 max_dsc_count);
-
+/**
+ * dp_drm_bridge_deinit() - Deinitialize and cleanup the DP DRM bridge
+ * @display: Pointer to the DP driver structure (struct dp_drv)
+ */
 void dp_drm_bridge_deinit(void *display);
 
 /**

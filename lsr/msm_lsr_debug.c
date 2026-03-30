@@ -10,7 +10,7 @@
 
 #define MAX_SSR_STRING_LEN 10
 
-int msm_lsr_debug = !1;
+int msm_lsr_debug = LSR_ERR;
 EXPORT_SYMBOL_GPL(msm_lsr_debug);
 
 int msm_lsr_debug_out = LSR_OUT_PRINTK;
@@ -32,7 +32,7 @@ bool msm_lsr_dcvs_disable = !true;
 int msm_lsr_hw_wd_recovery = 1;
 int msm_lsr_smmu_fault_recovery = !1;
 
-bool msm_lsr_enable_ssr = !true;
+bool msm_lsr_enable_ssr = true;
 
 #define MAX_DBG_BUF_SIZE 4096
 
@@ -47,6 +47,13 @@ static int _lsr_fw_debug_get(void *data, u64 *val)
 }
 
 DEFINE_DEBUGFS_ATTRIBUTE(lsr_fw_debug_fops, _lsr_fw_debug_get, _lsr_fw_debug_set, "0x%llx\n");
+
+static int _lsr_ssr_trigger(void *data, u64 val)
+{
+	return hfi_lsr_trigger_ssr(val, lsr_driver->drm_dev);
+}
+
+DEFINE_DEBUGFS_ATTRIBUTE(lsr_ssr_fops, NULL, _lsr_ssr_trigger, "%llu\n");
 
 struct dentry *msm_lsr_debugfs_init_drv(void)
 {
@@ -74,6 +81,7 @@ struct dentry *msm_lsr_debugfs_init_drv(void)
 			&msm_lsr_dcvs_disable);
 	debugfs_create_file("lsr_fw_debug", 0644, dir, NULL, &lsr_fw_debug_fops);
 	debugfs_create_bool("enable_ssr", 0644, dir, &msm_lsr_enable_ssr);
+	debugfs_create_file("lsr_ssr_trigger", 0644, dir, NULL, &lsr_ssr_fops);
 
 	return dir;
 

@@ -11,6 +11,7 @@
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 #include <synx_api.h>
 #endif /* CONFIG_QTI_HW_FENCE */
+#include "msm_lsr_synx.h"
 
 struct sde_lsr_hw_fence_data {
 	int client_id;
@@ -23,12 +24,12 @@ struct sde_lsr_hw_fence_data {
 };
 
 struct lsr_perf {
-	u32 lsr_csc_bw;
-	u32 lsr_repro_bw;
-	u32 lsr_csc_clk;
-	u32 lsr_repro_clk;
-	u32 lsr_csc_ib_bw;
-	u32 lsr_repro_ib_bw;
+	unsigned long lsr_csc_bw;
+	unsigned long lsr_repro_bw;
+	unsigned long lsr_csc_clk;
+	unsigned long lsr_repro_clk;
+	unsigned long lsr_csc_ib_bw;
+	unsigned long lsr_repro_ib_bw;
 };
 
 struct sde_lsr_perf {
@@ -43,8 +44,8 @@ struct sde_reproj {
 	atomic_t *ref_count;
 	u32 type;
 	struct sde_lsr_perf perf;
-	u32 lsr_reusable_hsynx;
-	u32 reusable_fence_cnt;
+	u32 lsr_reusable_hsynx[LSR_REUSABLE_FENCE_MAX];
+	bool reusable_fence_imported;
 	u32 queue_table_dcp_addr;
 	u32 queue_table_size;
 	u32 csc_scratch_dcp_addr;
@@ -55,6 +56,7 @@ struct sde_reproj {
 	u32 gcx_scratch_size;
 	u32 arp_buf_lsr_addr;
 	u32 arp_buf_size;
+	atomic_t *lsr_ssr_in_progress;
 
 	/**
 	 * on()
