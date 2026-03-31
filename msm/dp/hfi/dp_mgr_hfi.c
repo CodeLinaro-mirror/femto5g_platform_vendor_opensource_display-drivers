@@ -65,7 +65,7 @@ struct hfi_shared_addr_map *dp_mgr_hfi_init_shared_addr(struct hfi_client_t *ctx
 	return map;
 }
 
-void dp_mgr_init_deinit_shared_addr(struct hfi_client_t *ctx, struct hfi_shared_addr_map *map)
+void dp_mgr_hfi_deinit_shared_addr(struct hfi_client_t *ctx, struct hfi_shared_addr_map *map)
 {
 	if (!ctx || !map)
 		return;
@@ -780,11 +780,11 @@ static void _deinit_addr_maps(struct dp_hfi *hfi)
 	struct hfi_client_t *hfi_client = hfi->hfi_client;
 
 	if (hfi->edid_addr_map) {
-		dp_mgr_init_deinit_shared_addr(hfi_client, hfi->edid_addr_map);
+		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->edid_addr_map);
 		hfi->edid_addr_map = NULL;
 	}
 	if (hfi->modes_addr_map) {
-		dp_mgr_init_deinit_shared_addr(hfi_client, hfi->modes_addr_map);
+		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->modes_addr_map);
 		hfi->modes_addr_map = NULL;
 	}
 }
@@ -1983,7 +1983,7 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 					SZ_4K);
 				if (!hfi->hdcp2x_resp_map) {
 					DP_ERR("Failed to allocate HDCP 2.x response buffer\n");
-					dp_mgr_init_deinit_shared_addr(hfi_client,
+					dp_mgr_hfi_deinit_shared_addr(hfi_client,
 						hfi->hdcp2x_req_map);
 					hfi->hdcp2x_req_map = NULL;
 					dp_hdcp2x_deinit(hfi->hdcp2x_ctx);
@@ -2505,12 +2505,12 @@ int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	/* Free HDCP 2.x shared buffers */
 	if (hfi->hdcp2x_req_map) {
-		dp_mgr_init_deinit_shared_addr(hfi_client, hfi->hdcp2x_req_map);
+		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->hdcp2x_req_map);
 		hfi->hdcp2x_req_map = NULL;
 		DP_DEBUG("HDCP 2.x request buffer freed\n");
 	}
 	if (hfi->hdcp2x_resp_map) {
-		dp_mgr_init_deinit_shared_addr(hfi_client, hfi->hdcp2x_resp_map);
+		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->hdcp2x_resp_map);
 		hfi->hdcp2x_resp_map = NULL;
 		DP_DEBUG("HDCP 2.x response buffer freed\n");
 	}

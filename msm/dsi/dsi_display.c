@@ -1020,8 +1020,8 @@ static int dsi_display_status_check_te(struct dsi_display *display,
 		if (!wait_for_completion_timeout(&display->esd_te_gate,
 					esd_te_timeout)) {
 			DSI_ERR("TE check failed\n");
-			dsi_display_change_te_irq_status(display, false);
-			return -EINVAL;
+			rc = -EINVAL;
+			break;
 		}
 	}
 
@@ -1080,8 +1080,10 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	}
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, status_mode, te_check_override);
 
-	if (te_check_override)
+	if (te_check_override) {
 		te_rechecks = MAX_TE_RECHECKS;
+		status_mode = ESD_MODE_PANEL_TE;
+	}
 
 	if ((dsi_display->trusted_vm_env) ||
 			(panel->panel_mode == DSI_OP_VIDEO_MODE))
@@ -1089,12 +1091,13 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 
 	dsi_display_set_ctrl_esd_check_flag(dsi_display, true);
 
-	if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO)
+	if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) {
 		dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
 			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 
-	/* Disable error interrupts while doing an ESD check */
-	dsi_display_toggle_error_interrupt_status(dsi_display, false);
+		/* Disable error interrupts while doing an ESD check */
+		dsi_display_toggle_error_interrupt_status(dsi_display, false);
+	}
 
 	if (status_mode == ESD_MODE_REG_READ) {
 		rc = dsi_display_status_reg_read(dsi_display);
@@ -1122,7 +1125,7 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	/* Handle Panel failures during display disable sequence */
 	if (rc <=0)
 		atomic_set(&panel->esd_recovery_pending, 1);
-	else
+	else if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO)
 		/* Enable error interrupts post an ESD success */
 		dsi_display_toggle_error_interrupt_status(dsi_display, true);
 

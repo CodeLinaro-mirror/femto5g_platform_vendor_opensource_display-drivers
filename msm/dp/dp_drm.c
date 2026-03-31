@@ -818,18 +818,28 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	struct dp_drv *drv = data;
 	struct msm_drm_private *priv = NULL;
 
+	dev = drv->drm_dev;
+	priv = dev->dev_private;
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	bridge = kzalloc(sizeof(*bridge), GFP_KERNEL);
 	if (!bridge) {
 		rc = -ENOMEM;
 		goto error;
 	}
-
-	dev = drv->drm_dev;
-	bridge->drv = drv;
 	bridge->base.funcs = &dp_bridge_ops;
 	bridge->base.encoder = encoder;
-
-	priv = dev->dev_private;
+#else
+	bridge = __devm_drm_bridge_alloc(dev->dev,
+				sizeof(*bridge),
+				offsetof(struct dp_bridge, base),
+				&dp_bridge_ops);
+	if (IS_ERR(bridge)) {
+		rc = PTR_ERR(bridge);
+		DP_ERR("failed to alloc bridge, rc=%d\n", rc);
+		goto error;
+	}
+#endif
+	bridge->drv = drv;
 
 	rc = drm_bridge_attach(encoder, &bridge->base, NULL, 0);
 	if (rc) {
@@ -853,18 +863,23 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	drv->client->max_dsc_count = max_dsc_count;
 
 	return 0;
+
 error_free_bridge:
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	kfree(bridge);
+#endif
 error:
 	return rc;
 }
 
 void dp_drm_bridge_deinit(void *data)
 {
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	struct dp_drv *drv = data;
 	struct dp_bridge *bridge = drv->client->bridge;
 
 	kfree(bridge);
+#endif
 }
 
 enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,
