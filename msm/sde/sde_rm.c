@@ -2099,6 +2099,11 @@ static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, struct sde_rm_rsvp *rsv
 			continue;
 
 		if (RESERVED_BY_OTHER(iter.blk, rsvp)) {
+			if (id == 1) {
+				id = 3;
+				continue;
+			}
+			SDE_EVT32(iter.blk->type, rsvp->enc_id, iter.blk->id, 0xebad);
 			SDE_ERROR("type %d id %d already reserved\n", type, id);
 			return -ENAVAIL;
 		}
