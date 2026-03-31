@@ -1,7 +1,7 @@
 # Android makefile for display kernel modules
 MM_DRIVER_PATH := $(call my-dir)
 
-ifneq ($(filter gen5, $(TARGET_BOARD_PLATFORM)), $(TARGET_BOARD_PLATFORM))
+ifneq ($(filter gen5 auto_gen, $(TARGET_BOARD_PLATFORM)), $(TARGET_BOARD_PLATFORM))
 	MM_DRV_DLKM_ENABLE := true
 endif
 
