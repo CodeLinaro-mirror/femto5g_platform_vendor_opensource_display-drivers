@@ -1115,6 +1115,8 @@ struct drm_msm_opaque_config {
 /* Max privacy layers */
 #define MAX_PRIVACY_LAYERS 16
 
+#define PRIVACY_LAYERS_AREA_MODE 1
+
 /**
  * struct sde_privacy - Defines a rectangular privacy region with optional corner radius
  * @corner_radius: Radius for rounded corners of the privacy region
@@ -1132,6 +1134,24 @@ struct sde_privacy {
 };
 
 /**
+ * struct sde_privacy_v2 - Defines a rectangular privacy region with optional corner radius
+ * @corner_radius: Radius for rounded corners of the privacy region
+ * @left: Left coordinate of the privacy region
+ * @top: Top coordinate of the privacy region
+ * @right: Right coordinate of the privacy region
+ * @bottom: Bottom coordinate of the privacy region
+ * @index: Index specifies which privacy area mode this rect corresponds to
+ **/
+struct sde_privacy_v2 {
+	__u32 corner_radius;
+	__u32 left;
+	__u32 top;
+	__u32 right;
+	__u32 bottom;
+	__u32 index;
+};
+
+/**
  * struct sde_drm_privacy_layer_v1 - Defines root structure to hold all privacy layer info.
  * @no_of_layers: Number of active privacy layers in use
  * @reserved: Reserved for future use or alignment
@@ -1141,6 +1161,18 @@ struct sde_drm_privacy_layer_v1 {
 	__u32 no_of_layers;
 	__u32 reserved;
 	struct sde_privacy privacy_list[MAX_PRIVACY_LAYERS];
+};
+
+/**
+ * struct sde_drm_privacy_layer_v2 - Defines root structure to hold all privacy layer info.
+ * @no_of_layers: Number of active privacy layers in use
+ * @mode: Privacy layer/area mode
+ * @privacy_list: Array of privacy layer configurations, up to MAX_PRIVACY_LAYERS
+ **/
+struct sde_drm_privacy_layer_v2 {
+	__u32 no_of_layers;
+	__u32 mode;
+	struct sde_privacy_v2 privacy_list[MAX_PRIVACY_LAYERS];
 };
 
 #define DRM_SDE_WB_CONFIG              0x40
@@ -1177,6 +1209,7 @@ struct sde_drm_privacy_layer_v1 {
 #define DRM_EVENT_RGB_HIST 0X80000016
 #define DRM_EVENT_RGB_HIST_WB_ERR 0X80000017
 #define DRM_EVENT_RGB_HIST_OFF 0X80000018
+#define DRM_EVENT_LSR_SSR 0X80000019
 
 #ifndef DRM_MODE_FLAG_VID_MODE_PANEL
 #define DRM_MODE_FLAG_VID_MODE_PANEL        0x01

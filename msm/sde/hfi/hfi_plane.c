@@ -81,6 +81,7 @@ static struct base_prop_lookup hfi_plane_base_props_map[] = {
 	{PLANE_PROP_MULTIRECT_MODE, HFI_PROPERTY_LAYER_MULTIRECT_MODE},
 	{PLANE_PROP_BG_ALPHA, HFI_PROPERTY_LAYER_BG_ALPHA},
 	{PLANE_PROP_FB_TRANSLATION_MODE, HFI_PROPERTY_LAYER_SECURITY_POLICY},
+	{PLANE_PROP_EXCL_RECT_V1, HFI_PROPERTY_LAYER_EXCLUSION_RECTANGLE_ROI},
 };
 
 static u32 hfi_plane_blend_ops_map[] = {
@@ -404,6 +405,7 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 			return -EINVAL;
 		}
 		llcc_scid = sc_cfg->llcc_scid;
+		SDE_EVT32(phfi->hfi_pipe_id, attr.cache_state, attr.cache_op_type, llcc_scid);
 		hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &llcc_scid, sizeof(u32));
 	}
@@ -423,6 +425,7 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct drm_plane_state *plane_state;
 	struct drm_framebuffer *fb;
 	struct sde_hw_fmt_layout layout;
+	struct hfi_display_roi src_roi;
 
 	if (!plane || !prop_collector || !plane->base.state)
 		return -EINVAL;
@@ -520,6 +523,15 @@ int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 				phfi->hfi_pipe_id, HFI_VAL_U32, &temp_val, sizeof(u32));
+	case HFI_PROPERTY_LAYER_EXCLUSION_RECTANGLE_ROI:
+		HFI_POPULATE_RECT(&src_roi, pstate->excl_rect.x, pstate->excl_rect.y,
+			pstate->excl_rect.w, pstate->excl_rect.h, false);
+
+		prop_id = HFI_PROPERTY_LAYER_EXCLUSION_RECTANGLE_ROI;
+
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+				phfi->hfi_pipe_id, HFI_VAL_U32_ARRAY, &src_roi,
+				sizeof(struct hfi_display_roi));
 	default:
 		HFI_ERROR_PLANE(phfi, "unsupported HFI property\n");
 		return -EINVAL;

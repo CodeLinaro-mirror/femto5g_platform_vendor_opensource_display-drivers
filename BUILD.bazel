@@ -24,6 +24,14 @@ ddk_headers(
 )
 
 ddk_headers(
+    name = "dp_hfi_headers",
+    hdrs = glob([
+      "msm/dp/hfi/*.h",
+    ]),
+    includes = ["msm/dp/hfi"]
+)
+
+ddk_headers(
     name = "dp_headers",
     hdrs = glob([
       "msm/dp/*.h",
@@ -105,7 +113,7 @@ ddk_headers(
 
 ddk_headers(
     name = "display_drivers_uapi_headers",
-    hdrs = [ ":linux_includes", ":uapi_headers", ":msm_headers",":dp_headers", ":dsi_hfi_headers", ":dsi_headers",":hfi_headers",":sde_hfi_headers",":sde_headers",":rotator_headers",":hdmi_headers", ":lsr_headers"]
+    hdrs = [ ":linux_includes", ":uapi_headers", ":msm_headers",":dp_headers", "dp_hfi_headers", ":dsi_hfi_headers", ":dsi_headers",":hfi_headers",":sde_hfi_headers",":sde_headers",":rotator_headers",":hdmi_headers", ":lsr_headers"]
 )
 
 load(":targets/sun.bzl", "define_sun")
@@ -132,6 +140,9 @@ define_canoe()
 load(":targets/art.bzl", "define_art")
 define_art()
 
+load(":targets/artvm.bzl", "define_artvm")
+define_artvm()
+
 load(":targets/vienna.bzl", "define_vienna")
 define_vienna()
 
@@ -146,6 +157,9 @@ define_bengal()
 
 load(":targets/parrot.bzl", "define_parrot")
 define_parrot()
+
+load(":targets/shikra.bzl", "define_shikra")
+define_shikra()
 
 load(":targets/malabar.bzl", "define_malabar")
 define_malabar()

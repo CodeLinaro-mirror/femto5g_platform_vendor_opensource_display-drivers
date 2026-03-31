@@ -27,6 +27,7 @@
 #include "dsi_parser.h"
 #include "dsi_display_manager.h"
 #include "dsi_hfi.h"
+#include "hfi_kms.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 #define INT_BASE_10 10
@@ -4697,11 +4698,29 @@ void dsi_display_update_byte_intf_div(struct dsi_display *display)
 	struct dsi_display_ctrl *m_ctrl;
 	int phy_ver;
 
+	if (!display || !display->panel) {
+		DSI_ERR("Invalid display or panel\n");
+		return;
+	}
+
+	if (display->cmd_master_idx >= display->ctrl_count) {
+		DSI_ERR("Invalid cmd_master_idx\n");
+		return;
+	}
+
 	m_ctrl = &display->ctrl[display->cmd_master_idx];
+	if (!m_ctrl->phy) {
+		DSI_ERR("Invalid phy\n");
+		return;
+	}
+
 	config = &display->panel->host_config;
 
 	phy_ver = dsi_phy_get_version(m_ctrl->phy);
-	config->byte_intf_clk_div = 2;
+	if (phy_ver <= DSI_PHY_VERSION_2_0)
+		config->byte_intf_clk_div = 1;
+	else
+		config->byte_intf_clk_div = 2;
 }
 
 static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
@@ -4731,6 +4750,7 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 				byte_intf_clk_rate;
 		u32 bits_per_symbol = 16, num_of_symbols = 7; /* For Cphy */
 		struct dsi_host_common_cfg *host_cfg;
+		bool is_split_link;
 
 		mutex_lock(&ctrl->ctrl_lock);
 
@@ -4743,6 +4763,10 @@ static int dsi_display_update_dsi_bitrate(struct dsi_display *display,
 			num_of_lanes++;
 		if (host_cfg->data_lanes & DSI_DATA_LANE_3)
 			num_of_lanes++;
+
+		is_split_link = host_cfg->split_link.enabled;
+		if (is_split_link)
+			num_of_lanes = host_cfg->split_link.lanes_per_sublink;
 
 		if (num_of_lanes == 0) {
 			DSI_ERR("Invalid lane count\n");
@@ -6310,6 +6334,90 @@ static void dsi_display_unbind(struct device *dev,
 	mutex_unlock(&display->display_lock);
 }
 
+#if IS_ENABLED(CONFIG_HIBERNATE)
+static int dsi_display_pm_freeze(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct dsi_display *display;
+	struct dsi_display_hfi *display_hfi;
+	struct hfi_client_t *hfi_client;
+	int rc = 0;
+
+	display = platform_get_drvdata(pdev);
+	display_hfi = display->dsi_hfi_info;
+	if (!display_hfi) {
+		DSI_ERR("invalid display hfi handle\n");
+		return -EINVAL;
+	}
+
+	hfi_client = display_hfi->hfi_client;
+	if (!hfi_client) {
+		DSI_ERR("invalid hfi client\n");
+		return -EINVAL;
+	}
+
+	rc = hfi_adapter_release_all_cmd_bufs(hfi_client);
+	if (rc) {
+		DSI_ERR("failed to release command buffers, rc: %d\n", rc);
+		return rc;
+	}
+
+	return rc;
+}
+
+static int dsi_display_pm_restore(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct dsi_display *display;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	int rc = 0;
+
+	display = platform_get_drvdata(pdev);
+	if (!display) {
+		DSI_ERR("invalid display handle\n");
+		return -EINVAL;
+	}
+
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms)
+		return -EINVAL;
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	rc = hfi_kms_send_trace_cfg(hfi_kms, HFI_TRUE);
+	if (rc) {
+		DSI_ERR("failed to send trace config to DCP, rc: %d\n", rc);
+		return rc;
+	}
+
+	/* Verify panel power rails are stable */
+	if (display->panel && display->panel->power_info.refcount > 0) {
+		rc = dsi_pwr_enable_regulator(&display->panel->power_info, true);
+		if (rc) {
+			DSI_ERR("failed to verify panel power rails, rc=%d\n", rc);
+			return rc;
+		}
+	}
+
+	/* Re-send panel initialization commands */
+	rc = dsi_hfi_panel_init(display, display->panel);
+	if (rc) {
+		DSI_ERR("failed to send panel init to DCP: %d", rc);
+		hfi_kms_send_trace_cfg(hfi_kms, HFI_FALSE);
+		return rc;
+	}
+
+	return rc;
+}
+static const struct dev_pm_ops dsi_display_pm_ops = {
+	.freeze = dsi_display_pm_freeze,
+	.restore = dsi_display_pm_restore,
+};
+#endif /* CONFIG_HIBERNATE */
+
 static const struct component_ops dsi_display_comp_ops = {
 	.bind = dsi_display_bind,
 	.unbind = dsi_display_unbind,
@@ -6321,6 +6429,9 @@ static struct platform_driver dsi_display_driver = {
 	.driver = {
 		.name = "msm-dsi-display",
 		.of_match_table = dsi_display_dt_match,
+#if IS_ENABLED(CONFIG_HIBERNATE)
+		.pm = &dsi_display_pm_ops,
+#endif /* CONFIG_HIBERNATE */
 		.suppress_bind_attrs = true,
 	},
 };
@@ -7644,6 +7755,14 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		struct msm_dyn_clk_list *bit_clk_list;
 
 		memset(&display_mode, 0, sizeof(display_mode));
+
+		rc = dsi_panel_get_mode_cell_index(display->panel, mode_idx, &display_mode);
+		if (rc) {
+			DSI_ERR("[%s] failed to get mode idx %d from panel\n",
+				   display->name, mode_idx);
+			rc = -EINVAL;
+			return rc;
+		}
 
 		display_mode.priv_info = kzalloc(sizeof(*display_mode.priv_info), GFP_KERNEL);
 		if (!display_mode.priv_info) {

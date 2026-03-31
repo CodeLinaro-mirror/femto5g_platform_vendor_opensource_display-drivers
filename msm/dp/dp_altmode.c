@@ -127,6 +127,23 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 	hpd_state = (dp_data & ALTMODE_HPD_STATE_MASK) >> 6;
 	hpd_irq = (dp_data & ALTMODE_HPD_IRQ_MASK) >> 7;
 
+	switch (orientation) {
+	case 0:
+		orientation = ORIENTATION_CC1;
+		break;
+	case 1:
+		orientation = ORIENTATION_CC2;
+		break;
+	case 2:
+		orientation = ORIENTATION_NONE;
+		break;
+	default:
+		orientation = ORIENTATION_NONE;
+		break;
+	}
+
+	altmode->dp_altmode.base.orientation = orientation;
+	altmode->dp_altmode.base.pin_config = pin;
 	altmode->dp_altmode.base.hpd_high = !!hpd_state;
 	altmode->dp_altmode.base.hpd_irq = !!hpd_irq;
 	altmode->dp_altmode.base.multi_func = force_multi_func ? true :
@@ -172,23 +189,6 @@ static int dp_altmode_notify(void *priv, void *data, size_t len)
 			altmode->lanes = 2;
 
 		DP_DEBUG("Connected=%d, lanes=%d\n",altmode->connected,altmode->lanes);
-
-		switch (orientation) {
-		case 0:
-			orientation = ORIENTATION_CC1;
-			break;
-		case 1:
-			orientation = ORIENTATION_CC2;
-			break;
-		case 2:
-			orientation = ORIENTATION_NONE;
-			break;
-		default:
-			orientation = ORIENTATION_NONE;
-			break;
-		}
-
-		altmode->dp_altmode.base.orientation = orientation;
 
 		rc = dp_altmode_set_usb_dp_mode(altmode);
 		if (rc)

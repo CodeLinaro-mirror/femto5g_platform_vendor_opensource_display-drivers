@@ -4,7 +4,7 @@ load(":target_variants.bzl", "get_all_variants")
 
 def define_art():
     for (t, v) in get_all_variants():
-        if t == "art":
+        if t == "art" or t == "art16k":
             define_target_variant_modules(
                 target = t,
                 variant = v,
@@ -20,6 +20,7 @@ def define_art():
                     "CONFIG_MDSS_HFI_ADAPTER",
                     "CONFIG_MDSS_HFI",
                     "CONFIG_DRM_MSM_DP",
+                    "CONFIG_DRM_MSM_DP_HFI",
                     "CONFIG_DRM_MSM_DP_MST",
                     "CONFIG_DSI_PARSER",
                     "CONFIG_DRM_SDE_WB",
@@ -29,9 +30,9 @@ def define_art():
                     "CONFIG_DRM_SDE_VM",
                     "CONFIG_QCOM_WCD939X_I2C",
                     "CONFIG_THERMAL_OF",
-                    # "CONFIG_QCOM_SPEC_SYNC", /* Enabled when sync_fence is available */
+                    "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_MSM_EXT_DISPLAY",
                     "CONFIG_DRM_SDE_CESTA",
-                    # "CONFIG_QTI_HW_FENCE" /* Enabled when synx-kernel is available */
+                    "CONFIG_QTI_HW_FENCE"
                 ],
             )

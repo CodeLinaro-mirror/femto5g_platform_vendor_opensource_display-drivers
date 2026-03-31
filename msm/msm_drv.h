@@ -230,6 +230,7 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_UBWC_CLK,
 	CRTC_PROP_FLUSH_SYNC_EN,
 	CRTC_PROP_DISPLAY_OP,
+	CRTC_PROP_LSR_MODE,
 
 	/* total # of properties */
 	CRTC_PROP_COUNT
@@ -279,6 +280,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_BRIGHTNESS,
 	CONNECTOR_PROP_EMSYNC_FPS,
 	CONNECTOR_PROP_PRIVACY_LAYER_V1,
+	CONNECTOR_PROP_PRIVACY_LAYER_V2,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -532,6 +534,7 @@ struct msm_ratio {
  * @MSM_ENC_CAPTURE_COMPLETE - wait for the HW to complete frame capture (CWB)
  * @MSM_ENC_PANEL_DEAD - wait for panel dead event to occur
  * @MSM_ENC_EVENT_MAX - maximum value for events related to frame
+ * @MSM_ENC_MISR - Interface MISR values
  */
 enum msm_event_wait {
 	MSM_ENC_COMMIT_DONE = 0,
@@ -542,6 +545,7 @@ enum msm_event_wait {
 	MSM_ENC_DISPLAY_POWER,
 	MSM_ENC_CAPTURE_COMPLETE,
 	MSM_ENC_PANEL_DEAD,
+	MSM_ENC_MISR,
 	MSM_ENC_EVENT_MAX,
 };
 
@@ -1243,6 +1247,7 @@ struct msm_display_conn_params {
 	struct msm_freq_step_pattern *freq_pattern;
 	uint16_t arp_t2_in_us;
 	struct sde_drm_privacy_layer_v1 *privacy_v1;
+	struct sde_drm_privacy_layer_v2 *privacy_v2;
 	u32 b_lvl;
 };
 
@@ -1298,6 +1303,16 @@ enum msm_disp_op {
 	MSM_DISP_OP_HFI,
 	MSM_DISP_OP_HYP,
 	MSM_DISP_OP_MAX,
+};
+
+/**
+ * enum lsr_mode: LSR mode status on primary display
+ * @MSM_DISP_LSR_MODE_DISABLED: LSR is disabled.
+ * @MSM_DISP_LSR_MODE_ENABLED: LSR is enabled and reprojection buffers are queued on primary path.
+ */
+enum lsr_mode {
+	MSM_DISP_LSR_MODE_DISABLED,
+	MSM_DISP_LSR_MODE_ENABLED,
 };
 
 struct msm_drm_private {

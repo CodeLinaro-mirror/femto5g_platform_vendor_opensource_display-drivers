@@ -11,10 +11,15 @@
 #include "hfi_msm_drv.h"
 #include "linux/completion.h"
 #include "hfi_connector.h"
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+#include <synx_api.h>
+#endif /* IS_ENABLED(CONFIG_QTI_HW_FENCE) */
 
 #define SDE_MAX_SSPP_COUNT  16
 
 #define REC_ID(x)  ((x & 0xFF000000) >> 24)
+
+#define HFI_HWFENCE_MAX_DISPLAYS 10
 
 /*
  * hfi_catalog_base - base struct for sde HW information
@@ -86,6 +91,32 @@ struct hfi_catalog_base {
 	u32 max_ds_resolution;
 };
 
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
+/**
+ * @brief Hardware-fence context for an HFI session.
+ *
+ * Aggregates the resources required to operate hardware fences for a client.
+ *
+ * @mem_descriptor: memory descriptor with the hfi for the rx/tx queues mapping.
+ * @hw_fence_handle: synx session handle returned by synx_initialize.
+ * @dma_context: per client dma context used to create join fences.
+ * @hw_fence_array_seqno: per-client seq number counter.
+ * @client_id: client_id enum for client.
+ * @input_h_synx_array: array of h_synx for input fences on each display; this is used to manage
+ *                      refcounting
+ * @max_displays: count of maximum number of displays
+ */
+struct hfi_hwfence_data {
+	struct synx_queue_desc mem_descriptor;
+	struct synx_session *hw_fence_handle;
+	u64 dma_context;
+	atomic_t hw_fence_array_seqno;
+	u32 client_id;
+	u32 input_h_synx_array[HFI_HWFENCE_MAX_DISPLAYS];
+	u32 max_displays;
+};
+#endif
+
 /**
  * struct hfi_kms - virtualized hfi kms structure
  * @base: Pointer to base sde kms structure
@@ -110,7 +141,7 @@ struct hfi_kms {
 	struct hfi_catalog_base *catalog;
 	struct hfi_connector *primary_connector;
 	atomic_t ssr_in_progress;
-#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 	struct hfi_hwfence_data *hfi_hw_fence_data;
 #endif
 };
@@ -140,18 +171,17 @@ int hfi_kms_reg_client(struct drm_device *dev);
 
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
 /**
- * sde_hfi_hw_fence_init - initialize sde hfi hw fence data
- * @priv:        Pointer to msm_drm_private
- * @sde_kms:        Pointer to sde kms structure
+ * hfi_kms_init_hw_fence_config - initialize hw-fence config
+ * @hfi_kms:    Pointer to hfi kms structure
  * Returns:     0 on success, or error code on failure
  */
-int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde_kms *sde_kms);
+int hfi_kms_init_hw_fence_config(struct hfi_kms *hfi_kms);
 #else
-static inline int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde_kms *sde_kms)
+static inline int hfi_kms_init_hw_fence_config(struct hfi_kms *hfi_kms)
 {
 	return -EINVAL;
 }
-#endif
+#endif /* IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE) */
 
 #if IS_ENABLED(CONFIG_MDSS_HFI)
 /**
@@ -160,8 +190,23 @@ static inline int sde_hfi_hw_fence_init(struct msm_drm_private *priv, struct sde
  * Returns:     0 on success, or error code on failure
  */
 int hfi_kms_init(struct sde_kms *sde_kms);
+
+/**
+ * hfi_kms_destroy - Destroy virtual hfi kms object
+ * @sde_kms:    Pointer to sde kms structure
+ * Returns:     0 on success, or error code on failure
+ */
+int hfi_kms_destroy(struct sde_kms *sde_kms);
 #else
-int hfi_kms_init(struct sde_kms *sde_kms);
+static inline int hfi_kms_init(struct sde_kms *sde_kms)
+{
+	return -EINVAL;
+}
+
+static inline int hfi_kms_destroy(struct sde_kms *sde_kms)
+{
+	return -EINVAL;
+}
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
 
 /**
@@ -238,5 +283,12 @@ int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe, uint32_t p
  * Returns: 0 on success, or error code on failure
  */
 int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffer *buffer);
+
+/**
+ * hfi_kms_send_idle_timer_ctrl - send HFI command to block/unblock idle timer
+ * @hfi_kms: Pointer to hfi kms structure
+ * @timer_state: True if block timer from expiring, False otherwise.
+ */
+int hfi_kms_send_idle_timer_ctrl(struct hfi_kms *hfi_kms, bool timer_state);
 
 #endif // _HFI_KMS_H_

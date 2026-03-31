@@ -6,6 +6,7 @@
 #define pr_fmt(fmt)	"[drm:%s:%d] " fmt, __func__, __LINE__
 
 #include "hfi_msm_drv.h"
+#include "sde_kms.h"
 
 int hfi_msm_drv_hfi_init(struct msm_drm_private *priv, bool in_trusted_vm)
 {

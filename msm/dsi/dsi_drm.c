@@ -230,14 +230,28 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		return;
 	}
 
+	disp_op = display->ctrl[0].ctrl->disp_op;
+
+	/* In HFI mode, need to trigger display_prepare to send the SET MODE HFI, for DCP FW to
+	 * handle the DFPS transition.
+	 */
+
 	if (c_bridge->dsi_mode.dsi_mode_flags &
 		(DSI_MODE_FLAG_SEAMLESS | DSI_MODE_FLAG_VRR |
 		 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) {
 		DSI_DEBUG("[%d] seamless pre-enable\n", c_bridge->id);
+		if ((c_bridge->dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) &&
+			(disp_op == MSM_DISP_OP_HFI)) {
+			rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
+			if (rc) {
+				DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
+					c_bridge->id, rc);
+				return;
+			}
+		}
 		return;
 	}
 
-	disp_op = display->ctrl[0].ctrl->disp_op;
 	SDE_ATRACE_BEGIN("dsi_display_prepare");
 	rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
 	if (rc) {
@@ -1715,7 +1729,7 @@ void drm_to_dsi_update_overlap(void *display, struct dsi_display_mode *convert_d
 
 			match_dsi_mode.timing.h_active += overlap_total;
 			if (!dsi_display_mode_match(&match_dsi_mode, dsi_mode,
-					DSI_MODE_MATCH_FULL_TIMINGS))
+					DSI_MODE_MATCH_ACTIVE_TIMINGS))
 				continue;
 
 			convert_dsi_mode->timing.overlap = dsi_mode->timing.overlap;

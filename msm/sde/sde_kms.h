@@ -1043,4 +1043,12 @@ int sde_kms_resume_helper(struct sde_kms *sde_kms);
  */
 int sde_kms_wait_for_display_off(struct sde_kms *kms);
 
+/**
+ * sde_kms_setup_hfi - setup HFI interface for display
+ * @priv: Pointer to msm_drm_private structure
+ * @dev: Pointer to drm device
+ * Return: 0 on success, negative error code on failure
+ */
+int sde_kms_setup_hfi(struct msm_drm_private *priv, struct drm_device *dev);
+
 #endif /* __sde_kms_H__ */

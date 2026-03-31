@@ -7,14 +7,72 @@
 #include "msm_lsr_debug.h"
 #include "msm_lsr_clocks.h"
 
+/*
+ * When syscache is enabled, DDR bandwidth requirements are reduced
+ * as most traffic goes through LLCC. Use minimal DDR bandwidth.
+ */
+#define LSR_DDR_MIN_BW_WITH_SYSCACHE_KBPS 200
+
+static int msm_lsr_set_data_bus_vote(struct msm_lsr_core *core)
+{
+	int bus_count = 0;
+	struct bus_info *bus = NULL;
+	struct bus_info *llcc_bus = NULL;
+	struct bus_info *llcc_bus1 = NULL;
+	unsigned int max_bw = 0;
+	int rc = 0;
+
+	for (bus_count = 0; bus_count < core->resources.bus_set.count; bus_count++) {
+		if (!strcmp(core->resources.bus_set.bus_tbl[bus_count].name, "lsr-ddr")) {
+			bus = &core->resources.bus_set.bus_tbl[bus_count];
+			max_bw = bus->range[1];
+		} else if (!strcmp(core->resources.bus_set.bus_tbl[bus_count].name, "lsr-llcc")) {
+			llcc_bus = &core->resources.bus_set.bus_tbl[bus_count];
+		} else if (!strcmp(core->resources.bus_set.bus_tbl[bus_count].name, "lsr-llcc1")) {
+			llcc_bus1 = &core->resources.bus_set.bus_tbl[bus_count];
+		}
+	}
+
+	if (!bus || !llcc_bus || !llcc_bus1) {
+		dprintk(LSR_ERR, "bus node is NULL for ddr %d, llcc0 %d, llcc1 %d\n",
+			!bus, !llcc_bus, !llcc_bus1);
+		return -EINVAL;
+	}
+
+	core->bw_sum = (core->bw_sum > max_bw) ? max_bw : core->bw_sum;
+
+	/* Vote with split voting if llcc is enabled */
+	if (msm_lsr_syscache_disable) {
+		rc = msm_lsr_set_bw(core, bus, core->bw_sum, core->peak_bw);
+		if (rc)
+			dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
+		rc = msm_lsr_set_bw(core, llcc_bus, core->bw_sum/2, core->peak_bw);
+		if (rc)
+			dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
+		rc = msm_lsr_set_bw(core, llcc_bus1, core->bw_sum/2, core->peak_bw);
+		if (rc)
+			dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
+	} else {
+		rc = msm_lsr_set_bw(core, bus, LSR_DDR_MIN_BW_WITH_SYSCACHE_KBPS,
+				LSR_DDR_MIN_BW_WITH_SYSCACHE_KBPS);
+		if (rc)
+			dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
+		rc = msm_lsr_set_bw(core, llcc_bus, core->bw_sum/2, core->peak_bw);
+		if (rc)
+			dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
+		rc = msm_lsr_set_bw(core, llcc_bus1, core->bw_sum/2, core->peak_bw);
+		if (rc)
+			dprintk(LSR_ERR, "failed to set bw vote on %s", bus->name);
+	}
+
+	return rc;
+}
+
 int msm_lsr_update_power(struct msm_lsr_core *core)
 {
 	int rc = 0;
-	struct bus_info *bus = NULL;
 	struct clock_set *clocks;
 	struct clock_info *cl;
-	int bus_count = 0;
-	unsigned int max_bw = 0, min_bw = 0;
 	struct lsr_device *hdev;
 	struct allowed_clock_rates_table *tbl = NULL;
 	unsigned int tbl_size;
@@ -34,20 +92,6 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 		goto adjust_exit;
 	}
 
-	for (bus_count = 0; bus_count < core->resources.bus_set.count; bus_count++) {
-		if (!strcmp(core->resources.bus_set.bus_tbl[bus_count].name, "lsr-ddr")) {
-			bus = &core->resources.bus_set.bus_tbl[bus_count];
-			max_bw = bus->range[1];
-			min_bw = max_bw/10;
-		}
-	}
-
-	if (!bus) {
-		dprintk(LSR_ERR, "bus node is NULL for lsr-ddr\n");
-		rc = -EINVAL;
-		goto adjust_exit;
-	}
-
 	hdev = core->dev_ops->hfi_device_data;
 	tbl = core->resources.allowed_clks_tbl;
 	tbl_size = core->resources.allowed_clks_tbl_size;
@@ -55,20 +99,15 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 	lsr_max_rate = tbl[tbl_size - 1].clock_rate;
 
 	mutex_lock(&core->clk_lock);
-	dprintk(LSR_PWR, "%s %lld %lld\n", __func__, core_sum, bw_sum);
-
 	core_sum = core->new_perf.lsr_csc_clk > core->new_perf.lsr_repro_clk ?
 		core->new_perf.lsr_csc_clk : core->new_perf.lsr_repro_clk;
 
 	bw_sum = core->new_perf.lsr_csc_bw + core->new_perf.lsr_repro_bw;
-	bw_sum = (core->bw_sum > max_bw) ? max_bw : core->bw_sum;
-	dprintk(LSR_PWR, "%s %d : %lld %lld\n", __func__, __LINE__,	core_sum, bw_sum);
-	bw_sum = max_bw;
-
-	dprintk(LSR_PWR, "%s %d : %lld %lld\n", __func__, __LINE__,	core_sum, bw_sum);
+	bw_sum = Bps_to_icc(bw_sum);
+	dprintk(LSR_PWR, "%s %d : %lu %lu\n", __func__, __LINE__,	core_sum, bw_sum);
 
 	if (core_sum > lsr_max_rate) {
-		dprintk(LSR_WARN, "%s clk vote out of range %lld\n", __func__, core_sum);
+		dprintk(LSR_WARN, "%s clk vote out of range %lu\n", __func__, core_sum);
 		core_sum = lsr_max_rate;
 	}
 
@@ -79,15 +118,27 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 	hdev->clk_freq = core->curr_freq;
 	core->bw_sum = bw_sum;
 
+	core->peak_bw = core->new_perf.lsr_csc_ib_bw > core->new_perf.lsr_repro_ib_bw ?
+			core->new_perf.lsr_csc_ib_bw : core->new_perf.lsr_repro_ib_bw;
+	dprintk(LSR_PWR, "%s %d : clk : %lu bw : %lu kBps peak_bw = %lu kBps\n",
+		__func__, __LINE__, core->curr_freq, core->bw_sum, core->peak_bw);
+
 	rc = msm_lsr_set_clocks(core);
 	if (rc) {
-		dprintk(LSR_ERR, "Failed to set clock rate %u %s: %d %s\n",
+		dprintk(LSR_ERR, "Failed to set clock rate %lu %s: %d %s\n",
 			core->curr_freq, cl->name, rc, __func__);
 		core->curr_freq = core->orig_core_sum;
 		mutex_unlock(&core->clk_lock);
 		goto adjust_exit;
 	}
-	rc = msm_lsr_set_bw(core, bus, core->bw_sum);
+
+	rc = msm_lsr_set_data_bus_vote(core);
+	if (rc) {
+		dprintk(LSR_ERR, "Failed to set BW vote on data bus path : %d %s\n",
+			rc, __func__);
+		mutex_unlock(&core->clk_lock);
+		goto adjust_exit;
+	}
 
 	core->old_perf = core->new_perf;
 	mutex_unlock(&core->clk_lock);
@@ -116,7 +167,7 @@ int msm_lsr_set_clocks_impl(struct lsr_device *device, u32 freq)
 	int rc = 0;
 	u32 scaled_freq = 0;
 
-	dprintk(LSR_PWR, "%s: entering with freq : %ld\n", __func__, freq);
+	dprintk(LSR_PWR, "%s: entering with freq : %u\n", __func__, freq);
 
 	iris_hfi_for_each_clock(device, cl) {
 		if (cl->has_scaling) {/* has_scaling */
@@ -129,7 +180,7 @@ int msm_lsr_set_clocks_impl(struct lsr_device *device, u32 freq)
 			// Recommended by LSR FW team as Work around
 			if (!strcmp(cl->name, "lsr_clk"))
 				scaled_freq *= 2;
-			dprintk(LSR_PWR, "%s: clock source rate set to: %ld\n",
+			dprintk(LSR_PWR, "%s: clock source rate set to: %u\n",
 				__func__, scaled_freq);
 
 			rc = clk_set_rate(cl->clk, scaled_freq);
@@ -293,7 +344,8 @@ void msm_lsr_deinit_clocks(struct lsr_device *device)
 	}
 }
 
-int msm_lsr_set_bw(struct msm_lsr_core *core, struct bus_info *bus, unsigned long bw)
+int msm_lsr_set_bw(struct msm_lsr_core *core, struct bus_info *bus, unsigned long bw,
+	unsigned long peak_bw)
 {
 	struct lsr_hfi_ops *ops_tbl;
 	int rc;
@@ -304,24 +356,24 @@ int msm_lsr_set_bw(struct msm_lsr_core *core, struct bus_info *bus, unsigned lon
 	}
 
 	ops_tbl = core->dev_ops;
-	rc = call_hfi_op(ops_tbl, vote_bus, ops_tbl->hfi_device_data, bus, bw);
+	rc = call_hfi_op(ops_tbl, vote_bus, ops_tbl->hfi_device_data, bus, bw, peak_bw);
 	return rc;
 
 }
 
-int lsr_set_bw(struct bus_info *bus, unsigned long bw)
+int lsr_set_bw(struct bus_info *bus, unsigned long bw, unsigned long peak_bw)
 {
 	int rc = 0;
 
 	if (!bus->client)
 		return -EINVAL;
-	dprintk(LSR_PWR, "bus->name = %s to bw = %u\n",
-			bus->name, bw);
 
-	rc = icc_set_bw(bus->client, bw, 0);
+	dprintk(LSR_PWR, "bus->name = %s to bw = %lu KBps ib = %lu KBps\n",
+			bus->name, bw, peak_bw);
+	rc = icc_set_bw(bus->client, bw, peak_bw);
 	if (rc)
-		dprintk(LSR_ERR, "Failed voting bus %s to ab %u\n",
-			bus->name, bw);
+		dprintk(LSR_ERR, "Failed voting bus %s to ab %lu ib %lu\n",
+			bus->name, bw, peak_bw);
 
 	return rc;
 }

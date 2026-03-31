@@ -16,6 +16,7 @@ enum hfi_crtc_event {
 	HFI_CRTC_EVENT_LTM,
 	HFI_CRTC_EVENT_RGB_HIST,
 	HFI_CRTC_EVENT_PA_HIST,
+	HFI_CRTC_EVENT_SPR_OPR,
 	HFI_CRTC_EVENT_MAX,
 };
 
@@ -79,6 +80,13 @@ void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask);
 
 #if IS_ENABLED(CONFIG_MDSS_HFI)
 /**
+ * hfi_crtc_set_pending_enc_mask - helper to set/reset the enc mask for caching
+ * @sde_crtc: Pointer to sde crtc struct
+ * @enc_mask: input encoder mask to cache
+ */
+void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask);
+
+/**
  * hfi_crtc_init - create a new hfi crtc object
  * @sde_crtc: Pointer to sde crtc struct
  * @Returns: 0 on success, or error code on failure
@@ -125,32 +133,32 @@ int hfi_crtc_set_input_wait_hw_fence(struct sde_crtc *crtc, u32 synx_handle, u32
  * @prop_collector: Pointer to the property collector
  * @disp_id: Display ID
  * @hfi_prop_id: HFI property ID
- * Return: None
+ * Return: 0 on success, or error code on failure
  */
-void hfi_set_hw_fence_prop(struct sde_fence_context *ctx, enum hfi_fence_type hfi_fence_type,
+int hfi_set_hw_fence_prop(struct sde_fence_context *ctx, enum hfi_fence_type hfi_fence_type,
 		struct hfi_util_u32_prop_helper *prop_collector, u32 disp_id, u32 hfi_prop_id);
 #else
-int hfi_crtc_init(struct sde_crtc *sde_crtc)
+static inline int hfi_crtc_init(struct sde_crtc *sde_crtc)
 {
 	return -HFI_ERROR;
 }
 
-u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
+static inline u32 hfi_crtc_get_display_id(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
 {
 	return U32_MAX;
 }
 
-void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask)
+static inline void hfi_crtc_set_pending_enc_mask(struct sde_crtc *sde_crtc, u32 enc_mask)
 {
 }
 
-int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_buf,
+static inline int hfi_crtc_add_set_property(struct drm_crtc *crtc, struct hfi_cmdbuf_t *cmd_buf,
 		struct hfi_util_u32_prop_helper *color_props)
 {
 	return 0;
 }
 
-struct hfi_cmdbuf_t *hfi_crtc_get_cmd_buf(struct drm_crtc *crtc)
+static inline struct hfi_cmdbuf_t *hfi_crtc_get_cmd_buf(struct drm_crtc *crtc)
 {
 	return NULL;
 }

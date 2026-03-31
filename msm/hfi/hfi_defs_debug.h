@@ -9,6 +9,9 @@
 /*
  * This is documentation file. Not used for header inclusion.
  */
+
+#include "hfi_defs_common.h"
+
 /**
  * @brief Definitions for display panic events.
  */
@@ -80,6 +83,41 @@ enum hfi_debug_misr_module_type {
 	HFI_DEBUG_MISR_INTF                    = 0x2,
 };
 
+/*!
+ * @enum hfi_debug_feature
+ * @brief Features for which DCP supports different debug levels
+ *
+ * @var HFI_DEBUG_FEATURE_LSR: Setup debug logs levels for LSR feature
+ */
+enum hfi_debug_feature {
+	HFI_DEBUG_FEATURE_LSR = 0x0,
+};
+
+/*!
+ * @enum hfi_debug_log_level
+ * @brief Defines the log levels set to DCP.
+ *
+ * Log levels set to DCP to get the debugs logs.
+ *
+ * @var HFI_DEBUG_LOG_LEVEL_NONE
+ *   No debug logs.
+ * @var HFI_DEBUG_LOG_LEVEL_LOW
+ *   Low level debug logs.
+ * @var HFI_DEBUG_LOG_LEVEL_MEDIUM
+ *   Medium level debug logs.
+ * @var HFI_DEBUG_LOG_LEVEL_HIGH
+ *   High level debug logs.
+ * @var HFI_DEBUG_LOG_LEVEL_ERROR
+ *   Error level debug logs.
+ */
+enum hfi_debug_log_level {
+	HFI_DEBUG_LOG_LEVEL_NONE      = 0,
+	HFI_DEBUG_LOG_LEVEL_LOW       = 1,
+	HFI_DEBUG_LOG_LEVEL_MEDIUM    = 2,
+	HFI_DEBUG_LOG_LEVEL_HIGH      = 3,
+	HFI_DEBUG_LOG_LEVEL_ERROR     = 4
+};
+
 /*
  * struct misr_setup_data - MISR setup information
  * @display_id      : display_id of required display
@@ -102,6 +140,93 @@ struct misr_setup_data {
 struct misr_read_data {
 	u32 display_id;
 	enum hfi_debug_misr_module_type module_type;
+};
+
+/*
+ * HFI data structure definitions for DP Simulation commands.
+ * These structures define the payload formats for commands and responses.
+ */
+
+/*
+ * Read DPCD registers
+ *
+ * @buffer:
+ *     Shared buffer info
+ * @dpcd_offset:
+ *     DPCD register offset
+ * @bytes:
+ *     Number of bytes to read
+ */
+struct hfi_dp_dpcd_request {
+	struct hfi_buff buffer;
+	u32 dpcd_offset;
+	u32 bytes;
+};
+
+/*
+ * Write DPCD registers
+ *
+ * @offset:
+ *     DPCD register offset
+ * @size:
+ *     Number of bytes to write (up to 256 bytes)
+ * @data:
+ *     DPCD register data
+ */
+struct hfi_dp_dpcd_data {
+	u32 offset;
+	u32 size;
+	u8  data[256];
+};
+
+/*
+ * Set display mode
+ *
+ * @hdisplay:
+ *     Horizontal display resolution
+ * @vdisplay:
+ *     Vertical display resolution
+ * @vrefresh:
+ *     Refresh rate in Hz
+ * @aspect_ratio:
+ *     Aspect ratio
+ */
+struct hfi_dp_mode_select_info {
+	u32 hdisplay;
+	u32 vdisplay;
+	u32 vrefresh;
+	u32 aspect_ratio;
+};
+
+/*
+ * Read CRC values response
+ *
+ * @status:
+ *     Status code (0 = success)
+ * @src_crc:
+ *     RGB CRC values from source
+ * @sink_crc:
+ *     RGB CRC values from sink
+ */
+struct hfi_dp_crc_info {
+	u32 status;
+	uint16_t src_crc[HFI_MAX_COLOR_COMPONENTS];
+	uint16_t sink_crc[HFI_MAX_COLOR_COMPONENTS];
+};
+
+/*!
+ * @struct hfi_debug_log_level_info
+ * @brief Struct to configure different debug levels across features.
+ *
+ * @var feature
+ *   Feature to enable the debug logs.
+ * @var level_bitmask
+ *   Log level bitmask to be enabled for a feature. Refer hfi_debug_log_level which represents
+ *   the bit number to be set to enable/disable the particular debug log level.
+ */
+struct hfi_debug_log_level_info {
+	enum hfi_debug_feature feature;
+	uint32_t level_bitmask;
 };
 
 #endif // __H_HFI_DEFS_DEBUG_H__
