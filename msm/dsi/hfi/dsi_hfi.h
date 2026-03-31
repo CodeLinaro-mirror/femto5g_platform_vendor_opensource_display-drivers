@@ -89,7 +89,7 @@ struct dsi_hfi_panel_per_cmd_type {
  */
 struct dsi_hfi_per_cmd_type_payload  {
 	u32 count;
-	struct dsi_hfi_panel_per_cmd_type hfi_per_type_array[DSI_CMD_SET_MAX];
+	struct dsi_hfi_panel_per_cmd_type hfi_per_type_array[DSI_CMD_SET_TOTAL_SIZE];
 };
 
 /**

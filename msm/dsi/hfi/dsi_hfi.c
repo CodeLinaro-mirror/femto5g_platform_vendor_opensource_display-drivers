@@ -978,6 +978,7 @@ static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 	int i;
 	int j = 0;
 	int rc = 0;
+	int cmd_type;
 
 	dsi_hfi = display->dsi_hfi_info;
 	if (!dsi_hfi) {
@@ -985,8 +986,9 @@ static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 		return -EINVAL;
 	}
 
-	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
-		if (i == DSI_CMD_SET_PPS || i == DSI_CMD_SET_ROI)
+	for (i = 0; i < DSI_CMD_SET_TOTAL_SIZE; i++) {
+		cmd_type = priv_info->cmd_sets[i].type;
+		if (cmd_type == DSI_CMD_SET_PPS || cmd_type == DSI_CMD_SET_ROI)
 			continue;
 
 		if (!priv_info->cmd_sets[i].count)
@@ -996,7 +998,7 @@ static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 							dsi_hfi->running_hfi_offset;
 		panel_timing_caps->payload.hfi_per_type_array[j].sde_buff_type_offset =
 							dsi_hfi->running_sde_offset;
-		panel_timing_caps->payload.hfi_per_type_array[j].cmd_type = i;
+		panel_timing_caps->payload.hfi_per_type_array[j].cmd_type = cmd_type;
 		panel_timing_caps->payload.hfi_per_type_array[j].count_cmds =
 							priv_info->cmd_sets[i].count;
 
