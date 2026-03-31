@@ -174,12 +174,14 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_ENABLE;
 	int rc = 0;
 
-	if (display->trusted_vm_env)
-		return rc;
-
 	if (!display->panel) {
 		DSI_ERR("invalid panel\n");
 		return -EINVAL;
+	}
+
+	if (display->trusted_vm_env) {
+		display->panel->panel_initialized = true;
+		return rc;
 	}
 
 	sde_kms = sde_connector_get_kms(display->drm_conn);
@@ -299,8 +301,15 @@ int dsi_display_hfi_disable(struct dsi_display *display)
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_POST_DISABLE;
 	int rc = 0;
 
-	if (display->trusted_vm_env)
+	if (!display->panel) {
+		DSI_ERR("invalid panel\n");
+		return -EINVAL;
+	}
+
+	if (display->trusted_vm_env) {
+		display->panel->panel_initialized = false;
 		return rc;
+	}
 
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)
