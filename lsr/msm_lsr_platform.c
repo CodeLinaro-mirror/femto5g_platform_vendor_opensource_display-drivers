@@ -63,9 +63,10 @@ static struct msm_lsr_common_data seraph_common_data[] = {
 
 static struct msm_lsr_qos_setting seraph_noc_qos = {
 	.axi_qos = 0x99,
-	.prioritylut_low = 0x33333333,
-	.prioritylut_high = 0x33333333,
-	.urgency_low = 0x1003,
+	.prioritylut_low = 0x44444444,
+	.prioritylut_high = 0x44444444,
+	.urgency_low = 0x1004,
+	.urgency_low_wr = 0x1040,
 	.urgency_low_ro = 0x1003,
 	.dangerlut_low = 0x0,
 	.safelut_low = 0xffff,

@@ -91,6 +91,8 @@ static int __reset_control_deassert_name(struct lsr_device *device, const char *
 static int __reset_control_acquire(struct lsr_device *device, const char *name);
 static int __reset_control_release(struct lsr_device *device, const char *name);
 
+static int __set_registers(struct lsr_device *device);
+
 int lsr_iommu_map(struct iommu_domain *domain, unsigned long iova, phys_addr_t paddr, size_t size,
 		int prot)
 {
@@ -137,6 +139,7 @@ static struct lsr_hal_ops hal_ops = {
 	.reset_control_deassert_name = __reset_control_deassert_name,
 	.reset_control_acquire_name = __reset_control_acquire,
 	.reset_control_release_name = __reset_control_release,
+	.set_registers = __set_registers,
 };
 #endif
 
@@ -2804,6 +2807,91 @@ static int __vote_cfg_bus(struct lsr_device *device)
 			rc = lsr_set_bw(bus, bus->range[1], bus->range[1]);
 		}
 	}
+
+	return 0;
+}
+
+static int __set_registers(struct lsr_device *device)
+{
+	struct msm_lsr_core *core;
+	struct msm_lsr_platform_data *pdata;
+
+	if (!device) {
+		dprintk(LSR_ERR, "Invalid LSR device\n");
+		return -EINVAL;
+	}
+
+	core = lsr_driver->lsr_core;
+	if (!core) {
+		dprintk(LSR_ERR, "Invalid LSR core\n");
+		return -EINVAL;
+	}
+
+	pdata = core->platform_data;
+	if (!pdata) {
+		dprintk(LSR_ERR, "Invalid platform data\n");
+		return -EINVAL;
+	}
+
+	__write_register(device, LSR_CPU_CS_AXI4_QOS,
+				pdata->noc_qos->axi_qos);
+	__write_register(device, CVP_LSR_L_NOC_CSC_GCX_RD_NIU_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_LSR_L_NOC_CSC_GCX_RD_NIU_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_LSR_L_NOC_CSC_GCX_RD_NIU_URGENCY_LOW,
+				pdata->noc_qos->urgency_low);
+	__write_register(device, CVP_LSR_L_NOC_CSC_GCX_WR_NIU_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_LSR_L_NOC_CSC_GCX_WR_NIU_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_LSR_L_NOC_CSC_GCX_WR_NIU_URGENCY_LOW,
+				pdata->noc_qos->urgency_low_wr);
+	__write_register(device, CVP_LSR_L_NOC_GCX_RD_NIU_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_LSR_L_NOC_GCX_RD_NIU_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_LSR_L_NOC_GCX_RD_NIU_URGENCY_LOW,
+				pdata->noc_qos->urgency_low);
+	__write_register(device, CVP_LSR_L_NOC_GCX_CSC_RD_128_NIU_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_LSR_L_NOC_GCX_CSC_RD_128_NIU_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_LSR_L_NOC_CACHE_GCX_NIU_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_LSR_L_NOC_CACHE_GCX_NIU_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_LSR_L_NOC_CACHE_GCX_NIU_URGENCY_LOW,
+				pdata->noc_qos->urgency_low);
+
+	__write_register(device, CVP_LSR_R_NOC_CSC_GCX_RD_NIU_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_LSR_R_NOC_CSC_GCX_RD_NIU_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_LSR_R_NOC_CSC_GCX_RD_NIU_URGENCY_LOW,
+				pdata->noc_qos->urgency_low);
+	__write_register(device, CVP_LSR_R_NOC_CSC_GCX_WR_NIU_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_LSR_R_NOC_CSC_GCX_WR_NIU_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_LSR_R_NOC_CSC_GCX_WR_NIU_URGENCY_LOW,
+				pdata->noc_qos->urgency_low_wr);
+	__write_register(device, CVP_LSR_R_NOC_GCX_RD_NIU_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_LSR_R_NOC_GCX_RD_NIU_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_LSR_R_NOC_GCX_RD_NIU_URGENCY_LOW,
+				pdata->noc_qos->urgency_low);
+	__write_register(device, CVP_LSR_R_NOC_GCX_CSC_RD_128_NIU_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_LSR_R_NOC_GCX_CSC_RD_128_NIU_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_LSR_R_NOC_CACHE_GCX_NIU_PRIORITYLUT_LOW,
+				pdata->noc_qos->prioritylut_low);
+	__write_register(device, CVP_LSR_R_NOC_CACHE_GCX_NIU_PRIORITYLUT_HIGH,
+				pdata->noc_qos->prioritylut_high);
+	__write_register(device, CVP_LSR_R_NOC_CACHE_GCX_NIU_URGENCY_LOW,
+				pdata->noc_qos->urgency_low);
 
 	return 0;
 }

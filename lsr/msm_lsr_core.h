@@ -54,6 +54,7 @@ struct msm_lsr_qos_setting {
 	u32 prioritylut_low;
 	u32 prioritylut_high;
 	u32 urgency_low;
+	u32 urgency_low_wr;
 	u32 urgency_low_ro;
 	u32 dangerlut_low;
 	u32 safelut_low;
