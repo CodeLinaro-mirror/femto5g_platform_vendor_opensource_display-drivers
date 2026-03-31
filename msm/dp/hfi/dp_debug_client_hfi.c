@@ -555,6 +555,28 @@ static int dp_debug_hfi_send_cmd_with_response(struct dp_debug_client_hfi_priv *
 	return 0;
 }
 
+static int _alloc_addr_map(struct hfi_client_t *hfi_client, struct hfi_shared_addr_map **buf,
+		size_t size)
+{
+	if (*buf && size <= (*buf)->size) {
+		memset((*buf)->local_addr, 0, size);
+		return 0;
+	}
+
+	/* buffer exists but requested size is larger, so free first */
+	if (*buf)
+		dp_mgr_hfi_deinit_shared_addr(hfi_client, *buf);
+
+	/* allocate */
+	*buf = dp_mgr_hfi_init_shared_addr(hfi_client, size);
+	if (!*buf) {
+		DP_ERR("Failed to allocate shared buffer of size %zu\n", size);
+		return -ENOMEM;
+	}
+
+	return 0;
+}
+
 /* Read operations */
 static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 		u8 *dpcd, u32 size, u32 offset)
@@ -578,12 +600,11 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 	}
 
 	/* Allocate shared buffer for DCP to populate with DPCD data */
-	dpcd_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_1K);
-	if (!dpcd_addr_map) {
-		DP_ERR("Failed to allocate shared buffer for READ_DPCD\n");
-		return -ENOMEM;
-	}
+	rc = _alloc_addr_map(hfi_client, &priv->dpcd_addr_map, SZ_1K);
+	if (rc)
+		return rc;
 
+	dpcd_addr_map = priv->dpcd_addr_map;
 	DP_INFO("Allocated DPCD buffer: local=%p, remote=0x%llx, size=%u\n",
 		dpcd_addr_map->local_addr, (u64) dpcd_addr_map->remote_addr,
 		dpcd_addr_map->size);
@@ -602,7 +623,6 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Failed to send READ_DPCD command to DCP, rc=%d\n", rc);
-		dp_mgr_init_deinit_shared_addr(hfi_client, dpcd_addr_map);
 		return rc;
 	}
 
@@ -613,9 +633,6 @@ static int dp_debug_client_hfi_read_dpcd(struct dp_debug_client *client,
 	actual_size = min_t(u32, size, dpcd_addr_map->size);
 	if (actual_size > 0)
 		memcpy(dpcd, dpcd_data, actual_size);
-
-	/* Free the shared buffer */
-	dp_mgr_init_deinit_shared_addr(hfi_client, dpcd_addr_map);
 
 	DP_DEBUG("Read %u bytes of DPCD data from offset 0x%x\n", actual_size, offset);
 	return actual_size;
@@ -724,12 +741,11 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 	}
 
 	/* Allocate shared buffer for DCP to populate with info data */
-	info_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_1K);
-	if (!info_addr_map) {
-		DP_ERR("Failed to allocate shared buffer for READ_INFO\n");
-		return -ENOMEM;
-	}
+	rc = _alloc_addr_map(hfi_client, &priv->info_addr_map, SZ_1K);
+	if (rc)
+		return rc;
 
+	info_addr_map = priv->info_addr_map;
 	DP_INFO("Allocated info buffer: local=%p, remote=0x%llx, size=%u\n",
 		info_addr_map->local_addr, (u64) info_addr_map->remote_addr,
 		info_addr_map->size);
@@ -745,7 +761,6 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Failed to send READ_INFO command to DCP, rc=%d\n", rc);
-		dp_mgr_init_deinit_shared_addr(hfi_client, info_addr_map);
 		return rc;
 	}
 
@@ -798,9 +813,6 @@ static int dp_debug_client_hfi_read_info(struct dp_debug_client *client,
 		len += scnprintf(buf + len, size - len, "\tv_level=%u\n", v_level);
 	if (len < size - 50)
 		len += scnprintf(buf + len, size - len, "\tp_level=%u\n", p_level);
-
-	/* Free the shared buffer */
-	dp_mgr_init_deinit_shared_addr(hfi_client, info_addr_map);
 
 	DP_DEBUG("Returning DP info from DCP: state=0x%x, %ux%u@%uHz, %u lanes, rate=%u\n",
 		state, h_active, v_active, refresh_rate, lane_count, link_rate);
@@ -1103,7 +1115,7 @@ static int dp_debug_client_hfi_write_edid(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
 	struct dp_debug_client_hfi_priv *priv;
-	u8 *input_buf = NULL, *buf_t = NULL, *edid = NULL;
+	u8 *buf_t = NULL, *edid = NULL;
 	const int char_to_nib = 2;
 	size_t edid_size = 0;
 	size_t size = 0, edid_buf_index = 0;
@@ -1120,17 +1132,16 @@ static int dp_debug_client_hfi_write_edid(struct dp_debug_client *client,
 
 	hfi_client = dp_debug_hfi_get_client(priv);
 	if (!hfi_client) {
-		rc = -ENODEV;
-		goto bail;
+		DP_ERR("HFI client not available\n");
+		return -ENODEV;
 	}
 
 	/* Allocate shared buffer for DCP to populate with DPCD data */
-	edid_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_1K);
-	if (!edid_addr_map) {
-		DP_ERR("Failed to allocate shared buffer for READ_DPCD\n");
-		return -ENOMEM;
-	}
+	rc = _alloc_addr_map(hfi_client, &priv->edid_addr_map, SZ_1K);
+	if (rc)
+		return rc;
 
+	edid_addr_map = priv->edid_addr_map;
 	DP_INFO("Allocated EDID buffer: local=%pK, remote=0x%llx, size=%u\n",
 		edid_addr_map->local_addr, (u64) edid_addr_map->remote_addr,
 		edid_addr_map->size);
@@ -1187,8 +1198,6 @@ static int dp_debug_client_hfi_write_edid(struct dp_debug_client *client,
 	}
 
 bail:
-	kfree(input_buf);
-	kfree(edid);
 	return rc;
 }
 
@@ -1420,18 +1429,12 @@ static int dp_debug_client_hfi_write_edid_modes(struct dp_debug_client *client,
 	struct dp_debug_client_hfi_priv *priv;
 	struct dp_mgr_hfi_priv *mgr_priv;
 	int hdisplay = 0, vdisplay = 0, vrefresh = 0, aspect_ratio = 0;
+	struct dp_hfi *hfi = NULL;
 
 	if (!client || !buf)
 		return -EINVAL;
 
 	priv = client->priv;
-
-	/* Parse input */
-	if (sscanf(buf, "%d %d %d %d", &hdisplay, &vdisplay, &vrefresh, &aspect_ratio) != 4)
-		goto clear;
-
-	if (!hdisplay || !vdisplay || !vrefresh)
-		goto clear;
 
 	/* Get dp_mgr_hfi_priv */
 	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
@@ -1440,23 +1443,29 @@ static int dp_debug_client_hfi_write_edid_modes(struct dp_debug_client *client,
 		return -ENODEV;
 	}
 
-	/* Set mode override */
-	mgr_priv->mode_ovr.enabled = true;
-	mgr_priv->mode_ovr.h_active = hdisplay;
-	mgr_priv->mode_ovr.v_active = vdisplay;
-	mgr_priv->mode_ovr.refresh_rate = vrefresh;
-	mgr_priv->mode_ovr.aspect_ratio = aspect_ratio;
+	hfi = mgr_priv->hfi[DP_STREAM_0];
 
-	DP_DEBUG("Set mode override: %dx%d@%dHz, aspect=%d\n",
-		hdisplay, vdisplay, vrefresh, aspect_ratio);
+	/* Parse input */
+	if (sscanf(buf, "%d %d %d %d", &hdisplay, &vdisplay, &vrefresh, &aspect_ratio) != 4)
+		goto clear;
+
+	if (!hdisplay || !vdisplay || !vrefresh)
+		goto clear;
+
+	/* Set mode override */
+	hfi->mode_ovr.enabled = true;
+	hfi->mode_ovr.h_active = hdisplay;
+	hfi->mode_ovr.v_active = vdisplay;
+	hfi->mode_ovr.refresh_rate = vrefresh;
+	hfi->mode_ovr.aspect_ratio = aspect_ratio;
+
+	DP_DEBUG("Set mode override: %dx%d@%dHz, aspect=%d\n", hdisplay, vdisplay, vrefresh,
+			aspect_ratio);
 	return count;
 
 clear:
 	DP_DEBUG("clearing debug modes\n");
-
-	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
-	if (mgr_priv)
-		memset(&mgr_priv->mode_ovr, 0, sizeof(mgr_priv->mode_ovr));
+	memset(&hfi->mode_ovr, 0, sizeof(hfi->mode_ovr));
 
 	return count;
 }
@@ -1470,6 +1479,8 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 	struct drm_connector *connector;
 	int con_id = 0, offset = 0, debug_en = 0;
 	int hdisplay, vdisplay, vrefresh, aspect_ratio;
+	struct dp_hfi *hfi;
+	struct dp_mgr_hfi_priv *mgr_priv;
 
 	if (!client || !buf)
 		return -EINVAL;
@@ -1484,11 +1495,18 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 	if (!dp_drv || !dp_drv->client || !dp_drv->client->base_connector)
 		return -ENODEV;
 
+	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
+	if (!mgr_priv) {
+		DP_ERR("Could not access dp_mgr_hfi_priv for MST override\n");
+		return -ENODEV;
+	}
+
+	hfi = mgr_priv->hfi[DP_STREAM_0];
+
 	while (sscanf(buf, "%d %d %d %d %d %d%n",
 		      &debug_en, &con_id,
 		      &hdisplay, &vdisplay, &vrefresh, &aspect_ratio,
 		      &offset) == 6) {
-		struct dp_mgr_hfi_priv *mgr_priv;
 
 		DP_DEBUG("MST EDID modes: debug_en=%d, con_id=%d, %dx%d@%dHz, aspect=%d\n",
 			 debug_en, con_id, hdisplay, vdisplay, vrefresh, aspect_ratio);
@@ -1501,26 +1519,15 @@ static int dp_debug_client_hfi_write_edid_modes_mst(struct dp_debug_client *clie
 			continue;
 		}
 
-		/* For now we use the same global override (mgr_priv->mode_ovr)
-		 * for both SST and MST. If needed, this can be extended to be
-		 * per-MST-connector in dp_mgr_hfi_priv.
-		 */
-		mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
-		if (!mgr_priv) {
-			DP_ERR("Could not access dp_mgr_hfi_priv for MST override\n");
-			drm_connector_put(connector);
-			return -ENODEV;
-		}
-
 		if (!debug_en || !hdisplay || !vdisplay || !vrefresh) {
 			DP_DEBUG("clearing MST override (con_id=%d)\n", con_id);
-			memset(&mgr_priv->mode_ovr, 0, sizeof(mgr_priv->mode_ovr));
+			memset(&hfi->mode_ovr, 0, sizeof(hfi->mode_ovr));
 		} else {
-			mgr_priv->mode_ovr.enabled = true;
-			mgr_priv->mode_ovr.h_active = hdisplay;
-			mgr_priv->mode_ovr.v_active = vdisplay;
-			mgr_priv->mode_ovr.refresh_rate = vrefresh;
-			mgr_priv->mode_ovr.aspect_ratio = aspect_ratio;
+			hfi->mode_ovr.enabled = true;
+			hfi->mode_ovr.h_active = hdisplay;
+			hfi->mode_ovr.v_active = vdisplay;
+			hfi->mode_ovr.refresh_rate = vrefresh;
+			hfi->mode_ovr.aspect_ratio = aspect_ratio;
 
 			DP_DEBUG("Set MST override: %dx%d@%dHz, aspect=%d (con_id=%d)\n",
 				 hdisplay, vdisplay, vrefresh, aspect_ratio, con_id);
@@ -1997,6 +2004,13 @@ void dp_debug_client_hfi_put(struct dp_debug_client *client)
 			}
 		}
 		mutex_unlock(&hfi_client->listener_lock);
+
+		if (priv->dpcd_addr_map)
+			dp_mgr_hfi_deinit_shared_addr(priv->hfi_client, priv->dpcd_addr_map);
+		if (priv->edid_addr_map)
+			dp_mgr_hfi_deinit_shared_addr(priv->hfi_client, priv->edid_addr_map);
+		if (priv->info_addr_map)
+			dp_mgr_hfi_deinit_shared_addr(priv->hfi_client, priv->info_addr_map);
 	}
 
 	/* Destroy HFI client reference */
