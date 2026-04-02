@@ -6103,8 +6103,10 @@ void sde_cp_set_skip_blend_plane_info(struct drm_crtc *drm_crtc,
 	mutex_lock(&crtc->crtc_cp_lock);
 	plane_valid = skip_blend->valid_plane;
 
-	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[SB_PLANE_REAL] :
-		&crtc->skip_blend_planes[SB_PLANE_VIRT];
+	int slot_idx = (skip_blend->plane == SSPP_DMA1) ? 0 : 1;
+
+	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[slot_idx][SB_PLANE_REAL] :
+		&crtc->skip_blend_planes[slot_idx][SB_PLANE_VIRT];
 
 	skip_plane->valid = plane_valid;
 	skip_plane->plane = (plane_valid) ? skip_blend->plane : SSPP_NONE;

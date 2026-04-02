@@ -686,6 +686,8 @@ struct drm_msm_spr_udc_cfg {
 #define DEMURA_PRECISION_2 (2 << 2)
 #define DEMURA_FLAG_3
 #define DEMURA_FLAG_4
+#define DEMURA_RECT_0 (1 << 8)
+#define DEMURA_RECT_1 (1 << 9)
 
 struct drm_msm_dem_cfg {
 	__u64 flags;

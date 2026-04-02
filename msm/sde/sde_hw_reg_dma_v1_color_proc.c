@@ -8323,8 +8323,33 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 	u32 h, w, temp, crtc_roi_top, crtc_roi_bottom;
 	u32 decm_w = 1;
 	u32 decm_h = 1;
+	u32 slot_idx = 0, rect_idx = 0;
+	u32 src_id = 0, rect_id = 0;
 
-	if (!hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
+	src_id = dcfg->src_id & REG_MASK(8);
+	if (src_id == BIT(1)) {
+		hw_cfg->demura_slot_idx = 0;
+	} else if (src_id == BIT(3)) {
+		hw_cfg->demura_slot_idx = 1;
+	} else {
+		DRM_WARN("Invalid src id %d\n", src_id);
+		return false;
+	}
+
+	rect_id = dcfg->src_id & 0xFF00;
+	if (rect_id == DEMURA_RECT_0 || (rect_id == (DEMURA_RECT_0 | DEMURA_RECT_1))) {
+		hw_cfg->demura_rect_idx = 0;
+	} else if (rect_id == DEMURA_RECT_1) {
+		hw_cfg->demura_rect_idx = 1;
+	} else {
+		DRM_WARN("Invalid rect id %d\n", rect_id);
+		return false;
+	}
+
+	slot_idx = hw_cfg->demura_slot_idx;
+	rect_idx = hw_cfg->demura_rect_idx;
+
+	if (!hw_cfg->skip_planes[slot_idx][rect_idx].valid) {
 		DRM_WARN("HFC plane not set\n");
 		return false;
 	}
@@ -8337,7 +8362,7 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 	}
 
 	h = hw_cfg->num_ds_enabled ? hw_cfg->panel_height : hw_cfg->displayv;
-	crtc_roi_top = hw_cfg->skip_planes[SB_PLANE_REAL].y_offset;
+	crtc_roi_top = hw_cfg->skip_planes[slot_idx][rect_idx].y_offset;
 	crtc_roi_bottom = crtc_roi_top + h;
 	h = (crtc_roi_bottom / decm_h) - (crtc_roi_top / decm_h) +
 		((crtc_roi_bottom % decm_h) > 0 ? 1 : 0);
@@ -8358,25 +8383,25 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 		w = w / (hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1);
 	}
 
-	if (h != (hw_cfg->skip_planes[SB_PLANE_REAL].plane_h + hw_cfg->overfetch_lines_on_top +
+	if (h != (hw_cfg->skip_planes[slot_idx][rect_idx].plane_h + hw_cfg->overfetch_lines_on_top +
 			hw_cfg->overfetch_lines_on_bottom) ||
-			w != hw_cfg->skip_planes[SB_PLANE_REAL].plane_w) {
+			w != hw_cfg->skip_planes[slot_idx][rect_idx].plane_w) {
 		DRM_ERROR("invalid hfc cfg exp h %d exp w %d act h %d act w %d\n",
-			h, w, hw_cfg->skip_planes[SB_PLANE_REAL].plane_h,
-				hw_cfg->skip_planes[SB_PLANE_REAL].plane_w);
+			h, w, hw_cfg->skip_planes[slot_idx][rect_idx].plane_h,
+				hw_cfg->skip_planes[slot_idx][rect_idx].plane_w);
 		DRM_ERROR("c0_depth %d c1_depth %d c2 depth %d hw_cfg->panel_width %d\n",
 			dcfg->c0_depth, dcfg->c1_depth, dcfg->c2_depth, hw_cfg->panel_width);
 		return false;
 	}
 
-	if (dcfg->src_id == BIT(3) && hw_cfg->skip_planes[SB_PLANE_REAL].plane == SSPP_DMA3)
+	if (src_id == BIT(3) && hw_cfg->skip_planes[slot_idx][rect_idx].plane == SSPP_DMA3)
 		return true;
 
-	if (dcfg->src_id == BIT(1) && hw_cfg->skip_planes[SB_PLANE_REAL].plane == SSPP_DMA1)
+	if (src_id == BIT(1) && hw_cfg->skip_planes[slot_idx][rect_idx].plane == SSPP_DMA1)
 		return true;
 
-	DRM_ERROR("invalid HFC plane dcfg->src_id %d hw_cfg->skip_planes[SB_PLANE_REAL].plane %d\n",
-		dcfg->src_id, hw_cfg->skip_planes[SB_PLANE_REAL].plane);
+	DRM_ERROR("invalid HFC plane dcfg->src_id %d hw_cfg->skip_planes[%d][%d].plane %d\n",
+		src_id, slot_idx, rect_idx, hw_cfg->skip_planes[slot_idx][rect_idx].plane);
 	return false;
 }
 
@@ -8389,7 +8414,7 @@ static void __reg_dmav1_setup_demura_common_en(struct sde_hw_dspp *ctx,
 {
 	bool valid_hfc_cfg = false;
 
-	*en = (dcfg->src_id == BIT(3)) ? 0 : BIT(31);
+	*en = ((dcfg->src_id & REG_MASK(8)) == BIT(3)) ? 0 : BIT(31);
 	*en |= (dcfg->cfg1_high_idx & REG_MASK(3)) << 24;
 	*en |= (dcfg->cfg1_low_idx & REG_MASK(3)) << 20;
 	*en |= (dcfg->c2_depth & REG_MASK(4)) << 16;
@@ -8987,6 +9012,7 @@ static int __reg_dmav1_setup_demura_en_v3_common(struct sde_hw_dspp *ctx,
 	int rc, val;
 	u32 demura_base = ctx->cap->sblk->demura.base + ctx->hw.blk_off;
 	u32 hfc_pack_size = 0;
+	u32 slot_idx = 0, rect_idx = 0;
 
 	__reg_dmav1_setup_demura_common_en(ctx, dcfg, dma_write_cfg, dma_ops, hw_cfg, &en);
 
@@ -9012,7 +9038,7 @@ static int __reg_dmav1_setup_demura_en_v3_common(struct sde_hw_dspp *ctx,
 	if (rc) {
 		DRM_ERROR("0x4: REG_SINGLE_WRITE failed ret %d\n", rc);
 	} else {
-		en = (dcfg->src_id == BIT(3)) ? 0x3 : 0x1;
+		en = ((dcfg->src_id & REG_MASK(8)) == BIT(3)) ? 0x3 : 0x1;
 
 		// set cfg0_param_7
 		if (dcfg->flags & DEMURA_FLAG_1) {
@@ -9021,13 +9047,16 @@ static int __reg_dmav1_setup_demura_en_v3_common(struct sde_hw_dspp *ctx,
 		}
 
 		if (dcfg->flags & DEMURA_SINGLE_REC) {
+			slot_idx = hw_cfg->demura_slot_idx;
+			rect_idx = hw_cfg->demura_rect_idx;
 			en |= BIT(8);
 			hfc_pack_size =
-				((hw_cfg->skip_planes[SB_PLANE_REAL].plane_w /
+				((hw_cfg->skip_planes[slot_idx][rect_idx].plane_w /
 					(hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1)) &
 				REG_MASK(16));
 			hfc_pack_size |=
-				((hw_cfg->skip_planes[SB_PLANE_REAL].plane_h & REG_MASK(16)) << 16);
+				((hw_cfg->skip_planes[slot_idx][rect_idx].plane_h &
+				REG_MASK(16)) << 16);
 			REG_DMA_SETUP_OPS(*dma_write_cfg, demura_base + 0x150,
 				&hfc_pack_size, sizeof(hfc_pack_size), REG_SINGLE_WRITE, 0, 0, 0);
 			rc = dma_ops->setup_payload(dma_write_cfg);
@@ -9039,6 +9068,8 @@ static int __reg_dmav1_setup_demura_en_v3_common(struct sde_hw_dspp *ctx,
 		} else {
 			ctx->demura_single_rec = false;
 		}
+		ctx->demura_slot_idx = hw_cfg->demura_slot_idx;
+		ctx->demura_rect_idx = hw_cfg->demura_rect_idx;
 
 		REG_DMA_SETUP_OPS(*dma_write_cfg, demura_base + 0x18,
 			&en, sizeof(en), REG_SINGLE_WRITE, 0, 0, 0);
@@ -9223,6 +9254,7 @@ void reg_dmav1_setup_demura_pu_cfgv4(struct sde_hw_dspp *ctx, void *cfg)
 	u32 hfc_pack_size;
 	u32 demura_base;
 	u32 temp;
+	u32 slot_idx = 0, rect_idx = 0;
 
 	rc = reg_dma_dspp_check(ctx, cfg, DEMURA_PU_CFG);
 	if (rc)
@@ -9266,16 +9298,19 @@ void reg_dmav1_setup_demura_pu_cfgv4(struct sde_hw_dspp *ctx, void *cfg)
 			((hw_cfg) ? hw_cfg->panel_height : -1));
 
 	if (ctx->demura_single_rec) {
-		if (!hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
+		slot_idx = ctx->demura_slot_idx;
+		rect_idx = ctx->demura_rect_idx;
+		if (!hw_cfg->skip_planes[slot_idx][rect_idx].valid) {
 			DRM_WARN("HFC plane not set\n");
 			return;
 		}
 		hfc_pack_size =
-			((hw_cfg->skip_planes[SB_PLANE_REAL].plane_w /
+			((hw_cfg->skip_planes[slot_idx][rect_idx].plane_w /
 				(hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1)) &
 			REG_MASK(16));
 		hfc_pack_size |=
-			((hw_cfg->skip_planes[SB_PLANE_REAL].plane_h & REG_MASK(16)) << 16);
+			((hw_cfg->skip_planes[slot_idx][rect_idx].plane_h &
+			REG_MASK(16)) << 16);
 		REG_DMA_SETUP_OPS(dma_write_cfg, demura_base + 0x150,
 			&hfc_pack_size, sizeof(hfc_pack_size), REG_SINGLE_WRITE, 0, 0, 0);
 		rc = dma_ops->setup_payload(&dma_write_cfg);
