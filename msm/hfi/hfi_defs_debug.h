@@ -76,11 +76,15 @@ struct regdump_info {
  * @HFI_DEBUG_MISR_DSI      :   Dsi module
  * @HFI_DEBUG_MISR_MIXER    :   Mixer module
  * @HFI_DEBUG_MISR_INTF     :   Interface module
+ * @HFI_DEBUG_MISR_DP_CTRL  :   DP controller module
+ * @HFI_DEBUG_MISR_DP_PHY   :   DP PHY module
  */
 enum hfi_debug_misr_module_type {
 	HFI_DEBUG_MISR_DSI                     = 0x0,
 	HFI_DEBUG_MISR_MIXER                   = 0x1,
 	HFI_DEBUG_MISR_INTF                    = 0x2,
+	HFI_DEBUG_MISR_DP_CTRL                 = 0x3,
+	HFI_DEBUG_MISR_DP_PHY                  = 0x4,
 };
 
 /*!
