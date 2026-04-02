@@ -38,14 +38,6 @@
 #define TILEWIDTH_SIZE  64
 #define TILEHEIGHT_SIZE 4
 
-#if IS_ENABLED(CONFIG_SMMU_PROXY)
-#include <smmu-proxy/include/uapi/linux/qti-smmu-proxy.h>
-#include <smmu-proxy/linux/qti-smmu-proxy.h>
-#endif
-
-#define CSF_2_5_ARCH_VER	2
-#define CSF_2_5_MAX_VER		5
-
 void sde_mdp_get_v_h_subsample_rate(u8 chroma_sample,
 		u8 *v_sample, u8 *h_sample)
 {
@@ -897,24 +889,11 @@ err_put:
 static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 		int dir)
 {
-	int ret = -EINVAL, sec_cam = 0, rc = 0;
+	int ret = -EINVAL, sec_cam = 0;
 	struct scatterlist *sg;
 	struct sg_table *sgt = NULL;
 	unsigned int i;
 	unsigned long flags = 0;
-	bool csf25_enabled = false;
-#if IS_ENABLED(CONFIG_SMMU_PROXY)
-	struct csf_version csf_ver = {};
-
-	rc = smmu_proxy_get_csf_version(&csf_ver);
-	if (rc) {
-		SDEROT_ERR("error in getting csf version, ret:%d\n", rc);
-		return -EINVAL;
-	}
-	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) &&
-			(csf_ver.max_ver == CSF_2_5_MAX_VER))
-		csf25_enabled = true;
-#endif
 
 	if (data->addr && data->len)
 		return 0;
@@ -935,11 +914,10 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 		 * attribute and lazy unmap attribute will be all
 		 * provided here.
 		 */
-		if (sec_cam && csf25_enabled) {
+		if (!sec_cam)
 			data->srcp_attachment->dma_map_attrs |=
-				DMA_ATTR_QTI_SMMU_PROXY_MAP;
-			SDEROT_INFO("proxy_map: dir:%d proxy map %p\n", dir, data->srcp_dma_buf);
-		} else
+				DMA_ATTR_DELAYED_UNMAP;
+		else
 			data->srcp_attachment->dma_map_attrs |=
 				DMA_ATTR_QTI_SMMU_PROXY_MAP;
 

@@ -729,12 +729,14 @@ static int sde_rotator_secure_session_ctrl(bool enable)
 			/* force smmu to reattach */
 			sde_smmu_secure_ctrl(1);
 			return 0;
+		} else {
+			SDEROT_DBG("enable:%d seccam:%d\n", enable, mdata->sec_cam_en);
+			return 0;
 		}
 	} else {
 		return 0;
 	}
 
-	return 0;
 proxy_fail:
 	if (vmid)
 		sde_rotator_scm_call(mdata, vmid);
