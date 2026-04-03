@@ -498,6 +498,8 @@ static int msm_lsr_populate_bus(struct device *dev,
 
 	memset(bus, 0x0, sizeof(struct bus_info));
 
+	mutex_init(&bus->lock);
+
 	rc = of_property_read_string(dev->of_node, "interconnect-names", &bus->name);
 	if (rc) {
 		dprintk(LSR_ERR, "'interconnect-names' not found in node\n");

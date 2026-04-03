@@ -355,7 +355,7 @@
  *
  * hfi_packet.payload_info.type           : HFI_PAYLOAD_U32_ARRAY
  *           .cmd                         : HFI_COMMAND_DISPLAY_CONFIG_HDR
- *           .flags                       : HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *           .flags                       : HFI_TX_FLAGS_RESPONSE_REQUIRED
  *                                          HFI_TX_FLAGS_NON_DISCARDABLE
  *           .id                          : Bits 0:15 carry the display id
  *           .packet_id                   : unique id
@@ -363,7 +363,7 @@
  */
 #define HFI_COMMAND_DISPLAY_CONFIG_HDR                                0x02000011
 
-/*!
+/*
  * HFI_COMMAND_DISPLAY_AUDIO_CONFIG  -  From host to DCP, this command is used to configure
  *                                      external display audio parameters.
  *
@@ -372,22 +372,21 @@
  * hfi_header.num_packets                 : 1
  *
  * Below table describes the hfi_packet layout (Only data that would change per command is listed
- * below, other fields can be found in @ref display_header_data_page)
+ * below, other fields can be found in display_header_data_page)
  *
- * Hfi packet layout                      | Value
- *----------------------------------------|---------------------------------
- * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
- * hfi_packet.cmd                         | HFI_COMMAND_DISPLAY_AUDIO_CONFIG
- * hfi_packet.flags                       | HFI_TX_FLAGS_INTR_REQUIRED(optional) \|
- * ^                                      | HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) \|
- * ^                                      | HFI_TX_FLAGS_NON_DISCARDABLE
- * hfi_packet.id                          | Bits 0:15 carry the display id
- * hfi_packet.packet_id                   | unique id
- * hfi_packet.payload                     | struct hfi_audio_config
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_AUDIO_CONFIG
+ *     hfi_packet.flags         : HFI_TX_FLAGS_INTR_REQUIRED(optional) \
+ *     ^                        : HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) \
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : struct hfi_audio_config
  */
 #define HFI_COMMAND_DISPLAY_AUDIO_CONFIG                              0x02000012
 
-/*!
+/*
  * HFI_COMMAND_DISPLAY_AUDIO_CONTROL  - From host to DCP, this command is used to enable/disable
  *                                      DisplayPort audio using previously configured parameters.
  *                                      DCP enables audio if payload is HFI_TRUE and disables audio
@@ -398,22 +397,21 @@
  * hfi_header.num_packets                 : 1
  *
  * Below table describes the hfi_packet layout (Only data that would change per command is listed
- * below, other fields can be found in @ref display_header_data_page)
+ * below, other fields can be found in display_header_data_page)
  *
- * Hfi packet layout                      | Value
- *----------------------------------------|---------------------------------
- * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32
- * hfi_packet.cmd                         | HFI_COMMAND_DISPLAY_AUDIO_CONTROL
- * hfi_packet.flags                       | HFI_TX_FLAGS_INTR_REQUIRED(optional) \|
- * ^                                      | HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) \|
- * ^                                      | HFI_TX_FLAGS_NON_DISCARDABLE
- * hfi_packet.id                          | Bits 0:15 carry the display id
- * hfi_packet.packet_id                   | unique id
- * hfi_packet.payload                     | HFI_TRUE / HFI_FALSE
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_NONE
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_AUDIO_CONTROL
+ *     hfi_packet.flags         : HFI_TX_FLAGS_INTR_REQUIRED(optional) \
+ *     ^                        : HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) \
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : HFI_TRUE / HFI_FALSE
  */
 #define HFI_COMMAND_DISPLAY_AUDIO_CONTROL                             0x02000013
 
-/*!
+/*
  * HFI_COMMAND_DISPLAY_SET_COLORSPACE  -  From host to DCP, this command is used to set
  *                                        the colorspace configuration for DisplayPort.
  *
@@ -422,18 +420,81 @@
  * hfi_header.num_packets                 : 1
  *
  * Below table describes the hfi_packet layout (Only data that would change per command is listed
- * below, other fields can be found in @ref display_header_data_page)
+ * below, other fields can be found in display_header_data_page)
  *
- * Hfi packet layout                      | Value
- *----------------------------------------|---------------------------------
- * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
- * hfi_packet.cmd                         | HFI_COMMAND_DISPLAY_SET_COLORSPACE
- * hfi_packet.flags                       | HFI_TX_FLAGS_NON_DISCARDABLE
- * hfi_packet.id                          | Bits 0:15 carry the display id
- * hfi_packet.packet_id                   | unique id
- * hfi_packet.payload                     | enum hfi_colorimetry
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_SET_COLORSPACE
+ *     hfi_packet.flags         : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : enum hfi_colorimetry
  */
 #define HFI_COMMAND_DISPLAY_SET_COLORSPACE                            0x02000014
+
+/*
+ * HFI_COMMAND_DISPLAY_HDCP1X_AKSV  -  From Host to DCP, this command
+ *                                     provides AKSV values for HDCP 1.x authentication.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U64
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_HDCP1X_AKSV
+ *     hfi_packet.flags         : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : 40 bit aksv (Authentication and Key Selection Vector)
+ */
+#define HFI_COMMAND_DISPLAY_HDCP1X_AKSV                               0x02000015
+
+/*
+ * HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE  -  From Host to DCP, this command
+ *                                          provides response messages for HDCP 2.x authentication.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE
+ *     hfi_packet.flags         : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : struct hfi_hdcp2_response
+ */
+#define HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE                           0x02000016
+
+/*
+ * HFI_COMMAND_DISPLAY_HDCP_FEATURE_SUPPORTED  -  From Host to DCP, this command
+ *                                                provides HDCP feature provisioning status.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_HDCP_FEATURE_SUPPORTED
+ *     hfi_packet.flags         : HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload[0]    : hdcp1x_provisioned (boolean)
+ *     hfi_packet.payload[1]    : hdcp2x_provisioned (boolean)
+ */
+#define HFI_COMMAND_DISPLAY_HDCP_FEATURE_SUPPORTED                    0x02000017
 
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 

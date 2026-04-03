@@ -23,6 +23,7 @@
 #include "sde_encoder.h"
 #include "sde_hw_catalog.h"
 #include "sde_core_perf.h"
+#include "hfi_kms.h"
 
 #define SDE_PERF_MODE_STRING_SIZE	128
 #define SDE_PERF_THRESHOLD_HIGH_MIN     12800000
@@ -599,8 +600,33 @@ static void _sde_core_uidle_setup_wd(struct sde_kms *kms,
 		uidle->ops.setup_wd_timer[uidle->hw.disp_op](uidle, &wd);
 }
 
+static bool _sde_core_uidle_fal10_override(struct sde_kms *kms,
+	struct drm_crtc *crtc)
+{
+	bool fal10_override, is_vid_mode = false;
+	struct drm_encoder *drm_enc;
+
+	fal10_override = kms->catalog->uidle_cfg.fal10_override;
+	if (!fal10_override)
+		return false;
+
+	drm_for_each_encoder(drm_enc, kms->dev) {
+		if (drm_enc->crtc != crtc)
+			continue;
+
+		if (sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_VIDEO_MODE)) {
+			is_vid_mode = true;
+			break;
+		}
+	}
+
+	SDE_EVT32(fal10_override, is_vid_mode);
+
+	return fal10_override && is_vid_mode;
+}
+
 static void _sde_core_uidle_setup_cfg(struct sde_kms *kms,
-	enum sde_uidle_state state)
+	struct drm_crtc *crtc, enum sde_uidle_state state)
 {
 	struct sde_uidle_ctl_cfg cfg;
 	struct sde_hw_uidle *uidle;
@@ -613,6 +639,7 @@ static void _sde_core_uidle_setup_cfg(struct sde_kms *kms,
 		kms->catalog->uidle_cfg.fal10_exit_cnt;
 	cfg.fal10_exit_danger =
 		kms->catalog->uidle_cfg.fal10_exit_danger;
+	cfg.fal10_override = _sde_core_uidle_fal10_override(kms, crtc);
 
 	SDE_DEBUG("fal10_danger:%d fal10_exit_cnt:%d fal10_exit_danger:%d\n",
 		cfg.fal10_danger, cfg.fal10_exit_cnt, cfg.fal10_exit_danger);
@@ -652,7 +679,7 @@ static int _sde_core_perf_enable_uidle(struct sde_kms *kms,
 
 	SDE_EVT32(uidle_state);
 	_sde_core_uidle_setup_wd(kms, enable);
-	_sde_core_uidle_setup_cfg(kms, uidle_state);
+	_sde_core_uidle_setup_cfg(kms, crtc, uidle_state);
 	sde_core_perf_uidle_setup_ctl(crtc, true);
 
 	kms->perf.uidle_enabled = enable;
@@ -767,7 +794,7 @@ void sde_core_perf_crtc_update_uidle(struct drm_crtc *crtc,
 
 			/* Check if FAL1 only should be enabled */
 			if (fps <=  kms->perf.catalog->uidle_cfg.max_fps)
-				uidle_crtc_status = UIDLE_STATE_FAL1_FAL10;
+				uidle_crtc_status = UIDLE_STATE_FAL1_ONLY;
 			else if (fps <= kms->perf.catalog->uidle_cfg.max_fal1_fps)
 				uidle_crtc_status = UIDLE_STATE_FAL1_ONLY;
 			else
@@ -1467,6 +1494,68 @@ static const struct file_operations sde_core_perf_mmrm_fops = {
 	.write = _sde_core_perf_mmrm_write,
 };
 
+static ssize_t _sde_core_perf_uidle_status_read(struct file *file,
+		char __user *buff, size_t count, loff_t *ppos)
+{
+	struct sde_core_perf *perf = file->private_data;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	bool uidle_enabled = false;
+	u32 uidle_state = 0;
+	char buf[64];
+	int len = 0;
+	int rc;
+
+	if (!perf)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0; /* EOF */
+
+	priv = perf->dev->dev_private;
+	if (!priv || !priv->kms) {
+		SDE_ERROR("invalid KMS reference\n");
+		return -EINVAL;
+	}
+
+	sde_kms = to_sde_kms(priv->kms);
+
+	if (!IS_DISP_OP_HFI(priv->disp_op)) {
+		SDE_ERROR("invalid display mode\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("hfi_kms not available\n");
+		return -EINVAL;
+	}
+
+	rc = hfi_kms_get_uidle_status(hfi_kms, &uidle_enabled, &uidle_state);
+	if (rc) {
+		SDE_ERROR("failed to get uidle status rc:%d\n", rc);
+		return rc;
+	}
+
+	len = scnprintf(buf, sizeof(buf), "uidle_enabled:%d uidle_state:%u\n",
+			uidle_enabled, uidle_state);
+
+	if (len < 0 || len >= sizeof(buf))
+		return 0;
+
+	if ((count < len) || copy_to_user(buff, buf, len))
+		return -EFAULT;
+
+	*ppos += len;
+	return len;
+}
+
+static const struct file_operations sde_core_perf_uidle_status_fops = {
+	.open = simple_open,
+	.read = _sde_core_perf_uidle_status_read,
+};
+
 static void sde_core_perf_debugfs_destroy(struct sde_core_perf *perf)
 {
 	debugfs_remove_recursive(perf->debugfs_root);
@@ -1537,8 +1626,14 @@ int sde_core_perf_debugfs_init(struct sde_core_perf *perf,
 			&sde_kms->catalog->uidle_cfg.fal1_max_threshold);
 	debugfs_create_bool("uidle_enable", 0600, perf->debugfs_root,
 			&sde_kms->catalog->uidle_cfg.debugfs_ctrl);
-	debugfs_create_bool("uidle_status", 0400, perf->debugfs_root,
+
+	if (!IS_DISP_OP_HFI(priv->disp_op)) {
+		debugfs_create_bool("uidle_status", 0400, perf->debugfs_root,
 			&sde_kms->perf.uidle_enabled);
+	} else {
+		debugfs_create_file("uidle_status", 0400, perf->debugfs_root,
+			perf, &sde_core_perf_uidle_status_fops);
+	}
 
 	return 0;
 }

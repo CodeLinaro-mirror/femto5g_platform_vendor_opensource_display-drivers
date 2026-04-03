@@ -75,6 +75,7 @@ module_entry(
             "msm/dp/hfi/dp_hfi.c",
             "msm/dp/hfi/dp_debug_client_hfi.c",
             "msm/dp/hfi/dp_hfi_audio.c",
+            "msm/dp/hfi/dp_hdcp.c",
         ],
         "CONFIG_DRM_MSM_DP_MST": [
             "msm/dp/dp_mst_drm.c",
@@ -215,6 +216,7 @@ module_entry(
             "msm/dsi/dsi_drm.c",
             "msm/dsi/dsi_display.c",
             "msm/dsi/dsi_display_manager.c",
+            "msm/dsi/dsi_sim_bridge.c",
             "msm/dsi/dsi_panel.c",
             "msm/dsi/dsi_clk_manager.c",
             "msm/dsi/dsi_display_test.c",

@@ -477,6 +477,12 @@ int msm_lsr_map_ipcc_regs(u32 *iova)
 		dprintk(LSR_ERR, "%s: fail to get context bank\n", __func__);
 		return -EINVAL;
 	}
+
+	if (dev->res->ipcc_reg_base_iova) {
+		dprintk(LSR_CORE, "IOVA already exists\n");
+		return 0;
+	}
+
 	*iova = dma_map_resource(cb->dev, paddr, size, DMA_BIDIRECTIONAL, 0);
 	if (*iova == DMA_MAPPING_ERROR) {
 		dprintk(LSR_WARN, "%s: fail to map IPCC regs\n", __func__);

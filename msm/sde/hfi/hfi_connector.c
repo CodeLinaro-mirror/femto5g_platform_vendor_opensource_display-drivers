@@ -862,6 +862,56 @@ free_conn:
 	return -ENOMEM;
 }
 
+int hfi_connector_set_debug_prop(struct drm_connector *drm_conn,
+	struct hfi_display_dbg_property *dbg_prop)
+{
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	u32 obj_id = 0x0;
+	u32 flags = HFI_HOST_FLAGS_NONE;
+	u32 hfi_cmd = HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY;
+	int rc = 0;
+
+	if (!drm_conn || !dbg_prop) {
+		SDE_ERROR("invalid args\n");
+		return -EINVAL;
+	}
+
+	dbg_prop->display_id = sde_conn_get_display_obj_id(drm_conn);
+
+	sde_kms = sde_connector_get_kms(drm_conn);
+	if (!sde_kms)
+		return -EINVAL;
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	hfi_client = &hfi_kms->hfi_client;
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			obj_id, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get command buf\n");
+		return -EINVAL;
+	}
+
+	rc = hfi_adapter_add_set_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
+		HFI_PAYLOAD_TYPE_U32_ARRAY, dbg_prop, sizeof(struct hfi_display_dbg_property),
+		flags);
+	if (rc)
+		SDE_ERROR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
+
+	rc = hfi_adapter_set_cmd_buf(hfi_client, cmd_buf);
+	if (rc)
+		SDE_ERROR("failed to send hfi_cmd 0x%x display_id: %d\n", hfi_cmd, obj_id);
+
+	return rc;
+}
+
 void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)
 {
 	struct dsi_panel *panel;

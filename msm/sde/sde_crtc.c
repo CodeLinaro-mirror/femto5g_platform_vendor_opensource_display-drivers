@@ -3647,14 +3647,16 @@ enum sde_intf_mode sde_crtc_get_intf_mode(struct drm_crtc *crtc,
 		struct drm_crtc_state *cstate)
 {
 	struct drm_encoder *encoder;
+	struct sde_crtc *sde_crtc;
 
 	if (!crtc || !crtc->dev || !cstate) {
 		SDE_ERROR("invalid crtc\n");
 		return INTF_MODE_NONE;
 	}
 
+	sde_crtc = to_sde_crtc(crtc);
 	drm_for_each_encoder_mask(encoder, crtc->dev,
-			cstate->encoder_mask) {
+			sde_crtc->cached_encoder_mask) {
 		/* continue if copy encoder is encountered */
 		if (sde_crtc_state_in_clone_mode(encoder, cstate) ||
 			sde_encoder_is_loopback_display(encoder))
@@ -7878,8 +7880,15 @@ static int _sde_crtc_atomic_check(struct drm_crtc *crtc,
 	 */
 	if (disp_op == MSM_DISP_OP_HFI) {
 		struct sde_connector_state *sde_conn_state;
+		struct drm_connector_state *drm_conn_state;
 
-		sde_conn_state = _sde_crtc_get_sde_connector_state(crtc, state->state);
+		drm_conn_state = _sde_crtc_get_virt_conn_state(crtc, state);
+
+		if (drm_conn_state)
+			sde_conn_state =  to_sde_connector_state(drm_conn_state);
+		else
+			sde_conn_state =  NULL;
+
 		if (sde_conn_state &&
 			sde_conn_state->base.connector->connector_type ==
 			DRM_MODE_CONNECTOR_VIRTUAL)
@@ -8190,10 +8199,19 @@ static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
 				catalog->mdp[0].ubwc_swizzle);
 	}
 
-	if (of_fdt_get_ddrtype() == LP_DDR4_TYPE)
+	switch (of_fdt_get_ddrtype()) {
+	case LP_DDR4_TYPE:
 		sde_kms_info_add_keystr(info, "DDR version", "DDR4");
-	else
+		break;
+	case LP_DDR5_TYPE:
 		sde_kms_info_add_keystr(info, "DDR version", "DDR5");
+		break;
+	case LP_DDR6_TYPE:
+		sde_kms_info_add_keystr(info, "DDR version", "DDR6");
+		break;
+	default:
+		sde_kms_info_add_keystr(info, "DDR version", "DDR5");
+	}
 
 	if (sde_is_custom_client()) {
 		/* No support for SMART_DMA_V1 yet */
@@ -8257,6 +8275,9 @@ static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
 
 	if (catalog->ubwc_bw_calc_rev)
 		sde_kms_info_add_keyint(info, "ubwc_bw_calc_ver", catalog->ubwc_bw_calc_rev);
+
+	sde_kms_info_add_keyint(info, "has_demura_single_rect_support",
+			catalog->has_demura_single_rect_support);
 }
 
 /**
@@ -8451,6 +8472,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			sde_kms_info_add_keyint(info, "is_udc_supported",
 					catalog->is_udc_supported);
 		}
+
+		if (catalog->qrtc_count)
+			sde_kms_info_add_keyint(info, "qrtc_count",
+					catalog->qrtc_count);
 	}
 
 	sde_kms_info_add_keyint(info, "dsc_block_count", catalog->dsc_count);
@@ -8573,25 +8598,6 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	return sde_fence_create(sde_crtc->output_fence, val, offset, hw_ctl);
 }
 
-static void _sde_crtc_set_idle_pc_state(struct drm_crtc *crtc, struct sde_crtc *sde_crtc,
-		uint64_t val)
-{
-	enum msm_disp_op disp_op;
-	int ret;
-
-	//Make sure u64 is not narrowing
-	if (val > U32_MAX)
-		return;
-
-	disp_op = sde_crtc_get_disp_op(crtc);
-
-	if (sde_crtc->hal_ops.set_idle_pc_timer[disp_op]) {
-		ret = sde_crtc->hal_ops.set_idle_pc_timer[disp_op](sde_crtc, (u32)val);
-		if (ret)
-			SDE_ERROR("Failed to update idle pc timer to %u: %d\n", (u32)val, ret);
-	}
-}
-
 /**
  * sde_crtc_atomic_set_property - atomically set a crtc drm property
  * @crtc: Pointer to drm crtc structure
@@ -8705,9 +8711,6 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 		break;
 	case CRTC_PROP_FRAME_DATA_BUF:
 		_sde_crtc_set_frame_data_buffers(crtc, cstate, (void __user *)(uintptr_t)val);
-		break;
-	case CRTC_PROP_IDLE_PC_STATE:
-		_sde_crtc_set_idle_pc_state(crtc, sde_crtc, val);
 		break;
 	default:
 		/* nothing to do */
