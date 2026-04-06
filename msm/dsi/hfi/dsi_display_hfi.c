@@ -211,6 +211,9 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 	 */
 	mutex_lock(&display->panel->panel_lock);
 	if (display->panel->lp11_init && !display->panel->powered) {
+		struct dsi_display_mode_priv_info *priv_info;
+		enum dsi_cmd_set_type cmd_type;
+
 		DSI_DEBUG("powering on panel\n");
 		rc = dsi_panel_power_on(display->panel, is_cont_splash);
 		if (rc) {
@@ -221,9 +224,23 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 
 		display->panel->powered = true;
 
-		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_SET_CUSTOM_ON, false);
-		if (rc)
-			DSI_ERR("Could not send custom dcs on cmd, rc=%d\n", rc);
+		/* For continuous splash case - avoid sending custom DCS ON */
+		if (!is_cont_splash) {
+			if (!display->panel->cur_mode || !display->panel->cur_mode->priv_info) {
+				mutex_unlock(&display->panel->panel_lock);
+				return -EINVAL;
+			}
+
+			priv_info = display->panel->cur_mode->priv_info;
+
+			/* If custom on command is not defined, fallback to default on command */
+			cmd_type = (priv_info->cmd_sets[DSI_CMD_SET_CUSTOM_ON].count > 0) ?
+				   DSI_CMD_SET_CUSTOM_ON : DSI_CMD_SET_ON;
+
+			rc = dsi_panel_tx_cmd_set(display->panel, cmd_type, false);
+			if (rc)
+				DSI_ERR("Could not send dcs on cmd, rc=%d\n", rc);
+		}
 	}
 	mutex_unlock(&display->panel->panel_lock);
 
