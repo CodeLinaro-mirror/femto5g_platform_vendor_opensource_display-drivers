@@ -248,6 +248,14 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 					c_bridge->id, rc);
 				return;
 			}
+		} else if ((c_bridge->dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) &&
+			   (disp_op == MSM_DISP_OP_HFI)) {
+			rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
+			if (rc) {
+				DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
+					c_bridge->id, rc);
+				return;
+			}
 		}
 		return;
 	}
