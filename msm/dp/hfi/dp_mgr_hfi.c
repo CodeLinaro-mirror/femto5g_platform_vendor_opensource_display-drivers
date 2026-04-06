@@ -1027,12 +1027,77 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	return rc;
 }
 
+static int dp_mgr_hfi_send_type_id_to_sink(struct dp_hfi *hfi, uint8_t stream_type)
+{
+	struct hfi_hdcp2_message response = {0};
+	struct hfi_client_t *hfi_client;
+	uint8_t type_id_msg[2];
+	int rc;
+
+	hfi_client = hfi->hfi_client;
+	if (!hfi_client)
+		return -EINVAL;
+
+	/* Check if shared buffers are allocated */
+	if (!hfi->hdcp2x_req_map || !hfi->hdcp2x_resp_map) {
+		DP_ERR("HDCP 2.x shared buffers not allocated\n");
+		return -EINVAL;
+	}
+
+	DP_DEBUG("Sending TYPE_ID to sink, stream_type=%u\n", stream_type);
+
+	/* Construct TYPE_ID message */
+	type_id_msg[0] = SKE_SEND_TYPE_ID;
+	type_id_msg[1] = stream_type;
+
+	/* Copy to shared response buffer */
+	memcpy(hfi->hdcp2x_resp_map->local_addr, type_id_msg, 2);
+
+	/* Prepare HFI response */
+	dp_mgr_hfi_init_hfi_buff(&response.request, hfi->hdcp2x_req_map);
+	response.request.size = 0;
+
+	dp_mgr_hfi_init_hfi_buff(&response.response, hfi->hdcp2x_resp_map);
+	response.response.size = 2;
+
+	response.timeout_ms = 100;
+	response.repeater_flag = 0;
+
+	/* Send TYPE_ID to sink via HFI */
+	rc = dp_hfi_send_cmd_buf(hfi, hfi_client,
+				 HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE,
+				 "DisplayPort", HFI_PAYLOAD_TYPE_U32_ARRAY,
+				 &response, sizeof(response),
+				 HFI_HOST_FLAGS_NON_DISCARDABLE);
+	if (rc)
+		DP_ERR("Failed to send TYPE_ID to sink: %d\n", rc);
+	else
+		DP_DEBUG("TYPE_ID sent to sink successfully\n");
+
+	return rc;
+}
+
 static void dp_mgr_hfi_min_level_change(void *client_ctx, u8 min_enc_level)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = client_ctx;
+	struct dp_hfi *hfi;
+	uint8_t stream_type;
+	int rc;
 
 	if (!hfi_priv) {
 		DP_ERR("invalid input\n");
+		return;
+    	}
+
+	hfi = hfi_priv->hfi[0];
+	if (!hfi || !hfi->hdcp2x_ctx) {
+		DP_DEBUG("HDCP 2.x not active, skipping TYPE_ID update\n");
+		return;
+	}
+
+    	/* Only send TYPE_ID if HDCP is authenticated */
+	if (hfi->hdcp_info.hdcp_state != HDCP_STATE_AUTHENTICATED) {
+		DP_DEBUG("HDCP not authenticated, skipping TYPE_ID update\n");
 		return;
 	}
 
@@ -1040,6 +1105,29 @@ static void dp_mgr_hfi_min_level_change(void *client_ctx, u8 min_enc_level)
 		 hfi_priv->min_enc_level, min_enc_level);
 
 	hfi_priv->min_enc_level = min_enc_level;
+
+	switch (hfi_priv->min_enc_level) {
+	case 0:
+	case 1:
+		stream_type = 0;  /* Type 0: Standard content */
+		break;
+	case 2:
+		stream_type = 1;  /* Type 1: Premium content (4K HDR, etc.) */
+		break;
+	default:
+		stream_type = 0;
+		break;
+	}
+
+	DP_DEBUG("Using stream_type=%u (min_enc_level=%u)\n",
+			stream_type, hfi_priv->min_enc_level);
+
+	rc = dp_mgr_hfi_send_type_id_to_sink(hfi_priv->hfi[0], stream_type);
+	if (rc) {
+		DP_ERR("Failed to send TYPE_ID to sink: %d\n", rc);
+		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
+		dp_mgr_update_hdcp_info(hfi, false);
+	}
 }
 
 static void dp_mgr_hfi_calc_tu_parameters(struct dp_mgr_hfi_priv *hfi_priv,
@@ -1578,50 +1666,6 @@ static void dp_mgr_hfi_handle_hdcp1x_topology(struct dp_hfi *hfi, void *payload,
 	DP_DEBUG("HDCP topology updated\n");
 }
 
-static int dp_mgr_hfi_send_type_id_to_sink(struct dp_hfi *hfi, uint8_t stream_type)
-{
-	struct hfi_hdcp2_message response = {0};
-	struct hfi_client_t *hfi_client;
-	uint8_t type_id_msg[2];
-	int rc;
-
-	hfi_client = hfi->hfi_client;
-	if (!hfi_client)
-		return -EINVAL;
-
-	DP_DEBUG("Sending TYPE_ID to sink, stream_type=%u\n", stream_type);
-
-	/* Construct TYPE_ID message */
-	type_id_msg[0] = SKE_SEND_TYPE_ID;
-	type_id_msg[1] = stream_type;
-
-	/* Copy to shared response buffer */
-	memcpy(hfi->hdcp2x_resp_map->local_addr, type_id_msg, 2);
-
-	/* Prepare HFI response */
-	dp_mgr_hfi_init_hfi_buff(&response.request, hfi->hdcp2x_req_map);
-	response.request.size = 0;
-
-	dp_mgr_hfi_init_hfi_buff(&response.response, hfi->hdcp2x_resp_map);
-	response.response.size = 2;
-
-	response.timeout_ms = 100;
-	response.repeater_flag = 0;
-
-	/* Send TYPE_ID to sink via HFI */
-	rc = dp_hfi_send_cmd_buf(hfi, hfi_client,
-				 HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE,
-				 "DisplayPort", HFI_PAYLOAD_TYPE_U32_ARRAY,
-				 &response, sizeof(response),
-				 HFI_HOST_FLAGS_NON_DISCARDABLE);
-	if (rc)
-		DP_ERR("Failed to send TYPE_ID to sink: %d\n", rc);
-	else
-		DP_DEBUG("TYPE_ID sent to sink successfully\n");
-
-	return rc;
-}
-
 static void dp_mgr_hfi_handle_hdcp2x_start(struct dp_hfi *hfi, void *payload, u32 size)
 {
 	struct hfi_hdcp2_message response = {0};
@@ -1706,9 +1750,9 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 	uint32_t resp_len;
 	uint8_t msg_id = 0;
 	bool is_repeater;
-	uint8_t stream_type;
+	bool repeater_flag = false;
+	uint32_t timeout_ms = 0;
 	int rc;
-	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
 
 	DP_DEBUG("HDCP2X_PROCESS_MSG event received from DCP\n");
 
@@ -1736,17 +1780,18 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 		return;
 	}
 
-	is_repeater = hfi_data->repeater_flag;
-
-	DP_DEBUG("Processing message: request_length=%u, repeater=%d\n",
-		 hfi_data->request.size, is_repeater);
+	DP_DEBUG("Processing message: request_length=%u, repeater_flag(hfi)=%d\n",
+		 hfi_data->request.size, hfi_data->repeater_flag);
 
 	/* Process message through dp_hdcp (TZ) */
 	rc = dp_hdcp2x_process_msg(hfi->hdcp2x_ctx,
 				   req_buf, hfi_data->request.size,
-				   &resp_buf, &resp_len);
+				   &resp_buf, &resp_len,
+				   &repeater_flag, &timeout_ms);
 	if (rc) {
 		DP_ERR("dp_hdcp2x_process_msg failed: %d\n", rc);
+		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
+		dp_mgr_update_hdcp_info(hfi, false);
 		return;
 	}
 
@@ -1776,9 +1821,10 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 	dp_mgr_hfi_init_hfi_buff(&response.response, hfi->hdcp2x_resp_map);
 	response.response.size = resp_len;
 
-	/* Copy timeout and repeater flag from incoming message */
-	response.timeout_ms = hfi_data->timeout_ms;
-	response.repeater_flag = hfi_data->repeater_flag;
+	/* Use timeout and repeater flag as determined by TrustZone */
+	is_repeater = repeater_flag;
+	response.timeout_ms = timeout_ms;
+	response.repeater_flag = repeater_flag;
 
 	/* Send HFI_COMMAND_DISPLAY_HDCP2X_RESPONSE back to DCP */
 	rc = dp_hfi_send_cmd_buf(hfi, hfi_client,
@@ -1791,33 +1837,9 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 	else
 		DP_DEBUG("Response sent to DCP, length=%u\n", resp_len);
 
-	if (msg_id == SKE_SEND_EKS && !is_repeater) {
-		switch (hfi_priv->min_enc_level) {
-		case 0:
-		case 1:
-			stream_type = 0;  /* Type 0: Standard content */
-			break;
-		case 2:
-			stream_type = 1;  /* Type 1: Premium content (4K HDR, etc.) */
-			break;
-		default:
-			stream_type = 0;
-			break;
-		}
+	if ((msg_id == SKE_SEND_EKS && !is_repeater) ||
+			(msg_id == REP_STREAM_READY && is_repeater)) {
 
-		DP_DEBUG("Using stream_type=%u (min_enc_level=%u)\n",
-			 stream_type, hfi_priv->min_enc_level);
-
-		/* Step 1: Send SKE_SEND_TYPE_ID directly to sink via HFI */
-		rc = dp_mgr_hfi_send_type_id_to_sink(hfi, stream_type);
-		if (rc) {
-			DP_ERR("Failed to send TYPE_ID to sink: %d\n", rc);
-			hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
-			dp_mgr_update_hdcp_info(hfi, false);
-			return;
-		}
-
-		/* Step 2: Enable encryption in TZ */
 		rc = dp_hdcp2x_enable_encryption(hfi->hdcp2x_ctx);
 		if (rc) {
 			DP_ERR("Failed to enable encryption: %d\n", rc);
@@ -1826,22 +1848,10 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 			return;
 		}
 
-		/* Step 3: Update status */
 		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
 		dp_mgr_update_hdcp_info(hfi, false);
 
-		DP_DEBUG("HDCP 2.x authentication completed (non-repeater)\n");
-	} else if (msg_id == REP_STREAM_READY && is_repeater) {
-		rc = dp_hdcp2x_enable_encryption(hfi->hdcp2x_ctx);
-		if (rc) {
-			DP_ERR("Failed to enable encryption: %d\n", rc);
-			hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
-		} else {
-			hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
-		}
-		dp_mgr_update_hdcp_info(hfi, false);
-
-		DP_DEBUG("HDCP 2.x authentication completed (repeater)\n");
+		DP_DEBUG("HDCP 2.x authentication completed \n");
 	}
 }
 
