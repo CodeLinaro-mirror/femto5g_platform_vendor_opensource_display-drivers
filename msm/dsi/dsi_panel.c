@@ -1167,6 +1167,19 @@ error:
 	return rc;
 }
 
+static int dsi_panel_parse_default_timing(struct dsi_display_mode *mode,
+							struct dsi_parser_utils *utils)
+{
+	if (!mode || !utils) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	mode->is_preferred = utils->read_bool(utils->data, "qcom,mdss-dsi-timing-default");
+
+	return 0;
+}
+
 static int dsi_panel_parse_pixel_format(struct dsi_host_common_cfg *host,
 					struct dsi_parser_utils *utils,
 					const char *name)
@@ -5469,6 +5482,10 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 			DSI_ERR("failed to parse panel timing, rc=%d\n", rc);
 			goto parse_fail;
 		}
+
+		rc = dsi_panel_parse_default_timing(mode, utils);
+		if (rc)
+			DSI_ERR("failed to parse default timing mode, rc=%d\n", rc);
 
 		if (panel->dyn_clk_caps.dyn_clk_support) {
 			rc = dsi_panel_parse_dyn_clk_list(mode, utils, panel->dyn_clk_caps.type);
