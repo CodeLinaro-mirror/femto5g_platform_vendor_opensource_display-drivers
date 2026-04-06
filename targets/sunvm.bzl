@@ -4,7 +4,7 @@ load(":target_variants.bzl", "get_all_variants")
 
 def define_sunvm():
     for (t, v) in get_all_variants():
-        if t == "sun-tuivm" or t == "sun-oemvm":
+        if t == "sun-tuivm" or t == "sun-oemvm" or t == "malabar-tuivm" or t == "malabar-oevmm":
             define_target_variant_modules(
                 target = t,
                 variant = v,
@@ -21,6 +21,8 @@ def define_sunvm():
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",
                     "CONFIG_DRM_SDE_VM",
                     "CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT",
+                    "CONFIG_MDSS_HFI_ADAPTER",
+                    "CONFIG_MDSS_HFI",
                 ],
                 vm_target = True,
             )
