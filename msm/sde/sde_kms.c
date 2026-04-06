@@ -1264,6 +1264,14 @@ int sde_kms_vm_primary_prepare_commit(struct sde_kms *sde_kms,
 		}
 	}
 
+	if (IS_DISP_OP_HFI(disp_op) && (vm_req == VM_REQ_RELEASE)) {
+		rc = hfi_kms_set_vm_state(crtc, new_cstate, HFI_DEVICE_RESOURCE_PRE_RELEASE);
+		if (rc) {
+			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
+			return rc;
+		}
+	}
+
 	if (vm_req != VM_REQ_ACQUIRE)
 		return 0;
 
@@ -1674,7 +1682,7 @@ int sde_kms_vm_trusted_post_commit(struct sde_kms *sde_kms,
 	sde_vm_unlock(sde_kms);
 
 	if (IS_DISP_OP_HFI(disp_op)) {
-		rc = hfi_kms_set_vm_state(crtc, new_cstate);
+		rc = hfi_kms_set_vm_state(crtc, new_cstate, HFI_DEVICE_RESOURCE_RELEASE);
 		if (rc) {
 			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
 			return rc;
@@ -1751,7 +1759,7 @@ int sde_kms_vm_primary_post_commit(struct sde_kms *sde_kms,
 	sde_vm_unlock(sde_kms);
 
 	if (IS_DISP_OP_HFI(disp_op)) {
-		rc = hfi_kms_set_vm_state(crtc, new_cstate);
+		rc = hfi_kms_set_vm_state(crtc, new_cstate, HFI_DEVICE_RESOURCE_RELEASE);
 		if (rc) {
 			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
 			return rc;
@@ -4275,7 +4283,7 @@ static int sde_kms_vm_state_update(struct sde_kms *sde_kms,
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
 
 	if (IS_DISP_OP_HFI(disp_op) && (vm_req == VM_REQ_ACQUIRE)) {
-		rc = hfi_kms_set_vm_state(crtc, new_cstate);
+		rc = hfi_kms_set_vm_state(crtc, new_cstate, HFI_DEVICE_RESOURCE_ACQUIRE);
 		if (rc) {
 			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
 			return rc;
