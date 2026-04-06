@@ -927,6 +927,22 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_OPR_VALUE, data);
 		break;
 	}
+	case HFI_COMMAND_DISPLAY_EVENT_AIQE_COPR_READ:
+		if (!payload) {
+			SDE_ERROR("Invalid COPR event payload %pK\n", payload);
+			return;
+		}
+
+		data = (u32 *)payload;
+		ex_size = (1 + data[0]) * sizeof(u32);
+		if (size != ex_size) {
+			SDE_ERROR("Invalid COPR event payload size %d expected size %d\n",
+				size, ex_size);
+			return;
+		}
+
+		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_COPR, payload);
+		break;
 	default:
 		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
 	}
@@ -1043,6 +1059,18 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_SPR_OPR].state = enable;
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_SPR_OPR].pending = false;
+		break;
+
+	case HFI_EVENT_AIQE_COPR:
+		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
+		if (ret) {
+			SDE_ERROR("event registration failed: event %d, enable %d\n",
+				event, enable);
+			return ret;
+		}
+
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_AIQE_COPR].state = enable;
+		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_AIQE_COPR].pending = false;
 		break;
 	default:
 		break;

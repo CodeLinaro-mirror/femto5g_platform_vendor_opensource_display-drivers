@@ -1405,6 +1405,34 @@
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS             0x0002012B
 
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_SPR_PU - Property to setup SPR partial update
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_SPR_PU |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_SPR_PU                            0x0002012C
+
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR
+ * @brief This property is to setup COPR. Host is expected to send this packet of
+ *        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR \|
+ * ^                             | (version=0 << 20) \|
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1-3]   | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR                          0x0002012D
+
 /*
  * All display color properties end here
  */
