@@ -1228,24 +1228,29 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 		transfer = true;
 
 	mutex_lock(&dsi_display->display_lock);
-	rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
 
-	/**
-	 * Handle scenario where a command transfer is initiated through
-	 * sysfs interface when device is in suepnd state.
-	 */
-	if (!rc && !state) {
-		pr_warn_ratelimited("Command xfer attempted while device is in suspend state\n"
-				);
-		rc = -EPERM;
-		goto end;
+	if (dsi_display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HFI) {
+		rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
+
+		/**
+		 * Handle scenario where a command transfer is initiated through
+		 * sysfs interface when device is in suepnd state.
+		 */
+		if (!rc && !state) {
+			pr_warn_ratelimited("Command xfer attempted while device is in suspend state\n"
+					);
+			rc = -EPERM;
+			goto end;
+		}
+
+		if (rc || !state) {
+			DSI_ERR("[DSI] Invalid host state %d rc %d\n",
+					state, rc);
+			rc = -EPERM;
+			goto end;
+		}
 	}
-	if (rc || !state) {
-		DSI_ERR("[DSI] Invalid host state %d rc %d\n",
-				state, rc);
-		rc = -EPERM;
-		goto end;
-	}
+
 
 	SDE_EVT32(dsi_display->tx_cmd_buf_ndx, cmd_buf_len);
 
@@ -1284,7 +1289,11 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 
 		dsi_panel_acquire_panel_lock(dsi_display->panel);
 		for (i = 0; i < cnt; i++) {
-			rc = dsi_host_transfer_sub(&dsi_display->host, cmds, do_peripheral_flush);
+			if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+				rc = dsi_hfi_host_transfer_sub(&dsi_display->host, cmds);
+			else
+				rc = dsi_host_transfer_sub(&dsi_display->host, cmds,
+							do_peripheral_flush);
 			if (rc < 0) {
 				DSI_ERR("failed to send command, rc=%d\n", rc);
 				break;
@@ -5578,7 +5587,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			return rc;
 	}
 
-	if (mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) {
+	if ((display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) &&
+	    (mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) {
 		if (display->panel->panel_mode == DSI_OP_VIDEO_MODE) {
 			rc = dsi_display_dynamic_clk_switch_vid(display, mode);
 			if (rc)
@@ -6573,7 +6583,7 @@ static int dsi_display_init(struct dsi_display *display)
 		if (rc) {
 			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
 					display->panel->name, rc);
-			return rc;
+			goto vreg_fail;
 		}
 	}
 
@@ -6595,10 +6605,20 @@ static int dsi_display_init(struct dsi_display *display)
 	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
-	if (rc)
+	if (rc) {
 		DSI_ERR("component add failed, rc=%d\n", rc);
+		goto comp_add_fail;
+	}
 
 	DSI_DEBUG("component add success: %s\n", display->name);
+	return rc;
+
+comp_add_fail:
+	if (display->panel)
+		dsi_pwr_enable_regulator(&display->panel->power_info, false);
+vreg_fail:
+	_dsi_display_dev_deinit(display);
+
 end:
 	return rc;
 }
@@ -7828,6 +7848,12 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		rc = dsi_panel_get_mode(display->panel, mode_idx,
 						&display_mode,
 						topology_override);
+
+		if (display->cmdline_timing == NO_OVERRIDE && display_mode.is_preferred) {
+			display->cmdline_timing = display_mode.mode_idx;
+			is_preferred = true;
+		}
+
 		if (rc) {
 			DSI_ERR("[%s] failed to get mode idx %d from panel\n",
 				   display->name, mode_idx);

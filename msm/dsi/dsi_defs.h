@@ -230,6 +230,20 @@ enum dsi_dfps_type {
 };
 
 /**
+ * enum dsi_dms_vid_type - video panel mode switch type
+ * @DSI_DMS_VID_DISABLED: video panel mode switch not supported
+ * @DSI_DMS_VID_SEAMLESS: seamless video panel mode switch
+ * @DSI_DMS_VID_NON_SEAMLESS: non-seamless video panel mode switch
+ * @DSI_DMS_VID_TYPE_MAX
+ */
+enum dsi_dms_vid_type {
+	DSI_DMS_VID_DISABLED = 0,
+	DSI_DMS_VID_SEAMLESS,
+	DSI_DMS_VID_NON_SEAMLESS,
+	DSI_DMS_VID_TYPE_MAX
+};
+
+/**
  * enum dsi_dyn_clk_feature_type - Dynamic clock feature support type
  * @DSI_DYN_CLK_TYPE_LEGACY:			Constant FPS is not supported
  * @DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_HFP:	Constant FPS supported with

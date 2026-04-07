@@ -248,6 +248,14 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 					c_bridge->id, rc);
 				return;
 			}
+		} else if ((c_bridge->dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) &&
+			   (disp_op == MSM_DISP_OP_HFI)) {
+			rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
+			if (rc) {
+				DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
+					c_bridge->id, rc);
+				return;
+			}
 		}
 		return;
 	}
@@ -488,7 +496,9 @@ static bool _dsi_bridge_mode_validate_and_fixup(struct drm_bridge *bridge,
 		(!(adj_mode->dsi_mode_flags & DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) &&
 		(!crtc_state->active_changed ||
 		 display->is_cont_splash_enabled)) {
-		adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS;
+			/* DMS should be enabled on cmd mode panel only. */
+			if (display->panel->panel_mode & DSI_OP_CMD_MODE)
+				adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_DMS;
 
 		SDE_EVT32(SDE_EVTLOG_FUNC_CASE2,
 			adj_mode->timing.h_active,
@@ -846,6 +856,12 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 	struct dsi_panel *panel;
 	enum dsi_pixel_format fmt;
 	u32 bpp;
+	enum dsi_dms_vid_type dms_vid_type;
+	char *dms_vid_types[DSI_DMS_VID_TYPE_MAX] = {
+		[DSI_DMS_VID_DISABLED] = "dms-vid-disabled",
+		[DSI_DMS_VID_SEAMLESS] = "dms-vid-seamless",
+		[DSI_DMS_VID_NON_SEAMLESS] = "dms-vid-non-seamless"
+	};
 
 	if (!info || !dsi_display)
 		return -EINVAL;
@@ -907,6 +923,9 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 
 	sde_kms_info_add_keystr(info, "dfps support",
 			panel->dfps_caps.dfps_support ? "true" : "false");
+
+	dms_vid_type = panel->dms_vid_caps.type;
+	sde_kms_info_add_keystr(info, "dms_vid support", dms_vid_types[dms_vid_type]);
 
 	if (panel->dfps_caps.dfps_support) {
 		sde_kms_info_add_keyint(info, "min_fps",
@@ -1665,21 +1684,14 @@ void dsi_conn_set_allowed_mode_switch(struct drm_connector *connector,
 			common_mode_caps = (panel_dsi_mode->panel_mode_caps &
 					cmp_panel_dsi_mode->panel_mode_caps);
 
-			/*
-			 * FPS switch among video modes, is only supported
-			 * if DFPS or dynamic clocks are specified.
-			 * Reject any mode switches between video mode timing
-			 * nodes if support for those features is not present.
-			 */
 			if (common_mode_caps & DSI_OP_CMD_MODE) {
 				allow_switch = true;
-			} else if ((common_mode_caps & DSI_OP_VIDEO_MODE) &&
-				(panel->dfps_caps.dfps_support ||
-				panel->dyn_clk_caps.dyn_clk_support ||
-				panel->esync_caps.emsync_switch_enabled)) {
-				allow_switch = true;
 			} else {
-				if (is_valid_poms_switch(panel_dsi_mode,
+				if (panel->dms_vid_caps.type ||
+					panel->dfps_caps.dfps_support ||
+					panel->dyn_clk_caps.dyn_clk_support ||
+					panel->esync_caps.emsync_switch_enabled ||
+					is_valid_poms_switch(panel_dsi_mode,
 						cmp_panel_dsi_mode))
 					allow_switch = true;
 			}

@@ -1874,8 +1874,9 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 
 	memset(&params, 0, sizeof(params));
 
-	if (peripheral_flush)
-		sde_encoder_update_periph_flush(drm_enc);
+	if (peripheral_flush &&
+			(-EOPNOTSUPP == sde_encoder_update_periph_flush(drm_enc)))
+		peripheral_flush = false;
 
 	params.cmd_bit_mask = cmd_bit_mask;
 	params.peripheral_flush = peripheral_flush;

@@ -1167,6 +1167,19 @@ error:
 	return rc;
 }
 
+static int dsi_panel_parse_default_timing(struct dsi_display_mode *mode,
+							struct dsi_parser_utils *utils)
+{
+	if (!mode || !utils) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	mode->is_preferred = utils->read_bool(utils->data, "qcom,mdss-dsi-timing-default");
+
+	return 0;
+}
+
 static int dsi_panel_parse_pixel_format(struct dsi_host_common_cfg *host,
 					struct dsi_parser_utils *utils,
 					const char *name)
@@ -4110,6 +4123,18 @@ static int dsi_panel_parse_dms_info(struct dsi_panel *panel)
 	const char *data;
 	struct dsi_parser_utils *utils = &panel->utils;
 
+	data = utils->get_property(utils->data,
+			"qcom,mdss-dms-vid-type", NULL);
+	if (data && !strcmp(data, "dms-vid-seamless"))
+		panel->dms_vid_caps.type = DSI_DMS_VID_SEAMLESS;
+	else if (data && !strcmp(data, "dms-vid-non-seamless"))
+		panel->dms_vid_caps.type = DSI_DMS_VID_NON_SEAMLESS;
+	else
+		panel->dms_vid_caps.type = DSI_DMS_VID_DISABLED;
+
+	panel->dms_vid_caps.maintain_const_clk = utils->read_bool(utils->data,
+		"qcom,dms-vid-maintain-const-clk");
+
 	panel->dms_mode = DSI_DMS_MODE_DISABLED;
 	dms_enabled = utils->read_bool(utils->data,
 		"qcom,dynamic-mode-switch-enabled");
@@ -4867,15 +4892,15 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (rc)
 		DSI_ERR("failed to parse hdr config, rc=%d\n", rc);
 
+	rc = dsi_panel_parse_dms_info(panel);
+	if (rc)
+		DSI_DEBUG("failed to get dms info, rc=%d\n", rc);
+
 	rc = dsi_panel_get_mode_count(panel);
 	if (rc) {
 		DSI_ERR("failed to get mode count, rc=%d\n", rc);
 		goto error;
 	}
-
-	rc = dsi_panel_parse_dms_info(panel);
-	if (rc)
-		DSI_DEBUG("failed to get dms info, rc=%d\n", rc);
 
 	rc = dsi_panel_parse_esd_config(panel);
 	if (rc)
@@ -5113,13 +5138,14 @@ int dsi_panel_get_mode_count(struct dsi_panel *panel)
 		goto error;
 	}
 
-	/* No multiresolution support is available for video mode panels.
-	 * Multi-mode is supported for video mode during POMS is enabled.
+	/* Multi-mode for video panel is supported when DMS_VID or
+	 * POMS is enabled.
 	 */
 	if (panel->panel_mode != DSI_OP_CMD_MODE &&
 		!panel->host_config.ext_bridge_mode &&
 		!panel->esync_caps.emsync_switch_enabled &&
-		!panel->panel_mode_switch_enabled)
+		!panel->panel_mode_switch_enabled &&
+		!panel->dms_vid_caps.type)
 		count = SINGLE_MODE_SUPPORT;
 
 	panel->num_timing_nodes = count;
@@ -5469,6 +5495,10 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 			DSI_ERR("failed to parse panel timing, rc=%d\n", rc);
 			goto parse_fail;
 		}
+
+		rc = dsi_panel_parse_default_timing(mode, utils);
+		if (rc)
+			DSI_ERR("failed to parse default timing mode, rc=%d\n", rc);
 
 		if (panel->dyn_clk_caps.dyn_clk_support) {
 			rc = dsi_panel_parse_dyn_clk_list(mode, utils, panel->dyn_clk_caps.type);

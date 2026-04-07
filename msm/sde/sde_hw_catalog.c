@@ -6108,6 +6108,7 @@ static void _sde_get_hw_caps_for_khaje(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	sde_cfg->sui_block_xin_mask = 0xC01;
 	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 }
 
 static void _sde_get_hw_caps_for_lagoon(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
@@ -6440,6 +6441,7 @@ static void _sde_get_hw_caps_for_x1e80100(struct sde_mdss_cfg *sde_cfg, uint32_t
 static void _sde_get_hw_caps_for_malabar(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->has_reduced_ob_max = true;
 	sde_cfg->vbif_qos_nlvl = 8;
@@ -7537,7 +7539,8 @@ static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *s
 		disable = (fuse & BIT(1)) >> 1;
 		polarity = fuse & BIT(0);
 	} else if (IS_CANOE_TARGET(sde_cfg->hw_rev) ||
-			IS_ART_TARGET(sde_cfg->hw_rev)) {
+			IS_ART_TARGET(sde_cfg->hw_rev) ||
+			IS_PEBBLE_TARGET(sde_cfg->hw_rev)) {
 		disable = (fuse & BIT(5)) >> 5;
 		polarity = (fuse & BIT(3)) >> 3;
 	} else {
