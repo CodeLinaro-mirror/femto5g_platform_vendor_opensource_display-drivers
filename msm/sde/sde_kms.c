@@ -2675,6 +2675,7 @@ static void _sde_kms_hw_destroy(struct sde_kms *sde_kms,
 	_sde_kms_mmu_destroy(sde_kms);
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	atomic_set(&sde_kms->base.dpu_power_on, 0);
 	msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_OFF);
 #endif
 }
@@ -4538,10 +4539,9 @@ static int sde_kms_pm_suspend(struct device *dev)
 	pm_runtime_get_noresume(dev);
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	atomic_set(&sde_kms->base.dpu_power_on, 0);
 	msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_OFF);
 #endif
-
-	/* dump clock state before entering suspend */
 	if (sde_kms->pm_suspend_clk_dump)
 		_sde_kms_dump_clks_state(sde_kms);
 
@@ -4555,6 +4555,10 @@ static int sde_kms_pm_resume(struct device *dev)
 	struct drm_encoder *enc;
 	struct drm_modeset_acquire_ctx ctx;
 	int ret, i;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	int hyp_ret;
+	int hyp_retry;
+#endif
 
 	if (!dev)
 		return -EINVAL;
@@ -4566,7 +4570,19 @@ static int sde_kms_pm_resume(struct device *dev)
 	sde_kms = to_sde_kms(ddev_to_msm_kms(ddev));
 
 #if IS_ENABLED(CONFIG_DRM_MSM_HYP)
-	msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_ON);
+	for (hyp_retry = 0; hyp_retry < MSM_HYP_POWER_LEVEL_RETRY_MAX; hyp_retry++) {
+		hyp_ret = msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_ON);
+		if (!hyp_ret)
+			break;
+		msleep(50);
+	}
+	if (hyp_ret) {
+		SDE_ERROR("pm resume failed: DPU power level cannot"
+            "be enabled after %d retries, ret=%d\n",
+				hyp_retry, hyp_ret);
+		return hyp_ret;
+	}
+	atomic_set(&sde_kms->base.dpu_power_on, 1);
 #endif
 
 	SDE_EVT32(sde_kms->suspend_state != NULL);
@@ -5294,6 +5310,7 @@ static int _sde_kms_hyp_power_up_dpu(struct sde_kms *sde_kms,
 {
 	struct device_node *np = dev->dev->of_node;
 	u32 dpu_id;
+	int rc;
 
 	/* Parse the DPU id, which is needed for requesting power voting */
 	if (of_property_read_u32(np, "cell-index", &dpu_id)) {
@@ -5304,7 +5321,11 @@ static int _sde_kms_hyp_power_up_dpu(struct sde_kms *sde_kms,
 	sde_kms->dpu_id = dpu_id;
 	sde_kms->hyp_kms = msm_hyp_get_kms();
 	/* Make sure core clock/power is up, to able read registers for HW init */
-	return msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_ON);
+	rc = msm_hyp_set_power_level(sde_kms, MSM_HYP_DEVICE_POWER_ON);
+
+	if (!rc)
+		atomic_set(&sde_kms->base.dpu_power_on, 1);
+	return rc;
 }
 #endif
 

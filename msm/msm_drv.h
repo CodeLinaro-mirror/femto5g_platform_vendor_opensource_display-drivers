@@ -92,6 +92,7 @@ struct msm_gem_vma;
 #define MSM_CHROMA_420 0x2
 
 #define TEARDOWN_DEADLOCK_RETRY_MAX 5
+#define MSM_HYP_POWER_LEVEL_RETRY_MAX 7
 
 #define DISP_DEV_ERR(dev, fmt, ...) dev_err(dev, "[%s:%d] " fmt, __func__, __LINE__, ##__VA_ARGS__)
 
