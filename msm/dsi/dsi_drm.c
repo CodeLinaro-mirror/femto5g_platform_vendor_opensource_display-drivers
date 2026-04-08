@@ -1010,6 +1010,8 @@ int dsi_conn_set_info_blob(struct drm_connector *connector,
 	bpp = dsi_ctrl_pixel_format_to_bpp(fmt);
 
 	sde_kms_info_add_keyint(info, "bit_depth", bpp);
+	if (dsi_display->panel->host_config.ext_bridge_hpd_en)
+		sde_kms_info_add_keystr(info, "ext bridge hpd support", "true");
 
 	if (dsi_display->panel->ctl_op_sync) {
 		sde_kms_info_add_keystr(info, "dpu_ctl_op_sync", "true");
