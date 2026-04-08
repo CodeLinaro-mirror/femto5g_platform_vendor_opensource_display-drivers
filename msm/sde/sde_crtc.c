@@ -1209,6 +1209,7 @@ static bool sde_crtc_mode_fixup(struct drm_crtc *crtc,
 	msm_mode = &c_conn_state->msm_mode;
 	if ((msm_is_mode_seamless(msm_mode) ||
 	     (msm_is_mode_seamless_vrr(msm_mode) ||
+	      msm_is_mode_seamless_dms_vid(msm_mode) ||
 	      msm_is_mode_seamless_dyn_clk(msm_mode))) &&
 	    (!crtc->enabled)) {
 		SDE_ERROR("crtc state prevents seamless transition\n");

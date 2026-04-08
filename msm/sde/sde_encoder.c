@@ -4481,6 +4481,7 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 			sde_encoder_in_clone_mode(drm_enc)) ||
 			!(msm_is_mode_seamless_vrr(msm_mode)
 			|| msm_is_mode_seamless_dms(msm_mode)
+			|| msm_is_mode_seamless_dms_vid(msm_mode)
 			|| msm_is_mode_seamless_dyn_clk(msm_mode)))
 		kthread_init_delayed_work(&sde_enc->delayed_off_work,
 			sde_encoder_off_work);
