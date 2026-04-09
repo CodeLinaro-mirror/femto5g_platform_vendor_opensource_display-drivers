@@ -11,7 +11,7 @@
 #include "hfi_msm_drv.h"
 #include "hfi_catalog.h"
 #include "hfi_msm_drv.h"
-#include "sde_encoder.h"
+#include "hfi_encoder.h"
 #include "sde_plane.h"
 #include "sde_formats.h"
 #include "hfi_utils.h"
@@ -211,6 +211,25 @@ static int hfi_kms_process_cmd_buf(struct hfi_client_t *client, struct hfi_cmdbu
 	return rc;
 }
 
+static void _wake_up_all_kickoff_wq(struct sde_kms *sde_kms)
+{
+	struct drm_encoder *drm_enc;
+	struct hfi_encoder *hfi_enc;
+	struct sde_encoder_virt *sde_enc;
+
+	drm_for_each_encoder(drm_enc, sde_kms->dev) {
+		sde_enc = to_sde_encoder_virt(drm_enc);
+		if (!sde_enc)
+			continue;
+
+		hfi_enc = to_hfi_encoder(sde_enc);
+		if (!hfi_enc)
+			continue;
+
+		wake_up_all(&hfi_enc->pending_kickoff_wq);
+	}
+}
+
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
 static void _hfi_recover_hwfence(struct hfi_kms *hfi_kms)
 {
@@ -286,6 +305,7 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 	mp = &phandle->mp;
 
 	atomic_set(&hfi_kms->ssr_in_progress, 1);
+	_wake_up_all_kickoff_wq(sde_kms);
 
 	SDE_DEBUG("process ssr start called\n");
 
