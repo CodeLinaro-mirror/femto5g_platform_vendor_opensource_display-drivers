@@ -22,6 +22,33 @@ enum hfi_panel_phy_type {
 	HFI_PANEL_PHY_LCD       = 0x2,
 };
 
+/*!
+ * @enum hfi_panel_display_type
+ * @brief Display type.
+ * lower the number, the higher the priority.
+ *
+ * @var HFI_PANEL_DISPLAY_TYPE_NONE
+ *   Indicates display type is none
+ * @var HFI_PANEL_DISPLAY_TYPE_BUILT_IN_0
+ *   Indicates the highest priority for a built-in display.
+ * @var HFI_PANEL_DISPLAY_TYPE_BUILT_IN_1
+ *   Indicates the display is next in priority after BUILT_IN_0.
+ * @var HFI_PANEL_DISPLAY_TYPE_BUILT_IN_2
+ *   Indicates the display is next in priority after BUILT_IN_1.
+ * @var HFI_PANEL_DISPLAY_TYPE_BUILT_IN_3
+ *   Indicates the display is next in priority after BUILT_IN_2.
+ * @var HFI_PANEL_DISPLAY_TYPE_BUILT_IN_4
+ *   Indicates the display is next in priority after BUILT_IN_3.
+ */
+enum hfi_panel_display_type {
+	HFI_PANEL_DISPLAY_TYPE_NONE           = 0x0,
+	HFI_PANEL_DISPLAY_TYPE_BUILT_IN_0     = 0x1,
+	HFI_PANEL_DISPLAY_TYPE_BUILT_IN_1     = 0x2,
+	HFI_PANEL_DISPLAY_TYPE_BUILT_IN_2     = 0x3,
+	HFI_PANEL_DISPLAY_TYPE_BUILT_IN_3     = 0x4,
+	HFI_PANEL_DISPLAY_TYPE_BUILT_IN_4     = 0x5,
+};
+
 /*
  * hfi_panel_bpp - Panel Bits per pixel supported values
  * HFI_PANEL_BPP_3 : 3 BPP for rgb111
