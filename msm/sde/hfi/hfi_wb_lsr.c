@@ -576,6 +576,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 	switch (hfi_prop) {
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID:
 		opq_cfg = &cstate->reproj_sparse_grid;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -589,6 +593,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_RADIAL_DISTORTION_GRID:
 		opq_cfg = &cstate->reproj_radial_dis_grid;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -602,6 +610,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_DISPLAY_GAMMA:
 		opq_cfg = &cstate->reproj_display_gamma;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -615,6 +627,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_GCX_SESSION_CONFIG:
 		opq_cfg = &cstate->reproj_gcx_session_config;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -628,6 +644,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_GCX_SESSION_CONFIG_DATA:
 		opq_cfg = &cstate->reproj_gcx_session_config_data;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {

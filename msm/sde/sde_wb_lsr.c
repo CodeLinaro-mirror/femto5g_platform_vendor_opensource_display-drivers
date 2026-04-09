@@ -352,7 +352,7 @@ int _sde_wb_lsr_set_reproj_info(
 				&c_state->property_state, &sz, idx);
 
 	if (opq_blob == NULL) {
-		SDE_DEBUG("opq_blob is NULL\n");
+		SDE_ERROR("opq_blob is NULL\n");
 		return 0;
 	}
 
@@ -369,10 +369,10 @@ int _sde_wb_lsr_set_reproj_info(
 	}
 
 	opq_state_config->buf =  msm_gem_new(dev, opq_blob->size, MSM_BO_UNCACHED);
-	if (!opq_state_config->buf) {
-		SDE_ERROR("Failed to allocate reproj buf memory\n");
-		rc = -ENOMEM;
-		goto free_gem;
+	if (IS_ERR_OR_NULL(opq_state_config->buf)) {
+		rc = PTR_ERR(opq_state_config->buf);
+		SDE_ERROR("Failed to allocate reproj buf memory :%d\n", rc);
+		return rc;
 	}
 	/**
 	 * TODO, assumed default as non secure for now,
@@ -446,12 +446,12 @@ int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
 				(void *)(uintptr_t)val);
 		break;
 	case CONNECTOR_PROP_REPROJ_SPARSE_GRID:
-		_sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
+		rc = _sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
 			&c_state->reproj_sparse_grid);
 		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_REPROJ_RADIAL_DISTORTION_GRID:
-		_sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
+		rc = _sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
 			&c_state->reproj_radial_dis_grid);
 		c_state->gcx_session_dirty = true;
 		break;
@@ -461,17 +461,17 @@ int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
 		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_REPROJ_DISPLAY_GAMMA:
-		_sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
+		rc = _sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
 			&c_state->reproj_display_gamma);
 		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_REPROJ_GCX_SESSION_CONFIG:
-		_sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
+		rc = _sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
 			&c_state->reproj_gcx_session_config);
 		c_state->gcx_session_dirty = true;
 		break;
 	case CONNECTOR_PROP_REPROJ_GCX_SESSION_CONFIG_DATA:
-		_sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
+		rc = _sde_wb_lsr_set_reproj_info(c_conn, c_state, idx,
 			&c_state->reproj_gcx_session_config_data);
 		c_state->gcx_session_dirty = true;
 		break;

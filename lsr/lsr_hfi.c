@@ -1853,6 +1853,7 @@ int __response_handler(struct lsr_device *device)
 				dprintk(LSR_ERR, "LSR SSR handling failed %d\n", rc);
 		} else {
 			pr_err("LSR sys error detected\n");
+			__dump_sfr_log(device);
 			lsr_panic();
 		}
 	}
@@ -1862,7 +1863,7 @@ int __response_handler(struct lsr_device *device)
 			pr_err_ratelimited(LSR_PID_TAG "Received Xtensa NOC error\n",
 				current->pid, current->tgid, "err");
 		if (device->intr_status & LSR_WRAPPER_INTR_MASK_CORE_NOC_BMSK)
-			pr_err_ratelimited(LSR_PID_TAG "Received CVP core NOC error\n",
+			pr_err_ratelimited(LSR_PID_TAG "Received LSR core NOC error\n",
 				current->pid, current->tgid, "err");
 	}
 
@@ -2729,7 +2730,7 @@ static int __enable_subcaches(struct lsr_device *device)
 		c++;
 	}
 
-	dprintk(LSR_CORE, "Activated %d Subcaches to CVP\n", c);
+	dprintk(LSR_CORE, "Activated %d Subcaches to LSR\n", c);
 
 	return 0;
 
