@@ -886,6 +886,20 @@ static void dsi_hfi_populate_esync_caps(struct dsi_panel *panel,
 	hfi_esync_caps->hsync_milli_pulse_width = eparams->hsync_milli_pulse_width;
 }
 
+static void dsi_hfi_populate_dfps_caps(struct dsi_panel *panel,
+					struct hfi_panel_dfps_caps *hfi_dfps_caps)
+{
+	if (!panel || !hfi_dfps_caps) {
+		DSI_ERR("null pointer");
+		return;
+	}
+
+	hfi_dfps_caps->dfps_support = panel->dfps_caps.dfps_support;
+	hfi_dfps_caps->min_refresh_rate = panel->dfps_caps.min_refresh_rate;
+	hfi_dfps_caps->max_refresh_rate = panel->dfps_caps.max_refresh_rate;
+	hfi_dfps_caps->type = (enum hfi_panel_dfps_type)panel->dfps_caps.type;
+}
+
 int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 				struct dsi_panel_timing_caps *panel_timing_caps,
 				struct dsi_hfi_panel_per_cmd_type *per_type,
@@ -1112,6 +1126,74 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	return rc;
 }
 
+static u32 *dsi_hfi_pack_freq_patterns(struct dsi_display *display, u32 *total_size)
+{
+	struct dsi_display_mode_priv_info *priv_info;
+	struct msm_freq_step_pattern *freq_pattern;
+	u32 *buffer = NULL;
+	u32 *buffer_ptr;
+	u32 buffer_size = 0;
+	u32 pattern_count;
+	u32 i;
+	*total_size = 0;
+
+	if (!display || !display->modes || !display->modes[0].priv_info ||
+	    display->modes[0].priv_info->freq_step_list.count == 0 ||
+	    !display->modes[0].priv_info->freq_step_list.freq_pattern) {
+		DSI_ERR("Invalid params\n");
+		return NULL;
+	}
+
+	priv_info = display->modes[0].priv_info;
+	pattern_count = priv_info->freq_step_list.count;
+
+	/* Calculate total buffer size needed */
+	buffer_size = sizeof(u32);
+
+	/* Pack struct hfi_freq_step_pattern - 6 fixed fields + variable-length array */
+	for (i = 0; i < pattern_count; i++) {
+		freq_pattern = &priv_info->freq_step_list.freq_pattern[i];
+		if (!freq_pattern->freq_stepping_seq) {
+			DSI_ERR("Invalid frequency stepping sequence\n");
+			return NULL;
+		}
+
+		buffer_size += (6 + freq_pattern->length) * sizeof(u32);
+	}
+
+	buffer = kzalloc(buffer_size, GFP_KERNEL);
+	if (!buffer) {
+		DSI_ERR("Failed to allocate %u bytes for freq patterns\n", buffer_size);
+		return NULL;
+	}
+
+	buffer_ptr = buffer;
+	*buffer_ptr++ = pattern_count;
+
+	/* pack each pattern */
+	for (i = 0; i < pattern_count; i++) {
+		freq_pattern = &priv_info->freq_step_list.freq_pattern[i];
+
+		/* write 6 fixed fields */
+		*buffer_ptr++ = freq_pattern->frame_interval;
+		*buffer_ptr++ = freq_pattern->num_freq_steps;
+		*buffer_ptr++ = freq_pattern->usecase_idx;
+		*buffer_ptr++ = freq_pattern->frame_pattern_seq_idx;
+		*buffer_ptr++ = freq_pattern->needs_ap_refresh;
+		*buffer_ptr++ = freq_pattern->length;
+
+		/* write variable-length frequency stepping sequence */
+		memcpy(buffer_ptr, freq_pattern->freq_stepping_seq,
+			freq_pattern->length * sizeof(u32));
+		buffer_ptr += freq_pattern->length;
+	}
+
+	*total_size = buffer_size;
+	DSI_DEBUG("Packed %u frequency patterns into %u bytes\n", pattern_count, buffer_size);
+
+	return buffer;
+}
+
 static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 					struct dsi_panel *panel,
 					struct dsi_panel_generic_caps *panel_generic_caps)
@@ -1192,6 +1274,11 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 
 	if (panel->esync_caps.esync_support) {
 		dsi_hfi_populate_esync_caps(panel, &panel_generic_caps->esync_caps);
+		panel_generic_caps->valid_gen_caps_cnt++;
+	}
+
+	if (panel->dfps_caps.dfps_support) {
+		dsi_hfi_populate_dfps_caps(panel, &panel_generic_caps->dfps_caps);
 		panel_generic_caps->valid_gen_caps_cnt++;
 	}
 }
@@ -1343,8 +1430,10 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	u32 kv_size = 0;
 	u32 payload_size = 0;
 	u32 object_id = 0x0;
-	int num_caps = panel_generic_caps.valid_gen_caps_cnt;
+	u32 dfps_payload[5]; /* 1 + (sizeof(panel_generic_caps.dfps_caps)/sizeof(u32)) */
 	struct dsi_display_hfi *display_hfi;
+	u32 *freq_patterns = NULL;
+	u32 freq_pattern_size = 0;
 
 	if (!display)
 		return -EINVAL;
@@ -1397,7 +1486,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	}
 
 	/* Populate properties that need to be checked for presence */
-	for (i = MIN_NUM_OF_GEN_CAPS; i < (num_caps-3); i++) {
+	for (i = MIN_NUM_OF_GEN_CAPS; i < ARRAY_SIZE(dsi_hfi_gen_props_map); i++) {
 		if (dsi_hfi_gen_props_map[i].value) {
 			hfi_util_kv_helper_add(display_hfi->kv_props,
 					HFI_PACKKEY(dsi_hfi_gen_props_map[i].hfi_prop, 0,
@@ -1441,6 +1530,42 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		kv_size += sizeof(panel_generic_caps.esync_caps);
 	}
 
+	if (display->panel->qsync_caps.qsync_support) {
+		struct hfi_qsync_params qsync_params;
+
+		qsync_params.qsync_min_fps = display->panel->qsync_caps.qsync_min_fps;
+		qsync_params.avr_step_fps = display->panel->avr_caps.avr_step_fps;
+
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_QSYNC_PARAMS, 0,
+					(sizeof(qsync_params) / sizeof(u32))),
+					(void *)&qsync_params);
+		kv_size += sizeof(qsync_params);
+	}
+
+	if (panel_generic_caps.dfps_caps.dfps_support) {
+		dfps_payload[0] = 1; /* Currently we support only single dfps struct */
+		memcpy(&dfps_payload[1], &panel_generic_caps.dfps_caps,
+			sizeof(panel_generic_caps.dfps_caps));
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DFPS_CAPS, 0,
+			((ARRAY_SIZE(dfps_payload) * sizeof(dfps_payload[0])) / sizeof(u32))),
+					(void *)dfps_payload);
+		kv_size += sizeof(dfps_payload);
+	}
+
+	if (display->modes && display->modes[0].priv_info &&
+			display->modes[0].priv_info->freq_step_list.count > 0) {
+		freq_patterns = dsi_hfi_pack_freq_patterns(display, &freq_pattern_size);
+		if (freq_patterns && freq_pattern_size > 0) {
+			hfi_util_kv_helper_add(display_hfi->kv_props,
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_FREQ_PATTERN, 0,
+					(freq_pattern_size / sizeof(u32))),
+					(void *)freq_patterns);
+			kv_size += freq_pattern_size;
+		}
+	}
+
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
 
 	payload_size = (kv_count * sizeof(u32)) + kv_size;
@@ -1453,6 +1578,8 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 				hfi_util_kv_helper_get_payload_addr(display_hfi->kv_props),
 				kv_count,
 				payload_size);
+
+	kfree(freq_patterns);
 
 	if (rc)
 		DSI_ERR("Failed to add caps to buffer, rc = %d", rc);
@@ -1477,7 +1604,7 @@ static int dsi_hfi_append_panel_timing_caps(struct hfi_cmdbuf_t *buffer,
 	if (!display_hfi)
 		return -EINVAL;
 
-	for (i = 0; i < display->panel->num_timing_nodes; i++) {
+	for (i = 0; i < display->panel->num_display_modes; i++) {
 		u32 kv_count;
 		u32 kv_size = 0;
 		u32 payload_size = 0;
@@ -1610,7 +1737,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		return -EINVAL;
 	}
 
-	panel_init_caps.num_timing_modes = panel->num_timing_nodes;
+	panel_init_caps.num_timing_modes = panel->num_display_modes;
 	if (!panel_init_caps.num_timing_modes) {
 		DSI_ERR("No timing modes - panel init failed");
 		goto error_buff;

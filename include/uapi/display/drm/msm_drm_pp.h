@@ -926,4 +926,57 @@ struct drm_msm_rgb_hist_buffer {
 	__u32 status;
 };
 
+#define QRTC_LUT_SIZE 81          /* Each LUT is 9x9 */
+#define QRTC_NUM_LUTS 3           /* Number of LPF/HPF tables */
+
+/* Subsample Mode Definitions */
+#define QRTC_SUBSAMPLE_1x1 0x0    /* Horizontal: 1, Vertical: 1 */
+#define QRTC_SUBSAMPLE_2x1 0x1    /* Horizontal: 2, Vertical: 1 */
+#define QRTC_SUBSAMPLE_2x2 0x2    /* Horizontal: 2, Vertical: 2 */
+#define QRTC_SUBSAMPLE_3x3 0x3    /* Horizontal: 3, Vertical: 3 */
+
+/* DMA Selection Definitions */
+#define QRTC_DMA_1 0x1
+#define QRTC_DMA_3 0x3
+
+/* Rectangle Selection Definitions */
+#define QRTC_RECT0 0x0            /* Select Rectangle-0 */
+#define QRTC_RECT1 0x1            /* Select Rectangle-1 */
+
+#define WRITE_BACK_0 0x0
+#define WRITE_BACK_1 0x1
+#define WRITE_BACK_2 0x2
+
+struct drm_msm_qrtc_buffer {
+	__u32 fd;
+	__u32 width;
+	__u32 height;
+	__u32 format;
+	__u32 aligned_height;
+	__u32 aligned_width;
+};
+
+struct drm_msm_qrtc_config {
+	__u32 flags;
+	__u32 lpf[QRTC_NUM_LUTS][QRTC_LUT_SIZE];    /* LPF LUTs */
+	__u32 hpf[QRTC_NUM_LUTS][QRTC_LUT_SIZE];    /* HPF LUTs */
+
+	/* Global coring parameters in U10 format (0–1023) */
+	__u32 coring_en;  /* Positive coring value */
+	__u32 coring_pos; /* Positive coring value */
+	__u32 coring_neg; /* Negative coring value */
+
+	/* Global control flags */
+	__u32 lpf_en;              /* Enable/disable LPF (0 = disable, 1 = enable) */
+	__u32 subsample_mode;      /* Subsampling mode (use QRTC_SUBSAMPLE_* macros) */
+	__u32 dma_sel;             /* DMA selection (use QRTC_DMA_* macros) */
+	__u32 rect_sel;            /* Rectangle selection (use QRTC_RECT0 or QRTC_RECT1) */
+	__u32 wb_sel;
+
+	__u32 cwb_height;
+	__u32 cwb_width;
+	__u32 aligned_cwb_height;
+	__u32 aligned_cwb_width;
+};
+
 #endif /* _MSM_DRM_PP_H_ */

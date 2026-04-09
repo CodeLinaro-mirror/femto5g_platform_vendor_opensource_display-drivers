@@ -10,11 +10,15 @@
 #include "dp_drv.h"
 #include "dp_debug_client.h"
 
+#if IS_ENABLED(CONFIG_DRM_MSM_DP)
 #define DP_IPC_LOG(fmt, ...) \
 	do {  \
 		void *ipc_logging_context = get_ipc_log_context(); \
 		ipc_log_string(ipc_logging_context, fmt, ##__VA_ARGS__); \
 	} while (0)
+#else
+#define DP_IPC_LOG(fmt, ...) do { } while (0)
+#endif
 
 #define DP_DEBUG(fmt, ...)                                                   \
 	do {                                                                 \

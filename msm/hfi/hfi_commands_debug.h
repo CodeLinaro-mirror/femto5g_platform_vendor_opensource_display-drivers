@@ -374,6 +374,347 @@
  */
 #define HFI_COMMAND_DEBUG_IDLE_TIMEOUT                               0xFF00000F
 
+/*!
+ * HFI_COMMAND_DEBUG_SET_LOG_LEVEL is sent from Host to DCP to set the
+ * debug log level.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi packet layout                   | Value
+ *-------------------------------------|-------------------------------------
+ * hfi_packet.payload_info (type)      | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                      | HFI_COMMAND_DEBUG_SET_LOG_LEVEL
+ * hfi_packet.flags                    | HFI_TX_FLAGS_RESPONSE_REQUIRED
+ * hfi_packet.payload[0..n]            | struct hfi_debug_log_level_info
+ */
+#define HFI_COMMAND_DEBUG_SET_LOG_LEVEL                               0xFF000011
+
+/*
+ * DP Simulation HFI commands
+ */
+#define HFI_COMMAND_DEBUG_DP_BEGIN                                     0xFF000500
+
+/*
+ * hfi_header sample for any DP simulation command:
+ * hfi_header.cmd_buff_info.size          : (sizeof(hfi_header) +
+ *                                            sizeof(hfi_packet))
+ *           .cmd_buff_info.type          : HFI_CMD_BUFF_DEBUG
+ *           .device_id                   : 0
+ *           .object_id                   : display id
+ *           .timestamp_hi                : ts_hi
+ *           .timestamp_lo                : ts_lo
+ *           .header_id                   : unique id
+ *           .num_packets                 : 'n' packets depending upon the
+ *                                          packet cmd
+ *
+ * hfi_packet sample for any DP simulation packet:
+ *
+ *     Hfi Packet layout        : Value
+ *     hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ *     hfi_packet.payload_info (type): one of enum
+ *     ^                        : 'hfi_packet_payload_type'
+ *     hfi_packet.cmd           : HFI_COMMAND_DEBUG_DP_XXX
+ *     hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_XXX
+ *     ^                        : (enum hfi_packet_tx_flags)
+ *     hfi_packet (DCP to Host) : HFI_RX_FLAGS_XXX
+ *     ^                        : (enum hfi_packet_rx_flags)
+ *     hfi_packet.id            : DP instance id
+ *     hfi_packet.packet_id     : unique id
+ */
+
+/*
+ * HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL - This command enables or disables DP simulation mode.
+ *                             From host to DCP, this command controls the overall
+ *                             simulation state for a DP instance.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ *     Hfi Packet layout        : Value
+ *     hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32
+ *     hfi_packet.cmd           : HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL
+ *     hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : DP instance id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : HFI_TRUE to enable, HFI_FALSE to disable
+ */
+#define HFI_COMMAND_DEBUG_DP_SIMULATION_CONTROL                                    0xFF000501
+
+/*
+ * HFI_COMMAND_DEBUG_DP_SET_EDID - This command writes EDID data to the simulation.
+ *                                 From host to DCP, this command provides EDID data
+ *                                 that will be used for subsequent hotplug events.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ *     Hfi Packet layout        : Value
+ *     hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_BLOB
+ *     hfi_packet.cmd           : HFI_COMMAND_DEBUG_DP_SET_EDID
+ *     hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : DP instance id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : struct hfi_buff containing EDID data
+ */
+#define HFI_COMMAND_DEBUG_DP_SET_EDID                                0xFF000502
+
+/*
+ * HFI_COMMAND_DEBUG_DP_SET_DPCD - This command writes DPCD register data.
+ *                                 From host to DCP, this command sets DPCD register
+ *                                 values that will be returned during DPCD reads.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ *     Hfi Packet layout        : Value
+ *     hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_BLOB
+ *     hfi_packet.cmd           : HFI_COMMAND_DEBUG_DP_SET_DPCD
+ *     hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : DP instance id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : struct hfi_dp_dpcd_data
+ */
+#define HFI_COMMAND_DEBUG_DP_SET_DPCD                                0xFF000503
+
+/*
+ * HFI_COMMAND_DEBUG_DP_READ_DPCD - This command reads DPCD register data.
+ *                                From host to DCP, this command requests DPCD
+ *                                register values from the simulation using shared buffer.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi Packet layout             : Value
+ * hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_BLOB
+ * hfi_packet.cmd                : HFI_COMMAND_DEBUG_DP_READ_DPCD
+ * hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_INTR_REQUIRED
+ *                                          HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                 : DP instance id
+ * hfi_packet.packet_id          : unique id
+ * hfi_packet.payload            : struct hfi_dp_dpcd_request
+ *
+ * DCP to Host:
+ *
+ * Below table describes the memory layout of the payload written to the shared buffer
+ *
+ * Payload              (Size, Value): Description
+ * [0..N-1]             (u32, dpcd_data): DPCD register data of size N bytes read starting
+ */
+#define HFI_COMMAND_DEBUG_DP_READ_DPCD                                 0xFF000504
+
+/*
+ * HFI_COMMAND_DEBUG_DP_SET_BW_CODE - This command sets the bandwidth code.
+ *                                  From host to DCP, this command configures the
+ *                                  link bandwidth for simulation.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Data Contents:
+ *  - bw_code: Bandwidth code (RBR=0x06, HBR=0x0A, HBR2=0x14, HBR3=0x1E)
+ *
+ * Hfi Packet layout             : Value
+ * hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_U32
+ * hfi_packet.cmd                : HFI_COMMAND_DEBUG_DP_SET_BW_CODE
+ * hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                 : DP instance id
+ * hfi_packet.packet_id          : unique id
+ * hfi_packet.payload            : bw_code (u32)
+ */
+#define HFI_COMMAND_DEBUG_DP_SET_BW_CODE                               0xFF000505
+
+/*
+ * HFI_COMMAND_DEBUG_DP_SET_TPG - This command sets the test pattern generator.
+ *                              From host to DCP, this command configures the
+ *                              test pattern for simulation.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Data Contents:
+ *  - pattern: Test pattern type
+ *
+ * Hfi Packet layout             : Value
+ * hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_U32
+ * hfi_packet.cmd                : HFI_COMMAND_DEBUG_DP_SET_TPG
+ * hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                 : DP instance id
+ * hfi_packet.packet_id          : unique id
+ * hfi_packet.payload            : pattern (u32)
+ */
+#define HFI_COMMAND_DEBUG_DP_SET_TPG                                   0xFF000506
+
+/*
+ * HFI_COMMAND_DEBUG_DP_HDCP_CONTROL - This command sets the HDCP state.
+ *                               From host to DCP, this command enables or
+ *                               disables HDCP for simulation.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi Packet layout             : Value
+ * hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_U32
+ * hfi_packet.cmd                : HFI_COMMAND_DEBUG_DP_HDCP_CONTROL
+ * hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                 : DP instance id
+ * hfi_packet.packet_id          : unique id
+ * hfi_packet.payload            : HFI_TRUE or HFI_FALSE
+ */
+#define HFI_COMMAND_DEBUG_DP_HDCP_CONTROL                              0xFF000507
+
+/*
+ * HFI_COMMAND_DEBUG_DP_SET_ATTENTION - This command sends an attention event.
+ *                                From host to DCP, this command simulates
+ *                                an attention interrupt with VDO data.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Data Contents:
+ *  - vdo: Vendor Defined Object data
+ *
+ * Hfi Packet layout             : Value
+ * hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_U32
+ * hfi_packet.cmd                : HFI_COMMAND_DEBUG_DP_SET_ATTENTION
+ * hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                 : DP instance id
+ * hfi_packet.packet_id          : unique id
+ * hfi_packet.payload            : vdo (u32)
+ */
+#define HFI_COMMAND_DEBUG_DP_SET_ATTENTION                            0xFF000508
+
+/*
+ * HFI_COMMAND_DEBUG_DP_READ_CRC - This command reads CRC values.
+ *                               From host to DCP, this command requests
+ *                               source and sink CRC values for comparison.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi Packet layout             : Value
+ * hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_NONE
+ * hfi_packet.cmd                : HFI_COMMAND_DEBUG_DP_READ_CRC
+ * hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_INTR_REQUIRED
+ *                                          HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                 : DP instance id
+ * hfi_packet.packet_id          : unique id
+ * hfi_packet.payload            : None
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * Data layout:
+ *  struct hfi_dp_crc_info {
+ *      u32 status;
+ *      u16 src_crc[3];  // RGB CRC values from source
+ *      u16 sink_crc[3]; // RGB CRC values from sink
+ *  }
+ *
+ * Hfi Packet layout             : Value
+ * hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                : HFI_COMMAND_DEBUG_DP_READ_CRC
+ * hfi_packet.flags (DCP to Host): HFI_RX_FLAGS_SUCCESS
+ * hfi_packet.id                 : DP instance id
+ * hfi_packet.packet_id          : unique id
+ * hfi_packet.payload            : struct hfi_dp_crc_info
+ */
+#define HFI_COMMAND_DEBUG_DP_READ_CRC                                  0xFF000509
+
+/*
+ * HFI_COMMAND_DEBUG_DP_READ_INFO - This command reads display information.
+ *                                From host to DCP, this command requests
+ *                                current display configuration information using shared buffer.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi Packet layout             : Value
+ * hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_BLOB
+ * hfi_packet.cmd                : HFI_COMMAND_DEBUG_DP_READ_INFO
+ * hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_INTR_REQUIRED
+ *                                          HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                 : DP instance id
+ * hfi_packet.packet_id          : unique id
+ * hfi_packet.payload            : struct hfi_buff
+ *
+ * DCP to Host:
+ *
+ * Below table describes the memory layout of the payload written to the shared buffer.
+ * Payload              (Size, Value): Description
+ * [0]                  (u32, status): Status code
+ * [1]                  (u32, dp_state): Display state
+ * [2]                  (u32, link_rate): Link rate
+ * [3]                  (u32, lane_count): Number of lanes
+ * [4]                  (u32, h_active): Horizontal active pixels
+ * [5]                  (u32, v_active): Vertical active pixels
+ * [6]                  (u32, refresh_rate): Refresh rate (Hz)
+ * [7]                  (u32, pixel_clk_khz): Pixel clock in kHz
+ * [8]                  (u32, bpp): Bits per pixel
+ * [9]                  (u32, test_request): Test request flag
+ * [10]                 (u32, bw_code): Bandwidth code
+ * [11]                 (u32, voltage_swing): Voltage swing
+ * [12]                 (u32, pre_emphasis): Pre-emphasis
+ */
+#define HFI_COMMAND_DEBUG_DP_READ_INFO                                 0xFF00050A
+
+/*
+ * HFI_COMMAND_DEBUG_DP_READ_BW_CODE - This command reads the current bandwidth code.
+ *                                   From host to DCP, this command requests
+ *                                   the current link bandwidth configuration.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi Packet layout             : Value
+ * hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_NONE
+ * hfi_packet.cmd                : HFI_COMMAND_DEBUG_DP_READ_BW_CODE
+ * hfi_packet.flags (Host to DCP): HFI_TX_FLAGS_INTR_REQUIRED
+ *                                          HFI_TX_FLAGS_RESPONSE_REQUIRED
+ *                                          HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                 : DP instance id
+ * hfi_packet.packet_id          : unique id
+ * hfi_packet.payload            : None
+ *
+ * DCP to Host:
+ * hfi_header.num_packets                 : 1
+ *
+ * Hfi Packet layout             : Value
+ * hfi_packet.payload_info (size): sizeof(hfi_packet) (including payload size)
+ * hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                : HFI_COMMAND_DEBUG_DP_READ_BW_CODE
+ * hfi_packet.flags (DCP to Host): HFI_RX_FLAGS_SUCCESS
+ * hfi_packet.id                 : DP instance id
+ * hfi_packet.packet_id          : unique id
+ * hfi_packet.payload            : bw code (u32)
+ */
+
+#define HFI_COMMAND_DEBUG_DP_READ_BW_CODE                              0xFF00050B
+
+#define HFI_COMMAND_DEBUG_DP_END                                       0xFF0005FF
+
 #define HFI_COMMAND_DEBUG_END                                        0xFFFFFFFF
 
 #endif // __H_HFI_COMMANDS_DEBUG_H__

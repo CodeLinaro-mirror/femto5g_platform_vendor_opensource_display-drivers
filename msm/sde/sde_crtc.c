@@ -328,7 +328,8 @@ int sde_crtc_update_lsr_perf(struct drm_crtc *crtc)
 
 	if (is_lsr && crtc->state) {
 		sde_cstate = to_sde_crtc_state(crtc->state);
-		perf.bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_DRAM_AB);
+		perf.bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_LLCC_AB);
+		perf.ib_bw_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_LLCC_IB);
 		perf.clk_vote = sde_crtc_get_property(sde_cstate, CRTC_PROP_CORE_CLK);
 		sde_wb_update_lsr_perf(conn, c_conn->display, perf);
 	}
@@ -3820,31 +3821,58 @@ static void _sde_crtc_retire_event(struct drm_connector *connector,
 	SDE_ATRACE_END("signal_retire_fence");
 }
 
-void sde_crtc_opr_event_notify(struct drm_crtc *crtc)
+void sde_crtc_opr_event_notify(struct drm_crtc *crtc, void *args)
 {
 	struct sde_crtc *sde_crtc;
 	uint32_t current_opr_value[MAX_DSI_DISPLAYS] = {0};
 	int i, rc;
 	bool updated = false;
 	struct drm_event event;
-
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 	sde_crtc = to_sde_crtc(crtc);
+	u32 *opr_data;
 
 	atomic_set(&sde_crtc->previous_opr_value.num_valid_opr, 0);
-	for (i = 0; i < sde_crtc->num_mixers; i++) {
-		rc = sde_dspp_spr_read_opr_value(sde_crtc->mixers[i].hw_dspp,
-			&current_opr_value[i]);
-		if (rc) {
-			SDE_ERROR("failed to collect OPR idx: %d rc: %d\n", i, rc);
-			continue;
+
+	if (IS_DISP_OP_HFI(disp_op)) {
+		if (!args) {
+			SDE_ERROR("invalid args sent in opr event cb\n");
+			return;
 		}
 
-		atomic_inc(&sde_crtc->previous_opr_value.num_valid_opr);
-		if (current_opr_value[i] == sde_crtc->previous_opr_value.opr_value[i])
-			continue;
+		opr_data = (u32 *) args;
 
-		sde_crtc->previous_opr_value.opr_value[i] = current_opr_value[i];
-		updated = true;
+		if (sde_crtc->num_mixers != opr_data[0]) {
+			SDE_ERROR("num of valid opr doesn't match with number of mixers in crtc\n");
+			return;
+		}
+
+		atomic_set(&sde_crtc->previous_opr_value.num_valid_opr, opr_data[0]);
+		for (i = 0; i < sde_crtc->num_mixers; i++) {
+			if (opr_data[i+1] == sde_crtc->previous_opr_value.opr_value[i])
+				continue;
+
+			sde_crtc->previous_opr_value.opr_value[i] = opr_data[i+1];
+			updated = true;
+		}
+
+	} else {
+		for (i = 0; i < sde_crtc->num_mixers; i++) {
+			rc = sde_dspp_spr_read_opr_value(sde_crtc->mixers[i].hw_dspp,
+				&current_opr_value[i]);
+			if (rc) {
+				SDE_ERROR("failed to collect OPR idx: %d rc: %d\n", i, rc);
+				continue;
+			}
+
+			atomic_inc(&sde_crtc->previous_opr_value.num_valid_opr);
+			if (current_opr_value[i] == sde_crtc->previous_opr_value.opr_value[i])
+				continue;
+
+			sde_crtc->previous_opr_value.opr_value[i] = current_opr_value[i];
+			updated = true;
+		}
+
 	}
 
 	if (updated) {
@@ -3902,14 +3930,16 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 	struct sde_connector *sde_conn;
 	struct drm_encoder *encoder;
 	u32 frame_done = 1;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
 
 	sde_crtc = to_sde_crtc(crtc);
-	if (sde_crtc->opr_event_notify_enabled)
-		sde_crtc_opr_event_notify(crtc);
+
+	if (IS_DISP_OP_HWIO(disp_op) && sde_crtc->opr_event_notify_enabled)
+		sde_crtc_opr_event_notify(crtc, NULL);
 
 	sde_conn = to_sde_connector(fevent->connector);
-	if (sde_conn && sde_conn->misr_event_notify_enabled)
-		sde_encoder_misr_sign_event_notify(fevent->connector->encoder);
+	if (IS_DISP_OP_HWIO(disp_op) && sde_conn && sde_conn->misr_event_notify_enabled)
+		sde_encoder_misr_sign_event_notify(fevent->connector->encoder, NULL);
 
 	if (sde_crtc->framedone_event_notify_enabled)
 		sde_crtc_event_notify(crtc, DRM_EVENT_FRAME_DONE, &frame_done, sizeof(u32));
@@ -4060,9 +4090,12 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 	struct sde_splash_display *splash_display = NULL;
 	struct sde_kms *sde_kms;
 	struct drm_encoder *encoder;
+	struct sde_encoder_virt *sde_enc = NULL;
 	bool cont_splash_enabled = false;
 	int i;
 	u32 power_on = 1;
+	enum msm_disp_op disp_op = sde_crtc_get_disp_op(crtc);
+	u32 lsr_mode;
 
 	if (!crtc || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
@@ -4100,6 +4133,21 @@ void sde_crtc_complete_commit(struct drm_crtc *crtc,
 		sde_crtc_event_notify(crtc, DRM_EVENT_CRTC_POWER, &power_on, sizeof(u32));
 
 	sde_crtc->kickoff_in_progress = false;
+	lsr_mode = sde_crtc_get_property(to_sde_crtc_state(crtc->state), CRTC_PROP_LSR_MODE);
+
+	if (lsr_mode == MSM_DISP_LSR_MODE_ENABLED) {
+		drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
+			sde_enc = to_sde_encoder_virt(encoder);
+			if (sde_enc->hal_ops.enable_hw_event[disp_op])
+				sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
+					MSM_ENC_COMMIT_DONE, false);
+			SDE_DEBUG("LSR mode enabled on enc%d, deregistering commit done event\n",
+				DRMID(encoder));
+		}
+	}
 }
 
 /**
@@ -6010,6 +6058,7 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	enum sde_crtc_idle_pc_state idle_pc_state;
 	struct sde_encoder_kickoff_params params = { 0 };
 	bool is_vid = false;
+	enum msm_disp_op disp_op;
 
 	if (!crtc) {
 		SDE_ERROR("invalid argument\n");
@@ -6106,13 +6155,17 @@ void sde_crtc_commit_kickoff(struct drm_crtc *crtc,
 	}
 
 	/*
+	 * For legacy hwio path, update txq for output hw-fences from display.
+	 *
 	 * For cmd and wb modes, txq for incoming fences must be updated before flush to avoid race
 	 * condition between txq update and the hw signal during ctl-done for partial updates.
 	 *
 	 * For video mode, txq for incoming fences is updated before flush to correctly program the
 	 * output fence (this must be the second to most recently created output fence).
 	 */
-	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask))
+	disp_op = sde_crtc_get_disp_op(crtc);
+	if (test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) &&
+			IS_DISP_OP_HWIO(disp_op))
 		sde_fence_update_hw_fences_txq(sde_crtc->output_fence, is_vid, 0,
 			sde_kms->debugfs_hw_fence);
 
@@ -6447,6 +6500,7 @@ static bool skip_event_handling_required(struct drm_crtc *crtc, u32 event)
 	case DRM_EVENT_RGB_HIST_WB_ERR:
 	case DRM_EVENT_RGB_HIST_OFF:
 	case DRM_EVENT_HISTOGRAM:
+	case DRM_EVENT_OPR_VALUE:
 		return true;
 	default:
 		return false;
@@ -6589,6 +6643,7 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	int ret, i;
 	enum sde_intf_mode intf_mode;
 	struct sde_hw_ctl *hw_ctl = NULL;
+	u32 encoder_mask = 0;
 	if (!crtc || !crtc->dev || !crtc->dev->dev_private || !crtc->state) {
 		SDE_ERROR("invalid crtc\n");
 		return;
@@ -6634,7 +6689,6 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 			crtc->state->enable, sde_crtc->cached_encoder_mask);
 	sde_crtc->enabled = false;
 	_sde_crtc_register_event_callback(sde_crtc, NULL);
-	sde_crtc->cached_encoder_mask = 0;
 
 	/* Try to disable uidle */
 	sde_core_perf_crtc_update_uidle(crtc, false);
@@ -6675,15 +6729,22 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 
 	sde_crtc->cesta_client = NULL;
 
-	drm_for_each_encoder_mask(encoder, crtc->dev,
-			crtc->state->encoder_mask) {
+	/* If enc mask not available, use cached mask to de-register events */
+	if (crtc->state->encoder_mask)
+		encoder_mask = crtc->state->encoder_mask;
+	else
+		encoder_mask = sde_crtc->cached_encoder_mask;
+
+	if (!encoder_mask)
+		SDE_WARN("unable to de-register events\n");
+
+	drm_for_each_encoder_mask(encoder, crtc->dev, encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, NULL, NULL);
 
-		if (IS_DISP_OP_HFI(priv->disp_op))
+		if (IS_DISP_OP_HFI(priv->disp_op)) {
 			sde_encoder_register_display_power_event_callback(encoder, NULL, NULL);
-
-		if (IS_DISP_OP_HFI(priv->disp_op))
 			sde_encoder_register_panel_dead_event_callback(encoder, false);
+		}
 
 		cstate->rsc_client = NULL;
 		cstate->rsc_update = false;
@@ -6695,6 +6756,8 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 		if (test_bit(SDE_FEATURE_IDLE_PC, sde_kms->catalog->features))
 			sde_encoder_control_idle_pc(encoder, true);
 	}
+
+	sde_crtc->cached_encoder_mask = 0;
 
 	if (sde_crtc->power_event) {
 		if (IS_DISP_OP_HWIO(priv->disp_op))
@@ -6844,6 +6907,10 @@ void sde_crtc_event_cb(void *data, u32 event, void *event_payload)
 		/* give event back */
 		sde_crtc_event_queue(&sde_crtc->base, sde_cp_notify_hist_event,
 				&sde_crtc->pa_hist_buffers[idx], true);
+		break;
+	case DRM_EVENT_OPR_VALUE:
+		sde_crtc_event_queue(&sde_crtc->base, sde_crtc_opr_event_notify,
+			event_payload, true);
 		break;
 	}
 }
@@ -8248,6 +8315,11 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 		{MSM_DISP_OP_HYP, "disp_op_hyp"},
 	};
 
+	static const struct drm_prop_enum_list e_lsr_mode[] = {
+		{MSM_DISP_LSR_MODE_DISABLED, "lsr_mode_disabled"},
+		{MSM_DISP_LSR_MODE_ENABLED, "lsr_mode_enabled"},
+	};
+
 	SDE_DEBUG("\n");
 
 	if (!crtc || !catalog) {
@@ -8321,10 +8393,14 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			ARRAY_SIZE(e_secure_level), 0,
 			CRTC_PROP_SECURITY_LEVEL);
 
-	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map))
+	msm_property_install_enum(&sde_crtc->property_info,
+			"lsr_mode", 0, 0, e_lsr_mode, ARRAY_SIZE(e_lsr_mode),
+			MSM_DISP_LSR_MODE_DISABLED, CRTC_PROP_LSR_MODE);
+
+	if (test_bit(SDE_SYS_CACHE_DISP, catalog->sde_sys_cache_type_map) ||
+			test_bit(SDE_FEATURE_LSR, catalog->features))
 		msm_property_install_enum(&sde_crtc->property_info, "cache_state",
-			0x0, 0, e_cache_state,
-			ARRAY_SIZE(e_cache_state), 0,
+			0x0, 0, e_cache_state, ARRAY_SIZE(e_cache_state), 0,
 			CRTC_PROP_CACHE_STATE);
 
 	if (test_bit(SDE_FEATURE_DIM_LAYER, catalog->features)) {
@@ -8486,14 +8562,34 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 	offset++;
 
 	/* Update DCP hw fence data for displays having HW fence support */
-	if (IS_DISP_OP_HFI(disp_op) && lsr_opmode == WB_CSC)
-		hfi_hw_fence_handle = _get_hfi_hw_data_from_kms(sde_kms);
+	if (IS_DISP_OP_HFI(disp_op)) {
+		if (lsr_opmode == WB_CSC || (sde_kms->catalog && sde_kms->catalog->hw_fence_rev))
+			hfi_hw_fence_handle = _get_hfi_hw_data_from_kms(sde_kms);
 
-	if (IS_DISP_OP_HFI(disp_op))
 		return sde_fence_create_with_handle(sde_crtc->output_fence, val,
 					offset, hfi_hw_fence_handle);
+	}
 
 	return sde_fence_create(sde_crtc->output_fence, val, offset, hw_ctl);
+}
+
+static void _sde_crtc_set_idle_pc_state(struct drm_crtc *crtc, struct sde_crtc *sde_crtc,
+		uint64_t val)
+{
+	enum msm_disp_op disp_op;
+	int ret;
+
+	//Make sure u64 is not narrowing
+	if (val > U32_MAX)
+		return;
+
+	disp_op = sde_crtc_get_disp_op(crtc);
+
+	if (sde_crtc->hal_ops.set_idle_pc_timer[disp_op]) {
+		ret = sde_crtc->hal_ops.set_idle_pc_timer[disp_op](sde_crtc, (u32)val);
+		if (ret)
+			SDE_ERROR("Failed to update idle pc timer to %u: %d\n", (u32)val, ret);
+	}
 }
 
 /**
@@ -8609,6 +8705,9 @@ static int sde_crtc_atomic_set_property(struct drm_crtc *crtc,
 		break;
 	case CRTC_PROP_FRAME_DATA_BUF:
 		_sde_crtc_set_frame_data_buffers(crtc, cstate, (void __user *)(uintptr_t)val);
+		break;
+	case CRTC_PROP_IDLE_PC_STATE:
+		_sde_crtc_set_idle_pc_state(crtc, sde_crtc, val);
 		break;
 	default:
 		/* nothing to do */
@@ -10193,10 +10292,21 @@ static int sde_crtc_opr_event_handler(struct drm_crtc *crtc_drm,
 	bool en, struct sde_irq_callback *irq)
 {
 	struct sde_crtc *sde_crtc;
+	int ret = 0;
 
 	sde_crtc = to_sde_crtc(crtc_drm);
 	if (!sde_crtc)
 		return -EINVAL;
+
+	if (sde_crtc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI]) {
+		ret = sde_crtc->hal_ops.enable_hw_event[MSM_DISP_OP_HFI](sde_crtc,
+			HFI_EVENT_SPR_OPR, en);
+		if (ret) {
+			DRM_ERROR("failed to enable SPR OPR event\n");
+			return ret;
+		}
+
+	}
 
 	sde_crtc->opr_event_notify_enabled = en;
 	return 0;
@@ -10494,15 +10604,6 @@ int sde_crtc_calc_vpadding_param(struct drm_crtc_state *state, u32 crtc_y, uint3
 	SDE_DEBUG("crtc:%d padding_y:%d padding_start:%d padding_height:%d\n",
 		  DRMID(cstate->base.crtc), *padding_y, *padding_start, *padding_height);
 	return 0;
-
-}
-
-bool sde_crtc_out_hw_fences_enabled(struct sde_crtc *sde_crtc)
-{
-	/* check for out fences enable or is LSR CSC display */
-	return test_bit(HW_FENCE_OUT_FENCES_ENABLE, sde_crtc->hwfence_features_mask) ||
-		(sde_crtc_check_for_lsr_opmode(&sde_crtc->base,
-			sde_crtc->base.state) == WB_CSC);
 
 }
 

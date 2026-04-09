@@ -93,6 +93,23 @@ static inline void msm_lsr_free_clock_table(
 	res->clock_set.count = 0;
 }
 
+static inline void msm_lsr_free_power_domain_table(
+			struct msm_lsr_platform_resources *res)
+{
+	int i = 0;
+
+	for (i = 0; i < res->power_domain_set.count; i++) {
+		struct power_domain_info *pd_info =
+			&res->power_domain_set.power_domain_tbl[i];
+
+			pd_info->pd_dev = NULL;
+			pd_info->name = NULL;
+	}
+
+	res->power_domain_set.power_domain_tbl = NULL;
+	res->power_domain_set.count = 0;
+}
+
 void msm_lsr_free_platform_resources(
 			struct msm_lsr_platform_resources *res)
 {
@@ -102,6 +119,7 @@ void msm_lsr_free_platform_resources(
 	msm_lsr_free_reg_table(res);
 	msm_lsr_free_qdss_addr_table(res);
 	msm_lsr_free_bus_vectors(res);
+	msm_lsr_free_power_domain_table(res);
 }
 
 static int msm_lsr_load_ipcc_regs(struct msm_lsr_platform_resources *res)
@@ -121,7 +139,7 @@ static int msm_lsr_load_ipcc_regs(struct msm_lsr_platform_resources *res)
 	res->ipcc_reg_size = reg_config[1];
 
 	dprintk(LSR_CORE,
-		"ipcc reg_base = %x, reg_size = %x\n",
+		"ipcc reg_base = %llx, reg_size = %x\n",
 		res->ipcc_reg_base,
 		res->ipcc_reg_size
 	);
@@ -179,7 +197,7 @@ static int msm_lsr_load_regspace_mapping(struct msm_lsr_platform_resources *res)
 	res->reg_mappings.timer_phyaddr = timer_config[2];
 
 	dprintk(LSR_CORE,
-	"reg mappings %#x %#x %#x %#x %#x %#X %#x %#x %#x %#x %#x %#x\n",
+	"reg mappings %#llx %#x %#llx %#llx %#x %#llX %#llx %#x %#llx %#llx %#x %#llx\n",
 	res->reg_mappings.ipclite_iova, res->reg_mappings.ipclite_size,
 	res->reg_mappings.ipclite_phyaddr, res->reg_mappings.hwmutex_iova,
 	res->reg_mappings.hwmutex_size, res->reg_mappings.hwmutex_phyaddr,
@@ -516,6 +534,69 @@ err_bus:
 	return rc;
 }
 
+static int msm_lsr_load_power_domain_table(
+		struct msm_lsr_platform_resources *res)
+{
+	struct platform_device *pdev = res->pdev;
+	struct power_domain_set *power_domains = &res->power_domain_set;
+	int num_pds = 0;
+	int i, rc = 0;
+
+	power_domains->count = 0;
+	power_domains->power_domain_tbl = NULL;
+
+	/* Only parse power domains if using GenPD framework */
+	if (!res->framework_type) {
+		dprintk(LSR_ERR, "Using regulator framework, skipping power domain parsing\n");
+		return 0;
+	}
+
+	/* Count number of power domains */
+	num_pds = of_count_phandle_with_args(pdev->dev.of_node,
+			"power-domains", "#power-domain-cells");
+
+	if (num_pds <= 0) {
+		dprintk(LSR_ERR, "No power domains found in DT\n");
+		return -EINVAL;
+	}
+
+	/* Allocate memory for power domain table */
+	power_domains->power_domain_tbl = devm_kzalloc(&pdev->dev,
+			sizeof(*power_domains->power_domain_tbl) * num_pds,
+			GFP_KERNEL);
+
+	if (!power_domains->power_domain_tbl) {
+		dprintk(LSR_ERR, "Failed to allocate memory for power domain table\n");
+		return -ENOMEM;
+	}
+
+	power_domains->count = num_pds;
+
+	for (i = 0; i < num_pds; i++) {
+		struct power_domain_info *pd_info =
+			&power_domains->power_domain_tbl[i];
+
+		rc = of_property_read_string_index(pdev->dev.of_node,
+			"power-domain-names", i, &pd_info->name);
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to get name of power domain %d\n", rc);
+			return rc;
+		}
+
+		rc = of_property_read_u32_index(pdev->dev.of_node,
+			"gdsc_has_hw_pc", i, &pd_info->has_hw_power_collapse);
+		if (rc) {
+			dprintk(LSR_ERR, "Failed to get power domain hw pc status %d\n", rc);
+			return rc;
+		}
+
+		dprintk(LSR_CORE, "Power domain %d: %s (HW collapse: %s)\n",
+			i, pd_info->name, pd_info->has_hw_power_collapse ? "yes" : "no");
+	}
+
+	return 0;
+}
+
 static int msm_lsr_load_regulator_table(
 		struct msm_lsr_platform_resources *res)
 {
@@ -823,6 +904,11 @@ int lsr_read_platform_resources_from_dt(
 	res->register_base = kres ? kres->start : -1;
 	res->register_size = kres ? (kres->end + 1 - kres->start) : -1;
 
+	rc = of_property_read_u32(pdev->dev.of_node,
+		"framework_type", &res->framework_type);
+	if (rc)
+		dprintk(LSR_WARN, "Failed to load framework type info: %d\n", rc);
+
 	res->irq = platform_get_irq(pdev, 0);
 	dprintk(LSR_CORE, "%s: res->irq:%d\n", __func__, res->irq);
 
@@ -865,6 +951,12 @@ int lsr_read_platform_resources_from_dt(
 		goto err_load_regulator_table;
 	}
 
+	rc = msm_lsr_load_power_domain_table(res);
+	if (rc) {
+		dprintk(LSR_ERR, "Failed to load power domain table: %d\n", rc);
+		goto err_load_power_domain_table;
+	}
+
 	rc = msm_lsr_load_clock_table(res);
 	if (rc) {
 		dprintk(LSR_ERR, "Failed to load clock table: %d\n", rc);
@@ -903,6 +995,8 @@ err_load_allowed_clocks_table:
 	msm_lsr_free_clock_table(res);
 err_load_clock_table:
 	msm_lsr_free_regulator_table(res);
+err_load_power_domain_table:
+	msm_lsr_free_power_domain_table(res);
 err_load_regulator_table:
 	msm_lsr_free_reg_table(res);
 err_load_reg_table:

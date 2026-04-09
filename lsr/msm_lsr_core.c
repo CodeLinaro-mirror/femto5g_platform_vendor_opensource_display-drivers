@@ -67,16 +67,20 @@ static int lsr_update_perf(struct sde_reproj *reproj_inst, int repro_info, struc
 
 	if (repro_info == WB_CSC) {
 		if (core->old_perf.lsr_csc_bw != perf.bw_vote ||
-			core->old_perf.lsr_csc_clk != perf.clk_vote)
+			core->old_perf.lsr_csc_clk != perf.clk_vote ||
+			core->old_perf.lsr_csc_ib_bw != perf.ib_bw_vote)
 			update_perf = true;
 		core->new_perf.lsr_csc_bw = perf.bw_vote;
 		core->new_perf.lsr_csc_clk = perf.clk_vote;
+		core->new_perf.lsr_csc_ib_bw = perf.ib_bw_vote;
 	} else if (repro_info == WB_REPRO) {
 		if (core->old_perf.lsr_repro_bw != perf.bw_vote ||
-			core->old_perf.lsr_repro_clk != perf.clk_vote)
+			core->old_perf.lsr_repro_clk != perf.clk_vote ||
+			core->old_perf.lsr_repro_ib_bw != perf.ib_bw_vote)
 			update_perf = true;
 		core->new_perf.lsr_repro_bw = perf.bw_vote;
 		core->new_perf.lsr_repro_clk = perf.clk_vote;
+		core->new_perf.lsr_repro_ib_bw = perf.ib_bw_vote;
 	}
 
 	if (update_perf)
@@ -116,7 +120,7 @@ static int lsr_display_get_info(struct sde_reproj *reproj_inst, int repro_info)
 	reproj_inst->lsr_reusable_hsynx = dev->lsr_reusable_hsynx;
 
 	dprintk(LSR_CORE,
-		"LSR info for repro = %d, qtable= 0x%llx dcp_addr = 0x%llx, arp addr = 0x%llx",
+		"LSR info for repro = %d, qtable= 0x%x dcp_addr = 0x%x, arp addr = 0x%x",
 			repro_info, reproj_inst->queue_table_dcp_addr,
 			dev->iface_q_table.align_dcp_device_addr,
 			reproj_inst->arp_buf_lsr_addr);

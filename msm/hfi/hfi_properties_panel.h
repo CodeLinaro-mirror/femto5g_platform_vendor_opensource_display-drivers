@@ -738,6 +738,84 @@
  */
 #define HFI_PROPERTY_PANEL_ESYNC_CAPS				     0x00040032
 
+
+/*
+ * HFI_PROPERTY_PANEL_FREQ_PATTERN - Specifies the frequency stepping pattern of the panel.
+ *                                   This property uses a variable-length memory layout to
+ *                                   support patterns with different numbers of frequency steps.
+ *                                   This property is sent to DCP as part of
+ *                                   HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_FREQ_PATTERN
+ *
+ * Hfi packet layout           | Value
+ *-----------------------------|------------------------------------------
+ *     (u32_key) payload[0]    | HFI_PROPERTY_PANEL_FREQ_PATTERN \|
+ * ^                           | (version=0 << 20) \| (dsize=total_size << 24)
+ *   (u32_value) payload[1]    | pattern_count (number of patterns)
+ *   (u32_value) payload[2..N] | Variable-length pattern data (see below)
+ *
+ * Memory Layout Overview:
+ * The payload contains a count followed by variable-length pattern data. Each pattern
+ * consists of 6 fixed u32 fields plus a variable-length frequency stepping sequence array.
+ * Below pseudo-code illustrates the memory layout.
+ *
+ * // Top-level structure containing all frequency patterns
+ * struct hfi_freq_step_pattern_info {
+ *     u32 pattern_count;                           // Number of frequency patterns
+ *     struct hfi_freq_step_pattern pattern[pattern_count]; // Variable-length pattern array
+ * };
+ *
+ * // Individual frequency pattern structure
+ * struct hfi_freq_step_pattern {
+ *         u32 frame_interval;                      // Frame interval (fps * 1000)
+ *         u32 num_freq_steps;                      // Number of compressed pairs
+ *         u32 usecase_idx;                         // Use case index
+ *         u32 frame_pattern_seq_idx;               // Sequential pattern index
+ *         u32 needs_self_refresh;                  // Boolean flag
+ *         u32 length;                              // Count of expanded frequency values
+ *         u32 freq_stepping_seq[length];           // Variable-length frequency array
+ * };
+ *
+ * Below table describes the payload memory layout, which contains a count field followed by
+ * variable-length pattern data. Each pattern has 6 fixed fields plus a variable-length array.
+ *
+ * Payload    |Size           | Value              | Description
+ *------------|---------------|--------------------|-----------
+ * 0          | u32           | pattern_count      |Number of frequency patterns (N)
+ * [1..M]     | u32*(M-1)     | pattern_data       |Variable-length pattern data. Each pattern
+ * ^          | ^             | ^                  |consists of 6 fixed u32 fields followed by
+ * ^          | ^             | ^                  |a variable-length array of frequency steps.
+ * ^          | ^             | ^                  |See pattern memory layout below.
+ *
+ * Pattern memory layout (for each pattern i):
+ *
+ * Field      |Size           | Value                  | Description
+ *------------|---------------|------------------------|-----------
+ * 0          | u32           | frame_interval         |Frame interval (fps * 1000)
+ * 1          | u32           | num_freq_steps         |Number of frequency steps in pattern
+ * 2          | u32           | usecase_idx            |Use case index for this pattern
+ * 3          | u32           | frame_pattern_seq_idx  |Frame pattern sequence index
+ * 4          | u32           | needs_self_refresh     |Boolean (1=needs AP refresh, 0=no refresh)
+ * 5          | u32           | length                 |Count of frequency steps
+ * [6..6+L-1] | u32*length    | freq_stepping_seq      |Variable-length array of frequency values
+ * ^          | ^             | ^                      |where L = length from field 5
+ */
+#define HFI_PROPERTY_PANEL_FREQ_PATTERN				     0x00040034
+
+/*
+ * HFI_PROPERTY_PANEL_DFPS_CAPS - Specifies the DFPS capabilities supported by the panel.
+ *                                 This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DFPS_CAPS
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DFPS_CAPS |
+ *                               (version=0 << 20) | (dsize=(4*count+1) << 24 )
+ *   (u32_value) payload[1]    : count of DFPS method supported
+ *   (u32_value) payload[2..]  : struct hfi_panel_dfps_caps for each count
+ */
+#define HFI_PROPERTY_PANEL_DFPS_CAPS                                 0x00040033
+
 /*
  * All panel property IDs end here
  */

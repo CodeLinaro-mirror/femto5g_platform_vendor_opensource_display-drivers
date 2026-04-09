@@ -42,7 +42,8 @@ struct sde_hw_mdp;
  * @fd: fd attached to this fence - debugging purpose.
  * @hwfence_out_ctl: optional hw ctl for the output fence
  * @hwfence_index: hw fence index for this fence
- * @txq_updated_fence: flag to indicate that a fence has been updated in txq
+ * @txq_updated_fence: flag to indicate that a fence has been updated in txq in hwio or
+ *                     will be in hfi
  * @hw_fence_handle: optional pointer to hw-fence handle used to create and release this fence
  */
 struct sde_fence {
@@ -502,7 +503,9 @@ int sde_fence_update_input_hw_fence_signal(struct sde_hw_ctl *ctl, u32 debugfs_h
 	struct sde_hw_mdp *hw_mdp, bool disable, bool override);
 
 /**
- * sde_fence_get_hwfence_index - get the latest hardware fence index from connector
+ * sde_fence_get_hwfence_index - get the latest hardware fence index from connector to be
+ *                               updated in tx queue
+ *
  * @ctx: pointer to fence context
  * Returns: Hardware fence index, or 0 if no valid fence found
  */

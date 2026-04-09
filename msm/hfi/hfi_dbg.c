@@ -285,7 +285,7 @@ static void _hfi_dump_all(bool do_panic, const char *name, bool dump_secure)
 	if (!hfi_dbg)
 		return;
 
-	in_dump = (hfi_dbg->base->dump_option);
+	in_dump = (hfi_dbg->base->dump_option & SDE_DBG_DUMP_IN_COREDUMP);
 
 	if (sde_evtlog_is_enabled(hfi_dbg->base->evtlog, SDE_EVTLOG_ALWAYS)) {
 		sde_evtlog_dump_all(hfi_dbg->base->evtlog);

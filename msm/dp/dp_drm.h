@@ -206,6 +206,13 @@ int dp_connector_cont_splash_config(void *display);
  */
 int dp_connector_cont_splash_res_disable(void *display);
 
+/**
+ * dp_connector_ctl_init - dp controller init
+ * @display: Pointer to display's data
+ * @hfi_priv: Pointer to hfi_priv
+ */
+int dp_connector_ctl_init(void *display, void *hfi_priv);
+
 #else
 static inline int dp_connector_config_hdr(struct drm_connector *connector,
 		void *display, struct sde_connector_state *c_state)
@@ -310,6 +317,12 @@ static inline int dp_connector_cont_splash_res_disable(void *dp_display)
 {
 	return 0;
 }
+
+static inline int dp_connector_ctl_init(void *display, void *hfi_priv)
+{
+	return 0;
+}
+
 #endif /* CONFIG_DRM_MSM_DP */
 
 #endif /* _DP_DRM_H_ */

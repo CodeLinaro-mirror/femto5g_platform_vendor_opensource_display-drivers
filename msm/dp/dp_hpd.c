@@ -48,6 +48,12 @@ struct dp_hpd *dp_hpd_get(struct device *dev, struct dp_parser *parser,
 {
 	struct dp_hpd *dp_hpd = NULL;
 
+	dp_hpd = dp_altmode_get(dev, cb);
+	if (!IS_ERR_OR_NULL(dp_hpd)) {
+		dp_hpd->type = DP_HPD_ALTMODE;
+		goto config;
+	}
+
 	if (aux_bridge && (aux_bridge->flag & DP_AUX_BRIDGE_HPD)) {
 		dp_hpd = dp_bridge_hpd_get(dev, cb, aux_bridge);
 		if (!IS_ERR(dp_hpd)) {
@@ -65,12 +71,6 @@ struct dp_hpd *dp_hpd_get(struct device *dev, struct dp_parser *parser,
 	dp_hpd = dp_gpio_hpd_get(dev, cb);
 	if (!IS_ERR_OR_NULL(dp_hpd)) {
 		dp_hpd->type = DP_HPD_GPIO;
-		goto config;
-	}
-
-	dp_hpd = dp_altmode_get(dev, cb);
-	if (!IS_ERR_OR_NULL(dp_hpd)) {
-		dp_hpd->type = DP_HPD_ALTMODE;
 		goto config;
 	}
 

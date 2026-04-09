@@ -13,9 +13,6 @@
 #include <linux/kthread.h>
 #include <linux/spinlock.h>
 #include <linux/scatterlist.h>
-#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
-#include <synx_api.h>
-#endif /* CONFIG_QTI_HW_FENCE */
 #if IS_ENABLED(CONFIG_MDSS_HFI_ADAPTER)
 #include "hfi_pack_unpack_common.h"
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE)
@@ -474,6 +471,20 @@ int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
 		struct hfi_shared_addr_map *addr_map);
 
 /**
+ * hfi_adapter_map_iova - API to map given address map to DCP
+ * @ctx: Pointer to hfi_client struct.
+ * @addr_map: Pointer to store address info and resultant virtual address.
+ */
+int hfi_adapter_map_iova(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map);
+
+/**
+ * hfi_adapter_map_iova_cached - API to map given address map to DCP with caching enabled
+ * @ctx: Pointer to hfi_client struct.
+ * @addr_map: Pointer to store address info and resultant virtual address.
+ */
+int hfi_adapter_map_iova_cached(struct hfi_client_t *ctx, struct hfi_shared_addr_map *addr_map);
+
+/**
  * hfi_adapter_unmap_sg_table - Unmaps a previously mapped scatter-gather table
  * from DCP.
  * @ctx: Pointer to the HFI client context.
@@ -591,6 +602,18 @@ static inline void hfi_adapter_deinit(struct hfi_client_t *ctx)
 }
 
 static inline int hfi_adapter_map_sg_table(struct hfi_client_t *ctx, struct sg_table *sgt,
+		struct hfi_shared_addr_map *addr_map)
+{
+	return 0;
+}
+
+static inline int hfi_adapter_map_iova(struct hfi_client_t *ctx,
+		struct hfi_shared_addr_map *addr_map)
+{
+	return 0;
+}
+
+static inline int hfi_adapter_map_iova_cached(struct hfi_client_t *ctx,
 		struct hfi_shared_addr_map *addr_map)
 {
 	return 0;

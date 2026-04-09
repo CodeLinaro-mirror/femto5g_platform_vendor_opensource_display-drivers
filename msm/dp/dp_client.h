@@ -104,7 +104,6 @@ struct dp_client {
 	struct drm_device *drm_dev;
 	struct dp_bridge *bridge;
 	struct drm_connector *base_connector;
-	void *base_dp_panel;
 	bool is_sst_connected;
 	bool is_mst_supported;
 	bool is_edp;
@@ -155,6 +154,8 @@ struct dp_client {
 					u32 colorspace);
 
 		int (*post_init)(struct dp_client *client);
+
+		int (*ctl_init)(struct dp_client *client);
 
 		int (*set_stream_info)(struct dp_client *client, int panel_id,
 				u32 strm_id, u32 start_slot, u32 num_slots, u32 pbn,

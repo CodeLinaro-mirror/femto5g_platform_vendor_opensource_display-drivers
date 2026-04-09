@@ -1050,6 +1050,7 @@ struct sde_connector_state {
 	struct msm_display_mode msm_mode;
 	enum sde_rm_topology_name old_topology_name;
 	struct sde_drm_privacy_layer_v1 privacy_v1;
+	struct sde_drm_privacy_layer_v2 privacy_v2;
 	bool privacy_layer_updated;
 	bool cont_splash_populated;
 

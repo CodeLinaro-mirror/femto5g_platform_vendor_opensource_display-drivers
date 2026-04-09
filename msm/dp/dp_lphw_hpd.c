@@ -133,7 +133,9 @@ static void dp_lphw_hpd_host_init(struct dp_hpd *dp_hpd,
 	 * stopping the tlmm interrupts generation on function 0.
 	 * So, as an additional step, disable the gpio interrupt irq also
 	 */
-	disable_irq(lphw_hpd->irq);
+	if ((lphw_hpd->parser->is_edp && lphw_hpd->parser->ext_hpd_en) ||
+			!lphw_hpd->parser->is_edp)
+		disable_irq(lphw_hpd->irq);
 }
 
 static void dp_lphw_hpd_host_deinit(struct dp_hpd *dp_hpd,
@@ -149,7 +151,9 @@ static void dp_lphw_hpd_host_deinit(struct dp_hpd *dp_hpd,
 	lphw_hpd = container_of(dp_hpd, struct dp_lphw_hpd_private, base);
 
 	/* Enable the tlmm interrupt irq which was disabled in host_init */
-	enable_irq(lphw_hpd->irq);
+	if ((lphw_hpd->parser->is_edp && lphw_hpd->parser->ext_hpd_en) ||
+			!lphw_hpd->parser->is_edp)
+		enable_irq(lphw_hpd->irq);
 
 	lphw_hpd->catalog->config_hpd(lphw_hpd->catalog, false);
 }
@@ -265,7 +269,10 @@ int dp_lphw_hpd_register(struct dp_hpd *dp_hpd)
 		DP_ERR("Failed to request INTP threaded IRQ: %d\n", rc);
 		return rc;
 	}
-	enable_irq_wake(lphw_hpd->irq);
+	if (lphw_hpd->parser->is_edp && !lphw_hpd->parser->ext_hpd_en)
+		disable_irq(lphw_hpd->irq);
+	else
+		enable_irq_wake(lphw_hpd->irq);
 
 	if (lphw_hpd->hpd)
 		queue_work(lphw_hpd->connect_wq, &lphw_hpd->connect);

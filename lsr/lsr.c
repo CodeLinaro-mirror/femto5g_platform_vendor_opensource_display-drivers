@@ -29,8 +29,32 @@ struct msm_lsr_drv *lsr_driver;
 
 static int msm_lsr_bind(struct device *dev, struct device *master, void *data)
 {
-	pr_info("msm_lsr : LSR component bind successful\n");
-	return 0;
+	struct drm_device *drm = NULL;
+	int rc = 0;
+
+	if (!dev || !master) {
+		dprintk(LSR_ERR, "invalid param(s), dev %pK, master %pK\n", dev, master);
+		rc = -EINVAL;
+		goto end;
+	}
+
+	drm = dev_get_drvdata(master);
+	if (!drm) {
+		dprintk(LSR_ERR, "invalid drm object\n");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	if (lsr_driver) {
+		lsr_driver->drm_dev = drm;
+		pr_info("msm_lsr : LSR component bind successful\n");
+	} else {
+		dprintk(LSR_ERR, "LSR driver init failed\n");
+		rc = -EINVAL;
+	}
+
+end:
+	return rc;
 }
 
 static void msm_lsr_unbind(struct device *dev, struct device *master, void *data)
@@ -119,7 +143,11 @@ static int msm_probe_lsr_device(struct platform_device *pdev)
 		goto err_alloc_chrdev;
 	}
 
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	core->class = class_create(CLASS_NAME);
+#else
 	core->class = class_create(THIS_MODULE, CLASS_NAME);
+#endif
 	if (IS_ERR(core->class)) {
 		rc = PTR_ERR(core->class);
 		dprintk(LSR_ERR, "class_create failed: %d\n",
@@ -229,14 +257,19 @@ static int msm_lsr_probe(struct platform_device *pdev)
 	return -EINVAL;
 }
 
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+static void msm_lsr_remove(struct platform_device *pdev)
+#else
 static int msm_lsr_remove(struct platform_device *pdev)
+#endif
 {
 	int rc = 0;
 	struct msm_lsr_core *core;
 
 	if (!pdev) {
 		dprintk(LSR_ERR, "%s invalid input %pK", __func__, pdev);
-		return -EINVAL;
+		rc = -EINVAL;
+		goto exit;
 	}
 
 	/* Remove component for LSR device */
@@ -252,7 +285,8 @@ static int msm_lsr_remove(struct platform_device *pdev)
 
 	if (!core) {
 		dprintk(LSR_ERR, "%s invalid core", __func__);
-		return -EINVAL;
+		rc = -EINVAL;
+		goto exit;
 	}
 
 	lsr_hfi_deinitialize(core->dev_ops);
@@ -261,7 +295,12 @@ static int msm_lsr_remove(struct platform_device *pdev)
 	mutex_destroy(&core->lock);
 	mutex_destroy(&core->clk_lock);
 	kfree(core);
+exit:
+#if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
+	return;
+#else
 	return rc;
+#endif
 }
 
 MODULE_DEVICE_TABLE(of, msm_lsr_plat_match);

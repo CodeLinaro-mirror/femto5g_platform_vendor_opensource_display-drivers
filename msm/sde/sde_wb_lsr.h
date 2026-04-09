@@ -48,6 +48,19 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 int hfi_wb_lsr_prop_helper_alloc(struct hfi_connector *hfi_conn);
 
 /**
+ * hfi_lsr_fw_debug_set - Sets LSR FW debug value
+ * @val: value to set
+ * @dev: pointer to drm device
+ */
+int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev);
+
+/**
+ * hfi_lsr_fw_debug_get - Gets LSR FW debug value
+ * @val: pointer to store value
+ */
+int hfi_lsr_fw_debug_get(u64 *val);
+
+/**
  * hfi_wb_lsr_add_props - Adds LSR properties on WB connector
  * @wb_dev: Pointer to sde_wb_device
  * @hfi_conn: Pointer to hfi_conector
@@ -146,6 +159,18 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_bu
 
 static inline
 int hfi_wb_lsr_prop_helper_alloc(struct hfi_connector *hfi_conn)
+{
+	return 0;
+}
+
+static inline
+int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
+{
+	return 0;
+}
+
+static inline
+int hfi_lsr_fw_debug_get(u64 *val)
 {
 	return 0;
 }

@@ -55,6 +55,7 @@ extern bool msm_lsr_syscache_disable;
 extern bool msm_lsr_dcvs_disable;
 extern int msm_lsr_hw_wd_recovery;
 extern int msm_lsr_smmu_fault_recovery;
+extern bool msm_lsr_enable_ssr;
 
 #define dprintk(__level, __fmt, arg...)	\
 	do { \

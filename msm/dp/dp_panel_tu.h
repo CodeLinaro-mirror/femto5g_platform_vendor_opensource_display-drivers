@@ -10,6 +10,20 @@
 #include <linux/kernel.h>
 #include <linux/types.h>
 
+struct dp_vc_tu_mapping_table {
+	u32 vic;
+	u8 lanes;
+	u8 lrate; /* DP_LINK_RATE -> 162(6), 270(10), 540(20), 810 (30) */
+	u8 bpp;
+	u32 valid_boundary_link;
+	u32 delay_start_link;
+	bool boundary_moderation_en;
+	u32 valid_lower_boundary_link;
+	u32 upper_boundary_count;
+	u32 lower_boundary_count;
+	u32 tu_size_minus1;
+};
+
 struct dp_tu_calc_input {
 	u64 lclk;              /* 162, 270, 540 and 810 MHz*/
 	u64 pclk_khz;          /* in KHz */

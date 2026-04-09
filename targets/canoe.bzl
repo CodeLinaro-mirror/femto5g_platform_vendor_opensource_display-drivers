@@ -20,6 +20,7 @@ def define_canoe():
                     "CONFIG_MDSS_HFI_ADAPTER",
                     "CONFIG_MDSS_HFI",
                     "CONFIG_DRM_MSM_DP",
+                    "CONFIG_DRM_MSM_DP_HFI",
                     "CONFIG_DRM_MSM_DP_MST",
                     "CONFIG_DSI_PARSER",
                     "CONFIG_DRM_SDE_WB",
@@ -31,6 +32,7 @@ def define_canoe():
                     "CONFIG_THERMAL_OF",
                     "CONFIG_QCOM_SPEC_SYNC",
                     "CONFIG_MSM_EXT_DISPLAY",
+                    "CONFIG_DRM_SDE_RSC",
                     "CONFIG_DRM_SDE_CESTA",
                     "CONFIG_QTI_HW_FENCE",
                     "CONFIG_DSI_EXTENDED_MODES"

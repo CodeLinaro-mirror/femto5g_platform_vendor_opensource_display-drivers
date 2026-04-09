@@ -530,6 +530,7 @@ static int dp_panel_dsc_prepare_basic_params(
 	int i;
 	const struct dp_dsc_slices_per_line *rec;
 	const struct dp_dsc_peak_throughput *tput;
+	struct dp_panel_private *panel;
 	u32 slice_width;
 	u32 ppr = dp_mode->timing.pixel_clk_khz/1000;
 	u32 max_slice_width;
@@ -541,6 +542,7 @@ static int dp_panel_dsc_prepare_basic_params(
 	u32 dsc_version_major, dsc_version_minor;
 	bool dsc_version_supported = false;
 
+	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
 	dsc_version_major = dp_panel->sink_dsc_caps.version & 0xF;
 	dsc_version_minor = (dp_panel->sink_dsc_caps.version >> 4) & 0xF;
 	dsc_version_supported = (dsc_version_major == 0x1 &&
@@ -574,6 +576,9 @@ static int dp_panel_dsc_prepare_basic_params(
 
 	if (comp_info->dsc_info.slice_per_pkt == 0)
 		return -EINVAL;
+
+	if (panel->parser->dsc_slice_per_pkt)
+		comp_info->dsc_info.slice_per_pkt = panel->parser->dsc_slice_per_pkt;
 
 	ppr_max_index = dp_panel->dsc_dpcd[11] &= 0xf;
 	if (!ppr_max_index || ppr_max_index >= 15) {

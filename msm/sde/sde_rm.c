@@ -946,7 +946,7 @@ static int _sde_rm_hw_blk_create_new(struct sde_rm *rm,
 		}
 	}
 
-	if (cat->hw_fence_rev) {
+	if (cat->hw_fence_rev && IS_DISP_OP_HWIO(rm->disp_op)) {
 		if (_init_hw_fences(rm, test_bit(SDE_FEATURE_HW_FENCE_IPCC, cat->features),
 				cat->soccp_ph ? true : false, sde_kms)) {
 			SDE_INFO("failed to init hw-fences, disabling hw-fences\n");

@@ -446,6 +446,21 @@ struct sde_hw_dspp_ops {
 	 * @cfg: Pointer to histogram control configuration
 	 */
 	int (*setup_rgb_hist_ctrl[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg);
+
+	/**
+	 * setup_qrtc_buffer - function to map and setup qrtc buffer
+	 * @ctx: Pointer to dspp context
+	 * @status: Pointer to configuration.
+	 */
+	void (*setup_qrtc_buffer[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg);
+
+	/**
+	 * setup_qrtc_cfg - function to program qrtc cfg
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to QRTC config.
+	 * @buffer: Pointer to QRTC buffer data.
+	 */
+	void (*setup_qrtc_cfg[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg, void *buffer);
 };
 
 /**

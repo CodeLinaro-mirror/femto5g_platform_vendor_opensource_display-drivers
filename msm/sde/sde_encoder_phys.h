@@ -26,6 +26,9 @@
 /* wait for at most 2 vsync for lowest refresh rate (24hz) */
 #define DEFAULT_KICKOFF_TIMEOUT_MS		84
 
+/* wait for 10100 ms as input HW-fence signal may take up to 10 seconds */
+#define HWFENCE_KICKOFF_TIMEOUT_MS		10100
+
 /* if default timeout fails wait additional time in 1s increments */
 #define EXTENDED_KICKOFF_TIMEOUT_MS      1000
 #define EXTENDED_KICKOFF_TIMEOUT_ITERS   10
@@ -948,10 +951,12 @@ static inline bool sde_encoder_phys_is_cwb_disabling(
  *	the split display related registers.
  * @phys_enc: Pointer to physical encoder structure
  * @interface: enum sde_intf setting
+ * @skip_cont_splash: only update split_link_en when continuous splash
  */
 void sde_encoder_helper_split_config(
 		struct sde_encoder_phys *phys_enc,
-		enum sde_intf interface);
+		enum sde_intf interface,
+		bool skip_cont_splash);
 
 /**
  * sde_encoder_helper_reset_mixers - reset mixers associated with phys enc

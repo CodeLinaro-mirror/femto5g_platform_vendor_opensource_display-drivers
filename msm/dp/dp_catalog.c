@@ -1590,7 +1590,7 @@ static void dp_catalog_panel_dsc_cfg(struct dp_catalog_panel *panel)
 {
 	struct dp_catalog_private *catalog;
 	struct dp_io_data *io_data;
-	u32 reg, offset;
+	u32 reg, offset, slice_per_pkt_reg;
 	int i;
 
 	if (!panel) {
@@ -1641,9 +1641,28 @@ static void dp_catalog_panel_dsc_cfg(struct dp_catalog_panel *panel)
 
 	reg = 0;
 	if (panel->dsc.dsc_en) {
+
+		switch (panel->dsc.slice_per_pkt) {
+		case 0:
+			slice_per_pkt_reg = 0x0;
+			break;
+		case 1:
+			slice_per_pkt_reg = 0x1;
+			break;
+		case 3:
+			slice_per_pkt_reg = 0x3;
+			break;
+		case 7:
+			slice_per_pkt_reg = 0x2;
+			break;
+		default:
+			slice_per_pkt_reg = 0;
+			break;
+		}
+
 		reg = BIT(0);
 		reg |= (panel->dsc.eol_byte_num << 3);
-		reg |= (panel->dsc.slice_per_pkt << 5);
+		reg |= (slice_per_pkt_reg << 5);
 		reg |= (panel->dsc.bytes_per_pkt << 16);
 		reg |= (panel->dsc.be_in_lane << 10);
 	}

@@ -91,7 +91,8 @@ void sde_connector_add_roi_v1(u32 hfi_prop, struct sde_connector *conn,
 	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf);
 
 void sde_connector_add_autorefresh(u32 hfi_prop, struct sde_connector *conn,
-	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf, bool is_cont_splash);
+	struct sde_connector_state *old_state, struct hfi_cmdbuf_t *cmd_buf,
+	bool is_cont_splash);
 
 /**
  * hfi_conn_send_panel_init - send panel config and opertaing modes to fw
@@ -105,26 +106,29 @@ int hfi_conn_send_panel_init(struct drm_connector *drm_conn);
  * @c_conn: Pointer to sde_connector struct
  * @skip_pre_kickoff: flag to skip_pre_kickoff
  */
-void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff);
+void hfi_connector_report_panel_dead(struct sde_connector *c_conn,
+	bool skip_pre_kickoff);
 
 #else
-int hfi_connector_init(int connector_type, struct sde_connector *c_conn)
+static inline int hfi_connector_init(int connector_type,
+	struct sde_connector *c_conn)
 {
 	return -HFI_ERROR;
 }
 
-struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(struct drm_connector *drm_conn,
-		u32 cmd_buf_type)
+static inline struct hfi_cmdbuf_t *hfi_connector_get_cmd_buf(
+		struct drm_connector *drm_conn, u32 cmd_buf_type)
 {
 	return NULL;
 }
 
-int hfi_conn_send_panel_init(struct drm_connector *drm_conn)
+static inline int hfi_conn_send_panel_init(struct drm_connector *drm_conn)
 {
 	return 0;
 }
 
-void hfi_connector_report_panel_dead(struct sde_connector *sde_conn, bool skip_pre_kickoff)
+static inline void hfi_connector_report_panel_dead(
+	struct sde_connector *sde_conn, bool skip_pre_kickoff)
 {
 }
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
