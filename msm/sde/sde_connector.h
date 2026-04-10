@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
  */
 
@@ -445,6 +445,18 @@ struct sde_connector_ops {
 	 * @scan_line_ts:   scan line time stamp value in nano-seconds
 	 */
 	int (*get_panel_scan_line)(void *display, u16 *scan_line, ktime_t *scan_line_ts);
+
+	/**
+	 * late_register - additional register for the connector
+	 * @connector: Pointer to drm connector structure
+	 */
+	void (*late_register)(struct drm_connector *connector);
+
+	/**
+	 * late_register - additional unregister for the connector
+	 * @connector: Pointer to drm connector structure
+	 */
+	void (*early_unregister)(struct drm_connector *connector);
 
 };
 
