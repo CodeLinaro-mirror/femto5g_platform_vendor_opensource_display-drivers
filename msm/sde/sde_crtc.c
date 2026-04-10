@@ -410,8 +410,14 @@ static void _sde_crtc_check_loopback_pstates(struct drm_crtc_state *crtc_state)
 	 * pipes staged on that LM.
 	 */
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
+#if (KERNEL_VERSION(6, 19, 0) <= LINUX_VERSION_CODE)
+		plane_state = drm_atomic_get_old_plane_state(
+				crtc_state->state, plane);
+#else
 		plane_state = drm_atomic_get_existing_plane_state(
 				crtc_state->state, plane);
+#endif
+
 		if (!plane_state)
 			continue;
 
@@ -582,8 +588,14 @@ static int sde_crtc_get_lb_layout_split(struct drm_crtc *crtc, struct drm_crtc_s
 
 	cstate = to_sde_crtc_state(crtc_state);
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
+#if (KERNEL_VERSION(6, 19, 0) <= LINUX_VERSION_CODE)
+		plane_state = drm_atomic_get_new_plane_state(
+				crtc_state->state, plane);
+#else
 		plane_state = drm_atomic_get_existing_plane_state(
 				crtc_state->state, plane);
+#endif
+
 		if (!plane_state)
 			continue;
 
@@ -7717,8 +7729,14 @@ static int _sde_crtc_check_plane_layout(struct drm_crtc *crtc,
 		const struct msm_format *msm_fmt;
 		const struct sde_format *fmt;
 
-		plane_state = drm_atomic_get_existing_plane_state(
+		#if (KERNEL_VERSION(6, 19, 0) <= LINUX_VERSION_CODE)
+			plane_state = drm_atomic_get_new_plane_state(
 				crtc_state->state, plane);
+		#else
+			plane_state = drm_atomic_get_existing_plane_state(
+				crtc_state->state, plane);
+		#endif
+
 		if (!plane_state)
 			continue;
 
