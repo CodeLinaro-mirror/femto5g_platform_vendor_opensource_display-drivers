@@ -72,7 +72,7 @@ enum dsi_op_mode {
  * @DSI_MODE_FLAG_SEAMLESS:	Seamless transition requested by user
  * @DSI_MODE_FLAG_DFPS:		Seamless transition is DynamicFPS
  * @DSI_MODE_FLAG_VBLANK_PRE_MODESET:	Transition needs VBLANK before Modeset
- * @DSI_MODE_FLAG_DMS: Seamless transition is dynamic mode switch
+ * @DSI_MODE_FLAG_DMS: Seamless transition is dynamic mode switch on cmd panel.
  * @DSI_MODE_FLAG_VRR: Seamless transition is DynamicFPS.
  *                     New timing values are sent from DAL.
  * @DSI_MODE_FLAG_DYN_CLK: Seamless transition is dynamic clock change
@@ -83,6 +83,8 @@ enum dsi_op_mode {
  *         Seamless transition is dynamic panel operating mode switch to cmd
  * @DSI_MODE_FLAG_NONDSC_BPP_SWITCH:  Transition is bpp mode switch without DSC.
  * @DSI_MODE_FLAG_EMSYNC_FPS_SWITCH: Seamless transition is emsync fps switch
+ * @DSI_MODE_FLAG_DMS_VID:
+ *         Seamless transition is dynamic mode switch on vid panel.
  */
 enum dsi_mode_flags {
 	DSI_MODE_FLAG_SEAMLESS			= BIT(0),
@@ -95,7 +97,8 @@ enum dsi_mode_flags {
 	DSI_MODE_FLAG_POMS_TO_VID		= BIT(7),
 	DSI_MODE_FLAG_POMS_TO_CMD		= BIT(8),
 	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9),
-	DSI_MODE_FLAG_EMSYNC_FPS_SWITCH		= BIT(10)
+	DSI_MODE_FLAG_EMSYNC_FPS_SWITCH		= BIT(10),
+	DSI_MODE_FLAG_DMS_VID			= BIT(11)
 };
 
 /**
@@ -227,6 +230,20 @@ enum dsi_dfps_type {
 	DSI_DFPS_IMMEDIATE_HFP,
 	DSI_DFPS_IMMEDIATE_VFP,
 	DSI_DFPS_MAX
+};
+
+/**
+ * enum dsi_dms_vid_type - video panel mode switch type
+ * @DSI_DMS_VID_DISABLED: video panel mode switch not supported
+ * @DSI_DMS_VID_SEAMLESS: seamless video panel mode switch
+ * @DSI_DMS_VID_NON_SEAMLESS: non-seamless video panel mode switch
+ * @DSI_DMS_VID_TYPE_MAX
+ */
+enum dsi_dms_vid_type {
+	DSI_DMS_VID_DISABLED = 0,
+	DSI_DMS_VID_SEAMLESS,
+	DSI_DMS_VID_NON_SEAMLESS,
+	DSI_DMS_VID_TYPE_MAX
 };
 
 /**
@@ -554,6 +571,7 @@ struct dsi_split_link_config {
  * @append_tx_eot:       Append EOT packets for forward transmissions if set to
  *                       true.
  * @ext_bridge_mode:     External bridge is connected.
+ * @ext_bridge_hpd_en:   Enable hpd for external bridge.
  * @force_hs_clk_lane:   Send continuous clock to the panel.
  * @phy_type:            DPHY/CPHY is enabled for this panel.
  * @dsi_split_link_config:  Split Link Configuration.
@@ -587,6 +605,7 @@ struct dsi_host_common_cfg {
 	bool ignore_rx_eot;
 	bool append_tx_eot;
 	bool ext_bridge_mode;
+	bool ext_bridge_hpd_en;
 	bool force_hs_clk_lane;
 	enum dsi_phy_type phy_type;
 	struct dsi_split_link_config split_link;

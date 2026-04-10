@@ -844,6 +844,19 @@
 #define HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW                       0x00040036
 
 /*
+ * HFI_PROPERTY_PANEL_DYN_REF_CLK_FREQS - Provides DSI bit clock frequencies for dynamic refresh.
+ *                                  This property is sent to DCP as part of
+ *                                  HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DYN_REF_CLK_FREQS
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_DYN_REF_CLK_FREQS |
+ *                                  (version=0 << 20) | (dsize=n+1 << 24 )
+ *   (u32_value) payload[1]       : Number of dynamic refresh clock frequencies (n)
+ *   (u32_value) payload[2..n]    : dynamic refresh clock frequencies (Hz)
+ */
+#define HFI_PROPERTY_PANEL_DYN_REF_CLK_FREQS                         0x00040038
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF

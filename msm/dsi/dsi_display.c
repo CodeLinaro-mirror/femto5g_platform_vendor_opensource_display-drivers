@@ -1020,8 +1020,8 @@ static int dsi_display_status_check_te(struct dsi_display *display,
 		if (!wait_for_completion_timeout(&display->esd_te_gate,
 					esd_te_timeout)) {
 			DSI_ERR("TE check failed\n");
-			dsi_display_change_te_irq_status(display, false);
-			return -EINVAL;
+			rc = -EINVAL;
+			break;
 		}
 	}
 
@@ -1080,8 +1080,10 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	}
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, status_mode, te_check_override);
 
-	if (te_check_override)
+	if (te_check_override) {
 		te_rechecks = MAX_TE_RECHECKS;
+		status_mode = ESD_MODE_PANEL_TE;
+	}
 
 	if ((dsi_display->trusted_vm_env) ||
 			(panel->panel_mode == DSI_OP_VIDEO_MODE))
@@ -1089,12 +1091,13 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 
 	dsi_display_set_ctrl_esd_check_flag(dsi_display, true);
 
-	if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO)
+	if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) {
 		dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
 			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 
-	/* Disable error interrupts while doing an ESD check */
-	dsi_display_toggle_error_interrupt_status(dsi_display, false);
+		/* Disable error interrupts while doing an ESD check */
+		dsi_display_toggle_error_interrupt_status(dsi_display, false);
+	}
 
 	if (status_mode == ESD_MODE_REG_READ) {
 		rc = dsi_display_status_reg_read(dsi_display);
@@ -1122,7 +1125,7 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	/* Handle Panel failures during display disable sequence */
 	if (rc <=0)
 		atomic_set(&panel->esd_recovery_pending, 1);
-	else
+	else if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO)
 		/* Enable error interrupts post an ESD success */
 		dsi_display_toggle_error_interrupt_status(dsi_display, true);
 
@@ -1225,24 +1228,29 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 		transfer = true;
 
 	mutex_lock(&dsi_display->display_lock);
-	rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
 
-	/**
-	 * Handle scenario where a command transfer is initiated through
-	 * sysfs interface when device is in suepnd state.
-	 */
-	if (!rc && !state) {
-		pr_warn_ratelimited("Command xfer attempted while device is in suspend state\n"
-				);
-		rc = -EPERM;
-		goto end;
+	if (dsi_display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HFI) {
+		rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
+
+		/**
+		 * Handle scenario where a command transfer is initiated through
+		 * sysfs interface when device is in suepnd state.
+		 */
+		if (!rc && !state) {
+			pr_warn_ratelimited("Command xfer attempted while device is in suspend state\n"
+					);
+			rc = -EPERM;
+			goto end;
+		}
+
+		if (rc || !state) {
+			DSI_ERR("[DSI] Invalid host state %d rc %d\n",
+					state, rc);
+			rc = -EPERM;
+			goto end;
+		}
 	}
-	if (rc || !state) {
-		DSI_ERR("[DSI] Invalid host state %d rc %d\n",
-				state, rc);
-		rc = -EPERM;
-		goto end;
-	}
+
 
 	SDE_EVT32(dsi_display->tx_cmd_buf_ndx, cmd_buf_len);
 
@@ -1281,7 +1289,11 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 
 		dsi_panel_acquire_panel_lock(dsi_display->panel);
 		for (i = 0; i < cnt; i++) {
-			rc = dsi_host_transfer_sub(&dsi_display->host, cmds, do_peripheral_flush);
+			if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+				rc = dsi_hfi_host_transfer_sub(&dsi_display->host, cmds);
+			else
+				rc = dsi_host_transfer_sub(&dsi_display->host, cmds,
+							do_peripheral_flush);
 			if (rc < 0) {
 				DSI_ERR("failed to send command, rc=%d\n", rc);
 				break;
@@ -5240,7 +5252,8 @@ static int dsi_display_dfps_update(struct dsi_display *display,
 	dsi_panel_get_dfps_caps(display->panel, &dfps_caps);
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 	if (!dfps_caps.dfps_support && !dyn_clk_caps->maintain_const_fps &&
-		!emsync_switch_support) {
+		!emsync_switch_support &&
+		!(dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_VID)) {
 		DSI_ERR("dfps or constant fps or emsync switch not supported\n");
 		return -ENOTSUPP;
 	}
@@ -5524,7 +5537,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 
 	if (mode->dsi_mode_flags &
-			(DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_VRR)) {
+			(DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_VRR
+			| DSI_MODE_FLAG_DMS_VID)) {
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 
@@ -5575,7 +5589,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			return rc;
 	}
 
-	if (mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) {
+	if ((display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) &&
+	    (mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) {
 		if (display->panel->panel_mode == DSI_OP_VIDEO_MODE) {
 			rc = dsi_display_dynamic_clk_switch_vid(display, mode);
 			if (rc)
@@ -6570,7 +6585,7 @@ static int dsi_display_init(struct dsi_display *display)
 		if (rc) {
 			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
 					display->panel->name, rc);
-			return rc;
+			goto vreg_fail;
 		}
 	}
 
@@ -6592,10 +6607,20 @@ static int dsi_display_init(struct dsi_display *display)
 	}
 
 	rc = component_add(&pdev->dev, &dsi_display_comp_ops);
-	if (rc)
+	if (rc) {
 		DSI_ERR("component add failed, rc=%d\n", rc);
+		goto comp_add_fail;
+	}
 
 	DSI_DEBUG("component add success: %s\n", display->name);
+	return rc;
+
+comp_add_fail:
+	if (display->panel)
+		dsi_pwr_enable_regulator(&display->panel->power_info, false);
+vreg_fail:
+	_dsi_display_dev_deinit(display);
+
 end:
 	return rc;
 }
@@ -7780,16 +7805,80 @@ static void _dsi_display_populate_esync_caps(struct dsi_display *display,
 			sizeof(struct esync_params));
 }
 
+static u64 dsi_display_caculate_dsi_clock(struct dsi_display *dsi_display,
+	struct dsi_display_mode *dsi_mode)
+{
+	struct dsi_mode_info *timing;
+	u64 bit_rate;
+	u64 bit_rate_per_lane;
+	u64 h_total;
+	u64 v_total;
+
+	if (!dsi_display || !dsi_display->panel || !dsi_mode) {
+		DSI_ERR("invalid parameters\n");
+		return 0;
+	}
+	timing = &dsi_mode->timing;
+
+	h_total = dsi_h_total_dce(timing);
+	v_total = DSI_V_TOTAL(timing);
+	bit_rate = h_total * v_total * timing->refresh_rate * dsi_mode->bpp;
+	bit_rate_per_lane =
+		do_div(bit_rate, dsi_display->panel->host_config.num_data_lanes);
+	return bit_rate_per_lane;
+}
+
+static int _dsi_display_check_dms_caps(struct dsi_display *display,
+	struct dsi_display_mode *display_mode,
+	struct dsi_dms_vid_caps *dms_vid_caps,
+	struct dsi_display_mode *display_mode_expected,
+	u64 dsi_clock_expected)
+{
+	int i;
+
+	if (!display || !display_mode || !dms_vid_caps || !display_mode_expected) {
+		DSI_ERR("invalid parameters\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * When qcom,dms-vid-maintain-const-clk is set, it needs the
+	 * same dsi clock and phy timing array in each timing node.
+	 */
+	if (dms_vid_caps->type && dms_vid_caps->maintain_const_clk) {
+		if (dsi_display_caculate_dsi_clock(display, display_mode) !=
+				dsi_clock_expected) {
+			DSI_ERR("qcom,dms-vid-maintain-const-clk needs same dsi clock\n");
+			return -EINVAL;
+		}
+		if (display_mode_expected->priv_info->phy_timing_len !=
+				display_mode->priv_info->phy_timing_len) {
+			DSI_ERR("qcom,dms-vid-maintain-const-clk needs same phy\n");
+			return -EINVAL;
+		}
+		for (i = 0; i < display_mode->priv_info->phy_timing_len; ++i) {
+			if (display_mode_expected->priv_info->phy_timing_val[i] !=
+					display_mode->priv_info->phy_timing_val[i]) {
+				DSI_ERR("qcom,dms-vid-maintain-const-clk needs same phy\n");
+				return -EINVAL;
+			}
+		}
+	}
+
+	return 0;
+}
+
 int dsi_display_get_modes_helper(struct dsi_display *display,
 	struct dsi_display_ctrl *ctrl, u32 timing_mode_count,
 	struct dsi_dfps_capabilities dfps_caps, struct dsi_qsync_capabilities *qsync_caps,
 	struct dsi_dyn_clk_caps *dyn_clk_caps, struct dsi_avr_capabilities *avr_caps,
-	struct dsi_esync_capabilities *esync_caps)
+	struct dsi_esync_capabilities *esync_caps, struct dsi_dms_vid_caps *dms_vid_caps)
 {
 	int dsc_modes = 0, nondsc_modes = 0, rc = 0, i, start, end;
 	u32 num_dfps_rates, mode_idx, sublinks_count, array_idx = 0;
 	bool is_split_link, support_cmd_mode, support_video_mode;
 	struct dsi_host_common_cfg *host = &display->panel->host_config;
+	u64 dsi_clock;
 
 	for (mode_idx = 0; mode_idx < timing_mode_count; mode_idx++) {
 		struct dsi_display_mode display_mode;
@@ -7825,6 +7914,12 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		rc = dsi_panel_get_mode(display->panel, mode_idx,
 						&display_mode,
 						topology_override);
+
+		if (display->cmdline_timing == NO_OVERRIDE && display_mode.is_preferred) {
+			display->cmdline_timing = display_mode.mode_idx;
+			is_preferred = true;
+		}
+
 		if (rc) {
 			DSI_ERR("[%s] failed to get mode idx %d from panel\n",
 				   display->name, mode_idx);
@@ -7891,6 +7986,8 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			display_mode.timing.h_skew *= display->ctrl_count;
 			display_mode.pixel_clk_khz *= display->ctrl_count;
 		}
+
+		dsi_clock = dsi_display_caculate_dsi_clock(display, &display->modes[0]);
 
 		start = array_idx;
 		for (i = 0; i < num_dfps_rates; i++) {
@@ -7978,6 +8075,13 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			display->modes[start].is_preferred = true;
 		}
 
+		rc = _dsi_display_check_dms_caps(display, &display_mode, dms_vid_caps,
+			&display->modes[0], dsi_clock);
+		if (rc) {
+			DSI_ERR("invalid dynamic mode setting configuration\n");
+			return rc;
+		}
+
 		bit_clk_list = &display_mode.priv_info->bit_clk_list;
 		if (support_video_mode && dfps_caps.dfps_support) {
 			if (dyn_clk_caps->dyn_clk_support) {
@@ -8007,6 +8111,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 	struct dsi_qsync_capabilities *qsync_caps;
 	struct dsi_avr_capabilities *avr_caps;
 	struct dsi_esync_capabilities *esync_caps;
+	struct dsi_dms_vid_caps *dms_vid_caps;
 
 	if (!display || !out_modes) {
 		DSI_ERR("Invalid params\n");
@@ -8041,6 +8146,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 	avr_caps = &(display->panel->avr_caps);
 	esync_caps = &(display->panel->esync_caps);
+	dms_vid_caps = &(display->panel->dms_vid_caps);
 
 	timing_mode_count = display->panel->num_timing_nodes;
 
@@ -8050,7 +8156,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 		display->cmdline_timing = NO_OVERRIDE;
 
 	rc = dsi_display_get_modes_helper(display, ctrl, timing_mode_count,
-			dfps_caps, qsync_caps, dyn_clk_caps, avr_caps, esync_caps);
+			dfps_caps, qsync_caps, dyn_clk_caps, avr_caps, esync_caps, dms_vid_caps);
 	if (rc)
 		goto error;
 

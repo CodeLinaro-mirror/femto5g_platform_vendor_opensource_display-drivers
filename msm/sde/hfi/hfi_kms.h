@@ -252,7 +252,8 @@ int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms);
  * @crtc_state: Pointer to DRM CRTC state
  * Return: 0 on success or error code
  */
-int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state);
+int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state,
+	enum hfi_device_res_state vm_state);
 
 /**
  * hfi_kms_send_trace_cfg - enable/disable trace logs

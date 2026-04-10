@@ -2566,7 +2566,9 @@ static int _sde_encoder_resource_control_helper(struct drm_encoder *drm_enc, boo
 			if (sde_conn)
 				sde_conn->vrr_cmd_state = VRR_CMD_IDLE_ENTRY_START;
 
-			sde_crtc_copr_status_event_notify(drm_crtc);
+			if (!IS_DISP_OP_HFI(disp_op))
+				sde_crtc_copr_status_event_notify(drm_crtc, NULL);
+
 			sde_encoder_cancel_vrr_timers(drm_enc);
 			sde_encoder_handle_video_psr_self_refresh(sde_enc, true);
 			sde_encoder_vhm_wakelock(sde_enc, false);
@@ -4479,6 +4481,7 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 			sde_encoder_in_clone_mode(drm_enc)) ||
 			!(msm_is_mode_seamless_vrr(msm_mode)
 			|| msm_is_mode_seamless_dms(msm_mode)
+			|| msm_is_mode_seamless_dms_vid(msm_mode)
 			|| msm_is_mode_seamless_dyn_clk(msm_mode)))
 		kthread_init_delayed_work(&sde_enc->delayed_off_work,
 			sde_encoder_off_work);
@@ -9642,11 +9645,14 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc, void *args)
 	struct sde_encoder_virt *sde_enc = NULL;
 	struct sde_encoder_phys *phys = NULL;
 	u32 current_misr_value[MAX_DSI_DISPLAYS] = {0};
-	int rc = 0, i = 0;
+	int rc = 0;
+	u32 i = 0;
+	u64 num_valid_misr = 0;
 	bool misr_updated = false, roi_updated = false;
 	struct msm_roi_list *prev_roi, *c_state_roi;
 	enum msm_disp_op disp_op = sde_encoder_get_disp_op(drm_enc);
 	u32 *misr_data;
+	struct drm_msm_misr_sign misr_sign;
 
 	if (!drm_enc)
 		return;
@@ -9729,9 +9735,29 @@ void sde_encoder_misr_sign_event_notify(struct drm_encoder *drm_enc, void *args)
 
 	if (misr_updated || roi_updated) {
 		event.type = DRM_EVENT_MISR_SIGN;
-		event.length = sizeof(c_conn->previous_misr_sign);
+		event.length = sizeof(misr_sign);
+
+		if (c_conn->previous_misr_sign.roi_list.num_rects > SDE_MAX_ROI) {
+			SDE_ERROR("num rects %d exceeds max supported rects\n",
+				c_conn->previous_misr_sign.roi_list.num_rects);
+			return;
+		}
+		misr_sign.roi_list.num_rects = c_conn->previous_misr_sign.roi_list.num_rects;
+		for (i = 0; i < misr_sign.roi_list.num_rects; i++)
+			misr_sign.roi_list.roi[i] = c_conn->previous_misr_sign.roi_list.roi[i];
+
+		num_valid_misr = atomic64_read(&c_conn->previous_misr_sign.num_valid_misr);
+		if (num_valid_misr > MAX_DSI_DISPLAYS) {
+			SDE_ERROR("num valid misr %lld exceeds max supported displays\n",
+				num_valid_misr);
+			return;
+		}
+		misr_sign.num_valid_misr = num_valid_misr;
+		for (i = 0; i < misr_sign.num_valid_misr; i++)
+			misr_sign.misr_sign_value[i] =
+				c_conn->previous_misr_sign.misr_sign_value[i];
 		msm_mode_object_event_notify(&connector->base, connector->dev, &event,
-						(u8 *)&c_conn->previous_misr_sign);
+						(u8 *)&misr_sign);
 	}
 }
 
