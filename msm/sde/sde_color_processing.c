@@ -2530,6 +2530,8 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 	hw_cfg.broadcast_disabled = catalog->dma_cfg.broadcast_disabled;
 	hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
 	hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
+	memcpy(hw_cfg.skip_planes, sde_crtc->skip_blend_planes, sizeof(hw_cfg.skip_planes));
+
 	for (i = 0; i < hw_cfg.num_of_mixers; i++) {
 		hw_dspp = sde_crtc->mixers[i].hw_dspp;
 		if (!hw_dspp || i >= DSPP_MAX)
@@ -4106,6 +4108,7 @@ static void _sde_cp_update_list(struct sde_cp_node *prop_node,
 	case SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF:
 	case SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF2:
 	case SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF3:
+	case SDE_CP_CRTC_DSPP_QRTC_BUFF:
 		if (cp_dirty_list)
 			list_add_tail(&prop_node->cp_dirty_list,
 					&crtc->cp_dirty_list);

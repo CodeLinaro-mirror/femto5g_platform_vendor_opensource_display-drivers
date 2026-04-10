@@ -6,7 +6,16 @@
 #ifndef _DP_HDCP_H_
 #define _DP_HDCP_H_
 
+#include <linux/device.h>
+
 #include "sde_hdcp.h"
+
+/**
+ * dp_hdcp_get_msm_hdcp_dev() - get msm-hdcp device from device tree
+ *
+ * Return: pointer to msm-hdcp device on success, NULL otherwise
+ */
+struct device *dp_hdcp_get_msm_hdcp_dev(void);
 
 /**
  * dp_hdcp1x_init() - Initialize DP HDCP TrustZone bridge

@@ -10,6 +10,7 @@
 #include "hfi_catalog.h"
 #include "hfi_connector.h"
 #include "hfi_utils.h"
+#include "msm_lsr_core.h"
 
 #if IS_ENABLED(CONFIG_DRM_SDE_LSR)
 /**
@@ -59,6 +60,13 @@ int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev);
  * @val: pointer to store value
  */
 int hfi_lsr_fw_debug_get(u64 *val);
+
+/**
+ * hfi_lsr_trigger_ssr - Triggers LSR SSR
+ * @val: Type of SSR trigger
+ * @dev: pointer to drm device
+ */
+int hfi_lsr_trigger_ssr(u64 val, struct drm_device *dev);
 
 /**
  * hfi_wb_lsr_add_props - Adds LSR properties on WB connector
@@ -136,6 +144,25 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
 void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state);
 
 extern int lsr_fw_reset(void);
+
+/**
+ * hfi_lsr_notify_ssr_event - notify lsr ssr events
+ * @ssr_event: type of ssr event
+ * @dev: pointer to drm_device
+ */
+int hfi_lsr_notify_ssr_event(enum hfi_device_ssr_event ssr_event, struct drm_device *dev);
+
+/**
+ * hfi_lsr_wait_for_display_off - wait for lsr displays to turn off
+ * @dev: pointer to drm_device
+ */
+int hfi_lsr_wait_for_display_off(struct drm_device *dev);
+
+/**
+ * hfi_reset_hwfence - Reset hwfence
+ * @dev: pointer to drm_device
+ */
+int hfi_reset_hwfence(struct drm_device *dev);
 #else
 static inline
 int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
@@ -173,6 +200,12 @@ int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
 
 static inline
 int hfi_lsr_fw_debug_get(u64 *val)
+{
+	return 0;
+}
+
+static inline
+int hfi_lsr_trigger_ssr(u64 val, struct drm_device *dev)
 {
 	return 0;
 }
@@ -227,6 +260,22 @@ static inline void sde_wb_connector_reset_reproj_state(struct sde_connector_stat
 }
 
 static inline int lsr_fw_reset(void)
+{
+	return 0;
+}
+
+static inline int hfi_lsr_notify_ssr_event(enum hfi_device_ssr_event ssr_event,
+	struct drm_device *dev)
+{
+	return 0;
+}
+
+static inline int hfi_lsr_wait_for_display_off(struct drm_device *dev)
+{
+	return 0;
+}
+
+static inline int hfi_reset_hwfence(struct drm_device *dev)
 {
 	return 0;
 }

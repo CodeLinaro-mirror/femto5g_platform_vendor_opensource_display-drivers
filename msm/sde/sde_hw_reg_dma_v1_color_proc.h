@@ -576,6 +576,13 @@ void reg_dmav1_setup_demurav3(struct sde_hw_dspp *ctx, void *cfg);
 void reg_dmav1_setup_demurav4(struct sde_hw_dspp *ctx, void *cfg);
 
 /**
+ * reg_dmav1_setup_demura_pu_cfgv4() - function to set up the demura v4 pu configuration.
+ * @ctx: dspp instance
+ * @cfg: pointer to struct sde_hw_cp_cfg
+ */
+void reg_dmav1_setup_demura_pu_cfgv4(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
  * reg_dmav1_setup_qrtc_config_v1() - function to set up the QRTC V1 configuration.
  * @ctx: dspp instance
  * @cfg: pointer to struct sde_hw_cp_cfg

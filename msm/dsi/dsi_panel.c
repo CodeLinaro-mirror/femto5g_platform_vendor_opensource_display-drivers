@@ -4327,6 +4327,9 @@ static int dsi_panel_parse_esd_config(struct dsi_panel *panel)
 	if (!esd_config->esd_enabled)
 		return 0;
 
+	esd_config->esd_host_controlled = utils->read_bool(utils->data,
+		"qcom,esd-check-host-controlled");
+
 	rc = utils->read_string(utils->data,
 			"qcom,mdss-dsi-panel-status-check-mode", &string);
 	if (!rc) {

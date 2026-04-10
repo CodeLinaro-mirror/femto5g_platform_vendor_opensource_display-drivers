@@ -216,6 +216,7 @@ module_entry(
             "msm/dsi/dsi_drm.c",
             "msm/dsi/dsi_display.c",
             "msm/dsi/dsi_display_manager.c",
+            "msm/dsi/dsi_sim_bridge.c",
             "msm/dsi/dsi_panel.c",
             "msm/dsi/dsi_clk_manager.c",
             "msm/dsi/dsi_display_test.c",

@@ -8259,6 +8259,9 @@ static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
 
 	if (catalog->ubwc_bw_calc_rev)
 		sde_kms_info_add_keyint(info, "ubwc_bw_calc_ver", catalog->ubwc_bw_calc_rev);
+
+	sde_kms_info_add_keyint(info, "has_demura_single_rect_support",
+			catalog->has_demura_single_rect_support);
 }
 
 /**
@@ -8453,6 +8456,10 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			sde_kms_info_add_keyint(info, "is_udc_supported",
 					catalog->is_udc_supported);
 		}
+
+		if (catalog->qrtc_count)
+			sde_kms_info_add_keyint(info, "qrtc_count",
+					catalog->qrtc_count);
 	}
 
 	sde_kms_info_add_keyint(info, "dsc_block_count", catalog->dsc_count);
