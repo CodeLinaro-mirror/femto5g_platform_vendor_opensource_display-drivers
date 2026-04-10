@@ -266,6 +266,18 @@ struct hfi_display_power_event_data {
 };
 
 /*
+ * struct hfi_display_prog_line_event_data - programmable line event data
+ * @timestamp_lo - Lower 32 bits of the 64-bit programmable line event timestamp in ns.
+ * @timestamp_hi - Higher 32 bits of the 64-bit programmable line event timestamp in ns.
+ * @prog_line_index - programmable line event index for the timestamp.
+ */
+struct hfi_display_prog_line_event_data {
+	u32 timestamp_lo;
+	u32 timestamp_hi;
+	u32 prog_line_index;
+};
+
+/*
  * @enum hfi_display_idle_timer_control
  * @brief Enum to control idle timer.
  *
@@ -334,6 +346,8 @@ enum hfi_display_idle_timer_control {
  *     Event ID for HDCP feature support query.
  * @var HFI_EVENT_AIQE_COPR
  *   EVENT ID for AIQE COPR.
+ * @HFI_EVENT_PROG_LINE_INTR:
+ *     Event ID for Program Line Interrupt.
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC               = 0x1,
@@ -360,6 +374,7 @@ enum hfi_display_event_id {
 	HFI_EVENT_HDCP2X_TIMEOUT      = 0x16,
 	HFI_EVENT_HDCP_FEATURE_SUPPORTED = 0x17,
 	HFI_EVENT_AIQE_COPR           = 0x18,
+	HFI_EVENT_PROG_LINE_INTR      = 0x19,
 };
 
 /*
