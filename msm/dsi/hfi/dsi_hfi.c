@@ -901,6 +901,18 @@ static void dsi_hfi_populate_dfps_caps(struct dsi_panel *panel,
 	hfi_dfps_caps->type = (enum hfi_panel_dfps_type)panel->dfps_caps.type;
 }
 
+static void dsi_hfi_populate_poms_caps(struct dsi_panel *panel,
+					struct hfi_panel_operating_mode_caps *hfi_poms_caps)
+{
+	if (!panel || !hfi_poms_caps) {
+		DSI_ERR("null pointer");
+		return;
+	}
+
+	hfi_poms_caps->panel_mode_switch_enabled = panel->panel_mode_switch_enabled;
+	hfi_poms_caps->vsync_aligned_switch = panel->poms_align_vsync;
+}
+
 static int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 				struct dsi_panel_cmd_set *cmd_set,
 				void **sde_vaddr, void **hfi_vaddr)
@@ -1293,6 +1305,11 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->lp11_init = panel->lp11_init;
 	if (panel_generic_caps->lp11_init)
 		panel_generic_caps->valid_gen_caps_cnt++;
+
+	if (panel->panel_mode_switch_enabled) {
+		dsi_hfi_populate_poms_caps(panel, &panel_generic_caps->poms_caps);
+		panel_generic_caps->valid_gen_caps_cnt++;
+	}
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -1556,6 +1573,14 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 					(sizeof(qsync_params) / sizeof(u32))),
 					(void *)&qsync_params);
 		kv_size += sizeof(qsync_params);
+	}
+
+	if (panel_generic_caps.poms_caps.panel_mode_switch_enabled) {
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY,
+					0, (sizeof(panel_generic_caps.poms_caps) / sizeof(u32))),
+					(void *)&panel_generic_caps.poms_caps);
+		kv_size += sizeof(panel_generic_caps.poms_caps);
 	}
 
 	if (panel_generic_caps.dfps_caps.dfps_support) {

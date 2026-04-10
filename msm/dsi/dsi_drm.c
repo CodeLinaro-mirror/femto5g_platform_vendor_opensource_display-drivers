@@ -265,15 +265,23 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		return;
 	}
 
-	SDE_ATRACE_BEGIN("dsi_display_prepare");
-	rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
-	if (rc) {
-		DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
-		       c_bridge->id, rc);
+	/*
+	 * POMS (HFI mode only): HFI_COMMAND_DISPLAY_SET_MODE was already sent
+	 * from dsi_bridge_disable() before the disable sequence began.
+	 * Skip display_prepare here to avoid sending a duplicate SET_MODE
+	 * to the firmware. Panel power supplies are already on for POMS.
+	 */
+	if (!(display->poms_pending && disp_op == MSM_DISP_OP_HFI)) {
+		SDE_ATRACE_BEGIN("dsi_display_prepare");
+		rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
+		if (rc) {
+			DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
+			       c_bridge->id, rc);
+			SDE_ATRACE_END("dsi_display_prepare");
+			return;
+		}
 		SDE_ATRACE_END("dsi_display_prepare");
-		return;
 	}
-	SDE_ATRACE_END("dsi_display_prepare");
 
 	SDE_ATRACE_BEGIN("dsi_display_enable");
 	rc = display->display_ops.display_enable[disp_op](c_bridge->display);
@@ -333,12 +341,14 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 	struct dsi_display *display;
 	struct sde_connector_state *conn_state;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
+	enum msm_disp_op disp_op;
 
 	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
 	display = c_bridge->display;
+	disp_op = display->ctrl[0].ctrl->disp_op;
 
 	display->enabled = false;
 
@@ -351,6 +361,22 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 
 		display->poms_pending = msm_is_mode_seamless_poms(
 						&conn_state->msm_mode);
+
+		/*
+		 * For POMS (Panel Operating Mode Switch) in HFI mode, notify the
+		 * firmware of the upcoming CMD<->VID switch before the disable
+		 * sequence begins. display_prepare() will send
+		 * HFI_COMMAND_DISPLAY_SET_MODE with the appropriate POMS flag
+		 * (DSI_MODE_FLAG_POMS_TO_VID or DSI_MODE_FLAG_POMS_TO_CMD)
+		 * derived from the current panel_mode, allowing the firmware to
+		 * handle the mode switch correctly.
+		 */
+		if (display->poms_pending && disp_op == MSM_DISP_OP_HFI) {
+			rc = display->display_ops.display_prepare[disp_op](display);
+			if (rc)
+				DSI_ERR("[%d] failed to send POMS SET_MODE HFI, rc=%d\n",
+					c_bridge->id, rc);
+		}
 
 		sde_connector_helper_bridge_disable(display->drm_conn);
 	}
