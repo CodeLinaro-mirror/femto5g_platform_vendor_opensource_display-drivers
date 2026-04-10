@@ -2130,6 +2130,70 @@ error:
 
 }
 
+static ssize_t debugfs_cmd_remap_write(struct file *file,
+				const char __user *user_buf,
+				size_t count, loff_t *ppos)
+{
+	struct dsi_display *display = file->private_data;
+	char buf[256];
+	u32 standard_cmd_type, custom_cmd_type;
+	u32 cmd_remap_table[DSI_CMD_SET_MAX];
+	int rc = 0;
+	int i;
+
+	if (!display)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+
+	/* Parse input: "standard_cmd_type custom_cmd_type" */
+	if (sscanf(buf, "%u %u", &standard_cmd_type, &custom_cmd_type) != 2) {
+		DSI_ERR("Invalid format. Use: <standard_cmd_type> <custom_cmd_type>\n");
+		return -EINVAL;
+	}
+
+	/* Validate cmd_type ranges */
+	if (standard_cmd_type >= DSI_CMD_SET_MAX || custom_cmd_type >= DSI_CUSTOM_CMD_SET_MAX) {
+		DSI_ERR("cmd_type out of range. std_type=%u (max=%u), custom_type=%u (max=%u)\n",
+			standard_cmd_type, DSI_CMD_SET_MAX, custom_cmd_type,
+			DSI_CUSTOM_CMD_SET_MAX);
+		return -EINVAL;
+	}
+
+	/*
+	 * custom_cmd_type must be in the custom range OR equal to
+	 * standard_cmd_type (pointing back to the original mapping).
+	 */
+	if (custom_cmd_type < DSI_CUSTOM_CMD_SET_START_IDX &&
+			custom_cmd_type != standard_cmd_type) {
+		DSI_ERR("custom_cmd_type=%u must be >= %u or equal to standard_cmd_type=%u\n",
+			custom_cmd_type, DSI_CUSTOM_CMD_SET_START_IDX, standard_cmd_type);
+		return -EINVAL;
+	}
+
+	/* Build cmd_remap_table: initialize all entries to DSI_CMD_SET_MAX (no remap) */
+	for (i = 0; i < DSI_CMD_SET_MAX; i++)
+		cmd_remap_table[i] = DSI_CMD_SET_MAX;
+	cmd_remap_table[standard_cmd_type] = custom_cmd_type;
+
+	rc = dsi_hfi_add_dsi_cmd_remap(display, cmd_remap_table, DSI_CMD_SET_MAX);
+	if (rc) {
+		DSI_ERR("Failed to add DSI cmd remap, rc=%d\n", rc);
+		return rc;
+	}
+
+	return count;
+}
+
 static const struct file_operations dump_info_fops = {
 	.open = simple_open,
 	.read = debugfs_dump_info_read,
@@ -2156,6 +2220,11 @@ static const struct file_operations dsi_command_scheduling_fops = {
 	.open = simple_open,
 	.write = debugfs_update_cmd_scheduling_params,
 	.read = debugfs_read_cmd_scheduling_params,
+};
+
+static const struct file_operations cmd_remap_fops = {
+	.open = simple_open,
+	.write = debugfs_cmd_remap_write,
 };
 
 static int dsi_display_debugfs_init(struct dsi_display *display)
@@ -2223,6 +2292,18 @@ static int dsi_display_debugfs_init(struct dsi_display *display)
 	if (IS_ERR_OR_NULL(dump_file)) {
 		rc = PTR_ERR(dump_file);
 		DSI_ERR("[%s] debugfs for cmd scheduling file failed, rc=%d\n",
+		       display->name, rc);
+		goto error_remove_dir;
+	}
+
+	dump_file = debugfs_create_file("cmd_remap",
+					0200,
+					dir,
+					display,
+					&cmd_remap_fops);
+	if (IS_ERR_OR_NULL(dump_file)) {
+		rc = PTR_ERR(dump_file);
+		DSI_ERR("[%s] debugfs for cmd remap file failed, rc=%d\n",
 		       display->name, rc);
 		goto error_remove_dir;
 	}
