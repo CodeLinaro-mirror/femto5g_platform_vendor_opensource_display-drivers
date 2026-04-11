@@ -30,6 +30,7 @@
 #include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_file.h>
+#include <drm/drm_client.h>
 #include <media/cec.h>
 #include <media/cec-notifier.h>
 
@@ -543,6 +544,9 @@ static void lt9611uxc_hpd_work(struct work_struct *work)
 		if (lt9611uxc->connector.status == connector_status_disconnected)
 			lt9611uxc_release_edid(lt9611uxc);
 		lt9611uxc_helper_hotplug_event(lt9611uxc);
+
+		drm_kms_helper_hotplug_event(lt9611uxc->connector.dev);
+		drm_client_dev_hotplug(lt9611uxc->connector.dev);
 	} else {
 
 		mutex_lock(&lt9611uxc->ocm_lock);
@@ -930,6 +934,21 @@ static void lt9611uxc_video_setup(struct lt9611uxc *lt9611uxc,
 	regmap_write(lt9611uxc->regmap, 0xd01b, (u8)(hfront_porch % 256));
 }
 
+static void lt9611uxc_bridge_pre_enable(struct drm_bridge *bridge)
+{
+	struct lt9611uxc *lt9611uxc;
+	if (!bridge)
+		return;
+
+	lt9611uxc = bridge_to_lt9611uxc(bridge);
+
+	lt9611uxc_reset(lt9611uxc);
+
+	lt9611uxc_lock(lt9611uxc);
+	lt9611uxc_video_setup(lt9611uxc, &lt9611uxc->curr_mode);
+	lt9611uxc_unlock(lt9611uxc);
+}
+
 static void lt9611uxc_bridge_enable(struct drm_bridge *bridge)
 {
 	struct lt9611uxc *lt9611uxc;
@@ -1006,6 +1025,9 @@ static enum drm_connector_status lt9611uxc_bridge_detect(struct drm_bridge *brid
 	int ret;
 	bool connected = true;
 
+	bool was_connected;
+	was_connected = lt9611uxc->hdmi_connected;
+
 	lt9611uxc_lock(lt9611uxc);
 
 	if (lt9611uxc->hpd_supported) {
@@ -1020,14 +1042,33 @@ static enum drm_connector_status lt9611uxc_bridge_detect(struct drm_bridge *brid
 
 	lt9611uxc_unlock(lt9611uxc);
 
+	if (was_connected != connected) {
+		lt9611uxc_release_edid(lt9611uxc);
+	}
+
 	return connected ?  connector_status_connected :
 				connector_status_disconnected;
 }
 
 static int lt9611uxc_wait_for_edid(struct lt9611uxc *lt9611uxc)
 {
-	return wait_event_interruptible_timeout(lt9611uxc->wq, lt9611uxc->edid_read,
-			msecs_to_jiffies(2000));
+	unsigned int reg_val = 0;
+	int ret;
+	unsigned long timeout;
+
+	timeout = jiffies + msecs_to_jiffies(5000);
+	while (time_before(jiffies, timeout)) {
+		lt9611uxc_lock(lt9611uxc);
+		ret = regmap_read(lt9611uxc->regmap, 0xb023, &reg_val);
+		lt9611uxc_unlock(lt9611uxc);
+
+		if (ret == 0 && (reg_val & BIT(0))) {
+			return 1;
+		}
+	}
+
+	return 0;
+
 }
 
 static int lt9611uxc_get_edid_block(void *data, u8 *buf, unsigned int block, size_t len)
@@ -1084,6 +1125,7 @@ static struct edid *lt9611uxc_bridge_get_edid(struct drm_bridge *bridge,
 static const struct drm_bridge_funcs lt9611uxc_bridge_funcs = {
 	.attach = lt9611uxc_bridge_attach,
 	.mode_valid = lt9611uxc_bridge_mode_valid,
+	.pre_enable = lt9611uxc_bridge_pre_enable,
 	.mode_set = lt9611uxc_bridge_mode_set,
 	.detect = lt9611uxc_bridge_detect,
 	.get_edid = lt9611uxc_bridge_get_edid,
