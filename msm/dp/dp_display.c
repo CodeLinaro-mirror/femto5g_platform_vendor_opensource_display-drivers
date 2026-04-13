@@ -1717,9 +1717,8 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 	dp->aux->abort(dp->aux, true);
 
 	mutex_lock(&dp->session_lock);
-	if (dp->active_stream_cnt)
-		dp_display_clean(dp, skip_wait);
 
+	dp_display_clean(dp, skip_wait);
 	dp_display_host_unready(dp);
 	dp->tot_lm_blks_in_use = 0;
 	mutex_unlock(&dp->session_lock);
