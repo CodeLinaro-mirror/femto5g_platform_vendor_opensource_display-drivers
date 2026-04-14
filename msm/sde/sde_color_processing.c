@@ -2857,6 +2857,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 
 		mutex_unlock(&sde_crtc->crtc_cp_lock);
 	}
+	_sde_cp_dspp_flush_helper(sde_crtc, SDE_CP_CRTC_DSPP_SB);
 	_sde_cp_mark_active_dirty_internal(sde_crtc);
 }
 
