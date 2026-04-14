@@ -947,6 +947,7 @@ enum sde_ppb_size_option {
  * @SDE_FEATURE_LSR            Support Display LSR
  * @SDE_FEATURE_FRAME_SEQ_CHECK	 Add check on frame sequence number to avoid duplicate frame events
  * @SDE_FEATURE_QRTC           QRTC supported
+ * @SDE_FEATURE_A10_Y10        A10/Y10 pipe format supported
  * @SDE_FEATURE_MAX:             MAX features value
  */
 enum sde_mdss_features {
@@ -1005,6 +1006,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_LSR,
 	SDE_FEATURE_FRAME_SEQ_CHECK,
 	SDE_FEATURE_QRTC,
+	SDE_FEATURE_A10_Y10,
 	SDE_FEATURE_MAX
 };
 
