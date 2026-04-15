@@ -9533,6 +9533,8 @@ void reg_dmav1_setup_qrtc_config_v1(struct sde_hw_dspp *ctx, void *cfg, void *bu
 			REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE, QRTC);
 
 	hfi_cfg.flags = hw_cfg->flags;
+	if (qrtc_buffer->flags & HFI_QRTC_SECURE_BUFF)
+		hfi_cfg.flags = hw_cfg->flags | HFI_QRTC_SECURE_BUFF;
 	hfi_cfg.lut_dma_flags = hw_cfg->flags;
 	hfi_cfg.iova_l = (kick_off.dma_buf->iova & 0xFFFFFFFF);
 	hfi_cfg.iova_h = (kick_off.dma_buf->iova >> 32) & 0xFFFFFFFF;
