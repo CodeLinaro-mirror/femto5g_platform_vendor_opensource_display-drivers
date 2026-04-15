@@ -969,7 +969,7 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 				goto err_unmap;
 			}
 
-			if (((uint64_t)sg_dma_address(sgt->sgl) >=
+			if (((uint64_t)sg_dma_address(sgt->sgl) >
 					PHY_ADDR_4G - sgt->sgl->length)) {
 				SDEROT_ERR(
 					"ion buffer mapped size invalid, size=%d\n",
