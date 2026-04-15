@@ -915,7 +915,6 @@ static int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 	if (hfi_priv->configured)
 		goto end;
 
-	hfi_priv->max_streams = (hfi_priv->mst_en ? DP_STREAMS_MAX : 1);
 	for (i = 0; i < hfi_priv->max_streams; i++) {
 		rc = _init_addr_maps(hfi_priv->hfi[i]);
 		if (rc) {
@@ -3127,6 +3126,16 @@ static bool dp_mgr_hfi_hpd_detect(struct dp_client *client, int panel_id)
 	return hfi->connected;
 }
 
+static void _parse_mst(struct dp_mgr_hfi_priv *hfi_priv)
+{
+	hfi_priv->mst_en = false;
+	hfi_priv->max_streams = 1;
+
+	if (of_property_read_bool(hfi_priv->pdev->dev.of_node, "qcom,mst-enable")) {
+		hfi_priv->mst_en = true;
+		hfi_priv->max_streams = DP_STREAMS_MAX;
+	}
+}
 
 struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_client *debug)
 {
@@ -3195,6 +3204,8 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 	client->get_intf_info = dp_mgr_hfi_get_info;
 	client->pm_prepare = dp_mgr_hfi_pm_prepare;
 	client->pm_complete = dp_mgr_hfi_pm_complete;
+
+	_parse_mst(hfi_priv);
 
 	init_completion(&hfi_priv->hpd_comp);
 
