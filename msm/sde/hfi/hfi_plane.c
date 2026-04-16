@@ -105,6 +105,7 @@ static struct base_prop_lookup hfi_plane_repro_props_map[] = {
 	{PLANE_PROP_REPROJ_PLANE_EQUATION, HFI_PROPERTY_LAYER_LSR_REPROJ_PLANE_EQ},
 	{PLANE_PROP_REPROJ_RENDER_FRUSTUM, HFI_PROPERTY_LAYER_LSR_RENDER_FRUSTUM},
 	{PLANE_PROP_REPROJ_LAYER_GAMMA,	HFI_PROPERTY_LAYER_GAMMA},
+	{PLANE_PROP_DISPARITY_PHASE, HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE},
 };
 
 static struct base_prop_lookup hfi_plane_csc_props_map[] = {
@@ -204,6 +205,15 @@ static int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		gamma_type = sde_plane_get_property(state, PLANE_PROP_REPROJ_LAYER_GAMMA);
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 			phfi->hfi_pipe_id, HFI_VAL_U32, &gamma_type, sizeof(u32));
+	case HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE: {
+		u32 disparity_phase = sde_plane_get_property(state, PLANE_PROP_DISPARITY_PHASE);
+
+		if (!disparity_phase)
+			return 0;
+		prop_id = HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE;
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+			phfi->hfi_pipe_id, HFI_VAL_U32, &disparity_phase, sizeof(u32));
+	}
 	default:
 		HFI_ERROR_PLANE(phfi, "unsupported HFI property\n");
 		return -EINVAL;
