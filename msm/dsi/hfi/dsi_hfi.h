@@ -21,6 +21,24 @@
 #define JITTER_SIZE 2
 #define NUM_VARIABLE_DPHY_TIMINGS 14
 
+/*
+ * MAX_ALLOWED_DCS_CMD_TYPES - maximum number of DCS command types supported over HFI.
+ *
+ * The dsize field in HFI_PACKKEY is 8-bit (bits[31:24], max = U8_MAX = 255).
+ * When sending DCS cmd info, dsize is computed as:
+ *
+ *   dsize = (sizeof(struct dsi_hfi_panel_per_cmd_type) / sizeof(u32)) * count + 1
+ *
+ * where:
+ *   - sizeof(struct dsi_hfi_panel_per_cmd_type) / sizeof(u32) = 5  (5 u32 fields per entry)
+ *   - +1 accounts for the 'count' header field in dsi_hfi_per_cmd_type_payload
+ *
+ * For dsize to not overflow the 8-bit field:
+ *   5 * count + 1 <= 255  =>  count <= 50
+ *
+ */
+#define MAX_ALLOWED_DCS_CMD_TYPES  50
+
 /**
  * struct dsi_value_to_prop_lookup - contains map with hfi properties and
  *                                   corresponding values

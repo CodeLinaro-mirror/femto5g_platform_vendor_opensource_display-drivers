@@ -994,6 +994,12 @@ static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 		if (!priv_info->cmd_sets[i].count)
 			continue;
 
+		if (j >= MAX_ALLOWED_DCS_CMD_TYPES) {
+			DSI_ERR("DCS cmd type count exceeds HFI dsize 8-bit limit (%d)\n",
+				MAX_ALLOWED_DCS_CMD_TYPES);
+			return -EINVAL;
+		}
+
 		panel_timing_caps->payload.hfi_per_type_array[j].hfi_buff_struct_offset =
 							dsi_hfi->running_hfi_offset;
 		panel_timing_caps->payload.hfi_per_type_array[j].sde_buff_type_offset =
