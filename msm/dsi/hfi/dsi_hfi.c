@@ -1801,9 +1801,11 @@ static int _dsi_hfi_append_panel_timing_caps(struct dsi_display_hfi *display_hfi
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
 			HFI_PACKKEY(HFI_PROPERTY_PANEL_DCS_CMD_INFO, idx,
-			sizeof(timing_caps->payload) / sizeof(u32)),
+			((sizeof(struct dsi_hfi_panel_per_cmd_type) / sizeof(u32)) *
+			timing_caps->payload.count + 1)),
 			(void *)&timing_caps->payload);
-		kv_size += sizeof(timing_caps->payload);
+		kv_size += ((sizeof(struct dsi_hfi_panel_per_cmd_type) / sizeof(u32)) *
+			timing_caps->payload.count + 1) * sizeof(u32);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
 			HFI_PACKKEY(HFI_PROPERTY_PANEL_DPHY_TIMINGS, idx,
