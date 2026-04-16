@@ -2122,6 +2122,30 @@
  */
 #define HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY                    0x00030031
 
+/*!
+ * @def HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE
+ * @brief This property sets injection interval(in frames) of disparity layer for LSR reprojection
+ *        display. Host is expected to send this property as part of the
+ *        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload. A value of 0 disables the feature
+ *        and no disparity layer is injected into any frame during reprojection processing.
+ *        A value of 1 means that a disparity layer is injected into every frame during reprojection
+ *        processing. A value of N means that a disparity layer is injected into every Nth frame
+ *        during reprojection processing. The default value is 0, which means that the feature is
+ *        disabled by default. This property is valid only for LSR reprojection display use cases
+ *        and should not be used for other display use cases
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE  |
+ *                               | (version=0 << 20)  |
+ *                               | (dsize=1 << 24)
+ *     (u32_value) payload [1]   | layer id
+ *     (u32_value) payload [2]   | Disparity layer injection interval in frames
+ */
+#define HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE                     0x00030032
+
 /*
  * All layer color properties begin here
  */
