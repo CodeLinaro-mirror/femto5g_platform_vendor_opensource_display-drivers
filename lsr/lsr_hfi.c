@@ -1428,8 +1428,6 @@ int iris_hfi_core_init(void *device)
 		goto err_core_init;
 	}
 
-	__enable_subcaches(device);
-
 	if (dev->res->pm_qos.latency_us) {
 		int err = 0;
 		u32 i, cpu;
