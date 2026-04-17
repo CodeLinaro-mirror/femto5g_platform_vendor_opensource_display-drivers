@@ -759,6 +759,24 @@
 #define HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS                        0x00020031
 
 /*
+ * HFI_PROPERTY_DISPLAY_EPT - Sets the Expected Preset Time which is used to
+ *                            determine when the hardware frame trigger should
+ *                            be set. Host is expected to send this packet as part of
+ *                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *                            Payload is a 64bit value in qtimer ticks representing
+ *                            the expected preset time. Zero EPT value represents
+ *                            immediate frame trigger.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_EPT
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_EPT \|
+ *                                 (version=0 << 20) \|
+ *                                 (dsize=3 << 24)
+ *   (u32_value) payload [1]     : u32 hfi_prop_u64.val_lo
+ *   (u32_value) payload [2]     : u32 hfi_prop_u64.val_hi
+ */
+#define HFI_PROPERTY_DISPLAY_EPT                                     0x00020032
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
