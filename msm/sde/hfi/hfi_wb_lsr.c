@@ -226,7 +226,7 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 {
 	struct sde_view_descriptor *view_desc = NULL;
 	struct sde_view_descriptor *back_view_desc = NULL;
-	struct hfi_wb_out_buff *out_buffers;
+	struct hfi_plane_buff *out_buffers;
 	void *payload;
 	int ret = 0, i;
 	bool is_back_view_en = false;
@@ -249,7 +249,7 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 			is_back_view_en = true;
 		}
 	}
-	out_buffers = kcalloc(num_fbs, sizeof(struct hfi_wb_out_buff), GFP_KERNEL);
+	out_buffers = kcalloc(num_fbs, sizeof(struct hfi_plane_buff), GFP_KERNEL);
 	if (!out_buffers) {
 		SDE_ERROR("failed to allocate memory for out_buffers\n");
 		return -ENOMEM;
@@ -258,7 +258,7 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 	sde_wb_lsr_get_fb_id_list(wb_dev, out_buffers, view_desc,
 			back_view_desc, is_back_view_en);
 
-	payload = kmalloc(sizeof(u32) + num_fbs * sizeof(struct hfi_wb_out_buff), GFP_KERNEL);
+	payload = kmalloc(sizeof(u32) + num_fbs * sizeof(struct hfi_plane_buff), GFP_KERNEL);
 	if (!payload) {
 		SDE_ERROR("failed to allocate memory for payload\n");
 		kfree(out_buffers);
@@ -266,12 +266,12 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 	}
 	*(u32 *)payload = num_fbs;
 	memcpy((char *)payload + sizeof(u32), out_buffers,
-			num_fbs * sizeof(struct hfi_wb_out_buff));
+			num_fbs * sizeof(struct hfi_plane_buff));
 
 	prop_id = HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS;
 
 	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
-		HFI_VAL_U32_ARRAY, payload, sizeof(u32) + num_fbs * sizeof(struct hfi_wb_out_buff));
+		HFI_VAL_U32_ARRAY, payload, sizeof(u32) + num_fbs * sizeof(struct hfi_plane_buff));
 
 	kfree(out_buffers);
 	kfree(payload);

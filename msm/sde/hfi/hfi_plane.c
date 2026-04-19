@@ -328,6 +328,7 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 {
 	u32 prop_id, hfi_format, supported_rot, llcc_scid, adjusted_crtc_x;
 	struct hfi_display_roi src, dst;
+	struct hfi_plane_buff buf;
 	struct drm_plane_state *state;
 	struct hfi_plane *phfi;
 	struct drm_framebuffer *fb;
@@ -386,9 +387,12 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 		return -EINVAL;
 	}
 	prop_id = HFI_PROPERTY_LAYER_SRC_ADDR;
+	memset(&buf, 0, sizeof(buf));
+	for (int i = 0; i < HFI_MAX_PLANES; i++)
+		buf.addr_l[i] = plane->pipe_cfg.layout.plane_addr[i];
+
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
-			HFI_VAL_U32_ARRAY, &plane->pipe_cfg.layout.plane_addr[0],
-			(sizeof(u32) * SDE_MAX_PLANES));
+			HFI_VAL_U32_ARRAY, &buf, sizeof(struct hfi_plane_buff));
 
 	prop_id = HFI_PROPERTY_LAYER_STRIDE;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
