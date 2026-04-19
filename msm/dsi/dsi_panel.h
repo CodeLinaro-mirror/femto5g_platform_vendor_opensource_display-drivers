@@ -389,6 +389,7 @@ struct dsi_panel {
 	struct dsi_display_mode *cur_mode;
 	u32 num_timing_nodes;
 	u32 num_display_modes;
+	u32 shared_cmd_buf_page_size;
 
 	struct dsi_regulator_info power_info;
 	struct dsi_regulator_info post_power_info;
