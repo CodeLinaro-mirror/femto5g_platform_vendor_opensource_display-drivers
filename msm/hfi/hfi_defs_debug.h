@@ -236,12 +236,14 @@ struct hfi_debug_log_level_info {
  * @HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL :  Property ID for status check interval update.
  * @HFI_DISPLAY_DEBUG_UIDLE              :  Property ID for micro-idle (uidle) state query.
  * @HFI_DISPLAY_DEBUG_UIDLE_CNTR         :  Property ID for uidle gate counter enable bitmask.
+ * @HFI_DISPLAY_DEBUG_UIDLE_DISABLE      :  Property ID for uidle feature disable/re-enable.
  */
 enum hfi_display_dbg_property_id {
 	HFI_DISPLAY_DEBUG_ESD_CHECK_MODE           = 0x1,
 	HFI_DISPLAY_DEBUG_ESD_CHECK_INTERVAL       = 0x2,
 	HFI_DISPLAY_DEBUG_UIDLE                    = 0x3,
 	HFI_DISPLAY_DEBUG_UIDLE_CNTR               = 0x4,
+	HFI_DISPLAY_DEBUG_UIDLE_DISABLE            = 0x5,
 };
 
 /**
