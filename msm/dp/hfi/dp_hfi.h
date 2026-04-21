@@ -61,7 +61,6 @@ struct dp_hfi {
 	struct hfi_shared_addr_map *shared_addr_map;
 
 	struct hfi_shared_addr_map *edid_addr_map;
-	struct hfi_shared_addr_map *modes_addr_map;
 	u32 mode_count;
 	struct sde_edid_ctrl *edid_ctrl;
 	struct hfi_display_mode_extended_info mode_list[64]; /* Extended mode info */
