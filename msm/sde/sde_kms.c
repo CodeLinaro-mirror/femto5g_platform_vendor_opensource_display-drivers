@@ -1513,6 +1513,7 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 {
 	struct msm_drm_private *priv;
 	struct sde_splash_display *splash_display;
+	struct drm_encoder *drm_enc, *best_encoder = NULL;
 	int i;
 
 	if (!sde_kms || !crtc)
@@ -1526,10 +1527,27 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 	SDE_EVT32(DRMID(crtc), crtc->state->active,
 			sde_kms->splash_data.num_splash_displays);
 
+	drm_for_each_encoder_mask(drm_enc, crtc->dev, crtc->state->encoder_mask) {
+		if (sde_encoder_in_clone_mode(drm_enc))
+			continue;
+
+		if (drm_enc)
+			best_encoder = drm_enc;
+	}
+
+	if (!best_encoder) {
+		SDE_ERROR("could not find encoder\n");
+		return;
+	}
+
 	for (i = 0; i < MAX_SPLASH_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
-		if (IS_DISP_OP_HFI(priv->disp_op) && splash_display->cont_splash_enabled)
-			_sde_kms_free_splash_display_data(sde_kms, splash_display);
+		if (IS_DISP_OP_HFI(priv->disp_op) && splash_display->cont_splash_enabled) {
+			if (splash_display->splash_encoder == best_encoder) {
+				_sde_kms_free_splash_display_data(sde_kms, splash_display);
+				break;
+			}
+		}
 		if (splash_display->encoder &&
 				crtc == splash_display->encoder->crtc)
 			break;
@@ -4728,6 +4746,16 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			encoder = ((struct dsi_display *)display)->bridge->base.encoder;
 
 			if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms))) {
+				memset(&info, 0x0, sizeof(info));
+				rc = dsi_display_get_info(NULL, &info, display);
+				if (rc) {
+					SDE_ERROR("get_info %d failed\n", i);
+					continue;
+				}
+
+				if (info.is_connected)
+					splash_display->splash_encoder = encoder;
+
 				/* Skip DSI op splash config */
 				continue;
 			}

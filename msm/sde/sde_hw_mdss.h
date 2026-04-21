@@ -957,6 +957,7 @@ struct sde_hw_stage_cfg {
  * struct sde_splash_data - Struct contains details of resources and hw blocks
  * used in continuous splash on a specific display.
  * @cont_splash_enabled:  Stores the cont_splash status (enabled/disabled)
+ * @splash_encoder:	  Pointer to the drm encoder object used for this display in HFI
  * @encoder:	Pointer to the drm encoder object used for this display
  * @splash:	Pointer to struct sde_splash_mem used for this display
  * @demura:	Pointer to struct sde_splash_mem used for demura cont splash
@@ -972,6 +973,7 @@ struct sde_hw_stage_cfg {
  */
 struct sde_splash_display {
 	bool cont_splash_enabled;
+	struct drm_encoder *splash_encoder;
 	struct drm_encoder *encoder;
 	struct sde_splash_mem *splash;
 	struct sde_splash_mem *demura;
