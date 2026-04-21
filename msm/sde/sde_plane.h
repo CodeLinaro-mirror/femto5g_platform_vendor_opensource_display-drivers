@@ -252,6 +252,7 @@ enum sde_plane_sclcheck_state {
  * @rotation:		rotation cache state
  * @static_cache_state:	plane cache state for static image
  * @cache_state_prop: value of CRTC_PROP_CACHE_STATE property
+ * @lsr_mode_prop: value of CRTC_PROP_LSR_MODE property
  * @cdp_cfg:	CDP configuration
  * @cont_splash_populated: State was populated as part of cont. splash
  * @ubwc_stats_roi: cached roi for ubwc stats
@@ -297,6 +298,7 @@ struct sde_plane_state {
 	uint32_t static_cache_state;
 	uint32_t static_cache_type;
 	uint32_t cache_state_prop;
+	uint32_t lsr_mode_prop;
 
 	struct sde_hw_pipe_cdp_cfg cdp_cfg;
 

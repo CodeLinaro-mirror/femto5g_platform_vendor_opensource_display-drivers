@@ -25,6 +25,10 @@
  * MACRO DEFINITION
  *************************************************************/
 
+#ifndef LLCC_DCP
+#define LLCC_DCP 0
+#endif
+
 /**
  * Max hardware block in certain hardware. For ex: sspp pipes
  * can have QSEED, pcc, igc, pa, csc, qos entries, etc. This count is
@@ -4290,12 +4294,14 @@ static int sde_cache_parse_dt(struct device_node *np,
 		[SDE_SYS_CACHE_DISP] = LLCC_DISP,
 		[SDE_SYS_CACHE_DISP_1] = LLCC_DISP_1,
 		[SDE_SYS_CACHE_DISP_WB] = LLCC_DISP_WB,
+		[SDE_SYS_CACHE_LSR_MODE] = LLCC_DCP,
 	};
 #else
 	const u32 sde_sys_cache_usecase_id[SDE_SYS_CACHE_MAX] = {
 		[SDE_SYS_CACHE_DISP] = LLCC_DISP,
 		[SDE_SYS_CACHE_DISP_1] = 0,
 		[SDE_SYS_CACHE_DISP_WB] = 0,
+		[SDE_SYS_CACHE_LSR_MODE] = 0,
 	};
 #endif
 
@@ -7008,6 +7014,7 @@ static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
 	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
 	set_bit(SDE_FEATURE_LSR, sde_cfg->features);
+	set_bit(SDE_SYS_CACHE_LSR_MODE, sde_cfg->sde_sys_cache_type_map);
 	set_bit(SDE_FEATURE_FRAME_SEQ_CHECK, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->vbif_qos_nlvl = 8;
