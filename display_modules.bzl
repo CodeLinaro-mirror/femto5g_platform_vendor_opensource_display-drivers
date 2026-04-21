@@ -286,3 +286,20 @@ module_entry(
         ],
     },
 )
+
+# ---------- LT9611UXD BRIDGE MODULE ----------
+module_entry(
+    name = "lt9611uxd",
+    config_option = "CONFIG_DRM_LT9611UXD",
+    path = None,
+    config_srcs = {
+        "CONFIG_DRM_LT9611UXD": [
+            "bridge-drivers/lt9611uxd.c",
+        ],
+    },
+    config_deps = {
+        "CONFIG_MSM_EXT_DISPLAY": [
+            "//vendor/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display",
+        ],
+    },
+)
