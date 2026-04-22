@@ -413,12 +413,17 @@ static void _sde_crtc_check_loopback_pstates(struct drm_crtc_state *crtc_state)
 	 */
 	drm_atomic_crtc_state_for_each_plane(plane, crtc_state) {
 #if (KERNEL_VERSION(6, 19, 0) <= LINUX_VERSION_CODE)
-		plane_state = drm_atomic_get_old_plane_state(
+		plane_state = drm_atomic_get_new_plane_state(
 				crtc_state->state, plane);
 #else
 		plane_state = drm_atomic_get_existing_plane_state(
 				crtc_state->state, plane);
 #endif
+		if (!plane_state) {
+			plane_state = plane->state;
+			SDE_EVT32(DRMID(plane), crtc_state->plane_mask,
+				plane_state, SDE_EVTLOG_FUNC_CASE1);
+		}
 
 		if (!plane_state)
 			continue;
