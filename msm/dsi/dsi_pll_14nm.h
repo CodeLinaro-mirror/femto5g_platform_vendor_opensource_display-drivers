@@ -119,4 +119,9 @@ struct dsi_pll_div_table pll_14nm_dphy[] = {
 };
 
 #endif
+
+int dsi_pll_14nm_configure(void *pll, bool commit);
+
+int dsi_pll_14nm_toggle(void *pll, bool prepare);
+
 #endif  /* DSI_PLL_14NM_H */

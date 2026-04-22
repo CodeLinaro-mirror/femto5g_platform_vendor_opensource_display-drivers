@@ -542,4 +542,6 @@ static inline bool  sde_cesta_is_aoss_supported(u32 cesta_index)
 }
 #endif /* CONFIG_DRM_SDE_CESTA */
 
+void sde_cesta_destroy_client(struct sde_cesta_client *client);
+
 #endif /* __SDE_CESTA_H__ */

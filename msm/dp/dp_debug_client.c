@@ -44,7 +44,7 @@ static void dp_debug_client_abort(struct dp_debug_client *client)
 }
 
 /* Read operations */
-int dp_debug_client_read_dpcd(struct dp_debug_client *client, u8 *dpcd, u32 size, u32 offset)
+static int dp_debug_client_read_dpcd(struct dp_debug_client *client, u8 *dpcd, u32 size, u32 offset)
 {
 	struct dp_aux *aux;
 	struct dp_panel *panel;
@@ -82,7 +82,7 @@ int dp_debug_client_read_dpcd(struct dp_debug_client *client, u8 *dpcd, u32 size
 	return dpcd_size;
 }
 
-int dp_debug_client_read_crc(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_crc(struct dp_debug_client *client, char *buf, u32 size)
 {
 	struct dp_ctrl *ctrl;
 	struct dp_panel *panel;
@@ -137,7 +137,7 @@ int dp_debug_client_read_crc(struct dp_debug_client *client, char *buf, u32 size
 	return len;
 }
 
-int dp_debug_client_read_connected(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_connected(struct dp_debug_client *client, char *buf, u32 size)
 {
 	struct dp_hpd *hpd;
 	u32 len = 0;
@@ -152,7 +152,7 @@ int dp_debug_client_read_connected(struct dp_debug_client *client, char *buf, u3
 	return len;
 }
 
-int dp_debug_client_read_info(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_info(struct dp_debug_client *client, char *buf, u32 size)
 {
 	struct dp_aux *aux;
 	struct dp_panel *panel;
@@ -248,7 +248,7 @@ int dp_debug_client_read_info(struct dp_debug_client *client, char *buf, u32 siz
 	return len;
 }
 
-int dp_debug_client_read_bw_code(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_bw_code(struct dp_debug_client *client, char *buf, u32 size)
 {
 	struct dp_panel *panel;
 	u32 len = 0;
@@ -263,7 +263,7 @@ int dp_debug_client_read_bw_code(struct dp_debug_client *client, char *buf, u32 
 	return len;
 }
 
-int dp_debug_client_read_tpg(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_tpg(struct dp_debug_client *client, char *buf, u32 size)
 {
 	u32 len = 0;
 
@@ -275,7 +275,7 @@ int dp_debug_client_read_tpg(struct dp_debug_client *client, char *buf, u32 size
 	return len;
 }
 
-int dp_debug_client_read_dump(struct dp_debug_client *client, char *buf,
+static int dp_debug_client_read_dump(struct dp_debug_client *client, char *buf,
 		u32 size, const char *reg_name)
 {
 	struct dp_catalog *catalog;
@@ -308,7 +308,7 @@ int dp_debug_client_read_dump(struct dp_debug_client *client, char *buf,
 	return len;
 }
 
-int dp_debug_client_read_mst_mode(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_mst_mode(struct dp_debug_client *client, char *buf, u32 size)
 {
 	struct dp_parser *parser;
 	struct dp_panel *panel;
@@ -326,7 +326,7 @@ int dp_debug_client_read_mst_mode(struct dp_debug_client *client, char *buf, u32
 	return len;
 }
 
-int dp_debug_client_read_max_pclk_khz(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_max_pclk_khz(struct dp_debug_client *client, char *buf, u32 size)
 {
 	struct dp_parser *parser;
 	u32 len = 0;
@@ -499,7 +499,8 @@ error:
 	return -EOVERFLOW;
 }
 
-int dp_debug_client_read_hdr(struct dp_debug_client *client, char *buf, u32 size, int panel_id)
+static int dp_debug_client_read_hdr(struct dp_debug_client *client,
+		char *buf, u32 size, int panel_id)
 {
 	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *connector = NULL;
@@ -543,7 +544,7 @@ int dp_debug_client_read_hdr(struct dp_debug_client *client, char *buf, u32 size
 	return len;
 }
 
-int dp_debug_client_read_edid_modes(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_edid_modes(struct dp_debug_client *client, char *buf, u32 size)
 {
 	struct drm_connector *connector;
 	struct drm_display_mode *mode;
@@ -573,7 +574,7 @@ int dp_debug_client_read_edid_modes(struct dp_debug_client *client, char *buf, u
 	return len;
 }
 
-int dp_debug_client_read_edid_modes_mst(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_edid_modes_mst(struct dp_debug_client *client, char *buf, u32 size)
 {
 	struct drm_connector *connector;
 	struct drm_display_mode *mode;
@@ -603,7 +604,7 @@ int dp_debug_client_read_edid_modes_mst(struct dp_debug_client *client, char *bu
 	return len;
 }
 
-int dp_debug_client_read_mst_conn_info(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_mst_conn_info(struct dp_debug_client *client, char *buf, u32 size)
 {
 	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *connector;
@@ -708,7 +709,7 @@ static void dp_debug_client_disable_sim_mode(struct dp_debug_client *client,
 }
 
 /* Write operations */
-int dp_debug_client_write_edid(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_edid(struct dp_debug_client *client, const char *buf, size_t count)
 {
 	u8 *input_buf = NULL, *buf_t = NULL, *edid = NULL;
 	const int char_to_nib = 2;
@@ -776,7 +777,7 @@ bail:
 	return rc;
 }
 
-int dp_debug_client_write_dpcd(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_dpcd(struct dp_debug_client *client, const char *buf, size_t count)
 {
 	u8 *input_buf = NULL, *buf_t = NULL, *dpcd = NULL;
 	const int char_to_nib = 2;
@@ -868,7 +869,7 @@ bail:
 	return rc;
 }
 
-int dp_debug_client_write_hpd(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_hpd(struct dp_debug_client *client, const char *buf, size_t count)
 {
 	const int hpd_data_mask = 0x7;
 	int hpd = 0;
@@ -897,7 +898,8 @@ int dp_debug_client_write_hpd(struct dp_debug_client *client, const char *buf, s
 	return 0;
 }
 
-int dp_debug_client_write_edid_modes(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_edid_modes(struct dp_debug_client *client,
+		const char *buf, size_t count)
 {
 	struct dp_panel *panel;
 	int hdisplay = 0, vdisplay = 0, vrefresh = 0, aspect_ratio = 0;
@@ -929,7 +931,8 @@ clear:
 	return 0;
 }
 
-int dp_debug_client_write_bw_code(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_bw_code(struct dp_debug_client *client,
+		const char *buf, size_t count)
 {
 	struct dp_panel *panel;
 	u32 max_bw_code = 0;
@@ -953,7 +956,8 @@ int dp_debug_client_write_bw_code(struct dp_debug_client *client, const char *bu
 	return 0;
 }
 
-int dp_debug_client_write_mst_mode(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_mst_mode(struct dp_debug_client *client,
+		const char *buf, size_t count)
 {
 	struct dp_parser *parser;
 	u32 mst_mode = 0;
@@ -972,7 +976,7 @@ int dp_debug_client_write_mst_mode(struct dp_debug_client *client, const char *b
 	return 0;
 }
 
-int dp_debug_client_write_max_pclk_khz(struct dp_debug_client *client,
+static int dp_debug_client_write_max_pclk_khz(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
 	struct dp_parser *parser;
@@ -997,7 +1001,7 @@ int dp_debug_client_write_max_pclk_khz(struct dp_debug_client *client,
 	return 0;
 }
 
-int dp_debug_client_write_tpg(struct dp_debug_client *client, u32 tpg_pattern)
+static int dp_debug_client_write_tpg(struct dp_debug_client *client, u32 tpg_pattern)
 {
 	struct dp_panel *panel;
 
@@ -1016,7 +1020,8 @@ int dp_debug_client_write_tpg(struct dp_debug_client *client, u32 tpg_pattern)
 	return 0;
 }
 
-int dp_debug_client_write_exe_mode(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_exe_mode(struct dp_debug_client *client,
+		const char *buf, size_t count)
 {
 	struct dp_catalog *catalog;
 	char exe_mode[4];
@@ -1038,7 +1043,7 @@ int dp_debug_client_write_exe_mode(struct dp_debug_client *client, const char *b
 	return 0;
 }
 
-int dp_debug_client_write_hdcp(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_hdcp(struct dp_debug_client *client, const char *buf, size_t count)
 {
 	int hdcp = 0;
 
@@ -1053,7 +1058,7 @@ int dp_debug_client_write_hdcp(struct dp_debug_client *client, const char *buf, 
 	return 0;
 }
 
-int dp_debug_client_read_hdcp(struct dp_debug_client *client, char *buf, u32 size)
+static int dp_debug_client_read_hdcp(struct dp_debug_client *client, char *buf, u32 size)
 {
 	u32 len = 0;
 
@@ -1068,7 +1073,7 @@ int dp_debug_client_read_hdcp(struct dp_debug_client *client, char *buf, u32 siz
 	return len;
 }
 
-int dp_debug_client_write_dump(struct dp_debug_client *client,
+static int dp_debug_client_write_dump(struct dp_debug_client *client,
 		const char *buf, size_t count)
 {
 	/* This function just validates the register name. */
@@ -1082,7 +1087,7 @@ int dp_debug_client_write_dump(struct dp_debug_client *client,
 	return 0;
 }
 
-int dp_debug_client_write_sim_mode(struct dp_debug_client *client, bool sim)
+static int dp_debug_client_write_sim_mode(struct dp_debug_client *client, bool sim)
 {
 	struct dp_drv *drv = NULL;
 	struct dp_panel *panel = NULL;
@@ -1130,7 +1135,7 @@ int dp_debug_client_write_sim_mode(struct dp_debug_client *client, bool sim)
 }
 
 /* MST Functions */
-int dp_debug_client_write_edid_modes_mst(struct dp_debug_client *client, const char *buf)
+static int dp_debug_client_write_edid_modes_mst(struct dp_debug_client *client, const char *buf)
 {
 	struct dp_panel *panel = NULL;
 	struct drm_connector *connector;
@@ -1177,7 +1182,7 @@ int dp_debug_client_write_edid_modes_mst(struct dp_debug_client *client, const c
 	return 0;
 }
 
-int dp_debug_client_write_mst_con_id(struct dp_debug_client *client, int con_id, int status)
+static int dp_debug_client_write_mst_con_id(struct dp_debug_client *client, int con_id, int status)
 {
 	struct drm_connector *connector;
 	struct sde_connector *sde_conn;
@@ -1235,7 +1240,8 @@ int dp_debug_client_write_mst_con_id(struct dp_debug_client *client, int con_id,
 	return 0;
 }
 
-int dp_debug_client_write_mst_con_add(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_mst_con_add(struct dp_debug_client *client,
+		const char *buf, size_t count)
 {
 	const int dp_en = BIT(3), hpd_high = BIT(7), hpd_irq = BIT(8);
 	int vdo = dp_en | hpd_high | hpd_irq;
@@ -1251,7 +1257,7 @@ int dp_debug_client_write_mst_con_add(struct dp_debug_client *client, const char
 	return 0;
 }
 
-int dp_debug_client_write_mst_con_remove(struct dp_debug_client *client, int con_id)
+static int dp_debug_client_write_mst_con_remove(struct dp_debug_client *client, int con_id)
 {
 	struct drm_connector_list_iter conn_iter;
 	struct drm_connector *connector;
@@ -1290,7 +1296,7 @@ int dp_debug_client_write_mst_con_remove(struct dp_debug_client *client, int con
 	return 0;
 }
 
-int dp_debug_client_write_mst_sideband_mode(struct dp_debug_client *client,
+static int dp_debug_client_write_mst_sideband_mode(struct dp_debug_client *client,
 		int mst_sideband_mode, u32 mst_port_cnt)
 {
 	u8 buf[1];
@@ -1322,7 +1328,7 @@ int dp_debug_client_write_mst_sideband_mode(struct dp_debug_client *client,
 }
 
 /* Simulation Functions */
-int dp_debug_client_write_sim(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_sim(struct dp_debug_client *client, const char *buf, size_t count)
 {
 	int sim_mode = 0;
 
@@ -1337,7 +1343,8 @@ int dp_debug_client_write_sim(struct dp_debug_client *client, const char *buf, s
 	return dp_debug_client_write_sim_mode(client, !!sim_mode);
 }
 
-int dp_debug_client_write_attention(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_attention(struct dp_debug_client *client,
+		const char *buf, size_t count)
 {
 	int vdo = 0;
 
@@ -1356,7 +1363,7 @@ int dp_debug_client_write_attention(struct dp_debug_client *client, const char *
 	return 0;
 }
 
-int dp_debug_client_simulate_attention(struct dp_debug_client *client, int vdo)
+static int dp_debug_client_simulate_attention(struct dp_debug_client *client, int vdo)
 {
 	if (!client || !client->hpd)
 		return -ENODEV;
@@ -1367,7 +1374,8 @@ int dp_debug_client_simulate_attention(struct dp_debug_client *client, int vdo)
 }
 
 /* MMRM Function */
-int dp_debug_client_write_mmrm_clk_cb(struct dp_debug_client *client, const char *buf, size_t count)
+static int dp_debug_client_write_mmrm_clk_cb(struct dp_debug_client *client,
+		const char *buf, size_t count)
 {
 	int cb_type = 0;
 	struct dss_clk_mmrm_cb mmrm_cb_data;

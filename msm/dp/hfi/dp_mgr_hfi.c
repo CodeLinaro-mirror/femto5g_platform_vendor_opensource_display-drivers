@@ -662,7 +662,7 @@ int dp_mgr_hfi_send_audio_control(struct dp_client *client, u32 enable)
 	return 0;
 }
 
-int dp_mgr_hfi_clk_init(struct dp_mgr_hfi_priv *hfi_priv)
+static int dp_mgr_hfi_clk_init(struct dp_mgr_hfi_priv *hfi_priv)
 {
 	int num_clk = 0;
 	int rc = 0;
@@ -707,7 +707,7 @@ void dp_mgr_hfi_clk_deinit(struct dp_mgr_hfi_priv *hfi_priv)
 	}
 }
 
-int dp_mgr_hfi_clk_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
+static int dp_mgr_hfi_clk_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 {
 	int rc = 0;
 
@@ -2368,7 +2368,7 @@ static struct dp_display_mode *dp_mgr_hfi_get_display_mode(struct dp_client *cli
 	return &hfi_priv->default_mode;
 }
 
-int dp_mgr_hfi_prepare(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_prepare(struct dp_client *client, int panel_id)
 {
 	int rc = 0;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -2391,7 +2391,7 @@ end:
 	return rc;
 }
 
-int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
 {
 	struct hfi_client_t *hfi_client;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -2433,7 +2433,7 @@ error:
 	return rc;
 }
 
-int dp_mgr_hfi_post_enable(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_post_enable(struct dp_client *client, int panel_id)
 {
 	struct hfi_client_t *hfi_client;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -2463,7 +2463,7 @@ int dp_mgr_hfi_post_enable(struct dp_client *client, int panel_id)
 	return rc;
 }
 
-int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 {
 	struct hfi_client_t *hfi_client;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -2501,7 +2501,7 @@ int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 	return rc;
 }
 
-int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 {
 	struct hfi_client_t *hfi_client;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -2591,7 +2591,7 @@ int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 	return rc;
 }
 
-int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 {
 	int rc = 0;
 	struct dp_mgr_hfi_priv *hfi_priv;

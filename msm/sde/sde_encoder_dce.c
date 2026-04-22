@@ -28,6 +28,7 @@
 #include "sde_core_irq.h"
 #include "sde_dsc_helper.h"
 #include "sde_vdc_helper.h"
+#include "sde_encoder_dce.h"
 
 #define SDE_DEBUG_DCE(e, fmt, ...) SDE_DEBUG("enc%d " fmt,\
 		(e) ? (e)->base.base.id : -1, ##__VA_ARGS__)
