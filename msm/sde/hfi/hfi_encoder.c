@@ -641,7 +641,8 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 
 	do {
 		rc = wait_event_timeout(*(info->wq),
-				atomic_read(info->atomic_cnt) == info->count_check,
+				(atomic_read(info->atomic_cnt) == info->count_check)
+					|| atomic_read(&hfi_kms->ssr_in_progress),
 				wait_time_jiffies);
 		cur_ktime = ktime_get();
 
@@ -652,10 +653,6 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 		if ((atomic_read(info->atomic_cnt) <= info->count_check) &&
 			(info->count_check < curr_atomic_cnt)) {
 			rc = true;
-			break;
-		}
-		if (atomic_read(&hfi_kms->ssr_in_progress)) {
-			SDE_ERROR("ssr in progress, return timeout\n");
 			break;
 		}
 	} while ((atomic_read(info->atomic_cnt) != info->count_check) &&
