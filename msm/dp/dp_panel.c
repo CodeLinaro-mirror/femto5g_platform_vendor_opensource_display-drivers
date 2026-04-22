@@ -1654,7 +1654,7 @@ static int dp_panel_read_dpcd(struct dp_panel *dp_panel, bool multi_func)
 	link_info->rate = min_t(unsigned long, panel->parser->max_lclk_khz,
 			drm_dp_bw_code_to_link_rate(dpcd[DP_MAX_LINK_RATE]));
 
-	link_info->num_lanes = dpcd[DP_MAX_LANE_COUNT] & DP_MAX_LANE_COUNT_MASK;
+	link_info->num_lanes = min_t(unsigned int, panel->parser->max_lane_count,dpcd[DP_MAX_LANE_COUNT]) & DP_MAX_LANE_COUNT_MASK;
 
 	if (is_link_rate_valid(panel->dp_panel.link_bw_code)) {
 		DP_DEBUG("debug link bandwidth code: 0x%x\n",
@@ -3161,7 +3161,7 @@ struct dp_panel *dp_panel_get(struct dp_panel_in *in)
 	dp_panel->max_bw_code = DP_LINK_BW_8_1;
 	dp_panel->spd_enabled = true;
 	dp_panel->link_bw_code = 0;
-	dp_panel->lane_count = 0;
+	dp_panel->lane_count = panel->parser->max_lane_count;
 	dp_panel->max_supported_bpp = DP_PANEL_MAX_SUPPORTED_BPP;
 
 	memcpy(panel->spd_vendor_name, vendor_name, (sizeof(u8) * 8));

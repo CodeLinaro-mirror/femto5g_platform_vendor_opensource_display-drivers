@@ -1276,7 +1276,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 	dp->dp_display.max_pclk_khz = min(dp->parser->max_pclk_khz,
 					dp->debug->max_pclk_khz);
 
-	if (!dp->debug->sim_mode && !dp->no_aux_switch && !dp->parser->gpio_aux_switch
+	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch && !dp->parser->gpio_aux_switch
 			&& dp->aux_switch_node && dp->aux->switch_configure) {
 		rc = dp->aux->switch_configure(dp->aux, true, dp->hpd->orientation);
 		if (rc)
@@ -1498,7 +1498,28 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 		return -ENODEV;
 	}
 
-	if (!dp->debug->sim_mode && !dp->no_aux_switch
+
+	/*
+	 * When dp is connected during boot, there is a chance that
+	 * configure_cb is called before drm probe is finished and
+	 * cause host_init failure. Here we poll the value of
+	 * poll_enabled and wait until drm driver is ready.
+	 */
+	if (!dp->dp_display.drm_dev->mode_config.poll_enabled) {
+		const int poll_timeout = 10000;
+		int i;
+
+		for (i = 0; !dp->dp_display.drm_dev->mode_config.poll_enabled &&
+				i < poll_timeout; i++)
+			usleep_range(1000, 1100);
+
+		if (i == poll_timeout) {
+			DP_ERR("driver is not loaded\n");
+			return -ENODEV;
+		}
+	}
+
+	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
 	    && !dp->parser->gpio_aux_switch && dp->aux_switch_node && dp->aux->switch_configure) {
 		rc = dp_display_init_aux_switch(dp);
 		if (rc)
@@ -1778,7 +1799,7 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 	dp->ctrl->abort(dp->ctrl, true);
 	dp->aux->abort(dp->aux, true);
 
-	if (!dp->debug->sim_mode && !dp->no_aux_switch
+	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
 	    && !dp->parser->gpio_aux_switch && dp->aux->switch_configure)
 		dp->aux->switch_configure(dp->aux, false, ORIENTATION_NONE);
 
@@ -1870,6 +1891,19 @@ static void dp_display_attention_work(struct work_struct *work)
 		goto mst_attention;
 	}
 
+
+	/*
+	 * This is for GPIO based HPD only, that if HPD low is detected
+	 * as HPD_IRQ, we need to handle TEST_EDID_READ in this function.
+	 */
+	if ((dp->parser->no_aux_switch && !dp->parser->lphw_hpd) &&
+			(dp->link->sink_request & DP_TEST_LINK_EDID_READ)) {
+		dp_display_handle_disconnect(dp,false);
+		queue_work(dp->wq, &dp->connect_work);
+		goto mst_attention;
+	}
+
+
 	if (dp->link->sink_request & DP_TEST_LINK_VIDEO_PATTERN) {
 		SDE_EVT32_EXTERNAL(dp->state, DP_TEST_LINK_VIDEO_PATTERN);
 		dp_display_handle_disconnect(dp, false);
@@ -1881,6 +1915,17 @@ static void dp_display_attention_work(struct work_struct *work)
 		 */
 		queue_work(dp->wq, &dp->connect_work);
 
+		goto mst_attention;
+	}
+
+	/*
+	 * This is for GPIO based HPD only, that if HPD low is detected
+	 * as HPD_IRQ, we need to handle TEST_EDID_READ in this function.
+	 */
+	if ((dp->parser->no_aux_switch && !dp->parser->lphw_hpd) &&
+			(dp->link->sink_request & DP_TEST_LINK_EDID_READ)) {
+		dp_display_handle_disconnect(dp,false);
+		queue_work(dp->wq, &dp->connect_work);
 		goto mst_attention;
 	}
 
@@ -1903,8 +1948,21 @@ static void dp_display_attention_work(struct work_struct *work)
 		}
 
 		if (dp->link->sink_request & DP_LINK_STATUS_UPDATED) {
-			SDE_EVT32_EXTERNAL(dp->state, DP_LINK_STATUS_UPDATED);
-			rc = dp->ctrl->link_maintenance(dp->ctrl);
+			/*
+			 * This is for GPIO based HPD only, that if HPD low is
+			 * detected as HPD_IRQ, we need to treat
+			 * LINK_STATUS_UPDATED as HPD high.
+			 */
+			if (dp->parser->no_aux_switch &&
+					!dp->parser->lphw_hpd) {
+				dp_display_handle_disconnect(dp, false);
+				queue_work(dp->wq, &dp->connect_work);
+				goto mst_attention;
+			} else {
+				SDE_EVT32_EXTERNAL(dp->state, DP_LINK_STATUS_UPDATED);
+				rc = dp->ctrl->link_maintenance(dp->ctrl);
+			}
+
 		}
 
 		if (!rc)
@@ -2172,15 +2230,15 @@ static int dp_init_sub_modules(struct dp_display_private *dp)
 
 	dp->aux_switch_node = of_parse_phandle(dp->pdev->dev.of_node, phandle, 0);
 	if (!dp->aux_switch_node) {
-		dp->no_aux_switch = true;
+		dp->parser->no_aux_switch = true;
 		DP_WARN("Aux switch node not found, assigning bypass mode as switch type\n");
 		dp->switch_type = DP_AUX_SWITCH_BYPASS;
 		goto skip_node_name;
 	}
 
-	if (!strcmp(dp->aux_switch_node->name, "fsa4480"))
+	if (!dp->parser->no_aux_switch && !strcmp(dp->aux_switch_node->name, "fsa4480"))
 		dp->switch_type = DP_AUX_SWITCH_FSA4480;
-	else if (!strcmp(dp->aux_switch_node->name, "wcd939x_i2c"))
+	else if (!dp->parser->no_aux_switch && !strcmp(dp->aux_switch_node->name, "wcd939x_i2c"))
 		dp->switch_type = DP_AUX_SWITCH_WCD939x;
 	else
 		dp->switch_type = DP_AUX_SWITCH_BYPASS;

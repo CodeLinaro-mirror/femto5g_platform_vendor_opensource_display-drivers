@@ -1414,9 +1414,17 @@ static void dp_catalog_ctrl_usb_reset(struct dp_catalog_ctrl *ctrl, bool flip)
 
 	io_data = catalog->io.usb3_dp_com;
 
-	DP_DEBUG("Program PHYMODE to DP only\n");
 	dp_write(USB3_DP_COM_RESET_OVRD_CTRL, 0x0a);
-	dp_write(USB3_DP_COM_PHY_MODE_CTRL, 0x02);
+
+	if (catalog->parser->max_lane_count == DP_LANE_COUNT_2){
+		DP_DEBUG("Program PHYMODE to DP/USB concurrent");
+		dp_write(USB3_DP_COM_PHY_MODE_CTRL, 0x03);
+	}else{
+		// default DP 4 Lanes
+		DP_DEBUG("Program PHYMODE to DP only");
+		dp_write(USB3_DP_COM_PHY_MODE_CTRL, 0x02);
+	}
+
 	dp_write(USB3_DP_COM_SW_RESET, 0x01);
 	/* make sure usb3 com phy software reset is done */
 	wmb();

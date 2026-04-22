@@ -198,6 +198,8 @@ static inline char *dp_phy_aux_config_type_to_string(u32 cfg_type)
  * @has_mst_sideband: MST sideband feature enable status
  * @dp_mst_lm_merge_en: enables utilization of lm_merge for MST
  * @gpio_aux_switch: presence GPIO AUX switch status
+ * @no_aux_switch: presence AUX switch status
+ * @max_lane_count: maximum number of physical main link lanes could be used
  * @dsc_feature_enable: DSC feature enable status
  * @fec_feature_enable: FEC feature enable status
  * @dsc_continuous_pps: PPS sent every frame by HW
@@ -232,11 +234,17 @@ struct dp_parser {
 	bool has_mst;
 	bool has_mst_sideband;
 	bool dp_mst_lm_merge_en;
+
 	bool dsc_feature_enable;
 	bool fec_feature_enable;
 	bool dsc_continuous_pps;
 	bool has_widebus;
 	bool gpio_aux_switch;
+
+	bool no_aux_switch;
+	bool lphw_hpd;
+	u32 max_lane_count;
+	
 	u32 mst_fixed_port[MAX_DP_MST_STREAMS];
 	u32 qos_cpu_mask;
 	unsigned long qos_cpu_latency;

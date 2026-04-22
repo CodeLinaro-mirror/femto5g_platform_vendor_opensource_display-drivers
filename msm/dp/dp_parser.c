@@ -167,6 +167,17 @@ static int dp_parser_misc(struct dp_parser *parser)
 	if (rc)
 		parser->max_lclk_khz = DP_MAX_LINK_CLK_KHZ;
 
+	rc = of_property_read_u32(of_node,
+			"qcom,max-link-lanes", &parser->max_lane_count);
+	if (rc){
+		// Fallback for older kernels or if property missing
+        rc = of_property_read_u32(of_node, "qcom,max-lane-count", &parser->max_lane_count);
+	}
+
+	if (rc || parser->max_lane_count < 1 || parser->max_lane_count > 4){
+		parser->max_lane_count = 4; // default to 4 lanes
+	}
+
 	return 0;
 }
 
@@ -206,6 +217,24 @@ static int dp_parser_pinctrl(struct dp_parser *parser)
 		goto error;
 	}
 
+	if (parser->no_aux_switch && parser->lphw_hpd) {
+		pinctrl->state_hpd_tlmm = pinctrl->state_hpd_ctrl = NULL;
+
+		pinctrl->state_hpd_tlmm = pinctrl_lookup_state(pinctrl->pin,
+					"mdss_dp_hpd_tlmm");
+		if (!IS_ERR_OR_NULL(pinctrl->state_hpd_tlmm)) {
+			pinctrl->state_hpd_ctrl = pinctrl_lookup_state(
+				pinctrl->pin, "mdss_dp_hpd_ctrl");
+		}
+
+		if (IS_ERR_OR_NULL(pinctrl->state_hpd_tlmm) ||
+				IS_ERR_OR_NULL(pinctrl->state_hpd_ctrl)) {
+			pinctrl->state_hpd_tlmm = NULL;
+			pinctrl->state_hpd_ctrl = NULL;
+			pr_debug("tlmm or ctrl pinctrl state does not exist\n");
+		}
+	}
+
 	pinctrl->state_active = pinctrl_lookup_state(pinctrl->pin,
 					"mdss_dp_active");
 	if (IS_ERR_OR_NULL(pinctrl->state_active)) {
@@ -236,6 +265,13 @@ static int dp_parser_gpio(struct dp_parser *parser)
 		"qcom,aux-sel-gpio",
 		"qcom,usbplug-cc-gpio",
 	};
+
+	if (of_find_property(of_node, "qcom,dp-hpd-gpio", NULL)) {
+		parser->no_aux_switch = true;
+		parser->lphw_hpd = of_find_property(of_node,
+				"qcom,dp-low-power-hw-hpd", NULL);
+		return 0;
+	}
 
 	if (of_find_property(of_node, "qcom,dp-gpio-aux-switch", NULL))
 		parser->gpio_aux_switch = true;
