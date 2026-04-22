@@ -449,10 +449,10 @@ static const u32 sde_hw_rotator_v5_inpixfmts[] = {
 	/* SDE_PIX_FMT_YCBYCR_H2V1, */
 	SDE_PIX_FMT_Y_CBCR_H2V2_VENUS,
 	SDE_PIX_FMT_Y_CRCB_H2V2_VENUS,
-	/* SDE_PIX_FMT_RGBA_8888_UBWC, */
+	SDE_PIX_FMT_RGBA_8888_UBWC,
 	/* SDE_PIX_FMT_RGBX_8888_UBWC, */
-	/* SDE_PIX_FMT_RGB_565_UBWC, */
-	/* SDE_PIX_FMT_Y_CBCR_H2V2_UBWC, */
+	SDE_PIX_FMT_RGB_565_UBWC,
+	SDE_PIX_FMT_Y_CBCR_H2V2_UBWC,
 	SDE_PIX_FMT_RGBA_1010102,
 	SDE_PIX_FMT_RGBX_1010102,
 	SDE_PIX_FMT_ARGB_2101010,
@@ -466,8 +466,8 @@ static const u32 sde_hw_rotator_v5_inpixfmts[] = {
 	SDE_PIX_FMT_Y_CBCR_H2V2_P010,
 	SDE_PIX_FMT_Y_CBCR_H2V2_P010_VENUS,
 	/* SDE_PIX_FMT_Y_CBCR_H2V2_TP10 */
-	/* SDE_PIX_FMT_Y_CBCR_H2V2_TP10_UBWC, */
-	/* SDE_PIX_FMT_Y_CBCR_H2V2_P010_UBWC, */
+	SDE_PIX_FMT_Y_CBCR_H2V2_TP10_UBWC,
+	SDE_PIX_FMT_Y_CBCR_H2V2_P010_UBWC,
 
 	/* SDE_PIX_FMT_Y_CBCR_H2V2_P010_TILE, */
 	/*SDE_PIX_FMT_Y_CBCR_H2V2_TILE, */
@@ -3833,7 +3833,23 @@ static int sde_rotator_hw_rev_init(struct sde_hw_rotator *rot)
 				ARRAY_SIZE(sde_hw_rotator_v5_outpixfmts);
 		rot->downscale_caps =
 			"LINEAR/1.5/2/4/8/16/32/64 TILE/1.5/2/4 TP10/1.5/2";
-	} else {
+	} else if (IS_SDE_MAJOR_MINOR_SAME(mdata->mdss_version,
+				SDE_MDP_HW_REV_860)) {
+		SDEROT_DBG("Sys cache inline rotation not supported\n");
+		set_bit(SDE_CAPS_UBWC_2,  mdata->sde_caps_map);
+		set_bit(SDE_CAPS_PARTIALWR,  mdata->sde_caps_map);
+		set_bit(SDE_CAPS_HW_TIMESTAMP, mdata->sde_caps_map);
+		rot->inpixfmts[SDE_ROTATOR_MODE_OFFLINE] =
+				sde_hw_rotator_v5_inpixfmts;
+		rot->num_inpixfmt[SDE_ROTATOR_MODE_OFFLINE] =
+				ARRAY_SIZE(sde_hw_rotator_v5_inpixfmts);
+		rot->outpixfmts[SDE_ROTATOR_MODE_OFFLINE] =
+				sde_hw_rotator_v5_outpixfmts;
+		rot->num_outpixfmt[SDE_ROTATOR_MODE_OFFLINE] =
+				ARRAY_SIZE(sde_hw_rotator_v5_outpixfmts);
+		rot->downscale_caps =
+			"LINEAR/1.5/2/4/8/16/32/64 TILE/1.5/2/4 TP10/1.5/2";
+        } else {
 		rot->inpixfmts[SDE_ROTATOR_MODE_OFFLINE] =
 				sde_hw_rotator_v3_inpixfmts;
 		rot->num_inpixfmt[SDE_ROTATOR_MODE_OFFLINE] =
