@@ -139,6 +139,9 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 {
 	int rc = 0;
 	bool hfi_power_enable = true;
+	struct sde_kms *sde_kms;
+	struct msm_kms *msm_kms;
+	bool is_cont_splash = false;
 
 	if (!display) {
 		DSI_ERR("Invalid params\n");
@@ -148,11 +151,30 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 	if (display->trusted_vm_env)
 		return rc;
 
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms)
+		return -EINVAL;
+
+	msm_kms = &sde_kms->base;
+	if (!msm_kms)
+		return -EINVAL;
+
+	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
+		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
+
 	rc = dsi_display_hfi_panel_enable_supplies(display, hfi_power_enable);
 	if (rc) {
 		DSI_ERR("[%s] dsi panel power supply %s failed, rc=%d\n", display->name,
 			hfi_power_enable ? "enable" : "disable", rc);
 			goto end;
+	}
+
+	if (!is_cont_splash) {
+		rc = dsi_panel_i2c_tx_cmd_set(display->panel);
+		if (rc) {
+			DSI_ERR("[%s] failed to send i2c cmds, rc=%d\n",
+				display->panel->name, rc);
+		}
 	}
 
 	rc = dsi_display_hfi_set_mode(display, display->panel->cur_mode);
