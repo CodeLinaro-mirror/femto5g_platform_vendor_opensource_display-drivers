@@ -72,7 +72,7 @@ static int _dp_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 	return rc;
 }
 
-int dp_hfi_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
+static int dp_hfi_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
 			bool blocking)
 {
 	if (!hfi_client) {
@@ -93,7 +93,7 @@ int dp_hfi_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event
 	return 0;
 }
 
-int dp_hfi_process_cmd_buf(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t *cmd_buf)
+static int dp_hfi_process_cmd_buf(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t *cmd_buf)
 {
 	int rc = 0;
 
@@ -115,7 +115,7 @@ int dp_hfi_process_cmd_buf(struct hfi_client_t *hfi_client, struct hfi_cmdbuf_t 
 	return rc;
 }
 
-void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
+static void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 			  struct hfi_prop_listener *listener)
 {
 	struct dp_hfi *hfi;
@@ -154,7 +154,7 @@ void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	}
 }
 
-int dp_hfi_setup_client(struct dp_hfi *hfi, struct hfi_adapter_t *hfi_host)
+static int dp_hfi_setup_client(struct dp_hfi *hfi,	struct hfi_adapter_t *hfi_host)
 {
 	int rc = 0;
 

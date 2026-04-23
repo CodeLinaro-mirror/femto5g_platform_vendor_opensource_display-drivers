@@ -36,4 +36,22 @@ int sde_encoder_dce_setup(struct sde_encoder_virt *sde_enc,
  */
 void sde_encoder_dce_flush(struct sde_encoder_virt *sde_enc);
 
+
+/**
+ * _dce_dsc_is_dirty - Check if DSC configuration is dirty
+ * @sde_enc: Pointer to virtual encoder structure
+ *
+ * Return: true if the DSC configuration has pending changes, false otherwise.
+ */
+bool _dce_dsc_is_dirty(struct sde_encoder_virt *sde_enc);
+
+/**
+ * _dce_vdc_is_dirty - Check if VDC configuration is dirty
+ * @sde_enc: Pointer to virtual encoder structure
+ *
+ * Return: true if the VDC configuration has pending changes, false otherwise.
+ */
+
+bool _dce_vdc_is_dirty(struct sde_encoder_virt *sde_enc);
+
 #endif /* __SDE_ENCODER_DCE_H__ */

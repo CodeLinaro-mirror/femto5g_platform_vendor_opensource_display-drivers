@@ -1142,7 +1142,7 @@ static int _sde_connector_update_bl_scale(struct sde_connector *c_conn)
 	return rc;
 }
 
-void sde_connector_set_colorspace(struct sde_connector *c_conn)
+static void sde_connector_set_colorspace(struct sde_connector *c_conn)
 {
 	int rc = 0;
 
@@ -1487,7 +1487,7 @@ static bool sde_connector_power_on_off_frame(struct drm_connector *connector)
 	return false;
 }
 
-int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
+static int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 {
 	struct sde_connector *c_conn;
 	struct sde_connector_state *c_state;
@@ -1861,7 +1861,7 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 	struct sde_connector_state *c_state;
 	struct msm_display_conn_params params;
 	struct drm_encoder *drm_enc;
-	int rc;
+	int rc = 0;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1891,7 +1891,8 @@ int sde_connector_update_cmd(struct drm_connector *connector,
 	params.privacy_v1 = &c_state->privacy_v1;
 	params.b_lvl = c_conn->bl_dirty_value;
 
-	rc = c_conn->ops.process_dcs_cmd_bitmask(c_conn->display, &params);
+	if (sde_connector_get_disp_op(connector) == MSM_DISP_OP_HWIO)
+		rc = c_conn->ops.process_dcs_cmd_bitmask(c_conn->display, &params);
 
 	c_conn->last_vhm_cmd = cmd_bit_mask;
 	SDE_EVT32(connector->base.id, params.cmd_bit_mask >> 32,

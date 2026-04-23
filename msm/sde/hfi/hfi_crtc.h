@@ -171,4 +171,9 @@ static inline int hfi_crtc_set_input_wait_hw_fence(struct sde_crtc *crtc, u32 sy
 
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
 
+void _hfi_crtc_disable(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id, struct sde_crtc *crtc,
+		struct sde_crtc_state *cstate);
+
+int hfi_crtc_atomic_check(struct sde_crtc *crtc, struct sde_crtc_state *state);
+
 #endif  // _HFI_CRTC_H_

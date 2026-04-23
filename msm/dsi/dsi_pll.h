@@ -7,6 +7,7 @@
 #ifndef __DSI_PLL_H
 #define __DSI_PLL_H
 
+#include <drm/drm_print.h>
 #include <linux/clk-provider.h>
 #include <linux/io.h>
 #include <linux/clk.h>

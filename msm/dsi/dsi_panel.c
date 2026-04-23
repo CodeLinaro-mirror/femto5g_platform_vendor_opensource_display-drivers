@@ -472,13 +472,18 @@ int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash)
 {
 	int rc = 0;
 
+	/* avoid reg vote, if disable vote is skipped */
 	if (!panel->skip_pwr) {
-		/* avoid reg vote, if disable vote is skipped */
-		rc = dsi_pwr_enable_regulator(&panel->power_info, true);
-		if (rc) {
-			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
-					panel->name, rc);
-			goto exit;
+		if (is_cont_splash && panel->disp_op == MSM_DISP_OP_HFI) {
+			DSI_DEBUG("[%s] skipping pwr enablement in hfi path with cont-splash\n",
+				panel->name);
+		} else {
+			rc = dsi_pwr_enable_regulator(&panel->power_info, true);
+			if (rc) {
+				DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
+						panel->name, rc);
+				goto exit;
+			}
 		}
 	}
 
@@ -2413,6 +2418,14 @@ static int dsi_panel_parse_panel_mode(struct dsi_panel *panel)
 
 	panel->panel_ack_disabled = utils->read_bool(utils->data,
 					"qcom,panel-ack-disabled");
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-shared-cmd-buf-page-size",
+			&panel->shared_cmd_buf_page_size);
+	if (rc) {
+		DSI_DEBUG("[%s] dsi-shared-cmd-buf-page-size is not defined\n", panel->name);
+		panel->shared_cmd_buf_page_size = 0;
+		rc = 0;
+	}
 error:
 	return rc;
 }
@@ -4762,7 +4775,7 @@ error:
 	return rc;
 }
 
-static int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel)
+int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel)
 {
 	struct dsi_panel_i2c_cmd_set *set;
 	u32 i;

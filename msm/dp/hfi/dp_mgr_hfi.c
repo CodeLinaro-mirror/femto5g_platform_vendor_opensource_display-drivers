@@ -9,6 +9,7 @@
 #include <linux/slab.h>
 #include <linux/component.h>
 #include <linux/clk.h>
+#include <linux/pm_domain.h>
 
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
@@ -553,26 +554,35 @@ static int _hfi_power_init(struct dp_mgr_hfi_priv *hfi_priv)
 {
 	int rc = 0;
 	struct device *dev = &hfi_priv->pdev->dev;
+	struct generic_pm_domain *genpd;
 
 	DP_DEBUG("dp_mgr_hfi: power_init: pm_domain: %p\n", dev->pm_domain);
 	if (!dev->pm_domain)
 		return rc;
 
 	pm_runtime_enable(dev);
-	hfi_priv->pd_dp_phy_gdsc = dev;
 
 	DP_DEBUG("usb/dp phy power enable\n");
-	rc = pm_runtime_get_sync(hfi_priv->pd_dp_phy_gdsc);
-	if (rc < 0)
-		DP_ERR("Fail to enable pd_dp_phy_gdsc regulator ret = %d\n", rc);
+	genpd = pd_to_genpd(dev->pm_domain);
+	genpd->flags |= (GENPD_FLAG_ACTIVE_WAKEUP | GENPD_FLAG_ALWAYS_ON);
 
-	return rc;
+	rc = pm_runtime_get_sync(dev);
+	if (rc < 0) {
+		DP_ERR("Fail to enable pd_dp_phy_gdsc regulator ret = %d\n", rc);
+		genpd->flags &= ~(GENPD_FLAG_ACTIVE_WAKEUP | GENPD_FLAG_ALWAYS_ON);
+		pm_runtime_disable(dev);
+		return rc;
+	}
+
+	hfi_priv->pd_dp_phy_gdsc = dev;
+	return 0;
 }
 
 static int _hfi_power_deinit(struct dp_mgr_hfi_priv *hfi_priv)
 {
 	int rc = 0;
 	struct device *dev = hfi_priv->pd_dp_phy_gdsc;
+	struct generic_pm_domain *genpd;
 
 	if (!dev)
 		return 0;
@@ -583,8 +593,19 @@ static int _hfi_power_deinit(struct dp_mgr_hfi_priv *hfi_priv)
 		return rc;
 
 	DP_DEBUG("usb/dp phy power disable\n");
-	pm_runtime_put_sync(dev);
+	genpd = pd_to_genpd(dev->pm_domain);
+	genpd->flags &= ~(GENPD_FLAG_ACTIVE_WAKEUP | GENPD_FLAG_ALWAYS_ON);
+
+	rc = pm_runtime_put_sync(dev);
+	if (rc < 0) {
+		DP_ERR("Fail to disable pd_dp_phy_gdsc regulator ret = %d\n", rc);
+		goto end;
+	}
+
+	rc = 0;
+end:
 	pm_runtime_disable(dev);
+	hfi_priv->pd_dp_phy_gdsc = NULL;
 
 	return rc;
 }
@@ -641,7 +662,7 @@ int dp_mgr_hfi_send_audio_control(struct dp_client *client, u32 enable)
 	return 0;
 }
 
-int dp_mgr_hfi_clk_init(struct dp_mgr_hfi_priv *hfi_priv)
+static int dp_mgr_hfi_clk_init(struct dp_mgr_hfi_priv *hfi_priv)
 {
 	int num_clk = 0;
 	int rc = 0;
@@ -686,7 +707,7 @@ void dp_mgr_hfi_clk_deinit(struct dp_mgr_hfi_priv *hfi_priv)
 	}
 }
 
-int dp_mgr_hfi_clk_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
+static int dp_mgr_hfi_clk_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 {
 	int rc = 0;
 
@@ -2347,7 +2368,7 @@ static struct dp_display_mode *dp_mgr_hfi_get_display_mode(struct dp_client *cli
 	return &hfi_priv->default_mode;
 }
 
-int dp_mgr_hfi_prepare(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_prepare(struct dp_client *client, int panel_id)
 {
 	int rc = 0;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -2370,7 +2391,7 @@ end:
 	return rc;
 }
 
-int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_enable(struct dp_client *client, int panel_id)
 {
 	struct hfi_client_t *hfi_client;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -2412,7 +2433,7 @@ error:
 	return rc;
 }
 
-int dp_mgr_hfi_post_enable(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_post_enable(struct dp_client *client, int panel_id)
 {
 	struct hfi_client_t *hfi_client;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -2442,7 +2463,7 @@ int dp_mgr_hfi_post_enable(struct dp_client *client, int panel_id)
 	return rc;
 }
 
-int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 {
 	struct hfi_client_t *hfi_client;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -2480,7 +2501,7 @@ int dp_mgr_hfi_pre_disable(struct dp_client *client, int panel_id)
 	return rc;
 }
 
-int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 {
 	struct hfi_client_t *hfi_client;
 	struct dp_mgr_hfi_priv *hfi_priv;
@@ -2570,7 +2591,7 @@ int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 	return rc;
 }
 
-int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
+static int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 {
 	int rc = 0;
 	struct dp_mgr_hfi_priv *hfi_priv;

@@ -389,6 +389,7 @@ struct dsi_panel {
 	struct dsi_display_mode *cur_mode;
 	u32 num_timing_nodes;
 	u32 num_display_modes;
+	u32 shared_cmd_buf_page_size;
 
 	struct dsi_regulator_info power_info;
 	struct dsi_regulator_info post_power_info;
@@ -615,4 +616,6 @@ int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel);
 
 int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 		enum dsi_cmd_set_type type, bool do_peripheral_flush);
+
+int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel);
 #endif /* _DSI_PANEL_H_ */
