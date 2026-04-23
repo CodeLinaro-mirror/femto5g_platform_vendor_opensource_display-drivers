@@ -643,15 +643,19 @@ static void sde_hw_sspp_setup_secure(struct sde_hw_pipe *ctx,
 	if (AUTO_SWI_MODE || test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
 		if ((rect_mode == SDE_SSPP_RECT_SOLO)
 				|| (rect_mode == SDE_SSPP_RECT_0)) {
-			if (enable)
+			if (enable) {
 				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_ALT + idx, 0x05, 0x05);
-			else
+				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS + idx, 0x0A, 0x0A);
+			} else {
 				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_ALT + idx, 0x05, 0);
+				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS + idx, 0x0A, 0);
+			}
 		} else {
-			if (enable)
+			if (enable) {
 				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_REC1 + idx, 0x0A, 0x0A);
-			else
+			} else {
 				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_REC1 + idx, 0x0A, 0);
+			}
 		}
 
 	} else {
