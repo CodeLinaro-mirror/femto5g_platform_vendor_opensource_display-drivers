@@ -397,4 +397,35 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
 		u32 *cmd_remap_table, u32 table_size, bool resp_req);
 
+/**
+ * dsi_hfi_add_rt_custom_dcs_cmd() - capture runtime custom DCS commands
+ *                                       into the reserved SDE buffer space
+ * @display:   handle to dsi display structure
+ * @cmd_type:  standard command type to override; must be < DSI_CMD_SET_MAX
+ * @data:      raw DCS command bytes in device tree format:
+ *             each command = [type][ctrl][chan][flags][wait][len_hi][len_lo][payload...]
+ * @length:    total byte length of data
+ * @state:     DSI_CMD_SET_STATE_LP or DSI_CMD_SET_STATE_HS
+ *
+ * Parses the raw DT-format bytes, packetizes each custom DCS command into MIPI
+ * DSI wire format, and captures them into the reserved space in the SDE buffer.
+ *
+ * Per-command metadata (dsi_hfi_panel_cmd_info: offset, size, delay, flags,
+ * mode) is captured into the reserved space in the HFI shared buffer.
+ *
+ * This function may be called multiple times for different cmd_type values,
+ * or multiple times for the same cmd_type to override a previous capture.
+ * When overriding, the new commands are appended at the current write position
+ * (the old space is no longer referenced).
+ *
+ * dsi_hfi_send_dcs_cmd_set_replace_cmd() needs to be called once after all
+ * captures are complete for the custom commands to take effect on the DCP side.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
+				      enum dsi_cmd_set_type cmd_type,
+				      const u8 *data, u32 length,
+				      enum dsi_cmd_set_state state);
+
 #endif
