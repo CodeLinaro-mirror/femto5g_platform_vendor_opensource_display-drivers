@@ -4011,7 +4011,7 @@ static void sde_crtc_frame_event_work(struct kthread_work *work)
 
 		if (atomic_read(&sde_crtc->frame_pending) < 1) {
 			/* this should not happen */
-			SDE_INFO("crtc%d ts:%lld invalid frame_pending:%d\n",
+			SDE_ERROR("crtc%d ts:%lld invalid frame_pending:%d\n",
 					crtc->base.id,
 					ktime_to_ns(fevent->ts),
 					atomic_read(&sde_crtc->frame_pending));
