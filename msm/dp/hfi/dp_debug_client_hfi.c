@@ -1793,6 +1793,8 @@ static int dp_debug_client_hfi_write_sim_mode(struct dp_debug_client *client, bo
 	struct hfi_client_t *hfi_client;
 	u32 sim_enable = sim ? 1 : 0;
 	int rc;
+	struct dp_hfi *hfi;
+	struct dp_mgr_hfi_priv *mgr_priv;
 
 	if (!client)
 		return -EINVAL;
@@ -1807,6 +1809,16 @@ static int dp_debug_client_hfi_write_sim_mode(struct dp_debug_client *client, bo
 	if (!hfi_client)
 		return -ENODEV;
 
+	/* Get dp_mgr_hfi_priv */
+	mgr_priv = dp_debug_hfi_get_mgr_priv(priv);
+	if (!mgr_priv) {
+		DP_ERR("Could not access dp_mgr_hfi_priv\n");
+		return -ENODEV;
+	}
+
+	hfi = mgr_priv->hfi[DP_STREAM_0];
+	/* clear mode override */
+	hfi->mode_ovr.enabled = false;
 	if (sim) {
 		/* Send SIM_ENABLE command */
 		rc = dp_debug_hfi_send_cmd(priv, hfi_client,
