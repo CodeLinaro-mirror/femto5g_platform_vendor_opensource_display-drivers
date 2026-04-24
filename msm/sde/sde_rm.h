@@ -199,6 +199,9 @@ struct sde_rm {
 #endif
 	const struct sde_rm_topology_def *topology_tbl;
 	struct msm_resource_caps_info avail_res;
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+	struct msm_resource_caps_info total_avail_res;
+#endif
 };
 
 /**

@@ -373,6 +373,12 @@ void sde_rm_dec_resource_info(struct sde_rm *rm)
 
 	state = to_sde_rm_priv_state(rm->obj.state);
 
+	/*
+	 * Reset to total before recomputing. Without this, repeated calls
+	 * (once per encoder_enable) cumulatively decrement avail_res to zero.
+	 */
+	memcpy(&rm->avail_res, &rm->total_avail_res, sizeof(rm->avail_res));
+
 	for (type = 0; type < SDE_HW_BLK_MAX; type++) {
 		list_for_each_entry(blk, &state->hw_blks[type], list) {
 			if (blk->enc_id)
@@ -1456,8 +1462,12 @@ int sde_rm_init(struct sde_rm *rm,
 	}
 
 	rc = _sde_rm_hw_blk_create_new(rm, cat, mmio);
-	if (!rc)
+	if (!rc) {
+#if IS_ENABLED(CONFIG_DRM_SDE_SHD)
+		memcpy(&rm->total_avail_res, &rm->avail_res, sizeof(rm->avail_res));
+#endif
 		return 0;
+	}
 
 fail:
 	sde_rm_destroy(rm);
