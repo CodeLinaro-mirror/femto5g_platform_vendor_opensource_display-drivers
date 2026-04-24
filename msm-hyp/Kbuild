@@ -2,7 +2,7 @@
 
 KDIR := $(TOP)/kernel_platform/msm-kernel
 
-ifeq ($(PLATFORM_VERSION), W Baklava 16)
+ifeq ($(PLATFORM_VERSION), W Baklava 16 CinnamonBun 17)
 ifeq (y, $(findstring y, $(CONFIG_ARCH_QTI_VM)))
 	include $(DISPLAY_ROOT)/config/gvmdisp.conf
 	LINUXINCLUDE += -include $(DISPLAY_ROOT)/config/gvmdispconf.h
