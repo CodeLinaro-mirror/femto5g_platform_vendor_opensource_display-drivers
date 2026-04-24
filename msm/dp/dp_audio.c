@@ -867,7 +867,7 @@ struct dp_audio *dp_audio_get(struct platform_device *pdev,
 		goto error;
 	}
 
-	audio = devm_kzalloc(&pdev->dev, sizeof(*audio), GFP_KERNEL);
+	audio = kzalloc(sizeof(*audio), GFP_KERNEL);
 	if (!audio) {
 		rc = -ENOMEM;
 		goto error;
@@ -897,7 +897,7 @@ struct dp_audio *dp_audio_get(struct platform_device *pdev,
 	return dp_audio;
 
 error_notify_workqueue:
-	devm_kfree(&pdev->dev, audio);
+	kfree(audio);
 error:
 	return ERR_PTR(rc);
 }
@@ -915,5 +915,5 @@ void dp_audio_put(struct dp_audio *dp_audio)
 
 	dp_audio_destroy_notify_workqueue(audio);
 
-	devm_kfree(&audio->pdev->dev, audio);
+	kfree(audio);
 }

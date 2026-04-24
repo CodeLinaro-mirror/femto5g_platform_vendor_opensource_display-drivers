@@ -217,6 +217,20 @@ struct msm_hyp_irq dspp_hist_irqs[] = {
 	{ 0x0080, DSPP_7, SDE_IRQ_TYPE_HIST_DSPP_DONE, 0, },
 };
 
+struct msm_hyp_irq ltm_hist_done_irqs[] = {
+	{ 0x0001, LTM_0, SDE_IRQ_TYPE_LTM_STATS_DONE, 0, },
+	{ 0x0002, LTM_1, SDE_IRQ_TYPE_LTM_STATS_DONE, 0, },
+	{ 0x0004, LTM_2, SDE_IRQ_TYPE_LTM_STATS_DONE, 0, },
+	{ 0x0008, LTM_3, SDE_IRQ_TYPE_LTM_STATS_DONE, 0, },
+};
+
+struct msm_hyp_irq ltm_wb_pb_irqs[] = {
+	{ 0x0001, LTM_0, SDE_IRQ_TYPE_LTM_STATS_WB_PB, 0, },
+	{ 0x0002, LTM_1, SDE_IRQ_TYPE_LTM_STATS_WB_PB, 0, },
+	{ 0x0004, LTM_2, SDE_IRQ_TYPE_LTM_STATS_WB_PB, 0, },
+	{ 0x0008, LTM_3, SDE_IRQ_TYPE_LTM_STATS_WB_PB, 0, },
+};
+
 enum sde_intr_type virq_to_sde_irq_map[VIRQ_TYPE_MAX] = {
 	SDE_IRQ_TYPE_INTF_VSYNC,
 	SDE_IRQ_TYPE_LUTDMA_DB,
@@ -286,8 +300,8 @@ enum virq_type_t sde_irq_to_virq_map[] = {
 	/* SDE_IRQ_TYPE_INTF_TEAR_TEAR_DETECT	*/ VIRQ_TYPE_NOT_SUPPORTED,
 	/* SDE_IRQ_TYPE_INTF_TEAR_TE_ASSERT		*/ VIRQ_TYPE_NOT_SUPPORTED,
 	/* SDE_IRQ_TYPE_INTF_TEAR_TE_DEASSERT	*/ VIRQ_TYPE_NOT_SUPPORTED,
-	/* SDE_IRQ_TYPE_LTM_STATS_DONE			*/ VIRQ_TYPE_NOT_SUPPORTED,
-	/* SDE_IRQ_TYPE_LTM_STATS_WB_PB			*/ VIRQ_TYPE_NOT_SUPPORTED,
+	/* SDE_IRQ_TYPE_LTM_STATS_DONE			*/ VIRQ_TYPE_STATUS3_LTM,
+	/* SDE_IRQ_TYPE_LTM_STATS_WB_PB			*/ VIRQ_TYPE_STATUS3_LTM,
 	/* SDE_IRQ_TYPE_WB_PROG_LINE			*/ VIRQ_TYPE_NOT_SUPPORTED,
 	/* SDE_IRQ_TYPE_RESERVED				*/ VIRQ_TYPE_NOT_SUPPORTED,
 	/* SDE_IRQ_TYPE_INTF_ESYNC_EMSYNC		*/ VIRQ_TYPE_NOT_SUPPORTED,
@@ -317,8 +331,8 @@ static const struct msm_hyp_irq_map irq_map[MSM_HYP_IRQ_TYPE_MAX] = {
 	ADD_UNSUPPORTED_IRQ_MAP(DSPP_DONE),		// 12 MSM_HYP_IRQ_TYPE_DSPP_DONE
 	ADD_IRQ_MAP(dspp_hist_irqs),			// 13 MSM_HYP_IRQ_TYPE_DSPP_HIST
 	ADD_UNSUPPORTED_IRQ_MAP(DSPP_RSTSEQ),	// 14 MSM_HYP_IRQ_TYPE_HIST_DSPP_RSTSEQ
-	ADD_UNSUPPORTED_IRQ_MAP(LTM_DONE),		// 15 MSM_HYP_IRQ_TYPE_LTM_STATS_DONE
-	ADD_UNSUPPORTED_IRQ_MAP(LTM_WBPB),		// 16 MSM_HYP_IRQ_TYPE_LTM_STATS_WB_PB
+	ADD_IRQ_MAP(ltm_hist_done_irqs),		// 15 MSM_HYP_IRQ_TYPE_LTM_STATS_DONE
+	ADD_IRQ_MAP(ltm_wb_pb_irqs),			// 16 MSM_HYP_IRQ_TYPE_LTM_STATS_WB_PB
 	ADD_UNSUPPORTED_IRQ_MAP(WB_DONE),		// 17 MSM_HYP_IRQ_TYPE_WB_ROT_DONE
 	ADD_UNSUPPORTED_IRQ_MAP(WB_PROG_LINE),	// 18 MSM_HYP_IRQ_TYPE_WB_PROG_LINE
 	ADD_UNSUPPORTED_IRQ_MAP(CWB_OVERFLOW), 	// 19 MSM_HYP_IRQ_TYPE_CWB_OVERFLOW
@@ -384,7 +398,7 @@ static int msm_hyp_irq_idx_lookup(struct sde_hw_intr *intr,
 	int i;
 
 	for (i = 0; i < intr->sde_irq_map_size; i++) {
-		if ((intr_type == intr->sde_irq_map[i].intr_type) && 
+		if ((intr_type == intr->sde_irq_map[i].intr_type) &&
 			(instance_idx == intr->sde_irq_map[i].instance_idx))
 			return i;
 	}

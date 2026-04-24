@@ -13,6 +13,7 @@
 //#include <soc/qcom/boot_stats.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
+#include "sde_edid_parser.h"
 
 #include "msm_hyp_trace.h"
 #include "msm_hyp_utils.h"
@@ -955,6 +956,19 @@ static int virtio_get_edid_block(struct virtio_kms *kms, uint32_t scanout,
 
 	vfree(kms->outputs[scanout].edid);
 	kms->outputs[scanout].edid = new_edid;
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_DP_AUDIO)
+	mutex_lock(&kms->outputs[scanout].edid_lock);
+	kms->outputs[scanout].edid_ctrl = sde_edid_init();
+	if (!kms->outputs[scanout].edid_ctrl) {
+		VIRTGPU_VQ_ERR("Failed to initialize edid_ctrl\n");
+		mutex_unlock(&kms->outputs[scanout].edid_lock);
+		return -ENOMEM;
+	}
+	kms->outputs[scanout].edid_ctrl->edid = new_edid;
+	sde_parse_edid(kms->outputs[scanout].edid_ctrl);
+	mutex_unlock(&kms->outputs[scanout].edid_lock);
+#endif
 
 	return 0;
 }

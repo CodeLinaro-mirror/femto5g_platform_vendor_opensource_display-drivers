@@ -8069,7 +8069,7 @@ static int sde_encoder_setup_display(struct sde_encoder_virt *sde_enc,
 					controller_id);
 			if (phys_params.intf_idx == INTF_MAX) {
 				SDE_ERROR_ENC(sde_enc,
-					"could not get wb: type %d, id %d\n",
+					"could not get intf: type %d, id %d\n",
 					intf_type, controller_id);
 				ret = -EINVAL;
 			}

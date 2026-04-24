@@ -203,6 +203,9 @@ module_entry(
             "msm/hyp/virtio/virtgpu_vq.c",
             "msm/hyp/virtio/virtio_kms.c",
          ],
+         "CONFIG_DRM_MSM_HYP_DP_AUDIO" : [
+            "msm/hyp/msm_hyp_dp_audio.c",
+         ],
          "CONFIG_DRM_MSM_HYP_WFD" : [
             "msm/hyp/wfd/wfd_kms.c",
             "msm/hyp/wfd/wire_user.c",
