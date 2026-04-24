@@ -33,16 +33,6 @@ struct dp_altmode_private {
 	u32 lanes;
 };
 
-enum dp_altmode_pin_assignment {
-	DPAM_HPD_OUT,
-	DPAM_HPD_A,
-	DPAM_HPD_B,
-	DPAM_HPD_C,
-	DPAM_HPD_D,
-	DPAM_HPD_E,
-	DPAM_HPD_F,
-};
-
 static int dp_altmode_set_usb_dp_mode(struct dp_altmode_private *altmode)
 {
 	int rc = 0;

@@ -34,6 +34,7 @@
 #include "dp_hfi_audio.h"
 #include "dp_hdcp.h"
 #include "dp_drm.h"
+#include "dp_altmode.h"
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 #include "linux/msm_hdcp.h"
 #endif
@@ -825,6 +826,12 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 	config->hpd_irq = hfi_priv->hpd->hpd_irq;
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
+	if (hfi_priv->debug->force_multi_func) {
+		if (config->pin_config == DPAM_HPD_C)
+			config->pin_config = DPAM_HPD_D;
+		else if (config->pin_config == DPAM_HPD_E)
+			config->pin_config = DPAM_HPD_F;
+	}
 
 	DP_DEBUG("orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u\n",
 		config->orientation, config->port_index, config->pin_config,
