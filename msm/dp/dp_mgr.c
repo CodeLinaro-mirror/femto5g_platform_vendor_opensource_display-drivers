@@ -1340,7 +1340,7 @@ static int dp_mgr_process_hpd_high(struct dp_mgr_priv *mgr)
 
 	if (!mgr->debug->sim_mode &&
 		!mgr->parser->gpio_aux_switch &&
-		mgr->aux_switch) {
+		mgr->aux_switch && mgr->aux_switch->configure) {
 		rc = mgr->aux_switch->configure(mgr->aux_switch, true, mgr->hpd->orientation);
 		if (rc)
 			goto err_state;
@@ -1542,11 +1542,12 @@ static int dp_mgr_usbpd_configure_cb(void *data)
 		rc = mgr->aux_switch->init(mgr->aux_switch);
 		if (rc)
 			return rc;
-
-		rc = mgr->aux_switch->configure(mgr->aux_switch,
-			true, mgr->hpd->orientation);
-		if (rc)
-			return rc;
+		if (mgr->aux_switch->configure) {
+			rc = mgr->aux_switch->configure(mgr->aux_switch,
+					true, mgr->hpd->orientation);
+			if (rc)
+				return rc;
+		}
 	}
 
 	mutex_lock(&mgr->session_lock);
