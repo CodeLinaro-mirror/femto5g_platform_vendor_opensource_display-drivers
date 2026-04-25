@@ -616,6 +616,33 @@ static int hdmi_read_edid_retry(struct hdmi_display_private *hdmi,
 	return ret;
 }
 
+static int hdmi_send_hotplug_uevent(struct drm_device *dev, bool connected)
+{
+	char *envp[3];
+	char event_string[] = "HOTPLUG=1";
+	char status[HPD_STRING_SIZE];
+	int rc;
+
+	if (!dev || !dev->primary || !dev->primary->kdev) {
+		HDMI_ERR("Invalid DRM device for uevent\n");
+		return -EINVAL;
+	}
+
+	snprintf(status, HPD_STRING_SIZE,
+			"status=%s", connected ? "connected" : "disconnected");
+
+	envp[0] = event_string;
+	envp[1] = status;
+	envp[2] = NULL;
+
+	rc = kobject_uevent_env(&dev->primary->kdev->kobj,
+			KOBJ_CHANGE, envp);
+	if (rc)
+		HDMI_ERR("HPD uevent failed, rc=%d\n", rc);
+
+	return rc;
+}
+
 static void hdmi_display_hotplug_work(struct work_struct *work)
 {
 	struct hdmi_display_private *hdmi =
@@ -668,6 +695,9 @@ static void hdmi_display_hotplug_work(struct work_struct *work)
 		hdmi_display_state_remove(HDMI_STATE_CONNECTED);
 	}
 
+	rc = hdmi_send_hotplug_uevent(connector->dev, hdmi->hdmi_display.connected);
+	if (rc)
+		HDMI_ERR("Hotplug uevent send failed, rc=%d\n", rc);
 	//TODO: check hotplug notification
 	drm_helper_hpd_irq_event(connector->dev);
 }
