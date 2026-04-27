@@ -388,6 +388,11 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		hfi_encoder_panel_dead_callback(sde_enc, payload);
 		break;
 	case HFI_COMMAND_DEBUG_PANIC_EVENT:
+		if (!data) {
+			SDE_ERROR("Invalid panic event payload data %pK\n", data);
+			return;
+		}
+
 		recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
 
 		drm_enc = &sde_enc->base;
