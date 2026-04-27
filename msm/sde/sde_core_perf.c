@@ -34,19 +34,6 @@
 static DEFINE_MUTEX(sde_core_perf_lock);
 
 /**
- * enum sde_perf_mode - performance tuning mode
- * @SDE_PERF_MODE_NORMAL: performance controlled by user mode client
- * @SDE_PERF_MODE_MINIMUM: performance bounded by minimum setting
- * @SDE_PERF_MODE_FIXED: performance bounded by fixed setting
- */
-enum sde_perf_mode {
-	SDE_PERF_MODE_NORMAL,
-	SDE_PERF_MODE_MINIMUM,
-	SDE_PERF_MODE_FIXED,
-	SDE_PERF_MODE_MAX
-};
-
-/**
  * enum sde_perf_vote_mode: perf vote mode.
  * @APPS_RSC_MODE:	It combines the vote for all displays and votes it
  *                      through APPS rsc. This is default mode when display
