@@ -1561,6 +1561,7 @@ struct sde_uidle_cfg {
 	u32 uidle_rev;
 	u32 debugfs_perf;
 	bool debugfs_ctrl;
+	bool debugfs_ctrl_initialized;
 	bool perf_cntr_en;
 	bool dirty;
 	bool fal10_override;

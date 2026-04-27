@@ -302,6 +302,13 @@ int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *
 void hfi_kms_recover_hwfence(struct hfi_kms *hfi_kms);
 
 /**
+ * hfi_kms_set_uidle_disable - disable/re-enable uidle feature via HFI
+ * @hfi_kms: pointer to hfi_kms
+ * @disable: true to disable uidle, false to re-enable
+ */
+int hfi_kms_set_uidle_disable(struct hfi_kms *hfi_kms, bool disable);
+
+/**
  * hfi_kms_set_uidle_perf_cnt - enable/disable uidle performance counters via HFI
  * @hfi_kms: Pointer to hfi kms structure
  * @val: Counter enable value to send to FW (1 to enable, 0 to disable)
