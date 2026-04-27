@@ -4115,7 +4115,8 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	bool sec_session = false, global_sec_session = false;
 	bool fb_sec_session = false, global_fb_sec_session = false;
-	uint32_t fb_ns = 0, fb_sec = 0, fb_sec_dir = 0;
+	bool crtc_sec_level = false, global_crtc_sec_level = false;
+	uint32_t fb_ns = 0, fb_sec = 0, fb_sec_dir = 0, sec_level;
 	int i;
 
 	if (!kms || !state) {
@@ -4139,6 +4140,8 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 		if (fb_sec)
 			fb_sec_session = true;
 		cur_crtc = crtc;
+		sec_level = sde_crtc_get_secure_level(crtc, crtc_state);
+		crtc_sec_level |= (sec_level == SDE_DRM_SEC_ONLY) ? true : false;
 	}
 
 	/* iterate global list for active and secure/non-secure crtc */
@@ -4157,6 +4160,8 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 			if (fb_sec)
 				global_fb_sec_session = true;
 			global_crtc = crtc;
+			sec_level = sde_crtc_get_secure_level(crtc, crtc->state);
+			global_crtc_sec_level |= (sec_level == SDE_DRM_SEC_ONLY) ? true : false;
 		}
 	}
 
@@ -4171,13 +4176,16 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 	if (!global_sec_session && !sec_session)
 		return 0;
 
+	if (test_bit(SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY, sde_kms->catalog->features)
+			&& !global_crtc_sec_level && !crtc_sec_level) {
+		SDE_DEBUG("allow multiple displays during sec-cam session\n");
 	/*
 	 * - fail crtc commit, if secure-camera/secure-ui session is
 	 *   in-progress in any other display
 	 * - fail secure-camera/secure-ui crtc commit, if any other display
 	 *   session is in-progress
 	 */
-	if ((global_active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_SECURE) ||
+	} else if ((global_active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_SECURE) ||
 		    (active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_SECURE)) {
 		SDE_ERROR(
 		    "crtc%d secure check failed global_active:%d active:%d\n",
