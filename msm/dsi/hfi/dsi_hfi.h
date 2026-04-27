@@ -146,6 +146,24 @@ struct dsi_hfi_cmd_set_remap_payload {
 };
 
 /**
+ * struct dsi_hfi_dcs_cmd_set_replace_payload - complete payload for
+ *                                              HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE
+ *
+ * Carries all DCS command type replacements in a single HFI call. The count
+ * field indicates how many entries follow. Each entry describes one standard
+ * command type being replaced and where its runtime-defined custom DCS commands are
+ * located in the SDE and HFI shared buffers.
+ *
+ * @count:   number of valid entries in the entries array
+ * @entries: array of per-type replacement info, one per command type being
+ *           replaced (at most DSI_CMD_SET_MAX entries)
+ */
+struct dsi_hfi_dcs_cmd_set_replace_payload {
+	u32 count;
+	struct hfi_dsi_dcs_cmd_set_replace_entry entries[DSI_CMD_SET_MAX];
+};
+
+/**
  * struct dsi_panel_timing_caps - contains properties to be sent as part of
  * HFI_COMMAND_PANEL_INIT_TIMING_CAPS
  * @panel_index:                    HFI_PROPERTY_PANEL_INDEX
@@ -427,5 +445,27 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
 				      enum dsi_cmd_set_type cmd_type,
 				      const u8 *data, u32 length,
 				      enum dsi_cmd_set_state state);
+
+/**
+ * dsi_hfi_send_dcs_cmd_set_replace_cmd() - send all captured runtime custom DCS command
+ * replacements to DCP
+ * @display:   handle to dsi display structure
+ * @resp_req:  if true, HFI_HOST_FLAGS_RESPONSE_REQUIRED is appended to the flags
+ *             when sending the HFI command, causing the call to block until DCP
+ *             acknowledges the replacement.
+ *
+ * Sends a single HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE command
+ * to DCP carrying all DCS command types that have been captured via
+ * dsi_hfi_add_rt_custom_dcs_cmd(). DCP will replace the standard command
+ * metadata for each included type with the corresponding runtime custom DCS commands.
+ *
+ * The payload is a dsi_hfi_dcs_cmd_set_replace_payload struct: a count field followed
+ * by an array of hfi_dsi_dcs_cmd_set_replace_entry entries, one per captured type.
+ *
+ * Return: 0 on success, negative error code on failure
+ *         -EINVAL  if params invalid
+ *         -ENOENT  if no runtime custom DCS commands have been captured
+ */
+int dsi_hfi_send_dcs_cmd_set_replace_cmd(struct dsi_display *display, bool resp_req);
 
 #endif
