@@ -17,7 +17,7 @@ int msm_lsr_debug_out = LSR_OUT_PRINTK;
 EXPORT_SYMBOL_GPL(msm_lsr_debug_out);
 
 int msm_lsr_fw_debug = 0x80003F;
-int msm_lsr_fw_low_power_mode = !1;
+int msm_lsr_fw_low_power_mode = 1;
 
 bool msm_lsr_auto_pil = true;
 
