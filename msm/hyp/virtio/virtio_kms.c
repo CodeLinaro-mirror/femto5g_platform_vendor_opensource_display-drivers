@@ -3359,8 +3359,10 @@ int hab_virq_cb(int irq, void *irq_data, uint32_t flags)
 
 	if (is_dbl_handle_valid(virq_info->hab_dbl_handle) && irq_data != NULL)
 	{
-		/* dbl handle is either 1 or 2, dbl index is 0 or 1 resp. */
-		dbl_idx = virq_info->hab_dbl_handle - 1;
+		/* dbl handle is either 1 or 2 in Android GVM, 3 or 4 in Linux GVM
+		Both GVMs are mutually exclusive and share the same virq_info[2] array
+		The module maps handle 1->0, 2->1, 3->0, 4->1 intentionally. */
+		dbl_idx = (virq_info->hab_dbl_handle - 1) % VIRTIO_GPU_MAX_VIRQ;
 
 		dpu_id = virq_info->kms->virq_info[dbl_idx]->dpu_id;
 		msm_kms = &virq_info->kms->base.sde_kms[dpu_id]->base;
@@ -3397,8 +3399,8 @@ int virtio_hab_register_virq(struct virtio_kms *kms)
 			return ret;
 		}
 		virq_info->hab_dbl_handle = dbl_handle;
-		kms->virq_info[dbl_handle - 1] = virq_info;
-		kms->virq_info[dbl_handle - 1]->dpu_id = virq_idx;
+		kms->virq_info[(dbl_handle -1) % VIRTIO_GPU_MAX_VIRQ] = virq_info;
+		kms->virq_info[(dbl_handle -1) % VIRTIO_GPU_MAX_VIRQ]->dpu_id = virq_idx;
 		VIRTIO_KMS_INFO("hab virq registered successfully, db_handle: %d\n", dbl_handle);
 	}
 
