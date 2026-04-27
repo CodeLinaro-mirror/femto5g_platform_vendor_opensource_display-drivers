@@ -2092,56 +2092,12 @@ static struct drm_driver msm_driver = {
 	.patchlevel         = MSM_VERSION_PATCHLEVEL,
 };
 
-#if IS_ENABLED(CONFIG_PM)
-static int msm_runtime_suspend(struct device *dev)
-{
-	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_drm_private *priv = NULL;
-
-	DBG("");
-
-	if (!ddev || !ddev->dev_private)
-		return -EINVAL;
-
-	priv = ddev->dev_private;
-
-	if (priv->mdss)
-		msm_mdss_disable(priv->mdss);
-	else if (IS_DISP_OP_HWIO(priv->disp_op))
-		sde_power_resource_enable(&priv->phandle, false, DPUID(ddev));
-
-	return 0;
-}
-
-static int msm_runtime_resume(struct device *dev)
-{
-	struct drm_device *ddev = dev_get_drvdata(dev);
-	struct msm_drm_private *priv = NULL;
-	int ret = 0;
-
-	DBG("");
-
-	if (!ddev || !ddev->dev_private)
-		return -EINVAL;
-
-	priv = ddev->dev_private;
-
-	if (priv->mdss)
-		ret = msm_mdss_enable(priv->mdss);
-	else if (IS_DISP_OP_HWIO(priv->disp_op))
-		ret = sde_power_resource_enable(&priv->phandle, true, DPUID(ddev));
-
-	return ret;
-}
-#endif /* CONFIG_PM */
-
 #if IS_ENABLED(CONFIG_PM_SLEEP)
 static int msm_pm_suspend(struct device *dev)
 {
 	struct drm_device *ddev;
 	struct msm_drm_private *priv;
 	struct msm_kms *kms;
-	int ret = 0;
 
 	if (!dev)
 		return -EINVAL;
@@ -2153,22 +2109,13 @@ static int msm_pm_suspend(struct device *dev)
 	priv = ddev->dev_private;
 	kms = priv->kms;
 
-	if (kms && kms->funcs && kms->funcs->pm_suspend) {
-		ret = kms->funcs->pm_suspend(dev);
-		if (ret) {
-			DRM_ERROR("kms pm_suspend failed: %d\n", ret);
-			return ret;
-		}
-	} else {
-		/* disable hot-plug polling */
-		drm_kms_helper_poll_disable(ddev);
-	}
+	if (kms && kms->funcs && kms->funcs->pm_suspend)
+		return kms->funcs->pm_suspend(dev);
 
-	ret = msm_runtime_suspend(dev);
-	if (ret)
-		DRM_ERROR("msm runtime suspend failed: %d\n", ret);
+	/* disable hot-plug polling */
+	drm_kms_helper_poll_disable(ddev);
 
-	return ret;
+	return 0;
 }
 
 static int msm_pm_resume(struct device *dev)
@@ -2176,7 +2123,6 @@ static int msm_pm_resume(struct device *dev)
 	struct drm_device *ddev;
 	struct msm_drm_private *priv;
 	struct msm_kms *kms;
-	int ret = 0;
 
 	if (!dev)
 		return -EINVAL;
@@ -2187,12 +2133,6 @@ static int msm_pm_resume(struct device *dev)
 
 	priv = ddev->dev_private;
 	kms = priv->kms;
-
-	ret = msm_runtime_resume(dev);
-	if (ret) {
-		DRM_ERROR("msm runtime resume failed: %d\n", ret);
-		return ret;
-	}
 
 	if (kms && kms->funcs && kms->funcs->pm_resume)
 		return kms->funcs->pm_resume(dev);
@@ -2249,6 +2189,49 @@ static int msm_pm_restore(struct device *dev)
 	return 0;
 }
 #endif /* CONFIG_HIBERNATE */
+
+#if IS_ENABLED(CONFIG_PM)
+static int msm_runtime_suspend(struct device *dev)
+{
+	struct drm_device *ddev = dev_get_drvdata(dev);
+	struct msm_drm_private *priv = NULL;
+
+	DBG("");
+
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
+
+	if (priv->mdss)
+		msm_mdss_disable(priv->mdss);
+	else if (IS_DISP_OP_HWIO(priv->disp_op))
+		sde_power_resource_enable(&priv->phandle, false, DPUID(ddev));
+
+	return 0;
+}
+
+static int msm_runtime_resume(struct device *dev)
+{
+	struct drm_device *ddev = dev_get_drvdata(dev);
+	struct msm_drm_private *priv = NULL;
+	int ret = 0;
+
+	DBG("");
+
+	if (!ddev || !ddev->dev_private)
+		return -EINVAL;
+
+	priv = ddev->dev_private;
+
+	if (priv->mdss)
+		ret = msm_mdss_enable(priv->mdss);
+	else if (IS_DISP_OP_HWIO(priv->disp_op))
+		ret = sde_power_resource_enable(&priv->phandle, true, DPUID(ddev));
+
+	return ret;
+}
+#endif /* CONFIG_PM */
 
 static const struct dev_pm_ops msm_pm_ops = {
 #ifdef CONFIG_PM_SLEEP

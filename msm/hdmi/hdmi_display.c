@@ -1070,26 +1070,20 @@ static int hdmi_display_prepare(struct hdmi_display *hdmi_display, void *panel)
 	hdmi = container_of(hdmi_display,
 			struct hdmi_display_private, hdmi_display);
 
-	rc = hdmi->power->clk_enable(hdmi->power, HDMI_CORE_PM, true);
-	if (rc) {
-		HDMI_ERR("Unabled to start core clocks, rc=%d\n", rc);
-		return rc;
-	}
-
 	rate = hdmi_panel->pinfo.pixel_clk_khz;
 	bpp = hdmi_panel->pinfo.bpp;
 
 	rc = hdmi->phy->config(hdmi->phy, rate);
 	if (rc) {
 		HDMI_ERR("phy pre enable failed, rc=%d\n", rc);
-		goto err_clk;
+		return rc;
 	}
 
 	/* enable pclks */
 	rc = hdmi_display_config_pclk(hdmi, rate, bpp);
 	if (rc) {
 		HDMI_ERR("pclk enable failed, rc=%d\n", rc);
-		goto err_clk;
+		return rc;
 	}
 
 	hdmi_display->pixclk = rate * hdmi->pll->clk_factor;
@@ -1097,15 +1091,12 @@ static int hdmi_display_prepare(struct hdmi_display *hdmi_display, void *panel)
 	rc = hdmi->phy->pre_enable(hdmi->phy);
 	if (rc) {
 		HDMI_ERR("phy enable failed, rc=%d\n", rc);
-		goto err_clk;
+		return rc;
 	}
 
 	hdmi_display_state_add(HDMI_STATE_READY);
-	return 0;
 
-err_clk:
-	hdmi->power->clk_enable(hdmi->power, HDMI_CORE_PM, false);
-	return rc;
+	return 0;
 }
 
 static int hdmi_display_unprepare(struct hdmi_display *hdmi_display,
@@ -1129,10 +1120,6 @@ static int hdmi_display_unprepare(struct hdmi_display *hdmi_display,
 	hdmi_display_state_remove(HDMI_STATE_ENABLED);
 
 end:
-	rc = hdmi->power->clk_enable(hdmi->power, HDMI_CORE_PM, false);
-	if (rc)
-		HDMI_ERR("Unabled to stop core clocks, rc=%d\n", rc);
-
 	return rc;
 }
 
@@ -1644,43 +1631,12 @@ end:
 
 static int hdmi_pm_prepare(struct device *dev)
 {
-	struct hdmi_display_private *hdmi;
-	struct platform_device *pdev = to_platform_device(dev);
-	int rc = 0;
-
-	hdmi = platform_get_drvdata(pdev);
-	if (!hdmi) {
-		HDMI_ERR("invalid param(s), hdmi %pK\n", hdmi);
-		return -EINVAL;
-	}
-
-	if (!hdmi->hdmi_display.connected) {
-		rc = hdmi->power->clk_enable(hdmi->power, HDMI_CORE_PM, false);
-		if (rc) {
-			HDMI_ERR("Unabled to stop core clocks, rc=%d\n", rc);
-			return rc;
-		}
-	}
+	// pm_prepare
 	return 0;
 }
-
 static void hdmi_pm_complete(struct device *dev)
 {
-	struct hdmi_display_private *hdmi;
-	struct platform_device *pdev = to_platform_device(dev);
-	int rc = 0;
-
-	hdmi = platform_get_drvdata(pdev);
-	if (!hdmi) {
-		HDMI_ERR("invalid param(s), hdmi %pK\n", hdmi);
-		return;
-	}
-
-	if (!hdmi->hdmi_display.connected) {
-		rc = hdmi->power->clk_enable(hdmi->power, HDMI_CORE_PM, true);
-		if (rc)
-			HDMI_ERR("Unabled to start core clocks, rc=%d\n", rc);
-	}
+	// pm_complete
 }
 
 static const struct dev_pm_ops hdmi_pm_ops = {
