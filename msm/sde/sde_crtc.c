@@ -2922,6 +2922,7 @@ int sde_crtc_state_find_plane_fb_modes(struct drm_crtc_state *state,
 	const struct drm_plane_state *pstate;
 	struct sde_plane_state *sde_pstate;
 	uint32_t mode = 0;
+	uint32_t blend_type;
 	int rc;
 
 	if (!state) {
@@ -2942,13 +2943,15 @@ int sde_crtc_state_find_plane_fb_modes(struct drm_crtc_state *state,
 		sde_pstate = to_sde_plane_state(pstate);
 		mode = sde_plane_get_property(sde_pstate,
 				PLANE_PROP_FB_TRANSLATION_MODE);
-
+		blend_type = sde_plane_get_property(sde_pstate,
+				PLANE_PROP_BLEND_OP);
 		switch (mode) {
 		case SDE_DRM_FB_NON_SEC:
 			(*fb_ns)++;
 			break;
 		case SDE_DRM_FB_SEC:
-			(*fb_sec)++;
+			if (blend_type != SDE_DRM_BLEND_OP_SKIP)
+				(*fb_sec)++;
 			break;
 		case SDE_DRM_FB_SEC_DIR_TRANS:
 			(*fb_sec_dir)++;
