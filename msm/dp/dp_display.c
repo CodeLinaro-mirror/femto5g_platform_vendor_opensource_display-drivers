@@ -3700,6 +3700,7 @@ static int dp_display_get_mst_caps(struct dp_display *dp_display,
 	mst_caps->max_streams_supported = (mst_caps->has_mst) ? 2 : 0;
 	mst_caps->max_dpcd_transaction_bytes = (mst_caps->has_mst) ? 16 : 0;
 	mst_caps->drm_aux = dp->aux->drm_aux;
+	mst_caps->max_lane_count = dp->parser->max_lane_count;
 
 	return rc;
 }
