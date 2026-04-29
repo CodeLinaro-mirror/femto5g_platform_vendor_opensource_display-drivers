@@ -2212,18 +2212,24 @@ end:
 
 static u32 _dp_panel_calc_be_in_lane(struct dp_panel *dp_panel)
 {
+	struct dp_panel_private *panel;
 	struct msm_compression_info *comp_info;
 	u32 htotal, mod_result;
 	u32 be_in_lane = 10;
-
-	comp_info = &dp_panel->pinfo.comp_info;
+	u32 num_lanes, alignment;
 
 	if (!dp_panel->mst_state)
 		return be_in_lane;
 
+	panel = container_of(dp_panel, struct dp_panel_private, dp_panel);
+	comp_info = &dp_panel->pinfo.comp_info;
+
+	num_lanes = panel->link->link_params.lane_count;
+	alignment = num_lanes * 3;
+
 	htotal = comp_info->dsc_info.bytes_per_pkt * comp_info->dsc_info.pkt_per_line;
 
-	mod_result = htotal % 12;
+	mod_result = htotal % alignment;
 	if (mod_result == 0)
 		be_in_lane = 8;
 	else if (mod_result <= 3)
