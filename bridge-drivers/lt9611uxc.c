@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/firmware.h>
@@ -25,6 +25,7 @@
 #include <sound/hdmi-codec.h>
 
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_edid.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_print.h>
@@ -570,6 +571,9 @@ static void lt9611uxc_reset(struct lt9611uxc *lt9611uxc)
 
 	gpiod_set_value_cansleep(lt9611uxc->reset_gpio, 1);
 	msleep(300);
+
+	/* Need longer time to wait LT9611UXC reset finished. */
+	msleep(300);
 }
 
 static void lt9611uxc_assert_5v(struct lt9611uxc *lt9611uxc)
@@ -771,7 +775,7 @@ static int lt9611uxc_connector_get_modes(struct drm_connector *connector)
 	struct cec_notifier *notify = lt9611uxc->cec_notifier;
 	unsigned int count;
 
-	lt9611uxc->edid = lt9611uxc->bridge.funcs->get_edid(&lt9611uxc->bridge, connector);
+	lt9611uxc->edid = drm_edid_duplicate(drm_edid_raw(lt9611uxc->bridge.funcs->edid_read(&lt9611uxc->bridge, connector)));
 	drm_connector_update_edid_property(connector, lt9611uxc->edid);
 	count = drm_add_edid_modes(connector, lt9611uxc->edid);
 	lt9611uxc_set_preferred_mode(connector);
@@ -1100,7 +1104,7 @@ static int lt9611uxc_get_edid_block(void *data, u8 *buf, unsigned int block, siz
 	return 0;
 };
 
-static struct edid *lt9611uxc_bridge_get_edid(struct drm_bridge *bridge,
+const struct drm_edid *lt9611uxc_bridge_get_edid(struct drm_bridge *bridge,
 					      struct drm_connector *connector)
 {
 	struct lt9611uxc *lt9611uxc = bridge_to_lt9611uxc(bridge);
@@ -1119,7 +1123,7 @@ static struct edid *lt9611uxc_bridge_get_edid(struct drm_bridge *bridge,
 		return NULL;
 	}
 
-	return drm_do_get_edid(connector, lt9611uxc_get_edid_block, lt9611uxc);
+	return drm_edid_read_custom(connector, lt9611uxc_get_edid_block, lt9611uxc);
 }
 
 static const struct drm_bridge_funcs lt9611uxc_bridge_funcs = {
@@ -1128,7 +1132,7 @@ static const struct drm_bridge_funcs lt9611uxc_bridge_funcs = {
 	.pre_enable = lt9611uxc_bridge_pre_enable,
 	.mode_set = lt9611uxc_bridge_mode_set,
 	.detect = lt9611uxc_bridge_detect,
-	.get_edid = lt9611uxc_bridge_get_edid,
+	.edid_read = lt9611uxc_bridge_get_edid,
 	.enable = lt9611uxc_bridge_enable,
 	.disable = lt9611uxc_bridge_disable,
 };
