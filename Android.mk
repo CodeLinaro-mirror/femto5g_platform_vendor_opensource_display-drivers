@@ -9,5 +9,5 @@ endif
 ifeq ($(DISPLAY_DLKM_ENABLE),  true)
 	LOCAL_PATH := $(call my-dir)
 	include $(LOCAL_PATH)/msm/Android.mk
-	#include $(LOCAL_PATH)/../bridge-drivers/Android.mk
+	include $(TOP)/vendor/qcom/opensource/display-drivers/bridge-drivers/Android.mk
 endif
