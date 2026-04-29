@@ -7262,6 +7262,7 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 		bool needs_hw_reset, bool is_cmd_mode)
 {
 	int rc, ret = 0;
+	enum msm_disp_op disp_op = sde_encoder_get_disp_op(&sde_enc->base);
 
 	/* if any phys needs reset, reset all phys, in-order */
 	if (needs_hw_reset)
@@ -7280,7 +7281,7 @@ static int _sde_encoder_prepare_for_kickoff_processing(struct drm_encoder *drm_e
 		}
 	}
 
-	if (sde_enc->cur_master &&
+	if (IS_DISP_OP_HWIO(disp_op) && sde_enc->cur_master &&
 			((is_cmd_mode && sde_enc->cur_master->cont_splash_enabled) ||
 			!sde_enc->cur_master->cont_splash_enabled)) {
 		rc = sde_encoder_dce_setup(sde_enc, params);
