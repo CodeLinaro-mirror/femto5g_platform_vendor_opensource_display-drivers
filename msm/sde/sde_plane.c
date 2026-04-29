@@ -473,36 +473,6 @@ void sde_plane_set_revalidate(struct drm_plane *plane, bool enable)
 	psde->revalidate = enable;
 }
 
-static int sde_plane_danger_signal_ctrl(struct drm_plane *plane, bool enable)
-{
-	struct sde_plane *psde;
-	int rc;
-
-	if (!plane) {
-		SDE_ERROR("invalid arguments\n");
-		return -EINVAL;
-	}
-
-	psde = to_sde_plane(plane);
-
-	if (!psde->is_rt_pipe)
-		goto end;
-
-	rc = pm_runtime_resume_and_get(plane->dev->dev);
-	if (rc < 0) {
-		SDE_ERROR("failed to enable power resource %d\n", rc);
-		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
-		return rc;
-	}
-
-	_sde_plane_set_qos_ctrl(plane, enable, SDE_PLANE_QOS_PANIC_CTRL);
-
-	pm_runtime_put_sync(plane->dev->dev);
-
-end:
-	return 0;
-}
-
 /**
  * _sde_plane_set_ot_limit - set OT limit for the given plane
  * @plane:		Pointer to drm plane
@@ -5886,6 +5856,36 @@ static ssize_t _sde_plane_danger_read(struct file *file,
 	*ppos += len;   /* increase offset */
 
 	return len;
+}
+
+static int sde_plane_danger_signal_ctrl(struct drm_plane *plane, bool enable)
+{
+	struct sde_plane *psde;
+	int rc;
+
+	if (!plane) {
+		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	psde = to_sde_plane(plane);
+
+	if (!psde->is_rt_pipe)
+		goto end;
+
+	rc = pm_runtime_resume_and_get(plane->dev->dev);
+	if (rc < 0) {
+		SDE_ERROR("failed to enable power resource %d\n", rc);
+		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
+		return rc;
+	}
+
+	_sde_plane_set_qos_ctrl(plane, enable, SDE_PLANE_QOS_PANIC_CTRL);
+
+	pm_runtime_put_sync(plane->dev->dev);
+
+end:
+	return 0;
 }
 
 static void _sde_plane_set_danger_state(struct sde_kms *kms, bool enable)
