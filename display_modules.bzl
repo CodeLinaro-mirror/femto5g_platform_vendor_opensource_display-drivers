@@ -259,6 +259,9 @@ module_entry(
                 "rotator/sde_rotator_r3_debug.c",
             ],
         },
+        "CONFIG_DSI_PANEL_I2C": [
+                "msm/dsi/dsi_panel_i2c.c",
+        ],
     },
 
     # Configs are handled by config_options = []

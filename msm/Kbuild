@@ -388,6 +388,8 @@ msm_drm-$(CONFIG_MDSS_HFI) += hfi/hfi_utils.o \
 				 dsi/hfi/dsi_hfi.o \
 				 sde/hfi/hfi_wb.o
 
+msm_drm-$(CONFIG_DSI_PANEL_I2C) += dsi/dsi_panel_i2c.o
+
 msm_drm-$(CONFIG_DSI_PARSER) += dsi/dsi_parser.o
 
 msm_drm-$(CONFIG_THERMAL_OF) += msm_cooling_device.o
