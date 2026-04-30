@@ -977,6 +977,12 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		return 0;
 	}
 
+	if (!hfi_priv->connected) {
+		DP_INFO("DP already disconnected, ignoring\n");
+		complete_all(&hfi_priv->hpd_comp);
+		return 0;
+	}
+
 	hfi = hfi_priv->hfi[0];
 	hfi_client = hfi->hfi_client;
 	if (!hfi_client) {
