@@ -10,30 +10,25 @@
 
 #define FLIP_VIEWS 2
 
-void _sde_wb_lsr_destroy_fb_list(struct sde_connector *c_conn,
-	struct sde_connector_state *c_state)
+void sde_wb_lsr_get_view_fbs(struct sde_connector_state *c_state)
 {
-	if (!c_state) {
-		SDE_ERROR("invalid state %pK\n", c_state);
+	int i, j;
+
+	if (!c_state)
 		return;
-	}
 
-	for (int i = 0; i < MAX_VIEWS; i++) {
-		for (int j = 0; j < c_state->view_descriptor[i].num_fbs; j++) {
-			drm_framebuffer_put(c_state->view_descriptor[i].fb_id[j]);
-			c_state->view_descriptor[i].fb_id[j] = NULL;
-		}
-	}
+	for (i = 0; i < MAX_VIEWS; i++)
+		for (j = 0; j < c_state->view_descriptor[i].num_fbs; j++)
+			if (c_state->view_descriptor[i].fb[j])
+				drm_framebuffer_get(c_state->view_descriptor[i].fb[j]);
 
-	if (c_conn)
-		c_state->property_values[CONNECTOR_PROP_OUT_FB_LIST].value =
-			msm_property_get_default(&c_conn->property_info,
-				CONNECTOR_PROP_OUT_FB_LIST);
-	else
-		c_state->property_values[CONNECTOR_PROP_OUT_FB_LIST].value = ~0;
+	for (i = 0; i < MAX_VIEWS; i++)
+		for (j = 0; j < c_state->back_view_descriptor[i].num_fbs; j++)
+			if (c_state->back_view_descriptor[i].fb[j])
+				drm_framebuffer_get(c_state->back_view_descriptor[i].fb[j]);
 }
 
-static void _sde_wb_lsr_reset_out_fb_list(struct sde_connector_state *c_state)
+void sde_wb_lsr_reset_out_fb_list(struct sde_connector_state *c_state)
 {
 	int i, j;
 
@@ -44,15 +39,19 @@ static void _sde_wb_lsr_reset_out_fb_list(struct sde_connector_state *c_state)
 
 	for (i = 0; i < MAX_VIEWS; i++) {
 		for (j = 0; j < c_state->view_descriptor[i].num_fbs; j++) {
-			if (c_state->view_descriptor[i].fb_id[j])
-				drm_framebuffer_put(c_state->view_descriptor[i].fb_id[j]);
+			if (c_state->view_descriptor[i].fb[j]) {
+				drm_framebuffer_put(c_state->view_descriptor[i].fb[j]);
+				c_state->view_descriptor[i].fb[j] = NULL;
+			}
 		}
 	}
 
 	for (i = 0; i < MAX_VIEWS; i++) {
 		for (j = 0; j < c_state->back_view_descriptor[i].num_fbs; j++) {
-			if (c_state->back_view_descriptor[i].fb_id[j])
-				drm_framebuffer_put(c_state->back_view_descriptor[i].fb_id[j]);
+			if (c_state->back_view_descriptor[i].fb[j]) {
+				drm_framebuffer_put(c_state->back_view_descriptor[i].fb[j]);
+				c_state->back_view_descriptor[i].fb[j] = NULL;
+			}
 		}
 	}
 
@@ -80,15 +79,20 @@ static int _sde_wb_lsr_get_view_descriptor(struct drm_connector *connector,
 	desc->num_fbs = view_desc->num_fbs;
 	for (int j = 0; j < view_desc->num_fbs; j++) {
 		format = NULL;
-		desc->fb_id[j] =
-			drm_framebuffer_lookup(connector->dev, NULL, view_desc->fb_id[j]);
-		if (!desc->fb_id[j] && view_desc->fb_id[j]) {
-			SDE_ERROR("failed to look up fb %u\n", view_desc->fb_id[j]);
-			rc = -EFAULT;
-		} else if (!desc->fb_id[j] && !view_desc->fb_id[j]) {
-			SDE_DEBUG("Invalid fb_id\n");
-			continue;
+		if (!view_desc->fb_id[j]) {
+			SDE_ERROR("Invalid fb id\n");
+			rc = -EINVAL;
+			goto fail;
 		}
+		desc->fb[j] =
+			drm_framebuffer_lookup(connector->dev, NULL, view_desc->fb_id[j]);
+		if (IS_ERR_OR_NULL(desc->fb[j])) {
+			SDE_ERROR("Failed to look up fb %u\n", view_desc->fb_id[j]);
+			desc->fb[j] = NULL;
+			rc = -EINVAL;
+			goto fail;
+		}
+
 		struct sde_kms *sde_kms;
 		struct msm_gem_address_space *aspace;
 
@@ -101,28 +105,41 @@ static int _sde_wb_lsr_get_view_descriptor(struct drm_connector *connector,
 		if (!aspace) {
 			SDE_ERROR("invalid aspace\n");
 			rc = -EINVAL;
+			goto fail;
 		}
 
-		rc = msm_framebuffer_prepare(desc->fb_id[j], aspace);
+		rc = msm_framebuffer_prepare(desc->fb[j], aspace);
 		if (rc) {
 			SDE_ERROR("failed to prepare framebuffer %d\n", rc);
 			rc = -EINVAL;
+			goto fail;
 		}
 
-		format = msm_framebuffer_format(desc->fb_id[j]);
+		format = msm_framebuffer_format(desc->fb[j]);
 		if (!format) {
 			SDE_ERROR("invalid fb fmt\n");
 			rc = -EINVAL;
+			goto fail;
 		}
 
-		if (aspace) {
-			add = msm_framebuffer_iova(desc->fb_id[j], aspace, 0);
-			if (!add) {
-				DRM_ERROR("failed to retrieve base addr\n");
-				rc = -EFAULT;
-			}
+		add = msm_framebuffer_iova(desc->fb[j], aspace, 0);
+		if (!add) {
+			DRM_ERROR("failed to retrieve base addr\n");
+			rc = -EFAULT;
+			goto fail;
 		}
 	}
+	return 0;
+
+fail:
+	/* Release refs for any FBs already looked up in this call. */
+	for (int k = 0; k < view_desc->num_fbs; k++) {
+		if (desc->fb[k]) {
+			drm_framebuffer_put(desc->fb[k]);
+			desc->fb[k] = NULL;
+		}
+	}
+	desc->num_fbs = 0;
 	return rc;
 }
 
@@ -178,7 +195,7 @@ static int _sde_wb_lsr_set_prop_out_fb_list(struct drm_connector *connector,
 		return -EINVAL;
 	}
 
-	_sde_wb_lsr_reset_out_fb_list(c_state);
+	sde_wb_lsr_reset_out_fb_list(c_state);
 	memcpy(&c_state->fb_id_list, &fb_id_list, sizeof(fb_id_list));
 	SDE_DEBUG("fb_id_list is set\n");
 
@@ -191,14 +208,27 @@ static int _sde_wb_lsr_set_prop_out_fb_list(struct drm_connector *connector,
 
 	for (iter = 0; iter < MAX_VIEWS * FLIP_VIEWS; iter++) {
 		view_idx = iter % MAX_VIEWS;
-		if ((iter / MAX_VIEWS) && is_back_view)
+		if ((iter / MAX_VIEWS) && is_back_view) {
+			if (fb_id_list.back_views[view_idx].num_fbs > 0)
+				SDE_EVT32(SDE_EVTLOG_FUNC_CASE1, view_idx,
+					fb_id_list.back_views[view_idx].num_fbs,
+					fb_id_list.back_views[view_idx].fb_id[0],
+					fb_id_list.back_views[view_idx].fb_id[1],
+					fb_id_list.back_views[view_idx].fb_id[2]);
 			rc = _sde_wb_lsr_get_view_descriptor(connector, state,
 					&fb_id_list.back_views[view_idx],
 					&c_state->back_view_descriptor[view_idx]);
-		else if (iter < MAX_VIEWS)
+		} else if (iter < MAX_VIEWS) {
+			if (fb_id_list.views[view_idx].num_fbs > 0)
+				SDE_EVT32(SDE_EVTLOG_FUNC_CASE2, view_idx,
+					fb_id_list.views[view_idx].num_fbs,
+					fb_id_list.views[view_idx].fb_id[0],
+					fb_id_list.views[view_idx].fb_id[1],
+					fb_id_list.views[view_idx].fb_id[2]);
 			rc = _sde_wb_lsr_get_view_descriptor(connector, state,
 					&fb_id_list.views[view_idx],
 					&c_state->view_descriptor[view_idx]);
+		}
 
 		if (rc) {
 			SDE_ERROR("failed to get view descriptor %d\n", rc);
@@ -352,7 +382,7 @@ int _sde_wb_lsr_set_reproj_info(
 				&c_state->property_state, &sz, idx);
 
 	if (opq_blob == NULL) {
-		SDE_ERROR("opq_blob is NULL\n");
+		SDE_DEBUG("opq_blob is NULL\n");
 		return 0;
 	}
 
@@ -371,7 +401,7 @@ int _sde_wb_lsr_set_reproj_info(
 	opq_state_config->buf =  msm_gem_new(dev, opq_blob->size, MSM_BO_UNCACHED);
 	if (IS_ERR_OR_NULL(opq_state_config->buf)) {
 		rc = PTR_ERR(opq_state_config->buf);
-		SDE_ERROR("Failed to allocate reproj buf memory :%d\n", rc);
+		SDE_DEBUG("Failed to allocate reproj buf memory :%d\n", rc);
 		return rc;
 	}
 	/**
@@ -658,7 +688,7 @@ int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_plane_buf
 
 		for (int j = 0; j < desc->num_fbs; j++) {
 			flags = 0x0;
-			fb = desc->fb_id[j];
+			fb = desc->fb[j];
 			if (!fb) {
 				SDE_ERROR("invalid fb\n");
 				rc = -EINVAL;

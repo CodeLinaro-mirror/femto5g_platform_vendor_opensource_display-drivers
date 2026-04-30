@@ -2185,6 +2185,8 @@ static void sde_connector_atomic_destroy_state(struct drm_connector *connector,
 	if (c_state->out_fb)
 		_sde_connector_destroy_fb(c_conn, c_state);
 
+	sde_wb_lsr_reset_out_fb_list(c_state);
+
 	__drm_atomic_helper_connector_destroy_state(&c_state->base);
 
 	if (!c_conn) {
@@ -2270,6 +2272,9 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 	/* additional handling for drm framebuffer objects */
 	if (c_state->out_fb)
 		drm_framebuffer_get(c_state->out_fb);
+
+	/* Each state owns a reference to its LSR out-buffer FBs */
+	sde_wb_lsr_get_view_fbs(c_state);
 
 	/* clear dynamic HDR metadata from prev state */
 	if (c_state->dyn_hdr_meta.dynamic_hdr_update) {

@@ -1143,6 +1143,6 @@ struct sde_hw_repro_conn_cfg {
 struct sde_view_descriptor {
 	u32 num_views;
 	u32 num_fbs;
-	struct drm_framebuffer *fb_id[MAX_BUFFERS_PER_VIEW];
+	struct drm_framebuffer *fb[MAX_BUFFERS_PER_VIEW];
 };
 #endif  /* _SDE_HW_MDSS_H */
