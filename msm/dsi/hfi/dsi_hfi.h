@@ -379,6 +379,9 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
  *                   custom_cmd_type to remap to, or DSI_CMD_SET_MAX as a
  *                   "no remap" sentinel.
  * @table_size: size of cmd_remap_table; must equal DSI_CMD_SET_MAX
+ * @resp_req: if true, HFI_HOST_FLAGS_RESPONSE_REQUIRED is appended to the
+ *            flags when sending the HFI command, causing the call to block
+ *            until DCP acknowledges the remapping.
  *
  * This function validates each entry in cmd_remap_table and
  * constructs an HFI payload which is sent to the DCP in a single operation.
@@ -392,6 +395,6 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
  * Return: 0 on success, negative error code on failure
  */
 int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
-		u32 *cmd_remap_table, u32 table_size);
+		u32 *cmd_remap_table, u32 table_size, bool resp_req);
 
 #endif

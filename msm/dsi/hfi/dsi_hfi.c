@@ -366,6 +366,7 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	case HFI_COMMAND_DISPLAY_SET_MODE:
 	case HFI_COMMAND_DISPLAY_POWER_REGISTER:
 	case HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD:
+	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP:
 		break;
 	case HFI_COMMAND_DEBUG_MISR_READ:
 		dsi_hfi_process_misr_read(display, payload, size);
@@ -1150,7 +1151,7 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 }
 
 int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
-		u32 *cmd_remap_table, u32 table_size)
+		u32 *cmd_remap_table, u32 table_size, bool resp_req)
 {
 	struct sde_kms *sde_kms;
 	struct hfi_kms *hfi_kms;
@@ -1159,8 +1160,12 @@ int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
 	struct dsi_hfi_cmd_set_remap_payload *hfi_remap_payload = NULL;
 	u32 hfi_payload_size;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP;
-	u32 i, hfi_remap_count = 0;
+	u32 flags = HFI_HOST_FLAGS_NON_DISCARDABLE;
+	u32 obj_id, i, hfi_remap_count = 0;
 	int rc = 0;
+
+	if (resp_req)
+		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
 
 	if (!display || !display->dsi_hfi_info || !display->drm_conn) {
 		DSI_ERR("Invalid params\n");
@@ -1180,6 +1185,7 @@ int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
 	}
 
 	priv_info = display->panel->cur_mode->priv_info;
+	obj_id = sde_conn_get_display_obj_id(display->drm_conn);
 
 	/*
 	 * Validate each entry and count valid mappings.
@@ -1194,7 +1200,7 @@ int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
 
 		/* Validate custom_cmd_type is within valid range */
 		if (custom_cmd_type >= DSI_CUSTOM_CMD_SET_MAX) {
-			DSI_ERR("Entry %d: custom_cmd_type=%d out of range (max=%d)\n",
+			DSI_ERR("Entry %u: custom_cmd_type=%u out of range (max=%u)\n",
 				i, custom_cmd_type, DSI_CUSTOM_CMD_SET_MAX);
 			return -EINVAL;
 		}
@@ -1204,23 +1210,29 @@ int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
 		 * equals the standard command (pointing back to original mapping)
 		 */
 		if (custom_cmd_type < DSI_CUSTOM_CMD_SET_START_IDX && custom_cmd_type != i) {
-			DSI_ERR("Entry %d: custom_cmd_type=%d must be >= %d or = to cmd_type=%d\n",
+			DSI_ERR("Entry %u: custom_cmd_type=%u must be >= %u or = to cmd_type=%u\n",
 				i, custom_cmd_type, DSI_CUSTOM_CMD_SET_START_IDX, i);
 			return -EINVAL;
 		}
 
 		/* Validate command set at custom_cmd_type exists and is non-empty */
 		custom_idx = dsi_cmd_type_to_index(custom_cmd_type);
-		if (custom_idx < 0 || custom_idx >= DSI_CMD_SET_TOTAL_SIZE ||
-				!priv_info->cmd_sets[custom_idx].count) {
-			DSI_ERR("Entry %d: empty cmd set at custom_idx=%d - custom_count=%d\n",
-				i, custom_idx, priv_info->cmd_sets[custom_idx].count);
+		if (custom_idx < 0 || custom_idx >= DSI_CMD_SET_TOTAL_SIZE) {
+			DSI_ERR("Entry %u: invalid custom_idx=%d for custom_cmd_type=%u\n",
+				i, custom_idx, custom_cmd_type);
+			return -EINVAL;
+		}
+
+		if (!priv_info->cmd_sets[custom_idx].count) {
+			DSI_ERR("Entry %u: empty cmd set at custom_idx=%d for custom_cmd_type=%u\n",
+				i, custom_idx, custom_cmd_type);
 			return -EINVAL;
 		}
 
 		hfi_remap_count++;
 	}
 
+	SDE_EVT32(obj_id, hfi_cmd, hfi_remap_count, resp_req, SDE_EVTLOG_FUNC_CASE1);
 	if (!hfi_remap_count) {
 		DSI_INFO("No valid DSI cmd remap entries found\n");
 		return 0;
@@ -1241,6 +1253,9 @@ int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
 			hfi_remap_payload->entries[hfi_remap_count].cmd_type = i;
 			hfi_remap_payload->entries[hfi_remap_count].custom_cmd_type =
 				cmd_remap_table[i];
+			SDE_EVT32(obj_id, i, cmd_remap_table[i], SDE_EVTLOG_FUNC_CASE2);
+			DSI_DEBUG("DSI cmd remap: cmd_type=%u remapped to custom_cmd_type=%u\n",
+				i, cmd_remap_table[i]);
 			hfi_remap_count++;
 		}
 	}
@@ -1263,9 +1278,11 @@ int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
 	hfi_client = &hfi_kms->hfi_client;
 
 	/* Send the HFI payload to firmware */
+	SDE_EVT32(obj_id, hfi_cmd, hfi_remap_count, SDE_EVTLOG_FUNC_CASE3);
 	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd, display->display_type,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, hfi_remap_payload, hfi_payload_size,
-			(HFI_HOST_FLAGS_NON_DISCARDABLE));
+			flags);
+	SDE_EVT32(obj_id, hfi_cmd, rc, SDE_EVTLOG_FUNC_CASE4);
 	if (rc)
 		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP, rc=%d\n",
 				rc);

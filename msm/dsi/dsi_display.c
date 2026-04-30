@@ -2136,8 +2136,9 @@ static ssize_t debugfs_cmd_remap_write(struct file *file,
 {
 	struct dsi_display *display = file->private_data;
 	char buf[256];
-	u32 standard_cmd_type, custom_cmd_type;
+	u32 standard_cmd_type, custom_cmd_type, resp_req_val = 0;
 	u32 cmd_remap_table[DSI_CMD_SET_MAX];
+	bool resp_req;
 	int rc = 0;
 	int i;
 
@@ -2155,11 +2156,12 @@ static ssize_t debugfs_cmd_remap_write(struct file *file,
 
 	buf[count] = '\0';
 
-	/* Parse input: "standard_cmd_type custom_cmd_type" */
-	if (sscanf(buf, "%u %u", &standard_cmd_type, &custom_cmd_type) != 2) {
-		DSI_ERR("Invalid format. Use: <standard_cmd_type> <custom_cmd_type>\n");
+	/* Parse input: "standard_cmd_type custom_cmd_type [resp_req]" */
+	if (sscanf(buf, "%u %u %u", &standard_cmd_type, &custom_cmd_type, &resp_req_val) < 2) {
+		DSI_ERR("Invalid format. Use: <standard_cmd_type> <custom_cmd_type> [resp_req]\n");
 		return -EINVAL;
 	}
+	resp_req = !!resp_req_val;
 
 	/* Validate cmd_type ranges */
 	if (standard_cmd_type >= DSI_CMD_SET_MAX || custom_cmd_type >= DSI_CUSTOM_CMD_SET_MAX) {
@@ -2185,7 +2187,7 @@ static ssize_t debugfs_cmd_remap_write(struct file *file,
 		cmd_remap_table[i] = DSI_CMD_SET_MAX;
 	cmd_remap_table[standard_cmd_type] = custom_cmd_type;
 
-	rc = dsi_hfi_add_dsi_cmd_remap(display, cmd_remap_table, DSI_CMD_SET_MAX);
+	rc = dsi_hfi_add_dsi_cmd_remap(display, cmd_remap_table, DSI_CMD_SET_MAX, resp_req);
 	if (rc) {
 		DSI_ERR("Failed to add DSI cmd remap, rc=%d\n", rc);
 		return rc;
