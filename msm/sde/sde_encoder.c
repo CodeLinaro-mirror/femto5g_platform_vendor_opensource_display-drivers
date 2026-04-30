@@ -254,7 +254,7 @@ ktime_t sde_encoder_event_timestamp_adjust(u32 drm_enc_id, u32 event_fps, u64 ev
 		hw_diff = cur_timestamp_hw - event_timestamp_hw;
 	}
 
-	hw_diff_ns = DIV_ROUND_UP(hw_diff * 1000 * 10, 192); /* 19.2 MHz clock */
+	hw_diff_ns = QTIMER_TO_NS(hw_diff);
 	event_period_ns = DIV_ROUND_UP(1000000000, event_fps);
 
 	/* avoid setting timestamp, if diff is more than one empulse */
