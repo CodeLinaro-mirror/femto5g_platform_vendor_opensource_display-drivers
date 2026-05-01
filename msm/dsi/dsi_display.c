@@ -1293,21 +1293,29 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 		dsi_display->tx_cmd_buf_ndx = 0;
 
 		dsi_panel_acquire_panel_lock(dsi_display->panel);
-		for (i = 0; i < cnt; i++) {
-			if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
-				rc = dsi_hfi_host_transfer_sub(&dsi_display->host, cmds);
-			else
-				rc = dsi_host_transfer_sub(&dsi_display->host, cmds,
-							do_peripheral_flush);
+
+		if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI) {
+			set->state = (cmds->msg.flags & MIPI_DSI_MSG_USE_LPM) ?
+					DSI_CMD_SET_STATE_LP : DSI_CMD_SET_STATE_HS;
+			rc = dsi_hfi_tx_cmd_set(dsi_display, set);
 			if (rc < 0) {
-				DSI_ERR("failed to send command, rc=%d\n", rc);
-				break;
+				DSI_ERR("failed to send cmd set via HFI, rc=%d\n", rc);
 			}
-			if (cmds->post_wait_ms)
-				usleep_range(cmds->post_wait_ms*1000,
-						((cmds->post_wait_ms*1000)+10));
-			cmds++;
+		} else {
+			for (i = 0; i < cnt; i++) {
+				rc = dsi_host_transfer_sub(&dsi_display->host, cmds,
+						do_peripheral_flush);
+				if (rc < 0) {
+					DSI_ERR("failed to send command, rc=%d\n", rc);
+					break;
+				}
+				if (cmds->post_wait_ms)
+					usleep_range(cmds->post_wait_ms * 1000,
+							(cmds->post_wait_ms * 1000) + 10);
+				cmds++;
+			}
 		}
+
 		dsi_panel_release_panel_lock(dsi_display->panel);
 
 		memset(dbgfs_tx_cmd_buf, 0, SZ_4K);
