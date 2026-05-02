@@ -579,8 +579,6 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	}
 
 	drm_enc = &sde_enc->base;
-	if (!sde_encoder_is_primary_display(drm_enc))
-		return 0;
 
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
 		MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
