@@ -858,10 +858,6 @@ static void _deinit_addr_maps(struct dp_hfi *hfi)
 		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->edid_addr_map);
 		hfi->edid_addr_map = NULL;
 	}
-	if (hfi->modes_addr_map) {
-		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->modes_addr_map);
-		hfi->modes_addr_map = NULL;
-	}
 }
 
 static int _init_addr_maps(struct dp_hfi *hfi)
@@ -1157,14 +1153,8 @@ static void dp_mgr_hfi_min_level_change(void *client_ctx, u8 min_enc_level)
     	}
 
 	hfi = hfi_priv->hfi[0];
-	if (!hfi || !hfi->hdcp2x_ctx) {
-		DP_DEBUG("HDCP 2.x not active, skipping TYPE_ID update\n");
-		return;
-	}
-
-    	/* Only send TYPE_ID if HDCP is authenticated */
-	if (hfi->hdcp_info.hdcp_state != HDCP_STATE_AUTHENTICATED) {
-		DP_DEBUG("HDCP not authenticated, skipping TYPE_ID update\n");
+	if (!hfi) {
+		DP_DEBUG("hfi not initialized, skipping TYPE_ID update\n");
 		return;
 	}
 
@@ -1192,8 +1182,6 @@ static void dp_mgr_hfi_min_level_change(void *client_ctx, u8 min_enc_level)
 	rc = dp_mgr_hfi_send_type_id_to_sink(hfi_priv->hfi[0], stream_type);
 	if (rc) {
 		DP_ERR("Failed to send TYPE_ID to sink: %d\n", rc);
-		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
-		dp_mgr_update_hdcp_info(hfi, false);
 	}
 }
 
@@ -2082,29 +2070,6 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 			hfi->hdcp_info.source_cap &= ~HDCP_VERSION_2P2;
 		} else {
 			DP_INFO("HDCP 2.x initialized successfully\n");
-
-			/* Allocate shared memory buffers for HDCP 2.x message exchange */
-			hfi->hdcp2x_req_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
-			if (!hfi->hdcp2x_req_map) {
-				DP_ERR("Failed to allocate HDCP 2.x request buffer\n");
-				dp_hdcp2x_deinit(hfi->hdcp2x_ctx);
-				hfi->hdcp2x_ctx = NULL;
-				hfi->hdcp_info.source_cap &= ~HDCP_VERSION_2P2;
-			} else {
-				hfi->hdcp2x_resp_map = dp_mgr_hfi_init_shared_addr(hfi_client,
-					SZ_4K);
-				if (!hfi->hdcp2x_resp_map) {
-					DP_ERR("Failed to allocate HDCP 2.x response buffer\n");
-					dp_mgr_hfi_deinit_shared_addr(hfi_client,
-						hfi->hdcp2x_req_map);
-					hfi->hdcp2x_req_map = NULL;
-					dp_hdcp2x_deinit(hfi->hdcp2x_ctx);
-					hfi->hdcp2x_ctx = NULL;
-					hfi->hdcp_info.source_cap &= ~HDCP_VERSION_2P2;
-				} else {
-					DP_DEBUG("HDCP 2.x shared buffers allocated\n");
-				}
-			}
 		}
 	}
 
@@ -2303,6 +2268,17 @@ static int dp_mgr_hfi_post_init(struct dp_client *client)
 		hfi_priv->audio = NULL;
 	} else {
 		DP_DEBUG("HFI audio initialized successfully\n");
+	}
+
+	if (!hfi->hdcp2x_req_map) {
+		hfi->hdcp2x_req_map = dp_mgr_hfi_init_shared_addr(hfi->hfi_client, SZ_1K);
+		if (!hfi->hdcp2x_req_map)
+			DP_WARN("Failed to pre-alloc HDCP 2.x req buffer\n");
+	}
+	if (!hfi->hdcp2x_resp_map) {
+		hfi->hdcp2x_resp_map = dp_mgr_hfi_init_shared_addr(hfi->hfi_client, SZ_1K);
+		if (!hfi->hdcp2x_resp_map)
+			DP_WARN("Failed to pre-alloc HDCP 2.x resp buffer\n");
 	}
 
 	/* Register min_enc_level callback */
@@ -2608,23 +2584,11 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 		DP_DEBUG("HDCP deinitialized\n");
 	}
 
-	/* Deinitialize HDCP 2.x and free shared buffers */
+	/* Deinitialize HDCP 2.x*/
 	if (hfi->hdcp2x_ctx) {
 		dp_hdcp2x_deinit(hfi->hdcp2x_ctx);
 		hfi->hdcp2x_ctx = NULL;
 		DP_DEBUG("HDCP 2.x deinitialized\n");
-	}
-
-	/* Free HDCP 2.x shared buffers */
-	if (hfi->hdcp2x_req_map) {
-		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->hdcp2x_req_map);
-		hfi->hdcp2x_req_map = NULL;
-		DP_DEBUG("HDCP 2.x request buffer freed\n");
-	}
-	if (hfi->hdcp2x_resp_map) {
-		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->hdcp2x_resp_map);
-		hfi->hdcp2x_resp_map = NULL;
-		DP_DEBUG("HDCP 2.x response buffer freed\n");
 	}
 
 	DP_DEBUG("Sending DISPLAY_POST_DISABLE command to DCP, panel_id=%d\n", panel_id);
