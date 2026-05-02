@@ -351,11 +351,16 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 			display_hfi->mode_valid = true;
 		break;
 	case HFI_COMMAND_DISPLAY_POWER_CONTROL:
-		rc = dsi_display_hfi_power_supplies(display,
+		if (payload && size >= 2) {
+			rc = dsi_display_hfi_power_supplies(display,
 								((u32 *)payload)[0],
 								((bool *)payload)[1]);
-		if (rc)
-			DSI_ERR("Could not power on supplies\n");
+			if (rc)
+				DSI_ERR("Could not power on supplies rc: %d\n", rc);
+		} else {
+			DSI_ERR("invalid payload: 0x%pK or size: %u to power on supplies\n",
+				payload, size);
+		}
 		break;
 	case HFI_COMMAND_DISPLAY_DISABLE:
 		msleep(20);
@@ -1872,7 +1877,7 @@ static int dsi_hfi_send_panel_timing_modes(struct dsi_display *display,
 		return -EINVAL;
 
 	/* Init timing mode cap cmd send */
-	const u32 total_modes = display->panel->num_timing_nodes;
+	const u32 total_modes = display->panel->num_display_modes;
 	u32 start = 0;
 	u32 batch_idx = 0;
 	struct hfi_cmdbuf_t *buffer;

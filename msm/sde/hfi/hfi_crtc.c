@@ -890,6 +890,10 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 
 	switch (cmd_id) {
 	case HFI_COMMAND_DISPLAY_EVENT_LTM:
+		if (!payload) {
+			SDE_ERROR("Invalid LTM event payload %pK\n", payload);
+			return;
+		}
 		event_payload = (struct hfi_display_ltm_event_resp *)payload;
 		if (event_payload->event_type == HFI_LTM_HIST_DONE)
 			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_LTM_HIST, event_payload);
@@ -901,6 +905,10 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 			SDE_ERROR("unknown LTM event type %d\n", event_payload->event_type);
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_RGB_HIST: {
+		if (!payload) {
+			SDE_ERROR("Invalid RGB hist event payload %pK\n", payload);
+			return;
+		}
 		struct hfi_display_rgb_hist_event_resp *event_payload;
 
 		event_payload = payload;
@@ -921,6 +929,10 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 	}
 	case HFI_COMMAND_DISPLAY_EVENT_PA_HIST:
 	{
+		if (!payload) {
+			SDE_ERROR("Invalid PA hist event payload %pK\n", payload);
+			return;
+		}
 		struct hfi_display_pa_hist_event_resp *event_payload;
 
 		event_payload = (struct hfi_display_pa_hist_event_resp *)payload;
@@ -928,10 +940,7 @@ static void hfi_crtc_prop_handler(u32 obj_id, u32 cmd_id,
 			SDE_ERROR("Invalid size for pa hist event, size %d\n", size);
 			return;
 		}
-		if (event_payload)
-			sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_HISTOGRAM, event_payload);
-		else
-			SDE_ERROR("Invalid PA Hist event payload\n");
+		sde_crtc->crtc_event_cb(sde_crtc, DRM_EVENT_HISTOGRAM, event_payload);
 		break;
 	}
 	case HFI_COMMAND_DISPLAY_EVENT_SPR_OPR: {
