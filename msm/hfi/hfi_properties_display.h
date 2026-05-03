@@ -762,6 +762,27 @@
 #define HFI_PROPERTY_DISPLAY_EPT                                     0x00020032
 
 /*
+ * HFI_PROPERTY_DISPLAY_VSYNC_OFFSET - This property sets line pointer offset time in nanoseconds
+ *                                     from VSYNC of a specified display. This is an optional
+ *                                     property and if not set, the default value will be used.
+ *                                     If set, it must be set before registering for line pointer
+ *                                     interrupt event. The value is in nanoseconds and must be
+ *                                     less than the display refresh interval. The default value
+ *                                     is 0, which means that the line pointer interrupt event is
+ *                                     aligned to the beginning of the display VSYNC. The host is
+ *                                     expected to send this property as part of the
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_VSYNC_OFFSET
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_VSYNC_OFFSET  |
+ *                                (version=0 << 20)  |
+ *                                (dsize=2 << 24)
+ *   (u32_value) payload [1]     : Vsync offset in nanoseconds (lower 32 bits)
+ *   (u32_value) payload [2]     : Vsync offset in nanoseconds (upper 32 bits)
+ */
+#define HFI_PROPERTY_DISPLAY_VSYNC_OFFSET                            0x00020033
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
