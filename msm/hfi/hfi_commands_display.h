@@ -496,6 +496,42 @@
  */
 #define HFI_COMMAND_DISPLAY_HDCP_FEATURE_SUPPORTED                    0x02000017
 
+/*
+ * HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP - From Host to DCP, this command specifies the
+ *                                                     mapping between hfi_panel_dcs_command_type
+ *                                                     values and custom command types. This command
+ *                                                     tells DCP which hfi_panel_dcs_command_type
+ *                                                     should be replaced with a custom command
+ *                                                     type. OEMs can define custom command types at
+ *                                                     host level which can be used to remap
+ *                                                     hfi_panel_dcs_command_type values.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Validation requirements:
+ *      - count must be > 0 and <= total entries in hfi_panel_dcs_command_type
+ *      - cmd_type must be a valid hfi_panel_dcs_command_type value
+ *      - custom_cmd_type must be a valid custom command type within the custom dcs commands indices
+ *        from HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO or is within the
+ *        hfi_panel_dcs_command_type range, if commands go back to the default.
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP
+ *     hfi_packet.flags         : HFI_TX_FLAGS_INTR_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload[0]    : count of remapping entries
+ *     hfi_packet.payload[1..]  : struct hfi_cmd_set_remap[count]
+ */
+#define HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP             0x02000018
+
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_H__

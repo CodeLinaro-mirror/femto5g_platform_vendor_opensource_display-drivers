@@ -366,6 +366,7 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	case HFI_COMMAND_DISPLAY_SET_MODE:
 	case HFI_COMMAND_DISPLAY_POWER_REGISTER:
 	case HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD:
+	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP:
 		break;
 	case HFI_COMMAND_DEBUG_MISR_READ:
 		dsi_hfi_process_misr_read(display, payload, size);
@@ -978,6 +979,7 @@ static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 	int i;
 	int j = 0;
 	int rc = 0;
+	int cmd_type;
 
 	dsi_hfi = display->dsi_hfi_info;
 	if (!dsi_hfi) {
@@ -985,21 +987,25 @@ static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 		return -EINVAL;
 	}
 
-	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
-		if (j == NUM_PANEL_CMD_TYPES_SUPPORTED)
-			break;
-
-		if (i == DSI_CMD_SET_PPS || i == DSI_CMD_SET_ROI)
+	for (i = 0; i < DSI_CMD_SET_TOTAL_SIZE; i++) {
+		cmd_type = priv_info->cmd_sets[i].type;
+		if (cmd_type == DSI_CMD_SET_PPS || cmd_type == DSI_CMD_SET_ROI)
 			continue;
 
 		if (!priv_info->cmd_sets[i].count)
 			continue;
 
+		if (j >= MAX_ALLOWED_DCS_CMD_TYPES) {
+			DSI_ERR("DCS cmd type count exceeds HFI dsize 8-bit limit (%d)\n",
+				MAX_ALLOWED_DCS_CMD_TYPES);
+			return -EINVAL;
+		}
+
 		panel_timing_caps->payload.hfi_per_type_array[j].hfi_buff_struct_offset =
 							dsi_hfi->running_hfi_offset;
 		panel_timing_caps->payload.hfi_per_type_array[j].sde_buff_type_offset =
 							dsi_hfi->running_sde_offset;
-		panel_timing_caps->payload.hfi_per_type_array[j].cmd_type = i;
+		panel_timing_caps->payload.hfi_per_type_array[j].cmd_type = cmd_type;
 		panel_timing_caps->payload.hfi_per_type_array[j].count_cmds =
 							priv_info->cmd_sets[i].count;
 
@@ -1144,6 +1150,148 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	return rc;
 }
 
+int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
+		u32 *cmd_remap_table, u32 table_size, bool resp_req)
+{
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct dsi_display_mode_priv_info *priv_info;
+	struct dsi_hfi_cmd_set_remap_payload *hfi_remap_payload = NULL;
+	u32 hfi_payload_size;
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP;
+	u32 flags = HFI_HOST_FLAGS_NON_DISCARDABLE;
+	u32 obj_id, i, hfi_remap_count = 0;
+	int rc = 0;
+
+	if (resp_req)
+		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+
+	if (!display || !display->dsi_hfi_info || !display->drm_conn) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	if (!cmd_remap_table || table_size != DSI_CMD_SET_MAX) {
+		DSI_ERR("Invalid cmd_remap_table: ptr=%p, table_size=%d, expected=%d\n",
+			cmd_remap_table, table_size, DSI_CMD_SET_MAX);
+		return -EINVAL;
+	}
+
+	/* Validate panel and mode configuration */
+	if (!display->panel || !display->panel->cur_mode || !display->panel->cur_mode->priv_info) {
+		DSI_ERR("Invalid panel or mode configuration\n");
+		return -EINVAL;
+	}
+
+	priv_info = display->panel->cur_mode->priv_info;
+	obj_id = sde_conn_get_display_obj_id(display->drm_conn);
+
+	/*
+	 * Validate each entry and count valid mappings.
+	 * Entries set to DSI_CMD_SET_MAX are treated as "no remap" markers.
+	 */
+	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
+		u32 custom_cmd_type = cmd_remap_table[i];
+		int custom_idx;
+
+		if (custom_cmd_type == DSI_CMD_SET_MAX)
+			continue;
+
+		/* Validate custom_cmd_type is within valid range */
+		if (custom_cmd_type >= DSI_CUSTOM_CMD_SET_MAX) {
+			DSI_ERR("Entry %u: custom_cmd_type=%u out of range (max=%u)\n",
+				i, custom_cmd_type, DSI_CUSTOM_CMD_SET_MAX);
+			return -EINVAL;
+		}
+
+		/*
+		 * Validate custom command is in the custom range OR
+		 * equals the standard command (pointing back to original mapping)
+		 */
+		if (custom_cmd_type < DSI_CUSTOM_CMD_SET_START_IDX && custom_cmd_type != i) {
+			DSI_ERR("Entry %u: custom_cmd_type=%u must be >= %u or = to cmd_type=%u\n",
+				i, custom_cmd_type, DSI_CUSTOM_CMD_SET_START_IDX, i);
+			return -EINVAL;
+		}
+
+		/* Validate command set at custom_cmd_type exists and is non-empty */
+		custom_idx = dsi_cmd_type_to_index(custom_cmd_type);
+		if (custom_idx < 0 || custom_idx >= DSI_CMD_SET_TOTAL_SIZE) {
+			DSI_ERR("Entry %u: invalid custom_idx=%d for custom_cmd_type=%u\n",
+				i, custom_idx, custom_cmd_type);
+			return -EINVAL;
+		}
+
+		if (!priv_info->cmd_sets[custom_idx].count) {
+			DSI_ERR("Entry %u: empty cmd set at custom_idx=%d for custom_cmd_type=%u\n",
+				i, custom_idx, custom_cmd_type);
+			return -EINVAL;
+		}
+
+		hfi_remap_count++;
+	}
+
+	SDE_EVT32(obj_id, hfi_cmd, hfi_remap_count, resp_req, SDE_EVTLOG_FUNC_CASE1);
+	if (!hfi_remap_count) {
+		DSI_INFO("No valid DSI cmd remap entries found\n");
+		return 0;
+	}
+
+	hfi_payload_size = sizeof(u32) + (hfi_remap_count * sizeof(struct hfi_cmd_set_remap));
+	hfi_remap_payload = kzalloc(hfi_payload_size, GFP_KERNEL);
+	if (!hfi_remap_payload) {
+		DSI_ERR("Failed to allocate HFI remap payload\n");
+		return -ENOMEM;
+	}
+
+	/* Build HFI payload from cmd_remap_table */
+	hfi_remap_payload->count = hfi_remap_count;
+	hfi_remap_count = 0;
+	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
+		if (cmd_remap_table[i] != DSI_CMD_SET_MAX) {
+			hfi_remap_payload->entries[hfi_remap_count].cmd_type = i;
+			hfi_remap_payload->entries[hfi_remap_count].custom_cmd_type =
+				cmd_remap_table[i];
+			SDE_EVT32(obj_id, i, cmd_remap_table[i], SDE_EVTLOG_FUNC_CASE2);
+			DSI_DEBUG("DSI cmd remap: cmd_type=%u remapped to custom_cmd_type=%u\n",
+				i, cmd_remap_table[i]);
+			hfi_remap_count++;
+		}
+	}
+
+	/* Get KMS and HFI client */
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms) {
+		DSI_ERR("Failed to get sde_kms\n");
+		rc = -EINVAL;
+		goto cleanup;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		DSI_ERR("Failed to get hfi_kms\n");
+		rc = -EINVAL;
+		goto cleanup;
+	}
+
+	hfi_client = &hfi_kms->hfi_client;
+
+	/* Send the HFI payload to firmware */
+	SDE_EVT32(obj_id, hfi_cmd, hfi_remap_count, SDE_EVTLOG_FUNC_CASE3);
+	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd, display->display_type,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, hfi_remap_payload, hfi_payload_size,
+			flags);
+	SDE_EVT32(obj_id, hfi_cmd, rc, SDE_EVTLOG_FUNC_CASE4);
+	if (rc)
+		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP, rc=%d\n",
+				rc);
+
+cleanup:
+	kfree(hfi_remap_payload);
+	return rc;
+}
+
 static u32 *dsi_hfi_pack_freq_patterns(struct dsi_display *display, u32 *total_size)
 {
 	struct dsi_display_mode_priv_info *priv_info;
@@ -1216,7 +1364,6 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 					struct dsi_panel *panel,
 					struct dsi_panel_generic_caps *panel_generic_caps)
 {
-	panel_generic_caps->valid_gen_caps_cnt = MIN_NUM_OF_GEN_CAPS;
 	panel_generic_caps->panel_type = dsi_get_panel_type_helper(panel);
 	panel_generic_caps->color_order_type = dsi_get_panel_color_order_type(panel);
 	panel_generic_caps->dma_trigger_type =
@@ -1237,79 +1384,41 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->max_brightness_level = panel->hdr_props.peak_brightness;
 	panel_generic_caps->vsync_src = dsi_get_panel_vsync_src(display);
 	panel_generic_caps->cphy_enabled = (panel->host_config.phy_type == DSI_PHY_TYPE_CPHY);
-
 	panel_generic_caps->panel_name = (*(u32 *)panel->name);
-	if (panel_generic_caps->panel_name)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->panel_bpp = dsi_get_panel_bpp_helper(panel);
-	if (panel_generic_caps->panel_bpp)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->panels_lanes_state = dsi_get_panel_lane_state_helper(panel);
-	if (panel_generic_caps->panels_lanes_state)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->panel_lane_map = dsi_get_panel_lane_map_helper(panel);
-	if (panel_generic_caps->panel_lane_map)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->tx_eot_append = (u32)(panel->host_config.append_tx_eot);
-	if (panel_generic_caps->tx_eot_append)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->eof_power_mode = panel->video_config.eof_bllp_lp11_en;
-	if (panel_generic_caps->eof_power_mode)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->bllp_power_mode = panel->video_config.bllp_lp11_en;
-	if (panel_generic_caps->bllp_power_mode)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->backlight_ctrl_prim = dsi_get_panel_backlight_type(panel, "primary");
-	if (panel_generic_caps->backlight_ctrl_prim)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->backlight_ctrl_sec = dsi_get_panel_backlight_type(panel, "secondary");
-	if (panel_generic_caps->backlight_ctrl_sec)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	panel_generic_caps->is_bl_inverted = panel->bl_config.bl_inverted_dbv;
-	if (panel_generic_caps->is_bl_inverted)
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	dsi_get_panel_ctrl_nums_helper(display, panel_generic_caps->ctrl_nums);
-	if (panel_generic_caps->ctrl_nums[0])
-		panel_generic_caps->valid_gen_caps_cnt++;
-
 	dsi_get_panel_phy_nums_helper(display, panel_generic_caps->phy_nums);
-	if (panel_generic_caps->phy_nums[0])
-		panel_generic_caps->valid_gen_caps_cnt++;
 
 	if (display->panel->esd_config.esd_enabled &&
 		!display->panel->esd_config.esd_host_controlled) {
 		dsi_get_panel_esd_config_helper(display, &panel_generic_caps->esd_config);
-		panel_generic_caps->valid_gen_caps_cnt++;
 	}
 
 	if (panel->esync_caps.esync_support) {
 		dsi_hfi_populate_esync_caps(panel, &panel_generic_caps->esync_caps);
-		panel_generic_caps->valid_gen_caps_cnt++;
 	}
 
 	if (panel->dfps_caps.dfps_support) {
 		dsi_hfi_populate_dfps_caps(panel, &panel_generic_caps->dfps_caps);
-		panel_generic_caps->valid_gen_caps_cnt++;
 	}
 
 	panel_generic_caps->lp11_init = panel->lp11_init;
-	if (panel_generic_caps->lp11_init)
-		panel_generic_caps->valid_gen_caps_cnt++;
 
 	if (panel->panel_mode_switch_enabled) {
 		dsi_hfi_populate_poms_caps(panel, &panel_generic_caps->poms_caps);
-		panel_generic_caps->valid_gen_caps_cnt++;
 	}
+
+	/* Populate DSI custom command set info */
+	panel_generic_caps->custom_cmd_set_info[0] = DSI_CUSTOM_CMD_SET_START_IDX;
+	panel_generic_caps->custom_cmd_set_info[1] = DSI_CUSTOM_CMD_SET_COUNT;
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -1473,52 +1582,55 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 
 	hfi_util_kv_helper_reset(display_hfi->kv_props);
 
+	/*
+	 * Property mapping for panel generic capabilities
+	 *
+	 * use_default_val behavior:
+	 * - true:  Property is always sent to firmware, even if value is 0.
+	 *          These are mandatory properties required by the HFI protocol.
+	 * - false: Property is only sent if value is non-zero.
+	 *          These are optional properties that may not be present on all panels.
+	 */
 	struct dsi_value_to_prop_lookup dsi_hfi_gen_props_map[] = {
-		{panel_generic_caps.panel_type, HFI_PROPERTY_PANEL_PHYSICAL_TYPE},
-		{panel_generic_caps.color_order_type, HFI_PROPERTY_PANEL_COLOR_ORDER},
-		{panel_generic_caps.dma_trigger_type, HFI_PROPERTY_PANEL_DMA_TRIGGER},
-		{panel_generic_caps.mdp_trigger_type, HFI_PROPERTY_PANEL_STREAM_TRIGGER},
-		{panel_generic_caps.te_mode, HFI_PROPERTY_PANEL_TE_MODE},
-		{panel_generic_caps.dma_sched_line, HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE},
-		{panel_generic_caps.dma_sched_window, HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW},
-		{panel_generic_caps.traffic_mode, HFI_PROPERTY_PANEL_TRAFFIC_MODE},
-		{panel_generic_caps.virtual_channel_id, HFI_PROPERTY_PANEL_VIRTUAL_CHANNEL_ID},
-		{panel_generic_caps.wr_mem_start, HFI_PROPERTY_PANEL_WR_MEM_START},
-		{panel_generic_caps.wr_mem_continue, HFI_PROPERTY_PANEL_WR_MEM_CONTINUE},
-		{panel_generic_caps.te_dcs_command, HFI_PROPERTY_PANEL_TE_DCS_COMMAND},
-		{panel_generic_caps.panel_op_mode, HFI_PROPERTY_PANEL_OPERATING_MODE},
-		{panel_generic_caps.min_backlight_level, HFI_PROPERTY_PANEL_BL_MIN_LEVEL},
-		{panel_generic_caps.max_backlight_level, HFI_PROPERTY_PANEL_BL_MAX_LEVEL},
-		{panel_generic_caps.vsync_src, HFI_PROPERTY_PANEL_VSYNC_SOURCE},
-		{panel_generic_caps.max_brightness_level, HFI_PROPERTY_PANEL_BRIGHTNESS_MAX_LEVEL},
-		{panel_generic_caps.cphy_enabled, HFI_PROPERTY_PANEL_CPHY_MODE},
-		/*Cutoff for properties that take on default value*/
-		{panel_generic_caps.panel_name, HFI_PROPERTY_PANEL_NAME},
-		{panel_generic_caps.panel_bpp, HFI_PROPERTY_PANEL_BPP},
-		{panel_generic_caps.panels_lanes_state, HFI_PROPERTY_PANEL_LANES_STATE},
-		{panel_generic_caps.panel_lane_map, HFI_PROPERTY_PANEL_LANE_MAP},
-		{panel_generic_caps.tx_eot_append, HFI_PROPERTY_PANEL_TX_EOT_APPEND},
-		{panel_generic_caps.eof_power_mode, HFI_PROPERTY_PANEL_BLLP_EOF_POWER_MODE},
-		{panel_generic_caps.bllp_power_mode, HFI_PROPERTY_PANEL_BLLP_POWER_MODE},
-		{panel_generic_caps.backlight_ctrl_prim, HFI_PROPERTY_PANEL_BL_PMIC_CONTROL_TYPE},
+		{panel_generic_caps.panel_type, HFI_PROPERTY_PANEL_PHYSICAL_TYPE, true},
+		{panel_generic_caps.color_order_type, HFI_PROPERTY_PANEL_COLOR_ORDER, true},
+		{panel_generic_caps.dma_trigger_type, HFI_PROPERTY_PANEL_DMA_TRIGGER, true},
+		{panel_generic_caps.mdp_trigger_type, HFI_PROPERTY_PANEL_STREAM_TRIGGER, true},
+		{panel_generic_caps.te_mode, HFI_PROPERTY_PANEL_TE_MODE, true},
+		{panel_generic_caps.dma_sched_line, HFI_PROPERTY_PANEL_DMA_SCHEDULE_LINE, true},
+		{panel_generic_caps.dma_sched_window, HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW, true},
+		{panel_generic_caps.traffic_mode, HFI_PROPERTY_PANEL_TRAFFIC_MODE, true},
+		{panel_generic_caps.virtual_channel_id, HFI_PROPERTY_PANEL_VIRTUAL_CHANNEL_ID,
+			true},
+		{panel_generic_caps.wr_mem_start, HFI_PROPERTY_PANEL_WR_MEM_START, true},
+		{panel_generic_caps.wr_mem_continue, HFI_PROPERTY_PANEL_WR_MEM_CONTINUE, true},
+		{panel_generic_caps.te_dcs_command, HFI_PROPERTY_PANEL_TE_DCS_COMMAND, true},
+		{panel_generic_caps.panel_op_mode, HFI_PROPERTY_PANEL_OPERATING_MODE, true},
+		{panel_generic_caps.min_backlight_level, HFI_PROPERTY_PANEL_BL_MIN_LEVEL, true},
+		{panel_generic_caps.max_backlight_level, HFI_PROPERTY_PANEL_BL_MAX_LEVEL, true},
+		{panel_generic_caps.vsync_src, HFI_PROPERTY_PANEL_VSYNC_SOURCE, true},
+		{panel_generic_caps.max_brightness_level, HFI_PROPERTY_PANEL_BRIGHTNESS_MAX_LEVEL,
+			true},
+		{panel_generic_caps.cphy_enabled, HFI_PROPERTY_PANEL_CPHY_MODE, true},
+		{panel_generic_caps.panel_name, HFI_PROPERTY_PANEL_NAME, false},
+		{panel_generic_caps.panel_bpp, HFI_PROPERTY_PANEL_BPP, false},
+		{panel_generic_caps.panels_lanes_state, HFI_PROPERTY_PANEL_LANES_STATE, false},
+		{panel_generic_caps.panel_lane_map, HFI_PROPERTY_PANEL_LANE_MAP, false},
+		{panel_generic_caps.tx_eot_append, HFI_PROPERTY_PANEL_TX_EOT_APPEND, false},
+		{panel_generic_caps.eof_power_mode, HFI_PROPERTY_PANEL_BLLP_EOF_POWER_MODE, false},
+		{panel_generic_caps.bllp_power_mode, HFI_PROPERTY_PANEL_BLLP_POWER_MODE, false},
+		{panel_generic_caps.backlight_ctrl_prim, HFI_PROPERTY_PANEL_BL_PMIC_CONTROL_TYPE,
+			false},
 		{panel_generic_caps.backlight_ctrl_sec,
-						HFI_PROPERTY_PANEL_SEC_BL_PMIC_CONTROL_TYPE},
-		{panel_generic_caps.is_bl_inverted, HFI_PROPERTY_PANEL_BL_INVERTED_DBV},
-		{panel_generic_caps.lp11_init, HFI_PROPERTY_PANEL_LP11_INIT},
+						HFI_PROPERTY_PANEL_SEC_BL_PMIC_CONTROL_TYPE, false},
+		{panel_generic_caps.is_bl_inverted, HFI_PROPERTY_PANEL_BL_INVERTED_DBV, false},
+		{panel_generic_caps.lp11_init, HFI_PROPERTY_PANEL_LP11_INIT, false},
 	};
 
-	/* Populate properties that will take on a default value, even if not present */
-	for (i = 0; i < MIN_NUM_OF_GEN_CAPS; i++) {
-		hfi_util_kv_helper_add(display_hfi->kv_props,
-					HFI_PACKKEY(dsi_hfi_gen_props_map[i].hfi_prop, 0,
-					(sizeof(dsi_hfi_gen_props_map[i].value) / sizeof(u32))),
-					(void *)&dsi_hfi_gen_props_map[i].value);
-		kv_size += sizeof(dsi_hfi_gen_props_map[i].value);
-	}
-
-	/* Populate properties that need to be checked for presence */
-	for (i = MIN_NUM_OF_GEN_CAPS; i < ARRAY_SIZE(dsi_hfi_gen_props_map); i++) {
-		if (dsi_hfi_gen_props_map[i].value) {
+	/* populate properties based on use_default_val flag */
+	for (i = 0; i < ARRAY_SIZE(dsi_hfi_gen_props_map); i++) {
+		/* add the property based on default‑value usage or a non‑zero value. */
+		if (dsi_hfi_gen_props_map[i].use_default_val || dsi_hfi_gen_props_map[i].value) {
 			hfi_util_kv_helper_add(display_hfi->kv_props,
 					HFI_PACKKEY(dsi_hfi_gen_props_map[i].hfi_prop, 0,
 					(sizeof(dsi_hfi_gen_props_map[i].value) / sizeof(u32))),
@@ -1604,6 +1716,16 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 					(void *)freq_patterns);
 			kv_size += freq_pattern_size;
 		}
+	}
+
+	/* Add DSI custom command set info if custom commands are present */
+	if (panel_generic_caps.custom_cmd_set_info[1]) {
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO, 0,
+				((ARRAY_SIZE(panel_generic_caps.custom_cmd_set_info) *
+				sizeof(panel_generic_caps.custom_cmd_set_info[0])) / sizeof(u32))),
+				(void *)panel_generic_caps.custom_cmd_set_info);
+		kv_size += sizeof(panel_generic_caps.custom_cmd_set_info);
 	}
 
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
@@ -1702,9 +1824,11 @@ static int _dsi_hfi_append_panel_timing_caps(struct dsi_display_hfi *display_hfi
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
 			HFI_PACKKEY(HFI_PROPERTY_PANEL_DCS_CMD_INFO, idx,
-			sizeof(timing_caps->payload) / sizeof(u32)),
+			((sizeof(struct dsi_hfi_panel_per_cmd_type) / sizeof(u32)) *
+			timing_caps->payload.count + 1)),
 			(void *)&timing_caps->payload);
-		kv_size += sizeof(timing_caps->payload);
+		kv_size += ((sizeof(struct dsi_hfi_panel_per_cmd_type) / sizeof(u32)) *
+			timing_caps->payload.count + 1) * sizeof(u32);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
 			HFI_PACKKEY(HFI_PROPERTY_PANEL_DPHY_TIMINGS, idx,

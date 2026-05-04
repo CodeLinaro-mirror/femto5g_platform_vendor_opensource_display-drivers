@@ -1462,6 +1462,7 @@ bool dsi_conn_check_cmd_defined(void *display, enum dsi_cmd_set_type type)
 	struct dsi_panel *panel;
 	u32 count;
 	struct dsi_display_mode *mode;
+	int idx;
 
 	if (!dsi_display || !dsi_display->panel)
 		return false;
@@ -1470,8 +1471,14 @@ bool dsi_conn_check_cmd_defined(void *display, enum dsi_cmd_set_type type)
 	if (!panel || !panel->cur_mode)
 		return false;
 
+	/* Convert enum value to array index */
+	idx = dsi_cmd_type_to_index(type);
+	if (idx < 0 || idx >= DSI_CMD_SET_TOTAL_SIZE) {
+		DSI_ERR("Invalid command type: %u, idx: %d\n", type, idx);
+		return false;
+	}
 	mode = panel->cur_mode;
-	count = mode->priv_info->cmd_sets[type].count;
+	count = mode->priv_info->cmd_sets[idx].count;
 
 	return count ? true : false;
 }
