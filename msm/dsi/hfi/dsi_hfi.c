@@ -22,8 +22,8 @@
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 
-#define DSI_HFI_MAPPED_BASE_SIZE (SZ_4K * 4)
-#define DSI_HFI_MAPPED_MAX_SIZE (SZ_4K * 12)
+#define DSI_HFI_MIN_MAPPED_ADDR_SIZE (PAGE_SIZE * 4)
+#define DSI_HFI_MAX_MAPPED_ADDR_SIZE (PAGE_SIZE * 64)
 #define MAX_TIMING_PER_PACKET  32
 
 static int dsi_display_hfi_power_supplies(struct dsi_display *display,
@@ -120,7 +120,7 @@ static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 	return rc;
 }
 
-int dsi_hfi_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
+static int dsi_hfi_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
 			bool blocking)
 {
 	if (!hfi_client) {
@@ -219,7 +219,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 	return rc;
 }
 
-void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
+static void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
 {
 	struct misr_read_data_ret *misr_data;
 	struct dsi_misr_values *misr_read_values;
@@ -901,6 +901,18 @@ static void dsi_hfi_populate_dfps_caps(struct dsi_panel *panel,
 	hfi_dfps_caps->type = (enum hfi_panel_dfps_type)panel->dfps_caps.type;
 }
 
+static void dsi_hfi_populate_poms_caps(struct dsi_panel *panel,
+					struct hfi_panel_operating_mode_caps *hfi_poms_caps)
+{
+	if (!panel || !hfi_poms_caps) {
+		DSI_ERR("null pointer");
+		return;
+	}
+
+	hfi_poms_caps->panel_mode_switch_enabled = panel->panel_mode_switch_enabled;
+	hfi_poms_caps->vsync_aligned_switch = panel->poms_align_vsync;
+}
+
 static int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 				struct dsi_panel_cmd_set *cmd_set,
 				void **sde_vaddr, void **hfi_vaddr)
@@ -1293,6 +1305,11 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->lp11_init = panel->lp11_init;
 	if (panel_generic_caps->lp11_init)
 		panel_generic_caps->valid_gen_caps_cnt++;
+
+	if (panel->panel_mode_switch_enabled) {
+		dsi_hfi_populate_poms_caps(panel, &panel_generic_caps->poms_caps);
+		panel_generic_caps->valid_gen_caps_cnt++;
+	}
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -1558,6 +1575,14 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		kv_size += sizeof(qsync_params);
 	}
 
+	if (panel_generic_caps.poms_caps.panel_mode_switch_enabled) {
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+					HFI_PACKKEY(HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY,
+					0, (sizeof(panel_generic_caps.poms_caps) / sizeof(u32))),
+					(void *)&panel_generic_caps.poms_caps);
+		kv_size += sizeof(panel_generic_caps.poms_caps);
+	}
+
 	if (panel_generic_caps.dfps_caps.dfps_support) {
 		dfps_payload[0] = 1; /* Currently we support only single dfps struct */
 		memcpy(&dfps_payload[1], &panel_generic_caps.dfps_caps,
@@ -1771,6 +1796,28 @@ error_append:
 	return rc;
 }
 
+/**
+ * dsi_hfi_calculate_required_memory() - calculate the required memory
+ * @panel: handle to dsi panel structure
+ *
+ * Return: the required memory
+ */
+static inline size_t dsi_hfi_calculate_required_memory(struct dsi_panel *panel)
+{
+	size_t mem_size = 0;
+
+	mem_size = (size_t)PAGE_SIZE * (size_t)panel->shared_cmd_buf_page_size;
+
+	if (mem_size < DSI_HFI_MIN_MAPPED_ADDR_SIZE)
+		mem_size = DSI_HFI_MIN_MAPPED_ADDR_SIZE;
+	else if (mem_size > DSI_HFI_MAX_MAPPED_ADDR_SIZE)
+		mem_size = DSI_HFI_MAX_MAPPED_ADDR_SIZE;
+
+	DSI_DEBUG("calculated HFI memory requirement: %zu bytes\n", mem_size);
+
+	return mem_size;
+}
+
 int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 {
 	struct dsi_panel_init_caps panel_init_caps;
@@ -1847,8 +1894,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		}
 		display_hfi->shared_addr_map = addr_map;
 
-		addr_map->size = panel_init_caps.num_timing_modes > MAX_TIMING_PER_PACKET ?
-				DSI_HFI_MAPPED_MAX_SIZE : DSI_HFI_MAPPED_BASE_SIZE;
+		addr_map->size = dsi_hfi_calculate_required_memory(panel);
 
 		hfi_adapter_buffer_alloc(display_hfi->hfi_client, addr_map);
 		if (!addr_map->remote_addr || !addr_map->local_addr)

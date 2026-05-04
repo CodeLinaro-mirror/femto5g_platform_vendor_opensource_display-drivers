@@ -11,7 +11,7 @@
 #include "hfi_msm_drv.h"
 #include "hfi_catalog.h"
 #include "hfi_msm_drv.h"
-#include "sde_encoder.h"
+#include "hfi_encoder.h"
 #include "sde_plane.h"
 #include "sde_formats.h"
 #include "hfi_utils.h"
@@ -211,6 +211,25 @@ static int hfi_kms_process_cmd_buf(struct hfi_client_t *client, struct hfi_cmdbu
 	return rc;
 }
 
+static void _wake_up_all_kickoff_wq(struct sde_kms *sde_kms)
+{
+	struct drm_encoder *drm_enc;
+	struct hfi_encoder *hfi_enc;
+	struct sde_encoder_virt *sde_enc;
+
+	drm_for_each_encoder(drm_enc, sde_kms->dev) {
+		sde_enc = to_sde_encoder_virt(drm_enc);
+		if (!sde_enc)
+			continue;
+
+		hfi_enc = to_hfi_encoder(sde_enc);
+		if (!hfi_enc)
+			continue;
+
+		wake_up_all(&hfi_enc->pending_kickoff_wq);
+	}
+}
+
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
 void hfi_kms_recover_hwfence(struct hfi_kms *hfi_kms)
 {
@@ -286,6 +305,7 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 	mp = &phandle->mp;
 
 	atomic_set(&hfi_kms->ssr_in_progress, 1);
+	_wake_up_all_kickoff_wq(sde_kms);
 
 	SDE_DEBUG("process ssr start called\n");
 
@@ -893,7 +913,8 @@ int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
-int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state)
+int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state,
+	enum hfi_device_res_state vm_state)
 {
 	int ret = 0;
 	struct sde_kms *sde_kms;
@@ -935,8 +956,7 @@ int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_stat
 	}
 
 	hfi_res_cfg.disp_mask = 0xF;
-	hfi_res_cfg.vm_state = (vm_req == VM_REQ_ACQUIRE) ?
-				HFI_DEVICE_RESOURCE_ACQUIRE : HFI_DEVICE_RESOURCE_RELEASE;
+	hfi_res_cfg.vm_state = vm_state;
 	hfi_res_cfg.resource_type = HFI_DEVICE_RESOURCE_DISPLAY;
 
 	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
@@ -1083,6 +1103,82 @@ int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *
 
 end:
 	kfree(uidle_ctx);
+	return rc;
+}
+
+int hfi_kms_set_uidle_perf_cnt(struct hfi_kms *hfi_kms, u32 val)
+{
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_display_dbg_property dbg_prop = {0};
+	int rc;
+
+	if (!hfi_kms)
+		return -EINVAL;
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	dbg_prop.display_id = MSM_DRV_HFI_ID;
+	dbg_prop.prop_id = HFI_DISPLAY_DEBUG_UIDLE_CNTR;
+	dbg_prop.value_lsb = val;
+
+	rc = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY, MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &dbg_prop, sizeof(dbg_prop),
+			HFI_HOST_FLAGS_NONE);
+	if (rc) {
+		SDE_ERROR("failed to add uidle cntr set property rc:%d\n", rc);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		return rc;
+	}
+
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY, val);
+	rc = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+	if (rc)
+		SDE_ERROR("failed to set uidle cntr command rc:%d\n", rc);
+
+	return rc;
+}
+
+int hfi_kms_set_uidle_disable(struct hfi_kms *hfi_kms, bool disable)
+{
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_display_dbg_property dbg_prop = {0};
+	int rc;
+
+	if (!hfi_kms)
+		return -EINVAL;
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	dbg_prop.display_id = MSM_DRV_HFI_ID;
+	dbg_prop.prop_id = HFI_DISPLAY_DEBUG_UIDLE_DISABLE;
+	dbg_prop.value_lsb = disable ? 1 : 0;
+
+	rc = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY, MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &dbg_prop, sizeof(dbg_prop),
+			HFI_HOST_FLAGS_NONE);
+	if (rc) {
+		SDE_ERROR("failed to add uidle disable set property rc:%d\n", rc);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		return rc;
+	}
+
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY, disable);
+	rc = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+	if (rc)
+		SDE_ERROR("failed to send uidle disable command rc:%d\n", rc);
+
 	return rc;
 }
 

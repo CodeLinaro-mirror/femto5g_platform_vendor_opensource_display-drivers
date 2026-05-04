@@ -215,11 +215,13 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_HIST_CTRL] = HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL,
 	[SDE_CP_CRTC_DSPP_HIST_IRQ] = HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER,
 	[SDE_CP_CRTC_DSPP_QRTC_CONFIG] = HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG,
+	[SDE_CP_CRTC_DSPP_COPR] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR,
 };
 
 static enum sde_cp_crtc_pu_features
 	sde_cp_crtc_pu_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_PU_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_RC_PU] = HFI_PROPERTY_DISPLAY_COLOR_RC_PU,
+	[SDE_CP_CRTC_DSPP_SPR_PU] = HFI_PROPERTY_DISPLAY_COLOR_SPR_PU,
 };
 #endif
 
@@ -1807,7 +1809,7 @@ static int _sde_cp_crtc_cache_property_helper(struct drm_crtc *crtc,
 	return ret;
 }
 
-u32 _sde_cp_get_num_dspp_mixers(struct sde_crtc *sde_crtc)
+static u32 _sde_cp_get_num_dspp_mixers(struct sde_crtc *sde_crtc)
 {
 	int i;
 	u32 num_mixers = 0;
@@ -2772,7 +2774,7 @@ exit:
 		sde_cp_disable_features(crtc);
 }
 
-void sde_cp_reset_unsupported_feature_wrappers(struct sde_mdss_cfg *catalog)
+static void sde_cp_reset_unsupported_feature_wrappers(struct sde_mdss_cfg *catalog)
 {
 	if (!catalog) {
 		DRM_ERROR("invalid catalog\n");
@@ -3324,6 +3326,7 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 	if (IS_DISP_OP_HFI(disp_op)) {
 		_sde_cp_mark_active_dirty_internal(sde_crtc);
 		_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_RC_PU, false);
+		_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_SPR_PU, false);
 		return;
 	}
 
@@ -6100,8 +6103,10 @@ void sde_cp_set_skip_blend_plane_info(struct drm_crtc *drm_crtc,
 	mutex_lock(&crtc->crtc_cp_lock);
 	plane_valid = skip_blend->valid_plane;
 
-	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[SB_PLANE_REAL] :
-		&crtc->skip_blend_planes[SB_PLANE_VIRT];
+	int slot_idx = (skip_blend->plane == SSPP_DMA1) ? 0 : 1;
+
+	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[slot_idx][SB_PLANE_REAL] :
+		&crtc->skip_blend_planes[slot_idx][SB_PLANE_VIRT];
 
 	skip_plane->valid = plane_valid;
 	skip_plane->plane = (plane_valid) ? skip_blend->plane : SSPP_NONE;

@@ -11,6 +11,7 @@ def define_shikra():
                 registry = display_driver_modules,
                 modules = [
                     "msm_drm",
+                    "lt9611uxd",
                 ],
                 config_options = [
                     "CONFIG_DRM_MSM_SDE",
@@ -21,5 +22,7 @@ def define_shikra():
                     "CONFIG_DRM_MSM_REGISTER_LOGGING",
                     "CONFIG_QCOM_MDSS_PLL",
                     "CONFIG_THERMAL_OF",
+                    "CONFIG_DRM_LT9611UXD",
+                    "CONFIG_MSM_EXT_DISPLAY",
                 ],
            )

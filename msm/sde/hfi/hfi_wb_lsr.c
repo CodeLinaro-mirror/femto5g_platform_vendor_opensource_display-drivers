@@ -226,7 +226,7 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 {
 	struct sde_view_descriptor *view_desc = NULL;
 	struct sde_view_descriptor *back_view_desc = NULL;
-	struct hfi_wb_out_buff *out_buffers;
+	struct hfi_plane_buff *out_buffers;
 	void *payload;
 	int ret = 0, i;
 	bool is_back_view_en = false;
@@ -249,7 +249,7 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 			is_back_view_en = true;
 		}
 	}
-	out_buffers = kcalloc(num_fbs, sizeof(struct hfi_wb_out_buff), GFP_KERNEL);
+	out_buffers = kcalloc(num_fbs, sizeof(struct hfi_plane_buff), GFP_KERNEL);
 	if (!out_buffers) {
 		SDE_ERROR("failed to allocate memory for out_buffers\n");
 		return -ENOMEM;
@@ -258,7 +258,7 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 	sde_wb_lsr_get_fb_id_list(wb_dev, out_buffers, view_desc,
 			back_view_desc, is_back_view_en);
 
-	payload = kmalloc(sizeof(u32) + num_fbs * sizeof(struct hfi_wb_out_buff), GFP_KERNEL);
+	payload = kmalloc(sizeof(u32) + num_fbs * sizeof(struct hfi_plane_buff), GFP_KERNEL);
 	if (!payload) {
 		SDE_ERROR("failed to allocate memory for payload\n");
 		kfree(out_buffers);
@@ -266,12 +266,12 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 	}
 	*(u32 *)payload = num_fbs;
 	memcpy((char *)payload + sizeof(u32), out_buffers,
-			num_fbs * sizeof(struct hfi_wb_out_buff));
+			num_fbs * sizeof(struct hfi_plane_buff));
 
 	prop_id = HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS;
 
 	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
-		HFI_VAL_U32_ARRAY, payload, sizeof(u32) + num_fbs * sizeof(struct hfi_wb_out_buff));
+		HFI_VAL_U32_ARRAY, payload, sizeof(u32) + num_fbs * sizeof(struct hfi_plane_buff));
 
 	kfree(out_buffers);
 	kfree(payload);
@@ -576,6 +576,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 	switch (hfi_prop) {
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID:
 		opq_cfg = &cstate->reproj_sparse_grid;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -589,6 +593,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_RADIAL_DISTORTION_GRID:
 		opq_cfg = &cstate->reproj_radial_dis_grid;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -602,6 +610,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_DISPLAY_GAMMA:
 		opq_cfg = &cstate->reproj_display_gamma;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -615,6 +627,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_GCX_SESSION_CONFIG:
 		opq_cfg = &cstate->reproj_gcx_session_config;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -628,6 +644,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_GCX_SESSION_CONFIG_DATA:
 		opq_cfg = &cstate->reproj_gcx_session_config_data;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {

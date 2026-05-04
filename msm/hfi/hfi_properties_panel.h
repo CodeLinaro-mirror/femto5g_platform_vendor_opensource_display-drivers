@@ -844,6 +844,33 @@
 #define HFI_PROPERTY_PANEL_DMA_SCHEDULE_WINDOW                       0x00040036
 
 /*
+ * HFI_PROPERTY_PANEL_DYN_REF_CLK_FREQS - Provides DSI bit clock frequencies for dynamic refresh.
+ *                                  This property is sent to DCP as part of
+ *                                  HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DYN_REF_CLK_FREQS
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_DYN_REF_CLK_FREQS |
+ *                                  (version=0 << 20) | (dsize=n+1 << 24 )
+ *   (u32_value) payload[1]       : Number of dynamic refresh clock frequencies (n)
+ *   (u32_value) payload[2..n]    : dynamic refresh clock frequencies (Hz)
+ */
+#define HFI_PROPERTY_PANEL_DYN_REF_CLK_FREQS                         0x00040038
+
+/*
+ * HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY - Specifies the Panel Operating Mode Switch
+ *                                capabilities of the panel.
+ *                                This property is sent to DCP as part of
+ *                                HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY |
+ *                               (version=0 << 20) | (dsize=2 << 24 )
+ *   (u32_value) payload[1]    : panel_mode_switch_enabled (1 = supported, 0 = not supported)
+ *   (u32_value) payload[2]    : vsync_aligned_switch (1 = align vsync, 0 = no alignment)
+ */
+#define HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY               0x00040039
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF

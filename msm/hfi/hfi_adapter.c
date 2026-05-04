@@ -439,7 +439,7 @@ static void _process_cb_ssr_work(struct kthread_work *work)
 	}
 }
 
-int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
+static int32_t callback_function_hfi(struct hfi_core_session *hfi_session,
 		const void *cb_data, enum hfi_core_event_type event_type, bool blocking)
 {
 	struct hfi_adapter_t *adapter = (struct hfi_adapter_t *)cb_data;

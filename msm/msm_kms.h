@@ -51,6 +51,8 @@
 #define MSM_MODE_FLAG_NONDSC_BPP_SWITCH			(1<<8)
 /* Request to switch EMSYNC FPS */
 #define MSM_MODE_FLAG_SEAMLESS_EMSYNC_FPS_SWITCH	(1<<9)
+/* Request to switch the timing mode on video panel */
+#define MSM_MODE_FLAG_SEAMLESS_DMS_VID			(1<<10)
 
 /* As there are different display controller blocks depending on the
  * snapdragon version, the kms support is split out and the appropriate
@@ -277,6 +279,13 @@ static inline bool msm_is_mode_seamless_poms(const struct msm_display_mode *mode
 static inline bool msm_is_mode_seamless_dyn_clk(const struct msm_display_mode *mode)
 {
 	return mode ? (mode->private_flags & MSM_MODE_FLAG_SEAMLESS_DYN_CLK) : false;
+}
+
+static inline bool msm_is_mode_seamless_dms_vid(
+					const struct msm_display_mode *mode)
+{
+	return mode ? (mode->private_flags & MSM_MODE_FLAG_SEAMLESS_DMS_VID)
+		: false;
 }
 
 static inline bool msm_is_mode_bpp_switch(const struct msm_display_mode *mode)

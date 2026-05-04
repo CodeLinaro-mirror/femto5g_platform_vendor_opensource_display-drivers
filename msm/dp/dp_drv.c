@@ -298,6 +298,9 @@ static int dp_pm_prepare(struct device *dev)
 
 	dp = dev_get_drvdata(dev);
 
+	if (!dp || !dp->client || !dp->client->base_connector || !dp->client->pm_prepare)
+		return -EINVAL;
+
 	return dp->client->pm_prepare(dp->client);
 }
 
@@ -309,6 +312,9 @@ static void dp_pm_complete(struct device *dev)
 		return;
 
 	dp = dev_get_drvdata(dev);
+
+	if (!dp || !dp->client || !dp->client->base_connector || !dp->client->pm_complete)
+		return;
 
 	dp->client->pm_complete(dp->client);
 }
