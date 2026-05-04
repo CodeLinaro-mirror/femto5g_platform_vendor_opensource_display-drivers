@@ -161,6 +161,23 @@ int msm_lsr_set_clocks(struct msm_lsr_core *core)
 	return rc;
 }
 
+static u32 _msm_lsr_get_ctrl_clk_rate(struct lsr_device *device, u32 freq)
+{
+	struct allowed_clock_rates_table *core_tbl = device->res->allowed_clks_tbl;
+	struct allowed_clock_rates_table *ctrl_tbl = device->res->controller_clk_corner_tbl;
+	u32 tbl_size = device->res->allowed_clks_tbl_size;
+	u32 i;
+
+	if (ctrl_tbl && tbl_size) {
+		for (i = 0; i < tbl_size - 1; i++)
+			if (freq <= core_tbl[i].clock_rate)
+				break;
+		return ctrl_tbl[i].clock_rate;
+	}
+
+	return freq * 2;
+}
+
 int msm_lsr_set_clocks_impl(struct lsr_device *device, u32 freq)
 {
 	struct clock_info *cl;
@@ -176,12 +193,8 @@ int msm_lsr_set_clocks_impl(struct lsr_device *device, u32 freq)
 				freq = msm_lsr_clock_voting;
 
 			scaled_freq = freq;
-			// scale tensilica core clk by factor of 2
-			// Recommended by LSR FW team as Work around
 			if (!strcmp(cl->name, "lsr_clk"))
-				scaled_freq *= 2;
-			dprintk(LSR_PWR, "%s: clock source rate set to: %u\n",
-				__func__, scaled_freq);
+				scaled_freq = _msm_lsr_get_ctrl_clk_rate(device, freq);
 
 			rc = clk_set_rate(cl->clk, scaled_freq);
 			if (rc) {

@@ -152,15 +152,13 @@ struct dentry *msm_lsr_debugfs_init_core(struct msm_lsr_core *core,
 		struct dentry *parent)
 {
 	struct dentry *dir = NULL;
-	char debugfs_name[MAX_DEBUGFS_NAME];
 
 	if (!core) {
 		dprintk(LSR_ERR, "Invalid params, core: %pK\n", core);
 		goto failed_create_dir;
 	}
 
-	snprintf(debugfs_name, MAX_DEBUGFS_NAME, "core%d", 0);
-	dir = debugfs_create_dir(debugfs_name, parent);
+	dir = debugfs_create_dir("core", parent);
 	if (IS_ERR_OR_NULL(dir)) {
 		dir = NULL;
 		dprintk(LSR_ERR, "Failed to create debugfs for msm_lsr\n");
