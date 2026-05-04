@@ -1357,8 +1357,10 @@ static int shd_drm_obj_init(struct shd_display *display)
 	sde_conn = to_sde_connector(connector);
 	sde_conn->shared = true;
 
-	if (display->name)
+	if (display->name) {
+		kfree(connector->name);
 		connector->name = kasprintf(GFP_KERNEL, "%s", display->name);
+	}
 
 	if (info.intf_type == DRM_MODE_CONNECTOR_DSI)
 		shd_display_create_backlight(connector);
