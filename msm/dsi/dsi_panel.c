@@ -5764,13 +5764,6 @@ int dsi_panel_prepare(struct dsi_panel *panel)
 		}
 	}
 
-	rc = dsi_panel_i2c_tx_cmd_set(panel);
-	if (rc) {
-		DSI_ERR("[%s] failed to send i2c cmds, rc=%d\n",
-			panel->name, rc);
-		goto error;
-	}
-
 	rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_PRE_ON, false);
 	if (rc) {
 		DSI_ERR("[%s] failed to send DSI_CMD_SET_PRE_ON cmds, rc=%d\n",
@@ -7157,6 +7150,13 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		goto error;
 	}
 
+	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_ON);
+	if (rc) {
+		DSI_ERR("[%s] failed to send i2c on cmds, rc=%d\n",
+			panel->name, rc);
+		goto error;
+	}
+
 	if (panel->panel_mode == DSI_OP_CMD_MODE) {
 		rc = dsi_panel_tx_cmd_set(panel, DSI_CMD_SET_CMD_ON, false);
 		if (rc) {
@@ -7267,6 +7267,13 @@ int dsi_panel_disable(struct dsi_panel *panel)
 			 * subsequent display enable anyway.
 			 */
 			pr_warn_ratelimited("[%s] failed to send DSI_CMD_SET_OFF cmds, rc=%d\n",
+					panel->name, rc);
+			rc = 0;
+		}
+
+		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_OFF);
+		if (rc) {
+			pr_warn_ratelimited("[%s] failed to send i2c off cmds, rc=%d\n",
 					panel->name, rc);
 			rc = 0;
 		}

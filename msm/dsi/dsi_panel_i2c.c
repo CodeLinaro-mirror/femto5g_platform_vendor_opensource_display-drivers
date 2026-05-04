@@ -123,10 +123,16 @@ error:
 	return rc;
 }
 
+static const char * const dsi_panel_i2c_cmd_set_prop_map[DSI_PANEL_I2C_CMD_SET_MAX] = {
+	[DSI_PANEL_I2C_CMD_SET_ON]  = "qcom,mdss-panel-i2c-on-command",
+	[DSI_PANEL_I2C_CMD_SET_OFF] = "qcom,mdss-panel-i2c-off-command",
+};
+
 static void dsi_panel_i2c_free_config(struct dsi_panel *panel)
 {
-	u32 i;
+	u32 i, t;
 	struct dsi_panel_i2c_config *cfg;
+	struct dsi_panel_i2c_cmd_set *set;
 
 	if (!panel)
 		return;
@@ -143,15 +149,18 @@ static void dsi_panel_i2c_free_config(struct dsi_panel *panel)
 		cfg->right_adapter = NULL;
 	}
 
-	if (cfg->cmd_set.cmds) {
-		for (i = 0; i < cfg->cmd_set.count; i++) {
-			kfree(cfg->cmd_set.cmds[i].data);
-			cfg->cmd_set.cmds[i].data = NULL;
-			cfg->cmd_set.cmds[i].len = 0;
+	for (t = 0; t < DSI_PANEL_I2C_CMD_SET_MAX; t++) {
+		set = &cfg->cmd_sets[t];
+		if (set->cmds) {
+			for (i = 0; i < set->count; i++) {
+				kfree(set->cmds[i].data);
+				set->cmds[i].data = NULL;
+				set->cmds[i].len = 0;
+			}
+			kfree(set->cmds);
+			set->cmds = NULL;
+			set->count = 0;
 		}
-		kfree(cfg->cmd_set.cmds);
-		cfg->cmd_set.cmds = NULL;
-		cfg->cmd_set.count = 0;
 	}
 
 	cfg->i2c_support = false;
@@ -165,6 +174,7 @@ int dsi_panel_i2c_parse_config(struct dsi_panel *panel)
 	int nbytes = 0;
 	int rc = 0;
 	u32 ncmds = 0;
+	u32 t;
 
 	if (!panel || !panel->panel_of_node) {
 		DSI_INFO("invalid params\n");
@@ -195,35 +205,51 @@ int dsi_panel_i2c_parse_config(struct dsi_panel *panel)
 	if (!cfg->left_adapter && !cfg->right_adapter) {
 		DSI_DEBUG("[%s] i2c adapter(s) not ready\n", panel->name);
 		rc = -EPROBE_DEFER;
-	}
-
-	data = of_get_property(np, "qcom,mdss-panel-i2c-on-command", &nbytes);
-	if (!data || !nbytes) {
-		rc = 0;
 		goto error;
 	}
 
-	rc = dsi_panel_i2c_get_cmd_count(data, (u32)nbytes, &ncmds);
-	if (rc) {
-		DSI_ERR("[%s] failed to get i2c cmd count, rc=%d\n", panel->name, rc);
-		goto error;
+	for (t = 0; t < DSI_PANEL_I2C_CMD_SET_MAX; t++) {
+		struct dsi_panel_i2c_cmd_set *set = &cfg->cmd_sets[t];
+
+		data = of_get_property(np, dsi_panel_i2c_cmd_set_prop_map[t], &nbytes);
+		if (!data || !nbytes) {
+			DSI_DEBUG("[%s] i2c cmd set %u (%s) not defined\n",
+				  panel->name, t,
+				  dsi_panel_i2c_cmd_set_prop_map[t]);
+			continue;
+		}
+
+		rc = dsi_panel_i2c_get_cmd_count(data, (u32)nbytes, &ncmds);
+		if (rc) {
+			DSI_ERR("[%s] failed to get i2c cmd count for set %u, rc=%d\n",
+				panel->name, t, rc);
+			goto error;
+		}
+
+		if (!ncmds) {
+			DSI_ERR("[%s] i2c cmd set %u (%s) has no valid commands\n",
+				panel->name, t, dsi_panel_i2c_cmd_set_prop_map[t]);
+			rc = -EINVAL;
+			goto error;
+		}
+
+		set->cmds = kcalloc(ncmds, sizeof(*set->cmds), GFP_KERNEL);
+		if (!set->cmds) {
+			rc = -ENOMEM;
+			goto error;
+		}
+
+		rc = dsi_panel_i2c_create_cmd_set(data, (u32)nbytes, ncmds, set->cmds);
+		if (rc) {
+			DSI_ERR("[%s] failed to create i2c cmd set %u, rc=%d\n",
+				panel->name, t, rc);
+			goto error;
+		}
+
+		set->count = ncmds;
 	}
 
-	cfg->cmd_set.count = ncmds;
-	cfg->cmd_set.cmds = kcalloc(ncmds, sizeof(*cfg->cmd_set.cmds), GFP_KERNEL);
-	if (!cfg->cmd_set.cmds) {
-		rc = -ENOMEM;
-		goto error;
-	}
-
-	rc = dsi_panel_i2c_create_cmd_set(data, (u32)nbytes, ncmds, cfg->cmd_set.cmds);
-	if (rc) {
-		DSI_ERR("[%s] failed to create i2c cmd set, rc=%d\n", panel->name, rc);
-		goto error;
-	}
-
-	if (cfg->cmd_set.count)
-		cfg->i2c_support = true;
+	cfg->i2c_support = true;
 
 	return 0;
 
@@ -232,28 +258,41 @@ error:
 	return rc;
 }
 
-int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel)
+int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
+			      enum dsi_panel_i2c_cmd_set_type type)
 {
 	struct dsi_panel_i2c_cmd_set *set;
-	u32 i;
 	int rc = 0;
-	struct dsi_panel_i2c_cmd *cmd;
 
 	if (!panel)
 		return -EINVAL;
 
-	set = &panel->i2c_config.cmd_set;
+	if (type >= DSI_PANEL_I2C_CMD_SET_MAX) {
+		DSI_ERR("[%s] invalid i2c cmd set type %d\n", panel->name, type);
+		return -EINVAL;
+	}
 
-	if (!panel->i2c_config.i2c_support || !set->count) {
-		DSI_DEBUG("[%s] No commands to be sent\n", panel->name);
+	if (!panel->i2c_config.i2c_support) {
+		DSI_DEBUG("[%s] i2c not supported, skipping cmd set %d\n",
+			  panel->name, type);
 		return 0;
 	}
 
-	for (i = 0; i < set->count; i++) {
-		cmd = &set->cmds[i];
+	set = &panel->i2c_config.cmd_sets[type];
+
+	if (!set->count) {
+		DSI_DEBUG("[%s] No i2c commands defined for set %d (%s)\n",
+			  panel->name, type,
+			  dsi_panel_i2c_cmd_set_prop_map[type]);
+		return 0;
+	}
+
+	for (u32 i = 0; i < set->count; i++) {
+		struct dsi_panel_i2c_cmd *cmd = &set->cmds[i];
 		rc = dsi_panel_i2c_tx_cmd(panel, cmd->slave_addr, cmd->data, cmd->len);
 		if (rc) {
-			DSI_ERR("[%s] failed to send i2c cmd, rc=%d\n", panel->name, rc);
+			DSI_ERR("[%s] failed to send i2c cmd %u/%u (set %d), rc=%d\n",
+				panel->name, i + 1, set->count, type, rc);
 			break;
 		}
 		if (cmd->post_wait_ms) {
@@ -261,6 +300,6 @@ int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel)
 				cmd->post_wait_ms * 1000 + 100);
 		}
 	}
+
 	return rc;
 }
-
