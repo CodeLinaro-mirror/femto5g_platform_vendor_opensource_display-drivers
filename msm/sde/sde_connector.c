@@ -1374,6 +1374,7 @@ static int _sde_connector_update_dirty_properties(
 	bool is_roi_dirty = false;
 	bool is_lp_dirty = false;
 	bool is_qsync_dirty = false;
+	bool is_vsync_offset_dirty = false;
 
 	if (!connector) {
 		SDE_ERROR("invalid argument\n");
@@ -1420,6 +1421,11 @@ static int _sde_connector_update_dirty_properties(
 		case CONNECTOR_PROP_QSYNC_MODE:
 			is_qsync_dirty = true;
 			break;
+		case CONNECTOR_PROP_VSYNC_OFFSET:
+			if ((sde_connector_get_property(connector->state,
+					CONNECTOR_PROP_VSYNC_OFFSET)) > 0)
+				is_vsync_offset_dirty = true;
+			break;
 		default:
 			/* nothing to do for most properties */
 			break;
@@ -1456,6 +1462,10 @@ static int _sde_connector_update_dirty_properties(
 		_sde_connector_update_bl_scale(c_conn);
 		c_conn->bl_scale_dirty = false;
 	}
+
+	if ((disp_op == MSM_DISP_OP_HFI) && is_vsync_offset_dirty)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_VSYNC_OFFSET);
 
 	return 0;
 }
@@ -2840,6 +2850,7 @@ static int sde_connector_atomic_set_property(struct drm_connector *connector,
 	case CONNECTOR_PROP_AVR_STEP_STATE:
 	case CONNECTOR_PROP_EPT_FPS:
 	case CONNECTOR_PROP_EPT:
+	case CONNECTOR_PROP_VSYNC_OFFSET:
 		msm_property_set_dirty(&c_conn->property_info,
 				&c_state->property_state, idx);
 		break;
@@ -4509,6 +4520,9 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 						dev->mode_config.max_width,
 						dev->mode_config.max_height);
 		mutex_unlock(&c_conn->base.dev->mode_config.mutex);
+
+		msm_property_install_range(&c_conn->property_info, "vsync_offset",
+			0x0, 0, U64_MAX, 0, CONNECTOR_PROP_VSYNC_OFFSET);
 	}
 
 	msm_property_install_volatile_range(

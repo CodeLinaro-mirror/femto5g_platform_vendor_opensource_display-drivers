@@ -47,6 +47,7 @@ struct base_prop_lookup hfi_connector_base_props_map[] = {
 	{ CONNECTOR_PROP_FRAME_INTERVAL, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS},
 	{ CONNECTOR_PROP_USECASE_IDX, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS },
 	{ CONNECTOR_PROP_EPT, HFI_PROPERTY_DISPLAY_EPT },
+	{ CONNECTOR_PROP_VSYNC_OFFSET, HFI_PROPERTY_DISPLAY_VSYNC_OFFSET },
 
 	// wb specific properties
 	{ CONNECTOR_PROP_PP_CWB_DITHER, HFI_PROPERTY_DISPLAY_WB_CWB_DITHER },
@@ -228,6 +229,8 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 	struct hfi_connector *hfi_conn;
 	int ret = 0;
 	int drm_lp_val;
+	u32 payload[3];
+	u64 temp = 0;
 
 	if (!conn || !old_cstate || !prop_collector || !conn->base.state) {
 		SDE_ERROR("invalid params conn[%d] old_sate[%d] prop_collec[%d] base state[%d]\n",
@@ -296,6 +299,16 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 	}
 	case HFI_PROPERTY_DISPLAY_EPT:
 		ret = _hfi_connector_add_ept(conn, old_cstate, prop_collector, hfi_prop);
+		break;
+	case HFI_PROPERTY_DISPLAY_VSYNC_OFFSET:
+		payload[0] = hfi_prop;
+		temp = sde_connector_get_property(&old_cstate->base,
+				CONNECTOR_PROP_VSYNC_OFFSET);
+		payload[1] = HFI_VAL_L32(temp);
+		payload[2] = HFI_VAL_H32(temp);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_VSYNC_OFFSET,
+			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
 		break;
 
 	default:
