@@ -1013,6 +1013,7 @@ enum sde_mdss_features {
 	SDE_FEATURE_FRAME_SEQ_CHECK,
 	SDE_FEATURE_QRTC,
 	SDE_FEATURE_A10_Y10,
+	SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY,
 	SDE_FEATURE_MAX
 };
 
@@ -1561,6 +1562,7 @@ struct sde_uidle_cfg {
 	u32 uidle_rev;
 	u32 debugfs_perf;
 	bool debugfs_ctrl;
+	bool debugfs_ctrl_initialized;
 	bool perf_cntr_en;
 	bool dirty;
 	bool fal10_override;

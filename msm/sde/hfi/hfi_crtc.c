@@ -192,6 +192,15 @@ static int _hfi_crtc_add_base_prop_helper(u32 hfi_prop, struct sde_crtc *crtc,
 	case HFI_PROPERTY_DISPLAY_CORE_CLK:
 		prop_val = sde_crtc_get_property(cstate, drm_prop);
 
+		/*
+		 * In SDE_PERF_MODE_FIXED (perf_mode=2), enforce the fixed core clock floor.
+		 */
+		if (hfi_prop == HFI_PROPERTY_DISPLAY_CORE_CLK &&
+				hfi_kms->base->perf.perf_tune.mode == SDE_PERF_MODE_FIXED) {
+			prop_val = max(hfi_kms->base->perf.fix_core_clk_rate, prop_val);
+			SDE_EVT32(hfi_prop, prop_val);
+		}
+
 		prop_u64.val_lo = HFI_VAL_L32(prop_val);
 		prop_u64.val_hi = HFI_VAL_H32(prop_val);
 		hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,

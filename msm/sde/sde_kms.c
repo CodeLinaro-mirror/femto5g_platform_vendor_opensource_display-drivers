@@ -1513,6 +1513,7 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 {
 	struct msm_drm_private *priv;
 	struct sde_splash_display *splash_display;
+	struct drm_encoder *drm_enc, *best_encoder = NULL;
 	int i;
 
 	if (!sde_kms || !crtc)
@@ -1526,10 +1527,27 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 	SDE_EVT32(DRMID(crtc), crtc->state->active,
 			sde_kms->splash_data.num_splash_displays);
 
+	drm_for_each_encoder_mask(drm_enc, crtc->dev, crtc->state->encoder_mask) {
+		if (sde_encoder_in_clone_mode(drm_enc))
+			continue;
+
+		if (drm_enc)
+			best_encoder = drm_enc;
+	}
+
+	if (!best_encoder) {
+		SDE_ERROR("could not find encoder\n");
+		return;
+	}
+
 	for (i = 0; i < MAX_SPLASH_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
-		if (IS_DISP_OP_HFI(priv->disp_op) && splash_display->cont_splash_enabled)
-			_sde_kms_free_splash_display_data(sde_kms, splash_display);
+		if (IS_DISP_OP_HFI(priv->disp_op) && splash_display->cont_splash_enabled) {
+			if (splash_display->splash_encoder == best_encoder) {
+				_sde_kms_free_splash_display_data(sde_kms, splash_display);
+				break;
+			}
+		}
 		if (splash_display->encoder &&
 				crtc == splash_display->encoder->crtc)
 			break;
@@ -4115,7 +4133,8 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 	int active_crtc_cnt = 0, global_active_crtc_cnt = 0;
 	bool sec_session = false, global_sec_session = false;
 	bool fb_sec_session = false, global_fb_sec_session = false;
-	uint32_t fb_ns = 0, fb_sec = 0, fb_sec_dir = 0;
+	bool crtc_sec_level = false, global_crtc_sec_level = false;
+	uint32_t fb_ns = 0, fb_sec = 0, fb_sec_dir = 0, sec_level;
 	int i;
 
 	if (!kms || !state) {
@@ -4139,6 +4158,8 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 		if (fb_sec)
 			fb_sec_session = true;
 		cur_crtc = crtc;
+		sec_level = sde_crtc_get_secure_level(crtc, crtc_state);
+		crtc_sec_level |= (sec_level == SDE_DRM_SEC_ONLY) ? true : false;
 	}
 
 	/* iterate global list for active and secure/non-secure crtc */
@@ -4157,6 +4178,8 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 			if (fb_sec)
 				global_fb_sec_session = true;
 			global_crtc = crtc;
+			sec_level = sde_crtc_get_secure_level(crtc, crtc->state);
+			global_crtc_sec_level |= (sec_level == SDE_DRM_SEC_ONLY) ? true : false;
 		}
 	}
 
@@ -4171,13 +4194,16 @@ static int sde_kms_check_secure_transition(struct msm_kms *kms,
 	if (!global_sec_session && !sec_session)
 		return 0;
 
+	if (test_bit(SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY, sde_kms->catalog->features)
+			&& !global_crtc_sec_level && !crtc_sec_level) {
+		SDE_DEBUG("allow multiple displays during sec-cam session\n");
 	/*
 	 * - fail crtc commit, if secure-camera/secure-ui session is
 	 *   in-progress in any other display
 	 * - fail secure-camera/secure-ui crtc commit, if any other display
 	 *   session is in-progress
 	 */
-	if ((global_active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_SECURE) ||
+	} else if ((global_active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_SECURE) ||
 		    (active_crtc_cnt > MAX_ALLOWED_CRTC_CNT_DURING_SECURE)) {
 		SDE_ERROR(
 		    "crtc%d secure check failed global_active:%d active:%d\n",
@@ -4728,6 +4754,16 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			encoder = ((struct dsi_display *)display)->bridge->base.encoder;
 
 			if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms))) {
+				memset(&info, 0x0, sizeof(info));
+				rc = dsi_display_get_info(NULL, &info, display);
+				if (rc) {
+					SDE_ERROR("get_info %d failed\n", i);
+					continue;
+				}
+
+				if (info.is_connected)
+					splash_display->splash_encoder = encoder;
+
 				/* Skip DSI op splash config */
 				continue;
 			}

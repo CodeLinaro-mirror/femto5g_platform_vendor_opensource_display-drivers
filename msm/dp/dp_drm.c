@@ -522,15 +522,17 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 
 	memset(mode_info, 0, sizeof(*mode_info));
 	ops = &drv->client->drm_ops;
-
+	priv = connector->dev->dev_private;
 	sde_conn = to_sde_connector(connector);
+
+	if (IS_DISP_OP_HFI(priv->disp_op) && ops->get_mode_info)
+		return ops->get_mode_info(drv->client, sde_conn->panel_id, drm_mode, mode_info);
+
 	mode = ops->get_display_mode(drv->client, sde_conn->panel_id);
 	if (!mode) {
 		DP_ERR("invalid panel\n");
 		return -EINVAL;
 	}
-
-	priv = connector->dev->dev_private;
 
 	topology = &mode_info->topology;
 

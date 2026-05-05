@@ -266,6 +266,18 @@ struct hfi_display_power_event_data {
 };
 
 /*
+ * struct hfi_display_prog_line_event_data - programmable line event data
+ * @timestamp_lo - Lower 32 bits of the 64-bit programmable line event timestamp in ns.
+ * @timestamp_hi - Higher 32 bits of the 64-bit programmable line event timestamp in ns.
+ * @prog_line_index - programmable line event index for the timestamp.
+ */
+struct hfi_display_prog_line_event_data {
+	u32 timestamp_lo;
+	u32 timestamp_hi;
+	u32 prog_line_index;
+};
+
+/*
  * @enum hfi_display_idle_timer_control
  * @brief Enum to control idle timer.
  *
@@ -334,6 +346,8 @@ enum hfi_display_idle_timer_control {
  *     Event ID for HDCP feature support query.
  * @var HFI_EVENT_AIQE_COPR
  *   EVENT ID for AIQE COPR.
+ * @HFI_EVENT_PROG_LINE_INTR:
+ *     Event ID for Program Line Interrupt.
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC               = 0x1,
@@ -360,6 +374,7 @@ enum hfi_display_event_id {
 	HFI_EVENT_HDCP2X_TIMEOUT      = 0x16,
 	HFI_EVENT_HDCP_FEATURE_SUPPORTED = 0x17,
 	HFI_EVENT_AIQE_COPR           = 0x18,
+	HFI_EVENT_PROG_LINE_INTR      = 0x19,
 };
 
 /*
@@ -651,14 +666,26 @@ enum hfi_fence_type {
  *     Uncompressed bits per pixel supported for this
  * @fec_enabled:
  *     Forward Error Correction enabled flag
- * @edid_buf:
- *     EDID buffer: This buffer is populated by DCP with the raw EDID data.
+ * @edid_modes_buf:
+ *     EDID & modes buffer: This buffer is populated by DCP with the raw EDID data and display
+ *     modes parsed from the EDID.
  *     For this buffer to be populated, the Host must provide it through the parameters of the HFI
  *     command: HFI_COMMAND_DEVICE_HOT_PLUG_DETECT.
- * @modes_buf:
- *     Modes buffer: This buffer is populated by DCP with display modes parsed from the EDID.
- *     For this buffer to be populated, the Host must provide it through the parameters of the HFI
- *     command: HFI_COMMAND_DEVICE_HOT_PLUG_DETECT.
+ *     Below table describes the payload in the shared buffer:
+ *
+ * Payload    | Size  | Value                          | Description
+ *------------|-------|--------------------------------|-------------------------------
+ * 0          | u32   | raw_edid_size                  | Size of Raw EDID data in bytes (N)
+ * [1..N]     | u8*N  | raw_edid_data                  | Raw EDID data read from sink. Depending
+ *            |       |                                | on sink capabilities, this could have
+ *            |       |                                | 1 to many blocks of edid data, where each
+ *            |       |                                | block has 128 bytes of data.
+ * N+1        | u32   | num_modes                      | Number of modes supported for this sink (M)
+ * ^          | ^     | mode_info_1                    | Extended mode information for each mode
+ * ^          | ^     | ^                              | packed as an array of type:
+ * ^          | ^     | ^                              | struct hfi_display_mode_extended_info
+ * ^          | ^     | mode_info_M                    |
+ *
  */
 struct hfi_display_event_edid_info {
 	u32 controller_id;
@@ -667,8 +694,7 @@ struct hfi_display_event_edid_info {
 	u32 lane_count;
 	u32 bits_per_pixel;
 	u32 fec_enabled;
-	struct hfi_buff edid_buf;
-	struct hfi_buff modes_buf;
+	struct hfi_buff edid_modes_buf;
 };
 
 /*
@@ -888,6 +914,65 @@ struct hfi_hdcp2_message {
 	u32 repeater_flag;
 	struct hfi_buff request;
 	struct hfi_buff response;
+};
+
+/*
+ * Extended display mode information including topology and compression parameters.
+ *
+ * @size:
+ *     Size of this structure in bytes, used for versioning and backward compatibility.
+ * @base:
+ *     Base display mode timing parameters (see hfi_display_mode_info).
+ * @mixer_count:
+ *     Number of layer mixers used for this stream.
+ * @cmpr_count:
+ *     Number of compression encoders used for this stream.
+ * @cmpr_enabled:
+ *     Flag indicating whether compression is enabled.
+ * @cmpr_bpp:
+ *     Compressed bits per pixel.
+ * @cmpr_slice_count:
+ *     Number of compressed slices per line.
+ * @reserved1:
+ *     Reserved for future use.
+ * @reserved2:
+ *     Reserved for future use.
+ */
+struct hfi_display_mode_extended_info {
+	u32 size;
+	struct hfi_display_mode_info base;
+	u32 mixer_count;
+	u32 cmpr_count;
+	u32 cmpr_enabled;
+	u32 cmpr_bpp;
+	u32 cmpr_slice_count;
+	u32 reserved1;
+	u32 reserved2;
+};
+
+/*
+ * @struct hfi_cmd_set_remap
+ * @brief DSI command set remapping entry
+ *
+ * This structure represents a single mapping entry for DSI command set remapping.
+ * Used with HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP to inform DCP which
+ * hfi_panel_dcs_command_type values should be replaced with custom command types.
+ *
+ * @var cmd_type
+ *   hfi_panel_dcs_command_type value to be remapped
+ * @var custom_cmd_type
+ *   OEMs can define custom command types at host level which can be
+ *   used to remap hfi_panel_dcs_command_type values.
+ * @var flag
+ *   Reserved for future use
+ * @var reserved
+ *   Reserved for future use
+ */
+struct hfi_cmd_set_remap {
+	u32 cmd_type;
+	u32 custom_cmd_type;
+	u32 flag;
+	u32 reserved;
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

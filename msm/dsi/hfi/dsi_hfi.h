@@ -17,21 +17,40 @@
 
 #define MAX_NUM_CTRLS_AND_LENGTH 3
 #define MAX_NUM_PHYS_AND_LENGTH 3
-#define MIN_NUM_OF_GEN_CAPS 16
-#define NUM_PANEL_CMD_TYPES_SUPPORTED 9
 #define CLK_RATE_SIZE 2
 #define JITTER_SIZE 2
 #define NUM_VARIABLE_DPHY_TIMINGS 14
+
+/*
+ * MAX_ALLOWED_DCS_CMD_TYPES - maximum number of DCS command types supported over HFI.
+ *
+ * The dsize field in HFI_PACKKEY is 8-bit (bits[31:24], max = U8_MAX = 255).
+ * When sending DCS cmd info, dsize is computed as:
+ *
+ *   dsize = (sizeof(struct dsi_hfi_panel_per_cmd_type) / sizeof(u32)) * count + 1
+ *
+ * where:
+ *   - sizeof(struct dsi_hfi_panel_per_cmd_type) / sizeof(u32) = 5  (5 u32 fields per entry)
+ *   - +1 accounts for the 'count' header field in dsi_hfi_per_cmd_type_payload
+ *
+ * For dsize to not overflow the 8-bit field:
+ *   5 * count + 1 <= 255  =>  count <= 50
+ *
+ */
+#define MAX_ALLOWED_DCS_CMD_TYPES  50
 
 /**
  * struct dsi_value_to_prop_lookup - contains map with hfi properties and
  *                                   corresponding values
  * @value:               value
  * @hfi_prop:            hfi property
+ * @use_default_val:     if true, property takes default value even if not present;
+ *                       if false, property needs to be checked for presence
  */
 struct dsi_value_to_prop_lookup {
 	u32 value;
 	u32 hfi_prop;
+	bool use_default_val;
 };
 
 /**
@@ -88,7 +107,7 @@ struct dsi_hfi_panel_per_cmd_type {
  */
 struct dsi_hfi_per_cmd_type_payload  {
 	u32 count;
-	struct dsi_hfi_panel_per_cmd_type hfi_per_type_array[NUM_PANEL_CMD_TYPES_SUPPORTED];
+	struct dsi_hfi_panel_per_cmd_type hfi_per_type_array[DSI_CMD_SET_TOTAL_SIZE];
 };
 
 /**
@@ -111,6 +130,19 @@ struct dsi_hfi_topology_payload {
 struct dsi_hfi_phy_timings_payload {
 	u32 count;
 	u32 dphy_timings[NUM_VARIABLE_DPHY_TIMINGS];
+};
+
+/**
+ * struct dsi_hfi_cmd_set_remap_payload - Complete payload for command set remapping
+ * @count: Number of remapping entries
+ * @entries: Array of remapping entries
+ *
+ * This structure encapsulates the complete payload for
+ * HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP.
+ */
+struct dsi_hfi_cmd_set_remap_payload {
+	u32 count;
+	struct hfi_cmd_set_remap entries[DSI_CMD_SET_MAX];
 };
 
 /**
@@ -150,7 +182,6 @@ struct dsi_panel_timing_caps {
 /**
  * struct dsi_panel_generic_caps - contains properties to be sent as part of
  * HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
- * @valid_gen_caps_cnt:             number of caps with valid parameters
  * @panel_name:                     HFI_PROPERTY_PANEL_NAME
  * @panel_type:                     HFI_PROPERTY_PANEL_PHYSICAL_TYPE
  * @panel_bpp:                      HFI_PROPERTY_PANEL_BPP
@@ -185,10 +216,10 @@ struct dsi_panel_timing_caps {
  * @esync_caps:                     HFI_PROPERTY_PANEL_ESYNC_CAPS
  * @dfps_caps:                      HFI_PROPERTY_PANEL_DFPS_CAPS
  * @lp11_init:                      HFI_PROPERTY_PANEL_LP11_INIT
+ * @poms_caps:                      HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY
+ * @custom_cmd_set_info:            HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO
  */
 struct dsi_panel_generic_caps {
-	int valid_gen_caps_cnt;
-
 	u32 panel_name;
 	enum hfi_panel_phy_type panel_type;
 	enum hfi_panel_bpp panel_bpp;
@@ -223,6 +254,8 @@ struct dsi_panel_generic_caps {
 	struct hfi_panel_esync_caps esync_caps;
 	struct hfi_panel_dfps_caps dfps_caps;
 	u32 lp11_init;
+	struct hfi_panel_operating_mode_caps poms_caps;
+	u32 custom_cmd_set_info[2]; /* [0]=start_index, [1]=count */
 };
 
 /**
@@ -337,5 +370,31 @@ int dsi_hfi_misr_read(struct dsi_display *display);
  * Return: 0 on success, negative error code on failure
  */
 int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *cmd);
+
+/**
+ * dsi_hfi_add_dsi_cmd_remap() - add DSI command set remapping entries
+ * @display: handle to dsi display structure
+ * @cmd_remap_table: pointer to array of size DSI_CMD_SET_MAX indexed by
+ *                   standard command type, where each entry holds the
+ *                   custom_cmd_type to remap to, or DSI_CMD_SET_MAX as a
+ *                   "no remap" sentinel.
+ * @table_size: size of cmd_remap_table; must equal DSI_CMD_SET_MAX
+ * @resp_req: if true, HFI_HOST_FLAGS_RESPONSE_REQUIRED is appended to the
+ *            flags when sending the HFI command, causing the call to block
+ *            until DCP acknowledges the remapping.
+ *
+ * This function validates each entry in cmd_remap_table and
+ * constructs an HFI payload which is sent to the DCP in a single operation.
+ *
+ * The function validates:
+ * - table_size equals DSI_CMD_SET_MAX
+ * - All custom_cmd_type values are within the valid range (< DSI_CUSTOM_CMD_SET_MAX)
+ * - Each custom_cmd_type is either in the custom range (>= DSI_CUSTOM_CMD_SET_START_IDX)
+ *   or equals the standard command type (pointing back to the original mapping)
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
+		u32 *cmd_remap_table, u32 table_size, bool resp_req);
 
 #endif

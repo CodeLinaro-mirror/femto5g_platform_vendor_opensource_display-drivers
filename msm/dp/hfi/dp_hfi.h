@@ -61,10 +61,9 @@ struct dp_hfi {
 	struct hfi_shared_addr_map *shared_addr_map;
 
 	struct hfi_shared_addr_map *edid_addr_map;
-	struct hfi_shared_addr_map *modes_addr_map;
 	u32 mode_count;
 	struct sde_edid_ctrl *edid_ctrl;
-	struct hfi_display_mode_info mode_list[64]; /* MAX_MODES */
+	struct hfi_display_mode_extended_info mode_list[64]; /* Extended mode info */
 
 	bool mode_valid;
 	unsigned long tx_cmd_buf_dva;
@@ -72,6 +71,7 @@ struct dp_hfi {
 	struct hfi_shared_addr_map tx_cmd_buf_map;
 	u32 stream_id;
 	bool connected;
+	u32 tgt_bpp;
 
 	/* Mode override */
 	struct dp_mode_override mode_ovr;

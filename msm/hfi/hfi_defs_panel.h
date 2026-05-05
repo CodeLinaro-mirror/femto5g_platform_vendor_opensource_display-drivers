@@ -536,4 +536,16 @@ struct hfi_display_vrr_frame_params {
 	u32 frame_interval_ns_hi;
 	u32 usecase_idx;
 };
+
+/**
+ * @struct hfi_panel_operating_mode_caps - Panel Operating Mode Switch capabilities
+ *
+ * @panel_mode_switch_enabled: panel supports switching between video and command mode
+ * @vsync_aligned_switch:      align vsync during panel mode switch
+ */
+struct hfi_panel_operating_mode_caps {
+	u32 panel_mode_switch_enabled;
+	u32 vsync_aligned_switch;
+};
+
 #endif // __H_HFI_DEFS_PANEL_H__

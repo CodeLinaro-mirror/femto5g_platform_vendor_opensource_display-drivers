@@ -1847,7 +1847,7 @@ int __response_handler(struct lsr_device *device)
 	lsr_status = __read_register(device, LSR_CTRL_STATUS);
 	mutex_unlock(&device->lock);
 
-	if (lsr_status & BIT(LSR_STATUS_SYS_ERROR)) {
+	if (device->power_enabled && (lsr_status & BIT(LSR_STATUS_SYS_ERROR))) {
 		if (msm_lsr_enable_ssr) {
 			rc = lsr_ssr_handler(device, LSR_SUBSYSTEM_ERROR_TYPE_SYSTEM_ERROR);
 			if (rc)
@@ -3452,6 +3452,7 @@ static int __power_off_core_v1(struct lsr_device *device)
 			dprintk(LSR_WARN, "Core off with NOC RESET ACK non-zero %x\n", value);
 			call_iris_op(device, print_sbm_regs, device);
 		}
+		__disable_hw_power_collapse(device);
 		if (device->res->framework_type) {
 			__disable_power_domain(device, "lsr_mvs0_gdsc");
 			__disable_power_domain(device, "lsr_noc_gdsc");

@@ -31,6 +31,9 @@
 								##__VA_ARGS__)
 #define DSI_DEBUG(fmt, ...)	DRM_DEV_DEBUG(NULL, "[msm-dsi-debug]: "fmt, \
 								##__VA_ARGS__)
+
+#define DSI_CUSTOM_CMD_SET_START_IDX 128
+
 /**
  * enum dsi_pixel_format - DSI pixel formats
  * @DSI_PIXEL_FORMAT_RGB565:
@@ -367,6 +370,58 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_CUSTOM_ON,
 	DSI_CMD_SET_MAX
 };
+
+/**
+ * enum dsi_custom_cmd_set_type  - DSI custom command set type
+ *
+ * This is an extension of dsi_cmd_set_type enum, where OEMs can add custom
+ * commands which can be used to override the standard cmd_types defined in
+ * dsi_cmd_set_type.
+ *
+ * OEMs can add custom command types before DSI_CUSTOM_CMD_SET_MAX.
+ *
+ * @DSI_CUSTOM_CMD_SET_CMD_TYPE_1:       Custom command type 1
+ * @DSI_CUSTOM_CMD_SET_MAX
+ */
+enum dsi_custom_cmd_set_type {
+	DSI_CUSTOM_CMD_SET_CMD_TYPE_1 = DSI_CUSTOM_CMD_SET_START_IDX,
+	DSI_CUSTOM_CMD_SET_MAX
+};
+
+/**
+ * DSI_CUSTOM_CMD_SET_COUNT - Number of custom command sets
+ * Calculates the count of custom command sets
+ */
+#define DSI_CUSTOM_CMD_SET_COUNT (DSI_CUSTOM_CMD_SET_MAX - DSI_CUSTOM_CMD_SET_START_IDX)
+
+/**
+ * DSI_CMD_SET_TOTAL_SIZE - Total number of DSI command sets
+ * Calculates the total size by combining standard command sets (DSI_CMD_SET_MAX)
+ * and custom command sets (DSI_CUSTOM_CMD_SET_COUNT)
+ */
+#define DSI_CMD_SET_TOTAL_SIZE (DSI_CMD_SET_MAX + DSI_CUSTOM_CMD_SET_COUNT)
+
+/**
+ * dsi_cmd_type_to_index - Convert any command type to array index
+ * @type: Command type (standard or custom enum)
+ *
+ * Standard commands map directly to their enum values.
+ * Custom commands map to indices starting after DSI_CMD_SET_MAX.
+ *
+ * Return: Array index, or -EINVAL if invalid command type
+ */
+static inline int dsi_cmd_type_to_index(int type)
+{
+	/* Standard commands: 0 to DSI_CMD_SET_MAX-1 map directly */
+	if (type >= 0 && type < DSI_CMD_SET_MAX)
+		return type;
+
+	/* Custom commands: DSI_CUSTOM_CMD_SET_START_IDX+ map to DSI_CMD_SET_MAX+ */
+	if (type >= DSI_CUSTOM_CMD_SET_START_IDX && type < DSI_CUSTOM_CMD_SET_MAX)
+		return DSI_CMD_SET_MAX + (type - DSI_CUSTOM_CMD_SET_START_IDX);
+
+	return -EINVAL;
+}
 
 /**
  * enum dsi_cmd_set_state - command set state
@@ -726,7 +781,7 @@ struct dsi_host_config {
  * @disable_rsc_solver: Dynamically disable RSC solver for the timing mode.
  */
 struct dsi_display_mode_priv_info {
-	struct dsi_panel_cmd_set cmd_sets[DSI_CMD_SET_MAX];
+	struct dsi_panel_cmd_set cmd_sets[DSI_CMD_SET_TOTAL_SIZE];
 
 	u32 *phy_timing_val;
 	u32 phy_timing_len;

@@ -51,7 +51,7 @@ static ktime_t hfi_enc_unpack_frame_event(void *payload, u32 *idx, struct sde_en
 	ts =  ts | (ts_low);
 
 	/* convert into qtimer hw ticks & adjust */
-	ts = (ts * 192) / (10 * 1000);
+	ts = NS_TO_QTIMER(ts);
 	ts = sde_encoder_event_timestamp_adjust(DRMID(drm_enc), fps, ts);
 
 	SDE_EVT32(DRMID(drm_enc), atomic_read(&hfi_enc->hfi_commit_cnt),
@@ -94,7 +94,7 @@ static ktime_t hfi_enc_unpack_vsync_event(void *payload, u32 *idx, struct sde_en
 	ts =  ts | (ts_low);
 
 	/* convert into qtimer hw ticks & adjust */
-	ts = (ts * 192) / (10 * 1000);
+	ts = NS_TO_QTIMER(ts);
 	ts = sde_encoder_event_timestamp_adjust(DRMID(drm_enc), fps, ts);
 
 	atomic_inc_return(&hfi_enc->hfi_vsync_cnt);
@@ -388,6 +388,11 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		hfi_encoder_panel_dead_callback(sde_enc, payload);
 		break;
 	case HFI_COMMAND_DEBUG_PANIC_EVENT:
+		if (!data) {
+			SDE_ERROR("Invalid panic event payload data %pK\n", data);
+			return;
+		}
+
 		recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
 
 		drm_enc = &sde_enc->base;
@@ -574,8 +579,6 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	}
 
 	drm_enc = &sde_enc->base;
-	if (!sde_encoder_is_primary_display(drm_enc))
-		return 0;
 
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
 		MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);

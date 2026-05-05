@@ -46,6 +46,7 @@ struct base_prop_lookup hfi_connector_base_props_map[] = {
 	{ CONNECTOR_PROP_LP, HFI_PROPERTY_DISPLAY_POWER_MODE },
 	{ CONNECTOR_PROP_FRAME_INTERVAL, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS},
 	{ CONNECTOR_PROP_USECASE_IDX, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS },
+	{ CONNECTOR_PROP_EPT, HFI_PROPERTY_DISPLAY_EPT },
 
 	// wb specific properties
 	{ CONNECTOR_PROP_PP_CWB_DITHER, HFI_PROPERTY_DISPLAY_WB_CWB_DITHER },
@@ -100,6 +101,47 @@ static int _set_dest_roi(struct sde_connector *conn,
 
 	kfree(payload);
 
+	return ret;
+}
+
+int _hfi_connector_add_ept(struct sde_connector *conn, struct sde_connector_state *old_cstate,
+		struct hfi_util_u32_prop_helper *prop_collector, u32 hfi_prop)
+{
+	int ret = 0;
+	u64 ept_ts, cur_ts, diff_ns = 0;
+	u64 cur_qtimer, ept_qtimer, diff_qtimer;
+	struct hfi_prop_u64 prop_u64;
+	spinlock_t local_lock;
+
+	/* using spinlock to avoid being preempted while getting the HW and kernel timestamp */
+	spin_lock_init(&local_lock);
+	spin_lock(&local_lock);
+	cur_qtimer = arch_timer_read_counter();
+	cur_ts = ktime_get_ns();
+	spin_unlock(&local_lock);
+
+	ept_ts = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_EPT);
+
+	if (ktime_after(cur_ts, ept_ts)) {
+		ept_qtimer = 0;
+		goto end;
+	}
+
+	diff_ns = ktime_sub_ns(ept_ts, cur_ts);
+	diff_qtimer = NS_TO_QTIMER(diff_ns);
+	ept_qtimer = cur_qtimer + diff_qtimer;
+
+end:
+	prop_u64.val_lo = HFI_VAL_L32(ept_qtimer);
+	prop_u64.val_hi = HFI_VAL_H32(ept_qtimer);
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+				HFI_VAL_U32_ARRAY, &prop_u64,
+				sizeof(struct hfi_prop_u64));
+
+	SDE_EVT32(sde_connector_property_is_dirty((struct sde_connector_state *)conn->base.state,
+			CONNECTOR_PROP_EPT), ktime_to_us(ept_ts), ktime_to_us(cur_ts),
+			ktime_to_us(diff_ns), cur_qtimer >> 32, cur_qtimer & 0xffffffff,
+			ept_qtimer >> 32, ept_qtimer & 0xffffffff);
 	return ret;
 }
 
@@ -252,6 +294,10 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 		ret = _hfi_connector_add_vrr_frame_params(conn, prop_collector, hfi_prop);
 		break;
 	}
+	case HFI_PROPERTY_DISPLAY_EPT:
+		ret = _hfi_connector_add_ept(conn, old_cstate, prop_collector, hfi_prop);
+		break;
+
 	default:
 		HFI_ERROR_CONN(hfi_conn, "failed to send HFI commands\n");
 		return -EINVAL;
@@ -294,8 +340,6 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 	for (i = 0; i < ARRAY_SIZE(hfi_connector_base_props_map); i++) {
 		drm_prop = hfi_connector_base_props_map[i].drm_prop;
 		hfi_prop = hfi_connector_base_props_map[i].hfi_prop;
-		if (!sde_connector_property_is_dirty(old_cstate, drm_prop))
-			continue;
 
 		_hfi_connector_add_base_prop_helper(hfi_prop, conn, old_cstate,
 				 hfi_conn->base_props);
