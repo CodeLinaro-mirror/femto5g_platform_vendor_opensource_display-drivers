@@ -38,6 +38,14 @@
 #define TILEWIDTH_SIZE  64
 #define TILEHEIGHT_SIZE 4
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+#include <smmu-proxy/include/uapi/linux/qti-smmu-proxy.h>
+#include <smmu-proxy/linux/qti-smmu-proxy.h>
+#endif
+
+#define CSF_2_5_ARCH_VER	2
+#define CSF_2_5_MAX_VER		5
+
 void sde_mdp_get_v_h_subsample_rate(u8 chroma_sample,
 		u8 *v_sample, u8 *h_sample)
 {
@@ -868,7 +876,9 @@ static int sde_mdp_get_img(struct sde_fb_data *img,
 		}
 	}
 
-	SDEROT_DBG("%d attach=%pK\n", __LINE__, data->srcp_attachment);
+	SDEROT_DBG("%d attach=%pK, dev_name:%s seccam:%d\n",
+			 __LINE__, data->srcp_attachment,
+		 dev_name(dev), sde_mdp_is_map_needed(data));
 	data->addr = 0;
 	data->len = 0;
 	data->mapped = false;
@@ -887,11 +897,24 @@ err_put:
 static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 		int dir)
 {
-	int ret = -EINVAL;
+	int ret = -EINVAL, sec_cam = 0, rc = 0;
 	struct scatterlist *sg;
 	struct sg_table *sgt = NULL;
 	unsigned int i;
 	unsigned long flags = 0;
+	bool csf25_enabled = false;
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	struct csf_version csf_ver = {};
+
+	rc = smmu_proxy_get_csf_version(&csf_ver);
+	if (rc) {
+		SDEROT_ERR("error in getting csf version, ret:%d\n", rc);
+		return -EINVAL;
+	}
+	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) &&
+			(csf_ver.max_ver == CSF_2_5_MAX_VER))
+		csf25_enabled = true;
+#endif
 
 	if (data->addr && data->len)
 		return 0;
@@ -902,6 +925,9 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 		return 0;
 	}
 
+	if (data->flags & SDE_SECURE_CAMERA_SESSION)
+		sec_cam = 1;
+
 	if (!IS_ERR_OR_NULL(data->srcp_dma_buf)) {
 		/*
 		 * dma_buf_map_attachment will call into
@@ -909,8 +935,13 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 		 * attribute and lazy unmap attribute will be all
 		 * provided here.
 		 */
-		data->srcp_attachment->dma_map_attrs |=
-			DMA_ATTR_DELAYED_UNMAP;
+		if (sec_cam && csf25_enabled) {
+			data->srcp_attachment->dma_map_attrs |=
+				DMA_ATTR_QTI_SMMU_PROXY_MAP;
+			SDEROT_INFO("proxy_map: dir:%d proxy map %p\n", dir, data->srcp_dma_buf);
+		} else
+			data->srcp_attachment->dma_map_attrs |=
+				DMA_ATTR_DELAYED_UNMAP;
 
 		if (data->srcp_dma_buf && data->srcp_dma_buf->ops &&
 				data->srcp_dma_buf->ops->get_flags) {
@@ -954,7 +985,8 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 		} else {
 			if (sgt->nents != 1) {
 				SDEROT_ERR(
-					"Fail ion buffer mapping for secure camera\n");
+					"Fail ion buffer mapping for secure camera nents:%d\n",
+					sgt->nents);
 				ret = -EINVAL;
 				goto err_unmap;
 			}
@@ -968,7 +1000,7 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 				goto err_unmap;
 			}
 
-			data->addr = sg_phys(data->srcp_table->sgl);
+			data->addr = sg_dma_address(data->srcp_table->sgl);
 			ret = 0;
 		}
 	}
@@ -983,7 +1015,7 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 		data->addr += data->offset;
 		data->len -= data->offset;
 
-		SDEROT_DBG("ihdl=%pK buf=0x%pa len=0x%lx\n",
+		SDEROT_DBG("ihdl=%p buf=0x%pa len=0x%lx\n",
 			 data->srcp_dma_buf, &data->addr, data->len);
 	} else {
 		sde_mdp_put_img(data, rotator, dir);

@@ -491,7 +491,7 @@ static int _sde_kms_detach_sec_cb(struct sde_kms *sde_kms, int vmid)
 
 	ret = _sde_kms_scm_call(sde_kms, vmid);
 	if (ret) {
-		SDE_ERROR("scm call failed for vmid:%d\n", vmid);
+		SDE_ERROR("sde scm call failed for vmid:%d\n", vmid);
 		goto scm_error;
 	}
 
@@ -505,12 +505,14 @@ static int _sde_kms_detach_sec_cb(struct sde_kms *sde_kms, int vmid)
 	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) && (csf_ver.max_ver == CSF_2_5_MAX_VER)) {
 		ret = smmu_proxy_switch_sid(sde_kms->dev->dev, SMMU_PROXY_SWITCH_OP_ACQUIRE_SID);
 		if (ret) {
-			SDE_ERROR("smmu proxy switch sid failed, ret:%d\n", ret);
+			SDE_ERROR("smmu proxy acquire sid switch sid failed, ret:%d\n", ret);
 			goto scm_error;
 		}
 	}
 
 	SDE_EVT32(vmid, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, ret);
+	SDE_DEBUG("vmid:%d csf_ver:%d.%d.%d ret:%d\n",
+		 vmid, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, ret);
 #endif
 	return 0;
 
@@ -542,7 +544,7 @@ static int _sde_kms_attach_sec_cb(struct sde_kms *sde_kms, u32 vmid,
 	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) && (csf_ver.max_ver == CSF_2_5_MAX_VER)) {
 		ret = smmu_proxy_switch_sid(sde_kms->dev->dev, SMMU_PROXY_SWITCH_OP_RELEASE_SID);
 		if (ret) {
-			SDE_ERROR("smmu proxy switch sid failed, rc:%d\n", ret);
+			SDE_ERROR("smmu proxy release switch sid failed, rc:%d\n", ret);
 			goto scm_error;
 		}
 	}
