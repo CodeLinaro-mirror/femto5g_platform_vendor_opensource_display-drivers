@@ -395,7 +395,7 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 
 	rc = hfi_kms_init_hw_fence_config(hfi_kms);
 	if (rc)
-		SDE_ERROR("failed to send HFI HW FENCE config to FW ret:%d\n", rc);
+		SDE_INFO("failed to send HFI HW FENCE config to FW ret:%d\n", rc);
 
 	/* re configure fw with lut dma configs */
 	rc = sde_kms_reinit_device_lut_dma(sde_kms);
