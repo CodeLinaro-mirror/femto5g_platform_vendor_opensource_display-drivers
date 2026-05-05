@@ -918,8 +918,7 @@ static int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 	for (i = 0; i < hfi_priv->max_streams; i++) {
 		rc = _init_addr_maps(hfi_priv->hfi[i]);
 		if (rc) {
-			while (--i >= 0)
-				_deinit_addr_maps(hfi_priv->hfi[i]);
+			DP_ERR("failed to alloc edid_addr_map\n");
 			goto end;
 		}
 	}
@@ -1044,9 +1043,6 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv, u32 stream_i
 		return 0;
 
 	_register_hpd_events(hfi_priv, stream_id, false);
-
-	/* Free shared buffers */
-	_deinit_addr_maps(hfi);
 
 	hfi_priv->active_streams--;
 	if (hfi_priv->active_streams)
@@ -2709,8 +2705,21 @@ static int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 	stream_id = panel_to_stream(hfi_priv, panel_id);
 
 	/* unprepare only when NOT connected */
-	if (!hfi_priv->connected)
+	if (!hfi_priv->connected) {
 		dp_mgr_hfi_hpd_cleanup(hfi_priv, stream_id);
+	} else {
+		/*
+		 * at mst case, there is rare case which dongle mistakenly issue the
+		 * up request sideband connection status notify message with no device
+		 * connected to dongle even there is device connected to dongle physically.
+		 * when this happen, the hfi_priv->connected is still true since dongle has
+		 * not physically disonnected.
+		 * however active_stream need to be decreased here to offset the acttive_stream
+		 * will be increased later.
+		 */
+		if (hfi_priv->active_streams > 0)
+			hfi_priv->active_streams--;
+	}
 
 end:
 	DP_DEBUG("%s: DP core power unprepare\n", __func__);
