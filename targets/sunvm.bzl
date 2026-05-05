@@ -4,7 +4,7 @@ load(":target_variants.bzl", "get_all_variants")
 
 def define_sunvm():
     for (t, v) in get_all_variants():
-        if t == "sun-tuivm" or t == "sun-oemvm" or t == "malabar-tuivm" or t == "malabar-oevmm":
+        if t == "sun-tuivm" or t == "sun-oemvm" or t == "malabar-tuivm" or t == "malabar-oemvm":
             define_target_variant_modules(
                 target = t,
                 variant = v,

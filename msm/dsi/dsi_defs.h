@@ -72,7 +72,7 @@ enum dsi_op_mode {
  * @DSI_MODE_FLAG_SEAMLESS:	Seamless transition requested by user
  * @DSI_MODE_FLAG_DFPS:		Seamless transition is DynamicFPS
  * @DSI_MODE_FLAG_VBLANK_PRE_MODESET:	Transition needs VBLANK before Modeset
- * @DSI_MODE_FLAG_DMS: Seamless transition is dynamic mode switch
+ * @DSI_MODE_FLAG_DMS: Seamless transition is dynamic mode switch on cmd panel.
  * @DSI_MODE_FLAG_VRR: Seamless transition is DynamicFPS.
  *                     New timing values are sent from DAL.
  * @DSI_MODE_FLAG_DYN_CLK: Seamless transition is dynamic clock change
@@ -83,6 +83,8 @@ enum dsi_op_mode {
  *         Seamless transition is dynamic panel operating mode switch to cmd
  * @DSI_MODE_FLAG_NONDSC_BPP_SWITCH:  Transition is bpp mode switch without DSC.
  * @DSI_MODE_FLAG_EMSYNC_FPS_SWITCH: Seamless transition is emsync fps switch
+ * @DSI_MODE_FLAG_DMS_VID:
+ *         Seamless transition is dynamic mode switch on vid panel.
  */
 enum dsi_mode_flags {
 	DSI_MODE_FLAG_SEAMLESS			= BIT(0),
@@ -95,7 +97,8 @@ enum dsi_mode_flags {
 	DSI_MODE_FLAG_POMS_TO_VID		= BIT(7),
 	DSI_MODE_FLAG_POMS_TO_CMD		= BIT(8),
 	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9),
-	DSI_MODE_FLAG_EMSYNC_FPS_SWITCH		= BIT(10)
+	DSI_MODE_FLAG_EMSYNC_FPS_SWITCH		= BIT(10),
+	DSI_MODE_FLAG_DMS_VID			= BIT(11)
 };
 
 /**
