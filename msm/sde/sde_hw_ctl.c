@@ -53,6 +53,7 @@
 #define CTL_PIPE_ACTIVE              0x12C
 #define CTL_LAYER_ACTIVE             0x130
 #define CTL_DSPP_0_FLUSH             0x13c
+#define CTL_DSPP_5_FLUSH             0x200
 
 #define CTL_INTF_MASTER               0x134
 #define CTL_UIDLE_ACTIVE              0x138
@@ -1035,9 +1036,14 @@ static inline void _sde_hw_ctl_write_dspp_flushes(struct sde_hw_ctl *ctx) {
 	for (i = 0; i < CTL_MAX_DSPP_COUNT; i++) {
 		u32 pending = ctx->flush.pending_dspp_flush_masks[i];
 
-		if (pending)
-			SDE_REG_WRITE(&ctx->hw, CTL_DSPP_0_FLUSH + (i * 4),
-					pending);
+		if (pending) {
+			if (i <= 4)
+				SDE_REG_WRITE(&ctx->hw, CTL_DSPP_0_FLUSH + (i * 4),
+						pending);
+			else
+				SDE_REG_WRITE(&ctx->hw, CTL_DSPP_5_FLUSH + ((i - 5) * 8),
+						pending);
+		}
 	}
 }
 

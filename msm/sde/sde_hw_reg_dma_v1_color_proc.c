@@ -234,6 +234,10 @@ u32 dspp_mapping[DSPP_MAX] = {
 	[DSPP_1] = DSPP1,
 	[DSPP_2] = DSPP2,
 	[DSPP_3] = DSPP3,
+	[DSPP_4] = DSPP4,
+	[DSPP_5] = DSPP5,
+	[DSPP_6] = DSPP6,
+	[DSPP_7] = DSPP7,
 };
 
 static u32 sspp_mapping[SSPP_MAX] = {

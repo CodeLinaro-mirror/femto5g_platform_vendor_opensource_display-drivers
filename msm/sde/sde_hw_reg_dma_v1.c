@@ -60,6 +60,7 @@
 #define GRP_VIG_HW_BLK_SELECT (VIG0 | VIG1 | VIG2 | VIG3 | VIG4 | VIG5 | VIG6 | VIG7)
 #define GRP_DMA_HW_BLK_SELECT (DMA0 | DMA1 | DMA2 | DMA3 | DMA4 | DMA5)
 #define GRP_DSPP_HW_BLK_SELECT (DSPP0 | DSPP1 | DSPP2 | DSPP3)
+#define GRP_DSPP_LITE_HW_BLK_SELECT (DSPP4 | DSPP5 | DSPP6 | DSPP7)
 #define GRP_LTM_HW_BLK_SELECT (LTM0 | LTM1 | LTM2 | LTM3)
 #define GRP_MDSS_HW_BLK_SELECT (MDSS)
 #define BUFFER_SPACE_LEFT(cfg) ((cfg)->dma_buf->buffer_size - \
@@ -1185,7 +1186,8 @@ static int validate_write_decode_sel(struct sde_reg_dma_setup_ops_cfg *cfg)
 
 	vig_blk = (cfg->blk & GRP_VIG_HW_BLK_SELECT) ? true : false;
 	dma_blk = (cfg->blk & GRP_DMA_HW_BLK_SELECT) ? true : false;
-	dspp_blk = (cfg->blk & GRP_DSPP_HW_BLK_SELECT) ? true : false;
+	dspp_blk = (cfg->blk & (GRP_DSPP_HW_BLK_SELECT | GRP_DSPP_LITE_HW_BLK_SELECT)) ?
+			true : false;
 	mdss_blk = (cfg->blk & MDSS) ? true : false;
 
 	if ((vig_blk && dspp_blk) || (dma_blk && dspp_blk) ||
@@ -2450,6 +2452,9 @@ int init_v4(struct sde_hw_reg_dma *reg_dma, u32 dpu_idx, struct sde_mdss_cfg *m)
 	reg_dma_submit_payload = reg_dma_submit_queue_v4;
 
 	v1_supported[MDSS_REG] = MDSS;
+	v1_supported[IGC] |= GRP_DSPP_LITE_HW_BLK_SELECT;
+	v1_supported[GC] |= GRP_DSPP_LITE_HW_BLK_SELECT;
+	v1_supported[PCC] |= GRP_DSPP_LITE_HW_BLK_SELECT;
 
 	return 0;
 }
