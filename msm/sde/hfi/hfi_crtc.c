@@ -418,6 +418,9 @@ static void _hfi_crtc_setup_sys_cache(struct sde_crtc_state *cstate, struct sde_
 	if (sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_DISP])
 		sde_crtc->llcc_stale_frame_trigger = true;
 
+	sde_crtc->new_perf.llcc_active[SDE_SYS_CACHE_LSR_MODE] =
+		(sde_crtc_get_property(cstate, CRTC_PROP_LSR_MODE) == MSM_DISP_LSR_MODE_ENABLED);
+
 	sde_core_perf_crtc_update_llcc(crtc);
 }
 

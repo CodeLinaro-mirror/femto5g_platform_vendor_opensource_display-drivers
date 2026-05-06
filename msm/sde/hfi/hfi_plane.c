@@ -343,7 +343,10 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 
 	state = &pstate->base;
 	phfi = to_hfi_plane(plane);
-	sc_cfg = &plane->catalog->sc_cfg[SDE_SYS_CACHE_DISP];
+	if (pstate->lsr_mode_prop == MSM_DISP_LSR_MODE_ENABLED)
+		sc_cfg = &plane->catalog->sc_cfg[SDE_SYS_CACHE_LSR_MODE];
+	else
+		sc_cfg = &plane->catalog->sc_cfg[SDE_SYS_CACHE_DISP];
 
 	fb = state->fb;
 	fmt.fourcc_format = fb->format->format;
@@ -869,6 +872,7 @@ static int hfi_plane_atomic_update(struct sde_plane *plane, struct sde_plane_sta
 	drm_state = crtc->state;
 	cstate = to_sde_crtc_state(drm_state);
 	pstate->cache_state_prop = sde_crtc_get_property(cstate, CRTC_PROP_CACHE_STATE);
+	pstate->lsr_mode_prop = sde_crtc_get_property(cstate, CRTC_PROP_LSR_MODE);
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
 	if (disp_id == U32_MAX) {
