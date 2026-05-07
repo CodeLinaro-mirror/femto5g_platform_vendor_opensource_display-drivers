@@ -1413,7 +1413,7 @@ void hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *data, bool enable)
 
 	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
 		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
-				hw_cfg->prop_id, HFI_VAL_U32,
+				hw_cfg->prop_id, HFI_VAL_U32_ARRAY,
 				&hfi_pa_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx],
 				payload_size * hw_cfg->num_of_mixers);
 
