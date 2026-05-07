@@ -1193,7 +1193,7 @@ void sde_evtlog_dump_all(struct sde_dbg_evtlog *evtlog)
 
 }
 
-void sde_dbg_dbg_dump(bool do_panic, const char *name, bool dump_secure, u64 dump_blk_mask)
+static void sde_dbg_dbg_dump(bool do_panic, const char *name, bool dump_secure, u64 dump_blk_mask)
 {
 	int rc;
 	ktime_t start, end;
@@ -2759,8 +2759,13 @@ int sde_dbg_setup(struct device *dev)
 		return -EINVAL;
 	}
 
-	if (priv && IS_DISP_OP_HFI(priv->disp_op))
+	if (priv && IS_DISP_OP_HFI(priv->disp_op)) {
 		ret = hfi_dbg_init(dev, dbg_base);
+		if (ret) {
+			pr_err("hfi dbg init failed  %d, debug disabled.\n", ret);
+			return ret;
+		}
+	}
 
 	return ret;
 }

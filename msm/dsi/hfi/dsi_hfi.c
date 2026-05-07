@@ -22,8 +22,8 @@
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 
-#define DSI_HFI_MAPPED_BASE_SIZE (SZ_4K * 4)
-#define DSI_HFI_MAPPED_MAX_SIZE (SZ_4K * 12)
+#define DSI_HFI_MIN_MAPPED_ADDR_SIZE (PAGE_SIZE * 4)
+#define DSI_HFI_MAX_MAPPED_ADDR_SIZE (PAGE_SIZE * 64)
 #define MAX_TIMING_PER_PACKET  32
 
 static int dsi_display_hfi_power_supplies(struct dsi_display *display,
@@ -120,7 +120,7 @@ static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 	return rc;
 }
 
-int dsi_hfi_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
+static int dsi_hfi_process_event(struct hfi_client_t *hfi_client, enum hfi_adapter_event_type event,
 			bool blocking)
 {
 	if (!hfi_client) {
@@ -219,7 +219,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 	return rc;
 }
 
-void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
+static void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
 {
 	struct misr_read_data_ret *misr_data;
 	struct dsi_misr_values *misr_read_values;
@@ -1771,6 +1771,28 @@ error_append:
 	return rc;
 }
 
+/**
+ * dsi_hfi_calculate_required_memory() - calculate the required memory
+ * @panel: handle to dsi panel structure
+ *
+ * Return: the required memory
+ */
+static inline size_t dsi_hfi_calculate_required_memory(struct dsi_panel *panel)
+{
+	size_t mem_size = 0;
+
+	mem_size = (size_t)PAGE_SIZE * (size_t)panel->shared_cmd_buf_page_size;
+
+	if (mem_size < DSI_HFI_MIN_MAPPED_ADDR_SIZE)
+		mem_size = DSI_HFI_MIN_MAPPED_ADDR_SIZE;
+	else if (mem_size > DSI_HFI_MAX_MAPPED_ADDR_SIZE)
+		mem_size = DSI_HFI_MAX_MAPPED_ADDR_SIZE;
+
+	DSI_DEBUG("calculated HFI memory requirement: %zu bytes\n", mem_size);
+
+	return mem_size;
+}
+
 int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 {
 	struct dsi_panel_init_caps panel_init_caps;
@@ -1847,8 +1869,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		}
 		display_hfi->shared_addr_map = addr_map;
 
-		addr_map->size = panel_init_caps.num_timing_modes > MAX_TIMING_PER_PACKET ?
-				DSI_HFI_MAPPED_MAX_SIZE : DSI_HFI_MAPPED_BASE_SIZE;
+		addr_map->size = dsi_hfi_calculate_required_memory(panel);
 
 		hfi_adapter_buffer_alloc(display_hfi->hfi_client, addr_map);
 		if (!addr_map->remote_addr || !addr_map->local_addr)

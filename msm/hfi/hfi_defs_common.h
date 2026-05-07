@@ -267,7 +267,7 @@ struct hfi_buff {
 };
 
 /*
- * struct hfi_wb_out_buff - hfi buffer
+ * struct hfi_plane_buff - hfi buffer
  * @addr_l    :  Array holding the lower 32-bit addresses for each buffer plane
  * @addr_h    :  Array holding the upper 32-bit addresses for each buffer plane
  * @size      :  size of buffer
@@ -275,7 +275,7 @@ struct hfi_buff {
  * @flags     :  flags
  * @format    :  hfi format of wb out buffer
  */
-struct hfi_wb_out_buff {
+struct hfi_plane_buff {
 	u32 addr_l[HFI_MAX_PLANES];
 	u32 addr_h[HFI_MAX_PLANES];
 	u32 size;
@@ -292,16 +292,6 @@ struct hfi_wb_out_buff {
 struct hfi_prop_u64 {
 	u32 val_lo;
 	u32 val_hi;
-};
-
-/**
- * struct hfi_display_sys_cache_info - payload structure to configure system cache resource on FW
- * @size: size of the subcache from system cache
- * @sub_cache_id: Sub Cache Id
- */
-struct hfi_display_sys_cache_info {
-	uint32_t size;         /**< The size of the subcache from system cache */
-	uint32_t sub_cache_id;   /**< Sub Cache Id */
 };
 
 #define HFI_BUFF_FEATURE_ENABLE         (1 << 0)

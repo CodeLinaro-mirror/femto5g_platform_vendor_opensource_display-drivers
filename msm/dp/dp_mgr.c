@@ -2377,7 +2377,7 @@ error:
 	return rc;
 }
 
-int dp_mgr_cont_splash_config(struct dp_client *client)
+static int dp_mgr_cont_splash_config(struct dp_client *client)
 {
 	int rc = 0;
 	struct dp_mgr_priv *mgr;
@@ -2417,13 +2417,13 @@ end:
 	return rc;
 }
 
-int dp_mgr_cont_splash_res_disable(struct dp_client *client)
+static int dp_mgr_cont_splash_res_disable(struct dp_client *client)
 {
 	/* Operations to be performed in splash disabled case */
 	return 0;
 }
 
-int dp_mgr_splash_res_cleanup(struct dp_client *client)
+static int dp_mgr_splash_res_cleanup(struct dp_client *client)
 {
 	client->is_cont_splash_enabled = false;
 
@@ -4082,7 +4082,7 @@ end:
 	return rc;
 }
 
-struct dp_intf_info *dp_mgr_get_info(struct dp_client *client)
+static struct dp_intf_info *dp_mgr_get_info(struct dp_client *client)
 {
 	struct dp_mgr_priv *mgr;
 
@@ -4108,7 +4108,7 @@ static void dp_mgr_set_mst_state(struct dp_client *client,
 		mgr->mst.cbs.set_drv_state(client, mst_state);
 }
 
-int dp_mgr_pm_prepare(struct dp_client *client)
+static int dp_mgr_pm_prepare(struct dp_client *client)
 {
 	struct dp_mgr_priv *mgr;
 
@@ -4142,7 +4142,7 @@ int dp_mgr_pm_prepare(struct dp_client *client)
 	return 0;
 }
 
-void dp_mgr_pm_complete(struct dp_client *client)
+static void dp_mgr_pm_complete(struct dp_client *client)
 {
 	struct dp_mgr_priv *mgr;
 
@@ -4174,7 +4174,7 @@ void dp_mgr_pm_complete(struct dp_client *client)
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, mgr->state);
 }
 
-void dp_mgr_post_open(struct dp_client *client)
+static void dp_mgr_post_open(struct dp_client *client)
 {
 }
 

@@ -648,7 +648,7 @@ static void _sde_encoder_phys_vid_avr_ctrl(struct sde_encoder_phys *phys_enc)
 			sde_enc->disp_info.is_te_using_watchdog_timer);
 }
 
-void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
+static void _sde_encoder_phys_vid_setup_panic_ctrl(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	struct sde_encoder_phys_vid *vid_enc = to_sde_encoder_phys_vid(phys_enc);
@@ -2696,7 +2696,7 @@ static void sde_encoder_phys_vid_timing_engine_disable_wait(struct sde_encoder_p
 	}
 }
 
-void sde_encoder_phys_vid_idle_pc_enter(struct sde_encoder_phys *phys_enc)
+static void sde_encoder_phys_vid_idle_pc_enter(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_virt *sde_enc;
 	struct sde_hw_intf_cfg_v1 *intf_cfg;
@@ -2754,7 +2754,7 @@ void sde_encoder_phys_vid_idle_pc_enter(struct sde_encoder_phys *phys_enc)
 		c_conn->qsync_mode = SDE_RM_QSYNC_DISABLED;
 }
 
-void sde_encoder_phys_vid_idle_pc_exit(struct sde_encoder_phys *phys_enc)
+static void sde_encoder_phys_vid_idle_pc_exit(struct sde_encoder_phys *phys_enc)
 {
 	struct drm_connector *drm_conn = phys_enc->connector;
 	struct sde_hw_intf *intf;
@@ -3150,7 +3150,7 @@ static int sde_encoder_phys_vid_wait_for_active(
 	return -EINVAL;
 }
 
-void sde_encoder_phys_vid_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
+static void sde_encoder_phys_vid_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_vid *vid_enc;
 	vid_enc =  to_sde_encoder_phys_vid(phys_enc);
@@ -3158,7 +3158,7 @@ void sde_encoder_phys_vid_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 	sde_mini_dump_add_va_region("sde_enc_phys_vid", sizeof(*vid_enc), vid_enc);
 }
 
-void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
+static void sde_encoder_phys_vid_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 		struct sde_cesta_ctrl_cfg *cfg, bool *req_flush, bool *req_scc)
 {
 	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);

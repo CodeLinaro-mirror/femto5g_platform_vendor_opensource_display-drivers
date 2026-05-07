@@ -56,6 +56,7 @@
 #endif
 #include <drm/drm_bridge.h>
 #include <drm/drm_framebuffer.h>
+#include <drm/drm_print.h>
 
 #include "sde_power_handle.h"
 
@@ -187,6 +188,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_REPROJ_RENDER_FRUSTUM,
 	PLANE_PROP_REPROJ_ALPHA_BUFFER,
 	PLANE_PROP_REPROJ_LAYER_GAMMA,
+	PLANE_PROP_DISPARITY_PHASE,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -2023,4 +2025,22 @@ bool msm_iommu_present_on_bus(const struct bus_type *bus);
  * Return: true if the IOMMU is present, false otherwise.
  */
 bool mdss_iommu_present(struct drm_device *dev);
+
+/**
+ * msm_ioctl_rmfb2 - Handle RMFB2 DRM ioctl request
+ * @dev: Pointer to the DRM device
+ * @data: Pointer to the ioctl-specific data structure
+ * @file_priv: DRM file private data associated with the caller
+ *
+ * This function handles the RMFB2 (remove framebuffer) ioctl issued
+ * from userspace. It validates the input parameters and performs the
+ * necessary cleanup to remove the specified framebuffer object from
+ * the DRM subsystem.
+ *
+ * The function is typically used to release framebuffer resources
+ * that were previously created via the ADD_FB2 ioctl.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
+int msm_ioctl_rmfb2(struct drm_device *dev, void *data, struct drm_file *file_priv);
 #endif /* __MSM_DRV_H__ */

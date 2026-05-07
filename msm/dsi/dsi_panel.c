@@ -472,13 +472,18 @@ int dsi_panel_power_on(struct dsi_panel *panel, bool is_cont_splash)
 {
 	int rc = 0;
 
+	/* avoid reg vote, if disable vote is skipped */
 	if (!panel->skip_pwr) {
-		/* avoid reg vote, if disable vote is skipped */
-		rc = dsi_pwr_enable_regulator(&panel->power_info, true);
-		if (rc) {
-			DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
-					panel->name, rc);
-			goto exit;
+		if (is_cont_splash && panel->disp_op == MSM_DISP_OP_HFI) {
+			DSI_DEBUG("[%s] skipping pwr enablement in hfi path with cont-splash\n",
+				panel->name);
+		} else {
+			rc = dsi_pwr_enable_regulator(&panel->power_info, true);
+			if (rc) {
+				DSI_ERR("[%s] failed to enable vregs, rc=%d\n",
+						panel->name, rc);
+				goto exit;
+			}
 		}
 	}
 
@@ -1167,6 +1172,19 @@ error:
 	return rc;
 }
 
+static int dsi_panel_parse_default_timing(struct dsi_display_mode *mode,
+							struct dsi_parser_utils *utils)
+{
+	if (!mode || !utils) {
+		DSI_ERR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	mode->is_preferred = utils->read_bool(utils->data, "qcom,mdss-dsi-timing-default");
+
+	return 0;
+}
+
 static int dsi_panel_parse_pixel_format(struct dsi_host_common_cfg *host,
 					struct dsi_parser_utils *utils,
 					const char *name)
@@ -1401,7 +1419,8 @@ static int dsi_panel_parse_misc_host_config(struct dsi_host_common_cfg *host,
 
 	host->ext_bridge_mode = utils->read_bool(utils->data,
 					"qcom,mdss-dsi-ext-bridge-mode");
-
+	host->ext_bridge_hpd_en = utils->read_bool(utils->data,
+					"qcom,mdss-dsi-ext-bridge-hpd");
 	host->force_hs_clk_lane = utils->read_bool(utils->data,
 					"qcom,mdss-dsi-force-clock-lane-hs");
 	panel_cphy_mode = utils->read_bool(utils->data,
@@ -2399,6 +2418,14 @@ static int dsi_panel_parse_panel_mode(struct dsi_panel *panel)
 
 	panel->panel_ack_disabled = utils->read_bool(utils->data,
 					"qcom,panel-ack-disabled");
+
+	rc = utils->read_u32(utils->data, "qcom,mdss-dsi-shared-cmd-buf-page-size",
+			&panel->shared_cmd_buf_page_size);
+	if (rc) {
+		DSI_DEBUG("[%s] dsi-shared-cmd-buf-page-size is not defined\n", panel->name);
+		panel->shared_cmd_buf_page_size = 0;
+		rc = 0;
+	}
 error:
 	return rc;
 }
@@ -4110,6 +4137,18 @@ static int dsi_panel_parse_dms_info(struct dsi_panel *panel)
 	const char *data;
 	struct dsi_parser_utils *utils = &panel->utils;
 
+	data = utils->get_property(utils->data,
+			"qcom,mdss-dms-vid-type", NULL);
+	if (data && !strcmp(data, "dms-vid-seamless"))
+		panel->dms_vid_caps.type = DSI_DMS_VID_SEAMLESS;
+	else if (data && !strcmp(data, "dms-vid-non-seamless"))
+		panel->dms_vid_caps.type = DSI_DMS_VID_NON_SEAMLESS;
+	else
+		panel->dms_vid_caps.type = DSI_DMS_VID_DISABLED;
+
+	panel->dms_vid_caps.maintain_const_clk = utils->read_bool(utils->data,
+		"qcom,dms-vid-maintain-const-clk");
+
 	panel->dms_mode = DSI_DMS_MODE_DISABLED;
 	dms_enabled = utils->read_bool(utils->data,
 		"qcom,dynamic-mode-switch-enabled");
@@ -4736,7 +4775,7 @@ error:
 	return rc;
 }
 
-static int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel)
+int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel)
 {
 	struct dsi_panel_i2c_cmd_set *set;
 	u32 i;
@@ -4867,15 +4906,15 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	if (rc)
 		DSI_ERR("failed to parse hdr config, rc=%d\n", rc);
 
+	rc = dsi_panel_parse_dms_info(panel);
+	if (rc)
+		DSI_DEBUG("failed to get dms info, rc=%d\n", rc);
+
 	rc = dsi_panel_get_mode_count(panel);
 	if (rc) {
 		DSI_ERR("failed to get mode count, rc=%d\n", rc);
 		goto error;
 	}
-
-	rc = dsi_panel_parse_dms_info(panel);
-	if (rc)
-		DSI_DEBUG("failed to get dms info, rc=%d\n", rc);
 
 	rc = dsi_panel_parse_esd_config(panel);
 	if (rc)
@@ -5113,13 +5152,14 @@ int dsi_panel_get_mode_count(struct dsi_panel *panel)
 		goto error;
 	}
 
-	/* No multiresolution support is available for video mode panels.
-	 * Multi-mode is supported for video mode during POMS is enabled.
+	/* Multi-mode for video panel is supported when DMS_VID or
+	 * POMS is enabled.
 	 */
 	if (panel->panel_mode != DSI_OP_CMD_MODE &&
 		!panel->host_config.ext_bridge_mode &&
 		!panel->esync_caps.emsync_switch_enabled &&
-		!panel->panel_mode_switch_enabled)
+		!panel->panel_mode_switch_enabled &&
+		!panel->dms_vid_caps.type)
 		count = SINGLE_MODE_SUPPORT;
 
 	panel->num_timing_nodes = count;
@@ -5469,6 +5509,10 @@ int dsi_panel_get_mode(struct dsi_panel *panel,
 			DSI_ERR("failed to parse panel timing, rc=%d\n", rc);
 			goto parse_fail;
 		}
+
+		rc = dsi_panel_parse_default_timing(mode, utils);
+		if (rc)
+			DSI_ERR("failed to parse default timing mode, rc=%d\n", rc);
 
 		if (panel->dyn_clk_caps.dyn_clk_support) {
 			rc = dsi_panel_parse_dyn_clk_list(mode, utils, panel->dyn_clk_caps.type);

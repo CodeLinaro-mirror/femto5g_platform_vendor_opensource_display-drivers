@@ -139,6 +139,9 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 {
 	int rc = 0;
 	bool hfi_power_enable = true;
+	struct sde_kms *sde_kms;
+	struct msm_kms *msm_kms;
+	bool is_cont_splash = false;
 
 	if (!display) {
 		DSI_ERR("Invalid params\n");
@@ -148,11 +151,30 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 	if (display->trusted_vm_env)
 		return rc;
 
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms)
+		return -EINVAL;
+
+	msm_kms = &sde_kms->base;
+	if (!msm_kms)
+		return -EINVAL;
+
+	if (msm_kms->funcs && msm_kms->funcs->check_for_splash)
+		is_cont_splash = msm_kms->funcs->check_for_splash(msm_kms);
+
 	rc = dsi_display_hfi_panel_enable_supplies(display, hfi_power_enable);
 	if (rc) {
 		DSI_ERR("[%s] dsi panel power supply %s failed, rc=%d\n", display->name,
 			hfi_power_enable ? "enable" : "disable", rc);
 			goto end;
+	}
+
+	if (!is_cont_splash) {
+		rc = dsi_panel_i2c_tx_cmd_set(display->panel);
+		if (rc) {
+			DSI_ERR("[%s] failed to send i2c cmds, rc=%d\n",
+				display->panel->name, rc);
+		}
 	}
 
 	rc = dsi_display_hfi_set_mode(display, display->panel->cur_mode);
@@ -211,6 +233,9 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 	 */
 	mutex_lock(&display->panel->panel_lock);
 	if (display->panel->lp11_init && !display->panel->powered) {
+		struct dsi_display_mode_priv_info *priv_info;
+		enum dsi_cmd_set_type cmd_type;
+
 		DSI_DEBUG("powering on panel\n");
 		rc = dsi_panel_power_on(display->panel, is_cont_splash);
 		if (rc) {
@@ -221,9 +246,23 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 
 		display->panel->powered = true;
 
-		rc = dsi_panel_tx_cmd_set(display->panel, DSI_CMD_SET_CUSTOM_ON, false);
-		if (rc)
-			DSI_ERR("Could not send custom dcs on cmd, rc=%d\n", rc);
+		/* For continuous splash case - avoid sending custom DCS ON */
+		if (!is_cont_splash) {
+			if (!display->panel->cur_mode || !display->panel->cur_mode->priv_info) {
+				mutex_unlock(&display->panel->panel_lock);
+				return -EINVAL;
+			}
+
+			priv_info = display->panel->cur_mode->priv_info;
+
+			/* If custom on command is not defined, fallback to default on command */
+			cmd_type = (priv_info->cmd_sets[DSI_CMD_SET_CUSTOM_ON].count > 0) ?
+				   DSI_CMD_SET_CUSTOM_ON : DSI_CMD_SET_ON;
+
+			rc = dsi_panel_tx_cmd_set(display->panel, cmd_type, false);
+			if (rc)
+				DSI_ERR("Could not send dcs on cmd, rc=%d\n", rc);
+		}
 	}
 	mutex_unlock(&display->panel->panel_lock);
 

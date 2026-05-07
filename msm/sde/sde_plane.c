@@ -473,7 +473,7 @@ void sde_plane_set_revalidate(struct drm_plane *plane, bool enable)
 	psde->revalidate = enable;
 }
 
-int sde_plane_danger_signal_ctrl(struct drm_plane *plane, bool enable)
+static int sde_plane_danger_signal_ctrl(struct drm_plane *plane, bool enable)
 {
 	struct sde_plane *psde;
 	int rc;
@@ -4757,6 +4757,9 @@ static void _sde_plane_install_repro_properties(struct sde_plane *psde,
 		msm_property_install_volatile_enum(&psde->property_info, "layer_gamma",
 			0x0, 0, layer_gamma, ARRAY_SIZE(layer_gamma), 0,
 			PLANE_PROP_REPROJ_LAYER_GAMMA);
+
+		msm_property_install_volatile_range(&psde->property_info, "disparity_phase",
+			0x0, 0, U32_MAX, 0, PLANE_PROP_DISPARITY_PHASE);
 	}
 }
 
@@ -6312,4 +6315,3 @@ bool sde_plane_property_is_dirty(struct drm_plane_state *plane_state,
 	return msm_property_is_dirty(&psde->property_info,
 			&pstate->property_state, property_idx);
 }
-

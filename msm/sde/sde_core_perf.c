@@ -1551,6 +1551,63 @@ static ssize_t _sde_core_perf_uidle_status_read(struct file *file,
 	return len;
 }
 
+static ssize_t _sde_core_perf_uidle_perf_cnt_write(struct file *file,
+		const char __user *buff, size_t count, loff_t *ppos)
+{
+	struct sde_core_perf *perf = file->private_data;
+	struct msm_drm_private *priv;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	char buf[16];
+	u32 val;
+	int rc;
+
+	if (!perf)
+		return -ENODEV;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, buff, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+	if (kstrtou32(buf, 0, &val))
+		return -EINVAL;
+
+	priv = perf->dev->dev_private;
+	if (!priv || !priv->kms) {
+		SDE_ERROR("invalid KMS reference\n");
+		return -EINVAL;
+	}
+
+	sde_kms = to_sde_kms(priv->kms);
+
+	if (!IS_DISP_OP_HFI(priv->disp_op)) {
+		SDE_ERROR("invalid display mode\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("hfi_kms not available\n");
+		return -EINVAL;
+	}
+
+	rc = hfi_kms_set_uidle_perf_cnt(hfi_kms, val);
+	if (rc) {
+		SDE_ERROR("failed to set uidle perf cnt val:%u rc:%d\n", val, rc);
+		return rc;
+	}
+
+	return count;
+}
+
+static const struct file_operations sde_core_perf_uidle_perf_cnt_fops = {
+	.open = simple_open,
+	.write = _sde_core_perf_uidle_perf_cnt_write,
+};
+
 static const struct file_operations sde_core_perf_uidle_status_fops = {
 	.open = simple_open,
 	.read = _sde_core_perf_uidle_status_read,
@@ -1614,8 +1671,13 @@ int sde_core_perf_debugfs_init(struct sde_core_perf *perf,
 	debugfs_create_u32("sys_cache_enable", 0600, perf->debugfs_root,
 			&perf->sys_cache_enabled);
 
-	debugfs_create_u32("uidle_perf_cnt", 0600, perf->debugfs_root,
-			&sde_kms->catalog->uidle_cfg.debugfs_perf);
+	if (!IS_DISP_OP_HFI(priv->disp_op)) {
+		debugfs_create_u32("uidle_perf_cnt", 0600, perf->debugfs_root,
+				&sde_kms->catalog->uidle_cfg.debugfs_perf);
+	} else {
+		debugfs_create_file("uidle_perf_cnt", 0600, perf->debugfs_root,
+				perf, &sde_core_perf_uidle_perf_cnt_fops);
+	}
 	debugfs_create_u32("uidle_fal10_target_idle_time_us", 0600, perf->debugfs_root,
 			&sde_kms->catalog->uidle_cfg.fal10_target_idle_time);
 	debugfs_create_u32("uidle_fal1_target_idle_time_us", 0600, perf->debugfs_root,

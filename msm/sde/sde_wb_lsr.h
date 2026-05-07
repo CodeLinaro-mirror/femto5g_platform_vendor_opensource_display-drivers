@@ -33,12 +33,12 @@ int sde_wb_lsr_install_properties(struct drm_connector *connector,
 /**
  * sde_wb_lsr_get_fb_id_list - Get FB ID list property
  * @wb_dev: Pointer to sde_wb_device
- * @out_buffers: Pointer to hfi_wb_out_buff
+ * @out_buffers: Pointer to hfi_plane_buff
  * @view_desc: Pointer to sde_view_descriptor for front view
  * @back_view_desc: Pointer to sde_view_descriptor for fback view
  * @is_back_view_en: Indicates if back view is enabled
  */
-int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_buff *out_buffers,
+int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_plane_buff *out_buffers,
 		struct sde_view_descriptor *view_desc, struct sde_view_descriptor *back_view_desc,
 		bool is_back_view_en);
 
@@ -179,7 +179,7 @@ int sde_wb_lsr_install_properties(struct drm_connector *connector,
 }
 
 static inline
-int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_buff *out_buffers,
+int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_plane_buff *out_buffers,
 		struct sde_view_descriptor *view_desc, struct sde_view_descriptor *back_view_desc,
 		bool is_back_view_en)
 {
