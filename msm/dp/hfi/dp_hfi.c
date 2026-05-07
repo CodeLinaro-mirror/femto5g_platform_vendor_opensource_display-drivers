@@ -22,6 +22,11 @@
 #include "dp_debug.h"
 #include "sde_hdcp.h"
 
+#define NUM_VSWING_VAL          16
+#define NUM_BW_CODE             4
+#define DP_LINK_RATE_HBR	10
+#define DP_AUX_CFG_BASE_OFFSET	0x20
+
 static int _dp_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 {
 	struct dp_hfi *hfi;
@@ -407,6 +412,129 @@ int dp_hfi_send_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client, b
 	SDE_EVT32(obj_id, rc, SDE_EVTLOG_FUNC_CASE2);
 
 	return rc;
+}
+
+static int dp_hfi_append_panel_generic_caps(struct dp_hfi *hfi, struct hfi_cmdbuf_t *buffer,
+		u32 object_id, u32 *size)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *)hfi->priv;
+	struct dp_parser *parsed;
+	struct dp_aux_cfg *aux_cfg;
+	struct hfi_util_kv_helper *kv_props = hfi->kv_props;
+	u32 aux_cfg_payload[1 + PHY_AUX_CFG_MAX];
+	u32 vswing_payload[NUM_BW_CODE][2 + NUM_VSWING_VAL];
+	u32 bw_code[NUM_BW_CODE] = {6, 10, 20, 30};
+	u32 kv_count, payload_size, aux_offset, kv_size = 0;
+	int i, j, rc = 0;
+	u8 *vswing_lut, *pre_emp_lut;
+
+	if (!hfi_priv->parser)
+		return -ENOMEM;
+	parsed = hfi_priv->parser;
+	aux_cfg = parsed->aux_cfg;
+
+	kv_props = hfi_util_kv_helper_alloc(NUM_BW_CODE + 1);
+	if (!kv_props)
+		return -ENOMEM;
+
+	hfi_util_kv_helper_reset(kv_props);
+
+	aux_cfg_payload[0] = PHY_AUX_CFG_MAX;
+	for (i = 0; i < PHY_AUX_CFG_MAX; i++) {
+		aux_offset = (aux_cfg[i].offset - DP_AUX_CFG_BASE_OFFSET) / 4;
+		aux_cfg_payload[i + 1] = ((u8)aux_offset << 16) | (u8)aux_cfg[i].lut[0];
+	}
+
+	if (hfi_priv->aux_params_valid) {
+		hfi_util_kv_helper_add(kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DP_AUX_CFG, 0,
+				((ARRAY_SIZE(aux_cfg_payload) *
+				sizeof(aux_cfg_payload[0])) / sizeof(u32))),
+			aux_cfg_payload);
+		kv_size += sizeof(aux_cfg_payload);
+	}
+
+	if (parsed->valid_lt_params) {
+		for (i = 0; i < NUM_BW_CODE; i++) {
+			if (bw_code[i] <= DP_LINK_RATE_HBR) {
+				vswing_lut = parsed->swing_hbr_rbr;
+				pre_emp_lut = parsed->pre_emp_hbr_rbr;
+			} else {
+				vswing_lut = parsed->swing_hbr2_3;
+				pre_emp_lut = parsed->pre_emp_hbr2_3;
+			}
+
+			vswing_payload[i][0] = bw_code[i];
+			vswing_payload[i][1] = NUM_VSWING_VAL;
+
+			for (j = 0; j < NUM_VSWING_VAL; j++) {
+				vswing_payload[i][j + 2] = (vswing_lut[j] << 16) | pre_emp_lut[j];
+			}
+
+			hfi_util_kv_helper_add(kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS, 0,
+					((ARRAY_SIZE(vswing_payload[i]) *
+					sizeof(vswing_payload[i][0])) / sizeof(u32))),
+				vswing_payload[i]);
+			kv_size += sizeof(vswing_payload[i]);
+		}
+	}
+
+	kv_count = hfi_util_kv_helper_get_count(kv_props);
+	payload_size = (kv_count * sizeof(u32)) + kv_size;
+	*size = kv_size;
+
+	if (kv_size) {
+		rc = hfi_adapter_add_prop_array(buffer->ctx, buffer,
+				HFI_COMMAND_PANEL_INIT_GENERIC_CAPS,
+				object_id,
+				HFI_PAYLOAD_TYPE_U32_ARRAY,
+				hfi_util_kv_helper_get_payload_addr(kv_props),
+				kv_count,
+				payload_size);
+		if (rc)
+			DP_ERR("Failed to append HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, rc=%d\n", rc);
+	}
+
+	kfree(kv_props);
+	return rc;
+}
+
+void dp_hfi_send_panel_generic_caps(struct dp_hfi *hfi)
+{
+	struct hfi_client_t *hfi_client = hfi->hfi_client;
+	struct hfi_cmdbuf_t *buffer;
+	u32 obj_id, kv_size = 0;
+	int rc = 0;
+
+	if (!hfi_client) {
+		DP_ERR("Failed to get HFI client for dp panel generic caps\n");
+		return;
+	}
+	obj_id = sde_conn_get_display_obj_id(hfi->connector);
+	DP_ERR("object id from sde: %d\n", obj_id);
+
+	buffer = hfi_adapter_get_cmd_buf(hfi_client, obj_id,
+					HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!buffer) {
+		DP_ERR("Failed to get cmd buffer for dp panel generic caps\n");
+		return;
+	}
+
+	rc = dp_hfi_append_panel_generic_caps(hfi, buffer, obj_id, &kv_size);
+	if (rc < 0) {
+		DP_ERR("Failed to append dp panel generic caps, rc=%d\n", rc);
+		hfi_adapter_release_cmd_buf(hfi_client, buffer);
+		return;
+	} else if (kv_size == 0) {
+		DP_DEBUG("No dp panel generic caps to send\n");
+		hfi_adapter_release_cmd_buf(hfi_client, buffer);
+		return;
+	}
+
+	rc = hfi_adapter_set_cmd_buf(hfi_client, buffer);
+	if (rc)
+		DP_ERR("Failed to send HFI_COMMAND_PANEL_INIT_GENERIC_CAPS, rc=%d\n", rc);
 }
 
 /**
