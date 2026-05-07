@@ -225,10 +225,10 @@ static ssize_t debugfs_line_count_read(struct file *file,
 			dsi_ctrl->cmd_trigger_frame);
 	len += scnprintf((buf + len), max_len - len,
 			"Command successful at line: %04x\n",
-			dsi_ctrl->cmd_success_line);
+			atomic_read(&dsi_ctrl->cmd_success_line));
 	len += scnprintf((buf + len), max_len - len,
 			"Command successful at frame: %04x\n",
-			dsi_ctrl->cmd_success_frame);
+			atomic_read(&dsi_ctrl->cmd_success_frame));
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
 
@@ -2866,12 +2866,14 @@ static irqreturn_t dsi_ctrl_isr(int irq, void *ptr)
 		if (dsi_ctrl->enable_cmd_dma_stats) {
 			u32 reg = dsi_ctrl->hw.ops.log_line_count(&dsi_ctrl->hw,
 						dsi_ctrl->cmd_mode);
-			dsi_ctrl->cmd_success_line = (reg & 0xFFFF);
-			dsi_ctrl->cmd_success_frame = ((reg >> 16) & 0xFFFF);
+			atomic_set(&dsi_ctrl->cmd_success_line, (reg & 0xFFFF));
+			atomic_set(&dsi_ctrl->cmd_success_frame, ((reg >> 16) & 0xFFFF));
 			SDE_EVT32(dsi_ctrl->cell_index,	SDE_EVTLOG_FUNC_CASE1,
 					dsi_ctrl->cmd_success_line,
 					dsi_ctrl->cmd_success_frame);
 		}
+
+		atomic64_set(&dsi_ctrl->cmd_success_ts, ktime_get());
 		atomic_set(&dsi_ctrl->dma_irq_trig, 1);
 		dsi_ctrl_disable_status_interrupt(dsi_ctrl,
 					DSI_SINT_CMD_MODE_DMA_DONE);
@@ -3514,6 +3516,7 @@ int dsi_ctrl_cmd_transfer(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd)
 					rc);
 	}
 
+	cmd->ts = atomic64_read(&dsi_ctrl->cmd_success_ts);
 	dsi_ctrl_update_state(dsi_ctrl, DSI_CTRL_OP_CMD_TX, 0x0);
 
 	mutex_unlock(&dsi_ctrl->ctrl_lock);
