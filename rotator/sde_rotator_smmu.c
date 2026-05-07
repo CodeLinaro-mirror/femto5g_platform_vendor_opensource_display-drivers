@@ -617,7 +617,7 @@ int sde_smmu_probe(struct platform_device *pdev)
 	dma_set_max_seg_size(dev, (unsigned int)DMA_BIT_MASK(32));
 	dma_set_seg_boundary(dev, (unsigned long)DMA_BIT_MASK(64));
 
-	iommu_set_fault_handler(sde_smmu->rot_domain,
+	qcom_iommu_set_fault_handler(sde_smmu->rot_domain,
 			sde_smmu_fault_handler, (void *)sde_smmu);
 
 	sde_smmu_enable_power(sde_smmu, false);
