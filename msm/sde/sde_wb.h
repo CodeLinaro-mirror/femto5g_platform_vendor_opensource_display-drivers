@@ -29,6 +29,7 @@
  * @max_mixer_width:    Max width supported by SDE LM HW block
  * @count_modes:	Length of writeback connector modes array
  * @modes:		Writeback connector modes array
+ * @needs_dspp:		Needs DSPP for Writeback connector
  */
 struct sde_wb_device {
 	struct drm_device *drm_dev;
@@ -49,6 +50,7 @@ struct sde_wb_device {
 
 	u32 count_modes;
 	struct drm_mode_modeinfo *modes;
+	bool needs_dspp;
 };
 
 /**
