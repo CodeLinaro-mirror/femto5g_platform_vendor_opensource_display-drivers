@@ -245,7 +245,8 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH |
 		 DSI_MODE_FLAG_DMS_VID)) {
 		DSI_DEBUG("[%d] seamless pre-enable\n", c_bridge->id);
-		if ((c_bridge->dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) &&
+		if ((c_bridge->dsi_mode.dsi_mode_flags &
+			(DSI_MODE_FLAG_VRR | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) &&
 			(disp_op == MSM_DISP_OP_HFI)) {
 			rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
 			if (rc) {
