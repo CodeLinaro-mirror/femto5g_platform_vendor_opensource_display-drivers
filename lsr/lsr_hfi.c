@@ -1832,6 +1832,8 @@ static int lsr_ssr_handler(struct lsr_device *device,
 		return rc;
 	}
 
+	dprintk(LSR_INFO, "LSR_SSR end\n");
+
 	return rc;
 }
 
@@ -3809,5 +3811,50 @@ int lsr_fw_reset(void)
 		return rc;
 	}
 
+	return rc;
+}
+
+int hfi_lsr_reset(void)
+{
+	struct msm_lsr_core *core;
+	struct lsr_device *device;
+	int rc = 0;
+
+	core = lsr_driver->lsr_core;
+	if (core) {
+		device = core->dev_ops->hfi_device_data;
+	} else {
+		dprintk(LSR_ERR, "Invalid lsr core\n");
+		return -EINVAL;
+	}
+
+	mutex_lock(&device->lock);
+	if (atomic_read(&device->lsr_ssr_in_progress)) {
+		mutex_unlock(&device->lock);
+		dprintk(LSR_WARN, "LSR_SRR is already in progress, cannot reset LSR FW\n");
+		return rc;
+	}
+
+	atomic_set(&device->lsr_ssr_in_progress, 1);
+	mutex_unlock(&device->lock);
+
+	rc = hfi_lsr_wait_for_display_off(lsr_driver->drm_dev);
+	if (rc) {
+		dprintk(LSR_ERR, "LSR display wait for turn off failed rc:%d\n", rc);
+		return rc;
+	}
+
+	rc = lsr_fw_reset();
+	if (rc) {
+		dprintk(LSR_ERR, "Failed to reset LSR FW:%d\n", rc);
+		return rc;
+	}
+
+	if (atomic_read(&device->lsr_ssr_in_progress)) {
+		mutex_lock(&device->lock);
+		atomic_set(&device->lsr_ssr_in_progress, 0);
+		mutex_unlock(&device->lock);
+	}
+	dprintk(LSR_INFO, "HFI LSR FW reset end\n");
 	return rc;
 }
