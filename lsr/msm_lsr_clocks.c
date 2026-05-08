@@ -378,8 +378,13 @@ int lsr_set_bw(struct bus_info *bus, unsigned long bw, unsigned long peak_bw)
 {
 	int rc = 0;
 
+	if (!bus) {
+		dprintk(LSR_ERR, "Invalid bus\n");
+		return -EINVAL;
+	}
+
 	mutex_lock(&bus->lock);
-	if (!bus || !bus->client) {
+	if (!bus->client) {
 		mutex_unlock(&bus->lock);
 		return -EINVAL;
 	}
