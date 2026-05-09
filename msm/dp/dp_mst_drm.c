@@ -1534,6 +1534,25 @@ static int dp_mst_connector_atomic_check(struct drm_connector *connector,
 			goto end;
 		}
 
+		if (!new_conn_state->crtc && mst->state != PM_SUSPEND) {
+			bridge_state->connector = NULL;
+			bridge_state->dp_panel = NULL;
+
+			DP_MST_DEBUG("clear best encoder: %d\n", bridge->id);
+		}
+
+		/*
+		 * doesn't allow atomic_release_vcpi_slots to be
+		 * called if atomic_find_vcpi_slots is called in the same
+		 * commit.
+		 */
+		if (new_conn_state->crtc) {
+			crtc_state = drm_atomic_get_new_crtc_state(state,
+					new_conn_state->crtc);
+			if (crtc_state->active)
+				goto mode_set;
+		}
+
 		if (bridge_state->mst_port) {
 			rc = mst->mst_fw_cbs->atomic_release_time_slots(state,
 					&mst->mst_mgr, bridge_state->mst_port);
@@ -1547,13 +1566,6 @@ static int dp_mst_connector_atomic_check(struct drm_connector *connector,
 		}
 
 		bridge_state->num_slots = 0;
-
-		if (!new_conn_state->crtc && mst->state != PM_SUSPEND) {
-			bridge_state->connector = NULL;
-			bridge_state->dp_panel = NULL;
-
-			DP_MST_DEBUG("clear best encoder: %d\n", bridge->id);
-		}
 	}
 
 mode_set:
@@ -1600,11 +1612,6 @@ mode_set:
 		 */
 		if (vcpi_released) {
 			DP_WARN("skipping allocation since vcpi was released in the same state\n");
-			goto end;
-		}
-
-		if (WARN_ON(bridge_state->num_slots)) {
-			rc = -EINVAL;
 			goto end;
 		}
 
