@@ -1739,54 +1739,6 @@ static int dp_debug_client_hfi_write_dump(struct dp_debug_client *client,
 	return count;
 }
 
-static int dp_debug_client_hfi_write_mmrm_clk_cb(struct dp_debug_client *client,
-		const char *buf, size_t count)
-{
-	struct dp_debug_client_hfi_priv *priv;
-	struct platform_device *pdev;
-	struct dp_drv *dp_drv;
-	int cb_type = 0;
-	struct dss_clk_mmrm_cb mmrm_cb_data;
-	struct mmrm_client_notifier_data notifier_data;
-
-	if (!client || !buf)
-		return -ENODEV;
-
-	if (kstrtoint(buf, 10, &cb_type) != 0)
-		return -EINVAL;
-
-	if (cb_type != MMRM_CLIENT_RESOURCE_VALUE_CHANGE) {
-		DP_ERR("Invalid MMRM callback type: %d\n", cb_type);
-		return -EINVAL;
-	}
-
-	DP_DEBUG("MMRM clock callback: type=%d\n", cb_type);
-
-	priv = client->priv;
-
-	/* Get the dp_drv instance from the platform device */
-	if (!priv->dev)
-		return -ENODEV;
-
-	pdev = to_platform_device(priv->dev);
-	dp_drv = platform_get_drvdata(pdev);
-
-	if (!dp_drv) {
-		DP_ERR("dp_drv is NULL\n");
-		return -ENODEV;
-	}
-
-	/* Prepare MMRM notification data */
-	notifier_data.cb_type = MMRM_CLIENT_RESOURCE_VALUE_CHANGE;
-	mmrm_cb_data.phandle = (void *)dp_drv;
-	notifier_data.pvt_data = (void *)&mmrm_cb_data;
-
-	/* Call the MMRM callback function */
-	dp_mgr_mmrm_callback(&notifier_data);
-
-	return count;
-}
-
 static int dp_debug_client_hfi_write_sim_mode(struct dp_debug_client *client, bool sim)
 {
 	struct dp_debug_client_hfi_priv *priv;
@@ -1974,7 +1926,7 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 	client->write_attention = dp_debug_client_hfi_write_attention;
 	client->simulate_attention = dp_debug_client_hfi_simulate_attention;
 
-	client->write_mmrm_clk_cb = dp_debug_client_hfi_write_mmrm_clk_cb;
+	client->write_mmrm_clk_cb = NULL;
 	/* Stub - not applicable for HFI */
 
 	client->abort = dp_debug_client_hfi_abort;
