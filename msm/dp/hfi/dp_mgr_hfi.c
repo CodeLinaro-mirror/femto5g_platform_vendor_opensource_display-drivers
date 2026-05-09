@@ -878,10 +878,8 @@ static int _init_addr_maps(struct dp_hfi *hfi)
 	return 0;
 }
 
-/* HPD callback functions */
-int dp_mgr_hfi_hpd_configure_cb(void *data)
+int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 {
-	struct dp_mgr_hfi_priv *hfi_priv = data;
 	struct hfi_client_t *hfi_client;
 	struct hfi_device_hotplug_config config = {0};
 	int rc = 0;
@@ -948,11 +946,25 @@ end:
 		hfi_priv->connected = true;
 
 		_hfi_update_config(hfi_priv, &config);
-		rc = _hfi_send_hot_plug(hfi_priv, &config);
+		if (!skip_hpd)
+			rc = _hfi_send_hot_plug(hfi_priv, &config);
 		DP_INFO("connected\n");
 	}
 
 	return rc;
+}
+
+/* HPD callback functions */
+int dp_mgr_hfi_hpd_configure_cb(void *data)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = data;
+
+	if (!hfi_priv) {
+		DP_ERR("Invalid hfi_priv data\n");
+		return -EINVAL;
+	}
+
+	return _hpd_configure(hfi_priv, false);
 }
 
 int dp_mgr_hfi_hpd_disconnect_cb(void *data)
@@ -1076,7 +1088,8 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 		return 0;
 
 	if (hpd_state && !hfi_priv->configured) {
-		rc = dp_mgr_hfi_hpd_configure_cb(data);
+		/* skip hpd here as it will be sent below */
+		rc = _hpd_configure(hfi_priv, true);
 		if (rc)
 			return rc;
 	} else if (!hfi_priv->connected && hpd_state) {
