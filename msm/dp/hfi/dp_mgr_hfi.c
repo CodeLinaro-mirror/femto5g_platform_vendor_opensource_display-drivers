@@ -1079,10 +1079,6 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 
 	DP_DEBUG("hpd status from %d to %d irq %d\n", hfi_priv->connected, hpd_state, hpd_irq);
 
-	/* hpd_state should be high for irq_hpd */
-	if (!hpd_state)
-		return 0;
-
 	/* check if there was any change in state */
 	if ((hpd_state == hfi_priv->connected) && !hpd_irq)
 		return 0;
