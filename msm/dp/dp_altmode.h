@@ -9,6 +9,16 @@
 #include <linux/types.h>
 #include "dp_hpd.h"
 
+enum dp_altmode_pin_assignment {
+	DPAM_HPD_OUT,
+	DPAM_HPD_A,
+	DPAM_HPD_B,
+	DPAM_HPD_C,
+	DPAM_HPD_D,
+	DPAM_HPD_E,
+	DPAM_HPD_F,
+};
+
 struct device;
 
 struct dp_altmode {

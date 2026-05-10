@@ -28,6 +28,7 @@
 #include "dp_mgr.h"
 #include "dp_mgr_hfi.h"
 #include "hfi_defs_display.h"
+#include "dp_altmode.h"
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 
@@ -1368,7 +1369,8 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 			 * on unlug
 			 */
 			if (client->sim_enable) {
-				mgr_priv->hpd->pin_config = 5;
+				mgr_priv->hpd->pin_config = client->force_multi_func ?
+						DPAM_HPD_F : DPAM_HPD_E;
 				if (mgr_priv->hpd->orientation == ORIENTATION_NONE)
 					mgr_priv->hpd->orientation = ORIENTATION_CC1;
 			} else {
