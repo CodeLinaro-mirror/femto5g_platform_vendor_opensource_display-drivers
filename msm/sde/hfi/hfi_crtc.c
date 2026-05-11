@@ -127,6 +127,9 @@ static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde
 	struct hfi_resource_cfg lm_cfg;
 	int rc = 0;
 	int num_mixers;
+	bool is_cmd;
+
+	is_cmd = (sde_crtc_get_intf_mode(&sde_crtc->base, &cstate->base) == INTF_MODE_CMD);
 
 	num_mixers = get_num_mixers(cstate, sde_crtc);
 
@@ -140,10 +143,15 @@ static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde
 		lm_cfg.resource_idx = cstate->ds_cfg[0].idx;
 		lm_cfg.width = cstate->ds_cfg[0].lm_width;
 		lm_cfg.height = cstate->ds_cfg[0].lm_height;
+	} else if (is_cmd) {
+		lm_cfg.res_type = HFI_RESOURCE_LM;
+		lm_cfg.resource_idx = 0;
+		lm_cfg.width = cstate->lm_roi[0].w;
+		lm_cfg.height = cstate->lm_roi[0].h;
 	} else {
 		lm_cfg.res_type = HFI_RESOURCE_LM;
 		lm_cfg.resource_idx = 0;
-		lm_cfg.width =  0;
+		lm_cfg.width = 0;
 		lm_cfg.height = 0;
 	}
 
