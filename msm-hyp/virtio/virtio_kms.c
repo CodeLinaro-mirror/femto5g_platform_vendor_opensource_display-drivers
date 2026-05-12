@@ -1395,6 +1395,14 @@ static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
 		priv->base.max_bandwidth_low = 9600000000LL;
 		priv->base.max_bandwidth_high = 9600000000LL;
 		priv->base.has_src_split = true;
+		priv->base.hw_version = MSM_HYP_HW_VERSION;
+		priv->base.ubwc_version = MSM_HYP_UBWC_VERSION;
+		priv->base.ddr_version = MSM_HYP_DDR_VERSION;
+		priv->base.skip_inline_rot_threshold = MSM_HYP_SKIP_INLINE_ROT;
+		priv->base.clk_fudge_factor = MSM_HYP_CLK_FUDGE_FACTOR;
+		priv->base.ib_fudge_factor = MSM_HYP_IB_FUDGE_FACTOR;
+		priv->base.mixer_count = MSM_HYP_MIXER_COUNT;
+		priv->base.dspp_count = MSM_HYP_DSPP_COUNT;
 		priv->scanout = i;
 		priv->kms = kms;
 		_virtio_kms_set_crtc_limit(kms, priv);

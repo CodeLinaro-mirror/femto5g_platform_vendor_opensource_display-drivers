@@ -49,6 +49,30 @@
 
 #define DRM_DRI_NAME_SIZE 32
 
+/*
+ * Default CRTC capability values reported by the msm-hyp (guest VM) driver
+ * in the "capabilities" blob property.  The guest has no direct access to
+ * hardware registers or the SDE catalog, so well-known defaults are defined
+ * here and used by all msm-hyp KMS backends (WFD and virtio).
+ *
+ * MSM_HYP_HW_VERSION        - MDSS HW revision (SM8650 / Snapdragon 8 Gen 3)
+ * MSM_HYP_UBWC_VERSION      - Full UBWC revision word;
+ * MSM_HYP_DDR_VERSION       - DDR type string
+ * MSM_HYP_SKIP_INLINE_ROT   - skip_inline_rot_threshold feature flag
+ * MSM_HYP_CLK_FUDGE_FACTOR  - core_clk_ff string (float, parsed by stof)
+ * MSM_HYP_IB_FUDGE_FACTOR   - core_ib_ff string (float, parsed by stof)
+ * MSM_HYP_MIXER_COUNT       - number of layer mixers
+ * MSM_HYP_DSPP_COUNT        - number of DSPP blocks
+ */
+#define MSM_HYP_HW_VERSION          0x80040000
+#define MSM_HYP_UBWC_VERSION        0x40000002
+#define MSM_HYP_DDR_VERSION         "DDR5"
+#define MSM_HYP_SKIP_INLINE_ROT     1
+#define MSM_HYP_CLK_FUDGE_FACTOR    "1.0"
+#define MSM_HYP_IB_FUDGE_FACTOR     "6.0"
+#define MSM_HYP_MIXER_COUNT         2
+#define MSM_HYP_DSPP_COUNT          1
+
 enum msm_hyp_panel_rotation {
 	PANEL_ROTATE_NONE = 0,
 	PANEL_ROTATE_90,
@@ -102,6 +126,14 @@ struct msm_hyp_crtc_info {
 	const char *smart_dma_rev;
 	bool has_src_split;
 	bool has_hdr;
+	uint32_t hw_version;
+	uint32_t ubwc_version;
+	const char *ddr_version;
+	uint32_t skip_inline_rot_threshold;
+	const char *clk_fudge_factor;
+	const char *ib_fudge_factor;
+	uint32_t mixer_count;
+	uint32_t dspp_count;
 	const char *extra_caps;
 };
 

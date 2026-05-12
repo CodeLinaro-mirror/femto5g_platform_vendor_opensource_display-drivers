@@ -1098,7 +1098,7 @@ static int _msm_hyp_crtc_init_caps(struct msm_hyp_crtc *crtc)
 	struct drm_device *ddev = crtc->base.dev;
 	struct msm_hyp_drm_private *priv = ddev->dev_private;
 	struct msm_hyp_prop_blob_info *info;
-	char buf[16];
+	char buf[32];
 	int ret;
 
 	info = devm_kzalloc(ddev->dev, sizeof(*info), GFP_KERNEL);
@@ -1128,6 +1128,33 @@ static int _msm_hyp_crtc_init_caps(struct msm_hyp_crtc *crtc)
 
 	snprintf(buf, sizeof(buf), "%d", crtc->info->has_src_split);
 	msm_hyp_prop_info_add_keystr(info, "has_src_split", buf);
+
+	snprintf(buf, sizeof(buf), "%u", crtc->info->hw_version);
+	msm_hyp_prop_info_add_keystr(info, "hw_version", buf);
+
+	snprintf(buf, sizeof(buf), "%u", crtc->info->ubwc_version);
+	msm_hyp_prop_info_add_keystr(info, "UBWC version", buf);
+
+	if (crtc->info->ddr_version)
+		msm_hyp_prop_info_add_keystr(info, "DDR version",
+				crtc->info->ddr_version);
+
+	snprintf(buf, sizeof(buf), "%u", crtc->info->skip_inline_rot_threshold);
+	msm_hyp_prop_info_add_keystr(info, "skip_inline_rot_threshold", buf);
+
+	if (crtc->info->clk_fudge_factor)
+		msm_hyp_prop_info_add_keystr(info, "core_clk_ff",
+				crtc->info->clk_fudge_factor);
+
+	if (crtc->info->ib_fudge_factor)
+		msm_hyp_prop_info_add_keystr(info, "core_ib_ff",
+				crtc->info->ib_fudge_factor);
+
+	snprintf(buf, sizeof(buf), "%u", crtc->info->mixer_count);
+	msm_hyp_prop_info_add_keystr(info, "mixer_count", buf);
+
+	snprintf(buf, sizeof(buf), "%u", crtc->info->dspp_count);
+	msm_hyp_prop_info_add_keystr(info, "dspp_count", buf);
 
 	if (crtc->info->extra_caps)
 		msm_hyp_prop_info_append(info, crtc->info->extra_caps);
