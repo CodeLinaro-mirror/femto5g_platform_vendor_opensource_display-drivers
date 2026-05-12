@@ -38,6 +38,8 @@
 
 static u32 _hfi_kms_read_lsr_init_caps(struct hfi_catalog_base *catalog,
 		u32 hfi_prop, u32 *payload, u32 max_words);
+static int _hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
+		struct drm_crtc *crtc, u32 disp_id, u32 iova, u32 size);
 
 
 /* Map MSM batch type to HFI usecase id. */
@@ -51,8 +53,14 @@ static enum hfi_batch_usecase_id _hfi_kms_batch_type_to_usecase(u32 batch_type)
 	}
 }
 
+/* Return true if @batch belongs to the GMU LSR (reprojection) usecase. */
+bool hfi_kms_is_gmu_lsr_batch(const struct hfi_kms_batch_info *batch)
+{
+	return batch->usecase_id == HFI_BATCH_USECASE_GMU_REPROJ;
+}
+
 /* Populate @info from the CRTC state batch properties. */
-static void _hfi_kms_get_batch_info(struct hfi_kms *hfi_kms, struct drm_crtc_state *crtc_state,
+void hfi_kms_get_batch_info(struct hfi_kms *hfi_kms, struct drm_crtc_state *crtc_state,
 		struct hfi_kms_batch_info *info)
 {
 	u32 batch_type;
@@ -105,6 +113,26 @@ static int _hfi_kms_add_batch_mode_cmd(struct hfi_kms *hfi_kms,
 	if (!hfi_crtc) {
 		SDE_ERROR("crtc:%d hfi_crtc is NULL\n", DRMID(crtc));
 		return -EINVAL;
+	}
+
+	if (mode == HFI_BATCH_MODE_START && hfi_kms_is_gmu_lsr_batch(batch)) {
+		if (hfi_kms->primary_connector &&
+				hfi_kms->primary_connector->sde_base &&
+				hfi_kms->primary_connector->sde_base->gmu_dcp_iova) {
+			struct sde_connector *pconn = hfi_kms->primary_connector->sde_base;
+
+			ret = _hfi_kms_send_hfi_subsystem_config(hfi_kms, crtc, disp_id,
+					pconn->gmu_dcp_iova, pconn->gmu_dcp_size);
+			if (ret) {
+				SDE_ERROR("crtc:%d failed to send subsystem config rc:%d\n",
+						DRMID(crtc), ret);
+				goto out;
+			}
+		} else {
+			SDE_ERROR("crtc:%d invalid gmu_dcp_iova for GMU LSR batch\n", DRMID(crtc));
+			ret = -EINVAL;
+			goto out;
+		}
 	}
 
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
@@ -177,6 +205,58 @@ static void _hfi_kms_handle_batch_mode(struct hfi_kms *hfi_kms,
 	}
 }
 
+static int _hfi_kms_send_hfi_subsystem_config(struct hfi_kms *hfi_kms,
+		struct drm_crtc *crtc, u32 disp_id, u32 iova, u32 size)
+{
+	int packet_id = 0;
+	struct {
+		enum hfi_subsystem_type subsystem_type;
+		struct hfi_buff buff;
+	} payload = {
+		.subsystem_type = HFI_SUBSYSTEM_TYPE_GMU,
+		.buff = {
+			.addr_l  = iova,
+			.addr_h  = 0,
+			.size    = size,
+			.version = 0,
+			.flags   = 0,
+		},
+	};
+	struct hfi_crtc *hfi_crtc = to_sde_crtc(crtc)->hfi_crtc;
+	struct hfi_cmdbuf_t *cmd_buf;
+	int ret;
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			disp_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("crtc:%d failed to get cmd_buf for hfi subsystem config disp_id:%u\n",
+				DRMID(crtc), disp_id);
+		return -EINVAL;
+	}
+
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG, disp_id,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &payload,
+			sizeof(payload), &hfi_crtc->hfi_cb_obj,
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE,
+			true, &packet_id);
+	if (ret) {
+		SDE_ERROR("crtc:%d failed to add hfi subsystem config cmd, rc:%d\n",
+				DRMID(crtc), ret);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		goto out;
+	}
+
+	ret = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("crtc:%d failed to send hfi subsystem config cmd, rc:%d\n",
+				DRMID(crtc), ret);
+
+out:
+	SDE_EVT32(HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG, iova, size, ret);
+	return ret;
+}
+
 static int hfi_kms_prepare_commit(struct sde_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -200,7 +280,7 @@ static int hfi_kms_prepare_commit(struct sde_kms *kms,
 		sde_crtc = to_sde_crtc(crtc);
 
 		disp_id = hfi_crtc_get_display_id(crtc, cstate);
-		_hfi_kms_get_batch_info(hfi_kms, cstate, &batch);
+		hfi_kms_get_batch_info(hfi_kms, cstate, &batch);
 
 		encoder_mask = cstate->encoder_mask ?
 			cstate->encoder_mask : sde_crtc->cached_encoder_mask;
@@ -310,7 +390,7 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 		disp_id = hfi_crtc_get_display_id(crtc, crtc_state);
 		lsr_mode = sde_crtc_get_property(to_sde_crtc_state(crtc_state),
 			CRTC_PROP_LSR_MODE);
-		_hfi_kms_get_batch_info(hfi_kms, crtc_state, &batch);
+		hfi_kms_get_batch_info(hfi_kms, crtc_state, &batch);
 		hfi_crtc = to_sde_crtc(crtc)->hfi_crtc;
 
 		if (disp_id == U32_MAX) {

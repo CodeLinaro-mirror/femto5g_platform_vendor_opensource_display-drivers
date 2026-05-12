@@ -348,4 +348,20 @@ int hfi_kms_set_uidle_disable(struct hfi_kms *hfi_kms, bool disable);
  */
 int hfi_kms_set_uidle_perf_cnt(struct hfi_kms *hfi_kms, u32 val);
 
+/**
+ * hfi_kms_get_batch_info - populate batch commit state from CRTC state
+ * @hfi_kms: Pointer to hfi_kms structure
+ * @crtc_state: Pointer to DRM CRTC state
+ * @info: Output batch info populated from CRTC state batch properties
+ */
+void hfi_kms_get_batch_info(struct hfi_kms *hfi_kms, struct drm_crtc_state *crtc_state,
+		struct hfi_kms_batch_info *info);
+
+/**
+ * hfi_kms_is_gmu_lsr_batch - check if batch belongs to the GMU LSR usecase
+ * @batch: Pointer to batch commit info
+ * Returns: true if batch usecase is GMU LSR (reprojection), false otherwise
+ */
+bool hfi_kms_is_gmu_lsr_batch(const struct hfi_kms_batch_info *batch);
+
 #endif // _HFI_KMS_H_

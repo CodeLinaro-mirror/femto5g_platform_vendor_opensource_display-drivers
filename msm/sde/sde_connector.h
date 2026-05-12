@@ -948,6 +948,9 @@ struct sde_connector {
 	u32 custom_wd_te_enabled;
 	u32 custom_wd_te_fps;
 	bool custom_wd_updated;
+	struct drm_framebuffer *gmu_dcp_fb;
+	u32 gmu_dcp_iova;
+	u32 gmu_dcp_size;
 };
 
 /**
