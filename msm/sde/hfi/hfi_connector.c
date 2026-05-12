@@ -105,7 +105,7 @@ static int _set_dest_roi(struct sde_connector *conn,
 	return ret;
 }
 
-int _hfi_connector_add_ept(struct sde_connector *conn, struct sde_connector_state *old_cstate,
+static int _hfi_connector_add_ept(struct sde_connector *conn, struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector, u32 hfi_prop)
 {
 	int ret = 0;
