@@ -7111,7 +7111,7 @@ int dsi_panel_send_cmd(struct dsi_panel *panel,
 	int rc = 0;
 	bool peripheral_flush = false;
 
-	if (!panel) {
+	if (!panel || !params) {
 		DSI_ERR("invalid params panel NULL\n");
 		return -EINVAL;
 	}
