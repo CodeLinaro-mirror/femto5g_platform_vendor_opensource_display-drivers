@@ -4133,9 +4133,6 @@ static int dp_pm_prepare(struct device *dev)
 
 	dp_display_state_add(DP_STATE_SUSPENDED);
 
-	if ((dp->hpd->type == DP_HPD_LPHW) && dp->hpd->unregister_hpd)
-		dp->hpd->unregister_hpd(dp->hpd);
-
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
@@ -4179,9 +4176,6 @@ static void dp_pm_complete(struct device *dev)
 		dp->aux->abort(dp->aux, false);
 		dp->ctrl->abort(dp->ctrl, false);
 	}
-
-	if ((dp->hpd->type == DP_HPD_LPHW) && dp->hpd->register_hpd)
-		dp->hpd->register_hpd(dp->hpd);
 
 	if (dp->parser && dp->parser->force_connect_mode) {
 		u32 sim_mode = 0;
