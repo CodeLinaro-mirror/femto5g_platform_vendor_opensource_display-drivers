@@ -920,14 +920,15 @@ static struct hfi_cmdbuf_t *_check_attached_buffer(struct hfi_cmdbuf_t *cmd_buf,
 	if (!list_empty(&cmd_buf->cmd_buf_chain)) {
 		current_buffer = list_last_entry(&cmd_buf->cmd_buf_chain, struct hfi_cmdbuf_t,
 				cmd_buf_chain);
-		available_buff_size = current_buffer->buf.size - current_buffer->size;
-		HFI_AD_DEBUG("found a chained buffer, using it as current buffer\n");
 
 		if (!current_buffer) {
 			HFI_AD_ERROR("failed to get chained buffer tail\n");
 			mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 			return NULL;
 		}
+
+		available_buff_size = current_buffer->buf.size - current_buffer->size;
+		HFI_AD_DEBUG("found a chained buffer, using it as current buffer\n");
 	}
 	mutex_unlock(&host->hfi_adapter_cmd_buf_list_lock);
 

@@ -1840,13 +1840,14 @@ int sde_core_perf_init(struct sde_core_perf *perf,
 		struct sde_power_handle *phandle,
 		char *clk_name)
 {
-	struct msm_drm_private *priv = dev->dev_private;
+	struct msm_drm_private *priv;
 
 	if (!perf || !dev || !catalog || !phandle || !clk_name) {
 		SDE_ERROR("invalid parameters\n");
 		return -EINVAL;
 	}
 
+	priv = dev->dev_private;
 	perf->dev = dev;
 	perf->catalog = catalog;
 	perf->phandle = phandle;

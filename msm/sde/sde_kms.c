@@ -2943,8 +2943,8 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 	int primary_planes_idx = 0, i, ret;
 	int max_crtc_count;
 
-	u32 sspp_id[MAX_PLANES];
-	u32 master_plane_id[MAX_PLANES];
+	u32 sspp_id[MAX_PLANES] = {0};
+	u32 master_plane_id[MAX_PLANES] = {0};
 	u32 dummy_mixer_count = 0;
 
 	if (!sde_kms || !sde_kms->dev || !sde_kms->dev->dev) {
@@ -2984,9 +2984,9 @@ static int _sde_kms_drm_obj_init(struct sde_kms *sde_kms)
 
 		plane = sde_plane_init(dev, catalog->sspp[i].id, primary,
 				(1UL << max_crtc_count) - 1, 0);
-		if (IS_ERR(plane)) {
+		if (IS_ERR_OR_NULL(plane)) {
 			SDE_ERROR("sde_plane_init failed\n");
-			ret = PTR_ERR(plane);
+			ret = IS_ERR(plane) ? PTR_ERR(plane) : -EINVAL;
 			goto fail;
 		}
 		priv->planes[priv->num_planes++] = plane;
@@ -3917,7 +3917,7 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 		enum sde_crtc_vm_req vm_req, bool vm_owns_hw)
 {
 	struct drm_crtc *crtc, *active_crtc = NULL, *global_active_crtc = NULL;
-	struct drm_crtc_state *new_cstate, *old_cstate, *active_cstate;
+	struct drm_crtc_state *new_cstate, *old_cstate, *active_cstate = NULL;
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
 	struct drm_connector_state *new_connstate;
@@ -3927,7 +3927,7 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 	struct dsi_display *dsi_display;
 	uint32_t i, commit_crtc_cnt = 0, global_crtc_cnt = 0;
 	uint32_t crtc_encoder_cnt = 0;
-	enum sde_crtc_idle_pc_state idle_pc_state;
+	enum sde_crtc_idle_pc_state idle_pc_state = IDLE_PC_NONE;
 	int rc = 0;
 
 	for_each_oldnew_crtc_in_state(state, crtc, old_cstate, new_cstate, i) {
@@ -3994,6 +3994,10 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 	}
 
 	if ((vm_req == VM_REQ_ACQUIRE) && !vm_owns_hw) {
+		if (!vm_ops) {
+			SDE_ERROR("invalid vm_ops for VM_REQ_ACQUIRE\n");
+			return -EINVAL;
+		}
 		rc = vm_ops->vm_acquire(sde_kms);
 		if (rc) {
 			SDE_ERROR("VM acquire failed; hw_owner:%d, rc:%d\n", vm_owns_hw, rc);

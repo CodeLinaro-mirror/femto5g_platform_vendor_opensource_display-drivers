@@ -139,13 +139,21 @@ static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_
 static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 		void *payload, u32 event)
 {
-	struct sde_kms *sde_kms = sde_encoder_get_kms(&sde_enc->base);
-	struct hfi_encoder *hfi_enc = to_hfi_encoder(sde_enc);
+	struct sde_kms *sde_kms;
+	struct hfi_encoder *hfi_enc;
 	ktime_t ts = 0;
 	struct drm_encoder *drm_enc;
 	unsigned long lock_flags;
 	int new_cnt = -1;
 	bool frame_event_trigger;
+
+	if (!sde_enc) {
+		SDE_ERROR("invalid param\n");
+		return;
+	}
+
+	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	hfi_enc = to_hfi_encoder(sde_enc);
 
 	if (!sde_kms || !hfi_enc) {
 		SDE_ERROR("invalid param: sde_kms %pK\n", sde_kms);
@@ -466,11 +474,19 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 		bool enable, bool defer_to_commit)
 {
 	struct drm_connector *conn;
-	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
-	struct hfi_kms *hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	struct hfi_encoder *hfi_enc;
+	struct hfi_kms *hfi_kms;
 	struct hfi_cmdbuf_t *cmd_buf;
 	u32 cmd, display_id = 0, packet_id = 0;
 	int ret = 0;
+
+	if (!enc) {
+		SDE_ERROR("Invalid param\n");
+		return -EINVAL;
+	}
+
+	hfi_enc = to_hfi_encoder(enc);
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
 
 	if (!hfi_enc || !hfi_kms) {
 		SDE_ERROR("invalid connector\n");
@@ -578,9 +594,9 @@ static int hfi_enc_register_pwr_event(struct sde_encoder_virt *enc, bool enable)
 
 static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 {
-	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
-	struct hfi_kms *hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
-	struct sde_encoder_virt *sde_enc = hfi_enc->sde_base;
+	struct hfi_encoder *hfi_enc;
+	struct hfi_kms *hfi_kms;
+	struct sde_encoder_virt *sde_enc;
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
@@ -588,11 +604,20 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	u32 disp_id, packet_id = 0;
 	int ret;
 
-	if (!enc || !hfi_enc || !hfi_kms) {
+	if (!enc) {
+		SDE_ERROR("invalid param\n");
+		return -EINVAL;
+	}
+
+	hfi_enc = to_hfi_encoder(enc);
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+
+	if (!hfi_enc || !hfi_kms) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
 
+	sde_enc = hfi_enc->sde_base;
 	drm_enc = &sde_enc->base;
 
 	if ((hfi_enc->panic_events_state && enable)
@@ -696,6 +721,10 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 	struct dsi_panel *panel = NULL;
 
 	sde_kms = sde_encoder_get_kms(&sde_enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
@@ -915,6 +944,10 @@ static int hfi_enc_kickoff(struct sde_encoder_virt *enc, bool cfg_changed)
 		return -EINVAL;
 
 	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
@@ -1207,13 +1240,19 @@ static int _hfi_enc_send_wb_detach_output_layer(struct sde_encoder_virt *enc)
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct sde_connector *sde_conn;
 	struct hfi_connector *hfi_conn;
+	struct sde_kms *sde_kms;
 	u32 display_id, wb_id;
 	int ret = 0;
 
 	if (!enc)
 		return -EINVAL;
 
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
+	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
@@ -1271,11 +1310,16 @@ static int _hfi_enc_send_wb_detach_output_layer(struct sde_encoder_virt *enc)
 
 static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 {
-	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+	struct hfi_encoder *hfi_enc;
 	struct hfi_kms *hfi_kms;
 	int ret;
 
-	if (!enc || !hfi_enc) {
+	if (!enc) {
+		SDE_ERROR("	Invalid param\n");
+		return -EINVAL;
+	}
+	hfi_enc = to_hfi_encoder(enc);
+	if (!hfi_enc) {
 		SDE_ERROR("invalid params\n");
 		return -EINVAL;
 	}
@@ -1473,13 +1517,19 @@ static int hfi_enc_misr_setup(struct sde_encoder_virt *enc, bool en, u32 frame_c
 	struct sde_connector *sde_conn;
 	struct hfi_connector *hfi_conn;
 	struct hfi_misr_config misr_data;
+	struct sde_kms *sde_kms;
 	u32 display_id, wb_id;
 	int ret = 0;
 
 	if (!enc)
 		return -EINVAL;
 
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
+	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
@@ -1554,6 +1604,10 @@ static int hfi_enc_early_wakeup_call(struct sde_encoder_virt *enc)
 
 	hfi_enc = to_hfi_encoder(enc);
 	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
 	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
@@ -1776,6 +1830,7 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	struct hfi_encoder *hfi_enc;
 	struct hfi_kms *hfi_kms;
 	struct misr_read_data misr_read;
+	struct sde_kms *sde_kms;
 	u32 disp_id, packet_id = 0;
 
 	if (!enc) {
@@ -1799,7 +1854,12 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	if (!hfi_enc)
 		return -EINVAL;
 
-	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	sde_kms = sde_encoder_get_kms(&enc->base);
+	if (!sde_kms) {
+		SDE_ERROR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
+	hfi_kms = to_hfi_kms(sde_kms);
 	if (!hfi_kms) {
 		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;

@@ -276,7 +276,7 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 
 	if (!conn || !old_cstate || !prop_collector || !conn->base.state) {
 		SDE_ERROR("invalid params conn[%d] old_sate[%d] prop_collec[%d] base state[%d]\n",
-			!conn, !old_cstate, !prop_collector, !(conn->base.state));
+			!conn, !old_cstate, !prop_collector, (conn ? !(conn->base.state) : 1));
 		return -EINVAL;
 	}
 
@@ -824,6 +824,10 @@ static int hfi_connector_prepare_commit(struct drm_connector *conn,
 				cstate);
 
 	sde_kms = sde_connector_get_kms(conn);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
 	hfi_kms = to_hfi_kms(sde_kms);
 
 	disp_id = sde_conn_get_display_obj_id(conn);

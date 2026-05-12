@@ -5245,10 +5245,10 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 
 	/* if hw is waiting for ipcc signal and no hw-fences, override signal */
 	trigger_sw_override |= (ipcc_input_signal_wait && !num_hw_fences &&
-			hw_ctl->ops.hw_fence_trigger_sw_override[disp_op] &&
+			hw_ctl && hw_ctl->ops.hw_fence_trigger_sw_override[disp_op] &&
 			!test_bit(HW_FENCE_IN_FENCES_NO_OVERRIDE, sde_crtc->hwfence_features_mask));
 
-	if (trigger_sw_override)
+	if (trigger_sw_override && hw_ctl)
 		hw_ctl->ops.hw_fence_trigger_sw_override[disp_op](hw_ctl);
 
 	SDE_ATRACE_END("plane_wait_input_fence");
@@ -8674,7 +8674,8 @@ static int _sde_crtc_get_output_fence(struct drm_crtc *crtc,
 
 	/* Update DCP hw fence data for displays having HW fence support */
 	if (IS_DISP_OP_HFI(disp_op)) {
-		if (lsr_opmode == WB_CSC || (sde_kms->catalog && sde_kms->catalog->hw_fence_rev))
+		if (sde_kms && ((lsr_opmode == WB_CSC) ||
+				(sde_kms->catalog && sde_kms->catalog->hw_fence_rev)))
 			hfi_hw_fence_handle = _get_hfi_hw_data_from_kms(sde_kms);
 
 		return sde_fence_create_with_handle(sde_crtc->output_fence, val,
