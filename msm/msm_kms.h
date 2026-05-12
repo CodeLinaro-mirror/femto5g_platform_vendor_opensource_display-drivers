@@ -159,6 +159,15 @@ struct msm_kms {
 
 	/* DRM client used for lastclose cleanup */
 	struct drm_client_dev *client;
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	/*
+	 * dpu_power_on - tracks whether the DPU power level is currently ON.
+	 * 1 = power ON (register access permitted), 0 = power OFF.
+	 * Set/cleared around msm_hyp_set_power_level calls.
+	 */
+	atomic_t dpu_power_on;
+#endif
 };
 
 /**
