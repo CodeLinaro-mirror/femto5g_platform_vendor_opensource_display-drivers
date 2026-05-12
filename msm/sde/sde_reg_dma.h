@@ -274,6 +274,8 @@ enum sde_reg_dma_last_cmd_mode {
 	REG_DMA_NOWAIT,
 };
 
+#define REG_DMA_BUFFER_MAX_SPLITS	8
+
 /**
  * struct sde_reg_dma_buffer - defines reg dma buffer structure.
  * @drm_gem_object *buf: drm gem handle for the buffer
@@ -288,6 +290,10 @@ enum sde_reg_dma_last_cmd_mode {
  * @buffer_type: the payload buffer type
  * @dpu_idx: the DPU index
  * @vq_idx: the VQ index
+ * @num_splits: number of splits if the workload can't fit in one workload
+ * @split_size: last split offset
+ * @buf_splits: offset of the splits
+ * @split_start: start offset of next split
  */
 struct sde_reg_dma_buffer {
 	struct drm_gem_object *buf;
@@ -302,6 +308,10 @@ struct sde_reg_dma_buffer {
 	enum sde_reg_dma_buffer_type buffer_type;
 	u32 dpu_idx;
 	u32 vq_idx;
+	u32 num_splits;
+	u32 split_size;
+	u32 buf_splits[REG_DMA_BUFFER_MAX_SPLITS];
+	u32 split_start[REG_DMA_BUFFER_MAX_SPLITS];
 };
 
 /**

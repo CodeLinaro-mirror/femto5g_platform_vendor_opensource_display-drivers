@@ -341,7 +341,7 @@ static u32 ltm_feature_vq_map[] = {
 	[0] = -1,
 	[SDE_LTM_INIT] = REG_DMA_MDSS_DB,
 	[SDE_LTM_ROI] = REG_DMA_MDSS_DB,
-	[SDE_LTM_VLUT] = REG_DMA_TABLE_SB,
+	[SDE_LTM_VLUT] = REG_DMA_TABLE_DB,
 };
 
 static u32 spr_feature_vq_map[] = {
@@ -4829,6 +4829,10 @@ static void ltm_initv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 			DRM_ERROR("opmode write failed ret %d\n", rc);
 			return;
 		}
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		//TODO: mulit mixers handle
+		ctx->ltm_opmode = opmode;
+#endif
 	}
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, ltm_buf[LTM_INIT][idx][ctx->dpu_idx],
@@ -4967,6 +4971,10 @@ static void reg_dmav1_setup_ltm_initv1_common(struct sde_hw_dspp *ctx, void *cfg
 			DRM_ERROR("opmode write failed ret %d\n", rc);
 			return;
 		}
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		//TODO: mulit mixers handle
+		ctx->ltm_opmode = (opmode & REG_DMA_LTM_INIT_ENABLE_OP_MASK);
+#endif
 	}
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, ltm_buf[LTM_INIT][idx][ctx->dpu_idx],
 				REG_DMA_WRITE, DMA_CTL_QUEUE0, WRITE_IMMEDIATE,
@@ -5034,6 +5042,10 @@ static void ltm_roiv1_disable(struct sde_hw_dspp *ctx, void *cfg,
 			DRM_ERROR("opmode write failed ret %d\n", rc);
 			return;
 		}
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		//TODO: mulit mixers handle
+		ctx->ltm_opmode = opmode;
+#endif
 	}
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, ltm_buf[LTM_ROI][idx][ctx->dpu_idx],
@@ -5257,13 +5269,23 @@ static void ltm_vlutv1_disable(struct sde_hw_dspp *ctx, u32 clear, u32 dither_cl
 
 	offset = ctx->cap->sblk->ltm.base + 0x4;
 	ltm_vlut_ops_mask[ctx->idx][ctx->dpu_idx] &= ~ltm_vlut;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	opmode = ctx->ltm_opmode;
+#else
 	opmode = SDE_REG_READ(&ctx->hw, offset);
+#endif
 	if (opmode & BIT(0))
 		/* disable VLUT/INIT/ROI */
 		opmode &= (REG_DMA_LTM_VLUT_DISABLE_OP_MASK & (~dither_clip_mask));
 	else
 		opmode &= clear;
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	ctx->ltm_opmode = opmode;
+	SDE_REG_MODIFY(&ctx->hw, offset, 0x1FFFFFF, opmode);
+#else
 	SDE_REG_WRITE(&ctx->hw, offset, opmode);
+#endif
 }
 
 static int reg_dmav1_setup_ltm_vlutv1_common(struct sde_hw_dspp *ctx, void *cfg,
@@ -5370,6 +5392,11 @@ static int reg_dmav1_setup_ltm_vlutv1_common(struct sde_hw_dspp *ctx, void *cfg,
 		if (ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] & ltm_roi)
 			opmode[i] |= BIT(24);
 		ltm_vlut_ops_mask[dspp_idx[i]][ctx->dpu_idx] |= ltm_vlut;
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		//TODO: mulit mixers handle
+		ctx->ltm_opmode = opmode[i];
+#endif
 	}
 	return 0;
 }
@@ -5515,6 +5542,10 @@ static void reg_dmav1_setup_ltm_vlutv1_2_v1_4_common(struct sde_hw_dspp *ctx, vo
 			DRM_ERROR("write opmode failed ret %d\n", rc);
 			goto vlut_exit;
 		}
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		//TODO: mulit mixers handle
+		ctx->ltm_opmode = opmode[i];
+#endif
 	}
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl, ltm_buf[LTM_VLUT][idx][ctx->dpu_idx],

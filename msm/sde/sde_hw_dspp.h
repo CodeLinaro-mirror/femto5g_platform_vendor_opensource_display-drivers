@@ -460,6 +460,7 @@ struct sde_hw_rc_state {
  * @dpu_idx: dpu index
  * @ctl_idx: control index, for HW virtualization
  * @pa_opmode: pa mode, for HW virtualization
+ * @ltm_opmode: ltm mode, for HW virtualization
  */
 struct sde_hw_dspp {
 	struct sde_hw_blk_reg_map hw;
@@ -485,6 +486,7 @@ struct sde_hw_dspp {
 	/* HW virtualization */
 	enum sde_ctl ctl_idx;
 	u32 pa_opcode;
+	u32 ltm_opmode;
 };
 
 /**

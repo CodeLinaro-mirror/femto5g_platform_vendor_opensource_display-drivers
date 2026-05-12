@@ -184,6 +184,7 @@ static void sde_hw_lm_setup_blend_config_combined_alpha(
 	const_alpha = (bg_alpha & 0xFF) | ((fg_alpha & 0xFF) << 16);
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA + stage_off, const_alpha);
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, blend_op);
+	ctx->op_mode[stage] = blend_op;
 }
 
 static void sde_hw_lm_setup_blend_config_combined_alpha_v1(
@@ -204,6 +205,7 @@ static void sde_hw_lm_setup_blend_config_combined_alpha_v1(
 	const_alpha = (bg_alpha & 0xFF) | ((fg_alpha & 0xFF) << 16);
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA_V1 + stage_off, const_alpha);
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, blend_op);
+	ctx->op_mode[stage] = blend_op;
 }
 
 static void sde_hw_lm_setup_blend_config_combined_alpha_10_bits(
@@ -224,6 +226,7 @@ static void sde_hw_lm_setup_blend_config_combined_alpha_10_bits(
 	const_alpha = (bg_alpha & 0x3FF) | ((fg_alpha & 0x3FF) << 16);
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA_V1 + stage_off, const_alpha);
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, blend_op);
+	ctx->op_mode[stage] = blend_op;
 }
 
 static void sde_hw_lm_setup_blend_config(struct sde_hw_mixer *ctx,
@@ -242,6 +245,7 @@ static void sde_hw_lm_setup_blend_config(struct sde_hw_mixer *ctx,
 	SDE_REG_WRITE(c, LM_BLEND0_FG_ALPHA + stage_off, fg_alpha);
 	SDE_REG_WRITE(c, LM_BLEND0_BG_ALPHA + stage_off, bg_alpha);
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, blend_op);
+	ctx->op_mode[stage] = blend_op;
 }
 
 static void sde_hw_lm_setup_color3(struct sde_hw_mixer *ctx,
@@ -277,7 +281,10 @@ static void sde_hw_lm_setup_color3_v1(struct sde_hw_mixer *ctx, uint32_t mixer_o
 			return;
 
 		/* set color_out3 bit in blend0_op when enabled in mixer_op_mode */
-		SDE_REG_MODIFY(c, LM_BLEND0_OP + stage_off, BIT(30), (mixer_op_mode & BIT(i)) ? BIT(30) : 0);
+		SDE_REG_MODIFY(c, LM_BLEND0_OP + stage_off, BIT(30),
+				(mixer_op_mode & BIT(i)) ? BIT(30) : 0);
+		ctx->op_mode[i] = MASK_MODIFY(ctx->op_mode[i], BIT(30),
+				(mixer_op_mode & BIT(i)) ? BIT(30) : 0);
 	}
 }
 
@@ -302,6 +309,7 @@ static void sde_hw_lm_clear_dim_layer(struct sde_hw_mixer *ctx)
 		 * bit (color_fill bit)
 		 */
 		SDE_REG_MODIFY(c, LM_BLEND0_OP + stage_off, BIT(16), 0);
+		ctx->op_mode[i] = MASK_MODIFY(ctx->op_mode[i], BIT(16), 0);
 	}
 }
 
@@ -343,6 +351,7 @@ static void sde_hw_lm_setup_dim_layer(struct sde_hw_mixer *ctx,
 	else
 		val &= ~BIT(17);
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+	ctx->op_mode[dim_layer->stage] = val;
 	val = (alpha << 16) | (0xff - alpha);
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA + stage_off, val);
 }
@@ -385,6 +394,7 @@ static void sde_hw_lm_setup_dim_layer_v1(struct sde_hw_mixer *ctx,
 	else
 		val &= ~BIT(17);
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+	ctx->op_mode[dim_layer->stage] = val;
 	val = (alpha << 16) | (0xff - alpha);
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA_V1 + stage_off, val);
 }
@@ -427,6 +437,7 @@ static void sde_hw_lm_setup_dim_layer_10_bits(struct sde_hw_mixer *ctx,
 	else
 		val &= ~BIT(17);
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+	ctx->op_mode[dim_layer->stage] = val;
 	val = (alpha << 16) | (0x3FF - alpha);
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA_V1 + stage_off, val);
 }
@@ -490,6 +501,7 @@ static void sde_hw_clear_noise_layer(struct sde_hw_mixer *ctx)
 		 * read the blendn_op register and clear only noise layer
 		 */
 		SDE_REG_MODIFY(c, LM_BLEND0_OP + stage_off, BIT(18) | BIT(31), 0);
+		ctx->op_mode[i] = MASK_MODIFY(ctx->op_mode[i], BIT(18) | BIT(31), 0);
 	}
 	SDE_REG_WRITE(c, LM_NOISE_LAYER, 0);
 }
@@ -525,6 +537,7 @@ static int sde_hw_lm_setup_noise_layer(struct sde_hw_mixer *ctx,
 	val |= (1 << 8);
 	alpha = 255 | (cfg->alpha_noise << 16);
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+	ctx->op_mode[cfg->noise_blend_stage] = val;
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA + stage_off, alpha);
 	val = ctx->cfg.out_width | (ctx->cfg.out_height << 16);
 	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_SIZE + stage_off, val);
@@ -546,6 +559,7 @@ static int sde_hw_lm_setup_noise_layer(struct sde_hw_mixer *ctx,
 	val |= (1 << 8);
 	alpha = cfg->attn_factor;
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+	ctx->op_mode[cfg->attn_blend_stage] = val;
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA + stage_off, alpha);
 	val = SDE_REG_READ(c, LM_OP_MODE);
 	val = (1 << cfg->attn_blend_stage) | val;
@@ -598,6 +612,7 @@ static int sde_hw_lm_setup_noise_layer_v1(struct sde_hw_mixer *ctx,
 	val |= (1 << 8);
 	alpha = 255 | (cfg->alpha_noise << 16);
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+	ctx->op_mode[cfg->noise_blend_stage] = val;
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA_V1 + stage_off, alpha);
 	val = ctx->cfg.out_width | (ctx->cfg.out_height << 16);
 	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_SIZE_V1 + stage_off, val);
@@ -619,6 +634,7 @@ static int sde_hw_lm_setup_noise_layer_v1(struct sde_hw_mixer *ctx,
 	val |= (1 << 8);
 	alpha = cfg->attn_factor;
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+	ctx->op_mode[cfg->attn_blend_stage] = val;
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA_V1 + stage_off, alpha);
 	val = SDE_REG_READ(c, LM_OP_MODE);
 	val = (1 << cfg->attn_blend_stage) | val;
@@ -671,6 +687,7 @@ static int sde_hw_lm_setup_noise_layer_10_bits(struct sde_hw_mixer *ctx,
 	val |= (1 << 8);
 	alpha = 0x3FF | (cfg->alpha_noise << 16);
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+	ctx->op_mode[cfg->noise_blend_stage] = val;
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA_V1 + stage_off, alpha);
 	val = ctx->cfg.out_width | (ctx->cfg.out_height << 16);
 	SDE_REG_WRITE(c, LM_BLEND0_FG_COLOR_FILL_SIZE_V1 + stage_off, val);
@@ -692,6 +709,7 @@ static int sde_hw_lm_setup_noise_layer_10_bits(struct sde_hw_mixer *ctx,
 	val |= (1 << 8);
 	alpha = cfg->attn_factor;
 	SDE_REG_WRITE(c, LM_BLEND0_OP + stage_off, val);
+	ctx->op_mode[cfg->attn_blend_stage] = val;
 	SDE_REG_WRITE(c, LM_BLEND0_CONST_ALPHA_V1 + stage_off, alpha);
 	val = SDE_REG_READ(c, LM_OP_MODE);
 	val = (1 << cfg->attn_blend_stage) | val;
@@ -813,10 +831,14 @@ static int sde_hw_lm_setup_blendstage(struct sde_hw_mixer *ctx,
 		if (ret)
 			return ret;
 
-		if (value == LM_SRC_SEL_RESET_VALUE)
+		/* If no source pipe staged and not color fill enabled and not noise fill enabled */
+		if (value == LM_SRC_SEL_RESET_VALUE && !(ctx->op_mode[i] & (BIT(16) | BIT(18)))) {
 			SDE_REG_MODIFY(c, LM_BLEND0_OP + stage_off, BIT(31), 0);
-		else
+			ctx->op_mode[i] = MASK_MODIFY(ctx->op_mode[i], BIT(31), 0);
+		} else {
 			SDE_REG_MODIFY(c, LM_BLEND0_OP + stage_off, BIT(31), BIT(31));
+			ctx->op_mode[i] = MASK_MODIFY(ctx->op_mode[i], BIT(31), BIT(31));
+		}
 
 		SDE_REG_WRITE(c, LM_BLEND0_FG_SRC_SEL_V1 + stage_off, value);
 	}
@@ -913,6 +935,7 @@ static int sde_hw_lm_clear_all_blendstages(struct sde_hw_mixer *ctx)
 			return stage_off;
 
 		SDE_REG_MODIFY(c, LM_BLEND0_OP + stage_off, BIT(31), 0);
+		ctx->op_mode[i] = MASK_MODIFY(ctx->op_mode[i], BIT(31), 0);
 		SDE_REG_WRITE(c, LM_BLEND0_FG_SRC_SEL_V1 + stage_off,
 				LM_SRC_SEL_RESET_VALUE);
 	}

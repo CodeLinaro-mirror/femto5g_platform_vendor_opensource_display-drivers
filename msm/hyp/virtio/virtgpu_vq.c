@@ -13,6 +13,7 @@
 //#include <soc/qcom/boot_stats.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_atomic_helper.h>
+#include "sde_edid_parser.h"
 
 #include "msm_hyp_trace.h"
 #include "msm_hyp_utils.h"
@@ -98,6 +99,7 @@ retry_send_packet:
 	retry_times = 0;
 
 retry_recv_packet:
+	delay = jiffies + (HZ / 4);
 	do {
 		size = resp_size;
 		/* TODO: Need handle exit hab_receive during deinit */
@@ -954,6 +956,19 @@ static int virtio_get_edid_block(struct virtio_kms *kms, uint32_t scanout,
 
 	vfree(kms->outputs[scanout].edid);
 	kms->outputs[scanout].edid = new_edid;
+
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP_DP_AUDIO)
+	mutex_lock(&kms->outputs[scanout].edid_lock);
+	kms->outputs[scanout].edid_ctrl = sde_edid_init();
+	if (!kms->outputs[scanout].edid_ctrl) {
+		VIRTGPU_VQ_ERR("Failed to initialize edid_ctrl\n");
+		mutex_unlock(&kms->outputs[scanout].edid_lock);
+		return -ENOMEM;
+	}
+	kms->outputs[scanout].edid_ctrl->edid = new_edid;
+	sde_parse_edid(kms->outputs[scanout].edid_ctrl);
+	mutex_unlock(&kms->outputs[scanout].edid_lock);
+#endif
 
 	return 0;
 }
@@ -1969,6 +1984,11 @@ error:
 			VIRTGPU_VQ_RSP_DBG("Unknown ownership str [%s]\n", value); \
 		continue; \
 	}
+#define PARSE_STRING(option, variable) \
+	if (sscanf(line, #option "=%11s", variable) == 1) { \
+		variable[MAX_PORT_NAME_LENGTH - 1] = '\0'; \
+		continue; \
+	}
 #define DUMP_PARSED_VALUE(option)	VIRTGPU_VQ_RSP_DBG("\t" #option " = %X\n", assign->option)
 #define DUMP_PARSED(option)	VIRTGPU_VQ_RSP_DBG("\t" #option " = %X\n", output->option)
 
@@ -2127,6 +2147,7 @@ static void virtio_get_scanout_hw_attribute(struct virtio_kms *kms,
 
 		PARSE_VALUE(offset_x, output->offset_x)
 		PARSE_VALUE(offset_y, output->offset_y)
+		PARSE_STRING(port_name, output->port_name)
 
 		PARSE_MASK(roi_crc_engine_mask, assign->roi_crc_engine_mask)
 		PARSE_OWNER(roi_crc_owner, assign->roi_crc_owner)

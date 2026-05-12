@@ -959,6 +959,13 @@ int msm_atomic_commit(struct drm_device *dev,
 		return -EINVAL;
 	}
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP)
+	if (!atomic_read(&priv->kms->dpu_power_on)) {
+		DRM_ERROR("atomic commit rejected: DPU power level is not ON\n");
+		return -EPERM;
+	}
+#endif
+
 	SDE_ATRACE_BEGIN("atomic_commit");
 	ret = drm_atomic_helper_prepare_planes(dev, state);
 	if (ret) {

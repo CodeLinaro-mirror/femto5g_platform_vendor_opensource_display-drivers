@@ -495,6 +495,7 @@ static int _msm_hyp_setup_displays(struct drm_device *ddev)
 		encoder = NULL;
 		conn_info = connector_infos[i];
 		display->info = conn_info;
+		display->sde_kms = sde_kms;
 
 		encoder = sde_encoder_init(ddev, &conn_info->display_info, NULL);/* virtual encoder init */
 		if (IS_ERR_OR_NULL(encoder)) {
@@ -523,7 +524,6 @@ static int _msm_hyp_setup_displays(struct drm_device *ddev)
 			display->id = display_id[i];
 			display->connector = connector;
 			display->encoder = encoder;
-			display->sde_kms = sde_kms;
 			priv->encoders[priv->num_encoders++] = encoder;
 			priv->connectors[priv->num_connectors++] = connector;
 		} else {

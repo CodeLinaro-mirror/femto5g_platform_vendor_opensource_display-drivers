@@ -313,6 +313,7 @@ int sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off, const char *name);
 #define SDE_REG_WRITE_MULTIPLE(c, off, data, size, inc, wrap) sde_reg_write_multiple(c, off, data, size, inc, wrap, #off)
 #define SDE_REG_READ(c, off) sde_reg_read(c, off, #off)
 #define SDE_REG_MODIFY(c, off, mask, val) sde_reg_modify(c, off, mask, val, #off)
+#define MASK_MODIFY(org, mask, val)	((org) & ~(mask) | (val))
 
 #define SDE_REG_WRITE_CPU(c, off, val) sde_reg_write_cpu(c, off, val, #off)
 #define SDE_REG_MODIFY_CPU(c, off, mask, val) sde_reg_modify_cpu(c, off, mask, val, #off)

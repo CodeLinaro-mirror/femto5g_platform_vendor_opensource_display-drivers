@@ -345,8 +345,14 @@ static void sde_setup_dspp_ltm_hist_ctrl_common(struct sde_hw_dspp *ctx,
 	op_mode |= BIT(0);
 	sde_setup_dspp_ltm_hist_bufferv1(ctx, addr);
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	ctx->ltm_opmode = op_mode;
+	SDE_REG_MODIFY(&ctx->hw, ctx->cap->sblk->ltm.base + 0x4,
+			0x1FFFFFF, (op_mode & 0x1FFFFFF));
+#else
 	SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->ltm.base + 0x4,
 			(op_mode & 0x1FFFFFF));
+#endif
 }
 
 void sde_setup_dspp_ltm_hist_ctrlv1(struct sde_hw_dspp *ctx, void *cfg,
@@ -409,15 +415,25 @@ void sde_setup_dspp_ltm_hist_ctrlv1_2(struct sde_hw_dspp *ctx, void *cfg,
 	}
 
 	offset = ctx->cap->sblk->ltm.base + 0x4;
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+	op_mode = ctx->ltm_opmode;
+#else
 	op_mode = SDE_REG_READ(&ctx->hw, offset);
+#endif
 	if (!enable) {
 		if (op_mode & BIT(1))
 			op_mode &= ~BIT(0);
 		else
 			op_mode = 0x0;
 
+#if IS_ENABLED(CONFIG_DRM_MSM_HYP) && ENABLE_REG_DMA_MDSS_REGISTER_WRITE
+		ctx->ltm_opmode = op_mode;
+		SDE_REG_MODIFY(&ctx->hw, ctx->cap->sblk->ltm.base + 0x4,
+				0x1FFFFFF, (op_mode & 0x1FFFFFF));
+#else
 		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->ltm.base + 0x4,
 			(op_mode & 0x1FFFFFF));
+#endif
 		return;
 	}
 
@@ -899,8 +915,6 @@ static void ucsc_setup_int2fp_fp2int(struct sde_hw_pipe *ctx,
 
 	mask = BIT(20) | BIT(21);
 	if (ctx->ucsc_cfg & UCSC_ANY_EN) {
-		if ((ctx->ucsc_cfg & UCSC_FP2INT_INT2FP_EN) == UCSC_FP2INT_INT2FP_EN)
-			return;
 		ctx->ucsc_cfg |= BIT(20) | BIT(21);
 	} else {
 		ctx->ucsc_cfg &= ~(BIT(20) | BIT(21));
