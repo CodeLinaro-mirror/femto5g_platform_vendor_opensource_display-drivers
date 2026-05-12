@@ -1877,7 +1877,7 @@ static void _process_sspp_blocks(struct sde_mdss_cfg *hyp_cfg,
 
 			hyp_cfg->sspp[hyp_cfg->sspp_count] = sde_cfg->sspp[j];
 
-			if (output->plane_caps[k].rect_mask & 0x3) {
+			if ((output->plane_caps[k].rect_mask & 0x3) == 0x3) {
 				// Keep original smart dma feature
 				/*
 				 * hyp_cfg->sspp[hyp_cfg->sspp_count].features &=
