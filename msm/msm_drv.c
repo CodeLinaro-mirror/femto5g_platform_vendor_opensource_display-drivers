@@ -1,7 +1,8 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
- * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (C) 2013 Red Hat
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+/*
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -2453,11 +2454,12 @@ static int __init msm_drm_register(void)
 		return -EINVAL;
 
 	DBG("init");
+	platform_driver_register(&msm_platform_driver);
+	msm_lease_drm_register();
 	sde_rsc_rpmh_register();
 	sde_rsc_register();
 	msm_smmu_driver_init();
 	sde_wb_register();
-	platform_driver_register(&msm_platform_driver);
 	dsi_display_register();
 	msm_hdcp_register();
 	dp_display_register();
@@ -2465,27 +2467,26 @@ static int __init msm_drm_register(void)
 	msm_edp_register();
 	msm_hdmi_register();
 	sde_shd_register();
-	msm_lease_drm_register();
 	return 0;
 }
 
 static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
-	msm_lease_drm_unregister();
-	sde_wb_unregister();
-	msm_hdmi_unregister();
-	msm_edp_unregister();
-	msm_dsi_unregister();
-	sde_rotator_smmu_driver_unregister();
-	sde_rotator_unregister();
-	msm_smmu_driver_cleanup();
-	msm_hdcp_unregister();
-	dp_display_unregister();
-	dsi_display_unregister();
-	sde_rsc_unregister();
 	sde_shd_unregister();
-	platform_driver_unregister(&msm_platform_driver);
+    msm_hdmi_unregister();
+    msm_edp_unregister();
+    msm_dsi_unregister();
+    dp_display_unregister();
+    msm_hdcp_unregister();
+    dsi_display_unregister();
+    sde_wb_unregister();
+    sde_rotator_smmu_driver_unregister();
+    sde_rotator_unregister();
+    msm_smmu_driver_cleanup();
+    sde_rsc_unregister();
+    msm_lease_drm_unregister();
+    platform_driver_unregister(&msm_platform_driver);
 }
 
 module_init(msm_drm_register);

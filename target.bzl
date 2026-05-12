@@ -106,6 +106,8 @@ def define_volcano(t, v, lt=None):
             "CONFIG_QCOM_SPEC_SYNC",
             "CONFIG_MSM_EXT_DISPLAY",
             "CONFIG_DEBUG_FS",
+            "CONFIG_DRM_MSM_LEASE",
+            "CONFIG_DRM_SDE_SHD",
         ],
         lunch_target = lt,
 )
