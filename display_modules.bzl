@@ -1,11 +1,46 @@
 load(":display_driver_build.bzl", "display_module_entry")
 
+#---------- MSM-HYP MODULE (gen4.5) -------------------------
+display_msm_hyp_driver_modules = display_module_entry([":display_msm_hyp_drivers_headers"])
+gen4_module_entry = display_msm_hyp_driver_modules.register
+
+gen4_module_entry(
+    name = "msm_hyp",
+    config_option = "CONFIG_DRM_MSM_HYP",
+    path = None,
+    config_srcs = {
+        "CONFIG_DRM_MSM_HYP": [
+            "msm-hyp/msm_drv_hyp.c",
+            "msm-hyp/msm_hyp_fence.c",
+            "msm-hyp/msm_hyp_notifier.c",
+            "msm-hyp/msm_hyp_trace_point.c",
+            "msm-hyp/msm_hyp_utils.c",
+            "msm-hyp/wfd/user_hab_utils.c",
+            "msm-hyp/wfd/wfd_kms.c",
+            "msm-hyp/wfd/wire_user.c",
+            "msm-hyp/virtio/virtio_kms.c",
+            "msm-hyp/virtio/virtgpu_vq.c",
+        ],
+    }
+)
+
+
+gen4_module_entry(
+    name = "msm_cfg",
+    config_option = "CONFIG_DRM_MSM_CFG",
+    path = None,
+    config_srcs = {
+        "CONFIG_DRM_MSM_CFG": [
+            "msm-cfg/msm_cfg.c",
+        ],
+    }
+)
+
+#---------- MSM-DRM MODULE (gen5) -------------------------
 display_driver_modules = display_module_entry([":display_drivers_headers"])
-module_entry = display_driver_modules.register
+gen5_module_entry = display_driver_modules.register
 
-#---------- MSM-DRM MODULE -------------------------
-
-module_entry(
+gen5_module_entry(
       name = "msm_drm",
       config_option = "CONFIG_DRM_MSM",
       path = None,

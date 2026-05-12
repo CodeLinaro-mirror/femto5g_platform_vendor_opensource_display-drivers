@@ -76,8 +76,25 @@ ddk_headers(
 )
 
 ddk_headers(
+    name = "msm_hyp_headers",
+    hdrs = glob([
+      "msm-hyp/*.h",
+      "msm-hyp/wfd/*.h",
+      "msm-hyp/wfd/WF/*.h",
+      "msm-hyp/wfd/KHR/*.h",
+      "msm-hyp/virtio/*h",
+    ]),
+    includes = ["msm-hyp", "msm-hyp/wfd", "msm-hyp/wfd/WF", "msm-hyp/wfd/KHR"]
+)
+
+ddk_headers(
     name = "display_drivers_headers",
     hdrs = [ ":linux_includes", ":uapi_headers", ":msm_headers",":dp_headers",":dsi_headers",":sde_headers",":rotator_headers",":hyp_headers"]
+)
+
+ddk_headers(
+    name = "display_msm_hyp_drivers_headers",
+    hdrs = [ ":linux_includes", ":uapi_headers", ":msm_hyp_headers", ":msm_headers"]
 )
 
 load(":targets/sun.bzl", "define_sun")
@@ -94,3 +111,6 @@ define_monaco()
 
 load(":targets/nordau.bzl", "define_nordau")
 define_nordau()
+
+load(":targets/gen4gvm.bzl", "define_gen4gvm")
+define_gen4gvm()

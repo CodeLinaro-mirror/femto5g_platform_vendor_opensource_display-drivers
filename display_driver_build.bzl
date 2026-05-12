@@ -75,7 +75,7 @@ def display_module_entry(hdrs = []):
         module_map = module_map,
     )
 
-def define_target_variant_modules(target, variant, registry, modules, config_options = [], vm_target = False):
+def define_target_variant_modules(target, variant, registry, modules, config_options = [], vm_target = False, name_suffix = ""):
     kernel_build_tv = "{}_{}".format(target, variant)
     deps = select({
             "//build/kernel/kleaf:socrepo_true": [
@@ -149,8 +149,16 @@ def define_target_variant_modules(target, variant, registry, modules, config_opt
         )
         all_module_rules.append(rule_name)
 
+    # Build unique dist rule name. When name_suffix is provided, append it to
+    # avoid conflicts when multiple .bzl files target the same base target
+    # (e.g., gen4gvm.bzl and nordau.bzl both use target="autogvm").
+    if name_suffix:
+        dist_rule_name = "{}_{}_display_drivers_dist".format(kernel_build_tv, name_suffix)
+    else:
+        dist_rule_name = "{}_display_drivers_dist".format(kernel_build_tv)
+
     copy_to_dist_dir(
-        name = "{}_display_drivers_dist".format(kernel_build_tv),
+        name = dist_rule_name,
         data = all_module_rules,
         dist_dir = "out/target/product/{}/dlkm/lib/modules/".format(target),
         flat = True,

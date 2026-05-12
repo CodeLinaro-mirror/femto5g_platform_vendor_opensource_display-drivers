@@ -24,4 +24,5 @@ def define_nordau():
                     "CONFIG_QCOM_MDSS_PLL",
                     "CONFIG_THERMAL_OF",
                 ],
+                name_suffix = "nordau",
             )

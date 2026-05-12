@@ -8,7 +8,15 @@ ifeq ($(TARGET_KERNEL_DLKM_DISABLE), true)
 endif
 
 ifeq ($(DISPLAY_DLKM_ENABLE),  true)
-	PRODUCT_PACKAGES += msm_drm.ko
-	DISPLAY_MODULES_DRIVER := msm_drm.ko
+	ifeq ($(TARGET_BOARD_PLATFORM),gen4)
+		# gen4.5 hgygvmdisp builds: msm_hyp.ko + msm_cfg.ko (no msm_drm.ko)
+		PRODUCT_PACKAGES += msm_hyp.ko
+		PRODUCT_PACKAGES += msm_cfg.ko
+		DISPLAY_MODULES_DRIVER := msm_hyp.ko msm_cfg.ko
+	else
+		# gen5 builds: msm_drm.ko
+		PRODUCT_PACKAGES += msm_drm.ko
+		DISPLAY_MODULES_DRIVER := msm_drm.ko
+	endif
 endif
 

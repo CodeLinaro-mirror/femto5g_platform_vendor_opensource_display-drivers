@@ -2,6 +2,13 @@ DISPLAY_SELECT := CONFIG_DRM_MSM=m
 
 LOCAL_PATH := $(call my-dir)
 LOCAL_MODULE_DDK_BUILD := true
+# build_module.sh maps both gen4 and gen5 to btgt="autogvm", so the default
+# filter regex "autogvm_perf_.*_dist$" matches both gen4gvm and nordau dist
+# targets. Set a specific subtarget regex so only the nordau dist target is
+# selected when building for gen5 (TARGET_BOARD_PLATFORM=gen5).
+ifeq ($(TARGET_BOARD_PLATFORM),gen5)
+LOCAL_MODULE_DDK_SUBTARGET_REGEX := "nordau.*"
+endif
 include $(CLEAR_VARS)
 
 BOARD_OPENSOURCE_DIR ?= vendor/qcom/opensource
