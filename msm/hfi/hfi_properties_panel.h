@@ -885,6 +885,22 @@
 #define HFI_PROPERTY_PANEL_DISPLAY_TYPE                              0x0004003A
 
 /*
+ * HFI_PROPERTY_PANEL_ULPS_SUPPORTED - Specifies whether ULPS (Ultra Low Power State)
+ *                                     is supported by the panel.
+ *                                     This property is sent to DCP as part of
+ *                                     HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_ULPS_SUPPORTED
+ *
+ * Hfi packet layout           | Value
+ *-----------------------------|------------------------------------------
+ *     (u32_key) payload[0]    | HFI_PROPERTY_PANEL_ULPS_SUPPORTED \|
+ * ^                           | (version=0 << 20) \| (dsize=1 << 24 )
+ *   (u32_value) payload[1]    | HFI_TRUE / HFI_FALSE
+ */
+#define HFI_PROPERTY_PANEL_ULPS_SUPPORTED                            0x0004003B
+
+/*
  * HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO - Specifies the DSI custom command set start
  *                                                   index and count. OEMs can define custom command
  *                                                   types at host level from which start index and
