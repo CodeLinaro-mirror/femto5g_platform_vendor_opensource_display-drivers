@@ -262,7 +262,6 @@ static int lt9611uxc_get_edid_audio_blk(struct msm_ext_disp_audio_edid_blk *blk,
 
 	sad_count = drm_edid_to_sad(edid, &sads);
 	lt9611uxc_cea_sad_to_raw_sad(sads, sad_count, lt9611uxc->raw_sad);
-	sadb_size = drm_edid_to_speaker_allocation(edid, &sadb);
 	dev_info(lt9611uxc->dev, "sad_count %d, sadb_size %d\n", sad_count, sadb_size);
 
 	blk->audio_data_blk = lt9611uxc->raw_sad;
