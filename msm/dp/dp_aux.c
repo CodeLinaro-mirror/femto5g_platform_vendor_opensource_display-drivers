@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2021-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2012-2021, The Linux Foundation. All rights reserved.
  */
 
 #include <linux/delay.h>
+#include <linux/of.h>
 
 #if IS_ENABLED(CONFIG_QCOM_FSA4480_I2C)
 #include <linux/soc/qcom/fsa4480-i2c.h>
@@ -95,6 +96,12 @@ struct dp_aux_private {
 
 	atomic_t aborted;
 };
+
+static bool dp_aux_is_nb7_retimer(struct device_node *node)
+{
+	return node && of_device_is_compatible(node, "onnn,nb7vpq904m") &&
+		of_property_read_bool(node, "retimer-switch");
+}
 
 static void dp_aux_hex_dump(struct drm_dp_aux *drm_aux,
 		struct drm_dp_aux_msg *msg)
@@ -917,6 +924,13 @@ struct dp_aux *dp_aux_get(struct device *dev, struct dp_catalog_aux *catalog,
 	dp_aux->abort = dp_aux_abort_transaction;
 	dp_aux->set_sim_mode = dp_aux_set_sim_mode;
 	dp_aux->ipc_log_context = ipc_log_context;
+
+	if (dp_aux_is_nb7_retimer(aux_switch)) {
+		DP_AUX_DEBUG(dp_aux,
+			"NB7 retimer %pOF is configured by DP Altmode Type-C path\n",
+			aux_switch);
+		return dp_aux;
+	}
 
 #if IS_ENABLED(CONFIG_QCOM_FSA4480_I2C)
 	dp_aux->switch_configure = dp_aux_configure_fsa_switch;
