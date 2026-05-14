@@ -9,30 +9,23 @@
 
 #include "dsi_panel.h"
 
-#if IS_ENABLED(CONFIG_ISL97900_LED)
-#include <misc/isl97900_led.h>
+/* ISL97900 RGB LED controller register map */
+#define ISL97900_ENABLE_CONTROL  0x02
+#define ISL97900_LED_R_LSB       0x13
+#define ISL97900_LED_G_LSB       0x14
+#define ISL97900_LED_B_LSB       0x15
+#define ISL97900_LED_RGB_MSB     0x17
+#define ISL97900_MAX_LEVEL       1023
 
-#else
-enum isl_function {
-	ISL_LED_BRIGHTNESS_RGB_LEVEL,
-	ISL_LED_BRIGHTNESS_RED_LEVEL,
-	ISL_LED_BRIGHTNESS_GREEN_LEVEL,
-	ISL_LED_BRIGHTNESS_BLUE_LEVEL,
-	ISL_LED_BRIGHTNESS_EVENT_MAX,
-};
-
-static int isl97900_led_event(struct device_node *node, enum isl_function event, u32 level)
-{
-	return 0;
-}
-#endif
+#define ISL97900_BL_CMD_COUNT    5
+#define ISL97900_BL_CMD_LEN      2
 
 /*
- * JBD4040 luminance control command constants (built entirely in the driver):
- *   Slave address : 0x58
- *   Payload       : <reg_b0> <reg_b1> <reg_b2> <bl_msb> <bl_lsb>
- *   Register addr : 0x20 0x0A 0x14  (3 bytes)
- *   Brightness    : 16-bit big-endian value at bytes [3..4]
+ * JBD4040 luminance control command constants
+ * Slave address : 0x58
+ * Payload       : <reg_b0> <reg_b1> <reg_b2> <bl_msb> <bl_lsb>
+ * Register addr : 0x20 0x0A 0x14  (3 bytes)
+ * Brightness    : 16-bit big-endian value at bytes [3..4]
  */
 #define JBD4040_BL_SLAVE_ADDR  0x58
 #define JBD4040_BL_REG_B0      0x20
@@ -40,39 +33,38 @@ static int isl97900_led_event(struct device_node *node, enum isl_function event,
 #define JBD4040_BL_REG_B2      0x14
 #define JBD4040_BL_CMD_LEN     5
 
-static int dsi_panel_i2c_tx_cmd(struct dsi_panel *panel, u8 slave_addr, const u8 *buf, u32 len)
+/**
+ * dsi_panel_i2c_tx_cmd - send a single I2C message to one adapter
+ * @adapter:    I2C adapter to use
+ * @slave_addr: 7-bit slave address
+ * @buf:        payload bytes
+ * @len:        payload length in bytes
+ *
+ * Return: 0 on success, negative error code on failure.
+ */
+static int dsi_panel_i2c_tx_cmd(struct i2c_adapter *adapter,
+				u8 slave_addr, const u8 *buf, u32 len)
 {
-	struct dsi_panel_i2c_config *cfg;
-	struct i2c_msg msg;
-	int rc = 0;
+	struct i2c_msg msg = {
+		.addr  = slave_addr,
+		.flags = 0,
+		.len   = len,
+		.buf   = (u8 *)buf,
+	};
+	int rc;
 
-	if (!panel || !buf || !len || !slave_addr)
+	if (!adapter || !buf || !len || !slave_addr)
 		return -EINVAL;
 
-	cfg = &panel->i2c_config;
-	msg.addr = slave_addr;
-	msg.flags = 0;
-	msg.len = len;
-	msg.buf = (u8 *)buf;
-
-	if (cfg->left_adapter) {
-		rc = i2c_transfer(cfg->left_adapter, &msg, 1);
-		if (rc != 1) {
-			DSI_ERR("i2c transfer failed on left adapter: %d\n", rc);
-			return -EIO;
-		}
-	}
-
-	if (cfg->right_adapter) {
-		rc = i2c_transfer(cfg->right_adapter, &msg, 1);
-		if (rc != 1) {
-			DSI_ERR("i2c transfer failed on right adapter: %d\n", rc);
-			return -EIO;
-		}
-	}
-
-	return 0;
+	rc = i2c_transfer(adapter, &msg, 1);
+	return (rc == 1) ? 0 : (rc < 0 ? rc : -EIO);
 }
+
+static const char * const dsi_panel_i2c_cmd_set_prop_map[DSI_PANEL_I2C_CMD_SET_MAX] = {
+	[DSI_PANEL_I2C_CMD_SET_ON]         = "qcom,mdss-panel-i2c-on-command",
+	[DSI_PANEL_I2C_CMD_SET_OFF]        = "qcom,mdss-panel-i2c-off-command",
+	[DSI_PANEL_I2C_CMD_SET_BRIGHTNESS] = "qcom,mdss-panel-i2c-bl-command",
+};
 
 static int dsi_panel_i2c_get_cmd_count(const u8 *data, u32 nbytes, u32 *cnt)
 {
@@ -154,12 +146,6 @@ error:
 	return rc;
 }
 
-static const char * const dsi_panel_i2c_cmd_set_prop_map[DSI_PANEL_I2C_CMD_SET_MAX] = {
-	[DSI_PANEL_I2C_CMD_SET_ON]         = "qcom,mdss-panel-i2c-on-command",
-	[DSI_PANEL_I2C_CMD_SET_OFF]        = "qcom,mdss-panel-i2c-off-command",
-	[DSI_PANEL_I2C_CMD_SET_BRIGHTNESS] = "qcom,mdss-panel-i2c-bl-command",
-};
-
 static void dsi_panel_i2c_free_config(struct dsi_panel *panel)
 {
 	u32 i, t;
@@ -202,9 +188,9 @@ static void dsi_panel_i2c_free_config(struct dsi_panel *panel)
  * dsi_panel_i2c_parse_config - parse I2C backlight configuration from DT
  * @panel: DSI panel handle
  *
- * Reads the I2C backlight subtype and RGB LED node handles from the panel
+ * Reads the I2C backlight subtype and slave addresses from the panel
  * device-tree node, then probes the left/right I2C adapter handles and
- * parses the on/off command sets.  Must be called during panel probe;
+ * parses the on/off command sets. Must be called during panel probe;
  * returns -EPROBE_DEFER if the I2C adapters are not yet available.
  *
  * Return: 0 on success, negative error code on failure.
@@ -228,7 +214,7 @@ int dsi_panel_i2c_parse_config(struct dsi_panel *panel)
 	np = panel->panel_of_node;
 
 	/*
-	 * Parse I2C-specific backlight configuration.  Do this before the
+	 * Parse I2C-specific backlight configuration. Do this before the
 	 * adapter probe so the subtype and LED nodes are always populated,
 	 * even if the adapters are not yet ready (-EPROBE_DEFER).
 	 */
@@ -238,13 +224,28 @@ int dsi_panel_i2c_parse_config(struct dsi_panel *panel)
 
 		/* Default to ISL97900 for backward compatibility */
 		panel->bl_config.bl_i2c_subtype = DSI_BACKLIGHT_I2C_ISL97900;
+
 		if (subtype && !strcmp(subtype, "jbd4040"))
 			panel->bl_config.bl_i2c_subtype = DSI_BACKLIGHT_I2C_JBD4040;
+		else if (subtype && !strcmp(subtype, "isl97900"))
+			panel->bl_config.bl_i2c_subtype = DSI_BACKLIGHT_I2C_ISL97900;
 
-		cfg->rgb_left_led_node = of_parse_phandle(np,
-				"qcom,panel-rgb-left-led", 0);
-		cfg->rgb_right_led_node = of_parse_phandle(np,
-				"qcom,panel-rgb-right-led", 0);
+		if (panel->bl_config.bl_i2c_subtype == DSI_BACKLIGHT_I2C_ISL97900) {
+			u32 addr;
+
+			/*
+			 * Read the ISL97900 slave addresses from the panel node.
+			 * These are paired with the left/right I2C adapters from
+			 * qcom,panel-i2c-left / qcom,panel-i2c-right.
+			 */
+			if (!of_property_read_u32(np,
+					"qcom,panel-i2c-left-slave-addr", &addr))
+				cfg->left_slave_addr = (u8)addr;
+
+			if (!of_property_read_u32(np,
+					"qcom,panel-i2c-right-slave-addr", &addr))
+				cfg->right_slave_addr = (u8)addr;
+		}
 	}
 
 	np_left = of_parse_phandle(np, "qcom,panel-i2c-left", 0);
@@ -321,20 +322,97 @@ error:
 	return rc;
 }
 
+/*
+ * dsi_panel_i2c_isl97900_init_brightness_cmd - allocate and initialise the
+ * ISL97900 brightness command set (called once on first use).
+ *
+ * Builds 5 two-byte commands covering ENABLE_CONTROL, LED_R/G/B_LSB and
+ * LED_RGB_MSB.  The register address bytes are fixed; the value bytes are
+ * updated in-place on every subsequent brightness call.
+ */
+static int dsi_panel_i2c_isl97900_init_brightness_cmd(struct dsi_panel_i2c_config *cfg)
+{
+	static const u8 regs[5] = {
+		ISL97900_ENABLE_CONTROL,
+		ISL97900_LED_R_LSB,
+		ISL97900_LED_G_LSB,
+		ISL97900_LED_B_LSB,
+		ISL97900_LED_RGB_MSB,
+	};
+	struct dsi_panel_i2c_cmd_set *bset;
+	u32 i;
+
+	bset = &cfg->cmd_sets[DSI_PANEL_I2C_CMD_SET_BRIGHTNESS];
+
+	bset->cmds = kcalloc(ISL97900_BL_CMD_COUNT, sizeof(*bset->cmds), GFP_KERNEL);
+	if (!bset->cmds)
+		return -ENOMEM;
+
+	for (i = 0; i < 5; i++) {
+		bset->cmds[i].data = kcalloc(ISL97900_BL_CMD_LEN, sizeof(u8), GFP_KERNEL);
+		if (!bset->cmds[i].data) {
+			while (i--) {
+				kfree(bset->cmds[i].data);
+				bset->cmds[i].data = NULL;
+			}
+			kfree(bset->cmds);
+			bset->cmds = NULL;
+			return -ENOMEM;
+		}
+		/* Register address (fixed); value byte filled on each update */
+		bset->cmds[i].data[0]      = regs[i];
+		bset->cmds[i].data[1]      = (i == 0) ? 0x04 : 0x00;
+		bset->cmds[i].len          = ISL97900_BL_CMD_LEN;
+		bset->cmds[i].post_wait_ms = 0;
+		/*
+		 * slave_addr = 0: dsi_panel_i2c_tx_cmd_set() will substitute
+		 * cfg->left_slave_addr / cfg->right_slave_addr at send time.
+		 */
+		bset->cmds[i].slave_addr   = 0;
+	}
+	bset->count = 5;
+
+	return 0;
+}
+
 static int dsi_panel_i2c_isl97900_update_brightness(struct dsi_panel *panel, u32 bl_lvl)
 {
+	struct dsi_panel_i2c_config *cfg;
+	struct dsi_panel_i2c_cmd_set *bset;
+	u32 msb;
+	int rc = 0;
+
 	if (!panel)
 		return -EINVAL;
 
-	if (panel->i2c_config.rgb_left_led_node)
-		isl97900_led_event(panel->i2c_config.rgb_left_led_node,
-				ISL_LED_BRIGHTNESS_RGB_LEVEL, bl_lvl);
+	cfg = &panel->i2c_config;
+	bset = &cfg->cmd_sets[DSI_PANEL_I2C_CMD_SET_BRIGHTNESS];
 
-	if (panel->i2c_config.rgb_right_led_node)
-		isl97900_led_event(panel->i2c_config.rgb_right_led_node,
-				ISL_LED_BRIGHTNESS_RGB_LEVEL, bl_lvl);
+	/* Allocate the command set on first use; reuse on subsequent calls */
+	if (!bset->count) {
+		rc = dsi_panel_i2c_isl97900_init_brightness_cmd(cfg);
+		if (rc) {
+			DSI_ERR("[%s] failed to init isl97900 brightness cmd, rc=%d\n",
+				panel->name, rc);
+			return rc;
+		}
+	}
 
-	return 0;
+	if (bl_lvl > ISL97900_MAX_LEVEL)
+		bl_lvl = ISL97900_MAX_LEVEL;
+
+	/* Pack the 2-bit MSB of each channel into the shared MSB register */
+	msb  = ((bl_lvl >> 8) & 0x03) << 6; /* red   [7:6] */
+	msb |= ((bl_lvl >> 8) & 0x03) << 4; /* green [5:4] */
+	msb |= ((bl_lvl >> 8) & 0x03) << 2; /* blue  [3:2] */
+
+	/* Update brightness value bytes in-place (cmd[0] ENABLE_CONTROL is fixed) */
+	bset->cmds[1].data[1] = (u8)(bl_lvl & 0xFF); /* LED_R_LSB */
+	bset->cmds[2].data[1] = (u8)(bl_lvl & 0xFF); /* LED_G_LSB */
+	bset->cmds[3].data[1] = (u8)(bl_lvl & 0xFF); /* LED_B_LSB */
+	bset->cmds[4].data[1] = (u8)msb;              /* LED_RGB_MSB */
+
+	return dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS);
 }
 
 /*
@@ -461,6 +539,7 @@ int dsi_panel_i2c_update_backlight(struct dsi_panel *panel, u32 bl_lvl)
 int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 			      enum dsi_panel_i2c_cmd_set_type type)
 {
+	struct dsi_panel_i2c_config *cfg;
 	struct dsi_panel_i2c_cmd_set *set;
 	int rc = 0;
 
@@ -478,7 +557,8 @@ int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 		return 0;
 	}
 
-	set = &panel->i2c_config.cmd_sets[type];
+	cfg = &panel->i2c_config;
+	set = &cfg->cmd_sets[type];
 
 	if (!set->count) {
 		DSI_DEBUG("[%s] No i2c commands defined for set %d (%s)\n",
@@ -489,12 +569,38 @@ int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 
 	for (u32 i = 0; i < set->count; i++) {
 		struct dsi_panel_i2c_cmd *cmd = &set->cmds[i];
-		rc = dsi_panel_i2c_tx_cmd(panel, cmd->slave_addr, cmd->data, cmd->len);
-		if (rc) {
-			DSI_ERR("[%s] failed to send i2c cmd %u/%u (set %d), rc=%d\n",
-				panel->name, i + 1, set->count, type, rc);
-			break;
+		/*
+		 * Commands with an explicit slave address (e.g. JBD4040
+		 * brightness, DT on/off commands) use it for both adapters.
+		 * Commands with slave_addr == 0 (ISL97900 brightness, built
+		 * in the driver) fall back to the per-adapter addresses stored
+		 * in cfg->left_slave_addr / cfg->right_slave_addr.
+		 */
+		u8 left_addr  = cmd->slave_addr ? cmd->slave_addr : cfg->left_slave_addr;
+		u8 right_addr = cmd->slave_addr ? cmd->slave_addr : cfg->right_slave_addr;
+
+		if (cfg->left_adapter && left_addr) {
+			rc = dsi_panel_i2c_tx_cmd(cfg->left_adapter,
+						  left_addr,
+						  cmd->data, cmd->len);
+			if (rc) {
+				DSI_ERR("[%s] failed cmd %u/%u (set %d) on left, rc=%d\n",
+					panel->name, i + 1, set->count, type, rc);
+				return rc;
+			}
 		}
+
+		if (cfg->right_adapter && right_addr) {
+			rc = dsi_panel_i2c_tx_cmd(cfg->right_adapter,
+						  right_addr,
+						  cmd->data, cmd->len);
+			if (rc) {
+				DSI_ERR("[%s] failed cmd %u/%u (set %d) on right, rc=%d\n",
+					panel->name, i + 1, set->count, type, rc);
+				return rc;
+			}
+		}
+
 		if (cmd->post_wait_ms) {
 			usleep_range(cmd->post_wait_ms * 1000,
 				cmd->post_wait_ms * 1000 + 100);
