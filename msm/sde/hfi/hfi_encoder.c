@@ -28,14 +28,14 @@ static ktime_t hfi_enc_unpack_frame_event(void *payload, u32 *idx, struct sde_en
 	struct hfi_encoder *hfi_enc;
 	struct drm_encoder *drm_enc;
 
-	if (!payload) {
-		SDE_ERROR("No payload specified\n");
+	if (!payload || !sde_enc) {
+		SDE_ERROR("No payload %d or sde_enc %d specified\n", !payload, !sde_enc);
 		return 0;
 	}
 
 	hfi_enc = to_hfi_encoder(sde_enc);
 	if (!hfi_enc)
-		return -EINVAL;
+		return 0;
 
 	drm_enc = &sde_enc->base;
 	fps = sde_encoder_get_fps(drm_enc);
@@ -71,14 +71,14 @@ static ktime_t hfi_enc_unpack_vsync_event(void *payload, u32 *idx, struct sde_en
 	struct hfi_encoder *hfi_enc;
 	struct drm_encoder *drm_enc;
 
-	if (!payload) {
-		SDE_ERROR("No payload specified\n");
+	if (!payload || !sde_enc) {
+		SDE_ERROR("No payload %d or sde_enc %d specified\n", !payload, !sde_enc);
 		return 0;
 	}
 
 	hfi_enc = to_hfi_encoder(sde_enc);
 	if (!hfi_enc)
-		return -EINVAL;
+		return 0;
 
 	drm_enc = &sde_enc->base;
 	fps = sde_encoder_get_fps(drm_enc);
@@ -148,7 +148,7 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	bool frame_event_trigger;
 
 	if (!sde_enc) {
-		SDE_ERROR("invalid param\n");
+		SDE_ERROR("invalid param: sde_enc\n");
 		return;
 	}
 
@@ -487,7 +487,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	int ret = 0;
 
 	if (!enc) {
-		SDE_ERROR("Invalid param\n");
+		SDE_ERROR("Invalid encoder\n");
 		return -EINVAL;
 	}
 
@@ -495,7 +495,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
 
 	if (!hfi_enc || !hfi_kms) {
-		SDE_ERROR("invalid connector\n");
+		SDE_ERROR("Invalid hfi_enc %d or hfi_kms %d\n", !hfi_enc, !hfi_kms );
 		return -EINVAL;
 	}
 
@@ -611,7 +611,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	int ret;
 
 	if (!enc) {
-		SDE_ERROR("invalid param\n");
+		SDE_ERROR("invalid encoder\n");
 		return -EINVAL;
 	}
 
@@ -619,7 +619,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
 
 	if (!hfi_enc || !hfi_kms) {
-		SDE_ERROR("invalid params\n");
+		SDE_ERROR("invalid hfi_enc %d or hfi_kms %d\n", !hfi_enc, !hfi_kms);
 		return -EINVAL;
 	}
 
