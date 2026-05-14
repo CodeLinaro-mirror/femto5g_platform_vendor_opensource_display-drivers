@@ -1134,6 +1134,7 @@ static void dp_ctrl_mst_stream_setup(struct dp_ctrl_private *ctrl,
 	mst_rg_calc_in.fec_overhead_fp = panel->fec_overhead_fp;
 	mst_rg_calc_in.dsc_overhead_fp = panel->pinfo.dsc_overhead_fp;
 	mst_rg_calc_in.pbn = panel->pinfo.pbn_no_overhead;
+	mst_rg_calc_in.margin_ovrd = false;
 
 	dp_tu_mst_rg_calc(&mst_rg_calc_in, &mst_rg_calc_out);
 
