@@ -361,6 +361,9 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 	for (i = 0; i < ARRAY_SIZE(hfi_connector_base_props_map); i++) {
 		drm_prop = hfi_connector_base_props_map[i].drm_prop;
 		hfi_prop = hfi_connector_base_props_map[i].hfi_prop;
+		if (!sde_connector_property_is_dirty(old_cstate, drm_prop) &&
+			(drm_prop != CONNECTOR_PROP_EPT))
+			continue;
 
 		_hfi_connector_add_base_prop_helper(hfi_prop, conn, old_cstate,
 				 hfi_conn->base_props);
