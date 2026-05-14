@@ -478,7 +478,7 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	struct device *dev;
 	unsigned int te_irq, tlmm_gpio_cfg;
 	struct resource te_res;
-	void __iomem *tlmm_base;
+	void __iomem *te_gpio_base;
 
 	pdev = display->pdev;
 	if (!pdev) {
@@ -519,20 +519,24 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	 * first TE IRQ registration. Read the TE GPIO configuration before
 	 * IRQ registration to restore it after registration.
 	 */
-	tlmm_base = devm_ioremap(&display->pdev->dev, te_res.start, TLMM_GPIO_CFG_LEN);
 
-	if (tlmm_base)
-		tlmm_gpio_cfg = DSI_GEN_R32(tlmm_base, TLMM_GPIO_CFG_OFFSET);
-	else
-		DSI_ERR("Failed to ioremap GPIO address for restore\n");
+	te_gpio_base = devm_ioremap(&display->pdev->dev, te_res.start,
+		TLMM_GPIO_CFG_LEN);
 
-	rc = devm_request_irq(dev, te_irq, dsi_display_panel_te_irq_handler,
-			      IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
-			      "TE_GPIO", display);
+	if (!te_gpio_base ) {
+		DSI_ERR("Failed to mmap gpio cfg len\n");
+		return;
+	}
+
+	tlmm_gpio_cfg = DSI_GEN_R32(te_gpio_base, TLMM_GPIO_CFG_OFFSET);
+
+	rc = devm_request_irq(dev, te_irq,
+			dsi_display_panel_te_irq_handler,
+			IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
+			"TE_GPIO", display);
 
 	/* Restore TE gpio configuration after IRQ registration */
-	if (tlmm_base)
-		DSI_GEN_W32(tlmm_base, TLMM_GPIO_CFG_OFFSET, tlmm_gpio_cfg);
+	DSI_GEN_W32(te_gpio_base, TLMM_GPIO_CFG_OFFSET, tlmm_gpio_cfg);
 
 	if (rc) {
 		DSI_ERR("TE request_irq failed for ESD rc:%d\n", rc);
@@ -1337,7 +1341,8 @@ static void _dsi_display_continuous_clk_ctrl(struct dsi_display *display,
 		 * DSI PHY to force clk lane to HS mode always whereas
 		 * for other phy ver chipsets, configure DSI controller only.
 		 */
-		if (ctrl->phy->hw.ops.set_continuous_clk[ctrl->ctrl->disp_op]) {
+		if (ctrl->ctrl->disp_op < MSM_DISP_OP_MAX &&
+				ctrl->phy->hw.ops.set_continuous_clk[ctrl->ctrl->disp_op]) {
 			dsi_ctrl_hs_req_sel(ctrl->ctrl, true);
 			dsi_ctrl_set_continuous_clk(ctrl->ctrl, enable);
 			dsi_phy_set_continuous_clk(ctrl->phy, enable);
@@ -1658,7 +1663,7 @@ static ssize_t debugfs_misr_setup(struct file *file,
 	}
 
 	disp_op = display->ctrl->ctrl->disp_op;
-	if (display->display_ops.misr_setup[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && display->display_ops.misr_setup[disp_op]) {
 		rc = display->display_ops.misr_setup[disp_op](display);
 		if (rc)
 			DSI_ERR("[%s] failed to enable MISR through hfi, rc=%d\n",
@@ -1730,7 +1735,7 @@ static ssize_t debugfs_misr_read(struct file *file,
 	}
 
 	disp_op = display->ctrl->ctrl->disp_op;
-	if (display->display_ops.misr_read[disp_op]) {
+	if (disp_op < MSM_DISP_OP_MAX && display->display_ops.misr_read[disp_op]) {
 		display->display_ops.misr_read[disp_op](display);
 
 		for (i = 0; i < display->misr_vals.count ; i++) {
@@ -3582,7 +3587,8 @@ static int dsi_display_ctrl_host_disable(struct dsi_display *display)
 	 * and return early.
 	 */
 	if (display->panel->ulps_suspend_enabled &&
-			!m_ctrl->phy->hw.ops.ulps_ops.ulps_request[m_ctrl->ctrl->disp_op]) {
+			(m_ctrl->ctrl->disp_op >= MSM_DISP_OP_MAX ||
+			!m_ctrl->phy->hw.ops.ulps_ops.ulps_request[m_ctrl->ctrl->disp_op])) {
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 			rc = dsi_ctrl_update_host_state(ctrl->ctrl,
@@ -5902,7 +5908,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			if (!ctrl->ctrl || (ctrl != mctrl))
 				continue;
 
-			if (ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op])
+			if (ctrl->ctrl->disp_op < MSM_DISP_OP_MAX &&
+					ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op])
 				ctrl->ctrl->hw.ops.set_timing_db[ctrl->ctrl->disp_op](
 						&ctrl->ctrl->hw, true);
 			dsi_phy_dynamic_refresh_clear(ctrl->phy);
@@ -8559,7 +8566,10 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 	struct dsi_display *display = (struct dsi_display *)dsi_display;
 	struct dsi_host_common_cfg *host;
 
-	if (!display || !display->panel)
+	if (!display)
+		return -EINVAL;
+
+	if (!display->panel)
 		return -EINVAL;
 
 	if (!display->modes) {
@@ -8581,6 +8591,12 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 	if (!refresh_rate) {
 		mutex_unlock(&display->display_lock);
 		DSI_ERR("Null Refresh Rate\n");
+		return -EINVAL;
+	}
+
+	if (!display->modes) {
+		mutex_unlock(&display->display_lock);
+		DSI_ERR("display modes not initialized\n");
 		return -EINVAL;
 	}
 
