@@ -1529,11 +1529,14 @@ static int sde_connector_check_update_vhm_cmd(struct drm_connector *connector)
 	c_state = to_sde_connector_state(connector->state);
 	sde_enc = to_sde_encoder_virt(c_conn->encoder);
 
-	if (sde_enc) {
-		sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
-		vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
-			CRTC_PROP_VM_REQ_STATE);
+	if (!sde_enc) {
+		SDE_ERROR("invalid encoder\n");
+		return -EINVAL;
 	}
+
+	sde_enc->vrr_info.vhm_cmd_in_progress = SDE_NO_CMD_SCHEDULED;
+	vm_req = sde_crtc_get_property(to_sde_crtc_state(sde_enc->crtc->state),
+			CRTC_PROP_VM_REQ_STATE);
 
 	if (vm_req == VM_REQ_RELEASE)
 		return 0;

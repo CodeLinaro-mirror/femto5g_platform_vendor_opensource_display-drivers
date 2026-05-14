@@ -498,7 +498,7 @@ void sde_rm_set_disp_op(struct sde_rm *rm, enum msm_disp_op disp_op_idx)
 		}
 
 		list_for_each_entry(blk, blk_list, list) {
-			if (!blk || !blk->hw) {
+			if (!blk->hw) {
 				SDE_ERROR("invalid hw blk\n");
 				continue;
 			}
@@ -745,6 +745,11 @@ static int _sde_rm_hw_blk_create(
 	struct sde_hw_blk_reg_map *hw;
 	struct sde_kms *sde_kms = to_sde_kms(ddev_to_msm_kms(rm->dev));
 	struct sde_vbif_clk_client clk_client = {0};
+
+	if (!sde_kms) {
+		SDE_ERROR("invalid sde_kms\n");
+		return -EINVAL;
+	}
 
 	hw_mdp = rm->hw_mdp;
 

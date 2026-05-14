@@ -2750,6 +2750,12 @@ static int sde_intf_parse_dt(struct device_node *np,
 
 	sde_cfg->intf_count = off_count;
 
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid intf count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	rc = _read_dt_entry(np, intf_prop, ARRAY_SIZE(intf_prop), prop_count,
 		prop_exists, prop_value);
 	if (rc)
@@ -2887,6 +2893,12 @@ static int sde_wb_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 		goto end;
 
 	sde_cfg->wb_count = off_count;
+
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid wb count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	rc = _read_dt_entry(np, wb_prop, ARRAY_SIZE(wb_prop), prop_count,
 		prop_exists, prop_value);
@@ -3149,7 +3161,7 @@ static int _sde_ltm_parse_dt(struct device_node *np,
 		sde_cfg->ltm_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3196,7 +3208,7 @@ static int _sde_dspp_demura_parse_dt(struct device_node *np,
 		sde_cfg->demura_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		dspp = &sde_cfg->dspp[i];
 		sblk = sde_cfg->dspp[i].sblk;
 
@@ -3236,7 +3248,7 @@ static int _sde_dspp_qrtc_parse_dt(struct device_node *np,
 		sde_cfg->qrtc_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		dspp = &sde_cfg->dspp[i];
 		sblk = sde_cfg->dspp[i].sblk;
 
@@ -3275,7 +3287,7 @@ static int _sde_dspp_spr_parse_dt(struct device_node *np,
 		sde_cfg->spr_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		dspp = &sde_cfg->dspp[i];
 		sblk = sde_cfg->dspp[i].sblk;
 
@@ -3325,7 +3337,7 @@ static int _sde_rc_parse_dt(struct device_node *np,
 		sde_cfg->rc_count = sde_cfg->dspp_count;
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3414,7 +3426,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	}
 
 	if (props->exists[AIQE_OFF]) {
-		for (i = 0; i < sde_cfg->dspp_count; i++) {
+		for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3453,7 +3465,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	}
 
 	if (props->exists[AIQE_DITHER_OFF]) {
-		for (i = 0; i < sde_cfg->dspp_count; i++) {
+		for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3476,7 +3488,7 @@ static int _sde_aiqe_parse_dt(struct device_node *np,
 	}
 
 	if (props->exists[AIQE_WRAPPER_OFF]) {
-		for (i = 0; i < sde_cfg->dspp_count; i++) {
+		for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 			struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 			struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3525,7 +3537,7 @@ static int _sde_ai_scaler_parse_dt(struct device_node *np,
 				off_count, sde_cfg->dspp_count);
 	}
 
-	for (i = 0; i < sde_cfg->dspp_count; i++) {
+	for (i = 0; i < sde_cfg->dspp_count && i < MAX_BLOCKS; i++) {
 		struct sde_dspp_cfg *dspp = &sde_cfg->dspp[i];
 		struct sde_dspp_sub_blks *sblk = sde_cfg->dspp[i].sblk;
 
@@ -3845,6 +3857,12 @@ static int sde_ds_parse_dt(struct device_node *np,
 
 	sde_cfg->ds_count = off_count;
 
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid ds count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	rc = _read_dt_entry(np, ds_prop, ARRAY_SIZE(ds_prop), prop_count,
 		prop_exists, prop_value);
 	if (rc)
@@ -3932,6 +3950,12 @@ static int sde_dsc_parse_dt(struct device_node *np,
 		goto end;
 
 	sde_cfg->dsc_count = off_count;
+
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid dsc count %d\n", off_count);
+		rc = -ENOMEM;
+		goto end;
+	}
 
 	rc = of_property_read_string(np, dsc_prop[DSC_REV].prop_name, &rev);
 	if (!rc && !strcmp(rev, "dsc_1_2"))
@@ -4039,6 +4063,12 @@ static int sde_vdc_parse_dt(struct device_node *np,
 
 	sde_cfg->vdc_count = off_count;
 
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid vdc count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	rc = of_property_read_string(np, vdc_prop[VDC_REV].prop_name, &rev);
 	if ((rc == -EINVAL) || (rc == -ENODATA)) {
 		vdc_rev = SDE_VDC_HW_REV_1_2;
@@ -4118,6 +4148,12 @@ static int sde_cdm_parse_dt(struct device_node *np,
 		goto end;
 
 	sde_cfg->cdm_count = off_count;
+
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid cdm count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	rc = _read_dt_entry(np, cdm_prop, ARRAY_SIZE(cdm_prop), prop_count,
 		prop_exists, prop_value);
@@ -4591,6 +4627,12 @@ static int sde_vbif_parse_dt(struct device_node *np,
 
 	sde_cfg->vbif_count = off_count;
 
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid vbif count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	rc = _read_dt_entry(np, vbif_prop, ARRAY_SIZE(vbif_prop), prop_count,
 		prop_exists, prop_value);
 	if (rc)
@@ -4640,6 +4682,12 @@ static int sde_pp_parse_dt(struct device_node *np, struct sde_mdss_cfg *sde_cfg)
 		goto end;
 
 	sde_cfg->pingpong_count = off_count;
+
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid pingpong count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	rc = _read_dt_entry(np, pp_prop, ARRAY_SIZE(pp_prop), prop_count,
 		prop_exists, prop_value);
@@ -5519,6 +5567,12 @@ static int sde_parse_merge_3d_dt(struct device_node *np,
 
 	sde_cfg->merge_3d_count = off_count;
 
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid merge_3d count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
+
 	rc = _read_dt_entry(np, merge_3d_prop, ARRAY_SIZE(merge_3d_prop),
 			prop_count,
 			prop_exists, prop_value);
@@ -5572,6 +5626,12 @@ static int sde_qdss_parse_dt(struct device_node *np,
 	}
 
 	sde_cfg->qdss_count = off_count;
+
+	if (off_count > MAX_BLOCKS) {
+		SDE_ERROR("invalid qdss count %d\n", off_count);
+		rc = -EINVAL;
+		goto end;
+	}
 
 	rc = _read_dt_entry(np, qdss_prop, ARRAY_SIZE(qdss_prop), prop_count,
 			prop_exists, prop_value);

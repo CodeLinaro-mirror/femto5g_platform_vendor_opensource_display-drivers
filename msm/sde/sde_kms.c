@@ -3975,7 +3975,7 @@ static int _sde_kms_validate_vm_request(struct drm_atomic_state *state, struct s
 	}
 
 	for_each_new_connector_in_state(state, connector, new_connstate, i) {
-		int conn_mask = active_cstate->connector_mask;
+		int conn_mask = active_cstate ? active_cstate->connector_mask : 0;
 
 		if (drm_connector_mask(connector) & conn_mask) {
 			sde_conn = to_sde_connector(connector);
@@ -6210,7 +6210,8 @@ static void sde_kms_init_hw_fences(struct sde_kms *sde_kms)
 	if (!sde_kms || !sde_kms->hw_mdp)
 		return;
 
-	if (sde_kms->hw_mdp->ops.setup_hw_fences[sde_kms->hw_mdp->hw.disp_op])
+	if (sde_kms->hw_mdp->hw.disp_op < MSM_DISP_OP_MAX &&
+			sde_kms->hw_mdp->ops.setup_hw_fences[sde_kms->hw_mdp->hw.disp_op])
 		sde_kms->hw_mdp->ops.setup_hw_fences[sde_kms->hw_mdp->hw.disp_op](
 			sde_kms->hw_mdp, sde_kms->catalog->ipcc_protocol_id,
 			sde_kms->dpu_ipcc_addr);
@@ -6231,7 +6232,8 @@ static void sde_kms_init_shared_hw(struct sde_kms *sde_kms)
 	if (!sde_kms || !sde_kms->hw_mdp || !sde_kms->catalog)
 		return;
 
-	if (sde_kms->hw_mdp->ops.reset_ubwc[sde_kms->hw_mdp->hw.disp_op])
+	if (sde_kms->hw_mdp->hw.disp_op < MSM_DISP_OP_MAX &&
+			sde_kms->hw_mdp->ops.reset_ubwc[sde_kms->hw_mdp->hw.disp_op])
 		sde_kms->hw_mdp->ops.reset_ubwc[sde_kms->hw_mdp->hw.disp_op](
 			sde_kms->hw_mdp, sde_kms->catalog);
 }
@@ -6427,7 +6429,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 	 */
 	parent = of_find_node_by_path("/reserved-memory");
 
-	for (i = 0; i < data->num_splash_displays; i++) {
+	for (i = 0; i < data->num_splash_displays && i < MAX_DSI_DISPLAYS; i++) {
 		splash_display = &data->splash_display[i];
 		snprintf(&node_name[0], REGION_NAME_MAX,
 				"demura_region_%d", i);
@@ -6614,7 +6616,7 @@ static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_da
 		pr_info(":%d displays share same splash buf\n", num_displays);
 	}
 
-	for (i = 0; i < num_displays; i++) {
+	for (i = 0; i < num_displays && i < MAX_DSI_DISPLAYS; i++) {
 		splash_display = &data->splash_display[i];
 		if (!i || !share_splash_mem) {
 			if (of_address_to_resource(node, i, &r)) {
