@@ -128,6 +128,11 @@ static void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 
 	hfi = container_of(listener, struct dp_hfi, hfi_cb_obj);
 
+	if (!hfi) {
+		DP_ERR("invalid hfi\n");
+		return;
+	}
+
 	dp_display_obj_id = sde_conn_get_display_obj_id(hfi->connector);
 	if (dp_display_obj_id != hfi_uid) {
 		DP_ERR("Component and HFI ID mismatch (%d != %d)\n",
@@ -145,7 +150,7 @@ static void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 		break;
 
 	case HFI_COMMAND_DISPLAY_MODE_VALIDATE:
-		if (payload && hfi)
+		if (payload)
 			hfi->mode_valid = true;
 		break;
 	default:

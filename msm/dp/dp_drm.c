@@ -419,12 +419,12 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 	struct msm_drm_private *priv;
 	struct dp_client *client;
 
-	priv = connector->dev->dev_private;
-
 	if (!drv || !connector || !drv->client || !drv->client->bridge) {
 		DP_ERR("Invalid data\n");
 		return -EINVAL;
 	}
+
+	priv = connector->dev->dev_private;
 
 	client = drv->client;
 
