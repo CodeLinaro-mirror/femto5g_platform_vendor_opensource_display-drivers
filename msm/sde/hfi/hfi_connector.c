@@ -220,6 +220,47 @@ static int _hfi_connector_add_vrr_frame_params(struct sde_connector *conn,
 	return 0;
 }
 
+static int _hfi_connector_config_custom_wd_te(struct sde_connector *conn,
+					       struct hfi_util_u32_prop_helper *prop_collector,
+					       u32 hfi_prop)
+{
+	struct hfi_connector *hfi_conn;
+	struct hfi_custom_wd_te_params wd_te_params;
+	int ret;
+
+	if (!conn || !prop_collector)
+		return -EINVAL;
+
+	hfi_conn = to_hfi_connector(conn);
+
+	/* Send HFI packet only if there is any change in values */
+	if (!conn->custom_wd_updated)
+		return 0;
+
+	/* Validate custom_wd_te_fps is within reasonable range */
+	if (conn->custom_wd_te_enabled && (conn->custom_wd_te_fps < 1 ||
+		conn->custom_wd_te_fps > SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX)) {
+		HFI_ERROR_CONN(hfi_conn, "Invalid custom_wd_te_fps: %u\n",
+			conn->custom_wd_te_fps);
+		return -EINVAL;
+	}
+
+	wd_te_params.wd_te_enabled = conn->custom_wd_te_enabled;
+	wd_te_params.custom_fps = conn->custom_wd_te_fps;
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+					HFI_VAL_U32_ARRAY, &wd_te_params, sizeof(wd_te_params));
+	if (ret) {
+		HFI_ERROR_CONN(hfi_conn, "Failed to add custom wd te params, ret=%d\n", ret);
+		return ret;
+	}
+
+	/* Reset WD_TE updated flag */
+	conn->custom_wd_updated = false;
+
+	return 0;
+}
+
 static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn,
 		struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
@@ -293,10 +334,8 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 		ret = _set_dest_roi(conn, old_cstate, prop_collector, hfi_prop, PANEL_ROI);
 		break;
 	case HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS:
-	{
 		ret = _hfi_connector_add_vrr_frame_params(conn, prop_collector, hfi_prop);
 		break;
-	}
 	case HFI_PROPERTY_DISPLAY_EPT:
 		ret = _hfi_connector_add_ept(conn, old_cstate, prop_collector, hfi_prop);
 		break;
@@ -311,6 +350,9 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
 		break;
 
+	case HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE:
+		ret = _hfi_connector_config_custom_wd_te(conn, prop_collector, hfi_prop);
+		break;
 	default:
 		HFI_ERROR_CONN(hfi_conn, "failed to send HFI commands\n");
 		return -EINVAL;
@@ -348,6 +390,9 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 		_hfi_connector_add_base_prop_helper(HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS,
 			conn, old_cstate, hfi_conn->base_props);
 
+	if (conn->connector_type != DRM_MODE_CONNECTOR_VIRTUAL)
+		_hfi_connector_add_base_prop_helper(HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE,
+			conn, old_cstate, hfi_conn->base_props);
 
 	/* append msm properties */
 	for (i = 0; i < ARRAY_SIZE(hfi_connector_base_props_map); i++) {
