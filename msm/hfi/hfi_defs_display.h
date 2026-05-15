@@ -1007,4 +1007,18 @@ struct hfi_dsi_dcs_cmd_set_replace_entry {
 	u32 reserved;
 };
 
+/*
+ * @struct hfi_custom_wd_te_params
+ * @brief contains custom WD TE parameters
+ *
+ * @var wd_te_enabled
+ *   watchdog te is enabled
+ * @var custom_fps
+ *   custom FPS for watchdog TE
+ */
+struct hfi_custom_wd_te_params {
+	u32 wd_te_enabled;
+	u32 custom_fps;
+};
+
 #endif // __H_HFI_DEFS_DISPLAY_H__
