@@ -371,9 +371,6 @@ int dp_connector_post_init(struct drm_connector *connector, void *display)
 
 	rc = dp_mst_init(dp_display);
 
-	if (dp_display->after_init)
-		rc = dp_display->after_init(dp_display);
-
 	if (dp_display->dsc_cont_pps)
 		sde_conn->ops.update_pps = NULL;
 

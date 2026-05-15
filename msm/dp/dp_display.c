@@ -4180,6 +4180,18 @@ int dp_display_get_num_of_streams(void)
 	return DP_STREAM_MAX;
 }
 
+int dp_display_force_connect_init(void *dp_display)
+{
+	struct dp_display *dp = dp_display;
+
+	if (!dp || !dp->after_init) {
+		DP_INFO("force connect init skipped\n");
+		return 0;
+	}
+
+	return dp->after_init(dp);
+}
+
 static void dp_display_set_mst_state(void *dp_display,
 		enum dp_drv_state mst_state)
 {

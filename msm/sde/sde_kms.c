@@ -2168,6 +2168,8 @@ static int _sde_kms_setup_displays(struct drm_device *dev,
 			}
 			priv->encoders[priv->num_encoders++] = encoder;
 		}
+
+		dp_display_force_connect_init(display);
 	}
 
 	return 0;
