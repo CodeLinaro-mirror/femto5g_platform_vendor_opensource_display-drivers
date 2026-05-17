@@ -7986,6 +7986,8 @@ static int dsi_display_get_modes_helper(struct dsi_display *display,
 			return rc;
 		}
 
+		display_mode.priv_info->mode_idx = display_mode.mode_idx;
+
 		/* Setup widebus support */
 		display_mode.priv_info->widebus_support = ctrl->ctrl->hw.widebus_support;
 
