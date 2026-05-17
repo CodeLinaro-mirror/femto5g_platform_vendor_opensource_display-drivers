@@ -1704,7 +1704,7 @@ static void _sde_encoder_update_ppb_size(struct drm_encoder *drm_enc)
 	int i;
 	enum msm_disp_op disp_op;
 
-	if (!drm_enc) {
+	if (!drm_enc || !drm_enc->crtc || !drm_enc->crtc->state) {
 		SDE_ERROR("invalid encoder parameter\n");
 		return;
 	}
@@ -4207,7 +4207,8 @@ static void _sde_encoder_virt_enable_helper(struct drm_encoder *drm_enc)
 		sde_encoder_control_te(sde_enc, true);
 
 update_ppb:
-	if (!sde_encoder_in_cont_splash(drm_enc))
+	/* PPB Size updates only needed for HWIO display operations */
+	if (IS_DISP_OP_HWIO(disp_op) && !sde_encoder_in_cont_splash(drm_enc))
 		_sde_encoder_update_ppb_size(drm_enc);
 
 	memset(&sde_enc->prv_conn_roi, 0, sizeof(sde_enc->prv_conn_roi));
@@ -7015,9 +7016,10 @@ void sde_encoder_early_wakeup(struct drm_encoder *drm_enc)
 	priv = drm_enc->dev->dev_private;
 	sde_enc = to_sde_encoder_virt(drm_enc);
 
-	if (!sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE)) {
+	if (!sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE) &&
+		!sde_enc->disp_info.vrr_caps.video_psr_support) {
 		SDE_DEBUG_ENC(sde_enc,
-			"should only early wake up command mode display\n");
+			"should only early wake up command mode or VHM mode display\n");
 		return;
 	}
 

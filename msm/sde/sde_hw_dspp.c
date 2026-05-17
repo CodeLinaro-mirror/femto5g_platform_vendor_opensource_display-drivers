@@ -587,6 +587,7 @@ static void dspp_aiqe(struct sde_hw_dspp *c)
 				c->ops.setup_mdnie[MSM_DISP_OP_HFI] = reg_dmav1_setup_mdnie_v2;
 				c->ops.setup_mdnie_art[MSM_DISP_OP_HFI] = hfi_setup_mdnie_art_v1;
 				c->ops.reset_mdnie_art[MSM_DISP_OP_HFI] = NULL;
+				c->ops.setup_mdnie_ipc[MSM_DISP_OP_HFI] = hfi_setup_mdnie_ipc;
 			}
 		}
 

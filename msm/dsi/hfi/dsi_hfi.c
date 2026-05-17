@@ -482,7 +482,7 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 	}
 
 	if (rc) {
-		SDE_ERROR("failed to send hfi_cmd 0x%x display_id: %d\n", hfi_cmd, obj_id);
+		DSI_ERR("failed to send hfi_cmd 0x%x display_id: %d\n", hfi_cmd, obj_id);
 		return rc;
 	}
 
@@ -1767,63 +1767,63 @@ static int _dsi_hfi_append_panel_timing_caps(struct dsi_display_hfi *display_hfi
 		hfi_util_kv_helper_reset(display_hfi->kv_props);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_INDEX, idx,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_INDEX, 0,
 			sizeof(timing_caps->panel_index) / sizeof(u32)),
 			(void *)&timing_caps->panel_index);
 		kv_size += sizeof(timing_caps->panel_index);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_CLOCKRATE, idx,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_CLOCKRATE, 0,
 			sizeof(timing_caps->clockrate) / sizeof(u32)),
 			(void *)&timing_caps->clockrate);
 		kv_size += sizeof(timing_caps->clockrate);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_FRAMERATE, idx,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_FRAMERATE, 0,
 			sizeof(timing_caps->framerate) / sizeof(u32)),
 			(void *)&timing_caps->framerate);
 		kv_size += sizeof(timing_caps->framerate);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_JITTER, idx,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_JITTER, 0,
 			sizeof(timing_caps->panel_jitter) / sizeof(u32)),
 			(void *)&timing_caps->panel_jitter);
 		kv_size += sizeof(timing_caps->panel_jitter);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_RESOLUTION_DATA, idx,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_RESOLUTION_DATA, 0,
 			sizeof(timing_caps->res_data) / sizeof(u32)),
 			(void *)&timing_caps->res_data);
 		kv_size += sizeof(timing_caps->res_data);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_DATA, idx,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_DATA, 0,
 			sizeof(timing_caps->compression_params) / sizeof(u32)),
 			(void *)&timing_caps->compression_params);
 		kv_size += sizeof(timing_caps->compression_params);
 
 		if (timing_caps->rc_override_enabled) {
 			hfi_util_kv_helper_add(display_hfi->kv_props,
-				HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_RC_OVERRIDE, idx,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_COMPRESSION_RC_OVERRIDE, 0,
 				sizeof(timing_caps->rc_override) / sizeof(u32)),
 				(void *)&timing_caps->rc_override);
 			kv_size += sizeof(timing_caps->rc_override);
 		}
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_DISPLAY_TOPOLOGY, idx,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DISPLAY_TOPOLOGY, 0,
 			sizeof(timing_caps->topology) / sizeof(u32)),
 			(void *)&timing_caps->topology);
 		kv_size += sizeof(timing_caps->topology);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_DEFAULT_TOPOLOGY_INDEX, idx,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DEFAULT_TOPOLOGY_INDEX, 0,
 			sizeof(timing_caps->top_index) / sizeof(u32)),
 			(void *)&timing_caps->top_index);
 		kv_size += sizeof(timing_caps->top_index);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_DCS_CMD_INFO, idx,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DCS_CMD_INFO, 0,
 			((sizeof(struct dsi_hfi_panel_per_cmd_type) / sizeof(u32)) *
 			timing_caps->payload.count + 1)),
 			(void *)&timing_caps->payload);
@@ -1831,7 +1831,7 @@ static int _dsi_hfi_append_panel_timing_caps(struct dsi_display_hfi *display_hfi
 			timing_caps->payload.count + 1) * sizeof(u32);
 
 		hfi_util_kv_helper_add(display_hfi->kv_props,
-			HFI_PACKKEY(HFI_PROPERTY_PANEL_DPHY_TIMINGS, idx,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_DPHY_TIMINGS, 0,
 			sizeof(timing_caps->phy_timings_payload) / sizeof(u32)),
 			(void *)&timing_caps->phy_timings_payload);
 		kv_size += sizeof(timing_caps->phy_timings_payload);
@@ -1850,7 +1850,7 @@ static int _dsi_hfi_append_panel_timing_caps(struct dsi_display_hfi *display_hfi
 
 		if (rc)
 			DSI_ERR("Failed to add caps for timing node:%d, rc = %d",
-					i, rc);
+					idx, rc);
 	}
 	return rc;
 }

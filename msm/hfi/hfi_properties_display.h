@@ -783,6 +783,22 @@
 #define HFI_PROPERTY_DISPLAY_VSYNC_OFFSET                            0x00020033
 
 /*
+ * HFI_PROPERTY_DISPLAY_BRIGHTNESS - This property is to update the panel brightness level for
+ *                                   the current frame. Host is expected to send this
+ *                                   packet as part of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                   command packet payload. The brightness level should be in the
+ *                                   range defined by HFI_PROPERTY_PANEL_BL_MIN_LEVEL and
+ *                                   HFI_PROPERTY_PANEL_BL_MAX_LEVEL properties as part of
+ *                                   HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet.
+ *
+ * @BasicFuntionality @Display - HFI_PROPERTY_DISPLAY_BRIGHTNESS
+ *     (u32_key) payload [0]   : HFI_PROPERTY_DISPLAY_BRIGHTNESS |
+ *                               (version=0 << 20) | (dsize=1 << 24)
+ *   (u32_value) payload [1]   : u32 brightness level
+ */
+#define HFI_PROPERTY_DISPLAY_BRIGHTNESS                              0x00020034
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100

@@ -48,6 +48,7 @@ static inline void msm_lsr_free_allowed_clocks_table(
 		struct msm_lsr_platform_resources *res)
 {
 	res->allowed_clks_tbl = NULL;
+	res->controller_clk_corner_tbl = NULL;
 }
 
 static inline void msm_lsr_free_reg_table(
@@ -456,13 +457,13 @@ static int msm_lsr_load_allowed_clocks_table(
 	struct platform_device *pdev = res->pdev;
 
 	if (!of_find_property(pdev->dev.of_node,
-			"qcom,allowed-clock-rates", NULL)) {
-		dprintk(LSR_CORE, "qcom,allowed-clock-rates not found\n");
+			"qcom,allowed-core-clock-rates", NULL)) {
+		dprintk(LSR_CORE, "qcom,allowed-core-clock-rates not found\n");
 		return 0;
 	}
 
 	rc = msm_lsr_load_u32_table(pdev, pdev->dev.of_node,
-				"qcom,allowed-clock-rates",
+				"qcom,allowed-core-clock-rates",
 				sizeof(*res->allowed_clks_tbl),
 				(u32 **)&res->allowed_clks_tbl,
 				&res->allowed_clks_tbl_size);
@@ -473,6 +474,23 @@ static int msm_lsr_load_allowed_clocks_table(
 
 	sort(res->allowed_clks_tbl, res->allowed_clks_tbl_size,
 		 sizeof(*res->allowed_clks_tbl), cmp, NULL);
+
+	rc = msm_lsr_load_u32_table(pdev, pdev->dev.of_node,
+				"qcom,controller-clk-corner-rates",
+				sizeof(*res->controller_clk_corner_tbl),
+				(u32 **)&res->controller_clk_corner_tbl,
+				&res->controller_clk_corner_tbl_size);
+	if (rc) {
+		dprintk(LSR_ERR, "%s: failed to read controller clk corner rates table\n",
+			__func__);
+		return rc;
+	}
+
+	if (res->allowed_clks_tbl_size != res->controller_clk_corner_tbl_size) {
+		dprintk(LSR_ERR, "%s: core (%u) and controller (%u) clock table sizes mismatch\n",
+			__func__, res->allowed_clks_tbl_size, res->controller_clk_corner_tbl_size);
+		return -EINVAL;
+	}
 
 	return 0;
 }

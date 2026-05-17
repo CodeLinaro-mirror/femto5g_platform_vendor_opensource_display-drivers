@@ -34,6 +34,7 @@
 #include "dp_hfi_audio.h"
 #include "dp_hdcp.h"
 #include "dp_drm.h"
+#include "dp_altmode.h"
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 #include "linux/msm_hdcp.h"
 #endif
@@ -825,6 +826,12 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 	config->hpd_irq = hfi_priv->hpd->hpd_irq;
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
+	if (hfi_priv->debug->force_multi_func) {
+		if (config->pin_config == DPAM_HPD_C)
+			config->pin_config = DPAM_HPD_D;
+		else if (config->pin_config == DPAM_HPD_E)
+			config->pin_config = DPAM_HPD_F;
+	}
 
 	DP_DEBUG("orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u\n",
 		config->orientation, config->port_index, config->pin_config,
@@ -878,10 +885,8 @@ static int _init_addr_maps(struct dp_hfi *hfi)
 	return 0;
 }
 
-/* HPD callback functions */
-int dp_mgr_hfi_hpd_configure_cb(void *data)
+int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 {
-	struct dp_mgr_hfi_priv *hfi_priv = data;
 	struct hfi_client_t *hfi_client;
 	struct hfi_device_hotplug_config config = {0};
 	int rc = 0;
@@ -948,11 +953,25 @@ end:
 		hfi_priv->connected = true;
 
 		_hfi_update_config(hfi_priv, &config);
-		rc = _hfi_send_hot_plug(hfi_priv, &config);
+		if (!skip_hpd)
+			rc = _hfi_send_hot_plug(hfi_priv, &config);
 		DP_INFO("connected\n");
 	}
 
 	return rc;
+}
+
+/* HPD callback functions */
+int dp_mgr_hfi_hpd_configure_cb(void *data)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = data;
+
+	if (!hfi_priv) {
+		DP_ERR("Invalid hfi_priv data\n");
+		return -EINVAL;
+	}
+
+	return _hpd_configure(hfi_priv, false);
 }
 
 int dp_mgr_hfi_hpd_disconnect_cb(void *data)
@@ -1067,16 +1086,13 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 
 	DP_DEBUG("hpd status from %d to %d irq %d\n", hfi_priv->connected, hpd_state, hpd_irq);
 
-	/* hpd_state should be high for irq_hpd */
-	if (!hpd_state)
-		return 0;
-
 	/* check if there was any change in state */
 	if ((hpd_state == hfi_priv->connected) && !hpd_irq)
 		return 0;
 
 	if (hpd_state && !hfi_priv->configured) {
-		rc = dp_mgr_hfi_hpd_configure_cb(data);
+		/* skip hpd here as it will be sent below */
+		rc = _hpd_configure(hfi_priv, true);
 		if (rc)
 			return rc;
 	} else if (!hfi_priv->connected && hpd_state) {

@@ -1863,8 +1863,11 @@ int __response_handler(struct lsr_device *device)
 		if (device->intr_status & LSR_WRAPPER_INTR_MASK_CPU_NOC_BMSK)
 			pr_err_ratelimited(LSR_PID_TAG "Received Xtensa NOC error\n",
 				current->pid, current->tgid, "err");
-		if (device->intr_status & LSR_WRAPPER_INTR_MASK_CORE_NOC_BMSK)
-			pr_err_ratelimited(LSR_PID_TAG "Received LSR core NOC error\n",
+		if (device->intr_status & LSR_WRAPPER_INTR_MASK_CORE_L_NOC_BMSK)
+			pr_err_ratelimited(LSR_PID_TAG "Received LSR Left core NOC error\n",
+				current->pid, current->tgid, "err");
+		if (device->intr_status & LSR_WRAPPER_INTR_MASK_CORE_R_NOC_BMSK)
+			pr_err_ratelimited(LSR_PID_TAG "Received LSR Right core NOC error\n",
 				current->pid, current->tgid, "err");
 	}
 
