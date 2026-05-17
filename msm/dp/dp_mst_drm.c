@@ -1890,11 +1890,12 @@ dp_mst_find_fixed_connector(struct dp_mst_private *dp_mst,
 	struct dp_display *dp_display = dp_mst->dp_display;
 	struct drm_connector *connector = NULL;
 	struct sde_connector *c_conn;
-	u32 port_num;
+	u32 port_num = 0;
 	int i;
 
 	mutex_lock(&port->mgr->lock);
-	port_num = dp_mst_find_fixed_port_num(port->mgr->mst_primary, port);
+	if (port->mgr->mst_primary)
+		port_num = dp_mst_find_fixed_port_num(port->mgr->mst_primary, port);
 	mutex_unlock(&port->mgr->lock);
 
 	if (!port_num)
@@ -1979,8 +1980,17 @@ dp_mst_add_fixed_connector(struct drm_dp_mst_topology_mgr *mgr,
 			 * drm_dp_delayed_destroy_port already unregistered the
 			 * connector. We want the connector to be re-registered,
 			 * so have to reset the registration_state.
+			 *
+			 * Exception: if already REGISTERED (e.g. by
+			 * drm_connector_register_all during drm_dev_register
+			 * before any MST disconnect cycle ran), leave the state
+			 * as-is. drm_connector_register will see state !=
+			 * INITIALIZING and return early, preventing a double-add
+			 * to global_connector_list. late_register was already
+			 * invoked by drm_dev_register's register_all.
 			 */
-			connector->registration_state = DRM_CONNECTOR_INITIALIZING;
+			if (connector->registration_state != DRM_CONNECTOR_REGISTERED)
+				connector->registration_state = DRM_CONNECTOR_INITIALIZING;
 			return connector;
 		} else {
 			DP_MST_INFO("Not found fixed connector\n");
@@ -2052,8 +2062,10 @@ static void dp_mst_destroy_fixed_connector(struct drm_connector *connector)
 
 			dp_mst->mst_bridge[i].fixed_port_added = false;
 
-			drm_dp_mst_put_port_malloc(c_conn->mst_port);
-			c_conn->mst_port = NULL;
+			if (c_conn->mst_port) {
+				drm_dp_mst_put_port_malloc(c_conn->mst_port);
+				c_conn->mst_port = NULL;
+			}
 
 			drm_modeset_unlock_all(connector->dev);
 			DP_MST_DEBUG("destroy fixed connector %d\n",
