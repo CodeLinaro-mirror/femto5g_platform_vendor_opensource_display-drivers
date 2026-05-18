@@ -1204,7 +1204,7 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	mem_size = hfi_adapter_get_shared_mem_allocated_size(hfi_client, tx_cmd_buf_map);
 
 	if (!mem_size) {
-		tx_cmd_buf_map->size = SZ_4K;
+		tx_cmd_buf_map->size = DSI_TX_CMD_BUF_SIZE;
 		rc = hfi_adapter_buffer_alloc(hfi_client, tx_cmd_buf_map);
 
 		if (rc || !hfi_adapter_get_shared_mem_allocated_size(hfi_client, tx_cmd_buf_map)) {
@@ -1996,6 +1996,24 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi)
 		return -EINVAL;
+
+	/*
+	 * As per DSI HPG, the tx command buffer address needs to be 1024byte aligned.
+	 * start of cmd tx buffer is calculated based on tx_cmd_buf_fill_level.
+	 * Hence tx_cmd_buf_fill_level needs to be 1024byte aligned.
+	 */
+	display_hfi->tx_cmd_buf_fill_level = ALIGN(display_hfi->tx_cmd_buf_fill_level, 1024u);
+
+	if (display_hfi->tx_cmd_buf_fill_level > display->cmd_buffer_size) {
+		DSI_ERR("tx_cmd_buf_fill_level (%u) exceeds cmd_buffer_size (%u) after alignment\n",
+			display_hfi->tx_cmd_buf_fill_level, display->cmd_buffer_size);
+		return -EINVAL;
+	}
+
+	if (display->cmd_buffer_size - display_hfi->tx_cmd_buf_fill_level < SZ_4K)
+		DSI_WARN("available cmd tx buffer size is less than 4KB\n");
+
+	SDE_EVT32(display->cmd_buffer_size, display_hfi->tx_cmd_buf_fill_level);
 
 	panel_init_caps.dcs_cmd_tx_buf_dva =
 			display_hfi->sgt_tx_cmd_buf_map.remote_addr +
