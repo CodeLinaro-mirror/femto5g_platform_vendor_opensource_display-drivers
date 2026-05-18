@@ -114,16 +114,23 @@ static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_
 	if (!sde_kms || !hfi_enc || !sde_kms->catalog)
 		return true;
 
+	/*
+	 * When LSR is running, DCP triggers scan start events for reprojection commits
+	 * within firmware on primary display. Adding sequence check on the scan start
+	 * event to avoid triggering frame events on FW internal commits.
+	 */
 	catalog = sde_kms->catalog;
 	if (test_bit(SDE_FEATURE_FRAME_SEQ_CHECK, catalog->features) &&
 			!sde_encoder_is_wb_display(&sde_enc->base)) {
-		/* Trigger callback only if HFI frame done count increased from current seqno */
-		if (atomic_read(&hfi_enc->hfi_frame_done_cnt) >
-				atomic_read(&hfi_enc->hfi_frame_done_seqno))
-			atomic_set(&hfi_enc->hfi_frame_done_seqno,
-				atomic_read(&hfi_enc->hfi_frame_done_cnt));
-		else
-			return false;
+		int cnt = atomic_read(&hfi_enc->hfi_frame_done_cnt);
+		int seqno = atomic_read(&hfi_enc->hfi_frame_done_seqno);
+
+		if ((cnt > seqno) || (atomic_read(&sde_enc->pending_commit_cnt) > 0)) {
+			atomic_set(&hfi_enc->hfi_frame_done_seqno, cnt);
+			SDE_EVT32(cnt, seqno, atomic_read(&sde_enc->pending_commit_cnt));
+		} else {
+			return false; /* true duplicate, suppress */
+		}
 	}
 
 	return true;
@@ -157,15 +164,18 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	}
 
 	ts = hfi_enc_unpack_frame_event(payload, NULL, sde_enc);
-	frame_event_trigger = _hfi_encoder_check_frame_event_trigger(sde_enc);
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
-	if (event & SDE_ENCODER_FRAME_EVENT_DONE || sde_encoder_in_clone_mode(&sde_enc->base))
-		new_cnt = atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
-	if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE) && sde_enc->cur_master)
-		atomic_add_unless(&sde_enc->cur_master->pending_retire_fence_cnt, -1, 0);
-	if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE) && sde_enc->cur_master)
-		atomic_add_unless(&sde_enc->cur_master->pending_release_fence_cnt, -1, 0);
+	frame_event_trigger = _hfi_encoder_check_frame_event_trigger(sde_enc);
+	if (frame_event_trigger) {
+		if (event & SDE_ENCODER_FRAME_EVENT_DONE ||
+					sde_encoder_in_clone_mode(&sde_enc->base))
+			new_cnt = atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
+		if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE) && sde_enc->cur_master)
+			atomic_add_unless(&sde_enc->cur_master->pending_retire_fence_cnt, -1, 0);
+		if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE) && sde_enc->cur_master)
+			atomic_add_unless(&sde_enc->cur_master->pending_release_fence_cnt, -1, 0);
+	}
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
 	SDE_EVT32(DRMID(drm_enc), event, atomic_read(&sde_enc->pending_commit_cnt),
