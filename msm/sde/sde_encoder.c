@@ -5094,7 +5094,6 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 	if (sde_enc->hal_ops.enable_hw_event[disp_op]) {
 		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
 				MSM_ENC_VBLANK, vbl_cb ? true : false);
-		goto exit;
 	}
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
@@ -5115,7 +5114,7 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 				phys->ops.control_vblank_irq(phys, enable);
 		}
 	}
-exit:
+
 	sde_enc->vblank_enabled = enable;
 }
 
