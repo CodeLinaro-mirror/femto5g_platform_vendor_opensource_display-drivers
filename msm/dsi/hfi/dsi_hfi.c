@@ -1382,6 +1382,7 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
 				      enum dsi_cmd_set_state state)
 {
 	struct dsi_display_hfi *dsi_hfi;
+	struct dsi_display_mode_priv_info *priv_info;
 	struct dsi_rt_custom_dcs_cmd_entry *cmd_entry;
 	struct dsi_hfi_panel_cmd_info *cmd_info;
 	struct dsi_rt_custom_dcs_cmd_entry saved_index_entry;
@@ -1394,6 +1395,7 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
 	u32 cached_sde_running;
 	u32 cached_hfi_running;
 	size_t hfi_remaining;
+	int std_idx;
 	int i, rc = 0;
 
 	if (!display || !data || !length) {
@@ -1407,6 +1409,14 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
 		return -EINVAL;
 	}
 
+	/* Validate panel and mode configuration */
+	if (!display->panel || !display->panel->cur_mode || !display->panel->cur_mode->priv_info) {
+		DSI_ERR("Invalid panel or mode configuration\n");
+		return -EINVAL;
+	}
+
+	priv_info = display->panel->cur_mode->priv_info;
+
 	dsi_hfi = display->dsi_hfi_info;
 	if (!dsi_hfi || !dsi_hfi->shared_addr_map) {
 		DSI_ERR("HFI not initialized\n");
@@ -1414,6 +1424,19 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
 	}
 
 	SDE_EVT32(cmd_type, length, state, SDE_EVTLOG_FUNC_ENTRY);
+
+	/* Reject if the standard command type is not defined in DT */
+	std_idx = dsi_cmd_type_to_index(cmd_type);
+	if (std_idx < 0 || std_idx >= DSI_CMD_SET_TOTAL_SIZE) {
+		DSI_ERR("cmd_type %u: invalid index %d\n", cmd_type, std_idx);
+		return -EINVAL;
+	}
+
+	if (!priv_info->cmd_sets[std_idx].count) {
+		DSI_ERR("cmd_type %u not defined in DT, cannot add rt custom DCS cmd\n",
+			cmd_type);
+		return -EINVAL;
+	}
 
 	/* Count packets in the raw DT-format byte stream */
 	rc = dsi_panel_get_cmd_pkt_count(data, length, &packet_count);
