@@ -91,7 +91,7 @@
 #define MEM_PROTECT_SD_CTRL_SWITCH 0x18
 #define MDP_DEVICE_ID            0x1A
 #define MDP_MASTER_CORE          0
-#define DEMURA_REGION_NAME_MAX      32
+#define REGION_NAME_MAX          32
 
 EXPORT_TRACEPOINT_SYMBOL(tracing_mark_write);
 
@@ -963,6 +963,14 @@ static int _sde_kms_map_all_splash_regions(struct sde_kms *sde_kms)
 			if (ret)
 				return ret;
 		}
+
+		/* Lut dma */
+		region = sde_kms->splash_data.splash_display[i].lut_dma;
+		if (region) {
+			ret = _sde_kms_splash_mem_get(sde_kms, region);
+			if (ret)
+				return ret;
+		}
 	}
 
 	return ret;
@@ -1503,6 +1511,9 @@ static void _sde_kms_free_splash_display_data(struct sde_kms *sde_kms,
 		if (splash_display->demura)
 			_sde_kms_splash_mem_put(sde_kms,
 					splash_display->demura);
+		if (splash_display->lut_dma)
+			_sde_kms_splash_mem_put(sde_kms,
+					splash_display->lut_dma);
 	}
 	sde_kms->splash_data.num_splash_displays--;
 	SDE_DEBUG("cont_splash handoff done, remaining:%d\n",
@@ -6322,7 +6333,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 	int count = 0;
 	struct device_node *parent, *node;
 	struct resource r;
-	char node_name[DEMURA_REGION_NAME_MAX];
+	char node_name[REGION_NAME_MAX];
 	struct sde_splash_mem *mem;
 	struct sde_splash_display *splash_display;
 
@@ -6339,7 +6350,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 
 	for (i = 0; i < data->num_splash_displays; i++) {
 		splash_display = &data->splash_display[i];
-		snprintf(&node_name[0], DEMURA_REGION_NAME_MAX,
+		snprintf(&node_name[0], REGION_NAME_MAX,
 				"demura_region_%d", i);
 
 		splash_display->demura = NULL;
@@ -6350,6 +6361,7 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 			continue;
 		} else if (of_address_to_resource(node, 0, &r)) {
 			SDE_ERROR("invalid data for:%s\n", node_name);
+			of_node_put(node);
 			ret = -EINVAL;
 			break;
 		}
@@ -6367,12 +6379,14 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 		if (!mem->splash_buf_base && !mem->splash_buf_size) {
 			SDE_DEBUG("dummy splash mem for disp %d. Skipping\n",
 					(i+1));
+			of_node_put(node);
 			continue;
 
 		} else if (!mem->splash_buf_base || !mem->splash_buf_size) {
 			SDE_ERROR("mem for disp %d invalid: add:%lx size:%u\n",
 					(i+1), mem->splash_buf_base,
 					mem->splash_buf_size);
+			of_node_put(node);
 			continue;
 		}
 
@@ -6383,11 +6397,89 @@ static int _sde_kms_get_demura_plane_data(struct sde_splash_data *data)
 		SDE_DEBUG("demura mem for disp:%d add:%lx size:%u\n", (i + 1),
 				mem->splash_buf_base,
 				mem->splash_buf_size);
+		of_node_put(node);
 	}
 
 	if (!ret && !count)
 		SDE_DEBUG("no demura regions for cont. splash found!\n");
 
+	of_node_put(parent);
+	return ret;
+}
+
+static int _sde_kms_get_lut_dma_data(struct sde_splash_data *data)
+{
+	int i = 0;
+	int ret = 0;
+	int count = 0;
+	struct device_node *parent, *node;
+	struct resource r;
+	char node_name[REGION_NAME_MAX];
+	struct sde_splash_mem *mem;
+	struct sde_splash_display *splash_display;
+
+	if (!data->num_splash_displays) {
+		SDE_DEBUG("no splash displays. skipping\n");
+		return 0;
+	}
+
+	parent = of_find_node_by_path("/reserved-memory");
+
+	for (i = 0; i < data->num_splash_displays; i++) {
+		splash_display = &data->splash_display[i];
+		snprintf(&node_name[0], REGION_NAME_MAX,
+				"lut_dma_region_%d", i);
+
+		splash_display->lut_dma = NULL;
+		node = of_find_node_by_name(parent, node_name);
+		if (!node) {
+			SDE_DEBUG("no LUT DMA node %s! disp count: %d\n",
+					node_name, data->num_splash_displays);
+			continue;
+		} else if (of_address_to_resource(node, 0, &r)) {
+			SDE_ERROR("invalid data for:%s\n", node_name);
+			of_node_put(node);
+			ret = -EINVAL;
+			break;
+		}
+
+		mem = &data->lut_dma_mem[i];
+		mem->splash_buf_base = (unsigned long)r.start;
+
+		// Start and end are both 0, size is expected to be 0, dummy splash mem.
+		if (!r.start && !r.end)
+			mem->splash_buf_size = 0;
+		else
+			mem->splash_buf_size = (r.end - r.start) + 1;
+
+		if (!mem->splash_buf_base && !mem->splash_buf_size) {
+			SDE_DEBUG("dummy splash mem for disp %d. Skipping\n",
+					(i+1));
+			of_node_put(node);
+			continue;
+
+		} else if (!mem->splash_buf_base || !mem->splash_buf_size) {
+			SDE_ERROR("mem for disp %d invalid: add:%lx size:%u\n",
+					(i+1), mem->splash_buf_base,
+					mem->splash_buf_size);
+			of_node_put(node);
+			continue;
+		}
+
+		mem->ref_cnt = 0;
+		splash_display->lut_dma = mem;
+		count++;
+
+		SDE_DEBUG("lut_dma mem for disp:%d add:%lx size:%u\n", (i + 1),
+				mem->splash_buf_base,
+				mem->splash_buf_size);
+		of_node_put(node);
+	}
+
+	if (!ret && !count)
+		SDE_DEBUG("no lut_dma regions for cont. splash found!\n");
+
+	of_node_put(parent);
 	return ret;
 }
 
@@ -6483,6 +6575,15 @@ static int _sde_kms_get_splash_data(struct drm_device *dev, struct sde_splash_da
 
 	data->type = SDE_SPLASH_HANDOFF;
 	ret = _sde_kms_get_demura_plane_data(data);
+	if (ret) {
+		SDE_ERROR("failed to get demura regions for cont.splash %d\n", ret);
+		return ret;
+	}
+
+	ret = _sde_kms_get_lut_dma_data(data);
+	if (ret)
+		SDE_ERROR("failed to get lut dma regions for cont.splash %d\n", ret);
+
 	return ret;
 }
 
