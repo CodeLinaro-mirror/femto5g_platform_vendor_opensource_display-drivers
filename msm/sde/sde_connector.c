@@ -112,7 +112,7 @@ struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn)
 	struct shd_display *shd_display;
 
 	if (!c_conn || (c_conn->connector_type != DRM_MODE_CONNECTOR_DSI))
-		return 0;
+		return NULL;
 
 	if (c_conn->shared) {
 		shd_display = c_conn->display;

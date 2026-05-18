@@ -303,9 +303,16 @@ static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, vo
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
 	struct sde_connector *sde_conn;
+	struct hfi_encoder *hfi_enc;
 
 	if (!sde_enc) {
-		SDE_ERROR("invalid encoder\n");
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+
+	hfi_enc = to_hfi_encoder(sde_enc);
+	if (!hfi_enc) {
+		SDE_ERROR("invalid hfi encoder\n");
 		return;
 	}
 
@@ -322,6 +329,8 @@ static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, vo
 		return;
 	}
 
+	hfi_connector_set_esd_recovery_pending(sde_conn);
+	wake_up_all(&hfi_enc->pending_kickoff_wq);
 	hfi_connector_report_panel_dead(sde_conn, false);
 }
 
@@ -632,6 +641,30 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	return ret;
 }
 
+static struct dsi_panel *hfi_encoder_get_panel(struct sde_encoder_virt *sde_enc)
+{
+	struct drm_connector *conn;
+	struct drm_encoder *drm_enc;
+	struct sde_connector *sde_conn;
+
+	if (!sde_enc)
+		return NULL;
+
+	drm_enc = &sde_enc->base;
+	if (!drm_enc)
+		return NULL;
+
+	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
+	if (!conn)
+		return NULL;
+
+	sde_conn = to_sde_connector(conn);
+	if (!sde_conn || !sde_conn->display)
+		return NULL;
+
+	return hfi_connector_get_dsi_panel(sde_conn);
+}
+
 static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 		struct sde_encoder_wait_info *info, u32 event)
 {
@@ -644,6 +677,7 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 	struct hfi_kms *hfi_kms;
 	struct sde_kms *sde_kms;
 	struct sde_encoder_virt *sde_enc = hfi_enc->sde_base;
+	struct dsi_panel *panel = NULL;
 
 	sde_kms = sde_encoder_get_kms(&sde_enc->base);
 	hfi_kms = to_hfi_kms(sde_kms);
@@ -652,10 +686,12 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 		return -EINVAL;
 	}
 
+	panel = hfi_encoder_get_panel(sde_enc);
 	do {
 		rc = wait_event_timeout(*(info->wq),
-				(atomic_read(info->atomic_cnt) == info->count_check)
-					|| atomic_read(&hfi_kms->ssr_in_progress),
+				(atomic_read(info->atomic_cnt) == info->count_check) ||
+				atomic_read(&hfi_kms->ssr_in_progress) ||
+				(panel && atomic_read(&panel->esd_recovery_pending)),
 				wait_time_jiffies);
 		cur_ktime = ktime_get();
 

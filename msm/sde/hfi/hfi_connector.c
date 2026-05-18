@@ -970,7 +970,19 @@ int hfi_connector_set_debug_prop(struct drm_connector *drm_conn,
 	return rc;
 }
 
-void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)
+struct dsi_panel *hfi_connector_get_dsi_panel(struct sde_connector *c_conn)
+{
+	struct dsi_display *display = NULL;
+
+	if (!c_conn || !c_conn->display)
+		return NULL;
+
+	display = _sde_connector_get_display(c_conn);
+
+	return display ? display->panel : NULL;
+}
+
+void hfi_connector_set_esd_recovery_pending(struct sde_connector *c_conn)
 {
 	struct dsi_panel *panel;
 
@@ -984,6 +996,12 @@ void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre
 	}
 
 	atomic_set(&panel->esd_recovery_pending, 1);
+}
+
+void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)
+{
+	if (!c_conn || !c_conn->display)
+		return;
 
 	sde_connector_report_panel_dead(c_conn, skip_pre_kickoff);
 }
