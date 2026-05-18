@@ -871,6 +871,20 @@
 #define HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY               0x00040039
 
 /*
+ * HFI_PROPERTY_PANEL_DISPLAY_TYPE - Specifies the type of the display-
+ *                                 BUILT_IN and their priority(i.e 0,1 etc)
+ *                                 This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                                 command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DISPLAY_TYPE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DISPLAY_TYPE |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : one of enum hfi_panel_display_type
+ */
+#define HFI_PROPERTY_PANEL_DISPLAY_TYPE                              0x0004003A
+
+/*
  * HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO - Specifies the DSI custom command set start
  *                                                   index and count. OEMs can define custom command
  *                                                   types at host level from which start index and
