@@ -1722,6 +1722,7 @@ static void dp_mgr_hfi_handle_hdcp1x_enc(struct dp_hfi *hfi, void *payload, u32 
 {
 	u32 *data = (u32 *)payload;
 	bool enable;
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
 
 	if (size < sizeof(u32)) {
 		DP_ERR("Invalid payload size: %u\n", size);
@@ -1738,7 +1739,8 @@ static void dp_mgr_hfi_handle_hdcp1x_enc(struct dp_hfi *hfi, void *payload, u32 
 		return;
 	}
 
-	dp_hdcp1x_set_enc(hfi->hdcp1x_ctx, enable);
+	if (hfi_priv->debug && hfi_priv->debug->force_encryption)
+		dp_hdcp1x_set_enc(hfi->hdcp1x_ctx, enable);
 
 	if (enable) {
 		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
@@ -2601,6 +2603,9 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	/* Deinitialize HDCP */
 	if (hfi->hdcp1x_ctx) {
+		/* If force_encryption is set, disable encryption before tearing down */
+		if (hfi_priv->debug->force_encryption)
+			dp_hdcp1x_set_enc(hfi->hdcp1x_ctx, false);
 		dp_hdcp1x_deinit(hfi->hdcp1x_ctx);
 		hfi->hdcp1x_ctx = NULL;
 		DP_DEBUG("HDCP deinitialized\n");
