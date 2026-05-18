@@ -74,6 +74,12 @@ struct hfi_dbg {
 int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg);
 
 /**
+ * hfi_dbg_device_setup - setup hfi debug properties in FW
+ * @hfi_kms:     Pointer to hfi_kms structure
+ * Returns: 0 on success, negative error code on failure
+ */
+int hfi_dbg_device_setup(struct hfi_kms *hfi_kms);
+/**
  * hfi_dbg_destroy - destroy hfi debug object
  */
 void hfi_dbg_destroy(void);
@@ -87,6 +93,11 @@ static inline int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 static inline void hfi_dbg_destroy(void)
 {
 
+}
+
+static inline int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
+{
+	return 0;
 }
 
 #endif // IS_ENABLED(CONFIG_MDSS_HFI)
