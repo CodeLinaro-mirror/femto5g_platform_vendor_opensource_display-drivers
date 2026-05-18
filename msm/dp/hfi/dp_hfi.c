@@ -149,10 +149,7 @@ static void dp_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 			hfi->mode_valid = true;
 		break;
 	default:
-		if (payload)
-			hfi->handle_event(hfi, prop, payload, size);
-		else
-			DP_ERR("invalid payload\n");
+		hfi->handle_event(hfi, prop, payload, size);
 		break;
 	}
 }
