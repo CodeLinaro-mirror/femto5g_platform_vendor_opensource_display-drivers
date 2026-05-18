@@ -885,7 +885,7 @@ static int _init_addr_maps(struct dp_hfi *hfi)
 	return 0;
 }
 
-int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
+static int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 {
 	struct hfi_client_t *hfi_client;
 	struct hfi_device_hotplug_config config = {0};
