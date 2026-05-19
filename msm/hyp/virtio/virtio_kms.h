@@ -31,6 +31,8 @@ enum hab_dbl_handle_t {
 	HAB_DBL_HANDLE_NONE,
 	HAB_DBL_HANDLE_1,
 	HAB_DBL_HANDLE_2,
+	HAB_DBL_HANDLE_3, // reserved for Linux GVM
+	HAB_DBL_HANDLE_4, // reserved for Linux GVM
 	HAB_DBL_HANDLE_MAX
 };
 
