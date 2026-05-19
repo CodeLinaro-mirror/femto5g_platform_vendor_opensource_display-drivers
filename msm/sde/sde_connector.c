@@ -2187,6 +2187,21 @@ static void sde_connector_atomic_destroy_state(struct drm_connector *connector,
 
 	sde_wb_lsr_reset_out_fb_list(c_state);
 
+	if (c_state->pose_fb)
+		drm_framebuffer_put(c_state->pose_fb);
+
+	/* Release reproj opaque-config gem objects owned by this state. */
+	if (c_state->reproj_sparse_grid.buf)
+		drm_gem_object_put(c_state->reproj_sparse_grid.buf);
+	if (c_state->reproj_radial_dis_grid.buf)
+		drm_gem_object_put(c_state->reproj_radial_dis_grid.buf);
+	if (c_state->reproj_display_gamma.buf)
+		drm_gem_object_put(c_state->reproj_display_gamma.buf);
+	if (c_state->reproj_gcx_session_config.buf)
+		drm_gem_object_put(c_state->reproj_gcx_session_config.buf);
+	if (c_state->reproj_gcx_session_config_data.buf)
+		drm_gem_object_put(c_state->reproj_gcx_session_config_data.buf);
+
 	__drm_atomic_helper_connector_destroy_state(&c_state->base);
 
 	if (!c_conn) {
@@ -2276,6 +2291,9 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 	/* Each state owns a reference to its LSR out-buffer FBs */
 	sde_wb_lsr_get_view_fbs(c_state);
 
+	if (c_state->pose_fb)
+		drm_framebuffer_get(c_state->pose_fb);
+
 	/* clear dynamic HDR metadata from prev state */
 	if (c_state->dyn_hdr_meta.dynamic_hdr_update) {
 		c_state->dyn_hdr_meta.dynamic_hdr_update = false;
@@ -2284,6 +2302,18 @@ sde_connector_atomic_duplicate_state(struct drm_connector *connector)
 
 	/* Clear privacy layer info from prev state */
 	c_state->privacy_layer_updated = false;
+
+	/* Increment refcount so each state owns its reference */
+	if (c_state->reproj_sparse_grid.buf)
+		drm_gem_object_get(c_state->reproj_sparse_grid.buf);
+	if (c_state->reproj_radial_dis_grid.buf)
+		drm_gem_object_get(c_state->reproj_radial_dis_grid.buf);
+	if (c_state->reproj_display_gamma.buf)
+		drm_gem_object_get(c_state->reproj_display_gamma.buf);
+	if (c_state->reproj_gcx_session_config.buf)
+		drm_gem_object_get(c_state->reproj_gcx_session_config.buf);
+	if (c_state->reproj_gcx_session_config_data.buf)
+		drm_gem_object_get(c_state->reproj_gcx_session_config_data.buf);
 
 	sde_wb_connector_reset_reproj_state(c_state);
 
