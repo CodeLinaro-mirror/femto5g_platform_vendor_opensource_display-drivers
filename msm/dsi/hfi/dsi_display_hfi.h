@@ -60,12 +60,11 @@ struct dsi_rt_custom_dcs_cmd_entry {
  * @rt_custom_dcs_cmd_sde_running:    Current write position within the reserved SDE
  *                                    space; advances as runtime custom DCS commands
  *                                    are captured.
- * @rt_custom_dcs_cmd_hfi_base:       Fixed byte offset in the HFI shared buffer
+ * @rt_custom_dcs_cmd_hfi_base:       Byte offset in the HFI shared buffer
  *                                    (shared_addr_map) where the runtime custom DCS
- *                                    command metadata reserved region begins.
- * @rt_custom_dcs_cmd_hfi_running:    Current write position in HFI shared buffer for
- *                                    runtime custom DCS command metadata; advances as
- *                                    commands are captured.
+ *                                    command metadata region begins; set once after
+ *                                    DT commands are packed and used as a lower-bound
+ *                                    marker to validate captured offsets.
  * @rt_custom_dcs_cmd_map:            Fixed-size array of dsi_rt_custom_dcs_cmd_entry,
  *                                    one entry per standard command type
  *                                    (DSI_CMD_SET_MAX entries), indexed by
@@ -73,7 +72,8 @@ struct dsi_rt_custom_dcs_cmd_entry {
  * @rt_dcs_cmd_lock:                  Mutex protecting all runtime custom DCS
  *                                    command shared state:
  *                                    rt_custom_dcs_cmd_sde_base/running,
- *                                    rt_custom_dcs_cmd_hfi_base/running, and
+ *                                    rt_custom_dcs_cmd_hfi_base,
+ *                                    running_hfi_offset, and
  *                                    rt_custom_dcs_cmd_map.
  */
 struct dsi_display_hfi {
@@ -98,7 +98,6 @@ struct dsi_display_hfi {
 	u32 rt_custom_dcs_cmd_sde_base;
 	u32 rt_custom_dcs_cmd_sde_running;
 	u32 rt_custom_dcs_cmd_hfi_base;
-	u32 rt_custom_dcs_cmd_hfi_running;
 	struct dsi_rt_custom_dcs_cmd_entry rt_custom_dcs_cmd_map[DSI_CMD_SET_MAX];
 	struct mutex rt_dcs_cmd_lock;
 };

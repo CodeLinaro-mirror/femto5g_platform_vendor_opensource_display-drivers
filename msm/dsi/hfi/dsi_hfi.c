@@ -26,8 +26,6 @@
 
 #define DSI_HFI_MIN_MAPPED_ADDR_SIZE                  (PAGE_SIZE * 4)
 #define DSI_HFI_MAX_MAPPED_ADDR_SIZE                  (PAGE_SIZE * 64)
-/* Reserved space in HFI shared buffer for runtime custom dcs commands metadata */
-#define DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE  (PAGE_SIZE * 1)
 #define MAX_TIMING_PER_PACKET  32
 
 static int dsi_display_hfi_power_supplies(struct dsi_display *display,
@@ -987,17 +985,12 @@ static int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 
 	hfi_map_size = dsi_hfi->shared_addr_map->size;
 
-	/*
-	 * Ensure DT DCS command metadata does not overflow into the reserved space
-	 * for runtime custom DCS command metadata
-	 */
+	/* Ensure DT DCS command metadata does not overflow the HFI shared buffer */
 	if (dsi_hfi->running_hfi_offset + (sizeof(struct dsi_hfi_panel_cmd_info)
-			* cmd_set->count) >
-			hfi_map_size - DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE) {
+			* cmd_set->count) > hfi_map_size) {
 		DSI_ERR("over HFI mapped buffer size: needed=%zu, available=%zu\n",
 			sizeof(struct dsi_hfi_panel_cmd_info) * cmd_set->count,
-			(hfi_map_size - DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE -
-			dsi_hfi->running_hfi_offset));
+			hfi_map_size - dsi_hfi->running_hfi_offset);
 		return -EINVAL;
 	}
 
@@ -1470,11 +1463,10 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
 			  SDE_EVTLOG_FUNC_CASE2);
 	}
 
-	/* Check the reserved HFI space has enough room for per-command metadata */
+	/* Check the remaining HFI space has enough room for per-command metadata */
 	hfi_needed = sizeof(struct dsi_hfi_panel_cmd_info) * packet_count;
-	hfi_remaining = DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE -
-			(dsi_hfi->rt_custom_dcs_cmd_hfi_running -
-			 dsi_hfi->rt_custom_dcs_cmd_hfi_base);
+	hfi_remaining = dsi_hfi->shared_addr_map->size -
+			dsi_hfi->running_hfi_offset;
 	if (hfi_needed > hfi_remaining) {
 		DSI_ERR("HFI reserved space full: need %u bytes, have %zu\n",
 			hfi_needed, hfi_remaining);
@@ -1509,19 +1501,19 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
 	 * new (unwritten) location instead of the previous successful capture.
 	 */
 	cached_sde_running = dsi_hfi->rt_custom_dcs_cmd_sde_running;
-	cached_hfi_running = dsi_hfi->rt_custom_dcs_cmd_hfi_running;
+	cached_hfi_running = dsi_hfi->running_hfi_offset;
 	saved_index_entry  = *cmd_entry;
 
 	/* Record the start offsets for this command type before writing */
 	cmd_entry->sde_offset = dsi_hfi->rt_custom_dcs_cmd_sde_running;
-	cmd_entry->hfi_meta_offset = dsi_hfi->rt_custom_dcs_cmd_hfi_running;
+	cmd_entry->hfi_meta_offset = dsi_hfi->running_hfi_offset;
 	cmd_entry->count = packet_count;
 
 	/* Get write pointers into SDE buffer and HFI shared buffer */
 	sde_vaddr = (u8 *)display->vaddr + dsi_hfi->rt_custom_dcs_cmd_sde_running;
 	cmd_info  = (struct dsi_hfi_panel_cmd_info *)
 		    ((u8 *)dsi_hfi->shared_addr_map->local_addr +
-		     dsi_hfi->rt_custom_dcs_cmd_hfi_running);
+		     dsi_hfi->running_hfi_offset);
 
 	for (i = 0; i < packet_count; i++) {
 		size_of_indv_cmd = 0;
@@ -1538,7 +1530,7 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
 			DSI_ERR("Failed to packetize DCS cmd %d rc=%d\n", i, rc);
 			SDE_EVT32(cmd_type, i, rc, SDE_EVTLOG_FUNC_CASE3);
 			dsi_hfi->rt_custom_dcs_cmd_sde_running = cached_sde_running;
-			dsi_hfi->rt_custom_dcs_cmd_hfi_running = cached_hfi_running;
+			dsi_hfi->running_hfi_offset = cached_hfi_running;
 			*cmd_entry = saved_index_entry;
 			goto unlock_and_destroy_cmds;
 		}
@@ -1557,8 +1549,7 @@ int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
 
 		/* Advance HFI metadata write pointer */
 		cmd_info++;
-		dsi_hfi->rt_custom_dcs_cmd_hfi_running +=
-			sizeof(struct dsi_hfi_panel_cmd_info);
+		dsi_hfi->running_hfi_offset += sizeof(struct dsi_hfi_panel_cmd_info);
 	}
 
 	/* Flush SDE buffer so DCP can see the newly captured command bytes */
@@ -1660,13 +1651,11 @@ int dsi_hfi_send_dcs_cmd_set_replace_cmd(struct dsi_display *display, bool resp_
 		if (dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset <
 				dsi_hfi->rt_custom_dcs_cmd_hfi_base ||
 		    dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset >=
-				dsi_hfi->rt_custom_dcs_cmd_hfi_base +
-				DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE) {
+				dsi_hfi->shared_addr_map->size) {
 			DSI_ERR("cmd_t %d: hfi_off 0x%x outside rt DCS HFI region [0x%x, 0x%x)\n",
 				i, dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset,
 				dsi_hfi->rt_custom_dcs_cmd_hfi_base,
-				(u32)(dsi_hfi->rt_custom_dcs_cmd_hfi_base +
-				DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE));
+				(u32)dsi_hfi->shared_addr_map->size);
 			rc = -EINVAL;
 			goto unlock_and_cleanup;
 		}
@@ -2368,25 +2357,21 @@ error_append:
  * dsi_hfi_calculate_required_memory() - calculate the required memory
  * @panel: handle to dsi panel structure
  *
- * The HFI shared buffer must be large enough to hold both DT defined DCS command metadata
- * and the runtime custom DCS command metadata.
+ * The HFI shared buffer must be large enough to hold DT defined DCS command metadata.
+ * Runtime custom DCS command metadata uses whatever space remains after DT commands.
  *
  * Return: the required memory
  */
 static inline size_t dsi_hfi_calculate_required_memory(struct dsi_panel *panel)
 {
 	size_t mem_size = 0;
-	const size_t min_size = DSI_HFI_MIN_MAPPED_ADDR_SIZE +
-				DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE;
-	const size_t max_size = DSI_HFI_MAX_MAPPED_ADDR_SIZE +
-				DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE;
 
 	mem_size = (size_t)PAGE_SIZE * (size_t)panel->shared_cmd_buf_page_size;
 
-	if (mem_size < min_size)
-		mem_size = min_size;
-	else if (mem_size > max_size)
-		mem_size = max_size;
+	if (mem_size < DSI_HFI_MIN_MAPPED_ADDR_SIZE)
+		mem_size = DSI_HFI_MIN_MAPPED_ADDR_SIZE;
+	else if (mem_size > DSI_HFI_MAX_MAPPED_ADDR_SIZE)
+		mem_size = DSI_HFI_MAX_MAPPED_ADDR_SIZE;
 
 	DSI_DEBUG("calculated HFI memory requirement: %zu bytes\n", mem_size);
 
@@ -2529,10 +2514,7 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 	mutex_lock(&display_hfi->rt_dcs_cmd_lock);
 	display_hfi->rt_custom_dcs_cmd_sde_base    = DSI_TX_CMD_BUF_DT_CMD_SIZE;
 	display_hfi->rt_custom_dcs_cmd_sde_running = DSI_TX_CMD_BUF_DT_CMD_SIZE;
-	display_hfi->rt_custom_dcs_cmd_hfi_base    = addr_map->size -
-						     DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE;
-	display_hfi->rt_custom_dcs_cmd_hfi_running = addr_map->size -
-						     DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE;
+	display_hfi->rt_custom_dcs_cmd_hfi_base = display_hfi->running_hfi_offset;
 
 	/*
 	 * Reset the index array so stale entries from a previous panel init
