@@ -44,16 +44,45 @@ int virtio_hab_send_and_recv_timeout_ext(		uint32_t hab_socket,
 		struct mutex *phab_lock,
 		void *req, uint32_t req_size, void *resp, uint32_t resp_size);
 
-static char *virtio_cmd_type(uint32_t cmd);
-
 
 #include "virtgpu_vq_test.c"
 #endif
+
+static char *virtio_cmd_type(uint32_t cmd);
 
 struct cmd_type {
 	uint32_t cmd;
 	char *cmd_name;
 };
+
+
+static int virtio_hab_remove_wrong_msg(uint32_t hab_socket, uint32_t size)
+{
+	int rc = 0;
+	uint32_t recv_size = size;
+
+	void *resp = kzalloc(size, GFP_KERNEL);
+	if ( !resp) {
+		VIRTGPU_VQ_ERR("memory alloc failed resp with size %d\n", size);
+		return -ENOMEM;
+	}
+	rc = habmm_socket_recv(hab_socket,
+		resp,
+		&recv_size,
+		(uint32_t)HAB_NO_TIMEOUT_VAL,
+		HABMM_SOCKET_RECV_FLAGS_NON_BLOCKING);
+	if (rc) {
+		VIRTGPU_VQ_ERR("Remove the wrong msg failed: %d\n", rc);
+	} else {
+		struct virtio_gpu_ctrl_hdr *hdr = (struct virtio_gpu_ctrl_hdr*)resp;
+		VIRTGPU_VQ_INFO("Remove the wrong msg size %u type %s\n", recv_size,
+				virtio_cmd_type(hdr->type));
+	}
+
+	kfree(resp);
+
+	return rc;
+}
 
 //TODO chck the usage of resp size
 #ifdef UNIT_TEST
@@ -70,7 +99,8 @@ static int virtio_hab_send_and_recv(
 		bool lock_flag)
 {
 	int rc = 0;
-	unsigned long delay = jiffies + (HZ / 4);
+	unsigned long offset = (HZ / 4);
+	unsigned long delay = jiffies + offset;
 	uint32_t size = resp_size;
 	uint32_t retry_times = 0;
 
@@ -100,16 +130,22 @@ retry_send_packet:
 retry_recv_packet:
 	do {
 		size = resp_size;
+
 		/* TODO: Need handle exit hab_receive during deinit */
 		rc = habmm_socket_recv(hab_socket,
 			resp,
 			&size,
-			(uint32_t)HAB_NO_TIMEOUT_VAL,
-			HABMM_SOCKET_RECV_FLAGS_NON_BLOCKING);
+			4, // as timeout is msecs_to_jiffies(timeout)
+			HABMM_SOCKET_RECV_FLAGS_TIMEOUT);
 		if (rc) {
 			if (-ENODEV == rc)
 				VIRTGPU_VQ_ERR("channel broken - no device");
-			else if (-EINTR == rc) {
+			else if ( (-EOVERFLOW == rc) && (size > resp_size)  ) {
+				VIRTGPU_VQ_ERR("Wrong message from hab, size %d is "
+					"too big for required %d", size, req_size);
+				virtio_hab_remove_wrong_msg(hab_socket, size);
+				goto retry_recv_packet;
+			} else if (-EINTR == rc) {
 				/*
 				 * system is closed or suspend a interrupted
 				 * system call is happening on hab channel.
@@ -120,20 +156,30 @@ retry_recv_packet:
 			}
 		}
 	} while ((time_before(jiffies, delay)) &&
-			(-EAGAIN == rc) && (size == 0));
+			(-EAGAIN == rc || -ETIMEDOUT == rc) && (size == 0));
 
 	if (rc) {
-		if ((rc == -EAGAIN) && (retry_times < MAX_SEND_RECV_PACKET_RETRY)) {
+		if ((rc == -EAGAIN || -ETIMEDOUT == rc ) &&
+			(retry_times < MAX_SEND_RECV_PACKET_RETRY)) {
 			retry_times++;
 			VIRTGPU_VQ_WARN("recv packet retry %d", retry_times);
+			delay = jiffies + offset;
 			goto retry_recv_packet;
 		}
 		rc = -1;
 		goto end;
 	}
-	if (resp_size != size)
+	if (resp_size != size) {
 		VIRTGPU_VQ_ERR("something wrong in the order of req %d and resp %d\n",
 				size, resp_size);
+		if (size >= sizeof(struct virtio_gpu_ctrl_hdr) ) {
+			struct virtio_gpu_ctrl_hdr *hdr =
+				(struct virtio_gpu_ctrl_hdr *)resp;
+			VIRTGPU_VQ_ERR("recv and resp type %s(0x%x)\n",
+				virtio_cmd_type(hdr->type), hdr->type);
+		}
+	}
+
 end:
 
 	if (SPIN_LOCK_CHANNEL == lock_flag)
@@ -271,6 +317,13 @@ static char *virtio_cmd_type(uint32_t cmd)
 		{VIRTIO_GPU_CMD_GET_PLANE_HW_ATTRIBUTES,
 			"VIRTIO_GPU_CMD_GET_PLANE_HW_ATTRIBUTES"},
 
+		{VIRTIO_GPU_CMD_ENABLE_VIRQ,
+			"VIRTIO_GPU_CMD_ENABLE_VIRQ"},
+		{VIRTIO_GPU_CMD_DISABLE_VIRQ,
+			"VIRTIO_GPU_CMD_DISABLE_VIRQ"},
+		{VIRTIO_GPU_CMD_SET_POWER,
+			"VIRTIO_GPU_CMD_SET_POWER"},
+
 		{VIRTIO_GPU_RESP_OK_NODATA,
 			"VIRTIO_GPU_RESP_OK_NODATA"},
 		{VIRTIO_GPU_RESP_OK_DISPLAY_INFO,
@@ -346,8 +399,10 @@ static char *virtio_cmd_type(uint32_t cmd)
 		}
 	}
 
-	if (!cmd_name)
+	if (!cmd_name) {
+		VIRTGPU_VQ_ERR("cmd 0x%x is not found\n", cmd);
 		cmd_name = "UNKNOWN";
+	}
 
 	return cmd_name;
 }
@@ -1067,7 +1122,7 @@ static void virtio_get_device_info(
 	VIRTGPU_VQ_RSP_DBG("device_version: %d\n", kms->device_info.device_version);
 }
 
-void virio_get_scanout_numbers(struct virtio_kms *kms,
+void virtio_get_scanout_numbers(struct virtio_kms *kms,
 		struct virtio_gpu_resp_display_info *resp)
 {
 	int i;
@@ -1122,7 +1177,7 @@ int virtio_gpu_cmd_get_display_info(struct virtio_kms *kms)
 	VIRTGPU_VQ_RSP_DBG("resp VIRTIO_GPU_CMD_GET_DISPLAY_INFO (%s)\n",
 			virtio_cmd_type(le32_to_cpu(resp->hdr.type)));
 
-	virio_get_scanout_numbers(kms, resp);
+	virtio_get_scanout_numbers(kms, resp);
 error:
 	if (cmd_p)
 		kfree(cmd_p);
