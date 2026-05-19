@@ -2527,6 +2527,7 @@ static void virtio_kms_register_event(struct sde_kms *sde_kms)
 
 	struct msm_hyp_kms *hyp_kms = sde_kms->hyp_kms;
 	struct virtio_kms *kms = to_virtio_kms(hyp_kms);
+	struct virtio_kms_output *output;
 
 	if (!kms) {
 		VIRTIO_KMS_ERR("Invalid virtio_kms\n");
@@ -2534,6 +2535,10 @@ static void virtio_kms_register_event(struct sde_kms *sde_kms)
 	}
 
 	for (scanout = 0; scanout < kms->num_scanouts; scanout++) {
+		output = &kms->outputs[scanout];
+		if (output->hw_assign.dpu_id != DPUID(sde_kms))
+			continue;
+
 		ret = virtio_gpu_cmd_event_control(kms, scanout, VIRTIO_HPD, true);
 		if (ret == 0)
 			kms->outputs[scanout].hpd_enabled = true;
