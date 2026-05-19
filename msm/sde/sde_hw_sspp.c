@@ -228,11 +228,15 @@ static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 		} else if (index == SDE_SSPP_RECT_0) {
 			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
 					BIT(2) | BIT(0),
-					(enable ? BIT(0) : 0) | ((mode == SDE_SSPP_MULTIRECT_TIME_MX) ? BIT(2) : 0));
+					(enable ? BIT(0) : 0) |
+					(enable && (mode == SDE_SSPP_MULTIRECT_TIME_MX) ?
+					BIT(2) : 0));
 		} else {
 			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
 					BIT(2) | BIT(1),
-					(enable ? BIT(1) : 0) | ((mode == SDE_SSPP_MULTIRECT_TIME_MX) ? BIT(2) : 0));
+					(enable ? BIT(1) : 0) |
+					(enable && (mode == SDE_SSPP_MULTIRECT_TIME_MX) ?
+					BIT(2) : 0));
 		}
 	} else {
 		if (index == SDE_SSPP_RECT_SOLO) {
