@@ -902,6 +902,37 @@
 #define HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO              0x00040040
 
 /*
+ * HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS - Provides per-mode esync timing capabilities for VHM panel.
+ *                                  This property is sent to DCP as part of
+ *                                  HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS command packet payload.
+ *                                  Unlike HFI_PROPERTY_PANEL_ESYNC_CAPS which provides panel-level
+ *                                  esync capabilities, this property provides mode-specific esync
+ *                                  timing parameters that may vary between different display modes.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS |
+ *                                  (version=0 << 20) | (dsize=5 << 24 )
+ *   (u32_value) payload[1..5]    : struct hfi_panel_esync_caps
+ */
+#define HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS                         0x00040041
+
+/*
+ * HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS - Provides per-mode qsync timing parameters
+ *                                         for panels supporting QSYNC/AVR. This property
+ *                                         specifies the qsync parameters for each timing mode,
+ *                                         allowing different modes to have different qsync
+ *                                         configurations. This property is sent to DCP as part of
+ *                                         HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS
+ *                                         command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS |
+ *                                  (version=0 << 20) | (dsize=2 << 24 )
+ *   (u32_value) payload[1..2]    : struct hfi_qsync_params
+ */
+#define HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS                       0x00040042
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF
