@@ -65,6 +65,8 @@ struct dp_hfi {
 	struct sde_edid_ctrl *edid_ctrl;
 	struct hfi_display_mode_extended_info mode_list[64]; /* Extended mode info */
 
+	bool hpd_events_register;
+
 	bool mode_valid;
 	unsigned long tx_cmd_buf_dva;
 	u32 tx_cmd_buf_fill_level;
