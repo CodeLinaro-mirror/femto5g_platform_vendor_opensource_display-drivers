@@ -177,6 +177,7 @@ struct dp_display_private {
 	bool aux_switch_ready;
 	struct dp_aux_bridge *aux_bridge;
 	struct dentry *root;
+	struct completion notification_comp;
 	struct completion attention_comp;
 
 	struct dp_hpd     *hpd;
@@ -942,6 +943,7 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp)
 	}
 
 	dp->aux->state |= DP_STATE_NOTIFICATION_SENT;
+	reinit_completion(&dp->notification_comp);
 
 	if (!dp->mst.mst_active) {
 		dp->dp_display.is_sst_connected = hpd;
@@ -964,6 +966,14 @@ static int dp_display_send_hpd_notification(struct dp_display_private *dp)
 		dp_display_state_add(DP_STATE_DISCONNECT_NOTIFIED);
 		dp_display_state_remove(DP_STATE_CONNECT_NOTIFIED);
 	}
+
+	if (hpd && dp->mst.mst_active)
+		goto skip;
+
+	// wait 4 seconds
+	if (!dp->parser->force_connect_mode &&
+			wait_for_completion_timeout(&dp->notification_comp, HZ * 4))
+		goto skip;
 
 skip:
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, hpd, ret);
@@ -1213,6 +1223,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 	int rc = -EINVAL;
 	unsigned long wait_timeout_ms;
 	unsigned long t;
+	u32 sim_mode = 0;
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
@@ -1228,8 +1239,9 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 	dp->dp_display.max_pclk_khz = min(dp->parser->max_pclk_khz,
 					dp->debug->max_pclk_khz);
 
+	dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch && !dp->parser->gpio_aux_switch
-			&& dp->aux_switch_node && dp->aux->switch_configure) {
+			&& dp->aux_switch_node && dp->aux->switch_configure && !sim_mode) {
 		rc = dp->aux->switch_configure(dp->aux, true, dp->hpd->orientation);
 		if (rc) {
 			mutex_unlock(&dp->session_lock);
@@ -1467,6 +1479,7 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 {
 	int rc = 0;
 	struct dp_display_private *dp;
+	u32 sim_mode = 0;
 
 	if (!dev) {
 		DP_ERR("invalid dev\n");
@@ -1499,8 +1512,10 @@ static int dp_display_usbpd_configure_cb(struct device *dev)
 		}
 	}
 
+	dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
-	    && !dp->parser->gpio_aux_switch && dp->aux_switch_node && dp->aux->switch_configure) {
+	    && !dp->parser->gpio_aux_switch && dp->aux_switch_node && dp->aux->switch_configure
+		&& !sim_mode) {
 		rc = dp_display_init_aux_switch(dp);
 		if (rc)
 			return rc;
@@ -1622,6 +1637,11 @@ static void dp_display_clean(struct dp_display_private *dp, bool skip_wait)
 		return;
 	}
 
+	if (!dp_display_state_is(DP_STATE_ENABLED)) {
+		dp_display_state_show("[not enabled]");
+		return;
+	}
+
 	if (dp_display_is_hdcp_enabled(dp) &&
 			status->hdcp_state != HDCP_STATE_INACTIVE) {
 		cancel_delayed_work_sync(&dp->hdcp_cb_work);
@@ -1675,6 +1695,7 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 		 */
 		dp->aux->abort(dp->aux, false);
 		dp->ctrl->abort(dp->ctrl, false);
+		dp_display_state_remove(DP_STATE_ABORTED);
 
 		dp_display_send_force_connect_event(dp);
 
@@ -1745,6 +1766,7 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 {
 	int rc = 0;
 	struct dp_display_private *dp;
+	u32 sim_mode = 0;
 
 	if (!dev) {
 		DP_ERR("invalid dev\n");
@@ -1776,8 +1798,10 @@ static int dp_display_usbpd_disconnect_cb(struct device *dev)
 	dp->ctrl->abort(dp->ctrl, true);
 	dp->aux->abort(dp->aux, true);
 
+	dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch
-	    && !dp->parser->gpio_aux_switch && dp->aux->switch_configure)
+	    && !dp->parser->gpio_aux_switch && dp->aux->switch_configure
+		&& !sim_mode)
 		dp->aux->switch_configure(dp->aux, false, ORIENTATION_NONE);
 
 	dp_display_disconnect_sync(dp);
@@ -2154,7 +2178,8 @@ static void dp_display_connect_work(struct work_struct *work)
 	if (!rc && dp->panel->video_test)
 		dp->link->send_test_response(dp->link);
 
-	if (reset_connector)
+	DP_INFO("DP process hpd high, rc: %d\n", rc);
+	if (!rc && reset_connector)
 		sde_connector_helper_mode_change_commit(reset_connector);
 }
 
@@ -2841,6 +2866,7 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 
 	dp->aux->state &= ~DP_STATE_CTRL_POWERED_OFF;
 	dp->aux->state |= DP_STATE_CTRL_POWERED_ON;
+	complete_all(&dp->notification_comp);
 	DP_DEBUG("display post enable complete. state: 0x%x\n", dp->state);
 end:
 	if (dp->parser->force_connect_mode)
@@ -2879,6 +2905,11 @@ static int dp_display_pre_disable(struct dp_display *dp_display, void *panel)
 
 	if (!dp_display_state_is(DP_STATE_ENABLED)) {
 		dp_display_state_show("[not enabled]");
+		goto end;
+	}
+
+	if (!dp_display_state_is(DP_STATE_READY)) {
+		dp_display_state_show("[not ready]");
 		goto end;
 	}
 
@@ -3006,6 +3037,10 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_ENTRY, dp->state);
 	mutex_lock(&dp->session_lock);
 
+	if (!dp_display_state_is(DP_STATE_ENABLED)) {
+		dp_display_state_show("[not enabled]");
+		goto end;
+	}
 	/*
 	 * Check if the power off sequence was triggered
 	 * by a source initialated action like framework
@@ -3019,9 +3054,16 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	 * If connector is in MST mode, skip
 	 * powering down host as aux needs to be kept
 	 * alive to handle hot-plug sideband message.
+	 *
+	 * Turn off the clocks when it is called from
+	 * suspend path
 	 */
-	if (dp->active_stream_cnt || dp->mst.mst_active)
+	if (dp->active_stream_cnt ||
+			(dp->mst.mst_active &&
+			!dp_display_state_is(DP_STATE_SUSPENDED))) {
+		DP_INFO("DP-MST setup & is not suspended\n");
 		goto end;
+	}
 
 	dp->link->psm_config(dp->link, &dp->panel->link_info, true);
 	dp->debug->psm_enabled = true;
@@ -3043,6 +3085,7 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	if (dp->parser->force_connect_mode)
 		dp_display_send_force_connect_event(dp);
 
+	complete_all(&dp->notification_comp);
 	/* log this as it results from user action of cable dis-connection */
 	DP_INFO("[OK]\n");
 end:
@@ -3889,6 +3932,7 @@ static int dp_display_probe(struct platform_device *pdev)
 		goto bail;
 	}
 
+	init_completion(&dp->notification_comp);
 	init_completion(&dp->attention_comp);
 
 	dp->pdev = pdev;
@@ -4061,9 +4105,28 @@ static int dp_pm_prepare(struct device *dev)
 	}
 
 	dp_display_state_add(DP_STATE_SUSPENDED);
+
+	if ((dp->hpd->type == DP_HPD_LPHW) && dp->hpd->unregister_hpd)
+		dp->hpd->unregister_hpd(dp->hpd);
+
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 
+	if (dp->parser && dp->parser->force_connect_mode) {
+		u32 sim_mode = 0;
+		mutex_lock(&dp->session_lock);
+		dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
+		DP_INFO("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		if (sim_mode && dp->hpd->hpd_high) {
+			DP_INFO("Suspend to sim mode when HPD is high\n");
+		}
+
+		// Always assume we will resume with HPD low
+		dp->hpd->hpd_high = false;
+		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
+		DP_INFO("DP Force HPD to be low and switch to sim mode when DP suspend.\n");
+		mutex_unlock(&dp->session_lock);
+	}
 	return 0;
 }
 
@@ -4088,6 +4151,31 @@ static void dp_pm_complete(struct device *dev)
 			!dp_display_state_is(DP_STATE_ENABLED)) {
 		dp->aux->abort(dp->aux, false);
 		dp->ctrl->abort(dp->ctrl, false);
+	}
+
+	if ((dp->hpd->type == DP_HPD_LPHW) && dp->hpd->register_hpd)
+		dp->hpd->register_hpd(dp->hpd);
+
+	if (dp->parser && dp->parser->force_connect_mode) {
+		u32 sim_mode = 0;
+		dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
+		DP_INFO("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
+		if (sim_mode && dp->hpd->hpd_high) {
+			/*
+			 * We suspend at sim mode, and resume with HPD high,
+			 * restart the session with normal mode.
+			 */
+			DP_INFO("HPD is high, leaving sim mode from 0x%X\n", sim_mode);
+			// Clear sim mode
+			dp_sim_set_sim_mode(dp->aux_bridge, 0);
+			mutex_unlock(&dp->session_lock);
+
+			// Trigger a disconnect->connect transition
+			dp_display_disconnect_sync(dp);
+			mutex_lock(&dp->session_lock);
+			dp_display_host_init(dp);
+			queue_work(dp->wq, &dp->connect_work);
+		}
 	}
 
 	dp_display_state_remove(DP_STATE_SUSPENDED);

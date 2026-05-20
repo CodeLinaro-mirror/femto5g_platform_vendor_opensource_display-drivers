@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2021-2022 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  * Copyright (c) 2019-2021, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
@@ -316,6 +316,20 @@ static void dp_sim_host_hpd_irq(void *host_dev)
 
 	if (sim_dev->hpd_cb)
 		sim_dev->hpd_cb(sim_dev->host_dev, true, true);
+}
+
+int dp_sim_get_sim_mode(struct dp_aux_bridge *bridge, u32 *sim_mode)
+{
+	struct dp_sim_device *sim_dev;
+
+	if (!bridge || !(bridge->flag & DP_SIM_BRIDGE_PRIV_FLAG))
+		return -EINVAL;
+
+	sim_dev = to_dp_sim_dev(bridge);
+
+	*sim_mode = sim_dev->sim_mode;
+
+	return 0;
 }
 
 int dp_sim_set_sim_mode(struct dp_aux_bridge *bridge, u32 sim_mode)
