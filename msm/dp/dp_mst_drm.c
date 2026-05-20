@@ -141,6 +141,13 @@ struct dp_mst_private {
 	struct mutex edid_lock;
 	enum dp_drv_state state;
 	bool mst_session_state;
+	bool first_event;
+	struct workqueue_struct *wq;
+};
+
+struct dp_mst_hpd_work {
+	struct work_struct base;
+	struct drm_connector *conn[MAX_DP_MST_DRM_BRIDGES];
 };
 
 struct dp_mst_encoder_info_cache {
@@ -931,6 +938,8 @@ dp_mst_connector_detect(struct drm_connector *connector,
 
 	status = mst->mst_fw_cbs->detect_port_ctx(connector,
 			ctx, &mst->mst_mgr, c_conn->mst_port);
+	if (dp_display->force_connect_mode)
+		status = connector_status_connected;
 
 	DP_MST_INFO("conn:%d status:%d\n", connector->base.id, status);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, connector->base.id, status);
@@ -1386,6 +1395,91 @@ static int dp_mst_connector_post_init(struct drm_connector *connector,
 	return 0;
 }
 
+static void dp_mst_hpd_commit_work(struct work_struct *w)
+{
+	struct dp_mst_hpd_work *work = container_of(w,
+			struct dp_mst_hpd_work, base);
+	int i;
+
+	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
+		if (work->conn[i]) {
+			sde_connector_helper_mode_change_commit(work->conn[i]);
+			drm_connector_put(work->conn[i]);
+		}
+	}
+
+	kfree(work);
+}
+
+static void dp_mst_get_active_connectors(struct dp_mst_private *mst,
+		struct drm_connector *active_conn[MAX_DP_MST_DRM_BRIDGES])
+{
+	struct dp_mst_bridge_state *bridge_state;
+	struct drm_connector *conn;
+	struct sde_connector *c_conn;
+	enum drm_connector_status status;
+	int i;
+
+	drm_modeset_lock_all(mst->dp_display->drm_dev);
+	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
+		bridge_state = to_dp_mst_bridge_state(&mst->mst_bridge[i]);
+		conn = bridge_state->connector;
+		active_conn[i] = NULL;
+		if (conn) {
+			c_conn = to_sde_connector(conn);
+			status = mst->mst_fw_cbs->detect_port_ctx(conn,
+					mst->dp_display->drm_dev->mode_config.acquire_ctx,
+					&mst->mst_mgr,
+					c_conn->mst_port);
+			if (status != connector_status_connected) {
+				active_conn[i] = bridge_state->connector;
+				drm_connector_get(bridge_state->connector);
+			}
+		}
+	}
+	drm_modeset_unlock_all(mst->dp_display->drm_dev);
+}
+
+static void dp_mst_update_active_connectors(struct dp_mst_private *mst,
+		struct drm_connector *active_conn[MAX_DP_MST_DRM_BRIDGES])
+{
+	struct dp_mst_hpd_work *work;
+	struct drm_connector *conn;
+	struct sde_connector *c_conn;
+	enum drm_connector_status status;
+	int i;
+
+	work = kzalloc(sizeof(*work), GFP_KERNEL);
+	if (!work) {
+		for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++)
+			if (active_conn[i])
+				drm_connector_put(active_conn[i]);
+		return;
+	}
+
+	drm_modeset_lock_all(mst->dp_display->drm_dev);
+	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
+		conn = active_conn[i];
+		if (!conn)
+			continue;
+
+		c_conn = to_sde_connector(conn);
+		status = mst->mst_fw_cbs->detect_port_ctx(conn,
+				mst->dp_display->drm_dev->mode_config.acquire_ctx,
+				&mst->mst_mgr,
+				c_conn->mst_port);
+
+		if (status == connector_status_connected)
+			work->conn[i] = conn;
+		else
+			drm_connector_put(conn);
+	}
+	drm_modeset_unlock_all(mst->dp_display->drm_dev);
+
+	INIT_WORK(&work->base, dp_mst_hpd_commit_work);
+	queue_work(mst->wq, &work->base);
+}
+
 /* DRM MST callbacks */
 
 static struct drm_connector *
@@ -1739,8 +1833,11 @@ static void dp_mst_register_fixed_connector(struct drm_connector *connector)
 	/* skip connector registered for fixed topology ports */
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
 		if (dp_mst->mst_bridge[i].fixed_connector == connector) {
-			DP_MST_DEBUG("found fixed connector %d\n",
-					DRMID(connector));
+			DP_MST_DEBUG("found fixed connector %d  crtc %d\n",
+					DRMID(connector), DRMID(connector->state->crtc));
+			if (connector->state->crtc)
+				sde_connector_helper_mode_change_commit(
+						connector);
 			return;
 		}
 	}
@@ -1756,6 +1853,11 @@ static void dp_mst_destroy_fixed_connector(struct drm_connector *connector)
 	int i;
 
 	DP_MST_DEBUG("enter\n");
+
+	if (dp_mst->dp_display->force_connect_mode) {
+		DP_MST_DEBUG("skipped for force connect mode\n");
+		return;
+	}
 
 	/* skip connector destroy for fixed topology ports */
 	for (i = 0; i < MAX_DP_MST_DRM_BRIDGES; i++) {
@@ -1902,7 +2004,12 @@ static void dp_mst_display_hpd(void *dp_display, bool hpd_status)
 	if (!hpd_status)
 		mst->mst_session_state = hpd_status;
 
-	dp_mst_hpd_event_notify(mst, hpd_status);
+	if (mst->first_event || !dp->force_connect_mode) {
+		dp_mst_hpd_event_notify(mst, hpd_status);
+		mst->first_event = false;
+	}
+
+	DP_MST_INFO("mst display hpd:%d\n", hpd_status);
 }
 
 static void dp_mst_display_hpd_irq(void *dp_display)
@@ -1910,6 +2017,7 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 	int rc;
 	struct dp_display *dp = dp_display;
 	struct dp_mst_private *mst = dp->dp_mst_prv_info;
+	struct drm_connector *active_conn[MAX_DP_MST_DRM_BRIDGES];
 	u8 esi[14];
 	unsigned int esi_res = DP_SINK_COUNT_ESI + 1;
 	bool handled;
@@ -1929,6 +2037,9 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 	DP_MST_DEBUG("mst irq: esi1[0x%x] esi2[0x%x] esi3[%x]\n",
 			esi[1], esi[2], esi[3]);
 
+	if (esi[1] & DP_UP_REQ_MSG_RDY)
+		dp_mst_get_active_connectors(mst, active_conn);
+
 	rc = drm_dp_mst_hpd_irq(&mst->mst_mgr, esi, &handled);
 
 	/* ack the request */
@@ -1941,6 +2052,9 @@ static void dp_mst_display_hpd_irq(void *dp_display)
 		if (rc != 3)
 			DP_ERR("dpcd esi_res failed. rlen=%d\n", rc);
 	}
+
+	if (esi[1] & DP_UP_REQ_MSG_RDY)
+		dp_mst_update_active_connectors(mst, active_conn);
 
 	DP_MST_DEBUG("mst display hpd_irq handled:%d rc:%d\n", handled, rc);
 }
@@ -2041,6 +2155,7 @@ int dp_mst_init(struct dp_display *dp_display)
 	}
 
 	dp_mst.mst_initialized = true;
+	dp_mst.first_event = true;
 
 	/* create drm_bridges for cached mst encoders and clear cache */
 	for (i = 0; i < dp_mst_enc_cache.cnt; i++) {
@@ -2052,6 +2167,13 @@ int dp_mst_init(struct dp_display *dp_display)
 	/* choose fixed callback function if fixed topology is found */
 	if (!dp_display->mst_get_fixed_topology_port(dp_display, 0, NULL))
 		dp_mst.mst_mgr.cbs = &dp_mst_fixed_drm_cbs;
+
+	dp_mst.wq = create_singlethread_workqueue("dp_mst");
+	if (IS_ERR_OR_NULL(dp_mst.wq)) {
+		DP_ERR("dp drm mst failed creating wq\n");
+		ret = -EPERM;
+		goto error;
+	}
 
 	DP_MST_INFO("dp drm mst topology manager init completed\n");
 
@@ -2082,6 +2204,8 @@ void dp_mst_deinit(struct dp_display *dp_display)
 	drm_dp_mst_topology_mgr_destroy(&mst->mst_mgr);
 
 	dp_mst.mst_initialized = false;
+
+	destroy_workqueue(mst->wq);
 
 	mutex_destroy(&mst->mst_lock);
 	mutex_destroy(&mst->edid_lock);

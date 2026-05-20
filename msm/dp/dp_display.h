@@ -53,6 +53,7 @@ struct dp_display {
 	u32 max_mixer_count;
 	u32 max_dsc_count;
 	void *dp_ipc_log;
+	bool force_connect_mode;
 
 	int (*enable)(struct dp_display *dp_display, void *panel);
 	int (*post_enable)(struct dp_display *dp_display, void *panel);

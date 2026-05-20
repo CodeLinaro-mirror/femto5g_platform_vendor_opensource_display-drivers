@@ -1238,6 +1238,7 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp,
 
 	dp->dp_display.max_pclk_khz = min(dp->parser->max_pclk_khz,
 					dp->debug->max_pclk_khz);
+	dp->dp_display.force_connect_mode = dp->parser->force_connect_mode;
 
 	dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
 	if (!dp->debug->sim_mode && !dp->parser->no_aux_switch && !dp->parser->gpio_aux_switch
