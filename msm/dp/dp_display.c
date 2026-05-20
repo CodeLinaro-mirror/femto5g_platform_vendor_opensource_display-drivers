@@ -970,6 +970,45 @@ skip:
 	return ret;
 }
 
+static void dp_display_send_force_connect_event(struct dp_display_private *dp)
+{
+	struct drm_device *dev = NULL;
+	struct drm_connector *connector;
+	char name[HPD_STRING_SIZE];
+	char *envp[5];
+
+	connector = dp->dp_display.base_connector;
+
+	if (!connector) {
+		pr_err("DP connector not set\n");
+		return;
+	}
+
+	dev = connector->dev;
+
+	snprintf(name, HPD_STRING_SIZE, "name=%s", connector->name);
+
+	envp[0] = name;
+	envp[1] = dp->hpd->hpd_high ? "status=connected" : "status=disconnected";
+	if ((dp->aux->state & DP_STATE_TRAIN_1_SUCCEEDED) &&
+			(dp->aux->state & DP_STATE_TRAIN_2_SUCCEEDED))
+		envp[2] = "link=ready";
+	else if ((dp->aux->state & DP_STATE_TRAIN_1_FAILED) ||
+			(dp->aux->state & DP_STATE_TRAIN_2_FAILED))
+		envp[2] = "link=failed";
+	else if ((dp->aux->state & DP_STATE_TRAIN_1_STARTED) ||
+			(dp->aux->state & DP_STATE_TRAIN_2_STARTED))
+		envp[2] = "link=training";
+	else
+		envp[2] = "link=not_ready";
+	envp[3] = (dp->aux->state & DP_STATE_CTRL_POWERED_ON) ?
+			"stream=ON" : "stream=OFF";
+	envp[4] = NULL;
+	DP_INFO("[%s]:[%s] [%s] [%s]\n", name, envp[1], envp[2], envp[3]);
+
+	kobject_uevent_env(&dev->primary->kdev->kobj, KOBJ_CHANGE, envp);
+}
+
 static void dp_display_update_mst_state(struct dp_display_private *dp,
 					bool state)
 {
@@ -1263,7 +1302,9 @@ static int dp_display_process_hpd_high(struct dp_display_private *dp)
 	dp_display_mst_init(dp);
 
 	rc = dp->ctrl->on(dp->ctrl, dp->mst.mst_active,
-			dp->panel->fec_en, dp->panel->dsc_en, false);
+			dp->panel->fec_en, dp->panel->dsc_en,
+			dp->parser->force_connect_mode ?
+			LINK_TRAINING_MODE_FORCE : LINK_TRAINING_MODE_NORMAL);
 	if (rc) {
 		if (!dp->parser->force_connect_mode)
 			dp_display_state_remove(DP_STATE_CONNECTED);
@@ -1313,6 +1354,9 @@ end:
 		dp_display_send_hpd_notification(dp);
 
 skip_notify:
+	if (dp->parser->force_connect_mode)
+		dp_display_send_force_connect_event(dp);
+
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state,
 		wait_timeout_ms, rc);
 	return rc;
@@ -1623,7 +1667,23 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 		mutex_lock(&dp->session_lock);
 		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
 		mutex_unlock(&dp->session_lock);
+
+		/*
+		 * Get out of abort status, so that link training and
+		 * stream enabling can be performed for simulation mode.
+		 */
+		dp->aux->abort(dp->aux, false);
+		dp->ctrl->abort(dp->ctrl, false);
+
+		dp_display_send_force_connect_event(dp);
+
 		dp_display_process_hpd_high(dp);
+
+		/* If stream isn't running, started here */
+		if (!dp_display_state_is(DP_STATE_ENABLED) && dp->dp_display.base_connector)
+			sde_connector_helper_mode_change_commit(
+					dp->dp_display.base_connector);
+
 		SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 		return 0;
 	}
@@ -2082,6 +2142,8 @@ static void dp_display_connect_work(struct work_struct *work)
 		}
 		dp_display_process_mst_hpd_low(dp);
 		dp_sim_set_sim_mode(dp->aux_bridge, 0);
+		dp->aux->state = 0;
+		dp_display_send_force_connect_event(dp);
 	}
 
 	mutex_unlock(&dp->session_lock);
@@ -2605,12 +2667,17 @@ static int dp_display_prepare(struct dp_display *dp_display, void *panel)
 	 * and required things.
 	 */
 	rc = dp->ctrl->on(dp->ctrl, dp->mst.mst_active, dp_panel->fec_en,
-			dp_panel->dsc_en, true);
+			dp_panel->dsc_en,
+			dp->parser->force_connect_mode ?
+			LINK_TRAINING_MODE_NORMAL : LINK_TRAINING_MODE_SHALLOW);
 	if (rc)
 		goto end;
 
 end:
 	mutex_unlock(&dp->session_lock);
+
+	if (dp->parser->force_connect_mode)
+		dp_display_send_force_connect_event(dp);
 
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state, rc);
 	return rc;
@@ -2774,6 +2841,9 @@ static int dp_display_post_enable(struct dp_display *dp_display, void *panel)
 	dp->aux->state |= DP_STATE_CTRL_POWERED_ON;
 	DP_DEBUG("display post enable complete. state: 0x%x\n", dp->state);
 end:
+	if (dp->parser->force_connect_mode)
+		dp_display_send_force_connect_event(dp);
+
 	mutex_unlock(&dp->session_lock);
 	SDE_EVT32_EXTERNAL(SDE_EVTLOG_FUNC_EXIT, dp->state);
 	return 0;
@@ -2967,6 +3037,10 @@ static int dp_display_unprepare(struct dp_display *dp_display, void *panel)
 	if (dp_display->base_connector)
 		sde_encoder_set_bridge_enabled(dp_display->base_connector->encoder,
 				false);
+
+	if (dp->parser->force_connect_mode)
+		dp_display_send_force_connect_event(dp);
+
 	/* log this as it results from user action of cable dis-connection */
 	DP_INFO("[OK]\n");
 end:
