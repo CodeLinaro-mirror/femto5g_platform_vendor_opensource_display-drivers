@@ -998,6 +998,13 @@ static int dp_mst_connector_get_modes(struct drm_connector *connector,
 
 	mutex_unlock(&mst->edid_lock);
 
+	if (!c_conn->mst_port ||
+		!((struct drm_dp_mst_port *)c_conn->mst_port)->aux.ddc.algo) {
+		DP_MST_INFO("no i2c bus for conn:%d, skip edid\n",
+				connector->base.id);
+		goto end;
+	}
+
 	edid = mst->mst_fw_cbs->get_edid(connector,
 			&mst->mst_mgr, c_conn->mst_port);
 
