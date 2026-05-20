@@ -473,36 +473,6 @@ void sde_plane_set_revalidate(struct drm_plane *plane, bool enable)
 	psde->revalidate = enable;
 }
 
-int sde_plane_danger_signal_ctrl(struct drm_plane *plane, bool enable)
-{
-	struct sde_plane *psde;
-	int rc;
-
-	if (!plane) {
-		SDE_ERROR("invalid arguments\n");
-		return -EINVAL;
-	}
-
-	psde = to_sde_plane(plane);
-
-	if (!psde->is_rt_pipe)
-		goto end;
-
-	rc = pm_runtime_resume_and_get(plane->dev->dev);
-	if (rc < 0) {
-		SDE_ERROR("failed to enable power resource %d\n", rc);
-		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
-		return rc;
-	}
-
-	_sde_plane_set_qos_ctrl(plane, enable, SDE_PLANE_QOS_PANIC_CTRL);
-
-	pm_runtime_put_sync(plane->dev->dev);
-
-end:
-	return 0;
-}
-
 /**
  * _sde_plane_set_ot_limit - set OT limit for the given plane
  * @plane:		Pointer to drm plane
@@ -4649,6 +4619,11 @@ static void _sde_plane_setup_capabilities_blob(struct sde_plane *psde,
 		sde_kms_info_add_keyint(info, "demura_block",
 			catalog->demura_supported[psde->pipe][index]);
 
+	if (test_bit(SDE_FEATURE_QRTC, catalog->features) &&
+	    catalog->qrtc_supported[psde->pipe][index] != ~0x0)
+		sde_kms_info_add_keyint(info, "qrtc_block",
+			catalog->qrtc_supported[psde->pipe][index]);
+
 	if (psde->features & BIT(SDE_SSPP_SEC_UI_ALLOWED))
 		sde_kms_info_add_keyint(info, "sec_ui_allowed", 1);
 	if (psde->features & BIT(SDE_SSPP_BLOCK_SEC_UI))
@@ -4752,6 +4727,9 @@ static void _sde_plane_install_repro_properties(struct sde_plane *psde,
 		msm_property_install_volatile_enum(&psde->property_info, "layer_gamma",
 			0x0, 0, layer_gamma, ARRAY_SIZE(layer_gamma), 0,
 			PLANE_PROP_REPROJ_LAYER_GAMMA);
+
+		msm_property_install_volatile_range(&psde->property_info, "disparity_phase",
+			0x0, 0, U32_MAX, 0, PLANE_PROP_DISPARITY_PHASE);
 	}
 }
 
@@ -5880,6 +5858,36 @@ static ssize_t _sde_plane_danger_read(struct file *file,
 	return len;
 }
 
+static int sde_plane_danger_signal_ctrl(struct drm_plane *plane, bool enable)
+{
+	struct sde_plane *psde;
+	int rc;
+
+	if (!plane) {
+		SDE_ERROR("invalid arguments\n");
+		return -EINVAL;
+	}
+
+	psde = to_sde_plane(plane);
+
+	if (!psde->is_rt_pipe)
+		goto end;
+
+	rc = pm_runtime_resume_and_get(plane->dev->dev);
+	if (rc < 0) {
+		SDE_ERROR("failed to enable power resource %d\n", rc);
+		SDE_EVT32(rc, SDE_EVTLOG_ERROR);
+		return rc;
+	}
+
+	_sde_plane_set_qos_ctrl(plane, enable, SDE_PLANE_QOS_PANIC_CTRL);
+
+	pm_runtime_put_sync(plane->dev->dev);
+
+end:
+	return 0;
+}
+
 static void _sde_plane_set_danger_state(struct sde_kms *kms, bool enable)
 {
 	struct drm_plane *plane;
@@ -6307,4 +6315,3 @@ bool sde_plane_property_is_dirty(struct drm_plane_state *plane_state,
 	return msm_property_is_dirty(&psde->property_info,
 			&pstate->property_state, property_idx);
 }
-

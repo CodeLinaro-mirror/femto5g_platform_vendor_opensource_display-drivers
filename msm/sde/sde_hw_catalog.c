@@ -31,7 +31,7 @@
  * 64 based on software design. It should be increased if any of the
  * hardware block has more subblocks.
  */
-#define MAX_SDE_HW_BLK  64
+#define MAX_SDE_HW_BLK  128
 
 /* each entry will have register address and bit offset in that register */
 #define MAX_BIT_OFFSET 2
@@ -1857,8 +1857,8 @@ static int _sde_sspp_setup_vigs(struct device_node *np,
 		if (sde_cfg->true_inline_rot_rev > 0) {
 			set_bit(SDE_SSPP_TRUE_INLINE_ROT, &sspp->features);
 			sblk->in_rot_format_list = sde_cfg->inline_rot_formats;
-			sblk->in_rot_maxheight =
-					MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT;
+			sblk->in_rot_maxheight = sde_cfg->in_rot_maxheight ?
+				sde_cfg->in_rot_maxheight : MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT;
 		}
 
 		if (IS_SDE_INLINE_ROT_REV_200(sde_cfg->true_inline_rot_rev) ||
@@ -5599,6 +5599,8 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		dma_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		dma_list_size += ARRAY_SIZE(rgb_lossy_formats);
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		dma_list_size += ARRAY_SIZE(a10_y10_formats);
 
 	sde_cfg->dma_formats = kvcalloc(dma_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5615,6 +5617,9 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->dma_formats, dma_list_size,
 			index, rgb_lossy_formats, ARRAY_SIZE(rgb_lossy_formats));
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->dma_formats, dma_list_size,
+			index, a10_y10_formats, ARRAY_SIZE(a10_y10_formats));
 
 	/* ViG pipe input formats */
 	vig_list_size = ARRAY_SIZE(plane_formats_vig);
@@ -5626,6 +5631,8 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		vig_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		vig_list_size += ARRAY_SIZE(rgb_lossy_formats);
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		vig_list_size += ARRAY_SIZE(a10_y10_formats);
 
 	sde_cfg->vig_formats = kvcalloc(vig_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5650,6 +5657,9 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
 			index, rgb_lossy_formats, ARRAY_SIZE(rgb_lossy_formats));
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->vig_formats, vig_list_size,
+			index, a10_y10_formats, ARRAY_SIZE(a10_y10_formats));
 
 	/* Virtual ViG pipe input formats (all virt pipes use DMA formats) */
 	virt_vig_list_size = ARRAY_SIZE(plane_formats);
@@ -5657,6 +5667,8 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		virt_vig_list_size += ARRAY_SIZE(fp16_formats);
 	if (test_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features))
 		virt_vig_list_size += ARRAY_SIZE(rgb_lossy_formats);
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		virt_vig_list_size += ARRAY_SIZE(a10_y10_formats);
 
 	sde_cfg->virt_vig_formats = kvcalloc(virt_vig_list_size,
 		sizeof(struct sde_format_extended), GFP_KERNEL);
@@ -5675,6 +5687,10 @@ static int sde_hardware_get_pipe_format_caps(struct sde_mdss_cfg *sde_cfg,
 		index += sde_copy_formats(sde_cfg->virt_vig_formats,
 				virt_vig_list_size, index, rgb_lossy_formats,
 				ARRAY_SIZE(rgb_lossy_formats));
+	if (test_bit(SDE_FEATURE_A10_Y10, sde_cfg->features))
+		index += sde_copy_formats(sde_cfg->virt_vig_formats,
+				virt_vig_list_size, index, a10_y10_formats,
+				ARRAY_SIZE(a10_y10_formats));
 
 	if (test_bit(SDE_FEATURE_LSR, sde_cfg->features)) {
 		csc_list_size = ARRAY_SIZE(plane_csc_formats);
@@ -6108,6 +6124,7 @@ static void _sde_get_hw_caps_for_khaje(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	sde_cfg->sui_block_xin_mask = 0xC01;
 	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
 }
 
 static void _sde_get_hw_caps_for_lagoon(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
@@ -6124,17 +6141,6 @@ static void _sde_get_hw_caps_for_lagoon(struct sde_mdss_cfg *sde_cfg, uint32_t h
 }
 
 static void _sde_get_hw_caps_for_scuba(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
-{
-	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
-	sde_cfg->perf.min_prefill_lines = 24;
-	sde_cfg->vbif_qos_nlvl = 8;
-	sde_cfg->ts_prefill_rev = 2;
-	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
-	sde_cfg->sui_block_xin_mask = 0x1;
-	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
-}
-
-static void _sde_get_hw_caps_for_shikra(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 24;
@@ -6440,6 +6446,7 @@ static void _sde_get_hw_caps_for_x1e80100(struct sde_mdss_cfg *sde_cfg, uint32_t
 static void _sde_get_hw_caps_for_malabar(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
 	sde_cfg->perf.min_prefill_lines = 40;
 	sde_cfg->has_reduced_ob_max = true;
 	sde_cfg->vbif_qos_nlvl = 8;
@@ -6605,6 +6612,7 @@ static void _sde_get_hw_caps_for_tuna(struct sde_mdss_cfg *sde_cfg, uint32_t hw_
 	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
 	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
 	sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_4;
+	sde_cfg->uidle_cfg.fal10_override = true;
 	sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
 	sde_cfg->mdss_hw_block_size = 0x15c;
 	sde_cfg->max_bw_upvote_threshold_ns = DEFAULT_BW_UPVOTE_THRESHOLD_NS;
@@ -6654,6 +6662,7 @@ static void _sde_get_hw_caps_for_kera(struct sde_mdss_cfg *sde_cfg, uint32_t hw_
 	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
 	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
 	sde_cfg->uidle_cfg.uidle_rev = SDE_UIDLE_VERSION_1_0_4;
+	sde_cfg->uidle_cfg.fal10_override = true;
 	sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
 	sde_cfg->mdss_hw_block_size = 0x15c;
 	sde_cfg->max_bw_upvote_threshold_ns = DEFAULT_BW_UPVOTE_THRESHOLD_NS;
@@ -6739,6 +6748,7 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
 	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
+	set_bit(SDE_FEATURE_A10_Y10, sde_cfg->features);
 	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 	set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
 	set_bit(SDE_FEATURE_QRTC, sde_cfg->features);
@@ -6754,6 +6764,7 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	set_bit(SDE_FEATURE_SYS_CACHE_STALING, sde_cfg->features);
 	set_bit(SDE_FEATURE_WB_ROTATION, sde_cfg->features);
 	set_bit(SDE_FEATURE_EPT, sde_cfg->features);
+	set_bit(SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY, sde_cfg->features);
 	set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
 	set_bit(SDE_FEATURE_DS_PU_SUPPORTED, sde_cfg->features);
 	set_bit(SDE_FEATURE_SSIP_CLK, sde_cfg->features);
@@ -6769,16 +6780,25 @@ static void _sde_get_hw_caps_for_art(struct sde_mdss_cfg *sde_cfg, uint32_t hw_r
 	sde_cfg->sid_rev = SDE_SID_VERSION_2_0_0;
 	sde_cfg->mdss_hw_block_size = 0x15c;
 	sde_cfg->max_bw_upvote_threshold_ns = DEFAULT_BW_UPVOTE_THRESHOLD_NS;
-	sde_cfg->demura_supported[SSPP_DMA1][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
-	sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
-	sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) | BIT(DEMURA_2);
-	sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_1) | BIT(DEMURA_3);
-	sde_cfg->qrtc_supported[SSPP_DMA1][0] = BIT(QRTC_0) | BIT(QRTC_2);
-	sde_cfg->qrtc_supported[SSPP_DMA1][1] = BIT(QRTC_1) | BIT(QRTC_3);
-	sde_cfg->qrtc_supported[SSPP_DMA3][0] = BIT(QRTC_0) | BIT(QRTC_2);
-	sde_cfg->qrtc_supported[SSPP_DMA3][1] = BIT(QRTC_1) | BIT(QRTC_3);
+	sde_cfg->demura_supported[SSPP_DMA1][0] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->demura_supported[SSPP_DMA1][1] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->demura_supported[SSPP_DMA3][0] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->demura_supported[SSPP_DMA3][1] = BIT(DEMURA_0) |
+				BIT(DEMURA_1) | BIT(DEMURA_2) | BIT(DEMURA_3);
+	sde_cfg->qrtc_supported[SSPP_DMA1][0] = BIT(QRTC_0) |
+				BIT(QRTC_1) | BIT(QRTC_2) | BIT(QRTC_3);
+	sde_cfg->qrtc_supported[SSPP_DMA1][1] = BIT(QRTC_0) |
+				BIT(QRTC_1) | BIT(QRTC_2) | BIT(QRTC_3);
+	sde_cfg->qrtc_supported[SSPP_DMA3][0] = BIT(QRTC_0) |
+				BIT(QRTC_1) | BIT(QRTC_2) | BIT(QRTC_3);
+	sde_cfg->qrtc_supported[SSPP_DMA3][1] = BIT(QRTC_0) |
+				BIT(QRTC_1) | BIT(QRTC_2) | BIT(QRTC_3);
 	sde_cfg->has_line_insertion = true;
 	sde_cfg->osc_clk_rate = 38400000;
+	sde_cfg->has_demura_single_rect_support = true;
 }
 
 static void _sde_get_hw_caps_for_pebble(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
@@ -6799,6 +6819,7 @@ static void _sde_get_hw_caps_for_pebble(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
 	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_LOSSY, sde_cfg->features);
+	set_bit(SDE_FEATURE_A10_Y10, sde_cfg->features);
 	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
 	set_bit(SDE_FEATURE_DEMURA, sde_cfg->features);
 	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
@@ -6867,6 +6888,7 @@ static void _sde_get_hw_caps_for_canoe(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	set_bit(SDE_FEATURE_10_BITS_COMPONENTS, sde_cfg->features);
 	set_bit(SDE_FEATURE_DS_PU_SUPPORTED, sde_cfg->features);
 	set_bit(SDE_FEATURE_SSIP_CLK, sde_cfg->features);
+	set_bit(SDE_FEATURE_ALLOW_SEC_CAM_CONCURRENCY, sde_cfg->features);
 	sde_cfg->allowed_dsc_reservation_switch = SDE_DP_DSC_RESERVATION_SWITCH;
 	sde_cfg->autorefresh_disable_seq = AUTOREFRESH_DISABLE_SEQ2;
 	sde_cfg->ppb_sz_program = SDE_PPB_SIZE_THRU_PINGPONG;
@@ -6996,6 +7018,36 @@ static void _sde_get_hw_caps_for_seraph(struct sde_mdss_cfg *sde_cfg, uint32_t h
 	sde_cfg->hfi_cfg.perf_max_core_clk_rate = 532000000;
 }
 
+static void _sde_get_hw_caps_for_pikachu(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_DITHER, sde_cfg->features);
+	set_bit(SDE_FEATURE_WB_UBWC, sde_cfg->features);
+	set_bit(SDE_FEATURE_CWB_CROP, sde_cfg->features);
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	set_bit(SDE_FEATURE_3D_MERGE_RESET, sde_cfg->features);
+	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+	set_bit(SDE_MDP_DHDR_MEMPOOL_4K, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_VIG_P010, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+	set_bit(SDE_FEATURE_FP16, sde_cfg->features);
+	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+	set_bit(SDE_FEATURE_VBIF_CLK_SPLIT, sde_cfg->features);
+	set_bit(SDE_FEATURE_DISP_OP, sde_cfg->features);
+	sde_cfg->perf.min_prefill_lines = 40;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	sde_cfg->mdss_hw_block_size = 0x158;
+	sde_cfg->disable_multirect = true;
+	sde_cfg->hfi_cfg.perf_max_core_clk_rate = 532000000;
+}
+
 static void _sde_get_hw_caps_for_x1p42100(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
 {
 	set_bit(SDE_FEATURE_DEDICATED_CWB, sde_cfg->features);
@@ -7076,6 +7128,32 @@ static void _sde_get_hw_caps_for_chora(struct sde_mdss_cfg *sde_cfg, uint32_t hw
 	sde_cfg->virtual_mixers_mask = 0x2;
 }
 
+static void _sde_get_hw_caps_for_ravelin(struct sde_mdss_cfg *sde_cfg, uint32_t hw_rev)
+{
+	clear_bit(SDE_FEATURE_HDR, sde_cfg->features);
+	set_bit(SDE_FEATURE_QSYNC, sde_cfg->features);
+	sde_cfg->perf.min_prefill_lines = 40;
+	sde_cfg->has_reduced_ob_max = true;
+	sde_cfg->vbif_qos_nlvl = 8;
+	sde_cfg->ts_prefill_rev = 2;
+	sde_cfg->ctl_rev = SDE_CTL_CFG_VERSION_1_0_0;
+	set_bit(SDE_FEATURE_SUI_NS_ALLOWED, sde_cfg->features);
+	set_bit(SDE_FEATURE_SUI_MISR, sde_cfg->features);
+	set_bit(SDE_FEATURE_SUI_BLENDSTAGE, sde_cfg->features);
+	set_bit(SDE_FEATURE_INLINE_SKIP_THRESHOLD, sde_cfg->features);
+	sde_cfg->true_inline_rot_rev = SDE_INLINE_ROT_VERSION_2_0_1;
+	sde_cfg->in_rot_maxheight = 1200;
+	set_bit(SDE_FEATURE_VBIF_DISABLE_SHAREABLE, sde_cfg->features);
+	set_bit(SDE_FEATURE_DITHER_LUMA_MODE, sde_cfg->features);
+	sde_cfg->mdss_hw_block_size = 0x158;
+	set_bit(SDE_FEATURE_MULTIRECT_ERROR, sde_cfg->features);
+	set_bit(SDE_MDP_PERIPH_TOP_0_REMOVED, &sde_cfg->mdp[0].features);
+	set_bit(SDE_FEATURE_HW_VSYNC_TS, sde_cfg->features);
+	set_bit(SDE_FEATURE_AVR_STEP, sde_cfg->features);
+	set_bit(SDE_FEATURE_TRUSTED_VM, sde_cfg->features);
+	set_bit(SDE_FEATURE_UBWC_STATS, sde_cfg->features);
+}
+
 static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_170, _sde_get_hw_caps_for_msm8996},
 	{SDE_HW_VER_300, _sde_get_hw_caps_for_msm8998},
@@ -7090,8 +7168,8 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_610, _sde_get_hw_caps_for_saipan},
 	{SDE_HW_VER_630, _sde_get_hw_caps_for_bengal},
 	{SDE_HW_VER_640, _sde_get_hw_caps_for_lagoon},
+	/* Applies for both scuba and shikra. */
 	{SDE_HW_VER_650, _sde_get_hw_caps_for_scuba},
-	{SDE_HW_VER_650, _sde_get_hw_caps_for_shikra},
 	{SDE_HW_VER_660, _sde_get_hw_caps_for_holi},
 	{SDE_HW_VER_670, _sde_get_hw_caps_for_shima},
 	{SDE_HW_VER_680, _sde_get_hw_caps_for_monaco},
@@ -7101,12 +7179,14 @@ static struct sde_mdss_hw_caps sde_mdss_target_caps[] = {
 	{SDE_HW_VER_810, _sde_get_hw_caps_for_waipio},
 	{SDE_HW_VER_820, _sde_get_hw_caps_for_diwali},
 	{SDE_HW_VER_850, _sde_get_hw_caps_for_cape},
+	{SDE_HW_VER_860, _sde_get_hw_caps_for_ravelin},
 	{SDE_HW_VER_870, _sde_get_hw_caps_for_malabar},
 	{SDE_HW_VER_880, _sde_get_hw_caps_for_vienna},
 	{SDE_HW_VER_900, _sde_get_hw_caps_for_kalama},
 	{SDE_HW_VER_920, _sde_get_hw_caps_for_x1e80100},
 	{SDE_HW_VER_970, _sde_get_hw_caps_for_x1p42100},
 	{SDE_HW_VER_980, _sde_get_hw_caps_for_seraph},
+	{SDE_HW_VER_990, _sde_get_hw_caps_for_pikachu},
 	{SDE_HW_VER_A00, _sde_get_hw_caps_for_pineapple},
 	{SDE_HW_VER_A30, _sde_get_hw_caps_for_chora},
 	{SDE_HW_VER_B00, _sde_get_hw_caps_for_niobe},
@@ -7468,7 +7548,8 @@ static int sde_hw_check_ssip_fuse(struct drm_device *dev, struct sde_mdss_cfg *s
 		disable = (fuse & BIT(1)) >> 1;
 		polarity = fuse & BIT(0);
 	} else if (IS_CANOE_TARGET(sde_cfg->hw_rev) ||
-			IS_ART_TARGET(sde_cfg->hw_rev)) {
+			IS_ART_TARGET(sde_cfg->hw_rev) ||
+			IS_PEBBLE_TARGET(sde_cfg->hw_rev)) {
 		disable = (fuse & BIT(5)) >> 5;
 		polarity = (fuse & BIT(3)) >> 3;
 	} else {

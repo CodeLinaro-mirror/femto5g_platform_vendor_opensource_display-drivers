@@ -12,11 +12,95 @@
 #include "hfi_commands_debug.h"
 #include "hfi_defs_debug.h"
 #include "hfi_msm_drv.h"
+#include "hfi_crtc.h"
+#include "msm_lsr_synx.h"
 
 #define BLOB_PROPERTY_HEADER_SIZE 2
 #define MATRICES_PER_VIEW 2
+#define REUSABLE_FENCE_PAYLOAD_COUNT 4
 
 static u64 lsr_fw_debug_val;
+
+
+int hfi_lsr_trigger_ssr(u64 val, struct drm_device *dev)
+{
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_debug_subsystem_property payload;
+	int ret = 0;
+	struct hfi_client_t *lsr_hfi_client;
+	struct msm_drm_private *priv;
+	struct msm_kms *kms;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+
+	if (!dev) {
+		SDE_ERROR("Invalid drm device");
+		return -EINVAL;
+	}
+
+	priv = dev->dev_private;
+	if (!priv) {
+		SDE_ERROR("Invalid msm_drm priv");
+		return -EINVAL;
+	}
+
+	kms = priv->kms;
+	if (!kms) {
+		SDE_ERROR("Invalid msm_kms");
+		return -EINVAL;
+	}
+
+	sde_kms = to_sde_kms(kms);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("Invalid hfi_kms\n");
+		return -EINVAL;
+	}
+
+	lsr_hfi_client = &hfi_kms->hfi_client;
+	if (!lsr_hfi_client) {
+		SDE_ERROR("Invalid HFI client\n");
+		return -EINVAL;
+	}
+
+	cmd_buf = hfi_adapter_get_cmd_buf(lsr_hfi_client,
+		MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	payload.subsystem_type = HFI_SUBSYSTEM_TYPE_LSR;
+	payload.prop_id = HFI_DEBUG_SUBSYSTEM_PROPERTY_TRIGGER_ERROR;
+	payload.value_lsb = (enum lsr_subsytem_error_type)val;
+
+	ret = hfi_adapter_add_set_property(lsr_hfi_client,
+			cmd_buf,
+			HFI_COMMAND_DEBUG_SET_SUBSYSTEM_PROPERTY,
+			MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			&payload,
+			sizeof(payload),
+			HFI_HOST_FLAGS_NONE);
+
+	if (ret) {
+		SDE_ERROR("failed to set SSR trigger command\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(lsr_hfi_client, cmd_buf);
+	if (ret)
+		SDE_ERROR("failed to send SSR trigger command\n");
+
+	SDE_DEBUG("SSR trigger value is %llu\n", val);
+	SDE_EVT32(val);
+	return ret;
+}
 
 int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev)
 {
@@ -142,7 +226,7 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 {
 	struct sde_view_descriptor *view_desc = NULL;
 	struct sde_view_descriptor *back_view_desc = NULL;
-	struct hfi_wb_out_buff *out_buffers;
+	struct hfi_plane_buff *out_buffers;
 	void *payload;
 	int ret = 0, i;
 	bool is_back_view_en = false;
@@ -165,7 +249,7 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 			is_back_view_en = true;
 		}
 	}
-	out_buffers = kcalloc(num_fbs, sizeof(struct hfi_wb_out_buff), GFP_KERNEL);
+	out_buffers = kcalloc(num_fbs, sizeof(struct hfi_plane_buff), GFP_KERNEL);
 	if (!out_buffers) {
 		SDE_ERROR("failed to allocate memory for out_buffers\n");
 		return -ENOMEM;
@@ -174,7 +258,7 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 	sde_wb_lsr_get_fb_id_list(wb_dev, out_buffers, view_desc,
 			back_view_desc, is_back_view_en);
 
-	payload = kmalloc(sizeof(u32) + num_fbs * sizeof(struct hfi_wb_out_buff), GFP_KERNEL);
+	payload = kmalloc(sizeof(u32) + num_fbs * sizeof(struct hfi_plane_buff), GFP_KERNEL);
 	if (!payload) {
 		SDE_ERROR("failed to allocate memory for payload\n");
 		kfree(out_buffers);
@@ -182,12 +266,12 @@ static int _hfi_wb_lsr_add_fb_id_list_prop(struct sde_wb_device *wb_dev,
 	}
 	*(u32 *)payload = num_fbs;
 	memcpy((char *)payload + sizeof(u32), out_buffers,
-			num_fbs * sizeof(struct hfi_wb_out_buff));
+			num_fbs * sizeof(struct hfi_plane_buff));
 
 	prop_id = HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS;
 
 	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, prop_id,
-		HFI_VAL_U32_ARRAY, payload, sizeof(u32) + num_fbs * sizeof(struct hfi_wb_out_buff));
+		HFI_VAL_U32_ARRAY, payload, sizeof(u32) + num_fbs * sizeof(struct hfi_plane_buff));
 
 	kfree(out_buffers);
 	kfree(payload);
@@ -492,6 +576,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 	switch (hfi_prop) {
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_SPARSE_GRID:
 		opq_cfg = &cstate->reproj_sparse_grid;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -505,6 +593,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_RADIAL_DISTORTION_GRID:
 		opq_cfg = &cstate->reproj_radial_dis_grid;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -518,6 +610,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_DISPLAY_GAMMA:
 		opq_cfg = &cstate->reproj_display_gamma;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -531,6 +627,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_GCX_SESSION_CONFIG:
 		opq_cfg = &cstate->reproj_gcx_session_config;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -544,6 +644,10 @@ int _hfi_wb_lsr_repro_blob_prop_helper(u32 hfi_prop, struct sde_wb_device *wb_de
 		break;
 	case LSR_REPROJ_DISPLAY_CONFIG_EXT_KEY_GCX_SESSION_CONFIG_DATA:
 		opq_cfg = &cstate->reproj_gcx_session_config_data;
+		if (!opq_cfg || IS_ERR_OR_NULL(opq_cfg->buf)) {
+			SDE_ERROR("Invalid opaque config for property:%x\n", hfi_prop);
+			return -EINVAL;
+		}
 		buff->size = opq_cfg->usr_cfg.size;
 		buff->addr_l = opq_cfg->remote_iova;
 		if (!buff->addr_l) {
@@ -786,13 +890,12 @@ static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
 {
 	struct synx_import_params import_params = {0};
 	struct synx_session *session = NULL;
-	u32 lsr_h_synx, ret = 0;
 	struct sde_kms *sde_kms;
 	struct hfi_kms *hfi_kms;
 	struct hfi_hwfence_data *hfi_hw_fence_data;
-	int reusable_fence_count = 0;
 	u32 *payload;
 	u32 size = 0;
+	int i, ret = 0;
 
 	sde_kms = sde_connector_get_kms(drm_conn);
 	hfi_kms = sde_kms ? sde_kms->hfi_kms : NULL;
@@ -805,42 +908,55 @@ static int _hfi_wb_setup_reusable_fence(struct drm_connector *drm_conn,
 		return -EINVAL;
 	}
 
-	/* Setup reusable fence only once per device bootup */
-	if (!reproj_conn->reusable_fence_cnt) {
+	/* Import LSR reusable fences into DCP session only once per device bootup */
+	if (!reproj_conn->reusable_fence_imported) {
 		session = hfi_hw_fence_data->hw_fence_handle;
-		lsr_h_synx = reproj_conn->lsr_reusable_hsynx;
-		SDE_DEBUG("lsr reusable h_synx: %d\n", lsr_h_synx);
 
-		/* Setup individual params for reusable fence */
-		import_params.indv.new_h_synx = new_h_synx;
-		import_params.indv.flags = SYNX_IMPORT_REUSABLE | SYNX_IMPORT_SYNX_FENCE;
-		import_params.indv.fence = (void *)&lsr_h_synx;
-		import_params.type = SYNX_IMPORT_INDV_PARAMS;
+		/* Import each LSR reusable fence into DCP session */
+		for (i = 0; i < LSR_REUSABLE_FENCE_MAX; i++) {
+			SDE_DEBUG("h_synx[%d]: 0x%x\n", i,	reproj_conn->lsr_reusable_hsynx[i]);
 
-		ret = synx_import(session, &import_params);
-		if (ret) {
-			SDE_ERROR("dcp failed to import lsr reusable hw fence: %d\n", ret);
-			return ret;
+			import_params.indv.new_h_synx = &new_h_synx[i];
+			import_params.indv.flags = SYNX_IMPORT_REUSABLE | SYNX_IMPORT_SYNX_FENCE;
+			import_params.indv.fence = (void *)&reproj_conn->lsr_reusable_hsynx[i];
+			import_params.type = SYNX_IMPORT_INDV_PARAMS;
+
+			ret = synx_import(session, &import_params);
+			if (ret) {
+				SDE_ERROR("dcp failed to import lsr reusable hw fence[%d]: %d\n",
+					i, ret);
+				return ret;
+			}
+
+			SDE_DEBUG("dcp imported reusable fence[%d]: 0x%x\n", i, new_h_synx[i]);
 		}
 
-		SDE_DEBUG("dcp imported lsr reusable hw fence: %d\n", *new_h_synx);
-		reproj_conn->reusable_fence_cnt++;
+		reproj_conn->reusable_fence_imported = true;
 	}
 
-	reusable_fence_count = reproj_conn->reusable_fence_cnt;
-	if (reusable_fence_count) {
-		u64 val = *new_h_synx;
-
-		size = 2 * sizeof(u32) + reusable_fence_count * 2 * sizeof(u32);
+	if (reproj_conn->reusable_fence_imported) {
+		size = REUSABLE_FENCE_PAYLOAD_COUNT * sizeof(u32);
 		payload = kzalloc(size, GFP_KERNEL);
-		payload[0] = HFI_LSR_REUSABLE_FENCE_GCX_OUT_BUFFERS;
-		payload[1] = reusable_fence_count;
-		payload[2] = HFI_VAL_L32(val);
-		payload[3] =  HFI_VAL_H32(val);
-		hfi_util_u32_prop_helper_add_prop(base_props,
-				HFI_PROPERTY_DISPLAY_REUSABLE_FENCE,
-				HFI_VAL_U32_ARRAY, payload, size);
+		if (!payload)
+			return -ENOMEM;
+
+		for (i = 0; i < LSR_REUSABLE_FENCE_MAX; i++) {
+			u64 val = reproj_conn->lsr_reusable_hsynx[i];
+
+			payload[0] = i; /* fence type index */
+			payload[1] = 1; /* fence count */
+			payload[2] = HFI_VAL_L32(val);
+			payload[3] = HFI_VAL_H32(val);
+			hfi_util_u32_prop_helper_add_prop(base_props,
+					HFI_PROPERTY_DISPLAY_REUSABLE_FENCE,
+					HFI_VAL_U32_ARRAY, payload, size);
+
+			SDE_EVT32(i, HFI_VAL_L32(val));
+		}
+
 		kfree(payload);
+	} else {
+		SDE_ERROR("Failed to setup reusable fences\n");
 	}
 
 	return ret;
@@ -891,7 +1007,7 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 	}
 
 	if (enable) {
-		u32 new_h_synx = 0;
+		u32 new_h_synx[LSR_REUSABLE_FENCE_MAX] = {0};
 
 		ret = reproj_conn->get_info(reproj_conn, wb_dev->wb_cfg->opmode);
 		if (ret) {
@@ -915,7 +1031,7 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 
 		if (wb_dev->wb_cfg->opmode == WB_REPRO) {
 			ret = _hfi_wb_setup_reusable_fence(drm_conn, reproj_conn,
-					&new_h_synx, hfi_conn->base_props);
+					new_h_synx, hfi_conn->base_props);
 
 			if (ret)
 				SDE_ERROR("Failed to setup reusable fence\n");
@@ -932,6 +1048,7 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 		if (ret)
 			SDE_ERROR("failed to send HFI commands\n");
 
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 		/* LSR usecases always have hw-fences enabled */
 		ret =  synx_enable_resources(SYNX_CLIENT_HW_FENCE_LSR0_CTX0, SYNX_RESOURCE_SOCCP,
 				true);
@@ -939,6 +1056,7 @@ int hfi_wb_display_lsr_enable(struct drm_connector *drm_conn, bool enable)
 			SDE_ERROR("failed to enable hw-fence resources for lsr: %d\n", ret);
 			return ret;
 		}
+#endif
 
 end:
 		mutex_unlock(&hfi_conn->hfi_lock);
@@ -946,12 +1064,14 @@ end:
 		if (reproj_conn->off)
 			reproj_conn->off(reproj_conn, true);
 
+#if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 		ret =  synx_enable_resources(SYNX_CLIENT_HW_FENCE_LSR0_CTX0, SYNX_RESOURCE_SOCCP,
 				false);
 		if (ret) {
 			SDE_ERROR("failed to disable hw-fence resources for lsr: %d\n", ret);
 			return ret;
 		}
+#endif
 	}
 	return ret;
 }
@@ -963,6 +1083,7 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
 	int ret = 0;
 	struct sde_connector *sde_conn = NULL;
 	struct drm_connector *conn = NULL;
+	struct sde_reproj *reproj_conn = NULL;
 
 	sde_conn = hfi_conn->sde_base;
 	if (!sde_conn)
@@ -971,16 +1092,36 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
 	conn = &sde_conn->base;
 	display_id = sde_conn_get_display_obj_id(conn);
 
+	reproj_conn = sde_conn->reproj_conn;
+	if (!reproj_conn) {
+		SDE_ERROR("Invalid reproj connector\n");
+		return -EINVAL;
+	}
+
 	if (enable) {
 		ret = hfi_wb_display_lsr_enable(conn, true);
 	} else {
-		*flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
-		ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+		if ((atomic_read(reproj_conn->lsr_ssr_in_progress) > 0) ||
+						(atomic_read(&hfi_kms->ssr_in_progress) > 0)) {
+			if (reproj_conn->off)
+				reproj_conn->off(reproj_conn, true);
+
+			ret =  synx_enable_resources(SYNX_CLIENT_HW_FENCE_LSR0_CTX0,
+					SYNX_RESOURCE_SOCCP, false);
+			if (ret) {
+				SDE_ERROR("failed to disable hw-fence resources for lsr: %d\n",
+					ret);
+				return ret;
+			}
+		} else {
+			*flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+			ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
 				HFI_COMMAND_DISPLAY_DISABLE, display_id, HFI_PAYLOAD_TYPE_NONE,
 				NULL, 0, &hfi_conn->disable_listener, *flags);
-		if (ret) {
-			SDE_ERROR("failed to register LSR-WB disable response listener\n");
-			return ret;
+			if (ret) {
+				SDE_ERROR("failed to register LSR-WB disable response listener\n");
+				return ret;
+			}
 		}
 	}
 	return 0;
@@ -1012,4 +1153,191 @@ void hfi_lsr_display_disable_handler(u32 obj_id, u32 cmd_id,
 
 	SDE_DEBUG("LSR disable response received for obj_id:%d with cmd_id:0x%x\n",
 			obj_id, cmd_id);
+}
+
+int hfi_lsr_notify_ssr_event(enum hfi_device_ssr_event ssr_event, struct drm_device *dev)
+{
+	struct drm_connector *connector;
+	struct drm_connector_list_iter conn_iter;
+	int rc = 0;
+
+	if (!dev) {
+		SDE_ERROR("Invalid drm device\n");
+		return -EINVAL;
+	}
+
+	drm_connector_list_iter_begin(dev, &conn_iter);
+	drm_for_each_connector_iter(connector, &conn_iter) {
+		rc = sde_connector_event_notify(connector, DRM_EVENT_LSR_SSR, sizeof(uint8_t),
+			(ssr_event == HFI_DEVICE_SSR_EVENT_START) ? SDE_SSR_START : SDE_SSR_END);
+
+		if (rc) {
+			SDE_ERROR("Failed to notify LSR SSR %s on connector:%d rc:%d\n",
+				(ssr_event == HFI_DEVICE_SSR_EVENT_START) ? "ssr_start" : "ssr_end",
+				DRMID(connector), rc);
+			drm_connector_list_iter_end(&conn_iter);
+			goto end;
+		} else
+			SDE_DEBUG("UMD notified about %s on conn:%d\n",
+				(ssr_event == HFI_DEVICE_SSR_EVENT_START) ? "ssr_start" : "ssr_end",
+				DRMID(connector));
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	if (dev->dev_private) {
+		struct msm_drm_private *priv = NULL;
+		struct sde_kms *sde_kms;
+		struct hfi_kms *hfi_kms = NULL;
+		struct hfi_cmdbuf_t *cmd_buf;
+		struct hfi_client_t *lsr_hfi_client;
+		struct hfi_device_ssr_info *hfi_ssr;
+
+		priv = dev->dev_private;
+		sde_kms = to_sde_kms(priv->kms);
+		if (!sde_kms) {
+			SDE_ERROR("Invalid sde_kms\n");
+			return -EINVAL;
+		}
+
+		hfi_kms = to_hfi_kms(sde_kms);
+		if (!hfi_kms) {
+			SDE_ERROR("Invalid hfi_kms\n");
+			return -EINVAL;
+		}
+
+		lsr_hfi_client = &hfi_kms->hfi_client;
+		if (!lsr_hfi_client) {
+			SDE_ERROR("Invalid HFI client\n");
+			return -EINVAL;
+		}
+
+		cmd_buf = hfi_adapter_get_cmd_buf(lsr_hfi_client,
+					MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_DEVICE_INFO);
+		if (!cmd_buf) {
+			SDE_ERROR("Invalid cmd buf\n");
+			return -EINVAL;
+		}
+		hfi_ssr = kzalloc(sizeof(struct hfi_device_ssr_info), GFP_KERNEL);
+		hfi_ssr->subsystem_type = HFI_SUBSYSTEM_TYPE_LSR;
+		hfi_ssr->ssr_event =
+			(ssr_event == HFI_DEVICE_SSR_EVENT_START) ?
+				HFI_DEVICE_SSR_EVENT_START : HFI_DEVICE_SSR_EVENT_END;
+
+		rc = hfi_adapter_add_set_property(lsr_hfi_client, cmd_buf,
+				HFI_COMMAND_DEVICE_SUBSYSTEM_RESTART_NOTIFY,
+				MSM_DRV_HFI_ID,
+				HFI_PAYLOAD_TYPE_U32,
+				hfi_ssr, sizeof(struct hfi_device_ssr_info),
+				HFI_TX_FLAGS_NON_DISCARDABLE);
+
+		if (rc) {
+			SDE_ERROR("Failed to set hfi property for lsr sub system restart\n");
+			kfree(hfi_ssr);
+			return -EINVAL;
+		}
+
+		rc = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		if (rc) {
+			SDE_ERROR("Failed to send subsystem error command\n");
+			kfree(hfi_ssr);
+			return -EINVAL;
+		}
+
+		SDE_DEBUG("Notified DCP on %s\n",
+			(ssr_event == HFI_DEVICE_SSR_EVENT_START) ? "ssr_start" : "ssr_end");
+		SDE_EVT32(hfi_ssr->subsystem_type, hfi_ssr->ssr_event);
+
+		kfree(hfi_ssr);
+	} else {
+		SDE_ERROR("Invalid msm_drm priv\n");
+		return -EINVAL;
+	}
+end:
+	return rc;
+}
+
+int hfi_lsr_wait_for_display_off(struct drm_device *dev)
+{
+	int rc = 0;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
+	struct sde_kms *sde_kms = NULL;
+	bool any_crtc_active = false;
+	int wait_count = 0;
+
+	if (!dev) {
+		SDE_ERROR("Invalid drm device\n");
+		return -EINVAL;
+	}
+
+	if (dev->dev_private) {
+		struct msm_drm_private *priv = NULL;
+
+		priv = dev->dev_private;
+		if (!priv) {
+			SDE_ERROR("Invalid msm_drm priv\n");
+			return -EINVAL;
+		}
+		sde_kms = to_sde_kms(priv->kms);
+		if (!sde_kms) {
+			SDE_ERROR("Invalid sde_kms\n");
+			return -EINVAL;
+		}
+
+		do {
+			if (any_crtc_active) {
+				if (wait_count++ > 400) {
+					SDE_ERROR("timeout waiting for lsr display off\n");
+					rc = -ETIMEDOUT;
+					break;
+				}
+				usleep_range(1000, 1000 + 10);
+				any_crtc_active = false;
+			}
+			drm_for_each_crtc(crtc, dev) {
+				if (crtc->state && crtc->state->active &&
+					(sde_crtc_check_for_lsr_opmode(crtc, crtc->state))) {
+					crtc_state = crtc->state;
+					if (crtc_state->active && crtc_state->enable) {
+						any_crtc_active = true;
+						break;
+					}
+				}
+			}
+		} while (any_crtc_active);
+		SDE_DEBUG("any_crtc_active:%d\n", any_crtc_active);
+	} else
+		SDE_ERROR("drm dev priv is NULL\n");
+
+	return rc;
+}
+
+int hfi_reset_hwfence(struct drm_device *dev)
+{
+	struct msm_drm_private *priv = NULL;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms = NULL;
+	int rc = 0;
+
+	if (!dev || !dev->dev_private) {
+		SDE_ERROR("Invalid drm device or device private\n");
+		return -EINVAL;
+	}
+
+	priv = dev->dev_private;
+	sde_kms = to_sde_kms(priv->kms);
+	if (!sde_kms) {
+		SDE_ERROR("Invalid sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		SDE_ERROR("Invalid hfi_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms_recover_hwfence(hfi_kms);
+
+	return rc;
 }

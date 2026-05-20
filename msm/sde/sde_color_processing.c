@@ -215,6 +215,13 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_HIST_CTRL] = HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL,
 	[SDE_CP_CRTC_DSPP_HIST_IRQ] = HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_QUEUE_BUFFER,
 	[SDE_CP_CRTC_DSPP_QRTC_CONFIG] = HFI_PROPERTY_DISPLAY_COLOR_QRTC_CONFIG,
+	[SDE_CP_CRTC_DSPP_COPR] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR,
+};
+
+static enum sde_cp_crtc_pu_features
+	sde_cp_crtc_pu_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_PU_FEATURES] = {
+	[SDE_CP_CRTC_DSPP_RC_PU] = HFI_PROPERTY_DISPLAY_COLOR_RC_PU,
+	[SDE_CP_CRTC_DSPP_SPR_PU] = HFI_PROPERTY_DISPLAY_COLOR_SPR_PU,
 };
 #endif
 
@@ -1802,7 +1809,7 @@ static int _sde_cp_crtc_cache_property_helper(struct drm_crtc *crtc,
 	return ret;
 }
 
-u32 _sde_cp_get_num_dspp_mixers(struct sde_crtc *sde_crtc)
+static u32 _sde_cp_get_num_dspp_mixers(struct sde_crtc *sde_crtc)
 {
 	int i;
 	u32 num_mixers = 0;
@@ -2027,6 +2034,17 @@ static void _sde_cp_setup_hfi_config(enum sde_cp_crtc_features feature,
 		hw_cfg->prop_helper = sde_crtc->hfi_crtc->color_props;
 		if (feature == SDE_CP_CRTC_DSPP_SPR_DITHER)
 			hw_cfg->hfi_buff_map = &sde_crtc->hfi_crtc->hfi_buff_map_dither;
+	}
+#endif
+}
+
+static void _sde_cp_pu_setup_hfi_config(enum sde_cp_crtc_pu_features feature,
+		struct sde_crtc *sde_crtc, struct sde_hw_cp_cfg *hw_cfg)
+{
+#ifdef HFI_PROPERTY_DISPLAY_COLOR_BEGIN
+	hw_cfg->prop_id = sde_cp_crtc_pu_feat_to_hfi_prop_id[feature];
+	if (sde_crtc->hfi_crtc) {
+		hw_cfg->prop_helper = sde_crtc->hfi_crtc->color_props;
 	}
 #endif
 }
@@ -2514,8 +2532,18 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 	hw_cfg.broadcast_disabled = catalog->dma_cfg.broadcast_disabled;
 	hw_cfg.panel_height = sde_crtc->base.state->adjusted_mode.vdisplay;
 	hw_cfg.panel_width = sde_crtc->base.state->adjusted_mode.hdisplay;
-	for (i = 0; i < hw_cfg.num_of_mixers; i++)
-		hw_cfg.dspp[i] = sde_crtc->mixers[i].hw_dspp;
+	memcpy(hw_cfg.skip_planes, sde_crtc->skip_blend_planes, sizeof(hw_cfg.skip_planes));
+
+	for (i = 0; i < hw_cfg.num_of_mixers; i++) {
+		hw_dspp = sde_crtc->mixers[i].hw_dspp;
+		if (!hw_dspp || i >= DSPP_MAX)
+			continue;
+		hw_cfg.dspp[i] = hw_dspp;
+		if (j == 0) {
+			hw_cfg.dspp_start_idx = hw_dspp->idx;
+			j++;
+		}
+	}
 
 	for (i = 0; i < SDE_CP_CRTC_MAX_PU_FEATURES; i++) {
 		feature_wrapper set_pu_feature =
@@ -2556,13 +2584,14 @@ static int _sde_cp_crtc_update_pu_features(struct drm_crtc *crtc, bool *need_flu
 		for (j = 0; j < hw_cfg.num_of_mixers; j++) {
 			hw_lm = sde_crtc->mixers[j].hw_lm;
 			hw_dspp = sde_crtc->mixers[j].hw_dspp;
-
+			hw_cfg.dspp_idx = hw_dspp->idx;
 			hw_cfg.mixer_info = hw_lm;
 			hw_cfg.ctl = sde_crtc->mixers[j].hw_ctl;
 			hw_cfg.displayh = hw_cfg.num_of_mixers *
 					hw_lm->cfg.out_width;
 			hw_cfg.displayv = hw_lm->cfg.out_height;
 
+			_sde_cp_pu_setup_hfi_config(i, sde_crtc, &hw_cfg);
 			ret = set_pu_feature(hw_dspp, &hw_cfg, sde_crtc);
 			/* feature does not need flush when ret > 0 */
 			if (ret < 0) {
@@ -2745,7 +2774,7 @@ exit:
 		sde_cp_disable_features(crtc);
 }
 
-void sde_cp_reset_unsupported_feature_wrappers(struct sde_mdss_cfg *catalog)
+static void sde_cp_reset_unsupported_feature_wrappers(struct sde_mdss_cfg *catalog)
 {
 	if (!catalog) {
 		DRM_ERROR("invalid catalog\n");
@@ -3296,6 +3325,8 @@ void sde_cp_disable_features(struct drm_crtc *crtc)
 
 	if (IS_DISP_OP_HFI(disp_op)) {
 		_sde_cp_mark_active_dirty_internal(sde_crtc);
+		_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_RC_PU, false);
+		_update_pu_feature_enable(sde_crtc, SDE_CP_CRTC_DSPP_SPR_PU, false);
 		return;
 	}
 
@@ -4080,6 +4111,7 @@ static void _sde_cp_update_list(struct sde_cp_node *prop_node,
 	case SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF:
 	case SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF2:
 	case SDE_CP_CRTC_DSPP_RGB_HIST_QUEUE_BUF3:
+	case SDE_CP_CRTC_DSPP_QRTC_BUFF:
 		if (cp_dirty_list)
 			list_add_tail(&prop_node->cp_dirty_list,
 					&crtc->cp_dirty_list);
@@ -6071,8 +6103,10 @@ void sde_cp_set_skip_blend_plane_info(struct drm_crtc *drm_crtc,
 	mutex_lock(&crtc->crtc_cp_lock);
 	plane_valid = skip_blend->valid_plane;
 
-	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[SB_PLANE_REAL] :
-		&crtc->skip_blend_planes[SB_PLANE_VIRT];
+	int slot_idx = (skip_blend->plane == SSPP_DMA1) ? 0 : 1;
+
+	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[slot_idx][SB_PLANE_REAL] :
+		&crtc->skip_blend_planes[slot_idx][SB_PLANE_VIRT];
 
 	skip_plane->valid = plane_valid;
 	skip_plane->plane = (plane_valid) ? skip_blend->plane : SSPP_NONE;

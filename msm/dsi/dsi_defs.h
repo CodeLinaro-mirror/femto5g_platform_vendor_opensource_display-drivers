@@ -72,7 +72,7 @@ enum dsi_op_mode {
  * @DSI_MODE_FLAG_SEAMLESS:	Seamless transition requested by user
  * @DSI_MODE_FLAG_DFPS:		Seamless transition is DynamicFPS
  * @DSI_MODE_FLAG_VBLANK_PRE_MODESET:	Transition needs VBLANK before Modeset
- * @DSI_MODE_FLAG_DMS: Seamless transition is dynamic mode switch
+ * @DSI_MODE_FLAG_DMS: Seamless transition is dynamic mode switch on cmd panel.
  * @DSI_MODE_FLAG_VRR: Seamless transition is DynamicFPS.
  *                     New timing values are sent from DAL.
  * @DSI_MODE_FLAG_DYN_CLK: Seamless transition is dynamic clock change
@@ -83,6 +83,8 @@ enum dsi_op_mode {
  *         Seamless transition is dynamic panel operating mode switch to cmd
  * @DSI_MODE_FLAG_NONDSC_BPP_SWITCH:  Transition is bpp mode switch without DSC.
  * @DSI_MODE_FLAG_EMSYNC_FPS_SWITCH: Seamless transition is emsync fps switch
+ * @DSI_MODE_FLAG_DMS_VID:
+ *         Seamless transition is dynamic mode switch on vid panel.
  */
 enum dsi_mode_flags {
 	DSI_MODE_FLAG_SEAMLESS			= BIT(0),
@@ -95,7 +97,8 @@ enum dsi_mode_flags {
 	DSI_MODE_FLAG_POMS_TO_VID		= BIT(7),
 	DSI_MODE_FLAG_POMS_TO_CMD		= BIT(8),
 	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9),
-	DSI_MODE_FLAG_EMSYNC_FPS_SWITCH		= BIT(10)
+	DSI_MODE_FLAG_EMSYNC_FPS_SWITCH		= BIT(10),
+	DSI_MODE_FLAG_DMS_VID			= BIT(11)
 };
 
 /**
@@ -230,6 +233,20 @@ enum dsi_dfps_type {
 };
 
 /**
+ * enum dsi_dms_vid_type - video panel mode switch type
+ * @DSI_DMS_VID_DISABLED: video panel mode switch not supported
+ * @DSI_DMS_VID_SEAMLESS: seamless video panel mode switch
+ * @DSI_DMS_VID_NON_SEAMLESS: non-seamless video panel mode switch
+ * @DSI_DMS_VID_TYPE_MAX
+ */
+enum dsi_dms_vid_type {
+	DSI_DMS_VID_DISABLED = 0,
+	DSI_DMS_VID_SEAMLESS,
+	DSI_DMS_VID_NON_SEAMLESS,
+	DSI_DMS_VID_TYPE_MAX
+};
+
+/**
  * enum dsi_dyn_clk_feature_type - Dynamic clock feature support type
  * @DSI_DYN_CLK_TYPE_LEGACY:			Constant FPS is not supported
  * @DSI_DYN_CLK_TYPE_CONST_FPS_ADJUST_HFP:	Constant FPS supported with
@@ -299,6 +316,7 @@ enum dsi_dyn_clk_feature_type {
  * @DSI_CMD_SET_EM_PULSE_SWITCH:           EM pulse switch cmd
  * @DSI_CMD_SET_PRIVACY_LAYER:		   Command to update panel on Privacy layer config
  * @DSI_CMD_SET_BRIGHTNESS:		   Command to update backlight
+ * @DSI_CMD_SET_CUSTOM_ON:		   Custom DCS ON command
  * @DSI_CMD_SET_MAX
  */
 enum dsi_cmd_set_type {
@@ -346,6 +364,7 @@ enum dsi_cmd_set_type {
 	DSI_CMD_SET_EM_PULSE_SWITCH,
 	DSI_CMD_SET_PRIVACY_LAYER,
 	DSI_CMD_SET_BRIGHTNESS,
+	DSI_CMD_SET_CUSTOM_ON,
 	DSI_CMD_SET_MAX
 };
 

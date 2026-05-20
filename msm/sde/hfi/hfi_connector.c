@@ -46,6 +46,7 @@ struct base_prop_lookup hfi_connector_base_props_map[] = {
 	{ CONNECTOR_PROP_LP, HFI_PROPERTY_DISPLAY_POWER_MODE },
 	{ CONNECTOR_PROP_FRAME_INTERVAL, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS},
 	{ CONNECTOR_PROP_USECASE_IDX, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS },
+	{ CONNECTOR_PROP_EPT, HFI_PROPERTY_DISPLAY_EPT },
 
 	// wb specific properties
 	{ CONNECTOR_PROP_PP_CWB_DITHER, HFI_PROPERTY_DISPLAY_WB_CWB_DITHER },
@@ -100,6 +101,47 @@ static int _set_dest_roi(struct sde_connector *conn,
 
 	kfree(payload);
 
+	return ret;
+}
+
+int _hfi_connector_add_ept(struct sde_connector *conn, struct sde_connector_state *old_cstate,
+		struct hfi_util_u32_prop_helper *prop_collector, u32 hfi_prop)
+{
+	int ret = 0;
+	u64 ept_ts, cur_ts, diff_ns = 0;
+	u64 cur_qtimer, ept_qtimer, diff_qtimer;
+	struct hfi_prop_u64 prop_u64;
+	spinlock_t local_lock;
+
+	/* using spinlock to avoid being preempted while getting the HW and kernel timestamp */
+	spin_lock_init(&local_lock);
+	spin_lock(&local_lock);
+	cur_qtimer = arch_timer_read_counter();
+	cur_ts = ktime_get_ns();
+	spin_unlock(&local_lock);
+
+	ept_ts = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_EPT);
+
+	if (ktime_after(cur_ts, ept_ts)) {
+		ept_qtimer = 0;
+		goto end;
+	}
+
+	diff_ns = ktime_sub_ns(ept_ts, cur_ts);
+	diff_qtimer = NS_TO_QTIMER(diff_ns);
+	ept_qtimer = cur_qtimer + diff_qtimer;
+
+end:
+	prop_u64.val_lo = HFI_VAL_L32(ept_qtimer);
+	prop_u64.val_hi = HFI_VAL_H32(ept_qtimer);
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+				HFI_VAL_U32_ARRAY, &prop_u64,
+				sizeof(struct hfi_prop_u64));
+
+	SDE_EVT32(sde_connector_property_is_dirty((struct sde_connector_state *)conn->base.state,
+			CONNECTOR_PROP_EPT), ktime_to_us(ept_ts), ktime_to_us(cur_ts),
+			ktime_to_us(diff_ns), cur_qtimer >> 32, cur_qtimer & 0xffffffff,
+			ept_qtimer >> 32, ept_qtimer & 0xffffffff);
 	return ret;
 }
 
@@ -177,7 +219,7 @@ static int _hfi_connector_add_vrr_frame_params(struct sde_connector *conn,
 	return 0;
 }
 
-int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn,
+static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn,
 		struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -252,6 +294,10 @@ int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn
 		ret = _hfi_connector_add_vrr_frame_params(conn, prop_collector, hfi_prop);
 		break;
 	}
+	case HFI_PROPERTY_DISPLAY_EPT:
+		ret = _hfi_connector_add_ept(conn, old_cstate, prop_collector, hfi_prop);
+		break;
+
 	default:
 		HFI_ERROR_CONN(hfi_conn, "failed to send HFI commands\n");
 		return -EINVAL;
@@ -294,8 +340,6 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 	for (i = 0; i < ARRAY_SIZE(hfi_connector_base_props_map); i++) {
 		drm_prop = hfi_connector_base_props_map[i].drm_prop;
 		hfi_prop = hfi_connector_base_props_map[i].hfi_prop;
-		if (!sde_connector_property_is_dirty(old_cstate, drm_prop))
-			continue;
 
 		_hfi_connector_add_base_prop_helper(hfi_prop, conn, old_cstate,
 				 hfi_conn->base_props);
@@ -333,7 +377,7 @@ end:
  * hfi_connector_populate_custom_kv_setter_props:  this is for large payloads.
  * Collects all listed props to provide as key-value pairs and adapter does memcopy
  */
-int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *conn, u32 disp_id,
+static int hfi_connector_populate_custom_kv_setter_props(struct sde_connector *conn, u32 disp_id,
 		struct sde_connector_state *old_cstate, struct hfi_cmdbuf_t *cmd_buf)
 {
 	struct hfi_prop_map *setter;
@@ -402,7 +446,7 @@ end:
 	return ret;
 }
 
-int _hfi_connector_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
+static int _hfi_connector_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 		struct sde_connector *conn, struct sde_connector_state *old_cstate)
 {
 	int ret = 0;
@@ -428,7 +472,7 @@ int _hfi_connector_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 	return ret;
 }
 
-void hfi_connector_destroy(struct sde_connector *conn)
+static void hfi_connector_destroy(struct sde_connector *conn)
 {
 	struct hfi_connector *conn_hfi = (struct hfi_connector *)to_hfi_connector(conn);
 	struct sde_kms *sde_kms;
@@ -693,7 +737,8 @@ end:
 	return ret;
 }
 
-int hfi_connector_prepare_commit(struct drm_connector *conn, struct sde_connector_state *cstate)
+static int hfi_connector_prepare_commit(struct drm_connector *conn,
+		struct sde_connector_state *cstate)
 {
 	int ret = 0;
 	struct sde_kms *sde_kms;
@@ -860,6 +905,56 @@ free_conn:
 	kfree(hfi_conn);
 
 	return -ENOMEM;
+}
+
+int hfi_connector_set_debug_prop(struct drm_connector *drm_conn,
+	struct hfi_display_dbg_property *dbg_prop)
+{
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct hfi_cmdbuf_t *cmd_buf = NULL;
+	u32 obj_id = 0x0;
+	u32 flags = HFI_HOST_FLAGS_NONE;
+	u32 hfi_cmd = HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY;
+	int rc = 0;
+
+	if (!drm_conn || !dbg_prop) {
+		SDE_ERROR("invalid args\n");
+		return -EINVAL;
+	}
+
+	dbg_prop->display_id = sde_conn_get_display_obj_id(drm_conn);
+
+	sde_kms = sde_connector_get_kms(drm_conn);
+	if (!sde_kms)
+		return -EINVAL;
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms)
+		return -EINVAL;
+
+	hfi_client = &hfi_kms->hfi_client;
+	obj_id = sde_conn_get_display_obj_id(drm_conn);
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			obj_id, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get command buf\n");
+		return -EINVAL;
+	}
+
+	rc = hfi_adapter_add_set_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
+		HFI_PAYLOAD_TYPE_U32_ARRAY, dbg_prop, sizeof(struct hfi_display_dbg_property),
+		flags);
+	if (rc)
+		SDE_ERROR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
+
+	rc = hfi_adapter_set_cmd_buf(hfi_client, cmd_buf);
+	if (rc)
+		SDE_ERROR("failed to send hfi_cmd 0x%x display_id: %d\n", hfi_cmd, obj_id);
+
+	return rc;
 }
 
 void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)

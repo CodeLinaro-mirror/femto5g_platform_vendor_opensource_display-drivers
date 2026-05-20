@@ -185,7 +185,7 @@ void sde_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 	LOG_FEATURE_ON;
 }
 
-void _aiqe_copr_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
+static void _aiqe_copr_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 		struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg,
 		struct sde_hw_reg_dma_ops *dma_ops,
 		struct sde_aiqe_top_level *aiqe_top)
@@ -260,6 +260,12 @@ void reg_dmav1_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 		return;
 	}
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
+#endif
+
 	copr_data = (struct drm_msm_copr *) hw_cfg->payload;
 
 	if (copr_data && hw_cfg->len != sizeof(struct drm_msm_copr)) {
@@ -290,6 +296,10 @@ void reg_dmav1_setup_copr_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 		SDE_ERROR("write COPR param failed ret %d\n", rc);
 		return;
 	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
 
 	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
 			REG_DMA_WRITE, DMA_CTL_QUEUE0,
@@ -932,10 +942,26 @@ static bool valid_abc_main_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
 	struct sde_hw_cp_cfg *hw_cfg)
 {
 	u32 h, w, div = 1, tempw, temph;
+	u32 slot_idx = 0, src_id = 0;
 
-	if ((aiqe_abc->param[0] & 0x1) == 0 || !hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
+	src_id = aiqe_abc->src_sel;
+	/* Determine slot_idx based on src id:
+	 * src_id == 1 -> slot_idx = 0 -> DMA1
+	 * src_id == 0 -> slot_idx = 1 -> DMA3
+	 */
+	if (src_id == 1) {
+		slot_idx = 0;
+	} else if (src_id == 0) {
+		slot_idx = 1;
+	} else {
+		DRM_WARN("Invalid src id %d\n", src_id);
+		return false;
+	}
+
+	if ((aiqe_abc->param[0] & 0x1) == 0 ||
+			!hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].valid) {
 		DRM_INFO("aiqe_abc state %d valid blend plane %d\n", (aiqe_abc->param[0] & 0x1),
-				hw_cfg->skip_planes[SB_PLANE_REAL].valid);
+				hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].valid);
 		return false;
 	}
 
@@ -953,18 +979,18 @@ static bool valid_abc_main_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
 	tempw = aiqe_abc->param[1] & ((1 << 12) - 1);
 
 	if (w != tempw || h != temph) {
-		DRM_ERROR("invalid plane param h %d w %d exp h %d exp w %d\n", tempw,
-		temph, h, w);
+		DRM_ERROR("invalid plane param h %d w %d exp h %d exp w %d\n", temph,
+		tempw, h, w);
 		return false;
 	}
 
 	// width (width/div factor) should be multiple of 4 as the fetch happen in words
 	w = ((w + 1) * 3) / 4;
-	if (h != hw_cfg->skip_planes[SB_PLANE_REAL].plane_h ||
-		w != hw_cfg->skip_planes[SB_PLANE_REAL].plane_w) {
+	if (h != hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].plane_h ||
+		w != hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].plane_w) {
 		DRM_ERROR("real plane invalid plane h %d w %d exp h %d exp w %d\n",
-			hw_cfg->skip_planes[SB_PLANE_REAL].plane_h,
-			hw_cfg->skip_planes[SB_PLANE_REAL].plane_w, h, w);
+			hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].plane_h,
+			hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].plane_w, h, w);
 		return false;
 	}
 	return true;
@@ -974,14 +1000,29 @@ static bool valid_abc_udc_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
 					struct sde_hw_cp_cfg *hw_cfg)
 {
 	u32 h, w;
+	u32 slot_idx = 0, src_id = 0;
+
+	src_id = aiqe_abc->src_sel;
+	/* Determine slot_idx based on src id:
+	 * src_id == 1 -> slot_idx = 0 -> DMA1
+	 * src_id == 0 -> slot_idx = 1 -> DMA3
+	 */
+	if (src_id == 1) {
+		slot_idx = 0;
+	} else if (src_id == 0) {
+		slot_idx = 1;
+	} else {
+		DRM_WARN("Invalid src id %d\n", src_id);
+		return false;
+	}
 
 	/* UDC is disabled early return */
 	if (!(aiqe_abc->param[0] & 0x2))
 		return true;
 
-	if ((aiqe_abc->param[0] & 0x2) && !hw_cfg->skip_planes[SB_PLANE_VIRT].valid) {
+	if ((aiqe_abc->param[0] & 0x2) && !hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].valid) {
 		DRM_INFO("aiqe_abc state %d valid blend plane %d\n", (aiqe_abc->param[0] & 0x2),
-				hw_cfg->skip_planes[SB_PLANE_VIRT].valid);
+				hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].valid);
 		return false;
 	}
 
@@ -990,11 +1031,11 @@ static bool valid_abc_udc_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
 
 	w = (w * 3) / 4;
 
-	if (h != hw_cfg->skip_planes[SB_PLANE_VIRT].plane_h ||
-		w != hw_cfg->skip_planes[SB_PLANE_VIRT].plane_w) {
+	if (h != hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].plane_h ||
+		w != hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].plane_w) {
 		DRM_ERROR("virt plane invalid plane h %d w %d exp h %d exp w %d\n",
-			hw_cfg->skip_planes[SB_PLANE_VIRT].plane_h,
-			hw_cfg->skip_planes[SB_PLANE_VIRT].plane_w, h, w);
+			hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].plane_h,
+			hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].plane_w, h, w);
 		return false;
 	}
 	return true;
@@ -1091,10 +1132,7 @@ static void _aiqe_abc_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 	}
 }
 
-void _reg_dma_setup_common_aiqe_abc(struct sde_hw_dspp *ctx,
-				void *cfg,
-				void *aiqe_top,
-				u32 aiqe_abc_param_len)
+void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 {
 	struct drm_msm_abc *aiqe_abc;
 	struct sde_aiqe_top_level *aiqe_tl = aiqe_top;
@@ -1106,6 +1144,10 @@ void _reg_dma_setup_common_aiqe_abc(struct sde_hw_dspp *ctx,
 	int rc = -EINVAL;
 	u32 aiqe_base, aiqe_wrapper_base;
 	enum msm_disp_op disp_op = ctx->hw.disp_op;
+
+	rc = reg_dma_dspp_check(ctx, cfg, AIQE_ABC);
+	if (rc)
+		return;
 
 	if (!ctx->cap->sblk->aiqe.base) {
 		SDE_DEBUG("AIQE not present on DSPP idx %d", ctx->idx);
@@ -1128,6 +1170,12 @@ void _reg_dma_setup_common_aiqe_abc(struct sde_hw_dspp *ctx,
 		SDE_ERROR("write decode select failed ret %d\n", rc);
 		return;
 	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
+#endif
 
 	aiqe_abc = (struct drm_msm_abc *)(hw_cfg->payload);
 
@@ -1153,7 +1201,7 @@ void _reg_dma_setup_common_aiqe_abc(struct sde_hw_dspp *ctx,
 	}
 
 	REG_DMA_SETUP_OPS(dma_cfg, aiqe_base + 0x20,
-		aiqe_abc->param, aiqe_abc_param_len * sizeof(u32),
+		aiqe_abc->param, AIQE_ABC_PARAM_LEN * sizeof(u32),
 		REG_BLK_WRITE_SINGLE, 0, 0, 0);
 	rc = dma_ops->setup_payload(&dma_cfg);
 	if (rc) {
@@ -1184,34 +1232,44 @@ void _reg_dma_setup_common_aiqe_abc(struct sde_hw_dspp *ctx,
 	}
 }
 
-void reg_dmav1_setup_aiqe_abc_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
-{
-	struct sde_hw_cp_cfg *hw_cfg = cfg;
-	int rc = reg_dma_dspp_check(ctx, cfg, AIQE_ABC);
-
-	if (rc)
-		return;
-
-#ifdef HFI_BUFF_FEATURE_ENABLE
-	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
-	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
-	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
-#endif
-
-	/*
-	 * Setup AIQE ABC parameters using the full parameter length.
-	 * This ensures all ABC-related parameters are configured.
-	 */
-	_reg_dma_setup_common_aiqe_abc(ctx, cfg, aiqe_top, AIQE_ABC_PARAM_LEN);
-}
-
 void reg_dmav1_setup_aiqe_abc_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 {
+	struct drm_msm_abc *aiqe_abc;
+	struct sde_aiqe_top_level *aiqe_tl = aiqe_top;
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
-	int rc = reg_dma_dspp_check(ctx, cfg, AIQE_ABC);
+	struct sde_hw_reg_dma_ops *dma_ops;
+	struct sde_reg_dma_buffer *buf;
+	struct sde_reg_dma_setup_ops_cfg dma_cfg;
+	struct sde_reg_dma_kickoff_cfg dma_kickoff;
+	int rc = -EINVAL;
+	u32 aiqe_base, aiqe_wrapper_base;
+	enum msm_disp_op disp_op = ctx->hw.disp_op;
 
+	rc = reg_dma_dspp_check(ctx, cfg, AIQE_ABC);
 	if (rc)
 		return;
+
+	if (!ctx->cap->sblk->aiqe.base) {
+		SDE_DEBUG("AIQE not present on DSPP idx %d", ctx->idx);
+		return;
+	}
+
+	aiqe_base = ctx->hw.blk_off + ctx->cap->sblk->aiqe.base;
+	if (!aiqe_base) {
+		SDE_DEBUG("AIQE not supported on DSPP idx %d", ctx->idx);
+		return;
+	}
+
+	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
+	buf = dspp_buf[AIQE_ABC][ctx->idx][ctx->dpu_idx];
+	dma_ops->reset_reg_dma_buf(buf);
+	REG_DMA_INIT_OPS(dma_cfg, MDSS, AIQE_ABC, buf);
+	REG_DMA_SETUP_OPS(dma_cfg, 0, NULL, 0, HW_BLK_SELECT, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write decode select failed ret %d\n", rc);
+		return;
+	}
 
 #ifdef HFI_BUFF_FEATURE_ENABLE
 	hw_cfg->prop_id = HFI_PACK_VERSION(2, 1, hw_cfg->prop_id);
@@ -1219,15 +1277,79 @@ void reg_dmav1_setup_aiqe_abc_v2(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_
 	hw_cfg->flags |= HFI_BUFF_FEATURE_BROADCAST;
 #endif
 
+	aiqe_abc = (struct drm_msm_abc *)(hw_cfg->payload);
+
+	if (!hw_cfg->payload || !valid_abc_v1_en_cfg(aiqe_abc, hw_cfg)) {
+		SDE_DEBUG("Disable ABC feature\n");
+		_aiqe_abc_off_v1(&dma_cfg, ctx, hw_cfg, dma_ops, aiqe_tl);
+		return;
+	}
+
+	if (hw_cfg->len != sizeof(struct drm_msm_abc)) {
+		SDE_ERROR("invalid size of payload len %d exp %zd\n",
+			hw_cfg->len, sizeof(struct drm_msm_abc));
+		return;
+	}
+
+	aiqe_wrapper_base = ctx->hw.blk_off + ctx->cap->sblk->aiqe_wrapper.base;
+	REG_DMA_SETUP_OPS(dma_cfg, aiqe_wrapper_base + 0x4,
+		&aiqe_abc->src_sel, sizeof(u32), REG_SINGLE_WRITE, 0, 0, 0);
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write MDNIE src sel failed ret %d\n", rc);
+		return;
+	}
+
+	REG_DMA_SETUP_OPS(dma_cfg, aiqe_base + 0x20,
+		aiqe_abc->param, 3 * sizeof(u32),
+		REG_BLK_WRITE_SINGLE, 0, 0, 0);
+
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write ABC param 0-2 failed ret %d\n", rc);
+		return;
+	}
+
 	/*
-	 * Setup AIQE ABC parameters excluding UDC parameters.
-	 * Uses reduced parameter length to omit UDC, as v2 does not require UDC configuration.
+	 * Write ABC params 4-23. Subtract 4 to exclude params 0-3:
+	 * - Params 0-2 are written separately above to base + 0x20
+	 * - Param 3 (offset 0x2C) is skipped as it's a read-only register in v2
+	 * This avoids unnecessary read-modify-write operations on the read-only register.
 	 */
-	_reg_dma_setup_common_aiqe_abc(ctx, cfg, aiqe_top,
-					(AIQE_ABC_PARAM_LEN - AIQE_ABC_UDC_PARAM_LEN));
+	REG_DMA_SETUP_OPS(dma_cfg, aiqe_base + 0x30,
+		&aiqe_abc->param[4], (AIQE_ABC_PARAM_LEN - AIQE_ABC_UDC_PARAM_LEN - 4)
+		* sizeof(u32), REG_BLK_WRITE_SINGLE, 0, 0, 0);
+
+	rc = dma_ops->setup_payload(&dma_cfg);
+	if (rc) {
+		SDE_ERROR("write ABC param 4-23 failed ret %d\n", rc);
+		return;
+	}
+
+	/* Write the top-level AIQE configuration to the hardware */
+	rc = _reg_dmav1_aiqe_write_top_level_v1(&dma_cfg, ctx, hw_cfg, dma_ops, aiqe_tl);
+	if (rc) {
+		SDE_ERROR("writing aiqe top level failed");
+		return;
+	}
+
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
+
+	REG_DMA_SETUP_KICKOFF(dma_kickoff, hw_cfg->ctl, dma_cfg.dma_buf,
+			REG_DMA_WRITE, DMA_CTL_QUEUE0,
+			WRITE_IMMEDIATE, AIQE_ABC);
+	if (dma_ops->kick_off[disp_op]) {
+		rc = dma_ops->kick_off[disp_op](&dma_kickoff, ctx->dpu_idx);
+		if (rc)
+			SDE_ERROR("failed to kick off ret %d\n", rc);
+		else
+			LOG_FEATURE_ON;
+	}
 }
 
-int _ai_scaler_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
+static int _ai_scaler_off_v1(struct sde_reg_dma_setup_ops_cfg *dma_cfg,
 	struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg,
 	struct sde_hw_reg_dma_ops *dma_ops)
 {

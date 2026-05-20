@@ -66,48 +66,6 @@ struct hfi_device_hotplug_config {
 	u32 hpd_irq;
 };
 
-/*
- * Hot-plug detection information structure for display interface status reporting.
- *
- * This structure encapsulates detailed information about hot-plug detection events
- * and the current state of display interface connections. It provides comprehensive
- * status reporting for dynamic display connections, including connection state,
- * device capabilities, and event notifications.
- *
- * The structure is used primarily for status reporting and event notification
- * between the display controller and host system, providing real-time information
- * about connection changes and device capabilities.
- *
- * Usage Context:
- *   - Event notification when devices are connected/disconnected
- *   - Status queries for current connection state
- *   - Capability reporting for newly connected devices
- *   - Error reporting for connection issues
- *
- * @config:
- *     Hot-plug configuration details for the connected device.
- *     - Contains orientation, port, pin configuration, and state information
- *     - Provides interface-specific connection parameters
- *     - Updated whenever connection parameters change
- * @edid_buf:
- *     Buffer containing Extended Display Identification Data (EDID) from connected device.
- *     - Contains display capabilities, supported resolutions, and timing information
- *     - Populated when device is connected and EDID is successfully read
- *     - Used for display mode negotiation and capability determination
- *     - Buffer may be empty if EDID read fails or device doesn't support EDID
- * @modes_buf:
- *     Buffer containing list of supported display modes and resolutions.
- *     - Derived from EDID data and device capabilities
- *     - Contains timing parameters, refresh rates, and format information
- *     - Used by display subsystem for mode selection and validation
- *     - May include both standard and custom display modes
- */
-struct hfi_device_hotplug_info {
-	struct hfi_device_hotplug_config config;
-	struct hfi_buff edid_buf;
-	struct hfi_buff modes_buf;
-};
-
 /*!
  * @enum hfi_device_res_state
  * @brief Display resource state enumeration for virtualization resource management.
@@ -134,6 +92,7 @@ enum hfi_device_res_state {
 	HFI_DEVICE_RESOURCE_ACQUIRE = 0x0,
 	HFI_DEVICE_RESOURCE_RELEASE = 0x1,
 	HFI_DEVICE_RESOURCE_SHARED  = 0x2,
+	HFI_DEVICE_RESOURCE_PRE_RELEASE = 0x3,
 };
 
 /*!
@@ -178,4 +137,41 @@ struct hfi_device_resource_config {
 	u32 resource_type;
 	u32 reserved[2];
 };
+
+/**
+ * @enum hfi_device_ssr_event
+ * @brief Subsystem Restart event
+ *
+ * Defines events of subsystem restart.
+ *
+ * @var HFI_DEVICE_SSR_EVENT_START
+ *  SSR start.
+ * @var HFI_DEVICE_SSR_EVENT_END
+ *  SSR end.
+ */
+enum hfi_device_ssr_event {
+	HFI_DEVICE_SSR_EVENT_START  = 0,
+	HFI_DEVICE_SSR_EVENT_END  = 1,
+};
+
+/**
+ * @struct hfi_device_ssr_info
+ * @brief Struct to indicate subsystem restart and its event.
+ *
+ * @var subsytem_type
+ *  Subsystem which is restarting.
+ * @var ssr_event
+ *  Event of subsystem restart.
+ * @var reserved1
+ *  Reserved field for future use.
+ * @var reserved2
+ *  Reserved field for future use.
+ */
+struct hfi_device_ssr_info {
+	enum hfi_subsystem_type subsystem_type;
+	enum hfi_device_ssr_event ssr_event;
+	uint32_t reserved1;
+	uint32_t reserved2;
+};
+
 #endif // __H_HFI_DEFS_DEVICE_H__

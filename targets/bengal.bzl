@@ -4,7 +4,7 @@ load(":target_variants.bzl", "get_all_variants")
 
 def define_bengal():
     for (t, v) in get_all_variants():
-        if t == "bengal":
+        if t == "bengal" or t == "bengal-le":
             define_target_variant_modules(
                 target = t,
                 variant = v,

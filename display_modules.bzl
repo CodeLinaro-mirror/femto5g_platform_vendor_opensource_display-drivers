@@ -75,6 +75,7 @@ module_entry(
             "msm/dp/hfi/dp_hfi.c",
             "msm/dp/hfi/dp_debug_client_hfi.c",
             "msm/dp/hfi/dp_hfi_audio.c",
+            "msm/dp/hfi/dp_hdcp.c",
         ],
         "CONFIG_DRM_MSM_DP_MST": [
             "msm/dp/dp_mst_drm.c",
@@ -215,6 +216,7 @@ module_entry(
             "msm/dsi/dsi_drm.c",
             "msm/dsi/dsi_display.c",
             "msm/dsi/dsi_display_manager.c",
+            "msm/dsi/dsi_sim_bridge.c",
             "msm/dsi/dsi_panel.c",
             "msm/dsi/dsi_clk_manager.c",
             "msm/dsi/dsi_display_test.c",
@@ -281,6 +283,23 @@ module_entry(
         "CONFIG_QTI_HFI_CORE": [
             "//vendor/qcom/opensource/mm-drivers/hfi_core:%b_msm_hfi_core",
             "//vendor/qcom/opensource/mm-drivers/hfi_core:hfi_core_headers"
+        ],
+    },
+)
+
+# ---------- LT9611UXD BRIDGE MODULE ----------
+module_entry(
+    name = "lt9611uxd",
+    config_option = "CONFIG_DRM_LT9611UXD",
+    path = None,
+    config_srcs = {
+        "CONFIG_DRM_LT9611UXD": [
+            "bridge-drivers/lt9611uxd.c",
+        ],
+    },
+    config_deps = {
+        "CONFIG_MSM_EXT_DISPLAY": [
+            "//vendor/qcom/opensource/mm-drivers/msm_ext_display:%b_msm_ext_display",
         ],
     },
 )

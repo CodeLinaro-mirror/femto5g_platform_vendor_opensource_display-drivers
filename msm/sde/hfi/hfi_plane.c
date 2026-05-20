@@ -105,6 +105,7 @@ static struct base_prop_lookup hfi_plane_repro_props_map[] = {
 	{PLANE_PROP_REPROJ_PLANE_EQUATION, HFI_PROPERTY_LAYER_LSR_REPROJ_PLANE_EQ},
 	{PLANE_PROP_REPROJ_RENDER_FRUSTUM, HFI_PROPERTY_LAYER_LSR_RENDER_FRUSTUM},
 	{PLANE_PROP_REPROJ_LAYER_GAMMA,	HFI_PROPERTY_LAYER_GAMMA},
+	{PLANE_PROP_DISPARITY_PHASE, HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE},
 };
 
 static struct base_prop_lookup hfi_plane_csc_props_map[] = {
@@ -156,7 +157,7 @@ static u32 hfi_rot_lookup(u32 drm_rot)
 }
 
 #if IS_ENABLED(CONFIG_DRM_SDE_LSR)
-int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -204,6 +205,15 @@ int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		gamma_type = sde_plane_get_property(state, PLANE_PROP_REPROJ_LAYER_GAMMA);
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 			phfi->hfi_pipe_id, HFI_VAL_U32, &gamma_type, sizeof(u32));
+	case HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE: {
+		u32 disparity_phase = sde_plane_get_property(state, PLANE_PROP_DISPARITY_PHASE);
+
+		if (!disparity_phase)
+			return 0;
+		prop_id = HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE;
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+			phfi->hfi_pipe_id, HFI_VAL_U32, &disparity_phase, sizeof(u32));
+	}
 	default:
 		HFI_ERROR_PLANE(phfi, "unsupported HFI property\n");
 		return -EINVAL;
@@ -212,7 +222,7 @@ int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	return 0;
 }
 
-int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -292,14 +302,14 @@ static bool _hfi_plane_is_prop_excluded_for_repro(u32 drm_prop, struct sde_plane
 	return false;
 }
 #else
-int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
 	return 0;
 }
 
-int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -316,8 +326,9 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 		struct sde_plane_state *pstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
-	u32 prop_id, hfi_format, supported_rot, llcc_scid;
+	u32 prop_id, hfi_format, supported_rot, llcc_scid, adjusted_crtc_x;
 	struct hfi_display_roi src, dst;
+	struct hfi_plane_buff buf;
 	struct drm_plane_state *state;
 	struct hfi_plane *phfi;
 	struct drm_framebuffer *fb;
@@ -338,8 +349,17 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	fmt.fourcc_format = fb->format->format;
 	fmt.modifier = fb->modifier;
 
-	HFI_POPULATE_RECT(&src, state->src_x, state->src_y,	state->src_w, state->src_h, true);
-	HFI_POPULATE_RECT(&dst, state->crtc_x, state->crtc_y, state->crtc_w, state->crtc_h, false);
+	/*
+	 * Adjust crtc_x back to global coordinates system in quadpipe usecase. This allows the
+	 * driver to split the coordinates system in 2 and figure out left and right layout.
+	 */
+	adjusted_crtc_x = state->crtc_x;
+	if (pstate->layout_offset > 0)
+		adjusted_crtc_x += pstate->layout_offset;
+
+	HFI_POPULATE_RECT(&src, state->src_x, state->src_y, state->src_w, state->src_h, true);
+	HFI_POPULATE_RECT(&dst, adjusted_crtc_x, state->crtc_y, state->crtc_w, state->crtc_h,
+			false);
 
 	hfi_format = hfi_catalog_get_hfi_format(&fmt);
 
@@ -367,9 +387,12 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 		return -EINVAL;
 	}
 	prop_id = HFI_PROPERTY_LAYER_SRC_ADDR;
+	memset(&buf, 0, sizeof(buf));
+	for (int i = 0; i < HFI_MAX_PLANES; i++)
+		buf.addr_l[i] = plane->pipe_cfg.layout.plane_addr[i];
+
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
-			HFI_VAL_U32_ARRAY, &plane->pipe_cfg.layout.plane_addr[0],
-			(sizeof(u32) * SDE_MAX_PLANES));
+			HFI_VAL_U32_ARRAY, &buf, sizeof(struct hfi_plane_buff));
 
 	prop_id = HFI_PROPERTY_LAYER_STRIDE;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
@@ -398,24 +421,23 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &attr, sizeof(struct dcp_cache_attr));
 
-	if (attr.cache_state != HFI_CACHE_STATE_DISABLE) {
+	if (sc_cfg) {
 		prop_id = HFI_PROPERTY_LAYER_LLCC_SCID;
-		if (!sc_cfg) {
-			HFI_ERROR_PLANE(phfi, "Invalid sc_cfg\n");
-			return -EINVAL;
-		}
 		llcc_scid = sc_cfg->llcc_scid;
-		SDE_EVT32(phfi->hfi_pipe_id, attr.cache_state, attr.cache_op_type, llcc_scid);
 		hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
 			HFI_VAL_U32_ARRAY, &llcc_scid, sizeof(u32));
+	} else if (attr.cache_state != HFI_CACHE_STATE_DISABLE) {
+		HFI_ERROR_PLANE(phfi, "Invalid sc_cfg when trying to enable LLCC\n");
+		rc = -EINVAL;
+		goto end;
 	}
 
 	HFI_DEBUG_PLANE(phfi, "done adding drm props\n");
-
-	return 0;
+end:
+	return rc;
 }
 
-int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		struct sde_plane_state *pstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -652,7 +674,7 @@ end:
  * hfi_plane_populate_custom_kv_setter_props:  this is for large payloads.
  * Collects all listed props to provide as key-value pairs and adapter does memcopy
  */
-int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u32 disp_id,
+static int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u32 disp_id,
 		struct sde_plane_state *pstate, struct hfi_cmdbuf_t *cmd_buf)
 {
 	int i, ret = 0;
@@ -703,7 +725,7 @@ end:
 	return ret;
 }
 
-int _hfi_plane_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
+static int _hfi_plane_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 		struct sde_plane *plane, struct sde_plane_state *pstate)
 {
 	int ret = 0;

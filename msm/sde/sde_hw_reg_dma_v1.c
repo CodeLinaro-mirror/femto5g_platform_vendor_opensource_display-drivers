@@ -1220,6 +1220,7 @@ int init_v12(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 			GRP_MDSS_HW_BLK_SELECT);
 	v1_supported[DEMURA_CFG] = MDSS | DSPP0 | DSPP1;
 	v1_supported[DEMURA_CFG0_PARAM2] = MDSS | DSPP0 | DSPP1;
+	v1_supported[DEMURA_PU_CFG] = MDSS | DSPP0 | DSPP1;
 
 	ret = write_last_cmd_buffer(dpu_idx);
 	if (ret) {
@@ -1382,6 +1383,7 @@ int init_v3(struct sde_hw_reg_dma *cfg, u32 dpu_idx)
 
 	v1_supported[DEMURA_CFG] = v1_supported[DEMURA_CFG] | DSPP2 | DSPP3;
 	v1_supported[DEMURA_CFG0_PARAM2] = v1_supported[DEMURA_CFG0_PARAM2] | DSPP2 | DSPP3;
+	v1_supported[DEMURA_PU_CFG] = v1_supported[DEMURA_PU_CFG] | DSPP2 | DSPP3;
 	v1_supported[AIQE_MDNIE] = MDSS | DSPP0 | DSPP2;
 	v1_supported[AIQE_SSRC_CONFIG] = MDSS | DSPP0 | DSPP2;
 	v1_supported[AIQE_SSRC_DATA] = MDSS | DSPP0 | DSPP2;

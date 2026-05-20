@@ -151,7 +151,7 @@ static void msm_drm_display_thread_priority_worker(struct kthread_work *work)
  * RETURNS
  * Zero for success or -errorno.
  */
-int msm_atomic_check(struct drm_device *dev,
+static int msm_atomic_check(struct drm_device *dev,
 			    struct drm_atomic_state *state)
 {
 	struct msm_drm_private *priv;
@@ -619,7 +619,7 @@ static int get_mdp_ver(struct platform_device *pdev)
  * Return: 1 if an IOMMU is mapped for the device (stops iteration),
  * 0 otherwise (continues iteration).
  */
-int msm_check_device_iommu_mapped(struct device *dev, void *data)
+static int msm_check_device_iommu_mapped(struct device *dev, void *data)
 {
 	if (!dev || !data) {
 		pr_err("msm check device iommu_mapped invalid input [%s] is null\n",
@@ -1857,14 +1857,12 @@ EXPORT_SYMBOL_GPL(msm_ioctl_rmfb2);
  * @file_priv: drm file for the ioctl call
  *
  */
-int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
+static int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
 	struct msm_file_private *ctx = file_priv->driver_priv;
 	struct msm_drm_private *priv;
 	struct drm_msm_power_ctrl *power_ctrl = data;
-	struct msm_kms *kms;
-	const struct msm_kms_funcs *funcs;
 	bool vote_req = false;
 	int old_cnt;
 	int rc = 0;
@@ -1875,13 +1873,6 @@ int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
 	}
 
 	priv = dev->dev_private;
-	kms = priv->kms;
-	if (!kms)
-		return -EINVAL;
-
-	funcs = kms->funcs;
-	if (!funcs || !funcs->idle_timer_control)
-		return -EINVAL;
 
 	mutex_lock(&ctx->power_lock);
 
@@ -1899,15 +1890,10 @@ int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
 	}
 
 	if (vote_req) {
-		if (power_ctrl->enable) {
+		if (power_ctrl->enable)
 			rc = pm_runtime_resume_and_get(dev->dev);
-			if (IS_DISP_OP_HFI(priv->disp_op))
-				rc = funcs->idle_timer_control(kms, true);
-		} else {
+		else
 			pm_runtime_put_sync(dev->dev);
-			if (IS_DISP_OP_HFI(priv->disp_op))
-				rc = funcs->idle_timer_control(kms, false);
-		}
 
 		if (rc < 0)
 			ctx->enable_refcnt = old_cnt;
@@ -1931,7 +1917,7 @@ int msm_ioctl_power_ctrl(struct drm_device *dev, void *data,
  * @file_priv: drm file for the ioctl call
  *
  */
-int msm_ioctl_display_hint_ops(struct drm_device *dev, void *data,
+static int msm_ioctl_display_hint_ops(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
 	struct drm_msm_display_hint *display_hint = data;
@@ -1983,7 +1969,7 @@ int msm_ioctl_display_hint_ops(struct drm_device *dev, void *data,
  * @file_priv: drm file for the ioctl call
  *
  */
-int msm_ioctl_display_early_ept(struct drm_device *dev, void *data,
+static int msm_ioctl_display_early_ept(struct drm_device *dev, void *data,
 			struct drm_file *file_priv)
 {
 	struct drm_msm_display_early_ept *early_ept = data;

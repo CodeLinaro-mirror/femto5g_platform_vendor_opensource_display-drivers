@@ -11,6 +11,7 @@
 #include "sde_hw_pingpong.h"
 #include "sde_dbg.h"
 #include "sde_kms.h"
+#include "sde_hw_dsc_1_2.h"
 
 
 #define DSC_CMN_MAIN_CNF           0x00

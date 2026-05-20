@@ -442,13 +442,6 @@ struct sde_crtc_hal_funcs {
 	 * @crtc: Pointer to sde crtc structure
 	 */
 	int (*debugfs_misr_read[MSM_DISP_OP_MAX])(struct sde_crtc *crtc);
-
-	/**
-	 * set_idle_pc_timer - Update idle pc control timer based on drm property
-	 * @crtc: Pointer to sde crtc structure
-	 * @value: Value of enum for idle timer control
-	 */
-	int (*set_idle_pc_timer[MSM_DISP_OP_MAX])(struct sde_crtc *crtc, u32 value);
 };
 
 /**
@@ -690,7 +683,7 @@ struct sde_crtc {
 
 	struct sde_aiqe_top_level aiqe_top_level;
 	struct sde_io_res ai_scaler_res;
-	struct sde_cp_skip_blend_plane skip_blend_planes[SB_PLANE_MAX];
+	struct sde_cp_skip_blend_plane skip_blend_planes[SB_PIPE_MAX][SB_PLANE_MAX];
 
 	struct sde_cesta_client *cesta_client;
 	u32 mdnie_art_frame_count;
@@ -1524,8 +1517,9 @@ static inline bool sde_crtc_is_power_on_frame(struct drm_crtc *crtc)
 /**
  * sde_crtc_copr_status_event_notify - notify copr status to userspace
  * @crtc: Pointer to drm_crtc.
+ * @arg: Pointer to copr status argument
  */
-void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc);
+void sde_crtc_copr_status_event_notify(struct drm_crtc *crtc, void *arg);
 
 /**
  * sde_crtc_get_disp_op - Returns the display op index - default: MSM_DISP_OP_HWIO

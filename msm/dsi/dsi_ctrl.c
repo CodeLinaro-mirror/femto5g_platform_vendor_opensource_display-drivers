@@ -1642,6 +1642,7 @@ static int dsi_message_tx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_de
 			true : false;
 		cmd_mem.datatype = msg->type;
 		cmd_mem.length = msg->tx_len;
+		cmd_mem.vc_id = msg->channel;
 
 		dsi_ctrl->cmd_len = msg->tx_len;
 		memcpy(dsi_ctrl->vaddr, msg->tx_buf, msg->tx_len);

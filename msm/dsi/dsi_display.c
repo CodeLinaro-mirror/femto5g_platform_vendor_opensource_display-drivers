@@ -15,6 +15,7 @@
 #include "msm_drv.h"
 #include "hfi_msm_drv.h"
 #include "sde_connector.h"
+#include "hfi_connector.h"
 #include "msm_mmu.h"
 #include "dsi_display.h"
 #include "dsi_panel.h"
@@ -25,6 +26,7 @@
 #include "dsi_pwr.h"
 #include "sde_dbg.h"
 #include "dsi_parser.h"
+#include "dsi_sim_bridge.h"
 #include "dsi_display_manager.h"
 #include "dsi_hfi.h"
 #include "hfi_kms.h"
@@ -74,7 +76,7 @@ bool is_skip_op_required(struct dsi_display *display)
 	return (display->is_cont_splash_enabled || display->trusted_vm_env);
 }
 
-static bool is_sim_panel(struct dsi_display *display)
+bool is_sim_panel(struct dsi_display *display)
 {
 	if (!display || !display->panel)
 		return false;
@@ -768,7 +770,14 @@ static void dsi_display_set_cmd_tx_ctrl_flags(struct dsi_display *display,
 			flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 		}
 
-		if (display->config.esync_enabled && !(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE))
+		/*
+		 * Set flag to send multiple DMA in a single HS burst.
+		 * NOT applicable in command non-embedded mode and should be disabled.
+		 */
+
+		if (!(flags & DSI_CTRL_CMD_NON_EMBEDDED_MODE) &&
+				(display->config.esync_enabled ||
+				display->panel->panel_mode == DSI_OP_VIDEO_MODE))
 			flags |= DSI_CTRL_CMD_MULTI_DMA_BURST;
 		else
 			flags &= ~DSI_CTRL_CMD_MULTI_DMA_BURST;
@@ -843,11 +852,13 @@ static int dsi_display_read_status(struct dsi_display_ctrl *ctrl,
 	 * report a false ESD failure and hence we defer until next read
 	 * happen.
 	 */
-	if (!dsi_ctrl_validate_host_state(ctrl->ctrl))
-		return 1;
+	if (display->ctrl->ctrl->disp_op != MSM_DISP_OP_HFI) {
+		if (!dsi_ctrl_validate_host_state(ctrl->ctrl))
+			return 1;
 
-	if (phy_pll_bypass(display))
-		return 0;
+		if (phy_pll_bypass(display))
+			return 0;
+	}
 
 	config = &(panel->esd_config);
 	lenp = config->status_valid_params ?: config->status_cmds_rlen;
@@ -866,22 +877,38 @@ static int dsi_display_read_status(struct dsi_display_ctrl *ctrl,
 		cmds[i].msg.rx_len = config->status_cmds_rlen[i];
 		cmds[i].ctrl_flags = flags;
 		dsi_display_set_cmd_tx_ctrl_flags(display,&cmds[i]);
-		rc = dsi_ctrl_transfer_prepare(ctrl->ctrl, cmds[i].ctrl_flags);
-		if (rc) {
-			DSI_ERR("prepare for rx cmd transfer failed rc=%d\n", rc);
-			return rc;
-		}
 
-		rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmds[i], false);
-		if (rc <= 0) {
-			DSI_ERR("rx cmd transfer failed rc=%d\n", rc);
+		if (display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI) {
+
+			if (!dsi_hfi_host_transfer_sub(&display->host, &cmds[i])) {
+				rc = cmds[i].msg.rx_len;
+
+				memcpy(config->return_buf + start,
+					config->status_buf, lenp[i]);
+				start += lenp[i];
+			} else {
+				DSI_ERR("rx cmd transfer failed.\n");
+			}
+
 		} else {
-			memcpy(config->return_buf + start,
-				config->status_buf, lenp[i]);
-			start += lenp[i];
+			rc = dsi_ctrl_transfer_prepare(ctrl->ctrl, cmds[i].ctrl_flags);
+			if (rc) {
+				DSI_ERR("prepare for rx cmd transfer failed rc=%d\n", rc);
+				return rc;
+			}
+
+			rc = dsi_ctrl_cmd_transfer(ctrl->ctrl, &cmds[i], false);
+			if (rc <= 0) {
+				DSI_ERR("rx cmd transfer failed rc=%d\n", rc);
+			} else {
+				memcpy(config->return_buf + start,
+					config->status_buf, lenp[i]);
+				start += lenp[i];
+			}
+
+			dsi_ctrl_transfer_unprepare(ctrl->ctrl, cmds[i].ctrl_flags);
 		}
 
-		dsi_ctrl_transfer_unprepare(ctrl->ctrl, cmds[i].ctrl_flags);
 	}
 
 	return rc;
@@ -993,8 +1020,8 @@ static int dsi_display_status_check_te(struct dsi_display *display,
 		if (!wait_for_completion_timeout(&display->esd_te_gate,
 					esd_te_timeout)) {
 			DSI_ERR("TE check failed\n");
-			dsi_display_change_te_irq_status(display, false);
-			return -EINVAL;
+			rc = -EINVAL;
+			break;
 		}
 	}
 
@@ -1004,7 +1031,7 @@ static int dsi_display_status_check_te(struct dsi_display *display,
 	return rc;
 }
 
-void dsi_display_toggle_error_interrupt_status(struct dsi_display * display, bool enable)
+static void dsi_display_toggle_error_interrupt_status(struct dsi_display *display, bool enable)
 {
 	int i = 0;
 	struct dsi_display_ctrl *ctrl;
@@ -1053,8 +1080,10 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	}
 	SDE_EVT32(SDE_EVTLOG_FUNC_ENTRY, status_mode, te_check_override);
 
-	if (te_check_override)
+	if (te_check_override) {
 		te_rechecks = MAX_TE_RECHECKS;
+		status_mode = ESD_MODE_PANEL_TE;
+	}
 
 	if ((dsi_display->trusted_vm_env) ||
 			(panel->panel_mode == DSI_OP_VIDEO_MODE))
@@ -1062,10 +1091,13 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 
 	dsi_display_set_ctrl_esd_check_flag(dsi_display, true);
 
-	dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
+	if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) {
+		dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_ON);
 
-	/* Disable error interrupts while doing an ESD check */
-	dsi_display_toggle_error_interrupt_status(dsi_display, false);
+		/* Disable error interrupts while doing an ESD check */
+		dsi_display_toggle_error_interrupt_status(dsi_display, false);
+	}
 
 	if (status_mode == ESD_MODE_REG_READ) {
 		rc = dsi_display_status_reg_read(dsi_display);
@@ -1093,11 +1125,14 @@ int dsi_display_check_status(struct drm_connector *connector, void *display,
 	/* Handle Panel failures during display disable sequence */
 	if (rc <=0)
 		atomic_set(&panel->esd_recovery_pending, 1);
-	else
+	else if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO)
 		/* Enable error interrupts post an ESD success */
 		dsi_display_toggle_error_interrupt_status(dsi_display, true);
 
-	dsi_display_clk_ctrl(dsi_display->dsi_clk_handle, DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
+	if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO)
+		dsi_display_clk_ctrl(dsi_display->dsi_clk_handle,
+			DSI_CORE_CLK | DSI_LINK_CLK, DSI_CLK_OFF);
+
 release_panel_lock:
 	dsi_panel_release_panel_lock(panel);
 	SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, rc);
@@ -1193,24 +1228,29 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 		transfer = true;
 
 	mutex_lock(&dsi_display->display_lock);
-	rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
 
-	/**
-	 * Handle scenario where a command transfer is initiated through
-	 * sysfs interface when device is in suepnd state.
-	 */
-	if (!rc && !state) {
-		pr_warn_ratelimited("Command xfer attempted while device is in suspend state\n"
-				);
-		rc = -EPERM;
-		goto end;
+	if (dsi_display->ctrl[0].ctrl->disp_op != MSM_DISP_OP_HFI) {
+		rc = dsi_display_ctrl_get_host_init_state(dsi_display, &state);
+
+		/**
+		 * Handle scenario where a command transfer is initiated through
+		 * sysfs interface when device is in suepnd state.
+		 */
+		if (!rc && !state) {
+			pr_warn_ratelimited("Command xfer attempted while device is in suspend state\n"
+					);
+			rc = -EPERM;
+			goto end;
+		}
+
+		if (rc || !state) {
+			DSI_ERR("[DSI] Invalid host state %d rc %d\n",
+					state, rc);
+			rc = -EPERM;
+			goto end;
+		}
 	}
-	if (rc || !state) {
-		DSI_ERR("[DSI] Invalid host state %d rc %d\n",
-				state, rc);
-		rc = -EPERM;
-		goto end;
-	}
+
 
 	SDE_EVT32(dsi_display->tx_cmd_buf_ndx, cmd_buf_len);
 
@@ -1249,7 +1289,11 @@ int dsi_display_cmd_transfer(struct drm_connector *connector,
 
 		dsi_panel_acquire_panel_lock(dsi_display->panel);
 		for (i = 0; i < cnt; i++) {
-			rc = dsi_host_transfer_sub(&dsi_display->host, cmds, do_peripheral_flush);
+			if (dsi_display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+				rc = dsi_hfi_host_transfer_sub(&dsi_display->host, cmds);
+			else
+				rc = dsi_host_transfer_sub(&dsi_display->host, cmds,
+							do_peripheral_flush);
 			if (rc < 0) {
 				DSI_ERR("failed to send command, rc=%d\n", rc);
 				break;
@@ -1829,7 +1873,7 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 	struct dsi_display *display = file->private_data;
 	struct drm_panel_esd_config *esd_config;
 	char *buf;
-	int rc = 0;
+	int rc = 0, hfi_rc = 0;
 	size_t len;
 
 	if (!display)
@@ -1893,6 +1937,18 @@ static ssize_t debugfs_alter_esd_check_mode(struct file *file,
 		esd_config->status_mode = ESD_MODE_SW_SIM_FAILURE;
 
 	rc = len;
+
+	if (display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI) {
+		struct hfi_display_dbg_property dbg_prop = {
+			.prop_id = HFI_DISPLAY_DEBUG_ESD_CHECK_MODE,
+			.value_lsb = dsi_get_esd_status_mode_helper(esd_config->status_mode)
+		};
+
+		hfi_rc = hfi_connector_set_debug_prop(display->drm_conn, &dbg_prop);
+		if (hfi_rc)
+			DSI_ERR("Failed to update ESD check mode via HFI, rc=%d\n", hfi_rc);
+	}
+
 error:
 	kfree(buf);
 	return rc;
@@ -2239,7 +2295,7 @@ static int dsi_display_debugfs_deinit(struct dsi_display *display)
 #endif /* CONFIG_DEBUG_FS */
 
 static void adjust_timing_by_ctrl_count(const struct dsi_display *display,
-					struct dsi_display_mode *mode)
+					struct dsi_display_mode *mode, bool mode_set)
 {
 	struct dsi_host_common_cfg *host = &display->panel->host_config;
 	bool is_split_link = host->split_link.enabled;
@@ -2253,7 +2309,7 @@ static void adjust_timing_by_ctrl_count(const struct dsi_display *display,
 		mode->timing.h_skew /= sublinks_count;
 		mode->pixel_clk_khz /= sublinks_count;
 	} else {
-		if (mode->priv_info->dsc_enabled)
+		if (mode->priv_info->dsc_enabled && mode_set)
 			mode->priv_info->dsc.config.pic_width =
 				mode->timing.h_active;
 		mode->timing.h_active /= display->ctrl_count;
@@ -4692,7 +4748,7 @@ static bool dsi_display_is_seamless_dfps_possible(
 	return true;
 }
 
-void dsi_display_update_byte_intf_div(struct dsi_display *display)
+static void dsi_display_update_byte_intf_div(struct dsi_display *display)
 {
 	struct dsi_host_common_cfg *config;
 	struct dsi_display_ctrl *m_ctrl;
@@ -5196,7 +5252,8 @@ static int dsi_display_dfps_update(struct dsi_display *display,
 	dsi_panel_get_dfps_caps(display->panel, &dfps_caps);
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 	if (!dfps_caps.dfps_support && !dyn_clk_caps->maintain_const_fps &&
-		!emsync_switch_support) {
+		!emsync_switch_support &&
+		!(dsi_mode->dsi_mode_flags & DSI_MODE_FLAG_DMS_VID)) {
 		DSI_ERR("dfps or constant fps or emsync switch not supported\n");
 		return -ENOTSUPP;
 	}
@@ -5335,7 +5392,7 @@ static int dsi_display_get_dfps_timing(struct dsi_display *display,
 	}
 
 	per_ctrl_mode = *adj_mode;
-	adjust_timing_by_ctrl_count(display, &per_ctrl_mode);
+	adjust_timing_by_ctrl_count(display, &per_ctrl_mode, false);
 
 	if (!curr_refresh_rate) {
 		if (!dsi_display_is_seamless_dfps_possible(display,
@@ -5480,7 +5537,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 
 	if (mode->dsi_mode_flags &
-			(DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_VRR)) {
+			(DSI_MODE_FLAG_DFPS | DSI_MODE_FLAG_VRR
+			| DSI_MODE_FLAG_DMS_VID)) {
 		display_for_each_ctrl(i, display) {
 			ctrl = &display->ctrl[i];
 
@@ -5531,7 +5589,8 @@ static int dsi_display_set_mode_sub(struct dsi_display *display,
 			return rc;
 	}
 
-	if (mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK) {
+	if ((display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HWIO) &&
+	    (mode->dsi_mode_flags & DSI_MODE_FLAG_DYN_CLK)) {
 		if (display->panel->panel_mode == DSI_OP_VIDEO_MODE) {
 			rc = dsi_display_dynamic_clk_switch_vid(display, mode);
 			if (rc)
@@ -7459,7 +7518,7 @@ int dsi_display_get_mode_count(struct dsi_display *display,
 	return 0;
 }
 
-void dsi_display_adjust_mode_timing(struct dsi_display *display,
+static void dsi_display_adjust_mode_timing(struct dsi_display *display,
 			struct dsi_display_mode *dsi_mode,
 			int lanes, int bpp)
 {
@@ -7746,16 +7805,80 @@ static void _dsi_display_populate_esync_caps(struct dsi_display *display,
 			sizeof(struct esync_params));
 }
 
-int dsi_display_get_modes_helper(struct dsi_display *display,
+static u64 dsi_display_caculate_dsi_clock(struct dsi_display *dsi_display,
+	struct dsi_display_mode *dsi_mode)
+{
+	struct dsi_mode_info *timing;
+	u64 bit_rate;
+	u64 bit_rate_per_lane;
+	u64 h_total;
+	u64 v_total;
+
+	if (!dsi_display || !dsi_display->panel || !dsi_mode) {
+		DSI_ERR("invalid parameters\n");
+		return 0;
+	}
+	timing = &dsi_mode->timing;
+
+	h_total = dsi_h_total_dce(timing);
+	v_total = DSI_V_TOTAL(timing);
+	bit_rate = h_total * v_total * timing->refresh_rate * dsi_mode->bpp;
+	bit_rate_per_lane =
+		do_div(bit_rate, dsi_display->panel->host_config.num_data_lanes);
+	return bit_rate_per_lane;
+}
+
+static int _dsi_display_check_dms_caps(struct dsi_display *display,
+	struct dsi_display_mode *display_mode,
+	struct dsi_dms_vid_caps *dms_vid_caps,
+	struct dsi_display_mode *display_mode_expected,
+	u64 dsi_clock_expected)
+{
+	int i;
+
+	if (!display || !display_mode || !dms_vid_caps || !display_mode_expected) {
+		DSI_ERR("invalid parameters\n");
+		return -EINVAL;
+	}
+
+	/*
+	 * When qcom,dms-vid-maintain-const-clk is set, it needs the
+	 * same dsi clock and phy timing array in each timing node.
+	 */
+	if (dms_vid_caps->type && dms_vid_caps->maintain_const_clk) {
+		if (dsi_display_caculate_dsi_clock(display, display_mode) !=
+				dsi_clock_expected) {
+			DSI_ERR("qcom,dms-vid-maintain-const-clk needs same dsi clock\n");
+			return -EINVAL;
+		}
+		if (display_mode_expected->priv_info->phy_timing_len !=
+				display_mode->priv_info->phy_timing_len) {
+			DSI_ERR("qcom,dms-vid-maintain-const-clk needs same phy\n");
+			return -EINVAL;
+		}
+		for (i = 0; i < display_mode->priv_info->phy_timing_len; ++i) {
+			if (display_mode_expected->priv_info->phy_timing_val[i] !=
+					display_mode->priv_info->phy_timing_val[i]) {
+				DSI_ERR("qcom,dms-vid-maintain-const-clk needs same phy\n");
+				return -EINVAL;
+			}
+		}
+	}
+
+	return 0;
+}
+
+static int dsi_display_get_modes_helper(struct dsi_display *display,
 	struct dsi_display_ctrl *ctrl, u32 timing_mode_count,
 	struct dsi_dfps_capabilities dfps_caps, struct dsi_qsync_capabilities *qsync_caps,
 	struct dsi_dyn_clk_caps *dyn_clk_caps, struct dsi_avr_capabilities *avr_caps,
-	struct dsi_esync_capabilities *esync_caps)
+	struct dsi_esync_capabilities *esync_caps, struct dsi_dms_vid_caps *dms_vid_caps)
 {
 	int dsc_modes = 0, nondsc_modes = 0, rc = 0, i, start, end;
 	u32 num_dfps_rates, mode_idx, sublinks_count, array_idx = 0;
 	bool is_split_link, support_cmd_mode, support_video_mode;
 	struct dsi_host_common_cfg *host = &display->panel->host_config;
+	u64 dsi_clock;
 
 	for (mode_idx = 0; mode_idx < timing_mode_count; mode_idx++) {
 		struct dsi_display_mode display_mode;
@@ -7791,6 +7914,12 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 		rc = dsi_panel_get_mode(display->panel, mode_idx,
 						&display_mode,
 						topology_override);
+
+		if (display->cmdline_timing == NO_OVERRIDE && display_mode.is_preferred) {
+			display->cmdline_timing = display_mode.mode_idx;
+			is_preferred = true;
+		}
+
 		if (rc) {
 			DSI_ERR("[%s] failed to get mode idx %d from panel\n",
 				   display->name, mode_idx);
@@ -7857,6 +7986,8 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			display_mode.timing.h_skew *= display->ctrl_count;
 			display_mode.pixel_clk_khz *= display->ctrl_count;
 		}
+
+		dsi_clock = dsi_display_caculate_dsi_clock(display, &display->modes[0]);
 
 		start = array_idx;
 		for (i = 0; i < num_dfps_rates; i++) {
@@ -7944,6 +8075,13 @@ int dsi_display_get_modes_helper(struct dsi_display *display,
 			display->modes[start].is_preferred = true;
 		}
 
+		rc = _dsi_display_check_dms_caps(display, &display_mode, dms_vid_caps,
+			&display->modes[0], dsi_clock);
+		if (rc) {
+			DSI_ERR("invalid dynamic mode setting configuration\n");
+			return rc;
+		}
+
 		bit_clk_list = &display_mode.priv_info->bit_clk_list;
 		if (support_video_mode && dfps_caps.dfps_support) {
 			if (dyn_clk_caps->dyn_clk_support) {
@@ -7973,6 +8111,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 	struct dsi_qsync_capabilities *qsync_caps;
 	struct dsi_avr_capabilities *avr_caps;
 	struct dsi_esync_capabilities *esync_caps;
+	struct dsi_dms_vid_caps *dms_vid_caps;
 
 	if (!display || !out_modes) {
 		DSI_ERR("Invalid params\n");
@@ -8007,6 +8146,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 	dyn_clk_caps = &(display->panel->dyn_clk_caps);
 	avr_caps = &(display->panel->avr_caps);
 	esync_caps = &(display->panel->esync_caps);
+	dms_vid_caps = &(display->panel->dms_vid_caps);
 
 	timing_mode_count = display->panel->num_timing_nodes;
 
@@ -8016,7 +8156,7 @@ int dsi_display_get_modes(struct dsi_display *display,
 		display->cmdline_timing = NO_OVERRIDE;
 
 	rc = dsi_display_get_modes_helper(display, ctrl, timing_mode_count,
-			dfps_caps, qsync_caps, dyn_clk_caps, avr_caps, esync_caps);
+			dfps_caps, qsync_caps, dyn_clk_caps, avr_caps, esync_caps, dms_vid_caps);
 	if (rc)
 		goto error;
 
@@ -8581,7 +8721,7 @@ int dsi_display_validate_mode(struct dsi_display *display,
 	mutex_lock(&display->display_lock);
 
 	adj_mode = *mode;
-	adjust_timing_by_ctrl_count(display, &adj_mode);
+	adjust_timing_by_ctrl_count(display, &adj_mode, false);
 
 	rc = dsi_panel_validate_mode(display->panel, &adj_mode);
 	if (rc) {
@@ -8642,7 +8782,7 @@ int dsi_display_set_mode(struct dsi_display *display,
 
 	/* hfi interface expects full horizontal timings, therefore skip adjustment */
 	if (display->panel->disp_op != MSM_DISP_OP_HFI)
-		adjust_timing_by_ctrl_count(display, &adj_mode);
+		adjust_timing_by_ctrl_count(display, &adj_mode, true);
 
 	if (!display->panel->cur_mode) {
 		display->panel->cur_mode =
@@ -10237,12 +10377,14 @@ void __init dsi_display_register(void)
 
 	dsi_display_parse_boot_display_selection();
 
+	dsi_sim_bridge_register();
 	platform_driver_register(&dsi_display_driver);
 }
 
 void __exit dsi_display_unregister(void)
 {
 	platform_driver_unregister(&dsi_display_driver);
+	dsi_sim_bridge_unregister();
 	dsi_ctrl_drv_unregister();
 	dsi_phy_drv_unregister();
 }
