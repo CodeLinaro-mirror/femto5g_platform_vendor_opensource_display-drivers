@@ -37,6 +37,7 @@ struct dp_mst_caps {
 	u32 max_streams_supported;
 	u32 max_dpcd_transaction_bytes;
 	struct drm_dp_aux *drm_aux;
+	u32 max_lane_count;
 };
 
 struct dp_display {

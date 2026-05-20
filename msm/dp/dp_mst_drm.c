@@ -1953,7 +1953,7 @@ int dp_mst_init(struct dp_display *dp_display)
 					dp_mst.caps.drm_aux,
 					dp_mst.caps.max_dpcd_transaction_bytes,
 					dp_mst.caps.max_streams_supported,
-					4, DP_MAX_LINK_CLK_KHZ, conn_base_id);
+					dp_mst.caps.max_lane_count, DP_MAX_LINK_CLK_KHZ, conn_base_id);
 #else
 	ret = drm_dp_mst_topology_mgr_init(&dp_mst.mst_mgr, dev,
 					dp_mst.caps.drm_aux,
