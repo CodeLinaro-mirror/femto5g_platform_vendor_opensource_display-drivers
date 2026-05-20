@@ -1717,9 +1717,8 @@ static int dp_display_handle_disconnect(struct dp_display_private *dp, bool skip
 	dp->aux->abort(dp->aux, true);
 
 	mutex_lock(&dp->session_lock);
-	if (dp->active_stream_cnt)
-		dp_display_clean(dp, skip_wait);
 
+	dp_display_clean(dp, skip_wait);
 	dp_display_host_unready(dp);
 	dp->tot_lm_blks_in_use = 0;
 	mutex_unlock(&dp->session_lock);
@@ -2479,23 +2478,6 @@ skip_node_name:
 		}
 	}
 
-	if (dp->parser->force_connect_mode) {
-		/*
-		 * always enter simulation first regardless of the actual
-		 * connection state to make connector always connected.
-		 * this will fix the corner case when user tries to read
-		 * connector modes when link training is still running.
-		 */
-		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
-		dp_display_state_remove(DP_STATE_ABORTED);
-		dp_display_state_add(DP_STATE_CONFIGURED);
-		rc = dp_display_host_init(dp);
-		if (rc)
-			DP_ERR("Host init Failed");
-		dp_display_process_hpd_high(dp, true);
-		dp_display_send_hpd_notification(dp);
-	}
-
 	return rc;
 error_hpd_reg:
 	dp_debug_put(dp->debug);
@@ -2549,6 +2531,46 @@ static int dp_display_post_init(struct dp_display *dp_display)
 	dp_display->post_init = NULL;
 end:
 	DP_DEBUG("%s\n", rc ? "failed" : "success");
+	return rc;
+}
+
+static int dp_display_after_init(struct dp_display *dp_display)
+{
+	int rc = 0;
+	struct dp_display_private *dp;
+
+	if (!dp_display) {
+		DP_ERR("invalid input\n");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	dp = container_of(dp_display, struct dp_display_private, dp_display);
+	if (IS_ERR_OR_NULL(dp)) {
+		DP_ERR("invalid params\n");
+		rc = -EINVAL;
+		goto end;
+	}
+
+	if (dp->parser->force_connect_mode) {
+		/*
+		 * always enter simulation first regardless of the actual
+		 * connection state to make connector always connected.
+		 * this will fix the corner case when user tries to read
+		 * connector modes when link training is still running.
+		 */
+		DP_INFO("DP%d enter simulation mode after mst init");
+		dp_sim_set_sim_mode(dp->aux_bridge, DP_SIM_MODE_ALL);
+		dp_display_state_remove(DP_STATE_ABORTED);
+		dp_display_state_add(DP_STATE_CONFIGURED);
+		rc = dp_display_host_init(dp);
+		if (rc)
+			DP_ERR("DP%d Host init Failed");
+		dp_display_process_hpd_high(dp, true);
+		dp_display_send_hpd_notification(dp);
+	}
+
+end:
 	return rc;
 }
 
@@ -3971,6 +3993,7 @@ static int dp_display_probe(struct platform_device *pdev)
 	g_dp_display->get_debug     = dp_get_debug;
 	g_dp_display->post_open     = NULL;
 	g_dp_display->post_init     = dp_display_post_init;
+	g_dp_display->after_init    = dp_display_after_init;
 	g_dp_display->config_hdr    = dp_display_config_hdr;
 	g_dp_display->mst_install   = dp_display_mst_install;
 	g_dp_display->mst_uninstall = dp_display_mst_uninstall;

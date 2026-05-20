@@ -5997,11 +5997,6 @@ int sde_encoder_wait_for_event(struct drm_encoder *drm_enc,
 	sde_enc = to_sde_encoder_virt(drm_enc);
 	SDE_DEBUG_ENC(sde_enc, "\n");
 
-	if (!sde_enc->bridge_enabled) {
-		SDE_INFO("enc%d bridge not enabled, skip\n", DRMID(drm_enc));
-		return 0;
-	}
-
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
 		struct sde_encoder_phys *phys = sde_enc->phys_encs[i];
 
