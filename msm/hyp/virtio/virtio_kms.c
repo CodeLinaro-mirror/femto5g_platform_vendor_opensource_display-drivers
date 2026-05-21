@@ -3517,11 +3517,16 @@ static int virtio_kms_probe(struct platform_device *pdev)
 	_virtio_gpu_event_thread =
 		kthread_run(virtio_gpu_event_kthread, kms, "virtio gpu kthread");
 
-	ret = _virtio_kms_hw_init(kms);
-	if (ret) {
-		VIRTIO_KMS_ERR("_virtio_kms_hw_init failed, ret: %d\n", ret);
-		return ret;
-	}
+        ret = _virtio_kms_hw_init(kms);
+        if (ret) {
+                VIRTIO_KMS_ERR("_virtio_kms_hw_init failed, ret: %d\n", ret);
+                if (_virtio_gpu_event_thread) {
+                        kms->stop = true;
+                        kthread_stop(_virtio_gpu_event_thread);
+                        _virtio_gpu_event_thread = NULL;
+                }
+                return ret;
+        }
 
 	VIRTIO_KMS_DBG("numbr of scanouts %d for client %x\n", kms->num_scanouts, kms->client_id);
 	kms->base.funcs = &virtio_kms_funcs;
