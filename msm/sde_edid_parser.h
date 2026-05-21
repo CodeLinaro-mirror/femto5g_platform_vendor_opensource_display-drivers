@@ -156,6 +156,16 @@ bool sde_detect_hdmi_monitor(void *edid_ctrl);
 u8 sde_get_edid_checksum(void *input);
 
 /**
+ * sde_edid_update_connector_info() - update connector EDID property and
+ *     parse extended block info (HDR, colorimetry, VSDB) without adding modes.
+ * @connector: Handle to the drm_connector.
+ * @edid_ctrl: Handle to the edid_ctrl structure.
+ *
+ * Return: void.
+ */
+void sde_edid_update_connector_info(struct drm_connector *connector, void *edid_ctrl);
+
+/**
  * _sde_edid_update_modes() - populate EDID modes.
  * @edid_ctrl:     Handle to the edid_ctrl structure.
  *
