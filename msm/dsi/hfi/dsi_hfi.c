@@ -18,6 +18,7 @@
 #include "dsi_panel.h"
 #include "dsi_parser.h"
 #include "hfi_adapter.h"
+#include "hfi_pack_unpack_common.h"
 #include "hfi_props.h"
 #include "hfi_kms.h"
 #include "sde_dsc_helper.h"
@@ -437,15 +438,17 @@ int dsi_display_hfi_setup_hfi(struct dsi_display *display, struct hfi_adapter_t 
 	return 0;
 }
 
-int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
+static int dsi_display_hfi_send_cmd_buf_with_header_flags(struct dsi_display *display,
 					struct hfi_client_t *hfi_client, u32 hfi_cmd,
 					const char *display_type, u32 hfi_payload_type,
-					void *payload, u32 payload_size, u32 flags)
+					void *payload, u32 payload_size, u32 flags,
+					u8 header_object_id_flags)
 {
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	struct drm_connector *drm_conn;
 	int rc = 0;
 	u32 obj_id, packet_id = 0;
+	u32 header_obj_id = 0;
 	bool remove_on_cb = false;
 
 	if (!display) {
@@ -472,7 +475,9 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 
 	obj_id = sde_conn_get_display_obj_id(drm_conn);
 
-	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id,
+	header_obj_id = obj_id | ((u32)header_object_id_flags << 8);
+
+	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, header_obj_id,
 			HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
 	if (!cmd_buf) {
 		DSI_ERR("could not get cmd_buf for hfi_cmd 0x%x\n", hfi_cmd);
@@ -507,6 +512,16 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 	}
 
 	return rc;
+}
+
+int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
+					struct hfi_client_t *hfi_client, u32 hfi_cmd,
+					const char *display_type, u32 hfi_payload_type,
+					void *payload, u32 payload_size, u32 flags)
+{
+	return dsi_display_hfi_send_cmd_buf_with_header_flags(display, hfi_client,
+			hfi_cmd, display_type, hfi_payload_type, payload, payload_size,
+			flags, 0);
 }
 
 int dsi_display_hfi_register_pwr_supplies(struct dsi_display *display)
@@ -1272,9 +1287,11 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	/* Copy command payload to HFI buffer */
 	memcpy(tx_cmd_buf_map->local_addr, cmd->msg.tx_buf, cmd->msg.tx_len);
 
-	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd, display->display_type,
-			HFI_PAYLOAD_TYPE_U32_ARRAY, dsi_cmd_desc, sizeof(struct hfi_dsi_cmd_desc),
-			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
+	rc = dsi_display_hfi_send_cmd_buf_with_header_flags(display, hfi_client, hfi_cmd,
+			display->display_type, HFI_PAYLOAD_TYPE_U32_ARRAY, dsi_cmd_desc,
+			sizeof(struct hfi_dsi_cmd_desc),
+			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE),
+			HFI_CMD_BUFF_FLAG_ASYNC);
 	if (rc)
 		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD, rc=%d\n", rc);
 
