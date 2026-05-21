@@ -192,6 +192,8 @@ static int _pack_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client,
 		u32 hfi_payload_type, void *payload, u32 payload_size, u32 flags)
 {
 	int rc = 0;
+	bool remove_on_cb = false;
+	u32 packet_id = 0;
 
 	switch (hfi_cmd) {
 	case HFI_COMMAND_DISPLAY_MODE_VALIDATE:
@@ -209,12 +211,14 @@ static int _pack_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client,
 	default:
 		break;
 	}
-
+	remove_on_cb = ((hfi_cmd != HFI_COMMAND_DISPLAY_EVENT_REGISTER)
+			&& (hfi_cmd != HFI_COMMAND_DISPLAY_EVENT_DEREGISTER));
 	DP_INFO("hfi_cmd=0x%x, obj_id=0x%x, flags=0x%x\n", hfi_cmd, obj_id, flags);
 
 	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED) {
 		rc = hfi_adapter_add_get_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
-			hfi_payload_type, payload, payload_size, &hfi->hfi_cb_obj, flags);
+			hfi_payload_type, payload, payload_size, &hfi->hfi_cb_obj, flags,
+			remove_on_cb, &packet_id);
 		if (rc)
 			DP_ERR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
 	} else {
@@ -236,7 +240,8 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
 	struct drm_connector *drm_conn;
 	enum hfi_cmdbuf_type cmd_buf_type = HFI_CMDBUF_TYPE_DISPLAY_INFO_NO_BLOCK;
 	int rc = 0;
-	u32 obj_id;
+	u32 obj_id, packet_id = 0;
+	bool remove_on_cb = false;
 
 	if (!hfi || !hfi_client) {
 		DP_ERR("invalid input\n");
@@ -279,8 +284,11 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
 	}
 
 	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED) {
+		remove_on_cb = ((hfi_cmd != HFI_COMMAND_DISPLAY_EVENT_REGISTER)
+				&& (hfi_cmd != HFI_COMMAND_DISPLAY_EVENT_DEREGISTER));
 		rc = hfi_adapter_add_get_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
-			hfi_payload_type, payload, payload_size, &hfi->hfi_cb_obj, flags);
+			hfi_payload_type, payload, payload_size, &hfi->hfi_cb_obj, flags,
+			remove_on_cb, &packet_id);
 		if (rc)
 			DP_ERR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
 

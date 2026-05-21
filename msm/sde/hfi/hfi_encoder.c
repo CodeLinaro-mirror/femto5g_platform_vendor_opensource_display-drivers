@@ -469,7 +469,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
 	struct hfi_kms *hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
 	struct hfi_cmdbuf_t *cmd_buf;
-	u32 cmd, display_id = 0;
+	u32 cmd, display_id = 0, packet_id = 0;
 	int ret = 0;
 
 	if (!hfi_enc || !hfi_kms) {
@@ -500,7 +500,7 @@ static int _hfi_enc_hw_event_set_buff(struct sde_encoder_virt *enc, u32 payload,
 	cmd = enable ? HFI_COMMAND_DISPLAY_EVENT_REGISTER : HFI_COMMAND_DISPLAY_EVENT_DEREGISTER;
 	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf, cmd, display_id,
 			HFI_PAYLOAD_TYPE_U32, &payload, sizeof(payload), &hfi_enc->hfi_cb_obj,
-			HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_NON_DISCARDABLE, false, &packet_id);
 	if (ret) {
 		SDE_ERROR("failed to update event: 0x%x\n", payload);
 		return ret;
@@ -585,7 +585,7 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
 	u32 payload[3];
-	u32 disp_id;
+	u32 disp_id, packet_id = 0;
 	int ret;
 
 	if (!enc || !hfi_enc || !hfi_kms) {
@@ -621,10 +621,20 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
 			HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE,
 			MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_U32_ARRAY, &payload,
-			sizeof(payload), &hfi_enc->hfi_cb_obj, HFI_HOST_FLAGS_NONE);
+			sizeof(payload), &hfi_enc->hfi_cb_obj, HFI_HOST_FLAGS_NONE,
+			false, &packet_id);
 	if (ret) {
 		SDE_ERROR("panic subscribe command failed\n");
 		return ret;
+	}
+	hfi_enc->ps_listener_packet_id[enable ? 0 : 1] = packet_id;
+
+	if (!enable) {
+		/* remove listeners for PANIC_SUBSCRIBE enable & disable */
+		hfi_adapter_remove_listener_by_packet_id(&hfi_kms->hfi_client,
+				hfi_enc->ps_listener_packet_id[0]);
+		hfi_adapter_remove_listener_by_packet_id(&hfi_kms->hfi_client,
+				hfi_enc->ps_listener_packet_id[1]);
 	}
 
 	SDE_EVT32(drm_enc->base.id, MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_PANIC_SUBSCRIBE, ret);
@@ -1240,10 +1250,17 @@ static int _hfi_enc_send_wb_detach_output_layer(struct sde_encoder_virt *enc)
 static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 {
 	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+	struct hfi_kms *hfi_kms;
 	int ret;
 
 	if (!enc || !hfi_enc) {
 		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
 		return -EINVAL;
 	}
 
@@ -1737,7 +1754,7 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 	struct hfi_encoder *hfi_enc;
 	struct hfi_kms *hfi_kms;
 	struct misr_read_data misr_read;
-	u32 disp_id;
+	u32 disp_id, packet_id = 0;
 
 	if (!enc) {
 		SDE_ERROR("invalid encoder\n");
@@ -1797,7 +1814,7 @@ static int hfi_enc_debugfs_misr_read(struct sde_encoder_virt *enc)
 			HFI_COMMAND_DEBUG_MISR_READ, disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &misr_read, sizeof(misr_read),
 			&hfi_enc->misr_read_listener, (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
-			HFI_HOST_FLAGS_NON_DISCARDABLE));
+			HFI_HOST_FLAGS_NON_DISCARDABLE), true, &packet_id);
 
 	SDE_EVT32(drm_encoder->base.id, disp_id, HFI_COMMAND_DEBUG_MISR_READ,
 			SDE_EVTLOG_FUNC_CASE1);
