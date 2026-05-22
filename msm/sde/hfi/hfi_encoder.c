@@ -432,12 +432,8 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 				sizeof(uint8_t), SDE_RECOVERY_CAPTURE);
 		} else {
 			event = (u32) data[1];
-			if (HFI_DEBUG_EVENT_UNDERRUN & event) {
-				SDE_DBG_CTRL("stop_ftrace");
-				SDE_DBG_CTRL("panic_underrun");
-			} else {
-				SDE_DBG_DUMP(0x0, "panic");
-			}
+			SDE_DEBUG("event: %u\n", event);
+			SDE_DBG_DUMP(0x0);
 		}
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_POWER:
