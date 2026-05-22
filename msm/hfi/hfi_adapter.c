@@ -1595,7 +1595,7 @@ static int hfi_adapter_release_cmd_buf_no_lock(struct hfi_client_t *ctx,
 
 	/* Release chained buffers */
 	list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
-		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
+		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
 		list_del_init(pos);
 		if (buf_entry->is_released || !buf_entry->buf.pbuf_vaddr)
 			continue;
