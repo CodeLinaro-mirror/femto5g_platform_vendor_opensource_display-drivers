@@ -71,6 +71,7 @@ static void msm_parse_mode_priv_info(const struct msm_display_mode *msm_mode,
 		(struct dsi_display_mode_priv_info *)msm_mode->private;
 
 	if (dsi_mode->priv_info) {
+		dsi_mode->mode_idx = dsi_mode->priv_info->mode_idx;
 		dsi_mode->timing.dsc_enabled = dsi_mode->priv_info->dsc_enabled;
 		dsi_mode->timing.dsc = &dsi_mode->priv_info->dsc;
 		dsi_mode->timing.vdc_enabled = dsi_mode->priv_info->vdc_enabled;
@@ -627,6 +628,7 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 
 	/* propagate the private info to the adjusted_mode derived dsi mode */
 	dsi_mode.priv_info = panel_dsi_mode->priv_info;
+	dsi_mode.mode_idx = panel_dsi_mode->mode_idx;
 	dsi_mode.dsi_mode_flags = panel_dsi_mode->dsi_mode_flags;
 	dsi_mode.panel_mode_caps = panel_dsi_mode->panel_mode_caps;
 	dsi_mode.pixel_format_caps = panel_dsi_mode->pixel_format_caps;
