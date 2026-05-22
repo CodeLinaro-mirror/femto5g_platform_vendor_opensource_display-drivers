@@ -376,6 +376,7 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	case HFI_COMMAND_DISPLAY_POWER_REGISTER:
 	case HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD:
 	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP:
+	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE:
 		break;
 	case HFI_COMMAND_DEBUG_MISR_READ:
 		dsi_hfi_process_misr_read(display, payload, size);
@@ -1574,6 +1575,159 @@ destroy_cmds:
 		kfree(cmds[i].msg.tx_buf);
 	kfree(cmds);
 	SDE_EVT32(cmd_type, rc, SDE_EVTLOG_FUNC_EXIT);
+	return rc;
+}
+
+int dsi_hfi_send_dcs_cmd_set_replace_cmd(struct dsi_display *display, bool resp_req)
+{
+	struct dsi_display_hfi *dsi_hfi;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct dsi_hfi_dcs_cmd_set_replace_payload *payload = NULL;
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE;
+	u32 flags = HFI_HOST_FLAGS_NON_DISCARDABLE;
+	u32 payload_size;
+	u32 count = 0;
+	u32 obj_id;
+	int i, rc = 0;
+
+	if (resp_req)
+		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+
+	if (!display || !display->dsi_hfi_info || !display->drm_conn) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	dsi_hfi = display->dsi_hfi_info;
+	obj_id = sde_conn_get_display_obj_id(display->drm_conn);
+
+	SDE_EVT32(obj_id, resp_req, SDE_EVTLOG_FUNC_ENTRY);
+
+	mutex_lock(&dsi_hfi->rt_dcs_cmd_lock);
+
+	/* Count how many standard command types have runtime custom DCS commands */
+	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
+		if (dsi_hfi->rt_custom_dcs_cmd_map[i].valid &&
+		    dsi_hfi->rt_custom_dcs_cmd_map[i].count)
+			count++;
+	}
+
+	SDE_EVT32(obj_id, count, SDE_EVTLOG_FUNC_CASE1);
+
+	if (!count) {
+		DSI_ERR("No runtime custom DCS commands captured, nothing to replace\n");
+		rc = -ENOENT;
+		goto unlock_and_cleanup;
+	}
+
+	payload_size = sizeof(u32) + count * sizeof(struct hfi_dsi_dcs_cmd_set_replace_entry);
+	payload = kzalloc(payload_size, GFP_KERNEL);
+	if (!payload) {
+		rc = -ENOMEM;
+		goto unlock_and_cleanup;
+	}
+
+	/* Build the array payload: count + one entry per captured command type */
+	payload->count = count;
+	count = 0;
+	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
+		if (!dsi_hfi->rt_custom_dcs_cmd_map[i].valid ||
+		    !dsi_hfi->rt_custom_dcs_cmd_map[i].count)
+			continue;
+
+		/* Validate sde_offset and hfi_meta_offset before sending to firmware */
+		if (dsi_hfi->rt_custom_dcs_cmd_map[i].sde_offset <
+				dsi_hfi->rt_custom_dcs_cmd_sde_base ||
+		    dsi_hfi->rt_custom_dcs_cmd_map[i].sde_offset >=
+				dsi_hfi->rt_custom_dcs_cmd_sde_base +
+				DSI_RUNTIME_CUSTOM_DCS_CMD_RESERVED_SIZE) {
+			DSI_ERR("cmd_t %d: sde_off 0x%x outside rt DCS SDE region [0x%x, 0x%x)\n",
+				i, dsi_hfi->rt_custom_dcs_cmd_map[i].sde_offset,
+				dsi_hfi->rt_custom_dcs_cmd_sde_base,
+				dsi_hfi->rt_custom_dcs_cmd_sde_base +
+				DSI_RUNTIME_CUSTOM_DCS_CMD_RESERVED_SIZE);
+			rc = -EINVAL;
+			goto unlock_and_cleanup;
+		}
+
+		if (dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset <
+				dsi_hfi->rt_custom_dcs_cmd_hfi_base ||
+		    dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset >=
+				dsi_hfi->rt_custom_dcs_cmd_hfi_base +
+				DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE) {
+			DSI_ERR("cmd_t %d: hfi_off 0x%x outside rt DCS HFI region [0x%x, 0x%x)\n",
+				i, dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset,
+				dsi_hfi->rt_custom_dcs_cmd_hfi_base,
+				(u32)(dsi_hfi->rt_custom_dcs_cmd_hfi_base +
+				DSI_RUNTIME_CUSTOM_DCS_CMD_HFI_RESERVED_SIZE));
+			rc = -EINVAL;
+			goto unlock_and_cleanup;
+		}
+
+		payload->entries[count].dpu_buff_type_offset =
+			dsi_hfi->rt_custom_dcs_cmd_map[i].sde_offset;
+		payload->entries[count].cmd_type = i;
+		payload->entries[count].count_cmds = dsi_hfi->rt_custom_dcs_cmd_map[i].count;
+		payload->entries[count].hfi_buff_struct_offset =
+			dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset;
+		payload->entries[count].reserved = 0;
+
+		DSI_DEBUG("Replace entry[%d]: cmd_type=%d sde_offset=0x%x cnt=%d hfi_offset=0x%x\n",
+			  count, i,
+			  payload->entries[count].dpu_buff_type_offset,
+			  payload->entries[count].count_cmds,
+			  payload->entries[count].hfi_buff_struct_offset);
+		SDE_EVT32(obj_id, i, payload->entries[count].dpu_buff_type_offset,
+			  payload->entries[count].count_cmds,
+			  payload->entries[count].hfi_buff_struct_offset, SDE_EVTLOG_FUNC_CASE2);
+		count++;
+	}
+
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms) {
+		DSI_ERR("Failed to get sde_kms\n");
+		rc = -EINVAL;
+		goto unlock_and_cleanup;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		DSI_ERR("Failed to get hfi_kms\n");
+		rc = -EINVAL;
+		goto unlock_and_cleanup;
+	}
+
+	hfi_client = &hfi_kms->hfi_client;
+
+	SDE_EVT32(obj_id, hfi_cmd, payload->count, SDE_EVTLOG_FUNC_CASE3);
+	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd,
+					  display->display_type,
+					  HFI_PAYLOAD_TYPE_U32_ARRAY,
+					  payload, payload_size,
+					  flags);
+	SDE_EVT32(obj_id, hfi_cmd, rc, SDE_EVTLOG_FUNC_CASE4);
+	if (rc) {
+		DSI_ERR("Failed to send DSI_CUSTOM_DCS_CMDS_SET_REPLACE command, rc=%d\n", rc);
+		goto unlock_and_cleanup;
+	}
+
+	DSI_DEBUG("Sent replace cmd for %d rt custom DCS command types\n", payload->count);
+
+	/*
+	 * Invalidate all cached runtime custom DCS command entries now that
+	 * DCP has been notified. This prevents stale entries from being
+	 * re-sent and ensures a subsequent call without new captures
+	 * correctly returns -ENOENT.
+	 */
+	for (i = 0; i < DSI_CMD_SET_MAX; i++)
+		dsi_hfi->rt_custom_dcs_cmd_map[i].valid = false;
+
+unlock_and_cleanup:
+	mutex_unlock(&dsi_hfi->rt_dcs_cmd_lock);
+	kfree(payload);
+	SDE_EVT32(obj_id, rc, SDE_EVTLOG_FUNC_EXIT);
 	return rc;
 }
 
