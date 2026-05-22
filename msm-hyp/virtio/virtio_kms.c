@@ -31,6 +31,7 @@
 #define DEFAULT_MAX_MDP_CLK    575
 #define MAX_LAYERS_MULTIPIPE   4
 #define MAX_PRE_ROT_HEIGHT_INLINE_ROT_DEFAULT   1088
+#define VIRTIO_COLOR_BUF_SIZE     32768
 
 #define VIRTIO_TRANSPARENCY_GLOBAL_ALPHA (1<<1)
 #define VIRTIO_TRANSPARENCY_SOURCE_ALPHA (1<<2)
@@ -52,6 +53,37 @@
 		(rect)->w = (Q16_flag) ? (c) >> 16 : (c);    \
 		(rect)->h = (Q16_flag) ? (d) >> 16 : (d);    \
 	} while (0)
+
+static struct color_buffer  color_buffer[MAX_PIPELINES_GVM];
+
+static void get_available_color_buff(int *index)
+{
+	int i;
+
+	for (i = 0; i < MAX_PIPELINES_GVM; i++) {
+		if (!color_buffer[i].valid) {
+			*index = i;
+			break;
+		}
+	}
+}
+
+static void _virtio_kms_get_color_buff_idx(
+	struct virtio_kms *kms,
+	uint32_t plane_id,
+	int *index)
+{
+	int i;
+
+	for (i = 0; i < MAX_PIPELINES_GVM; i++) {
+		if ((color_buffer[i].valid) &&
+			(color_buffer[i].kms == kms) &&
+			(color_buffer[i].plane_id == plane_id))	{
+			*index = i;
+			break;
+		}
+	}
+}
 
 struct virtio_kms_rect {
 	u16 x;
@@ -157,6 +189,8 @@ enum virtio_layer_type {
 
 static int virtio_kms_create_framebuffer(struct virtio_kms *kms,
 		struct msm_hyp_framebuffer *fb);
+static int virtio_kms_create_colorbuffer(struct device *dev,
+		struct virtio_kms *kms,  uint32_t scanout, uint32_t plane_id);
 
 static const char* virtio_get_drm_format_string(uint32_t drm_format) {
 	switch (drm_format) {
@@ -863,6 +897,265 @@ static bool virtio_kms_plane_is_csc_matrix_changed(
 	return ret;
 }
 
+static bool virtio_kms_plane_is_3d_gamut_changed(
+		bool pre_en, bool cur_en,
+		struct drm_msm_3d_gamut *pre_gamut,
+		struct drm_msm_3d_gamut *cur_gamut,
+		struct VIRTIO_PipelineVIGConfigBuffType *gamut)
+{
+	int i, j;
+	uint32_t scale, offset;
+	int gamut_3d_sz = GAMUT_3D_MODE17_TBL_SZ;
+	bool changed = false;
+
+	if (pre_en != cur_en)
+		changed = true;
+	else if (memcmp(pre_gamut, cur_gamut, sizeof(struct drm_msm_3d_gamut)))
+		changed = true;
+
+	if (!changed)
+		return false;
+
+	if (!gamut)
+		return false;
+
+	gamut->bGamutEn = cur_en ? true : false;
+
+	if (gamut && cur_en) {
+		gamut->bGamutMapEn = cur_gamut->flags & GAMUT_3D_MAP_EN;
+		for (i = 0; i < GAMUT_3D_SCALE_OFF_TBL_NUM; i++) {
+			for (j = 0; j < GAMUT_3D_SCALE_OFF_SZ; j++) {
+				/* 28:12 --> scale */
+				scale = (uint32_t)cur_gamut->scale_off[i][j] & 0x1ffff000;
+				/* 31:15 -->scale */
+				scale = scale << 3;
+				/* offset */
+				offset = (uint32_t)cur_gamut->scale_off[i][j] & 0x00fff;
+				offset = offset << 4;
+				gamut->uNonUniformMapTableEntries[i][j] =
+					scale | offset;
+			}
+		}
+		changed = false;
+
+		if (cur_gamut->mode == GAMUT_3D_MODE_5)
+			gamut_3d_sz = GAMUT_3D_MODE5_TBL_SZ;
+		else if (cur_gamut->mode == GAMUT_3D_MODE_13)
+			gamut_3d_sz = GAMUT_3D_MODE13_TBL_SZ;
+
+		for (i = 0; i < VIRTIO_WGM_TABLE_0_ENTRIES; i++) {
+			gamut->uGammutTable0Entries[0][i] = cur_gamut->col[0][i].c0;
+			gamut->uGammutTable0Entries[2][i] =
+							(cur_gamut->col[0][i].c2_c1) & 0XFFFF;
+			gamut->uGammutTable0Entries[1][i] =
+							(cur_gamut->col[0][i].c2_c1 >> 16);
+		}
+
+		for (i = 0; i < VIRTIO_WGM_TABLE_1_ENTRIES; i++) {
+			gamut->uGammutTable1Entries[0][i] = cur_gamut->col[1][i].c0;
+			gamut->uGammutTable1Entries[2][i] =
+							(cur_gamut->col[1][i].c2_c1) & 0XFFFF;
+			gamut->uGammutTable1Entries[1][i] =
+							(cur_gamut->col[1][i].c2_c1 >> 16);
+		}
+
+		for (i = 0; i < VIRTIO_WGM_TABLE_2_ENTRIES; i++) {
+			gamut->uGammutTable2Entries[0][i] = cur_gamut->col[2][i].c0;
+			gamut->uGammutTable2Entries[2][i] =
+							(cur_gamut->col[2][i].c2_c1) & 0XFFFF;
+			gamut->uGammutTable2Entries[1][i] =
+							(cur_gamut->col[2][i].c2_c1 >> 16);
+		}
+
+		for (i = 0; i < VIRTIO_WGM_TABLE_3_ENTRIES; i++) {
+			gamut->uGammutTable3Entries[0][i] = cur_gamut->col[3][i].c0;
+			gamut->uGammutTable3Entries[2][i] =
+							(cur_gamut->col[3][i].c2_c1) & 0XFFFF;
+			gamut->uGammutTable3Entries[1][i] =
+							(cur_gamut->col[3][i].c2_c1 >> 16);
+		}
+	}
+
+	return true;
+}
+
+static bool virtio_kms_dma_igc_changed(
+		bool pre_en, bool cur_en,
+		struct drm_msm_igc_lut *pre_igc,
+		struct drm_msm_igc_lut *cur_igc,
+		struct VIRTIO_PipelineDMAConfigBuffType *dma_config)
+{
+	int i = 0;
+	bool changed = false;
+
+	if (pre_en != cur_en)
+		changed = true;
+	else if (memcmp(pre_igc, cur_igc, sizeof(struct drm_msm_igc_lut)))
+		changed = true;
+
+	if (!changed)
+		return false;
+
+	if (!dma_config)
+		return false;
+
+	dma_config->bIGCEnabled = cur_en ? true : false;
+
+	if (dma_config && cur_en)
+		for (i = 0; i < VIRTIO_GAMMA_LUT_ENTRIES; i++) {
+			dma_config->uIGCLut[i] = cur_igc->c2[i];
+			pr_debug("IGC[%d] = %X -> %X\n", i, cur_igc->c0[i], dma_config->uIGCLut[i]);
+		}
+
+	return true;
+}
+
+static bool virtio_kms_dma_gc_changed(
+		bool pre_en, bool cur_en,
+		struct drm_msm_pgc_lut *pre_gc,
+		struct drm_msm_pgc_lut *cur_gc,
+		struct VIRTIO_PipelineDMAConfigBuffType *dma_config)
+{
+	int i = 0;
+	int j = 0;
+	bool changed = false;
+
+	if (pre_en != cur_en)
+		changed = true;
+	else if (memcmp(pre_gc, cur_gc, sizeof(struct drm_msm_pgc_lut)))
+		changed = true;
+
+	if (!changed)
+		return false;
+
+	if (!dma_config)
+		return false;
+
+	dma_config->bGCEnabled = cur_en ? true : false;
+
+	if (dma_config && cur_en)
+		for (i = 0; i < VIRTIO_GAMMA_LUT_ENTRIES; i += 2, j++) {
+			dma_config->uGCLut[i] = (cur_gc->c2[j] & 0xFFFF);
+			dma_config->uGCLut[i+1] = (cur_gc->c2[j] >> 16);
+			pr_debug("GC[%d] = %X->%X\n", i, cur_gc->c0[j], dma_config->uGCLut[i]);
+			pr_debug("GC[%d] = %X->%X\n", i+1, cur_gc->c0[j], dma_config->uGCLut[i+1]);
+		}
+
+	return true;
+}
+
+static bool virtio_kms_plane_is_dma_csc_changed(
+		bool pre_en, bool cur_en,
+		struct sde_drm_csc_v1 *pre_csc,
+		struct sde_drm_csc_v1 *cur_csc,
+		struct VIRTIO_PipelineDMAConfigBuffType *dma_config)
+{
+	int i = 0;
+	bool changed = false;
+
+	if (pre_en != cur_en)
+		changed = true;
+	else if (memcmp(pre_csc, cur_csc, sizeof(struct sde_drm_csc_v1)))
+		changed = true;
+
+	if (!changed)
+		return false;
+
+	if (!dma_config)
+		return false;
+
+	dma_config->bCSCEnabled = cur_en ? true : false;
+	if (dma_config && cur_en)
+		for (i = 0; i < SDE_CSC_MATRIX_COEFF_SIZE; i++) {
+			dma_config->uCscMatrix[i / 3][i % 3] = cur_csc->ctm_coeff[i] >> 16;
+			pr_debug("csc[%d][%d] = %lld\n",
+					i / 3, i % 3, (cur_csc->ctm_coeff[i]) >> 16);
+		}
+
+	return true;
+}
+
+static bool virtio_kms_plane_is_color_changed(
+	struct msm_hyp_plane_state *pre,
+	struct msm_hyp_plane_state *cur,
+	struct drm_plane *plane,
+	uint32_t *export_id)
+{
+	struct msm_hyp_plane *p;
+	struct virtio_plane_info_priv *plane_priv;
+	struct virtio_kms *kms;
+	int index = -1;
+	int buff_idx = 0;
+	bool gc_changed = false;
+	bool igc_changed = false;
+	bool csc_changed = false;
+	struct VIRTIO_PipelineVIGConfigBuffType *gamut      = NULL;
+	struct VIRTIO_PipelineDMAConfigBuffType *dma_config = NULL;
+	union VIRTIO_PipelineColorConfigBuffType *color_cfg = NULL;
+
+	p = to_msm_hyp_plane(plane);
+	plane_priv = container_of(p->info, struct virtio_plane_info_priv, base);
+	kms = plane_priv ? plane_priv->kms : NULL;
+
+	_virtio_kms_get_color_buff_idx(kms,
+		plane_priv->plane_id,
+		&index);
+
+	if (index < 0) {
+		pr_err("Unable to find color buffer for this pipe\n");
+	} else {
+		buff_idx = color_buffer[index].curr_buff_in_use;
+		if (buff_idx == 0)
+			buff_idx = 1;
+		else
+			buff_idx = 0;
+
+		color_cfg = (union VIRTIO_PipelineColorConfigBuffType *)
+			color_buffer[index].buffer_info[buff_idx].va;
+		*export_id =
+			color_buffer[index].buffer_info[buff_idx].export_id;
+		color_buffer[index].curr_buff_in_use = buff_idx;
+	}
+
+	if (!color_cfg) {
+		pr_err("VA of color buffer is NULL\n");
+		return false;
+	}
+
+	if (plane_priv->base.vig_pipe) {
+		gamut = &(color_cfg->sVigConfigType);
+		if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_GAMUT &&
+			virtio_kms_plane_is_3d_gamut_changed(
+				pre->gamut_en, cur->gamut_en,
+				&pre->gamut, &cur->gamut, gamut)) {
+			pr_debug("3D LUT updated\n");
+			return true;
+		}
+	} else {
+		dma_config = &(color_cfg->sDMAConfig);
+		if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_CSC)
+			csc_changed = virtio_kms_plane_is_dma_csc_changed(
+						pre->dma_csc_en, cur->dma_csc_en,
+						&pre->dma_csc, &cur->dma_csc, dma_config);
+		if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_GC)
+			gc_changed = virtio_kms_dma_gc_changed(
+						pre->dma_gc_en, cur->dma_gc_en,
+						&pre->dma_gc, &cur->dma_gc, dma_config);
+		if (cur->dirty_flags & MSM_HYP_PLANE_DIRTY_DMA_IGC)
+			igc_changed = virtio_kms_dma_igc_changed(
+						pre->dma_igc_en, cur->dma_igc_en,
+						&pre->dma_igc, &cur->dma_igc, dma_config);
+		if (csc_changed || gc_changed || igc_changed) {
+			pr_debug("bGCEnabled %d\n", dma_config->bGCEnabled);
+			pr_debug("bIGCEnabled %d\n", dma_config->bIGCEnabled);
+			pr_debug("bCSCEnabled %d\n", dma_config->bCSCEnabled);
+			return true;
+		}
+	}
+
+	return false;
+}
+
 static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 		struct drm_atomic_state *old_atomic_state)
 {
@@ -886,7 +1179,7 @@ static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 		return;
 	}
 
-        old_state = drm_atomic_get_old_plane_state(old_atomic_state, plane);
+	old_state = drm_atomic_get_old_plane_state(old_atomic_state, plane);
 	new_pstate = to_msm_hyp_plane_state(plane->state);
 	old_pstate = to_msm_hyp_plane_state(old_state);
 
@@ -1001,6 +1294,10 @@ static void virtio_kms_plane_atomic_update(struct drm_plane *plane,
 
 	if (virtio_kms_plane_is_csc_matrix_changed(old_pstate, new_pstate, &prop.color_space)) {
 		prop.mask |= COLOR_SPACE;
+	}
+
+	if (virtio_kms_plane_is_color_changed(old_pstate, new_pstate, plane, &prop.export_id)) {
+		prop.mask |= COLOR_BLOCKS;
 	}
 
 	rc = virtio_gpu_cmd_set_plane_properties(kms,
@@ -1237,6 +1534,9 @@ static int virtio_kms_get_plane_infos(struct msm_hyp_kms *hyp_kms,
 			if (kms->outputs[i].plane_caps[j].plane_type == VIRTIO_QDI_LAYER_OVERLAY)
 				priv->base.support_csc = true;
 
+			if (priv->base.support_csc && priv->base.support_scale)
+				priv->base.vig_pipe = true;
+
 			master_idx = kms->outputs[i].plane_caps[j].master_plane_id;
 			if (master_idx >= 0) {
 				pr_debug("virtio : Master plane %d master %d\n",
@@ -1391,7 +1691,7 @@ static int virtio_kms_get_crtc_infos(struct msm_hyp_kms *hyp_kms,
 		//TODO these attributes need be set as kms->device_info which got from host
 		priv->base.qseed_type = "qseed3";
 		priv->base.smart_dma_rev = "smart_dma_v2p5";
-		priv->base.has_hdr = false;
+		priv->base.has_hdr = true;
 		priv->base.max_bandwidth_low = 9600000000LL;
 		priv->base.max_bandwidth_high = 9600000000LL;
 		priv->base.has_src_split = true;
@@ -1696,6 +1996,81 @@ static int virtio_kms_get_framebuffer_info(struct msm_hyp_kms *hyp_kms,
 	return 0;
 }
 
+static int virtio_kms_create_colorbuffer(struct device *device,
+	struct virtio_kms *kms, uint32_t scanout, uint32_t plane_id)
+{
+	int ret = 0;
+	int color_buf_idx = -1;
+	int buff_len = VIRTIO_COLOR_BUF_SIZE;
+	int32_t *va = NULL;
+	int32_t handle = 0;
+	int32_t client_id = 0;
+	uint32_t export_id = 0;
+	dma_addr_t dma_handle;
+	struct plane_properties prop;
+	struct virtio_mem_info  mem;
+
+	prop.color_buf[0]  = 0;
+	prop.color_buf[1]  = 0;
+
+	color_buf_idx = -1;
+	get_available_color_buff(&color_buf_idx);
+
+	client_id = kms->client_id;
+	handle =  kms->channel[client_id].hab_socket[CHANNEL_CMD];
+	for (int k = 0; k < VIRTIO_GPU_MAX_COLOR_BUFF; k++) {
+		/* allocate coherent memory */
+		va = dma_alloc_coherent(device, buff_len,
+			&dma_handle, GFP_KERNEL);
+		if (!va) {
+			ret = -ENOMEM;
+			goto error;
+		}
+		if (color_buf_idx >= 0) {
+			pr_debug("VA for buffer allocation is %p\n", va);
+			mutex_lock(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
+			memset(va, 0x00, buff_len);
+			mem.size = buff_len;
+			mem.buffer = va;
+			/* export this memory block to backend */
+			ret = habmm_export(
+				handle,
+				mem.buffer,
+				(uint32_t)mem.size,
+				&export_id,
+				0);
+			if (ret) {
+				pr_err("virtio :colorbuffer habmm export failed\n");
+				dma_free_coherent(device, mem.size, mem.buffer, dma_handle);
+				mutex_unlock(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
+				goto error;
+			}
+			mem.shmem_id = export_id;
+			mutex_unlock(&kms->channel[client_id].hyp_chl_lock[CHANNEL_CMD]);
+			prop.color_buf[k] = mem.shmem_id;
+			/* fill the color buf struct */
+			pr_debug("Filling data at location %d\n", color_buf_idx);
+			color_buffer[color_buf_idx].valid = 1;
+			color_buffer[color_buf_idx].kms = kms;
+			color_buffer[color_buf_idx].plane_id = plane_id;
+			color_buffer[color_buf_idx].curr_buff_in_use = 0;
+			color_buffer[color_buf_idx].buffer_info[k].valid = 1;
+			color_buffer[color_buf_idx].buffer_info[k].va = va;
+			color_buffer[color_buf_idx].buffer_info[k].export_id = prop.color_buf[k];
+			color_buffer[color_buf_idx].buffer_info[k].dmabuf_handle = &dma_handle;
+		}
+	}
+	prop.mask |= COLOR_BUFFER;
+	ret = virtio_gpu_cmd_set_plane_properties(kms,
+		scanout,
+		plane_id,
+		prop);
+	if (ret)
+		pr_err("set plane properties failed\n");
+error:
+	return ret;
+}
+
 static void virtio_kms_commit(struct msm_hyp_kms *kms,
 		struct drm_atomic_state *old_state)
 {
@@ -1830,13 +2205,23 @@ static void virtio_kms_get_capsets(struct virtio_kms *kms,
 	kms->num_capsets = num_capsets;
 }
 */
-static int _virtio_kms_hw_deinit(struct virtio_kms *kms)
+static int _virtio_kms_hw_deinit(struct virtio_kms *kms, struct device *dev)
 {
 	uint32_t scanout, plane;
 	uint32_t plane_id = 0;
 	int rc = 0;
 	uint32_t num_planes = 0;
 	struct virtio_kms_output *output;
+	struct plane_properties prop;
+	struct virtio_mem_info mem = { 0 };
+	int buf_len = VIRTIO_COLOR_BUF_SIZE;
+	dma_addr_t *dma_handle = NULL;
+	int32_t *va = NULL;
+	int32_t client_id = 0;
+	uint32_t handle = 0;
+	int export_id;
+	int buff_idx = 0;
+	int index = -1;
 
 	for (scanout = 0; scanout < kms->num_scanouts; scanout++) {
 		num_planes = kms->outputs[scanout].plane_cnt;
@@ -1847,18 +2232,62 @@ static int _virtio_kms_hw_deinit(struct virtio_kms *kms)
 				false);
 		for (plane = 0; plane < num_planes; plane++) {
 			plane_id = output->plane_caps[plane].plane_id;
+			prop.color_clear = plane;
+			prop.mask |= COLOR_CLEAR;
+			rc = virtio_gpu_cmd_set_plane_properties(kms,
+				scanout,
+				plane_id,
+				prop);
+			if (rc)
+				pr_err("set plane properties COLOR_CLEAR failed\n");
 			rc = virtio_gpu_cmd_plane_destroy(kms,
 					scanout,
 					plane_id);
 			if (rc) {
 				pr_err("plane destroy failed %d\n", plane_id);
 			}
+			_virtio_kms_get_color_buff_idx(kms,
+				plane_id,
+				&index);
+			if (index < 0) {
+				pr_err("Unable to find color buffer for this pipe\n");
+			} else {
+				for (buff_idx = 0;
+					buff_idx < VIRTIO_GPU_MAX_COLOR_BUFF;
+					buff_idx++) {
+					struct buffer_info *info;
+
+					info = &color_buffer[index].buffer_info[buff_idx];
+					if (!info->valid)
+						continue;
+					export_id = info->export_id;
+					client_id = kms->client_id;
+					handle =
+						kms->channel[client_id].hab_socket[CHANNEL_CMD];
+					mem.shmem_id = export_id;
+					rc = habmm_unexport(
+							handle,
+							mem.shmem_id,
+							0);
+					if (rc)
+						pr_err("Failed to unexport shmem buffer\n");
+					else
+						pr_debug("passed to unexport shmem buffer\n");
+
+					dma_handle = info->dmabuf_handle;
+					va = info->va;
+					dma_free_coherent(dev, buf_len, va, *dma_handle);
+
+					info->valid = false;
+					color_buffer[index].valid = false;
+				}
+			}
 		}
 	}
 	return rc;
 }
 
-static int virtio_kms_scanout_init(struct virtio_kms *kms, uint32_t scanout)
+static int virtio_kms_scanout_init(struct virtio_kms *kms, uint32_t scanout, struct device *dev)
 {
 	int rc = 0;
 	uint32_t num_planes = 0;
@@ -1927,6 +2356,9 @@ static int virtio_kms_scanout_init(struct virtio_kms *kms, uint32_t scanout)
 					plane_id);
 			goto error;
 		}
+
+		rc = virtio_kms_create_colorbuffer(dev, kms, scanout, plane_id);
+
 		/* get the pair plane for the multi rec support*/
 
 		if (output->plane_caps[plane].pair_plane_id) {
@@ -1944,7 +2376,7 @@ error:
 	return rc;
 }
 
-static int _virtio_kms_hw_init(struct virtio_kms *kms)
+static int _virtio_kms_hw_init(struct virtio_kms *kms, struct device *dev)
 {
 	int rc = 0;
 	uint32_t scanout;
@@ -1973,7 +2405,7 @@ static int _virtio_kms_hw_init(struct virtio_kms *kms)
 	}
 
 	for (scanout = 0; scanout < kms->num_scanouts; scanout++) {
-		rc = virtio_kms_scanout_init(kms, scanout);
+		rc = virtio_kms_scanout_init(kms, scanout, dev);
 		if (rc)
 			pr_err("scanout init failed %d\n", scanout);
 	}
@@ -2301,15 +2733,14 @@ static const struct component_ops virtio_kms_comp_ops = {
 
 static int virtio_kms_probe(struct platform_device *pdev)
 {
-        struct device *dev = &pdev->dev;
-        struct virtio_kms *kms;
-        int ret;
+	struct device *dev = &pdev->dev;
+	struct virtio_kms *kms;
+	int ret;
 //        char marker_buff[MARKER_BUFF_LENGTH] = {0};
 
-
-        kms = devm_kzalloc(dev, sizeof(*kms), GFP_KERNEL);
-        if (!kms)
-                return -ENOMEM;
+	kms = devm_kzalloc(dev, sizeof(*kms), GFP_KERNEL);
+	if (!kms)
+		return -ENOMEM;
 
 //        ret = _virtio_kms_parse_client_id(dev->of_node, &kms->client_id);
 //        if (ret)
@@ -2331,25 +2762,25 @@ static int virtio_kms_probe(struct platform_device *pdev)
 	kms->stop = false;
 	kthread_run(virtio_gpu_event_kthread, kms, "virtio gpu kthread");
 
-        ret = _virtio_kms_hw_init(kms);
-        if (ret)
-                return ret;
+	ret = _virtio_kms_hw_init(kms, dev);
+	if (ret)
+		return ret;
 
 	pr_debug("numbr of scanouts %d for client %x\n", kms->num_scanouts, kms->client_id);
-        kms->base.funcs = &virtio_kms_funcs;
+	kms->base.funcs = &virtio_kms_funcs;
 
-        platform_set_drvdata(pdev, kms);
+	platform_set_drvdata(pdev, kms);
 
-        ret = component_add(&pdev->dev, &virtio_kms_comp_ops);
-        if (ret) {
+	ret = component_add(&pdev->dev, &virtio_kms_comp_ops);
+	if (ret) {
 		pr_err("component add failed, rc=%d\n", ret);
 		return ret;
 	}
-  //       snprintf(marker_buff, sizeof(marker_buff),
-  //              "kernel_fe: virtio_kms probe client %x", kms->client_id);
-//        place_marker(marker_buff);
+//		snprintf(marker_buff, sizeof(marker_buff),
+//				"kernel_fe: virtio_kms probe client %x", kms->client_id);
+//		place_ marker(marker_buff);
 
-        return 0;
+	return 0;
 }
 
 #if (KERNEL_VERSION(6, 12, 0) <= LINUX_VERSION_CODE)
@@ -2361,8 +2792,9 @@ static int virtio_kms_remove(struct platform_device *pdev)
 	//TODO: implement remove
 	int ret;
 	struct virtio_kms *kms = platform_get_drvdata(pdev);
+	struct device *dev = &pdev->dev;
 
-	ret = _virtio_kms_hw_deinit(kms);
+	ret = _virtio_kms_hw_deinit(kms, dev);
 	if (ret) {
 		pr_err("deinit failed \n");
 	}

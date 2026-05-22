@@ -12,6 +12,20 @@
 #define MARKER_BUFF_LENGTH 256
 #define NO_SPIN_LOCK_CHANNEL 0x00
 #define SPIN_LOCK_CHANNEL 0x01
+#define VIRTIO_CSC_LUT_ENTRIES                                  3
+#define VIRTIO_GAMMA_LUT_ENTRIES                                256
+#define VIRTIO_WGM_MAX_COLOR_COMPONENTS                         3
+#define VIRTIO_WGM_MAX_COMPONENT_TABLES_FINE_COARSE             4
+#define VIRTIO_WGM_TABLE_0_ENTRIES                              1229
+#define VIRTIO_WGM_TABLE_1_ENTRIES                              1228
+#define VIRTIO_WGM_TABLE_2_ENTRIES                              1228
+#define VIRTIO_WGM_TABLE_3_ENTRIES                              1228
+#define VIRTIO_WGM_MAX_NON_UNIFORM_MAP_TABLE_ENTRIES_A          16
+#define VIRTIO_NUM_COLOR_CONFIG_BUFFERS                         2
+/*
+ * Color support related definations and variables
+ */
+#define MAX_PIPELINES_GVM 16
 
 #define to_virtio_kms(x)\
 		container_of((x), struct virtio_kms, base)
@@ -153,6 +167,65 @@ struct virtio_plane_info_priv {
 	uint32_t plane_id;
 	uint32_t scanout;
 	bool committed;
+};
+
+struct buffer_info {
+	bool valid;
+	bool in_use;
+	int  export_id;
+	dma_addr_t *dmabuf_handle;
+	int32_t *va;
+};
+
+struct color_buffer {
+	bool     valid;
+	uint32_t plane_id;
+	int      curr_buff_in_use;
+	struct virtio_kms  *kms;
+	struct buffer_info buffer_info[2];
+};
+
+/*
+ * VIRTIO_PipelineDMAConfigBuffType defines DMA pipe LUT config
+ * this is buffer struture which is passed as input to WFD layer by GVM or wfd_client_gen
+ * This will come as pmem handle to openwfd server in case of QNX
+ */
+struct VIRTIO_PipelineDMAConfigBuffType {
+	uint32_t    bIGCEnabled;
+	uint32_t    bCSCEnabled;
+	uint32_t    bGCEnabled;
+	uint32_t    uCscMatrix[VIRTIO_CSC_LUT_ENTRIES][VIRTIO_CSC_LUT_ENTRIES];
+	uint16_t    uGCLut[VIRTIO_GAMMA_LUT_ENTRIES];
+	uint16_t    uIGCLut[VIRTIO_GAMMA_LUT_ENTRIES];
+} __packed;
+
+/*
+ * VIRTIO_Color_VIGConfigType defines VIG pipe LUT (17*17*17) config
+ * this is buffer struture which is passed as input to WFD layer by GVM or wfd_client_gen
+ * This will come as pmem handle to openwfd server in case of QNX
+ */
+struct VIRTIO_PipelineVIGConfigBuffType {
+	uint32_t bGamutEn;
+	uint32_t bGamutMapEn;
+	uint16_t uGammutTable0Entries[VIRTIO_WGM_MAX_COLOR_COMPONENTS]
+		[VIRTIO_WGM_TABLE_0_ENTRIES];
+	uint16_t uGammutTable1Entries[VIRTIO_WGM_MAX_COLOR_COMPONENTS]
+		[VIRTIO_WGM_TABLE_1_ENTRIES];
+	uint16_t uGammutTable2Entries[VIRTIO_WGM_MAX_COLOR_COMPONENTS]
+		[VIRTIO_WGM_TABLE_2_ENTRIES];
+	uint16_t uGammutTable3Entries[VIRTIO_WGM_MAX_COLOR_COMPONENTS]
+		[VIRTIO_WGM_TABLE_3_ENTRIES];
+	uint32_t uNonUniformMapTableEntries[VIRTIO_WGM_MAX_COLOR_COMPONENTS]
+		[VIRTIO_WGM_MAX_NON_UNIFORM_MAP_TABLE_ENTRIES_A];
+} __packed;
+
+/*
+ * VIRTIO_PipelineColorConfigBuffType defines essential parameters for
+ * getting the LUT tables for the DMA or VIG pipes
+ */
+union VIRTIO_PipelineColorConfigBuffType {
+	struct VIRTIO_PipelineDMAConfigBuffType   sDMAConfig;
+	struct VIRTIO_PipelineVIGConfigBuffType   sVigConfigType;
 };
 
 void  virtio_kms_event_handler(struct virtio_kms *kms,
