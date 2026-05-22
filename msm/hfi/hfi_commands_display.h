@@ -532,6 +532,53 @@
  */
 #define HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP             0x02000018
 
+/*
+ * HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE - From Host to DCP, this command instructs
+ *                                                       DCP to replace the standard DCS command
+ *                                                       metadata for one or more command types with
+ *                                                       user-defined commands. The payload begins
+ *                                                       with a u32 count field followed by an array
+ *                                                       of hfi_dsi_dcs_cmd_set_replace_entry
+ *                                                       structs, one per command type being
+ *                                                       replaced.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Validation requirements:
+ *      - count must be > 0 and <= total entries in hfi_panel_dcs_command_type
+ *      - cmd_type in each entry must be a valid hfi_panel_dcs_command_type value
+ *      - count_cmds in each entry must be > 0
+ *      - dpu_buff_type_offset must be >= the start of the reserved region within the
+ *        DPU-mapped command payload buffer (established during panel init via
+ *        HFI_PROPERTY_PANEL_DPU_ADDRESS), and dpu_buff_type_offset + total size of
+ *        count_cmds commands must not exceed the bounds of that reserved region
+ *      - hfi_buff_struct_offset must be >= the start of the reserved region within the
+ *        DCP-mapped command descriptor buffer (established during panel init via
+ *        HFI_PROPERTY_PANEL_DCP_ADDRESS), and hfi_buff_struct_offset + total size of
+ *        count_cmds command metadata entries must not exceed the bounds of that reserved region
+ *
+ * Data layout:
+ * struct dsi_hfi_dcs_cmd_set_replace_payload {
+ *     u32 count;                                                // Number of replacement entries(N)
+ *     struct hfi_dsi_dcs_cmd_set_replace_entry entries[count]; // Array of replacement entries
+ * };
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     Hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE
+ *     hfi_packet.flags         : HFI_TX_FLAGS_INTR_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload       : struct dsi_hfi_dcs_cmd_set_replace_payload
+ */
+#define HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE           0x02000019
+
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_H__
