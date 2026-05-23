@@ -617,5 +617,8 @@ int dsi_panel_pinctrl_toggle_te_function(struct dsi_panel *panel);
 int dsi_panel_tx_cmd_set(struct dsi_panel *panel,
 		enum dsi_cmd_set_type type, bool do_peripheral_flush);
 
+int dsi_panel_set_brightness_prepare_dcs_cmds(struct dsi_panel *panel,
+		struct dsi_panel_cmd_set *set, u32 bl_lvl);
+
 int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel);
 #endif /* _DSI_PANEL_H_ */
