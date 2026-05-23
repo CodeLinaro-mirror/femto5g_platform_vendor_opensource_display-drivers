@@ -575,6 +575,40 @@ static void hfi_panel_get_mode_compression_params(struct dsi_display_mode *mode,
 	}
 }
 
+static void hfi_panel_get_mode_esync_timing_caps(struct dsi_display *display,
+						  struct dsi_display_mode *mode,
+						  struct dsi_panel_timing_caps *timing_caps)
+{
+	if (!display || !display->panel ||
+		!display->panel->esync_caps.esync_support)
+		return;
+
+	timing_caps->esync_timing_caps.esync_support =
+		display->panel->esync_caps.esync_support;
+	timing_caps->esync_timing_caps.emsync_fps =
+		mode->priv_info->esync_params.emsync_fps;
+	timing_caps->esync_timing_caps.emsync_milli_pulse_width =
+		mode->priv_info->esync_params.emsync_milli_pulse_width;
+	timing_caps->esync_timing_caps.esync_milli_skew =
+		mode->priv_info->esync_params.milli_skew;
+	timing_caps->esync_timing_caps.hsync_milli_pulse_width =
+		mode->priv_info->esync_params.hsync_milli_pulse_width;
+}
+
+static void hfi_panel_get_mode_qsync_timing_params(struct dsi_display *display,
+						    struct dsi_display_mode *mode,
+						    struct dsi_panel_timing_caps *timing_caps)
+{
+	if (!display || !display->panel ||
+		!display->panel->qsync_caps.qsync_support)
+		return;
+
+	timing_caps->qsync_timing_params.qsync_min_fps =
+		mode->priv_info->qsync_min_fps;
+	timing_caps->qsync_timing_params.avr_step_fps =
+		mode->priv_info->avr_step_fps;
+}
+
 static enum hfi_panel_phy_type dsi_get_panel_type_helper(struct dsi_panel *panel)
 {
 	switch (panel->panel_type) {
@@ -1909,6 +1943,8 @@ static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
 			panel_timing_caps->phy_timings_payload.dphy_timings[i] =
 				mode->priv_info->phy_timing_val[i];
 	}
+	hfi_panel_get_mode_esync_timing_caps(display, mode, panel_timing_caps);
+	hfi_panel_get_mode_qsync_timing_params(display, mode, panel_timing_caps);
 }
 
 static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
@@ -2288,6 +2324,18 @@ static int _dsi_hfi_append_panel_timing_caps(struct dsi_display_hfi *display_hfi
 			sizeof(timing_caps->phy_timings_payload) / sizeof(u32)),
 			(void *)&timing_caps->phy_timings_payload);
 		kv_size += sizeof(timing_caps->phy_timings_payload);
+
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS, 0,
+			sizeof(timing_caps->esync_timing_caps) / sizeof(u32)),
+			(void *)&timing_caps->esync_timing_caps);
+		kv_size += sizeof(timing_caps->esync_timing_caps);
+
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS, 0,
+			sizeof(timing_caps->qsync_timing_params) / sizeof(u32)),
+			(void *)&timing_caps->qsync_timing_params);
+		kv_size += sizeof(timing_caps->qsync_timing_params);
 
 		kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
 		payload_size = (kv_count * sizeof(u32)) + kv_size;

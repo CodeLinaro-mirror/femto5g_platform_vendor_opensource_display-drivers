@@ -179,6 +179,8 @@ struct dsi_hfi_dcs_cmd_set_replace_payload {
  * payload:                         panel cmd information
  * phy_timings_payload:             DSI PHY panel tmgs info
  * compression_rc_override:         Custom RC parameters for compression, if applicable
+ * @esync_timing_caps:              HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS
+ * @qsync_timing_params:            HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS
  */
 struct dsi_panel_timing_caps {
 	u32 panel_index;
@@ -195,6 +197,8 @@ struct dsi_panel_timing_caps {
 	struct dsi_hfi_phy_timings_payload phy_timings_payload;
 	bool rc_override_enabled;
 	struct hfi_panel_compression_rc_override rc_override;
+	struct hfi_panel_esync_caps esync_timing_caps;
+	struct hfi_qsync_params qsync_timing_params;
 };
 
 /**
