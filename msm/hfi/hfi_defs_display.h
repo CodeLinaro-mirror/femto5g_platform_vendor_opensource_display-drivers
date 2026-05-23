@@ -316,6 +316,22 @@ enum hfi_display_idle_timer_control {
  *   EVENT ID for SPR OPR
  * @var HFI_EVENT_INTF_MISR
  *   EVENT ID for Interface MISR
+ * @HFI_EVENT_HDCP1X_START:
+ *     Event ID for HDCP 1.x authentication start.
+ * @HFI_EVENT_HDCP1X_STOP:
+ *     Event ID for HDCP 1.x authentication stop.
+ * @HFI_EVENT_HDCP1X_ENC:
+ *     Event ID for HDCP 1.x encryption status.
+ * @HFI_EVENT_HDCP1X_TOPOLOGY_UPDATE:
+ *     Event ID for HDCP 1.x repeater topology update.
+ * @HFI_EVENT_HDCP2X_START:
+ *     Event ID for HDCP 2.x authentication start.
+ * @HFI_EVENT_HDCP2X_PROCESS_MSG:
+ *     Event ID for HDCP 2.x message processing.
+ * @HFI_EVENT_HDCP2X_TIMEOUT:
+ *     Event ID for HDCP 2.x timeout.
+ * @HFI_EVENT_HDCP_FEATURE_SUPPORTED:
+ *     Event ID for HDCP feature support query.
  */
 enum hfi_display_event_id {
 	HFI_EVENT_VSYNC               = 0x1,
@@ -333,6 +349,14 @@ enum hfi_display_event_id {
 	HFI_EVENT_DISPLAY_EDID_INFO   = 0xd,
 	HFI_EVENT_SPR_OPR             = 0xe,
 	HFI_EVENT_INTF_MISR           = 0xf,
+	HFI_EVENT_HDCP1X_START        = 0x10,
+	HFI_EVENT_HDCP1X_STOP         = 0x11,
+	HFI_EVENT_HDCP1X_ENC          = 0x12,
+	HFI_EVENT_HDCP1X_TOPOLOGY_UPDATE = 0x13,
+	HFI_EVENT_HDCP2X_START        = 0x14,
+	HFI_EVENT_HDCP2X_PROCESS_MSG  = 0x15,
+	HFI_EVENT_HDCP2X_TIMEOUT      = 0x16,
+	HFI_EVENT_HDCP_FEATURE_SUPPORTED = 0x17,
 };
 
 /*
@@ -823,6 +847,44 @@ struct hfi_misr_config {
 	u32 enable;
 	u32 frame_count;
 	enum hfi_misr_block block;
+};
+
+/*
+ * HDCP 1.x repeater topology information
+ *
+ * @depth:
+ *     Repeater cascade depth (number of levels in the repeater chain)
+ * @device_count:
+ *     Total number of downstream HDCP devices connected
+ * @max_devices_exceeded:
+ *     Flag indicating if maximum device count (127) has been exceeded
+ * @max_cascade_exceeded:
+ *     Flag indicating if maximum cascade depth (7) has been exceeded
+ */
+struct hfi_hdcp1x_topology_data {
+	u32 depth;
+	u32 device_count;
+	u32 max_devices_exceeded;
+	u32 max_cascade_exceeded;
+};
+
+/*
+ * hdcp2 message payload
+ *
+ * @timeout_ms:
+ *     Transaction timeout duration
+ * @repeater_flag:
+ *     Bool flag to indicate sink is a repeater
+ * @request:
+ *     HDCP message request from sink
+ * @response:
+ *     HDCP message response to sink
+ */
+struct hfi_hdcp2_message {
+	u32 timeout_ms;
+	u32 repeater_flag;
+	struct hfi_buff request;
+	struct hfi_buff response;
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

@@ -323,5 +323,14 @@ struct hfi_buff_dpu {
 	u32 len;
 };
 
+/*
+ * enum hfi_subsystem_type - Subsystem type definition
+ *
+ * @HFI_SUBSYSTEM_TYPE_LSR : LSR subsystem.
+ */
+enum hfi_subsystem_type {
+	HFI_SUBSYSTEM_TYPE_LSR = 0
+};
+
 #endif // __H_HFI_DEFS_COMMON_H__
 

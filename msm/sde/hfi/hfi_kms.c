@@ -15,6 +15,7 @@
 #include "sde_plane.h"
 #include "sde_formats.h"
 #include "hfi_utils.h"
+#include "hfi_defs_debug.h"
 
 #define DWORDS_TO_BYTES(x) (x * 4)
 #define BYTES_TO_DWORDS(x) (x / 4)
@@ -210,6 +211,41 @@ static int hfi_kms_process_cmd_buf(struct hfi_client_t *client, struct hfi_cmdbu
 	return rc;
 }
 
+#if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
+void hfi_kms_recover_hwfence(struct hfi_kms *hfi_kms)
+{
+	int rc, i;
+	struct hfi_hwfence_data *hwfence_data;
+
+	hwfence_data = hfi_kms->hfi_hw_fence_data;
+	if (!hwfence_data || !hwfence_data->hw_fence_handle) {
+		SDE_ERROR("failed to reset hwfence timeline, invalid hwfencedata\n");
+		return;
+	}
+
+	for (i = 0; i < hwfence_data->max_displays; i++) {
+		if (hwfence_data->input_h_synx_array[i]) {
+			rc = synx_release(hwfence_data->hw_fence_handle,
+				hwfence_data->input_h_synx_array[i]);
+			if (rc)
+				SDE_ERROR("failed to rel display:%d input_h_synx:%u\n",
+					i, hwfence_data->input_h_synx_array[i]);
+
+			hwfence_data->input_h_synx_array[i] = SYNX_INVALID_HANDLE;
+		}
+	}
+
+	rc = synx_recover(hwfence_data->client_id);
+	if (rc)
+		SDE_ERROR("failed to reset client %d\n", hwfence_data->client_id);
+}
+#else
+void hfi_kms_recover_hwfence(struct hfi_kms *hfi_kms)
+{
+	SDE_INFO("skipping reset client, hw fence not enabled\n");
+}
+#endif /* CONFIG_QTI_HW_FENCE && CONFIG_QTI_HFI_CORE */
+
 static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 {
 	int rc;
@@ -279,11 +315,22 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 	if (rc)
 		SDE_ERROR("[WARNING] Failed to release command buffers\n");
 
+	/* reset hwfence timeline if hwfencing enabled */
+	if (sde_kms->catalog && sde_kms->catalog->hw_fence_rev)
+		hfi_kms_recover_hwfence(hfi_kms);
+
 	/* wait for all display off */
 	rc = sde_kms_wait_for_display_off(sde_kms);
 	if (rc) {
 		SDE_ERROR("failed to wait for display off rc=%d\n", rc);
 		//return rc;
+	}
+
+	if (test_bit(SDE_FEATURE_LSR, sde_kms->catalog->features)) {
+		SDE_ERROR("Triggering lsr fw reset from DCP SSR\n");
+		rc = lsr_fw_reset();
+		if (rc)
+			SDE_ERROR("LSR FW reset failed:%d\n", rc);
 	}
 
 	SDE_DEBUG("ssr start processing completed\n");
@@ -325,6 +372,10 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 
 	priv = ddev->dev_private;
 	mp = &priv->phandle.mp;
+
+	rc = hfi_kms_init_hw_fence_config(hfi_kms);
+	if (rc)
+		SDE_ERROR("failed to send HFI HW FENCE config to FW ret:%d\n", rc);
 
 	/* re configure fw with lut dma configs */
 	rc = sde_kms_reinit_device_lut_dma(sde_kms);
@@ -946,43 +997,93 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
 	return ret;
 }
 
-int hfi_kms_send_idle_timer_ctrl(struct hfi_kms *hfi_kms, bool timer_state)
-{
-	int ret = 0;
-	struct hfi_cmdbuf_t *cmd_buf;
-	enum hfi_display_idle_timer_control payload;
-	u32 disp_id = 0; //Use primary display ID.
+/**
+ * struct hfi_kms_uidle_status_ctx - context for uidle status HFI GET query
+ * @listener:        HFI property listener used to receive the FW response
+ * @uidle_enabled:   uidle enabled flag returned by FW (value_lsb)
+ * @uidle_state:     uidle state returned by FW (value_msb)
+ */
+struct hfi_kms_uidle_status_ctx {
+	struct hfi_prop_listener listener;
+	bool uidle_enabled;
+	u32 uidle_state;
+};
 
-	if (!hfi_kms)
+static void _hfi_kms_uidle_status_handler(u32 obj_id, u32 cmd_id,
+		void *payload, u32 size, struct hfi_prop_listener *listener)
+{
+	struct hfi_kms_uidle_status_ctx *ctx;
+	struct hfi_display_dbg_property *prop;
+
+	if (!listener || !payload || size < sizeof(struct hfi_display_dbg_property)) {
+		SDE_ERROR("invalid uidle status response listener:%d payload:%d size:%d\n",
+			!listener, !payload, size);
+		return;
+	}
+
+	ctx = container_of(listener, struct hfi_kms_uidle_status_ctx, listener);
+	prop = (struct hfi_display_dbg_property *)payload;
+	ctx->uidle_enabled = (bool)prop->value_lsb;
+	ctx->uidle_state = prop->value_msb;
+
+	SDE_DEBUG("uidle_status response: enabled=%d state=%u\n",
+			ctx->uidle_enabled, ctx->uidle_state);
+}
+
+int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *uidle_state)
+{
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_display_dbg_property dbg_prop = {0};
+	struct hfi_kms_uidle_status_ctx *uidle_ctx;
+	int rc = 0;
+
+	if (!hfi_kms || !uidle_enabled || !uidle_state)
 		return -EINVAL;
 
-	SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, SDE_EVTLOG_FUNC_ENTRY);
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
-			disp_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
 	if (!cmd_buf) {
 		SDE_ERROR("failed to get hfi command buffer\n");
-		SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, -EINVAL, SDE_EVTLOG_ERROR);
+		return -EINVAL;
+	}
+
+	dbg_prop.display_id = MSM_DRV_HFI_ID;
+	dbg_prop.prop_id = HFI_DISPLAY_DEBUG_UIDLE;
+
+	uidle_ctx = kzalloc(sizeof(*uidle_ctx), GFP_KERNEL);
+	if (!uidle_ctx)
 		return -ENOMEM;
-	}
 
-	payload = timer_state ? HFI_BLOCK_TIMER : HFI_UNBLOCK_TIMER;
+	uidle_ctx->listener.hfi_prop_handler = _hfi_kms_uidle_status_handler;
 
-	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
-		HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, disp_id, HFI_PAYLOAD_TYPE_U32,
-		&payload, sizeof(payload), HFI_HOST_FLAGS_RESPONSE_REQUIRED);
-	if (ret) {
-		SDE_ERROR("Failed to add property ret:%d\n", ret);
+	rc = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY, MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &dbg_prop, sizeof(dbg_prop),
+			&uidle_ctx->listener,
+			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
+	if (rc) {
+		SDE_ERROR("failed to add uidle status get property rc:%d\n", rc);
 		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
-		return ret;
+		goto end;
 	}
 
-	SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, SDE_EVTLOG_FUNC_CASE1);
-	ret = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
-	if (ret)
-		SDE_ERROR("Failed to send idle pc timer control request: %d\n", ret);
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY,
+			SDE_EVTLOG_FUNC_CASE1);
+	rc = hfi_adapter_set_cmd_buf_blocking(&hfi_kms->hfi_client, cmd_buf);
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY, rc,
+			SDE_EVTLOG_FUNC_CASE2);
+	if (rc) {
+		SDE_ERROR("failed to send uidle status command rc:%d\n", rc);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		goto end;
+	}
 
-	SDE_EVT32(HFI_COMMAND_DISPLAY_IDLE_TIMER_CONTROL, SDE_EVTLOG_FUNC_EXIT);
-	return ret;
+	*uidle_enabled = uidle_ctx->uidle_enabled;
+	*uidle_state = uidle_ctx->uidle_state;
+
+end:
+	kfree(uidle_ctx);
+	return rc;
 }
 
 #if IS_ENABLED(CONFIG_QTI_HFI_CORE) && IS_ENABLED(CONFIG_QTI_HW_FENCE)
@@ -1116,7 +1217,7 @@ static int _set_hw_fence_config(struct hfi_kms *hfi_kms)
 	ret = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
 			HFI_COMMAND_DEVICE_HWFENCE_HFI_CONFIG, MSM_DRV_HFI_ID,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &hw_fence_cfg, sizeof(hw_fence_cfg),
-			HFI_TX_FLAGS_RESPONSE_REQUIRED | HFI_TX_FLAGS_NON_DISCARDABLE);
+			HFI_TX_FLAGS_NON_DISCARDABLE);
 	if (ret) {
 		SDE_ERROR("failed to set hfi property for hw fence config\n");
 		return -EINVAL;

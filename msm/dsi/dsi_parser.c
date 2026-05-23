@@ -14,7 +14,11 @@
 #include "dsi_parser.h"
 #include "dsi_defs.h"
 
+#if IS_ENABLED(CONFIG_DSI_EXTENDED_MODES)
+#define DSI_PARSER_MAX_NODES 256
+#else
 #define DSI_PARSER_MAX_NODES 20
+#endif
 
 enum dsi_parser_prop_type {
 	DSI_PROP_TYPE_STR,

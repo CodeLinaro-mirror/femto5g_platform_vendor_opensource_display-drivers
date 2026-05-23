@@ -64,6 +64,7 @@ enum sde_reg_dma_read_sel {
  * @RC_MASK_CFG: Rounded corner config and mask
  * @RC_PU_CFG: Rounded corner partial update
  * @DEMURA_CFG: Demura feature
+ * @DEMURA_PU_CFG: Demura partial update feature
  * @QRTC: QRTC feature
  * @REG_DMA_FEATURES_MAX: invalid selection
  */
@@ -90,6 +91,7 @@ enum sde_reg_dma_features {
 	RC_PU_CFG,
 	DEMURA_CFG,
 	DEMURA_CFG0_PARAM2,
+	DEMURA_PU_CFG,
 	AIQE_MDNIE,
 	AIQE_SSRC_CONFIG,
 	AIQE_SSRC_DATA,

@@ -178,4 +178,41 @@ struct hfi_device_resource_config {
 	u32 resource_type;
 	u32 reserved[2];
 };
+
+/**
+ * @enum hfi_device_ssr_event
+ * @brief Subsystem Restart event
+ *
+ * Defines events of subsystem restart.
+ *
+ * @var HFI_DEVICE_SSR_EVENT_START
+ *  SSR start.
+ * @var HFI_DEVICE_SSR_EVENT_END
+ *  SSR end.
+ */
+enum hfi_device_ssr_event {
+	HFI_DEVICE_SSR_EVENT_START  = 0,
+	HFI_DEVICE_SSR_EVENT_END  = 1,
+};
+
+/**
+ * @struct hfi_device_ssr_info
+ * @brief Struct to indicate subsystem restart and its event.
+ *
+ * @var subsytem_type
+ *  Subsystem which is restarting.
+ * @var ssr_event
+ *  Event of subsystem restart.
+ * @var reserved1
+ *  Reserved field for future use.
+ * @var reserved2
+ *  Reserved field for future use.
+ */
+struct hfi_device_ssr_info {
+	enum hfi_subsystem_type subsystem_type;
+	enum hfi_device_ssr_event ssr_event;
+	uint32_t reserved1;
+	uint32_t reserved2;
+};
+
 #endif // __H_HFI_DEFS_DEVICE_H__
