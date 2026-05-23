@@ -1588,9 +1588,30 @@ dp_mst_add_connector(struct drm_dp_mst_topology_mgr *mgr,
 
 static void dp_mst_register_connector(struct drm_connector *connector)
 {
+	struct sde_connector *c_conn = to_sde_connector(connector);
+	struct dp_display *dp_display = c_conn->display;
+
 	DP_MST_DEBUG("enter\n");
 
-	connector->status = connector->funcs->detect(connector, false);
+	if (IS_ERR_OR_NULL(dp_display)) {
+		DP_MST_INFO("invalid dp_display\n");
+		return;
+	}
+
+	if (dp_display->force_connect_mode) {
+		connector->status = connector_status_connected;
+		DP_MST_INFO("set connector->status to connected for force connect mode\n");
+		DP_MST_INFO("register mst connector id:%d\n",
+				connector->base.id);
+		return;
+	}
+
+	if (connector->funcs && connector->funcs->detect) {
+		connector->status = connector->funcs->detect(connector, false);
+	} else {
+		connector->status = connector_status_disconnected;
+		DP_MST_INFO("set connector->status to disconnected\n");
+	}
 
 	DP_MST_INFO("register mst connector id:%d\n",
 			connector->base.id);
