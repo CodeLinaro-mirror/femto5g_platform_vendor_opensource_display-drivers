@@ -1905,6 +1905,8 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	/* Populate DSI custom command set info */
 	panel_generic_caps->custom_cmd_set_info[0] = DSI_CUSTOM_CMD_SET_START_IDX;
 	panel_generic_caps->custom_cmd_set_info[1] = DSI_CUSTOM_CMD_SET_COUNT;
+
+	panel_generic_caps->ulps_supported = panel->ulps_feature_enabled;
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -2216,6 +2218,12 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 				(void *)panel_generic_caps.custom_cmd_set_info);
 		kv_size += sizeof(panel_generic_caps.custom_cmd_set_info);
 	}
+
+	hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_ULPS_SUPPORTED, 0,
+				(sizeof(panel_generic_caps.ulps_supported) / sizeof(u32))),
+				(void *)&panel_generic_caps.ulps_supported);
+	kv_size += sizeof(panel_generic_caps.ulps_supported);
 
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
 
