@@ -88,6 +88,8 @@ enum dsi_op_mode {
  * @DSI_MODE_FLAG_EMSYNC_FPS_SWITCH: Seamless transition is emsync fps switch
  * @DSI_MODE_FLAG_DMS_VID:
  *         Seamless transition is dynamic mode switch on vid panel.
+ * @DSI_MODE_FLAG_MODE_IDX_VALID:
+ *         Panel timing mode index in reserved1[15:0] is valid.
  */
 enum dsi_mode_flags {
 	DSI_MODE_FLAG_SEAMLESS			= BIT(0),
@@ -101,7 +103,8 @@ enum dsi_mode_flags {
 	DSI_MODE_FLAG_POMS_TO_CMD		= BIT(8),
 	DSI_MODE_FLAG_NONDSC_BPP_SWITCH		= BIT(9),
 	DSI_MODE_FLAG_EMSYNC_FPS_SWITCH		= BIT(10),
-	DSI_MODE_FLAG_DMS_VID			= BIT(11)
+	DSI_MODE_FLAG_DMS_VID			= BIT(11),
+	DSI_MODE_FLAG_MODE_IDX_VALID		= BIT(12)
 };
 
 /**
@@ -779,6 +782,7 @@ struct dsi_host_config {
  * @widebus_support       48 bit wide data bus is supported by hw
  * @allowed_mode_switch: BIT mask to mark allowed mode switches
  * @disable_rsc_solver: Dynamically disable RSC solver for the timing mode.
+ * @mode_idx:	Mode index as defined by devicetree
  */
 struct dsi_display_mode_priv_info {
 	struct dsi_panel_cmd_set cmd_sets[DSI_CMD_SET_TOTAL_SIZE];
@@ -812,6 +816,7 @@ struct dsi_display_mode_priv_info {
 	bool widebus_support;
 	u32 allowed_mode_switch[MODE_SWITCH_BITMAP_SIZE];
 	bool disable_rsc_solver;
+	u32 mode_idx;
 };
 
 /**

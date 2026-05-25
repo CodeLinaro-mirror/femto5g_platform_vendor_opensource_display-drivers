@@ -885,7 +885,7 @@ static int _init_addr_maps(struct dp_hfi *hfi)
 	return 0;
 }
 
-int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
+static int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 {
 	struct hfi_client_t *hfi_client;
 	struct hfi_device_hotplug_config config = {0};
@@ -1539,12 +1539,20 @@ static void dp_mgr_hfi_post_open(struct dp_client *client)
 
 static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 size)
 {
-	struct hfi_display_event_edid_info *info = payload;
-	struct hfi_buff *edid_buf = &info->edid_modes_buf;
+	struct hfi_display_event_edid_info *info;
+	struct hfi_buff *edid_buf;
 	int i, len, buf_size, edid_size;
 	char *buf_addr;
 	struct hfi_shared_addr_map *edid_map;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
+
+	if (!payload) {
+		DP_ERR("Invalid payload\n");
+		return;
+	}
+
+	info = payload;
+	edid_buf = &info->edid_modes_buf;
 
 	DP_INFO("EDID Info received: stream_id=%d size=%u, link_rate=%u, lane_count=%u, bpp=%u\n",
 			info->stream_id, edid_buf->size, info->link_rate,
@@ -1614,9 +1622,16 @@ end:
 
 static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 size)
 {
-	struct hfi_display_hpd_status *hpd_status = (struct hfi_display_hpd_status *) payload;
+	struct hfi_display_hpd_status *hpd_status;
 	struct hfi_device_hotplug_config config = {0};
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
+
+	if (!payload) {
+		DP_ERR("Invalid payload\n");
+		return;
+	}
+
+	hpd_status = (struct hfi_display_hpd_status *) payload;
 
 	switch (hpd_status->dp_evt) {
 	case HFI_DP_EVENT_HPD_UNPLUGGED:
@@ -1720,13 +1735,16 @@ static void dp_mgr_hfi_handle_hdcp1x_stop(struct dp_hfi *hfi, void *payload, u32
 
 static void dp_mgr_hfi_handle_hdcp1x_enc(struct dp_hfi *hfi, void *payload, u32 size)
 {
-	u32 *data = (u32 *)payload;
+	u32 *data;
 	bool enable;
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
 
-	if (size < sizeof(u32)) {
+	if (!payload || size < sizeof(u32)) {
 		DP_ERR("Invalid payload size: %u\n", size);
 		return;
 	}
+
+	data = (u32 *)payload;
 
 	enable = (data[0] != 0);
 
@@ -1738,7 +1756,8 @@ static void dp_mgr_hfi_handle_hdcp1x_enc(struct dp_hfi *hfi, void *payload, u32 
 		return;
 	}
 
-	dp_hdcp1x_set_enc(hfi->hdcp1x_ctx, enable);
+	if (hfi_priv->debug && hfi_priv->debug->force_encryption)
+		dp_hdcp1x_set_enc(hfi->hdcp1x_ctx, enable);
 
 	if (enable) {
 		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
@@ -1750,13 +1769,15 @@ static void dp_mgr_hfi_handle_hdcp1x_enc(struct dp_hfi *hfi, void *payload, u32 
 
 static void dp_mgr_hfi_handle_hdcp1x_topology(struct dp_hfi *hfi, void *payload, u32 size)
 {
-	u32 *data = (u32 *)payload;
+	u32 *data;
 	u32 depth, device_count, max_devices_exceeded, max_cascade_exceeded;
 
-	if (size < 4 * sizeof(u32)) {
+	if (!payload || size < 4 * sizeof(u32)) {
 		DP_ERR("Invalid payload size: %u\n", size);
 		return;
 	}
+
+	data = (u32 *)payload;
 
 	depth = data[0];
 	device_count = data[1];
@@ -2053,9 +2074,16 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 	bool hdcp1x_tz_support = false;
 	bool hdcp2x_tz_support = false;
 	int rc;
-	u32 *hdcp_support = (u32 *)payload;
+	u32 *hdcp_support;
 	u32 hfi_event;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
+
+	if (!payload) {
+		DP_ERR("Invalid payload\n");
+		return;
+	}
+
+	hdcp_support = (u32 *)payload;
 
 	/* Get HFI client first as we'll need it for buffer allocation */
 	hfi_client = hfi->hfi_client;
@@ -2601,6 +2629,9 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	/* Deinitialize HDCP */
 	if (hfi->hdcp1x_ctx) {
+		/* If force_encryption is set, disable encryption before tearing down */
+		if (hfi_priv->debug->force_encryption)
+			dp_hdcp1x_set_enc(hfi->hdcp1x_ctx, false);
 		dp_hdcp1x_deinit(hfi->hdcp1x_ctx);
 		hfi->hdcp1x_ctx = NULL;
 		DP_DEBUG("HDCP deinitialized\n");

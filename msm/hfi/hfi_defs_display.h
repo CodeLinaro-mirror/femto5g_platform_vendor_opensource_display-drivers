@@ -975,4 +975,36 @@ struct hfi_cmd_set_remap {
 	u32 reserved;
 };
 
+/*
+ * @struct hfi_dsi_dcs_cmd_set_replace_entry
+ * @brief Single entry for DSI DCS command set replacement
+ *
+ * This structure represents one replacement entry in the payload of
+ * HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE. Each entry instructs
+ * DCP to replace the standard DCS command metadata for a given command type
+ * with user-defined custom commands.
+ *
+ * @var dpu_buff_type_offset
+ *   Byte offset within the DPU-mapped command payload buffer (established
+ *   during panel init via HFI_PROPERTY_PANEL_DPU_ADDRESS) where the
+ *   replacement command bytes for this entry begin.
+ * @var cmd_type
+ *   hfi_panel_dcs_command_type value identifying the command type to replace.
+ * @var count_cmds
+ *   Number of replacement commands for this entry.
+ * @var hfi_buff_struct_offset
+ *   Byte offset within the DCP-mapped command descriptor buffer (established
+ *   during panel init via HFI_PROPERTY_PANEL_DCP_ADDRESS) where the
+ *   hfi_dsi_cmd_desc metadata structs for this entry begin.
+ * @var reserved
+ *   Reserved for future use.
+ */
+struct hfi_dsi_dcs_cmd_set_replace_entry {
+	u32 dpu_buff_type_offset;
+	u32 cmd_type;
+	u32 count_cmds;
+	u32 hfi_buff_struct_offset;
+	u32 reserved;
+};
+
 #endif // __H_HFI_DEFS_DISPLAY_H__

@@ -114,16 +114,23 @@ static bool _hfi_encoder_check_frame_event_trigger(struct sde_encoder_virt *sde_
 	if (!sde_kms || !hfi_enc || !sde_kms->catalog)
 		return true;
 
+	/*
+	 * When LSR is running, DCP triggers scan start events for reprojection commits
+	 * within firmware on primary display. Adding sequence check on the scan start
+	 * event to avoid triggering frame events on FW internal commits.
+	 */
 	catalog = sde_kms->catalog;
 	if (test_bit(SDE_FEATURE_FRAME_SEQ_CHECK, catalog->features) &&
 			!sde_encoder_is_wb_display(&sde_enc->base)) {
-		/* Trigger callback only if HFI frame done count increased from current seqno */
-		if (atomic_read(&hfi_enc->hfi_frame_done_cnt) >
-				atomic_read(&hfi_enc->hfi_frame_done_seqno))
-			atomic_set(&hfi_enc->hfi_frame_done_seqno,
-				atomic_read(&hfi_enc->hfi_frame_done_cnt));
-		else
-			return false;
+		int cnt = atomic_read(&hfi_enc->hfi_frame_done_cnt);
+		int seqno = atomic_read(&hfi_enc->hfi_frame_done_seqno);
+
+		if ((cnt > seqno) || (atomic_read(&sde_enc->pending_commit_cnt) > 0)) {
+			atomic_set(&hfi_enc->hfi_frame_done_seqno, cnt);
+			SDE_EVT32(cnt, seqno, atomic_read(&sde_enc->pending_commit_cnt));
+		} else {
+			return false; /* true duplicate, suppress */
+		}
 	}
 
 	return true;
@@ -157,15 +164,18 @@ static void hfi_encoder_frame_event_callback(struct sde_encoder_virt *sde_enc,
 	}
 
 	ts = hfi_enc_unpack_frame_event(payload, NULL, sde_enc);
-	frame_event_trigger = _hfi_encoder_check_frame_event_trigger(sde_enc);
 
 	spin_lock_irqsave(&sde_enc->enc_spinlock, lock_flags);
-	if (event & SDE_ENCODER_FRAME_EVENT_DONE || sde_encoder_in_clone_mode(&sde_enc->base))
-		new_cnt = atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
-	if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE) && sde_enc->cur_master)
-		atomic_add_unless(&sde_enc->cur_master->pending_retire_fence_cnt, -1, 0);
-	if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE) && sde_enc->cur_master)
-		atomic_add_unless(&sde_enc->cur_master->pending_release_fence_cnt, -1, 0);
+	frame_event_trigger = _hfi_encoder_check_frame_event_trigger(sde_enc);
+	if (frame_event_trigger) {
+		if (event & SDE_ENCODER_FRAME_EVENT_DONE ||
+					sde_encoder_in_clone_mode(&sde_enc->base))
+			new_cnt = atomic_add_unless(&sde_enc->pending_commit_cnt, -1, 0);
+		if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RETIRE_FENCE) && sde_enc->cur_master)
+			atomic_add_unless(&sde_enc->cur_master->pending_retire_fence_cnt, -1, 0);
+		if ((event & SDE_ENCODER_FRAME_EVENT_SIGNAL_RELEASE_FENCE) && sde_enc->cur_master)
+			atomic_add_unless(&sde_enc->cur_master->pending_release_fence_cnt, -1, 0);
+	}
 	spin_unlock_irqrestore(&sde_enc->enc_spinlock, lock_flags);
 
 	SDE_EVT32(DRMID(drm_enc), event, atomic_read(&sde_enc->pending_commit_cnt),
@@ -293,9 +303,16 @@ static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, vo
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
 	struct sde_connector *sde_conn;
+	struct hfi_encoder *hfi_enc;
 
 	if (!sde_enc) {
-		SDE_ERROR("invalid encoder\n");
+		SDE_ERROR("invalid sde encoder\n");
+		return;
+	}
+
+	hfi_enc = to_hfi_encoder(sde_enc);
+	if (!hfi_enc) {
+		SDE_ERROR("invalid hfi encoder\n");
 		return;
 	}
 
@@ -312,6 +329,8 @@ static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, vo
 		return;
 	}
 
+	hfi_connector_set_esd_recovery_pending(sde_conn);
+	wake_up_all(&hfi_enc->pending_kickoff_wq);
 	hfi_connector_report_panel_dead(sde_conn, false);
 }
 
@@ -413,12 +432,8 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 				sizeof(uint8_t), SDE_RECOVERY_CAPTURE);
 		} else {
 			event = (u32) data[1];
-			if (HFI_DEBUG_EVENT_UNDERRUN & event) {
-				SDE_DBG_CTRL("stop_ftrace");
-				SDE_DBG_CTRL("panic_underrun");
-			} else {
-				SDE_DBG_DUMP(0x0, "panic");
-			}
+			SDE_DEBUG("event: %u\n", event);
+			SDE_DBG_DUMP(0x0);
 		}
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_POWER:
@@ -622,6 +637,30 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 	return ret;
 }
 
+static struct dsi_panel *hfi_encoder_get_panel(struct sde_encoder_virt *sde_enc)
+{
+	struct drm_connector *conn;
+	struct drm_encoder *drm_enc;
+	struct sde_connector *sde_conn;
+
+	if (!sde_enc)
+		return NULL;
+
+	drm_enc = &sde_enc->base;
+	if (!drm_enc)
+		return NULL;
+
+	conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
+	if (!conn)
+		return NULL;
+
+	sde_conn = to_sde_connector(conn);
+	if (!sde_conn || !sde_conn->display)
+		return NULL;
+
+	return hfi_connector_get_dsi_panel(sde_conn);
+}
+
 static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 		struct sde_encoder_wait_info *info, u32 event)
 {
@@ -634,6 +673,7 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 	struct hfi_kms *hfi_kms;
 	struct sde_kms *sde_kms;
 	struct sde_encoder_virt *sde_enc = hfi_enc->sde_base;
+	struct dsi_panel *panel = NULL;
 
 	sde_kms = sde_encoder_get_kms(&sde_enc->base);
 	hfi_kms = to_hfi_kms(sde_kms);
@@ -642,10 +682,12 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 		return -EINVAL;
 	}
 
+	panel = hfi_encoder_get_panel(sde_enc);
 	do {
 		rc = wait_event_timeout(*(info->wq),
-				(atomic_read(info->atomic_cnt) == info->count_check)
-					|| atomic_read(&hfi_kms->ssr_in_progress),
+				(atomic_read(info->atomic_cnt) == info->count_check) ||
+				atomic_read(&hfi_kms->ssr_in_progress) ||
+				(panel && atomic_read(&panel->esd_recovery_pending)),
 				wait_time_jiffies);
 		cur_ktime = ktime_get();
 

@@ -1512,22 +1512,48 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 					 &local_listener_list, list_ptr) {
 			listener = (struct hfi_prop_listener *)temp_entry->listener_obj;
 
-			SDE_EVT32(num_packets, packet_info.id, packet_info.cmd);
-			listener->hfi_prop_handler(packet_info.id,
-					packet_info.cmd, packet_info.payload_ptr,
-					packet_info.payload_size, listener);
+			if (!listener) {
+				HFI_AD_ERROR("listener is NULL, skipping callback\n");
+				list_del(&temp_entry->list_ptr);
+				kfree(temp_entry);
+				continue;
+			}
 
+			/*
+			 * Check error flags BEFORE invoking callback.
+			 * If firmware returned an error, payload_ptr may be NULL
+			 * or invalid. Still invoke the callback with NULL payload
+			 * and zero size so the caller waiting on response is
+			 * unblocked, but the callback can detect the error via
+			 * NULL payload and handle it gracefully without crashing.
+			 */
 			if (packet_info.flags != HFI_RX_FLAGS_NONE &&
 					packet_info.flags != HFI_RX_FLAGS_SUCCESS) {
 				HFI_AD_ERROR("response packet error. cmd:0x%x resp:0x%x\n",
 						packet_info.cmd, packet_info.flags);
 				ret = -HFI_ERROR;
+				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd,
+						packet_info.flags);
+				listener->hfi_prop_handler(packet_info.id,
+						packet_info.cmd, NULL, 0, listener);
+			} else {
+				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd);
+				listener->hfi_prop_handler(packet_info.id,
+						packet_info.cmd, packet_info.payload_ptr,
+						packet_info.payload_size, listener);
 			}
 
 			/* Remove and free the temporary entry */
 			list_del(&temp_entry->list_ptr);
 			kfree(temp_entry);
 		}
+	}
+
+	if (ret) {
+		HFI_AD_DEBUG("Error processing num_pkts: %d type: %d obj_id: %d header_id: 0x%x\n",
+			header_info.num_packets, header_info.cmd_buff_type, header_info.object_id,
+			header_info.header_id);
+		return ret;
 	}
 
 	/* Loop through clients list and if matching unique_id then release */

@@ -4215,7 +4215,8 @@ update_ppb:
 	memset(&sde_enc->cur_conn_roi, 0, sizeof(sde_enc->cur_conn_roi));
 	_sde_encoder_control_fal10_veto(drm_enc, true);
 
-	atomic_set(&sde_enc->pending_commit_cnt, 0);
+	if (IS_DISP_OP_HWIO(disp_op))
+		atomic_set(&sde_enc->pending_commit_cnt, 0);
 
 	c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
 	if (!c_state) {
@@ -4508,6 +4509,7 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 	sde_encoder_populate_encoder_phys(drm_enc, sde_enc, msm_mode);
 
 	_sde_encoder_virt_enable_helper(drm_enc);
+	atomic_set(&sde_enc->pending_commit_cnt, 0);
 	if (!sde_enc->disp_info.vrr_caps.video_psr_support ||
 			sde_enc->crtc->state->active_changed)
 		sde_encoder_control_te(sde_enc, true);
@@ -5094,7 +5096,6 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 	if (sde_enc->hal_ops.enable_hw_event[disp_op]) {
 		sde_enc->hal_ops.enable_hw_event[disp_op](sde_enc,
 				MSM_ENC_VBLANK, vbl_cb ? true : false);
-		goto exit;
 	}
 
 	for (i = 0; i < sde_enc->num_phys_encs; i++) {
@@ -5115,7 +5116,7 @@ void sde_encoder_register_vblank_callback(struct drm_encoder *drm_enc,
 				phys->ops.control_vblank_irq(phys, enable);
 		}
 	}
-exit:
+
 	sde_enc->vblank_enabled = enable;
 }
 

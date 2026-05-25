@@ -49,6 +49,7 @@
  * @HFI_COLOR_FORMAT_RGBX8888_TILED        : Color format XBGR8888 Tiled
  * @HFI_COLOR_FORMAT_RGBA10_10_10_2_TILED  : Color format ABGR2 10 10 10 Tiled
  * @HFI_COLOR_FORMAT_RGBX10_10_10_2_TILED  : Color format XBGR2 10 10 10 Tiled
+ * @HFI_COLOR_FORMAT_RGB888_BYPASS         : Color format RGB888 Bypass
  * // Interleaved BGR (MSB byte = 0x02)
  * @HFI_COLOR_FORMAT_BGR565                : Color format BGR565
  * @HFI_COLOR_FORMAT_BGR888                : Color format BGR888
@@ -95,6 +96,7 @@
  * @HFI_COLOR_FORMAT_A10                   : Color format A10
  * @HFI_COLOR_FORMAT_Y10_MSB_ALIGN         : Color format Y10_MSB_ALIGN
  * @HFI_COLOR_FORMAT_A10_MSB_ALIGN         : Color format A10_MSB_ALIGN
+ * @HFI_COLOR_FORMAT_Y8                    : Color format Y8
  * // Compressed UBWC 3.0 / 4.x / 5.0 Lossless / FSC (MSB byte = 0x06)
  * @HFI_COLOR_FORMAT_UBWC_NV12             : Color format UBWC NV12
  * @HFI_COLOR_FORMAT_UBWC_NV12_Interlace   : Color format UBWC NV12 Interlace
@@ -144,6 +146,7 @@ enum hfi_color_formats {
 	HFI_COLOR_FORMAT_RGBX8888_TILED             = 0x01000016,
 	HFI_COLOR_FORMAT_RGBA10_10_10_2_TILED       = 0x01000017,
 	HFI_COLOR_FORMAT_RGBX10_10_10_2_TILED       = 0x01000018,
+	HFI_COLOR_FORMAT_RGB888_BYPASS              = 0x01000019,
 	HFI_COLOR_FORMAT_INTERLEAVED_RGB_MAX        = 0x01FFFFFF,
 	/* Interleaved BGR */
 	HFI_COLOR_FORMAT_INTERLEAVED_BGR_MIN        = 0x02000000,
@@ -202,6 +205,7 @@ enum hfi_color_formats {
 	HFI_COLOR_FORMAT_A10                        = 0x05000010,
 	HFI_COLOR_FORMAT_Y10_MSB_ALIGN              = 0x05000011,
 	HFI_COLOR_FORMAT_A10_MSB_ALIGN              = 0x05000012,
+	HFI_COLOR_FORMAT_Y8                         = 0x05000013,
 	HFI_COLOR_FORMAT_LINEAR_MAX                 = 0x05FFFFFF,
 	/* Compressed UBWC 3.0 / 4.x / 5.0 Lossless / FSC */
 	HFI_COLOR_FORMAT_UBWC_LOSSLESS_MIN          = 0x06000000,

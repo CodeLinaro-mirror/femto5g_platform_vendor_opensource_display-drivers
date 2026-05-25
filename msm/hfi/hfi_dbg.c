@@ -99,7 +99,7 @@ static void hfi_dbg_property_handler(u32 display_id, u32 cmd_id,
 		SDE_ERROR("invalid payload or hfi command 0x%x\n", cmd_id);
 }
 
-static int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
+int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
 {
 	struct hfi_cmdbuf_t *cmd_buf;
 	int ret;
@@ -116,6 +116,12 @@ static int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
 	if (!cmd_buf) {
 		SDE_ERROR("failed to get hfi command buffer\n");
 		return -EINVAL;
+	}
+
+	ret = hfi_util_u32_prop_helper_reset(hfi_dbg->base_props);
+	if (ret) {
+		SDE_ERROR("failed to reset base props\n");
+		return ret;
 	}
 
 	if (hfi_dbg->buff_map.reg_addr.size && hfi_dbg->buff_map.reg_addr.remote_addr) {

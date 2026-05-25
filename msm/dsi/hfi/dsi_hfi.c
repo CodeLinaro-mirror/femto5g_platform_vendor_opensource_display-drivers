@@ -7,6 +7,7 @@
 
 #include "msm_drv.h"
 #include "msm_mmu.h"
+#include "msm_gem.h"
 #include "hfi_msm_drv.h"
 #include "hfi_connector.h"
 #include "dsi_drm.h"
@@ -14,6 +15,7 @@
 #include "dsi_display_hfi.h"
 #include "dsi_display.h"
 #include "dsi_hfi.h"
+#include "dsi_panel.h"
 #include "dsi_parser.h"
 #include "hfi_adapter.h"
 #include "hfi_props.h"
@@ -22,8 +24,8 @@
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 
-#define DSI_HFI_MIN_MAPPED_ADDR_SIZE (PAGE_SIZE * 4)
-#define DSI_HFI_MAX_MAPPED_ADDR_SIZE (PAGE_SIZE * 64)
+#define DSI_HFI_MIN_MAPPED_ADDR_SIZE                  (PAGE_SIZE * 4)
+#define DSI_HFI_MAX_MAPPED_ADDR_SIZE                  (PAGE_SIZE * 64)
 #define MAX_TIMING_PER_PACKET  32
 
 static int dsi_display_hfi_power_supplies(struct dsi_display *display,
@@ -351,11 +353,16 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 			display_hfi->mode_valid = true;
 		break;
 	case HFI_COMMAND_DISPLAY_POWER_CONTROL:
-		rc = dsi_display_hfi_power_supplies(display,
+		if (payload && size >= 2) {
+			rc = dsi_display_hfi_power_supplies(display,
 								((u32 *)payload)[0],
 								((bool *)payload)[1]);
-		if (rc)
-			DSI_ERR("Could not power on supplies\n");
+			if (rc)
+				DSI_ERR("Could not power on supplies rc: %d\n", rc);
+		} else {
+			DSI_ERR("invalid payload: 0x%pK or size: %u to power on supplies\n",
+				payload, size);
+		}
 		break;
 	case HFI_COMMAND_DISPLAY_DISABLE:
 		msleep(20);
@@ -367,6 +374,7 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	case HFI_COMMAND_DISPLAY_POWER_REGISTER:
 	case HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD:
 	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP:
+	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE:
 		break;
 	case HFI_COMMAND_DEBUG_MISR_READ:
 		dsi_hfi_process_misr_read(display, payload, size);
@@ -402,6 +410,7 @@ int dsi_display_hfi_setup_hfi(struct dsi_display *display, struct hfi_adapter_t 
 	display_hfi->tx_cmd_buf_fill_level = 0;
 	display->hfi_cb_obj.hfi_prop_handler = dsi_hfi_prop_handler;
 	display_hfi->hfi_adapter = hfi_host;
+	mutex_init(&display_hfi->rt_dcs_cmd_lock);
 
 	display_hfi->hfi_client = kmalloc(sizeof(struct hfi_client_t), GFP_KERNEL);
 	if (!display_hfi->hfi_client)
@@ -564,6 +573,40 @@ static void hfi_panel_get_mode_compression_params(struct dsi_display_mode *mode,
 		if (!rc)
 			timing_caps->rc_override_enabled = true;
 	}
+}
+
+static void hfi_panel_get_mode_esync_timing_caps(struct dsi_display *display,
+						  struct dsi_display_mode *mode,
+						  struct dsi_panel_timing_caps *timing_caps)
+{
+	if (!display || !display->panel ||
+		!display->panel->esync_caps.esync_support)
+		return;
+
+	timing_caps->esync_timing_caps.esync_support =
+		display->panel->esync_caps.esync_support;
+	timing_caps->esync_timing_caps.emsync_fps =
+		mode->priv_info->esync_params.emsync_fps;
+	timing_caps->esync_timing_caps.emsync_milli_pulse_width =
+		mode->priv_info->esync_params.emsync_milli_pulse_width;
+	timing_caps->esync_timing_caps.esync_milli_skew =
+		mode->priv_info->esync_params.milli_skew;
+	timing_caps->esync_timing_caps.hsync_milli_pulse_width =
+		mode->priv_info->esync_params.hsync_milli_pulse_width;
+}
+
+static void hfi_panel_get_mode_qsync_timing_params(struct dsi_display *display,
+						    struct dsi_display_mode *mode,
+						    struct dsi_panel_timing_caps *timing_caps)
+{
+	if (!display || !display->panel ||
+		!display->panel->qsync_caps.qsync_support)
+		return;
+
+	timing_caps->qsync_timing_params.qsync_min_fps =
+		mode->priv_info->qsync_min_fps;
+	timing_caps->qsync_timing_params.avr_step_fps =
+		mode->priv_info->avr_step_fps;
 }
 
 static enum hfi_panel_phy_type dsi_get_panel_type_helper(struct dsi_panel *panel)
@@ -795,6 +838,19 @@ static enum hfi_panel_modes dsi_get_panel_op_mode_helper(struct dsi_panel *panel
 	return mode;
 }
 
+static enum hfi_panel_display_type dsi_get_display_type_helper(struct dsi_display *display)
+{
+	if (!display || !display->display_type)
+		return HFI_PANEL_DISPLAY_TYPE_NONE;
+
+	if (!strcmp(display->display_type, "primary"))
+		return HFI_PANEL_DISPLAY_TYPE_BUILT_IN_0;
+	else if (!strcmp(display->display_type, "secondary"))
+		return HFI_PANEL_DISPLAY_TYPE_BUILT_IN_1;
+	else
+		return HFI_PANEL_DISPLAY_TYPE_BUILT_IN_2;
+}
+
 static enum hfi_panel_vsync_source dsi_get_panel_vsync_src(struct dsi_display *display)
 {
 	if (display->panel->te_using_watchdog_timer)
@@ -914,6 +970,55 @@ static void dsi_hfi_populate_poms_caps(struct dsi_panel *panel,
 	hfi_poms_caps->vsync_aligned_switch = panel->poms_align_vsync;
 }
 
+/**
+ * dsi_hfi_fill_dcs_cmds_sde_region_precheck() - pre-validate that a set of DCS commands fits within
+ *                                               a given SDE buffer region
+ * @cmds:           array of dsi_cmd_desc to validate
+ * @count:          number of commands in the array
+ * @current_offset: current write position within the SDE buffer (bytes used)
+ * @region_end:     byte offset marking the exclusive end of the allowed region
+ *
+ * Calculates the total 8-byte-aligned SDE buffer space needed for all commands
+ * and verifies they fit within [current_offset, region_end).
+ *
+ * Must be called BEFORE writing any commands to the SDE buffer so that either
+ * all commands are written or none — preventing partial writes that would leave
+ * the buffer in an inconsistent state.
+ *
+ * Return: 0 if the command set fits, -EINVAL if it would overflow, or a
+ *         negative error code if packet creation fails.
+ */
+static int dsi_hfi_fill_dcs_cmds_sde_region_precheck(struct dsi_cmd_desc *cmds,
+						      u32 count,
+						      u32 current_offset,
+						      u32 region_end)
+{
+	u32 total_size = 0;
+	int k, rc;
+
+	for (k = 0; k < count; k++) {
+		struct mipi_dsi_packet pkt;
+		u32 aligned_size;
+
+		rc = mipi_dsi_create_packet(&pkt, &cmds[k].msg);
+		if (rc) {
+			DSI_ERR("failed to create packet for size check cmd %d, rc=%d\n",
+				k, rc);
+			return rc;
+		}
+		aligned_size = (((pkt.size + 7) >> 3) << 3);
+		total_size += aligned_size;
+	}
+
+	if (current_offset + total_size > region_end) {
+		DSI_ERR("SDE region overflow: cmds need %u bytes at offset %u, region ends at %u\n",
+			total_size, current_offset, region_end);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 				struct dsi_panel_cmd_set *cmd_set,
 				void **sde_vaddr, void **hfi_vaddr)
@@ -931,10 +1036,28 @@ static int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 	}
 
 	hfi_map_size = dsi_hfi->shared_addr_map->size;
+
+	/* Ensure DT DCS command metadata does not overflow the HFI shared buffer */
 	if (dsi_hfi->running_hfi_offset + (sizeof(struct dsi_hfi_panel_cmd_info)
 			* cmd_set->count) > hfi_map_size) {
-		DSI_ERR("over HFI mapped buffer size\n");
+		DSI_ERR("over HFI mapped buffer size: needed=%zu, available=%zu\n",
+			sizeof(struct dsi_hfi_panel_cmd_info) * cmd_set->count,
+			hfi_map_size - dsi_hfi->running_hfi_offset);
 		return -EINVAL;
+	}
+
+	/*
+	 * Pre-validate that all commands fit within the DT command SDE region
+	 * before writing any of them, preventing partial writes.
+	 * DT commands are bounded to: [0, DSI_TX_CMD_BUF_DT_CMD_SIZE)
+	 */
+	rc = dsi_hfi_fill_dcs_cmds_sde_region_precheck(
+			cmd_set->cmds, cmd_set->count,
+			dsi_hfi->running_sde_offset,
+			DSI_TX_CMD_BUF_DT_CMD_SIZE);
+	if (rc) {
+		DSI_ERR("DT cmd set SDE region precheck failed, rc=%d\n", rc);
+		goto error;
 	}
 
 	for (i = 0; i < cmd_set->count; i++) {
@@ -1017,7 +1140,13 @@ static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 		j++;
 	}
 
-	dsi_hfi->tx_cmd_buf_fill_level = dsi_hfi->running_sde_offset;
+	/*
+	 * Advance tx_cmd_buf_fill_level past the fixed reserved regions for DT
+	 * commands and runtime custom DCS commands. This informs DCP that the free
+	 * buffer space (available for its own use) starts after both reserved regions.
+	 */
+	dsi_hfi->tx_cmd_buf_fill_level = DSI_TX_CMD_BUF_DT_CMD_SIZE +
+					  DSI_RUNTIME_CUSTOM_DCS_CMD_RESERVED_SIZE;
 	panel_timing_caps->payload.count = j;
 
 	return 0;
@@ -1292,6 +1421,362 @@ cleanup:
 	return rc;
 }
 
+int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
+				      enum dsi_cmd_set_type cmd_type,
+				      const u8 *data, u32 length,
+				      enum dsi_cmd_set_state state)
+{
+	struct dsi_display_hfi *dsi_hfi;
+	struct dsi_display_mode_priv_info *priv_info;
+	struct dsi_rt_custom_dcs_cmd_entry *cmd_entry;
+	struct dsi_hfi_panel_cmd_info *cmd_info;
+	struct dsi_rt_custom_dcs_cmd_entry saved_index_entry;
+	struct dsi_cmd_desc *cmds = NULL;
+	u8 *sde_vaddr;
+	u32 packet_count = 0;
+	u32 size_of_indv_cmd;
+	u32 aligned_size;
+	u32 hfi_needed;
+	u32 cached_sde_running;
+	u32 cached_hfi_running;
+	size_t hfi_remaining;
+	int std_idx;
+	int i, rc = 0;
+
+	if (!display || !data || !length) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	if (cmd_type >= DSI_CMD_SET_MAX) {
+		DSI_ERR("Invalid cmd_type %d, must be < DSI_CMD_SET_MAX (%d)\n",
+			cmd_type, DSI_CMD_SET_MAX);
+		return -EINVAL;
+	}
+
+	/* Validate panel and mode configuration */
+	if (!display->panel || !display->panel->cur_mode || !display->panel->cur_mode->priv_info) {
+		DSI_ERR("Invalid panel or mode configuration\n");
+		return -EINVAL;
+	}
+
+	priv_info = display->panel->cur_mode->priv_info;
+
+	dsi_hfi = display->dsi_hfi_info;
+	if (!dsi_hfi || !dsi_hfi->shared_addr_map) {
+		DSI_ERR("HFI not initialized\n");
+		return -EINVAL;
+	}
+
+	SDE_EVT32(cmd_type, length, state, SDE_EVTLOG_FUNC_ENTRY);
+
+	/* Reject if the standard command type is not defined in DT */
+	std_idx = dsi_cmd_type_to_index(cmd_type);
+	if (std_idx < 0 || std_idx >= DSI_CMD_SET_TOTAL_SIZE) {
+		DSI_ERR("cmd_type %u: invalid index %d\n", cmd_type, std_idx);
+		return -EINVAL;
+	}
+
+	if (!priv_info->cmd_sets[std_idx].count) {
+		DSI_ERR("cmd_type %u not defined in DT, cannot add rt custom DCS cmd\n",
+			cmd_type);
+		return -EINVAL;
+	}
+
+	/* Count packets in the raw DT-format byte stream */
+	rc = dsi_panel_get_cmd_pkt_count(data, length, &packet_count);
+	if (rc || !packet_count) {
+		DSI_ERR("Failed to count DCS cmd packets rc=%d count=%d\n", rc, packet_count);
+		return rc ? rc : -EINVAL;
+	}
+
+	SDE_EVT32(cmd_type, packet_count, SDE_EVTLOG_FUNC_CASE1);
+
+	/* Allocate array of dsi_cmd_desc, one per packet */
+	cmds = kcalloc(packet_count, sizeof(*cmds), GFP_KERNEL);
+	if (!cmds)
+		return -ENOMEM;
+
+	/* Parse raw bytes into dsi_cmd_desc structs (same as DT parsing) */
+	rc = dsi_panel_create_cmd_packets(data, length, packet_count, cmds);
+	if (rc) {
+		DSI_ERR("Failed to create DCS cmd packets rc=%d\n", rc);
+		goto destroy_cmds;
+	}
+
+	/* Acquire the lock before touching any shared rt_custom_dcs_cmd_* state. */
+	mutex_lock(&dsi_hfi->rt_dcs_cmd_lock);
+
+	cmd_entry = &dsi_hfi->rt_custom_dcs_cmd_map[cmd_type];
+
+	if (cmd_entry->valid) {
+		DSI_DEBUG("Overriding existing rt custom DCS cmd for type %d\n", cmd_type);
+		SDE_EVT32(cmd_type, cmd_entry->sde_offset, cmd_entry->hfi_meta_offset,
+			  SDE_EVTLOG_FUNC_CASE2);
+	}
+
+	/* Check the remaining HFI space has enough room for per-command metadata */
+	hfi_needed = sizeof(struct dsi_hfi_panel_cmd_info) * packet_count;
+	hfi_remaining = dsi_hfi->shared_addr_map->size -
+			dsi_hfi->running_hfi_offset;
+	if (hfi_needed > hfi_remaining) {
+		DSI_ERR("HFI reserved space full: need %u bytes, have %zu\n",
+			hfi_needed, hfi_remaining);
+		rc = -ENOMEM;
+		goto unlock_and_destroy_cmds;
+	}
+
+	/*
+	 * Pre-validate that all commands fit within the reserved SDE region
+	 * before writing any of them, preventing partial writes.
+	 * Runtime custom DCS commands are bounded to:
+	 *   [rt_custom_dcs_cmd_sde_base,
+	 *    rt_custom_dcs_cmd_sde_base + DSI_RUNTIME_CUSTOM_DCS_CMD_RESERVED_SIZE)
+	 */
+	rc = dsi_hfi_fill_dcs_cmds_sde_region_precheck(
+			cmds, packet_count,
+			dsi_hfi->rt_custom_dcs_cmd_sde_running,
+			dsi_hfi->rt_custom_dcs_cmd_sde_base +
+			DSI_RUNTIME_CUSTOM_DCS_CMD_RESERVED_SIZE);
+	if (rc) {
+		DSI_ERR("rt custom DCS cmd SDE region precheck failed, rc=%d\n", rc);
+		goto unlock_and_destroy_cmds;
+	}
+
+	/*
+	 * Cache the current running offsets and the existing index entry before
+	 * starting any writes.  If dsi_hfi_packetize_panel_cmd() fails mid-loop
+	 * both the running pointers and the index entry are restored so the
+	 * partial write is discarded and the buffer remains in a consistent state.
+	 * Without restoring the index entry a failed override would leave a
+	 * still-valid entry whose count/sde_offset/hfi_meta_offset point to the
+	 * new (unwritten) location instead of the previous successful capture.
+	 */
+	cached_sde_running = dsi_hfi->rt_custom_dcs_cmd_sde_running;
+	cached_hfi_running = dsi_hfi->running_hfi_offset;
+	saved_index_entry  = *cmd_entry;
+
+	/* Record the start offsets for this command type before writing */
+	cmd_entry->sde_offset = dsi_hfi->rt_custom_dcs_cmd_sde_running;
+	cmd_entry->hfi_meta_offset = dsi_hfi->running_hfi_offset;
+	cmd_entry->count = packet_count;
+
+	/* Get write pointers into SDE buffer and HFI shared buffer */
+	sde_vaddr = (u8 *)display->vaddr + dsi_hfi->rt_custom_dcs_cmd_sde_running;
+	cmd_info  = (struct dsi_hfi_panel_cmd_info *)
+		    ((u8 *)dsi_hfi->shared_addr_map->local_addr +
+		     dsi_hfi->running_hfi_offset);
+
+	for (i = 0; i < packet_count; i++) {
+		size_of_indv_cmd = 0;
+
+		/* Fill per-command metadata */
+		cmd_info->delay      = cmds[i].post_wait_ms;
+		cmd_info->ctrl_flags = cmds[i].ctrl_flags;
+		cmd_info->reserved1  = cmds[i].msg.flags;
+		cmd_info->mode       = state;
+
+		/* Packetize into MIPI DSI wire format and write into SDE buffer */
+		rc = dsi_hfi_packetize_panel_cmd(&cmds[i], &size_of_indv_cmd, sde_vaddr);
+		if (rc) {
+			DSI_ERR("Failed to packetize DCS cmd %d rc=%d\n", i, rc);
+			SDE_EVT32(cmd_type, i, rc, SDE_EVTLOG_FUNC_CASE3);
+			dsi_hfi->rt_custom_dcs_cmd_sde_running = cached_sde_running;
+			dsi_hfi->running_hfi_offset = cached_hfi_running;
+			*cmd_entry = saved_index_entry;
+			goto unlock_and_destroy_cmds;
+		}
+
+		/* 8-byte aligned size for SDE buffer advancement */
+		aligned_size = (((size_of_indv_cmd + 7) >> 3) << 3);
+
+		/* Fill remaining metadata fields */
+		cmd_info->size       = size_of_indv_cmd;
+		cmd_info->cmd_offset = dsi_hfi->rt_custom_dcs_cmd_sde_running +
+				       display->cmd_buffer_iova;
+
+		/* Advance SDE write pointer */
+		sde_vaddr += aligned_size;
+		dsi_hfi->rt_custom_dcs_cmd_sde_running += aligned_size;
+
+		/* Advance HFI metadata write pointer */
+		cmd_info++;
+		dsi_hfi->running_hfi_offset += sizeof(struct dsi_hfi_panel_cmd_info);
+	}
+
+	/* Flush SDE buffer so DCP can see the newly captured command bytes */
+	msm_gem_sync(display->tx_cmd_buf);
+
+	cmd_entry->valid = true;
+
+	SDE_EVT32(cmd_type, packet_count, cmd_entry->sde_offset, cmd_entry->hfi_meta_offset,
+		  SDE_EVTLOG_FUNC_CASE4);
+	DSI_DEBUG("Captured %d rt cust DCS cmd for type %d: sde_offset=0x%x hfi_meta_offset=0x%x\n",
+		  packet_count, cmd_type,
+		  cmd_entry->sde_offset,
+		  cmd_entry->hfi_meta_offset);
+
+unlock_and_destroy_cmds:
+	mutex_unlock(&dsi_hfi->rt_dcs_cmd_lock);
+destroy_cmds:
+	for (i = 0; i < packet_count; i++)
+		kfree(cmds[i].msg.tx_buf);
+	kfree(cmds);
+	SDE_EVT32(cmd_type, rc, SDE_EVTLOG_FUNC_EXIT);
+	return rc;
+}
+
+int dsi_hfi_send_dcs_cmd_set_replace_cmd(struct dsi_display *display, bool resp_req)
+{
+	struct dsi_display_hfi *dsi_hfi;
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct dsi_hfi_dcs_cmd_set_replace_payload *payload = NULL;
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE;
+	u32 flags = HFI_HOST_FLAGS_NON_DISCARDABLE;
+	u32 payload_size;
+	u32 count = 0;
+	u32 obj_id;
+	int i, rc = 0;
+
+	if (resp_req)
+		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+
+	if (!display || !display->dsi_hfi_info || !display->drm_conn) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	dsi_hfi = display->dsi_hfi_info;
+	obj_id = sde_conn_get_display_obj_id(display->drm_conn);
+
+	SDE_EVT32(obj_id, resp_req, SDE_EVTLOG_FUNC_ENTRY);
+
+	mutex_lock(&dsi_hfi->rt_dcs_cmd_lock);
+
+	/* Count how many standard command types have runtime custom DCS commands */
+	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
+		if (dsi_hfi->rt_custom_dcs_cmd_map[i].valid &&
+		    dsi_hfi->rt_custom_dcs_cmd_map[i].count)
+			count++;
+	}
+
+	SDE_EVT32(obj_id, count, SDE_EVTLOG_FUNC_CASE1);
+
+	if (!count) {
+		DSI_ERR("No runtime custom DCS commands captured, nothing to replace\n");
+		rc = -ENOENT;
+		goto unlock_and_cleanup;
+	}
+
+	payload_size = sizeof(u32) + count * sizeof(struct hfi_dsi_dcs_cmd_set_replace_entry);
+	payload = kzalloc(payload_size, GFP_KERNEL);
+	if (!payload) {
+		rc = -ENOMEM;
+		goto unlock_and_cleanup;
+	}
+
+	/* Build the array payload: count + one entry per captured command type */
+	payload->count = count;
+	count = 0;
+	for (i = 0; i < DSI_CMD_SET_MAX; i++) {
+		if (!dsi_hfi->rt_custom_dcs_cmd_map[i].valid ||
+		    !dsi_hfi->rt_custom_dcs_cmd_map[i].count)
+			continue;
+
+		/* Validate sde_offset and hfi_meta_offset before sending to firmware */
+		if (dsi_hfi->rt_custom_dcs_cmd_map[i].sde_offset <
+				dsi_hfi->rt_custom_dcs_cmd_sde_base ||
+		    dsi_hfi->rt_custom_dcs_cmd_map[i].sde_offset >=
+				dsi_hfi->rt_custom_dcs_cmd_sde_base +
+				DSI_RUNTIME_CUSTOM_DCS_CMD_RESERVED_SIZE) {
+			DSI_ERR("cmd_t %d: sde_off 0x%x outside rt DCS SDE region [0x%x, 0x%x)\n",
+				i, dsi_hfi->rt_custom_dcs_cmd_map[i].sde_offset,
+				dsi_hfi->rt_custom_dcs_cmd_sde_base,
+				dsi_hfi->rt_custom_dcs_cmd_sde_base +
+				DSI_RUNTIME_CUSTOM_DCS_CMD_RESERVED_SIZE);
+			rc = -EINVAL;
+			goto unlock_and_cleanup;
+		}
+
+		if (dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset <
+				dsi_hfi->rt_custom_dcs_cmd_hfi_base ||
+		    dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset >=
+				dsi_hfi->shared_addr_map->size) {
+			DSI_ERR("cmd_t %d: hfi_off 0x%x outside rt DCS HFI region [0x%x, 0x%x)\n",
+				i, dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset,
+				dsi_hfi->rt_custom_dcs_cmd_hfi_base,
+				(u32)dsi_hfi->shared_addr_map->size);
+			rc = -EINVAL;
+			goto unlock_and_cleanup;
+		}
+
+		payload->entries[count].dpu_buff_type_offset =
+			dsi_hfi->rt_custom_dcs_cmd_map[i].sde_offset;
+		payload->entries[count].cmd_type = i;
+		payload->entries[count].count_cmds = dsi_hfi->rt_custom_dcs_cmd_map[i].count;
+		payload->entries[count].hfi_buff_struct_offset =
+			dsi_hfi->rt_custom_dcs_cmd_map[i].hfi_meta_offset;
+		payload->entries[count].reserved = 0;
+
+		DSI_DEBUG("Replace entry[%d]: cmd_type=%d sde_offset=0x%x cnt=%d hfi_offset=0x%x\n",
+			  count, i,
+			  payload->entries[count].dpu_buff_type_offset,
+			  payload->entries[count].count_cmds,
+			  payload->entries[count].hfi_buff_struct_offset);
+		SDE_EVT32(obj_id, i, payload->entries[count].dpu_buff_type_offset,
+			  payload->entries[count].count_cmds,
+			  payload->entries[count].hfi_buff_struct_offset, SDE_EVTLOG_FUNC_CASE2);
+		count++;
+	}
+
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms) {
+		DSI_ERR("Failed to get sde_kms\n");
+		rc = -EINVAL;
+		goto unlock_and_cleanup;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		DSI_ERR("Failed to get hfi_kms\n");
+		rc = -EINVAL;
+		goto unlock_and_cleanup;
+	}
+
+	hfi_client = &hfi_kms->hfi_client;
+
+	SDE_EVT32(obj_id, hfi_cmd, payload->count, SDE_EVTLOG_FUNC_CASE3);
+	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd,
+					  display->display_type,
+					  HFI_PAYLOAD_TYPE_U32_ARRAY,
+					  payload, payload_size,
+					  flags);
+	SDE_EVT32(obj_id, hfi_cmd, rc, SDE_EVTLOG_FUNC_CASE4);
+	if (rc) {
+		DSI_ERR("Failed to send DSI_CUSTOM_DCS_CMDS_SET_REPLACE command, rc=%d\n", rc);
+		goto unlock_and_cleanup;
+	}
+
+	DSI_DEBUG("Sent replace cmd for %d rt custom DCS command types\n", payload->count);
+
+	/*
+	 * Invalidate all cached runtime custom DCS command entries now that
+	 * DCP has been notified. This prevents stale entries from being
+	 * re-sent and ensures a subsequent call without new captures
+	 * correctly returns -ENOENT.
+	 */
+	for (i = 0; i < DSI_CMD_SET_MAX; i++)
+		dsi_hfi->rt_custom_dcs_cmd_map[i].valid = false;
+
+unlock_and_cleanup:
+	mutex_unlock(&dsi_hfi->rt_dcs_cmd_lock);
+	kfree(payload);
+	SDE_EVT32(obj_id, rc, SDE_EVTLOG_FUNC_EXIT);
+	return rc;
+}
+
 static u32 *dsi_hfi_pack_freq_patterns(struct dsi_display *display, u32 *total_size)
 {
 	struct dsi_display_mode_priv_info *priv_info;
@@ -1365,6 +1850,7 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 					struct dsi_panel_generic_caps *panel_generic_caps)
 {
 	panel_generic_caps->panel_type = dsi_get_panel_type_helper(panel);
+	panel_generic_caps->display_type = dsi_get_display_type_helper(display);
 	panel_generic_caps->color_order_type = dsi_get_panel_color_order_type(panel);
 	panel_generic_caps->dma_trigger_type =
 		dsi_get_panel_trigger_type_helper(panel->host_config.dma_cmd_trigger);
@@ -1419,6 +1905,8 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	/* Populate DSI custom command set info */
 	panel_generic_caps->custom_cmd_set_info[0] = DSI_CUSTOM_CMD_SET_START_IDX;
 	panel_generic_caps->custom_cmd_set_info[1] = DSI_CUSTOM_CMD_SET_COUNT;
+
+	panel_generic_caps->ulps_supported = panel->ulps_feature_enabled;
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -1457,6 +1945,8 @@ static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
 			panel_timing_caps->phy_timings_payload.dphy_timings[i] =
 				mode->priv_info->phy_timing_val[i];
 	}
+	hfi_panel_get_mode_esync_timing_caps(display, mode, panel_timing_caps);
+	hfi_panel_get_mode_qsync_timing_params(display, mode, panel_timing_caps);
 }
 
 static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
@@ -1593,6 +2083,7 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 	 */
 	struct dsi_value_to_prop_lookup dsi_hfi_gen_props_map[] = {
 		{panel_generic_caps.panel_type, HFI_PROPERTY_PANEL_PHYSICAL_TYPE, true},
+		{panel_generic_caps.display_type, HFI_PROPERTY_PANEL_DISPLAY_TYPE, true},
 		{panel_generic_caps.color_order_type, HFI_PROPERTY_PANEL_COLOR_ORDER, true},
 		{panel_generic_caps.dma_trigger_type, HFI_PROPERTY_PANEL_DMA_TRIGGER, true},
 		{panel_generic_caps.mdp_trigger_type, HFI_PROPERTY_PANEL_STREAM_TRIGGER, true},
@@ -1728,6 +2219,12 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 		kv_size += sizeof(panel_generic_caps.custom_cmd_set_info);
 	}
 
+	hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_ULPS_SUPPORTED, 0,
+				(sizeof(panel_generic_caps.ulps_supported) / sizeof(u32))),
+				(void *)&panel_generic_caps.ulps_supported);
+	kv_size += sizeof(panel_generic_caps.ulps_supported);
+
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
 
 	payload_size = (kv_count * sizeof(u32)) + kv_size;
@@ -1836,6 +2333,18 @@ static int _dsi_hfi_append_panel_timing_caps(struct dsi_display_hfi *display_hfi
 			(void *)&timing_caps->phy_timings_payload);
 		kv_size += sizeof(timing_caps->phy_timings_payload);
 
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS, 0,
+			sizeof(timing_caps->esync_timing_caps) / sizeof(u32)),
+			(void *)&timing_caps->esync_timing_caps);
+		kv_size += sizeof(timing_caps->esync_timing_caps);
+
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS, 0,
+			sizeof(timing_caps->qsync_timing_params) / sizeof(u32)),
+			(void *)&timing_caps->qsync_timing_params);
+		kv_size += sizeof(timing_caps->qsync_timing_params);
+
 		kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
 		payload_size = (kv_count * sizeof(u32)) + kv_size;
 
@@ -1872,7 +2381,7 @@ static int dsi_hfi_send_panel_timing_modes(struct dsi_display *display,
 		return -EINVAL;
 
 	/* Init timing mode cap cmd send */
-	const u32 total_modes = display->panel->num_timing_nodes;
+	const u32 total_modes = display->panel->num_display_modes;
 	u32 start = 0;
 	u32 batch_idx = 0;
 	struct hfi_cmdbuf_t *buffer;
@@ -1923,6 +2432,9 @@ error_append:
 /**
  * dsi_hfi_calculate_required_memory() - calculate the required memory
  * @panel: handle to dsi panel structure
+ *
+ * The HFI shared buffer must be large enough to hold DT defined DCS command metadata.
+ * Runtime custom DCS command metadata uses whatever space remains after DT commands.
  *
  * Return: the required memory
  */
@@ -2066,6 +2578,28 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 								&timing_caps_array[i],
 								&tx_cmd_buf_vaddr,
 								&hfi_buff_vaddr);
+
+	/*
+	 * After all DT defined DCS commands are packed, record the fixed base
+	 * offsets for the runtime custom DCS command reserved space in both
+	 * the SDE and HFI shared buffers.  Using fixed boundaries provides a
+	 * clear, static separation between the DT command regions and the
+	 * runtime custom DCS command regions, regardless of how many DT
+	 * commands were actually packed.
+	 */
+	mutex_lock(&display_hfi->rt_dcs_cmd_lock);
+	display_hfi->rt_custom_dcs_cmd_sde_base    = DSI_TX_CMD_BUF_DT_CMD_SIZE;
+	display_hfi->rt_custom_dcs_cmd_sde_running = DSI_TX_CMD_BUF_DT_CMD_SIZE;
+	display_hfi->rt_custom_dcs_cmd_hfi_base = display_hfi->running_hfi_offset;
+
+	/*
+	 * Reset the index array so stale entries from a previous panel init
+	 * (e.g. after SSR) do not persist.
+	 */
+	memset(display_hfi->rt_custom_dcs_cmd_map, 0,
+			sizeof(display_hfi->rt_custom_dcs_cmd_map));
+
+	mutex_unlock(&display_hfi->rt_dcs_cmd_lock);
 
 	if (display_hfi->kv_props)
 		hfi_util_kv_helper_reset(display_hfi->kv_props);

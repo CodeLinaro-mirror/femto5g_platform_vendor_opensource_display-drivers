@@ -112,7 +112,7 @@ struct dsi_display *_sde_connector_get_display(struct sde_connector *c_conn)
 	struct shd_display *shd_display;
 
 	if (!c_conn || (c_conn->connector_type != DRM_MODE_CONNECTOR_DSI))
-		return 0;
+		return NULL;
 
 	if (c_conn->shared) {
 		shd_display = c_conn->display;
@@ -1413,6 +1413,10 @@ static int _sde_connector_update_dirty_properties(
 				c_conn->bl_dirty_change = true;
 				break;
 			}
+			if (disp_op == MSM_DISP_OP_HFI) {
+				c_conn->b_lvl = b_lvl;
+				c_conn->bl_dirty_change = true;
+			}
 			backlight_device_set_brightness(c_conn->bl_device, b_lvl);
 			break;
 		case CONNECTOR_PROP_ROI_V1:
@@ -1437,6 +1441,10 @@ static int _sde_connector_update_dirty_properties(
 		msm_property_set_dirty(&c_conn->property_info,
 			&c_state->property_state, CONNECTOR_PROP_ROI_V1);
 	}
+
+	if ((disp_op == MSM_DISP_OP_HFI) && c_conn->bl_dirty_change)
+		msm_property_set_dirty(&c_conn->property_info,
+			&c_state->property_state, CONNECTOR_PROP_BRIGHTNESS);
 
 	/* If HFI mode and LP property is dirty - add to the dirty list */
 	if ((disp_op == MSM_DISP_OP_HFI) && is_lp_dirty)

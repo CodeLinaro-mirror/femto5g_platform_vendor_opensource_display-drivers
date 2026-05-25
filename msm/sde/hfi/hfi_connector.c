@@ -41,6 +41,7 @@ struct base_prop_lookup {
 
 struct base_prop_lookup hfi_connector_base_props_map[] = {
 	{ CONNECTOR_PROP_DYN_BIT_CLK, HFI_PROPERTY_DISPLAY_DYN_CLK_SUPPORT },
+	{ CONNECTOR_PROP_BRIGHTNESS, HFI_PROPERTY_DISPLAY_BRIGHTNESS },
 	{ CONNECTOR_PROP_QSYNC_MODE, HFI_PROPERTY_DISPLAY_QSYNC_MODE },
 	{ CONNECTOR_PROP_AVR_STEP_STATE, HFI_PROPERTY_DISPLAY_AVR_STEP },
 	{ CONNECTOR_PROP_LP, HFI_PROPERTY_DISPLAY_POWER_MODE },
@@ -105,7 +106,7 @@ static int _set_dest_roi(struct sde_connector *conn,
 	return ret;
 }
 
-int _hfi_connector_add_ept(struct sde_connector *conn, struct sde_connector_state *old_cstate,
+static int _hfi_connector_add_ept(struct sde_connector *conn, struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector, u32 hfi_prop)
 {
 	int ret = 0;
@@ -266,6 +267,13 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 		val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_WB_ROT_TYPE);
 		ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
 			hfi_prop, conn->base.base.id, HFI_VAL_U32, &val, sizeof(u32));
+		break;
+	case HFI_PROPERTY_DISPLAY_BRIGHTNESS:
+		if (conn->bl_dirty_change) {
+			val = conn->bl_dirty_value;
+			ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+				HFI_VAL_U32, &val, sizeof(u32));
+		}
 		break;
 	case HFI_PROPERTY_DISPLAY_POWER_MODE:
 		drm_lp_val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_LP);
@@ -970,7 +978,19 @@ int hfi_connector_set_debug_prop(struct drm_connector *drm_conn,
 	return rc;
 }
 
-void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)
+struct dsi_panel *hfi_connector_get_dsi_panel(struct sde_connector *c_conn)
+{
+	struct dsi_display *display = NULL;
+
+	if (!c_conn || !c_conn->display)
+		return NULL;
+
+	display = _sde_connector_get_display(c_conn);
+
+	return display ? display->panel : NULL;
+}
+
+void hfi_connector_set_esd_recovery_pending(struct sde_connector *c_conn)
 {
 	struct dsi_panel *panel;
 
@@ -984,6 +1004,12 @@ void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre
 	}
 
 	atomic_set(&panel->esd_recovery_pending, 1);
+}
+
+void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)
+{
+	if (!c_conn || !c_conn->display)
+		return;
 
 	sde_connector_report_panel_dead(c_conn, skip_pre_kickoff);
 }

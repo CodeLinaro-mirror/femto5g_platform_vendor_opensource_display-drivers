@@ -146,6 +146,24 @@ struct dsi_hfi_cmd_set_remap_payload {
 };
 
 /**
+ * struct dsi_hfi_dcs_cmd_set_replace_payload - complete payload for
+ *                                              HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE
+ *
+ * Carries all DCS command type replacements in a single HFI call. The count
+ * field indicates how many entries follow. Each entry describes one standard
+ * command type being replaced and where its runtime-defined custom DCS commands are
+ * located in the SDE and HFI shared buffers.
+ *
+ * @count:   number of valid entries in the entries array
+ * @entries: array of per-type replacement info, one per command type being
+ *           replaced (at most DSI_CMD_SET_MAX entries)
+ */
+struct dsi_hfi_dcs_cmd_set_replace_payload {
+	u32 count;
+	struct hfi_dsi_dcs_cmd_set_replace_entry entries[DSI_CMD_SET_MAX];
+};
+
+/**
  * struct dsi_panel_timing_caps - contains properties to be sent as part of
  * HFI_COMMAND_PANEL_INIT_TIMING_CAPS
  * @panel_index:                    HFI_PROPERTY_PANEL_INDEX
@@ -161,6 +179,8 @@ struct dsi_hfi_cmd_set_remap_payload {
  * payload:                         panel cmd information
  * phy_timings_payload:             DSI PHY panel tmgs info
  * compression_rc_override:         Custom RC parameters for compression, if applicable
+ * @esync_timing_caps:              HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS
+ * @qsync_timing_params:            HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS
  */
 struct dsi_panel_timing_caps {
 	u32 panel_index;
@@ -177,6 +197,8 @@ struct dsi_panel_timing_caps {
 	struct dsi_hfi_phy_timings_payload phy_timings_payload;
 	bool rc_override_enabled;
 	struct hfi_panel_compression_rc_override rc_override;
+	struct hfi_panel_esync_caps esync_timing_caps;
+	struct hfi_qsync_params qsync_timing_params;
 };
 
 /**
@@ -184,6 +206,7 @@ struct dsi_panel_timing_caps {
  * HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
  * @panel_name:                     HFI_PROPERTY_PANEL_NAME
  * @panel_type:                     HFI_PROPERTY_PANEL_PHYSICAL_TYPE
+ * @display_type:                   HFI_PROPERTY_PANEL_DISPLAY_TYPE
  * @panel_bpp:                      HFI_PROPERTY_PANEL_BPP
  * @panels_lanes_state:             HFI_PROPERTY_PANEL_LANES_STATE
  * @panel_lane_map:                 HFI_PROPERTY_PANEL_LANE_MAP
@@ -218,10 +241,12 @@ struct dsi_panel_timing_caps {
  * @lp11_init:                      HFI_PROPERTY_PANEL_LP11_INIT
  * @poms_caps:                      HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY
  * @custom_cmd_set_info:            HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO
+ * @ulps_supported:                 HFI_PROPERTY_PANEL_ULPS_SUPPORTED
  */
 struct dsi_panel_generic_caps {
 	u32 panel_name;
 	enum hfi_panel_phy_type panel_type;
+	enum hfi_panel_display_type display_type;
 	enum hfi_panel_bpp panel_bpp;
 	enum hfi_panel_lane_enable panels_lanes_state;
 	enum hfi_panel_lane_map panel_lane_map;
@@ -256,6 +281,7 @@ struct dsi_panel_generic_caps {
 	u32 lp11_init;
 	struct hfi_panel_operating_mode_caps poms_caps;
 	u32 custom_cmd_set_info[2]; /* [0]=start_index, [1]=count */
+	u32 ulps_supported;
 };
 
 /**
@@ -396,5 +422,58 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
  */
 int dsi_hfi_add_dsi_cmd_remap(struct dsi_display *display,
 		u32 *cmd_remap_table, u32 table_size, bool resp_req);
+
+/**
+ * dsi_hfi_add_rt_custom_dcs_cmd() - capture runtime custom DCS commands
+ *                                       into the reserved SDE buffer space
+ * @display:   handle to dsi display structure
+ * @cmd_type:  standard command type to override; must be < DSI_CMD_SET_MAX
+ * @data:      raw DCS command bytes in device tree format:
+ *             each command = [type][ctrl][chan][flags][wait][len_hi][len_lo][payload...]
+ * @length:    total byte length of data
+ * @state:     DSI_CMD_SET_STATE_LP or DSI_CMD_SET_STATE_HS
+ *
+ * Parses the raw DT-format bytes, packetizes each custom DCS command into MIPI
+ * DSI wire format, and captures them into the reserved space in the SDE buffer.
+ *
+ * Per-command metadata (dsi_hfi_panel_cmd_info: offset, size, delay, flags,
+ * mode) is captured into the reserved space in the HFI shared buffer.
+ *
+ * This function may be called multiple times for different cmd_type values,
+ * or multiple times for the same cmd_type to override a previous capture.
+ * When overriding, the new commands are appended at the current write position
+ * (the old space is no longer referenced).
+ *
+ * dsi_hfi_send_dcs_cmd_set_replace_cmd() needs to be called once after all
+ * captures are complete for the custom commands to take effect on the DCP side.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dsi_hfi_add_rt_custom_dcs_cmd(struct dsi_display *display,
+				      enum dsi_cmd_set_type cmd_type,
+				      const u8 *data, u32 length,
+				      enum dsi_cmd_set_state state);
+
+/**
+ * dsi_hfi_send_dcs_cmd_set_replace_cmd() - send all captured runtime custom DCS command
+ * replacements to DCP
+ * @display:   handle to dsi display structure
+ * @resp_req:  if true, HFI_HOST_FLAGS_RESPONSE_REQUIRED is appended to the flags
+ *             when sending the HFI command, causing the call to block until DCP
+ *             acknowledges the replacement.
+ *
+ * Sends a single HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE command
+ * to DCP carrying all DCS command types that have been captured via
+ * dsi_hfi_add_rt_custom_dcs_cmd(). DCP will replace the standard command
+ * metadata for each included type with the corresponding runtime custom DCS commands.
+ *
+ * The payload is a dsi_hfi_dcs_cmd_set_replace_payload struct: a count field followed
+ * by an array of hfi_dsi_dcs_cmd_set_replace_entry entries, one per captured type.
+ *
+ * Return: 0 on success, negative error code on failure
+ *         -EINVAL  if params invalid
+ *         -ENOENT  if no runtime custom DCS commands have been captured
+ */
+int dsi_hfi_send_dcs_cmd_set_replace_cmd(struct dsi_display *display, bool resp_req);
 
 #endif
