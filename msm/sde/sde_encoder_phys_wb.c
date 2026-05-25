@@ -1752,6 +1752,14 @@ static void _sde_encoder_phys_wb_update_cwb_flush(struct sde_encoder_phys *phys_
 		return;
 	}
 
+	if (!wb_enc->crtc || !wb_enc->crtc->state ||
+			!phys_enc->connector || !phys_enc->connector->state) {
+		SDE_ERROR("[enc:%d wb:%d] invalid CWB flush state crtc:%pK conn:%pK\n",
+				DRMID(phys_enc->parent), WBID(wb_enc),
+				wb_enc->crtc, phys_enc->connector);
+		return;
+	}
+
 	crtc = to_sde_crtc(wb_enc->crtc);
 	crtc_state = to_sde_crtc_state(wb_enc->crtc->state);
 	cwb_capture_mode = sde_crtc_get_property(crtc_state,
