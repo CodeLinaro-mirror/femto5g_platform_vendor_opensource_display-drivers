@@ -1765,7 +1765,10 @@ int virtio_gpu_cmd_set_plane_properties(struct virtio_kms *kms,
 	cmd_p->contrast = cpu_to_le32(prop.contrast);
 	cmd_p->brightness = cpu_to_le32(prop.brightness);
 	cmd_p->rotation = cpu_to_le32(prop.rotation);
-
+	cmd_p->color_buf[0] = cpu_to_le32(prop.color_buf[0]);
+	cmd_p->color_buf[1] = cpu_to_le32(prop.color_buf[1]);
+	cmd_p->export_id = cpu_to_le32(prop.export_id);
+	cmd_p->color_clear = cpu_to_le32(prop.color_clear);
 	rc = virtio_hab_send_and_recv(hab_socket,
 			&kms->channel[client_id],
 			cmd_p,
