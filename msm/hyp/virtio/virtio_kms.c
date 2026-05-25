@@ -1845,15 +1845,31 @@ static void _validate_and_set_mixer_blend_stages(struct sde_mdss_cfg *hyp_cfg,
 }
 
 static void _virtio_kms_update_pipe_active_mask(struct sde_mdss_cfg *hyp_cfg,
-		unsigned long *avail_pipes, u32 disp_idx)
+		unsigned long *avail_pipes, struct virtio_kms_output *output,
+		u32 disp_idx)
 {
-	int i;
+	int i, k;
+	bool rec_only;
 
 	if (!avail_pipes)
 		return;
 
 	for (i = 0; i < SSPP_MAX; i++) {
-		if (test_bit(i, avail_pipes) && pipe_active_tbl[i] != CTL_INVALID_BIT)
+		if (!test_bit(i, avail_pipes) || pipe_active_tbl[i] == CTL_INVALID_BIT)
+			continue;
+
+		/* Skip REC-only pipes — they use SSPP-level active registers */
+		rec_only = false;
+		for (k = 0; k < output->plane_cnt; k++) {
+			if (output->plane_caps[k].sspp_id != i)
+				continue;
+			if (output->plane_caps[k].rect_mask == 0x1 ||
+					output->plane_caps[k].rect_mask == 0x2)
+				rec_only = true;
+			break;
+		}
+
+		if (!rec_only)
 			hyp_cfg->pipe_active_mask[disp_idx] |= BIT(pipe_active_tbl[i]);
 	}
 }
@@ -2382,7 +2398,7 @@ struct sde_mdss_cfg *virtio_kms_hw_catalog_init(struct sde_kms *sde_kms)
 
 		/* Process hardware blocks using helper functions */
 		_process_sspp_blocks(hyp_cfg, sde_cfg, output, avail_pipes[i], i);
-		_virtio_kms_update_pipe_active_mask(hyp_cfg, avail_pipes[i], i);
+		_virtio_kms_update_pipe_active_mask(hyp_cfg, avail_pipes[i], output, i);
 		VIRTIO_KMS_DBG("HYP_SSPP %d, active mask 0x%x, i %d\n",
 				hyp_cfg->sspp_count, hyp_cfg->pipe_active_mask[i], i);
 

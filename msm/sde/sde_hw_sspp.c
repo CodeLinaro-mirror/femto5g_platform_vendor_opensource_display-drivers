@@ -1851,6 +1851,21 @@ void sde_hw_sspp_set_flush_type(struct sde_hw_pipe *ctx, bool global)
 	ctx->global_flush = global;
 }
 
+static void _setup_layer_ops_flush(struct sde_hw_pipe *c,
+		unsigned long features)
+{
+	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &features)) {
+		c->ops.set_active_pipe = sde_hw_sspp_set_active_pipe;
+		c->ops.set_active_fetch_pipe = sde_hw_sspp_set_active_fetch_pipe;
+		c->ops.local_flush = sde_hw_sspp_local_flush;
+		c->ops.set_flush_type = sde_hw_sspp_set_flush_type;
+	} else if (test_bit(SDE_SSPP_SMART_DMA_REC0_ONLY, &features) ||
+			test_bit(SDE_SSPP_SMART_DMA_REC1_ONLY, &features)) {
+		c->ops.set_active_pipe = sde_hw_sspp_set_active_pipe;
+		c->ops.set_active_fetch_pipe = sde_hw_sspp_set_active_fetch_pipe;
+	}
+}
+
 static void _setup_layer_ops(struct sde_hw_pipe *c,
 		unsigned long features, unsigned long perf_features,
 		bool is_virtual_pipe)
@@ -1958,12 +1973,7 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 	}
 	if (test_bit(SDE_SSPP_LINE_INSERTION, &features))
 		c->ops.setup_line_insertion = sde_hw_sspp_setup_line_insertion;
-	if (test_bit(SDE_SSPP_LOCAL_FLUSH, &features)) {
-		c->ops.set_active_pipe = sde_hw_sspp_set_active_pipe;
-		c->ops.set_active_fetch_pipe = sde_hw_sspp_set_active_fetch_pipe;
-		c->ops.local_flush = sde_hw_sspp_local_flush;
-		c->ops.set_flush_type = sde_hw_sspp_set_flush_type;
-	}
+	_setup_layer_ops_flush(c, features);
 }
 
 static struct sde_sspp_cfg *_sspp_offset(enum sde_sspp sspp,
