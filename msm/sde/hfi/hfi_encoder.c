@@ -988,6 +988,47 @@ static int _hfi_enc_send_display_ctrl_cmd(struct sde_encoder_virt *enc, bool ena
 		return -EINVAL;
 	}
 
+	/*
+	 * When enabling a WB display that has needs_dspp set, send
+	 * HFI_PROPERTY_PANEL_DISPLAY_TYPE with HFI_PANEL_DISPLAY_TYPE_BUILT_IN_4
+	 * as part of HFI_COMMAND_PANEL_INIT_GENERIC_CAPS.
+	 */
+	if (enable && sde_encoder_is_wb_display(&enc->base)) {
+		struct sde_wb_device *wb_dev = sde_wb_connector_get_wb(conn);
+
+		if (wb_dev && wb_dev->needs_dspp) {
+			u32 display_type = HFI_PANEL_DISPLAY_TYPE_BUILT_IN_4;
+
+			mutex_lock(&hfi_conn->hfi_lock);
+			hfi_util_u32_prop_helper_reset(hfi_conn->base_props);
+
+			hfi_util_u32_prop_helper_add_prop(hfi_conn->base_props,
+				HFI_PROPERTY_PANEL_DISPLAY_TYPE,
+				HFI_VAL_U32, (void *)&display_type, sizeof(u32));
+
+			if (!hfi_util_u32_prop_helper_prop_count(hfi_conn->base_props)) {
+				mutex_unlock(&hfi_conn->hfi_lock);
+				return 0;
+			}
+
+			ret = hfi_adapter_add_set_property(cmd_buf->ctx,
+				cmd_buf,
+				HFI_COMMAND_PANEL_INIT_GENERIC_CAPS,
+				display_id,
+				HFI_PAYLOAD_TYPE_U32_ARRAY,
+				hfi_util_u32_prop_helper_get_payload_addr(hfi_conn->base_props),
+				hfi_util_u32_prop_helper_get_size(hfi_conn->base_props),
+				HFI_HOST_FLAGS_NON_DISCARDABLE);
+
+			mutex_unlock(&hfi_conn->hfi_lock);
+
+			if (ret) {
+				SDE_ERROR("failed to send HFI_PROPERTY_PANEL_DISPLAY_TYPE\n");
+				return ret;
+			}
+		}
+	}
+
 	hfi_cmd = enable ? HFI_COMMAND_DISPLAY_ENABLE : HFI_COMMAND_DISPLAY_DISABLE;
 	flags = HFI_HOST_FLAGS_NON_DISCARDABLE;
 	if (sde_conn->reproj_conn)
