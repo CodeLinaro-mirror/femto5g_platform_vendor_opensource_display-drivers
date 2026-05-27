@@ -2169,9 +2169,11 @@ static void __deinit_bus(struct lsr_device *device)
 	device->bus_vote = CVP_DEFAULT_BUS_VOTE;
 
 	iris_hfi_for_each_bus_reverse(device, bus) {
+		mutex_lock(&bus->lock);
 		dev_set_drvdata(bus->dev, NULL);
 		icc_put(bus->client);
 		bus->client = NULL;
+		mutex_unlock(&bus->lock);
 	}
 }
 
@@ -2189,6 +2191,8 @@ static int __init_bus(struct lsr_device *device)
 		 * of struct bus_info in iris_hfi_devfreq_*()
 		 */
 
+		mutex_lock(&bus->lock);
+
 		if (dev_get_drvdata(bus->dev))
 			dprintk(LSR_WARN, "%s's drvdata already set\n", dev_name(bus->dev));
 
@@ -2199,8 +2203,11 @@ static int __init_bus(struct lsr_device *device)
 			rc = PTR_ERR(bus->client) ?: -EBADHANDLE;
 			dprintk(LSR_ERR, "Failed to register bus %s: %d\n", bus->name, rc);
 			bus->client = NULL;
+			mutex_unlock(&bus->lock);
 			goto err_add_dev;
 		}
+
+		mutex_unlock(&bus->lock);
 	}
 
 	return 0;
