@@ -1148,6 +1148,10 @@ void dsi_conn_set_submode_blob_info(struct drm_connector *conn,
 		sde_kms_info_add_keyint(info, "dsc_mode",
 			dsi_mode->priv_info->dsc_enabled ? MSM_DISPLAY_DSC_MODE_ENABLED :
 				MSM_DISPLAY_DSC_MODE_DISABLED);
+		sde_kms_info_add_keyint(info, "spr_mode",
+			dsi_mode->priv_info->dsc_enabled ?
+				dsi_mode->priv_info->dsc.chroma_format :
+				dsi_mode->priv_info->vdc.chroma_format);
 		topo_name = sde_conn_get_topology_name(conn,
 			dsi_mode->priv_info->topology);
 		if (topo_name)

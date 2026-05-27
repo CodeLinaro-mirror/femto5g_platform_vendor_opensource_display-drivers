@@ -305,6 +305,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_WB_ROT_TYPE,
 	CONNECTOR_PROP_WB_ROT_BYTES_PER_CLK,
 	CONNECTOR_PROP_BPP_MODE,
+	CONNECTOR_PROP_SPR_MODE,
 
 	/* LSR connector properties*/
 	CONNECTOR_PROP_OUT_FB_LIST,
@@ -490,6 +491,18 @@ enum msm_display_dsc_mode {
 	MSM_DISPLAY_DSC_MODE_NONE,
 	MSM_DISPLAY_DSC_MODE_ENABLED,
 	MSM_DISPLAY_DSC_MODE_DISABLED,
+};
+
+/**
+ * enum msm_display_spr_mode - panel spr chroma format mode
+ * @MSM_DISPLAY_SPR_DISABLED: SPR chroma format disabled (RGB 4:4:4)
+ * @MSM_DISPLAY_SPR_YUV_422: SPR chroma format YUV 4:2:2
+ * @MSM_DISPLAY_SPR_YUV_420: SPR chroma format YUV 4:2:0
+ */
+enum msm_display_spr_mode {
+	MSM_DISPLAY_SPR_DISABLED,
+	MSM_DISPLAY_SPR_YUV_422,
+	MSM_DISPLAY_SPR_YUV_420,
 };
 
 /**
