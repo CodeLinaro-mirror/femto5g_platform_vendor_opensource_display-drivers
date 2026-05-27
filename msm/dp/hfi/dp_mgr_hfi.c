@@ -2138,6 +2138,7 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 			DP_ERR("Failed to register HDCP events, rc=%d\n", rc);
 			return;
 		}
+		hfi->hdcp_version_registered = hfi->hdcp_info.hdcp_version;
 	} else {
 		hfi_event = HFI_EVENT_HDCP_FEATURE_SUPPORTED;
 		rc = dp_hfi_append_batch_cmd(hfi, hfi_client,
@@ -2623,7 +2624,7 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	DP_DEBUG("Sending DISPLAY_POST_DISABLE command to DCP, panel_id=%d\n", panel_id);
 
-	if (hfi->hdcp_info.hdcp_version != HDCP_VERSION_NONE) {
+	if (hfi->hdcp_version_registered != HDCP_VERSION_NONE) {
 		rc = dp_hfi_start_batch_cmd(hfi, hfi_client);
 		if (rc) {
 			DP_ERR("failed to start batch cmds, rc=%d\n", rc);
@@ -2641,9 +2642,12 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 					panel_id);
 		}
 
-		rc = _register_hdcp_events(hfi_priv, stream_id, false, hfi->hdcp_info.hdcp_version);
+		rc = _register_hdcp_events(hfi_priv, stream_id, false,
+				hfi->hdcp_version_registered);
 		if (rc)
 			DP_ERR("Failed to deregister HDCP events, rc=%d\n", rc);
+
+		hfi->hdcp_version_registered = HDCP_VERSION_NONE;
 
 		rc = dp_hfi_send_batch_cmd(hfi, hfi_client, false);
 		if (rc) {
