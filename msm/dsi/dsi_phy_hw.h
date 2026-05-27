@@ -105,6 +105,20 @@ enum dsi_phy_pll_source {
 };
 
 /**
+ * enum dsi_phy_tuning_flags - Flags for PHY tuning parameter validity
+ * @DSI_PHY_GLBL_STR_CTRL_VALID:  Global strength control is valid
+ * @DSI_PHY_GLBL_RESCODE_VALID:   Global rescode is valid
+ * @DSI_PHY_CMN_CTRL2_VALID:      Common control 2 is valid
+ * @DSI_PHY_VREG_CTRL_VALID:      Voltage regulator control is valid
+ */
+enum dsi_phy_tuning_flags {
+	DSI_PHY_GLBL_STR_CTRL_VALID  = BIT(0),
+	DSI_PHY_GLBL_RESCODE_VALID   = BIT(1),
+	DSI_PHY_CMN_CTRL2_VALID      = BIT(2),
+	DSI_PHY_VREG_CTRL_VALID      = BIT(3),
+};
+
+/**
  * struct dsi_phy_per_lane_cfgs - Holds register values for PHY parameters
  * @lane:           A set of maximum 8 values for each lane.
  * @lane_v3:        A set of maximum 12 values for each lane.
@@ -115,6 +129,44 @@ struct dsi_phy_per_lane_cfgs {
 	u8 lane_v3[DSI_PHY_TIMING_V3_SIZE];
 	u8 lane_v4[DSI_PHY_TIMING_V4_SIZE];
 	u32 count_per_lane;
+};
+
+/* Compose VREG_CTRL_0: LDO_VREF_SEL=1(bit2), DSI_EN=1(bit4), LDO_EN=1(bit6) fixed */
+#define DSI_PHY_VREG_CTRL0_FROM_LVL(lvl_bits) \
+	(((lvl_bits) & 0x3) | BIT(2) | BIT(4) | BIT(6))
+
+/* Compose GLBL_HSTX_STR_CTRL_0 from hstop and hsbot nibbles */
+#define DSI_PHY_HSTX_STR_CTRL(hstop, hsbot) \
+	((((hstop) & 0xF) << 4) | ((hsbot) & 0xF))
+
+/**
+ * struct dsi_phy_tuning_cfg - DSI PHY tuning configuration
+ * @is_valid:            Boolean indicating tuning configuration is valid.
+ * @glbl_str_ctrl:       Global drive strength control setting.
+ * @glbl_rescode_top_ctrl:  Resistor code top calibration setting.
+ * @glbl_rescode_bot_ctrl:  Resistor code bottom calibration setting.
+ * @glbl_rescode_mid_ctrl:  Resistor code middle calibration setting.
+ * @cmn_ctrl2:           Common control register 2 setting.
+ * @vreg_ctrl0:          Voltage regulator control 0 setting.
+ * @vreg_ctrl1:          Voltage regulator control 1 setting.
+ * @flags:               Flags indicating valid PHY tuning parameter
+ * @reserved1:           Reserved for future use.
+ * @reserved2:           Reserved for future use.
+ */
+struct dsi_phy_tuning_cfg {
+	bool is_valid;
+
+	/* Global PHY drive strength / amplitude / de-emphasis tuning */
+	u32 glbl_str_ctrl;
+	u32 glbl_rescode_top_ctrl;
+	u32 glbl_rescode_bot_ctrl;
+	u32 glbl_rescode_mid_ctrl;
+	u32 cmn_ctrl2;
+	u32 vreg_ctrl0;
+	u32 vreg_ctrl1;
+	enum dsi_phy_tuning_flags flags;
+	u32 reserved1;
+	u32 reserved2;
 };
 
 /**
@@ -131,6 +183,7 @@ struct dsi_phy_per_lane_cfgs {
  * @phy_type:         Phy-type (Dphy/Cphy).
  * @bit_clk_rate_hz: DSI bit clk rate in HZ.
  * @split_link:       DSI split link config data.
+ * @tuning:           PHY tuning configuration from device-tree.
  */
 struct dsi_phy_cfg {
 	struct dsi_phy_per_lane_cfgs lanecfg;
@@ -145,6 +198,7 @@ struct dsi_phy_cfg {
 	unsigned long bit_clk_rate_hz;
 	struct dsi_split_link_config split_link;
 	u32 data_lanes;
+	struct dsi_phy_tuning_cfg tuning;
 };
 
 struct dsi_phy_hw;

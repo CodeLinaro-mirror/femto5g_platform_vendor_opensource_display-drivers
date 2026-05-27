@@ -21,6 +21,7 @@
 #include "hfi_props.h"
 #include "hfi_kms.h"
 #include "sde_dsc_helper.h"
+#include "dsi_phy.h"
 
 #define to_dsi_display(x) container_of(x, struct dsi_display, host)
 
@@ -815,6 +816,48 @@ static void dsi_get_panel_esd_config_helper(struct dsi_display *display,
 			esd_config->valid_params_msb = HFI_VAL_H32(remote_addr_ptr);
 		}
 	}
+}
+
+static bool dsi_get_panel_phy_tuning_config_helper(struct dsi_display *display,
+	struct hfi_panel_phy_tuning_config *tc)
+{
+	struct msm_dsi_phy *phy;
+	struct dsi_phy_tuning_cfg *dt;
+
+	if (!display || !tc)
+		return false;
+
+	phy = display->ctrl[display->cmd_master_idx].phy;
+	if (!phy || !phy->cfg.tuning.is_valid)
+		return false;
+
+	dt = &phy->cfg.tuning;
+	tc->flags = 0;
+	/* Global PHY drive strength / amplitude / de-emphasis */
+	if (dt->flags & DSI_PHY_GLBL_STR_CTRL_VALID) {
+		tc->glbl_str_ctrl = dt->glbl_str_ctrl;
+		tc->flags |= HFI_PHY_GLBL_STR_CTRL_VALID;
+	}
+
+	if (dt->flags & DSI_PHY_GLBL_RESCODE_VALID) {
+		tc->glbl_rescode_top_ctrl = dt->glbl_rescode_top_ctrl;
+		tc->glbl_rescode_bot_ctrl = dt->glbl_rescode_bot_ctrl;
+		tc->glbl_rescode_mid_ctrl = dt->glbl_rescode_mid_ctrl;
+		tc->flags |= HFI_PHY_GLBL_RESCODE_VALID;
+	}
+
+	if (dt->flags & DSI_PHY_CMN_CTRL2_VALID) {
+		tc->cmn_ctrl2       = dt->cmn_ctrl2;
+		tc->flags |= HFI_PHY_CMN_CTRL2_VALID;
+	}
+
+	if (dt->flags & DSI_PHY_VREG_CTRL_VALID) {
+		tc->vreg_ctrl0      = dt->vreg_ctrl0;
+		tc->vreg_ctrl1      = dt->vreg_ctrl1;
+		tc->flags |= HFI_PHY_VREG_CTRL_VALID;
+	}
+
+	return true;
 }
 
 static enum hfi_panel_fps_traffic_mode dsi_get_panel_traffic_mode_helper(struct dsi_panel *panel)
@@ -2009,6 +2052,9 @@ static void dsi_hfi_populate_panel_generic_caps(struct dsi_display *display,
 	panel_generic_caps->custom_cmd_set_info[1] = DSI_CUSTOM_CMD_SET_COUNT;
 
 	panel_generic_caps->ulps_supported = panel->ulps_feature_enabled;
+	if (dsi_get_panel_phy_tuning_config_helper(display,
+			&panel_generic_caps->phy_tuning_config))
+		panel_generic_caps->phy_tuning_config_valid = true;
 }
 
 static void dsi_hfi_populate_panel_timing_caps(struct dsi_display *display,
@@ -2307,6 +2353,15 @@ static int dsi_hfi_append_panel_generic_caps(struct hfi_cmdbuf_t *buffer,
 			((ARRAY_SIZE(dfps_payload) * sizeof(dfps_payload[0])) / sizeof(u32))),
 					(void *)dfps_payload);
 		kv_size += sizeof(dfps_payload);
+	}
+
+	if (panel_generic_caps.phy_tuning_config_valid) {
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+				HFI_PACKKEY(HFI_PROPERTY_PANEL_PHY_TUNING_CONFIG, 0,
+				((sizeof(panel_generic_caps.phy_tuning_config) +
+					sizeof(u32) - 1) / sizeof(u32))),
+				(void *)&panel_generic_caps.phy_tuning_config);
+		kv_size += sizeof(panel_generic_caps.phy_tuning_config);
 	}
 
 	if (display->modes && display->modes[0].priv_info &&
