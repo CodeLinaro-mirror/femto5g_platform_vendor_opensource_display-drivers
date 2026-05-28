@@ -447,7 +447,7 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		} else {
 			event = (u32) data[1];
 			SDE_DEBUG("event: %u\n", event);
-			SDE_DBG_DUMP(0x0);
+			SDE_DBG_DUMP(0x0, "panic");
 		}
 		break;
 	case HFI_COMMAND_DISPLAY_EVENT_POWER:
