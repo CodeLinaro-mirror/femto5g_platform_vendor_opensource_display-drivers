@@ -1932,9 +1932,8 @@ static int _sde_encoder_rsc_client_update_vsync_wait(
 	int wait_vblank_crtc_id)
 {
 	int wait_refcount = 0, ret = 0;
-	int pipe = -1;
 	int wait_count = 0;
-	struct drm_crtc *primary_crtc;
+	struct drm_crtc *primary_crtc = NULL;
 	struct drm_crtc *crtc;
 
 	crtc = sde_enc->crtc;
@@ -1954,7 +1953,6 @@ static int _sde_encoder_rsc_client_update_vsync_wait(
 					wait_vblank_crtc_id);
 			return -EINVAL;
 		}
-		pipe = drm_crtc_index(primary_crtc);
 	}
 
 	/**
@@ -1969,8 +1967,8 @@ static int _sde_encoder_rsc_client_update_vsync_wait(
 		if (crtc->base.id == wait_vblank_crtc_id)
 			ret = sde_encoder_wait_for_event(drm_enc,
 					MSM_ENC_VBLANK);
-		else
-			drm_wait_one_vblank(drm_enc->dev, pipe);
+		else if (primary_crtc)
+			drm_crtc_wait_one_vblank(primary_crtc);
 
 		if (ret) {
 			SDE_ERROR_ENC(sde_enc,
