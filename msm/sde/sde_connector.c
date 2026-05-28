@@ -211,10 +211,11 @@ static int sde_hyp_backlight_setup(struct sde_connector *c_conn,
 
 	c_conn->n.notifier_call = sde_hyp_backlight_cooling_cb;
 	c_conn->cdev = backlight_cdev_register(dev->dev, c_conn->bl_device,
-							&c_conn->n);
+						&c_conn->n);
 	if (IS_ERR_OR_NULL(c_conn->cdev)) {
-		SDE_INFO("Failed to register backlight cdev: %ld\n",
-				    PTR_ERR(c_conn->cdev));
+		if (PTR_ERR(c_conn->cdev) != -ENODEV)
+			SDE_INFO("Failed to register backlight cdev: %ld\n",
+					    PTR_ERR(c_conn->cdev));
 		c_conn->cdev = NULL;
 	}
 
