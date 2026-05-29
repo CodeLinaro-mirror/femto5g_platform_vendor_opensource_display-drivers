@@ -307,7 +307,7 @@ static int _msm_hyp_mode_create_properties(struct drm_device *ddev)
 	priv->prop_alpha = prop;
 
 	prop = drm_property_create_range(ddev, 0,
-				"input_fence", 0, 4096);
+				"input_fence", 0, ~0);
 	if (!prop)
 		return -ENOMEM;
 	priv->prop_input_fence = prop;
@@ -2859,7 +2859,7 @@ static int msm_hyp_pdev_probe(struct platform_device *pdev)
 	transport = of_get_property(np, "qcom,transport", &len);
 	if (len > 0 && transport != NULL) {
 		pr_info("transport is %s\n", transport);
-		node = of_find_node_by_name(np, transport);
+		node = of_find_node_by_name(NULL, transport);
 		if (node == NULL)
 			pr_err("failed to find %s node by name\n", transport);
 
