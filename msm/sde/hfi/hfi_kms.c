@@ -349,7 +349,7 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 
 	if (test_bit(SDE_FEATURE_LSR, sde_kms->catalog->features)) {
 		SDE_ERROR("Triggering lsr fw reset from DCP SSR\n");
-		rc = lsr_fw_reset();
+		rc = hfi_lsr_reset();
 		if (rc)
 			SDE_ERROR("LSR FW reset failed:%d\n", rc);
 	}

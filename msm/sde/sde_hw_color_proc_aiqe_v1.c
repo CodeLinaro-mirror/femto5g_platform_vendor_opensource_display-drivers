@@ -422,7 +422,7 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 	struct sde_hw_reg_dma_ops *dma_ops;
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	struct sde_reg_dma_kickoff_cfg kick_off;
-	enum msm_disp_op disp_op = ctx->hw.disp_op;
+	enum msm_disp_op disp_op;
 	int rc = 0;
 
 	if (!ctx || !cfg || !aiqe_top) {
@@ -430,6 +430,8 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 			ctx, cfg, aiqe_top);
 		return;
 	}
+
+	disp_op = ctx->hw.disp_op;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	dma_ops->reset_reg_dma_buf(dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx]);

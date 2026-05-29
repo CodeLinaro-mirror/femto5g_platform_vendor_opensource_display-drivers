@@ -5264,11 +5264,13 @@ u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
 	struct sde_connector *sde_conn;
 	struct drm_encoder *encoder;
 	struct drm_crtc *crtc;
+	struct sde_crtc *sde_crtc;
 	struct drm_encoder *other_enc = NULL;
 	struct drm_connector *other_conn = NULL;
 	struct sde_connector *other_sde_conn = NULL;
 	struct drm_connector_list_iter conn_iter;
 	u32 conn_id = U32_MAX;
+	u32 enc_mask;
 
 	if (!conn) {
 		SDE_ERROR("invalid connector\n");
@@ -5302,8 +5304,12 @@ u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
 		return conn_id;
 	}
 
+	sde_crtc =  to_sde_crtc(crtc);
+	enc_mask = crtc->state->encoder_mask ?
+		crtc->state->encoder_mask : sde_crtc->cached_encoder_mask;
+
 	/* Find another encoder attached to this CRTC */
-	drm_for_each_encoder_mask(other_enc, crtc->dev, crtc->state->encoder_mask) {
+	drm_for_each_encoder_mask(other_enc, crtc->dev, enc_mask) {
 		/* Skip the current encoder */
 		if (other_enc == encoder)
 			continue;

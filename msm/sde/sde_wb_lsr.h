@@ -143,7 +143,7 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
  */
 void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state);
 
-extern int lsr_fw_reset(void);
+extern int hfi_lsr_reset(void);
 
 /**
  * hfi_lsr_notify_ssr_event - notify lsr ssr events
@@ -259,7 +259,7 @@ static inline void sde_wb_connector_reset_reproj_state(struct sde_connector_stat
 {
 }
 
-static inline int lsr_fw_reset(void)
+static inline int hfi_lsr_reset(void)
 {
 	return 0;
 }

@@ -1733,7 +1733,6 @@ int reg_dmav1_setup_rc_pu_configv1(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	rc_mask_cfg = ctx->rc_state.last_rc_mask_cfg;
-	SDE_EVT32(RC_IDX(ctx), roi_list, rc_mask_cfg, rc_mask_cfg->cfg_param_03);
 
 	/* early return when there is no mask in memory */
 	if (!rc_mask_cfg || !rc_mask_cfg->cfg_param_03) {
@@ -1741,6 +1740,8 @@ int reg_dmav1_setup_rc_pu_configv1(struct sde_hw_dspp *ctx, void *cfg)
 		SDE_EVT32(RC_IDX(ctx));
 		return SDE_HW_RC_PU_SKIP_OP;
 	}
+
+	SDE_EVT32(RC_IDX(ctx), roi_list, rc_mask_cfg, rc_mask_cfg->cfg_param_03);
 
 	sde_kms_rect_merge_rectangles(roi_list, &merged_roi);
 	rc = _sde_hw_rc_get_ajusted_roi(hw_cfg, &merged_roi, &rc_roi);
@@ -5043,8 +5044,8 @@ void reg_dmav1_setup_ds_qseed3(struct sde_hw_ds *hw_ds,
 	struct sde_reg_dma_buffer *buf = NULL;
 
 	if (!hw_ds || !hw_ds->ctl || !scaler_cfg) {
-		DRM_ERROR("invalid params hw_ds %pK ctl %pK scaler_cfg %pK\n", hw_ds, hw_ds->ctl,
-			scaler_cfg);
+		DRM_ERROR("invalid params hw_ds %pK ctl %pK scaler_cfg %pK\n", hw_ds,
+			hw_ds ? hw_ds->ctl : NULL, scaler_cfg);
 		return;
 	}
 
