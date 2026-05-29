@@ -30,6 +30,7 @@
 #define CTL_SW_RESET_OVERRIDE         0x060
 #define CTL_STATUS                    0x064
 #define CTL_FLUSH_MASK                0x090
+#define CTL_FLUSH_COMPLETE            0x09C
 #define CTL_LAYER_EXTN_OFFSET         0x40
 #define CTL_ROT_TOP                   0x0C0
 #define CTL_ROT_FLUSH                 0x0C4
@@ -584,6 +585,24 @@ static inline u32 sde_hw_ctl_get_flush_register(struct sde_hw_ctl *ctx)
 #else
 	return SDE_REG_READ(c, CTL_FLUSH);
 #endif
+}
+
+static inline u32 sde_hw_ctl_get_flush_complete_register(struct sde_hw_ctl *ctx)
+{
+	struct sde_hw_blk_reg_map *c;
+	u32 rot_op_mode;
+
+	if (!ctx)
+		return 0;
+
+	c = &ctx->hw;
+	rot_op_mode = SDE_REG_READ(c, CTL_ROT_TOP) & 0x3;
+
+	/* rotate flush bit is undefined if offline mode, so ignore it */
+	if (rot_op_mode == SDE_CTL_ROT_OP_MODE_OFFLINE)
+		return SDE_REG_READ(c, CTL_FLUSH_COMPLETE) & ~CTL_FLUSH_MASK_ROT;
+	else
+		return SDE_REG_READ(c, CTL_FLUSH_COMPLETE);
 }
 
 static inline u32 sde_hw_ctl_get_flush_register_no_rot(struct sde_hw_ctl *ctx)
@@ -1924,6 +1943,7 @@ static void _setup_ctl_ops(struct sde_hw_ctl_ops *ops,
 		ops->get_flush_register = sde_hw_ctl_get_flush_register_no_rot;
 	else
 		ops->get_flush_register = sde_hw_ctl_get_flush_register;
+	ops->get_flush_complete_register = sde_hw_ctl_get_flush_complete_register;
 	ops->trigger_start = sde_hw_ctl_trigger_start;
 	ops->trigger_pending = sde_hw_ctl_trigger_pending;
 	ops->read_ctl_layers = sde_hw_ctl_read_ctl_layers;
@@ -2036,6 +2056,7 @@ static void _setup_virtual_ctl_ops(struct sde_hw_ctl_ops *ops,
 		ops->get_flush_register = sde_hw_ctl_get_flush_register_no_rot;
 	else
 		ops->get_flush_register = sde_hw_ctl_get_flush_register;
+	ops->get_flush_complete_register = sde_hw_ctl_get_flush_complete_register;
 	ops->read_ctl_layers = sde_hw_ctl_read_ctl_layers;
 	ops->reset = sde_hw_ctl_reset_control_virt;
 	if (cap & BIT(SDE_CTL_NO_LAYER_EXT)) {
