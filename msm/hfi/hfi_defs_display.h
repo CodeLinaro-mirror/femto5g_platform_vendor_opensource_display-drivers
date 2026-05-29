@@ -92,7 +92,7 @@ enum hfi_display_res_type {
  * @resource_idx: resource index
  * @width: resource output width
  * @height: resource output height
- * @reserved: reserved field for future
+ * @reserved: used for resource output roi position (x << 16) | (y & 0xFFFF)
  */
 struct hfi_resource_cfg {
 	u32 res_type;
