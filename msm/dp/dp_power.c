@@ -165,6 +165,7 @@ static int dp_power_pinctrl_set(struct dp_power_private *power, bool active)
 				return rc;
 			}
 		}
+		return rc;
 	}
 
 	pin_state = active ? parser->pinctrl.state_active
