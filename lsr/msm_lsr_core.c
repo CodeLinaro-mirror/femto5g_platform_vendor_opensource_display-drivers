@@ -94,10 +94,55 @@ static int lsr_display_disable(struct sde_reproj *reproj_inst, bool skip_wait)
 	return rc;
 }
 
+static void msm_lsr_query_panel_topology(void)
+{
+	struct drm_connector_list_iter conn_iter;
+	struct drm_connector *connector;
+	struct msm_lsr_core *core;
+	struct lsr_device *dev = NULL;
+	struct msm_display_info info;
+
+	core = lsr_driver->lsr_core;
+	if (core)
+		dev = core->dev_ops->hfi_device_data;
+
+	if (!dev || !lsr_driver->drm_dev) {
+		dprintk(LSR_ERR, "topology query: invalid LSR device or drm_dev\n");
+		return;
+	}
+
+	drm_connector_list_iter_begin(lsr_driver->drm_dev, &conn_iter);
+	drm_for_each_connector_iter(connector, &conn_iter) {
+		if (connector->connector_type != DRM_MODE_CONNECTOR_DSI)
+			continue;
+
+		memset(&info, 0, sizeof(info));
+		if (sde_connector_get_info(connector, &info)) {
+			dprintk(LSR_ERR, "get_info failed for connector id=%u\n",
+				connector->base.id);
+			continue;
+		}
+
+		if (info.display_type != SDE_CONNECTOR_PRIMARY)
+			continue;
+
+		dev->panel_topology = (info.num_of_h_tiles >= 2) ?
+				LSR_PANEL_TOPOLOGY_BINO : LSR_PANEL_TOPOLOGY_MONO;
+		dprintk(LSR_CORE, "panel_topology=%d num_of_h_tiles=%u\n",
+			dev->panel_topology, info.num_of_h_tiles);
+		break;
+	}
+	drm_connector_list_iter_end(&conn_iter);
+
+	if (dev->panel_topology == LSR_PANEL_TOPOLOGY_UNKNOWN)
+		dprintk(LSR_CORE, "primary DSI connector not found, topology unknown\n");
+}
+
 static int lsr_update_perf(struct sde_reproj *reproj_inst, int repro_info, struct sde_lsr_perf perf)
 {
 	int rc = 0;
 	struct msm_lsr_core *core;
+	struct lsr_device *dev = NULL;
 	bool update_perf = false;
 
 	core = lsr_driver->lsr_core;
@@ -105,6 +150,10 @@ static int lsr_update_perf(struct sde_reproj *reproj_inst, int repro_info, struc
 		dprintk(LSR_ERR, "Invalid LSR core");
 		return -EINVAL;
 	}
+
+	dev = core->dev_ops->hfi_device_data;
+	if (dev && dev->panel_topology == LSR_PANEL_TOPOLOGY_UNKNOWN)
+		msm_lsr_query_panel_topology();
 
 	if (repro_info == WB_CSC) {
 		if (core->old_perf.lsr_csc_bw != perf.bw_vote ||
@@ -190,7 +239,6 @@ int msm_reproj_disp_register_intf(struct sde_reproj *reproj_inst)
 	reproj_inst->off = lsr_display_disable;
 	reproj_inst->get_info = lsr_display_get_info;
 	reproj_inst->update_lsr_perf = lsr_update_perf;
-
 	reproj_inst->ref_count = (atomic_t *)&dev->ref_count;
 	reproj_inst->lsr_ssr_in_progress = &dev->lsr_ssr_in_progress;
 
