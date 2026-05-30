@@ -25,6 +25,8 @@
 #define MAX_CMD_RECEIVE_SIZE       256
 #define DNSC_BLUR_MAX_COUNT	1
 
+#define SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX 360
+
 struct sde_connector;
 struct sde_connector_state;
 
@@ -824,6 +826,9 @@ struct sde_drm_opaque_config {
  * @bl_dirty_change: Indicates if brightness prop is changed
  * @b_lvl: brightness property value
  * @bl_dirty_value: brightness final to be set
+ * @custom_wd_te_enabled: flag to indicate custom WD te is enabled or not
+ * @custom_wd_te_fps: custom frame-rate to be set for WD te
+ * @custom_wd_updated: boolean indicating if any custom WD param changed
  */
 struct sde_connector {
 	struct drm_connector base;
@@ -937,6 +942,11 @@ struct sde_connector {
 	bool bl_dirty_change;
 	u32 b_lvl;
 	u32 bl_dirty_value;
+
+	/* custom watchdog te with timer */
+	u32 custom_wd_te_enabled;
+	u32 custom_wd_te_fps;
+	bool custom_wd_updated;
 };
 
 /**
@@ -1874,5 +1884,8 @@ sde_connector_state_get_sub_mode(struct drm_connector_state *conn_state,
 			CONNECTOR_PROP_EMSYNC_FPS);
 	return 0;
 }
+
+void sde_connector_update_custom_wd_te(struct sde_connector *sde_conn,
+	u32 frame_rate, u32 enable_wd_te);
 
 #endif /* _SDE_CONNECTOR_H_ */

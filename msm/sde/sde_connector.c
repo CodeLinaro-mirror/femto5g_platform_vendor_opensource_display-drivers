@@ -5337,3 +5337,37 @@ u32 sde_conn_get_display_obj_id(struct drm_connector *conn)
 
 	return conn_id;
 }
+
+void sde_connector_update_custom_wd_te(struct sde_connector *sde_conn,
+	u32 frame_rate, u32 enable_wd_te)
+{
+	bool cache_update = false;
+
+	if (!sde_conn)
+		return;
+
+	if (enable_wd_te && (frame_rate < 1 ||
+		frame_rate > SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX)) {
+		SDE_ERROR(
+			"invalid custom wd te params conn_id: %u fps: %u enable_wd_te: %d\n",
+			sde_conn->conn_id, frame_rate, enable_wd_te);
+		return;
+	}
+
+	if (sde_conn->custom_wd_te_enabled == enable_wd_te &&
+		sde_conn->custom_wd_te_fps == frame_rate) {
+		SDE_DEBUG("WD TE params are not changed\n");
+		return;
+	}
+
+	/* set updated to true if any param is changed */
+	if (sde_conn->custom_wd_te_enabled != enable_wd_te ||
+		sde_conn->custom_wd_te_fps != frame_rate)
+		cache_update = true;
+
+	/* Update the values */
+	sde_conn->custom_wd_te_enabled = enable_wd_te;
+	sde_conn->custom_wd_te_fps = frame_rate;
+	sde_conn->custom_wd_updated = cache_update;
+	SDE_EVT32(sde_conn->conn_id, enable_wd_te, frame_rate, sde_conn->custom_wd_updated);
+}
