@@ -1068,7 +1068,6 @@ static int dp_debug_client_hfi_read_mst_mode(struct dp_debug_client *client,
 	struct dp_mgr_hfi_priv *mgr_priv;
 	u32 mst_mode = 0;
 	u32 mst_state = 0;
-	int i;
 
 	if (!client || !buf)
 		return -EINVAL;
@@ -1076,30 +1075,15 @@ static int dp_debug_client_hfi_read_mst_mode(struct dp_debug_client *client,
 	priv = client->priv;
 	mgr_priv = _get_mgr_hfi(priv);
 
-	if (mgr_priv)
-		mst_mode = 1; // set mst mode to default for now - get this from FW later
-
-	/*
-	 * In non-HFI, mst_state comes from panel->mst_state and becomes true
-	 * only when the manager enables MST on the sink and the topology is
-	 * active. In HFI we don't have dp_panel->mst_state, so best-effort:
-	 * report mst_state=1 only if MST mode is enabled AND at least one
-	 * stream connector is currently connected.
-	 */
-	if (mst_mode && mgr_priv) {
-		bool found_mst_conn = false;
-
-		for (i = 0; i < mgr_priv->max_streams; i++) {
-			if (mgr_priv->hfi[i] && mgr_priv->hfi[i]->connected) {
-				found_mst_conn = true;
-				break;
-			}
-		}
-
-		if (found_mst_conn)
-			mst_state = 1;
+	if (!mgr_priv) {
+		DP_ERR("Could not access dp_mgr_hfi_priv\n");
+		goto exit;
 	}
 
+	mst_mode = mgr_priv->mst_en;
+	mst_state = mgr_priv->mst_st;
+
+exit:
 	return scnprintf(buf, size, "mst_mode = %u, mst_state = %u\n", mst_mode, mst_state);
 }
 
