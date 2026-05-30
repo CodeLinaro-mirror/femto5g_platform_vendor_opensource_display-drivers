@@ -3752,6 +3752,98 @@ static const struct file_operations conn_esd_status_interval_fops = {
 	.write =    _sde_debugfs_conn_esd_status_interval_write,
 };
 
+static int _sde_debugfs_custom_wd_te_open(struct inode *inode, struct file *file)
+{
+	/* non-seekable */
+	file->private_data = inode->i_private;
+	return nonseekable_open(inode, file);
+}
+
+static ssize_t _sde_debugfs_custom_wd_te_read(struct file *file,
+		char __user *buf, size_t count, loff_t *ppos)
+{
+	struct drm_connector *connector = file->private_data;
+	struct sde_connector *c_conn;
+	char buffer[64];
+	int len;
+
+	if (*ppos)
+		return 0;
+
+	if (!connector) {
+		SDE_ERROR("invalid connector\n");
+		return -EINVAL;
+	}
+
+	c_conn = to_sde_connector(connector);
+
+	len = scnprintf(buffer, sizeof(buffer), "enabled: %u, fps: %u\n",
+			c_conn->custom_wd_te_enabled, c_conn->custom_wd_te_fps);
+
+	if (len < 0 || len >= sizeof(buffer))
+		return -EINVAL;
+
+	if (copy_to_user(buf, buffer, len))
+		return -EFAULT;
+
+	*ppos += len;
+	return len;
+}
+
+static ssize_t _sde_debugfs_custom_wd_te_write(struct file *file,
+		const char __user *user_buf, size_t count, loff_t *ppos)
+{
+	struct drm_connector *connector = file->private_data;
+	struct sde_connector *c_conn;
+	char buf[32];
+	int enable, fps;
+	int ret;
+
+	if (*ppos || !connector)
+		return -EINVAL;
+
+	c_conn = to_sde_connector(connector);
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+
+	/* Parse "enable fps" format, e.g., "1 60" */
+	ret = sscanf(buf, "%d %d", &enable, &fps);
+	if (ret != 2) {
+		SDE_ERROR("invalid format, expected: <enable> <fps>\n");
+		return -EINVAL;
+	}
+
+	if (enable != 0 && enable != 1) {
+		SDE_ERROR("enable must be 0 or 1\n");
+		return -EINVAL;
+	}
+
+	if (fps < 1 || fps > SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX) {
+		SDE_ERROR("fps value must be non-negative and less than %d\n",
+			SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX);
+		return -EINVAL;
+	}
+
+	/* Call the update function */
+	sde_connector_update_custom_wd_te(c_conn, fps, enable ? true : false);
+	SDE_DEBUG("custom WD TE updated: enable=%d, fps=%d\n", enable, fps);
+	SDE_EVT32(enable, fps, c_conn->custom_wd_updated);
+
+	return count;
+}
+
+static const struct file_operations custom_wd_te_fops = {
+	.open =  _sde_debugfs_custom_wd_te_open,
+	.read =  _sde_debugfs_custom_wd_te_read,
+	.write = _sde_debugfs_custom_wd_te_write,
+};
+
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 /**
  * sde_connector_init_debugfs - initialize connector debugfs
@@ -3815,6 +3907,13 @@ static int sde_connector_init_debugfs(struct drm_connector *connector)
 				&sde_connector->num_bl_frames);
 		debugfs_create_bool("disable_cont_dimming", 0600, connector->debugfs_entry,
 				&sde_connector->disable_cont_dimming);
+
+		/* Custom WD TE configuration */
+		if (!debugfs_create_file("custom_wd_te_config", 0600,
+				connector->debugfs_entry, connector, &custom_wd_te_fops)) {
+			SDE_ERROR("failed to create custom_wd_te_config\n");
+			return -ENOMEM;
+		}
 	}
 
 	return 0;
