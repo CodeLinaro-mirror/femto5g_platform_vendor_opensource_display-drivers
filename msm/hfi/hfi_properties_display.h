@@ -799,6 +799,25 @@
 #define HFI_PROPERTY_DISPLAY_BRIGHTNESS                              0x00020034
 
 /*
+ * HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE - This property is to set vsync source to watchdog
+ *                                     TE with a custom FPS. Host is expected to send this
+ *                                     packet as part of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                     command packet payload.
+ *
+ *                                     Validation: custom_fps must be in range [1-360].
+ *                                     If wd_te_enabled is 0, custom_fps is ignored.
+ *                                     This property can be set at any time but takes effect
+ *                                     on the next frame. Invalid values will be rejected
+ *                                     with HFI_ERROR_INVALID_PARAM.
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE \|
+ *                                 (version=0 << 20) \|
+ *                                 (dsize=2 << 24)
+ *   (u32_value) payload [1-2]   : struct hfi_custom_wd_te_params
+ */
+#define HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE                                   0x00020035
+
+/*
  * All display color properties begin here
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_BEGIN                             0x00020100
