@@ -3306,7 +3306,10 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 {
 	struct sde_kms *sde_kms;
 	struct drm_device *dev;
+	struct drm_connector *connector;
+	struct drm_connector_state *conn_state;
 	int ret;
+	int i;
 
 	if (!kms || !state)
 		return -EINVAL;
@@ -3319,6 +3322,21 @@ static int sde_kms_atomic_check(struct msm_kms *kms,
 		SDE_DEBUG("suspended, skip atomic_check\n");
 		ret = -EBUSY;
 		goto end;
+	}
+
+	/*
+	 * For static MST force_connect_mode: during the set_mst(false)->probe
+	 * window, connectors are temporarily UNREGISTERED. Return -EBUSY so
+	 * that userspace (e.g. NullCommit) can retry after the probe completes
+	 * and re-registers the connectors, rather than failing with -EINVAL.
+	 */
+	for_each_new_connector_in_state(state, connector, conn_state, i) {
+		if (connector->registration_state == DRM_CONNECTOR_UNREGISTERED) {
+			SDE_DEBUG("conn:%d unregistered (MST probe in progress), defer\n",
+				 connector->base.id);
+			ret = -EBUSY;
+			goto end;
+		}
 	}
 
 	ret = sde_kms_check_vm_request(kms, state);
