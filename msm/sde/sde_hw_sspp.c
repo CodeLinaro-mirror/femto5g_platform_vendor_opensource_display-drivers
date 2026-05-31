@@ -228,11 +228,15 @@ static void sde_hw_sspp_update_multirect(struct sde_hw_pipe *ctx,
 		} else if (index == SDE_SSPP_RECT_0) {
 			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
 					BIT(2) | BIT(0),
-					(enable ? BIT(0) : 0) | ((mode == SDE_SSPP_MULTIRECT_TIME_MX) ? BIT(2) : 0));
+					(enable ? BIT(0) : 0) |
+					(enable && (mode == SDE_SSPP_MULTIRECT_TIME_MX) ?
+					BIT(2) : 0));
 		} else {
 			SDE_REG_MODIFY(&ctx->hw, SSPP_MULTIRECT_OPMODE_ALT + idx,
 					BIT(2) | BIT(1),
-					(enable ? BIT(1) : 0) | ((mode == SDE_SSPP_MULTIRECT_TIME_MX) ? BIT(2) : 0));
+					(enable ? BIT(1) : 0) |
+					(enable && (mode == SDE_SSPP_MULTIRECT_TIME_MX) ?
+					BIT(2) : 0));
 		}
 	} else {
 		if (index == SDE_SSPP_RECT_SOLO) {
@@ -643,15 +647,19 @@ static void sde_hw_sspp_setup_secure(struct sde_hw_pipe *ctx,
 	if (AUTO_SWI_MODE || test_bit(SDE_SSPP_LOCAL_FLUSH, &ctx->cap->features)) {
 		if ((rect_mode == SDE_SSPP_RECT_SOLO)
 				|| (rect_mode == SDE_SSPP_RECT_0)) {
-			if (enable)
+			if (enable) {
 				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_ALT + idx, 0x05, 0x05);
-			else
+				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS + idx, 0x0A, 0x0A);
+			} else {
 				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_ALT + idx, 0x05, 0);
+				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS + idx, 0x0A, 0);
+			}
 		} else {
-			if (enable)
+			if (enable) {
 				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_REC1 + idx, 0x0A, 0x0A);
-			else
+			} else {
 				SDE_REG_MODIFY(c, SSPP_SRC_ADDR_SW_STATUS_REC1 + idx, 0x0A, 0);
+			}
 		}
 
 	} else {

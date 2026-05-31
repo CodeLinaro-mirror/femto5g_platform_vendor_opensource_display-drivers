@@ -1,12 +1,20 @@
 # SPDX-License-Identifier: GPL-2.0-only
 
 ifeq ($(DISPLAY_ROOT),)
-DISPLAY_ROOT=$(srctree)/techpack/display
+DISPLAY_ROOT := $(srctree)/techpack/$(src)
 endif
 
-LINUXINCLUDE    += \
-		   -I$(DISPLAY_ROOT)/include/uapi/display \
-		   -I$(DISPLAY_ROOT)/include
-USERINCLUDE     += -I$(DISPLAY_ROOT)/include/uapi/display
+# gen4.5 HGY GVM builds: CONFIG_ARCH_QTI_VM=y
+# Include hgygvmdisp.conf which sets CONFIG_DRM_MSM_HYP and CONFIG_DRM_MSM_CFG.
+# Since hgygvmdisp.conf does NOT set CONFIG_DRM_MSM, msm/ will NOT be compiled.
+ifeq (y, $(findstring y, $(CONFIG_ARCH_QTI_VM)))
+	include $(DISPLAY_ROOT)/config/hgygvmdisp.conf
+	LINUXINCLUDE += -include $(DISPLAY_ROOT)/config/hgygvmdispconf.h
+endif
 
+# msm/     — compiled only when CONFIG_DRM_MSM is set (gen5 builds)
+# msm-hyp/ — compiled when CONFIG_DRM_MSM_HYP is set (gen4.5 hgygvmdisp builds)
+# msm-cfg/ — compiled when CONFIG_DRM_MSM_CFG is set (gen4.5 hgygvmdisp builds)
 obj-$(CONFIG_DRM_MSM) += msm/
+obj-$(CONFIG_DRM_MSM_HYP) += msm-hyp/
+obj-$(CONFIG_DRM_MSM_CFG) += msm-cfg/

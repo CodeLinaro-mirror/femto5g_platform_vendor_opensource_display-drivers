@@ -2,6 +2,13 @@ DISPLAY_SELECT := CONFIG_DRM_MSM=m
 
 LOCAL_PATH := $(call my-dir)
 LOCAL_MODULE_DDK_BUILD := true
+# build_module.sh maps both gen4 and gen5 to btgt="autogvm", so the default
+# filter regex "autogvm_perf_.*_dist$" matches both gen4gvm and nordau dist
+# targets. Set a specific subtarget regex so only the nordau dist target is
+# selected when building for gen5 (TARGET_BOARD_PLATFORM=gen5).
+ifeq ($(TARGET_BOARD_PLATFORM),gen5)
+LOCAL_MODULE_DDK_SUBTARGET_REGEX := "nordau.*"
+endif
 include $(CLEAR_VARS)
 
 BOARD_OPENSOURCE_DIR ?= vendor/qcom/opensource
@@ -30,7 +37,7 @@ ifneq ($(TARGET_BOARD_AUTO),true)
 ifeq ($(CONFIG_MSM_MMRM), y)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
 endif
-ifneq ($(call is-board-platform-in-list, taro monaco gen5), true)
+ifneq ($(call is-board-platform-in-list, taro monaco gen5 auto_gen), true)
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,sync-fence-module-symvers)/Module.symvers
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,msm-ext-disp-module-symvers)/Module.symvers
 	KBUILD_OPTIONS += KBUILD_EXTRA_SYMBOLS+=$(PWD)/$(call intermediates-dir-for,DLKM,hw-fence-module-symvers)/Module.symvers
@@ -54,7 +61,7 @@ ifeq ($(CONFIG_MSM_MMRM), y)
 	LOCAL_REQUIRED_MODULES    += mmrm-module-symvers
 	LOCAL_ADDITIONAL_DEPENDENCIES += $(call intermediates-dir-for,DLKM,mmrm-module-symvers)/Module.symvers
 endif
-ifneq ($(call is-board-platform-in-list, taro monaco gen5), true)
+ifneq ($(call is-board-platform-in-list, taro monaco gen5 auto_gen), true)
 	LOCAL_REQUIRED_MODULES    += sync-fence-module-symvers
 	LOCAL_REQUIRED_MODULES    += msm-ext-disp-module-symvers
 	LOCAL_REQUIRED_MODULES    += hw-fence-module-symvers
