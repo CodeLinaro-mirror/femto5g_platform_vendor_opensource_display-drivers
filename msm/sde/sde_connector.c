@@ -4055,7 +4055,8 @@ static int sde_connector_get_modes(struct drm_connector *connector)
 	if (c_conn->hdr_capable)
 		sde_connector_update_hdr_props(connector);
 
-	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort)
+	if (c_conn->connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
+			c_conn->connector_type == DRM_MODE_CONNECTOR_HDMIA)
 		sde_connector_update_colorspace(connector);
 
 	return mode_count;
@@ -4682,7 +4683,8 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	/* install PP_DITHER properties */
 	_sde_connector_install_dither_property(dev, sde_kms, c_conn);
 
-	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort) {
+	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
+			connector_type == DRM_MODE_CONNECTOR_HDMIA) {
 		struct drm_msm_ext_hdr_properties hdr = {0};
 
 		c_conn->hdr_capable = true;
@@ -4790,7 +4792,8 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 	c_conn->bl_scale = MAX_BL_SCALE_LEVEL;
 	c_conn->bl_scale_sv = MAX_SV_BL_SCALE_LEVEL;
 
-	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort)
+	if (connector_type == DRM_MODE_CONNECTOR_DisplayPort ||
+			connector_type == DRM_MODE_CONNECTOR_HDMIA)
 		msm_property_install_range(&c_conn->property_info,
 			"supported_colorspaces",
 			DRM_MODE_PROP_IMMUTABLE, 0, 0xffff, 0,
