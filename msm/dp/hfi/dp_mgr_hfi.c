@@ -45,6 +45,8 @@
 
 /* HDCP 2.x message IDs */
 #define SKE_SEND_EKS            11
+#define REP_SEND_ACK            15
+#define REP_STREAM_MANAGE       16
 #define REP_STREAM_READY        17
 #define SKE_SEND_TYPE_ID        18
 
@@ -1916,11 +1918,18 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 	DP_DEBUG("HDCP2X_PROCESS_MSG: msg_id=0x%02x req_len=%u\n",
 		 req_buf ? req_buf[0] : 0xFF, hfi_data->request.size);
 
-	/* Process message through dp_hdcp (TZ) */
-	rc = dp_hdcp2x_process_msg(hfi->hdcp2x_ctx,
-				   req_buf, hfi_data->request.size,
-				   &resp_buf, &resp_len,
-				   &repeater_flag, &timeout_ms);
+	if (hfi_data->request.size == 0 &&
+	    ((uint8_t *)hfi->hdcp2x_resp_map->local_addr)[0] == REP_SEND_ACK) {
+		DP_DEBUG("Zero-length request after REP_SEND_ACK: calling QUERY_STREAM\n");
+		rc = dp_hdcp2x_query_stream(hfi->hdcp2x_ctx, &resp_buf, &resp_len);
+		repeater_flag = true;
+		timeout_ms = 0;
+	} else {
+		rc = dp_hdcp2x_process_msg(hfi->hdcp2x_ctx,
+					   req_buf, hfi_data->request.size,
+					   &resp_buf, &resp_len,
+					   &repeater_flag, &timeout_ms);
+	}
 	if (rc) {
 		DP_ERR("Process msg failed: %d, send NULL response to trigger auth retry\n", rc);
 		resp_len = 0;
@@ -1972,7 +1981,8 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 		DP_DEBUG("Response sent to DCP, length=%u\n", resp_len);
 
 	if ((msg_id == SKE_SEND_EKS && !is_repeater) ||
-			(msg_id == REP_STREAM_READY && is_repeater)) {
+			(req_buf[0] == REP_STREAM_READY && is_repeater
+			&& msg_id != REP_STREAM_MANAGE)) {
 
 		rc = dp_hdcp2x_enable_encryption(hfi->hdcp2x_ctx);
 		if (rc) {
@@ -2683,6 +2693,9 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 					panel_id);
 		}
 	}
+
+	/* Reset HDCP status to inactive after all HDCP teardown is complete */
+	dp_mgr_update_hdcp_info(hfi, true);
 
 	return rc;
 }

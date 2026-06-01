@@ -189,4 +189,17 @@ void dp_hdcp2x_stop(void *input);
  */
 int dp_hdcp2x_enable_encryption(void *input);
 
+/**
+ * dp_hdcp2x_query_stream() - Query stream management from TrustZone
+ * @input: HDCP 2.x context handle
+ * @resp_buf: Pointer to store response buffer (REP_STREAM_MANAGE from TZ)
+ * @resp_len: Pointer to store response length
+ *
+ * Called after REP_SEND_ACK is written to the sink. Issues
+ * HDCP2_CMD_QUERY_STREAM to TrustZone, which generates REP_STREAM_MANAGE.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_query_stream(void *input, uint8_t **resp_buf, uint32_t *resp_len);
+
 #endif /* _DP_HDCP_H_ */
