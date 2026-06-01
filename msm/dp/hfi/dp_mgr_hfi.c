@@ -1913,8 +1913,8 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 		return;
 	}
 
-	DP_DEBUG("Processing message: request_length=%u, repeater_flag(hfi)=%d\n",
-		 hfi_data->request.size, hfi_data->repeater_flag);
+	DP_DEBUG("HDCP2X_PROCESS_MSG: msg_id=0x%02x req_len=%u\n",
+		 req_buf ? req_buf[0] : 0xFF, hfi_data->request.size);
 
 	/* Process message through dp_hdcp (TZ) */
 	rc = dp_hdcp2x_process_msg(hfi->hdcp2x_ctx,
@@ -1922,10 +1922,8 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 				   &resp_buf, &resp_len,
 				   &repeater_flag, &timeout_ms);
 	if (rc) {
-		DP_ERR("dp_hdcp2x_process_msg failed: %d\n", rc);
-		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
-		dp_mgr_update_hdcp_info(hfi, false);
-		return;
+		DP_ERR("Process msg failed: %d, send NULL response to trigger auth retry\n", rc);
+		resp_len = 0;
 	}
 
 	/* Copy response to shared buffer (if any) */
@@ -1939,6 +1937,9 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 
 		msg_id = resp_buf[0];
 		DP_DEBUG("Response message ID: 0x%02x\n", msg_id);
+	} else {
+		DP_WARN("Sending NULL response to DCP (msg_id=0x%02x) — retry will be triggered\n",
+			req_buf ? req_buf[0] : 0xFF);
 	}
 
 	/* Prepare HFI response */
@@ -2028,11 +2029,8 @@ static void dp_mgr_hfi_handle_hdcp2x_timeout(struct dp_hfi *hfi, void *payload, 
 			       req_buf, 0,  /* request is empty (length=0) but pass pointer */
 			       &resp_buf, &resp_len);
 	if (rc) {
-		DP_ERR("dp_hdcp2x_timeout failed: %d\n", rc);
-
-		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
-		dp_mgr_update_hdcp_info(hfi, false);
-		return;
+		DP_ERR("Timeout failed: %d, send NULL response to trigger auth retry\n", rc);
+		resp_len = 0;
 	}
 
 	/* Copy response to shared buffer if TZ returned something */
