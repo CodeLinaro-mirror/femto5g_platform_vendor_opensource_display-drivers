@@ -10,6 +10,9 @@
 
 #define FLIP_VIEWS 2
 
+static unsigned long s_pose_fixed_iova;
+static size_t s_pose_fixed_size;
+
 void sde_wb_lsr_get_view_fbs(struct sde_connector_state *c_state)
 {
 	int i, j;
@@ -348,11 +351,25 @@ static void _sde_wb_lsr_set_reproj_pose_fb(struct drm_connector *connector,
 	addr_map.aligned_size = ALIGN(addr_map.alloc_info.size_allocated,
 			HFI_CORE_IOMMU_MAP_SIZE_ALIGNMENT);
 
-	ret = hfi_core_map_sg_table(&addr_map.alloc_info, msm_obj->sgt, addr_map.aligned_size,
-		HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
-	if (ret) {
-		SDE_ERROR("failed to map sg table to iova, ret:%d\n", ret);
-		return;
+	if (!s_pose_fixed_iova) {
+		ret = hfi_core_map_sg_table(&addr_map.alloc_info, msm_obj->sgt,
+			addr_map.aligned_size, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+		if (ret) {
+			SDE_ERROR("failed to map sg table to iova, ret:%d\n", ret);
+			goto cleanup_fb;
+		}
+		s_pose_fixed_iova = addr_map.alloc_info.mapped_iova;
+		s_pose_fixed_size = addr_map.alloc_info.size_allocated;
+	} else {
+		addr_map.alloc_info.mapped_iova = s_pose_fixed_iova;
+		ret = hfi_core_remap_sg_table(&addr_map.alloc_info, msm_obj->sgt,
+			addr_map.aligned_size, HFI_CORE_MMAP_READ | HFI_CORE_MMAP_WRITE);
+		if (ret) {
+			SDE_ERROR("failed to remap sg table to fixed iova, ret:%d\n", ret);
+			s_pose_fixed_iova = 0;
+			s_pose_fixed_size = 0;
+			goto cleanup_fb;
+		}
 	}
 
 	SDE_DEBUG("HRP buffer mapped to FW with iova = 0x%lx\n", addr_map.alloc_info.mapped_iova);
