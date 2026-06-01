@@ -874,6 +874,7 @@ static struct hfi_cmdbuf_t *_chain_new_buffer(struct hfi_cmdbuf_t *buffer_head)
 		HFI_AD_ERROR("failed to chain command buffer\n");
 		return NULL;
 	}
+	INIT_LIST_HEAD(&buffer->cmd_buf_chain);
 
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 	/* For chained buffer's, add to existing cmd_buf_chain */
