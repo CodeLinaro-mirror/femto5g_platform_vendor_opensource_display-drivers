@@ -297,7 +297,7 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 			cmd_type = (priv_info->cmd_sets[DSI_CMD_SET_CUSTOM_ON].count > 0) ?
 				   DSI_CMD_SET_CUSTOM_ON : DSI_CMD_SET_ON;
 
-			rc = dsi_panel_tx_cmd_set(display->panel, cmd_type, false);
+			rc = dsi_hfi_exec_dcs_cmd_type(display, cmd_type, true);
 			if (rc)
 				DSI_ERR("Could not send dcs on cmd, rc=%d\n", rc);
 		}

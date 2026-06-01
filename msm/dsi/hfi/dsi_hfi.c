@@ -382,6 +382,7 @@ void dsi_hfi_prop_handler(u32 hfi_uid, u32 prop, void *payload, u32 size,
 	case HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD:
 	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP:
 	case HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE:
+	case HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE:
 		break;
 	case HFI_COMMAND_DEBUG_MISR_READ:
 		dsi_hfi_process_misr_read(display, payload, size);
@@ -1786,6 +1787,95 @@ unlock_and_cleanup:
 	mutex_unlock(&dsi_hfi->rt_dcs_cmd_lock);
 	kfree(payload);
 	SDE_EVT32(obj_id, rc, SDE_EVTLOG_FUNC_EXIT);
+	return rc;
+}
+
+int dsi_hfi_exec_dcs_cmd_type(struct dsi_display *display, u32 cmd_type, bool resp_req)
+{
+	struct sde_kms *sde_kms;
+	struct hfi_kms *hfi_kms;
+	struct hfi_client_t *hfi_client;
+	struct dsi_display_mode_priv_info *priv_info;
+	u32 payload[3]; /* [0] = cmd_type, [1] = cmd_flags (reserved), [2] = reserved */
+	u32 hfi_cmd = HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE;
+	u32 flags = HFI_HOST_FLAGS_NON_DISCARDABLE;
+	u32 obj_id;
+	bool is_standard, is_custom;
+	int cmd_idx;
+	int rc = 0;
+
+	if (resp_req)
+		flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
+
+	if (!display || !display->dsi_hfi_info || !display->drm_conn) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	/* Validate panel and mode configuration */
+	if (!display->panel || !display->panel->cur_mode || !display->panel->cur_mode->priv_info) {
+		DSI_ERR("Invalid panel or mode configuration\n");
+		return -EINVAL;
+	}
+
+	priv_info = display->panel->cur_mode->priv_info;
+	obj_id = sde_conn_get_display_obj_id(display->drm_conn);
+
+	SDE_EVT32(obj_id, hfi_cmd, cmd_type, resp_req, SDE_EVTLOG_FUNC_ENTRY);
+
+	/* Validate cmd_type: must be a standard or custom DCS command type */
+	is_standard = (cmd_type < DSI_CMD_SET_MAX);
+	is_custom = (cmd_type >= DSI_CUSTOM_CMD_SET_START_IDX &&
+		     cmd_type < DSI_CUSTOM_CMD_SET_MAX);
+	if (!is_standard && !is_custom) {
+		DSI_ERR("Invalid cmd_type %u: must be < %u (standard) or in [%u, %u) (custom)\n",
+			cmd_type, DSI_CMD_SET_MAX,
+			DSI_CUSTOM_CMD_SET_START_IDX, DSI_CUSTOM_CMD_SET_MAX);
+		return -EINVAL;
+	}
+
+	/* Validate command set at cmd_type exists and is non-empty */
+	cmd_idx = dsi_cmd_type_to_index(cmd_type);
+	if (cmd_idx < 0 || cmd_idx >= DSI_CMD_SET_TOTAL_SIZE) {
+		DSI_ERR("Invalid cmd_idx=%d for cmd_type=%u\n", cmd_idx, cmd_type);
+		return -EINVAL;
+	}
+
+	if (!priv_info->cmd_sets[cmd_idx].count) {
+		DSI_ERR("Empty cmd set at cmd_idx=%d for cmd_type=%u\n", cmd_idx, cmd_type);
+		return -EINVAL;
+	}
+
+	payload[0] = cmd_type;
+	payload[1] = 0; /* reserved */
+	payload[2] = 0; /* reserved */
+
+	sde_kms = sde_connector_get_kms(display->drm_conn);
+	if (!sde_kms) {
+		DSI_ERR("Failed to get sde_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_kms = to_hfi_kms(sde_kms);
+	if (!hfi_kms) {
+		DSI_ERR("Failed to get hfi_kms\n");
+		return -EINVAL;
+	}
+
+	hfi_client = &hfi_kms->hfi_client;
+
+	SDE_EVT32(obj_id, hfi_cmd, cmd_type, cmd_idx, priv_info->cmd_sets[cmd_idx].count,
+			is_standard, is_custom, resp_req, SDE_EVTLOG_FUNC_CASE1);
+	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd,
+					  display->display_type,
+					  HFI_PAYLOAD_TYPE_U32_ARRAY,
+					  payload, sizeof(payload),
+					  flags);
+	if (rc)
+		DSI_ERR("Could not send HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE cmd_type=%u, rc=%d\n",
+			cmd_type, rc);
+
+	SDE_EVT32(obj_id, hfi_cmd, cmd_type, rc, SDE_EVTLOG_FUNC_EXIT);
 	return rc;
 }
 
