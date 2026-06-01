@@ -382,7 +382,7 @@ int _sde_wb_lsr_set_reproj_info(
 				&c_state->property_state, &sz, idx);
 
 	if (opq_blob == NULL) {
-		SDE_DEBUG("opq_blob is NULL\n");
+		SDE_WARN("opq_blob is NULL\n");
 		return 0;
 	}
 
@@ -392,16 +392,14 @@ int _sde_wb_lsr_set_reproj_info(
 
 	if (opq_state_config->buf) {
 		msm_gem_put_buffer(opq_state_config->buf);
-		mutex_lock(&dev->struct_mutex);
-		msm_gem_free_object(opq_state_config->buf);
-		mutex_unlock(&dev->struct_mutex);
+		drm_gem_object_put(opq_state_config->buf);
 		opq_state_config->buf = NULL;
 	}
 
 	opq_state_config->buf =  msm_gem_new(dev, opq_blob->size, MSM_BO_UNCACHED);
 	if (IS_ERR_OR_NULL(opq_state_config->buf)) {
 		rc = PTR_ERR(opq_state_config->buf);
-		SDE_DEBUG("Failed to allocate reproj buf memory :%d\n", rc);
+		SDE_ERROR("Failed to allocate reproj buf memory :%d\n", rc);
 		return rc;
 	}
 	/**
@@ -439,9 +437,7 @@ int _sde_wb_lsr_set_reproj_info(
 put_iova:
 	msm_gem_put_buffer(opq_state_config->buf);
 free_gem:
-	mutex_lock(&dev->struct_mutex);
-	msm_gem_free_object(opq_state_config->buf);
-	mutex_unlock(&dev->struct_mutex);
+	drm_gem_object_put(opq_state_config->buf);
 	return rc;
 }
 
