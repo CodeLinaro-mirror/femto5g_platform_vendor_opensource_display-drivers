@@ -240,8 +240,15 @@ static irqreturn_t dp_display_irq(int irq, void *dev_id)
 	}
 
 	/* DP HPD isr */
-	if (dp->hpd->type ==  DP_HPD_LPHW)
+	if (dp->hpd->type == DP_HPD_LPHW) {
+		if (dp_display_state_is(DP_STATE_SUSPENDED) &&
+				dp->parser->force_connect_mode)
+			dp->hpd->skip_isr = true;
+		else
+			dp->hpd->skip_isr = false;
+
 		dp->hpd->isr(dp->hpd);
+	}
 
 	/* DP controller isr */
 	dp->ctrl->isr(dp->ctrl);
@@ -4180,6 +4187,8 @@ static void dp_pm_complete(struct device *dev)
 	if (dp->parser && dp->parser->force_connect_mode) {
 		u32 sim_mode = 0;
 		dp_sim_get_sim_mode(dp->aux_bridge, &sim_mode);
+
+		dp->hpd->get_gpio_hpd(dp->hpd);
 		DP_INFO("sim_mode=0x%X  hpd=%d\n", sim_mode, dp->hpd->hpd_high);
 		if (sim_mode && dp->hpd->hpd_high) {
 			/*

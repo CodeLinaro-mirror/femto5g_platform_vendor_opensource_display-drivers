@@ -62,6 +62,7 @@ struct dp_hpd_cb {
  * @type: type of HPD
  * @orientation: plug orientation configuration, USBPD type only.
  * @hpd_high: Hot Plug Detect signal is high.
+ * @skip_isr: a flag for if skip the hpd isr process.
  * @hpd_irq: Change in the status since last message
  * @alt_mode_cfg_done: bool to specify alt mode status
  * @multi_func: multi-function preferred, USBPD type only
@@ -75,11 +76,13 @@ struct dp_hpd_cb {
  * @simulate_connect: simulate disconnect or connect for debug mode
  * @simulate_attention: simulate attention messages for debug mode
  * @wakeup_phy: wakeup USBPD phy layer
+ * @get_gpio_hpd: get current gpio hpd state
  */
 struct dp_hpd {
 	enum dp_hpd_type type;
 	u32 orientation;
 	bool hpd_high;
+	bool skip_isr;
 	bool hpd_irq;
 	bool alt_mode_cfg_done;
 	bool multi_func;
@@ -94,6 +97,7 @@ struct dp_hpd {
 	int (*simulate_connect)(struct dp_hpd *dp_hpd, bool hpd);
 	int (*simulate_attention)(struct dp_hpd *dp_hpd, int vdo);
 	void (*wakeup_phy)(struct dp_hpd *dp_hpd, bool wakeup);
+	void (*get_gpio_hpd)(struct dp_hpd *dp_hpd);
 };
 
 /**
