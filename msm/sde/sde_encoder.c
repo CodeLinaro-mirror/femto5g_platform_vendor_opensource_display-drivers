@@ -3738,6 +3738,7 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 
 		intf_mode = sde_encoder_get_intf_mode(drm_enc);
 		if (msm_is_mode_seamless_dms(msm_mode) ||
+				msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 				(msm_is_mode_seamless_dyn_clk(msm_mode) &&
 				 is_cmd_mode)) {
 			/* restore resource state before releasing them */
@@ -3758,6 +3759,7 @@ static int sde_encoder_virt_modeset_rc(struct drm_encoder *drm_enc,
 		}
 	} else {
 		if (msm_is_mode_seamless_dms(msm_mode) ||
+				msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 				(msm_is_mode_seamless_dyn_clk(msm_mode) &&
 				is_cmd_mode))
 			sde_encoder_resource_control(&sde_enc->base,
@@ -4376,6 +4378,7 @@ static void sde_encoder_populate_encoder_phys(struct drm_encoder *drm_enc,
 			 * new mode.
 			 */
 			if ((msm_is_mode_seamless_dms(msm_mode) ||
+				msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 				msm_is_mode_seamless_dyn_clk(msm_mode)) &&
 					phys->ops.restore)
 				phys->ops.restore(phys);
@@ -4390,6 +4393,7 @@ static void sde_encoder_populate_encoder_phys(struct drm_encoder *drm_enc,
 	}
 
 	if ((msm_is_mode_seamless_dms(msm_mode) ||
+			msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 			msm_is_mode_seamless_dyn_clk(msm_mode)) &&
 			sde_enc->cur_master->ops.restore)
 		sde_enc->cur_master->ops.restore(sde_enc->cur_master);
@@ -4484,6 +4488,7 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 			!(msm_is_mode_seamless_vrr(msm_mode)
 			|| msm_is_mode_seamless_dms(msm_mode)
 			|| msm_is_mode_seamless_dms_vid(msm_mode)
+			|| msm_is_mode_seamless_spr_mode_switch(msm_mode)
 			|| msm_is_mode_seamless_dyn_clk(msm_mode)))
 		kthread_init_delayed_work(&sde_enc->delayed_off_work,
 			sde_encoder_off_work);

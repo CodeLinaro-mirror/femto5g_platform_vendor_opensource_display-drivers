@@ -85,6 +85,7 @@ static inline bool _msm_seamless_for_crtc(struct drm_atomic_state *state,
 	if (msm_is_mode_seamless(msm_mode) ||
 		msm_is_mode_seamless_vrr(msm_mode) ||
 		msm_is_mode_seamless_emsync_fps_switch(msm_mode) ||
+		msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 		msm_is_mode_seamless_poms(msm_mode) ||
 		msm_is_mode_seamless_dms_vid(msm_mode) ||
 		msm_is_mode_seamless_dyn_clk(msm_mode))
@@ -145,6 +146,7 @@ static inline bool _msm_seamless_for_conn(struct drm_connector *connector,
 		msm_is_mode_seamless_vrr(msm_mode) ||
 		msm_is_mode_seamless_dyn_clk(msm_mode) ||
 		msm_is_mode_seamless_emsync_fps_switch(msm_mode) ||
+		msm_is_mode_seamless_spr_mode_switch(msm_mode) ||
 		msm_is_mode_seamless_dms_vid(msm_mode) ||
 		msm_is_mode_seamless_dms(msm_mode))
 		return true;
