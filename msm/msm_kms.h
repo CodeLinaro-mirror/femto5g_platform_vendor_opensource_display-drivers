@@ -169,6 +169,9 @@ struct msm_kms {
 
 	/* DRM client used for lastclose cleanup */
 	struct drm_client_dev client;
+
+	/* indicates if lastclose cleanup is active */
+	atomic_t lastclose_active;
 };
 
 /**
