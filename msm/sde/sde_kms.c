@@ -6763,7 +6763,7 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 	struct msm_drm_private *priv)
 {
 	int i, rc = -EINVAL;
-	struct sde_qultivate_config_v1 *config_v1 = NULL;
+	struct sde_qultivate_config *qultiv_cfg = NULL;
 
 	sde_kms->catalog = sde_hw_catalog_init(dev);
 	if (IS_ERR_OR_NULL(sde_kms->catalog)) {
@@ -6898,12 +6898,10 @@ static int _sde_kms_hw_init_blocks(struct sde_kms *sde_kms,
 		goto drm_obj_init_err;
 	}
 
-	if (sde_kms->catalog->qultivate_rev == SDE_QULTIVATE_SW_REV1 &&
-			sde_kms->catalog->qultivate_cfg) {
-		config_v1 = sde_kms->catalog->qultivate_cfg;
-		priv->phandle.gdsc2_blocked = config_v1->enabled &&
-			config_v1->gdsc2_blocked;
-	}
+	qultiv_cfg = sde_kms->catalog->qultivate_cfg;
+	if (qultiv_cfg)
+		priv->phandle.gdsc2_blocked = qultiv_cfg->enabled &&
+			qultiv_cfg->gdsc2_blocked;
 
 	return 0;
 
