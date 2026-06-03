@@ -595,6 +595,14 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 
 	drm_enc = &sde_enc->base;
 
+	if ((hfi_enc->panic_events_state && enable)
+		|| (!hfi_enc->panic_events_state && !enable)) {
+		SDE_DEBUG("enc:%d redundant panic events register - enable:%d, state:%d\n",
+			DRMID(drm_enc), enable, hfi_enc->panic_events_state);
+		SDE_EVT32(DRMID(drm_enc), enable, hfi_enc->panic_events_state, SDE_EVTLOG_ERROR);
+		return 0;
+	}
+
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
 		MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
 	if (!cmd_buf) {
@@ -643,6 +651,8 @@ static int hfi_enc_set_panic_events(struct sde_encoder_virt *enc, bool enable)
 		SDE_ERROR("failed to send panic subscribe command\n");
 		return ret;
 	}
+
+	hfi_enc->panic_events_state = enable;
 
 	return ret;
 }
@@ -836,6 +846,7 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 {
 	int ret = 0;
 	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+	struct drm_encoder *drm_enc = &enc->base;
 
 	if (!hfi_enc || event >= MSM_ENC_EVENT_MAX)
 		return -EINVAL;
@@ -843,6 +854,17 @@ static int hfi_enc_enable_hw_event(struct sde_encoder_virt *enc, u32 event, bool
 	if (event == MSM_ENC_VBLANK || event == MSM_ENC_COMMIT_DONE ||
 			event == MSM_ENC_HW_RECOVERY || event == MSM_ENC_TX_COMPLETE ||
 			event == MSM_ENC_CAPTURE_COMPLETE || event == MSM_ENC_MISR) {
+		/* avoid redundant register/unregister events */
+		if ((enable && hfi_enc->hw_events_state[event].state)
+				|| (!enable && !hfi_enc->hw_events_state[event].state)) {
+			SDE_DEBUG("enc:%d redundant event register - event:0x%x, en:%d, st:%d\n",
+				DRMID(drm_enc), event, enable,
+				hfi_enc->hw_events_state[event].state);
+			SDE_EVT32(DRMID(drm_enc), event, enable,
+				hfi_enc->hw_events_state[event].state, SDE_EVTLOG_ERROR);
+			return 0;
+		}
+
 		ret = _hfi_enc_register_hw_event(enc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("failed to send event register ret:%d\n", ret);
@@ -1929,6 +1951,9 @@ int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
 
 	sde_enc->hfi_encoder = hfi_enc;
 	hfi_enc->sde_base = sde_enc;
+
+	memset(&hfi_enc->hw_events_state, 0, sizeof(struct hw_event_state) * MSM_ENC_EVENT_MAX);
+	hfi_enc->panic_events_state = false;
 
 	return 0;
 }

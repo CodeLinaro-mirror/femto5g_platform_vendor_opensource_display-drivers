@@ -1043,6 +1043,25 @@ static int _hfi_crtc_hw_event_set_buff(struct sde_crtc *crtc, u32 payload,
 	return 0;
 }
 
+static bool _is_hfi_crtc_enable_hw_event_required(struct sde_crtc *crtc,
+		enum hfi_crtc_event event, bool enable)
+{
+	struct hfi_crtc *hfi_crtc = to_hfi_crtc(crtc);
+
+	/* avoid redundant register/unregister events */
+	if ((enable && hfi_crtc->hw_events_state[event].state)
+			|| (!enable && !hfi_crtc->hw_events_state[event].state)) {
+		SDE_DEBUG("crtc:%d redundant event register - event:0x%x, enable:%d, state:%d\n",
+			DRMID(&crtc->base), event, enable,
+			hfi_crtc->hw_events_state[event].state);
+		SDE_EVT32(DRMID(&crtc->base), event, enable,
+			hfi_crtc->hw_events_state[event].state, SDE_EVTLOG_ERROR);
+		return false;
+	}
+
+	return true;
+}
+
 static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enable)
 {
 	int ret = 0;
@@ -1061,6 +1080,9 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 
 	switch (event) {
 	case HFI_EVENT_LTM:
+		if (!_is_hfi_crtc_enable_hw_event_required(crtc, HFI_CRTC_EVENT_LTM, enable))
+			break;
+
 		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("event registration failed: event %d, enable %d\n",
@@ -1072,6 +1094,9 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_LTM].pending = false;
 		break;
 	case HFI_EVENT_RGB_HIST:
+		if (!_is_hfi_crtc_enable_hw_event_required(crtc, HFI_CRTC_EVENT_RGB_HIST, enable))
+			break;
+
 		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("event registration failed: event %d, enable %d\n",
@@ -1083,6 +1108,9 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_RGB_HIST].pending = false;
 		break;
 	case HFI_EVENT_PA_HIST:
+		if (!_is_hfi_crtc_enable_hw_event_required(crtc, HFI_CRTC_EVENT_PA_HIST, enable))
+			break;
+
 		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("event registration failed: event %d, enable %d\n",
@@ -1094,6 +1122,9 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 		hfi_crtc->hw_events_state[HFI_CRTC_EVENT_PA_HIST].pending = false;
 		break;
 	case HFI_EVENT_SPR_OPR:
+		if (!_is_hfi_crtc_enable_hw_event_required(crtc, HFI_CRTC_EVENT_SPR_OPR, enable))
+			break;
+
 		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("event registration failed: event %d, enable %d\n",
@@ -1106,6 +1137,9 @@ static int hfi_crtc_enable_hw_event(struct sde_crtc *crtc, u32 event, bool enabl
 		break;
 
 	case HFI_EVENT_AIQE_COPR:
+		if (!_is_hfi_crtc_enable_hw_event_required(crtc, HFI_CRTC_EVENT_AIQE_COPR, enable))
+			break;
+
 		ret = _hfi_crtc_hw_event_set_buff(crtc, event, enable, false);
 		if (ret) {
 			SDE_ERROR("event registration failed: event %d, enable %d\n",
@@ -1213,6 +1247,9 @@ int hfi_crtc_init(struct sde_crtc *sde_crtc)
 	crtc->hfi_cb_obj.hfi_prop_handler = hfi_crtc_prop_handler;
 	crtc->sde_base = sde_crtc;
 	sde_crtc->hfi_crtc = crtc;
+
+	memset(&crtc->hw_events_state, 0, sizeof(struct crtc_hw_event_state) * HFI_CRTC_EVENT_MAX);
+
 	return 0;
 
 free_kv:
