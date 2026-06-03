@@ -820,7 +820,7 @@ static int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 	struct drm_crtc *crtc;
 	struct hfi_crtc *hfi_crtc;
 	struct misr_read_data misr_read;
-	u32 disp_id;
+	u32 disp_id, packet_id = 0;
 
 	hfi_kms = sde_crtc_get_kms(sde_crtc);
 	if (!hfi_kms)
@@ -855,7 +855,7 @@ static int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 			HFI_COMMAND_DEBUG_MISR_READ, disp_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &misr_read, sizeof(misr_read),
 			&hfi_crtc->misr_read_listener, (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
-			HFI_HOST_FLAGS_NON_DISCARDABLE));
+			HFI_HOST_FLAGS_NON_DISCARDABLE), true, &packet_id);
 	if (rc)
 		SDE_ERROR("Failed to add MISR read command!\n");
 
@@ -998,7 +998,7 @@ static int _hfi_crtc_hw_event_set_buff(struct sde_crtc *crtc, u32 payload,
 	struct hfi_crtc *hfi_crtc = to_hfi_crtc(crtc);
 	struct hfi_kms *hfi_kms = sde_crtc_get_kms(crtc);
 	struct hfi_cmdbuf_t *cmd_buf;
-	u32 cmd, display_id = 0;
+	u32 cmd, display_id = 0, packet_id = 0;
 	int ret = 0;
 
 	if (!hfi_crtc || !hfi_kms) {
@@ -1024,7 +1024,7 @@ static int _hfi_crtc_hw_event_set_buff(struct sde_crtc *crtc, u32 payload,
 	ret = hfi_adapter_add_get_property(cmd_buf->ctx, cmd_buf, cmd,
 			display_id, HFI_PAYLOAD_TYPE_U32,
 			&payload, sizeof(payload), &hfi_crtc->hfi_cb_obj,
-			HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_NON_DISCARDABLE, false, &packet_id);
 	if (ret) {
 		SDE_ERROR("failed to update event: 0x%x\n", payload);
 		return ret;
