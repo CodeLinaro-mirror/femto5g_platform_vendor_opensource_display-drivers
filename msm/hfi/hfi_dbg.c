@@ -238,7 +238,7 @@ static void hfi_dbg_add_va_region(void)
 			hfi_dbg->buff_map.dbg_bus_addr.local_addr);
 }
 #else
-void hfi_dbg_add_va_region(void)
+static void hfi_dbg_add_va_region(void)
 {
 
 }
