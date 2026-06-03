@@ -7062,12 +7062,14 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	dev->mode_config.allow_fb_modifiers = true;
 #endif
 
-	sde_kms->affinity_notify.notify = sde_kms_irq_affinity_notify;
-	sde_kms->affinity_notify.release = sde_kms_irq_affinity_release;
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
+		sde_kms->affinity_notify.notify = sde_kms_irq_affinity_notify;
+		sde_kms->affinity_notify.release = sde_kms_irq_affinity_release;
 
-	irq_num = platform_get_irq(to_platform_device(sde_kms->dev->dev), 0);
-	SDE_DEBUG("Registering for notification of irq_num: %d\n", irq_num);
-	irq_set_affinity_notifier(irq_num, &sde_kms->affinity_notify);
+		irq_num = platform_get_irq(to_platform_device(sde_kms->dev->dev), 0);
+		SDE_DEBUG("Registering for notification of irq_num: %d\n", irq_num);
+		irq_set_affinity_notifier(irq_num, &sde_kms->affinity_notify);
+	}
 
 	perf_cfg.min_bw_kbps = sde_kms->catalog->perf.max_bw_low;
 	perf_cfg.max_bw_kbps = sde_kms->catalog->perf.max_bw_high;
