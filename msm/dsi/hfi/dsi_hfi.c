@@ -71,6 +71,9 @@ static int _dsi_display_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 		return -EINVAL;
 	}
 
+	if (display->panel)
+		atomic_set(&display->panel->ssr_in_progress, 1);
+
 	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi) {
 		DSI_ERR("invalid display hfi handle\n");
@@ -118,6 +121,9 @@ static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 		DSI_ERR("failed to send panel init to DCP: %d", rc);
 		return rc;
 	}
+
+	if (display->panel)
+		atomic_set(&display->panel->ssr_in_progress, 0);
 
 	return rc;
 }
