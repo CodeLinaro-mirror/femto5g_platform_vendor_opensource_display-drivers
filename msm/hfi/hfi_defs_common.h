@@ -304,7 +304,8 @@ struct hfi_prop_u64 {
 #define HFI_BUFF_FEATURE_HW_BLK_IDX_1   (1 << 3)
 #define HFI_BUFF_FEATURE_HW_BLK_IDX_2   (1 << 4)
 #define HFI_BUFF_FEATURE_HW_BLK_IDX_3   (1 << 5)
-
+#define HFI_BUFF_3D_LUT_MODE_A          (1 << 16)
+#define HFI_BUFF_3D_LUT_MODE_B          (1 << 17)
 /*
  * struct hfi_buff_dpu - hfi buffer accessible by dpu
  * @flags    :  flags
