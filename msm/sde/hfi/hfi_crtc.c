@@ -868,12 +868,12 @@ static int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 
 }
 #else
-int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
+static int hfi_crtc_debugfs_misr_setup(struct sde_crtc *sde_crtc)
 {
 	return 0;
 }
 
-int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
+static int hfi_crtc_debugfs_misr_read(struct sde_crtc *sde_crtc)
 {
 	return 0;
 }
