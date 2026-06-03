@@ -177,6 +177,8 @@ static struct sde_crtc_custom_events custom_events[] = {
 #define MAX_FRAME_COUNT			1000
 #define MILI_TO_MICRO			1000
 
+#define PM_QOS_FPS_THRESHOLD	30
+
 #define SKIP_STAGING_PIPE_ZPOS		255
 
 static void sde_crtc_install_noise_layer_properties(struct sde_crtc *sde_crtc,
@@ -3988,6 +3990,34 @@ static void _sde_crtc_frame_done_notify(struct drm_crtc *crtc,
 	}
 }
 
+static inline void sde_crtc_pm_qos_update(struct drm_crtc *crtc, bool add)
+{
+	struct drm_encoder *drm_enc;
+
+	if (!crtc || !crtc->dev) {
+		SDE_ERROR("Invalid crtc or dev");
+		return;
+	}
+
+	if (drm_mode_vrefresh(&crtc->mode) > PM_QOS_FPS_THRESHOLD)
+		return;
+
+	drm_for_each_encoder(drm_enc, crtc->dev) {
+		if (drm_enc->crtc != crtc)
+			continue;
+
+		if (sde_encoder_in_clone_mode(drm_enc) ||
+			!sde_encoder_check_curr_mode(drm_enc, MSM_DISPLAY_CMD_MODE))
+			continue;
+
+		if (add)
+			sde_encoder_pm_qos_add_request(drm_enc);
+		else
+			sde_encoder_pm_qos_remove_request(drm_enc);
+		break;
+	}
+}
+
 static void sde_crtc_frame_event_work(struct kthread_work *work)
 {
 	struct msm_drm_private *priv;
@@ -4070,6 +4100,9 @@ static void sde_crtc_frame_event_work(struct kthread_work *work)
 		sde_fence_signal(sde_crtc->output_fence, fevent->ts,
 				(fevent->event & SDE_ENCODER_FRAME_EVENT_ERROR)
 				? SDE_FENCE_SIGNAL_ERROR : SDE_FENCE_SIGNAL, NULL);
+
+		sde_crtc_pm_qos_update(crtc, false);
+
 		_sde_crtc_frame_done_notify(crtc, fevent);
 		SDE_ATRACE_END("signal_release_fence");
 	}
@@ -4084,6 +4117,7 @@ static void sde_crtc_frame_event_work(struct kthread_work *work)
 		_sde_crtc_retire_event(fevent->connector, fevent->ts,
 				(fevent->event & SDE_ENCODER_FRAME_EVENT_ERROR)
 				? SDE_FENCE_SIGNAL_ERROR : SDE_FENCE_SIGNAL);
+		sde_crtc_pm_qos_update(crtc, true);
 	}
 
 	if (fevent->event & SDE_ENCODER_FRAME_EVENT_PANEL_DEAD)
