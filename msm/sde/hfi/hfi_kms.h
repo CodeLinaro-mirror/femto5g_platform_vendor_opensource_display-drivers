@@ -62,6 +62,7 @@
  * @ds_count		count of destination scaler blocks
  * @ds_indices		DS block indices
  * @max_ds_resolution	Max resolution support of DS
+ * @active_pipes_mask	Array of active pipes mask
  */
 struct hfi_catalog_base {
 	u32 dcp_hw_rev;
@@ -97,6 +98,7 @@ struct hfi_catalog_base {
 	u32 ds_count;
 	u32 ds_indices[MAX_BLOCKS];
 	u32 max_ds_resolution;
+	u32 active_pipes_mask[MAX_SPLASH_DISPLAYS];
 };
 
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)

@@ -9381,6 +9381,7 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 	struct drm_bridge *bridge;
 	int ret = 0, i;
 	struct msm_sub_mode sub_mode;
+	enum msm_disp_op disp_op;
 
 	if (!encoder) {
 		SDE_ERROR("invalid drm enc\n");
@@ -9394,6 +9395,7 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 		return -EINVAL;
 	}
 
+	disp_op = sde_encoder_get_disp_op(encoder);
 	priv = encoder->dev->dev_private;
 
 	if (!priv->num_connectors) {
@@ -9498,6 +9500,9 @@ int sde_encoder_update_caps_for_cont_splash(struct drm_encoder *encoder,
 	} else {
 		SDE_ERROR_ENC(sde_enc, "No bridge attached to encoder\n");
 	}
+
+	if (IS_DISP_OP_HFI(disp_op))
+		return ret;
 
 	_sde_encoder_cache_hw_res_cont_splash(encoder, sde_kms);
 

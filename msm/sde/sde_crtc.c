@@ -10557,6 +10557,7 @@ void sde_crtc_update_cont_splash_settings(struct drm_crtc *crtc)
 	struct msm_drm_private *priv;
 	struct sde_crtc *sde_crtc;
 	u64 rate;
+	enum msm_disp_op disp_op;
 
 	if (!crtc || !crtc->state || !crtc->dev || !crtc->dev->dev_private) {
 		SDE_ERROR("invalid crtc\n");
@@ -10574,12 +10575,15 @@ void sde_crtc_update_cont_splash_settings(struct drm_crtc *crtc)
 	sde_cp_crtc_refresh_status_properties(crtc);
 	crtc->enabled = true;
 
-	/* update core clk value for initial state with cont-splash */
-	sde_crtc = to_sde_crtc(crtc);
-	rate = sde_power_clk_get_rate(&priv->phandle, kms->perf.clk_name);
-	sde_crtc->cur_perf.core_clk_rate = (rate > 0) ?
-					rate : kms->perf.max_core_clk_rate;
-	sde_crtc->cur_perf.core_clk_rate = kms->perf.max_core_clk_rate;
+	disp_op = sde_crtc_get_disp_op(crtc);
+	if (IS_DISP_OP_HWIO(disp_op)) {
+		/* update core clk value for initial state with cont-splash */
+		sde_crtc = to_sde_crtc(crtc);
+		rate = sde_power_clk_get_rate(&priv->phandle, kms->perf.clk_name);
+		sde_crtc->cur_perf.core_clk_rate = (rate > 0) ?
+						rate : kms->perf.max_core_clk_rate;
+		sde_crtc->cur_perf.core_clk_rate = kms->perf.max_core_clk_rate;
+	}
 }
 
 static void sde_crtc_install_noise_layer_properties(struct sde_crtc *sde_crtc,
