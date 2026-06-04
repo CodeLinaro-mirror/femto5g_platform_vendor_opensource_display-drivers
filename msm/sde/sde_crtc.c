@@ -1123,7 +1123,9 @@ static struct sde_connector_state *_sde_crtc_get_sde_connector_state(struct drm_
 			if (!conn_state || conn_state->crtc != crtc)
 				continue;
 
-			if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+			if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL &&
+				sde_connector_get_property(conn_state,
+					CONNECTOR_PROP_WB_USAGE_TYPE) == WB_USAGE_CWB)
 				continue;
 
 			c_conn_state = to_sde_connector_state(conn_state);
@@ -1135,7 +1137,9 @@ static struct sde_connector_state *_sde_crtc_get_sde_connector_state(struct drm_
 			if (conn->state && (conn->state->crtc != crtc))
 				continue;
 
-			if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL)
+			if (conn->connector_type == DRM_MODE_CONNECTOR_VIRTUAL &&
+				sde_connector_get_property(conn->state,
+					CONNECTOR_PROP_WB_USAGE_TYPE) == WB_USAGE_CWB)
 				continue;
 
 			c_conn_state = to_sde_connector_state(conn->state);
