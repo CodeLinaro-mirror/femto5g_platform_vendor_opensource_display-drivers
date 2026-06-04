@@ -2150,6 +2150,9 @@ static void dp_display_connect_work(struct work_struct *work)
 			dp->aux->abort(dp->aux, false);
 			dp->ctrl->abort(dp->ctrl, false);
 			reset_connector = dp->dp_display.base_connector;
+		} else if (dp->parser->force_connect_mode && dp->mst.mst_active) {
+			dp->aux->abort(dp->aux, false);
+			dp->ctrl->abort(dp->ctrl, false);
 		} else {
 			dp_display_clean(dp, false);
 			dp_display_host_unready(dp);
@@ -2159,7 +2162,7 @@ static void dp_display_connect_work(struct work_struct *work)
 	}
 
 	if (dp->parser->force_connect_mode) {
-		if (!reset_connector) {
+		if (!reset_connector && !dp->mst.mst_active) {
 			dp_display_clean(dp, false);
 			dp_display_host_unready(dp);
 			dp_display_host_deinit(dp);
