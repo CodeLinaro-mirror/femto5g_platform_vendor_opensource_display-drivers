@@ -8402,6 +8402,10 @@ static void sde_crtc_setup_capabilities_blob(struct sde_kms_info *info,
 
 	sde_kms_info_add_keyint(info, "has_demura_single_rect_support",
 			catalog->has_demura_single_rect_support);
+
+	if (test_bit(SDE_FEATURE_BATCH_COMMIT, catalog->features) &&
+			test_bit(SDE_FEATURE_GMU_REPROJ, catalog->features))
+		sde_kms_info_add_keyint(info, "max_lsr_batch_size", 2);
 }
 
 /**
@@ -8627,6 +8631,23 @@ static void sde_crtc_install_properties(struct drm_crtc *crtc,
 			ARRAY_SIZE(e_display_op_idx),
 			IS_DISP_OP_HFI(priv->disp_op) ? 1 : 0,
 			CRTC_PROP_DISPLAY_OP);
+
+	if (test_bit(SDE_FEATURE_BATCH_COMMIT, catalog->features)) {
+		static const struct drm_prop_enum_list e_batch_type[] = {
+			{MSM_MDP_BATCH_TYPE_NONE, "batch_type_none"},
+			{MSM_MDP_BATCH_TYPE_LSR,  "batch_type_lsr"},
+		};
+		msm_property_install_range(&sde_crtc->property_info,
+			"batch_size", 0x0, 0, U32_MAX, 0,
+			CRTC_PROP_BATCH_SIZE);
+		msm_property_install_range(&sde_crtc->property_info,
+			"batch_index", 0x0, 0, U32_MAX, 0,
+			CRTC_PROP_BATCH_INDEX);
+		msm_property_install_enum(&sde_crtc->property_info,
+			"batch_type", 0x0, 0, e_batch_type,
+			ARRAY_SIZE(e_batch_type), 0,
+			CRTC_PROP_BATCH_TYPE);
+	}
 
 	vfree(info);
 }

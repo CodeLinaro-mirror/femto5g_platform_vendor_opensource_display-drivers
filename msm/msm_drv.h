@@ -233,6 +233,9 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_FLUSH_SYNC_EN,
 	CRTC_PROP_DISPLAY_OP,
 	CRTC_PROP_LSR_MODE,
+	CRTC_PROP_BATCH_SIZE,
+	CRTC_PROP_BATCH_INDEX,
+	CRTC_PROP_BATCH_TYPE,
 
 	/* total # of properties */
 	CRTC_PROP_COUNT
@@ -284,6 +287,7 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_PRIVACY_LAYER_V1,
 	CONNECTOR_PROP_PRIVACY_LAYER_V2,
 	CONNECTOR_PROP_VSYNC_OFFSET,
+	CONN_PROP_GMU_DCP_INTF_MEM,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -1316,6 +1320,16 @@ enum msm_disp_op {
 enum lsr_mode {
 	MSM_DISP_LSR_MODE_DISABLED,
 	MSM_DISP_LSR_MODE_ENABLED,
+};
+
+/**
+ * enum msm_mdp_batch_type: batch submission type for Pikachu
+ * @MSM_MDP_BATCH_TYPE_NONE: no batching
+ * @MSM_MDP_BATCH_TYPE_LSR:  LSR batch submission
+ */
+enum msm_mdp_batch_type {
+	MSM_MDP_BATCH_TYPE_NONE = 0,
+	MSM_MDP_BATCH_TYPE_LSR  = 1,
 };
 
 struct msm_drm_private {
