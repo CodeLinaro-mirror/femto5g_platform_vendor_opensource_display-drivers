@@ -295,7 +295,6 @@ int dp_lphw_hpd_register(struct dp_hpd *dp_hpd)
 		DP_ERR("Failed to request INTP threaded IRQ: %d\n", rc);
 		return rc;
 	}
-	enable_irq_wake(lphw_hpd->irq);
 
 	if (lphw_hpd->hpd)
 		queue_work(lphw_hpd->connect_wq, &lphw_hpd->connect);
