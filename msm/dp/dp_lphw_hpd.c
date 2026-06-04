@@ -357,6 +357,7 @@ static void dp_lphw_hpd_get_gpio_hpd(struct dp_hpd *dp_hpd)
 
 	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
 	lphw_hpd->base.hpd_high = hpd;
+	lphw_hpd->hpd = hpd;
 	DP_INFO("DP get gpio hpd %d.\n", lphw_hpd->base.hpd_high);
 }
 
