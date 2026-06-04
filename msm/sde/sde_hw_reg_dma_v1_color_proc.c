@@ -8380,10 +8380,14 @@ void reg_dmav1_setup_demura_cfg0_param2(struct sde_hw_dspp *ctx, void *cfg)
 		DRM_ERROR("write decode select failed ret %d\n", rc);
 		return;
 	}
+	len = dcfg->cfg0_param2_len;
+	if (!len || len > CFG0_PARAM2_LEN) {
+		DRM_ERROR("invalid cfg0_param2_len %d, max %d\n", len, CFG0_PARAM2_LEN);
+		return;
+	}
 	temp = kvzalloc(sizeof(struct drm_msm_dem_cfg0_param2), GFP_KERNEL);
 	if (!temp)
 		return;
-	len = dcfg->cfg0_param2_len;
 	for (i = 0; i < 3; i++) {
 		if (!i)
 			p = dcfg->cfg0_param2_c0;
@@ -8473,6 +8477,10 @@ void reg_dmav1_setup_demura_cfg0_param2_v4(struct sde_hw_dspp *ctx, void *cfg)
 	if (!temp)
 		return;
 	len = dcfg->cfg0_param2_len;
+	if (!len || len > CFG0_PARAM2_LEN) {
+		DRM_ERROR("invalid cfg0_param2_len %d, max %d\n", len, CFG0_PARAM2_LEN);
+		goto exit;
+	}
 	for (i = 0; i < 3; i++) {
 		if (!i)
 			p = dcfg->cfg0_param2_c0;
