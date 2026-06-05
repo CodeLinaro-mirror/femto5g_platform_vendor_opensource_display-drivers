@@ -362,6 +362,13 @@ struct sde_hw_ctl_ops {
 	u32 (*get_flush_register)(struct sde_hw_ctl *ctx);
 
 	/**
+	 * Read the value of the flush complete register
+	 * @ctx       : ctl path ctx pointer
+	 * @Return: value of the ctl flush complete register.
+	 */
+	u32 (*get_flush_complete_register)(struct sde_hw_ctl *ctx);
+
+	/**
 	 * Setup ctl_path interface config
 	 * @ctx
 	 * @cfg    : interface config structure pointer
