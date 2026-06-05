@@ -6852,6 +6852,10 @@ void reg_dmav2_setup_vig_gamutv61(struct sde_hw_pipe *ctx, void *cfg)
 		scale_offset = GAMUT_SCALEB_OFFSET_OFF;
 	}
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= (op_mode == gamut_mode_17) ? HFI_BUFF_3D_LUT_MODE_A :
+		HFI_BUFF_3D_LUT_MODE_B;
+#endif
 	op_mode <<= 2;
 	if (payload->flags & GAMUT_3D_MAP_EN)
 		op_mode |= GAMUT_MAP_EN;
