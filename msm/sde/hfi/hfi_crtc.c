@@ -148,6 +148,7 @@ static int hfi_crtc_setup_resource_cfg(struct sde_crtc_state *cstate, struct sde
 		lm_cfg.resource_idx = 0;
 		lm_cfg.width = cstate->lm_roi[0].w;
 		lm_cfg.height = cstate->lm_roi[0].h;
+		lm_cfg.reserved = (cstate->lm_roi[0].x << 16) | (cstate->lm_roi[0].y);
 	} else {
 		lm_cfg.res_type = HFI_RESOURCE_LM;
 		lm_cfg.resource_idx = 0;
