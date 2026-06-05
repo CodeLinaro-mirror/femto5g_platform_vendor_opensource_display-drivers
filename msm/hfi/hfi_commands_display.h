@@ -667,6 +667,29 @@
  */
 #define HFI_COMMAND_DISPLAY_EXEC_DCS_CMD_TYPE                         0x0200001C
 
+/*
+ * HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET - From Host to DCP, this command instructs DCP to send
+ *                                            a set of DCS commands to the panel in a single
+ *                                            HFI operation, avoiding the per-command HFI overhead.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in display_header_data_page)
+ *
+ *     hfi packet layout        : Value
+ *     hfi_packet.payload_info (type): HFI_PAYLOAD_U32_ARRAY
+ *     hfi_packet.cmd           : HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET
+ *     hfi_packet.flags         : HFI_TX_FLAGS_INTR_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_RESPONSE_REQUIRED(optional) |
+ *     ^                        : HFI_TX_FLAGS_NON_DISCARDABLE
+ *     hfi_packet.id            : Bits 0:15 carry the display id
+ *     hfi_packet.packet_id     : unique id
+ *     hfi_packet.payload[0]    : struct hfi_dsi_cmd_desc_set
+ */
+#define HFI_COMMAND_DISPLAY_TRANSFER_DCS_CMD_SET                      0x0200001D
+
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_H__

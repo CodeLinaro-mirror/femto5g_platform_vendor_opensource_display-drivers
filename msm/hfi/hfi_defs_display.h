@@ -523,6 +523,36 @@ struct hfi_dsi_cmd_desc {
 };
 
 /*
+ * struct hfi_dsi_cmd_desc_set - hfi dcp transfer a set of dcs commands
+ * @size      : Total size of this struct including the trailing cmds array
+ *              in bytes. Used for backward compatibility.
+ * @type      : Command set type. Mirrors enum dsi_cmd_set_type, identifying
+ *              which panel command set (e.g. ON, OFF, LP1) this transfer
+ *              belongs to.
+ * @count     : Number of DCS commands in the set.
+ * @state     : Command state (LP/HS mode). Mirrors enum dsi_cmd_set_state:
+ *              0 = DSI_CMD_SET_STATE_LP (low power),
+ *              1 = DSI_CMD_SET_STATE_HS (high speed).
+ * @reserved1 : Reserved for future use.
+ * @reserved2 : Reserved for future use.
+ * @cmds      : Flexible array of DCS command descriptors; @count entries
+ *              of struct hfi_dsi_cmd_desc immediately follow this header
+ *              in the allocated buffer.
+ *
+ * The TX payload data for each command resides in DCP-mapped shared memory
+ * whose address is carried inside each hfi_dsi_cmd_desc entry.
+ */
+struct hfi_dsi_cmd_desc_set {
+	u32 size;
+	u32 type;
+	u32 count;
+	u32 state;
+	u32 reserved1; /* Reserved for future use */
+	u32 reserved2; /* Reserved for future use */
+	struct hfi_dsi_cmd_desc cmds[];
+};
+
+/*
  * enum hfi_display_blend_stage - Defines blending stages
  * @HFI_BLEND_STAGE_BASE    :  base layer
  * @HFI_BLEND_STAGE_0       :  Blend Stage #0(One base layer + one foreground layer)
