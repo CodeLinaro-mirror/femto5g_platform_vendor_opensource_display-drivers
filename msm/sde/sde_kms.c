@@ -4066,6 +4066,21 @@ static int sde_kms_check_vm_request(struct msm_kms *kms,
 	if (!vm_ops)
 		return 0;
 
+	/*
+	 * Wait for any in-progress VM HFI ACQUIRE to complete before
+	 * proceeding. A concurrent commit (e.g. FPS switch) slipping
+	 * through during the HFI window can set rsvp_nxt on the encoder,
+	 * causing the TUI-end commit to poll-timeout in sde_rm_reserve().
+	 */
+	if (unlikely(atomic_read(&sde_kms->tui_hfi_in_progress))) {
+		SDE_ATRACE_BEGIN("tui_hfi_wait");
+		if (!wait_event_timeout(sde_kms->tui_hfi_waitq,
+				!atomic_read(&sde_kms->tui_hfi_in_progress),
+				msecs_to_jiffies(33)))
+			SDE_WARN("tui hfi wait timed out, proceeding\n");
+		SDE_ATRACE_END("tui_hfi_wait");
+	}
+
 	if (!vm_ops->vm_request_valid || !vm_ops->vm_owns_hw || !vm_ops->vm_acquire)
 		return -EINVAL;
 
@@ -4328,7 +4343,10 @@ static int sde_kms_vm_state_update(struct sde_kms *sde_kms,
 	vm_req = sde_crtc_get_property(cstate, CRTC_PROP_VM_REQ_STATE);
 
 	if (IS_DISP_OP_HFI(disp_op) && (vm_req == VM_REQ_ACQUIRE)) {
+		atomic_set(&sde_kms->tui_hfi_in_progress, 1);
 		rc = hfi_kms_set_vm_state(crtc, new_cstate, HFI_DEVICE_RESOURCE_ACQUIRE);
+		atomic_set(&sde_kms->tui_hfi_in_progress, 0);
+		wake_up_all(&sde_kms->tui_hfi_waitq);
 		if (rc) {
 			SDE_ERROR("HFI vm state command failed ret =%u\n", rc);
 			return rc;
@@ -7050,6 +7068,9 @@ static int sde_kms_hw_init(struct msm_kms *kms)
 	dev->mode_config.max_height = sde_kms->catalog->max_display_height;
 
 	mutex_init(&sde_kms->secure_transition_lock);
+
+	atomic_set(&sde_kms->tui_hfi_in_progress, 0);
+	init_waitqueue_head(&sde_kms->tui_hfi_waitq);
 
 	atomic_set(&sde_kms->detach_sec_cb, 0);
 	atomic_set(&sde_kms->detach_all_cb, 0);
