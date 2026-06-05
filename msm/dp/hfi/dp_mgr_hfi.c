@@ -915,6 +915,8 @@ static int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 		goto end;
 	}
 
+	/* mutex protected at caller */
+
 	_aux_switch_enable(hfi_priv, true);
 
 	if (hfi_priv->tui_active) {
@@ -976,13 +978,20 @@ end:
 int dp_mgr_hfi_hpd_configure_cb(void *data)
 {
 	struct dp_mgr_hfi_priv *hfi_priv = data;
+	int rc;
 
 	if (!hfi_priv) {
 		DP_ERR("Invalid hfi_priv data\n");
 		return -EINVAL;
 	}
 
-	return _hpd_configure(hfi_priv, false);
+	mutex_lock(&hfi_priv->hpd_mutex);
+
+	rc = _hpd_configure(hfi_priv, false);
+
+	mutex_unlock(&hfi_priv->hpd_mutex);
+
+	return rc;
 }
 
 int dp_mgr_hfi_hpd_disconnect_cb(void *data)
@@ -1016,6 +1025,8 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 		goto end;
 	}
 
+	mutex_lock(&hfi_priv->hpd_mutex);
+
 	hfi_priv->connected = false;
 
 	_aux_switch_enable(hfi_priv, false);
@@ -1026,6 +1037,8 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 	_hfi_update_config(hfi_priv, &config);
 	_hfi_send_hot_plug(hfi_priv, &config);
 	DP_INFO("disconnected\n");
+
+	mutex_unlock(&hfi_priv->hpd_mutex);
 
 end:
 	return rc;
@@ -1103,15 +1116,21 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 
 	DP_DEBUG("hpd status from %d to %d irq %d\n", hfi_priv->connected, hpd_state, hpd_irq);
 
+	mutex_lock(&hfi_priv->hpd_mutex);
+
 	/* check if there was any change in state */
-	if ((hpd_state == hfi_priv->connected) && !hpd_irq)
+	if ((hpd_state == hfi_priv->connected) && !hpd_irq) {
+		mutex_unlock(&hfi_priv->hpd_mutex);
 		return 0;
+	}
 
 	if (hpd_state && !hfi_priv->configured) {
 		/* skip hpd here as it will be sent below */
 		rc = _hpd_configure(hfi_priv, true);
-		if (rc)
+		if (rc) {
+			mutex_unlock(&hfi_priv->hpd_mutex);
 			return rc;
+		}
 	} else if (!hfi_priv->connected && hpd_state) {
 		_aux_switch_enable(hfi_priv, true);
 	}
@@ -1119,12 +1138,15 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 	/* allow HPD LOW when TUI is active, ignore all other attention messages */
 	if (hpd_state && hfi_priv->tui_active) {
 		DP_INFO("TUI is active\n");
+		mutex_unlock(&hfi_priv->hpd_mutex);
 		return 0;
 	}
 
 	_hfi_update_config(hfi_priv, &config);
 	hfi_priv->connected = hpd_state;
 	rc = _hfi_send_hot_plug(hfi_priv, &config);
+
+	mutex_unlock(&hfi_priv->hpd_mutex);
 
 	return rc;
 }
@@ -1686,6 +1708,8 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 		return;
 	}
 
+	mutex_lock(&hfi_priv->hpd_mutex);
+
 	/* Connection status is not in the payload - set connected=1 based on receiving EDID info */
 	if (edid_buf->size > 0) {
 		hfi->connected = true;
@@ -1742,10 +1766,13 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	}
 end:
 	_hfi_notify_hpd_user(hfi, hfi->connected);
+
 	if (hfi_priv->audio) {
 		ret = hfi_priv->audio->on(hfi_priv->audio);
 		(void)ret;
 	}
+
+	mutex_unlock(&hfi_priv->hpd_mutex);
 }
 
 static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 size)
@@ -1761,6 +1788,8 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 
 	hpd_status = (struct hfi_display_hpd_status *) payload;
 
+	mutex_lock(&hfi_priv->hpd_mutex);
+
 	switch (hpd_status->dp_evt) {
 	case HFI_DP_EVENT_HPD_UNPLUGGED:
 		DP_DEBUG("HPD_UNPLUGGED: conn:%d\n",
@@ -1772,6 +1801,7 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 		_hfi_notify_hpd_user(hfi, false);
 		break;
 	case HFI_DP_EVENT_HPD_PLUGGED:
+		/* this is for mst case where topology changed detected */
 		DP_DEBUG("HPD_PLUGGED conn:%d\n", (hfi->connector ? hfi->connector->base.id : -1));
 
 		_hfi_update_config(hfi_priv, &config);
@@ -1780,11 +1810,19 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 		config.hpd_state = 1;
 		config.hpd_irq = 0;
 
+		/*
+		 * add 20 ms delay here to ensure display_disabled had been done
+		 * before sending faked hpd-up event to dcp
+		 */
+		msleep(20);
+
 		_hfi_send_hot_plug(hfi_priv, &config);
 		break;
 	default:
 		break;
 	}
+
+	mutex_unlock(&hfi_priv->hpd_mutex);
 }
 
 static void dp_mgr_hfi_handle_hdcp1x_start(struct dp_hfi *hfi, void *payload, u32 size)
@@ -2636,12 +2674,15 @@ static int dp_mgr_hfi_prepare(struct dp_client *client, int panel_id)
 
 	DP_DEBUG("HFI prepare for stream_id: %d\n", stream_id);
 
+	mutex_lock(&hfi_priv->hpd_mutex);
+
 	/* Mode setting will be handled by the set_mode callback when needed */
 	/* For now, just return success as preparation is complete */
 
 	hfi_priv->active_streams++;
 
 	SDE_EVT32_EXTERNAL(stream_id, hfi_priv->connected, hfi_priv->active_streams);
+	mutex_unlock(&hfi_priv->hpd_mutex);
 end:
 	DP_DEBUG("%s: DP core power prepare\n", __func__);
 	return rc;
@@ -2867,6 +2908,8 @@ static int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 
 	stream_id = panel_to_stream(hfi_priv, panel_id);
 
+	mutex_lock(&hfi_priv->hpd_mutex);
+
 	/* unprepare only when NOT connected */
 	if (!hfi_priv->connected) {
 		dp_mgr_hfi_hpd_cleanup(hfi_priv, stream_id);
@@ -2885,6 +2928,8 @@ static int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 	}
 
 	SDE_EVT32_EXTERNAL(stream_id, hfi_priv->connected, hfi_priv->active_streams);
+
+	mutex_unlock(&hfi_priv->hpd_mutex);
 
 end:
 	DP_DEBUG("%s: DP core power unprepare\n", __func__);
@@ -3399,6 +3444,8 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 	_parse_mst(hfi_priv);
 
 	init_completion(&hfi_priv->hpd_comp);
+
+	mutex_init(&hfi_priv->hpd_mutex);
 
 	DP_INFO("DP HFI display initialized successfully\n");
 	return client;
