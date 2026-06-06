@@ -189,10 +189,10 @@ int dp_hfi_end_batch_cmd(struct dp_hfi *hfi,
 int dp_hfi_send_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client, bool blocking);
 
 /**
- * dp_hfi_send_panel_generic_caps() - Send panel generic caps over HFI
+ * dp_hfi_panel_init() - Send panel init generic caps over HFI
  * @hfi: handle to dp hfi structure
  */
-void dp_hfi_send_panel_generic_caps(struct dp_hfi *hfi);
+void dp_hfi_panel_init(struct dp_hfi *hfi);
 
 /**
  * dp_hfi_setup() - setup dp hfi interface

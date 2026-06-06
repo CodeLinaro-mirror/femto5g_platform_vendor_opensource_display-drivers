@@ -1331,6 +1331,8 @@ static int dp_mgr_hfi_parser(struct dp_mgr_hfi_priv *hfi_priv)
 		hfi_priv->aux_params_valid = true;
 
 	dp_parser_link_training_params(parser);
+	dp_parser_max_link_rate(parser);
+	dp_parser_max_lane_count(parser);
 
 	return 0;
 }
@@ -1661,7 +1663,7 @@ static void dp_mgr_hfi_post_open(struct dp_client *client)
 	hfi = hfi_priv->hfi[0];
 
 	if (!hfi_priv->generic_caps_sent && hfi) {
-		dp_hfi_send_panel_generic_caps(hfi);
+		dp_hfi_panel_init(hfi);
 		hfi_priv->generic_caps_sent = true;
 	}
 }

@@ -290,6 +290,7 @@ struct dp_parser {
 	struct dp_aux_cfg aux_cfg[AUX_CFG_LEN];
 	u32 max_pclk_khz;
 	u32 max_lclk_khz;
+	u32 max_lane_count;
 	struct dp_hw_cfg hw_cfg;
 	bool has_mst;
 	bool has_mst_sideband;
@@ -380,6 +381,32 @@ int dp_parser_aux(struct dp_parser *parser);
  * tree properties are absent.
  */
 void dp_parser_link_training_params(struct dp_parser *parser);
+
+/**
+ * dp_parser_max_link_rate() - get the DP's max link rate from the device tree
+ *
+ * @parser: platform supported maximum link clock for the client
+ * return: void; unsuccessfully parsing max-lclk-frequency-khz
+ * sets the parser->max_lclk_khz to 0 preventing the HFI property
+ * from being sent.
+ *
+ * This function provides client capability to parse the device tree and
+ * set the max_link_rate supported by the platform in the parser data structure.
+ */
+void dp_parser_max_link_rate(struct dp_parser *parser);
+
+/**
+ * dp_parser_max_lane_count() - get the DP's max lane count from the device tree
+ *
+ * @parser: platform supported maximum numer of lanes for the client
+ * return: void; unsuccessfully parsing max-lane-count sets the
+ * parser->max_lane_count to 0 preventing the HFI property
+ * from being sent.
+ *
+ * This function provides client capability to parse the device tree and
+ * set the max_lane_count supported by the platform in the parser data structure.
+ */
+void dp_parser_max_lane_count(struct dp_parser *parser);
 
 /**
  * dp_parser_put() - cleans the dp_parser module
