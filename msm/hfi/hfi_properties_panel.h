@@ -1010,6 +1010,31 @@
 #define HFI_PROPERTY_PANEL_DP_VOLTAGESWING_PREEMPHASIS               0x00040046
 
 /*
+ * HFI_PROPERTY_PANEL_MAX_LINK_RATE - Provides optional maximum link clock rate in KHz supported
+ *                                    by the display. This property is sent to DCP as part of
+ *                                    HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_MAX_LINK_RATE
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_MAX_LINK_RATE |
+ *                                  (version=0 << 20) | (dsize=1 << 24)
+ *   (u32_value) payload[1]       : max_link_rate
+ */
+#define HFI_PROPERTY_PANEL_MAX_LINK_RATE                             0x00040047
+
+/*
+ * HFI_PROPERTY_PANEL_MAX_LANE_COUNT - Provides optional maximum number of lanes supported
+ *                                     by the display. This property is sent to DCP as part of
+ *                                     HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet
+ *                                     payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_MAX_LANE_COUNT
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_MAX_LANE_COUNT |
+ *                                  (version=0 << 20) | (dsize=1 << 24)
+ *   (u32_value) payload[1]       : max_lane_count
+ */
+#define HFI_PROPERTY_PANEL_MAX_LANE_COUNT                            0x00040048
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF
