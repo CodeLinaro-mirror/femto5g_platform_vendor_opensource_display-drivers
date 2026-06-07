@@ -252,6 +252,7 @@ enum sde_plane_sclcheck_state {
  * @rotation:		rotation cache state
  * @static_cache_state:	plane cache state for static image
  * @cache_state_prop: value of CRTC_PROP_CACHE_STATE property
+ * @lsr_mode_prop: value of CRTC_PROP_LSR_MODE property
  * @cdp_cfg:	CDP configuration
  * @cont_splash_populated: State was populated as part of cont. splash
  * @ubwc_stats_roi: cached roi for ubwc stats
@@ -297,6 +298,7 @@ struct sde_plane_state {
 	uint32_t static_cache_state;
 	uint32_t static_cache_type;
 	uint32_t cache_state_prop;
+	uint32_t lsr_mode_prop;
 
 	struct sde_hw_pipe_cdp_cfg cdp_cfg;
 
@@ -536,6 +538,13 @@ void sde_plane_static_img_control(struct drm_plane *plane,
 		enum sde_sys_cache_state state, enum sde_sys_cache_type type);
 
 void sde_plane_add_data_to_minidump_va(struct drm_plane *plane);
+
+/**
+ * sde_plane_set_input_fence_deadline - set deadline of next vsync on plane input fence
+ * @plane: Pointer to drm plane structure with the input fence we want to set deadline
+ * @deadline: deadline to set
+ */
+int sde_plane_set_input_fence_deadline(struct drm_plane *plane, ktime_t deadline);
 
 /**
  * sde_plane_dump_input_fence - dumps plane input fence info

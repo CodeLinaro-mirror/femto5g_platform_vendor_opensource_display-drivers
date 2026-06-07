@@ -9,6 +9,7 @@
 #include "dp_debug_client.h"
 #include "dp_client.h"
 #include "hfi_defs_device.h"
+#include "hfi_defs_debug.h"
 
 /* Response handling for HFI commands */
 struct dp_hfi_response_data {
@@ -18,7 +19,8 @@ struct dp_hfi_response_data {
 	u32 mst_state;
 	u8 dpcd_data[256];
 	u32 dpcd_size;
-	u32 crc_data[6]; /* R, G, B for source and sink */
+	struct hfi_dp_crc_info crc_data;
+	u32 misr_values[8];
 	bool connected;
 	bool response_received;
 	enum {
@@ -26,7 +28,8 @@ struct dp_hfi_response_data {
 		HFI_RESPONSE_BW_CODE,
 		HFI_RESPONSE_MST_MODE,
 		HFI_RESPONSE_DPCD,
-		HFI_RESPONSE_CRC
+		HFI_RESPONSE_CRC,
+		HFI_RESPONSE_MISR
 	} response_type;
 	struct completion response_complete;
 	struct mutex response_lock;

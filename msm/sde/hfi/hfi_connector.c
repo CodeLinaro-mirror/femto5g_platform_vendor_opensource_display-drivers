@@ -41,12 +41,14 @@ struct base_prop_lookup {
 
 struct base_prop_lookup hfi_connector_base_props_map[] = {
 	{ CONNECTOR_PROP_DYN_BIT_CLK, HFI_PROPERTY_DISPLAY_DYN_CLK_SUPPORT },
+	{ CONNECTOR_PROP_BRIGHTNESS, HFI_PROPERTY_DISPLAY_BRIGHTNESS },
 	{ CONNECTOR_PROP_QSYNC_MODE, HFI_PROPERTY_DISPLAY_QSYNC_MODE },
 	{ CONNECTOR_PROP_AVR_STEP_STATE, HFI_PROPERTY_DISPLAY_AVR_STEP },
 	{ CONNECTOR_PROP_LP, HFI_PROPERTY_DISPLAY_POWER_MODE },
 	{ CONNECTOR_PROP_FRAME_INTERVAL, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS},
 	{ CONNECTOR_PROP_USECASE_IDX, HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS },
 	{ CONNECTOR_PROP_EPT, HFI_PROPERTY_DISPLAY_EPT },
+	{ CONNECTOR_PROP_VSYNC_OFFSET, HFI_PROPERTY_DISPLAY_VSYNC_OFFSET },
 
 	// wb specific properties
 	{ CONNECTOR_PROP_PP_CWB_DITHER, HFI_PROPERTY_DISPLAY_WB_CWB_DITHER },
@@ -104,7 +106,7 @@ static int _set_dest_roi(struct sde_connector *conn,
 	return ret;
 }
 
-int _hfi_connector_add_ept(struct sde_connector *conn, struct sde_connector_state *old_cstate,
+static int _hfi_connector_add_ept(struct sde_connector *conn, struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector, u32 hfi_prop)
 {
 	int ret = 0;
@@ -219,6 +221,47 @@ static int _hfi_connector_add_vrr_frame_params(struct sde_connector *conn,
 	return 0;
 }
 
+static int _hfi_connector_config_custom_wd_te(struct sde_connector *conn,
+					       struct hfi_util_u32_prop_helper *prop_collector,
+					       u32 hfi_prop)
+{
+	struct hfi_connector *hfi_conn;
+	struct hfi_custom_wd_te_params wd_te_params;
+	int ret;
+
+	if (!conn || !prop_collector)
+		return -EINVAL;
+
+	hfi_conn = to_hfi_connector(conn);
+
+	/* Send HFI packet only if there is any change in values */
+	if (!conn->custom_wd_updated)
+		return 0;
+
+	/* Validate custom_wd_te_fps is within reasonable range */
+	if (conn->custom_wd_te_enabled && (conn->custom_wd_te_fps < 1 ||
+		conn->custom_wd_te_fps > SDE_CONNECTOR_CUSTOM_WD_TE_FPS_MAX)) {
+		HFI_ERROR_CONN(hfi_conn, "Invalid custom_wd_te_fps: %u\n",
+			conn->custom_wd_te_fps);
+		return -EINVAL;
+	}
+
+	wd_te_params.wd_te_enabled = conn->custom_wd_te_enabled;
+	wd_te_params.custom_fps = conn->custom_wd_te_fps;
+
+	ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+					HFI_VAL_U32_ARRAY, &wd_te_params, sizeof(wd_te_params));
+	if (ret) {
+		HFI_ERROR_CONN(hfi_conn, "Failed to add custom wd te params, ret=%d\n", ret);
+		return ret;
+	}
+
+	/* Reset WD_TE updated flag */
+	conn->custom_wd_updated = false;
+
+	return 0;
+}
+
 static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connector *conn,
 		struct sde_connector_state *old_cstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
@@ -228,6 +271,8 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 	struct hfi_connector *hfi_conn;
 	int ret = 0;
 	int drm_lp_val;
+	u32 payload[3];
+	u64 temp = 0;
 
 	if (!conn || !old_cstate || !prop_collector || !conn->base.state) {
 		SDE_ERROR("invalid params conn[%d] old_sate[%d] prop_collec[%d] base state[%d]\n",
@@ -264,6 +309,13 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 		ret = hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector,
 			hfi_prop, conn->base.base.id, HFI_VAL_U32, &val, sizeof(u32));
 		break;
+	case HFI_PROPERTY_DISPLAY_BRIGHTNESS:
+		if (conn->bl_dirty_change) {
+			val = conn->bl_dirty_value;
+			ret = hfi_util_u32_prop_helper_add_prop(prop_collector, hfi_prop,
+				HFI_VAL_U32, &val, sizeof(u32));
+		}
+		break;
 	case HFI_PROPERTY_DISPLAY_POWER_MODE:
 		drm_lp_val = sde_connector_get_property(&old_cstate->base, CONNECTOR_PROP_LP);
 		switch (drm_lp_val) {
@@ -290,14 +342,25 @@ static int _hfi_connector_add_base_prop_helper(u32 hfi_prop, struct sde_connecto
 		ret = _set_dest_roi(conn, old_cstate, prop_collector, hfi_prop, PANEL_ROI);
 		break;
 	case HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS:
-	{
 		ret = _hfi_connector_add_vrr_frame_params(conn, prop_collector, hfi_prop);
 		break;
-	}
 	case HFI_PROPERTY_DISPLAY_EPT:
 		ret = _hfi_connector_add_ept(conn, old_cstate, prop_collector, hfi_prop);
 		break;
+	case HFI_PROPERTY_DISPLAY_VSYNC_OFFSET:
+		payload[0] = hfi_prop;
+		temp = sde_connector_get_property(&old_cstate->base,
+				CONNECTOR_PROP_VSYNC_OFFSET);
+		payload[1] = HFI_VAL_L32(temp);
+		payload[2] = HFI_VAL_H32(temp);
+		ret = hfi_util_u32_prop_helper_add_prop(prop_collector,
+			HFI_PROPERTY_DISPLAY_VSYNC_OFFSET,
+			HFI_VAL_U32_ARRAY, payload, sizeof(payload));
+		break;
 
+	case HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE:
+		ret = _hfi_connector_config_custom_wd_te(conn, prop_collector, hfi_prop);
+		break;
 	default:
 		HFI_ERROR_CONN(hfi_conn, "failed to send HFI commands\n");
 		return -EINVAL;
@@ -335,11 +398,17 @@ static int _hfi_connector_set_props_base(struct sde_connector *conn, u32 disp_id
 		_hfi_connector_add_base_prop_helper(HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS,
 			conn, old_cstate, hfi_conn->base_props);
 
+	if (conn->connector_type != DRM_MODE_CONNECTOR_VIRTUAL)
+		_hfi_connector_add_base_prop_helper(HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE,
+			conn, old_cstate, hfi_conn->base_props);
 
 	/* append msm properties */
 	for (i = 0; i < ARRAY_SIZE(hfi_connector_base_props_map); i++) {
 		drm_prop = hfi_connector_base_props_map[i].drm_prop;
 		hfi_prop = hfi_connector_base_props_map[i].hfi_prop;
+		if (!sde_connector_property_is_dirty(old_cstate, drm_prop) &&
+			(drm_prop != CONNECTOR_PROP_EPT))
+			continue;
 
 		_hfi_connector_add_base_prop_helper(hfi_prop, conn, old_cstate,
 				 hfi_conn->base_props);
@@ -957,7 +1026,19 @@ int hfi_connector_set_debug_prop(struct drm_connector *drm_conn,
 	return rc;
 }
 
-void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)
+struct dsi_panel *hfi_connector_get_dsi_panel(struct sde_connector *c_conn)
+{
+	struct dsi_display *display = NULL;
+
+	if (!c_conn || !c_conn->display)
+		return NULL;
+
+	display = _sde_connector_get_display(c_conn);
+
+	return display ? display->panel : NULL;
+}
+
+void hfi_connector_set_esd_recovery_pending(struct sde_connector *c_conn)
 {
 	struct dsi_panel *panel;
 
@@ -971,6 +1052,12 @@ void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre
 	}
 
 	atomic_set(&panel->esd_recovery_pending, 1);
+}
+
+void hfi_connector_report_panel_dead(struct sde_connector *c_conn, bool skip_pre_kickoff)
+{
+	if (!c_conn || !c_conn->display)
+		return;
 
 	sde_connector_report_panel_dead(c_conn, skip_pre_kickoff);
 }

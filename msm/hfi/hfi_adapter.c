@@ -874,6 +874,7 @@ static struct hfi_cmdbuf_t *_chain_new_buffer(struct hfi_cmdbuf_t *buffer_head)
 		HFI_AD_ERROR("failed to chain command buffer\n");
 		return NULL;
 	}
+	INIT_LIST_HEAD(&buffer->cmd_buf_chain);
 
 	mutex_lock(&host->hfi_adapter_cmd_buf_list_lock);
 	/* For chained buffer's, add to existing cmd_buf_chain */
@@ -1066,12 +1067,12 @@ static void _hfi_adapter_remove_listeners_by_event(struct hfi_client_t *ctx,
 		 * We store the original event ID from the payload in listener_entry
 		 * for this purpose.
 		 */
-		if (listener_entry->event_id == event_id &&
-			listener_entry->obj_id == obj_id) {
+		if (listener_entry->event_id == event_id && listener_entry->obj_id == obj_id) {
 			HFI_AD_DEBUG("%s: event_id:0x%x obj_id:0x%x packet_id:0x%x\n",
 				__func__, listener_entry->event_id, listener_entry->obj_id,
 				listener_entry->packet_id);
-
+			SDE_EVT32(listener_entry->obj_id, listener_entry->event_id,
+				listener_entry->packet_id, listener_entry->cmd_id);
 			list_del(pos);
 			kfree(listener_entry);
 			removed_count++;
@@ -1088,11 +1089,11 @@ static void _hfi_adapter_remove_listeners_by_event(struct hfi_client_t *ctx,
 
 int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf,
 		u32 cmd_id, u32 obj_id, enum hfi_payload_type hfi_payload_type,
-		void *payload, u32 size, struct hfi_prop_listener *listener, u32 flags)
+		void *payload, u32 size, struct hfi_prop_listener *listener, u32 flags,
+		bool remove_on_cb, u32 *packet_id)
 {
 	struct hfi_cmdbuf_t *current_buffer = cmd_buf;
 	struct hfi_client_t *buff_client_ctx;
-	u32 packet_id;
 	int rc = 0;
 	bool add_listener = true;
 
@@ -1119,7 +1120,7 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 		return -EINVAL;
 
 	rc = _hfi_adapter_add_prop_helper(current_buffer, cmd_id, obj_id, hfi_payload_type,
-			payload, size, flags, 0, &packet_id);
+			payload, size, flags, 0, packet_id);
 	if (rc) {
 		HFI_AD_ERROR("failed to populate buffer packet with cmd:0x%x\n", cmd_id);
 		return rc;
@@ -1137,16 +1138,19 @@ int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
 			return -ENOMEM;
 		}
 
-		listener_entry->packet_id = packet_id;
+		listener_entry->packet_id = *packet_id;
 		listener_entry->listener_obj = listener;
 		/* Store command ID to identify deregister listeners */
 		listener_entry->cmd_id = cmd_id;
 		/* Store object ID for later cleanup */
 		listener_entry->obj_id = obj_id;
+		listener_entry->remove_on_cb = remove_on_cb;
 
 		/* Extract and store the event ID from payload for registration listeners cleanup */
 		if (payload && size >= sizeof(u32))
 			listener_entry->event_id = *(u32 *)payload;
+
+		SDE_EVT32(obj_id, listener_entry->event_id, cmd_id, remove_on_cb);
 
 		/* Add listener based on packet obj_id  */
 		mutex_lock(&buff_client_ctx->listener_lock);
@@ -1416,6 +1420,45 @@ exit:
 	return rc;
 }
 
+/**
+ * hfi_adapter_remove_listener_by_packet_id - Remove listeners associated with a specific packet_id
+ * @ctx: Pointer to hfi_client struct
+ * @packet_id: Packet ID for which listeners should be removed
+ *
+ * This function removes and frees the listener that was registered for the specified
+ * packet ID. This is typically called when callbacks are received from the host or
+ * explicitly by client.
+ */
+void hfi_adapter_remove_listener_by_packet_id(struct hfi_client_t *ctx, u32 packet_id)
+{
+	struct list_head *pos, *temp;
+	struct listener_list *listener_entry;
+
+	if (!ctx) {
+		HFI_AD_ERROR("invalid client context\n");
+		return;
+	}
+
+	mutex_lock(&ctx->listener_lock);
+	list_for_each_safe(pos, temp, &ctx->packet_listeners.list_ptr) {
+		listener_entry = list_entry(pos, struct listener_list, list_ptr);
+		if (!listener_entry || !listener_entry->listener_obj)
+			continue;
+
+		if (packet_id == listener_entry->packet_id) {
+			HFI_AD_DEBUG("%s: event_id:0x%x obj_id:0x%x packet_id:0x%x\n",
+				__func__, listener_entry->event_id, listener_entry->obj_id,
+				listener_entry->packet_id);
+			SDE_EVT32(listener_entry->obj_id, listener_entry->event_id,
+				listener_entry->packet_id, listener_entry->cmd_id);
+			list_del(pos);
+			kfree(listener_entry);
+			break;
+		}
+	}
+	mutex_unlock(&ctx->listener_lock);
+}
+
 int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf)
 {
 	struct hfi_prop_listener *listener = NULL;
@@ -1423,7 +1466,7 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 	struct hfi_cmd_buff_hdl buff_handle;
 	struct hfi_header_info header_info;
 	struct hfi_packet_info packet_info;
-	struct list_head *pos = NULL;
+	struct list_head *pos = NULL, *temp = NULL;
 	struct hfi_cmdbuf_t *buf_entry = NULL;
 	struct list_head *updated_pos = NULL;
 	u32 num_packets = 0;
@@ -1503,6 +1546,8 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 				temp_entry->listener_obj = listener;
 				temp_entry->packet_id = packet_info.packet_id;
 				list_add_tail(&temp_entry->list_ptr, &local_listener_list);
+				/* update flags to remove listeners at the end of the callbacks */
+				listener_entry->mark_for_deletion = listener_entry->remove_on_cb;
 			}
 		}
 		mutex_unlock(&ctx->listener_lock);
@@ -1512,22 +1557,48 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 					 &local_listener_list, list_ptr) {
 			listener = (struct hfi_prop_listener *)temp_entry->listener_obj;
 
-			SDE_EVT32(num_packets, packet_info.id, packet_info.cmd);
-			listener->hfi_prop_handler(packet_info.id,
-					packet_info.cmd, packet_info.payload_ptr,
-					packet_info.payload_size, listener);
+			if (!listener) {
+				HFI_AD_ERROR("listener is NULL, skipping callback\n");
+				list_del(&temp_entry->list_ptr);
+				kfree(temp_entry);
+				continue;
+			}
 
+			/*
+			 * Check error flags BEFORE invoking callback.
+			 * If firmware returned an error, payload_ptr may be NULL
+			 * or invalid. Still invoke the callback with NULL payload
+			 * and zero size so the caller waiting on response is
+			 * unblocked, but the callback can detect the error via
+			 * NULL payload and handle it gracefully without crashing.
+			 */
 			if (packet_info.flags != HFI_RX_FLAGS_NONE &&
 					packet_info.flags != HFI_RX_FLAGS_SUCCESS) {
 				HFI_AD_ERROR("response packet error. cmd:0x%x resp:0x%x\n",
 						packet_info.cmd, packet_info.flags);
 				ret = -HFI_ERROR;
+				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd,
+						packet_info.flags);
+				listener->hfi_prop_handler(packet_info.id,
+						packet_info.cmd, NULL, 0, listener);
+			} else {
+				SDE_EVT32(num_packets, packet_info.id, packet_info.cmd);
+				listener->hfi_prop_handler(packet_info.id,
+						packet_info.cmd, packet_info.payload_ptr,
+						packet_info.payload_size, listener);
 			}
 
 			/* Remove and free the temporary entry */
 			list_del(&temp_entry->list_ptr);
 			kfree(temp_entry);
 		}
+	}
+
+	if (ret) {
+		HFI_AD_DEBUG("Error processing num_pkts: %d type: %d obj_id: %d header_id: 0x%x\n",
+			header_info.num_packets, header_info.cmd_buff_type, header_info.object_id,
+			header_info.header_id);
+		return ret;
 	}
 
 	/* Loop through clients list and if matching unique_id then release */
@@ -1544,6 +1615,25 @@ int hfi_adapter_unpack_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cm
 		}
 	}
 	mutex_unlock(&ctx->host->hfi_adapter_cmd_buf_list_lock);
+
+	/* delete all the listeners marked for deletion based on remove_on_cb flag */
+	mutex_lock(&ctx->listener_lock);
+	list_for_each_safe(pos, temp, &ctx->packet_listeners.list_ptr) {
+		listener_entry = list_entry(pos, struct listener_list, list_ptr);
+		if (!listener_entry || !listener_entry->listener_obj)
+			continue;
+
+		if (listener_entry->mark_for_deletion) {
+			HFI_AD_DEBUG("%s: event_id:0x%x obj_id:0x%x packet_id:0x%x\n",
+				__func__, listener_entry->event_id, listener_entry->obj_id,
+				listener_entry->packet_id);
+			SDE_EVT32(listener_entry->obj_id, listener_entry->event_id,
+				listener_entry->packet_id, listener_entry->cmd_id);
+			list_del(pos);
+			kfree(listener_entry);
+		}
+	}
+	mutex_unlock(&ctx->listener_lock);
 
 	return ret;
 }
@@ -1569,7 +1659,7 @@ static int hfi_adapter_release_cmd_buf_no_lock(struct hfi_client_t *ctx,
 
 	/* Release chained buffers */
 	list_for_each_prev_safe(pos, updated_pos, &cmd_buf->cmd_buf_chain) {
-		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, node);
+		buf_entry = list_entry(pos, struct hfi_cmdbuf_t, cmd_buf_chain);
 		list_del_init(pos);
 		if (buf_entry->is_released || !buf_entry->buf.pbuf_vaddr)
 			continue;

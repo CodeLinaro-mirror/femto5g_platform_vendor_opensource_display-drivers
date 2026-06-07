@@ -28,6 +28,7 @@
 #include "dp_mgr.h"
 #include "dp_mgr_hfi.h"
 #include "hfi_defs_display.h"
+#include "dp_altmode.h"
 
 #if IS_ENABLED(CONFIG_DEBUG_FS)
 
@@ -398,6 +399,8 @@ static void dp_debug_hfi_response_handler(u32 obj_id, u32 cmd_id, void *payload,
 		u32 payload_size, struct hfi_prop_listener *listener)
 {
 	struct dp_debug_client_hfi_priv *priv;
+	u32 *payload_ptr = payload;
+	u32 num_misr;
 
 	if (!listener) {
 		DP_ERR("Invalid listener\n");
@@ -452,17 +455,39 @@ static void dp_debug_hfi_response_handler(u32 obj_id, u32 cmd_id, void *payload,
 		break;
 
 	case HFI_COMMAND_DEBUG_DP_READ_CRC:
-		if (payload && payload_size >= sizeof(u32) * 6) {
-			memcpy(priv->response_data.crc_data, payload,
+		if (payload && payload_size == sizeof(struct hfi_dp_crc_info)) {
+			memcpy(&priv->response_data.crc_data, payload,
 			       sizeof(priv->response_data.crc_data));
 			priv->response_data.response_type = HFI_RESPONSE_CRC;
 			DP_DEBUG("Received CRC response\n");
 		} else {
 			DP_WARN("Invalid CRC response payload\n");
-			memset(priv->response_data.crc_data, 0,
+			memset(&priv->response_data.crc_data, 0,
 			       sizeof(priv->response_data.crc_data));
 		}
 		break;
+
+	case HFI_COMMAND_DEBUG_MISR_READ: {
+		if (payload && payload_size >= 2 * sizeof(u32)) {
+			num_misr = min_t(u32, payload_ptr[1],
+					ARRAY_SIZE(priv->response_data.misr_values));
+			if (num_misr * sizeof(u32) > payload_size - 2 * sizeof(u32)) {
+				DP_ERR("Expected misr payload size %zu but got payload size %d\n",
+						(num_misr + 2) * sizeof(u32), payload_size);
+				break;
+			}
+			memcpy(priv->response_data.misr_values, &payload_ptr[2],
+			       num_misr * sizeof(u32));
+			priv->response_data.response_type = HFI_RESPONSE_MISR;
+			DP_DEBUG("Received MISR response: module=%u num=%u\n",
+					payload_ptr[0], num_misr);
+		} else {
+			DP_WARN("Invalid MISR response payload\n");
+			memset(priv->response_data.misr_values, 0,
+					sizeof(priv->response_data.misr_values));
+		}
+		break;
+	}
 
 	/* Empty response handling for all other HFI commands */
 	case HFI_COMMAND_DEBUG_DP_SET_EDID:
@@ -495,9 +520,10 @@ static int dp_debug_hfi_send_cmd_with_response(struct dp_debug_client_hfi_priv *
 		int response_type, unsigned long timeout_ms)
 {
 	struct hfi_cmdbuf_t *cmd_buf;
+	enum hfi_cmdbuf_type cmd_buf_type = HFI_CMDBUF_TYPE_GET_DEBUG_DATA;
 	int rc;
 	/* unsigned long timeout_jiffies = msecs_to_jiffies(timeout_ms); */
-	u32 obj_id;
+	u32 obj_id, packet_id = 0;
 	struct platform_device *pdev;
 	struct dp_drv *dp_drv;
 	struct drm_connector *connector = NULL;
@@ -520,8 +546,7 @@ static int dp_debug_hfi_send_cmd_with_response(struct dp_debug_client_hfi_priv *
 	}
 
 	/* Get command buffer */
-	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id,
-			HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	cmd_buf = hfi_adapter_get_cmd_buf(hfi_client, obj_id, cmd_buf_type);
 	if (!cmd_buf)
 		return -ENOMEM;
 
@@ -534,7 +559,8 @@ static int dp_debug_hfi_send_cmd_with_response(struct dp_debug_client_hfi_priv *
 
 	/* Add get property command with listener for response */
 	rc = hfi_adapter_add_get_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
-			hfi_payload_type, payload, payload_size, &priv->hfi_cb_obj, flags);
+			hfi_payload_type, payload, payload_size, &priv->hfi_cb_obj, flags,
+			true, &packet_id);
 	if (rc) {
 		hfi_adapter_release_cmd_buf(hfi_client, cmd_buf);
 		return rc;
@@ -643,10 +669,16 @@ static int dp_debug_client_hfi_read_crc(struct dp_debug_client *client,
 {
 	struct dp_debug_client_hfi_priv *priv;
 	struct hfi_client_t *hfi_client;
-	int rc;
+	struct dp_drv *dp_drv;
+	struct misr_setup_data misr_setup;
+	struct misr_read_data misr_read;
+	u32 ctrl_misr[8];
+	u32 phy_misr[8];
 	u32 len = 0;
 	u16 src_crc[3] = {0};
 	u16 sink_crc[3] = {0};
+	bool skip_misr = false;
+	int rc, i;
 
 	if (!client || !buf)
 		return -EINVAL;
@@ -656,15 +688,47 @@ static int dp_debug_client_hfi_read_crc(struct dp_debug_client *client,
 	if (!hfi_client)
 		return -ENODEV;
 
+	memset(ctrl_misr, 0, sizeof(ctrl_misr));
+	memset(phy_misr, 0, sizeof(phy_misr));
+
+	dp_drv = dp_debug_hfi_get_dp_drv(priv);
+	if (!dp_drv || !dp_drv->client || !dp_drv->client->base_connector) {
+		skip_misr = true;
+		goto misr_done;
+	}
+
+	misr_setup.display_id  = sde_conn_get_display_obj_id(dp_drv->client->base_connector);
+	misr_setup.enable      = 1;
+	misr_setup.frame_count = 1;
+
+	misr_read.display_id  = misr_setup.display_id;
+
+	/* Setup MISR */
+	misr_setup.module_type = HFI_DEBUG_MISR_DP_PHY;
+	dp_debug_hfi_send_cmd(priv, hfi_client,
+			HFI_COMMAND_DEBUG_MISR_SETUP,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			&misr_setup, sizeof(misr_setup),
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED |
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+
+	misr_setup.module_type = HFI_DEBUG_MISR_DP_CTRL;
+	dp_debug_hfi_send_cmd(priv, hfi_client,
+			HFI_COMMAND_DEBUG_MISR_SETUP,
+			HFI_PAYLOAD_TYPE_U32_ARRAY,
+			&misr_setup, sizeof(misr_setup),
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED |
+			HFI_HOST_FLAGS_NON_DISCARDABLE);
+
+misr_done:
 	/* Send HFI command and wait for response from DCP */
 	rc = dp_debug_hfi_send_cmd_with_response(priv, hfi_client,
 			HFI_COMMAND_DEBUG_DP_READ_CRC,
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
-			HFI_RESPONSE_CRC, 1000); /* 1 second timeout */
+			HFI_RESPONSE_CRC, 1000);
 	if (rc) {
 		DP_ERR("Failed to get CRC response from DCP, rc=%d\n", rc);
-		/* Return empty CRC data on error */
 		len += scnprintf(buf + len, size - len, "FRAME_CRC:\nSource vs Sink\n");
 		len += scnprintf(buf + len, size - len, "CRC_R: 0000 0000\n");
 		len += scnprintf(buf + len, size - len, "CRC_G: 0000 0000\n");
@@ -672,29 +736,59 @@ static int dp_debug_client_hfi_read_crc(struct dp_debug_client *client,
 		return len;
 	}
 
-	/* Get the response data */
+	/* Get CRC response data */
 	mutex_lock(&priv->response_data.response_lock);
-	/* CRC data format: [src_R, src_G, src_B, sink_R, sink_G, sink_B] */
-	src_crc[0] = (u16) priv->response_data.crc_data[0];  /* Source R */
-	src_crc[1] = (u16) priv->response_data.crc_data[1];  /* Source G */
-	src_crc[2] = (u16) priv->response_data.crc_data[2];  /* Source B */
-	sink_crc[0] = (u16) priv->response_data.crc_data[3]; /* Sink R */
-	sink_crc[1] = (u16) priv->response_data.crc_data[4]; /* Sink G */
-	sink_crc[2] = (u16) priv->response_data.crc_data[5]; /* Sink B */
+	src_crc[0] = priv->response_data.crc_data.src_crc[0];
+	src_crc[1] = priv->response_data.crc_data.src_crc[1];
+	src_crc[2] = priv->response_data.crc_data.src_crc[2];
+	sink_crc[0] = priv->response_data.crc_data.sink_crc[0];
+	sink_crc[1] = priv->response_data.crc_data.sink_crc[1];
+	sink_crc[2] = priv->response_data.crc_data.sink_crc[2];
 	mutex_unlock(&priv->response_data.response_lock);
 
-	/* Format response like legacy implementation */
 	len += scnprintf(buf + len, size - len, "FRAME_CRC:\nSource vs Sink\n");
 	len += scnprintf(buf + len, size - len, "CRC_R: %04X %04X\n", src_crc[0], sink_crc[0]);
 	len += scnprintf(buf + len, size - len, "CRC_G: %04X %04X\n", src_crc[1], sink_crc[1]);
 	len += scnprintf(buf + len, size - len, "CRC_B: %04X %04X\n", src_crc[2], sink_crc[2]);
 
-	/* Note: MISR40 data would require additional HFI command implementation */
+	if (!skip_misr) {
+		/* Read MISR */
+		misr_read.module_type = HFI_DEBUG_MISR_DP_PHY;
+		rc = dp_debug_hfi_send_cmd_with_response(priv, hfi_client,
+				HFI_COMMAND_DEBUG_MISR_READ,
+				HFI_PAYLOAD_TYPE_U32_ARRAY,
+				&misr_read, sizeof(misr_read),
+				HFI_HOST_FLAGS_RESPONSE_REQUIRED |
+				HFI_HOST_FLAGS_NON_DISCARDABLE,
+				HFI_RESPONSE_MISR, 1000);
+		if (!rc) {
+			mutex_lock(&priv->response_data.response_lock);
+			memcpy(phy_misr, priv->response_data.misr_values, sizeof(phy_misr));
+			mutex_unlock(&priv->response_data.response_lock);
+		}
+
+		misr_read.module_type = HFI_DEBUG_MISR_DP_CTRL;
+		rc = dp_debug_hfi_send_cmd_with_response(priv, hfi_client,
+				HFI_COMMAND_DEBUG_MISR_READ,
+				HFI_PAYLOAD_TYPE_U32_ARRAY,
+				&misr_read, sizeof(misr_read),
+				HFI_HOST_FLAGS_RESPONSE_REQUIRED |
+				HFI_HOST_FLAGS_NON_DISCARDABLE,
+				HFI_RESPONSE_MISR, 1000);
+		if (!rc) {
+			mutex_lock(&priv->response_data.response_lock);
+			memcpy(ctrl_misr, priv->response_data.misr_values, sizeof(ctrl_misr));
+			mutex_unlock(&priv->response_data.response_lock);
+		}
+	}
+
 	len += scnprintf(buf + len, size - len, "\nMISR40:\nCTLR vs PHY\n");
-	len += scnprintf(buf + len, size - len, "Lane0 00000000 00000000\n");
-	len += scnprintf(buf + len, size - len, "Lane1 00000000 00000000\n");
-	len += scnprintf(buf + len, size - len, "Lane2 00000000 00000000\n");
-	len += scnprintf(buf + len, size - len, "Lane3 00000000 00000000\n");
+	for (i = 0; i < 4; i++) {
+		len += scnprintf(buf + len, size - len,
+				"Lane%d %08X%08X %08X%08X\n", i,
+				ctrl_misr[2 * i], ctrl_misr[(2 * i) + 1],
+				phy_misr[2 * i],  phy_misr[(2 * i) + 1]);
+	}
 
 	return len;
 }
@@ -1368,7 +1462,8 @@ static int dp_debug_client_hfi_write_hpd(struct dp_debug_client *client,
 			 * on unlug
 			 */
 			if (client->sim_enable) {
-				mgr_priv->hpd->pin_config = 5;
+				mgr_priv->hpd->pin_config = client->force_multi_func ?
+						DPAM_HPD_F : DPAM_HPD_E;
 				if (mgr_priv->hpd->orientation == ORIENTATION_NONE)
 					mgr_priv->hpd->orientation = ORIENTATION_CC1;
 			} else {
@@ -1739,54 +1834,6 @@ static int dp_debug_client_hfi_write_dump(struct dp_debug_client *client,
 	return count;
 }
 
-static int dp_debug_client_hfi_write_mmrm_clk_cb(struct dp_debug_client *client,
-		const char *buf, size_t count)
-{
-	struct dp_debug_client_hfi_priv *priv;
-	struct platform_device *pdev;
-	struct dp_drv *dp_drv;
-	int cb_type = 0;
-	struct dss_clk_mmrm_cb mmrm_cb_data;
-	struct mmrm_client_notifier_data notifier_data;
-
-	if (!client || !buf)
-		return -ENODEV;
-
-	if (kstrtoint(buf, 10, &cb_type) != 0)
-		return -EINVAL;
-
-	if (cb_type != MMRM_CLIENT_RESOURCE_VALUE_CHANGE) {
-		DP_ERR("Invalid MMRM callback type: %d\n", cb_type);
-		return -EINVAL;
-	}
-
-	DP_DEBUG("MMRM clock callback: type=%d\n", cb_type);
-
-	priv = client->priv;
-
-	/* Get the dp_drv instance from the platform device */
-	if (!priv->dev)
-		return -ENODEV;
-
-	pdev = to_platform_device(priv->dev);
-	dp_drv = platform_get_drvdata(pdev);
-
-	if (!dp_drv) {
-		DP_ERR("dp_drv is NULL\n");
-		return -ENODEV;
-	}
-
-	/* Prepare MMRM notification data */
-	notifier_data.cb_type = MMRM_CLIENT_RESOURCE_VALUE_CHANGE;
-	mmrm_cb_data.phandle = (void *)dp_drv;
-	notifier_data.pvt_data = (void *)&mmrm_cb_data;
-
-	/* Call the MMRM callback function */
-	dp_mgr_mmrm_callback(&notifier_data);
-
-	return count;
-}
-
 static int dp_debug_client_hfi_write_sim_mode(struct dp_debug_client *client, bool sim)
 {
 	struct dp_debug_client_hfi_priv *priv;
@@ -1974,7 +2021,7 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 	client->write_attention = dp_debug_client_hfi_write_attention;
 	client->simulate_attention = dp_debug_client_hfi_simulate_attention;
 
-	client->write_mmrm_clk_cb = dp_debug_client_hfi_write_mmrm_clk_cb;
+	client->write_mmrm_clk_cb = NULL;
 	/* Stub - not applicable for HFI */
 
 	client->abort = dp_debug_client_hfi_abort;

@@ -123,7 +123,11 @@ static int dsi_display_hfi_set_mode(struct dsi_display *display, struct dsi_disp
 	hfi_mode_info->refresh_rate =		mode->timing.refresh_rate;
 	hfi_mode_info->clk_rate_hz_lo =		HFI_VAL_L32(mode->timing.clk_rate_hz);
 	hfi_mode_info->clk_rate_hz_hi =		HFI_VAL_H32(mode->timing.clk_rate_hz);
-	hfi_mode_info->flags_lo =		mode->dsi_mode_flags;
+	if (mode->mode_idx > 0xFFFF)
+		DSI_WARN("mode_idx %u exceeds 16-bit limit, truncating to %u\n",
+			 mode->mode_idx, mode->mode_idx & 0xFFFF);
+	hfi_mode_info->flags_lo =		mode->dsi_mode_flags | DSI_MODE_FLAG_MODE_IDX_VALID;
+	hfi_mode_info->reserved1 =		mode->mode_idx & 0xFFFF;
 
 	rc = dsi_display_hfi_send_cmd_buf(display, hfi_client, hfi_cmd, display->display_type,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, hfi_mode_info, hfi_mode_info->size,
@@ -228,12 +232,14 @@ int dsi_display_hfi_enable(struct dsi_display *display)
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_ENABLE;
 	int rc = 0;
 
-	if (display->trusted_vm_env)
-		return rc;
-
 	if (!display->panel) {
 		DSI_ERR("invalid panel\n");
 		return -EINVAL;
+	}
+
+	if (display->trusted_vm_env) {
+		display->panel->panel_initialized = true;
+		return rc;
 	}
 
 	sde_kms = sde_connector_get_kms(display->drm_conn);
@@ -370,8 +376,15 @@ int dsi_display_hfi_disable(struct dsi_display *display)
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_POST_DISABLE;
 	int rc = 0;
 
-	if (display->trusted_vm_env)
+	if (!display->panel) {
+		DSI_ERR("invalid panel\n");
+		return -EINVAL;
+	}
+
+	if (display->trusted_vm_env) {
+		display->panel->panel_initialized = false;
 		return rc;
+	}
 
 	sde_kms = sde_connector_get_kms(display->drm_conn);
 	if (!sde_kms)

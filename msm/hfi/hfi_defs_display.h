@@ -92,7 +92,7 @@ enum hfi_display_res_type {
  * @resource_idx: resource index
  * @width: resource output width
  * @height: resource output height
- * @reserved: reserved field for future
+ * @reserved: used for resource output roi position (x << 16) | (y & 0xFFFF)
  */
 struct hfi_resource_cfg {
 	u32 res_type;
@@ -862,6 +862,43 @@ enum hfi_misr_block {
 };
 
 /*!
+ * @enum hfi_batch_mode
+ * @brief Defines operational modes for batch processing in HFI commands.
+ *
+ * @var HFI_BATCH_MODE_NONE
+ *   Indicates no batch operation is active.
+ * @var HFI_BATCH_MODE_START
+ *   Marks the beginning of a batch command sequence. This should be called at the start of the
+ *   use case [refer enum hfi_batch_usecase_id] where multiple commands are to be sent as a batch.
+ * @var HFI_BATCH_MODE_END
+ *   Marks the end of a batch command sequence.
+ * @var HFI_BATCH_MODE_CANCEL
+ *   Cancels an ongoing batch commit operation. This should be called at the end of the use case
+ *   [refer enum hfi_batch_usecase_id] after that individual or new batch commands can be sent.
+ */
+enum hfi_batch_mode {
+	HFI_BATCH_MODE_NONE   = 0x0,
+	HFI_BATCH_MODE_START  = 0x1,
+	HFI_BATCH_MODE_END    = 0x2,
+	HFI_BATCH_MODE_CANCEL = 0x3,
+};
+
+/*!
+ * @enum hfi_batch_usecase_id
+ * @brief Identifies specific use cases for batch operations in HFI commands.
+ *
+ * @var HFI_BATCH_USECASE_NONE
+ *   No specific use case defined for batch operations.
+ * @var HFI_BATCH_USECASE_GMU_REPROJ
+ *   GMU reprojection use case for batch operations. Use this use case id while sending
+ *   HFI_COMMAND_DISPLAY_BATCH_MODE command at the start/end/cancel of the use case.
+ */
+enum hfi_batch_usecase_id {
+	HFI_BATCH_USECASE_NONE = 0,
+	HFI_BATCH_USECASE_GMU_REPROJ,
+};
+
+/*!
  * @struct hfi_misr_config
  * @brief MISR setup config information
  *
@@ -948,6 +985,94 @@ struct hfi_display_mode_extended_info {
 	u32 cmpr_slice_count;
 	u32 reserved1;
 	u32 reserved2;
+};
+
+/*
+ * @struct hfi_cmd_set_remap
+ * @brief DSI command set remapping entry
+ *
+ * This structure represents a single mapping entry for DSI command set remapping.
+ * Used with HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REMAP to inform DCP which
+ * hfi_panel_dcs_command_type values should be replaced with custom command types.
+ *
+ * @var cmd_type
+ *   hfi_panel_dcs_command_type value to be remapped
+ * @var custom_cmd_type
+ *   OEMs can define custom command types at host level which can be
+ *   used to remap hfi_panel_dcs_command_type values.
+ * @var flag
+ *   Reserved for future use
+ * @var reserved
+ *   Reserved for future use
+ */
+struct hfi_cmd_set_remap {
+	u32 cmd_type;
+	u32 custom_cmd_type;
+	u32 flag;
+	u32 reserved;
+};
+
+/*
+ * @struct hfi_dsi_dcs_cmd_set_replace_entry
+ * @brief Single entry for DSI DCS command set replacement
+ *
+ * This structure represents one replacement entry in the payload of
+ * HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE. Each entry instructs
+ * DCP to replace the standard DCS command metadata for a given command type
+ * with user-defined custom commands.
+ *
+ * @var dpu_buff_type_offset
+ *   Byte offset within the DPU-mapped command payload buffer (established
+ *   during panel init via HFI_PROPERTY_PANEL_DPU_ADDRESS) where the
+ *   replacement command bytes for this entry begin.
+ * @var cmd_type
+ *   hfi_panel_dcs_command_type value identifying the command type to replace.
+ * @var count_cmds
+ *   Number of replacement commands for this entry.
+ * @var hfi_buff_struct_offset
+ *   Byte offset within the DCP-mapped command descriptor buffer (established
+ *   during panel init via HFI_PROPERTY_PANEL_DCP_ADDRESS) where the
+ *   hfi_dsi_cmd_desc metadata structs for this entry begin.
+ * @var reserved
+ *   Reserved for future use.
+ */
+struct hfi_dsi_dcs_cmd_set_replace_entry {
+	u32 dpu_buff_type_offset;
+	u32 cmd_type;
+	u32 count_cmds;
+	u32 hfi_buff_struct_offset;
+	u32 reserved;
+};
+
+/*
+ * @struct hfi_custom_wd_te_params
+ * @brief contains custom WD TE parameters
+ *
+ * @var wd_te_enabled
+ *   watchdog te is enabled
+ * @var custom_fps
+ *   custom FPS for watchdog TE
+ */
+struct hfi_custom_wd_te_params {
+	u32 wd_te_enabled;
+	u32 custom_fps;
+};
+
+/*!
+ * @struct hfi_batch_mode_info
+ * @brief Configuration structure for batch mode operations
+ *
+ * @var mode
+ *   Batch operation mode (start, end, or none)
+ * @var usecase_id
+ *   Identifier for the specific batch use case
+ * @var reserved
+ *   Reserved for future use
+ */
+struct hfi_batch_mode_info {
+	enum hfi_batch_mode mode;
+	enum hfi_batch_usecase_id usecase_id;
+	u32 reserved[2];
 };
 
 #endif // __H_HFI_DEFS_DISPLAY_H__

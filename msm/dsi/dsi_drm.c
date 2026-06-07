@@ -71,6 +71,7 @@ static void msm_parse_mode_priv_info(const struct msm_display_mode *msm_mode,
 		(struct dsi_display_mode_priv_info *)msm_mode->private;
 
 	if (dsi_mode->priv_info) {
+		dsi_mode->mode_idx = dsi_mode->priv_info->mode_idx;
 		dsi_mode->timing.dsc_enabled = dsi_mode->priv_info->dsc_enabled;
 		dsi_mode->timing.dsc = &dsi_mode->priv_info->dsc;
 		dsi_mode->timing.vdc_enabled = dsi_mode->priv_info->vdc_enabled;
@@ -245,7 +246,8 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH |
 		 DSI_MODE_FLAG_DMS_VID)) {
 		DSI_DEBUG("[%d] seamless pre-enable\n", c_bridge->id);
-		if ((c_bridge->dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) &&
+		if ((c_bridge->dsi_mode.dsi_mode_flags &
+			(DSI_MODE_FLAG_VRR | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) &&
 			(disp_op == MSM_DISP_OP_HFI)) {
 			rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
 			if (rc) {
@@ -627,6 +629,7 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 
 	/* propagate the private info to the adjusted_mode derived dsi mode */
 	dsi_mode.priv_info = panel_dsi_mode->priv_info;
+	dsi_mode.mode_idx = panel_dsi_mode->mode_idx;
 	dsi_mode.dsi_mode_flags = panel_dsi_mode->dsi_mode_flags;
 	dsi_mode.panel_mode_caps = panel_dsi_mode->panel_mode_caps;
 	dsi_mode.pixel_format_caps = panel_dsi_mode->pixel_format_caps;
@@ -1462,6 +1465,7 @@ bool dsi_conn_check_cmd_defined(void *display, enum dsi_cmd_set_type type)
 	struct dsi_panel *panel;
 	u32 count;
 	struct dsi_display_mode *mode;
+	int idx;
 
 	if (!dsi_display || !dsi_display->panel)
 		return false;
@@ -1470,8 +1474,14 @@ bool dsi_conn_check_cmd_defined(void *display, enum dsi_cmd_set_type type)
 	if (!panel || !panel->cur_mode)
 		return false;
 
+	/* Convert enum value to array index */
+	idx = dsi_cmd_type_to_index(type);
+	if (idx < 0 || idx >= DSI_CMD_SET_TOTAL_SIZE) {
+		DSI_ERR("Invalid command type: %u, idx: %d\n", type, idx);
+		return false;
+	}
 	mode = panel->cur_mode;
-	count = mode->priv_info->cmd_sets[type].count;
+	count = mode->priv_info->cmd_sets[idx].count;
 
 	return count ? true : false;
 }

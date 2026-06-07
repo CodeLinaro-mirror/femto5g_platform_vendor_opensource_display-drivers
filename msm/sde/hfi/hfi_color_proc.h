@@ -201,6 +201,13 @@ void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc, void *cfg);
 void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top);
 
 /**
+ * hfi_setup_mdnie_ipc - api to setup mdnie ipc programming
+ * @ctx: pointer to dspp object.
+ * @cfg: Pointer to sde_hw_cp_cfg.
+ */
+void hfi_setup_mdnie_ipc(struct sde_hw_dspp *ctx, void *cfg);
+
+/**
  * hfi_cp_crtc_alloc_pa_hist_buffers - allocate PA histogram buffers
  * @sde_crtc: Pointer to sde_crtc context
  *
@@ -360,6 +367,10 @@ static inline void hfi_cp_crtc_free_rgb_hist_buffers(struct sde_crtc *sde_crtc,
 
 static inline void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg,
 	void *aiqe_top)
+{
+}
+
+static inline void hfi_setup_mdnie_ipc(struct sde_hw_dspp *ctx, void *cfg)
 {
 }
 

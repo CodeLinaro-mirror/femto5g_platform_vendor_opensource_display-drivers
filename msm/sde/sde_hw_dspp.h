@@ -359,6 +359,12 @@ struct sde_hw_dspp_ops {
 	 */
 	void (*setup_mdnie_art[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg,
 						 void *aiqe_top);
+	/**
+	 * setup_mdnie_ipc - function to configure mdnie ipc params
+	 * @ctx: Pointer to dspp context
+	 * @cfg: Pointer to configuration
+	 */
+	void (*setup_mdnie_ipc[MSM_DISP_OP_MAX])(struct sde_hw_dspp *ctx, void *cfg);
 
 	/**
 	 * setup_aiqe_ssrc_config - function to set SSRC configuration
