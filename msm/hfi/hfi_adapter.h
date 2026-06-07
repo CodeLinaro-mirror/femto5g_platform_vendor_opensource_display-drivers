@@ -253,6 +253,10 @@ struct hfi_prop_listener {
  * @event_id: Event ID from payload that created this listener (for cleanup purposes)
  * @obj_id: Object ID associated with this listener (for cleanup purposes)
  * @listener_obj: Void Pointer of listener object
+ * @remove_on_cb: Flag to indicate, listner needs to be removed at the end of DCP callback
+ * @mark_for_deletion: Flag to indicate, listener is marked for deletion but not yet deleted
+ *                     This is needed to avoid race condition between listener removal and
+ *                     list
  */
 struct listener_list {
 	struct list_head list_ptr;
@@ -261,6 +265,8 @@ struct listener_list {
 	u32 event_id;
 	u32 obj_id;
 	void *listener_obj;
+	bool remove_on_cb;
+	bool mark_for_deletion;
 };
 
 /**
@@ -371,10 +377,24 @@ int hfi_adapter_add_set_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *
  * @size: Size of the payload data in bytes. This does not include packet size, only payload size.
  * @listener: Pointer to listener object, required to pass data from adapter to caller.
  * @flags: Flags to indicate hints attached with HFI Commands buffer.
+ * @remove_on_cb: Flag to indicate listener can be removed when response is received from DCP.
+ * @packet_id: Unique identifier for a packet, used to identify response packet from DCP.
+ *
+ * Return: 0 on success, negative error c
  */
 int hfi_adapter_add_get_property(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *cmd_buf,
 		u32 cmd_id, u32 obj_id, enum hfi_payload_type payload_type,
-		void *payload, u32 size, struct hfi_prop_listener *listener, u32 flags);
+		void *payload, u32 size, struct hfi_prop_listener *listener, u32 flags,
+		bool remove_on_cb, u32 *packet_id);
+
+/**
+ * hfi_adapter_remove_listener_by_packet_id - Remove listener by packet id
+ * @ctx: Pointer to hfi_client struct.
+ * @packet_id: Unique identifier for a packet, used to identify response packet from DCP.
+ *
+ * Return: None.
+ */
+void hfi_adapter_remove_listener_by_packet_id(struct hfi_client_t *ctx, u32 packet_id);
 
 /**
  * hfi_adapter_add_prop_array - Same as above just payload is an array of key-value pairs.
@@ -539,9 +559,13 @@ static inline int hfi_adapter_add_set_property(struct hfi_client_t *ctx,
 static inline int hfi_adapter_add_get_property(struct hfi_client_t *ctx,
 		struct hfi_cmdbuf_t *cmd_buf, u32 cmd_id,
 		u32 obj_id, enum hfi_payload_type payload_type, void *payload, u32 size,
-		struct hfi_prop_listener *listener, u32 flags)
+		struct hfi_prop_listener *listener, u32 flags, bool remove_on_cb, u32 *packet_id)
 {
 	return 0;
+}
+
+static inline void hfi_adapter_remove_listener_by_packet_id(struct hfi_client_t *ctx, u32 packet_id)
+{
 }
 
 static inline int hfi_adapter_add_prop_array(struct hfi_client_t *ctx,

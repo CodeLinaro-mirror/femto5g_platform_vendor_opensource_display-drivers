@@ -304,7 +304,8 @@ struct hfi_prop_u64 {
 #define HFI_BUFF_FEATURE_HW_BLK_IDX_1   (1 << 3)
 #define HFI_BUFF_FEATURE_HW_BLK_IDX_2   (1 << 4)
 #define HFI_BUFF_FEATURE_HW_BLK_IDX_3   (1 << 5)
-
+#define HFI_BUFF_3D_LUT_MODE_A          (1 << 16)
+#define HFI_BUFF_3D_LUT_MODE_B          (1 << 17)
 /*
  * struct hfi_buff_dpu - hfi buffer accessible by dpu
  * @flags    :  flags
@@ -317,13 +318,20 @@ struct hfi_buff_dpu {
 	u32 len;
 };
 
-/*
- * enum hfi_subsystem_type - Subsystem type definition
+/*!
+ * @enum hfi_subsystem_type
+ * @brief Subsystem type definition
  *
- * @HFI_SUBSYSTEM_TYPE_LSR : LSR subsystem.
+ * Defines subystem type.
+ *
+ * @var HFI_SUBSYSTEM_TYPE_LSR
+ *   LSR subsystem.
+ * @var HFI_SUBSYSTEM_TYPE_GMU
+ *   GMU subsystem.
  */
 enum hfi_subsystem_type {
-	HFI_SUBSYSTEM_TYPE_LSR = 0
+	HFI_SUBSYSTEM_TYPE_LSR = 0,
+	HFI_SUBSYSTEM_TYPE_GMU = 1
 };
 
 #endif // __H_HFI_DEFS_COMMON_H__

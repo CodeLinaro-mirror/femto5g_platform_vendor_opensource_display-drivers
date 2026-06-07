@@ -77,7 +77,7 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 	struct allowed_clock_rates_table *tbl = NULL;
 	unsigned int tbl_size;
 	unsigned int lsr_min_rate, lsr_max_rate;
-	unsigned long tmp = 0, core_sum = 0, bw_sum = 0;
+	unsigned long tmp = 0, core_sum = 0, bw_sum = 0, peak_bw = 0;
 
 	if (!core) {
 		dprintk(LSR_ERR, "%s: invalid params\n", __func__);
@@ -118,8 +118,9 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 	hdev->clk_freq = core->curr_freq;
 	core->bw_sum = bw_sum;
 
-	core->peak_bw = core->new_perf.lsr_csc_ib_bw > core->new_perf.lsr_repro_ib_bw ?
+	peak_bw = core->new_perf.lsr_csc_ib_bw > core->new_perf.lsr_repro_ib_bw ?
 			core->new_perf.lsr_csc_ib_bw : core->new_perf.lsr_repro_ib_bw;
+	core->peak_bw = Bps_to_icc(peak_bw);
 	dprintk(LSR_PWR, "%s %d : clk : %lu bw : %lu kBps peak_bw = %lu kBps\n",
 		__func__, __LINE__, core->curr_freq, core->bw_sum, core->peak_bw);
 

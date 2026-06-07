@@ -45,6 +45,8 @@
 
 /* HDCP 2.x message IDs */
 #define SKE_SEND_EKS            11
+#define REP_SEND_ACK            15
+#define REP_STREAM_MANAGE       16
 #define REP_STREAM_READY        17
 #define SKE_SEND_TYPE_ID        18
 
@@ -1913,19 +1915,24 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 		return;
 	}
 
-	DP_DEBUG("Processing message: request_length=%u, repeater_flag(hfi)=%d\n",
-		 hfi_data->request.size, hfi_data->repeater_flag);
+	DP_DEBUG("HDCP2X_PROCESS_MSG: msg_id=0x%02x req_len=%u\n",
+		 req_buf ? req_buf[0] : 0xFF, hfi_data->request.size);
 
-	/* Process message through dp_hdcp (TZ) */
-	rc = dp_hdcp2x_process_msg(hfi->hdcp2x_ctx,
-				   req_buf, hfi_data->request.size,
-				   &resp_buf, &resp_len,
-				   &repeater_flag, &timeout_ms);
+	if (hfi_data->request.size == 0 &&
+	    ((uint8_t *)hfi->hdcp2x_resp_map->local_addr)[0] == REP_SEND_ACK) {
+		DP_DEBUG("Zero-length request after REP_SEND_ACK: calling QUERY_STREAM\n");
+		rc = dp_hdcp2x_query_stream(hfi->hdcp2x_ctx, &resp_buf, &resp_len);
+		repeater_flag = true;
+		timeout_ms = 0;
+	} else {
+		rc = dp_hdcp2x_process_msg(hfi->hdcp2x_ctx,
+					   req_buf, hfi_data->request.size,
+					   &resp_buf, &resp_len,
+					   &repeater_flag, &timeout_ms);
+	}
 	if (rc) {
-		DP_ERR("dp_hdcp2x_process_msg failed: %d\n", rc);
-		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
-		dp_mgr_update_hdcp_info(hfi, false);
-		return;
+		DP_ERR("Process msg failed: %d, send NULL response to trigger auth retry\n", rc);
+		resp_len = 0;
 	}
 
 	/* Copy response to shared buffer (if any) */
@@ -1939,6 +1946,9 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 
 		msg_id = resp_buf[0];
 		DP_DEBUG("Response message ID: 0x%02x\n", msg_id);
+	} else {
+		DP_WARN("Sending NULL response to DCP (msg_id=0x%02x) — retry will be triggered\n",
+			req_buf ? req_buf[0] : 0xFF);
 	}
 
 	/* Prepare HFI response */
@@ -1971,7 +1981,8 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 		DP_DEBUG("Response sent to DCP, length=%u\n", resp_len);
 
 	if ((msg_id == SKE_SEND_EKS && !is_repeater) ||
-			(msg_id == REP_STREAM_READY && is_repeater)) {
+			(req_buf[0] == REP_STREAM_READY && is_repeater
+			&& msg_id != REP_STREAM_MANAGE)) {
 
 		rc = dp_hdcp2x_enable_encryption(hfi->hdcp2x_ctx);
 		if (rc) {
@@ -2028,11 +2039,8 @@ static void dp_mgr_hfi_handle_hdcp2x_timeout(struct dp_hfi *hfi, void *payload, 
 			       req_buf, 0,  /* request is empty (length=0) but pass pointer */
 			       &resp_buf, &resp_len);
 	if (rc) {
-		DP_ERR("dp_hdcp2x_timeout failed: %d\n", rc);
-
-		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
-		dp_mgr_update_hdcp_info(hfi, false);
-		return;
+		DP_ERR("Timeout failed: %d, send NULL response to trigger auth retry\n", rc);
+		resp_len = 0;
 	}
 
 	/* Copy response to shared buffer if TZ returned something */
@@ -2158,6 +2166,7 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 			DP_ERR("Failed to register HDCP events, rc=%d\n", rc);
 			return;
 		}
+		hfi->hdcp_version_registered = hfi->hdcp_info.hdcp_version;
 	} else {
 		hfi_event = HFI_EVENT_HDCP_FEATURE_SUPPORTED;
 		rc = dp_hfi_append_batch_cmd(hfi, hfi_client,
@@ -2646,7 +2655,7 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	DP_DEBUG("Sending DISPLAY_POST_DISABLE command to DCP, panel_id=%d\n", panel_id);
 
-	if (hfi->hdcp_info.hdcp_version != HDCP_VERSION_NONE) {
+	if (hfi->hdcp_version_registered != HDCP_VERSION_NONE) {
 		rc = dp_hfi_start_batch_cmd(hfi, hfi_client);
 		if (rc) {
 			DP_ERR("failed to start batch cmds, rc=%d\n", rc);
@@ -2664,9 +2673,12 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 					panel_id);
 		}
 
-		rc = _register_hdcp_events(hfi_priv, stream_id, false, hfi->hdcp_info.hdcp_version);
+		rc = _register_hdcp_events(hfi_priv, stream_id, false,
+				hfi->hdcp_version_registered);
 		if (rc)
 			DP_ERR("Failed to deregister HDCP events, rc=%d\n", rc);
+
+		hfi->hdcp_version_registered = HDCP_VERSION_NONE;
 
 		rc = dp_hfi_send_batch_cmd(hfi, hfi_client, false);
 		if (rc) {
@@ -2685,6 +2697,9 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 					panel_id);
 		}
 	}
+
+	/* Reset HDCP status to inactive after all HDCP teardown is complete */
+	dp_mgr_update_hdcp_info(hfi, true);
 
 	return rc;
 }

@@ -1079,7 +1079,7 @@ end:
 int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_connector *hfi_conn,
 		struct hfi_cmdbuf_t *cmd_buf, u32 *flags, bool enable)
 {
-	u32 display_id;
+	u32 display_id, packet_id = 0;
 	int ret = 0;
 	struct sde_connector *sde_conn = NULL;
 	struct drm_connector *conn = NULL;
@@ -1117,7 +1117,7 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
 			*flags |= HFI_HOST_FLAGS_RESPONSE_REQUIRED;
 			ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
 				HFI_COMMAND_DISPLAY_DISABLE, display_id, HFI_PAYLOAD_TYPE_NONE,
-				NULL, 0, &hfi_conn->disable_listener, *flags);
+				NULL, 0, &hfi_conn->disable_listener, *flags, false, &packet_id);
 			if (ret) {
 				SDE_ERROR("failed to register LSR-WB disable response listener\n");
 				return ret;

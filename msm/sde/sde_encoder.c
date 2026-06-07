@@ -1217,6 +1217,23 @@ bool sde_encoder_in_clone_mode(struct drm_encoder *drm_enc)
 	return false;
 }
 
+ktime_t sde_encoder_get_ept(struct drm_encoder *drm_enc)
+{
+	struct sde_encoder_virt *sde_enc;
+	struct drm_connector *drm_conn;
+
+	if (!drm_enc)
+		return 0;
+
+	sde_enc = to_sde_encoder_virt(drm_enc);
+
+	if (!sde_enc || !sde_enc->cur_master || !sde_enc->cur_master->connector)
+		return 0;
+
+	drm_conn = sde_enc->cur_master->connector;
+	return ns_to_ktime(sde_connector_get_property(drm_conn->state, CONNECTOR_PROP_EPT));
+}
+
 bool sde_encoder_is_cwb_disabling(struct drm_encoder *drm_enc,
 	struct drm_crtc *crtc)
 {
@@ -4471,6 +4488,10 @@ static void sde_encoder_virt_enable(struct drm_encoder *drm_enc)
 			SDE_ERROR_ENC(sde_enc, "encoder enable failure\n");
 	}
 
+	if (!sde_enc->cur_master->connector) {
+		SDE_ERROR_ENC(sde_enc, "invalid connector\n");
+		return;
+	}
 
 	c_state = to_sde_connector_state(sde_enc->cur_master->connector->state);
 	if (!c_state) {

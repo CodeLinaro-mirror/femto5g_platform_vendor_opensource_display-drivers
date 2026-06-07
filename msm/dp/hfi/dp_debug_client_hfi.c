@@ -523,7 +523,7 @@ static int dp_debug_hfi_send_cmd_with_response(struct dp_debug_client_hfi_priv *
 	enum hfi_cmdbuf_type cmd_buf_type = HFI_CMDBUF_TYPE_GET_DEBUG_DATA;
 	int rc;
 	/* unsigned long timeout_jiffies = msecs_to_jiffies(timeout_ms); */
-	u32 obj_id;
+	u32 obj_id, packet_id = 0;
 	struct platform_device *pdev;
 	struct dp_drv *dp_drv;
 	struct drm_connector *connector = NULL;
@@ -559,7 +559,8 @@ static int dp_debug_hfi_send_cmd_with_response(struct dp_debug_client_hfi_priv *
 
 	/* Add get property command with listener for response */
 	rc = hfi_adapter_add_get_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
-			hfi_payload_type, payload, payload_size, &priv->hfi_cb_obj, flags);
+			hfi_payload_type, payload, payload_size, &priv->hfi_cb_obj, flags,
+			true, &packet_id);
 	if (rc) {
 		hfi_adapter_release_cmd_buf(hfi_client, cmd_buf);
 		return rc;

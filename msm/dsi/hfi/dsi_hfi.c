@@ -260,7 +260,7 @@ int dsi_hfi_misr_read(struct dsi_display *display)
 	struct dsi_display_hfi *display_hfi;
 	struct misr_read_data misr_read;
 	struct drm_connector *drm_conn;
-	u32 obj_id;
+	u32 obj_id, packet_id = 0;
 	int rc = 0;
 
 	if (!display)
@@ -288,7 +288,7 @@ int dsi_hfi_misr_read(struct dsi_display *display)
 			HFI_COMMAND_DEBUG_MISR_READ, obj_id,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &misr_read, sizeof(misr_read),
 			&display->hfi_cb_obj, (HFI_HOST_FLAGS_RESPONSE_REQUIRED |
-			HFI_HOST_FLAGS_NON_DISCARDABLE));
+			HFI_HOST_FLAGS_NON_DISCARDABLE), false, &packet_id);
 	if (rc)
 		DSI_ERR("Failed to add MISR read command\n");
 
@@ -296,6 +296,7 @@ int dsi_hfi_misr_read(struct dsi_display *display)
 	rc = hfi_adapter_set_cmd_buf_blocking(display_hfi->hfi_client, cmd_buf);
 	SDE_EVT32(drm_conn->base.id, obj_id, HFI_COMMAND_DEBUG_MISR_READ, rc,
 			SDE_EVTLOG_FUNC_CASE2);
+	hfi_adapter_remove_listener_by_packet_id(display_hfi->hfi_client, packet_id);
 
 	return rc;
 }
@@ -438,7 +439,8 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
 	struct drm_connector *drm_conn;
 	int rc = 0;
-	u32 obj_id;
+	u32 obj_id, packet_id = 0;
+	bool remove_on_cb = false;
 
 	if (!display) {
 		DSI_ERR("invalid display\n");
@@ -472,8 +474,11 @@ int dsi_display_hfi_send_cmd_buf(struct dsi_display *display,
 	}
 
 	if (flags & HFI_HOST_FLAGS_RESPONSE_REQUIRED) {
+		remove_on_cb = ((hfi_cmd != HFI_COMMAND_DISPLAY_EVENT_REGISTER)
+				&& (hfi_cmd != HFI_COMMAND_DISPLAY_EVENT_DEREGISTER));
 		rc = hfi_adapter_add_get_property(hfi_client, cmd_buf, hfi_cmd, obj_id,
-			hfi_payload_type, payload, payload_size, &display->hfi_cb_obj, flags);
+			hfi_payload_type, payload, payload_size, &display->hfi_cb_obj, flags,
+			remove_on_cb, &packet_id);
 		if (rc)
 			DSI_ERR("could not set property for hfi_cmd 0x%x\n", hfi_cmd);
 
@@ -502,7 +507,7 @@ int dsi_display_hfi_register_pwr_supplies(struct dsi_display *display)
 {
 	struct dsi_display_hfi *display_hfi;
 	struct hfi_cmdbuf_t *cmd_buf = NULL;
-	u32 obj_id;
+	u32 obj_id, packet_id = 0;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_POWER_REGISTER;
 	int rc = 0;
 
@@ -520,7 +525,8 @@ int dsi_display_hfi_register_pwr_supplies(struct dsi_display *display)
 
 	rc = hfi_adapter_add_get_property(display_hfi->hfi_client, cmd_buf, hfi_cmd, obj_id,
 			HFI_PAYLOAD_TYPE_NONE, NULL, 0, &display->hfi_cb_obj,
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE,
+			true, &packet_id);
 
 	rc = hfi_adapter_set_cmd_buf(display_hfi->hfi_client, cmd_buf);
 	SDE_EVT32(obj_id, hfi_cmd, rc, SDE_EVTLOG_FUNC_CASE1);

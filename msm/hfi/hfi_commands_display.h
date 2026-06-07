@@ -579,6 +579,51 @@
  */
 #define HFI_COMMAND_DISPLAY_DSI_CUSTOM_DCS_CMDS_SET_REPLACE           0x02000019
 
+/*!
+ * HFI_COMMAND_DISPLAY_BATCH_MODE  -  From Host to DCP, this command denotes the start or end of
+ *                                    batch mode for display. HFI_COMMAND_DISPLAY_BATCH_MODE
+ *                                    must be set before this command.
+ *
+ * Host to DCP:
+ * hfi_header.num_packets                 : 1
+ *
+ * Below table describes the hfi_packet layout (Only data that would change per command is listed
+ * below, other fields can be found in @ref display_header_data_page)
+ *
+ * Hfi packet layout                      | Value
+ *----------------------------------------|---------------------------------
+ * hfi_packet.payload_info (type)         | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                         | HFI_COMMAND_DISPLAY_BATCH_MODE
+ * hfi_packet.flags                       | HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                          | Bits 0:15 carry the display id
+ * hfi_packet.packet_id                   | unique id
+ * hfi_packet.payload                     | struct hfi_batch_mode_info
+ */
+#define HFI_COMMAND_DISPLAY_BATCH_MODE                                0x0200001A
+
+/*!
+ * HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG - Host command sent to DCP to configure the
+ *                                            HFI queue for a subsystem. This command is sent after
+ *                                            enabling the display and before batch mode start
+ *                                            of the use case.
+ *
+ * Host to DCP:
+ *
+ * hfi_header.num_packets             : 1
+ *
+ * Hfi packet layout                  | Value
+ *------------------------------------|------------------------------------------------
+ * hfi_packet.payload_info (type)     | HFI_PAYLOAD_U32_ARRAY
+ * hfi_packet.cmd                     | HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG
+ * hfi_packet.flags                   | HFI_TX_FLAGS_RESPONSE_REQUIRED |
+ *                                    | HFI_TX_FLAGS_NON_DISCARDABLE
+ * hfi_packet.id                      | Bits 0:15 carry the display id
+ * hfi_packet.packet_id               | unique id
+ * hfi_packet.payload[0]              | enum hfi_subsystem_type
+ * hfi_packet.payload[1..]            | struct hfi_buff
+ */
+#define HFI_COMMAND_DISPLAY_HFI_SUBSYSTEM_CONFIG                      0x0200001B
+
 #define HFI_COMMAND_DISPLAY_END                                       0x02FFFFFF
 
 #endif // __H_HFI_COMMANDS_DISPLAY_H__

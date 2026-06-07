@@ -645,6 +645,35 @@ static void _sde_plane_set_input_fence(struct sde_plane *psde,
 	SDE_DEBUG_PLANE(psde, "0x%llX\n", fd);
 }
 
+#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
+int sde_plane_set_input_fence_deadline(struct drm_plane *plane, ktime_t deadline)
+{
+	struct sde_plane_state *pstate;
+	struct dma_fence *input_fence;
+
+	if (!plane) {
+		SDE_ERROR("invalid plane\n");
+		return -EINVAL;
+	}
+	if (!plane->state) {
+		SDE_ERROR_PLANE(to_sde_plane(plane), "invalid state\n");
+		return -EINVAL;
+	}
+	pstate = to_sde_plane_state(plane->state);
+	input_fence = (struct dma_fence *)pstate->input_fence;
+
+	if (input_fence)
+		dma_fence_set_deadline(input_fence, deadline);
+
+	return 0;
+}
+#else
+int sde_plane_set_input_fence_deadline(struct drm_plane *plane, ktime_t deadline)
+{
+	return 0;
+}
+#endif /* (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE) */
+
 void sde_plane_dump_input_fence(struct drm_plane *plane)
 {
 	struct sde_plane *psde;
