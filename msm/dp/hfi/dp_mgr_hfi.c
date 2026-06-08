@@ -1565,9 +1565,9 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	info = payload;
 	edid_buf = &info->edid_modes_buf;
 
-	DP_INFO("EDID Info received: stream_id=%d size=%u, link_rate=%u, lane_count=%u, bpp=%u\n",
+	DP_INFO("EDID Info: stream_id=%d size=%u, link_rate=%u, lane_count=%u, bpp=%u, flags=%u\n",
 			info->stream_id, edid_buf->size, info->link_rate,
-			info->lane_count, info->bits_per_pixel);
+			info->lane_count, info->bits_per_pixel, info->flags);
 
 	edid_map = hfi->edid_addr_map;
 	if (!edid_map) {
@@ -1587,7 +1587,9 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	if (info->stream_id == 0) {
 		hfi_priv->link_rate = info->link_rate;
 		hfi_priv->lane_count = info->lane_count;
-		hfi_priv->fec_en = info->fec_enabled;
+		hfi_priv->mst_st = info->flags & BIT(HFI_DP_SINK_CAP_MST);
+		hfi_priv->dsc_en = info->flags & BIT(HFI_DP_SINK_CAP_DSC);
+		hfi_priv->fec_en = info->flags & BIT(HFI_DP_SINK_CAP_FEC);
 	}
 
 	hfi->tgt_bpp = info->bits_per_pixel;
@@ -1648,6 +1650,9 @@ static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 
 	case HFI_DP_EVENT_HPD_UNPLUGGED:
 		DP_DEBUG("HPD_UNPLUGGED: conn:%d\n",
 				(hfi->connector ? hfi->connector->base.id : -1));
+		hfi_priv->mst_st = 0;
+		hfi_priv->fec_en = 0;
+		hfi_priv->dsc_en = 0;
 		hfi->connected = false;
 		_hfi_notify_hpd_user(hfi, false);
 		break;
