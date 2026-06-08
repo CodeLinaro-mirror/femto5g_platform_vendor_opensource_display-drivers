@@ -1122,6 +1122,9 @@ static void _sde_crtc_setup_dim_layer_cfg(struct drm_crtc *crtc,
 						cstate->lm_roi[i].y;
 		}
 
+		split_dim_layer.rect.x += sde_crtc->offset_x;
+		split_dim_layer.rect.y += sde_crtc->offset_y;
+
 		/* update dim layer rect for panel stacking crtc */
 		if (cstate->line_insertion.padding_height)
 			_sde_crtc_calc_split_dim_layer_yh_param(crtc, &split_dim_layer.rect.y,
