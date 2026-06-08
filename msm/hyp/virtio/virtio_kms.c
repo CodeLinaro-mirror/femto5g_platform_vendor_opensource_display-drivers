@@ -490,8 +490,14 @@ static int virtio_connector_set_info_blob(struct drm_connector *connector,
 	case PANEL_ROTATE_NONE:
 		sde_kms_info_add_keystr(info, "panel orientation", "none");
 		break;
+	case PANEL_ROTATE_90:
+		sde_kms_info_add_keystr(info, "panel orientation", "rot 90");
+		break;
 	case PANEL_ROTATE_180:
 		sde_kms_info_add_keystr(info, "panel orientation", "horz & vert flip");
+		break;
+	case PANEL_ROTATE_270:
+		sde_kms_info_add_keystr(info, "panel orientation", "rot 270");
 		break;
 	case PANEL_ROTATE_H_FLIP:
 		sde_kms_info_add_keystr(info, "panel orientation", "horz flip");
