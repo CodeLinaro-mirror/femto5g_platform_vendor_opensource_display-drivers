@@ -5,7 +5,7 @@
  */
 
 /*
- * Copyright (c) 2023-2025 Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
  */
 
 #include <linux/firmware.h>
@@ -25,11 +25,13 @@
 #include <sound/hdmi-codec.h>
 
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_edid.h>
 #include <drm/drm_bridge.h>
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_print.h>
 #include <drm/drm_probe_helper.h>
 #include <drm/drm_file.h>
+#include <drm/drm_client.h>
 #include <media/cec.h>
 #include <media/cec-notifier.h>
 
@@ -260,7 +262,6 @@ static int lt9611uxc_get_edid_audio_blk(struct msm_ext_disp_audio_edid_blk *blk,
 
 	sad_count = drm_edid_to_sad(edid, &sads);
 	lt9611uxc_cea_sad_to_raw_sad(sads, sad_count, lt9611uxc->raw_sad);
-	sadb_size = drm_edid_to_speaker_allocation(edid, &sadb);
 	dev_info(lt9611uxc->dev, "sad_count %d, sadb_size %d\n", sad_count, sadb_size);
 
 	blk->audio_data_blk = lt9611uxc->raw_sad;
@@ -543,6 +544,9 @@ static void lt9611uxc_hpd_work(struct work_struct *work)
 		if (lt9611uxc->connector.status == connector_status_disconnected)
 			lt9611uxc_release_edid(lt9611uxc);
 		lt9611uxc_helper_hotplug_event(lt9611uxc);
+
+		drm_kms_helper_hotplug_event(lt9611uxc->connector.dev);
+		drm_client_dev_hotplug(lt9611uxc->connector.dev);
 	} else {
 
 		mutex_lock(&lt9611uxc->ocm_lock);
@@ -565,6 +569,9 @@ static void lt9611uxc_reset(struct lt9611uxc *lt9611uxc)
 	msleep(20);
 
 	gpiod_set_value_cansleep(lt9611uxc->reset_gpio, 1);
+	msleep(300);
+
+	/* Need longer time to wait LT9611UXC reset finished. */
 	msleep(300);
 }
 
@@ -767,7 +774,7 @@ static int lt9611uxc_connector_get_modes(struct drm_connector *connector)
 	struct cec_notifier *notify = lt9611uxc->cec_notifier;
 	unsigned int count;
 
-	lt9611uxc->edid = lt9611uxc->bridge.funcs->get_edid(&lt9611uxc->bridge, connector);
+	lt9611uxc->edid = drm_edid_duplicate(drm_edid_raw(lt9611uxc->bridge.funcs->edid_read(&lt9611uxc->bridge, connector)));
 	drm_connector_update_edid_property(connector, lt9611uxc->edid);
 	count = drm_add_edid_modes(connector, lt9611uxc->edid);
 	lt9611uxc_set_preferred_mode(connector);
@@ -930,6 +937,21 @@ static void lt9611uxc_video_setup(struct lt9611uxc *lt9611uxc,
 	regmap_write(lt9611uxc->regmap, 0xd01b, (u8)(hfront_porch % 256));
 }
 
+static void lt9611uxc_bridge_pre_enable(struct drm_bridge *bridge)
+{
+	struct lt9611uxc *lt9611uxc;
+	if (!bridge)
+		return;
+
+	lt9611uxc = bridge_to_lt9611uxc(bridge);
+
+	lt9611uxc_reset(lt9611uxc);
+
+	lt9611uxc_lock(lt9611uxc);
+	lt9611uxc_video_setup(lt9611uxc, &lt9611uxc->curr_mode);
+	lt9611uxc_unlock(lt9611uxc);
+}
+
 static void lt9611uxc_bridge_enable(struct drm_bridge *bridge)
 {
 	struct lt9611uxc *lt9611uxc;
@@ -1006,6 +1028,9 @@ static enum drm_connector_status lt9611uxc_bridge_detect(struct drm_bridge *brid
 	int ret;
 	bool connected = true;
 
+	bool was_connected;
+	was_connected = lt9611uxc->hdmi_connected;
+
 	lt9611uxc_lock(lt9611uxc);
 
 	if (lt9611uxc->hpd_supported) {
@@ -1020,14 +1045,33 @@ static enum drm_connector_status lt9611uxc_bridge_detect(struct drm_bridge *brid
 
 	lt9611uxc_unlock(lt9611uxc);
 
+	if (was_connected != connected) {
+		lt9611uxc_release_edid(lt9611uxc);
+	}
+
 	return connected ?  connector_status_connected :
 				connector_status_disconnected;
 }
 
 static int lt9611uxc_wait_for_edid(struct lt9611uxc *lt9611uxc)
 {
-	return wait_event_interruptible_timeout(lt9611uxc->wq, lt9611uxc->edid_read,
-			msecs_to_jiffies(2000));
+	unsigned int reg_val = 0;
+	int ret;
+	unsigned long timeout;
+
+	timeout = jiffies + msecs_to_jiffies(5000);
+	while (time_before(jiffies, timeout)) {
+		lt9611uxc_lock(lt9611uxc);
+		ret = regmap_read(lt9611uxc->regmap, 0xb023, &reg_val);
+		lt9611uxc_unlock(lt9611uxc);
+
+		if (ret == 0 && (reg_val & BIT(0))) {
+			return 1;
+		}
+	}
+
+	return 0;
+
 }
 
 static int lt9611uxc_get_edid_block(void *data, u8 *buf, unsigned int block, size_t len)
@@ -1059,7 +1103,7 @@ static int lt9611uxc_get_edid_block(void *data, u8 *buf, unsigned int block, siz
 	return 0;
 };
 
-static struct edid *lt9611uxc_bridge_get_edid(struct drm_bridge *bridge,
+const struct drm_edid *lt9611uxc_bridge_get_edid(struct drm_bridge *bridge,
 					      struct drm_connector *connector)
 {
 	struct lt9611uxc *lt9611uxc = bridge_to_lt9611uxc(bridge);
@@ -1078,15 +1122,16 @@ static struct edid *lt9611uxc_bridge_get_edid(struct drm_bridge *bridge,
 		return NULL;
 	}
 
-	return drm_do_get_edid(connector, lt9611uxc_get_edid_block, lt9611uxc);
+	return drm_edid_read_custom(connector, lt9611uxc_get_edid_block, lt9611uxc);
 }
 
 static const struct drm_bridge_funcs lt9611uxc_bridge_funcs = {
 	.attach = lt9611uxc_bridge_attach,
 	.mode_valid = lt9611uxc_bridge_mode_valid,
+	.pre_enable = lt9611uxc_bridge_pre_enable,
 	.mode_set = lt9611uxc_bridge_mode_set,
 	.detect = lt9611uxc_bridge_detect,
-	.get_edid = lt9611uxc_bridge_get_edid,
+	.edid_read = lt9611uxc_bridge_get_edid,
 	.enable = lt9611uxc_bridge_enable,
 	.disable = lt9611uxc_bridge_disable,
 };

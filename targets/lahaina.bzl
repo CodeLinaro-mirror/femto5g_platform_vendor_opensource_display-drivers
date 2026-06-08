@@ -11,6 +11,7 @@ def define_lahaina():
             registry = display_driver_modules,
             modules = [
                 "msm_drm",
+		"lt9611uxc",
         ],
         config_options = [
             "CONFIG_DRM_MSM_SDE",
@@ -29,5 +30,6 @@ def define_lahaina():
             "CONFIG_THERMAL_OF",
 	    "CONFIG_MSM_MMRM",
 	    "CONFIG_MSM_EXT_DISPLAY",
+	    "CONFIG_DRM_LT9611UXC",
         ],
 )
