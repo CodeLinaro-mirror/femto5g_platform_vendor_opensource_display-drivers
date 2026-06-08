@@ -500,7 +500,7 @@ static int _send_plug(struct dp_mgr_hfi_priv *hfi_priv, struct hfi_device_hotplu
 
 	hfi = hfi_priv->hfi[0];
 	hfi_client = hfi->hfi_client;
-	if (!hfi_client)
+	if (!hfi_client || !hfi->hpd_events_register)
 		return -EINVAL;
 
 	/*
@@ -558,7 +558,7 @@ static int _send_unplug(struct dp_mgr_hfi_priv *hfi_priv, struct hfi_device_hotp
 
 	hfi = hfi_priv->hfi[0];
 	hfi_client = hfi->hfi_client;
-	if (!hfi_client)
+	if (!hfi_client || !hfi->hpd_events_register)
 		return -EINVAL;
 
 	/*
@@ -938,15 +938,18 @@ static int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 	}
 
 	for (i = 0; i < hfi_priv->max_streams; i++) {
-		rc = _register_hpd_events(hfi_priv, i, true);
-		if (rc) {
-			DP_ERR("failed to register hpd events\n");
-			goto end;
+		hfi = hfi_priv->hfi[i];
+		if (!hfi->hpd_events_register) {
+			rc = _register_hpd_events(hfi_priv, i, true);
+			if (rc)
+				DP_ERR("failed to register hpd events on stream_id=%d\n", i);
+			else
+				hfi->hpd_events_register = true;
 		}
 	}
 
 	hfi_priv->configured = true;
-	DP_INFO("configured\n");
+	DP_INFO("DP_HFI configured\n");
 
 end:
 	if (hfi_priv->hpd->hpd_high && !hfi_priv->connected) {
@@ -1044,7 +1047,15 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv, u32 stream_i
 	if (!hfi_priv->active_streams)
 		return 0;
 
-	_register_hpd_events(hfi_priv, stream_id, false);
+	if (hfi->hpd_events_register) {
+		rc = _register_hpd_events(hfi_priv, stream_id, false);
+		if (rc) {
+			DP_ERR("failed to register hpd events on stream_id=%d, rc=%d\n",
+									stream_id, rc);
+		} else {
+			hfi->hpd_events_register = false;
+		}
+	}
 
 	hfi_priv->active_streams--;
 	if (hfi_priv->active_streams)
@@ -1054,7 +1065,8 @@ static int dp_mgr_hfi_hpd_cleanup(struct dp_mgr_hfi_priv *hfi_priv, u32 stream_i
 
 	_hfi_power_deinit(hfi_priv);
 
-	DP_INFO("cleanup\n");
+	DP_INFO("DP_HFI cleanup, stream_id=%d\n", stream_id);
+
 	hfi_priv->configured = false;
 	complete_all(&hfi_priv->hpd_comp);
 end:
@@ -2483,6 +2495,7 @@ static int dp_mgr_hfi_prepare(struct dp_client *client, int panel_id)
 {
 	int rc = 0;
 	struct dp_mgr_hfi_priv *hfi_priv;
+	u32 stream_id;
 
 	if (!client) {
 		DP_ERR("Invalid params\n");
@@ -2491,12 +2504,16 @@ static int dp_mgr_hfi_prepare(struct dp_client *client, int panel_id)
 
 	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
 
-	DP_DEBUG("HFI prepare for panel_id: %d\n", panel_id);
+	stream_id = panel_to_stream(hfi_priv, panel_id);
+
+	DP_DEBUG("HFI prepare for stream_id: %d\n", stream_id);
 
 	/* Mode setting will be handled by the set_mode callback when needed */
 	/* For now, just return success as preparation is complete */
 
 	hfi_priv->active_streams++;
+
+	SDE_EVT32_EXTERNAL(stream_id, hfi_priv->connected, hfi_priv->active_streams);
 end:
 	DP_DEBUG("%s: DP core power prepare\n", __func__);
 	return rc;
@@ -2735,6 +2752,8 @@ static int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 		if (hfi_priv->active_streams > 0)
 			hfi_priv->active_streams--;
 	}
+
+	SDE_EVT32_EXTERNAL(stream_id, hfi_priv->connected, hfi_priv->active_streams);
 
 end:
 	DP_DEBUG("%s: DP core power unprepare\n", __func__);
