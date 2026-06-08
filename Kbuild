@@ -4,9 +4,14 @@ ifeq ($(DISPLAY_ROOT),)
 DISPLAY_ROOT=$(srctree)/techpack/display
 endif
 
-LINUXINCLUDE    += \
+$(info within KBUILD file LINUXINCLUDE = $(LINUXINCLUDE), SOCINCLUDE = $(SOCINCLUDE))
+
+LINUXINCLUDE    := \
+		   $(SOCINCLUDE) \
+		   $(LINUXINCLUDE) \
 		   -I$(DISPLAY_ROOT)/include/uapi/display \
 		   -I$(DISPLAY_ROOT)/include
 USERINCLUDE     += -I$(DISPLAY_ROOT)/include/uapi/display
 
 obj-$(CONFIG_DRM_MSM) += msm/
+obj-$(CONFIG_DRM_MSM) += bridge-drivers/

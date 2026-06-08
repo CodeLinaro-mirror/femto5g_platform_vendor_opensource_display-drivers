@@ -498,6 +498,16 @@ struct sde_kms {
 	atomic_t detach_all_cb;
 	struct mutex secure_transition_lock;
 
+	/*
+	 * Used to serialize concurrent atomic_check calls against the
+	 * HFI ACQUIRE blocking window in sde_kms_vm_state_update().
+	 * A concurrent FPS-switch commit can set rsvp_nxt on an encoder
+	 * during the HFI polling window, causing a subsequent TUI-end
+	 * Refresh() commit to poll-timeout waiting for rsvp_nxt to clear.
+	 */
+	atomic_t tui_hfi_in_progress;
+	wait_queue_head_t tui_hfi_waitq;
+
 	bool first_kickoff;
 	bool qdss_enabled;
 	bool pm_suspend_clk_dump;

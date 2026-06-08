@@ -22,6 +22,14 @@
 #define HFI_HWFENCE_MAX_DISPLAYS 10
 
 /*
+ * Qtimer runs at 19.2 MHz timer, the accurate conversion to ns is
+ * (qtimer * 10 * 1000) / 192
+ */
+#define QTIMER_TO_NS(qtimer) (((qtimer) * 10 * 1000) / 192)
+#define QTIMER_TO_US(qtimer) (QTIMER_TO_NS(qtimer)  / 1000)
+#define NS_TO_QTIMER(ns) (((ns) * 192) / (10 * 1000))
+
+/*
  * hfi_catalog_base - base struct for sde HW information
  *
  * @hw_rev	    HW version
@@ -252,7 +260,8 @@ int hfi_kms_get_catalog_data(struct hfi_kms *hfi_kms);
  * @crtc_state: Pointer to DRM CRTC state
  * Return: 0 on success or error code
  */
-int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state);
+int hfi_kms_set_vm_state(struct drm_crtc *crtc, struct drm_crtc_state *crtc_state,
+	enum hfi_device_res_state vm_state);
 
 /**
  * hfi_kms_send_trace_cfg - enable/disable trace logs
@@ -293,5 +302,27 @@ int hfi_kms_set_reg_dma_buffer(struct hfi_kms *hfi_kms, struct sde_reg_dma_buffe
  * Returns 0 on success, negative error code on failure.
  */
 int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *uidle_state);
+
+/**
+ * hfi_kms_recover_hwfence - Recovers hwfence
+ * @hfi_kms: Pointer to hfi_kms structure
+ */
+void hfi_kms_recover_hwfence(struct hfi_kms *hfi_kms);
+
+/**
+ * hfi_kms_set_uidle_disable - disable/re-enable uidle feature via HFI
+ * @hfi_kms: pointer to hfi_kms
+ * @disable: true to disable uidle, false to re-enable
+ */
+int hfi_kms_set_uidle_disable(struct hfi_kms *hfi_kms, bool disable);
+
+/**
+ * hfi_kms_set_uidle_perf_cnt - enable/disable uidle performance counters via HFI
+ * @hfi_kms: Pointer to hfi kms structure
+ * @val: Counter enable value to send to FW (1 to enable, 0 to disable)
+ *
+ * Returns 0 on success, negative error code on failure.
+ */
+int hfi_kms_set_uidle_perf_cnt(struct hfi_kms *hfi_kms, u32 val);
 
 #endif // _HFI_KMS_H_

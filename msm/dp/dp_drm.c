@@ -412,34 +412,62 @@ int dp_connector_set_colorspace(struct drm_connector *connector,
 
 int dp_connector_post_init(struct drm_connector *connector, void *display)
 {
-	int rc;
+	int rc = 0;
 	struct dp_drv *drv = display;
-	struct sde_connector *sde_conn;
+	struct sde_connector *sde_conn = NULL;
 	struct dp_client_drm_ops *ops;
 	struct msm_drm_private *priv;
-
-	priv = connector->dev->dev_private;
+	struct dp_client *client;
 
 	if (!drv || !connector || !drv->client || !drv->client->bridge) {
 		DP_ERR("Invalid data\n");
 		return -EINVAL;
 	}
 
-	drv->client->base_connector = connector;
-	drv->client->bridge->connector = connector;
+	priv = connector->dev->dev_private;
 
-	ops = &drv->client->drm_ops;
-	rc = ops->post_init(drv->client);
-	if (rc)
-		goto end;
+	client = drv->client;
 
-	sde_conn = to_sde_connector(connector);
-	drv->client->bridge->panel_id = sde_conn->panel_id;
+	if (IS_DISP_OP_HWIO(priv->disp_op)) {
+		client->base_connector = connector;
+		client->bridge->connector = connector;
 
-	if (IS_DISP_OP_HWIO(priv->disp_op))
+		ops = &client->drm_ops;
+		rc = ops->post_init(client);
+		if (rc)
+			goto end;
+
+		sde_conn = to_sde_connector(connector);
+		client->bridge->panel_id = sde_conn->panel_id;
 		rc = dp_mst_init(drv);
+	} else if (IS_DISP_OP_HFI(priv->disp_op)) {
+		if (!client->streams) {
+			client->base_connector = connector;
+			client->bridge->connector = connector;
+		}
 
-	if (drv->client->dsc_cont_pps)
+		client->connectors[client->streams] = connector;
+		if (client->bridges[client->streams])
+			client->bridges[client->streams]->connector = connector;
+
+		sde_conn = to_sde_connector(connector);
+
+		sde_conn->panel_id = client->streams;
+		if (!client->streams)
+			client->bridge->panel_id = sde_conn->panel_id;
+
+		if (client->bridges[client->streams])
+			client->bridges[client->streams]->panel_id = sde_conn->panel_id;
+
+		ops = &client->drm_ops;
+		rc = ops->post_init(client);
+		if (rc)
+			goto end;
+
+		client->streams++;
+	}
+
+	if (client->dsc_cont_pps)
 		sde_conn->ops.update_pps = NULL;
 
 end:
@@ -494,15 +522,17 @@ int dp_connector_get_mode_info(struct drm_connector *connector,
 
 	memset(mode_info, 0, sizeof(*mode_info));
 	ops = &drv->client->drm_ops;
-
+	priv = connector->dev->dev_private;
 	sde_conn = to_sde_connector(connector);
+
+	if (IS_DISP_OP_HFI(priv->disp_op) && ops->get_mode_info)
+		return ops->get_mode_info(drv->client, sde_conn->panel_id, drm_mode, mode_info);
+
 	mode = ops->get_display_mode(drv->client, sde_conn->panel_id);
 	if (!mode) {
 		DP_ERR("invalid panel\n");
 		return -EINVAL;
 	}
-
-	priv = connector->dev->dev_private;
 
 	topology = &mode_info->topology;
 
@@ -610,11 +640,16 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 	struct msm_display_info info;
 	struct dp_drv *drv;
 	int rc;
+	struct sde_connector *sde_conn;
+	bool connected;
+	struct msm_drm_private *priv;
 
 	if (!conn || !display)
 		return status;
 
 	drv = display;
+	priv = conn->dev->dev_private;
+
 	/* get display dp_info */
 	memset(&info, 0x0, sizeof(info));
 	rc = dp_connector_get_info(conn, &info, display);
@@ -625,8 +660,16 @@ enum drm_connector_status dp_connector_detect(struct drm_connector *conn,
 
 	if (info.capabilities & MSM_DISPLAY_CAP_HOT_PLUG &&
 			!drv->client->is_cont_splash_enabled) {
-		status = (info.is_connected ? connector_status_connected :
+		if (IS_DISP_OP_HWIO(priv->disp_op)) {
+			status = (info.is_connected ? connector_status_connected :
 					      connector_status_disconnected);
+		} else if (IS_DISP_OP_HFI(priv->disp_op)) {
+			sde_conn = to_sde_connector(conn);
+			connected = drv->client->drm_ops.hpd_detect(drv->client,
+					sde_conn->panel_id);
+			status = connected ? connector_status_connected :
+					connector_status_disconnected;
+		}
 	} else {
 		status = connector_status_connected;
 
@@ -777,18 +820,28 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	struct dp_drv *drv = data;
 	struct msm_drm_private *priv = NULL;
 
+	dev = drv->drm_dev;
+	priv = dev->dev_private;
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	bridge = kzalloc(sizeof(*bridge), GFP_KERNEL);
 	if (!bridge) {
 		rc = -ENOMEM;
 		goto error;
 	}
-
-	dev = drv->drm_dev;
-	bridge->drv = drv;
 	bridge->base.funcs = &dp_bridge_ops;
 	bridge->base.encoder = encoder;
-
-	priv = dev->dev_private;
+#else
+	bridge = __devm_drm_bridge_alloc(dev->dev,
+				sizeof(*bridge),
+				offsetof(struct dp_bridge, base),
+				&dp_bridge_ops);
+	if (IS_ERR(bridge)) {
+		rc = PTR_ERR(bridge);
+		DP_ERR("failed to alloc bridge, rc=%d\n", rc);
+		goto error;
+	}
+#endif
+	bridge->drv = drv;
 
 	rc = drm_bridge_attach(encoder, &bridge->base, NULL, 0);
 	if (rc) {
@@ -803,23 +856,32 @@ int dp_drm_bridge_init(void *data, struct drm_encoder *encoder,
 	}
 
 	priv->bridges[priv->num_bridges++] = &bridge->base;
+
+	if (IS_DISP_OP_HFI(priv->disp_op))
+		drv->client->bridges[drv->client->streams] = bridge;
+
 	drv->client->bridge = bridge;
 	drv->client->max_mixer_count = max_mixer_count;
 	drv->client->max_dsc_count = max_dsc_count;
 
 	return 0;
+
 error_free_bridge:
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	kfree(bridge);
+#endif
 error:
 	return rc;
 }
 
 void dp_drm_bridge_deinit(void *data)
 {
+#if (KERNEL_VERSION(6, 16, 0) > LINUX_VERSION_CODE)
 	struct dp_drv *drv = data;
 	struct dp_bridge *bridge = drv->client->bridge;
 
 	kfree(bridge);
+#endif
 }
 
 enum drm_mode_status dp_connector_mode_valid(struct drm_connector *connector,

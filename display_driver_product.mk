@@ -10,5 +10,11 @@ endif
 ifeq ($(DISPLAY_DLKM_ENABLE),  true)
 	PRODUCT_PACKAGES += msm_drm.ko
 	DISPLAY_MODULES_DRIVER := msm_drm.ko
+
+	ifneq (,$(call is-board-platform-in-list2, sun shikra))
+		PRODUCT_PACKAGES += lt9611uxd.ko
+		DISPLAY_MODULES_DRIVER += lt9611uxd.ko
+	endif
+
 endif
 

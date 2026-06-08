@@ -969,7 +969,7 @@ exit:
 }
 
 static int hfi_cp_crtc_validate_rgb_hist_params(struct drm_msm_rgb_hist_ctrl *hist_ctrl,
-		u32 disp_h, u32 disp_v)
+		u32 panel_width, u32 panel_height)
 {
 
 	if (!hist_ctrl) {
@@ -1000,15 +1000,15 @@ static int hfi_cp_crtc_validate_rgb_hist_params(struct drm_msm_rgb_hist_ctrl *hi
 			return -EINVAL;
 		}
 
-		if (hist_ctrl->roi_x + hist_ctrl->roi_width > disp_h) {
-			SDE_ERROR("invalid roi x input = [%u,%u], disp_h = %u\n",
-				hist_ctrl->roi_x, hist_ctrl->roi_width, disp_h);
+		if (hist_ctrl->roi_x + hist_ctrl->roi_width > panel_width) {
+			SDE_ERROR("invalid roi x input = [%u,%u], panel_width = %u\n",
+				hist_ctrl->roi_x, hist_ctrl->roi_width, panel_width);
 			return -EINVAL;
 		}
 
-		if (hist_ctrl->roi_y + hist_ctrl->roi_height > disp_v) {
-			SDE_ERROR("invalid roi y input = [%u,%u], disp_v = %u\n",
-				hist_ctrl->roi_y, hist_ctrl->roi_height, disp_v);
+		if (hist_ctrl->roi_y + hist_ctrl->roi_height > panel_height) {
+			SDE_ERROR("invalid roi y input = [%u,%u], panel_height = %u\n",
+				hist_ctrl->roi_y, hist_ctrl->roi_height, panel_height);
 			return -EINVAL;
 		}
 	}
@@ -1121,7 +1121,7 @@ int hfi_setup_dspp_rgb_hist_ctrlv2(struct sde_hw_dspp *ctx, void *data)
 
 		// Validate input patams
 		ret = hfi_cp_crtc_validate_rgb_hist_params(hist_ctrl,
-			hw_cfg->displayh, hw_cfg->displayv);
+			hw_cfg->panel_width, hw_cfg->panel_height);
 		if (ret) {
 			SDE_ERROR("Invalid rgb hist params, ret: %d\n", ret);
 			return ret;
@@ -1227,6 +1227,40 @@ void hfi_setup_mdnie_art_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top)
 	else
 		SDE_DEBUG("feature %d: submitted to prop_helper\n",
 			HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART);
+}
+
+void hfi_setup_mdnie_ipc(struct sde_hw_dspp *ctx, void *cfg)
+{
+	struct sde_hw_cp_cfg *hw_cfg = cfg;
+	u32 prop_id, ret;
+	u32 ipc_payload = 0;
+
+	if (!ctx || !cfg) {
+		DRM_ERROR("ctx %pK hw_cfg %pK\n", ctx, hw_cfg);
+		return;
+	}
+
+	if (ctx->dpu_idx < DPU_0 || ctx->dpu_idx >= DPU_MAX) {
+		SDE_ERROR("Invalid dpu idx: %d\n", ctx->dpu_idx);
+		return;
+	}
+
+	prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	if (hw_cfg->payload && hw_cfg->len == sizeof(u64))
+		ipc_payload = (*(u64 *)hw_cfg->payload) ? 1 : 0;
+	else
+		ipc_payload = 0;
+
+	ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
+			prop_id, HFI_VAL_U32,
+			&ipc_payload,
+			sizeof(u32));
+	if (ret)
+		SDE_ERROR("Failed to add hfi prop for mdnie ipc %d ret %d\n",
+			prop_id, ret);
+	else
+		SDE_DEBUG("feature %d: submitted to prop_helper\n",
+			HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC);
 }
 
 int hfi_cp_crtc_alloc_pa_hist_buffers(struct sde_crtc *sde_crtc)
@@ -1413,7 +1447,7 @@ void hfi_setup_dspp_hist_v1_7(struct sde_hw_dspp *ctx, void *data, bool enable)
 
 	if (hw_cfg->dspp_idx == (hw_cfg->dspp_start_idx + hw_cfg->num_of_mixers - 1)) {
 		ret = hfi_util_u32_prop_helper_add_prop(hw_cfg->prop_helper,
-				hw_cfg->prop_id, HFI_VAL_U32,
+				hw_cfg->prop_id, HFI_VAL_U32_ARRAY,
 				&hfi_pa_hist_ctrl_cached[ctx->dpu_idx][hw_cfg->dspp_start_idx],
 				payload_size * hw_cfg->num_of_mixers);
 

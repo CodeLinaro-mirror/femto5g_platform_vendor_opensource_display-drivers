@@ -152,9 +152,11 @@ void dsi_ctrl_hw_kickoff_non_embedded_mode(struct dsi_ctrl_hw *ctrl,
 		reg &= ~BIT(26);
 
 	/* Select non EMBEDDED_MODE, pick the packet header from register */
+	reg |= ((cmd->vc_id & 0x3) << 22); /* virtual channel */
 	reg &= ~BIT(28);
 	reg |= BIT(24);/* long packet */
 	reg |= BIT(29);/* wc_sel = 1 */
+	reg |= (cmd->length & 0xFFFF); /* set wc with bit 15:0 cmd length */
 	reg |= (((cmd->datatype) & 0x03f) << 16);/* data type */
 	DSI_W32(ctrl, DSI_COMMAND_MODE_DMA_CTRL, reg);
 

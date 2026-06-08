@@ -1299,7 +1299,7 @@ static bool _sde_rm_check_lm_and_get_connected_blks(
 		u32 conn_lm_mask)
 {
 	const struct sde_lm_cfg *lm_cfg = to_sde_hw_mixer(lm->hw)->cap;
-	const struct sde_pingpong_cfg *pp_cfg;
+	const struct sde_pingpong_cfg *pp_cfg = NULL;
 	bool ret, is_conn_primary, is_conn_secondary;
 	u32 lm_primary_pref, lm_secondary_pref, cwb_pref, dcwb_pref;
 	u32 cac_lb_pref, cac_primary_pref;
@@ -2099,6 +2099,11 @@ static int _sde_rm_reserve_intf_or_wb(struct sde_rm *rm, struct sde_rm_rsvp *rsv
 			continue;
 
 		if (RESERVED_BY_OTHER(iter.blk, rsvp)) {
+			if (id == 1) {
+				id = 3;
+				continue;
+			}
+			SDE_EVT32(iter.blk->type, rsvp->enc_id, iter.blk->id, 0xebad);
 			SDE_ERROR("type %d id %d already reserved\n", type, id);
 			return -ENAVAIL;
 		}
@@ -3035,7 +3040,7 @@ static void _sde_rm_populate_dp_lm_mask(struct sde_rm *rm,
 }
 
 /* call this only after rm_mutex held */
-struct sde_rm_rsvp *_sde_rm_poll_get_rsvp_nxt_locked(struct sde_rm *rm,
+static struct sde_rm_rsvp *_sde_rm_poll_get_rsvp_nxt_locked(struct sde_rm *rm,
 		struct drm_encoder *enc)
 {
 	int i;

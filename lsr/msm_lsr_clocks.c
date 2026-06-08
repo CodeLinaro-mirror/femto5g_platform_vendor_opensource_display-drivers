@@ -39,7 +39,7 @@ static int msm_lsr_set_data_bus_vote(struct msm_lsr_core *core)
 		return -EINVAL;
 	}
 
-	core->bw_sum = (core->bw_sum > max_bw) ? max_bw : core->bw_sum;
+	core->bw_sum = ((core->bw_sum/2) > max_bw) ? max_bw : core->bw_sum;
 
 	/* Vote with split voting if llcc is enabled */
 	if (msm_lsr_syscache_disable) {
@@ -77,7 +77,7 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 	struct allowed_clock_rates_table *tbl = NULL;
 	unsigned int tbl_size;
 	unsigned int lsr_min_rate, lsr_max_rate;
-	unsigned long tmp = 0, core_sum = 0, bw_sum = 0;
+	unsigned long tmp = 0, core_sum = 0, bw_sum = 0, peak_bw = 0;
 
 	if (!core) {
 		dprintk(LSR_ERR, "%s: invalid params\n", __func__);
@@ -118,8 +118,9 @@ int msm_lsr_update_power(struct msm_lsr_core *core)
 	hdev->clk_freq = core->curr_freq;
 	core->bw_sum = bw_sum;
 
-	core->peak_bw = core->new_perf.lsr_csc_ib_bw > core->new_perf.lsr_repro_ib_bw ?
+	peak_bw = core->new_perf.lsr_csc_ib_bw > core->new_perf.lsr_repro_ib_bw ?
 			core->new_perf.lsr_csc_ib_bw : core->new_perf.lsr_repro_ib_bw;
+	core->peak_bw = Bps_to_icc(peak_bw);
 	dprintk(LSR_PWR, "%s %d : clk : %lu bw : %lu kBps peak_bw = %lu kBps\n",
 		__func__, __LINE__, core->curr_freq, core->bw_sum, core->peak_bw);
 
@@ -161,6 +162,23 @@ int msm_lsr_set_clocks(struct msm_lsr_core *core)
 	return rc;
 }
 
+static u32 _msm_lsr_get_ctrl_clk_rate(struct lsr_device *device, u32 freq)
+{
+	struct allowed_clock_rates_table *core_tbl = device->res->allowed_clks_tbl;
+	struct allowed_clock_rates_table *ctrl_tbl = device->res->controller_clk_corner_tbl;
+	u32 tbl_size = device->res->allowed_clks_tbl_size;
+	u32 i;
+
+	if (ctrl_tbl && tbl_size) {
+		for (i = 0; i < tbl_size - 1; i++)
+			if (freq <= core_tbl[i].clock_rate)
+				break;
+		return ctrl_tbl[i].clock_rate;
+	}
+
+	return freq * 2;
+}
+
 int msm_lsr_set_clocks_impl(struct lsr_device *device, u32 freq)
 {
 	struct clock_info *cl;
@@ -176,12 +194,8 @@ int msm_lsr_set_clocks_impl(struct lsr_device *device, u32 freq)
 				freq = msm_lsr_clock_voting;
 
 			scaled_freq = freq;
-			// scale tensilica core clk by factor of 2
-			// Recommended by LSR FW team as Work around
 			if (!strcmp(cl->name, "lsr_clk"))
-				scaled_freq *= 2;
-			dprintk(LSR_PWR, "%s: clock source rate set to: %u\n",
-				__func__, scaled_freq);
+				scaled_freq = _msm_lsr_get_ctrl_clk_rate(device, freq);
 
 			rc = clk_set_rate(cl->clk, scaled_freq);
 			if (rc) {
@@ -365,8 +379,16 @@ int lsr_set_bw(struct bus_info *bus, unsigned long bw, unsigned long peak_bw)
 {
 	int rc = 0;
 
-	if (!bus->client)
+	if (!bus) {
+		dprintk(LSR_ERR, "Invalid bus\n");
 		return -EINVAL;
+	}
+
+	mutex_lock(&bus->lock);
+	if (!bus->client) {
+		mutex_unlock(&bus->lock);
+		return -EINVAL;
+	}
 
 	dprintk(LSR_PWR, "bus->name = %s to bw = %lu KBps ib = %lu KBps\n",
 			bus->name, bw, peak_bw);
@@ -374,6 +396,8 @@ int lsr_set_bw(struct bus_info *bus, unsigned long bw, unsigned long peak_bw)
 	if (rc)
 		dprintk(LSR_ERR, "Failed voting bus %s to ab %lu ib %lu\n",
 			bus->name, bw, peak_bw);
+
+	mutex_unlock(&bus->lock);
 
 	return rc;
 }

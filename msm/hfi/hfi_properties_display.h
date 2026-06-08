@@ -523,26 +523,12 @@
  * @BasicFuntionality - HFI_PROPERTY_DISPLAY_REUSABLE_FENCE
  *     (u32_key) payload [0]      : HFI_PROPERTY_DISPLAY_REUSABLE_FENCE |
  *                                  (version=0 << 20) | (dsize = 1 + (2 x count) << 24)
- *     (u32_value) payload [1]    : Reusable Fence Count
- *     (u32_value) payload [2]    : Reusable Fence Low
- *     (u32_value) payload [3-..] : Reusable Fence High
+ *     (u32_value) payload [1]    : Reusable Fence type | enum hfi_lsr_reusable_fence_type
+ *     (u32_value) payload [2]    : Number of fences
+ *     (u32_value) payload [3]    : Reusable Fence Low
+ *     (u32_value) payload [4..]  : Reusable Fence High
  */
 #define HFI_PROPERTY_DISPLAY_REUSABLE_FENCE                          0x00020023
-
-/*
- * HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO - This property is to configure the sys cache info of LSR
- *                                       WB displays. Syscache info includes number of entries,
- *                                       cache ID's and the size of cache associated with it.
- *                                       Host is expected to send this packet as part of
- *                                       HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
- *
- * @BasicFuntionality @Display - HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO
- *     (u32_key) payload [0]    : HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO |
- *                               (version=0 << 20) | (dsize=1 + (2 x count) << 24)
- *   (u32_value) payload [1]    : No. of entries in the system cache
- *   (u32_value) payload [2-..] : struct hfi_display_sys_cache_info
- */
-#define HFI_PROPERTY_DISPLAY_SYS_CACHE_INFO                       0x00020024
 
 /*
  * HFI_PROPERTY_DISPLAY_LSR_WB_CVP_BUFF - This property is set to configure the HFI queue
@@ -568,9 +554,9 @@
  * @BasicFuntionality - HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS
  *     (u32_key) payload [0]      : HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS |
  *                                  (version=0 << 20) |
- *                                         (dsize=1 + (count x struct hfi_wb_out_buff) << 24)
- *     (u32_value) payload [1]    : count of hfi_wb_out_buff buffers (Number of color fields)
- *     (u32_value) payload [2-..] : struct hfi_wb_out_buff
+ *                                         (dsize=1 + (count x struct hfi_plane_buff) << 24)
+ *     (u32_value) payload [1]    : count of hfi_plane_buff buffers (Number of color fields)
+ *     (u32_value) payload [2-..] : struct hfi_plane_buff
  */
 #define HFI_PROPERTY_DISPLAY_LSR_WB_OUT_BUFFERS                       0x00020026
 
@@ -756,6 +742,80 @@
  *     (u32_value) payload [2]   : Usecase index (identifies the frequency stepping pattern)
  */
 #define HFI_PROPERTY_DISPLAY_VRR_FRAME_PARAMS                        0x00020031
+
+/*
+ * HFI_PROPERTY_DISPLAY_EPT - Sets the Expected Preset Time which is used to
+ *                            determine when the hardware frame trigger should
+ *                            be set. Host is expected to send this packet as part of
+ *                            HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *                            Payload is a 64bit value in qtimer ticks representing
+ *                            the expected preset time. Zero EPT value represents
+ *                            immediate frame trigger.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_EPT
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_EPT \|
+ *                                 (version=0 << 20) \|
+ *                                 (dsize=3 << 24)
+ *   (u32_value) payload [1]     : u32 hfi_prop_u64.val_lo
+ *   (u32_value) payload [2]     : u32 hfi_prop_u64.val_hi
+ */
+#define HFI_PROPERTY_DISPLAY_EPT                                     0x00020032
+
+/*
+ * HFI_PROPERTY_DISPLAY_VSYNC_OFFSET - This property sets line pointer offset time in nanoseconds
+ *                                     from VSYNC of a specified display. This is an optional
+ *                                     property and if not set, the default value will be used.
+ *                                     If set, it must be set before registering for line pointer
+ *                                     interrupt event. The value is in nanoseconds and must be
+ *                                     less than the display refresh interval. The default value
+ *                                     is 0, which means that the line pointer interrupt event is
+ *                                     aligned to the beginning of the display VSYNC. The host is
+ *                                     expected to send this property as part of the
+ *                                     HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_VSYNC_OFFSET
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_VSYNC_OFFSET  |
+ *                                (version=0 << 20)  |
+ *                                (dsize=2 << 24)
+ *   (u32_value) payload [1]     : Vsync offset in nanoseconds (lower 32 bits)
+ *   (u32_value) payload [2]     : Vsync offset in nanoseconds (upper 32 bits)
+ */
+#define HFI_PROPERTY_DISPLAY_VSYNC_OFFSET                            0x00020033
+
+/*
+ * HFI_PROPERTY_DISPLAY_BRIGHTNESS - This property is to update the panel brightness level for
+ *                                   the current frame. Host is expected to send this
+ *                                   packet as part of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                   command packet payload. The brightness level should be in the
+ *                                   range defined by HFI_PROPERTY_PANEL_BL_MIN_LEVEL and
+ *                                   HFI_PROPERTY_PANEL_BL_MAX_LEVEL properties as part of
+ *                                   HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet.
+ *
+ * @BasicFuntionality @Display - HFI_PROPERTY_DISPLAY_BRIGHTNESS
+ *     (u32_key) payload [0]   : HFI_PROPERTY_DISPLAY_BRIGHTNESS |
+ *                               (version=0 << 20) | (dsize=1 << 24)
+ *   (u32_value) payload [1]   : u32 brightness level
+ */
+#define HFI_PROPERTY_DISPLAY_BRIGHTNESS                              0x00020034
+
+/*
+ * HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE - This property is to set vsync source to watchdog
+ *                                     TE with a custom FPS. Host is expected to send this
+ *                                     packet as part of HFI_COMMAND_DISPLAY_SET_PROPERTY
+ *                                     command packet payload.
+ *
+ *                                     Validation: custom_fps must be in range [1-360].
+ *                                     If wd_te_enabled is 0, custom_fps is ignored.
+ *                                     This property can be set at any time but takes effect
+ *                                     on the next frame. Invalid values will be rejected
+ *                                     with HFI_ERROR_INVALID_PARAM.
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE
+ *     (u32_key) payload [0]     : HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE \|
+ *                                 (version=0 << 20) \|
+ *                                 (dsize=2 << 24)
+ *   (u32_value) payload [1-2]   : struct hfi_custom_wd_te_params
+ */
+#define HFI_PROPERTY_DISPLAY_CUSTOM_WD_TE                                   0x00020035
 
 /*
  * All display color properties begin here
@@ -1404,6 +1464,34 @@
  */
 #define HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CLEAR_BUFFERS             0x0002012B
 
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_SPR_PU - Property to setup SPR partial update
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_DISPLAY_COLOR_SPR_PU |
+ * ^                             | (version=0 << 20) |
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1]     | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_SPR_PU                            0x0002012C
+
+/*!
+ * @def HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR
+ * @brief This property is to setup COPR. Host is expected to send this packet of
+ *        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
+ *
+ * @BasicFuntionality - HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *   (u32_key) payload [0]       | HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR \|
+ * ^                             | (version=0 << 20) \|
+ * ^                             | (dsize=(sizeof(struct hfi_buff_dpu)/4) << 24)
+ *   (u32_value) payload [1-3]   | struct hfi_buff_dpu
+ */
+#define HFI_PROPERTY_DISPLAY_COLOR_AIQE_COPR                          0x0002012D
+
 /*
  * All display color properties end here
  */
@@ -1586,12 +1674,9 @@
  *
  * @BasicFuntionality - HFI_PROPERTY_LAYER_SRC_ADDR
  *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_SRC_ADDR |
- *                                 (version=0 << 20) | (dsize=2 << 16 )
+ *                                 (version=0 << 20) | (dsize=13 << 16 )
  *     (u32_value) payload [1]   : layer id
- *     (u32_value) payload [2]   : Plane start address for Plane 0
- *     (u32_value) payload [3]   : Plane start address for Plane 1
- *     (u32_value) payload [4]   : Plane start address for Plane 2
- *     (u32_value) payload [5]   : Plane start address for Plane 3
+ *     (u32_value) payload [2-13]: struct hfi_plane_buff
  */
 #define HFI_PROPERTY_LAYER_SRC_ADDR                                  0x0003000A
 
@@ -1722,13 +1807,9 @@
  *
  * @BasicFuntionality - HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR
  *     (u32_key) payload [0]     : HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR |
- *                                 (version=0 << 20) | (dsize=6 << 24)
+ *                                 (version=0 << 20) | (dsize=13 << 24)
  *     (u32_value) payload [1]   : output layer id
- *     (u32_value) payload [2]   : output buffer start address
- *     (u32_value) payload [3]   : Plane start address for Plane 0
- *     (u32_value) payload [4]   : Plane start address for Plane 1
- *     (u32_value) payload [5]   : Plane start address for Plane 2
- *     (u32_value) payload [6]   : Plane start address for Plane 3
+ *     (u32_value) payload [2-13]: struct hfi_plane_buff
  */
 #define HFI_PROPERTY_OUTPUT_LAYER_DST_ADDR                            0x00030013
 
@@ -1809,18 +1890,6 @@
  */
 #define HFI_PROPERTY_LAYER_LSR_IN_A_BUFFER                           0x00030018
 
-/*
- * HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID - Sets the System Cache ID of the source/input layer.
- *                                       Host is expected to send this packet as part of
- *                                       HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload.
- *
- * @BasicFuntionality - HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID
- *     (u32_key) payload [0]     : HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID |
- *                                 (version=0 << 20) | (dsize=2 << 16 )
- *     (u32_value) payload [1]   : layer id
- *     (u32_value) payload [2]   : System Cache ID
- */
-#define HFI_PROPERTY_LAYER_SRC_SYS_CACHE_ID                          0x00030019
 /*
  * HFI_PROPERTY_LAYER_LSR_REPROJ_PLANE_EQ - Sets the LSR Reprojection layer's plane equation.
  *                                          Host is expected to send this packet as part of
@@ -2092,6 +2161,30 @@
  *     (u32_value) payload [2]   | one of the enum values in hfi_layer_security_policy
  */
 #define HFI_PROPERTY_OUTPUT_LAYER_SECURITY_POLICY                    0x00030031
+
+/*!
+ * @def HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE
+ * @brief This property sets injection interval(in frames) of disparity layer for LSR reprojection
+ *        display. Host is expected to send this property as part of the
+ *        HFI_COMMAND_DISPLAY_SET_PROPERTY command packet payload. A value of 0 disables the feature
+ *        and no disparity layer is injected into any frame during reprojection processing.
+ *        A value of 1 means that a disparity layer is injected into every frame during reprojection
+ *        processing. A value of N means that a disparity layer is injected into every Nth frame
+ *        during reprojection processing. The default value is 0, which means that the feature is
+ *        disabled by default. This property is valid only for LSR reprojection display use cases
+ *        and should not be used for other display use cases
+ *
+ * @BasicFuntionality - HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE
+ *
+ * Hfi packet layout             | Value
+ *-------------------------------|------------------------------------------
+ *     (u32_key) payload [0]     | HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE  |
+ *                               | (version=0 << 20)  |
+ *                               | (dsize=1 << 24)
+ *     (u32_value) payload [1]   | layer id
+ *     (u32_value) payload [2]   | Disparity layer injection interval in frames
+ */
+#define HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE                     0x00030032
 
 /*
  * All layer color properties begin here

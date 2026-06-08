@@ -2392,6 +2392,10 @@ static void _sde_encoder_phys_wb_reset_state(struct sde_encoder_phys *phys_enc)
 	wb_enc->crtc = NULL;
 	phys_enc->hw_cdm = NULL;
 	phys_enc->hw_ctl = NULL;
+
+	SDE_EVT32(DRMID(phys_enc->parent), phys_enc->in_clone_mode,
+			atomic_read(&phys_enc->pending_kickoff_cnt));
+
 	atomic_set(&phys_enc->pending_kickoff_cnt, 0);
 	atomic_set(&phys_enc->pending_retire_fence_cnt, 0);
 	atomic_set(&phys_enc->pending_release_fence_cnt, 0);
@@ -2978,14 +2982,14 @@ static void sde_encoder_phys_wb_destroy(struct sde_encoder_phys *phys_enc)
 	kfree(wb_enc);
 }
 
-void sde_encoder_phys_wb_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
+static void sde_encoder_phys_wb_add_enc_to_minidump(struct sde_encoder_phys *phys_enc)
 {
 	struct sde_encoder_phys_wb *wb_enc = to_sde_encoder_phys_wb(phys_enc);
 
 	sde_mini_dump_add_va_region("sde_enc_phys_wb", sizeof(*wb_enc), wb_enc);
 }
 
-void sde_encoder_phys_wb_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
+static void sde_encoder_phys_wb_cesta_ctrl_cfg(struct sde_encoder_phys *phys_enc,
 		struct sde_cesta_ctrl_cfg *cfg, bool *req_flush, bool *req_scc)
 {
 	cfg->enable = true;
@@ -3018,6 +3022,7 @@ static void sde_encoder_phys_wb_init_ops(struct sde_encoder_phys_ops *ops)
 	ops->irq_control = sde_encoder_phys_wb_irq_ctrl;
 	ops->add_to_minidump = sde_encoder_phys_wb_add_enc_to_minidump;
 	ops->cesta_ctrl_cfg = sde_encoder_phys_wb_cesta_ctrl_cfg;
+	ops->reset_state = _sde_encoder_phys_wb_reset_state;
 }
 
 /**

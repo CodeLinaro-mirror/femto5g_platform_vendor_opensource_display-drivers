@@ -24,6 +24,17 @@
 #include <linux/qcom_scm.h>
 #endif
 
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+#include <smmu-proxy/include/uapi/linux/qti-smmu-proxy.h>
+#include <smmu-proxy/linux/qti-smmu-proxy.h>
+#endif
+
+#define CSF_2_5_ARCH_VER	2
+#define CSF_2_5_MAX_VER		5
+
+#include <linux/qcom-iommu-util.h>
+#include <linux/dma-map-ops.h>
+#include <linux/dma-mapping.h>
 #include <soc/qcom/secure_buffer.h>
 #include <asm/cacheflush.h>
 #include <uapi/linux/sched/types.h>
@@ -565,38 +576,121 @@ static int sde_rotator_import_buffer(struct sde_layer_buffer *buffer,
 	return ret;
 }
 
+static int sde_rot_smmu_proxy_switch(struct sde_rot_data_type *mdata, bool acquire)
+{
+	int ret = 0;
+#if IS_ENABLED(CONFIG_SMMU_PROXY)
+	int op;
+	struct csf_version csf_ver = {};
+
+	if (acquire)
+		op = SMMU_PROXY_SWITCH_OP_ACQUIRE_SID;
+	else
+		op = SMMU_PROXY_SWITCH_OP_RELEASE_SID;
+
+	ret = smmu_proxy_get_csf_version(&csf_ver);
+	if (ret) {
+		SDEROT_ERR("error in getting csf version, ret:%d\n", ret);
+		return -EINVAL;
+	}
+
+	if ((csf_ver.arch_ver == CSF_2_5_ARCH_VER) &&
+			(csf_ver.max_ver == CSF_2_5_MAX_VER)) {
+		ret = smmu_proxy_switch_sid(&mdata->pdev->dev, op);
+		if (ret)
+			SDEROT_ERR("smmu proxy switch sid failed, op:%d ret:%d\n", ret, op);
+	}
+
+	SDEROT_EVTLOG(csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, op, ret);
+	SDEROT_DBG("csf:%d.%d.%d acquire:%d op:%d, ret:%d\n",
+			acquire, csf_ver.arch_ver, csf_ver.max_ver, csf_ver.min_ver, op, ret);
+#endif
+	return ret;
+}
+
+static int sde_rotator_scm_call(struct sde_rot_data_type *mdata, int vmid)
+{
+	struct device dummy = {};
+	dma_addr_t dma_handle;
+	uint32_t num_sids = 1;
+	uint32_t *sec_sid;
+	int ret = 0;
+	struct qtee_shm shm;
+	bool qtee_en = qtee_shmbridge_is_enabled();
+	phys_addr_t mem_addr;
+	u64 mem_size;
+
+	if (qtee_en) {
+		ret = qtee_shmbridge_allocate_shm(num_sids * sizeof(uint32_t),
+			&shm);
+		if (ret)
+			return -ENOMEM;
+
+		sec_sid = (uint32_t *) shm.vaddr;
+		mem_addr = shm.paddr;
+		/**
+		 * SMMUSecureModeSwitch requires the size to be number of SID's
+		 * but shm allocates size in pages. Modify the args as per
+		 * client requirement.
+		 */
+		mem_size = sizeof(uint32_t) * num_sids;
+	} else {
+		sec_sid = kcalloc(num_sids, sizeof(uint32_t), GFP_KERNEL);
+		if (!sec_sid)
+			return -ENOMEM;
+
+		mem_addr = virt_to_phys(sec_sid);
+		mem_size = sizeof(uint32_t) * num_sids;
+	}
+
+	sec_sid[0] = mdata->sde_smmu[SDE_IOMMU_DOMAIN_ROT_SECURE].sid;
+	SDEROT_DBG("sid_mask: %d\n", sec_sid[0]);
+
+	ret = dma_coerce_mask_and_coherent(&dummy, (u64)DMA_BIT_MASK(64));
+	if (ret) {
+		SDEROT_ERR("Failed to set dma mask for dummy dev %d\n", ret);
+		goto map_error;
+	}
+	set_dma_ops(&dummy, NULL);
+
+	dma_handle = dma_map_single(&dummy, sec_sid,
+				num_sids * sizeof(uint32_t), DMA_TO_DEVICE);
+	if (dma_mapping_error(&dummy, dma_handle)) {
+		SDEROT_ERR("dma_map_single for dummy dev failed vmid 0x%x\n",
+									vmid);
+		goto map_error;
+	}
+
+	ret = qcom_scm_mem_protect_sd_ctrl(SDE_ROTATOR_DEVICE,
+					mem_addr, mem_size, vmid);
+	if (ret)
+		SDEROT_ERR("Error:scm_call2, vmid %d, ret%d\n",
+				vmid, ret);
+
+	SDEROT_DBG("rot dev0x%x vmid 0x%x, num_sids %d, qtee_en %d sid0x%x ret:%d",
+				SDE_ROTATOR_DEVICE, vmid, num_sids, qtee_en, sec_sid[0], ret);
+	SDEROT_EVTLOG(mdata->sec_cam_en, MEM_PROTECT_SD_CTRL_SWITCH,
+					sec_sid[0], SDE_ROTATOR_DEVICE, vmid, qtee_en, ret);
+
+	dma_unmap_single(&dummy, dma_handle,
+				num_sids * sizeof(uint32_t), DMA_TO_DEVICE);
+
+map_error:
+	if (qtee_en)
+		qtee_shmbridge_free_shm(&shm);
+	else
+		kfree(sec_sid);
+
+	return ret;
+}
+
 static int sde_rotator_secure_session_ctrl(bool enable)
 {
 	struct sde_rot_data_type *mdata = sde_rot_get_mdata();
-	uint32_t *sid_info = NULL;
 	int ret = 0;
-	phys_addr_t mem_addr;
-	u64 mem_size;
-	u32 vmid;
-	struct qtee_shm shm;
-	bool qtee_en = qtee_shmbridge_is_enabled();
+	u32 vmid = 0;
 
 	if (test_bit(SDE_CAPS_SEC_ATTACH_DETACH_SMMU, mdata->sde_caps_map)) {
-
-		if (qtee_en) {
-			ret = qtee_shmbridge_allocate_shm(sizeof(uint32_t),
-				&shm);
-			if (ret)
-				return -ENOMEM;
-
-			sid_info = (uint32_t *) shm.vaddr;
-			mem_addr = shm.paddr;
-			mem_size = sizeof(uint32_t);
-		} else {
-			sid_info = kzalloc(sizeof(uint32_t), GFP_KERNEL);
-			if (!sid_info)
-				return -ENOMEM;
-
-			mem_addr = virt_to_phys(sid_info);
-			mem_size = sizeof(uint32_t);
-		}
-
-		sid_info[0] = mdata->sde_smmu[SDE_IOMMU_DOMAIN_ROT_SECURE].sid;
 
 		if (!mdata->sec_cam_en && enable) {
 			/*
@@ -604,63 +698,50 @@ static int sde_rotator_secure_session_ctrl(bool enable)
 			 * Send SCM call to hypervisor to switch the
 			 * secure_vmid to secure context
 			 */
-			vmid = VMID_CP_CAMERA_PREVIEW;
-
 			mdata->sec_cam_en = 1;
 			sde_smmu_secure_ctrl(0);
 
-			ret = qcom_scm_mem_protect_sd_ctrl(SDE_ROTATOR_DEVICE,
-						mem_addr, mem_size, vmid);
+			vmid = VMID_CP_CAMERA_PREVIEW;
+			ret = sde_rotator_scm_call(mdata, vmid);
 			if (ret) {
-				SDEROT_ERR("qcom_scm_mem_protect ret=%d\n", ret);
-				/* failure, attach smmu */
-				mdata->sec_cam_en = 0;
-				sde_smmu_secure_ctrl(1);
-				ret = -EINVAL;
-				goto end;
+				SDEROT_ERR("sde_rotator_scm_call ret=%d attaching rot sec\n", ret);
+				goto scm_fail;
 			}
 
-			SDEROT_DBG(
-			  "scm(1) sid0x%x dev0x%x vmid0x%x qtee_en%d ret%d\n",
-				sid_info[0], SDE_ROTATOR_DEVICE, vmid,
-				qtee_en, ret);
-			SDEROT_EVTLOG(1, sid_info, sid_info[0], SDE_ROTATOR_DEVICE,
-					vmid, qtee_en, ret);
+			ret = sde_rot_smmu_proxy_switch(mdata, true);
+			if (ret) {
+				SDEROT_ERR("qcom_scm_mem_protect ret=%d attaching rot sec\n", ret);
+				vmid = VMID_CP_PIXEL;
+				goto proxy_fail;
+			}
+			return 0;
 		} else if (mdata->sec_cam_en && !enable) {
 			/*
 			 * Disable secure camera operation
 			 * Send SCM call to hypervisor to switch the
 			 * secure_vmid to non-secure context
 			 */
+			sde_rot_smmu_proxy_switch(mdata, false);
 			vmid = VMID_CP_PIXEL;
 			mdata->sec_cam_en = 0;
-
-			ret = qcom_scm_mem_protect_sd_ctrl(SDE_ROTATOR_DEVICE,
-					mem_addr, mem_size, vmid);
-			if (ret)
-				SDEROT_ERR("qcom_scm_mem_protect ret=%d\n", ret);
-
-			SDEROT_DBG(
-			  "scm(0) sid0x%x dev0x%x vmid0x%x qtee_en%d ret%d\n",
-				sid_info[0], SDE_ROTATOR_DEVICE, vmid,
-				qtee_en, ret);
+			ret = sde_rotator_scm_call(mdata, vmid);
 
 			/* force smmu to reattach */
 			sde_smmu_secure_ctrl(1);
-
-			SDEROT_EVTLOG(0, sid_info, sid_info[0], SDE_ROTATOR_DEVICE,
-					vmid, qtee_en, ret);
+			return 0;
 		}
 	} else {
 		return 0;
 	}
 
-end:
-	if (qtee_en)
-		qtee_shmbridge_free_shm(&shm);
-	else
-		kfree(sid_info);
-
+	return 0;
+proxy_fail:
+	if (vmid)
+		sde_rotator_scm_call(mdata, vmid);
+scm_fail:
+	/* failure, attach smmu */
+	mdata->sec_cam_en = 0;
+	sde_smmu_secure_ctrl(1);
 	return ret;
 }
 
@@ -3150,6 +3231,8 @@ int sde_rotator_core_init(struct sde_rot_mgr **pmgr,
 		IS_SDE_MAJOR_SAME(mdata->mdss_version,
 			SDE_MDP_HW_REV_600) ||
 		IS_SDE_MAJOR_SAME(mdata->mdss_version,
+			SDE_MDP_HW_REV_860) ||
+		IS_SDE_MAJOR_SAME(mdata->mdss_version,
 			SDE_MDP_HW_REV_870)) {
 		mgr->ops_hw_init = sde_rotator_r3_init;
 		mgr->min_rot_clk = ROT_MIN_ROT_CLK;
@@ -3164,7 +3247,8 @@ int sde_rotator_core_init(struct sde_rot_mgr **pmgr,
 			mgr->max_rot_clk = ROT_R3_MAX_ROT_CLK;
 
 		if (!(IS_SDE_MAJOR_SAME(mdata->mdss_version, SDE_MDP_HW_REV_600) ||
-			IS_SDE_MAJOR_SAME(mdata->mdss_version, SDE_MDP_HW_REV_870)) &&
+			IS_SDE_MAJOR_SAME(mdata->mdss_version, SDE_MDP_HW_REV_870) ||
+			IS_SDE_MAJOR_SAME(mdata->mdss_version, SDE_MDP_HW_REV_860)) &&
 				!sde_rotator_get_clk(mgr,
 					SDE_ROTATOR_CLK_MDSS_AXI)) {
 			SDEROT_ERR("unable to get mdss_axi_clk\n");

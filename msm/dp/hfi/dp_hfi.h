@@ -16,22 +16,54 @@
 #include "hfi_utils.h"
 #include "hfi_defs_panel.h"
 
+/* Mode override structure */
+struct dp_mode_override {
+	bool enabled;
+	u32 h_active;
+	u32 v_active;
+	u32 refresh_rate;
+	int aspect_ratio;
+};
+
+/* Structure to contain hdcp info printed by debugfs*/
+struct dp_hdcp_info {
+	int hdcp_state;
+	int hdcp_version;
+	u32 source_cap;
+};
+
 /**
  * struct dp_hfi - dp display hfi structure
- * @hfi_adapter:          Pointer to hfi adapter structure
- * @hfi_client:           Pointer to hfi client structure
- * @kv_props:             Pointer to hfi util kv helper structure
- * @hfi_cb_obj:           callback object for hfi responses
- * @connector:            Pointer to drm connector
- * @batch_cmd_buf         Pointer to cmd buf used in batch mode
- * @cmd_buf_worker:       kthread worker
- * @shared_addr_map:      Pointer to hold dcp shared buffer map addr
- * @mode_valid:           Indicate whether mode is valid
- * @tx_cmd_buf_dva:       DCP virtual address of the DCS cmd tx buffer
- * @tx_cmd_buf_fill_level:Tracks fill level of the DCS cmd tx buffer
- * @tx_cmd_buf_map:       Address map of DCS command payload HFI buffer
- * @cb_data:              callback data for display_update callback function
- * @handle_event:         callback function for HFI events for DP
+ * @hfi_adapter:             Pointer to hfi adapter structure
+ * @hfi_client:              Pointer to hfi client structure
+ * @kv_props:                Pointer to hfi util kv helper structure
+ * @hfi_cb_obj:              callback object for hfi responses
+ * @connector:               Pointer to drm connector
+ * @batch_cmd_buf:           Pointer to cmd buf used in batch mode
+ * @cmd_buf_worker:          kthread worker
+ * @shared_addr_map:         Pointer to hold dcp shared buffer map addr
+ * @edid_addr_map:           Pointer to hold EDID shared buffer map addr
+ * @mode_count:              Number of available display modes
+ * @edid_ctrl:               Pointer to EDID control structure
+ * @mode_list:               Array of extended display mode info (up to 64 entries)
+ * @mode_valid:              Indicate whether mode is valid
+ * @tx_cmd_buf_dva:          DCP virtual address of the DCS cmd tx buffer
+ * @tx_cmd_buf_fill_level:   Tracks fill level of the DCS cmd tx buffer
+ * @tx_cmd_buf_map:          Address map of DCS command payload HFI buffer
+ * @stream_id:               Stream identifier
+ * @connected:               Indicates whether display is connected
+ * @tgt_bpp:                 Target bits per pixel
+ * @mode_ovr:                Mode override configuration
+ * @hpd_config:              Hotplug detection configuration
+ * @hdcp_info:               HDCP state and version info for debugfs
+ * @hdcp_version_registered: Registered HDCP version bitmask
+ * @min_enc_level:           Minimum HDCP encryption level
+ * @hdcp1x_ctx:              Opaque handle to HDCP 1.x context
+ * @hdcp2x_ctx:              Opaque handle to HDCP 2.x context
+ * @hdcp2x_req_map:          Pointer to HDCP 2.x request shared buffer map
+ * @hdcp2x_resp_map:         Pointer to HDCP 2.x response shared buffer map
+ * @priv:                    Private data pointer for caller use
+ * @handle_event:            callback function for HFI events for DP
  */
 struct dp_hfi {
 	struct hfi_adapter_t *hfi_adapter;
@@ -44,12 +76,39 @@ struct dp_hfi {
 	struct kthread_worker cmd_buf_worker;
 	struct hfi_shared_addr_map *shared_addr_map;
 
+	struct hfi_shared_addr_map *edid_addr_map;
+	u32 mode_count;
+	struct sde_edid_ctrl *edid_ctrl;
+	struct hfi_display_mode_extended_info mode_list[64]; /* Extended mode info */
+
+	bool hpd_events_register;
+
 	bool mode_valid;
 	unsigned long tx_cmd_buf_dva;
 	u32 tx_cmd_buf_fill_level;
 	struct hfi_shared_addr_map tx_cmd_buf_map;
+	u32 stream_id;
+	bool connected;
+	u32 tgt_bpp;
 
-	void *cb_data;
+	/* Mode override */
+	struct dp_mode_override mode_ovr;
+	struct hfi_device_hotplug_config hpd_config;
+
+	struct dp_hdcp_info hdcp_info;
+
+	u32 hdcp_version_registered;
+
+	u8 min_enc_level;
+	/* HDCP 1.x context */
+	void *hdcp1x_ctx;
+
+	/* HDCP 2.x context */
+	void *hdcp2x_ctx;
+	struct hfi_shared_addr_map *hdcp2x_req_map;
+	struct hfi_shared_addr_map *hdcp2x_resp_map;
+
+	void *priv;
 	void (*handle_event)(void *cb_data, u32 event, void *payload, u32 size);
 };
 
@@ -75,19 +134,10 @@ int dp_hfi_send_cmd_buf(struct dp_hfi *hfi,
  * dp_hfi_start_batch_cmd() - first cmd of a batch cmd sequence
  * @hfi: handle to dp hfi structure
  * @hfi_client: handle to hfi client
- * @hfi_cmd: hfi command
- * @display_type: display type string
- * @hfi_payload_type: hfi payload type
- * @payload: handle to payload
- * @payload_size: payload size
- * @flags: flags
  *
  * Return: error code.
  */
-int dp_hfi_start_batch_cmd(struct dp_hfi *hfi,
-				struct hfi_client_t *hfi_client, u32 hfi_cmd,
-				const char *display_type, u32 hfi_payload_type,
-				void *payload, u32 payload_size, u32 flags);
+int dp_hfi_start_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client);
 
 /**
  * dp_hfi_append_batch_cmd() - middle cmds of a batch cmd sequence
@@ -124,6 +174,16 @@ int dp_hfi_end_batch_cmd(struct dp_hfi *hfi,
 				struct hfi_client_t *hfi_client, u32 hfi_cmd,
 				const char *display_type, u32 hfi_payload_type,
 				void *payload, u32 payload_size, u32 flags);
+
+/**
+ * dp_hfi_send_batch_cmd() - Trigger the HFI for the current batch of commands
+ * @hfi: handle to dp hfi structure
+ * @hfi_client: handle to hfi client
+ * @blocking: blocking hfi flag
+ *
+ * Return: error code.
+ */
+int dp_hfi_send_batch_cmd(struct dp_hfi *hfi, struct hfi_client_t *hfi_client, bool blocking);
 
 /**
  * dp_hfi_setup() - setup dp hfi interface

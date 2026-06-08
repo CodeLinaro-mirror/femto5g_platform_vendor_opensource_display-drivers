@@ -118,6 +118,12 @@ int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
 		return -EINVAL;
 	}
 
+	ret = hfi_util_u32_prop_helper_reset(hfi_dbg->base_props);
+	if (ret) {
+		SDE_ERROR("failed to reset base props\n");
+		return ret;
+	}
+
 	if (hfi_dbg->buff_map.reg_addr.size && hfi_dbg->buff_map.reg_addr.remote_addr) {
 		prop_val = (u64) hfi_dbg->buff_map.reg_addr.remote_addr;
 		prop_u64.val_lo = HFI_VAL_L32(prop_val);
@@ -174,7 +180,7 @@ int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
-ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
+static ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
 {
 	ssize_t read_sz, evtlog_sz, total_sz;
 	ssize_t copied = 0;
@@ -211,8 +217,11 @@ ssize_t hfi_devcoredump_read(char *buffer, loff_t offset, size_t count)
 }
 
 #if IS_ENABLED(CONFIG_QCOM_VA_MINIDUMP)
-void hfi_dbg_add_va_region(void)
+static void hfi_dbg_add_va_region(void)
 {
+	if (!hfi_dbg)
+		return;
+
 	if (hfi_dbg->buff_map.reg_addr.size)
 		sde_mini_dump_add_va_region("reg_dump",
 			hfi_dbg->buff_map.reg_addr.size,
@@ -235,7 +244,7 @@ void hfi_dbg_add_va_region(void)
 }
 #endif
 
-void _hfi_dump_buff(void __iomem *local_addr, u32 size, char *evt_type)
+static void _hfi_dump_buff(void __iomem *local_addr, u32 size, char *evt_type)
 {
 	u32 in_log;
 	int sz_read = 0;
@@ -315,7 +324,7 @@ static void _hfi_dump_all(bool do_panic, const char *name, bool dump_secure)
 		panic(name);
 }
 
-void hfi_dbg_dump(bool do_panic, const char *name, bool dump_secure, u64 dump_blk_mask)
+static void hfi_dbg_dump(bool do_panic, const char *name, bool dump_secure, u64 dump_blk_mask)
 {
 	_hfi_dump_all(do_panic, name, dump_secure);
 }
@@ -330,7 +339,7 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct sde_kms *kms;
 	struct hfi_kms *hfi_kms;
-	u32 offset_sz = 0, base_buff_sz = 0;
+	u32 offset_sz = 0, base_buff_sz = 0, packet_id = 0;
 
 	if (!ddev || !ddev->dev_private) {
 		SDE_ERROR("invalid drm device node\n");
@@ -380,16 +389,17 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
 	if (!cmd_buf) {
 		SDE_ERROR("failed to get hfi command buffer\n");
-		return -EINVAL;
+		ret = -EINVAL;
+		goto free_hfi_dbg;
 	}
 
 	hfi_dbg->hfi_cb_obj.hfi_prop_handler = hfi_dbg_property_handler;
 	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf, HFI_COMMAND_DEBUG_INIT,
 			MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_NONE, NULL, 0,
-			&hfi_dbg->hfi_cb_obj, HFI_HOST_FLAGS_RESPONSE_REQUIRED);
+			&hfi_dbg->hfi_cb_obj, HFI_HOST_FLAGS_RESPONSE_REQUIRED, false, &packet_id);
 	if (ret) {
 		SDE_ERROR("failed to add debug-init command\n");
-		return ret;
+		goto free_hfi_dbg;
 	}
 
 	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_INIT, SDE_EVTLOG_FUNC_CASE1);
@@ -397,7 +407,7 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_INIT, ret, SDE_EVTLOG_FUNC_CASE2);
 	if (ret) {
 		SDE_ERROR("failed to send debug-init command\n");
-		return ret;
+		goto free_hfi_dbg;
 	}
 
 	base_buff_sz = hfi_dbg->buff_map.reg_addr.size + hfi_dbg->buff_map.evt_log_addr.size
@@ -407,7 +417,7 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 	ret = hfi_adapter_buffer_alloc(&hfi_kms->hfi_client, &hfi_dbg->base_buf_addr);
 	if (ret) {
 		SDE_ERROR("failed to allocate shared buffer, ret: %d\n", ret);
-		return ret;
+		goto free_hfi_dbg;
 	}
 	if (hfi_dbg->base_buf_addr.local_addr) {
 		hfi_dbg->base->read_buf = hfi_dbg->base_buf_addr.local_addr;
@@ -449,13 +459,18 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 	ret = hfi_dbg_device_setup(hfi_kms);
 	if (ret) {
 		SDE_ERROR("failed to send debug-setup command\n");
-		return ret;
+		goto free_hfi_dbg;
 	}
+
+	hfi_adapter_remove_listener_by_packet_id(&hfi_kms->hfi_client, packet_id);
 	return ret;
 
 free_kv:
 	kvfree(hfi_dbg->base_props);
-	return -EINVAL;
+free_hfi_dbg:
+	kvfree(hfi_dbg);
+	hfi_dbg = NULL;
+	return ret;
 }
 
 void hfi_dbg_destroy(void)

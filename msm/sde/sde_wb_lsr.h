@@ -10,6 +10,7 @@
 #include "hfi_catalog.h"
 #include "hfi_connector.h"
 #include "hfi_utils.h"
+#include "msm_lsr_core.h"
 
 #if IS_ENABLED(CONFIG_DRM_SDE_LSR)
 /**
@@ -32,12 +33,12 @@ int sde_wb_lsr_install_properties(struct drm_connector *connector,
 /**
  * sde_wb_lsr_get_fb_id_list - Get FB ID list property
  * @wb_dev: Pointer to sde_wb_device
- * @out_buffers: Pointer to hfi_wb_out_buff
+ * @out_buffers: Pointer to hfi_plane_buff
  * @view_desc: Pointer to sde_view_descriptor for front view
  * @back_view_desc: Pointer to sde_view_descriptor for fback view
  * @is_back_view_en: Indicates if back view is enabled
  */
-int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_buff *out_buffers,
+int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_plane_buff *out_buffers,
 		struct sde_view_descriptor *view_desc, struct sde_view_descriptor *back_view_desc,
 		bool is_back_view_en);
 
@@ -61,6 +62,13 @@ int hfi_lsr_fw_debug_set(u64 val, struct drm_device *dev);
 int hfi_lsr_fw_debug_get(u64 *val);
 
 /**
+ * hfi_lsr_trigger_ssr - Triggers LSR SSR
+ * @val: Type of SSR trigger
+ * @dev: pointer to drm device
+ */
+int hfi_lsr_trigger_ssr(u64 val, struct drm_device *dev);
+
+/**
  * hfi_wb_lsr_add_props - Adds LSR properties on WB connector
  * @wb_dev: Pointer to sde_wb_device
  * @hfi_conn: Pointer to hfi_conector
@@ -72,12 +80,17 @@ int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi
 		struct sde_connector_state *cstate,
 		u32 disp_id, struct hfi_cmdbuf_t *cmd_buf);
 /**
- * sde_wb_lsr_destroy_fb_list - clean up connector state's out_fb buffer
- * @c_conn: Pointer to dpu connector structure
- * @c_state: Pointer to dpu connector state structure
+ * sde_wb_lsr_reset_out_fb_list - Reset connector state's out_fb buffer list
+ * @c_state: Pointer to sde_connector_state structure
  */
-void sde_wb_lsr_destroy_fb_list(struct sde_connector *c_conn,
-	struct sde_connector_state *c_state);
+void sde_wb_lsr_reset_out_fb_list(struct sde_connector_state *c_state);
+
+/**
+ * sde_wb_lsr_get_view_fbs - Get reference on each LSR out-buffer FB in the
+ *                            connector state
+ * @c_state: Pointer to sde_connector_state structure
+ */
+void sde_wb_lsr_get_view_fbs(struct sde_connector_state *c_state);
 
 /**
  * hfi_wb_add_lsr_init_props - set lsr properties required for lsr sys init
@@ -135,7 +148,26 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
  */
 void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state);
 
-extern int lsr_fw_reset(void);
+extern int hfi_lsr_reset(void);
+
+/**
+ * hfi_lsr_notify_ssr_event - notify lsr ssr events
+ * @ssr_event: type of ssr event
+ * @dev: pointer to drm_device
+ */
+int hfi_lsr_notify_ssr_event(enum hfi_device_ssr_event ssr_event, struct drm_device *dev);
+
+/**
+ * hfi_lsr_wait_for_display_off - wait for lsr displays to turn off
+ * @dev: pointer to drm_device
+ */
+int hfi_lsr_wait_for_display_off(struct drm_device *dev);
+
+/**
+ * hfi_reset_hwfence - Reset hwfence
+ * @dev: pointer to drm_device
+ */
+int hfi_reset_hwfence(struct drm_device *dev);
 #else
 static inline
 int sde_wb_lsr_connector_set_property(struct drm_connector *connector,
@@ -152,7 +184,7 @@ int sde_wb_lsr_install_properties(struct drm_connector *connector,
 }
 
 static inline
-int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_wb_out_buff *out_buffers,
+int sde_wb_lsr_get_fb_id_list(struct sde_wb_device *wb_dev, struct hfi_plane_buff *out_buffers,
 		struct sde_view_descriptor *view_desc, struct sde_view_descriptor *back_view_desc,
 		bool is_back_view_en)
 {
@@ -178,14 +210,23 @@ int hfi_lsr_fw_debug_get(u64 *val)
 }
 
 static inline
+int hfi_lsr_trigger_ssr(u64 val, struct drm_device *dev)
+{
+	return 0;
+}
+
+static inline
 int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi_conn,
 	struct sde_connector_state *cstate, u32 disp_id, struct hfi_cmdbuf_t *cmd_buf)
 {
 	return 0;
 }
 
-static inline void sde_wb_lsr_destroy_fb_list(struct sde_connector *c_conn,
-	struct sde_connector_state *c_state)
+static inline void sde_wb_lsr_reset_out_fb_list(struct sde_connector_state *c_state)
+{
+}
+
+static inline void sde_wb_lsr_get_view_fbs(struct sde_connector_state *c_state)
 {
 }
 static inline int hfi_wb_add_lsr_init_props(struct sde_wb_device *wb_dev,
@@ -226,7 +267,23 @@ static inline void sde_wb_connector_reset_reproj_state(struct sde_connector_stat
 {
 }
 
-static inline int lsr_fw_reset(void)
+static inline int hfi_lsr_reset(void)
+{
+	return 0;
+}
+
+static inline int hfi_lsr_notify_ssr_event(enum hfi_device_ssr_event ssr_event,
+	struct drm_device *dev)
+{
+	return 0;
+}
+
+static inline int hfi_lsr_wait_for_display_off(struct drm_device *dev)
+{
+	return 0;
+}
+
+static inline int hfi_reset_hwfence(struct drm_device *dev)
 {
 	return 0;
 }
