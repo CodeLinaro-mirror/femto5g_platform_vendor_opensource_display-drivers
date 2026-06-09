@@ -61,6 +61,7 @@
 #include "sde_wb.h"
 #include "sde_dbg.h"
 #include "hfi_msm_drv.h"
+#include <linux/msm_hdcp.h>
 
 /*
  * MSM driver version:
