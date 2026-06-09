@@ -19,6 +19,7 @@
 #include <linux/debugfs.h>
 #include <linux/platform_device.h>
 #include <drm/drm_edid.h>
+#include <drm/drm_displayid.h>
 #include <drm/drm_dp_helper.h>
 #include "dp_debug.h"
 #include "dp_mst_sim.h"
@@ -529,6 +530,108 @@ static void dp_sim_update_checksum(struct edid *edid)
 	edid->checksum = 0x100 - (sum & 0xFF);
 }
 
+/*
+ * Build a DisplayID 1.3 EDID extension block (128 bytes) encoding one
+ * Type-I detailed timing.  Used when hdisplay > EDID_HACTIVE_12BIT_MAX because
+ * the standard EDID DTD hactive field is only 12 bits wide (max 4095).
+ *
+ * Layout of the 128-byte block:
+ *   [0]      DISPLAYID_EXT tag (0x70)
+ *   [1..4]   struct displayid_header  (rev=0x13, bytes=23, prod_id=PRODUCT_TYPE_EXTENSION, ext_count=0)
+ *   [5..7]   struct displayid_block   (tag=0x03, rev=0, num_bytes=20)
+ *   [8..27]  struct displayid_detailed_timings_1 (20 bytes)
+ *   [28]     DisplayID section checksum (sum of bytes [1..28] == 0)
+ *   [29..126] padding zeros
+ *   [127]    EDID extension block checksum (sum of bytes [0..127] == 0)
+ */
+#define EDID_HACTIVE_12BIT_MAX    4095
+#define DISPLAYID_CLK_UNIT_KHZ    10
+#define DISPLAYID_1_3_REV         0x13
+#define DISPLAYID_TIMING_PREFERRED BIT(7)
+#define DISPLAYID_SYNC_POL_MASK   0x7f
+#define DISPLAYID_SYNC_POL_HIGH   BIT(7)
+#define DISPLAYID_CHECKSUM_MOD    0x100
+
+static void dp_sim_build_displayid_ext(u8 *p_ext,
+		const struct drm_display_mode *p_mode)
+{
+	struct displayid_header *p_hdr;
+	struct displayid_block *p_blk;
+	struct displayid_detailed_timings_1 *p_t;
+	u32 hblank, vblank, h_fp, h_pw, v_fp, v_pw, clk10;
+	int disp_cs_idx;
+	u8 cs;
+	int i;
+
+	if (WARN_ON(p_mode->clock < DISPLAYID_CLK_UNIT_KHZ)) {
+		DP_ERR("pixel clock %d kHz too small\n", p_mode->clock);
+		return;
+	}
+
+	hblank = p_mode->htotal - p_mode->hdisplay;
+	vblank = p_mode->vtotal - p_mode->vdisplay;
+	h_fp   = p_mode->hsync_start - p_mode->hdisplay;
+	h_pw   = p_mode->hsync_end - p_mode->hsync_start;
+	v_fp   = p_mode->vsync_start - p_mode->vdisplay;
+	v_pw   = p_mode->vsync_end - p_mode->vsync_start;
+	clk10  = p_mode->clock / DISPLAYID_CLK_UNIT_KHZ - 1;
+
+	memset(p_ext, 0, EDID_LENGTH);
+
+	p_ext[0] = DISPLAYID_EXT;
+
+	p_hdr = (struct displayid_header *)&p_ext[1];
+	p_hdr->rev      = DISPLAYID_1_3_REV;
+	p_hdr->bytes    = sizeof(*p_blk) + sizeof(*p_t);  /* 3 + 20 = 23 */
+	p_hdr->prod_id  = PRODUCT_TYPE_EXTENSION;
+	p_hdr->ext_count = 0;
+
+	p_blk = (struct displayid_block *)&p_ext[1 + sizeof(*p_hdr)];
+	p_blk->tag       = DATA_BLOCK_TYPE_1_DETAILED_TIMING;
+	p_blk->rev       = 0;
+	p_blk->num_bytes = sizeof(*p_t);  /* 20 */
+
+	p_t = (struct displayid_detailed_timings_1 *)(p_blk + 1);
+
+	p_t->pixel_clock[0] = clk10 & 0xff;
+	p_t->pixel_clock[1] = (clk10 >> 8) & 0xff;
+	p_t->pixel_clock[2] = (clk10 >> 16) & 0xff;
+	p_t->flags = DISPLAYID_TIMING_PREFERRED;
+
+	p_t->hactive[0] = (p_mode->hdisplay - 1) & 0xff;
+	p_t->hactive[1] = ((p_mode->hdisplay - 1) >> 8) & 0xff;
+	p_t->hblank[0]  = (hblank - 1) & 0xff;
+	p_t->hblank[1]  = ((hblank - 1) >> 8) & 0xff;
+	p_t->hsync[0]   = (h_fp - 1) & 0xff;
+	p_t->hsync[1]   = (((h_fp - 1) >> 8) & DISPLAYID_SYNC_POL_MASK) |
+			((p_mode->flags & DRM_MODE_FLAG_PHSYNC) ? DISPLAYID_SYNC_POL_HIGH : 0);
+	p_t->hsw[0]     = (h_pw - 1) & 0xff;
+	p_t->hsw[1]     = ((h_pw - 1) >> 8) & 0xff;
+
+	p_t->vactive[0] = (p_mode->vdisplay - 1) & 0xff;
+	p_t->vactive[1] = ((p_mode->vdisplay - 1) >> 8) & 0xff;
+	p_t->vblank[0]  = (vblank - 1) & 0xff;
+	p_t->vblank[1]  = ((vblank - 1) >> 8) & 0xff;
+	p_t->vsync[0]   = (v_fp - 1) & 0xff;
+	p_t->vsync[1]   = (((v_fp - 1) >> 8) & DISPLAYID_SYNC_POL_MASK) |
+			((p_mode->flags & DRM_MODE_FLAG_PVSYNC) ? DISPLAYID_SYNC_POL_HIGH : 0);
+	p_t->vsw[0]     = (v_pw - 1) & 0xff;
+	p_t->vsw[1]     = ((v_pw - 1) >> 8) & 0xff;
+
+	/* DisplayID section checksum: bytes [1 .. disp_cs_idx] sum to 0 */
+	disp_cs_idx = 1 + (int)sizeof(*p_hdr) + p_hdr->bytes;
+	cs = 0;
+	for (i = 1; i < disp_cs_idx; i++)
+		cs += p_ext[i];
+	p_ext[disp_cs_idx] = (u8)(DISPLAYID_CHECKSUM_MOD - cs);
+
+	/* EDID extension block checksum: bytes [0 .. 126] sum to 0 */
+	cs = 0;
+	for (i = 0; i < EDID_LENGTH - 1; i++)
+		cs += p_ext[i];
+	p_ext[EDID_LENGTH - 1] = (u8)(DISPLAYID_CHECKSUM_MOD - cs);
+}
+
 static int dp_sim_parse_edid_from_node(struct dp_sim_device *sim_dev,
 		int index, struct device_node *node)
 {
@@ -541,6 +644,7 @@ static int dp_sim_parse_edid_from_node(struct dp_sim_device *sim_dev,
 	u32 flags = 0;
 	int rc;
 	struct edid *edid;
+	u8 *p_buf2 = NULL;
 
 	const u8 edid_buf[EDID_LENGTH] = {
 		0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00, 0x44, 0x6D,
@@ -645,18 +749,43 @@ static int dp_sim_parse_edid_from_node(struct dp_sim_device *sim_dev,
 	}
 
 	memcpy(edid, edid_buf, sizeof(edid_buf));
-	dp_sim_update_dtd(edid, mode);
-	dp_sim_update_checksum(edid);
 
 	port = &sim_dev->ports[index];
 	memcpy(port, &output_port, sizeof(*port));
 	port->peer_guid[0] = index;
 
-	if (port->edid)
+	if (port->edid) {
 		devm_kfree(sim_dev->dev, (u8 *)port->edid);
+		port->edid = NULL;
+	}
 
-	port->edid = (u8 *)edid;
-	port->edid_size = sizeof(*edid);
+	if (mode->hdisplay > EDID_HACTIVE_12BIT_MAX) {
+		/*
+		 * Standard EDID DTD hactive is 12-bit (max 4095).  For wider
+		 * resolutions, allocate a second 128-byte block and encode the
+		 * timing in a DisplayID 1.3 Type-I detailed timing instead.
+		 */
+		p_buf2 = devm_kzalloc(sim_dev->dev,
+					2 * EDID_LENGTH, GFP_KERNEL);
+		if (!p_buf2) {
+			rc = -ENOMEM;
+			goto fail;
+		}
+		devm_kfree(sim_dev->dev, (u8 *)edid);
+		edid = (struct edid *)p_buf2;
+		memcpy(edid, edid_buf, sizeof(edid_buf));
+		edid->extensions = 1;
+		memset(&edid->detailed_timings[0], 0, sizeof(edid->detailed_timings));
+		dp_sim_update_checksum(edid);
+		dp_sim_build_displayid_ext(p_buf2 + EDID_LENGTH, mode);
+		port->edid = p_buf2;
+		port->edid_size = 2 * EDID_LENGTH;
+	} else {
+		dp_sim_update_dtd(edid, mode);
+		dp_sim_update_checksum(edid);
+		port->edid = (u8 *)edid;
+		port->edid_size = sizeof(*edid);
+	}
 
 fail:
 	return rc;
