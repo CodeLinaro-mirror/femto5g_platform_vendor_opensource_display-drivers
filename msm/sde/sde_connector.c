@@ -4615,6 +4615,7 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 
 	if (connector_type == DRM_MODE_CONNECTOR_DSI) {
 		dsi_display = _sde_connector_get_display(c_conn);
+
 		if (dsi_display && dsi_display->panel) {
 			msm_property_install_blob(&c_conn->property_info,
 				"dimming_bl_lut", DRM_MODE_PROP_BLOB,
@@ -4624,36 +4625,33 @@ static int _sde_connector_install_properties(struct drm_device *dev,
 			msm_property_install_range(&c_conn->property_info, "dimming_min_bl",
 					0x0, 0, dsi_display->panel->bl_config.brightness_max_level, 0,
 					CONNECTOR_PROP_DIMMING_MIN_BL);
+
+			if (dsi_display->panel->hdr_props.hdr_enabled == true) {
+				msm_property_install_blob(&c_conn->property_info,
+					"hdr_properties",
+					DRM_MODE_PROP_IMMUTABLE,
+					CONNECTOR_PROP_HDR_INFO);
+
+				msm_property_set_blob(&c_conn->property_info,
+					&c_conn->blob_hdr,
+					&dsi_display->panel->hdr_props,
+					sizeof(dsi_display->panel->hdr_props),
+					CONNECTOR_PROP_HDR_INFO);
+			}
+
+			if (dsi_display->panel->privacy_feature_enabled) {
+				msm_property_install_volatile_range(
+					&c_conn->property_info, "privacy_layers_v1", 0x0,
+					0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V1);
+				msm_property_install_volatile_range(
+					&c_conn->property_info, "privacy_layers_v2", 0x0,
+					0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V2);
+			}
+
+			if (dsi_display->panel->dyn_clk_caps.dyn_clk_support)
+				msm_property_install_range(&c_conn->property_info, "dyn_bit_clk",
+						0x0, 0, ~0, 0, CONNECTOR_PROP_DYN_BIT_CLK);
 		}
-
-		if (dsi_display && dsi_display->panel &&
-			dsi_display->panel->hdr_props.hdr_enabled == true) {
-			msm_property_install_blob(&c_conn->property_info,
-				"hdr_properties",
-				DRM_MODE_PROP_IMMUTABLE,
-				CONNECTOR_PROP_HDR_INFO);
-
-			msm_property_set_blob(&c_conn->property_info,
-				&c_conn->blob_hdr,
-				&dsi_display->panel->hdr_props,
-				sizeof(dsi_display->panel->hdr_props),
-				CONNECTOR_PROP_HDR_INFO);
-		}
-
-		if (dsi_display && dsi_display->panel->privacy_feature_enabled) {
-			msm_property_install_volatile_range(
-				&c_conn->property_info, "privacy_layers_v1", 0x0,
-				0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V1);
-			msm_property_install_volatile_range(
-				&c_conn->property_info, "privacy_layers_v2", 0x0,
-				0, ~0, 0, CONNECTOR_PROP_PRIVACY_LAYER_V2);
-		}
-
-		if (dsi_display && dsi_display->panel &&
-				dsi_display->panel->dyn_clk_caps.dyn_clk_support)
-			msm_property_install_range(&c_conn->property_info, "dyn_bit_clk",
-					0x0, 0, ~0, 0, CONNECTOR_PROP_DYN_BIT_CLK);
-
 		msm_property_install_range(&c_conn->property_info, "dyn_transfer_time",
 				 0x0, 0, 1000000, 0, CONNECTOR_PROP_DYN_TRANSFER_TIME);
 
