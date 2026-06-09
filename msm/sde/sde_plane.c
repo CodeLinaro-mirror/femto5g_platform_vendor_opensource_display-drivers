@@ -944,12 +944,7 @@ static inline void _sde_plane_set_scanout(struct drm_plane *plane,
 		 * smmu faults during secure session transition.
 		 */
 		psde->is_error = true;
-	} else if (psde->pipe_hw->ops.setup_sourceaddress[disp_op]) {
-		if (!psde->pipe_hw) {
-			SDE_ERROR_PLANE(psde, "invalid pipe_hw\n");
-			return;
-		}
-
+	} else if (psde->pipe_hw && psde->pipe_hw->ops.setup_sourceaddress[disp_op]) {
 		SDE_EVT32_VERBOSE(psde->pipe_hw->idx,
 				pipe_cfg->layout.width,
 				pipe_cfg->layout.height,
@@ -5295,6 +5290,10 @@ static void _sde_plane_set_alpha_buffer(struct drm_plane *plane, struct sde_plan
 	int ret = 0;
 
 	sde_kms = _sde_plane_get_kms(plane);
+	if (!sde_kms) {
+		SDE_ERROR("invalid kms\n");
+		return;
+	}
 
 	pstate->repro_sspp_cfg.alpha_fb = drm_framebuffer_lookup(plane->dev, NULL, alpha_fb_id);
 	aspace = sde_kms->aspace[SDE_IOMMU_DOMAIN_UNSECURE];
@@ -6178,7 +6177,7 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 	struct msm_drm_private *priv;
 	struct sde_kms *kms;
 	enum drm_plane_type type;
-	struct sde_vbif_clk_client clk_client;
+	struct sde_vbif_clk_client clk_client = {};
 	enum msm_disp_op disp_op;
 	int ret = 0;
 	bool lsr_plane;

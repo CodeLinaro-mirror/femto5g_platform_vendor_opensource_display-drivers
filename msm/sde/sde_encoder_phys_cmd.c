@@ -1473,8 +1473,8 @@ exit:
 
 static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_enc)
 {
-	struct sde_encoder_phys_cmd *cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
-	struct sde_encoder_virt *sde_enc = to_sde_encoder_virt(phys_enc->parent);
+	struct sde_encoder_phys_cmd *cmd_enc;
+	struct sde_encoder_virt *sde_enc;
 	struct sde_hw_tear_check tc_cfg = { 0 };
 	struct drm_display_mode *mode;
 	bool tc_enable = true;
@@ -1489,6 +1489,8 @@ static void sde_encoder_phys_cmd_tearcheck_config(struct sde_encoder_phys *phys_
 		SDE_ERROR("invalid encoder\n");
 		return;
 	}
+	cmd_enc = to_sde_encoder_phys_cmd(phys_enc);
+	sde_enc = to_sde_encoder_virt(phys_enc->parent);
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
 	mode = &phys_enc->cached_mode;
 	qsync_mode = sde_connector_get_qsync_mode(phys_enc->connector);
@@ -1874,12 +1876,14 @@ static void _sde_encoder_phys_wait_for_vsync_on_autorefresh_busy(struct sde_enco
 {
 	u32 autorefresh_status;
 	int ret = 0;
-	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
+	enum msm_disp_op disp_op;
 
 	if (!phys_enc || !phys_enc->hw_intf) {
 		SDE_ERROR("invalid params\n");
 		return;
 	}
+	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
+
 	if (!phys_enc->hw_intf->ops.get_autorefresh_status[disp_op]) {
 		if (IS_DISP_OP_HWIO(disp_op))
 			SDE_ERROR("undefined get_autorefresh_status hw_intf op\n");
@@ -2601,9 +2605,14 @@ static void _sde_encoder_phys_cmd_calculate_wd_params(struct sde_encoder_phys *p
 
 static void sde_encoder_phys_cmd_store_ltj_values(struct sde_encoder_phys *phys_enc)
 {
-	enum msm_disp_op disp_op = sde_encoder_get_disp_op(phys_enc->parent);
+	enum msm_disp_op disp_op;
 
-	if (phys_enc && phys_enc->hw_intf->ops.get_wd_ltj_status[disp_op])
+	if (!phys_enc || !phys_enc->hw_intf)
+		return;
+
+	disp_op = sde_encoder_get_disp_op(phys_enc->parent);
+
+	if (phys_enc->hw_intf->ops.get_wd_ltj_status[disp_op])
 		phys_enc->hw_intf->ops.get_wd_ltj_status[disp_op](phys_enc->hw_intf,
 			&phys_enc->wd_jitter);
 }
