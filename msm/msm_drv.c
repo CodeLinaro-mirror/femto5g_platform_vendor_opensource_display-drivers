@@ -1,7 +1,8 @@
 /*
- * Copyright (c) 2021-2024 Qualcomm Innovation Center, Inc. All rights reserved.
- * Copyright (c) 2016-2021, The Linux Foundation. All rights reserved.
- * Copyright (C) 2013 Red Hat
+ * Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+ * SPDX-License-Identifier: BSD-3-Clause-Clear
+ */
+/*
  * Author: Rob Clark <robdclark@gmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -549,9 +550,7 @@ static int msm_drm_uninit(struct device *dev)
 
 	msm_mdss_destroy(ddev);
 
-	ddev->dev_private = NULL;
 	destroy_workqueue(priv->wq);
-	kfree(priv);
 
 	drm_dev_put(ddev);
 
@@ -888,7 +887,6 @@ dbg_init_fail:
 power_init_fail:
 priv_alloc_fail:
 	drm_dev_put(ddev);
-	kfree(priv);
 	return ret;
 }
 
@@ -1039,7 +1037,6 @@ mdss_init_fail:
 	sde_dbg_destroy();
 	sde_power_resource_deinit(pdev, &priv->phandle);
 	drm_dev_put(ddev);
-	kfree(priv);
 
 	return ret;
 }
@@ -1099,6 +1096,14 @@ static int msm_open(struct drm_device *dev, struct drm_file *file)
 static void context_close(struct msm_file_private *ctx)
 {
 	kfree(ctx);
+}
+
+static void msm_drm_release(struct drm_device *dev)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+
+	dev->dev_private = NULL;
+	kfree(priv);
 }
 
 static void msm_preclose(struct drm_device *dev, struct drm_file *file)
@@ -1859,6 +1864,7 @@ static struct drm_driver msm_driver = {
 	.open               = msm_open,
 	.postclose          = msm_postclose,
 	.lastclose          = msm_lastclose,
+	.release	    = msm_drm_release,
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(5, 15, 0))
 	.irq_handler        = msm_irq,
 	.irq_preinstall     = msm_irq_preinstall,
@@ -2448,11 +2454,12 @@ static int __init msm_drm_register(void)
 		return -EINVAL;
 
 	DBG("init");
+	platform_driver_register(&msm_platform_driver);
+	msm_lease_drm_register();
 	sde_rsc_rpmh_register();
 	sde_rsc_register();
 	msm_smmu_driver_init();
 	sde_wb_register();
-	platform_driver_register(&msm_platform_driver);
 	dsi_display_register();
 	msm_hdcp_register();
 	dp_display_register();
@@ -2460,27 +2467,26 @@ static int __init msm_drm_register(void)
 	msm_edp_register();
 	msm_hdmi_register();
 	sde_shd_register();
-	msm_lease_drm_register();
 	return 0;
 }
 
 static void __exit msm_drm_unregister(void)
 {
 	DBG("fini");
-	msm_lease_drm_unregister();
-	sde_wb_unregister();
-	msm_hdmi_unregister();
-	msm_edp_unregister();
-	msm_dsi_unregister();
-	sde_rotator_smmu_driver_unregister();
-	sde_rotator_unregister();
-	msm_smmu_driver_cleanup();
-	msm_hdcp_unregister();
-	dp_display_unregister();
-	dsi_display_unregister();
-	sde_rsc_unregister();
 	sde_shd_unregister();
-	platform_driver_unregister(&msm_platform_driver);
+    msm_hdmi_unregister();
+    msm_edp_unregister();
+    msm_dsi_unregister();
+    dp_display_unregister();
+    msm_hdcp_unregister();
+    dsi_display_unregister();
+    sde_wb_unregister();
+    sde_rotator_smmu_driver_unregister();
+    sde_rotator_unregister();
+    msm_smmu_driver_cleanup();
+    sde_rsc_unregister();
+    msm_lease_drm_unregister();
+    platform_driver_unregister(&msm_platform_driver);
 }
 
 module_init(msm_drm_register);
