@@ -4776,7 +4776,7 @@ static struct sde_hw_ctl *_sde_crtc_get_hw_ctl(struct drm_crtc *drm_crtc)
 	return sde_crtc->mixers[0].hw_ctl;
 }
 
-static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
+static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane, ktime_t ept)
 {
 #if IS_ENABLED(CONFIG_QTI_HW_FENCE)
 	struct dma_fence *fence;
@@ -4810,6 +4810,9 @@ static struct dma_fence *_sde_plane_get_input_hw_fence(struct drm_plane *plane)
 			if (!test_bit(SPEC_FENCE_FLAG_FENCE_ARRAY_BOUND, &fence->flags))
 				if (spec_sync_wait_bind_array(array, SPEC_FENCE_TIMEOUT_MS) < 0)
 					goto exit;
+
+			/* previously unbound fence arrays must have deadline set now */
+			sde_fence_set_input_deadline(fence, ept);
 
 			for (i = 0; i < array->num_fences; i++) {
 				spec_fence = array->fences[i];
@@ -4985,6 +4988,7 @@ static int _sde_crtc_fences_set_deadline(struct drm_crtc *crtc, ktime_t ept)
  * @use_hw_fences: Boolean to indicate if function should use hw-fences and skip hw-fences sw-wait.
  * @dma_hw_fences: List of available hw-fences, this is populated by this function.
  * @max_hw_fences: Max number of hw-fences that can be added to the dma_hw_fences list
+ * @ept: Optional expected presentation time to set deadline on input fences
  *
  * This function iterates through all crtc planes, if 'use_hw_fences' is set, for each fence:
  * - If the fence is a hw-fence, it will get its dma-fence object and add it to the 'dma_hw_fences'
@@ -4995,7 +4999,7 @@ static int _sde_crtc_fences_set_deadline(struct drm_crtc *crtc, ktime_t ept)
  * Return value is the number of hw-fences added to the 'dma_hw_fences' list.
  */
 static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
-	struct dma_fence **dma_hw_fences, int max_hw_fences)
+	struct dma_fence **dma_hw_fences, int max_hw_fences, ktime_t ept)
 {
 	struct drm_plane *plane = NULL;
 	u32 num_hw_fences = 0;
@@ -5020,8 +5024,7 @@ static int _sde_crtc_fences_wait_list(struct drm_crtc *crtc, bool use_hw_fences,
 
 		/* check if input-fences are hw fences and if they are, add them to the list */
 		if (use_hw_fences && !mode_switch) {
-
-			dma_hw_fences[num_hw_fences] = _sde_plane_get_input_hw_fence(plane);
+			dma_hw_fences[num_hw_fences] = _sde_plane_get_input_hw_fence(plane, ept);
 
 			if (dma_hw_fences[num_hw_fences] && (num_hw_fences < max_hw_fences)) {
 				bool repeated_fence = false;
@@ -5148,7 +5151,7 @@ static int _hfi_mode_register_hw_fences_wait(struct sde_crtc *sde_crtc, struct s
 /* returns ipcc_signal_wait which is used for determining if hw-fence wait is supported */
 static int _sde_crtc_prepare_wait_for_fences(struct drm_crtc *crtc, struct sde_crtc *sde_crtc,
 	struct sde_kms *sde_kms, enum msm_disp_op disp_op, struct sde_hw_ctl *hw_ctl,
-	bool trigger_sw_override)
+	bool trigger_sw_override, ktime_t *ept)
 {
 	struct drm_encoder *encoder = NULL;
 	bool ipcc_input_signal_wait = false;
@@ -5156,14 +5159,11 @@ static int _sde_crtc_prepare_wait_for_fences(struct drm_crtc *crtc, struct sde_c
 	enum sde_crtc_vm_req vm_req;
 	bool disable_hw_fences = false;
 	bool video_psr_support = false;
-#if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
-	ktime_t ept = 0;
-#endif /* (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE) */
 
 	drm_for_each_encoder_mask(encoder, crtc->dev, crtc->state->encoder_mask) {
 #if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
-		if (!ept)
-			ept = sde_encoder_get_ept(encoder);
+		if (!*ept)
+			*ept = sde_encoder_get_ept(encoder);
 #endif /* (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE) */
 
 		if (sde_encoder_in_clone_mode(encoder))
@@ -5176,8 +5176,8 @@ static int _sde_crtc_prepare_wait_for_fences(struct drm_crtc *crtc, struct sde_c
 	}
 
 #if (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE)
-	if (ept)
-		_sde_crtc_fences_set_deadline(crtc, ept);
+	if (*ept)
+		_sde_crtc_fences_set_deadline(crtc, *ept);
 #endif /* (KERNEL_VERSION(6, 11, 0) <= LINUX_VERSION_CODE) */
 
 	/* if this is the last frame on vm transition, disable hw fences */
@@ -5222,6 +5222,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	int ret = 0;
 	bool trigger_sw_override = false;
 	enum msm_disp_op disp_op;
+	ktime_t ept = 0;
 
 	SDE_DEBUG("\n");
 	if (!crtc || !crtc->state || !sde_kms) {
@@ -5244,13 +5245,13 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 	}
 
 	ipcc_input_signal_wait = _sde_crtc_prepare_wait_for_fences(crtc, sde_crtc, sde_kms, disp_op,
-		hw_ctl, trigger_sw_override);
+		hw_ctl, trigger_sw_override, &ept);
 	/* avoid hw-fences in first frame after timing engine enable */
 	input_hw_fences_enable = (ipcc_input_signal_wait && !_is_vid_power_on_frame(crtc));
 
 	/* wait for sw fences and get hw fences list (if any) */
 	num_hw_fences = _sde_crtc_fences_wait_list(crtc, input_hw_fences_enable, &dma_hw_fences[0],
-		MAX_HW_FENCES);
+		MAX_HW_FENCES, ept);
 
 	/* register the hw-fences for hw-wait */
 	if (num_hw_fences > 0 && num_hw_fences <= MAX_HW_FENCES) {
@@ -5269,7 +5270,7 @@ static bool _sde_crtc_wait_for_fences(struct drm_crtc *crtc)
 
 			/* we failed to register hw-fences, wait for all fences as 'sw-fences' */
 			num_hw_fences = _sde_crtc_fences_wait_list(crtc, false, &dma_hw_fences[0],
-				MAX_HW_FENCES);
+				MAX_HW_FENCES, 0);
 		}
 	}
 
