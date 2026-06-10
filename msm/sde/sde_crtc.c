@@ -3278,9 +3278,7 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 	u32 lm_idx = 0, num_mixers = 0;
 	int i, count = 0;
 	enum msm_disp_op disp_op;
-	struct hfi_cmdbuf_t *cmd_buf = NULL;
-	struct hfi_util_u32_prop_helper *color_props = NULL;
-	u32 ret = 0, dspp_start_idx = DSPP_MAX;
+	u32 dspp_start_idx = DSPP_MAX;
 	bool dest_scaler_set = false;
 
 	if (!crtc)
@@ -3370,16 +3368,6 @@ static void _sde_crtc_dest_scaler_setup(struct drm_crtc *crtc)
 			if (hw_ctl && hw_ctl->ops.update_bitmask_mixer[disp_op])
 				hw_ctl->ops.update_bitmask_mixer[disp_op](
 						hw_ctl, hw_lm->idx, 1);
-		}
-
-		if (disp_op == MSM_DISP_OP_HFI && dest_scaler_set) {
-			cmd_buf = hfi_crtc_get_cmd_buf(crtc);
-			color_props = hw_ds->prop_helper;
-
-			ret = hfi_crtc_add_set_property(crtc, cmd_buf, color_props);
-			if (ret)
-				SDE_ERROR("failed to set and add HFI crtc prop\n");
-			hfi_cp_crtc_reset_color_props(color_props);
 		}
 	}
 }
@@ -5644,6 +5632,19 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 		goto end;
 
 	_sde_crtc_blend_setup(crtc, old_state, true);
+
+	if (sde_kms_is_cp_operation_allowed(sde_kms)) {
+		if (IS_DISP_OP_HFI(disp_op)) {
+			cmd_buf = hfi_crtc_get_cmd_buf(crtc);
+			if (!cmd_buf)
+				SDE_ERROR("failed to get cmd_buf for crtc:%d\n", DRMID(crtc));
+			else
+				sde_crtc->hfi_client = cmd_buf->ctx;
+			if (sde_crtc->hfi_crtc)
+				hfi_cp_crtc_reset_color_props(sde_crtc->hfi_crtc->color_props);
+		}
+	}
+
 	_sde_crtc_dest_scaler_setup(crtc);
 	sde_cp_crtc_apply_noise(crtc, old_state);
 
@@ -5669,15 +5670,9 @@ static void _sde_crtc_atomic_begin(struct drm_crtc *crtc,
 	}
 
 	if (sde_kms_is_cp_operation_allowed(sde_kms)) {
-		if (IS_DISP_OP_HFI(disp_op)) {
-			cmd_buf = hfi_crtc_get_cmd_buf(crtc);
-			if (!cmd_buf) {
-				SDE_ERROR("failed to get cmd_buf for crtc:%d\n", DRMID(crtc));
-				goto skip_cp;
-			}
-			sde_crtc->hfi_client = cmd_buf->ctx;
-			if (sde_crtc->hfi_crtc)
-				hfi_cp_crtc_reset_color_props(sde_crtc->hfi_crtc->color_props);
+		if (IS_DISP_OP_HFI(disp_op) && !cmd_buf) {
+			SDE_ERROR("cmd_buf not initialized for crtc:%d\n", DRMID(crtc));
+			goto skip_cp;
 		}
 
 		sde_cp_crtc_apply_properties(crtc);
