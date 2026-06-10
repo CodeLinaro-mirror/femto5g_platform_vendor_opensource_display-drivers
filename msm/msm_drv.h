@@ -1821,18 +1821,6 @@ static inline void __exit sde_shd_unregister(void)
 }
 #endif /* CONFIG_DRM_SDE_SHD */
 
-#if IS_ENABLED(CONFIG_HDCP_QSEECOM)
-void __init msm_hdcp_register(void);
-void __exit msm_hdcp_unregister(void);
-#else
-static inline void __init msm_hdcp_register(void)
-{
-}
-static inline void __exit msm_hdcp_unregister(void)
-{
-}
-#endif /* CONFIG_HDCP_QSEECOM */
-
 #if IS_ENABLED(CONFIG_DRM_MSM_DP)
 void __init dp_drv_register(void);
 void __exit dp_drv_unregister(void);

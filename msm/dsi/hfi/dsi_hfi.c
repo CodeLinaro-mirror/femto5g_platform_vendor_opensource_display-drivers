@@ -71,6 +71,9 @@ static int _dsi_display_hfi_process_ssr_start(struct hfi_client_t *hfi_client)
 		return -EINVAL;
 	}
 
+	if (display->panel)
+		atomic_set(&display->panel->ssr_in_progress, 1);
+
 	display_hfi = display->dsi_hfi_info;
 	if (!display_hfi) {
 		DSI_ERR("invalid display hfi handle\n");
@@ -118,6 +121,9 @@ static int _dsi_display_hfi_process_ssr_end(struct hfi_client_t *hfi_client)
 		DSI_ERR("failed to send panel init to DCP: %d", rc);
 		return rc;
 	}
+
+	if (display->panel)
+		atomic_set(&display->panel->ssr_in_progress, 0);
 
 	return rc;
 }
@@ -1972,6 +1978,7 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 	u64 rem_prop_val = (u64) addr_map->remote_addr;
 	struct hfi_buff dcs_cmd_tx_buf_dva;
 	struct hfi_buff dcs_cmd_tx_buf_iova;
+	u32 pixel_format = 0;
 
 	if (!display)
 		return -EINVAL;
@@ -2035,6 +2042,15 @@ static int dsi_hfi_append_panel_init_caps(struct hfi_cmdbuf_t *buffer,
 			(sizeof(dcs_cmd_tx_buf_iova) / sizeof(u32))),
 			(void *)&dcs_cmd_tx_buf_iova);
 	kv_size += sizeof(dcs_cmd_tx_buf_iova);
+
+	if (display->panel && display->panel->host_config.dpu_dma_enabled) {
+		pixel_format = HFI_COLOR_FORMAT_RGB888_BYPASS;
+		hfi_util_kv_helper_add(display_hfi->kv_props,
+			HFI_PACKKEY(HFI_PROPERTY_PANEL_COLOR_FORMAT, 0,
+			(sizeof(pixel_format) / sizeof(u32))),
+			&pixel_format);
+		kv_size += sizeof(pixel_format);
+	}
 
 	kv_count = hfi_util_kv_helper_get_count(display_hfi->kv_props);
 

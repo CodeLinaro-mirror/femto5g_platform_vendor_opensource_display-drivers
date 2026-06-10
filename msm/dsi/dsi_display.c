@@ -478,6 +478,7 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	struct device *dev;
 	unsigned int te_irq, tlmm_gpio_cfg;
 	struct resource te_res;
+	void __iomem *tlmm_base;
 
 	pdev = display->pdev;
 	if (!pdev) {
@@ -518,16 +519,20 @@ static void dsi_display_register_te_irq(struct dsi_display *display)
 	 * first TE IRQ registration. Read the TE GPIO configuration before
 	 * IRQ registration to restore it after registration.
 	 */
-	tlmm_gpio_cfg = DSI_GEN_R32(devm_ioremap(&display->pdev->dev, te_res.start,
-				TLMM_GPIO_CFG_LEN), TLMM_GPIO_CFG_OFFSET);
+	tlmm_base = devm_ioremap(&display->pdev->dev, te_res.start, TLMM_GPIO_CFG_LEN);
+
+	if (tlmm_base)
+		tlmm_gpio_cfg = DSI_GEN_R32(tlmm_base, TLMM_GPIO_CFG_OFFSET);
+	else
+		DSI_ERR("Failed to ioremap GPIO address for restore\n");
 
 	rc = devm_request_irq(dev, te_irq, dsi_display_panel_te_irq_handler,
 			      IRQF_TRIGGER_FALLING | IRQF_ONESHOT,
 			      "TE_GPIO", display);
 
 	/* Restore TE gpio configuration after IRQ registration */
-	DSI_GEN_W32(devm_ioremap(&display->pdev->dev, te_res.start,
-				TLMM_GPIO_CFG_LEN), TLMM_GPIO_CFG_OFFSET, tlmm_gpio_cfg);
+	if (tlmm_base)
+		DSI_GEN_W32(tlmm_base, TLMM_GPIO_CFG_OFFSET, tlmm_gpio_cfg);
 
 	if (rc) {
 		DSI_ERR("TE request_irq failed for ESD rc:%d\n", rc);
@@ -4652,6 +4657,12 @@ static int dsi_display_parse_dt(struct dsi_display *display)
 	DSI_DEBUG("ctrl count=%d, phy count=%d\n",
 			display->ctrl_count, phy_count);
 
+	if (display->ctrl_count > MAX_DSI_CTRL) {
+		DSI_ERR("ctrl count %d not supported\n", display->ctrl_count);
+		rc = -ENODEV;
+		goto error;
+	}
+
 	if (!phy_count || !display->ctrl_count) {
 		DSI_ERR("no ctrl/phys found\n");
 		rc = -ENODEV;
@@ -6003,6 +6014,11 @@ int dsi_display_cont_splash_res_disable(void *dsi_display)
 	struct dsi_display *display = dsi_display;
 	int rc = 0;
 
+	if (!display || !display->panel) {
+		DSI_ERR("invalid display or panel\n");
+		return -EINVAL;
+	}
+
 	/* Remove the panel vote that was added during dsi display probe */
 	if (!(display->panel->ctl_op_sync && !strcmp(display->panel->type, "secondary"))) {
 		rc = dsi_pwr_enable_regulator(&display->panel->power_info, false);
@@ -6370,7 +6386,7 @@ static int dsi_display_bind(struct device *dev,
 		struct device *master,
 		void *data)
 {
-	struct dsi_display_ctrl *display_ctrl;
+	struct dsi_display_ctrl *display_ctrl = NULL;
 	struct drm_device *drm;
 	struct dsi_display *display;
 	struct dsi_clk_info info;
@@ -8452,6 +8468,11 @@ int dsi_display_get_panel_vfp(void *dsi_display,
 
 	if (!display || !display->panel)
 		return -EINVAL;
+
+	if (!display->modes) {
+		DSI_ERR("display modes not available\n");
+		return -EINVAL;
+	}
 
 	mutex_lock(&display->display_lock);
 

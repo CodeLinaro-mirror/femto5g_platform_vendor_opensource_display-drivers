@@ -2427,7 +2427,7 @@ static int _sde_rm_get_hw_blk_for_cont_splash(struct sde_rm *rm,
 	struct sde_rm_hw_iter iter_lm, iter_dsc;
 	struct sde_kms *sde_kms;
 	struct sde_hw_mixer *mixer;
-	size_t pipes_per_lm, pipe_count;
+	size_t pipes_per_lm = 0, pipe_count;
 
 	if (!rm || !ctl || !splash_display) {
 		SDE_ERROR("invalid input parameters\n");

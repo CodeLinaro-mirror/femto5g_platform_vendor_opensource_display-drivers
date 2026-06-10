@@ -1817,11 +1817,11 @@ static int dsi_parse_long_read_resp(const struct mipi_dsi_msg *msg,
 static int dsi_message_rx(struct dsi_ctrl *dsi_ctrl, struct dsi_cmd_desc *cmd_desc, u32 flags)
 {
 	int rc = 0;
-	u32 rd_pkt_size, total_read_len, hw_read_cnt;
+	u32 rd_pkt_size, total_read_len, hw_read_cnt = 0;
 	u32 current_read_len = 0, total_bytes_read = 0;
 	bool short_resp = false;
 	bool read_done = false;
-	u32 dlen, diff, rlen;
+	u32 dlen = 0, diff, rlen;
 	unsigned char *buff = NULL;
 	char cmd;
 	const struct mipi_dsi_msg *msg;
