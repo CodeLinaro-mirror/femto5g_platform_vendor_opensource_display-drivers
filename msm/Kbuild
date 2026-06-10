@@ -85,8 +85,13 @@ LINUX_INC +=	-I$(DISPLAY_ROOT) \
 	-I$(DISPLAY_ROOT)/msm/dp \
 	-I$(DISPLAY_ROOT)/msm/dsi \
 	-I$(DISPLAY_ROOT)/msm/sde \
-	-I$(DISPLAY_ROOT)/../mm-drivers/hw_fence/include \
 	-I$(DISPLAY_ROOT)/include/uapi/display \
+
+ifeq ($(GEN5_LVGVM), y)
+	LINUX_INC +=	 -I$(MM_DRIVERS_INC)/hw_fence/include
+else
+	LINUX_INC +=	 -I$(DISPLAY_ROOT)/../mm-drivers/hw_fence/include
+endif
 
 ifeq ($(CONFIG_DRM_MSM_HYP), y)
 	LINUX_INC += -I$(DISPLAY_ROOT)/msm/hyp
