@@ -737,7 +737,8 @@ static int hfi_encoder_helper_wait_for_event(struct hfi_encoder *hfi_enc,
 		return -EINVAL;
 	}
 
-	panel = hfi_encoder_get_panel(sde_enc);
+	if (!sde_encoder_is_wb_display(&sde_enc->base))
+		panel = hfi_encoder_get_panel(sde_enc);
 	do {
 		rc = wait_event_timeout(*(info->wq),
 				(atomic_read(info->atomic_cnt) == info->count_check) ||
