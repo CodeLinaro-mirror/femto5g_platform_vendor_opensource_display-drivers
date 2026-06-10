@@ -187,6 +187,7 @@ struct dsi_panel_reset_config {
 	int oled_en_gpio;
 	int lcd_mode_sel_gpio;
 	u32 mode_sel_state;
+	u32 gpio_release_delay_ms;
 };
 
 enum esd_check_status_mode {
@@ -408,6 +409,7 @@ struct dsi_panel {
 	bool reset_gpio_always_on;
 	bool privacy_feature_enabled;
 	atomic_t esd_recovery_pending;
+	atomic_t ssr_in_progress;
 
 	bool skip_panel_off;
 	bool skip_pwr;

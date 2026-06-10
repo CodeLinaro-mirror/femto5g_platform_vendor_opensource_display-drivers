@@ -66,6 +66,7 @@ static int isl97900_led_event(struct device_node *node, enum isl_function event,
 #define DCS_COMMAND_THRESHOLD_TIME_US 40
 
 #define DSI_PANEL_I2C_MIN_CMD_SIZE 3 /* slave, delay, len */
+#define DSI_PANEL_DEFAULT_GPIO_RELEASE_DELAY_MS  120
 
 static void dsi_dce_prepare_pps_header(char *buf, u32 pps_delay_ms)
 {
@@ -529,6 +530,11 @@ int dsi_panel_power_off(struct dsi_panel *panel)
 {
 	int rc = 0;
 
+	if (!panel) {
+		DSI_ERR("invalid panel\n");
+		return -EINVAL;
+	}
+
 	if (panel->skip_panel_off) {
 		DSI_DEBUG("skip panel power off\n");
 		panel->skip_pwr = true;
@@ -556,6 +562,17 @@ int dsi_panel_power_off(struct dsi_panel *panel)
 	if (rc) {
 		DSI_ERR("[%s] failed set pinctrl state, rc=%d\n", panel->name,
 		       rc);
+	}
+
+	if (atomic_read(&panel->ssr_in_progress)) {
+		/*
+		 * Due to an abrupt device crash, the proper power-off sequence cannot
+		 * be followed, including sending the sleep-in command to the panel.
+		 * As a result, some panels may remain in a bad state after recoverry
+		 * from crash even after power-on and may require a delay between the
+		 * GPIO reset and panel power shutdown to avoid this.
+		 */
+		msleep(panel->reset_config.gpio_release_delay_ms);
 	}
 
 	rc = dsi_pwr_enable_regulator(&panel->power_info, false);
@@ -2867,6 +2884,20 @@ static int dsi_panel_parse_reset_sequence(struct dsi_panel *panel)
 	const u32 *arr;
 	struct dsi_parser_utils *utils = &panel->utils;
 	struct dsi_reset_seq *seq;
+	u32 gpio_release_delay_ms;
+
+	/*
+	 * Parse the delay required in milliseconds after GPIO release and before
+	 * shutting down the power rails when the sleep-in command is not sent,
+	 * such as during an abrupt device crash.
+	 */
+	rc = utils->read_u32(utils->data, "qcom,platform-reset-gpio-release-delay",
+				&gpio_release_delay_ms);
+	if (rc) {
+		gpio_release_delay_ms = DSI_PANEL_DEFAULT_GPIO_RELEASE_DELAY_MS;
+		rc = 0;
+	}
+	panel->reset_config.gpio_release_delay_ms = gpio_release_delay_ms;
 
 	if (panel->host_config.ext_bridge_mode)
 		return 0;
@@ -2899,7 +2930,7 @@ static int dsi_panel_parse_reset_sequence(struct dsi_panel *panel)
 	rc = utils->read_u32_array(utils->data, "qcom,mdss-dsi-reset-sequence",
 					arr_32, length);
 	if (rc) {
-		DSI_ERR("[%s] cannot read dso-reset-seqience\n", panel->name);
+		DSI_ERR("[%s] cannot read dsi-reset-seqience\n", panel->name);
 		goto error_free_arr_32;
 	}
 
@@ -5020,6 +5051,8 @@ struct dsi_panel *dsi_panel_get(struct device *parent,
 	}
 
 	panel->power_mode = SDE_MODE_DPMS_OFF;
+	atomic_set(&panel->esd_recovery_pending, 0);
+	atomic_set(&panel->ssr_in_progress, 0);
 	drm_panel_init(&panel->drm_panel, &panel->mipi_device.dev,
 			NULL, DRM_MODE_CONNECTOR_DSI);
 	panel->mipi_device.dev.of_node = of_node;
