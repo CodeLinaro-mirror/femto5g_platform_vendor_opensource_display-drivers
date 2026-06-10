@@ -393,6 +393,17 @@ static void _sde_enc_phys_wb_get_out_resolution(struct drm_crtc_state *crtc_stat
 	if (dnsc_blur_res.enabled) {
 		*out_width = dnsc_blur_res.dst_w;
 		*out_height = dnsc_blur_res.dst_h;
+	}  else if (sde_crtc->ai_scaler_res.enabled) {
+		if (ds_tap_pt == CAPTURE_DSPP_OUT) {
+			*out_width = sde_crtc->ai_scaler_res.dst_w;
+			*out_height = sde_crtc->ai_scaler_res.dst_h;
+		} else if (ds_tap_pt == CAPTURE_MIXER_OUT) {
+			*out_width = sde_crtc->ai_scaler_res.src_w;
+			*out_height = sde_crtc->ai_scaler_res.src_h;
+		} else {
+			*out_width = mode->hdisplay;
+			*out_height = mode->vdisplay;
+		}
 	} else if (ds_res.enabled) {
 		if (ds_tap_pt == CAPTURE_DSPP_OUT) {
 			*out_width = ds_res.dst_w;
@@ -400,17 +411,6 @@ static void _sde_enc_phys_wb_get_out_resolution(struct drm_crtc_state *crtc_stat
 		} else if (ds_tap_pt == CAPTURE_MIXER_OUT) {
 			*out_width = ds_res.src_w;
 			*out_height = ds_res.src_h;
-		} else {
-			*out_width = mode->hdisplay;
-			*out_height = mode->vdisplay;
-		}
-	} else if (sde_crtc->ai_scaler_res.enabled) {
-		if (ds_tap_pt == CAPTURE_DSPP_OUT) {
-			*out_width = sde_crtc->ai_scaler_res.dst_w;
-			*out_height = sde_crtc->ai_scaler_res.dst_h;
-		} else if (ds_tap_pt == CAPTURE_MIXER_OUT) {
-			*out_width = sde_crtc->ai_scaler_res.src_w;
-			*out_height = sde_crtc->ai_scaler_res.src_h;
 		} else {
 			*out_width = mode->hdisplay;
 			*out_height = mode->vdisplay;
