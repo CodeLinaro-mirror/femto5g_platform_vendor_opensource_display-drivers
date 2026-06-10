@@ -530,6 +530,16 @@ size_t hfi_adapter_get_shared_mem_allocated_size(struct hfi_client_t *ctx,
  */
 int hfi_adapter_unmap_iova(struct hfi_client_t *ctx, unsigned long iova, size_t size);
 
+/**
+ * hfi_adapter_handle_hibernation_entry - API to handle hibernation entry at hfi adapter
+ * @hfi_client: pointer to hfi client structure
+ */
+int hfi_adapter_handle_hibernation_entry(struct hfi_client_t *hfi_client);
+
+/**
+ * hfi_adapter_handle_hibernation_exit - API to handle hibernation exit at hfi adapter
+ */
+int hfi_adapter_handle_hibernation_exit(void);
 #else
 
 static inline struct hfi_adapter_t *hfi_adapter_init(int instance)

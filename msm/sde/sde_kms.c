@@ -5621,7 +5621,7 @@ static int sde_kms_pm_suspend(struct device *dev)
 	return ret;
 }
 
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 int sde_kms_freeze_helper(struct sde_kms *sde_kms)
 {
 	struct drm_device *ddev;
@@ -5833,6 +5833,10 @@ static int sde_kms_pm_freeze(struct device *dev)
 	if (sde_kms->pm_suspend_clk_dump)
 		_sde_kms_dump_clks_state(sde_kms);
 
+	ret = hfi_adapter_handle_hibernation_entry(hfi_client);
+	if (ret)
+		DRM_ERROR("failed to handle freeze at hfi adapter: %d\n", ret);
+
 	return ret;
 }
 
@@ -5872,6 +5876,13 @@ static int sde_kms_pm_restore(struct device *dev)
 	 * 7. Resume displays
 	 */
 
+	/* Reinit the queues at the hibernation exit.*/
+	ret = hfi_adapter_handle_hibernation_exit();
+	if (ret) {
+		DRM_ERROR("failed to reinit queues at restore: %d\n", ret);
+		return ret;
+	}
+
 	ret = sde_kms_setup_hfi(priv, ddev);
 	if (ret) {
 		SDE_ERROR("HFI setup failed\n");
@@ -5907,10 +5918,9 @@ static int sde_kms_pm_restore(struct device *dev)
 
 	/* Re-enable and re-register interrupts during restore */
 	if (sde_kms->hw_intr) {
-		ret = sde_core_irq_postinstall(sde_kms);
+		sde_core_irq_preinstall(sde_kms);
 		if (ret) {
 			SDE_ERROR("failed to re-install interrupts, ret: %d\n", ret);
-			return ret;
 		}
 		SDE_DEBUG("Re-enabled and re-registered MDSS interrupts during restore\n");
 	}
@@ -5924,7 +5934,7 @@ static int sde_kms_pm_restore(struct device *dev)
 
 	return ret;
 }
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 
 int sde_kms_resume_helper(struct sde_kms *sde_kms)
 {
@@ -6041,7 +6051,7 @@ static const struct msm_kms_funcs kms_funcs = {
 	.display_early_ept_hint = sde_kms_display_early_ept_hint,
 	.pm_suspend      = sde_kms_pm_suspend,
 	.pm_resume       = sde_kms_pm_resume,
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 	.pm_freeze      = sde_kms_pm_freeze,
 	.pm_restore       = sde_kms_pm_restore,
 #endif

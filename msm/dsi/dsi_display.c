@@ -6765,7 +6765,7 @@ static void dsi_display_unbind(struct device *dev,
 	mutex_unlock(&display->display_lock);
 }
 
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 static int dsi_display_pm_freeze(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
@@ -6847,7 +6847,7 @@ static const struct dev_pm_ops dsi_display_pm_ops = {
 	.freeze = dsi_display_pm_freeze,
 	.restore = dsi_display_pm_restore,
 };
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 
 static const struct component_ops dsi_display_comp_ops = {
 	.bind = dsi_display_bind,
@@ -6860,9 +6860,9 @@ static struct platform_driver dsi_display_driver = {
 	.driver = {
 		.name = "msm-dsi-display",
 		.of_match_table = dsi_display_dt_match,
-#if IS_ENABLED(CONFIG_HIBERNATE)
+#if IS_ENABLED(CONFIG_HIBERNATION)
 		.pm = &dsi_display_pm_ops,
-#endif /* CONFIG_HIBERNATE */
+#endif /* CONFIG_HIBERNATION */
 		.suppress_bind_attrs = true,
 	},
 };
