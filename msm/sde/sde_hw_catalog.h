@@ -1654,7 +1654,6 @@ struct sde_vbif_dynamic_ot_tbl {
 struct sde_vbif_qos_tbl {
 	u32 count;
 	u32 *priority_lvl;
-	u32 npriority_lvl;
 };
 
 /**
