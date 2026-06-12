@@ -1120,6 +1120,27 @@ error:
 	return rc;
 }
 
+static bool dsi_hfi_cmd_is_non_embedded_mode(struct dsi_display *display,
+					     struct dsi_cmd_desc *cmd)
+{
+	struct dsi_display_ctrl *m_ctrl;
+	u32 cmd_dma_fifo_size;
+
+	if (!display || !cmd)
+		return false;
+
+	m_ctrl = &display->ctrl[display->clk_master_idx];
+	if (!m_ctrl->ctrl)
+		return false;
+
+	if (m_ctrl->ctrl->version >= DSI_CTRL_VERSION_2_9)
+		cmd_dma_fifo_size = DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES;
+	else
+		cmd_dma_fifo_size = DSI_EMBEDDED_MODE_DMA_MAX_SIZE_BYTES_PRE_2P9;
+
+	return (cmd->msg.tx_len + DSI_LONG_PACKET_HEADER_LENGTH) > cmd_dma_fifo_size;
+}
+
 static int hfi_panel_fill_dcs_cmds(struct dsi_display *display,
 				struct dsi_display_mode_priv_info *priv_info,
 				struct dsi_panel_timing_caps *panel_timing_caps,
@@ -1193,6 +1214,8 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	int rc = 0;
 	size_t mem_size = 0;
 	size_t mem_size_rx = 0;
+	bool non_embedded;
+
 	if (!display || !display->dsi_hfi_info || !cmd || !cmd->msg.tx_buf) {
 		DSI_ERR("Invalid params\n");
 		return -EINVAL;
@@ -1208,6 +1231,10 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 
 	if (atomic_read(&display->panel->esd_recovery_pending))
 		return 0;
+
+	non_embedded = dsi_hfi_cmd_is_non_embedded_mode(display, cmd);
+	if (non_embedded)
+		cmd->ctrl_flags |= DSI_CTRL_CMD_NON_EMBEDDED_MODE;
 
 	hfi_client = &hfi_kms->hfi_client;
 
@@ -1230,7 +1257,13 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 		mem_size = hfi_adapter_get_shared_mem_allocated_size(hfi_client, tx_cmd_buf_map);
 	}
 
-	if (cmd->msg.tx_len > mem_size) {
+	if (non_embedded && (cmd->msg.tx_len > display->cmd_buffer_size_non_embedded)) {
+		DSI_ERR("command payload (%zu bytes) is larger than (%u bytes)\n",  cmd->msg.tx_len,
+			display->cmd_buffer_size_non_embedded);
+		return -EINVAL;
+	}
+
+	if (!non_embedded && (cmd->msg.tx_len > mem_size)) {
 		DSI_ERR("command payload (%zu bytes) is larger than (%zu bytes)\n", cmd->msg.tx_len,
 			mem_size);
 		return -EINVAL;
@@ -1276,16 +1309,25 @@ int dsi_hfi_host_transfer_sub(struct mipi_dsi_host *host, struct dsi_cmd_desc *c
 	dsi_cmd_desc->last_command = cmd->last_command;
 	dsi_cmd_desc->post_wait_ms = cmd->post_wait_ms;
 	dsi_cmd_desc->ctrl_flags = cmd->ctrl_flags;
-	dsi_cmd_desc->tx_buff_addr_lsb = HFI_VAL_L32((u64)tx_cmd_buf_map->remote_addr);
-	dsi_cmd_desc->tx_buff_addr_msb = HFI_VAL_H32((u64)tx_cmd_buf_map->remote_addr);
+
+	if (non_embedded) {
+		dsi_cmd_desc->tx_buff_addr_lsb = HFI_VAL_L32((u64)display->cmd_buffer_iova_non_embedded);
+		dsi_cmd_desc->tx_buff_addr_msb = HFI_VAL_H32((u64)display->cmd_buffer_iova_non_embedded);
+
+		memcpy(display->vaddr_non_embedded, cmd->msg.tx_buf, cmd->msg.tx_len);
+		msm_gem_sync(display->tx_cmd_buf_non_embedded);
+	} else {
+		dsi_cmd_desc->tx_buff_addr_lsb = HFI_VAL_L32((u64)tx_cmd_buf_map->remote_addr);
+		dsi_cmd_desc->tx_buff_addr_msb = HFI_VAL_H32((u64)tx_cmd_buf_map->remote_addr);
+
+		memcpy(tx_cmd_buf_map->local_addr, cmd->msg.tx_buf, cmd->msg.tx_len);
+	}
+
 	if (cmd->ctrl_flags & DSI_CTRL_CMD_READ) {
 		dsi_cmd_desc->rx_len = cmd->msg.rx_len;
 		dsi_cmd_desc->rx_buff_addr_lsb = HFI_VAL_L32((u64)rx_cmd_buf_map->remote_addr);
 		dsi_cmd_desc->rx_buff_addr_msb = HFI_VAL_H32((u64)rx_cmd_buf_map->remote_addr);
 	}
-
-	/* Copy command payload to HFI buffer */
-	memcpy(tx_cmd_buf_map->local_addr, cmd->msg.tx_buf, cmd->msg.tx_len);
 
 	rc = dsi_display_hfi_send_cmd_buf_with_header_flags(display, hfi_client, hfi_cmd,
 			display->display_type, HFI_PAYLOAD_TYPE_U32_ARRAY, dsi_cmd_desc,
@@ -2541,6 +2583,14 @@ int dsi_hfi_panel_init(struct dsi_display *display, struct dsi_panel *panel)
 		rc = dsi_hfi_host_alloc_cmd_tx_buffer(display);
 		if (rc) {
 			DSI_ERR("failed to allocate sde mapped buffer\n");
+			goto error_buff;
+		}
+	}
+
+	if (!display->tx_cmd_buf_non_embedded) {
+		rc = dsi_hfi_host_alloc_cmd_tx_buffer_non_embedded(display);
+		if (rc) {
+			DSI_ERR("failed to allocate non-embedded DMA buffer, rc=%d\n", rc);
 			goto error_buff;
 		}
 	}
