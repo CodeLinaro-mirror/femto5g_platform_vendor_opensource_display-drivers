@@ -801,61 +801,218 @@ static int _send_device_init_cmd(struct hfi_kms *hfi_kms)
 	return ret;
 }
 
-static void hfi_kms_get_trace_cfg_resp(u32 display_id, u32 cmd_id, void *prop_data,
-	u32 size, struct hfi_prop_listener *hfi_listener)
+static void hfi_kms_get_debug_set_common_property_resp(u32 cmd, u32 obj_id,
+						       void *payload,
+						       u32 payload_size,
+						       struct hfi_prop_listener *listener)
 {
-	if (cmd_id != HFI_COMMAND_DEBUG_TRACE_CFG)
-		SDE_ERROR("invalid hfi command 0x%x\n", cmd_id);
-	else
-		SDE_DEBUG("Trace config command processed successfully\n");
+	struct hfi_util_kv_parser kv_parser;
+	u32 hfi_prop;
+	u32 *prop_payload;
+	u32 max_words;
+	int ret;
+
+	if (!listener || !payload) {
+		SDE_ERROR("invalid listener or payload\n");
+		return;
+	}
+
+	SDE_EVT32(cmd, SDE_EVTLOG_FUNC_ENTRY, payload_size);
+
+	/* Initialize kv parser with response payload */
+	ret = hfi_util_kv_parser_init(&kv_parser, payload_size, (u32 *)payload);
+	if (ret) {
+		SDE_ERROR("failed to init kv parser ret:%d\n", ret);
+		return;
+	}
+
+	SDE_EVT32(cmd, SDE_EVTLOG_FUNC_CASE1, payload_size);
+
+	/* Parse each property from response */
+	while (!hfi_util_kv_parser_get_next(&kv_parser, 1, &hfi_prop,
+					    &prop_payload, &max_words)) {
+		u32 prop_id = HFI_PROP_ID(hfi_prop);
+
+		SDE_EVT32(cmd, SDE_EVTLOG_FUNC_CASE2, prop_id, max_words);
+
+		/* Validate property ID */
+		if (prop_id != HFI_PROPERTY_DEBUG_ENABLE) {
+			SDE_WARN("unexpected property id in response: 0x%x\n", prop_id);
+			continue;
+		}
+
+		/* Validate payload size for enable property (dsize=2) */
+		if (max_words < 2) {
+			SDE_ERROR("invalid payload size for enable property: %u\n", max_words);
+			continue;
+		}
+
+		/* Cast to structure for type-safe access */
+		struct hfi_debug_enable_payload *enable_payload =
+			(struct hfi_debug_enable_payload *)prop_payload;
+
+		switch (enable_payload->feature) {
+		case HFI_DEBUG_FEATURE_TRACE:
+			SDE_DEBUG("trace enable property response received\n");
+			SDE_EVT32(cmd, SDE_EVTLOG_FUNC_CASE3,
+				  HFI_DEBUG_FEATURE_TRACE, enable_payload->enable);
+			break;
+		case HFI_DEBUG_FEATURE_LOG:
+			SDE_DEBUG("debug log enable property response received\n");
+			SDE_EVT32(cmd, SDE_EVTLOG_FUNC_CASE4,
+				  HFI_DEBUG_FEATURE_LOG, enable_payload->enable);
+			break;
+		default:
+			SDE_WARN("unknown feature type in response: 0x%x\n",
+				 enable_payload->feature);
+			break;
+		}
+	}
+
+	SDE_EVT32(cmd, SDE_EVTLOG_FUNC_EXIT);
 }
 
-static int _send_trace_cfg_cmd(struct hfi_kms *hfi_kms, uint32_t flag)
+/**
+ * _send_debug_set_common_property_cmd() - Send debug set common property command
+ *
+ * Constructs and sends HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY with debug
+ * properties using key-value pairs. Supports flexible combination of
+ * trace_enable and debug_enable settings.
+ *
+ * Buffer addresses are optional and may be preconfigured through device tree.
+ * If buffer address is 0, buffer configuration property is skipped.
+ *
+ * @hfi_kms:      HFI KMS instance
+ * @trace_enable: Enable (1) or disable (0) trace events
+ * @debug_enable: Enable (1) or disable (0) debug logs
+ * @trace_buf_addr: Trace buffer address (64-bit), 0 if preconfigured
+ * @trace_buf_size: Trace buffer size in bytes, 0 if preconfigured
+ * @log_buf_addr: Log buffer address (64-bit), 0 if preconfigured
+ * @log_buf_size: Log buffer size in bytes, 0 if preconfigured
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+static int _send_debug_set_common_property_cmd(struct hfi_kms *hfi_kms,
+					       u32 trace_enable,
+					       u32 debug_enable,
+					       u64 trace_buf_addr, u32 trace_buf_size,
+					       u64 log_buf_addr, u32 log_buf_size)
 {
 	int ret = 0;
 	struct hfi_cmdbuf_t *cmd_buf;
-	u32 packet_id = 0;
+	u32 kv_count = 0;
+	int i;
+
+	struct hfi_debug_feature_cfg {
+		u32 enable;
+		u64 buf_addr;
+		u32 buf_size;
+		u32 feature_type;
+	};
+
+	const struct hfi_debug_feature_cfg features[] = {
+		{ trace_enable, trace_buf_addr, trace_buf_size, HFI_DEBUG_FEATURE_TRACE },
+		{ debug_enable, log_buf_addr,   log_buf_size,   HFI_DEBUG_FEATURE_LOG   },
+	};
+
+	u32 num_features = ARRAY_SIZE(features);
+	struct hfi_kv_pairs kv_pairs[ARRAY_SIZE(features) * 2];
+	struct hfi_debug_buffer_addr_payload bufs[num_features];
+	struct hfi_debug_enable_payload enable_vals[num_features];
+	u32 kv_size = 0;
 
 	if (!hfi_kms)
 		return -EINVAL;
 
-	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_ENTRY);
+	SDE_EVT32(HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY, SDE_EVTLOG_FUNC_ENTRY,
+		  trace_enable, debug_enable);
+
 	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
-			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
-	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_CASE1);
+					  MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+
+	SDE_EVT32(HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY, SDE_EVTLOG_FUNC_CASE1);
 	if (!cmd_buf) {
 		SDE_ERROR("failed to get hfi command buffer\n");
 		return -ENOMEM;
 	}
 
-	hfi_kms->trace_cfg_listener.hfi_prop_handler = hfi_kms_get_trace_cfg_resp;
-	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
-			HFI_COMMAND_DEBUG_TRACE_CFG, MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_U32,
-			&flag, sizeof(flag), &hfi_kms->trace_cfg_listener,
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE,
-			false, &packet_id);
-	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_CASE2, ret);
-	if (ret) {
-		SDE_ERROR("failed to add trace config command\n");
-		return ret;
+	for (i = 0; i < num_features; i++) {
+		if (!features[i].enable)
+			continue;
+
+		enable_vals[i].feature = features[i].feature_type;
+		enable_vals[i].enable  = features[i].enable;
+
+		kv_pairs[kv_count].key      = HFI_PACKKEY(HFI_PROPERTY_DEBUG_ENABLE, 0, 2);
+		kv_pairs[kv_count].value_ptr = &enable_vals[i];
+		kv_count++;
+		kv_size += sizeof(struct hfi_debug_enable_payload);
+
+		if (features[i].buf_addr != 0) {
+			if (features[i].buf_size == 0) {
+				SDE_ERROR("feature %u buffer size must be non-zero\n",
+					  features[i].feature_type);
+				ret = -EINVAL;
+				goto release_cmd_buf;
+			}
+
+			bufs[i].feature = features[i].feature_type;
+			bufs[i].buff.addr_l = HFI_VAL_L32(features[i].buf_addr);
+			bufs[i].buff.addr_h = HFI_VAL_H32(features[i].buf_addr);
+			bufs[i].buff.size = features[i].buf_size;
+			bufs[i].buff.version = 0;
+			bufs[i].buff.flags = 0; /* reserved, no longer overloaded */
+
+			kv_pairs[kv_count].key = HFI_PACKKEY(HFI_PROPERTY_DEBUG_BUFFER_ADDR, 0, 6);
+			kv_pairs[kv_count].value_ptr = &bufs[i];
+			kv_count++;
+			kv_size += sizeof(bufs[i]);
+		} else {
+			SDE_DEBUG("feature %u buffer not provided, using preconfigured buffer\n",
+				  features[i].feature_type);
+		}
 	}
 
+	if (kv_count == 0) {
+		SDE_DEBUG("No properties to send\n");
+		goto release_cmd_buf;
+	}
+
+	hfi_kms->debug_set_prop_listener.hfi_prop_handler =
+			hfi_kms_get_debug_set_common_property_resp;
+
+	SDE_EVT32(HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY, SDE_EVTLOG_FUNC_CASE2);
+	ret = hfi_adapter_add_prop_array(&hfi_kms->hfi_client, cmd_buf,
+					 HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY, MSM_DRV_HFI_ID,
+					 HFI_PAYLOAD_TYPE_U32_ARRAY, kv_pairs, kv_count,
+					 kv_count * sizeof(u32) + kv_size);
+	if (ret) {
+		SDE_ERROR("failed to add debug properties ret:%d\n", ret);
+		goto release_cmd_buf;
+	}
+
+	SDE_EVT32(HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY, SDE_EVTLOG_FUNC_CASE3);
 	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_CASE3, ret);
 	if (ret) {
 		SDE_ERROR("failed to send trace config command\n");
 		return ret;
 	}
-	hfi_adapter_remove_listener_by_packet_id(&hfi_kms->hfi_client, packet_id);
+	SDE_EVT32(HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY, SDE_EVTLOG_FUNC_CASE4, ret);
+	if (ret)
+		SDE_ERROR("failed to send debug set common property command ret:%d\n", ret);
 
-	SDE_DEBUG("Sent trace config command successfully\n");
-	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_EXIT);
+	SDE_EVT32(HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY, SDE_EVTLOG_FUNC_EXIT);
+
+release_cmd_buf:
+	hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	return ret;
 }
 
 int hfi_kms_send_trace_cfg(struct hfi_kms *hfi_kms, u32 enable)
 {
-	return _send_trace_cfg_cmd(hfi_kms, enable);
+	return _send_debug_set_common_property_cmd(hfi_kms, enable,
+		enable, 0x0, 0, 0x0, 0);
 }
 
 int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe,
