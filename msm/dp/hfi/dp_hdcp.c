@@ -679,6 +679,53 @@ int dp_hdcp2x_timeout(void *input, uint8_t *req_buf, uint32_t req_len, uint8_t *
 }
 
 /**
+ * dp_hdcp2x_query_stream() - Query stream management from TrustZone
+ * @input: HDCP 2.x context handle
+ * @resp_buf: Pointer to store response buffer (REP_STREAM_MANAGE from TZ)
+ * @resp_len: Pointer to store response length
+ *
+ * Called after REP_SEND_ACK is written to the sink. Issues
+ * HDCP2_CMD_QUERY_STREAM to TrustZone, which generates REP_STREAM_MANAGE.
+ * This is the equivalent of sde_hdcp_2x_query_stream() in the legacy driver.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_query_stream(void *input, uint8_t **resp_buf, uint32_t *resp_len)
+{
+	struct dp_hdcp2x_ctx *ctx = input;
+	int rc;
+
+	if (!ctx || !resp_buf || !resp_len) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	DP_DEBUG("Querying stream management from TZ\n");
+
+#if IS_ENABLED(CONFIG_HDCP_QSEECOM)
+	ctx->app_data.request.length = 0;
+	ctx->app_data.response.length = 0;
+
+	rc = hdcp2_app_comm(ctx->hdcp2_handle, HDCP2_CMD_QUERY_STREAM, &ctx->app_data);
+	if (rc) {
+		DP_ERR("HDCP2_CMD_QUERY_STREAM failed: %d\n", rc);
+		ctx->state = HDCP_STATE_AUTH_FAIL;
+		return rc;
+	}
+
+	*resp_buf = ctx->app_data.response.data;
+	*resp_len = ctx->app_data.response.length;
+#else
+	DP_ERR("HDCP QSEECOM not enabled\n");
+	return -ENODEV;
+#endif
+
+	DP_DEBUG("QUERY_STREAM response length=%u\n", *resp_len);
+
+	return 0;
+}
+
+/**
  * dp_hdcp2x_stop() - Stop HDCP 2.x authentication
  * @input: HDCP 2.x context handle
  *

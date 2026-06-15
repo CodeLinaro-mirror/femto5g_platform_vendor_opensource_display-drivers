@@ -422,7 +422,7 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 	struct sde_hw_reg_dma_ops *dma_ops;
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	struct sde_reg_dma_kickoff_cfg kick_off;
-	enum msm_disp_op disp_op = ctx->hw.disp_op;
+	enum msm_disp_op disp_op;
 	int rc = 0;
 
 	if (!ctx || !cfg || !aiqe_top) {
@@ -430,6 +430,8 @@ void reg_dmav1_setup_mdnie_v1(struct sde_hw_dspp *ctx, void *cfg, void *aiqe_top
 			ctx, cfg, aiqe_top);
 		return;
 	}
+
+	disp_op = ctx->hw.disp_op;
 
 	dma_ops = sde_reg_dma_get_ops(ctx->dpu_idx);
 	dma_ops->reset_reg_dma_buf(dspp_buf[AIQE_MDNIE][ctx->idx][ctx->dpu_idx]);
@@ -942,10 +944,26 @@ static bool valid_abc_main_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
 	struct sde_hw_cp_cfg *hw_cfg)
 {
 	u32 h, w, div = 1, tempw, temph;
+	u32 slot_idx = 0, src_id = 0;
 
-	if ((aiqe_abc->param[0] & 0x1) == 0 || !hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
+	src_id = aiqe_abc->src_sel;
+	/* Determine slot_idx based on src id:
+	 * src_id == 1 -> slot_idx = 0 -> DMA1
+	 * src_id == 0 -> slot_idx = 1 -> DMA3
+	 */
+	if (src_id == 1) {
+		slot_idx = 0;
+	} else if (src_id == 0) {
+		slot_idx = 1;
+	} else {
+		DRM_WARN("Invalid src id %d\n", src_id);
+		return false;
+	}
+
+	if ((aiqe_abc->param[0] & 0x1) == 0 ||
+			!hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].valid) {
 		DRM_INFO("aiqe_abc state %d valid blend plane %d\n", (aiqe_abc->param[0] & 0x1),
-				hw_cfg->skip_planes[SB_PLANE_REAL].valid);
+				hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].valid);
 		return false;
 	}
 
@@ -970,11 +988,11 @@ static bool valid_abc_main_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
 
 	// width (width/div factor) should be multiple of 4 as the fetch happen in words
 	w = ((w + 1) * 3) / 4;
-	if (h != hw_cfg->skip_planes[SB_PLANE_REAL].plane_h ||
-		w != hw_cfg->skip_planes[SB_PLANE_REAL].plane_w) {
+	if (h != hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].plane_h ||
+		w != hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].plane_w) {
 		DRM_ERROR("real plane invalid plane h %d w %d exp h %d exp w %d\n",
-			hw_cfg->skip_planes[SB_PLANE_REAL].plane_h,
-			hw_cfg->skip_planes[SB_PLANE_REAL].plane_w, h, w);
+			hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].plane_h,
+			hw_cfg->skip_planes[slot_idx][SB_PLANE_REAL].plane_w, h, w);
 		return false;
 	}
 	return true;
@@ -984,14 +1002,29 @@ static bool valid_abc_udc_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
 					struct sde_hw_cp_cfg *hw_cfg)
 {
 	u32 h, w;
+	u32 slot_idx = 0, src_id = 0;
+
+	src_id = aiqe_abc->src_sel;
+	/* Determine slot_idx based on src id:
+	 * src_id == 1 -> slot_idx = 0 -> DMA1
+	 * src_id == 0 -> slot_idx = 1 -> DMA3
+	 */
+	if (src_id == 1) {
+		slot_idx = 0;
+	} else if (src_id == 0) {
+		slot_idx = 1;
+	} else {
+		DRM_WARN("Invalid src id %d\n", src_id);
+		return false;
+	}
 
 	/* UDC is disabled early return */
 	if (!(aiqe_abc->param[0] & 0x2))
 		return true;
 
-	if ((aiqe_abc->param[0] & 0x2) && !hw_cfg->skip_planes[SB_PLANE_VIRT].valid) {
+	if ((aiqe_abc->param[0] & 0x2) && !hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].valid) {
 		DRM_INFO("aiqe_abc state %d valid blend plane %d\n", (aiqe_abc->param[0] & 0x2),
-				hw_cfg->skip_planes[SB_PLANE_VIRT].valid);
+				hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].valid);
 		return false;
 	}
 
@@ -1000,11 +1033,11 @@ static bool valid_abc_udc_layer_cfg_v1(struct drm_msm_abc *aiqe_abc,
 
 	w = (w * 3) / 4;
 
-	if (h != hw_cfg->skip_planes[SB_PLANE_VIRT].plane_h ||
-		w != hw_cfg->skip_planes[SB_PLANE_VIRT].plane_w) {
+	if (h != hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].plane_h ||
+		w != hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].plane_w) {
 		DRM_ERROR("virt plane invalid plane h %d w %d exp h %d exp w %d\n",
-			hw_cfg->skip_planes[SB_PLANE_VIRT].plane_h,
-			hw_cfg->skip_planes[SB_PLANE_VIRT].plane_w, h, w);
+			hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].plane_h,
+			hw_cfg->skip_planes[slot_idx][SB_PLANE_VIRT].plane_w, h, w);
 		return false;
 	}
 	return true;

@@ -80,12 +80,17 @@ int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi
 		struct sde_connector_state *cstate,
 		u32 disp_id, struct hfi_cmdbuf_t *cmd_buf);
 /**
- * sde_wb_lsr_destroy_fb_list - clean up connector state's out_fb buffer
- * @c_conn: Pointer to dpu connector structure
- * @c_state: Pointer to dpu connector state structure
+ * sde_wb_lsr_reset_out_fb_list - Reset connector state's out_fb buffer list
+ * @c_state: Pointer to sde_connector_state structure
  */
-void sde_wb_lsr_destroy_fb_list(struct sde_connector *c_conn,
-	struct sde_connector_state *c_state);
+void sde_wb_lsr_reset_out_fb_list(struct sde_connector_state *c_state);
+
+/**
+ * sde_wb_lsr_get_view_fbs - Get reference on each LSR out-buffer FB in the
+ *                            connector state
+ * @c_state: Pointer to sde_connector_state structure
+ */
+void sde_wb_lsr_get_view_fbs(struct sde_connector_state *c_state);
 
 /**
  * hfi_wb_add_lsr_init_props - set lsr properties required for lsr sys init
@@ -143,7 +148,7 @@ int hfi_conn_send_lsr_display_ctrl_cmd(struct hfi_kms *hfi_kms, struct hfi_conne
  */
 void sde_wb_connector_reset_reproj_state(struct sde_connector_state *c_state);
 
-extern int lsr_fw_reset(void);
+extern int hfi_lsr_reset(void);
 
 /**
  * hfi_lsr_notify_ssr_event - notify lsr ssr events
@@ -217,8 +222,11 @@ int hfi_wb_lsr_add_props(struct sde_wb_device *wb_dev, struct hfi_connector *hfi
 	return 0;
 }
 
-static inline void sde_wb_lsr_destroy_fb_list(struct sde_connector *c_conn,
-	struct sde_connector_state *c_state)
+static inline void sde_wb_lsr_reset_out_fb_list(struct sde_connector_state *c_state)
+{
+}
+
+static inline void sde_wb_lsr_get_view_fbs(struct sde_connector_state *c_state)
 {
 }
 static inline int hfi_wb_add_lsr_init_props(struct sde_wb_device *wb_dev,
@@ -259,7 +267,7 @@ static inline void sde_wb_connector_reset_reproj_state(struct sde_connector_stat
 {
 }
 
-static inline int lsr_fw_reset(void)
+static inline int hfi_lsr_reset(void)
 {
 	return 0;
 }

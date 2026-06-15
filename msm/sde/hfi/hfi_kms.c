@@ -16,6 +16,7 @@
 #include "sde_formats.h"
 #include "hfi_utils.h"
 #include "hfi_defs_debug.h"
+#include "hfi_dbg.h"
 
 #define DWORDS_TO_BYTES(x) (x * 4)
 #define BYTES_TO_DWORDS(x) (x / 4)
@@ -348,7 +349,7 @@ static int _hfi_kms_process_ssr_start(struct hfi_client_t *hfi_client)
 
 	if (test_bit(SDE_FEATURE_LSR, sde_kms->catalog->features)) {
 		SDE_ERROR("Triggering lsr fw reset from DCP SSR\n");
-		rc = lsr_fw_reset();
+		rc = hfi_lsr_reset();
 		if (rc)
 			SDE_ERROR("LSR FW reset failed:%d\n", rc);
 	}
@@ -395,7 +396,12 @@ static int _hfi_kms_process_ssr_end(struct hfi_client_t *hfi_client)
 
 	rc = hfi_kms_init_hw_fence_config(hfi_kms);
 	if (rc)
-		SDE_ERROR("failed to send HFI HW FENCE config to FW ret:%d\n", rc);
+		SDE_INFO("failed to send HFI HW FENCE config to FW ret:%d\n", rc);
+
+	/* re configure debug setup configs */
+	rc = hfi_dbg_device_setup(hfi_kms);
+	if (rc)
+		SDE_ERROR("failed to send debug setup configs rc=%d\n", rc);
 
 	/* re configure fw with lut dma configs */
 	rc = sde_kms_reinit_device_lut_dma(sde_kms);
@@ -751,7 +757,7 @@ static int _send_device_init_cmd(struct hfi_kms *hfi_kms)
 	struct hfi_cmdbuf_t *cmd_buf;
 	bool cat_done = false;
 	bool wait_count = false;
-	u32 device_id;
+	u32 device_id, packet_id = 0;
 
 	if (!hfi_kms)
 		return -EINVAL;
@@ -770,7 +776,8 @@ static int _send_device_init_cmd(struct hfi_kms *hfi_kms)
 	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf, HFI_COMMAND_DEVICE_INIT,
 			device_id, HFI_PAYLOAD_TYPE_NONE, NULL, 0,
 			&hfi_kms->device_init_listener,
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE,
+			false, &packet_id);
 	if (ret) {
 		SDE_ERROR("failed to add device-init command\n");
 		return ret;
@@ -788,6 +795,7 @@ static int _send_device_init_cmd(struct hfi_kms *hfi_kms)
 	if (!cat_done)
 		SDE_ERROR("failed to parse catalog\n");
 
+	hfi_adapter_remove_listener_by_packet_id(&hfi_kms->hfi_client, packet_id);
 	SDE_DEBUG("catalog wait success after :%d ms\n", wait_count);
 	SDE_EVT32(HFI_COMMAND_DEVICE_INIT, SDE_EVTLOG_FUNC_EXIT);
 	return ret;
@@ -806,6 +814,7 @@ static int _send_trace_cfg_cmd(struct hfi_kms *hfi_kms, uint32_t flag)
 {
 	int ret = 0;
 	struct hfi_cmdbuf_t *cmd_buf;
+	u32 packet_id = 0;
 
 	if (!hfi_kms)
 		return -EINVAL;
@@ -823,7 +832,8 @@ static int _send_trace_cfg_cmd(struct hfi_kms *hfi_kms, uint32_t flag)
 	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
 			HFI_COMMAND_DEBUG_TRACE_CFG, MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_U32,
 			&flag, sizeof(flag), &hfi_kms->trace_cfg_listener,
-			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE);
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE,
+			false, &packet_id);
 	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_CASE2, ret);
 	if (ret) {
 		SDE_ERROR("failed to add trace config command\n");
@@ -836,6 +846,7 @@ static int _send_trace_cfg_cmd(struct hfi_kms *hfi_kms, uint32_t flag)
 		SDE_ERROR("failed to send trace config command\n");
 		return ret;
 	}
+	hfi_adapter_remove_listener_by_packet_id(&hfi_kms->hfi_client, packet_id);
 
 	SDE_DEBUG("Sent trace config command successfully\n");
 	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_EXIT);
@@ -1056,6 +1067,7 @@ int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *
 	struct hfi_display_dbg_property dbg_prop = {0};
 	struct hfi_kms_uidle_status_ctx *uidle_ctx;
 	int rc = 0;
+	u32 packet_id = 0;
 
 	if (!hfi_kms || !uidle_enabled || !uidle_state)
 		return -EINVAL;
@@ -1080,7 +1092,8 @@ int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *
 			HFI_COMMAND_DEBUG_GET_DISPLAY_PROPERTY, MSM_DRV_HFI_ID,
 			HFI_PAYLOAD_TYPE_U32_ARRAY, &dbg_prop, sizeof(dbg_prop),
 			&uidle_ctx->listener,
-			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE));
+			(HFI_HOST_FLAGS_RESPONSE_REQUIRED | HFI_HOST_FLAGS_NON_DISCARDABLE),
+			false, &packet_id);
 	if (rc) {
 		SDE_ERROR("failed to add uidle status get property rc:%d\n", rc);
 		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
@@ -1100,6 +1113,7 @@ int hfi_kms_get_uidle_status(struct hfi_kms *hfi_kms, bool *uidle_enabled, u32 *
 
 	*uidle_enabled = uidle_ctx->uidle_enabled;
 	*uidle_state = uidle_ctx->uidle_state;
+	hfi_adapter_remove_listener_by_packet_id(&hfi_kms->hfi_client, packet_id);
 
 end:
 	kfree(uidle_ctx);
@@ -1140,6 +1154,44 @@ int hfi_kms_set_uidle_perf_cnt(struct hfi_kms *hfi_kms, u32 val)
 	rc = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
 	if (rc)
 		SDE_ERROR("failed to set uidle cntr command rc:%d\n", rc);
+
+	return rc;
+}
+
+int hfi_kms_set_uidle_disable(struct hfi_kms *hfi_kms, bool disable)
+{
+	struct hfi_cmdbuf_t *cmd_buf;
+	struct hfi_display_dbg_property dbg_prop = {0};
+	int rc;
+
+	if (!hfi_kms)
+		return -EINVAL;
+
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			MSM_DRV_HFI_ID, HFI_CMDBUF_TYPE_GET_DEBUG_DATA);
+	if (!cmd_buf) {
+		SDE_ERROR("failed to get hfi command buffer\n");
+		return -EINVAL;
+	}
+
+	dbg_prop.display_id = MSM_DRV_HFI_ID;
+	dbg_prop.prop_id = HFI_DISPLAY_DEBUG_UIDLE_DISABLE;
+	dbg_prop.value_lsb = disable ? 1 : 0;
+
+	rc = hfi_adapter_add_set_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY, MSM_DRV_HFI_ID,
+			HFI_PAYLOAD_TYPE_U32_ARRAY, &dbg_prop, sizeof(dbg_prop),
+			HFI_HOST_FLAGS_NONE);
+	if (rc) {
+		SDE_ERROR("failed to add uidle disable set property rc:%d\n", rc);
+		hfi_adapter_release_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+		return rc;
+	}
+
+	SDE_EVT32(MSM_DRV_HFI_ID, HFI_COMMAND_DEBUG_SET_DISPLAY_PROPERTY, disable);
+	rc = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+	if (rc)
+		SDE_ERROR("failed to send uidle disable command rc:%d\n", rc);
 
 	return rc;
 }

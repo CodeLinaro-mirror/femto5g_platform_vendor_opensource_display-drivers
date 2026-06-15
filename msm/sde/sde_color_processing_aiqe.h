@@ -25,6 +25,15 @@ int set_mdnie_art_feature(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_
 			     struct sde_crtc *hw_crtc);
 
 /**
+ * set_mdnie_ipc - setup dspp ops for mdnie ipc
+ * @hw_dspp: pointer to dspp hardware description
+ * @hw_cfg: pointer to feature configuration
+ * @hw_crtc: pointer to sde crtc data structure
+ */
+int set_mdnie_ipc(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
+			     struct sde_crtc *hw_crtc);
+
+/**
  * check_aiqe_ssrc_data - validate SSRC data payload
  * @hw_dspp: pointer to dspp hardware description
  * @hw_cfg: pointer to feature configuration

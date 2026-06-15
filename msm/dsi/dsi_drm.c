@@ -71,6 +71,7 @@ static void msm_parse_mode_priv_info(const struct msm_display_mode *msm_mode,
 		(struct dsi_display_mode_priv_info *)msm_mode->private;
 
 	if (dsi_mode->priv_info) {
+		dsi_mode->mode_idx = dsi_mode->priv_info->mode_idx;
 		dsi_mode->timing.dsc_enabled = dsi_mode->priv_info->dsc_enabled;
 		dsi_mode->timing.dsc = &dsi_mode->priv_info->dsc;
 		dsi_mode->timing.vdc_enabled = dsi_mode->priv_info->vdc_enabled;
@@ -245,7 +246,8 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		 DSI_MODE_FLAG_DYN_CLK | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH |
 		 DSI_MODE_FLAG_DMS_VID)) {
 		DSI_DEBUG("[%d] seamless pre-enable\n", c_bridge->id);
-		if ((c_bridge->dsi_mode.dsi_mode_flags & DSI_MODE_FLAG_VRR) &&
+		if ((c_bridge->dsi_mode.dsi_mode_flags &
+			(DSI_MODE_FLAG_VRR | DSI_MODE_FLAG_EMSYNC_FPS_SWITCH)) &&
 			(disp_op == MSM_DISP_OP_HFI)) {
 			rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
 			if (rc) {
@@ -265,15 +267,23 @@ static void dsi_bridge_pre_enable(struct drm_bridge *bridge)
 		return;
 	}
 
-	SDE_ATRACE_BEGIN("dsi_display_prepare");
-	rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
-	if (rc) {
-		DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
-		       c_bridge->id, rc);
+	/*
+	 * POMS (HFI mode only): HFI_COMMAND_DISPLAY_SET_MODE was already sent
+	 * from dsi_bridge_disable() before the disable sequence began.
+	 * Skip display_prepare here to avoid sending a duplicate SET_MODE
+	 * to the firmware. Panel power supplies are already on for POMS.
+	 */
+	if (!(display->poms_pending && disp_op == MSM_DISP_OP_HFI)) {
+		SDE_ATRACE_BEGIN("dsi_display_prepare");
+		rc = display->display_ops.display_prepare[disp_op](c_bridge->display);
+		if (rc) {
+			DSI_ERR("[%d] DSI display prepare failed, rc=%d\n",
+			       c_bridge->id, rc);
+			SDE_ATRACE_END("dsi_display_prepare");
+			return;
+		}
 		SDE_ATRACE_END("dsi_display_prepare");
-		return;
 	}
-	SDE_ATRACE_END("dsi_display_prepare");
 
 	SDE_ATRACE_BEGIN("dsi_display_enable");
 	rc = display->display_ops.display_enable[disp_op](c_bridge->display);
@@ -333,12 +343,14 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 	struct dsi_display *display;
 	struct sde_connector_state *conn_state;
 	struct dsi_bridge *c_bridge = to_dsi_bridge(bridge);
+	enum msm_disp_op disp_op;
 
 	if (!c_bridge || !c_bridge->display) {
 		DSI_ERR("Invalid params\n");
 		return;
 	}
 	display = c_bridge->display;
+	disp_op = display->ctrl[0].ctrl->disp_op;
 
 	display->enabled = false;
 
@@ -351,6 +363,22 @@ static void dsi_bridge_disable(struct drm_bridge *bridge)
 
 		display->poms_pending = msm_is_mode_seamless_poms(
 						&conn_state->msm_mode);
+
+		/*
+		 * For POMS (Panel Operating Mode Switch) in HFI mode, notify the
+		 * firmware of the upcoming CMD<->VID switch before the disable
+		 * sequence begins. display_prepare() will send
+		 * HFI_COMMAND_DISPLAY_SET_MODE with the appropriate POMS flag
+		 * (DSI_MODE_FLAG_POMS_TO_VID or DSI_MODE_FLAG_POMS_TO_CMD)
+		 * derived from the current panel_mode, allowing the firmware to
+		 * handle the mode switch correctly.
+		 */
+		if (display->poms_pending && disp_op == MSM_DISP_OP_HFI) {
+			rc = display->display_ops.display_prepare[disp_op](display);
+			if (rc)
+				DSI_ERR("[%d] failed to send POMS SET_MODE HFI, rc=%d\n",
+					c_bridge->id, rc);
+		}
 
 		sde_connector_helper_bridge_disable(display->drm_conn);
 	}
@@ -601,6 +629,7 @@ static bool dsi_bridge_mode_fixup(struct drm_bridge *bridge,
 
 	/* propagate the private info to the adjusted_mode derived dsi mode */
 	dsi_mode.priv_info = panel_dsi_mode->priv_info;
+	dsi_mode.mode_idx = panel_dsi_mode->mode_idx;
 	dsi_mode.dsi_mode_flags = panel_dsi_mode->dsi_mode_flags;
 	dsi_mode.panel_mode_caps = panel_dsi_mode->panel_mode_caps;
 	dsi_mode.pixel_format_caps = panel_dsi_mode->pixel_format_caps;
@@ -1436,6 +1465,7 @@ bool dsi_conn_check_cmd_defined(void *display, enum dsi_cmd_set_type type)
 	struct dsi_panel *panel;
 	u32 count;
 	struct dsi_display_mode *mode;
+	int idx;
 
 	if (!dsi_display || !dsi_display->panel)
 		return false;
@@ -1444,8 +1474,14 @@ bool dsi_conn_check_cmd_defined(void *display, enum dsi_cmd_set_type type)
 	if (!panel || !panel->cur_mode)
 		return false;
 
+	/* Convert enum value to array index */
+	idx = dsi_cmd_type_to_index(type);
+	if (idx < 0 || idx >= DSI_CMD_SET_TOTAL_SIZE) {
+		DSI_ERR("Invalid command type: %u, idx: %d\n", type, idx);
+		return false;
+	}
 	mode = panel->cur_mode;
-	count = mode->priv_info->cmd_sets[type].count;
+	count = mode->priv_info->cmd_sets[idx].count;
 
 	return count ? true : false;
 }

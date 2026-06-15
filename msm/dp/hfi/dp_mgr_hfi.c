@@ -34,6 +34,7 @@
 #include "dp_hfi_audio.h"
 #include "dp_hdcp.h"
 #include "dp_drm.h"
+#include "dp_altmode.h"
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
 #include "linux/msm_hdcp.h"
 #endif
@@ -44,8 +45,21 @@
 
 /* HDCP 2.x message IDs */
 #define SKE_SEND_EKS            11
+#define REP_SEND_ACK            15
+#define REP_STREAM_MANAGE       16
 #define REP_STREAM_READY        17
 #define SKE_SEND_TYPE_ID        18
+
+#define EDID_BLOCK_SIZE         128
+#define DEFAULT_MODE_WIDTH      640
+#define DEFAULT_MODE_HEIGHT     480
+#define DEFAULT_MODE_CLOCK      25175
+
+static inline bool _default_mode(struct drm_display_mode *mode)
+{
+	return (mode->hdisplay == DEFAULT_MODE_WIDTH) && (mode->vdisplay == DEFAULT_MODE_HEIGHT) &&
+			(mode->clock == DEFAULT_MODE_CLOCK);
+}
 
 struct hfi_shared_addr_map *dp_mgr_hfi_init_shared_addr(struct hfi_client_t *ctx, u32 size)
 {
@@ -126,10 +140,10 @@ static u32 panel_to_stream(struct dp_mgr_hfi_priv *hfi_priv, u32 panel_id)
 
 	return 0; // return stream 0 by default
 }
+
 /**
  * _hfi_process_edid - Process raw EDID data from DCP and send to usermode
- * @hfi_priv: HFI private data structure
- * @raw_edid_addr: Pointer to raw EDID buffer from DCP
+ * @hfi: HFI data structure
  * @buffer_size: Size of the EDID buffer
  *
  * This function parses the raw EDID buffer received from DCP via HFI,
@@ -137,27 +151,20 @@ static u32 panel_to_stream(struct dp_mgr_hfi_priv *hfi_priv, u32 panel_id)
  *
  * Return: 0 on success, negative error code on failure
  */
-static int _hfi_process_edid(struct dp_hfi *hfi, u32 buffer_size)
+static int _hfi_process_edid(struct dp_hfi *hfi, char *buf_addr, int buf_size)
 {
 	struct sde_edid_ctrl *edid_ctrl;
 	struct drm_connector *connector;
 	struct edid *edid_src;
 	struct edid *edid_copy;
 	u32 edid_size;
-	int rc = 0;
 	void *raw_edid_addr;
-	struct hfi_shared_addr_map *edid_map;
 
-	edid_map = hfi->edid_addr_map;
-	if (!edid_map) {
-		DP_ERR("EDID buffer not available, cannot process EDID\n");
-		return -EINVAL;
-	}
 
-	raw_edid_addr = edid_map->local_addr;
+	raw_edid_addr = buf_addr;
 
-	if (!raw_edid_addr || buffer_size < 128) {
-		DP_ERR("Invalid parameters, edid buff size: %d\n", buffer_size);
+	if (buf_size < EDID_BLOCK_SIZE) {
+		DP_ERR("Invalid parameters, edid buff size: %d\n", buf_size);
 		return -EINVAL;
 	}
 
@@ -179,10 +186,14 @@ static int _hfi_process_edid(struct dp_hfi *hfi, u32 buffer_size)
 	/* Calculate actual EDID size based on extension blocks */
 	edid_size = (1 + edid_src->extensions) * EDID_LENGTH;
 
-	if (edid_size > buffer_size) {
+	print_hex_dump(KERN_INFO, "EDID(Little Endian): ",
+		DUMP_PREFIX_NONE, 16, 4, buf_addr,
+		edid_size, false);
+
+	if (edid_size > buf_size) {
 		DP_WARN("EDID size %d exceeds buffer size %d, truncating\n",
-			edid_size, buffer_size);
-		edid_size = buffer_size;
+			edid_size, buf_size);
+		edid_size = buf_size;
 	}
 
 	/* Basic EDID validation before copying */
@@ -212,7 +223,7 @@ static int _hfi_process_edid(struct dp_hfi *hfi, u32 buffer_size)
 
 	DP_INFO("Successfully processed EDID from DCP\n");
 
-	return rc;
+	return edid_size;
 }
 
 static bool _hfi_notify_hpd_user(struct dp_hfi *hfi, bool connection)
@@ -265,31 +276,32 @@ static bool _hfi_notify_hpd_user(struct dp_hfi *hfi, bool connection)
 	return true;
 }
 
-static int _hfi_parse_supported_modes(struct dp_hfi *hfi)
+static int _hfi_parse_supported_modes(struct dp_hfi *hfi, char *buf_addr, int buf_size)
 {
-	u32 *modes_payload;
 	u32 mode_count;
-	struct hfi_display_mode_info *modes_array;
 	int i;
+	char *p;
+	struct hfi_display_mode_extended_info *mode_info;
+	struct hfi_display_mode_info *mode;
+	int entry_size;
 
-	if (!hfi->modes_addr_map) {
-		DP_ERR("Modes buffer not available, cannot parse modes\n");
-		return -EINVAL;
-	}
-
-	modes_payload = (u32 *)hfi->modes_addr_map->local_addr;
-
-	if (!modes_payload) {
-		DP_ERR("Invalid modes payload\n");
-		return -EINVAL;
-	}
-
-	/* HFI_PROPERTY_SUPPORTED_MODES format:
-	 * payload[0]: count
-	 * payload[1..n]: array of struct hfi_display_mode_info[count]
+	/* Buffer layout:
+	 * [u32 num_modes]
+	 * per mode (num_modes times):
+	 *   [hfi_display_mode_extended_info]
 	 */
-	mode_count = modes_payload[0];
-	DP_DEBUG("mode count: %d\n", mode_count);
+	if (buf_size < 8) {
+		DP_ERR("Modes payload too small: %d\n", buf_size);
+		return -EINVAL;
+	}
+
+	p = buf_addr;
+	mode_count = *(u32 *)p;
+	p += sizeof(u32);
+	buf_size -= 4;
+
+	DP_DEBUG("mode count: %u\n", mode_count);
+	entry_size = sizeof(struct hfi_display_mode_extended_info);
 
 	if (mode_count > MAX_MODES) {
 		DP_WARN("Mode count %u exceeds MAX_MODES %d, truncating\n",
@@ -303,24 +315,24 @@ static int _hfi_parse_supported_modes(struct dp_hfi *hfi)
 		return 0;
 	}
 
-	/* Point to the start of the mode array (after count field) */
-	modes_array = (struct hfi_display_mode_info *)&modes_payload[1];
+	if (buf_size < (int)(mode_count * entry_size)) {
+		DP_ERR("Invalid modes payload: have %d bytes, need %d\n",
+			buf_size, mode_count * entry_size);
+		return -EINVAL;
+	}
 
-	/* Copy modes to hfi_priv */
+	DP_DEBUG("Parsed %u display modes from DCP\n", mode_count);
+	mode_info = (struct hfi_display_mode_extended_info *)p;
 	for (i = 0; i < mode_count; i++) {
-		memcpy(&hfi->mode_list[i], &modes_array[i],
-				sizeof(struct hfi_display_mode_info));
+		memcpy(&hfi->mode_list[i], mode_info,
+				sizeof(struct hfi_display_mode_extended_info));
+		mode = &hfi->mode_list[i].base;
+		DP_DEBUG("Mode[%d]: %ux%u@%uHz\n", i, mode->h_active, mode->v_active,
+				mode->refresh_rate);
+		mode_info++;
 	}
 
 	hfi->mode_count = mode_count;
-
-	DP_DEBUG("Parsed %u display modes from DCP\n", mode_count);
-	for (i = 0; i < mode_count; i++) {
-		DP_DEBUG("Mode[%d]: %ux%u@%uHz\n", i,
-			 hfi->mode_list[i].h_active,
-			 hfi->mode_list[i].v_active,
-			 hfi->mode_list[i].refresh_rate);
-	}
 
 	return 0;
 }
@@ -477,44 +489,68 @@ static int _register_hdcp_events(struct dp_mgr_hfi_priv *hfi_priv, u32 stream_id
 
 static int _send_plug(struct dp_mgr_hfi_priv *hfi_priv, struct hfi_device_hotplug_config *config)
 {
-	struct hfi_buff edid_buf[DP_STREAMS_MAX] = {0};
-	struct hfi_buff modes_buf[DP_STREAMS_MAX] = {0};
-	struct hfi_device_hotplug_info payload = {0};
+	u8 *payload, *ptr;
 	struct hfi_client_t *hfi_client;
 	u32 hfi_cmd = HFI_COMMAND_DEVICE_HOT_PLUG_DETECT;
 	int rc = 0;
 	int i;
 	struct dp_hfi *hfi;
+	u32 payload_size;
+	struct hfi_buff *buf;
 
 	hfi = hfi_priv->hfi[0];
 	hfi_client = hfi->hfi_client;
 	if (!hfi_client)
 		return -EINVAL;
 
-	for (i = 0; i < hfi_priv->max_streams; i++) {
-		dp_mgr_hfi_init_hfi_buff(&edid_buf[i], hfi_priv->hfi[i]->edid_addr_map);
-		dp_mgr_hfi_init_hfi_buff(&modes_buf[i], hfi_priv->hfi[i]->modes_addr_map);
-	}
+	/*
+	 * The payload for HFI_COMMAND_DEVICE_HOT_PLUG_DETECT should be of the following format:
+	 * struct device_hotplug_info {
+	 *     struct hfi_device_hotplug_config config;
+	 *     u32 hfi_buf_cnt;
+	 *     struct hfi_buff edid_modes_buf[hfi_buf_cnt];
+	 * };
+	 */
+	payload_size = sizeof(struct hfi_device_hotplug_config) + sizeof(u32) +
+			(sizeof(struct hfi_buff) * hfi_priv->max_streams);
 
-	payload.config = *config;
-	payload.edid_buf = edid_buf[0];
-	payload.modes_buf = modes_buf[0];
+	payload = kmalloc(payload_size, GFP_KERNEL);
+	if (!payload) {
+		DP_ERR("failed to allocate memory for hpd high\n");
+		return -ENOMEM;
+	}
+	ptr = payload;
+
+	memcpy(ptr, config, sizeof(struct hfi_device_hotplug_config));
+	ptr += sizeof(struct hfi_device_hotplug_config);
+
+	*((u32 *)ptr) = hfi_priv->max_streams;
+	ptr += sizeof(u32);
+
+	for (i = 0; i <  hfi_priv->max_streams; i++) {
+		buf = (struct hfi_buff *) ptr;
+		dp_mgr_hfi_init_hfi_buff(buf, hfi_priv->hfi[i]->edid_addr_map);
+		ptr += sizeof(struct hfi_buff);
+	}
 
 	/* Send HFI_COMMAND_DEVICE_HOT_PLUG_DETECT command with config as payload */
 	rc = dp_hfi_send_cmd_buf(hfi, hfi_client, hfi_cmd, "DisplayPort",
-			HFI_PAYLOAD_TYPE_U32_ARRAY, (void *)&payload, sizeof(payload),
+			HFI_PAYLOAD_TYPE_U32_ARRAY, (void *)payload, payload_size,
 			(HFI_HOST_FLAGS_NON_DISCARDABLE));
 	if (rc) {
 		DP_ERR("Could not send HFI_COMMAND_DEVICE_HOT_PLUG_DETECT, rc=%d\n", rc);
-		return rc;
+		goto end;
 	}
 
-	return 0;
+end:
+	kfree(payload);
+	return rc;
 }
 
 static int _send_unplug(struct dp_mgr_hfi_priv *hfi_priv, struct hfi_device_hotplug_config *config)
 {
-	struct hfi_device_hotplug_info payload = {0};
+	u8 *payload, *ptr;
+	u32 payload_size;
 	struct hfi_client_t *hfi_client;
 	u32 hfi_cmd = HFI_COMMAND_DEVICE_HOT_PLUG_DETECT;
 	int rc = 0;
@@ -525,11 +561,32 @@ static int _send_unplug(struct dp_mgr_hfi_priv *hfi_priv, struct hfi_device_hotp
 	if (!hfi_client)
 		return -EINVAL;
 
-	payload.config = *config;
+	/*
+	 * The payload for HFI_COMMAND_DEVICE_HOT_PLUG_DETECT should be of the following format:
+	 * For unplug notification, hfi_buf_cnt should be set to 0.
+	 * struct device_hotplug_info {
+	 *     struct hfi_device_hotplug_config config;
+	 *     u32 hfi_buf_cnt;
+	 *     struct hfi_buff edid_modes_buf[hfi_buf_cnt];
+	 * };
+	 */
+	payload_size = sizeof(struct hfi_device_hotplug_config) + sizeof(u32);
+
+	payload = kmalloc(payload_size, GFP_KERNEL);
+	if (!payload) {
+		DP_ERR("failed to allocate memory for hpd low\n");
+		return -ENOMEM;
+	}
+
+	ptr = payload;
+	memcpy(ptr, config, sizeof(struct hfi_device_hotplug_config));
+	ptr += sizeof(struct hfi_device_hotplug_config);
+
+	*((u32 *)ptr) = 0;
 
 	/* Send HFI_COMMAND_DEVICE_HOT_PLUG_DETECT command with config as payload */
 	rc = dp_hfi_send_cmd_buf(hfi, hfi_client, hfi_cmd, "DisplayPort",
-			HFI_PAYLOAD_TYPE_U32_ARRAY, (void *)&payload, sizeof(payload),
+			HFI_PAYLOAD_TYPE_U32_ARRAY, (void *)payload, payload_size,
 			(HFI_HOST_FLAGS_NON_DISCARDABLE));
 	if (rc) {
 		DP_ERR("Could not send HFI_COMMAND_DEVICE_HOT_PLUG_DETECT, rc=%d\n", rc);
@@ -771,6 +828,12 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 	config->hpd_irq = hfi_priv->hpd->hpd_irq;
 	config->port_index = hfi_priv->hpd->port_id;
 	config->pin_config = hfi_priv->hpd->pin_config;
+	if (hfi_priv->debug->force_multi_func) {
+		if (config->pin_config == DPAM_HPD_C)
+			config->pin_config = DPAM_HPD_D;
+		else if (config->pin_config == DPAM_HPD_E)
+			config->pin_config = DPAM_HPD_F;
+	}
 
 	DP_DEBUG("orientation=%u, port=%u, pin=%u, hpd=%u, irq=%u\n",
 		config->orientation, config->port_index, config->pin_config,
@@ -804,10 +867,6 @@ static void _deinit_addr_maps(struct dp_hfi *hfi)
 		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->edid_addr_map);
 		hfi->edid_addr_map = NULL;
 	}
-	if (hfi->modes_addr_map) {
-		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->modes_addr_map);
-		hfi->modes_addr_map = NULL;
-	}
 }
 
 static int _init_addr_maps(struct dp_hfi *hfi)
@@ -815,7 +874,7 @@ static int _init_addr_maps(struct dp_hfi *hfi)
 	struct hfi_client_t *hfi_client = hfi->hfi_client;
 
 	if (!hfi->edid_addr_map) {
-		hfi->edid_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_1K);
+		hfi->edid_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
 		if (!hfi->edid_addr_map) {
 			DP_ERR("failed to allocate remote address for edid\n");
 			return -ENOMEM;
@@ -825,25 +884,11 @@ static int _init_addr_maps(struct dp_hfi *hfi)
 		DP_DEBUG("Reusing existing EDID buffer\n");
 	}
 
-	if (!hfi->modes_addr_map) {
-		hfi->modes_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
-		if (!hfi->modes_addr_map) {
-			DP_ERR("failed to allocate remote address for modes\n");
-			_deinit_addr_maps(hfi);
-			return -ENOMEM;
-		}
-		DP_DEBUG("Allocated new modes buffer\n");
-	} else {
-		DP_DEBUG("Reusing existing modes buffer\n");
-	}
-
 	return 0;
 }
 
-/* HPD callback functions */
-int dp_mgr_hfi_hpd_configure_cb(void *data)
+static int _hpd_configure(struct dp_mgr_hfi_priv *hfi_priv, bool skip_hpd)
 {
-	struct dp_mgr_hfi_priv *hfi_priv = data;
 	struct hfi_client_t *hfi_client;
 	struct hfi_device_hotplug_config config = {0};
 	int rc = 0;
@@ -910,11 +955,25 @@ end:
 		hfi_priv->connected = true;
 
 		_hfi_update_config(hfi_priv, &config);
-		rc = _hfi_send_hot_plug(hfi_priv, &config);
+		if (!skip_hpd)
+			rc = _hfi_send_hot_plug(hfi_priv, &config);
 		DP_INFO("connected\n");
 	}
 
 	return rc;
+}
+
+/* HPD callback functions */
+int dp_mgr_hfi_hpd_configure_cb(void *data)
+{
+	struct dp_mgr_hfi_priv *hfi_priv = data;
+
+	if (!hfi_priv) {
+		DP_ERR("Invalid hfi_priv data\n");
+		return -EINVAL;
+	}
+
+	return _hpd_configure(hfi_priv, false);
 }
 
 int dp_mgr_hfi_hpd_disconnect_cb(void *data)
@@ -932,6 +991,12 @@ int dp_mgr_hfi_hpd_disconnect_cb(void *data)
 
 	if (hfi_priv->tui_active) {
 		DP_INFO("TUI is active\n");
+		return 0;
+	}
+
+	if (!hfi_priv->connected) {
+		DP_INFO("DP already disconnected, ignoring\n");
+		complete_all(&hfi_priv->hpd_comp);
 		return 0;
 	}
 
@@ -1028,7 +1093,8 @@ static int dp_mgr_hfi_hpd_attention_cb(void *data)
 		return 0;
 
 	if (hpd_state && !hfi_priv->configured) {
-		rc = dp_mgr_hfi_hpd_configure_cb(data);
+		/* skip hpd here as it will be sent below */
+		rc = _hpd_configure(hfi_priv, true);
 		if (rc)
 			return rc;
 	} else if (!hfi_priv->connected && hpd_state) {
@@ -1111,14 +1177,8 @@ static void dp_mgr_hfi_min_level_change(void *client_ctx, u8 min_enc_level)
     	}
 
 	hfi = hfi_priv->hfi[0];
-	if (!hfi || !hfi->hdcp2x_ctx) {
-		DP_DEBUG("HDCP 2.x not active, skipping TYPE_ID update\n");
-		return;
-	}
-
-    	/* Only send TYPE_ID if HDCP is authenticated */
-	if (hfi->hdcp_info.hdcp_state != HDCP_STATE_AUTHENTICATED) {
-		DP_DEBUG("HDCP not authenticated, skipping TYPE_ID update\n");
+	if (!hfi) {
+		DP_DEBUG("hfi not initialized, skipping TYPE_ID update\n");
 		return;
 	}
 
@@ -1146,8 +1206,6 @@ static void dp_mgr_hfi_min_level_change(void *client_ctx, u8 min_enc_level)
 	rc = dp_mgr_hfi_send_type_id_to_sink(hfi_priv->hfi[0], stream_type);
 	if (rc) {
 		DP_ERR("Failed to send TYPE_ID to sink: %d\n", rc);
-		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
-		dp_mgr_update_hdcp_info(hfi, false);
 	}
 }
 
@@ -1156,28 +1214,27 @@ static void dp_mgr_hfi_calc_tu_parameters(struct dp_mgr_hfi_priv *hfi_priv,
 {
 	struct dp_tu_calc_input in;
 	struct dp_tu_calc_output out;
+	struct msm_compression_info *cmpr = &pinfo->comp_info;
 
 	in.lclk = hfi_priv->link_rate / 1000;
 	in.nlanes = hfi_priv->lane_count;
 	in.pclk_khz = pinfo->pixel_clk_khz;
 	in.hactive = pinfo->h_active;
-	in.hporch = pinfo->h_back_porch + pinfo->h_front_porch +
-				pinfo->h_sync_width;
-
+	in.hporch = pinfo->h_back_porch + pinfo->h_front_porch + pinfo->h_sync_width;
 	in.bpp = pinfo->bpp;
 	in.pixel_enc = 444;
-	in.dsc_en = pinfo->comp_info.enabled;
+	in.dsc_en = cmpr->enabled;
 	in.async_en = 0;
 	in.fec_en = hfi_priv->fec_en;
-	in.num_of_dsc_slices = pinfo->comp_info.dsc_info.slice_per_pkt;
-	in.ppc_div_factor = 2; /*hfi_priv->dpcd.pclk_factor;*/
+	in.ppc_div_factor = (cmpr->dsc_info.num_active_ss_per_enc == 4) ?  4 : 2;
 
-	if (pinfo->comp_info.enabled) {
-		in.compress_ratio = mult_frac(100, pinfo->comp_info.src_bpp,
-				pinfo->comp_info.tgt_bpp);
-		in.comp_bpp = pinfo->comp_info.tgt_bpp;
+	if (in.dsc_en) {
+		in.compress_ratio = cmpr->comp_ratio;
+		in.num_of_dsc_slices = cmpr->dsc_info.num_active_ss_per_enc;
+		in.comp_bpp = cmpr->tgt_bpp;
 	} else {
 		in.compress_ratio = 100;
+		in.num_of_dsc_slices = 0;
 		in.comp_bpp = in.bpp;
 	}
 
@@ -1288,10 +1345,6 @@ int dp_mgr_hfi_set_mode(struct dp_client *client, int panel_id, struct dp_displa
 			HFI_HOST_FLAGS_NON_DISCARDABLE);
 	if (rc) {
 		DP_ERR("Could not send HFI_COMMAND_DISPLAY_SET_MODE, rc=%d\n", rc);
-	} else {
-		DP_DEBUG("Successfully set mode %ux%u@%uHz for panel_id=%d\n",
-				mode->timing.h_active, mode->timing.v_active,
-				mode->timing.refresh_rate, panel_id);
 	}
 
 	return rc;
@@ -1317,6 +1370,9 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 	hfi = hfi_priv->hfi[stream_id];
 	drm_refresh_rate = drm_mode_vrefresh(mode);
 
+	/* if its the default mode, then always return valid */
+	if (_default_mode(mode))
+		return MODE_OK;
 	/*
 	 * If override is enabled, only accept the override mode and reject
 	 * all others, even if they exist in the EDID/DCP mode list. This
@@ -1359,13 +1415,14 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 	}
 
 	for (i = 0; i < hfi->mode_count; i++) {
-		struct hfi_display_mode_info *hfi_mode = &hfi->mode_list[i];
+		struct hfi_display_mode_info *hfi_mode = &hfi->mode_list[i].base;
 
 		/* Compare resolution and refresh rate */
 		if ((hfi_mode->h_active == mode->hdisplay) &&
 		    (hfi_mode->v_active == mode->vdisplay) &&
 		    (hfi_mode->refresh_rate == drm_refresh_rate)) {
-			DP_DEBUG("Mode validated: matches HFI mode[%d]\n", i);
+			DP_DEBUG("Mode validated [%dx%d@%d]: matches HFI mode[%d]\n",
+				mode->hdisplay, mode->vdisplay, drm_refresh_rate, i);
 			return MODE_OK;
 		}
 	}
@@ -1384,6 +1441,7 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 	u32 ovr_h, ovr_v, ovr_fps;
 	u32 stream_id;
 	struct dp_hfi *hfi;
+	u32 cnt;
 
 	if (!client) {
 		DP_ERR("Invalid params\n");
@@ -1399,15 +1457,15 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 	connector = hfi->connector;
 
 	/* Now populate fresh modes from EDID */
-	rc = _sde_edid_update_modes(connector, hfi->edid_ctrl);
+	cnt = _sde_edid_update_modes(connector, hfi->edid_ctrl);
 
 	if (dp_mode->timing.pixel_clk_khz)
 		hfi_priv->client.max_pclk_khz = dp_mode->timing.pixel_clk_khz;
 
 	/* If no override is enabled, just return the EDID modes */
 	if (!hfi->mode_ovr.enabled) {
-		DP_DEBUG("HFI get_modes: override disabled, returning rc=%d\n", rc);
-		return rc;
+		DP_DEBUG("HFI get_modes: override disabled, mode_cnt=%d\n", cnt);
+		return cnt;
 	}
 
 	/*
@@ -1440,21 +1498,23 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 
 	/*
 	 * Remove all other modes from the list, leaving only the override
-	 * mode exposed to user space. This mirrors the requirement that
-	 * when override is set, only that mode should be reported.
+	 * mode exposed to user space and the mandatory default mode (640x480@60).
 	 */
+	cnt = 0;
 	list_for_each_entry_safe(mode, tmp, &connector->modes, head) {
-		if (mode != override_mode) {
+		if ((mode == override_mode) || _default_mode(mode)) {
+			cnt++;
+		} else {
+			/* remove mode */
 			list_del(&mode->head);
 			drm_mode_destroy(connector->dev, mode);
 		}
 	}
 
-	DP_DEBUG("HFI get_modes: override enabled, exposing only %ux%u@%uHz, returning 1\n",
-		override_mode->hdisplay, override_mode->vdisplay, ovr_fps);
+	DP_DEBUG("HFI get_modes: override enabled, exposing only %ux%u@%uHz, returning %d\n",
+		override_mode->hdisplay, override_mode->vdisplay, ovr_fps, cnt);
 
-	/* We now have exactly one mode; return 1 to indicate this */
-	return 1;
+	return cnt;
 }
 
 static int dp_mgr_hfi_request_irq(struct dp_client *client)
@@ -1481,15 +1541,31 @@ static void dp_mgr_hfi_post_open(struct dp_client *client)
 
 static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 size)
 {
-	struct hfi_display_event_edid_info *info = payload;
-	struct hfi_buff *edid_buf = &info->edid_buf;
-	int i;
-	struct hfi_shared_addr_map *edid_addr_map;
+	struct hfi_display_event_edid_info *info;
+	struct hfi_buff *edid_buf;
+	int i, len, buf_size, edid_size;
+	char *buf_addr;
+	struct hfi_shared_addr_map *edid_map;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
 
-	DP_INFO("EDID Info received: size=%u, link_rate=%u, lane_count=%u, bpp=%u\n",
-			edid_buf->size, info->link_rate,
+	if (!payload) {
+		DP_ERR("Invalid payload\n");
+		return;
+	}
+
+	info = payload;
+	edid_buf = &info->edid_modes_buf;
+
+	DP_INFO("EDID Info received: stream_id=%d size=%u, link_rate=%u, lane_count=%u, bpp=%u\n",
+			info->stream_id, edid_buf->size, info->link_rate,
 			info->lane_count, info->bits_per_pixel);
+
+	edid_map = hfi->edid_addr_map;
+	if (!edid_map) {
+		DP_ERR("EDID buffer not available, cannot process EDID\n");
+		return;
+	}
+
 	/* Connection status is not in the payload - set connected=1 based on receiving EDID info */
 	if (edid_buf->size > 0) {
 		hfi->connected = true;
@@ -1499,22 +1575,31 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 		goto end;
 	}
 
-	hfi_priv->link_rate = info->link_rate;
-	hfi_priv->lane_count = info->lane_count;
-	hfi_priv->tgt_bpp = info->bits_per_pixel;
-	hfi_priv->fec_en = info->fec_enabled;
+	if (info->stream_id == 0) {
+		hfi_priv->link_rate = info->link_rate;
+		hfi_priv->lane_count = info->lane_count;
+		hfi_priv->fec_en = info->fec_enabled;
+	}
 
-	edid_addr_map = hfi->edid_addr_map;
+	hfi->tgt_bpp = info->bits_per_pixel;
 
-	print_hex_dump(KERN_INFO, "EDID(Little Endian): ",
-		DUMP_PREFIX_NONE, 16, 4, edid_addr_map->local_addr,
-		edid_buf->size, false);
+	buf_addr = (char *)edid_map->local_addr;
+	buf_size = edid_buf->size;
 
-	if (_hfi_process_edid(hfi, edid_buf->size)) {
+	edid_size = *((u32 *)buf_addr);
+	buf_addr += sizeof(u32);
+	buf_size -= sizeof(u32);
+
+	len = _hfi_process_edid(hfi, buf_addr, edid_size);
+	if (len <= 0) {
 		DP_ERR("Failed to process EDID, skipping modes parsing\n");
 		goto end;
 	}
-	_hfi_parse_supported_modes(hfi);
+
+	buf_size -= edid_size;
+	buf_addr += edid_size; /* point to modes_info */
+
+	_hfi_parse_supported_modes(hfi, buf_addr, buf_size);
 	/* Print the list of modes received from DCP */
 	if (!hfi->mode_count) {
 		DP_ERR("No modes received from DCP\n");
@@ -1522,7 +1607,7 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	}
 	DP_INFO("Received %u modes from DCP:\n", hfi->mode_count);
 	for (i = 0; i < hfi->mode_count; i++) {
-		struct hfi_display_mode_info *mode = &hfi->mode_list[i];
+		struct hfi_display_mode_info *mode = &hfi->mode_list[i].base;
 
 		DP_INFO("Mode[%d]: %ux%u@%uHz hb:(%u %u %u) vb:(%u %u %u)\n",
 				i, mode->h_active, mode->v_active, mode->refresh_rate,
@@ -1539,11 +1624,34 @@ end:
 
 static void dp_mgr_hfi_handle_hpd_status(struct dp_hfi *hfi, void *payload, u32 size)
 {
-	struct hfi_display_hpd_status *hpd_status = (struct hfi_display_hpd_status *) payload;
+	struct hfi_display_hpd_status *hpd_status;
+	struct hfi_device_hotplug_config config = {0};
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
+
+	if (!payload) {
+		DP_ERR("Invalid payload\n");
+		return;
+	}
+
+	hpd_status = (struct hfi_display_hpd_status *) payload;
 
 	switch (hpd_status->dp_evt) {
 	case HFI_DP_EVENT_HPD_UNPLUGGED:
+		DP_DEBUG("HPD_UNPLUGGED: conn:%d\n",
+				(hfi->connector ? hfi->connector->base.id : -1));
+		hfi->connected = false;
 		_hfi_notify_hpd_user(hfi, false);
+		break;
+	case HFI_DP_EVENT_HPD_PLUGGED:
+		DP_DEBUG("HPD_PLUGGED conn:%d\n", (hfi->connector ? hfi->connector->base.id : -1));
+
+		_hfi_update_config(hfi_priv, &config);
+
+		hfi_priv->connected = true;
+		config.hpd_state = 1;
+		config.hpd_irq = 0;
+
+		_hfi_send_hot_plug(hfi_priv, &config);
 		break;
 	default:
 		break;
@@ -1629,13 +1737,16 @@ static void dp_mgr_hfi_handle_hdcp1x_stop(struct dp_hfi *hfi, void *payload, u32
 
 static void dp_mgr_hfi_handle_hdcp1x_enc(struct dp_hfi *hfi, void *payload, u32 size)
 {
-	u32 *data = (u32 *)payload;
+	u32 *data;
 	bool enable;
+	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
 
-	if (size < sizeof(u32)) {
+	if (!payload || size < sizeof(u32)) {
 		DP_ERR("Invalid payload size: %u\n", size);
 		return;
 	}
+
+	data = (u32 *)payload;
 
 	enable = (data[0] != 0);
 
@@ -1647,7 +1758,8 @@ static void dp_mgr_hfi_handle_hdcp1x_enc(struct dp_hfi *hfi, void *payload, u32 
 		return;
 	}
 
-	dp_hdcp1x_set_enc(hfi->hdcp1x_ctx, enable);
+	if (hfi_priv->debug && hfi_priv->debug->force_encryption)
+		dp_hdcp1x_set_enc(hfi->hdcp1x_ctx, enable);
 
 	if (enable) {
 		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTHENTICATED;
@@ -1659,13 +1771,15 @@ static void dp_mgr_hfi_handle_hdcp1x_enc(struct dp_hfi *hfi, void *payload, u32 
 
 static void dp_mgr_hfi_handle_hdcp1x_topology(struct dp_hfi *hfi, void *payload, u32 size)
 {
-	u32 *data = (u32 *)payload;
+	u32 *data;
 	u32 depth, device_count, max_devices_exceeded, max_cascade_exceeded;
 
-	if (size < 4 * sizeof(u32)) {
+	if (!payload || size < 4 * sizeof(u32)) {
 		DP_ERR("Invalid payload size: %u\n", size);
 		return;
 	}
+
+	data = (u32 *)payload;
 
 	depth = data[0];
 	device_count = data[1];
@@ -1801,19 +1915,24 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 		return;
 	}
 
-	DP_DEBUG("Processing message: request_length=%u, repeater_flag(hfi)=%d\n",
-		 hfi_data->request.size, hfi_data->repeater_flag);
+	DP_DEBUG("HDCP2X_PROCESS_MSG: msg_id=0x%02x req_len=%u\n",
+		 req_buf ? req_buf[0] : 0xFF, hfi_data->request.size);
 
-	/* Process message through dp_hdcp (TZ) */
-	rc = dp_hdcp2x_process_msg(hfi->hdcp2x_ctx,
-				   req_buf, hfi_data->request.size,
-				   &resp_buf, &resp_len,
-				   &repeater_flag, &timeout_ms);
+	if (hfi_data->request.size == 0 &&
+	    ((uint8_t *)hfi->hdcp2x_resp_map->local_addr)[0] == REP_SEND_ACK) {
+		DP_DEBUG("Zero-length request after REP_SEND_ACK: calling QUERY_STREAM\n");
+		rc = dp_hdcp2x_query_stream(hfi->hdcp2x_ctx, &resp_buf, &resp_len);
+		repeater_flag = true;
+		timeout_ms = 0;
+	} else {
+		rc = dp_hdcp2x_process_msg(hfi->hdcp2x_ctx,
+					   req_buf, hfi_data->request.size,
+					   &resp_buf, &resp_len,
+					   &repeater_flag, &timeout_ms);
+	}
 	if (rc) {
-		DP_ERR("dp_hdcp2x_process_msg failed: %d\n", rc);
-		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
-		dp_mgr_update_hdcp_info(hfi, false);
-		return;
+		DP_ERR("Process msg failed: %d, send NULL response to trigger auth retry\n", rc);
+		resp_len = 0;
 	}
 
 	/* Copy response to shared buffer (if any) */
@@ -1827,6 +1946,9 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 
 		msg_id = resp_buf[0];
 		DP_DEBUG("Response message ID: 0x%02x\n", msg_id);
+	} else {
+		DP_WARN("Sending NULL response to DCP (msg_id=0x%02x) — retry will be triggered\n",
+			req_buf ? req_buf[0] : 0xFF);
 	}
 
 	/* Prepare HFI response */
@@ -1859,7 +1981,8 @@ static void dp_mgr_hfi_handle_hdcp2x_process_msg(struct dp_hfi *hfi, void *paylo
 		DP_DEBUG("Response sent to DCP, length=%u\n", resp_len);
 
 	if ((msg_id == SKE_SEND_EKS && !is_repeater) ||
-			(msg_id == REP_STREAM_READY && is_repeater)) {
+			(req_buf[0] == REP_STREAM_READY && is_repeater
+			&& msg_id != REP_STREAM_MANAGE)) {
 
 		rc = dp_hdcp2x_enable_encryption(hfi->hdcp2x_ctx);
 		if (rc) {
@@ -1916,11 +2039,8 @@ static void dp_mgr_hfi_handle_hdcp2x_timeout(struct dp_hfi *hfi, void *payload, 
 			       req_buf, 0,  /* request is empty (length=0) but pass pointer */
 			       &resp_buf, &resp_len);
 	if (rc) {
-		DP_ERR("dp_hdcp2x_timeout failed: %d\n", rc);
-
-		hfi->hdcp_info.hdcp_state = HDCP_STATE_AUTH_FAIL;
-		dp_mgr_update_hdcp_info(hfi, false);
-		return;
+		DP_ERR("Timeout failed: %d, send NULL response to trigger auth retry\n", rc);
+		resp_len = 0;
 	}
 
 	/* Copy response to shared buffer if TZ returned something */
@@ -1962,9 +2082,16 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 	bool hdcp1x_tz_support = false;
 	bool hdcp2x_tz_support = false;
 	int rc;
-	u32 *hdcp_support = (u32 *)payload;
+	u32 *hdcp_support;
 	u32 hfi_event;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
+
+	if (!payload) {
+		DP_ERR("Invalid payload\n");
+		return;
+	}
+
+	hdcp_support = (u32 *)payload;
 
 	/* Get HFI client first as we'll need it for buffer allocation */
 	hfi_client = hfi->hfi_client;
@@ -2001,29 +2128,6 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 			hfi->hdcp_info.source_cap &= ~HDCP_VERSION_2P2;
 		} else {
 			DP_INFO("HDCP 2.x initialized successfully\n");
-
-			/* Allocate shared memory buffers for HDCP 2.x message exchange */
-			hfi->hdcp2x_req_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
-			if (!hfi->hdcp2x_req_map) {
-				DP_ERR("Failed to allocate HDCP 2.x request buffer\n");
-				dp_hdcp2x_deinit(hfi->hdcp2x_ctx);
-				hfi->hdcp2x_ctx = NULL;
-				hfi->hdcp_info.source_cap &= ~HDCP_VERSION_2P2;
-			} else {
-				hfi->hdcp2x_resp_map = dp_mgr_hfi_init_shared_addr(hfi_client,
-					SZ_4K);
-				if (!hfi->hdcp2x_resp_map) {
-					DP_ERR("Failed to allocate HDCP 2.x response buffer\n");
-					dp_mgr_hfi_deinit_shared_addr(hfi_client,
-						hfi->hdcp2x_req_map);
-					hfi->hdcp2x_req_map = NULL;
-					dp_hdcp2x_deinit(hfi->hdcp2x_ctx);
-					hfi->hdcp2x_ctx = NULL;
-					hfi->hdcp_info.source_cap &= ~HDCP_VERSION_2P2;
-				} else {
-					DP_DEBUG("HDCP 2.x shared buffers allocated\n");
-				}
-			}
 		}
 	}
 
@@ -2062,6 +2166,7 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 			DP_ERR("Failed to register HDCP events, rc=%d\n", rc);
 			return;
 		}
+		hfi->hdcp_version_registered = hfi->hdcp_info.hdcp_version;
 	} else {
 		hfi_event = HFI_EVENT_HDCP_FEATURE_SUPPORTED;
 		rc = dp_hfi_append_batch_cmd(hfi, hfi_client,
@@ -2222,6 +2327,17 @@ static int dp_mgr_hfi_post_init(struct dp_client *client)
 		hfi_priv->audio = NULL;
 	} else {
 		DP_DEBUG("HFI audio initialized successfully\n");
+	}
+
+	if (!hfi->hdcp2x_req_map) {
+		hfi->hdcp2x_req_map = dp_mgr_hfi_init_shared_addr(hfi->hfi_client, SZ_1K);
+		if (!hfi->hdcp2x_req_map)
+			DP_WARN("Failed to pre-alloc HDCP 2.x req buffer\n");
+	}
+	if (!hfi->hdcp2x_resp_map) {
+		hfi->hdcp2x_resp_map = dp_mgr_hfi_init_shared_addr(hfi->hfi_client, SZ_1K);
+		if (!hfi->hdcp2x_resp_map)
+			DP_WARN("Failed to pre-alloc HDCP 2.x resp buffer\n");
 	}
 
 	/* Register min_enc_level callback */
@@ -2522,33 +2638,24 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 
 	/* Deinitialize HDCP */
 	if (hfi->hdcp1x_ctx) {
+		/* If force_encryption is set, disable encryption before tearing down */
+		if (hfi_priv->debug->force_encryption)
+			dp_hdcp1x_set_enc(hfi->hdcp1x_ctx, false);
 		dp_hdcp1x_deinit(hfi->hdcp1x_ctx);
 		hfi->hdcp1x_ctx = NULL;
 		DP_DEBUG("HDCP deinitialized\n");
 	}
 
-	/* Deinitialize HDCP 2.x and free shared buffers */
+	/* Deinitialize HDCP 2.x*/
 	if (hfi->hdcp2x_ctx) {
 		dp_hdcp2x_deinit(hfi->hdcp2x_ctx);
 		hfi->hdcp2x_ctx = NULL;
 		DP_DEBUG("HDCP 2.x deinitialized\n");
 	}
 
-	/* Free HDCP 2.x shared buffers */
-	if (hfi->hdcp2x_req_map) {
-		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->hdcp2x_req_map);
-		hfi->hdcp2x_req_map = NULL;
-		DP_DEBUG("HDCP 2.x request buffer freed\n");
-	}
-	if (hfi->hdcp2x_resp_map) {
-		dp_mgr_hfi_deinit_shared_addr(hfi_client, hfi->hdcp2x_resp_map);
-		hfi->hdcp2x_resp_map = NULL;
-		DP_DEBUG("HDCP 2.x response buffer freed\n");
-	}
-
 	DP_DEBUG("Sending DISPLAY_POST_DISABLE command to DCP, panel_id=%d\n", panel_id);
 
-	if (hfi->hdcp_info.hdcp_version != HDCP_VERSION_NONE) {
+	if (hfi->hdcp_version_registered != HDCP_VERSION_NONE) {
 		rc = dp_hfi_start_batch_cmd(hfi, hfi_client);
 		if (rc) {
 			DP_ERR("failed to start batch cmds, rc=%d\n", rc);
@@ -2566,9 +2673,12 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 					panel_id);
 		}
 
-		rc = _register_hdcp_events(hfi_priv, stream_id, false, hfi->hdcp_info.hdcp_version);
+		rc = _register_hdcp_events(hfi_priv, stream_id, false,
+				hfi->hdcp_version_registered);
 		if (rc)
 			DP_ERR("Failed to deregister HDCP events, rc=%d\n", rc);
+
+		hfi->hdcp_version_registered = HDCP_VERSION_NONE;
 
 		rc = dp_hfi_send_batch_cmd(hfi, hfi_client, false);
 		if (rc) {
@@ -2587,6 +2697,9 @@ static int dp_mgr_hfi_disable(struct dp_client *client, int panel_id)
 					panel_id);
 		}
 	}
+
+	/* Reset HDCP status to inactive after all HDCP teardown is complete */
+	dp_mgr_update_hdcp_info(hfi, true);
 
 	return rc;
 }
@@ -2611,7 +2724,9 @@ static int dp_mgr_hfi_unprepare(struct dp_client *client, int panel_id)
 
 	stream_id = panel_to_stream(hfi_priv, panel_id);
 
-	dp_mgr_hfi_hpd_cleanup(hfi_priv, stream_id);
+	/* unprepare only when NOT connected */
+	if (!hfi_priv->connected)
+		dp_mgr_hfi_hpd_cleanup(hfi_priv, stream_id);
 
 end:
 	DP_DEBUG("%s: DP core power unprepare\n", __func__);
@@ -2777,6 +2892,23 @@ static struct dp_intf_info *dp_mgr_hfi_get_info(struct dp_client *client)
 	return &mgr->intf_info;
 }
 
+static int _find_mode_index(struct dp_hfi *hfi, const struct drm_display_mode *drm_mode)
+{
+	struct hfi_display_mode_info *m;
+	int i;
+
+	for (i = 0; i < hfi->mode_count; i++) {
+		m = &hfi->mode_list[i].base;
+		if (m->h_active == (u32)drm_mode->hdisplay &&
+				m->v_active == (u32)drm_mode->vdisplay &&
+				m->refresh_rate == (u32)drm_mode_vrefresh(drm_mode))
+			return i;
+	}
+
+	/* no match */
+	return -1;
+}
+
 static int dp_mgr_hfi_pm_prepare(struct dp_client *client)
 {
 	return 0;
@@ -2792,6 +2924,10 @@ static void dp_mgr_hfi_convert_to_dp_mode(struct dp_client *client,
 		struct dp_display_mode *dp_mode)
 {
 	struct dp_mgr_hfi_priv *hfi_priv;
+	struct dp_hfi *hfi;
+	u32 stream_id;
+	struct msm_compression_info *cmpr;
+	int i;
 
 	if (!client || !dp_mode || !drm_mode)
 		return;
@@ -2801,6 +2937,9 @@ static void dp_mgr_hfi_convert_to_dp_mode(struct dp_client *client,
 		DP_ERR("invalid param(s), hfi_priv %pK\n", hfi_priv);
 		return;
 	}
+
+	stream_id = panel_to_stream(hfi_priv, panel_id);
+	hfi = hfi_priv->hfi[stream_id];
 
 	dp_mode->timing.h_active = drm_mode->hdisplay;
 	dp_mode->timing.h_back_porch = drm_mode->htotal - drm_mode->hsync_end;
@@ -2820,13 +2959,89 @@ static void dp_mgr_hfi_convert_to_dp_mode(struct dp_client *client,
 	dp_mode->timing.pixel_clk_khz = drm_mode->clock;
 
 	dp_mode->timing.v_active_low = !!(drm_mode->flags & DRM_MODE_FLAG_NVSYNC);
-
 	dp_mode->timing.h_active_low = !!(drm_mode->flags & DRM_MODE_FLAG_NHSYNC);
 
-	dp_mode->timing.bpp = hfi_priv->tgt_bpp;
+	dp_mode->timing.bpp = hfi->tgt_bpp;
 
 	/* As YUV was not supported now, so set the default format to RGB */
 	dp_mode->output_format = DP_OUTPUT_FORMAT_RGB;
+
+	i = _find_mode_index(hfi, drm_mode);
+	if (i < 0) {
+		DP_ERR("mode not found %dx%d@%d\n", drm_mode->hdisplay, drm_mode->vdisplay,
+				dp_mode->timing.refresh_rate);
+		return;
+	}
+	/* matched */
+	cmpr = &dp_mode->timing.comp_info;
+	cmpr->enabled = hfi->mode_list[i].cmpr_enabled;
+	if (cmpr->enabled) {
+		cmpr->comp_type = MSM_DISPLAY_COMPRESSION_DSC;
+		cmpr->src_bpp = dp_mode->timing.bpp;
+		cmpr->tgt_bpp = hfi->mode_list[i].cmpr_bpp;
+		cmpr->comp_ratio = mult_frac(100, cmpr->src_bpp, cmpr->tgt_bpp);
+		cmpr->dsc_info.num_active_ss_per_enc = hfi->mode_list[i].cmpr_slice_count;
+	}
+}
+
+static int dp_mgr_hfi_get_mode_info(struct dp_client *client, int panel_id,
+		const struct drm_display_mode *drm_mode, struct msm_mode_info *mode_info)
+{
+	struct dp_mgr_hfi_priv *hfi_priv;
+	struct dp_hfi *hfi;
+	u32 stream_id;
+	struct msm_display_topology *topology;
+	struct msm_compression_info *cmpr;
+	int i;
+
+	if (!client || !mode_info || !drm_mode)
+		return -EINVAL;
+
+	hfi_priv = container_of(client, struct dp_mgr_hfi_priv, client);
+	if (!hfi_priv) {
+		DP_ERR("invalid param(s), hfi_priv %pK\n", hfi_priv);
+		return -EINVAL;
+	}
+
+	stream_id = panel_to_stream(hfi_priv, panel_id);
+	hfi = hfi_priv->hfi[stream_id];
+
+	memset(mode_info, 0, sizeof(*mode_info));
+
+	i = _find_mode_index(hfi, drm_mode);
+	if (i < 0) {
+		DP_ERR("mode not found %dx%d@%d\n", drm_mode->hdisplay, drm_mode->vdisplay,
+				(u32)drm_mode_vrefresh(drm_mode));
+		return -EINVAL;
+	}
+
+	topology = &mode_info->topology;
+	cmpr = &mode_info->comp_info;
+	cmpr->enabled = hfi->mode_list[i].cmpr_enabled;
+	if (cmpr->enabled) {
+		cmpr->comp_type = MSM_DISPLAY_COMPRESSION_DSC;
+		cmpr->src_bpp = hfi->tgt_bpp;
+		cmpr->tgt_bpp = hfi->mode_list[i].cmpr_bpp;
+		cmpr->comp_ratio = mult_frac(100, cmpr->src_bpp, cmpr->tgt_bpp);
+		cmpr->dsc_info.num_active_ss_per_enc = hfi->mode_list[i].cmpr_count;
+	}
+
+	topology->num_lm = hfi->mode_list[i].mixer_count;
+	topology->num_enc = hfi->mode_list[i].cmpr_count;
+	topology->num_intf = 1;
+	topology->comp_type = cmpr->comp_type;
+
+	mode_info->frame_rate = drm_mode_vrefresh(drm_mode);
+	mode_info->vtotal = drm_mode->vtotal;
+	mode_info->wide_bus_en = true;
+	mode_info->pclk_factor = (hfi->mode_list[i].cmpr_count == 4 ? 4 : 2);
+
+	DP_DEBUG("mode[%d] [%d %d %d] top [%d%d%d] ss:%d\n", i, drm_mode->hdisplay,
+			drm_mode->vdisplay, mode_info->frame_rate, topology->num_lm,
+			topology->num_enc, topology->num_intf,
+			cmpr->dsc_info.num_active_ss_per_enc);
+
+	return 0;
 }
 
 static int dp_mgr_hfi_set_stream_info(struct dp_client *client,
@@ -2988,6 +3203,7 @@ struct dp_client *dp_mgr_hfi_init(struct platform_device *pdev, struct dp_debug_
 	drm_ops->get_display_type = dp_mgr_hfi_get_display_type;
 	drm_ops->edp_detect = dp_mgr_hfi_edp_detect;
 	drm_ops->hpd_detect = dp_mgr_hfi_hpd_detect;
+	drm_ops->get_mode_info = dp_mgr_hfi_get_mode_info;
 
 	client->bind = dp_mgr_hfi_bind;
 	client->unbind = dp_mgr_hfi_unbind;

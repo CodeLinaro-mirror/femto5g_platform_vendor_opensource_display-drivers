@@ -99,7 +99,7 @@ static void hfi_dbg_property_handler(u32 display_id, u32 cmd_id,
 		SDE_ERROR("invalid payload or hfi command 0x%x\n", cmd_id);
 }
 
-static int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
+int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
 {
 	struct hfi_cmdbuf_t *cmd_buf;
 	int ret;
@@ -116,6 +116,12 @@ static int hfi_dbg_device_setup(struct hfi_kms *hfi_kms)
 	if (!cmd_buf) {
 		SDE_ERROR("failed to get hfi command buffer\n");
 		return -EINVAL;
+	}
+
+	ret = hfi_util_u32_prop_helper_reset(hfi_dbg->base_props);
+	if (ret) {
+		SDE_ERROR("failed to reset base props\n");
+		return ret;
 	}
 
 	if (hfi_dbg->buff_map.reg_addr.size && hfi_dbg->buff_map.reg_addr.remote_addr) {
@@ -333,7 +339,7 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 	struct hfi_cmdbuf_t *cmd_buf;
 	struct sde_kms *kms;
 	struct hfi_kms *hfi_kms;
-	u32 offset_sz = 0, base_buff_sz = 0;
+	u32 offset_sz = 0, base_buff_sz = 0, packet_id = 0;
 
 	if (!ddev || !ddev->dev_private) {
 		SDE_ERROR("invalid drm device node\n");
@@ -390,7 +396,7 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 	hfi_dbg->hfi_cb_obj.hfi_prop_handler = hfi_dbg_property_handler;
 	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf, HFI_COMMAND_DEBUG_INIT,
 			MSM_DRV_HFI_ID, HFI_PAYLOAD_TYPE_NONE, NULL, 0,
-			&hfi_dbg->hfi_cb_obj, HFI_HOST_FLAGS_RESPONSE_REQUIRED);
+			&hfi_dbg->hfi_cb_obj, HFI_HOST_FLAGS_RESPONSE_REQUIRED, false, &packet_id);
 	if (ret) {
 		SDE_ERROR("failed to add debug-init command\n");
 		goto free_hfi_dbg;
@@ -455,6 +461,8 @@ int hfi_dbg_init(struct device *dev, struct sde_dbg_base *dbg)
 		SDE_ERROR("failed to send debug-setup command\n");
 		goto free_hfi_dbg;
 	}
+
+	hfi_adapter_remove_listener_by_packet_id(&hfi_kms->hfi_client, packet_id);
 	return ret;
 
 free_kv:

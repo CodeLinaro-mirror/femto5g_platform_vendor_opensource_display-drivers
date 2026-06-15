@@ -2130,6 +2130,237 @@ error:
 
 }
 
+static ssize_t debugfs_cmd_remap_write(struct file *file,
+				const char __user *user_buf,
+				size_t count, loff_t *ppos)
+{
+	struct dsi_display *display = file->private_data;
+	char buf[256];
+	u32 standard_cmd_type, custom_cmd_type, resp_req_val = 0;
+	u32 cmd_remap_table[DSI_CMD_SET_MAX];
+	bool resp_req;
+	int rc = 0;
+	int i;
+
+	if (!display)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+
+	/* Parse input: "standard_cmd_type custom_cmd_type [resp_req]" */
+	if (sscanf(buf, "%u %u %u", &standard_cmd_type, &custom_cmd_type, &resp_req_val) < 2) {
+		DSI_ERR("Invalid format. Use: <standard_cmd_type> <custom_cmd_type> [resp_req]\n");
+		return -EINVAL;
+	}
+	resp_req = !!resp_req_val;
+
+	/* Validate cmd_type ranges */
+	if (standard_cmd_type >= DSI_CMD_SET_MAX || custom_cmd_type >= DSI_CUSTOM_CMD_SET_MAX) {
+		DSI_ERR("cmd_type out of range. std_type=%u (max=%u), custom_type=%u (max=%u)\n",
+			standard_cmd_type, DSI_CMD_SET_MAX, custom_cmd_type,
+			DSI_CUSTOM_CMD_SET_MAX);
+		return -EINVAL;
+	}
+
+	/*
+	 * custom_cmd_type must be in the custom range OR equal to
+	 * standard_cmd_type (pointing back to the original mapping).
+	 */
+	if (custom_cmd_type < DSI_CUSTOM_CMD_SET_START_IDX &&
+			custom_cmd_type != standard_cmd_type) {
+		DSI_ERR("custom_cmd_type=%u must be >= %u or equal to standard_cmd_type=%u\n",
+			custom_cmd_type, DSI_CUSTOM_CMD_SET_START_IDX, standard_cmd_type);
+		return -EINVAL;
+	}
+
+	/* Build cmd_remap_table: initialize all entries to DSI_CMD_SET_MAX (no remap) */
+	for (i = 0; i < DSI_CMD_SET_MAX; i++)
+		cmd_remap_table[i] = DSI_CMD_SET_MAX;
+	cmd_remap_table[standard_cmd_type] = custom_cmd_type;
+
+	rc = dsi_hfi_add_dsi_cmd_remap(display, cmd_remap_table, DSI_CMD_SET_MAX, resp_req);
+	if (rc) {
+		DSI_ERR("Failed to add DSI cmd remap, rc=%d\n", rc);
+		return rc;
+	}
+
+	return count;
+}
+
+/**
+ * debugfs_cmd_replace_write() - debugfs write handler for cmd_replace node
+ *
+ * Accepts a single write in the format:
+ *   <cmd_type> <cmd_state> <resp_req> <hex_byte0> <hex_byte1> ...
+ *
+ * @cmd_type:  decimal integer in range [0, DSI_CMD_SET_MAX); selects which
+ *             standard DSI command set to override.
+ * @cmd_state: decimal integer; 0 = DSI_CMD_SET_STATE_LP (low-power),
+ *                              1 = DSI_CMD_SET_STATE_HS (high-speed).
+ * @resp_req:  decimal integer; 0 = no response required (fire-and-forget),
+ *                              1 = wait for DCP acknowledgment.
+ * @bytes:     space-separated integers (decimal or 0x-prefixed hex) representing
+ *             one or more DSI command packets in device-tree wire format:
+ *             [type][ctrl][chan][flags][wait][len_hi][len_lo][payload...]
+ *
+ * On success the command is captured via dsi_hfi_add_rt_custom_dcs_cmd()
+ * and immediately sent to DCP via dsi_hfi_send_dcs_cmd_set_replace_cmd().
+ */
+static ssize_t debugfs_cmd_replace_write(struct file *file,
+					 const char __user *user_buf,
+					 size_t count, loff_t *ppos)
+{
+	struct dsi_display *display = file->private_data;
+	char *buf, *tmp, *token;
+	u32 cmd_type_val, cmd_state_val, resp_req_val = 0;
+	enum dsi_cmd_set_type cmd_type;
+	enum dsi_cmd_set_state cmd_state;
+	bool resp_req;
+	u8 *cmd_data = NULL;
+	u32 cmd_data_len = 0;
+	u32 pkt_count = 0;
+	int rc = 0, strtoint = 0;
+
+	if (!display)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0;
+
+	if (count >= SZ_4K)
+		return -EINVAL;
+
+	buf = kzalloc(count + 1, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	if (copy_from_user(buf, user_buf, count)) {
+		rc = -EFAULT;
+		goto free_buf;
+	}
+	buf[count] = '\0';
+	tmp = buf;
+
+	/* Parse and validate cmd_type */
+	token = strsep(&tmp, " \t\n");
+	if (!token || kstrtou32(token, 10, &cmd_type_val)) {
+		DSI_ERR("cmd_replace: missing or invalid cmd_type\n");
+		rc = -EINVAL;
+		goto free_buf;
+	}
+	if (cmd_type_val >= DSI_CMD_SET_MAX) {
+		DSI_ERR("cmd_replace: cmd_type %u out of range (max %u)\n",
+			cmd_type_val, DSI_CMD_SET_MAX);
+		rc = -EINVAL;
+		goto free_buf;
+	}
+	cmd_type = (enum dsi_cmd_set_type)cmd_type_val;
+
+	/* Parse and validate cmd_state (0 = LP, 1 = HS) */
+	token = strsep(&tmp, " \t\n");
+	if (!token || kstrtou32(token, 10, &cmd_state_val)) {
+		DSI_ERR("cmd_replace: missing or invalid cmd_state\n");
+		rc = -EINVAL;
+		goto free_buf;
+	}
+	if (cmd_state_val >= DSI_CMD_SET_STATE_MAX) {
+		DSI_ERR("cmd_replace: cmd_state %u out of range (0=LP, 1=HS)\n",
+			cmd_state_val);
+		rc = -EINVAL;
+		goto free_buf;
+	}
+	cmd_state = (enum dsi_cmd_set_state)cmd_state_val;
+
+	/* Parse and validate resp_req (0 = no response, 1 = response required) */
+	token = strsep(&tmp, " \t\n");
+	if (!token || kstrtou32(token, 10, &resp_req_val)) {
+		DSI_ERR("cmd_replace: missing or invalid resp_req\n");
+		rc = -EINVAL;
+		goto free_buf;
+	}
+	resp_req = !!resp_req_val;
+
+	/* Allocate staging buffer for the raw command bytes */
+	cmd_data = kzalloc(SZ_4K, GFP_KERNEL);
+	if (!cmd_data) {
+		rc = -ENOMEM;
+		goto free_buf;
+	}
+
+	/* Parse space-separated decimal/hex integers into cmd_data */
+	token = strsep(&tmp, " \t\n");
+	while (token) {
+		if (!*token) {
+			token = strsep(&tmp, " \t\n");
+			continue;
+		}
+
+		rc = kstrtoint(token, 0, &strtoint);
+		if (rc || strtoint < 0 || strtoint > 0xFF) {
+			DSI_ERR("cmd_replace: invalid byte value '%s'\n", token);
+			rc = -EINVAL;
+			goto free_cmd_data;
+		}
+
+		if (cmd_data_len >= SZ_4K) {
+			DSI_ERR("cmd_replace: command data exceeds buffer\n");
+			rc = -EINVAL;
+			goto free_cmd_data;
+		}
+
+		cmd_data[cmd_data_len++] = (u8)strtoint;
+		token = strsep(&tmp, " \t\n");
+	}
+
+	if (!cmd_data_len) {
+		DSI_ERR("cmd_replace: no command bytes provided\n");
+		rc = -EINVAL;
+		goto free_cmd_data;
+	}
+
+	/* Validate that the byte stream forms well-structured DSI packets */
+	rc = dsi_panel_get_cmd_pkt_count(cmd_data, cmd_data_len, &pkt_count);
+	if (rc || !pkt_count) {
+		DSI_ERR("cmd_replace: invalid packet format rc=%d pkt_count=%u\n",
+			rc, pkt_count);
+		if (!rc)
+			rc = -EINVAL;
+		goto free_cmd_data;
+	}
+
+	DSI_DEBUG("cmd_replace: cmd_type=%u cmd_state=%u resp_req=%u pkt_count=%u data_len=%u\n",
+		  cmd_type_val, cmd_state_val, resp_req_val, pkt_count, cmd_data_len);
+
+	/* Capture the command into the HFI shared buffer */
+	rc = dsi_hfi_add_rt_custom_dcs_cmd(display, cmd_type,
+					       cmd_data, cmd_data_len,
+					       cmd_state);
+	if (rc) {
+		DSI_ERR("cmd_replace: capture failed rc=%d\n", rc);
+		goto free_cmd_data;
+	}
+
+	/* Send the replace command to DCP */
+	rc = dsi_hfi_send_dcs_cmd_set_replace_cmd(display, resp_req);
+	if (rc)
+		DSI_ERR("cmd_replace: send replace failed rc=%d\n", rc);
+
+free_cmd_data:
+	kfree(cmd_data);
+free_buf:
+	kfree(buf);
+	return rc ? rc : count;
+}
+
 static const struct file_operations dump_info_fops = {
 	.open = simple_open,
 	.read = debugfs_dump_info_read,
@@ -2156,6 +2387,16 @@ static const struct file_operations dsi_command_scheduling_fops = {
 	.open = simple_open,
 	.write = debugfs_update_cmd_scheduling_params,
 	.read = debugfs_read_cmd_scheduling_params,
+};
+
+static const struct file_operations cmd_remap_fops = {
+	.open = simple_open,
+	.write = debugfs_cmd_remap_write,
+};
+
+static const struct file_operations cmd_replace_fops = {
+	.open = simple_open,
+	.write = debugfs_cmd_replace_write,
 };
 
 static int dsi_display_debugfs_init(struct dsi_display *display)
@@ -2224,6 +2465,30 @@ static int dsi_display_debugfs_init(struct dsi_display *display)
 		rc = PTR_ERR(dump_file);
 		DSI_ERR("[%s] debugfs for cmd scheduling file failed, rc=%d\n",
 		       display->name, rc);
+		goto error_remove_dir;
+	}
+
+	dump_file = debugfs_create_file("cmd_remap",
+					0200,
+					dir,
+					display,
+					&cmd_remap_fops);
+	if (IS_ERR_OR_NULL(dump_file)) {
+		rc = PTR_ERR(dump_file);
+		DSI_ERR("[%s] debugfs for cmd remap file failed, rc=%d\n",
+			display->name, rc);
+		goto error_remove_dir;
+	}
+
+	dump_file = debugfs_create_file("cmd_replace",
+					0200,
+					dir,
+					display,
+					&cmd_replace_fops);
+	if (IS_ERR_OR_NULL(dump_file)) {
+		rc = PTR_ERR(dump_file);
+		DSI_ERR("[%s] debugfs for cmd_replace failed, rc=%d\n",
+			display->name, rc);
 		goto error_remove_dir;
 	}
 
@@ -7902,6 +8167,8 @@ static int dsi_display_get_modes_helper(struct dsi_display *display,
 			rc = -ENOMEM;
 			return rc;
 		}
+
+		display_mode.priv_info->mode_idx = display_mode.mode_idx;
 
 		/* Setup widebus support */
 		display_mode.priv_info->widebus_support = ctrl->ctrl->hw.widebus_support;

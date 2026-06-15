@@ -747,7 +747,7 @@ static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_id
 	struct hfi_buff_dpu hfi_cfg = {0};
 	int ret = 0;
 
-	if (!cfg || dpu_idx >= DPU_MAX) {
+	if (!cfg || dpu_idx >= DPU_MAX || (cfg->dspp_start_idx + cfg->num_of_mixers) > DSPP_MAX) {
 		DRM_ERROR("invalid params cfg - %p, dpu idx %d\n", cfg, dpu_idx);
 		return -EINVAL;
 	}
@@ -838,7 +838,8 @@ static int hfi_write_kick_off_v1(struct sde_reg_dma_kickoff_cfg *cfg, u32 dpu_id
 			else
 				DRM_DEBUG("non-broadcast feature: submitted to prop_helper\n");
 			/* reset the cached struct after submitting to FW */
-			memset(&hfi_cfg_cached[dpu_idx][0], 0, sizeof(hfi_cfg_cached[dpu_idx]));
+			memset(&hfi_cfg_cached[dpu_idx][cfg->dspp_start_idx], 0,
+				sizeof(hfi_cfg_cached[dpu_idx][0]) * cfg->num_of_mixers);
 			return ret;
 		}
 	} else {

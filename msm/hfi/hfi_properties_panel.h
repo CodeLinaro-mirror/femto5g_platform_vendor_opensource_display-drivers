@@ -857,6 +857,112 @@
 #define HFI_PROPERTY_PANEL_DYN_REF_CLK_FREQS                         0x00040038
 
 /*
+ * HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY - Specifies the Panel Operating Mode Switch
+ *                                capabilities of the panel.
+ *                                This property is sent to DCP as part of
+ *                                HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY |
+ *                               (version=0 << 20) | (dsize=2 << 24 )
+ *   (u32_value) payload[1]    : panel_mode_switch_enabled (1 = supported, 0 = not supported)
+ *   (u32_value) payload[2]    : vsync_aligned_switch (1 = align vsync, 0 = no alignment)
+ */
+#define HFI_PROPERTY_PANEL_OPERATING_SWITCH_CAPABILITY               0x00040039
+
+/*
+ * HFI_PROPERTY_PANEL_DISPLAY_TYPE - Specifies the type of the display-
+ *                                 BUILT_IN and their priority(i.e 0,1 etc)
+ *                                 This property is sent to DCP as part of
+ *                                 HFI_COMMAND_PANEL_INIT_GENERIC_CAPS
+ *                                 command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DISPLAY_TYPE
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DISPLAY_TYPE |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : one of enum hfi_panel_display_type
+ */
+#define HFI_PROPERTY_PANEL_DISPLAY_TYPE                              0x0004003A
+
+/*
+ * HFI_PROPERTY_PANEL_ULPS_SUPPORTED - Specifies whether ULPS (Ultra Low Power State)
+ *                                     is supported by the panel.
+ *                                     This property is sent to DCP as part of
+ *                                     HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_ULPS_SUPPORTED
+ *
+ * Hfi packet layout           | Value
+ *-----------------------------|------------------------------------------
+ *     (u32_key) payload[0]    | HFI_PROPERTY_PANEL_ULPS_SUPPORTED \|
+ * ^                           | (version=0 << 20) \| (dsize=1 << 24 )
+ *   (u32_value) payload[1]    | HFI_TRUE / HFI_FALSE
+ */
+#define HFI_PROPERTY_PANEL_ULPS_SUPPORTED                            0x0004003B
+
+/*
+ * HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO - Specifies the DSI custom command set start
+ *                                                   index and count. OEMs can define custom command
+ *                                                   types at host level from which start index and
+ *                                                   count would be derived. This property is sent
+ *                                                   to DCP as part of
+ *                                                   HFI_COMMAND_PANEL_INIT_GENERIC_CAPS command
+ *                                                   packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO |
+ *                               (version=0 << 20) | (dsize=2 << 24 )
+ *   (u32_value) payload[1]    : Custom command set start index
+ *   (u32_value) payload[2]    : Custom command set count
+ */
+#define HFI_PROPERTY_PANEL_DSI_CUSTOM_DCS_CMDS_SET_INFO              0x00040040
+
+/*
+ * HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS - Provides per-mode esync timing capabilities for VHM panel.
+ *                                  This property is sent to DCP as part of
+ *                                  HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS command packet payload.
+ *                                  Unlike HFI_PROPERTY_PANEL_ESYNC_CAPS which provides panel-level
+ *                                  esync capabilities, this property provides mode-specific esync
+ *                                  timing parameters that may vary between different display modes.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS |
+ *                                  (version=0 << 20) | (dsize=5 << 24 )
+ *   (u32_value) payload[1..5]    : struct hfi_panel_esync_caps
+ */
+#define HFI_PROPERTY_PANEL_ESYNC_TIMING_CAPS                         0x00040041
+
+/*
+ * HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS - Provides per-mode qsync timing parameters
+ *                                         for panels supporting QSYNC/AVR. This property
+ *                                         specifies the qsync parameters for each timing mode,
+ *                                         allowing different modes to have different qsync
+ *                                         configurations. This property is sent to DCP as part of
+ *                                         HFI_COMMAND_PANEL_INIT_TIMING_MODE_CAPS
+ *                                         command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS
+ *     (u32_key) payload[0]       : HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS |
+ *                                  (version=0 << 20) | (dsize=2 << 24 )
+ *   (u32_value) payload[1..2]    : struct hfi_qsync_params
+ */
+#define HFI_PROPERTY_PANEL_QSYNC_TIMING_PARAMS                       0x00040042
+
+/*
+ * HFI_PROPERTY_PANEL_COLOR_FORMAT - Specifies the current display
+ *                                   format being used by the panel.
+ *                                   This property is sent to DCP as part
+ *                                   of HFI_COMMAND_PANEL_INIT_PANEL_CAPS
+ *                                   command packet payload.
+ *
+ * @PanelInit - HFI_PROPERTY_PANEL_COLOR_FORMAT
+ *     (u32_key) payload[0]    : HFI_PROPERTY_PANEL_COLOR_FORMAT |
+ *                               (version=0 << 20) | (dsize=1 << 24 )
+ *   (u32_value) payload[1]    : one of the formats from enum hfi_color_formats
+ */
+#define HFI_PROPERTY_PANEL_COLOR_FORMAT                              0x00040043
+
+/*
  * All panel property IDs end here
  */
 #define HFI_PROPERTY_PANEL_END                                       0x0004FFFF

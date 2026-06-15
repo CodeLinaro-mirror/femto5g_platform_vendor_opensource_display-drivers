@@ -210,6 +210,7 @@ static u32 sde_cp_crtc_feat_to_hfi_prop_id[SDE_CP_CRTC_MAX_FEATURES] = {
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_CONFIG,
 	[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_SSRC_DATA,
 	[SDE_CP_CRTC_DSPP_MDNIE] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE,
+	[SDE_CP_CRTC_DSPP_MDNIE_IPC] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_IPC,
 	[SDE_CP_CRTC_DSPP_MDNIE_ART] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_MDNIE_ART,
 	[SDE_CP_CRTC_DSPP_AIQE_ABC] = HFI_PROPERTY_DISPLAY_COLOR_AIQE_ABC,
 	[SDE_CP_CRTC_DSPP_HIST_CTRL] = HFI_PROPERTY_DISPLAY_COLOR_PA_HIST_CTRL,
@@ -1574,6 +1575,7 @@ do { \
 	wrappers[SDE_CP_CRTC_DSPP_DEMURA_CFG0_PARAM2] = _set_demura_cfg0_param2; \
 	wrappers[SDE_CP_CRTC_DSPP_MDNIE] = set_mdnie_feature; \
 	wrappers[SDE_CP_CRTC_DSPP_MDNIE_ART] = set_mdnie_art_feature; \
+	wrappers[SDE_CP_CRTC_DSPP_MDNIE_IPC] = set_mdnie_ipc; \
 	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_CONFIG] = set_aiqe_ssrc_config; \
 	wrappers[SDE_CP_CRTC_DSPP_AIQE_SSRC_DATA] = set_aiqe_ssrc_data; \
 	wrappers[SDE_CP_CRTC_DSPP_COPR] = set_copr_feature; \
@@ -6103,8 +6105,10 @@ void sde_cp_set_skip_blend_plane_info(struct drm_crtc *drm_crtc,
 	mutex_lock(&crtc->crtc_cp_lock);
 	plane_valid = skip_blend->valid_plane;
 
-	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[SB_PLANE_REAL] :
-		&crtc->skip_blend_planes[SB_PLANE_VIRT];
+	int slot_idx = (skip_blend->plane == SSPP_DMA1) ? 0 : 1;
+
+	skip_plane = (!skip_blend->is_virtual) ? &crtc->skip_blend_planes[slot_idx][SB_PLANE_REAL] :
+		&crtc->skip_blend_planes[slot_idx][SB_PLANE_VIRT];
 
 	skip_plane->valid = plane_valid;
 	skip_plane->plane = (plane_valid) ? skip_blend->plane : SSPP_NONE;

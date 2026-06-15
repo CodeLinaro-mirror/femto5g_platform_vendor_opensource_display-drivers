@@ -2615,7 +2615,7 @@ static void sde_encoder_phys_cmd_setup_vsync_source(struct sde_encoder_phys *phy
 	struct sde_connector *sde_conn;
 	enum msm_disp_op disp_op;
 
-	if (!phys_enc || !phys_enc->hw_intf)
+	if (!phys_enc || !phys_enc->hw_intf || !phys_enc->connector)
 		return;
 
 	disp_op = sde_encoder_get_disp_op(phys_enc->parent);

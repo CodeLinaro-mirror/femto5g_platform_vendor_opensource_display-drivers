@@ -683,7 +683,7 @@ struct sde_crtc {
 
 	struct sde_aiqe_top_level aiqe_top_level;
 	struct sde_io_res ai_scaler_res;
-	struct sde_cp_skip_blend_plane skip_blend_planes[SB_PLANE_MAX];
+	struct sde_cp_skip_blend_plane skip_blend_planes[SB_PIPE_MAX][SB_PLANE_MAX];
 
 	struct sde_cesta_client *cesta_client;
 	u32 mdnie_art_frame_count;
