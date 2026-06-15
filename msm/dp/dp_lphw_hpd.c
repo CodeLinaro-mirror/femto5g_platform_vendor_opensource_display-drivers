@@ -172,7 +172,7 @@ static void dp_lphw_hpd_host_deinit(struct dp_hpd *dp_hpd,
 static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 {
 	struct dp_lphw_hpd_private *lphw_hpd;
-	u32 isr = 0;
+	u32 isr = 0, status = 0;
 	int rc = 0;
 
 	if (!dp_hpd) {
@@ -184,14 +184,73 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 
 	isr = lphw_hpd->catalog->get_interrupt(lphw_hpd->catalog);
 
+	/* Skip check if no interrupt */
+	if (!(isr & DP_HPD_INT_STATUS_MASK))
+		return;
+
 	if (lphw_hpd->base.skip_isr) {
 		DP_INFO("DP ignored isr during dp suspend, hpd isr state: 0x%x\n", isr);
 		return;
 	}
+	status = (isr >> 29) & 0x7;
 
-	if (isr & DP_HPD_UNPLUG_INT_STATUS) { /* disconnect interrupt */
+	/* Check for uncommon cases */
+	switch (status) {
+	case DP_HPD_STATUS_DISCONNECTED:
+		if (!(isr & DP_HPD_UNPLUG_INT_STATUS))
+			DP_INFO("disconnect but no interrupt, hpd isr state: 0x%x\n", isr);
+		if (isr & (DP_HPD_PLUG_INT_STATUS | DP_HPD_REPLUG_INT_STATUS))
+			DP_INFO("missed connect interrupt, hpd isr state: 0x%x\n", isr);
+		if (isr & DP_IRQ_HPD_INT_STATUS)
+			DP_INFO("missed hpd_irq interrupt, hpd isr state: 0x%x\n", isr);
+		break;
+	case DP_HPD_STATUS_CONNECT_PENDING:
+		DP_INFO("connect pending, hpd isr state: 0x%x\n", isr);
+		break;
+	case DP_HPD_STATUS_CONNECTED:
+		if (!(isr & (DP_HPD_PLUG_INT_STATUS | DP_HPD_REPLUG_INT_STATUS
+			| DP_IRQ_HPD_INT_STATUS)) && !lphw_hpd->hpd)
+			DP_INFO("connect but no interrupt, hpd isr state: 0x%x\n", isr);
+		if (isr & DP_HPD_UNPLUG_INT_STATUS) {
+			if (lphw_hpd->base.hpd_high) {
+				DP_INFO("missed disconnect interrupt, hpd isr state: 0x%x\n", isr);
+				lphw_hpd->hpd = false;
+				lphw_hpd->base.hpd_high = false;
+				lphw_hpd->base.alt_mode_cfg_done = false;
+				lphw_hpd->base.hpd_irq = false;
 
-		DP_DEBUG("disconnect interrupt, hpd isr state: 0x%x\n", isr);
+				rc = queue_work(lphw_hpd->connect_wq,
+						&lphw_hpd->disconnect);
+				if (!rc)
+					DP_DEBUG("disconnect not queued\n");
+			} else {
+				DP_INFO("missed multiple interrupts, hpd isr state: 0x%x\n", isr);
+			}
+		}
+		break;
+	case DP_HPD_STATUS_HPD_IO_GLITCH_COUNT:
+		DP_INFO("hpd io glitch counting, hpd isr state: 0x%x\n", isr);
+		break;
+	case DP_HPD_STATUS_IRQ_HPD_PULSE_COUNT:
+		DP_INFO("hpd irq counting, hpd isr state: 0x%x\n", isr);
+		break;
+	case DP_HPD_STATUS_HPD_REPLUG_COUNT:
+		DP_INFO("hpd replug counting, hpd isr state: 0x%x\n", isr);
+		break;
+	default:
+		break;
+	}
+
+	/*
+	 * Process based on most updated HPD status, instead of interrupt bits.
+	 * Note: for CONNECTED+UNPLUG case, switch above has already queued
+	 * disconnect and cleared hpd_high; the connect branch below will then
+	 * see !hpd_high and queue connect, completing the missed-disconnect
+	 * recovery in one ISR invocation.
+	 */
+	if (status == DP_HPD_STATUS_DISCONNECTED) { /* disconnect status */
+
+		DP_INFO("disconnect interrupt, hpd isr state: 0x%x\n", isr);
 
 		if (lphw_hpd->base.hpd_high) {
 			lphw_hpd->hpd = false;
@@ -204,29 +263,34 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 			if (!rc)
 				DP_DEBUG("disconnect not queued\n");
 		} else {
-			DP_ERR("already disconnected\n");
+			DP_INFO("already disconnected\n");
 		}
 
-	} else if (isr & DP_IRQ_HPD_INT_STATUS) { /* attention interrupt */
-
-		DP_DEBUG("hpd_irq interrupt, hpd isr state: 0x%x\n", isr);
-
-		rc = queue_work(lphw_hpd->connect_wq, &lphw_hpd->attention);
-		if (!rc)
-			DP_DEBUG("attention not queued\n");
-	} else if (isr & DP_HPD_PLUG_INT_STATUS) {
-
-		DP_DEBUG("connect interrupt, hpd isr state: 0x%x\n", isr);
-
-		if (!lphw_hpd->hpd) {
+	} else if ((status == DP_HPD_STATUS_CONNECTED) &&
+			!(isr & DP_IRQ_HPD_INT_STATUS)) { /* connected status: PLUG or REPLUG */
+		if (!lphw_hpd->base.hpd_high) {
+			DP_INFO("connect interrupt, hpd isr state: 0x%x\n", isr);
 			lphw_hpd->hpd = true;
 			rc = queue_work(lphw_hpd->connect_wq,
 					&lphw_hpd->connect);
 			if (!rc)
 				DP_DEBUG("connect not queued\n");
 		} else {
-			DP_ERR("already connected\n");
+			DP_INFO("redundant connect interrupt, hpd isr state: 0x%x\n", isr);
 		}
+
+	} else if ((status == DP_HPD_STATUS_CONNECTED) &&
+			(isr & DP_IRQ_HPD_INT_STATUS)) { /* attention interrupt */
+
+		DP_INFO("hpd_irq interrupt, hpd isr state: 0x%x\n", isr);
+
+		rc = queue_work(lphw_hpd->connect_wq, &lphw_hpd->attention);
+		if (!rc)
+			DP_DEBUG("attention not queued\n");
+
+	} else { /* intermediate status */
+
+		DP_INFO("ignored, hpd isr state: 0x%x\n", isr);
 
 	}
 }
