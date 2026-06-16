@@ -41,7 +41,7 @@
 
 #define DRM_DP_IPC_NUM_PAGES 10
 #define HPD_STRING_SIZE	    30
-#define MAX_MODES           32
+#define MAX_MODES           64
 
 /* HDCP 2.x message IDs */
 #define SKE_SEND_EKS            11
@@ -876,7 +876,7 @@ static int _init_addr_maps(struct dp_hfi *hfi)
 	struct hfi_client_t *hfi_client = hfi->hfi_client;
 
 	if (!hfi->edid_addr_map) {
-		hfi->edid_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K);
+		hfi->edid_addr_map = dp_mgr_hfi_init_shared_addr(hfi_client, SZ_4K * 2);
 		if (!hfi->edid_addr_map) {
 			DP_ERR("failed to allocate remote address for edid\n");
 			return -ENOMEM;
@@ -1363,10 +1363,12 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 		struct drm_display_mode *mode, const struct msm_resource_caps_info *avail_res)
 {
 	struct dp_mgr_hfi_priv *hfi_priv;
+	struct hfi_display_mode_info *hfi_mode;
 	int i;
 	u32 drm_refresh_rate;
 	u32 stream_id;
 	struct dp_hfi *hfi;
+	bool aspect_match = true;
 
 	if (!client || !mode) {
 		DP_ERR("Invalid params\n");
@@ -1389,8 +1391,6 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 	 * is rejected while override is active.
 	 */
 	if (hfi->mode_ovr.enabled) {
-		bool aspect_match = true;
-
 		/* If override aspect is non-zero, enforce aspect match.
 		 * If override aspect is 0, treat it as "don't care".
 		 */
@@ -1425,7 +1425,7 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 	}
 
 	for (i = 0; i < hfi->mode_count; i++) {
-		struct hfi_display_mode_info *hfi_mode = &hfi->mode_list[i].base;
+		hfi_mode = &hfi->mode_list[i].base;
 
 		/* Compare resolution and refresh rate */
 		if ((hfi_mode->h_active == mode->hdisplay) &&
@@ -1441,18 +1441,67 @@ static enum drm_mode_status dp_mgr_hfi_validate_mode(struct dp_client *client, i
 	return MODE_ERROR;
 }
 
+static int _add_drm_mode(struct drm_connector *connector, struct hfi_display_mode_info *m)
+{
+	struct drm_display_mode *mode;
+	u32 htotal, vtotal;
+
+	mode = drm_mode_create(connector->dev);
+	if (!mode) {
+		DP_ERR("Failed to create DRM mode\n");
+		return -EINVAL;
+	}
+
+	htotal = m->h_active + m->h_front_porch + m->h_sync_width + m->h_back_porch;
+	vtotal = m->v_active + m->v_front_porch + m->v_sync_width + m->v_back_porch;
+
+	mode->hdisplay    = m->h_active;
+	mode->hsync_start = m->h_active + m->h_front_porch;
+	mode->hsync_end   = m->h_active + m->h_front_porch + m->h_sync_width;
+	mode->htotal      = htotal;
+	mode->hskew       = m->h_skew;
+
+	mode->vdisplay    = m->v_active;
+	mode->vsync_start = m->v_active + m->v_front_porch;
+	mode->vsync_end   = m->v_active + m->v_front_porch + m->v_sync_width;
+	mode->vtotal      = vtotal;
+
+	/* Calculate pixel clock in kHz from timing parameters */
+	mode->clock = (u32)div_u64((u64)htotal * vtotal * m->refresh_rate, 1000);
+
+	if (m->h_sync_polarity == 0)
+		mode->flags |= DRM_MODE_FLAG_NHSYNC;
+	else
+		mode->flags |= DRM_MODE_FLAG_PHSYNC;
+
+	if (m->v_sync_polarity == 0)
+		mode->flags |= DRM_MODE_FLAG_NVSYNC;
+	else
+		mode->flags |= DRM_MODE_FLAG_PVSYNC;
+
+	mode->type = DRM_MODE_TYPE_DRIVER;
+	mode->status = MODE_OK;
+	drm_mode_set_name(mode);
+	drm_mode_probed_add(connector, mode);
+
+	return 0;
+}
+
 static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 		struct dp_display_mode *dp_mode)
 {
-	int rc = 0;
 	struct dp_mgr_hfi_priv *hfi_priv;
 	struct drm_connector *connector;
-	struct drm_display_mode *mode, *tmp;
-	struct drm_display_mode *override_mode = NULL;
+	struct sde_edid_ctrl *edid_ctrl;
+	struct hfi_display_mode_info *m;
 	u32 ovr_h, ovr_v, ovr_fps;
 	u32 stream_id;
 	struct dp_hfi *hfi;
-	u32 cnt;
+	bool override_found = false;
+	bool override_match, default_match;
+	u32 htotal, vtotal, clock;
+	u32 cnt = 0;
+	int i;
 
 	if (!client) {
 		DP_ERR("Invalid params\n");
@@ -1466,64 +1515,91 @@ static int dp_mgr_hfi_get_modes(struct dp_client *client, int panel_id,
 	stream_id = panel_to_stream(hfi_priv, panel_id);
 	hfi = hfi_priv->hfi[stream_id];
 	connector = hfi->connector;
+	edid_ctrl = hfi->edid_ctrl;
 
-	/* Now populate fresh modes from EDID */
-	cnt = _sde_edid_update_modes(connector, hfi->edid_ctrl);
+	if (!connector || !edid_ctrl) {
+		DP_ERR("Invalid connector or edid_ctrl\n");
+		return 0;
+	}
+
+	/*
+	 * Update the connector EDID property and parse extended block info
+	 * (HDR, colorimetry, VSVDB) and HDMI VSDB block from the EDID,
+	 * without adding EDID modes (those are replaced by HFI modes below).
+	 */
+	sde_edid_update_connector_info(connector, edid_ctrl);
 
 	if (dp_mode->timing.pixel_clk_khz)
 		hfi_priv->client.max_pclk_khz = dp_mode->timing.pixel_clk_khz;
 
-	/* If no override is enabled, just return the EDID modes */
-	if (!hfi->mode_ovr.enabled) {
-		DP_DEBUG("HFI get_modes: override disabled, mode_cnt=%d\n", cnt);
-		return cnt;
-	}
+	if (hfi->mode_ovr.enabled) {
+		/*
+		* Override is enabled: only expose HFI modes that are either the
+		* requested override timing or the mandatory default mode.
+		*/
+		ovr_h   = hfi->mode_ovr.h_active;
+		ovr_v   = hfi->mode_ovr.v_active;
+		ovr_fps = hfi->mode_ovr.refresh_rate;
 
-	/*
-	 * Override is enabled: keep only the EDID mode that matches
-	 * the override timing. The override mode must be one of the
-	 * EDID modes, so we do not synthesize any timing here.
-	 */
-	ovr_h   = hfi->mode_ovr.h_active;
-	ovr_v   = hfi->mode_ovr.v_active;
-	ovr_fps = hfi->mode_ovr.refresh_rate;
+		DP_INFO("HFI get_modes: override requested conn:%d %ux%u@%uHz\n",
+				connector->base.id, ovr_h, ovr_v, ovr_fps);
 
-	DP_DEBUG("HFI get_modes: override requested %ux%u@%uHz\n", ovr_h, ovr_v, ovr_fps);
+		for (i = 0; i < hfi->mode_count; i++) {
+			m = &hfi->mode_list[i].base;
+			htotal = m->h_active + m->h_front_porch + m->h_sync_width +
+					m->h_back_porch;
+			vtotal = m->v_active + m->v_front_porch + m->v_sync_width +
+					m->v_back_porch;
+			clock = (u32)div_u64((u64)htotal * vtotal * m->refresh_rate, 1000);
 
-	/* Find the matching mode in the connector's mode list */
-	list_for_each_entry(mode, &connector->modes, head) {
-		u32 mode_fps = drm_mode_vrefresh(mode);
+			override_match = (m->h_active == ovr_h) &&
+					(m->v_active == ovr_v) &&
+					(m->refresh_rate == ovr_fps);
+			default_match = (m->h_active == DEFAULT_MODE_WIDTH) &&
+					(m->v_active == DEFAULT_MODE_HEIGHT) &&
+					(clock == DEFAULT_MODE_CLOCK);
 
-		if ((mode->hdisplay == ovr_h) && (mode->vdisplay == ovr_v) &&
-				(mode_fps == ovr_fps)) {
-			override_mode = mode;
-			break;
-		}
-	}
+			if (!override_match && !default_match)
+				continue;
 
-	if (!override_mode) {
-		DP_ERR("HFI get_modes: override %ux%u@%uHz not found. disabling override. rc=%d\n",
-			ovr_h, ovr_v, ovr_fps, rc);
-		return rc;
-	}
+			if (override_match)
+				override_found = true;
 
-	/*
-	 * Remove all other modes from the list, leaving only the override
-	 * mode exposed to user space and the mandatory default mode (640x480@60).
-	 */
-	cnt = 0;
-	list_for_each_entry_safe(mode, tmp, &connector->modes, head) {
-		if ((mode == override_mode) || _default_mode(mode)) {
+			if (_add_drm_mode(connector, m))
+				continue;
+
 			cnt++;
+			DP_INFO("DP%d:conn%d: Override Mode[%d]: %ux%u@%uHz%s\n",
+					hfi->stream_id, connector->base.id, i,
+					m->h_active, m->v_active, m->refresh_rate,
+					default_match ? " default" : "");
+		}
+
+		if (override_found) {
+			DP_DEBUG("HFI get_modes: override enabled, returning %d modes\n", cnt);
 		} else {
-			/* remove mode */
-			list_del(&mode->head);
-			drm_mode_destroy(connector->dev, mode);
+			DP_ERR("HFI get_modes: override %ux%u@%uHz not found. disabling override\n",
+				ovr_h, ovr_v, ovr_fps);
+			hfi->mode_ovr.enabled = false;
 		}
 	}
 
-	DP_DEBUG("HFI get_modes: override enabled, exposing only %ux%u@%uHz, returning %d\n",
-		override_mode->hdisplay, override_mode->vdisplay, ovr_fps, cnt);
+	/* If no override is enabled, expose all HFI modes. */
+	if (!hfi->mode_ovr.enabled) {
+		/* Add modes from HFI mode list instead of raw EDID */
+		for (i = 0; i < hfi->mode_count; i++) {
+			m = &hfi->mode_list[i].base;
+
+			if (_add_drm_mode(connector, m))
+				continue;
+			cnt++;
+			DP_INFO("DP%d:conn%d: Mode[%d]: %ux%u@%uHz\n", hfi->stream_id,
+					connector->base.id, i, m->h_active, m->v_active,
+					m->refresh_rate);
+		}
+
+		DP_DEBUG("HFI get_modes: override disabled, mode_cnt=%d\n", cnt);
+	}
 
 	return cnt;
 }
@@ -1554,7 +1630,9 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 {
 	struct hfi_display_event_edid_info *info;
 	struct hfi_buff *edid_buf;
+	struct hfi_display_mode_info *mode;
 	int i, len, buf_size, edid_size;
+	int ret;
 	char *buf_addr;
 	struct hfi_shared_addr_map *edid_map;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
@@ -1603,14 +1681,15 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	buf_addr += sizeof(u32);
 	buf_size -= sizeof(u32);
 
-	len = _hfi_process_edid(hfi, buf_addr, edid_size);
-	if (len <= 0) {
-		DP_ERR("Failed to process EDID, skipping modes parsing\n");
-		goto end;
+	if (edid_size) {
+		len = _hfi_process_edid(hfi, buf_addr, edid_size);
+		if (len <= 0) {
+			DP_ERR("Failed to process EDID, skipping modes parsing\n");
+			goto end;
+		}
+		buf_size -= edid_size;
+		buf_addr += edid_size; /* point to modes_info */
 	}
-
-	buf_size -= edid_size;
-	buf_addr += edid_size; /* point to modes_info */
 
 	_hfi_parse_supported_modes(hfi, buf_addr, buf_size);
 	/* Print the list of modes received from DCP */
@@ -1620,7 +1699,7 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 	}
 	DP_INFO("DP%d: Received %u modes from DCP:\n", hfi->stream_id, hfi->mode_count);
 	for (i = 0; i < hfi->mode_count; i++) {
-		struct hfi_display_mode_info *mode = &hfi->mode_list[i].base;
+		mode = &hfi->mode_list[i].base;
 
 		DP_INFO("DP%d: Mode[%d]: %ux%u@%uHz hb:(%u %u %u) vb:(%u %u %u)\n", hfi->stream_id,
 				i, mode->h_active, mode->v_active, mode->refresh_rate,
@@ -1630,7 +1709,7 @@ static void dp_mgr_hfi_handle_dp_info(struct dp_hfi *hfi, void *payload, u32 siz
 end:
 	_hfi_notify_hpd_user(hfi, hfi->connected);
 	if (hfi_priv->audio) {
-		int ret = hfi_priv->audio->on(hfi_priv->audio);
+		ret = hfi_priv->audio->on(hfi_priv->audio);
 		(void)ret;
 	}
 }
@@ -2101,6 +2180,10 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 	u32 *hdcp_support;
 	u32 hfi_event;
 	struct dp_mgr_hfi_priv *hfi_priv = (struct dp_mgr_hfi_priv *) hfi->priv;
+	struct sde_hdcp_init_data init_data = {
+		.msm_hdcp_dev = hfi_priv->msm_hdcp_dev,
+		.client_id = HDCP_CLIENT_DP,
+	};
 
 	if (!payload) {
 		DP_ERR("Invalid payload\n");
@@ -2124,11 +2207,6 @@ static void dp_mgr_hfi_handle_hdcp_feature_supported(struct dp_hfi *hfi, void *p
 
 	/* Initialize HDCP contexts if not already done */
 	if (!hfi->hdcp1x_ctx && hdcp_support[0]) {
-		struct sde_hdcp_init_data init_data = {
-			.msm_hdcp_dev = hfi_priv->msm_hdcp_dev,
-			.client_id = HDCP_CLIENT_DP,
-		};
-
 		hfi->hdcp1x_ctx = dp_hdcp1x_init(&init_data);
 		if (!hfi->hdcp1x_ctx) {
 			DP_WARN("HDCP init failed, continuing without HDCP\n");
@@ -2395,9 +2473,11 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 	struct sde_connector *sde_conn;
 	struct hfi_client_t *hfi_client;
 	struct hfi_display_hdr_cfg hdr_cfg;
+	struct sde_connector_state *c_state;
 	u32 hfi_cmd = HFI_COMMAND_DISPLAY_CONFIG_HDR;
 	int rc = 0;
 	u32 stream_id;
+	u32 payload_size;
 	struct dp_hfi *hfi;
 
 	if (!client) {
@@ -2446,11 +2526,10 @@ static int dp_mgr_hfi_config_hdr(struct dp_client *client, int panel_id,
 
 		/* Copy dynamic HDR (HDR10+) payload if dhdr_update is true */
 		if (dhdr_update && client->base_connector) {
-			struct sde_connector_state *c_state = to_sde_connector_state(
-				client->base_connector->state);
+			c_state = to_sde_connector_state(client->base_connector->state);
 
 			if (c_state && c_state->dyn_hdr_meta.dynamic_hdr_payload_size > 0) {
-				u32 payload_size = min_t(u32,
+				payload_size = min_t(u32,
 					c_state->dyn_hdr_meta.dynamic_hdr_payload_size,
 					HFI_DHDR_PAYLOAD_MAX_SIZE);
 
