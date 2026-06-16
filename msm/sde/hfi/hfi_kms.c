@@ -34,6 +34,8 @@
  */
 #define MIN_BYTES_FOR_PIPE_CAPS(x) DWORDS_TO_BYTES(1 + x[0] +  1)
 
+#define MAX_DEBUG_FEATURES 2
+
 static u32 _hfi_kms_read_lsr_init_caps(struct hfi_catalog_base *catalog,
 		u32 hfi_prop, u32 *payload, u32 max_words);
 
@@ -910,15 +912,15 @@ static int _send_debug_set_common_property_cmd(struct hfi_kms *hfi_kms,
 		u32 feature_type;
 	};
 
-	const struct hfi_debug_feature_cfg features[] = {
+	const struct hfi_debug_feature_cfg features[MAX_DEBUG_FEATURES] = {
 		{ trace_enable, trace_buf_addr, trace_buf_size, HFI_DEBUG_FEATURE_TRACE },
 		{ debug_enable, log_buf_addr,   log_buf_size,   HFI_DEBUG_FEATURE_LOG   },
 	};
 
 	u32 num_features = ARRAY_SIZE(features);
 	struct hfi_kv_pairs kv_pairs[ARRAY_SIZE(features) * 2];
-	struct hfi_debug_buffer_addr_payload bufs[num_features];
-	struct hfi_debug_enable_payload enable_vals[num_features];
+	struct hfi_debug_buffer_addr_payload bufs[MAX_DEBUG_FEATURES];
+	struct hfi_debug_enable_payload enable_vals[MAX_DEBUG_FEATURES];
 	u32 kv_size = 0;
 
 	if (!hfi_kms)
@@ -993,9 +995,10 @@ static int _send_debug_set_common_property_cmd(struct hfi_kms *hfi_kms,
 
 	SDE_EVT32(HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY, SDE_EVTLOG_FUNC_CASE3);
 	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
-	SDE_EVT32(HFI_COMMAND_DEBUG_TRACE_CFG, SDE_EVTLOG_FUNC_CASE3, ret);
+	SDE_EVT32(HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY, SDE_EVTLOG_FUNC_CASE3, ret);
 	if (ret) {
 		SDE_ERROR("failed to send trace config command\n");
+		goto release_cmd_buf;
 		return ret;
 	}
 	SDE_EVT32(HFI_COMMAND_DEBUG_SET_COMMON_PROPERTY, SDE_EVTLOG_FUNC_CASE4, ret);
