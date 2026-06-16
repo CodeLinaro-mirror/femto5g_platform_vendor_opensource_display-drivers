@@ -843,10 +843,12 @@ static void _hfi_update_config(struct dp_mgr_hfi_priv *hfi_priv,
 static int _aux_switch_enable(struct dp_mgr_hfi_priv *hfi_priv, bool enable)
 {
 	int rc;
-	u32 orientation = enable ? hfi_priv->hpd->orientation : ORIENTATION_NONE;
+	u32 orientation;
 
 	if (!hfi_priv->aux_switch)
 		return 0;
+
+	orientation = enable ? hfi_priv->hpd->orientation : ORIENTATION_NONE;
 
 	if (enable) {
 		rc = hfi_priv->aux_switch->init(hfi_priv->aux_switch);
