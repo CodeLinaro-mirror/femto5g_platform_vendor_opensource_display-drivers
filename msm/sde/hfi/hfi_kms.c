@@ -152,6 +152,9 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 			if (encoder->crtc != crtc)
 				continue;
 
+			if (sde_encoder_in_clone_mode(encoder))
+				continue;
+
 			pending_commit_count = sde_encoder_helper_inc_pending(encoder);
 			SDE_EVT32(pending_commit_count);
 		}
