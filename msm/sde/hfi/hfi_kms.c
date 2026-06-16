@@ -392,6 +392,7 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 			CRTC_PROP_LSR_MODE);
 		hfi_kms_get_batch_info(hfi_kms, crtc_state, &batch);
 		hfi_crtc = to_sde_crtc(crtc)->hfi_crtc;
+		avoid_frame_trigger = false;
 
 		if (disp_id == U32_MAX) {
 			SDE_DEBUG("no valid display for crtc:%d\n", DRMID(crtc));
@@ -400,7 +401,8 @@ static int hfi_kms_trigger_commit(struct sde_kms *kms,
 		SDE_DEBUG("getting cmd buffer for disp_id:%d\n", disp_id);
 
 		/* Avoid Frame trigger command on LSR mode commits on primary display*/
-		if (lsr_mode == MSM_DISP_LSR_MODE_ENABLED)
+		if (lsr_mode == MSM_DISP_LSR_MODE_ENABLED ||
+				(hfi_crtc && hfi_crtc->batch_mode_running))
 			avoid_frame_trigger = true;
 
 		cmd_buf = hfi_kms_get_cmd_buf(hfi_kms, disp_id,
