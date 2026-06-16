@@ -1891,6 +1891,8 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 	struct drm_device *dev;
 	int ret;
 	bool cwb_disabling;
+	enum msm_disp_op disp_op;
+	struct sde_encoder_virt *sde_enc;
 
 	if (!kms || !crtc || !crtc->state) {
 		SDE_ERROR("invalid params\n");
@@ -1917,6 +1919,7 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 
 	SDE_ATRACE_BEGIN("sde_kms_wait_for_commit_done");
 	list_for_each_entry(encoder, &dev->mode_config.encoder_list, head) {
+		disp_op = sde_encoder_get_disp_op(encoder);
 		cwb_disabling = false;
 		if (encoder->crtc != crtc) {
 			cwb_disabling = sde_encoder_is_cwb_disabling(encoder, crtc);
@@ -1941,6 +1944,21 @@ static void sde_kms_wait_for_commit_done(struct msm_kms *kms,
 					ret, SDE_EVTLOG_ERROR);
 			sde_crtc_request_frame_reset(crtc, encoder);
 			break;
+		}
+
+		/*
+		 * For HFI CWB disable: the FRAME_CAPTURE_COMPLETE wait just
+		 * completed above.  Now it is safe to deregister the event.
+		 */
+		if (cwb_disabling && IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms))) {
+			sde_enc = to_sde_encoder_virt(encoder);
+
+			if (sde_enc->hal_ops.deregister_cwb_events[disp_op]) {
+				ret = sde_enc->hal_ops.deregister_cwb_events[disp_op](sde_enc);
+				if (ret)
+					SDE_ERROR("crtc:%d enc:%d deregister failed ret:%d\n",
+							DRMID(crtc), DRMID(encoder), ret);
+			}
 		}
 
 		sde_encoder_hw_fence_error_handle(encoder);

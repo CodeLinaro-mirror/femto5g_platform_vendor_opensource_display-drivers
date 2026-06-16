@@ -1349,18 +1349,14 @@ static int hfi_enc_encoder_disable(struct sde_encoder_virt *enc)
 		sde_encoder_is_wb_display(&enc->base)) {
 		/* Disable exactly what we enabled in the enable path */
 		if (sde_encoder_in_clone_mode(&enc->base)) {
-			/* For CWB: Disable frame capture complete */
-			ret = _hfi_enc_wait_for_tx_complete(hfi_enc);
-			if (ret <= 0) {
-				ret = -ETIMEDOUT;
-				SDE_ERROR("wait for event failure\n");
-				return ret;
-			}
-			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_CAPTURE_COMPLETE, false);
-			if (ret) {
-				SDE_ERROR("failed to send capture complete command\n");
-				return ret;
-			}
+			/*
+			 * For CWB clone mode: skip the wait and the
+			 * CAPTURE_COMPLETE deregister here.  The wait must
+			 * happen in sde_kms_wait_for_commit_done() so that the
+			 * primary display commit is not blocked inside
+			 * msm_disable.  hfi_enc_deregister_cwb_events() is called
+			 * from there after the wait completes.
+			 */
 		} else {
 			/* For regular WB: Disable TX complete */
 			ret = hfi_enc_enable_hw_event(enc, MSM_ENC_TX_COMPLETE, false);
@@ -1974,6 +1970,74 @@ static ktime_t hfi_enc_get_vblank_timestamp(struct sde_encoder_virt *enc)
 }
 #endif /* CONFIG_DEBUG_FS */
 
+/*
+ * hfi_enc_deregister_cwb_events - called from sde_kms_wait_for_commit_done() after
+ * the FRAME_CAPTURE_COMPLETE wait has returned for a CWB disable commit.
+ * Deregisters the capture-complete HFI event.
+ */
+static int hfi_enc_deregister_cwb_events(struct sde_encoder_virt *enc)
+{
+	struct hfi_encoder *hfi_enc = to_hfi_encoder(enc);
+	struct hfi_kms *hfi_kms;
+	struct hfi_cmdbuf_t *cmd_buf;
+	u32 display_id, packet_id = 0;
+	int ret = 0;
+	u32 capture_complete_event = HFI_EVENT_FRAME_CAPTURE_COMPLETE;
+
+	if (!enc) {
+		SDE_ERROR("invalid params\n");
+		return -EINVAL;
+	}
+
+	if (!sde_encoder_in_clone_mode(&enc->base)) {
+		SDE_DEBUG("encoder not in clone mode, skipping post disable\n");
+		return 0;
+	}
+
+	hfi_kms = to_hfi_kms(sde_encoder_get_kms(&enc->base));
+	if (!hfi_kms) {
+		SDE_ERROR("failed to get hfi_kms\n");
+		return -EINVAL;
+	}
+
+	display_id = hfi_crtc_get_display_id(enc->crtc, enc->crtc ? enc->crtc->state : NULL);
+	if (display_id == U32_MAX) {
+		SDE_ERROR("failed to get display_id for cwb post disable\n");
+		return -EINVAL;
+	}
+
+	/* Deregister the FRAME_CAPTURE_COMPLETE event */
+	cmd_buf = hfi_adapter_get_cmd_buf(&hfi_kms->hfi_client,
+			display_id, HFI_CMDBUF_TYPE_DISPLAY_INFO_BLOCKING);
+	if (!cmd_buf) {
+		SDE_ERROR("enc:%d failed to get cmd buf for cwb post disable display:%d\n",
+				enc->base.base.id, display_id);
+		return -EINVAL;
+	}
+
+	ret = hfi_adapter_add_get_property(&hfi_kms->hfi_client, cmd_buf,
+			HFI_COMMAND_DISPLAY_EVENT_DEREGISTER, display_id,
+			HFI_PAYLOAD_TYPE_U32, &capture_complete_event,
+			sizeof(capture_complete_event), &hfi_enc->hfi_cb_obj,
+			HFI_HOST_FLAGS_NON_DISCARDABLE, false, &packet_id);
+	if (ret) {
+		SDE_ERROR("failed to deregister capture complete event\n");
+		return ret;
+	}
+
+	ret = hfi_adapter_set_cmd_buf(&hfi_kms->hfi_client, cmd_buf);
+	SDE_EVT32(enc->base.base.id, display_id, HFI_COMMAND_DISPLAY_EVENT_DEREGISTER, ret);
+	if (ret) {
+		SDE_ERROR("failed to send capture complete deregister command\n");
+		return ret;
+	}
+
+	hfi_enc->hw_events_state[MSM_ENC_CAPTURE_COMPLETE].state = false;
+	hfi_enc->hw_events_state[MSM_ENC_CAPTURE_COMPLETE].pending = false;
+
+	return ret;
+}
+
 static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 {
 	sde_enc->hal_ops.kickoff[MSM_DISP_OP_HFI] = hfi_enc_kickoff;
@@ -1993,6 +2057,7 @@ static void _hfi_encoder_setup_ops(struct sde_encoder_virt *sde_enc)
 								hfi_enc_register_panel_dead_event;
 
 	sde_enc->hal_ops.misr_setup[MSM_DISP_OP_HFI] = hfi_enc_misr_setup;
+	sde_enc->hal_ops.deregister_cwb_events[MSM_DISP_OP_HFI] = hfi_enc_deregister_cwb_events;
 }
 
 int hfi_encoder_init(struct drm_device *dev, struct sde_encoder_virt *sde_enc)
