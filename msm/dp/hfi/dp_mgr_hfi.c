@@ -253,9 +253,11 @@ static bool _hfi_notify_hpd_user(struct dp_hfi *hfi, bool connection)
 	snprintf(status, HPD_STRING_SIZE, "status=%s",
 		drm_get_connector_status_name(connector->status));
 
-	/* TODO Update this */
-	snprintf(bpp, HPD_STRING_SIZE, "bpp=%d", 0);
-	snprintf(pattern, HPD_STRING_SIZE, "pattern=%d", 0);
+	snprintf(bpp, HPD_STRING_SIZE, "bpp=%d",
+		connection ? hfi->tgt_bpp : 0);
+	/* test_pattern is u8 (DP compliance test pattern ID, DPCD 0x221) */
+	snprintf(pattern, HPD_STRING_SIZE, "pattern=%u",
+		(connection && hfi->mode_count > 0) ? hfi->mode_list[0].test_pattern : 0);
 
 	DP_INFO("[%s]:[%s] [%s] [%s]\n", name, status, bpp, pattern);
 	envp[0] = name;
