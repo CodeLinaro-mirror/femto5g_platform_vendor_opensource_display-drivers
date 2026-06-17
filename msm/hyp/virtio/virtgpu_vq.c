@@ -178,6 +178,7 @@ retry_recv_packet:
 			VIRTGPU_VQ_ERR("recv and resp type %s(0x%x)\n",
 				virtio_cmd_type(hdr->type), hdr->type);
 		}
+		rc = -EINVAL;
 	}
 
 end:
