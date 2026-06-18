@@ -8409,7 +8409,8 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 {
 	struct sde_encoder_virt *sde_enc;
 	struct sde_kms *sde_kms;
-	int i;
+	enum msm_disp_op disp_op;
+	int i, ret;
 
 	static const struct file_operations debugfs_status_fops = {
 		.open =		_sde_encoder_debugfs_status_open,
@@ -8489,6 +8490,15 @@ static int _sde_encoder_init_debugfs(struct drm_encoder *drm_enc)
 			sde_enc->phys_encs[i]->ops.late_register(
 					sde_enc->phys_encs[i],
 					sde_enc->debugfs_root);
+
+	disp_op = sde_encoder_get_disp_op(drm_enc);
+	if (IS_DISP_OP_HFI(disp_op)) {
+		ret = hfi_enc_debugfs_init(sde_enc);
+		if (ret) {
+			SDE_ERROR_ENC(sde_enc, "failed to init hfi debugfs %d\n", ret);
+			return ret;
+		}
+	}
 
 	return 0;
 }
