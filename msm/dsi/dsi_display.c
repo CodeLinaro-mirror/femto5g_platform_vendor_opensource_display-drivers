@@ -7159,7 +7159,9 @@ int dsi_display_drm_bridge_init(struct dsi_display *display,
 	display->bridge = bridge;
 	priv->bridges[priv->num_bridges++] = &bridge->base;
 
-	if (display->tx_cmd_buf == NULL) {
+	if (display->tx_cmd_buf == NULL &&
+			!(display->ctrl->ctrl->disp_op == MSM_DISP_OP_HFI &&
+			display->trusted_vm_env)) {
 		rc = dsi_host_alloc_cmd_tx_buffer(display);
 		if (rc)
 			DSI_ERR("failed to allocate cmd tx buffer memory\n");
