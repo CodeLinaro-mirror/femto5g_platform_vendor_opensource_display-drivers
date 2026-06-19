@@ -696,7 +696,7 @@ void *sde_debugfs_get_root(struct sde_kms *sde_kms);
  * These functions/definitions allow for building up a 'sde_info' structure
  * containing one or more "key=value\n" entries.
  */
-#if IS_ENABLED(CONFIG_DRM_LOW_MSM_MEM_FOOTPRINT)
+#if IS_ENABLED(CONFIG_DRM_MSM_LOW_MEM_FOOTPRINT)
 #define SDE_KMS_INFO_MAX_SIZE (1 << 12)
 #elif IS_ENABLED(CONFIG_DSI_EXTENDED_MODES)
 #define SDE_KMS_INFO_MAX_SIZE (6 * (1 << 14))
