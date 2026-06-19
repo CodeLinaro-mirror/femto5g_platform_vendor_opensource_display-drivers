@@ -6070,6 +6070,9 @@ int dsi_display_cont_splash_config(void *dsi_display)
 
 	display->is_cont_splash_enabled = true;
 
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI)
+		goto exit;
+
 	/* Update splash status for clock manager */
 	dsi_display_clk_mngr_update_splash_status(display->clk_mngr,
 				display->is_cont_splash_enabled);
@@ -6118,6 +6121,7 @@ clk_manager_update:
 				false);
 	pm_runtime_put_sync(display->drm_dev->dev);
 	display->is_cont_splash_enabled = false;
+exit:
 	mutex_unlock(&display->display_lock);
 	return rc;
 }
@@ -6133,6 +6137,12 @@ int dsi_display_splash_res_cleanup(struct  dsi_display *display)
 
 	if (!display->is_cont_splash_enabled)
 		return 0;
+
+	if (display->ctrl[0].ctrl->disp_op == MSM_DISP_OP_HFI) {
+		display->is_cont_splash_enabled = false;
+		SDE_EVT32(SDE_EVTLOG_FUNC_EXIT, display->is_cont_splash_enabled);
+		return 0;
+	}
 
 	if (display->panel->esync_caps.esync_support
 	    && display->config.panel_mode == DSI_OP_VIDEO_MODE) {

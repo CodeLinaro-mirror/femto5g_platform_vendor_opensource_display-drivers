@@ -555,6 +555,8 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 	u32 payload_size = HFI_PROP_SZ(hfi_prop);
 	u32 vig_index_count;
 	u32 dma_index_count;
+	u32 num_displays, display_id, pipe_mask;
+	u32 prop_sz;
 
 	if (!catalog || !payload)
 		return -EINVAL;
@@ -658,6 +660,27 @@ static u32 _hfi_kms_read_init_caps(struct hfi_catalog_base *catalog,
 		return read;
 	case HFI_PROPERTY_DEVICE_INIT_MAX_DS_RESOLUTION:
 		catalog->max_ds_resolution = payload[read++];
+		break;
+	case HFI_PROPERTY_DEVICE_INIT_ACTIVE_LAYERS:
+		prop_sz = sizeof(struct hfi_device_active_layers_info) / sizeof(u32);
+		num_displays = payload[read++];
+		if (max_words < (1 + num_displays * prop_sz)) {
+			SDE_ERROR("insufficient data for active layers: max_words=%d, need=%d\n",
+					max_words, 1 + num_displays * prop_sz);
+			return read;
+		}
+		for (int i = 0; i < num_displays; i++) {
+			display_id = payload[read++];
+			pipe_mask = payload[read++];
+
+			if (display_id < MAX_DSI_DISPLAYS) {
+				catalog->active_pipes_mask[display_id] = pipe_mask;
+				SDE_INFO("Display ID %d: pipes=0x%x\n", display_id, pipe_mask);
+				SDE_EVT32(display_id, pipe_mask);
+			} else {
+				SDE_ERROR("Invalid display_id %d in active layers\n", display_id);
+			}
+		}
 		break;
 	default:
 		SDE_DEBUG("Unknown device cap key (%u)\n", prop_id);

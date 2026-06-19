@@ -1556,7 +1556,7 @@ static void _sde_kms_release_splash_resource(struct sde_kms *sde_kms,
 	for (i = 0; i < MAX_SPLASH_DISPLAYS; i++) {
 		splash_display = &sde_kms->splash_data.splash_display[i];
 		if (IS_DISP_OP_HFI(priv->disp_op) && splash_display->cont_splash_enabled) {
-			if (splash_display->splash_encoder == best_encoder) {
+			if (splash_display->encoder == best_encoder) {
 				_sde_kms_free_splash_display_data(sde_kms, splash_display);
 				break;
 			}
@@ -4546,6 +4546,7 @@ static int _sde_kms_update_planes_for_cont_splash(struct sde_kms *sde_kms,
 	enum sde_sspp pipe_id;
 	bool is_virtual;
 	int i;
+	enum msm_disp_op disp_op;
 
 	if (!sde_kms || !splash_display || !crtc) {
 		SDE_ERROR("invalid input args\n");
@@ -4556,6 +4557,7 @@ static int _sde_kms_update_planes_for_cont_splash(struct sde_kms *sde_kms,
 	pipe_info = &splash_display->pipe_info;
 	splash = splash_display->splash;
 	demura = splash_display->demura;
+	disp_op = sde_kms_get_disp_op(sde_kms);
 
 	for (i = 0; i < priv->num_planes; i++) {
 		plane = priv->planes[i];
@@ -4565,7 +4567,8 @@ static int _sde_kms_update_planes_for_cont_splash(struct sde_kms *sde_kms,
 		if ((is_virtual && test_bit(pipe_id, pipe_info->virt_pipes)) ||
 				(!is_virtual && test_bit(pipe_id, pipe_info->pipes))) {
 
-			if (splash && sde_plane_validate_src_addr(plane,
+			if (IS_DISP_OP_HWIO(disp_op) && splash &&
+					sde_plane_validate_src_addr(plane,
 						splash->splash_buf_base,
 						splash->splash_buf_size)) {
 				if (!demura || sde_plane_validate_src_addr(
@@ -4741,6 +4744,52 @@ static struct drm_display_mode *_sde_kms_get_splash_mode(
 	return cur_mode;
 }
 
+static void _sde_kms_hfi_populate_splash_config(struct sde_kms *sde_kms,
+	struct sde_splash_display *splash_display,
+	struct drm_connector *conn, int display_id)
+{
+	struct sde_connector *sde_conn;
+	struct sde_sspp_index_info *pipe_info;
+	u32 lm_mask, active_pipes_mask;
+	int i, lm_idx = 0;
+
+	if (!sde_kms|| !splash_display || !conn)
+		return;
+
+	splash_display->ctl_cnt = 1;
+	splash_display->ctl_ids[0] = (display_id + 1);
+
+	sde_conn = to_sde_connector(conn);
+	lm_mask = sde_conn->lm_mask;
+
+	// Count bits set in lm_mask
+	splash_display->lm_cnt = __builtin_popcount(lm_mask);
+	splash_display->dsc_cnt = splash_display->lm_cnt;
+
+	// Extract LM IDs from the mask
+	for (int bit = 0; bit < 32; bit++) {
+		if (lm_mask & (1 << bit)) {
+			splash_display->lm_ids[lm_idx] = (bit + 1);
+			splash_display->dsc_ids[lm_idx] = (bit + 1);
+			lm_idx++;
+		}
+	}
+
+	active_pipes_mask =
+		sde_kms->hfi_kms->catalog->active_pipes_mask[display_id];
+	pipe_info = &splash_display->pipe_info;
+	for (i = SSPP_VIG0; i < SSPP_MAX; i++) {
+		if (!(active_pipes_mask & BIT(i)))
+			continue;
+
+		if (test_bit(i, pipe_info->pipes) || test_bit(i, pipe_info->virt_pipes))
+			continue;
+
+		set_bit(i, pipe_info->pipes);
+		set_bit(i, pipe_info->virt_pipes);
+	}
+}
+
 static int sde_kms_cont_splash_config(struct msm_kms *kms,
 		struct drm_atomic_state *state)
 {
@@ -4760,6 +4809,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 	struct sde_splash_display *splash_display;
 	const char *display_name = NULL;
 	int intf_type;
+	enum msm_disp_op disp_op;
 
 	if (!kms) {
 		SDE_ERROR("invalid kms\n");
@@ -4779,6 +4829,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 		return -EINVAL;
 	}
 
+	disp_op = sde_kms_get_disp_op(sde_kms);
 	intf_type = edp_drv_get_num_of_displays(sde_kms->dev) ? INTF_EDP : INTF_DSI;
 
 	if (((sde_kms->splash_data.type == SDE_SPLASH_HANDOFF)
@@ -4805,22 +4856,6 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			dsi_display = (struct dsi_display *)display;
 			display_name = dsi_display->name;
 			encoder = ((struct dsi_display *)display)->bridge->base.encoder;
-
-			if (IS_DISP_OP_HFI(sde_kms_get_disp_op(sde_kms))) {
-				memset(&info, 0x0, sizeof(info));
-				rc = dsi_display_get_info(NULL, &info, display);
-				if (rc) {
-					SDE_ERROR("get_info %d failed\n", i);
-					continue;
-				}
-
-				if (info.is_connected)
-					splash_display->splash_encoder = encoder;
-
-				/* Skip DSI op splash config */
-				continue;
-			}
-
 		} else if (intf_type == INTF_EDP) {
 			display = sde_kms->edp_displays[i];
 			encoder = ((struct dp_drv *)display)->client->bridge->base.encoder;
@@ -4864,7 +4899,7 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 		priv = sde_kms->dev->dev_private;
 		encoder->crtc = priv->crtcs[i];
 		crtc = encoder->crtc;
-		splash_display->encoder =  encoder;
+		splash_display->encoder = encoder;
 		SDE_DEBUG("for display:%d crtc id[%d]:%d enc id[%d]:%d\n",
 				i, crtc->index, crtc->base.id, encoder->index,
 				encoder->base.id);
@@ -4923,6 +4958,10 @@ static int sde_kms_cont_splash_config(struct msm_kms *kms,
 			mutex_unlock(&dev->mode_config.mutex);
 			sde_irq_update(&sde_kms->base, false);
 		}
+
+		if (intf_type == INTF_DSI && IS_DISP_OP_HFI(disp_op))
+			_sde_kms_hfi_populate_splash_config(sde_kms, splash_display,
+				connector, i);
 
 		crtc->state->encoder_mask = drm_encoder_mask(encoder);
 		crtc->state->connector_mask = drm_connector_mask(connector);
