@@ -1653,6 +1653,11 @@ static int hfi_adapter_release_cmd_buf_no_lock(struct hfi_client_t *ctx,
 		return -EINVAL;
 	}
 
+	if (cmd_buf->is_released && list_empty(&cmd_buf->cmd_buf_chain)) {
+		HFI_AD_DEBUG("buffer already released, skipping\n");
+	        return 0;
+	}
+
 	if (cmd_buf->virtq_type == HFI_VIRTQUEUE_TYPE_MAX) {
 		HFI_AD_ERROR("invalid virtqueue type %d\n", cmd_buf->virtq_type);
 		return -EINVAL;
@@ -1713,11 +1718,6 @@ int hfi_adapter_release_cmd_buf(struct hfi_client_t *ctx, struct hfi_cmdbuf_t *c
 
 	if (!cmd_buf || !ctx) {
 		HFI_AD_ERROR("invalid param\n");
-		return -EINVAL;
-	}
-
-	if (cmd_buf->virtq_type == HFI_VIRTQUEUE_TYPE_MAX) {
-		HFI_AD_ERROR("invalid virtqueue type %d\n", cmd_buf->virtq_type);
 		return -EINVAL;
 	}
 

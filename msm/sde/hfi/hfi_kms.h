@@ -145,6 +145,7 @@ struct hfi_kms {
 	struct hfi_prop_listener device_init_listener;
 	struct hfi_prop_listener resource_vote_listener;
 	struct hfi_prop_listener trace_cfg_listener;
+	struct hfi_prop_listener debug_set_prop_listener;
 	atomic_t cat_init_done;
 	struct hfi_catalog_base *catalog;
 	struct hfi_connector *primary_connector;
