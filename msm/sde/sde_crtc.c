@@ -6683,6 +6683,17 @@ static void sde_crtc_handle_power_event(u32 event_type, void *arg)
 		sde_cp_crtc_suspend(crtc);
 		power_on = 0;
 		sde_crtc_event_notify(crtc, DRM_EVENT_SDE_POWER, &power_on, sizeof(u32));
+		/*
+		 * Deregister only after FW signals power-off to avoid a race
+		 * where sde_crtc_disable nulls crtc_power_event_cb while
+		 * hfi_encoder_power_event_callback is still mid-flight.
+		 */
+		if (IS_DISP_OP_HFI(disp_op) && !crtc->state->active) {
+			drm_for_each_encoder_mask(encoder, crtc->dev,
+					crtc->state->encoder_mask)
+				sde_encoder_register_display_power_event_callback(
+						encoder, NULL, NULL);
+		}
 		break;
 	case SDE_POWER_EVENT_MMRM_CALLBACK:
 		sde_crtc_mmrm_cb_notification(crtc);
@@ -6853,10 +6864,8 @@ static void sde_crtc_disable(struct drm_crtc *crtc)
 	drm_for_each_encoder_mask(encoder, crtc->dev, encoder_mask) {
 		sde_encoder_register_frame_event_callback(encoder, NULL, NULL);
 
-		if (IS_DISP_OP_HFI(priv->disp_op)) {
-			sde_encoder_register_display_power_event_callback(encoder, NULL, NULL);
+		if (IS_DISP_OP_HFI(priv->disp_op))
 			sde_encoder_register_panel_dead_event_callback(encoder, false);
-		}
 
 		cstate->rsc_client = NULL;
 		cstate->rsc_update = false;
