@@ -345,8 +345,7 @@ static void hfi_encoder_panel_dead_callback(struct sde_encoder_virt *sde_enc, vo
 static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 		void *payload, u32 size, struct hfi_prop_listener *listener)
 {
-	struct hfi_encoder *hfi_enc = container_of(listener,
-			struct hfi_encoder, hfi_cb_obj);
+	struct hfi_encoder *hfi_enc;
 	struct sde_encoder_virt *sde_enc;
 	struct drm_connector *conn;
 	struct drm_encoder *drm_enc;
@@ -354,8 +353,16 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 	bool recovery_events;
 	u32 *data = payload;
 
+	if (!listener) {
+		SDE_ERROR("invalid listener from FW for cmd_id %x obj_id %x size %d\n",
+			cmd_id, obj_id, size);
+		return;
+	}
+
+	hfi_enc = container_of(listener,
+			struct hfi_encoder, hfi_cb_obj);
 	if (!hfi_enc) {
-		SDE_ERROR("invalid object or listener from FW\n");
+		SDE_ERROR("invalid hfi encoder hfi_enc %pK\n", hfi_enc);
 		return;
 	}
 
@@ -422,7 +429,6 @@ static void hfi_enc_hfi_prop_handler(u32 obj_id, u32 cmd_id,
 
 		recovery_events = sde_encoder_recovery_events_enabled(&sde_enc->base);
 
-		drm_enc = &sde_enc->base;
 		conn = sde_encoder_get_connector(drm_enc->dev, drm_enc);
 		if (!conn) {
 			SDE_ERROR("invalid connector\n");
