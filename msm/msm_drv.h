@@ -526,11 +526,13 @@ struct msm_display_mode {
  * @dsc_enabled: boolean used to indicate if dsc should be enabled
  * @pixel_format_mode: used to indicate pixel format mode
  * @emsync_fps: used to indicate emsync fps
+ * @spr_mode: used to indicate spr mode
  */
 struct msm_sub_mode {
 	enum msm_display_dsc_mode dsc_mode;
 	enum msm_display_pixel_format pixel_format_mode;
 	u32 emsync_fps;
+	enum msm_display_spr_mode spr_mode;
 };
 
 /**

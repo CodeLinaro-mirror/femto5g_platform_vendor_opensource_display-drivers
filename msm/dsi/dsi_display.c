@@ -8699,6 +8699,17 @@ void dsi_display_set_idle_pc_state(void *display, bool idle_pc)
 	}
 }
 
+static int dsi_get_mode_spr_chroma_format(const struct dsi_display_mode *mode)
+{
+	if (!mode->priv_info)
+		return MSM_CHROMA_444;
+	if (mode->priv_info->dsc_enabled)
+		return mode->priv_info->dsc.chroma_format;
+	if (mode->priv_info->vdc_enabled)
+		return mode->priv_info->vdc.chroma_format;
+	return MSM_CHROMA_444;
+}
+
 static bool dsi_display_match_timings(const struct dsi_display_mode *mode1,
 		struct dsi_display_mode *mode2, unsigned int match_flags)
 {
@@ -8749,6 +8760,11 @@ bool dsi_display_mode_match(const struct dsi_display_mode *mode1,
 	if ((match_flags & DSI_MODE_MATCH_EMSYNC_FPS) &&
 			mode1->priv_info->esync_params.emsync_fps !=
 			mode2->priv_info->esync_params.emsync_fps)
+		return false;
+
+	if ((match_flags & DSI_MODE_MATCH_SPR_MODE) &&
+			mode1->priv_info->dsc.chroma_format !=
+			dsi_get_mode_spr_chroma_format(mode2))
 		return false;
 
 	return true;
@@ -8811,6 +8827,12 @@ int dsi_display_find_mode(struct dsi_display *display,
 			match_flags |= DSI_MODE_MATCH_EMSYNC_FPS;
 			cmp->priv_info = priv_info;
 			cmp->priv_info->esync_params.emsync_fps = sub_mode->emsync_fps;
+		}
+
+		if (sub_mode) {
+			match_flags |= DSI_MODE_MATCH_SPR_MODE;
+			cmp->priv_info = priv_info;
+			cmp->priv_info->dsc.chroma_format = sub_mode->spr_mode;
 		}
 
 		if (sub_mode) {
@@ -8947,6 +8969,13 @@ int dsi_display_validate_mode_change(struct dsi_display *display,
 				cur_mode->timing.v_front_porch,
 				adj_mode->timing.v_front_porch);
 		DSI_DEBUG("AVR/EM fps change detected\n");
+	} else if (dsi_get_mode_spr_chroma_format(cur_mode) !=
+		dsi_get_mode_spr_chroma_format(adj_mode)) {
+		adj_mode->dsi_mode_flags |= DSI_MODE_FLAG_SPR_MODE_SWITCH;
+		SDE_EVT32(SDE_EVTLOG_FUNC_CASE7,
+				dsi_get_mode_spr_chroma_format(cur_mode),
+				dsi_get_mode_spr_chroma_format(adj_mode));
+		DSI_DEBUG("SPR mode change detected\n");
 	} else {
 		dyn_clk_caps = &(display->panel->dyn_clk_caps);
 		/* dfps and dynamic clock with const fps use case */
