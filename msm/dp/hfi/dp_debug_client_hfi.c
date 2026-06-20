@@ -1040,6 +1040,48 @@ static int dp_debug_client_hfi_read_bw_code(struct dp_debug_client *client,
 	return scnprintf(buf, size, "max_bw_code = %u\n", bw_code);
 }
 
+static int dp_debug_client_hfi_read_max_lclk_khz(struct dp_debug_client *client,
+		char *buf, u32 size)
+{
+	struct dp_debug_client_hfi_priv *priv;
+	struct hfi_client_t *hfi_client;
+	int rc;
+	u32 bw_code = 0;
+	u32 max_lclk_khz;
+
+	if (!client || !buf)
+		return -EINVAL;
+
+	priv = client->priv;
+	hfi_client = dp_debug_hfi_get_client(priv);
+	if (!hfi_client) {
+		/* Fallback: return 0 if HFI client not available */
+		return scnprintf(buf, size, "max_lclk_khz = 0\n");
+	}
+
+	/* Reuse the same HFI read command as read_bw_code */
+	rc = dp_debug_hfi_send_cmd_with_response(priv, hfi_client,
+			HFI_COMMAND_DEBUG_DP_READ_BW_CODE,
+			HFI_PAYLOAD_TYPE_NONE, NULL, 0,
+			HFI_HOST_FLAGS_RESPONSE_REQUIRED|HFI_HOST_FLAGS_NON_DISCARDABLE,
+			HFI_RESPONSE_BW_CODE, 1000);
+	if (rc) {
+		DP_ERR("Failed to get BW_CODE response from DCP, rc=%d\n", rc);
+		return scnprintf(buf, size, "max_lclk_khz = 0\n");
+	}
+
+	mutex_lock(&priv->response_data.response_lock);
+	bw_code = priv->response_data.bw_code;
+	mutex_unlock(&priv->response_data.response_lock);
+
+	/* Convert bw_code back to lclk_khz: each unit is 270000 KHz */
+	max_lclk_khz = bw_code * 270000;
+
+	DP_DEBUG("bw_code=%u -> max_lclk_khz=%u\n", bw_code, max_lclk_khz);
+
+	return scnprintf(buf, size, "max_lclk_khz = %u\n", max_lclk_khz);
+}
+
 /* Return the current test pattern generator (TPG) pattern index */
 static int dp_debug_client_hfi_read_tpg(struct dp_debug_client *client,
 		char *buf, u32 size)
@@ -2340,6 +2382,7 @@ int dp_debug_client_hfi_get(struct dp_debug_client *client)
 	client->read_connected = dp_debug_client_hfi_read_connected;
 	client->read_info = dp_debug_client_hfi_read_info;
 	client->read_bw_code = dp_debug_client_hfi_read_bw_code;
+	client->read_max_lclk_khz = dp_debug_client_hfi_read_max_lclk_khz;
 	client->read_tpg = dp_debug_client_hfi_read_tpg;
 	client->read_dump = dp_debug_client_hfi_read_dump;
 	client->read_max_pclk_khz = dp_debug_client_hfi_read_max_pclk_khz;
