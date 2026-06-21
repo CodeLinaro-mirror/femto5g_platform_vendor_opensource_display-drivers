@@ -1016,7 +1016,7 @@ int hfi_kms_send_trace_cfg(struct hfi_kms *hfi_kms, u32 enable)
 {
 	int ret = 0;
 
-	if (hfi_kms->hfi_client.client_id != HFI_CORE_CLIENT_ID_1) {
+	if (!sde_in_trusted_vm(hfi_kms->base)) {
 		ret = _send_debug_set_common_property_cmd(hfi_kms, enable,
 							  enable, 0x0, 0, 0x0, 0);
 	}
