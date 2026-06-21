@@ -1040,8 +1040,13 @@ release_cmd_buf:
 
 int hfi_kms_send_trace_cfg(struct hfi_kms *hfi_kms, u32 enable)
 {
-	return _send_debug_set_common_property_cmd(hfi_kms, enable,
-		enable, 0x0, 0, 0x0, 0);
+	int ret = 0;
+
+	if (hfi_kms->hfi_client.client_id != HFI_CORE_CLIENT_ID_1) {
+		ret = _send_debug_set_common_property_cmd(hfi_kms, enable,
+							  enable, 0x0, 0, 0x0, 0);
+	}
+	return ret;
 }
 
 int hfi_kms_get_plane_indices(struct hfi_kms *hfi_kms, bool vig_pipe,
