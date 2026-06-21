@@ -313,7 +313,7 @@ int dsi_hfi_misr_setup(struct dsi_display *display)
 	return 0;
 }
 
-void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
+static void dsi_hfi_process_misr_read(struct dsi_display *display, void *payload, u32 size)
 {
 
 }
