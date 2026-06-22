@@ -1042,9 +1042,12 @@ static int shd_connector_get_modes(struct drm_connector *connector, void *data,
 	drm_mode_prune_invalid(disp->drm_dev, &disp->base->connector->modes, false);
 
 	if (list_empty(&disp->base->connector->modes)) {
-		SDE_DEBUG("no valid base mode\n");
-
-		return 0;
+		/* Only allow fallback if not in dynamic mode and base->mode is valid */
+		if (disp->base->dynamic_mode || !disp->base->mode.clock) {
+			SDE_DEBUG("no valid base mode\n");
+			return 0;
+		}
+		SDE_DEBUG("no valid base mode from connector, falling back to DT mode\n");
 	}
 
 	/* sort base mode */
@@ -1357,8 +1360,10 @@ static int shd_drm_obj_init(struct shd_display *display)
 	sde_conn = to_sde_connector(connector);
 	sde_conn->shared = true;
 
-	if (display->name)
+	if (display->name) {
+		kfree(connector->name);
 		connector->name = kasprintf(GFP_KERNEL, "%s", display->name);
+	}
 
 	if (info.intf_type == DRM_MODE_CONNECTOR_DSI)
 		shd_display_create_backlight(connector);
