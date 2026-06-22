@@ -184,6 +184,11 @@ static void dp_lphw_hpd_isr(struct dp_hpd *dp_hpd)
 
 	isr = lphw_hpd->catalog->get_interrupt(lphw_hpd->catalog);
 
+	if (lphw_hpd->base.skip_isr) {
+		DP_INFO("DP ignored isr during dp suspend, hpd isr state: 0x%x\n", isr);
+		return;
+	}
+
 	if (isr & DP_HPD_UNPLUG_INT_STATUS) { /* disconnect interrupt */
 
 		DP_DEBUG("disconnect interrupt, hpd isr state: 0x%x\n", isr);
@@ -338,6 +343,23 @@ static void dp_lphw_hpd_deinit(struct dp_lphw_hpd_private *lphw_hpd)
 	}
 }
 
+static void dp_lphw_hpd_get_gpio_hpd(struct dp_hpd *dp_hpd)
+{
+	struct dp_lphw_hpd_private *lphw_hpd;
+	int hpd;
+
+	if (!dp_hpd) {
+		DP_ERR("invalid input\n");
+		return;
+	}
+
+	lphw_hpd = container_of(dp_hpd, struct dp_lphw_hpd_private, base);
+
+	hpd = gpio_get_value_cansleep(lphw_hpd->gpio_cfg.gpio);
+	lphw_hpd->base.hpd_high = hpd;
+	DP_INFO("DP get gpio hpd %d.\n", lphw_hpd->base.hpd_high);
+}
+
 static void dp_lphw_hpd_init(struct dp_lphw_hpd_private *lphw_hpd)
 {
 	struct dp_pinctrl pinctrl = {0};
@@ -448,6 +470,7 @@ struct dp_hpd *dp_lphw_hpd_get(struct device *dev, struct dp_parser *parser,
 	lphw_hpd->base.simulate_attention = dp_lphw_hpd_simulate_attention;
 	lphw_hpd->base.register_hpd = dp_lphw_hpd_register;
 	lphw_hpd->base.unregister_hpd = dp_lphw_hpd_unregister;
+	lphw_hpd->base.get_gpio_hpd = dp_lphw_hpd_get_gpio_hpd;
 
 	dp_lphw_hpd_init(lphw_hpd);
 
