@@ -1052,9 +1052,9 @@ static int hfi_panel_fill_dcs_cmds_sub(struct dsi_display *display,
 	/* Ensure DT DCS command metadata does not overflow the HFI shared buffer */
 	if (dsi_hfi->running_hfi_offset + (sizeof(struct dsi_hfi_panel_cmd_info)
 			* cmd_set->count) > hfi_map_size) {
-		DSI_ERR("over HFI mapped buffer size: needed=%zu, available=%zu\n",
+		DSI_ERR("over HFI mapped buffer size: needed=%zu, available=%zu, total=%zu\n",
 			sizeof(struct dsi_hfi_panel_cmd_info) * cmd_set->count,
-			hfi_map_size - dsi_hfi->running_hfi_offset);
+			hfi_map_size - dsi_hfi->running_hfi_offset, hfi_map_size);
 		return -EINVAL;
 	}
 
