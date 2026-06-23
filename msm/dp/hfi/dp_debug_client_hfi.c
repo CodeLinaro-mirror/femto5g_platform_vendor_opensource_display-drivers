@@ -2098,7 +2098,7 @@ static int dp_debug_client_hfi_write_mst_mode(struct dp_debug_client *client,
 		return -ENODEV;
 	}
 
-	mgr_priv->client.is_mst_supported = mst_mode ? true : false;
+	dp_mgr_hfi_set_mst_mode(mgr_priv, mst_mode ? true : false);
 	DP_DEBUG("mst_enable: %d\n", mst_mode);
 
 	return count;
