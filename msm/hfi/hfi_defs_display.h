@@ -982,9 +982,10 @@ struct hfi_hdcp2_message {
  *     Compressed bits per pixel.
  * @cmpr_slice_count:
  *     Number of compressed slices per line.
- * @reserved1:
- *     Reserved for future use.
- * @reserved2:
+ * @test_pattern:
+ *     DP compliance test pattern ID (DPCD 0x221). Set to the pattern requested
+ *     by the sink during a TEST_PATTERN compliance test; 0 in all other scenarios.
+ * @reserved:
  *     Reserved for future use.
  */
 struct hfi_display_mode_extended_info {
@@ -995,8 +996,8 @@ struct hfi_display_mode_extended_info {
 	u32 cmpr_enabled;
 	u32 cmpr_bpp;
 	u32 cmpr_slice_count;
-	u32 reserved1;
-	u32 reserved2;
+	u8  test_pattern;
+	u8  reserved[7];
 };
 
 /*
