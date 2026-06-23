@@ -6,6 +6,9 @@
 #include <linux/delay.h>
 #include <linux/of.h>
 #include <linux/slab.h>
+#if IS_ENABLED(CONFIG_MTD)
+#include <linux/mtd/mtd.h>
+#endif
 
 #include "dsi_panel.h"
 
@@ -42,8 +45,7 @@
  *
  * Return: 0 on success, negative error code on failure.
  */
-static int dsi_panel_i2c_tx_cmd(struct i2c_adapter *adapter,
-				u8 slave_addr, const u8 *buf, u32 len)
+int dsi_panel_i2c_tx_cmd(struct i2c_adapter *adapter, u8 slave_addr, const u8 *buf, u16 len)
 {
 	struct i2c_msg msg = {
 		.addr  = slave_addr,
@@ -61,9 +63,13 @@ static int dsi_panel_i2c_tx_cmd(struct i2c_adapter *adapter,
 }
 
 static const char * const dsi_panel_i2c_cmd_set_prop_map[DSI_PANEL_I2C_CMD_SET_MAX] = {
-	[DSI_PANEL_I2C_CMD_SET_ON]         = "qcom,mdss-panel-i2c-on-command",
-	[DSI_PANEL_I2C_CMD_SET_OFF]        = "qcom,mdss-panel-i2c-off-command",
-	[DSI_PANEL_I2C_CMD_SET_BRIGHTNESS] = "qcom,mdss-panel-i2c-bl-command",
+	[DSI_PANEL_I2C_CMD_SET_ON]                 = "qcom,mdss-panel-i2c-on-command",
+	[DSI_PANEL_I2C_CMD_SET_OFF]                = "qcom,mdss-panel-i2c-off-command",
+	[DSI_PANEL_I2C_CMD_SET_BRIGHTNESS]         = "qcom,mdss-panel-i2c-bl-command",
+	[DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT]   = NULL, /* built programmatically */
+	[DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT]  = NULL, /* built programmatically */
+	[DSI_PANEL_I2C_CMD_SET_DEMURA_ON]          = NULL, /* built programmatically */
+	[DSI_PANEL_I2C_CMD_SET_GAMMA_ON]           = NULL, /* built programmatically */
 };
 
 static int dsi_panel_i2c_get_cmd_count(const u8 *data, u32 nbytes, u32 *cnt)
@@ -275,6 +281,13 @@ int dsi_panel_i2c_parse_config(struct dsi_panel *panel)
 	for (t = 0; t < DSI_PANEL_I2C_CMD_SET_MAX; t++) {
 		struct dsi_panel_i2c_cmd_set *set = &cfg->cmd_sets[t];
 
+		/* Skip command sets built programmatically (no DT property) */
+		if (!dsi_panel_i2c_cmd_set_prop_map[t]) {
+			DSI_DEBUG("[%s] i2c cmd set %u is built programmatically, skip DT parse\n",
+				  panel->name, t);
+			continue;
+		}
+
 		data = of_get_property(np, dsi_panel_i2c_cmd_set_prop_map[t], &nbytes);
 		if (!data || !nbytes) {
 			DSI_DEBUG("[%s] i2c cmd set %u (%s) not defined\n",
@@ -412,7 +425,19 @@ static int dsi_panel_i2c_isl97900_update_brightness(struct dsi_panel *panel, u32
 	bset->cmds[3].data[1] = (u8)(bl_lvl & 0xFF); /* LED_B_LSB */
 	bset->cmds[4].data[1] = (u8)msb;              /* LED_RGB_MSB */
 
-	return dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS);
+	if (cfg->left_adapter) {
+		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS,
+					      cfg->left_adapter);
+		if (rc)
+			return rc;
+	}
+
+	if (cfg->right_adapter) {
+		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS,
+					      cfg->right_adapter);
+	}
+
+	return rc;
 }
 
 /*
@@ -486,7 +511,19 @@ static int dsi_panel_i2c_jbd4040_update_brightness(struct dsi_panel *panel, u32 
 	bset->cmds[0].data[3] = (u8)((bl_lvl >> 8) & 0xFF);
 	bset->cmds[0].data[4] = (u8)(bl_lvl & 0xFF);
 
-	return dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS);
+	if (cfg->left_adapter) {
+		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS,
+					      cfg->left_adapter);
+		if (rc)
+			return rc;
+	}
+
+	if (cfg->right_adapter) {
+		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_BRIGHTNESS,
+					      cfg->right_adapter);
+	}
+
+	return rc;
 }
 
 /**
@@ -526,18 +563,95 @@ int dsi_panel_i2c_update_backlight(struct dsi_panel *panel, u32 bl_lvl)
 }
 
 /**
- * dsi_panel_i2c_tx_cmd_set - transmit an I2C command set to the panel
+ * dsi_panel_i2c_enable - send the I2C panel-on command set to both adapters
  * @panel: DSI panel handle
- * @type:  command set type to send (on, off, or brightness)
+ *
+ * Wrapper around dsi_panel_i2c_tx_cmd_set() that broadcasts
+ * DSI_PANEL_I2C_CMD_SET_ON to both the left and right I2C adapters.
+ *
+ * Return: 0 on success, negative error code on failure.
+ */
+int dsi_panel_i2c_enable(struct dsi_panel *panel)
+{
+	struct dsi_panel_i2c_config *cfg;
+	int rc = 0;
+
+	if (!panel)
+		return -EINVAL;
+
+	cfg = &panel->i2c_config;
+
+	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_ON,
+				       cfg->left_adapter);
+	if (rc) {
+		DSI_ERR("[%s] failed to send i2c on cmds on left, rc=%d\n",
+			panel->name, rc);
+		return rc;
+	}
+
+	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_ON,
+				       cfg->right_adapter);
+	if (rc)
+		DSI_ERR("[%s] failed to send i2c on cmds on right, rc=%d\n",
+			panel->name, rc);
+
+	return rc;
+}
+
+/**
+ * dsi_panel_i2c_disable - send the I2C panel-off command set to both adapters
+ * @panel: DSI panel handle
+ *
+ * Wrapper around dsi_panel_i2c_tx_cmd_set() that broadcasts
+ * DSI_PANEL_I2C_CMD_SET_OFF to both the left and right I2C adapters.
+ *
+ * Return: 0 on success, negative error code on failure.
+ */
+int dsi_panel_i2c_disable(struct dsi_panel *panel)
+{
+	struct dsi_panel_i2c_config *cfg;
+	int rc = 0;
+
+	if (!panel)
+		return -EINVAL;
+
+	cfg = &panel->i2c_config;
+
+	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_OFF,
+				       cfg->left_adapter);
+	if (rc) {
+		DSI_ERR("[%s] failed to send i2c off cmds on left, rc=%d\n",
+			panel->name, rc);
+		return rc;
+	}
+
+	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_OFF,
+				       cfg->right_adapter);
+	if (rc)
+		DSI_ERR("[%s] failed to send i2c off cmds on right, rc=%d\n",
+			panel->name, rc);
+
+	return rc;
+}
+
+/**
+ * dsi_panel_i2c_tx_cmd_set - transmit an I2C command set to one adapter
+ * @panel:   DSI panel handle
+ * @type:    command set type to send (on, off, brightness, calibration, ...)
+ * @adapter: I2C adapter to send the commands on (left or right)
  *
  * Iterates over all commands in the specified set and sends each one over
- * the left and/or right I2C adapter.  Applies the per-command post-wait
- * delay after each transfer.  Returns immediately on the first error.
+ * the supplied I2C adapter.  Applies the per-command post-wait delay after
+ * each transfer.  Returns immediately on the first error.
+ *
+ * Callers that need to reach both adapters must invoke this function twice,
+ * once with cfg->left_adapter and once with cfg->right_adapter.
  *
  * Return: 0 on success, negative error code on failure.
  */
 int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
-			      enum dsi_panel_i2c_cmd_set_type type)
+			      enum dsi_panel_i2c_cmd_set_type type,
+			      struct i2c_adapter *adapter)
 {
 	struct dsi_panel_i2c_config *cfg;
 	struct dsi_panel_i2c_cmd_set *set;
@@ -545,6 +659,10 @@ int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 
 	if (!panel)
 		return -EINVAL;
+
+	/* NULL adapter is a silent no-op (adapter not present on this side) */
+	if (!adapter)
+		return 0;
 
 	if (type >= DSI_PANEL_I2C_CMD_SET_MAX) {
 		DSI_ERR("[%s] invalid i2c cmd set type %d\n", panel->name, type);
@@ -569,33 +687,30 @@ int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 
 	for (u32 i = 0; i < set->count; i++) {
 		struct dsi_panel_i2c_cmd *cmd = &set->cmds[i];
+		u8 slave_addr;
+
 		/*
 		 * Commands with an explicit slave address (e.g. JBD4040
-		 * brightness, DT on/off commands) use it for both adapters.
+		 * brightness, DT on/off commands) use it directly.
 		 * Commands with slave_addr == 0 (ISL97900 brightness, built
-		 * in the driver) fall back to the per-adapter addresses stored
+		 * in the driver) fall back to the per-adapter address stored
 		 * in cfg->left_slave_addr / cfg->right_slave_addr.
 		 */
-		u8 left_addr  = cmd->slave_addr ? cmd->slave_addr : cfg->left_slave_addr;
-		u8 right_addr = cmd->slave_addr ? cmd->slave_addr : cfg->right_slave_addr;
-
-		if (cfg->left_adapter && left_addr) {
-			rc = dsi_panel_i2c_tx_cmd(cfg->left_adapter,
-						  left_addr,
-						  cmd->data, cmd->len);
-			if (rc) {
-				DSI_ERR("[%s] failed cmd %u/%u (set %d) on left, rc=%d\n",
-					panel->name, i + 1, set->count, type, rc);
-				return rc;
-			}
+		if (cmd->slave_addr) {
+			slave_addr = cmd->slave_addr;
+		} else if (adapter == cfg->left_adapter) {
+			slave_addr = cfg->left_slave_addr;
+		} else if (adapter == cfg->right_adapter) {
+			slave_addr = cfg->right_slave_addr;
+		} else {
+			slave_addr = 0;
 		}
 
-		if (cfg->right_adapter && right_addr) {
-			rc = dsi_panel_i2c_tx_cmd(cfg->right_adapter,
-						  right_addr,
+		if (slave_addr) {
+			rc = dsi_panel_i2c_tx_cmd(adapter, slave_addr,
 						  cmd->data, cmd->len);
 			if (rc) {
-				DSI_ERR("[%s] failed cmd %u/%u (set %d) on right, rc=%d\n",
+				DSI_ERR("[%s] failed cmd %u/%u (set %d), rc=%d\n",
 					panel->name, i + 1, set->count, type, rc);
 				return rc;
 			}
@@ -608,4 +723,501 @@ int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
 	}
 
 	return rc;
+}
+
+/* ---- JBD4040 calibration ---- */
+
+/*
+ * JBD4040 DDIC (panel) memory base addresses.
+ * These are the destination addresses prepended to each I2C write buffer.
+ */
+#define JBD4040_DDIC_DEMURA_BASE_ADDRESS    0x210000
+#define JBD4040_DDIC_GAMMA_BASE_ADDRESS     0x250000
+#define JBD4040_DDIC_OFFSET_BASE_ADDRESS    0x200A24
+#define JBD4040_DDIC_FLIP_BASE_ADDRESS      0x20020E
+
+/* Per-field sizes */
+#define JBD4040_FLASH_GAMMA_SIZE    0x1000
+#define JBD4040_FLASH_DEMURA_SIZE   0x32000
+#define JBD4040_FLASH_OFFSET_SIZE   0x2
+#define JBD4040_FLASH_FLIP_SIZE     0x2
+
+/* Red channel flash offsets */
+#define JBD4040_FLASH_RED_GAMMA_OFFSET    0x000000
+#define JBD4040_FLASH_RED_DEMURA_OFFSET   0x008000
+#define JBD4040_FLASH_RED_OFFSET_OFFSET   0x078000
+#define JBD4040_FLASH_RED_FLIP_OFFSET     0x078004
+
+/* Green channel flash offsets */
+#define JBD4040_FLASH_GREEN_GAMMA_OFFSET   0x080000
+#define JBD4040_FLASH_GREEN_DEMURA_OFFSET  0x088000
+#define JBD4040_FLASH_GREEN_OFFSET_OFFSET  0x0F8000
+#define JBD4040_FLASH_GREEN_FLIP_OFFSET    0x0F8004
+
+/* Blue channel flash offsets */
+#define JBD4040_FLASH_BLUE_GAMMA_OFFSET    0x100000
+#define JBD4040_FLASH_BLUE_DEMURA_OFFSET   0x108000
+#define JBD4040_FLASH_BLUE_OFFSET_OFFSET   0x178000
+#define JBD4040_FLASH_BLUE_FLIP_OFFSET     0x178004
+
+/* Minimum partition size: end of the last field (blue_flip) */
+#define JBD4040_FLASH_MIN_PARTITION_SIZE \
+	(JBD4040_FLASH_BLUE_FLIP_OFFSET + JBD4040_FLASH_FLIP_SIZE)
+
+/*
+ * Maximum size of a single I2C calibration command data buffer.
+ * The first 3 bytes are the DDIC address; the remaining bytes are payload.
+ */
+#define JBD4040_I2C_CMD_MAX_SIZE     (1 << 15)             /* 32768 bytes */
+/* Round down to even so 16-bit words are never split across commands */
+#define JBD4040_I2C_CMD_MAX_PAYLOAD  ((JBD4040_I2C_CMD_MAX_SIZE - 3) & ~1U)
+
+/*
+ * dsi_panel_i2c_count_field_cmds - return the number of I2C commands needed
+ * to transfer @payload_size bytes given the per-command payload limit.
+ */
+static u32 __maybe_unused dsi_panel_i2c_count_field_cmds(size_t payload_size)
+{
+	if (!payload_size)
+		return 0;
+	return (u32)((payload_size + JBD4040_I2C_CMD_MAX_PAYLOAD - 1) /
+		     JBD4040_I2C_CMD_MAX_PAYLOAD);
+}
+
+/*
+ * dsi_panel_i2c_fill_field_cmds - fill one or more I2C commands for a single
+ * calibration field.
+ */
+static int __maybe_unused dsi_panel_i2c_fill_field_cmds(struct dsi_panel_i2c_cmd *cmds,
+					  u32 *cmd_idx,
+					  u8 *raw_data,
+					  size_t payload_size,
+					  u32 ddic_base_addr,
+					  u8 slave_addr, bool data_big_endian)
+{
+	size_t offset = 0;
+
+	if (!raw_data || !payload_size)
+		return 0;
+
+	/*
+	 * Split the calibration field into one or more I2C commands, each
+	 * carrying at most JBD4040_I2C_CMD_MAX_PAYLOAD bytes of payload.
+	 * The DDIC destination address advances by the chunk size each iteration.
+	 */
+	while (offset < payload_size) {
+		size_t chunk = min_t(size_t, payload_size - offset,
+				     JBD4040_I2C_CMD_MAX_PAYLOAD);
+		u32 chunk_addr = ddic_base_addr + (u32)offset;
+		u8 *cmd_data;
+		u32 i, idx = 3;
+
+		/* Allocate: 3-byte DDIC address header + payload */
+		cmd_data = kmalloc(chunk + 3, GFP_KERNEL);
+		if (!cmd_data)
+			return -ENOMEM;
+
+		/* Encode the 24-bit DDIC destination address (big-endian) */
+		cmd_data[0] = (chunk_addr >> 16) & 0xFF;
+		cmd_data[1] = (chunk_addr >> 8)  & 0xFF;
+		cmd_data[2] =  chunk_addr        & 0xFF;
+
+		/* Copy raw flash data into the payload region of cmd_data */
+		memcpy(cmd_data + 3, raw_data + offset, chunk);
+
+		/*
+		 * Re-encode each 16-bit word to little-endian as required by
+		 * the DDIC.  Read the word using the source byte order
+		 * (big- or little-endian) then write it back LSB-first.
+		 */
+		const u8 *raw_payload = cmd_data + 3;
+
+		for (i = 0; i < chunk/2; i++) {
+			u16 val;
+
+			if (data_big_endian)
+				val = ((u16)raw_payload[2 * i] << 8) | raw_payload[2 * i + 1];
+			else
+				val = raw_payload[2 * i] | ((u16)raw_payload[2 * i + 1] << 8);
+
+			cmd_data[idx++] = val & 0xFF;        /* LSB */
+			cmd_data[idx++] = (val >> 8) & 0xFF; /* MSB */
+		}
+
+		/* Copy any odd trailing byte verbatim (no byte-swap needed) */
+		if (chunk % 2)
+			cmd_data[idx++] = raw_payload[chunk - 1];
+
+		cmds[*cmd_idx].data         = cmd_data;
+		cmds[*cmd_idx].len          = (u32)(3 + chunk);
+		cmds[*cmd_idx].slave_addr   = slave_addr;
+		cmds[*cmd_idx].post_wait_ms = 0;
+		(*cmd_idx)++;
+
+		offset += chunk;
+	}
+
+	return 0;
+}
+
+#if IS_ENABLED(CONFIG_MTD)
+/*
+ * dsi_panel_i2c_read_mtd_partition - Read an entire MTD partition into a
+ * newly allocated buffer.
+ */
+#define MTD_READ_CHUNK_SIZE  SZ_64K
+static int dsi_panel_read_mtd_partition(struct mtd_info *mtd,
+					 u8 **data_out, size_t *size_out)
+{
+	u8 *buf = NULL;
+	int rc = 0;
+
+	if (!mtd) {
+		DSI_ERR("Invalid params\n");
+		return -EINVAL;
+	}
+
+	buf = kvzalloc(mtd->size, GFP_KERNEL);
+	if (!buf) {
+		rc = -ENOMEM;
+		goto put_mtd;
+	}
+
+		size_t offset    = 0;
+		size_t remaining = mtd->size;
+
+		while (remaining > 0) {
+			size_t chunk = min_t(size_t, remaining, MTD_READ_CHUNK_SIZE);
+			size_t retlen = 0;
+
+			rc = mtd_read(mtd, offset, chunk, &retlen, buf + offset);
+			if (rc && rc != -EUCLEAN) {
+				DSI_ERR("MTD read failed for %s at offset 0x%zx, rc=%d\n",
+						mtd->name, offset, rc);
+				kvfree(buf);
+				goto put_mtd;
+			}
+
+			offset    += retlen;
+			remaining -= retlen;
+		}
+
+	rc = 0;
+	DSI_INFO("MTD read ok: %s, total=%zu bytes\n", mtd->name, offset);
+
+	*data_out = buf;
+	*size_out = offset; /* actual bytes read, not assumed mtd->size */
+	goto put_mtd;
+
+put_mtd:
+	put_mtd_device(mtd);
+	return rc;
+}
+
+/* Build the JBD4040 calibration I2C command set for one eye from its MTD partition. */
+static int dsi_panel_i2c_jbd4040_init_calibration_cmd(
+		struct dsi_panel_i2c_config *cfg,
+		struct mtd_info *mtd,
+		enum dsi_panel_i2c_cmd_set_type cmd_type)
+{
+	u8 *calibration_data = NULL;
+	size_t calibration_size = 0;
+	struct dsi_panel_i2c_cmd_set *cset;
+	u32 total_cmds = 0;
+	u32 cmd_idx = 0;
+	int rc = 0;
+
+	rc = dsi_panel_read_mtd_partition(mtd,
+					      &calibration_data,
+					      &calibration_size);
+	if (rc) {
+		DSI_ERR("Failed to read MTD partition %s, rc=%d\n",
+			mtd->name, rc);
+		return rc;
+	}
+
+	if (calibration_size < JBD4040_FLASH_MIN_PARTITION_SIZE) {
+		DSI_ERR("Partition %s too small: %zu < %u bytes\n",
+			mtd->name, calibration_size,
+			JBD4040_FLASH_MIN_PARTITION_SIZE);
+		rc = -EINVAL;
+		goto free_buf;
+	}
+
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_GAMMA_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_DEMURA_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_OFFSET_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_FLIP_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_GAMMA_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_DEMURA_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_OFFSET_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_FLIP_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_GAMMA_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_DEMURA_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_OFFSET_SIZE);
+	total_cmds += dsi_panel_i2c_count_field_cmds(JBD4040_FLASH_FLIP_SIZE);
+
+	cset = &cfg->cmd_sets[cmd_type];
+	cset->cmds = kcalloc(total_cmds, sizeof(*cset->cmds), GFP_KERNEL);
+	if (!cset->cmds) {
+		rc = -ENOMEM;
+		goto free_buf;
+	}
+	cset->count = total_cmds;
+
+	/* Red channel (slave 0x59) */
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_RED_GAMMA_OFFSET,
+		JBD4040_FLASH_GAMMA_SIZE, JBD4040_DDIC_GAMMA_BASE_ADDRESS, 0x59, false);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_RED_DEMURA_OFFSET,
+		JBD4040_FLASH_DEMURA_SIZE, JBD4040_DDIC_DEMURA_BASE_ADDRESS, 0x59, false);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_RED_OFFSET_OFFSET,
+		JBD4040_FLASH_OFFSET_SIZE, JBD4040_DDIC_OFFSET_BASE_ADDRESS, 0x59, true);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_RED_FLIP_OFFSET,
+		JBD4040_FLASH_FLIP_SIZE, JBD4040_DDIC_FLIP_BASE_ADDRESS, 0x59, true);
+	if (rc)
+		goto error;
+
+	/* Green channel (slave 0x5a) */
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_GREEN_GAMMA_OFFSET,
+		JBD4040_FLASH_GAMMA_SIZE, JBD4040_DDIC_GAMMA_BASE_ADDRESS, 0x5a, false);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_GREEN_DEMURA_OFFSET,
+		JBD4040_FLASH_DEMURA_SIZE, JBD4040_DDIC_DEMURA_BASE_ADDRESS, 0x5a, false);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_GREEN_OFFSET_OFFSET,
+		JBD4040_FLASH_OFFSET_SIZE, JBD4040_DDIC_OFFSET_BASE_ADDRESS, 0x5a, true);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_GREEN_FLIP_OFFSET,
+		JBD4040_FLASH_FLIP_SIZE, JBD4040_DDIC_FLIP_BASE_ADDRESS, 0x5a, true);
+	if (rc)
+		goto error;
+
+	/* Blue channel (slave 0x5b) */
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_BLUE_GAMMA_OFFSET,
+		JBD4040_FLASH_GAMMA_SIZE, JBD4040_DDIC_GAMMA_BASE_ADDRESS, 0x5b, false);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_BLUE_DEMURA_OFFSET,
+		JBD4040_FLASH_DEMURA_SIZE, JBD4040_DDIC_DEMURA_BASE_ADDRESS, 0x5b, false);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_BLUE_OFFSET_OFFSET,
+		JBD4040_FLASH_OFFSET_SIZE, JBD4040_DDIC_OFFSET_BASE_ADDRESS, 0x5b, true);
+	if (rc)
+		goto error;
+
+	rc = dsi_panel_i2c_fill_field_cmds(cset->cmds, &cmd_idx,
+		calibration_data + JBD4040_FLASH_BLUE_FLIP_OFFSET,
+		JBD4040_FLASH_FLIP_SIZE, JBD4040_DDIC_FLIP_BASE_ADDRESS, 0x5b, true);
+	if (rc)
+		goto error;
+
+	DSI_INFO("calibration cmd set (%d): %u commands\n", cmd_type, total_cmds);
+	goto free_buf;
+
+error:
+	for (u32 i = 0; i < cmd_idx; i++) {
+		kfree(cset->cmds[i].data);
+		cset->cmds[i].data = NULL;
+	}
+	kfree(cset->cmds);
+	cset->cmds = NULL;
+	cset->count = 0;
+
+free_buf:
+	kvfree(calibration_data);
+	return rc;
+}
+#else
+static inline int dsi_panel_i2c_jbd4040_init_calibration_cmd(
+		struct dsi_panel_i2c_config *cfg,
+		struct mtd_info *mtd,
+		enum dsi_panel_i2c_cmd_set_type cmd_type)
+{
+	return -ENODEV;
+}
+#endif /* CONFIG_MTD */
+
+static int dsi_panel_i2c_left_calibration_thread(void *data)
+{
+	struct dsi_panel *panel = data;
+	struct dsi_panel_i2c_config *cfg;
+	int rc = 0;
+
+	cfg = &panel->i2c_config;
+
+	rc = dsi_panel_i2c_tx_cmd_set(
+			panel,
+			DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT,
+			cfg->left_adapter);
+
+	if (rc)
+		DSI_ERR("[%s] failed to send left calibration cmds, rc=%d\n",
+			panel->name, rc);
+
+	complete(&cfg->calibration_done);
+
+	return 0;
+}
+
+/*
+ * dsi_panel_i2c_jbd4040_send_calibration_cmd - build (on first call) and send
+ * the JBD4040 calibration command sets for both eyes.
+ */
+static int dsi_panel_i2c_jbd4040_send_calibration_cmd(struct dsi_panel *panel)
+{
+	struct dsi_panel_i2c_config *cfg;
+	struct task_struct *task;
+	int rc = 0;
+
+	if (!panel)
+		return -EINVAL;
+
+	cfg = &panel->i2c_config;
+
+	if (!cfg->i2c_support)
+		return 0;
+
+	if (!cfg->cmd_sets[DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT].count &&
+		panel->calib_partition_left) {
+		rc = dsi_panel_i2c_jbd4040_init_calibration_cmd(cfg,
+					panel->calib_partition_left,
+					DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT);
+		if (rc) {
+			DSI_ERR("[%s] failed to init left calibration cmd, rc=%d\n",
+				panel->name, rc);
+			return rc;
+		}
+	}
+
+	if (!cfg->cmd_sets[DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT].count &&
+		panel->calib_partition_right) {
+		rc = dsi_panel_i2c_jbd4040_init_calibration_cmd(cfg,
+					panel->calib_partition_right,
+					DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT);
+		if (rc) {
+			DSI_ERR("[%s] failed to init right calibration cmd, rc=%d\n",
+				panel->name, rc);
+			return rc;
+		}
+	}
+
+	init_completion(&cfg->calibration_done);
+
+	/* Send left side data in a separate thread */
+	task = kthread_run(dsi_panel_i2c_left_calibration_thread,
+			panel, "dsi_left_calib");
+	if (IS_ERR(task)) {
+		rc = PTR_ERR(task);
+		DSI_ERR("[%s] failed to create left calib thread, rc=%d\n",
+			panel->name, rc);
+		return rc;
+	}
+
+	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT,
+				       cfg->right_adapter);
+	if (rc)
+		DSI_ERR("[%s] failed to send right calibration cmds, rc=%d\n",
+			panel->name, rc);
+
+	/* Wait for left side transmission to complete */
+	wait_for_completion(&cfg->calibration_done);
+
+	return rc;
+}
+
+/*
+ * dsi_panel_i2c_jbd4040_enable_demura_gamma - enable demura and gamma on the panel
+ * after calibration data has been written.
+ */
+static void dsi_panel_i2c_jbd4040_enable_demura_gamma(struct dsi_panel *panel)
+{
+	struct dsi_panel_i2c_config *cfg = &panel->i2c_config;
+
+	/* Demura/gamma enable command payloads (slave 0x58) */
+	static const u8 jbd4040_gamma_en_cmd[]  = { 0x20, 0x02, 0x00, 0x00, 0x01 };
+	static const u8 jbd4040_demura_en_cmd[] = { 0x20, 0x02, 0x02, 0x00, 0x01 };
+
+	dsi_panel_i2c_tx_cmd(cfg->left_adapter,  0x58,
+			     jbd4040_gamma_en_cmd,  sizeof(jbd4040_gamma_en_cmd));
+	dsi_panel_i2c_tx_cmd(cfg->right_adapter, 0x58,
+			     jbd4040_gamma_en_cmd,  sizeof(jbd4040_gamma_en_cmd));
+	dsi_panel_i2c_tx_cmd(cfg->left_adapter,  0x58,
+			     jbd4040_demura_en_cmd, sizeof(jbd4040_demura_en_cmd));
+	dsi_panel_i2c_tx_cmd(cfg->right_adapter, 0x58,
+			     jbd4040_demura_en_cmd, sizeof(jbd4040_demura_en_cmd));
+}
+
+/**
+ * dsi_panel_i2c_calibration - run the full JBD4040 calibration sequence
+ * @panel: DSI panel handle
+ *
+ * Writes per-unit calibration data (gamma, demura, offset, flip) from the
+ * cal_left / cal_right MTD partitions to the panel DDIC over I2C, then
+ * enables demura and gamma correction.  Skipped if the panel DT property
+ * "qcom,mdss-dsi-panel-calibration-enabled" is not set.
+ *
+ * Return: 0 on success, negative error code on failure.
+ */
+int dsi_panel_i2c_calibrate(struct dsi_panel *panel)
+{
+	int rc = 0;
+
+	if (!panel || !panel->i2c_config.i2c_support) {
+		DSI_DEBUG("i2c not supported, skipping calibration\n");
+		return 0;
+	}
+
+	if (!panel->calibration_enabled) {
+		DSI_INFO("[%s] calibration not enabled for this panel, skipping\n",
+			 panel->name);
+		return 0;
+	}
+
+	DSI_INFO("[%s] calibration start\n", panel->name);
+
+	/*
+	 * Step 1: Write calibration data to panel memory via I2C.
+	 * The data MUST be loaded before enabling demura/gamma.
+	 */
+	rc = dsi_panel_i2c_jbd4040_send_calibration_cmd(panel);
+	if (rc) {
+		DSI_ERR("[%s] failed to send calibration cmds, rc=%d\n",
+			panel->name, rc);
+		return rc;
+	}
+
+	/* Step 2: Enable demura and gamma */
+	dsi_panel_i2c_jbd4040_enable_demura_gamma(panel);
+
+	DSI_INFO("[%s] calibration end\n", panel->name);
+	return 0;
 }

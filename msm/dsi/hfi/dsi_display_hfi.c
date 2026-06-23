@@ -178,9 +178,14 @@ int dsi_display_hfi_prepare(struct dsi_display *display)
 	}
 
 	if (!display->is_cont_splash_enabled) {
-		rc = dsi_panel_i2c_tx_cmd_set(display->panel, DSI_PANEL_I2C_CMD_SET_ON);
+		rc = dsi_panel_i2c_enable(display->panel);
 		if (rc) {
-			DSI_ERR("[%s] failed to send i2c cmds, rc=%d\n",
+			DSI_ERR("[%s] failed to enable i2c panel, rc=%d\n",
+				display->panel->name, rc);
+		}
+		rc = dsi_panel_i2c_calibrate(display->panel);
+		if (rc) {
+			DSI_ERR("[%s] failed to calibrate i2c panel, rc=%d\n",
 				display->panel->name, rc);
 		}
 	}
@@ -389,7 +394,7 @@ int dsi_display_hfi_unprepare(struct dsi_display *display)
 	if (display->trusted_vm_env)
 		return rc;
 
-	rc = dsi_panel_i2c_tx_cmd_set(display->panel, DSI_PANEL_I2C_CMD_SET_OFF);
+	rc = dsi_panel_i2c_disable(display->panel);
 	if (rc) {
 		DSI_ERR("[%s] failed to send i2c off cmds, rc=%d\n",
 			display->panel->name, rc);

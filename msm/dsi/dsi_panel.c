@@ -12,6 +12,9 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/pwm.h>
 #include <video/mipi_display.h>
+#if IS_ENABLED(CONFIG_MTD)
+#include <linux/mtd/mtd.h>
+#endif
 
 #include "dsi_panel.h"
 #include "dsi_ctrl_hw.h"
@@ -2914,6 +2917,80 @@ error:
 	return rc;
 }
 
+/*
+ * dsi_panel_parse_calib_partitions - look up the left/right calibration MTD
+ * partitions from the panel DT node.
+ */
+#if IS_ENABLED(CONFIG_MTD)
+static int dsi_panel_parse_calib_partitions(struct dsi_panel *panel)
+{
+	struct device_node *np;
+	struct mtd_info *mtd;
+
+	np = of_parse_phandle(panel->panel_of_node,
+			"qcom,panel-calib-partition-left", 0);
+	if (!np) {
+		DSI_DEBUG("[%s] calibration mtd partition left not defined, skipping\n",
+				panel->name);
+	} else {
+		mtd = of_get_mtd_device_by_node(np);
+		of_node_put(np);
+		if (IS_ERR_OR_NULL(mtd)) {
+			DSI_ERR("[%s] failed to get left calibration MTD device, rc=%ld\n",
+					panel->name, PTR_ERR(mtd));
+			return IS_ERR(mtd) ? PTR_ERR(mtd) : -ENODEV;
+		}
+		panel->calib_partition_left = mtd;
+	}
+
+	np = of_parse_phandle(panel->panel_of_node,
+			"qcom,panel-calib-partition-right", 0);
+	if (!np) {
+		DSI_DEBUG("[%s] calibration mtd partition right not defined, skipping\n",
+				panel->name);
+	} else {
+		mtd = of_get_mtd_device_by_node(np);
+		of_node_put(np);
+		if (IS_ERR_OR_NULL(mtd)) {
+			DSI_ERR("[%s] failed to get right calibration MTD device, rc=%ld\n",
+					panel->name, PTR_ERR(mtd));
+			if (panel->calib_partition_left) {
+				put_mtd_device(panel->calib_partition_left);
+				panel->calib_partition_left = NULL;
+			}
+			return IS_ERR(mtd) ? PTR_ERR(mtd) : -ENODEV;
+		}
+		panel->calib_partition_right = mtd;
+	}
+
+	return 0;
+}
+#else
+static inline int dsi_panel_parse_calib_partitions(struct dsi_panel *panel)
+{
+	DSI_WARN("[%s] calibration enabled in DT but MTD support not compiled in, disabling\n",
+			panel->name);
+	panel->calibration_enabled = false;
+	return 0;
+}
+#endif /* CONFIG_MTD */
+
+static int dsi_panel_parse_calibration(struct dsi_panel *panel)
+{
+	struct dsi_parser_utils *utils = &panel->utils;
+
+	panel->calibration_enabled = utils->read_bool(utils->data,
+			"qcom,panel-calibration-enabled");
+
+	DSI_DEBUG("%s: panel calibration %s\n", __func__,
+		(panel->calibration_enabled ? "enabled" : "disabled"));
+
+	if (!panel->calibration_enabled)
+		return 0;
+
+	return dsi_panel_parse_calib_partitions(panel);
+}
+
 static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 {
 	struct dsi_parser_utils *utils = &panel->utils;
@@ -2955,6 +3032,13 @@ static int dsi_panel_parse_misc_features(struct dsi_panel *panel)
 
 	DSI_DEBUG("%s: privacy feature %s\n", __func__,
 		(panel->privacy_feature_enabled ? "enabled" : "disabled"));
+
+	rc = dsi_panel_parse_calibration(panel);
+	if (rc) {
+		DSI_ERR("[%s] failed to parse calibration details, rc=%d\n",
+				panel->name, rc);
+		return rc;
+	}
 
 	panel->spr_info.enable = false;
 	panel->spr_info.pack_type = MSM_DISPLAY_SPR_TYPE_MAX;
@@ -7104,7 +7188,7 @@ int dsi_panel_enable(struct dsi_panel *panel)
 		goto error;
 	}
 
-	rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_ON);
+	rc = dsi_panel_i2c_enable(panel);
 	if (rc) {
 		DSI_ERR("[%s] failed to send i2c on cmds, rc=%d\n",
 			panel->name, rc);
@@ -7225,7 +7309,7 @@ int dsi_panel_disable(struct dsi_panel *panel)
 			rc = 0;
 		}
 
-		rc = dsi_panel_i2c_tx_cmd_set(panel, DSI_PANEL_I2C_CMD_SET_OFF);
+		rc = dsi_panel_i2c_disable(panel);
 		if (rc) {
 			pr_warn_ratelimited("[%s] failed to send i2c off cmds, rc=%d\n",
 					panel->name, rc);

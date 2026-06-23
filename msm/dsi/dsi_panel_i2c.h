@@ -29,15 +29,23 @@ struct dsi_panel;
 
 /**
  * enum dsi_panel_i2c_cmd_set_type - I2C command set types
- * @DSI_PANEL_I2C_CMD_SET_ON:         Commands sent when the panel is powered on
- * @DSI_PANEL_I2C_CMD_SET_OFF:        Commands sent when the panel is powered off
- * @DSI_PANEL_I2C_CMD_SET_BRIGHTNESS: Commands used to set backlight level (built in driver)
- * @DSI_PANEL_I2C_CMD_SET_MAX:        Sentinel / array size
+ * @DSI_PANEL_I2C_CMD_SET_ON:                Panel power-on commands (from DT)
+ * @DSI_PANEL_I2C_CMD_SET_OFF:               Panel power-off commands (from DT)
+ * @DSI_PANEL_I2C_CMD_SET_BRIGHTNESS:        Backlight level commands (built in driver)
+ * @DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT:  Left-eye gamma/demura/offset/flip (built in driver)
+ * @DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT: Right-eye gamma/demura/offset/flip (built in driver)
+ * @DSI_PANEL_I2C_CMD_SET_DEMURA_ON:         Enable demura correction (built in driver)
+ * @DSI_PANEL_I2C_CMD_SET_GAMMA_ON:          Enable gamma correction (built in driver)
+ * @DSI_PANEL_I2C_CMD_SET_MAX:               Sentinel / array size
  */
 enum dsi_panel_i2c_cmd_set_type {
 	DSI_PANEL_I2C_CMD_SET_ON = 0,
 	DSI_PANEL_I2C_CMD_SET_OFF,
 	DSI_PANEL_I2C_CMD_SET_BRIGHTNESS,
+	DSI_PANEL_I2C_CMD_SET_CALIBRATION_LEFT,
+	DSI_PANEL_I2C_CMD_SET_CALIBRATION_RIGHT,
+	DSI_PANEL_I2C_CMD_SET_DEMURA_ON,
+	DSI_PANEL_I2C_CMD_SET_GAMMA_ON,
 	DSI_PANEL_I2C_CMD_SET_MAX
 };
 
@@ -65,18 +73,27 @@ struct dsi_panel_i2c_config {
 	 */
 	u8 left_slave_addr;
 	u8 right_slave_addr;
+	struct completion calibration_done;
 	struct dsi_panel_i2c_cmd_set cmd_sets[DSI_PANEL_I2C_CMD_SET_MAX];
 };
 
 #if IS_ENABLED(CONFIG_DSI_PANEL_I2C)
 int dsi_panel_i2c_parse_config(struct dsi_panel *panel);
 int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
-			      enum dsi_panel_i2c_cmd_set_type type);
+			      enum dsi_panel_i2c_cmd_set_type type,
+			      struct i2c_adapter *adapter);
+int dsi_panel_i2c_enable(struct dsi_panel *panel);
+int dsi_panel_i2c_disable(struct dsi_panel *panel);
+int dsi_panel_i2c_calibrate(struct dsi_panel *panel);
 int dsi_panel_i2c_update_backlight(struct dsi_panel *panel, u32 bl_lvl);
 #else
 static inline int dsi_panel_i2c_parse_config(struct dsi_panel *panel) { return 0; }
 static inline int dsi_panel_i2c_tx_cmd_set(struct dsi_panel *panel,
-				enum dsi_panel_i2c_cmd_set_type type) { return 0; }
+					    enum dsi_panel_i2c_cmd_set_type type,
+					    struct i2c_adapter *adapter) { return 0; }
+static inline int dsi_panel_i2c_enable(struct dsi_panel *panel) { return 0; }
+static inline int dsi_panel_i2c_disable(struct dsi_panel *panel) { return 0; }
+static inline int dsi_panel_i2c_calibrate(struct dsi_panel *panel) { return 0; }
 static inline int dsi_panel_i2c_update_backlight(struct dsi_panel *panel, u32 bl_lvl) { return 0; }
 #endif /* CONFIG_DSI_PANEL_I2C */
 
