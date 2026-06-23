@@ -2366,6 +2366,70 @@ free_buf:
 	return rc ? rc : count;
 }
 
+/**
+ * debugfs_exec_dcs_cmd_type_write() - debugfs write handler for exec_dcs_cmd_type node
+ *
+ * Accepts a single write in the format:
+ *   <cmd_type> [resp_req]
+ *
+ * @cmd_type:  decimal integer; either a standard type in [0, DSI_CMD_SET_MAX)
+ *             or a custom type in [DSI_CUSTOM_CMD_SET_START_IDX, DSI_CUSTOM_CMD_SET_MAX)
+ * @resp_req:  optional decimal integer; 0 = fire-and-forget (default),
+ *                                       1 = block until DCP acknowledges
+ */
+static ssize_t debugfs_exec_dcs_cmd_type_write(struct file *file,
+					       const char __user *user_buf,
+					       size_t count, loff_t *ppos)
+{
+	struct dsi_display *display = file->private_data;
+	char buf[64];
+	u32 cmd_type, resp_req_val = 0;
+	bool is_standard, is_custom, resp_req;
+	int rc = 0;
+
+	if (!display)
+		return -ENODEV;
+
+	if (*ppos)
+		return 0;
+
+	if (count >= sizeof(buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, user_buf, count))
+		return -EFAULT;
+
+	buf[count] = '\0';
+
+	/* Parse input: "<cmd_type> [resp_req]" */
+	if (sscanf(buf, "%u %u", &cmd_type, &resp_req_val) < 1) {
+		DSI_ERR("exec_dcs_cmd_type: invalid format. Use: <cmd_type> [resp_req]\n");
+		return -EINVAL;
+	}
+
+	/* Validate cmd_type: must be a standard or custom DCS command type */
+	is_standard = (cmd_type < DSI_CMD_SET_MAX);
+	is_custom = (cmd_type >= DSI_CUSTOM_CMD_SET_START_IDX &&
+		     cmd_type < DSI_CUSTOM_CMD_SET_MAX);
+	if (!is_standard && !is_custom) {
+		DSI_ERR("cmd_type %u out of range; must be < %u (std) or in [%u, %u) (custom)\n",
+			cmd_type, DSI_CMD_SET_MAX,
+			DSI_CUSTOM_CMD_SET_START_IDX, DSI_CUSTOM_CMD_SET_MAX);
+		return -EINVAL;
+	}
+
+	resp_req = !!resp_req_val;
+
+	rc = dsi_hfi_exec_dcs_cmd_type(display, cmd_type, resp_req);
+	if (rc) {
+		DSI_ERR("exec_dcs_cmd_type: failed for cmd_type=%u resp_req=%d, rc=%d\n",
+			cmd_type, resp_req, rc);
+		return rc;
+	}
+
+	return count;
+}
+
 static const struct file_operations dump_info_fops = {
 	.open = simple_open,
 	.read = debugfs_dump_info_read,
@@ -2402,6 +2466,11 @@ static const struct file_operations cmd_remap_fops = {
 static const struct file_operations cmd_replace_fops = {
 	.open = simple_open,
 	.write = debugfs_cmd_replace_write,
+};
+
+static const struct file_operations exec_dcs_cmd_type_fops = {
+	.open  = simple_open,
+	.write = debugfs_exec_dcs_cmd_type_write,
 };
 
 static int dsi_display_debugfs_init(struct dsi_display *display)
@@ -2493,6 +2562,18 @@ static int dsi_display_debugfs_init(struct dsi_display *display)
 	if (IS_ERR_OR_NULL(dump_file)) {
 		rc = PTR_ERR(dump_file);
 		DSI_ERR("[%s] debugfs for cmd_replace failed, rc=%d\n",
+			display->name, rc);
+		goto error_remove_dir;
+	}
+
+	dump_file = debugfs_create_file("exec_dcs_cmd_type",
+					0200,
+					dir,
+					display,
+					&exec_dcs_cmd_type_fops);
+	if (IS_ERR_OR_NULL(dump_file)) {
+		rc = PTR_ERR(dump_file);
+		DSI_ERR("[%s] debugfs for exec_dcs_cmd_type failed, rc=%d\n",
 			display->name, rc);
 		goto error_remove_dir;
 	}
