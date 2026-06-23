@@ -82,6 +82,9 @@ struct dp_hfi {
 	struct hfi_display_mode_extended_info mode_list[64]; /* Extended mode info */
 
 	bool hpd_events_register;
+	bool disable_in_progress;
+	bool pending_synthetic_plug;
+	struct hfi_device_hotplug_config pending_plug_config;
 
 	bool mode_valid;
 	unsigned long tx_cmd_buf_dva;
