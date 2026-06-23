@@ -105,6 +105,7 @@ static struct base_prop_lookup hfi_plane_repro_props_map[] = {
 	{PLANE_PROP_REPROJ_PLANE_EQUATION, HFI_PROPERTY_LAYER_LSR_REPROJ_PLANE_EQ},
 	{PLANE_PROP_REPROJ_RENDER_FRUSTUM, HFI_PROPERTY_LAYER_LSR_RENDER_FRUSTUM},
 	{PLANE_PROP_REPROJ_LAYER_GAMMA,	HFI_PROPERTY_LAYER_GAMMA},
+	{PLANE_PROP_DISPARITY_PHASE, HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE},
 };
 
 static struct base_prop_lookup hfi_plane_csc_props_map[] = {
@@ -156,7 +157,7 @@ static u32 hfi_rot_lookup(u32 drm_rot)
 }
 
 #if IS_ENABLED(CONFIG_DRM_SDE_LSR)
-int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -204,6 +205,15 @@ int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		gamma_type = sde_plane_get_property(state, PLANE_PROP_REPROJ_LAYER_GAMMA);
 		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
 			phfi->hfi_pipe_id, HFI_VAL_U32, &gamma_type, sizeof(u32));
+	case HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE: {
+		u32 disparity_phase = sde_plane_get_property(state, PLANE_PROP_DISPARITY_PHASE);
+
+		if (!disparity_phase)
+			return 0;
+		prop_id = HFI_PROPERTY_LAYER_LSR_DISPARITY_PHASE;
+		return hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id,
+			phfi->hfi_pipe_id, HFI_VAL_U32, &disparity_phase, sizeof(u32));
+	}
 	default:
 		HFI_ERROR_PLANE(phfi, "unsupported HFI property\n");
 		return -EINVAL;
@@ -212,7 +222,7 @@ int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	return 0;
 }
 
-int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -292,14 +302,14 @@ static bool _hfi_plane_is_prop_excluded_for_repro(u32 drm_prop, struct sde_plane
 	return false;
 }
 #else
-int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_repro_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
 	return 0;
 }
 
-int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _hfi_add_csc_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 	struct sde_plane_state *pstate,
 	struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -318,6 +328,7 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 {
 	u32 prop_id, hfi_format, supported_rot, llcc_scid, adjusted_crtc_x;
 	struct hfi_display_roi src, dst;
+	struct hfi_plane_buff buf;
 	struct drm_plane_state *state;
 	struct hfi_plane *phfi;
 	struct drm_framebuffer *fb;
@@ -332,7 +343,10 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 
 	state = &pstate->base;
 	phfi = to_hfi_plane(plane);
-	sc_cfg = &plane->catalog->sc_cfg[SDE_SYS_CACHE_DISP];
+	if (pstate->lsr_mode_prop == MSM_DISP_LSR_MODE_ENABLED)
+		sc_cfg = &plane->catalog->sc_cfg[SDE_SYS_CACHE_LSR_MODE];
+	else
+		sc_cfg = &plane->catalog->sc_cfg[SDE_SYS_CACHE_DISP];
 
 	fb = state->fb;
 	fmt.fourcc_format = fb->format->format;
@@ -376,9 +390,12 @@ static int _hfi_plane_add_drm_props(struct sde_plane *plane,
 		return -EINVAL;
 	}
 	prop_id = HFI_PROPERTY_LAYER_SRC_ADDR;
+	memset(&buf, 0, sizeof(buf));
+	for (int i = 0; i < HFI_MAX_PLANES; i++)
+		buf.addr_l[i] = plane->pipe_cfg.layout.plane_addr[i];
+
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
-			HFI_VAL_U32_ARRAY, &plane->pipe_cfg.layout.plane_addr[0],
-			(sizeof(u32) * SDE_MAX_PLANES));
+			HFI_VAL_U32_ARRAY, &buf, sizeof(struct hfi_plane_buff));
 
 	prop_id = HFI_PROPERTY_LAYER_STRIDE;
 	hfi_util_u32_prop_helper_add_prop_by_obj(prop_collector, prop_id, phfi->hfi_pipe_id,
@@ -423,7 +440,7 @@ end:
 	return rc;
 }
 
-int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
+static int _sde_hfi_add_base_prop_helper(u32 hfi_prop, struct sde_plane *plane,
 		struct sde_plane_state *pstate,
 		struct hfi_util_u32_prop_helper *prop_collector)
 {
@@ -660,7 +677,7 @@ end:
  * hfi_plane_populate_custom_kv_setter_props:  this is for large payloads.
  * Collects all listed props to provide as key-value pairs and adapter does memcopy
  */
-int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u32 disp_id,
+static int hfi_plane_populate_custom_kv_setter_props(struct sde_plane *plane, u32 disp_id,
 		struct sde_plane_state *pstate, struct hfi_cmdbuf_t *cmd_buf)
 {
 	int i, ret = 0;
@@ -711,7 +728,7 @@ end:
 	return ret;
 }
 
-int _hfi_plane_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
+static int _hfi_plane_populate_props(struct hfi_cmdbuf_t *cmd_buf, u32 disp_id,
 		struct sde_plane *plane, struct sde_plane_state *pstate)
 {
 	int ret = 0;
@@ -855,6 +872,7 @@ static int hfi_plane_atomic_update(struct sde_plane *plane, struct sde_plane_sta
 	drm_state = crtc->state;
 	cstate = to_sde_crtc_state(drm_state);
 	pstate->cache_state_prop = sde_crtc_get_property(cstate, CRTC_PROP_CACHE_STATE);
+	pstate->lsr_mode_prop = sde_crtc_get_property(cstate, CRTC_PROP_LSR_MODE);
 
 	disp_id = hfi_crtc_get_display_id(crtc, crtc->state);
 	if (disp_id == U32_MAX) {

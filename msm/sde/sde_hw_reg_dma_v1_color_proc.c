@@ -23,14 +23,14 @@
 
 #define DIVCEIL(a, b)  (((a) + (b) - 1) / (b))
 
-void log_sde_reg_write(struct sde_hw_blk_reg_map *c, u32 reg_off,
+static void log_sde_reg_write(struct sde_hw_blk_reg_map *c, u32 reg_off,
 		u32 val, const char *name)
 {
 	SDE_ERROR("writing register [%s:0x%X] with value 0x%X\n",
 		name, c->blk_off + reg_off, val);
 }
 
-int log_sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off,
+static int log_sde_reg_read(struct sde_hw_blk_reg_map *c, u32 reg_off,
 			const char *name)
 {
 	SDE_ERROR("reading register [%s:0x%X]\n",
@@ -1733,7 +1733,6 @@ int reg_dmav1_setup_rc_pu_configv1(struct sde_hw_dspp *ctx, void *cfg)
 	}
 
 	rc_mask_cfg = ctx->rc_state.last_rc_mask_cfg;
-	SDE_EVT32(RC_IDX(ctx), roi_list, rc_mask_cfg, rc_mask_cfg->cfg_param_03);
 
 	/* early return when there is no mask in memory */
 	if (!rc_mask_cfg || !rc_mask_cfg->cfg_param_03) {
@@ -1741,6 +1740,8 @@ int reg_dmav1_setup_rc_pu_configv1(struct sde_hw_dspp *ctx, void *cfg)
 		SDE_EVT32(RC_IDX(ctx));
 		return SDE_HW_RC_PU_SKIP_OP;
 	}
+
+	SDE_EVT32(RC_IDX(ctx), roi_list, rc_mask_cfg, rc_mask_cfg->cfg_param_03);
 
 	sde_kms_rect_merge_rectangles(roi_list, &merged_roi);
 	rc = _sde_hw_rc_get_ajusted_roi(hw_cfg, &merged_roi, &rc_roi);
@@ -2050,7 +2051,7 @@ static void _dspp_pcc_common_off(struct sde_hw_dspp *ctx, void *cfg)
 	}
 }
 
-void reg_dmav1_setup_dspp_pcc_common(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav1_setup_dspp_pcc_common(struct sde_hw_dspp *ctx, void *cfg)
 {
 	struct sde_hw_reg_dma_ops *dma_ops;
 	struct sde_reg_dma_kickoff_cfg kick_off;
@@ -5043,8 +5044,8 @@ void reg_dmav1_setup_ds_qseed3(struct sde_hw_ds *hw_ds,
 	struct sde_reg_dma_buffer *buf = NULL;
 
 	if (!hw_ds || !hw_ds->ctl || !scaler_cfg) {
-		DRM_ERROR("invalid params hw_ds %pK ctl %pK scaler_cfg %pK\n", hw_ds, hw_ds->ctl,
-			scaler_cfg);
+		DRM_ERROR("invalid params hw_ds %pK ctl %pK scaler_cfg %pK\n", hw_ds,
+			hw_ds ? hw_ds->ctl : NULL, scaler_cfg);
 		return;
 	}
 
@@ -6851,6 +6852,10 @@ void reg_dmav2_setup_vig_gamutv61(struct sde_hw_pipe *ctx, void *cfg)
 		scale_offset = GAMUT_SCALEB_OFFSET_OFF;
 	}
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->flags |= (op_mode == gamut_mode_17) ? HFI_BUFF_3D_LUT_MODE_A :
+		HFI_BUFF_3D_LUT_MODE_B;
+#endif
 	op_mode <<= 2;
 	if (payload->flags & GAMUT_3D_MAP_EN)
 		op_mode |= GAMUT_MAP_EN;
@@ -6993,7 +6998,7 @@ int reg_dmav2_init_spr_op_v1(int feature, struct sde_hw_dspp *ctx)
 	return rc;
 }
 
-int reg_dmav1_setup_spr_cfg3_params(struct sde_hw_dspp *ctx,
+static int reg_dmav1_setup_spr_cfg3_params(struct sde_hw_dspp *ctx,
 		struct drm_msm_spr_init_cfg *payload,
 		struct sde_reg_dma_setup_ops_cfg *dma_write_cfg,
 		struct sde_hw_reg_dma_ops *dma_ops)
@@ -7040,7 +7045,7 @@ int reg_dmav1_setup_spr_cfg3_params(struct sde_hw_dspp *ctx,
 	return rc;
 }
 
-int reg_dmav1_setup_spr_cfg4_params(struct sde_hw_dspp *ctx,
+static int reg_dmav1_setup_spr_cfg4_params(struct sde_hw_dspp *ctx,
 		struct drm_msm_spr_init_cfg *payload,
 		struct sde_reg_dma_setup_ops_cfg *dma_write_cfg,
 		struct sde_hw_reg_dma_ops *dma_ops)
@@ -7072,7 +7077,7 @@ int reg_dmav1_setup_spr_cfg4_params(struct sde_hw_dspp *ctx,
 	return rc;
 }
 
-int reg_dmav1_setup_spr_cfg5_params(struct sde_hw_dspp *ctx,
+static int reg_dmav1_setup_spr_cfg5_params(struct sde_hw_dspp *ctx,
 		struct drm_msm_spr_init_cfg *payload,
 		struct sde_reg_dma_setup_ops_cfg *dma_write_cfg,
 		struct sde_hw_reg_dma_ops *dma_ops)
@@ -7127,7 +7132,7 @@ int reg_dmav1_setup_spr_cfg5_params(struct sde_hw_dspp *ctx,
 	return rc;
 }
 
-void reg_dmav1_disable_spr(struct sde_hw_dspp *ctx, void *cfg)
+static void reg_dmav1_disable_spr(struct sde_hw_dspp *ctx, void *cfg)
 {
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	struct sde_hw_cp_cfg *hw_cfg = cfg;
@@ -7175,7 +7180,7 @@ void reg_dmav1_disable_spr(struct sde_hw_dspp *ctx, void *cfg)
 	ctx->spr_cfg_18_default = 0;
 }
 
-int reg_dmav1_setup_spr_init_common(struct sde_hw_dspp *ctx,
+static int reg_dmav1_setup_spr_init_common(struct sde_hw_dspp *ctx,
 		struct drm_msm_spr_init_cfg *payload,
 		struct sde_reg_dma_setup_ops_cfg *dma_write_cfg,
 		struct sde_hw_reg_dma_ops *dma_ops)
@@ -7233,7 +7238,7 @@ int reg_dmav1_setup_spr_init_common(struct sde_hw_dspp *ctx,
 	return rc;
 }
 
-int reg_dmav1_get_spr_target(struct sde_hw_dspp *ctx, void *cfg,
+static int reg_dmav1_get_spr_target(struct sde_hw_dspp *ctx, void *cfg,
 		struct sde_hw_reg_dma_ops **dma_ops, uint32_t *base_off,
 		struct sde_reg_dma_buffer **buffer, bool *disable)
 {
@@ -7265,7 +7270,7 @@ int reg_dmav1_get_spr_target(struct sde_hw_dspp *ctx, void *cfg,
 	return rc;
 }
 
-int reg_dmav1_setup_spr_init_kickoff(uint32_t dpu_idx,
+static int reg_dmav1_setup_spr_init_kickoff(uint32_t dpu_idx,
 		uint32_t version, uint32_t base_off,
 		struct sde_hw_reg_dma_ops *dma_ops,
 		struct sde_hw_cp_cfg *hw_cfg,
@@ -7606,9 +7611,10 @@ cleanup:
 	kvfree(reg);
 }
 
-int reg_dmav1_setup_spr_pu_config(struct sde_hw_dspp *ctx,
+static int reg_dmav1_setup_spr_pu_config(struct sde_hw_dspp *ctx,
 	struct msm_roi_list *roi_list,
-	struct sde_hw_reg_dma_ops *dma_ops, struct sde_reg_dma_buffer *buffer)
+	struct sde_hw_reg_dma_ops *dma_ops, struct sde_reg_dma_buffer *buffer,
+	struct sde_hw_cp_cfg *hw_cfg)
 {
 	struct sde_reg_dma_setup_ops_cfg dma_write_cfg;
 	uint32_t reg_off, base_off;
@@ -7638,10 +7644,30 @@ int reg_dmav1_setup_spr_pu_config(struct sde_hw_dspp *ctx,
 		return rc;
 	}
 
+	if (IS_DISP_OP_HFI(ctx->hw.disp_op) && (ctx->spr_cfg_18_default != 0)) {
+		uint32_t reg = ctx->spr_cfg_18_default;
+
+		//No ROI list means full screen update so apply without modification
+		if (roi_list && roi_list->spr_roi[0].y1 != 0)
+			reg &= 0xFFFFFFFC;
+
+		if (roi_list && roi_list->spr_roi[0].y2 != hw_cfg->panel_height)
+			reg &= 0xFFFFFFCF;
+
+		reg_off = base_off + 0x7c;
+		REG_DMA_SETUP_OPS(dma_write_cfg, reg_off, &reg,
+			sizeof(uint32_t), REG_SINGLE_WRITE, 0, 0, 0);
+		rc = dma_ops->setup_payload(&dma_write_cfg);
+		if (rc) {
+			DRM_ERROR("write spr cfg18 failed ret %d\n", rc);
+			return rc;
+		}
+	}
+
 	return rc;
 }
 
-int reg_dmav1_setup_spr_pu_common(struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg,
+static int reg_dmav1_setup_spr_pu_common(struct sde_hw_dspp *ctx, struct sde_hw_cp_cfg *hw_cfg,
 		struct msm_roi_list *roi_list,
 		struct sde_hw_reg_dma_ops *dma_ops, struct sde_reg_dma_buffer *buffer)
 {
@@ -7755,11 +7781,18 @@ void reg_dmav1_setup_spr_pu_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 	if (hw_cfg->payload && hw_cfg->len == sizeof(struct sde_drm_roi_v1))
 		roi_list = hw_cfg->payload;
 
+#ifdef HFI_BUFF_FEATURE_ENABLE
+	hw_cfg->prop_id = HFI_PACK_VERSION(2, 0, hw_cfg->prop_id);
+	hw_cfg->flags = hfi_dspp_idx_map[hw_cfg->dspp_idx];
+	if (roi_list)
+		hw_cfg->flags |= HFI_BUFF_FEATURE_ENABLE;
+#endif
+
 	rc = reg_dmav1_setup_spr_pu_common(ctx, cfg, roi_list, dma_ops, buffer);
 	if (rc)
 		return;
 
-	rc = reg_dmav1_setup_spr_pu_config(ctx, roi_list, dma_ops, buffer);
+	rc = reg_dmav1_setup_spr_pu_config(ctx, roi_list, dma_ops, buffer, hw_cfg);
 	if (rc)
 		return;
 
@@ -7773,7 +7806,8 @@ void reg_dmav1_setup_spr_pu_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 		if (roi_list && roi_list->spr_roi[0].y2 != hw_cfg->panel_height)
 			reg &= 0xFFFFFFCF;
 
-		SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->spr.base + 0x7C, reg);
+		if (IS_DISP_OP_HWIO(ctx->hw.disp_op))
+			SDE_REG_WRITE(&ctx->hw, ctx->cap->sblk->spr.base + 0x7C, reg);
 	}
 
 	REG_DMA_SETUP_KICKOFF(kick_off, hw_cfg->ctl,
@@ -8294,8 +8328,33 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 	u32 h, w, temp, crtc_roi_top, crtc_roi_bottom;
 	u32 decm_w = 1;
 	u32 decm_h = 1;
+	u32 slot_idx = 0, rect_idx = 0;
+	u32 src_id = 0, rect_id = 0;
 
-	if (!hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
+	src_id = dcfg->src_id & REG_MASK(8);
+	if (src_id == BIT(1)) {
+		hw_cfg->demura_slot_idx = 0;
+	} else if (src_id == BIT(3)) {
+		hw_cfg->demura_slot_idx = 1;
+	} else {
+		DRM_WARN("Invalid src id %d\n", src_id);
+		return false;
+	}
+
+	rect_id = dcfg->src_id & 0xFF00;
+	if (rect_id == DEMURA_RECT_0 || (rect_id == (DEMURA_RECT_0 | DEMURA_RECT_1))) {
+		hw_cfg->demura_rect_idx = 0;
+	} else if (rect_id == DEMURA_RECT_1) {
+		hw_cfg->demura_rect_idx = 1;
+	} else {
+		DRM_WARN("Invalid rect id %d\n", rect_id);
+		return false;
+	}
+
+	slot_idx = hw_cfg->demura_slot_idx;
+	rect_idx = hw_cfg->demura_rect_idx;
+
+	if (!hw_cfg->skip_planes[slot_idx][rect_idx].valid) {
 		DRM_WARN("HFC plane not set\n");
 		return false;
 	}
@@ -8308,7 +8367,7 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 	}
 
 	h = hw_cfg->num_ds_enabled ? hw_cfg->panel_height : hw_cfg->displayv;
-	crtc_roi_top = hw_cfg->skip_planes[SB_PLANE_REAL].y_offset;
+	crtc_roi_top = hw_cfg->skip_planes[slot_idx][rect_idx].y_offset;
 	crtc_roi_bottom = crtc_roi_top + h;
 	h = (crtc_roi_bottom / decm_h) - (crtc_roi_top / decm_h) +
 		((crtc_roi_bottom % decm_h) > 0 ? 1 : 0);
@@ -8329,25 +8388,25 @@ static bool __reg_dmav1_valid_hfc_en_cfg(struct drm_msm_dem_cfg *dcfg,
 		w = w / (hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1);
 	}
 
-	if (h != (hw_cfg->skip_planes[SB_PLANE_REAL].plane_h + hw_cfg->overfetch_lines_on_top +
+	if (h != (hw_cfg->skip_planes[slot_idx][rect_idx].plane_h + hw_cfg->overfetch_lines_on_top +
 			hw_cfg->overfetch_lines_on_bottom) ||
-			w != hw_cfg->skip_planes[SB_PLANE_REAL].plane_w) {
+			w != hw_cfg->skip_planes[slot_idx][rect_idx].plane_w) {
 		DRM_ERROR("invalid hfc cfg exp h %d exp w %d act h %d act w %d\n",
-			h, w, hw_cfg->skip_planes[SB_PLANE_REAL].plane_h,
-				hw_cfg->skip_planes[SB_PLANE_REAL].plane_w);
+			h, w, hw_cfg->skip_planes[slot_idx][rect_idx].plane_h,
+				hw_cfg->skip_planes[slot_idx][rect_idx].plane_w);
 		DRM_ERROR("c0_depth %d c1_depth %d c2 depth %d hw_cfg->panel_width %d\n",
 			dcfg->c0_depth, dcfg->c1_depth, dcfg->c2_depth, hw_cfg->panel_width);
 		return false;
 	}
 
-	if (dcfg->src_id == BIT(3) && hw_cfg->skip_planes[SB_PLANE_REAL].plane == SSPP_DMA3)
+	if (src_id == BIT(3) && hw_cfg->skip_planes[slot_idx][rect_idx].plane == SSPP_DMA3)
 		return true;
 
-	if (dcfg->src_id == BIT(1) && hw_cfg->skip_planes[SB_PLANE_REAL].plane == SSPP_DMA1)
+	if (src_id == BIT(1) && hw_cfg->skip_planes[slot_idx][rect_idx].plane == SSPP_DMA1)
 		return true;
 
-	DRM_ERROR("invalid HFC plane dcfg->src_id %d hw_cfg->skip_planes[SB_PLANE_REAL].plane %d\n",
-		dcfg->src_id, hw_cfg->skip_planes[SB_PLANE_REAL].plane);
+	DRM_ERROR("invalid HFC plane dcfg->src_id %d hw_cfg->skip_planes[%d][%d].plane %d\n",
+		src_id, slot_idx, rect_idx, hw_cfg->skip_planes[slot_idx][rect_idx].plane);
 	return false;
 }
 
@@ -8360,7 +8419,7 @@ static void __reg_dmav1_setup_demura_common_en(struct sde_hw_dspp *ctx,
 {
 	bool valid_hfc_cfg = false;
 
-	*en = (dcfg->src_id == BIT(3)) ? 0 : BIT(31);
+	*en = ((dcfg->src_id & REG_MASK(8)) == BIT(3)) ? 0 : BIT(31);
 	*en |= (dcfg->cfg1_high_idx & REG_MASK(3)) << 24;
 	*en |= (dcfg->cfg1_low_idx & REG_MASK(3)) << 20;
 	*en |= (dcfg->c2_depth & REG_MASK(4)) << 16;
@@ -8958,6 +9017,7 @@ static int __reg_dmav1_setup_demura_en_v3_common(struct sde_hw_dspp *ctx,
 	int rc, val;
 	u32 demura_base = ctx->cap->sblk->demura.base + ctx->hw.blk_off;
 	u32 hfc_pack_size = 0;
+	u32 slot_idx = 0, rect_idx = 0;
 
 	__reg_dmav1_setup_demura_common_en(ctx, dcfg, dma_write_cfg, dma_ops, hw_cfg, &en);
 
@@ -8983,7 +9043,7 @@ static int __reg_dmav1_setup_demura_en_v3_common(struct sde_hw_dspp *ctx,
 	if (rc) {
 		DRM_ERROR("0x4: REG_SINGLE_WRITE failed ret %d\n", rc);
 	} else {
-		en = (dcfg->src_id == BIT(3)) ? 0x3 : 0x1;
+		en = ((dcfg->src_id & REG_MASK(8)) == BIT(3)) ? 0x3 : 0x1;
 
 		// set cfg0_param_7
 		if (dcfg->flags & DEMURA_FLAG_1) {
@@ -8992,13 +9052,16 @@ static int __reg_dmav1_setup_demura_en_v3_common(struct sde_hw_dspp *ctx,
 		}
 
 		if (dcfg->flags & DEMURA_SINGLE_REC) {
+			slot_idx = hw_cfg->demura_slot_idx;
+			rect_idx = hw_cfg->demura_rect_idx;
 			en |= BIT(8);
 			hfc_pack_size =
-				((hw_cfg->skip_planes[SB_PLANE_REAL].plane_w /
+				((hw_cfg->skip_planes[slot_idx][rect_idx].plane_w /
 					(hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1)) &
 				REG_MASK(16));
 			hfc_pack_size |=
-				((hw_cfg->skip_planes[SB_PLANE_REAL].plane_h & REG_MASK(16)) << 16);
+				((hw_cfg->skip_planes[slot_idx][rect_idx].plane_h &
+				REG_MASK(16)) << 16);
 			REG_DMA_SETUP_OPS(*dma_write_cfg, demura_base + 0x150,
 				&hfc_pack_size, sizeof(hfc_pack_size), REG_SINGLE_WRITE, 0, 0, 0);
 			rc = dma_ops->setup_payload(dma_write_cfg);
@@ -9010,6 +9073,8 @@ static int __reg_dmav1_setup_demura_en_v3_common(struct sde_hw_dspp *ctx,
 		} else {
 			ctx->demura_single_rec = false;
 		}
+		ctx->demura_slot_idx = hw_cfg->demura_slot_idx;
+		ctx->demura_rect_idx = hw_cfg->demura_rect_idx;
 
 		REG_DMA_SETUP_OPS(*dma_write_cfg, demura_base + 0x18,
 			&en, sizeof(en), REG_SINGLE_WRITE, 0, 0, 0);
@@ -9194,6 +9259,7 @@ void reg_dmav1_setup_demura_pu_cfgv4(struct sde_hw_dspp *ctx, void *cfg)
 	u32 hfc_pack_size;
 	u32 demura_base;
 	u32 temp;
+	u32 slot_idx = 0, rect_idx = 0;
 
 	rc = reg_dma_dspp_check(ctx, cfg, DEMURA_PU_CFG);
 	if (rc)
@@ -9237,16 +9303,19 @@ void reg_dmav1_setup_demura_pu_cfgv4(struct sde_hw_dspp *ctx, void *cfg)
 			((hw_cfg) ? hw_cfg->panel_height : -1));
 
 	if (ctx->demura_single_rec) {
-		if (!hw_cfg->skip_planes[SB_PLANE_REAL].valid) {
+		slot_idx = ctx->demura_slot_idx;
+		rect_idx = ctx->demura_rect_idx;
+		if (!hw_cfg->skip_planes[slot_idx][rect_idx].valid) {
 			DRM_WARN("HFC plane not set\n");
 			return;
 		}
 		hfc_pack_size =
-			((hw_cfg->skip_planes[SB_PLANE_REAL].plane_w /
+			((hw_cfg->skip_planes[slot_idx][rect_idx].plane_w /
 				(hw_cfg->num_of_mixers ? hw_cfg->num_of_mixers : 1)) &
 			REG_MASK(16));
 		hfc_pack_size |=
-			((hw_cfg->skip_planes[SB_PLANE_REAL].plane_h & REG_MASK(16)) << 16);
+			((hw_cfg->skip_planes[slot_idx][rect_idx].plane_h &
+			REG_MASK(16)) << 16);
 		REG_DMA_SETUP_OPS(dma_write_cfg, demura_base + 0x150,
 			&hfc_pack_size, sizeof(hfc_pack_size), REG_SINGLE_WRITE, 0, 0, 0);
 		rc = dma_ops->setup_payload(&dma_write_cfg);

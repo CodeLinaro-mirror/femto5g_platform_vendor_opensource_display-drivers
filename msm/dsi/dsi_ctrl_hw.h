@@ -346,6 +346,7 @@ enum dsi_error_int_type {
  * @offset:        IOMMU VA for command buffer address.
  * @length:        Length of the command buffer.
  * @datatype:      Datatype of cmd.
+ * @vc_id:         Virtual channel identifier.
  * @en_broadcast:  Enable broadcast mode if set to true.
  * @is_master:     Is master in broadcast mode.
  * @use_lpm:       Use low power mode for command transmission.
@@ -354,6 +355,7 @@ struct dsi_ctrl_cmd_dma_info {
 	u32 offset;
 	u32 length;
 	u8  datatype;
+	u32 vc_id;
 	bool en_broadcast;
 	bool is_master;
 	bool use_lpm;

@@ -158,7 +158,7 @@ static int dsi_pll_parse_dfps_from_dt(struct platform_device *pdev,
 
 	pnode = of_parse_phandle(pdev->dev.of_node, "pll_codes_region", 0);
 	if (IS_ERR_OR_NULL(pnode)) {
-		DSI_PLL_ERR(pll_res, "of_parse_phandle failed\n");
+		DSI_PLL_INFO(pll_res, "of_parse_phandle failed\n");
 		pnode = NULL;
 		rc = -EINVAL;
 		goto err;
@@ -179,7 +179,7 @@ static int dsi_pll_parse_dfps_from_dt(struct platform_device *pdev,
 	}
 
 	if (header.magic_id != DSI_PLL_TRIM_CODES_MAGIC_ID) {
-		DSI_PLL_ERR(pll_res, "pll codes magic id not match\n");
+		DSI_PLL_WARN(pll_res, "pll codes magic id not match\n");
 		rc = -EINVAL;
 		goto err;
 	}

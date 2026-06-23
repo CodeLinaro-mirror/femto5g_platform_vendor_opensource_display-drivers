@@ -1007,4 +1007,13 @@ int dsi_ctrl_set_lp2_load(struct dsi_ctrl *dsi_ctrl, bool enable);
  * @dsi_ctrl:                 DSI controller handle.
  */
 void dsi_ctrl_flush_cmd_dma_queue(struct dsi_ctrl *dsi_ctrl);
+
+/**
+ * dsi_ctrl_buffer_init() - Initialize DSI controller command buffers
+ * @dsi_ctrl: Pointer to the DSI controller handle.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
+int dsi_ctrl_buffer_init(struct dsi_ctrl *dsi_ctrl);
+
 #endif /* _DSI_CTRL_H_ */

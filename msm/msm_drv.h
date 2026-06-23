@@ -56,6 +56,7 @@
 #endif
 #include <drm/drm_bridge.h>
 #include <drm/drm_framebuffer.h>
+#include <drm/drm_print.h>
 
 #include "sde_power_handle.h"
 
@@ -187,6 +188,7 @@ enum msm_mdp_plane_property {
 	PLANE_PROP_REPROJ_RENDER_FRUSTUM,
 	PLANE_PROP_REPROJ_ALPHA_BUFFER,
 	PLANE_PROP_REPROJ_LAYER_GAMMA,
+	PLANE_PROP_DISPARITY_PHASE,
 
 	/* total # of properties */
 	PLANE_PROP_COUNT
@@ -231,6 +233,9 @@ enum msm_mdp_crtc_property {
 	CRTC_PROP_FLUSH_SYNC_EN,
 	CRTC_PROP_DISPLAY_OP,
 	CRTC_PROP_LSR_MODE,
+	CRTC_PROP_BATCH_SIZE,
+	CRTC_PROP_BATCH_INDEX,
+	CRTC_PROP_BATCH_TYPE,
 
 	/* total # of properties */
 	CRTC_PROP_COUNT
@@ -281,6 +286,8 @@ enum msm_mdp_conn_property {
 	CONNECTOR_PROP_EMSYNC_FPS,
 	CONNECTOR_PROP_PRIVACY_LAYER_V1,
 	CONNECTOR_PROP_PRIVACY_LAYER_V2,
+	CONNECTOR_PROP_VSYNC_OFFSET,
+	CONN_PROP_GMU_DCP_INTF_MEM,
 
 	/* enum/bitmask properties */
 	CONNECTOR_PROP_TOPOLOGY_NAME,
@@ -1315,6 +1322,16 @@ enum lsr_mode {
 	MSM_DISP_LSR_MODE_ENABLED,
 };
 
+/**
+ * enum msm_mdp_batch_type: batch submission type for Pikachu
+ * @MSM_MDP_BATCH_TYPE_NONE: no batching
+ * @MSM_MDP_BATCH_TYPE_LSR:  LSR batch submission
+ */
+enum msm_mdp_batch_type {
+	MSM_MDP_BATCH_TYPE_NONE = 0,
+	MSM_MDP_BATCH_TYPE_LSR  = 1,
+};
+
 struct msm_drm_private {
 
 	struct drm_device *dev;
@@ -2023,4 +2040,22 @@ bool msm_iommu_present_on_bus(const struct bus_type *bus);
  * Return: true if the IOMMU is present, false otherwise.
  */
 bool mdss_iommu_present(struct drm_device *dev);
+
+/**
+ * msm_ioctl_rmfb2 - Handle RMFB2 DRM ioctl request
+ * @dev: Pointer to the DRM device
+ * @data: Pointer to the ioctl-specific data structure
+ * @file_priv: DRM file private data associated with the caller
+ *
+ * This function handles the RMFB2 (remove framebuffer) ioctl issued
+ * from userspace. It validates the input parameters and performs the
+ * necessary cleanup to remove the specified framebuffer object from
+ * the DRM subsystem.
+ *
+ * The function is typically used to release framebuffer resources
+ * that were previously created via the ADD_FB2 ioctl.
+ *
+ * Return: 0 on success, or a negative error code on failure.
+ */
+int msm_ioctl_rmfb2(struct drm_device *dev, void *data, struct drm_file *file_priv);
 #endif /* __MSM_DRV_H__ */

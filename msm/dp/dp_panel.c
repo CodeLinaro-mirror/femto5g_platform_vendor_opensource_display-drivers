@@ -2223,7 +2223,7 @@ static void dp_panel_update_pps(struct dp_panel *dp_panel, char *pps_cmd)
 	catalog->pps_flush(catalog);
 }
 
-int dp_panel_get_src_crc(struct dp_panel *dp_panel, u16 *crc)
+static int dp_panel_get_src_crc(struct dp_panel *dp_panel, u16 *crc)
 {
 	struct dp_catalog_panel *catalog;
 	struct dp_panel_private *panel;
@@ -2234,7 +2234,7 @@ int dp_panel_get_src_crc(struct dp_panel *dp_panel, u16 *crc)
 	return catalog->get_src_crc(catalog, crc);
 }
 
-int dp_panel_get_sink_crc(struct dp_panel *dp_panel, u16 *crc)
+static int dp_panel_get_sink_crc(struct dp_panel *dp_panel, u16 *crc)
 {
 	int rc = 0;
 	struct dp_panel_private *panel;
@@ -2262,7 +2262,7 @@ int dp_panel_get_sink_crc(struct dp_panel *dp_panel, u16 *crc)
 	return rc;
 }
 
-int dp_panel_sink_crc_enable(struct dp_panel *dp_panel, bool enable)
+static int dp_panel_sink_crc_enable(struct dp_panel *dp_panel, bool enable)
 {
 	int rc = 0;
 	struct dp_panel_private *panel;
@@ -2292,7 +2292,7 @@ int dp_panel_sink_crc_enable(struct dp_panel *dp_panel, bool enable)
 	return rc;
 }
 
-bool dp_panel_get_panel_on(struct dp_panel *dp_panel)
+static bool dp_panel_get_panel_on(struct dp_panel *dp_panel)
 {
 	struct dp_panel_private *panel;
 
@@ -2301,7 +2301,7 @@ bool dp_panel_get_panel_on(struct dp_panel *dp_panel)
 	return panel->panel_on;
 }
 
-struct dp_display_mode *dp_panel_get_mode(struct dp_panel *dp_panel)
+static struct dp_display_mode *dp_panel_get_mode(struct dp_panel *dp_panel)
 {
 	dp_panel->mode.timing = dp_panel->pinfo;
 	dp_panel->mode.mst_hide = dp_panel->mst_hide;

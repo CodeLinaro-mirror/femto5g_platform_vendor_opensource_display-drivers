@@ -22,6 +22,8 @@
 #include "dp_debug.h"
 #include "sde_hdcp_2x.h"
 
+#define DP_HDCP2_MAX_RX_MSG_SIZE 534
+
 /**
  * struct dp_hdcp1x_ctx - DP HDCP 1.x context
  * @init_data: HDCP initialization data from sde_hdcp
@@ -544,12 +546,12 @@ int dp_hdcp2x_enable_encryption(void *input)
  * Return: 0 on success, negative error code on failure
  */
 int dp_hdcp2x_process_msg(void *input, uint8_t *req_buf, uint32_t req_len, uint8_t **resp_buf,
-	uint32_t *resp_len)
+	uint32_t *resp_len, bool *repeater_flag, uint32_t *timeout_ms)
 {
 	struct dp_hdcp2x_ctx *ctx = input;
 	int rc;
 
-	if (!ctx || !req_buf || !resp_buf || !resp_len) {
+	if (!ctx || !req_buf || !resp_buf || !resp_len || !repeater_flag || !timeout_ms) {
 		DP_ERR("invalid input\n");
 		return -EINVAL;
 	}
@@ -557,8 +559,9 @@ int dp_hdcp2x_process_msg(void *input, uint8_t *req_buf, uint32_t req_len, uint8
 	DP_DEBUG("Processing HDCP 2.x message, req_len=%u\n", req_len);
 
 #if IS_ENABLED(CONFIG_HDCP_QSEECOM)
-	if (req_len > ctx->buf_len) {
-		DP_ERR("Request too large: %u > %u\n", req_len, ctx->buf_len);
+	if (req_len > DP_HDCP2_MAX_RX_MSG_SIZE) {
+		DP_ERR("Request too large: %u > %u (TZ request buffer size)\n",
+			req_len, DP_HDCP2_MAX_RX_MSG_SIZE);
 		ctx->state = HDCP_STATE_AUTH_FAIL;
 		return -EINVAL;
 	}
@@ -582,14 +585,16 @@ int dp_hdcp2x_process_msg(void *input, uint8_t *req_buf, uint32_t req_len, uint8
 
 	*resp_buf = ctx->app_data.response.data;
 	*resp_len = ctx->app_data.response.length;
+	*repeater_flag = ctx->app_data.repeater_flag;
+	*timeout_ms = ctx->app_data.timeout;
 #else
 	DP_ERR("HDCP QSEECOM not enabled\n");
 	ctx->state = HDCP_STATE_AUTH_FAIL;
 	return -ENODEV;
 #endif
 
-	DP_DEBUG("TZ response: length=%u, repeater_flag=%u\n",
-		 *resp_len, ctx->app_data.repeater_flag);
+	DP_DEBUG("TZ response: length=%u, repeater_flag=%u, timeout_ms=%u\n",
+		 *resp_len, *repeater_flag, *timeout_ms);
 
 	return 0;
 }
@@ -669,6 +674,53 @@ int dp_hdcp2x_timeout(void *input, uint8_t *req_buf, uint32_t req_len, uint8_t *
 #endif
 
 	DP_DEBUG("Timeout handled, response length=%u\n", *resp_len);
+
+	return 0;
+}
+
+/**
+ * dp_hdcp2x_query_stream() - Query stream management from TrustZone
+ * @input: HDCP 2.x context handle
+ * @resp_buf: Pointer to store response buffer (REP_STREAM_MANAGE from TZ)
+ * @resp_len: Pointer to store response length
+ *
+ * Called after REP_SEND_ACK is written to the sink. Issues
+ * HDCP2_CMD_QUERY_STREAM to TrustZone, which generates REP_STREAM_MANAGE.
+ * This is the equivalent of sde_hdcp_2x_query_stream() in the legacy driver.
+ *
+ * Return: 0 on success, negative error code on failure
+ */
+int dp_hdcp2x_query_stream(void *input, uint8_t **resp_buf, uint32_t *resp_len)
+{
+	struct dp_hdcp2x_ctx *ctx = input;
+	int rc;
+
+	if (!ctx || !resp_buf || !resp_len) {
+		DP_ERR("invalid input\n");
+		return -EINVAL;
+	}
+
+	DP_DEBUG("Querying stream management from TZ\n");
+
+#if IS_ENABLED(CONFIG_HDCP_QSEECOM)
+	ctx->app_data.request.length = 0;
+	ctx->app_data.response.length = 0;
+
+	rc = hdcp2_app_comm(ctx->hdcp2_handle, HDCP2_CMD_QUERY_STREAM, &ctx->app_data);
+	if (rc) {
+		DP_ERR("HDCP2_CMD_QUERY_STREAM failed: %d\n", rc);
+		ctx->state = HDCP_STATE_AUTH_FAIL;
+		return rc;
+	}
+
+	*resp_buf = ctx->app_data.response.data;
+	*resp_len = ctx->app_data.response.length;
+#else
+	DP_ERR("HDCP QSEECOM not enabled\n");
+	return -ENODEV;
+#endif
+
+	DP_DEBUG("QUERY_STREAM response length=%u\n", *resp_len);
 
 	return 0;
 }

@@ -22,7 +22,6 @@
 #include "msm_mmu.h"
 #include "msm_kms.h"
 #include <linux/module.h>
-
 #include <drm/drm_drv.h>
 
 #include <linux/qcom-dma-mapping.h>

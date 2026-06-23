@@ -149,6 +149,28 @@ int set_mdnie_art_feature(struct sde_hw_dspp *hw_dspp,
 	return ret;
 }
 
+int set_mdnie_ipc(struct sde_hw_dspp *hw_dspp, struct sde_hw_cp_cfg *hw_cfg,
+			     struct sde_crtc *hw_crtc)
+{
+	int ret = 0;
+
+	if (!hw_dspp)
+		return -EINVAL;
+
+	if (!IS_DISP_OP_HFI(hw_dspp->hw.disp_op))
+		return 0;
+
+	if (!hw_dspp->ops.setup_mdnie_ipc[hw_dspp->hw.disp_op]) {
+		if (!hw_dspp->cap->sblk->aiqe.mdnie_supported)
+			DRM_DEBUG_DRIVER("MDNIE not supported in dspp idx %d", hw_dspp->idx);
+		else
+			ret = -EINVAL;
+	} else
+		hw_dspp->ops.setup_mdnie_ipc[hw_dspp->hw.disp_op](hw_dspp, hw_cfg);
+
+	return ret;
+}
+
 int check_aiqe_ssrc_data(struct sde_hw_dspp *hw_dspp,
 		struct sde_hw_cp_cfg *hw_cfg,
 		struct sde_crtc *sde_crtc)

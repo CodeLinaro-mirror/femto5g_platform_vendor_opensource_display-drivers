@@ -49,6 +49,7 @@
  * @HFI_COLOR_FORMAT_RGBX8888_TILED        : Color format XBGR8888 Tiled
  * @HFI_COLOR_FORMAT_RGBA10_10_10_2_TILED  : Color format ABGR2 10 10 10 Tiled
  * @HFI_COLOR_FORMAT_RGBX10_10_10_2_TILED  : Color format XBGR2 10 10 10 Tiled
+ * @HFI_COLOR_FORMAT_RGB888_BYPASS         : Color format RGB888 Bypass
  * // Interleaved BGR (MSB byte = 0x02)
  * @HFI_COLOR_FORMAT_BGR565                : Color format BGR565
  * @HFI_COLOR_FORMAT_BGR888                : Color format BGR888
@@ -95,6 +96,7 @@
  * @HFI_COLOR_FORMAT_A10                   : Color format A10
  * @HFI_COLOR_FORMAT_Y10_MSB_ALIGN         : Color format Y10_MSB_ALIGN
  * @HFI_COLOR_FORMAT_A10_MSB_ALIGN         : Color format A10_MSB_ALIGN
+ * @HFI_COLOR_FORMAT_Y8                    : Color format Y8
  * // Compressed UBWC 3.0 / 4.x / 5.0 Lossless / FSC (MSB byte = 0x06)
  * @HFI_COLOR_FORMAT_UBWC_NV12             : Color format UBWC NV12
  * @HFI_COLOR_FORMAT_UBWC_NV12_Interlace   : Color format UBWC NV12 Interlace
@@ -144,6 +146,7 @@ enum hfi_color_formats {
 	HFI_COLOR_FORMAT_RGBX8888_TILED             = 0x01000016,
 	HFI_COLOR_FORMAT_RGBA10_10_10_2_TILED       = 0x01000017,
 	HFI_COLOR_FORMAT_RGBX10_10_10_2_TILED       = 0x01000018,
+	HFI_COLOR_FORMAT_RGB888_BYPASS              = 0x01000019,
 	HFI_COLOR_FORMAT_INTERLEAVED_RGB_MAX        = 0x01FFFFFF,
 	/* Interleaved BGR */
 	HFI_COLOR_FORMAT_INTERLEAVED_BGR_MIN        = 0x02000000,
@@ -202,6 +205,7 @@ enum hfi_color_formats {
 	HFI_COLOR_FORMAT_A10                        = 0x05000010,
 	HFI_COLOR_FORMAT_Y10_MSB_ALIGN              = 0x05000011,
 	HFI_COLOR_FORMAT_A10_MSB_ALIGN              = 0x05000012,
+	HFI_COLOR_FORMAT_Y8                         = 0x05000013,
 	HFI_COLOR_FORMAT_LINEAR_MAX                 = 0x05FFFFFF,
 	/* Compressed UBWC 3.0 / 4.x / 5.0 Lossless / FSC */
 	HFI_COLOR_FORMAT_UBWC_LOSSLESS_MIN          = 0x06000000,
@@ -267,7 +271,7 @@ struct hfi_buff {
 };
 
 /*
- * struct hfi_wb_out_buff - hfi buffer
+ * struct hfi_plane_buff - hfi buffer
  * @addr_l    :  Array holding the lower 32-bit addresses for each buffer plane
  * @addr_h    :  Array holding the upper 32-bit addresses for each buffer plane
  * @size      :  size of buffer
@@ -275,7 +279,7 @@ struct hfi_buff {
  * @flags     :  flags
  * @format    :  hfi format of wb out buffer
  */
-struct hfi_wb_out_buff {
+struct hfi_plane_buff {
 	u32 addr_l[HFI_MAX_PLANES];
 	u32 addr_h[HFI_MAX_PLANES];
 	u32 size;
@@ -294,23 +298,14 @@ struct hfi_prop_u64 {
 	u32 val_hi;
 };
 
-/**
- * struct hfi_display_sys_cache_info - payload structure to configure system cache resource on FW
- * @size: size of the subcache from system cache
- * @sub_cache_id: Sub Cache Id
- */
-struct hfi_display_sys_cache_info {
-	uint32_t size;         /**< The size of the subcache from system cache */
-	uint32_t sub_cache_id;   /**< Sub Cache Id */
-};
-
 #define HFI_BUFF_FEATURE_ENABLE         (1 << 0)
 #define HFI_BUFF_FEATURE_BROADCAST      (1 << 1)
 #define HFI_BUFF_FEATURE_HW_BLK_IDX_0   (1 << 2)
 #define HFI_BUFF_FEATURE_HW_BLK_IDX_1   (1 << 3)
 #define HFI_BUFF_FEATURE_HW_BLK_IDX_2   (1 << 4)
 #define HFI_BUFF_FEATURE_HW_BLK_IDX_3   (1 << 5)
-
+#define HFI_BUFF_3D_LUT_MODE_A          (1 << 16)
+#define HFI_BUFF_3D_LUT_MODE_B          (1 << 17)
 /*
  * struct hfi_buff_dpu - hfi buffer accessible by dpu
  * @flags    :  flags
@@ -323,13 +318,20 @@ struct hfi_buff_dpu {
 	u32 len;
 };
 
-/*
- * enum hfi_subsystem_type - Subsystem type definition
+/*!
+ * @enum hfi_subsystem_type
+ * @brief Subsystem type definition
  *
- * @HFI_SUBSYSTEM_TYPE_LSR : LSR subsystem.
+ * Defines subystem type.
+ *
+ * @var HFI_SUBSYSTEM_TYPE_LSR
+ *   LSR subsystem.
+ * @var HFI_SUBSYSTEM_TYPE_GMU
+ *   GMU subsystem.
  */
 enum hfi_subsystem_type {
-	HFI_SUBSYSTEM_TYPE_LSR = 0
+	HFI_SUBSYSTEM_TYPE_LSR = 0,
+	HFI_SUBSYSTEM_TYPE_GMU = 1
 };
 
 #endif // __H_HFI_DEFS_COMMON_H__

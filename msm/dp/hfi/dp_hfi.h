@@ -34,20 +34,36 @@ struct dp_hdcp_info {
 
 /**
  * struct dp_hfi - dp display hfi structure
- * @hfi_adapter:          Pointer to hfi adapter structure
- * @hfi_client:           Pointer to hfi client structure
- * @kv_props:             Pointer to hfi util kv helper structure
- * @hfi_cb_obj:           callback object for hfi responses
- * @connector:            Pointer to drm connector
- * @batch_cmd_buf         Pointer to cmd buf used in batch mode
- * @cmd_buf_worker:       kthread worker
- * @shared_addr_map:      Pointer to hold dcp shared buffer map addr
- * @mode_valid:           Indicate whether mode is valid
- * @tx_cmd_buf_dva:       DCP virtual address of the DCS cmd tx buffer
- * @tx_cmd_buf_fill_level:Tracks fill level of the DCS cmd tx buffer
- * @tx_cmd_buf_map:       Address map of DCS command payload HFI buffer
- * @cb_data:              callback data for display_update callback function
- * @handle_event:         callback function for HFI events for DP
+ * @hfi_adapter:             Pointer to hfi adapter structure
+ * @hfi_client:              Pointer to hfi client structure
+ * @kv_props:                Pointer to hfi util kv helper structure
+ * @hfi_cb_obj:              callback object for hfi responses
+ * @connector:               Pointer to drm connector
+ * @batch_cmd_buf:           Pointer to cmd buf used in batch mode
+ * @cmd_buf_worker:          kthread worker
+ * @shared_addr_map:         Pointer to hold dcp shared buffer map addr
+ * @edid_addr_map:           Pointer to hold EDID shared buffer map addr
+ * @mode_count:              Number of available display modes
+ * @edid_ctrl:               Pointer to EDID control structure
+ * @mode_list:               Array of extended display mode info (up to 64 entries)
+ * @mode_valid:              Indicate whether mode is valid
+ * @tx_cmd_buf_dva:          DCP virtual address of the DCS cmd tx buffer
+ * @tx_cmd_buf_fill_level:   Tracks fill level of the DCS cmd tx buffer
+ * @tx_cmd_buf_map:          Address map of DCS command payload HFI buffer
+ * @stream_id:               Stream identifier
+ * @connected:               Indicates whether display is connected
+ * @tgt_bpp:                 Target bits per pixel
+ * @mode_ovr:                Mode override configuration
+ * @hpd_config:              Hotplug detection configuration
+ * @hdcp_info:               HDCP state and version info for debugfs
+ * @hdcp_version_registered: Registered HDCP version bitmask
+ * @min_enc_level:           Minimum HDCP encryption level
+ * @hdcp1x_ctx:              Opaque handle to HDCP 1.x context
+ * @hdcp2x_ctx:              Opaque handle to HDCP 2.x context
+ * @hdcp2x_req_map:          Pointer to HDCP 2.x request shared buffer map
+ * @hdcp2x_resp_map:         Pointer to HDCP 2.x response shared buffer map
+ * @priv:                    Private data pointer for caller use
+ * @handle_event:            callback function for HFI events for DP
  */
 struct dp_hfi {
 	struct hfi_adapter_t *hfi_adapter;
@@ -61,10 +77,9 @@ struct dp_hfi {
 	struct hfi_shared_addr_map *shared_addr_map;
 
 	struct hfi_shared_addr_map *edid_addr_map;
-	struct hfi_shared_addr_map *modes_addr_map;
 	u32 mode_count;
 	struct sde_edid_ctrl *edid_ctrl;
-	struct hfi_display_mode_info mode_list[64]; /* MAX_MODES */
+	struct hfi_display_mode_extended_info mode_list[64]; /* Extended mode info */
 
 	bool mode_valid;
 	unsigned long tx_cmd_buf_dva;
@@ -72,12 +87,16 @@ struct dp_hfi {
 	struct hfi_shared_addr_map tx_cmd_buf_map;
 	u32 stream_id;
 	bool connected;
+	u32 tgt_bpp;
 
 	/* Mode override */
 	struct dp_mode_override mode_ovr;
 	struct hfi_device_hotplug_config hpd_config;
 
 	struct dp_hdcp_info hdcp_info;
+
+	u32 hdcp_version_registered;
+
 	u8 min_enc_level;
 	/* HDCP 1.x context */
 	void *hdcp1x_ctx;

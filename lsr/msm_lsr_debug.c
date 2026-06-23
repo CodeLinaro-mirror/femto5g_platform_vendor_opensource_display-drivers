@@ -17,7 +17,7 @@ int msm_lsr_debug_out = LSR_OUT_PRINTK;
 EXPORT_SYMBOL_GPL(msm_lsr_debug_out);
 
 int msm_lsr_fw_debug = 0x80003F;
-int msm_lsr_fw_low_power_mode = !1;
+int msm_lsr_fw_low_power_mode = 1;
 
 bool msm_lsr_auto_pil = true;
 
@@ -152,15 +152,13 @@ struct dentry *msm_lsr_debugfs_init_core(struct msm_lsr_core *core,
 		struct dentry *parent)
 {
 	struct dentry *dir = NULL;
-	char debugfs_name[MAX_DEBUGFS_NAME];
 
 	if (!core) {
 		dprintk(LSR_ERR, "Invalid params, core: %pK\n", core);
 		goto failed_create_dir;
 	}
 
-	snprintf(debugfs_name, MAX_DEBUGFS_NAME, "core%d", 0);
-	dir = debugfs_create_dir(debugfs_name, parent);
+	dir = debugfs_create_dir("core", parent);
 	if (IS_ERR_OR_NULL(dir)) {
 		dir = NULL;
 		dprintk(LSR_ERR, "Failed to create debugfs for msm_lsr\n");
