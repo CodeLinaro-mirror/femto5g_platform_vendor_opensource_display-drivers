@@ -1935,14 +1935,22 @@ static void sde_plane_rot_install_properties(struct drm_plane *plane,
 void sde_plane_clear_multirect(const struct drm_plane_state *drm_state)
 {
 	struct sde_plane_state *pstate;
+	struct sde_plane *psde;
 
 	if (!drm_state)
 		return;
 
 	pstate = to_sde_plane_state(drm_state);
+	psde = to_sde_plane(drm_state->plane);
 
-	pstate->multirect_index = SDE_SSPP_RECT_SOLO;
 	pstate->multirect_mode = SDE_SSPP_MULTIRECT_NONE;
+
+	if (psde->pipe_hw && sde_hw_sspp_multirect_rec1_only(psde->pipe_hw->cap))
+		pstate->multirect_index = SDE_SSPP_RECT_1;
+	else if (psde->pipe_hw && sde_hw_sspp_multirect_rec0_only(psde->pipe_hw->cap))
+		pstate->multirect_index = SDE_SSPP_RECT_0;
+	else
+		pstate->multirect_index = SDE_SSPP_RECT_SOLO;
 }
 
 /**
@@ -4392,12 +4400,14 @@ static void _sde_plane_setup_capabilities_blob(struct sde_plane *psde,
 	u32 index;
 	int pipe_id;
 
-	if (is_master) {
+	if (is_master && !sde_hw_sspp_multirect_rec0_only(psde->pipe_hw->cap)) {
 		format_list = psde->pipe_sblk->format_list;
 	} else {
 		format_list = psde->pipe_sblk->virt_format_list;
-		sde_kms_info_add_keyint(info, "primary_smart_plane_id",
+		if (master_plane_id != (u32)-1) {
+			sde_kms_info_add_keyint(info, "primary_smart_plane_id",
 				master_plane_id);
+		}
 	}
 
 	if (format_list) {
@@ -5775,7 +5785,8 @@ struct drm_plane *sde_plane_init(struct drm_device *dev,
 		goto clean_sspp;
 	}
 
-	if (psde->is_virtual)
+	if (psde->is_virtual ||
+			sde_hw_sspp_multirect_rec0_only(psde->pipe_hw->cap))
 		format_list = psde->pipe_sblk->virt_format_list;
 	else
 		format_list = psde->pipe_sblk->format_list;

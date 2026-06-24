@@ -1907,8 +1907,11 @@ static void _setup_layer_ops(struct sde_hw_pipe *c,
 		c->ops.setup_scaler = sde_hw_sspp_setup_scaler;
 	}
 
-	if (sde_hw_sspp_multirect_enabled(c->cap))
+	if (sde_hw_sspp_multirect_enabled(c->cap) ||
+			sde_hw_sspp_multirect_rec0_only(c->cap) ||
+			sde_hw_sspp_multirect_rec1_only(c->cap)) {
 		c->ops.update_multirect = sde_hw_sspp_update_multirect;
+	}
 
 	if (test_bit(SDE_SSPP_CAC_V2, &features) ||
 			test_bit(SDE_SSPP_CAC_LOOPBACK, &features)) {
