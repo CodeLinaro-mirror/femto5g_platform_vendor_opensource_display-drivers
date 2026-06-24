@@ -7185,6 +7185,12 @@ void reg_dmav1_setup_spr_udc_cfgv2(struct sde_hw_dspp *ctx, void *cfg)
 			uint32_t index  = i * (SPR_UDC_PARAM_SIZE_2 / 3);
 			uint32_t line_cnt = (lines[i] + 1) >> 1;
 
+			if (line_cnt > SPR_UDC_MAX_REG_CNT) {
+				DRM_ERROR("invalid UDC line_cnt %u for region %u\n",
+					  line_cnt, i);
+				goto cleanup;
+			}
+
 			if (i == 0)
 				j = (SPR_UDC_PARAM_SIZE_2 / 12) * 2;
 			else if (i == 1)
