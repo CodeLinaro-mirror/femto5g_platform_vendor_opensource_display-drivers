@@ -2176,6 +2176,40 @@ static void _sde_crtc_setup_blend_cfg_by_stage(struct sde_crtc_mixer *mixer,
 	}
 }
 
+static void _sde_crtc_update_pipe_active(struct sde_plane *psde,
+		struct sde_plane_state *pstate, struct drm_framebuffer *fb,
+		struct drm_plane *plane, unsigned long *active_fetch_pipes,
+		unsigned long *active_pipes)
+{
+	bool is_rec_only = sde_hw_sspp_multirect_rec0_only(psde->pipe_hw->cap) ||
+			   sde_hw_sspp_multirect_rec1_only(psde->pipe_hw->cap);
+	bool pipe_on = fb ? true : false;
+	u32 cac_mode;
+
+	/*
+	 * rec0/rec1-only: GVM-exclusive pipe, use SSPP-level
+	 * active registers to avoid CTL register conflict with PVM.
+	 */
+	if (!is_rec_only)
+		set_bit(sde_plane_pipe(plane), active_fetch_pipes);
+
+	if (psde->pipe_hw->ops.set_active_fetch_pipe)
+		psde->pipe_hw->ops.set_active_fetch_pipe(psde->pipe_hw,
+				pstate->multirect_index, pipe_on);
+
+	if (is_rec_only && psde->pipe_hw->ops.set_active_pipe)
+		psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
+				pstate->multirect_index, pipe_on);
+
+	cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
+	if (cac_mode != SDE_CAC_UNPACK && !is_rec_only) {
+		set_bit(sde_plane_pipe(plane), active_pipes);
+		if (psde->pipe_hw->ops.set_active_pipe)
+			psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
+					pstate->multirect_index, pipe_on);
+	}
+}
+
 static int _sde_crtc_blend_setup_plane(struct drm_crtc *crtc,
 		struct plane_state *pstates,
 		struct sde_crtc_mixer *mixer,
@@ -2226,18 +2260,9 @@ static int _sde_crtc_blend_setup_plane(struct drm_crtc *crtc,
 			mode = sde_plane_get_property(pstate,
 					PLANE_PROP_FB_TRANSLATION_MODE);
 
-			set_bit(sde_plane_pipe(plane), active_fetch_pipes);
-			if (psde->pipe_hw->ops.set_active_fetch_pipe)
-				psde->pipe_hw->ops.set_active_fetch_pipe(psde->pipe_hw,
-						pstate->multirect_index,fb ? true : false);
-
+			_sde_crtc_update_pipe_active(psde, pstate, fb, plane,
+					active_fetch_pipes, active_pipes);
 			cac_mode = sde_plane_get_property(pstate, PLANE_PROP_CAC_TYPE);
-			if (cac_mode != SDE_CAC_UNPACK) {
-				set_bit(sde_plane_pipe(plane), active_pipes);
-				if (psde->pipe_hw->ops.set_active_pipe)
-					psde->pipe_hw->ops.set_active_pipe(psde->pipe_hw,
-							pstate->multirect_index, fb ? true : false);
-			}
 			sde_plane_ctl_flush(plane, ctl, true);
 		} else {
 			if (psde->pipe_hw->ops.set_flush_type)
@@ -2385,10 +2410,15 @@ static void _sde_crtc_blend_setup_mixer(struct drm_crtc *crtc,
 			pstates, cnt);
 
 	if (!isLocalFlush) {
-		if (ctl->ops.set_active_fetch_pipes)
+		/* For virtual CTLs, skip if pipe_active_mask == 0 (all GVM pipes are REC-only
+		 * and have no CTL representation). For dedicated CTLs, always write.
+		 */
+		if (ctl->ops.set_active_fetch_pipes &&
+				(!ctl->hw.virtual || ctl->caps->pipe_active_mask))
 			ctl->ops.set_active_fetch_pipes(ctl, active_fetch_pipes);
 
-		if (ctl->ops.set_active_pipes)
+		if (ctl->ops.set_active_pipes &&
+				(!ctl->hw.virtual || ctl->caps->pipe_active_mask))
 			ctl->ops.set_active_pipes(ctl, active_pipes);
 
 		/* Force global flush when adding/removing sspp or mixer stage */
