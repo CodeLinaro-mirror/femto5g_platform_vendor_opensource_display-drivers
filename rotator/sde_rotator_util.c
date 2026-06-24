@@ -897,7 +897,7 @@ err_put:
 static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 		int dir)
 {
-	int ret = -EINVAL, sec_cam = 0, rc = 0;
+	int ret = -EINVAL, sec_cam = 0;
 	struct scatterlist *sg;
 	struct sg_table *sgt = NULL;
 	unsigned int i;
@@ -905,6 +905,7 @@ static int sde_mdp_map_buffer(struct sde_mdp_img_data *data, bool rotator,
 	bool csf25_enabled = false;
 #if IS_ENABLED(CONFIG_SMMU_PROXY)
 	struct csf_version csf_ver = {};
+	int rc;
 
 	rc = smmu_proxy_get_csf_version(&csf_ver);
 	if (rc) {
