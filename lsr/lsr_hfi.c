@@ -44,7 +44,7 @@
 
 #define CSC_SCRATCH_BUF_SIZE 0x1000
 /* GCX needs 16K of scratch memory to accommodate up to 16 UI layers*/
-#define GCX_SCRATCH_BUF_SIZE 0x4000
+#define GCX_SCRATCH_BUF_SIZE 0x6000
 #define ARP_BUF_SIZE     0x800000
 
 /* Poll interval in uS */
