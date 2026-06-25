@@ -8912,7 +8912,7 @@ int dsi_display_find_mode(struct dsi_display *display,
 			cmp->priv_info->esync_params.emsync_fps = sub_mode->emsync_fps;
 		}
 
-		if (sub_mode) {
+		if (sub_mode && sub_mode->spr_mode != MSM_DISPLAY_SPR_MAX) {
 			match_flags |= DSI_MODE_MATCH_SPR_MODE;
 			cmp->priv_info = priv_info;
 			cmp->priv_info->dsc.chroma_format = sub_mode->spr_mode;

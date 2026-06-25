@@ -502,11 +502,13 @@ enum msm_display_dsc_mode {
  * @MSM_DISPLAY_SPR_DISABLED: SPR chroma format disabled (RGB 4:4:4)
  * @MSM_DISPLAY_SPR_YUV_422: SPR chroma format YUV 4:2:2
  * @MSM_DISPLAY_SPR_YUV_420: SPR chroma format YUV 4:2:0
+ * @MSM_DISPLAY_SPR_MAX: max and invalid SPR chroma foramt
  */
 enum msm_display_spr_mode {
 	MSM_DISPLAY_SPR_DISABLED,
 	MSM_DISPLAY_SPR_YUV_422,
 	MSM_DISPLAY_SPR_YUV_420,
+	MSM_DISPLAY_SPR_MAX,
 };
 
 /**
