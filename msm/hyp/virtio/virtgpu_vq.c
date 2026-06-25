@@ -1308,6 +1308,12 @@ static void virtio_get_scanout_attribute(struct virtio_kms *kms,
 	output->attr.avr_min_fps = le32_to_cpu(resp->avr_min_fps);
 	output->attr.avr_step = le32_to_cpu(resp->avr_step);
 
+	if (output->attr.type != VIRTIO_PORT_TYPE_DP) {
+		VIRTGPU_VQ_INFO("Force scanout %d type %d to DP\n",
+				scanout, output->attr.type);
+		output->attr.type = VIRTIO_PORT_TYPE_DP;
+	}
+
 	VIRTGPU_VQ_RSP_DBG("scanout %d attr <%d %d (%dX%d)  org %d> avr< supported: %d minfps: %d step: %d>\n",
 			scanout, output->attr.type,
 			output->attr.connection_status,
